@@ -55,9 +55,12 @@ end
 # gem (module functions on EditorCore); the Spinel build gets this shim, so the
 # editor source calls the same names either way.
 module EditorCore
+  # Asked of the C side on every call, not kept in an ivar: a module ivar is
+  # shared by every instance of this program, so with two editors open one
+  # would edit (and, once the other exits, lose) the other's document.
+  # fmrb_spx_editor.c keeps one slot per app and opens it on first use.
   def self.slot
-    @slot = FmrbSpxEc.fmrb_spx_ec_open_slot if @slot.nil?
-    @slot
+    FmrbSpxEc.fmrb_spx_ec_open_slot
   end
 
   def self.reset;        FmrbSpxEc.fmrb_spx_ec_reset(slot); end

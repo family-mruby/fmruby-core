@@ -71,16 +71,10 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
         spinel_vm_fail(ctx, "mempool unavailable", pool, pool_size);
         return;
     }
-    // One instance per program: see fmrb_app_spinel_claim. The refusal has
-    // already been reported, so the task just ends.
-    if (fmrb_app_spinel_claim(ctx, (const void *)init) != FMRB_OK) {
-        return;
-    }
     size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
         spinel_vm_fail(ctx, "failed to create the Spinel instance", pool, pool_size);
-        fmrb_app_spinel_release(ctx);
         return;
     }
     ctx->est = est;
@@ -89,12 +83,9 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
 
     fmrb_spinel_instance_end(est);
     ctx->est = NULL;
-    // Still holding the claim: what `after` releases is shared by every
-    // instance of the program, and the next one may start once it is gone.
     if (after) {
         after();
     }
-    fmrb_app_spinel_release(ctx);
 }
 #endif
 
@@ -108,8 +99,10 @@ extern void fmrb_spx_ec_release_slot(void);   /* fmrb_spx_editor.c */
 static void spinel_editor_native(void *arg)
 {
     // The program never closes its document slot (fmrb_spx_editor.c says
-    // why), so it is given back once the program has ended -- only by the
-    // editor that ran, never by a refused second one.
+    // why), so the slot recorded for this app is given back here: once
+    // before the program starts, which reclaims one a forced kill of an
+    // earlier editor in this app slot left behind, and once after it ends.
+    fmrb_spx_ec_release_slot();
     fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor,
                            fmrb_spx_ec_release_slot);
 }
