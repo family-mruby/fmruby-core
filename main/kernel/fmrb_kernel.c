@@ -19,6 +19,7 @@
 #include "fmrb_transport.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"
+#include "fmrb_audio.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_link_cobs.h"
 #include "picoruby_fmrb_const.h"
@@ -103,6 +104,83 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
     case FMRB_DISPLAY_MODE_ATOM_DISPLAY: return "atom_display";
     default:                           return "unknown";
     }
+}
+
+// ---- Audio output settings (doc/audio_mute/) ----
+//
+// Volume step n (1-10) plays at audio_level_min + (max - min) * n / 10 dB;
+// step 0 is silence. The range defaults to 0 dB at the top and -50 dB at the
+// bottom on every machine (user decision after hearing +32 dB on the ES8311:
+// nothing is boosted above what the source already is), which makes the
+// steps 5 dB apart: 7 = -15 dB, 10 = 0 dB. The volume defaults to 7.
+// audio_level_min / audio_level_max in system_conf move the range, within
+// what each output can do (AUDIO_LEVEL_HW_*).
+#define AUDIO_LEVEL_DEFAULT_MIN_X10  (-500)
+#define AUDIO_LEVEL_DEFAULT_MAX_X10  0
+#if defined(FMRB_HW_NARYAV4)
+// ES8311 DAC digital volume: 0x00 = -95.5 dB to 0xFF = +32 dB, 0.5 dB steps.
+// Above 0 dB the chip amplifies digitally, so a loud mix clips there.
+#define AUDIO_LEVEL_HW_MIN_X10  (-955)
+#define AUDIO_LEVEL_HW_MAX_X10  320
+#elif defined(FMRB_HW_TAB5)
+// ES8388 DAC digital volume: 0x00 = 0 dB to 0xC0 = -96 dB, 0.5 dB steps.
+#define AUDIO_LEVEL_HW_MIN_X10  (-960)
+#define AUDIO_LEVEL_HW_MAX_X10  0
+#else
+// A software gain at the last output stage (graphics-audio on Retro and in
+// the simulator, audio_p4 in the browser). Unity at the top: a gain above 1
+// would only clip. The bottom of the default range, -50 dB, was measured in
+// the simulator: a single APU voice peaks at 3072 (about -20 dBFS), so -50 dB
+// leaves it about 10 LSB, faint but recognisable; the floor here only stops
+// an override from asking for less than a 16-bit sample can carry.
+#define AUDIO_LEVEL_HW_MIN_X10  (-960)
+#define AUDIO_LEVEL_HW_MAX_X10  0
+#endif
+
+static int16_t audio_conf_level_x10(const toml_table_t *conf, const char *key, int16_t dflt)
+{
+    // Either spelling: "-20.5" is a TOML float, "-20" or "0" an integer.
+    double db = dflt / 10.0;
+    toml_datum_t d = toml_double_in(conf, key);
+    if (d.ok) {
+        db = d.u.d;
+    } else {
+        d = toml_int_in(conf, key);
+        if (d.ok) db = (double)d.u.i;
+    }
+    int32_t x10 = (int32_t)(db * 10.0 + (db < 0 ? -0.5 : 0.5));
+    if (x10 < AUDIO_LEVEL_HW_MIN_X10) x10 = AUDIO_LEVEL_HW_MIN_X10;
+    if (x10 > AUDIO_LEVEL_HW_MAX_X10) x10 = AUDIO_LEVEL_HW_MAX_X10;
+    return (int16_t)x10;
+}
+
+static void apply_audio_conf(const toml_table_t *conf)
+{
+    int16_t min_x10 = audio_conf_level_x10(conf, "audio_level_min", AUDIO_LEVEL_DEFAULT_MIN_X10);
+    int16_t max_x10 = audio_conf_level_x10(conf, "audio_level_max", AUDIO_LEVEL_DEFAULT_MAX_X10);
+    fmrb_audio_set_level_range(min_x10, max_x10);
+    fmrb_audio_level_range(&min_x10, &max_x10);
+
+    int vol = (int)fmrb_toml_get_int(conf, "audio_volume", FMRB_AUDIO_VOLUME_DEFAULT);
+    if (vol < 0) vol = 0;
+    if (vol > FMRB_AUDIO_VOLUME_MAX) vol = FMRB_AUDIO_VOLUME_MAX;
+    fmrb_audio_set_volume_step((uint8_t)vol);
+    fmrb_audio_set_muted(fmrb_toml_get_bool(conf, "audio_mute", false));
+}
+
+fmrb_err_t fmrb_kernel_load_audio_conf(void)
+{
+    char errbuf[64];
+    toml_table_t *conf = fmrb_toml_load_file("/etc/system_conf.toml", errbuf, sizeof(errbuf));
+    if (!conf) {
+        conf = fmrb_toml_load_file("/etc/system_conf.factory.toml", errbuf, sizeof(errbuf));
+    }
+    if (!conf) {
+        return FMRB_ERR_NOT_FOUND;
+    }
+    apply_audio_conf(conf);
+    toml_free(conf);
+    return FMRB_OK;
 }
 
 static bool read_system_config(void)
@@ -194,6 +272,11 @@ static bool read_system_config(void)
     // credentials in /etc/wifi.toml. On retro (S3) WiFi and BLE are mutually
     // exclusive; boot resolves a both-on misconfiguration in favor of BLE.
     g_system_config.wifi_auto_start = fmrb_toml_get_bool(conf, "wifi_auto_start", g_system_config.wifi_auto_start);
+
+    // Mute and volume (doc/audio_mute/). Read here, before the host task
+    // starts and long before the desktop's boot jingle; the host task hands
+    // them to the audio side as soon as the link is up.
+    apply_audio_conf(conf);
 
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);
@@ -299,6 +382,132 @@ static bool read_system_config(void)
     return true;
 }
 
+
+// Rewrite one top-level `key = value` line of system_conf.toml, in
+// place, keeping every other line (comments, sections) as it was. A key that
+// is not there yet goes in just before the first [section] header, where
+// top-level keys must be. Written beside the file and renamed over it, as the
+// desktop's Config dialog does: a reset between truncate and write must not
+// cost the whole config.
+fmrb_err_t fmrb_kernel_save_conf_value(const char *key, const char *value)
+{
+    static const char *path = "/etc/system_conf.toml";
+    static const char *tmp_path = "/etc/system_conf.toml.tmp";
+    if (!key || !key[0] || !value || !value[0]) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_file_info_t info;
+    if (fmrb_hal_file_stat(path, &info) != FMRB_OK || info.size == 0) {
+        return FMRB_ERR_NOT_FOUND;
+    }
+    size_t in_len = info.size;
+    size_t key_len = strlen(key);
+    // Room for the file plus one new line ("key = value\n").
+    size_t out_cap = in_len + key_len + strlen(value) + 8;
+    char *in = (char *)fmrb_sys_malloc(in_len + 1);
+    char *out = (char *)fmrb_sys_malloc(out_cap);
+    if (!in || !out) {
+        fmrb_sys_free(in);
+        fmrb_sys_free(out);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    fmrb_err_t ret = FMRB_ERR_FAILED;
+    fmrb_file_t f;
+    size_t got = 0;
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) {
+        goto done;
+    }
+    fmrb_err_t rret = fmrb_hal_file_read(f, in, in_len, &got);
+    fmrb_hal_file_close(f);
+    if (rret != FMRB_OK) {
+        goto done;
+    }
+    in_len = got;
+    in[in_len] = '\0';
+
+    char line[64];
+    int line_len = snprintf(line, sizeof(line), "%s = %s", key, value);
+    if (line_len <= 0 || line_len >= (int)sizeof(line)) {
+        ret = FMRB_ERR_INVALID_PARAM;
+        goto done;
+    }
+
+    size_t o = 0;
+    bool written = false;
+    bool in_section = false;
+    size_t pos = 0;
+    while (pos < in_len) {
+        size_t end = pos;
+        while (end < in_len && in[end] != '\n') end++;
+        const char *ln = in + pos;
+        size_t len = end - pos;
+        bool has_nl = end < in_len;
+
+        size_t i = 0;
+        while (i < len && (ln[i] == ' ' || ln[i] == '\t')) i++;
+        bool header = (i < len && ln[i] == '[');
+
+        if (header && !in_section && !written) {
+            memcpy(out + o, line, (size_t)line_len);
+            o += (size_t)line_len;
+            out[o++] = '\n';
+            written = true;
+        }
+        if (header) {
+            in_section = true;
+        }
+
+        bool replace = false;
+        if (!in_section && !written && len - i >= key_len &&
+            memcmp(ln + i, key, key_len) == 0) {
+            size_t j = i + key_len;
+            while (j < len && (ln[j] == ' ' || ln[j] == '\t')) j++;
+            replace = (j < len && ln[j] == '=');
+        }
+        if (replace) {
+            memcpy(out + o, line, (size_t)line_len);
+            o += (size_t)line_len;
+            written = true;
+        } else {
+            memcpy(out + o, ln, len);
+            o += len;
+        }
+        if (has_nl) {
+            out[o++] = '\n';
+        }
+        pos = has_nl ? end + 1 : end;
+    }
+    if (!written) {
+        if (o > 0 && out[o - 1] != '\n') out[o++] = '\n';
+        memcpy(out + o, line, (size_t)line_len);
+        o += (size_t)line_len;
+        out[o++] = '\n';
+    }
+
+    if (fmrb_hal_file_open(tmp_path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &f) != FMRB_OK) {
+        goto done;
+    }
+    size_t put = 0;
+    fmrb_err_t wret = fmrb_hal_file_write(f, out, o, &put);
+    fmrb_hal_file_close(f);
+    if (wret != FMRB_OK || put != o) {
+        fmrb_hal_file_remove(tmp_path);
+        goto done;
+    }
+    if (fmrb_hal_file_rename(tmp_path, path) != FMRB_OK) {
+        fmrb_hal_file_remove(tmp_path);
+        goto done;
+    }
+    FMRB_LOGI(TAG, "system_conf: %s", line);
+    ret = FMRB_OK;
+
+done:
+    fmrb_sys_free(in);
+    fmrb_sys_free(out);
+    return ret;
+}
 
 // Send file command to host_task and wait for completion
 static fmrb_err_t send_file_cmd(file_cmd_t *cmd, file_cmd_result_t *result, uint32_t timeout_ms)

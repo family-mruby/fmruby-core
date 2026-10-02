@@ -26,6 +26,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "fmrb_task_config.h"
+#include "fmrb_attr.h"
+#include "fmrb_audio.h"
+#include "fmrb_kernel.h"
 
 static const char *TAG = "audio_p4";
 
@@ -73,6 +76,41 @@ static void engine_unlock(void) { xSemaphoreGive(g_engine_lock); }
 // loop, because starting a new clip frees the buffer the mixer is reading.
 static int16_t *g_wav_pcm = NULL;      // PSRAM, owns the samples
 static fmrb_wav_stream_t g_wav_stream; // reads g_wav_pcm
+
+// The output stage's switch and gain (doc/audio_mute/). PSRAM: the internal
+// RAM budget has no room for new statics, and these are read once per frame.
+FMRB_EXT_RAM_BSS_ATTR static volatile bool s_out_silent;
+FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t s_out_gain_q16;   // 0 = not set = unity
+
+void audio_p4_out_set(bool silent, uint32_t gain_q16) {
+    s_out_gain_q16 = gain_q16;
+    s_out_silent = silent;
+}
+
+bool audio_p4_out_silent(void) {
+    return s_out_silent;
+}
+
+// The settings as saved: this task makes its first sound (the boot beep)
+// before the kernel has read the config and the host task has sent them.
+// Only the output stage here; the codec's level follows with the host's
+// first SET_OUTPUT, on the display task where codec I2C belongs.
+static void out_settings_load(void) {
+    if (fmrb_kernel_load_audio_conf() != FMRB_OK) {
+        return;  // Unreadable: the kernel falls back and tells us soon after.
+    }
+    bool silent = fmrb_audio_is_muted() || fmrb_audio_volume_step() == 0;
+    uint32_t gain = 0;
+#if !defined(FMRB_HW_MODERN)
+    int16_t min_x10, max_x10;
+    fmrb_audio_level_range(&min_x10, &max_x10);
+    gain = audio_p4_gain_q16(fmrb_audio_step_db_x10(fmrb_audio_volume_step(), min_x10, max_x10));
+#endif
+    audio_p4_out_set(silent, gain);
+    if (silent) {
+        FMRB_LOGI(TAG, "output silent (saved setting)");
+    }
+}
 
 static void wav_release_locked(void) {
     fmrb_wav_stream_stop(&g_wav_stream);
@@ -467,6 +505,8 @@ static void audio_p4_task(void *arg) {
 
     FMRB_LOGI(TAG, "Audio task started on core %d", xPortGetCoreID());
 
+    out_settings_load();
+
     apuif_set_output_writer(audio_backend()->write);
     apuif_init();       // instance 0: NSF
     apuif_init_sub();   // instance 1: FMSQ + note SFX
@@ -522,6 +562,21 @@ static void audio_p4_task(void *arg) {
         engine_unlock();
 
         if (count > 0) {
+            // The output stage (doc/audio_mute/). The mix above still ran,
+            // so players, notes and WAVs go on as usual and nothing jumps
+            // when the mute is lifted; only what goes out changes. Silence
+            // is still written, so the I2S DMA keeps pacing this loop. The
+            // gain is for the browser; on the device the codec does it.
+            if (s_out_silent) {
+                memset(buffer, 0, (size_t)count * sizeof(buffer[0]));
+            } else {
+                uint32_t g = s_out_gain_q16;
+                if (g != 0 && g < 65536) {
+                    for (int i = 0; i < count; i++) {
+                        buffer[i] = (int16_t)(((int32_t)buffer[i] * (int32_t)g) >> 16);
+                    }
+                }
+            }
             // Blocking write outside the lock: I2S DMA paces us
             apuif_audio_write(buffer, count, 1);
         }

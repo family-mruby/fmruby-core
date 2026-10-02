@@ -1322,6 +1322,7 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
     FMRB_LOGI(TAG, "Reboot requested by user");
+    fmrb_host_audio_flush_save();  // a mute / volume change still waiting to be saved
     fmrb_task_delay_ms(100);
 #ifdef CONFIG_IDF_TARGET_LINUX
     exit(0);
@@ -1366,6 +1367,62 @@ static mrb_value mrb_fmrb_app_s_set_kana_mode(mrb_state *mrb, mrb_value klass)
     mrb_get_args(mrb, "i", &mode);
     if (mode < 0) mode = 0;
     fmrb_host_set_kana_mode((uint8_t)mode);
+    return mrb_nil_value();
+}
+
+// FmrbApp.audio_muted? -> bool. The machine-wide mute (doc/audio_mute/).
+// Allocation-free: the desktop's speaker cell reads it every second, which is
+// how a change made remotely shows up there.
+static mrb_value mrb_fmrb_app_s_audio_muted_p(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_bool_value(fmrb_host_audio_muted());
+}
+
+// FmrbApp.set_audio_mute(on) -> nil. Mutes or unmutes the whole machine at
+// the output stage and saves it to system_conf; see fmrb_host_set_audio_mute.
+static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_bool on;
+    mrb_get_args(mrb, "b", &on);
+    fmrb_host_set_audio_mute(on ? true : false);
+    return mrb_nil_value();
+}
+
+// FmrbApp.audio_volume -> Integer 0-10, and FmrbApp.set_audio_volume(n).
+// The machine's volume (doc/audio_mute/); see fmrb_host_set_audio_volume.
+static mrb_value mrb_fmrb_app_s_audio_volume(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value(fmrb_host_audio_volume());
+}
+
+static mrb_value mrb_fmrb_app_s_set_audio_volume(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int step;
+    mrb_get_args(mrb, "i", &step);
+    fmrb_host_set_audio_volume((int)step);
+    return mrb_nil_value();
+}
+
+// FmrbApp.preview_audio_volume(n) -> nil: apply without saving (Config's
+// live preview). FmrbApp.audio_conf_saved -> nil: the caller wrote the mute
+// and volume into system_conf itself (Config's Save).
+static mrb_value mrb_fmrb_app_s_preview_audio_volume(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int step;
+    mrb_get_args(mrb, "i", &step);
+    fmrb_host_preview_audio_volume((int)step);
+    return mrb_nil_value();
+}
+
+static mrb_value mrb_fmrb_app_s_audio_conf_saved(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_host_audio_conf_written();
     return mrb_nil_value();
 }
 
@@ -1772,6 +1829,12 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "audio_volume", mrb_fmrb_app_s_audio_volume, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "preview_audio_volume", mrb_fmrb_app_s_preview_audio_volume, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "audio_conf_saved", mrb_fmrb_app_s_audio_conf_saved, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());

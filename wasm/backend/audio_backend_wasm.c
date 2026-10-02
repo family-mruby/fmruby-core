@@ -25,7 +25,6 @@ static const char *TAG = "audio_wasm";
 
 static int16_t s_ring[AUDIO_WASM_RING_SAMPLES];
 static volatile uint32_t s_wr = 0;   /* total samples ever written */
-static volatile uint8_t s_volume = 255;
 static volatile int s_ready = 0;
 
 /* ---- the JS-facing surface (P4c's AudioWorklet reads these) ------------- */
@@ -34,7 +33,6 @@ EMSCRIPTEN_KEEPALIVE const int16_t *fmrb_wasm_audio_ring(void) { return s_ring; 
 EMSCRIPTEN_KEEPALIVE uint32_t fmrb_wasm_audio_ring_size(void) { return AUDIO_WASM_RING_SAMPLES; }
 EMSCRIPTEN_KEEPALIVE uint32_t fmrb_wasm_audio_wr(void) { return s_wr; }
 EMSCRIPTEN_KEEPALIVE uint32_t fmrb_wasm_audio_rate(void) { return 15720; }
-EMSCRIPTEN_KEEPALIVE uint32_t fmrb_wasm_audio_volume(void) { return s_volume; }
 
 /* ------------------------------------------------------------------------ */
 
@@ -61,17 +59,11 @@ static void audio_wasm_write(const int16_t *samples, int len, int channels)
     s_wr = wr;
 }
 
-static void audio_wasm_set_volume(uint8_t volume_0_255)
-{
-    s_volume = volume_0_255;
-}
-
 static const audio_backend_t s_backend_wasm = {
     .name       = "wasm",
     .init       = audio_wasm_init,
     .ready      = audio_wasm_ready,
     .write      = audio_wasm_write,
-    .set_volume = audio_wasm_set_volume,
 };
 
 const audio_backend_t *audio_backend(void)

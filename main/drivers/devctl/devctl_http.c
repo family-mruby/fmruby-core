@@ -5,6 +5,8 @@
 //   POST /app/launch?path=   GET /app/list        POST /app/kill?pid=
 //   GET  /fs/list?path=      GET  /fs/get?path=   PUT  /fs/put?path=
 //   DELETE /fs/del?path=     POST /fs/mkdir?path=
+//   GET  /audio/mute         POST /audio/mute?on=0|1
+//   GET  /audio/volume       POST /audio/volume?level=0-10
 //
 // It lived inside the remote desktop's server (rd_http.c) and moved here so
 // Retro can have it too: none of it touches the screen, the encoder or the
@@ -25,6 +27,7 @@
 #include "fmrb_app.h"
 #include "fmrb_log.h"
 #include "fmrb_hal_file.h"
+#include "host_task.h"
 
 #include "esp_http_server.h"
 #include "esp_attr.h"
@@ -430,6 +433,53 @@ static esp_err_t fs_mkdir_handler(httpd_req_t *req)
     return ctl_json(req, "200 OK", "{\"ok\":true}");
 }
 
+// The machine's mute and volume (doc/audio_mute/). Here so a development loop
+// can silence the board before it launches anything, or before a reflash: the
+// settings are saved, so the boot after the flash obeys them too. Every
+// answer carries both, so a caller always sees the whole state.
+static esp_err_t audio_state_reply(httpd_req_t *req)
+{
+    char body[64];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"muted\":%s,\"volume\":%d}",
+             fmrb_host_audio_muted() ? "true" : "false", fmrb_host_audio_volume());
+    return ctl_json(req, "200 OK", body);
+}
+
+static esp_err_t audio_get_handler(httpd_req_t *req)
+{
+    return audio_state_reply(req);
+}
+
+static esp_err_t audio_mute_post_handler(httpd_req_t *req)
+{
+    char on[8];
+    if (!ctl_query_value(req, "on", on, sizeof(on)) ||
+        (strcmp(on, "0") != 0 && strcmp(on, "1") != 0)) {
+        return ctl_json(req, "400 Bad Request",
+                        "{\"ok\":false,\"err\":\"on=0 or on=1 required\"}");
+    }
+    fmrb_host_set_audio_mute(on[0] == '1');
+    FMRB_LOGI(TAG, "dev ctl: audio mute %s", on[0] == '1' ? "on" : "off");
+    return audio_state_reply(req);
+}
+
+static esp_err_t audio_volume_post_handler(httpd_req_t *req)
+{
+    char level[8];
+    char *end = NULL;
+    long v = -1;
+    if (ctl_query_value(req, "level", level, sizeof(level)) && level[0]) {
+        v = strtol(level, &end, 10);
+    }
+    if (v < 0 || v > 10 || !end || *end != '\0') {
+        return ctl_json(req, "400 Bad Request",
+                        "{\"ok\":false,\"err\":\"level=0..10 required\"}");
+    }
+    fmrb_host_set_audio_volume((int)v);
+    FMRB_LOGI(TAG, "dev ctl: audio volume %ld", v);
+    return audio_state_reply(req);
+}
+
 // Register and say so when it does not take. httpd_register_uri_handler
 // returns ESP_ERR_HTTPD_HANDLERS_FULL rather than asserting, so ignoring it
 // leaves a server that starts cleanly and 404s the route just added.
@@ -461,6 +511,14 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         .uri = "/fs/del", .method = HTTP_DELETE, .handler = fs_del_handler };
     static const httpd_uri_t uri_fs_mkdir = {
         .uri = "/fs/mkdir", .method = HTTP_POST, .handler = fs_mkdir_handler };
+    static const httpd_uri_t uri_audio_mute_get = {
+        .uri = "/audio/mute", .method = HTTP_GET, .handler = audio_get_handler };
+    static const httpd_uri_t uri_audio_mute_post = {
+        .uri = "/audio/mute", .method = HTTP_POST, .handler = audio_mute_post_handler };
+    static const httpd_uri_t uri_audio_volume_get = {
+        .uri = "/audio/volume", .method = HTTP_GET, .handler = audio_get_handler };
+    static const httpd_uri_t uri_audio_volume_post = {
+        .uri = "/audio/volume", .method = HTTP_POST, .handler = audio_volume_post_handler };
     devctl_register_uri(server, &uri_launch);
     devctl_register_uri(server, &uri_kill);
     devctl_register_uri(server, &uri_list);
@@ -469,6 +527,10 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_fs_put);
     devctl_register_uri(server, &uri_fs_del);
     devctl_register_uri(server, &uri_fs_mkdir);
-    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*)");
+    devctl_register_uri(server, &uri_audio_mute_get);
+    devctl_register_uri(server, &uri_audio_mute_post);
+    devctl_register_uri(server, &uri_audio_volume_get);
+    devctl_register_uri(server, &uri_audio_volume_post);
+    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*)");
     return FMRB_OK;
 }

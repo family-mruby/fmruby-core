@@ -93,6 +93,9 @@ class SystemDesktopApp < FmrbApp
     # because it takes it from the machine it runs on.
     (ON_WEB ? [] : [{ key: :set_clock }]) + [
     { key: :config },
+    # Mute / unmute the whole machine. The label follows the state (see
+    # dropdown_label), the same switch as the speaker cell in the menu bar.
+    { key: :audio_mute },
   ] +
     # Storage clears the device's own caches, which the browser build has no
     # equivalent of -- what a visitor there wants to manage is the page's
@@ -191,6 +194,7 @@ class SystemDesktopApp < FmrbApp
     @cfg_selected = -1
     @cfg_status = nil
     @cfg_status_until = 0
+    @cfg_volume_saved = 0
 
     # Network dialog state (Modern only)
     @net_open = false
@@ -858,6 +862,7 @@ class SystemDesktopApp < FmrbApp
     draw_meminfo
     draw_ble_icon
     draw_kana_icon
+    draw_sound_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
@@ -874,12 +879,17 @@ class SystemDesktopApp < FmrbApp
   # Clicking the icon opens the network dialog (see handle_click).
   WIFI_ICON_W = 10
 
+  # The speaker cell sits right beside the clock (it is the status cell people
+  # reach for), so every other cell starts this far from the right edge.
+  SOUND_CELL_W = 10
+  STATUS_RIGHT = 90 + 4 + SOUND_CELL_W
+
   # Free internal RAM readout, leftmost of the status cells, always shown --
   # internal RAM is the scarce resource here (one running app costs ~25KB),
   # so this answers "can I open another app" at a glance. Fetch, format and
   # draw all happen in C (allocation-free); the Linux sim shows "---KB".
-  # Order left-to-right: RAM, kana, BLE, wifi, clock -- the readout sits
-  # apart so the three icon cells line up.
+  # Order left-to-right: RAM, kana, BLE, wifi, speaker, clock -- the readout
+  # sits apart so the icon cells line up.
   MEMINFO_W = 30  # 5 chars x 6px, fixed width
 
   # ---- Start indicator ----
@@ -971,7 +981,7 @@ class SystemDesktopApp < FmrbApp
     # so the cell would sit there reading "---KB" for ever. An empty slot is
     # better than a broken-looking one.
     return if ON_WEB
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
   end
 
@@ -990,7 +1000,7 @@ class SystemDesktopApp < FmrbApp
 
   def draw_ble_icon
     # Right of the RAM readout, next to the wifi icon (7px gap to wifi)
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1
     state = FmrbApp.ble_state
     if state == 0
       @gfx.fill_rect(x, 1, BLE_CELL_W, 10, FmrbGfx::GRAY)
@@ -1014,7 +1024,7 @@ class SystemDesktopApp < FmrbApp
       @kana_icon_x = nil
       return
     end
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
     @kana_icon_x = x
     # One fixed style for every mode: white box, menu-colored glyph. The old
     # gray direct-input cell sat next to the BLE icon's disconnected gray and
@@ -1031,6 +1041,43 @@ class SystemDesktopApp < FmrbApp
     FmrbApp.set_kana_mode(((@kana_mode || 0) + 1) % 3)
   end
 
+  # Machine-wide mute, immediately left of the clock. A speaker with sound
+  # waves while sound is on; while muted the cell turns white and the waves
+  # become a cross, so a silenced machine is visible at a glance. Read every
+  # second rather than told: a mute set remotely (devctl, debugd) shows up
+  # here within one tick. Allocation-free (one bool and a few rectangles and
+  # lines).
+  def draw_sound_icon
+    x = @window_width - 90 - 4 - SOUND_CELL_W
+    @sound_icon_x = x
+    muted = FmrbApp.audio_muted?
+    box = muted ? FmrbGfx::WHITE : MENU_BG
+    fg = muted ? MENU_BG : FmrbGfx::WHITE
+    @gfx.fill_rect(x, 1, SOUND_CELL_W, 10, box)
+    # Speaker: a small magnet and a cone opening to the right.
+    @gfx.fill_rect(x + 1, 4, 2, 4, fg)
+    @gfx.draw_line(x + 3, 4, x + 5, 2, fg)
+    @gfx.draw_line(x + 3, 7, x + 5, 9, fg)
+    @gfx.draw_line(x + 5, 2, x + 5, 9, fg)
+    if muted
+      @gfx.draw_line(x + 7, 4, x + 9, 7, fg)
+      @gfx.draw_line(x + 7, 7, x + 9, 4, fg)
+    else
+      @gfx.draw_line(x + 7, 4, x + 7, 7, fg)
+      @gfx.draw_line(x + 9, 3, x + 9, 8, fg)
+    end
+  end
+
+  # Click the speaker cell (or choose the menu entry) to flip the mute. The C
+  # side stops what is sounding, mutes the codec and saves the setting.
+  def toggle_audio_mute
+    on = !FmrbApp.audio_muted?
+    Log.info("Desktop: audio mute #{on ? 'on' : 'off'}")
+    FmrbApp.set_audio_mute(on)
+    draw_sound_icon
+    @gfx.present
+  end
+
   def draw_wifi_icon
     # Capability probe once (wifi_info allocates a Hash + 3 Strings); the
     # 1Hz redraw then only needs the allocation-free connected? bool.
@@ -1041,11 +1088,11 @@ class SystemDesktopApp < FmrbApp
       # @wifi_icon_x stays nil -- with no radio there is no network dialog
       # to open, so the placeholder is not clickable.
       @wifi_icon_x = nil
-      x = @window_width - 90 - WIFI_ICON_W - 4
+      x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 4
       @gfx.fill_rect(x, 1, WIFI_ICON_W, 10, FmrbGfx::GRAY)
       return
     end
-    x = @window_width - 90 - WIFI_ICON_W - 4
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 4
     @wifi_icon_x = x
     # Clear the icon cell first: this draw must be self-contained now that
     # the 1Hz tick repaints it without a full menu-bar repaint underneath
@@ -1080,7 +1127,7 @@ class SystemDesktopApp < FmrbApp
 
     DROPDOWN_ITEMS.each_with_index do |item, i|
       item_y = y + 1 + i * DROPDOWN_ITEM_H
-      label = FmrbI18n.t(item[:key])
+      label = dropdown_label(item[:key])
       if i == @dropdown_hover_idx
         @gfx.fill_rect(x + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
         @gfx.draw_text(x + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT, mixed: true)
@@ -1088,6 +1135,15 @@ class SystemDesktopApp < FmrbApp
         @gfx.draw_text(x + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
       end
     end
+  end
+
+  # A menu entry's label. Only the mute entry changes with the state: it says
+  # what choosing it will do.
+  def dropdown_label(key)
+    if key == :audio_mute
+      return FmrbI18n.t(FmrbApp.audio_muted? ? :audio_unmute : :audio_mute)
+    end
+    FmrbI18n.t(key)
   end
 
   def dropdown_item_at(x, y)
@@ -1167,7 +1223,7 @@ class SystemDesktopApp < FmrbApp
   def draw_dropdown_row(i)
     return if i < 0 || i >= DROPDOWN_ITEMS.size
     item_y = DROPDOWN_Y + 1 + i * DROPDOWN_ITEM_H
-    label = FmrbI18n.t(DROPDOWN_ITEMS[i][:key])
+    label = dropdown_label(DROPDOWN_ITEMS[i][:key])
     if i == @dropdown_hover_idx
       @gfx.fill_rect(DROPDOWN_X + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
       @gfx.draw_text(DROPDOWN_X + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT, mixed: true)
@@ -1436,6 +1492,7 @@ class SystemDesktopApp < FmrbApp
         draw_meminfo
         draw_ble_icon
         draw_kana_icon
+        draw_sound_icon
         @gfx.present
       end
     end
@@ -1939,6 +1996,8 @@ class SystemDesktopApp < FmrbApp
         open_network_dialog
       elsif @kana_icon_x && x >= @kana_icon_x && x < @kana_icon_x + KANA_CELL_W
         cycle_kana_mode
+      elsif @sound_icon_x && x >= @sound_icon_x && x < @sound_icon_x + SOUND_CELL_W
+        toggle_audio_mute
       else
         handle_taskbar_click(x, y)
       end
@@ -1987,6 +2046,8 @@ class SystemDesktopApp < FmrbApp
       open_storage_dialog
     when :network
       open_network_dialog
+    when :audio_mute
+      toggle_audio_mute
     when :ble_start
       Log.info("Desktop: manual BLE start requested")
       FmrbApp.ble_start

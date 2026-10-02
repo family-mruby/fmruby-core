@@ -43,6 +43,21 @@ language = "en" # "ja" or "en"
 # startup_app below all happen either way.
 boot_splash = true
 
+# Sound output. audio_mute silences the whole machine (apps, games, BASIC,
+# the boot jingle) while everything keeps playing, like a speaker's mute
+# switch; external MIDI output is not affected. audio_volume is a step,
+# 0 (silence) to 10: step n plays at audio_level_min + (max - min) * n / 10
+# dB, so with the default range each step is 5 dB (7 = -15 dB, 10 = 0 dB).
+# Both are changed from the desktop (the speaker cell in the menu bar, the
+# menu, Config) or remotely, and the machine writes these two lines itself,
+# so they survive a reboot.
+audio_mute = false
+audio_volume = 7
+# The level range in dB. 0 dB is the loudest the output plays without
+# boosting the sound; uncomment to move either end.
+# audio_level_min = -50.0
+# audio_level_max = 0.0
+
 # One app to open as soon as the desktop is up, by path (the same path the
 # launcher uses, e.g. "/app/game/blockgame.app.rb"). Empty means none, which is
 # the ordinary desktop. The browser sets this from ?app= in its URL.

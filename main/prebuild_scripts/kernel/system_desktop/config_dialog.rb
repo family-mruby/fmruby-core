@@ -5,8 +5,9 @@
 # entries, and other unrelated keys are preserved.
 #
 # Items (in display order):
-#   language, keyboard_layout, mouse_scale_x/y, theme preset,
-#   timezone, debug_mode, display_margin_x/y
+#   language, keyboard_layout, mouse_scale_x/y, theme preset, wallpaper,
+#   timezone, audio_volume, debug_mode, ble/wifi_auto_start,
+#   display_margin_x/y
 #
 # Save & Reboot is shown only on ESP32; on Linux the user must restart the
 # host process manually after a plain Save.
@@ -94,6 +95,9 @@ module ConfigDialogMixin
     { key: :wallpaper,        field: "wallpaper",        type: :enum,  options: ["", "none"] },
     { key: :timezone,         field: "timezone",         type: :enum,
       options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
+    # 0 = silence, 10 = the loudest the output goes (doc/audio_mute/). Heard as
+    # it is stepped, like a knob; saved by Save like every other row.
+    { key: :audio_volume,     field: "audio_volume",     type: :int,   min: 0, max: 10, step: 1 },
     { key: :debug_mode,       field: "debug_mode",       type: :bool },
     { key: :ble_auto_start,   field: "ble_auto_start",   type: :bool },
     { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool },
@@ -181,6 +185,9 @@ module ConfigDialogMixin
     @cfg_y = menu_h + 2 if @cfg_y < menu_h + 2
     cfg_scan_wallpapers
     cfg_load
+    # The volume row plays as it is stepped but is saved only by Save, like
+    # every other row; this is what closing without Save puts back.
+    @cfg_volume_saved = FmrbApp.audio_volume
     close_launcher
     close_dropdown
     notify_overlay_state(true, @cfg_x, @cfg_y, CFG_W, CFG_H)
@@ -191,6 +198,11 @@ module ConfigDialogMixin
   def close_config_dialog
     return unless @cfg_open
     @cfg_open = false
+    # Every other row is simply forgotten when the dialog closes unsaved; the
+    # volume was already playing, so it goes back to what is saved.
+    if FmrbApp.audio_volume != @cfg_volume_saved
+      FmrbApp.preview_audio_volume(@cfg_volume_saved)
+    end
     # Hidden and flushed before the repaint, or their holes land on whatever
     # was behind the dialog.
     show_config_widgets(false)
@@ -399,6 +411,13 @@ module ConfigDialogMixin
   end
 
   def cfg_ensure_default(s)
+    # The volume is shown as it is now, not as the file says: the machine
+    # writes it itself, and a file from before there was a volume has no
+    # line for it -- where the generic default below would mean silence.
+    if s[:field] == "audio_volume"
+      @cfg_values["audio_volume"] = FmrbApp.audio_volume
+      return
+    end
     return if @cfg_values.key?(s[:field])
     case s[:type]
     when :enum  then @cfg_values[s[:field]] = cfg_options_for(s)[0]
@@ -534,6 +553,9 @@ module ConfigDialogMixin
       v = s[:min] if v < s[:min]
       v = s[:max] if v > s[:max]
       @cfg_values[field] = v
+      # Heard at once, saved only by Save: a write to flash per step showed on
+      # the NARYAv4's HDMI output (doc/audio_mute/report/m1.md 8).
+      FmrbApp.preview_audio_volume(v) if field == "audio_volume"
     when :float
       # Step by 0.1 in integer space to avoid float drift.
       cur = (@cfg_values[field].to_f * 10).round
@@ -551,6 +573,10 @@ module ConfigDialogMixin
 
   def cfg_do_save(reboot)
     if cfg_write
+      # The file now holds the live mute and volume: no other save is due,
+      # and this volume is the one closing the dialog keeps.
+      FmrbApp.audio_conf_saved
+      @cfg_volume_saved = FmrbApp.audio_volume
       @cfg_status = FmrbI18n.t(:save_done)
       @cfg_status_until = 4
       draw_foreground
@@ -578,6 +604,10 @@ module ConfigDialogMixin
       next if s[:key] == :theme
       top_updates[s[:field]] = cfg_format_value(@cfg_values[s[:field]])
     end
+    # Not a row of this dialog, but the file was read when the dialog opened,
+    # and the mute can change while it is open (the menu bar, or remotely).
+    # Write the live value so saving here never brings back an old one.
+    top_updates["audio_mute"] = FmrbApp.audio_muted? ? "true" : "false"
 
     preset_name = @cfg_values["theme_preset"]
     theme_updates = {}
