@@ -87,7 +87,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
-- `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **進行中** (2026-10-01) S1: 主因は待ち方ではなく mruby の GC。S2 (中断): GC 1 回の重さの主因は回収条件ではなく estalloc のデバッグ検査 (`est_free` が解放ごとにプールを全走査)。検査を外した試験で全体 GC 約 200 → 13 ms、負荷時の 50 ms 以上 98% → 9%。gc.c は入れていない (検査が残ると逆効果)。次は検査を外すかの判断 〔6 files〕
+- `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **進行中** (2026-10-01) S1: 主因は待ち方ではなく mruby の GC。S2 (中断): GC 1 回の重さの主因は回収条件ではなく estalloc のデバッグ検査 (`est_free` が解放ごとにプールを全走査)。検査を外した試験で全体 GC 約 200 → 13 ms、負荷時の 50 ms 以上 98% → 9%。gc.c は入れていない (検査が残ると逆効果)。ユーザ決定: 統計は残し検査だけ止める (S2b)、gc.c は入れない 〔8 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-27) **P0-P3 完了、develop に入った**。フォーク固定点は `fmrb-ext` (`4faa22b4`、kishima/spinel)。gem と VM は上流の ext 機構で生成し FFI の迂回を撤去、全生成 `--no-inline-hot`。内蔵 RAM は取り込み前より約 6.8KB 少ない。速度の退行 (P2b-2) は許容、P3 で一部回復。今後の上流追従は様子見、単純なバグの PR は続ける 〔22 files〕
