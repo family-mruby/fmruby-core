@@ -265,9 +265,7 @@ mrb_value
 mrb_alloc_statistics(mrb_state *mrb)
 {
   ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
-#if defined(ESTALLOC_DEBUG)
   est_take_statistics(est);
-#endif
   ESTALLOC_STAT *stat = &est->stat;
   mrb_value hash = mrb_hash_new_capa(mrb, 5);
   mrb_hash_set(mrb, hash, mrb_symbol_value(MRB_SYM(allocator)), mrb_symbol_value(MRB_SYM(ESTALLOC)));

@@ -56,8 +56,6 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   if ENV['PICORB_DEBUG']
     conf.cc.defines << 'ESTALLOC_DEBUG'
     conf.enable_debug
-  else
-    conf.cc.defines << 'ESTALLOC_DEBUG=1'
   end
 
   conf.picoruby

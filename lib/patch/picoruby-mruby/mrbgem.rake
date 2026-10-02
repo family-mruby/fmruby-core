@@ -66,9 +66,10 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
     end
   elsif spec.cc.defines.include?("PICORB_ALLOC_ESTALLOC")
     spec.cc.defines << "ESTALLOC_ALIGNMENT=#{align}"
-    # family-mruby: always enable ESTALLOC_DEBUG (not only under PICORB_DEBUG) so
-    # est_take_statistics is available for the runtime memory monitor. Idempotent.
-    unless spec.cc.defines.any?{ _1.start_with?("ESTALLOC_DEBUG") }
+    # est_take_statistics needs no ESTALLOC_DEBUG (lib/patch estalloc.c), so the
+    # memory monitor works in every build. ESTALLOC_DEBUG adds the release-time
+    # pool walk on every free (doc/shell_input_lag/report/s2b.md): debug only.
+    if spec.cc.defines.any?{ _1.start_with?("PICORB_DEBUG") }
       spec.cc.defines << "ESTALLOC_DEBUG=1"
     end
     alloc_dir = "#{dir}/lib/estalloc"

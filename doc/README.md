@@ -87,7 +87,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
-- `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **進行中** (2026-10-01) S1: 主因は待ち方ではなく mruby の GC (割り当て経路の全体回収が約 120 割り当てごと) と、負荷時の core 1 の詰まり。待ち方の修正と Shell のスタック 16 KB はマージ。S2 で GC の回収条件を lib/patch で試す 〔4 files〕
+- `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **完了** (2026-10-02) 主因は estalloc の ESTALLOC_DEBUG の解放ごとの全走査と、それが隠していたアプリ終了時の二重解放 (mrc_irep_free)。二重解放を直し (不正な解放 510 → 0)、統計だけを残して全走査を止めた。Shell の打鍵で 50 ms 超え 52% → 2%、負荷時 98% → 10%。Spinel にも効く。残りはエディタの同時 2 つ起動での abort (別段階) 〔9 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-27) **P0-P3 完了、develop に入った**。フォーク固定点は `fmrb-ext` (`4faa22b4`、kishima/spinel)。gem と VM は上流の ext 機構で生成し FFI の迂回を撤去、全生成 `--no-inline-hot`。内蔵 RAM は取り込み前より約 6.8KB 少ない。速度の退行 (P2b-2) は許容、P3 で一部回復。今後の上流追従は様子見、単純なバグの PR は続ける 〔22 files〕
