@@ -77,7 +77,7 @@ static void engine_unlock(void) { xSemaphoreGive(g_engine_lock); }
 static int16_t *g_wav_pcm = NULL;      // PSRAM, owns the samples
 static fmrb_wav_stream_t g_wav_stream; // reads g_wav_pcm
 
-// The output stage's switch and gain (doc/audio_mute/). PSRAM: the internal
+// The output stage's switch and gain (doc/reference/audio_output.md). PSRAM: the internal
 // RAM budget has no room for new statics, and these are read once per frame.
 FMRB_EXT_RAM_BSS_ATTR static volatile bool s_out_silent;
 FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t s_out_gain_q16;   // 0 = not set = unity
@@ -562,7 +562,7 @@ static void audio_p4_task(void *arg) {
         engine_unlock();
 
         if (count > 0) {
-            // The output stage (doc/audio_mute/). The mix above still ran,
+            // The output stage (doc/reference/audio_output.md). The mix above still ran,
             // so players, notes and WAVs go on as usual and nothing jumps
             // when the mute is lifted; only what goes out changes. Silence
             // is still written, so the I2S DMA keeps pacing this loop. The

@@ -1,6 +1,6 @@
 # 作業指示書 S1: Shell の打鍵の遅れの計測と修正
 
-対象: 実装担当のサブエージェント。前提: plan.md、doc/p4_cursor_lag/report/l1.md (同じ形の計測と修正の
+対象: 実装担当のサブエージェント。前提: plan.md、doc/archive/p4_cursor_lag/report/l1.md (同じ形の計測と修正の
 先例)。report は `report/s1.md` へ。
 
 ## T1: 計測を入れる
@@ -21,7 +21,7 @@
   キーボードと同じ host の経路を通るかをまず確かめる。通らなければ方法を report に書き、ユーザの打鍵が要る
   地点で止まる)。Shell は built-in (default/shell)。起動の仕方はデスクトップのメニューか devctl の経路を調べる。
 - ビルドは `.env` を書き換えず `FMRB_HW_TARGET=NARYAv4 rake build:esp32` (ターゲットを替えるときは
-  `rake clean_all`。sdkconfig が前のターゲットのまま残る罠がある: doc/p4_cursor_lag/report/l1.md)。
+  `rake clean_all`。sdkconfig が前のターゲットのまま残る罠がある: doc/archive/p4_cursor_lag/report/l1.md)。
 - 条件: (a) Shell だけ、(b) Shell + Monitor・MML (/app/demo/mml.app.rb)・Breakout.py
   (/app/game/breakout/breakout.app.py)・FM-Editor。それぞれ一定の間隔 (例: 100 ms ごと) で数十〜百打鍵。
 - スタック: 同じ状態で Shell の stack の残り (周期ダンプの `fmrb_task:` 行) と、コマンドを実行する経路

@@ -118,7 +118,7 @@ void display_p4_capture_kick(void);
 void display_p4_get_cursor(int *x, int *y, bool *visible);
 
 /**
- * @brief Cursor latency instrumentation (doc/p4_cursor_lag/): the host calls
+ * @brief Cursor latency instrumentation (doc/archive/p4_cursor_lag/): the host calls
  *        stamp just before sending CURSOR_SET_POSITION, unstamp if that send
  *        failed, and send_time with how long the send blocked (us).
  */

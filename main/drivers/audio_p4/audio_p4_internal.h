@@ -59,7 +59,7 @@ int  audio_p4_engine_note_off(uint8_t channel);
 int  audio_p4_engine_play_wav(const char *path);
 void audio_p4_engine_stop_wav(void);
 
-// Output settings (doc/audio_mute/): mute and volume, applied where the frame
+// Output settings (doc/reference/audio_output.md): mute and volume, applied where the frame
 // loop writes the mix out -- everything upstream keeps running. The task reads
 // them from system_conf before its first frame (so the boot beep obeys them);
 // afterwards FMRB_AUDIO_CMD_SET_OUTPUT from the core sets them.

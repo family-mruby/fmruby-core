@@ -433,7 +433,7 @@ static esp_err_t fs_mkdir_handler(httpd_req_t *req)
     return ctl_json(req, "200 OK", "{\"ok\":true}");
 }
 
-// The machine's mute and volume (doc/audio_mute/). Here so a development loop
+// The machine's mute and volume (doc/reference/audio_output.md). Here so a development loop
 // can silence the board before it launches anything, or before a reflash: the
 // settings are saved, so the boot after the flash obeys them too. Every
 // answer carries both, so a caller always sees the whole state.

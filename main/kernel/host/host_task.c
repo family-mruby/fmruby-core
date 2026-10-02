@@ -192,7 +192,7 @@ static void init_display_response_cb(uint8_t status, const uint8_t *payload,
     FMRB_LOGI(TAG, "INIT_DISPLAY ACK received (status=%u)", status);
 }
 
-// The output settings as one SET_OUTPUT command (doc/audio_mute/).
+// The output settings as one SET_OUTPUT command (doc/reference/audio_output.md).
 static void host_audio_output_cmd(fmrb_audio_output_cmd_t *out)
 {
     int16_t min_x10, max_x10;
@@ -1481,7 +1481,7 @@ static void host_broadcast_kana_mode(void)
     host_send_kana_mode(0, mode);
 }
 
-// ---- Mute and volume (doc/audio_mute/) -------------------------------------
+// ---- Mute and volume (doc/reference/audio_output.md) -------------------------------------
 //
 // Applying is immediate; saving is not. A write to flash shows on the
 // NARYAv4's HDMI output as a blue flicker, so the setters only note what has
@@ -2088,7 +2088,7 @@ static void fmrb_host_task(void *pvParameters)
             first = false;
         }
 
-        // Coalesced save of the mute and volume (doc/audio_mute/).
+        // Coalesced save of the mute and volume (doc/reference/audio_output.md).
         host_audio_save_tick();
 
         // File transfer interleaving: send one chunk per loop iteration

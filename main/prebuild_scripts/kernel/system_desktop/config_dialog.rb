@@ -95,7 +95,7 @@ module ConfigDialogMixin
     { key: :wallpaper,        field: "wallpaper",        type: :enum,  options: ["", "none"] },
     { key: :timezone,         field: "timezone",         type: :enum,
       options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
-    # 0 = silence, 10 = the loudest the output goes (doc/audio_mute/). Heard as
+    # 0 = silence, 10 = the loudest the output goes (doc/reference/audio_output.md). Heard as
     # it is stepped, like a knob; saved by Save like every other row.
     { key: :audio_volume,     field: "audio_volume",     type: :int,   min: 0, max: 10, step: 1 },
     { key: :debug_mode,       field: "debug_mode",       type: :bool },
@@ -554,7 +554,7 @@ module ConfigDialogMixin
       v = s[:max] if v > s[:max]
       @cfg_values[field] = v
       # Heard at once, saved only by Save: a write to flash per step showed on
-      # the NARYAv4's HDMI output (doc/audio_mute/report/m1.md 8).
+      # the NARYAv4's HDMI output (doc/archive/audio_mute/report/m1.md 8).
       FmrbApp.preview_audio_volume(v) if field == "audio_volume"
     when :float
       # Step by 0.1 in integer space to avoid float drift.

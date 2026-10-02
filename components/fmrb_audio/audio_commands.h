@@ -37,7 +37,7 @@ typedef enum {
      * place (FmrbAudio#play_wav). */
     FMRB_AUDIO_CMD_PLAY_WAV = 0x0D,
     FMRB_AUDIO_CMD_STOP_WAV = 0x0E,
-    /* Machine-wide output settings, mute and volume (doc/audio_mute/ in
+    /* Machine-wide output settings, mute and volume (doc/reference/audio_output.md in
      * fmruby-core). Everything keeps playing; the backend applies these at
      * its last output stage. The core sends it on every change and once
      * after INIT_DISPLAY, and the backend keeps the last state across its own

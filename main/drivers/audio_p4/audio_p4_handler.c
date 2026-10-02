@@ -211,7 +211,7 @@ static int process_load_fmsq_file(const fmrb_audio_load_fmsq_file_cmd_t *cmd, si
     return ret;
 }
 
-// ---- Output settings (doc/audio_mute/) ----
+// ---- Output settings (doc/reference/audio_output.md) ----
 
 uint32_t audio_p4_gain_q16(int16_t db_x10) {
     if (db_x10 >= 0) return 65536;
@@ -280,7 +280,7 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
             return 0;
 
         case FMRB_AUDIO_CMD_SET_VOLUME:
-            // The level belongs to SET_OUTPUT now (doc/audio_mute/); a bare
+            // The level belongs to SET_OUTPUT now (doc/reference/audio_output.md); a bare
             // volume from elsewhere would undo the user's setting.
             return 0;
 

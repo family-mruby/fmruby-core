@@ -92,7 +92,7 @@ fmrb_audio_err_t fmrb_audio_set_volume(uint8_t volume);
 fmrb_audio_err_t fmrb_audio_get_status(fmrb_apu_status_t* status);
 
 /**
- * @brief The machine's output settings: mute and volume (doc/audio_mute/).
+ * @brief The machine's output settings: mute and volume (doc/reference/audio_output.md).
  *
  * Only the record. The audio keeps running and the backend applies these at
  * its last output stage (audio_p4 on Modern, graphics-audio on Retro and in

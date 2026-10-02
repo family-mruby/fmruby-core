@@ -520,7 +520,7 @@ int fmrb_spx_app_set_kana_mode(int mode)
     return 0;
 }
 
-/* The machine's mute and volume (doc/audio_mute/): FmrbApp.audio_muted?,
+/* The machine's mute and volume (doc/reference/audio_output.md): FmrbApp.audio_muted?,
  * set_audio_mute, audio_volume and set_audio_volume. Same calls as the mruby
  * binding. */
 int fmrb_spx_app_audio_muted(void)

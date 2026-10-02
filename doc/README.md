@@ -29,6 +29,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## 参照資料 (doc/reference/)
 
 - [TODO](reference/TODO.md)
+- [音の出力: ミュートと音量 (使い方と仕組み)](reference/audio_output.md) — **完了** (2026-10-02) 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま、出力の最後の段で無音・倍率をかける。全機種・sim・ブラウザ版で同じ。経緯は archive/audio_mute/
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
@@ -57,7 +58,6 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **完了** (2026-09-26) **P1-P3 完了 (Retro 実機も確認済)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** — **起動 10.0 秒 → 0.45 秒**、`large_memory` も不要に (report/builtin_move.md)。Retro 実機も 2026-09-26 に確認済み。 〔14 files〕
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
-- `audio_mute/` [ミュート (音を出さない設定)](audio_mute/plan.md) — **完了** (2026-10-01) 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま出力の最後の段で無音・倍率 (P4 は audio_p4 とコーデック、Retro と sim は graphics-audio)。上限・下限は 0 / -50 dB、既定の音量 7。設定は Config の Save と、メニューバーの印・遠隔の切り替えから約 2 秒まとめて保存。ユーザの実機確認で合格 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
@@ -78,7 +78,6 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `mouse_wheel/` [マウスホイール対応 検討と計画](mouse_wheel/plan.md) — **進行中** (2026-09-01) **W1 完了** (ブラウザ・sim で実測)、**W2 完了・NARYA v4 実機で確認済** (report/w2.md)。残りは W3 (実機 USB マウス・白名簿) / W4 (nsf/smf と修飾キー) 〔4 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-27) P0-P4 完了。**P6 完了: 青ちらつき (DSI アンダーラン) は DSI フレームバッファの先頭を 4KB 境界に揃えて解消** (report/p6.md、ユーザ目視で確認)。帯域ではなく揃いが原因だった。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔11 files〕
-- `p4_cursor_lag/` [P4 でアプリを多く動かすとマウスの反応が遅くなる件](p4_cursor_lag/plan.md) — **完了** (2026-10-01) 見立てどおり、display_p4 の受信バッファが満杯でカーソルの移動が約 3.1 秒待っていた。描く前に溜まった命令を 30 ms までまとめて読むようにして、待ちは平均約 20 ms に。ユーザの目視で合格 〔3 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔6 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
@@ -99,10 +98,12 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## アーカイブ (完結したテーマ)
 
 - `archive/app_kill_fix/` [fmrb_app_kill 到達不能問題の診断と修正](archive/app_kill_fix/README.md)
+- `archive/audio_mute/` [ミュート (音を出さない設定)](archive/audio_mute/plan.md)
 - `archive/focus_switch/` [Ctrl+Tab フォーカス切替 / フルスクリーン退避 - 実装と検証状況 (P1)](archive/focus_switch/report/p1.md)
 - `archive/gfx_unification/` [GFX 送出・組み立ての一本化 (App/Gfx 実装分散の解消)](archive/gfx_unification/README.md)
 - `archive/idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](archive/idf_seam/plan.md)
 - `archive/mic/` [Family mruby マイク入力 検討メモ](archive/mic/README.md)
+- `archive/p4_cursor_lag/` [P4 でアプリを多く動かすとマウスの反応が遅くなる件](archive/p4_cursor_lag/plan.md)
 - `archive/tab5_keyboard/` [実装指示書 K1: Tab5 内蔵キーボードの刻印と入力の不一致修正](archive/tab5_keyboard/instruction_k1.md)
 - `archive/video/` [SD カードの動画 (MJPEG) を窓の中で再生する — 実装計画](archive/video/plan.md)
 - `archive/work_picoruby_merge/` [PicoRuby 最新版統合 作業フォルダ](archive/work_picoruby_merge/README.md)

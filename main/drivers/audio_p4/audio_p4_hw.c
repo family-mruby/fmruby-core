@@ -642,7 +642,7 @@ void audio_p4_mic_selftest(void) {
     if (!was_on) audio_p4_mic_enable(false);
 }
 
-// ---- Output level and mute (doc/audio_mute/) ----
+// ---- Output level and mute (doc/reference/audio_output.md) ----
 //
 // The level is the chip's DAC digital volume in dB: the core works out the
 // step's level from the range the chip has, and this writes it as is.

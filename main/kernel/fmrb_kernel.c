@@ -106,7 +106,7 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
     }
 }
 
-// ---- Audio output settings (doc/audio_mute/) ----
+// ---- Audio output settings (doc/reference/audio_output.md) ----
 //
 // Volume step n (1-10) plays at audio_level_min + (max - min) * n / 10 dB;
 // step 0 is silence. The range defaults to 0 dB at the top and -50 dB at the
@@ -273,7 +273,7 @@ static bool read_system_config(void)
     // exclusive; boot resolves a both-on misconfiguration in favor of BLE.
     g_system_config.wifi_auto_start = fmrb_toml_get_bool(conf, "wifi_auto_start", g_system_config.wifi_auto_start);
 
-    // Mute and volume (doc/audio_mute/). Read here, before the host task
+    // Mute and volume (doc/reference/audio_output.md). Read here, before the host task
     // starts and long before the desktop's boot jingle; the host task hands
     // them to the audio side as soon as the link is up.
     apply_audio_conf(conf);

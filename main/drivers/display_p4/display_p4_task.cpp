@@ -575,7 +575,7 @@ static bool         g_cursor_drawn   = false;
 // working sprite). Cursor moves bypass this via cursor_overlay_update().
 #define RENDER_MIN_INTERVAL_MS 33
 // After each render the loop reads every command already queued, for up to
-// this long, before it may render again (doc/p4_cursor_lag/). Reading one
+// this long, before it may render again (doc/archive/p4_cursor_lag/). Reading one
 // command per pass let a ~35 ms render follow every present: commands got a
 // tenth of the time, the 8 KB queue stayed full and a cursor move waited
 // behind ~3 s of drawing. This is the P4 form of graphics-audio's "always
@@ -592,7 +592,7 @@ static uint32_t g_stat_render_ms_total = 0;
 static uint32_t g_stat_render_ms_max = 0;
 static uint32_t g_stat_last_ms = 0;
 
-// Cursor latency instrumentation (doc/p4_cursor_lag/). The host stamps the
+// Cursor latency instrumentation (doc/archive/p4_cursor_lag/). The host stamps the
 // time just before it sends each CURSOR_SET_POSITION; the commands reach this
 // task in order, so the oldest unread stamp belongs to the command being
 // processed. Same chip, so the clocks compare directly. PSRAM: the internal

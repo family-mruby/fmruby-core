@@ -121,7 +121,7 @@ void fmrb_host_set_kana_mode(uint8_t mode);
  * Like a speaker's mute switch: every source keeps running as usual (apps,
  * BASIC, MicroPython, the MIDI player's internal APU, the boot jingle) and the
  * audio backend writes silence at its last output stage instead of the mix
- * (doc/audio_mute/plan.md). Applied at once; written to /etc/system_conf.toml
+ * (doc/reference/audio_output.md). Applied at once; written to /etc/system_conf.toml
  * (audio_mute) by the host task about 2 s after the last change, so a burst
  * of changes costs one flash write. Callable from any task but the host
  * task; behind the desktop's menu bar and menu, devctl and debugd.

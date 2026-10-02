@@ -6,7 +6,7 @@
 // that writer, so a target without the ES8388 codec (wasm, doc/wasm/ P3) can
 // supply all three in one place. The output level and mute are not here:
 // the device uses its codec (audio_p4_hw_set_out_db), other targets a
-// software gain in the frame loop (doc/audio_mute/). The microphone stays outside: it is Tab5
+// software gain in the frame loop (doc/reference/audio_output.md). The microphone stays outside: it is Tab5
 // hardware with its own public API in audio_p4.h, not part of the output path.
 //
 // One implementation today, in audio_p4_hw.c. There is no build-time selection

@@ -1370,7 +1370,7 @@ static mrb_value mrb_fmrb_app_s_set_kana_mode(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
-// FmrbApp.audio_muted? -> bool. The machine-wide mute (doc/audio_mute/).
+// FmrbApp.audio_muted? -> bool. The machine-wide mute (doc/reference/audio_output.md).
 // Allocation-free: the desktop's speaker cell reads it every second, which is
 // how a change made remotely shows up there.
 static mrb_value mrb_fmrb_app_s_audio_muted_p(mrb_state *mrb, mrb_value klass)
@@ -1391,7 +1391,7 @@ static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
 }
 
 // FmrbApp.audio_volume -> Integer 0-10, and FmrbApp.set_audio_volume(n).
-// The machine's volume (doc/audio_mute/); see fmrb_host_set_audio_volume.
+// The machine's volume (doc/reference/audio_output.md); see fmrb_host_set_audio_volume.
 static mrb_value mrb_fmrb_app_s_audio_volume(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;

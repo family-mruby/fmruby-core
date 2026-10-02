@@ -1973,7 +1973,7 @@ class FmrbApp
     nil
   end
 
-  # The machine-wide mute (doc/audio_mute/), applied at the output stage;
+  # The machine-wide mute (doc/reference/audio_output.md), applied at the output stage;
   # set_audio_mute saves the setting.
   def self.audio_muted?
     FmrbSpxApp.fmrb_spx_app_audio_muted == 1
