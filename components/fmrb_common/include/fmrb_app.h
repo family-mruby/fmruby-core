@@ -79,6 +79,12 @@ typedef struct fmrb_app_task_context_s {
     // with. Kept until destroy_vm, which frees it after mrb_close -- the order
     // upstream (r2p2) uses. NULL when there is nothing left to free.
     void*                 mrc_cc;
+    // Spinel only: the program this app runs (its Init_<program>), while its
+    // instance is up. A generated Spinel program keeps part of its state in
+    // file-scope statics -- the exception stack among them -- so two instances
+    // of the same program would share them; fmrb_app_spinel_claim refuses the
+    // second one. NULL when the app runs no Spinel program.
+    const void*           spinel_program;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
@@ -336,9 +342,38 @@ bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx);
  * returns. Only built when the kernel, desktop or editor runs on Spinel.
  *
  * @param ctx  The task context execute_native_function passes in
- * @param init The program's Spinel ext init (Init_<program>)
+ * @param init  The program's Spinel ext init (Init_<program>)
+ * @param after Optional: runs once the program has ended and its instance is
+ *              gone, while the program is still claimed (so no second
+ *              instance has started yet). Not called when the program never
+ *              started (refused by fmrb_app_spinel_claim, no instance).
  */
-void fmrb_app_run_spinel_vm(fmrb_app_task_context_t* ctx, void (*init)(void));
+void fmrb_app_run_spinel_vm(fmrb_app_task_context_t* ctx, void (*init)(void),
+                            void (*after)(void));
+
+/**
+ * @brief Claim a Spinel program for this app: one running instance per program
+ *
+ * A generated Spinel program (one translation unit) keeps its exception,
+ * catch and break stacks, class-level ivars, constants and object pools in
+ * file-scope statics, which every instance of that program shares. Two at
+ * once corrupt each other (a raise in one lands on the other's jmp_buf), so a
+ * second instance of a program that is already running is refused, and the
+ * refusal goes to the error dialog like any other failed launch.
+ *
+ * @param ctx     The app that wants to run the program
+ * @param program Identifies the program (its Init_<program> function)
+ * @return FMRB_OK when claimed, FMRB_ERR_BUSY when another app runs it
+ */
+fmrb_err_t fmrb_app_spinel_claim(fmrb_app_task_context_t* ctx, const void* program);
+
+/**
+ * @brief Give the program claimed with fmrb_app_spinel_claim back
+ *
+ * Called once the instance has been torn down. A forced kill, which never
+ * gets there, has destroy_vm clear the claim instead.
+ */
+void fmrb_app_spinel_release(fmrb_app_task_context_t* ctx);
 
 /**
  * @brief Latch should_exit if this message is a stop/exit APP_CONTROL request

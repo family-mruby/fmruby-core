@@ -1259,7 +1259,13 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
             }
             break;
         case FMRB_VM_TYPE_NATIVE:
-            // No VM to close for native functions
+            // No VM to close for native functions. A Spinel program gives its
+            // claim back when its instance ends (fmrb_app_run_spinel_vm); a
+            // forced kill never gets there, so the claim is dropped here or
+            // the program could never be started again. The program's
+            // file-scope statics stay as the killed instance left them; the
+            // next instance resets its own part of them on entry.
+            ctx->spinel_program = NULL;
             break;
         default:
             FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
@@ -2640,6 +2646,44 @@ void fmrb_set_current_est(void* est)
  * apps running another runtime answer NULL, which is what the allocator wants:
  * fall back to this task's own heap.
  */
+fmrb_err_t fmrb_app_spinel_claim(fmrb_app_task_context_t* ctx, const void* program)
+{
+    const fmrb_app_task_context_t* owner = NULL;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        const fmrb_app_task_context_t* other = &g_ctx_pool[i];
+        if (other != ctx && other->state != PROC_STATE_FREE &&
+            other->spinel_program == program) {
+            owner = other;
+            break;
+        }
+    }
+    if (!owner) {
+        ctx->spinel_program = program;
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+
+    if (owner) {
+        // Reported like a refused Python app: from the launcher a silent
+        // refusal would look like the double-click did nothing.
+        FMRB_LOGE(TAG, "[%s] Already running as pid %d; one at a time",
+                  ctx->app_name, (int)owner->app_id);
+        set_last_error(ctx,
+                       "This app is already running.\n"
+                       "Only one copy of it can run at a time.", NULL);
+        notify_error_to_kernel(ctx);
+        return FMRB_ERR_BUSY;
+    }
+    return FMRB_OK;
+}
+
+void fmrb_app_spinel_release(fmrb_app_task_context_t* ctx)
+{
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    ctx->spinel_program = NULL;
+    fmrb_semaphore_give(g_ctx_lock);
+}
+
 void* fmrb_current_compile_mrb(void)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();

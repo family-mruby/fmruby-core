@@ -62,7 +62,8 @@ spinel_vm_fail(const fmrb_app_task_context_t *ctx, const char *why, void *pool, 
               ctx->app_name, why, ctx->mempool_id, pool, pool_size);
 }
 
-void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
+void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
+                            void (*after)(void))
 {
     void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
     size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
@@ -70,10 +71,16 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
         spinel_vm_fail(ctx, "mempool unavailable", pool, pool_size);
         return;
     }
+    // One instance per program: see fmrb_app_spinel_claim. The refusal has
+    // already been reported, so the task just ends.
+    if (fmrb_app_spinel_claim(ctx, (const void *)init) != FMRB_OK) {
+        return;
+    }
     size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
         spinel_vm_fail(ctx, "failed to create the Spinel instance", pool, pool_size);
+        fmrb_app_spinel_release(ctx);
         return;
     }
     ctx->est = est;
@@ -82,6 +89,12 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
 
     fmrb_spinel_instance_end(est);
     ctx->est = NULL;
+    // Still holding the claim: what `after` releases is shared by every
+    // instance of the program, and the next one may start once it is gone.
+    if (after) {
+        after();
+    }
+    fmrb_app_spinel_release(ctx);
 }
 #endif
 
@@ -90,10 +103,15 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
    the Spinel-compiled program instead of editor_irep, as a NATIVE task backed
    by this app slot's pool, so the window attributes are unchanged. */
 extern void Init_editor(void);   /* the Spinel ext program's init: its top level */
+extern void fmrb_spx_ec_release_slot(void);   /* fmrb_spx_editor.c */
 
 static void spinel_editor_native(void *arg)
 {
-    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor);
+    // The program never closes its document slot (fmrb_spx_editor.c says
+    // why), so it is given back once the program has ended -- only by the
+    // editor that ran, never by a refused second one.
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor,
+                           fmrb_spx_ec_release_slot);
 }
 #endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
 
@@ -106,7 +124,7 @@ extern void Init_system_desktop(void);   /* the Spinel ext program's init: its t
 
 static void spinel_desktop_native(void *arg)
 {
-    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_system_desktop);
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_system_desktop, NULL);
 }
 #endif /* FMRB_APP_ENGINE_DESKTOP_SPINEL */
 

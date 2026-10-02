@@ -10,6 +10,8 @@
 
 #include <stddef.h>
 
+#include "fmrb_attr.h"
+
 /* The gem's canonical header (lib/add is the source of truth; the copy under
    components/picoruby-esp32/... is made by `rake setup`). Included by path so
    the main component needs no extra include dir for one file. */
@@ -19,9 +21,38 @@
    cannot include sp_ctx.h, so it is declared here). */
 int *sp_ctx_ffi_bin_len(void);
 
+/* Called by the editor's task body once the program has ended
+   (fmrb_app_spawner.c), so the document's memory goes back at exit. */
+void fmrb_spx_ec_release_slot(void);
+
+/* The document slot the running Spinel editor holds, plus one (0 = none).
+   The editor keeps its slot in a class-level ivar, which the next instance's
+   entry resets to nil, so nothing on the Ruby side ever closes it: every
+   editor that ended leaked one, and the sixth since boot found the table
+   full ("Doc full" on every keystroke). The C side remembers it instead.
+   One variable is enough because only one Spinel editor runs at a time
+   (fmrb_app_spinel_claim). In PSRAM: internal RAM is the scarce one. */
+FMRB_EXT_RAM_BSS_ATTR static int s_slot_plus1;
+
 int fmrb_spx_ec_open_slot(void)
 {
-    return ec_open_slot();
+    /* A slot still recorded here belongs to an editor that was killed before
+       it could give it back (the forced path skips the release below); the
+       one-instance rule says it is not this editor's, so reclaim it. */
+    fmrb_spx_ec_release_slot();
+    int slot = ec_open_slot();
+    if (slot >= 0) {
+        s_slot_plus1 = slot + 1;
+    }
+    return slot;
+}
+
+void fmrb_spx_ec_release_slot(void)
+{
+    if (s_slot_plus1 > 0) {
+        ec_close_slot(s_slot_plus1 - 1);
+        s_slot_plus1 = 0;
+    }
 }
 
 void fmrb_spx_ec_close_slot(int slot)
