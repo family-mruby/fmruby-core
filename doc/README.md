@@ -56,6 +56,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 
 - `ai/` [OpenAI API 活用の構想メモ](ai/ideas.md) — - 〔1 files〕
 - `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **完了** (2026-09-26) **P1-P3 完了 (Retro 実機も確認済)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** — **起動 10.0 秒 → 0.45 秒**、`large_memory` も不要に (report/builtin_move.md)。Retro 実機も 2026-09-26 に確認済み。 〔14 files〕
+- `app_exit/` [アプリの終了の後始末 (mrb_close と、同じ Spinel アプリの同時起動)](app_exit/plan.md) — **進行中** (2026-10-02) E1: mruby アプリの終了で mrb_close を呼ぶ (二重解放を直したので呼べる)。E2: エディタ (Spinel) を 2 つ同時に開いて閉じ、3 つ目で abort する件の原因を確かめて直す 〔2 files〕
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
