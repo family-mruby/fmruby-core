@@ -46,7 +46,6 @@ MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
   # Concurrent app ceiling: the mrbgem ports (picoruby-fmrb-app/kernel) size
   # per-app arrays by it, so it MUST match wasm/CMakeLists.txt.
   conf.cc.defines << 'FMRB_MAX_APPS=32'
-  conf.cc.defines << 'ESTALLOC_DEBUG=1'
 
   conf.picoruby
 
