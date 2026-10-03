@@ -91,7 +91,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **完了** (2026-10-02) 主因は estalloc の ESTALLOC_DEBUG の解放ごとの全走査と、それが隠していたアプリ終了時の二重解放 (mrc_irep_free)。二重解放を直し (不正な解放 510 → 0)、統計だけを残して全走査を止めた。Shell の打鍵で 50 ms 超え 52% → 2%、負荷時 98% → 10%。Spinel にも効く。残りはエディタの同時 2 つ起動での abort (別段階) 〔9 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
-- `spinel_multi_instance/` [Spinel: 同じプログラムを 2 つ同時に動かせるようにする](spinel_multi_instance/plan.md) — **構想** (2026-10-03) 同じ Spinel のプログラム (エディタなど) の 2 つのインスタンスが、生成 C のファイル単位の変数を共有して壊れる。変数をインスタンスごとに持たせる根本の直しを計画する 〔1 files〕
+- `spinel_multi_instance/` [Spinel: 同じプログラムを 2 つ同時に動かせるようにする](spinel_multi_instance/plan.md) — **構想** (2026-10-03) 同じ Spinel のプログラム (エディタなど) の 2 つのインスタンスが、生成 C のファイル単位の変数を共有して壊れる。変数をインスタンスごとに持たせる根本の直しを計画する 〔2 files〕
 - `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-27) **P0-P3 完了、develop に入った**。フォーク固定点は `fmrb-ext` (`4faa22b4`、kishima/spinel)。gem と VM は上流の ext 機構で生成し FFI の迂回を撤去、全生成 `--no-inline-hot`。内蔵 RAM は取り込み前より約 6.8KB 少ない。速度の退行 (P2b-2) は許容、P3 で一部回復。今後の上流追従は様子見、単純なバグの PR は続ける 〔22 files〕
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
