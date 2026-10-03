@@ -205,6 +205,10 @@ if(NOT IDF_TARGET STREQUAL "linux")
     if(IDF_TARGET STREQUAL "esp32p4" AND FMRB_FLASH_PROBE)
         list(APPEND COMPONENT_SRCS "drivers/display_p4/flash_flicker_probe.c")
     endif()
+    # Per-task CPU usage sampler (doc/reference/cpu_usage.md). Always compiled;
+    # it is an empty function unless the sdkconfig has
+    # CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y (a trial build only).
+    list(APPEND COMPONENT_SRCS "drivers/led_status/cpu_stats.c")
     # ESP32-P4 (Modern/Tab5) has no built-in radio; BLE runs as host-only
     # NimBLE with the controller on the ESP32-C6 coprocessor via esp_hosted
     # (SDIO + vHCI), so ble_task.c builds here too. Also add the local Tab5

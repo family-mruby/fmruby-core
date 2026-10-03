@@ -27,6 +27,7 @@
 #include "fmrb_pin_assign.h"
 #include "fmrb_hal_gpio.h"
 #include "status_led.h"
+#include "cpu_stats.h"
 // BLE: built-in radio on retro targets; on Modern (ESP32-P4) the controller
 // is on the ESP32-C6 coprocessor via esp_hosted (host-only NimBLE).
 #include "ble_task.h"
@@ -375,6 +376,10 @@ static bool init_hardware(void)
 
 #ifndef FMRB_HW_ATOM_DISPLAY
     status_led_start();
+#endif
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // No-op unless the build enables FreeRTOS run-time stats (measurement).
+    cpu_stats_start();
 #endif
     fmrb_mem_log_boot_snapshot("gpio_led_proxy");
 

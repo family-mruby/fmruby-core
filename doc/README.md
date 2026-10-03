@@ -33,6 +33,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
+- [CPU の使用率 (P4、タスクごと・場面ごと)](reference/cpu_usage.md) — **計測済** (2026-10-03) P4-Nano (NARYAv4) の実測。どの場面でも core 1 は最大 55%、core 0 は配信中を除き 17% 以下で、両方とも余っている。表示の描画の長さの大半は PPA の完了待ち (眠っている時間)。core の割り振りは変えない (2026-10-03 決定)。経緯は archive/core_alloc/report/c1.md
 - [DSI (DPI) フレームバッファの置き場所と走査のアンダーラン](reference/dpi_frame_buffer_alignment.md)
 - [全画面の高解像度モード (使い方と仕組み)](reference/fullscreen_hires.md) — **完了** (2026-09-28) P4 系 (Tab5 / NARYAv4) とブラウザ版で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
@@ -101,6 +102,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 
 - `archive/app_kill_fix/` [fmrb_app_kill 到達不能問題の診断と修正](archive/app_kill_fix/README.md)
 - `archive/audio_mute/` [ミュート (音を出さない設定)](archive/audio_mute/plan.md)
+- `archive/core_alloc/` [P4 の core の割り振り](archive/core_alloc/plan.md)
 - `archive/focus_switch/` [Ctrl+Tab フォーカス切替 / フルスクリーン退避 - 実装と検証状況 (P1)](archive/focus_switch/report/p1.md)
 - `archive/gfx_unification/` [GFX 送出・組み立ての一本化 (App/Gfx 実装分散の解消)](archive/gfx_unification/README.md)
 - `archive/idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](archive/idf_seam/plan.md)

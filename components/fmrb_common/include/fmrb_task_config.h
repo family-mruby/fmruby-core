@@ -204,6 +204,14 @@
 #define FMRB_STATUS_LED_TASK_PRIORITY   (3)
 #define FMRB_STATUS_LED_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
+// CPU usage sampler (main/drivers/led_status/cpu_stats.c). Exists only in a
+// measurement build with CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+// (doc/reference/cpu_usage.md). Above the display so the 5 s windows stay on
+// time under load; pinned to core 0 so its own cost is on that core's line.
+#define FMRB_CPU_STATS_TASK_STACK_SIZE  (4096)
+#define FMRB_CPU_STATS_TASK_PRIORITY    (7)
+#define FMRB_CPU_STATS_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_0
+
 // USB host library task (USB DMA needs internal RAM)
 #define FMRB_USB_HOST_TASK_STACK_SIZE   (4096)
 #define FMRB_USB_HOST_TASK_PRIORITY     (5)
