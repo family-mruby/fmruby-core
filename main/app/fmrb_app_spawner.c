@@ -71,10 +71,16 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
         spinel_vm_fail(ctx, "mempool unavailable", pool, pool_size);
         return;
     }
+    // One instance per program: see fmrb_app_spinel_claim. The refusal has
+    // already been reported, so the task just ends.
+    if (fmrb_app_spinel_claim(ctx, (const void *)init) != FMRB_OK) {
+        return;
+    }
     size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
         spinel_vm_fail(ctx, "failed to create the Spinel instance", pool, pool_size);
+        fmrb_app_spinel_release(ctx);
         return;
     }
     ctx->est = est;
@@ -83,9 +89,12 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
 
     fmrb_spinel_instance_end(est);
     ctx->est = NULL;
+    // Still holding the claim, so no second instance of the program has
+    // started yet when `after` runs.
     if (after) {
         after();
     }
+    fmrb_app_spinel_release(ctx);
 }
 #endif
 
