@@ -1,4 +1,4 @@
-// Per-task CPU usage sampler (doc/core_alloc/report/c1.md).
+// Per-task CPU usage sampler (doc/reference/cpu_usage.md).
 //
 // Measurement only, and only in a build with
 // CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y (a trial build with an extra

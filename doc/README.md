@@ -33,6 +33,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
+- [CPU の使用率 (P4、タスクごと・場面ごと)](reference/cpu_usage.md) — **計測済** (2026-10-03) P4-Nano (NARYAv4) の実測。どの場面でも core 1 は最大 55%、core 0 は配信中を除き 17% 以下で、両方とも余っている。表示の描画の長さの大半は PPA の完了待ち (眠っている時間)。core の割り振りは変えない (2026-10-03 決定)。経緯は archive/core_alloc/report/c1.md
 - [DSI (DPI) フレームバッファの置き場所と走査のアンダーラン](reference/dpi_frame_buffer_alignment.md)
 - [全画面の高解像度モード (使い方と仕組み)](reference/fullscreen_hires.md) — **完了** (2026-09-28) P4 系 (Tab5 / NARYAv4) とブラウザ版で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
@@ -60,7 +61,6 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
-- `core_alloc/` [P4 の core の割り振り](core_alloc/plan.md) — **進行中** (2026-10-03) アプリが多いと表示の合成が core 1 の 85-90% を使い、同じ core の VM の順番が回らない。C1 でタスクごとの CPU の使用率を測ってユーザがレビュー → その後に割り振りを変えるか決める 〔3 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
@@ -102,6 +102,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 
 - `archive/app_kill_fix/` [fmrb_app_kill 到達不能問題の診断と修正](archive/app_kill_fix/README.md)
 - `archive/audio_mute/` [ミュート (音を出さない設定)](archive/audio_mute/plan.md)
+- `archive/core_alloc/` [P4 の core の割り振り](archive/core_alloc/plan.md)
 - `archive/focus_switch/` [Ctrl+Tab フォーカス切替 / フルスクリーン退避 - 実装と検証状況 (P1)](archive/focus_switch/report/p1.md)
 - `archive/gfx_unification/` [GFX 送出・組み立ての一本化 (App/Gfx 実装分散の解消)](archive/gfx_unification/README.md)
 - `archive/idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](archive/idf_seam/plan.md)

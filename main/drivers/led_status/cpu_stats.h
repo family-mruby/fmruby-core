@@ -5,7 +5,7 @@ extern "C" {
 #endif
 
 /**
- * Start the per-task CPU usage sampler (doc/core_alloc/report/c1.md).
+ * Start the per-task CPU usage sampler (doc/reference/cpu_usage.md).
  *
  * Measurement only. It does something only in a build whose sdkconfig has
  * CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y, which the repository defaults do

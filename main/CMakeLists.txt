@@ -205,7 +205,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
     if(IDF_TARGET STREQUAL "esp32p4" AND FMRB_FLASH_PROBE)
         list(APPEND COMPONENT_SRCS "drivers/display_p4/flash_flicker_probe.c")
     endif()
-    # Per-task CPU usage sampler (doc/core_alloc/report/c1.md). Always compiled;
+    # Per-task CPU usage sampler (doc/reference/cpu_usage.md). Always compiled;
     # it is an empty function unless the sdkconfig has
     # CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y (a trial build only).
     list(APPEND COMPONENT_SRCS "drivers/led_status/cpu_stats.c")
