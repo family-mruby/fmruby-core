@@ -71,10 +71,16 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
         spinel_vm_fail(ctx, "mempool unavailable", pool, pool_size);
         return;
     }
+    // One instance per program: see fmrb_app_spinel_claim. The refusal has
+    // already been reported, so the task just ends.
+    if (fmrb_app_spinel_claim(ctx, (const void *)init) != FMRB_OK) {
+        return;
+    }
     size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
         spinel_vm_fail(ctx, "failed to create the Spinel instance", pool, pool_size);
+        fmrb_app_spinel_release(ctx);
         return;
     }
     ctx->est = est;
@@ -83,9 +89,12 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
 
     fmrb_spinel_instance_end(est);
     ctx->est = NULL;
+    // Still holding the claim, so no second instance of the program has
+    // started yet when `after` runs.
     if (after) {
         after();
     }
+    fmrb_app_spinel_release(ctx);
 }
 #endif
 
@@ -96,14 +105,22 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
 extern void Init_editor(void);   /* the Spinel ext program's init: its top level */
 extern void fmrb_spx_ec_release_slot(void);   /* fmrb_spx_editor.c */
 
+/* The editor program's init as fmrb_app_run_spinel_vm sees it (its address
+   is also what the one-instance claim records). It runs once the program is
+   claimed, so the slot it gives back before Init_editor can only be one a
+   killed editor left (fmrb_spx_editor.c), never a running editor's: a refused
+   second editor never gets here. */
+static void spinel_editor_init(void)
+{
+    fmrb_spx_ec_release_slot();
+    Init_editor();
+}
+
 static void spinel_editor_native(void *arg)
 {
     // The program never closes its document slot (fmrb_spx_editor.c says
-    // why), so the slot recorded for this app is given back here: once
-    // before the program starts, which reclaims one a forced kill of an
-    // earlier editor in this app slot left behind, and once after it ends.
-    fmrb_spx_ec_release_slot();
-    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor,
+    // why), so it is given back once the program has ended.
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, spinel_editor_init,
                            fmrb_spx_ec_release_slot);
 }
 #endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
