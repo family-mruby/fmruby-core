@@ -60,7 +60,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
-- `core_alloc/` [P4 の core の割り振り](core_alloc/plan.md) — **進行中** (2026-10-03) アプリが多いと表示の合成が core 1 の 85-90% を使い、同じ core の VM の順番が回らない。C1 でタスクごとの CPU の使用率を測ってユーザがレビュー → その後に割り振りを変えるか決める 〔2 files〕
+- `core_alloc/` [P4 の core の割り振り](core_alloc/plan.md) — **進行中** (2026-10-03) アプリが多いと表示の合成が core 1 の 85-90% を使い、同じ core の VM の順番が回らない。C1 でタスクごとの CPU の使用率を測ってユーザがレビュー → その後に割り振りを変えるか決める 〔3 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
