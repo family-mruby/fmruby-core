@@ -6,3 +6,6 @@ default_window_width = 300
 default_window_height = 180
 default_window_pos_x = 20
 default_window_pos_y = 20
+# The FFT apps share the Spinel FFT instance and the C FFT work buffers,
+# so only one of them runs at a time.
+exclusive_group = "fft"

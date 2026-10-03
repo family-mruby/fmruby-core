@@ -708,6 +708,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int window_pos_y = 50;
     bool resizable = false;
     bool large_memory = false;
+    bool single_instance = false;
+    const char* exclusive_group = NULL;
     int min_window_width = 0;
     int min_window_height = 0;
     bool rounded_corners = true;
@@ -799,6 +801,23 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // Parse large_memory flag (default: false)
         large_memory = (bool)fmrb_toml_get_int(config, "large_memory", 0);
 
+        // Parse single_instance / exclusive_group: who the app may not run
+        // beside (launch_claim in fmrb_app.c). single_instance refuses a
+        // second copy of this file; exclusive_group refuses the launch while
+        // any app declaring the same group runs. Written like
+        // fullscreen_hires: `true` or 1.
+        single_instance = fmrb_toml_get_bool(config, "single_instance", false) ||
+                          fmrb_toml_get_int(config, "single_instance", 0) != 0;
+        exclusive_group = fmrb_toml_get_string(config, "exclusive_group", NULL);
+        if (exclusive_group && exclusive_group[0] == '\0') {
+            fmrb_sys_free((void*)exclusive_group);
+            exclusive_group = NULL;
+        } else if (exclusive_group && strlen(exclusive_group) >= FMRB_EXCLUSIVE_GROUP_MAX) {
+            FMRB_LOGW(TAG, "exclusive_group \"%s\" is longer than %d bytes; only the "
+                           "first %d are compared", exclusive_group,
+                      FMRB_EXCLUSIVE_GROUP_MAX - 1, FMRB_EXCLUSIVE_GROUP_MAX - 1);
+        }
+
         // Parse rounded_corners flag (default: true).
         // When false, the window canvas is created opaque (no transparent compositing),
         // which is faster but disables the rounded corner / shaped window look.
@@ -876,6 +895,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .fullscreen_hires = fullscreen_hires,
         .resizable = resizable,
         .large_memory = large_memory,
+        .single_instance = single_instance,
+        .exclusive_group = exclusive_group,
         .window_width = window_width,
         .window_height = window_height,
         .window_pos_x = window_pos_x,
@@ -907,6 +928,9 @@ cleanup_toml:
     }
     if (toml_window_mode) {
         fmrb_sys_free((void*)toml_window_mode);
+    }
+    if (exclusive_group) {
+        fmrb_sys_free((void*)exclusive_group);
     }
     if (config) {
         toml_free(config);

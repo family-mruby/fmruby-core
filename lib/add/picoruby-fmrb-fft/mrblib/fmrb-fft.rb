@@ -3,7 +3,7 @@
 #   fft = Fmrb::Fft.new(size: 512, backend: :spinel)
 #   mag = fft.forward(samples)                 # int16 bytes in, int16 bytes out
 #   r   = Fmrb::Fft.bench(size: 512, iters: 100, backend: :c)
-#   #=> { backend: :c, us_avg: 41.2, us_min: 40.0, iters: 100, reps: 5, mag: "..." }
+#   #=> { backend: :c, ran_on: :c, us_avg: 41.2, us_min: 40.0, iters: 100, reps: 5, mag: "..." }
 #
 # The backends (doc/mic_spectrum/plan.md):
 #
@@ -16,7 +16,8 @@
 # #backend is the engine that runs, which can differ from the one asked for:
 # the Spinel instance is one for the whole machine, owned by the first app
 # that opened it, and a second app asking for :spinel / :spinel_q15 gets
-# :ruby / :ruby_q15 (SPINEL_FALLBACK).
+# :ruby / :ruby_q15 (SPINEL_FALLBACK). Fmrb::Fft.bench returns both: :backend
+# is the one asked for, :ran_on the one that ran.
 #
 # :c64 is not an engine, it is a control. The two Ruby engines compute in
 # mrb_float, which is a double, while :c and :dsp are float32; on a chip whose
@@ -195,6 +196,8 @@ module Fmrb
     end
 
     # Time one backend. `samples` defaults to the shared sine above.
+    # :backend in the result is the backend asked for and :ran_on the one
+    # that ran; they differ when a Spinel backend fell back (SPINEL_FALLBACK).
     def self.bench(size: 512, iters: 100, backend: :c, reps: DEFAULT_REPS, samples: nil)
       samples ||= sine(size: size)
       fft = new(size: size, backend: backend)
@@ -210,7 +213,8 @@ module Fmrb
       end
       fft.close
       {
-        backend: fft.backend,   # the engine that ran, which a fallback can change
+        backend: backend,
+        ran_on: fft.backend,
         size: size,
         iters: iters,
         reps: reps,

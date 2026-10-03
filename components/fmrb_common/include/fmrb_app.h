@@ -85,6 +85,14 @@ typedef struct fmrb_app_task_context_s {
     // of the same program would share them; fmrb_app_spinel_claim refuses the
     // second one. NULL when the app runs no Spinel program.
     const void*           spinel_program;
+    // .app.toml single_instance / exclusive_group: who this app may not run
+    // beside (fmrb_app_launch_claim). launch_claimed is set once the app has
+    // passed that check and counts against later launches; it is cleared when
+    // the app ends, so a slot on its way out does not refuse the next launch.
+#define FMRB_EXCLUSIVE_GROUP_MAX 16
+    char                  exclusive_group[FMRB_EXCLUSIVE_GROUP_MAX]; // "" = none
+    bool                  single_instance;
+    bool                  launch_claimed;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
@@ -204,6 +212,8 @@ typedef struct {
     bool                  fullscreen_hires; // Fullscreen may use the high-resolution screen (see context struct)
     bool                  resizable;        // Allow window resize (default: false)
     bool                  large_memory;     // Use LARGE memory pool (1MB)
+    bool                  single_instance;  // Refuse a second copy of this app (same file)
+    const char*           exclusive_group;  // Refuse while another app of this group runs (NULL = none)
     uint16_t              window_width;     // Window Width (if headless, =0)
     uint16_t              window_height;    // Window Height (if headless, =0)
     uint16_t              window_pos_x;

@@ -91,9 +91,10 @@ class FftBenchApp < FmrbApp
     r[:dev] = dev
     r[:agrees] = (r[:peak_bin] == CYCLES) && dev <= tol
     @reference ||= r[:mag]
+    r[:label] = label(r)
     @results << r
 
-    Log.info("FFT #{backend}: avg=#{fmt(r[:us_avg])}us min=#{fmt(r[:us_min])}us " \
+    Log.info("FFT #{r[:label]}: avg=#{fmt(r[:us_avg])}us min=#{fmt(r[:us_min])}us " \
              "peak=#{r[:peak_bin]} (expected #{CYCLES}) agrees=#{r[:agrees]} " \
              "dev=#{dev} (tol #{tol}) size=#{SIZE} iters=#{ITERS} reps=#{REPS}")
 
@@ -107,7 +108,10 @@ class FftBenchApp < FmrbApp
     # including the first, and with persistent statics the first rep is the
     # only one that builds the tables; subtracting that mean from the LAST
     # entry (which built nothing) came out negative and read like nonsense.
-    if backend == :spinel || backend == :spinel_q15
+    #
+    # Only when the Spinel backend really ran: after a fallback the number is
+    # the other app's last call, not this one's.
+    if r[:ran_on] == :spinel || r[:ran_on] == :spinel_q15
       entry = Fmrb::Fft.spinel_total_us
       Log.info("FFT #{backend}: entry=#{entry}us around=#{entry - (r[:us_min] * ITERS).to_i}us " \
                "(last call; iters=#{ITERS})")
@@ -115,6 +119,13 @@ class FftBenchApp < FmrbApp
   rescue => e
     @results << { backend: backend, error: e.message }
     Log.error("FFT #{backend}: #{e.class}: #{e.message}")
+  end
+
+  # The row's name: the backend asked for, and "asked>ran" when it fell back
+  # (another app holds the Spinel FFT instance, so :spinel ran as :ruby).
+  def label(r)
+    return r[:backend].to_s if r[:ran_on] == r[:backend]
+    "#{r[:backend]}>#{r[:ran_on]}"
   end
 
   # Same input, same algorithm: how far the worst bin sits from the first
@@ -148,15 +159,19 @@ class FftBenchApp < FmrbApp
     y += LINE_H
 
     @results.each do |r|
-      name = r[:backend].to_s
+      name = r[:label] || r[:backend].to_s
       if r[:skipped]
         @gfx.draw_text(COL_X, y, sprintf("%-10s  not in this build", name), FmrbGfx::GRAY)
       elsif r[:error]
         @gfx.draw_text(COL_X, y, sprintf("%-10s  %s", name, r[:error]), FmrbGfx::RED)
       else
         color = r[:agrees] ? FmrbGfx::WHITE : FmrbGfx::RED
+        # A fallback row's name ("spinel_q15>ruby_q15") is wider than the
+        # column; laid out in the columns it ran past the window and wrapped.
+        # Such a row gives up the alignment and stays on one line.
+        row_fmt = name.size > 10 ? "%s %.1f %.1f %d %d %s" : "%-10s %8.1f %8.1f %5d %4d  %s"
         @gfx.draw_text(COL_X, y,
-                       sprintf("%-10s %8.1f %8.1f %5d %4d  %s",
+                       sprintf(row_fmt,
                                name, r[:us_avg], r[:us_min], r[:peak_bin], r[:dev],
                                r[:agrees] ? "yes" : "NO"),
                        color)
