@@ -56,9 +56,9 @@ end
 # editor source calls the same names either way.
 module EditorCore
   # Asked of the C side on every call, not kept in an ivar: a module ivar is
-  # shared by every instance of this program, so with two editors open one
-  # would edit (and, once the other exits, lose) the other's document.
-  # fmrb_spx_editor.c keeps one slot per app and opens it on first use.
+  # reset to nil when the next instance of this program starts, so the slot
+  # would never be given back. fmrb_spx_editor.c remembers the running
+  # editor's slot and opens it on first use.
   def self.slot
     FmrbSpxEc.fmrb_spx_ec_open_slot
   end

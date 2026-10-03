@@ -79,7 +79,7 @@ typedef struct fmrb_app_task_context_s {
     // with. Kept until destroy_vm, which frees it after mrb_close -- the order
     // upstream (r2p2) uses. NULL when there is nothing left to free.
     void*                 mrc_cc;
-    // Spinel only: the program this app runs (its Init_<program>), while its
+    // Spinel only: the program this app runs (its init function), while its
     // instance is up. A generated Spinel program keeps part of its state in
     // file-scope statics -- the exception stack among them -- so two instances
     // of the same program would share them; fmrb_app_spinel_claim refuses the
@@ -342,7 +342,8 @@ bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx);
  * returns. Only built when the kernel, desktop or editor runs on Spinel.
  *
  * @param ctx  The task context execute_native_function passes in
- * @param init  The program's Spinel ext init (Init_<program>)
+ * @param init  The program's Spinel ext init (Init_<program>, or a function that
+ *              ends by calling it)
  * @param after Optional: runs once the program has ended and its instance is
  *              gone, while the program is still claimed (so no second
  *              instance has started yet). Not called when the program never
@@ -362,7 +363,7 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t* ctx, void (*init)(void),
  * refusal goes to the error dialog like any other failed launch.
  *
  * @param ctx     The app that wants to run the program
- * @param program Identifies the program (its Init_<program> function)
+ * @param program Identifies the program (the init its task runs)
  * @return FMRB_OK when claimed, FMRB_ERR_BUSY when another app runs it
  */
 fmrb_err_t fmrb_app_spinel_claim(fmrb_app_task_context_t* ctx, const void* program);

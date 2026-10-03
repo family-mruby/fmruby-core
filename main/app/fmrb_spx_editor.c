@@ -11,8 +11,6 @@
 #include <stddef.h>
 
 #include "fmrb_attr.h"
-#include "fmrb_app.h"
-#include "fmrb_limits.h"
 
 /* The gem's canonical header (lib/add is the source of truth; the copy under
    components/picoruby-esp32/... is made by `rake setup`). Included by path so
@@ -23,65 +21,51 @@
    cannot include sp_ctx.h, so it is declared here). */
 int *sp_ctx_ffi_bin_len(void);
 
-/* Called on the editor's own task, before the program starts and after it
-   has ended (fmrb_app_spawner.c), so the document's memory goes back. */
+/* Called on the editor's own task while the program is claimed
+   (fmrb_app_spawner.c): once before the program starts, to reclaim a slot a
+   killed editor left, and once after it has ended, so the document's memory
+   goes back. */
 void fmrb_spx_ec_release_slot(void);
 
-/* The document slot each running Spinel editor holds, plus one (0 = none),
-   indexed by the app slot (app_id) the editor runs in.
-   The editor used to keep its slot in a module ivar. A generated Spinel
-   program's ivars are shared by every instance of it and reset to nil when a
-   new one starts, so nothing on the Ruby side ever closed the slot (every
+/* The document slot the running Spinel editor holds, plus one (0 = none).
+   The editor cannot keep it in a class-level ivar: the next instance's entry
+   resets that to nil, so nothing on the Ruby side ever closed the slot (every
    editor that ended leaked one, and the sixth since boot found the table
-   full: "Doc full" on every keystroke), and two editors open at once ended
-   up editing the same document. The C side keeps it instead, one entry per
-   app slot: an editor reads and writes only its own entry, so it never gives
-   back or takes another editor's slot. In PSRAM: internal RAM is the scarce
-   one. */
-FMRB_EXT_RAM_BSS_ATTR static int s_slot_plus1[FMRB_MAX_APPS];
-
-/* This editor's entry, or NULL when called off an app task. */
-static int *slot_entry(void)
-{
-    const fmrb_app_task_context_t *ctx = fmrb_current();
-    int id = ctx ? (int)ctx->app_id : -1;
-    if (id < 0 || id >= FMRB_MAX_APPS) {
-        return NULL;
-    }
-    return &s_slot_plus1[id];
-}
+   full: "Doc full" on every keystroke). The C side remembers it instead, and
+   EditorCore asks for it on every call (fmrb_editor_ffi.rb). One variable is
+   enough because only one Spinel editor runs at a time
+   (fmrb_app_spinel_claim), so a slot still recorded when an editor starts
+   was left by one that was killed (the forced path skips the release), in
+   whichever app slot it ran. In PSRAM: internal RAM is the scarce one. */
+FMRB_EXT_RAM_BSS_ATTR static int s_slot_plus1;
 
 int fmrb_spx_ec_open_slot(void)
 {
-    int *entry = slot_entry();
-    /* EditorCore asks on every call (fmrb_editor_ffi.rb); the first call
-       opens the slot and the rest get the same one back. */
-    if (entry && *entry > 0) {
-        return *entry - 1;
+    /* The first call opens the slot and the rest get the same one back. */
+    if (s_slot_plus1 > 0) {
+        return s_slot_plus1 - 1;
     }
     int slot = ec_open_slot();
-    if (slot >= 0 && entry) {
-        *entry = slot + 1;
+    if (slot >= 0) {
+        s_slot_plus1 = slot + 1;
     }
     return slot;
 }
 
 void fmrb_spx_ec_release_slot(void)
 {
-    int *entry = slot_entry();
-    if (entry && *entry > 0) {
-        ec_close_slot(*entry - 1);
-        *entry = 0;
+    if (s_slot_plus1 > 0) {
+        ec_close_slot(s_slot_plus1 - 1);
+        s_slot_plus1 = 0;
     }
 }
 
 void fmrb_spx_ec_close_slot(int slot)
 {
-    /* Forget it too, or the release at exit would close the slot again after
-       another editor may have opened it. */
-    int *entry = slot_entry();
-    if (entry && *entry == slot + 1) {
-        *entry = 0;
+    /* Forget it too, or the next call would hand the closed slot back and
+       the release at exit would close it again. */
+    if (s_slot_plus1 == slot + 1) {
+        s_slot_plus1 = 0;
     }
     ec_close_slot(slot);
 }
