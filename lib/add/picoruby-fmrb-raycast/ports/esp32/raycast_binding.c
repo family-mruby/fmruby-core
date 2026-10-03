@@ -37,6 +37,15 @@ static mrb_value mrb_rc_begin(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(raycast_begin());
 }
 
+static mrb_value mrb_rc_note_fallback(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    char *backend;
+    mrb_get_args(mrb, "z", &backend);
+    raycast_note_fallback(backend);
+    return mrb_nil_value();
+}
+
 static mrb_value mrb_rc_set_map(mrb_state *mrb, mrb_value self)
 {
     (void)self;
@@ -87,6 +96,8 @@ void mrb_fmrb_raycast_init(mrb_state *mrb)
     mrb_define_module_function(mrb, m, "available?", mrb_rc_available, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "micros", mrb_rc_micros, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "begin_instance", mrb_rc_begin, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, m, "note_fallback", mrb_rc_note_fallback, MRB_ARGS_REQ(1));
+    mrb_define_const(mrb, m, "BUSY", mrb_fixnum_value(RAYCAST_BUSY));
     mrb_define_module_function(mrb, m, "set_map", mrb_rc_set_map, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "cast", mrb_rc_cast, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "end_instance", mrb_rc_end, MRB_ARGS_NONE());

@@ -116,8 +116,16 @@ picoruby-fmrb-spinel-hello がこの構成の最小の手本です。
   - プールは `fmrb_sys_malloc`(= PSRAM。内蔵 RAM は消費しません)で確保します。小さめで
     よいですが**下限があり、16KB では instance 生成に失敗します**。128KB 程度(SpinelHello と
     Raycast は 128KB)を取ってください。
-  - この呼び方は**シングルトン(1 TU = 1 インスタンス = 1 タスク)**が前提です。複数の
-    タスクから同じ entry を使わないでください。
+  - この呼び方は**シングルトン(1 TU = 1 インスタンス = 1 タスク)**が前提です。インスタンスと
+    プールは `fmrb_spinel_gem_t`(`fmrb_spinel_host.h`)に持たせ、begin で
+    `fmrb_spinel_gem_claim` を呼んで、最初に開いたアプリのタスクを持ち主にします。持ち主で
+    ないタスクの begin は「使用中」(各 gem の `*_BUSY`)を返し、gem の Ruby はそのアプリを
+    Spinel でない版で動かします(`backend` は実際に動いている版を返し、受け皿の
+    `note_fallback` でログに 1 行出します)。entry の呼び出しと end は
+    `fmrb_spinel_gem_is_open_on` で持ち主のタスクかを確かめます(end は gem の final から
+    すべてのアプリの VM の終了時に呼ばれるため)。強制終了された持ち主のインスタンスは
+    fmrb_app の後始末(`fmrb_spinel_gem_task_ended`)が解放します。経緯は
+    doc/spinel_multi_instance/report/g1.md。
   - 受け皿は常にコンパイルされるので、スタブと実体を分ける `#ifdef`(FFT の
     `FMRB_FFT_SPINEL` のようなもの)は不要です。
   - 受け皿は生成プログラムと同じフラグ(`-w` を含む)でコンパイルされます。

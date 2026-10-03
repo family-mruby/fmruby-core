@@ -10,6 +10,10 @@
 # microsecond count change under the same picture, which is the whole point
 # (doc/raycast_spinel/plan.md).
 #
+# #backend is the engine actually casting, which can differ from the one asked
+# for: :spinel is a single instance that belongs to the first app that opened
+# it, and a second app asking for it gets :ruby (see .open).
+#
 # What crosses the boundary is integers and bytes, never a Float: the player's
 # position and angle go in, and a packed depth buffer comes back -- dist as
 # int32 little-endian, then wall and side, six bytes a ray.
@@ -47,7 +51,13 @@ module Fmrb
         deg += 1
       end
 
-      Fmrb::Raycast.open if backend == :spinel
+      # The Spinel instance is one for the whole machine and belongs to the
+      # first app that opened it. Another app asking for :spinel runs on :ruby
+      # instead -- slower, not refused -- and #backend says so.
+      if backend == :spinel && !Fmrb::Raycast.open
+        @backend = :ruby
+        ::RaycastNative.note_fallback("ruby")
+      end
     end
 
     # Fixed-point sine/cosine of a whole number of degrees, any sign.
@@ -191,16 +201,20 @@ module Fmrb
     # pool, so it is opened on demand and reference counted rather than tied to
     # one Raycast object (same shape as the FFT and SpinelHello gems).
     #
-    # Constraint: the :spinel backend is a single instance owned by one task.
-    # Use it from one task only.
+    # The instance is one for the whole machine and is owned by the app task
+    # that opened it first, until that app closes it or ends. Returns true when
+    # this app holds it, false when another app does (the caller then casts on
+    # :ruby). Raises when the instance cannot be built at all.
     def self.open
       @refs ||= 0
       if @refs == 0
         raise RuntimeError, "the Spinel raycast backend is not in this build" unless ::RaycastNative.available?
         rc = ::RaycastNative.begin_instance
+        return false if rc == ::RaycastNative::BUSY
         raise RuntimeError, "could not start the Spinel raycast instance (#{rc})" if rc < 0
       end
       @refs += 1
+      true
     end
 
     def self.close

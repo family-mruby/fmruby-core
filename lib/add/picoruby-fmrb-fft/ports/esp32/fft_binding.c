@@ -154,6 +154,15 @@ static mrb_value mrb_fft_spinel_total_us(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value((mrb_int)fmrb_fft_spinel_last_total_us());
 }
 
+static mrb_value mrb_fft_spinel_note_fallback(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    char *backend;
+    mrb_get_args(mrb, "z", &backend);
+    fmrb_fft_spinel_note_fallback(backend);
+    return mrb_nil_value();
+}
+
 static mrb_value mrb_fft_spinel_end(mrb_state *mrb, mrb_value self)
 {
     (void)self;
@@ -180,10 +189,15 @@ void mrb_fmrb_fft_init(mrb_state *mrb)
     mrb_define_module_function(mrb, m, "spinel_q15_run", mrb_fft_spinel_q15_run, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "spinel_total_us", mrb_fft_spinel_total_us, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "spinel_end", mrb_fft_spinel_end, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, m, "spinel_note_fallback", mrb_fft_spinel_note_fallback, MRB_ARGS_REQ(1));
+    mrb_define_const(mrb, m, "SPINEL_BUSY", mrb_fixnum_value(FMRB_FFT_SPINEL_BUSY));
 }
 
 void mrb_fmrb_fft_final(mrb_state *mrb)
 {
     (void)mrb;
     fmrb_fft_release();
+    /* The Spinel instance, if this app's task owns it and the app never
+       closed it (an exception, say). A no-op for every other app. */
+    fmrb_fft_spinel_end();
 }

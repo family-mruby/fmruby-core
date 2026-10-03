@@ -13,6 +13,11 @@
 #   :dsp     esp-dsp's assembler radix-2, the ceiling (device builds only)
 #   :c64     the plain baseline again, in double
 #
+# #backend is the engine that runs, which can differ from the one asked for:
+# the Spinel instance is one for the whole machine, owned by the first app
+# that opened it, and a second app asking for :spinel / :spinel_q15 gets
+# :ruby / :ruby_q15 (SPINEL_FALLBACK).
+#
 # :c64 is not an engine, it is a control. The two Ruby engines compute in
 # mrb_float, which is a double, while :c and :dsp are float32; on a chip whose
 # FPU is single precision only, that gap is a software emulation of double
@@ -44,6 +49,14 @@ module Fmrb
     # know which family a result came from.
     Q15_BACKENDS = [:ruby_q15, :c_q15, :spinel_q15]
 
+    # What a Spinel backend becomes when another app owns the Spinel
+    # instance: the same core (fft_core.rb / fft_core_q15.rb) on mruby. Not
+    # :c / :c_q15, which would be faster: the C backends keep their work
+    # buffers in file-scope statics shared by every task, so two apps on them
+    # at once overwrite each other's transform -- exactly the situation a
+    # fallback is for. The Ruby cores live in the app's own VM.
+    SPINEL_FALLBACK = { spinel: :ruby, spinel_q15: :ruby_q15 }
+
     # Repetitions of the timed run. avg comes from all of them, min from the
     # best -- min is the engine at its cleanest, avg includes whatever the
     # engine does between transforms (on mruby, that is the GC).
@@ -59,12 +72,17 @@ module Fmrb
         raise ArgumentError, "FFT size must be a power of two in 64..1024: #{size}"
       end
       @size = size
+      # The Spinel instance is one for the whole machine and belongs to the
+      # first app that opened it. Another app asking for a Spinel backend runs
+      # on the same Ruby core on mruby instead -- slower, not refused, same
+      # numbers -- and #backend says so.
+      if (backend == :spinel || backend == :spinel_q15) && !Fmrb::Fft.spinel_open(size)
+        backend = SPINEL_FALLBACK[backend]
+        ::FftNative.spinel_note_fallback(backend.to_s)
+      end
       @backend = backend
       @core = ::FftCore.new(size) if backend == :ruby
       @core = ::FftCoreQ15.new(size) if backend == :ruby_q15
-      if backend == :spinel || backend == :spinel_q15
-        Fmrb::Fft.spinel_open(size)
-      end
     end
 
     def self.available?(backend)
@@ -192,7 +210,7 @@ module Fmrb
       end
       fft.close
       {
-        backend: backend,
+        backend: fft.backend,   # the engine that ran, which a fallback can change
         size: size,
         iters: iters,
         reps: reps,
@@ -216,17 +234,21 @@ module Fmrb
     # pool -- so it is opened on demand and reference counted rather than
     # tied to one Fft object.
     #
-    # Constraint: the :spinel backend is a single instance owned by one task
-    # (the native side holds it in file-scope statics, current on the task that
-    # opened it). Use :spinel from one task only; from another task use :c/:dsp.
+    # The instance is one for the whole machine and is owned by the app task
+    # that opened it first, until that app closes it or ends (the native side
+    # holds it in file-scope statics, current on that task). Returns true when
+    # this app holds it, false when another app does (the caller then runs on
+    # SPINEL_FALLBACK). Raises when the instance cannot be built at all.
     def self.spinel_open(size)
       @spinel_refs ||= 0
       if @spinel_refs == 0
         raise RuntimeError, "the Spinel FFT backend is not in this build" unless ::FftNative.spinel_available?
         rc = ::FftNative.spinel_begin(size)
+        return false if rc == ::FftNative::SPINEL_BUSY
         raise RuntimeError, "could not start the Spinel FFT instance (#{rc})" if rc < 0
       end
       @spinel_refs += 1
+      true
     end
 
     def self.spinel_close

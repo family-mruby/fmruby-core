@@ -1285,6 +1285,20 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
 }
 
 /**
+ * Give back the Spinel gem instances (raycast, fft, spinel_hello) an ending
+ * app still owns, so the next app can have them (doc/spinel_multi_instance,
+ * G1). Runs after the VM is gone, on both exit paths; on the forced one it is
+ * the only release, since the dropped VM ran no gem's final hook.
+ */
+static void release_spinel_gems(fmrb_app_task_context_t* ctx, fmrb_task_handle_t task) {
+    const int dropped = fmrb_spinel_gem_task_ended((void*)task);
+    if (dropped) {
+        FMRB_LOGI(TAG, "[%s gen=%u] Released %d Spinel gem instance(s) it still owned",
+                  ctx->app_name, ctx->gen, dropped);
+    }
+}
+
+/**
  * Close the files and directories an ending app still has open.
  *
  * Runs in the app's own cleanup; the forced path does the same inline because
@@ -1435,6 +1449,10 @@ cleanup:
 
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx, false);
+
+    // A Spinel gem instance this app still owns. mrb_close normally ended it
+    // through the gem's final hook; this is the net for whatever did not.
+    release_spinel_gems(ctx, fmrb_task_get_current());
 
     // Files the app left open: an exit request unwinds a VM without running
     // the script's close (and mruby never finalizes File objects here), which
@@ -2011,6 +2029,10 @@ static void notify_kernel_app_exited(fmrb_proc_id_t app_id) {
 static void force_release_resources(fmrb_app_task_context_t* ctx,
                                     fmrb_task_handle_t task) {
     destroy_vm(ctx, true);
+
+    // The VM was dropped without mrb_close, so no gem's final hook ran: a
+    // Spinel gem instance the app owned is still claimed and holds its pool.
+    release_spinel_gems(ctx, task);
 
     fmrb_app_canvas_release_all(ctx);
 

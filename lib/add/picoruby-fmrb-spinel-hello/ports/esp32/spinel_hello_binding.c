@@ -26,6 +26,15 @@ static mrb_value mrb_sh_begin(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(spinel_hello_begin());
 }
 
+static mrb_value mrb_sh_note_fallback(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    char *backend;
+    mrb_get_args(mrb, "z", &backend);
+    spinel_hello_note_fallback(backend);
+    return mrb_nil_value();
+}
+
 static mrb_value mrb_sh_greet(mrb_state *mrb, mrb_value self)
 {
     (void)self;
@@ -51,6 +60,8 @@ void mrb_fmrb_spinel_hello_init(mrb_state *mrb)
     struct RClass *m = mrb_define_module(mrb, "SpinelHelloNative");
     mrb_define_module_function(mrb, m, "available?", mrb_sh_available, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "begin_instance", mrb_sh_begin, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, m, "note_fallback", mrb_sh_note_fallback, MRB_ARGS_REQ(1));
+    mrb_define_const(mrb, m, "BUSY", mrb_fixnum_value(SPINEL_HELLO_BUSY));
     mrb_define_module_function(mrb, m, "greet", mrb_sh_greet, MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, m, "end_instance", mrb_sh_end, MRB_ARGS_NONE());
 }
