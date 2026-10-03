@@ -62,7 +62,8 @@ spinel_vm_fail(const fmrb_app_task_context_t *ctx, const char *why, void *pool, 
               ctx->app_name, why, ctx->mempool_id, pool, pool_size);
 }
 
-void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
+void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
+                            void (*after)(void))
 {
     void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
     size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
@@ -82,6 +83,9 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
 
     fmrb_spinel_instance_end(est);
     ctx->est = NULL;
+    if (after) {
+        after();
+    }
 }
 #endif
 
@@ -90,10 +94,17 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
    the Spinel-compiled program instead of editor_irep, as a NATIVE task backed
    by this app slot's pool, so the window attributes are unchanged. */
 extern void Init_editor(void);   /* the Spinel ext program's init: its top level */
+extern void fmrb_spx_ec_release_slot(void);   /* fmrb_spx_editor.c */
 
 static void spinel_editor_native(void *arg)
 {
-    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor);
+    // The program never closes its document slot (fmrb_spx_editor.c says
+    // why), so the slot recorded for this app is given back here: once
+    // before the program starts, which reclaims one a forced kill of an
+    // earlier editor in this app slot left behind, and once after it ends.
+    fmrb_spx_ec_release_slot();
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor,
+                           fmrb_spx_ec_release_slot);
 }
 #endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
 
@@ -106,7 +117,7 @@ extern void Init_system_desktop(void);   /* the Spinel ext program's init: its t
 
 static void spinel_desktop_native(void *arg)
 {
-    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_system_desktop);
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_system_desktop, NULL);
 }
 #endif /* FMRB_APP_ENGINE_DESKTOP_SPINEL */
 

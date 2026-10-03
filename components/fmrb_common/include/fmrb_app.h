@@ -75,6 +75,10 @@ typedef struct fmrb_app_task_context_s {
     };
 
     void*                 est;               // Estalloc Pointer
+    // mruby only: the compile context (mrc_ccontext*) the script was started
+    // with. Kept until destroy_vm, which frees it after mrb_close -- the order
+    // upstream (r2p2) uses. NULL when there is nothing left to free.
+    void*                 mrc_cc;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
@@ -131,6 +135,14 @@ typedef struct fmrb_app_task_context_s {
     // decremented by the waiting task itself, so no lock is needed; it is a
     // counter rather than a flag only to stay correct if a wait ever nests.
     volatile uint8_t      sync_io_depth;
+
+    // Set by the app's own task as the very last thing before it parks at the
+    // end of its cleanup (app_task_main), after its last log line and its exit
+    // message. STOPPING alone is not enough to delete the task: the state is
+    // published while the task still has those to do, and a task deleted in
+    // the middle of one keeps the lock it holds (stdout, the message
+    // registry) for good, which stops every other task that logs.
+    volatile bool         parked;
 
     // Set when this app was ASKED to end: the kernel's kill, an app calling
     // FmrbApp#stop (the close button, Ctrl+Q, a script that finished), or a
@@ -324,9 +336,13 @@ bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx);
  * returns. Only built when the kernel, desktop or editor runs on Spinel.
  *
  * @param ctx  The task context execute_native_function passes in
- * @param init The program's Spinel ext init (Init_<program>)
+ * @param init  The program's Spinel ext init (Init_<program>)
+ * @param after Optional: runs on this app's task once the program has ended
+ *              and its instance is gone. Not called when no instance was
+ *              built. A forced kill never gets here.
  */
-void fmrb_app_run_spinel_vm(fmrb_app_task_context_t* ctx, void (*init)(void));
+void fmrb_app_run_spinel_vm(fmrb_app_task_context_t* ctx, void (*init)(void),
+                            void (*after)(void));
 
 /**
  * @brief Latch should_exit if this message is a stop/exit APP_CONTROL request

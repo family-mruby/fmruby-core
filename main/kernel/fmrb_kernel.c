@@ -874,7 +874,7 @@ extern void Init_fmrb_kernel(void);
 
 static void spinel_kernel_native(void *arg)
 {
-    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_fmrb_kernel);
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_fmrb_kernel, NULL);
 }
 #endif /* FMRB_KERNEL_ENGINE_SPINEL */
 
