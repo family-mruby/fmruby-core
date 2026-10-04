@@ -14,6 +14,11 @@
  *
  * Every function is safe to call on a build without Spinel: available() says
  * 0, begin() fails, run() returns 0 microseconds.
+ *
+ * Single owner: there is one instance for the whole firmware, owned by the
+ * app task that called begin() until it calls end() or ends. begin() from any
+ * other task answers FMRB_FFT_SPINEL_BUSY, and the gem's Ruby runs that app
+ * on a C backend instead (doc/spinel_multi_instance/report/g1.md).
  */
 #ifndef FMRB_FFT_SPINEL_H
 #define FMRB_FFT_SPINEL_H
@@ -24,16 +29,27 @@
 extern "C" {
 #endif
 
+/** fmrb_fft_spinel_begin: another app task owns the instance. */
+#define FMRB_FFT_SPINEL_BUSY (-5)
+
 /** Is the Spinel FFT compiled into this firmware? */
 int fmrb_fft_spinel_available(void);
 
 /**
- * Create the Spinel instance on the calling task and prepare a transform of
- * `size` points.
- * @return 0 on success, negative on failure (no Spinel in this build, no
- *         memory for the pool, or the program raising in its init).
+ * Create the Spinel instance on the calling task, which then owns it, and
+ * prepare a transform of `size` points.
+ * @return 0 on success (or if the calling task already owns it),
+ *         FMRB_FFT_SPINEL_BUSY if another task owns it, other negatives on
+ *         failure (no Spinel in this build, no memory for the pool, or the
+ *         program raising in its init).
  */
 int fmrb_fft_spinel_begin(int size);
+
+/**
+ * Log that the calling app was given another backend because the instance is
+ * owned elsewhere: which app, which owner, which backend it runs on.
+ */
+void fmrb_fft_spinel_note_fallback(const char *backend);
 
 /**
  * Run the Spinel FFT `iters` times, timing the transform alone exactly as the
@@ -61,7 +77,8 @@ uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *m
  */
 uint32_t fmrb_fft_spinel_last_total_us(void);
 
-/** Tear the instance down and release its pool. */
+/** Tear the instance down and release its pool. A no-op unless the calling
+ *  task owns it. */
 void fmrb_fft_spinel_end(void);
 
 #ifdef __cplusplus

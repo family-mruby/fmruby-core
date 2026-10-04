@@ -67,6 +67,8 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `fullscreen_hires` | false | 全画面の間だけ 640x360 にしてよい (P4 系とブラウザ版。`true` か `1`。reference/fullscreen_hires.md) |
 | `large_memory` | 0 | 大きい方のプールを専有する |
 | `task_stack_kb` | 16 | タスクの C スタック。`[16, 64]` KB に丸められる |
+| `single_instance` | false | 同じファイルのアプリの 2 つ目の起動を断る (`true` か `1`)。断るときはエラーの窓「This app is already running.」 |
+| `exclusive_group` | なし | 同じ名前 (15 バイトまで) を書いたアプリが動いている間は起動を断る。自分の 2 つ目も断る。例: FFT を使うアプリの `"fft"`。窓は「<動いているアプリ> is already running. / Only one "<名前>" app can run at a time.」 |
 
 `app_handle_name` は 67 個の `.app.toml` に書かれているが、**どのコードも読んで
 いない**。配布では使わない。

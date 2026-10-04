@@ -6,3 +6,6 @@ default_window_width = 160
 default_window_height = 70
 default_window_pos_x = 60
 default_window_pos_y = 40
+# A second copy would not run on Spinel (the gem instance is one per
+# machine), which is what this app is here to show.
+single_instance = true

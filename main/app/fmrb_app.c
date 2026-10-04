@@ -16,10 +16,12 @@
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
-/* Spinel exc-stack high-water for the stats dump. The component (and its
-   include dir) is only present when some VM runs on Spinel. */
-#if defined(FMRB_KERNEL_ENGINE_SPINEL) || defined(FMRB_APP_ENGINE_DESKTOP_SPINEL)
+/* The Spinel runtime component is in every build (the sample gems always use
+   it), so the header is too: the gem release on app exit needs it whatever
+   engine the kernel and desktop run on. The exc-stack high-water for the stats
+   dump is only there when one of those VMs is Spinel. */
 #include "fmrb_spinel_host.h"
+#if defined(FMRB_KERNEL_ENGINE_SPINEL) || defined(FMRB_APP_ENGINE_DESKTOP_SPINEL)
 #define FMRB_HAVE_SPINEL_HOST 1
 #endif
 #include "fmrb_task_config.h"
@@ -1282,6 +1284,24 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
     // forced path runs single-writer after the task is deleted, and the stats
     // readers take g_ctx_lock, so they observe NULL or a still-valid handle.
     ctx->est = NULL;
+    // The app no longer counts against single_instance / exclusive_group:
+    // both exit paths come through here, and the slot may take a while longer
+    // to be reaped.
+    ctx->launch_claimed = false;
+}
+
+/**
+ * Give back the Spinel gem instances (raycast, fft, spinel_hello) an ending
+ * app still owns, so the next app can have them (doc/spinel_multi_instance,
+ * G1). Runs after the VM is gone, on both exit paths; on the forced one it is
+ * the only release, since the dropped VM ran no gem's final hook.
+ */
+static void release_spinel_gems(fmrb_app_task_context_t* ctx, fmrb_task_handle_t task) {
+    const int dropped = fmrb_spinel_gem_task_ended((void*)task);
+    if (dropped) {
+        FMRB_LOGI(TAG, "[%s gen=%u] Released %d Spinel gem instance(s) it still owned",
+                  ctx->app_name, ctx->gen, dropped);
+    }
 }
 
 /**
@@ -1301,6 +1321,69 @@ static void close_owned_files(fmrb_app_task_context_t* ctx, fmrb_task_handle_t t
 }
 
 /**
+ * Refuse a launch its .app.toml rules out (doc/spinel_multi_instance, G2).
+ *
+ * single_instance: no second app from the same file. exclusive_group: no two
+ * apps of the same group at once, whichever came first (the apps that share
+ * the Spinel FFT instance and the C FFT work buffers declare "fft"). Only apps
+ * that passed this check count, and they stop counting when their VM goes
+ * (destroy_vm), so an app without either key is never refused here and never
+ * refuses another. Decided under g_ctx_lock, so two launches at once cannot
+ * both pass. The refusal goes to the error dialog like a second Python app.
+ */
+static fmrb_err_t launch_claim(fmrb_app_task_context_t* ctx) {
+    const bool grouped = ctx->exclusive_group[0] != '\0';
+    if (!ctx->single_instance && !grouped) {
+        return FMRB_OK;
+    }
+    const fmrb_app_task_context_t* same_file = NULL;
+    const fmrb_app_task_context_t* same_group = NULL;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        const fmrb_app_task_context_t* other = &g_ctx_pool[i];
+        if (other == ctx || other->state == PROC_STATE_FREE || !other->launch_claimed) {
+            continue;
+        }
+        if (ctx->single_instance && ctx->filepath[0] != '\0' &&
+            strcmp(other->filepath, ctx->filepath) == 0) {
+            same_file = other;
+            break;
+        }
+        if (grouped && strcmp(other->exclusive_group, ctx->exclusive_group) == 0) {
+            same_group = other;
+        }
+    }
+    if (!same_file && !same_group) {
+        ctx->launch_claimed = true;
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+
+    if (same_file) {
+        FMRB_LOGE(TAG, "[%s] Already running as pid %d; single_instance",
+                  ctx->app_name, (int)same_file->app_id);
+        set_last_error(ctx,
+                       "This app is already running.\n"
+                       "Only one copy of it can run at a time.", NULL);
+        notify_error_to_kernel(ctx);
+        return FMRB_ERR_BUSY;
+    }
+    if (same_group) {
+        FMRB_LOGE(TAG, "[%s] %s (pid %d) is running; exclusive_group \"%s\"",
+                  ctx->app_name, same_group->app_name, (int)same_group->app_id,
+                  ctx->exclusive_group);
+        char msg[128];
+        snprintf(msg, sizeof(msg),
+                 "%s is already running.\n"
+                 "Only one \"%s\" app can run at a time.",
+                 same_group->app_name, ctx->exclusive_group);
+        set_last_error(ctx, msg, NULL);
+        notify_error_to_kernel(ctx);
+        return FMRB_ERR_BUSY;
+    }
+    return FMRB_OK;
+}
+
+/**
  * Application task entry point
  */
 static void app_task_main(void* arg) {
@@ -1316,6 +1399,12 @@ static void app_task_main(void* arg) {
 
     FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
              ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(0));
+
+    // .app.toml single_instance / exclusive_group: refused before any VM
+    // exists, so a refused app costs nothing but its slot for a moment.
+    if (launch_claim(ctx) != FMRB_OK) {
+        goto cleanup;
+    }
 
     // Create VM based on vm_type
     switch (ctx->vm_type) {
@@ -1435,6 +1524,10 @@ cleanup:
 
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx, false);
+
+    // A Spinel gem instance this app still owns. mrb_close normally ended it
+    // through the gem's final hook; this is the net for whatever did not.
+    release_spinel_gems(ctx, fmrb_task_get_current());
 
     // Files the app left open: an exit request unwinds a VM without running
     // the script's close (and mruby never finalizes File objects here), which
@@ -1675,6 +1768,9 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     ctx = &g_ctx_pool[idx];
     transition_state(ctx, PROC_STATE_INIT);
+    // Cleared under the lock that fmrb_app_launch_claim reads it with, before
+    // the slot can be seen as anything but FREE by a launch on another task.
+    ctx->launch_claimed = false;
     fmrb_semaphore_give(g_ctx_lock);
 
     // Initialize context fields
@@ -1776,6 +1872,12 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         // For FILE mode, use ctx->filepath (copied above)
         ctx->load_mode = FMRB_LOAD_MODE_FILE;
         ctx->load_data = (void*)ctx->filepath;
+    }
+    ctx->single_instance = attr->single_instance;
+    ctx->exclusive_group[0] = '\0';
+    if (attr->exclusive_group) {
+        strncpy(ctx->exclusive_group, attr->exclusive_group, sizeof(ctx->exclusive_group) - 1);
+        ctx->exclusive_group[sizeof(ctx->exclusive_group) - 1] = '\0';
     }
     ctx->headless = attr->headless;
     ctx->window_pos_x = attr->window_pos_x;
@@ -2011,6 +2113,10 @@ static void notify_kernel_app_exited(fmrb_proc_id_t app_id) {
 static void force_release_resources(fmrb_app_task_context_t* ctx,
                                     fmrb_task_handle_t task) {
     destroy_vm(ctx, true);
+
+    // The VM was dropped without mrb_close, so no gem's final hook ran: a
+    // Spinel gem instance the app owned is still claimed and holds its pool.
+    release_spinel_gems(ctx, task);
 
     fmrb_app_canvas_release_all(ctx);
 

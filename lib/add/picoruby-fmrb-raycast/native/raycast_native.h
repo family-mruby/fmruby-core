@@ -18,7 +18,10 @@
  * Spinel program between calls. Each upload builds a new core.
  *
  * Single owner: the instance and the I/O below are file-scope statics and the
- * instance is current on whichever task called begin(). One task only.
+ * instance is current on the task that called begin(). That app task owns it
+ * until it calls end() or ends; begin() from any other task answers
+ * RAYCAST_BUSY and the gem's Ruby runs that app on :ruby instead
+ * (doc/spinel_multi_instance/report/g1.md).
  */
 #ifndef RAYCAST_NATIVE_H
 #define RAYCAST_NATIVE_H
@@ -28,6 +31,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/** raycast_begin: another app task owns the instance. */
+#define RAYCAST_BUSY (-5)
 
 /** Largest map the receiver will hold, in cells. */
 #define RAYCAST_MAP_MAX (64 * 64)
@@ -40,11 +46,19 @@ int raycast_available(void);
 uint32_t raycast_micros(void);
 
 /**
- * Create the Spinel instance on the calling task.
- * @return 0 on success, negative on failure (no memory for the pool, or the
- *         runtime refusing to build an instance).
+ * Create the Spinel instance on the calling task, which then owns it.
+ * @return 0 on success (or if the calling task already owns it),
+ *         RAYCAST_BUSY if another task owns it, other negatives on failure
+ *         (no memory for the pool, or the runtime refusing to build an
+ *         instance).
  */
 int raycast_begin(void);
+
+/**
+ * Log that the calling app was given another backend because the instance is
+ * owned elsewhere: which app, which owner, which backend it runs on.
+ */
+void raycast_note_fallback(const char *backend);
 
 /**
  * Upload the world: the Spinel program copies it and builds its core against
@@ -67,7 +81,8 @@ int raycast_set_map(const uint8_t *cells, int w, int h);
  */
 const char *raycast_run(int px, int py, int pa, int *out_len, uint32_t *out_us);
 
-/** Tear the instance down and release its pool. */
+/** Tear the instance down and release its pool. A no-op unless the calling
+ *  task owns it. */
 void raycast_end(void);
 
 #ifdef __cplusplus

@@ -190,7 +190,7 @@ class RaycasterApp < FmrbApp
       if Fmrb::Raycast.available?(backend)
         @caster = Fmrb::Raycast.new(backend: backend)
         @caster.set_map(WORLD_MAP, MAP_W, MAP_H)
-        Log.info("Raycaster engine: #{backend}")
+        Log.info("Raycaster engine: #{@caster.backend}")
         return
       end
       @backend_idx = (@backend_idx + 1) % BACKENDS.size
@@ -334,7 +334,7 @@ class RaycasterApp < FmrbApp
         # one sample each there was no telling whether the shortfall was a
         # frame that skipped the draw, time spent outside this task, or a
         # measurement that simply missed a stretch.
-        Log.info("Raycaster frame: engine=#{backend} cast=#{@last_us}us " \
+        Log.info("Raycaster frame: engine=#{@caster.backend} cast=#{@last_us}us " \
                  "draw=#{@draw_us}us rest=#{now - t_enter - @last_us - @draw_us}us " \
                  "gap=#{@gap_us}us avg_frame=#{span / 32}us | acc: " \
                  "update=#{@acc_update / 32}us gap=#{@acc_gap / 32}us " \
@@ -603,9 +603,10 @@ class RaycasterApp < FmrbApp
     end
     @gfx.draw_text(ox + 4, hud_y + 2, "SCORE:#{@score} ENEMY:#{alive_count}", C_HUD_TXT, C_HUD_BG)
     # The engine and what the last cast cost. This line is the demo: press B
-    # and only these two fields change.
+    # and only these two fields change. The engine is the one that runs, which
+    # is :ruby when another app holds the Spinel raycast instance.
     @gfx.draw_text(ox + 4, hud_y + 11,
-                   "[B]#{backend} cast:#{@last_us}us draw:#{@draw_us}us",
+                   "[B]#{@caster.backend} cast:#{@last_us}us draw:#{@draw_us}us",
                    C_HUD_TXT, C_HUD_BG)
 
     # Mini-map (right side of viewport, every 4th frame to save draw calls)

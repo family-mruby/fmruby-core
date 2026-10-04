@@ -65,7 +65,19 @@ set(SPINEL_RT_EXC_STACK_MAX 16 CACHE STRING "SP_EXC_STACK_MAX / SP_CATCH_STACK_M
 # that is too small costs C stack and time, not correctness. 8192 entries is
 # 32 KB -- above the object count a 512 KB pool can hold, so the recursive path
 # stays rare, while the peak request drops from 256 KB to 32 KB.
-set(SPINEL_RT_GC_MARK_STACK_MAX 8192 CACHE STRING "SP_GC_MARK_STACK_MAX for the Spinel runtime + generated C")
+#
+# The bound counts pointers, so on the 64-bit Linux simulation the same 8192
+# entries asked for 64 KB. A 128 KB gem instance (spinel_hello) holds about
+# 83 KB of runtime bootstrap there, and its first collection died for want of
+# that block ("unhandled exception: out of memory" after ~60 greetings) where
+# the device, asking for 32 KB, keeps going. Half the entries keep the block at
+# 32 KB on both, so the simulation runs out of pool where the device would.
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(_spinel_mark_stack_default 4096)
+else()
+    set(_spinel_mark_stack_default 8192)
+endif()
+set(SPINEL_RT_GC_MARK_STACK_MAX ${_spinel_mark_stack_default} CACHE STRING "SP_GC_MARK_STACK_MAX for the Spinel runtime + generated C")
 
 # Multi-instance (SP_MULTI_CTX): the runtime state lives in a per-instance sp_ctx
 # and allocation routes through sp_mem_override.h. This lets kernel + desktop run

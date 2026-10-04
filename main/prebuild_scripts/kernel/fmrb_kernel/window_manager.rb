@@ -73,6 +73,7 @@ module WindowManagerMixin
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_HID_EVENT,
                             build_hid_close_overlay)
           @desktop_overlay_active = false
+          @desktop_overlay_keyless = false
         end
       end
     end

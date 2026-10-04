@@ -190,3 +190,86 @@ int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw) {
 }
 
 #endif /* SP_MULTI_CTX */
+
+/* ---- Spinel gem ownership (fmrb_spinel_host.h) ---- */
+
+/* The list fmrb_spinel_gem_task_ended walks. One pointer; on the device it
+   goes to PSRAM with the runtime's other cold statics (fmrb_sp_tu_bss.h),
+   since nothing here is on a hot path and internal RAM is the scarce one. */
+#ifdef SP_RT_COLD
+#define FMRB_GEM_BSS SP_RT_COLD
+#else
+#define FMRB_GEM_BSS
+#endif
+FMRB_GEM_BSS static fmrb_spinel_gem_t *s_gems;
+
+/* Drop the instance without making it current: it belongs to a task that is
+   gone (or is going), and the caller may be a Spinel task itself -- the kernel
+   kills apps, and fmrb_spinel_instance_end would destroy ITS instance. Every
+   allocation of the instance lives in its pool, so releasing the pool is the
+   whole teardown, as with a killed app's mruby VM. */
+static void gem_drop(fmrb_spinel_gem_t *g)
+{
+    void *est = g->est;
+    void *pool = g->pool;
+#ifdef SP_MULTI_CTX
+    for (int i = 0; i < FMRB_SPINEL_MAX_INSTANCES; i++) {
+        if (est && s_instances[i].est == est) { s_instances[i].est = NULL; s_instances[i].ctx = NULL; }
+    }
+    if (est) est_cleanup(est);
+#endif
+    if (pool && g->pool_free) g->pool_free(pool);
+    fmrb_spinel_gem_release(g);
+}
+
+int fmrb_spinel_gem_claim(fmrb_spinel_gem_t *g, void *task, int pid, const char *app)
+{
+    void *expected = NULL;
+    if (!__atomic_compare_exchange_n(&g->owner, &expected, task, 0,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        return (expected == task) ? FMRB_SPINEL_GEM_MINE : FMRB_SPINEL_GEM_BUSY;
+    }
+    g->owner_pid = pid;
+    g->owner_app[0] = '\0';
+    if (app) {
+        strncpy(g->owner_app, app, sizeof g->owner_app - 1);
+        g->owner_app[sizeof g->owner_app - 1] = '\0';
+    }
+    /* Linked once, by its first owner; only one task owns a gem at a time,
+       so `linked` has one writer. The head is shared by all gems. */
+    if (!g->linked) {
+        fmrb_spinel_gem_t *head = __atomic_load_n(&s_gems, __ATOMIC_ACQUIRE);
+        do {
+            g->next = head;
+        } while (!__atomic_compare_exchange_n(&s_gems, &head, g, 0,
+                                              __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE));
+        g->linked = 1;
+    }
+    return FMRB_SPINEL_GEM_CLAIMED;
+}
+
+int fmrb_spinel_gem_is_open_on(const fmrb_spinel_gem_t *g, void *task)
+{
+    return task && g->est && __atomic_load_n(&g->owner, __ATOMIC_ACQUIRE) == task;
+}
+
+void fmrb_spinel_gem_release(fmrb_spinel_gem_t *g)
+{
+    g->est = NULL;
+    g->pool = NULL;
+    g->owner_pid = -1;
+    g->owner_app[0] = '\0';
+    __atomic_store_n(&g->owner, NULL, __ATOMIC_RELEASE);
+}
+
+int fmrb_spinel_gem_task_ended(void *task)
+{
+    int dropped = 0;
+    if (!task) return 0;
+    for (fmrb_spinel_gem_t *g = __atomic_load_n(&s_gems, __ATOMIC_ACQUIRE); g; g = g->next) {
+        if (__atomic_load_n(&g->owner, __ATOMIC_ACQUIRE) != task) continue;
+        gem_drop(g);
+        dropped++;
+    }
+    return dropped;
+}

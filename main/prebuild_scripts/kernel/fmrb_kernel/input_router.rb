@@ -90,7 +90,11 @@ module InputRouterMixin
         # Bring clicked window to front. The window is on screen, so the
         # answer is normally yes; it goes through the predicate so that every
         # focus path in the kernel decides this in one place (focusable?).
-        can_focus = focusable?(target_pid)
+        # Except a click inside a desktop overlay that takes no keys (the error
+        # dialog): it only closes the dialog, so the keyboard stays where it
+        # was. find_window_at has already cleared the overlay state when the
+        # click fell outside it, so this is true only for a click inside.
+        can_focus = focusable?(target_pid) && !keyless_overlay_hit?(target_pid, x, y)
         if can_focus
           _bring_to_front(target_pid)
           _set_hid_target(target_pid)
@@ -390,6 +394,17 @@ module InputRouterMixin
     rescue => e
       Log.error("Error in handle_hid_event: #{e.class}: #{e.message}")
     end
+  end
+
+  # True when a click at (x, y) routed to the desktop lands inside its current
+  # overlay and the desktop said that overlay takes no keys.
+  def keyless_overlay_hit?(pid, x, y)
+    return false unless @desktop_overlay_active && @desktop_overlay_keyless
+    return false if @fullscreen_pid
+    return false unless pid == @desktop_pid
+    return false if y < $menu_bar_height
+    r = @desktop_overlay_rect
+    x >= r[:x] && x < r[:x] + r[:w] && y >= r[:y] && y < r[:y] + r[:h]
   end
 
   # Notify SystemDesktop to draw / update / clear the resize-preview outline

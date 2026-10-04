@@ -1244,12 +1244,16 @@ class SystemDesktopApp < FmrbApp
     draw_foreground
   end
 
-  def notify_overlay_state(active, x, y, w, h)
+  # keyless: the overlay takes no keys (the error dialog), so a click inside it
+  # must not move the keyboard to the desktop; the kernel then routes the
+  # click here without changing the focus.
+  def notify_overlay_state(active, x, y, w, h, keyless = false)
     data = {
       "cmd" => "overlay_state",
       "active" => active,
       "rect_x" => x, "rect_y" => y,
-      "rect_w" => w, "rect_h" => h
+      "rect_w" => w, "rect_h" => h,
+      "keyless" => keyless
     }
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
   end
