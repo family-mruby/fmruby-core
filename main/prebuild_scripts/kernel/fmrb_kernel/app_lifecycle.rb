@@ -36,6 +36,10 @@ module AppLifecycleMixin
 
     mark_window_list_dirty
 
+    # Who has the keyboard before this launch. Taken before anything below
+    # moves it (parking a fullscreen app hands it to the desktop).
+    prev_hid = @hid_target_pid
+
     # Read fullscreen from the app context rather than the window list: the
     # list is refreshed asynchronously and is not there yet at this point.
     info = _get_app_info(new_pid)
@@ -70,6 +74,12 @@ module AppLifecycleMixin
       return true
     end
 
+    # Remember where the keyboard was, until the app shows its window
+    # (on_app_started). An app that ends before that -- refused at launch
+    # (single_instance, exclusive_group, a second Python or Spinel program,
+    # no large-memory slot) or failing to compile -- gives it back there
+    # rather than to the desktop: the user never saw it take the keyboard.
+    @launch_prev_hid[new_pid] = prev_hid if prev_hid && prev_hid != new_pid
     # NOTE: keep the collection-class name (S-e-t) out of kernel source even in
     # comments -- Spinel splices `require "set"` on a bareword match and its
     # bundled library fails to compile in this program.
@@ -121,6 +131,9 @@ module AppLifecycleMixin
   def on_app_started(pid)
     return unless pid
     Log.info("App started: pid=#{pid}")
+    # Its window is up: from here on, closing it follows the normal rule
+    # (cleanup_terminated_app), not the launch-time one.
+    @launch_prev_hid.delete(pid)
     # Clear before handing over the screen, not after: enter_fullscreen
     # suspends the desktop, and a message sent to a suspended app waits in its
     # queue. Done the other way round, an app that starts quickly (a Spinel
@@ -832,8 +845,21 @@ module AppLifecycleMixin
     # and then the reaper). Once an unpark is armed, the keyboard belongs to the
     # app that unpark will bring back -- a second pass must not hand it to the
     # desktop in between.
+    #
+    # An app that ends before showing its window (it never reached
+    # on_app_started) gives the keyboard back to whoever had it before the
+    # launch instead, as long as that app is still there to take it. Not when
+    # that is a parked fullscreen app: bringing it back would cover the error
+    # dialog the desktop is about to show, so the rule above decides (it still
+    # unparks the editor after an F5).
     if @hid_target_pid == pid && @pending_unpark.nil?
-      back_to = @run_parent ? @run_parent[pid] : nil
+      back_to = nil
+      prev = @launch_prev_hid[pid]
+      if prev && prev != @parked_fullscreen_pid
+        prev_ok = focusable?(prev)
+        back_to = prev if prev_ok
+      end
+      back_to = @run_parent[pid] if back_to.nil? && @run_parent
       back_to = nil unless back_to && _get_app_info(back_to)
       if back_to && back_to == @parked_fullscreen_pid
         # The app that ran this one is a parked fullscreen app (the editor ran a
@@ -862,6 +888,7 @@ module AppLifecycleMixin
       end
     end
     @run_parent.delete(pid) if @run_parent
+    @launch_prev_hid.delete(pid)
 
     # Release mouse capture if this app had it
     if @capture_pid == pid

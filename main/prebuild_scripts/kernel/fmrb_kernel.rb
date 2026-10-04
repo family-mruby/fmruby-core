@@ -53,6 +53,9 @@ class FmrbKernelImpl < FmrbKernel
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
     @notified_focus_pid = -1  # Last focus reported to the desktop (-1 = none yet)
+    # pid => HID target before that app was launched, kept until the app shows
+    # its window (after_spawn / on_app_started / cleanup_terminated_app).
+    @launch_prev_hid = {}
 
     # Mouse button state (for click event routing)
     @mouse_down_pid = nil  # Window where mouse_down occurred
