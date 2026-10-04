@@ -120,9 +120,16 @@
 #define FMRB_SHELL_APP_PRIORITY         (2)
 #define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_1
 
-// Small built-in tools (LogViewer, Monitor, HID Inspector, App Store). They
-// shared the shell's 12KB until the shell was raised on its own.
+// Small built-in tools (LogViewer, Monitor, HID Inspector). They shared the
+// shell's 12KB until the shell was raised on its own.
 #define FMRB_TOOL_APP_TASK_STACK_SIZE   (12 * 1024)
+
+// App Store. It fetches over HTTPS on its own task, and mbedtls's certificate
+// check runs deep: at 12KB the P4-Nano showed 20 bytes left and then a stack
+// protection fault inside esp_crt_verify_callback while installs were clicked
+// in a row (2026-10-04). 16KB: the same clicking then left 3,736 bytes at
+// its lowest. Own name so it can move without the tools.
+#define FMRB_APPSTORE_APP_TASK_STACK_SIZE (16 * 1024)
 
 // Editor task. The editor shared the shell's 12KB until the type support
 // (completion, hover, diagnostics, signature help) started parsing the
