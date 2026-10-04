@@ -15,7 +15,11 @@ module ErrorDialogMixin
   EDLG_BORDER = FmrbGfx::RED
   EDLG_TITLE_BG = FmrbGfx::RED
   EDLG_TEXT = FmrbGfx::YELLOW
-  EDLG_TRACE = FmrbGfx::GRAY
+  # Light gray (R5 G5 B2): the explanation and backtrace lines must be easy to
+  # read on the near-black page, yet stay apart from the yellow first line and
+  # from the darker gray "(click to close)" hint.
+  EDLG_TRACE = 0xB6
+  EDLG_HINT = FmrbGfx::GRAY
 
   def open_error_dialog(app_name, error_msg)
     @error_dlg_open = true
@@ -50,7 +54,10 @@ module ErrorDialogMixin
       @error_dlg_y = 12
     end
 
-    notify_overlay_state(true, @error_dlg_x, @error_dlg_y, EDLG_W, @error_dlg_h)
+    # Keyless: the dialog only closes on a click, so clicking it must leave the
+    # keyboard with whatever app had it (e.g. the one a refused launch fell
+    # back to).
+    notify_overlay_state(true, @error_dlg_x, @error_dlg_y, EDLG_W, @error_dlg_h, true)
     update_composite_regions
     draw_foreground
   end
@@ -95,7 +102,7 @@ module ErrorDialogMixin
     end
 
     # Footer
-    @gfx.draw_text(x + EDLG_W - 96, y + h - 12, "(click to close)", FmrbGfx::GRAY, EDLG_BG)
+    @gfx.draw_text(x + EDLG_W - 96, y + h - 12, "(click to close)", EDLG_HINT, EDLG_BG)
   end
 
   def handle_error_dialog_click(x, y)

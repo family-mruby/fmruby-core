@@ -80,6 +80,8 @@ class FmrbKernelImpl < FmrbKernel
     # Desktop overlay state (dropdown menu)
     @desktop_overlay_active = false
     @desktop_overlay_rect = { x: 0, y: 0, w: 0, h: 0 }
+    # The overlay takes no keys (the error dialog): a click in it keeps the focus.
+    @desktop_overlay_keyless = false
     @desktop_pid = nil
 
     # Fullscreen mode state. @fs_stack is the real state (nesting: a fullscreen
@@ -358,11 +360,12 @@ class FmrbKernelImpl < FmrbKernel
       request_exit_fullscreen(pid)
     when "overlay_state"
       @desktop_overlay_active = data["active"] || false
+      @desktop_overlay_keyless = data["keyless"] || false
       @desktop_overlay_rect = {
         x: data["rect_x"] || 0, y: data["rect_y"] || 0,
         w: data["rect_w"] || 0, h: data["rect_h"] || 0
       }
-      Log.info("Desktop overlay: active=#{@desktop_overlay_active}")
+      Log.info("Desktop overlay: active=#{@desktop_overlay_active} keyless=#{@desktop_overlay_keyless}")
     when "system_interrupt"
       # Reserved key (Ctrl-Q, intercepted in host_task before routing so the app
       # never sees it): close the app that owns the keyboard. Without this a
