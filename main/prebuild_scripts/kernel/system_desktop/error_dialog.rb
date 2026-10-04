@@ -15,11 +15,11 @@ module ErrorDialogMixin
   EDLG_BORDER = FmrbGfx::RED
   EDLG_TITLE_BG = FmrbGfx::RED
   EDLG_TEXT = FmrbGfx::YELLOW
-  # Light gray (R5 G5 B2): the explanation and backtrace lines must be easy to
-  # read on the near-black page, yet stay apart from the yellow first line and
-  # from the darker gray "(click to close)" hint.
-  EDLG_TRACE = 0xB6
-  EDLG_HINT = FmrbGfx::GRAY
+  # White: the explanation and backtrace lines, and the "(click to close)" hint,
+  # must be easy to read on the near-black page. The yellow first line still
+  # stands apart from them.
+  EDLG_TRACE = FmrbGfx::WHITE
+  EDLG_HINT = FmrbGfx::WHITE
 
   def open_error_dialog(app_name, error_msg)
     @error_dlg_open = true
@@ -102,7 +102,9 @@ module ErrorDialogMixin
     end
 
     # Footer
-    @gfx.draw_text(x + EDLG_W - 96, y + h - 12, "(click to close)", EDLG_HINT, EDLG_BG)
+    # 16 characters of 6 px end flush with the border at -96; -104 leaves the
+    # same 8 px margin the text lines keep on the left.
+    @gfx.draw_text(x + EDLG_W - 104, y + h - 12, "(click to close)", EDLG_HINT, EDLG_BG)
   end
 
   def handle_error_dialog_click(x, y)
