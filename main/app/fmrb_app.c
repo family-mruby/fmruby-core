@@ -16,10 +16,12 @@
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
-/* Spinel exc-stack high-water for the stats dump. The component (and its
-   include dir) is only present when some VM runs on Spinel. */
-#if defined(FMRB_KERNEL_ENGINE_SPINEL) || defined(FMRB_APP_ENGINE_DESKTOP_SPINEL)
+/* The Spinel runtime component is in every build (the sample gems always use
+   it), so the header is too: the gem release on app exit needs it whatever
+   engine the kernel and desktop run on. The exc-stack high-water for the stats
+   dump is only there when one of those VMs is Spinel. */
 #include "fmrb_spinel_host.h"
+#if defined(FMRB_KERNEL_ENGINE_SPINEL) || defined(FMRB_APP_ENGINE_DESKTOP_SPINEL)
 #define FMRB_HAVE_SPINEL_HOST 1
 #endif
 #include "fmrb_task_config.h"
