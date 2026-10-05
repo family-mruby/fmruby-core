@@ -155,6 +155,14 @@ typedef struct sp_ctx {
    * an instance would already be sharing each other's civ_ slots. */
   int             statics_inited;
 
+  /* The runtime header's own lazily allocated TU state (the break-scope
+   * stack, the frozen-string dedup table) is allocated from whichever
+   * instance first needs it and dies with that instance, so it must start
+   * empty in every new instance -- but stay put across entry calls of the
+   * same one, where clearing it would drop a live allocation. sp_tu_ctx_init
+   * clears it while this is 0 (memset by sp_instance_create) and sets it. */
+  int             tu_lazy_inited;
+
   /* --- state upstream added after the fork point (P2a inventory) ---------
    * Everything below was a process global (or a TU definition the runtime
    * reaches) in upstream 01521b1e. Each is per-program or per-heap, so two

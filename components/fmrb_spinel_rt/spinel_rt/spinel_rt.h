@@ -1118,8 +1118,8 @@ static inline const char *sp_str_freeze_val(const char *s) {
    table is guarded by the heap lock; the frozen copy is allocated OUTSIDE the
    lock (allocators take the heap lock themselves), then a re-check under the
    lock keeps a single canonical entry per content. */
-static const char **sp_fstr_tab = NULL;
-static size_t sp_fstr_cap = 0, sp_fstr_len = 0;
+SP_TU_BSS static const char **sp_fstr_tab;   /* zeroed: cleared per instance under SP_MULTI_CTX */
+SP_TU_BSS static size_t sp_fstr_cap, sp_fstr_len;
 static const char *sp_fstr_lookup(const char *s) {  /* caller holds the heap lock */
   if (!sp_fstr_cap) return NULL;
   size_t mask = sp_fstr_cap - 1, idx = (size_t)(sp_str_hash(s) & mask);
@@ -10070,6 +10070,7 @@ SP_TU_CTOR static void sp_json_install_hooks(void) {
 }
 
 #ifdef SP_MULTI_CTX
+static void sp_tu_lazy_reset(void);   /* defined with the break-scope stack */
 /* Install this TU's per-instance hooks into the current sp_ctx. The program
    entry calls this (see codegen) once the host has made an instance current,
    replacing the default build's process constructors. sp_tu_init(), emitted
@@ -10077,6 +10078,15 @@ SP_TU_CTOR static void sp_json_install_hooks(void) {
 static void sp_tu_ctx_init(void) {
   sp_gc_install_tu_hooks();
   sp_json_install_hooks();
+  /* The lazily allocated TU slots point into the instance that allocated
+     them; a new instance of this program starts them empty (see
+     tu_lazy_inited in sp_ctx.h). Once per instance, not per entry: a
+     --no-main entry runs here on every call, and the instance's own
+     allocation is still good then. */
+  if (!sp_ctx_current()->tu_lazy_inited) {
+    sp_tu_lazy_reset();
+    sp_ctx_current()->tu_lazy_inited = 1;
+  }
   /* T4-0: register this TU's copies of the runtime-called functions into the
      ctx (names are direct here -- see the #undef block after sp_gc.h). */
   sp_ctx *_c = sp_ctx_current();
@@ -11099,11 +11109,13 @@ static void sp_throw(const char *tag, int kind, sp_RbVal val) {
    ~8% fps in a program that never breaks from a block. TLS holds only
    the pointers, so break-free programs pay nothing. */
 #define SP_BRK_STACK_MAX 64
-static SP_TLS jmp_buf *sp_brk_stack;              /* lazily allocated */
-static SP_TLS sp_RbVal *sp_brk_val;
-static SP_TLS sp_int *sp_brk_serial;
-static SP_TLS int *sp_brk_exc_top;                /* sp_exc_top at scope entry */
-static SP_TLS int *sp_brk_recur_mark;            /* walk-path depth at scope entry (see sp_poly_recur_mark) */
+/* SP_TU_BSS: under SP_MULTI_CTX sp_tu_lazy_reset writes these in every
+   program, which keeps them in the image even where nothing breaks */
+SP_TU_BSS static SP_TLS jmp_buf *sp_brk_stack;    /* lazily allocated */
+SP_TU_BSS static SP_TLS sp_RbVal *sp_brk_val;
+SP_TU_BSS static SP_TLS sp_int *sp_brk_serial;
+SP_TU_BSS static SP_TLS int *sp_brk_exc_top;      /* sp_exc_top at scope entry */
+SP_TU_BSS static SP_TLS int *sp_brk_recur_mark;   /* walk-path depth at scope entry (see sp_poly_recur_mark) */
 static SP_TLS volatile int sp_brk_top = 0;
 /* shared counter (not SP_TLS) so serials are globally unique; see
    sp_proc_home_seq for the same shape */
@@ -11174,6 +11186,22 @@ static void sp_mark_brk_vals(void) {
   for (int si = 0; si < SP_SIG_MAX; si++)
     if (sp_trap_proc[si]) sp_gc_mark(sp_trap_proc[si]);
 }
+
+#ifdef SP_MULTI_CTX
+/* Start a new instance with the lazily allocated TU slots empty: the break
+   stack's arrays and the frozen-string dedup table (both allocated on first
+   use from the instance current then) went away with the instance that made
+   them, and so did the strings the table holds. Nothing is freed here --
+   that memory belonged to the old instance's backend. The break depth goes
+   with its arrays: an instance that ended inside a break scope (torn down
+   from outside) would otherwise leave the collector walking sp_brk_val[0..top)
+   of the next one. Called by sp_tu_ctx_init, once per instance. */
+static void sp_tu_lazy_reset(void) {
+  sp_brk_stack = NULL; sp_brk_val = NULL; sp_brk_serial = NULL;
+  sp_brk_exc_top = NULL; sp_brk_recur_mark = NULL; sp_brk_top = 0;
+  sp_fstr_tab = NULL; sp_fstr_cap = 0; sp_fstr_len = 0;
+}
+#endif
 
 /* ---- non-lambda proc `return` (non-local return to the home method) -------
    A non-lambda proc's `return` returns from the method that created the proc.
