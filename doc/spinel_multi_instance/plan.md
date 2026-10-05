@@ -111,7 +111,7 @@ E2 で書いた形 (a1b2ee50 の claim) を戻す。E3 で直した文書の枠�
 | G3 | 起動中に終わったアプリの後、キー入力の行き先を元に戻す (instruction_g3.md、ユーザ決定 案 a)。G2 の実機確認で見つかった前からの不具合 | **完了** (report/g1.md の G3、2026-10-04 検収)。判定は app_started。G1 で壊れていた互換構成のビルドも直した (9768c860) |
 | G4 | エラーの窓の中のクリックでキー入力の行き先を動かさない (instruction_g4.md、ユーザ決定 案 1) | **完了** (report/g1.md の G4、2026-10-04 検収)。overlay_state に keyless を足した。エラーの窓の説明の文字を明るい灰色 0xB6 に (ユーザ依頼) |
 | G2 | 仕上げ: Raycaster の表示、fft_bench の「spinel>ruby」、FFT アプリと spinel_hello の同時起動の禁止、spinel_hello のメモリ切れの確認 (instruction_g2.md、ユーザ決定) | **完了** (report/g1.md の G2、2026-10-04 ユーザの実機確認)。`.app.toml` に `single_instance` と `exclusive_group`。sim のメモリ切れは develop からの問題 (64 ビットで GC の作業領域が倍) で、sim だけ 32 KB に直した |
-| H1 | 開き直したときに消えたメモリを指す 2 つの領域 (sp_brk_stack / sp_fstr_tab) を直す (instruction_h1.md、ユーザ決定 2026-10-05) | 着手 |
+| H1 | 開き直したときに消えたメモリを指す 2 つの領域 (sp_brk_stack / sp_fstr_tab) を直す (instruction_h1.md、ユーザ決定 2026-10-05) | **完了** (report/h1.md、2026-10-05 検収)。インスタンスごとに 1 回空に戻す。fork fmrb-ext 0bba87dc (push 済)、SPINEL_PIN 更新。上流では起きないので PR 候補にはせず台帳に記録 (U-27) |
 | A2 | 変換器を、状態をヒープに置く作りに直す (上の段取り) | **保留** (再開時は試作から。gem のアプリごとのインスタンス (案 c) もこのとき) |
 
 ## 残り (2026-10-03)

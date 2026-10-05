@@ -9,4 +9,4 @@
 #   can never quietly come from somewhere other than the one pinned here.
 repo: https://github.com/kishima/spinel.git
 branch: fmrb-ext
-commit: 654c9fd5286f8c9c8068378de5cabfa10dcb4c92
+commit: 0bba87dc40bae9eb3a175d5f1efa3aa64c1be866
