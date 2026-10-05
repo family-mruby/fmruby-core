@@ -1,6 +1,6 @@
 # sim の起動が、ソケットの準備の割り込み (EINTR) で失敗する件
 
-> 状態: 進行中 | 更新: 2026-10-05 | Linux の sim で、graphics-audio のソケットの bind / listen が EINTR で失敗して起動しない。FreeRTOS の POSIX ポートの SIGALRM が系統呼び出しを割り込むのが原因の見込み。E1 で原因を確かめて直す
+> 状態: 完了 | 更新: 2026-10-05 | Linux の sim で、graphics-audio のソケットの bind / listen が EINTR で失敗して起動しない。FreeRTOS の POSIX ポートの SIGALRM が系統呼び出しを割り込むのが原因の見込み。E1 で原因を確かめて直す
 
 ## 目的
 
@@ -28,4 +28,9 @@ sim (3 つのコンテナ) が毎回確実に起動するようにする。検�
 
 | 段階 | 内容 | 状態 |
 |---|---|---|
-| E1 | 原因の確認と修正、くり返しの起動の試験 (instruction_e1.md) | 着手 |
+| E1 | 原因の確認と修正、くり返しの起動の試験 (instruction_e1.md) | **完了** (report/e1.md、2026-10-05 検収)。FreeRTOS の POSIX ポートの SIGALRM (SA_RESTART なし) が bind / listen / connect / usleep を割り込んでいた (strace で確認)。EINTR で再試行に統一。起動は直す前 54/60 → 直した後 64/64 |
+
+## 残り
+
+- docker compose の healthcheck が `test -S` (ソケットのファイルがあるか) だけで、listen が失敗しても healthy になる (親のリポジトリ)。
+- graphics_task は input_socket_start が失敗するとタスクの関数から戻ってしまう。
