@@ -46,6 +46,12 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 (読み取りのタスクは不要)。zenoh-pico の POSIX の TCP 層は gem 側の実装に差し替えている (データの無い poll が
 止まらないこと、sim の EINTR、接続の時間制限)。Z2 でも ESP32 の TCP 層に同じ問題がある見込み。
 
+Z1 の後の決定 (2026-10-06 ユーザ決定):
+
+- ルータが消えたことに気づくまでの時間 (今は約 20 秒、put の失敗で分かる) は Z1 のまま。すぐ気づく形にするかは Z2 で決める。
+- 自動の再接続は入れない (切れたらアプリが開き直す)。
+- zenohd のポートは PC の中 (127.0.0.1) だけに出す。LAN に開くのは実機がつなぐ Z2 で。
+
 ### ゴール
 
 Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のルータ (zenohd) が、Zenoh で値をやり取りできる。
