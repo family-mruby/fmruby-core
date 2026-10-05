@@ -62,6 +62,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
+- `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-05) P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔1 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
