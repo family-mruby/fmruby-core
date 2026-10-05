@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 計画済 | 更新: 2026-10-05 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。最初は土台の Zenoh の最小の疎通 (Z1: sim の mruby アプリ ⇔ PC の zenohd) から
+> 状態: 計画済 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。最初は土台の Zenoh の最小の疎通 (Z1: sim の mruby アプリ ⇔ PC の zenohd) から
 
 ## 目的
 
@@ -11,8 +11,8 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 
 ## 決まっていること (これまでの議論)
 
-- 名前は Asterism (2026-08-27)。下の通信層の名前として Silk を予約。gem 名 `asterism` は空いているが、取得は
-  ユーザがする (未取得)。
+- 名前は Asterism (2026-08-27)。下の通信層の名前として Silk を予約。gem 名 `asterism` は rubygems.org で空いている
+  (2026-10-06 確認)。取得はユーザのアカウントで行う (未取得)。
 - **使う人が触る層は mruby のアプリの VM** で動かし、ブロックやメタプログラミングを自由に使う
   (method_missing ほか 13 項目が sim で使えることを確認済み: report/metaprog_check.md)。**下回り
   (zenoh-pico、データの符号化、受信の取り出し) は C の gem** で速くする。Spinel にはしない。
@@ -52,17 +52,17 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 
 ### 作るもの
 
-- **zenoh-pico の取り込み**: 版を固定して取り込む。取り込み方は、既存の外部の部品の流儀 (PIN ファイル +
-  rake で取得、例: `lib/add/PICORUBY_TI_PIN`、Spinel の `SPINEL_PIN`) にそろえる案と、git の submodule にする案が
-  ある (未確定事項 1)。Linux の sim では zenoh-pico の Unix のポートを使う。
+- **zenoh-pico の取り込み**: PIN ファイル (`lib/add/ZENOH_PICO_PIN`) に版を固定し、rake で vendor/ (gitignore)
+  に取得する。既存の `lib/add/PICORUBY_TI_PIN`、Spinel の `SPINEL_PIN` と同じ流儀。Linux の sim では
+  zenoh-pico の Unix のポートを使う。
 - **picoruby-zenoh gem** (`lib/add/picoruby-zenoh/`): 最小の API。
   - セッション: 開く (mode: client、接続先: `tcp/<PC>:7447`) と閉じる。
   - 送る: `put(key, payload)` (payload は String。Ruby の値の符号化は後の段階で決める)。
   - 受け取る: `subscribe(key)` が購読を返し、購読から**溜まった値を取り出す** (ポーリング。例: `each_pending`
     か `poll` で `[key, payload]` を返す)。zenoh-pico の受信は `zp_read` 相当をアプリの側から回す
     (読み取りのタスクを立てない形が作れるかを Z1 で確かめる。作れなければ案を返す)。
-  - 名前空間とクラス名は未確定事項 2。
-- **PC 側**: zenohd を docker で動かす (公式のイメージ、版を固定)。sim のコンテナから届くネットワークの設定を
+  - Ruby の名前は `Zenoh` (zenoh-pico の薄い皮、汎用)。Asterism はその上に別の層 (別の gem) として A1 で作る。
+- **PC 側**: zenohd を親のリポジトリの docker compose に足し、sim と一緒に上げる (公式のイメージ、版を固定)。sim のコンテナから届くネットワークの設定を
   決める。確かめる道具は Ruby (REST プラグイン経由の HTTP の GET / PUT、または zenoh の CLI)。手順を
   tools/ に残す。
 - **試しのアプリ**: `flash/app/test/` に置く (ランチャーには出さない)。送受信した値を画面に出す。
@@ -80,12 +80,11 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
   ビルドに入れるのは Z2)。
 - PC 側の手順 (zenohd の起動、確かめ方) が文書と tools/ にある。
 
-## 未確定事項 (Z1 の前に決めたい)
+## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
-1. **zenoh-pico の取り込み方**: PIN ファイル + rake で取得 (既存の流儀にそろう。推奨) / git の submodule。
-2. **Ruby の API の名前**: 下の層の gem を `Zenoh` (zenoh-pico の薄い皮、汎用) とし、Asterism はその上に
-   別の層として作る (推奨) / 最初から `Asterism` の名前で作る。gem 名の `asterism` を取るか (ユーザ) とも関係する。
-3. **PC 側の zenohd の置き場所**: 親のリポジトリの docker compose に足して sim と一緒に上げる / 別に手で上げる。
+1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。
+2. 下の層の gem は `Zenoh` (picoruby-zenoh、汎用)。Asterism は上に別の層として作る。
+3. zenohd は親のリポジトリの docker compose に足し、sim と一緒に上げる。
 
 ## 進め方
 
