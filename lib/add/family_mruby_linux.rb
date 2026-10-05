@@ -101,4 +101,10 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.gem core: "picoruby-socket"
   conf.gem core: "picoruby-net-http"
   conf.gem core: "picoruby-net-websocket"
+
+  # Zenoh client (doc/ruby_asterism, Z1): zenoh-pico built single-threaded and
+  # polled from Ruby. Linux (sim) only for now -- the ESP32 / wasm build
+  # configs do not list it. `rake setup` copies the gem with the pinned
+  # zenoh-pico sources (lib/add/ZENOH_PICO_PIN) into the picoruby tree.
+  conf.gem core: "picoruby-zenoh"
 end

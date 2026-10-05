@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 計画済 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。最初は土台の Zenoh の最小の疎通 (Z1: sim の mruby アプリ ⇔ PC の zenohd) から
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim の mruby アプリ ⇔ zenohd の put / subscribe) 完了、次は Z2 (P4 実機)
 
 ## 目的
 
@@ -11,8 +11,8 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 
 ## 決まっていること (これまでの議論)
 
-- 名前は Asterism (2026-08-27)。下の通信層の名前として Silk を予約。gem 名 `asterism` は rubygems.org で空いている
-  (2026-10-06 確認)。取得はユーザのアカウントで行う (未取得)。
+- 名前は Asterism (2026-08-27)。下の通信層の名前として Silk を予約。gem 名 `asterism` は rubygems.org で
+  取得済み (2026-10-06、0.0.0 は名前の確保だけ)。
 - **使う人が触る層は mruby のアプリの VM** で動かし、ブロックやメタプログラミングを自由に使う
   (method_missing ほか 13 項目が sim で使えることを確認済み: report/metaprog_check.md)。**下回り
   (zenoh-pico、データの符号化、受信の取り出し) は C の gem** で速くする。Spinel にはしない。
@@ -30,7 +30,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 
 | 段階 | 内容 | 目に見える成果 |
 |---|---|---|
-| **Z1** | sim で最小の疎通: picoruby-zenoh gem (zenoh-pico をリンク)、mruby アプリから put / subscribe、PC の zenohd と往復 | sim のアプリが送った値を PC で読める、PC から送った値がアプリの画面に出る |
+| **Z1** (完了) | sim で最小の疎通: picoruby-zenoh gem (zenoh-pico をリンク)、mruby アプリから put / subscribe、PC の zenohd と往復 | sim のアプリが送った値を PC で読める、PC から送った値がアプリの画面に出る |
 | Z2 | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
 | Z3 | get / queryable (問い合わせと応答) と liveliness (生存の監視)。2 台の機体の間で直接 (peer) | 機体どうしが問い合わせる |
 | Z4 | Retro (S3)。flash の区画の見直し (factory の拡張) とセット | Retro も網に入る |
@@ -40,7 +40,17 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 ブラウザ版 (wasm) から網に入る方法 (node_variants.md 2.7、zenoh-ts と remote-api) は、Z1 と並行して小さく
 調べる (段階は Z3 の頃に決める)。
 
-## Z1: sim で最小の疎通 (最初の段階)
+## Z1: sim で最小の疎通 (完了 2026-10-06)
+
+結果は report/z1.md。zenoh-pico 1.10.1 / zenohd 1.10.1。受信はアプリの側からのポーリングだけで成立した
+(読み取りのタスクは不要)。zenoh-pico の POSIX の TCP 層は gem 側の実装に差し替えている (データの無い poll が
+止まらないこと、sim の EINTR、接続の時間制限)。Z2 でも ESP32 の TCP 層に同じ問題がある見込み。
+
+Z1 の後の決定 (2026-10-06 ユーザ決定):
+
+- ルータが消えたことに気づくまでの時間 (今は約 20 秒、put の失敗で分かる) は Z1 のまま。すぐ気づく形にするかは Z2 で決める。
+- 自動の再接続は入れない (切れたらアプリが開き直す)。
+- zenohd のポートは PC の中 (127.0.0.1) だけに出す。LAN に開くのは実機がつなぐ Z2 で。
 
 ### ゴール
 
