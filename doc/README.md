@@ -89,6 +89,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
 - `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **完了** (2026-10-02) 主因は estalloc の ESTALLOC_DEBUG の解放ごとの全走査と、それが隠していたアプリ終了時の二重解放 (mrc_irep_free)。二重解放を直し (不正な解放 510 → 0)、統計だけを残して全走査を止めた。Shell の打鍵で 50 ms 超え 52% → 2%、負荷時 98% → 10%。Spinel にも効く。残りはエディタの同時 2 つ起動での abort (別段階) 〔9 files〕
+- `sim_boot_eintr/` [sim の起動が、ソケットの準備の割り込み (EINTR) で失敗する件](sim_boot_eintr/plan.md) — **完了** (2026-10-05) Linux の sim で、graphics-audio のソケットの bind / listen が EINTR で失敗して起動しない。FreeRTOS の POSIX ポートの SIGALRM が系統呼び出しを割り込むのが原因の見込み。E1 で原因を確かめて直す 〔3 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `spinel_multi_instance/` [Spinel: 同じプログラムを 2 つ同時に動かせるようにする](spinel_multi_instance/plan.md) — **進行中 (C・G1-G4 を実施、A2 は保留)** (2026-10-04) 同じ Spinel プログラムの 2 つ目は断る (C)。gem は持ち主以外が遅い版 (G1)、FFT アプリと spinel_hello は .app.toml で同時起動禁止 (G2)、断られた後のキー入力の行き先を戻す (G3・G4)。根本の A2 は計画だけ保留 〔13 files〕
