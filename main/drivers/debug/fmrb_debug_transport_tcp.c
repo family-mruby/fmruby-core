@@ -16,6 +16,7 @@
 #include <sys/select.h>
 
 #include "fmrb_log.h"
+#include "fmrb_eintr.h"
 
 static const char *TAG = "dbg_tcp";
 
@@ -53,13 +54,13 @@ static fmrb_err_t tcp_init(void) {
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(FMRB_DEBUG_TCP_PORT);
-    if (bind(s_listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (FMRB_RETRY_EINTR(bind(s_listen_fd, (struct sockaddr *)&addr, sizeof(addr))) < 0) {
         FMRB_LOGE(TAG, "bind(:%d) failed: %s", FMRB_DEBUG_TCP_PORT, strerror(errno));
         close(s_listen_fd);
         s_listen_fd = -1;
         return FMRB_ERR_FAILED;
     }
-    if (listen(s_listen_fd, 1) < 0) {
+    if (FMRB_RETRY_EINTR(listen(s_listen_fd, 1)) < 0) {
         FMRB_LOGE(TAG, "listen() failed: %s", strerror(errno));
         close(s_listen_fd);
         s_listen_fd = -1;
@@ -120,7 +121,7 @@ static int tcp_poll(uint8_t *buf, size_t cap, uint32_t timeout_ms) {
 
     // New connection.
     if (s_listen_fd >= 0 && FD_ISSET(s_listen_fd, &rfds)) {
-        int fd = accept(s_listen_fd, NULL, NULL);
+        int fd = FMRB_RETRY_EINTR(accept(s_listen_fd, NULL, NULL));
         if (fd >= 0) {
             if (s_client_fd >= 0) {
                 // One session only: reject the new comer.
@@ -142,7 +143,7 @@ static int tcp_poll(uint8_t *buf, size_t cap, uint32_t timeout_ms) {
             drop_client();
             return 0;
         }
-        ssize_t r = recv(s_client_fd, s_rx + s_rx_fill, room, 0);
+        ssize_t r = FMRB_RETRY_EINTR(recv(s_client_fd, s_rx + s_rx_fill, room, 0));
         if (r == 0) {
             FMRB_LOGI(TAG, "client disconnected");
             drop_client();
@@ -172,7 +173,7 @@ static fmrb_err_t tcp_send(const uint8_t *body, size_t len) {
     for (int i = 0; i < 2; i++) {
         size_t off = 0;
         while (off < parts[i].n) {
-            ssize_t w = send(s_client_fd, parts[i].p + off, parts[i].n - off, MSG_NOSIGNAL);
+            ssize_t w = FMRB_RETRY_EINTR(send(s_client_fd, parts[i].p + off, parts[i].n - off, MSG_NOSIGNAL));
             if (w < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     // Socket buffer full (slow/stalled client). Block on

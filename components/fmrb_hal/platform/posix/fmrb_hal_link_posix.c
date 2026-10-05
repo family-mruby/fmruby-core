@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include "fmrb_task_config.h"
+#include "fmrb_eintr.h"
 
 #define SOCKET_PATH "/var/run/fmrb/fmrb_socket"
 
@@ -37,10 +38,7 @@ static void linux_link_thread(void *arg) {
 
     while (ch->running) {
         uint8_t buffer[1024];
-        ssize_t received;
-        do {
-            received = recv(ch->socket_fd, buffer, sizeof(buffer), 0);
-        } while (received < 0 && errno == EINTR);
+        ssize_t received = FMRB_RETRY_EINTR(recv(ch->socket_fd, buffer, sizeof(buffer), 0));
 
         if (received > 0 && ch->callback) {
             fmrb_link_message_t msg = {
@@ -75,7 +73,9 @@ static fmrb_err_t connect_to_socket(void) {
     // Try to connect with retry
     int retry_count = 0;
     while (retry_count < 10) {
-        if (connect(global_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        // EISCONN: an interrupted attempt may already have completed.
+        if (FMRB_RETRY_EINTR(connect(global_socket_fd, (struct sockaddr*)&addr, sizeof(addr))) == 0 ||
+            errno == EISCONN) {
             ESP_LOGI(TAG, "Connected to %s", SOCKET_PATH);
             return FMRB_OK;
         }
@@ -87,7 +87,9 @@ static fmrb_err_t connect_to_socket(void) {
             return FMRB_ERR_FAILED;
         }
 
-        usleep(100000); // Wait 100ms
+        // A task delay, not usleep: the scheduler tick (SIGALRM) cuts usleep
+        // short with EINTR, which would spend the retries in a few ms.
+        fmrb_task_delay_ms(100);
         retry_count++;
     }
 
@@ -211,10 +213,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         fmrb_sys_free(buffer);
 
         // Send encoded data (retry on EINTR from SIGALRM)
-        ssize_t sent;
-        do {
-            sent = send(global_socket_fd, encoded, encoded_len, 0);
-        } while (sent < 0 && errno == EINTR);
+        ssize_t sent = FMRB_RETRY_EINTR(send(global_socket_fd, encoded, encoded_len, 0));
         // No per-message debug log here (and none on the receive path): even a
         // filtered ESP_LOGD takes the log lock to check the level, and that
         // lock is a raw pthread mutex the FreeRTOS scheduler cannot see. At
@@ -273,10 +272,8 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     // Only call recv() if buffer is empty or doesn't contain complete frame
     if (recv_pos == 0) {
         // Try to receive data
-        ssize_t received;
-        do {
-            received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, recv_flags);
-        } while (received < 0 && errno == EINTR);
+        ssize_t received = FMRB_RETRY_EINTR(recv(global_socket_fd, recv_buffer + recv_pos,
+                                                 sizeof(recv_buffer) - recv_pos, recv_flags));
         if (received <= 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return FMRB_ERR_TIMEOUT;

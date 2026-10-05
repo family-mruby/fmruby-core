@@ -19,6 +19,7 @@
 #include "host_task.h"
 #include "fmrb_keymap.h"
 #include "fmrb_task_config.h"
+#include "fmrb_eintr.h"
 
 #define INPUT_SOCKET_PATH "/var/run/fmrb/fmrb_input_socket"
 #define MAX_PACKET_SIZE 512
@@ -188,7 +189,9 @@ fmrb_err_t usb_task_init(void)
     // Try to connect with retry
     int retry_count = 0;
     while (retry_count < 20) {
-        if (connect(g_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        // EISCONN: an interrupted attempt may already have completed.
+        if (FMRB_RETRY_EINTR(connect(g_socket_fd, (struct sockaddr*)&addr, sizeof(addr))) == 0 ||
+            errno == EISCONN) {
             FMRB_LOGI(TAG, "Connected to %s", INPUT_SOCKET_PATH);
             break;
         }
@@ -200,7 +203,9 @@ fmrb_err_t usb_task_init(void)
             return FMRB_ERR_FAILED;
         }
 
-        usleep(100000); // Wait 100ms
+        // A task delay, not usleep: the scheduler tick (SIGALRM) cuts usleep
+        // short with EINTR, which would spend the retries in a few ms.
+        fmrb_task_delay_ms(100);
         retry_count++;
     }
 
