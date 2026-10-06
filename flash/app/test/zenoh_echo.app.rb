@@ -1,8 +1,10 @@
-# Zenoh round trip check (doc/ruby_asterism, Z1). Linux sim only: the Zenoh
-# gem is linked into the Linux build alone for now.
+# Zenoh round trip check (doc/ruby_asterism, Z1/Z2). The Zenoh gem is in the
+# Linux sim and the Modern (ESP32-P4) builds.
 #
-# - Connects to the router (tcp/zenohd:7447, the zenohd service of the
-#   parent repo's docker compose). /home/zenoh_locator.txt overrides it.
+# - Connects to the router. The locator is the first line of
+#   /home/zenoh_echo.txt (e.g. tcp/192.168.10.2:7447 for a router on the
+#   PC's LAN address); without that file it is tcp/zenohd:7447, the zenohd
+#   service of the sim stack.
 # - Puts a counter on fmrb/test/out once a second.
 # - Subscribes to fmrb/test/in and shows the latest value with the number of
 #   values received and dropped.
@@ -20,8 +22,12 @@ class ZenohEchoApp < FmrbApp
   OUT_KEY = "fmrb/test/out"
   IN_KEY = "fmrb/test/in"
 
+  LOCATOR_FILE = "/home/zenoh_echo.txt"
+
   def locator
-    File.open("/home/zenoh_locator.txt", "r") { |f| f.read.strip }
+    text = File.open(LOCATOR_FILE, "r") { |f| f.read }
+    line = text.split("\n")[0].to_s.strip
+    line.empty? ? DEFAULT_LOCATOR : line
   rescue
     DEFAULT_LOCATOR
   end
@@ -38,16 +44,19 @@ class ZenohEchoApp < FmrbApp
     draw_screen
   end
 
+  # Session.open blocks this app while it connects; the time is logged.
   def connect
-    @session = Zenoh::Session.open(@locator)
-    @sub = @session.subscribe(IN_KEY)
-    @state = "connected"
-    Log.info("zenoh_echo: connected to #{@locator}")
-  rescue => e
-    @session = nil
-    @sub = nil
-    @state = "failed: #{e.message}"
-    Log.info("zenoh_echo: #{@state}")
+    t0 = Machine.board_millis
+    begin
+      @session = Zenoh::Session.open(@locator)
+      @sub = @session.subscribe(IN_KEY)
+      @state = "connected"
+    rescue => e
+      @session = nil
+      @sub = nil
+      @state = "failed: #{e.message}"
+    end
+    Log.info("zenoh_echo: #{@state} (#{@locator}, #{Machine.board_millis - t0} ms)")
   end
 
   def draw_screen

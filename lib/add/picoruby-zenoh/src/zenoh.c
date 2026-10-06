@@ -189,13 +189,16 @@ static mrb_value zrb_sub_each_pending(mrb_state *mrb, mrb_value self) {
     while (todo > 0 && s->count > 0) {
         todo--;
         int ai = mrb_gc_arena_save(mrb);
+        /* Make the strings while the entry is still owned by the ring: if an
+         * allocation raises, the value stays queued (and is freed with the
+         * ring) instead of leaking. */
         zrb_entry e = s->ring[s->head];
-        s->ring[s->head].buf = NULL;
-        s->head = (s->head + 1) % s->depth;
-        s->count--;
         mrb_value pair[2];
         pair[0] = mrb_str_new(mrb, (const char *)e.buf, (mrb_int)e.key_len);
         pair[1] = mrb_str_new(mrb, (const char *)e.buf + e.key_len, (mrb_int)e.payload_len);
+        s->ring[s->head].buf = NULL;
+        s->head = (s->head + 1) % s->depth;
+        s->count--;
         z_free(e.buf);
         taken++;
         if (collect) {

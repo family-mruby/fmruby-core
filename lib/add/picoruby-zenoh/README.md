@@ -41,19 +41,38 @@ end
 - **Memory**: the gem's own structures use the mruby allocator (`mrb_malloc`),
   zenoh-pico and the received values use zenoh-pico's allocator (`z_malloc`).
   The gem does not depend on any host-specific allocator so that it builds
-  with plain PicoRuby / mruby.
+  with plain PicoRuby / mruby. On ESP-IDF, `z_malloc` takes external RAM
+  (PSRAM) only (`ports/esp32/zp_system_esp32.c`).
 - **Cleanup**: `close` is optional. Garbage-collecting (or closing the VM
   with) a `Session` or `Subscriber` closes the zenoh-pico side, in either
   order.
 - **Build options**: `include/zenoh_generic_config.h` (client, TCP only, no
   serial / TLS / UDP / scouting, put + subscribe only). zenoh-pico's own
-  POSIX TCP link is replaced by `src/zp_tcp_posix.c` (non-blocking read for
-  polling, retries on `EINTR`, connect time limit).
+  TCP links are replaced by `src/zp_tcp_posix.c` and
+  `ports/esp32/zp_tcp_esp32.c` (non-blocking read for polling, connect time
+  limit, bounded handshake read; retries on `EINTR`).
 
 ## Building
 
 `mrbgem.rake` compiles the zenoh-pico sources found in `$ZENOH_PICO_DIR`, or
 else in `vendor/zenoh-pico/` inside the gem (`src/` and `include/` of a
-release). POSIX hosts only for now. In Family mruby, `rake zenoh:setup`
-fetches the release pinned in `lib/add/ZENOH_PICO_PIN` and `rake setup` puts
-it in place.
+release). In Family mruby, `rake zenoh:setup` fetches the release pinned in
+`lib/add/ZENOH_PICO_PIN` and `rake setup` puts it in place.
+
+Platforms (`ZENOH_PICO_PLATFORM` overrides the choice):
+
+- **POSIX** (default; `ZENOH_LINUX`, `ZENOH_MACOS`, `ZENOH_BSD`): everything
+  is compiled by the mruby build.
+- **ESP-IDF** (`ZENOH_ESPIDF`, chosen when the build name starts with
+  `esp32`): the mruby build compiles the gem and the zenoh-pico core with the
+  platform types of `include/zenoh_espidf_platform.h` (no ESP-IDF headers
+  needed). The ESP-IDF component must compile, like other gems' `ports/esp32`:
+  - `ports/esp32/zp_system_esp32.c` (zenoh-pico's `src/system/espidf/system.c`
+    with a PSRAM allocator)
+  - `ports/esp32/zp_tcp_esp32.c`
+  - `vendor/zenoh-pico/src/system/socket/esp32.c`
+
+  with the defines `ZENOH_GENERIC ZENOH_ESPIDF ZENOH_C_STANDARD=11
+  ZENOH_COMPILER_GCC ZENOH_LOG_ERROR`, `-std=gnu11`, and the include paths
+  `include/`, `<gem build dir>/zp_include` (the generated `config.h`),
+  `vendor/zenoh-pico/include` and `vendor/zenoh-pico/src`, plus lwIP.
