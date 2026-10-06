@@ -1,8 +1,9 @@
 # picoruby-zenoh
 
 A thin Ruby layer over [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico):
-open a client session to a Zenoh router, `put` values and `subscribe` to keys.
-The Ruby name is `Zenoh`.
+open a session (client of a Zenoh router, or peer), `put` values and
+`subscribe` to keys, ask and answer queries (`get` / `queryable`), and announce
+and watch liveliness. The Ruby name is `Zenoh`.
 
 ```ruby
 s = Zenoh::Session.open("tcp/192.168.1.10:7447")   # client mode
@@ -15,11 +16,31 @@ loop do
 end
 ```
 
+Query and reply, liveliness (all polled the same way):
+
+```ruby
+qa = s.queryable("demo/node/a/**")          # answer queries
+tok = s.liveliness("demo/alive/a")          # "a is alive" while held
+w = s.liveliness_watch("demo/alive/**")     # who appears / goes away
+g = s.get("demo/node/b/info", 2000)         # ask; returns at once
+loop do
+  s.poll
+  qa.each_pending { |q| q.reply(q.key, "fine") }   # finished after the block
+  w.each_pending { |key, alive| puts "#{key} #{alive ? 'up' : 'down'}" }
+  g.each_reply { |key, payload| puts "#{key}: #{payload}" }
+  break if g.done?
+  sleep_ms 50
+end
+```
+
 ## API
 
 | Call | Returns | Notes |
 |---|---|---|
-| `Zenoh::Session.open(locator)` | `Session` | Client mode, connects to `locator` (`tcp/host:port`). Raises `Zenoh::Error` when the router cannot be reached. Blocks while connecting (a few seconds at most). |
+| `Zenoh::Session.open(locator)` | `Session` | Client mode, connects to the router at `locator` (`tcp/host:port`). Raises `Zenoh::Error` when the router cannot be reached. Blocks while connecting (a few seconds at most). |
+| `Zenoh::Session.open(locator, mode: :peer)` | `Session` | Peer mode without a router: connects to the peer at `locator`. |
+| `Zenoh::Session.open(nil, mode: :peer, listen: "tcp/0.0.0.0:7447")` | `Session` | Peer mode, listening for peers (a `locator` may be given too). New peers are accepted by `poll` (checked about once a second). |
+| `session.peers` | Integer | Connected peers (peer mode), or 1 for the router of a client session; 0 once closed. |
 | `session.put(key, payload)` | `nil` | `payload` is a String (bytes, sent as is). `ArgumentError` on a bad key, `Zenoh::Error` when the session is closed, the put fails, or the connection is found lost (see below). Waits at most `SEND_TIMEOUT_MS` for room to send. |
 | `session.subscribe(key, depth = 16)` | `Subscriber` | `key` may be a key expression (`demo/**`). Up to `depth` received values are kept until read. |
 | `session.poll(steps = 8)` | `true` / `false` | Reads the socket and runs keep-alive / lease work, at most `steps` times. Does not wait for data. `false` once the session has closed (closed by the app, or the connection was lost: see below). |
@@ -28,8 +49,35 @@ end
 | `sub.each_pending { \|key, payload\| }` | Integer | Takes out the values received so far (oldest first). Without a block, returns them as `[[key, payload], ...]`. |
 | `sub.pending` / `sub.received` / `sub.dropped` | Integer | Waiting values / total received / dropped because the ring was full (the oldest goes). |
 | `sub.close` / `sub.closed?` | | Pending values can still be taken after close. |
+| `session.get(key, timeout_ms = 2000, params = nil, payload = nil)` | `Get` | Sends a query and returns at once. Every matching queryable is asked (target ALL) and every reply is kept (no consolidation). `timeout_ms` 1..600000. |
+| `get.each_reply { \|key, payload\| }` | Integer | Replies received so far (oldest first); without a block, an Array. Error replies are not yielded, only counted. |
+| `get.done?` | `true` / `false` | True once every replier has finished, the time limit has passed, or the session closed. The limit is checked once a second by `poll`, so `done?` turns true up to about 1 s after it. |
+| `get.pending` / `received` / `dropped` / `errors` | Integer | Up to 16 replies are kept; more drop the oldest. |
+| `session.queryable(key, depth = 16)` | `Queryable` | Answers queries matching `key`. Up to `depth` unanswered queries are kept; more finish the oldest unanswered (the requester gets nothing from it) and count it as dropped. |
+| `queryable.each_pending { \|q\| }` | Integer | Takes out the waiting queries. Each is finished when the block returns (also when it raises). Without a block: an Array of `Query`, each open until `q.finish` or garbage collection. |
+| `queryable.pending` / `received` / `dropped` / `close` / `closed?` | | |
+| `q.key` / `q.params` / `q.payload` | String | The query's key expression (may contain wildcards), its parameters (`a=1;b=2`) and payload (`""` when none). |
+| `q.reply(payload)` / `q.reply(key, payload)` | `nil` | `key` defaults to the query's key and must match it. May be called several times. `Zenoh::Error` once finished. |
+| `q.finish` / `q.finished?` | | Sends the final reply: the requester's `done?` turns true when every queryable has finished. |
+| `session.liveliness(key)` | `LivelinessToken` | Announces `key` as alive until `token.close`, garbage collection, or the session closing. |
+| `session.liveliness_watch(key, depth = 16)` | `LivelinessWatch` | `each_pending { \|key, alive\| }` (alive is `true` when a token appeared, `false` when it went away); the tokens alive when the watch starts come first. Tokens of the same session are not reported (zenoh-pico does not report its own). Also `pending` / `received` / `dropped` / `close` / `closed?`. |
+| `session.liveliness_get(key, timeout_ms = 2000)` | `Get` | The tokens alive now, as replies (empty payload). |
 | `Zenoh::PICO_VERSION` | String | zenoh-pico version compiled in. |
 | `Zenoh::CONNECT_TIMEOUT_MS` / `Zenoh::SEND_TIMEOUT_MS` | Integer | The link's time limits (3000 each by default; build-time defines `PICORUBY_ZENOH_CONNECT_TIMEOUT_MS` / `PICORUBY_ZENOH_SEND_TIMEOUT_MS`). |
+
+## Peer mode
+
+Two machines can talk without a router: one listens, the other connects.
+Everything above works the same between them (put / subscribe, get /
+queryable, liveliness). Limits of zenoh-pico's peer mode: one listening
+socket per session, at most 10 connected peers (`Z_LISTEN_MAX_CONNECTION_NB`,
+and on ESP-IDF the lwIP socket count), and a peer does not forward between
+the peers connected to it (no routing; peers that must see each other
+connect to each other).
+
+A session that only connects is closed, like a client, when its peer goes
+away (closed the connection, failed, or went silent past the lease). A
+listening session stays open while peers come and go.
 
 ## When the router is lost
 
@@ -67,11 +115,25 @@ opens a new session (`Zenoh::Session.open` again).
 - **Cleanup**: `close` is optional. Garbage-collecting (or closing the VM
   with) a `Session` or `Subscriber` closes the zenoh-pico side, in either
   order.
-- **Build options**: `include/zenoh_generic_config.h` (client, TCP only, no
-  serial / TLS / UDP / scouting, put + subscribe only). zenoh-pico's own
-  TCP links are replaced by `src/zp_tcp_posix.c` and
-  `ports/esp32/zp_tcp_esp32.c` (non-blocking read for polling, connect time
-  limit, bounded handshake read; retries on `EINTR`).
+- **Queries are kept, not answered in the callback.** The queryable's
+  callback clones the query (`z_query_clone`) into a ring; the final reply
+  goes out when the last reference is dropped (after `each_pending`'s block,
+  or `q.finish`). A `Get` is owned jointly by its Ruby object and zenoh-pico,
+  so a `Get` collected before its replies arrive is safe.
+- **Build options**: `include/zenoh_generic_config.h` (client or unicast
+  peer, TCP only, no serial / TLS / UDP / scouting; put, subscribe, query,
+  queryable, liveliness).
+- **Peer mode is polled too.** zenoh-pico accepts peers from its cooperative
+  runtime (a non-blocking accept retried every second) and waits on the peer
+  sockets with `select`. The gem compiles zenoh-pico's
+  `transport/unicast/read.c` with `Z_CONFIG_SOCKET_TIMEOUT=0` so that wait is
+  a readiness check (otherwise every `poll` step would wait 100 ms), and on
+  POSIX replaces `system/unix/network.c` with `src/zp_network_posix.c`
+  (retries `select` on `EINTR`, which would otherwise stop the read task).
+- **TCP links**: zenoh-pico's own are replaced by `src/zp_tcp_posix.c` and
+  `ports/esp32/zp_tcp_esp32.c` (non-blocking read for polling, connect and
+  send time limits, bounded handshake read, quiet non-blocking accept;
+  retries on `EINTR`).
 
 ## Building
 
