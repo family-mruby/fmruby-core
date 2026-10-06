@@ -286,6 +286,13 @@ static bool zrb_session_check_link(zrb_session *z) {
         return true;
     }
     _z_session_t *s = _Z_RC_IN_VAL(z_loan(z->session));
+    /* A router that stays silent past the lease: zenoh-pico clears the
+     * transport (type NONE, link freed) but does not mark the session
+     * closed. Treat it like a lost connection. */
+    if (s->_tp._type == _Z_TRANSPORT_NONE) {
+        zrb_session_shutdown(z);
+        return true;
+    }
     if (s->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
         return false;
     }

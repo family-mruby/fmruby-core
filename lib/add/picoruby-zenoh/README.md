@@ -38,6 +38,9 @@ can no longer carry it:
 
 - the router closed the connection (it stopped, or its host dropped it), or
   the socket failed: noticed by the next `poll`, `put` or `closed?`;
+- the router went silent past the lease (10 s) while the TCP connection
+  stayed up: zenoh-pico drops the transport, noticed by the next `poll`,
+  `put` or `closed?`;
 - a send could not finish within `SEND_TIMEOUT_MS` (the router or the
   network stopped taking data and the send buffer is full): that `put`
   raises after the time limit. A half-sent message would corrupt the stream,
@@ -47,10 +50,6 @@ From then on `poll` returns `false`, `closed?` is `true` and `put` raises
 `Zenoh::Error`. Values already received can still be taken from the
 subscribers. There is no automatic reconnection: to go on, the application
 opens a new session (`Zenoh::Session.open` again).
-
-A router that goes silent while the TCP connection stays up (no keep-alives
-for the lease time, 10 s) makes `put` raise `Zenoh::Error`; `poll` keeps
-returning `true` in that case.
 
 ## Design
 
