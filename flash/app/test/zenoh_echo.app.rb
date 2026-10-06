@@ -74,22 +74,30 @@ class ZenohEchoApp < FmrbApp
     @gfx.present
   end
 
+  # State changes and slow calls are logged: the disconnect measurements in
+  # report/z2.md read how long the session takes to notice a lost router.
   def exchange
     unless @session.poll
-      @state = "disconnected"
-      @session = nil
+      lost("disconnected")
       return
     end
     now = Machine.board_millis
     if now >= @next_put
       @seq += 1
       @session.put(OUT_KEY, @seq.to_s)
+      took = Machine.board_millis - now
+      Log.info("zenoh_echo: put #{@seq} took #{took} ms") if took >= 200
       @next_put = now + 1000
     end
     @sub.each_pending { |_key, payload| @last = payload }
   rescue => e
-    @state = "error: #{e.message}"
+    lost("error: #{e.message}")
+  end
+
+  def lost(state)
+    @state = state
     @session = nil
+    Log.info("zenoh_echo: #{state} (last put #{@seq})")
   end
 
   # Memory line for the reopen test (report/z1.md): this VM's pool, the
