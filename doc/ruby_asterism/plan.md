@@ -32,7 +32,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 |---|---|---|
 | **Z1** (完了) | sim で最小の疎通: picoruby-zenoh gem (zenoh-pico をリンク)、mruby アプリから put / subscribe、PC の zenohd と往復 | sim のアプリが送った値を PC で読める、PC から送った値がアプリの画面に出る |
 | Z2 (完了) | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
-| Z3 | get / queryable (問い合わせと応答) と liveliness (生存の監視)。2 台の機体の間で直接 (peer) | 機体どうしが問い合わせる |
+| Z3 (進行中) | get / queryable (問い合わせと応答) と liveliness (生存の監視)。前半は sim と P4-Nano がルータ経由で、後半はルータなしで直接 (peer、シングルスレッドで成り立つか確かめる) | 機体どうしが問い合わせる |
 | Z4 | Retro (S3)。flash の区画の見直し (factory の拡張) とセット | Retro も網に入る |
 | A1 | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
 | A2 以降 | usecases.md の最小で成立する案 (家を each する、部品を借りる) → ペット (pet_design.md) など | デモ |
