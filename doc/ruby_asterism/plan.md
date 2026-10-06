@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim) と Z2 (P4 実機、WiFi 越し) 完了。次は Z3 (get / queryable / liveliness、機体どうし)
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。次は A1 (遠くのオブジェクトの代理) か Z4 (S3)
 
 ## 目的
 
@@ -32,7 +32,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 |---|---|---|
 | **Z1** (完了) | sim で最小の疎通: picoruby-zenoh gem (zenoh-pico をリンク)、mruby アプリから put / subscribe、PC の zenohd と往復 | sim のアプリが送った値を PC で読める、PC から送った値がアプリの画面に出る |
 | Z2 (完了) | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
-| Z3 (進行中) | get / queryable (問い合わせと応答) と liveliness (生存の監視)。前半は sim と P4-Nano がルータ経由で、後半はルータなしで直接 (peer、シングルスレッドで成り立つか確かめる) | 機体どうしが問い合わせる |
+| Z3 (完了) | get / queryable (問い合わせと応答) と liveliness (生存の監視)。前半は sim と P4-Nano がルータ経由で、後半はルータなしで直接 (peer、シングルスレッドで成り立つか確かめる) | 機体どうしが問い合わせる |
 | Z4 | Retro (S3)。flash の区画の見直し (factory の拡張) とセット | Retro も網に入る |
 | A1 | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
 | A2 以降 | usecases.md の最小で成立する案 (家を each する、部品を借りる) → ペット (pet_design.md) など | デモ |
@@ -104,6 +104,19 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
   切れる、のいずれでもセッションを閉じ、`poll` が false、`closed?` が true、`put` が `Zenoh::Error`。自動の
   再接続はしない (アプリが開き直す)。zenohd の停止に気づくまで実機で約 0.5 秒、固まった場合は約 12 秒。
   WiFi が切れた場合は実機では測らない (リース切れと同じ経路)。
+
+## Z3: 問い合わせ・生存の監視・peer (完了 2026-10-06)
+
+結果は report/z3.md。sim と P4-Nano で確認した。
+
+- `get` / `queryable` と `liveliness` (トークン・監視・今いる人の取り出し) を足した。受け取りは全部ポーリングで
+  取り出す形 (コールバックの中で VM を触らない)。
+- ルータなしの直接の接続 (unicast の peer) はシングルスレッドのまま成り立った (待ち受けは zenoh-pico が約 1 秒ごとに
+  回すので、つながるまで最大 1 秒)。peer の上限は zenoh-pico の既定の 10 台 (絞るかは未決)。
+- P4 のファームは Z2 から +30,896 B (区画の残り 12%)。起動時の内蔵 RAM の増分は 0。peer 1 台あたり内蔵 RAM を
+  1.5-3 KB 使い、閉じれば戻る。
+- 試験の後に内蔵 RAM が約 38 KB 戻らなかったのは zenoh ではなく、ESP-Hosted (WiFi のチップとの通信) が転送用の
+  バッファを解放せずに溜める作りのためだった。P4 の WiFi の通信すべてで起きる。対応は doc/hosted_mempool/。
 
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
