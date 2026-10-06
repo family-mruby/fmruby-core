@@ -74,6 +74,11 @@ CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW=y
 CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
 CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y
 
+# --- esp_hosted: return transfer buffers to the heap after use ---
+# With the mempool on, freed 1664-byte DMA buffers pile up on an unbounded
+# free list and internal RAM never comes back after a burst of traffic.
+CONFIG_ESP_HOSTED_USE_MEMPOOL=n
+
 # --- esp_wifi_remote: slave target selection (read by esp_hosted 1.4.0) ---
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
