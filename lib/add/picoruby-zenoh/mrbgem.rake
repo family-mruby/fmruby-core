@@ -8,7 +8,8 @@
 #
 # Platforms (zenoh-pico's platform selector, ZENOH_PICO_PLATFORM overrides):
 # - POSIX (ZENOH_LINUX, or ZENOH_MACOS / ZENOH_BSD): everything is compiled
-#   here, with this gem's src/zp_tcp_posix.c as the TCP link.
+#   here, with this gem's src/zp_tcp_posix.c as the TCP link and
+#   src/zp_network_posix.c as the socket helpers.
 # - ESP-IDF (ZENOH_ESPIDF, chosen for build names starting with "esp32"): the
 #   zenoh-pico core and the gem are compiled here with the platform types of
 #   include/zenoh_espidf_platform.h, which need no ESP-IDF headers. The
@@ -81,16 +82,34 @@ MRuby::Gem::Specification.new('picoruby-zenoh') do |spec|
     link/transport/upper/serial_protocol.c
     link/transport/upper/tls_stream.c
   ].map { |f| "#{zp_dir}/src/#{f}" }
+  # system/unix/network.c (socket helpers) is replaced by this gem's
+  # src/zp_network_posix.c (EINTR-safe wait on the peer sockets).
   if posix
-    srcs += %w[system/unix/system.c system/unix/network.c].map { |f| "#{zp_dir}/src/#{f}" }
+    srcs += %w[system/unix/system.c].map { |f| "#{zp_dir}/src/#{f}" }
   end
+
+  # The unicast read path waits on the peer sockets (peer mode) for
+  # Z_CONFIG_SOCKET_TIMEOUT on every zp_spin_once(). With a poll of several
+  # steps that would stall the caller's loop for hundreds of ms when no data
+  # comes. Compile that one file with a zero wait (a readiness check); the
+  # handshake keeps its socket timeout everywhere else.
+  per_file_defines = {
+    'transport/unicast/read.c' => ['Z_CONFIG_SOCKET_TIMEOUT=0'],
+  }
 
   build_dir_zp = "#{build_dir}/zenoh-pico"
   srcs.sort.uniq.each do |src|
     rel = src.sub("#{zp_dir}/src/", '')
     spec.objs << "#{build_dir_zp}/#{rel.sub(/\.c\z/, '')}.o"
     file "#{build_dir_zp}/#{rel.sub(/\.c\z/, '')}.o" => src do |t|
-      spec.cc.run t.name, t.prerequisites.first
+      extra = per_file_defines[rel]
+      if extra
+        cc = spec.cc.dup
+        cc.defines = spec.cc.defines + extra
+        cc.run t.name, t.prerequisites.first
+      else
+        spec.cc.run t.name, t.prerequisites.first
+      end
     end
   end
 end

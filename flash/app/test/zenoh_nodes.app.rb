@@ -15,6 +15,10 @@
 #   report this session's own token, so this machine is listed as "self").
 #   Every 3 s it asks each of them for .../info, and every 5 s it asks the
 #   first one for .../silent with a 1.5 s limit, showing how that ended.
+# - Puts a counter on fmrb/node/<name>/beat every second and subscribes to
+#   fmrb/node/*/beat, showing the last value from each machine (put /
+#   subscribe between machines, with or without a router).
+# - Logs a poll that takes 30 ms or more (a poll must not wait for data).
 #
 # From the PC (parent repo): ruby tools/fmrb_zenoh.rb query fmrb/node/<name>/info
 #                            ruby tools/fmrb_zenoh.rb alive
@@ -49,6 +53,9 @@ class ZenohNodesApp < FmrbApp
     @silent = nil      # [name, Get, started_ms]
     @silent_text = "-"
     @answered = 0
+    @beat = 0
+    @next_beat = 0
+    @slow_polls = 0
     @next_info = 0
     @next_silent = Machine.board_millis + SILENT_EVERY_MS
     @next_log = Machine.board_millis + 10000
@@ -75,6 +82,7 @@ class ZenohNodesApp < FmrbApp
       @token = @session.liveliness(ALIVE_PREFIX + @name)
       @qa = @session.queryable("fmrb/node/#{@name}/**")
       @watch = @session.liveliness_watch(ALIVE_PREFIX + "**")
+      @beats = @session.subscribe("fmrb/node/*/beat")
       @state = "connected"
     rescue => e
       @session = nil
@@ -119,7 +127,7 @@ class ZenohNodesApp < FmrbApp
       next if name == @name
       if alive
         Log.info("zenoh_nodes: alive #{name}") unless @nodes[name]
-        @nodes[name] ||= { info: "-", got_at: 0 }
+        @nodes[name] ||= { info: "-", got_at: 0, beat: "-" }
       else
         Log.info("zenoh_nodes: gone #{name}")
         @nodes.delete(name)
@@ -172,12 +180,34 @@ class ZenohNodesApp < FmrbApp
     end
   end
 
+  def beat
+    now = Machine.board_millis
+    if now >= @next_beat
+      @next_beat = now + 1000
+      @beat += 1
+      @session.put("fmrb/node/#{@name}/beat", @beat.to_s)
+    end
+    @beats.each_pending do |key, payload|
+      name = key.split("/")[2].to_s
+      node = @nodes[name]
+      node[:beat] = payload if node
+    end
+  end
+
   def exchange
-    unless @session.poll
+    t0 = Machine.board_millis
+    open = @session.poll
+    took = Machine.board_millis - t0
+    if took >= 30
+      @slow_polls += 1
+      Log.info("zenoh_nodes: poll took #{took} ms")
+    end
+    unless open
       lost("disconnected")
       return
     end
     answer_queries
+    beat
     watch_alive
     ask_nodes
     collect_replies
@@ -203,7 +233,7 @@ class ZenohNodesApp < FmrbApp
     @gfx.draw_text(x, y + 12, "self: #{@name} (alive)", theme_fg)
     row = 2
     @nodes.each do |name, node|
-      @gfx.draw_text(x, y + row * 12, "#{name}: #{node[:info]}"[0, 48], theme_fg)
+      @gfx.draw_text(x, y + row * 12, "#{name}: b=#{node[:beat]} #{node[:info]}"[0, 48], theme_fg)
       row += 1
       break if row > 8
     end
@@ -217,6 +247,7 @@ class ZenohNodesApp < FmrbApp
     return if now < @next_log
     @next_log = now + 10000
     Log.info("zenoh_nodes: nodes=#{@nodes.size} gets=#{@gets.size} held=#{@held.size} " \
+             "beat=#{@beat} slow_polls=#{@slow_polls} peers=#{@session ? @session.peers : 0} " \
              "pool_used=#{FmrbApp.pool_used} live=#{GC.stat[:live]}")
   end
 

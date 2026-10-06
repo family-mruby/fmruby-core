@@ -23,6 +23,9 @@
  *    zp_tcp_socket_closed() reports it, like a peer that closed the
  *    connection (see include/picoruby_zenoh_link.h).
  *
+ * 5. Peer mode: listen/accept for a non-blocking listening socket polled by
+ *    zenoh-pico's runtime (no accept task of its own).
+ *
  * _z_tcp_read_exact (session handshake) still waits, up to the socket timeout
  * per call, and keeps waiting once a message has started arriving so a
  * partially received message is never cut in half.
@@ -177,17 +180,45 @@ z_result_t _z_tcp_open(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t en
     return _Z_ERR_GENERIC;
 }
 
+/* Listening socket for a peer session. zenoh-pico makes it non-blocking and
+ * polls _z_tcp_accept from its runtime (about once a second while idle). */
 z_result_t _z_tcp_listen(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t endpoint) {
-    /* Client mode only (Z_FEATURE_UNICAST_PEER=0): nothing listens. */
-    (void)endpoint;
     sock->_fd = -1;
-    _Z_ERROR_RETURN(_Z_ERR_GENERIC);
+    for (struct addrinfo *it = endpoint._iptcp; it != NULL; it = it->ai_next) {
+        int fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+        if (fd == -1) {
+            continue;
+        }
+        int one = 1;
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (void *)&one, sizeof(one)) == 0 &&
+            bind(fd, it->ai_addr, it->ai_addrlen) == 0 && listen(fd, Z_LISTEN_MAX_CONNECTION_NB) == 0) {
+            sock->_fd = fd;
+            return _Z_RES_OK;
+        }
+        close(fd);
+    }
+    _Z_ERROR_LOG(_Z_ERR_GENERIC);
+    return _Z_ERR_GENERIC;
 }
 
+/* Called by zenoh-pico's accept task on every turn. "Nobody is waiting" is
+ * the normal case and is not logged (upstream logs an error each time).
+ * _Z_ERR_INVALID tells the task that the listening socket is gone. */
 z_result_t _z_tcp_accept(const _z_sys_net_socket_t *sock_in, _z_sys_net_socket_t *sock_out) {
-    (void)sock_in;
     sock_out->_fd = -1;
-    _Z_ERROR_RETURN(_Z_ERR_GENERIC);
+    int fd;
+    do {
+        fd = accept(sock_in->_fd, NULL, NULL);
+    } while (fd < 0 && errno == EINTR);
+    if (fd < 0) {
+        return (errno == EBADF) ? _Z_ERR_INVALID : _Z_ERR_GENERIC;
+    }
+    if (zp_set_sockopts(fd) != _Z_RES_OK) {
+        close(fd);
+        return _Z_ERR_GENERIC;
+    }
+    sock_out->_fd = fd;
+    return _Z_RES_OK;
 }
 
 void _z_tcp_close(_z_sys_net_socket_t *sock) {

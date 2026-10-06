@@ -37,7 +37,10 @@ end
 
 | Call | Returns | Notes |
 |---|---|---|
-| `Zenoh::Session.open(locator)` | `Session` | Client mode, connects to `locator` (`tcp/host:port`). Raises `Zenoh::Error` when the router cannot be reached. Blocks while connecting (a few seconds at most). |
+| `Zenoh::Session.open(locator)` | `Session` | Client mode, connects to the router at `locator` (`tcp/host:port`). Raises `Zenoh::Error` when the router cannot be reached. Blocks while connecting (a few seconds at most). |
+| `Zenoh::Session.open(locator, mode: :peer)` | `Session` | Peer mode without a router: connects to the peer at `locator`. |
+| `Zenoh::Session.open(nil, mode: :peer, listen: "tcp/0.0.0.0:7447")` | `Session` | Peer mode, listening for peers (a `locator` may be given too). New peers are accepted by `poll` (checked about once a second). |
+| `session.peers` | Integer | Connected peers (peer mode), or 1 for the router of a client session; 0 once closed. |
 | `session.put(key, payload)` | `nil` | `payload` is a String (bytes, sent as is). `ArgumentError` on a bad key, `Zenoh::Error` when the session is closed, the put fails, or the connection is found lost (see below). Waits at most `SEND_TIMEOUT_MS` for room to send. |
 | `session.subscribe(key, depth = 16)` | `Subscriber` | `key` may be a key expression (`demo/**`). Up to `depth` received values are kept until read. |
 | `session.poll(steps = 8)` | `true` / `false` | Reads the socket and runs keep-alive / lease work, at most `steps` times. Does not wait for data. `false` once the session has closed (closed by the app, or the connection was lost: see below). |
@@ -61,6 +64,20 @@ end
 | `session.liveliness_get(key, timeout_ms = 2000)` | `Get` | The tokens alive now, as replies (empty payload). |
 | `Zenoh::PICO_VERSION` | String | zenoh-pico version compiled in. |
 | `Zenoh::CONNECT_TIMEOUT_MS` / `Zenoh::SEND_TIMEOUT_MS` | Integer | The link's time limits (3000 each by default; build-time defines `PICORUBY_ZENOH_CONNECT_TIMEOUT_MS` / `PICORUBY_ZENOH_SEND_TIMEOUT_MS`). |
+
+## Peer mode
+
+Two machines can talk without a router: one listens, the other connects.
+Everything above works the same between them (put / subscribe, get /
+queryable, liveliness). Limits of zenoh-pico's peer mode: one listening
+socket per session, at most 10 connected peers (`Z_LISTEN_MAX_CONNECTION_NB`,
+and on ESP-IDF the lwIP socket count), and a peer does not forward between
+the peers connected to it (no routing; peers that must see each other
+connect to each other).
+
+A session that only connects is closed, like a client, when its peer goes
+away (closed the connection, failed, or went silent past the lease). A
+listening session stays open while peers come and go.
 
 ## When the router is lost
 
@@ -103,12 +120,20 @@ opens a new session (`Zenoh::Session.open` again).
   goes out when the last reference is dropped (after `each_pending`'s block,
   or `q.finish`). A `Get` is owned jointly by its Ruby object and zenoh-pico,
   so a `Get` collected before its replies arrive is safe.
-- **Build options**: `include/zenoh_generic_config.h` (client, TCP only, no
-  serial / TLS / UDP / scouting; put, subscribe, query, queryable,
-  liveliness). zenoh-pico's own
-  TCP links are replaced by `src/zp_tcp_posix.c` and
-  `ports/esp32/zp_tcp_esp32.c` (non-blocking read for polling, connect time
-  limit, bounded handshake read; retries on `EINTR`).
+- **Build options**: `include/zenoh_generic_config.h` (client or unicast
+  peer, TCP only, no serial / TLS / UDP / scouting; put, subscribe, query,
+  queryable, liveliness).
+- **Peer mode is polled too.** zenoh-pico accepts peers from its cooperative
+  runtime (a non-blocking accept retried every second) and waits on the peer
+  sockets with `select`. The gem compiles zenoh-pico's
+  `transport/unicast/read.c` with `Z_CONFIG_SOCKET_TIMEOUT=0` so that wait is
+  a readiness check (otherwise every `poll` step would wait 100 ms), and on
+  POSIX replaces `system/unix/network.c` with `src/zp_network_posix.c`
+  (retries `select` on `EINTR`, which would otherwise stop the read task).
+- **TCP links**: zenoh-pico's own are replaced by `src/zp_tcp_posix.c` and
+  `ports/esp32/zp_tcp_esp32.c` (non-blocking read for polling, connect and
+  send time limits, bounded handshake read, quiet non-blocking accept;
+  retries on `EINTR`).
 
 ## Building
 
