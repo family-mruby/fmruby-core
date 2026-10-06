@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim の mruby アプリ ⇔ zenohd の put / subscribe) 完了、次は Z2 (P4 実機)
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim) と Z2 (P4 実機、WiFi 越し) 完了。次は Z3 (get / queryable / liveliness、機体どうし)
 
 ## 目的
 
@@ -31,7 +31,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 | 段階 | 内容 | 目に見える成果 |
 |---|---|---|
 | **Z1** (完了) | sim で最小の疎通: picoruby-zenoh gem (zenoh-pico をリンク)、mruby アプリから put / subscribe、PC の zenohd と往復 | sim のアプリが送った値を PC で読める、PC から送った値がアプリの画面に出る |
-| Z2 | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
+| Z2 (完了) | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
 | Z3 | get / queryable (問い合わせと応答) と liveliness (生存の監視)。2 台の機体の間で直接 (peer) | 機体どうしが問い合わせる |
 | Z4 | Retro (S3)。flash の区画の見直し (factory の拡張) とセット | Retro も網に入る |
 | A1 | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
@@ -89,6 +89,19 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 - 実機のファームのビルド (TAB5 / NARYAv4 / S3) に影響しない (Z1 では Linux だけでリンクする。ESP32 の
   ビルドに入れるのは Z2)。
 - PC 側の手順 (zenohd の起動、確かめ方) が文書と tools/ にある。
+
+## Z2: P4 実機で WiFi 越しの往復 (完了 2026-10-06)
+
+結果は report/z2.md。NARYAv4 (P4-Nano) で確認した (Tab5 は後日の実機確認に回す)。
+
+- gem は P4 のビルドだけに入る (S3 は Z4、wasm は対象外)。ファームは +58,944 B、区画の残り 13%。
+- 内蔵 RAM は起動時に増えない。zenoh-pico の確保は PSRAM だけ。接続中は lwIP の側で約 2.4 KB 使い、
+  閉じてから約 2 分で戻る (lwIP が閉じた接続を 120 秒持つため)。
+- ESP-IDF の TCP 層も gem 側の実装に差し替えた (受信の時間制限が無く poll が止まる、接続の時間制限が無い)。
+- PC 側は `docker-compose.zenoh-lan.yml` を重ねたときだけ 7447 を LAN に開く (REST の 8000 は PC の中だけ)。
+  WSL2 (ミラーモード) では Windows の Hyper-V のファイアウォールに 7447 の受信の規則が要る。
+- 切断に気づくまで: zenohd の停止は 2-3 秒、zenohd が固まった場合はリース切れで約 12.5 秒。どちらも次の put の
+  失敗で分かり、poll は true のまま。WiFi が切れた場合は未測定 (遠隔では作れない)。
 
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
