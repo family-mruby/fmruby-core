@@ -73,7 +73,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `fs_kill_hang/` [ファイル操作中のアプリの kill でファイル操作が止まる件](fs_kill_hang/plan.md) — **完了** (2026-09-29) K1: 強制 kill でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる。K2: Spinel の File と Lua の io も file HAL 経由にして同じ守りを効かせ、強制 kill で Lua の lua_close を呼ばない (二重解放の修正)。sim と P4-Nano で確認 〔5 files〕
 - `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔11 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
-- `hosted_mempool/` [ESP-Hosted の転送バッファの溜め込みをやめる](hosted_mempool/plan.md) — **進行中** (2026-10-06) P4 の WiFi の通信で内蔵 RAM が戻らなくなる件。ESP-Hosted の mempool を切り (CONFIG_ESP_HOSTED_USE_MEMPOOL=n)、速さと細切れへの影響を測ってから採用を決める 〔2 files〕
+- `hosted_mempool/` [ESP-Hosted の転送バッファの溜め込みをやめる](hosted_mempool/plan.md) — **完了** (2026-10-06) P4 の WiFi の通信で内蔵 RAM が戻らなくなる件。ESP-Hosted の mempool を切った (CONFIG_ESP_HOSTED_USE_MEMPOOL=n、採用済)。内蔵 RAM は戻り、細切れも減り、速さは変わらない。Tab5 の確認は device_check_backlog 〔3 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
 - `iram_reduction/` [内蔵 RAM の削減 (第 2 弾)](iram_reduction/plan.md) — **進行中** (2026-10-01) **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01) 〔7 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
@@ -83,6 +83,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-27) P0-P4 完了。**P6 完了: 青ちらつき (DSI アンダーラン) は DSI フレームバッファの先頭を 4KB 境界に揃えて解消** (report/p6.md、ユーザ目視で確認)。帯域ではなく揃いが原因だった。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔11 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔6 files〕
+- `p4_transfer_crash/` [P4 でファイル転送の直後に core 0 が落ちる件](p4_transfer_crash/plan.md) — **進行中** (2026-10-06) P4-Nano で 64 KB の /fs/put・/fs/get の直後に core 0 のタスクが Instruction / Store access fault で落ちることがある。CONFIG_SPI_FLASH_AUTO_SUSPEND との組み合わせを疑う。まず計装なしのビルドで再現を確かめる 〔2 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
