@@ -12,8 +12,7 @@
  *   zp_spin_once() a bounded number of times.
  * - Client mode over TCP unicast only. Serial, TLS, WebSocket, Bluetooth,
  *   raw ethernet, UDP and multicast scouting are compiled out.
- * - Publication and subscription only (query/queryable/liveliness come with
- *   a later stage).
+ * - Publication, subscription, query (get), queryable and liveliness.
  * - No automatic reconnection: a lost router closes the session, and the
  *   application decides whether to open a new one.
  *
@@ -84,13 +83,13 @@
 #define Z_FEATURE_ADVANCED_SUBSCRIPTION 0
 #endif
 #ifndef Z_FEATURE_QUERY
-#define Z_FEATURE_QUERY 0
+#define Z_FEATURE_QUERY 1
 #endif
 #ifndef Z_FEATURE_QUERYABLE
-#define Z_FEATURE_QUERYABLE 0
+#define Z_FEATURE_QUERYABLE 1
 #endif
 #ifndef Z_FEATURE_LIVELINESS
-#define Z_FEATURE_LIVELINESS 0
+#define Z_FEATURE_LIVELINESS 1
 #endif
 #ifndef Z_FEATURE_RAWETH_TRANSPORT
 #define Z_FEATURE_RAWETH_TRANSPORT 0

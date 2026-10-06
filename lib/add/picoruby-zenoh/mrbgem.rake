@@ -20,7 +20,7 @@
 MRuby::Gem::Specification.new('picoruby-zenoh') do |spec|
   spec.license = 'MIT'
   spec.authors = ['Katsuhiko Kageyama']
-  spec.summary = 'Zenoh client (put / subscribe) on zenoh-pico, polled from Ruby'
+  spec.summary = 'Zenoh (put, subscribe, query, liveliness) on zenoh-pico, polled from Ruby'
 
   zp_dir = ENV['ZENOH_PICO_DIR'].to_s
   zp_dir = File.join(dir, 'vendor', 'zenoh-pico') if zp_dir.empty?

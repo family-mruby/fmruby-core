@@ -1,8 +1,9 @@
 # picoruby-zenoh
 
 A thin Ruby layer over [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico):
-open a client session to a Zenoh router, `put` values and `subscribe` to keys.
-The Ruby name is `Zenoh`.
+open a session (client of a Zenoh router, or peer), `put` values and
+`subscribe` to keys, ask and answer queries (`get` / `queryable`), and announce
+and watch liveliness. The Ruby name is `Zenoh`.
 
 ```ruby
 s = Zenoh::Session.open("tcp/192.168.1.10:7447")   # client mode
@@ -11,6 +12,23 @@ loop do
   s.poll                                  # run zenoh-pico's pending work
   s.put("demo/out", "hello")
   sub.each_pending { |key, payload| puts "#{key}: #{payload}" }
+  sleep_ms 50
+end
+```
+
+Query and reply, liveliness (all polled the same way):
+
+```ruby
+qa = s.queryable("demo/node/a/**")          # answer queries
+tok = s.liveliness("demo/alive/a")          # "a is alive" while held
+w = s.liveliness_watch("demo/alive/**")     # who appears / goes away
+g = s.get("demo/node/b/info", 2000)         # ask; returns at once
+loop do
+  s.poll
+  qa.each_pending { |q| q.reply(q.key, "fine") }   # finished after the block
+  w.each_pending { |key, alive| puts "#{key} #{alive ? 'up' : 'down'}" }
+  g.each_reply { |key, payload| puts "#{key}: #{payload}" }
+  break if g.done?
   sleep_ms 50
 end
 ```
@@ -28,6 +46,19 @@ end
 | `sub.each_pending { \|key, payload\| }` | Integer | Takes out the values received so far (oldest first). Without a block, returns them as `[[key, payload], ...]`. |
 | `sub.pending` / `sub.received` / `sub.dropped` | Integer | Waiting values / total received / dropped because the ring was full (the oldest goes). |
 | `sub.close` / `sub.closed?` | | Pending values can still be taken after close. |
+| `session.get(key, timeout_ms = 2000, params = nil, payload = nil)` | `Get` | Sends a query and returns at once. Every matching queryable is asked (target ALL) and every reply is kept (no consolidation). `timeout_ms` 1..600000. |
+| `get.each_reply { \|key, payload\| }` | Integer | Replies received so far (oldest first); without a block, an Array. Error replies are not yielded, only counted. |
+| `get.done?` | `true` / `false` | True once every replier has finished, the time limit has passed, or the session closed. The limit is checked once a second by `poll`, so `done?` turns true up to about 1 s after it. |
+| `get.pending` / `received` / `dropped` / `errors` | Integer | Up to 16 replies are kept; more drop the oldest. |
+| `session.queryable(key, depth = 16)` | `Queryable` | Answers queries matching `key`. Up to `depth` unanswered queries are kept; more finish the oldest unanswered (the requester gets nothing from it) and count it as dropped. |
+| `queryable.each_pending { \|q\| }` | Integer | Takes out the waiting queries. Each is finished when the block returns (also when it raises). Without a block: an Array of `Query`, each open until `q.finish` or garbage collection. |
+| `queryable.pending` / `received` / `dropped` / `close` / `closed?` | | |
+| `q.key` / `q.params` / `q.payload` | String | The query's key expression (may contain wildcards), its parameters (`a=1;b=2`) and payload (`""` when none). |
+| `q.reply(payload)` / `q.reply(key, payload)` | `nil` | `key` defaults to the query's key and must match it. May be called several times. `Zenoh::Error` once finished. |
+| `q.finish` / `q.finished?` | | Sends the final reply: the requester's `done?` turns true when every queryable has finished. |
+| `session.liveliness(key)` | `LivelinessToken` | Announces `key` as alive until `token.close`, garbage collection, or the session closing. |
+| `session.liveliness_watch(key, depth = 16)` | `LivelinessWatch` | `each_pending { \|key, alive\| }` (alive is `true` when a token appeared, `false` when it went away); the tokens alive when the watch starts come first. Tokens of the same session are not reported (zenoh-pico does not report its own). Also `pending` / `received` / `dropped` / `close` / `closed?`. |
+| `session.liveliness_get(key, timeout_ms = 2000)` | `Get` | The tokens alive now, as replies (empty payload). |
 | `Zenoh::PICO_VERSION` | String | zenoh-pico version compiled in. |
 | `Zenoh::CONNECT_TIMEOUT_MS` / `Zenoh::SEND_TIMEOUT_MS` | Integer | The link's time limits (3000 each by default; build-time defines `PICORUBY_ZENOH_CONNECT_TIMEOUT_MS` / `PICORUBY_ZENOH_SEND_TIMEOUT_MS`). |
 
@@ -67,8 +98,14 @@ opens a new session (`Zenoh::Session.open` again).
 - **Cleanup**: `close` is optional. Garbage-collecting (or closing the VM
   with) a `Session` or `Subscriber` closes the zenoh-pico side, in either
   order.
+- **Queries are kept, not answered in the callback.** The queryable's
+  callback clones the query (`z_query_clone`) into a ring; the final reply
+  goes out when the last reference is dropped (after `each_pending`'s block,
+  or `q.finish`). A `Get` is owned jointly by its Ruby object and zenoh-pico,
+  so a `Get` collected before its replies arrive is safe.
 - **Build options**: `include/zenoh_generic_config.h` (client, TCP only, no
-  serial / TLS / UDP / scouting, put + subscribe only). zenoh-pico's own
+  serial / TLS / UDP / scouting; put, subscribe, query, queryable,
+  liveliness). zenoh-pico's own
   TCP links are replaced by `src/zp_tcp_posix.c` and
   `ports/esp32/zp_tcp_esp32.c` (non-blocking read for polling, connect time
   limit, bounded handshake read; retries on `EINTR`).
