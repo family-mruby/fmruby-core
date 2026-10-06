@@ -83,7 +83,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-27) P0-P4 完了。**P6 完了: 青ちらつき (DSI アンダーラン) は DSI フレームバッファの先頭を 4KB 境界に揃えて解消** (report/p6.md、ユーザ目視で確認)。帯域ではなく揃いが原因だった。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔11 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔6 files〕
-- `p4_transfer_crash/` [P4 でファイル転送の直後に core 0 が落ちる件](p4_transfer_crash/plan.md) — **進行中** (2026-10-06) P4-Nano で 64 KB の /fs/put・/fs/get の直後に core 0 のタスクが Instruction / Store access fault で落ちることがある。CONFIG_SPI_FLASH_AUTO_SUSPEND との組み合わせを疑う。まず計装なしのビルドで再現を確かめる 〔2 files〕
+- `p4_transfer_crash/` [P4 でファイル転送の直後に core 0 が落ちる件](p4_transfer_crash/plan.md) — **進行中** (2026-10-06) P4-Nano で 64 KB の /fs/put・/fs/get の直後に core 0 のタスクが Instruction / Store access fault で落ちることがある。CONFIG_SPI_FLASH_AUTO_SUSPEND との組み合わせを疑う。まず計装なしのビルドで再現を確かめる 〔3 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
