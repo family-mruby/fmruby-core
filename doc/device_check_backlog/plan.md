@@ -30,3 +30,4 @@
 | ミュートと音量 | ES8388 の音量の書き方 (P4-Nano の ES8311 と違う)。段の大きさ、コーデックのミュート | reference/audio_output.md |
 | マウスの遅れ・Shell・アプリの終了・Spinel の多重起動 | P4-Nano と同じ確認 | p4_cursor_lag ほか |
 | Zenoh (Asterism Z2) | 試しのアプリで PC の zenohd と往復、開き直し、内蔵 RAM (P4-Nano と同じ手順) | ruby_asterism (Z2) |
+| ESP-Hosted の mempool なし | 遠隔の画面の取り込み・ファイル転送の後に内蔵 RAM が戻るか、速さ、BLE | hosted_mempool |
