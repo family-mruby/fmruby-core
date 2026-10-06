@@ -22,6 +22,12 @@
 #ifndef PICORUBY_ZENOH_GENERIC_CONFIG_H
 #define PICORUBY_ZENOH_GENERIC_CONFIG_H
 
+/* ESP-IDF: platform types without the ESP-IDF headers, so the zenoh-pico core
+ * can be compiled outside the ESP-IDF component (see the header). */
+#if defined(ZENOH_ESPIDF) && !defined(ZP_SYSTEM_PLATFORM_HEADER)
+#define ZP_SYSTEM_PLATFORM_HEADER "zenoh_espidf_platform.h"
+#endif
+
 /* Buffer sizes: zenoh-pico's defaults (an rx batch plus a fragment buffer). */
 #ifndef Z_FRAG_MAX_SIZE
 #define Z_FRAG_MAX_SIZE 4096

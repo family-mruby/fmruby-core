@@ -6,9 +6,17 @@
 # The gem does not fetch anything itself; the host build puts the sources in
 # place (Family mruby: `rake zenoh:setup` + `rake setup`, see README.md).
 #
-# Platform: POSIX only for now (Linux / macOS / BSD). Other ports of
-# zenoh-pico (ESP-IDF, FreeRTOS + lwIP, ...) need their own system/ and link
-# files selected here.
+# Platforms (zenoh-pico's platform selector, ZENOH_PICO_PLATFORM overrides):
+# - POSIX (ZENOH_LINUX, or ZENOH_MACOS / ZENOH_BSD): everything is compiled
+#   here, with this gem's src/zp_tcp_posix.c as the TCP link.
+# - ESP-IDF (ZENOH_ESPIDF, chosen for build names starting with "esp32"): the
+#   zenoh-pico core and the gem are compiled here with the platform types of
+#   include/zenoh_espidf_platform.h, which need no ESP-IDF headers. The
+#   platform files that do (ports/esp32/: system with a PSRAM allocator, the
+#   TCP link; and zenoh-pico's src/system/socket/esp32.c) are left to the
+#   ESP-IDF component, like the ports/esp32 sources of other PicoRuby gems.
+#   They must be compiled with the same defines and include paths; see
+#   README.md (Building).
 MRuby::Gem::Specification.new('picoruby-zenoh') do |spec|
   spec.license = 'MIT'
   spec.authors = ['Katsuhiko Kageyama']
@@ -47,13 +55,17 @@ MRuby::Gem::Specification.new('picoruby-zenoh') do |spec|
   # Errors from zenoh-pico are printed (stdout); quiet otherwise.
   spec.cc.defines << 'ZENOH_LOG_ERROR'
   # zenoh-pico's platform selector (ZENOH_MACOS / ZENOH_BSD for those hosts).
-  spec.cc.defines << (ENV['ZENOH_PICO_PLATFORM'] || 'ZENOH_LINUX')
+  platform = ENV['ZENOH_PICO_PLATFORM'].to_s
+  platform = build.name.start_with?('esp32') ? 'ZENOH_ESPIDF' : 'ZENOH_LINUX' if platform.empty?
+  posix = %w[ZENOH_LINUX ZENOH_MACOS ZENOH_BSD].include?(platform)
+  spec.cc.defines << platform
   # zenoh-pico is written for C11 (anonymous unions, _Generic in the API).
   spec.cc.flags << '-std=gnu11'
 
   # The same source set as zenoh-pico's CMakeLists.txt, plus the POSIX
-  # platform files. Its POSIX TCP link (tcp_posix.c) is replaced by this
-  # gem's src/zp_tcp_posix.c (non-blocking polled read, EINTR-safe).
+  # platform files on POSIX. Its POSIX TCP link (tcp_posix.c) is replaced by
+  # this gem's src/zp_tcp_posix.c (non-blocking polled read, EINTR-safe),
+  # which compiles to nothing on the other platforms.
   srcs = []
   %w[api collections net protocol runtime session transport utils].each do |d|
     srcs += Dir.glob("#{zp_dir}/src/#{d}/**/*.c")
@@ -68,9 +80,10 @@ MRuby::Gem::Specification.new('picoruby-zenoh') do |spec|
     link/transport/tcp/address.c
     link/transport/upper/serial_protocol.c
     link/transport/upper/tls_stream.c
-    system/unix/system.c
-    system/unix/network.c
   ].map { |f| "#{zp_dir}/src/#{f}" }
+  if posix
+    srcs += %w[system/unix/system.c system/unix/network.c].map { |f| "#{zp_dir}/src/#{f}" }
+  end
 
   build_dir_zp = "#{build_dir}/zenoh-pico"
   srcs.sort.uniq.each do |src|
