@@ -18,6 +18,10 @@
  * 3. connect() has a time limit (PICORUBY_ZENOH_CONNECT_TIMEOUT_MS), so an
  *    unreachable router fails the open in seconds instead of the kernel's
  *    minutes.
+ * 4. A send has a time limit too (PICORUBY_ZENOH_SEND_TIMEOUT_MS, for the
+ *    whole message). When it runs out the socket is shut down, and
+ *    zp_tcp_socket_closed() reports it, like a peer that closed the
+ *    connection (see include/picoruby_zenoh_link.h).
  *
  * _z_tcp_read_exact (session handshake) still waits, up to the socket timeout
  * per call, and keeps waiting once a message has started arriving so a
@@ -41,18 +45,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "picoruby_zenoh_link.h"
 #include "zenoh-pico/config.h"
 #include "zenoh-pico/utils/logging.h"
 #include "zenoh-pico/utils/pointers.h"
-
-#ifndef PICORUBY_ZENOH_CONNECT_TIMEOUT_MS
-#define PICORUBY_ZENOH_CONNECT_TIMEOUT_MS 3000
-#endif
-
-/* A message that has started arriving is given this long to complete. */
-#ifndef PICORUBY_ZENOH_READ_EXACT_TIMEOUT_MS
-#define PICORUBY_ZENOH_READ_EXACT_TIMEOUT_MS 5000
-#endif
 
 static long zp_mono_ms(void) {
     struct timespec ts;
@@ -265,22 +261,50 @@ size_t _z_tcp_read_exact(_z_sys_net_socket_t sock, uint8_t *ptr, size_t len) {
     return n;
 }
 
+/* Sends the whole buffer or nothing usable: waits for room in the socket's
+ * send buffer up to PICORUBY_ZENOH_SEND_TIMEOUT_MS in total, then shuts the
+ * socket down (part of a message may already be on the wire). */
 size_t _z_tcp_write(_z_sys_net_socket_t sock, const uint8_t *ptr, size_t len) {
-    for (;;) {
-        ssize_t sb = send(sock._fd, ptr, len, MSG_NOSIGNAL);
+    long deadline = zp_mono_ms() + PICORUBY_ZENOH_SEND_TIMEOUT_MS;
+    size_t n = 0;
+    while (n < len) {
+        ssize_t sb = send(sock._fd, ptr + n, len - n, MSG_NOSIGNAL | MSG_DONTWAIT);
         if (sb >= 0) {
-            return (size_t)sb;
+            n += (size_t)sb;
+            continue;
         }
         if (errno == EINTR) {
             continue;
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            /* Socket buffer full: wait for room rather than fail the link. */
-            if (zp_poll_one(sock._fd, POLLOUT, Z_CONFIG_SOCKET_TIMEOUT) > 0) {
+            long left = deadline - zp_mono_ms();
+            if (left > 0 && zp_poll_one(sock._fd, POLLOUT, (int)left) >= 0) {
                 continue;
             }
+            shutdown(sock._fd, SHUT_RDWR);
         }
         return SIZE_MAX;
+    }
+    return n;
+}
+
+bool zp_tcp_socket_closed(const _z_sys_net_socket_t *sock) {
+    if (sock->_fd < 0) {
+        return true;
+    }
+    uint8_t b;
+    for (;;) {
+        ssize_t rb = recv(sock->_fd, &b, 1, MSG_PEEK | MSG_DONTWAIT);
+        if (rb > 0) {
+            return false;
+        }
+        if (rb == 0) {
+            return true; /* peer closed, or shut down after a send timeout */
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        return !(errno == EAGAIN || errno == EWOULDBLOCK);
     }
 }
 

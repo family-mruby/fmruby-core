@@ -20,15 +20,37 @@ end
 | Call | Returns | Notes |
 |---|---|---|
 | `Zenoh::Session.open(locator)` | `Session` | Client mode, connects to `locator` (`tcp/host:port`). Raises `Zenoh::Error` when the router cannot be reached. Blocks while connecting (a few seconds at most). |
-| `session.put(key, payload)` | `nil` | `payload` is a String (bytes, sent as is). `ArgumentError` on a bad key, `Zenoh::Error` when the session is closed or the put fails. |
+| `session.put(key, payload)` | `nil` | `payload` is a String (bytes, sent as is). `ArgumentError` on a bad key, `Zenoh::Error` when the session is closed, the put fails, or the connection is found lost (see below). Waits at most `SEND_TIMEOUT_MS` for room to send. |
 | `session.subscribe(key, depth = 16)` | `Subscriber` | `key` may be a key expression (`demo/**`). Up to `depth` received values are kept until read. |
-| `session.poll(steps = 8)` | `true` / `false` | Reads the socket and runs keep-alive / lease work, at most `steps` times. Never blocks. `false` once the session has closed (router gone, lease expired). |
-| `session.closed?` | `true` / `false` | |
+| `session.poll(steps = 8)` | `true` / `false` | Reads the socket and runs keep-alive / lease work, at most `steps` times. Does not wait for data. `false` once the session has closed (closed by the app, or the connection was lost: see below). |
+| `session.closed?` | `true` / `false` | Also notices a lost connection. |
 | `session.close` | `nil` | Closes the subscribers too. Idempotent. Optional (see below). |
 | `sub.each_pending { \|key, payload\| }` | Integer | Takes out the values received so far (oldest first). Without a block, returns them as `[[key, payload], ...]`. |
 | `sub.pending` / `sub.received` / `sub.dropped` | Integer | Waiting values / total received / dropped because the ring was full (the oldest goes). |
 | `sub.close` / `sub.closed?` | | Pending values can still be taken after close. |
 | `Zenoh::PICO_VERSION` | String | zenoh-pico version compiled in. |
+| `Zenoh::CONNECT_TIMEOUT_MS` / `Zenoh::SEND_TIMEOUT_MS` | Integer | The link's time limits (3000 each by default; build-time defines `PICORUBY_ZENOH_CONNECT_TIMEOUT_MS` / `PICORUBY_ZENOH_SEND_TIMEOUT_MS`). |
+
+## When the router is lost
+
+The session is closed by the gem, and stays closed, when its TCP connection
+can no longer carry it:
+
+- the router closed the connection (it stopped, or its host dropped it), or
+  the socket failed: noticed by the next `poll`, `put` or `closed?`;
+- a send could not finish within `SEND_TIMEOUT_MS` (the router or the
+  network stopped taking data and the send buffer is full): that `put`
+  raises after the time limit. A half-sent message would corrupt the stream,
+  so the connection is shut down rather than retried.
+
+From then on `poll` returns `false`, `closed?` is `true` and `put` raises
+`Zenoh::Error`. Values already received can still be taken from the
+subscribers. There is no automatic reconnection: to go on, the application
+opens a new session (`Zenoh::Session.open` again).
+
+A router that goes silent while the TCP connection stays up (no keep-alives
+for the lease time, 10 s) makes `put` raise `Zenoh::Error`; `poll` keeps
+returning `true` in that case.
 
 ## Design
 

@@ -94,10 +94,20 @@ class ZenohEchoApp < FmrbApp
     lost("error: #{e.message}")
   end
 
+  # Also shows what the gem reports for a lost session: closed? and the
+  # error a further put raises.
   def lost(state)
+    session = @session
     @state = state
     @session = nil
-    Log.info("zenoh_echo: #{state} (last put #{@seq})")
+    after = "closed?=#{session.closed?}"
+    begin
+      session.put(OUT_KEY, "x")
+      after += " put=ok"
+    rescue Zenoh::Error => e
+      after += " put raises #{e.class}: #{e.message}"
+    end
+    Log.info("zenoh_echo: #{state} (last put #{@seq}; #{after})")
   end
 
   # Memory line for the reopen test (report/z1.md): this VM's pool, the

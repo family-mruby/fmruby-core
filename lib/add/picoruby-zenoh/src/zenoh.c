@@ -10,6 +10,13 @@
  * them into Ruby strings later. When the ring is full the oldest entry is
  * dropped and counted.
  *
+ * Losing the router: zenoh-pico's client read path does not tell a closed
+ * connection from an idle one, so the gem asks its TCP link
+ * (include/picoruby_zenoh_link.h) after every poll and put. When the peer has
+ * closed the connection, the socket failed, or a send ran out of time, the
+ * session is closed here: poll returns false, closed? is true and put raises
+ * Zenoh::Error. There is no reconnection; the application opens a new session.
+ *
  * Lifetime: closing is optional. The Session and Subscriber objects close
  * their zenoh-pico counterparts when they are freed, in either order (an
  * interpreter shutdown frees objects in no particular order): a session keeps
@@ -28,6 +35,10 @@
 #include <mruby/variable.h>
 
 #include <zenoh-pico.h>
+#include <zenoh-pico/link/link.h>
+#include <zenoh-pico/net/session.h>
+
+#include "picoruby_zenoh_link.h"
 
 #define ZRB_DEFAULT_DEPTH 16
 #define ZRB_MAX_DEPTH 1024
@@ -262,9 +273,36 @@ static zrb_session *zrb_session_get(mrb_state *mrb, mrb_value self) {
     return z;
 }
 
+/* Close the session when its TCP link can no longer carry it (see the
+ * comment at the top). Reaches into zenoh-pico's session to find the link's
+ * socket; the layout is that of the pinned release (lib/add/ZENOH_PICO_PIN).
+ * Returns true when the session is (now) closed. */
+static bool zrb_session_check_link(zrb_session *z) {
+    if (!z->open) {
+        return true;
+    }
+    if (z_session_is_closed(z_loan(z->session))) {
+        zrb_session_shutdown(z);
+        return true;
+    }
+    _z_session_t *s = _Z_RC_IN_VAL(z_loan(z->session));
+    if (s->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
+        return false;
+    }
+    const _z_link_t *link = s->_tp._transport._unicast._common._link;
+    if (link == NULL || link->_cap._transport != Z_LINK_CAP_TRANSPORT_UNICAST) {
+        return false;
+    }
+    if (zp_tcp_socket_closed(_z_link_get_socket(link))) {
+        zrb_session_shutdown(z);
+        return true;
+    }
+    return false;
+}
+
 static zrb_session *zrb_session_get_open(mrb_state *mrb, mrb_value self) {
     zrb_session *z = zrb_session_get(mrb, self);
-    if (!z->open || z_session_is_closed(z_loan(z->session))) {
+    if (zrb_session_check_link(z)) {
         mrb_raise(mrb, zrb_error_class(mrb), "session is closed");
     }
     return z;
@@ -315,6 +353,9 @@ static mrb_value zrb_session_put(mrb_state *mrb, mrb_value self) {
         mrb_raise(mrb, zrb_error_class(mrb), "cannot allocate the payload");
     }
     z_result_t ret = z_put(z_loan(z->session), z_loan(ke), z_move(bytes), NULL);
+    if (zrb_session_check_link(z)) {
+        mrb_raisef(mrb, zrb_error_class(mrb), "put failed: the connection to the router is lost (%d)", (int)ret);
+    }
     if (ret != Z_OK) {
         mrb_raisef(mrb, zrb_error_class(mrb), "put failed (%d)", (int)ret);
     }
@@ -363,9 +404,11 @@ static mrb_value zrb_session_subscribe(mrb_state *mrb, mrb_value self) {
     return obj;
 }
 
-/* session.poll(steps = 8) -> true while the session is open, false once closed.
+/* session.poll(steps = 8) -> true while the session is open, false once closed
+ * (by close, by zenoh-pico, or because the connection was lost).
  * Runs zenoh-pico's pending work (reading the socket, keep-alive, lease) at
- * most `steps` times, stopping early when nothing is left. Never blocks. */
+ * most `steps` times, stopping early when nothing is left. Does not wait for
+ * data; closing a lost session may wait for the send limit at most. */
 static mrb_value zrb_session_poll(mrb_state *mrb, mrb_value self) {
     mrb_int steps = ZRB_DEFAULT_POLL_STEPS;
     mrb_get_args(mrb, "|i", &steps);
@@ -381,12 +424,11 @@ static mrb_value zrb_session_poll(mrb_state *mrb, mrb_value self) {
             break;
         }
     }
-    return mrb_bool_value(!z_session_is_closed(z_loan(z->session)));
+    return mrb_bool_value(!zrb_session_check_link(z));
 }
 
 static mrb_value zrb_session_closed_p(mrb_state *mrb, mrb_value self) {
-    zrb_session *z = zrb_session_get(mrb, self);
-    return mrb_bool_value(!z->open || z_session_is_closed(z_loan(z->session)));
+    return mrb_bool_value(zrb_session_check_link(zrb_session_get(mrb, self)));
 }
 
 static mrb_value zrb_session_close(mrb_state *mrb, mrb_value self) {
@@ -400,6 +442,8 @@ void mrb_picoruby_zenoh_gem_init(mrb_state *mrb) {
     struct RClass *mod = mrb_define_module(mrb, "Zenoh");
     mrb_define_class_under(mrb, mod, "Error", mrb->eStandardError_class);
     mrb_define_const(mrb, mod, "PICO_VERSION", mrb_str_new_cstr(mrb, ZENOH_PICO));
+    mrb_define_const(mrb, mod, "CONNECT_TIMEOUT_MS", mrb_fixnum_value(PICORUBY_ZENOH_CONNECT_TIMEOUT_MS));
+    mrb_define_const(mrb, mod, "SEND_TIMEOUT_MS", mrb_fixnum_value(PICORUBY_ZENOH_SEND_TIMEOUT_MS));
 
     struct RClass *ses = mrb_define_class_under(mrb, mod, "Session", mrb->object_class);
     MRB_SET_INSTANCE_TT(ses, MRB_TT_CDATA);
