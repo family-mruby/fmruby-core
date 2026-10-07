@@ -122,18 +122,20 @@ A minimal ROS 2 node that talks to ROS 2 systems using rmw_zenoh (checked
 with ROS 2 Jazzy, rmw_zenoh_cpp 0.2.11, Zenoh 1.8.0), directly on an
 `Asterism::Zenoh::Session`. Pure Ruby, independent of the object layer above
 (no `Asterism.connect`, no MessagePack; only its clock and pause helpers).
-Topics and services; the types are `std_msgs/String` and
-`example_interfaces/srv/AddTwoInts`.
+Topics and services. The message and service types are generated from
+`.msg` / `.srv` files (see [Message types](#message-types)) and loaded when
+the application asks for them.
 
 ```ruby
 s = Asterism::Zenoh::Session.open("tcp/192.168.10.2:7447")
 node = Asterism::ROS::Node.new(s, "fmruby_talker")       # namespace: "/", domain: 0
-pub = node.publisher("/chatter", Asterism::ROS::StdMsgs::String)
-sub = node.subscription("/chatter_back", Asterism::ROS::StdMsgs::String)
+str = Asterism::ROS.require_type("std_msgs/msg/String")
+pub = node.publisher("/chatter", str)
+sub = node.subscription("/chatter_back", "std_msgs/msg/String")  # by name works too
 loop do
   s.poll
-  pub.publish("hello")
-  sub.each_pending { |msg, info| puts "#{info && info.sequence}: #{msg}" }
+  pub << { data: "hello" }                               # or pub.publish(str.new(data: "hello"))
+  sub.each_pending { |msg, info| puts "#{info && info.sequence}: #{msg.data}" }
 end
 node.close                                               # or let the session close
 ```
@@ -141,7 +143,7 @@ node.close                                               # or let the session cl
 Services:
 
 ```ruby
-add = Asterism::ROS::ExampleInterfaces::AddTwoInts
+add = Asterism::ROS.require_type("example_interfaces/srv/AddTwoInts")
 node.service("/fmruby/add_two_ints", add) { |req| { sum: req.a + req.b } }
 cli = node.client("/add_two_ints", add)
 loop do
@@ -157,8 +159,8 @@ end
 | Call | Returns | Notes |
 |---|---|---|
 | `Asterism::ROS::Node.new(session, name, namespace: "/", domain: 0, enclave: "/")` | `Node` | Declares the node's liveliness token (`ros2 node list`). `name` has no `/`. |
-| `node.publisher(topic, type, qos: DEFAULT_QOS)` | `Publisher` | `topic` absolute, or relative to the namespace. Declares the publisher token (`ros2 topic list`). |
-| `pub.publish(msg)` | nil | Puts the CDR payload with rmw_zenoh's attachment (sequence number, time, GID). |
+| `node.publisher(topic, type, qos: DEFAULT_QOS)` | `Publisher` | `topic` absolute, or relative to the namespace. `type` is a generated type or its ROS name (`"geometry_msgs/msg/Twist"`, loaded with `require_type`); the same for subscriptions, services and clients. Declares the publisher token (`ros2 topic list`). |
+| `pub.publish(msg)` / `pub << msg` | nil / `pub` | `msg` is a message of the type or a Hash of its fields. Puts the CDR payload with rmw_zenoh's attachment (sequence number, time, GID). |
 | `node.subscription(topic, type, qos: DEFAULT_QOS, depth: 16)` | `Subscription` | Subscribes and declares the subscription token. |
 | `sub.each_pending { \|msg, info\| }` | count | `info` is an `Attachment` (`sequence`, `stamp_ns`, `gid`) or nil. Samples that are not valid CDR are skipped and counted in `sub.errors`. |
 | `node.service(name, type, qos: DEFAULT_QOS, depth: 8) { \|req\| response }` | `Service` | Serves `name` (`ros2 service list`). The block gets a `type::Request` and returns a `type::Response` or a Hash of its fields. It runs from `node.poll` (or `service.handle_pending`), never behind the application. A request without rmw_zenoh's attachment, or that does not decode, is counted in `service.errors` and gets no answer. An exception from the block ends that request without an answer and is raised from `node.poll`. `service.handled`: answered so far. |
@@ -168,8 +170,8 @@ end
 | `client.call_async(request = nil, timeout_ms: 2000, **fields)` | `Call` | Sends and returns at once. `call.done?` never waits (`node.poll` moves it on); `call.value` waits and returns the response or raises like `call`; `call.response` (nil until it came), `call.took_ms`, `call.sequence`. |
 | `node.call(name, type, request = nil, timeout_ms: 2000, **fields)` | `type::Response` | `client.call` through a client made on first use and kept per name. |
 | `node.close` / `pub.close` / `sub.close` / `service.close` / `client.close` | nil | Withdraws the tokens (they also go when the session closes). `node.close` closes everything the node made. |
-| `Asterism::ROS::ExampleInterfaces::AddTwoInts` | | `Request` (`a`, `b`, int64) and `Response` (`sum`, int64), each with `new(**fields)`, `encode(msg_or_hash)`, `decode(bytes)`, `to_h`. |
-| `Asterism::CDR::Writer` / `Reader` | | Plain CDR with the 4-byte header: `uint8 bool uint16 uint32 uint64 int16 int32 int64 string`, aligned from the end of the header. Writes little endian; reads either order. |
+| `Asterism::ROS.require_type(name)` | the type | Loads `<pkg>/<msg\|srv>/<Name>.rb` from `Asterism::ROS::TYPE_PATH` (`["/usr/share/asterism/msgs"]`; add directories to it) and returns `Asterism::ROS::<Pkg>::<Name>`. A type already loaded (or defined in Ruby) is returned at once. `UnknownType` when there is no file. |
+| `Asterism::CDR::Writer` / `Reader` | | Plain CDR with the 4-byte header, aligned from the end of the header: `bool int8 uint8 int16 uint16 int32 uint32 int64 uint64 float32 float64 string`, `array(kind, v, fixed, max)`, `bytes`, `structs(type, ...)`. Writes little endian; reads either order. |
 
 What goes on the wire (rmw_zenoh_cpp 0.2.x):
 
@@ -190,18 +192,109 @@ root namespace `%`). `<zid>` is the Zenoh session ID (`session.zid`).
 `DEFAULT_QOS` (`::,10:,:,:,,`) is rmw_zenoh's form of the default profile:
 reliable, volatile, keep last 10.
 
-Not here (later stages): other message types and their type hashes (RIHS01
-is computed from the type description; the two here are constants), actions,
-QoS other than the default (transient local needs Zenoh's advanced
-publisher), name remapping.
+Not here (later stages): actions, QoS other than the default (transient
+local needs Zenoh's advanced publisher), name remapping, receiving a type
+the application has not loaded.
 
-### Adding a type
+## Message types
 
-A message type is a module (or class) with `TYPE_NAME`, `TYPE_HASH`,
-`encode(msg)` and `decode(bytes)` built on `Asterism::CDR`; a service type
-has `TYPE_NAME` / `TYPE_HASH` of the service and `Request` / `Response`
-classes with `encode` / `decode` (see `ExampleInterfaces::AddTwoInts`). The
-DDS name is `<package>::msg::dds_::<Type>_` (or `::srv::`); the hash can be
-read from the ROS 2 installation
-(`share/<package>/<msg|srv>/<Type>.json`, the first `RIHS01_` in it) or from
-a liveliness token.
+### Values
+
+A generated message is a plain Ruby class (`Asterism::ROS::Message` is its
+base; the app VM has neither `Data` nor `Struct`). The same code runs on
+CRuby.
+
+```ruby
+Twist = Asterism::ROS.require_type("geometry_msgs/msg/Twist")
+t = Twist.new(linear: { x: 0.1 })     # missing fields take their defaults
+t = Twist.from({ "linear" => { "x" => 0.1 } })   # Hash, String keys too
+t.linear.x                            # => 0.1
+t.angular                             # => #<geometry_msgs/msg/Vector3 {x: 0.0, ...}>
+t.to_h                                # => {linear: {x: 0.1, y: 0.0, z: 0.0}, angular: {...}}
+bytes = Twist.encode(t)               # or Twist.encode(linear: { x: 0.1 })
+Twist.decode(bytes) == t              # => true
+Twist::TYPE_NAME                      # "geometry_msgs::msg::dds_::Twist_"
+Twist::TYPE_HASH                      # "RIHS01_9c45bf16..."
+Asterism::ROS::SensorMsgs::BatteryState::POWER_SUPPLY_STATUS_FULL   # constants
+```
+
+| Field in the .msg | Ruby value | Default |
+|---|---|---|
+| `bool` | true / false | false |
+| integers, `byte`, `char` | Integer (a `uint64` at or above 2**63 reads back negative) | 0 |
+| `float32` / `float64` | Float | 0.0 |
+| `string`, `string<=N` | String (UTF-8 bytes; longer than N raises `ArgumentError` on encode) | "" |
+| a message | that type (a Hash is turned into it) | its defaults |
+| `T[N]`, `T[]`, `T[<=N]` | Array (a wrong length or over the bound raises `ArgumentError` on encode) | N defaults, or [] |
+| `byte[]`, `uint8[]`, `char[]` (any size) | a binary String (an Array of Integers is taken too) | "\0" * N, or "" |
+| `wstring` | not supported: encode / decode raise `NotImplementedError` | |
+
+Defaults written in the .msg (`float64 w 1`) are used. Unknown field names
+raise `ArgumentError`; integers are not range-checked (they wrap).
+
+### The bundled types
+
+Made from ROS 2 Jazzy's definitions, in `flash/usr/share/asterism/msgs`
+(device: `/usr/share/asterism/msgs`), one file per type:
+std_msgs (Bool, Byte, Char, String, Empty, the integer and float types,
+Header, ColorRGBA, MultiArrayDimension / Layout and every *MultiArray),
+builtin_interfaces (Time, Duration), geometry_msgs (Vector3, Point, Point32,
+Quaternion, Pose, Pose2D, Twist, Accel, Transform, Wrench and their
+*Stamped), sensor_msgs (Imu, BatteryState, Temperature, Range,
+MagneticField, Illuminance, FluidPressure, RelativeHumidity, JointState,
+NavSatStatus, NavSatFix), example_interfaces/srv/AddTwoInts. The list is
+`tools/bundled_types.txt`. Nothing of them is in the firmware: an
+application loads what it uses, and each file loads the types it is made of.
+
+### Making types: `tools/asterism_msggen.rb`
+
+CRuby, standard library only, no ROS 2 installation needed (only the
+`.msg` / `.srv` files of the packages involved):
+
+```
+# a type of an installed ROS 2 (and the types it uses)
+ruby tools/asterism_msggen.rb -I /opt/ros/jazzy/share -o out geometry_msgs/msg/Twist
+# your own package (my_pkg/msg/Foo.msg; -I for the packages it refers to)
+ruby tools/asterism_msggen.rb -I /opt/ros/jazzy/share -o out path/to/my_pkg/msg/Foo.msg
+# print the type hashes
+ruby tools/asterism_msggen.rb -I share --hash example_interfaces/srv/AddTwoInts
+# compare the hashes with the type description JSON ROS 2 installs
+ruby tools/asterism_msggen.rb -I /opt/ros/jazzy/share --check-json /opt/ros/jazzy/share sensor_msgs/msg/Imu
+```
+
+`-I` directories are laid out like a ROS 2 `share`: `<pkg>/msg/*.msg`,
+`<pkg>/srv/*.srv`. The output is `<out>/<pkg>/<msg|srv>/<Name>.rb`; copy it
+to the device (`/usr/share/asterism/msgs` or a directory added to
+`Asterism::ROS::TYPE_PATH`), or put the output directory in `TYPE_PATH` on
+CRuby. A service's type hash needs `service_msgs/msg/ServiceEventInfo` and
+`builtin_interfaces/msg/Time` under `-I` (every ROS 2 `share` has them).
+
+The type hash (RIHS01) is computed the way ROS 2 Jazzy does
+(`rosidl_generator_type_description`): the type and every type it refers
+to, each as `{type_name, fields: [{name, type: {type_id, capacity,
+string_capacity, nested_type_name}}]}` without default values, the referred
+ones sorted by name, written as Python's `json.dumps(..., separators=(", ",
+": "))`, then SHA-256. A service's description is `request_message`,
+`response_message` and `event_message` (`<Name>_Event`: `info`, and
+`request` / `response` as sequences of at most one). Other ROS 2 versions
+may change the rules; regenerate and check with `--check-json` against that
+version.
+
+`ros2_jazzy/` next to the generator holds the Jazzy definitions of the
+bundled types and the hashes from Jazzy's JSON (`type_hashes.txt`) that the
+host tests (`rake asterism:test`) compare with. Both are refreshed from the
+ROS 2 image by `tools/fmrb_ros2_types.rb` in the Family mruby repository.
+The definitions are from ros2/common_interfaces, ros2/rcl_interfaces and
+ros2/example_interfaces (Apache License 2.0).
+
+### Loading
+
+On mruby, `require_type` reads the file and evaluates it in the
+application's VM (`Kernel#eval`); PicoRuby's `require` would run each file
+in a Sandbox task that stays for the life of the VM. On CRuby it uses
+`require`. Measured on the P4 (Family mruby, a 1 MB VM pool):
+geometry_msgs/Twist with Vector3 15.3 KB, sensor_msgs/Imu with Header,
+Time and Quaternion 32.8 KB more, std_msgs/Float32MultiArray with its
+layout types 20.0 KB more (68 KB for nine files, 340 ms). Evaluating a file
+compiles it on the caller's stack (about 2.5 KB deeper than the update
+loop); load the types in `on_create`, not in a deep call chain.
