@@ -55,6 +55,11 @@ module Asterism
       ::Asterism.wait_until { done? } unless done?
       if @reply.nil?
         raise ::Asterism::Disconnected, (::Asterism.lost_reason || "not connected") unless ::Asterism.connected?
+        if @took && @took < @timeout_ms
+          # Finished early without a reply: nobody answers that key (the
+          # object is not exposed, or its application is gone).
+          raise ::Asterism::Timeout, "no answer from #{@path} #{@method_name} (nobody answers)"
+        end
         raise ::Asterism::Timeout, "no answer from #{@path} #{@method_name} within #{@timeout_ms} ms"
       end
       raw = ::Asterism::Codec.unpack(@reply)
@@ -65,7 +70,10 @@ module Asterism
     def collect
       return if @finished
       g = @get
-      g.each_reply { |_key, payload| @reply = payload if @reply.nil? }
+      # The Array form, not a block: a block called from C costs another
+      # interpreter entry on the C stack, and this runs inside nested waits.
+      replies = g.each_reply
+      @reply = replies[0][1] if @reply.nil? && replies.size > 0
       if !@reply.nil? || g.done? || ::Asterism.now_ms >= @deadline || !::Asterism.connected?
         @finished = true
         @took = ::Asterism.now_ms - @started

@@ -12,7 +12,8 @@
 #     info    status -> Hash (name, board, free memory, uptime),
 #             relay(from, n) -> calls <from>/demo/info.status back and
 #             returns [n, its name] (for calls in both directions at once),
-#             boom -> raises (to see RemoteError)
+#             boom -> raises (to see RemoteError),
+#             echo(value, tag: nil) -> [value, tag] (values and keywords)
 #     info has a public method `secret` that is NOT exposed.
 # - Lists the nodes alive. The peer is the first other node that exposes
 #   screen. Every 3 s asks the peer's info.status without waiting (async).
@@ -90,6 +91,11 @@ class AsterismDemoApp < FmrbApp
       raise "boom on #{@app.node}"
     end
 
+    # Returns what it got, to check how values travel (and keywords).
+    def echo(value, tag: nil)
+      [value, tag]
+    end
+
     # Public, but not exposed: a remote call must not reach it.
     def secret
       "the secret of #{@app.node}"
@@ -127,6 +133,7 @@ class AsterismDemoApp < FmrbApp
     @status_f = nil
     @peer_status = "-"
     @next_status = 0
+    @keys = []
     @apu = AsterismDemoApp::Apu.new(self)
     draw_screen
   end
@@ -150,7 +157,7 @@ class AsterismDemoApp < FmrbApp
       end
       ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
       ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
-      ::Asterism.expose("info", AsterismDemoApp::Info.new(self), methods: { status: 0, relay: 2, boom: 0 })
+      ::Asterism.expose("info", AsterismDemoApp::Info.new(self), methods: { status: 0, relay: 2, boom: 0, echo: 1 })
       @state = "connected"
     rescue ::Asterism::Error => e
       @state = "failed: #{e.message}"
@@ -158,17 +165,24 @@ class AsterismDemoApp < FmrbApp
     note("#{@node} #{@state} (#{@locator}, #{Machine.board_millis - t0} ms)")
   end
 
+  # The peer is followed through liveliness (Asterism.each). When it goes
+  # away, the keys keep calling the last one, to see the time-out.
   def find_peer
-    @peer = nil
+    found = nil
     ::Asterism.each("*/#{APP}/screen") do |px|
       n = px.asterism_path.split("/")[0]
-      @peer = n if @peer.nil? && n != @node
+      found = n if found.nil? && n != @node
+    end
+    if found != @peer
+      note(found ? "peer up: #{found}" : "peer gone: #{@peer}")
+      @last_peer = @peer if @peer
+      @peer = found
     end
   end
 
   # Runs one call, shows and logs the value or the exception and the time.
   def try(label)
-    return note("#{label}: no peer") unless @peer
+    return note("#{label}: no peer") unless @peer || @last_peer
     t0 = Machine.board_millis
     begin
       v = yield
@@ -181,7 +195,7 @@ class AsterismDemoApp < FmrbApp
   end
 
   def peer(obj)
-    ::Asterism["#{@peer}/#{APP}/#{obj}"]
+    ::Asterism["#{@peer || @last_peer}/#{APP}/#{obj}"]
   end
 
   def ask_status
@@ -219,11 +233,19 @@ class AsterismDemoApp < FmrbApp
     note("relay x10: #{ok} ok (#{Machine.board_millis - t0} ms)")
   end
 
+  # Keys are only noted here and acted on in on_update: a call waits (and
+  # polls Zenoh) inside the handler that makes it, and on_event already runs
+  # one interpreter entry deeper on the C stack than on_update (the event is
+  # handed over by C). On the P4's 16 KB app stack that difference matters.
   def on_event(ev)
     return unless ev[:type] == :key_down
-    case ev[:character] || 0
+    @keys << (ev[:character] || 0)
+  end
+
+  def run_key(ch)
+    case ch
     when 115 # s
-      @says = @says.to_i + 1
+      @says = (@says || 0) + 1
       try("say") { peer("screen").say("hello #{@says} from #{@node}") }
     when 97 # a
       try("play") { peer("apu").play(TUNE) }
@@ -243,7 +265,6 @@ class AsterismDemoApp < FmrbApp
         "secret?=#{px.respond_to?(:secret)} status?=#{px.respond_to?(:status)} #{px.methods.inspect}"
       end
     end
-    draw_screen
   end
 
   def draw_screen
@@ -269,6 +290,7 @@ class AsterismDemoApp < FmrbApp
     if ::Asterism.connected?
       ::Asterism.poll
       find_peer
+      run_key(@keys.shift) until @keys.empty?
       ask_status
     elsif @state == "connected"
       @state = "disconnected: #{::Asterism.lost_reason}"

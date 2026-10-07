@@ -206,7 +206,7 @@ module Asterism
     found = false
     while true
       s.poll
-      g.each_reply { |_k, _v| found = true }
+      found = true if g.each_reply.size > 0
       break if found || g.done? || now_ms - t0 > 1500
       pause(WAIT_STEP_MS)
     end
@@ -214,7 +214,12 @@ module Asterism
   end
 
   def self.connected?
-    !@session.nil? && !@session.closed?
+    return false if @session.nil?
+    if @session.closed?
+      lost("the connection was lost")
+      return false
+    end
+    true
   end
 
   def self.node_id
@@ -318,8 +323,8 @@ module Asterism
 
   # Polls until the block is true. Answers incoming calls meanwhile.
   def self.wait_until
-    raise Error, "calls nested too deep (max #{MAX_NESTING})" if @depth.to_i >= MAX_NESTING
-    @depth = @depth.to_i + 1
+    raise Error, "calls nested too deep (max #{MAX_NESTING})" if (@depth || 0) >= MAX_NESTING
+    @depth = (@depth || 0) + 1
     begin
       until yield
         break unless pump
@@ -332,13 +337,19 @@ module Asterism
   end
 
   def self.depth
-    @depth.to_i
+    (@depth || 0)
   end
 
   def self.follow_liveliness
     w = @watch
     return unless w
-    w.each_pending do |key, alive|
+    # Array forms instead of blocks called from C (see Future#collect).
+    events = w.each_pending
+    i = 0
+    while i < events.size
+      key = events[i][0]
+      alive = events[i][1]
+      i += 1
       rest = key[ROOT.length + 1, key.length].to_s
       parts = rest.split("/")
       if parts.size == 1
@@ -446,7 +457,11 @@ module Asterism
     return unless qa
     # Without a block, so that a handler that waits (and so polls) does not
     # re-enter the queryable's iteration.
-    qa.each_pending.each do |q|
+    queries = qa.each_pending
+    i = 0
+    while i < queries.size
+      q = queries[i]
+      i += 1
       begin
         answer(q)
       ensure

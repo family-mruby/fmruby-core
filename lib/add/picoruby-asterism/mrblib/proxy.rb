@@ -26,7 +26,11 @@ module Asterism
       ::Asterism.call(@path, name, args, kw, @timeout_ms)
     end
 
-    def respond_to_missing?(name, include_private = false)
+    # In Ruby rather than through respond_to_missing?: Object#respond_to? is
+    # C, and calling back into Ruby from it (which then waits for the meta)
+    # costs another interpreter entry on the C stack.
+    def respond_to?(name, include_all = false)
+      return true if super
       return false if ::Asterism::Proxy::LOCAL_ONLY.include?(name.to_sym)
       remote_names.include?(name.to_s)
     rescue ::Asterism::Error
