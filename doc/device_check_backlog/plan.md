@@ -24,8 +24,8 @@
 
 | 項目 | 確かめること | 経緯 |
 |---|---|---|
-| フラッシュのチップ | 起動ログでチップの ID を確かめ、自動中断の対応一覧にあれば `CONFIG_SPI_FLASH_AUTO_SUSPEND=y` を p4 の defaults に入れて、保存時のちらつきが消えるか (ユーザの目視) | flash_write_flicker |
-| 上流 Spinel の取り込み | 7M の区画への全体の書き込み (/home が消える) が初回に要る | spinel_upstream_ext |
+| 保存のちらつき | 保存 (ミュートの切り替え、Config の Save、エディタの保存) で画面がちらつくか (ユーザの目視)。自動中断 (AUTO_SUSPEND) は P4 で不安定と分かった (p4_transfer_crash) ので、ちらつきが見えない限り入れない (2026-10-07 ユーザ決定)。起動ログのチップは "generic" で型番は出ない | flash_write_flicker、p4_transfer_crash |
+| 上流 Spinel の取り込み | 7M の区画: 済 (2026-10-07 に develop を全体で書き込み、起動 Guru 0) | spinel_upstream_ext |
 | 全画面の高解像度 | H1-H4 の動き (エディタの全画面、フォント) | fullscreen_hires |
 | ミュートと音量 | ES8388 の音量の書き方 (P4-Nano の ES8311 と違う)。段の大きさ、コーデックのミュート | reference/audio_output.md |
 | マウスの遅れ・Shell・アプリの終了・Spinel の多重起動 | P4-Nano と同じ確認 | p4_cursor_lag ほか |
