@@ -107,4 +107,7 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # configs do not list it. `rake setup` copies the gem with the pinned
   # zenoh-pico sources (lib/add/ZENOH_PICO_PIN) into the picoruby tree.
   conf.gem core: "picoruby-asterism-zenoh"
+  # Asterism (doc/ruby_asterism, A1): proxies for objects on other machines,
+  # pure Ruby on top of Asterism::Zenoh and MessagePack.
+  conf.gem core: "picoruby-asterism"
 end

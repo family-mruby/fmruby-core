@@ -128,6 +128,9 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   # its ports/esp32 sources (system with a PSRAM allocator, the TCP link) are
   # compiled by components/picoruby-esp32/CMakeLists.txt.
   conf.gem core: "picoruby-asterism-zenoh"
+  # Asterism (doc/ruby_asterism, A1): proxies for objects on other machines,
+  # pure Ruby on top of Asterism::Zenoh and MessagePack.
+  conf.gem core: "picoruby-asterism"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

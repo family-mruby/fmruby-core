@@ -153,6 +153,10 @@ task :setup do
   %w[src include LICENSE NOTICE.md version.txt].each do |entry|
     sh "cp -rp #{zp_dir}/#{entry} #{zp_copy}/"
   end
+  # asterism (Asterism, the object layer over asterism-zenoh; pure Ruby).
+  # Linked by the same builds as asterism-zenoh.
+  sh "rm -rf #{mrbgem_path}/picoruby-asterism"
+  sh "cp -rf lib/add/picoruby-asterism #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
