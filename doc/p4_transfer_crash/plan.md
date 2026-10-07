@@ -1,6 +1,6 @@
 # P4 でファイル転送の直後に core 0 が落ちる件
 
-> 状態: 進行中 | 更新: 2026-10-06 | P4-Nano で 64 KB の /fs/put・/fs/get の直後に core 0 のタスクが Instruction / Store access fault で落ちることがある。CONFIG_SPI_FLASH_AUTO_SUSPEND との組み合わせを疑う。まず計装なしのビルドで再現を確かめる
+> 状態: 進行中 (保存のちらつきのユーザの目視待ち) | 更新: 2026-10-07 | 原因は P4 での CONFIG_SPI_FLASH_AUTO_SUSPEND の既定の方式 (中断の完了を固定の時間で待つ)。消去・書き込み中のキャッシュの取り込みがときどきバスのエラーになり、どちらのコアでも access fault になる。**CONFIG_SPI_FLASH_AUTO_CHECK_SUSPEND_STATUS=y を NARYAv4 の defaults に採用 (ユーザ承認、6fe8f050)**。計装なしで 64 KB の put 15 回・352 KB 3 回とも 0 回。残りは保存のちらつきの目視
 
 ## 目的
 
@@ -42,5 +42,20 @@
 
 ## 未確定事項
 
-- 直し方 (原因次第)。
-- Tab5 でも起きるか (device_check_backlog)。
+- 直し方: 決定 (下の「結果」)。
+- Tab5 でも起きるか (device_check_backlog)。Tab5 は自動中断を使っていないので、この仕組みでは起きないはず。
+
+## 結果 (2026-10-07)
+
+| 段階 | 内容 | 状態 |
+|---|---|---|
+| T1 | 再現・自動中断の有無の比較・原因の絞り込み・直し方の確認 (report/t1.md 1-8 章) | **完了** |
+| 採用 | `CONFIG_SPI_FLASH_AUTO_CHECK_SUSPEND_STATUS=y` を `config/sdkconfig.defaults.naryav4` に追加 (ユーザが案 A を選択、6fe8f050)。確認は report/t1.md 9 章 | **完了** (実機で 0 回) |
+| 目視 | 保存のちらつきが戻っていないこと (ユーザ。P4-Nano には修正版が載っている) | 待ち |
+
+- 原因: P4 で自動中断を使うと、IDF の既定の方式 (中断の後に固定の時間待つ) で、消去・書き込みの最中のキャッシュの取り込みがときどき
+  バスのエラーになる。フラッシュの命令・rodata、PSRAM、内蔵 RAM のどれへのアクセスでも、どちらのコアでも落ちる。IDF v5.5 は P4 を
+  自動中断の対象に挙げておらず、同じ症状の報告がある (espressif/esp-idf#18846)。tRS の不足は撤回した (report/t1.md 5 章)。
+- 内蔵 RAM・速さに差は無い。Tab5 は自動中断を使っていないので対象外。
+- 専用基板で flash の型番を変えるときは、自動中断の対応表 (flash_write_flicker/plan.md) に加えて、中断の後の WIP / SUS ビットの
+  振る舞い (この設定の前提) もデータシートで確かめる。

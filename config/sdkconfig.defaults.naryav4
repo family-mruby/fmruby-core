@@ -177,3 +177,11 @@ CONFIG_RMT_ENCODER_FUNC_IN_IRAM=n
 # (doc/flash_write_flicker/report/f1.md). The flash must be in IDF's suspend
 # list (P4-Nano: GD25Q128, 0xC84018) or the app asserts at boot.
 CONFIG_SPI_FLASH_AUTO_SUSPEND=y
+# Detect the end of a suspend by polling the flash status (WIP/SUS) instead
+# of a fixed tSUS wait. With the fixed wait, cache refills during an erase or
+# program sometimes get a bus error on the P4 and any core faults (Instruction/
+# Load/Store access fault on flash, PSRAM or internal RAM). IDF v5.5 does not
+# list the P4 for auto-suspend; same symptom in espressif/esp-idf#18846.
+# GD25Q128E clears WIP within tSUS and sets SUS1/SUS2 right after a suspend,
+# as this mode requires (doc/p4_transfer_crash/report/t1.md).
+CONFIG_SPI_FLASH_AUTO_CHECK_SUSPEND_STATUS=y
