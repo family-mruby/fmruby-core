@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。次は A1 (遠くのオブジェクトの代理) か Z4 (S3)
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) を計画中
 
 ## 目的
 
@@ -34,7 +34,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 | Z2 (完了) | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
 | Z3 (完了) | get / queryable (問い合わせと応答) と liveliness (生存の監視)。前半は sim と P4-Nano がルータ経由で、後半はルータなしで直接 (peer、シングルスレッドで成り立つか確かめる) | 機体どうしが問い合わせる |
 | Z4 | Retro (S3)。flash の区画の見直し (factory の拡張) とセット | Retro も網に入る |
-| A1 | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
+| A1 (計画中) | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
 | A2 以降 | usecases.md の最小で成立する案 (家を each する、部品を借りる) → ペット (pet_design.md) など | デモ |
 
 ブラウザ版 (wasm) から網に入る方法 (node_variants.md 2.7、zenoh-ts と remote-api) は、Z1 と並行して小さく
@@ -117,6 +117,68 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
   1.5-3 KB 使い、閉じれば戻る。
 - 試験の後に内蔵 RAM が約 38 KB 戻らなかったのは zenoh ではなく、ESP-Hosted (WiFi のチップとの通信) が転送用の
   バッファを解放せずに溜める作りのためだった。P4 の WiFi の通信すべてで起きる。対応は doc/hosted_mempool/。
+
+## A1: 遠くのオブジェクトの代理 (計画 2026-10-07)
+
+### ゴール
+
+別の機体の Ruby のオブジェクトを、手元のオブジェクトと同じ書き方で呼べる。
+
+```ruby
+# 公開する側 (P4-Nano のアプリ)
+Asterism.connect("tcp/192.168.10.2:7447", node: "naryav4")
+Asterism.expose("apu", apu, methods: [:play, :stop])
+
+# 呼ぶ側 (sim のアプリ)
+apu = Asterism["naryav4/apu"]
+apu.play("t120 o4 cdefg")             # 音は P4-Nano から鳴る
+apu.respond_to?(:play)                # => true (公開された一覧から)
+Asterism.each("*/apu") { |a| a.stop } # 生きている機体を回る
+```
+
+### 作り
+
+- **層**: Zenoh gem (Z1-Z3) の上に、純 Ruby の gem `lib/add/picoruby-asterism/` (mrblib だけ) を置く。Family mruby に
+  依存しない。値の包みは `MessagePack.pack` / `unpack` (CRuby の msgpack gem と同じ名前の API) だけを使う。
+- **キー空間**: `asterism/<node>/<object>` を根にする (Zenoh の `@` は管理用に予約されているので使わない)。
+  - 呼び出し: `asterism/<node>/<object>/call` に get。payload は `[メソッド名, 引数の配列, キーワードの Hash]`。
+    答えは `["ok", 戻り値]` か `["error", 例外のクラス名, メッセージ]`。
+  - 一覧 (メタ情報): `asterism/<node>/<object>/meta` に get。公開したメソッドの名前と引数の数。`respond_to?`・
+    `methods`・エディタの補完の元になる。
+  - 生存: `asterism/<node>/<object>` を liveliness のトークンにする。`Asterism.each` / 一覧はこれで作る。
+- **呼ぶ側の代理**: `method_missing` で呼び出しを get に変える (アプリの VM で method_missing・respond_to_missing?・
+  キーワード引数が使えることは report/metaprog_check.md で確認済み)。
+- **公開する側**: `queryable` で受け、公開したメソッドだけを `public_send` する。それ以外は "error" で返す。
+- **ポーリング**: アプリの `on_update` から `Asterism.poll` を呼ぶ (Zenoh の poll と、届いた呼び出しへの応答)。
+- **待ち**: 呼び出しが答えを待つ間は、その中で poll を回し、自分あての呼び出しにも答え続ける (互いに呼び合っても
+  詰まらないため)。待つのはそのアプリだけで、ほかのアプリや画面は止まらない。
+
+### 範囲の外 (A1 ではやらない)
+
+- オブジェクトを参照のまま渡す (戻り値が別の代理になる)、ブロックを渡す、イベントの購読 (A2 以降)。
+- CRuby (PC) の側の Asterism (zenoh の Ruby 版が要る。下の未確定事項 5)。
+- Spinel のアプリ・カーネルからの利用 (method_missing を使うので mruby のアプリ VM に限る)。
+- 認証・権限 (信頼できる LAN の前提のまま)。
+
+### 受け入れ条件 (案)
+
+1. sim と P4-Nano の間で、片方が公開した APU (音) と画面 (文字) を、もう片方から代理で呼べる。戻り値と例外が届く。
+2. 公開していないメソッドは呼べない (呼ぶと Asterism::RemoteError)。`respond_to?` が公開の一覧と合う。
+3. 相手が消えると、呼び出しは時間切れで `Asterism::Timeout` (アプリは止まらない)。`Asterism.each` から消える。
+4. 互いに呼び合っても詰まらない。
+5. gem は Family mruby に依存しない。sim の標準構成・互換構成、P4 のビルドが通り、起動時の内蔵 RAM は増えない。
+
+### 未確定事項 (A1 の前に決めたい)
+
+1. **呼び出しの待ち方**: 答えが返るまで待つ (時間制限つき、既定 2 秒) を基本にし、待たない形 (`apu.async.play(...)` が
+   後で結果を取り出せるものを返す) も用意する (推奨) / 待たない形だけ。
+2. **公開の仕方**: 公開するメソッドを明示する (`methods: [...]`、推奨) / オブジェクトの public メソッドを全部公開。
+3. **名前 (住所)**: `Asterism["<node>/<object>"]` の node は、Z3 と同じく `/home/zenoh_node.txt` か機種の名前。
+   根のキーは `asterism/`。
+4. **値**: MessagePack で表せるもの (nil・真偽・整数・浮動小数・文字列・配列・Hash) だけを渡す。Symbol は文字列に
+   なる (今の msgpack gem の扱い)。それ以外を渡すと送る前に例外 (推奨)。
+5. **CRuby の側**: A1 では作らず、PC からは tools/fmrb_zenoh.rb (REST) で call / meta を叩けるようにするだけ (推奨)。
+   CRuby 版 (rubygems の `asterism`) は、zenoh の Ruby 版の当て (zenoh-c を FFI で呼ぶなど) を調べてから決める。
 
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 

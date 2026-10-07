@@ -62,7 +62,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
-- `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-05) P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔1 files〕
+- `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-05) P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔2 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
@@ -90,7 +90,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
-- `ruby_asterism/` [Asterism: 計画](ruby_asterism/plan.md) — **進行中** (2026-10-06) 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。次は A1 (遠くのオブジェクトの代理) か Z4 (S3) 〔14 files〕
+- `ruby_asterism/` [Asterism: 計画](ruby_asterism/plan.md) — **進行中** (2026-10-06) 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) を計画中 〔14 files〕
 - `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **完了** (2026-10-02) 主因は estalloc の ESTALLOC_DEBUG の解放ごとの全走査と、それが隠していたアプリ終了時の二重解放 (mrc_irep_free)。二重解放を直し (不正な解放 510 → 0)、統計だけを残して全走査を止めた。Shell の打鍵で 50 ms 超え 52% → 2%、負荷時 98% → 10%。Spinel にも効く。残りはエディタの同時 2 つ起動での abort (別段階) 〔9 files〕
 - `sim_boot_eintr/` [sim の起動が、ソケットの準備の割り込み (EINTR) で失敗する件](sim_boot_eintr/plan.md) — **完了** (2026-10-05) Linux の sim で、graphics-audio のソケットの bind / listen が EINTR で失敗して起動しない。FreeRTOS の POSIX ポートの SIGALRM が系統呼び出しを割り込むのが原因の見込み。E1 で原因を確かめて直す 〔3 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
