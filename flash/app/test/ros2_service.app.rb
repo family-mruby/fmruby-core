@@ -12,6 +12,7 @@
 #     c: calls the PC's /add_two_ints and waits for the answer
 #     a: the same call without waiting (the answer is picked up by later
 #        updates)
+#     n: the same call through node.call (a client made on first use)
 #   Each shows the sum and the round trip in ms.
 #
 # From the PC (parent repo, docker-compose.ros2.yml):
@@ -111,6 +112,17 @@ class Ros2ServiceApp < FmrbApp
     note("call: #{e.message} (#{Machine.board_millis - t0} ms)")
   end
 
+  # node.call: the shortcut that keeps one client per service name.
+  def call_node
+    @calls += 1
+    t0 = Machine.board_millis
+    res = @node.call(PC_SERVICE, Asterism::ROS::ExampleInterfaces::AddTwoInts,
+                     a: @calls, b: -1, timeout_ms: CALL_TIMEOUT_MS)
+    note("node.call #{@calls}-1 = #{res.sum} (#{Machine.board_millis - t0} ms)")
+  rescue Asterism::ROS::Timeout => e
+    note("node.call: #{e.message} (#{Machine.board_millis - t0} ms)")
+  end
+
   # A call that does not wait: picked up by check_pending.
   def call_async
     if @pending
@@ -144,6 +156,8 @@ class Ros2ServiceApp < FmrbApp
         call_wait
       elsif ch == 97 # a
         call_async
+      elsif ch == 110 # n
+        call_node
       end
     end
     check_pending
@@ -164,7 +178,7 @@ class Ros2ServiceApp < FmrbApp
     x = @user_area_x0 + 4
     y = @user_area_y0 + 4
     @gfx.draw_text(x, y, "#{@id} #{@state}"[0, 52], theme_fg)
-    @gfx.draw_text(x, y + 11, "served: #{@served}  calls: #{@calls}  (c: call, a: async)"[0, 52], theme_fg)
+    @gfx.draw_text(x, y + 11, "served: #{@served}  calls: #{@calls}  (keys c / a / n)"[0, 52], theme_fg)
     row = 0
     @lines.each do |l|
       @gfx.draw_text(x, y + 25 + row * 11, l[0, 52], theme_fg)
