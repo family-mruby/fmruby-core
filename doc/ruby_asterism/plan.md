@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通) 完了
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス) 完了。次は R3 (メッセージ型の変換器)
 
 ## 目的
 
@@ -213,7 +213,7 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 
 | 段階 | 内容 |
 |---|---|
-| R2 (進行中) | サービス (example_interfaces/srv/AddTwoInts)。機体が提供して PC から呼ぶ、機体から PC のサービスを呼ぶ。get / queryable の attachment。型は手書き (instruction_r2.md) |
+| R2 (完了 2026-10-07) | サービス (example_interfaces/srv/AddTwoInts)。機体が提供して PC の `ros2 service call` から呼べる、機体から PC のサービスを呼べる (P4-Nano・sim)。get / queryable の attachment と get の設定 (target ALL_COMPLETE、queryable は complete)。往復は機体から PC が中央値 49 ms、PC から機体が約 100 ms (50 ms のポーリング待ちを含む)。ファーム +8,864 B、起動時の内蔵 RAM の増分 0。型は手書き。結果は report/r2.md |
 | R3 | メッセージ型の変換器 (design.md 2 章の asterism-msgs)。R2 で手書きの型が 3 つになった手間を見てから作る |
 
 ### R3: メッセージ型の変換器 (計画)
