@@ -1,15 +1,21 @@
 # Asterism::ROS: a minimal ROS 2 node over rmw_zenoh's wire format
-# (doc/ruby_asterism/design.md ch. 5, R1). Topics only, std_msgs/String only.
+# (doc/ruby_asterism/design.md ch. 5; topics R1, services R2). Types:
+# std_msgs/String and example_interfaces/srv/AddTwoInts.
 #
 #   s = Asterism::Zenoh::Session.open("tcp/192.168.10.2:7447")
 #   node = Asterism::ROS::Node.new(s, "fmruby_talker")
 #   pub = node.publisher("/chatter", Asterism::ROS::StdMsgs::String)
 #   sub = node.subscription("/chatter_back", Asterism::ROS::StdMsgs::String)
+#   add = Asterism::ROS::ExampleInterfaces::AddTwoInts
+#   node.service("/add_two_ints_fmrb", add) { |req| { sum: req.a + req.b } }
+#   cli = node.client("/add_two_ints", add)
 #   loop do
-#     s.poll
+#     node.poll                                   # session.poll + answer services
 #     pub.publish("hello")
 #     sub.each_pending { |msg, info| puts msg }   # info: Attachment or nil
 #   end
+#   cli.call(a: 2, b: 3).sum                      # waits (polling), or
+#   c = cli.call_async(a: 2, b: 3); c.done?; c.value
 #   node.close
 #
 # What goes on the wire (rmw_zenoh_cpp 0.2.x, ROS 2 Jazzy):
@@ -25,6 +31,13 @@
 #     @ros2_lv/<domain>/<zid>/<nid>/<id>/MP|MS/<enclave>/<namespace>/<node>/
 #       <topic>/<DDS type name>/<type hash>/<qos>
 #   with "/" written as "%" in enclave, namespace and topic ("%" alone for "/").
+# - services: the server is a complete queryable on
+#   <domain>/<service>/<DDS service type>/<service type hash>, the client
+#   gets that key with target ALL_COMPLETE and no consolidation. Request and
+#   reply both carry the attachment above: the client's sequence number and
+#   GID go out with the request, and the reply carries them back (with the
+#   server's time), which is how the client pairs them. Tokens SS (server)
+#   and SC (client), shaped like MP / MS.
 #
 # Nothing here depends on the host: it uses an Asterism::Zenoh::Session
 # (put with attachment:, subscribe, liveliness, zid) and Asterism::CDR.
@@ -102,6 +115,19 @@ module Asterism
       out
     end
 
+    # A service call got no answer in time (or nobody serves that name).
+    class Timeout < ::StandardError; end
+
+    # Milliseconds from an arbitrary origin (the board's clock when there is
+    # one), and a short pause; the same helpers Asterism's calls use.
+    def self.now_ms
+      ::Asterism.now_ms
+    end
+
+    def self.pause(ms)
+      ::Asterism.pause(ms)
+    end
+
     # The attachment of a sample: sequence number, source time, publisher GID.
     class Attachment
       attr_reader :sequence, :stamp_ns, :gid
@@ -156,8 +182,65 @@ module Asterism
       end
     end
 
+    module ExampleInterfaces
+      # example_interfaces/srv/AddTwoInts: int64 a, int64 b -> int64 sum.
+      module AddTwoInts
+        ROS_NAME = "example_interfaces/srv/AddTwoInts"
+        TYPE_NAME = "example_interfaces::srv::dds_::AddTwoInts_"
+        # RIHS01 hash of the service type (not of Request / Response), as it
+        # appears in rmw_zenoh's keys and tokens (Jazzy).
+        TYPE_HASH = "RIHS01_e118de6bf5eeb66a2491b5bda11202e7b68f198d6f67922cf30364858239c81a"
+
+        class Request
+          attr_accessor :a, :b
+
+          def initialize(a: 0, b: 0)
+            @a = a
+            @b = b
+          end
+
+          # msg: a Request, or a Hash with :a and :b.
+          def self.encode(msg)
+            m = msg.is_a?(Hash) ? new(a: msg[:a] || 0, b: msg[:b] || 0) : msg
+            ::Asterism::CDR::Writer.new.int64(m.a.to_i).int64(m.b.to_i).to_s
+          end
+
+          def self.decode(bytes)
+            r = ::Asterism::CDR::Reader.new(bytes)
+            new(a: r.int64, b: r.int64)
+          end
+
+          def to_h
+            { a: @a, b: @b }
+          end
+        end
+
+        class Response
+          attr_accessor :sum
+
+          def initialize(sum: 0)
+            @sum = sum
+          end
+
+          # msg: a Response, or a Hash with :sum.
+          def self.encode(msg)
+            m = msg.is_a?(Hash) ? new(sum: msg[:sum] || 0) : msg
+            ::Asterism::CDR::Writer.new.int64(m.sum.to_i).to_s
+          end
+
+          def self.decode(bytes)
+            new(sum: ::Asterism::CDR::Reader.new(bytes).int64)
+          end
+
+          def to_h
+            { sum: @sum }
+          end
+        end
+      end
+    end
+
     class Node
-      attr_reader :name, :namespace, :domain, :zid, :key
+      attr_reader :name, :namespace, :domain, :zid, :key, :session
 
       # session: an open Asterism::Zenoh::Session. Declares the node's
       # liveliness token at once.
@@ -172,6 +255,7 @@ module Asterism
         @nid = 0
         @next_id = 1
         @entities = []
+        @services = []
         @key = "#{LIVELINESS_ROOT}/#{@domain}/#{@zid}/#{@nid}/#{@nid}/NN/" \
                "#{::Asterism::ROS.mangle(@enclave)}/#{::Asterism::ROS.mangle(@namespace)}/#{@name}"
         @token = session.liveliness(@key)
@@ -189,10 +273,52 @@ module Asterism
         e
       end
 
-      # Withdraws the node and its publishers and subscriptions. Idempotent.
+      # Serves `service` (a name) with the block: it gets the request (an
+      # object of type::Request) and returns the response (a type::Response
+      # or a Hash of its fields). The block runs from node.poll (or
+      # service.handle_pending), never behind the application's back.
+      def service(service, type, qos: DEFAULT_QOS, depth: 8, &handler)
+        raise ArgumentError, "service needs a block" unless handler
+        e = ::Asterism::ROS::Service.new(self, @session, service, type, qos, depth, handler)
+        @entities << e
+        @services << e
+        e
+      end
+
+      def client(service, type, qos: DEFAULT_QOS)
+        e = ::Asterism::ROS::Client.new(self, @session, service, type, qos)
+        @entities << e
+        e
+      end
+
+      # node.call("/add_two_ints", AddTwoInts, a: 1, b: 2) -> response.
+      # A client per service name is made on first use and kept.
+      def call(service, type, request = nil, timeout_ms: ::Asterism::ROS::Client::DEFAULT_TIMEOUT_MS, **fields)
+        @clients ||= {}
+        c = @clients[service]
+        if c.nil? || c.closed?
+          c = client(service, type)
+          @clients[service] = c
+        end
+        c.call(request, timeout_ms: timeout_ms, **fields)
+      end
+
+      # Polls the session (Asterism::Zenoh::Session#poll) and answers the
+      # requests that came in for this node's services. Returns what
+      # session.poll returns (false once the session is closed).
+      def poll(steps = 8)
+        ok = @session.poll(steps)
+        @services.each { |sv| sv.handle_pending }
+        ok
+      end
+
+      # Withdraws the node and its publishers, subscriptions, services and
+      # clients. Idempotent.
       def close
         @entities.each { |e| e.close }
         @entities = []
+        @services = []
+        @clients = {}
         @token.close if @token
         @token = nil
         nil
@@ -284,6 +410,212 @@ module Asterism
         @token.close if @token
         @token = nil
         nil
+      end
+    end
+  end
+end
+
+module Asterism
+  module ROS
+    # The server side of a service (node.service). A complete queryable on
+    # the service key, plus the SS token.
+    class Service
+      attr_reader :service_key, :token_key, :handled, :errors
+
+      def initialize(node, session, service, type, qos, depth, handler)
+        @type = type
+        @handler = handler
+        @service_key, @token_key = node.entity_keys("SS", service, type, qos)
+        @handled = 0
+        @errors = 0
+        @queryable = session.queryable(@service_key, depth, complete: true)
+        @token = session.liveliness(@token_key)
+      end
+
+      # Answers the requests waiting now with the block given to
+      # node.service. A request that cannot be decoded, or has no attachment
+      # (rmw_zenoh clients always send one), is counted in errors and
+      # finished without an answer. An exception from the block finishes
+      # that request without an answer and is raised from here. Returns the
+      # number answered.
+      def handle_pending
+        return 0 if @token.nil?
+        n = 0
+        # The Array form: no block called from C (stack depth, see README).
+        qs = @queryable.each_pending
+        begin
+          qs.each do |q|
+            n += 1 if answer(q)
+            q.finish
+          end
+        ensure
+          # Also the ones after a request whose block raised (finish is
+          # idempotent; an unanswered query just ends for the client).
+          qs.each { |q| q.finish }
+        end
+        n
+      end
+
+      def close
+        @queryable.close
+        @token.close if @token
+        @token = nil
+        nil
+      end
+
+      def closed?
+        @token.nil?
+      end
+
+      private
+
+      def answer(q)
+        info = ::Asterism::ROS::Attachment.decode(q.attachment)
+        req = nil
+        begin
+          req = @type::Request.decode(q.payload) if info
+        rescue ::Asterism::CDR::DecodeError
+          req = nil
+        end
+        if req.nil?
+          @errors += 1
+          return false
+        end
+        res = @handler.call(req)
+        # The client's sequence number and GID go back with the reply.
+        att = ::Asterism::ROS::Attachment.new(info.sequence, ::Asterism::ROS.now_ns, info.gid)
+        q.reply(@service_key, @type::Response.encode(res), attachment: att.encode)
+        @handled += 1
+        true
+      end
+    end
+
+    # A call on its way (client.call_async). done? never waits (node.poll
+    # moves it on); value waits, polling the node's session.
+    class Call
+      attr_reader :sequence, :response, :took_ms
+
+      def initialize(client, get, sequence, timeout_ms)
+        @client = client
+        @get = get
+        @sequence = sequence
+        @timeout_ms = timeout_ms
+        @started = ::Asterism::ROS.now_ms
+        @deadline = @started + timeout_ms
+        @response = nil
+        @finished = false
+        @took_ms = nil
+        @nobody = false
+      end
+
+      # True once the response came, the time ran out, or no server answered.
+      def done?
+        collect
+        @finished
+      end
+
+      # The response (type::Response); waits until done. Raises
+      # Asterism::ROS::Timeout when there was none.
+      def value
+        @client.wait_for(self) unless done?
+        if @response.nil?
+          raise ::Asterism::Zenoh::Error, "session is closed" if @client.session_closed?
+          if @nobody
+            raise ::Asterism::ROS::Timeout, "no answer from #{@client.service_name} (nobody serves it)"
+          end
+          raise ::Asterism::ROS::Timeout, "no answer from #{@client.service_name} within #{@timeout_ms} ms"
+        end
+        @response
+      end
+
+      def collect
+        return if @finished
+        g = @get
+        # The Array form, as in Asterism::Future (no block called from C).
+        g.each_reply.each do |r|
+          next unless @response.nil?
+          info = ::Asterism::ROS::Attachment.decode(r[2])
+          # rmw_zenoh pairs the reply by the sequence number it carries back.
+          next if info.nil? || info.sequence != @sequence
+          begin
+            @response = @client.decode_response(r[1])
+          rescue ::Asterism::CDR::DecodeError
+            @response = nil
+          end
+        end
+        now = ::Asterism::ROS.now_ms
+        if !@response.nil? || g.done? || now >= @deadline
+          @nobody = @response.nil? && now < @deadline
+          @finished = true
+          @took_ms = now - @started
+        end
+      end
+    end
+
+    # The client side of a service (node.client). Sends each request as a
+    # get on the service key, plus the SC token.
+    class Client
+      DEFAULT_TIMEOUT_MS = 2000
+      # Pause between polls while a call waits (ms).
+      WAIT_STEP_MS = 2
+
+      attr_reader :service_key, :token_key, :gid, :sequence, :service_name
+
+      def initialize(node, session, service, type, qos)
+        @node = node
+        @session = session
+        @type = type
+        @service_name = ::Asterism::ROS.resolve(service, node.namespace)
+        @service_key, @token_key = node.entity_keys("SC", service, type, qos)
+        @gid = ::Asterism::ROS.gid_for(@token_key)
+        @sequence = 0
+        @token = session.liveliness(@token_key)
+      end
+
+      # Sends the request and returns a Call at once. request: a
+      # type::Request, a Hash, or the fields as keywords.
+      def call_async(request = nil, timeout_ms: DEFAULT_TIMEOUT_MS, **fields)
+        raise ::Asterism::Zenoh::Error, "client closed" if @token.nil?
+        req = request.nil? ? fields : request
+        payload = @type::Request.encode(req)
+        @sequence += 1
+        att = ::Asterism::ROS::Attachment.new(@sequence, ::Asterism::ROS.now_ns, @gid)
+        g = @session.get(@service_key, timeout_ms, nil, payload, attachment: att.encode,
+                         target: :all_complete, consolidation: :none)
+        ::Asterism::ROS::Call.new(self, g, @sequence, timeout_ms)
+      end
+
+      # Sends the request and waits for the response (polling the node, so
+      # this node's services keep answering meanwhile). Raises
+      # Asterism::ROS::Timeout when no response came in time.
+      def call(request = nil, timeout_ms: DEFAULT_TIMEOUT_MS, **fields)
+        call_async(request, timeout_ms: timeout_ms, **fields).value
+      end
+
+      def wait_for(c)
+        until c.done?
+          break unless @node.poll
+          break if c.done?
+          ::Asterism::ROS.pause(WAIT_STEP_MS)
+        end
+      end
+
+      def session_closed?
+        @session.closed?
+      end
+
+      def decode_response(bytes)
+        @type::Response.decode(bytes)
+      end
+
+      def close
+        @token.close if @token
+        @token = nil
+        nil
+      end
+
+      def closed?
+        @token.nil?
       end
     end
   end

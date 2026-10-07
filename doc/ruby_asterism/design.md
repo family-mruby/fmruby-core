@@ -101,7 +101,9 @@
 - 中身: CDR (先頭に 4 バイトの印)。
 - attachment: シーケンス番号 (int64)、時刻 (int64 ns)、GID (長さ 1 バイト + 16 バイト) の 33 バイト。**トピックでも必須**
   (無いと rmw_zenoh が受け取りを捨てる。R1 で確認、2026-10-07)。mrbgem は R1 で put / subscribe の attachment に対応した。
-  サービス (get / queryable) の attachment はまだ無い。
+  サービスでは要求 (get) と答え (reply) の両方に同じ形の attachment が付き、答えは要求の通し番号と GID を返す。
+  mrbgem は R2 で get / queryable の attachment と、get の target (ALL_COMPLETE)・complete な queryable に対応した
+  (report/r2.md)。
 - liveliness のトークン: `ros2 node list` / `ros2 topic list` に出すために要る。
 - 接続: rmw_zenoh は既定でローカルの `rmw_zenohd` につなぎ、マルチキャストでの発見は切ってある。
 - QoS: transient local などは振る舞いを合わせる手間が大きい。

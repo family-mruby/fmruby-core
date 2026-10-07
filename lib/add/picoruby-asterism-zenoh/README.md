@@ -28,7 +28,7 @@ loop do
   s.poll
   qa.each_pending { |q| q.reply(q.key, "fine") }   # finished after the block
   w.each_pending { |key, alive| puts "#{key} #{alive ? 'up' : 'down'}" }
-  g.each_reply { |key, payload| puts "#{key}: #{payload}" }
+  g.each_reply { |key, payload, attachment| puts "#{key}: #{payload}" }
   break if g.done?
   sleep_ms 50
 end
@@ -51,15 +51,16 @@ end
 | `sub.each_pending { \|key, payload, attachment\| }` | Integer | Takes out the values received so far (oldest first). `attachment` is a String, or nil when the sample had none (or an empty one). Without a block, returns them as `[[key, payload, attachment], ...]`. |
 | `sub.pending` / `sub.received` / `sub.dropped` | Integer | Waiting values / total received / dropped because the ring was full (the oldest goes). |
 | `sub.close` / `sub.closed?` | | Pending values can still be taken after close. |
-| `session.get(key, timeout_ms = 2000, params = nil, payload = nil)` | `Get` | Sends a query and returns at once. Every matching queryable is asked (target ALL) and every reply is kept (no consolidation). `timeout_ms` 1..600000. |
-| `get.each_reply { \|key, payload\| }` | Integer | Replies received so far (oldest first); without a block, an Array. Error replies are not yielded, only counted. |
+| `session.get(key, timeout_ms = 2000, params = nil, payload = nil, attachment: nil, target: :all, consolidation: :none)` | `Get` | Sends a query and returns at once. `attachment:` is a String sent with the query, or nil. `target:` `:all` (every matching queryable, the default), `:all_complete` (only queryables declared `complete: true`; what ROS 2's rmw_zenoh clients send) or `:best_matching`. `consolidation:` `:none` (every reply is kept, the default), `:latest`, `:monotonic` or `:auto`. `timeout_ms` 1..600000. |
+| `get.each_reply { \|key, payload, attachment\| }` | Integer | Replies received so far (oldest first); `attachment` is a String, or nil when the reply had none. Without a block, an Array of `[key, payload, attachment]`. Error replies are not yielded, only counted. |
 | `get.done?` | `true` / `false` | True once every replier has finished, the time limit has passed, or the session closed. The limit is checked once a second by `poll`, so `done?` turns true up to about 1 s after it. |
 | `get.pending` / `received` / `dropped` / `errors` | Integer | Up to 16 replies are kept; more drop the oldest. |
-| `session.queryable(key, depth = 16)` | `Queryable` | Answers queries matching `key`. Up to `depth` unanswered queries are kept; more finish the oldest unanswered (the requester gets nothing from it) and count it as dropped. |
+| `session.queryable(key, depth = 16, complete: false)` | `Queryable` | Answers queries matching `key`. Up to `depth` unanswered queries are kept; more finish the oldest unanswered (the requester gets nothing from it) and count it as dropped. `complete: true` declares that it answers for every key matching `key`; only such queryables receive queries sent with `target: :all_complete`. |
 | `queryable.each_pending { \|q\| }` | Integer | Takes out the waiting queries. Each is finished when the block returns (also when it raises). Without a block: an Array of `Query`, each open until `q.finish` or garbage collection. |
 | `queryable.pending` / `received` / `dropped` / `close` / `closed?` | | |
 | `q.key` / `q.params` / `q.payload` | String | The query's key expression (may contain wildcards), its parameters (`a=1;b=2`) and payload (`""` when none). |
-| `q.reply(payload)` / `q.reply(key, payload)` | `nil` | `key` defaults to the query's key and must match it. May be called several times. `Asterism::Zenoh::Error` once finished. |
+| `q.attachment` | String / nil | The query's attachment, nil when it had none (or an empty one). |
+| `q.reply(payload, attachment: nil)` / `q.reply(key, payload, attachment: nil)` | `nil` | `key` defaults to the query's key and must match it. `attachment:` is a String sent with the reply, or nil. May be called several times. `Asterism::Zenoh::Error` once finished. |
 | `q.finish` / `q.finished?` | | Sends the final reply: the requester's `done?` turns true when every queryable has finished. |
 | `session.liveliness(key)` | `LivelinessToken` | Announces `key` as alive until `token.close`, garbage collection, or the session closing. |
 | `session.liveliness_watch(key, depth = 16)` | `LivelinessWatch` | `each_pending { \|key, alive\| }` (alive is `true` when a token appeared, `false` when it went away); the tokens alive when the watch starts come first. Tokens of the same session are not reported (zenoh-pico does not report its own). Also `pending` / `received` / `dropped` / `close` / `closed?`. |

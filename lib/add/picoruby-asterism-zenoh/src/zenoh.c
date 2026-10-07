@@ -3,7 +3,8 @@
  *
  * Covers: sessions (client, or peer with an optional listener), put /
  * subscribe, get / queryable (query and reply), liveliness tokens and
- * liveliness watches.
+ * liveliness watches. Samples, queries and replies may carry an attachment
+ * (Zenoh's per-message metadata; ROS 2's rmw_zenoh needs it on all three).
  *
  * Threading model: zenoh-pico is built single-threaded, so nothing happens
  * behind the interpreter's back. The application calls Session#poll from its
@@ -258,7 +259,7 @@ static void zrb_ring_push(zrb_ring *r, const z_loaned_keyexpr_t *keyexpr, const 
 typedef enum {
     ZRB_TAKE_SAMPLE,     /* subscriber: [key, payload, attachment or nil] */
     ZRB_TAKE_LIVELINESS, /* liveliness watch: [key, alive] */
-    ZRB_TAKE_REPLY,      /* get: [key, payload] */
+    ZRB_TAKE_REPLY,      /* get: [key, payload, attachment or nil] */
 } zrb_take_kind;
 
 /* Take out what is pending now, oldest first: yield them to blk, or collect
@@ -278,13 +279,13 @@ static mrb_value zrb_ring_take(mrb_state *mrb, zrb_ring *r, mrb_value blk, zrb_t
          * ring) instead of leaking. */
         zrb_entry e = r->slots[r->head];
         mrb_value vals[3];
-        mrb_int n = (kind == ZRB_TAKE_SAMPLE) ? 3 : 2;
+        mrb_int n = liveliness ? 2 : 3;
         vals[0] = mrb_str_new(mrb, (const char *)e.buf, (mrb_int)e.key_len);
         if (liveliness) {
             vals[1] = mrb_bool_value(e.alive);
         } else {
             vals[1] = mrb_str_new(mrb, (const char *)e.buf + e.key_len, (mrb_int)e.payload_len);
-            if (kind == ZRB_TAKE_SAMPLE && e.att_len > 0) {
+            if (e.att_len > 0) {
                 vals[2] = mrb_str_new(mrb, (const char *)e.buf + e.key_len + e.payload_len, (mrb_int)e.att_len);
             } else {
                 vals[2] = mrb_nil_value();
@@ -617,12 +618,42 @@ static mrb_value zrb_query_payload(mrb_state *mrb, mrb_value self) {
     return zrb_str_from_bytes(mrb, b);
 }
 
-/* q.reply(payload) / q.reply(key, payload) -> nil. The key defaults to the
- * query's key; it must match the query's key expression. May be called more
- * than once before the query is finished. */
+/* q.attachment -> String, or nil when the query has none (or an empty one). */
+static mrb_value zrb_query_attachment(mrb_state *mrb, mrb_value self) {
+    zrb_query *zq = zrb_query_get_live(mrb, self);
+    const z_loaned_bytes_t *b = z_query_attachment(z_loan(zq->query));
+    if (b == NULL || z_bytes_len(b) == 0) {
+        return mrb_nil_value();
+    }
+    return zrb_str_from_bytes(mrb, b);
+}
+
+/* The optional attachment: keyword of put / get / reply: nil or a String. */
+static mrb_value zrb_kw_attachment(mrb_state *mrb, mrb_value v) {
+    mrb_value att = mrb_undef_p(v) ? mrb_nil_value() : v;
+    if (!mrb_nil_p(att) && !mrb_string_p(att)) {
+        mrb_raise(mrb, E_TYPE_ERROR, "attachment must be a String or nil");
+    }
+    return att;
+}
+
+/* Copy a Ruby String into zenoh-pico bytes; raises when out of memory. */
+static void zrb_bytes_from_str(mrb_state *mrb, z_owned_bytes_t *out, mrb_value str, const char *what) {
+    if (z_bytes_copy_from_buf(out, (const uint8_t *)RSTRING_PTR(str), (size_t)RSTRING_LEN(str)) != Z_OK) {
+        mrb_raisef(mrb, zrb_error_class(mrb), "cannot allocate the %s", what);
+    }
+}
+
+/* q.reply(payload, attachment: nil) / q.reply(key, payload, attachment: nil)
+ * -> nil. The key defaults to the query's key; it must match the query's key
+ * expression. May be called more than once before the query is finished. */
 static mrb_value zrb_query_reply(mrb_state *mrb, mrb_value self) {
     mrb_value a1, a2 = mrb_nil_value();
-    mrb_int argc = mrb_get_args(mrb, "o|o", &a1, &a2);
+    mrb_sym kw_names[1] = {mrb_intern_lit(mrb, "attachment")};
+    mrb_value kw_values[1];
+    mrb_kwargs kwargs = {1, 0, kw_names, kw_values, NULL};
+    mrb_int argc = mrb_get_args(mrb, "o|o:", &a1, &a2, &kwargs);
+    mrb_value att = zrb_kw_attachment(mrb, kw_values[0]);
     zrb_query *zq = zrb_query_get_live(mrb, self);
     mrb_value key_v, payload;
     if (argc == 1) {
@@ -643,11 +674,21 @@ static mrb_value zrb_query_reply(mrb_state *mrb, mrb_value self) {
         zrb_view_key(mrb, &ke, mrb_string_value_cstr(mrb, &key_v));
         kp = z_loan(ke);
     }
+    z_owned_bytes_t att_bytes;
+    z_query_reply_options_t opts;
+    z_query_reply_options_default(&opts);
+    if (!mrb_nil_p(att)) {
+        zrb_bytes_from_str(mrb, &att_bytes, att, "attachment");
+        opts.attachment = z_move(att_bytes);
+    }
     z_owned_bytes_t bytes;
     if (z_bytes_copy_from_buf(&bytes, (const uint8_t *)RSTRING_PTR(payload), (size_t)RSTRING_LEN(payload)) != Z_OK) {
+        if (!mrb_nil_p(att)) {
+            z_drop(z_move(att_bytes));
+        }
         mrb_raise(mrb, zrb_error_class(mrb), "cannot allocate the payload");
     }
-    z_result_t ret = z_query_reply(z_loan(zq->query), kp, z_move(bytes), NULL);
+    z_result_t ret = z_query_reply(z_loan(zq->query), kp, z_move(bytes), &opts);
     if (ret != Z_OK) {
         mrb_raisef(mrb, zrb_error_class(mrb), "reply failed (%d)", (int)ret);
     }
@@ -680,7 +721,8 @@ static void zrb_on_reply(z_loaned_reply_t *reply, void *ctx) {
     }
     if (z_reply_is_ok(reply)) {
         const z_loaned_sample_t *sample = z_reply_ok(reply);
-        zrb_ring_push(&g->ring, z_sample_keyexpr(sample), z_sample_payload(sample), NULL, true);
+        zrb_ring_push(&g->ring, z_sample_keyexpr(sample), z_sample_payload(sample), z_sample_attachment(sample),
+                      true);
     } else {
         g->errors++;
     }
@@ -744,7 +786,9 @@ static mrb_value zrb_get_new(mrb_state *mrb, zrb_get **out) {
     return obj;
 }
 
-/* g.each_reply { |key, payload| ... } -> Integer; without a block, Array. */
+/* g.each_reply { |key, payload, attachment| ... } -> Integer; without a
+ * block, Array of [key, payload, attachment]. attachment is nil when the
+ * reply had none. */
 static mrb_value zrb_get_each_reply(mrb_state *mrb, mrb_value self) {
     mrb_value blk = mrb_nil_value();
     mrb_get_args(mrb, "&", &blk);
@@ -998,10 +1042,7 @@ static mrb_value zrb_session_put(mrb_state *mrb, mrb_value self) {
     mrb_value kw_values[1];
     mrb_kwargs kwargs = {1, 0, kw_names, kw_values, NULL};
     mrb_get_args(mrb, "zS:", &key, &payload, &kwargs);
-    mrb_value att = mrb_undef_p(kw_values[0]) ? mrb_nil_value() : kw_values[0];
-    if (!mrb_nil_p(att) && !mrb_string_p(att)) {
-        mrb_raise(mrb, E_TYPE_ERROR, "attachment must be a String or nil");
-    }
+    mrb_value att = zrb_kw_attachment(mrb, kw_values[0]);
     zrb_session *z = zrb_session_get_open(mrb, self);
 
     z_view_keyexpr_t ke;
@@ -1090,11 +1131,18 @@ static mrb_value zrb_session_liveliness_watch(mrb_state *mrb, mrb_value self) {
     return zrb_sub_new(mrb, self, z, key, depth, true);
 }
 
-/* session.queryable(key, depth = 16) -> Queryable */
+/* session.queryable(key, depth = 16, complete: false) -> Queryable.
+ * complete: true declares that it answers for every key matching its key
+ * expression; only such queryables receive queries sent with target
+ * :all_complete (as ROS 2's rmw_zenoh clients send them). */
 static mrb_value zrb_session_queryable(mrb_state *mrb, mrb_value self) {
     const char *key;
     mrb_int depth = ZRB_DEFAULT_DEPTH;
-    mrb_get_args(mrb, "z|i", &key, &depth);
+    mrb_sym kw_names[1] = {mrb_intern_lit(mrb, "complete")};
+    mrb_value kw_values[1];
+    mrb_kwargs kwargs = {1, 0, kw_names, kw_values, NULL};
+    mrb_get_args(mrb, "z|i:", &key, &depth, &kwargs);
+    bool complete = !mrb_undef_p(kw_values[0]) && mrb_test(kw_values[0]);
     zrb_check_depth(mrb, depth);
     zrb_session *z = zrb_session_get_open(mrb, self);
     z_view_keyexpr_t ke;
@@ -1113,7 +1161,10 @@ static mrb_value zrb_session_queryable(mrb_state *mrb, mrb_value self) {
 
     z_owned_closure_query_t cb;
     z_closure(&cb, zrb_on_query, NULL, q);
-    z_result_t ret = z_declare_queryable(z_loan(z->session), &q->qable, z_loan(ke), z_move(cb), NULL);
+    z_queryable_options_t qopts;
+    z_queryable_options_default(&qopts);
+    qopts.complete = complete;
+    z_result_t ret = z_declare_queryable(z_loan(z->session), &q->qable, z_loan(ke), z_move(cb), &qopts);
     if (ret != Z_OK) {
         mrb_raisef(mrb, zrb_error_class(mrb), "cannot declare a queryable on %s (%d)", key, (int)ret);
     }
@@ -1125,19 +1176,68 @@ static mrb_value zrb_session_queryable(mrb_state *mrb, mrb_value self) {
     return obj;
 }
 
-/* session.get(key, timeout_ms = 2000, params = nil, payload = nil) -> Get.
- * Returns at once; the replies come in with later polls. Every matching
- * queryable is asked and every reply is kept (no consolidation). */
+/* target: keyword of get -> z_query_target_t. */
+static z_query_target_t zrb_get_target(mrb_state *mrb, mrb_value v) {
+    if (mrb_undef_p(v) || mrb_nil_p(v)) {
+        return Z_QUERY_TARGET_ALL;
+    }
+    mrb_sym t = mrb_obj_to_sym(mrb, v);
+    if (t == mrb_intern_lit(mrb, "all")) {
+        return Z_QUERY_TARGET_ALL;
+    }
+    if (t == mrb_intern_lit(mrb, "all_complete")) {
+        return Z_QUERY_TARGET_ALL_COMPLETE;
+    }
+    if (t == mrb_intern_lit(mrb, "best_matching")) {
+        return Z_QUERY_TARGET_BEST_MATCHING;
+    }
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "target must be :all, :all_complete or :best_matching");
+    return Z_QUERY_TARGET_ALL; /* not reached */
+}
+
+/* consolidation: keyword of get -> z_query_consolidation_t. */
+static z_query_consolidation_t zrb_get_consolidation(mrb_state *mrb, mrb_value v) {
+    if (mrb_undef_p(v) || mrb_nil_p(v)) {
+        return z_query_consolidation_none();
+    }
+    mrb_sym c = mrb_obj_to_sym(mrb, v);
+    if (c == mrb_intern_lit(mrb, "none")) {
+        return z_query_consolidation_none();
+    }
+    if (c == mrb_intern_lit(mrb, "latest")) {
+        return z_query_consolidation_latest();
+    }
+    if (c == mrb_intern_lit(mrb, "monotonic")) {
+        return z_query_consolidation_monotonic();
+    }
+    if (c == mrb_intern_lit(mrb, "auto")) {
+        return z_query_consolidation_auto();
+    }
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "consolidation must be :none, :latest, :monotonic or :auto");
+    return z_query_consolidation_none(); /* not reached */
+}
+
+/* session.get(key, timeout_ms = 2000, params = nil, payload = nil,
+ *             attachment: nil, target: :all, consolidation: :none) -> Get.
+ * Returns at once; the replies come in with later polls. By default every
+ * matching queryable is asked and every reply is kept. */
 static mrb_value zrb_session_get_m(mrb_state *mrb, mrb_value self) {
     const char *key;
     mrb_int timeout_ms = ZRB_DEFAULT_GET_TIMEOUT_MS;
     const char *params = NULL;
     mrb_value payload = mrb_nil_value();
-    mrb_get_args(mrb, "z|iz!o", &key, &timeout_ms, &params, &payload);
+    mrb_sym kw_names[3] = {mrb_intern_lit(mrb, "attachment"), mrb_intern_lit(mrb, "target"),
+                           mrb_intern_lit(mrb, "consolidation")};
+    mrb_value kw_values[3];
+    mrb_kwargs kwargs = {3, 0, kw_names, kw_values, NULL};
+    mrb_get_args(mrb, "z|iz!o:", &key, &timeout_ms, &params, &payload, &kwargs);
     zrb_check_timeout(mrb, timeout_ms);
     if (!mrb_nil_p(payload) && !mrb_string_p(payload)) {
         mrb_raise(mrb, E_TYPE_ERROR, "payload must be a String");
     }
+    mrb_value att = zrb_kw_attachment(mrb, kw_values[0]);
+    z_query_target_t target = zrb_get_target(mrb, kw_values[1]);
+    z_query_consolidation_t consolidation = zrb_get_consolidation(mrb, kw_values[2]);
     zrb_session *z = zrb_session_get_open(mrb, self);
     z_view_keyexpr_t ke;
     zrb_view_key(mrb, &ke, key);
@@ -1148,15 +1248,22 @@ static mrb_value zrb_session_get_m(mrb_state *mrb, mrb_value self) {
     z_get_options_t opts;
     z_get_options_default(&opts);
     opts.timeout_ms = (uint64_t)timeout_ms;
-    opts.target = Z_QUERY_TARGET_ALL;
-    opts.consolidation = z_query_consolidation_none();
+    opts.target = target;
+    opts.consolidation = consolidation;
     z_owned_bytes_t bytes;
+    z_owned_bytes_t att_bytes;
     if (!mrb_nil_p(payload)) {
-        if (z_bytes_copy_from_buf(&bytes, (const uint8_t *)RSTRING_PTR(payload), (size_t)RSTRING_LEN(payload)) !=
-            Z_OK) {
-            mrb_raise(mrb, zrb_error_class(mrb), "cannot allocate the payload");
-        }
+        zrb_bytes_from_str(mrb, &bytes, payload, "payload");
         opts.payload = z_move(bytes);
+    }
+    if (!mrb_nil_p(att)) {
+        if (z_bytes_copy_from_buf(&att_bytes, (const uint8_t *)RSTRING_PTR(att), (size_t)RSTRING_LEN(att)) != Z_OK) {
+            if (!mrb_nil_p(payload)) {
+                z_drop(z_move(bytes));
+            }
+            mrb_raise(mrb, zrb_error_class(mrb), "cannot allocate the attachment");
+        }
+        opts.attachment = z_move(att_bytes);
     }
     z_owned_closure_reply_t cb;
     z_closure(&cb, zrb_on_reply, zrb_on_reply_drop, g);
@@ -1306,8 +1413,8 @@ void mrb_picoruby_asterism_zenoh_gem_init(mrb_state *mrb) {
     mrb_define_class_method(mrb, ses, "open", zrb_session_s_open, MRB_ARGS_OPT(1) | MRB_ARGS_KEY(2, 0));
     mrb_define_method(mrb, ses, "put", zrb_session_put, MRB_ARGS_REQ(2) | MRB_ARGS_KEY(1, 0));
     mrb_define_method(mrb, ses, "subscribe", zrb_session_subscribe, MRB_ARGS_ARG(1, 1));
-    mrb_define_method(mrb, ses, "get", zrb_session_get_m, MRB_ARGS_ARG(1, 3));
-    mrb_define_method(mrb, ses, "queryable", zrb_session_queryable, MRB_ARGS_ARG(1, 1));
+    mrb_define_method(mrb, ses, "get", zrb_session_get_m, MRB_ARGS_ARG(1, 3) | MRB_ARGS_KEY(3, 0));
+    mrb_define_method(mrb, ses, "queryable", zrb_session_queryable, MRB_ARGS_ARG(1, 1) | MRB_ARGS_KEY(1, 0));
     mrb_define_method(mrb, ses, "liveliness", zrb_session_liveliness, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, ses, "liveliness_watch", zrb_session_liveliness_watch, MRB_ARGS_ARG(1, 1));
     mrb_define_method(mrb, ses, "liveliness_get", zrb_session_liveliness_get, MRB_ARGS_ARG(1, 1));
@@ -1348,7 +1455,8 @@ void mrb_picoruby_asterism_zenoh_gem_init(mrb_state *mrb) {
     mrb_define_method(mrb, query, "key", zrb_query_key, MRB_ARGS_NONE());
     mrb_define_method(mrb, query, "params", zrb_query_params, MRB_ARGS_NONE());
     mrb_define_method(mrb, query, "payload", zrb_query_payload, MRB_ARGS_NONE());
-    mrb_define_method(mrb, query, "reply", zrb_query_reply, MRB_ARGS_ARG(1, 1));
+    mrb_define_method(mrb, query, "attachment", zrb_query_attachment, MRB_ARGS_NONE());
+    mrb_define_method(mrb, query, "reply", zrb_query_reply, MRB_ARGS_ARG(1, 1) | MRB_ARGS_KEY(1, 0));
     mrb_define_method(mrb, query, "finish", zrb_query_finish_m, MRB_ARGS_NONE());
     mrb_define_method(mrb, query, "finished?", zrb_query_finished_p, MRB_ARGS_NONE());
 
