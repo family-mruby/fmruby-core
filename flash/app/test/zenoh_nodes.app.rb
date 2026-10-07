@@ -67,11 +67,11 @@ class ZenohNodesApp < FmrbApp
   def open_session
     words = @locator.split(" ")
     if words[0] == "listen"
-      Zenoh::Session.open(nil, mode: :peer, listen: words[1])
+      Asterism::Zenoh::Session.open(nil, mode: :peer, listen: words[1])
     elsif words[0] == "peer"
-      Zenoh::Session.open(words[1], mode: :peer)
+      Asterism::Zenoh::Session.open(words[1], mode: :peer)
     else
-      Zenoh::Session.open(@locator)
+      Asterism::Zenoh::Session.open(@locator)
     end
   end
 

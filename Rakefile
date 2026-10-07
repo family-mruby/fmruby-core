@@ -97,7 +97,7 @@ PICORUBY_TI_GEM_DIR = "components/picoruby-esp32/picoruby/mrbgems/picoruby-ti"
 # is the source of truth for what the editor knows about our own classes.
 PICORUBY_TI_SIG_DIR = File.expand_path("sig", __dir__)
 
-# zenoh-pico: the Zenoh C client under the picoruby-zenoh gem
+# zenoh-pico: the Zenoh C client under the picoruby-asterism-zenoh gem
 # (doc/ruby_asterism/plan.md). Pinned to an upstream release tag in a PIN file
 # and cloned into vendor/ by `rake zenoh:setup`, like picoruby-ti above.
 # `rake setup` copies its src/ and include/ into the gem's copy inside the

@@ -1,5 +1,5 @@
 /*
- * zenoh-pico build configuration for picoruby-zenoh.
+ * zenoh-pico build configuration for picoruby-asterism-zenoh.
  *
  * zenoh-pico normally generates include/zenoh-pico/config.h from config.h.in
  * with CMake. This gem compiles zenoh-pico with the mruby build instead, so it
@@ -8,7 +8,7 @@
  *
  * Shape of the build:
  * - Single-threaded (Z_FEATURE_MULTI_THREAD=0): no read/lease tasks. The
- *   application drives the session with Zenoh::Session#poll, which runs
+ *   application drives the session with Asterism::Zenoh::Session#poll, which runs
  *   zp_spin_once() a bounded number of times.
  * - Client mode, or peer mode (connect to peers and/or listen for them),
  *   over TCP unicast only. Serial, TLS, WebSocket, Bluetooth, raw ethernet,

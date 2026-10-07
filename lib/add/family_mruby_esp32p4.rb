@@ -122,12 +122,15 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   conf.gem core: "picoruby-net-http"
   conf.gem core: "picoruby-net-websocket"
 
-  # Zenoh client (doc/ruby_asterism, Z2): zenoh-pico built single-threaded and
+  # Zenoh client (Asterism::Zenoh, doc/ruby_asterism): zenoh-pico built single-threaded and
   # polled from Ruby. Modern only (the esp32s3 and wasm configs do not list
   # it). The gem selects zenoh-pico's ESP-IDF platform from the build name;
   # its ports/esp32 sources (system with a PSRAM allocator, the TCP link) are
   # compiled by components/picoruby-esp32/CMakeLists.txt.
-  conf.gem core: "picoruby-zenoh"
+  conf.gem core: "picoruby-asterism-zenoh"
+  # Asterism (doc/ruby_asterism, A1): proxies for objects on other machines,
+  # pure Ruby on top of Asterism::Zenoh and MessagePack.
+  conf.gem core: "picoruby-asterism"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

@@ -1,5 +1,5 @@
 # Pinned zenoh-pico (Eclipse Zenoh's C client for microcontrollers), used by
-# the picoruby-zenoh gem (doc/ruby_asterism/plan.md, Z1).
+# the picoruby-asterism-zenoh gem (doc/ruby_asterism/plan.md, Z1).
 # Same scheme as PICORUBY_TI_PIN:
 # - `rake zenoh:setup` clones this exact commit into vendor/zenoh-pico
 #   (gitignored); `rake setup` copies its src/ and include/ into the gem copy

@@ -136,20 +136,27 @@ task :setup do
   # mrbgem.rake and doc/work_picoruby_merge/instruct_d7_b1_tick.md sec 3.5)
   sh "rm -rf #{mrbgem_path}/hal-task-freertos"
   sh "cp -rf lib/add/hal-task-freertos #{mrbgem_path}/"
-  # zenoh (Zenoh client: doc/ruby_asterism). The gem from lib/add plus the
-  # pinned zenoh-pico sources (rake zenoh:setup) under the copy's vendor/,
-  # where the gem's mrbgem.rake looks for them. Only the Linux build links it
-  # (it is listed in lib/add/family_mruby_linux.rb alone). The zenoh-pico
-  # files keep their timestamps (cp -p) so its ~150 objects are not rebuilt
-  # on every build.
+  # asterism-zenoh (Asterism::Zenoh, the Zenoh client: doc/ruby_asterism).
+  # The gem from lib/add plus the pinned zenoh-pico sources (rake
+  # zenoh:setup) under the copy's vendor/, where the gem's mrbgem.rake looks
+  # for them. Only the Linux and P4 builds link it (listed in
+  # lib/add/family_mruby_linux.rb and family_mruby_esp32p4.rb). The
+  # zenoh-pico files keep their timestamps (cp -p) so its ~150 objects are
+  # not rebuilt on every build. The copy under the gem's former name
+  # (picoruby-zenoh) is removed.
   zp_dir = zenoh_pico_dir!
   sh "rm -rf #{mrbgem_path}/picoruby-zenoh"
-  sh "cp -rf lib/add/picoruby-zenoh #{mrbgem_path}/"
-  zp_copy = "#{mrbgem_path}/picoruby-zenoh/vendor/zenoh-pico"
+  sh "rm -rf #{mrbgem_path}/picoruby-asterism-zenoh"
+  sh "cp -rf lib/add/picoruby-asterism-zenoh #{mrbgem_path}/"
+  zp_copy = "#{mrbgem_path}/picoruby-asterism-zenoh/vendor/zenoh-pico"
   mkdir_p zp_copy
   %w[src include LICENSE NOTICE.md version.txt].each do |entry|
     sh "cp -rp #{zp_dir}/#{entry} #{zp_copy}/"
   end
+  # asterism (Asterism, the object layer over asterism-zenoh; pure Ruby).
+  # Linked by the same builds as asterism-zenoh.
+  sh "rm -rf #{mrbgem_path}/picoruby-asterism"
+  sh "cp -rf lib/add/picoruby-asterism #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"

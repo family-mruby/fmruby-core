@@ -1,56 +1,53 @@
 /*
- * TCP link for zenoh-pico on ESP-IDF (lwIP sockets), used by picoruby-zenoh
- * in place of zenoh-pico's src/link/transport/tcp/tcp_esp32.c (that file is
- * not compiled; the zenoh-pico checkout itself is not edited).
- * Based on it (Copyright (c) 2026 ZettaScale Technology,
- * EPL-2.0 OR Apache-2.0), with the same changes as this gem's POSIX link
- * (src/zp_tcp_posix.c) for a polled, single-threaded session living inside
- * an interpreter loop:
+ * TCP link for zenoh-pico on POSIX, used by picoruby-asterism-zenoh in place of
+ * zenoh-pico's src/link/transport/tcp/tcp_posix.c (the gem compiles this file
+ * and leaves that one out; the zenoh-pico checkout itself is not edited).
+ * Based on that file (Copyright (c) 2026 ZettaScale Technology,
+ * EPL-2.0 OR Apache-2.0) with three changes for a polled, single-threaded
+ * session living inside an interpreter loop:
  *
- * 1. The plain read (_z_tcp_read) never blocks. The session's read task calls
- *    it on every zp_spin_once(). Upstream sets no receive timeout at all on
- *    ESP-IDF, so a poll with no traffic would block the caller until the
- *    router sends something (keep-alives come every few seconds). Here "no
- *    data yet" returns SIZE_MAX at once, which the read task already treats
- *    as "nothing to read".
- * 2. connect() has a time limit (PICORUBY_ZENOH_CONNECT_TIMEOUT_MS). Upstream
- *    blocks until lwIP gives up, which for a silent host is lwIP's SYN
- *    retransmission schedule.
- * 3. The handshake read (_z_tcp_read_exact) waits at most one socket timeout
- *    for the first byte (the caller loops until its own deadline), then keeps
- *    waiting, up to PICORUBY_ZENOH_READ_EXACT_TIMEOUT_MS, so a message that
- *    has started arriving is not cut in half. Upstream blocks with no limit.
- * 4. A send has a time limit (PICORUBY_ZENOH_SEND_TIMEOUT_MS, for the whole
- *    message). Upstream blocks until lwIP gives up retransmitting, which can
- *    take minutes when the WiFi is gone. When the limit runs out the socket
- *    is shut down, and zp_tcp_socket_closed() reports it, like a peer that
- *    closed the connection (see include/picoruby_zenoh_link.h).
- * 5. No SO_LINGER: closing never waits for unsent data (upstream lingers up to
- *    the lease time when lwIP has SO_LINGER). The session sends its close
- *    message before the socket is closed either way.
- * 6. Peer mode: listen/accept for a non-blocking listening socket polled by
+ * 1. The plain read (_z_tcp_read) never blocks. It is what the session's read
+ *    task calls on every zp_spin_once(); upstream waits up to the socket
+ *    timeout (SO_RCVTIMEO) there, which would stall the caller's loop for that
+ *    long on every poll with no traffic. Here "no data yet" returns SIZE_MAX
+ *    at once, which the read task already treats as "nothing to read".
+ * 2. Every blocking call is retried on EINTR. A host that drives its own
+ *    scheduler with signals (a FreeRTOS POSIX simulator ticks with SIGALRM,
+ *    installed without SA_RESTART) interrupts recv/send/connect/poll all the
+ *    time; upstream reports those as link errors and drops the session.
+ * 3. connect() has a time limit (PICORUBY_ZENOH_CONNECT_TIMEOUT_MS), so an
+ *    unreachable router fails the open in seconds instead of the kernel's
+ *    minutes.
+ * 4. A send has a time limit too (PICORUBY_ZENOH_SEND_TIMEOUT_MS, for the
+ *    whole message). When it runs out the socket is shut down, and
+ *    zp_tcp_socket_closed() reports it, like a peer that closed the
+ *    connection (see include/picoruby_zenoh_link.h).
+ *
+ * 5. Peer mode: listen/accept for a non-blocking listening socket polled by
  *    zenoh-pico's runtime (no accept task of its own).
  *
- * EINTR does not happen on ESP-IDF, but retrying it keeps the code identical
- * in shape to the POSIX link.
- * Compiled by the ESP-IDF component (lwIP headers).
+ * _z_tcp_read_exact (session handshake) still waits, up to the socket timeout
+ * per call, and keeps waiting once a message has started arriving so a
+ * partially received message is never cut in half.
  */
 #include "zenoh-pico/link/transport/tcp.h"
 
-#if defined(ZP_PLATFORM_SOCKET_ESP32)
+#if defined(ZP_PLATFORM_SOCKET_POSIX)
 
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
-#include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
-#include "lwip/sockets.h"
 #include "picoruby_zenoh_link.h"
 #include "zenoh-pico/config.h"
 #include "zenoh-pico/utils/logging.h"
@@ -62,18 +59,16 @@ static long zp_mono_ms(void) {
     return (long)ts.tv_sec * 1000L + (long)(ts.tv_nsec / 1000000L);
 }
 
-/* Wait until one fd is readable (for_write false) or writable, at most
- * timeout_ms. Returns >0 when ready, 0 on timeout, <0 on error. */
-static int zp_wait_one(int fd, bool for_write, int timeout_ms) {
+/* poll() one fd, retrying EINTR while keeping the total wait bounded.
+ * Returns >0 when ready, 0 on timeout, <0 on error. */
+static int zp_poll_one(int fd, short events, int timeout_ms) {
     long deadline = zp_mono_ms() + timeout_ms;
     for (;;) {
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
-        struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
-        int ret = for_write ? select(fd + 1, NULL, &fds, NULL, &tv) : select(fd + 1, &fds, NULL, NULL, &tv);
+        struct pollfd pfd;
+        pfd.fd = fd;
+        pfd.events = events;
+        pfd.revents = 0;
+        int ret = poll(&pfd, 1, timeout_ms);
         if (ret >= 0) {
             return ret;
         }
@@ -110,7 +105,8 @@ static z_result_t zp_set_nonblocking(int fd, bool on) {
     return (fcntl(fd, F_SETFL, fl) == -1) ? _Z_ERR_GENERIC : _Z_RES_OK;
 }
 
-/* connect() with a time limit. The socket is left blocking afterwards. */
+/* connect() with a time limit; EINTR does not abort the attempt (the kernel
+ * keeps connecting in the background, so wait for it like EINPROGRESS). */
 static bool zp_connect_timed(int fd, const struct sockaddr *addr, socklen_t len, int timeout_ms) {
     if (zp_set_nonblocking(fd, true) != _Z_RES_OK) {
         return false;
@@ -120,7 +116,7 @@ static bool zp_connect_timed(int fd, const struct sockaddr *addr, socklen_t len,
     if (ret == 0) {
         ok = true;
     } else if (errno == EINPROGRESS || errno == EINTR) {
-        if (zp_wait_one(fd, true, timeout_ms) > 0) {
+        if (zp_poll_one(fd, POLLOUT, timeout_ms) > 0) {
             int err = 0;
             socklen_t elen = sizeof(err);
             if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &elen) == 0 && err == 0) {
@@ -143,7 +139,13 @@ z_result_t _z_tcp_endpoint_init(_z_sys_net_endpoint_t *ep, const char *s_address
     hints.ai_flags = 0;
     hints.ai_protocol = IPPROTO_TCP;
 
-    if (getaddrinfo(s_address, s_port, &hints, &ep->_iptcp) != 0) {
+    int ret;
+    int tries = 0;
+    do {
+        ret = getaddrinfo(s_address, s_port, &hints, &ep->_iptcp);
+        /* A signal can surface as EAI_SYSTEM/EINTR or EAI_AGAIN; retry a few times. */
+    } while (ret != 0 && ((ret == EAI_SYSTEM && errno == EINTR) || ret == EAI_AGAIN) && ++tries < 3);
+    if (ret != 0) {
         ep->_iptcp = NULL;
         _Z_ERROR_LOG(_Z_ERR_GENERIC);
         return _Z_ERR_GENERIC;
@@ -264,11 +266,11 @@ size_t _z_tcp_read_exact(_z_sys_net_socket_t sock, uint8_t *ptr, size_t len) {
             }
             wait_ms = (int)left;
         }
-        int wr = zp_wait_one(sock._fd, false, wait_ms);
-        if (wr < 0) {
+        int pr = zp_poll_one(sock._fd, POLLIN, wait_ms);
+        if (pr < 0) {
             return SIZE_MAX;
         }
-        if (wr == 0) {
+        if (pr == 0) {
             if (n == 0) {
                 return SIZE_MAX;
             }
@@ -297,7 +299,7 @@ size_t _z_tcp_write(_z_sys_net_socket_t sock, const uint8_t *ptr, size_t len) {
     long deadline = zp_mono_ms() + PICORUBY_ZENOH_SEND_TIMEOUT_MS;
     size_t n = 0;
     while (n < len) {
-        ssize_t sb = send(sock._fd, ptr + n, len - n, MSG_DONTWAIT);
+        ssize_t sb = send(sock._fd, ptr + n, len - n, MSG_NOSIGNAL | MSG_DONTWAIT);
         if (sb >= 0) {
             n += (size_t)sb;
             continue;
@@ -307,7 +309,7 @@ size_t _z_tcp_write(_z_sys_net_socket_t sock, const uint8_t *ptr, size_t len) {
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             long left = deadline - zp_mono_ms();
-            if (left > 0 && zp_wait_one(sock._fd, true, (int)left) >= 0) {
+            if (left > 0 && zp_poll_one(sock._fd, POLLOUT, (int)left) >= 0) {
                 continue;
             }
             shutdown(sock._fd, SHUT_RDWR);
@@ -337,4 +339,4 @@ bool zp_tcp_socket_closed(const _z_sys_net_socket_t *sock) {
     }
 }
 
-#endif /* defined(ZP_PLATFORM_SOCKET_ESP32) */
+#endif /* defined(ZP_PLATFORM_SOCKET_POSIX) */

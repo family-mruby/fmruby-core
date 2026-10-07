@@ -1,7 +1,7 @@
 # Zenoh send-limit check (doc/ruby_asterism/report/z2.md). Puts 4 KB values
 # on fmrb/test/burst back to back for 200 ms of every update, so that, when the router
 # stops reading (e.g. `docker pause` on the PC), the socket's send buffer
-# fills and the gem's send time limit (Zenoh::SEND_TIMEOUT_MS) has to act.
+# fills and the gem's send time limit (Asterism::Zenoh::SEND_TIMEOUT_MS) has to act.
 # Logs every put that takes 200 ms or more and how the session ends.
 #
 # Same locator as zenoh_echo: the first line of /home/zenoh_echo.txt, or
@@ -32,13 +32,13 @@ class ZenohBurstApp < FmrbApp
   end
 
   def connect
-    @session = Zenoh::Session.open(@locator)
+    @session = Asterism::Zenoh::Session.open(@locator)
     @state = "connected"
   rescue => e
     @session = nil
     @state = "failed: #{e.message}"
   ensure
-    Log.info("zenoh_burst: #{@state} (send limit #{Zenoh::SEND_TIMEOUT_MS} ms)")
+    Log.info("zenoh_burst: #{@state} (send limit #{Asterism::Zenoh::SEND_TIMEOUT_MS} ms)")
   end
 
   def burst

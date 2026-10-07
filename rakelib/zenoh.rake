@@ -1,5 +1,5 @@
 # rakelib/zenoh.rake
-# zenoh-pico (the C library under the picoruby-zenoh gem): fetch the pinned
+# zenoh-pico (the C library under the picoruby-asterism-zenoh gem): fetch the pinned
 # release. Part of the Rakefile split: shared constants and helpers live in the
 # top-level Rakefile, which Rake loads before every file in rakelib/.
 

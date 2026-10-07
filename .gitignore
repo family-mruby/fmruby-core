@@ -56,7 +56,7 @@ vendor/ti_prism/
 vendor/ti_probe
 vendor/ti_test_sig/
 
-# Pinned zenoh-pico checkout (rake zenoh:setup), used by picoruby-zenoh
+# Pinned zenoh-pico checkout (rake zenoh:setup), used by picoruby-asterism-zenoh
 vendor/zenoh-pico/
 
 # Local reference material for comparing the character sheets (never committed)

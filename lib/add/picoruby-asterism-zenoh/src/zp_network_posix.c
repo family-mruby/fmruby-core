@@ -1,5 +1,5 @@
 /*
- * Socket helpers for zenoh-pico on POSIX, used by picoruby-zenoh in place of
+ * Socket helpers for zenoh-pico on POSIX, used by picoruby-asterism-zenoh in place of
  * zenoh-pico's src/system/unix/network.c (the gem compiles this file and
  * leaves that one out; the zenoh-pico checkout itself is not edited).
  * Based on that file (Copyright (c) 2022 ZettaScale Technology,

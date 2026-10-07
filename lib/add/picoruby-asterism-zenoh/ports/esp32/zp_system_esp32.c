@@ -1,5 +1,5 @@
 /*
- * zenoh-pico system layer for ESP-IDF, as used by picoruby-zenoh.
+ * zenoh-pico system layer for ESP-IDF, as used by picoruby-asterism-zenoh.
  *
  * This is zenoh-pico's own ESP-IDF port (src/system/espidf/system.c: random,
  * clock, time, sleep) compiled as it is, with one change: its allocator.
