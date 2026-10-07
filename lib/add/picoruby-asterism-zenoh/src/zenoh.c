@@ -1,5 +1,5 @@
 /*
- * picoruby-zenoh: a thin Ruby layer over zenoh-pico.
+ * picoruby-asterism-zenoh: a thin Ruby layer over zenoh-pico (Asterism::Zenoh).
  *
  * Covers: sessions (client, or peer with an optional listener), put /
  * subscribe, get / queryable (query and reply), liveliness tokens and
@@ -20,7 +20,7 @@
  * (include/picoruby_zenoh_link.h) after every poll and put. When the router
  * has closed the connection, the socket failed, or a send ran out of time,
  * the session is closed here: poll returns false, closed? is true and put
- * raises Zenoh::Error. A peer session that only connects (no listener) is
+ * raises Asterism::Zenoh::Error. A peer session that only connects (no listener) is
  * closed the same way once it has no peer left; a listening peer session
  * stays open while peers come and go. There is no reconnection; the
  * application opens a new session.
@@ -140,15 +140,15 @@ static void zrb_token_free(mrb_state *mrb, void *p);
 static void zrb_get_free(mrb_state *mrb, void *p);
 static void zrb_query_free(mrb_state *mrb, void *p);
 
-static const struct mrb_data_type zrb_session_type = {"Zenoh::Session", zrb_session_free};
-static const struct mrb_data_type zrb_sub_type = {"Zenoh::Subscriber", zrb_sub_free};
-static const struct mrb_data_type zrb_qable_type = {"Zenoh::Queryable", zrb_qable_free};
-static const struct mrb_data_type zrb_token_type = {"Zenoh::LivelinessToken", zrb_token_free};
-static const struct mrb_data_type zrb_get_type = {"Zenoh::Get", zrb_get_free};
-static const struct mrb_data_type zrb_query_type = {"Zenoh::Query", zrb_query_free};
+static const struct mrb_data_type zrb_session_type = {"Asterism::Zenoh::Session", zrb_session_free};
+static const struct mrb_data_type zrb_sub_type = {"Asterism::Zenoh::Subscriber", zrb_sub_free};
+static const struct mrb_data_type zrb_qable_type = {"Asterism::Zenoh::Queryable", zrb_qable_free};
+static const struct mrb_data_type zrb_token_type = {"Asterism::Zenoh::LivelinessToken", zrb_token_free};
+static const struct mrb_data_type zrb_get_type = {"Asterism::Zenoh::Get", zrb_get_free};
+static const struct mrb_data_type zrb_query_type = {"Asterism::Zenoh::Query", zrb_query_free};
 
 static struct RClass *zrb_class(mrb_state *mrb, const char *name) {
-    struct RClass *mod = mrb_module_get(mrb, "Zenoh");
+    struct RClass *mod = mrb_module_get_under(mrb, mrb_module_get(mrb, "Asterism"), "Zenoh");
     return mrb_class_get_under(mrb, mod, name);
 }
 
@@ -335,7 +335,7 @@ static void zrb_sub_free(mrb_state *mrb, void *p) {
 static zrb_sub *zrb_sub_get(mrb_state *mrb, mrb_value self) {
     zrb_sub *s = (zrb_sub *)mrb_data_get_ptr(mrb, self, &zrb_sub_type);
     if (s == NULL) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Zenoh subscriber");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Asterism::Zenoh::Subscriber");
     }
     return s;
 }
@@ -444,7 +444,7 @@ static void zrb_qable_free(mrb_state *mrb, void *p) {
 static zrb_qable *zrb_qable_get(mrb_state *mrb, mrb_value self) {
     zrb_qable *q = (zrb_qable *)mrb_data_get_ptr(mrb, self, &zrb_qable_type);
     if (q == NULL) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Zenoh::Queryable");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Asterism::Zenoh::Queryable");
     }
     return q;
 }
@@ -555,7 +555,7 @@ static void zrb_query_free(mrb_state *mrb, void *p) {
 static zrb_query *zrb_query_get(mrb_state *mrb, mrb_value self) {
     zrb_query *zq = (zrb_query *)mrb_data_get_ptr(mrb, self, &zrb_query_type);
     if (zq == NULL) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Zenoh::Query");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Asterism::Zenoh::Query");
     }
     return zq;
 }
@@ -693,7 +693,7 @@ static void zrb_get_free(mrb_state *mrb, void *p) {
 static zrb_get *zrb_get_get(mrb_state *mrb, mrb_value self) {
     zrb_get *g = (zrb_get *)mrb_data_get_ptr(mrb, self, &zrb_get_type);
     if (g == NULL) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Zenoh::Get");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Asterism::Zenoh::Get");
     }
     return g;
 }
@@ -780,7 +780,7 @@ static void zrb_token_free(mrb_state *mrb, void *p) {
 static zrb_token *zrb_token_get(mrb_state *mrb, mrb_value self) {
     zrb_token *t = (zrb_token *)mrb_data_get_ptr(mrb, self, &zrb_token_type);
     if (t == NULL) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Zenoh::LivelinessToken");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Asterism::Zenoh::LivelinessToken");
     }
     return t;
 }
@@ -828,7 +828,7 @@ static void zrb_session_free(mrb_state *mrb, void *p) {
 static zrb_session *zrb_session_get(mrb_state *mrb, mrb_value self) {
     zrb_session *z = (zrb_session *)mrb_data_get_ptr(mrb, self, &zrb_session_type);
     if (z == NULL) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Zenoh::Session");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "uninitialized Asterism::Zenoh::Session");
     }
     return z;
 }
@@ -896,11 +896,11 @@ static void zrb_hold_session(mrb_state *mrb, mrb_value obj, mrb_value session, c
     }
 }
 
-/* Zenoh::Session.open(locator = nil, mode: :client, listen: nil) -> Session
+/* Asterism::Zenoh::Session.open(locator = nil, mode: :client, listen: nil) -> Session
  * - client: connects to the router at locator.
  * - peer: connects to the peer at locator (if given) and/or listens on
  *   listen (e.g. "tcp/0.0.0.0:7447"). At least one of them is needed.
- * Raises Zenoh::Error when the session cannot be opened. */
+ * Raises Asterism::Zenoh::Error when the session cannot be opened. */
 static mrb_value zrb_session_s_open(mrb_state *mrb, mrb_value klass) {
     mrb_value locator_v = mrb_nil_value();
     mrb_sym kw_names[2] = {mrb_intern_lit(mrb, "mode"), mrb_intern_lit(mrb, "listen")};
@@ -1235,8 +1235,10 @@ static mrb_value zrb_session_peers(mrb_state *mrb, mrb_value self) {
 
 /* ------------------------------------------------------------------ init */
 
-void mrb_picoruby_zenoh_gem_init(mrb_state *mrb) {
-    struct RClass *mod = mrb_define_module(mrb, "Zenoh");
+void mrb_picoruby_asterism_zenoh_gem_init(mrb_state *mrb) {
+    /* Asterism::Zenoh. No top-level Zenoh is defined (doc/ruby_asterism/design.md). */
+    struct RClass *asterism = mrb_define_module(mrb, "Asterism");
+    struct RClass *mod = mrb_define_module_under(mrb, asterism, "Zenoh");
     mrb_define_class_under(mrb, mod, "Error", mrb->eStandardError_class);
     mrb_define_const(mrb, mod, "PICO_VERSION", mrb_str_new_cstr(mrb, ZENOH_PICO));
     mrb_define_const(mrb, mod, "CONNECT_TIMEOUT_MS", mrb_fixnum_value(PICORUBY_ZENOH_CONNECT_TIMEOUT_MS));
@@ -1311,4 +1313,4 @@ void mrb_picoruby_zenoh_gem_init(mrb_state *mrb) {
     mrb_define_method(mrb, tok, "closed?", zrb_token_closed_p, MRB_ARGS_NONE());
 }
 
-void mrb_picoruby_zenoh_gem_final(mrb_state *mrb) { (void)mrb; }
+void mrb_picoruby_asterism_zenoh_gem_final(mrb_state *mrb) { (void)mrb; }

@@ -48,7 +48,7 @@ class ZenohEchoApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      @session = Zenoh::Session.open(@locator)
+      @session = Asterism::Zenoh::Session.open(@locator)
       @sub = @session.subscribe(IN_KEY)
       @state = "connected"
     rescue => e
@@ -104,7 +104,7 @@ class ZenohEchoApp < FmrbApp
     begin
       session.put(OUT_KEY, "x")
       after += " put=ok"
-    rescue Zenoh::Error => e
+    rescue Asterism::Zenoh::Error => e
       after += " put raises #{e.class}: #{e.message}"
     end
     Log.info("zenoh_echo: #{state} (last put #{@seq}; #{after})")

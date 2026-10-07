@@ -26,11 +26,11 @@
 #include "zenoh-pico/config.h"
 
 #if Z_FEATURE_MULTI_THREAD == 1
-#error "picoruby-zenoh: the ESP-IDF platform header supports the single-threaded build only"
+#error "picoruby-asterism-zenoh: the ESP-IDF platform header supports the single-threaded build only"
 #endif
 #if Z_FEATURE_LINK_SERIAL == 1 || Z_FEATURE_LINK_BLUETOOTH == 1 || Z_FEATURE_RAWETH_TRANSPORT == 1 || \
     Z_FEATURE_LINK_TLS == 1
-#error "picoruby-zenoh: the ESP-IDF platform header supports socket links (TCP/UDP) only"
+#error "picoruby-asterism-zenoh: the ESP-IDF platform header supports socket links (TCP/UDP) only"
 #endif
 
 #ifdef __cplusplus

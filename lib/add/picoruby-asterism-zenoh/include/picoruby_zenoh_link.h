@@ -1,5 +1,5 @@
 /*
- * The contract between picoruby-zenoh and its TCP links (src/zp_tcp_posix.c,
+ * The contract between picoruby-asterism-zenoh and its TCP links (src/zp_tcp_posix.c,
  * ports/esp32/zp_tcp_esp32.c), which replace zenoh-pico's own.
  *
  * zenoh-pico's client read path treats "the peer closed the connection" the
