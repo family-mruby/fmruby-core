@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) の指示を出した
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) 完了。次は ROS 2 の最小の疎通
 
 ## 目的
 
@@ -34,7 +34,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
 | Z2 (完了) | 実機 (P4: NARYAv4 / Tab5) で WiFi 越しに同じ往復。P4 (RISC-V) で zenoh-pico が動くことを確定、flash / RAM の実測 | P4 の機体と PC が話す |
 | Z3 (完了) | get / queryable (問い合わせと応答) と liveliness (生存の監視)。前半は sim と P4-Nano がルータ経由で、後半はルータなしで直接 (peer、シングルスレッドで成り立つか確かめる) | 機体どうしが問い合わせる |
 | Z4 | Retro (S3)。flash の区画の見直し (factory の拡張) とセット | Retro も網に入る |
-| A1 (計画中) | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
+| A1 (完了) | Asterism の本体の最初: 遠くのオブジェクトの代理 (method_missing で呼び出しを get / queryable に載せる) と、キー空間の命名規則 | `home.lamp.on` のような呼び出しが別の機体で動く |
 | A2 以降 | usecases.md の最小で成立する案 (家を each する、部品を借りる) → ペット (pet_design.md) など | デモ |
 
 ブラウザ版 (wasm) から網に入る方法 (node_variants.md 2.7、zenoh-ts と remote-api) は、Z1 と並行して小さく
@@ -72,6 +72,7 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
     か `poll` で `[key, payload]` を返す)。zenoh-pico の受信は `zp_read` 相当をアプリの側から回す
     (読み取りのタスクを立てない形が作れるかを Z1 で確かめる。作れなければ案を返す)。
   - Ruby の名前は `Zenoh` (zenoh-pico の薄い皮、汎用)。Asterism はその上に別の層 (別の gem) として A1 で作る。
+    (A1 で `Asterism::Zenoh`・`lib/add/picoruby-asterism-zenoh/` に改名した)
 - **PC 側**: zenohd を親のリポジトリの docker compose に足し、sim と一緒に上げる (公式のイメージ、版を固定)。sim のコンテナから届くネットワークの設定を
   決める。確かめる道具は Ruby (REST プラグイン経由の HTTP の GET / PUT、または zenoh の CLI)。手順を
   tools/ に残す。
@@ -101,7 +102,7 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 - PC 側は `docker-compose.zenoh-lan.yml` を重ねたときだけ 7447 を LAN に開く (REST の 8000 は PC の中だけ)。
   WSL2 (ミラーモード) では Windows の Hyper-V のファイアウォールに 7447 の受信の規則が要る。
 - 切断 (ユーザ決定で案 1・2 を採用、リース切れもそろえた): 接続が切れる・送信が 3 秒で終わらない・リースが
-  切れる、のいずれでもセッションを閉じ、`poll` が false、`closed?` が true、`put` が `Zenoh::Error`。自動の
+  切れる、のいずれでもセッションを閉じ、`poll` が false、`closed?` が true、`put` が `Asterism::Zenoh::Error` (A1 の改名の後の名前)。自動の
   再接続はしない (アプリが開き直す)。zenohd の停止に気づくまで実機で約 0.5 秒、固まった場合は約 12 秒。
   WiFi が切れた場合は実機では測らない (リース切れと同じ経路)。
 
@@ -118,7 +119,18 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 - 試験の後に内蔵 RAM が約 38 KB 戻らなかったのは zenoh ではなく、ESP-Hosted (WiFi のチップとの通信) が転送用の
   バッファを解放せずに溜める作りのためだった。P4 の WiFi の通信すべてで起きる。対応は doc/hosted_mempool/。
 
-## A1: 遠くのオブジェクトの代理 (計画済 2026-10-07)
+## A1: 遠くのオブジェクトの代理 (完了 2026-10-07)
+
+結果は report/a1.md。sim と Tab5 で確認した。gem は `lib/add/picoruby-asterism/` (純 Ruby) と
+`lib/add/picoruby-asterism-zenoh/` (改名した Zenoh のバインディング)。
+
+- 受け入れ条件 1-9 を満たした。呼び出しの往復はルータ経由で約 35-240 ms。Tab5 のファームは +18,688 B (区画の残り 12%)、
+  起動時の内蔵 RAM の増分 0。
+- 制約: 答えを待つ呼び出しは、アプリの `on_update` から呼ぶか `async` を使う。C から Ruby へ戻る呼び出しごとに C の
+  スタックが一段深くなり、`on_event` から待つと 16 KB のうち 12.4 KB を使う (gem の README に書いた)。
+- 残り: 同じ機体の複数の Asterism アプリが同じノードのトークン (`asterism/<ID>`) を出すので、1 つ閉じると
+  ノードが消えたように見える。入れ子の上限は 4 だが、P4 で測ったのは深さ 2 まで。
+
 
 ### ゴール
 
@@ -186,7 +198,7 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
 1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。
-2. 下の層の gem は `Zenoh` (picoruby-zenoh、汎用)。Asterism は上に別の層として作る。
+2. 下の層の gem は `Zenoh` (picoruby-zenoh、汎用)。Asterism は上に別の層として作る。(2026-10-07 に `Asterism::Zenoh` へ改名)
 3. zenohd は親のリポジトリの docker compose に足し、sim と一緒に上げる。
 
 ## 進め方
