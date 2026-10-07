@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) 完了。次は ROS 2 の最小の疎通
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通) 完了
 
 ## 目的
 
@@ -194,6 +194,20 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - 未確定だった 5 点は推奨案で決定: 呼び出しは答えを待つ形 (既定 2 秒) を基本に待たない形 (`async`) も用意する、
   公開するメソッドは明示する、渡せる値は MessagePack で表せるものだけ (Symbol は文字列になる、ほかは送る前に例外)、
   CRuby の側は A1 では作らず PC からは tools/fmrb_zenoh.rb で call / meta を試せるようにする。
+
+## R1: ROS 2 (rmw_zenoh) との最小の疎通 (完了 2026-10-07)
+
+結果は report/r1.md。P4-Nano と sim で確認した。
+
+- P4-Nano のアプリが出した std_msgs/String を PC の `ros2 topic echo /chatter` で読め、`ros2 topic pub /chatter_back` が
+  機体の画面に出る。`ros2 node list` / `topic list` に機体のノードとトピックが出て、アプリを閉じると消える。
+- ROS 2 Jazzy + rmw_zenoh 0.2.11 (Zenoh 1.8.0)。ルータは既存の zenohd 1.10.1 を使う (rmw_zenohd は使わない)。
+  PC 側は親リポジトリの `docker-compose.ros2.yml` を重ねて上げる (手順はそのファイルのコメントと report/r1.md 7 章)。
+- gem: put / subscribe の attachment と `Session#zid` を足した。CDR と ROS のノード (`Asterism::CDR`、`Asterism::ROS`) は
+  `picoruby-asterism` の中の純 Ruby。attachment はトピックでも必須だった (design.md 5 章を直した)。
+- P4 のファームは +12,272 B (区画の残り 12%)、起動時の内蔵 RAM の増分 0。
+- 残り: サービス (get / queryable の attachment)、transient local の QoS (zenoh-pico の高度な pub/sub、内蔵 RAM を測ってから)、
+  ドメイン 0・名前空間 "/"・std_msgs/String 以外は未確認。
 
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 

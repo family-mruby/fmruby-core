@@ -73,10 +73,11 @@ typedef struct {
 } zrb_session;
 
 typedef struct {
-    uint8_t *buf; /* key bytes followed by payload bytes (z_malloc) */
+    uint8_t *buf; /* key, payload and attachment bytes, in that order (z_malloc) */
     size_t key_len;
     size_t payload_len;
-    bool alive; /* liveliness watches: the token appeared (true) or went away */
+    size_t att_len; /* 0: the sample had no attachment */
+    bool alive;     /* liveliness watches: the token appeared (true) or went away */
 } zrb_entry;
 
 /* A bounded queue of received values (key + payload). */
@@ -202,9 +203,16 @@ static void zrb_ring_clear(zrb_ring *r) {
     r->head = 0;
 }
 
-/* Store key + payload. Called from inside zp_spin_once(): no VM access. */
+/* Copy all of b into dst (exactly len bytes). */
+static bool zrb_read_bytes(const z_loaned_bytes_t *b, uint8_t *dst, size_t len) {
+    z_bytes_reader_t reader = z_bytes_get_reader(b);
+    return z_bytes_reader_read(&reader, dst, len) == len;
+}
+
+/* Store key + payload (+ attachment). Called from inside zp_spin_once(): no
+ * VM access. */
 static void zrb_ring_push(zrb_ring *r, const z_loaned_keyexpr_t *keyexpr, const z_loaned_bytes_t *payload,
-                          bool alive) {
+                          const z_loaned_bytes_t *attachment, bool alive) {
     z_view_string_t ks;
     if (z_keyexpr_as_view_string(keyexpr, &ks) != Z_OK) {
         r->dropped++;
@@ -213,21 +221,19 @@ static void zrb_ring_push(zrb_ring *r, const z_loaned_keyexpr_t *keyexpr, const 
     const char *kd = z_string_data(z_loan(ks));
     size_t kl = z_string_len(z_loan(ks));
     size_t plen = (payload == NULL) ? 0 : z_bytes_len(payload);
+    size_t alen = (attachment == NULL) ? 0 : z_bytes_len(attachment);
 
-    uint8_t *buf = (uint8_t *)z_malloc(kl + plen + 1);
+    uint8_t *buf = (uint8_t *)z_malloc(kl + plen + alen + 1);
     if (buf == NULL) {
         r->dropped++;
         return;
     }
     memcpy(buf, kd, kl);
-    if (plen > 0) {
-        z_bytes_reader_t reader = z_bytes_get_reader(payload);
-        size_t got = z_bytes_reader_read(&reader, buf + kl, plen);
-        if (got != plen) {
-            z_free(buf);
-            r->dropped++;
-            return;
-        }
+    if ((plen > 0 && !zrb_read_bytes(payload, buf + kl, plen)) ||
+        (alen > 0 && !zrb_read_bytes(attachment, buf + kl + plen, alen))) {
+        z_free(buf);
+        r->dropped++;
+        return;
     }
 
     if (r->count == r->depth) {
@@ -242,16 +248,24 @@ static void zrb_ring_push(zrb_ring *r, const z_loaned_keyexpr_t *keyexpr, const 
     r->slots[idx].buf = buf;
     r->slots[idx].key_len = kl;
     r->slots[idx].payload_len = plen;
+    r->slots[idx].att_len = alen;
     r->slots[idx].alive = alive;
     r->count++;
     r->received++;
 }
 
-/* Take out what is pending now, oldest first: yield [key, second] to blk, or
- * collect them into an Array when blk is nil. second is the payload String,
- * or the alive flag for liveliness entries. Values that arrive while the
- * block runs (it may poll) are left for the next call. */
-static mrb_value zrb_ring_take(mrb_state *mrb, zrb_ring *r, mrb_value blk, bool liveliness) {
+/* What an entry is turned into by zrb_ring_take. */
+typedef enum {
+    ZRB_TAKE_SAMPLE,     /* subscriber: [key, payload, attachment or nil] */
+    ZRB_TAKE_LIVELINESS, /* liveliness watch: [key, alive] */
+    ZRB_TAKE_REPLY,      /* get: [key, payload] */
+} zrb_take_kind;
+
+/* Take out what is pending now, oldest first: yield them to blk, or collect
+ * them into an Array when blk is nil (shapes: zrb_take_kind). Values that
+ * arrive while the block runs (it may poll) are left for the next call. */
+static mrb_value zrb_ring_take(mrb_state *mrb, zrb_ring *r, mrb_value blk, zrb_take_kind kind) {
+    bool liveliness = (kind == ZRB_TAKE_LIVELINESS);
     bool collect = mrb_nil_p(blk);
     mrb_value out = collect ? mrb_ary_new(mrb) : mrb_nil_value();
     mrb_int taken = 0;
@@ -263,19 +277,28 @@ static mrb_value zrb_ring_take(mrb_state *mrb, zrb_ring *r, mrb_value blk, bool 
          * an allocation raises, the value stays queued (and is freed with the
          * ring) instead of leaking. */
         zrb_entry e = r->slots[r->head];
-        mrb_value pair[2];
-        pair[0] = mrb_str_new(mrb, (const char *)e.buf, (mrb_int)e.key_len);
-        pair[1] = liveliness ? mrb_bool_value(e.alive)
-                             : mrb_str_new(mrb, (const char *)e.buf + e.key_len, (mrb_int)e.payload_len);
+        mrb_value vals[3];
+        mrb_int n = (kind == ZRB_TAKE_SAMPLE) ? 3 : 2;
+        vals[0] = mrb_str_new(mrb, (const char *)e.buf, (mrb_int)e.key_len);
+        if (liveliness) {
+            vals[1] = mrb_bool_value(e.alive);
+        } else {
+            vals[1] = mrb_str_new(mrb, (const char *)e.buf + e.key_len, (mrb_int)e.payload_len);
+            if (kind == ZRB_TAKE_SAMPLE && e.att_len > 0) {
+                vals[2] = mrb_str_new(mrb, (const char *)e.buf + e.key_len + e.payload_len, (mrb_int)e.att_len);
+            } else {
+                vals[2] = mrb_nil_value();
+            }
+        }
         r->slots[r->head].buf = NULL;
         r->head = (r->head + 1) % r->depth;
         r->count--;
         z_free(e.buf);
         taken++;
         if (collect) {
-            mrb_ary_push(mrb, out, mrb_ary_new_from_values(mrb, 2, pair));
+            mrb_ary_push(mrb, out, mrb_ary_new_from_values(mrb, n, vals));
         } else {
-            mrb_yield_argv(mrb, blk, 2, pair);
+            mrb_yield_argv(mrb, blk, n, vals);
         }
         mrb_gc_arena_restore(mrb, ai);
     }
@@ -292,9 +315,10 @@ static void zrb_on_sample(z_loaned_sample_t *sample, void *ctx) {
     }
     if (s->liveliness) {
         /* A token appearing is a PUT, one going away a DELETE. */
-        zrb_ring_push(&s->ring, z_sample_keyexpr(sample), NULL, z_sample_kind(sample) == Z_SAMPLE_KIND_PUT);
+        zrb_ring_push(&s->ring, z_sample_keyexpr(sample), NULL, NULL, z_sample_kind(sample) == Z_SAMPLE_KIND_PUT);
     } else {
-        zrb_ring_push(&s->ring, z_sample_keyexpr(sample), z_sample_payload(sample), true);
+        zrb_ring_push(&s->ring, z_sample_keyexpr(sample), z_sample_payload(sample), z_sample_attachment(sample),
+                      true);
     }
 }
 
@@ -340,14 +364,14 @@ static zrb_sub *zrb_sub_get(mrb_state *mrb, mrb_value self) {
     return s;
 }
 
-/* sub.each_pending { |key, payload| ... }   -> Integer (values taken)
- * watch.each_pending { |key, alive| ... }   -> Integer
- * Without a block: Array of [key, payload] / [key, alive]. */
+/* sub.each_pending { |key, payload, attachment| ... } -> Integer (values taken)
+ * watch.each_pending { |key, alive| ... }               -> Integer
+ * Without a block: Array of [key, payload, attachment] / [key, alive]. */
 static mrb_value zrb_sub_each_pending(mrb_state *mrb, mrb_value self) {
     mrb_value blk = mrb_nil_value();
     mrb_get_args(mrb, "&", &blk);
     zrb_sub *s = zrb_sub_get(mrb, self);
-    return zrb_ring_take(mrb, &s->ring, blk, s->liveliness);
+    return zrb_ring_take(mrb, &s->ring, blk, s->liveliness ? ZRB_TAKE_LIVELINESS : ZRB_TAKE_SAMPLE);
 }
 
 static mrb_value zrb_sub_pending(mrb_state *mrb, mrb_value self) {
@@ -656,7 +680,7 @@ static void zrb_on_reply(z_loaned_reply_t *reply, void *ctx) {
     }
     if (z_reply_is_ok(reply)) {
         const z_loaned_sample_t *sample = z_reply_ok(reply);
-        zrb_ring_push(&g->ring, z_sample_keyexpr(sample), z_sample_payload(sample), true);
+        zrb_ring_push(&g->ring, z_sample_keyexpr(sample), z_sample_payload(sample), NULL, true);
     } else {
         g->errors++;
     }
@@ -724,7 +748,7 @@ static mrb_value zrb_get_new(mrb_state *mrb, zrb_get **out) {
 static mrb_value zrb_get_each_reply(mrb_state *mrb, mrb_value self) {
     mrb_value blk = mrb_nil_value();
     mrb_get_args(mrb, "&", &blk);
-    return zrb_ring_take(mrb, &zrb_get_get(mrb, self)->ring, blk, false);
+    return zrb_ring_take(mrb, &zrb_get_get(mrb, self)->ring, blk, ZRB_TAKE_REPLY);
 }
 
 static mrb_value zrb_get_done_p(mrb_state *mrb, mrb_value self) {
@@ -966,11 +990,18 @@ static mrb_value zrb_session_s_open(mrb_state *mrb, mrb_value klass) {
     return obj;
 }
 
-/* session.put(key, payload) -> nil */
+/* session.put(key, payload, attachment: nil) -> nil */
 static mrb_value zrb_session_put(mrb_state *mrb, mrb_value self) {
     const char *key;
     mrb_value payload;
-    mrb_get_args(mrb, "zS", &key, &payload);
+    mrb_sym kw_names[1] = {mrb_intern_lit(mrb, "attachment")};
+    mrb_value kw_values[1];
+    mrb_kwargs kwargs = {1, 0, kw_names, kw_values, NULL};
+    mrb_get_args(mrb, "zS:", &key, &payload, &kwargs);
+    mrb_value att = mrb_undef_p(kw_values[0]) ? mrb_nil_value() : kw_values[0];
+    if (!mrb_nil_p(att) && !mrb_string_p(att)) {
+        mrb_raise(mrb, E_TYPE_ERROR, "attachment must be a String or nil");
+    }
     zrb_session *z = zrb_session_get_open(mrb, self);
 
     z_view_keyexpr_t ke;
@@ -979,7 +1010,17 @@ static mrb_value zrb_session_put(mrb_state *mrb, mrb_value self) {
     if (z_bytes_copy_from_buf(&bytes, (const uint8_t *)RSTRING_PTR(payload), (size_t)RSTRING_LEN(payload)) != Z_OK) {
         mrb_raise(mrb, zrb_error_class(mrb), "cannot allocate the payload");
     }
-    z_result_t ret = z_put(z_loan(z->session), z_loan(ke), z_move(bytes), NULL);
+    z_put_options_t opts;
+    z_put_options_default(&opts);
+    z_owned_bytes_t att_bytes;
+    if (!mrb_nil_p(att)) {
+        if (z_bytes_copy_from_buf(&att_bytes, (const uint8_t *)RSTRING_PTR(att), (size_t)RSTRING_LEN(att)) != Z_OK) {
+            z_drop(z_move(bytes));
+            mrb_raise(mrb, zrb_error_class(mrb), "cannot allocate the attachment");
+        }
+        opts.attachment = z_move(att_bytes);
+    }
+    z_result_t ret = z_put(z_loan(z->session), z_loan(ke), z_move(bytes), &opts);
     if (zrb_session_check_link(z)) {
         mrb_raisef(mrb, zrb_error_class(mrb), "put failed: the connection is lost (%d)", (int)ret);
     }
@@ -1221,6 +1262,19 @@ static mrb_value zrb_session_close(mrb_state *mrb, mrb_value self) {
 
 /* session.peers -> Integer: connected peers (peer mode), or 1 / 0 for the
  * router of a client session. */
+/* session.zid -> String: this session's Zenoh ID in hex. */
+static mrb_value zrb_session_zid(mrb_state *mrb, mrb_value self) {
+    zrb_session *z = zrb_session_get_open(mrb, self);
+    z_id_t id = z_info_zid(z_loan(z->session));
+    z_owned_string_t str;
+    if (z_id_to_string(&id, &str) != Z_OK) {
+        mrb_raise(mrb, zrb_error_class(mrb), "cannot format the session ID");
+    }
+    mrb_value out = zrb_str_from_view(mrb, z_loan(str));
+    z_drop(z_move(str));
+    return out;
+}
+
 static mrb_value zrb_session_peers(mrb_state *mrb, mrb_value self) {
     zrb_session *z = zrb_session_get(mrb, self);
     if (zrb_session_check_link(z)) {
@@ -1250,7 +1304,7 @@ void mrb_picoruby_asterism_zenoh_gem_init(mrb_state *mrb) {
     MRB_SET_INSTANCE_TT(ses, MRB_TT_CDATA);
     mrb_undef_class_method(mrb, ses, "new");
     mrb_define_class_method(mrb, ses, "open", zrb_session_s_open, MRB_ARGS_OPT(1) | MRB_ARGS_KEY(2, 0));
-    mrb_define_method(mrb, ses, "put", zrb_session_put, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, ses, "put", zrb_session_put, MRB_ARGS_REQ(2) | MRB_ARGS_KEY(1, 0));
     mrb_define_method(mrb, ses, "subscribe", zrb_session_subscribe, MRB_ARGS_ARG(1, 1));
     mrb_define_method(mrb, ses, "get", zrb_session_get_m, MRB_ARGS_ARG(1, 3));
     mrb_define_method(mrb, ses, "queryable", zrb_session_queryable, MRB_ARGS_ARG(1, 1));
@@ -1259,6 +1313,7 @@ void mrb_picoruby_asterism_zenoh_gem_init(mrb_state *mrb) {
     mrb_define_method(mrb, ses, "liveliness_get", zrb_session_liveliness_get, MRB_ARGS_ARG(1, 1));
     mrb_define_method(mrb, ses, "poll", zrb_session_poll, MRB_ARGS_OPT(1));
     mrb_define_method(mrb, ses, "peers", zrb_session_peers, MRB_ARGS_NONE());
+    mrb_define_method(mrb, ses, "zid", zrb_session_zid, MRB_ARGS_NONE());
     mrb_define_method(mrb, ses, "closed?", zrb_session_closed_p, MRB_ARGS_NONE());
     mrb_define_method(mrb, ses, "close", zrb_session_close, MRB_ARGS_NONE());
 

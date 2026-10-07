@@ -99,8 +99,9 @@
 - キー: おおむね `<ドメイン ID>/<トピック名>/<型名>/<型のハッシュ>`。購読はワイルドカード可、出すときは型名と型の
   ハッシュを正確に合わせる。
 - 中身: CDR (先頭に 4 バイトの印)。
-- attachment: シーケンス番号、時刻、GID。トピックの受信では無視してよい、サービスでは必須。
-  **今の mrbgem は attachment に対応していない** (足す必要がある)。
+- attachment: シーケンス番号 (int64)、時刻 (int64 ns)、GID (長さ 1 バイト + 16 バイト) の 33 バイト。**トピックでも必須**
+  (無いと rmw_zenoh が受け取りを捨てる。R1 で確認、2026-10-07)。mrbgem は R1 で put / subscribe の attachment に対応した。
+  サービス (get / queryable) の attachment はまだ無い。
 - liveliness のトークン: `ros2 node list` / `ros2 topic list` に出すために要る。
 - 接続: rmw_zenoh は既定でローカルの `rmw_zenohd` につなぎ、マルチキャストでの発見は切ってある。
 - QoS: transient local などは振る舞いを合わせる手間が大きい。
@@ -109,7 +110,8 @@
 
 ### 進め方 (案)
 
-1. 機体 (mrbgem) から `std_msgs/String` を手書きの CDR で出し、`ros2 topic echo` で見える最小の疎通 (A1 の後)。
+1. 機体 (mrbgem) から `std_msgs/String` を手書きの CDR で出し、`ros2 topic echo` で見える最小の疎通 (**R1 で完了**、
+   report/r1.md。ROS 2 Jazzy + rmw_zenoh 0.2.11 (Zenoh 1.8.0) と zenohd 1.10.1・zenoh-pico 1.10.1 で通じる)。
 2. `asterism-cdr` と `asterism-ros` のトピックの部分。
 3. サービス、liveliness、メッセージの自動生成は後。
 

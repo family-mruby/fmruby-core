@@ -2,7 +2,9 @@
 #
 # Pure Ruby (mrblib only). Built on Asterism::Zenoh (picoruby-asterism-zenoh)
 # and a MessagePack module with pack / unpack (the msgpack gem's API; any gem
-# that provides it will do). Nothing here is specific to Family mruby.
+# that provides it will do). Also a minimal ROS 2 (rmw_zenoh) node,
+# Asterism::ROS, with its CDR encoding, Asterism::CDR (R1; these need only
+# Asterism::Zenoh). Nothing here is specific to Family mruby.
 MRuby::Gem::Specification.new('picoruby-asterism') do |spec|
   spec.license = 'MIT'
   spec.authors = ['Katsuhiko Kageyama']
