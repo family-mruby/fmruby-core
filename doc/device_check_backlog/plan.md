@@ -28,6 +28,6 @@
 | 上流 Spinel の取り込み | 7M の区画: 済 (2026-10-07 に develop を全体で書き込み、起動 Guru 0) | spinel_upstream_ext |
 | 全画面の高解像度 | H1-H4 の動き (エディタの全画面、フォント) | fullscreen_hires |
 | ミュートと音量 | ES8388 の音量の書き方 (P4-Nano の ES8311 と違う)。段の大きさ、コーデックのミュート | reference/audio_output.md |
-| マウスの遅れ・Shell・アプリの終了・Spinel の多重起動 | P4-Nano と同じ確認 | p4_cursor_lag ほか |
-| Zenoh (Asterism Z2) | 試しのアプリで PC の zenohd と往復、開き直し、内蔵 RAM (P4-Nano と同じ手順) | ruby_asterism (Z2) |
-| ESP-Hosted の mempool なし | 遠隔の画面の取り込み・ファイル転送の後に内蔵 RAM が戻るか、速さ、BLE | hosted_mempool |
+| マウスの遅れ・Shell の打鍵の感じ | ユーザの体感で確かめる。アプリの終了 (16 回)・Spinel の多重起動の断り・exclusive_group は済 (2026-10-07、同 3 章) | p4_cursor_lag ほか |
+| Zenoh (Asterism Z2) | 済 (2026-10-07、report/tab5_20261007.md 1 章): 往復・開き直し 5 回・問い合わせ・生存の監視、内蔵 RAM は閉じて 3 分で戻る | ruby_asterism (Z2) |
+| ESP-Hosted の mempool なし | 済 (2026-10-07、同 2 章): 負荷の後は 1 回だけ -7.7 KB で以後は増えない、速さ同等、BLE 起動、書き込みで落ちない | hosted_mempool |
