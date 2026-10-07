@@ -1,18 +1,20 @@
 # Asterism::ROS: a minimal ROS 2 node over rmw_zenoh's wire format
-# (doc/ruby_asterism/design.md ch. 5; topics R1, services R2). Types:
-# std_msgs/String and example_interfaces/srv/AddTwoInts.
+# (doc/ruby_asterism/design.md ch. 5; topics R1, services R2, message types
+# R3). The message and service types are generated from .msg / .srv files
+# (tools/asterism_msggen.rb) and loaded when the application asks for them.
 #
 #   s = Asterism::Zenoh::Session.open("tcp/192.168.10.2:7447")
 #   node = Asterism::ROS::Node.new(s, "fmruby_talker")
-#   pub = node.publisher("/chatter", Asterism::ROS::StdMsgs::String)
-#   sub = node.subscription("/chatter_back", Asterism::ROS::StdMsgs::String)
-#   add = Asterism::ROS::ExampleInterfaces::AddTwoInts
+#   str = Asterism::ROS.require_type("std_msgs/msg/String")
+#   pub = node.publisher("/chatter", str)
+#   sub = node.subscription("/chatter_back", "std_msgs/msg/String")  # by name
+#   add = Asterism::ROS.require_type("example_interfaces/srv/AddTwoInts")
 #   node.service("/add_two_ints_fmrb", add) { |req| { sum: req.a + req.b } }
 #   cli = node.client("/add_two_ints", add)
 #   loop do
 #     node.poll                                   # session.poll + answer services
-#     pub.publish("hello")
-#     sub.each_pending { |msg, info| puts msg }   # info: Attachment or nil
+#     pub << { data: "hello" }                    # or pub.publish(str.new(data: "hello"))
+#     sub.each_pending { |msg, info| puts msg.data }   # info: Attachment or nil
 #   end
 #   cli.call(a: 2, b: 3).sum                      # waits (polling), or
 #   c = cli.call_async(a: 2, b: 3); c.done?; c.value
@@ -164,79 +166,139 @@ module Asterism
       end
     end
 
-    module StdMsgs
-      # std_msgs/msg/String: a single string field (data).
-      module String
-        ROS_NAME = "std_msgs/msg/String"
-        TYPE_NAME = "std_msgs::msg::dds_::String_"
-        # RIHS01 type hash of std_msgs/msg/String (the same in Jazzy and later).
-        TYPE_HASH = "RIHS01_df668c740482bbd48fb39d76a70dfd4bd59db1288021743503259e948f6b1a18"
+    # Where Asterism::ROS.require_type looks for generated types
+    # (<dir>/<pkg>/<msg|srv>/<Name>.rb, tools/asterism_msggen.rb). The
+    # application may add its own directories (or set them on CRuby).
+    TYPE_PATH = ["/usr/share/asterism/msgs"]
 
-        def self.encode(data)
-          ::Asterism::CDR::Writer.new.string(data.to_s).to_s
-        end
+    # The type has no generated file in TYPE_PATH.
+    class UnknownType < ::StandardError; end
 
-        def self.decode(bytes)
-          ::Asterism::CDR::Reader.new(bytes).string
-        end
-      end
+    def self.type_path
+      TYPE_PATH
     end
 
-    module ExampleInterfaces
-      # example_interfaces/srv/AddTwoInts: int64 a, int64 b -> int64 sum.
-      module AddTwoInts
-        ROS_NAME = "example_interfaces/srv/AddTwoInts"
-        TYPE_NAME = "example_interfaces::srv::dds_::AddTwoInts_"
-        # RIHS01 hash of the service type (not of Request / Response), as it
-        # appears in rmw_zenoh's keys and tokens (Jazzy).
-        TYPE_HASH = "RIHS01_e118de6bf5eeb66a2491b5bda11202e7b68f198d6f67922cf30364858239c81a"
+    # Loads a generated message or service type by its ROS name
+    # ("geometry_msgs/msg/Twist", "example_interfaces/srv/AddTwoInts") and
+    # returns it (Asterism::ROS::GeometryMsgs::Twist). The file loads the
+    # types it is made of first. A type already defined (loaded before, or
+    # written in Ruby by the application) is returned without a file.
+    def self.require_type(name)
+      parts = name.to_s.split("/")
+      if parts.size != 3 || (parts[1] != "msg" && parts[1] != "srv")
+        raise ArgumentError, "bad type name #{name.inspect} (want pkg/msg/Name or pkg/srv/Name)"
+      end
+      t = type_constant(parts[0], parts[2])
+      return t if t
+      found = nil
+      TYPE_PATH.each do |dir|
+        path = "#{dir}/#{parts[0]}/#{parts[1]}/#{parts[2]}.rb"
+        found = path if found.nil? && File.exist?(path)
+      end
+      load_type_file(found) if found
+      t = type_constant(parts[0], parts[2])
+      raise UnknownType, "no generated type #{name} in #{TYPE_PATH.join(', ')}" if t.nil?
+      t
+    end
 
-        class Request
-          attr_accessor :a, :b
+    # On mruby the file is evaluated in this VM (Kernel#eval): unlike
+    # require, which runs each file in a Sandbox task of its own that stays
+    # for the life of the VM, this keeps only the compiled code (measured in
+    # report/r3.md). CRuby requires it.
+    def self.load_type_file(path)
+      if RUBY_ENGINE == "ruby"
+        require File.expand_path(path)
+      else
+        src = File.open(path, "r") { |f| f.read }
+        eval(src)
+      end
+      nil
+    end
 
-          def initialize(a: 0, b: 0)
-            @a = a
-            @b = b
-          end
+    # Asterism::ROS::<Pkg>::<Name>, or nil.
+    def self.type_constant(pkg, name)
+      mod_name = ""
+      pkg.split("_").each do |w|
+        mod_name << w.byteslice(0, 1).upcase << w.byteslice(1, w.bytesize - 1) if w.bytesize > 0
+      end
+      mod_sym = mod_name.to_sym
+      return nil unless ::Asterism::ROS.const_defined?(mod_sym, false)
+      mod = ::Asterism::ROS.const_get(mod_sym)
+      sym = name.to_sym
+      return nil unless mod.const_defined?(sym, false)
+      mod.const_get(sym)
+    end
 
-          # msg: a Request, or a Hash with :a and :b.
-          def self.encode(msg)
-            m = msg.is_a?(Hash) ? new(a: msg[:a] || 0, b: msg[:b] || 0) : msg
-            ::Asterism::CDR::Writer.new.int64(m.a.to_i).int64(m.b.to_i).to_s
-          end
+    # A type given as a generated type or its ROS name (String).
+    def self.type_of(type)
+      type.is_a?(::String) ? require_type(type) : type
+    end
 
-          def self.decode(bytes)
-            r = ::Asterism::CDR::Reader.new(bytes)
-            new(a: r.int64, b: r.int64)
-          end
+    # For the generated types' from: a Hash of fields with Symbol keys
+    # (String keys are turned into Symbols). Anything else raises TypeError.
+    def self.fields_of(v, type)
+      raise TypeError, "#{type::ROS_NAME} from #{v.class}: want a Hash or a #{type::ROS_NAME}" unless v.is_a?(::Hash)
+      out = {}
+      v.each { |k, x| out[k.is_a?(::Symbol) ? k : k.to_s.to_sym] = x }
+      out
+    end
 
-          def to_h
-            { a: @a, b: @b }
-          end
+    # The base of the generated message types (Request / Response of a
+    # service too). A type adds ROS_NAME, TYPE_NAME, TYPE_HASH, FIELDS, an
+    # accessor per field, initialize(**fields) and the CDR steps
+    # write(w, msg) / read(r); the rest is here.
+    class Message
+      # A message from nil (all defaults), a Hash of fields (Symbol or
+      # String keys; missing fields take their defaults, unknown ones raise
+      # ArgumentError) or a message of this type (itself).
+      def self.from(v)
+        return v if v.is_a?(self)
+        return new if v.nil?
+        new(**::Asterism::ROS.fields_of(v, self))
+      end
+
+      # CDR bytes (with the 4-byte header) of a message or a Hash.
+      def self.encode(msg)
+        w = ::Asterism::CDR::Writer.new
+        write(w, from(msg))
+        w.to_s
+      end
+
+      def self.decode(bytes)
+        read(::Asterism::CDR::Reader.new(bytes))
+      end
+
+      # The fields as a Hash (nested messages as Hashes too).
+      def to_h
+        h = {}
+        fs = self.class::FIELDS
+        i = 0
+        while i < fs.size
+          h[fs[i]] = ::Asterism::ROS::Message.plain(__send__(fs[i]))
+          i += 1
         end
+        h
+      end
 
-        class Response
-          attr_accessor :sum
-
-          def initialize(sum: 0)
-            @sum = sum
-          end
-
-          # msg: a Response, or a Hash with :sum.
-          def self.encode(msg)
-            m = msg.is_a?(Hash) ? new(sum: msg[:sum] || 0) : msg
-            ::Asterism::CDR::Writer.new.int64(m.sum.to_i).to_s
-          end
-
-          def self.decode(bytes)
-            new(sum: ::Asterism::CDR::Reader.new(bytes).int64)
-          end
-
-          def to_h
-            { sum: @sum }
-          end
+      def self.plain(v)
+        if v.is_a?(::Asterism::ROS::Message)
+          v.to_h
+        elsif v.is_a?(::Array) && v.size > 0 && v[0].is_a?(::Asterism::ROS::Message)
+          v.map { |e| e.to_h }
+        else
+          v
         end
       end
+
+      def ==(other)
+        other.class == self.class && to_h == other.to_h
+      end
+
+      def inspect
+        "#<#{self.class::ROS_NAME} #{to_h.inspect}>"
+      end
+
+      alias to_s inspect
     end
 
     class Node
@@ -262,13 +324,13 @@ module Asterism
       end
 
       def publisher(topic, type, qos: DEFAULT_QOS)
-        e = ::Asterism::ROS::Publisher.new(self, @session, topic, type, qos)
+        e = ::Asterism::ROS::Publisher.new(self, @session, topic, ::Asterism::ROS.type_of(type), qos)
         @entities << e
         e
       end
 
       def subscription(topic, type, qos: DEFAULT_QOS, depth: 16)
-        e = ::Asterism::ROS::Subscription.new(self, @session, topic, type, qos, depth)
+        e = ::Asterism::ROS::Subscription.new(self, @session, topic, ::Asterism::ROS.type_of(type), qos, depth)
         @entities << e
         e
       end
@@ -279,14 +341,14 @@ module Asterism
       # service.handle_pending), never behind the application's back.
       def service(service, type, qos: DEFAULT_QOS, depth: 8, &handler)
         raise ArgumentError, "service needs a block" unless handler
-        e = ::Asterism::ROS::Service.new(self, @session, service, type, qos, depth, handler)
+        e = ::Asterism::ROS::Service.new(self, @session, service, ::Asterism::ROS.type_of(type), qos, depth, handler)
         @entities << e
         @services << e
         e
       end
 
       def client(service, type, qos: DEFAULT_QOS)
-        e = ::Asterism::ROS::Client.new(self, @session, service, type, qos)
+        e = ::Asterism::ROS::Client.new(self, @session, service, ::Asterism::ROS.type_of(type), qos)
         @entities << e
         e
       end
@@ -353,13 +415,20 @@ module Asterism
         @token = session.liveliness(@token_key)
       end
 
-      # msg: what the type's encode takes (a String for StdMsgs::String).
+      # msg: a message of the type, or a Hash of its fields (missing ones
+      # take their defaults).
       def publish(msg)
         raise ::Asterism::Zenoh::Error, "publisher closed" if @token.nil?
         @sequence += 1
         att = ::Asterism::ROS::Attachment.new(@sequence, ::Asterism::ROS.now_ns, @gid)
         @session.put(@topic_key, @type.encode(msg), attachment: att.encode)
         nil
+      end
+
+      # pub << { linear: { x: 0.1 } }
+      def <<(msg)
+        publish(msg)
+        self
       end
 
       def close
