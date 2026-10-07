@@ -209,6 +209,27 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - 残り: サービス (get / queryable の attachment)、transient local の QoS (zenoh-pico の高度な pub/sub、内蔵 RAM を測ってから)、
   ドメイン 0・名前空間 "/"・std_msgs/String 以外は未確認。
 
+## ROS 2 の続き (順番、2026-10-07 ユーザ決定)
+
+| 段階 | 内容 |
+|---|---|
+| R2 (進行中) | サービス (example_interfaces/srv/AddTwoInts)。機体が提供して PC から呼ぶ、機体から PC のサービスを呼ぶ。get / queryable の attachment。型は手書き (instruction_r2.md) |
+| R3 | メッセージ型の変換器 (design.md 2 章の asterism-msgs)。R2 で手書きの型が 3 つになった手間を見てから作る |
+
+### R3: メッセージ型の変換器 (計画)
+
+- 今 (R1・R2) は型ごとに Ruby のクラスを手で書いている: 型名 (`std_msgs::msg::dds_::String_` の形)、型のハッシュ
+  (RIHS01、PC で調べた定数)、CDR への変換と CDR からの変換 (`Asterism::CDR`)。
+- R3 では **PC (CRuby) のスクリプト**が `.msg` / `.srv` を読み、Ruby のクラス・型名・型のハッシュを作る。型のハッシュは
+  PC で計算する (SHA-256 を機体で計算しない)。出来たものは純 Ruby で、機体 (mruby)・sim・将来の CRuby 版で同じものを使う。
+- よく使う型は作って同梱する (std_msgs、geometry_msgs の Twist・Pose など、sensor_msgs の一部、example_interfaces)。
+  ほかの型はユーザが自分の `.msg` から作って機体に置く。アプリが使う型だけを読み込み、全部は入れない (flash と VM の容量)。
+- 値の形: `Data.define` の値オブジェクトを案にする (mruby に `Data` があるか確かめる。無ければ Struct か普通のクラス)。
+  どれでも Hash から作れるようにする (`pub << { data: "hi" }`)。
+- 型のハッシュの作り方は ROS 2 の版で変わりうるので、同梱の型は対象の版 (今は Jazzy) を明記して作る。
+- 後回し: 知らない型を受け取る (ROS 2 Jazzy の型の定義の問い合わせを使えば、機体に型が無くても中身を読める可能性がある。
+  流れている型を見るデバッグ用の表示に便利)。
+
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
 1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。
