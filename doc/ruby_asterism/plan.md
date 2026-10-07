@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) を計画中
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理) の指示を出した
 
 ## 目的
 
@@ -118,7 +118,7 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 - 試験の後に内蔵 RAM が約 38 KB 戻らなかったのは zenoh ではなく、ESP-Hosted (WiFi のチップとの通信) が転送用の
   バッファを解放せずに溜める作りのためだった。P4 の WiFi の通信すべてで起きる。対応は doc/hosted_mempool/。
 
-## A1: 遠くのオブジェクトの代理 (計画 2026-10-07)
+## A1: 遠くのオブジェクトの代理 (計画済 2026-10-07)
 
 ### ゴール
 
@@ -126,26 +126,27 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 
 ```ruby
 # 公開する側 (P4-Nano のアプリ)
-Asterism.connect("tcp/192.168.10.2:7447", node: "naryav4")
+Asterism.connect("tcp/192.168.10.2:7447", node: "fmruby-90bce8", app: "demo")
 Asterism.expose("apu", apu, methods: [:play, :stop])
 
 # 呼ぶ側 (sim のアプリ)
-apu = Asterism["naryav4/apu"]
+apu = Asterism["fmruby-90bce8/demo/apu"]  # <ID>/<アプリ>/<オブジェクト>
 apu.play("t120 o4 cdefg")             # 音は P4-Nano から鳴る
 apu.respond_to?(:play)                # => true (公開された一覧から)
-Asterism.each("*/apu") { |a| a.stop } # 生きている機体を回る
+Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 ```
 
 ### 作り
 
 - **層**: Zenoh gem (Z1-Z3) の上に、純 Ruby の gem `lib/add/picoruby-asterism/` (mrblib だけ) を置く。Family mruby に
   依存しない。値の包みは `MessagePack.pack` / `unpack` (CRuby の msgpack gem と同じ名前の API) だけを使う。
-- **キー空間**: `asterism/<node>/<object>` を根にする (Zenoh の `@` は管理用に予約されているので使わない)。
-  - 呼び出し: `asterism/<node>/<object>/call` に get。payload は `[メソッド名, 引数の配列, キーワードの Hash]`。
+- **キー空間** (design.md 4 章): `asterism/<ID>/<アプリ>/<オブジェクト>` を根にする (Zenoh の `@` は管理用に予約
+  されているので使わない)。
+  - 呼び出し: `asterism/<ID>/<アプリ>/<オブジェクト>/call` に get。payload は `[メソッド名, 引数の配列, キーワードの Hash]`。
     答えは `["ok", 戻り値]` か `["error", 例外のクラス名, メッセージ]`。
-  - 一覧 (メタ情報): `asterism/<node>/<object>/meta` に get。公開したメソッドの名前と引数の数。`respond_to?`・
+  - 一覧 (メタ情報): `.../meta` に get。公開したメソッドの名前と引数の数。`respond_to?`・
     `methods`・エディタの補完の元になる。
-  - 生存: `asterism/<node>/<object>` を liveliness のトークンにする。`Asterism.each` / 一覧はこれで作る。
+  - 生存: `asterism/<ID>` (ノード) と `asterism/<ID>/<アプリ>/<オブジェクト>` を liveliness のトークンにする。`Asterism.each` / 一覧はこれで作る。
 - **呼ぶ側の代理**: `method_missing` で呼び出しを get に変える (アプリの VM で method_missing・respond_to_missing?・
   キーワード引数が使えることは report/metaprog_check.md で確認済み)。
 - **公開する側**: `queryable` で受け、公開したメソッドだけを `public_send` する。それ以外は "error" で返す。
@@ -160,7 +161,7 @@ Asterism.each("*/apu") { |a| a.stop } # 生きている機体を回る
 - Spinel のアプリ・カーネルからの利用 (method_missing を使うので mruby のアプリ VM に限る)。
 - 認証・権限 (信頼できる LAN の前提のまま)。
 
-### 受け入れ条件 (案)
+### 受け入れ条件
 
 1. sim と P4-Nano の間で、片方が公開した APU (音) と画面 (文字) を、もう片方から代理で呼べる。戻り値と例外が届く。
 2. 公開していないメソッドは呼べない (呼ぶと Asterism::RemoteError)。`respond_to?` が公開の一覧と合う。
@@ -168,17 +169,19 @@ Asterism.each("*/apu") { |a| a.stop } # 生きている機体を回る
 4. 互いに呼び合っても詰まらない。
 5. gem は Family mruby に依存しない。sim の標準構成・互換構成、P4 のビルドが通り、起動時の内蔵 RAM は増えない。
 
-### 未確定事項 (A1 の前に決めたい)
+### 決定事項 (2026-10-07 ユーザ決定)
 
-1. **呼び出しの待ち方**: 答えが返るまで待つ (時間制限つき、既定 2 秒) を基本にし、待たない形 (`apu.async.play(...)` が
-   後で結果を取り出せるものを返す) も用意する (推奨) / 待たない形だけ。
-2. **公開の仕方**: 公開するメソッドを明示する (`methods: [...]`、推奨) / オブジェクトの public メソッドを全部公開。
-3. **名前 (住所)**: `Asterism["<node>/<object>"]` の node は、Z3 と同じく `/home/zenoh_node.txt` か機種の名前。
-   根のキーは `asterism/`。
-4. **値**: MessagePack で表せるもの (nil・真偽・整数・浮動小数・文字列・配列・Hash) だけを渡す。Symbol は文字列に
-   なる (今の msgpack gem の扱い)。それ以外を渡すと送る前に例外 (推奨)。
-5. **CRuby の側**: A1 では作らず、PC からは tools/fmrb_zenoh.rb (REST) で call / meta を叩けるようにするだけ (推奨)。
-   CRuby 版 (rubygems の `asterism`) は、zenoh の Ruby 版の当て (zenoh-c を FFI で呼ぶなど) を調べてから決める。
+- 全体の設計 (gem の分け方、環境ごとの接続層、キー空間、ROS 2、ブラウザ版) は design.md。
+- **A1 を先にやる**。その後に ROS 2 の最小の疎通 (機体から `std_msgs/String`)、CRuby 版はその後。
+- **モジュールの名前**: Zenoh のバインディングは `Asterism::Zenoh` (gem の名前は asterism-zenoh)。mruby 側にも最上位の
+  `Zenoh` は残さない (まだ公開していないので互換は要らない)。A1 の最初に今の gem を改名する。
+- **キー空間**: 最上位は `asterism/` (Family mruby とは別のプロジェクト)。`asterism/<ID>/<アプリ>/<オブジェクト>/call`・
+  `.../meta`、生存は `asterism/<ID>` と `asterism/<ID>/<アプリ>/<オブジェクト>`。ID は機体なら基板ごとの mDNS 名
+  (`fmruby-XXXXXX`)、gem は `node:` で受け取る。
+- **peer の上限は 3** (zenoh-pico の既定の 10 から絞る。内蔵 RAM を優先)。
+- 未確定だった 5 点は推奨案で決定: 呼び出しは答えを待つ形 (既定 2 秒) を基本に待たない形 (`async`) も用意する、
+  公開するメソッドは明示する、渡せる値は MessagePack で表せるものだけ (Symbol は文字列になる、ほかは送る前に例外)、
+  CRuby の側は A1 では作らず PC からは tools/fmrb_zenoh.rb で call / meta を試せるようにする。
 
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 

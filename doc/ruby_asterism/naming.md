@@ -18,7 +18,7 @@
 
 - 構想・上位 gem: `asterism` (rubygems は 2026-08-27 時点で空き。
   **早めに取得すること**)。
-- 下位の通信層 (Zenoh 束ね) の名前として **Silk** を予約する
+- (2026-10-07 に置き換え: 下位の通信層は `asterism-zenoh` / `Asterism::Zenoh`。design.md 2 章) 下位の通信層 (Zenoh 束ね) の名前として **Silk** を予約する
   (silk が石の中にあるから星が出る、の層構成そのまま。gem 名は
   `silk` 単体が取得済みのため `asterism-silk` のような従属名にする)。
 - 発表タイトル案: "Asterism: A Star Network Inside Ruby —
