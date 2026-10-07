@@ -3,99 +3,96 @@
 
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module SensorMsgs
-      class BatteryState < ::Asterism::ROS::Message
-        ROS_NAME = "sensor_msgs/msg/BatteryState"
-        TYPE_NAME = "sensor_msgs::msg::dds_::BatteryState_"
-        TYPE_HASH = "RIHS01_4bee5dfce981c98faa6828b868307a0a73f992ed0789f374ee96c8f840e69741"
-        FIELDS = [:header, :voltage, :temperature, :current, :charge, :capacity, :design_capacity, :percentage, :power_supply_status, :power_supply_health, :power_supply_technology, :present, :cell_voltage, :cell_temperature, :location, :serial_number]
-        POWER_SUPPLY_STATUS_UNKNOWN = 0
-        POWER_SUPPLY_STATUS_CHARGING = 1
-        POWER_SUPPLY_STATUS_DISCHARGING = 2
-        POWER_SUPPLY_STATUS_NOT_CHARGING = 3
-        POWER_SUPPLY_STATUS_FULL = 4
-        POWER_SUPPLY_HEALTH_UNKNOWN = 0
-        POWER_SUPPLY_HEALTH_GOOD = 1
-        POWER_SUPPLY_HEALTH_OVERHEAT = 2
-        POWER_SUPPLY_HEALTH_DEAD = 3
-        POWER_SUPPLY_HEALTH_OVERVOLTAGE = 4
-        POWER_SUPPLY_HEALTH_UNSPEC_FAILURE = 5
-        POWER_SUPPLY_HEALTH_COLD = 6
-        POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE = 7
-        POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE = 8
-        POWER_SUPPLY_TECHNOLOGY_UNKNOWN = 0
-        POWER_SUPPLY_TECHNOLOGY_NIMH = 1
-        POWER_SUPPLY_TECHNOLOGY_LION = 2
-        POWER_SUPPLY_TECHNOLOGY_LIPO = 3
-        POWER_SUPPLY_TECHNOLOGY_LIFE = 4
-        POWER_SUPPLY_TECHNOLOGY_NICD = 5
-        POWER_SUPPLY_TECHNOLOGY_LIMN = 6
-        POWER_SUPPLY_TECHNOLOGY_TERNARY = 7
-        POWER_SUPPLY_TECHNOLOGY_VRLA = 8
+module ::Asterism::ROS::SensorMsgs
+end
 
-        attr_accessor :header, :voltage, :temperature, :current, :charge, :capacity, :design_capacity, :percentage, :power_supply_status, :power_supply_health, :power_supply_technology, :present, :cell_voltage, :cell_temperature, :location, :serial_number
+class ::Asterism::ROS::SensorMsgs::BatteryState < ::Asterism::ROS::Message
+  ROS_NAME = "sensor_msgs/msg/BatteryState"
+  TYPE_NAME = "sensor_msgs::msg::dds_::BatteryState_"
+  TYPE_HASH = "RIHS01_4bee5dfce981c98faa6828b868307a0a73f992ed0789f374ee96c8f840e69741"
+  FIELDS = [:header, :voltage, :temperature, :current, :charge, :capacity, :design_capacity, :percentage, :power_supply_status, :power_supply_health, :power_supply_technology, :present, :cell_voltage, :cell_temperature, :location, :serial_number]
+  POWER_SUPPLY_STATUS_UNKNOWN = 0
+  POWER_SUPPLY_STATUS_CHARGING = 1
+  POWER_SUPPLY_STATUS_DISCHARGING = 2
+  POWER_SUPPLY_STATUS_NOT_CHARGING = 3
+  POWER_SUPPLY_STATUS_FULL = 4
+  POWER_SUPPLY_HEALTH_UNKNOWN = 0
+  POWER_SUPPLY_HEALTH_GOOD = 1
+  POWER_SUPPLY_HEALTH_OVERHEAT = 2
+  POWER_SUPPLY_HEALTH_DEAD = 3
+  POWER_SUPPLY_HEALTH_OVERVOLTAGE = 4
+  POWER_SUPPLY_HEALTH_UNSPEC_FAILURE = 5
+  POWER_SUPPLY_HEALTH_COLD = 6
+  POWER_SUPPLY_HEALTH_WATCHDOG_TIMER_EXPIRE = 7
+  POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE = 8
+  POWER_SUPPLY_TECHNOLOGY_UNKNOWN = 0
+  POWER_SUPPLY_TECHNOLOGY_NIMH = 1
+  POWER_SUPPLY_TECHNOLOGY_LION = 2
+  POWER_SUPPLY_TECHNOLOGY_LIPO = 3
+  POWER_SUPPLY_TECHNOLOGY_LIFE = 4
+  POWER_SUPPLY_TECHNOLOGY_NICD = 5
+  POWER_SUPPLY_TECHNOLOGY_LIMN = 6
+  POWER_SUPPLY_TECHNOLOGY_TERNARY = 7
+  POWER_SUPPLY_TECHNOLOGY_VRLA = 8
 
-        def initialize(header: nil, voltage: nil, temperature: nil, current: nil, charge: nil, capacity: nil, design_capacity: nil, percentage: nil, power_supply_status: nil, power_supply_health: nil, power_supply_technology: nil, present: nil, cell_voltage: nil, cell_temperature: nil, location: nil, serial_number: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @voltage = voltage.nil? ? 0.0 : voltage
-          @temperature = temperature.nil? ? 0.0 : temperature
-          @current = current.nil? ? 0.0 : current
-          @charge = charge.nil? ? 0.0 : charge
-          @capacity = capacity.nil? ? 0.0 : capacity
-          @design_capacity = design_capacity.nil? ? 0.0 : design_capacity
-          @percentage = percentage.nil? ? 0.0 : percentage
-          @power_supply_status = power_supply_status.nil? ? 0 : power_supply_status
-          @power_supply_health = power_supply_health.nil? ? 0 : power_supply_health
-          @power_supply_technology = power_supply_technology.nil? ? 0 : power_supply_technology
-          @present = present.nil? ? false : present
-          @cell_voltage = cell_voltage.nil? ? [] : cell_voltage
-          @cell_temperature = cell_temperature.nil? ? [] : cell_temperature
-          @location = location.nil? ? "" : location
-          @serial_number = serial_number.nil? ? "" : serial_number
-        end
+  attr_accessor :header, :voltage, :temperature, :current, :charge, :capacity, :design_capacity, :percentage, :power_supply_status, :power_supply_health, :power_supply_technology, :present, :cell_voltage, :cell_temperature, :location, :serial_number
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          w.float32(m.voltage)
-          w.float32(m.temperature)
-          w.float32(m.current)
-          w.float32(m.charge)
-          w.float32(m.capacity)
-          w.float32(m.design_capacity)
-          w.float32(m.percentage)
-          w.uint8(m.power_supply_status)
-          w.uint8(m.power_supply_health)
-          w.uint8(m.power_supply_technology)
-          w.bool(m.present)
-          w.array(:float32, m.cell_voltage, nil, nil)
-          w.array(:float32, m.cell_temperature, nil, nil)
-          w.string(m.location)
-          w.string(m.serial_number)
-        end
+  def initialize(header: nil, voltage: nil, temperature: nil, current: nil, charge: nil, capacity: nil, design_capacity: nil, percentage: nil, power_supply_status: nil, power_supply_health: nil, power_supply_technology: nil, present: nil, cell_voltage: nil, cell_temperature: nil, location: nil, serial_number: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @voltage = voltage.nil? ? 0.0 : voltage
+    @temperature = temperature.nil? ? 0.0 : temperature
+    @current = current.nil? ? 0.0 : current
+    @charge = charge.nil? ? 0.0 : charge
+    @capacity = capacity.nil? ? 0.0 : capacity
+    @design_capacity = design_capacity.nil? ? 0.0 : design_capacity
+    @percentage = percentage.nil? ? 0.0 : percentage
+    @power_supply_status = power_supply_status.nil? ? 0 : power_supply_status
+    @power_supply_health = power_supply_health.nil? ? 0 : power_supply_health
+    @power_supply_technology = power_supply_technology.nil? ? 0 : power_supply_technology
+    @present = present.nil? ? false : present
+    @cell_voltage = cell_voltage.nil? ? [] : cell_voltage
+    @cell_temperature = cell_temperature.nil? ? [] : cell_temperature
+    @location = location.nil? ? "" : location
+    @serial_number = serial_number.nil? ? "" : serial_number
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.voltage = r.float32
-          m.temperature = r.float32
-          m.current = r.float32
-          m.charge = r.float32
-          m.capacity = r.float32
-          m.design_capacity = r.float32
-          m.percentage = r.float32
-          m.power_supply_status = r.uint8
-          m.power_supply_health = r.uint8
-          m.power_supply_technology = r.uint8
-          m.present = r.bool
-          m.cell_voltage = r.array(:float32, nil)
-          m.cell_temperature = r.array(:float32, nil)
-          m.location = r.string
-          m.serial_number = r.string
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    w.float32(m.voltage)
+    w.float32(m.temperature)
+    w.float32(m.current)
+    w.float32(m.charge)
+    w.float32(m.capacity)
+    w.float32(m.design_capacity)
+    w.float32(m.percentage)
+    w.uint8(m.power_supply_status)
+    w.uint8(m.power_supply_health)
+    w.uint8(m.power_supply_technology)
+    w.bool(m.present)
+    w.array(:float32, m.cell_voltage, nil, nil)
+    w.array(:float32, m.cell_temperature, nil, nil)
+    w.string(m.location)
+    w.string(m.serial_number)
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.voltage = r.float32
+    m.temperature = r.float32
+    m.current = r.float32
+    m.charge = r.float32
+    m.capacity = r.float32
+    m.design_capacity = r.float32
+    m.percentage = r.float32
+    m.power_supply_status = r.uint8
+    m.power_supply_health = r.uint8
+    m.power_supply_technology = r.uint8
+    m.present = r.bool
+    m.cell_voltage = r.array(:float32, nil)
+    m.cell_temperature = r.array(:float32, nil)
+    m.location = r.string
+    m.serial_number = r.string
+    m
   end
 end

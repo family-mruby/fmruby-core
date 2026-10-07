@@ -4,34 +4,31 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Accel")
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class AccelStamped < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/AccelStamped"
-        TYPE_NAME = "geometry_msgs::msg::dds_::AccelStamped_"
-        TYPE_HASH = "RIHS01_ef1df9eabae0a708cc049a061ebcddc4e2a5f745730100ba680e086a9698b165"
-        FIELDS = [:header, :accel]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :header, :accel
+class ::Asterism::ROS::GeometryMsgs::AccelStamped < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/AccelStamped"
+  TYPE_NAME = "geometry_msgs::msg::dds_::AccelStamped_"
+  TYPE_HASH = "RIHS01_ef1df9eabae0a708cc049a061ebcddc4e2a5f745730100ba680e086a9698b165"
+  FIELDS = [:header, :accel]
 
-        def initialize(header: nil, accel: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @accel = ::Asterism::ROS::GeometryMsgs::Accel.from(accel)
-        end
+  attr_accessor :header, :accel
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          ::Asterism::ROS::GeometryMsgs::Accel.write(w, ::Asterism::ROS::GeometryMsgs::Accel.from(m.accel))
-        end
+  def initialize(header: nil, accel: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @accel = ::Asterism::ROS::GeometryMsgs::Accel.from(accel)
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.accel = ::Asterism::ROS::GeometryMsgs::Accel.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    ::Asterism::ROS::GeometryMsgs::Accel.write(w, ::Asterism::ROS::GeometryMsgs::Accel.from(m.accel))
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.accel = ::Asterism::ROS::GeometryMsgs::Accel.read(r)
+    m
   end
 end

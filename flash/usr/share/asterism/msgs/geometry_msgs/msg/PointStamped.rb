@@ -4,34 +4,31 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Point")
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class PointStamped < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/PointStamped"
-        TYPE_NAME = "geometry_msgs::msg::dds_::PointStamped_"
-        TYPE_HASH = "RIHS01_4c0296af86e01e562e9e0405d138a01537247580076c58ea38d7923ac1045897"
-        FIELDS = [:header, :point]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :header, :point
+class ::Asterism::ROS::GeometryMsgs::PointStamped < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/PointStamped"
+  TYPE_NAME = "geometry_msgs::msg::dds_::PointStamped_"
+  TYPE_HASH = "RIHS01_4c0296af86e01e562e9e0405d138a01537247580076c58ea38d7923ac1045897"
+  FIELDS = [:header, :point]
 
-        def initialize(header: nil, point: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @point = ::Asterism::ROS::GeometryMsgs::Point.from(point)
-        end
+  attr_accessor :header, :point
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          ::Asterism::ROS::GeometryMsgs::Point.write(w, ::Asterism::ROS::GeometryMsgs::Point.from(m.point))
-        end
+  def initialize(header: nil, point: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @point = ::Asterism::ROS::GeometryMsgs::Point.from(point)
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.point = ::Asterism::ROS::GeometryMsgs::Point.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    ::Asterism::ROS::GeometryMsgs::Point.write(w, ::Asterism::ROS::GeometryMsgs::Point.from(m.point))
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.point = ::Asterism::ROS::GeometryMsgs::Point.read(r)
+    m
   end
 end

@@ -4,34 +4,31 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Twist")
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class TwistStamped < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/TwistStamped"
-        TYPE_NAME = "geometry_msgs::msg::dds_::TwistStamped_"
-        TYPE_HASH = "RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64"
-        FIELDS = [:header, :twist]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :header, :twist
+class ::Asterism::ROS::GeometryMsgs::TwistStamped < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/TwistStamped"
+  TYPE_NAME = "geometry_msgs::msg::dds_::TwistStamped_"
+  TYPE_HASH = "RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64"
+  FIELDS = [:header, :twist]
 
-        def initialize(header: nil, twist: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @twist = ::Asterism::ROS::GeometryMsgs::Twist.from(twist)
-        end
+  attr_accessor :header, :twist
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          ::Asterism::ROS::GeometryMsgs::Twist.write(w, ::Asterism::ROS::GeometryMsgs::Twist.from(m.twist))
-        end
+  def initialize(header: nil, twist: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @twist = ::Asterism::ROS::GeometryMsgs::Twist.from(twist)
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.twist = ::Asterism::ROS::GeometryMsgs::Twist.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    ::Asterism::ROS::GeometryMsgs::Twist.write(w, ::Asterism::ROS::GeometryMsgs::Twist.from(m.twist))
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.twist = ::Asterism::ROS::GeometryMsgs::Twist.read(r)
+    m
   end
 end

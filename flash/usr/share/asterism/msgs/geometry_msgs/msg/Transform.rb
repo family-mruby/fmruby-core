@@ -4,34 +4,31 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Quaternion")
 ::Asterism::ROS.require_type("geometry_msgs/msg/Vector3")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class Transform < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/Transform"
-        TYPE_NAME = "geometry_msgs::msg::dds_::Transform_"
-        TYPE_HASH = "RIHS01_beb83fbe698636351461f6f35d1abb20010c43d55374d81bd041f1ba2581fddc"
-        FIELDS = [:translation, :rotation]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :translation, :rotation
+class ::Asterism::ROS::GeometryMsgs::Transform < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/Transform"
+  TYPE_NAME = "geometry_msgs::msg::dds_::Transform_"
+  TYPE_HASH = "RIHS01_beb83fbe698636351461f6f35d1abb20010c43d55374d81bd041f1ba2581fddc"
+  FIELDS = [:translation, :rotation]
 
-        def initialize(translation: nil, rotation: nil)
-          @translation = ::Asterism::ROS::GeometryMsgs::Vector3.from(translation)
-          @rotation = ::Asterism::ROS::GeometryMsgs::Quaternion.from(rotation)
-        end
+  attr_accessor :translation, :rotation
 
-        def self.write(w, m)
-          ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.translation))
-          ::Asterism::ROS::GeometryMsgs::Quaternion.write(w, ::Asterism::ROS::GeometryMsgs::Quaternion.from(m.rotation))
-        end
+  def initialize(translation: nil, rotation: nil)
+    @translation = ::Asterism::ROS::GeometryMsgs::Vector3.from(translation)
+    @rotation = ::Asterism::ROS::GeometryMsgs::Quaternion.from(rotation)
+  end
 
-        def self.read(r)
-          m = new
-          m.translation = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
-          m.rotation = ::Asterism::ROS::GeometryMsgs::Quaternion.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.translation))
+    ::Asterism::ROS::GeometryMsgs::Quaternion.write(w, ::Asterism::ROS::GeometryMsgs::Quaternion.from(m.rotation))
+  end
+
+  def self.read(r)
+    m = new
+    m.translation = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
+    m.rotation = ::Asterism::ROS::GeometryMsgs::Quaternion.read(r)
+    m
   end
 end

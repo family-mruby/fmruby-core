@@ -4,34 +4,31 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Pose")
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class PoseStamped < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/PoseStamped"
-        TYPE_NAME = "geometry_msgs::msg::dds_::PoseStamped_"
-        TYPE_HASH = "RIHS01_10f3786d7d40fd2b54367835614bff85d4ad3b5dab62bf8bca0cc232d73b4cd8"
-        FIELDS = [:header, :pose]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :header, :pose
+class ::Asterism::ROS::GeometryMsgs::PoseStamped < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/PoseStamped"
+  TYPE_NAME = "geometry_msgs::msg::dds_::PoseStamped_"
+  TYPE_HASH = "RIHS01_10f3786d7d40fd2b54367835614bff85d4ad3b5dab62bf8bca0cc232d73b4cd8"
+  FIELDS = [:header, :pose]
 
-        def initialize(header: nil, pose: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @pose = ::Asterism::ROS::GeometryMsgs::Pose.from(pose)
-        end
+  attr_accessor :header, :pose
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          ::Asterism::ROS::GeometryMsgs::Pose.write(w, ::Asterism::ROS::GeometryMsgs::Pose.from(m.pose))
-        end
+  def initialize(header: nil, pose: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @pose = ::Asterism::ROS::GeometryMsgs::Pose.from(pose)
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.pose = ::Asterism::ROS::GeometryMsgs::Pose.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    ::Asterism::ROS::GeometryMsgs::Pose.write(w, ::Asterism::ROS::GeometryMsgs::Pose.from(m.pose))
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.pose = ::Asterism::ROS::GeometryMsgs::Pose.read(r)
+    m
   end
 end

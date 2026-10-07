@@ -511,40 +511,36 @@ module AsterismMsgGen
         out << "\n"
         deps.each { |d| out << "::Asterism::ROS.require_type(#{d.inspect})\n" }
       end
-      pkg_mod = AsterismMsgGen.camel(t.pkg)
-      # "::Asterism": the file is evaluated inside a method on mruby
-      # (Asterism::ROS.require_type), where a bare name would nest.
-      out << "\nmodule ::Asterism\n  module ROS\n    module #{pkg_mod}\n"
-      body = if t.is_a?(Service)
-               service_body(t)
+      mod = "::Asterism::ROS::#{AsterismMsgGen.camel(t.pkg)}"
+      # Full names, no nesting: on mruby each module body is more compiled
+      # code and a deeper compile (report/r3.md). "::" because the file is
+      # evaluated inside a method there (Asterism::ROS.require_type).
+      out << "\nmodule #{mod}\nend\n\n"
+      out << if t.is_a?(Service)
+               service_body(t, mod)
              else
-               message_body(t, t.name, @hasher.type_hash(full))
+               message_body(t, "#{mod}::#{t.name}", @hasher.type_hash(full))
              end
-      out << indent(body, 6)
-      out << "    end\n  end\nend\n"
       out
     end
 
-    def indent(text, n)
-      pad = " " * n
-      text.lines.map { |l| l.strip.empty? ? "\n" : pad + l }.join
-    end
-
-    def service_body(s)
+    def service_body(s, mod)
       dds = "#{s.pkg}::srv::dds_::#{s.name}_"
+      path = "#{mod}::#{s.name}"
       out = +""
       out << "# #{s.full_name}: a service. Request and Response are its messages;\n"
       out << "# TYPE_NAME and TYPE_HASH are the service's (what rmw_zenoh puts in keys).\n"
-      out << "module #{s.name}\n"
+      out << "module #{path}\n"
       out << "  ROS_NAME = #{s.full_name.inspect}\n"
       out << "  TYPE_NAME = #{dds.inspect}\n"
       out << "  TYPE_HASH = #{@hasher.type_hash(s.full_name).inspect}\n"
+      out << "end\n"
       [s.request, s.response].each do |m|
         out << "\n"
         suffix = m.name.sub("#{s.name}_", "")
-        out << indent(message_body(m, suffix, @hasher.type_hash(m.full_name)), 2)
+        out << message_body(m, "#{path}::#{suffix}", @hasher.type_hash(m.full_name))
       end
-      out << "end\n"
+      out
     end
 
     def dds_name(m)
@@ -552,10 +548,10 @@ module AsterismMsgGen
       "#{m.pkg}::#{kind}::dds_::#{m.name}_"
     end
 
-    def message_body(m, class_name, hash)
+    def message_body(m, class_path, hash)
       fs = m.fields
       out = +""
-      out << "class #{class_name} < ::Asterism::ROS::Message\n"
+      out << "class #{class_path} < ::Asterism::ROS::Message\n"
       out << "  ROS_NAME = #{m.full_name.inspect}\n"
       out << "  TYPE_NAME = #{dds_name(m).inspect}\n"
       out << "  TYPE_HASH = #{hash.inspect}\n"

@@ -3,34 +3,31 @@
 
 ::Asterism::ROS.require_type("geometry_msgs/msg/Vector3")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class Accel < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/Accel"
-        TYPE_NAME = "geometry_msgs::msg::dds_::Accel_"
-        TYPE_HASH = "RIHS01_dc448243ded9b1fcbcca24aba0c22f013dae06c354ba2d849571c0a2a3f57ca0"
-        FIELDS = [:linear, :angular]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :linear, :angular
+class ::Asterism::ROS::GeometryMsgs::Accel < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/Accel"
+  TYPE_NAME = "geometry_msgs::msg::dds_::Accel_"
+  TYPE_HASH = "RIHS01_dc448243ded9b1fcbcca24aba0c22f013dae06c354ba2d849571c0a2a3f57ca0"
+  FIELDS = [:linear, :angular]
 
-        def initialize(linear: nil, angular: nil)
-          @linear = ::Asterism::ROS::GeometryMsgs::Vector3.from(linear)
-          @angular = ::Asterism::ROS::GeometryMsgs::Vector3.from(angular)
-        end
+  attr_accessor :linear, :angular
 
-        def self.write(w, m)
-          ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.linear))
-          ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.angular))
-        end
+  def initialize(linear: nil, angular: nil)
+    @linear = ::Asterism::ROS::GeometryMsgs::Vector3.from(linear)
+    @angular = ::Asterism::ROS::GeometryMsgs::Vector3.from(angular)
+  end
 
-        def self.read(r)
-          m = new
-          m.linear = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
-          m.angular = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.linear))
+    ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.angular))
+  end
+
+  def self.read(r)
+    m = new
+    m.linear = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
+    m.angular = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
+    m
   end
 end

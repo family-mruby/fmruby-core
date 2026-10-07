@@ -4,34 +4,31 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Point")
 ::Asterism::ROS.require_type("geometry_msgs/msg/Quaternion")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class Pose < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/Pose"
-        TYPE_NAME = "geometry_msgs::msg::dds_::Pose_"
-        TYPE_HASH = "RIHS01_d501954e9476cea2996984e812054b68026ae0bfae789d9a10b23daf35cc90fa"
-        FIELDS = [:position, :orientation]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :position, :orientation
+class ::Asterism::ROS::GeometryMsgs::Pose < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/Pose"
+  TYPE_NAME = "geometry_msgs::msg::dds_::Pose_"
+  TYPE_HASH = "RIHS01_d501954e9476cea2996984e812054b68026ae0bfae789d9a10b23daf35cc90fa"
+  FIELDS = [:position, :orientation]
 
-        def initialize(position: nil, orientation: nil)
-          @position = ::Asterism::ROS::GeometryMsgs::Point.from(position)
-          @orientation = ::Asterism::ROS::GeometryMsgs::Quaternion.from(orientation)
-        end
+  attr_accessor :position, :orientation
 
-        def self.write(w, m)
-          ::Asterism::ROS::GeometryMsgs::Point.write(w, ::Asterism::ROS::GeometryMsgs::Point.from(m.position))
-          ::Asterism::ROS::GeometryMsgs::Quaternion.write(w, ::Asterism::ROS::GeometryMsgs::Quaternion.from(m.orientation))
-        end
+  def initialize(position: nil, orientation: nil)
+    @position = ::Asterism::ROS::GeometryMsgs::Point.from(position)
+    @orientation = ::Asterism::ROS::GeometryMsgs::Quaternion.from(orientation)
+  end
 
-        def self.read(r)
-          m = new
-          m.position = ::Asterism::ROS::GeometryMsgs::Point.read(r)
-          m.orientation = ::Asterism::ROS::GeometryMsgs::Quaternion.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::GeometryMsgs::Point.write(w, ::Asterism::ROS::GeometryMsgs::Point.from(m.position))
+    ::Asterism::ROS::GeometryMsgs::Quaternion.write(w, ::Asterism::ROS::GeometryMsgs::Quaternion.from(m.orientation))
+  end
+
+  def self.read(r)
+    m = new
+    m.position = ::Asterism::ROS::GeometryMsgs::Point.read(r)
+    m.orientation = ::Asterism::ROS::GeometryMsgs::Quaternion.read(r)
+    m
   end
 end

@@ -4,37 +4,34 @@
 ::Asterism::ROS.require_type("geometry_msgs/msg/Vector3")
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module SensorMsgs
-      class MagneticField < ::Asterism::ROS::Message
-        ROS_NAME = "sensor_msgs/msg/MagneticField"
-        TYPE_NAME = "sensor_msgs::msg::dds_::MagneticField_"
-        TYPE_HASH = "RIHS01_e80f32f56a20486c9923008fc1a1db07bbb273cbbf6a5b3bfa00835ee00e4dff"
-        FIELDS = [:header, :magnetic_field, :magnetic_field_covariance]
+module ::Asterism::ROS::SensorMsgs
+end
 
-        attr_accessor :header, :magnetic_field, :magnetic_field_covariance
+class ::Asterism::ROS::SensorMsgs::MagneticField < ::Asterism::ROS::Message
+  ROS_NAME = "sensor_msgs/msg/MagneticField"
+  TYPE_NAME = "sensor_msgs::msg::dds_::MagneticField_"
+  TYPE_HASH = "RIHS01_e80f32f56a20486c9923008fc1a1db07bbb273cbbf6a5b3bfa00835ee00e4dff"
+  FIELDS = [:header, :magnetic_field, :magnetic_field_covariance]
 
-        def initialize(header: nil, magnetic_field: nil, magnetic_field_covariance: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @magnetic_field = ::Asterism::ROS::GeometryMsgs::Vector3.from(magnetic_field)
-          @magnetic_field_covariance = magnetic_field_covariance.nil? ? ::Array.new(9, 0.0) : magnetic_field_covariance
-        end
+  attr_accessor :header, :magnetic_field, :magnetic_field_covariance
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.magnetic_field))
-          w.array(:float64, m.magnetic_field_covariance, 9, nil)
-        end
+  def initialize(header: nil, magnetic_field: nil, magnetic_field_covariance: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @magnetic_field = ::Asterism::ROS::GeometryMsgs::Vector3.from(magnetic_field)
+    @magnetic_field_covariance = magnetic_field_covariance.nil? ? ::Array.new(9, 0.0) : magnetic_field_covariance
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.magnetic_field = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
-          m.magnetic_field_covariance = r.array(:float64, 9)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.magnetic_field))
+    w.array(:float64, m.magnetic_field_covariance, 9, nil)
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.magnetic_field = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
+    m.magnetic_field_covariance = r.array(:float64, 9)
+    m
   end
 end

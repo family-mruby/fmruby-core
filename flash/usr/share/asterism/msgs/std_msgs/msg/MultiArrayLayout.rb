@@ -3,34 +3,31 @@
 
 ::Asterism::ROS.require_type("std_msgs/msg/MultiArrayDimension")
 
-module ::Asterism
-  module ROS
-    module StdMsgs
-      class MultiArrayLayout < ::Asterism::ROS::Message
-        ROS_NAME = "std_msgs/msg/MultiArrayLayout"
-        TYPE_NAME = "std_msgs::msg::dds_::MultiArrayLayout_"
-        TYPE_HASH = "RIHS01_4c66e6f78e740ac103a94cf63259f968e48c617e7699e829b63c21a5cb50dac6"
-        FIELDS = [:dim, :data_offset]
+module ::Asterism::ROS::StdMsgs
+end
 
-        attr_accessor :dim, :data_offset
+class ::Asterism::ROS::StdMsgs::MultiArrayLayout < ::Asterism::ROS::Message
+  ROS_NAME = "std_msgs/msg/MultiArrayLayout"
+  TYPE_NAME = "std_msgs::msg::dds_::MultiArrayLayout_"
+  TYPE_HASH = "RIHS01_4c66e6f78e740ac103a94cf63259f968e48c617e7699e829b63c21a5cb50dac6"
+  FIELDS = [:dim, :data_offset]
 
-        def initialize(dim: nil, data_offset: nil)
-          @dim = dim.nil? ? [] : dim.map { |e| ::Asterism::ROS::StdMsgs::MultiArrayDimension.from(e) }
-          @data_offset = data_offset.nil? ? 0 : data_offset
-        end
+  attr_accessor :dim, :data_offset
 
-        def self.write(w, m)
-          w.structs(::Asterism::ROS::StdMsgs::MultiArrayDimension, m.dim, nil, nil)
-          w.uint32(m.data_offset)
-        end
+  def initialize(dim: nil, data_offset: nil)
+    @dim = dim.nil? ? [] : dim.map { |e| ::Asterism::ROS::StdMsgs::MultiArrayDimension.from(e) }
+    @data_offset = data_offset.nil? ? 0 : data_offset
+  end
 
-        def self.read(r)
-          m = new
-          m.dim = r.structs(::Asterism::ROS::StdMsgs::MultiArrayDimension, nil)
-          m.data_offset = r.uint32
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    w.structs(::Asterism::ROS::StdMsgs::MultiArrayDimension, m.dim, nil, nil)
+    w.uint32(m.data_offset)
+  end
+
+  def self.read(r)
+    m = new
+    m.dim = r.structs(::Asterism::ROS::StdMsgs::MultiArrayDimension, nil)
+    m.data_offset = r.uint32
+    m
   end
 end

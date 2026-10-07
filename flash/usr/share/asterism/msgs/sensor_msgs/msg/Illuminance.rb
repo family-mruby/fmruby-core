@@ -3,37 +3,34 @@
 
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module SensorMsgs
-      class Illuminance < ::Asterism::ROS::Message
-        ROS_NAME = "sensor_msgs/msg/Illuminance"
-        TYPE_NAME = "sensor_msgs::msg::dds_::Illuminance_"
-        TYPE_HASH = "RIHS01_b954b25f452fcf81a91c9c2a7e3b3fd85c4c873d452aecb3cfd8fd1da732a22d"
-        FIELDS = [:header, :illuminance, :variance]
+module ::Asterism::ROS::SensorMsgs
+end
 
-        attr_accessor :header, :illuminance, :variance
+class ::Asterism::ROS::SensorMsgs::Illuminance < ::Asterism::ROS::Message
+  ROS_NAME = "sensor_msgs/msg/Illuminance"
+  TYPE_NAME = "sensor_msgs::msg::dds_::Illuminance_"
+  TYPE_HASH = "RIHS01_b954b25f452fcf81a91c9c2a7e3b3fd85c4c873d452aecb3cfd8fd1da732a22d"
+  FIELDS = [:header, :illuminance, :variance]
 
-        def initialize(header: nil, illuminance: nil, variance: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @illuminance = illuminance.nil? ? 0.0 : illuminance
-          @variance = variance.nil? ? 0.0 : variance
-        end
+  attr_accessor :header, :illuminance, :variance
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          w.float64(m.illuminance)
-          w.float64(m.variance)
-        end
+  def initialize(header: nil, illuminance: nil, variance: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @illuminance = illuminance.nil? ? 0.0 : illuminance
+    @variance = variance.nil? ? 0.0 : variance
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.illuminance = r.float64
-          m.variance = r.float64
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    w.float64(m.illuminance)
+    w.float64(m.variance)
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.illuminance = r.float64
+    m.variance = r.float64
+    m
   end
 end

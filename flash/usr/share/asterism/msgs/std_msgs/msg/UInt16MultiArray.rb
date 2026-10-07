@@ -3,34 +3,31 @@
 
 ::Asterism::ROS.require_type("std_msgs/msg/MultiArrayLayout")
 
-module ::Asterism
-  module ROS
-    module StdMsgs
-      class UInt16MultiArray < ::Asterism::ROS::Message
-        ROS_NAME = "std_msgs/msg/UInt16MultiArray"
-        TYPE_NAME = "std_msgs::msg::dds_::UInt16MultiArray_"
-        TYPE_HASH = "RIHS01_94fe73428ec63baecc774f8fb82406123e9291cf728f1b7c91caf5335129492b"
-        FIELDS = [:layout, :data]
+module ::Asterism::ROS::StdMsgs
+end
 
-        attr_accessor :layout, :data
+class ::Asterism::ROS::StdMsgs::UInt16MultiArray < ::Asterism::ROS::Message
+  ROS_NAME = "std_msgs/msg/UInt16MultiArray"
+  TYPE_NAME = "std_msgs::msg::dds_::UInt16MultiArray_"
+  TYPE_HASH = "RIHS01_94fe73428ec63baecc774f8fb82406123e9291cf728f1b7c91caf5335129492b"
+  FIELDS = [:layout, :data]
 
-        def initialize(layout: nil, data: nil)
-          @layout = ::Asterism::ROS::StdMsgs::MultiArrayLayout.from(layout)
-          @data = data.nil? ? [] : data
-        end
+  attr_accessor :layout, :data
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::MultiArrayLayout.write(w, ::Asterism::ROS::StdMsgs::MultiArrayLayout.from(m.layout))
-          w.array(:uint16, m.data, nil, nil)
-        end
+  def initialize(layout: nil, data: nil)
+    @layout = ::Asterism::ROS::StdMsgs::MultiArrayLayout.from(layout)
+    @data = data.nil? ? [] : data
+  end
 
-        def self.read(r)
-          m = new
-          m.layout = ::Asterism::ROS::StdMsgs::MultiArrayLayout.read(r)
-          m.data = r.array(:uint16, nil)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::MultiArrayLayout.write(w, ::Asterism::ROS::StdMsgs::MultiArrayLayout.from(m.layout))
+    w.array(:uint16, m.data, nil, nil)
+  end
+
+  def self.read(r)
+    m = new
+    m.layout = ::Asterism::ROS::StdMsgs::MultiArrayLayout.read(r)
+    m.data = r.array(:uint16, nil)
+    m
   end
 end

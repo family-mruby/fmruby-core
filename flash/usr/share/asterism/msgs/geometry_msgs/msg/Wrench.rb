@@ -3,34 +3,31 @@
 
 ::Asterism::ROS.require_type("geometry_msgs/msg/Vector3")
 
-module ::Asterism
-  module ROS
-    module GeometryMsgs
-      class Wrench < ::Asterism::ROS::Message
-        ROS_NAME = "geometry_msgs/msg/Wrench"
-        TYPE_NAME = "geometry_msgs::msg::dds_::Wrench_"
-        TYPE_HASH = "RIHS01_018e8519d57c16adbe97c9fe1460ef21fec7e31bc541de3d653a35895677ce52"
-        FIELDS = [:force, :torque]
+module ::Asterism::ROS::GeometryMsgs
+end
 
-        attr_accessor :force, :torque
+class ::Asterism::ROS::GeometryMsgs::Wrench < ::Asterism::ROS::Message
+  ROS_NAME = "geometry_msgs/msg/Wrench"
+  TYPE_NAME = "geometry_msgs::msg::dds_::Wrench_"
+  TYPE_HASH = "RIHS01_018e8519d57c16adbe97c9fe1460ef21fec7e31bc541de3d653a35895677ce52"
+  FIELDS = [:force, :torque]
 
-        def initialize(force: nil, torque: nil)
-          @force = ::Asterism::ROS::GeometryMsgs::Vector3.from(force)
-          @torque = ::Asterism::ROS::GeometryMsgs::Vector3.from(torque)
-        end
+  attr_accessor :force, :torque
 
-        def self.write(w, m)
-          ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.force))
-          ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.torque))
-        end
+  def initialize(force: nil, torque: nil)
+    @force = ::Asterism::ROS::GeometryMsgs::Vector3.from(force)
+    @torque = ::Asterism::ROS::GeometryMsgs::Vector3.from(torque)
+  end
 
-        def self.read(r)
-          m = new
-          m.force = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
-          m.torque = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.force))
+    ::Asterism::ROS::GeometryMsgs::Vector3.write(w, ::Asterism::ROS::GeometryMsgs::Vector3.from(m.torque))
+  end
+
+  def self.read(r)
+    m = new
+    m.force = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
+    m.torque = ::Asterism::ROS::GeometryMsgs::Vector3.read(r)
+    m
   end
 end

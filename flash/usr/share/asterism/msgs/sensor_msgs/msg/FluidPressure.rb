@@ -3,37 +3,34 @@
 
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module SensorMsgs
-      class FluidPressure < ::Asterism::ROS::Message
-        ROS_NAME = "sensor_msgs/msg/FluidPressure"
-        TYPE_NAME = "sensor_msgs::msg::dds_::FluidPressure_"
-        TYPE_HASH = "RIHS01_22dfb2b145a0bd5a31a1ac3882a1b32148b51d9b2f3bab250290d66f3595bc32"
-        FIELDS = [:header, :fluid_pressure, :variance]
+module ::Asterism::ROS::SensorMsgs
+end
 
-        attr_accessor :header, :fluid_pressure, :variance
+class ::Asterism::ROS::SensorMsgs::FluidPressure < ::Asterism::ROS::Message
+  ROS_NAME = "sensor_msgs/msg/FluidPressure"
+  TYPE_NAME = "sensor_msgs::msg::dds_::FluidPressure_"
+  TYPE_HASH = "RIHS01_22dfb2b145a0bd5a31a1ac3882a1b32148b51d9b2f3bab250290d66f3595bc32"
+  FIELDS = [:header, :fluid_pressure, :variance]
 
-        def initialize(header: nil, fluid_pressure: nil, variance: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @fluid_pressure = fluid_pressure.nil? ? 0.0 : fluid_pressure
-          @variance = variance.nil? ? 0.0 : variance
-        end
+  attr_accessor :header, :fluid_pressure, :variance
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          w.float64(m.fluid_pressure)
-          w.float64(m.variance)
-        end
+  def initialize(header: nil, fluid_pressure: nil, variance: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @fluid_pressure = fluid_pressure.nil? ? 0.0 : fluid_pressure
+    @variance = variance.nil? ? 0.0 : variance
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.fluid_pressure = r.float64
-          m.variance = r.float64
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    w.float64(m.fluid_pressure)
+    w.float64(m.variance)
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.fluid_pressure = r.float64
+    m.variance = r.float64
+    m
   end
 end

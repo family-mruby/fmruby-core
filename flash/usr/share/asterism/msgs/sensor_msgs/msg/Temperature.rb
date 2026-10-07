@@ -3,37 +3,34 @@
 
 ::Asterism::ROS.require_type("std_msgs/msg/Header")
 
-module ::Asterism
-  module ROS
-    module SensorMsgs
-      class Temperature < ::Asterism::ROS::Message
-        ROS_NAME = "sensor_msgs/msg/Temperature"
-        TYPE_NAME = "sensor_msgs::msg::dds_::Temperature_"
-        TYPE_HASH = "RIHS01_72514a14126ab9f8a9abec974c78e5610a367b59db5da355ff1fb982d5bad4b8"
-        FIELDS = [:header, :temperature, :variance]
+module ::Asterism::ROS::SensorMsgs
+end
 
-        attr_accessor :header, :temperature, :variance
+class ::Asterism::ROS::SensorMsgs::Temperature < ::Asterism::ROS::Message
+  ROS_NAME = "sensor_msgs/msg/Temperature"
+  TYPE_NAME = "sensor_msgs::msg::dds_::Temperature_"
+  TYPE_HASH = "RIHS01_72514a14126ab9f8a9abec974c78e5610a367b59db5da355ff1fb982d5bad4b8"
+  FIELDS = [:header, :temperature, :variance]
 
-        def initialize(header: nil, temperature: nil, variance: nil)
-          @header = ::Asterism::ROS::StdMsgs::Header.from(header)
-          @temperature = temperature.nil? ? 0.0 : temperature
-          @variance = variance.nil? ? 0.0 : variance
-        end
+  attr_accessor :header, :temperature, :variance
 
-        def self.write(w, m)
-          ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
-          w.float64(m.temperature)
-          w.float64(m.variance)
-        end
+  def initialize(header: nil, temperature: nil, variance: nil)
+    @header = ::Asterism::ROS::StdMsgs::Header.from(header)
+    @temperature = temperature.nil? ? 0.0 : temperature
+    @variance = variance.nil? ? 0.0 : variance
+  end
 
-        def self.read(r)
-          m = new
-          m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
-          m.temperature = r.float64
-          m.variance = r.float64
-          m
-        end
-      end
-    end
+  def self.write(w, m)
+    ::Asterism::ROS::StdMsgs::Header.write(w, ::Asterism::ROS::StdMsgs::Header.from(m.header))
+    w.float64(m.temperature)
+    w.float64(m.variance)
+  end
+
+  def self.read(r)
+    m = new
+    m.header = ::Asterism::ROS::StdMsgs::Header.read(r)
+    m.temperature = r.float64
+    m.variance = r.float64
+    m
   end
 end
