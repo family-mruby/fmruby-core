@@ -115,3 +115,53 @@ the update loop, or use `async`.
   node; when one of them closes, the others still list the node through
   their objects, but a watcher may see the node token go away.
 - No authentication: a trusted LAN is assumed.
+
+## ROS 2 (rmw_zenoh): `Asterism::ROS` and `Asterism::CDR`
+
+A minimal ROS 2 node that talks to ROS 2 systems using rmw_zenoh (checked
+with ROS 2 Jazzy, rmw_zenoh_cpp 0.2.11, Zenoh 1.8.0), directly on an
+`Asterism::Zenoh::Session`. Pure Ruby, independent of the object layer above
+(no `Asterism.connect`, no MessagePack). Topics only, `std_msgs/String` only.
+
+```ruby
+s = Asterism::Zenoh::Session.open("tcp/192.168.10.2:7447")
+node = Asterism::ROS::Node.new(s, "fmruby_talker")       # namespace: "/", domain: 0
+pub = node.publisher("/chatter", Asterism::ROS::StdMsgs::String)
+sub = node.subscription("/chatter_back", Asterism::ROS::StdMsgs::String)
+loop do
+  s.poll
+  pub.publish("hello")
+  sub.each_pending { |msg, info| puts "#{info && info.sequence}: #{msg}" }
+end
+node.close                                               # or let the session close
+```
+
+| Call | Returns | Notes |
+|---|---|---|
+| `Asterism::ROS::Node.new(session, name, namespace: "/", domain: 0, enclave: "/")` | `Node` | Declares the node's liveliness token (`ros2 node list`). `name` has no `/`. |
+| `node.publisher(topic, type, qos: DEFAULT_QOS)` | `Publisher` | `topic` absolute, or relative to the namespace. Declares the publisher token (`ros2 topic list`). |
+| `pub.publish(msg)` | nil | Puts the CDR payload with rmw_zenoh's attachment (sequence number, time, GID). |
+| `node.subscription(topic, type, qos: DEFAULT_QOS, depth: 16)` | `Subscription` | Subscribes and declares the subscription token. |
+| `sub.each_pending { \|msg, info\| }` | count | `info` is an `Attachment` (`sequence`, `stamp_ns`, `gid`) or nil. Samples that are not valid CDR are skipped and counted in `sub.errors`. |
+| `node.close` / `pub.close` / `sub.close` | nil | Withdraws the tokens (they also go when the session closes). |
+| `Asterism::CDR::Writer` / `Reader` | | Plain CDR with the 4-byte header: `uint8 bool uint16 uint32 uint64 int16 int32 int64 string`, aligned from the end of the header. Writes little endian; reads either order. |
+
+What goes on the wire (rmw_zenoh_cpp 0.2.x):
+
+| Item | Form |
+|---|---|
+| Data key | `<domain>/<topic without the outer "/">/<DDS type>/<type hash>`, e.g. `0/chatter/std_msgs::msg::dds_::String_/RIHS01_df668c74...` |
+| Payload | CDR: `00 01 00 00`, uint32 length with the NUL, bytes, NUL |
+| Attachment | int64 sequence, int64 time (ns since the epoch), both little endian, one byte GID length (16), 16 bytes GID: 33 bytes. **Required**: rmw_zenoh drops a sample without it |
+| Node token | `@ros2_lv/<domain>/<zid>/<nid>/<nid>/NN/<enclave>/<namespace>/<node>` |
+| Topic token | `@ros2_lv/<domain>/<zid>/<nid>/<id>/MP` (or `MS`) `/<enclave>/<namespace>/<node>/<topic>/<DDS type>/<type hash>/<qos>` |
+
+In tokens, `/` inside a name is written `%` (`/chatter` is `%chatter`, the
+root namespace `%`). `<zid>` is the Zenoh session ID (`session.zid`).
+`DEFAULT_QOS` (`::,10:,:,:,,`) is rmw_zenoh's form of the default profile:
+reliable, volatile, keep last 10.
+
+Not here (later stages): other message types and their type hashes (RIHS01
+is computed from the type description; std_msgs/String's is a constant),
+services, QoS other than the default (transient local needs Zenoh's
+advanced publisher), name remapping.
