@@ -64,6 +64,7 @@ end
 | `session.liveliness_watch(key, depth = 16)` | `LivelinessWatch` | `each_pending { \|key, alive\| }` (alive is `true` when a token appeared, `false` when it went away); the tokens alive when the watch starts come first. Tokens of the same session are not reported (zenoh-pico does not report its own). Also `pending` / `received` / `dropped` / `close` / `closed?`. |
 | `session.liveliness_get(key, timeout_ms = 2000)` | `Get` | The tokens alive now, as replies (empty payload). |
 | `Asterism::Zenoh::PICO_VERSION` | String | zenoh-pico version compiled in. |
+| `Asterism::Zenoh::PEER` / `Asterism::Zenoh::MAX_PEERS` | true / false, Integer | Whether peer mode is built in; how many peers a listening session accepts (3, see Peer mode). |
 | `Asterism::Zenoh::CONNECT_TIMEOUT_MS` / `Asterism::Zenoh::SEND_TIMEOUT_MS` | Integer | The link's time limits (3000 each by default; build-time defines `PICORUBY_ZENOH_CONNECT_TIMEOUT_MS` / `PICORUBY_ZENOH_SEND_TIMEOUT_MS`). |
 
 ## Peer mode
@@ -71,10 +72,18 @@ end
 Two machines can talk without a router: one listens, the other connects.
 Everything above works the same between them (put / subscribe, get /
 queryable, liveliness). Limits of zenoh-pico's peer mode: one listening
-socket per session, at most 10 connected peers (`Z_LISTEN_MAX_CONNECTION_NB`,
-and on ESP-IDF the lwIP socket count), and a peer does not forward between
-the peers connected to it (no routing; peers that must see each other
-connect to each other).
+socket per session, and a peer does not forward between the peers connected
+to it (no routing; peers that must see each other connect to each other).
+
+A listening session accepts at most **3** peers (`Asterism::Zenoh::MAX_PEERS`).
+A further peer is accepted by TCP and then dropped by zenoh-pico, so it
+cannot open its session (it gets `Asterism::Zenoh::Error`, or keeps retrying
+if it is a zenohd). zenoh-pico's own default is 10; the gem lowers it because
+every connected peer takes internal RAM on ESP-IDF (lwIP sockets and buffers,
+1.5-3 KB each, more while traffic flows). Use a router for larger groups.
+The limit is zenoh-pico's `Z_LISTEN_MAX_CONNECTION_NB`, which `mrbgem.rake`
+sets in the `config.h` it generates; the build-time environment variable
+`PICORUBY_ZENOH_MAX_PEERS` (1..10) changes it.
 
 A session that only connects is closed, like a client, when its peer goes
 away (closed the connection, failed, or went silent past the lease). A

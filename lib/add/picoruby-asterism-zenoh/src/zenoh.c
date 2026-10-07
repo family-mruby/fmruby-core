@@ -1244,6 +1244,7 @@ void mrb_picoruby_asterism_zenoh_gem_init(mrb_state *mrb) {
     mrb_define_const(mrb, mod, "CONNECT_TIMEOUT_MS", mrb_fixnum_value(PICORUBY_ZENOH_CONNECT_TIMEOUT_MS));
     mrb_define_const(mrb, mod, "SEND_TIMEOUT_MS", mrb_fixnum_value(PICORUBY_ZENOH_SEND_TIMEOUT_MS));
     mrb_define_const(mrb, mod, "PEER", mrb_bool_value(Z_FEATURE_UNICAST_PEER == 1));
+    mrb_define_const(mrb, mod, "MAX_PEERS", mrb_fixnum_value(Z_LISTEN_MAX_CONNECTION_NB));
 
     struct RClass *ses = mrb_define_class_under(mrb, mod, "Session", mrb->object_class);
     MRB_SET_INSTANCE_TT(ses, MRB_TT_CDATA);
