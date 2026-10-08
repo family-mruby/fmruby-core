@@ -244,6 +244,15 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - あとでユーザが決めること: 配布の形 (機種ごとのビルド済みの gem / 入れるときに zenoh-c を取る / Magnus 版)、純 Ruby の層の正の
   置き場所、CRuby らしいブロックの API、mruby 版との小さな違い (版の定数の名前、MAX_PEERS、自分のトークン)、gem の版と公開。
 
+## C2: ruby-asterism への分割 (2026-10-08 ユーザ決定、進行中)
+
+- GitHub のオーガナイゼーション `ruby-asterism` を作成済み。リポジトリは非公開で、役割ごとに分ける
+  (asterism / asterism-zenoh / picoruby-asterism-zenoh。instruction_c2.md)。
+- Ruby だけで書いた層の正は asterism 側に移す。fmruby-core は PIN で取り込む側になる。
+- CRuby らしいブロックの API は、いずれ足す。mruby 版との小さな違い (版の定数の名前、peer の上限、自分のトークン) はそろえない
+  (CRuby 版はリッチな環境で動くため)。
+- 配布は後で決める。まずは入れるときに C をコンパイルする形 (zenoh-c は入れるときに取る) が楽、という見立て。
+
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
 1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。
