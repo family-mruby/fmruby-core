@@ -12,4 +12,4 @@
 #   `rake setup` (or any build).
 repo: git@github.com:ruby-asterism/asterism.git
 branch: main
-commit: 3e69d93a6d98805a89f69dc4e90ba2ebf8a11f0e
+commit: 95477ced8a6c1b94bc84066ecd0a546d5b5cf2bc

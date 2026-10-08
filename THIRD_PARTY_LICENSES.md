@@ -897,8 +897,9 @@ remains a build-time dependency and is not distributed with this software
 
 ## Asterism (picoruby-asterism, picoruby-asterism-zenoh)
 Repositories: https://github.com/ruby-asterism/asterism,
-https://github.com/ruby-asterism/picoruby-asterism-zenoh (private for now)
-License: MIT License (files derived from zenoh-pico: see the zenoh-pico entry)
+https://github.com/ruby-asterism/picoruby-asterism-zenoh
+License: MIT License (the files derived from zenoh-pico: Apache License 2.0,
+see below and the zenoh-pico entry)
 
 Note: the Asterism mrbgems (remote Ruby objects, a ROS 2 node over rmw_zenoh,
 and the Zenoh binding Asterism::Zenoh) are not committed to this repository
@@ -906,9 +907,12 @@ but cloned at pinned commits by `rake asterism:setup` (lib/add/ASTERISM_PIN,
 lib/add/PICORUBY_ASTERISM_ZENOH_PIN) and copied into the PicoRuby tree, so
 they are compiled into the Linux and ESP32-P4 firmware. The bundled ROS 2
 message types come from the asterism repository too (see the ROS 2 entry).
-Four files of picoruby-asterism-zenoh are derived from zenoh-pico and keep its
-terms (stated at the top of each): src/zp_tcp_posix.c, src/zp_network_posix.c,
-ports/esp32/zp_tcp_esp32.c, include/zenoh_espidf_platform.h.
+Four files of picoruby-asterism-zenoh are derived from zenoh-pico and are
+distributed under the Apache License 2.0, not MIT (each keeps zenoh-pico's
+notice at its top): src/zp_tcp_posix.c, src/zp_network_posix.c,
+ports/esp32/zp_tcp_esp32.c, include/zenoh_espidf_platform.h. That
+repository's LICENSE-APACHE and NOTICE (which reproduces zenoh-pico's
+NOTICE.md) are copied into the PicoRuby tree with the gem.
 --------------------------------------------------------------------------------
 
 MIT License
@@ -937,8 +941,10 @@ SOFTWARE.
 
 ## zenoh-pico
 Repository: https://github.com/eclipse-zenoh/zenoh-pico
-License: Eclipse Public License 2.0 OR Apache License 2.0 (the Apache License
-2.0 text is above in the ESP-IDF entry)
+License: Apache License 2.0 (zenoh-pico is offered under Eclipse Public
+License 2.0 OR Apache License 2.0; Family mruby Core uses it under the Apache
+License 2.0, the side that can be combined with this project's GPL-3.0. The
+text is above in the ESP-IDF entry)
 
 Note: zenoh-pico 1.10.1 (Copyright (c) 2022-2026 ZettaScale Technology) is not
 committed to this repository but cloned at the commit picoruby-asterism-zenoh
@@ -960,5 +966,7 @@ by Asterism from the ROS 2 Jazzy definitions of these packages (Copyright
 Open Source Robotics Foundation, Inc. and the ROS 2 contributors). They come
 from the asterism repository (data/msgs) through `rake setup`, with its NOTICE
 and the Apache License 2.0 text, and are not tracked in this repository.
+Each file states at its top the package it was made from and that package's
+license (Apache License 2.0, from its package.xml).
 
 ================================================================================
