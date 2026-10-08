@@ -267,6 +267,17 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - docker の素の Ruby 3.2 / 3.3 / arm64 / alpine で gem のファイルから入れて動くことを確認。結果は report/c4.md。
 - 公開 (`gem push`) はユーザが行う。asterism-zenoh が先、asterism が後。rubygems.org の MFA が要る。
 
+## C5: CRuby らしい API (完了 2026-10-08、未公開)
+
+- 今のポーリングの API (機体と同じ) はそのまま。CRuby だけの層 (asterism の `lib/asterism/cruby/`) に、ブロック・受け取りの
+  スレッド・Enumerator・パターンマッチ (`Data` の値、メッセージの `deconstruct_keys`) を足した。
+  `Asterism::Zenoh.open { |s| }`・`Asterism.connect { |net| }`・`Asterism::ROS.connect { |ros| }`、`subscribe { }`・`every`・
+  `on_join` / `on_leave`・`start` / `stop` / `run` / `spin`。結果は report/c5.md。
+- 受け取りのスレッドは使う人が始めたときだけ。答えを待つ呼び出しは、受け取りのスレッドが動いていれば届くのを待つ。
+- asterism-zenoh の C を 1 か所直した (閉じるときに別のスレッドが使う隙)。版は 0.2.0 (公開はユーザ)。
+- 機体側に持っていける候補 (未実施): `node.every`・`poll` の中で呼ぶ `subscribe { }`、`on_join` / `on_leave`、`call_async` の
+  シーケンス番号の読み方。
+
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
 1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。
