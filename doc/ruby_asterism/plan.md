@@ -287,6 +287,15 @@ CRuby の層はこれを使う形にそろえた。キー m (呼び合い) は�
 答えより先に get の終わりが見える競合を見つけて直した (`done?` を先に読む)。起動時の内蔵 RAM の増分 0、スタックの減りは
 Twist の型の読み込みの 624 B だけ。
 
+## C7: zenoh-c の機能を CRuby から (完了 2026-10-08、0.3.0 は未公開)
+
+結果は report/c7.md、対応表は asterism-zenoh の `docs/feature_coverage.md` (README の Feature coverage から辿れる)。
+設定の受け渡し (TLS・QUIC・WebSocket・認証)、スカウティング、put の設定と delete、宣言した publisher / querier と matching、
+値の付加情報、reply_err / reply_del、エンコーディング、時刻 (HLC)、キーの演算、高度な pub/sub、接続・リンクの通知、ログを入れた。
+受け取りは今までどおり溜めて取り出す形。0.2.0 の呼び方はそのまま。入れなかったのは共有メモリ・裏で動く宣言・ze_serialize・
+古い形の cache・get の取り消し。ROS 2 の transient local は高度な publisher で届くことを確認 (Asterism::ROS がまだ自動では使わない)。
+機体 (zenoh-pico) へ持っていける候補は report の最後。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
