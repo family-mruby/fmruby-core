@@ -138,11 +138,11 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 
 ```ruby
 # 公開する側 (P4-Nano のアプリ)
-Asterism.connect("tcp/192.168.10.2:7447", node: "fmruby-90bce8", app: "demo")
+Asterism.connect("tcp/192.0.2.2:7447", node: "fmruby-bbbbbb", app: "demo")
 Asterism.expose("apu", apu, methods: [:play, :stop])
 
 # 呼ぶ側 (sim のアプリ)
-apu = Asterism["fmruby-90bce8/demo/apu"]  # <ID>/<アプリ>/<オブジェクト>
+apu = Asterism["fmruby-bbbbbb/demo/apu"]  # <ID>/<アプリ>/<オブジェクト>
 apu.play("t120 o4 cdefg")             # 音は P4-Nano から鳴る
 apu.respond_to?(:play)                # => true (公開された一覧から)
 Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る

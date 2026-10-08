@@ -46,7 +46,7 @@ e3.md。report は `report/i1.md` へ。**この段階は調査と見積もり�
   plan の状態行は親が直すので触らない)。push とマージはしない。`.env` は書き換えない (scratchpad の
   env_before_multi.diff と一致)。
 - フォークにも、試しの変更はコミットしない。sdkconfig、graphics-audio、submodule は変えない。
-- 実機 P4-Nano (/dev/ttyACM1、192.168.10.15) は**ミュートのまま**。焼いた場合は最後に develop の版に戻す。
+- 実機 P4-Nano (/dev/ttyACM1、192.0.2.15) は**ミュートのまま**。焼いた場合は最後に develop の版に戻す。
 - **利用者から見た動きを変えることは何もしない**。
 - report は日本語の常体。ユーザが選ぶための資料なので、表を中心に。
 

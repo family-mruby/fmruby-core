@@ -140,7 +140,7 @@
   - 英文、`<領域>: <要約>`、Co-Authored-By を付ける。
   - 改名は単独のコミットにする。
   - develop へのマージと push はしない。
-- **機体**: **Tab5 (192.168.10.20)**。今 USB で繋がっていて、親の serial の capture もこれを向いている。
+- **機体**: **Tab5 (192.0.2.20)**。今 USB で繋がっていて、親の serial の capture もこれを向いている。
   - `.env` が TAB5 なので、普通の `rake build:esp32` がそのまま Tab5 用になる。
   - P4-Nano は今は外されているので使わない。間違った機体に焼かないこと: MCP の `flash` は capture の port に焼く。
   - 作業の前にミュートを確かめる (`GET /audio/mute`)。

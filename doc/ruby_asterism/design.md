@@ -80,7 +80,7 @@
 
 - 最上位は `asterism/` (Family mruby とは別のプロジェクトなので `fmrb/` にしない)。
 - 形: `asterism/<ID>/<アプリ>/<データ>`。1 台 = 1 ノード。ブラウザも機体も同じ形。
-  - 例: `asterism/fmruby-90bce8/clock/time`、`asterism/b-3f9a2c/sensor/temp`。
+  - 例: `asterism/fmruby-bbbbbb/clock/time`、`asterism/b-3f9a2c/sensor/temp`。
   - VM ごとに分けるときは `<ID>/<VM>/...` と一段増やす。
 - オブジェクト (A1): `asterism/<ID>/<アプリ>/<オブジェクト>/call` (呼び出し)、`.../meta` (公開の一覧)。
 - 生存: `asterism/<ID>` (ノードの参加・離脱)、`asterism/<ID>/<アプリ>/<オブジェクト>` (公開中のオブジェクト)。

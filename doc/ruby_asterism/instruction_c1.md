@@ -101,7 +101,7 @@
   - fmruby-core の `feature/asterism-c1` は `feature/asterism-r3` から切る (R3 はまだ develop に入っていないため)。
   - 親リポジトリの `feature/asterism-c1` は `feature/asterism-r3` から切る。
   - develop へのマージと push はしない。
-- 機体は P4-Nano (192.168.10.15、/dev/ttyACM0)。
+- 機体は P4-Nano (192.0.2.15、/dev/ttyACM0)。
   - R3 のファームが入っていて、ミュート中。
   - 親のシリアルの capture がこの機体を向いている (`serial_start` を呼ばない)。
   - 焼き直しは要らない見込み。焼くなら MCP の `flash` (`app_only`)。

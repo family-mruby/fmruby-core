@@ -98,7 +98,7 @@ YUV420 (O_UYY_E_VYY) 変換が必須** (Phase 2 設計当初の想定が正し�
 ### WebCodecs と Secure Context (実機検証で判明した制約)
 
 **WebCodecs API (`VideoDecoder`) は Secure Context 限定**。
-`http://192.168.10.15/` や `http://fmruby.local/` のような平文 HTTP の
+`http://192.0.2.15/` や `http://fmruby.local/` のような平文 HTTP の
 LAN オリジンでは Chrome でも `window.VideoDecoder` が undefined になり、
 remote.js の判定 (`useH264 = !!msg.h264 && typeof window.VideoDecoder === 'function'`)
 が false → 常に MJPEG フォールバックになる。設計時のリスク表 (平文HTTP) では
@@ -115,14 +115,14 @@ H.264 パスを使うための手順 (いずれか):
 
 1. **Chrome フラグで origin を信頼させる (開発用に推奨)**
    - `chrome://flags/#unsafely-treat-insecure-origin-as-secure` を開く
-   - テキスト欄に `http://192.168.10.15,http://fmruby.local` を入力し
+   - テキスト欄に `http://192.0.2.15,http://fmruby.local` を入力し
      Enabled に設定 → Chrome 再起動
 2. **localhost 経由でアクセスする** (`localhost` は Secure Context 扱い)
    - PC 側でポートフォワードして `http://localhost:8080/` を開く:
      ```
-     ssh -L 8080:192.168.10.15:80 localhost -N
+     ssh -L 8080:192.0.2.15:80 localhost -N
      # または
-     socat TCP-LISTEN:8080,fork TCP:192.168.10.15:80
+     socat TCP-LISTEN:8080,fork TCP:192.0.2.15:80
      ```
    - 注意: WS も同一オリジン (`ws://localhost:8080/...`) 経由になるため
      追加設定は不要

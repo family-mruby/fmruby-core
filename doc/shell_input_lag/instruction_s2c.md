@@ -44,7 +44,7 @@ scratchpad の `s2b/` に S2b の変更 (`change.diff`、`estalloc.patch.c`)、�
   パスで指定。push とマージはしない。
 - `.env` は書き換えずコミットしない。最後に `git diff .env` が scratchpad の env_before_shell_gc2.diff と一致する。
 - sdkconfig、graphics-audio は変えない。submodule は直接編集しない (lib/patch)。lib/ を変えたら `rake clean`。
-- 実機は**ミュートのまま** (`curl -X POST "http://192.168.10.15/audio/mute?on=1"`)。USB が切れたら `rake attach`。
+- 実機は**ミュートのまま** (`curl -X POST "http://192.0.2.15/audio/mute?on=1"`)。USB が切れたら `rake attach`。
   ファイルを flash に繰り返し書く試験はしない。終わったら develop 相当でなく、T2 まで入った版を焼いて残す
   (親が目視の確認に使う)。
 - 親から「実機の操作を止めて」と伝えられたら、すぐ止める。

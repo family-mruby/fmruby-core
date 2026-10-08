@@ -34,7 +34,7 @@ class Ros2ServiceApp < FmrbApp
     ""
   end
 
-  # "fmruby-90bce8" -> "fmruby_90bce8"
+  # "fmruby-bbbbbb" -> "fmruby_bbbbbb"
   def ros_name(id)
     out = ""
     i = 0

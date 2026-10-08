@@ -7,7 +7,7 @@
 #   locator (default tcp/zenohd:7447). These forms of that line select peer
 #   mode instead of a router:
 #     listen tcp/0.0.0.0:7447    peer, listening (no router)
-#     peer tcp/192.168.10.15:7447   peer, connecting to that peer
+#     peer tcp/192.0.2.15:7447   peer, connecting to that peer
 # - Declares the liveliness token fmrb/alive/<name> and answers queries on
 #   fmrb/node/<name>/**: .../info gets a short status line; .../silent is
 #   held without an answer for 10 s (to try the requester's time limit).

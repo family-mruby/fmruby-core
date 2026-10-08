@@ -43,7 +43,7 @@ report は `report/s2b.md` へ。
   ファイルだけをパスで指定してコミット。push とマージはしない。
 - `.env` は書き換えずコミットしない。最後に `git diff .env` が scratchpad の env_before_shell_gc2.diff と一致する。
 - sdkconfig、graphics-audio は変えない。submodule は直接編集しない。lib/ を変えたら `rake clean`。
-- 実機は**ミュートのまま**作業する (`curl -X POST http://192.168.10.15/audio/mute?on=1`、または MCP の tab5_audio)。
+- 実機は**ミュートのまま**作業する (`curl -X POST http://192.0.2.15/audio/mute?on=1`、または MCP の tab5_audio)。
   ファイルを flash に繰り返し書く試験はしない。
 - 親から「実機の操作を止めて」と伝えられたら、すぐ止める。
 - report は日本語の常体。コードのコメントと commit メッセージは英語 (件名 `<領域>: <要約>`、

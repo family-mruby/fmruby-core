@@ -7,7 +7,7 @@ gem の独立、PSRAM だけから確保、切断したら閉じる) はその�
 
 ## 1. 前半 (Z3a): ルータ経由で get / queryable / liveliness
 
-2 つの機体は **Linux の sim** と **P4-Nano (NARYAv4、192.168.10.15)**。どちらも PC の zenohd に client で
+2 つの機体は **Linux の sim** と **P4-Nano (NARYAv4、192.0.2.15)**。どちらも PC の zenohd に client で
 つなぐ (P4 は Z2 と同じく LAN 用の compose を重ねる)。Tab5 は繋がっていないので使わない。
 
 ### 1.1 API の目安
@@ -73,7 +73,7 @@ w.each_pending { |key, alive| ... }         # alive は true / false
 - zenoh-pico の unicast の peer (`Z_FEATURE_UNICAST_PEER`) が、**シングルスレッド (読み取りのタスクなし)
   で、ポーリングだけで**待ち受け (accept) と送受信ができるかを確かめる。
 - 確かめ方: NARYAv4 のアプリが peer で `tcp/0.0.0.0:7447` を待ち受け、sim のアプリが peer で
-  `tcp/192.168.10.15:7447` に接続する (sim のコンテナからの外向きの接続は届く)。zenohd は止めておく。
+  `tcp/192.0.2.15:7447` に接続する (sim のコンテナからの外向きの接続は届く)。zenohd は止めておく。
   put / subscribe と get / queryable が通るか。
 - API は `Session.open` に mode を渡す形の目安: `Zenoh::Session.open("tcp/...", mode: :peer, listen: "tcp/0.0.0.0:7447")`
   (mruby のキーワード引数が使えなければ位置引数でよい)。
@@ -119,7 +119,7 @@ w.each_pending { |key, alive| ... }         # alive は true / false
 
 - ブランチ `feature/asterism-z3` を fmruby-core と親リポジトリの develop から切ってコミットする (英文、
   `<領域>: <要約>`、Co-Authored-By を付ける)。develop へのマージと push はしない。
-- 実機の作業の前にミュートを確かめる (`GET http://192.168.10.15/audio/mute`。Z2 の終わりではミュート中)。
+- 実機の作業の前にミュートを確かめる (`GET http://192.0.2.15/audio/mute`。Z2 の終わりではミュート中)。
   P4-Nano で動いているアプリは終了させてよい。シリアルは開きっぱなし (私が開いた capture が動いている。
   開き直さない)。焼くのは MCP の `flash` (`app_only` で足りるときはそれで)。
 - zenohd を LAN に開けるのは作業の間だけ。終わったら止める。sim は sim_down、`build/` は Linux の標準構成

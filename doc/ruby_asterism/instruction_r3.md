@@ -118,7 +118,7 @@
 - ブランチ: fmruby-core と親リポジトリの develop から `feature/asterism-r3` を切ってコミットする。
   - コミットは英文で `<領域>: <要約>` の形にし、Co-Authored-By を付ける。
   - develop へのマージと push はしない。
-- 機体: **P4-Nano (192.168.10.15、/dev/ttyACM0)**。
+- 機体: **P4-Nano (192.0.2.15、/dev/ttyACM0)**。
   - R2 のファームが入っていて、ミュート中 (確かめる)。
   - 親のシリアルの capture がこの機体を向いている (`serial_start` を呼ばない)。
   - 焼くのは MCP の `flash` (`app_only`)。

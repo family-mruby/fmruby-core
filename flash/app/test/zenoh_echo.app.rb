@@ -2,7 +2,7 @@
 # Linux sim and the Modern (ESP32-P4) builds.
 #
 # - Connects to the router. The locator is the first line of
-#   /home/zenoh_echo.txt (e.g. tcp/192.168.10.2:7447 for a router on the
+#   /home/zenoh_echo.txt (e.g. tcp/192.0.2.2:7447 for a router on the
 #   PC's LAN address); without that file it is tcp/zenohd:7447, the zenohd
 #   service of the sim stack.
 # - Puts a counter on fmrb/test/out once a second.

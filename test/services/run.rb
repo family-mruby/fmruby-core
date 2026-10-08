@@ -464,7 +464,7 @@ module FmrbApp
     attr_accessor :fake_connected
     def wifi_connected?; @fake_connected; end
     def wifi_info
-      @fake_connected ? { ip: "192.168.1.5", ssid: "home" } : nil
+      @fake_connected ? { ip: "192.0.2.5", ssid: "home" } : nil
     end
   end
 end
@@ -475,8 +475,8 @@ w = NetWatch.new
 w.on_start(ctx)
 check("the state is published at start", ctx.published.size, 1)
 check("on net/state", ctx.published[0][0], "net/state")
-check("with the address", ctx.published[0][1]["ip"], "192.168.1.5")
-check("and the address is logged", ctx.logged[0], "up: 192.168.1.5 (home)")
+check("with the address", ctx.published[0][1]["ip"], "192.0.2.5")
+check("and the address is logged", ctx.logged[0], "up: 192.0.2.5 (home)")
 
 w.on_tick(1000)
 w.on_tick(2000)
@@ -493,7 +493,7 @@ check("and then goes quiet again", ctx.published.size, 2)
 FmrbApp.fake_connected = true
 w.on_tick(5000)
 check("coming back publishes too", ctx.published.size, 3)
-check("with the address again", ctx.published[2][1]["ip"], "192.168.1.5")
+check("with the address again", ctx.published[2][1]["ip"], "192.0.2.5")
 
 # A subscriber that started late asks, and gets the same message.
 w.on_event("net/get", nil)

@@ -57,7 +57,7 @@ reference/cpu_usage.md 5 章、flash_write_flicker/plan.md と report/f1.md (AUT
 
 - ブランチ `feature/p4-transfer-crash` を fmruby-core の develop から切る (英文のコミット、`<領域>: <要約>`、
   Co-Authored-By)。マージと push はしない。
-- P4-Nano (192.168.10.15) はミュート中 (確かめる)。動いているアプリは終了させてよい。シリアルは親の capture が
+- P4-Nano (192.0.2.15) はミュート中 (確かめる)。動いているアプリは終了させてよい。シリアルは親の capture が
   動いている (`serial_start` を呼ばない。`serial_log` で読む)。焼くのは MCP の `flash` (`app_only`)。試験のビルドを
   別の build ディレクトリで作ったときは、焼き方を工夫してよい (esptool を docker で直接、など。ポートは capture と
   取り合うので、MCP の flash と同じく capture を止めて再開する手順を守る。分からなければ止まって返す)。

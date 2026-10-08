@@ -50,7 +50,7 @@
   `.env` は書き換えずコミットしない (scratchpad の env_before_lazy.diff と一致)。`rake clean_all` は使ってよい。
 - sdkconfig、graphics-audio、submodule は変えない。
 - 自分が変えたファイルだけをパスで指定してコミット。push とマージはしない (フォークも)。最後にこの版を実機に焼く。
-- 実機 (P4-Nano、/dev/ttyACM0、192.168.10.15) はミュートのまま。動いているアプリは止めてよい。シリアルは開き直さない。
+- 実機 (P4-Nano、/dev/ttyACM0、192.0.2.15) はミュートのまま。動いているアプリは止めてよい。シリアルは開き直さない。
 - report は日本語の常体。コードのコメントと commit メッセージは英語 (件名 `<領域>: <要約>`、
   Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>)。
 

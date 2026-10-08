@@ -12,4 +12,4 @@
 #   `rake setup` (or any build).
 repo: https://github.com/ruby-asterism/picoruby-asterism-zenoh.git
 branch: main
-commit: 44976fdd4f9f1fd8e22569e472b759bcfe6d5026
+commit: d48fffac5a8f87808a8c65499e72466ba73bf6ec

@@ -94,7 +94,7 @@ sim / 実機とも、起動時に IP がログに出る:
 
 ```
 I Services: svc[net] up: 172.19.0.4                              (sim)
-I Services: svc[net] up: 192.168.10.21 (Buffalo-G-F750)          (Tab5)
+I Services: svc[net] up: 192.0.2.21 (Buffalo-G-F750)          (Tab5)
 ```
 
 ## timesync サービス
@@ -138,7 +138,7 @@ fmrb_rtc: RTC read 2026-08-25 00:23:51 UTC     <- 一致 (差はブートの 3 �
 **書き込み直後の初回ブートは必ず失敗する**:
 
 ```
-I svc[net] up: 192.168.10.21
+I svc[net] up: 192.0.2.21
 I svc[timesync] pool.ntp.org: no reply; retrying     (+2.3s)
 I svc[timesync] pool.ntp.org: no reply; retrying     (+5.5s)
 I svc[timesync] pool.ntp.org: no reply; giving up    (+8.7s)
@@ -156,7 +156,7 @@ I svc[timesync] pool.ntp.org: no reply; giving up    (+8.7s)
 初回ブートでも接続の **1.1 秒後**に成功するようになった:
 
 ```
-I svc[net] up: 192.168.10.21 (Buffalo-G-F750)
+I svc[net] up: 192.0.2.21 (Buffalo-G-F750)
 I svc[timesync] clock set from pool.ntp.org (epoch 1787617388)
 I svc[timesync] RTC updated
 ```
