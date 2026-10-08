@@ -258,6 +258,15 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
   (CRuby 版はリッチな環境で動くため)。
 - 配布は後で決める。まずは入れるときに C をコンパイルする形 (zenoh-c は入れるときに取る) が楽、という見立て。
 
+## C4: `gem install asterism` (完了 2026-10-08、公開はユーザ)
+
+- 配布は「入れるときに C をコンパイルする」(ユーザ決定)。asterism-zenoh の extconf が、ZENOH_C_PIN の版のビルド済みの zenoh-c を
+  機種に合わせて取り、sha256 を確かめる (Linux x86_64/aarch64 の glibc・musl、macOS x86_64/arm64。macOS は未確認)。
+  標準ライブラリだけで取得・展開する。取れないときは ZENOH_C_DIR か ASTERISM_ZENOH_C_MIRROR を案内して止まる。
+- 版は 0.1.0。asterism は asterism-zenoh `~> 0.1.0` に依存 (asterism-zenoh だけ直した版を出せるように)。
+- docker の素の Ruby 3.2 / 3.3 / arm64 / alpine で gem のファイルから入れて動くことを確認。結果は report/c4.md。
+- 公開 (`gem push`) はユーザが行う。asterism-zenoh が先、asterism が後。rubygems.org の MFA が要る。
+
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
 1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。
