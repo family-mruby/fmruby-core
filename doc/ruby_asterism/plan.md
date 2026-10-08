@@ -278,6 +278,15 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - 機体側に持っていける候補 (未実施): `node.every`・`poll` の中で呼ぶ `subscribe { }`、`on_join` / `on_leave`、`call_async` の
   シーケンス番号の読み方。
 
+## C6: 機体側への持ち込み (完了 2026-10-08)
+
+結果は report/c6.md。共有の層 (mrblib) に `Asterism.on_join` / `on_leave`、ROS の `node.every` とブロックつきの
+`node.subscribe` (どちらも poll の中で呼ぶ。答えを待つ呼び出しの中では呼ばない)、メッセージの `deconstruct_keys`
+(アプリの VM でも `case/in` が使える。ただしハッシュの型のパターンとブロックの中の束縛は picoruby のコンパイラで動かない) を入れた。
+CRuby の層はこれを使う形にそろえた。キー m (呼び合い) は届いていて、CRuby の例が表示していなかっただけ。別に、zenoh-c で
+答えより先に get の終わりが見える競合を見つけて直した (`done?` を先に読む)。起動時の内蔵 RAM の増分 0、スタックの減りは
+Twist の型の読み込みの 624 B だけ。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
