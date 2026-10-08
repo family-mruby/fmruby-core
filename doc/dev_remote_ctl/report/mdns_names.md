@@ -17,7 +17,7 @@ Retro で WiFi が使えるようになった結果、**Tab5 と NARYAv3 が両�
 
 ```
 ble_task: BLE device name: Family-mruby-90bcea
-wifi:     mDNS hostname: fmruby-90bce8.local
+wifi:     mDNS hostname: fmruby-bbbbbb.local
 ```
 
 **数字は一致しない**。WiFi と Bluetooth には同じ base から別のアドレスが
@@ -67,12 +67,12 @@ MAC は **`esp_wifi_get_mac(WIFI_IF_STA)`** から取る。BT MAC ではない
 設定の既定値が変わったことが端末に届かない)。
 
 ```
-$ Resolve-DnsName fmruby-90bce8.local  -> 192.168.10.21
-$ Resolve-DnsName fmruby.local         -> 192.168.10.21
+$ Resolve-DnsName fmruby-bbbbbb.local  -> 192.0.2.21
+$ Resolve-DnsName fmruby.local         -> 192.0.2.21
 ```
 
 **両方が同じボードを指す。** 起動ログも 2 つの名前を出す:
-`Connected, ip=192.168.10.21 (http://fmruby-90bce8.local/, also http://fmruby.local/)`。
+`Connected, ip=192.0.2.21 (http://fmruby-bbbbbb.local/, also http://fmruby.local/)`。
 
 Retro 側は未確認 (今 Tab5 が繋がっているため)。ネイティブ WiFi の S3 でも
 `esp_wifi_get_mac` は同じように答えるはずだが、実測はまだ。

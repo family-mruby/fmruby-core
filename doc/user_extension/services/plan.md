@@ -135,7 +135,7 @@ net サービス (システム) が公開する。**変化したときと、自�
 
 ```ruby
 topic "net/state"
-{ "connected" => true, "ip" => "192.168.10.21", "ssid" => "Buffalo-G-F750" }
+{ "connected" => true, "ip" => "192.0.2.21", "ssid" => "Buffalo-G-F750" }
 ```
 
 - 取得の作法は**2 つ**で、購読者の事情が 2 通りあるため:

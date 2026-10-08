@@ -32,7 +32,7 @@ C で対応する。同じ Spinel のプログラム (生成 C の `Init_<progra
 - 作業ブランチ `feature/spinel-multi-instance` (本体の checkout)。コードは 1 つのコミット。自分が変えたファイルだけを
   パスで指定。push とマージはしない。`.env` は書き換えずコミットしない (scratchpad の env_before_multi.diff と一致)。
 - sdkconfig、graphics-audio、submodule、Spinel のフォークは変えない。
-- 実機 (/dev/ttyACM1、192.168.10.15) はミュートのまま。動いているアプリは止めてよい。最後にこの版を焼いて残す。
+- 実機 (/dev/ttyACM1、192.0.2.15) はミュートのまま。動いているアプリは止めてよい。最後にこの版を焼いて残す。
 - 親から「実機の操作を止めて」と伝えられたら、すぐ止める。
 - report は日本語の常体。コードのコメントと commit メッセージは英語 (件名 `<領域>: <要約>`、
   Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>)。

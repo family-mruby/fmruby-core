@@ -14,6 +14,10 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
+#
+# The ROS 2 message type tests moved to the asterism repository with the
+# code they test (rake asterism:test runs them on the pinned checkout); they
+# are not here because CI cannot fetch that private repository.
 desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "tts:test",
                "ti:test", "basic:test", "micropython:smoke"]

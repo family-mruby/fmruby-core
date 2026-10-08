@@ -15,7 +15,7 @@
 #   enable = true
 #
 #   [tts.config]
-#   server = "http://192.168.10.5:50021"   # VOICEVOX; omit for cache-only
+#   server = "http://192.0.2.5:50021"   # VOICEVOX; omit for cache-only
 #   speaker = 1
 #   timeout_ms = 3000
 #

@@ -1,0 +1,15 @@
+# Pinned ruby-asterism/picoruby-asterism-zenoh: Asterism::Zenoh, the Zenoh
+# binding over zenoh-pico (doc/ruby_asterism). Same scheme as ASTERISM_PIN:
+# - `rake asterism:setup` clones this exact commit into
+#   vendor/picoruby-asterism-zenoh (gitignored); `rake setup` copies the
+#   mrbgem into the picoruby submodule.
+# - The zenoh-pico release is pinned by that repository (its
+#   ZENOH_PICO_PIN); `rake zenoh:setup` reads it from the checkout.
+# - Public: https clone, CI can fetch it.
+# - PICORUBY_ASTERISM_ZENOH_DIR=<checkout> builds from a working checkout
+#   instead (ZENOH_PICO_DIR does the same for zenoh-pico).
+# - To update: commit and push its main, put the commit here, run
+#   `rake setup` (or any build).
+repo: https://github.com/ruby-asterism/picoruby-asterism-zenoh.git
+branch: main
+commit: d48fffac5a8f87808a8c65499e72466ba73bf6ec

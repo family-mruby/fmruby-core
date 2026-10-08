@@ -79,7 +79,7 @@
 
 - ブランチ `feature/asterism-r1` を fmruby-core と親リポジトリの develop から切ってコミットする (英文、`<領域>: <要約>`、
   Co-Authored-By)。develop へのマージと push はしない。
-- 機体は **P4-Nano (192.168.10.15、/dev/ttyACM0)**。今は 6fe8f050 のファーム (A1 の前) が入っている。
+- 機体は **P4-Nano (192.0.2.15、/dev/ttyACM0)**。今は 6fe8f050 のファーム (A1 の前) が入っている。
   - ミュートを確かめる。
   - 親のシリアルの capture がこの機体に向いている (`serial_start` を呼ばない)。
   - 焼くのは MCP の `flash` (`app_only`)。Tab5 は外されている。

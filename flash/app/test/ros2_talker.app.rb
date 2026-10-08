@@ -30,7 +30,7 @@ class Ros2TalkerApp < FmrbApp
     ""
   end
 
-  # "fmruby-90bce8" -> "fmruby_90bce8"
+  # "fmruby-bbbbbb" -> "fmruby_bbbbbb"
   def ros_name(id)
     out = ""
     i = 0
@@ -72,8 +72,10 @@ class Ros2TalkerApp < FmrbApp
     begin
       @session = Asterism::Zenoh::Session.open(@locator)
       @node = Asterism::ROS::Node.new(@session, "fmruby_talker_#{ros_name(@id)}")
-      @pub = @node.publisher("/chatter", Asterism::ROS::StdMsgs::String)
-      @sub = @node.subscription("/chatter_back", Asterism::ROS::StdMsgs::String)
+      # The generated std_msgs/msg/String (/usr/share/asterism/msgs), loaded here.
+      str = Asterism::ROS.require_type("std_msgs/msg/String")
+      @pub = @node.publisher("/chatter", str)
+      @sub = @node.subscription("/chatter_back", str)
       @state = "connected"
     rescue => e
       @session = nil
@@ -92,13 +94,13 @@ class Ros2TalkerApp < FmrbApp
     now = Machine.board_millis
     if now >= @next_pub
       @count += 1
-      @pub.publish("hello from #{@id} #{@count}")
+      @pub << { data: "hello from #{@id} #{@count}" }
       @next_pub = now + PUBLISH_EVERY_MS
     end
     @sub.each_pending do |msg, info|
       @received += 1
       seq = info ? info.sequence : "-"
-      note("back ##{seq}: #{msg}")
+      note("back ##{seq}: #{msg.data}")
     end
   rescue => e
     lost("error: #{e.class}: #{e.message}")

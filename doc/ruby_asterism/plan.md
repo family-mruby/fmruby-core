@@ -1,6 +1,6 @@
 # Asterism: 計画
 
-> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス) 完了。次は R3 (メッセージ型の変換器)
+> 状態: 進行中 | 更新: 2026-10-06 | 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス)・R3 (メッセージ型の変換器)・C1 (CRuby 版) 完了
 
 ## 目的
 
@@ -138,11 +138,11 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 
 ```ruby
 # 公開する側 (P4-Nano のアプリ)
-Asterism.connect("tcp/192.168.10.2:7447", node: "fmruby-90bce8", app: "demo")
+Asterism.connect("tcp/192.0.2.2:7447", node: "fmruby-bbbbbb", app: "demo")
 Asterism.expose("apu", apu, methods: [:play, :stop])
 
 # 呼ぶ側 (sim のアプリ)
-apu = Asterism["fmruby-90bce8/demo/apu"]  # <ID>/<アプリ>/<オブジェクト>
+apu = Asterism["fmruby-bbbbbb/demo/apu"]  # <ID>/<アプリ>/<オブジェクト>
 apu.play("t120 o4 cdefg")             # 音は P4-Nano から鳴る
 apu.respond_to?(:play)                # => true (公開された一覧から)
 Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
@@ -214,7 +214,7 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 | 段階 | 内容 |
 |---|---|
 | R2 (完了 2026-10-07) | サービス (example_interfaces/srv/AddTwoInts)。機体が提供して PC の `ros2 service call` から呼べる、機体から PC のサービスを呼べる (P4-Nano・sim)。get / queryable の attachment と get の設定 (target ALL_COMPLETE、queryable は complete)。往復は機体から PC が中央値 49 ms、PC から機体が約 100 ms (50 ms のポーリング待ちを含む)。ファーム +8,864 B、起動時の内蔵 RAM の増分 0。型は手書き。結果は report/r2.md |
-| R3 (進行中) | メッセージ型の変換器 (design.md 2 章の asterism-msgs)。instruction_r3.md |
+| R3 (完了 2026-10-08) | メッセージ型の変換器。`lib/add/picoruby-asterism/tools/asterism_msggen.rb` (CRuby、標準ライブラリだけ) が `.msg` / `.srv` から型を作り、型のハッシュを計算する (同梱 66 型と Jazzy の 6 パッケージ 335 個が Jazzy の JSON と一致)。値は普通のクラス (アプリの VM に Data も Struct も無い)。同梱の 62 ファイルは storage の `/usr/share/asterism/msgs` に置き、`Asterism::ROS.require_type` で使う型だけ読む (eval。picoruby の require は 1 ファイル 14 KB かかるため)。byte / uint8 / char の配列はバイナリの String。ファーム +8,384 B、起動時の内蔵 RAM の増分 0。結果は report/r3.md |
 
 ### R3: メッセージ型の変換器 (計画)
 
@@ -229,6 +229,34 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - 型のハッシュの作り方は ROS 2 の版で変わりうるので、同梱の型は対象の版 (今は Jazzy) を明記して作る。
 - 後回し: 知らない型を受け取る (ROS 2 Jazzy の型の定義の問い合わせを使えば、機体に型が無くても中身を読める可能性がある。
   流れている型を見るデバッグ用の表示に便利)。
+
+## C1: CRuby 版 (完了 2026-10-08)
+
+結果は report/c1.md。ユーザの「CRuby 版まで親の推奨で実装」の指示で、選択は親の推奨 (instruction_c1.md 0 章)。
+
+- 新しい独立のリポジトリ `family-mruby/asterism/` (親リポジトリには無視させる。remote なし)。gem は `asterism-zenoh`
+  (zenoh-c 1.10.1 のビルド済みを C 拡張で包む、mruby 版と同じ API) と `asterism` (純 Ruby の層の写し + CRuby の小さな追加)。
+- 純 Ruby の層の正は fmruby-core の `lib/add/picoruby-asterism/`。`rake sync` で写し、一致を試験で確かめる。
+- CRuby ⇔ P4-Nano / sim のオブジェクトの呼び合い、CRuby ⇔ ROS 2 (Twist、AddTwoInts)、CRuby ⇔ zenoh_echo、切断の扱いが通る。
+  CRuby から P4-Nano の呼び出しは中央値 134 ms (機体が 50 ms ごとに答えるため)。
+- zenoh-c のビルド済みのものに、不安定な API (高度な pub/sub、共有メモリ、querier、つながった相手の通知) も入っている
+  (親が libzenohc.so の公開の名前で確認)。
+- あとでユーザが決めること: 配布の形 (機種ごとのビルド済みの gem / 入れるときに zenoh-c を取る / Magnus 版)、純 Ruby の層の正の
+  置き場所、CRuby らしいブロックの API、mruby 版との小さな違い (版の定数の名前、MAX_PEERS、自分のトークン)、gem の版と公開。
+
+## C2・C3: ruby-asterism への分割と公開 (完了 2026-10-08)
+
+- 3 つのリポジトリ (asterism / asterism-zenoh / picoruby-asterism-zenoh) を作り、ライセンスの表示を整えて (report/c3.md)
+  2026-10-08 に**公開**した。zenoh-pico・zenoh-c は Apache-2.0 の側を選んで使う (fmruby-core の GPL-3.0 と組み合わせるため)。
+  fmruby-core は `lib/add/ASTERISM_PIN`・`PICORUBY_ASTERISM_ZENOH_PIN` で https から取り込む (CI も取れる)。
+- 以下は分割のときの決定:
+
+- GitHub のオーガナイゼーション `ruby-asterism` を作成済み。リポジトリは非公開で、役割ごとに分ける
+  (asterism / asterism-zenoh / picoruby-asterism-zenoh。instruction_c2.md)。
+- Ruby だけで書いた層の正は asterism 側に移す。fmruby-core は PIN で取り込む側になる。
+- CRuby らしいブロックの API は、いずれ足す。mruby 版との小さな違い (版の定数の名前、peer の上限、自分のトークン) はそろえない
+  (CRuby 版はリッチな環境で動くため)。
+- 配布は後で決める。まずは入れるときに C をコンパイルする形 (zenoh-c は入れるときに取る) が楽、という見立て。
 
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 

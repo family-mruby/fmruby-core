@@ -91,7 +91,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
-- `ruby_asterism/` [Asterism: 計画](ruby_asterism/plan.md) — **進行中** (2026-10-06) 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス) 完了。次は R3 (メッセージ型の変換器) 〔22 files〕
+- `ruby_asterism/` [Asterism: 計画](ruby_asterism/plan.md) — **進行中** (2026-10-06) 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス)・R3 (メッセージ型の変換器)・C1 (CRuby 版) 完了 〔29 files〕
 - `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **完了** (2026-10-02) 主因は estalloc の ESTALLOC_DEBUG の解放ごとの全走査と、それが隠していたアプリ終了時の二重解放 (mrc_irep_free)。二重解放を直し (不正な解放 510 → 0)、統計だけを残して全走査を止めた。Shell の打鍵で 50 ms 超え 52% → 2%、負荷時 98% → 10%。Spinel にも効く。残りはエディタの同時 2 つ起動での abort (別段階) 〔9 files〕
 - `sim_boot_eintr/` [sim の起動が、ソケットの準備の割り込み (EINTR) で失敗する件](sim_boot_eintr/plan.md) — **完了** (2026-10-05) Linux の sim で、graphics-audio のソケットの bind / listen が EINTR で失敗して起動しない。FreeRTOS の POSIX ポートの SIGALRM が系統呼び出しを割り込むのが原因の見込み。E1 で原因を確かめて直す 〔3 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕

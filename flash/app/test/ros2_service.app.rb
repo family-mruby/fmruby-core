@@ -34,7 +34,7 @@ class Ros2ServiceApp < FmrbApp
     ""
   end
 
-  # "fmruby-90bce8" -> "fmruby_90bce8"
+  # "fmruby-bbbbbb" -> "fmruby_bbbbbb"
   def ros_name(id)
     out = ""
     i = 0
@@ -77,7 +77,8 @@ class Ros2ServiceApp < FmrbApp
     begin
       @session = Asterism::Zenoh::Session.open(@locator)
       @node = Asterism::ROS::Node.new(@session, "fmruby_service_#{ros_name(@id)}")
-      add = Asterism::ROS::ExampleInterfaces::AddTwoInts
+      # The generated example_interfaces/srv/AddTwoInts, loaded here.
+      add = Asterism::ROS.require_type("example_interfaces/srv/AddTwoInts")
       @srv = @node.service("/#{@node.name}/add_two_ints", add) do |req|
         @served += 1
         sum = req.a + req.b
@@ -116,7 +117,7 @@ class Ros2ServiceApp < FmrbApp
   def call_node
     @calls += 1
     t0 = Machine.board_millis
-    res = @node.call(PC_SERVICE, Asterism::ROS::ExampleInterfaces::AddTwoInts,
+    res = @node.call(PC_SERVICE, "example_interfaces/srv/AddTwoInts",
                      a: @calls, b: -1, timeout_ms: CALL_TIMEOUT_MS)
     note("node.call #{@calls}-1 = #{res.sum} (#{Machine.board_millis - t0} ms)")
   rescue Asterism::ROS::Timeout => e

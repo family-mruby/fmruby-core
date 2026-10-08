@@ -71,7 +71,7 @@ interval_hours = 24
 # machine stops finding its own cache.
 #
 #   [tts.config]
-#   server = "http://192.168.10.5:50021"
+#   server = "http://192.0.2.5:50021"
 #   speaker = 1
 #   timeout_ms = 3000
 #

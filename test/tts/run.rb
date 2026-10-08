@@ -129,8 +129,8 @@ end
 
 # ---- server string ---------------------------------------------------------
 
-eq("host and port", svc.split_server("http://192.168.10.5:50021"),
-   ["192.168.10.5", 50021])
+eq("host and port", svc.split_server("http://192.0.2.5:50021"),
+   ["192.0.2.5", 50021])
 eq("no port means 80", svc.split_server("http://example.local"),
    ["example.local", 80])
 eq("a trailing path is dropped", svc.split_server("http://h:8080/x/y"),

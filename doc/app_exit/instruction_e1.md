@@ -38,7 +38,7 @@ report は `report/e1.md` (E1 と E2 を 1 つに。節を分ける) へ。
   自分が変えたファイルだけをパスで指定。push とマージはしない。
 - `.env` は書き換えずコミットしない。最後に `git diff .env` が scratchpad の env_before_app_exit.diff と一致する。
 - sdkconfig、graphics-audio は変えない。submodule は直接編集しない。
-- 実機は**ミュートのまま** (`curl -X POST "http://192.168.10.15/audio/mute?on=1"`)。USB が切れたら `rake attach`。
+- 実機は**ミュートのまま** (`curl -X POST "http://192.0.2.15/audio/mute?on=1"`)。USB が切れたら `rake attach`。
   ファイルを flash に繰り返し書く試験はしない。試験のファイルは消す。最後に E2 まで入った版を焼いて残す。
 - 親から「実機の操作を止めて」と伝えられたら、すぐ止める。
 - report は日本語の常体。コードのコメントと commit メッセージは英語 (件名 `<領域>: <要約>`、

@@ -12,7 +12,7 @@
    ほかの sdkconfig の項目は変えない。defaults を変えたら `rake clean_all` してから作る (sdkconfig を
    作り直すため)。生成された sdkconfig にその値が入っていることを確かめる。
 2. **比べ方**: 同じコミットの上で、mempool あり (今の develop の defaults) と なし の 2 つのビルドを作って
-   比べる (別の日の記録と比べない)。機体は P4-Nano (NARYAv4、192.168.10.15)。`FMRB_HW_TARGET=NARYAv4` を
+   比べる (別の日の記録と比べない)。機体は P4-Nano (NARYAv4、192.0.2.15)。`FMRB_HW_TARGET=NARYAv4` を
    環境変数で渡す (`.env` は TAB5 のまま触らない)。
 3. **測るもの** (どちらのビルドでも同じ手順で):
    - 起動直後: `M1|` 行、周期ダンプの `IRAM free:`、内蔵 RAM の一番大きく取れる空き。BLE の起動のログ。
@@ -52,7 +52,7 @@ plan.md の 1-4。数字は表にして並べる (mempool あり / なし)。採
 
 - ブランチ `feature/hosted-mempool` を fmruby-core の develop から切ってコミットする (英文、`<領域>: <要約>`、
   Co-Authored-By)。マージと push はしない。
-- P4-Nano はミュート中 (`GET http://192.168.10.15/audio/mute` で確かめる)。動いているアプリは終了させてよい。
+- P4-Nano はミュート中 (`GET http://192.0.2.15/audio/mute` で確かめる)。動いているアプリは終了させてよい。
   シリアルは親の capture が動いている (`serial_start` を呼ばない。`serial_log` で読む)。焼くのは MCP の
   `flash` (sdkconfig が変わるので `app_only` でよいが、ブートローダなどが変わる場合は全体の書き込み。
   /home は消えてよいか分からないので、全体の書き込みが要るときは止まって知らせる)。

@@ -191,7 +191,7 @@ esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に
 
 ```ruby
 FmrbNet.connected?   # => true/false      (wifi_is_connected)
-FmrbNet.ip_address   # => "192.168.10.15" (wifi_get_ip_str)
+FmrbNet.ip_address   # => "192.0.2.15" (wifi_get_ip_str)
 FmrbNet.hostname     # => "fmruby"
 FmrbNet.wait_for_ip(timeout_ms) # => true/false (wifi_wait_for_ip)
 ```

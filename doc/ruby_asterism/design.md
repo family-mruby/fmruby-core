@@ -80,7 +80,7 @@
 
 - 最上位は `asterism/` (Family mruby とは別のプロジェクトなので `fmrb/` にしない)。
 - 形: `asterism/<ID>/<アプリ>/<データ>`。1 台 = 1 ノード。ブラウザも機体も同じ形。
-  - 例: `asterism/fmruby-90bce8/clock/time`、`asterism/b-3f9a2c/sensor/temp`。
+  - 例: `asterism/fmruby-bbbbbb/clock/time`、`asterism/b-3f9a2c/sensor/temp`。
   - VM ごとに分けるときは `<ID>/<VM>/...` と一段増やす。
 - オブジェクト (A1): `asterism/<ID>/<アプリ>/<オブジェクト>/call` (呼び出し)、`.../meta` (公開の一覧)。
 - 生存: `asterism/<ID>` (ノードの参加・離脱)、`asterism/<ID>/<アプリ>/<オブジェクト>` (公開中のオブジェクト)。
@@ -142,8 +142,9 @@ end
 - `connect` にブロックを渡すと、抜けたときにセッションを閉じる。
 - `<<` や `call` に Hash を渡すと、型に合わせてメッセージに変える。
 - 購読は liveliness の型情報から型を判定できる。出す側は型の明示を基本にする。
-- メッセージは `Data.define` の値オブジェクトとし、`deconstruct_keys` でパターンマッチに対応する
-  (mruby 側で使えるかは確かめる)。
+- メッセージは普通のクラス (`Asterism::ROS::Message` を基底) の値オブジェクト。アプリの VM に `Data` も `Struct` も無い
+  ため (R3 で確認)。`from(Hash)`・`to_h`・`==` を持ち、CRuby でも同じコードが動く。`deconstruct_keys` は後で足せる。
+- byte / uint8 / char の配列はバイナリの String で表す (mruby で軽いため。R3 の選択)。
 - `node.topic("/scan").each.lazy` のように Enumerator としても扱える。タイマーは `node.every(0.1) { ... }`。
 - 名前は Ruby 寄り (`publisher` / `subscribe`)。rclpy 風の別名を用意してもよい。
 - mruby の機体では、`spin` の代わりにアプリの更新ごとに `poll` を呼ぶ形になる (3 章の API)。
