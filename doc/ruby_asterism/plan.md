@@ -287,7 +287,9 @@ CRuby の層はこれを使う形にそろえた。キー m (呼び合い) は�
 答えより先に get の終わりが見える競合を見つけて直した (`done?` を先に読む)。起動時の内蔵 RAM の増分 0、スタックの減りは
 Twist の型の読み込みの 624 B だけ。
 
-## C7: zenoh-c の機能を CRuby から (完了 2026-10-08、0.3.0 は未公開)
+## C7: zenoh-c の機能を CRuby から (完了 2026-10-08)
+
+3 つのリポジトリに GitHub Actions の CI を足した (asterism-zenoh は Linux x86_64 / arm64・macOS arm64 / x86_64 × Ruby 3.2-3.4、gem を作って素の環境に入れる確認を含む。macOS の確認はここで初めて済んだ)。
 
 結果は report/c7.md、対応表は asterism-zenoh の `docs/feature_coverage.md` (README の Feature coverage から辿れる)。
 設定の受け渡し (TLS・QUIC・WebSocket・認証)、スカウティング、put の設定と delete、宣言した publisher / querier と matching、
