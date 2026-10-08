@@ -15,12 +15,15 @@
 #             boom -> raises (to see RemoteError),
 #             echo(value, tag: nil) -> [value, tag] (values and keywords)
 #     info has a public method `secret` that is NOT exposed.
-# - Lists the nodes alive. The peer is the first other node that exposes
-#   screen. Every 3 s asks the peer's info.status without waiting (async).
+# - Lists the nodes alive, and shows the nodes that join and leave
+#   (Asterism.on_join / on_leave, called from Asterism.poll in on_update).
+#   The peer is the first other node that exposes screen. Every 3 s asks
+#   the peer's info.status without waiting (async).
 #
 # Keys: s screen.say   a apu.play   x apu.stop   n call the unexposed secret
 #       e info.boom    t send an Object (EncodeError, nothing sent)
-#       m 10 calls of info.relay (both machines at once: no lock up)
+#       m 10 calls of info.relay (both machines at once: no lock up; a
+#         relay that comes in is logged here, "relay from ...")
 #       r respond_to? / methods of the peer's info
 #
 # From the PC (parent repo):
@@ -84,6 +87,7 @@ class AsterismDemoApp < FmrbApp
 
     def relay(from, n)
       st = ::Asterism["#{from}/demo/info"].status
+      Log.info("asterism_demo: relay from #{from} ##{n}")
       [n, st["name"]]
     end
 
@@ -132,6 +136,8 @@ class AsterismDemoApp < FmrbApp
     @peer = nil
     @status_f = nil
     @peer_status = "-"
+    @joins = 0
+    @leaves = 0
     @next_status = 0
     @keys = []
     @apu = AsterismDemoApp::Apu.new(self)
@@ -158,11 +164,24 @@ class AsterismDemoApp < FmrbApp
       ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
       ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
       ::Asterism.expose("info", AsterismDemoApp::Info.new(self), methods: { status: 0, relay: 2, boom: 0, echo: 1 })
+      # Called from Asterism.poll (on_update), not from a waiting call.
+      ::Asterism.on_join { |n| joined(n) }
+      ::Asterism.on_leave { |n| left(n) }
       @state = "connected"
     rescue ::Asterism::Error => e
       @state = "failed: #{e.message}"
     end
     note("#{@node} #{@state} (#{@locator}, #{Machine.board_millis - t0} ms)")
+  end
+
+  def joined(node)
+    @joins += 1
+    note("joined: #{node}")
+  end
+
+  def left(node)
+    @leaves += 1
+    note("left: #{node}")
   end
 
   # The peer is followed through liveliness (Asterism.each). When it goes
@@ -273,7 +292,7 @@ class AsterismDemoApp < FmrbApp
     y = @user_area_y0 + 4
     @gfx.draw_text(x, y, "#{@node} #{@state}"[0, 52], theme_fg)
     nodes = ::Asterism.connected? ? ::Asterism.nodes : []
-    @gfx.draw_text(x, y + 11, "nodes: #{nodes.join(' ')}"[0, 52], theme_fg)
+    @gfx.draw_text(x, y + 11, "nodes: #{nodes.join(' ')} (+#{@joins} -#{@leaves})"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 22, "peer: #{@peer || '-'} #{@peer_status}"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 33, "said: #{@said}"[0, 52], theme_fg)
     row = 0
