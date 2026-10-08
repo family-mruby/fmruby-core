@@ -107,7 +107,7 @@ PICORUBY_TI_SIG_DIR = File.expand_path("sig", __dir__)
 #     (ZENOH_PICO_PIN in that repository)
 # `rake setup` copies the mrbgems into the picoruby submodule and the types
 # into flash/usr/share/asterism/msgs (generated, gitignored). The repositories
-# are private for now: the clone goes over ssh with the developer's GitHub key.
+# are public; the clone goes over https.
 #
 # Checkout resolution (each):
 #   1. ASTERISM_DIR / PICORUBY_ASTERISM_ZENOH_DIR env override (a working

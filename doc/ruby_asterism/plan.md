@@ -244,7 +244,12 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - あとでユーザが決めること: 配布の形 (機種ごとのビルド済みの gem / 入れるときに zenoh-c を取る / Magnus 版)、純 Ruby の層の正の
   置き場所、CRuby らしいブロックの API、mruby 版との小さな違い (版の定数の名前、MAX_PEERS、自分のトークン)、gem の版と公開。
 
-## C2: ruby-asterism への分割 (2026-10-08 ユーザ決定、進行中)
+## C2・C3: ruby-asterism への分割と公開 (完了 2026-10-08)
+
+- 3 つのリポジトリ (asterism / asterism-zenoh / picoruby-asterism-zenoh) を作り、ライセンスの表示を整えて (report/c3.md)
+  2026-10-08 に**公開**した。zenoh-pico・zenoh-c は Apache-2.0 の側を選んで使う (fmruby-core の GPL-3.0 と組み合わせるため)。
+  fmruby-core は `lib/add/ASTERISM_PIN`・`PICORUBY_ASTERISM_ZENOH_PIN` で https から取り込む (CI も取れる)。
+- 以下は分割のときの決定:
 
 - GitHub のオーガナイゼーション `ruby-asterism` を作成済み。リポジトリは非公開で、役割ごとに分ける
   (asterism / asterism-zenoh / picoruby-asterism-zenoh。instruction_c2.md)。

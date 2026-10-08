@@ -5,11 +5,11 @@
 #   mrbgem into the picoruby submodule.
 # - The zenoh-pico release is pinned by that repository (its
 #   ZENOH_PICO_PIN); `rake zenoh:setup` reads it from the checkout.
-# - Private for now: ssh clone, CI cannot fetch it.
+# - Public: https clone, CI can fetch it.
 # - PICORUBY_ASTERISM_ZENOH_DIR=<checkout> builds from a working checkout
 #   instead (ZENOH_PICO_DIR does the same for zenoh-pico).
 # - To update: commit and push its main, put the commit here, run
 #   `rake setup` (or any build).
-repo: git@github.com:ruby-asterism/picoruby-asterism-zenoh.git
+repo: https://github.com/ruby-asterism/picoruby-asterism-zenoh.git
 branch: main
 commit: 44976fdd4f9f1fd8e22569e472b759bcfe6d5026
