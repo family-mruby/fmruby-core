@@ -258,6 +258,52 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
   (CRuby 版はリッチな環境で動くため)。
 - 配布は後で決める。まずは入れるときに C をコンパイルする形 (zenoh-c は入れるときに取る) が楽、という見立て。
 
+## C4: `gem install asterism` (完了 2026-10-08、公開はユーザ)
+
+- 配布は「入れるときに C をコンパイルする」(ユーザ決定)。asterism-zenoh の extconf が、ZENOH_C_PIN の版のビルド済みの zenoh-c を
+  機種に合わせて取り、sha256 を確かめる (Linux x86_64/aarch64 の glibc・musl、macOS x86_64/arm64。macOS は未確認)。
+  標準ライブラリだけで取得・展開する。取れないときは ZENOH_C_DIR か ASTERISM_ZENOH_C_MIRROR を案内して止まる。
+- 版は 0.1.0。asterism は asterism-zenoh `~> 0.1.0` に依存 (asterism-zenoh だけ直した版を出せるように)。
+- docker の素の Ruby 3.2 / 3.3 / arm64 / alpine で gem のファイルから入れて動くことを確認。結果は report/c4.md。
+- 公開 (`gem push`) はユーザが行う。asterism-zenoh が先、asterism が後。rubygems.org の MFA が要る。
+
+## C5: CRuby らしい API (完了 2026-10-08、未公開)
+
+- 今のポーリングの API (機体と同じ) はそのまま。CRuby だけの層 (asterism の `lib/asterism/cruby/`) に、ブロック・受け取りの
+  スレッド・Enumerator・パターンマッチ (`Data` の値、メッセージの `deconstruct_keys`) を足した。
+  `Asterism::Zenoh.open { |s| }`・`Asterism.connect { |net| }`・`Asterism::ROS.connect { |ros| }`、`subscribe { }`・`every`・
+  `on_join` / `on_leave`・`start` / `stop` / `run` / `spin`。結果は report/c5.md。
+- 受け取りのスレッドは使う人が始めたときだけ。答えを待つ呼び出しは、受け取りのスレッドが動いていれば届くのを待つ。
+- asterism-zenoh の C を 1 か所直した (閉じるときに別のスレッドが使う隙)。版は 0.2.0 (公開はユーザ)。
+- 機体側に持っていける候補 (未実施): `node.every`・`poll` の中で呼ぶ `subscribe { }`、`on_join` / `on_leave`、`call_async` の
+  シーケンス番号の読み方。
+
+## C6: 機体側への持ち込み (完了 2026-10-08)
+
+結果は report/c6.md。共有の層 (mrblib) に `Asterism.on_join` / `on_leave`、ROS の `node.every` とブロックつきの
+`node.subscribe` (どちらも poll の中で呼ぶ。答えを待つ呼び出しの中では呼ばない)、メッセージの `deconstruct_keys`
+(アプリの VM でも `case/in` が使える。ただしハッシュの型のパターンとブロックの中の束縛は picoruby のコンパイラで動かない) を入れた。
+CRuby の層はこれを使う形にそろえた。キー m (呼び合い) は届いていて、CRuby の例が表示していなかっただけ。別に、zenoh-c で
+答えより先に get の終わりが見える競合を見つけて直した (`done?` を先に読む)。起動時の内蔵 RAM の増分 0、スタックの減りは
+Twist の型の読み込みの 624 B だけ。
+
+## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
+
+機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
+(zenohd) を TLS と認証でつなぐ (design.md 8 章)。その設定を Rails の画面で管理する。
+
+| 段階 | 内容 |
+|---|---|
+| W1 | ルータどうしの中継と守り: PC の中の docker でクラウド役と家役の zenohd を立て、mTLS (自前の CA で署名した証明書を持つルータだけがつながる) と ACL (証明書の名前ごとに書けるキーを絞る、管理用の空間を外から見せない) を付ける。sim と P4-Nano をそれぞれ別のルータにつなぎ、A1 の呼び出し・R1 のトピックが中継を通ることを確かめる。設定の項目名は使う版 (1.10.1) で確かめる |
+| W2 | Rails の管理画面の最小の形: ルータの台帳 (モデル)、証明書の発行 (Ruby の OpenSSL)、ACL の編集、クラウドの zenohd の設定ファイル (JSON5) を作って起動し直す。正は Rails の DB に置き、設定ファイルは毎回そこから作る |
+| W3 | 網の様子と操作: Rails 自身が asterism の gem でノードになり、管理用の空間 (`@/**`) と生存の監視からルータ・機体の一覧を読み、Action Cable でブラウザに出す。画面から機体のオブジェクトを呼ぶ (討議まとめ 17 節の `robot.remote` の形) |
+
+- 守りの要点: CA の秘密鍵は Rails (Web の画面) と同じ所に置かない (署名だけを受け持つ別の仕組みか、クラウドの鍵の管理
+  サービス)。管理画面には認証 (できれば多要素) を付ける。
+- 反映: まずは設定ファイルを作り直して zenohd を起動し直す形 (つながっているルータは一度切れてつなぎ直す)。動かしたまま
+  管理用の空間から書き換えられる項目 (特に ACL) が使う版で分かったら、そちらへ移る。
+- 段が増えると往復が延びるので、A1 の呼び出しの時間制限を遠くの相手に合わせて延ばせるようにする。
+
 ## 決定事項 (Z1 の前、2026-10-06 ユーザ決定)
 
 1. zenoh-pico は PIN ファイル + rake で取得する (submodule にしない)。

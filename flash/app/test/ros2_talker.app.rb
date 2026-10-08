@@ -6,8 +6,14 @@
 # - ID: the first line of /home/asterism_node.txt, else the board's mDNS name
 #   (fmruby-XXXXXX), else "linux". The ROS node is fmruby_talker_<ID> with
 #   "-" turned into "_" (ROS names take letters, digits and "_").
-# - Publishes std_msgs/String "hello from <ID> N" on /chatter once a second.
-# - Subscribes to /chatter_back (std_msgs/String) and shows what comes in.
+# - Publishes std_msgs/String "hello from <ID> N" on /chatter once a second
+#   (node.every: the block runs from node.poll in on_update).
+# - Subscribes to /chatter_back (std_msgs/String) and /cmd_vel_in
+#   (geometry_msgs/Twist) with blocks (node.subscribe: also run from
+#   node.poll) and shows what comes in; the Twist is taken apart with
+#   case/in (deconstruct_keys).
+# - The blocks never wait (no service call in them): they run on the update
+#   loop's stack, which is 16 KB on the P4.
 # - The node and both topics are announced with rmw_zenoh's liveliness
 #   tokens, so they show in `ros2 node list` / `ros2 topic list -t`, and go
 #   away when the app closes.
@@ -16,6 +22,8 @@
 #   docker exec -it fmruby_ros2 ros2 topic echo /chatter std_msgs/msg/String
 #   docker exec -it fmruby_ros2 ros2 topic pub -r 1 /chatter_back \
 #     std_msgs/msg/String "{data: 'hello from ROS 2'}"
+#   docker exec -it fmruby_ros2 ros2 topic pub --once /cmd_vel_in \
+#     geometry_msgs/msg/Twist "{linear: {x: 0.3}, angular: {z: -0.5}}"
 
 class Ros2TalkerApp < FmrbApp
   DEFAULT_LOCATOR = "tcp/zenohd:7447"
@@ -55,7 +63,6 @@ class Ros2TalkerApp < FmrbApp
     @session = nil
     @node = nil
     @count = 0
-    @next_pub = 0
     @received = 0
     @lines = []
     draw_screen
@@ -75,7 +82,9 @@ class Ros2TalkerApp < FmrbApp
       # The generated std_msgs/msg/String (/usr/share/asterism/msgs), loaded here.
       str = Asterism::ROS.require_type("std_msgs/msg/String")
       @pub = @node.publisher("/chatter", str)
-      @sub = @node.subscription("/chatter_back", str)
+      @node.every(PUBLISH_EVERY_MS / 1000) { hello }
+      @node.subscribe("/chatter_back", str) { |msg, info| back(msg, info) }
+      @node.subscribe("/cmd_vel_in", "geometry_msgs/msg/Twist") { |msg, _info| twist(msg) }
       @state = "connected"
     rescue => e
       @session = nil
@@ -86,22 +95,33 @@ class Ros2TalkerApp < FmrbApp
     note("node #{@node.name} zid #{@node.zid}") if @node
   end
 
+  # node.every
+  def hello
+    @count += 1
+    @pub << { data: "hello from #{@id} #{@count}" }
+  end
+
+  # node.subscribe("/chatter_back")
+  def back(msg, info)
+    @received += 1
+    seq = info ? info.sequence : "-"
+    note("back ##{seq}: #{msg.data}")
+  end
+
+  # node.subscribe("/cmd_vel_in"). In a method of its own: the app VM's
+  # compiler does not bind a pattern variable that belongs to an outer
+  # scope from inside a block, nor match a class (Float) as a hash
+  # pattern's value (doc/ruby_asterism/report/c6.md).
+  def twist(msg)
+    case msg
+    in { linear: { x: }, angular: { z: } }
+      note("cmd_vel: forward #{x}, turn #{z}")
+    end
+  end
+
+  # node.poll polls the session, then runs the every / subscribe blocks.
   def exchange
-    unless @session.poll
-      lost("disconnected")
-      return
-    end
-    now = Machine.board_millis
-    if now >= @next_pub
-      @count += 1
-      @pub << { data: "hello from #{@id} #{@count}" }
-      @next_pub = now + PUBLISH_EVERY_MS
-    end
-    @sub.each_pending do |msg, info|
-      @received += 1
-      seq = info ? info.sequence : "-"
-      note("back ##{seq}: #{msg.data}")
-    end
+    lost("disconnected") unless @node.poll
   rescue => e
     lost("error: #{e.class}: #{e.message}")
   end
