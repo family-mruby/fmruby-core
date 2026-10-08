@@ -58,6 +58,12 @@ vendor/ti_test_sig/
 
 # Pinned zenoh-pico checkout (rake zenoh:setup), used by picoruby-asterism-zenoh
 vendor/zenoh-pico/
+# Pinned ruby-asterism checkouts (rake asterism:setup; lib/add/*_PIN)
+vendor/asterism/
+vendor/picoruby-asterism-zenoh/
+# The bundled ROS 2 message types, copied from the asterism checkout by
+# rake setup. The source is the asterism repository, like flash/help's is sig/.
+flash/usr/share/asterism/msgs/
 
 # Local reference material for comparing the character sheets (never committed)
 tool/basic/ref/

@@ -1,5 +1,0 @@
-string<=8 query
-int32 limit 3
----
-Bounds[] found
-bool ok

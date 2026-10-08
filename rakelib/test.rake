@@ -14,9 +14,13 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
-desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + ROS 2 types + picoruby-ti + BASIC + MicroPython)"
+#
+# The ROS 2 message type tests moved to the asterism repository with the
+# code they test (rake asterism:test runs them on the pinned checkout); they
+# are not here because CI cannot fetch that private repository.
+desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "tts:test",
-               "asterism:test", "ti:test", "basic:test", "micropython:smoke"]
+               "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
@@ -92,19 +96,6 @@ namespace :tts do
   desc "tts service tests (host Ruby, no docker, no network)"
   task :test do
     sh "ruby test/tts/run.rb"
-  end
-end
-
-namespace :asterism do
-  # The ROS 2 message types (doc/ruby_asterism, R3): the generator's type
-  # hashes against ROS 2 Jazzy's (and rosidl's for the test package), the
-  # bundled files against the generator, and the CDR layer against bytes
-  # rclpy made, all from fixtures (tools/fmrb_ros2_types.rb in the parent
-  # repo refreshes them). Run it after touching picoruby-asterism's cdr.rb /
-  # ros.rb, tools/asterism_msggen.rb or flash/usr/share/asterism/msgs.
-  desc "ROS 2 message type tests (host Ruby, no docker)"
-  task :test do
-    sh "ruby test/asterism_msgs/run.rb"
   end
 end
 

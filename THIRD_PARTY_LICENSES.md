@@ -24,6 +24,9 @@ Family mruby Core includes code from several open source projects. The following
 14. [picoruby-ti](#picoruby-ti)
 15. [FreeRTOS-Kernel](#freertos-kernel)
 16. [ESP-IDF (FreeRTOS esp_additions)](#esp-idf-freertos-esp_additions)
+17. [Asterism (picoruby-asterism, picoruby-asterism-zenoh)](#asterism-picoruby-asterism-picoruby-asterism-zenoh)
+18. [zenoh-pico](#zenoh-pico)
+19. [ROS 2 message definitions](#ros-2-message-definitions)
 
 ---
 
@@ -889,5 +892,73 @@ remains a build-time dependency and is not distributed with this software
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+================================================================================
+
+## Asterism (picoruby-asterism, picoruby-asterism-zenoh)
+Repositories: https://github.com/ruby-asterism/asterism,
+https://github.com/ruby-asterism/picoruby-asterism-zenoh (private for now)
+License: MIT License (files derived from zenoh-pico: see the zenoh-pico entry)
+
+Note: the Asterism mrbgems (remote Ruby objects, a ROS 2 node over rmw_zenoh,
+and the Zenoh binding Asterism::Zenoh) are not committed to this repository
+but cloned at pinned commits by `rake asterism:setup` (lib/add/ASTERISM_PIN,
+lib/add/PICORUBY_ASTERISM_ZENOH_PIN) and copied into the PicoRuby tree, so
+they are compiled into the Linux and ESP32-P4 firmware. The bundled ROS 2
+message types come from the asterism repository too (see the ROS 2 entry).
+Four files of picoruby-asterism-zenoh are derived from zenoh-pico and keep its
+terms (stated at the top of each): src/zp_tcp_posix.c, src/zp_network_posix.c,
+ports/esp32/zp_tcp_esp32.c, include/zenoh_espidf_platform.h.
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 Katsuhiko Kageyama
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+
+## zenoh-pico
+Repository: https://github.com/eclipse-zenoh/zenoh-pico
+License: Eclipse Public License 2.0 OR Apache License 2.0 (the Apache License
+2.0 text is above in the ESP-IDF entry)
+
+Note: zenoh-pico 1.10.1 (Copyright (c) 2022-2026 ZettaScale Technology) is not
+committed to this repository but cloned at the commit picoruby-asterism-zenoh
+pins (its ZENOH_PICO_PIN) by `rake zenoh:setup`, and compiled into the Linux
+and ESP32-P4 firmware through that gem. Its LICENSE and NOTICE.md are copied
+next to its sources in the build tree. "Eclipse zenoh" is a trademark of the
+Eclipse Foundation.
+
+================================================================================
+
+## ROS 2 message definitions
+Repositories: https://github.com/ros2/common_interfaces (std_msgs,
+geometry_msgs, sensor_msgs), https://github.com/ros2/rcl_interfaces
+(builtin_interfaces, service_msgs), https://github.com/ros2/example_interfaces
+License: Apache License 2.0 (the text above in the ESP-IDF entry)
+
+Note: the storage image carries /usr/share/asterism/msgs: Ruby files generated
+by Asterism from the ROS 2 Jazzy definitions of these packages (Copyright
+Open Source Robotics Foundation, Inc. and the ROS 2 contributors). They come
+from the asterism repository (data/msgs) through `rake setup`, with its NOTICE
+and the Apache License 2.0 text, and are not tracked in this repository.
 
 ================================================================================

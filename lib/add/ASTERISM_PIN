@@ -1,0 +1,15 @@
+# Pinned ruby-asterism/asterism: the pure Ruby layers of Asterism (the mrbgem
+# picoruby-asterism: mrbgem.rake + mrblib/) and the bundled ROS 2 message
+# types (data/msgs). doc/ruby_asterism. Same scheme as PICORUBY_TI_PIN:
+# - `rake asterism:setup` clones this exact commit into vendor/asterism
+#   (gitignored); `rake setup` copies the mrbgem into the picoruby submodule
+#   and data/msgs into flash/usr/share/asterism/msgs (gitignored).
+# - The repository is private for now: the clone uses ssh and the
+#   developer's GitHub key. CI cannot fetch it.
+# - ASTERISM_DIR=<checkout> builds from a working checkout instead (nothing
+#   is fetched; rake says when it is not the pinned commit).
+# - To update: commit and push asterism's main, put the commit here, run
+#   `rake setup` (or any build).
+repo: git@github.com:ruby-asterism/asterism.git
+branch: main
+commit: 3e69d93a6d98805a89f69dc4e90ba2ebf8a11f0e
