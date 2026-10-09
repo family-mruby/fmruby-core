@@ -1,6 +1,6 @@
 # Upstream issue draft: case/in in PicoRuby's compiler
 
-> Status: draft, **not filed** (2026-10-09). Both problems are already fixed upstream, so the recommendation is not to file it but to move Family mruby's vendored PicoRuby forward (see "Where it stands upstream"). Kept as the record of what was checked, and as the text to use if a filing is still wanted.
+> Status: draft, **not filed** (2026-10-09). Both problems are already fixed upstream, so it is not filed. Family mruby carries the two upstream fixes as a whole-file copy of the compiler's `src/codegen.c` (`lib/patch/compiler/mruby-compiler-codegen.c`, installed by `rake setup`) since C8 (report/c8.md); moving the vendored PicoRuby forward remains the real fix. Kept as the record of what was checked, and as the text to use if a filing is still wanted.
 
 Files next to this one:
 
@@ -105,8 +105,8 @@ NG x => [a] inside a block: got nil, want 1
 2. Captures in a block. Every binding site in `codegen_pattern` (`PM_LOCAL_VARIABLE_TARGET_NODE`, `PM_CAPTURE_PATTERN_NODE`, the `*rest` / `**rest` / find-pattern splats) looks the name up with `lv_idx(s, name)` in the current scope only and binds nothing when it is 0. A local of the enclosing method, seen from a block, has index 0 there. Prism records the target's `depth`; binding through `gen_assignment_lvar(s, src, name, depth + s->for_depth, 1)` (which emits `OP_SETUPVAR` for depth > 0) is what an ordinary assignment does. A new name that is local to the block works today, which hides the problem in most code.
 3. Related forms that also differ from CRuby at `10408c3` and are fixed on mruby master as well: `^x` of an outer local inside a block and `^(expr)` (PR #7539, `8ea99618663d`), `Const[...]` / `Const(...)` ignoring the constant (PR #7539, `325cfaf4addd`), a later `in` clause reading a register the first one never wrote (PR #7539, `951f5a0b4983`), and `in {a:, **rest} then [a, rest]` returning `rest` alone (the exact commit not pinned down; fixed on master).
 
-## What Family mruby should do (not done here)
+## What Family mruby should do
 
-- Move `components/picoruby-esp32/picoruby` to a PicoRuby that pins `mruby-compiler2` `a2c72afb` or later (PicoRuby master `a90afd12` does). That brings in every fix above, plus two found by the K1 profile that are also fixed on PicoRuby master: `protected` methods called from an instance of the same class, and `$!` in a rescue modifier.
-- If moving PicoRuby is too large a step, `picoruby_case_in.patch` fixes the two problems of this draft alone (checked on a host build). It touches only `src/codegen.c`.
-- Until then, the shared layer and apps keep the workarounds: no class or range values in hash patterns, and a `case` that binds goes into its own method rather than into a block (asterism README, Limits).
+- Done in C8: `picoruby_case_in.patch` applied through `lib/patch/compiler/mruby-compiler-codegen.c` (the vendored `10408c3` file plus the two upstream commits). Both problems are gone in the simulation's standard and compatibility builds (report/c8.md).
+- Still to do: move `components/picoruby-esp32/picoruby` to a PicoRuby that pins `mruby-compiler2` `a2c72afb` or later (PicoRuby master `a90afd12` does). That brings in every fix above, plus two found by the K1 profile that are also fixed on PicoRuby master: `protected` methods called from an instance of the same class, and `$!` in a rescue modifier.
+- The forms listed in note 3 above stay wrong until then: no `^x` of an outer local inside a block, no `^(expr)`, no `Const[...]`, and no `**rest` next to another key in a hash pattern on the boards.

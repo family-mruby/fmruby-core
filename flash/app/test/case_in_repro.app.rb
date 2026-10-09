@@ -5,6 +5,17 @@ def caseinr_check(label, got, want)
   Log.info("CASEIN #{got == want ? 'ok' : 'NG'} #{label}: got #{got.inspect}, want #{want.inspect}")
 end
 
+def caseinr_literal_values
+  out = []
+  [{x: 3}, {x: 4}].each do |h|
+    out << case h
+           in {x: 3} then :three
+           else :no
+           end
+  end
+  out
+end
+
 def caseinr_bind_in_block
   pre = nil
   [{a: 1}].each do |m|
@@ -33,6 +44,8 @@ class CaseInReproApp < FmrbApp
         else :no
         end
     caseinr_check("in {x: 0..2}", r, :range)
+    caseinr_check("[{x: 3}, {x: 4}] against in {x: 3}", caseinr_literal_values, [:three, :no])
+    caseinr_check("({x: 7} in {x: 8})", ({x: 7} in {x: 8}), false)
     caseinr_check("in {a: pre} inside a block", caseinr_bind_in_block, 1)
     caseinr_check("x => [a] inside a block", caseinr_rightward_in_block, 1)
     Log.info("CASEIN DONE")

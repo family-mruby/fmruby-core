@@ -222,6 +222,14 @@ task :setup do
   # internal RAM (doc/iram_reduction/report/r1.md). Whole-file copy: refresh it
   # when the mruby-compiler submodule moves.
   sh "cp -f lib/patch/compiler/mruby-compiler-cdump.c #{mrbgem_path}/mruby-compiler/src/cdump.c"
+  # codegen.c: case/in fixes backported from mruby/mruby 0e6bac0e5a7e (a hash
+  # pattern's value no longer overwrites the value it is compared with) and
+  # 680084ac1275 (a capture inside a block binds a local of the enclosing
+  # scope). The copy is the vendored 10408c3 plus those two commits only
+  # (doc/ruby_asterism/upstream/picoruby_case_in.patch, report/c8.md).
+  # Whole-file copy: drop it when the mruby-compiler submodule moves to
+  # picoruby/mruby-compiler2 a2c72afb or later, which has both.
+  sh "cp -f lib/patch/compiler/mruby-compiler-codegen.c #{mrbgem_path}/mruby-compiler/src/codegen.c"
 
   # mrbgem.rake patches
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"

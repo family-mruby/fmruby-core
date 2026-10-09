@@ -2,7 +2,8 @@ Backport of mruby/mruby 0e6bac0e5a7e (PR #7507) and 680084ac1275 (PR #7562)
 onto picoruby/mruby-compiler2 10408c3 (the compiler of picoruby c932f70b).
 Apply in mrbgems/mruby-compiler:  git apply picoruby_case_in.patch
 Checked with a host build of picoruby c932f70b: case_in_repro.rb goes
-from 4 NG to 4 ok. Not applied to Family mruby's tree.
+from 4 NG to 4 ok. Applied to Family mruby's tree as
+lib/patch/compiler/mruby-compiler-codegen.c (C8).
 
 diff --git a/src/codegen.c b/src/codegen.c
 index 8bdabc3..4b53114 100644
