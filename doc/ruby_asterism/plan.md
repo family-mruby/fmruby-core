@@ -377,7 +377,10 @@ mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0
 | S3 | 見せ場: MuJoCo の台車を Tab5 で操縦し、台車のカメラ・センサの値を Tab5 の画面と asterism-console に出し、走りを MCAP に記録して巻き戻す。機体・CRuby・ROS 2・シミュレータが 1 つの網でつながる様子を見せる |
 
 - ほかのシミュレータ (参考): Gazebo (ROS 2 の標準、重い)、Isaac Sim (NVIDIA の GPU 前提、とても重い)、Webots (軽め)。最初の 1 台は、軽くて速く、Python からも C からも扱いやすい MuJoCo にする。
-- 未確定: S1 で使う MuJoCo と ROS 2 をつなぐ部品の選定、台車のモデル (MuJoCo Menagerie などの既存のモデルを使うか、簡単なものを書くか)、カメラの画像を網に流すときの大きさと頻度。
+- 決定 (2026-10-09 ユーザ):
+  - つなぐ部品は **mujoco_ros2_control** (ros-controls の公式、Jazzy に apt `ros-jazzy-mujoco-ros2-control` で入る、2026-09 に Jazzy 向けに出た)。ros2_control の標準の制御器 (diff_drive_controller など) と、RGB-D カメラ・LiDAR の部品が使える。
+  - 台車のモデルは**簡単な 2 輪の台車を自分で書く** (箱の車体、2 輪、補助輪、カメラ、IMU。URDF / MJCF)。小さく、ライセンスの心配が無く、diff_drive_controller とそのまま合う。
+  - カメラの画像は **160x120 の JPEG を 5 Hz** (sensor_msgs/CompressedImage、1 枚約 5 KB、毎秒約 25 KB)。Tab5 は MJPEG の再生の回路を持つので画面に出せる。中継と記録も軽い。
 
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
