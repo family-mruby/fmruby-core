@@ -348,6 +348,13 @@ Twist の型の読み込みの 624 B だけ。
 | V4 | 記録と再生: 選んだキーを MCAP で記録し、時間の帯で見て再生する。ROS 2 は CDR のまま、Asterism は MessagePack のまま 1 つのファイルに入れる (ros2 bag と Foxglove でも開ける)。網の構造の変化も時刻付きで記録し、グラフを巻き戻せる。再生は本物の網に流すか、画面の中だけで見るかを選べる。MCAP の読み書きは Ruby で書く (公式の Ruby の部品は無い) | rosbag (ros2 bag)、rqt_bag |
 | V5 | 網のための irb: 画面の中で Ruby を書き、網のオブジェクトや記録を触る。強い権限なので管理者だけ、記録付き | (無い。Ruby ならでは) |
 
+## C8: コンパイラの case/in の直しと gem 0.4.0 (完了 2026-10-09)
+
+結果は report/c8.md。上流 mruby の 2 コミットを `lib/patch/compiler/mruby-compiler-codegen.c` で当てた (submodule が
+mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0 にした (API の見直しの推奨案の第 1 段: 秒の `timeout:`、
+`connection_count`、`Asterism::Error` の下のエラーの系統、非推奨の警告、文書の「Which API?」)。CI は全部緑、P4-Nano で確認、
+起動時の内蔵 RAM の増分 0。1.0 に残すものは report の最後。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
