@@ -1,0 +1,9 @@
+app_handle_name = "case_in_repro"
+app_screen_name = "case/in repro"
+app_screen_name_ja = "case/in 再現"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 60
+default_window_pos_x = 20
+default_window_pos_y = 30
+launcher_visible = false

@@ -1,0 +1,12 @@
+app_handle_name = "ruby_profile"
+app_screen_name = "Ruby Profile"
+app_screen_name_ja = "Ruby プロファイル"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 72
+default_window_pos_x = 20
+default_window_pos_y = 30
+launcher_visible = false
+# Each probe is compiled with eval (the codegen recurses), so give it room
+# beyond the 16 KB default when it runs on a board.
+task_stack_kb = 48
