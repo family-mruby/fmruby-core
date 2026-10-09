@@ -330,6 +330,8 @@ Twist の型の読み込みの 624 B だけ。
 → 11-13 は 2026-10-09 対応済み (asterism 0.4.1: 同梱 84 型、`FIELD_TYPES` と `Asterism::ROS.field_types`、名前の検査)。tf2_msgs は BSD-3-Clause。
 13. **`require_type` の名前の検査が甘い**: パッケージ名に `..` を入れると TYPE_PATH の 1 つ上を指せる。型の名前は網から来るので、
     パッケージ名と型名の文字を検査する。
+14. **大きな型の読み解きが機体で遅い** (S1): P4 で Odometry を生成した型で読むと、更新の 1 周が 91-122 ms になった。要るフィールドだけを
+    読む、配列を読み飛ばす仕組みを gem に入れる (Odometry、CompressedImage など)。
 
 ## V: Rails の画面 (asterism-console) と網のグラフ (2026-10-09 ユーザ決定、W より先に)
 
@@ -373,7 +375,7 @@ mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0
 
 | 段階 | 内容 |
 |---|---|
-| S1 | ROS 2 経由: MuJoCo を ros2_control とつなぐ部品 (mujoco_ros2_control など、Jazzy で使えるものを調べる) で 2 輪の台車を動かす。ROS 2 の docker の像に足す。Asterism の側は R1-R3 の ROS 2 の層のまま、Tab5 / CRuby から `/cmd_vel` を送り、`/joint_states`・`/odom` を受ける。asterism-console のグラフ・線グラフ・記録 (V4) で見る |
+| S1 (完了 2026-10-10、report/s1.md) | ROS 2 経由: MuJoCo を ros2_control とつなぐ部品 (mujoco_ros2_control など、Jazzy で使えるものを調べる) で 2 輪の台車を動かす。ROS 2 の docker の像に足す。Asterism の側は R1-R3 の ROS 2 の層のまま、Tab5 / CRuby から `/cmd_vel` を送り、`/joint_states`・`/odom` を受ける。asterism-console のグラフ・線グラフ・記録 (V4) で見る |
 | S2 | Asterism で直接: MuJoCo を動かすプロセスが Asterism のオブジェクト (`robot.wheel(0).speed=`、`robot.sensors.imu` など) を公開し、機体や CRuby が網から呼ぶ。MuJoCo の C の API を CRuby から FFI で直接呼ぶ形も試す (公式の Ruby の部品は無い。「Ruby で物理シミュレータを回す」は RubyKaigi の切り口 1・3 とも合う) |
 | S3 | 見せ場: MuJoCo の台車を Tab5 で操縦し、台車のカメラ・センサの値を Tab5 の画面と asterism-console に出し、走りを MCAP に記録して巻き戻す。機体・CRuby・ROS 2・シミュレータが 1 つの網でつながる様子を見せる |
 
