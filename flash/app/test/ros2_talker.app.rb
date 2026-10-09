@@ -82,7 +82,7 @@ class Ros2TalkerApp < FmrbApp
       # The generated std_msgs/msg/String (/usr/share/asterism/msgs), loaded here.
       str = Asterism::ROS.require_type("std_msgs/msg/String")
       @pub = @node.publisher("/chatter", str)
-      @node.every(PUBLISH_EVERY_MS / 1000) { hello }
+      @node.every(ms: PUBLISH_EVERY_MS) { hello }
       @node.subscribe("/chatter_back", str) { |msg, info| back(msg, info) }
       @node.subscribe("/cmd_vel_in", "geometry_msgs/msg/Twist") { |msg, _info| twist(msg) }
       @state = "connected"
@@ -108,10 +108,10 @@ class Ros2TalkerApp < FmrbApp
     note("back ##{seq}: #{msg.data}")
   end
 
-  # node.subscribe("/cmd_vel_in"). In a method of its own: the app VM's
-  # compiler does not bind a pattern variable that belongs to an outer
-  # scope from inside a block, nor match a class (Float) as a hash
-  # pattern's value (doc/ruby_asterism/report/c6.md).
+  # node.subscribe("/cmd_vel_in"). The compiler binds pattern variables
+  # from inside a block and matches classes as hash values since C8
+  # (lib/patch/compiler/mruby-compiler-codegen.c); a method of its own
+  # still reads better.
   def twist(msg)
     case msg
     in { linear: { x: }, angular: { z: } }

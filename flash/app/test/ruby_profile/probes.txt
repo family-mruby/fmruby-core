@@ -1,0 +1,1464 @@
+# Ruby profile probes: one language or core-library feature each.
+#
+# A probe starts at a "## id:" line. Its header lines ("## key: value") are
+#   id      unique name (also the row name in the table)
+#   area    syntax, pattern, const, object, meta, proc, exception, string,
+#           numeric, collection, core, runtime
+#   title   what it checks, in a few words
+#   expect  a Ruby expression for the answer CRuby 3.4 gives (evaluated on
+#           the implementation under test too, so keep it a plain literal)
+#   mrblib  optional: how the shared layer (mrblib/) relates to the feature
+#           (uses / avoids / guards), for the table's last column
+#   kind    optional: "measure" -- the probe returns a number (microseconds)
+#           and is reported, not judged
+# Everything up to the next "## id:" is the probe's code, run with eval in a
+# method of the runner; its last value is the answer. Lines starting with
+# "#" before the first probe are comments. Each probe is compiled on its own,
+# so a probe the compiler rejects only fails itself.
+#
+# Results: ok (the answer equals expect), differs (another answer), ng (an
+# exception: the feature is missing or the code did not compile).
+
+## id: regexp_literal
+## area: syntax
+## title: Regexp literal and =~
+## expect: 1
+## mrblib: avoids
+"abc" =~ /b/
+
+## id: regexp_class
+## area: core
+## title: Regexp.new / match?
+## expect: true
+## mrblib: avoids
+Regexp.new("b").match?("abc")
+
+## id: defined_const
+## area: syntax
+## title: defined?(Const)
+## expect: "constant"
+## mrblib: avoids (uses Object.const_defined?)
+defined?(String)
+
+## id: defined_missing
+## area: syntax
+## title: defined?(UnknownConst) is nil
+## expect: nil
+## mrblib: avoids
+defined?(NoSuchConstantForProbe)
+
+## id: defined_ivar
+## area: syntax
+## title: defined?(@ivar)
+## expect: "instance-variable"
+@rp_defined_ivar = 1
+defined?(@rp_defined_ivar)
+
+## id: const_defined
+## area: core
+## title: Object.const_defined?
+## expect: [true, false]
+## mrblib: uses
+[Object.const_defined?(:String), Object.const_defined?(:NoSuchConstantForProbe)]
+
+## id: safe_navigation
+## area: syntax
+## title: &. on nil
+## expect: [nil, 3]
+[nil&.length, "abc"&.length]
+
+## id: endless_def
+## area: syntax
+## title: endless method definition
+## expect: 9
+def rp_sq(x) = x * x
+rp_sq(3)
+
+## id: numbered_param
+## area: syntax
+## title: numbered block parameter _1
+## expect: [2, 4]
+[1, 2].map { _1 * 2 }
+
+## id: it_param
+## area: syntax
+## title: it block parameter (Ruby 3.4)
+## expect: [2, 4]
+[1, 2].map { it * 2 }
+
+## id: hash_shorthand
+## area: syntax
+## title: hash shorthand {x:}
+## expect: {x: 1, y: 2}
+x = 1
+y = 2
+{x:, y:}
+
+## id: kwargs
+## area: syntax
+## title: required and optional keywords
+## expect: [3, 11]
+def rp_kw(a:, b: 2) = a + b
+[rp_kw(a: 1), rp_kw(b: 10, a: 1)]
+
+## id: kwargs_unknown
+## area: syntax
+## title: unknown keyword raises ArgumentError
+## expect: :argument_error
+## mrblib: uses
+def rp_kw2(a: 1) = a
+begin
+  rp_kw2(zz: 1)
+  :no_error
+rescue ArgumentError
+  :argument_error
+end
+
+## id: kwargs_forward
+## area: syntax
+## title: *args, **kw, &blk forwarding
+## expect: [[1], {k: 2}, 3]
+## mrblib: uses (Proxy#method_missing)
+def rp_fw_in(*a, **k, &b) = [a, k, b.call]
+def rp_fw(*a, **k, &b) = rp_fw_in(*a, **k, &b)
+rp_fw(1, k: 2) { 3 }
+
+## id: args_forward_dots
+## area: syntax
+## title: ... argument forwarding
+## expect: [[1], {k: 2}]
+def rp_dots_in(*a, **k) = [a, k]
+def rp_dots(...) = rp_dots_in(...)
+rp_dots(1, k: 2)
+
+## id: multi_assign
+## area: syntax
+## title: a, *b = list
+## expect: [1, [2, 3]]
+a, *b = 1, 2, 3
+[a, b]
+
+## id: multi_assign_index
+## area: syntax
+## title: a[0], a[1] = a[1], a[0]
+## expect: [2, 1]
+a = [1, 2]
+a[0], a[1] = a[1], a[0]
+a
+
+## id: heredoc_squiggly
+## area: syntax
+## title: <<~ heredoc
+## expect: "a\n  b\n"
+s = <<~TXT
+  a
+    b
+TXT
+s
+
+## id: string_interp
+## area: syntax
+## title: interpolation of non-strings
+## expect: "1-x-"
+"#{1}-#{:x}-#{nil}"
+
+## id: begin_end_while
+## area: syntax
+## title: begin ... end while (runs once)
+## expect: 1
+n = 0
+begin
+  n += 1
+end while false
+n
+
+## id: flip_case_when
+## area: syntax
+## title: case/when with ranges, classes, splat
+## expect: [:small, :str, :listed]
+list = [7, 8]
+r = []
+[1, "s", 8].each do |v|
+  r << case v
+       when 0..3 then :small
+       when String then :str
+       when *list then :listed
+       end
+end
+r
+
+## id: pattern_hash_bind
+## area: pattern
+## title: in {x:} binds x
+## expect: 1
+## mrblib: uses (deconstruct_keys)
+case {x: 1}
+in {x:} then x
+end
+
+## id: pattern_hash_literal
+## area: pattern
+## title: in {x: 3} with a literal value
+## expect: [:three, :other]
+r = []
+[{x: 3}, {x: 4}].each do |h|
+  r << case h
+       in {x: 3} then :three
+       else :other
+       end
+end
+r
+
+## id: pattern_hash_class
+## area: pattern
+## title: in {x: Integer}
+## expect: :int
+case {x: 1}
+in {x: Integer} then :int
+else :no
+end
+
+## id: pattern_hash_class_capture
+## area: pattern
+## title: in {x: Integer => a}
+## expect: 1
+case {x: 1}
+in {x: Integer => a} then a
+else :no
+end
+
+## id: pattern_hash_range
+## area: pattern
+## title: in {x: 0..2}
+## expect: :range
+case {x: 1}
+in {x: 0..2} then :range
+else :no
+end
+
+## id: pattern_hash_nested
+## area: pattern
+## title: in {a: {b:}}
+## expect: 5
+case {a: {b: 5}}
+in {a: {b:}} then b
+end
+
+## id: pattern_hash_rest
+## area: pattern
+## title: in {a:, **rest}
+## expect: [1, {b: 2}]
+case {a: 1, b: 2}
+in {a:, **rest} then [a, rest]
+end
+
+## id: pattern_second_clause
+## area: pattern
+## title: the second in clause after a missing key
+## expect: :yes
+case {a: 1}
+in {zz: 1} then :no
+in {a: 1} then :yes
+end
+
+## id: pattern_deconstruct_keys
+## area: pattern
+## title: an object with deconstruct_keys
+## expect: [3, 4]
+## mrblib: uses (Message, Attachment)
+o = Object.new
+def o.deconstruct_keys(keys) = {x: 3, y: 4}
+case o
+in {x:, y:} then [x, y]
+end
+
+## id: pattern_array_class
+## area: pattern
+## title: in [Integer => a, String]
+## expect: 1
+case [1, "s"]
+in [Integer => a, String] then a
+end
+
+## id: pattern_find
+## area: pattern
+## title: find pattern [*, 42 => x, *]
+## expect: 42
+case [1, 42, 3]
+in [*, 42 => x, *] then x
+end
+
+## id: pattern_guard_alt
+## area: pattern
+## title: guard and alternative
+## expect: [:odd, :one_or_three]
+r = []
+r << (case 5
+      in Integer => n if n % 2 == 1 then :odd
+      else :even
+      end)
+r << (case 3
+      in 1 | 3 then :one_or_three
+      else :no
+      end)
+r
+
+## id: pattern_pin_local
+## area: pattern
+## title: ^pin of a local in the same scope
+## expect: :pinned
+v = 5
+case 5
+in ^v then :pinned
+else :no
+end
+
+## id: pattern_pin_block
+## area: pattern
+## title: ^pin of an outer local inside a block
+## expect: [true]
+x = 1
+[[1]].map { |v| v in [^x] }
+
+## id: pattern_pin_expr
+## area: pattern
+## title: ^(expression)
+## expect: true
+[3] in [^(1 + 2)]
+
+## id: pattern_bind_in_block
+## area: pattern
+## title: binding an outer local inside a block
+## expect: 1
+def rp_bind_in_block
+  pre = nil
+  [{a: 1}].each do |m|
+    case m
+    in {a: pre} then nil
+    end
+  end
+  pre
+end
+rp_bind_in_block
+
+## id: pattern_rightward_in_block
+## area: pattern
+## title: x => [a] inside a block, a outer
+## expect: 1
+def rp_rightward
+  a = nil
+  [[1]].each { |x| x => [a] }
+  a
+end
+rp_rightward
+
+## id: pattern_block_local
+## area: pattern
+## title: binding a new name inside a block
+## expect: [2]
+[{a: 2}].map do |m|
+  case m
+  in {a: z} then z
+  end
+end
+
+## id: pattern_const_pattern
+## area: pattern
+## title: Const[...] checks the constant
+## expect: false
+[1, 2] in String[1, 2]
+
+## id: pattern_no_match
+## area: pattern
+## title: NoMatchingPatternError
+## expect: true
+begin
+  case 1
+  in String then nil
+  end
+rescue NoMatchingPatternError => e
+  e.is_a?(NoMatchingPatternError)
+end
+
+## id: pattern_one_line_in
+## area: pattern
+## title: expr in pattern (boolean)
+## expect: [true, false]
+[({x: 7} in {x: 7}), ({x: 7} in {x: 8})]
+
+## id: const_top_from_class
+## area: const
+## title: a top-level constant from a method of a class
+## expect: 5
+Object.const_set(:RP_TOP_CONST, 5) unless Object.const_defined?(:RP_TOP_CONST)
+class RpTopRef
+  def get = RP_TOP_CONST
+end
+RpTopRef.new.get
+
+## id: const_builtin_from_class
+## area: const
+## title: a built-in class (Hash) from a method of a class
+## expect: true
+class RpBuiltinRef
+  def get = Hash.new.is_a?(Hash)
+end
+RpBuiltinRef.new.get
+
+## id: const_lexical_nested
+## area: const
+## title: a constant of the enclosing module
+## expect: 1
+module RpOuter
+  K = 1
+  class Inner
+    def get = K
+  end
+end
+RpOuter::Inner.new.get
+
+## id: const_mixin_host
+## area: const
+## title: a constant of the including class, bare, from a module (NameError in CRuby)
+## expect: :name_error
+module RpMixin
+  def get = HOST_ONLY
+end
+class RpHost
+  HOST_ONLY = 1
+  include RpMixin
+end
+begin
+  RpHost.new.get
+rescue NameError
+  :name_error
+end
+
+## id: const_self_class
+## area: const
+## title: self.class::CONST from a module
+## expect: 1
+module RpMixin2
+  def get = self.class::HOST_ONLY
+end
+class RpHost2
+  HOST_ONLY = 1
+  include RpMixin2
+end
+RpHost2.new.get
+
+## id: const_get_path
+## area: const
+## title: Object.const_get("A::B")
+## expect: true
+Object.const_get("Float::INFINITY") == Float::INFINITY
+
+## id: const_get_module
+## area: const
+## title: Module#const_get(sym)
+## expect: 1
+## mrblib: uses (ROS.type_constant)
+module RpPath2
+  V = 1
+end
+RpPath2.const_get(:V)
+
+## id: module_name
+## area: object
+## title: Module#name
+## expect: ["String", "Comparable"]
+## mrblib: avoids (uses to_s)
+[String.name, Comparable.name]
+
+## id: module_to_s
+## area: object
+## title: Module#to_s and interpolation of a class
+## expect: ["String", "x Integer"]
+## mrblib: uses (error replies)
+[String.to_s, "x #{1.class}"]
+
+## id: struct
+## area: core
+## title: Struct.new
+## expect: 1
+## mrblib: avoids (plain classes)
+Struct.new(:a).new(1).a
+
+## id: data_define
+## area: core
+## title: Data.define
+## expect: 1
+## mrblib: avoids (plain classes)
+Data.define(:a).new(a: 1).a
+
+## id: set
+## area: core
+## title: Set without require
+## expect: 2
+Set.new([1, 1, 2]).size
+
+## id: comparable
+## area: object
+## title: include Comparable with <=>
+## expect: [true, 2]
+class RpVer
+  include Comparable
+  attr_reader :n
+  def initialize(n) = @n = n
+  def <=>(o) = n <=> o.n
+end
+[RpVer.new(1) < RpVer.new(2), [RpVer.new(3), RpVer.new(2)].min.n]
+
+## id: enumerable_custom
+## area: object
+## title: include Enumerable with each
+## expect: [[2], [2, 4, 6], true]
+class RpBag
+  include Enumerable
+  def each
+    yield 1
+    yield 2
+    yield 3
+  end
+end
+b = RpBag.new
+[b.select { |v| v % 2 == 0 }, b.map { |v| v * 2 }, b.include?(3)]
+
+## id: prepend
+## area: object
+## title: Module#prepend and super
+## expect: "[x]"
+module RpWrap
+  def show = "[#{super}]"
+end
+class RpShown
+  prepend RpWrap
+  def show = "x"
+end
+RpShown.new.show
+
+## id: singleton_class_block
+## area: object
+## title: class << self
+## expect: :cm
+class RpCm
+  class << self
+    def hi = :cm
+  end
+end
+RpCm.hi
+
+## id: protected_method
+## area: object
+## title: protected method callable from same class
+## expect: [true, :no_method_error]
+class RpProt
+  def initialize(v) = @v = v
+  def same?(o) = v == o.v
+  protected
+  def v = @v
+end
+r = [RpProt.new(1).same?(RpProt.new(1))]
+begin
+  RpProt.new(1).v
+  r << :called
+rescue NoMethodError
+  r << :no_method_error
+end
+r
+
+## id: equal_eql_hash
+## area: object
+## title: custom eql?/hash as Hash keys
+## expect: :found
+class RpKey
+  attr_reader :k
+  def initialize(k) = @k = k
+  def eql?(o) = o.is_a?(RpKey) && k == o.k
+  def hash = k.hash
+end
+{RpKey.new(1) => :found}[RpKey.new(1)]
+
+## id: object_id_equal
+## area: object
+## title: equal? and object_id
+## expect: [true, false, true]
+a = "x".dup
+b = "x".dup
+[a.equal?(a), a.equal?(b), a.object_id == a.object_id]
+
+## id: freeze
+## area: object
+## title: freeze and FrozenError
+## expect: [true, :frozen_error]
+a = [1].freeze
+r = [a.frozen?]
+begin
+  a << 2
+  r << :mutated
+rescue FrozenError
+  r << :frozen_error
+end
+r
+
+## id: method_missing
+## area: meta
+## title: method_missing with args and kwargs
+## expect: [:hi, [1], {k: 2}]
+## mrblib: uses (Proxy)
+class RpMm
+  def method_missing(name, *args, **kw) = [name, args, kw]
+  def respond_to_missing?(name, priv = false) = true
+end
+RpMm.new.hi(1, k: 2)
+
+## id: respond_to_missing
+## area: meta
+## title: respond_to? consults respond_to_missing?
+## expect: [true, false]
+## mrblib: uses (Proxy defines respond_to? in Ruby)
+class RpRtm
+  def respond_to_missing?(name, priv = false) = name == :yes
+end
+[RpRtm.new.respond_to?(:yes), RpRtm.new.respond_to?(:no)]
+
+## id: define_method
+## area: meta
+## title: define_method (public) with args
+## expect: 5
+class RpDm; end
+RpDm.define_method(:add2) { |a, b| a + b }
+RpDm.new.add2(2, 3)
+
+## id: send_public_send
+## area: meta
+## title: send reaches private, public_send does not
+## expect: [:secret, :no_method_error]
+## mrblib: uses (__send__)
+class RpPriv
+  private
+  def s = :secret
+end
+r = [RpPriv.new.send(:s)]
+begin
+  RpPriv.new.public_send(:s)
+  r << :called
+rescue NoMethodError
+  r << :no_method_error
+end
+r
+
+## id: instance_variable_get_set
+## area: meta
+## title: instance_variable_get / set
+## expect: 7
+o = Object.new
+o.instance_variable_set(:@v, 7)
+o.instance_variable_get(:@v)
+
+## id: method_object
+## area: meta
+## title: method(:x).call and arity
+## expect: [3, 2]
+def rp_m2(a, b) = a + b
+m = method(:rp_m2)
+[m.call(1, 2), m.arity]
+
+## id: instance_methods_false
+## area: meta
+## title: public_instance_methods(false)
+## expect: [:a]
+## mrblib: uses (meta replies)
+class RpIm
+  def a = 1
+  private
+  def b = 2
+end
+RpIm.public_instance_methods(false)
+
+## id: class_eval_string
+## area: meta
+## title: class_eval with a string
+## expect: 8
+class RpCe; end
+RpCe.class_eval("def eight = 8")
+RpCe.new.eight
+
+## id: instance_exec
+## area: meta
+## title: instance_exec with an argument
+## expect: 12
+o = Object.new
+o.instance_variable_set(:@v, 10)
+o.instance_exec(2) { |d| @v + d }
+
+## id: kernel_eval
+## area: meta
+## title: eval of a string
+## expect: 3
+## mrblib: uses (ROS types on mruby)
+eval("1 + 2")
+
+## id: lambda_strict
+## area: proc
+## title: a lambda checks its arity
+## expect: :argument_error
+begin
+  ->(a, b) { a }.call(1)
+  :called
+rescue ArgumentError
+  :argument_error
+end
+
+## id: proc_new_lenient
+## area: proc
+## title: Proc.new fills missing args with nil
+## expect: [1, nil]
+Proc.new { |a, b| [a, b] }.call(1)
+
+## id: kernel_proc
+## area: proc
+## title: Kernel#proc
+## expect: [1, nil]
+proc { |a, b| [a, b] }.call(1)
+
+## id: proc_auto_splat
+## area: proc
+## title: proc auto-splats an array argument
+## expect: [1, 2]
+Proc.new { |a, b| [a, b] }.call([1, 2])
+
+## id: proc_return
+## area: proc
+## title: return inside a proc leaves the method
+## expect: :from_proc
+def rp_proc_ret
+  [1].each { return :from_proc }
+  :after
+end
+rp_proc_ret
+
+## id: block_given
+## area: proc
+## title: block_given? and yield
+## expect: [:none, 3]
+def rp_bg = block_given? ? yield(3) : :none
+[rp_bg, rp_bg { |v| v }]
+
+## id: stored_block_capture
+## area: proc
+## title: a stored block keeps its locals
+## expect: 15
+## mrblib: uses (subscribe/every blocks)
+class RpStore
+  def on(&b) = @b = b
+  def fire(v) = @b.call(v)
+end
+s = RpStore.new
+k = 10
+s.on { |v| v + k }
+s.fire(5)
+
+## id: symbol_to_proc
+## area: proc
+## title: &:sym
+## expect: ["1", "2"]
+[1, 2].map(&:to_s)
+
+## id: curry
+## area: proc
+## title: Proc#curry
+## expect: 3
+->(a, b) { a + b }.curry[1][2]
+
+## id: exception_custom
+## area: exception
+## title: custom exception class and message
+## expect: [true, "boom"]
+## mrblib: uses (Asterism::RemoteError etc.)
+class RpError < StandardError; end
+begin
+  raise RpError, "boom"
+rescue => e
+  [e.class == RpError, e.message]
+end
+
+## id: exception_retry_ensure
+## area: exception
+## title: retry and ensure
+## expect: [2, :ensured]
+n = 0
+log = nil
+begin
+  n += 1
+  raise "again" if n < 2
+rescue
+  retry
+ensure
+  log = :ensured
+end
+[n, log]
+
+## id: exception_backtrace
+## area: exception
+## title: backtrace is an Array
+## expect: true
+begin
+  raise "x"
+rescue => e
+  e.backtrace.is_a?(Array)
+end
+
+## id: exception_cause
+## area: exception
+## title: Exception#cause
+## expect: "inner"
+begin
+  begin
+    raise "inner"
+  rescue
+    raise "outer"
+  end
+rescue => e
+  e.cause.message
+end
+
+## id: catch_throw
+## area: exception
+## title: catch / throw
+## expect: 5
+catch(:done) { throw :done, 5 }
+
+## id: rescue_modifier
+## area: exception
+## title: rescue modifier
+## expect: :rescued
+(raise "x" rescue :rescued)
+
+## id: rescue_modifier_bang
+## area: exception
+## title: $! in a rescue modifier
+## expect: "x"
+(raise "x" rescue $!).message
+
+## id: string_literal_mutable
+## area: string
+## title: appending to a string literal
+## expect: "ab"
+## mrblib: avoids (uses "".dup)
+s = "a"
+s << "b"
+s
+
+## id: string_literal_frozen_p
+## area: string
+## title: "".frozen?
+## expect: false
+"".frozen?
+
+## id: string_literal_magic_frozen
+## area: string
+## title: frozen_string_literal magic comment
+## expect: true
+# frozen_string_literal: true
+"a".frozen?
+
+## id: string_dup_append
+## area: string
+## title: "".dup << "a"
+## expect: "a"
+## mrblib: uses
+"".dup << "a"
+
+## id: string_length_utf8
+## area: string
+## title: length counts characters, bytesize bytes
+## expect: [1, 3]
+["あ".length, "あ".bytesize]
+
+## id: string_byte_ops
+## area: string
+## title: getbyte / setbyte / byteslice
+## expect: [97, "b", "zb"]
+## mrblib: uses
+s = "ab".dup
+r = [s.getbyte(0), s.byteslice(1, 1)]
+s.setbyte(0, 122)
+r << s
+r
+
+## id: string_b
+## area: string
+## title: String#b and encoding
+## expect: [2, "ASCII-8BIT"]
+s = "ȝ".b
+[s.length, s.encoding.to_s]
+
+## id: string_force_encoding
+## area: string
+## title: force_encoding
+## expect: "UTF-8"
+## mrblib: guards (respond_to?)
+"x".dup.force_encoding("UTF-8").encoding.to_s
+
+## id: string_unpack
+## area: string
+## title: String#unpack / unpack1
+## expect: [[1, 2], 258]
+## mrblib: guards (respond_to?)
+["\x01\x02".unpack("C*"), "\x01\x02".unpack1("n")]
+
+## id: array_pack
+## area: collection
+## title: Array#pack
+## expect: "\x01\x02"
+## mrblib: guards (respond_to?)
+[1, 2].pack("C*")
+
+## id: pack_float
+## area: collection
+## title: pack("e") float32 little-endian
+## expect: [0, 0, 192, 63]
+## mrblib: guards (CDR float)
+[1.5].pack("e").bytes
+
+## id: string_format
+## area: string
+## title: format / String#%
+## expect: ["003.1", "0x0a", "a-1"]
+[format("%05.1f", 3.14159), "0x%02x" % 10, "%s-%d" % ["a", 1]]
+
+## id: string_methods
+## area: string
+## title: start_with?, delete_prefix, center, tr
+## expect: [true, "bc", "-a-", "xbc"]
+["abc".start_with?("ab"), "abc".delete_prefix("a"), "a".center(3, "-"), "abc".tr("a", "x")]
+
+## id: string_split_join
+## area: string
+## title: split with limit, join
+## expect: [["a", "b,c"], "a/b"]
+["a,b,c".split(",", 2), ["a", "b"].join("/")]
+
+## id: string_sub_string
+## area: string
+## title: sub / gsub with a String pattern
+## expect: ["xbca", "xbcx"]
+["abca".sub("a", "x"), "abca".gsub("a", "x")]
+
+## id: string_scan_regexp
+## area: string
+## title: scan with a regexp
+## expect: ["1", "22"]
+"a1b22".scan(/\d+/)
+
+## id: string_inspect_escape
+## area: string
+## title: inspect of control and non-ASCII
+## expect: "\"a\\n\\u0001\""
+"a\n\u0001".inspect
+
+## id: symbol_string
+## area: string
+## title: to_sym / to_s / inspect of symbols
+## expect: [:ab, "ab", ":ab", ":\"a b\""]
+["ab".to_sym, :ab.to_s, :ab.inspect, :"a b".inspect]
+
+## id: chr_ord
+## area: string
+## title: Integer#chr and String#ord
+## expect: ["A", 65, 1]
+[65.chr, "A".ord, 200.chr.bytesize]
+
+## id: integer_division
+## area: numeric
+## title: floor division and modulo of negatives
+## expect: [-4, 1, [-4, 1]]
+[-7 / 2, -7 % 2, -7.divmod(2)]
+
+## id: integer_64bit
+## area: numeric
+## title: 1 << 40 and 2**62 (64-bit Integer)
+## expect: [1099511627776, 4611686018427387904]
+[1 << 40, 2**62]
+
+## id: integer_bignum
+## area: numeric
+## title: 2**64 (arbitrary precision)
+## expect: 18446744073709551616
+2**64
+
+## id: nil_to_i
+## area: numeric
+## title: nil.to_i
+## expect: 0
+## mrblib: avoids
+nil.to_i
+
+## id: nil_to_a
+## area: numeric
+## title: nil.to_a
+## expect: []
+nil.to_a
+
+## id: nil_to_s
+## area: numeric
+## title: nil.to_s
+## expect: ""
+nil.to_s
+
+## id: kernel_integer_float
+## area: numeric
+## title: Integer("12") / Float("1.5") / "12x".to_i
+## expect: [12, 1.5, 12, :argument_error]
+r = [Integer("12"), Float("1.5"), "12x".to_i]
+begin
+  Integer("12x")
+  r << :parsed
+rescue ArgumentError
+  r << :argument_error
+end
+r
+
+## id: float_to_s
+## area: numeric
+## title: Float#to_s formatting
+## expect: ["0.30000000000000004", "1.0e+20", "1.5", "100.0"]
+[(0.1 + 0.2).to_s, 1e20.to_s, 1.5.to_s, 100.0.to_s]
+
+## id: float_round
+## area: numeric
+## title: round(2), floor, ceil, truncate
+## expect: [3.14, 3, -3, 3]
+[3.14159.round(2), 3.7.floor, -3.7.ceil, 3.7.truncate]
+
+## id: float_special
+## area: numeric
+## title: Infinity, NaN, -0.0
+## expect: [true, true, true]
+[Float::INFINITY > 1e308, (0.0 / 0.0).nan?, (1.0 / -0.0) < 0]
+
+## id: math_functions
+## area: numeric
+## title: Math.sqrt, ldexp, frexp
+## expect: [3.0, 12.0, [0.75, 2]]
+## mrblib: guards (CDR float)
+[Math.sqrt(9), Math.ldexp(0.75, 4), Math.frexp(3.0)]
+
+## id: rational
+## area: numeric
+## title: Rational literal 1r / 3
+## expect: "1/3"
+(1r / 3).to_s
+
+## id: complex
+## area: numeric
+## title: Complex literal 1 + 2i
+## expect: "1+2i"
+(1 + 2i).to_s
+
+## id: integer_digits
+## area: numeric
+## title: Integer#digits
+## expect: [3, 2, 1]
+123.digits
+
+## id: integer_pow_mod
+## area: numeric
+## title: Integer#pow(b, mod)
+## expect: 4
+3.pow(4, 7)
+
+## id: integer_bit_length
+## area: numeric
+## title: Integer#bit_length
+## expect: 8
+255.bit_length
+
+## id: integer_clamp
+## area: numeric
+## title: Comparable#clamp on Integer
+## expect: 10
+15.clamp(0, 10)
+
+## id: hash_insertion_order
+## area: collection
+## title: Hash keeps insertion order
+## expect: [:b, :a]
+{b: 2, a: 1}.keys
+
+## id: hash_transform_values
+## area: collection
+## title: Hash#transform_values
+## expect: {b: 4, a: 2}
+{b: 2, a: 1}.transform_values { |v| v * 2 }
+
+## id: hash_dig
+## area: collection
+## title: Hash#dig
+## expect: 3
+{x: {y: 3}}.dig(:x, :y)
+
+## id: hash_to_a
+## area: collection
+## title: Hash#to_a
+## expect: [[:b, 2], [:a, 1]]
+{b: 2, a: 1}.to_a
+
+## id: hash_default_proc
+## area: collection
+## title: Hash.new with a block
+## expect: {k: [1]}
+h = Hash.new { |hh, k| hh[k] = [] }
+h[:k] << 1
+h
+
+## id: hash_compare_by_identity
+## area: collection
+## title: compare_by_identity
+## expect: 2
+h = {}.compare_by_identity
+h["a".dup] = 1
+h["a".dup] = 2
+h.size
+
+## id: hash_any
+## area: collection
+## title: Hash#any? with a block
+## expect: true
+{a: 1, b: 2}.any? { |k, v| v > 1 }
+
+## id: hash_count
+## area: collection
+## title: Hash#count with a block
+## expect: 1
+{a: 1, b: 2}.count { |k, v| v > 1 }
+
+## id: hash_min_by
+## area: collection
+## title: Hash#min_by
+## expect: [:a, 1]
+{a: 1, b: 2}.min_by { |k, v| v }
+
+## id: hash_sum
+## area: collection
+## title: Hash#sum with a block
+## expect: 3
+{a: 1, b: 2}.sum { |k, v| v }
+
+## id: array_each_slice
+## area: collection
+## title: each_slice
+## expect: [[1, 2], [3]]
+[1, 2, 3].each_slice(2).to_a
+
+## id: array_each_cons
+## area: collection
+## title: each_cons
+## expect: [[1, 2], [2, 3]]
+[1, 2, 3].each_cons(2).to_a
+
+## id: array_tally
+## area: collection
+## title: tally
+## expect: {1 => 2, 2 => 1}
+[1, 1, 2].tally
+
+## id: array_filter_map
+## area: collection
+## title: filter_map
+## expect: [4, 6]
+[1, 2, 3].filter_map { |v| v * 2 if v > 1 }
+
+## id: array_sum
+## area: collection
+## title: Array#sum
+## expect: 6
+[1, 2, 3].sum
+
+## id: array_minmax
+## area: collection
+## title: minmax
+## expect: [1, 3]
+[2, 1, 3].minmax
+
+## id: array_zip
+## area: collection
+## title: zip
+## expect: [[1, :a], [2, :b]]
+[1, 2].zip([:a, :b])
+
+## id: array_flat_map
+## area: collection
+## title: flat_map
+## expect: [1, 1, 2, 2]
+[1, 2].flat_map { |v| [v, v] }
+
+## id: array_group_by
+## area: collection
+## title: group_by
+## expect: {false => [1, 3], true => [2]}
+[1, 2, 3].group_by { |v| v % 2 == 0 }
+
+## id: array_partition
+## area: collection
+## title: partition
+## expect: [[2], [1, 3]]
+[1, 2, 3].partition { |v| v % 2 == 0 }
+
+## id: array_sort_by
+## area: collection
+## title: sort_by
+## expect: [3, 2, 1]
+[1, 2, 3].sort_by { |v| -v }
+
+## id: array_uniq
+## area: collection
+## title: uniq
+## expect: [1, 2]
+[1, 1, 2].uniq
+
+## id: array_rotate
+## area: collection
+## title: rotate
+## expect: [2, 3, 1]
+[1, 2, 3].rotate
+
+## id: array_include_index
+## area: collection
+## title: include? and index
+## expect: [true, 1]
+[[1, 2].include?(2), [1, 2].index(2)]
+
+## id: array_bsearch
+## area: collection
+## title: bsearch
+## expect: 3
+[1, 3, 5].bsearch { |v| v >= 2 }
+
+## id: array_dig
+## area: collection
+## title: Array#dig
+## expect: 2
+[[1, 2]].dig(0, 1)
+
+## id: array_cycle
+## area: collection
+## title: cycle.first(n)
+## expect: [1, 2, 1]
+[1, 2].cycle.first(3)
+
+## id: array_product
+## area: collection
+## title: product
+## expect: [[1, 3], [2, 3]]
+[1, 2].product([3])
+
+## id: range_step
+## area: collection
+## title: Integer#step(to, by).to_a
+## expect: [0, 2, 4]
+0.step(4, 2).to_a
+
+## id: range_endless
+## area: collection
+## title: endless range (5..).first(2)
+## expect: [5, 6]
+(5..).first(2)
+
+## id: range_sum
+## area: collection
+## title: Range#sum
+## expect: 10
+(1..4).sum
+
+## id: range_include
+## area: collection
+## title: Range#include?
+## expect: true
+(1..10).include?(5)
+
+## id: enumerator_next
+## area: core
+## title: external enumerator next / StopIteration
+## expect: [1, 2, :stop]
+e = [1, 2].each
+r = [e.next, e.next]
+begin
+  e.next
+rescue StopIteration
+  r << :stop
+end
+r
+
+## id: enumerator_lazy
+## area: core
+## title: lazy.map.select.first
+## expect: [4, 16]
+(1..Float::INFINITY).lazy.map { |v| v * v }.select(&:even?).first(2)
+
+## id: enumerator_new
+## area: core
+## title: Enumerator.new with a yielder
+## expect: [1, 2]
+Enumerator.new { |y| y << 1; y << 2 }.to_a
+
+## id: fiber
+## area: core
+## title: Fiber.new / resume / yield
+## expect: [1, 2]
+f = Fiber.new do
+  Fiber.yield 1
+  2
+end
+[f.resume, f.resume]
+
+## id: thread
+## area: core
+## title: Thread.new.value
+## expect: 1
+Thread.new { 1 }.value
+
+## id: mutex
+## area: core
+## title: Mutex#synchronize
+## expect: 1
+Mutex.new.synchronize { 1 }
+
+## id: object_space_gc
+## area: core
+## title: GC.start and ObjectSpace.count_objects
+## expect: [true, true]
+GC.start
+[true, ObjectSpace.count_objects.is_a?(Hash)]
+
+## id: time_now
+## area: core
+## title: Time.now and Time#to_f
+## expect: true
+## mrblib: avoids (Machine / Process clock)
+Time.now.to_f > 0
+
+## id: process_clock
+## area: core
+## title: Process.clock_gettime(MONOTONIC)
+## expect: true
+## mrblib: guards (CRuby clock, Machine on boards)
+Process.clock_gettime(Process::CLOCK_MONOTONIC) > 0
+
+## id: kernel_rand
+## area: core
+## title: rand(10) and Random.new(1)
+## expect: [true, true]
+[rand(10).between?(0, 9), Random.new(1).rand(10).between?(0, 9)]
+
+## id: object_then
+## area: core
+## title: then
+## expect: 2
+1.then { |v| v + 1 }
+
+## id: object_tap
+## area: core
+## title: tap
+## expect: 1
+1.tap { |v| v + 1 }
+
+## id: object_itself
+## area: core
+## title: itself
+## expect: 1
+1.itself
+
+## id: method_name
+## area: core
+## title: __method__
+## expect: :rp_name
+def rp_name = __method__
+rp_name
+
+## id: recursion_1000
+## area: runtime
+## title: Ruby recursion 1000 deep
+## expect: 1000
+def rp_rec(n) = n == 0 ? 0 : 1 + rp_rec(n - 1)
+rp_rec(1000)
+
+## id: recursion_via_block_100
+## area: runtime
+## title: recursion through a block called from C, 100 deep
+## expect: 100
+def rp_recb(n) = n == 0 ? 0 : [n].map { |k| 1 + rp_recb(k - 1) }[0]
+rp_recb(100)
+
+## id: recursion_limit
+## area: runtime
+## title: Ruby recursion depth before SystemStackError (capped at 100000)
+## kind: measure
+## expect: 0
+@rp_depth = 0
+def rp_deep2(n)
+  @rp_depth = n
+  n >= 100000 ? n : rp_deep2(n + 1) + 0
+end
+begin
+  rp_deep2(0)
+rescue SystemStackError
+end
+@rp_depth
+
+## id: measure_while
+## area: runtime
+## title: one while iteration (us)
+## kind: measure
+## expect: 0
+rp_per_op_us do |count|
+  n = 0
+  while n < count
+    n += 1
+  end
+end
+
+## id: measure_method_call
+## area: runtime
+## title: one method call (us)
+## kind: measure
+## expect: 0
+def rp_noop(v) = v
+rp_per_op_us do |count|
+  n = 0
+  while n < count
+    rp_noop(n)
+    n += 1
+  end
+end
+
+## id: measure_block_call
+## area: runtime
+## title: one call with a literal block that yields once (us)
+## kind: measure
+## expect: 0
+## mrblib: avoids blocks in loops (while)
+def rp_yield1 = yield
+rp_per_op_us do |count|
+  n = 0
+  while n < count
+    rp_yield1 { n }
+    n += 1
+  end
+end
+
+## id: measure_each
+## area: runtime
+## title: one Array#each iteration (us)
+## kind: measure
+## expect: 0
+a = Array.new(1000, 1)
+s = 0
+rp_per_op_us do |count|
+  n = 0
+  while n < count
+    a.each { |v| s += v }
+    n += 1000
+  end
+end

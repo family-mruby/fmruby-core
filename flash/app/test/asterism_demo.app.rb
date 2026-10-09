@@ -281,7 +281,7 @@ class AsterismDemoApp < FmrbApp
     when 114 # r
       try("meta") do
         px = peer("info").asterism_refresh
-        "secret?=#{px.respond_to?(:secret)} status?=#{px.respond_to?(:status)} #{px.methods.inspect}"
+        "secret?=#{px.respond_to?(:secret)} status?=#{px.respond_to?(:status)} #{px.remote_methods.inspect}"
       end
     end
   end
