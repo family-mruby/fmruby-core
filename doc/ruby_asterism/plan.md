@@ -376,7 +376,7 @@ mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0
 | 段階 | 内容 |
 |---|---|
 | S1 (完了 2026-10-10、report/s1.md) | ROS 2 経由: MuJoCo を ros2_control とつなぐ部品 (mujoco_ros2_control など、Jazzy で使えるものを調べる) で 2 輪の台車を動かす。ROS 2 の docker の像に足す。Asterism の側は R1-R3 の ROS 2 の層のまま、Tab5 / CRuby から `/cmd_vel` を送り、`/joint_states`・`/odom` を受ける。asterism-console のグラフ・線グラフ・記録 (V4) で見る |
-| S2 | Asterism で直接: MuJoCo を動かすプロセスが Asterism のオブジェクト (`robot.wheel(0).speed=`、`robot.sensors.imu` など) を公開し、機体や CRuby が網から呼ぶ。MuJoCo の C の API を CRuby から FFI で直接呼ぶ形も試す (公式の Ruby の部品は無い。「Ruby で物理シミュレータを回す」は RubyKaigi の切り口 1・3 とも合う) |
+| S2 (完了 2026-10-10、report/s2.md) | Asterism で直接: CRuby が MuJoCo 3.15.0 の C の API を標準の Fiddle で直接呼んで物理を回し (構造体は固定した版のヘッダから求めた位置で読む、版が違えば止まる)、S1 の台車をノード `mujoco`・アプリ `rover` のオブジェクト (`drive.cmd/stop`、`state.pose/odom/imu/speed/all`、`world.reset/objects/info`) として公開する。CRuby・sim・P4-Nano・asterism-console から操縦した。実時間 500 歩/秒で 1 コアの 2-5 %、オドメトリの誤差 0.2 %・0.3 度。置き場所は asterism の `examples/mujoco/` (gem には入れない)。複数の操縦者は**最後の命令が勝つ** (止まっている側は送らない)。握っている側だけ・送り手ごとの優先の案は report/s2.md にあり、要れば決める。カメラは無い (S3 は S1 の ROS 2 の台車を使う) |
 | S3 | 見せ場: MuJoCo の台車を Tab5 で操縦し、台車のカメラ・センサの値を Tab5 の画面と asterism-console に出し、走りを MCAP に記録して巻き戻す。機体・CRuby・ROS 2・シミュレータが 1 つの網でつながる様子を見せる |
 
 - ほかのシミュレータ (参考): Gazebo (ROS 2 の標準、重い)、Isaac Sim (NVIDIA の GPU 前提、とても重い)、Webots (軽め)。最初の 1 台は、軽くて速く、Python からも C からも扱いやすい MuJoCo にする。
