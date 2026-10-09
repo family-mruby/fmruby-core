@@ -377,7 +377,7 @@ mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0
 |---|---|
 | S1 (完了 2026-10-10、report/s1.md) | ROS 2 経由: MuJoCo を ros2_control とつなぐ部品 (mujoco_ros2_control など、Jazzy で使えるものを調べる) で 2 輪の台車を動かす。ROS 2 の docker の像に足す。Asterism の側は R1-R3 の ROS 2 の層のまま、Tab5 / CRuby から `/cmd_vel` を送り、`/joint_states`・`/odom` を受ける。asterism-console のグラフ・線グラフ・記録 (V4) で見る |
 | S2 (完了 2026-10-10、report/s2.md) | Asterism で直接: CRuby が MuJoCo 3.15.0 の C の API を標準の Fiddle で直接呼んで物理を回し (構造体は固定した版のヘッダから求めた位置で読む、版が違えば止まる)、S1 の台車をノード `mujoco`・アプリ `rover` のオブジェクト (`drive.cmd/stop`、`state.pose/odom/imu/speed/all`、`world.reset/objects/info`) として公開する。CRuby・sim・P4-Nano・asterism-console から操縦した。実時間 500 歩/秒で 1 コアの 2-5 %、オドメトリの誤差 0.2 %・0.3 度。置き場所は asterism の `examples/mujoco/` (gem には入れない)。複数の操縦者は**最後の命令が勝つ** (止まっている側は送らない)。握っている側だけ・送り手ごとの優先の案は report/s2.md にあり、要れば決める。カメラは無い (S3 は S1 の ROS 2 の台車を使う) |
-| S3 | 見せ場: MuJoCo の台車を Tab5 で操縦し、台車のカメラ・センサの値を Tab5 の画面と asterism-console に出し、走りを MCAP に記録して巻き戻す。機体・CRuby・ROS 2・シミュレータが 1 つの網でつながる様子を見せる |
+| S3 (完了 2026-10-10、report/s3.md) | 見せ場: P4-Nano から S1 の ROS 2 の台車を操縦し (`flash/app/test/rover_cam.app.rb`)、台車のカメラの JPEG を機体の画面に出す。JPEG は今ある `create_image` で出せた (P4 の表示側が先頭のバイトで JPEG と見て SoC の回路で解く。`/tmp` の RAM の上に 1 枚書いて読む)。1 枚の描画 9-12 ms、約 4.95 Hz、送り手から描画まで約 100 ms、内蔵 RAM は S1 と同じ。sim は PNG しか読まないので画像の代わりに大きさと頻度を出す。asterism-console でグラフ・画像・odom の線グラフが同時に動き、記録と巻き戻しも合う。手順書は親の `docker/mujoco/README.md` の S3 の節。Tab5 での確かめはユーザ |
 
 - ほかのシミュレータ (参考): Gazebo (ROS 2 の標準、重い)、Isaac Sim (NVIDIA の GPU 前提、とても重い)、Webots (軽め)。最初の 1 台は、軽くて速く、Python からも C からも扱いやすい MuJoCo にする。
 - 決定 (2026-10-09 ユーザ):
