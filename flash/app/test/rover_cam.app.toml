@@ -1,0 +1,7 @@
+app_screen_name = "Rover Camera"
+app_screen_name_ja = "台車のカメラ"
+default_window_mode = "window"
+default_window_width = 410
+default_window_height = 152
+default_window_pos_x = 8
+default_window_pos_y = 30
