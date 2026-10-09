@@ -25,7 +25,8 @@ class Ros2ServiceApp < FmrbApp
   LOCATOR_FILE = "/home/zenoh_echo.txt"
   NODE_FILE = "/home/asterism_node.txt"
   PC_SERVICE = "/add_two_ints"
-  CALL_TIMEOUT_MS = 3000
+  CALL_TIMEOUT = 3.0      # seconds
+  CALL_TIMEOUT_MS = 3000  # the same, for call_async (both units work)
 
   def first_line(path)
     text = File.open(path, "r") { |f| f.read }
@@ -107,9 +108,9 @@ class Ros2ServiceApp < FmrbApp
     a = @calls
     b = @calls * 10
     t0 = Machine.board_millis
-    res = @cli.call(a: a, b: b, timeout_ms: CALL_TIMEOUT_MS)
+    res = @cli.call(a: a, b: b, timeout: CALL_TIMEOUT)
     note("call #{a}+#{b} = #{res.sum} (#{Machine.board_millis - t0} ms)")
-  rescue Asterism::ROS::Timeout => e
+  rescue Asterism::ROS::TimeoutError => e
     note("call: #{e.message} (#{Machine.board_millis - t0} ms)")
   end
 
@@ -118,9 +119,9 @@ class Ros2ServiceApp < FmrbApp
     @calls += 1
     t0 = Machine.board_millis
     res = @node.call(PC_SERVICE, "example_interfaces/srv/AddTwoInts",
-                     a: @calls, b: -1, timeout_ms: CALL_TIMEOUT_MS)
+                     a: @calls, b: -1, timeout: CALL_TIMEOUT)
     note("node.call #{@calls}-1 = #{res.sum} (#{Machine.board_millis - t0} ms)")
-  rescue Asterism::ROS::Timeout => e
+  rescue Asterism::ROS::TimeoutError => e
     note("node.call: #{e.message} (#{Machine.board_millis - t0} ms)")
   end
 
@@ -132,7 +133,7 @@ class Ros2ServiceApp < FmrbApp
     end
     @calls += 1
     @pending_a = @calls
-    @pending = @cli.call_async(a: @calls, b: 100, timeout_ms: CALL_TIMEOUT_MS)
+    @pending = @cli.call_async(request: { a: @calls, b: 100 }, timeout_ms: CALL_TIMEOUT_MS)
   end
 
   def check_pending
@@ -141,7 +142,7 @@ class Ros2ServiceApp < FmrbApp
     @pending = nil
     begin
       note("async #{@pending_a}+100 = #{c.value.sum} (#{c.took_ms} ms)")
-    rescue Asterism::ROS::Timeout => e
+    rescue Asterism::ROS::TimeoutError => e
       note("async: #{e.message} (#{c.took_ms} ms)")
     end
   end

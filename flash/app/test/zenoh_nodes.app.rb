@@ -140,12 +140,12 @@ class ZenohNodesApp < FmrbApp
     if now >= @next_info
       @next_info = now + INFO_EVERY_MS
       @nodes.each_key do |name|
-        @gets << [name, @session.get("fmrb/node/#{name}/info", 2000), now]
+        @gets << [name, @session.get("fmrb/node/#{name}/info", timeout: 2.0), now]
       end
     end
     if @silent.nil? && now >= @next_silent && !@nodes.empty?
       name = @nodes.keys[0]
-      @silent = [name, @session.get("fmrb/node/#{name}/silent", SILENT_LIMIT_MS), now]
+      @silent = [name, @session.get("fmrb/node/#{name}/silent", timeout_ms: SILENT_LIMIT_MS), now]
     end
   end
 
@@ -246,6 +246,9 @@ class ZenohNodesApp < FmrbApp
     now = Machine.board_millis
     return if now < @next_log
     @next_log = now + 10000
+    # peers is the old name of connection_count, kept here on purpose: this
+    # app checks that a deprecated call warns once (asterism 0.4.0) however
+    # often it runs.
     Log.info("zenoh_nodes: nodes=#{@nodes.size} gets=#{@gets.size} held=#{@held.size} " \
              "beat=#{@beat} slow_polls=#{@slow_polls} peers=#{@session ? @session.peers : 0} " \
              "pool_used=#{FmrbApp.pool_used} live=#{GC.stat[:live]}")

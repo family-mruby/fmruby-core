@@ -82,7 +82,7 @@ class Ros2TalkerApp < FmrbApp
       # The generated std_msgs/msg/String (/usr/share/asterism/msgs), loaded here.
       str = Asterism::ROS.require_type("std_msgs/msg/String")
       @pub = @node.publisher("/chatter", str)
-      @node.every(PUBLISH_EVERY_MS / 1000) { hello }
+      @node.every(ms: PUBLISH_EVERY_MS) { hello }
       @node.subscribe("/chatter_back", str) { |msg, info| back(msg, info) }
       @node.subscribe("/cmd_vel_in", "geometry_msgs/msg/Twist") { |msg, _info| twist(msg) }
       @state = "connected"

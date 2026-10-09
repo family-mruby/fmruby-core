@@ -154,7 +154,9 @@ task :setup do
   mkdir_p "#{mrbgem_path}/picoruby-asterism-zenoh"
   # LICENSE-APACHE and NOTICE: the gem's zenoh-pico derived files and
   # zenoh-pico itself are used under Apache-2.0 (THIRD_PARTY_LICENSES.md).
-  %w[mrbgem.rake include src ports README.md LICENSE LICENSE-APACHE NOTICE].each do |entry|
+  # mrblib/: the gem's Ruby half (0.4.0 on: keywords, deprecations).
+  %w[mrbgem.rake include src ports mrblib README.md LICENSE LICENSE-APACHE NOTICE].each do |entry|
+    next if entry == "mrblib" && !File.directory?("#{zz_dir}/mrblib")
     sh "cp -rf #{zz_dir}/#{entry} #{mrbgem_path}/picoruby-asterism-zenoh/"
   end
   zp_copy = "#{mrbgem_path}/picoruby-asterism-zenoh/vendor/zenoh-pico"
