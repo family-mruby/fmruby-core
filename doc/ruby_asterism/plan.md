@@ -423,7 +423,7 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
 | 段階 | 内容 |
 |---|---|
 | B1 (完了 2026-10-11、report/b1.md、手順は browser.md) | 手元の http の版で動かすところまで。zenoh-pico を Emscripten で入れ、WebSocket はページの主スレッドの JS が持ち、タスクの側とは共有メモリの輪 2 本で受け渡す (上流の ASYNCIFY 前提の層は使わない。見回り 1 回 0.014 ms)。ルータは `/home/zenoh_echo.txt` → 設定 `zenoh_router` (既定 `ws/localhost:7449`) → URL の `?zenoh=`。ノード名は既定で `wasm` (sim の `linux` と分けた)。`asterism_demo` が console の図に ▣ で出て呼べる、`rover_cam` で台車を操縦しカメラも出る (JPEG はブラウザ版の表示がそのまま読む)。wasm +168 KB・data +147 KB。zenohd の `ws/` は親の docker-compose.zenoh-ws.yml (127.0.0.1:7449) |
-| B2 | 公開の版 (https://family-mruby.github.io/studio/) から使う: https のページからは `wss://` が要るので、リバースプロキシで TLS を終えてルータの `ws/` に流す形。どのルータにつなぐかを使う人が設定する画面 |
+| B2 (完了 2026-10-12、report/b2.md、手順は browser.md) | https の版から網に入る: https のページは、手元 (ループバック) のルータへは `ws://` のまま、それ以外は `wss://` を自動で選ぶ (Chrome・Chromium・Firefox で確かめた)。手元以外のルータは TLS を終える中継 (親の docker-compose.zenoh-wss.yml、Caddy) 越し。ページの「Network」の欄でルータを設定し保存できる。ノードの ID はブラウザごとに `wasm-<16 進 6 桁>` を作って保存 (2 つ目のタブはその回だけの ID)。公開の版への反映はまだ: Chrome の手元のネットワークへの接続の許可 (Local Network Access) を実物のブラウザで確かめること、外のルータには本物の証明書が要ること、ルータに認証が無いこと |
 
 - 確かめること (B1 の最初): zenoh-pico 1.10.1 の Emscripten のシステム層と WebSocket のリンクが動くか。受け取りの見回り (poll) が wasm 版のタスクの動き方の上で画面を止めないか。ブラウザの WebSocket は非同期なので、zenoh-pico の同期の読み書きとどう合わせているか。
 - 止まる条件の目安: zenoh-pico の Emscripten の層が今の版で使えない (直すのに上流の大きな作業が要る) と分かったら、zenoh-ts を JS 連携で呼ぶ案と比べて返す。

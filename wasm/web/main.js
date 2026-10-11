@@ -298,6 +298,10 @@ const CONF_KEYS = [
   // the [theme] block, so a theme chosen inside the machine also survives
   'desktop_bg', 'menu_bg', 'window_bg', 'text', 'text_light',
   'highlight', 'border', 'button', 'dir_color',
+  // Where Asterism apps find the Zenoh router (doc/ruby_asterism, B2). Set in
+  // the Network panel below, or by editing the file inside the machine; like
+  // startup_app, a value that came from the URL (?zenoh=) is not captured.
+  'zenoh_router',
 ];
 const CONF_STORE = 'fmrb_web_conf';
 
@@ -312,6 +316,22 @@ function readConfSettings() {
 function writeConfSettings(keys) {
   writeSetting(CONF_STORE, JSON.stringify({ v: window.FMRB_WASM_VER || '', k: keys }));
 }
+
+// A Zenoh router as the machine's apps take it: the WebSocket locator,
+// ws/<host>:<port>. ws/ also means wss:// -- the link picks the scheme from
+// the page (wasm/zenoh/zp_ws_emscripten.c) -- so there is nothing else to say.
+const ZENOH_RE = /^ws\/[A-Za-z0-9_.:\[\]-]+$/;
+
+// The router ?zenoh= names for this visit, or '' (none, or not a locator).
+function urlZenoh() {
+  const z = new URLSearchParams(location.search).get('zenoh');
+  return z && ZENOH_RE.test(z) ? z : '';
+}
+
+// Set once the Network panel has changed the stored router during this
+// visit: the file the machine booted with still has the old one, and must not
+// be captured over the new choice (see captureConfSettings).
+let routerSetHere = false;
 
 // Set while Erase is going through: the reload it ends with fires pagehide,
 // and that would capture the machine's settings straight back into the store
@@ -330,11 +350,20 @@ function captureConfSettings() {
   // left out: the link opens its app this once, and the page comes back
   // plain next time. Written into the file by hand, it is kept like the rest.
   const urlApp = new URLSearchParams(location.search).get('app');
+  // The router in the file is the URL's (?zenoh=) or one the Network panel
+  // has since replaced in the store: either way the store already says what
+  // the next start should use, so it is kept as it is.
+  const keepRouter = !!urlZenoh() || routerSetHere;
   const keys = {};
   for (const k of CONF_KEYS) {
     if (k === 'startup_app' && urlApp) continue;
+    if (k === 'zenoh_router' && keepRouter) continue;
     const m = text.match(new RegExp('^' + k + ' = ([^\\s#]+)', 'm'));
     if (m) keys[k] = m[1];
+  }
+  if (keepRouter) {
+    const stored = readConfSettings().zenoh_router;
+    if (stored) keys.zenoh_router = stored;
   }
   if (Object.keys(keys).length) writeConfSettings(keys);
 }
@@ -501,11 +530,10 @@ moduleConfig.arguments = [];
   // ?zenoh=ws/<host>:<port> names the Zenoh router for this visit
   // (zenoh_router in system_conf.toml; doc/ruby_asterism, B1). Like ?app=,
   // it is not carried into the stored settings: a link that names a router
-  // does not change where the page goes next time.
-  const zenoh = new URLSearchParams(location.search).get('zenoh');
-  if (zenoh && /^ws\/[A-Za-z0-9_.:\[\]-]+$/.test(zenoh)) {
-    moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
-  }
+  // does not change where the page goes next time. It comes after the stored
+  // settings, so it wins over the Network panel's router.
+  const zenoh = urlZenoh();
+  if (zenoh) moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
 }
 // Everything the page wants to do before main() goes in here, in order.
 moduleConfig.preRun = [];
@@ -597,6 +625,97 @@ function mountHome(mod) {
   });
 }
 moduleConfig.preRun.push(mountHome);
+
+// ---- this browser's Asterism node ID (doc/ruby_asterism, B2) -------------
+//
+// A board is told apart on the network by its mDNS name, fmruby-<6 hex>. A
+// browser has none, so the page makes one on its first visit, wasm-<6 hex>,
+// and keeps it in localStorage; the machine gets it as asterism_node, which
+// the apps use when /home/asterism_node.txt does not name the node.
+//
+// It is this browser's identity rather than a setting: Erase leaves it, and a
+// backup does not carry it (restored in another browser, it would put two
+// machines on the network under one name).
+//
+// One ID, one tab. The tab that holds the /home lock (above) uses the kept
+// ID. A second tab is already a throw-away machine -- its files are not
+// saved -- and it gets a fresh ID that is not kept either, so both tabs can
+// be on the network at once without one taking the other's name.
+const NODE_STORE = 'fmrb_web_node';
+const NODE_RE = /^wasm-[0-9a-f]{6}$/;
+let nodeId = '';
+let nodeKept = false;
+
+function newNodeId() {
+  const b = new Uint8Array(3);
+  crypto.getRandomValues(b);
+  return 'wasm-' + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+function decideNodeId() {
+  nodeKept = false;
+  if (homeWriter !== false) {
+    const kept = readSetting(NODE_STORE, '');
+    if (NODE_RE.test(kept)) {
+      nodeId = kept;
+      nodeKept = true;
+    } else {
+      nodeId = newNodeId();
+      writeSetting(NODE_STORE, nodeId);
+      // Storage refused (a private window in some browsers): the ID lasts as
+      // long as the tab, and the panel says so.
+      nodeKept = readSetting(NODE_STORE, '') === nodeId;
+    }
+  } else {
+    nodeId = newNodeId();
+  }
+  showNetworkState();
+}
+lockDecided.then(() => { if (!nodeId) decideNodeId(); });
+
+// ---- the Network panel: the router, and the ID above -------------------
+//
+// The router is the zenoh_router setting (CONF_KEYS), written into the store
+// the machine's settings live in, so it is handed in at the next start like
+// everything Config saves. Empty means the bundle's own (ws/localhost:7449).
+const routerInput = document.getElementById('router-input');
+const routerNote = document.getElementById('router-note');
+const nodeStateEl = document.getElementById('node-state');
+const ROUTER_NOTE = 'used from the next start; ?zenoh= in the URL overrides it once';
+
+function storedRouter() {
+  const v = readConfSettings().zenoh_router || '';
+  return v.replace(/^"(.*)"$/, '$1');
+}
+
+function showNetworkState() {
+  if (nodeStateEl) {
+    let text = nodeId ? 'node ' + nodeId : 'node: checking...';
+    if (nodeId && homeWriter === false) text += ' (this tab only)';
+    else if (nodeId && !nodeKept) text += ' (not kept: storage refused)';
+    nodeStateEl.textContent = text;
+  }
+}
+
+if (routerInput) {
+  routerInput.value = storedRouter();
+  if (urlZenoh() && routerNote) {
+    routerNote.textContent = 'this visit: ' + urlZenoh() + ' (from the URL)';
+  }
+  routerInput.addEventListener('change', () => {
+    const v = routerInput.value.trim();
+    if (v && !ZENOH_RE.test(v)) {
+      routerNote.textContent = 'not saved: write ws/<host>:<port>';
+      return;
+    }
+    const keys = readConfSettings();
+    if (v) keys.zenoh_router = '"' + v + '"';
+    else delete keys.zenoh_router;
+    writeConfSettings(keys);
+    routerSetHere = true;
+    routerNote.textContent = 'saved; ' + ROUTER_NOTE;
+  });
+}
 
 // What the page says about all this. "persistent" only means the files come
 // back on a reload; whether the browser may throw them away later is the
@@ -1519,6 +1638,8 @@ if (importBtn && importInput) {
 // settings the machine saved through Config, and the page's own selectors.
 // Erase clears all of it, because "erase" that leaves the theme and the
 // language behind is a promise the word does not make.
+// The node ID (NODE_STORE) is not among them: it is who this browser is on
+// the network, not a setting, and a board keeps its name through a reset too.
 const PAGE_SETTING_KEYS = ['fmrb_web_res', 'fmrb_web_zoom'];
 
 // Separate from the button so the driver can call it as well: headless
@@ -1791,6 +1912,11 @@ startOverlay.addEventListener('click', async () => {
     console.warn('audio unavailable:', e);
   }
 
+  // The node ID depends on whether this tab is the one that keeps /home.
+  await lockDecided;
+  if (!nodeId) decideNodeId();
+  moduleConfig.arguments.push(`--fmrb-conf=asterism_node="${nodeId}"`);
+
   const mod = await createFmrbCore(moduleConfig);
   M = mod;
   statusLine.textContent = 'running';
@@ -1914,6 +2040,8 @@ async function runDriveCommand(cmd) {
         frame: M ? M._fmrb_wasm_frame_seq() : 0,
         home: homeStore,
         durable: storageDurable,
+        node: nodeId,
+        node_kept: nodeKept,
       };
     case 'fs': {
       if (!M) throw new Error('the machine is not running yet');

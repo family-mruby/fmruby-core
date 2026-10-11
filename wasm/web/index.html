@@ -60,7 +60,7 @@
   .panel h2 .meta { text-transform: none; letter-spacing: 0; color: #6f6f7c; }
   .field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
   .field > label { flex: 0 0 82px; color: #8a8a97; }
-  .field > select { flex: 1 1 auto; min-width: 0; }
+  .field > select, .field > input { flex: 1 1 auto; min-width: 0; }
   .group { margin-bottom: 9px; }
   .group:last-of-type { margin-bottom: 0; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
@@ -68,7 +68,7 @@
   .lead { flex: 0 0 82px; color: #8a8a97; }
   .row .lead + * { min-width: 0; }
   .note { margin: 3px 0 0 82px; color: #6f6f7c; }
-  .panel select, .panel button {
+  .panel select, .panel button, .panel input {
     background: #111; color: #ddd; border: 1px solid #555;
     font-family: monospace; font-size: 12px;
   }
@@ -104,7 +104,7 @@
   @media (max-width: 700px) {
     .field { flex-direction: column; align-items: stretch; gap: 2px; }
     .field > label, .lead { flex: 0 0 auto; }
-    .panel select { width: 100%; max-width: 100%; box-sizing: border-box; }
+    .panel select, .panel input { width: 100%; max-width: 100%; box-sizing: border-box; }
     .note { margin-left: 0; }
     #about { font-size: 11px; overflow-wrap: anywhere; }
   }
@@ -178,6 +178,16 @@
     <input id="add-files" type="file" multiple hidden>
     <input id="add-folder" type="file" webkitdirectory hidden>
   </section>
+
+  <section class="panel">
+    <h2>Network <span class="meta" id="node-state">node: checking...</span></h2>
+    <div class="field">
+      <label for="router-input">Router</label>
+      <input id="router-input" type="text" spellcheck="false"
+             autocomplete="off" placeholder="ws/localhost:7449 (as shipped)">
+    </div>
+    <p class="note" id="router-note">used from the next start; ?zenoh= in the URL overrides it once</p>
+  </section>
 </div>
 <details id="about">
   <summary>How to use it</summary>
@@ -198,6 +208,11 @@
       file; <b>Restore</b> puts them back, here or in another browser.
       <b>Erase</b> clears both, and puts every setting back to its default.</li>
     <li><b>Two tabs:</b> only the first one saves.</li>
+    <li><b>Network:</b> Asterism apps reach a Zenoh router over WebSocket
+      (<code>ws/&lt;host&gt;:&lt;port&gt;</code>). From an https page that is
+      <code>wss://</code>, except to this computer. This browser joins as
+      the node shown in the panel; a second tab joins under a name of its
+      own that is not kept.</li>
     <li><b>Resolution</b> reloads the page when changed. <b>Colours</b> are
       the machine's own: pick a theme in Config, inside it.</li>
     <li><b>Full screen:</b> where the browser allows it the machine keeps
