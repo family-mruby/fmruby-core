@@ -498,6 +498,14 @@ moduleConfig.arguments = [];
     const path = want.includes('/') ? want : `/app/usr/${want}/${want}.app.rb`;
     moduleConfig.arguments.push(`--fmrb-conf=startup_app="${path}"`);
   }
+  // ?zenoh=ws/<host>:<port> names the Zenoh router for this visit
+  // (zenoh_router in system_conf.toml; doc/ruby_asterism, B1). Like ?app=,
+  // it is not carried into the stored settings: a link that names a router
+  // does not change where the page goes next time.
+  const zenoh = new URLSearchParams(location.search).get('zenoh');
+  if (zenoh && /^ws\/[A-Za-z0-9_.:\[\]-]+$/.test(zenoh)) {
+    moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
+  }
 }
 // Everything the page wants to do before main() goes in here, in order.
 moduleConfig.preRun = [];
@@ -1821,6 +1829,33 @@ function driveSleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// One turn of the event loop for the latency probe below. setTimeout, not a
+// MessageChannel ping-pong: the machine's file calls are proxied to this
+// thread, and a tight MessageChannel loop starved them (measured: the whole
+// machine stood still for seconds while the probe waited). The price is
+// resolution -- nested timers are clamped to ~4 ms.
+function driveYield() {
+  return new Promise((r) => setTimeout(r, 0));
+}
+
+// A signature of a rectangle of the frame the firmware last presented, read
+// from the wasm memory directly (the canvas is only refreshed once per
+// animation frame, which would round every measurement up to ~16 ms).
+function frameRectSig(r) {
+  const w = M._fmrb_wasm_frame_width();
+  const h = M._fmrb_wasm_frame_height();
+  const ptr = M._fmrb_wasm_frame_rgba();
+  const heap = M.HEAPU8;
+  let s = 0;
+  for (let y = Math.max(0, r.y); y < Math.min(h, r.y + r.h); y++) {
+    let i = ptr + (y * w + Math.max(0, r.x)) * 4;
+    for (let x = Math.max(0, r.x); x < Math.min(w, r.x + r.w); x++, i += 4) {
+      s = (Math.imul(s, 31) + heap[i] + heap[i + 1] * 7 + heap[i + 2] * 13) >>> 0;
+    }
+  }
+  return s;
+}
+
 async function runDriveCommand(cmd) {
   switch (cmd.op) {
     case 'input': {
@@ -1830,6 +1865,39 @@ async function runDriveCommand(cmd) {
         pushInput(type, a || 0, b || 0, c || 0, d || 0);
       }
       return { events: (cmd.events || []).length };
+    }
+    case 'latency': {
+      // Input-to-screen latency: for each group of ring events, push it and
+      // wait until the watched rectangle of the presented frame changes.
+      // The rectangle is the caller's choice: somewhere only this input
+      // changes (the mouse cursor's destination, an editor's status line),
+      // so other windows redrawing do not end a sample early. -1 = no change
+      // within limit_ms. Resolution ~4 ms (see driveYield).
+      if (!M) throw new Error('the machine is not running yet');
+      const limit = cmd.limit_ms || 2000;
+      const samples = [];
+      for (const s of cmd.samples || []) {
+        await driveSleep(cmd.gap_ms || 100);
+        const sig0 = frameRectSig(s.rect);
+        const t0 = performance.now();
+        for (const ev of s.events) pushInput(ev[0], ev[1] || 0, ev[2] || 0, ev[3] || 0, ev[4] || 0);
+        let dt = -1;
+        while (performance.now() - t0 < limit) {
+          await driveYield();
+          if (frameRectSig(s.rect) !== sig0) { dt = performance.now() - t0; break; }
+        }
+        samples.push(Math.round(dt * 100) / 100);
+        for (const ev of s.after || []) pushInput(ev[0], ev[1] || 0, ev[2] || 0, ev[3] || 0, ev[4] || 0);
+      }
+      return { samples };
+    }
+    case 'frames': {
+      // How many frames the firmware presented in ms milliseconds.
+      if (!M) throw new Error('the machine is not running yet');
+      const seq0 = M._fmrb_wasm_frame_seq();
+      const t0 = performance.now();
+      await driveSleep(cmd.ms || 5000);
+      return { frames: M._fmrb_wasm_frame_seq() - seq0, ms: Math.round(performance.now() - t0) };
     }
     case 'screenshot': {
       // The canvas holds exactly the frame the firmware produced, at its own

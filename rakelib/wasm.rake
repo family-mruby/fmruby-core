@@ -161,6 +161,17 @@ namespace :wasm do
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core"
   end
 
+  # The smallest Zenoh client in a page (doc/ruby_asterism, B1): zenoh-pico
+  # over the WebSocket link of wasm/zenoh/, no Family mruby. Takes the
+  # zenoh-pico core out of libmruby (the picoruby-asterism-zenoh gem), so it
+  # needs wasm:mruby first. Page: wasm/zenoh/probe/index.html.
+  desc "Build the Zenoh probe page (zenoh-pico over WebSocket, needs wasm:mruby)"
+  task :zenoh_probe do
+    emcmake = wasm_emcmake!
+    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
+    sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target zenoh_probe"
+  end
+
   desc "Stage the distributable flash tree for the browser bundle (tracked files only)"
   task :webflash do
     staging = File.join(WASM_BUILD_DIR, "webflash")
@@ -187,6 +198,15 @@ namespace :wasm do
       mkdir_p File.dirname(dest)
       cp File.join(ROOT_DIR, f), dest
     end
+    # The ROS 2 message types of Asterism (doc/ruby_asterism, B1). Generated
+    # by the root `rake setup` from the pinned asterism checkout (its
+    # data/msgs, licences included), so not tracked here -- the device image
+    # gets them from the working tree, and the bundle has to be told.
+    msgs = File.join(ROOT_DIR, ASTERISM_MSGS_DIR)
+    Rake::Task["setup"].invoke unless Dir.exist?(msgs)
+    abort "wasm:webflash: #{ASTERISM_MSGS_DIR} is missing (rake setup makes it)" unless Dir.exist?(msgs)
+    mkdir_p File.join(staging, "usr/share/asterism")
+    cp_r msgs, File.join(staging, "usr/share/asterism/msgs")
     # The desktop on non-esp32 platforms (wasm included) loads the wallpaper
     # from /data -- on the sim a kernel file-sync puts it there. The web
     # default theme is cyberpunk, so the DEFAULT /data wallpaper is the neon
@@ -294,6 +314,8 @@ namespace :wasm do
       next if tracked.include?(f) || generated.include?(f)
       # The editor's help tree, made by ti:help from sig/ at staging time.
       next if f.start_with?("/flash/help/")
+      # Asterism's message types, copied from the pinned asterism checkout.
+      next if f.start_with?("/flash/usr/share/asterism/msgs/")
       problems << "packed file is neither tracked nor a known generated one: #{f}"
     end
 

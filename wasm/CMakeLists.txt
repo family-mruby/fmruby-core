@@ -339,6 +339,54 @@ list(APPEND CORE_SRCS
 
 # ---------------------------------------------------------------------------
 
+# --- zenoh-pico's platform layer (doc/ruby_asterism, B1) ---------------------
+#
+# The picoruby-asterism-zenoh gem compiles the zenoh-pico core into libmruby
+# for the Emscripten platform (lib/add/family_mruby_wasm.rb); the platform
+# files are ours (wasm/zenoh/: system layer and WebSocket link, without
+# ASYNCIFY) plus zenoh-pico's socket stubs. Same defines and include paths as
+# the gem's build, including the config.h the gem generates into the picoruby
+# build tree (so libmruby must be built first, as for the rest of core).
+set(ZENOH_GEM ${MRBGEMS}/picoruby-asterism-zenoh)
+set(ZENOH_PICO ${ZENOH_GEM}/vendor/zenoh-pico)
+set(ZENOH_WASM_INCLUDES
+  ${CMAKE_CURRENT_SOURCE_DIR}/zenoh
+  ${ZENOH_GEM}/include
+  ${PICORUBY_DIR}/build/family-mruby-wasm/mrbgems/picoruby-asterism-zenoh/zp_include
+  ${ZENOH_PICO}/include)
+set(ZENOH_WASM_DEFINES
+  ZENOH_GENERIC ZENOH_EMSCRIPTEN ZENOH_C_STANDARD=11 ZENOH_COMPILER_GCC
+  ZENOH_LOG_ERROR Z_FEATURE_LINK_TCP=0 Z_FEATURE_LINK_WS=1
+  Z_FEATURE_UNICAST_PEER=0
+  ZP_SYSTEM_PLATFORM_HEADER="zp_emscripten_platform.h")
+set(ZENOH_WASM_SRCS
+  ${CMAKE_CURRENT_SOURCE_DIR}/zenoh/zp_system_emscripten.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/zenoh/zp_ws_emscripten.c
+  ${ZENOH_PICO}/src/system/emscripten/network.c)
+add_library(zenoh_wasm STATIC ${ZENOH_WASM_SRCS})
+target_include_directories(zenoh_wasm PRIVATE ${ZENOH_WASM_INCLUDES})
+target_compile_definitions(zenoh_wasm PRIVATE ${ZENOH_WASM_DEFINES} FMRB_PLATFORM_WASM=1)
+target_compile_options(zenoh_wasm PRIVATE -pthread -std=gnu11)
+target_link_libraries(zenoh_wasm PRIVATE freertos_wasm)
+
+# The same layer without FreeRTOS, for the standalone probe page (C only:
+# put and subscribe against zenohd's ws/ listener, wasm/zenoh/probe/).
+add_library(zenoh_wasm_probe STATIC ${ZENOH_WASM_SRCS})
+target_include_directories(zenoh_wasm_probe PRIVATE ${ZENOH_WASM_INCLUDES})
+target_compile_definitions(zenoh_wasm_probe PRIVATE ${ZENOH_WASM_DEFINES})
+target_compile_options(zenoh_wasm_probe PRIVATE -pthread -std=gnu11)
+add_executable(zenoh_probe ${CMAKE_CURRENT_SOURCE_DIR}/zenoh/probe/zenoh_probe.c)
+target_include_directories(zenoh_probe PRIVATE ${ZENOH_WASM_INCLUDES})
+target_compile_definitions(zenoh_probe PRIVATE ${ZENOH_WASM_DEFINES})
+target_compile_options(zenoh_probe PRIVATE -pthread -std=gnu11)
+# The zenoh-pico core comes out of libmruby (the gem's objects); only what
+# the probe calls is pulled in.
+target_link_libraries(zenoh_probe PRIVATE zenoh_wasm_probe ${LIBMRUBY_WASM} zenoh_wasm_probe)
+target_link_options(zenoh_probe PRIVATE
+  -pthread -sPROXY_TO_PTHREAD -sENVIRONMENT=web,worker -sEXIT_RUNTIME=1
+  -sALLOW_MEMORY_GROWTH)
+set_target_properties(zenoh_probe PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
 # One compile of the firmware objects, two links: `core` for node (real
 # files via NODERAWFS, the headless verification loop) and `core_web` for the
 # browser (MEMFS preloaded with flash/, modularized for the page).
@@ -346,10 +394,10 @@ add_library(core_objs OBJECT ${CORE_SRCS})
 target_link_libraries(core_objs PUBLIC lgfx_wasm freertos_wasm)
 
 add_executable(core $<TARGET_OBJECTS:core_objs>)
-target_link_libraries(core PRIVATE freertos_wasm lgfx_wasm ${LIBMRUBY_WASM})
+target_link_libraries(core PRIVATE freertos_wasm lgfx_wasm ${LIBMRUBY_WASM} zenoh_wasm)
 
 add_executable(core_web $<TARGET_OBJECTS:core_objs>)
-target_link_libraries(core_web PRIVATE freertos_wasm lgfx_wasm ${LIBMRUBY_WASM})
+target_link_libraries(core_web PRIVATE freertos_wasm lgfx_wasm ${LIBMRUBY_WASM} zenoh_wasm)
 set_target_properties(core_web PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 target_include_directories(core_objs PRIVATE

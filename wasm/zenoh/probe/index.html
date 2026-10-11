@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zenoh Probe</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1a1a1a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161616; --fg: #e6e6e6; } }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.4 monospace; margin: 16px; }
+  pre { white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+<!-- zenoh-pico over WebSocket in a page, without Family mruby
+     (doc/ruby_asterism/report/b1.md). Build: rake wasm:zenoh_probe. Serve:
+     rake wasm:serve, then open
+     http://localhost:8006/wasm/zenoh/probe/index.html?zenoh=ws/localhost:7449&s=30
+     The PC side: peer.rb next to this page (CRuby, asterism-zenoh). -->
+<h1>Zenoh probe</h1>
+<pre id="log"></pre>
+<script src="../../web/vendor/coi-serviceworker.js"></script>
+<script>
+  var probeQuery = new URLSearchParams(location.search);
+  var probeLocator = probeQuery.get('zenoh') || 'ws/localhost:7449';
+  var probeSeconds = probeQuery.get('s') || '30';
+  const logEl = document.getElementById('log');
+  var probeLine = (t) => { console.log(t); logEl.textContent += t + '\n'; document.title = t; };
+  var Module = {
+    arguments: [probeLocator, probeSeconds],
+    print: probeLine,
+    printErr: (t) => probeLine('[err] ' + t),
+  };
+</script>
+<script src="../../build/zenoh_probe.js"></script>
+</body>
+</html>

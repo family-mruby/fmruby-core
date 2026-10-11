@@ -68,6 +68,13 @@ audio_volume = 7
 # the ordinary desktop. The browser sets this from ?app= in its URL.
 startup_app = ""
 
+# Where Asterism / Zenoh apps find the router (doc/ruby_asterism, B1). A page
+# cannot open TCP, so the browser reaches zenohd over WebSocket: its ws/
+# listener (the parent repository's docker-compose.zenoh-ws.yml). ?zenoh= in
+# the page's URL replaces this for one visit (?zenoh=ws/192.0.2.10:7449).
+# The test apps read it when /home/zenoh_echo.txt does not name a router.
+zenoh_router = "ws/localhost:7449"
+
 # Desktop wallpaper. Empty means "whatever the theme says" -- the western
 # picture, or the neon one under the cyberpunk theme, at the size of the
 # screen. A path here wins over that; "none" leaves the desktop a plain
