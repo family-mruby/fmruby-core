@@ -100,6 +100,19 @@
 3. **開発の入口の順番**: **遠隔のファイル転送とアプリの起動**から始め (H2)、次に Asterism の system オブジェクト (H4)。
 4. 実機は届いた (2026-10-11)。MicroPython の余地は H3 の後に flash と RAM を測ってから決める。
 
+## 決定事項 (2026-10-12 ユーザ、H0 の後。report/h0.md 8 章のおすすめを全部採用)
+
+1. 区画は A 案: factory 5M + storage 3008K。
+2. 保存領域 (storage) に入れないファイルの一覧を、端末ごとに持てる一般の仕組みを足す。何を外すかは H1a で大きさを測ってから。
+3. BLE は外す。外すためのビルドの条件は全端末で使える一般の形にする (今は ble_task が常にコンパイルされる)。
+4. Lua・BASIC・MicroPython などを外す一般のビルドの選択肢 (`FMRB_LANG_*` など) は、H1a の大きさを見てから決める。
+5. system_conf のキー: `boot_mode = "desktop" | "app"`、`startup_app_retries = 3` (既存の `startup_app` と組み合わせる)。全端末で使える。
+6. フラグ: 「端末の中で描く」`FMRB_HAS_LOCAL_DISPLAY`、「P4 の描画回路がある」`FMRB_HAS_PPA` を、`FMRB_HW_MODERN` から切り分ける。`FMRB_HW_FAMILY` の新しい値は `mini`。
+7. 画面のピンは新しく `FMRB_PIN_LCD_SPI_*`。
+8. H4 の「LED」は、画面の背光の明るさと、画面そのものをオブジェクトにする (RGB LED は無かった)。
+9. 人の目の確かめ (ボタンの押下、背光の反応、緑の LED のちらつき) は H1b でユーザが行う。
+- sdkconfig の defaults は report/h0.md 5 章の案 (n16r8 との差分) で作ってよい (承認済み)。
+
 ## 段階
 
 | 段階 | 内容 | 確かめること |
