@@ -424,7 +424,7 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
 
 | 段階 | 内容 |
 |---|---|
-| B1 | 手元の http の版で動かすところまで。(1) zenoh-pico を Emscripten でビルドし、`ws/` でルータにつながる最小の試し (zenohd に `ws/` の待ち受けを足す compose の重ね合わせ)。(2) wasm 版に picoruby-asterism-zenoh と asterism を入れる (今は P4 のビルドだけ)。(3) `asterism_demo` と `rover_cam` をブラウザで動かし、asterism-console の図に ▣ のノードとして出る・台車を操縦できる・カメラが出るかを確かめる |
+| B1 (完了 2026-10-11、report/b1.md、手順は browser.md) | 手元の http の版で動かすところまで。zenoh-pico を Emscripten で入れ、WebSocket はページの主スレッドの JS が持ち、タスクの側とは共有メモリの輪 2 本で受け渡す (上流の ASYNCIFY 前提の層は使わない。見回り 1 回 0.014 ms)。ルータは `/home/zenoh_echo.txt` → 設定 `zenoh_router` (既定 `ws/localhost:7449`) → URL の `?zenoh=`。ノード名は既定で `wasm` (sim の `linux` と分けた)。`asterism_demo` が console の図に ▣ で出て呼べる、`rover_cam` で台車を操縦しカメラも出る (JPEG はブラウザ版の表示がそのまま読む)。wasm +168 KB・data +147 KB。zenohd の `ws/` は親の docker-compose.zenoh-ws.yml (127.0.0.1:7449) |
 | B2 | 公開の版 (https://family-mruby.github.io/studio/) から使う: https のページからは `wss://` が要るので、リバースプロキシで TLS を終えてルータの `ws/` に流す形。どのルータにつなぐかを使う人が設定する画面 |
 
 - 確かめること (B1 の最初): zenoh-pico 1.10.1 の Emscripten のシステム層と WebSocket のリンクが動くか。受け取りの見回り (poll) が wasm 版のタスクの動き方の上で画面を止めないか。ブラウザの WebSocket は非同期なので、zenoh-pico の同期の読み書きとどう合わせているか。
