@@ -1,0 +1,7 @@
+app_screen_name = "Rover Pilot"
+app_screen_name_ja = "台車の操縦"
+default_window_mode = "window"
+default_window_width = 410
+default_window_height = 168
+default_window_pos_x = 8
+default_window_pos_y = 30
