@@ -3,14 +3,15 @@
 #include "fmrb_log.h"
 #include "driver/i2c_master.h"
 
-#ifdef CONFIG_IDF_TARGET_ESP32P4
-// On Modern the I2C1 pins are the board's internal bus, which the display
-// driver brings up and owns: creating a second i2c_master bus on it fails
-// ("already acquired"), and on Tab5 -- where LovyanGFX drives that controller
-// at register level for the touch panel -- raw transactions would corrupt its
-// state outright. Mediate all unit-1 traffic through the display driver's
+#ifdef FMRB_HAS_LOCAL_DISPLAY
+// On a board that draws locally (Modern, the AtomS3R) the I2C1 pins are the
+// board's internal bus, which the display driver brings up and owns: creating
+// a second i2c_master bus on it fails ("already acquired"), and on Tab5 and
+// the AtomS3R -- where LovyanGFX drives that controller at register level for
+// the touch panel / the backlight driver -- raw transactions would corrupt
+// its state outright. Mediate all unit-1 traffic through the display driver's
 // serialized I2C service instead. The pins come from fmrb_pin_assign.h so this
-// follows the board (Tab5 GPIO31/32, NARYA v4 GPIO7/8).
+// follows the board (Tab5 GPIO31/32, NARYA v4 GPIO7/8, AtomS3R GPIO45/0).
 #include "display_p4_task.h"
 #include "fmrb_pin_assign.h"
 #define HW_PROXY_I2C_MEDIATED_UNIT  1
@@ -23,7 +24,7 @@ static const char *TAG = "hw_proxy_i2c";
 typedef struct {
     i2c_master_bus_handle_t bus_handle;
     bool initialized;
-    bool mediated;   // routed via display_p4 I2C service (Modern unit 1)
+    bool mediated;   // routed via display_p4 I2C service (local-display unit 1)
     uint32_t frequency;
     int8_t sda;
     int8_t scl;
@@ -63,11 +64,11 @@ static void handle_init(hw_proxy_request_t *req)
         return;
     }
 
-#ifdef CONFIG_IDF_TARGET_ESP32P4
+#ifdef FMRB_HAS_LOCAL_DISPLAY
     if (p->unit == HW_PROXY_I2C_MEDIATED_UNIT) {
         if (p->sda != HW_PROXY_I2C_MEDIATED_SDA ||
             p->scl != HW_PROXY_I2C_MEDIATED_SCL) {
-            FMRB_LOGE(TAG, "I2C%d on Modern is fixed to SDA=%d SCL=%d",
+            FMRB_LOGE(TAG, "I2C%d on this board is fixed to SDA=%d SCL=%d",
                       p->unit, HW_PROXY_I2C_MEDIATED_SDA,
                       HW_PROXY_I2C_MEDIATED_SCL);
             req->result = FMRB_ERR_INVALID_PARAM;
@@ -146,7 +147,7 @@ static void handle_read(hw_proxy_request_t *req)
         return;
     }
 
-#ifdef CONFIG_IDF_TARGET_ESP32P4
+#ifdef FMRB_HAS_LOCAL_DISPLAY
     if (s_i2c[p->unit].mediated) {
         req->result = display_p4_i2c_read(p->addr, p->buf, p->len,
                                           s_i2c[p->unit].frequency);
@@ -210,7 +211,7 @@ static void handle_write(hw_proxy_request_t *req)
         return;
     }
 
-#ifdef CONFIG_IDF_TARGET_ESP32P4
+#ifdef FMRB_HAS_LOCAL_DISPLAY
     if (s_i2c[p->unit].mediated) {
         req->result = display_p4_i2c_write(p->addr, p->buf, p->len,
                                            s_i2c[p->unit].frequency);
