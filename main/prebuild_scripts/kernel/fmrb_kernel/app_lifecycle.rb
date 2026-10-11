@@ -513,13 +513,14 @@ module AppLifecycleMixin
   # Size a fullscreen window gets: the high-resolution screen for an app that
   # takes it (screen_mode_for), else the display size. The desktop's own window
   # is created as display size minus margin (fmrb_app_init, APP_TYPE_SYSTEM_APP),
-  # so it is the display size the spawner would use -- no extra kernel API
-  # needed for it.
+  # so it is the display size the spawner would use. A machine booted without
+  # the desktop (boot_mode = "app") asks for the same size directly.
   def fullscreen_size(pid)
     if screen_mode_for(pid)
       hires = _fullscreen_hires_size
       return hires if hires
     end
+    return [_screen_width, _screen_height] unless @desktop_pid
     update_window_list
     i = 0
     while i < @window_list.size
@@ -948,6 +949,7 @@ module AppLifecycleMixin
     # something needs the slot already free.
     announce_app_died(pid, dead_name, expected)
     note_service_host_death(pid, expected)
+    note_single_app_death(pid, expected)
 
     # Force immediate check (window list update after task deletion)
     mark_window_list_dirty
@@ -1137,6 +1139,9 @@ module AppLifecycleMixin
 
     # Bring the service host back after an unasked-for death.
     tick_service_respawn
+
+    # Single-app boot: start the app again after it died.
+    tick_single_app_respawn
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval

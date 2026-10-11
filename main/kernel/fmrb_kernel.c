@@ -27,6 +27,9 @@
 #include "fmrb_keymap.h"
 #include "fmrb_debug.h"
 #include "fmrb_mp.h"
+#include "fmrb_attr.h"
+#include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -56,8 +59,14 @@ static fmrb_system_config_t g_system_config = {
     /* One notch of the wheel moves three rows, the usual desktop default.
        Apps read it as FmrbConst::WHEEL_LINES. */
     .wheel_lines = 3,
+    .boot_mode = FMRB_BOOT_MODE_DESKTOP,
+    .startup_app_retries = 3,
     .language = "en"
 };
+
+// startup_app, by path. External RAM: read once at boot and then only by the
+// kernel task, never from an ISR.
+FMRB_EXT_RAM_BSS_ATTR static char g_startup_app[FMRB_MAX_PATH_LEN];
 
 // Parse keyboard_layout string to enum
 static fmrb_keymap_layout_t parse_keyboard_layout(const char* layout_str)
@@ -272,6 +281,37 @@ static bool read_system_config(void)
     // credentials in /etc/wifi.toml. On retro (S3) WiFi and BLE are mutually
     // exclusive; boot resolves a both-on misconfiguration in favor of BLE.
     g_system_config.wifi_auto_start = fmrb_toml_get_bool(conf, "wifi_auto_start", g_system_config.wifi_auto_start);
+
+    // Single-app boot (doc/headless_s3/plan.md): boot_mode = "app" runs
+    // startup_app alone instead of the desktop, and starts it again up to
+    // startup_app_retries times when it dies. Anything but "app" is the
+    // desktop, as before the key existed.
+    {
+        const char *mode = fmrb_toml_get_string(conf, "boot_mode", NULL);
+        if (mode) {
+            g_system_config.boot_mode = (strcmp(mode, "app") == 0)
+                ? FMRB_BOOT_MODE_APP : FMRB_BOOT_MODE_DESKTOP;
+            if (strcmp(mode, "app") != 0 && strcmp(mode, "desktop") != 0) {
+                FMRB_LOGW(TAG, "boot_mode \"%s\" unknown, using desktop", mode);
+            }
+            fmrb_sys_free((void *)mode);
+        }
+        int retries = (int)fmrb_toml_get_int(conf, "startup_app_retries",
+                                             g_system_config.startup_app_retries);
+        if (retries < 0) retries = 0;
+        if (retries > 100) retries = 100;
+        g_system_config.startup_app_retries = (uint8_t)retries;
+        const char *app = fmrb_toml_get_string(conf, "startup_app", NULL);
+        if (app) {
+            strncpy(g_startup_app, app, sizeof(g_startup_app) - 1);
+            g_startup_app[sizeof(g_startup_app) - 1] = '\0';
+            fmrb_sys_free((void *)app);
+        }
+        if (g_system_config.boot_mode == FMRB_BOOT_MODE_APP) {
+            FMRB_LOGI(TAG, "Boot mode: app (%s, %d retries)",
+                      g_startup_app[0] ? g_startup_app : "<none>", retries);
+        }
+    }
 
     // Mute and volume (doc/reference/audio_output.md). Read here, before the host task
     // starts and long before the desktop's boot jingle; the host task hands
@@ -1001,9 +1041,68 @@ void fmrb_kernel_stop(void)
     FMRB_LOGI(TAG, "Kernel task stopped");
 }
 
+const char* fmrb_kernel_startup_app(void)
+{
+    return g_startup_app;
+}
+
 const fmrb_system_config_t* fmrb_kernel_get_config(void)
 {
     return &g_system_config;
+}
+
+// The halt screen: white on dark red, the 6x8 default font, wrapped at the
+// screen width. Lines past the bottom are dropped (the serial log has the
+// whole text).
+#define HALT_CHAR_W  6
+#define HALT_LINE_H  10
+#define HALT_MARGIN  2
+#define HALT_BG      0x80   // RGB332 dark red
+#define HALT_FG      0xFF
+
+fmrb_err_t fmrb_kernel_show_halt(const char *text)
+{
+    if (!text) return FMRB_ERR_INVALID_PARAM;
+    fmrb_gfx_context_t gctx = fmrb_gfx_get_global_context();
+    if (!gctx) return FMRB_ERR_INVALID_STATE;
+    const int w = g_system_config.display_width;
+    const int h = g_system_config.display_height;
+    fmrb_canvas_handle_t canvas = 0;
+    // Above every app canvas (the desktop's overlays use 254 and below).
+    if (fmrb_gfx_create_canvas(gctx, w, h, 255, false, 0, &canvas) != FMRB_GFX_OK) {
+        return FMRB_ERR_FAILED;
+    }
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_clear(&cmd, canvas, HALT_BG);
+    fmrb_gfx_submit_unmetered(&cmd);
+
+    int cols = (w - 2 * HALT_MARGIN) / HALT_CHAR_W;
+    if (cols < 1) cols = 1;
+    if (cols > 79) cols = 79;
+    char line[80];
+    int y = HALT_MARGIN;
+    const char *p = text;
+    while (*p && y + 8 <= h) {
+        int n = 0;
+        while (p[n] && p[n] != '\n' && n < cols) n++;
+        // Break at the last space when the line is full and the word goes on.
+        if (n == cols && p[n] && p[n] != '\n') {
+            int b = n;
+            while (b > 0 && p[b - 1] != ' ') b--;
+            if (b > 0) n = b;
+        }
+        memcpy(line, p, (size_t)n);
+        line[n] = '\0';
+        fmrb_gfx_cmd_text(&cmd, canvas, HALT_MARGIN, (int16_t)y, line,
+                          HALT_FG, HALT_BG, false, FMRB_FONT_SIZE_SMALL, 0);
+        fmrb_gfx_submit_unmetered(&cmd);
+        y += HALT_LINE_H;
+        p += n;
+        if (*p == '\n' || *p == ' ') p++;
+    }
+    fmrb_gfx_cmd_present(&cmd, canvas, 0, 0, 0);
+    fmrb_gfx_submit_unmetered(&cmd);
+    return FMRB_OK;
 }
 
 // HID routing table (protected by mutex)

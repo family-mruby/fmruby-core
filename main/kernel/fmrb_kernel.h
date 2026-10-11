@@ -22,6 +22,14 @@ typedef enum {
 } fmrb_display_mode_t;
 
 /**
+ * @brief What the machine runs at boot (system_conf boot_mode)
+ */
+typedef enum {
+    FMRB_BOOT_MODE_DESKTOP = 0,  // "desktop": the desktop, launcher and windows
+    FMRB_BOOT_MODE_APP = 1,      // "app": startup_app alone, full screen
+} fmrb_boot_mode_t;
+
+/**
  * @brief System configuration structure loaded from /etc/system_conf.toml
  */
 typedef struct {
@@ -41,6 +49,8 @@ typedef struct {
     double mouse_scale_x;                   // Mouse X sensitivity multiplier
     double mouse_scale_y;                   // Mouse Y sensitivity multiplier
     uint8_t wheel_lines;                    // Rows one wheel notch scrolls
+    uint8_t boot_mode;                      // fmrb_boot_mode_t
+    uint8_t startup_app_retries;            // boot_mode app: restarts before giving up
     char language[8];                       // UI language code, e.g. "ja" or "en"
 } fmrb_system_config_t;
 
@@ -58,6 +68,26 @@ void fmrb_kernel_stop(void);
 
 
 const fmrb_system_config_t* fmrb_kernel_get_config(void);
+
+/**
+ * @brief The startup_app path from system_conf ("" when none).
+ *
+ * Kept apart from fmrb_system_config_t so the path lives in external RAM.
+ */
+const char* fmrb_kernel_startup_app(void);
+
+/**
+ * @brief Cover the screen with a message and leave it there.
+ *
+ * For the single-app boot (boot_mode = "app") giving up on its app: there is
+ * no desktop to show an error dialog, so the kernel draws one canvas of its
+ * own over everything, through the ordinary link commands -- it works the
+ * same with a local panel, a WROVER or the simulator. The text is wrapped to
+ * the screen width; '\n' starts a new line.
+ *
+ * @return FMRB_OK, or FMRB_ERR_* when the canvas could not be made
+ */
+fmrb_err_t fmrb_kernel_show_halt(const char *text);
 
 /**
  * @brief Write one top-level key of /etc/system_conf.toml.

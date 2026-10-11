@@ -1,0 +1,4 @@
+app_handle_name = "crash_soon"
+app_screen_name = "Crash Soon"
+default_window_mode = "fullscreen"
+launcher_visible = false

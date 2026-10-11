@@ -50,6 +50,17 @@ class FmrbKernelImpl < FmrbKernel
     # lives in the slot.
     @service_host_pid = 0
 
+    # Single-app boot (boot_mode = "app", see start_single_app): the app's
+    # path, the pid it runs as (0 when it is not running), how many times it
+    # has died, and when to start it again (0 = nothing pending). The last
+    # error it reported is kept for the give-up screen.
+    @single_app_path = ""
+    @single_app_pid = 0
+    @single_app_deaths = 0
+    @single_app_retries = 0
+    @single_app_respawn_at = 0
+    @single_app_error = ""
+
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
     @notified_focus_pid = -1  # Last focus reported to the desktop (-1 = none yet)
@@ -431,6 +442,7 @@ class FmrbKernelImpl < FmrbKernel
       err = _get_last_error
       if err
         Log.error("App '#{err[:name]}': #{err[:error]}")
+        @single_app_error = err[:error].to_s if pid == @single_app_pid
         # The error dialog replaces the indicator; the app may keep running
         # (a runtime exception) or be about to die (a compile error), and
         # either way it is no longer "starting".
@@ -645,14 +657,19 @@ class FmrbKernelImpl < FmrbKernel
     # Sync RTC to system clock (ESP32 only)
     sync_rtc
 
-    # Spawn system desktop app (bg canvas z=0, fg canvas z=254)
-    desktop_pid = _spawn_app_req("system/desktop")
-    if desktop_pid
-      @desktop_pid = desktop_pid
-      _set_hid_target(desktop_pid)
-      @hid_target_pid = desktop_pid
+    if _boot_mode == BOOT_MODE_APP
+      # One app and nothing else: no desktop, no launcher.
+      start_single_app
     else
-      Log.error("Failed to spawn system desktop app")
+      # Spawn system desktop app (bg canvas z=0, fg canvas z=254)
+      desktop_pid = _spawn_app_req("system/desktop")
+      if desktop_pid
+        @desktop_pid = desktop_pid
+        _set_hid_target(desktop_pid)
+        @hid_target_pid = desktop_pid
+      else
+        Log.error("Failed to spawn system desktop app")
+      end
     end
 
     spawn_service_host
@@ -706,6 +723,87 @@ class FmrbKernelImpl < FmrbKernel
     else
       Log.error("Failed to spawn the service host")
     end
+    nil
+  end
+
+  # ---- Single-app boot (system_conf boot_mode = "app") ----
+  #
+  # A machine that exists to run one thing (doc/headless_s3/plan.md): the
+  # kernel starts startup_app full screen instead of the desktop, and when it
+  # dies -- an exception, not a stop it asked for -- starts it again, up to
+  # startup_app_retries times. After that it gives up: the reason goes to the
+  # log and to the screen, and the machine stays there until reset. Any
+  # machine can be set this way; nothing here is board specific.
+  BOOT_MODE_APP = 1
+  SINGLE_APP_RESPAWN_DELAY_MS = 1000
+
+  def start_single_app
+    @single_app_path = _startup_app
+    @single_app_retries = _startup_app_retries
+    if @single_app_path.empty?
+      give_up_single_app("boot_mode is \"app\" but startup_app is empty.")
+      return nil
+    end
+    Log.info("Single-app boot: #{@single_app_path} (retries=#{@single_app_retries})")
+    spawn_single_app
+    nil
+  end
+
+  def spawn_single_app
+    pid = _spawn_app_req(@single_app_path)
+    unless pid
+      reason = spawn_error_reason
+      Log.error("Single-app boot: cannot start #{@single_app_path}: #{reason}")
+      @single_app_error = reason
+      note_single_app_failure
+      return nil
+    end
+    @single_app_pid = pid
+    @single_app_error = ""
+    remember_spawn_fullscreen(pid)
+    after_spawn(pid)
+    nil
+  end
+
+  # Called from cleanup_terminated_app for every app that ends.
+  def note_single_app_death(pid, expected)
+    return nil if @single_app_pid == 0
+    return nil unless pid == @single_app_pid
+    @single_app_pid = 0
+    if expected
+      Log.info("Single-app boot: #{@single_app_path} stopped on request; not restarting")
+      return nil
+    end
+    note_single_app_failure
+    nil
+  end
+
+  def note_single_app_failure
+    @single_app_deaths += 1
+    if @single_app_deaths > @single_app_retries
+      give_up_single_app("#{@single_app_path} failed #{@single_app_deaths} times. #{@single_app_error}")
+      return nil
+    end
+    total = @single_app_retries + 1
+    Log.warn("Single-app boot: #{@single_app_path} died (#{@single_app_deaths}/#{total}); starting it again in #{SINGLE_APP_RESPAWN_DELAY_MS} ms")
+    @single_app_respawn_at = Machine.board_millis + SINGLE_APP_RESPAWN_DELAY_MS
+    nil
+  end
+
+  # Called from the tick. 0 means nothing pending.
+  def tick_single_app_respawn
+    at = @single_app_respawn_at
+    return nil if at == 0
+    return nil if Machine.board_millis < at
+    @single_app_respawn_at = 0
+    spawn_single_app
+    nil
+  end
+
+  def give_up_single_app(reason)
+    @single_app_respawn_at = 0
+    Log.error("Single-app boot: giving up. #{reason}")
+    _show_halt("STOPPED\n\n#{reason}\n\nReset to try again.")
     nil
   end
 

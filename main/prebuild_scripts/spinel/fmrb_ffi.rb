@@ -58,6 +58,12 @@ module FmrbSpx
   ffi_func :fmrb_spx_sync_file_count, [], :int
   ffi_func :fmrb_spx_sync_file_entry, [:int], :binstr
   ffi_func :fmrb_spx_sync_file, [:str, :int, :str, :int], :int
+  ffi_func :fmrb_spx_boot_mode, [], :int            # system_conf boot_mode (0 desktop, 1 app)
+  ffi_func :fmrb_spx_startup_app_retries, [], :int
+  ffi_func :fmrb_spx_startup_app, [], :binstr        # startup_app path ("" when none)
+  ffi_func :fmrb_spx_show_halt, [:str, :int], :int   # the single-app give-up screen
+  ffi_func :fmrb_spx_screen_width, [], :int          # what a fullscreen window gets
+  ffi_func :fmrb_spx_screen_height, [], :int
   ffi_func :fmrb_spx_set_error_led, [:int], :int
   ffi_func :fmrb_spx_set_ready, [], :int
   ffi_func :fmrb_spx_check_protocol_version, [:int], :int  # 1 ok / 0 fail / neg err

@@ -341,6 +341,50 @@ static mrb_value mrb_kernel_update_window_position(mrb_state *mrb, mrb_value sel
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// Single-app boot (system_conf boot_mode / startup_app / startup_app_retries).
+// FmrbKernel#_boot_mode -> 0 desktop, 1 app (fmrb_boot_mode_t)
+static mrb_value mrb_kernel_boot_mode(mrb_state *mrb, mrb_value self)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return mrb_fixnum_value(conf ? conf->boot_mode : FMRB_BOOT_MODE_DESKTOP);
+}
+
+// FmrbKernel#_startup_app_retries -> Integer
+static mrb_value mrb_kernel_startup_app_retries(mrb_state *mrb, mrb_value self)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return mrb_fixnum_value(conf ? conf->startup_app_retries : 0);
+}
+
+// FmrbKernel#_startup_app -> String ("" when none)
+static mrb_value mrb_kernel_startup_app(mrb_state *mrb, mrb_value self)
+{
+    return mrb_str_new_cstr(mrb, fmrb_kernel_startup_app());
+}
+
+// FmrbKernel#_screen_width / _screen_height -> the size a fullscreen window
+// gets: the display minus its margins (fmrb_app.c sizes the system app the
+// same way). For a machine with no desktop to read it from.
+static mrb_value mrb_kernel_screen_width(mrb_state *mrb, mrb_value self)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return mrb_fixnum_value(conf ? conf->display_width - conf->display_margin_x : 0);
+}
+
+static mrb_value mrb_kernel_screen_height(mrb_state *mrb, mrb_value self)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return mrb_fixnum_value(conf ? conf->display_height - conf->display_margin_y : 0);
+}
+
+// FmrbKernel#_show_halt(text) -> true/false
+static mrb_value mrb_kernel_show_halt(mrb_state *mrb, mrb_value self)
+{
+    const char *text;
+    mrb_get_args(mrb, "z", &text);
+    return mrb_bool_value(fmrb_kernel_show_halt(text) == FMRB_OK);
+}
+
 // FmrbKernel#_get_sync_files() -> Array of Hashes [{src: "...", dest: "..."}, ...]
 static mrb_value mrb_kernel_get_sync_files(mrb_state *mrb, mrb_value self)
 {
@@ -611,6 +655,12 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_resume_app", mrb_kernel_resume_app, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_reap_app", mrb_kernel_reap_app, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_sync_time_to_host", mrb_kernel_sync_time_to_host, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_boot_mode", mrb_kernel_boot_mode, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_startup_app_retries", mrb_kernel_startup_app_retries, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_startup_app", mrb_kernel_startup_app, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_show_halt", mrb_kernel_show_halt, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_screen_width", mrb_kernel_screen_width, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_screen_height", mrb_kernel_screen_height, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }
