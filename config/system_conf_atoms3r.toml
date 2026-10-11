@@ -13,7 +13,7 @@ debug_mode = true
 # No Bluetooth in this firmware (config/sdkconfig.defaults.atoms3r).
 ble_auto_start = false
 # WiFi is how this board is reached (needs ssid/password in wifi.toml).
-wifi_auto_start = false
+wifi_auto_start = true
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5
 wheel_lines = 3
