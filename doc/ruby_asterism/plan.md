@@ -418,6 +418,18 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
   - 傾けての操縦の手触りは、手で持って確かめる。
 - 見送った案: 台車を 2 台にする (同じ世界に 2 台、機体 1 台につき 1 台)。見た目は楽しいが、伝わる中身は S3 と同じで、ROS 2 の制御器を 2 台分に分ける作業が大きい。後で余裕があればやる。
 
+## B: ブラウザ版 (wasm) を網に入れる (計画 2026-10-11 ユーザ決定、V2.4 の後)
+
+ブラウザで動く Family mruby (wasm 版) を、機体と同じ Asterism のノードとして網に入れる。やり方は design.md 9 章 (zenoh-pico を Emscripten でビルドし、WebSocket でルータに直接つなぐ。Asterism の層は純 Ruby のまま共有する)。
+
+| 段階 | 内容 |
+|---|---|
+| B1 | 手元の http の版で動かすところまで。(1) zenoh-pico を Emscripten でビルドし、`ws/` でルータにつながる最小の試し (zenohd に `ws/` の待ち受けを足す compose の重ね合わせ)。(2) wasm 版に picoruby-asterism-zenoh と asterism を入れる (今は P4 のビルドだけ)。(3) `asterism_demo` と `rover_cam` をブラウザで動かし、asterism-console の図に ▣ のノードとして出る・台車を操縦できる・カメラが出るかを確かめる |
+| B2 | 公開の版 (https://family-mruby.github.io/studio/) から使う: https のページからは `wss://` が要るので、リバースプロキシで TLS を終えてルータの `ws/` に流す形。どのルータにつなぐかを使う人が設定する画面 |
+
+- 確かめること (B1 の最初): zenoh-pico 1.10.1 の Emscripten のシステム層と WebSocket のリンクが動くか。受け取りの見回り (poll) が wasm 版のタスクの動き方の上で画面を止めないか。ブラウザの WebSocket は非同期なので、zenoh-pico の同期の読み書きとどう合わせているか。
+- 止まる条件の目安: zenoh-pico の Emscripten の層が今の版で使えない (直すのに上流の大きな作業が要る) と分かったら、zenoh-ts を JS 連携で呼ぶ案と比べて返す。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
