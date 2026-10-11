@@ -75,4 +75,31 @@ MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
 
   # No networking gems: the browser has no BSD sockets to give them
   # (picoruby-socket / net-http / net-websocket are linux/esp32 only).
+
+  # Zenoh and Asterism (doc/ruby_asterism, B1): the same two gems as the
+  # Linux and P4 builds. A page cannot open TCP, so zenoh-pico is built for
+  # its Emscripten platform with the WebSocket link only (ws/<host>:<port>,
+  # zenohd's ws/ listener). The gem compiles the zenoh-pico core here; the
+  # platform files (system layer and the WebSocket link, wasm/zenoh/) are
+  # compiled by wasm/CMakeLists.txt, the way the P4 build compiles its
+  # ESP-IDF ones. The gem reads the platform from ZENOH_PICO_PLATFORM; this
+  # rake process (rake wasm:mruby) builds only this configuration, so setting
+  # it here reaches nothing else.
+  ENV['ZENOH_PICO_PLATFORM'] = 'ZENOH_EMSCRIPTEN'
+  # zenoh-pico feature switches the gem's zenoh_generic_config.h leaves
+  # overridable. The define list is the whole build's (the gems copy it), and
+  # wasm/CMakeLists.txt passes the same values to the platform files.
+  conf.cc.defines << 'Z_FEATURE_LINK_TCP=0'
+  conf.cc.defines << 'Z_FEATURE_LINK_WS=1'
+  # Peer mode needs a listening socket or a wait on several sockets, neither
+  # of which a page has: client mode only.
+  conf.cc.defines << 'Z_FEATURE_UNICAST_PEER=0'
+  # zenoh-pico's platform types come from wasm/zenoh/zp_emscripten_platform.h
+  # instead of its own Emscripten header (which lacks <stddef.h> in 1.10.1,
+  # and whose WebSocket endpoint is an addrinfo for the socket emulation this
+  # build does not use).
+  conf.cc.defines << 'ZP_SYSTEM_PLATFORM_HEADER=\\"zp_emscripten_platform.h\\"'
+  conf.cc.include_paths << File.expand_path('../../wasm/zenoh', __dir__)
+  conf.gem core: "picoruby-asterism-zenoh"
+  conf.gem core: "picoruby-asterism"
 end
