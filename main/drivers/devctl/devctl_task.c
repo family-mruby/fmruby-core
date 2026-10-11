@@ -13,8 +13,11 @@
 // tools that use it (tools/fmrb_rd_fs.rb, curl) make one request at a time;
 // four leaves room for a stuck connection to age out while another works.
 
+#include <stdio.h>
+
 #include "devctl_task.h"
 #include "devctl_http.h"
+#include "wifi_task.h"
 
 #include "fmrb_log.h"
 #include "fmrb_task_config.h"
@@ -24,6 +27,20 @@
 static const char *TAG = "devctl";
 
 static httpd_handle_t s_server = NULL;
+
+// The same small document the viewer's server answers (rd_http.c), so tools
+// that check /status before anything else (tools/mcp) know this is a Family
+// mruby board. There is no stream here: "mode" says so.
+static esp_err_t status_handler(httpd_req_t *req)
+{
+    char ip[16];
+    wifi_get_ip_str(ip, sizeof(ip));
+    char body[96];
+    int n = snprintf(body, sizeof(body),
+                     "{\"ip\":\"%s\",\"mode\":\"none\",\"streaming\":false}", ip);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, n);
+}
 
 fmrb_err_t devctl_start(void)
 {
@@ -35,7 +52,7 @@ fmrb_err_t devctl_start(void)
     cfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    // Twelve routes, and the default is eight. Registration answers
+    // Thirteen routes, and the default is eight. Registration answers
     // ESP_ERR_HTTPD_HANDLERS_FULL rather than failing the start, so a server
     // sized exactly would come up healthy and 404 the last route added.
     cfg.max_uri_handlers = 14;
@@ -52,6 +69,13 @@ fmrb_err_t devctl_start(void)
         httpd_stop(s_server);
         s_server = NULL;
         return ferr;
+    }
+
+    static const httpd_uri_t uri_status = {
+        .uri = "/status", .method = HTTP_GET, .handler = status_handler };
+    err = httpd_register_uri_handler(s_server, &uri_status);
+    if (err != ESP_OK) {
+        FMRB_LOGE(TAG, "could not register /status: %d", err);
     }
 
     // devctl_http_register() announces the routes; it is the one that knows
