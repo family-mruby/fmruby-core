@@ -113,6 +113,8 @@
 9. 人の目の確かめ (ボタンの押下、背光の反応、緑の LED のちらつき) は H1b でユーザが行う。
 - sdkconfig の defaults は report/h0.md 5 章の案 (n16r8 との差分) で作ってよい (承認済み)。
 
+- 5 MB に収める (2026-10-12 ユーザ、A + B): (A) `FMRB_APP_ENGINE_EDITOR=mruby` と `FMRB_FFT_SPINEL=0` を ATOMS3R の既定にする。(B) 日本語のフォントを外す一般のビルドの選択肢 `FMRB_FONT_JA` を足し、ATOMS3R は 0 (外すと `set_font(:ja, …)` は美咲 8 ドット)。言語を外す選択肢 (C) は足りなくなったら。
+
 ## 段階
 
 | 段階 | 内容 | 確かめること |
