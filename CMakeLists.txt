@@ -65,6 +65,38 @@ if(NOT IDF_TARGET STREQUAL "linux")
             COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/etc/services.toml
             COMMENT "Retro image: leaving the service host's files out")
     endif()
+    # What a board leaves out of its image: config/storage_exclude_<target>.txt
+    # (target lower-cased, e.g. storage_exclude_atoms3r.txt), one path per
+    # line relative to the storage root, # starts a comment. Any board can
+    # have one; a board without the file keeps the whole tree. The files stay
+    # in git and in the simulator -- only this board's image goes without.
+    string(TOLOWER "${FMRB_HW_TARGET}" FMRB_STORAGE_EXCLUDE_TARGET)
+    set(FMRB_STORAGE_EXCLUDE_FILE
+        ${CMAKE_SOURCE_DIR}/config/storage_exclude_${FMRB_STORAGE_EXCLUDE_TARGET}.txt)
+    if(FMRB_HW_TARGET AND EXISTS ${FMRB_STORAGE_EXCLUDE_FILE})
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                     ${FMRB_STORAGE_EXCLUDE_FILE})
+        file(STRINGS ${FMRB_STORAGE_EXCLUDE_FILE} FMRB_STORAGE_EXCLUDE_LINES)
+        set(FMRB_STORAGE_EXCLUDE_CMDS "")
+        foreach(line IN LISTS FMRB_STORAGE_EXCLUDE_LINES)
+            string(REGEX REPLACE "#.*$" "" line "${line}")
+            string(STRIP "${line}" line)
+            if(line STREQUAL "")
+                continue()
+            endif()
+            if(line MATCHES "^/" OR line MATCHES "(^|/)\\.\\.(/|$)")
+                message(FATAL_ERROR "${FMRB_STORAGE_EXCLUDE_FILE}: '${line}' must be "
+                                    "a path inside the storage root")
+            endif()
+            list(APPEND FMRB_STORAGE_EXCLUDE_CMDS
+                 COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/${line})
+        endforeach()
+        if(FMRB_STORAGE_EXCLUDE_CMDS)
+            add_custom_command(TARGET storage_staging POST_BUILD
+                ${FMRB_STORAGE_EXCLUDE_CMDS}
+                COMMENT "${FMRB_HW_TARGET} image: leaving out what ${FMRB_STORAGE_EXCLUDE_FILE} lists")
+        endif()
+    endif()
     littlefs_create_partition_image(storage ${STORAGE_STAGING} FLASH_IN_PROJECT
                                     DEPENDS storage_staging)
 endif()

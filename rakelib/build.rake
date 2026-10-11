@@ -100,6 +100,10 @@ namespace :build do
                           system_conf: 'config/system_conf_p4.toml' },
       'NARYAv4'      => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.naryav4',
                           system_conf: 'config/system_conf_naryav4.toml' },
+      # M5Stack AtomS3R (ESP32-S3, 8MB flash): draws on its own 128x128 LCD
+      # and runs one app (doc/headless_s3/).
+      'ATOMS3R'      => { chip: 'esp32s3', sdkconfig: 'config/sdkconfig.defaults.atoms3r',
+                          system_conf: 'config/system_conf_atoms3r.toml' },
     }
     default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
     default_system_conf = 'config/system_conf_n16r8.toml'

@@ -51,7 +51,6 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
     "drivers/usb/hid_report_parser.c"
     "drivers/usb/hid_device_config.c"
-    "drivers/ble/ble_task.c"
     "drivers/ble/ble_framing.c"
     "drivers/debug/fmrb_debug_transport_ble.c"
     "drivers/hw_proxy/hw_proxy.c"
@@ -257,14 +256,39 @@ if(NOT IDF_TARGET STREQUAL "linux")
         # esp_app_format: esp_app_get_description() for the boot screen
         list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
              esp_codec_dev esp_driver_i2s esp_driver_i2c esp_app_format)
-        # BLE: NimBLE host on P4, controller on the C6 via esp_hosted
-        list(APPEND COMPONENT_REQUIRES bt esp_hosted)
+        # BLE: NimBLE host on P4, controller on the C6 via esp_hosted (bt
+        # itself is required below, with the choice of BLE sources).
+        list(APPEND COMPONENT_REQUIRES esp_hosted)
         # Remote desktop: WiFi STA over esp_hosted (esp_wifi_remote) +
         # HTTP/WS server + JPEG (MJPEG) / H.264 hardware encoders
         list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event
              esp_http_server esp_driver_jpeg esp_h264)
     else()
-        list(APPEND COMPONENT_REQUIRES bt)
+        if(FMRB_HW_TARGET STREQUAL "ATOMS3R")
+            # AtomS3R: the S3 draws on its own 128x128 SPI panel with the
+            # Modern display task and the software compositor (the wasm
+            # drawing path; doc/headless_s3/report/h0.md 5.1). No PPA and no
+            # JPEG engine on this chip (display_nojpeg.c), no sound output
+            # (audio_none.c).
+            list(APPEND COMPONENT_SRCS
+                "drivers/display_p4/display_p4_task.cpp"
+                "drivers/display_p4/display_backend.cpp"
+                "drivers/display_p4/display_backend_cpu.cpp"
+                "drivers/display_p4/display_blend_cpu.c"
+                "drivers/display_p4/display_p4_vm.cpp"
+                "drivers/display_p4/display_p4_sprite.cpp"
+                "drivers/display_p4/display_nojpeg.c"
+                "drivers/display_p4/fonts/misaki/lgfx_misaki.c"
+                "drivers/display_p4/fonts/misaki/lgfx_misaki.cpp"
+                "drivers/audio_p4/audio_none.c"
+                "kernel/host/host_file_local.c"
+            )
+        endif()
+        # The display's components for the AtomS3R, required on every S3
+        # board: IDF's requirement scan runs this file without the -D values,
+        # so FMRB_HW_TARGET cannot decide a requirement. On the others nothing
+        # references them and the linker leaves them out.
+        list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_i2c esp_app_format)
         if(NOT FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
             # Narya v3: native WiFi STA + mDNS (no remote desktop -- the S3
             # has no hardware video encoder). Mutually exclusive with BLE at
@@ -281,20 +305,36 @@ if(NOT IDF_TARGET STREQUAL "linux")
             endif()
         endif()
     endif()
-    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
-        # ATOM_DISPLAY: no USB host, add M5GFX receiver
+    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY" OR FMRB_HW_TARGET STREQUAL "ATOMS3R")
+        # No USB host (FMRB_HAS_USB_HOST): ATOM_DISPLAY's USB is the Atom's
+        # own, and the AtomS3R's only USB port is its console.
         list(REMOVE_ITEM COMPONENT_ESP32_SRCS
             "drivers/usb/usb_task.c"
             "drivers/usb/hid_report_parser.c"
             "drivers/usb/hid_device_config.c"
             "conn_check/usb_hid_conn_check.c"
         )
+        list(APPEND COMPONENT_ESP32_SRCS "drivers/usb/usb_none.c")
+    else()
+        list(APPEND COMPONENT_REQUIRES usb_host_hid)
+    endif()
+    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
+        # ATOM_DISPLAY: M5GFX receiver
         list(APPEND COMPONENT_SRCS
             "drivers/m5gfx/m5gfx_task.cpp"
             "drivers/i2c_keyboard/i2c_keyboard.c"
         )
+    endif()
+    # Bluetooth is a build choice of the sdkconfig, open to any board: with
+    # CONFIG_BT_ENABLED off the BLE API is answered by ble_none.c (nothing to
+    # start, never connected), and the NimBLE stack stays out of the image.
+    # bt is required either way: the requirement scan runs before the
+    # sdkconfig values are settled, and the component is empty when disabled.
+    list(APPEND COMPONENT_REQUIRES bt)
+    if(CONFIG_BT_ENABLED)
+        list(APPEND COMPONENT_ESP32_SRCS "drivers/ble/ble_task.c")
     else()
-        list(APPEND COMPONENT_REQUIRES usb_host_hid)
+        list(APPEND COMPONENT_ESP32_SRCS "drivers/ble/ble_none.c")
     endif()
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()

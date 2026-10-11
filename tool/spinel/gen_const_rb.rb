@@ -134,7 +134,11 @@ link_version = define_values(fmrb_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
 # target it stands in for, exactly as the C macros do.
 hw_target = ENV["FMRB_HW_TARGET"].to_s
 # Keep in step with MODERN_HW_TARGETS in the Rakefile.
-hw_family = %w[TAB5 NARYAv4].include?(hw_target) ? "modern" : "retro"
+hw_family =
+  if %w[TAB5 NARYAv4].include?(hw_target) then "modern"
+  elsif hw_target == "ATOMS3R" then "mini"   # FMRB_HW_FAMILY_MINI
+  else "retro"
+  end
 
 # BOARD and CHIP_MODEL, mirroring const.c: BOARD from the FMRB_HW_* macros,
 # CHIP_MODEL from what esp_chip_info() reports on that board. Both were fixed
@@ -150,6 +154,7 @@ board, chip_model =
   when platform == "linux"    then ["linux",    "linux"]
   when hw_target == "TAB5"    then ["tab5",     "ESP32-P4"]
   when hw_target == "NARYAv4" then ["naryav4",  "ESP32-P4"]
+  when hw_target == "ATOMS3R" then ["atoms3r",  "ESP32-S3"]
   else                             ["narya_v3", "ESP32-S3"]
   end
 

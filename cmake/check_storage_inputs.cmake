@@ -20,7 +20,7 @@
 # Expected inputs (passed with -D):
 #   SRC_DIR         repository root
 #   IDF_TARGET      esp32s3 / esp32p4
-#   FMRB_HW_TARGET  NARYAv3 / TAB5 / NARYAv4 / ATOM_DISPLAY
+#   FMRB_HW_TARGET  NARYAv3 / TAB5 / NARYAv4 / ATOM_DISPLAY / ATOMS3R
 
 set(ETC_DIR "${SRC_DIR}/flash/etc")
 set(LIVE "${ETC_DIR}/system_conf.toml")
@@ -37,6 +37,8 @@ if(IDF_TARGET STREQUAL "esp32p4")
     endif()
 elseif(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
     set(EXPECTED "${SRC_DIR}/config/system_conf_n8r8.toml")
+elseif(FMRB_HW_TARGET STREQUAL "ATOMS3R")
+    set(EXPECTED "${SRC_DIR}/config/system_conf_atoms3r.toml")
 else()
     set(EXPECTED "${SRC_DIR}/config/system_conf_n16r8.toml")
 endif()

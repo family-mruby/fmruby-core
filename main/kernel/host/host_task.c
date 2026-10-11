@@ -21,7 +21,7 @@
 #include "fmrb_kana.h"
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
 #include "host_file_local.h"
 #include "display_p4_task.h"   // cursor latency instrumentation
 #endif
@@ -326,7 +326,7 @@ static void host_send_cursor_visible(bool visible) {
 
 static void host_send_cursor_position(int32_t x, int32_t y) {
     fmrb_link_graphics_cursor_position_t cmd = { .x = x, .y = y };
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     display_p4_cursor_stamp();
     uint32_t t0 = (uint32_t)fmrb_hal_time_get_us();
 #endif
@@ -335,7 +335,7 @@ static void host_send_cursor_position(int32_t x, int32_t y) {
         FMRB_LINK_GFX_CURSOR_SET_POSITION,
         (const uint8_t *)&cmd, sizeof(cmd),
         FMRB_TRANSPORT_TIMEOUT_DEFAULT);
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     display_p4_cursor_send_time((uint32_t)fmrb_hal_time_get_us() - t0);
     if (ret != FMRB_OK) display_p4_cursor_unstamp();
 #endif
@@ -1087,7 +1087,7 @@ static bool file_transfer_process_step(void)
 // Start a new file transfer from a FILE_CMD_TRANSFER message
 static void file_transfer_start(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     // Modern: "GA storage" is the core's own /flash LittleFS. Write the
     // file locally instead of streaming it over the link (there is no
     // link receiver, and none is needed).
@@ -1151,7 +1151,7 @@ static void file_status_response_cb(uint8_t status, const uint8_t *payload,
 // Handle FILE_CMD_STATUS asynchronously (non-blocking for host_task)
 static void file_transfer_handle_status(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     uint8_t exists = 0;
     uint32_t size = 0;
     uint32_t checksum = 0;
@@ -1190,7 +1190,7 @@ static void file_transfer_handle_status(const file_cmd_t *cmd)
 // Handle FILE_CMD_DELETE synchronously
 static void file_transfer_handle_delete(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     fmrb_err_t local_ret = host_file_local_delete(cmd->path, cmd->path_len);
     if (cmd->result) {
         cmd->result->result = (local_ret == FMRB_OK) ? 0 : -1;
@@ -1242,7 +1242,7 @@ static void file_rmdir_response_cb(uint8_t status, const uint8_t *payload,
 // transport timeout than DELETE.
 static void file_transfer_handle_rmdir(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     uint32_t deleted = 0;
     uint8_t status = 0;
     fmrb_err_t local_ret = host_file_local_rmdir(cmd->path, cmd->path_len,

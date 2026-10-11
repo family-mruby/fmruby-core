@@ -41,8 +41,10 @@
 #include "m5gfx_task.h"
 #include "i2c_keyboard.h"
 #endif
-#ifdef FMRB_HW_MODERN
+#ifdef FMRB_HAS_LOCAL_DISPLAY
 #include "display_p4_task.h"
+#endif
+#ifdef FMRB_HW_MODERN
 #if !defined(FMRB_HW_NARYAV4)
 #include "tab5_keyboard.h"
 #include "touch_task.h"
@@ -400,7 +402,7 @@ static bool init_hardware(void)
     fs_bench_run(FMRB_FS_BENCH_DIR);
     fmrb_mem_log_boot_snapshot("fs_bench");
 
-#ifndef FMRB_HW_ATOM_DISPLAY
+#ifdef FMRB_HAS_USB_HOST
     hid_device_config_init();
 
     ret = usb_task_init();
@@ -473,6 +475,14 @@ static bool init_hardware(void)
                          4, NULL) != FMRB_PASS) {
         FMRB_LOGW(TAG, "Failed to spawn radio init task");
     }
+#elif defined(FMRB_HAS_LOCAL_DISPLAY)
+    // An S3 that draws on its own panel (AtomS3R): the same display task as
+    // Modern, with the software compositor. No child chip to reset, no sound
+    // and no radio coprocessor; the radio follows the Retro policy below.
+    ret = display_p4_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init local display, continuing without it");
+    }
 #else
     reset_wrover();
 #endif
@@ -518,6 +528,8 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "Running on Linux target - Development mode");
 #elif defined(CONFIG_IDF_TARGET_ESP32P4)
     FMRB_LOGI(TAG, "Running on ESP32-P4 (M5Stack Tab5) - Production mode");
+#elif defined(FMRB_HW_ATOMS3R)
+    FMRB_LOGI(TAG, "Running on ESP32-S3 (M5Stack AtomS3R) - Production mode");
 #else
     FMRB_LOGI(TAG, "Running on ESP32-S3-N16R8 - Production mode");
 #endif

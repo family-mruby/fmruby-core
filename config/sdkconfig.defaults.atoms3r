@@ -1,0 +1,133 @@
+# M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8: 8MB quad flash, 8MB octal PSRAM).
+# Derived from sdkconfig.defaults.n16r8 (Retro); the differences are the
+# partition table, the flash size, the console on the S3's own
+# USB-Serial-JTAG, no USB host and no Bluetooth (doc/headless_s3/report/h0.md
+# section 5, approved 2026-10-12). Flash QIO 80 MHz and octal PSRAM 80 MHz
+# were measured on the device.
+
+# Performance
+
+CONFIG_FREERTOS_HZ=1000
+
+# Log timestamp: system time (HH:MM:SS.mmm) instead of boot milliseconds
+CONFIG_LOG_TIMESTAMP_SOURCE_SYSTEM=y
+CONFIG_OPTIMIZATION_LEVEL_RELEASE=y
+
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+#CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
+
+# Partition
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="config/partitions_atoms3r.csv"
+CONFIG_PARTITION_TABLE_FILENAME="config/partitions_atoms3r.csv"
+
+# for task info
+CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
+
+# WiFi STA (native radio), same settings as Retro. Buffer counts trimmed for
+# the internal-RAM budget;
+# CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP below moves what can move to PSRAM.
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+# Constraint: must be <= 2 * STATIC_RX_BUFFER_NUM (compile-time check)
+CONFIG_ESP_WIFI_RX_BA_WIN=8
+# Keep WiFi code out of IRAM: IRAM shares the internal-RAM address space
+# (.dram0.dummy), so these speed options cost DRAM whether or not WiFi ever
+# starts. Our WiFi use (file sync, console) does not need the throughput.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
+
+# No software coexistence: there is no second radio here.
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
+
+# No Bluetooth: WiFi is how this board is reached (and the S3 runs one radio
+# at a time anyway). main/drivers/ble/ble_none.c answers the BLE API.
+CONFIG_BT_ENABLED=n
+
+# SPI-RAM
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# CONFIG_SPIRAM_USE_MALLOC is not set
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_SPEED_80M=y
+# for large static global mem
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHMODE="qio"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ="80m"
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+
+# Console on the S3's own USB-Serial-JTAG (the only USB port; no USB-UART
+# bridge on this board).
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+#### To be checked...
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU0=y
+
+CONFIG_PM_ENABLE=n
+
+# Performance optimizations (Arduino-compatible)
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE=y
+
+
+# Logging configuration
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_DEFAULT_LEVEL=3
+
+# Arduino-compatible performance settings
+# FreeRTOS optimizations matching Arduino
+CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=1024
+CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=n
+
+# Task Watchdog: keep WDT enabled for explicitly subscribed tasks,
+# but stop monitoring the IDLE tasks. system_desktop (prio 8 on Core 1)
+# can transiently starve IDLE1 during heavy mruby GC sweeps triggered by
+# desktop overlay redraw bursts. Real deadlocks are still detectable via
+# the status_led task heartbeat going dark.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+
+# SPI driver optimizations for real-time performance
+CONFIG_SPI_MASTER_ISR_IN_IRAM=y
+CONFIG_SPI_SLAVE_ISR_IN_IRAM=y
+
+
+# No USB host: the OTG PHY is the console's.
+
+# Avoid LittleFS Crash in app task
+
+CONFIG_LITTLEFS_MALLOC_STRATEGY_DEFAULT=n
+CONFIG_LITTLEFS_MALLOC_STRATEGY_INTERNAL=y
+
+# FATFS: long file names on the SD card.
+# Same reason as the P4 board: the IDF default (LFN_NONE) only sees 8.3 names,
+# so a file copied from a PC as "demo.mjpg" is reachable only as "DEMO~1.MJP".
+# HEAP keeps the 255-char work buffer off the stack, which suits tasks with
+# small stacks. Names stay in the OEM codepage (437): long ASCII names work,
+# Japanese ones need UTF-8 API encoding and a dynamic codepage (separate call).
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
+# RMT: keep the driver's ISR handlers and encoder functions in flash, not IRAM
+# (about 2.5-2.7 KB of internal RAM back). The only RMT user is the RMT gem
+# (hw_proxy_rmt.c, WS2812 LED matrix demo); the status LED is plain GPIO. Its
+# channels are created without a cache-safe interrupt, so RMT already stops
+# while flash is being written; this only moves the ISR entry to flash.
+# Measured in doc/iram_reduction/report/r3.md section 3.
+CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM=n
+CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM=n
+CONFIG_RMT_ENCODER_FUNC_IN_IRAM=n

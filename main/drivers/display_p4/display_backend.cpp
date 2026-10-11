@@ -23,7 +23,9 @@ const display_backend_t *display_backend(void)
     /* wasm/backend/display_backend_wasm.cpp: the shared software compositor
      * with an RGBA frame for the browser (doc/wasm/ P4a). */
     return display_backend_wasm();
-#elif defined(FMRB_DISPLAY_BACKEND_CPU)
+#elif defined(FMRB_DISPLAY_BACKEND_CPU) || !defined(FMRB_HAS_PPA)
+    /* Chosen on a P4 for testing; the only choice on a chip without the PPA
+     * (the AtomS3R). */
     return display_backend_cpu();
 #else
     return display_backend_ppa();

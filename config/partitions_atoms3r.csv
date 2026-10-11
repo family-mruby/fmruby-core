@@ -1,0 +1,14 @@
+# M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8) - 8MB flash
+#
+# Plan A of doc/headless_s3/report/h0.md (decided 2026-10-12): factory 5M for
+# a firmware that will grow with zenoh and Asterism, and the rest (3008K) for
+# storage. The full Retro storage tree does not fit there; what this board
+# leaves out of its image is listed in config/storage_exclude_atoms3r.txt.
+#
+# A partition-table change cannot ship as an app-only update: it needs a full
+# flash (bootloader + table + app + storage), which erases /home.
+# Name,   Type, SubType,  Offset,  Size, Flags
+nvs,      data, nvs,      0x9000,  24K,
+phy_init, data, phy,             ,  4K,
+factory,  app,  factory,  0x10000, 5M,
+storage,  data, littlefs, 0x510000, 3008K,
