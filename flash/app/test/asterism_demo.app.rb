@@ -2,10 +2,13 @@
 # another machine, and that machine's objects called from here.
 #
 # - Node ID: the first line of /home/asterism_node.txt, else the board's
-#   mDNS name (fmruby-XXXXXX), else "linux" (the sim has no mDNS name).
+#   mDNS name (fmruby-XXXXXX), else the board name ("linux" in the sim,
+#   "wasm" in the browser; neither has an mDNS name).
 # - Connects like zenoh_echo: the first line of /home/zenoh_echo.txt is the
-#   locator (default tcp/zenohd:7447); "listen <loc>" / "peer <loc>" select
-#   peer mode (no router).
+#   locator, else the machine's zenoh_router setting (system_conf.toml; the
+#   browser build has ws/localhost:7449 there, or ?zenoh= from the page's
+#   URL), else tcp/zenohd:7447; "listen <loc>" / "peer <loc>" select peer
+#   mode (no router; not in the browser).
 # - Exposes, as <ID>/demo/<name>:
 #     apu     play(mml) -> number of notes, stop -> true (the APU, via MML)
 #     screen  say(text) -> text length (shown in this window)
@@ -34,6 +37,7 @@ class AsterismDemoApp < FmrbApp
   DEFAULT_LOCATOR = "tcp/zenohd:7447"
   LOCATOR_FILE = "/home/zenoh_echo.txt"
   NODE_FILE = "/home/asterism_node.txt"
+  CONF_FILE = "/etc/system_conf.toml"
   APP = "demo"
   STATUS_EVERY_MS = 3000
   TUNE = "o4 l8 cdefgab>c"
@@ -116,6 +120,20 @@ class AsterismDemoApp < FmrbApp
     ""
   end
 
+  # The quoted value of `zenoh_router = "..."` in system_conf.toml, or "".
+  def conf_router
+    text = File.open(CONF_FILE, "r") { |f| f.read }
+    text.split("\n").each do |line|
+      next unless line.start_with?("zenoh_router")
+      a = line.index("\"")
+      b = a ? line.index("\"", a + 1) : nil
+      return b ? line[a + 1, b - a - 1].to_s.strip : ""
+    end
+    ""
+  rescue
+    ""
+  end
+
   def uptime_ms
     Machine.board_millis - @started
   end
@@ -127,8 +145,9 @@ class AsterismDemoApp < FmrbApp
       info = FmrbApp.wifi_info
       @node = info ? info[:hostname].to_s : ""
     end
-    @node = "linux" if @node.empty?
+    @node = FmrbConst::BOARD if @node.empty?
     @locator = first_line(LOCATOR_FILE)
+    @locator = conf_router if @locator.empty?
     @locator = DEFAULT_LOCATOR if @locator.empty?
     @state = "connecting"
     @said = "-"

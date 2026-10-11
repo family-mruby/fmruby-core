@@ -4,9 +4,11 @@
 # (/camera/image/compressed, 160x120 JPEG at 5 Hz).
 #
 # - Connects like ros2_drive: the first line of /home/zenoh_echo.txt is the
-#   locator (default tcp/zenohd:7447), the ID comes from
-#   /home/asterism_node.txt, the mDNS name or "linux". The ROS node is
-#   fmruby_cam_<ID>.
+#   locator, else the machine's zenoh_router setting (system_conf.toml; the
+#   browser build has ws/localhost:7449 there, or ?zenoh= from the page's
+#   URL), else tcp/zenohd:7447. The ID comes from /home/asterism_node.txt,
+#   the mDNS name or the board name ("linux" in the simulator, "wasm" in the
+#   browser). The ROS node is fmruby_cam_<ID>.
 # - Keys: Up / Down speed up / slow down (0.05 m/s a press, +-0.5 m/s),
 #   Left / Right turn (0.3 rad/s a press, +-1.5 rad/s), Space or S stops.
 # - One driver at a time: /cmd_vel goes out 10 times a second only while the
@@ -15,8 +17,9 @@
 # - The picture: only the newest frame is kept (the subscription's ring is
 #   2 deep and older frames are dropped). On Modern hardware the JPEG is
 #   written to /tmp (RAM) and drawn through create_image, which hands JPEG to
-#   the SoC's decoder. The simulator's display side reads PNG only, so there
-#   the picture area shows the frame's size and rate instead.
+#   the SoC's decoder; the browser build decodes it in software (TJpgDec)
+#   behind the same call. The simulator's display side reads PNG only, so
+#   there the picture area shows the frame's size and rate instead.
 # - Shown: the camera's receive and draw rates, two delays, the time one
 #   picture takes to draw, and the update loop's time (poll + decode).
 #   - delay: from the image publisher sending the frame to the frame being
@@ -77,6 +80,7 @@ class RoverCamApp < FmrbApp
   DEFAULT_LOCATOR = "tcp/zenohd:7447"
   LOCATOR_FILE = "/home/zenoh_echo.txt"
   NODE_FILE = "/home/asterism_node.txt"
+  CONF_FILE = "/etc/system_conf.toml"
   FRAME_FILE = "/tmp/rover_cam.jpg"
   SEND_EVERY_MS = 100
   RATE_EVERY_MS = 2000
@@ -90,6 +94,20 @@ class RoverCamApp < FmrbApp
   def first_line(path)
     text = File.open(path, "r") { |f| f.read }
     text.split("\n")[0].to_s.strip
+  rescue
+    ""
+  end
+
+  # The quoted value of `zenoh_router = "..."` in system_conf.toml, or "".
+  def conf_router
+    text = File.open(CONF_FILE, "r") { |f| f.read }
+    text.split("\n").each do |line|
+      next unless line.start_with?("zenoh_router")
+      a = line.index("\"")
+      b = a ? line.index("\"", a + 1) : nil
+      return b ? line[a + 1, b - a - 1].to_s.strip : ""
+    end
+    ""
   rescue
     ""
   end
@@ -112,11 +130,13 @@ class RoverCamApp < FmrbApp
       info = FmrbApp.wifi_info
       @id = info ? info[:hostname].to_s : ""
     end
-    @id = "linux" if @id.empty?
+    @id = FmrbConst::BOARD if @id.empty?
     @locator = first_line(LOCATOR_FILE)
+    @locator = conf_router if @locator.empty?
     @locator = DEFAULT_LOCATOR if @locator.empty?
-    # JPEG through create_image: Modern hardware only (see the top).
-    @jpeg = FmrbConst::PLATFORM == "esp32" && FmrbConst::HW_FAMILY == "modern"
+    # JPEG through create_image: Modern hardware and the browser (see the top).
+    @jpeg = (FmrbConst::PLATFORM == "esp32" && FmrbConst::HW_FAMILY == "modern") ||
+            FmrbConst::BOARD == "wasm"
     @state = "connecting"
     @session = nil
     @node = nil
