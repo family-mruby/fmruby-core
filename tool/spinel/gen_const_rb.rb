@@ -170,6 +170,9 @@ out << "  HW_FAMILY = #{hw_family.inspect}\n"
 # WiFi-capable: every Spinel target has it (Narya S3 native, P4 via C6, the
 # Linux sim reports host network state). ATOM (no WiFi) never runs Spinel.
 out << "  HAS_WIFI = true\n"
+# Whether the efontJA fonts are in this build (FMRB_FONT_JA, default on), the
+# same answer const.c gives from FMRB_NO_FONT_JA.
+out << "  FONT_JA = #{ENV["FMRB_FONT_JA"].to_s != "0"}\n"
 out << "  MSG_TYPE_APP_CONTROL = #{msg_types['FMRB_MSG_TYPE_APP_CONTROL']}\n"
 out << "  MSG_TYPE_APP_GFX = #{msg_types['FMRB_MSG_TYPE_APP_GFX']}\n"
 out << "  MSG_TYPE_APP_AUDIO = #{msg_types['FMRB_MSG_TYPE_APP_AUDIO']}\n"

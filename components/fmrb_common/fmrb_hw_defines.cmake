@@ -35,6 +35,12 @@
 #     FMRB_HAS_PPA         the P4's 2D engine (PPA) and JPEG codec exist.
 #     FMRB_HAS_USB_HOST    a USB host port for keyboards and mice.
 #     FMRB_HAS_WIFI        a radio for WiFi STA.
+#   Build options, for every board (rake passes them in the environment):
+#     FMRB_NO_FONT_JA      built with FMRB_FONT_JA=0: the efontJA fonts
+#                          (16 / 12 / 12 bold) are not in the firmware and
+#                          set_font(:ja, ...) selects misaki 8 instead.
+#                          Where the fonts live in another chip's firmware
+#                          (Retro's WROVER) only the selection changes.
 #
 # fmrb_hw_family_is_modern(<out_var>) answers the same question at configure
 # time, for build lists rather than compile macros: whether this build is a
@@ -55,6 +61,9 @@ endfunction()
 # requirement scan runs component CMakeLists in script mode (stopping at the
 # register call), where target_compile_definitions does not exist.
 function(fmrb_add_hw_defines)
+    if("$ENV{FMRB_FONT_JA}" STREQUAL "0")
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_NO_FONT_JA)
+    endif()
     if(IDF_TARGET STREQUAL "linux")
         # The simulator has no hardware to speak of, but it does stand in for
         # one machine or the other, and rake says which.

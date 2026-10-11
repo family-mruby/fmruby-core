@@ -20,7 +20,10 @@ def get_serial_port
   abort "Serial port not configured. Run 'rake check-port' first."
 end
 
-# Load environment variables from .env file
+# Load environment variables from .env file. DOTENV_KEYS remembers which
+# variables came from it (rather than from the shell), for the board defaults
+# below.
+DOTENV_KEYS = []
 if File.exist?(".env")
   File.readlines(".env").each do |line|
     line.strip!
@@ -32,8 +35,32 @@ if File.exist?(".env")
     # semantics): only apply the .env value when the var is not already set.
     # Without this a command-line override (e.g. FMRB_HW_TARGET=TAB5) is
     # silently clobbered by .env and the wrong chip is built.
-    ENV[key.strip] = value unless value.empty? || ENV.key?(key.strip)
+    next if value.empty? || ENV.key?(key.strip)
+    ENV[key.strip] = value
+    DOTENV_KEYS << key.strip
   end
+end
+
+# Build options a board needs by default, for the board as a whole rather than
+# for one developer's machine. They sit between the two sources above: they
+# win over .env (which holds a developer's everyday choice, usually made for
+# another board) and lose to the shell, so
+#   FMRB_HW_TARGET=ATOMS3R rake build:esp32
+# builds what fits the AtomS3R and
+#   FMRB_HW_TARGET=ATOMS3R FMRB_FONT_JA=1 rake build:esp32
+# still overrides one of them.
+#   ATOMS3R: its factory partition is 5M (doc/headless_s3/), so the editor is
+#   the mruby one, the Spinel FFT is left out and so are the Japanese fonts.
+BOARD_BUILD_DEFAULTS = {
+  "ATOMS3R" => {
+    "FMRB_APP_ENGINE_EDITOR" => "mruby",
+    "FMRB_FFT_SPINEL" => "0",
+    "FMRB_FONT_JA" => "0",
+  },
+}
+(BOARD_BUILD_DEFAULTS[ENV.fetch("FMRB_HW_TARGET", "").strip] || {}).each do |key, value|
+  next if ENV.key?(key) && !DOTENV_KEYS.include?(key)
+  ENV[key] = value
 end
 
 UID  = `id -u`.strip
@@ -259,6 +286,11 @@ FMRB_APP_ENGINE_EDITOR = ENV["FMRB_APP_ENGINE_EDITOR"] || "mruby"
 # above. FMRB_FFT_SPINEL=0 builds without it (main/CMakeLists.txt reads the
 # same variable inside the container).
 FMRB_FFT_SPINEL = (ENV["FMRB_FFT_SPINEL"] || "1") != "0"
+# The Japanese fonts (efontJA 16 / 12 / 12 bold, about 1MB of flash on a
+# board that draws on its own screen). FMRB_FONT_JA=0 builds without them:
+# set_font(:ja, ...) then selects misaki 8 and says so. Default 1; the
+# AtomS3R defaults to 0 (BOARD_BUILD_DEFAULTS above).
+FMRB_FONT_JA = (ENV["FMRB_FONT_JA"] || "1") != "0"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 # Pin the build container to the IDF version tag above -- never :latest. Two
@@ -296,6 +328,7 @@ ENGINE_ENV_OPTS = [
   "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}",
   "-e FMRB_APP_ENGINE_EDITOR=#{FMRB_APP_ENGINE_EDITOR}",
   "-e FMRB_FFT_SPINEL=#{FMRB_FFT_SPINEL ? 1 : 0}",
+  "-e FMRB_FONT_JA=#{FMRB_FONT_JA ? 1 : 0}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
   # (lib/add/family_mruby_*.rb) and the CMake side

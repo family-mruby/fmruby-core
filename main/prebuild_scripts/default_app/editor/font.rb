@@ -49,6 +49,9 @@ module EditorMenu
   # the size and the row is the size.
   def apply_edit_font(size)
     s = edit_font_index(size) < 0 ? EDIT_FONT_DEFAULT : size
+    # A build without the efontJA fonts (FMRB_FONT_JA=0) draws every size in
+    # misaki 8, so the grid has to be misaki's whatever was chosen.
+    s = 8 unless FmrbConst::FONT_JA
     @edit_font_size = s
     @cell_w = s / 2
     @line_h = s

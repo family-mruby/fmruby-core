@@ -393,6 +393,14 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "HW_FAMILY", mrb_str_new_cstr(mrb, "retro"));
 #endif
 
+    // Whether this build carries the efontJA fonts (FMRB_FONT_JA, default on).
+    // Without them set_font(:ja, ...) selects misaki 8 (FmrbGfx.resolve_font).
+#if defined(FMRB_NO_FONT_JA)
+    mrb_define_const(mrb, const_module, "FONT_JA", mrb_false_value());
+#else
+    mrb_define_const(mrb, const_module, "FONT_JA", mrb_true_value());
+#endif
+
     // Process ID constants
     mrb_define_const(mrb, const_module, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
     mrb_define_const(mrb, const_module, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));

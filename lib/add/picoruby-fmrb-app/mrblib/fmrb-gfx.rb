@@ -76,20 +76,25 @@ class FmrbGfx
     "retro"  => [[:default], [:ja, 8], [:ja, 12], [:ja, 16], [:ja_bold, 12]],
   }
 
+  # A build without the efontJA fonts (FMRB_FONT_JA=0, FmrbConst::FONT_JA is
+  # false) has misaki 8 alone, whatever the family.
+  FONT_AVAILABLE_NO_JA = [[:default], [:ja, 8]]
+
   # Nearest thing this machine has to the font asked for: a size it does not
-  # carry falls back to 12, and a bold it does not carry to the regular cut.
+  # carry falls back to 12 (or to misaki 8 when that is all there is), and a
+  # bold it does not carry to the regular cut.
   def self.resolve_font(key)
     have = FONT_AVAILABLE[FmrbConst::HW_FAMILY] || FONT_AVAILABLE["retro"]
+    have = FONT_AVAILABLE_NO_JA unless FmrbConst::FONT_JA
     return key if have.include?(key)
     family = key[0]
     if family == :ja_bold
       plain = [:ja, key[1]]
       return plain if have.include?(plain)
-      return [:ja, 12] if have.include?([:ja, 12])
-      return [:default]
     end
-    if family == :ja
+    if family == :ja || family == :ja_bold
       return [:ja, 12] if have.include?([:ja, 12])
+      return [:ja, 8] if have.include?([:ja, 8])
       return [:default]
     end
     [:default]

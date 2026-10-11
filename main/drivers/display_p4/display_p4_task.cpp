@@ -2038,6 +2038,16 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             case FMRB_LINK_GFX_FONT_FAMILY_DEFAULT:
                 s->setFont(&fonts::Font0);
                 break;
+#if defined(FMRB_NO_FONT_JA)
+            case FMRB_LINK_GFX_FONT_FAMILY_JA:
+            case FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD:
+                // Built with FMRB_FONT_JA=0: the efontJA fonts are not in
+                // this firmware (nothing here may name them, or the linker
+                // keeps them), so every Japanese size is misaki 8. set_font
+                // already answers [:ja, 8] (FmrbGfx.resolve_font).
+                s->setFont(&fonts::misaki_8);
+                break;
+#else
             case FMRB_LINK_GFX_FONT_FAMILY_JA:
                 // size=8 -> misaki (matches the system 8px UI height),
                 // 12 and 16 -> efontJA (bundled with M5GFX). Anything else
@@ -2065,6 +2075,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 }
                 s->setFont(&fonts::efontJA_12_b);
                 break;
+#endif
             default:
                 FMRB_LOGW(TAG, "SET_FONT: unknown family=%u", cmd->family);
                 return -1;
