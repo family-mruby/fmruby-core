@@ -5,7 +5,8 @@
 # - Connects like rover_cam: the first line of /home/zenoh_echo.txt is the
 #   locator, else the machine's zenoh_router setting (system_conf.toml),
 #   else tcp/zenohd:7447. The ID comes from /home/asterism_node.txt, the mDNS
-#   name or the board name ("linux" in the simulator, "wasm" in the browser).
+#   name, the asterism_node setting (the browser's wasm-XXXXXX) or the board
+#   name ("linux" in the simulator, "wasm" in the browser).
 # - Two sessions to the same router: one for Asterism (the object), one for
 #   ROS 2 (the node fmruby_brain_<ID>: publishes /cmd_vel, subscribes /odom,
 #   and puts the call log on asterism/<ID>/brain/log for asterism-console's
@@ -128,10 +129,11 @@ class RoverBrainApp < FmrbApp
     ""
   end
 
-  def conf_router
+  # The quoted value of `<key> = "..."` in system_conf.toml, or "".
+  def conf_value(key)
     text = File.open(CONF_FILE, "r") { |f| f.read }
     text.split("\n").each do |line|
-      next unless line.start_with?("zenoh_router")
+      next unless line.start_with?(key)
       a = line.index("\"")
       b = a ? line.index("\"", a + 1) : nil
       return b ? line[a + 1, b - a - 1].to_s.strip : ""
@@ -159,9 +161,10 @@ class RoverBrainApp < FmrbApp
       info = FmrbApp.wifi_info
       @id = info ? info[:hostname].to_s : ""
     end
+    @id = conf_value("asterism_node") if @id.empty?
     @id = FmrbConst::BOARD if @id.empty?
     @locator = first_line(LOCATOR_FILE)
-    @locator = conf_router if @locator.empty?
+    @locator = conf_value("zenoh_router") if @locator.empty?
     @locator = DEFAULT_LOCATOR if @locator.empty?
     @state = "connecting"
     @rs = nil         # the ROS 2 session

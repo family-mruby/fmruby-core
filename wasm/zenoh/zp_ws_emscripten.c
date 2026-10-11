@@ -124,6 +124,19 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
             let url = '';
             for (let p = $1; u8[p]; p++) url += String.fromCharCode(u8[p]);
             const zp = Module['zpws'] || (Module['zpws'] = {});
+            // ws:// or wss:// (doc/ruby_asterism, B2). The locator is ws/
+            // either way (zenoh-pico has no wss); the scheme follows the page.
+            // A page served over https may not open ws:// -- the constructor
+            // throws -- except to a loopback address, which Chrome and Firefox
+            // both count as secure: a router on this computer is reached
+            // without TLS, anything else through a TLS-terminating proxy.
+            if (typeof location !== 'undefined' && location.protocol === 'https:') {
+                let host;
+                try { host = new URL(url).hostname.toLowerCase(); } catch (e) { host = String(); }
+                const loopback = host === 'localhost' || host.endsWith('.localhost') ||
+                                 /^127[.][0-9]+[.][0-9]+[.][0-9]+$/.test(host) || host === '[::1]';
+                if (!loopback) url = 'wss' + url.slice(2);
+            }
             let ws;
             try {
                 ws = new WebSocket(url);
