@@ -43,7 +43,8 @@ static int s_res_w, s_res_h;
  * forgotten the moment the tab is reloaded. Key and value arrive exactly as
  * they appear in the file, quotes and all. */
 /* Room for every key the page carries (CONF_KEYS in wasm/web/main.js, 19 as
- * of this writing) plus the startup_app that ?app= adds. */
+ * of this writing) plus the startup_app that ?app= adds and the zenoh_router
+ * that ?zenoh= adds. */
 #define CONF_OVERRIDE_MAX 24
 #define CONF_TOKEN_MAX 32
 /* Values are longer than keys: `wallpaper` carries a path, and
