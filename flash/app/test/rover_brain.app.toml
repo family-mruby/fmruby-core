@@ -1,0 +1,7 @@
+app_screen_name = "Rover Brain"
+app_screen_name_ja = "台車の頭脳"
+default_window_mode = "window"
+default_window_width = 330
+default_window_height = 150
+default_window_pos_x = 8
+default_window_pos_y = 30
