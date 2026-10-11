@@ -63,6 +63,14 @@ audio_volume = 7
 # the ordinary desktop. The browser sets this from ?app= in its URL.
 startup_app = ""
 
+# What the machine runs at boot. "desktop" is the ordinary desktop, launcher
+# and windows; "app" runs startup_app alone, full screen, with no desktop --
+# for a machine that exists to run one thing. With "app", an app that dies is
+# started again startup_app_retries times (0 = never); after that the machine
+# stops and shows why, on the screen and the serial log.
+boot_mode = "desktop"
+startup_app_retries = 3
+
 # Desktop wallpaper. Empty means "whatever the theme says" -- the western
 # picture, or the neon one under the cyberpunk theme, at the size of the
 # screen. A path here wins over that; "none" leaves the desktop a plain

@@ -68,6 +68,14 @@ audio_volume = 7
 # the ordinary desktop. The browser sets this from ?app= in its URL.
 startup_app = ""
 
+# What the machine runs at boot. "desktop" is the ordinary desktop, launcher
+# and windows; "app" runs startup_app alone, full screen, with no desktop --
+# for a machine that exists to run one thing. With "app", an app that dies is
+# started again startup_app_retries times (0 = never); after that the machine
+# stops and shows why, on the screen and the serial log.
+boot_mode = "desktop"
+startup_app_retries = 3
+
 # Where Asterism / Zenoh apps find the router (doc/ruby_asterism, B1, B2). A
 # page cannot open TCP, so the browser reaches zenohd over WebSocket: its ws/
 # listener (the parent repository's docker-compose.zenoh-ws.yml). The page's
