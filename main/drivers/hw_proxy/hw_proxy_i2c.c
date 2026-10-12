@@ -12,7 +12,7 @@
 // its state outright. Mediate all unit-1 traffic through the display driver's
 // serialized I2C service instead. The pins come from fmrb_pin_assign.h so this
 // follows the board (Tab5 GPIO31/32, NARYA v4 GPIO7/8, AtomS3R GPIO45/0).
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "fmrb_pin_assign.h"
 #define HW_PROXY_I2C_MEDIATED_UNIT  1
 #define HW_PROXY_I2C_MEDIATED_SDA   FMRB_PIN_I2C1_SDA
@@ -24,7 +24,7 @@ static const char *TAG = "hw_proxy_i2c";
 typedef struct {
     i2c_master_bus_handle_t bus_handle;
     bool initialized;
-    bool mediated;   // routed via display_p4 I2C service (local-display unit 1)
+    bool mediated;   // routed via display_local I2C service (local-display unit 1)
     uint32_t frequency;
     int8_t sda;
     int8_t scl;
@@ -74,7 +74,7 @@ static void handle_init(hw_proxy_request_t *req)
             req->result = FMRB_ERR_INVALID_PARAM;
             return;
         }
-        if (!display_p4_is_ready()) {
+        if (!display_local_is_ready()) {
             FMRB_LOGE(TAG, "I2C%d mediation unavailable (display not ready)",
                       p->unit);
             req->result = FMRB_ERR_BUSY;
@@ -149,7 +149,7 @@ static void handle_read(hw_proxy_request_t *req)
 
 #ifdef FMRB_HAS_LOCAL_DISPLAY
     if (s_i2c[p->unit].mediated) {
-        req->result = display_p4_i2c_read(p->addr, p->buf, p->len,
+        req->result = display_local_i2c_read(p->addr, p->buf, p->len,
                                           s_i2c[p->unit].frequency);
         return;
     }
@@ -213,7 +213,7 @@ static void handle_write(hw_proxy_request_t *req)
 
 #ifdef FMRB_HAS_LOCAL_DISPLAY
     if (s_i2c[p->unit].mediated) {
-        req->result = display_p4_i2c_write(p->addr, p->buf, p->len,
+        req->result = display_local_i2c_write(p->addr, p->buf, p->len,
                                            s_i2c[p->unit].frequency);
         return;
     }

@@ -207,7 +207,7 @@ class AppStoreApp < FmrbApp
 
   # The picture of whatever is selected, drawn in the corner of the detail
   # area. One at a time: the display side holds eight images at once
-  # (DISPLAY_P4_MAX_IMAGES), and a decode is about 75 ms on a board, so
+  # (DISPLAY_LOCAL_MAX_IMAGES), and a decode is about 75 ms on a board, so
   # create-draw-delete for one is affordable where one per row was not.
   def draw_thumb(a)
     return unless pictures?
@@ -237,7 +237,7 @@ class AppStoreApp < FmrbApp
   # moving back to an app already looked at costs a draw and nothing else.
   #
   # Only a few: there are eight image slots for the whole machine
-  # (DISPLAY_P4_MAX_IMAGES), and the other apps need some.
+  # (DISPLAY_LOCAL_MAX_IMAGES), and the other apps need some.
   IMAGE_CACHE_MAX = 4
 
   def image_for(id, path)
@@ -679,7 +679,7 @@ class AppStoreApp < FmrbApp
   #
   # It has eight for the whole machine and frees one only when it is told to:
   # deleting a canvas does not release the images drawn on it
-  # (display_p4_task.cpp calls image_store_destroy from DELETE_IMAGE and
+  # (display_local_task.cpp calls image_store_destroy from DELETE_IMAGE and
   # nowhere else). An app that exits holding some leaks them until the board
   # is rebooted -- after a few launches every create_image fails, draw_image
   # is called with an id that is not there ("DRAW_IMAGE: image 0 not found"),

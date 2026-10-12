@@ -3,7 +3,7 @@
 // Configuration mirrors the M5Stack Tab5 BSP (M5Tab5-UserDemo
 // components/m5stack_tab5): I2S pins MCLK=30 BCLK=27 WS=29 DOUT=26,
 // ES8388 as I2S slave in DAC mode, speaker amp enabled via PI4IO #1 P1
-// (already driven high by tab5_power_on in display_p4_task).
+// (already driven high by tab5_power_on in display_local_task).
 //
 // The codec control interface attaches to the existing I2C bus on
 // GPIO31/32 (port 1) owned by LovyanGFX; the bus handle is obtained
@@ -32,7 +32,7 @@
 #include "fmrb_fft_bench.h"
 #include "fmrb_log.h"
 #include "fmrb_attr.h"
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
@@ -342,7 +342,7 @@ static fmrb_err_t audio_p4_hw_init(void) {
 #endif
 
     // Headphone detect / speaker amp gating lives in the display driver
-    // (display_p4_poll_headphone): the PI4IO shares the I2C controller
+    // (display_local_poll_headphone): the PI4IO shares the I2C controller
     // with the GT911, which LovyanGFX drives at register level, so all
     // runtime accesses must go through lgfx's I2C path from the touch
     // task context. Using i2c_master here breaks the controller state.
@@ -445,7 +445,7 @@ static const uint8_t s_es7210_off[][2] = {
 static fmrb_err_t es7210_write_all(const uint8_t (*regs)[2], size_t count)
 {
     for (size_t i = 0; i < count; i++) {
-        fmrb_err_t err = display_p4_i2c_write_reg8(ES7210_I2C_ADDR_7BIT,
+        fmrb_err_t err = display_local_i2c_write_reg8(ES7210_I2C_ADDR_7BIT,
                                                    regs[i][0], regs[i][1],
                                                    ES7210_I2C_FREQ);
         if (err != FMRB_OK) {
@@ -505,7 +505,7 @@ fmrb_err_t audio_p4_mic_enable(bool on) {
         // hand. NARYA v4's microphone is on the ES8311 the speaker uses, which
         // esp_codec_dev already opened for both directions.
         // Reset first (0x00 = 0xFF), the way the codec expects to be woken.
-        fmrb_err_t err = display_p4_i2c_write_reg8(ES7210_I2C_ADDR_7BIT, 0x00, 0xFF,
+        fmrb_err_t err = display_local_i2c_write_reg8(ES7210_I2C_ADDR_7BIT, 0x00, 0xFF,
                                                    ES7210_I2C_FREQ);
         if (err != FMRB_OK) {
             FMRB_LOGE(TAG, "ES7210 not answering on the shared bus");
@@ -682,7 +682,7 @@ void audio_p4_hw_set_out_mute(bool mute) {
 #define ES8388_I2C_FREQ       400000
 
 static fmrb_err_t es8388_write(uint8_t reg, uint8_t val) {
-    return display_p4_i2c_write_reg8(ES8388_I2C_ADDR_7BIT, reg, val, ES8388_I2C_FREQ);
+    return display_local_i2c_write_reg8(ES8388_I2C_ADDR_7BIT, reg, val, ES8388_I2C_FREQ);
 }
 
 // LDACVOL/RDACVOL: 0x00 = 0 dB down to 0xC0 = -96 dB, 0.5 dB steps.

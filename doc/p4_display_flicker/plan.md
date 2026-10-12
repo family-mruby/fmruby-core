@@ -18,7 +18,7 @@ Linux sim では出ない = Tab5 (P4) 固有。
 
 ## 根本原因(確定)
 
-- 合成側は無罪: 計装(`display_p4_task.cpp` に一時ログ)で、コマンド列は常に
+- 合成側は無罪: 計装(`display_local_task.cpp` に一時ログ)で、コマンド列は常に
   `CLEAR -> PRESENT -> RENDER` の順で、render_frame は clear と present の
   間に割り込まない(完全フレームを合成)ことを確認済み。
 - 真因は**表示ハンドオフ**: `render_frame` が合成した `g_framebuffer` を
@@ -43,7 +43,7 @@ DSI 出力を**二重バッファ化 + vsync でスワップ**し、PPA は非�
   `init()` を override して DPI パネルを **`num_fbs = 2`** で生成、FB を 2 枚
   取得して公開(fb0 / fb1 / パネルハンドル)。`num_fbs` は基底 `Panel_DSI::
   init_dpi` にハードコード + 非 virtual なので、DPI 生成を再実装する。
-- スワップ制御は我々の `display_p4_task.cpp` に置く: render_frame で裏 FB へ
+- スワップ制御は我々の `display_local_task.cpp` に置く: render_frame で裏 FB へ
   PPA → `esp_lcd_panel_draw_bitmap`(full-frame)で vsync 切替 → 表裏を交代。
 - cursor パッチ / ブート画面 / リモート capture の各経路も裏 FB(または現在の
   表 FB)へ整合させる。
@@ -54,7 +54,7 @@ DSI 出力を**二重バッファ化 + vsync でスワップ**し、PPA は非�
    スワップが実機で成立するか最小改造で確証。表示が出るか、テアリングが
    消えるか。ダメなら即戻す(ブランチ破棄)。esp_lcd DPI のスワップ挙動
    (`draw_bitmap` full-frame or 専用 API)を実機で確定する。
-2. **Stage 2**: `display_p4_task` を本格 ping-pong 化。
+2. **Stage 2**: `display_local_task` を本格 ping-pong 化。
 3. **Stage 3**: cursor / boot / capture 経路を裏 FB 対応。
 4. **Stage 4**: 性能計測(render/PPA/スワップ、30fps 維持)+ 全 UI で
    ちらつき・崩れなし確認。
@@ -72,7 +72,7 @@ DSI 出力を**二重バッファ化 + vsync でスワップ**し、PPA は非�
 
 ## 参考(コード位置)
 
-- 合成/表示: `main/drivers/display_p4/display_p4_task.cpp`
+- 合成/表示: `main/drivers/display_local/display_local_task.cpp`
   (`render_frame` 654-、PPA SRM 769-、cursor パッチ 428-、capture 742-)
-- パネル: `main/drivers/display_p4/lgfx_tab5.hpp`、m5gfx
+- パネル: `main/drivers/display_local/lgfx_tab5.hpp`、m5gfx
   `Panel_DSI.cpp`(`num_fbs=1`)/ `Panel_ILI9881C.*`

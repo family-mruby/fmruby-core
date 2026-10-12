@@ -22,7 +22,7 @@
 // the cursor away.
 
 #include "touch_task.h"
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "host/host_task.h"
 #include "fmrb_log.h"
 #include "freertos/FreeRTOS.h"
@@ -123,8 +123,8 @@ static void clamp_cursor(void) {
 static void touch_task(void *arg) {
     (void)arg;
 
-    // Wait for display_p4 LGFX init to complete
-    while (!display_p4_is_ready()) {
+    // Wait for display_local LGFX init to complete
+    while (!display_local_is_ready()) {
         vTaskDelay(pdMS_TO_TICKS(TOUCH_READY_POLL_MS));
     }
     FMRB_LOGI(TAG, "Touch task started (trackpad mode, poll=%dms)", TOUCH_POLL_MS);
@@ -137,11 +137,11 @@ static void touch_task(void *arg) {
         // Headphone jack polling shares this task so its lgfx-level I2C
         // access stays serialized with the GT911 reads (every ~165 ms)
         if ((poll_count++ % 5) == 0) {
-            display_p4_poll_headphone();
+            display_local_poll_headphone();
         }
 
         int16_t tx, ty;
-        int count = display_p4_get_touch(&tx, &ty);
+        int count = display_local_get_touch(&tx, &ty);
         uint32_t now = now_ms();
         sync_screen_size();
 

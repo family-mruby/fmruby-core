@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 // P4 hardware JPEG encoder wrapper for the MJPEG remote-desktop stream.
-// Input: RGB565 (non-swapped) frames from display_p4 capture. The source
+// Input: RGB565 (non-swapped) frames from display_local capture. The source
 // width (426) is row-padded to 432 internally (JPEG MCU alignment); the
 // viewer crops the padding.
 

@@ -13,7 +13,7 @@ RPGデモ (flash/app/game/rpg_demo) は 176x176 のビューポートを
 
 ## P4 コンポジタの仕組み (前提)
 
-display_p4_task.cpp render_frame() は毎フレーム:
+display_local_task.cpp render_frame() は毎フレーム:
 
 1. 全 canvas を z 順に PPA **Blend** で 426x240 RGB565 フレームバッファへ合成
    (canvas の画面位置 push_x/y は blend の block_offset レジスタに
@@ -62,7 +62,7 @@ payload (packed): { u16 canvas_id, u16 src_x, u16 src_y, u16 view_w, u16 view_h 
 3. components/fmrb_gfx/fmrb_gfx.c/.h: fmrb_gfx_set_canvas_viewport()
    (async 経路 = host_task バッチキュー。描画/present との順序保証のため)
 4. main/kernel/host/host_task.c gfx_cmd_to_batch_entry(): 変換 case
-5. main/drivers/display_p4/display_p4_task.cpp: ハンドラ + render_frame
+5. main/drivers/display_local/display_local_task.cpp: ハンドラ + render_frame
 6. Ruby: lib/add/picoruby-fmrb-app/ports/esp32/gfx.c `_set_canvas_viewport`
    + mrblib/fmrb-gfx.rb `set_viewport` / `clear_viewport`
 
@@ -101,7 +101,7 @@ payload (packed): { u16 canvas_id, u16 src_x, u16 src_y, u16 view_w, u16 view_h 
 
 ## render_frame 側の実装ポイント
 
-- blend 処理は `blend_canvas_block()` (display_p4_task.cpp) に共通化。
+- blend 処理は `blend_canvas_block()` (display_local_task.cpp) に共通化。
   通常 canvas は 1 ブロック、viewport 付き canvas はトーラス折り返しで
   **最大4ブロック** に分割して PPA Blend する
   (x折り返し x y折り返し。折り返さない通常スクロールは1ブロック)

@@ -1,6 +1,6 @@
 // audio_none.c - audio_p4.h for a board that draws locally but has no sound
 //
-// The local display task (display_p4_task.cpp) hands every link message of
+// The local display task (display_local_task.cpp) hands every link message of
 // type AUDIO to audio_p4_process_command() and brings the output up through
 // audio_backend() at boot. A board with neither a codec nor a speaker (the
 // AtomS3R) builds this file in place of the APU driver: the commands are

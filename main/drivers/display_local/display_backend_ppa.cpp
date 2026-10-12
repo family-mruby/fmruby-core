@@ -1,7 +1,7 @@
 /*
  * display_backend_ppa.cpp - the Modern boards' hardware output path
  *
- * Moved out of display_p4_task.cpp (doc/wasm/, P3 T1). Compositing is PPA
+ * Moved out of display_local_task.cpp (doc/wasm/, P3 T1). Compositing is PPA
  * Blend, and the finished frame (426x240, or 640x360 in the fullscreen
  * high-resolution mode) reaches the panel through PPA SRM in one pass,
  * writing straight into the DSI frame buffer. What that pass does
@@ -84,7 +84,7 @@ static void ppa_init(int fb_w, int fb_h)
     ppa_client_config_t srm_cfg = {};
     srm_cfg.oper_type = PPA_OPERATION_SRM;
     if (ppa_register_client(&srm_cfg, &s_ppa_srm) == ESP_OK) {
-        s_dsi_fb = (decltype(s_dsi_fb))display_p4_panel_framebuffer();
+        s_dsi_fb = (decltype(s_dsi_fb))display_local_panel_framebuffer();
         if (s_dsi_fb) {
             FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> DSI fb %dx%d @%p",
                       fb_w, fb_h, DSI_FB_W, DSI_FB_H, (void *)s_dsi_fb);
@@ -101,7 +101,7 @@ static void ppa_init(int fb_w, int fb_h)
 
 static void ppa_first_frame(void)
 {
-    display_p4_lcd()->fillScreen(0);
+    display_local_lcd()->fillScreen(0);
     if (s_dsi_fb) {
         /* Flush LovyanGFX's cached CPU writes (boot screen, fill) once; from
          * here on the DSI buffer is written by PPA DMA and the cursor patch
@@ -183,7 +183,7 @@ static void note_presented_size(int fb_w, int fb_h, bool through_dsi)
         dsi_image_rect(fb_w, fb_h, &x, &y, &w, &h);
         dsi_clear_outside(x, y, w, h);
     } else {
-        LGFX_Device *lcd = display_p4_lcd();
+        LGFX_Device *lcd = display_local_lcd();
         const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
         const int w = fb_w * scale, h = fb_h * scale;
         display_lcd_clear_outside(lcd, (lcd->width() - w) / 2,
@@ -317,7 +317,7 @@ static void present_flush(void *fb_ptr, size_t fb_size)
  * through LovyanGFX instead, scaled and centred the same way. */
 static void present_software(LGFX_Sprite *fb, int fb_w, int fb_h)
 {
-    LGFX_Device *lcd = display_p4_lcd();
+    LGFX_Device *lcd = display_local_lcd();
     const float scale =
         (float)display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
     int scaled_w = (int)(fb_w * scale);
@@ -524,7 +524,7 @@ static void ppa_present_patch(const uint16_t *block, int x0, int y0, int w, int 
                 }
             }
         }
-        LGFX_Device *lcd = display_p4_lcd();
+        LGFX_Device *lcd = display_local_lcd();
         int offset_x = (lcd->width()  - fb_w * scale) / 2;
         int offset_y = (lcd->height() - fb_h * scale) / 2;
         lcd->pushImage(offset_x + x0 * scale, offset_y + y0 * scale,

@@ -28,7 +28,7 @@ pub/sub で値を送って画面ごとに UI を書き直すのではなく、�
 ## なぜ筋がよいか
 
 - Modern の描画は**アプリごとに独立したキャンバス**を合成する構造
-  (display_p4、DISPLAY_P4_MAX_CANVAS)。デスクトップ全体より 1 枚を
+  (display_local、DISPLAY_LOCAL_MAX_CANVAS)。デスクトップ全体より 1 枚を
   取り出す方が素直で、remote desktop の capture 経路 (バイト一致の
   決定的なもの) と同じ土台に乗る。
 - 受け側は「画像を貼って入力を返す代理アプリ」1 本。枠・フォーカス・
@@ -77,7 +77,7 @@ pub/sub で値を送って画面ごとに UI を書き直すのではなく、�
 
 ヘッドレス機の実物を待たず、**Tab5 → NARYA v4 の間で試せる**。
 
-1. 送り側: display_p4 にキャンバス 1 枚の capture 経路 (全画面 capture の
+1. 送り側: display_local にキャンバス 1 枚の capture 経路 (全画面 capture の
    隣に、pid → キャンバスの取り出し)。差分矩形か丸ごと RGB565 を LAN に
    流す。H.264 はチップに 1 本なので使わず、まず生の矩形で。
 2. 受け側: 代理アプリ (`remote_window.app.rb`)。画像を自分のキャンバスに

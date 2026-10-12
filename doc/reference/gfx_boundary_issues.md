@@ -4,7 +4,7 @@
 
 Ruby の `FmrbGfx` は命令の列 (`fmrb_link_protocol.h`) を描画側へ送り、描画側が
 LovyanGFX で実装する。描画側は 4 通り (WROVER = graphics-audio、Tab5 =
-display_p4、wasm = display_p4 の core、sim = graphics-audio) あり、renderer は
+display_local、wasm = display_local の core、sim = graphics-audio) あり、renderer は
 1 つで済んでいる。この境界の**置き方は変えない**。ここに書くのは、境界を
 越えるときに足りていないもの (失敗の理由、実装の一致、資源の寿命、持ち物の
 申告) と、それを**速度と通信量を増やさずに**足す候補である。
@@ -19,7 +19,7 @@ display_p4、wasm = display_p4 の core、sim = graphics-audio) あり、rendere
 | C2 | **Retro の描画側は別コア、通信は UART 921600bps だけ** | 実効 90KB/s 前後。資源 (画像・sprite・canvas) は WROVER 側にあり、core は id しか持たない。同期点を増やすと遅く、減らすと状態が食い違う |
 | C3 | **Retro の実出力 (NTSC) は自動で取れない** | ただし描画実装 (graphics-audio) は sim が同じコードで動かしており、SHM で絵は取れる。取れないのはテレビに出た絵だけ |
 | C4 | **画像は使い回す** | 同じ絵を複数の枚・複数の描画で使う。「一度出して終わり」の設計にはできない。動画は 1 本で寿命が明確なので対象外 |
-| C5 | **実装が 2 系統** | graphics-audio (WROVER / sim) と display_p4 (Tab5 / wasm)。同じ命令に同じ絵を出す約束を仕組みでは持っていない |
+| C5 | **実装が 2 系統** | graphics-audio (WROVER / sim) と display_local (Tab5 / wasm)。同じ命令に同じ絵を出す約束を仕組みでは持っていない |
 | C6 | **テストは仕様変更が落ち着いてから** | 命令が動いている間は golden の維持費が高い。ただし命令を足すときに見本を 1 枚足す習慣は先に始められる |
 
 ## 課題 1: 失敗しても応答が来ない (graphics-audio の NACK 未実装)
@@ -34,7 +34,7 @@ status) が graphics-audio 側で失敗すると何も返らず、core はタイ
 - protocol には `RESPONSE_MSG_ACK (0xF0)` と `RESPONSE_MSG_NACK (0xF1)` がある。
 - **core は NACK を受けられる**: `components/fmrb_transport/fmrb_transport.c:677`
   が NACK を status=1 として `send_sync` を即エラーで返す。
-- **display_p4 は返している**: `CREATE_IMAGE_FROM_FILE` の失敗 (開けない /
+- **display_local は返している**: `CREATE_IMAGE_FROM_FILE` の失敗 (開けない /
   復号失敗 / 確保失敗) は結果入りの応答を `send_ack` で返す。Tab5 と wasm で
   無い画像が即 nil になるのはこのため。
 - **graphics-audio は返していない**: `main/tasks/message_handler_task.c:151` が
@@ -59,7 +59,7 @@ create を送らない (PicoRabbit P7/P9)。これは NACK が入っても残し
 
 ## 課題 2: 2 系統の実装のずれを検出する仕組みが無い
 
-**現象**: display_p4 の `DRAW_IMAGE` が `scale_x/scale_y` を無視して等倍で
+**現象**: display_local の `DRAW_IMAGE` が `scale_x/scale_y` を無視して等倍で
 貼っていた (graphics-audio は `drawPng(..., scale_x, scale_y)` で効く)。
 426x240 では倍率 1.0 なので気づかれず、852x480 のブラウザで発覚
 (fmruby-core `ff34804d`、2026-09-04)。命令の列という設計は「同じ命令に
@@ -68,7 +68,7 @@ create を送らない (PicoRabbit P7/P9)。これは NACK が入っても残し
 **候補** (C3 を踏まえる: Retro の実装 = graphics-audio は sim で絵が取れる):
 
 - 「全機種で自動」は狙わない。**命令ごとの見本デッキ (Ruby アプリ) 1 本**を
-  sim (graphics-audio) と wasm (display_p4) で撮り、`fmrb_pngdiff` で比べる。
+  sim (graphics-audio) と wasm (display_local) で撮り、`fmrb_pngdiff` で比べる。
   2 系統とも手元でヘッドレスに取れるので、実機は要らない。
 - JPEG のようにハード復号 (Tab5) とソフト復号 (wasm、TJpgDec) で画素が揺れる
   ものは許容差を持つか、見本は PNG で作る。
@@ -107,7 +107,7 @@ create を送らない (PicoRabbit P7/P9)。これは NACK が入っても残し
 
 **動画は対象外**: 資源が 1 本で寿命が明確 (open / stop)。今のままでよい。
 
-**状態**: 未着手。graphics-audio と display_p4 の両方の image store に手が
+**状態**: 未着手。graphics-audio と display_local の両方の image store に手が
 入る。同一性の鍵 (path か内容の hash か) が未定。
 
 ## 課題 4: 持ち物の表 (`FONT_AVAILABLE`) が Ruby 側の写し

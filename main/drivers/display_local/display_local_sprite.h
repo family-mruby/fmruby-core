@@ -17,10 +17,10 @@
 // values (the WROVER retro backend keeps its own smaller limits). The
 // desktop launcher alone holds 25 instances, so the previous limit of
 // 32 starved windowed apps (FlappyDemo needed 8 more and failed).
-// The pools live in PSRAM (EXT_RAM_BSS_ATTR in display_p4_sprite.cpp).
-#define DISPLAY_P4_MAX_SPRITE_IMAGES    160
-#define DISPLAY_P4_MAX_SPRITE_INSTANCES 320
-#define DISPLAY_P4_MAX_MASKS             8
+// The pools live in PSRAM (EXT_RAM_BSS_ATTR in display_local_sprite.cpp).
+#define DISPLAY_LOCAL_MAX_SPRITE_IMAGES    160
+#define DISPLAY_LOCAL_MAX_SPRITE_INSTANCES 320
+#define DISPLAY_LOCAL_MAX_MASKS             8
 
 // LovyanGFX uses inline namespace v1 inside lgfx, so a plain forward
 // declaration in namespace lgfx creates an ambiguous symbol.  Pull in the
@@ -33,45 +33,45 @@
 
 // Create a sprite image (8bpp PSRAM sprite).
 // Returns image_id > 0 on success, 0 on failure.
-uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
+uint16_t display_local_sprite_image_create(uint16_t canvas_id,
                                          uint16_t width, uint16_t height,
                                          uint8_t transparent_color,
                                          bool use_transparent);
 
 // Return the LGFX_Sprite for drawing into an image. NULL if not found.
-lgfx::LGFX_Sprite* display_p4_sprite_image_get(uint16_t image_id);
+lgfx::LGFX_Sprite* display_local_sprite_image_get(uint16_t image_id);
 
 // True if the image uses color-key transparency; out_color receives the key.
-bool display_p4_sprite_image_get_transparent(uint16_t image_id,
+bool display_local_sprite_image_get_transparent(uint16_t image_id,
                                               uint8_t *out_color);
 
 // Delete a single image (also removes instances referencing it).
-void display_p4_sprite_image_delete(uint16_t image_id);
+void display_local_sprite_image_delete(uint16_t image_id);
 
 // Delete all images and instances belonging to canvas_id.
-void display_p4_sprite_delete_all_for_canvas(uint16_t canvas_id);
+void display_local_sprite_delete_all_for_canvas(uint16_t canvas_id);
 
 // ---------------------------------------------------------------------------
 // SpriteInstance
 // ---------------------------------------------------------------------------
 
 // Create a sprite instance. Returns instance_id > 0 on success, 0 on failure.
-uint16_t display_p4_sprite_instance_create(uint16_t canvas_id,
+uint16_t display_local_sprite_instance_create(uint16_t canvas_id,
                                             const uint16_t *image_ids,
                                             uint8_t frame_count,
                                             int16_t x, int16_t y,
                                             int16_t z_order);
 
-void display_p4_sprite_instance_delete(uint16_t instance_id);
-void display_p4_sprite_instance_move(uint16_t instance_id, int16_t x, int16_t y);
-void display_p4_sprite_instance_set_visible(uint16_t instance_id, bool visible);
-void display_p4_sprite_instance_set_frame(uint16_t instance_id, uint8_t frame_index);
+void display_local_sprite_instance_delete(uint16_t instance_id);
+void display_local_sprite_instance_move(uint16_t instance_id, int16_t x, int16_t y);
+void display_local_sprite_instance_set_visible(uint16_t instance_id, bool visible);
+void display_local_sprite_instance_set_frame(uint16_t instance_id, uint8_t frame_index);
 
 // Composite visible instances for canvas_id onto the destination LGFX_Sprite,
 // sorted by z_order.  Instance positions are offset by (offset_x, offset_y)
 // so that sprites placed relative to a canvas origin can be composited onto
 // a shared framebuffer at the canvas's screen position.
-void display_p4_sprite_composite(uint16_t canvas_id,
+void display_local_sprite_composite(uint16_t canvas_id,
                                   lgfx::LGFX_Sprite *target,
                                   int16_t offset_x, int16_t offset_y);
 
@@ -80,18 +80,18 @@ void display_p4_sprite_composite(uint16_t canvas_id,
 // ---------------------------------------------------------------------------
 
 // Allocate a 1bpp mask buffer. Returns mask_id > 0, or 0 on failure.
-uint16_t display_p4_mask_create(uint16_t canvas_id,
+uint16_t display_local_mask_create(uint16_t canvas_id,
                                  uint16_t width, uint16_t height);
 
 // Append chunk to an existing mask buffer (offset in bytes).
-void display_p4_mask_data(uint16_t mask_id,
+void display_local_mask_data(uint16_t mask_id,
                            const uint8_t *chunk, uint16_t chunk_len,
                            uint32_t offset);
 
-void display_p4_mask_delete(uint16_t mask_id);
+void display_local_mask_delete(uint16_t mask_id);
 
 // Blit src_sprite → dst_sprite at (x, y) using the 1bpp mask.
-void display_p4_mask_blit(uint16_t mask_id,
+void display_local_mask_blit(uint16_t mask_id,
                            lgfx::LGFX_Sprite *src_sprite,
                            lgfx::LGFX_Sprite *dst_sprite,
                            int16_t x, int16_t y);

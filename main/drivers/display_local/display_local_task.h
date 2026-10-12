@@ -17,19 +17,19 @@ extern "C" {
  * @brief Initialize the Modern display task (Tab5 MIPI-DSI).
  * @return FMRB_OK on success, error code otherwise.
  */
-fmrb_err_t display_p4_task_init(void);
+fmrb_err_t display_local_task_init(void);
 
 /**
  * @brief Deinitialize the Modern display task.
  * @return FMRB_OK on success.
  */
-fmrb_err_t display_p4_task_deinit(void);
+fmrb_err_t display_local_task_deinit(void);
 
 /**
  * @brief Check if the LGFX display is initialized and ready.
  * @return true if g_lcd.init() has completed successfully.
  */
-bool display_p4_is_ready(void);
+bool display_local_is_ready(void);
 
 /**
  * @brief Read touch coordinates from the GT911 touch panel.
@@ -41,7 +41,7 @@ bool display_p4_is_ready(void);
  * @param out_y Pointer to receive Y coordinate
  * @return Number of touch points detected (0 or 1)
  */
-int display_p4_get_touch(int16_t *out_x, int16_t *out_y);
+int display_local_get_touch(int16_t *out_x, int16_t *out_y);
 
 /**
  * @brief Poll the headphone jack and gate the speaker amp (PI4IO #1).
@@ -49,7 +49,7 @@ int display_p4_get_touch(int16_t *out_x, int16_t *out_y);
  * Called from the touch task loop. Serialized with all other bus
  * traffic by the internal I2C service mutex.
  */
-void display_p4_poll_headphone(void);
+void display_local_poll_headphone(void);
 
 /**
  * @brief Shared-bus I2C service (Tab5 internal bus, GPIO31/32).
@@ -61,11 +61,11 @@ void display_p4_poll_headphone(void);
  * (returns FMRB_ERR_INVALID_STATE before that). len is limited to 255
  * bytes per transaction.
  */
-fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+fmrb_err_t display_local_i2c_write(uint8_t addr, const uint8_t *data,
                                 size_t len, uint32_t freq);
-fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
                                size_t len, uint32_t freq);
-fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                      uint8_t value, uint32_t freq);
 
 /**
@@ -75,7 +75,7 @@ typedef struct {
     const uint16_t *pixels;   // RGB565 non-swapped, width x height
     uint16_t width, height;
     uint32_t seq;             // increments per captured frame
-} display_p4_capture_frame_t;
+} display_local_capture_frame_t;
 
 /**
  * @brief Enable/disable per-frame capture of the composited framebuffer.
@@ -84,29 +84,29 @@ typedef struct {
  * or 640x360 in the fullscreen high-resolution mode) into an internal double
  * buffer (PSRAM, DMA-capable) sized for the larger. Single reader.
  */
-fmrb_err_t display_p4_capture_enable(bool enable);
+fmrb_err_t display_local_capture_enable(bool enable);
 
 /**
  * @brief Wait for a captured frame newer than min_seq and lock it.
  *
- * On FMRB_OK the frame stays valid until display_p4_capture_release().
+ * On FMRB_OK the frame stays valid until display_local_capture_release().
  * out->width/height are that frame's own size, which changes with the
  * screen mode; encode with them, not with a fixed size.
  * Returns FMRB_ERR_TIMEOUT when no such frame arrived in timeout_ms
  * (the caller may re-acquire with min_seq=0 to resend the last frame).
  */
-fmrb_err_t display_p4_capture_acquire(uint32_t min_seq, uint32_t timeout_ms,
-                                      display_p4_capture_frame_t *out);
+fmrb_err_t display_local_capture_acquire(uint32_t min_seq, uint32_t timeout_ms,
+                                      display_local_capture_frame_t *out);
 
 /**
- * @brief Unlock the frame returned by display_p4_capture_acquire().
+ * @brief Unlock the frame returned by display_local_capture_acquire().
  */
-void display_p4_capture_release(void);
+void display_local_capture_release(void);
 
 /**
  * @brief Request one re-render (e.g. so a fresh capture exists on connect).
  */
-void display_p4_capture_kick(void);
+void display_local_capture_kick(void);
 
 /**
  * @brief Current cursor position/visibility in framebuffer coordinates
@@ -115,16 +115,16 @@ void display_p4_capture_kick(void);
  * The cursor is not part of the captured framebuffer (it is patched into
  * the DSI buffer directly); remote clients draw it themselves.
  */
-void display_p4_get_cursor(int *x, int *y, bool *visible);
+void display_local_get_cursor(int *x, int *y, bool *visible);
 
 /**
  * @brief Cursor latency instrumentation (doc/archive/p4_cursor_lag/): the host calls
  *        stamp just before sending CURSOR_SET_POSITION, unstamp if that send
  *        failed, and send_time with how long the send blocked (us).
  */
-void display_p4_cursor_stamp(void);
-void display_p4_cursor_unstamp(void);
-void display_p4_cursor_send_time(uint32_t us);
+void display_local_cursor_stamp(void);
+void display_local_cursor_unstamp(void);
+void display_local_cursor_send_time(uint32_t us);
 
 #ifdef __cplusplus
 }

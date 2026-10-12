@@ -16,7 +16,7 @@
 
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "host_task.h"
 
 #include "esp_timer.h"
@@ -111,8 +111,8 @@ static void stream_task(void *arg)
     (void)arg;
     FMRB_LOGI(TAG, "video stream task started");
 
-    display_p4_capture_enable(true);
-    display_p4_capture_kick();
+    display_local_capture_enable(true);
+    display_local_capture_kick();
     rd_encoder_h264_request_idr();
 
     const uint32_t frame_interval_ms =
@@ -129,11 +129,11 @@ static void stream_task(void *arg)
         // (event-driven rendering idles at 1-2fps) shows seconds of latency.
         // A steady fps_cap stream keeps the decoder drained; unchanged
         // frames encode to near-empty P frames.
-        display_p4_capture_frame_t frame;
-        fmrb_err_t err = display_p4_capture_acquire(last_seq + 1,
+        display_local_capture_frame_t frame;
+        fmrb_err_t err = display_local_capture_acquire(last_seq + 1,
                                                     frame_interval_ms, &frame);
         if (err == FMRB_ERR_TIMEOUT) {
-            err = display_p4_capture_acquire(0, 100, &frame);
+            err = display_local_capture_acquire(0, 100, &frame);
         }
         if (err != FMRB_OK) {
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -145,7 +145,7 @@ static void stream_task(void *arg)
         // runs. The encoder is set up for one size, so a new size brings it
         // up again (and the next frame is an IDR the viewer can resize on).
         if (!encoder_for(frame.width, frame.height)) {
-            display_p4_capture_release();
+            display_local_capture_release();
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
@@ -155,7 +155,7 @@ static void stream_task(void *arg)
         size_t au_len = 0;
         bool is_idr = false;
         err = rd_encoder_h264_encode(frame.pixels, pts_ms, &au, &au_len, &is_idr);
-        display_p4_capture_release();
+        display_local_capture_release();
         if (err != FMRB_OK) {
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
@@ -210,7 +210,7 @@ static void stream_task(void *arg)
         }
     }
 
-    display_p4_capture_enable(false);
+    display_local_capture_enable(false);
     rd_encoder_h264_deinit();
     FMRB_LOGI(TAG, "video stream task stopped");
     s_task_running = false;

@@ -11,7 +11,7 @@
  *
  * Colour-key equivalence with the PPA (what the tiles baseline checks): the
  * caller builds the band from a 565 colour as [c << k, (c << k) | mask]
- * (canvas creation in display_p4_task.cpp), so a foreground pixel is inside
+ * (canvas creation in display_local_task.cpp), so a foreground pixel is inside
  * the band exactly when its 565 components equal the key's -- whether the
  * 8-bit expansion pads with zeros (as here) or replicates high bits. Bounds
  * are inclusive on both ends.

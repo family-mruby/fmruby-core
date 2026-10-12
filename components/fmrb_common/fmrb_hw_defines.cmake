@@ -28,7 +28,7 @@
 #   What the board has, for code that asks about a capability rather than a
 #   chip or a board:
 #     FMRB_HAS_LOCAL_DISPLAY  this chip composites and drives the screen
-#                          itself (display_p4_task + the local link), instead
+#                          itself (display_local_task + the local link), instead
 #                          of shipping draw commands to a child chip. Both P4
 #                          boards and the AtomS3R. (The wasm build is the same
 #                          shape and says so with FMRB_PLATFORM_WASM.)
@@ -101,7 +101,7 @@ function(fmrb_add_hw_defines)
 endfunction()
 
 # Configure-time twin of FMRB_HAS_LOCAL_DISPLAY, for source lists: whether this
-# firmware composites and drives its own screen (the display_p4 sources and
+# firmware composites and drives its own screen (the display_local sources and
 # the local link) rather than talking to a child chip.
 function(fmrb_hw_has_local_display out_var)
     if(IDF_TARGET STREQUAL "esp32p4" OR FMRB_HW_TARGET STREQUAL "ATOMS3R")

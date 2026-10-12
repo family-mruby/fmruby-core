@@ -25,7 +25,7 @@
 #include "esp_http_server.h"
 
 #if defined(FMRB_HAS_LOCAL_DISPLAY)
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #endif
 
 static const char *TAG = "devctl";
@@ -62,22 +62,22 @@ static esp_err_t status_handler(httpd_req_t *req)
 // It borrows the remote desktop's capture: enabled for this one request, a
 // render asked for, the frame it produces copied out of the capture slot.
 // The slots are external RAM, allocated by the first request and kept (two
-// frames of the base screen; display_p4_capture_enable). The send goes from
+// frames of the base screen; display_local_capture_enable). The send goes from
 // the slot straight to the socket, so no internal RAM is used for it.
 static esp_err_t fb_handler(httpd_req_t *req)
 {
-    fmrb_err_t err = display_p4_capture_enable(true);
+    fmrb_err_t err = display_local_capture_enable(true);
     if (err != FMRB_OK) {
         httpd_resp_set_status(req, "503 Service Unavailable");
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_send(req, "{\"ok\":false,\"err\":\"no capture\"}",
                                HTTPD_RESP_USE_STRLEN);
     }
-    display_p4_capture_kick();
-    display_p4_capture_frame_t frame;
-    err = display_p4_capture_acquire(0, 2000, &frame);
+    display_local_capture_kick();
+    display_local_capture_frame_t frame;
+    err = display_local_capture_acquire(0, 2000, &frame);
     if (err != FMRB_OK) {
-        display_p4_capture_enable(false);
+        display_local_capture_enable(false);
         httpd_resp_set_status(req, "504 Gateway Timeout");
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_send(req, "{\"ok\":false,\"err\":\"no frame\"}",
@@ -92,8 +92,8 @@ static esp_err_t fb_handler(httpd_req_t *req)
     httpd_resp_set_hdr(req, "X-Format", "rgb565le");
     esp_err_t ret = httpd_resp_send(req, (const char *)frame.pixels,
                                     (ssize_t)frame.width * frame.height * 2);
-    display_p4_capture_release();
-    display_p4_capture_enable(false);
+    display_local_capture_release();
+    display_local_capture_enable(false);
     return ret;
 }
 #endif

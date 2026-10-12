@@ -794,7 +794,7 @@ BlockGame は最大ブロックがスタックとちょうど同値 (16,384 B) �
 
 | 移したもの | 移し先 | S3 | P4 |
 |---|---|---:|---:|
-| display_p4 の表 (`g_progs` `g_recv_buf` `g_canvases` `s_cursor_save` `g_sorted` `g_masks`) | PSRAM | - | 15,360 |
+| display_local の表 (`g_progs` `g_recv_buf` `g_canvases` `s_cursor_save` `g_sorted` `g_masks`) | PSRAM | - | 15,360 |
 | mrblib の子 irep 表 `*_reps_N` (mrbc の cdump.c を lib/patch で const 化) | flash | 5,480 | 5,616 |
 | tmpfs の `s_files` `s_fds` | PSRAM | 2,144 | 5,504 |
 | link_local の `g_recv_internal_buf` | PSRAM | - | 4,096 |
@@ -861,7 +861,7 @@ esp_wifi の linker.lf が定義していて、WiFi をローカルに持たな�
 試しのビルドは並べて走らせられない (どの build ディレクトリからも picoruby の rake が走り、共有のビルド物を取り合う)。
 
 **決定と効果 (コード)**。タスクだけが触る小物を PSRAM へ (host_task の `g_file_transfer` `s_sync_cmd_buf`、ble の
-`g_put_cache`、display_p4 の `g_images_store`、動画の `s_p`、audio_p4 の `s_tracks`)。Spinel の生成 C の、初期値がゼロの
+`g_put_cache`、display_local の `g_images_store`、動画の `s_p`、audio_p4 の `s_tracks`)。Spinel の生成 C の、初期値がゼロの
 ファイルスコープの領域 (`cst_` 57 個、`civ_` 105 個) と pool の数え (`pool_count` / `pool_max` ほか) を fork `654c9fd5` で
 `SP_TU_BSS` に置いた (313 個 1,249 B、P4 では .sbss / .sdata から外れたことを ELF の番地で確認)。静的な D/IRAM は
 TAB5 135,224 → **132,912**、NARYAv4 130,634 → **128,250**、S3 130,611 → **128,779**。SPINEL_PIN は同日 `654c9fd5` に更新した。

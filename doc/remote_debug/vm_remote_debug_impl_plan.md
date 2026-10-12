@@ -107,7 +107,7 @@
 - メモリ: debugd は OS 側なので `fmrb_sys_malloc`。固定小容量はファイルスコープ static。
 - 戻り値: `fmrb_err_t` (FMRB_OK=0, 負値がエラー)。
 - msgpack: `components/msgpack-esp32` (msgpack-c)。エンコード例
-  `main/drivers/display_p4/display_p4_task.cpp:897-909`、デコード例 同 1788-1818。
+  `main/drivers/display_local/display_local_task.cpp:897-909`、デコード例 同 1788-1818。
 - ログ読み出し: `fmrb_log_buffer_read_lines(buf, size, max_lines, &read_pos)`。
   差分検出 + オーバーラン対応の実装例は `main/drivers/ble/ble_task.c:820-844`。
 - Linux でのソケット前例は `main/drivers/usb/usb_task_linux.c` (POSIX AF_UNIX)。

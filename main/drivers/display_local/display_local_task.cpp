@@ -7,17 +7,17 @@
 // GFX commands carry RGB332 color values which are converted to RGB565
 // at the command dispatch layer.
 
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "display_backend.h"
-#include "display_p4_vm.h"
-#include "display_p4_sprite.h"
-#include "display_p4_video.h"
+#include "display_local_vm.h"
+#include "display_local_sprite.h"
+#include "display_local_video.h"
 #include "flash_flicker_probe.h"
-// Which screen this build drives. DISPLAY_P4_NO_PANEL: none -- the canvases
+// Which screen this build drives. DISPLAY_LOCAL_NO_PANEL: none -- the canvases
 // and the compositor run, but nothing is ever put on glass (the browser,
 // which reads the composited frame itself).
 #if defined(FMRB_PLATFORM_WASM)
-#define DISPLAY_P4_NO_PANEL 1
+#define DISPLAY_LOCAL_NO_PANEL 1
 #include <M5GFX.h>
 #elif defined(FMRB_HW_ATOMS3R)
 #include "lgfx_atoms3r.hpp"
@@ -69,7 +69,7 @@ extern "C" {
 #include "esp_system.h"
 #endif
 
-static const char *TAG = "display_p4";
+static const char *TAG = "display_local";
 
 // PPA-native RGB565 (non-byte-swapped), matching PPA hardware I/O format.
 // LovyanGFX setBuffer(buf, w, h, 16) defaults to rgb565_2Byte (byte-swapped),
@@ -119,7 +119,7 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 #define PI4IO_I2C_FREQ      400000
 #endif /* FMRB_HW_TAB5 */
 
-#if defined(DISPLAY_P4_NO_PANEL)
+#if defined(DISPLAY_LOCAL_NO_PANEL)
 // Sprite parent only: no panel behind it, and nothing here may draw on it.
 static lgfx::LGFX_Device g_lcd;
 #elif defined(FMRB_HW_ATOMS3R)
@@ -137,12 +137,12 @@ static volatile bool g_lcd_ready = false;
 // The same goes for the power-on sequence, the I2C service and headphone
 // detection further down -- putting those behind the output interface would
 // leave the CPU backend with no lit panel to draw on.
-LGFX_Device *display_p4_lcd(void) { return &g_lcd; }
-#if defined(DISPLAY_P4_NO_PANEL) || !defined(FMRB_HW_MODERN)
+LGFX_Device *display_local_lcd(void) { return &g_lcd; }
+#if defined(DISPLAY_LOCAL_NO_PANEL) || !defined(FMRB_HW_MODERN)
 // No panel, or an SPI panel that keeps its frame in the controller.
-void *display_p4_panel_framebuffer(void) { return NULL; }
+void *display_local_panel_framebuffer(void) { return NULL; }
 #else
-void *display_p4_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
+void *display_local_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
 #endif
 
 #if defined(FMRB_HW_NARYAV4) && !defined(FMRB_PLATFORM_WASM)
@@ -162,8 +162,8 @@ static SemaphoreHandle_t g_i2c_mutex = NULL;
 
 // Receive buffer for local link commands. PSRAM: the link hands messages over
 // by memcpy from a FreeRTOS message buffer and only this task parses them.
-#define DISPLAY_P4_RECV_BUF_SIZE 4096
-FMRB_EXT_RAM_BSS_ATTR static uint8_t g_recv_buf[DISPLAY_P4_RECV_BUF_SIZE];
+#define DISPLAY_LOCAL_RECV_BUF_SIZE 4096
+FMRB_EXT_RAM_BSS_ATTR static uint8_t g_recv_buf[DISPLAY_LOCAL_RECV_BUF_SIZE];
 
 // ============================================================
 // Canvas management
@@ -175,12 +175,12 @@ FMRB_EXT_RAM_BSS_ATTR static uint8_t g_recv_buf[DISPLAY_P4_RECV_BUF_SIZE];
 // nothing. Each canvas costs two framebuffer-sized RGB332 buffers of PSRAM
 // (~200 KB a piece at 426x240), which is why the device targets stop at 8; the
 // web build raises it alongside its app ceiling (wasm/CMakeLists.txt).
-#ifndef DISPLAY_P4_MAX_CANVAS
-#define DISPLAY_P4_MAX_CANVAS    8
+#ifndef DISPLAY_LOCAL_MAX_CANVAS
+#define DISPLAY_LOCAL_MAX_CANVAS    8
 #endif
-#define DISPLAY_P4_CANVAS_SCREEN  ((uint16_t)0x0000)
-#define DISPLAY_P4_CANVAS_RENDER  ((uint16_t)0xFFF0)
-#define DISPLAY_P4_CANVAS_INVALID ((uint16_t)0xFFFF)
+#define DISPLAY_LOCAL_CANVAS_SCREEN  ((uint16_t)0x0000)
+#define DISPLAY_LOCAL_CANVAS_RENDER  ((uint16_t)0xFFF0)
+#define DISPLAY_LOCAL_CANVAS_INVALID ((uint16_t)0xFFFF)
 
 typedef struct {
     uint16_t     canvas_id;
@@ -239,7 +239,7 @@ typedef struct {
 } p4_canvas_t;
 
 // PSRAM: canvas bookkeeping, touched by the display task and never by an ISR.
-FMRB_EXT_RAM_BSS_ATTR static p4_canvas_t g_canvases[DISPLAY_P4_MAX_CANVAS];
+FMRB_EXT_RAM_BSS_ATTR static p4_canvas_t g_canvases[DISPLAY_LOCAL_MAX_CANVAS];
 static size_t      g_canvas_count = 0;
 static uint16_t    g_next_canvas_id = 1;
 
@@ -252,7 +252,7 @@ static uint16_t    g_sprite_target_id = 0;
 // LGFX_Sprite objects (8bpp RGB332 in PSRAM).
 // ============================================================
 
-#define DISPLAY_P4_MAX_IMAGES 8
+#define DISPLAY_LOCAL_MAX_IMAGES 8
 
 typedef struct {
     bool         in_use;
@@ -263,7 +263,7 @@ typedef struct {
 
 // PSRAM: a lookup table of sprite pointers, walked by the display task only.
 // The pixels live in the sprites' own buffers.
-FMRB_EXT_RAM_BSS_ATTR static p4_image_t g_images_store[DISPLAY_P4_MAX_IMAGES];
+FMRB_EXT_RAM_BSS_ATTR static p4_image_t g_images_store[DISPLAY_LOCAL_MAX_IMAGES];
 static uint16_t   g_next_image_store_id = 1;
 
 // Turn a path as an app wrote it into one the VFS answers to. The commands
@@ -279,7 +279,7 @@ static void resolve_vfs_path(const char *p, int pl, char *out, size_t out_len) {
 }
 
 static p4_image_t* image_store_find(uint16_t id) {
-    for (int i = 0; i < DISPLAY_P4_MAX_IMAGES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_IMAGES; i++) {
         if (g_images_store[i].in_use && g_images_store[i].image_id == id)
             return &g_images_store[i];
     }
@@ -334,14 +334,14 @@ static uint16_t g_display_height = 0;
 // state: base mode, nothing pending.
 // ============================================================
 
-#define DISPLAY_P4_HIRES_W   640
-#define DISPLAY_P4_HIRES_H   360
+#define DISPLAY_LOCAL_HIRES_W   640
+#define DISPLAY_LOCAL_HIRES_H   360
 #define SCREEN_MODE_WAIT_MS  500
 
 typedef struct {
     LGFX_Sprite *fb_base;          // INIT_DISPLAY's framebuffer
     size_t       fb_base_size;
-    LGFX_Sprite *fb_hires;         // DISPLAY_P4_HIRES_W x _H, on first use
+    LGFX_Sprite *fb_hires;         // DISPLAY_LOCAL_HIRES_W x _H, on first use
     size_t       fb_hires_size;
     bool         hires;            // the high-resolution framebuffer is current
     bool         pending;          // a switch was asked for and is waiting
@@ -384,8 +384,8 @@ static p4_canvas_t* canvas_find(uint16_t canvas_id) {
 static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
                                   uint16_t width, uint16_t height, int16_t z_order,
                                   uint8_t transparent_color, bool use_transparency) {
-    if (g_canvas_count >= DISPLAY_P4_MAX_CANVAS) {
-        FMRB_LOGE(TAG, "Canvas pool full (max %d)", DISPLAY_P4_MAX_CANVAS);
+    if (g_canvas_count >= DISPLAY_LOCAL_MAX_CANVAS) {
+        FMRB_LOGE(TAG, "Canvas pool full (max %d)", DISPLAY_LOCAL_MAX_CANVAS);
         return nullptr;
     }
 
@@ -515,8 +515,8 @@ static void canvas_free(p4_canvas_t *c) {
     if (!c) return;
     FMRB_LOGI(TAG, "Canvas free: id=%u", c->canvas_id);
 
-    display_p4_vm_delete_progs_by_canvas(c->canvas_id);
-    display_p4_sprite_delete_all_for_canvas(c->canvas_id);
+    display_local_vm_delete_progs_by_canvas(c->canvas_id);
+    display_local_sprite_delete_all_for_canvas(c->canvas_id);
 
     if (c->sprite) {
         void *buf = c->sprite->getBuffer();
@@ -550,7 +550,7 @@ static int canvas_cmp_zorder(const void *a, const void *b) {
 // commands are redirected to that SpriteImage rather than the canvas sprite.
 static LGFX_Sprite* get_sprite(uint16_t canvas_id) {
     if (g_sprite_target_id != 0) {
-        LGFX_Sprite *s = display_p4_sprite_image_get(g_sprite_target_id);
+        LGFX_Sprite *s = display_local_sprite_image_get(g_sprite_target_id);
         if (s) return s;
         // Target image gone; fall through to canvas
     }
@@ -625,7 +625,7 @@ struct cursor_stats_t {
 };
 FMRB_EXT_RAM_BSS_ATTR static cursor_stats_t s_cst;
 
-extern "C" void display_p4_cursor_stamp(void) {
+extern "C" void display_local_cursor_stamp(void) {
     uint32_t w = __atomic_load_n(&s_cur_w, __ATOMIC_RELAXED);
     s_cur_ts[w % CURSOR_TS_RING] = (uint32_t)fmrb_hal_time_get_us();
     __atomic_store_n(&s_cur_w, w + 1, __ATOMIC_RELEASE);
@@ -634,11 +634,11 @@ extern "C" void display_p4_cursor_stamp(void) {
 // The send failed: the command never reaches the queue, so drop its stamp.
 // Safe without a lock: the reader only consumes a stamp when it reads a
 // command, and this one was never queued.
-extern "C" void display_p4_cursor_unstamp(void) {
+extern "C" void display_local_cursor_unstamp(void) {
     __atomic_fetch_sub(&s_cur_w, 1, __ATOMIC_RELEASE);
 }
 
-extern "C" void display_p4_cursor_send_time(uint32_t us) {
+extern "C" void display_local_cursor_send_time(uint32_t us) {
     if (us > s_cur_send_max) s_cur_send_max = us;
 }
 
@@ -954,7 +954,7 @@ static void render_frame(void) {
         // at 3x; leave it out until the switch completes. A viewport canvas
         // is exempt: it is a larger surface on purpose.
         if (!g_smode.hires && c->view_w == 0 &&
-            c->width == DISPLAY_P4_HIRES_W && c->height == DISPLAY_P4_HIRES_H) continue;
+            c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) continue;
 
         // Composite the committed buffer, never the working one (commit-on-present).
         int sw = c->render_sprite->width();
@@ -1032,7 +1032,7 @@ static void render_frame(void) {
         if (dy + ch > fb_h) ch = fb_h - dy;
         if (cw > 0 && ch > 0) {
             g_framebuffer->setClipRect(dx, dy, cw, ch);
-            display_p4_sprite_composite(c->canvas_id, g_framebuffer,
+            display_local_sprite_composite(c->canvas_id, g_framebuffer,
                                         pos_x, pos_y);
             g_framebuffer->clearClipRect();
         }
@@ -1043,7 +1043,7 @@ static void render_frame(void) {
     // the reader; while the reader is slow, frames simply overwrite the
     // other slot and drop.
     // A frame larger than the slots (only possible where they were sized for
-    // the base screen, see display_p4_capture_enable) is skipped rather than
+    // the base screen, see display_local_capture_enable) is skipped rather than
     // cut short: the reader trusts the size recorded with the slot.
     if (g_cap_enabled && g_cap_buf[0] &&
         (size_t)g_framebuffer->width() * g_framebuffer->height() * 2 <= g_cap_buf_size) {
@@ -1121,21 +1121,21 @@ static void render_asap(void) {
 static bool screen_mode_ensure_hires_fb(void) {
     if (g_smode.fb_hires) return true;
     size_t aligned = 0;
-    void *buf = ppa_alloc_buffer((size_t)DISPLAY_P4_HIRES_W * DISPLAY_P4_HIRES_H * 2,
+    void *buf = ppa_alloc_buffer((size_t)DISPLAY_LOCAL_HIRES_W * DISPLAY_LOCAL_HIRES_H * 2,
                                  &aligned);
     if (!buf) {
         FMRB_LOGE(TAG, "screen mode: no PSRAM for the %dx%d framebuffer",
-                  DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+                  DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
         return false;
     }
     auto *fb = new LGFX_Sprite(&g_lcd);
     // Depth must be set BEFORE setBuffer (see canvas_alloc)
     set_ppa_native_depth(fb);
-    fb->setBuffer(buf, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+    fb->setBuffer(buf, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
     g_smode.fb_hires = fb;
     g_smode.fb_hires_size = aligned;
     FMRB_LOGI(TAG, "screen mode: %dx%d framebuffer allocated (%u bytes PSRAM)",
-              DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H, (unsigned)aligned);
+              DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H, (unsigned)aligned);
     return true;
 }
 
@@ -1146,7 +1146,7 @@ static bool screen_mode_ensure_hires_fb(void) {
 // the pointer cannot be left in the coordinates of a screen not shown.
 static void screen_mode_tell_input(void) {
     if (g_smode.hires) {
-        fmrb_host_set_screen_size(DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+        fmrb_host_set_screen_size(DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
     } else {
         fmrb_host_set_screen_size(0, 0);
     }
@@ -1211,7 +1211,7 @@ static void screen_mode_try_complete(void) {
             return;
         }
         if (c->committed_fresh &&
-            c->width == DISPLAY_P4_HIRES_W && c->height == DISPLAY_P4_HIRES_H) {
+            c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) {
             screen_mode_apply(true, "owner presented");
         }
     } else {
@@ -1234,12 +1234,12 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
     const bool want_hires = (w != 0 && h != 0 &&
                              !(w == g_display_width && h == g_display_height));
     if (want_hires) {
-        if (w != DISPLAY_P4_HIRES_W || h != DISPLAY_P4_HIRES_H) {
+        if (w != DISPLAY_LOCAL_HIRES_W || h != DISPLAY_LOCAL_HIRES_H) {
             FMRB_LOGW(TAG, "SET_SCREEN_MODE: %ux%u is not a mode (only %dx%d)",
-                      w, h, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+                      w, h, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
             return;
         }
-        if (g_display_width >= DISPLAY_P4_HIRES_W || g_display_height >= DISPLAY_P4_HIRES_H) {
+        if (g_display_width >= DISPLAY_LOCAL_HIRES_W || g_display_height >= DISPLAY_LOCAL_HIRES_H) {
             FMRB_LOGW(TAG, "SET_SCREEN_MODE: the screen is already %ux%u, ignored",
                       g_display_width, g_display_height);
             return;
@@ -1332,10 +1332,10 @@ static void screen_mode_poll(void) {
     p4_canvas_t *c = canvas_find(g_smode.owner);
     FMRB_LOGW(TAG, "screen mode: owner %u has shown no %dx%d frame for %lums "
               "(%s), back to the base screen",
-              g_smode.owner, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H,
+              g_smode.owner, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H,
               (unsigned long)(now - g_smode.owner_unshowable_since_ms),
               !c ? "gone" : !c->is_visible ? "hidden" :
-              (c->width != DISPLAY_P4_HIRES_W || c->height != DISPLAY_P4_HIRES_H)
+              (c->width != DISPLAY_LOCAL_HIRES_W || c->height != DISPLAY_LOCAL_HIRES_H)
                   ? "wrong size" : "no frame");
     screen_mode_apply(false, "owner unshowable");
     g_smode.force_render = true;
@@ -1557,10 +1557,10 @@ static int ack_buf_write(void *data, const char *b, size_t l) {
 
 /* array(4) + three small ints + a bin header, then the payload. The largest
    response struct in fmrb_link_protocol.h is 6 bytes, so this has ample slack. */
-#define DISPLAY_P4_ACK_BUF_SIZE 64
+#define DISPLAY_LOCAL_ACK_BUF_SIZE 64
 
 static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t *data, size_t data_len) {
-    uint8_t  storage[DISPLAY_P4_ACK_BUF_SIZE];
+    uint8_t  storage[DISPLAY_LOCAL_ACK_BUF_SIZE];
     ack_buf_t sink = { storage, sizeof(storage), 0, false };
     msgpack_packer pk;
     msgpack_packer_init(&pk, &sink, ack_buf_write);
@@ -1579,7 +1579,7 @@ static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t *data, size_t 
 
     if (sink.overflow) {
         FMRB_LOGE(TAG, "ACK too large to pack: type=0x%02x seq=%u data_len=%zu (cap=%d)",
-                  msg_type, seq, data_len, DISPLAY_P4_ACK_BUF_SIZE);
+                  msg_type, seq, data_len, DISPLAY_LOCAL_ACK_BUF_SIZE);
         return;
     }
 
@@ -2094,7 +2094,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         const auto *cmd = (const fmrb_link_graphics_create_canvas_t *)data;
 
         uint16_t cid = g_next_canvas_id++;
-        if (cid == DISPLAY_P4_CANVAS_INVALID) cid = g_next_canvas_id++;
+        if (cid == DISPLAY_LOCAL_CANVAS_INVALID) cid = g_next_canvas_id++;
 
         p4_canvas_t *c = canvas_alloc(cid,
                                       (uint16_t)cmd->width, (uint16_t)cmd->height,
@@ -2102,7 +2102,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                                       cmd->transparent_color,
                                       (bool)cmd->use_transparent);
         if (!c) {
-            uint16_t err = DISPLAY_P4_CANVAS_INVALID;
+            uint16_t err = DISPLAY_LOCAL_CANVAS_INVALID;
             send_ack(msg_type, seq, (const uint8_t *)&err, sizeof(err));
         } else {
             FMRB_LOGI(TAG, "CREATE_CANVAS: id=%u %dx%d z=%d",
@@ -2115,7 +2115,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DELETE_CANVAS: {
         if (size < sizeof(fmrb_link_graphics_delete_canvas_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_canvas_t *)data;
-        display_p4_video_canvas_gone(cmd->canvas_id);
+        display_local_video_canvas_gone(cmd->canvas_id);
         p4_canvas_t *c = canvas_find(cmd->canvas_id);
         if (c) canvas_free(c);
         // An app that dies in the high-resolution mode takes its canvas with
@@ -2187,8 +2187,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         p4_canvas_t *src = canvas_find(cmd->canvas_id);
         if (!src) return -1;
 
-        if (cmd->dest_canvas_id == DISPLAY_P4_CANVAS_RENDER ||
-            cmd->dest_canvas_id == DISPLAY_P4_CANVAS_SCREEN) {
+        if (cmd->dest_canvas_id == DISPLAY_LOCAL_CANVAS_RENDER ||
+            cmd->dest_canvas_id == DISPLAY_LOCAL_CANVAS_SCREEN) {
             // This is "present" for one canvas: commit the working sprite into
             // the committed buffer the compositor reads. A raw copy of the
             // active area (stride == width, so it is contiguous) preserves the
@@ -2387,7 +2387,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         const uint8_t *bytecode = data + off;
         const uint8_t *strtable = bytecode + cmd->bytecode_len;
-        uint8_t prog_id = display_p4_vm_define_prog(
+        uint8_t prog_id = display_local_vm_define_prog(
             cmd->canvas_id, bytecode, cmd->bytecode_len,
             strtable, cmd->strtable_len);
         FMRB_LOGI(TAG, "DEFINE_PROG: canvas=%u bc=%u st=%u -> id=%u",
@@ -2403,7 +2403,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < off + (size_t)cmd->reg_count * 3) break;
         auto *s = get_sprite(cmd->canvas_id);
         if (s) {
-            display_p4_vm_exec_prog(cmd->canvas_id, cmd->prog_id,
+            display_local_vm_exec_prog(cmd->canvas_id, cmd->prog_id,
                                     data + off, cmd->reg_count, s);
         }
         return 0;
@@ -2412,7 +2412,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DELETE_PROG: {
         if (size < sizeof(fmrb_link_graphics_delete_prog_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_prog_t *)data;
-        display_p4_vm_delete_prog(cmd->prog_id);
+        display_local_vm_delete_prog(cmd->prog_id);
         return 0;
     }
 
@@ -2421,7 +2421,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_CREATE_SPRITE_IMAGE: {
         if (size < sizeof(fmrb_link_graphics_create_sprite_image_t)) break;
         const auto *cmd = (const fmrb_link_graphics_create_sprite_image_t *)data;
-        uint16_t img_id = display_p4_sprite_image_create(
+        uint16_t img_id = display_local_sprite_image_create(
             cmd->canvas_id, cmd->width, cmd->height,
             cmd->transparent_color, (bool)cmd->use_transparent);
         FMRB_LOGI(TAG, "CREATE_SPRITE_IMAGE: %ux%u -> id=%u",
@@ -2434,7 +2434,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DELETE_SPRITE_IMAGE: {
         if (size < sizeof(fmrb_link_graphics_delete_sprite_image_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_sprite_image_t *)data;
-        display_p4_sprite_image_delete(cmd->image_id);
+        display_local_sprite_image_delete(cmd->image_id);
         return 0;
     }
 
@@ -2469,7 +2469,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         char full_path[256];
         resolve_vfs_path(p, pl, full_path, sizeof(full_path));
 
-        LGFX_Sprite *spr = display_p4_sprite_image_get(cmd->image_id);
+        LGFX_Sprite *spr = display_local_sprite_image_get(cmd->image_id);
         if (!spr) {
             FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: image %u not found", cmd->image_id);
             return -1;
@@ -2526,7 +2526,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         // Copy image_ids to avoid taking address of packed member
         uint16_t local_image_ids[FMRB_SPRITE_MAX_FRAMES];
         memcpy(local_image_ids, cmd->image_ids, sizeof(uint16_t) * cmd->frame_count);
-        uint16_t inst_id = display_p4_sprite_instance_create(
+        uint16_t inst_id = display_local_sprite_instance_create(
             cmd->canvas_id, local_image_ids, cmd->frame_count,
             cmd->x, cmd->y, cmd->z_order);
         // Same event as the sprite module's own line just above; both are
@@ -2541,35 +2541,35 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DELETE_SPRITE_INSTANCE: {
         if (size < sizeof(fmrb_link_graphics_delete_sprite_instance_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_sprite_instance_t *)data;
-        display_p4_sprite_instance_delete(cmd->instance_id);
+        display_local_sprite_instance_delete(cmd->instance_id);
         return 0;
     }
 
     case FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE: {
         if (size < sizeof(fmrb_link_graphics_sprite_instance_move_t)) break;
         const auto *cmd = (const fmrb_link_graphics_sprite_instance_move_t *)data;
-        display_p4_sprite_instance_move(cmd->instance_id, cmd->x, cmd->y);
+        display_local_sprite_instance_move(cmd->instance_id, cmd->x, cmd->y);
         return 0;
     }
 
     case FMRB_LINK_GFX_SPRITE_INSTANCE_SET_VISIBLE: {
         if (size < sizeof(fmrb_link_graphics_sprite_instance_set_visible_t)) break;
         const auto *cmd = (const fmrb_link_graphics_sprite_instance_set_visible_t *)data;
-        display_p4_sprite_instance_set_visible(cmd->instance_id, (bool)cmd->visible);
+        display_local_sprite_instance_set_visible(cmd->instance_id, (bool)cmd->visible);
         return 0;
     }
 
     case FMRB_LINK_GFX_SPRITE_INSTANCE_SET_FRAME: {
         if (size < sizeof(fmrb_link_graphics_sprite_instance_set_frame_t)) break;
         const auto *cmd = (const fmrb_link_graphics_sprite_instance_set_frame_t *)data;
-        display_p4_sprite_instance_set_frame(cmd->instance_id, cmd->frame_index);
+        display_local_sprite_instance_set_frame(cmd->instance_id, cmd->frame_index);
         return 0;
     }
 
     case FMRB_LINK_GFX_DELETE_ALL_SPRITES: {
         if (size < sizeof(fmrb_link_graphics_delete_all_sprites_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_all_sprites_t *)data;
-        display_p4_sprite_delete_all_for_canvas(cmd->canvas_id);
+        display_local_sprite_delete_all_for_canvas(cmd->canvas_id);
         return 0;
     }
 
@@ -2589,7 +2589,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         // Find free slot
         p4_image_t *slot = nullptr;
-        for (int i = 0; i < DISPLAY_P4_MAX_IMAGES; i++) {
+        for (int i = 0; i < DISPLAY_LOCAL_MAX_IMAGES; i++) {
             if (!g_images_store[i].in_use) { slot = &g_images_store[i]; break; }
         }
         if (!slot) {
@@ -2625,17 +2625,17 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         fclose(fp);
 
         // JPEG goes through the SoC decoder; PNG stays on LovyanGFX.
-        if (display_p4_jpeg_is_jpeg(buf, (size_t)fsz)) {
+        if (display_local_jpeg_is_jpeg(buf, (size_t)fsz)) {
             uint16_t jw = 0, jh = 0, jstride = 0;
             // The decoder needs its own input buffer alignment, so hand it a
             // copy rather than the plain heap block the file landed in.
             size_t in_alloc = 0;
-            uint8_t *in = display_p4_jpeg_alloc_input((size_t)fsz, &in_alloc);
+            uint8_t *in = display_local_jpeg_alloc_input((size_t)fsz, &in_alloc);
             uint8_t *pix = nullptr;
             if (in) {
                 memcpy(in, buf, (size_t)fsz);
-                pix = display_p4_jpeg_decode(in, (size_t)fsz, &jw, &jh, &jstride);
-                display_p4_jpeg_free_input(in);
+                pix = display_local_jpeg_decode(in, (size_t)fsz, &jw, &jh, &jstride);
+                display_local_jpeg_free_input(in);
             }
             fmrb_sys_free(buf);
             if (!pix) {
@@ -2651,7 +2651,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             if (!jspr->createSprite(jw, jh)) {
                 FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: sprite alloc failed %ux%u",
                           jw, jh);
-                display_p4_jpeg_free_output(pix);
+                display_local_jpeg_free_output(pix);
                 delete jspr;
                 send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
                 return 1;
@@ -2663,7 +2663,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                        srcpx + (size_t)y * jstride,
                        (size_t)jw * 2);
             }
-            display_p4_jpeg_free_output(pix);
+            display_local_jpeg_free_output(pix);
 
             uint16_t jid = g_next_image_store_id++;
             if (jid == 0) jid = g_next_image_store_id++;
@@ -2760,7 +2760,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (!canvas_find(cmd->canvas_id)) {
             FMRB_LOGE(TAG, "VIDEO_OPEN: canvas %u not found", cmd->canvas_id);
         } else {
-            verr = display_p4_video_open(cmd->canvas_id, cmd->x, cmd->y,
+            verr = display_local_video_open(cmd->canvas_id, cmd->x, cmd->y,
                                          full_path, cmd->fps, cmd->flags,
                                          &vw, &vh);
         }
@@ -2774,9 +2774,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_VIDEO_CONTROL: {
         if (size < sizeof(fmrb_link_graphics_video_control_t)) break;
         const auto *cmd = (const fmrb_link_graphics_video_control_t *)data;
-        display_p4_video_control(cmd->action);
-        display_p4_video_status_t st = {};
-        display_p4_video_get_status(&st);
+        display_local_video_control(cmd->action);
+        display_local_video_status_t st = {};
+        display_local_video_get_status(&st);
         fmrb_link_graphics_video_status_t resp = {};
         resp.state          = st.state;
         resp.canvas_id      = st.canvas_id;
@@ -2787,8 +2787,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     }
 
     case FMRB_LINK_GFX_VIDEO_STATUS: {
-        display_p4_video_status_t st = {};
-        display_p4_video_get_status(&st);
+        display_local_video_status_t st = {};
+        display_local_video_get_status(&st);
         fmrb_link_graphics_video_status_t resp = {};
         resp.state          = st.state;
         resp.canvas_id      = st.canvas_id;
@@ -2840,13 +2840,13 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DRAW_TILE: {
         if (size < sizeof(fmrb_link_graphics_draw_tile_t)) break;
         const auto *cmd = (const fmrb_link_graphics_draw_tile_t *)data;
-        LGFX_Sprite *src = display_p4_sprite_image_get(cmd->image_id);
+        LGFX_Sprite *src = display_local_sprite_image_get(cmd->image_id);
         if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
 
         uint8_t trans_color_332 = 0;
-        bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
+        bool use_trans = display_local_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
         // Convert via LovyanGFX for exact match with sprite buffer content
         lgfx::rgb332_t tc332; tc332.raw = trans_color_332;
         lgfx::rgb565_t tc565; tc565 = tc332;
@@ -2872,7 +2872,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_CREATE_MASK: {
         if (size < sizeof(fmrb_link_graphics_create_mask_t)) break;
         const auto *cmd = (const fmrb_link_graphics_create_mask_t *)data;
-        uint16_t mask_id = display_p4_mask_create(cmd->canvas_id, cmd->width, cmd->height);
+        uint16_t mask_id = display_local_mask_create(cmd->canvas_id, cmd->width, cmd->height);
         fmrb_link_graphics_mask_created_t resp = { .mask_id = mask_id };
         send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
         return 1;
@@ -2883,25 +2883,25 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         const auto *cmd = (const fmrb_link_graphics_mask_data_t *)data;
         size_t off = sizeof(fmrb_link_graphics_mask_data_t);
         if (size < off + cmd->chunk_len) break;
-        display_p4_mask_data(cmd->mask_id, data + off, cmd->chunk_len, cmd->offset);
+        display_local_mask_data(cmd->mask_id, data + off, cmd->chunk_len, cmd->offset);
         return 0;
     }
 
     case FMRB_LINK_GFX_DELETE_MASK: {
         if (size < sizeof(fmrb_link_graphics_delete_mask_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_mask_t *)data;
-        display_p4_mask_delete(cmd->mask_id);
+        display_local_mask_delete(cmd->mask_id);
         return 0;
     }
 
     case FMRB_LINK_GFX_DRAW_IMAGE_MASKED: {
         if (size < sizeof(fmrb_link_graphics_draw_image_masked_t)) break;
         const auto *cmd = (const fmrb_link_graphics_draw_image_masked_t *)data;
-        LGFX_Sprite *src = display_p4_sprite_image_get(cmd->image_id);
+        LGFX_Sprite *src = display_local_sprite_image_get(cmd->image_id);
         if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
-        display_p4_mask_blit(cmd->mask_id, src, dst, cmd->x, cmd->y);
+        display_local_mask_blit(cmd->mask_id, src, dst, cmd->x, cmd->y);
         return 0;
     }
 
@@ -3585,26 +3585,26 @@ static void i2c_service_unlock(void) {
     xSemaphoreGive(g_i2c_mutex);
 }
 
-#if defined(DISPLAY_P4_NO_PANEL)
+#if defined(DISPLAY_LOCAL_NO_PANEL)
 // No I2C bus is held here; the exported service answers "not supported" so
 // any caller (audio volume, hw_proxy mediation) fails cleanly instead of
 // linking against nothing.
-extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+extern "C" fmrb_err_t display_local_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     (void)addr; (void)data; (void)len; (void)freq;
     return FMRB_ERR_NOT_SUPPORTED;
 }
-extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+extern "C" fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
                                           size_t len, uint32_t freq) {
     (void)addr; (void)data; (void)len; (void)freq;
     return FMRB_ERR_NOT_SUPPORTED;
 }
-extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+extern "C" fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                                 uint8_t value, uint32_t freq) {
     (void)addr; (void)reg; (void)value; (void)freq;
     return FMRB_ERR_NOT_SUPPORTED;
 }
-extern "C" void display_p4_poll_headphone(void) {}
+extern "C" void display_local_poll_headphone(void) {}
 #elif defined(FMRB_HW_NARYAV4)
 // NARYA v4 has no touch controller, so LovyanGFX never drives this bus and the
 // mixing hazard the Tab5 works around does not exist here: every transaction
@@ -3636,7 +3636,7 @@ static fmrb_err_t naryav4_i2c_xfer(uint8_t addr, const uint8_t *tx, size_t tx_le
     return err == ESP_OK ? FMRB_OK : FMRB_ERR_FAILED;
 }
 
-extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+extern "C" fmrb_err_t display_local_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
@@ -3645,7 +3645,7 @@ extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
     return res;
 }
 
-extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+extern "C" fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
                                           size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
@@ -3668,7 +3668,7 @@ extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
     return res;
 }
 
-extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+extern "C" fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                                 uint8_t value, uint32_t freq) {
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
     const uint8_t buf[2] = { reg, value };
@@ -3679,7 +3679,7 @@ extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
 
 // No headphone jack detect on this board: the amplifier enable is a plain
 // GPIO and there is nothing to sense (P3 wires it up).
-extern "C" void display_p4_poll_headphone(void) {}
+extern "C" void display_local_poll_headphone(void) {}
 #else
 // Tab5 and AtomS3R: LovyanGFX drives the controller at register level (the
 // Tab5's touch panel, the AtomS3R's backlight driver), so every transaction
@@ -3690,7 +3690,7 @@ extern "C" void display_p4_poll_headphone(void) {}
 #define DISPLAY_LGFX_I2C_PORT TAB5_I2C_PORT
 #endif
 
-extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+extern "C" fmrb_err_t display_local_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
@@ -3700,7 +3700,7 @@ extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
     return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
 }
 
-extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+extern "C" fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
                                           size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
@@ -3710,7 +3710,7 @@ extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
     return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
 }
 
-extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+extern "C" fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                                 uint8_t value, uint32_t freq) {
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
     auto res = lgfx::i2c::writeRegister8(DISPLAY_LGFX_I2C_PORT, addr, reg, value,
@@ -3721,12 +3721,12 @@ extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
 
 #if defined(FMRB_HW_ATOMS3R)
 // No headphone jack, no speaker.
-extern "C" void display_p4_poll_headphone(void) {}
+extern "C" void display_local_poll_headphone(void) {}
 #else
 // ============================================================
 // Headphone jack detect / speaker amp gating (PI4IO #1).
 //
-// display_p4_poll_headphone() is called from the touch task loop; the
+// display_local_poll_headphone() is called from the touch task loop; the
 // PI4IO transactions take g_i2c_mutex like every other bus user.
 // ============================================================
 
@@ -3749,7 +3749,7 @@ static void hp_apply_speaker(bool headphone_in) {
               headphone_in ? "muted" : "enabled");
 }
 
-extern "C" void display_p4_poll_headphone(void) {
+extern "C" void display_local_poll_headphone(void) {
     if (!i2c_service_lock()) return;
 
     auto res = lgfx::i2c::readRegister8(TAB5_I2C_PORT, PI4IO1_ADDR,
@@ -3770,7 +3770,7 @@ extern "C" void display_p4_poll_headphone(void) {
     i2c_service_unlock();
 }
 #endif /* !FMRB_HW_ATOMS3R */
-#endif /* DISPLAY_P4_NO_PANEL */
+#endif /* DISPLAY_LOCAL_NO_PANEL */
 
 // ============================================================
 // Main task
@@ -3799,7 +3799,7 @@ static int s_boot_line_y = 0;
 static int s_boot_cursor_x = 0;   // blinking block after the last status line
 static int s_boot_cursor_y = 0;
 
-#if defined(DISPLAY_P4_NO_PANEL)
+#if defined(DISPLAY_LOCAL_NO_PANEL)
 // No panel: the boot screen has nowhere to go (in the browser, the loading
 // page is the page's job anyway).
 static void boot_print_line(const char *text) { (void)text; }
@@ -3901,7 +3901,7 @@ static void draw_boot_screen(void) {
              (int)g_lcd.width(), (int)g_lcd.height());
     boot_print_line(buf);
 }
-#endif /* DISPLAY_P4_NO_PANEL */
+#endif /* DISPLAY_LOCAL_NO_PANEL */
 
 // Copy a frame the player finished into the canvas it owns, then commit it
 // the same way a present would. Runs on the display task: the player never
@@ -3911,7 +3911,7 @@ static bool video_service(void) {
     const uint8_t *pixels = nullptr;
     uint16_t vw = 0, vh = 0, stride_px = 0, canvas_id = 0;
     int16_t dx = 0, dy = 0;
-    if (!display_p4_video_take_frame(&pixels, &vw, &vh, &stride_px,
+    if (!display_local_video_take_frame(&pixels, &vw, &vh, &stride_px,
                                      &canvas_id, &dx, &dy)) {
         return false;
     }
@@ -3947,25 +3947,25 @@ static bool video_service(void) {
                     if (rb) memcpy(rb, dst, (size_t)c->width * c->height * 2);
                 }
                 g_needs_render = true;
-                display_p4_video_note_copy_us(
+                display_local_video_note_copy_us(
                     (uint32_t)((int64_t)fmrb_hal_time_get_us() - copy_t0));
             }
         }
     }
 
-    display_p4_video_release_frame();
+    display_local_video_release_frame();
     return true;
 }
 
-static void display_p4_task(void *arg) {
+static void display_local_task(void *arg) {
     (void)arg;
-#if defined(DISPLAY_P4_NO_PANEL)
+#if defined(DISPLAY_LOCAL_NO_PANEL)
     // Sprite-only bring-up: no panel, no codec, no headphone jack. The
     // interpreter and compositor below run unchanged; in the browser,
     // presenting is the wasm backend's RGBA conversion
     // (wasm/backend/display_backend_wasm.cpp).
     FMRB_LOGI(TAG, "display: VM + cursor init (sprite-only, no panel)");
-    display_p4_vm_init();
+    display_local_vm_init();
     cursor_init();
     g_lcd_ready = true;
 #else
@@ -3983,7 +3983,7 @@ static void display_p4_task(void *arg) {
 #endif
 
     FMRB_LOGI(TAG, "Modern display: VM + cursor init");
-    display_p4_vm_init();
+    display_local_vm_init();
     cursor_init();
 
     FMRB_LOGI(TAG, "Modern display: LGFX init");
@@ -4033,7 +4033,7 @@ static void display_p4_task(void *arg) {
         ppa_verification_test();
 #endif
     }
-#endif /* DISPLAY_P4_NO_PANEL */
+#endif /* DISPLAY_LOCAL_NO_PANEL */
 
     FMRB_LOGI(TAG, "Modern display: entering command receive loop");
 
@@ -4047,7 +4047,7 @@ static void display_p4_task(void *arg) {
     while (1) {
         // Blink the boot-screen cursor until the first real frame replaces
         // the boot screen. Same task as render_frame, so no draw race.
-#if !defined(DISPLAY_P4_NO_PANEL)
+#if !defined(DISPLAY_LOCAL_NO_PANEL)
         if (g_first_render && g_lcd_ready) {
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
             if ((uint32_t)(now - boot_cursor_ms) >= 500) {
@@ -4090,7 +4090,7 @@ static void display_p4_task(void *arg) {
         // is honored even if no further commands arrive. Video playback needs
         // the same short loop: its frames arrive without any command traffic.
         uint32_t timeout_ms = (g_needs_render || g_smode.pending ||
-                               display_p4_video_is_active()) ? 5 : 100;
+                               display_local_video_is_active()) ? 5 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
         // Then everything else already queued, within the budget: a present
@@ -4121,7 +4121,7 @@ static void display_p4_task(void *arg) {
     }
 }
 
-extern "C" fmrb_err_t display_p4_task_init(void) {
+extern "C" fmrb_err_t display_local_task_init(void) {
     if (!g_i2c_mutex) {
         g_i2c_mutex = xSemaphoreCreateMutex();
         if (!g_i2c_mutex) {
@@ -4129,27 +4129,27 @@ extern "C" fmrb_err_t display_p4_task_init(void) {
             return FMRB_ERR_FAILED;
         }
     }
-    BaseType_t ok = xTaskCreatePinnedToCore(display_p4_task, "display_p4",
-                                            FMRB_DISPLAY_P4_TASK_STACK_SIZE,
-                                            NULL, FMRB_DISPLAY_P4_TASK_PRIORITY,
-                                            NULL, FMRB_DISPLAY_P4_TASK_CORE);
+    BaseType_t ok = xTaskCreatePinnedToCore(display_local_task, "display_local",
+                                            FMRB_DISPLAY_LOCAL_TASK_STACK_SIZE,
+                                            NULL, FMRB_DISPLAY_LOCAL_TASK_PRIORITY,
+                                            NULL, FMRB_DISPLAY_LOCAL_TASK_CORE);
     if (ok != pdPASS) {
-        FMRB_LOGE(TAG, "Failed to create display_p4 task");
+        FMRB_LOGE(TAG, "Failed to create display_local task");
         return FMRB_ERR_FAILED;
     }
     return FMRB_OK;
 }
 
-extern "C" fmrb_err_t display_p4_task_deinit(void) {
+extern "C" fmrb_err_t display_local_task_deinit(void) {
     return FMRB_OK;
 }
 
-extern "C" bool display_p4_is_ready(void) {
+extern "C" bool display_local_is_ready(void) {
     return g_lcd_ready;
 }
 
-extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
-#if defined(DISPLAY_P4_NO_PANEL)
+extern "C" int display_local_get_touch(int16_t *out_x, int16_t *out_y) {
+#if defined(DISPLAY_LOCAL_NO_PANEL)
     (void)out_x; (void)out_y;
     return 0;
 #else
@@ -4178,7 +4178,7 @@ extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
 // and capture stays on until the last consumer disables it.
 static int g_cap_refcount = 0;
 
-extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
+extern "C" fmrb_err_t display_local_capture_enable(bool enable) {
     if (enable) {
         if (g_cap_buf[0]) {
             if (g_cap_refcount == 0) {
@@ -4203,8 +4203,8 @@ extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
         // size of the frame in it.
         size_t need = (size_t)g_display_width * g_display_height * 2;
 #if defined(FMRB_HAS_PPA)
-        const size_t hires_need = (size_t)DISPLAY_P4_HIRES_W * DISPLAY_P4_HIRES_H * 2;
-        if (g_display_width < DISPLAY_P4_HIRES_W && need < hires_need) need = hires_need;
+        const size_t hires_need = (size_t)DISPLAY_LOCAL_HIRES_W * DISPLAY_LOCAL_HIRES_H * 2;
+        if (g_display_width < DISPLAY_LOCAL_HIRES_W && need < hires_need) need = hires_need;
 #endif
         // Without the PPA (the AtomS3R's 128x128) the only reader is the
         // one-shot /fb of the development server: slots of the base screen's
@@ -4244,9 +4244,9 @@ extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
     return FMRB_OK;
 }
 
-extern "C" fmrb_err_t display_p4_capture_acquire(uint32_t min_seq,
+extern "C" fmrb_err_t display_local_capture_acquire(uint32_t min_seq,
                                                  uint32_t timeout_ms,
-                                                 display_p4_capture_frame_t *out) {
+                                                 display_local_capture_frame_t *out) {
     if (!out || !g_cap_enabled || !g_cap_sem) return FMRB_ERR_INVALID_STATE;
 
     TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
@@ -4276,17 +4276,17 @@ extern "C" fmrb_err_t display_p4_capture_acquire(uint32_t min_seq,
     }
 }
 
-extern "C" void display_p4_capture_release(void) {
+extern "C" void display_local_capture_release(void) {
     portENTER_CRITICAL(&g_cap_lock);
     g_cap_locked_idx = -1;
     portEXIT_CRITICAL(&g_cap_lock);
 }
 
-extern "C" void display_p4_capture_kick(void) {
+extern "C" void display_local_capture_kick(void) {
     g_needs_render = true;
 }
 
-extern "C" void display_p4_get_cursor(int *x, int *y, bool *visible) {
+extern "C" void display_local_get_cursor(int *x, int *y, bool *visible) {
     if (x) *x = g_cursor_x;
     if (y) *y = g_cursor_y;
     if (visible) *visible = g_cursor_visible;

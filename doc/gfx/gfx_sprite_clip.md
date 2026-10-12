@@ -11,7 +11,7 @@
   `render_buffer` にコピーした直後に `sprite_manager_composite()`
   (fmruby-graphics-audio `main/graphics/graphics_handler.cpp`)
 - Modern / P4: canvas を PPA Blend でフレームバッファに合成した直後に
-  `display_p4_sprite_composite()` (`main/drivers/display_p4/display_p4_task.cpp`
+  `display_local_sprite_composite()` (`main/drivers/display_local/display_local_task.cpp`
   `render_frame()`)
 
 ウィンドウ枠とタイトルバーは**アプリ自身が同じ canvas に描く**
@@ -73,7 +73,7 @@ flappy はプレイフィールド (スコア帯より下、地面より上) を
    - graphics-audio `graphics_handler.cpp`: `canvas_state_t` に clip を持ち、
      `sprite_manager_composite()` を `render_buffer->setClipRect()` /
      `clearClipRect()` で囲む
-   - P4 `display_p4_task.cpp`: `p4_canvas_t` に clip を持ち、`render_frame()`
+   - P4 `display_local_task.cpp`: `p4_canvas_t` に clip を持ち、`render_frame()`
      の既存フットプリント clip (canvas / viewport) と**交差**を取る
 6. Ruby:
    - mruby: `lib/add/picoruby-fmrb-app/ports/esp32/gfx.c` `_set_sprite_clip`
@@ -125,5 +125,5 @@ graphics-audio を必ず一緒に焼く**こと。
 ## 確認方法
 
 Linux sim は **ターゲットが Retro でも Modern でも graphics-audio 経路**
-(`display_p4_task.cpp` は Linux ビルドに含まれない) なので、GA 側の実装は
+(`display_local_task.cpp` は Linux ビルドに含まれない) なので、GA 側の実装は
 sim でそのまま確認できる。P4 側はハードウェア (Tab5/NARYAv4) が要る。

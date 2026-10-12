@@ -30,7 +30,7 @@ report に疑義として記録しユーザ判断を仰ぐ)。
    placement new + プールで統一する。
 4. **C API 境界を維持する**: spawner / fmrb_app.c / gfx 拡張との接点は
    `extern "C"` のヘッダ (`include/fmrb_basic.h`) に閉じ、内部だけ
-   C++ にする (main/drivers/display_p4 の .cpp 群と同じパターン)。
+   C++ にする (main/drivers/display_local の .cpp 群と同じパターン)。
 5. **非トリビアルなグローバルコンストラクタ禁止** (静的初期化順序の
    罠を避ける)。テーブル類は constexpr で持つ。
 6. C++ 標準は IDF v5.5 コンテナのデフォルト設定の範囲で **C++20 まで**の

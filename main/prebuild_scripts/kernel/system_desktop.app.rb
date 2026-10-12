@@ -708,7 +708,7 @@ class SystemDesktopApp < FmrbApp
   # picture. A Tab5 flashed before bg_cyber_426x240.png was added (2026-09-02)
   # showed no wallpaper at all when the theme was set to cyberpunk, and the
   # only trace was one line from the graphics side:
-  #   E display_p4: CREATE_IMAGE_FROM_FILE: cannot open .../bg_cyber_426x240.png
+  #   E display_local: CREATE_IMAGE_FROM_FILE: cannot open .../bg_cyber_426x240.png
   # The desktop never learns that, so it has to look before it points.
   # bg_426x240.png is the true last resort: it has shipped since the first
   # build that had a wallpaper at all.

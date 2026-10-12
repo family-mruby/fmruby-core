@@ -12,7 +12,7 @@
 //
 // The Tab5 panel varies by production batch, so the panel/touch classes and
 // the DSI lane rate are chosen at run time, from the variant that
-// display_p4_task's probe determines (a touch controller probe -- the rear
+// display_local_task's probe determines (a touch controller probe -- the rear
 // label is NOT a reliable indicator: a unit labelled ST7123 reports touch
 // firmware version 1 and needs the ST7121 settings below):
 //   ILI9881C: ILI9881C display + GT911 touch (0x14), separate chips
@@ -23,7 +23,7 @@
 //             lane_mbps=1040, dpi 80MHz, hsync 40/2/40, vsync 8/2/220.
 // Everything above the panel object is variant-agnostic: both panels derive
 // from Panel_DSI and both touch controllers from ITouch, so the drawing path
-// (pushImage / getFrameBuffer) and display_p4_get_touch() are unchanged.
+// (pushImage / getFrameBuffer) and display_local_get_touch() are unchanged.
 #pragma once
 
 #include <M5GFX.h>  // LovyanGFX library headers (we do not use the M5GFX/M5Unified device objects)
@@ -221,7 +221,7 @@ public:
 
     // Direct pointer to the esp_lcd DPI framebuffer (rgb565 non-swapped,
     // native portrait 720x1280, row stride = panel_width * 2 bytes).
-    // Valid after init(). Used by display_p4 to let PPA SRM write the
+    // Valid after init(). Used by display_local to let PPA SRM write the
     // scaled+rotated frame directly, bypassing the per-pixel rotated copy
     // that pushImage performs under setRotation(3).
     void* getFrameBuffer(void) { return _panel ? _panel->config_detail().buffer : nullptr; }
