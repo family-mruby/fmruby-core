@@ -359,7 +359,7 @@ V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux
   - アプリごとのアイコン (Family mruby のランチャーのアイコン) も出せるようにするかは、gem の設計のときに決める。
 - **console (V2.5)**: 新しいノードが入ったら bridge が自己紹介を問い合わせる。答えがあれば種類で印を決め、アイコンを枠の名前の前に出す。答えが無いノード (古い版・ROS 2) は今の名前の決まりと印のまま。
 - **公開**: gem の新しい版の公開はユーザが行う。
-- **API の名前 (未決、ユーザが決める)**。「info」は汎用すぎる (ユーザ)。候補:
+- **API の名前は `profile` に決定 (2026-10-12 ユーザ)**。`Asterism.profile(kind:, name:, icon:)`、キーは `asterism/<ID>/@profile`。asterism の既存の「Ruby プロファイル」の表は、紛れないよう呼び名を変えるかを 0.5.0 の作業で決める。検討した候補 (記録):
 
 | 案 | 書き方の例 | キー | 感じ |
 |---|---|---|---|
@@ -369,8 +369,8 @@ V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux
 | face | `Asterism.face(kind: :board, icon: png)` | `@face` | 見た目 (アイコン) に寄った名前。種類を入れると少しずれる |
 | badge | `Asterism.badge(kind: :board, icon: png)` | `@badge` | console の「数の印 (badge)」とぶつかる |
 
-  - 避けたもの: `info` (汎用すぎる)、`profile` (asterism の「Ruby プロファイル表」と紛れる)、`presence` (生存の監視と紛れる)、`avatar` (アイコンだけに寄る)。
-  - おすすめは **card**。次点は introduce。
+  - ほかに見送ったもの: `info` (汎用すぎる)、`presence` (生存の監視と紛れる)、`avatar` (アイコンだけに寄る)。
+  - `kind` の値の名前 (`board` に違和感、ユーザ) は未決。
 
 ### V の続き: ROS 2 の道具 (rosbag・rqt) の良いところを取り込む (2026-10-09 ユーザ決定、この順)
 
