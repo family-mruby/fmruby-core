@@ -387,6 +387,13 @@ static esp_err_t mount_sd_card(void) {
     }
     return ret;
 #else
+    // A board with no SD slot (its SD pins are all GPIO_NUM_NC): do not bring
+    // an SPI bus up on no pins -- it would hold a host another driver (the
+    // AtomS3R's panel) needs, and the card would never answer anyway.
+    if (SD_CS_GPIO == GPIO_NUM_NC) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
     // Initialize SPI bus if not already done
     if (!s_spi_initialized) {
         spi_bus_config_t bus_cfg = {

@@ -1,0 +1,5 @@
+app_handle_name = "atoms3r_hello"
+app_screen_name = "Small Screen Test"
+app_screen_name_ja = "小さい画面のテスト"
+default_window_mode = "fullscreen"
+launcher_visible = false

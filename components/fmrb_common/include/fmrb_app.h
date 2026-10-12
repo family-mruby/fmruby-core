@@ -454,7 +454,7 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
  *        this display can show it (doc/fullscreen_hires/).
  *
  * True on the builds whose display is the Modern display task in the same
- * process (FMRB_HW_MODERN, FMRB_PLATFORM_WASM) and only while the base screen
+ * process (FMRB_HAS_LOCAL_DISPLAY, FMRB_PLATFORM_WASM) and only while the base screen
  * is 426x240 (the browser build can be started at 640x360 or larger, where the
  * mode means nothing). False on Retro and the Linux simulator, whose display
  * is graphics-audio: the kernel then keeps the usual fullscreen.

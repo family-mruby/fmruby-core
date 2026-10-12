@@ -34,9 +34,18 @@ static void cpu_init(int fb_w, int fb_h)
               fb_w, fb_h);
 }
 
+/* A device with no panel behind it (a board whose panel is not up) has
+ * nothing to put the frame on; every call below is then a no-op. */
+static bool cpu_has_panel(LGFX_Device *lcd)
+{
+    return lcd->getPanel() != nullptr;
+}
+
 static void cpu_first_frame(void)
 {
-    display_p4_lcd()->fillScreen(0);
+    LGFX_Device *lcd = display_p4_lcd();
+    if (!cpu_has_panel(lcd)) return;
+    lcd->fillScreen(0);
 }
 
 static void cpu_blend_block(const display_blend_req_t *r)
@@ -49,6 +58,7 @@ static void cpu_present(LGFX_Sprite *fb, size_t fb_size)
     (void)fb_size;
 
     LGFX_Device *lcd = display_p4_lcd();
+    if (!cpu_has_panel(lcd)) return;
     const int fb_w = fb->width();
     const int fb_h = fb->height();
     const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
@@ -78,6 +88,7 @@ static void cpu_present_patch(const uint16_t *block, int x0, int y0, int w, int 
     if (w > DISPLAY_PATCH_MAX_W || h > DISPLAY_PATCH_MAX_H) return;
 
     LGFX_Device *lcd = display_p4_lcd();
+    if (!cpu_has_panel(lcd)) return;
     const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
     if (scale > DISPLAY_MAX_SCALE) return;
 

@@ -3289,7 +3289,7 @@ fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_
  */
 fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height)
 {
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     // The input sources read the screen size from here (touch, USB mouse,
     // remote input), so it follows the request before the display has even
     // switched: the cursor is rescaled at once and the next move lands in the
@@ -3343,7 +3343,7 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
 
 bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
 {
-#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
     // Not FMRB_HW_FAMILY_MODERN: that one is also set for the Linux simulator,
     // whose display is graphics-audio and does not know SET_SCREEN_MODE.
     const fmrb_system_config_t *conf = fmrb_kernel_get_config();

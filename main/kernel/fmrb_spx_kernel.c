@@ -305,6 +305,64 @@ const char *fmrb_spx_last_error(void)
     return (const char *)buf;
 }
 
+/* Single-app boot: system_conf boot_mode / startup_app_retries / startup_app,
+   and the halt screen the kernel puts up when it gives up on that app. The
+   same calls the mruby binding (picoruby-fmrb-kernel) makes. */
+int fmrb_spx_boot_mode(void)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)conf->boot_mode : (int)FMRB_BOOT_MODE_DESKTOP;
+}
+
+int fmrb_spx_startup_app_retries(void)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)conf->startup_app_retries : 0;
+}
+
+const char *fmrb_spx_startup_app(void)
+{
+    /* :binstr return; the path itself, no terminator. */
+    const char *path = fmrb_kernel_startup_app();
+    *sp_ctx_ffi_bin_len() = (int)strlen(path);
+    return path;
+}
+
+/* The size a fullscreen window gets (display minus margins). */
+int fmrb_spx_screen_width(void)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)(conf->display_width - conf->display_margin_x) : 0;
+}
+
+int fmrb_spx_screen_height(void)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)(conf->display_height - conf->display_margin_y) : 0;
+}
+
+/* The whole panel, margins included: the width the halt screen is drawn at. */
+int fmrb_spx_display_width(void)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)conf->display_width : 0;
+}
+
+int fmrb_spx_show_halt(const char *text, int len)
+{
+    FMRB_EXT_RAM_BSS_ATTR static char buf[256];
+    if (!text || len < 0) return 0;
+    if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+    memcpy(buf, text, (size_t)len);
+    buf[len] = '\0';
+    return fmrb_kernel_show_halt(buf) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_clear_halt(void)
+{
+    return fmrb_kernel_clear_halt() ? 1 : 0;
+}
+
 int fmrb_spx_set_error_led(int level)
 {
     status_led_set_error(level);

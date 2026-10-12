@@ -22,6 +22,12 @@ class ShellApp < FmrbApp
     # 12px = two). 12px rows, not 8: the default 6x8 font has no Japanese
     # glyphs, and kana typed at the prompt has to be visible.
     @char_height = 12
+    # Built without the efontJA fonts (FMRB_FONT_JA=0) the text is misaki 8:
+    # half-width 4px, full-width 8px, 8px rows.
+    unless FmrbConst::FONT_JA
+      @char_width = 4
+      @char_height = 8
+    end
     @current_dir = "/home"  # Virtual working directory (user-visible)
 
     # User-facing filesystem root. The HAL resolver maps "/" to LittleFS on

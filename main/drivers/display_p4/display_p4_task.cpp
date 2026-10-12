@@ -13,14 +13,18 @@
 #include "display_p4_sprite.h"
 #include "display_p4_video.h"
 #include "flash_flicker_probe.h"
-#ifndef FMRB_PLATFORM_WASM
-#if defined(FMRB_HW_NARYAV4)
+// Which screen this build drives. DISPLAY_P4_NO_PANEL: none -- the canvases
+// and the compositor run, but nothing is ever put on glass (the browser,
+// which reads the composited frame itself).
+#if defined(FMRB_PLATFORM_WASM)
+#define DISPLAY_P4_NO_PANEL 1
+#include <M5GFX.h>
+#elif defined(FMRB_HW_ATOMS3R)
+#include "lgfx_atoms3r.hpp"
+#elif defined(FMRB_HW_NARYAV4)
 #include "lgfx_naryav4.hpp"
 #else
 #include "lgfx_tab5.hpp"
-#endif
-#else
-#include <M5GFX.h>
 #endif
 #include "fonts/misaki/lgfx_misaki_fonts.hpp"
 #include "../audio_p4/audio_p4.h"
@@ -39,6 +43,8 @@
 #ifndef FMRB_PLATFORM_WASM
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
+#endif
+#ifdef FMRB_HAS_PPA
 #include "driver/ppa.h"
 #endif
 #include "esp_heap_caps.h"
@@ -94,7 +100,7 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
     return buf;
 }
 
-#if !defined(FMRB_HW_NARYAV4)
+#if defined(FMRB_HW_TAB5)
 // Tab5 board pins / I2C (see fmrb_pin_assign.h; kept local to the driver).
 #define TAB5_I2C_PORT   I2C_NUM_1
 #define TAB5_I2C_SDA    GPIO_NUM_31
@@ -111,11 +117,13 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 #define PI4IO_BIT_SPK_EN    (1 << 1)
 #define PI4IO_BIT_HP_DETECT (1 << 7)
 #define PI4IO_I2C_FREQ      400000
-#endif /* !FMRB_HW_NARYAV4 */
+#endif /* FMRB_HW_TAB5 */
 
-#ifdef FMRB_PLATFORM_WASM
+#if defined(DISPLAY_P4_NO_PANEL)
 // Sprite parent only: no panel behind it, and nothing here may draw on it.
 static lgfx::LGFX_Device g_lcd;
+#elif defined(FMRB_HW_ATOMS3R)
+static LGFX_AtomS3R g_lcd;
 #elif defined(FMRB_HW_NARYAV4)
 static LGFX_Naryav4 g_lcd;
 #else
@@ -130,7 +138,8 @@ static volatile bool g_lcd_ready = false;
 // detection further down -- putting those behind the output interface would
 // leave the CPU backend with no lit panel to draw on.
 LGFX_Device *display_p4_lcd(void) { return &g_lcd; }
-#ifdef FMRB_PLATFORM_WASM
+#if defined(DISPLAY_P4_NO_PANEL) || !defined(FMRB_HW_MODERN)
+// No panel, or an SPI panel that keeps its frame in the controller.
 void *display_p4_panel_framebuffer(void) { return NULL; }
 #else
 void *display_p4_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
@@ -1033,11 +1042,14 @@ static void render_frame(void) {
     // scale-out. The writer (this task) never touches the slot locked by
     // the reader; while the reader is slow, frames simply overwrite the
     // other slot and drop.
-    if (g_cap_enabled && g_cap_buf[0]) {
+    // A frame larger than the slots (only possible where they were sized for
+    // the base screen, see display_p4_capture_enable) is skipped rather than
+    // cut short: the reader trusts the size recorded with the slot.
+    if (g_cap_enabled && g_cap_buf[0] &&
+        (size_t)g_framebuffer->width() * g_framebuffer->height() * 2 <= g_cap_buf_size) {
         void *fb_ptr = g_framebuffer->getBuffer();
         size_t copy_len = (size_t)g_framebuffer->width()
                         * g_framebuffer->height() * 2;
-        if (copy_len > g_cap_buf_size) copy_len = g_cap_buf_size;
 
         portENTER_CRITICAL(&g_cap_lock);
         int target;
@@ -1351,7 +1363,7 @@ static bool screen_mode_owner_showable(void) {
            c->width == g_framebuffer->width() && c->height == g_framebuffer->height();
 }
 
-#if !defined(FMRB_PLATFORM_WASM) && !defined(FMRB_HW_NARYAV4)
+#if defined(FMRB_HW_TAB5)
 // ============================================================
 // PI4IO I2C helper
 // ============================================================
@@ -1516,7 +1528,7 @@ static Tab5PanelVariant tab5_power_on(void) {
     // Backlight: LEDC PWM via Light_PWM in LGFX_Tab5 (GPIO22, ch7, 44100Hz).
     return variant;
 }
-#endif /* !FMRB_PLATFORM_WASM && !FMRB_HW_NARYAV4 */
+#endif /* FMRB_HW_TAB5 */
 
 // ============================================================
 // ACK response sender
@@ -2029,6 +2041,16 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             case FMRB_LINK_GFX_FONT_FAMILY_DEFAULT:
                 s->setFont(&fonts::Font0);
                 break;
+#if defined(FMRB_NO_FONT_JA)
+            case FMRB_LINK_GFX_FONT_FAMILY_JA:
+            case FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD:
+                // Built with FMRB_FONT_JA=0: the efontJA fonts are not in
+                // this firmware (nothing here may name them, or the linker
+                // keeps them), so every Japanese size is misaki 8. set_font
+                // already answers [:ja, 8] (FmrbGfx.resolve_font).
+                s->setFont(&fonts::misaki_8);
+                break;
+#else
             case FMRB_LINK_GFX_FONT_FAMILY_JA:
                 // size=8 -> misaki (matches the system 8px UI height),
                 // 12 and 16 -> efontJA (bundled with M5GFX). Anything else
@@ -2056,6 +2078,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 }
                 s->setFont(&fonts::efontJA_12_b);
                 break;
+#endif
             default:
                 FMRB_LOGW(TAG, "SET_FONT: unknown family=%u", cmd->family);
                 return -1;
@@ -3562,10 +3585,10 @@ static void i2c_service_unlock(void) {
     xSemaphoreGive(g_i2c_mutex);
 }
 
-#ifdef FMRB_PLATFORM_WASM
-// No I2C bus exists here; the exported service answers "not supported" so any
-// caller (audio volume, hw_proxy mediation) fails cleanly instead of linking
-// against nothing.
+#if defined(DISPLAY_P4_NO_PANEL)
+// No I2C bus is held here; the exported service answers "not supported" so
+// any caller (audio volume, hw_proxy mediation) fails cleanly instead of
+// linking against nothing.
 extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     (void)addr; (void)data; (void)len; (void)freq;
@@ -3658,11 +3681,20 @@ extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
 // GPIO and there is nothing to sense (P3 wires it up).
 extern "C" void display_p4_poll_headphone(void) {}
 #else
+// Tab5 and AtomS3R: LovyanGFX drives the controller at register level (the
+// Tab5's touch panel, the AtomS3R's backlight driver), so every transaction
+// goes through lgfx's I2C helpers under g_i2c_mutex.
+#if defined(FMRB_HW_ATOMS3R)
+#define DISPLAY_LGFX_I2C_PORT ATOMS3R_I2C_PORT
+#else
+#define DISPLAY_LGFX_I2C_PORT TAB5_I2C_PORT
+#endif
+
 extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    auto res = lgfx::i2c::transactionWrite(TAB5_I2C_PORT, addr, data,
+    auto res = lgfx::i2c::transactionWrite(DISPLAY_LGFX_I2C_PORT, addr, data,
                                            (uint8_t)len, freq);
     i2c_service_unlock();
     return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
@@ -3672,7 +3704,7 @@ extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
                                           size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    auto res = lgfx::i2c::transactionRead(TAB5_I2C_PORT, addr, data,
+    auto res = lgfx::i2c::transactionRead(DISPLAY_LGFX_I2C_PORT, addr, data,
                                           (uint8_t)len, freq);
     i2c_service_unlock();
     return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
@@ -3681,12 +3713,16 @@ extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
 extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                                 uint8_t value, uint32_t freq) {
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    auto res = lgfx::i2c::writeRegister8(TAB5_I2C_PORT, addr, reg, value,
+    auto res = lgfx::i2c::writeRegister8(DISPLAY_LGFX_I2C_PORT, addr, reg, value,
                                          0, freq);
     i2c_service_unlock();
     return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
 }
 
+#if defined(FMRB_HW_ATOMS3R)
+// No headphone jack, no speaker.
+extern "C" void display_p4_poll_headphone(void) {}
+#else
 // ============================================================
 // Headphone jack detect / speaker amp gating (PI4IO #1).
 //
@@ -3733,7 +3769,8 @@ extern "C" void display_p4_poll_headphone(void) {
     }
     i2c_service_unlock();
 }
-#endif /* !FMRB_PLATFORM_WASM */
+#endif /* !FMRB_HW_ATOMS3R */
+#endif /* DISPLAY_P4_NO_PANEL */
 
 // ============================================================
 // Main task
@@ -3744,20 +3781,27 @@ extern "C" void display_p4_poll_headphone(void) {
 // still booting. Cleared by the first render_frame (which also flushes the
 // cached CPU writes, see g_first_render).
 
-#define BOOT_TEXT_SIZE 3                    // 6x8 base font -> 18x24 on 720p
+// A panel narrower than this gets the compact boot screen: the plain 6x8
+// font, a few short lines. Decided by the panel's size, not by the board.
+#define BOOT_COMPACT_BELOW_W 320
+
+// External RAM: read only by the display task.
+[[maybe_unused]] FMRB_EXT_RAM_BSS_ATTR static bool g_boot_compact;
+
+#define BOOT_TEXT_SIZE (g_boot_compact ? 1 : 3)   // 6x8 base font -> 18x24 on 720p
 #define BOOT_CHAR_W    (6 * BOOT_TEXT_SIZE)
 #define BOOT_CHAR_H    (8 * BOOT_TEXT_SIZE)
-#define BOOT_LINE_H    (BOOT_CHAR_H + 4)
-#define BOOT_MARGIN_X  8
-#define BOOT_MARGIN_Y  8
+#define BOOT_LINE_H    (BOOT_CHAR_H + (g_boot_compact ? 2 : 4))
+#define BOOT_MARGIN_X  (g_boot_compact ? 2 : 8)
+#define BOOT_MARGIN_Y  (g_boot_compact ? 2 : 8)
 
 static int s_boot_line_y = 0;
 static int s_boot_cursor_x = 0;   // blinking block after the last status line
 static int s_boot_cursor_y = 0;
 
-#ifdef FMRB_PLATFORM_WASM
-// No panel: the boot screen has nowhere to go, and the loading page is the
-// browser's job anyway.
+#if defined(DISPLAY_P4_NO_PANEL)
+// No panel: the boot screen has nowhere to go (in the browser, the loading
+// page is the page's job anyway).
 static void boot_print_line(const char *text) { (void)text; }
 static void boot_print_blank(void) {}
 static void draw_boot_cursor(bool visible) { (void)visible; }
@@ -3780,13 +3824,38 @@ static void draw_boot_cursor(bool visible) {
                    visible ? 0xFFFFFFu : 0x000000u);
 }
 
+// The compact boot screen: what is starting and which build, in the 21
+// columns a 128-pixel panel has.
+static void draw_boot_screen_compact(void) {
+    char buf[40];
+    const esp_app_desc_t *app = esp_app_get_description();
+    boot_print_line("Family mruby");
+    snprintf(buf, sizeof(buf), "%.20s", app->version);
+    boot_print_line(buf);
+    snprintf(buf, sizeof(buf), "%.6s %.6s", app->date, app->time);
+    boot_print_line(buf);
+    boot_print_blank();
+    snprintf(buf, sizeof(buf), "%s %dx%d", CONFIG_IDF_TARGET,
+             (int)g_lcd.width(), (int)g_lcd.height());
+    boot_print_line(buf);
+    snprintf(buf, sizeof(buf), "PSRAM %uK free",
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+    boot_print_line(buf);
+}
+
 static void draw_boot_screen(void) {
     char buf[80];
 
+    g_boot_compact = g_lcd.width() < BOOT_COMPACT_BELOW_W;
     g_lcd.fillScreen(0x000000u);
     g_lcd.setTextSize(BOOT_TEXT_SIZE);
     g_lcd.setTextColor(0xFFFFFFu, 0x000000u);
     s_boot_line_y = BOOT_MARGIN_Y;
+
+    if (g_boot_compact) {
+        draw_boot_screen_compact();
+        return;
+    }
 
     boot_print_line("Family mruby Modern System");
     boot_print_line("==========================");
@@ -3832,7 +3901,7 @@ static void draw_boot_screen(void) {
              (int)g_lcd.width(), (int)g_lcd.height());
     boot_print_line(buf);
 }
-#endif /* !FMRB_PLATFORM_WASM */
+#endif /* DISPLAY_P4_NO_PANEL */
 
 // Copy a frame the player finished into the canvas it owns, then commit it
 // the same way a present would. Runs on the display task: the player never
@@ -3890,11 +3959,12 @@ static bool video_service(void) {
 
 static void display_p4_task(void *arg) {
     (void)arg;
-#ifdef FMRB_PLATFORM_WASM
+#if defined(DISPLAY_P4_NO_PANEL)
     // Sprite-only bring-up: no panel, no codec, no headphone jack. The
-    // interpreter and compositor below run unchanged; presenting is the wasm
-    // backend's RGBA conversion (wasm/backend/display_backend_wasm.cpp).
-    FMRB_LOGI(TAG, "wasm display: VM + cursor init (sprite-only, no panel)");
+    // interpreter and compositor below run unchanged; in the browser,
+    // presenting is the wasm backend's RGBA conversion
+    // (wasm/backend/display_backend_wasm.cpp).
+    FMRB_LOGI(TAG, "display: VM + cursor init (sprite-only, no panel)");
     display_p4_vm_init();
     cursor_init();
     g_lcd_ready = true;
@@ -3903,6 +3973,9 @@ static void display_p4_task(void *arg) {
     FMRB_LOGI(TAG, "NARYAv4 display: I2C + DSI bus");
     bool configured = g_lcd.configure();
     g_naryav4_i2c = g_lcd.i2cBus();
+#elif defined(FMRB_HW_ATOMS3R)
+    FMRB_LOGI(TAG, "AtomS3R display: SPI panel probe");
+    bool configured = g_lcd.configure();
 #else
     FMRB_LOGI(TAG, "Tab5 display: power on");
     g_lcd.configure(tab5_power_on());
@@ -3917,7 +3990,7 @@ static void display_p4_task(void *arg) {
     if (!configured || !g_lcd.init()) {
         FMRB_LOGE(TAG, "LGFX init failed");
     } else {
-#if !defined(FMRB_HW_NARYAV4)
+#if defined(FMRB_HW_TAB5)
         g_lcd.setRotation(3); // landscape: 1280x720 (native portrait 720x1280 rotated 90deg CCW)
 #endif
         // NARYA v4 is landscape already (800x600 over HDMI); no rotation.
@@ -3929,14 +4002,14 @@ static void display_p4_task(void *arg) {
         // g_lcd_ready below, so this is the race-free window.
         if (audio_backend()->init() != FMRB_OK) {
             FMRB_LOGW(TAG, "audio init failed (no sound)");
-            boot_print_line("Audio: codec init FAILED (no sound)");
-        } else {
+            if (!g_boot_compact) boot_print_line("Audio: codec init FAILED (no sound)");
+        } else if (!g_boot_compact) {
             boot_print_line("Audio: codec ready");
         }
-        boot_print_blank();
-        boot_print_line("Waiting for kernel...");
+        if (!g_boot_compact) boot_print_blank();
+        boot_print_line(g_boot_compact ? "Starting..." : "Waiting for kernel...");
 
-#if !defined(FMRB_HW_NARYAV4)
+#if defined(FMRB_HW_TAB5)
         // Apply the initial headphone state so booting with headphones
         // plugged does not play the boot sound on the speaker. If lgfx's
         // I2C is not up yet the read fails silently and the touch-task
@@ -3960,7 +4033,7 @@ static void display_p4_task(void *arg) {
         ppa_verification_test();
 #endif
     }
-#endif /* !FMRB_PLATFORM_WASM */
+#endif /* DISPLAY_P4_NO_PANEL */
 
     FMRB_LOGI(TAG, "Modern display: entering command receive loop");
 
@@ -3974,7 +4047,7 @@ static void display_p4_task(void *arg) {
     while (1) {
         // Blink the boot-screen cursor until the first real frame replaces
         // the boot screen. Same task as render_frame, so no draw race.
-#ifndef FMRB_PLATFORM_WASM
+#if !defined(DISPLAY_P4_NO_PANEL)
         if (g_first_render && g_lcd_ready) {
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
             if ((uint32_t)(now - boot_cursor_ms) >= 500) {
@@ -4076,7 +4149,7 @@ extern "C" bool display_p4_is_ready(void) {
 }
 
 extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
-#ifdef FMRB_PLATFORM_WASM
+#if defined(DISPLAY_P4_NO_PANEL)
     (void)out_x; (void)out_y;
     return 0;
 #else
@@ -4129,8 +4202,14 @@ extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
         // may already be running when the mode changes. Each slot records the
         // size of the frame in it.
         size_t need = (size_t)g_display_width * g_display_height * 2;
+#if defined(FMRB_HAS_PPA)
         const size_t hires_need = (size_t)DISPLAY_P4_HIRES_W * DISPLAY_P4_HIRES_H * 2;
         if (g_display_width < DISPLAY_P4_HIRES_W && need < hires_need) need = hires_need;
+#endif
+        // Without the PPA (the AtomS3R's 128x128) the only reader is the
+        // one-shot /fb of the development server: slots of the base screen's
+        // size, 32KB each there instead of 450KB. A high-resolution frame
+        // does not fit and is not captured (render_frame).
         size_t aligned = 0;
         g_cap_buf[0] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
         g_cap_buf[1] = (uint8_t *)ppa_alloc_buffer(need, &aligned);

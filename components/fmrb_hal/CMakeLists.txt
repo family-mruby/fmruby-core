@@ -21,7 +21,7 @@ if(IDF_TARGET STREQUAL "linux")
     set(PLATFORM_REQUIRES pthread log fmrb_msg fmrb_log fmrb_mem fmrb_cobs fmrb_common)
     set(PLATFORM_PRIV_REQUIRES )
 else()
-    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY, TAB5, NARYAv4")
+    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY, ATOMS3R, TAB5, NARYAv4")
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_time_esp32.c"
         "platform/esp32/fmrb_hal_gpio_esp32.c"
@@ -37,11 +37,12 @@ else()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
         message(STATUS "HW target: ATOM_DISPLAY (local Message Buffer link)")
-    elseif(IDF_TARGET STREQUAL "esp32p4")
-        # Modern (TAB5 / NARYAv4): monolithic, no WROVER. gfx commands are
-        # consumed in-process by the local display task, so use the local link.
+    elseif(IDF_TARGET STREQUAL "esp32p4" OR FMRB_HW_TARGET STREQUAL "ATOMS3R")
+        # Modern (TAB5 / NARYAv4) and the AtomS3R: monolithic, no WROVER. gfx
+        # commands are consumed in-process by the local display task, so use
+        # the local link (fmrb_hw_has_local_display).
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
-        message(STATUS "HW target: Modern P4 (local Message Buffer link)")
+        message(STATUS "HW target: ${FMRB_HW_TARGET} (local Message Buffer link)")
     elseif(FMRB_LINK_TRANSPORT STREQUAL "UART")
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_uart_esp32.c")
         message(STATUS "HW target: ${FMRB_HW_TARGET} (UART link)")

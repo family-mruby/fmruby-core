@@ -67,6 +67,16 @@ void fmrb_pin_manager_init(void)
 #endif
     register_system_pin(FMRB_PIN_BUTTON_ENTER);
 
+    // A panel on SPI driven by this chip (boards that draw locally on a small
+    // LCD). Only the boards that have one define these.
+#ifdef FMRB_PIN_LCD_SPI_MOSI
+    register_system_pin(FMRB_PIN_LCD_SPI_MOSI);
+    register_system_pin(FMRB_PIN_LCD_SPI_SCLK);
+    register_system_pin(FMRB_PIN_LCD_SPI_CS);
+    register_system_pin(FMRB_PIN_LCD_SPI_DC);
+    register_system_pin(FMRB_PIN_LCD_SPI_RST);
+#endif
+
     // I2C pins: not system-reserved. Acquired dynamically via hw_proxy I2C init.
     // Kernel acquires first (e.g., for RTC), preventing user apps from conflicting.
 

@@ -30,6 +30,10 @@
 #         relay that comes in is logged here, "relay from ...")
 #       r respond_to? / methods of the peer's info
 #
+# On a small screen (display_width under 320 in system_conf.toml, e.g. the
+# AtomS3R's 128x128) it asks for the whole screen and shows a short summary,
+# one item per line, with the log lines wrapped to the width.
+#
 # From the PC (parent repo):
 #   ruby tools/fmrb_zenoh.rb call <ID>/demo/info status
 #   ruby tools/fmrb_zenoh.rb meta <ID>/demo/apu
@@ -121,6 +125,19 @@ class AsterismDemoApp < FmrbApp
     ""
   end
 
+  # The number in `<key> = 123` in system_conf.toml, or 0.
+  def conf_int(key)
+    text = File.open(CONF_FILE, "r") { |f| f.read }
+    text.split("\n").each do |line|
+      next unless line.start_with?(key)
+      eq = line.index("=")
+      return eq ? line[eq + 1, line.length].to_s.strip.to_i : 0
+    end
+    0
+  rescue
+    0
+  end
+
   # The quoted value of `<key> = "..."` in system_conf.toml, or "".
   def conf_value(key)
     text = File.open(CONF_FILE, "r") { |f| f.read }
@@ -162,6 +179,13 @@ class AsterismDemoApp < FmrbApp
     @next_status = 0
     @keys = []
     @apu = AsterismDemoApp::Apu.new(self)
+    width = conf_int("display_width")
+    @small = width > 0 && width < 320
+    request_fullscreen(true) if @small
+    draw_screen
+  end
+
+  def on_resize(w, h)
     draw_screen
   end
 
@@ -307,7 +331,39 @@ class AsterismDemoApp < FmrbApp
     end
   end
 
+  # Small screens: one item per line, the log wrapped to the width, the
+  # newest lines kept when they do not all fit.
+  def draw_small
+    clear_user_area
+    x = @user_area_x0 + 1
+    y = @user_area_y0 + 1
+    cols = (@user_area_width - 2) / 6
+    cols = 1 if cols < 1
+    rows = (@user_area_height - 2) / 9
+    nodes = ::Asterism.connected? ? ::Asterism.nodes : []
+    head = [@node, @state, "nodes #{nodes.size} +#{@joins} -#{@leaves}",
+            "peer #{@peer || '-'}", "said #{@said}"]
+    tail = []
+    @lines.each do |l|
+      i = 0
+      while i < l.length
+        tail << l[i, cols]
+        i += cols
+      end
+    end
+    room = rows - head.size
+    room = 0 if room < 0
+    tail.shift while tail.size > room
+    row = 0
+    (head + tail).each do |l|
+      @gfx.draw_text(x, y + row * 9, l[0, cols], theme_fg)
+      row += 1
+    end
+    @gfx.present
+  end
+
   def draw_screen
+    return draw_small if @small
     clear_user_area
     x = @user_area_x0 + 4
     y = @user_area_y0 + 4
@@ -325,8 +381,20 @@ class AsterismDemoApp < FmrbApp
     @gfx.present
   end
 
+  # Started at boot (a single-app machine's startup_app), the app comes up
+  # before WiFi has an address: wait for it, up to WIFI_WAIT_MS, rather than
+  # fail the one connection attempt. Machines without WiFi (wifi_info nil)
+  # connect at once.
+  WIFI_WAIT_MS = 20000
+
+  def network_ready?
+    info = FmrbApp.wifi_info
+    return true if info.nil? || info[:connected]
+    uptime_ms > WIFI_WAIT_MS
+  end
+
   def on_update
-    connect if @state == "connecting"
+    connect if @state == "connecting" && network_ready?
     if ::Asterism.connected?
       ::Asterism.poll
       find_peer

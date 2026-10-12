@@ -372,6 +372,8 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "naryav4"));
 #elif defined(FMRB_HW_ATOM_DISPLAY)
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "atom_display"));
+#elif defined(FMRB_HW_ATOMS3R)
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "atoms3r"));
 #else
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "narya_v3"));
 #endif
@@ -383,8 +385,20 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     // decides what can be drawn (FmrbGfx::FONT_AVAILABLE).
 #if defined(FMRB_HW_FAMILY_MODERN)
     mrb_define_const(mrb, const_module, "HW_FAMILY", mrb_str_new_cstr(mrb, "modern"));
+#elif defined(FMRB_HW_FAMILY_MINI)
+    // A small single-app machine (AtomS3R): an S3 like Retro, but it draws
+    // on its own panel and has no WROVER.
+    mrb_define_const(mrb, const_module, "HW_FAMILY", mrb_str_new_cstr(mrb, "mini"));
 #else
     mrb_define_const(mrb, const_module, "HW_FAMILY", mrb_str_new_cstr(mrb, "retro"));
+#endif
+
+    // Whether this build carries the efontJA fonts (FMRB_FONT_JA, default on).
+    // Without them set_font(:ja, ...) selects misaki 8 (FmrbGfx.resolve_font).
+#if defined(FMRB_NO_FONT_JA)
+    mrb_define_const(mrb, const_module, "FONT_JA", mrb_false_value());
+#else
+    mrb_define_const(mrb, const_module, "FONT_JA", mrb_true_value());
 #endif
 
     // Process ID constants

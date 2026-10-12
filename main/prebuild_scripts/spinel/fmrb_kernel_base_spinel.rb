@@ -225,6 +225,40 @@ class FmrbKernel
     { name: name, error: err }
   end
 
+  # ---- single-app boot (system_conf boot_mode) ----
+  def _boot_mode
+    FmrbSpx.fmrb_spx_boot_mode
+  end
+
+  def _startup_app_retries
+    FmrbSpx.fmrb_spx_startup_app_retries
+  end
+
+  def _startup_app
+    FmrbSpx.fmrb_spx_startup_app
+  end
+
+  def _screen_width
+    FmrbSpx.fmrb_spx_screen_width
+  end
+
+  def _screen_height
+    FmrbSpx.fmrb_spx_screen_height
+  end
+
+  def _display_width
+    FmrbSpx.fmrb_spx_display_width
+  end
+
+  def _show_halt(text)
+    t = text.to_s   # concrete String for the :str FFI boundary
+    FmrbSpx.fmrb_spx_show_halt(t, t.bytesize) == 1
+  end
+
+  def _clear_halt
+    FmrbSpx.fmrb_spx_clear_halt == 1
+  end
+
   def _set_error_led(level)
     FmrbSpx.fmrb_spx_set_error_led(level)
     nil

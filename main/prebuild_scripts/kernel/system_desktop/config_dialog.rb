@@ -78,8 +78,9 @@ module ConfigDialogMixin
   # the person who used the dialog is looking. Turning one on here turns the
   # other off, so the dialog shows what the machine will actually do.
   #
-  # Modern keeps both: its radios are on the C6, where they coexist.
-  CFG_ONE_RADIO = (FmrbConst::HW_FAMILY == "retro")
+  # Modern keeps both: its radios are on the C6, where they coexist. Every
+  # other family is an S3 with one radio (Retro, and the AtomS3R's "mini").
+  CFG_ONE_RADIO = (FmrbConst::HW_FAMILY != "modern")
   CFG_RADIO_OTHER = { "ble_auto_start"  => "wifi_auto_start",
                       "wifi_auto_start" => "ble_auto_start" }
 

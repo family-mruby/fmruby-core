@@ -215,6 +215,10 @@ int fmrb_spx_gfx_set_font(int canvas_id, int family, int size)
         if (size != 8 && size != 12 && size != 16) {
             return FMRB_SPX_ERR_RANGE;
         }
+#if defined(FMRB_NO_FONT_JA)
+        /* Built with FMRB_FONT_JA=0: misaki 8 is the only Japanese font. */
+        size = 8;
+#endif
     } else {
         fam = FMRB_LINK_GFX_FONT_FAMILY_DEFAULT;
     }

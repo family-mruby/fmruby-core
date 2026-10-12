@@ -134,7 +134,11 @@ link_version = define_values(fmrb_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
 # target it stands in for, exactly as the C macros do.
 hw_target = ENV["FMRB_HW_TARGET"].to_s
 # Keep in step with MODERN_HW_TARGETS in the Rakefile.
-hw_family = %w[TAB5 NARYAv4].include?(hw_target) ? "modern" : "retro"
+hw_family =
+  if %w[TAB5 NARYAv4].include?(hw_target) then "modern"
+  elsif hw_target == "ATOMS3R" then "mini"   # FMRB_HW_FAMILY_MINI
+  else "retro"
+  end
 
 # BOARD and CHIP_MODEL, mirroring const.c: BOARD from the FMRB_HW_* macros,
 # CHIP_MODEL from what esp_chip_info() reports on that board. Both were fixed
@@ -150,6 +154,7 @@ board, chip_model =
   when platform == "linux"    then ["linux",    "linux"]
   when hw_target == "TAB5"    then ["tab5",     "ESP32-P4"]
   when hw_target == "NARYAv4" then ["naryav4",  "ESP32-P4"]
+  when hw_target == "ATOMS3R" then ["atoms3r",  "ESP32-S3"]
   else                             ["narya_v3", "ESP32-S3"]
   end
 
@@ -165,6 +170,9 @@ out << "  HW_FAMILY = #{hw_family.inspect}\n"
 # WiFi-capable: every Spinel target has it (Narya S3 native, P4 via C6, the
 # Linux sim reports host network state). ATOM (no WiFi) never runs Spinel.
 out << "  HAS_WIFI = true\n"
+# Whether the efontJA fonts are in this build (FMRB_FONT_JA, default on), the
+# same answer const.c gives from FMRB_NO_FONT_JA.
+out << "  FONT_JA = #{ENV["FMRB_FONT_JA"].to_s != "0"}\n"
 out << "  MSG_TYPE_APP_CONTROL = #{msg_types['FMRB_MSG_TYPE_APP_CONTROL']}\n"
 out << "  MSG_TYPE_APP_GFX = #{msg_types['FMRB_MSG_TYPE_APP_GFX']}\n"
 out << "  MSG_TYPE_APP_AUDIO = #{msg_types['FMRB_MSG_TYPE_APP_AUDIO']}\n"

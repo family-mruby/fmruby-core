@@ -1,0 +1,56 @@
+# M5Stack AtomS3R: a 128x128 LCD of its own, one button, WiFi, no keyboard or
+# mouse. It runs one app (boot_mode = "app") rather than the desktop
+# (doc/headless_s3/plan.md).
+system_name = "Family mruby OS"
+display_width = 128
+display_height = 128
+display_margin_x = 0
+display_margin_y = 0
+default_user_app_width = 128
+default_user_app_height = 128
+display_mode = "spi_direct" # drawn by this chip on its SPI panel (ntsc_ipc / spi_direct / headless / tab5_dsi / sdl2 / atom_display)
+debug_mode = true
+# No Bluetooth in this firmware (config/sdkconfig.defaults.atoms3r).
+ble_auto_start = false
+# WiFi is how this board is reached (needs ssid/password in wifi.toml).
+wifi_auto_start = true
+mouse_scale_x = 0.5
+mouse_scale_y = 0.5
+wheel_lines = 3
+timezone = "JST-9"
+keyboard_layout = "us" # "jp" or "us"
+# Internal RAM (KB) a spawn must leave for the rest of the machine (see
+# config/system_conf_n16r8.toml for the caveats).
+app_spawn_margin_kb = 30
+language = "en" # "ja" or "en"
+
+# No logo and no jingle: there is no speaker, and a single-app machine boots
+# straight into its app.
+boot_splash = false
+
+# No sound output on this board; muted so nothing tries.
+audio_mute = true
+audio_volume = 7
+
+# What the machine runs at boot. "desktop" is the ordinary desktop, launcher
+# and windows; "app" runs startup_app alone, full screen, with no desktop.
+boot_mode = "app"
+# The app, by path. With boot_mode = "app" it is the only thing that runs.
+startup_app = "/app/test/atoms3r_hello.app.rb"
+# boot_mode = "app": how many times an app that dies is started again before
+# the machine gives up and shows why (on the screen and the serial log).
+# 0 = never restart.
+startup_app_retries = 3
+
+wallpaper = "none"
+
+[theme]
+desktop_bg = 0xF6
+menu_bg = 0xC5
+window_bg = 0xFF
+text = 0x00
+text_light = 0xFF
+highlight = 0xEE
+border = 0x60
+button = 0x60
+dir_color = 0x03

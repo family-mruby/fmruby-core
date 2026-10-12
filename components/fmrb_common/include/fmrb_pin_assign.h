@@ -201,6 +201,80 @@
 #define FMRB_PIN_BUTTON_ENTER  GPIO_NUM_NC
 
 // ============================================================
+// Pin assignments for M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8)
+// Checked against the board schematic and on the device
+// (doc/headless_s3/report/h0.md). No WROVER, no SD slot, no USB host: the
+// USB-C port is the S3's own USB-Serial-JTAG (console + flashing).
+// Must come before the Narya v3 default below, which would otherwise take it.
+// ============================================================
+#elif defined(FMRB_HW_ATOMS3R)
+
+// Restricted pins
+#define FMRB_PIN_RESTRICTED_BOOT    GPIO_NUM_NC  // GPIO0 is the system I2C SCL (see below)
+#define FMRB_PIN_RESTRICTED_JTAG    GPIO_NUM_NC  // GPIO3 is not bonded out
+#define FMRB_PIN_RESTRICTED_USB_DN  GPIO_NUM_19  // USB-Serial-JTAG console
+#define FMRB_PIN_RESTRICTED_USB_DP  GPIO_NUM_20
+#define FMRB_PIN_RESTRICTED_PSRAM0  GPIO_NUM_35  // in-package octal PSRAM (33-37)
+#define FMRB_PIN_RESTRICTED_PSRAM1  GPIO_NUM_36
+#define FMRB_PIN_RESTRICTED_PSRAM2  GPIO_NUM_37
+#define FMRB_PIN_RESTRICTED_STRAP1  GPIO_NUM_NC  // GPIO45 is the system I2C SDA; VDD_SPI fixed by eFuse
+#define FMRB_PIN_RESTRICTED_STRAP2  GPIO_NUM_46  // strap, not bonded out
+
+// System I2C: LP5562 (0x30, LCD backlight on its W output) + BMI270 (0x68,
+// BMM150 behind its aux port). 2.2K pull-ups on the board. GPIO0 and GPIO45
+// are straps, but their pull-ups already hold the boot values, so they are
+// not reserved: an app opening I2C unit 1 has to be able to take them.
+#define FMRB_PIN_I2C1_SDA      GPIO_NUM_45
+#define FMRB_PIN_I2C1_SCL      GPIO_NUM_0
+// Grove (HY2.0-4P): connector pin 1 = GPIO1, pin 2 = GPIO2. No pull-ups.
+#define FMRB_PIN_I2C2_SDA      GPIO_NUM_2
+#define FMRB_PIN_I2C2_SCL      GPIO_NUM_1
+
+// LCD: GC9107 or ST7735S (lot-dependent, told apart by the panel ID),
+// 128x128, 3-wire SPI (no MISO).
+#define FMRB_PIN_LCD_SPI_MOSI  GPIO_NUM_21
+#define FMRB_PIN_LCD_SPI_SCLK  GPIO_NUM_15
+#define FMRB_PIN_LCD_SPI_CS    GPIO_NUM_14
+#define FMRB_PIN_LCD_SPI_DC    GPIO_NUM_42
+#define FMRB_PIN_LCD_SPI_RST   GPIO_NUM_48
+#define FMRB_PIN_LCD_BACKLIGHT GPIO_NUM_NC   // LP5562 W channel, not a GPIO
+
+#define FMRB_PIN_IMU_INT       GPIO_NUM_16   // BMI270 INT1
+#define FMRB_PIN_IR_TX         GPIO_NUM_47
+#define FMRB_PIN_BUTTON_ENTER  GPIO_NUM_41   // active low, 10K pull-up
+
+// Bottom headers (not claimed by the system): 1x5 = 3V3, G5, G6, G7, G8;
+// 1x4 = G39, G38, 5V, GND.
+
+// Not on this board
+#define FMRB_PIN_SD_CS         GPIO_NUM_NC
+#define FMRB_PIN_SD_MOSI       GPIO_NUM_NC
+#define FMRB_PIN_SD_SCLK       GPIO_NUM_NC
+#define FMRB_PIN_SD_MISO       GPIO_NUM_NC
+#define FMRB_PIN_SD_DETECT     GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MOSI  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MISO  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_SCLK  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_CS    GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_INTR  GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_TX   GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_RX   GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_RTS  GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_CTS  GPIO_NUM_NC
+#define FMRB_PIN_USB_POWER     GPIO_NUM_NC
+#define FMRB_PIN_STATUS_LED    GPIO_NUM_NC   // the green LED is driven by a helper MCU
+#define FMRB_PIN_ERROR_LED     GPIO_NUM_NC
+#define FMRB_PIN_WROVER_RESET  GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_UP     GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_DOWN   GPIO_NUM_NC
+#define FMRB_PIN_KBD_I2C_SDA   GPIO_NUM_NC
+#define FMRB_PIN_KBD_I2C_SCL   GPIO_NUM_NC
+#define FMRB_PIN_KBD_INT       GPIO_NUM_NC
+#define FMRB_PIN_TOUCH_I2C_SDA GPIO_NUM_NC
+#define FMRB_PIN_TOUCH_I2C_SCL GPIO_NUM_NC
+#define FMRB_PIN_TOUCH_INT     GPIO_NUM_NC
+
+// ============================================================
 // Pin assignments for Narya board v3 (N16R8, default)
 // ============================================================
 #elif !defined(FMRB_HW_ATOM_DISPLAY)

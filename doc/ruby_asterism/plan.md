@@ -23,7 +23,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
   ワイヤの後方互換が保証されるが、組み合わせの表は無いので、使う版を固定して記録する。
 - **gem は Family mruby に依存しない作り**にする (素の PicoRuby / R2P2 でもビルドできる)。機体の差は
   zenoh-pico のポート層に任せる。
-- セキュリティ: v1 は「信頼できる LAN の中」が前提 (ESP32 の zenoh-pico は TLS がまだ使えない)。
+- セキュリティ: v1 は「信頼できる LAN の中」が前提 (ESP32 の端末は今は TLS を使っていない。ESP-IDF には mbedTLS があり、gem に TLS のリンクを足せば使える)。
 - 内蔵 RAM を増やさない方針は Asterism にも適用する (専用のタスクを立てない、バッファは PSRAM に置けるか測る)。
 
 ## 全体の段階 (案)
@@ -346,6 +346,34 @@ Twist の型の読み込みの 624 B だけ。
   (登録済みでつながっている / 来ていない / 未登録の相手を色で分ける)。
 - リポジトリは Asterism の側 (asterism-console)。
 
+### V2.5: ノードの自己紹介とアイコン (計画 2026-10-12 ユーザ)
+
+V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux` / `wasm-XXXXXX`) で判じていた。網が種類を運ばないためで、名前を変えた端末は ◈ になる。これを、ノードが自分で名乗る形にし、あわせてアイコンを出す。
+
+- **gem (asterism 0.5.0)**: ノードが「自己紹介」の口を持つ。キーは `asterism/<ID>/@<口の名前>` (`@` で始まるので、アプリの名前とぶつからない)。中身は MessagePack の Hash:
+  - `kind`: 動いている Ruby の処理系 (2026-10-12 ユーザ決定): `family_mruby` / `picoruby` / `cruby` / `console`。sim とブラウザ版も `family_mruby`。`board` という呼び方はやめる
+  - `host`: 任意。どこで動いているか (`atoms3r` / `tab5` / `p4nano` / `browser` / `sim` など)。Family mruby のファームは自動で埋める。console はノードの詳細に出す
+  - `name`: 表示名 (任意)
+  - `icon`: PNG のバイト列 (任意。32x32 程度、8 KB まで)。PNG だけ受ける (SVG はスクリプトを含められるので受けない)
+  - `icon_hash`: アイコンの要約 (console が覚えておき、同じものは取り直さない)
+  - 機体側 (picoruby) と CRuby の両方に入れる。Family mruby の端末はファームが既定の自己紹介を出し (種類 `family_mruby`、アイコンは `/usr/share/asterism/icon.png` など)、アプリが上書きできる。CRuby は既定で `cruby`。ブラウザ版は `family_mruby` で `host` が `browser` (アイコンはブラウザ版用)。
+  - アプリごとのアイコン (Family mruby のランチャーのアイコン) も出せるようにするかは、gem の設計のときに決める。
+- **console (V2.5)**: 新しいノードが入ったら bridge が自己紹介を問い合わせる。答えがあれば種類で印を決め、アイコンを枠の名前の前に出す。答えが無いノード (古い版・ROS 2) は今の名前の決まりと印のまま。
+- **公開**: gem の新しい版の公開はユーザが行う。
+- **API の名前は `profile` に決定 (2026-10-12 ユーザ)**。`Asterism.profile(kind:, name:, icon:)`、キーは `asterism/<ID>/@profile`。asterism の既存の「Ruby プロファイル」の表は、紛れないよう呼び名を変えるかを 0.5.0 の作業で決める。検討した候補 (記録):
+
+| 案 | 書き方の例 | キー | 感じ |
+|---|---|---|---|
+| (採用) profile | `Asterism.profile(kind: :family_mruby, name: "Rover", icon: png)` | `@profile` | SNS のプロフィール (名前・アイコン・紹介) と同じで、中身にいちばん合う |
+| card (名刺) | `Asterism.card(kind: :board, name: "Rover", icon: png)` | `@card` | 名刺を差し出す。短く、中身 (種類・名前・アイコン) に合う |
+| introduce (自己紹介) | `Asterism.introduce(kind: :board, name: "Rover", icon: png)` | `@intro` | 動詞で読みやすい。呼ぶと網に名乗る、という動きが分かる |
+| identity | `Asterism.identity(kind: :board, icon: png)` | `@identity` | 「何者か」。認証の意味に読まれやすい (W2 の証明書と紛れる) |
+| face | `Asterism.face(kind: :board, icon: png)` | `@face` | 見た目 (アイコン) に寄った名前。種類を入れると少しずれる |
+| badge | `Asterism.badge(kind: :board, icon: png)` | `@badge` | console の「数の印 (badge)」とぶつかる |
+
+  - ほかに見送ったもの: `info` (汎用すぎる)、`presence` (生存の監視と紛れる)、`avatar` (アイコンだけに寄る)。
+  - console の凡例・印の説明も `board` から「Family mruby」などの処理系の名前に直す (V2.2 の英語の表記も含めて)。
+
 ### V の続き: ROS 2 の道具 (rosbag・rqt) の良いところを取り込む (2026-10-09 ユーザ決定、この順)
 
 元の道具の役割を、ブラウザで共有でき、ROS 2 だけでなく Asterism のオブジェクト・機体・ルータの網も同じ画面で扱える形で取り込む。
@@ -357,6 +385,7 @@ Twist の型の読み込みの 624 B だけ。
 | V2.2 (完了 2026-10-11、report/v2_2.md、console の docs) | 色と台帳の見え方 (種類の印は ▣ 機体・◈ CRuby・◎ console。網は種類を運ばないので名前の決まりで判じる。台帳から分かるつながり先はクラウドのルータだけ): Asterism の色は 1 色にし (青緑で作り、2026-10-11 ユーザの指示で Ruby の赤 `#cc342d` に変えた。ROS 2 のサービスの数の印は赤と紛れないよう灰青に)、段の違いは形で出す (ノード=その色の実線の枠で中は白・名前の前に種類の印、アプリ=灰色の破線の枠、オブジェクト=その色の小さな丸)。台帳 (Relay registry) の表示は既定でオフ。表示するときは、つながっていないものを「未接続 (台帳)」の枠にまとめ、つながるはずのルータが台帳で分かるものはそのルータへ破線を引く。今つながっているものの台帳の状態は、色の輪ではなく枠の角の小さな印で出す | |
 | V2.3 (完了 2026-10-11、report/v2_3.md、console の docs/v2_3.md) | ROS 2 のノードを機械ごとに畳む (名前は管理者だけが付けられる。照合は名前の組が大きい方の半分以上一致。残る穴: docker の公開ポート越しに来る LAN の機器はみな docker の出入口の IP に見えるので、ROS 2 のノードを持つ機体が 2 台あると 1 つに畳まれる): ROS 2 は親の情報を運ばないので、接続元の IP が同じ ROS 2 のノード (2 つ以上) を 1 つの点に畳む (既定で畳む、クリックで開く)。名前は既定で IP。ユーザが名前を付けられ、名前はメンバーのノード名の組で覚える (IP は変わりうるため)。顔ぶれが大きく変われば IP の表示に戻る | rqt_graph の名前空間の畳み |
 | V2.4 (完了 2026-10-11、report/v2_4.md、console の docs/v2_4.md) | 開いた機械の枠と、出入口の IP (出入口は bridge 自身の接続の手元の IP とルータから見えた IP の食い違いで見つける。設定 ASTERISM_GATEWAY_IPS でも与えられる): 開いた機械のメンバーを囲む四角を、飾りの絵 (入れ子の箱ではない) として描き、メンバーが動くたびに描き直す。メンバーは自由に動かせる。docker の公開ポートの出入口の IP から来た ROS 2 のノードは、機械が分からないので畳まない (S4 で端末 2 台が 1 つに畳まれるのを防ぐ) | |
+| V2.5 (計画 2026-10-12 ユーザ、AtomS3R の H3 の後) | ノードの自己紹介とアイコン: 各ノードが種類・表示名・アイコン (PNG) を自分で出し、console がつながったときに 1 回取りに行って図に出す。下の「V2.5: ノードの自己紹介」 | |
 | V3 (完了 2026-10-09、console の docs/v3.md) | 見る道具: 数値のフィールド (例: `/cmd_vel` の `linear.x`) の時間の線グラフ。ログの一覧 (`/rosout` と機体のログ、重要度・送り手で絞る) | rqt_plot、rqt_console |
 | V4 (完了 2026-10-09、console の docs/v4.md) | 記録と再生: 選んだキーを MCAP で記録し、時間の帯で見て再生する。ROS 2 は CDR のまま、Asterism は MessagePack のまま 1 つのファイルに入れる (ros2 bag と Foxglove でも開ける)。網の構造の変化も時刻付きで記録し、グラフを巻き戻せる。再生は本物の網に流すか、画面の中だけで見るかを選べる。MCAP の読み書きは Ruby で書く (公式の Ruby の部品は無い) | rosbag (ros2 bag)、rqt_bag |
 | V5 | 網のための irb: 画面の中で Ruby を書き、網のオブジェクトや記録を触る。強い権限なので管理者だけ、記録付き | (無い。Ruby ならでは) |
@@ -428,9 +457,42 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
 - 確かめること (B1 の最初): zenoh-pico 1.10.1 の Emscripten のシステム層と WebSocket のリンクが動くか。受け取りの見回り (poll) が wasm 版のタスクの動き方の上で画面を止めないか。ブラウザの WebSocket は非同期なので、zenoh-pico の同期の読み書きとどう合わせているか。
 - 止まる条件の目安: zenoh-pico の Emscripten の層が今の版で使えない (直すのに上流の大きな作業が要る) と分かったら、zenoh-ts を JS 連携で呼ぶ案と比べて返す。
 
+## G: 対戦ゲーム (計画 2026-10-12 ユーザ)
+
+遠隔地の Family mruby (と、ブラウザ版・CRuby) どうしで対戦する。Asterism の生存の監視で相手を見つけ、相手のゲームのオブジェクトを呼ぶ (`opponent.move(x, y)`) 形にする。発表の本命の切り口 (オブジェクトモデルを網に広げる) の見せ場にもなる。
+
+| 段階 | 内容 |
+|---|---|
+| G1 | 家の中 (LAN) で、交互に指す遊び (オセロなど) を端末 2 台かブラウザ版 2 つで遊ぶ。相手の一覧と待ち合わせ (on_join / on_leave)、手を呼び出しで送る、切れたときの扱い。asterism-console で観戦し、記録して巻き戻す |
+| G2 | 同じ遊びを、クラウドのルータの中継 (W1) 越しに遊ぶ。家の端末は家のルータ経由 (今の端末は TLS を使っていない。gem に TLS のリンクを足せば直接つなぐ道もある)、ブラウザ版は `wss://` でクラウドのルータに直接 (B2)。遅れを測る |
+| G3 | ゆっくりめの実時間の遊び (陣取り・落ちものの対戦など)。毎秒 10-20 回、自分の状態を `put` で配り、相手の最新だけを使う。遅れの隠し方を試す |
+
+- 速い実時間の遊び (格闘・シューティング) は、相手の動きの予測や入力の同期が要るので、G3 の後に必要なら。
+- 外に出すには、クラウドのルータの本物の証明書と、だれがつなげるかの管理 (W2 の台帳と ACL) を本番の形にする。
+- Retro (S3) で遊ぶには、AtomS3R の H3 で S3 に Asterism が載った後、Retro の flash と RAM の余裕を見る。
+
+## P: Family mruby 以外の PicoRuby とつなぐ (構想 2026-10-12)
+
+asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem なので、Family mruby 以外の PicoRuby も網に入れられる見込み。
+
+- **PicoRuby.wasm (ブラウザ)**: 2 つの道がある。
+  - B1 の作り (zenoh-pico を Emscripten で入れ、WebSocket はページの JS が持つ) を、picoruby-asterism-zenoh の `ports/emscripten` として gem に移し、PicoRuby.wasm のビルドに入れる。ただし B1 の受け渡しは、タスクごとに Worker を持つ Family mruby の作り (共有メモリ) に合わせてある。PicoRuby.wasm の動き方 (主スレッドで動くか) に合わせて、受け渡しを単純にする必要がありそう。
+  - Zenoh の公式の TypeScript の部品 (zenoh-ts) を、PicoRuby.wasm の JS 連携から呼び、その上に asterism の層を載せる。C を足さずに済むが、ルータに remote-api のプラグインが要る。
+- **ほかの PicoRuby のマイコン** (R2P2 など): zenoh-pico が対応する系 (ESP-IDF、FreeRTOS + lwIP、Raspberry Pi Pico W など) なら、picoruby-asterism-zenoh の port を足す形で入れられる見込み。
+  - **最初の 1 台は Raspberry Pi Pico 2 W に決定 (2026-10-12 ユーザ、着手は後で)。R2P2 から使えるようにする** (R2P2 のビルドに gem を入れ、R2P2 のシェルや R2P2 で動かすアプリから Asterism を使う。R2P2 の側に要る直しは、R2P2 の流儀 (上流の PicoRuby の作り) に合わせる)。RP2350 (内蔵 RAM 520 KB)、無線は CYW43439。picoruby-asterism-zenoh に `ports/rp2350/` (仮) を足し、時刻・メモリ確保・TCP (lwIP + cyw43) を書く。
+  - **R2P2 (Raspberry Pi Pico) は FreeRTOS を使わず、Pico SDK の上で動く (2026-10-12 ユーザ)**。よって zenoh-pico の Pico 向けの層 (FreeRTOS + lwIP のソケット) は使えず、Pico SDK に合わせた層を自分で書く:
+    - 無線と lwIP は Pico SDK の `pico_cyw43_arch` の、OS なしの形 (`_poll` か `_threadsafe_background`)。lwIP は NO_SYS なので BSD のソケットは無い。
+    - **PicoRuby には rp2040 向けのソケットの層がすでにある** (picoruby-socket の `ports/rp2040/`: `TCPSocket_create/connect/send/recv(nonblock)/closed`、lwIP の altcp の上で、受け取りは前もって確保したバッファにため、待ちの間は `cyw43_arch_poll` を回す。`SSLSocket` (altcp_tls) もある)。gem の TCP のリンク (`picoruby_zenoh_link.h` の約束) を、この C の API の上に書くのが本筋。lwIP の raw API を自分で書かずに済み、R2P2 の作りにもそのまま合う。
+    - SSLSocket があるので、Pico から TLS でルータへ直接つなぐ道もありうる (ESP32 の端末も、ESP-IDF の mbedTLS で gem に TLS のリンクを足せば同じことができる。今は使っていない)。後で確かめる。
+    - gem はもともと単一スレッドで poll する作り (zenoh-pico のスレッドを使わない) なので、OS なしとは相性が良い。待ちの間に `cyw43_arch_poll` を回す。
+    - 時刻は Pico SDK の時刻、メモリ確保は PicoRuby の確保 (または Pico SDK の malloc) に合わせる。
+    - zenoh-pico・asterism の層・受け取りの列が RAM (PSRAM なしの 520 KB) に収まるか。
+  - 最初の段は「WiFi につながり、ルータへ put / subscribe ができる」最小の試し。次に asterism の層を載せ、console の図に出す (V2.5 の profile では `kind: :picoruby`、`host: "pico2w"`)。
+- どれも、まず小さな試し (つながって put / subscribe ができる) から。着手は未定。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
-機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
+端末は LAN の中のルータにだけつなぎ (今の端末は TLS を使っていない。ESP-IDF の mbedTLS で TLS のリンクを足すことはできる)、インターネットを越える部分はルータどうし
 (zenohd) を TLS と認証でつなぐ (design.md 8 章)。その設定を Rails の画面で管理する。
 
 | 段階 | 内容 |

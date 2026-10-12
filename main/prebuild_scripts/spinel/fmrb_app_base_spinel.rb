@@ -549,9 +549,12 @@ class FmrbGfx
 
   # ---- text (with font/size caching, like fmrb-gfx.rb) ----
   def set_font(family, size = nil)
-    @current_font = size ? [family, size] : [family]
-    fam = family == :ja ? 1 : 0
     sz = size || 12
+    # Without the efontJA fonts (FMRB_FONT_JA=0) Japanese is misaki 8 alone;
+    # the shim selects it too (fmrb_spx_gfx_set_font).
+    sz = 8 if family == :ja && !FmrbConst::FONT_JA
+    @current_font = size ? [family, sz] : [family]
+    fam = family == :ja ? 1 : 0
     FmrbSpxGfx.fmrb_spx_gfx_set_font(@canvas_id, fam, sz)
     self
   end

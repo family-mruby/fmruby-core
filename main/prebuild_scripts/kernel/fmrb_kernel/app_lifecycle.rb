@@ -131,6 +131,7 @@ module AppLifecycleMixin
   def on_app_started(pid)
     return unless pid
     Log.info("App started: pid=#{pid}")
+    clear_halt_for(pid)
     # Its window is up: from here on, closing it follows the normal rule
     # (cleanup_terminated_app), not the launch-time one.
     @launch_prev_hid.delete(pid)
@@ -513,13 +514,14 @@ module AppLifecycleMixin
   # Size a fullscreen window gets: the high-resolution screen for an app that
   # takes it (screen_mode_for), else the display size. The desktop's own window
   # is created as display size minus margin (fmrb_app_init, APP_TYPE_SYSTEM_APP),
-  # so it is the display size the spawner would use -- no extra kernel API
-  # needed for it.
+  # so it is the display size the spawner would use. A machine booted without
+  # the desktop (boot_mode = "app") asks for the same size directly.
   def fullscreen_size(pid)
     if screen_mode_for(pid)
       hires = _fullscreen_hires_size
       return hires if hires
     end
+    return [_screen_width, _screen_height] unless @desktop_pid
     update_window_list
     i = 0
     while i < @window_list.size
@@ -800,6 +802,7 @@ module AppLifecycleMixin
     # means an empty one.
     dead = _get_app_info(pid)
     dead_name = dead ? dead[:name].to_s : ""
+    dead_path = dead ? dead[:path].to_s : ""
 
     # It never came up (a compile error is the usual reason): take the
     # indicator down, and drop any fullscreen request made for it -- pids are
@@ -947,7 +950,11 @@ module AppLifecycleMixin
     # Same reason for both of these: a subscriber that reacts by spawning
     # something needs the slot already free.
     announce_app_died(pid, dead_name, expected)
+    # Before the two below: they forget the pids it compares against.
+    dead_label = dead_path.empty? ? dead_name : dead_path
+    note_launched_app_death(pid, dead_label, expected)
     note_service_host_death(pid, expected)
+    note_single_app_death(pid, expected)
 
     # Force immediate check (window list update after task deletion)
     mark_window_list_dirty
@@ -1137,6 +1144,9 @@ module AppLifecycleMixin
 
     # Bring the service host back after an unasked-for death.
     tick_service_respawn
+
+    # Single-app boot: start the app again after it died.
+    tick_single_app_respawn
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval
