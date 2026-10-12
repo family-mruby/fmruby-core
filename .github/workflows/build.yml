@@ -12,12 +12,16 @@ jobs:
     # Xtensa (S3) and Modern is RISC-V (P4), and the two take different
     # branches through the drivers. A change that only breaks one of them used
     # to reach main unnoticed -- Modern was built only by the release workflow.
+    # ATOMS3R is the third shape: an S3 that draws on its own screen
+    # (display_local with the CPU backend, no child chip), single-app, with
+    # its board defaults (Rakefile BOARD_BUILD_DEFAULTS) -- the mruby editor,
+    # no Spinel FFT, no Japanese fonts, and Asterism fetched and built in.
     name: build-esp32 (${{ matrix.hw_target }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        hw_target: [NARYAv3, TAB5]
+        hw_target: [NARYAv3, TAB5, ATOMS3R]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
