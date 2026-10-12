@@ -543,6 +543,19 @@ asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem
   - 最初の段は「WiFi につながり、ルータへ put / subscribe ができる」最小の試し。次に asterism の層を載せ、console の図に出す (V2.5 の profile では `kind: :picoruby`、`host: "pico2w"`)。
 - どれも、まず小さな試し (つながって put / subscribe ができる) から。着手は未定。
 
+## Py: Python と MicroPython を網に入れる (構想 2026-10-12 ユーザ、着手は未定)
+
+Asterism の網は Zenoh の上の決まり (キーの形・中身の形) でできているので、Ruby 以外の言語も同じ網に入れられる。将来、Family mruby の MicroPython のコードを Asterism に入れ、素の MicroPython と Python (CPython) 用のライブラリも作る。「Ruby と Python のオブジェクトが同じ網で呼び合う」形。
+
+- **段 0: 網の決まりを文書にする** (どの言語を足すにも先に要る): 今は決まりが Ruby の実装の中にしかない。言語によらない形で書き出す: キー (`asterism/<ID>/<app>/<obj>/call|meta`、`@profile`)、呼び出しと答えの中身 (MessagePack の形、引数・キーワード引数・戻り値)、例外の形 (クラス名とメッセージ)、meta (公開しているメソッドの一覧)、生存の印、プロフィール。CRuby の側で、その決まりに沿っているかの試験 (適合の試験) を作り、ほかの言語の実装もそれで確かめる。
+- **入れ方の候補** (やさしい順):
+  1. **Python (CPython)**: Zenoh の公式の Python の部品 (zenoh-python) の上に、純 Python のオブジェクトの層を書く。配り方は pip (名前は後で決める)。
+  2. **Family mruby の MicroPython** (doc/micropython のゲストの VM): ファームにある zenoh-pico を MicroPython から使える C の口を足し、その上に MicroPython のオブジェクトの層。Ruby のアプリと同じ端末で、Python のアプリも網に出られる。
+  3. **素の MicroPython** (ESP32 など): zenoh-pico を組み込んだ MicroPython の C のモジュールと、同じオブジェクトの層。
+- プロフィールの `kind` に `cpython` / `micropython` を足す (V2.5 の決まりの拡張)。console の印とアイコンも。
+- 置き場所 (リポジトリと組織) は後で決める (組織の名前が `ruby-asterism` なので、Python のライブラリをそこに置くかは要相談)。
+- 気をつけること: オブジェクトの層を言語ごとに書き直すので、決まりの文書と適合の試験が無いと、言語ごとにずれる。段 0 を先にする。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 端末は LAN の中のルータにだけつなぎ (今の端末は TLS を使っていない。ESP-IDF の mbedTLS で TLS のリンクを足すことはできる)、インターネットを越える部分はルータどうし
