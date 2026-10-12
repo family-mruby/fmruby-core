@@ -67,7 +67,7 @@ estalloc `ae50a9649` (**未変更=clean**)。
 - [!] D1. src/vm.c — 意図: **タスクスイッチ修正**。mrb_task_yield_ok() で cci>0 (C 関数から mrb_funcall で再入した VM) の間は
   async task-switch を延期し安全な top-level 復帰点まで待つ。early return 時に mrb->jmp=prev_jmp を復元。
   これを怠ると "task context corrupted: no proc on resume" / longjmp 先が死んだフレームになる。
-  memory: project_mruby_tick_disabled_for_rubykaigi.md。**最高リスク・実機確認必須**。
+  **最高リスク・実機確認必須**。
 - [!] D2. picoruby-mruby/src/alloc.c (L0 側) — 意図: **estalloc マルチ VM 対応**。**高リスク・実機確認必須**。
   ※ estalloc submodule 自体は未変更 (wrapper の alloc.c のみ)。
 - [~] D3. mrbgems/mruby-io/mrblib/file_constants.rb — 現 pin と diff 無し (patch は存在)。新 pin で確認。

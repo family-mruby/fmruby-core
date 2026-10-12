@@ -26,7 +26,7 @@ async な task-switch (tick 割込みが `mrb->task.switching` を立てる) を
 honor しないようにする。C 関数が mrb_funcall 等で VM に再入している最中 (ci に cci>0 がある) に
 yield すると、中間の C フレームを保存/復元できず、`mrb->c->ci` の深さがずれて
 "task context corrupted: no proc on resume"、さらに mrb->jmp が宙吊りになり後続の longjmp が
-死んだフレームに飛ぶ。memory: project_mruby_tick_disabled_for_rubykaigi.md。
+死んだフレームに飛ぶ。
 
 ### 我々の旧パッチ (要点)
 
@@ -61,7 +61,7 @@ upstream は同じ問題を独自に解決済み (issues #6862/#6863/#6864/#6868
 - **我々の tick 修正は upstream 化された** (fmrb の ESP32 検証済み修正が本家 issue として取込)。
 - **D1 は完全に撤去**。lib/patch/picoruby-mruby/lib/mruby/src/vm.c を**削除**し upstream 版を使う。
   (Rakefile setup の vm.c コピー行も削除 → Rakefile/pin 切替フェーズで実施)
-- 検証観点: 新 vm.c の condition が我々の全シナリオ (mruby_tick task 破壊, RubyKaigi デモ) を
+- 検証観点: 新 vm.c の condition が我々の全シナリオ (mruby_tick task 破壊, デモアプリ) を
   カバーするか実機/Linux で確認。理論上は上位互換なので回帰は無い想定。
 
 ---

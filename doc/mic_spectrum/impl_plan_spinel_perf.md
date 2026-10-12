@@ -139,4 +139,4 @@ E1 と同じ手順で実機計測。`report/track_a.md` に E4 節。**期待**:
 - Spinel entry/FFI: `main/prebuild_scripts/spinel/fft_spinel.rb` / `fmrb_fft_ffi.rb`、
   生成 `rake spinel:gen`、配線 `main/CMakeLists.txt`(FMRB_FFT_SPINEL)
 - 計測アプリ: `flash/app/demo/fft_bench.app.rb`
-- 発表用一次資料: `doc/spinel_aot/embedded_constraints.md`(8.1 に soft-float の論点)
+- 制約の一次資料: `doc/spinel_aot/embedded_constraints.md`(8.1 に soft-float の論点)
