@@ -37,7 +37,7 @@ tmp/
 # Backup files
 lib/*.backup.*
 
-flash/home/rubykaigi/
+flash/home/talk/
 # WiFi credentials - never commit; see config/wifi.toml.example
 config/wifi.toml
 flash/etc/wifi.toml
