@@ -23,7 +23,7 @@ ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variant
   ワイヤの後方互換が保証されるが、組み合わせの表は無いので、使う版を固定して記録する。
 - **gem は Family mruby に依存しない作り**にする (素の PicoRuby / R2P2 でもビルドできる)。機体の差は
   zenoh-pico のポート層に任せる。
-- セキュリティ: v1 は「信頼できる LAN の中」が前提 (ESP32 の zenoh-pico は TLS がまだ使えない)。
+- セキュリティ: v1 は「信頼できる LAN の中」が前提 (ESP32 の端末は今は TLS を使っていない。ESP-IDF には mbedTLS があり、gem に TLS のリンクを足せば使える)。
 - 内蔵 RAM を増やさない方針は Asterism にも適用する (専用のタスクを立てない、バッファは PSRAM に置けるか測る)。
 
 ## 全体の段階 (案)
@@ -464,7 +464,7 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
 | 段階 | 内容 |
 |---|---|
 | G1 | 家の中 (LAN) で、交互に指す遊び (オセロなど) を端末 2 台かブラウザ版 2 つで遊ぶ。相手の一覧と待ち合わせ (on_join / on_leave)、手を呼び出しで送る、切れたときの扱い。asterism-console で観戦し、記録して巻き戻す |
-| G2 | 同じ遊びを、クラウドのルータの中継 (W1) 越しに遊ぶ。家の端末は家のルータ経由 (zenoh-pico は TLS が使えない)、ブラウザ版は `wss://` でクラウドのルータに直接 (B2)。遅れを測る |
+| G2 | 同じ遊びを、クラウドのルータの中継 (W1) 越しに遊ぶ。家の端末は家のルータ経由 (今の端末は TLS を使っていない。gem に TLS のリンクを足せば直接つなぐ道もある)、ブラウザ版は `wss://` でクラウドのルータに直接 (B2)。遅れを測る |
 | G3 | ゆっくりめの実時間の遊び (陣取り・落ちものの対戦など)。毎秒 10-20 回、自分の状態を `put` で配り、相手の最新だけを使う。遅れの隠し方を試す |
 
 - 速い実時間の遊び (格闘・シューティング) は、相手の動きの予測や入力の同期が要るので、G3 の後に必要なら。
@@ -483,7 +483,7 @@ asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem
   - **R2P2 (Raspberry Pi Pico) は FreeRTOS を使わず、Pico SDK の上で動く (2026-10-12 ユーザ)**。よって zenoh-pico の Pico 向けの層 (FreeRTOS + lwIP のソケット) は使えず、Pico SDK に合わせた層を自分で書く:
     - 無線と lwIP は Pico SDK の `pico_cyw43_arch` の、OS なしの形 (`_poll` か `_threadsafe_background`)。lwIP は NO_SYS なので BSD のソケットは無い。
     - **PicoRuby には rp2040 向けのソケットの層がすでにある** (picoruby-socket の `ports/rp2040/`: `TCPSocket_create/connect/send/recv(nonblock)/closed`、lwIP の altcp の上で、受け取りは前もって確保したバッファにため、待ちの間は `cyw43_arch_poll` を回す。`SSLSocket` (altcp_tls) もある)。gem の TCP のリンク (`picoruby_zenoh_link.h` の約束) を、この C の API の上に書くのが本筋。lwIP の raw API を自分で書かずに済み、R2P2 の作りにもそのまま合う。
-    - SSLSocket があるので、Pico から TLS でルータへ直接つなぐ道もありうる (ESP32 の端末は zenoh-pico の TLS が使えず家のルータ経由)。後で確かめる。
+    - SSLSocket があるので、Pico から TLS でルータへ直接つなぐ道もありうる (ESP32 の端末も、ESP-IDF の mbedTLS で gem に TLS のリンクを足せば同じことができる。今は使っていない)。後で確かめる。
     - gem はもともと単一スレッドで poll する作り (zenoh-pico のスレッドを使わない) なので、OS なしとは相性が良い。待ちの間に `cyw43_arch_poll` を回す。
     - 時刻は Pico SDK の時刻、メモリ確保は PicoRuby の確保 (または Pico SDK の malloc) に合わせる。
     - zenoh-pico・asterism の層・受け取りの列が RAM (PSRAM なしの 520 KB) に収まるか。
@@ -492,7 +492,7 @@ asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem
 
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
-機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
+端末は LAN の中のルータにだけつなぎ (今の端末は TLS を使っていない。ESP-IDF の mbedTLS で TLS のリンクを足すことはできる)、インターネットを越える部分はルータどうし
 (zenohd) を TLS と認証でつなぐ (design.md 8 章)。その設定を Rails の画面で管理する。
 
 | 段階 | 内容 |
