@@ -23,7 +23,8 @@
 #     the brain stops the rover 0.5 s after the last one.
 #     g  rover.go(1.0)    t  rover.turn(90)    Space / s  rover.stop
 #   g, t and Space also set the speeds here to zero (a drive would cancel
-#   the job). Every call carries from: <ID> so that the brain shows who called.
+#   the job). The brain learns who called from the call itself (protocol 1:
+#   the caller's ID is in the call's key), so the calls carry no from:.
 # - rover.state is asked every 300 ms; the round trip of each call is shown
 #   (the last, the average and the largest over 2 s). Calls never wait: they
 #   are async and looked at on the next updates.
@@ -286,7 +287,7 @@ class RoverPilotApp < FmrbApp
     now = Machine.board_millis
     return unless @rover && @state_f.nil? && now - @state_at >= STATE_EVERY_MS
     @state_at = now
-    @state_f = @rover.state(from: @id)
+    @state_f = @rover.state
   rescue ::Asterism::Error => e
     @errors += 1
     @note = "state: #{e.class}: #{e.message}"
@@ -303,8 +304,7 @@ class RoverPilotApp < FmrbApp
     @drive_at = now
     v = @v
     w = @w
-    id = @id
-    call("drive") { |r| r.drive(v, w, from: id) }
+    call("drive") { |r| r.drive(v, w) }
   end
 
   def clamp(x, lim)
@@ -318,7 +318,6 @@ class RoverPilotApp < FmrbApp
   def run_key(ev)
     sc = ev[0]
     ch = ev[1]
-    id = @id
     if sc == FmrbConst::KEY_UP || sc == FmrbConst::KEY_DOWN || sc == FmrbConst::KEY_LEFT || sc == FmrbConst::KEY_RIGHT
       was = moving?
       @v = clamp(@v + V_STEP, V_MAX) if sc == FmrbConst::KEY_UP
@@ -332,22 +331,22 @@ class RoverPilotApp < FmrbApp
         keep_driving
       elsif was
         # Stepped down to zero: one drive(0, 0); the brain stops on it.
-        call("drive") { |r| r.drive(0.0, 0.0, from: id) }
+        call("drive") { |r| r.drive(0.0, 0.0) }
       end
     elsif ch == 103 # g
       @v = 0.0
       @w = 0.0
       m = GO_M
-      call("go(#{m})") { |r| r.go(m, from: id) }
+      call("go(#{m})") { |r| r.go(m) }
     elsif ch == 116 # t
       @v = 0.0
       @w = 0.0
       d = TURN_DEG
-      call("turn(#{d.to_i})") { |r| r.turn(d, from: id) }
+      call("turn(#{d.to_i})") { |r| r.turn(d) }
     elsif ch == 32 || ch == 115 || ch == 83 # space, s, S
       @v = 0.0
       @w = 0.0
-      call("stop") { |r| r.stop(from: id) }
+      call("stop") { |r| r.stop }
     end
     @dirty = true
   end

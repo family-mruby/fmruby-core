@@ -12,8 +12,9 @@
 #   and the call log put on asterism/<ID>/brain/log for asterism-console's
 #   log page. The node has the board's Zenoh ID, so the console draws it
 #   inside the board. The brain is the only one that sends /cmd_vel.
-# - The object (every method takes an optional from: keyword, the caller's
-#   node ID, shown on the screen and in the log):
+# - The object (exposed with caller: :from: Asterism gives every method the
+#   caller's node ID as from:, taken from the call, shown on the screen and
+#   in the log; a caller cannot pass it itself):
 #     rover.drive(v, w)  speeds (m/s, rad/s). Stops 0.5 s after the last call.
 #     rover.go(m)        a job: m metres along the heading it starts with
 #                        (negative backwards). Returns the job's number at once.
@@ -102,23 +103,23 @@ class RoverBrainApp < FmrbApp
       @app = app
     end
 
-    def drive(v, w, from: nil)
+    def drive(v, w, from:)
       @app.call_drive(v.to_f, w.to_f, from)
     end
 
-    def go(m, from: nil)
+    def go(m, from:)
       @app.call_job("go", m.to_f, from)
     end
 
-    def turn(deg, from: nil)
+    def turn(deg, from:)
       @app.call_job("turn", deg.to_f, from)
     end
 
-    def stop(from: nil)
+    def stop(from:)
       @app.call_stop(from)
     end
 
-    def state(from: nil)
+    def state(from:)
       @app.call_state(from)
     end
   end
@@ -225,7 +226,7 @@ class RoverBrainApp < FmrbApp
     begin
       ::Asterism.connect(@locator, node: @id, app: APP)
       ::Asterism.expose("rover", RoverBrainApp::Rover.new(self),
-                        methods: { drive: 2, go: 1, turn: 1, stop: 0, state: 0 })
+                        methods: { drive: 2, go: 1, turn: 1, stop: 0, state: 0 }, caller: :from)
       @rs = ::Asterism.session # Asterism's: Asterism.close closes it
       @node = Asterism::ROS::Node.new(@rs, "fmruby_brain_#{ros_name(@id)}")
       @cmd = @node.publisher("/cmd_vel", "geometry_msgs/msg/Twist")

@@ -21,11 +21,14 @@
 | メソッド | 引数 | 返す値 |
 |---|---|---|
 | `info` | なし | `{"name", "status", "opponent"}` (`status` は idle / inviting / invited / playing / over) |
-| `invite` | 自分の ID, 自分の名前, 対局の ID | `"asked"` か `"busy"` |
-| `answer` | 自分の ID, 対局の ID, 受けるか, 相手の色 (`"black"`/`"white"`), 自分の名前 | 誘った側が始めたら `true` |
-| `cancel` | 自分の ID, 対局の ID | `true` / `false` |
-| `move` | 自分の ID, 対局の ID, 今までの手の数, x, y (パスは x = -1) | `"ok"` か、断った理由 (`"not your turn"`、`"illegal"`、`"out of sync"` など) |
-| `resign` | 自分の ID, 対局の ID | `true` / `false` |
+| `invite` | 自分の名前, 対局の ID | `"asked"` か `"busy"` |
+| `answer` | 対局の ID, 受けるか, 相手の色 (`"black"`/`"white"`), 自分の名前 | 誘った側が始めたら `true` |
+| `cancel` | 対局の ID | `true` / `false` |
+| `move` | 対局の ID, 今までの手の数, x, y (パスは x = -1) | `"ok"` か、断った理由 (`"not your turn"`、`"illegal"`、`"out of sync"` など) |
+| `resign` | 対局の ID | `true` / `false` |
+
+呼んだ相手の ID は引数で渡さない。呼ばれた側が `Asterism.current_call.from` で受け取る (X1、asterism 0.7.0 の
+protocol 1 では呼び出しのキーの最後の塊が呼んだ側の ID)。
 | `state` | なし | 状態 (下) |
 
 状態は Hash で、`game` (対局の ID)・`black`/`white` (ノードの ID)・`turn`・`n` (手の数)・`last` (最後の手、`d3` の形、

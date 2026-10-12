@@ -14,8 +14,9 @@
 #     apu     play(mml) -> number of notes, stop -> true (the APU, via MML)
 #     screen  say(text) -> text length (shown in this window)
 #     info    status -> Hash (name, board, free memory, uptime),
-#             relay(from, n) -> calls <from>/demo/info.status back and
-#             returns [n, its name] (for calls in both directions at once),
+#             relay(n) -> calls the caller's info.status back (the caller
+#             from Asterism.current_call) and returns [n, its name] (for
+#             calls in both directions at once),
 #             boom -> raises (to see RemoteError),
 #             echo(value, tag: nil) -> [value, tag] (values and keywords),
 #             profile(name, own_icon) -> sets this node's profile (V2.5):
@@ -104,7 +105,8 @@ class AsterismDemoApp < FmrbApp
         "free" => heap[:free], "pool_used" => FmrbApp.pool_used, "up_ms" => @app.uptime_ms }
     end
 
-    def relay(from, n)
+    def relay(n)
+      from = ::Asterism.current_call.from
       st = ::Asterism["#{from}/demo/info"].status
       Log.info("asterism_demo: relay from #{from} ##{n}")
       [n, st["name"]]
@@ -225,7 +227,7 @@ class AsterismDemoApp < FmrbApp
       ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
       ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
       ::Asterism.expose("info", AsterismDemoApp::Info.new(self),
-                        methods: { status: 0, relay: 2, boom: 0, echo: 1, profile: 2 })
+                        methods: { status: 0, relay: 1, boom: 0, echo: 1, profile: 2 })
       # Called from Asterism.poll (on_update), not from a waiting call.
       ::Asterism.on_join { |n| joined(n) }
       ::Asterism.on_leave { |n| left(n) }
@@ -324,7 +326,7 @@ class AsterismDemoApp < FmrbApp
     ok = 0
     10.times do |i|
       begin
-        r = peer("info").relay(@node, i)
+        r = peer("info").relay(i)
         ok += 1 if r[0] == i
       rescue ::Asterism::Error => e
         note("relay #{i}: #{e.class}: #{e.message}")
