@@ -7,10 +7,16 @@
 #   ws/localhost:7449, or ?zenoh= from the page's URL), else tcp/zenohd:7447.
 #   The ID comes from /home/asterism_node.txt, the mDNS name, the
 #   asterism_node setting (the browser's wasm-XXXXXX) or the board name.
-# - Two sessions: Asterism (app "game", object "othello") and a plain Zenoh
-#   session that puts the state on asterism/<ID>/game/othello/state after
-#   every move (and every STATE_EVERY_MS during a game), for asterism-console
-#   and for spectators. All keys stay under asterism/<ID>/game/** (the G0 ACL).
+# - One connection (G1b): Asterism (app "game", object "othello"), and
+#   Asterism.session, its Zenoh session, puts the state on
+#   asterism/<ID>/game/othello/state after every move (and every
+#   STATE_EVERY_MS during a game), for asterism-console and for spectators.
+#   All keys stay under asterism/<ID>/game/** (the G0 ACL). One session also
+#   gets through a router door whose pass lets one connection in.
+# - The player's name is the profile's name (FmrbAsterism, saved in
+#   /home/asterism_profile.toml for every application of the machine); F2 or
+#   the name button in the lobby changes it (Japanese through kana input),
+#   Enter saves, Esc leaves it. Without one, the node ID stands for it.
 # - The object's methods (every caller passes its own node ID first, since
 #   Asterism does not tell who called):
 #     info                              -> {"name", "status", "opponent"}
@@ -383,6 +389,9 @@ class OthelloApp < FmrbApp
     @keys = []
     @clicks = []
     @buttons = []
+    @edit = nil             # the name being typed (a String), or nil
+    @u8 = nil               # a UTF-8 character coming in byte by byte (kana input)
+    @u8_need = 0
     @spec = nil             # small screen: the latest state seen
     @spec_from = ""
     @dirty = true
@@ -428,8 +437,7 @@ class OthelloApp < FmrbApp
                         methods: { info: 0, invite: 3, answer: 5, cancel: 2, move: 5, resign: 2, state: 0 }) unless @small
       ::Asterism.on_join { |n| @scan = true }
       ::Asterism.on_leave { |n| @scan = true }
-      @zs.close if @zs
-      @zs = Asterism::Zenoh::Session.open(@locator)
+      @zs = ::Asterism.session # Asterism's: closed with Asterism.close
       @watch = @small ? @zs.subscribe("asterism/*/#{APP}/#{OBJ}/state", depth: 4) : nil
       @net = :up
       @net_note = ""
@@ -458,11 +466,7 @@ class OthelloApp < FmrbApp
     @move_f = nil
     @sync_f = nil
     @misc_f = []
-    begin
-      @zs.close if @zs
-    rescue
-    end
-    @zs = nil
+    @zs = nil # Asterism.close closes it, with @watch
     @watch = nil
     begin
       ::Asterism.close
@@ -477,7 +481,6 @@ class OthelloApp < FmrbApp
       lost("asterism: #{::Asterism.lost_reason}")
       return
     end
-    lost("zenoh: closed") if @zs && !@zs.poll
   rescue => e
     lost("#{e.class}: #{e.message}")
   end
@@ -999,6 +1002,11 @@ class OthelloApp < FmrbApp
     ch = k[1]
     enter = sc == FmrbConst::KEY_ENTER || ch == 13 || ch == 10
     esc = sc == FmrbConst::KEY_ESC || ch == 27
+    if @edit
+      edit_key(sc, ch, enter, esc)
+      @dirty = true
+      return
+    end
     if @inv_in
       reply_invite(true) if enter || ch == 121 || ch == 89   # y
       reply_invite(false) if esc || ch == 110 || ch == 78    # n
@@ -1007,6 +1015,8 @@ class OthelloApp < FmrbApp
     if @mode == :lobby
       if @inv_out
         cancel_invite if esc
+      elsif sc == FmrbConst::KEY_F2
+        start_edit
       elsif sc == FmrbConst::KEY_UP
         @sel -= 1 if @sel > 0
       elsif sc == FmrbConst::KEY_DOWN
@@ -1102,7 +1112,92 @@ class OthelloApp < FmrbApp
     when :yes then resign
     when :no then @confirm = false
     when :lobby then back_to_lobby
+    when :name then start_edit
+    when :name_save then save_name
+    when :name_cancel then @edit = nil
     end
+  end
+
+  # ------------------------------------------------------------ the name
+
+  def start_edit
+    pr = ::Asterism.profile
+    @edit = (pr && pr["name"] ? pr["name"].to_s : "").dup
+    @u8_need = 0
+    @dirty = true
+  end
+
+  # Keys while the name is typed. Kana input sends a composed character as
+  # its UTF-8 bytes, one key event each, with no scancode.
+  def edit_key(sc, ch, enter, esc)
+    if enter
+      save_name
+    elsif esc
+      @edit = nil
+    elsif sc == FmrbConst::KEY_BACKSPACE || ch == 8
+      @u8_need = 0
+      n = @edit.length
+      @edit = @edit[0, n - 1] if n > 0
+    elsif ch >= 0x80
+      c = utf8_byte(ch)
+      add_to_name(c) if c
+    elsif ch >= 32 && ch <= 126
+      @u8_need = 0
+      add_to_name(ch.chr)
+    end
+  end
+
+  def add_to_name(c)
+    return if @edit.bytesize + c.bytesize > ::Asterism::Profile::NAME_MAX
+    @edit = @edit + c
+  end
+
+  # One byte of a UTF-8 character; the character once it is whole.
+  def utf8_byte(b)
+    if b >= 0xC0
+      @u8_need = b >= 0xF0 ? 3 : (b >= 0xE0 ? 2 : 1)
+      @u8 = " ".dup
+      @u8.setbyte(0, b)
+      return nil
+    end
+    return nil if @u8_need == 0 # a continuation with nothing in front
+    one = " ".dup
+    one.setbyte(0, b)
+    @u8 = @u8 + one
+    @u8_need -= 1
+    @u8_need == 0 ? @u8 : nil
+  end
+
+  # Saves the name for every application of this machine and puts it in
+  # the profile now (the console and the other players see it).
+  def save_name
+    name = @edit.to_s.strip
+    @edit = nil
+    ::FmrbAsterism.save_name(name)
+    @note = name.empty? ? "名前を消した (ID を使う)" : "名前を「#{name}」にした"
+    Log.info("othello: name saved (#{name.bytesize} bytes)")
+  rescue => e
+    @note = "名前を保存できない: #{e.message}"
+  ensure
+    @dirty = true
+  end
+
+  # s cut to fit cols columns (a wide character counts 2), as drawn.
+  def fit(s, cols)
+    s = s.to_s
+    return s if s.bytesize <= cols && s.length == s.bytesize
+    out = "".dup
+    used = 0
+    i = 0
+    while i < s.length
+      ch = s[i, 1]
+      w = ch.bytesize > 1 ? 2 : 1
+      break if used + w > cols
+      out << ch
+      used += w
+      i += 1
+    end
+    out
   end
 
   # ------------------------------------------------------------ the screen
@@ -1165,8 +1260,11 @@ class OthelloApp < FmrbApp
   def draw_lobby
     x = @x0 + 4
     y = @y0 + 3
+    cols = (@user_area_width - 8) / 6
     text(x, y, "オセロ: 相手を選んで誘う")
-    text(x, y + 15, net_line[0, 60], theme_border)
+    me = my_name
+    text(x + 160, y, fit("名前: #{me}", cols - 27), me == @id ? theme_border : theme_fg)
+    text(x, y + 15, fit(net_line, cols), theme_border)
     ly = @list_y
     if @peers.empty?
       text(x, ly, @net == :up ? "相手を探しています (同じ網で othello を開く)" : "-", theme_border)
@@ -1181,23 +1279,33 @@ class OthelloApp < FmrbApp
       yy = ly + i * 15
       if i == @sel
         @gfx.fill_rect(@x0 + 2, yy - 1, @user_area_width - 4, 14, theme_accent)
-        text(x, yy, "#{label}  #{word}"[0, 60], theme_fg_light)
+        text(x, yy, fit("#{label}  #{word}", cols), theme_fg_light)
       else
-        text(x, yy, "#{label}  #{word}"[0, 60])
+        text(x, yy, fit("#{label}  #{word}", cols))
       end
       i += 1
     end
     by = @y0 + @user_area_height - 40
-    if @inv_in
-      text(x, by - 2, "#{@inv_in[1]} から誘い。受ける?"[0, 60], theme_accent)
+    if @edit
+      text(x, by - 2, fit("名前: Enter で保存、Esc でやめる、空なら ID", cols), theme_accent)
+      @gfx.fill_rect(x, by + 15, 196, 18, theme_fg_light)
+      @gfx.draw_rect(x, by + 15, 196, 18, theme_accent)
+      shown = @edit
+      shown = shown[1, shown.length] while shown.length > 0 && fit(shown, 30) != shown
+      text(x + 3, by + 18, "#{shown}_")
+      button(:name_save, x + 202, by + 16, 60, "保存")
+      button(:name_cancel, x + 268, by + 16, 70, "やめる")
+    elsif @inv_in
+      text(x, by - 2, fit("#{@inv_in[1]} から誘い。受ける?", cols), theme_accent)
       button(:accept, x, by + 16, 90, "受ける (Y)")
       button(:decline, x + 98, by + 16, 90, "断る (N)")
     elsif @inv_out
-      text(x, by - 2, "#{peer_name(@inv_out[0])} を誘っています..."[0, 60], theme_accent)
+      text(x, by - 2, fit("#{peer_name(@inv_out[0])} を誘っています...", cols), theme_accent)
       button(:cancel, x, by + 16, 110, "取り消す (Esc)")
     else
-      text(x, by - 2, @note[0, 60], theme_border)
+      text(x, by - 2, fit(@note, cols), theme_border)
       button(:invite, x, by + 16, 90, "誘う (Enter)") unless @peers.empty?
+      button(:name, x + 98, by + 16, 90, "名前 (F2)")
     end
   end
 
@@ -1263,7 +1371,7 @@ class OthelloApp < FmrbApp
     text(x + 14, y, "あなた #{mc}"[0, n])
     @gfx.fill_circle(x + 5, y + 21, 5, @my == 1 ? C_WHITE : C_BLACK)
     @gfx.draw_circle(x + 5, y + 21, 5, theme_border)
-    text(x + 14, y + 15, "#{@opp_name}"[0, n - 7] + " #{tc}")
+    text(x + 14, y + 15, fit(@opp_name, n - 7) + " #{tc}")
     yy = y + 34
     if g.over
       text(x, yy, "終わり", theme_accent)
@@ -1430,7 +1538,6 @@ class OthelloApp < FmrbApp
   end
 
   def on_destroy
-    @zs.close if @zs
     ::Asterism.close
     Log.info("othello: closed")
   rescue => e

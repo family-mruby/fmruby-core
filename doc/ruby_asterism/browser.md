@@ -181,6 +181,8 @@ https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:744
   付けない。入口の nginx は確かめた後、合言葉を外してルータへ渡す。
 - 合言葉は 1 つの接続にだけ使える (最初に通った時点で使い終わり)。入口は接続を 4 時間で切る。切れたら (つなぎ直し
   が要るときも) console で新しい合言葉を作り、新しいリンクで開き直す。
+- G1b (asterism 0.6.0) から、試しのアプリ (othello・rt_probe・rover_brain・rover_pilot) は接続を 1 本しか開かない
+  (`Asterism.session`) ので、合言葉 1 つで入れる。
 - 1 つのページが 2 つの接続を開くアプリ (Asterism と別のセッションを持つ othello・rt_probe・rover_pilot) は、
   2 つ目が断られる (report/g1.md)。
 

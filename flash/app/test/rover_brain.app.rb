@@ -7,10 +7,11 @@
 #   else tcp/zenohd:7447. The ID comes from /home/asterism_node.txt, the mDNS
 #   name, the asterism_node setting (the browser's wasm-XXXXXX) or the board
 #   name ("linux" in the simulator, "wasm" in the browser).
-# - Two sessions to the same router: one for Asterism (the object), one for
-#   ROS 2 (the node fmruby_brain_<ID>: publishes /cmd_vel, subscribes /odom,
-#   and puts the call log on asterism/<ID>/brain/log for asterism-console's
-#   log page). The brain is the only one that sends /cmd_vel.
+# - One connection (G1b): Asterism (the object) and, on Asterism.session,
+#   the ROS 2 node fmruby_brain_<ID> (publishes /cmd_vel, subscribes /odom)
+#   and the call log put on asterism/<ID>/brain/log for asterism-console's
+#   log page. The node has the board's Zenoh ID, so the console draws it
+#   inside the board. The brain is the only one that sends /cmd_vel.
 # - The object (every method takes an optional from: keyword, the caller's
 #   node ID, shown on the screen and in the log):
 #     rover.drive(v, w)  speeds (m/s, rad/s). Stops 0.5 s after the last call.
@@ -225,7 +226,7 @@ class RoverBrainApp < FmrbApp
       ::Asterism.connect(@locator, node: @id, app: APP)
       ::Asterism.expose("rover", RoverBrainApp::Rover.new(self),
                         methods: { drive: 2, go: 1, turn: 1, stop: 0, state: 0 })
-      @rs = Asterism::Zenoh::Session.open(@locator)
+      @rs = ::Asterism.session # Asterism's: Asterism.close closes it
       @node = Asterism::ROS::Node.new(@rs, "fmruby_brain_#{ros_name(@id)}")
       @cmd = @node.publisher("/cmd_vel", "geometry_msgs/msg/Twist")
       odom_type = ::Asterism::CDR::PACK ? RoverBrainOdom : "nav_msgs/msg/Odometry"
@@ -493,8 +494,7 @@ class RoverBrainApp < FmrbApp
     @mode = :idle
     @node = nil
     @cmd = nil
-    @rs.close if @rs
-    @rs = nil
+    @rs = nil # Asterism.close closes it, with the node
     ::Asterism.close
     Log.info("rover_brain: #{state}")
   rescue => e
@@ -587,7 +587,6 @@ class RoverBrainApp < FmrbApp
     halt if @cmd
     log("info", "#{@id}/#{APP}/rover is going away") if @rs
     @node.close if @node
-    @rs.close if @rs
     ::Asterism.close
     Log.info("rover_brain: closed")
   rescue => e

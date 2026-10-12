@@ -8,9 +8,11 @@
 #   URL), else tcp/zenohd:7447. The ID comes from /home/asterism_node.txt,
 #   the mDNS name, the asterism_node setting (the browser's wasm-XXXXXX) or
 #   the board name ("linux", "wasm").
-# - Two sessions: Asterism (app "pilot", nothing exposed) and ROS 2 (the node
-#   fmruby_pilot_<ID>: subscribes /camera/image/compressed, and /odom only to
-#   measure the camera's delay; it publishes nothing).
+# - One connection (G1b): Asterism (app "pilot", nothing exposed) and, on
+#   Asterism.session, the ROS 2 node fmruby_pilot_<ID> (subscribes
+#   /camera/image/compressed, and /odom only to measure the camera's delay;
+#   it publishes nothing). One session also gets through a router door whose
+#   pass lets one connection in.
 # - Finding the brain: the objects alive that match */brain/rover (Asterism
 #   liveliness), looked at again whenever a node joins or leaves
 #   (Asterism.on_join / on_leave). The first one is kept while it lives.
@@ -177,7 +179,7 @@ class RoverPilotApp < FmrbApp
       ::Asterism.connect(@locator, node: @id, app: APP)
       ::Asterism.on_join { |n| @scan = true }
       ::Asterism.on_leave { |n| @scan = true }
-      @rs = Asterism::Zenoh::Session.open(@locator)
+      @rs = ::Asterism.session # Asterism's: Asterism.close closes it
       @node = Asterism::ROS::Node.new(@rs, "fmruby_pilot_#{ros_name(@id)}")
       @node.subscribe("/camera/image/compressed", RoverPilotImage, depth: 2) { |msg, info| camera(msg, info) }
       @node.subscribe("/odom", RoverPilotOdom, depth: 2) { |msg, info| odom(info) }
@@ -513,8 +515,7 @@ class RoverPilotApp < FmrbApp
     @brain = nil
     @rover = nil
     @node = nil
-    @rs.close if @rs
-    @rs = nil
+    @rs = nil # Asterism.close closes it, with the node
     ::Asterism.close
     Log.info("rover_pilot: #{state}")
     @dirty = true
@@ -548,7 +549,6 @@ class RoverPilotApp < FmrbApp
 
   def on_destroy
     @node.close if @node
-    @rs.close if @rs
     ::Asterism.close
     File.unlink(FRAME_FILE) if @jpeg && File.exist?(FRAME_FILE)
     Log.info("rover_pilot: closed")
