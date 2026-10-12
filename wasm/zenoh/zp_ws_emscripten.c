@@ -135,7 +135,15 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
                 try { host = new URL(url).hostname.toLowerCase(); } catch (e) { host = String(); }
                 const loopback = host === 'localhost' || host.endsWith('.localhost') ||
                                  /^127[.][0-9]+[.][0-9]+[.][0-9]+$/.test(host) || host === '[::1]';
-                if (!loopback) url = 'wss' + url.slice(2);
+                if (!loopback) {
+                    url = 'wss' + url.slice(2);
+                    // The pass from the page's link (#zenoh_pass=, read by
+                    // web/index.html and web/main.js): the router door checks
+                    // it (doc/ruby_asterism, G1). Only on wss://, so it never
+                    // travels in clear; never logged.
+                    const pass = Module['zenohPass'];
+                    if (pass) url += (url.indexOf('?') < 0 ? '?' : '&') + 'pass=' + encodeURIComponent(pass);
+                }
             }
             let ws;
             try {

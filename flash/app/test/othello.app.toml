@@ -1,0 +1,12 @@
+app_screen_name = "Othello"
+app_screen_name_ja = "オセロ"
+default_window_mode = "window"
+default_window_width = 372
+default_window_height = 222
+default_window_pos_x = 27
+default_window_pos_y = 15
+icon = "app/test/othello.icon"
+single_instance = true
+# The whole program (about 40 KB of source) does not compile in the
+# AtomS3R's ordinary pool (500 KB); the large pool lets it watch games there.
+large_memory = 1
