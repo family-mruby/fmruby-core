@@ -341,6 +341,13 @@ int fmrb_spx_screen_height(void)
     return conf ? (int)(conf->display_height - conf->display_margin_y) : 0;
 }
 
+/* The whole panel, margins included: the width the halt screen is drawn at. */
+int fmrb_spx_display_width(void)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)conf->display_width : 0;
+}
+
 int fmrb_spx_show_halt(const char *text, int len)
 {
     FMRB_EXT_RAM_BSS_ATTR static char buf[256];

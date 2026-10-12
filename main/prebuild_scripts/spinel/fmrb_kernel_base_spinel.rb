@@ -246,6 +246,10 @@ class FmrbKernel
     FmrbSpx.fmrb_spx_screen_height
   end
 
+  def _display_width
+    FmrbSpx.fmrb_spx_display_width
+  end
+
   def _show_halt(text)
     t = text.to_s   # concrete String for the :str FFI boundary
     FmrbSpx.fmrb_spx_show_halt(t, t.bytesize) == 1

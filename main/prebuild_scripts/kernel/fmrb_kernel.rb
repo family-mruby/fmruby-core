@@ -814,8 +814,19 @@ class FmrbKernelImpl < FmrbKernel
   def give_up_single_app(reason)
     @single_app_respawn_at = 0
     Log.error("Single-app boot: giving up. #{reason}")
-    _show_halt("STOPPED\n\n#{reason}\n\nReset to try again.")
+    _show_halt("STOPPED\n\n#{halt_reason(reason)}\n\nReset to try again.")
     nil
+  end
+
+  # Below this width the halt screen keeps only the first line of the reason:
+  # on a 128-pixel screen the backtrace would push the last line, the one that
+  # says what to do next, off the bottom. The serial log has the whole text.
+  HALT_FULL_REASON_MIN_WIDTH = 320
+
+  def halt_reason(reason)
+    return reason if _display_width >= HALT_FULL_REASON_MIN_WIDTH
+    nl = reason.index("\n")
+    nl ? reason[0, nl] : reason
   end
 
   # Called from cleanup_terminated_app for every app that ends. In the
@@ -834,7 +845,7 @@ class FmrbKernelImpl < FmrbKernel
     @last_error_pid = -1
     @last_error_text = ""
     Log.error("Single-app boot: #{label} died: #{reason}")
-    _show_halt("STOPPED\n\n#{label}\n#{reason}\n\nLaunch an app to go on.")
+    _show_halt("STOPPED\n\n#{label}\n#{halt_reason(reason)}\n\nLaunch an app to go on.")
     nil
   end
 

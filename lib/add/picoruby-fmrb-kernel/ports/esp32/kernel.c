@@ -377,6 +377,14 @@ static mrb_value mrb_kernel_screen_height(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(conf ? conf->display_height - conf->display_margin_y : 0);
 }
 
+// FmrbKernel#_display_width -> the whole panel, margins included: the width
+// the halt screen is drawn at (fmrb_kernel_show_halt).
+static mrb_value mrb_kernel_display_width(mrb_state *mrb, mrb_value self)
+{
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return mrb_fixnum_value(conf ? conf->display_width : 0);
+}
+
 // FmrbKernel#_show_halt(text) -> true/false
 static mrb_value mrb_kernel_show_halt(mrb_state *mrb, mrb_value self)
 {
@@ -668,6 +676,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_clear_halt", mrb_kernel_clear_halt, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_screen_width", mrb_kernel_screen_width, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_screen_height", mrb_kernel_screen_height, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_display_width", mrb_kernel_display_width, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }
