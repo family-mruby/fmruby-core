@@ -481,8 +481,9 @@ asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem
 - **ほかの PicoRuby のマイコン** (R2P2 など): zenoh-pico が対応する系 (ESP-IDF、FreeRTOS + lwIP、Raspberry Pi Pico W など) なら、picoruby-asterism-zenoh の port を足す形で入れられる見込み。
   - **最初の 1 台は Raspberry Pi Pico 2 W に決定 (2026-10-12 ユーザ、着手は後で)。R2P2 から使えるようにする** (R2P2 のビルドに gem を入れ、R2P2 のシェルや R2P2 で動かすアプリから Asterism を使う。R2P2 の側に要る直しは、R2P2 の流儀 (上流の PicoRuby の作り) に合わせる)。RP2350 (内蔵 RAM 520 KB)、無線は CYW43439。picoruby-asterism-zenoh に `ports/rp2350/` (仮) を足し、時刻・メモリ確保・TCP (lwIP + cyw43) を書く。
   - **R2P2 (Raspberry Pi Pico) は FreeRTOS を使わず、Pico SDK の上で動く (2026-10-12 ユーザ)**。よって zenoh-pico の Pico 向けの層 (FreeRTOS + lwIP のソケット) は使えず、Pico SDK に合わせた層を自分で書く:
-    - 無線と lwIP は Pico SDK の `pico_cyw43_arch` の、OS なしの形 (`_poll` か `_threadsafe_background`)。lwIP は NO_SYS なので BSD のソケットは無く、raw API (コールバック) になる。
-    - zenoh-pico の読み書きは同期の形をしているので、raw API のコールバックで受けた分をリングにため、読みはそこから取る形で合わせる (B1 でブラウザの非同期の WebSocket に合わせたのと同じ考え方)。
+    - 無線と lwIP は Pico SDK の `pico_cyw43_arch` の、OS なしの形 (`_poll` か `_threadsafe_background`)。lwIP は NO_SYS なので BSD のソケットは無い。
+    - **PicoRuby には rp2040 向けのソケットの層がすでにある** (picoruby-socket の `ports/rp2040/`: `TCPSocket_create/connect/send/recv(nonblock)/closed`、lwIP の altcp の上で、受け取りは前もって確保したバッファにため、待ちの間は `cyw43_arch_poll` を回す。`SSLSocket` (altcp_tls) もある)。gem の TCP のリンク (`picoruby_zenoh_link.h` の約束) を、この C の API の上に書くのが本筋。lwIP の raw API を自分で書かずに済み、R2P2 の作りにもそのまま合う。
+    - SSLSocket があるので、Pico から TLS でルータへ直接つなぐ道もありうる (ESP32 の端末は zenoh-pico の TLS が使えず家のルータ経由)。後で確かめる。
     - gem はもともと単一スレッドで poll する作り (zenoh-pico のスレッドを使わない) なので、OS なしとは相性が良い。待ちの間に `cyw43_arch_poll` を回す。
     - 時刻は Pico SDK の時刻、メモリ確保は PicoRuby の確保 (または Pico SDK の malloc) に合わせる。
     - zenoh-pico・asterism の層・受け取りの列が RAM (PSRAM なしの 520 KB) に収まるか。
