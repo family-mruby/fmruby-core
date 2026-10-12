@@ -9,9 +9,6 @@
 #   is fetched; rake says when it is not the pinned commit).
 # - To update: commit and push asterism's main, put the commit here, run
 #   `rake setup` (or any build).
-# X1: the commit below is on the branch feature/protocol1 (asterism 0.7.0,
-# wire protocol 1), not pushed yet (the parent merges it into main and puts
-# the merged commit here); until then build with ASTERISM_DIR=../asterism.
 repo: https://github.com/ruby-asterism/asterism.git
-branch: feature/protocol1
+branch: main
 commit: db911f6e892518062bd37057e1b0ec8e146c2969
