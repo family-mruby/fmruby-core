@@ -351,11 +351,12 @@ Twist の型の読み込みの 624 B だけ。
 V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux` / `wasm-XXXXXX`) で判じていた。網が種類を運ばないためで、名前を変えた端末は ◈ になる。これを、ノードが自分で名乗る形にし、あわせてアイコンを出す。
 
 - **gem (asterism 0.5.0)**: ノードが「自己紹介」の口を持つ。キーは `asterism/<ID>/@<口の名前>` (`@` で始まるので、アプリの名前とぶつからない)。中身は MessagePack の Hash:
-  - `kind`: `board` / `ruby` / `console` など (V2.2 の印に対応)
+  - `kind`: 動いている Ruby の処理系 (2026-10-12 ユーザ決定): `family_mruby` / `picoruby` / `cruby` / `console`。sim とブラウザ版も `family_mruby`。`board` という呼び方はやめる
+  - `host`: 任意。どこで動いているか (`atoms3r` / `tab5` / `p4nano` / `browser` / `sim` など)。Family mruby のファームは自動で埋める。console はノードの詳細に出す
   - `name`: 表示名 (任意)
   - `icon`: PNG のバイト列 (任意。32x32 程度、8 KB まで)。PNG だけ受ける (SVG はスクリプトを含められるので受けない)
   - `icon_hash`: アイコンの要約 (console が覚えておき、同じものは取り直さない)
-  - 機体側 (picoruby) と CRuby の両方に入れる。Family mruby の端末はファームが既定の自己紹介を出し (種類 `board`、アイコンは `/usr/share/asterism/icon.png` など)、アプリが上書きできる。CRuby は既定で `ruby`。ブラウザ版は `board` (アイコンはブラウザ版用)。
+  - 機体側 (picoruby) と CRuby の両方に入れる。Family mruby の端末はファームが既定の自己紹介を出し (種類 `family_mruby`、アイコンは `/usr/share/asterism/icon.png` など)、アプリが上書きできる。CRuby は既定で `cruby`。ブラウザ版は `family_mruby` で `host` が `browser` (アイコンはブラウザ版用)。
   - アプリごとのアイコン (Family mruby のランチャーのアイコン) も出せるようにするかは、gem の設計のときに決める。
 - **console (V2.5)**: 新しいノードが入ったら bridge が自己紹介を問い合わせる。答えがあれば種類で印を決め、アイコンを枠の名前の前に出す。答えが無いノード (古い版・ROS 2) は今の名前の決まりと印のまま。
 - **公開**: gem の新しい版の公開はユーザが行う。
@@ -363,6 +364,7 @@ V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux
 
 | 案 | 書き方の例 | キー | 感じ |
 |---|---|---|---|
+| (採用) profile | `Asterism.profile(kind: :family_mruby, name: "Rover", icon: png)` | `@profile` | SNS のプロフィール (名前・アイコン・紹介) と同じで、中身にいちばん合う |
 | card (名刺) | `Asterism.card(kind: :board, name: "Rover", icon: png)` | `@card` | 名刺を差し出す。短く、中身 (種類・名前・アイコン) に合う |
 | introduce (自己紹介) | `Asterism.introduce(kind: :board, name: "Rover", icon: png)` | `@intro` | 動詞で読みやすい。呼ぶと網に名乗る、という動きが分かる |
 | identity | `Asterism.identity(kind: :board, icon: png)` | `@identity` | 「何者か」。認証の意味に読まれやすい (W2 の証明書と紛れる) |
@@ -370,7 +372,7 @@ V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux
 | badge | `Asterism.badge(kind: :board, icon: png)` | `@badge` | console の「数の印 (badge)」とぶつかる |
 
   - ほかに見送ったもの: `info` (汎用すぎる)、`presence` (生存の監視と紛れる)、`avatar` (アイコンだけに寄る)。
-  - `kind` の値の名前 (`board` に違和感、ユーザ) は未決。
+  - console の凡例・印の説明も `board` から「Family mruby」などの処理系の名前に直す (V2.2 の英語の表記も含めて)。
 
 ### V の続き: ROS 2 の道具 (rosbag・rqt) の良いところを取り込む (2026-10-09 ユーザ決定、この順)
 
