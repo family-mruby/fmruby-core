@@ -480,7 +480,12 @@ asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem
   - Zenoh の公式の TypeScript の部品 (zenoh-ts) を、PicoRuby.wasm の JS 連携から呼び、その上に asterism の層を載せる。C を足さずに済むが、ルータに remote-api のプラグインが要る。
 - **ほかの PicoRuby のマイコン** (R2P2 など): zenoh-pico が対応する系 (ESP-IDF、FreeRTOS + lwIP、Raspberry Pi Pico W など) なら、picoruby-asterism-zenoh の port を足す形で入れられる見込み。
   - **最初の 1 台は Raspberry Pi Pico 2 W に決定 (2026-10-12 ユーザ、着手は後で)。R2P2 から使えるようにする** (R2P2 のビルドに gem を入れ、R2P2 のシェルや R2P2 で動かすアプリから Asterism を使う。R2P2 の側に要る直しは、R2P2 の流儀 (上流の PicoRuby の作り) に合わせる)。RP2350 (内蔵 RAM 520 KB)、無線は CYW43439。picoruby-asterism-zenoh に `ports/rp2350/` (仮) を足し、時刻・メモリ確保・TCP (lwIP + cyw43) を書く。
-  - 確かめること: R2P2 の RP2350 向けの作りが FreeRTOS を使うか (zenoh-pico の Pico 向けの層は FreeRTOS + lwIP が前提)。使わないなら、lwIP の待ち方 (poll か割り込みか) に合わせた層を書く。zenoh-pico・asterism の層・受け取りの列が RAM に収まるか (PSRAM なしの 520 KB で)。
+  - **R2P2 (Raspberry Pi Pico) は FreeRTOS を使わず、Pico SDK の上で動く (2026-10-12 ユーザ)**。よって zenoh-pico の Pico 向けの層 (FreeRTOS + lwIP のソケット) は使えず、Pico SDK に合わせた層を自分で書く:
+    - 無線と lwIP は Pico SDK の `pico_cyw43_arch` の、OS なしの形 (`_poll` か `_threadsafe_background`)。lwIP は NO_SYS なので BSD のソケットは無く、raw API (コールバック) になる。
+    - zenoh-pico の読み書きは同期の形をしているので、raw API のコールバックで受けた分をリングにため、読みはそこから取る形で合わせる (B1 でブラウザの非同期の WebSocket に合わせたのと同じ考え方)。
+    - gem はもともと単一スレッドで poll する作り (zenoh-pico のスレッドを使わない) なので、OS なしとは相性が良い。待ちの間に `cyw43_arch_poll` を回す。
+    - 時刻は Pico SDK の時刻、メモリ確保は PicoRuby の確保 (または Pico SDK の malloc) に合わせる。
+    - zenoh-pico・asterism の層・受け取りの列が RAM (PSRAM なしの 520 KB) に収まるか。
   - 最初の段は「WiFi につながり、ルータへ put / subscribe ができる」最小の試し。次に asterism の層を載せ、console の図に出す (V2.5 の profile では `kind: :picoruby`、`host: "pico2w"`)。
 - どれも、まず小さな試し (つながって put / subscribe ができる) から。着手は未定。
 
