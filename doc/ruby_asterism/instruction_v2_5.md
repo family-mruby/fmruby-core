@@ -43,14 +43,14 @@
 1. CRuby・sim・ブラウザ版・端末 (AtomS3R か P4-Nano) が、それぞれ既定のプロフィールを出し、console の図に処理系の印とアイコンで出る。`host` が詳細に出る。
 2. アプリが `Asterism.profile` で表示名やアイコンを上書きすると、console に反映される (アイコンを変えたら取り直す)。
 3. プロフィールを出さないノード (古い版の CRuby など) は、今の印のまま。PNG 以外・8 KB を超えるアイコンは捨てられる (テストで)。
-4. asterism の CI (Linux・macOS、Ruby 3.2-4.0)、fmruby-core の `rake test`、console のテストが通る。Retro・Tab5 のビルドが通り、内蔵 RAM が増えない。
+4. asterism のテスト (手元の Ruby で。CI は push のときに親が回す)、fmruby-core の `rake test`、console のテストが通る。Retro・Tab5 のビルドが通り、内蔵 RAM が増えない。
 5. 端末の内蔵 RAM の増加が無い (プロフィールとアイコンは PSRAM か flash)。
 
 ## 4. 範囲・決まり
 
-- **asterism / asterism-zenoh**: main に直接ではなく、ブランチ `feature/profile` にコミットし、そのブランチを push して CI を回してよい。**main へのマージ・タグ・gem の公開はしない** (親が検収し、ユーザが公開する)。`.gem` を作るのは親が行う。
+- **asterism / asterism-zenoh**: main に直接ではなく、ブランチ `feature/profile` にコミットする (push しない。CI と同じ確かめは手元で回す)。**main へのマージ・タグ・gem の公開はしない** (親が検収し、ユーザが公開する)。`.gem` を作るのは親が行う。
 - **fmruby-core**: develop から `feature/asterism-v2-5`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない**。`ASTERISM_PIN` は `feature/profile` のコミットを指してよい (マージ後に親が直す)。
-- **asterism-console**: ブランチ `feature/v2-5` にコミットし、push してよい (main へのマージは親が検収後に行う)。Gemfile は今の path 指定のまま。
+- **asterism-console**: ブランチ `feature/v2-5` にコミットする (push しない。main へのマージは親が検収後に行う)。Gemfile は今の path 指定のまま。
 - **触らないもの**: `.env`、sdkconfig、submodule、fmruby-graphics-audio、公開済みの gem の版 (0.4.x) の中身。
 - **端末**: AtomS3R (`/dev/ttyACM1`、WiFi、ip は mDNS 名から) と P4-Nano (192.168.10.10) を使ってよい。焼き直しが要るなら AtomS3R で。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **終わったら**: 起動したものを全部止める。`build/` は Linux の標準構成 (x86-64)。`rake clean_all` を使ったら wasm の libmruby を作り直す (emsdk の環境を読み込んでから)。
