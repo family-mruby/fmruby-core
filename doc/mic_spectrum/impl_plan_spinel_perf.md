@@ -88,7 +88,7 @@ C を double でも計り、`c`(float32/HW)/ `c64`(double/soft-float)/ `spinel`
 
 ### ゴール
 整数は Spinel で即値(箱なし)+ 整数 ALU で **FPU を使わない**。Q15 版で Spinel が
-C にどこまで肉薄するか、mruby がどれだけ化けるかを見せる(plan の「第2幕」)。
+C にどこまで肉薄するか、mruby がどれだけ化けるかを見せる(plan の「第2段」)。
 
 ### 実装
 1. **Q15 Ruby FFT** `lib/add/picoruby-fmrb-fft/mrblib/fft_core_q15.rb`:
@@ -120,7 +120,7 @@ E1 と同じ手順で実機計測。`report/track_a.md` に E4 節。**期待**:
 1. **E1 を先に**(安い・決定的)。「23倍の主因は double ソフトフロート、同一精度なら
    Spinel は C の数倍」を数字で出す。
 2. **E4 で**「整数化すれば Spinel は C に肉薄・mruby も実用域」を示す。
-   → showcase: 「AOT Ruby は速いが、MCU の単精度 FPU で double を使うと soft-float 税を
+   → 結論の形: 「AOT Ruby は速いが、MCU の単精度 FPU で double を使うと soft-float 税を
    払う。固定小数点なら AOT の真価が出る」。embedded_constraints.md の 8.1 に追記済みの
    論点(単精度 FPU の soft-float 税)を数字で裏づける。
 

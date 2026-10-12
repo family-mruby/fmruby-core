@@ -2,7 +2,7 @@
 
 > 状態: 指示 | 更新: 2026-10-12 | P4-Nano が台車の頭脳になり、Asterism のオブジェクト `brain/rover` を公開して、ROS 2 の台車への命令と制御の輪を受け持つ。ブラウザ版の Family mruby が操縦機になり、頭脳のオブジェクトを呼び、台車のカメラを見る。asterism-console で全体を見て記録する
 
-前提: plan.md の S の節 (特に「S4: 端末 2 台」)、report/s1.md・s2.md・s3.md・b1.md、doc/ruby_asterism/browser.md (ブラウザ版を網に入れる手順)、親の `docker/mujoco/README.md` (S3 の見せ場の手順)、asterism の README (portable API)、asterism-console の docs (v2_1-v2_4)。
+前提: plan.md の S の節 (特に「S4: 端末 2 台」)、report/s1.md・s2.md・s3.md・b1.md、doc/ruby_asterism/browser.md (ブラウザ版を網に入れる手順)、親の `docker/mujoco/README.md` (S3 の通しの手順)、asterism の README (portable API)、asterism-console の docs (v2_1-v2_4)。
 
 言葉: 文書では、Family mruby の基板・sim・ブラウザ版を「端末」と呼ぶ (「機体」は使わない)。ロボットは「台車」。
 
@@ -35,7 +35,7 @@
    - キー: 矢印で `drive` (押している間だけ送る、離したら止まる・または S3 と同じ「押すと速さが段で変わる」形。操作しやすい方を選んで docs に書く)、`g` で `go(1.0)`、`t` で `turn(90)`、スペースで `stop`。
    - 画面: 台車のカメラ (ROS 2 の `/camera/image/compressed` を直接受ける)、頭脳の `rover.state` (一定の間隔で呼ぶ)、呼び出しの往復時間。
    - ブラウザ版で動かす (B1 の手順)。同じアプリが sim と P4 でも動くこと (P4 で操縦機を試すのは任意)。
-3. **見せ場の手順書**: 親の `docker/mujoco/README.md` に S4 の節を足す (台車・zenohd の LAN と ws・console・頭脳 (P4-Nano)・操縦機 (ブラウザ版) の起動、操縦、記録と巻き戻し、片付け)。本当の IP・端末の名前は書かない (`192.0.2.x`、`fmruby-aaaaaa`)。
+3. **通しの手順書**: 親の `docker/mujoco/README.md` に S4 の節を足す (台車・zenohd の LAN と ws・console・頭脳 (P4-Nano)・操縦機 (ブラウザ版) の起動、操縦、記録と巻き戻し、片付け)。本当の IP・端末の名前は書かない (`192.0.2.x`、`fmruby-aaaaaa`)。
 
 ## 3. 受け入れ条件
 

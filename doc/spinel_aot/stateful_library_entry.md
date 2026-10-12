@@ -162,7 +162,7 @@ FftSpx.fmrb_fft_spx_output(mag, mag.bytesize, us)
 - vendor/spinel(= kishima の spinel fork)への変更なので、自分たちのコンパイラを
   拡張する形。エンジン方針(Spinel=標準)とも整合([[project_engine_policy]])。
 - ベンチの公平性: 永続化は opt-in にし、**同一 Ruby ソースでの mruby↔Spinel 比較**は
-  従来の毎回 reset 版でも取れるようにしておく(showcase の「ライブラリ呼び出しは前処理を
+  従来の毎回 reset 版でも取れるようにしておく(ベンチで得た「ライブラリ呼び出しは前処理を
   払う」という知見自体は残す)。
 - 実装着手前に最小スパイク: 「reset を飛ばして 2 回目の entry で civ_ が生きているか」を
   1 プログラムで確認してから codegen に手を入れる。
