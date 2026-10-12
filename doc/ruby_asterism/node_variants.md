@@ -48,7 +48,7 @@ sim の 3 コンテナと CRuby を足せば PC 1 台で 5-6 ノードの網が�
 web_* / sim_* で画面まで自動確認できる。契約の要 (呼び出し・Timeout・
 世代番号・引っ越しの ACK) を flash なしで回せる。
 
-開発順序 (zenoh_idea.md 6 章、討議まとめ 14 節) に 1 段挟む:
+開発順序 (zenoh_idea.md 6 章、初期の議論) に 1 段挟む:
 **CRuby 参照実装 → sim → wasm → NARYA v4 / Tab5 → S3**。
 
 同一生成元のタブ同士は /home (IDBFS) を共有するので、機体の識別は
@@ -56,7 +56,7 @@ web_* / sim_* で画面まで自動確認できる。契約の要 (呼び出し�
 
 ### 2.3 「From the Web」が文字どおりになる
 
-討議まとめ 17 節は Web 側代表を Rails にしていた。Rails は残してよいが、
+初期の議論では Web 側代表を Rails にしていた。Rails は残してよいが、
 入口は「**リンクを開いただけで、あなたのブラウザが Asterism の
 ノードになる**」に変えられる。スマホのオーケストラ (usecases.md 9) を
 Family mruby のページで受ければ、参加者のデスクトップが大きな画面に
@@ -88,7 +88,7 @@ doc/wasm/implementation_plan.md の P6 候補 (Web Bluetooth で実機へ beam)
 
 ### 2.6 一箱の中の分散 = LocalBackend の試験台
 
-討議まとめ 13 節の LocalBackend (カーネル pub/sub の上の Asterism) は、
+初期の議論にあった LocalBackend (カーネル pub/sub の上の Asterism) は、
 タブ 1 枚に 32 アプリが同居する wasm で一番厚く叩ける。機体内・機体間で
 同じ `Asterism["/..."]` が動くことを、まず一箱の中で示せる。
 
@@ -164,7 +164,7 @@ R2P2 子機を捨てる話ではない。gem を fmrb 非依存に作る条件 (
   夜間の宿主が務まる。ただし **zenoh-pico は router になれない**ので、
   ブラウザ参加 (WebSocket) が要る場面では router 役の PC が依然必要
   (2.7)。実家 = 常時稼働ノード、router = PC、と分けて考える。
-- **ロボットの頭**: 討議まとめ 18-20 節の「Ruby は上位制御を受け持つ」
+- **ロボットの頭**: 初期の議論の「Ruby は上位制御を受け持つ」
   を載せる頭として、車台に入る大きさで遠隔画面越しに開発・実行できる。
   teleop の「ヘッドレスなロボット側」の実体。
 - **フリート配布・教室** (zenoh_idea.md 4.6 / 4.8): 安ければ配れる。
