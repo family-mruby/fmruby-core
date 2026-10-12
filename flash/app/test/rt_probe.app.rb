@@ -6,8 +6,9 @@
 #   tcp/zenohd:7447; the ID from /home/asterism_node.txt, the mDNS name, the
 #   asterism_node setting, the board name). Asterism app "game", object "rt"
 #   (stats -> the last second's numbers), so the probe shows in the console's
-#   graph; a plain Zenoh session for the stream, polled every update (the
-#   object layer only every OBJ_POLL_MS).
+#   graph. One connection (G1b): the stream goes over Asterism.session, and
+#   Asterism.poll (every update; asterism 0.6.0 makes it cheap when nothing
+#   changed) polls both.
 # - Puts asterism/<ID>/game/rt/pos: MessagePack [seq, x, y, ack, hold_ms]
 #   at RATE per second (+ / - change it: 10, 20, 25, 30, 50). ack is the
 #   newest seq received from the peer, hold_ms how long ago it was taken
@@ -42,11 +43,6 @@ class RtProbeApp < FmrbApp
   WIFI_WAIT_MS = 20000
   RING = 256
   DRAW_EVERY_MS = 33
-  # The object layer (Asterism.poll) only answers stats calls and follows who
-  # is alive; on the boards each poll costs a time that grows with the number
-  # of nodes alive (report/g1.md), so it is polled 10 times a second and the
-  # stream's own session every update.
-  OBJ_POLL_MS = 100
   C_FIELD = 0x00
   C_ME = 0x1C
   C_PEER = 0xE0
@@ -153,7 +149,6 @@ class RtProbeApp < FmrbApp
     @me_y = nil
     @dot_old = []
     @drawn_at = 0
-    @ast_at = 0
     @draw = true
     layout
     draw_screen
@@ -174,7 +169,7 @@ class RtProbeApp < FmrbApp
     @w_work_max = 0
     @w_poll_sum = 0
     @w_ast_sum = 0
-    @w_zs_sum = 0
+    @w_zs_sum = 0     # the second session's poll before G1b; kept (about 0) for the stats' shape
     @w_take_sum = 0
     @w_send_sum = 0
     @w_draw_sum = 0
@@ -211,8 +206,7 @@ class RtProbeApp < FmrbApp
       ::Asterism.close
       ::Asterism.connect(@locator, node: @id, app: APP)
       ::Asterism.expose("rt", RtProbeApp::Probe.new(self), methods: { stats: 0 })
-      @zs.close if @zs
-      @zs = Asterism::Zenoh::Session.open(@locator)
+      @zs = ::Asterism.session # Asterism's: closed with Asterism.close
       @sub = @zs.subscribe("asterism/*/#{APP}/rt/pos", depth: 64)
       @net = :up
     rescue ::Asterism::Error => e
@@ -227,11 +221,7 @@ class RtProbeApp < FmrbApp
     Log.info("rt_probe: lost: #{why}")
     @net = :down
     @retry_at = Machine.board_millis + 3000
-    begin
-      @zs.close if @zs
-    rescue
-    end
-    @zs = nil
+    @zs = nil # Asterism.close closes it, with @sub
     @sub = nil
     begin
       ::Asterism.close
@@ -501,17 +491,11 @@ class RtProbeApp < FmrbApp
     if @net == :up
       t0 = Machine.board_millis
       begin
-        ok = true
-        if t0 - @ast_at >= OBJ_POLL_MS
-          @ast_at = t0
-          ok = ::Asterism.poll
-        end
+        ok = ::Asterism.poll # the session (the stream too), calls, liveliness
         t1 = Machine.board_millis
         @w_ast_sum += t1 - t0
         if !ok
           lost("asterism: #{::Asterism.lost_reason}")
-        elsif !@zs.poll
-          lost("zenoh closed")
         else
           now = Machine.board_millis
           @w_zs_sum += now - t1
@@ -545,7 +529,6 @@ class RtProbeApp < FmrbApp
   end
 
   def on_destroy
-    @zs.close if @zs
     ::Asterism.close
     Log.info("rt_probe: closed")
   rescue => e
