@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No Referer path or query: the page may be opened with ?zenoh_pass= (main.js). -->
+<meta name="referrer" content="strict-origin">
 <title>Family mruby Web Studio</title>
 <style>
   :root { color-scheme: dark; }
@@ -229,6 +231,44 @@
     <li>Desktop Chrome and Firefox are the target. Safari is untested.</li>
   </ul>
 </details>
+<script>
+  // The router door's pass (doc/ruby_asterism, G1): #zenoh_pass=<pass> in the
+  // fragment (never sent to the server that serves this page), or the older
+  // ?zenoh_pass=. Read before anything else runs, taken out of the address
+  // bar at once (the history entry is replaced) and kept only in memory for
+  // main.js, which hands it to the WebSocket link (wss:// only). On a first
+  // visit coi-serviceworker reloads the page to become cross-origin isolated;
+  // that reload alone gets the pass back in the fragment, so it is not lost.
+  (function () {
+    var pass = '';
+    function keep(part) {
+      return part.split('&').filter(function (kv) {
+        if (kv.indexOf('zenoh_pass=') === 0) {
+          if (!pass) {
+            try { pass = decodeURIComponent(kv.slice(11).replace(/[+]/g, ' ')); } catch (e) { pass = ''; }
+          }
+          return false;
+        }
+        return kv !== '';
+      }).join('&');
+    }
+    try {
+      var q = keep(location.search.replace(/^[?]/, ''));
+      var h = keep(location.hash.replace(/^#/, ''));
+      if (!pass) return;
+      var bare = location.pathname + (q ? '?' + q : '') + (h ? '#' + h : '');
+      history.replaceState(history.state, '', bare);
+      window.FMRB_ZENOH_PASS = pass;
+      window.coi = window.coi || {};
+      window.coi.doReload = function () {
+        history.replaceState(history.state, '', bare + (h ? '&' : '#') + 'zenoh_pass=' + encodeURIComponent(pass));
+        location.reload();
+      };
+    } catch (e) {
+      // Without the History API the page keeps the URL as it came.
+    }
+  })();
+</script>
 <script src="vendor/coi-serviceworker.js"></script>
 <script src="../../tool/web/remote/keymap.js"></script>
 <script>

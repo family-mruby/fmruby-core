@@ -7,6 +7,15 @@
 // memory, so the page needs cross-origin isolation (rake wasm:serve).
 'use strict';
 
+// The router door's pass (doc/ruby_asterism, G1), read from the URL
+// (#zenoh_pass=, or the older ?zenoh_pass=) and taken out of the address bar
+// by the first script of index.html, before anything else runs. Kept only
+// here and in the module object for the WebSocket link
+// (wasm/zenoh/zp_ws_emscripten.c adds it to wss:// URLs, never to ws://): it
+// is not stored, not written into system_conf.toml and not logged.
+const ZENOH_PASS = String(window.FMRB_ZENOH_PASS || '');
+try { delete window.FMRB_ZENOH_PASS; } catch (e) { window.FMRB_ZENOH_PASS = undefined; }
+
 const canvas = document.getElementById('screen');
 const screenBox = document.getElementById('screen-box');
 const ctx = canvas.getContext('2d');
@@ -534,6 +543,9 @@ moduleConfig.arguments = [];
   // settings, so it wins over the Network panel's router.
   const zenoh = urlZenoh();
   if (zenoh) moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
+  // The pass goes to the link through the module object, never as an
+  // argument (arguments end up in the machine's settings).
+  if (ZENOH_PASS) moduleConfig.zenohPass = ZENOH_PASS;
 }
 // Everything the page wants to do before main() goes in here, in order.
 moduleConfig.preRun = [];
@@ -701,6 +713,9 @@ if (routerInput) {
   routerInput.value = storedRouter();
   if (urlZenoh() && routerNote) {
     routerNote.textContent = 'this visit: ' + urlZenoh() + ' (from the URL)';
+  }
+  if (ZENOH_PASS && routerNote) {
+    routerNote.textContent += '; pass: set for this visit (not kept, sent on wss:// only)';
   }
   routerInput.addEventListener('change', () => {
     const v = routerInput.value.trim();
