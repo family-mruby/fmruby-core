@@ -17,16 +17,16 @@
 #   /home/asterism_profile.toml for every application of the machine); F2 or
 #   the name button in the lobby changes it (Japanese through kana input),
 #   Enter saves, Esc leaves it. Without one, the node ID stands for it.
-# - The object's methods (every caller passes its own node ID first, since
-#   Asterism does not tell who called):
+# - The object's methods (who called comes from the call itself,
+#   Asterism.current_call.from: protocol 1 has the caller's ID in the key):
 #     info                              -> {"name", "status", "opponent"}
-#     invite(from, name, gid)           -> "asked" | "busy"
-#     answer(from, gid, accept, your_color, name) -> true | false
+#     invite(name, gid)                 -> "asked" | "busy"
+#     answer(gid, accept, your_color, name) -> true | false
 #                                          (true: the inviter started the game)
-#     cancel(from, gid)                 -> true | false
-#     move(from, gid, n, x, y)          -> "ok" | the reason it was refused
+#     cancel(gid)                       -> true | false
+#     move(gid, n, x, y)                -> "ok" | the reason it was refused
 #                                          (x = -1: a pass; n = moves so far)
-#     resign(from, gid)                 -> true | false
+#     resign(gid)                       -> true | false
 #     state                             -> Hash (the same as the put)
 # - Both sides keep the board and check every move they receive: the right
 #   game, the right player, its turn, the move number and a legal square. A
@@ -270,24 +270,30 @@ class OthelloApp < FmrbApp
       @app.r_info
     end
 
-    def invite(from, name, gid)
-      @app.r_invite(from.to_s, name.to_s, gid.to_s)
+    def invite(name, gid)
+      @app.r_invite(caller_id, name.to_s, gid.to_s)
     end
 
-    def answer(from, gid, accept, your_color, name)
-      @app.r_answer(from.to_s, gid.to_s, accept ? true : false, your_color.to_s, name.to_s)
+    def answer(gid, accept, your_color, name)
+      @app.r_answer(caller_id, gid.to_s, accept ? true : false, your_color.to_s, name.to_s)
     end
 
-    def cancel(from, gid)
-      @app.r_cancel(from.to_s, gid.to_s)
+    def cancel(gid)
+      @app.r_cancel(caller_id, gid.to_s)
     end
 
-    def move(from, gid, n, x, y)
-      @app.r_move(from.to_s, gid.to_s, n.to_i, x.to_i, y.to_i)
+    def move(gid, n, x, y)
+      @app.r_move(caller_id, gid.to_s, n.to_i, x.to_i, y.to_i)
     end
 
-    def resign(from, gid)
-      @app.r_resign(from.to_s, gid.to_s)
+    def resign(gid)
+      @app.r_resign(caller_id, gid.to_s)
+    end
+
+    # The calling node's ID, from the call being answered.
+    def caller_id
+      c = ::Asterism.current_call
+      c ? c.from.to_s : ""
     end
 
     def state
@@ -434,7 +440,7 @@ class OthelloApp < FmrbApp
       ::Asterism.close
       ::Asterism.connect(@locator, node: @id, app: APP)
       ::Asterism.expose(OBJ, OthelloApp::Remote.new(self),
-                        methods: { info: 0, invite: 3, answer: 5, cancel: 2, move: 5, resign: 2, state: 0 }) unless @small
+                        methods: { info: 0, invite: 2, answer: 4, cancel: 1, move: 4, resign: 1, state: 0 }) unless @small
       ::Asterism.on_join { |n| @scan = true }
       ::Asterism.on_leave { |n| @scan = true }
       @zs = ::Asterism.session # Asterism's: closed with Asterism.close
@@ -680,8 +686,7 @@ class OthelloApp < FmrbApp
     end
     n = g.n
     gid = @gid
-    id = @id
-    @move_f = [OthelloGame.code(x, y), x, y, othello(@opp).move(id, gid, n, x, y)]
+    @move_f = [OthelloGame.code(x, y), x, y, othello(@opp).move(gid, n, x, y)]
     @note = "送っています: #{OthelloGame.code(x, y)}"
     @dirty = true
   rescue ::Asterism::Error => e
@@ -879,10 +884,9 @@ class OthelloApp < FmrbApp
     return if @inv_out || @inv_in || @peers.empty? || @net != :up
     to = @peers[@sel]
     gid = "#{@id}-#{Machine.board_millis}"
-    id = @id
     name = my_name
     @inv_out = [to, gid, Machine.board_millis]
-    @inv_out_f = othello(to).invite(id, name, gid)
+    @inv_out_f = othello(to).invite(name, gid)
     @note = ""
     @dirty = true
   rescue ::Asterism::Error => e
@@ -913,8 +917,7 @@ class OthelloApp < FmrbApp
     @inv_out = nil
     @inv_out_f = nil
     gid = o[1]
-    id = @id
-    send_misc(o[0]) { |p| p.cancel(id, gid) }
+    send_misc(o[0]) { |p| p.cancel(gid) }
     @note = "誘いを取り消した"
     @dirty = true
   end
@@ -924,16 +927,15 @@ class OthelloApp < FmrbApp
     return unless i && @answer_f.nil?
     @inv_in = nil
     gid = i[2]
-    id = @id
     name = my_name
     if accept
       # The invited side draws the colours.
       mine = (Machine.board_millis / 7) % 2 == 0 ? 1 : 2
       theirs = color_name(3 - mine)
-      @answer_f = [gid, i[0], i[1], mine, othello(i[0]).answer(id, gid, true, theirs, name)]
+      @answer_f = [gid, i[0], i[1], mine, othello(i[0]).answer(gid, true, theirs, name)]
       @note = "始めています..."
     else
-      send_misc(i[0]) { |p| p.answer(id, gid, false, "", name) }
+      send_misc(i[0]) { |p| p.answer(gid, false, "", name) }
       @note = "断った"
     end
     @dirty = true
@@ -981,8 +983,7 @@ class OthelloApp < FmrbApp
   def resign
     return unless @g && !@g.over
     gid = @gid
-    id = @id
-    send_misc(@opp) { |p| p.resign(id, gid) } if @net == :up
+    send_misc(@opp) { |p| p.resign(gid) } if @net == :up
     finish("#{color_name(@my)} resigned", "投了した。あなたの負け")
   end
 
