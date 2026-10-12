@@ -14,6 +14,7 @@
  */
 
 #include "display_backend.h"
+#include "board_display.h"
 
 #include "fmrb_log.h"
 #include "fmrb_attr.h"
@@ -43,7 +44,7 @@ static bool cpu_has_panel(LGFX_Device *lcd)
 
 static void cpu_first_frame(void)
 {
-    LGFX_Device *lcd = display_local_lcd();
+    LGFX_Device *lcd = board_display_lcd();
     if (!cpu_has_panel(lcd)) return;
     lcd->fillScreen(0);
 }
@@ -57,7 +58,7 @@ static void cpu_present(LGFX_Sprite *fb, size_t fb_size)
 {
     (void)fb_size;
 
-    LGFX_Device *lcd = display_local_lcd();
+    LGFX_Device *lcd = board_display_lcd();
     if (!cpu_has_panel(lcd)) return;
     const int fb_w = fb->width();
     const int fb_h = fb->height();
@@ -87,7 +88,7 @@ static void cpu_present_patch(const uint16_t *block, int x0, int y0, int w, int 
                            DISPLAY_PATCH_MAX_H * DISPLAY_MAX_SCALE];
     if (w > DISPLAY_PATCH_MAX_W || h > DISPLAY_PATCH_MAX_H) return;
 
-    LGFX_Device *lcd = display_local_lcd();
+    LGFX_Device *lcd = board_display_lcd();
     if (!cpu_has_panel(lcd)) return;
     const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
     if (scale > DISPLAY_MAX_SCALE) return;

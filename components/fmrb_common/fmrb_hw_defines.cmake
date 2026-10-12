@@ -110,3 +110,22 @@ function(fmrb_hw_has_local_display out_var)
         set(${out_var} FALSE PARENT_SCOPE)
     endif()
 endfunction()
+
+# The board display interface implementation (main/drivers/display_local/
+# board/<name>/, see board_display.h there) for a firmware that composites
+# its own screen: tab5, naryav4 or atoms3r. Empty when the screen belongs to
+# a child chip (Retro) or there is no local display. The browser build uses
+# board/none and says so in wasm/CMakeLists.txt.
+function(fmrb_hw_board_display out_var)
+    if(IDF_TARGET STREQUAL "esp32p4")
+        if(FMRB_HW_TARGET STREQUAL "NARYAv4")
+            set(${out_var} "naryav4" PARENT_SCOPE)
+        else()
+            set(${out_var} "tab5" PARENT_SCOPE)
+        endif()
+    elseif(IDF_TARGET STREQUAL "esp32s3" AND FMRB_HW_TARGET STREQUAL "ATOMS3R")
+        set(${out_var} "atoms3r" PARENT_SCOPE)
+    else()
+        set(${out_var} "" PARENT_SCOPE)
+    endif()
+endfunction()

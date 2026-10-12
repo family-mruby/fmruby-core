@@ -1,4 +1,7 @@
-// Family mruby Modern (ESP32-P4 / M5Stack Tab5) display task.
+// The local display task: the firmware composites and drives its own screen
+// (the P4 boards, the AtomS3R, and the browser build), instead of shipping
+// draw commands to a child chip as Retro does. What differs per board lives
+// behind the board display interface (board/board_display.h).
 //
 // Receives msgpack-encoded GFX/CONTROL commands from the hal_link_local TX
 // buffer, dispatches them, and sends ACK responses via the RX buffer.
@@ -13,19 +16,8 @@
 #include "display_local_sprite.h"
 #include "display_local_video.h"
 #include "flash_flicker_probe.h"
-// Which screen this build drives. DISPLAY_LOCAL_NO_PANEL: none -- the canvases
-// and the compositor run, but nothing is ever put on glass (the browser,
-// which reads the composited frame itself).
-#if defined(FMRB_PLATFORM_WASM)
-#define DISPLAY_LOCAL_NO_PANEL 1
-#include <M5GFX.h>
-#elif defined(FMRB_HW_ATOMS3R)
-#include "lgfx_atoms3r.hpp"
-#elif defined(FMRB_HW_NARYAV4)
-#include "lgfx_naryav4.hpp"
-#else
-#include "lgfx_tab5.hpp"
-#endif
+// The board this build drives: its device, its bring-up and its I2C bus.
+#include "board_display.h"
 #include "fonts/misaki/lgfx_misaki_fonts.hpp"
 #include "../audio_p4/audio_p4.h"
 
@@ -40,10 +32,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#ifndef FMRB_PLATFORM_WASM
-#include "driver/i2c_master.h"
-#include "driver/gpio.h"
-#endif
 #ifdef FMRB_HAS_PPA
 #include "driver/ppa.h"
 #endif
@@ -100,64 +88,20 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
     return buf;
 }
 
-#if defined(FMRB_HW_TAB5)
-// Tab5 board pins / I2C (see fmrb_pin_assign.h; kept local to the driver).
-#define TAB5_I2C_PORT   I2C_NUM_1
-#define TAB5_I2C_SDA    GPIO_NUM_31
-#define TAB5_I2C_SCL    GPIO_NUM_32
-#define TAB5_TP_INT     GPIO_NUM_23
-#define ST_TOUCH_ADDR   0x55   // ST7121/ST7123 integrated touch controller
-#define GT911_TOUCH_ADDR 0x14  // GT911 touch (ILI9881C units), TP INT high at reset
-#define PI4IO1_ADDR     0x43   // PI4IO GPIO expander #1 (LCD/touch reset)
-#define PI4IO2_ADDR     0x44   // PI4IO GPIO expander #2 (power rails)
-
-// PI4IO #1 runtime bits: P1 = speaker amp enable, P7 = headphone detect
-#define PI4IO_REG_OUT_SET   0x05
-#define PI4IO_REG_IN_STA    0x0F
-#define PI4IO_BIT_SPK_EN    (1 << 1)
-#define PI4IO_BIT_HP_DETECT (1 << 7)
-#define PI4IO_I2C_FREQ      400000
-#endif /* FMRB_HW_TAB5 */
-
-#if defined(DISPLAY_LOCAL_NO_PANEL)
-// Sprite parent only: no panel behind it, and nothing here may draw on it.
-static lgfx::LGFX_Device g_lcd;
-#elif defined(FMRB_HW_ATOMS3R)
-static LGFX_AtomS3R g_lcd;
-#elif defined(FMRB_HW_NARYAV4)
-static LGFX_Naryav4 g_lcd;
-#else
-static LGFX_Tab5 g_lcd;
-#endif
+// The board's LovyanGFX device (board/board_display.h). Everything in this
+// file draws through it the same way on every board; what kind of panel is
+// behind it, how it was powered up and which way round it is mounted are the
+// board's business. Asked for on every use rather than kept in a variable:
+// a pointer here would be 4 bytes of internal RAM for an address that never
+// changes.
+static inline lgfx::LGFX_Device &lcd(void) { return *board_display_lcd(); }
 static volatile bool g_lcd_ready = false;
 
-// The panel is Tab5 hardware, not PPA hardware: both output backends drive the
-// same one, and so do the parts of this file that draw straight to it (the boot
-// screen, the canvas sprites). Hence it stays here and the backends ask for it.
-// The same goes for the power-on sequence, the I2C service and headphone
-// detection further down -- putting those behind the output interface would
-// leave the CPU backend with no lit panel to draw on.
-LGFX_Device *display_local_lcd(void) { return &g_lcd; }
-#if defined(DISPLAY_LOCAL_NO_PANEL) || !defined(FMRB_HW_MODERN)
-// No panel, or an SPI panel that keeps its frame in the controller.
-void *display_local_panel_framebuffer(void) { return NULL; }
-#else
-void *display_local_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
-#endif
-
-#if defined(FMRB_HW_NARYAV4) && !defined(FMRB_PLATFORM_WASM)
-// The board's one I2C bus, created by the display because the HDMI bridge is
-// the first thing on it that has to answer. Everything else on the bus (the
-// codec, mruby app transactions) borrows the handle through the service
-// further down rather than making a second bus on the same pins.
-static i2c_master_bus_handle_t g_naryav4_i2c = nullptr;
-#endif
-
-// Serializes every runtime access to the shared I2C controller (GT911
-// touch reads, PI4IO, ES8388, mruby-app transactions). LovyanGFX drives
-// this controller at register level, so all runtime traffic must go
-// through lgfx's I2C path AND be mutually excluded; this mutex is the
-// single gate (see doc/reference/tab5_i2c_bus_notes.md).
+// Serializes every runtime access to the I2C bus the display side owns
+// (Tab5: GT911 touch reads, PI4IO, ES8388, mruby-app transactions). On the
+// boards where LovyanGFX drives that controller at register level, all
+// runtime traffic must go through lgfx's I2C path AND be mutually excluded;
+// this mutex is the single gate (see doc/reference/tab5_i2c_bus_notes.md).
 static SemaphoreHandle_t g_i2c_mutex = NULL;
 
 // Receive buffer for local link commands. PSRAM: the link hands messages over
@@ -405,7 +349,7 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
         return nullptr;
     }
 
-    auto *sprite = new LGFX_Sprite(&g_lcd);
+    auto *sprite = new LGFX_Sprite(&lcd());
     // Depth must be set BEFORE setBuffer: LGFX_Sprite::setColorDepth() on a
     // sprite that already has a buffer deletes it and reallocates internally
     // (leaking the aligned PPA buffer and moving pixels to internal RAM).
@@ -424,7 +368,7 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
         heap_caps_free(buf);
         return nullptr;
     }
-    auto *rsprite = new LGFX_Sprite(&g_lcd);
+    auto *rsprite = new LGFX_Sprite(&lcd());
     set_ppa_native_depth(rsprite);
     rsprite->setBuffer(rbuf, width, height);
     rsprite->clear(0);   // nothing committed until the first present
@@ -705,7 +649,7 @@ static volatile bool g_cap_enabled = false;
 #define CURSOR_TRANSPARENT 0xFF00FF
 
 static void cursor_init(void) {
-    g_cursor_sprite = new LGFX_Sprite(&g_lcd);
+    g_cursor_sprite = new LGFX_Sprite(&lcd());
     set_ppa_native_depth(g_cursor_sprite);
     g_cursor_sprite->setPsram(false);
     g_cursor_sprite->createSprite(16, 16);
@@ -864,7 +808,7 @@ static void framebuffer_restore_cursor(const uint16_t *save,
 
 // ============================================================
 // Render frame: composite all visible canvases + sprite instances
-// into the shared framebuffer, then push to g_lcd scaled (3x, or 2x in the
+// into the shared framebuffer, then push to the panel scaled (3x, or 2x in the
 // high-resolution mode, where only the owner canvas is composited).
 //
 // Canvas sprites are NOT modified — sprite instances are composited
@@ -1128,7 +1072,7 @@ static bool screen_mode_ensure_hires_fb(void) {
                   DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
         return false;
     }
-    auto *fb = new LGFX_Sprite(&g_lcd);
+    auto *fb = new LGFX_Sprite(&lcd());
     // Depth must be set BEFORE setBuffer (see canvas_alloc)
     set_ppa_native_depth(fb);
     fb->setBuffer(buf, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
@@ -1362,173 +1306,6 @@ static bool screen_mode_owner_showable(void) {
     return c && c->is_visible && c->committed_fresh &&
            c->width == g_framebuffer->width() && c->height == g_framebuffer->height();
 }
-
-#if defined(FMRB_HW_TAB5)
-// ============================================================
-// PI4IO I2C helper
-// ============================================================
-
-static inline void pi4io_write(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t val) {
-    uint8_t buf[2] = { reg, val };
-    i2c_master_transmit(dev, buf, sizeof(buf), 100);
-}
-
-// ============================================================
-// Power/reset sequence for the Tab5 panel + touch.
-// ============================================================
-
-// Determine which panel/touch combination this Tab5 carries, following
-// M5GFX's Tab5 detection (managed_components/m5stack__m5gfx/src/M5GFX.cpp).
-// The touch controller answers before the DSI link is up, so the variant is
-// decided over I2C: the ST7123 touch block (0x55) reports a firmware version
-// that tells ST7121 (1) from ST7123 (3), and a GT911 at 0x14 means this is an
-// ILI9881C unit. ST7121 and ST7123 differ in DSI lane rate, so the DSI ID
-// cannot safely tell them apart -- the touch probe has to come first. The
-// model number on the rear label does not decide this either: a unit labelled
-// ST7123 was measured reporting touch firmware version 1, i.e. ST7121.
-//
-// The ST touch block needs a few tens of ms after reset before it answers
-// (~50 ms measured by M5GFX), so keep polling until one of the two chips
-// responds rather than probing once.
-//
-// Called with the IDF i2c_master bus still owned by tab5_power_on(), after
-// the LCD/touch resets have been released.
-static Tab5PanelVariant tab5_probe_panel(i2c_master_bus_handle_t bus) {
-    i2c_device_config_t dev_cfg = {};
-    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev_cfg.scl_speed_hz = 100000;
-    dev_cfg.device_address = ST_TOUCH_ADDR;
-    i2c_master_dev_handle_t st = NULL;
-    if (i2c_master_bus_add_device(bus, &dev_cfg, &st) != ESP_OK) {
-        FMRB_LOGW(TAG, "panel probe: i2c device add failed, assuming ILI9881C");
-        return Tab5PanelVariant::ILI9881C;
-    }
-
-    // A NACK is the normal answer here (only one of the two chips exists),
-    // and the IDF driver logs every one of them at error level. Quiet it for
-    // the duration of the probe.
-    fmrb_log_level_set("i2c.master", FMRB_LOG_NONE);
-
-    Tab5PanelVariant variant = Tab5PanelVariant::ILI9881C;
-    bool decided = false;
-    bool st_answered = false;
-    int last_logged_fw = -1;
-
-    for (int i = 0; i < 60 && !decided; ++i) {
-        // ST7123 touch firmware version register (0x0000), 16-bit register
-        // address, one byte back.
-        const uint8_t fw_reg[2] = { 0x00, 0x00 };
-        uint8_t fw = 0;
-        if (i2c_master_transmit_receive(st, fw_reg, sizeof(fw_reg), &fw, 1, 100) == ESP_OK) {
-            st_answered = true;
-            if (fw != last_logged_fw) {  // do not repeat the log while retrying
-                last_logged_fw = fw;
-                FMRB_LOGI(TAG, "panel probe: ST touch FW version %02x", fw);
-            }
-            if (fw == 1) {
-                variant = Tab5PanelVariant::ST7121;
-                decided = true;
-            } else if (fw == 3) {
-                variant = Tab5PanelVariant::ST7123;
-                decided = true;
-            }
-        } else if (i2c_master_probe(bus, GT911_TOUCH_ADDR, 50) == ESP_OK) {
-            // Address ACK only: reading a GT911 here would advance its
-            // internal pointer.
-            variant = Tab5PanelVariant::ILI9881C;
-            decided = true;
-        }
-        if (!decided) vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    i2c_master_bus_rm_device(st);
-    fmrb_log_level_set("i2c.master", FMRB_LOG_ERROR);
-
-    if (!decided) {
-        if (st_answered) {
-            // An ST touch block with a firmware version we do not know about.
-            // ST7123 is the current production part, so prefer it.
-            FMRB_LOGW(TAG, "panel probe: unknown ST touch FW %02x, assuming ST7123",
-                      last_logged_fw);
-            variant = Tab5PanelVariant::ST7123;
-        } else {
-            // Neither chip answered. ILI9881C is the configuration this
-            // firmware has always shipped with, so fall back to it.
-            FMRB_LOGW(TAG, "panel probe: no touch controller answered, assuming ILI9881C");
-        }
-    }
-
-    FMRB_LOGI(TAG, "panel probe: %s",
-              variant == Tab5PanelVariant::ST7123 ? "ST7123 (display+touch)"
-            : variant == Tab5PanelVariant::ST7121 ? "ST7121 + ST7123 touch"
-                                                  : "ILI9881C + GT911 touch");
-    return variant;
-}
-
-static Tab5PanelVariant tab5_power_on(void) {
-    // TP INT high during reset selects GT911 touch I2C address 0x14 (the
-    // ST7123 touch block ignores it and always answers at 0x55).
-    gpio_config_t int_cfg = {};
-    int_cfg.pin_bit_mask = 1ULL << TAB5_TP_INT;
-    int_cfg.mode = GPIO_MODE_OUTPUT;
-    gpio_config(&int_cfg);
-    gpio_set_level(TAB5_TP_INT, 1);
-
-    i2c_master_bus_config_t bus_cfg = {};
-    bus_cfg.i2c_port = TAB5_I2C_PORT;
-    bus_cfg.sda_io_num = TAB5_I2C_SDA;
-    bus_cfg.scl_io_num = TAB5_I2C_SCL;
-    bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
-    bus_cfg.glitch_ignore_cnt = 7;
-    bus_cfg.flags.enable_internal_pullup = true;
-
-    i2c_master_bus_handle_t bus = NULL;
-    if (i2c_new_master_bus(&bus_cfg, &bus) != ESP_OK) {
-        FMRB_LOGE(TAG, "PI4IO i2c bus init failed");
-        return Tab5PanelVariant::ILI9881C;
-    }
-
-    i2c_device_config_t dev_cfg = {};
-    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev_cfg.scl_speed_hz = 100000;
-    i2c_master_dev_handle_t io1 = NULL, io2 = NULL;
-    dev_cfg.device_address = PI4IO1_ADDR;
-    i2c_master_bus_add_device(bus, &dev_cfg, &io1);
-    dev_cfg.device_address = PI4IO2_ADDR;
-    i2c_master_bus_add_device(bus, &dev_cfg, &io2);
-
-    // PI4IO #1: directions/pulls, resets driven LOW
-    pi4io_write(io1, 0x03, 0x7F);
-    pi4io_write(io1, 0x05, 0x46);
-    pi4io_write(io1, 0x07, 0x00);
-    pi4io_write(io1, 0x0D, 0x7F);
-    pi4io_write(io1, 0x0B, 0x7F);
-    // PI4IO #2: power rails / IO config
-    pi4io_write(io2, 0x03, 0xB9);
-    pi4io_write(io2, 0x07, 0x06);
-    pi4io_write(io2, 0x0D, 0xB9);
-    pi4io_write(io2, 0x0B, 0xF9);
-    pi4io_write(io2, 0x09, 0x40);
-    pi4io_write(io2, 0x11, 0xBF);
-    pi4io_write(io2, 0x05, 0x89);
-
-    vTaskDelay(pdMS_TO_TICKS(10));
-    pi4io_write(io1, 0x05, 0x76);  // release LCD + touch resets
-
-    gpio_set_direction(TAB5_TP_INT, GPIO_MODE_INPUT);
-    vTaskDelay(pdMS_TO_TICKS(100));
-
-    // Identify the panel while this bus is still ours; lgfx takes the port
-    // over once the devices below are removed.
-    Tab5PanelVariant variant = tab5_probe_panel(bus);
-
-    i2c_master_bus_rm_device(io1);
-    i2c_master_bus_rm_device(io2);
-    i2c_del_master_bus(bus);
-    // Backlight: LEDC PWM via Light_PWM in LGFX_Tab5 (GPIO22, ch7, 44100Hz).
-    return variant;
-}
-#endif /* FMRB_HW_TAB5 */
 
 // ============================================================
 // ACK response sender
@@ -3000,7 +2777,7 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                     FMRB_LOGE(TAG, "Framebuffer alloc failed: %dx%d",
                               g_display_width, g_display_height);
                 } else {
-                    g_framebuffer = new LGFX_Sprite(&g_lcd);
+                    g_framebuffer = new LGFX_Sprite(&lcd());
                     // Depth must be set BEFORE setBuffer (see canvas_alloc)
                     set_ppa_native_depth(g_framebuffer);
                     g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height);
@@ -3139,32 +2916,32 @@ static void ppa_verification_test(void) {
         FMRB_LOGI(TAG, "WHT: swap=%04X native=%04X", buf_swap[0], buf_native[0]);
 
         // pushImage test: display both side by side on LCD
-        g_lcd.fillScreen(0);
-        g_lcd.setTextSize(2);
-        g_lcd.setTextColor(0xFFFF);
+        lcd().fillScreen(0);
+        lcd().setTextSize(2);
+        lcd().setTextColor(0xFFFF);
 
         // Test pushImage with swap565_t (as LCD expects)
         spr_swap->fillScreen(spr_swap->color888(255, 0, 0));
-        g_lcd.pushImage(20, 20, 4, 4, (lgfx::swap565_t *)buf_swap);
-        g_lcd.setCursor(20, 30);
-        g_lcd.print("swap pushImage(swap565)");
+        lcd().pushImage(20, 20, 4, 4, (lgfx::swap565_t *)buf_swap);
+        lcd().setCursor(20, 30);
+        lcd().print("swap pushImage(swap565)");
 
         // Test pushImage with rgb565_t
         spr_native->fillScreen(spr_native->color888(255, 0, 0));
-        g_lcd.pushImage(20, 60, 4, 4, (lgfx::rgb565_t *)buf_native);
-        g_lcd.setCursor(20, 70);
-        g_lcd.print("native pushImage(rgb565)");
+        lcd().pushImage(20, 60, 4, 4, (lgfx::rgb565_t *)buf_native);
+        lcd().setCursor(20, 70);
+        lcd().print("native pushImage(rgb565)");
 
         // Test pushSprite for both
         spr_swap->fillScreen(spr_swap->color888(0, 255, 0));
-        spr_swap->pushSprite(&g_lcd, 20, 100);
-        g_lcd.setCursor(20, 110);
-        g_lcd.print("swap pushSprite GREEN");
+        spr_swap->pushSprite(&lcd(), 20, 100);
+        lcd().setCursor(20, 110);
+        lcd().print("swap pushSprite GREEN");
 
         spr_native->fillScreen(spr_native->color888(0, 255, 0));
-        spr_native->pushSprite(&g_lcd, 20, 140);
-        g_lcd.setCursor(20, 150);
-        g_lcd.print("native pushSprite GREEN");
+        spr_native->pushSprite(&lcd(), 20, 140);
+        lcd().setCursor(20, 150);
+        lcd().print("native pushSprite GREEN");
 
         // Cleanup
         spr_swap->deleteSprite(); delete spr_swap;
@@ -3183,9 +2960,9 @@ static void ppa_verification_test(void) {
         FMRB_LOGI(TAG, "PPA SRM register: %d", err);
 
         if (err == ESP_OK) {
-            g_lcd.fillScreen(0);
-            g_lcd.setTextSize(2);
-            g_lcd.setTextColor(0xFFFF);
+            lcd().fillScreen(0);
+            lcd().setTextSize(2);
+            lcd().setTextColor(0xFFFF);
 
             // Test with rgb565_nonswapped input
             size_t in_aligned = 0, out_aligned = 0;
@@ -3230,11 +3007,11 @@ static void ppa_verification_test(void) {
                           in16[0], out16[0], in16[0] == out16[0] ? "YES" : "NO");
 
                 // Display with pushImage as rgb565_t
-                g_lcd.pushImage(20, 20, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
-                g_lcd.setCursor(20 + SZ * 3 + 10, 20);
-                g_lcd.print("SRM bs=0");
-                g_lcd.setCursor(20 + SZ * 3 + 10, 40);
-                g_lcd.printf("in=%04X out=%04X", in16[0], out16[0]);
+                lcd().pushImage(20, 20, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
+                lcd().setCursor(20 + SZ * 3 + 10, 20);
+                lcd().print("SRM bs=0");
+                lcd().setCursor(20 + SZ * 3 + 10, 40);
+                lcd().printf("in=%04X out=%04X", in16[0], out16[0]);
 
                 // Also try with byte_swap=true
                 memset(out_buf, 0, out_aligned);
@@ -3252,11 +3029,11 @@ static void ppa_verification_test(void) {
                           in16[0], out16[0],
                           in16[0] == __builtin_bswap16(out16[0]) ? "YES" : "NO");
 
-                g_lcd.pushImage(20, 140, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
-                g_lcd.setCursor(20 + SZ * 3 + 10, 140);
-                g_lcd.print("SRM bs=1");
-                g_lcd.setCursor(20 + SZ * 3 + 10, 160);
-                g_lcd.printf("in=%04X out=%04X", in16[0], out16[0]);
+                lcd().pushImage(20, 140, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
+                lcd().setCursor(20 + SZ * 3 + 10, 140);
+                lcd().print("SRM bs=1");
+                lcd().setCursor(20 + SZ * 3 + 10, 160);
+                lcd().printf("in=%04X out=%04X", in16[0], out16[0]);
 
                 // Also try rgb_swap
                 memset(out_buf, 0, out_aligned);
@@ -3269,11 +3046,11 @@ static void ppa_verification_test(void) {
                 FMRB_LOGI(TAG, "SRM (rgb_swap=true): %d, in=%04X -> out=%04X",
                           err, in16[0], out16[0]);
 
-                g_lcd.pushImage(20, 360, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
-                g_lcd.setCursor(20 + SZ * 3 + 10, 360);
-                g_lcd.print("SRM rgb_swap=1");
-                g_lcd.setCursor(20 + SZ * 3 + 10, 380);
-                g_lcd.printf("in=%04X out=%04X", in16[0], out16[0]);
+                lcd().pushImage(20, 360, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
+                lcd().setCursor(20 + SZ * 3 + 10, 360);
+                lcd().print("SRM rgb_swap=1");
+                lcd().setCursor(20 + SZ * 3 + 10, 380);
+                lcd().printf("in=%04X out=%04X", in16[0], out16[0]);
             }
 
             if (in_buf) heap_caps_free(in_buf);
@@ -3294,9 +3071,9 @@ static void ppa_verification_test(void) {
         FMRB_LOGI(TAG, "PPA Blend register: %d", err);
 
         if (err == ESP_OK) {
-            g_lcd.fillScreen(0);
-            g_lcd.setTextSize(2);
-            g_lcd.setTextColor(0xFFFF);
+            lcd().fillScreen(0);
+            lcd().setTextSize(2);
+            lcd().setTextColor(0xFFFF);
 
             size_t fg_aligned = 0, bg_aligned = 0;
             void *fg_buf = ppa_alloc_buffer(SZ * SZ * 2, &fg_aligned);
@@ -3356,13 +3133,13 @@ static void ppa_verification_test(void) {
                 hex_dump_16("Blend row0", bg16, 8);
                 hex_dump_16("Blend row16", &bg16[16 * SZ2], 24);
 
-                g_lcd.pushImage(20, 20, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
-                g_lcd.setCursor(20 + SZ2 + 10, 20);
-                g_lcd.print("Blend bs=0");
-                g_lcd.setCursor(20 + SZ2 + 10, 40);
-                g_lcd.printf("[0,0]=%04X", bg16[0]);
-                g_lcd.setCursor(20 + SZ2 + 10, 60);
-                g_lcd.printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
+                lcd().pushImage(20, 20, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
+                lcd().setCursor(20 + SZ2 + 10, 20);
+                lcd().print("Blend bs=0");
+                lcd().setCursor(20 + SZ2 + 10, 40);
+                lcd().printf("[0,0]=%04X", bg16[0]);
+                lcd().setCursor(20 + SZ2 + 10, 60);
+                lcd().printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
 
                 // Test B: reset BG, try byte_swap=true
                 for (int i = 0; i < SZ2 * SZ2; i++) bg16[i] = 0x001F;
@@ -3382,13 +3159,13 @@ static void ppa_verification_test(void) {
                           bg16[0], bg16[16 * SZ2 + 16]);
                 hex_dump_16("Blend bs=1 row16", &bg16[16 * SZ2], 24);
 
-                g_lcd.pushImage(20, 120, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
-                g_lcd.setCursor(20 + SZ2 + 10, 120);
-                g_lcd.print("Blend bs=1");
-                g_lcd.setCursor(20 + SZ2 + 10, 140);
-                g_lcd.printf("[0,0]=%04X", bg16[0]);
-                g_lcd.setCursor(20 + SZ2 + 10, 160);
-                g_lcd.printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
+                lcd().pushImage(20, 120, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
+                lcd().setCursor(20 + SZ2 + 10, 120);
+                lcd().print("Blend bs=1");
+                lcd().setCursor(20 + SZ2 + 10, 140);
+                lcd().printf("[0,0]=%04X", bg16[0]);
+                lcd().setCursor(20 + SZ2 + 10, 160);
+                lcd().printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
 
                 // Test C: input as swap565 (byte_swap=true to unswap for PPA)
                 // This simulates the original code path: sprites in swap565,
@@ -3410,18 +3187,18 @@ static void ppa_verification_test(void) {
                 FMRB_LOGI(TAG, "Blend out swap: bg[0,0]=%04X, bg[16,16]=%04X",
                           bg16[0], bg16[16 * SZ2 + 16]);
 
-                g_lcd.pushImage(20, 220, SZ2, SZ2, (lgfx::swap565_t *)bg_buf);
-                g_lcd.setCursor(20 + SZ2 + 10, 220);
-                g_lcd.print("swap565 in bs=1");
-                g_lcd.setCursor(20 + SZ2 + 10, 240);
-                g_lcd.printf("[0,0]=%04X", bg16[0]);
-                g_lcd.setCursor(20 + SZ2 + 10, 260);
-                g_lcd.printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
+                lcd().pushImage(20, 220, SZ2, SZ2, (lgfx::swap565_t *)bg_buf);
+                lcd().setCursor(20 + SZ2 + 10, 220);
+                lcd().print("swap565 in bs=1");
+                lcd().setCursor(20 + SZ2 + 10, 240);
+                lcd().printf("[0,0]=%04X", bg16[0]);
+                lcd().setCursor(20 + SZ2 + 10, 260);
+                lcd().printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
 
                 // pushImage as swap565_t for this test
-                g_lcd.pushImage(20, 320, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
-                g_lcd.setCursor(20 + SZ2 + 10, 320);
-                g_lcd.print("same as rgb565_t");
+                lcd().pushImage(20, 320, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
+                lcd().setCursor(20 + SZ2 + 10, 320);
+                lcd().print("same as rgb565_t");
             }
 
             if (fg_buf) heap_caps_free(fg_buf);
@@ -3443,9 +3220,9 @@ static void ppa_verification_test(void) {
         esp_err_t e2 = ppa_register_client(&scfg, &srm_client);
 
         if (e1 == ESP_OK && e2 == ESP_OK) {
-            g_lcd.fillScreen(0);
-            g_lcd.setTextSize(2);
-            g_lcd.setTextColor(0xFFFF);
+            lcd().fillScreen(0);
+            lcd().setTextSize(2);
+            lcd().setTextColor(0xFFFF);
 
             size_t fg_al = 0, fb_al = 0, out_al = 0;
             void *fg_buf = ppa_alloc_buffer(SZ * SZ * 2, &fg_al);
@@ -3517,9 +3294,9 @@ static void ppa_verification_test(void) {
                 uint16_t *out16 = (uint16_t *)out_buf;
                 FMRB_LOGI(TAG, "Pipeline A SRM: %d, out[0]=%04X", err, out16[0]);
 
-                g_lcd.pushImage(20, 20, SZ2 * 3, SZ2 * 3, (lgfx::rgb565_t *)out_buf);
-                g_lcd.setCursor(20 + SZ2 * 3 + 10, 20);
-                g_lcd.print("A: nonswap bs=0");
+                lcd().pushImage(20, 20, SZ2 * 3, SZ2 * 3, (lgfx::rgb565_t *)out_buf);
+                lcd().setCursor(20 + SZ2 * 3 + 10, 20);
+                lcd().print("A: nonswap bs=0");
 
                 // Pattern B: swap565, byte_swap=true (original approach)
                 for (int i = 0; i < SZ * SZ; i++) fg16[i] = 0x00F8; // red swap565
@@ -3545,9 +3322,9 @@ static void ppa_verification_test(void) {
 
                 FMRB_LOGI(TAG, "Pipeline B SRM: %d, out[0]=%04X", err, out16[0]);
 
-                g_lcd.pushImage(20, 240, SZ2 * 3, SZ2 * 3, (lgfx::swap565_t *)out_buf);
-                g_lcd.setCursor(20 + SZ2 * 3 + 10, 240);
-                g_lcd.print("B: swap bs=1");
+                lcd().pushImage(20, 240, SZ2 * 3, SZ2 * 3, (lgfx::swap565_t *)out_buf);
+                lcd().setCursor(20 + SZ2 * 3 + 10, 240);
+                lcd().print("B: swap bs=1");
             }
 
             if (fg_buf) heap_caps_free(fg_buf);
@@ -3566,14 +3343,16 @@ static void ppa_verification_test(void) {
 #endif // PPA_VERIFICATION_TEST
 
 // ============================================================
-// Shared I2C service (lgfx path, mutex-serialized).
+// Shared I2C service (mutex-serialized).
 //
-// The Tab5 internal bus (GPIO31/32) is driven by LovyanGFX at register
-// level, so any i2c_master-driver access on this controller is
-// corrupted once touch polling runs. Every runtime transaction must go
-// through lgfx's I2C helpers under g_i2c_mutex. These wrappers are the
-// only sanctioned entry points for other modules (audio volume,
-// hw_proxy mediation for mruby apps).
+// On a board where the display side owns an I2C bus (BOARD_DISPLAY_OWNS_I2C),
+// the board's own code reaches it in a way other drivers must not mix with:
+// LovyanGFX drives the controller at register level on the Tab5 (touch) and
+// the AtomS3R (backlight), so a raw i2c_master transaction would corrupt it.
+// These wrappers are the only sanctioned entry points for other modules
+// (audio volume, hw_proxy mediation for mruby apps): they check the
+// arguments, take g_i2c_mutex and call the board's primitive
+// (board_display_i2c_*).
 // ============================================================
 
 static bool i2c_service_lock(void) {
@@ -3585,7 +3364,10 @@ static void i2c_service_unlock(void) {
     xSemaphoreGive(g_i2c_mutex);
 }
 
-#if defined(DISPLAY_LOCAL_NO_PANEL)
+bool display_local_i2c_lock(void) { return i2c_service_lock(); }
+void display_local_i2c_unlock(void) { i2c_service_unlock(); }
+
+#if !BOARD_DISPLAY_OWNS_I2C
 // No I2C bus is held here; the exported service answers "not supported" so
 // any caller (audio volume, hw_proxy mediation) fails cleanly instead of
 // linking against nothing.
@@ -3604,43 +3386,12 @@ extern "C" fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
     (void)addr; (void)reg; (void)value; (void)freq;
     return FMRB_ERR_NOT_SUPPORTED;
 }
-extern "C" void display_local_poll_headphone(void) {}
-#elif defined(FMRB_HW_NARYAV4)
-// NARYA v4 has no touch controller, so LovyanGFX never drives this bus and the
-// mixing hazard the Tab5 works around does not exist here: every transaction
-// goes through the normal i2c_master driver on the bus the display created.
-// The mutex stays, because the callers are still several tasks.
-//
-// A device handle per transaction rather than a cache: the addresses are not
-// known in advance (an mruby app can talk to anything on the header), and at
-// this traffic level -- volume changes, occasional app I/O -- the add/remove
-// pair costs nothing worth keeping state for.
-static fmrb_err_t naryav4_i2c_xfer(uint8_t addr, const uint8_t *tx, size_t tx_len,
-                                   uint8_t *rx, size_t rx_len, uint32_t freq) {
-    if (!g_naryav4_i2c) return FMRB_ERR_INVALID_STATE;
-    i2c_device_config_t dev_cfg = {};
-    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev_cfg.device_address  = addr;
-    dev_cfg.scl_speed_hz    = freq ? freq : NARYAV4_I2C_FREQ;
-    i2c_master_dev_handle_t dev = NULL;
-    if (i2c_master_bus_add_device(g_naryav4_i2c, &dev_cfg, &dev) != ESP_OK) {
-        return FMRB_ERR_FAILED;
-    }
-    esp_err_t err;
-    if (rx && rx_len) {
-        err = i2c_master_transmit_receive(dev, tx, tx_len, rx, rx_len, 100);
-    } else {
-        err = i2c_master_transmit(dev, tx, tx_len, 100);
-    }
-    i2c_master_bus_rm_device(dev);
-    return err == ESP_OK ? FMRB_OK : FMRB_ERR_FAILED;
-}
-
+#else
 extern "C" fmrb_err_t display_local_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    fmrb_err_t res = naryav4_i2c_xfer(addr, data, len, NULL, 0, freq);
+    fmrb_err_t res = board_display_i2c_write(addr, data, len, freq);
     i2c_service_unlock();
     return res;
 }
@@ -3649,21 +3400,7 @@ extern "C" fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
                                           size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    fmrb_err_t res = FMRB_ERR_INVALID_STATE;
-    if (g_naryav4_i2c) {
-        i2c_device_config_t dev_cfg = {};
-        dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-        dev_cfg.device_address  = addr;
-        dev_cfg.scl_speed_hz    = freq ? freq : NARYAV4_I2C_FREQ;
-        i2c_master_dev_handle_t dev = NULL;
-        if (i2c_master_bus_add_device(g_naryav4_i2c, &dev_cfg, &dev) == ESP_OK) {
-            res = i2c_master_receive(dev, data, len, 100) == ESP_OK
-                ? FMRB_OK : FMRB_ERR_FAILED;
-            i2c_master_bus_rm_device(dev);
-        } else {
-            res = FMRB_ERR_FAILED;
-        }
-    }
+    fmrb_err_t res = board_display_i2c_read(addr, data, len, freq);
     i2c_service_unlock();
     return res;
 }
@@ -3671,106 +3408,17 @@ extern "C" fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
 extern "C" fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                                 uint8_t value, uint32_t freq) {
     if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    const uint8_t buf[2] = { reg, value };
-    fmrb_err_t res = naryav4_i2c_xfer(addr, buf, sizeof(buf), NULL, 0, freq);
+    fmrb_err_t res = board_display_i2c_write_reg8(addr, reg, value, freq);
     i2c_service_unlock();
     return res;
 }
+#endif /* BOARD_DISPLAY_OWNS_I2C */
 
-// No headphone jack detect on this board: the amplifier enable is a plain
-// GPIO and there is nothing to sense (P3 wires it up).
-extern "C" void display_local_poll_headphone(void) {}
-#else
-// Tab5 and AtomS3R: LovyanGFX drives the controller at register level (the
-// Tab5's touch panel, the AtomS3R's backlight driver), so every transaction
-// goes through lgfx's I2C helpers under g_i2c_mutex.
-#if defined(FMRB_HW_ATOMS3R)
-#define DISPLAY_LGFX_I2C_PORT ATOMS3R_I2C_PORT
-#else
-#define DISPLAY_LGFX_I2C_PORT TAB5_I2C_PORT
-#endif
-
-extern "C" fmrb_err_t display_local_i2c_write(uint8_t addr, const uint8_t *data,
-                                           size_t len, uint32_t freq) {
-    if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
-    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    auto res = lgfx::i2c::transactionWrite(DISPLAY_LGFX_I2C_PORT, addr, data,
-                                           (uint8_t)len, freq);
-    i2c_service_unlock();
-    return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
-}
-
-extern "C" fmrb_err_t display_local_i2c_read(uint8_t addr, uint8_t *data,
-                                          size_t len, uint32_t freq) {
-    if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
-    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    auto res = lgfx::i2c::transactionRead(DISPLAY_LGFX_I2C_PORT, addr, data,
-                                          (uint8_t)len, freq);
-    i2c_service_unlock();
-    return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
-}
-
-extern "C" fmrb_err_t display_local_i2c_write_reg8(uint8_t addr, uint8_t reg,
-                                                uint8_t value, uint32_t freq) {
-    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
-    auto res = lgfx::i2c::writeRegister8(DISPLAY_LGFX_I2C_PORT, addr, reg, value,
-                                         0, freq);
-    i2c_service_unlock();
-    return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
-}
-
-#if defined(FMRB_HW_ATOMS3R)
-// No headphone jack, no speaker.
-extern "C" void display_local_poll_headphone(void) {}
-#else
-// ============================================================
-// Headphone jack detect / speaker amp gating (PI4IO #1).
-//
-// display_local_poll_headphone() is called from the touch task loop; the
-// PI4IO transactions take g_i2c_mutex like every other bus user.
-// ============================================================
-
-static bool g_headphone_in = false;
-static int  g_hp_debounce = 0;
-
-// Caller must hold g_i2c_mutex (or be in the single-task init window).
-static void hp_apply_speaker(bool headphone_in) {
-    // RMW of OUT_SET through the lgfx path; other bits (LCD/TP/CAM
-    // resets, EXT5V) keep their state.
-    if (headphone_in) {
-        lgfx::i2c::bitOff(TAB5_I2C_PORT, PI4IO1_ADDR, PI4IO_REG_OUT_SET,
-                          PI4IO_BIT_SPK_EN, PI4IO_I2C_FREQ);
-    } else {
-        lgfx::i2c::bitOn(TAB5_I2C_PORT, PI4IO1_ADDR, PI4IO_REG_OUT_SET,
-                         PI4IO_BIT_SPK_EN, PI4IO_I2C_FREQ);
-    }
-    FMRB_LOGI(TAG, "Headphone %s: speaker %s",
-              headphone_in ? "plugged" : "removed",
-              headphone_in ? "muted" : "enabled");
-}
-
+// The Tab5's headphone jack (the only board with one) shares the bus; the
+// board code takes the lock itself.
 extern "C" void display_local_poll_headphone(void) {
-    if (!i2c_service_lock()) return;
-
-    auto res = lgfx::i2c::readRegister8(TAB5_I2C_PORT, PI4IO1_ADDR,
-                                        PI4IO_REG_IN_STA, PI4IO_I2C_FREQ);
-    if (res.has_error()) {
-        i2c_service_unlock();
-        return;
-    }
-    bool hp = (res.value() & PI4IO_BIT_HP_DETECT) != 0;
-
-    if (hp == g_headphone_in) {
-        g_hp_debounce = 0;
-    } else if (++g_hp_debounce >= 2) {
-        g_hp_debounce = 0;
-        g_headphone_in = hp;
-        hp_apply_speaker(hp);
-    }
-    i2c_service_unlock();
+    board_display_poll_headphone();
 }
-#endif /* !FMRB_HW_ATOMS3R */
-#endif /* DISPLAY_LOCAL_NO_PANEL */
 
 // ============================================================
 // Main task
@@ -3799,7 +3447,7 @@ static int s_boot_line_y = 0;
 static int s_boot_cursor_x = 0;   // blinking block after the last status line
 static int s_boot_cursor_y = 0;
 
-#if defined(DISPLAY_LOCAL_NO_PANEL)
+#if BOARD_DISPLAY_NO_PANEL
 // No panel: the boot screen has nowhere to go (in the browser, the loading
 // page is the page's job anyway).
 static void boot_print_line(const char *text) { (void)text; }
@@ -3808,8 +3456,8 @@ static void draw_boot_cursor(bool visible) { (void)visible; }
 static void draw_boot_screen(void) {}
 #else
 static void boot_print_line(const char *text) {
-    g_lcd.setCursor(BOOT_MARGIN_X, s_boot_line_y);
-    g_lcd.print(text);
+    lcd().setCursor(BOOT_MARGIN_X, s_boot_line_y);
+    lcd().print(text);
     s_boot_cursor_x = BOOT_MARGIN_X + (int)strlen(text) * BOOT_CHAR_W + BOOT_CHAR_W / 2;
     s_boot_cursor_y = s_boot_line_y;
     s_boot_line_y += BOOT_LINE_H;
@@ -3820,7 +3468,7 @@ static void boot_print_blank(void) {
 }
 
 static void draw_boot_cursor(bool visible) {
-    g_lcd.fillRect(s_boot_cursor_x, s_boot_cursor_y, BOOT_CHAR_W, BOOT_CHAR_H,
+    lcd().fillRect(s_boot_cursor_x, s_boot_cursor_y, BOOT_CHAR_W, BOOT_CHAR_H,
                    visible ? 0xFFFFFFu : 0x000000u);
 }
 
@@ -3836,7 +3484,7 @@ static void draw_boot_screen_compact(void) {
     boot_print_line(buf);
     boot_print_blank();
     snprintf(buf, sizeof(buf), "%s %dx%d", CONFIG_IDF_TARGET,
-             (int)g_lcd.width(), (int)g_lcd.height());
+             (int)lcd().width(), (int)lcd().height());
     boot_print_line(buf);
     snprintf(buf, sizeof(buf), "PSRAM %uK free",
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
@@ -3846,10 +3494,10 @@ static void draw_boot_screen_compact(void) {
 static void draw_boot_screen(void) {
     char buf[80];
 
-    g_boot_compact = g_lcd.width() < BOOT_COMPACT_BELOW_W;
-    g_lcd.fillScreen(0x000000u);
-    g_lcd.setTextSize(BOOT_TEXT_SIZE);
-    g_lcd.setTextColor(0xFFFFFFu, 0x000000u);
+    g_boot_compact = lcd().width() < BOOT_COMPACT_BELOW_W;
+    lcd().fillScreen(0x000000u);
+    lcd().setTextSize(BOOT_TEXT_SIZE);
+    lcd().setTextColor(0xFFFFFFu, 0x000000u);
     s_boot_line_y = BOOT_MARGIN_Y;
 
     if (g_boot_compact) {
@@ -3898,10 +3546,10 @@ static void draw_boot_screen(void) {
     boot_print_blank();
 
     snprintf(buf, sizeof(buf), "Display: %dx%d MIPI-DSI",
-             (int)g_lcd.width(), (int)g_lcd.height());
+             (int)lcd().width(), (int)lcd().height());
     boot_print_line(buf);
 }
-#endif /* DISPLAY_LOCAL_NO_PANEL */
+#endif /* BOARD_DISPLAY_NO_PANEL */
 
 // Copy a frame the player finished into the canvas it owns, then commit it
 // the same way a present would. Runs on the display task: the player never
@@ -3959,7 +3607,7 @@ static bool video_service(void) {
 
 static void display_local_task(void *arg) {
     (void)arg;
-#if defined(DISPLAY_LOCAL_NO_PANEL)
+#if BOARD_DISPLAY_NO_PANEL
     // Sprite-only bring-up: no panel, no codec, no headphone jack. The
     // interpreter and compositor below run unchanged; in the browser,
     // presenting is the wasm backend's RGBA conversion
@@ -3969,32 +3617,18 @@ static void display_local_task(void *arg) {
     cursor_init();
     g_lcd_ready = true;
 #else
-#if defined(FMRB_HW_NARYAV4)
-    FMRB_LOGI(TAG, "NARYAv4 display: I2C + DSI bus");
-    bool configured = g_lcd.configure();
-    g_naryav4_i2c = g_lcd.i2cBus();
-#elif defined(FMRB_HW_ATOMS3R)
-    FMRB_LOGI(TAG, "AtomS3R display: SPI panel probe");
-    bool configured = g_lcd.configure();
-#else
-    FMRB_LOGI(TAG, "Tab5 display: power on");
-    g_lcd.configure(tab5_power_on());
-    const bool configured = true;
-#endif
+    bool configured = board_display_configure();
 
     FMRB_LOGI(TAG, "Modern display: VM + cursor init");
     display_local_vm_init();
     cursor_init();
 
     FMRB_LOGI(TAG, "Modern display: LGFX init");
-    if (!configured || !g_lcd.init()) {
+    if (!configured || !lcd().init()) {
         FMRB_LOGE(TAG, "LGFX init failed");
     } else {
-#if defined(FMRB_HW_TAB5)
-        g_lcd.setRotation(3); // landscape: 1280x720 (native portrait 720x1280 rotated 90deg CCW)
-#endif
-        // NARYA v4 is landscape already (800x600 over HDMI); no rotation.
-        FMRB_LOGI(TAG, "LGFX init OK (%dx%d)", g_lcd.width(), g_lcd.height());
+        board_display_after_init();
+        FMRB_LOGI(TAG, "LGFX init OK (%dx%d)", lcd().width(), lcd().height());
         draw_boot_screen();
 
         // Bring up the audio codec now: on Tab5 the ES8388 shares the I2C
@@ -4009,21 +3643,7 @@ static void display_local_task(void *arg) {
         if (!g_boot_compact) boot_print_blank();
         boot_print_line(g_boot_compact ? "Starting..." : "Waiting for kernel...");
 
-#if defined(FMRB_HW_TAB5)
-        // Apply the initial headphone state so booting with headphones
-        // plugged does not play the boot sound on the speaker. If lgfx's
-        // I2C is not up yet the read fails silently and the touch-task
-        // poll corrects the state within ~0.5 s.
-        {
-            auto hp_res = lgfx::i2c::readRegister8(TAB5_I2C_PORT, PI4IO1_ADDR,
-                                                   PI4IO_REG_IN_STA,
-                                                   PI4IO_I2C_FREQ);
-            if (!hp_res.has_error() && (hp_res.value() & PI4IO_BIT_HP_DETECT)) {
-                g_headphone_in = true;
-                hp_apply_speaker(true);
-            }
-        }
-#endif
+        board_display_after_audio();
 
         // Framebuffer is allocated later in INIT_DISPLAY when the kernel
         // reports the actual display_width x display_height.
@@ -4033,7 +3653,7 @@ static void display_local_task(void *arg) {
         ppa_verification_test();
 #endif
     }
-#endif /* DISPLAY_LOCAL_NO_PANEL */
+#endif /* BOARD_DISPLAY_NO_PANEL */
 
     FMRB_LOGI(TAG, "Modern display: entering command receive loop");
 
@@ -4047,7 +3667,7 @@ static void display_local_task(void *arg) {
     while (1) {
         // Blink the boot-screen cursor until the first real frame replaces
         // the boot screen. Same task as render_frame, so no draw race.
-#if !defined(DISPLAY_LOCAL_NO_PANEL)
+#if !BOARD_DISPLAY_NO_PANEL
         if (g_first_render && g_lcd_ready) {
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
             if ((uint32_t)(now - boot_cursor_ms) >= 500) {
@@ -4149,7 +3769,7 @@ extern "C" bool display_local_is_ready(void) {
 }
 
 extern "C" int display_local_get_touch(int16_t *out_x, int16_t *out_y) {
-#if defined(DISPLAY_LOCAL_NO_PANEL)
+#if BOARD_DISPLAY_NO_PANEL
     (void)out_x; (void)out_y;
     return 0;
 #else
@@ -4158,7 +3778,7 @@ extern "C" int display_local_get_touch(int16_t *out_x, int16_t *out_y) {
     // two (the touch task maps a two-finger tap to a right click). Only the
     // primary point's coordinates are reported.
     lgfx::touch_point_t tp[2];
-    int count = g_lcd.getTouch(tp, 2);
+    int count = lcd().getTouch(tp, 2);
     i2c_service_unlock();
     if (count > 0) {
         *out_x = tp[0].x;

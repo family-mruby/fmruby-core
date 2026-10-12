@@ -346,6 +346,18 @@ else()
     list(APPEND COMPONENT_SRCS "boot/sim_log_guard.c")
 endif()
 
+# The board half of the local display: one implementation of the board
+# display interface (drivers/display_local/board/board_display.h), chosen by
+# the board. Its directory also carries board_display_conf.h.
+fmrb_hw_board_display(FMRB_BOARD_DISPLAY)
+set(BOARD_DISPLAY_INCLUDE_DIRS "")
+if(FMRB_BOARD_DISPLAY)
+    list(APPEND COMPONENT_SRCS
+        "drivers/display_local/board/${FMRB_BOARD_DISPLAY}/board_display_${FMRB_BOARD_DISPLAY}.cpp")
+    set(BOARD_DISPLAY_INCLUDE_DIRS
+        "drivers/display_local/board" "drivers/display_local/board/${FMRB_BOARD_DISPLAY}")
+endif()
+
 # Remote desktop viewer page (Modern only): embedded into the binary and
 # served by the on-device HTTP server. Sources live in tool/web/remote/.
 set(RD_EMBED_FILES "")
@@ -358,7 +370,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_local" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_local" ${BOARD_DISPLAY_INCLUDE_DIRS} "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )

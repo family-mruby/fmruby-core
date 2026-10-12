@@ -74,5 +74,5 @@ DSI 出力を**二重バッファ化 + vsync でスワップ**し、PPA は非�
 
 - 合成/表示: `main/drivers/display_local/display_local_task.cpp`
   (`render_frame` 654-、PPA SRM 769-、cursor パッチ 428-、capture 742-)
-- パネル: `main/drivers/display_local/lgfx_tab5.hpp`、m5gfx
+- パネル: `main/drivers/display_local/board/tab5/lgfx_tab5.hpp`、m5gfx
   `Panel_DSI.cpp`(`num_fbs=1`)/ `Panel_ILI9881C.*`

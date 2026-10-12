@@ -39,7 +39,8 @@ I2C ペリフェラルのレジスタを直接操作し、トランザクショ�
 ## 設計ルール
 
 ランタイムのバスアクセスは **display_local の I2C サービス**に一本化して
-いる (display_local_task.cpp)。lgfx の I2C ヘルパ
+いる (入口と直列化は display_local_task.cpp、Tab5 の中身は
+board/tab5/board_display_tab5.cpp)。lgfx の I2C ヘルパ
 (`lgfx::i2c::transactionWrite/Read`, `writeRegister8` 等) を内部
 ミューテックス (`g_i2c_mutex`) で直列化したもので、GT911 タッチ読み
 (`display_local_get_touch`) とヘッドホンポーリング
@@ -57,7 +58,7 @@ I2C ペリフェラルのレジスタを直接操作し、トランザクショ�
    `g_lcd_ready` を立てるまでの区間 (タッチタスクは g_lcd_ready を
    待ってからポーリングを開始するため、バスが無競合)。
    実装例: ES8388 コーデック初期化 (audio_p4_hw_init) はこの窓で実行
-3. tab5_power_on() (display_local_task.cpp) は独自に i2c_master バスを
+3. tab5_power_on() (board/tab5/board_display_tab5.cpp) は独自に i2c_master バスを
    作成して PI4IO を初期化し、**バスを削除してから** LGFX init に進む。
    この一時バスは他と重ならないので問題ない
 

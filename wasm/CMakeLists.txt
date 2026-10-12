@@ -288,8 +288,9 @@ list(APPEND CORE_SRCS
   ${FMRB_ROOT}/main/drivers/debug/fmrb_debugd.c
   ${FMRB_ROOT}/main/drivers/debug/fmrb_debug_transport_tcp.c
   ${FMRB_ROOT}/main/conn_check/fs_bench.c
-  # the Modern display task, sprite-only under FMRB_PLATFORM_WASM
+  # the local display task, with the no-panel board (board/none)
   ${FMRB_ROOT}/main/drivers/display_local/display_local_task.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/board/none/board_display_none.cpp
   ${FMRB_ROOT}/main/drivers/display_local/display_local_vm.cpp
   ${FMRB_ROOT}/main/drivers/display_local/display_local_sprite.cpp
   ${FMRB_ROOT}/main/drivers/display_local/display_backend.cpp
@@ -474,6 +475,8 @@ target_include_directories(core_objs PRIVATE
   ${FMRB_ROOT}/main/drivers/debug
   ${FMRB_ROOT}/main/conn_check
   ${FMRB_ROOT}/main/drivers/display_local
+  ${FMRB_ROOT}/main/drivers/display_local/board
+  ${FMRB_ROOT}/main/drivers/display_local/board/none
   ${FMRB_ROOT}/main/drivers/audio_p4
   ${FMRB_ROOT}/main/drivers/remote_desktop
   ${FMRB_ROOT}/components/apu_emu/include

@@ -27,9 +27,10 @@
  *     the framebuffer sprite, and cursor_patch() composites the cursor over a
  *     framebuffer region itself; only putting that region on the panel without
  *     a full present is backend work (present_patch).
- *   - The panel itself. Both P4 backends drive the same LGFX device (LGFX_Tab5
- *     or LGFX_Naryav4); it is board hardware, not PPA. Reach it with
- *     display_local_lcd().
+ *   - The panel itself. Every backend drives the board's LGFX device; it is
+ *     board hardware, not PPA. Reach it with board_display_lcd() and the
+ *     panel's own frame buffer with board_display_panel_framebuffer()
+ *     (board/board_display.h).
  */
 
 #pragma once
@@ -39,8 +40,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-    /* The LovyanGFX headers come in through M5GFX.h, the same way
-     * lgfx_tab5.hpp takes them; the M5GFX device objects are not used. */
+    /* The LovyanGFX headers come in through M5GFX.h, the same way the
+     * boards' devices take them; the M5GFX device objects are not used. */
     #include <M5GFX.h>
 #endif
 
@@ -148,16 +149,6 @@ typedef struct {
 
 /* The one the build selected. */
 const display_backend_t *display_backend(void);
-
-/* The panel, shared by both backends and by the parts of display_local_task.cpp
- * that draw straight to it (the boot screen, the canvas sprites). */
-LGFX_Device *display_local_lcd(void);
-
-/* The panel's own frame buffer (Tab5: native portrait RGB565; NARYA v4:
- * landscape RGB888), or NULL if this panel does not expose one. Kept separate
- * from display_local_lcd() so this header does not have to pull in a board's
- * panel definition. */
-void *display_local_panel_framebuffer(void);
 
 /* Cache-line-aligned PSRAM, the allocator canvases and the framebuffer share.
  * Defined in display_local_task.cpp. */

@@ -155,8 +155,8 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 
 **Phase 1（Tab5 DSI パネル起動 + テストパターン）— 実機動作確認済み (後続フェーズの表示系がこの構成で常用中):**
 
-- `main/drivers/display_local/lgfx_tab5.hpp`: M5Unified 非依存の自前 `LGFX_Tab5 : lgfx::LGFX_Device`。Bus_DSI(2レーン/1040Mbps/LDO ch3 2500mV) + Panel_ST7123(720x1280, dpi80MHz, hsync40/2/40, vsync8/2/220) + Touch_GT911(SDA31/SCL32/INT23, port1) を明示構成。M5GFX.h は LGFX ライブラリ用に include するが M5GFX/M5Unified オブジェクトは使わない。Panel_ST7123/Touch_GT911 は device.hpp が include しないので個別 include。
-- `main/drivers/display_local/display_local_task.cpp`: PI4IO 拡張IC(0x43/0x44, IDF i2c_master で一時バス→LCD/タッチ reset 解除→削除しLGFXにI2C port1を譲る) + TP INT(GPIO23) + バックライト(GPIO22 full-on)。LGFX_Tab5.init() 後にカラーバー+文字のテストパターン描画。FreeRTOS タスク(core1)。
+- `main/drivers/display_local/board/tab5/lgfx_tab5.hpp`: M5Unified 非依存の自前 `LGFX_Tab5 : lgfx::LGFX_Device`。Bus_DSI(2レーン/1040Mbps/LDO ch3 2500mV) + Panel_ST7123(720x1280, dpi80MHz, hsync40/2/40, vsync8/2/220) + Touch_GT911(SDA31/SCL32/INT23, port1) を明示構成。M5GFX.h は LGFX ライブラリ用に include するが M5GFX/M5Unified オブジェクトは使わない。Panel_ST7123/Touch_GT911 は device.hpp が include しないので個別 include。
+- `main/drivers/display_local/display_local_task.cpp` (PI4IO の部分は現在 `board/tab5/board_display_tab5.cpp`): PI4IO 拡張IC(0x43/0x44, IDF i2c_master で一時バス→LCD/タッチ reset 解除→削除しLGFXにI2C port1を譲る) + TP INT(GPIO23) + バックライト(GPIO22 full-on)。LGFX_Tab5.init() 後にカラーバー+文字のテストパターン描画。FreeRTOS タスク(core1)。
 - `main/CMakeLists.txt`: display_local_task.cpp が M5GFX.h を引くため main(esp32p4) にも esp_driver_i2s/ledc を REQUIRES 追加 + 当該ファイルに -Wno-error。
 - Phase 1 はパネル ST7123 をハードコード（現行Tab5）。ILI9881C/ST7121 個体は Panel クラス/タイミング差し替えが必要。
 

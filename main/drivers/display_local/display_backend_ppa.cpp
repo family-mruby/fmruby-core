@@ -15,6 +15,7 @@
  */
 
 #include "display_backend.h"
+#include "board_display.h"
 
 #include "fmrb_log.h"
 #include "driver/ppa.h"
@@ -41,25 +42,30 @@ static const char *TAG = "display_ppa";
  * one-pixel border at the ends of the long side, and 2x for the fullscreen
  * high-resolution frame (640x360), which fills the panel exactly.
  */
-#if defined(FMRB_HW_NARYAV4)
-#define DSI_FB_W 1280
-#define DSI_FB_H 720
-#define DSI_FB_BPP 3
-#define LAND_W DSI_FB_W
-#define LAND_H DSI_FB_H
-#else
-#define DSI_FB_W 720
-#define DSI_FB_H 1280
-#define DSI_FB_BPP 2
+#define DSI_FB_W   BOARD_DISPLAY_FB_W
+#define DSI_FB_H   BOARD_DISPLAY_FB_H
+#define DSI_FB_BPP BOARD_DISPLAY_FB_BPP
+#if BOARD_DISPLAY_FB_ROTATED
 #define LAND_W DSI_FB_H
 #define LAND_H DSI_FB_W
+#else
+#define LAND_W DSI_FB_W
+#define LAND_H DSI_FB_H
+#endif
+
+/* The two ways onto the panel this backend has: an unrotated RGB888 buffer
+ * (NARYA v4) and a rotated RGB565 one (Tab5). A board with another
+ * combination needs a third present path first. */
+#if !((BOARD_DISPLAY_FB_BPP == 3 && !BOARD_DISPLAY_FB_ROTATED) || \
+      (BOARD_DISPLAY_FB_BPP == 2 && BOARD_DISPLAY_FB_ROTATED))
+#error "display_backend_ppa: unsupported panel frame buffer (board_display_conf.h)"
 #endif
 
 #define DSI_FB_BYTES ((size_t)DSI_FB_W * DSI_FB_H * DSI_FB_BPP)
 
 static ppa_client_handle_t s_ppa_srm   = NULL;  /* scale (+ rotate) to the panel */
 static ppa_client_handle_t s_ppa_blend = NULL;  /* canvas compositing, colour-keyed */
-#if defined(FMRB_HW_NARYAV4)
+#if BOARD_DISPLAY_FB_BPP == 3
 static uint8_t            *s_dsi_fb    = nullptr;  /* RGB888: 3 bytes per pixel */
 #else
 static uint16_t           *s_dsi_fb    = nullptr;
@@ -84,7 +90,7 @@ static void ppa_init(int fb_w, int fb_h)
     ppa_client_config_t srm_cfg = {};
     srm_cfg.oper_type = PPA_OPERATION_SRM;
     if (ppa_register_client(&srm_cfg, &s_ppa_srm) == ESP_OK) {
-        s_dsi_fb = (decltype(s_dsi_fb))display_local_panel_framebuffer();
+        s_dsi_fb = (decltype(s_dsi_fb))board_display_panel_framebuffer();
         if (s_dsi_fb) {
             FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> DSI fb %dx%d @%p",
                       fb_w, fb_h, DSI_FB_W, DSI_FB_H, (void *)s_dsi_fb);
@@ -101,7 +107,7 @@ static void ppa_init(int fb_w, int fb_h)
 
 static void ppa_first_frame(void)
 {
-    display_local_lcd()->fillScreen(0);
+    board_display_lcd()->fillScreen(0);
     if (s_dsi_fb) {
         /* Flush LovyanGFX's cached CPU writes (boot screen, fill) once; from
          * here on the DSI buffer is written by PPA DMA and the cursor patch
@@ -117,7 +123,7 @@ static void ppa_first_frame(void)
 static void dsi_image_rect(int fb_w, int fb_h, int *x, int *y, int *w, int *h)
 {
     const int scale = display_scale_for(LAND_W, LAND_H, fb_w, fb_h);
-#if defined(FMRB_HW_NARYAV4)
+#if !BOARD_DISPLAY_FB_ROTATED
     *w = fb_w * scale;
     *h = fb_h * scale;
 #else
@@ -183,7 +189,7 @@ static void note_presented_size(int fb_w, int fb_h, bool through_dsi)
         dsi_image_rect(fb_w, fb_h, &x, &y, &w, &h);
         dsi_clear_outside(x, y, w, h);
     } else {
-        LGFX_Device *lcd = display_local_lcd();
+        LGFX_Device *lcd = board_display_lcd();
         const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
         const int w = fb_w * scale, h = fb_h * scale;
         display_lcd_clear_outside(lcd, (lcd->width() - w) / 2,
@@ -317,7 +323,7 @@ static void present_flush(void *fb_ptr, size_t fb_size)
  * through LovyanGFX instead, scaled and centred the same way. */
 static void present_software(LGFX_Sprite *fb, int fb_w, int fb_h)
 {
-    LGFX_Device *lcd = display_local_lcd();
+    LGFX_Device *lcd = board_display_lcd();
     const float scale =
         (float)display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
     int scaled_w = (int)(fb_w * scale);
@@ -329,7 +335,7 @@ static void present_software(LGFX_Sprite *fb, int fb_w, int fb_h)
     note_presented_size(fb_w, fb_h, false);
 }
 
-#if defined(FMRB_HW_NARYAV4)
+#if BOARD_DISPLAY_FB_BPP == 3   /* RGB888, unrotated (NARYA v4) */
 
 /* NARYA v4: one SRM pass does the scale AND the RGB565 -> RGB888 conversion
  * the HDMI bridge needs -- the SRM's input and output colour modes are
@@ -437,7 +443,7 @@ static void ppa_present_patch(const uint16_t *block, int x0, int y0, int w, int 
                     ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
 }
 
-#else /* Tab5 */
+#else /* BOARD_DISPLAY_FB_BPP == 2: RGB565, rotated (Tab5) */
 
 static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
 {
@@ -524,7 +530,7 @@ static void ppa_present_patch(const uint16_t *block, int x0, int y0, int w, int 
                 }
             }
         }
-        LGFX_Device *lcd = display_local_lcd();
+        LGFX_Device *lcd = board_display_lcd();
         int offset_x = (lcd->width()  - fb_w * scale) / 2;
         int offset_y = (lcd->height() - fb_h * scale) / 2;
         lcd->pushImage(offset_x + x0 * scale, offset_y + y0 * scale,
@@ -560,7 +566,7 @@ static void ppa_present_patch(const uint16_t *block, int x0, int y0, int w, int 
                     ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
 }
 
-#endif /* FMRB_HW_NARYAV4 */
+#endif /* BOARD_DISPLAY_FB_BPP == 3 */
 
 /* ------------------------------------------------------------------------ */
 
