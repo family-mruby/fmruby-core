@@ -457,6 +457,30 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
 - 確かめること (B1 の最初): zenoh-pico 1.10.1 の Emscripten のシステム層と WebSocket のリンクが動くか。受け取りの見回り (poll) が wasm 版のタスクの動き方の上で画面を止めないか。ブラウザの WebSocket は非同期なので、zenoh-pico の同期の読み書きとどう合わせているか。
 - 止まる条件の目安: zenoh-pico の Emscripten の層が今の版で使えない (直すのに上流の大きな作業が要る) と分かったら、zenoh-ts を JS 連携で呼ぶ案と比べて返す。
 
+## G: 対戦ゲーム (計画 2026-10-12 ユーザ)
+
+遠隔地の Family mruby (と、ブラウザ版・CRuby) どうしで対戦する。Asterism の生存の監視で相手を見つけ、相手のゲームのオブジェクトを呼ぶ (`opponent.move(x, y)`) 形にする。発表の本命の切り口 (オブジェクトモデルを網に広げる) の見せ場にもなる。
+
+| 段階 | 内容 |
+|---|---|
+| G1 | 家の中 (LAN) で、交互に指す遊び (オセロなど) を端末 2 台かブラウザ版 2 つで遊ぶ。相手の一覧と待ち合わせ (on_join / on_leave)、手を呼び出しで送る、切れたときの扱い。asterism-console で観戦し、記録して巻き戻す |
+| G2 | 同じ遊びを、クラウドのルータの中継 (W1) 越しに遊ぶ。家の端末は家のルータ経由 (zenoh-pico は TLS が使えない)、ブラウザ版は `wss://` でクラウドのルータに直接 (B2)。遅れを測る |
+| G3 | ゆっくりめの実時間の遊び (陣取り・落ちものの対戦など)。毎秒 10-20 回、自分の状態を `put` で配り、相手の最新だけを使う。遅れの隠し方を試す |
+
+- 速い実時間の遊び (格闘・シューティング) は、相手の動きの予測や入力の同期が要るので、G3 の後に必要なら。
+- 外に出すには、クラウドのルータの本物の証明書と、だれがつなげるかの管理 (W2 の台帳と ACL) を本番の形にする。
+- Retro (S3) で遊ぶには、AtomS3R の H3 で S3 に Asterism が載った後、Retro の flash と RAM の余裕を見る。
+
+## P: Family mruby 以外の PicoRuby とつなぐ (構想 2026-10-12)
+
+asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem なので、Family mruby 以外の PicoRuby も網に入れられる見込み。
+
+- **PicoRuby.wasm (ブラウザ)**: 2 つの道がある。
+  - B1 の作り (zenoh-pico を Emscripten で入れ、WebSocket はページの JS が持つ) を、picoruby-asterism-zenoh の `ports/emscripten` として gem に移し、PicoRuby.wasm のビルドに入れる。ただし B1 の受け渡しは、タスクごとに Worker を持つ Family mruby の作り (共有メモリ) に合わせてある。PicoRuby.wasm の動き方 (主スレッドで動くか) に合わせて、受け渡しを単純にする必要がありそう。
+  - Zenoh の公式の TypeScript の部品 (zenoh-ts) を、PicoRuby.wasm の JS 連携から呼び、その上に asterism の層を載せる。C を足さずに済むが、ルータに remote-api のプラグインが要る。
+- **ほかの PicoRuby のマイコン** (R2P2 など): zenoh-pico が対応する系 (ESP-IDF、FreeRTOS + lwIP、Raspberry Pi Pico W など) なら、picoruby-asterism-zenoh の port を足す形で入れられる見込み。
+- どれも、まず小さな試し (つながって put / subscribe ができる) から。着手は未定。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 機体は LAN の中のルータにだけつなぎ (zenoh-pico は ESP32 で TLS が使えない)、インターネットを越える部分はルータどうし
