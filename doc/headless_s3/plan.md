@@ -120,8 +120,8 @@
 | 段階 | 内容 | 確かめること |
 |---|---|---|
 | H0 (完了 2026-10-12、report/h0.md) | 実機の確認 (画面は GC9107 だった・RGB LED は無く LP5562 は背光だけ・出荷時の flash は端末の外に保存済み): 回路図と実物でピンの割り当て (画面 ST7735、LED、ボタン、I2C、赤外線、Grove、底面の GPIO) を照合し、`fmrb_pin_assign.h` の案を作る。出荷時のファームでの起動の様子を記録する | ピンの表の食い違いが解消している |
-| H1 (完了 2026-10-12、report/h1.md、画面の目視はユーザ待ち) | 新しい構成 `FMRB_HW_TARGET=ATOMS3R` でビルドして起動する。区画の表 (8 MB、新規)、sdkconfig の defaults (新規。**中身はユーザの承認を得てから**)、単一アプリの設定 (全機種で使える system_conf の設定)、ヘッドレスで要らないものを既存のビルドの選択肢で外す。描画は S3 の上で行う (Retro は描画を子マイコンに出すが AtomS3R には無い。wasm 版の描画の経路 `display_backend.cpp` のように、機体の中で描く経路を使えるかを最初に調べる)。128x128 の画面へ出す | 起動の速さ、M1 行の内蔵 RAM、flash の残り、試しのアプリが画面に描ける |
-| H2 (完了 2026-10-12、report/h2.md。H1e を含む。sim の標準構成の確かめは保留) | WiFi と開発の入口: WiFi につなぎ、dev_remote_ctl の `/fs/*`・`/app/*` で put → 起動し直しの開発ループを回す (MCP の tab5_fs / tab5_app に ip を渡して使う)。ログは USB のシリアル | 再 flash なしでアプリを差し替えられる |
+| H1 (完了 2026-10-12、report/h1.md。画面の目視はユーザが合格) | 新しい構成 `FMRB_HW_TARGET=ATOMS3R` でビルドして起動する。区画の表 (8 MB、新規)、sdkconfig の defaults (新規。**中身はユーザの承認を得てから**)、単一アプリの設定 (全機種で使える system_conf の設定)、ヘッドレスで要らないものを既存のビルドの選択肢で外す。描画は S3 の上で行う (Retro は描画を子マイコンに出すが AtomS3R には無い。wasm 版の描画の経路 `display_backend.cpp` のように、機体の中で描く経路を使えるかを最初に調べる)。128x128 の画面へ出す | 起動の速さ、M1 行の内蔵 RAM、flash の残り、試しのアプリが画面に描ける |
+| H2 (完了 2026-10-12、report/h2.md。H1e を含む) | WiFi と開発の入口: WiFi につなぎ、dev_remote_ctl の `/fs/*`・`/app/*` で put → 起動し直しの開発ループを回す (MCP の tab5_fs / tab5_app に ip を渡して使う)。ログは USB のシリアル | 再 flash なしでアプリを差し替えられる |
 | H3 | Asterism (Z4): picoruby-asterism-zenoh と asterism を S3 のビルドに入れる。zenoh-pico の確保は PSRAM だけ (Z2 の作り)。`asterism_demo` を動かし、asterism-console の図に ▣ のノードとして出す | 内蔵 RAM の残り (WiFi 常時 + zenoh)、flash の残り、呼び出しの往復時間 |
 | H4 | 周辺と system オブジェクト: LED・ボタン・6 軸センサ (BMI270)・赤外線を Asterism のオブジェクトとして公開する。system オブジェクト (ファームの状態、アプリの起動し直し、ログ) を、全機種で使える gem の機能として作る | console から LED を点け、ボタンの押下とセンサの値が届く |
 | H5 (後で) | system_desktop のミニ版 (小さい画面向けの配置の設定として)。MicroPython を入れる余地があれば入れる | |
