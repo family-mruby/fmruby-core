@@ -1042,11 +1042,14 @@ static void render_frame(void) {
     // scale-out. The writer (this task) never touches the slot locked by
     // the reader; while the reader is slow, frames simply overwrite the
     // other slot and drop.
-    if (g_cap_enabled && g_cap_buf[0]) {
+    // A frame larger than the slots (only possible where they were sized for
+    // the base screen, see display_p4_capture_enable) is skipped rather than
+    // cut short: the reader trusts the size recorded with the slot.
+    if (g_cap_enabled && g_cap_buf[0] &&
+        (size_t)g_framebuffer->width() * g_framebuffer->height() * 2 <= g_cap_buf_size) {
         void *fb_ptr = g_framebuffer->getBuffer();
         size_t copy_len = (size_t)g_framebuffer->width()
                         * g_framebuffer->height() * 2;
-        if (copy_len > g_cap_buf_size) copy_len = g_cap_buf_size;
 
         portENTER_CRITICAL(&g_cap_lock);
         int target;
@@ -4199,8 +4202,14 @@ extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
         // may already be running when the mode changes. Each slot records the
         // size of the frame in it.
         size_t need = (size_t)g_display_width * g_display_height * 2;
+#if defined(FMRB_HAS_PPA)
         const size_t hires_need = (size_t)DISPLAY_P4_HIRES_W * DISPLAY_P4_HIRES_H * 2;
         if (g_display_width < DISPLAY_P4_HIRES_W && need < hires_need) need = hires_need;
+#endif
+        // Without the PPA (the AtomS3R's 128x128) the only reader is the
+        // one-shot /fb of the development server: slots of the base screen's
+        // size, 32KB each there instead of 450KB. A high-resolution frame
+        // does not fit and is not captured (render_frame).
         size_t aligned = 0;
         g_cap_buf[0] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
         g_cap_buf[1] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
