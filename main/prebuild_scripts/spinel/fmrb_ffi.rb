@@ -62,6 +62,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_startup_app_retries, [], :int
   ffi_func :fmrb_spx_startup_app, [], :binstr        # startup_app path ("" when none)
   ffi_func :fmrb_spx_show_halt, [:str, :int], :int   # the single-app give-up screen
+  ffi_func :fmrb_spx_clear_halt, [], :int            # take that screen down (1 = there was one)
   ffi_func :fmrb_spx_screen_width, [], :int          # what a fullscreen window gets
   ffi_func :fmrb_spx_screen_height, [], :int
   ffi_func :fmrb_spx_set_error_led, [:int], :int

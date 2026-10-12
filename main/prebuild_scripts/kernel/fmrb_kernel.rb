@@ -60,6 +60,14 @@ class FmrbKernelImpl < FmrbKernel
     @single_app_retries = 0
     @single_app_respawn_at = 0
     @single_app_error = ""
+    # Also boot_mode = "app": true once the kernel has started that way. An
+    # app launched by other means (the development /app/launch) that dies
+    # covers the screen with its error instead of vanishing
+    # (note_launched_app_death); the next app to come up takes it down. The
+    # last error reported, and by which pid, is kept for that screen.
+    @boot_app_mode = false
+    @last_error_pid = -1
+    @last_error_text = ""
 
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
@@ -443,6 +451,8 @@ class FmrbKernelImpl < FmrbKernel
       if err
         Log.error("App '#{err[:name]}': #{err[:error]}")
         @single_app_error = err[:error].to_s if pid == @single_app_pid
+        @last_error_pid = pid
+        @last_error_text = err[:error].to_s
         # The error dialog replaces the indicator; the app may keep running
         # (a runtime exception) or be about to die (a compile error), and
         # either way it is no longer "starting".
@@ -659,6 +669,7 @@ class FmrbKernelImpl < FmrbKernel
 
     if _boot_mode == BOOT_MODE_APP
       # One app and nothing else: no desktop, no launcher.
+      @boot_app_mode = true
       start_single_app
     else
       # Spawn system desktop app (bg canvas z=0, fg canvas z=254)
@@ -804,6 +815,33 @@ class FmrbKernelImpl < FmrbKernel
     @single_app_respawn_at = 0
     Log.error("Single-app boot: giving up. #{reason}")
     _show_halt("STOPPED\n\n#{reason}\n\nReset to try again.")
+    nil
+  end
+
+  # Called from cleanup_terminated_app for every app that ends. In the
+  # single-app boot, an app other than startup_app -- in practice one started
+  # with the development /app/launch -- that dies without being asked to is
+  # not started again (a development loop wants it stopped, not repeated),
+  # but the screen says which app it was and why, the way the give-up screen
+  # does: without a desktop there is nowhere else to show it. The next app to
+  # come up takes the screen down (on_app_started).
+  def note_launched_app_death(pid, label, expected)
+    return nil unless @boot_app_mode
+    return nil if expected
+    return nil if pid == @single_app_pid || pid == @service_host_pid
+    reason = @last_error_pid == pid ? @last_error_text : ""
+    reason = "(no error message)" if reason.empty?
+    @last_error_pid = -1
+    @last_error_text = ""
+    Log.error("Single-app boot: #{label} died: #{reason}")
+    _show_halt("STOPPED\n\n#{label}\n#{reason}\n\nLaunch an app to go on.")
+    nil
+  end
+
+  # The halt screen comes down when an app is up again (on_app_started).
+  def clear_halt_for(pid)
+    return nil unless @boot_app_mode
+    Log.info("Single-app boot: halt screen cleared for pid=#{pid}") if _clear_halt
     nil
   end
 

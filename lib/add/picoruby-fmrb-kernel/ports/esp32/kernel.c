@@ -385,6 +385,12 @@ static mrb_value mrb_kernel_show_halt(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(fmrb_kernel_show_halt(text) == FMRB_OK);
 }
 
+// FmrbKernel#_clear_halt() -> true when a halt screen was taken down
+static mrb_value mrb_kernel_clear_halt(mrb_state *mrb, mrb_value self)
+{
+    return mrb_bool_value(fmrb_kernel_clear_halt());
+}
+
 // FmrbKernel#_get_sync_files() -> Array of Hashes [{src: "...", dest: "..."}, ...]
 static mrb_value mrb_kernel_get_sync_files(mrb_state *mrb, mrb_value self)
 {
@@ -659,6 +665,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_startup_app_retries", mrb_kernel_startup_app_retries, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_startup_app", mrb_kernel_startup_app, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_show_halt", mrb_kernel_show_halt, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_clear_halt", mrb_kernel_clear_halt, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_screen_width", mrb_kernel_screen_width, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_screen_height", mrb_kernel_screen_height, MRB_ARGS_NONE());
 

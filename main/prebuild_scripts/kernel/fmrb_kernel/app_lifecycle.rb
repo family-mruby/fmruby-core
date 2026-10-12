@@ -131,6 +131,7 @@ module AppLifecycleMixin
   def on_app_started(pid)
     return unless pid
     Log.info("App started: pid=#{pid}")
+    clear_halt_for(pid)
     # Its window is up: from here on, closing it follows the normal rule
     # (cleanup_terminated_app), not the launch-time one.
     @launch_prev_hid.delete(pid)
@@ -801,6 +802,7 @@ module AppLifecycleMixin
     # means an empty one.
     dead = _get_app_info(pid)
     dead_name = dead ? dead[:name].to_s : ""
+    dead_path = dead ? dead[:path].to_s : ""
 
     # It never came up (a compile error is the usual reason): take the
     # indicator down, and drop any fullscreen request made for it -- pids are
@@ -948,6 +950,9 @@ module AppLifecycleMixin
     # Same reason for both of these: a subscriber that reacts by spawning
     # something needs the slot already free.
     announce_app_died(pid, dead_name, expected)
+    # Before the two below: they forget the pids it compares against.
+    dead_label = dead_path.empty? ? dead_name : dead_path
+    note_launched_app_death(pid, dead_label, expected)
     note_service_host_death(pid, expected)
     note_single_app_death(pid, expected)
 

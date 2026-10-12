@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "fmrb_hal.h"
 
 #ifdef __cplusplus
@@ -88,6 +89,14 @@ const char* fmrb_kernel_startup_app(void);
  * @return FMRB_OK, or FMRB_ERR_* when the canvas could not be made
  */
 fmrb_err_t fmrb_kernel_show_halt(const char *text);
+
+/**
+ * @brief Take down the halt canvas fmrb_kernel_show_halt() put up, if any.
+ *
+ * Kernel task only (the same task that shows it).
+ * @return true when there was one to take down
+ */
+bool fmrb_kernel_clear_halt(void);
 
 /**
  * @brief Write one top-level key of /etc/system_conf.toml.

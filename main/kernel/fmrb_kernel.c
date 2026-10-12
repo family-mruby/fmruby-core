@@ -1060,6 +1060,10 @@ const fmrb_system_config_t* fmrb_kernel_get_config(void)
 #define HALT_BG      0x80   // RGB332 dark red
 #define HALT_FG      0xFF
 
+// The halt canvas while one is up (0 = none). Only the kernel task touches it.
+// External RAM, like the startup_app path: internal RAM is the scarce one.
+FMRB_EXT_RAM_BSS_ATTR static fmrb_canvas_handle_t s_halt_canvas;
+
 fmrb_err_t fmrb_kernel_show_halt(const char *text)
 {
     if (!text) return FMRB_ERR_INVALID_PARAM;
@@ -1067,11 +1071,15 @@ fmrb_err_t fmrb_kernel_show_halt(const char *text)
     if (!gctx) return FMRB_ERR_INVALID_STATE;
     const int w = g_system_config.display_width;
     const int h = g_system_config.display_height;
-    fmrb_canvas_handle_t canvas = 0;
+    // A second halt (another app died before the first was cleared) redraws
+    // the canvas already up rather than stacking a new one on top of it.
+    fmrb_canvas_handle_t canvas = s_halt_canvas;
     // Above every app canvas (the desktop's overlays use 254 and below).
-    if (fmrb_gfx_create_canvas(gctx, w, h, 255, false, 0, &canvas) != FMRB_GFX_OK) {
+    if (canvas == 0 &&
+        fmrb_gfx_create_canvas(gctx, w, h, 255, false, 0, &canvas) != FMRB_GFX_OK) {
         return FMRB_ERR_FAILED;
     }
+    s_halt_canvas = canvas;
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_clear(&cmd, canvas, HALT_BG);
     fmrb_gfx_submit_unmetered(&cmd);
@@ -1103,6 +1111,22 @@ fmrb_err_t fmrb_kernel_show_halt(const char *text)
     fmrb_gfx_cmd_present(&cmd, canvas, 0, 0, 0);
     fmrb_gfx_submit_unmetered(&cmd);
     return FMRB_OK;
+}
+
+bool fmrb_kernel_clear_halt(void)
+{
+    if (s_halt_canvas == 0) return false;
+    fmrb_gfx_context_t gctx = fmrb_gfx_get_global_context();
+    if (!gctx) return false;
+    fmrb_canvas_handle_t canvas = s_halt_canvas;
+    s_halt_canvas = 0;
+    fmrb_gfx_delete_canvas(gctx, canvas);
+    // Deleting a canvas does not by itself make the screen compose again;
+    // without a present the halt stays on screen until the app presents.
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, 0, 0, 0, 0);
+    fmrb_gfx_submit_unmetered(&cmd);
+    return true;
 }
 
 // HID routing table (protected by mutex)
