@@ -288,14 +288,15 @@ list(APPEND CORE_SRCS
   ${FMRB_ROOT}/main/drivers/debug/fmrb_debugd.c
   ${FMRB_ROOT}/main/drivers/debug/fmrb_debug_transport_tcp.c
   ${FMRB_ROOT}/main/conn_check/fs_bench.c
-  # the Modern display task, sprite-only under FMRB_PLATFORM_WASM
-  ${FMRB_ROOT}/main/drivers/display_p4/display_p4_task.cpp
-  ${FMRB_ROOT}/main/drivers/display_p4/display_p4_vm.cpp
-  ${FMRB_ROOT}/main/drivers/display_p4/display_p4_sprite.cpp
-  ${FMRB_ROOT}/main/drivers/display_p4/display_backend.cpp
-  ${FMRB_ROOT}/main/drivers/display_p4/display_blend_cpu.c
-  ${FMRB_ROOT}/main/drivers/display_p4/fonts/misaki/lgfx_misaki.c
-  ${FMRB_ROOT}/main/drivers/display_p4/fonts/misaki/lgfx_misaki.cpp
+  # the local display task, with the no-panel board (board/none)
+  ${FMRB_ROOT}/main/drivers/display_local/display_local_task.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/board/none/board_display_none.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/display_local_vm.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/display_local_sprite.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/display_backend.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/display_blend_cpu.c
+  ${FMRB_ROOT}/main/drivers/display_local/fonts/misaki/lgfx_misaki.c
+  ${FMRB_ROOT}/main/drivers/display_local/fonts/misaki/lgfx_misaki.cpp
   # the Modern audio pipeline over the wasm ring backend
   ${FMRB_ROOT}/main/drivers/audio_p4/audio_p4_task.c
   ${FMRB_ROOT}/main/drivers/audio_p4/audio_p4_handler.c
@@ -473,7 +474,9 @@ target_include_directories(core_objs PRIVATE
   ${FMRB_ROOT}/main/drivers/usb
   ${FMRB_ROOT}/main/drivers/debug
   ${FMRB_ROOT}/main/conn_check
-  ${FMRB_ROOT}/main/drivers/display_p4
+  ${FMRB_ROOT}/main/drivers/display_local
+  ${FMRB_ROOT}/main/drivers/display_local/board
+  ${FMRB_ROOT}/main/drivers/display_local/board/none
   ${FMRB_ROOT}/main/drivers/audio_p4
   ${FMRB_ROOT}/main/drivers/remote_desktop
   ${FMRB_ROOT}/components/apu_emu/include
@@ -503,8 +506,8 @@ target_compile_definitions(core_objs PRIVATE
   # GfxBlock program pool that goes with them. Left at their defaults, the 12th
   # app opened onto "Canvas pool full" and died, which would have made the
   # raised app ceiling a fiction.
-  DISPLAY_P4_MAX_CANVAS=34
-  DISPLAY_P4_VM_MAX_PROGS=64
+  DISPLAY_LOCAL_MAX_CANVAS=34
+  DISPLAY_LOCAL_VM_MAX_PROGS=64
   PICORB_PLATFORM_POSIX
   PICORB_VM_MRUBY=1
   # mruby ABI -- keep in step with lib/add/family_mruby_wasm.rb

@@ -6,7 +6,7 @@
 //
 // Init sequence (two stages, because the codec shares the I2C bus with
 // PI4IO/GT911 which LovyanGFX drives at register level):
-//   1. audio_backend()->init() - called from display_p4_task right after
+//   1. audio_backend()->init() - called from display_local_task right after
 //      LGFX init and BEFORE g_lcd_ready is set, i.e. before the touch
 //      task starts polling GT911. Sets up I2S + ES8388 on the shared
 //      I2C bus without concurrent bus users.

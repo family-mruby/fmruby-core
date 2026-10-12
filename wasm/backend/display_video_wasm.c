@@ -1,8 +1,8 @@
 /*
- * display_video_wasm.c - display_p4_video.h for the wasm build.
+ * display_video_wasm.c - display_local_video.h for the wasm build.
  *
- * The P4 does this with its hardware JPEG engine (main/drivers/display_p4/
- * display_p4_video.cpp). There is no such engine in a browser, but there is
+ * The P4 does this with its hardware JPEG engine (main/drivers/display_local/
+ * display_local_video.cpp). There is no such engine in a browser, but there is
  * already a decoder in the binary: LovyanGFX brings TJpgDec along
  * (lgfx/utility/lgfx_tjpgd.c, compiled into lgfx_wasm), so playback needs no
  * new dependency -- only the software equivalent of what the P4 does in
@@ -41,7 +41,7 @@
  *     deletes itself on stop.
  */
 
-#include "display_p4_video.h"
+#include "display_local_video.h"
 
 #include "fmrb_hal_time.h"
 #include "fmrb_link_protocol.h"
@@ -205,15 +205,15 @@ static bool jpeg_probe_size(const uint8_t *jpeg, size_t len,
 }
 
 /* ============================================================
- * Still images: what display_p4_task.cpp calls for a .jpg
+ * Still images: what display_local_task.cpp calls for a .jpg
  * ============================================================ */
 
-bool display_p4_jpeg_is_jpeg(const uint8_t *data, size_t len)
+bool display_local_jpeg_is_jpeg(const uint8_t *data, size_t len)
 {
     return len >= 2 && data && data[0] == 0xFF && data[1] == 0xD8;
 }
 
-uint8_t *display_p4_jpeg_decode(const uint8_t *jpeg, size_t len,
+uint8_t *display_local_jpeg_decode(const uint8_t *jpeg, size_t len,
                                 uint16_t *out_w, uint16_t *out_h,
                                 uint16_t *out_stride_px)
 {
@@ -234,16 +234,16 @@ uint8_t *display_p4_jpeg_decode(const uint8_t *jpeg, size_t len,
     return out;
 }
 
-void display_p4_jpeg_free_output(uint8_t *buf) { free(buf); }
+void display_local_jpeg_free_output(uint8_t *buf) { free(buf); }
 
-uint8_t *display_p4_jpeg_alloc_input(size_t size, size_t *out_alloc)
+uint8_t *display_local_jpeg_alloc_input(size_t size, size_t *out_alloc)
 {
     uint8_t *p = (uint8_t *)malloc(size);
     if (out_alloc) *out_alloc = p ? size : 0;
     return p;
 }
 
-void display_p4_jpeg_free_input(uint8_t *buf) { free(buf); }
+void display_local_jpeg_free_input(uint8_t *buf) { free(buf); }
 
 /* ============================================================
  * Frame slots -- same contract as the P4 player
@@ -393,7 +393,7 @@ static void slot_abandon(frame_slot_t *slot)
     player_unlock();
 }
 
-bool display_p4_video_take_frame(const uint8_t **pixels, uint16_t *w,
+bool display_local_video_take_frame(const uint8_t **pixels, uint16_t *w,
                                  uint16_t *h, uint16_t *stride_px,
                                  uint16_t *canvas_id, int16_t *x, int16_t *y)
 {
@@ -426,7 +426,7 @@ bool display_p4_video_take_frame(const uint8_t **pixels, uint16_t *w,
     return got;
 }
 
-void display_p4_video_release_frame(void)
+void display_local_video_release_frame(void)
 {
     player_lock();
     for (int i = 0; i < VIDEO_SLOTS; i++) {
@@ -581,7 +581,7 @@ static void player_stop_and_wait(void)
     }
 }
 
-fmrb_err_t display_p4_video_open(uint16_t canvas_id, int16_t x, int16_t y,
+fmrb_err_t display_local_video_open(uint16_t canvas_id, int16_t x, int16_t y,
                                  const char *path, uint16_t fps, uint8_t flags,
                                  uint16_t *out_w, uint16_t *out_h)
 {
@@ -612,7 +612,7 @@ fmrb_err_t display_p4_video_open(uint16_t canvas_id, int16_t x, int16_t y,
     s_p.stop_req       = false;
     s_p.rewind_req     = false;
 
-    s_p.read_buf = display_p4_jpeg_alloc_input(VIDEO_MAX_FRAME_BYTES,
+    s_p.read_buf = display_local_jpeg_alloc_input(VIDEO_MAX_FRAME_BYTES,
                                                &s_p.read_buf_size);
     s_p.io_buf   = (uint8_t *)malloc(VIDEO_IO_BUF_BYTES);
     s_p.io_len   = 0;
@@ -680,7 +680,7 @@ fmrb_err_t display_p4_video_open(uint16_t canvas_id, int16_t x, int16_t y,
     return FMRB_OK;
 }
 
-fmrb_err_t display_p4_video_control(uint8_t action)
+fmrb_err_t display_local_video_control(uint8_t action)
 {
     switch (action) {
     case FMRB_LINK_GFX_VIDEO_ACTION_PLAY:
@@ -714,7 +714,7 @@ fmrb_err_t display_p4_video_control(uint8_t action)
     }
 }
 
-void display_p4_video_get_status(display_p4_video_status_t *out)
+void display_local_video_get_status(display_local_video_status_t *out)
 {
     if (!out) return;
     player_lock();
@@ -725,16 +725,16 @@ void display_p4_video_get_status(display_p4_video_status_t *out)
     player_unlock();
 }
 
-bool display_p4_video_is_active(void)
+bool display_local_video_is_active(void)
 {
     return s_p.state == FMRB_LINK_GFX_VIDEO_STATE_PLAYING;
 }
 
 /* The copy runs on the display task and is timed there; the P4 build folds it
  * into a profile line. Nothing here keeps that statistic. */
-void display_p4_video_note_copy_us(uint32_t us) { (void)us; }
+void display_local_video_note_copy_us(uint32_t us) { (void)us; }
 
-void display_p4_video_canvas_gone(uint16_t canvas_id)
+void display_local_video_canvas_gone(uint16_t canvas_id)
 {
     if (s_p.fp && s_p.canvas_id == canvas_id) {
         FMRB_LOGI(TAG, "canvas %u deleted, stopping playback", canvas_id);

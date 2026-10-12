@@ -14,7 +14,7 @@ Spinel の見せ場)。B(実機マイク)は後追い。
 - **マイク = ES7210**(エコー消去つき2マイク、専用 ADC コーデック、I2S 接続)。
   出力の ES8388 とは別チップ。`esp_codec_dev` に ES7210 ドライバあり
   (`es7210_adc.h` / `CONFIG_CODEC_ES7210_SUPPORT`)。I2C は共有内部バス
-  (GPIO31/32、display_p4 の I2C サービス経由)。
+  (GPIO31/32、display_local の I2C サービス経由)。
 - **入力経路は未実装**: `audio_p4` は I2S TX のみ(`s_tx_chan`、I2S_NUM_1)、
   ES8388 は DAC モード、`rx_handle = NULL`。ES7210 は未初期化。
 - **入力 API は未実装**: `FmrbAudio`(Ruby)は出力のみ(play / note_on / fmsq)。

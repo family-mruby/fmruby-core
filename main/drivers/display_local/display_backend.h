@@ -1,7 +1,7 @@
 /*
  * display_backend.h - output side of the Modern (ESP32-P4) display driver
  *
- * display_p4_task.cpp keeps everything that decides WHAT the screen should
+ * display_local_task.cpp keeps everything that decides WHAT the screen should
  * look like: the link receive loop, the gfx command interpretation, the canvas
  * and sprite stores, z-order, the viewport torus split, the sprite clip, the
  * remote-desktop capture, and the cursor. What is behind this interface is only
@@ -20,16 +20,17 @@
  *
  * Deliberately NOT in the interface:
  *
- *   - Allocating pixel memory. ppa_alloc_buffer() in display_p4_task.cpp
+ *   - Allocating pixel memory. ppa_alloc_buffer() in display_local_task.cpp
  *     allocates cache-line-aligned PSRAM, which is what canvases want too and
  *     is about the cache rather than about the PPA. Both backends use it.
  *   - Deciding what the cursor looks like. The bake/restore pair only touches
  *     the framebuffer sprite, and cursor_patch() composites the cursor over a
  *     framebuffer region itself; only putting that region on the panel without
  *     a full present is backend work (present_patch).
- *   - The panel itself. Both P4 backends drive the same LGFX device (LGFX_Tab5
- *     or LGFX_Naryav4); it is board hardware, not PPA. Reach it with
- *     display_p4_lcd().
+ *   - The panel itself. Every backend drives the board's LGFX device; it is
+ *     board hardware, not PPA. Reach it with board_display_lcd() and the
+ *     panel's own frame buffer with board_display_panel_framebuffer()
+ *     (board/board_display.h).
  */
 
 #pragma once
@@ -39,8 +40,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-    /* The LovyanGFX headers come in through M5GFX.h, the same way
-     * lgfx_tab5.hpp takes them; the M5GFX device objects are not used. */
+    /* The LovyanGFX headers come in through M5GFX.h, the same way the
+     * boards' devices take them; the M5GFX device objects are not used. */
     #include <M5GFX.h>
 #endif
 
@@ -149,19 +150,9 @@ typedef struct {
 /* The one the build selected. */
 const display_backend_t *display_backend(void);
 
-/* The panel, shared by both backends and by the parts of display_p4_task.cpp
- * that draw straight to it (the boot screen, the canvas sprites). */
-LGFX_Device *display_p4_lcd(void);
-
-/* The panel's own frame buffer (Tab5: native portrait RGB565; NARYA v4:
- * landscape RGB888), or NULL if this panel does not expose one. Kept separate
- * from display_p4_lcd() so this header does not have to pull in a board's
- * panel definition. */
-void *display_p4_panel_framebuffer(void);
-
 /* Cache-line-aligned PSRAM, the allocator canvases and the framebuffer share.
- * Defined in display_p4_task.cpp. */
-void *display_p4_alloc_pixels(size_t length, size_t *out_aligned_size);
+ * Defined in display_local_task.cpp. */
+void *display_local_alloc_pixels(size_t length, size_t *out_aligned_size);
 
 /* The whole-number scale that fits an fb_w x fb_h frame onto a panel_w x
  * panel_h landscape surface: 3 for 426x240 and 2 for 640x360 on 1280x720.

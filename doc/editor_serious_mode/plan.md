@@ -34,7 +34,7 @@
 - フォントは 3 種のみ: 6x8 (Font0)、8x8 (misaki、日本語可)、12x12。
 - 解像度: framebuffer サイズは system_conf の実行時値で、P4 の fb は
   INIT_DISPLAY から動的確保。コンパイル時固定なのはスケール係数
-  DISPLAY_P4_SCALE_FACTOR=3 と touch / remote desktop 系の定数群。
+  DISPLAY_LOCAL_SCALE_FACTOR=3 と touch / remote desktop 系の定数群。
 - P4 の canvas は RGB565 で spawn 時サイズ確保、以後再確保しない
   (Retro 側は最初から画面サイズで確保する方針で、ここが非対称)。
 - P4 の合成は PPA Blend (拡縮不可) + 最終段 SRM 1 回 (拡縮はここだけ)。
@@ -62,7 +62,7 @@
   (現状 426x240@3x の 1px 帯も消える)。8x8 misaki フォントで
   **80 桁 x 45 行、日本語表示可**。6x8 なら 106x42。
 - 変更点: system_conf_p4.toml の display_width/height、
-  DISPLAY_P4_SCALE_FACTOR 3→2 (理想は fb サイズから導出)、
+  DISPLAY_LOCAL_SCALE_FACTOR 3→2 (理想は fb サイズから導出)、
   touch の仮想解像度定数、remote desktop の定数 (info 応答 / JPEG /
   H.264。縦 360 は 16 の倍数でないため MCU パディング 368 が必要)、
   壁紙アセット追加。リンクプロトコルの座標は uint16 で問題なし。
@@ -73,7 +73,7 @@
   高解像度 canvas を 426x240 デスクトップに混在させるには canvas ごとの
   SRM パスという新設計が要る。全体解像度の切替 (起動時に TOML で決定)
   が正解。Retro (320x240) は無傷。
-- **着手前の必須作業**: render_frame の時間計測を display_p4_task に
+- **着手前の必須作業**: render_frame の時間計測を display_local_task に
   仕込む (現状 GFX STATS は cmds/s・presents/s のみで、フレーム所要時間の
   計測が無い)。計測してから B を判断する。
 

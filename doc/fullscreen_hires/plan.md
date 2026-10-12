@@ -98,7 +98,7 @@ H2 の判断 (ユーザ、2026-09-28): Ctrl+Tab で park するときの順番�
   今回は 640x360 だけ。
 - マウスカーソルと入力座標: 426x240 前提の箇所の洗い出し (H0)。
 - エディタで選べるフォントの候補 (6x8、misaki 8x8、12px、efont 16px など、
-  display_p4 と wasm に実際にあるもの)。
+  display_local と wasm に実際にあるもの)。
 - ちらつき対策で入れた DSI フレームバッファの 4KB 揃え (reference/dpi_frame_buffer_alignment.md)
   との関係: 高解像度でも走査の帯域は同じ (DSI 側は 1280x720 のまま) なので
   影響しない見込み。H1 で確かめる。

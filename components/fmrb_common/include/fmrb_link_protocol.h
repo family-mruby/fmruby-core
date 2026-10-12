@@ -150,7 +150,7 @@ typedef enum {
     FMRB_LINK_GFX_SET_CANVAS_VIEWPORT = 0x57,
     FMRB_LINK_GFX_SET_SPRITE_CLIP = 0x58,
     // Fullscreen high-resolution mode (doc/fullscreen_hires/). Only the
-    // Modern display task (display_p4, and the browser build that shares it)
+    // Modern display task (display_local, and the browser build that shares it)
     // knows it; the kernel never sends it to graphics-audio, so it is not
     // part of the link version the two sides pair on.
     FMRB_LINK_GFX_SET_SCREEN_MODE = 0x59,

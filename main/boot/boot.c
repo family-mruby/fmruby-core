@@ -42,7 +42,7 @@
 #include "i2c_keyboard.h"
 #endif
 #ifdef FMRB_HAS_LOCAL_DISPLAY
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #endif
 #ifdef FMRB_HW_MODERN
 #if !defined(FMRB_HW_NARYAV4)
@@ -56,7 +56,7 @@
 #endif
 
 #ifdef FMRB_PLATFORM_WASM
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "audio_p4.h"
 #endif
 
@@ -279,7 +279,7 @@ static bool init_hardware(void)
     // The Modern in-process display task, sprite-only: same receive loop and
     // command interpreter as the Tab5, compositing through the shared software
     // core, presenting into the RGBA frame the browser reads (doc/wasm/ P4a).
-    ret = display_p4_task_init();
+    ret = display_local_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to init wasm display task");
         return false;
@@ -316,10 +316,10 @@ static void modern_radio_init_task(void *arg)
     // NARYA v4 the C6's enable is a plain GPIO that esp_hosted drives itself
     // (CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE), so waiting here would only
     // couple the radio to a failure it has nothing to do with.
-    for (int i = 0; i < 300 && !display_p4_is_ready(); i++) {
+    for (int i = 0; i < 300 && !display_local_is_ready(); i++) {
         fmrb_task_delay_ms(10);
     }
-    if (!display_p4_is_ready()) {
+    if (!display_local_is_ready()) {
         FMRB_LOGW(TAG, "Display not ready, skipping BLE/WiFi init");
         fmrb_task_delete_ex(NULL);
         return;
@@ -444,7 +444,7 @@ static bool init_hardware(void)
 #elif defined(FMRB_HW_MODERN)
     // Modern (ESP32-P4 / Tab5): local display task drives the MIPI-DSI panel;
     // the Tab5 Keyboard accessory provides key input. No WROVER child chip.
-    ret = display_p4_task_init();
+    ret = display_local_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init P4 display, continuing without it");
     }
@@ -479,7 +479,7 @@ static bool init_hardware(void)
     // An S3 that draws on its own panel (AtomS3R): the same display task as
     // Modern, with the software compositor. No child chip to reset, no sound
     // and no radio coprocessor; the radio follows the Retro policy below.
-    ret = display_p4_task_init();
+    ret = display_local_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init local display, continuing without it");
     }

@@ -2,52 +2,52 @@
 // Logic mirrors fmruby-graphics-audio/main/graphics/gfx_vm.cpp so that the
 // same Ruby GfxBlock programs run on both the WROVER and the P4 backends.
 
-#include "display_p4_vm.h"
+#include "display_local_vm.h"
 
 #include <cstring>
 
 #include "fmrb_attr.h"
 #include "fmrb_log.h"
 
-static const char *TAG = "display_p4_vm";
+static const char *TAG = "display_local_vm";
 
 typedef struct {
     bool     active;
     uint16_t canvas_id;
     uint16_t bytecode_len;
     uint16_t strtable_len;
-    uint8_t  bytecode[DISPLAY_P4_VM_MAX_BYTECODE_SIZE];
-    uint8_t  strtable[DISPLAY_P4_VM_MAX_STRTABLE_SIZE];
-    int16_t  regs[DISPLAY_P4_VM_REG_COUNT];
+    uint8_t  bytecode[DISPLAY_LOCAL_VM_MAX_BYTECODE_SIZE];
+    uint8_t  strtable[DISPLAY_LOCAL_VM_MAX_STRTABLE_SIZE];
+    int16_t  regs[DISPLAY_LOCAL_VM_REG_COUNT];
 } p4_prog_t;
 
 // PSRAM: the program table is read and written by the display task alone (no
 // ISR, no DMA), and a frame reads at most a few hundred bytes of it.
-FMRB_EXT_RAM_BSS_ATTR static p4_prog_t g_progs[DISPLAY_P4_VM_MAX_PROGS];
+FMRB_EXT_RAM_BSS_ATTR static p4_prog_t g_progs[DISPLAY_LOCAL_VM_MAX_PROGS];
 
-void display_p4_vm_init(void) {
+void display_local_vm_init(void) {
     memset(g_progs, 0, sizeof(g_progs));
     FMRB_LOGI(TAG, "VM init: max_progs=%d bc=%d st=%d",
-              DISPLAY_P4_VM_MAX_PROGS,
-              DISPLAY_P4_VM_MAX_BYTECODE_SIZE,
-              DISPLAY_P4_VM_MAX_STRTABLE_SIZE);
+              DISPLAY_LOCAL_VM_MAX_PROGS,
+              DISPLAY_LOCAL_VM_MAX_BYTECODE_SIZE,
+              DISPLAY_LOCAL_VM_MAX_STRTABLE_SIZE);
 }
 
-uint8_t display_p4_vm_define_prog(uint16_t canvas_id,
+uint8_t display_local_vm_define_prog(uint16_t canvas_id,
                                   const uint8_t *bytecode, uint16_t bytecode_len,
                                   const uint8_t *strtable, uint16_t strtable_len) {
-    if (bytecode_len > DISPLAY_P4_VM_MAX_BYTECODE_SIZE) {
+    if (bytecode_len > DISPLAY_LOCAL_VM_MAX_BYTECODE_SIZE) {
         FMRB_LOGE(TAG, "DEFINE_PROG: bytecode_len=%u > max=%d",
-                  bytecode_len, DISPLAY_P4_VM_MAX_BYTECODE_SIZE);
-        return DISPLAY_P4_VM_INVALID_PROG_ID;
+                  bytecode_len, DISPLAY_LOCAL_VM_MAX_BYTECODE_SIZE);
+        return DISPLAY_LOCAL_VM_INVALID_PROG_ID;
     }
-    if (strtable_len > DISPLAY_P4_VM_MAX_STRTABLE_SIZE) {
+    if (strtable_len > DISPLAY_LOCAL_VM_MAX_STRTABLE_SIZE) {
         FMRB_LOGE(TAG, "DEFINE_PROG: strtable_len=%u > max=%d",
-                  strtable_len, DISPLAY_P4_VM_MAX_STRTABLE_SIZE);
-        return DISPLAY_P4_VM_INVALID_PROG_ID;
+                  strtable_len, DISPLAY_LOCAL_VM_MAX_STRTABLE_SIZE);
+        return DISPLAY_LOCAL_VM_INVALID_PROG_ID;
     }
 
-    for (uint8_t i = 0; i < DISPLAY_P4_VM_MAX_PROGS; i++) {
+    for (uint8_t i = 0; i < DISPLAY_LOCAL_VM_MAX_PROGS; i++) {
         if (!g_progs[i].active) {
             p4_prog_t *p = &g_progs[i];
             p->active        = true;
@@ -67,19 +67,19 @@ uint8_t display_p4_vm_define_prog(uint16_t canvas_id,
         }
     }
     FMRB_LOGE(TAG, "DEFINE_PROG: pool full");
-    return DISPLAY_P4_VM_INVALID_PROG_ID;
+    return DISPLAY_LOCAL_VM_INVALID_PROG_ID;
 }
 
-int display_p4_vm_delete_prog(uint8_t prog_id) {
-    if (prog_id >= DISPLAY_P4_VM_MAX_PROGS) return -1;
+int display_local_vm_delete_prog(uint8_t prog_id) {
+    if (prog_id >= DISPLAY_LOCAL_VM_MAX_PROGS) return -1;
     if (!g_progs[prog_id].active) return 0;
     g_progs[prog_id].active = false;
     FMRB_LOGI(TAG, "DELETE_PROG: id=%u", prog_id);
     return 0;
 }
 
-void display_p4_vm_delete_progs_by_canvas(uint16_t canvas_id) {
-    for (uint8_t i = 0; i < DISPLAY_P4_VM_MAX_PROGS; i++) {
+void display_local_vm_delete_progs_by_canvas(uint16_t canvas_id) {
+    for (uint8_t i = 0; i < DISPLAY_LOCAL_VM_MAX_PROGS; i++) {
         if (g_progs[i].active && g_progs[i].canvas_id == canvas_id) {
             g_progs[i].active = false;
             FMRB_LOGI(TAG, "DELETE_PROG (by canvas): id=%u canvas=%u", i, canvas_id);
@@ -127,38 +127,38 @@ static void vm_execute(p4_prog_t *prog, lgfx::LGFX_Sprite *target) {
         for (uint8_t i = 0; i < nops; i++) {
             uint16_t w = (uint16_t)pc[0] | ((uint16_t)pc[1] << 8);
             pc += 2;
-            if (DISPLAY_P4_VM_OPERAND_IS_REG(w)) {
-                args[i] = prog->regs[DISPLAY_P4_VM_OPERAND_REG_ID(w)];
+            if (DISPLAY_LOCAL_VM_OPERAND_IS_REG(w)) {
+                args[i] = prog->regs[DISPLAY_LOCAL_VM_OPERAND_REG_ID(w)];
             } else {
-                args[i] = DISPLAY_P4_VM_OPERAND_IMM(w);
+                args[i] = DISPLAY_LOCAL_VM_OPERAND_IMM(w);
             }
         }
 
         switch (opcode) {
-        case DISPLAY_P4_VM_OP_END:
+        case DISPLAY_LOCAL_VM_OP_END:
             return;
-        case DISPLAY_P4_VM_OP_CLEAR:
+        case DISPLAY_LOCAL_VM_OP_CLEAR:
             target->fillScreen((uint8_t)args[0]);
             break;
-        case DISPLAY_P4_VM_OP_FILL_RECT:
+        case DISPLAY_LOCAL_VM_OP_FILL_RECT:
             target->fillRect(args[0], args[1], args[2], args[3], (uint8_t)args[4]);
             break;
-        case DISPLAY_P4_VM_OP_DRAW_RECT:
+        case DISPLAY_LOCAL_VM_OP_DRAW_RECT:
             target->drawRect(args[0], args[1], args[2], args[3], (uint8_t)args[4]);
             break;
-        case DISPLAY_P4_VM_OP_FILL_ROUND_RECT:
+        case DISPLAY_LOCAL_VM_OP_FILL_ROUND_RECT:
             target->fillRoundRect(args[0], args[1], args[2], args[3], args[4], (uint8_t)args[5]);
             break;
-        case DISPLAY_P4_VM_OP_DRAW_ROUND_RECT:
+        case DISPLAY_LOCAL_VM_OP_DRAW_ROUND_RECT:
             target->drawRoundRect(args[0], args[1], args[2], args[3], args[4], (uint8_t)args[5]);
             break;
-        case DISPLAY_P4_VM_OP_DRAW_LINE:
+        case DISPLAY_LOCAL_VM_OP_DRAW_LINE:
             target->drawLine(args[0], args[1], args[2], args[3], (uint8_t)args[4]);
             break;
-        case DISPLAY_P4_VM_OP_FILL_CIRCLE:
+        case DISPLAY_LOCAL_VM_OP_FILL_CIRCLE:
             target->fillCircle(args[0], args[1], args[2], (uint8_t)args[3]);
             break;
-        case DISPLAY_P4_VM_OP_DRAW_TEXT: {
+        case DISPLAY_LOCAL_VM_OP_DRAW_TEXT: {
             // args: x, y, color, str_id
             uint8_t str_len = 0;
             const char *str = lookup_str(prog, (uint16_t)args[3], &str_len);
@@ -180,10 +180,10 @@ static void vm_execute(p4_prog_t *prog, lgfx::LGFX_Sprite *target) {
     }
 }
 
-int display_p4_vm_exec_prog(uint16_t canvas_id, uint8_t prog_id,
+int display_local_vm_exec_prog(uint16_t canvas_id, uint8_t prog_id,
                              const uint8_t *reg_updates, uint8_t reg_count,
                              lgfx::LGFX_Sprite *target) {
-    if (prog_id >= DISPLAY_P4_VM_MAX_PROGS) {
+    if (prog_id >= DISPLAY_LOCAL_VM_MAX_PROGS) {
         FMRB_LOGE(TAG, "EXEC_PROG: invalid id=%u", prog_id);
         return -1;
     }
@@ -204,7 +204,7 @@ int display_p4_vm_exec_prog(uint16_t canvas_id, uint8_t prog_id,
         uint8_t  reg_id = reg_updates[i * 3 + 0];
         int16_t  val    = (int16_t)((uint16_t)reg_updates[i * 3 + 1]
                                   | ((uint16_t)reg_updates[i * 3 + 2] << 8));
-        if (reg_id < DISPLAY_P4_VM_REG_COUNT) {
+        if (reg_id < DISPLAY_LOCAL_VM_REG_COUNT) {
             p->regs[reg_id] = val;
         }
     }

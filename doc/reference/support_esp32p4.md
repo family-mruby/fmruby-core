@@ -143,7 +143,7 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 **Phase 0（ビルド配線 + M5GFX の IDF6/P4 統合）完了:**
 
 - `main/idf_component.yml`: m5gfx を esp32p4 でも取得可に（LGFX部分のみ利用。M5Unified は除外）。
-- `main/CMakeLists.txt`: esp32p4 アームに `drivers/display_p4`(表示タスク stub) と `drivers/tab5_keyboard`(stub) を追加、`FMRB_HW_MODERN` define、m5gfx を REQUIRES に。
+- `main/CMakeLists.txt`: esp32p4 アームに `drivers/display_local`(表示タスク stub) と `drivers/tab5_keyboard`(stub) を追加、`FMRB_HW_MODERN` define、m5gfx を REQUIRES に。
 - M5GFX の IDF6/P4 ビルド問題を解決（managed_components は gitignore のため非編集、main 側で対処）:
   - device.hpp が P4 でも legacy esp32 バス(Bus_Parallel8/Light_PWM)を強制 include し、IDF6 で分割された driver ヘッダを要求 → m5gfx ライブラリを **`idf::esp_driver_i2s` / `idf::esp_driver_ledc` に link** して推移的 include を供給（`driver/i2s_types.h`, `driver/ledc.h`+`hal/ledc_types.h`）。`driver/dac.h` 等は esp32-classic ガード内でP4非コンパイル。
   - GCC15/IDF6 で M5GFX が IDF ヘッダの `[[noreturn]]` 等で `-Werror` に当たるため、m5gfx に `-Wno-error`（upstream コードのため、既存の m5unified 対応と同方針）。
@@ -155,9 +155,9 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 
 **Phase 1（Tab5 DSI パネル起動 + テストパターン）— 実機動作確認済み (後続フェーズの表示系がこの構成で常用中):**
 
-- `main/drivers/display_p4/lgfx_tab5.hpp`: M5Unified 非依存の自前 `LGFX_Tab5 : lgfx::LGFX_Device`。Bus_DSI(2レーン/1040Mbps/LDO ch3 2500mV) + Panel_ST7123(720x1280, dpi80MHz, hsync40/2/40, vsync8/2/220) + Touch_GT911(SDA31/SCL32/INT23, port1) を明示構成。M5GFX.h は LGFX ライブラリ用に include するが M5GFX/M5Unified オブジェクトは使わない。Panel_ST7123/Touch_GT911 は device.hpp が include しないので個別 include。
-- `main/drivers/display_p4/display_p4_task.cpp`: PI4IO 拡張IC(0x43/0x44, IDF i2c_master で一時バス→LCD/タッチ reset 解除→削除しLGFXにI2C port1を譲る) + TP INT(GPIO23) + バックライト(GPIO22 full-on)。LGFX_Tab5.init() 後にカラーバー+文字のテストパターン描画。FreeRTOS タスク(core1)。
-- `main/CMakeLists.txt`: display_p4_task.cpp が M5GFX.h を引くため main(esp32p4) にも esp_driver_i2s/ledc を REQUIRES 追加 + 当該ファイルに -Wno-error。
+- `main/drivers/display_local/board/tab5/lgfx_tab5.hpp`: M5Unified 非依存の自前 `LGFX_Tab5 : lgfx::LGFX_Device`。Bus_DSI(2レーン/1040Mbps/LDO ch3 2500mV) + Panel_ST7123(720x1280, dpi80MHz, hsync40/2/40, vsync8/2/220) + Touch_GT911(SDA31/SCL32/INT23, port1) を明示構成。M5GFX.h は LGFX ライブラリ用に include するが M5GFX/M5Unified オブジェクトは使わない。Panel_ST7123/Touch_GT911 は device.hpp が include しないので個別 include。
+- `main/drivers/display_local/display_local_task.cpp` (PI4IO の部分は現在 `board/tab5/board_display_tab5.cpp`): PI4IO 拡張IC(0x43/0x44, IDF i2c_master で一時バス→LCD/タッチ reset 解除→削除しLGFXにI2C port1を譲る) + TP INT(GPIO23) + バックライト(GPIO22 full-on)。LGFX_Tab5.init() 後にカラーバー+文字のテストパターン描画。FreeRTOS タスク(core1)。
+- `main/CMakeLists.txt`: display_local_task.cpp が M5GFX.h を引くため main(esp32p4) にも esp_driver_i2s/ledc を REQUIRES 追加 + 当該ファイルに -Wno-error。
 - Phase 1 はパネル ST7123 をハードコード（現行Tab5）。ILI9881C/ST7121 個体は Panel クラス/タイミング差し替えが必要。
 
 **実機テスト前に必要な sdkconfig 提案（sdkconfig.defaults 編集禁止のため menuconfig 等で適用）:**
@@ -171,7 +171,7 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 
 1. **チップ名誤表示**: `boot.c` の chip 名判定に `CONFIG_IDF_TARGET_ESP32P4` 分岐を追加。
 
-2. **kernel 起動待ちタイムアウト**: `display_p4_task` がトランスポートの受信側を実装していなかった。`fmrb_hal_link_local_receive_cmd` でコマンドをポーリングし、msgpack でパースして ACK を返す実装を追加（VERSION/INIT_DISPLAY/GA_VERSION/DEFINE_PROG 対応）。
+2. **kernel 起動待ちタイムアウト**: `display_local_task` がトランスポートの受信側を実装していなかった。`fmrb_hal_link_local_receive_cmd` でコマンドをポーリングし、msgpack でパースして ACK を返す実装を追加（VERSION/INIT_DISPLAY/GA_VERSION/DEFINE_PROG 対応）。
 
 3. **PSRAM 速度**: DSI DPI フレームバッファの帯域が足りず画面がアンダーランしていた。`CONFIG_SPIRAM_SPEED_200M` は `CONFIG_IDF_EXPERIMENTAL_FEATURES=y` が前提になっていたため、`config/sdkconfig.defaults.p4` に追加して 200MHz を有効化。
 
@@ -218,7 +218,7 @@ Bus_DSI を init する前に区別する必要がある**ため（M5GFX も同�
 判定結果は `LGFX_Tab5::configure()` に渡し、Bus_DSI の lane_mbps・Panel クラス・
 DPI タイミング・Touch クラスを実行時に選ぶ。パネルは Panel_DSI 派生、タッチは
 ITouch 派生で揃うので、描画経路（pushImage / getFrameBuffer）と
-`display_p4_get_touch()`（`g_lcd.getTouch()`）は個体によらず不変。
+`display_local_get_touch()`（`g_lcd.getTouch()`）は個体によらず不変。
 
 注意: `tab5_power_on()` は GT911 のアドレスを 0x14 に確定させるため TP INT(GPIO23) を
 リセット中 HIGH に駆動している（M5GFX は input のまま）。ST 個体ではこの HIGH 駆動は
@@ -237,7 +237,7 @@ version 01` → `ST7121 + ST7123 touch`。LGFX init OK (1280x720)、Guru/abort �
 
 **Phase 2 (GFX 描画 + フレームバッファ合成):**
 
-- `display_p4_task.cpp` を全面実装。全 GFX コマンド（描画プリミティブ、キャンバス管理、カーソル、GfxBlock VM、スプライト、PNG 画像）を処理。
+- `display_local_task.cpp` を全面実装。全 GFX コマンド（描画プリミティブ、キャンバス管理、カーソル、GfxBlock VM、スプライト、PNG 画像）を処理。
 - フレームバッファ方式: 8bpp (RGB332) の共有フレームバッファ（INIT_DISPLAY で動的サイズ確保）にキャンバスを z-order 順で合成 → `pushRotateZoom` で 3x スケーリングして g_lcd に出力。
 - キャンバス合成: 不透明は行単位 `memcpy`、透過は RGB332 値でバイト比較ループ。LovyanGFX の `pushSprite` は 8bpp 透過色を RGB888 に誤変換するため使用せず、直接バッファ操作で実装。
 - PNG 画像: `CREATE_IMAGE_FROM_FILE` で 16bpp 中間スプライトに `drawPng` → 8bpp に `pushSprite` 変換して保存。RGBA PNG は白背景で事前クリア。
@@ -245,8 +245,8 @@ version 01` → `ST7121 + ST7123 touch`。LGFX init OK (1280x720)、Guru/abort �
 
 **Phase 2.5 (スプライト + VM):**
 
-- `display_p4_vm.cpp/h`: GfxBlock バイトコード VM（9オペコード、16レジスタ、16プログラム）。
-- `display_p4_sprite.cpp/h`: SpriteImage（8bpp PSRAM）、SpriteInstance（マルチフレーム、z-order）、1bpp Mask プール。
+- `display_local_vm.cpp/h`: GfxBlock バイトコード VM（9オペコード、16レジスタ、16プログラム）。
+- `display_local_sprite.cpp/h`: SpriteImage（8bpp PSRAM）、SpriteInstance（マルチフレーム、z-order）、1bpp Mask プール。
 - スプライトはフレームバッファに直接合成（キャンバスバッファを破壊しない設計）。
 
 **Phase 3 (Tab5 Keyboard):**
@@ -259,7 +259,7 @@ version 01` → `ST7121 + ST7123 touch`。LGFX init OK (1280x720)、Guru/abort �
 **Phase 4 (タッチ入力):**
 
 - `drivers/touch/touch_task.c`: GT911 タッチをトラックパッド方式で実装。
-- `display_p4_get_touch()` (g_lcd.getTouch のラッパー) を 33ms ポーリング。
+- `display_local_get_touch()` (g_lcd.getTouch のラッパー) を 33ms ポーリング。
 - 絶対座標ではなく相対移動（指の移動量をカーソルに加算）。パネル座標の差分を 3 で割って仮想座標に変換。
 - タッチダウン=クリック、ドラッグ=カーソル移動、タッチアップ=リリース。
 

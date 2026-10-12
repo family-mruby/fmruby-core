@@ -32,7 +32,7 @@ slave ビルド) のままで BT HCI が通るかをまず検証し、通らな�
   C6 リセット=GPIO15 (active low), 4-bit, 40MHz
 - ピン競合なし: fmruby-core P4 ビルドで GPIO8-13,15 は未使用。
   Tab5 の microSD は GPIO39-44 の別スロット
-- C6 の電源は PI4IO #2 (0x44) reg 0x05 bit0。display_p4 の tab5_power_on()
+- C6 の電源は PI4IO #2 (0x44) reg 0x05 bit0。display_local の tab5_power_on()
   が既に ON にしている → BLE 初期化は display ready 後に行う必要がある
 - esp_hosted の BT 用 Kconfig: ESP_HOSTED_ENABLE_BT_NIMBLE /
   ESP_HOSTED_NIMBLE_HCI_VHCI (前提: BT_ENABLED && BT_NIMBLE_ENABLED &&
@@ -52,7 +52,7 @@ slave ビルド) のままで BT HCI が通るかをまず検証し、通らな�
    nimble_port_init の前に esp_hosted_connect_to_slave +
    esp_hosted_bt_controller_init/enable を挿入。fw バージョンをログ出力
 4. main/CMakeLists.txt: P4 でも ble_task.c と bt/esp_hosted をビルド
-5. main/boot/boot.c: FMRB_HW_MODERN ブランチで display_p4_is_ready() を
+5. main/boot/boot.c: FMRB_HW_MODERN ブランチで display_local_is_ready() を
    待ってから ble_task_init() を呼ぶ (C6 電源が display task で入るため)
 
 GATT サービス定義・COBS プロトコル・Web クライアント (tool/web/) は無変更。

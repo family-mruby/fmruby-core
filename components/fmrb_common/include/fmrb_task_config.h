@@ -99,7 +99,7 @@
 // alone ("他タスクは全員が段割りに既に適合"). The reason it plausibly had --
 // the desktop must answer while a guest hogs the CPU -- stopped applying on
 // 2026-08-02 when guests dropped from 5 to 2. All 8 bought after that was a
-// UI shell outranking, on the same core, the screen task (DISPLAY_P4, 5),
+// UI shell outranking, on the same core, the screen task (DISPLAY_LOCAL, 5),
 // touch (5), the remote desktop's stream (4) and debugd (3), which is the
 // only way to kill a hung app. A launcher rescan held core 1 for 160 ms at a
 // stretch and stopped all of them (doc/reference/launcher_rescan_desktop_stop.md).
@@ -294,9 +294,9 @@
 
 // Tab5 display task (MIPI-DSI compositor, receives GFX commands via
 // hal_link_local; owns PPA blend/SRM and the boot screen)
-#define FMRB_DISPLAY_P4_TASK_STACK_SIZE (16 * 1024)
-#define FMRB_DISPLAY_P4_TASK_PRIORITY   (5)
-#define FMRB_DISPLAY_P4_TASK_CORE       (1)
+#define FMRB_DISPLAY_LOCAL_TASK_STACK_SIZE (16 * 1024)
+#define FMRB_DISPLAY_LOCAL_TASK_PRIORITY   (5)
+#define FMRB_DISPLAY_LOCAL_TASK_CORE       (1)
 
 // Motion-JPEG player (Tab5: reads the file, drives the JPEG decoder, hands
 // finished frames to the display task). Below the display task on purpose --

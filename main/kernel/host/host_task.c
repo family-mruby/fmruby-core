@@ -23,7 +23,7 @@
 #include "fmrb_file_transfer_msg.h"
 #if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
 #include "host_file_local.h"
-#include "display_p4_task.h"   // cursor latency instrumentation
+#include "display_local_task.h"   // cursor latency instrumentation
 #endif
 #include "fmrb_mem.h"
 #include "fmrb_app.h"
@@ -327,7 +327,7 @@ static void host_send_cursor_visible(bool visible) {
 static void host_send_cursor_position(int32_t x, int32_t y) {
     fmrb_link_graphics_cursor_position_t cmd = { .x = x, .y = y };
 #if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
-    display_p4_cursor_stamp();
+    display_local_cursor_stamp();
     uint32_t t0 = (uint32_t)fmrb_hal_time_get_us();
 #endif
     fmrb_err_t ret = fmrb_transport_send(
@@ -336,8 +336,8 @@ static void host_send_cursor_position(int32_t x, int32_t y) {
         (const uint8_t *)&cmd, sizeof(cmd),
         FMRB_TRANSPORT_TIMEOUT_DEFAULT);
 #if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
-    display_p4_cursor_send_time((uint32_t)fmrb_hal_time_get_us() - t0);
-    if (ret != FMRB_OK) display_p4_cursor_unstamp();
+    display_local_cursor_send_time((uint32_t)fmrb_hal_time_get_us() - t0);
+    if (ret != FMRB_OK) display_local_cursor_unstamp();
 #endif
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "cursor_position send failed: %d", ret);

@@ -24,7 +24,7 @@
 
 ```
 Ruby/Lua/BASIC アプリ → fmrb_gfx → host_task → link_local (プロセス内 MessageBuffer)
-  → display_wasm_task (display_p4_task の移植。PPA を CPU 合成に置換)
+  → display_wasm_task (display_local_task の移植。PPA を CPU 合成に置換)
   → 426x240 RGB565 完成フレーム → Canvas / SDL テクスチャ
 音   : audio コマンド → apu_emu (core 内合成、P4 と同じ) → audio_p4_hw_write() 差し替え → WebAudio
 入力 : ブラウザイベント → rd_input.c と同形の変換 → fmrb_host_send_*
@@ -43,11 +43,11 @@ wasm ターゲットは「Modern の亜種」として定義する:
   (components/fmrb_hal/CMakeLists.txt:35-49)。P4 は `fmrb_hal_link_local.c`
   (FreeRTOS MessageBuffer によるプロセス内 link)。link より上 (host_task /
   fmrb_gfx / transport) に機種分岐は無い。
-- gfx コマンドの消費側は main/drivers/display_p4/ (~5100 行) に閉じている。
+- gfx コマンドの消費側は main/drivers/display_local/ (~5100 行) に閉じている。
   プリミティブは LovyanGFX の `LGFX_Sprite`、合成は PPA Blend (HW)、出力は
   PPA SRM 3x 拡大 + 90 度回転で DSI FB へ。canvas は常に画面サイズの RGB565。
 - **remote desktop が wasm の必要とする境界を既に実運用している**:
-  - 完成フレームの取り出し口 = capture API (display_p4_task.h:74-114、
+  - 完成フレームの取り出し口 = capture API (display_local_task.h:74-114、
     426x240 RGB565、カーソル別チャネル)
   - 仮想座標系での入力注入 = rd_input.c (ブラウザ座標 → `fmrb_host_send_*`)
   present と入力はこの 2 つの写経で済む。
@@ -119,9 +119,9 @@ SharedArrayBuffer) で書く。
    構造。カーネル本体を使う限り take/give の READY 遷移はカーネルが正しくやるが、
    host_task が定期的に走るループ構造 (16ms 周期 + 10ms キュー待ち) の維持が前提。
 
-### 描画: display_p4_task の分割と wasm バックエンド
+### 描画: display_local_task の分割と wasm バックエンド
 
-display_p4_task.cpp は「link 受信 + コマンド解釈 + 合成」と「パネル起動 + PPA +
+display_local_task.cpp は「link 受信 + コマンド解釈 + 合成」と「パネル起動 + PPA +
 DSI 出力」が同居しているので、まずバックエンド抽象で割る
 (GA 側の display_interface.h 相当の `{init, blend, present, poll}` を新設し、
 P4 実装と wasm 実装を並べる)。この分割は P4 実機へのリファクタとして先行でき、
@@ -129,7 +129,7 @@ P4 実装と wasm 実装を並べる)。この分割は P4 実機へのリファ
 
 | 作業 | 内容 | 重さ |
 |---|---|---|
-| PPA Blend の CPU 実装 | color-key 付き矩形ブリット。現状 `g_ppa_blend==NULL` だと無描画 (display_p4_task.cpp:676) なので書き起こし必須。viewport 分割と sprite clip のセマンティクス保存 | 大 |
+| PPA Blend の CPU 実装 | color-key 付き矩形ブリット。現状 `g_ppa_blend==NULL` だと無描画 (display_local_task.cpp:676) なので書き起こし必須。viewport 分割と sprite clip のセマンティクス保存 | 大 |
 | LovyanGFX の sprite-only 切り出し | 現状 M5GFX 経由で P4 パネルドライバごと include (lgfx_tab5.hpp:29)。LGFX 本体に CMake_WASM の例があり wasm 実績はある | 大 |
 | present | capture と同じバッファを Canvas へ。3x 拡大と 90 度回転は不要になるので実機より単純 | 小 |
 | 音 | `audio_p4_hw_write` を WebAudio へ。init/ready/volume/mic はスタブ | 小 |
@@ -212,7 +212,7 @@ rsync する。**置き先はここに書かない** — 引数で渡す。
    全体の成否がここで決まる。
 2. **task_hal の自己プリエンプション化** — wasm と独立に Linux sim で検証できる。
    実機の kill 問題 (doc/archive/app_kill_fix) とも根が同じで、単体でも価値がある。
-3. **display backend 分割** — display_p4_task の抽象化を P4 実機に対する
+3. **display backend 分割** — display_local_task の抽象化を P4 実機に対する
    リファクタとして先行し、実機で回帰確認する。
 4. **統合** — core 全体を wasm ビルドし、CPU 合成 + Canvas/WebAudio/入力を繋ぐ。
 5. **配信** — preload、COOP/COEP、ページ UI。デモとしてサイトに置く。

@@ -85,7 +85,7 @@ S3 (NARYAv3) / P4 (NARYAv4) ビルド成功。実機起動確認と hook オー�
   `components/msgpack-esp32/CMakeLists.txt` の `MSGPACK_ENDIAN_*` が `PRIVATE`
   だったため利用側には効かず、`msgpack/predef` の自動判定に落ちていた。
   この判定は Xtensa/RISC-V を知らず、先行 include が `__BYTE_ORDER` を
-  定義しているかどうかで結果が変わる (display_p4_task.cpp はたまたま通っていた)。
+  定義しているかどうかで結果が変わる (display_local_task.cpp はたまたま通っていた)。
   `PUBLIC` にしてライブラリと利用側の認識を一致させた。
 - **test_phase1/2.sh のランチャ座標が陳腐化していた** (489b467 の Debug Sample
   追加でアイコン位置がずれた)。クリックではなくデバッガの `spawn` コマンドで
@@ -135,7 +135,7 @@ RAM 実測 (P4、objdump -h でセクション確認):
 1. `main/CMakeLists.txt`: `fmrb_debug_proto.c` / `fmrb_debug_ctx.c` /
    `fmrb_debugd.c` を `COMPONENT_LINUX_SRCS` から共通 `COMPONENT_SRCS` へ移動。
    `fmrb_debug_transport_tcp.c` は linux 専用のまま。`msgpack-esp32` の REQUIRES を
-   共通化 (P4 では display_p4 が既に使用、S3 は要確認)。
+   共通化 (P4 では display_local が既に使用、S3 は要確認)。
 2. `main/boot/boot.c`: `fmrb_debugd_init()` の呼び出しを
    `#ifdef CONFIG_IDF_TARGET_LINUX` から全ターゲットに広げる。ただし
    Phase 3b 完了までは ESP32 でトランスポートが無いので、

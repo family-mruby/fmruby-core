@@ -18,7 +18,7 @@
 // the system I2C bus (SDA=G45, SCL=G0, I2C_NUM_1), which also carries the
 // BMI270. LovyanGFX drives that controller at register level, so -- as on the
 // Tab5 -- every other user of the bus goes through the display task's
-// serialized I2C service (display_p4_i2c_*, and hw_proxy_i2c.c for apps).
+// serialized I2C service (display_local_i2c_*, and hw_proxy_i2c.c for apps).
 #pragma once
 
 #include <M5GFX.h>  // LovyanGFX library headers (the M5GFX device object is not used)

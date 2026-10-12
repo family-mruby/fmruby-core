@@ -29,7 +29,7 @@ mid-draw の隙間(GC・タスク切替・時刻文字列生成)が値を超え�
 - 帰結: mid-draw は `draw_buffer` に閉じ、合成は `render_buffer` を読む →
   **構造的に mid-draw を拾えない**(タイミングに依存しない)。
 
-## P4(fmruby-core/display_p4_task.cpp)= ちらつく
+## P4(fmruby-core/display_local_task.cpp)= ちらつく
 
 - **キャンバスは単バッファ**: `p4_canvas_t` は `LGFX_Sprite *sprite` のみ。アプリの
   描画も合成の読み出しも**同じ sprite**。確定バッファが無い。
@@ -49,7 +49,7 @@ mid-draw の隙間(GC・タスク切替・時刻文字列生成)が値を超え�
 ## 経路(参考)
 
 - アプリの present は `host_task.c` の `GFX_CMD_PRESENT` → link batch → transport で
-  各バックエンドへ。P4 は in-process の display_p4_task、Retro は SPI 経由 WROVER、
+  各バックエンドへ。P4 は in-process の display_local_task、Retro は SPI 経由 WROVER、
   sim は socket 経由 linux ビルドの graphics-audio。**同じ GFX サブコマンド列**を
   各バックエンドの dispatcher が解釈する(合成実装は P4 と GA で別物)。
 
@@ -59,7 +59,7 @@ mid-draw の隙間(GC・タスク切替・時刻文字列生成)が値を超え�
    `render_sprite`(確定用)を足し、PRESENT で `sprite(作業) → render_sprite(確定)`
    をコピー。`render_frame` は **`render_sprite` だけ**を合成する。→ 描画途中の
    `sprite` は合成に一切影響しない。**これが本丸**。
-   - **P4 は単一タスク**(描画コマンド処理も render_frame も display_p4_task)なので、
+   - **P4 は単一タスク**(描画コマンド処理も render_frame も display_local_task)なので、
      GA と違い**排他 mutex は不要**(commit と合成が時間的に重ならない)。実装は GA
      より簡単。
    - **RAM**: キャンバス 1 枚分の追加(WxH×2)。**キャンバスは PSRAM(32MB)なので

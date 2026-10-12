@@ -3,7 +3,7 @@
 2026-07-03 に M5Stack Tab5 (ESP32-P4) 実機で行った PPA 検証テストと、
 それによって解決した「PPA Blend で合成した canvas が真っ黒になる」問題の記録。
 
-検証テストコードは `main/drivers/display_p4/display_p4_task.cpp` の
+検証テストコードは `main/drivers/display_local/display_local_task.cpp` の
 `PPA_VERIFICATION_TEST` マクロで有効化できる（通常は無効。有効にすると起動を
 約30秒ブロックするため、カーネルの host wait がタイムアウトし OS は起動しない）。
 
@@ -82,13 +82,13 @@ NG パターンで実際に起きていたこと:
 - アドレスとサイズの両方が**キャッシュラインに整列**していないと失敗する
   （Tab5 の PSRAM は L2 キャッシュで 128B。`esp_cache_get_alignment()` で取得する）
 - サイズは `幅x高さx2` ではなく、**整列済み確保サイズ**を使う
-  （`display_p4_task.cpp` では `p4_canvas_t.buf_aligned_size` / `g_fb_aligned_size` に保持）
+  （`display_local_task.cpp` では `p4_canvas_t.buf_aligned_size` / `g_fb_aligned_size` に保持）
 - **戻り値を必ずチェックしてログを出す**。無音で失敗すると「PPA が古いデータを読む」
   という追いにくい症状になる
 - 方向: CPU 書き込み後 PPA が読む前に `C2M`、PPA(DMA) 書き込み後 CPU が読む前に
   `M2C | INVALIDATE`
 
-## 5. 正しいパイプライン構成（display_p4 実装）
+## 5. 正しいパイプライン構成（display_local 実装）
 
 ```
 canvas sprite (rgb565_nonswapped, ppa_alloc_buffer で整列 PSRAM)
@@ -103,4 +103,4 @@ SRM 出力バッファ (整列 PSRAM)
 ILI9881C (MIPI-DSI)
 ```
 
-修正コミット: `9ba26e5` fix(display_p4): set sprite color depth before attaching PPA buffer
+修正コミット: `9ba26e5` fix(display_local): set sprite color depth before attaching PPA buffer

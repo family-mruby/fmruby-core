@@ -20,7 +20,7 @@
 | 6 | HW_PROXY | 0 | 6KB | ○ | PSRAM タスクのファイル I/O 代行 |
 | 6 | AUDIO_P4 | 0 | 8KB | △ Modern | I2S |
 | 6 | M5GFX 受信 | 0 | 8KB | △ ATOM | link local |
-| 5 | DISPLAY_P4 | 1 | 16KB | △ Modern | 画面 |
+| 5 | DISPLAY_LOCAL | 1 | 16KB | △ Modern | 画面 |
 | 5 | USB_HOST | 0 | 4KB | ○ | |
 | 5 | USB_HID | 0 | 5KB | ○ | |
 | 5 | I2C_KBD | 0 | 4KB | △ ATOM | |
@@ -49,7 +49,7 @@
 
 ### core 1 の並び (飢餓が起きるのはここ)
 
-上から `KERNEL(9)` → `DISPLAY_P4(5)` / `TOUCH(5)` / `SPI_CONN(5)` →
+上から `KERNEL(9)` → `DISPLAY_LOCAL(5)` / `TOUCH(5)` / `SPI_CONN(5)` →
 `RD_STREAM(4)` → **`SYSTEM_APP(3)`** / `RTC(3)` / `STATUS_LED(3)` →
 `USER_APP・SHELL(2)` → `SERVICE_APP(1)`。
 
@@ -294,7 +294,7 @@ status LED で検知」という役割を壊す (重いアプリのたびにハ�
 |---|---|
 | カーソル描画 | **HOST (10)** |
 | 入力の振り分け | **HOST (10) / KERNEL (9)** |
-| 画面転送・音 | DISPLAY_P4 (5) / AUDIO_P4 (6) |
+| 画面転送・音 | DISPLAY_LOCAL (5) / AUDIO_P4 (6) |
 | デスクトップ自身 | 自分の窓・メニューバー・時計の描画だけ |
 
 リアルタイムに落とせない物はどれもデスクトップの外にある。
@@ -305,7 +305,7 @@ status LED で検知」という役割を壊す (重いアプリのたびにハ�
 
 | 相手 | 8 のとき | 3 にして |
 |---|---|---|
-| DISPLAY_P4 (5) | デスクトップが止める | 画面が先に走る |
+| DISPLAY_LOCAL (5) | デスクトップが止める | 画面が先に走る |
 | TOUCH (5) / SPI_CONN (5) | 同上 | ドライバが先 |
 | RD_STREAM (4) | 同上 | 先 |
 | RTC / STATUS_LED / DEBUGD (3) | 同上 | 同格でラウンドロビン |
@@ -340,7 +340,7 @@ status LED で検知」という役割を壊す (重いアプリのたびにハ�
 **狙いどおりになった点** — 走査 (デスクトップが 2.7 秒 core 1 を使う仕事) の
 最中に、`fmrb_task` の周期ダンプが**通常どおりの所要で走り切った**
 (`dump took: tasks=95ms pools=52ms`、08:37:06)。優先度 8 では走査中にこの
-ダンプが出ること自体が無かった。`display_p4` も同じ窓で
+ダンプが出ること自体が無かった。`display_local` も同じ窓で
 `render: 11 frames/5s` を出しており、画面タスクが止まっていない。
 
 **代償** — 再走査が少し遅くなった (ドライバに譲るため)。同じ機体・同じ

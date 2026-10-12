@@ -32,7 +32,7 @@ AXI のバーストは 4KB 境界をまたげない。先頭がずれている�
 バースト長の倍数 (256B など) に揃えれば足りる可能性があるが、試していない。
 4KB に揃えればどの長さでもまたがない。
 
-## 実装 (main/drivers/display_p4/dpi_fb_align.hpp)
+## 実装 (main/drivers/display_local/dpi_fb_align.hpp)
 
 `dpi_fb_align_next(fb_size, tag)` を、DPI パネルを作る**直前**に呼ぶ。
 

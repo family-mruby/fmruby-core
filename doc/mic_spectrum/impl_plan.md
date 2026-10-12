@@ -182,7 +182,7 @@ Spinel FFI・マイクタスクの全部から呼べるように1本にまとめ
 **B1 — マイク bring-up(完了条件: 実機で RMS が動く)**
 - `main/drivers/audio_p4/` に I2S RX チャネル + ES7210(`esp_codec_dev` の
   `es7210_codec_new`、`ESP_CODEC_DEV_WORK_MODE_ADC`)。TX の作り方は `audio_p4_hw.c`
-  が手本。ES7210 は共有内部 I2C(GPIO31/32、display_p4 の I2C サービス)。I2C
+  が手本。ES7210 は共有内部 I2C(GPIO31/32、display_local の I2C サービス)。I2C
   アドレス/初期化は `managed_components/espressif__esp_codec_dev/device/es7210/` 参照。
 - **I2S 結線を実機で確定**: TX が I2S_NUM_1。RX は (a) 別ポート I2S_NUM_0 か
   (b) 同一ポート全二重(`i2s_new_channel(&cfg, &tx, &rx)`)。ES8388 と ES7210 が

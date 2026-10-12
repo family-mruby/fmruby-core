@@ -13,20 +13,20 @@ SPI リンクへ tee して WROVER 側で NTSC 出力する案」を比較し、
 ## 土台 (すでにあるもの)
 
 - P4 の描画は「426x240 RGB565 に合成 (`g_framebuffer`) → PPA SRM 3x 拡大 →
-  DSI 1280x720」(`main/drivers/display_p4/display_p4_task.cpp`)。
+  DSI 1280x720」(`main/drivers/display_local/display_local_task.cpp`)。
 - **リモートデスクトップ用のフレームキャプチャ API がそのまま使える**:
-  `display_p4_capture_enable / acquire / release`
-  (`display_p4_task.cpp:2726-`)。render_frame が合成済みフレームを
+  `display_local_capture_enable / acquire / release`
+  (`display_local_task.cpp:2726-`)。render_frame が合成済みフレームを
   ダブルバッファへコピーして通知する。参照カウント式で、RD ストリームと
   SPI ミラーは共存できる。
 
 ## 設計
 
 1. **消費者タスクを 1 つ追加** (RD の `rd_stream` と同型)。
-   `display_p4_capture_acquire` でフレームを取り、PPA SRM で 426x240 →
-   320x240 に縮小 (PPA はクライアント複数登録可、display_p4 の 3x 拡大とは
+   `display_local_capture_acquire` でフレームを取り、PPA SRM で 426x240 →
+   320x240 に縮小 (PPA はクライアント複数登録可、display_local の 3x 拡大とは
    HW 内で直列化)、LovyanGFX の SPI パネル (ILI9341 等) に `pushImageDMA`。
-   優先度は低め (3-4)、コアは display_p4 (core 1) を避けて core 0。
+   優先度は低め (3-4)、コアは display_local (core 1) を避けて core 0。
 2. **ピン**: Tab5 の M-Bus に SPI 一式が出ている (公式ピンマップ確認済み):
    - SCK = **G5**、MOSI = **G18**、(MISO = G19、LCD なら不要)
    - CS/DC/RST は M-Bus の自由 GPIO から: G16 / G47 / G48 (他に G45, G35,
@@ -45,7 +45,7 @@ SPI リンクへ tee して WROVER 側で NTSC 出力する案」を比較し、
 
 ## 注意 / 前提
 
-- **着手前提**: display_p4 は GFX と音声コマンドの唯一の消費者で負荷が
+- **着手前提**: display_local は GFX と音声コマンドの唯一の消費者で負荷が
   重い (2026-08-06 のフリーズ調査参照)。ミラーはフレームコピーの分だけ
   render_frame を重くするので、体感への影響を見ながら入れる。
 - PSRAM 帯域は DSI リフレッシュ + PPA + SPI DMA で競合する。フレームレートは
@@ -56,6 +56,6 @@ SPI リンクへ tee して WROVER 側で NTSC 出力する案」を比較し、
 ## 参考
 
 - Tab5 M-Bus ピンマップ: https://docs.m5stack.com/en/core/Tab5
-- RD キャプチャの実装: `display_p4_task.cpp` の
+- RD キャプチャの実装: `display_local_task.cpp` の
   "Frame capture for the remote desktop stream" ブロック (:342-)
 - 消費者タスクの雛形: `main/drivers/remote_desktop/rd_stream.c`

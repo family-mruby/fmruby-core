@@ -29,7 +29,7 @@
 #include "fmrb_app.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
-#include "display_p4_task.h"
+#include "display_local_task.h"
 #include "host_task.h"
 #include "fmrb_attr.h"
 #include "wifi_task.h"
@@ -121,8 +121,8 @@ static void mjpeg_stream_task(void *arg)
     httpd_req_t *req = (httpd_req_t *)arg;
 
     FMRB_LOGI(TAG, "MJPEG client connected");
-    display_p4_capture_enable(true);
-    display_p4_capture_kick();
+    display_local_capture_enable(true);
+    display_local_capture_kick();
 
     httpd_resp_set_type(req,
         "multipart/x-mixed-replace; boundary=" RD_BOUNDARY);
@@ -139,10 +139,10 @@ static void mjpeg_stream_task(void *arg)
 
         // Wait for a newer frame; on timeout resend the latest one as a
         // keepalive (rendering is event-driven and idles when static)
-        display_p4_capture_frame_t frame;
-        fmrb_err_t err = display_p4_capture_acquire(last_seq + 1, 500, &frame);
+        display_local_capture_frame_t frame;
+        fmrb_err_t err = display_local_capture_acquire(last_seq + 1, 500, &frame);
         if (err == FMRB_ERR_TIMEOUT) {
-            err = display_p4_capture_acquire(0, 100, &frame);
+            err = display_local_capture_acquire(0, 100, &frame);
         }
         if (err != FMRB_OK) {
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -156,7 +156,7 @@ static void mjpeg_stream_task(void *arg)
         const uint8_t *jpeg = NULL;
         size_t jpeg_len = 0;
         if (rd_encoder_jpeg_lock(2000) != FMRB_OK) {
-            display_p4_capture_release();
+            display_local_capture_release();
             continue;
         }
         // The frame carries its own size: the fullscreen high-resolution
@@ -166,7 +166,7 @@ static void mjpeg_stream_task(void *arg)
         if (err == FMRB_OK) {
             err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
         }
-        display_p4_capture_release();
+        display_local_capture_release();
         if (err != FMRB_OK) {
             rd_encoder_jpeg_unlock();
             break;
@@ -205,7 +205,7 @@ static void mjpeg_stream_task(void *arg)
         }
     }
 
-    display_p4_capture_enable(false);
+    display_local_capture_enable(false);
     s_stat_fps_x10 = 0;
     s_stat_kbps = 0;
     FMRB_LOGI(TAG, "MJPEG client disconnected");
@@ -406,7 +406,7 @@ static void cursor_timer_cb(void *arg)
 
     int x, y;
     bool v;
-    display_p4_get_cursor(&x, &y, &v);
+    display_local_get_cursor(&x, &y, &v);
     int sw = 0, sh = 0;
     fmrb_host_get_screen_size(&sw, &sh);
     if (x == s_last_cur_x && y == s_last_cur_y && v == s_last_cur_v &&

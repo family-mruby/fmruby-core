@@ -23,7 +23,7 @@
     - IDR オンデマンドの直接APIは無い → `esp_h264_enc_set_gop(param, 1)`
       で1フレームだけGOP=1にして復元するトリックで実装 (要実機検証。
       効かない場合も GOP=30 で最悪2秒待ちで復帰)
-    - display_p4_capture_enable は参照カウント化 (MJPEG と H.264 が併用
+    - display_local_capture_enable は参照カウント化 (MJPEG と H.264 が併用
       するため)
   - バイナリ: 3.10MB / 4MB (26% free)。Phase1: 3.06MB
 - **実機検証: A〜D 全て完了 (2026-07-08)**
@@ -177,7 +177,7 @@ Tab5 (ESP32-P4) のデスクトップ画面をPCブラウザへ配信し、マ�
 
 ### フレームバッファ / 入力注入 (fmruby-core 側)
 
-- キャプチャポイント: display_p4_task.cpp render_frame() の**合成完了時点**
+- キャプチャポイント: display_local_task.cpp render_frame() の**合成完了時点**
   (SRM転送前) の g_framebuffer = 426x240 RGB565 non-swapped (PSRAM)。
   描画は**イベント駆動**でアイドル時はフレームが来ない
 - **カーソルは g_framebuffer に含まれない** (g_dsi_fb への直接パッチ)。
@@ -192,7 +192,7 @@ Tab5 (ESP32-P4) のデスクトップ画面をPCブラウザへ配信し、マ�
 ## アーキテクチャ
 
 ```
-[display_p4 task core1] render_frame合成完了
+[display_local task core1] render_frame合成完了
       │ capture有効時: ダブルバッファへcopy(~200KB/1-2ms) + seq++ + sem give
       ▼
 [capture double buffer PSRAM 2x200KB]
@@ -210,8 +210,8 @@ P2: [rd_stream task core1 prio4] PPA色変換(432x240 YUV420)
 
 - **アイドル対策**: ストリーマは「新フレーム semaphore 待ち + 500ms タイム
   アウトで直近フレーム再送」(キープアライブ + 遅参クライアント対応)。
-  起動直後のみ display_p4_capture_kick() で 1 フレーム強制描画
-- **カーソル**: 送信時に display_p4_get_cursor() をサンプリングし、
+  起動直後のみ display_local_capture_kick() で 1 フレーム強制描画
+- **カーソル**: 送信時に display_local_get_cursor() をサンプリングし、
   "cur" JSON を 33ms 間隔 (変化時のみ) で配信。クライアント側でオーバレイ描画
 
 ## モジュール構成
@@ -226,7 +226,7 @@ main/drivers/remote_desktop/
   rd_encoder_jpeg.c/.h  # Phase1: esp_driver_jpeg ラッパ
   rd_encoder_h264.c/.h  # Phase2: PPA色変換 + esp_h264
   rd_input.c/.h         # WSバイナリ入力 → fmrb_host_send_* ブリッジ
-main/drivers/display_p4/     # capture API 追加 (下記)
+main/drivers/display_local/     # capture API 追加 (下記)
 main/boot/boot.c             # modern_ble_init_task → modern_radio_init_task
                              # (BLE init → WiFi init を逐次実行)
 tool/web/remote/
@@ -235,21 +235,21 @@ config/wifi.toml.example  # テンプレート (実物 config/wifi.toml は
                              # .gitignore + Rakefile 条件付きコピー)
 ```
 
-### display_p4 に追加する capture API (extern "C")
+### display_local に追加する capture API (extern "C")
 
 ```c
 typedef struct {
     const uint16_t *pixels;   // RGB565 non-swapped, 426x240
     uint16_t width, height;
     uint32_t seq;
-} display_p4_capture_frame_t;
+} display_local_capture_frame_t;
 
-fmrb_err_t display_p4_capture_enable(bool enable);   // バッファ確保/解放
-fmrb_err_t display_p4_capture_acquire(uint32_t min_seq, uint32_t timeout_ms,
-                                      display_p4_capture_frame_t *out);
-void       display_p4_capture_release(void);
-void       display_p4_capture_kick(void);            // 1フレーム再描画要求
-void       display_p4_get_cursor(int *x, int *y, bool *visible);
+fmrb_err_t display_local_capture_enable(bool enable);   // バッファ確保/解放
+fmrb_err_t display_local_capture_acquire(uint32_t min_seq, uint32_t timeout_ms,
+                                      display_local_capture_frame_t *out);
+void       display_local_capture_release(void);
+void       display_local_capture_kick(void);            // 1フレーム再描画要求
+void       display_local_get_cursor(int *x, int *y, bool *visible);
 ```
 
 - render_frame() 合成完了直後に、capture 有効かつフロントバッファ未ロック時
@@ -269,7 +269,7 @@ void       display_p4_get_cursor(int *x, int *y, bool *visible);
 
 ## WiFi ライフサイクル
 
-- boot.c: display_p4_is_ready() 待ち → ble_task_init() → wifi_task_init() の
+- boot.c: display_local_is_ready() 待ち → ble_task_init() → wifi_task_init() の
   **逐次実行** (BLE の nimble_port_init() が SDIO トランスポートを立ち上げる
   実績パスを踏襲し、WiFi RPC は必ずトランスポート確立後)
 - BLE 無効/失敗時: wifi_task_init 内で esp_hosted_setup() (RPCを発行せず
@@ -415,7 +415,7 @@ Phase 1 (各ステップでビルド可能を維持):
 1. sdkconfig 追記 + mdns 依存 + CMake REQUIRES
 2. wifi_task + wifi.toml example + Rakefile 条件付きコピー + .gitignore +
    boot.c 拡張 → 検証A
-3. display_p4 capture API
+3. display_local capture API
 4. rd_encoder_jpeg (RGB565 バイト順の赤青反転チェックを実機手順に)
 5. rd_task + rd_http → 検証B
 6. rd_input + /ws + remote.js/keymap.js → 検証C

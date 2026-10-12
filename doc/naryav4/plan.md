@@ -45,7 +45,7 @@
   ボード = `FMRB_HW_TAB5` / `FMRB_HW_NARYAV4`。
 - ピンは components/fmrb_common/include/fmrb_pin_assign.h に集約
   (P1 で TAB5 / NARYAv4 の 2 ブロックに分割済み)。ただし
-  display_p4_task.cpp と audio_p4_hw.c が Tab5 のピン・PI4IO・I2C を
+  display_local_task.cpp と audio_p4_hw.c が Tab5 のピン・PI4IO・I2C を
   ローカル定義しており、ここにも分岐が要る (P2/P3)。
 - 描画経路: 内部 426x240 RGB565 を PPA Blend 合成 → PPA SRM 3x 拡大 +
   90 度回転 → DSI FB (720x1280)。HDMI 化での差分は
@@ -116,7 +116,7 @@
 
 ### P2: 表示 bring-up (完了 2026-08-30、report/p2.md)
 
-1. display_p4_task.cpp のローカル Tab5 定数 (ピン / PI4IO / tab5_power_on /
+1. display_local_task.cpp のローカル Tab5 定数 (ピン / PI4IO / tab5_power_on /
    パネルプローブ) をボード分岐へ出す。NARYAv4 は電源シーケンス不要
    (PI4IO なし) で、LT8912B の I2C 設定だけになる想定。
 2. LGFX_Naryav4 クラス新設 (Bus_DSI + Panel_LT8912B、lane 2、

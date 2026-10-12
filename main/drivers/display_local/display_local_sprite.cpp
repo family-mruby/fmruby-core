@@ -2,7 +2,7 @@
 // Logic mirrors fmruby-graphics-audio/main/graphics/sprite_manager.cpp and
 // graphics_handler.cpp but is a self-contained local implementation.
 
-#include "display_p4_sprite.h"
+#include "display_local_sprite.h"
 
 #include <cstring>
 #include "esp_heap_caps.h"
@@ -16,7 +16,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_link_protocol.h"
 
-static const char *TAG = "display_p4_spr";
+static const char *TAG = "display_local_spr";
 
 // ============================================================
 // SpriteImage pool
@@ -32,25 +32,25 @@ typedef struct {
     bool         use_transparent;
 } p4_sprite_image_t;
 
-// Pools are large (see display_p4_sprite.h); keep them in PSRAM
-FMRB_EXT_RAM_BSS_ATTR static p4_sprite_image_t g_images[DISPLAY_P4_MAX_SPRITE_IMAGES];
+// Pools are large (see display_local_sprite.h); keep them in PSRAM
+FMRB_EXT_RAM_BSS_ATTR static p4_sprite_image_t g_images[DISPLAY_LOCAL_MAX_SPRITE_IMAGES];
 static uint16_t g_next_image_id = 1;
 
 static p4_sprite_image_t* image_find(uint16_t id) {
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_IMAGES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_IMAGES; i++) {
         if (g_images[i].in_use && g_images[i].image_id == id)
             return &g_images[i];
     }
     return nullptr;
 }
 
-uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
+uint16_t display_local_sprite_image_create(uint16_t canvas_id,
                                          uint16_t width, uint16_t height,
                                          uint8_t transparent_color,
                                          bool use_transparent) {
     // Find free slot
     p4_sprite_image_t *slot = nullptr;
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_IMAGES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_IMAGES; i++) {
         if (!g_images[i].in_use) { slot = &g_images[i]; break; }
     }
     if (!slot) {
@@ -96,12 +96,12 @@ uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
     return id;
 }
 
-lgfx::LGFX_Sprite* display_p4_sprite_image_get(uint16_t image_id) {
+lgfx::LGFX_Sprite* display_local_sprite_image_get(uint16_t image_id) {
     p4_sprite_image_t *img = image_find(image_id);
     return img ? img->sprite : nullptr;
 }
 
-bool display_p4_sprite_image_get_transparent(uint16_t image_id, uint8_t *out_color) {
+bool display_local_sprite_image_get_transparent(uint16_t image_id, uint8_t *out_color) {
     p4_sprite_image_t *img = image_find(image_id);
     if (!img) return false;
     if (img->use_transparent && out_color) *out_color = img->transparent_color;
@@ -121,9 +121,9 @@ static void image_destroy(p4_sprite_image_t *img) {
     FMRB_LOGI(TAG, "Image free: id=%u", img->image_id);
 }
 
-void display_p4_sprite_image_delete(uint16_t image_id) {
+void display_local_sprite_image_delete(uint16_t image_id) {
     // Also invalidate instances that reference this image
-    // (handled in display_p4_sprite.cpp - instances will skip missing images)
+    // (handled in display_local_sprite.cpp - instances will skip missing images)
     image_destroy(image_find(image_id));
 }
 
@@ -143,14 +143,14 @@ typedef struct {
     bool     visible;
 } p4_sprite_instance_t;
 
-FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t g_instances[DISPLAY_P4_MAX_SPRITE_INSTANCES];
+FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t g_instances[DISPLAY_LOCAL_MAX_SPRITE_INSTANCES];
 static uint16_t g_next_instance_id = 1;
 
 // Scratch array for z-order sort in composite (PSRAM, like the instances).
-FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t *g_sorted[DISPLAY_P4_MAX_SPRITE_INSTANCES];
+FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t *g_sorted[DISPLAY_LOCAL_MAX_SPRITE_INSTANCES];
 
 static p4_sprite_instance_t* instance_find(uint16_t id) {
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_INSTANCES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_INSTANCES; i++) {
         if (g_instances[i].in_use && g_instances[i].instance_id == id)
             return &g_instances[i];
     }
@@ -162,7 +162,7 @@ static int instance_z_cmp(const void *a, const void *b) {
          - (int)((*(const p4_sprite_instance_t **)b)->z_order);
 }
 
-uint16_t display_p4_sprite_instance_create(uint16_t canvas_id,
+uint16_t display_local_sprite_instance_create(uint16_t canvas_id,
                                             const uint16_t *image_ids,
                                             uint8_t frame_count,
                                             int16_t x, int16_t y,
@@ -173,7 +173,7 @@ uint16_t display_p4_sprite_instance_create(uint16_t canvas_id,
     }
 
     p4_sprite_instance_t *slot = nullptr;
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_INSTANCES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_INSTANCES; i++) {
         if (!g_instances[i].in_use) { slot = &g_instances[i]; break; }
     }
     if (!slot) {
@@ -203,37 +203,37 @@ uint16_t display_p4_sprite_instance_create(uint16_t canvas_id,
     return id;
 }
 
-void display_p4_sprite_instance_delete(uint16_t instance_id) {
+void display_local_sprite_instance_delete(uint16_t instance_id) {
     p4_sprite_instance_t *inst = instance_find(instance_id);
     if (!inst) return;
     inst->in_use = false;
     FMRB_LOGI(TAG, "Instance delete: id=%u", instance_id);
 }
 
-void display_p4_sprite_instance_move(uint16_t instance_id, int16_t x, int16_t y) {
+void display_local_sprite_instance_move(uint16_t instance_id, int16_t x, int16_t y) {
     p4_sprite_instance_t *inst = instance_find(instance_id);
     if (inst) { inst->x = x; inst->y = y; }
 }
 
-void display_p4_sprite_instance_set_visible(uint16_t instance_id, bool visible) {
+void display_local_sprite_instance_set_visible(uint16_t instance_id, bool visible) {
     p4_sprite_instance_t *inst = instance_find(instance_id);
     if (inst) inst->visible = visible;
 }
 
-void display_p4_sprite_instance_set_frame(uint16_t instance_id, uint8_t frame_index) {
+void display_local_sprite_instance_set_frame(uint16_t instance_id, uint8_t frame_index) {
     p4_sprite_instance_t *inst = instance_find(instance_id);
     if (inst && frame_index < inst->frame_count) inst->current_frame = frame_index;
 }
 
-void display_p4_sprite_delete_all_for_canvas(uint16_t canvas_id) {
+void display_local_sprite_delete_all_for_canvas(uint16_t canvas_id) {
     int ni = 0, nm = 0;
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_INSTANCES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_INSTANCES; i++) {
         if (g_instances[i].in_use && g_instances[i].canvas_id == canvas_id) {
             g_instances[i].in_use = false;
             ni++;
         }
     }
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_IMAGES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_IMAGES; i++) {
         if (g_images[i].in_use && g_images[i].canvas_id == canvas_id) {
             image_destroy(&g_images[i]);
             nm++;
@@ -244,13 +244,13 @@ void display_p4_sprite_delete_all_for_canvas(uint16_t canvas_id) {
     }
 }
 
-void display_p4_sprite_composite(uint16_t canvas_id,
+void display_local_sprite_composite(uint16_t canvas_id,
                                   lgfx::LGFX_Sprite *target,
                                   int16_t offset_x, int16_t offset_y) {
     if (!target) return;
 
     int count = 0;
-    for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_INSTANCES; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_SPRITE_INSTANCES; i++) {
         p4_sprite_instance_t *inst = &g_instances[i];
         if (inst->in_use && inst->visible && inst->canvas_id == canvas_id) {
             g_sorted[count++] = inst;
@@ -291,11 +291,11 @@ typedef struct {
     uint8_t *data;   // bit-packed, MSB-first; fmrb_sys_malloc
 } p4_mask_t;
 
-FMRB_EXT_RAM_BSS_ATTR static p4_mask_t g_masks[DISPLAY_P4_MAX_MASKS];
+FMRB_EXT_RAM_BSS_ATTR static p4_mask_t g_masks[DISPLAY_LOCAL_MAX_MASKS];
 static uint16_t g_next_mask_id = 1;
 
 static p4_mask_t* mask_find(uint16_t id) {
-    for (int i = 0; i < DISPLAY_P4_MAX_MASKS; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_MASKS; i++) {
         if (g_masks[i].in_use && g_masks[i].mask_id == id)
             return &g_masks[i];
     }
@@ -312,10 +312,10 @@ static void mask_destroy(p4_mask_t *m) {
     FMRB_LOGI(TAG, "Mask free: id=%u", m->mask_id);
 }
 
-uint16_t display_p4_mask_create(uint16_t canvas_id,
+uint16_t display_local_mask_create(uint16_t canvas_id,
                                  uint16_t width, uint16_t height) {
     p4_mask_t *slot = nullptr;
-    for (int i = 0; i < DISPLAY_P4_MAX_MASKS; i++) {
+    for (int i = 0; i < DISPLAY_LOCAL_MAX_MASKS; i++) {
         if (!g_masks[i].in_use) { slot = &g_masks[i]; break; }
     }
     if (!slot) {
@@ -348,7 +348,7 @@ uint16_t display_p4_mask_create(uint16_t canvas_id,
     return id;
 }
 
-void display_p4_mask_data(uint16_t mask_id,
+void display_local_mask_data(uint16_t mask_id,
                            const uint8_t *chunk, uint16_t chunk_len,
                            uint32_t offset) {
     p4_mask_t *m = mask_find(mask_id);
@@ -362,11 +362,11 @@ void display_p4_mask_data(uint16_t mask_id,
     memcpy(m->data + offset, chunk, chunk_len);
 }
 
-void display_p4_mask_delete(uint16_t mask_id) {
+void display_local_mask_delete(uint16_t mask_id) {
     mask_destroy(mask_find(mask_id));
 }
 
-void display_p4_mask_blit(uint16_t mask_id,
+void display_local_mask_blit(uint16_t mask_id,
                            lgfx::LGFX_Sprite *src_sprite,
                            lgfx::LGFX_Sprite *dst_sprite,
                            int16_t x, int16_t y) {

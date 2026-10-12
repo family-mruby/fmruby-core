@@ -38,17 +38,18 @@ I2C ペリフェラルのレジスタを直接操作し、トランザクショ�
 
 ## 設計ルール
 
-ランタイムのバスアクセスは **display_p4 の I2C サービス**に一本化して
-いる (display_p4_task.cpp)。lgfx の I2C ヘルパ
+ランタイムのバスアクセスは **display_local の I2C サービス**に一本化して
+いる (入口と直列化は display_local_task.cpp、Tab5 の中身は
+board/tab5/board_display_tab5.cpp)。lgfx の I2C ヘルパ
 (`lgfx::i2c::transactionWrite/Read`, `writeRegister8` 等) を内部
 ミューテックス (`g_i2c_mutex`) で直列化したもので、GT911 タッチ読み
-(`display_p4_get_touch`) とヘッドホンポーリング
-(`display_p4_poll_headphone`) も同じミューテックスを取る。これにより
+(`display_local_get_touch`) とヘッドホンポーリング
+(`display_local_poll_headphone`) も同じミューテックスを取る。これにより
 「タッチタスク文脈からのみ」という当初の制約は「サービス経由なら
 任意タスクから可」に一般化された。
 
-1. **ランタイムのアクセスは display_p4_i2c_write / display_p4_i2c_read /
-   display_p4_i2c_write_reg8 (display_p4_task.h) を使うこと。**
+1. **ランタイムのアクセスは display_local_i2c_write / display_local_i2c_read /
+   display_local_i2c_write_reg8 (display_local_task.h) を使うこと。**
    g_lcd_ready 前は FMRB_ERR_INVALID_STATE を返す。1トランザクション
    最大 255 バイト。利用者: ES8388 音量変更 (audio_p4_hw.c)、
    hw_proxy_i2c の Modern 仲介
@@ -57,7 +58,7 @@ I2C ペリフェラルのレジスタを直接操作し、トランザクショ�
    `g_lcd_ready` を立てるまでの区間 (タッチタスクは g_lcd_ready を
    待ってからポーリングを開始するため、バスが無競合)。
    実装例: ES8388 コーデック初期化 (audio_p4_hw_init) はこの窓で実行
-3. tab5_power_on() (display_p4_task.cpp) は独自に i2c_master バスを
+3. tab5_power_on() (board/tab5/board_display_tab5.cpp) は独自に i2c_master バスを
    作成して PI4IO を初期化し、**バスを削除してから** LGFX init に進む。
    この一時バスは他と重ならないので問題ない
 

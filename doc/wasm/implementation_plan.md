@@ -16,7 +16,7 @@ P3 display backend 分割 (P4 実機) ┘
 
 - P1〜P3 は互いに独立で、並行に進められる。
 - P2・P3 は wasm と無関係に本体の改善として単独で完結する
-  (P2 は kill 問題 doc/archive/app_kill_fix と同根、P3 は display_p4 の整理)。
+  (P2 は kill 問題 doc/archive/app_kill_fix と同根、P3 は display_local の整理)。
   wasm を中断してもこの 2 つは残る。
 - 最大のリスク (協調スケジューリングの成立) は P1 で先に潰す。
 
@@ -181,7 +181,7 @@ rake には `wasm:poc` / `wasm:build` を追加する (rakelib/wasm.rake)。emsd
 
 ### 目的
 
-display_p4_task.cpp (~5100 行) から「パネル起動 + PPA + DSI 出力」を分離し、
+display_local_task.cpp (~5100 行) から「パネル起動 + PPA + DSI 出力」を分離し、
 バックエンド差し替え可能にする。同時に PPA 合成の CPU 実装を書き、
 **P4 実機上で CPU 経路を回帰確認できる状態**を作る (wasm に行く前に、
 一番重い新規実装を実機で検証しておく)。
@@ -204,7 +204,7 @@ display_p4_task.cpp (~5100 行) から「パネル起動 + PPA + DSI 出力」�
 
 ### 作業項目
 
-1. display_p4_task.cpp の分割 (受信ループ + コマンド解釈を残し、出力系を移設)。
+1. display_local_task.cpp の分割 (受信ループ + コマンド解釈を残し、出力系を移設)。
 2. display_backend_cpu.cpp の実装 (color-key blit、RGB565)。
 3. 起動時にバックエンドを選ぶ仕組み (ビルド時定数で可。実機デバッグ用に
    .env か Kconfig で CPU 強制を選べると回帰が楽)。
@@ -233,7 +233,7 @@ display_p4_task.cpp (~5100 行) から「パネル起動 + PPA + DSI 出力」�
     ガード `fmrb_hal_link.h:94` に wasm を追加)。
   - 入力: usb_task_linux.c の代わりに backend/input_wasm.c (P4b で実装。
     P4a ではスタブ)。
-  - display: display_p4_task の受信ループ + コマンド解釈 + display_backend_cpu
+  - display: display_local_task の受信ループ + コマンド解釈 + display_backend_cpu
     (P3 の成果物)。present はスタブ (フレームを保持するだけ)。
   - audio: apu_emu を含め、hw write はスタブ。
   - sim_log_guard.c と --wrap フラグは入れない。
@@ -305,8 +305,8 @@ Chrome で実測済み。経過・実測値・見つけた穴は report/p5.md。
   `DRAW_IMAGE` が Modern/wasm では scale を見ないので、Ruby から
   `draw_image(scale_x:)` を渡しても効かない。直すのは P5 の外。
 - **表示側の天井が先に効く**: 窓 1 つ = canvas 1 枚で
-  `DISPLAY_P4_MAX_CANVAS=8` のため、FMRB_MAX_APPS を上げただけでは
-  11 本目から死ぬ。wasm だけ 34 (+ `DISPLAY_P4_VM_MAX_PROGS=64`) に上げて
+  `DISPLAY_LOCAL_MAX_CANVAS=8` のため、FMRB_MAX_APPS を上げただけでは
+  11 本目から死ぬ。wasm だけ 34 (+ `DISPLAY_LOCAL_VM_MAX_PROGS=64`) に上げて
   12 本同時起動を確認した。
 - `rake wasm:scan` を常設。packed 一覧 (リンカが実際に詰めた結果) と .data の
   バイト列を毎回照合する。同梱の NSF 2 本は権利上問題ないサンプルとして
@@ -343,7 +343,7 @@ Chrome で実測済み。経過・実測値・見つけた穴は report/p5.md。
 - **内部解像度の選択** (作業空間を広くする。ページ拡大の話ではない):
   調査の結果、解像度は既に実行時設定だった — `display_width/height` は
   system_conf.toml から読まれ (fmrb_kernel.c:134、config/ は linux=320x240 /
-  p4=426x240)、display_p4_task も conf とフレームバッファ実体から
+  p4=426x240)、display_local_task も conf とフレームバッファ実体から
   サイズを取っていて 426 の焼き込みは無い (コメントのみ)。よって:
   - ページの起動前 UI で解像度を選び、argv (--fmrb-res=WxH) で渡して
     機械側 C (page_settings_wasm.c) が conf を書き換える (preRun の MEMFS

@@ -8,7 +8,7 @@ Claude、実機確認はユーザ)。
 
 ## 原因(確定)
 
-`display_p4_task` のループ:
+`display_local_task` のループ:
 ```c
 while (1) {
     if (g_needs_render && now - last >= RENDER_MIN_INTERVAL_MS) { render_frame(); } // タイマー発火
@@ -61,12 +61,12 @@ while (1) {
 
 ## 変更ファイル
 
-- `main/drivers/display_p4/display_p4_task.cpp` のみ。
+- `main/drivers/display_local/display_local_task.cpp` のみ。
 
 ## 検証
 
 - **コンパイル**: esp32 (TAB5) ビルドで通ること(`file build/fmruby-core.elf` で確認は
-  linux 用。P4 は `rake build:esp32`、TAB5 ターゲット)。※ display_p4 は P4 専用で
+  linux 用。P4 は `rake build:esp32`、TAB5 ターゲット)。※ display_local は P4 専用で
   linux ビルドには含まれない。
 - **実機(ユーザ)**: Mic Spectrum でバー/カーソルのちらつきが消えること、通常の
   デスクトップ操作・カーソル移動・ウィンドウ操作に退行がないこと、体感で重く

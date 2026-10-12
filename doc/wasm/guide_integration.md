@@ -14,11 +14,11 @@ wasm ビルドは既存の 2 構成のいいとこ取りで組んである。
   posix/esp32 分岐を Linux sim と同じ側に倒す (時刻、ファイル、/tmp など)。
 - **体は Modern (Tab5)** — 表示は 3 プロセス構成の Linux sim ではなく、
   Tab5 のプロセス内経路をそのまま使う: link は fmrb_hal_link_local
-  (FreeRTOS MessageBuffer)、消費側は display_p4_task (受信ループ +
+  (FreeRTOS MessageBuffer)、消費側は display_local_task (受信ループ +
   コマンド解釈 + 合成)。FMRB_HW_FAMILY_MODERN を立てるのでサービス群も
   Modern と同じに振る舞う。
 - **FMRB_PLATFORM_WASM で差分だけ上書き** — boot.c の init 分岐、
-  sim_log_guard / debugd 起動のスキップ、display_p4_task 内の Tab5 実機
+  sim_log_guard / debugd 起動のスキップ、display_local_task 内の Tab5 実機
   ハードウェア領域 (パネル起動・ブート画面・I2C・ヘッドホン・タッチ) の
   除外、ファイルの基準パス (相対 "flash")。既存ターゲットのコンパイル
   結果は変えない (実機 0 px 回帰で確認済み)。

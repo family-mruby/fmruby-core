@@ -202,7 +202,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
     # and read the "flash_probe:" lines next to the 5 s render statistics.
     option(FMRB_FLASH_PROBE "Count flash cache-off windows and DSI scan-out gaps" OFF)
     if(IDF_TARGET STREQUAL "esp32p4" AND FMRB_FLASH_PROBE)
-        list(APPEND COMPONENT_SRCS "drivers/display_p4/flash_flicker_probe.c")
+        list(APPEND COMPONENT_SRCS "drivers/display_local/flash_flicker_probe.c")
     endif()
     # Per-task CPU usage sampler (doc/reference/cpu_usage.md). Always compiled;
     # it is an empty function unless the sdkconfig has
@@ -215,19 +215,19 @@ if(NOT IDF_TARGET STREQUAL "linux")
     # Modern keeps USB host (added in the else branch below).
     if(IDF_TARGET STREQUAL "esp32p4")
         list(APPEND COMPONENT_SRCS
-            "drivers/display_p4/display_p4_task.cpp"
-            "drivers/display_p4/display_backend.cpp"
-            "drivers/display_p4/display_backend_ppa.cpp"
-            "drivers/display_p4/display_backend_cpu.cpp"
-            "drivers/display_p4/display_blend_cpu.c"
-            "drivers/display_p4/display_p4_vm.cpp"
-            "drivers/display_p4/display_p4_sprite.cpp"
+            "drivers/display_local/display_local_task.cpp"
+            "drivers/display_local/display_backend.cpp"
+            "drivers/display_local/display_backend_ppa.cpp"
+            "drivers/display_local/display_backend_cpu.cpp"
+            "drivers/display_local/display_blend_cpu.c"
+            "drivers/display_local/display_local_vm.cpp"
+            "drivers/display_local/display_local_sprite.cpp"
             "drivers/audio_p4/audio_p4_hw.c"
             "drivers/audio_p4/audio_p4_handler.c"
             "drivers/audio_p4/audio_p4_task.c"
-            "drivers/display_p4/display_p4_video.cpp"
-            "drivers/display_p4/fonts/misaki/lgfx_misaki.c"
-            "drivers/display_p4/fonts/misaki/lgfx_misaki.cpp"
+            "drivers/display_local/display_local_video.cpp"
+            "drivers/display_local/fonts/misaki/lgfx_misaki.c"
+            "drivers/display_local/fonts/misaki/lgfx_misaki.cpp"
             "kernel/host/host_file_local.c"
             "drivers/wifi/wifi_task.c"
             "drivers/remote_desktop/rd_task.c"
@@ -271,15 +271,15 @@ if(NOT IDF_TARGET STREQUAL "linux")
             # JPEG engine on this chip (display_nojpeg.c), no sound output
             # (audio_none.c).
             list(APPEND COMPONENT_SRCS
-                "drivers/display_p4/display_p4_task.cpp"
-                "drivers/display_p4/display_backend.cpp"
-                "drivers/display_p4/display_backend_cpu.cpp"
-                "drivers/display_p4/display_blend_cpu.c"
-                "drivers/display_p4/display_p4_vm.cpp"
-                "drivers/display_p4/display_p4_sprite.cpp"
-                "drivers/display_p4/display_nojpeg.c"
-                "drivers/display_p4/fonts/misaki/lgfx_misaki.c"
-                "drivers/display_p4/fonts/misaki/lgfx_misaki.cpp"
+                "drivers/display_local/display_local_task.cpp"
+                "drivers/display_local/display_backend.cpp"
+                "drivers/display_local/display_backend_cpu.cpp"
+                "drivers/display_local/display_blend_cpu.c"
+                "drivers/display_local/display_local_vm.cpp"
+                "drivers/display_local/display_local_sprite.cpp"
+                "drivers/display_local/display_nojpeg.c"
+                "drivers/display_local/fonts/misaki/lgfx_misaki.c"
+                "drivers/display_local/fonts/misaki/lgfx_misaki.cpp"
                 "drivers/audio_p4/audio_none.c"
                 "kernel/host/host_file_local.c"
             )
@@ -346,6 +346,18 @@ else()
     list(APPEND COMPONENT_SRCS "boot/sim_log_guard.c")
 endif()
 
+# The board half of the local display: one implementation of the board
+# display interface (drivers/display_local/board/board_display.h), chosen by
+# the board. Its directory also carries board_display_conf.h.
+fmrb_hw_board_display(FMRB_BOARD_DISPLAY)
+set(BOARD_DISPLAY_INCLUDE_DIRS "")
+if(FMRB_BOARD_DISPLAY)
+    list(APPEND COMPONENT_SRCS
+        "drivers/display_local/board/${FMRB_BOARD_DISPLAY}/board_display_${FMRB_BOARD_DISPLAY}.cpp")
+    set(BOARD_DISPLAY_INCLUDE_DIRS
+        "drivers/display_local/board" "drivers/display_local/board/${FMRB_BOARD_DISPLAY}")
+endif()
+
 # Remote desktop viewer page (Modern only): embedded into the binary and
 # served by the on-device HTTP server. Sources live in tool/web/remote/.
 set(RD_EMBED_FILES "")
@@ -358,7 +370,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_local" ${BOARD_DISPLAY_INCLUDE_DIRS} "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )
