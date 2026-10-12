@@ -479,6 +479,9 @@ asterism の層は純 Ruby で、picoruby-asterism-zenoh は PicoRuby の mrbgem
   - B1 の作り (zenoh-pico を Emscripten で入れ、WebSocket はページの JS が持つ) を、picoruby-asterism-zenoh の `ports/emscripten` として gem に移し、PicoRuby.wasm のビルドに入れる。ただし B1 の受け渡しは、タスクごとに Worker を持つ Family mruby の作り (共有メモリ) に合わせてある。PicoRuby.wasm の動き方 (主スレッドで動くか) に合わせて、受け渡しを単純にする必要がありそう。
   - Zenoh の公式の TypeScript の部品 (zenoh-ts) を、PicoRuby.wasm の JS 連携から呼び、その上に asterism の層を載せる。C を足さずに済むが、ルータに remote-api のプラグインが要る。
 - **ほかの PicoRuby のマイコン** (R2P2 など): zenoh-pico が対応する系 (ESP-IDF、FreeRTOS + lwIP、Raspberry Pi Pico W など) なら、picoruby-asterism-zenoh の port を足す形で入れられる見込み。
+  - **最初の 1 台は Raspberry Pi Pico 2 W に決定 (2026-10-12 ユーザ、着手は後で)**。RP2350 (内蔵 RAM 520 KB)、無線は CYW43439。picoruby-asterism-zenoh に `ports/rp2350/` (仮) を足し、時刻・メモリ確保・TCP (lwIP + cyw43) を書く。
+  - 確かめること: PicoRuby の RP2350 向けの作り (R2P2 など) が FreeRTOS を使うか (zenoh-pico の Pico 向けの層は FreeRTOS + lwIP が前提)。使わないなら、lwIP の待ち方 (poll か割り込みか) に合わせた層を書く。zenoh-pico・asterism の層・受け取りの列が RAM に収まるか (PSRAM なしの 520 KB で)。
+  - 最初の段は「WiFi につながり、ルータへ put / subscribe ができる」最小の試し。次に asterism の層を載せ、console の図に出す (V2.5 の profile では `kind: :picoruby`、`host: "pico2w"`)。
 - どれも、まず小さな試し (つながって put / subscribe ができる) から。着手は未定。
 
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
