@@ -106,6 +106,16 @@ MRuby::CrossBuild.new("esp32") do |conf|
     conf.gem core: "picoruby-net-http"
     conf.gem core: "picoruby-net-websocket"
   end
+  # Asterism (doc/ruby_asterism): the Zenoh binding over zenoh-pico (built
+  # single-threaded, polled from Ruby, allocating from PSRAM only) and the
+  # pure Ruby layers on top. Only with FMRB_ASTERISM=1 (the AtomS3R's default,
+  # off for Retro; see the Rakefile). The gem selects zenoh-pico's ESP-IDF
+  # platform from the build name; its ports/esp32 sources are compiled by
+  # components/picoruby-esp32/CMakeLists.txt under the same variable.
+  if ENV['FMRB_ASTERISM'] == '1'
+    conf.gem core: "picoruby-asterism-zenoh"
+    conf.gem core: "picoruby-asterism"
+  end
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

@@ -51,11 +51,13 @@ end
 # still overrides one of them.
 #   ATOMS3R: its factory partition is 5M (doc/headless_s3/), so the editor is
 #   the mruby one, the Spinel FFT is left out and so are the Japanese fonts.
+#   It is a node of an Asterism network, so Asterism is in.
 BOARD_BUILD_DEFAULTS = {
   "ATOMS3R" => {
     "FMRB_APP_ENGINE_EDITOR" => "mruby",
     "FMRB_FFT_SPINEL" => "0",
     "FMRB_FONT_JA" => "0",
+    "FMRB_ASTERISM" => "1",
   },
 }
 (BOARD_BUILD_DEFAULTS[ENV.fetch("FMRB_HW_TARGET", "").strip] || {}).each do |key, value|
@@ -291,6 +293,15 @@ FMRB_FFT_SPINEL = (ENV["FMRB_FFT_SPINEL"] || "1") != "0"
 # set_font(:ja, ...) then selects misaki 8 and says so. Default 1; the
 # AtomS3R defaults to 0 (BOARD_BUILD_DEFAULTS above).
 FMRB_FONT_JA = (ENV["FMRB_FONT_JA"] || "1") != "0"
+# Asterism (doc/ruby_asterism) on an S3 board: the Zenoh binding
+# (picoruby-asterism-zenoh, zenoh-pico) and the pure Ruby layers
+# (picoruby-asterism). The Modern (P4) build always has them; on the S3 they
+# are in only with FMRB_ASTERISM=1, so Retro's flash and RAM stay as they are
+# by default. The AtomS3R defaults to 1 (BOARD_BUILD_DEFAULTS above). Read
+# inside the container by lib/add/family_mruby_esp32.rb (the gems) and
+# components/picoruby-esp32/CMakeLists.txt (their ESP-IDF port sources), so
+# the two cannot disagree. Changing it means `rake clean` (libmruby).
+FMRB_ASTERISM = ENV["FMRB_ASTERISM"] == "1"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 # Pin the build container to the IDF version tag above -- never :latest. Two
@@ -329,6 +340,7 @@ ENGINE_ENV_OPTS = [
   "-e FMRB_APP_ENGINE_EDITOR=#{FMRB_APP_ENGINE_EDITOR}",
   "-e FMRB_FFT_SPINEL=#{FMRB_FFT_SPINEL ? 1 : 0}",
   "-e FMRB_FONT_JA=#{FMRB_FONT_JA ? 1 : 0}",
+  "-e FMRB_ASTERISM=#{FMRB_ASTERISM ? 1 : 0}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
   # (lib/add/family_mruby_*.rb) and the CMake side
