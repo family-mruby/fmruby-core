@@ -174,6 +174,10 @@ task :setup do
   %w[mrbgem.rake mrblib README.md LICENSE].each do |entry|
     sh "cp -rf #{ast_dir}/#{entry} #{mrbgem_path}/picoruby-asterism/"
   end
+  # Family mruby's default Asterism node profile (V2.5): pure Ruby, listed
+  # after picoruby-asterism by the builds that have it.
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-asterism"
+  sh "cp -rf lib/add/picoruby-fmrb-asterism #{mrbgem_path}/"
   # The bundled ROS 2 message types, from the same checkout into the storage
   # tree (/usr/share/asterism/msgs on the device; the sim reads flash/
   # directly). Generated here and gitignored, like flash/help: the source is

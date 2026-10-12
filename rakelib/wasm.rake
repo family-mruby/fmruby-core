@@ -207,6 +207,11 @@ namespace :wasm do
     abort "wasm:webflash: #{ASTERISM_MSGS_DIR} is missing (rake setup makes it)" unless Dir.exist?(msgs)
     mkdir_p File.join(staging, "usr/share/asterism")
     cp_r msgs, File.join(staging, "usr/share/asterism/msgs")
+    # The node profile's icon (V2.5): the browser build shows its own, at the
+    # place every build reads (/usr/share/asterism/icon.png), as the
+    # wallpaper below does with /data.
+    cp File.join(ROOT_DIR, "flash/usr/share/asterism/icon_browser.png"),
+       File.join(staging, "usr/share/asterism/icon.png")
     # The desktop on non-esp32 platforms (wasm included) loads the wallpaper
     # from /data -- on the sim a kernel file-sync puts it there. The web
     # default theme is cyberpunk, so the DEFAULT /data wallpaper is the neon

@@ -1,6 +1,6 @@
 app_handle_name = "ruby_profile"
-app_screen_name = "Ruby Profile"
-app_screen_name_ja = "Ruby プロファイル"
+app_screen_name = "Ruby Features"
+app_screen_name_ja = "Ruby の対応表"
 default_window_mode = "window"
 default_window_width = 200
 default_window_height = 72
