@@ -38,4 +38,4 @@
 - Ruby Lattice: wasmCloud の "lattice" と既視感。gem 取得済み。
 - Geode: Apache Geode と衝突。
 - それ以前の候補 (RubySpace / Continuum / Nexus / Cosmos / Universe /
-  Grand Unified Ruby) は ruby_unified_discussion_summary.txt の 16 節。
+  Grand Unified Ruby) は初期の議論で挙がったもの。

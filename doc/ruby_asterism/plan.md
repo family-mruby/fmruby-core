@@ -6,7 +6,7 @@
 
 CRuby、Family mruby (mruby / Spinel)、マイコン、Web、外部のサービスを、Ruby から一つの網 (分散した
 オブジェクトの空間) として扱えるようにする。下の通信には Zenoh を使う。構想と使い方は同じディレクトリの
-ruby_unified_discussion_summary.txt、usecases.md、pet_design.md、node_variants.md、remote_window.md、
+usecases.md、pet_design.md、node_variants.md、remote_window.md、
 名前は naming.md、Zenoh の調査は zenoh_idea.md。
 
 ## 決まっていること (これまでの議論)
@@ -422,7 +422,7 @@ mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0
 
 ### S4: 端末 2 台 (計画 2026-10-11、2026-10-12 改訂)
 
-S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 はその一段上で、「マイコンが別のマイコンのオブジェクトを呼び、そのマイコンがロボットを動かす」を見せる。RubyKaigi の本命の切り口 (オブジェクトモデルを網に広げる、rubykaigi_talk.md) にそのまま重なり、実際のロボットの形 (ロボットに載った計算機 + 手元の操縦機) とも同じになる。
+S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 はその一段上で、「マイコンが別のマイコンのオブジェクトを呼び、そのマイコンがロボットを動かす」を見せる。オブジェクトモデルを網に広げるという Asterism の中心の考えにそのまま重なり、実際のロボットの形 (ロボットに載った計算機 + 手元の操縦機) とも同じになる。
 
 | 役 | 端末 | すること |
 |---|---|---|
