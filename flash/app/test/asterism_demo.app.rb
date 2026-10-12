@@ -17,7 +17,11 @@
 #             relay(from, n) -> calls <from>/demo/info.status back and
 #             returns [n, its name] (for calls in both directions at once),
 #             boom -> raises (to see RemoteError),
-#             echo(value, tag: nil) -> [value, tag] (values and keywords)
+#             echo(value, tag: nil) -> [value, tag] (values and keywords),
+#             profile(name, own_icon) -> sets this node's profile (V2.5):
+#             the display name ("" for none) and the app's own icon
+#             (asterism_demo.png next to this file) or the firmware's
+#             default; returns the profile without the icon bytes
 #     info has a public method `secret` that is NOT exposed.
 # - Lists the nodes alive, and shows the nodes that join and leave
 #   (Asterism.on_join / on_leave, called from Asterism.poll in on_update).
@@ -29,6 +33,8 @@
 #       m 10 calls of info.relay (both machines at once: no lock up; a
 #         relay that comes in is logged here, "relay from ...")
 #       r respond_to? / methods of the peer's info
+#       p switch this node's profile: "Asterism Demo" and the app's own
+#         icon, or back to the firmware's default (no name, its icon)
 #
 # On a small screen (display_width under 320 in system_conf.toml, e.g. the
 # AtomS3R's 128x128) it asks for the whole screen and shows a short summary,
@@ -46,6 +52,10 @@ class AsterismDemoApp < FmrbApp
   APP = "demo"
   STATUS_EVERY_MS = 3000
   TUNE = "o4 l8 cdefgab>c"
+  # The profile's icons (V2.5): the app's own, and the firmware's default
+  # (the browser bundle has its own icon at the same path).
+  OWN_ICON = "/app/test/asterism_demo.png"
+  DEFAULT_ICON = "/usr/share/asterism/icon.png"
 
   class Apu
     def initialize(app)
@@ -107,6 +117,12 @@ class AsterismDemoApp < FmrbApp
     # Returns what it got, to check how values travel (and keywords).
     def echo(value, tag: nil)
       [value, tag]
+    end
+
+    # This node's profile: a display name ("" for none) and either the app's
+    # own icon or the firmware's default. Returns it without the icon bytes.
+    def profile(name, own_icon)
+      @app.set_profile(name.to_s, own_icon ? true : false)
     end
 
     # Public, but not exposed: a remote call must not reach it.
@@ -208,7 +224,8 @@ class AsterismDemoApp < FmrbApp
       end
       ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
       ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
-      ::Asterism.expose("info", AsterismDemoApp::Info.new(self), methods: { status: 0, relay: 2, boom: 0, echo: 1 })
+      ::Asterism.expose("info", AsterismDemoApp::Info.new(self),
+                        methods: { status: 0, relay: 2, boom: 0, echo: 1, profile: 2 })
       # Called from Asterism.poll (on_update), not from a waiting call.
       ::Asterism.on_join { |n| joined(n) }
       ::Asterism.on_leave { |n| left(n) }
@@ -217,6 +234,25 @@ class AsterismDemoApp < FmrbApp
       @state = "failed: #{e.message}"
     end
     note("#{@node} #{@state} (#{@locator}, #{Machine.board_millis - t0} ms)")
+  end
+
+  def read_file(path)
+    File.open(path, "r") { |f| f.read }
+  rescue
+    nil
+  end
+
+  # Asterism.profile with a name and one of the two icons (key p, and
+  # info.profile from another machine). The change is put on the profile's
+  # key, so a console redraws the node.
+  def set_profile(name, own_icon)
+    icon = read_file(own_icon ? OWN_ICON : DEFAULT_ICON)
+    pr = ::Asterism.profile(name: name.empty? ? nil : name, icon: icon)
+    @own_profile = own_icon
+    note("profile: #{pr["name"] || "-"} icon #{pr["icon_hash"] || "-"}")
+    out = {}
+    pr.each { |k, v| out[k] = v unless k == "icon" }
+    out
   end
 
   def joined(node)
@@ -323,6 +359,12 @@ class AsterismDemoApp < FmrbApp
       try("encode") { peer("screen").say(Object.new) }
     when 109 # m
       mutual
+    when 112 # p
+      if @own_profile
+        set_profile("", false)
+      else
+        set_profile("Asterism Demo", true)
+      end
     when 114 # r
       try("meta") do
         px = peer("info").asterism_refresh

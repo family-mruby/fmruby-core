@@ -115,6 +115,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   if ENV['FMRB_ASTERISM'] == '1'
     conf.gem core: "picoruby-asterism-zenoh"
     conf.gem core: "picoruby-asterism"
+    # Family mruby's default node profile (kind, host; V2.5)
+    conf.gem core: "picoruby-fmrb-asterism"
   end
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"

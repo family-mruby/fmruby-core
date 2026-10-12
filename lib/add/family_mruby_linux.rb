@@ -110,4 +110,6 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # Asterism (doc/ruby_asterism, A1): proxies for objects on other machines,
   # pure Ruby on top of Asterism::Zenoh and MessagePack.
   conf.gem core: "picoruby-asterism"
+  # Family mruby's default node profile (kind family_mruby, host "sim"; V2.5)
+  conf.gem core: "picoruby-fmrb-asterism"
 end

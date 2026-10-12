@@ -131,6 +131,8 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   # Asterism (doc/ruby_asterism, A1): proxies for objects on other machines,
   # pure Ruby on top of Asterism::Zenoh and MessagePack.
   conf.gem core: "picoruby-asterism"
+  # Family mruby's default node profile (kind, host; V2.5)
+  conf.gem core: "picoruby-fmrb-asterism"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

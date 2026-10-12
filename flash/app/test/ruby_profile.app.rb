@@ -1,4 +1,4 @@
-# Runs the Ruby profile probes of the asterism repository (profile/ there) in
+# Runs the Ruby feature table probes of the asterism repository (profile/ there) in
 # the app VM (the PicoRuby compiler plus the mruby VM) and writes one log
 # line per probe, "RPROF|<id>|<status>|<detail>", between RPROF-BEGIN and
 # RPROF-END. The asterism side turns the log into the table:
@@ -49,7 +49,7 @@ class RubyProfileApp < FmrbApp
 
   def show(text)
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
-    @gfx.draw_text(6, 6, "Ruby profile", FmrbGfx::WHITE)
+    @gfx.draw_text(6, 6, "Ruby features", FmrbGfx::WHITE)
     @gfx.draw_text(6, 22, text, FmrbGfx::WHITE)
     @gfx.present
   end
@@ -57,7 +57,7 @@ end
 
 # Keep the locals at the top level of this file few and unlikely: in the
 # app VM, eval of code that assigns a new local with the name of one of them
-# fails with SyntaxError (see the asterism repository's docs/ruby_profile.md).
+# fails with SyntaxError (see the asterism repository's docs/ruby_features.md).
 begin
   RubyProfileApp.new.start
 rescue => rprof_top_error

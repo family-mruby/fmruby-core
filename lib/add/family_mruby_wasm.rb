@@ -102,4 +102,6 @@ MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
   conf.cc.include_paths << File.expand_path('../../wasm/zenoh', __dir__)
   conf.gem core: "picoruby-asterism-zenoh"
   conf.gem core: "picoruby-asterism"
+  # Family mruby's default node profile (kind family_mruby, host "browser"; V2.5)
+  conf.gem core: "picoruby-fmrb-asterism"
 end
