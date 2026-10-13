@@ -35,9 +35,17 @@
 #   other's state and adopts the longer history when the shorter one is its
 #   start and every move replays legally; otherwise the game ends.
 # - The opponent leaving (its othello object gone): the game waits GRACE_MS
-#   for it, then ends. When it comes back in time, the states are compared as
-#   above and the game goes on. A restarted app has lost its game: the game
-#   ends. Losing our own connection: reconnect every RECONNECT_MS, same wait.
+#   (60 s) for it, then ends. When it comes back in time, the states are
+#   compared as above and the game goes on. A restarted app has lost its
+#   game: the game ends. A router that restarts (an apply on the console, a
+#   line that drops) cuts both players for a few seconds: the Zenoh binding
+#   connects again by itself (Asterism.reconnecting? meanwhile; a page
+#   gives up after a few minutes of tries) and the opponent comes back, so
+#   the screen says "the line dropped, waiting" rather than "left". 60 s
+#   covers a router restart (about 1-10 s, report/g1_5b.md) with room for a
+#   browser page's spaced tries. Losing our own connection for good (an
+#   older binding without reconnection): connect again every RECONNECT_MS,
+#   same wait.
 # - Who moves first: the invited player, on accepting, draws the colours.
 #   Black moves first.
 # - Keys: arrows move the cursor, Enter places (or passes when there is no
@@ -243,7 +251,7 @@ class OthelloApp < FmrbApp
   APP = "game"
   OBJ = "othello"
   CALL_TIMEOUT = 3.0
-  GRACE_MS = 30000
+  GRACE_MS = 60000
   INVITE_MS = 60000
   RECONNECT_MS = 3000
   SCAN_EVERY_MS = 2000
@@ -354,6 +362,7 @@ class OthelloApp < FmrbApp
     @net = :connecting      # :connecting / :up / :down
     @net_note = ""
     @retry_at = 0
+    @was_reconnecting = false
     @zs = nil
     @watch = nil
     @state_key = "asterism/#{@id}/#{APP}/#{OBJ}/state"
@@ -486,6 +495,12 @@ class OthelloApp < FmrbApp
     unless ::Asterism.poll
       lost("asterism: #{::Asterism.lost_reason}")
       return
+    end
+    r = reconnecting?
+    if r != @was_reconnecting
+      @was_reconnecting = r
+      Log.info(r ? "othello: the line dropped, connecting again" : "othello: connected again")
+      @dirty = true
     end
   rescue => e
     lost("#{e.class}: #{e.message}")
@@ -804,7 +819,7 @@ class OthelloApp < FmrbApp
   def check_grace
     return unless @g && !@g.over && @lost_at
     if Machine.board_millis - @lost_at >= GRACE_MS
-      if @net == :up
+      if @net == :up && !reconnecting?
         finish("abandoned: #{@opp} left", "相手が戻らなかったので終わり")
       else
         finish("abandoned: network lost", "網に戻れなかったので終わり")
@@ -1254,8 +1269,16 @@ class OthelloApp < FmrbApp
 
   def net_line
     return "つないでいます: #{@locator}" if @net == :connecting
-    return "網から切れた: つなぎ直し中" if @net == :down
+    return "網から切れた: つなぎ直し中" if @net == :down || reconnecting?
     "#{@id} (#{@locator})"
+  end
+
+  # The binding is opening our lost connection again (asterism with
+  # reconnection; an older one has no reconnecting?).
+  def reconnecting?
+    @net == :up && ::Asterism.respond_to?(:reconnecting?) && ::Asterism.reconnecting?
+  rescue
+    false
   end
 
   def draw_lobby
@@ -1383,7 +1406,7 @@ class OthelloApp < FmrbApp
     if @lost_at
       left = (GRACE_MS - (Machine.board_millis - @lost_at)) / 1000
       left = 0 if left < 0
-      what = @net == :up ? "相手が切れた" : "網から切れた"
+      what = @net == :up && !reconnecting? ? "相手の通信が途切れた" : "網につなぎ直しています"
       text(x, yy, what, C_CURSOR)
       text(x, yy + 15, "戻るのを待つ: あと #{left} 秒"[0, n], C_CURSOR)
     elsif @move_f
