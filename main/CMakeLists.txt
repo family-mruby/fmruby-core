@@ -195,8 +195,7 @@ endif()
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    # mbedtls: psa_crypto_init for TLS 1.3 (drivers/wifi/wifi_task.c).
-    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash mbedtls)
+    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash)
     # Measurement probe for the blue flash-write flicker
     # (doc/flash_write_flicker/report/f1.md). Off by default; turn it on with
     #   CMAKE_OPTS="-DFMRB_FLASH_PROBE=ON" rake build:esp32
@@ -369,11 +368,18 @@ if(IDF_TARGET STREQUAL "esp32p4")
         "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/keymap.js")
 endif()
 
+# mbedTLS's PSA state to PSRAM when TLS 1.3 brings it in (main/mbedtls_psram.lf).
+set(FMRB_LDFRAGMENTS "")
+if(CONFIG_MBEDTLS_SSL_PROTO_TLS1_3 AND CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY)
+    list(APPEND FMRB_LDFRAGMENTS "mbedtls_psram.lf")
+endif()
+
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
     INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_local" ${BOARD_DISPLAY_INCLUDE_DIRS} "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
+    LDFRAGMENTS ${FMRB_LDFRAGMENTS}
 )
 
 # mruby ABI defines: main/ calls mruby APIs (fmrb_app.c etc.), so it must use
