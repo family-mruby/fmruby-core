@@ -16,6 +16,19 @@
 const ZENOH_PASS = String(window.FMRB_ZENOH_PASS || '');
 try { delete window.FMRB_ZENOH_PASS; } catch (e) { window.FMRB_ZENOH_PASS = undefined; }
 
+// This page's own key (doc/ruby_asterism, G1.5b): made when the page loads,
+// kept only here and in the module object, and sent next to the pass on
+// every WebSocket (wasm/zenoh/zp_ws_emscripten.c). The first page that uses
+// a pass takes it; with the same key the door lets this page connect again
+// (after the router restarts) while the pass is open, and no other page. A
+// reload is a new page with a new key, so it needs a new pass.
+function makePageKey() {
+  const b = new Uint8Array(18);
+  crypto.getRandomValues(b);
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+const ZENOH_PAGE = ZENOH_PASS ? makePageKey() : '';
+
 // The node ID and the app a link from the console names for this visit
 // (#zenoh_node=, #app=; doc/ruby_asterism, G1.5), read by the same first
 // script. The node ID replaces this browser's own one for this visit only
@@ -559,7 +572,16 @@ moduleConfig.arguments = [];
   if (zenoh) moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
   // The pass goes to the link through the module object, never as an
   // argument (arguments end up in the machine's settings).
-  if (ZENOH_PASS) moduleConfig.zenohPass = ZENOH_PASS;
+  if (ZENOH_PASS) {
+    moduleConfig.zenohPass = ZENOH_PASS;
+    moduleConfig.zenohPage = ZENOH_PAGE;
+    // The link stopped trying (zp_ws_emscripten.c): with a pass, most likely
+    // because the pass has closed.
+    moduleConfig.zenohGaveUp = (fails) => {
+      statusLine.textContent = `the network: ${fails} tries to connect again failed; the pass may have closed ` +
+        '(open the page again from the console for a new one)';
+    };
+  }
 }
 // Everything the page wants to do before main() goes in here, in order.
 moduleConfig.preRun = [];

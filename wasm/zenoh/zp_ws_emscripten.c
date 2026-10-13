@@ -54,6 +54,14 @@
  *
  * Only opening and closing are synchronous calls to the main thread.
  *
+ * Connecting again (doc/ruby_asterism, G1.5b): zenoh-pico opens a lost
+ * connection again by itself, a try a second. Here the tries are spaced out
+ * after failures (1, 2, 4, 8, 16 s, then every 30 s; a try in between fails
+ * at once, without a WebSocket), so a router that is away is not knocked on
+ * every second. A page that came with a pass (the router door's) gives up
+ * after ZP_WS_MAX_FAILS failed tries in a row -- its pass has most likely
+ * closed -- and tells the page (Module.zenohGaveUp), which says so.
+ *
  * The link is a datagram link to zenoh-pico: one WebSocket message carries
  * one batch, as zenohd's ws/ listener expects. The rest of the contract is
  * picoruby-asterism-zenoh's (include/picoruby_zenoh_link.h): the polled read
@@ -77,6 +85,11 @@
 #include "zenoh-pico/utils/logging.h"
 #include "zenoh-pico/utils/pointers.h"
 #include "zp_emscripten_wait.h"
+
+/* Failed opens in a row before a page with a pass gives up, and the longest
+ * pause between two tries (ms). */
+#define ZP_WS_MAX_FAILS 10
+#define ZP_WS_MAX_PAUSE_MS 30000
 
 /* Sessions open at once (each has one WebSocket). */
 #define ZP_WS_SLOTS 4
@@ -113,6 +126,12 @@ static void zp_ws_set_state(int slot, int32_t st) { __atomic_store_n(&s_ring[slo
 
 static bool zp_ws_valid(int slot) { return slot >= 0 && slot < ZP_WS_SLOTS && s_used[slot]; }
 
+/* The spacing of the tries (see the top). Touched by the worker only. */
+static uint32_t s_fails;
+static uint32_t s_pause_ms;
+static z_clock_t s_failed_at;
+static bool s_gave_up;
+
 /* Main thread: create the WebSocket and wire its events to the ring. The URL
  * is ASCII (the locator's characters are checked by zenoh-pico and the page). */
 static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
@@ -143,6 +162,11 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
                     // travels in clear; never logged.
                     const pass = Module['zenohPass'];
                     if (pass) url += (url.indexOf('?') < 0 ? '?' : '&') + 'pass=' + encodeURIComponent(pass);
+                    // The page's own key (G1.5b, web/main.js): the door
+                    // lets this page, and no other, connect again with the
+                    // same pass while the pass is open.
+                    const page = Module['zenohPage'];
+                    if (pass && page) url += '&page=' + encodeURIComponent(page);
                 }
             }
             let ws;
@@ -333,7 +357,50 @@ static size_t zp_ws_write(const _z_sys_net_socket_t sock, const uint8_t *ptr, si
     }
 }
 
+/* Main thread: whether the page came with a pass, and telling it that the
+ * tries stopped. */
+static bool zp_ws_js_has_pass(void) {
+    return MAIN_THREAD_EM_ASM_INT({ return Module['zenohPass'] ? 1 : 0; }) != 0;
+}
+
+static void zp_ws_js_gave_up(int fails) {
+    MAIN_THREAD_ASYNC_EM_ASM(
+        {
+            if (typeof Module['zenohGaveUp'] === 'function') Module['zenohGaveUp']($0);
+        },
+        fails);
+}
+
+static z_result_t zp_ws_open_once(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout);
+
 static z_result_t zp_ws_open(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
+    sock->_ws._fd = -1;
+    if (s_gave_up || (s_fails > 0 && z_clock_elapsed_ms(&s_failed_at) < s_pause_ms)) {
+        return _Z_ERR_GENERIC; /* not yet (or not any more): no WebSocket */
+    }
+    z_result_t ret = zp_ws_open_once(sock, rep, tout);
+    if (ret == _Z_RES_OK) {
+        if (s_fails > 0) {
+            _Z_INFO("ws: connected again after %u failed tries", (unsigned)s_fails);
+        }
+        s_fails = 0;
+        s_pause_ms = 0;
+        return ret;
+    }
+    s_fails++;
+    s_failed_at = z_clock_now();
+    s_pause_ms = s_pause_ms == 0 ? 1000 : s_pause_ms * 2;
+    if (s_pause_ms > ZP_WS_MAX_PAUSE_MS) {
+        s_pause_ms = ZP_WS_MAX_PAUSE_MS;
+    }
+    if (s_fails >= ZP_WS_MAX_FAILS && zp_ws_js_has_pass()) {
+        s_gave_up = true;
+        zp_ws_js_gave_up((int)s_fails);
+    }
+    return ret;
+}
+
+static z_result_t zp_ws_open_once(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
     sock->_ws._fd = -1;
     sock->_ws._tout = tout;
     int slot = -1;
