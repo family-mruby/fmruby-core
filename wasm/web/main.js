@@ -16,6 +16,20 @@
 const ZENOH_PASS = String(window.FMRB_ZENOH_PASS || '');
 try { delete window.FMRB_ZENOH_PASS; } catch (e) { window.FMRB_ZENOH_PASS = undefined; }
 
+// The node ID and the app a link from the console names for this visit
+// (#zenoh_node=, #app=; doc/ruby_asterism, G1.5), read by the same first
+// script. The node ID replaces this browser's own one for this visit only
+// (it is not stored); one that is not a node ID is ignored.
+const LINK_NODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+const LINK_NODE = LINK_NODE_RE.test(String(window.FMRB_ZENOH_NODE || '')) ? String(window.FMRB_ZENOH_NODE) : '';
+const LINK_APP = String(window.FMRB_LINK_APP || '');
+try { delete window.FMRB_ZENOH_NODE; delete window.FMRB_LINK_APP; } catch (e) { /* kept in the constants */ }
+
+// The app to open this visit: ?app= or the link's #app=.
+function urlApp() {
+  return new URLSearchParams(location.search).get('app') || LINK_APP;
+}
+
 const canvas = document.getElementById('screen');
 const screenBox = document.getElementById('screen-box');
 const ctx = canvas.getContext('2d');
@@ -358,14 +372,14 @@ function captureConfSettings() {
   // choice made inside the machine (Config has no field for it), so it is
   // left out: the link opens its app this once, and the page comes back
   // plain next time. Written into the file by hand, it is kept like the rest.
-  const urlApp = new URLSearchParams(location.search).get('app');
+  const linkApp = urlApp();
   // The router in the file is the URL's (?zenoh=) or one the Network panel
   // has since replaced in the store: either way the store already says what
   // the next start should use, so it is kept as it is.
   const keepRouter = !!urlZenoh() || routerSetHere;
   const keys = {};
   for (const k of CONF_KEYS) {
-    if (k === 'startup_app' && urlApp) continue;
+    if (k === 'startup_app' && linkApp) continue;
     if (k === 'zenoh_router' && keepRouter) continue;
     const m = text.match(new RegExp('^' + k + ' = ([^\\s#]+)', 'm'));
     if (m) keys[k] = m[1];
@@ -531,7 +545,7 @@ moduleConfig.arguments = [];
   //
   // The app has to be on the machine already: the page cannot install one,
   // and it does not try -- the store is an app now, not part of this page.
-  const want = new URLSearchParams(location.search).get('app');
+  const want = urlApp();
   if (want && /^[A-Za-z0-9_./-]+$/.test(want)) {
     const path = want.includes('/') ? want : `/app/usr/${want}/${want}.app.rb`;
     moduleConfig.arguments.push(`--fmrb-conf=startup_app="${path}"`);
@@ -653,6 +667,11 @@ moduleConfig.preRun.push(mountHome);
 // ID. A second tab is already a throw-away machine -- its files are not
 // saved -- and it gets a fresh ID that is not kept either, so both tabs can
 // be on the network at once without one taking the other's name.
+//
+// A link from the console names the ID (#zenoh_node=, G1.5: tied to the
+// user who opened it, and a second page of the same user gets another
+// name). That ID is used for this visit in any tab and is not kept: the kept
+// one stays for visits without such a link.
 const NODE_STORE = 'fmrb_web_node';
 const NODE_RE = /^wasm-[0-9a-f]{6}$/;
 let nodeId = '';
@@ -666,7 +685,9 @@ function newNodeId() {
 
 function decideNodeId() {
   nodeKept = false;
-  if (homeWriter !== false) {
+  if (LINK_NODE) {
+    nodeId = LINK_NODE;
+  } else if (homeWriter !== false) {
     const kept = readSetting(NODE_STORE, '');
     if (NODE_RE.test(kept)) {
       nodeId = kept;
@@ -703,7 +724,8 @@ function storedRouter() {
 function showNetworkState() {
   if (nodeStateEl) {
     let text = nodeId ? 'node ' + nodeId : 'node: checking...';
-    if (nodeId && homeWriter === false) text += ' (this tab only)';
+    if (nodeId && LINK_NODE) text += ' (from the link, this visit)';
+    else if (nodeId && homeWriter === false) text += ' (this tab only)';
     else if (nodeId && !nodeKept) text += ' (not kept: storage refused)';
     nodeStateEl.textContent = text;
   }

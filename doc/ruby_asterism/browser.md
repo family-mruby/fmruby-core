@@ -160,6 +160,11 @@ sim・端末の system_conf には `zenoh_router` が無いので、これまで
   タブの間だけの ID になる (枠に `not kept` と出る)。
 - 同じ ID の重複 (同じ店を共有する 2 つの機械、`/home/asterism_node.txt` の書き間違い) を網の上で確かめる
   仕組みは無い。
+- **リンクが ID を決めることがある (G1.5)**。asterism-console の「Open the browser build」で開いたリンクは、
+  フラグメントに `zenoh_node=<ID>` を持つ (ユーザに結び付いた `wasm-<名前>`、2 つ目は `wasm-<名前>_2`)。その回は
+  どのタブでもこの ID を使い、保存しない (保存してある ID はそのまま。リンクなしで開けば元の ID)。枠には
+  `node wasm-alice (from the link, this visit)` と出る。ノードの ID に使えない形 (`[A-Za-z0-9][A-Za-z0-9._-]{0,62}`
+  に合わない) は無視する。`/home/asterism_node.txt` があればそちらが勝つ (アプリの決まりの順のまま)。
 
 ## 5.3 合言葉 (wss:// の入口、G1)
 
@@ -181,6 +186,10 @@ https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:744
   付けない。入口の nginx は確かめた後、合言葉を外してルータへ渡す。
 - 合言葉は 1 つの接続にだけ使える (最初に通った時点で使い終わり)。入口は接続を 4 時間で切る。切れたら (つなぎ直し
   が要るときも) console で新しい合言葉を作り、新しいリンクで開き直す。
+- 「Open the browser build」(G1.5) のリンクは、合言葉と一緒にノードの ID と開くアプリもフラグメントで渡す
+  (`#zenoh_pass=...&zenoh_node=wasm-alice&app=/app/test/othello.app.rb`)。ページは 3 つとも読んだらアドレスの欄から
+  消す。`#app=` は `?app=` と同じ働きで、両方あれば `?app=` が勝つ。リンクの形は console の設定
+  `ASTERISM_BROWSER_PAGE` (asterism-console の docs/g1_5.md)。
 - G1b (asterism 0.6.0) から、試しのアプリ (othello・rt_probe・rover_brain・rover_pilot) は接続を 1 本しか開かない
   (`Asterism.session`) ので、合言葉 1 つで入れる。
 - 1 つのページが 2 つの接続を開くアプリ (Asterism と別のセッションを持つ othello・rt_probe・rover_pilot) は、
