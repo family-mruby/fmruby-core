@@ -37,6 +37,9 @@
 #include "ble_task.h"   /* ble_service_is_started: radio exclusivity */
 #endif
 #include "mdns.h"
+#if CONFIG_MBEDTLS_SSL_PROTO_TLS1_3
+#include "psa/crypto.h"
+#endif
 
 #include <string.h>
 
@@ -234,6 +237,18 @@ fmrb_err_t wifi_task_init(void)
         toml_free(root);
         return FMRB_ERR_NOT_FOUND;
     }
+
+#if CONFIG_MBEDTLS_SSL_PROTO_TLS1_3
+    // mbedTLS 3.x runs TLS 1.3 on PSA, and nothing initialises PSA for the
+    // TLS users that are not esp-tls (picoruby's SSLSocket, Asterism's TLS
+    // link): a TLS 1.3 handshake would fail with a bad state. Once, before
+    // any network use; later calls are no-ops. Its state is allocated by
+    // mbedTLS, from PSRAM (CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC).
+    psa_status_t psa = psa_crypto_init();
+    if (psa != PSA_SUCCESS) {
+        FMRB_LOGW(TAG, "psa_crypto_init failed (%d): TLS 1.3 will not work", (int)psa);
+    }
+#endif
 
     wifi_config_t sta_cfg = { 0 };
     const char *ssid = fmrb_toml_get_string(wifi, "ssid", "");

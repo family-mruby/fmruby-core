@@ -195,7 +195,8 @@ endif()
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash)
+    # mbedtls: psa_crypto_init for TLS 1.3 (drivers/wifi/wifi_task.c).
+    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash mbedtls)
     # Measurement probe for the blue flash-write flicker
     # (doc/flash_write_flicker/report/f1.md). Off by default; turn it on with
     #   CMAKE_OPTS="-DFMRB_FLASH_PROBE=ON" rake build:esp32
