@@ -1,10 +1,10 @@
 # G2a 報告: 端末が TLS (mTLS) でクラウドのルータに直接繋ぐ
 
-> 状態: ステップ 2 一部完了 (P4-Nano は確かめ済み、AtomS3R は PC に繋がっておらず未確認) | 更新: 2026-10-14 | instruction_g2a.md の記録。1-8 章がステップ 1 (調べと案、2026-10-13)、9 章以降がステップ 2 (実装と確かめ)。ユーザの決定 (2026-10-13) は TLS 1.3 と、mbedTLS の確保を sdkconfig で PSRAM に回すこと (4.2 の案)。P4-Nano は手元の mTLS の zenohd に家のルータなしで TLS 1.3 で繋がり、オセロを sim と指せた。同じコミットで TLS ありとなしの内蔵 RAM の差は誤差の範囲 (±0.3 KB)、静的な内蔵 RAM は develop より 240 B 減、PSRAM は接続 1 本で約 35 KB、flash は +70.8 KB。繋ぐまで 0.5-0.65 秒、ルータの起動し直しから 1.5-2.7 秒で戻る
+> 状態: ステップ 2 完了 (検収待ち。console の図と VPS での確認は親とユーザ) | 更新: 2026-10-14 | instruction_g2a.md の記録。1-8 章がステップ 1 (調べと案、2026-10-13)、9 章以降がステップ 2 (実装と確認)。ユーザの決定 (2026-10-13) は TLS 1.3 と、mbedTLS の確保を sdkconfig で PSRAM に回すこと (4.2 の案)。P4-Nano と AtomS3R が手元の mTLS の zenohd に家のルータなしで TLS 1.3 で繋がった (P4-Nano はオセロを sim と指し、AtomS3R は asterism_demo を PC から呼んだ)。同じコミットで TLS ありとなしの内蔵 RAM の差は P4 で ±0.3 KB、AtomS3R で 0 B。静的な内蔵 RAM は develop より 240 B 減、PSRAM は接続 1 本で約 35 KB、flash は P4 +70.8 KB・AtomS3R +61.6 KB。繋ぐまで P4 0.5-0.65 秒・AtomS3R 1.0 秒
 
 ## 1. 結果の要約
 
-- **zenoh-pico の TLS**: 1.10.1 に TLS のリンク (`tls/...`、mbedTLS 2.x/3.x) があり、CA・クライアントの証明書 (mTLS)・名前の確かめ (`verify_name_on_connect`) が設定の項目でそろっている。証明書と鍵は「ファイルのパス」か「base64 の文字列」で渡せる。ただし (1) ソケットの型に TLS の欄があるのは Unix の platform だけ、(2) mbedTLS の頭書きが zenoh-pico の中心のヘッダから読まれる、(3) 読み・書き・握手がどれも時間の制限なしに止まる。よって**ESP-IDF の TLS の口は gem (`ports/esp32/`) に足す** (2 章)。
+- **zenoh-pico の TLS**: 1.10.1 に TLS のリンク (`tls/...`、mbedTLS 2.x/3.x) があり、CA・クライアントの証明書 (mTLS)・名前の確認 (`verify_name_on_connect`) が設定の項目でそろっている。証明書と鍵は「ファイルのパス」か「base64 の文字列」で渡せる。ただし (1) ソケットの型に TLS の欄があるのは Unix の platform だけ、(2) mbedTLS の頭書きが zenoh-pico の中心のヘッダから読まれる、(3) 読み・書き・握手がどれも時間の制限なしに止まる。よって**ESP-IDF の TLS の口は gem (`ports/esp32/`) に足す** (2 章)。
 - **TLS 1.3 が要る**: zenohd 1.10.1 (rustls) は mTLS のとき TLS 1.3 だけを受ける (zenoh-link-tls が版を TLS 1.3 に固定)。今の ESP-IDF の設定は TLS 1.2 だけなので、そのままでは握手の最初で断られる。手元で TLS 1.2 だけの mbedTLS で試すと zenohd は `SupportedVersionsExtensionRequired` で断った。**sdkconfig を変えずに済む道は無い**。
 - **メモリ**: mbedTLS の確保は、握手の最大 37,411 B・接続中 34,843 B・切った後に残る 2,904 B (PSA の共通の状態)。1 回の確保の最大は 16,765 B (受けの buffer)。今の設定 (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=y`) のままだと全部が内蔵 RAM から取られる。**`mbedtls_platform_set_calloc_free()` で起動時に PSRAM へ回せる** (ESP-IDF の mbedTLS は `MBEDTLS_PLATFORM_MEMORY` 入りで組まれている。sdkconfig は変えない)。これで定常の内蔵 RAM の増分は 0 の見込み。残る心配はアプリの task の stack (内蔵 RAM) で、握手の分の深さが今の余り (P4-Nano のオセロ 4,560 B、AtomS3R の demo 約 6,300 B) に収まるかはステップ 2 で測る (3 章)。
 - **sdkconfig の案**: 第一案は **`CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y` の 1 項目だけ** (NARYAv4・TAB5・ATOMS3R)。PSRAM への回しはコードで行う。代わりの案として `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y` も表に挙げた (4 章)。
@@ -28,7 +28,7 @@
 
 - **mTLS**: `enable_mtls` が真のとき、クライアントの証明書と鍵を読み (`_z_tls_load_client_cert`、307-353 行)、`mbedtls_ssl_conf_own_cert` で出す (423-432 行)。
 - **CA の指定**: `root_ca_certificate` (ファイル) か `_base64` (文字列)。無ければ接続しない (229-255 行)。ESP-IDF の証明書の束 (bundle) は使わない。
-- **名前の確かめ**: 既定で必ず確かめる (`MBEDTLS_SSL_VERIFY_REQUIRED` と `mbedtls_ssl_set_hostname`、419-420・449 行)。`verify_name_on_connect=false` のときは名前の食い違いだけを許し、ほかの検証の失敗は断る (468-480 行)。名前は locator の host の部分。mbedTLS 3.6 は証明書の IP の SAN も照合する (`x509_crt_check_san_ip`) ので、IP で繋いでも確かめられる。
+- **名前の確認**: 既定で必ず確認る (`MBEDTLS_SSL_VERIFY_REQUIRED` と `mbedtls_ssl_set_hostname`、419-420・449 行)。`verify_name_on_connect=false` のときは名前の食い違いだけを許し、ほかの検証の失敗は断る (468-480 行)。名前は locator の host の部分。mbedTLS 3.6 は証明書の IP の SAN も照合する (`x509_crt_check_san_ip`) ので、IP で繋いでも確認られる。
 - base64 の値は「PEM の文字列を base64 にしたもの」。中で decode して PEM として読む (`_z_tls_decode_base64`、56-100 行。上限 64 KB)。CRuby の `credentials:` と同じ項目名なので、tar から作る値の形はそろう。
 
 ### 2.2 ESP-IDF の上でそのままは使えない理由
@@ -48,7 +48,7 @@ gem の TCP の口 (`ports/esp32/zp_tcp_esp32.c`) が直している 6 点と、
 | 3. 握手の読み (`read_exact`) は時間の制限つき、失敗したソケットで終わる | TLS の握手 (`mbedtls_ssl_handshake` の輪、459-466 行) も zenoh の握手の読み (`_z_f_link_read_exact_tls`、`tls.c` 158-179 行) も時間の制限なし。黙った相手には**いつまでも止まる** | 穴 (TCP より悪い)。リセットされたソケットは `MBEDTLS_ERR_NET_RECV_FAILED` で終わるので G1.5b の「回り続ける」穴そのものは無いが、書き直すときに「失敗」を「まだ無い」と同じに扱うと同じ穴になる。期限つきの BIO (select で待つ) にして、握手の全体にも期限を置く |
 | 4. 送りに時間の制限、切れたら shutdown | `_z_write_all_tls` は `WANT_WRITE` を 0 として回り続け、blocking の send は WiFi が消えると lwIP が諦めるまで (分の単位) 止まる (692-720 行) | 穴。gem の TCP の口と同じ期限と shutdown にする (`zp_tcp_socket_closed` がそれを見る) |
 | 5. SO_LINGER なし | TCP の close を使う (665 行)。ただし先に `mbedtls_ssl_close_notify` を blocking で送る (662 行) | 小さな穴。close_notify は待たない送りで 1 回だけ試す |
-| 6. 閉じたソケットに気づく (`zp_tcp_socket_closed`、MSG_PEEK) | リンクのソケットは `_socket._tls._sock` (`link.c` 254-256 行) で `_fd` を持つので、gem の今の確かめがそのまま効く | 問題なし |
+| 6. 閉じたソケットに気づく (`zp_tcp_socket_closed`、MSG_PEEK) | リンクのソケットは `_socket._tls._sock` (`link.c` 254-256 行) で `_fd` を持つので、gem の今の確認がそのまま効く | 問題なし |
 
 - 戻り値の約束が逆: 上流の `_z_read_tls` は「まだ無い」を 0、「閉じた」を SIZE_MAX で返す (680-686 行)。gem の TCP の口は「まだ無い」が SIZE_MAX、「閉じた」が 0。client の読み (`src/transport/unicast/read.c` の `_z_unicast_client_read`) はどちらでも動くが、peer の読みは 0 を「閉じた」と取る。gem の TLS の口は TCP の口の約束にそろえる。
 - **つなぎ直し** (`Z_FEATURE_AUTO_RECONNECT`) は、リンクの種類に関係なく `_z_open` を 1 秒ごとに試す。TLS では 1 回の試しに握手が入るので、ルータが応じる (TCP が通る) のに握手が失敗する間は、試すたびに握手の時間 (7 章) だけ poll が止まる。ルータが居ない (拒まれる・リセット) ときは TCP の段ですぐ返るので今と同じ。
@@ -64,7 +64,7 @@ gem の TCP の口 (`ports/esp32/zp_tcp_esp32.c`) が直している 6 点と、
 
 ### 3.1 今の ESP-IDF の設定 (3 つの構成で同じ)
 
-`config/sdkconfig.defaults.{p4,naryav4,atoms3r}` には mbedTLS の項目が無く、ESP-IDF v5.5.4 の既定のまま (defaults から設定を解いて確かめた。sdkconfig は作っていない)。
+`config/sdkconfig.defaults.{p4,naryav4,atoms3r}` には mbedTLS の項目が無く、ESP-IDF v5.5.4 の既定のまま (defaults から設定を解いて確認た。sdkconfig は作っていない)。
 
 | 項目 | 値 |
 |---|---|
@@ -188,7 +188,7 @@ mbedTLS の外の確保:
 
 ### 5.4 残る弱さ
 
-- 端末はルータの証明書の期限を見ない (`HAVE_TIME_DATE=n`)。名前と CA で相手を確かめるので、ほかの相手になりすまされることは無いが、期限切れのルータの証明書でも繋ぐ。console の CA で作った証明書の入れ替えの運用で補う。
+- 端末はルータの証明書の期限を見ない (`HAVE_TIME_DATE=n`)。名前と CA で相手を確認るので、ほかの相手になりすまされることは無いが、期限切れのルータの証明書でも繋ぐ。console の CA で作った証明書の入れ替えの運用で補う。
 
 ## 6. 手元の試しの構成
 
@@ -213,12 +213,12 @@ asterism-console の `deploy/local` (install.md の通し稽古) をそのまま
 1. console で端末の行を作る: client、名前 `fmruby-aaaaaa` (端末の mDNS の名前)、役割はアプリに合わせる (P4-Nano のオセロは `match`、AtomS3R の `asterism_demo` は app `demo` を許す役割を作る)。発行して「Save all (.tar)」、Apply。
 2. 端末へ: `tab5_fs put` (または `ruby tools/fmrb_rd_fs.rb <IP>` の対話の put) で `/home/asterism/fmruby-aaaaaa.tar`、`/home/zenoh_echo.txt` に `tls/192.0.2.10:17448`。
 3. アプリを起動 (`tab5_app` / `/app/launch`)。シリアルは serial_start で開いたまま (Tab5 は開くとリセットされる)。
-4. 確かめ: console の図に `fmruby-aaaaaa` が出る、オセロ・demo が動く、ルータの起動し直し (`docker compose ... restart zenohd`) から戻る、周期のダンプ (`IRAM free:`・`fmrb_task:`) を TLS ありとなしで比べる。
+4. 確認: console の図に `fmruby-aaaaaa` が出る、オセロ・demo が動く、ルータの起動し直し (`docker compose ... restart zenohd`) から戻る、周期のダンプ (`IRAM free:`・`fmrb_task:`) を TLS ありとなしで比べる。
 5. 断られる場合: tar を消す (証明書なし)、別の CA の tar (稽古の CA を作り直す前の tar)、期限の短い証明書 (console の発行で日数を 1 にして待つか、手で作る)。
 
-PC の上で先に確かめられること: 3.2 と同じ形の host のビルド (mbedTLS 3.6.5 + zenoh-pico) で、gem の TLS の口の POSIX 版を組めば、端末に焼く前に握手・期限・断られ方を試せる。ステップ 2 で gem の `rake test_tls` (docker の mTLS の zenohd に繋ぐ) にするかは、POSIX の側にも mbedTLS が要る (Linux の sim は OpenSSL を使っている) ので、手間を見て決める。
+PC の上で先に確認られること: 3.2 と同じ形の host のビルド (mbedTLS 3.6.5 + zenoh-pico) で、gem の TLS の口の POSIX 版を組めば、端末に焼く前に握手・期限・断られ方を試せる。ステップ 2 で gem の `rake test_tls` (docker の mTLS の zenohd に繋ぐ) にするかは、POSIX の側にも mbedTLS が要る (Linux の sim は OpenSSL を使っている) ので、手間を見て決める。
 
-### 6.1 この調べで手元で確かめたこと
+### 6.1 この調べで手元で確認たこと
 
 zenohd 1.10.1 (mTLS、`listen tls/0.0.0.0:7448`) に、host 向けの mbedTLS 3.6.5 (TLS 1.3 入り) + zenoh-pico 1.10.1 の client で:
 
@@ -227,12 +227,12 @@ zenohd 1.10.1 (mTLS、`listen tls/0.0.0.0:7448`) に、host 向けの mbedTLS 3.
 | 正しい mTLS (同じ CA の端末の証明書、IP で繋ぐ) | 繋がる。ルータの管理の空間に問い合わせて 1 件返る |
 | クライアントの証明書なし (`enable_mtls` なし) | 握手の後の最初の読みで alert (-0x7780)、`z_open` は 10 秒後に -120 で諦める。落ちない |
 | 別の CA のクライアントの証明書 | 握手で失敗 (-0x004e)、すぐ -102 |
-| ルータを別の CA で確かめる (端末の CA が違う) | 握手で失敗 (-0x2700 = 証明書の検証失敗)、すぐ -102 |
+| ルータを別の CA で確認る (端末の CA が違う) | 握手で失敗 (-0x2700 = 証明書の検証失敗)、すぐ -102 |
 | 名前の食い違い (証明書に無い名前で繋ぐ) | 握手で失敗 (-0x2700) |
 | 名前の食い違い + `verify_name_on_connect=false` | 繋がる (名前だけを許す) |
 | TLS 1.2 だけの mbedTLS | zenohd が `SupportedVersionsExtensionRequired` で断る |
 
-期限切れの証明書は試していない (ステップ 2 で、端末の証明書の期限切れはルータが断ることを確かめる)。
+期限切れの証明書は試していない (ステップ 2 で、端末の証明書の期限切れはルータが断ることを確認る)。
 
 ## 7. ステップ 2 の作業の見積もり
 
@@ -262,16 +262,16 @@ zenohd 1.10.1 (mTLS、`listen tls/0.0.0.0:7448`) に、host 向けの mbedTLS 3.
 |---|---|---|---|
 | picoruby-asterism-zenoh | main | `5645b13` | ESP-IDF の TLS のリンクと流れ (`src/zp_tls_link.c`・`ports/esp32/zp_tls_esp32.c`・中身を隠した `tls_stream.h`)、`Session.open(config:)` で TLS の設定、`Asterism::Zenoh::TLS`、host 試験、README・CHANGELOG (Unreleased) |
 | asterism | main | `2d9ecd4` | `Asterism::Credentials` を `mrblib/` に移し、端末の Ruby で tar を読む。`Asterism.connect(credentials:)` が端末でも使える。`rake test:mruby` に照合の試験 |
-| fmruby-core | feature/asterism-g2a | `c637a8ff`・`87603142`・この報告 | sdkconfig.defaults (3 つ)、mbedTLS の静的な状態を PSRAM に (`main/mbedtls_psram.lf`)、SSLSocket の口で PSA の初期化、`FmrbAsterism.credentials_for`、オセロと `asterism_demo` の選び方、devctl の `/fs/get` の断り |
+| fmruby-core | feature/asterism-g2a | `c637a8ff`・`87603142`・`adc8cc9a` (ピン)・この報告 | sdkconfig.defaults (3 つ)、mbedTLS の静的な状態を PSRAM に (`main/mbedtls_psram.lf`)、SSLSocket の口で PSA の初期化、`FmrbAsterism.credentials_for`、オセロと `asterism_demo` の選び方、devctl の `/fs/get` の断り |
 
-版はどれも上げていない。push していない。`lib/add/ASTERISM_PIN`・`PICORUBY_ASTERISM_ZENOH_PIN` は動かしていない (指すコミットが push されていないため)。ビルドは `ASTERISM_DIR=../asterism PICORUBY_ASTERISM_ZENOH_DIR=../picoruby-asterism-zenoh` で手元の checkout から行った。push の後でピンを上げる。
+版はどれも上げていない。fmruby-core は push していない。P4-Nano の確認は手元の checkout (`ASTERISM_DIR=../asterism PICORUBY_ASTERISM_ZENOH_DIR=../picoruby-asterism-zenoh`) から作ったファームで行った。gem の 2 つのコミットが GitHub に push された後 (2026-10-14、親)、`lib/add/ASTERISM_PIN` を `2d9ecd4`、`PICORUBY_ASTERISM_ZENOH_PIN` を `5645b13` に上げ (`adc8cc9a`)、AtomS3R はピンから作ったファームで確認した (中身は同じ)。
 
 | 受け入れ条件 | 結果 |
 |---|---|
-| 1. P4-Nano と AtomS3R が家のルータなしで繋がり、オセロ・`asterism_demo` が動く。console の図に出る | P4-Nano は合格 (11.1)。AtomS3R は未確認 (PC に繋がっておらず焼けない。ビルドと大きさだけ、11.3)。console の図は見ていない (11.1 の代わりの確かめ) |
-| 2. 内蔵 RAM の増分 0、PSRAM・flash の増え | P4-Nano 合格 (10 章)。AtomS3R は静的な分だけ |
-| 3. 繋ぐまでの時間、つなぎ直しの時間 | 0.50-0.65 秒、1.5-2.7 秒 (11.2) |
-| 4. 証明書が無い・期限切れ・別の CA で断られて落ちない | 合格 (11.4) |
+| 1. P4-Nano と AtomS3R が家のルータなしで繋がり、オセロ・`asterism_demo` が動く。console の図に出る | 合格 (11.1、11.7)。console の図は見ていない (CRuby で同じ情報を確認。P4-Nano は親の VPS での確認で済み) |
+| 2. 内蔵 RAM の増分 0、PSRAM・flash の増え | 合格 (11.3、11.4、11.7) |
+| 3. 繋ぐまでの時間、つなぎ直しの時間 | P4 0.50-0.65 秒・1.5-2.7 秒 (11.2)、AtomS3R 1.0 秒・約 2 秒 (11.7) |
+| 4. 証明書が無い・期限切れ・別の CA で断られて落ちない | 合格 (11.5、11.7) |
 | 5. 家のルータ経由 (平文) がそのまま動く | 合格 (同じファームで `tcp/` を交互に、10 章) |
 
 ## 10. 作ったもの
@@ -284,7 +284,7 @@ CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 ```
 
-- 選択肢の組 (INTERNAL / EXTERNAL / DEFAULT / CUSTOM) の 1 つを選ぶので、INTERNAL を外す行と EXTERNAL を選ぶ行の 2 行で書いた。解いた設定 (`sdkconfig`) で `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y`・`CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y` を確かめた。下位の TLS 1.3 の項目は既定 (y) のまま。
+- 選択肢の組 (INTERNAL / EXTERNAL / DEFAULT / CUSTOM) の 1 つを選ぶので、INTERNAL を外す行と EXTERNAL を選ぶ行の 2 行で書いた。解いた設定 (`sdkconfig`) で `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y`・`CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y` を確認た。下位の TLS 1.3 の項目は既定 (y) のまま。
 - Retro (`n16r8`・`n8r8`) と Linux は変えていない。
 
 ### 10.2 mbedTLS の静的な状態を PSRAM に (sdkconfig ではない)
@@ -306,13 +306,13 @@ mbedTLS 3.x の TLS 1.3 は PSA を使い、`psa_crypto_init()` を誰かが先�
 
 ### 10.5 証明書の読み (asterism) と端末の選び方 (fmruby-core)
 
-- `Asterism::Credentials` を `mrblib/credentials.rb` に移した (CRuby も同じファイルを読む)。tar は `byteslice`・`getbyte`・`to_i(8)` で分け、base64 は `pack` なしで作り、`asterism.json` は JSON があれば JSON、無ければ文字列の項目だけを読む小さな読み手。CRuby の読み (標準の tar の読み手、ファイルの権限の警告、鍵の組の確かめ) は class に prepend した module に残した (メソッドの定義し直しの警告が出ない)。
+- `Asterism::Credentials` を `mrblib/credentials.rb` に移した (CRuby も同じファイルを読む)。tar は `byteslice`・`getbyte`・`to_i(8)` で分け、base64 は `pack` なしで作り、`asterism.json` は JSON があれば JSON、無ければ文字列の項目だけを読む小さな読み手。CRuby の読み (標準の tar の読み手、ファイルの権限の警告、鍵の組の確認) は class に prepend した module に残した (メソッドの定義し直しの警告が出ない)。
 - `Asterism.connect(locator = nil, node: nil, ..., credentials:)`: 端末でも `credentials:` が使え、宛先と `node:` は tar から入る。
 - 試験: `rake test:mruby` に `host_test/test_credentials.rb` (CRuby で作った tar を mruby で読み、名前・宛先・base64 の 3 つが CRuby と一致、壊れた tar・無いファイル・String の config を断る) を足した。15 項目通る。CRuby の既定の試験 (`rake`) も全部通る。
 - fmruby-core: `FmrbAsterism.credentials_for(locator)` は `tls/` の宛先なら `/home/asterism/` の最初の `.tar` を読む (無ければ `Asterism::Error`)。オセロと `asterism_demo` は、tar があれば証明書の名前をノード ID にし (ログに 1 行)、`credentials:` で繋ぐ。`tcp/` は今までどおり。
-- devctl: `/fs/get` は `/home/asterism` の下を 403 で断る (`/home//./asterism/...` のような書き方も同じ)。put・list・del は使える。実機で確かめた (`curl` で 403、list は名前と大きさが出る)。MCP の tab5_fs の description への追記は親のリポジトリなのでしていない。
+- devctl: `/fs/get` は `/home/asterism` の下を 403 で断る (`/home//./asterism/...` のような書き方も同じ)。put・list・del は使える。実機で確認た (`curl` で 403、list は名前と大きさが出る)。MCP の tab5_fs の description への追記は親のリポジトリなのでしていない。
 
-## 11. 確かめ (P4-Nano、NARYAv4、アプリの区画だけを焼いた)
+## 11. 確認 (P4-Nano・AtomS3R、アプリの区画だけを焼いた)
 
 構成: 親の compose の `docker-compose.relay.yml` を、スクラッチパッドの CA と証明書 (console と同じ形の tar を Ruby の OpenSSL で作った) で起動した。zenohd-cloud (mTLS、ACL なし) を PC の LAN の 7447 に出し (PC のファイアウォールが通すのが 7447 だけだったため。17448 は端末から届かなかった)、家のルータ (zenohd、平文) は zenohd-cloud に mTLS で繋ぐ。平文を比べるときは同じ compose で LAN の 7447 を家のルータに切り替えた。
 
@@ -321,13 +321,13 @@ mbedTLS 3.x の TLS 1.3 は PSA を使い、`psa_crypto_init()` を誰かが先�
 - 端末の `/home/zenoh_echo.txt` に `tls/192.0.2.10:7447`、`/home/asterism/fmruby-p4tls.tar` を置いてオセロを起動 → `the certificate's name fmruby-p4tls is the ID`、`TLS handshake ... (TLSv1.3) took 238-277 ms`、`up (tls/...)`。
 - PC の CRuby (`Asterism.connect(credentials: "cruby.tar")`) から `nodes` に端末が出て、`fmruby-p4tls/game/othello.info` が返る (10 回で 19-201 ms)。家のルータ経由 (平文の CRuby) からも同じく見えて呼べた。
 - sim (家のルータに平文で繋ぐ) と P4-Nano (クラウドのルータに TLS で直接) でオセロを対局: sim が誘い、端末が受け、4 手 (d3 e3 f3 c5) を指した。手の答えは 104-205 ms。
-- console の図は見ていない (console を手元で立てる作業をしていない)。図が使うのと同じ liveliness を CRuby の `nodes` で確かめた。console での確かめは VPS の段 (ユーザが端末を登録した後) に回す。
+- console の図は見ていない (console を手元で立てる作業をしていない)。図が使うのと同じ liveliness を CRuby の `nodes` で確認た。console での確認は VPS の段 (ユーザが端末を登録した後) に回す。
 
 ### 11.2 時間
 
 | | 値 |
 |---|---|
-| TLS の握手 (TCP の接続から証明書の確かめまで) | 238-277 ms (6 回) |
+| TLS の握手 (TCP の接続から証明書の確認まで) | 238-277 ms (6 回) |
 | 繋がるまで (オセロの `connect` 全体) | 502-647 ms (TLS)、42-205 ms (平文、同じファーム) |
 | つなぎ直し (`docker restart` から `connected again`) | 1.5 / 2.5 / 2.7 秒、別の回に 1.5 / 2.5 / 1.5 秒 |
 
@@ -379,16 +379,37 @@ flash の増えのほとんどは mbedTLS の TLS 1.3 (見積もり 35-50 KB) �
 
 試しのアプリ (スクラッチパッド、コミットしていない) で、`https://api.open-meteo.com/...` に GET → 200 (1,976-2,057 ms)、`https://api.openai.com/v1/models` (tts のクラウドと同じ相手、鍵なし) → 401 (690-717 ms)。TLS 1.3 を入れ、PSA の初期化を `SSLContext_create` に置いた後も HTTPS は通る。
 
+### 11.7 AtomS3R (ATOMS3R、ピンから作ったファーム、`asterism_demo`)
+
+焼き方: MCP の flash は `.env` の対象 (TAB5、esp32p4) を使うので使わず、ATOMS3R で作った build/ から `idf.py -p <AtomS3R のポート> app-flash` でアプリの区画だけを焼いた (`/home` はそのまま)。startup_app は試しのアプリ (atoms3r_hello) のままで、`asterism_demo` を `/app/launch` で 2 本目に起動した (H3 の「試しのアプリ + asterism_demo」と同じ形)。ルータの構成は 11 章の冒頭と同じ。
+
+| 状態 (同じ起動の中、各 50 秒の最後のダンプ) | IRAM free | PSRAM free | demo の stack の Free |
+|---|---|---|---|
+| 起動後、試しのアプリだけ | 135,760 | 1,387,560 | |
+| TLS 1 回目 | 117,824 | 1,148,152 | 6,460 |
+| 平文 1 回目 | 117,824 | 1,182,884 | 6,460 |
+| TLS 2 回目 | 117,824 | 1,147,764 | 6,460 |
+| 平文 2 回目 | 117,824 | 1,182,524 | 6,460 |
+
+- **内蔵 RAM の定常**: TLS と平文で同じ値 (差 0 B)。H3 の同じ状態 (117,564) より多い。
+- **握手の最中の最低値**: 握手の前より 112-148 B 低いだけ (例 117,936 -> 117,788)。S3 は WiFi と lwIP の確保も PSRAM に回している構成 (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`) なので、P4 より小さい。
+- **stack**: demo の task の Free は TLS・平文とも 6,460 B (別の回に 6,316 B。H3 の 6,312-6,460 の範囲)。握手で深くならない。止まる条件には当たらない。
+- **PSRAM**: TLS の接続 1 本で約 34.7 KB。
+- **時間**: 握手 665-684 ms (ECC はソフト)、繋がるまで 1,010-1,027 ms (平文は 101 ms)。ルータの起動し直し (`docker restart` 0.65-0.89 s) の後、1.33-1.43 s で握手が終わる (起動し直しの指示からは 2.0-2.3 s)。3 回とも内蔵 RAM は戻った。
+- **呼び出し**: PC の CRuby (cruby の tar) から `fmruby-s3tls/demo/info.echo` を 20 回: 最小 107 ms、中央値 121 ms、最大 1,030 ms (1 回だけ)。`screen.say` は 11 を返し、端末の画面 (`/fb`) に `said hi over tls`、`joined: cruby` が出た。
+- **断られる場合**: tar なし → すぐ `needs a credentials .tar`。期限切れ → `-0x7780`、940 ms で諦める。別の CA → `-0x2700 (verify 0x00000008)`、441 ms。どれも Guru・abort は 0 件。正しい tar に戻すと繋がる。
+- 平文の `tcp/` (元の `/home/zenoh_echo.txt`) は今までどおり繋がる (101 ms)。
+- 片付け: `/home/zenoh_echo.txt` を元の値に戻し、試しの tar と `/home/asterism` を消した。`/app/test/asterism_demo.app.rb` はこのブランチの版を置いたまま。
+- AtomS3R には RTC が無く、時刻は 1970 年のまま繋がる (端末は証明書の期限を見ないため、4.3)。
+
 ## 12. 残った課題
 
-- **AtomS3R の確かめ**: PC の USB に繋がっていなかった (usbipd の一覧に無い) ので、焼いても動かしてもいない。ビルドと静的な大きさだけ (11.3)。繋いでもらえば、アプリの区画だけを焼き、`asterism_demo` で同じ確かめ (握手の時間はソフトの ECC なので P4 より長い見込み、stack の余り約 6.3 KB) をする。
-- **console の図での確かめ**: していない (11.1)。
+- **console の図での確認**: していない (11.1)。
 - 握手の最中の内蔵 RAM の最低値の、平文との比べ。
 - MCP の tab5_fs の description に「/home/asterism は get できない」と書く (親のリポジトリ)。
-- ピンの上げ (push の後)。
 - 2.3 の「TLS 1.3 でクライアントの証明書が断られると握手の後の読みで分かる」は、gem の口では最初の読みで閉じるので 0.4 秒で諦める (ステップ 1 の手元の試しの上流の作りでは 10 秒かかった)。
 
 ## 13. ユーザがすること
 
-- AtomS3R を PC に繋ぐ (USB)。親が続きの確かめをする。
-- console で端末を client として登録し (名前は端末の mDNS の名前 `fmruby-XXXXXX`、役割はアプリに合わせる)、「Save all (.tar)」の tar を端末の `/home/asterism/` に置く (`tab5_fs put`)。`/home/zenoh_echo.txt` をクラウドのルータの `tls/<名前>:<port>` にする。VPS での確かめは親と一緒に行う。
+- console で端末を client として登録し (名前は端末の mDNS の名前 `fmruby-XXXXXX`、役割はアプリに合わせる)、「Save all (.tar)」の tar を端末の `/home/asterism/` に置く (`tab5_fs put`)。`/home/zenoh_echo.txt` をクラウドのルータの `tls/<名前>:<port>` にする。VPS での確認は親と一緒に行う。
+- AtomS3R の `asterism_demo` は app `demo` (キー `asterism/<ノード ID>/demo/**`、呼ばれるオブジェクト `info`・`screen`・`apu`) を使うので、その端末の役割は `demo` を許すものにする (オセロの `match` とは別)。tar を置いたら `/app/launch` で `/app/test/asterism_demo.app.rb` を起動する (startup_app は試しのアプリのまま)。
