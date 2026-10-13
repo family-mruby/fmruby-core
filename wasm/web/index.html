@@ -35,6 +35,11 @@
     background: rgba(0,0,0,0.7); cursor: pointer;
     font-size: 20px; line-height: normal;
   }
+  /* A link the page refuses (main.js, PASS_WITHOUT_NODE): a message, not a switch. */
+  #start.refused {
+    cursor: default; padding: 16px; box-sizing: border-box;
+    text-align: center; font-size: 16px; line-height: 1.4; background: rgba(0,0,0,0.85);
+  }
   #status { margin-top: 8px; font-size: 12px; color: #888; }
   /* Two panels rather than four rows of identical grey buttons. What each
      control belongs to is the thing the old layout did not say. */
@@ -235,7 +240,8 @@
   // What a link from the console hands this visit (doc/ruby_asterism, G1,
   // G1.5), in the fragment (never sent to the server that serves this page):
   //   zenoh_pass=<pass>   the router door's pass (also the older ?zenoh_pass=)
-  //   zenoh_node=<id>     the node ID to join as, this visit only
+  //   zenoh_node=<id>     the node ID to join as, this visit only (a link with a
+  //                       pass must have one: main.js refuses it otherwise)
   //   app=<path>          the app to open (like ?app=)
   // Read before anything else runs, taken out of the address bar at once (the
   // history entry is replaced) and kept only in memory for main.js. The pass

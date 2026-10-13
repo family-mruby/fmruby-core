@@ -1,6 +1,6 @@
 # ブラウザ版を網に入れる手順
 
-> 状態: 進行中 | 更新: 2026-10-13 | ブラウザ版 (wasm) の Family mruby を Asterism のノードとして zenohd につなぐ手順。zenohd の ws/ の待ち受けと wss:// の中継、ブラウザ版のビルドと起動 (手元の http の版と、公開の版と同じ作りを https で配る形)、ルータの設定、ノードの ID の決まり、合言葉の付いた wss:// の入口 (G1)、PC からの呼び出し、台車の操縦、最小の試しのページ
+> 状態: 進行中 | 更新: 2026-10-14 | ブラウザ版 (wasm) の Family mruby を Asterism のノードとして zenohd につなぐ手順。zenohd の ws/ の待ち受けと wss:// の中継、ブラウザ版のビルドと起動 (手元の http の版と、公開の版と同じ作りを https で配る形)、ルータの設定、ノードの ID の決まり、合言葉の付いた wss:// の入口 (G1)、PC からの呼び出し、台車の操縦、最小の試しのページ
 
 作りと実測は report/b1.md (手元の http の版) と report/b2.md (https の版、wss://、設定、ID)。
 
@@ -165,6 +165,13 @@ sim・端末の system_conf には `zenoh_router` が無いので、これまで
   どのタブでもこの ID を使い、保存しない (保存してある ID はそのまま。リンクなしで開けば元の ID)。枠には
   `node wasm-alice (from the link, this visit)` と出る。ノードの ID に使えない形 (`[A-Za-z0-9][A-Za-z0-9._-]{0,62}`
   に合わない) は無視する。`/home/asterism_node.txt` があればそちらが勝つ (アプリの決まりの順のまま)。
+- **合言葉があってノードの ID が無いリンクは断る (2026-10-14)**。console の管理する網では、ID は console が
+  アカウントのハンドルから決め、console のリンクはどれも合言葉とノードの ID を両方持つ (asterism-console 0.1.2)。
+  合言葉だけのリンク (手で作ったもの、古い console のもの。古い形の `?zenoh_pass=` も同じ) で開くと、ページは
+  機械を起動せず (合言葉も使わない)、画面に「console から開き直して」と出す。Network の枠は
+  `node: none (the link has a pass but no node ID; not connecting)`。合言葉の無いページ (console の無い網: 家の
+  LAN の zenohd、手元のルータ、公開の studio) は今どおり自分の `wasm-<16 進 6 桁>` を使う
+  (report/console_node.md)。
 
 ## 5.3 合言葉 (wss:// の入口、G1)
 
@@ -172,8 +179,10 @@ sim・端末の system_conf には `zenoh_router` が無いので、これまで
 Browser passes で作り、ブラウザ版を開くリンクに入っている。
 
 ```
-https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:7443#zenoh_pass=<合言葉>
+https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:7443#zenoh_pass=<合言葉>&zenoh_node=<ID>&app=
 ```
+
+(ノードの ID の無いリンクは断る。5 章の最後の項目。)
 
 - 合言葉はフラグメント (`#` の後) に置く。フラグメントはページを配るサーバに送られないので、そのサーバの記録に
   残らない。古い形の `?zenoh_pass=` も読むが、こちらはページを配るサーバの記録 (要求の行) に残る。
