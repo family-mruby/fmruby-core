@@ -232,36 +232,51 @@
   </ul>
 </details>
 <script>
-  // The router door's pass (doc/ruby_asterism, G1): #zenoh_pass=<pass> in the
-  // fragment (never sent to the server that serves this page), or the older
-  // ?zenoh_pass=. Read before anything else runs, taken out of the address
-  // bar at once (the history entry is replaced) and kept only in memory for
-  // main.js, which hands it to the WebSocket link (wss:// only). On a first
-  // visit coi-serviceworker reloads the page to become cross-origin isolated;
-  // that reload alone gets the pass back in the fragment, so it is not lost.
+  // What a link from the console hands this visit (doc/ruby_asterism, G1,
+  // G1.5), in the fragment (never sent to the server that serves this page):
+  //   zenoh_pass=<pass>   the router door's pass (also the older ?zenoh_pass=)
+  //   zenoh_node=<id>     the node ID to join as, this visit only
+  //   app=<path>          the app to open (like ?app=)
+  // Read before anything else runs, taken out of the address bar at once (the
+  // history entry is replaced) and kept only in memory for main.js. The pass
+  // goes to the WebSocket link (wss:// only). On a first visit
+  // coi-serviceworker reloads the page to become cross-origin isolated; that
+  // reload alone gets them back in the fragment, so they are not lost.
   (function () {
-    var pass = '';
-    function keep(part) {
+    var got = {};
+    var NAMES = ['zenoh_pass', 'zenoh_node', 'app'];
+    function keep(part, fromQuery) {
       return part.split('&').filter(function (kv) {
-        if (kv.indexOf('zenoh_pass=') === 0) {
-          if (!pass) {
-            try { pass = decodeURIComponent(kv.slice(11).replace(/[+]/g, ' ')); } catch (e) { pass = ''; }
+        for (var i = 0; i < NAMES.length; i++) {
+          var name = NAMES[i];
+          // Only the pass is taken from the query (the older links); ?app=
+          // stays the page's own query parameter.
+          if (fromQuery && name !== 'zenoh_pass') continue;
+          if (kv.indexOf(name + '=') === 0) {
+            if (got[name] === undefined) {
+              try { got[name] = decodeURIComponent(kv.slice(name.length + 1).replace(/[+]/g, ' ')); } catch (e) { got[name] = ''; }
+            }
+            return false;
           }
-          return false;
         }
         return kv !== '';
       }).join('&');
     }
     try {
-      var q = keep(location.search.replace(/^[?]/, ''));
-      var h = keep(location.hash.replace(/^#/, ''));
-      if (!pass) return;
+      var q = keep(location.search.replace(/^[?]/, ''), true);
+      var h = keep(location.hash.replace(/^#/, ''), false);
+      if (got.zenoh_pass === undefined && got.zenoh_node === undefined && got.app === undefined) return;
       var bare = location.pathname + (q ? '?' + q : '') + (h ? '#' + h : '');
       history.replaceState(history.state, '', bare);
-      window.FMRB_ZENOH_PASS = pass;
+      if (got.zenoh_pass) window.FMRB_ZENOH_PASS = got.zenoh_pass;
+      if (got.zenoh_node) window.FMRB_ZENOH_NODE = got.zenoh_node;
+      if (got.app) window.FMRB_LINK_APP = got.app;
+      var back = NAMES.filter(function (n) { return got[n]; }).map(function (n) {
+        return n + '=' + encodeURIComponent(got[n]);
+      }).join('&');
       window.coi = window.coi || {};
       window.coi.doReload = function () {
-        history.replaceState(history.state, '', bare + (h ? '&' : '#') + 'zenoh_pass=' + encodeURIComponent(pass));
+        if (back) history.replaceState(history.state, '', bare + (h ? '&' : '#') + back);
         location.reload();
       };
     } catch (e) {
