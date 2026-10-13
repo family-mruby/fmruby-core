@@ -164,6 +164,25 @@ AtomS3R のほかに、次の 4 機種をサポートの範囲に入れていく
 - 進め方: M3 (StickS3) で「機種を足す形」を固めてから、StopWatch・スタックチャンを同じ形で足す。CardputerZero は ESP32 の系統と別に、Linux の構成の延長として扱う。
 - 入力 (タッチ・キーボード・ボタン) と電源の管理は、画面と別の口として、機種を足すときに足す (上の方針どおり)。
 
+### CZ: CardputerZero で Family mruby をネイティブに動かし、アプリの配信で配る (計画 2026-10-13 ユーザ)
+
+決まっていること (2026-10-13 ユーザ):
+- 今の Linux の構成 (docker の中で core・graphics-audio・画面の 3 つのプロセスを動かす sim) を、**docker なしでネイティブに**動かす形にする。性能を出すため (CardputerZero は Cortex-A53 x4・RAM 512 MB)。
+- CardputerZero の**アプリの配信で配れる形**にまとめる。
+
+公開されている情報 (2026-10-13 時点、手元で確かめる前の要約): M5Stack が CardputerZero 用の Debian のパッケージの置き場 (arm64、`stable main`、GitHub Pages で配り、パッケージの追加は pull request と自動の検査) を持っている。アプリの雛形 (模擬の実行と、ほかの機械での arm64 のビルドつき) と、雛形から作って公開までを行う道具 `czdev` がある。雛形のアイコンは共通の場所に入るので、名前を変えないとほかのパッケージとぶつかる、という注意がある。仕様と文書はまだ開発中。
+
+| 段階 | 内容 |
+|---|---|
+| CZ0 | 調べる: アプリの雛形と `czdev`、ランチャーへの登録のしかた、.deb の決まり (名前・置き場所・アイコン・起動のしかた・権限)、画面 (170x320 の ST7789 が Linux からどう見えるか: framebuffer か DRM か) とキーボード (evdev か) と音 (ALSA か)、SDL2 が使えるか。手元に実機が来たら実物で照合する |
+| CZ1 | ネイティブに動かす: core・graphics-audio・画面の 3 つを docker なしで起動する形 (まず x86-64 の Linux の上で)。プロセスの間の通り道 (共有メモリ・Unix ソケット) は今のまま。起動・停止をまとめる小さな起動の台本 (Ruby ではなく、端末に Ruby が無い前提でシェルか C)。docker の構成は開発用に残す |
+| CZ2 | arm64 で作る: CardputerZero 用に arm64 で作る道 (雛形の流儀か、docker の中のほかの機械向けのビルド)。画面は 170x320 (縦長) に出し、キーボードを Family mruby の入力に繋ぎ、音を ALSA に出す |
+| CZ3 | 実機で動かす: 起動の時間、メモリ、描画と入力の遅れを、docker の sim (PC) と比べて測る。電池での動作時間の目安 |
+| CZ4 | 配る: .deb にまとめ (アイコンの名前をぶつけない、/home に当たる保存先は利用者の場所)、置き場への pull request を出せる形にする。**出すのはユーザ** |
+
+- 位置づけ: ESP32 の系統 (M3・StopWatch・スタックチャン) とは別の、Linux の構成の延長。Asterism の端末としても、Family mruby のまま網に入れる (CRuby の gem を使う道もある)。
+- 画面とキーボードがあるので、ヘッドレスではなく「小さな Family mruby の機械」。CardputerZero の HDMI に大きく出す使い方も、あとで考える。
+
 ## 関連
 
 - doc/ruby_asterism/node_variants.md (ノードの種類、3 層)、design.md (gem・キー空間)、plan.md (Z4)
