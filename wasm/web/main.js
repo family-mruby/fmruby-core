@@ -46,10 +46,49 @@ try { delete window.FMRB_ZENOH_NODE; delete window.FMRB_LINK_APP; } catch (e) { 
 // link. The page does not start and says to open it again from the console;
 // the pass is not used. Without a pass (a network with no console: a home
 // router, a development router) the page keeps its own ID as before.
-const PASS_WITHOUT_NODE = !!ZENOH_PASS && !LINK_NODE;
+// A room's key (#room=, doc/ruby_asterism, G2): the page joins that room
+// through the door (wss://<router>/room?t=<key>, wasm/zenoh/zp_ws_emscripten.c)
+// and every Zenoh key it uses gets the room's prefix room/<slot>
+// (picoruby-asterism-zenoh's namespace, set from Module.zenohNamespace), so
+// the apps run unchanged inside the room. The page reads the slot and the
+// end from the key without checking it (the door checks it). In a room the
+// page is a node under this browser's own ID (wasm-<6 hex>, as on a network
+// with no console): the room has no accounts, everyone in it holds the same
+// key, and the ID only has to be unique in the room. A node ID in the link
+// is not used. A room link carries no pass; if one came with a pass anyway,
+// the room wins and the pass is not used.
+const ROOM_KEY = String(window.FMRB_ROOM_KEY || '');
+try { delete window.FMRB_ROOM_KEY; } catch (e) { window.FMRB_ROOM_KEY = undefined; }
+function readRoomKey(key) {
+  if (!key) return null;
+  try {
+    const body = key.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+    const c = JSON.parse(atob(body + '='.repeat((4 - body.length % 4) % 4)));
+    if (!/^[0-9]{2}$/.test(String(c.slot)) || !/^[0-9a-f]{16}$/.test(String(c.room)) ||
+        typeof c.exp !== 'number') return null;
+    return { key: key, slot: String(c.slot), room: String(c.room), exp: c.exp, max: c.max };
+  } catch (e) {
+    return null;
+  }
+}
+const ROOM = readRoomKey(ROOM_KEY);
+const ROOM_NAMESPACE = ROOM ? 'room/' + ROOM.slot : '';
+function roomUntil() {
+  if (!ROOM) return '';
+  const d = new Date(ROOM.exp * 1000);
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+const ROOM_REFUSED_TEXT = !ROOM_KEY ? '' :
+  (!ROOM ? 'This room link is broken (its key cannot be read). Ask for the link again.' :
+    (ROOM.exp * 1000 <= Date.now() ? 'This room has ended (' + roomUntil() + '). Ask for a new link.' : ''));
+
+const PASS_WITHOUT_NODE = !ROOM_KEY && !!ZENOH_PASS && !LINK_NODE;
 const PASS_WITHOUT_NODE_TEXT =
   'This link has a pass but no node ID, so the page does not connect. ' +
   'Open the browser build again from the console (Browser passes).';
+// The page does not start for these links (the overlay says why).
+const LINK_REFUSED = PASS_WITHOUT_NODE || !!ROOM_REFUSED_TEXT;
+const LINK_REFUSED_TEXT = ROOM_REFUSED_TEXT || PASS_WITHOUT_NODE_TEXT;
 
 // The app to open this visit: ?app= or the link's #app=.
 function urlApp() {
@@ -542,10 +581,12 @@ if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
 } else {
   statusLine.textContent = 'ready';
 }
-if (PASS_WITHOUT_NODE) {
-  statusLine.textContent = 'not started: ' + PASS_WITHOUT_NODE_TEXT;
-  startOverlay.textContent = PASS_WITHOUT_NODE_TEXT;
+if (LINK_REFUSED) {
+  statusLine.textContent = 'not started: ' + LINK_REFUSED_TEXT;
+  startOverlay.textContent = LINK_REFUSED_TEXT;
   startOverlay.classList.add('refused');
+} else if (ROOM) {
+  statusLine.textContent = 'room ' + ROOM.slot + ' (until ' + roomUntil() + '): click to start';
 }
 
 const moduleConfig = {
@@ -590,7 +631,17 @@ moduleConfig.arguments = [];
   if (zenoh) moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
   // The pass goes to the link through the module object, never as an
   // argument (arguments end up in the machine's settings).
-  if (ZENOH_PASS && !PASS_WITHOUT_NODE) {
+  if (ROOM && !LINK_REFUSED) {
+    // The room: its key goes to the link through the module object (never
+    // an argument), with the key space every session of the page gets.
+    moduleConfig.zenohRoom = ROOM.key;
+    moduleConfig.zenohNamespace = ROOM_NAMESPACE;
+    moduleConfig.zenohGaveUp = (fails) => {
+      statusLine.textContent = `room ${ROOM.slot}: ${fails} tries to connect again failed; the room may have ` +
+        'closed or ended (ask for a new link)';
+      showRoomState(' -- not connected (the room may have closed)');
+    };
+  } else if (ZENOH_PASS && !PASS_WITHOUT_NODE) {
     moduleConfig.zenohPass = ZENOH_PASS;
     moduleConfig.zenohPage = ZENOH_PAGE;
     // The link stopped trying (zp_ws_emscripten.c): with a pass, most likely
@@ -725,7 +776,7 @@ function newNodeId() {
 
 function decideNodeId() {
   nodeKept = false;
-  if (LINK_NODE) {
+  if (LINK_NODE && !ROOM) {
     nodeId = LINK_NODE;
   } else if (homeWriter !== false) {
     const kept = readSetting(NODE_STORE, '');
@@ -766,11 +817,22 @@ function showNetworkState() {
     let text = nodeId ? 'node ' + nodeId : 'node: checking...';
     if (PASS_WITHOUT_NODE) text = 'node: none (the link has a pass but no node ID; not connecting)';
     if (PASS_WITHOUT_NODE) { /* said above */ }
-    else if (nodeId && LINK_NODE) text += ' (from the link, this visit)';
+    else if (nodeId && LINK_NODE && !ROOM) text += ' (from the link, this visit)';
     else if (nodeId && homeWriter === false) text += ' (this tab only)';
     else if (nodeId && !nodeKept) text += ' (not kept: storage refused)';
     nodeStateEl.textContent = text;
   }
+  showRoomState('');
+}
+
+// The room this visit is in (G2): a line under the Network panel's heading.
+function showRoomState(extra) {
+  if (!ROOM || ROOM_REFUSED_TEXT) return;
+  const el = document.getElementById('room-state');
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = 'Room ' + ROOM.slot + ' until ' + roomUntil() + ': keys under ' + ROOM_NAMESPACE +
+    '/, through the door with the room\'s key' + (extra || '');
 }
 
 if (routerInput) {
@@ -778,7 +840,9 @@ if (routerInput) {
   if (urlZenoh() && routerNote) {
     routerNote.textContent = 'this visit: ' + urlZenoh() + ' (from the URL)';
   }
-  if (ZENOH_PASS && !PASS_WITHOUT_NODE && routerNote) {
+  if (ROOM && !LINK_REFUSED && routerNote) {
+    routerNote.textContent += '; room: set for this visit (not kept, sent on wss:// only)';
+  } else if (ZENOH_PASS && !PASS_WITHOUT_NODE && routerNote) {
     routerNote.textContent += '; pass: set for this visit (not kept, sent on wss:// only)';
   }
   routerInput.addEventListener('change', () => {
@@ -1975,9 +2039,10 @@ function fsprobeReport(mod) {
 }
 
 startOverlay.addEventListener('click', async () => {
-  // A link with a pass and no node: the machine is not switched on at all
-  // (see PASS_WITHOUT_NODE), so nothing can connect with the pass.
-  if (PASS_WITHOUT_NODE) return;
+  // A link with a pass and no node, or a room that has ended or cannot be
+  // read: the machine is not switched on at all (see LINK_REFUSED), so
+  // nothing connects with it.
+  if (LINK_REFUSED) return;
   startOverlay.style.display = 'none';
   canvas.focus();
   statusLine.textContent = 'booting the firmware...';
@@ -2001,7 +2066,7 @@ startOverlay.addEventListener('click', async () => {
 
   const mod = await createFmrbCore(moduleConfig);
   M = mod;
-  statusLine.textContent = 'running';
+  statusLine.textContent = ROOM ? 'running in room ' + ROOM.slot + ' (until ' + roomUntil() + ')' : 'running';
   // The machine rewrites the settings file early in its own boot; give it a
   // moment before reading it back (the probe is a measurement, not a race).
   if (FSPROBE) setTimeout(() => fsprobeReport(mod), 3000);

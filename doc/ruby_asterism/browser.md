@@ -1,6 +1,6 @@
 # ブラウザ版を網に入れる手順
 
-> 状態: 進行中 | 更新: 2026-10-14 | ブラウザ版 (wasm) の Family mruby を Asterism のノードとして zenohd につなぐ手順。zenohd の ws/ の待ち受けと wss:// の中継、ブラウザ版のビルドと起動 (手元の http の版と、公開の版と同じ作りを https で配る形)、ルータの設定、ノードの ID の決まり、合言葉の付いた wss:// の入口 (G1)、PC からの呼び出し、台車の操縦、最小の試しのページ
+> 状態: 進行中 | 更新: 2026-10-14 | ブラウザ版 (wasm) の Family mruby を Asterism のノードとして zenohd につなぐ手順。zenohd の ws/ の待ち受けと wss:// の中継、ブラウザ版のビルドと起動 (手元の http の版と、公開の版と同じ作りを https で配る形)、ルータの設定、ノードの ID の決まり、合言葉の付いた wss:// の入口 (G1)、部屋のリンク (G2)、PC からの呼び出し、台車の操縦、最小の試しのページ
 
 作りと実測は report/b1.md (手元の http の版) と report/b2.md (https の版、wss://、設定、ID)。
 
@@ -172,6 +172,11 @@ sim・端末の system_conf には `zenoh_router` が無いので、これまで
   `node: none (the link has a pass but no node ID; not connecting)`。合言葉の無いページ (console の無い網: 家の
   LAN の zenohd、手元のルータ、公開の studio) は今どおり自分の `wasm-<16 進 6 桁>` を使う
   (report/console_node.md)。
+- **部屋のリンクでは、ブラウザ自身の ID を使う (G2、2026-10-14)**。部屋にはアカウントが無く、部屋の全員が同じ鍵を
+  持つので、ID を console が決めて守ることはできない。ID は部屋の中で重ならなければよいので、合言葉の無いページと
+  同じ `wasm-<16 進 6 桁>` (保存してある ID、2 つ目のタブは使い捨て) にした。部屋の鍵はキーの前置き
+  `room/<枠>` を付けるので、console の網の `wasm-<ハンドル>` とは線の上でも ACL の上でも別の場所になり、ぶつからない。
+  リンクに `zenoh_node` があっても部屋では使わない。
 
 ## 5.3 合言葉 (wss:// の入口、G1)
 
@@ -207,6 +212,27 @@ https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:744
   (`Asterism.session`) ので、合言葉 1 つで入れる。
 - 1 つのページが 2 つの接続を開くアプリ (Asterism と別のセッションを持つ othello・rt_probe・rover_pilot) は、
   2 つ目が断られる (report/g1.md)。
+
+## 5.4 部屋のリンク (G2)
+
+asterism-console の管理者が Admin > Rooms で部屋を作ると、リンクが出る (console の設定 `ASTERISM_ROOM_PAGE`)。
+
+```
+https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:7443#room=<部屋の鍵>&app=/app/test/othello.app.rb
+```
+
+- 部屋の鍵は console が signer に頼んで署名したもの (asterism-console の docs/rooms.md)。フラグメントに置くので、ページを
+  配るサーバの記録に残らない。合言葉と同じく、最初のスクリプトが読んでアドレスの欄から消し、保存しない。
+- ページは鍵の中身 (署名は確かめない。確かめるのは door) から枠と期限を読み、`wss://<host>:<port>/room?t=<鍵>` で部屋の
+  入口 (door) へつなぐ (`wss://` のときだけ。合言葉は付けない)。ページのすべてのセッションのキーに前置き
+  `room/<枠>` が付く (picoruby-asterism-zenoh の名前空間。`Module.zenohNamespace` から
+  `picoruby_zenoh_default_namespace()` で渡す)。アプリは今のキー (`asterism/...`) のまま部屋の中だけで動く。
+- Network の枠の見出しの下に `Room 01 until <時刻>: keys under room/01/, ...`、状態の行に `running in room 01 (until ...)` と
+  出る。
+- 期限の過ぎた鍵・読めない鍵のリンクは、機械を起動せず「This room has ended」「This room link is broken」と出す。
+- 部屋が閉じられる・期限が来ると、door が接続を切り、つなぎ直しは 410 で断られる。ページは 10 回続けて失敗すると
+  諦め、状態の行に「the room may have closed or ended」と出す。
+- ノードの ID は 5.2 の最後の項目のとおり、ブラウザ自身の `wasm-<16 進 6 桁>`。
 
 ## 6. PC から呼ぶ
 

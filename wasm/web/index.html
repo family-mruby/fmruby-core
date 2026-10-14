@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- No Referer path or query: the page may be opened with ?zenoh_pass= (main.js). -->
+<!-- No Referer path or query: the page may be opened with ?zenoh_pass= (main.js). A room's key
+     (#room=) is in the fragment, which is never sent anywhere. -->
 <meta name="referrer" content="strict-origin">
 <title>Family mruby Web Studio</title>
 <style>
@@ -75,6 +76,7 @@
   .lead { flex: 0 0 82px; color: #8a8a97; }
   .row .lead + * { min-width: 0; }
   .note { margin: 3px 0 0 82px; color: #6f6f7c; }
+  .room-line { margin: 0 0 8px; color: #e0c060; }
   .panel select, .panel button, .panel input {
     background: #111; color: #ddd; border: 1px solid #555;
     font-family: monospace; font-size: 12px;
@@ -188,6 +190,8 @@
 
   <section class="panel">
     <h2>Network <span class="meta" id="node-state">node: checking...</span></h2>
+    <!-- A room's link (main.js, G2): which room this visit is in. -->
+    <p class="room-line" id="room-state" hidden></p>
     <div class="field">
       <label for="router-input">Router</label>
       <input id="router-input" type="text" spellcheck="false"
@@ -243,6 +247,8 @@
   //   zenoh_node=<id>     the node ID to join as, this visit only (a link with a
   //                       pass must have one: main.js refuses it otherwise)
   //   app=<path>          the app to open (like ?app=)
+  //   room=<key>          a room's key (G2): the page joins that room's key
+  //                       space through the door; no pass, no node ID
   // Read before anything else runs, taken out of the address bar at once (the
   // history entry is replaced) and kept only in memory for main.js. The pass
   // goes to the WebSocket link (wss:// only). On a first visit
@@ -250,7 +256,7 @@
   // reload alone gets them back in the fragment, so they are not lost.
   (function () {
     var got = {};
-    var NAMES = ['zenoh_pass', 'zenoh_node', 'app'];
+    var NAMES = ['zenoh_pass', 'zenoh_node', 'app', 'room'];
     function keep(part, fromQuery) {
       return part.split('&').filter(function (kv) {
         for (var i = 0; i < NAMES.length; i++) {
@@ -271,12 +277,14 @@
     try {
       var q = keep(location.search.replace(/^[?]/, ''), true);
       var h = keep(location.hash.replace(/^#/, ''), false);
-      if (got.zenoh_pass === undefined && got.zenoh_node === undefined && got.app === undefined) return;
+      if (got.zenoh_pass === undefined && got.zenoh_node === undefined && got.app === undefined &&
+          got.room === undefined) return;
       var bare = location.pathname + (q ? '?' + q : '') + (h ? '#' + h : '');
       history.replaceState(history.state, '', bare);
       if (got.zenoh_pass) window.FMRB_ZENOH_PASS = got.zenoh_pass;
       if (got.zenoh_node) window.FMRB_ZENOH_NODE = got.zenoh_node;
       if (got.app) window.FMRB_LINK_APP = got.app;
+      if (got.room) window.FMRB_ROOM_KEY = got.room;
       var back = NAMES.filter(function (n) { return got[n]; }).map(function (n) {
         return n + '=' + encodeURIComponent(got[n]);
       }).join('&');
