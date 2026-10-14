@@ -695,6 +695,19 @@ Asterism の網の決まりは、今は Ruby の実装の中にしかない。�
 - 置き場所: 決まりの文書は asterism のリポジトリ (`docs/protocol.md` など、英語)。
 - 1.0 (report/c8.md の残り) の前提にする。
 
+## CF: 端末に接続の設定を入れる (計画 2026-10-14 ユーザ)
+
+今の入れ方: WiFi の SSID とパスワードは、ビルドのときに `config/wifi.toml` を `/etc/wifi.toml` へ焼き込む。Asterism の繋ぎ先 (`/home/zenoh_echo.txt`)・証明書の tar (`/home/asterism/<名前>.tar`)・ノード ID (`/home/asterism_node.txt`)・表示名 (`/home/asterism_profile.toml`) は、開発用の遠隔の道具 (`/fs/put`、認証なし、開発のビルドだけ) で送っていた。リリース版の端末に入れる正式な道が無い。そこで、BLE のコンソールで書き込めるようにする (2026-10-14 ユーザ)。
+
+| 段階 | 内容 |
+|---|---|
+| CF1 | **設定のファイルの整理**: Asterism の設定を `/home/asterism/` の下にまとめる。`/home/asterism/config.toml` (`router`・`node` (任意)・`name` (表示名)) と、今のままの `/home/asterism/<名前>.tar`。tar があれば繋ぎ先と名前は tar の中 (`asterism.json`) から取り、`config.toml` に書けばそちらが勝つ (tar だけ置けば VPS に直接繋がる)。古いファイル (`zenoh_echo.txt`・`asterism_node.txt`・`asterism_profile.toml`) は、新しいファイルが無いときに読み、1 回だけ新しい形に書き写す。名前の `zenoh_echo` は最初の試し (Z2) の名残で、中身と合っていないので無くす。WiFi の置き場 (`/etc/wifi.toml` を書き換えられるようにするか、`/home` の下へ移すか) もここで決める |
+| CF2 | **BLE のコンソールの設定の画面**: 今ある Web Bluetooth の「Family mruby Console」(`tool/web/`) と端末の BLE のファイルの仕組み (`ble_task.c`、S3 と P4・Tab5 で動作済み) に、接続の設定の画面を足す: WiFi・繋ぎ先・証明書の tar (ブラウザで選ぶ)。鍵や WiFi のパスワードを書けるので、端末の操作で「設定を受け付ける時間」を開いたときだけ書ける |
+| CF3 | **AtomS3R の設定のモード**: S3 は WiFi と BLE を同時に動かさない (coexistence は NimBLE が不安定になるので sdkconfig で切ってあり、BLE は内蔵 RAM を約 75 KB 使う。AtomS3R は WiFi と TLS の Asterism で空きが約 118 KB)。そこで交互に使う: WiFi の設定が無いとき、またはボタンを押しながら起動したときは BLE だけの設定のモードで起動し (画面に「設定待ち」)、書き終えたら起動し直して普段のモード (WiFi と Asterism) に入る。P4・Tab5 は無線が C6 なので今どおり両方同時に動く |
+
+- 順はこのとおり (2026-10-14 ユーザ)。
+- console から配る (端末が一度だけ使う登録コードで console に問い合わせて証明書を受け取る) 形は、G2 構想の自己登録と一緒に後で考える。
+
 ## W: ルータどうしの中継と、Rails の管理画面 (計画、2026-10-08 ユーザ決定で C6 の後)
 
 端末は LAN の中のルータにだけつなぎ (今の端末は TLS を使っていない。ESP-IDF の mbedTLS で TLS のリンクを足すことはできる)、インターネットを越える部分はルータどうし
