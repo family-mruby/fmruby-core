@@ -105,7 +105,12 @@ class SystemDesktopApp < FmrbApp
     # Retro only: manual BLE start for the ble_auto_start=false configuration
     # (on Modern the C6 radio path manages itself). Harmless when BLE is
     # already up -- the C side is idempotent.
-    (FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL != "ESP32-P4" ? [{ key: :ble_start }] : []) + [
+    (FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL != "ESP32-P4" ? [{ key: :ble_start }] : []) +
+    # Opens (or closes) the few minutes in which the BLE console may write
+    # the WiFi and Asterism settings (doc/ruby_asterism/report/cf2.md). The
+    # label counts down while it is open. Boards only: the sim and the page
+    # have no BLE.
+    (FmrbConst::PLATFORM == "esp32" ? [{ key: :ble_setup }] : []) + [
     { key: :shortcuts },
     { key: :about },
   ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
@@ -997,6 +1002,10 @@ class SystemDesktopApp < FmrbApp
   # stays allocation-free.
   BLE_LABEL = "B"
   BLE_CELL_W = 10
+  # While the settings window is open the cell turns yellow, so a board that
+  # takes settings over BLE says so without opening the menu.
+  BLE_SETUP_BG = 0xFC
+  BLE_SETUP_SECONDS = 300
 
   def draw_ble_icon
     # Right of the RAM readout, next to the wifi icon (7px gap to wifi)
@@ -1008,6 +1017,10 @@ class SystemDesktopApp < FmrbApp
     end
     box = (state == 2) ? FmrbGfx::WHITE : FmrbGfx::GRAY
     fg  = (state == 2) ? MENU_BG : FmrbGfx::WHITE
+    if FmrbApp.ble_settings_left > 0
+      box = BLE_SETUP_BG
+      fg = FmrbGfx::BLACK
+    end
     @gfx.fill_rect(x, 1, BLE_CELL_W, 10, box)
     @gfx.draw_text(x + 2, 2, BLE_LABEL, fg, box)
   end
@@ -1066,6 +1079,25 @@ class SystemDesktopApp < FmrbApp
       @gfx.draw_line(x + 7, 4, x + 7, 7, fg)
       @gfx.draw_line(x + 9, 3, x + 9, 8, fg)
     end
+  end
+
+  # The menu's BLE Setup: open the settings window, or close it when it is
+  # open. Retro starts BLE first when it is off (Modern's runs from boot).
+  def toggle_ble_setup
+    if FmrbApp.ble_settings_left > 0
+      FmrbApp.ble_settings_window(0)
+      Log.info("Desktop: BLE settings window closed")
+    else
+      FmrbApp.ble_start if FmrbApp.ble_state == 0 && FmrbConst::CHIP_MODEL != "ESP32-P4"
+      left = FmrbApp.ble_settings_window(BLE_SETUP_SECONDS)
+      if left > 0
+        Log.info("Desktop: BLE settings window open (#{left} s)")
+      else
+        Log.warn("Desktop: BLE settings window not opened (BLE is off)")
+      end
+    end
+    draw_ble_icon
+    @gfx.present
   end
 
   # Click the speaker cell (or choose the menu entry) to flip the mute. The C
@@ -1142,6 +1174,13 @@ class SystemDesktopApp < FmrbApp
   def dropdown_label(key)
     if key == :audio_mute
       return FmrbI18n.t(FmrbApp.audio_muted? ? :audio_unmute : :audio_mute)
+    end
+    if key == :ble_setup
+      left = FmrbApp.ble_settings_left
+      if left > 0
+        sec = left % 60
+        return "#{FmrbI18n.t(:ble_setup_stop)} #{left / 60}:#{sec < 10 ? '0' : ''}#{sec}"
+      end
     end
     FmrbI18n.t(key)
   end
@@ -2055,6 +2094,8 @@ class SystemDesktopApp < FmrbApp
     when :ble_start
       Log.info("Desktop: manual BLE start requested")
       FmrbApp.ble_start
+    when :ble_setup
+      toggle_ble_setup
     when :reset
       open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
     else

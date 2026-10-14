@@ -662,6 +662,28 @@ int fmrb_spx_app_ble_state(void)
 #endif
 }
 
+int fmrb_spx_app_ble_settings_window(int seconds)
+{
+    /* Same as FmrbApp.ble_settings_window in the mruby binding: open the BLE
+       settings window for that long (0 closes it), return the seconds left. */
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+    ble_settings_window_set(seconds > 0 ? (uint32_t)seconds : 0);
+    return (int)ble_settings_window_left();
+#else
+    (void)seconds;
+    return 0;
+#endif
+}
+
+int fmrb_spx_app_ble_settings_left(void)
+{
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+    return (int)ble_settings_window_left();
+#else
+    return 0;
+#endif
+}
+
 int fmrb_spx_app_proc_generation(void)
 {
     return (int)fmrb_app_proc_generation();

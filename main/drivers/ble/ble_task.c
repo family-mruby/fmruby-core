@@ -12,6 +12,7 @@
 #include "ble_task.h"
 #include "ble_framing.h"
 #include "ble_debug_link.h"
+#include "fmrb_secret_path.h"
 
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -79,6 +80,7 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_CMD_MKDIR  0x14
 #define BLE_FS_CMD_STATFS 0x15
 #define BLE_FS_CMD_RENAME 0x16
+#define BLE_FS_CMD_SETTINGS 0x17   // settings window state (doc/ruby_asterism/report/cf2.md)
 #define BLE_FS_CMD_GET    0x21
 #define BLE_FS_CMD_PUT    0x22
 #define BLE_FS_CMD_LOG_SUBSCRIBE   0x31
@@ -140,6 +142,12 @@ typedef struct {
 
 EXT_RAM_BSS_ATTR static ble_dbg_rx_t g_dbg_rx;
 
+// Settings window: until this many seconds after boot, the file service takes
+// writes to the connection settings and secrets (fmrb_secret_path.h). 0 =
+// closed. Written by the desktop task, read by the file service task; one
+// aligned 32-bit word, so no lock. PSRAM, like the rest of this file's state.
+EXT_RAM_BSS_ATTR static volatile uint32_t g_settings_until_s;
+
 // Forward declarations
 static void ble_advertise(void);
 static void ble_fs_task_func(void *arg);
@@ -190,6 +198,76 @@ static bool json_get_int(const char *json, const char *key, int32_t *value)
 
     *value = atoi(pos);
     return true;
+}
+
+// ============================================================
+// Settings window and secret files
+// ============================================================
+
+static uint32_t settings_now_s(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000000);
+}
+
+uint32_t ble_settings_window_left(void)
+{
+    uint32_t until = g_settings_until_s;
+    uint32_t now = settings_now_s();
+    return (until > now) ? (until - now) : 0;
+}
+
+fmrb_err_t ble_settings_window_set(uint32_t seconds)
+{
+    if (seconds == 0) {
+        if (g_settings_until_s != 0) {
+            FMRB_LOGI(TAG, "settings window closed");
+        }
+        g_settings_until_s = 0;
+        return FMRB_OK;
+    }
+    if (!ble_service_is_started()) {
+        FMRB_LOGW(TAG, "settings window not opened: BLE is not running");
+        return FMRB_ERR_INVALID_STATE;
+    }
+    g_settings_until_s = settings_now_s() + seconds;
+    FMRB_LOGI(TAG, "settings window open for %lu s", (unsigned long)seconds);
+    return FMRB_OK;
+}
+
+// Close the window once its time is up, so the log says when it ended.
+static void settings_window_expire_check(void)
+{
+    if (g_settings_until_s != 0 && ble_settings_window_left() == 0) {
+        g_settings_until_s = 0;
+        FMRB_LOGI(TAG, "settings window closed (time up)");
+    }
+}
+
+// Apply the secret-file rules to one command. Returns true when it may run;
+// otherwise the refusal is already in response ("denied" lets the console
+// tell it from a failure worth retrying).
+static bool ble_fs_allowed(fmrb_remote_fs_op_t op, const char *cmd_name, const char *path,
+                           const char *to, char *response, size_t response_size)
+{
+    fmrb_remote_fs_verdict_t v = fmrb_remote_fs_check(op, path, to, ble_settings_window_left() > 0);
+    if (v == FMRB_REMOTE_FS_ALLOW) return true;
+    if (v == FMRB_REMOTE_FS_DENY_SECRET) {
+        FMRB_LOGW(TAG, "BLE %s %s refused: holds keys or passwords", cmd_name, path);
+        snprintf(response, response_size,
+                 "{\"ok\":false,\"denied\":true,\"err\":\"This file holds keys or passwords and is not read over BLE\"}");
+    } else {
+        FMRB_LOGW(TAG, "BLE %s %s refused: settings window closed", cmd_name, path);
+        snprintf(response, response_size,
+                 "{\"ok\":false,\"denied\":true,\"closed\":true,\"err\":\"The board is not accepting settings: open BLE Setup in its menu\"}");
+    }
+    return false;
+}
+
+static void ble_fs_cmd_settings(char *response, size_t response_size)
+{
+    uint32_t left = ble_settings_window_left();
+    snprintf(response, response_size, "{\"ok\":true,\"open\":%s,\"left\":%lu}",
+             left > 0 ? "true" : "false", (unsigned long)left);
 }
 
 // ============================================================
@@ -839,6 +917,7 @@ static void ble_fs_cmd_rm(const char *json_params, char *response, size_t respon
         snprintf(response, response_size, "{\"ok\":false,\"err\":\"Missing path parameter\"}");
         return;
     }
+    if (!ble_fs_allowed(FMRB_REMOTE_FS_RM, "RM", path, NULL, response, response_size)) return;
 
     fmrb_file_info_t info;
     fmrb_err_t err = fmrb_hal_file_stat(path, &info);
@@ -892,6 +971,7 @@ static void ble_fs_cmd_rename(const char *json_params, char *response, size_t re
         snprintf(response, response_size, "{\"ok\":false,\"err\":\"Missing to parameter\"}");
         return;
     }
+    if (!ble_fs_allowed(FMRB_REMOTE_FS_RENAME, "RENAME", from, to, response, response_size)) return;
 
     fmrb_err_t err = fmrb_hal_file_rename(from, to);
     if (err != FMRB_OK) {
@@ -1045,6 +1125,10 @@ static void ble_fs_cmd_get(const char *json_params, char *response, size_t respo
         *binary_size = 0;
         return;
     }
+    if (!ble_fs_allowed(FMRB_REMOTE_FS_GET, "GET", path, NULL, response, response_size)) {
+        *binary_size = 0;
+        return;
+    }
 
     json_get_int(json_params, "off", &offset);
 
@@ -1138,6 +1222,12 @@ static void ble_fs_cmd_put(const char *json_params,
 
     if (!json_get_string(json_params, "path", path, sizeof(path))) {
         snprintf(response, response_size, "{\"ok\":false,\"err\":\"Missing path parameter\"}");
+        return;
+    }
+
+    // Every chunk is checked, so an upload stops where the window closed.
+    if (!ble_fs_allowed(FMRB_REMOTE_FS_PUT, "PUT", path, NULL, response, response_size)) {
+        ble_fs_put_cache_close();
         return;
     }
 
@@ -1315,6 +1405,11 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
         ble_fs_send_response(json_response, NULL, 0);
         break;
 
+    case BLE_FS_CMD_SETTINGS:
+        ble_fs_cmd_settings(json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
     case BLE_FS_CMD_GET:
         ble_fs_cmd_get(json_params, json_response, sizeof(json_response),
                        binary_buffer, &response_binary_size, sizeof(binary_buffer));
@@ -1408,6 +1503,7 @@ static void ble_fs_task_func(void *arg)
         // helper is a no-op when no subscription / no client is attached.
         ble_fs_poll_logs();
         ble_fs_put_cache_idle_check();
+        settings_window_expire_check();
     }
 }
 

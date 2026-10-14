@@ -28,6 +28,7 @@
 #include "fmrb_log.h"
 #include "fmrb_hal_file.h"
 #include "host_task.h"
+#include "fmrb_secret_path.h"
 
 #include "esp_http_server.h"
 #include "esp_attr.h"
@@ -324,45 +325,18 @@ static esp_err_t fs_list_handler(httpd_req_t *req)
 }
 
 // Files that hold secrets are not handed out: anyone on the LAN can call
-// this server. /home/asterism holds the board's Asterism credentials (the
-// console's .tar with the private key: doc/ruby_asterism/report/g2a.md), and
-// the WiFi settings hold the network's password (/home/wifi.toml, the
-// board's own, and /etc/wifi.toml, the one a development build bakes in:
-// doc/ruby_asterism/report/cf1.md). They can be put, listed and deleted,
-// not read. A path is secret when it starts with one of these sequences of
-// segments; empty and "." segments are skipped before comparing
-// ("/home//asterism", "/home/./asterism").
-static bool fs_path_under(const char *vpath, const char *const *segs, size_t n)
-{
-    size_t matched = 0;
-    const char *p = vpath;
-    while (*p && matched < n) {
-        while (*p == '/') p++;
-        const char *seg = p;
-        while (*p && *p != '/') p++;
-        size_t len = (size_t)(p - seg);
-        if (len == 0 || (len == 1 && seg[0] == '.')) continue;
-        if (strlen(segs[matched]) != len || strncmp(seg, segs[matched], len) != 0) return false;
-        matched++;
-    }
-    return matched == n;
-}
-
-static bool fs_path_secret(const char *vpath)
-{
-    static const char *const asterism[] = { "home", "asterism" };
-    static const char *const home_wifi[] = { "home", "wifi.toml" };
-    static const char *const etc_wifi[] = { "etc", "wifi.toml" };
-    return fs_path_under(vpath, asterism, 2) || fs_path_under(vpath, home_wifi, 2) ||
-           fs_path_under(vpath, etc_wifi, 2);
-}
-
+// this server. The WiFi settings (/home/wifi.toml, /etc/wifi.toml) hold the
+// network's password and /home/asterism the board's Asterism credentials
+// (the .tar with the private key); config.toml there only says where to
+// connect and is read. The rules are shared with the BLE console
+// (fmrb_secret_path.h, doc/ruby_asterism/report/cf2.md). Secrets can be put,
+// listed and deleted, not read.
 static esp_err_t fs_get_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
     if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
-    if (fs_path_secret(vpath)) {
+    if (fmrb_path_classify(vpath) == FMRB_PATH_SECRET) {
         return ctl_json(req, "403 Forbidden",
                         "{\"ok\":false,\"err\":\"this file holds keys or passwords and is not read remotely\"}");
     }

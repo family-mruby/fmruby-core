@@ -30,6 +30,17 @@ int ble_ui_state(void)
     return 0;
 }
 
+fmrb_err_t ble_settings_window_set(uint32_t seconds)
+{
+    (void)seconds;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+uint32_t ble_settings_window_left(void)
+{
+    return 0;
+}
+
 fmrb_err_t ble_task_deinit(void)
 {
     return FMRB_OK;

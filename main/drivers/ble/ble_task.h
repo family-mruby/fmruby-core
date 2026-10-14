@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "fmrb_err.h"
 
 #ifdef __cplusplus
@@ -60,6 +61,25 @@ bool ble_service_is_started(void);
  *         2 = a central is connected. Allocation- and lock-free.
  */
 int ble_ui_state(void);
+
+/**
+ * @brief Open (seconds > 0) or close (0) the settings window.
+ *
+ * While it is open the BLE file service accepts writes, deletes and renames
+ * of the connection settings and secrets (WiFi, Asterism config and
+ * credentials; fmrb_secret_path.h). Reading the secrets stays refused.
+ * Opening again restarts the countdown. Called from the desktop menu.
+ *
+ * @return FMRB_OK, FMRB_ERR_INVALID_STATE when BLE is not running (the
+ *         window would be of no use), FMRB_ERR_NOT_SUPPORTED without BLE.
+ */
+fmrb_err_t ble_settings_window_set(uint32_t seconds);
+
+/**
+ * @brief Seconds left in the settings window, 0 when it is closed.
+ *        Allocation- and lock-free (the desktop polls it once a second).
+ */
+uint32_t ble_settings_window_left(void);
 
 /**
  * @brief Deinitialize BLE stack and stop advertising
