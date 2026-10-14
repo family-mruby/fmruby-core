@@ -1,6 +1,6 @@
 # CF2 報告: BLE のコンソールで端末に接続の設定を書き込む
 
-> 状態: 実装・確認済み (Web Bluetooth でつなぐ確認だけユーザ待ち、7 章) | 更新: 2026-10-14 | plan.md「CF: 端末に接続の設定を入れる」の CF2。ブランチ feature/cf2-ble-settings。Web Bluetooth の「Family mruby Console」に Settings の画面を足し、WiFi (`/home/wifi.toml`)・Asterism の設定 (`/home/asterism/config.toml`)・証明書の tar を書けるようにした。書けるのは端末のメニューの「BLE Setup」で開く 5 分間だけ。秘密のファイル (WiFi の 2 つと `/home/asterism/` の tar など) は BLE でも devctl でも読めない。判定は C の 1 か所 (`main/kernel/fmrb_secret_path.c`) にまとめ、host の試験 97 項目で見る。P4-Nano で内蔵 RAM の増分 0 (同じ板・同じ設定の develop と比べた)、flash +4.3 KB
+> 状態: 実装・確認済み。ユーザの確認 (1 回目) を受けて WiFi の表示を直した (8 章)。直したあとの Web Bluetooth の確認はユーザ待ち (7 章) | 更新: 2026-10-14 | plan.md「CF: 端末に接続の設定を入れる」の CF2。ブランチ feature/cf2-ble-settings。Web Bluetooth の「Family mruby Console」に Settings の画面を足し、WiFi (`/home/wifi.toml`)・Asterism の設定 (`/home/asterism/config.toml`)・証明書の tar を書けるようにした。書けるのは端末のメニューの「BLE Setup」で開く 5 分間だけ。秘密のファイル (WiFi の 2 つと `/home/asterism/` の tar など) は BLE でも devctl でも読めない。判定は C の 1 か所 (`main/kernel/fmrb_secret_path.c`) にまとめ、host の試験 97 項目で見る。P4-Nano で内蔵 RAM の増分 0 (同じ板・同じ設定の develop と比べた)、flash +4.3 KB
 
 ## 1. 作ったもの
 
@@ -34,8 +34,8 @@
 
 | 道 | 分け方 | BLE GET | BLE PUT・RM | BLE RENAME | devctl `/fs/get` |
 |---|---|---|---|---|---|
-| `/home/wifi.toml`・`/etc/wifi.toml` (`wifi.toml` で始まる名前、`.part` も) | 秘密 | 断る | 受け付ける時間だけ | 秘密どうしで、時間だけ | 断る |
-| `/home/asterism/` の中 (`config.toml` を除く。tar・ほかの鍵・`.part`) | 秘密 | 断る | 時間だけ | 同上 | 断る |
+| `/home/wifi.toml`・`/etc/wifi.toml` (`wifi.toml` で始まる名前、`.part` も) | WiFi (8 章) | 受け付ける時間だけ | 受け付ける時間だけ | 同じか強く隠す名前へ、時間だけ | 断る |
+| `/home/asterism/` の中 (`config.toml` を除く。tar・ほかの鍵・`.part`) | 秘密 | 断る (いつでも) | 時間だけ | 秘密どうしで、時間だけ | 断る |
 | `/home/asterism/config.toml`・`/home/asterism` | 設定 | 読める | 時間だけ | 時間だけ | 読める (CF1 では断っていた) |
 | `/`・`/home`・`/etc` | ふつう (秘密を中に持つ) | - | 今どおり | 断る | - |
 | ほか | ふつう | 今どおり | 今どおり | 今どおり | 今どおり |
@@ -45,7 +45,7 @@
 - 指示書の範囲 (WiFi の 2 つと tar) より少し広く、`/home/asterism/` の中を `config.toml` 以外すべて秘密にした。将来この場所に鍵が増えても漏れない。逆に `config.toml` は繋ぎ先・ID・名前だけで鍵を持たないので読めるようにし、画面の欄を埋めるのに使う。devctl も同じ判定にしたので `/fs/get` の範囲は BLE と同じ (CF1 からの差は `config.toml` が読めるようになったことだけ)。
 - `config.toml` も書くのは受け付ける時間だけにした。繋ぎ先を書き換えられると、平文のルータへ繋がせることができるため。
 - LS と MKDIR は今どおり (名前と大きさは見える。指示書の「名前の一覧は許す」)。
-- 断るときの応答は `{"ok":false,"denied":true,...}` (時間外は `"closed":true` も)。コンソールの `sendCommandRetry` はこれを見たら繰り返さない (今までは 4 回送っていた)。端末のログには `BLE GET /home/wifi.toml refused: holds keys or passwords` のように 1 行出る (中身は出さない)。
+- 断るときの応答は `{"ok":false,"denied":true,...}` (時間外は `"closed":true` も)。コンソールの `sendCommandRetry` はこれを見たら繰り返さない (今までは 4 回送っていた)。端末のログには `BLE GET /home/asterism/x.tar refused: holds a key` のように 1 行出る (中身は出さない)。
 - 限界: BLE は暗号化もペアリングも無い (Windows の Web Bluetooth で固まるため、ble_task.c の注釈)。受け付ける時間は「端末の前の人が許したときだけ書ける」ための仕組みで、その間に近くで電波を聞かれることは防げない。
 
 ## 3. 受け付ける時間
@@ -118,11 +118,54 @@ BLE が使えないので、**コンソールの `settings.js` の関数で作�
 
 1. エクスプローラで `C:\Users\Public\asterism_deploy\cf2_console\index.html` をダブルクリックして Chrome (か Edge) で開く。(うまく開けないときは WSL で `python3 -m http.server 8080 --directory tool/web` を fmruby-core で実行し、`http://localhost:8080/` を開く)
 2. 「Connect」を押し、一覧から `Family-mruby-...` を選んで「ペア設定」。上の表示が「Connected」になり、ログに `Connected (console 2026-10-14a)` が出る。
+2 で出る版が `2026-10-14b` でなければ、ブラウザが古い app.js を持っている (再読み込みする)。
 3. **秘密が読めないこと**: Files で `/etc` を開く。`wifi.toml` の行に `secret` の印があり、DL・Edit の押しボタンが無いこと。`/home/asterism` を開き、tar にも `secret` の印があり、`config.toml` には Edit があること (開くと router と name が見える)。
-4. **閉じているときは断られること**: 「Settings」のタブを開く。上に「The board is not accepting settings...」と出て、3 つの「Write ...」が押せないこと。「On the board」の欄が WiFi は `from the firmware (/etc/wifi.toml)`、Asterism は今の router と name、Credentials は今の tar の名前であること。
-5. **開くと書けること**: P4-Nano の画面でメニュー (左上の「Family mruby」) → 「BLE Setup」。メニューバーの B が黄色になる。数秒でコンソールの上の表示が緑の「The board is accepting settings: 4:5x left.」になり、押しボタンが押せるようになる。
+4. **閉じているときの表示 (8 章の直し)**: 「Settings」のタブを開く。上に「The board is not accepting settings...」と出て、3 つの「Write ...」が押せないこと。WiFi の「On the board」が `SSID "<今の SSID>" from the firmware's /etc/wifi.toml (...); connected, IP <端末の IP>` で、SSID の欄に今の SSID が入り、パスワードの欄は空で下に `set (not shown)` と出ること。Asterism は今の router と name、Credentials は今の tar の名前であること。
+5. **開くと書けること**: P4-Nano の画面でメニュー (左上の「Family mruby」) → 「BLE Setup」。メニューバーの B が黄色になる。数秒でコンソールの上の表示が緑の「The board is accepting settings: 4:5x left.」になり、押しボタンが押せるようになる。パスワードの欄に今のパスワードが入り (「show」で見える)、下が `loaded from the board ...` になること。
 6. Asterism の欄 (今の値が入っている) を変えずに「Write Asterism settings」。`Written to /home/asterism/config.toml...` と出れば合格 (中身は同じなので繋がりは変わらない)。
-7. WiFi の欄に今の網の SSID とパスワードを入れて「Write WiFi」。`WiFi written to /home/wifi.toml...` と出て、パスワードの欄が空になり、「On the board」が `set (/home/wifi.toml)` になれば合格。端末のメニューの Reset で起動し直し、WiFi がつながる (メニューバーの電波の印が白) こと。
+7. WiFi の欄は入ったまま (SSID とパスワードは端末から読んだもの) で「Write WiFi」。`WiFi written to /home/wifi.toml...` と出て、「On the board」が `SSID "..." from /home/wifi.toml; connected, ...` になれば合格。端末のメニューの Reset で起動し直し、WiFi がつながる (メニューバーの電波の印が白) こと。
+   - (任意) パスワードの欄を空にして「Write WiFi」を押しても、読んであったパスワードがそのまま書かれる (開いている間だけ)。閉じているときに空のまま押すと「enter the password」と出て書かれない。
 8. (任意) 証明書: 「Credentials」で今使っている .tar (Asterism のコンソールから受け取ったもの) を選び「Write credentials」。`Credentials written to /home/asterism/<名前>.tar` と出れば合格。そのあと othello などを起動して繋がること。手元に .tar が無ければ飛ばす (端末の tar はそのまま)。
-9. **時間が終わると断られること**: 端末でメニュー → 「Stop m:ss」を選ぶ (または 5 分待つ)。コンソールの上の表示が「not accepting」に戻り、押しボタンが押せなくなれば合格。
+9. **時間が終わると断られること**: 端末でメニュー → 「Stop m:ss」を選ぶ (または 5 分待つ)。コンソールの上の表示が「not accepting」に戻り、押しボタンが押せなくなり、パスワードの欄が空に戻れば合格。
 10. 戻し (任意): 7 で書いた `/home/wifi.toml` は、同じ網の設定ならそのままでよい。消したいときは、もう一度「BLE Setup」を開いてから Files の `/home` で `wifi.toml` の Del を押し、起動し直す (`/etc/wifi.toml` に戻る)。
+
+## 8. ユーザの確認を受けた直し (2026-10-14)
+
+1 回目の確認で「Settings の WiFi の欄に今の設定が何も出ない」との指摘があり、続けて「パスワードは、受け付ける時間の間だけなら見せてよい」と決まった。
+
+### 8.1 決めたこと
+
+- SSID は秘密ではない。秘密はパスワードと証明書の tar (秘密鍵) だけ。
+- WiFi のファイル (`/home/wifi.toml`・`/etc/wifi.toml`) は、**受け付ける時間の間だけ BLE で読める** (端末の前の人が「BLE Setup」を押したとき)。それ以外は断る (`"closed":true`)。devctl には受け付ける時間が無いので、`/fs/get` はいつでも断る。
+- 証明書の tar と `/home/asterism/` の中 (config.toml 以外) は、**いつでも読めない** (Asterism のコンソールで出し直せるので、読み戻す必要が無い)。
+- 判定の分け方を 1 つ足した (`FMRB_PATH_WIFI`)。RENAME は「同じか強く隠す名前へ」だけ通す (強さは tar > WiFi > ふつう)。tar を `/home/wifi.toml` に名前を変えて、受け付ける時間に読む、という抜け道を断つため。
+
+### 8.2 作ったもの
+
+- `0x17` の答えに WiFi の要約を足した: `"wifi":{"src":"/etc/wifi.toml","on":true,"ssid":"...","conn":true,"ip":"..."}`。wifi_task と同じ順でファイルを選び (`/home/wifi.toml`、無ければ `/etc/wifi.toml`)、`enable` と `ssid` の行だけを読む (`fmrb_wifi_summary_json`、純粋な C)。パスワードの行は見ず、読んだ文字の置き場 (PSRAM の 1 KB) は使ったあと 0 で埋める。ファイルから読むので、書いたばかりの `/home/wifi.toml` も起動し直す前に表示に出る。つながりと IP は wifi_task の今の様子。
+- 受け付ける時間を開いたとき、同じ要約を BLE のファイルのタスクがログに 1 行出す (`settings window: wifi {...}`)。ファイルを読むのをデスクトップのスタックに載せないため、フラグを立ててファイルのタスクに任せた。
+- コンソール:
+  - SSID の欄を要約から埋め、「On the board」に SSID・どのファイルか・つながっているか・IP を出す。
+  - パスワードの欄は、閉じているときは空で `set (not shown)`。開くと端末から WiFi のファイルを読んで埋め (`settingsTomlValue`)、閉じると消す。「show」で見える。
+  - パスワードを空のまま書くのは、開いていて今のパスワードを読めたときだけ (そのまま書く)。それ以外は「enter the password」で書かない。古いパスワードを残したまま一部だけ変える書き方はしない。鍵の無い網 (パスワード無し) は対応しない。
+  - 版は `2026-10-14b`。
+
+### 8.3 確かめたこと
+
+- host の試験 `rake secret:test` が 111 項目 (14 項目増)。WiFi のファイルは閉じていれば GET を断り開いていれば読めること、tar は開いていても断ること、tar から WiFi の名前への RENAME を断ること、要約 (SSID の取り出し、`\"`・`\\`・`\u00e9` の戻し、`#ssid` や `ssid2`・`password_ssid` を取り違えないこと、ファイルが無いとき、小さな置き場で切れても終端すること) とパスワードが要約に入らないことを見る。
+- `tool/web/test/settings.mjs` が 33 項目 (8 項目増)。SSID の表示と欄、パスワードの欄が空で `set (not shown)`、閉じている間の端末の答え (偽の端末が送ったもの全部) にパスワードが無いこと、閉じているとき空のパスワードを断ること、開くとパスワードが読み込まれること、開いていても tar は読めないこと、空のまま書くと読んだパスワードが書かれること、閉じるとパスワードの欄が消えること。3 回続けて通る。`ui.mjs` も通る。
+- P4-Nano (app だけ焼き直し): 「BLE Setup」を開くとログに `settings window: wifi {"src":"/etc/wifi.toml","on":true,"ssid":"<開発の網の SSID>","conn":true,"ip":"<端末の IP>"}`。IP は端末の今のアドレスと一致し、行にパスワードの文字列は無い (grep で 0 件)。閉じて `settings window closed`。devctl の tar の `/fs/get` は今どおり 403。端末はこのファーム・閉じた状態のまま残した。
+
+### 8.4 内蔵 RAM (P4-Nano、NARYAv4、develop 428a6c61 と同じ設定で比べた)
+
+| | develop | 直したあと | 差 |
+|---|---|---|---|
+| DIRAM (静的、.text / .bss / .data) | 85,300 / 25,156 / 14,916 | 85,300 / 25,156 / 14,916 | 0 |
+| External RAM .bss | 18,147,292 B | 18,148,516 B | +1,224 (PSRAM、WiFi の要約の置き場) |
+| fmruby-core.bin | 6,602,976 B | 6,609,760 B | +6,784 |
+| M1 `boot_start` 〜 `ble` (起動 3 回) | `ble_ready` 231,300 (2 回とも) | 231,292 / 231,292 / 231,300 | 揺れ (下記) |
+| 周期ダンプの最初の `IRAM free` (13 秒) | 219,060 / 219,052 | 219,036 / 219,056 / 219,032 | 揺れの範囲 |
+
+- 1 回目と 2 回目の起動で `ble_ready` が 8 B 少なかったので、develop のファームを焼き直して 2 回目の標本を取り (231,300)、このブランチを焼き直して 3 回目を取った (231,300 で develop と同じ)。`ble_nimble_port` から `ble_ready` の間に動くのは今までの初期化だけで、この直しの関数は `0x17` か「BLE Setup」でしか動かない。この間も Services やデスクトップが並んで動くので、その時機で数バイト揺れる。
+- 新しい状態は PSRAM だけ (`.ext_ram.bss`) で、静的な内蔵 RAM は 0。起動のあとしばらくした `IRAM free` は、ネットワークの様子で数百バイト動く (develop でも 208,508 → 208,528 と動いた) ので比べる数字にしなかった。
+- Retro (NARYAv3) の ESP32 のビルドも通る。

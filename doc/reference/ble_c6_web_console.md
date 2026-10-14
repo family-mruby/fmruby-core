@@ -209,12 +209,13 @@ doc/ruby_asterism/report/cf2.md、画面の使い方は tool/web/README.md。
 判定は `main/kernel/fmrb_secret_path.c` の 1 か所 (devctl の `/fs/get` と共通、
 試験は `rake secret:test`)。
 
-| ファイル | GET | PUT / RM | RENAME |
-|---|---|---|---|
-| `/home/wifi.toml`・`/etc/wifi.toml` (と `wifi.toml` で始まる名前)、`/home/asterism/` の中 (`config.toml` を除く) | 断る (秘密) | 受け付ける時間だけ | 秘密の名前どうしで、受け付ける時間だけ。秘密でない名前へは断る |
-| `/home/asterism/config.toml`・`/home/asterism` | 読める | 受け付ける時間だけ | 受け付ける時間だけ |
-| `/`・`/home`・`/etc` (秘密を中に持つディレクトリ) | - | 今どおり | 断る (中の秘密が読める名前に移るため) |
-| ほか | 今どおり | 今どおり | 今どおり |
+| ファイル | BLE GET | PUT / RM | RENAME | devctl `/fs/get` |
+|---|---|---|---|---|
+| `/home/asterism/` の中 (`config.toml` を除く。証明書の tar など) | 断る (いつでも) | 受け付ける時間だけ | 同じ強さで隠す名前どうしで、受け付ける時間だけ | 断る |
+| `/home/wifi.toml`・`/etc/wifi.toml` (と `wifi.toml` で始まる名前) | 受け付ける時間だけ | 受け付ける時間だけ | 同上 (tar を WiFi の名前へは断る) | 断る (受け付ける時間が無い) |
+| `/home/asterism/config.toml`・`/home/asterism` | 読める | 受け付ける時間だけ | 受け付ける時間だけ | 読める |
+| `/`・`/home`・`/etc` (秘密を中に持つディレクトリ) | - | 今どおり | 断る (中の秘密が読める名前に移るため) | - |
+| ほか | 今どおり | 今どおり | 今どおり | 今どおり |
 
 - 道の書き方の違いで抜けないよう、空と `.` の段は飛ばし、先頭の `/flash`
   (file HAL の別名) を外して比べる。`..` を含む道は秘密として扱う (littlefs は
@@ -226,7 +227,10 @@ doc/ruby_asterism/report/cf2.md、画面の使い方は tool/web/README.md。
   BLE が動いていなければ開かない。状態は PSRAM の 32 ビットの 1 語 (内蔵 RAM は
   使わない)。PUT は塊ごとに確かめるので、時間切れの途中で書き込みは止まる。
 - 断るときの応答は `{"ok":false,"denied":true,...}` (時間外は `"closed":true` も)。
-- 新しいコマンド `0x17` (SETTINGS): `{"ok":true,"open":<bool>,"left":<秒>}`。
+- 新しいコマンド `0x17` (SETTINGS): `{"ok":true,"open":<bool>,"left":<秒>,"wifi":{"src":"/etc/wifi.toml","on":true,"ssid":"...","conn":true,"ip":"..."}}`。
+  WiFi の要約は wifi_task が読むのと同じファイル (`/home/wifi.toml`、無ければ `/etc/wifi.toml`) から
+  `enable` と `ssid` だけを取り出したもの (`fmrb_wifi_summary_json`、パスワードの行は見ない)。
+  受け付ける時間を開いたときは、同じ要約をログにも 1 行出す (`settings window: wifi {...}`)。
 - BLE には暗号化もペアリングも無い (Windows の Web Bluetooth の都合、上の
   ble_task.c の注釈)。受け付ける時間は「端末の前にいる人が許したときだけ」を
   作るためのもので、その間の電波の盗み聞きは防げない。秘密を読み出させないのは
