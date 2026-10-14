@@ -115,15 +115,40 @@ wasm:serve のものがそのまま通る。`?drive=1` も同じ中継で動く�
 
 ## 5. ルータの場所とノードの名前の決まり方
 
-試しのアプリ (asterism_demo、rover_cam、rover_pilot、rover_brain) は、ルータの場所を次の順に探す。
+Asterism の試しのアプリ (asterism_demo、othello、rover_*、ros2_*、rt_probe、zenoh_*) は、接続の設定を
+`FmrbAsterism.settings` (lib/add/picoruby-fmrb-asterism) の 1 か所から受け取る (CF1、report/cf1.md)。
+設定のファイルは `/home/asterism/` の下にまとめてある (ブラウザでは IndexedDB に残る)。
 
-1. `/home/zenoh_echo.txt` の 1 行目 (使う人が置く。ブラウザでは IndexedDB に残る)
+```
+/home/asterism/config.toml     router = "tls/203.0.113.5:7447"   ルータの場所
+                               node   = "alice"                  ノードの ID (任意)
+                               name   = "Alice"                  機械の名前 (プロフィールの name)
+/home/asterism/<名前>.tar      console が渡す証明書の tar (置いたまま。G2a)
+```
+
+- `config.toml` は書いた鍵だけが効く。どれも省いてよい。値は `"` で囲む (`\"` と `\\` だけ戻す)。
+- 開発用の遠隔の道具 (`/fs/get`) は `/home/asterism/` の下を読まない (鍵があるため)。置く (`put`)・一覧・
+  消すことはできる。
+- **CF1 より前のファイル** (`/home/zenoh_echo.txt` の 1 行目 = ルータ、`/home/asterism_node.txt` の 1 行目 =
+  ノードの ID、`/home/asterism_profile.toml` の `name`) は、`config.toml` が無いときに 1 回だけ読み、
+  `config.toml` に書き写す。古いファイルは消さずに残す (app だけの焼き直しでは storage のアプリが古いままで、
+  それが古いファイルを読むため)。`config.toml` ができた後は古いファイルを読まない (アプリが設定を読むたびに、
+  読まないファイルをログに 1 行出す)。
+
+ルータの場所は次の順に探す。
+
+1. `config.toml` の `router`
 2. 設定 `zenoh_router` (system_conf.toml)。ブラウザ版の束は `ws/localhost:7449` を持つ
    (config/system_conf_wasm.toml)。ページの設定 (下) で変えられ、URL の `?zenoh=ws/<host>:<port>` が
    その回だけ置き換える (`?zenoh=ws/192.0.2.10:7449`)
-3. `tcp/zenohd:7447` (sim の既定。ブラウザではつながらない)
+3. 証明書の tar の `asterism.json` の `router` (tar だけ置けば、そのルータへ TLS で直接繋がる)
+4. `tcp/zenohd:7447` (sim の既定。ブラウザではつながらない)
 
-sim・端末の system_conf には `zenoh_router` が無いので、これまでどおり 1 と 3 で決まる。
+sim・端末の system_conf には `zenoh_router` が無いので、1・3・4 で決まる。ブラウザ版は 2 が tar より先に
+効く (ブラウザ版は TLS の口を持たず、ページの決めたルータを使う)。
+
+ルータが `tls/` なら、`/home/asterism/` の tar (2 つ以上なら名前順で最初) の証明書で mTLS で繋ぐ。tar が無い・
+読めないときは、繋ぐときにアプリがその理由を出す。`tcp/` や `ws/` のルータでは tar は使わない。
 
 ### 5.1 ページの設定: Network の枠の Router
 
@@ -141,8 +166,10 @@ sim・端末の system_conf には `zenoh_router` が無いので、これまで
 
 ### 5.2 ノードの ID
 
-順に: `/home/asterism_node.txt` の 1 行目 → 端末の mDNS の名前 → 設定 `asterism_node` → 機種の名前
-(`FmrbConst::BOARD`: sim は `linux`、ページを通さないブラウザ版は `wasm`)。
+順に: `config.toml` の `node` → 端末の mDNS の名前 → 設定 `asterism_node` → 機種の名前
+(`FmrbConst::BOARD`: sim は `linux`、ページを通さないブラウザ版は `wasm`)。証明書の tar で TLS で繋ぐときは、
+証明書の名前がノードの ID になる (ルータの ACL はその名前で機械を見分けるため。違う `node` を書いてもこちらが勝ち、
+ログに 1 行出る)。
 
 ブラウザでは、ページが最初の訪問で ID を作る。
 
@@ -158,13 +185,13 @@ sim・端末の system_conf には `zenoh_router` が無いので、これまで
   `node wasm-xxxxxx (this tab only)` と出る。1 つ目のタブを閉じた後に開いたタブは、保存してある ID を使う。
 - 別のブラウザ・別のプロファイル・シークレットウィンドウは、それぞれ別の ID になる。保存を断るブラウザでは
   タブの間だけの ID になる (枠に `not kept` と出る)。
-- 同じ ID の重複 (同じ店を共有する 2 つの機械、`/home/asterism_node.txt` の書き間違い) を網の上で確かめる
+- 同じ ID の重複 (同じ店を共有する 2 つの機械、`config.toml` の `node` の書き間違い) を網の上で確かめる
   仕組みは無い。
 - **リンクが ID を決めることがある (G1.5)**。asterism-console の「Open the browser build」で開いたリンクは、
   フラグメントに `zenoh_node=<ID>` を持つ (ユーザに結び付いた `wasm-<名前>`、2 つ目は `wasm-<名前>_2`)。その回は
   どのタブでもこの ID を使い、保存しない (保存してある ID はそのまま。リンクなしで開けば元の ID)。枠には
   `node wasm-alice (from the link, this visit)` と出る。ノードの ID に使えない形 (`[A-Za-z0-9][A-Za-z0-9._-]{0,62}`
-  に合わない) は無視する。`/home/asterism_node.txt` があればそちらが勝つ (アプリの決まりの順のまま)。
+  に合わない) は無視する。`config.toml` に `node` があればそちらが勝つ (アプリの決まりの順のまま)。
 - **合言葉があってノードの ID が無いリンクは断る (2026-10-14)**。console の管理する網では、ID は console が
   アカウントのハンドルから決め、console のリンクはどれも合言葉とノードの ID を両方持つ (asterism-console 0.1.2)。
   合言葉だけのリンク (手で作ったもの、古い console のもの。古い形の `?zenoh_pass=` も同じ) で開くと、ページは

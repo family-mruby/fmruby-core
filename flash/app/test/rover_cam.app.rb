@@ -3,10 +3,10 @@
 # wheel odometry and the newest picture of its camera
 # (/camera/image/compressed, 160x120 JPEG at 5 Hz).
 #
-# - Connects like ros2_drive: the first line of /home/zenoh_echo.txt is the
-#   locator, else the machine's zenoh_router setting (system_conf.toml; the
+# - Connects like ros2_drive: the router is the machine's settings (FmrbAsterism.settings, /home/asterism/config.toml),
+#   else the machine's zenoh_router setting (system_conf.toml; the
 #   browser build has ws/localhost:7449 there, or ?zenoh= from the page's
-#   URL), else tcp/zenohd:7447. The ID comes from /home/asterism_node.txt,
+#   URL), else tcp/zenohd:7447. The ID comes from the same settings,
 #   the mDNS name, the asterism_node setting (the browser's wasm-XXXXXX) or
 #   the board name ("linux" in the simulator, "wasm" in the browser). The ROS
 #   node is fmruby_cam_<ID>.
@@ -78,10 +78,6 @@ class RoverCamOdom
 end
 
 class RoverCamApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
-  CONF_FILE = "/etc/system_conf.toml"
   FRAME_FILE = "/tmp/rover_cam.jpg"
   SEND_EVERY_MS = 100
   RATE_EVERY_MS = 2000
@@ -91,27 +87,6 @@ class RoverCamApp < FmrbApp
   W_MAX = 1.5
   IMG_W = 160
   IMG_H = 120
-
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
-  # The quoted value of `<key> = "..."` in system_conf.toml, or "".
-  def conf_value(key)
-    text = File.open(CONF_FILE, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key)
-      a = line.index("\"")
-      b = a ? line.index("\"", a + 1) : nil
-      return b ? line[a + 1, b - a - 1].to_s.strip : ""
-    end
-    ""
-  rescue
-    ""
-  end
 
   # "fmruby-bbbbbb" -> "fmruby_bbbbbb"
   def ros_name(id)
@@ -126,16 +101,11 @@ class RoverCamApp < FmrbApp
   end
 
   def on_create
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = conf_value("asterism_node") if @id.empty?
-    @id = FmrbConst::BOARD if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = conf_value("zenoh_router") if @locator.empty?
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     # JPEG through create_image: Modern hardware and the browser (see the top).
     @jpeg = (FmrbConst::PLATFORM == "esp32" && FmrbConst::HW_FAMILY == "modern") ||
             FmrbConst::BOARD == "wasm"
@@ -186,7 +156,8 @@ class RoverCamApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      @session = Asterism::Zenoh::Session.open(@locator)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      @session = Asterism::Zenoh::Session.open(@locator, config: @creds ? @creds.zenoh_config : nil)
       @node = Asterism::ROS::Node.new(@session, "fmruby_cam_#{ros_name(@id)}")
       @cmd = @node.publisher("/cmd_vel", "geometry_msgs/msg/Twist")
       odom_type = ::Asterism::CDR::PACK ? RoverCamOdom : "nav_msgs/msg/Odometry"

@@ -14,10 +14,10 @@ extern "C" {
 // same SDIO transport as BLE; call after the transport is up (i.e. after
 // ble_task_init, or wifi_task_init itself waits for it). On Retro (Narya
 // v3, ESP32-S3) the radio is native and mutually exclusive with BLE.
-// Credentials come from /etc/wifi.toml.
+// Credentials come from /home/wifi.toml, else /etc/wifi.toml.
 
 /**
- * @brief Read /etc/wifi.toml and start the WiFi station.
+ * @brief Read /home/wifi.toml (else /etc/wifi.toml) and start the WiFi station.
  *
  * Returns FMRB_ERR_NOT_FOUND when WiFi is disabled or unconfigured
  * (missing file, enable=false, or empty ssid); callers treat that as a

@@ -26,4 +26,14 @@ namespace :asterism do
   task :test do
     sh "ruby #{File.join(asterism_dir!, "test/msgs/run.rb")}"
   end
+
+  # FmrbAsterism.settings (CF1): where a machine's router, node ID, name and
+  # credentials come from, and the move of the files before CF1. The gem
+  # file runs under CRuby with its paths in a temporary directory, and the
+  # credentials are read by the checkout's own Asterism::Credentials.
+  desc "Run the FmrbAsterism settings tests (CRuby, no docker)"
+  task :config_test do
+    creds = File.join(asterism_dir!, "mrblib/credentials.rb")
+    sh({ "ASTERISM_CREDENTIALS_RB" => creds }, "ruby test/asterism/run.rb")
+  end
 end

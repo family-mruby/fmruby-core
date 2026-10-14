@@ -82,13 +82,13 @@ startup_app_retries = 3
 # Network panel sets this for good; ?zenoh= in the page's URL replaces it for
 # one visit (?zenoh=ws/192.0.2.10:7449). A page served over https uses wss://
 # for any host but a loopback one (the locator stays ws/). The test apps read
-# it when /home/zenoh_echo.txt does not name a router.
+# it when /home/asterism/config.toml does not name a router.
 zenoh_router = "ws/localhost:7449"
 
 # This browser's Asterism node ID (doc/ruby_asterism, B2). Empty here: the page
 # makes one on its first visit (wasm-<6 hex digits>), keeps it in the browser
 # and hands it in at every boot. The test apps use it when
-# /home/asterism_node.txt does not name the node.
+# /home/asterism/config.toml does not name the node.
 asterism_node = ""
 
 # Desktop wallpaper. Empty means "whatever the theme says" -- the western

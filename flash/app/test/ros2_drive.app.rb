@@ -3,9 +3,8 @@
 # repository (docker/asterism/docker-compose.mujoco.yml); any robot with a Twist /cmd_vel
 # and an Odometry /odom works.
 #
-# - Connects like ros2_talker: the first line of /home/zenoh_echo.txt is the
-#   locator (default tcp/zenohd:7447), the ID comes from
-#   /home/asterism_node.txt, the mDNS name or "linux". The ROS node is
+# - Connects like ros2_talker: the router and the ID come from
+#   the machine's settings (FmrbAsterism.settings, /home/asterism/config.toml); default tcp/zenohd:7447 and the mDNS name or the board name. The ROS node is
 #   fmruby_drive_<ID>.
 # - Keys: Up / Down speed up / slow down (0.05 m/s a press, +-0.5 m/s),
 #   Left / Right turn (0.3 rad/s a press, +-1.5 rad/s), Space or S stops.
@@ -53,21 +52,11 @@ class Ros2DriveOdom
 end
 
 class Ros2DriveApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
   SEND_EVERY_MS = 100
   V_STEP = 0.05
   V_MAX = 0.5
   W_STEP = 0.3
   W_MAX = 1.5
-
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
 
   # "fmruby-bbbbbb" -> "fmruby_bbbbbb"
   def ros_name(id)
@@ -82,14 +71,11 @@ class Ros2DriveApp < FmrbApp
   end
 
   def on_create
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = "linux" if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     @state = "connecting"
     @session = nil
     @node = nil
@@ -107,7 +93,8 @@ class Ros2DriveApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      @session = Asterism::Zenoh::Session.open(@locator)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      @session = Asterism::Zenoh::Session.open(@locator, config: @creds ? @creds.zenoh_config : nil)
       @node = Asterism::ROS::Node.new(@session, "fmruby_drive_#{ros_name(@id)}")
       @cmd = @node.publisher("/cmd_vel", "geometry_msgs/msg/Twist")
       # depth 2: only the newest odometry is decoded (the ring drops the

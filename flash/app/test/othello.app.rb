@@ -2,14 +2,14 @@
 # Zenoh network play each other. Each game is an object of its own node,
 # <ID>/game/othello, and calls the other player's (opponent.move(...)).
 #
-# - Connects like asterism_demo: the first line of /home/zenoh_echo.txt is the
-#   locator, else the machine's zenoh_router setting (the browser build's
-#   ws/localhost:7449, or ?zenoh= from the page's URL), else tcp/zenohd:7447.
-#   The ID comes from /home/asterism_node.txt, the mDNS name, the
-#   asterism_node setting (the browser's wasm-XXXXXX) or the board name.
-#   A tls/ locator connects straight to a cloud router with mutual TLS
-#   (G2a): the console's credentials .tar in /home/asterism gives the
-#   certificate, and its name is the ID.
+# - Connects with the machine's settings (FmrbAsterism.settings, CF1:
+#   /home/asterism/config.toml and the credentials .tar beside it): the
+#   router, else the machine's zenoh_router setting (the browser build's
+#   ws/localhost:7449, or ?zenoh= from the page's URL), else the .tar's,
+#   else tcp/zenohd:7447. The ID comes from the settings, the mDNS name,
+#   the asterism_node setting (the browser's wasm-XXXXXX) or the board name.
+#   A tls/ router connects straight to a cloud router with mutual TLS
+#   (G2a): the .tar gives the certificate, and its name is the ID.
 # - One connection (G1b): Asterism (app "game", object "othello"), and
 #   Asterism.session, its Zenoh session, puts the state on
 #   asterism/<ID>/game/othello/state after every move (and every
@@ -17,7 +17,7 @@
 #   All keys stay under asterism/<ID>/game/** (the G0 ACL). One session also
 #   gets through a router door whose pass lets one connection in.
 # - The player's name is the profile's name (FmrbAsterism, saved in
-#   /home/asterism_profile.toml for every application of the machine); F2 or
+#   /home/asterism/config.toml for every application of the machine); F2 or
 #   the name button in the lobby changes it (Japanese through kana input),
 #   Enter saves, Esc leaves it. Without one, the node ID stands for it.
 # - The object's methods (who called comes from the call itself,
@@ -247,9 +247,6 @@ class OthelloGame
 end
 
 class OthelloApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
   CONF_FILE = "/etc/system_conf.toml"
   APP = "game"
   OBJ = "othello"
@@ -314,26 +311,6 @@ class OthelloApp < FmrbApp
 
   # ------------------------------------------------------------ settings
 
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
-  def conf_value(key)
-    text = File.open(CONF_FILE, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key)
-      a = line.index("\"")
-      b = a ? line.index("\"", a + 1) : nil
-      return b ? line[a + 1, b - a - 1].to_s.strip : ""
-    end
-    ""
-  rescue
-    ""
-  end
-
   def conf_int(key)
     text = File.open(CONF_FILE, "r") { |f| f.read }
     text.split("\n").each do |line|
@@ -348,27 +325,11 @@ class OthelloApp < FmrbApp
 
   def on_create
     @started = Machine.board_millis
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = conf_value("asterism_node") if @id.empty?
-    @id = FmrbConst::BOARD if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = conf_value("zenoh_router") if @locator.empty?
-    @locator = DEFAULT_LOCATOR if @locator.empty?
-    @creds = nil
-    @creds_error = nil
-    begin
-      @creds = FmrbAsterism.credentials_for(@locator)
-    rescue ::Asterism::Error => e
-      @creds_error = e.message
-    end
-    if @creds && @creds.name != @id
-      Log.info("othello: the certificate's name #{@creds.name} is the ID (not #{@id})")
-      @id = @creds.name
-    end
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     width = conf_int("display_width")
     @small = width > 0 && width < 320
     request_fullscreen(true) if @small

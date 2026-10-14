@@ -14,7 +14,7 @@
 - 手を指すたびに (と、対局中は 10 秒ごとに) 状態を `asterism/<ノード>/game/othello/state` へ `put` で配る。
   console と観戦用。`state` の呼び出しでも同じものが返る。put は Asterism の接続そのもの (`Asterism.session`、
   asterism 0.6.0) で行う。アプリが開く接続は 1 本なので、1 回で使い切る合言葉の `wss://` の入口からも入れる。
-- プレイヤーの名前は Asterism のプロフィールの `name`。端末ごとに `/home/asterism_profile.toml` に 1 つだけ保存し
+- プレイヤーの名前は Asterism のプロフィールの `name`。端末ごとに `/home/asterism/config.toml` の `name` に 1 つだけ保存し
   (ブラウザ版はブラウザの保存領域にある `/home`)、全アプリが起動するときに読む (3.1 節)。
 - 使うキーは `asterism/<ノード>/game/**` の中だけ (G0 の ACL の範囲)。
 
@@ -52,7 +52,8 @@ docker logs fmruby_zenohd | grep listen     # tcp/[::]:7447 と ws/[::]:7449
 
 ### 2.2 端末 (P4-Nano・Tab5・AtomS3R)
 
-1. `/home/zenoh_echo.txt` の 1 行目に `tcp/<この PC の LAN の住所>:7447` を書く (asterism_demo と同じ)。
+1. `/home/asterism/config.toml` に `router = "tcp/<この PC の LAN の住所>:7447"` を書く (asterism_demo と同じ。
+   決まりは browser.md 5 章)。
 2. アプリを送って起動する (焼き直しは要らない)。
 
 ```
@@ -62,7 +63,7 @@ ruby tools/fmrb_rd_launch.rb <端末の住所> /app/test/othello.app.rb
 ```
 
 - アイコン (`othello.icon` と `othello.bmp`) も送ればランチャーに出る (ランチャーの窓で右クリックで読み直し)。
-- ノードの ID は mDNS の名前 (`fmruby-<16 進 6 桁>`)。`/home/asterism_node.txt` で変えられる。
+- ノードの ID は mDNS の名前 (`fmruby-<16 進 6 桁>`)。`/home/asterism/config.toml` の `node` で変えられる。
 - AtomS3R (128x128) は遊べない。開くと、網の上の対局の盤を 1 つ映す (観戦)。`.app.toml` の `large_memory = 1` は
   このため (AtomS3R の普通のプールではプログラムを読み込めない)。
 

@@ -15,14 +15,19 @@
 // share the internal-RAM budget -- so init refuses to start while BLE is up
 // (and ble_service_start refuses while WiFi is up).
 //
-// Credentials come from /etc/wifi.toml (kept out of git; see
-// config/wifi.toml.example). Reconnection uses exponential backoff.
+// Credentials come from /home/wifi.toml, the board's own setting (written
+// on the board, kept by an app-only flash: doc/ruby_asterism/report/cf1.md),
+// else from /etc/wifi.toml, the one a development build bakes in from
+// config/wifi.toml (kept out of git; see config/wifi.toml.example). When
+// /home/wifi.toml is there it is the only one read. Reconnection uses
+// exponential backoff.
 
 #include "wifi_task.h"
 
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
 #include "fmrb_toml.h"
+#include "fmrb_hal_file.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -49,7 +54,8 @@ extern uint8_t is_transport_tx_ready(void);
 
 static const char *TAG = "wifi";
 
-#define WIFI_TOML_PATH        "/etc/wifi.toml"
+#define WIFI_TOML_HOME_PATH   "/home/wifi.toml"
+#define WIFI_TOML_ETC_PATH    "/etc/wifi.toml"
 #define WIFI_RECONNECT_MIN_MS 1000
 #define WIFI_RECONNECT_MAX_MS 30000
 
@@ -221,16 +227,20 @@ fmrb_err_t wifi_task_init(void)
     }
 #endif
 
-    // --- Read /etc/wifi.toml ---
+    // --- Read /home/wifi.toml, else /etc/wifi.toml ---
+    fmrb_file_info_t finfo;
+    const char *path = (fmrb_hal_file_stat(WIFI_TOML_HOME_PATH, &finfo) == FMRB_OK)
+                           ? WIFI_TOML_HOME_PATH : WIFI_TOML_ETC_PATH;
     char errbuf[128];
-    toml_table_t *root = fmrb_toml_load_file(WIFI_TOML_PATH, errbuf, sizeof(errbuf));
+    toml_table_t *root = fmrb_toml_load_file(path, errbuf, sizeof(errbuf));
     if (!root) {
-        FMRB_LOGI(TAG, "No %s (%s): WiFi disabled", WIFI_TOML_PATH, errbuf);
+        FMRB_LOGI(TAG, "No %s (%s): WiFi disabled", path, errbuf);
         return FMRB_ERR_NOT_FOUND;
     }
+    FMRB_LOGI(TAG, "Settings from %s", path);
     toml_table_t *wifi = toml_table_in(root, "wifi");
     if (!wifi || !fmrb_toml_get_bool(wifi, "enable", false)) {
-        FMRB_LOGI(TAG, "WiFi disabled in %s", WIFI_TOML_PATH);
+        FMRB_LOGI(TAG, "WiFi disabled in %s", path);
         toml_free(root);
         return FMRB_ERR_NOT_FOUND;
     }
@@ -242,7 +252,7 @@ fmrb_err_t wifi_task_init(void)
      * radio is up and its MAC can be asked for. */
     const char *host = fmrb_toml_get_string(wifi, "hostname", "");
     if (ssid[0] == '\0') {
-        FMRB_LOGW(TAG, "ssid missing in %s: WiFi disabled", WIFI_TOML_PATH);
+        FMRB_LOGW(TAG, "ssid missing in %s: WiFi disabled", path);
         toml_free(root);
         return FMRB_ERR_NOT_FOUND;
     }

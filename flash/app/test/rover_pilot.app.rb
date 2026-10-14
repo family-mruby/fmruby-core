@@ -2,10 +2,10 @@
 # brain (rover_brain.app.rb, another machine) by calling its Asterism object
 # <brain>/brain/rover, and shows the rover's camera straight from ROS 2.
 #
-# - Connects like rover_cam: the first line of /home/zenoh_echo.txt is the
-#   locator, else the machine's zenoh_router setting (system_conf.toml; the
+# - Connects like rover_cam: the router is the machine's settings (FmrbAsterism.settings, /home/asterism/config.toml),
+#   else the machine's zenoh_router setting (system_conf.toml; the
 #   browser build has ws/localhost:7449 there, or ?zenoh= from the page's
-#   URL), else tcp/zenohd:7447. The ID comes from /home/asterism_node.txt,
+#   URL), else tcp/zenohd:7447. The ID comes from the same settings,
 #   the mDNS name, the asterism_node setting (the browser's wasm-XXXXXX) or
 #   the board name ("linux", "wasm").
 # - One connection (G1b): Asterism (app "pilot", nothing exposed) and, on
@@ -57,10 +57,6 @@ class RoverPilotOdom
 end
 
 class RoverPilotApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
-  CONF_FILE = "/etc/system_conf.toml"
   FRAME_FILE = "/tmp/rover_pilot.jpg"
   APP = "pilot"
   BRAIN = "*/brain/rover"
@@ -79,27 +75,6 @@ class RoverPilotApp < FmrbApp
   IMG_W = 160
   IMG_H = 120
 
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
-  # The quoted value of `<key> = "..."` in system_conf.toml, or "".
-  def conf_value(key)
-    text = File.open(CONF_FILE, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key)
-      a = line.index("\"")
-      b = a ? line.index("\"", a + 1) : nil
-      return b ? line[a + 1, b - a - 1].to_s.strip : ""
-    end
-    ""
-  rescue
-    ""
-  end
-
   def ros_name(id)
     out = ""
     i = 0
@@ -112,16 +87,11 @@ class RoverPilotApp < FmrbApp
   end
 
   def on_create
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = conf_value("asterism_node") if @id.empty?
-    @id = FmrbConst::BOARD if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = conf_value("zenoh_router") if @locator.empty?
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     @jpeg = (FmrbConst::PLATFORM == "esp32" && FmrbConst::HW_FAMILY == "modern") ||
             FmrbConst::BOARD == "wasm"
     @state = "connecting"
@@ -177,7 +147,8 @@ class RoverPilotApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      ::Asterism.connect(@locator, node: @id, app: APP)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
       ::Asterism.on_join { |n| @scan = true }
       ::Asterism.on_leave { |n| @scan = true }
       @rs = ::Asterism.session # Asterism's: Asterism.close closes it

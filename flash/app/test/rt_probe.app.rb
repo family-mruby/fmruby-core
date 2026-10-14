@@ -2,9 +2,9 @@
 # Two machines each put their own moving dot 25 times a second and draw the
 # other's dot as it arrives, and measure what that costs and how late it is.
 #
-# - Connects like othello (/home/zenoh_echo.txt, the zenoh_router setting,
-#   tcp/zenohd:7447; the ID from /home/asterism_node.txt, the mDNS name, the
-#   asterism_node setting, the board name). Asterism app "game", object "rt"
+# - Connects like othello (FmrbAsterism.settings: /home/asterism/config.toml,
+#   the zenoh_router setting, tcp/zenohd:7447; the ID from the same file, the
+#   mDNS name, the asterism_node setting, the board name). Asterism app "game", object "rt"
 #   (stats -> the last second's numbers), so the probe shows in the console's
 #   graph. One connection (G1b): the stream goes over Asterism.session, and
 #   Asterism.poll (every update; asterism 0.6.0 makes it cheap when nothing
@@ -32,9 +32,6 @@
 # - On a small screen (display_width under 320) it takes the whole screen.
 
 class RtProbeApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
   CONF_FILE = "/etc/system_conf.toml"
   APP = "game"
   RATES = [10, 20, 25, 30, 50]
@@ -60,26 +57,6 @@ class RtProbeApp < FmrbApp
 
   attr_reader :last_stats
 
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
-  def conf_value(key)
-    text = File.open(CONF_FILE, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key)
-      a = line.index("\"")
-      b = a ? line.index("\"", a + 1) : nil
-      return b ? line[a + 1, b - a - 1].to_s.strip : ""
-    end
-    ""
-  rescue
-    ""
-  end
-
   def conf_int(key)
     text = File.open(CONF_FILE, "r") { |f| f.read }
     text.split("\n").each do |line|
@@ -94,16 +71,11 @@ class RtProbeApp < FmrbApp
 
   def on_create
     @started = Machine.board_millis
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = conf_value("asterism_node") if @id.empty?
-    @id = FmrbConst::BOARD if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = conf_value("zenoh_router") if @locator.empty?
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     width = conf_int("display_width")
     @small = width > 0 && width < 320
     request_fullscreen(true) if @small
@@ -204,7 +176,8 @@ class RtProbeApp < FmrbApp
   def connect
     begin
       ::Asterism.close
-      ::Asterism.connect(@locator, node: @id, app: APP)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
       ::Asterism.expose("rt", RtProbeApp::Probe.new(self), methods: { stats: 0 })
       @zs = ::Asterism.session # Asterism's: closed with Asterism.close
       @sub = @zs.subscribe("asterism/*/#{APP}/rt/pos", depth: 64)

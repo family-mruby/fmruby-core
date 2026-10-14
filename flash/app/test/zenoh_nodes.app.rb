@@ -1,10 +1,9 @@
 # Machines that see each other over Zenoh (doc/ruby_asterism, Z3): query and
 # reply (get / queryable) and liveliness between two or more boards.
 #
-# - Name: the first line of /home/zenoh_node.txt, or else the board name
-#   (FmrbConst::BOARD: "linux" in the sim, "naryav4", "tab5", ...).
-# - Connects like zenoh_echo: the first line of /home/zenoh_echo.txt is the
-#   locator (default tcp/zenohd:7447). These forms of that line select peer
+# - Name and router: the machine's settings (FmrbAsterism.settings: the node
+#   ID -- config.toml's node, the mDNS name or the board name -- and the
+#   router, default tcp/zenohd:7447). These forms of the router select peer
 #   mode instead of a router:
 #     listen tcp/0.0.0.0:7447    peer, listening (no router)
 #     peer tcp/192.0.2.15:7447   peer, connecting to that peer
@@ -24,27 +23,16 @@
 #                            ruby tools/fmrb_zenoh.rb alive
 
 class ZenohNodesApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NAME_FILE = "/home/zenoh_node.txt"
   ALIVE_PREFIX = "fmrb/alive/"
   INFO_EVERY_MS = 3000
   SILENT_EVERY_MS = 5000
   SILENT_LIMIT_MS = 1500
   HOLD_MS = 10000
 
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
   def on_create
-    @name = first_line(NAME_FILE)
-    @name = FmrbConst::BOARD if @name.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @name = st.node
+    @locator = st.router
     @state = "connecting"
     @session = nil
     @nodes = {}        # name => { info:, got_at: }

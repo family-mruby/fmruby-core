@@ -3,9 +3,8 @@
 # examples/mujoco/rover.rb: node "mujoco", app "rover"), with the arrow keys,
 # and shows its pose. No ROS 2: plain Asterism calls (the portable API).
 #
-# - Connects like asterism_demo: the first line of /home/zenoh_echo.txt is
-#   the locator (default tcp/zenohd:7447), the ID comes from
-#   /home/asterism_node.txt, the mDNS name or "linux". This app is
+# - Connects like asterism_demo: the router and the ID come from
+#   the machine's settings (FmrbAsterism.settings, /home/asterism/config.toml); default tcp/zenohd:7447 and the mDNS name or the board name. This app is
 #   <ID>/rover_drive; it calls mujoco/rover/drive, state and world.
 # - Keys: Up / Down speed up / slow down (0.05 m/s a press, +-0.5 m/s),
 #   Left / Right turn (0.3 rad/s a press, +-1.5 rad/s), Space or S stops,
@@ -21,9 +20,6 @@
 # - Calls are async (Future): the update loop never waits on the network.
 
 class AsterismRoverApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
   APP = "rover_drive"
   ROVER = "mujoco/rover"
   SEND_EVERY_MS = 200
@@ -34,22 +30,12 @@ class AsterismRoverApp < FmrbApp
   W_STEP = 0.3
   W_MAX = 1.5
 
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
   def on_create
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = "linux" if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     @state = "connecting"
     @v = 0.0
     @w = 0.0
@@ -74,7 +60,8 @@ class AsterismRoverApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      ::Asterism.connect(@locator, node: @id, app: APP)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
       @drive = ::Asterism["#{ROVER}/drive", timeout: CALL_TIMEOUT]
       @status = ::Asterism["#{ROVER}/state", timeout: CALL_TIMEOUT]
       @world = ::Asterism["#{ROVER}/world", timeout: CALL_TIMEOUT]

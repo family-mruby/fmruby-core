@@ -4,6 +4,10 @@
 # config/wifi_p4.toml is listed in .gitignore so credentials never end
 # up in the repository. When present it is copied to /etc/wifi.toml in
 # the flash image by `rake build:esp32`.
+#
+# A board can also carry its own copy, in the same form, as /home/wifi.toml
+# (put on the board; an app-only flash keeps it). When that file is there
+# it is the one read and /etc/wifi.toml is not (doc/ruby_asterism/report/cf1.md).
 
 [wifi]
 enable = true

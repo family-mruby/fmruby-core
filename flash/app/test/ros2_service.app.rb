@@ -1,10 +1,9 @@
 # ROS 2 (rmw_zenoh) service server and client (doc/ruby_asterism, R2). Uses
 # the pure Ruby Asterism::ROS layer on Asterism::Zenoh: no ROS 2 libraries.
 #
-# - Connects like zenoh_echo / ros2_talker: the first line of
-#   /home/zenoh_echo.txt is the locator (default tcp/zenohd:7447). The ID is
-#   the first line of /home/asterism_node.txt, else the board's mDNS name,
-#   else "linux". The ROS node is fmruby_service_<ID> ("-" -> "_").
+# - Connects like ros2_talker: the router and the ID come from
+#   the machine's settings (FmrbAsterism.settings, /home/asterism/config.toml); default tcp/zenohd:7447 and the board's mDNS name or the board name.
+#   The ROS node is fmruby_service_<ID> ("-" -> "_").
 # - Serves /<node>/add_two_ints (example_interfaces/srv/AddTwoInts) and
 #   shows each request and its answer.
 # - Keys (acted on in on_update, not in on_event: a waiting call polls on
@@ -21,19 +20,9 @@
 #   docker exec -it fmruby_ros2 ros2 run demo_nodes_cpp add_two_ints_server
 
 class Ros2ServiceApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
   PC_SERVICE = "/add_two_ints"
   CALL_TIMEOUT = 3.0      # seconds
   CALL_TIMEOUT_MS = 3000  # the same, for call_async (both units work)
-
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
 
   # "fmruby-bbbbbb" -> "fmruby_bbbbbb"
   def ros_name(id)
@@ -48,14 +37,11 @@ class Ros2ServiceApp < FmrbApp
   end
 
   def on_create
-    @id = first_line(NODE_FILE)
-    if @id.empty?
-      info = FmrbApp.wifi_info
-      @id = info ? info[:hostname].to_s : ""
-    end
-    @id = "linux" if @id.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = DEFAULT_LOCATOR if @locator.empty?
+    st = ::FmrbAsterism.settings
+    @id = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     @state = "connecting"
     @session = nil
     @node = nil
@@ -76,7 +62,8 @@ class Ros2ServiceApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      @session = Asterism::Zenoh::Session.open(@locator)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      @session = Asterism::Zenoh::Session.open(@locator, config: @creds ? @creds.zenoh_config : nil)
       @node = Asterism::ROS::Node.new(@session, "fmruby_service_#{ros_name(@id)}")
       # The generated example_interfaces/srv/AddTwoInts, loaded here.
       add = Asterism::ROS.require_type("example_interfaces/srv/AddTwoInts")
