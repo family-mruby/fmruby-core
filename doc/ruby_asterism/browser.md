@@ -131,8 +131,9 @@ Asterism の試しのアプリ (asterism_demo、othello、rover_*、ros2_*、rt_
   消すことはできる。
 - **CF1 より前のファイル** (`/home/zenoh_echo.txt` の 1 行目 = ルータ、`/home/asterism_node.txt` の 1 行目 =
   ノードの ID、`/home/asterism_profile.toml` の `name`) は、`config.toml` が無いときに 1 回だけ読み、
-  `config.toml` に書き写し、読み直して同じなら消す。`config.toml` ができた後に古いファイルを置いても読まない
-  (読まないことをログに 1 行出す)。
+  `config.toml` に書き写す。古いファイルは消さずに残す (app だけの焼き直しでは storage のアプリが古いままで、
+  それが古いファイルを読むため)。`config.toml` ができた後は古いファイルを読まない (アプリが設定を読むたびに、
+  読まないファイルをログに 1 行出す)。
 
 ルータの場所は次の順に探す。
 

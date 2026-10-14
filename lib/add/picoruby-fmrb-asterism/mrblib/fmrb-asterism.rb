@@ -28,9 +28,11 @@
 #
 # The files before CF1 (/home/zenoh_echo.txt: the router, the first line;
 # /home/asterism_node.txt: the node ID; /home/asterism_profile.toml: the
-# name) are read when config.toml does not exist, written into config.toml
-# once, and removed once it reads back the same; later copies of them are
-# ignored with a log line.
+# name) are read when config.toml does not exist and written into it once.
+# They are left where they are: an app-only flash updates the firmware (and
+# this file) but not the applications in storage, and the older applications
+# still read them. Once config.toml exists they are not read; an
+# application that resolves its settings names them in one log line.
 #
 # The name is the same in every application of the machine.
 # FmrbAsterism.save_name writes it and sets it in this VM's profile at once
@@ -131,9 +133,8 @@ module FmrbAsterism
     out
   end
 
-  # The files before CF1 -> config.toml, once. Returns what was moved ({}
-  # when there was nothing). The old files are removed only after the new
-  # one reads back the same, so a failed write leaves them for next time.
+  # The files before CF1 -> config.toml, once. Returns what was copied ({}
+  # when there was nothing). The old files stay (see the top of this file).
   def self.migrate
     c = {}
     found = []
@@ -148,25 +149,25 @@ module FmrbAsterism
     end
     return c if found.empty?
     write_config(c)
-    if read_config == c
-      found.each { |path| File.delete(path) rescue nil }
-      puts "asterism: moved #{found.join(', ')} into #{CONFIG_FILE}"
-    end
+    puts "asterism: copied #{found.join(', ')} into #{CONFIG_FILE}"
     c
   rescue => e
-    puts "asterism: could not move the old settings into #{CONFIG_FILE}: #{e.message}"
+    puts "asterism: could not copy the old settings into #{CONFIG_FILE}: #{e.message}"
     c || {}
   end
 
-  # The old files that are there although config.toml is (a copy put by an
-  # old procedure): named in a log line, not read.
+  # The old files that are there although config.toml is (left by the copy,
+  # or put by an old procedure): named in one log line, not read.
   def self.warn_old_files
+    found = []
     i = 0
     while i < OLD_FILES.size
       path = OLD_FILES[i][1]
-      puts "asterism: #{path} is not read (#{CONFIG_FILE} is)" if File.exist?(path)
+      found << path if File.exist?(path)
       i += 1
     end
+    return if found.empty?
+    puts "asterism: #{found.join(', ')} not read (#{CONFIG_FILE} is)"
   end
 
   # The file's text, or nil.

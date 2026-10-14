@@ -177,11 +177,16 @@ check("the old name is read", s.name, "Dave")
 check("config.toml is written", File.exist?(CONFIG), true)
 check("with all three", FmrbAsterism.read_config,
       { "router" => "tls/203.0.113.5:7447", "node" => "dave", "name" => "Dave" })
-check("the old files are removed", [OLD_ROUTER, OLD_NODE, OLD_NAME].map { |f| File.exist?(f) }, [false, false, false])
-check("the move is logged", log.include?("moved"), true)
+check("the old files stay (older apps in storage read them)",
+      [OLD_ROUTER, OLD_NODE, OLD_NAME].map { |f| File.exist?(f) }, [true, true, true])
+check("the copy is logged", log.include?("copied"), true)
 s, log = settings
 check("read again: the same router", s.router, "tls/203.0.113.5:7447")
-check("read again: nothing more is moved", log.include?("moved"), false)
+check("read again: nothing more is copied", log.include?("copied"), false)
+check("read again: the old files are named once", log.scan("not read").size, 1)
+File.write(OLD_ROUTER, "tcp/198.51.100.1:7447\n")
+s, = settings
+check("an old file changed later is not read", s.router, "tls/203.0.113.5:7447")
 
 puts "only the old router file"
 reset
@@ -196,7 +201,7 @@ put(CONFIG, "router = \"tcp/192.0.2.2:7447\"\n")
 put(OLD_ROUTER, "tcp/198.51.100.1:7447\n")
 s, log = settings
 check("config.toml wins", s.router, "tcp/192.0.2.2:7447")
-check("the old file is named in the log", log.include?("is not read"), true)
+check("the old file is named in the log", log.include?("not read"), true)
 check("and left where it is", File.exist?(OLD_ROUTER), true)
 
 puts "the credentials tar"
