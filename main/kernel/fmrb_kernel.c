@@ -30,6 +30,9 @@
 #include "fmrb_attr.h"
 #include "fmrb_gfx.h"
 #include "fmrb_gfx_cmd.h"
+#include "fmrb_secret_path.h"
+#include "fmrb_sysinfo.h"
+#include "fmrb_pin_assign.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -67,6 +70,11 @@ static fmrb_system_config_t g_system_config = {
 // startup_app, by path. External RAM: read once at boot and then only by the
 // kernel task, never from an ISR.
 FMRB_EXT_RAM_BSS_ATTR static char g_startup_app[FMRB_MAX_PATH_LEN];
+
+// Setup mode (doc/ruby_asterism/report/cf3.md): system_conf setup_mode, and
+// why this boot is one (fmrb_setup_reason_t). External RAM for the same reason.
+FMRB_EXT_RAM_BSS_ATTR static bool g_setup_capable;
+FMRB_EXT_RAM_BSS_ATTR static uint8_t g_setup_reason;
 
 // Parse keyboard_layout string to enum
 static fmrb_keymap_layout_t parse_keyboard_layout(const char* layout_str)
@@ -192,6 +200,63 @@ fmrb_err_t fmrb_kernel_load_audio_conf(void)
     return FMRB_OK;
 }
 
+// The button, read at boot for the setup mode: held means low on every one of
+// a few samples 10 ms apart (a bounce or a stray pulse is not a press).
+// The AtomS3R is the board the setup mode is for (no screen to type on): on
+// by default there, so a board whose /etc predates the key has it too.
+#if defined(FMRB_HW_ATOMS3R)
+#define SETUP_MODE_DEFAULT     true
+#else
+#define SETUP_MODE_DEFAULT     false
+#endif
+#define SETUP_BUTTON_SAMPLES   5
+#define SETUP_BUTTON_SAMPLE_MS 10
+
+static bool setup_button_held(void)
+{
+#if defined(FMRB_PIN_BUTTON_ENTER) && !defined(CONFIG_IDF_TARGET_LINUX)
+    const int pin = (int)FMRB_PIN_BUTTON_ENTER;
+    if (pin < 0) return false;
+    // The board pulls it up (10 kOhm); the internal pull-up only adds to it.
+    if (fmrb_hal_gpio_config(pin, FMRB_GPIO_MODE_INPUT, FMRB_GPIO_PULL_UP) != FMRB_OK) {
+        return false;
+    }
+    for (int i = 0; i < SETUP_BUTTON_SAMPLES; i++) {
+        if (i > 0) fmrb_task_delay_ms(SETUP_BUTTON_SAMPLE_MS);
+        if (fmrb_hal_gpio_get_level(pin) != 0) return false;
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+static bool wifi_settings_exist(void)
+{
+    fmrb_file_info_t info;
+    return fmrb_hal_file_stat(FMRB_WIFI_TOML_HOME_PATH, &info) == FMRB_OK ||
+           fmrb_hal_file_stat(FMRB_WIFI_TOML_ETC_PATH, &info) == FMRB_OK;
+}
+
+// Decided here, before the kernel task starts, so the kernel's Ruby (which
+// app to start) and boot's radio step (BLE or WiFi) see the same answer.
+static void decide_setup_mode(const toml_table_t *conf)
+{
+    g_setup_capable = fmrb_toml_get_bool(conf, "setup_mode", SETUP_MODE_DEFAULT);
+    g_setup_reason = FMRB_SETUP_NONE;
+    if (!g_setup_capable) return;
+    bool button = setup_button_held();
+    bool wifi = wifi_settings_exist();
+    fmrb_setup_reason_t reason = fmrb_setup_mode_reason(true, wifi, button);
+    g_setup_reason = (uint8_t)reason;
+    if (reason != FMRB_SETUP_NONE) {
+        g_system_config.boot_mode = FMRB_BOOT_MODE_SETUP;
+        FMRB_LOGI(TAG, "setup mode: %s", fmrb_setup_reason_text(reason));
+    } else {
+        FMRB_LOGI(TAG, "setup mode: not entered (WiFi settings present, button up)");
+    }
+}
+
 static bool read_system_config(void)
 {
     const char *config_path = "/etc/system_conf.toml";
@@ -311,6 +376,8 @@ static bool read_system_config(void)
             FMRB_LOGI(TAG, "Boot mode: app (%s, %d retries)",
                       g_startup_app[0] ? g_startup_app : "<none>", retries);
         }
+        // After boot_mode: the setup mode replaces whichever it was.
+        decide_setup_mode(conf);
     }
 
     // Mute and volume (doc/reference/audio_output.md). Read here, before the host task
@@ -1046,6 +1113,16 @@ const char* fmrb_kernel_startup_app(void)
     return g_startup_app;
 }
 
+bool fmrb_kernel_setup_capable(void)
+{
+    return g_setup_capable;
+}
+
+int fmrb_kernel_setup_reason(void)
+{
+    return (int)g_setup_reason;
+}
+
 const fmrb_system_config_t* fmrb_kernel_get_config(void)
 {
     return &g_system_config;
@@ -1059,12 +1136,13 @@ const fmrb_system_config_t* fmrb_kernel_get_config(void)
 #define HALT_MARGIN  2
 #define HALT_BG      0x80   // RGB332 dark red
 #define HALT_FG      0xFF
+#define SETUP_BG     0x02   // RGB332 dark blue
 
 // The halt canvas while one is up (0 = none). Only the kernel task touches it.
 // External RAM, like the startup_app path: internal RAM is the scarce one.
 FMRB_EXT_RAM_BSS_ATTR static fmrb_canvas_handle_t s_halt_canvas;
 
-fmrb_err_t fmrb_kernel_show_halt(const char *text)
+static fmrb_err_t show_screen(const char *text, uint8_t bg)
 {
     if (!text) return FMRB_ERR_INVALID_PARAM;
     fmrb_gfx_context_t gctx = fmrb_gfx_get_global_context();
@@ -1081,7 +1159,7 @@ fmrb_err_t fmrb_kernel_show_halt(const char *text)
     }
     s_halt_canvas = canvas;
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_clear(&cmd, canvas, HALT_BG);
+    fmrb_gfx_cmd_clear(&cmd, canvas, bg);
     fmrb_gfx_submit_unmetered(&cmd);
 
     int cols = (w - 2 * HALT_MARGIN) / HALT_CHAR_W;
@@ -1102,7 +1180,7 @@ fmrb_err_t fmrb_kernel_show_halt(const char *text)
         memcpy(line, p, (size_t)n);
         line[n] = '\0';
         fmrb_gfx_cmd_text(&cmd, canvas, HALT_MARGIN, (int16_t)y, line,
-                          HALT_FG, HALT_BG, false, FMRB_FONT_SIZE_SMALL, 0);
+                          HALT_FG, bg, false, FMRB_FONT_SIZE_SMALL, 0);
         fmrb_gfx_submit_unmetered(&cmd);
         y += HALT_LINE_H;
         p += n;
@@ -1111,6 +1189,44 @@ fmrb_err_t fmrb_kernel_show_halt(const char *text)
     fmrb_gfx_cmd_present(&cmd, canvas, 0, 0, 0);
     fmrb_gfx_submit_unmetered(&cmd);
     return FMRB_OK;
+}
+
+fmrb_err_t fmrb_kernel_show_halt(const char *text)
+{
+    return show_screen(text, HALT_BG);
+}
+
+fmrb_err_t fmrb_kernel_show_setup(void)
+{
+    // The BLE name is "Family-mruby-" and the last three bytes of the BT
+    // address (ble_task.c). Before BLE has synced the address comes from the
+    // efuse, which is the same one on a chip with its own radio.
+    char mac[18];
+    char name[24] = "Family-mruby-?";
+    if (fmrb_sysinfo_bt_mac_str(mac, sizeof(mac))) {
+        snprintf(name, sizeof(name), "Family-mruby-%c%c%c%c%c%c",
+                 mac[9], mac[10], mac[12], mac[13], mac[15], mac[16]);
+        for (char *c = name + 13; *c; c++) {
+            if (*c >= 'A' && *c <= 'F') *c = (char)(*c - 'A' + 'a');
+        }
+    }
+    FMRB_EXT_RAM_BSS_ATTR static char text[256];   // off the kernel task stack
+    snprintf(text, sizeof(text),
+             // 20 columns and 12 rows on the 128x128 screen.
+             "SETUP MODE\n"
+             "%s\n"
+             "\n"
+             "BLE name:\n"
+             "%s\n"
+             "\n"
+             "Connect the Family\n"
+             "mruby Console, write\n"
+             "the settings, then\n"
+             "press the button or\n"
+             "click Reboot.",
+             fmrb_setup_reason_text((fmrb_setup_reason_t)g_setup_reason), name);
+    FMRB_LOGI(TAG, "setup mode screen: BLE name %s", name);
+    return show_screen(text, SETUP_BG);
 }
 
 bool fmrb_kernel_clear_halt(void)

@@ -78,8 +78,34 @@ int ble_ui_state(void);
 fmrb_err_t ble_settings_window_set(uint32_t seconds);
 
 /**
- * @brief Seconds left in the settings window, 0 when it is closed.
- *        Allocation- and lock-free (the desktop polls it once a second).
+ * @brief Boot into the setup mode (doc/ruby_asterism/report/cf3.md).
+ *
+ * Starts BLE (ble_service_start) and holds the settings window open until
+ * the board restarts. While it is held the file service also takes the
+ * console's restart command, and a press of the button (active low; -1 for
+ * none) restarts the board. Called once by boot instead of starting WiFi.
+ *
+ * @return FMRB_OK when BLE is starting, FMRB_ERR_* otherwise
+ */
+fmrb_err_t ble_setup_mode_start(int button_gpio);
+
+/**
+ * @brief Give BLE's static memory to the heap for the rest of this boot.
+ *
+ * For a board that decides at boot whether BLE runs (the setup mode): on a
+ * normal boot the controller and NimBLE never start, so their data and BSS
+ * and the ROM controller's DRAM become heap. BLE cannot start again until
+ * the next boot; ble_service_start() refuses after this.
+ *
+ * @return FMRB_OK, FMRB_ERR_INVALID_STATE when BLE has been started,
+ *         FMRB_ERR_NOT_SUPPORTED without BLE
+ */
+fmrb_err_t ble_release_memory(void);
+
+/**
+ * @brief Seconds left in the settings window, 0 when it is closed, and
+ *        UINT32_MAX while the setup mode holds it open. Allocation- and
+ *        lock-free (the desktop polls it once a second).
  */
 uint32_t ble_settings_window_left(void);
 

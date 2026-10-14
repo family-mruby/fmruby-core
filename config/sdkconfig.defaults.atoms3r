@@ -1,9 +1,10 @@
 # M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8: 8MB quad flash, 8MB octal PSRAM).
 # Derived from sdkconfig.defaults.n16r8 (Retro); the differences are the
 # partition table, the flash size, the console on the S3's own
-# USB-Serial-JTAG, no USB host and no Bluetooth (doc/headless_s3/report/h0.md
-# section 5, approved 2026-10-12). Flash QIO 80 MHz and octal PSRAM 80 MHz
-# were measured on the device.
+# USB-Serial-JTAG and no USB host (doc/headless_s3/report/h0.md section 5,
+# approved 2026-10-12). BLE is in for the setup mode only (approved
+# 2026-10-14). Flash QIO 80 MHz and octal PSRAM 80 MHz were measured on the
+# device.
 
 # Performance
 
@@ -47,9 +48,25 @@ CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
 # No software coexistence: there is no second radio here.
 CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
 
-# No Bluetooth: WiFi is how this board is reached (and the S3 runs one radio
-# at a time anyway). main/drivers/ble/ble_none.c answers the BLE API.
-CONFIG_BT_ENABLED=n
+# BLE for the setup mode only (doc/ruby_asterism/report/cf3.md): the board
+# boots either BLE-only (setup) or WiFi-only (normal), decided at boot.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_SVC_GAP_DEVICE_NAME="FamilyMruby"
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_50_FEATURE_SUPPORT=n
+CONFIG_BT_NIMBLE_PINNED_TO_CORE_1=y
+CONFIG_NIMBLE_PINNED_TO_CORE_1=y
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
+# Controller code in flash instead of ROM + IRAM: IRAM shares the internal
+# RAM address space, so the IRAM copy costs about 13 KB in the normal mode,
+# where BLE never starts.
+CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY=y
 
 # SPI-RAM
 CONFIG_SPIRAM=y

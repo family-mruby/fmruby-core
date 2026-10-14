@@ -67,10 +67,11 @@ function fakeBoard() {
   // An obvious fake: no real key is ever written into a test.
   files.set("/etc/secrets.toml", enc.encode('# Written by rake\n[openai]\napi_key = "sk-test-etc-0000000000000000"\n'));
 
-  const board = { files, dirs, windowUntil: 0, commands: [], sent: [] };
+  const board = { files, dirs, windowUntil: 0, setup: false, rebooted: false, commands: [], sent: [] };
   window.__board = board;
 
-  const left = () => Math.max(0, Math.ceil((board.windowUntil - Date.now()) / 1000));
+  // The setup mode holds the window open (reported as a long time left).
+  const left = () => board.setup ? 86399 : Math.max(0, Math.ceil((board.windowUntil - Date.now()) / 1000));
   const settingsPath = (p) => {
     const s = p.split("/").filter(x => x);
     return s[0] === "home" && s[1] === "asterism";
@@ -105,8 +106,15 @@ function fakeBoard() {
       const src = files.has("/home/wifi.toml") ? "/home/wifi.toml" : files.has("/etc/wifi.toml") ? "/etc/wifi.toml" : "";
       const text = src ? new TextDecoder().decode(files.get(src)) : "";
       const ssid = src ? (settingsTomlValue(text, "ssid") || "") : "";
-      return [{ ok: true, open: left() > 0, left: left(),
-                wifi: { src, on: /enable\s*=\s*true/.test(text), ssid, conn: true, ip: "192.0.2.7" } }];
+      const meta = { ok: true, open: left() > 0, left: left() };
+      if (board.setup) { meta.setup = true; meta.until_restart = true; }
+      meta.wifi = { src, on: /enable\s*=\s*true/.test(text), ssid, conn: !board.setup, ip: board.setup ? "" : "192.0.2.7" };
+      return [meta];
+    }
+    case 0x18: {  // REBOOT, setup mode only
+      if (!board.setup) return [{ ok: false, denied: true, err: "The board restarts from the console only in the setup mode" }];
+      board.rebooted = true;
+      return [{ ok: true, restart_ms: 500 }];
     }
     case 0x21: {  // GET
       if (isWifi(params.path) && left() === 0) return [denyClosed];
@@ -399,6 +407,26 @@ await page.waitForFunction(() => document.getElementById("setWindow").textConten
 check("closed again: buttons disabled", await disabled("[data-needs-settings]"));
 check("closed again: the password is forgotten", (await page.inputValue("#setPassword")) === "");
 check("closed again: the API key is forgotten", (await page.inputValue("#setApiKey")) === "");
+
+// ---- the setup mode (doc/ruby_asterism/report/cf3.md) ----
+check("normal: no Reboot button", await page.evaluate(() => document.getElementById("setReboot").hidden));
+const rebootRefused = await page.evaluate(async () => (await sendCommand(CMD_REBOOT, {})).meta);
+check("normal: the board refuses a reboot", rebootRefused.ok === false && rebootRefused.denied === true, JSON.stringify(rebootRefused));
+await page.evaluate(() => { window.__board.setup = true; });
+await page.waitForFunction(() => document.getElementById("setWindow").textContent.includes("setup mode"),
+                           null, { timeout: 8000 });
+check("setup: says until it restarts", (await text("setWindow")).includes("until it restarts"), await text("setWindow"));
+check("setup: no countdown", !/\d:\d\d left/.test(await text("setWindow")), await text("setWindow"));
+check("setup: write buttons enabled", !(await disabled("[data-needs-settings]")));
+check("setup: Reboot button shown", !(await page.evaluate(() => document.getElementById("setReboot").hidden)));
+await page.screenshot({ path: join(shots, "settings_setup.png"), fullPage: true });
+await page.click("#setReboot");
+await page.waitForFunction(() => document.getElementById("setRebootMsg").textContent.includes("restarting"),
+                           null, { timeout: 8000 });
+check("setup: Reboot reaches the board", await page.evaluate(() => window.__board.rebooted));
+await page.evaluate(() => { window.__board.setup = false; });
+await page.waitForFunction(() => document.getElementById("setReboot").hidden, null, { timeout: 8000 });
+check("after setup: Reboot button hidden again", await page.evaluate(() => document.getElementById("setReboot").hidden));
 
 // The files the console's other tabs use are unaffected.
 const plain = await page.evaluate(async () => new TextDecoder().decode(await deviceReadFile("/home/notes.txt")));

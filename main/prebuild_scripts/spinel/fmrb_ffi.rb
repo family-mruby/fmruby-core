@@ -58,11 +58,12 @@ module FmrbSpx
   ffi_func :fmrb_spx_sync_file_count, [], :int
   ffi_func :fmrb_spx_sync_file_entry, [:int], :binstr
   ffi_func :fmrb_spx_sync_file, [:str, :int, :str, :int], :int
-  ffi_func :fmrb_spx_boot_mode, [], :int            # system_conf boot_mode (0 desktop, 1 app)
+  ffi_func :fmrb_spx_boot_mode, [], :int            # boot_mode (0 desktop, 1 app, 2 setup)
   ffi_func :fmrb_spx_startup_app_retries, [], :int
   ffi_func :fmrb_spx_startup_app, [], :binstr        # startup_app path ("" when none)
   ffi_func :fmrb_spx_show_halt, [:str, :int], :int   # the single-app give-up screen
   ffi_func :fmrb_spx_clear_halt, [], :int            # take that screen down (1 = there was one)
+  ffi_func :fmrb_spx_show_setup, [], :int            # the setup mode's screen
   ffi_func :fmrb_spx_screen_width, [], :int          # what a fullscreen window gets
   ffi_func :fmrb_spx_screen_height, [], :int
   ffi_func :fmrb_spx_display_width, [], :int         # the whole panel (the halt screen's width)

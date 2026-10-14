@@ -342,7 +342,7 @@ static mrb_value mrb_kernel_update_window_position(mrb_state *mrb, mrb_value sel
 }
 
 // Single-app boot (system_conf boot_mode / startup_app / startup_app_retries).
-// FmrbKernel#_boot_mode -> 0 desktop, 1 app (fmrb_boot_mode_t)
+// FmrbKernel#_boot_mode -> 0 desktop, 1 app, 2 setup (fmrb_boot_mode_t)
 static mrb_value mrb_kernel_boot_mode(mrb_state *mrb, mrb_value self)
 {
     const fmrb_system_config_t *conf = fmrb_kernel_get_config();
@@ -391,6 +391,12 @@ static mrb_value mrb_kernel_show_halt(mrb_state *mrb, mrb_value self)
     const char *text;
     mrb_get_args(mrb, "z", &text);
     return mrb_bool_value(fmrb_kernel_show_halt(text) == FMRB_OK);
+}
+
+// FmrbKernel#_show_setup() -> true/false (the setup mode's screen)
+static mrb_value mrb_kernel_show_setup(mrb_state *mrb, mrb_value self)
+{
+    return mrb_bool_value(fmrb_kernel_show_setup() == FMRB_OK);
 }
 
 // FmrbKernel#_clear_halt() -> true when a halt screen was taken down
@@ -674,6 +680,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_startup_app", mrb_kernel_startup_app, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_show_halt", mrb_kernel_show_halt, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_clear_halt", mrb_kernel_clear_halt, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_show_setup", mrb_kernel_show_setup, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_screen_width", mrb_kernel_screen_width, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_screen_height", mrb_kernel_screen_height, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_display_width", mrb_kernel_display_width, MRB_ARGS_NONE());

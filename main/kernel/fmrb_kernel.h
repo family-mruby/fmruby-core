@@ -28,6 +28,8 @@ typedef enum {
 typedef enum {
     FMRB_BOOT_MODE_DESKTOP = 0,  // "desktop": the desktop, launcher and windows
     FMRB_BOOT_MODE_APP = 1,      // "app": startup_app alone, full screen
+    FMRB_BOOT_MODE_SETUP = 2,    // setup mode: BLE only, no app (not a system_conf
+                                 // value; chosen at boot, see fmrb_kernel_setup_reason)
 } fmrb_boot_mode_t;
 
 /**
@@ -76,6 +78,26 @@ const fmrb_system_config_t* fmrb_kernel_get_config(void);
  * Kept apart from fmrb_system_config_t so the path lives in external RAM.
  */
 const char* fmrb_kernel_startup_app(void);
+
+/**
+ * @brief Whether system_conf has setup_mode = true (the board may boot into
+ *        the setup mode, and starts BLE only then).
+ */
+bool fmrb_kernel_setup_capable(void);
+
+/**
+ * @brief Why this boot is the setup mode (an fmrb_setup_reason_t,
+ *        fmrb_secret_path.h); FMRB_SETUP_NONE for every other boot.
+ *        boot_mode is FMRB_BOOT_MODE_SETUP exactly when it is not NONE.
+ */
+int fmrb_kernel_setup_reason(void);
+
+/**
+ * @brief The setup mode's screen: what the board is waiting for and how to
+ *        leave. Drawn the way fmrb_kernel_show_halt() draws, in other colours.
+ *        Kernel task only.
+ */
+fmrb_err_t fmrb_kernel_show_setup(void);
 
 /**
  * @brief Cover the screen with a message and leave it there.

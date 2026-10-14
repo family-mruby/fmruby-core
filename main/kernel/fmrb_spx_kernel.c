@@ -358,6 +358,11 @@ int fmrb_spx_show_halt(const char *text, int len)
     return fmrb_kernel_show_halt(buf) == FMRB_OK ? 1 : 0;
 }
 
+int fmrb_spx_show_setup(void)
+{
+    return fmrb_kernel_show_setup() == FMRB_OK ? 1 : 0;
+}
+
 int fmrb_spx_clear_halt(void)
 {
     return fmrb_kernel_clear_halt() ? 1 : 0;

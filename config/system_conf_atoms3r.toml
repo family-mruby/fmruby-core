@@ -10,10 +10,17 @@ default_user_app_width = 128
 default_user_app_height = 128
 display_mode = "spi_direct" # drawn by this chip on its SPI panel (ntsc_ipc / spi_direct / headless / tab5_dsi / sdl2 / atom_display)
 debug_mode = true
-# No Bluetooth in this firmware (config/sdkconfig.defaults.atoms3r).
+# BLE runs only in the setup mode (below); every other boot is WiFi alone.
 ble_auto_start = false
 # WiFi is how this board is reached (needs ssid/password in wifi.toml).
 wifi_auto_start = true
+# Setup mode (doc/ruby_asterism/report/cf3.md): with no WiFi settings
+# (/home/wifi.toml, /etc/wifi.toml), or with the button held at power-on,
+# the board starts BLE alone and takes its connection settings from the
+# Family mruby Console until it restarts. No app runs then. On a normal boot
+# BLE never starts and its memory goes to the heap. Default true on this
+# board, false on every other.
+setup_mode = true
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5
 wheel_lines = 3

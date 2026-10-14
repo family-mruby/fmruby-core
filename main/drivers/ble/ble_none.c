@@ -36,6 +36,17 @@ fmrb_err_t ble_settings_window_set(uint32_t seconds)
     return FMRB_ERR_NOT_SUPPORTED;
 }
 
+fmrb_err_t ble_setup_mode_start(int button_gpio)
+{
+    (void)button_gpio;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+fmrb_err_t ble_release_memory(void)
+{
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
 uint32_t ble_settings_window_left(void)
 {
     return 0;

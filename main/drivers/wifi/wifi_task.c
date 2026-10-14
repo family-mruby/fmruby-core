@@ -28,6 +28,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_toml.h"
 #include "fmrb_hal_file.h"
+#include "fmrb_secret_path.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -54,8 +55,10 @@ extern uint8_t is_transport_tx_ready(void);
 
 static const char *TAG = "wifi";
 
-#define WIFI_TOML_HOME_PATH   "/home/wifi.toml"
-#define WIFI_TOML_ETC_PATH    "/etc/wifi.toml"
+// The order lives with the secret-file rules (the BLE console and the setup
+// mode read the same two files).
+#define WIFI_TOML_HOME_PATH   FMRB_WIFI_TOML_HOME_PATH
+#define WIFI_TOML_ETC_PATH    FMRB_WIFI_TOML_ETC_PATH
 #define WIFI_RECONNECT_MIN_MS 1000
 #define WIFI_RECONNECT_MAX_MS 30000
 

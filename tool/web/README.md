@@ -56,6 +56,13 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
   `{"ok":true,"open":true,"left":287,"wifi":{...}}`) と、今までの LS / GET / PUT / RM / MKDIR。
   断るときの応答は `{"ok":false,"denied":true,...}` で、コンソールはやり直さない。
   古いファームでは `0x17` が知らないコマンドになり、画面は「ファームが古い」と出す。
+- **設定のモード (CF3、AtomS3R)**: 画面の操作が無い端末は、WiFi の設定が無いか
+  ボタンを押しながら起動すると BLE だけで起動し、受け付ける時間を起動し直すまで
+  開けたままにする。`0x17` の答えに `"setup":true,"until_restart":true` が付き
+  (`left` は大きな値)、画面は残り時間の代わりに「until it restarts」と出して
+  「Reboot」の押しボタンを出す。押すと `0x18` を送り、端末は答えを返してから
+  起動し直す (普段のモード)。`0x18` は設定のモードのときだけ受け付ける
+  (doc/ruby_asterism/report/cf3.md)。
 
 ## エディタの型支援 (P7)
 
