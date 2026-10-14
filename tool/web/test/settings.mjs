@@ -5,8 +5,8 @@
  * Web Bluetooth cannot be reached from a test, so navigator.bluetooth is
  * replaced by a small fake that speaks the file service's framing (COBS +
  * CRC32, the same functions the page uses) over an in-memory file system,
- * with the board's rules: the .tar is never read, the WiFi file only while
- * the settings window is open, settings are written only while it is open,
+ * with the board's rules: the .tar is never read, the WiFi file and the API
+ * key file (secrets.toml) only while the settings window is open, settings are written only while it is open,
  * and CMD_SETTINGS carries a WiFi summary without the password. The rules themselves are
  * tested in C (rake secret:test); this covers the page -- what it shows,
  * what it writes, and that it does not retry a refusal.
@@ -64,6 +64,8 @@ function fakeBoard() {
             enc.encode('# This machine\'s Asterism settings (doc/ruby_asterism)\nrouter = "tls/203.0.113.5:7447"\nname = "nano4"\n'));
   files.set("/home/asterism/old-board.tar", new Uint8Array([1, 2, 3]));
   files.set("/home/notes.txt", enc.encode("hello"));
+  // An obvious fake: no real key is ever written into a test.
+  files.set("/etc/secrets.toml", enc.encode('# Written by rake\n[openai]\napi_key = "sk-test-etc-0000000000000000"\n'));
 
   const board = { files, dirs, windowUntil: 0, commands: [], sent: [] };
   window.__board = board;
@@ -74,7 +76,7 @@ function fakeBoard() {
     return s[0] === "home" && s[1] === "asterism";
   };
   const writable = (p) => (!isSecretPath(p) && !settingsPath(p)) || left() > 0;
-  const isWifi = (p) => /^\/(home|etc)\/wifi\.toml/.test(p);
+  const isWifi = (p) => /^\/(home|etc)\/(wifi|secrets)\.toml/.test(p);
   const denyClosed = { ok: false, denied: true, closed: true,
                        err: "The board is not accepting settings: open BLE Setup in its menu" };
 
@@ -224,6 +226,9 @@ await page.waitForFunction(() => document.getElementById("fileList").textContent
 const etcRow = await page.evaluate(() => document.getElementById("fileList").innerHTML);
 check("files: /etc/wifi.toml is marked secret", etcRow.includes("secret-tag"), etcRow.slice(0, 200));
 check("files: no download or edit button on a secret", !etcRow.includes(">DL<") && !etcRow.includes(">Edit<"));
+check("files: /etc/secrets.toml is marked secret", await page.evaluate(() =>
+  isSecretPath("/etc/secrets.toml") && isSecretPath("/home/secrets.toml") && isSecretPath("/flash/home/secrets.toml.part") &&
+  !isSecretPath("/home/services.toml") && !isSecretPath("/home/sub/secrets.toml")));
 
 // A GET of a secret is refused, and the refusal is not retried.
 const getResult = await page.evaluate(async () => {
@@ -232,6 +237,10 @@ const getResult = await page.evaluate(async () => {
   catch (e) { return e.message + "|" + (window.__board.commands.length - before); }
 });
 check("GET of the WiFi file is refused once while closed", getResult.endsWith("|1") && getResult.includes("not accepting"), getResult);
+const keyGet = await page.evaluate(async () => {
+  try { await deviceReadFile("/etc/secrets.toml"); return "read"; } catch (e) { return e.message; }
+});
+check("GET of the key file is refused while closed", keyGet.includes("not accepting"), keyGet);
 
 // ---- Settings tab, window closed ----
 await page.click("#tabSettings");
@@ -246,6 +255,12 @@ check("password field empty, said to be set", (await page.inputValue("#setPasswo
       (await text("setPwNow")) === "set (not shown)", await text("setPwNow"));
 check("the password never sent while closed",
       await page.evaluate(() => window.__board.sent.filter(r => !r.open).every(r => !r.text.includes("secret-old"))));
+check("closed: the API key is said to be set, from /etc", (await text("setKeyNow")).includes("set (the firmware's /etc/secrets.toml"),
+      await text("setKeyNow"));
+check("closed: the API key field is empty", (await page.inputValue("#setApiKey")) === "" &&
+      (await text("setKeyLoaded")) === "set (not shown)", await text("setKeyLoaded"));
+check("the API key never sent while closed",
+      await page.evaluate(() => window.__board.sent.filter(r => !r.open).every(r => !r.text.includes("sk-test-etc"))));
 check("shows the current .tar by name", (await text("setTarNow")).includes("old-board.tar"), await text("setTarNow"));
 check("fills the Asterism form from config.toml",
       (await page.inputValue("#setRouter")) === "tls/203.0.113.5:7447" && (await page.inputValue("#setName")) === "nano4");
@@ -276,6 +291,49 @@ const tarGet = await page.evaluate(async () => {
   try { await deviceReadFile("/home/asterism/old-board.tar"); return "read"; } catch (e) { return e.message; }
 });
 check("open: the .tar is still not read", tarGet.includes("holds a key"), tarGet);
+
+await page.waitForFunction(() => document.getElementById("setApiKey").value !== "", null, { timeout: 8000 }).catch(() => {});
+check("open: the current API key is loaded", (await page.inputValue("#setApiKey")) === "sk-test-etc-0000000000000000" &&
+      (await text("setKeyLoaded")).startsWith("loaded"), await text("setKeyLoaded"));
+check("open: the key field is hidden until show", (await page.getAttribute("#setApiKey", "type")) === "password");
+await page.check("#setKeyShow");
+check("open: show makes it visible", (await page.getAttribute("#setApiKey", "type")) === "text");
+await page.uncheck("#setKeyShow");
+
+// An empty key field keeps the loaded key: the /etc key is copied to /home.
+await page.fill("#setApiKey", "");
+await page.click("text=Write API key");
+await page.waitForFunction(() => document.getElementById("setKeyMsg").textContent.startsWith("API key written"));
+check("empty key keeps the loaded one", (await fileText("/home/secrets.toml")) ===
+  "# This machine's secrets, written by the Family mruby Console.\n" +
+  "# Kept like the WiFi password: never read over HTTP, over BLE only in BLE Setup.\n" +
+  "[openai]\napi_key = \"sk-test-etc-0000000000000000\"\n", JSON.stringify(await fileText("/home/secrets.toml")));
+await page.waitForFunction(() => document.getElementById("setKeyNow").textContent === "set (/home/secrets.toml)",
+                           null, { timeout: 8000 }).catch(() => {});
+check("now shows the key from /home", (await text("setKeyNow")) === "set (/home/secrets.toml)", await text("setKeyNow"));
+
+// A new key replaces api_key and keeps the rest of the file.
+await page.evaluate(() => {
+  window.__board.files.set("/home/secrets.toml", new TextEncoder().encode(
+    "# mine\n[other]\ntoken = \"t-0\"\n\n[openai]\n# old one below\napi_key = \"sk-test-old-2222\"\n"));
+});
+await page.fill("#setApiKey", "sk-test-new-1111111111111111");
+await page.click("text=Write API key");
+await page.waitForFunction(() => document.getElementById("setKeyMsg").textContent.startsWith("API key written"));
+check("a new key keeps the other lines", (await fileText("/home/secrets.toml")) ===
+  "# mine\n[other]\ntoken = \"t-0\"\n\n[openai]\n# old one below\napi_key = \"sk-test-new-1111111111111111\"\n",
+  JSON.stringify(await fileText("/home/secrets.toml")));
+await page.fill("#setApiKey", "sk-test with space");
+await page.click("text=Write API key");
+check("a key with a space is refused in the page", (await text("setKeyMsg")).includes("space"), await text("setKeyMsg"));
+check("secrets.toml writer and reader", await page.evaluate(() => {
+  const a = settingsSecretsToml("[other]\nx = \"1\"\n", "sk-test-a");
+  const b = settingsSecretsToml("[openai]\nmodel = \"m\"\n[z]\n", "sk-test-b");
+  return settingsSecretsValue(a, "openai", "api_key") === "sk-test-a" && a.startsWith("[other]\nx = \"1\"\n") &&
+         b === "[openai]\napi_key = \"sk-test-b\"\nmodel = \"m\"\n[z]\n" &&
+         settingsSecretsValue("api_key = \"no\"\n", "openai", "api_key") === null &&
+         settingsCheckApiKey("") !== "" && settingsCheckApiKey("sk-\"x") !== "" && settingsCheckApiKey("sk-test-ok") === "";
+}));
 
 // An empty password keeps the one loaded from the board.
 await page.fill("#setPassword", "");
@@ -340,6 +398,7 @@ await page.waitForFunction(() => document.getElementById("setWindow").textConten
                            null, { timeout: 8000 });
 check("closed again: buttons disabled", await disabled("[data-needs-settings]"));
 check("closed again: the password is forgotten", (await page.inputValue("#setPassword")) === "");
+check("closed again: the API key is forgotten", (await page.inputValue("#setApiKey")) === "");
 
 // The files the console's other tabs use are unaffected.
 const plain = await page.evaluate(async () => new TextDecoder().decode(await deviceReadFile("/home/notes.txt")));

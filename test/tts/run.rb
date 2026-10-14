@@ -370,6 +370,73 @@ check("the VOICEVOX key did not change when the cloud one was added") do
   vv.cache_key("あさです", 1) == ("%08x%08x" % [h, seed.bytesize])
 end
 
+# ---- the key ---------------------------------------------------------------
+# Obvious fakes only: no real key is ever written into a test.
+
+FAKE_KEY = "sk-test-0000000000000000"
+
+class LogCtx
+  attr_reader :lines
+  def initialize; @lines = []; end
+  def log(msg); @lines << msg; nil; end
+end
+
+sec = TtsService.new
+eq("secrets: [openai] api_key",
+   sec.secrets_value("# c\n[openai]\napi_key = \"#{FAKE_KEY}\"\n", "openai", "api_key"), FAKE_KEY)
+eq("secrets: a literal string",
+   sec.secrets_value("[openai]\napi_key='#{FAKE_KEY}'\n", "openai", "api_key"), FAKE_KEY)
+eq("secrets: another table's api_key is not taken",
+   sec.secrets_value("[other]\napi_key = \"x-1\"\n[openai]\n", "openai", "api_key"), nil)
+eq("secrets: a key above every table is not taken",
+   sec.secrets_value("api_key = \"x-1\"\n[openai]\nmodel = \"m\"\n", "openai", "api_key"), nil)
+eq("secrets: a commented-out key is not taken",
+   sec.secrets_value("[openai]\n# api_key = \"x-1\"\n", "openai", "api_key"), nil)
+eq("secrets: api_key2 is another key",
+   sec.secrets_value("[openai]\napi_key2 = \"x-1\"\n", "openai", "api_key"), nil)
+eq("secrets: no file", sec.secrets_value(nil, "openai", "api_key"), nil)
+
+# read_api_key with the two files stood in for.
+def key_service(files)
+  svc = TtsService.new
+  ctx = LogCtx.new
+  svc.instance_variable_set(:@ctx, ctx)
+  svc.define_singleton_method(:read_text) { |path| files[path] }
+  [svc, ctx]
+end
+
+home_text = "[openai]\napi_key = \"#{FAKE_KEY}-home\"\n"
+etc_text = "[openai]\napi_key = \"#{FAKE_KEY}-etc\"\n"
+
+svc, ctx = key_service({ "/home/secrets.toml" => home_text, "/etc/secrets.toml" => etc_text })
+eq("key: /home/secrets.toml wins", svc.read_api_key({}), "#{FAKE_KEY}-home")
+check("key: the log says where, not what") do
+  ctx.lines == ["tts: api_key from /home/secrets.toml"] && ctx.lines.none? { |l| l.include?(FAKE_KEY) }
+end
+
+svc, ctx = key_service({ "/etc/secrets.toml" => etc_text })
+eq("key: then /etc/secrets.toml", svc.read_api_key(nil), "#{FAKE_KEY}-etc")
+
+svc, ctx = key_service({ "/etc/secrets.toml" => etc_text })
+eq("key: secrets.toml wins over services.toml",
+   svc.read_api_key({ "api_key" => "#{FAKE_KEY}-list" }), "#{FAKE_KEY}-etc")
+check("key: a key left in services.toml is still reported") do
+  ctx.lines.any? { |l| l.include?("move it to /home/secrets.toml") } &&
+    ctx.lines.none? { |l| l.include?(FAKE_KEY) }
+end
+
+svc, ctx = key_service({})
+eq("key: services.toml alone still works", svc.read_api_key({ "api_key" => "#{FAKE_KEY}-list" }),
+   "#{FAKE_KEY}-list")
+check("key: and asks for the move, without the value") do
+  ctx.lines.size == 2 && ctx.lines[0].include?("move it to /home/secrets.toml") &&
+    ctx.lines.none? { |l| l.include?(FAKE_KEY) }
+end
+
+svc, ctx = key_service({ "/home/secrets.toml" => "[openai]\napi_key = \"\"\n" })
+eq("key: none anywhere", svc.read_api_key({ "api_key" => "" }), nil)
+check("key: nothing logged when there is no key") { ctx.lines.empty? }
+
 if $failures > 0
   puts "tts: #{$failures} failure(s)"
   exit 1

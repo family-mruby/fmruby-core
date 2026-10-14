@@ -76,12 +76,16 @@ interval_hours = 24
 #   timeout_ms = 3000
 #
 # Without a PC to run VOICEVOX on, give it an OpenAI key instead and it
-# synthesises straight from the cloud (cache first, as always). The key sits
-# here in plain text -- this is a personal machine, and the development build
-# serves /home over HTTP anyway.
+# synthesises straight from the cloud (cache first, as always). The key does
+# NOT go in this list (which the remote file services hand out): put it in
+# /home/secrets.toml, which is kept like the WiFi password --
+#
+#   [openai]
+#   api_key = "sk-..."
+#
+# -- and only the rest here:
 #
 #   [tts.config]
-#   api_key = "sk-..."
 #   cloud_model = "gpt-4o-mini-tts"   # default
 #   cloud_voice = "alloy"             # default
 #   cloud_timeout_ms = 10000          # default; synthesis takes seconds

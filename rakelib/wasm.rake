@@ -225,8 +225,9 @@ namespace :wasm do
        File.join(staging, "etc/system_conf.toml")
     cp File.join(ROOT_DIR, "config/system_conf_wasm.toml"),
        File.join(staging, "etc/system_conf.factory.toml")
-    # System service list. flash/etc/services.toml is generated (and on a dev
-    # machine carries the tts key), so it is not tracked and never staged --
+    # System service list. flash/etc/services.toml is generated, so it is not
+    # tracked and never staged (the tts key is in flash/etc/secrets.toml, which
+    # is not tracked either and has no place in a browser bundle at all) --
     # the browser gets its own list from config/, holding only the services
     # that can work without a network.
     cp File.join(ROOT_DIR, "config/services_wasm.toml"),
@@ -281,7 +282,8 @@ namespace :wasm do
     # wolf and then gets ignored.
     cred = /^\s*(?:password|passwd|psk|ssid|api_key|apikey|key|token|secret)\s*=\s*"([^"]+)"/i
     ["flash/etc/wifi.toml", "config/wifi.toml", "config/wifi_p4.toml",
-     "flash/etc/services.toml"].each do |rel|
+     "flash/etc/services.toml", "flash/etc/secrets.toml",
+     "flash/home/secrets.toml"].each do |rel|
       path = File.join(ROOT_DIR, rel)
       next unless File.exist?(path)
       File.read(path).scan(cred) { |(v)| out << v }
@@ -322,6 +324,11 @@ namespace :wasm do
       # Asterism's message types, copied from the pinned asterism checkout.
       next if f.start_with?("/flash/usr/share/asterism/msgs/")
       problems << "packed file is neither tracked nor a known generated one: #{f}"
+    end
+    # The secrets file by name, whatever else let it in: it holds keys and the
+    # browser has nothing to do with one.
+    packed.select { |f| File.basename(f).start_with?("secrets.toml") }.each do |f|
+      problems << "secrets file packed into the public bundle: #{f}"
     end
 
     # 3. The blob itself, against this machine's real secrets. Byte search, so

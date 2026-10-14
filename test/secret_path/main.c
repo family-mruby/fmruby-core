@@ -29,7 +29,7 @@ static const char *cls_name(fmrb_path_class_t c)
     switch (c) {
     case FMRB_PATH_PLAIN: return "plain";
     case FMRB_PATH_SETTINGS: return "settings";
-    case FMRB_PATH_WIFI: return "wifi";
+    case FMRB_PATH_PASSWORD: return "password";
     case FMRB_PATH_SECRET: return "secret";
     }
     return "?";
@@ -44,22 +44,31 @@ static void expect_class(const char *path, fmrb_path_class_t want)
 static void test_classify(void)
 {
     // The secrets.
-    expect_class("/home/wifi.toml", FMRB_PATH_WIFI);
-    expect_class("/etc/wifi.toml", FMRB_PATH_WIFI);
-    expect_class("/home/wifi.toml.part", FMRB_PATH_WIFI);
+    expect_class("/home/wifi.toml", FMRB_PATH_PASSWORD);
+    expect_class("/etc/wifi.toml", FMRB_PATH_PASSWORD);
+    expect_class("/home/wifi.toml.part", FMRB_PATH_PASSWORD);
     expect_class("/home/asterism/fmruby-aaaaaa.tar", FMRB_PATH_SECRET);
     expect_class("/home/asterism/other.key", FMRB_PATH_SECRET);
     expect_class("/home/asterism/config.toml.part", FMRB_PATH_SECRET);
     expect_class("/home/asterism/sub/x.tar", FMRB_PATH_SECRET);
+    // The API keys (the tts key), kept like the WiFi password.
+    expect_class("/home/secrets.toml", FMRB_PATH_PASSWORD);
+    expect_class("/etc/secrets.toml", FMRB_PATH_PASSWORD);
+    expect_class("/home/secrets.toml.part", FMRB_PATH_PASSWORD);
+    expect_class("/etc/secrets.toml.part", FMRB_PATH_PASSWORD);
 
     // The same files under other spellings the file HAL accepts.
-    expect_class("home/wifi.toml", FMRB_PATH_WIFI);
-    expect_class("//home//wifi.toml", FMRB_PATH_WIFI);
-    expect_class("/home/./wifi.toml", FMRB_PATH_WIFI);
-    expect_class("/./etc/wifi.toml/", FMRB_PATH_WIFI);
-    expect_class("/flash/home/wifi.toml", FMRB_PATH_WIFI);
-    expect_class("/flash/etc/wifi.toml", FMRB_PATH_WIFI);
+    expect_class("home/wifi.toml", FMRB_PATH_PASSWORD);
+    expect_class("//home//wifi.toml", FMRB_PATH_PASSWORD);
+    expect_class("/home/./wifi.toml", FMRB_PATH_PASSWORD);
+    expect_class("/./etc/wifi.toml/", FMRB_PATH_PASSWORD);
+    expect_class("/flash/home/wifi.toml", FMRB_PATH_PASSWORD);
+    expect_class("/flash/etc/wifi.toml", FMRB_PATH_PASSWORD);
     expect_class("/flash/home/asterism/a.tar", FMRB_PATH_SECRET);
+    expect_class("/flash/home/secrets.toml", FMRB_PATH_PASSWORD);
+    expect_class("/flash/etc/secrets.toml", FMRB_PATH_PASSWORD);
+    expect_class("//etc/./secrets.toml/", FMRB_PATH_PASSWORD);
+    expect_class("/home/x/../secrets.toml", FMRB_PATH_SECRET);
     expect_class("/home/x/../wifi.toml", FMRB_PATH_SECRET);
     expect_class("/app/../home/asterism/a.tar", FMRB_PATH_SECRET);
     expect_class("/app/..", FMRB_PATH_SECRET);
@@ -86,6 +95,11 @@ static void test_classify(void)
     expect_class("/flash/flash/home/wifi.toml", FMRB_PATH_PLAIN);
     expect_class("/app/..x", FMRB_PATH_PLAIN);
     expect_class("/home/.wifi.toml", FMRB_PATH_PLAIN);
+    expect_class("/home/my_secrets.toml", FMRB_PATH_PLAIN);
+    expect_class("/home/sub/secrets.toml", FMRB_PATH_PLAIN);
+    expect_class("/app/secrets.toml", FMRB_PATH_PLAIN);
+    expect_class("/etc/services.toml", FMRB_PATH_PLAIN);
+    expect_class("/home/services.toml", FMRB_PATH_PLAIN);
 }
 
 static void test_contains(void)
@@ -136,6 +150,13 @@ static void test_get(void)
     expect(FMRB_REMOTE_FS_GET, "/etc/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
     expect(FMRB_REMOTE_FS_GET, "/etc/wifi.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
     expect(FMRB_REMOTE_FS_GET, "/flash/etc/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+    // The API keys the same way.
+    expect(FMRB_REMOTE_FS_GET, "/home/secrets.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+    expect(FMRB_REMOTE_FS_GET, "/home/secrets.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
+    expect(FMRB_REMOTE_FS_GET, "/etc/secrets.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+    expect(FMRB_REMOTE_FS_GET, "/etc/secrets.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
+    expect(FMRB_REMOTE_FS_GET, "/flash/etc/secrets.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+    expect(FMRB_REMOTE_FS_GET, "/home/secrets.toml.part", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
     // Everything else reads as before.
     expect(FMRB_REMOTE_FS_GET, "/home/asterism/config.toml", NULL, false, FMRB_REMOTE_FS_ALLOW);
     expect(FMRB_REMOTE_FS_GET, "/app/demo/hello.app.rb", NULL, false, FMRB_REMOTE_FS_ALLOW);
@@ -151,6 +172,10 @@ static void test_put_rm(void)
         expect(op, "/home/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
         expect(op, "/home/wifi.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
         expect(op, "/etc/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+        expect(op, "/home/secrets.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+        expect(op, "/home/secrets.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
+        expect(op, "/etc/secrets.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+        expect(op, "/home/services.toml", NULL, false, FMRB_REMOTE_FS_ALLOW);
         expect(op, "/home/asterism/config.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
         expect(op, "/home/asterism/config.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
         expect(op, "/home/asterism/a.tar", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
@@ -186,6 +211,17 @@ static void test_rename(void)
     expect(R, "/home/wifi.toml", "/home/asterism/w.part", true, FMRB_REMOTE_FS_ALLOW);
     expect(R, "/etc/wifi.toml", "/home/w.txt", true, FMRB_REMOTE_FS_DENY_SECRET);
     expect(R, "/home/asterism/a.tar", "/home/a.tar", true, FMRB_REMOTE_FS_DENY_SECRET);
+    // The API keys rank with the WiFi password.
+    expect(R, "/home/secrets.toml.part", "/home/secrets.toml", false, FMRB_REMOTE_FS_DENY_CLOSED);
+    expect(R, "/home/secrets.toml.part", "/home/secrets.toml", true, FMRB_REMOTE_FS_ALLOW);
+    expect(R, "/home/s.toml", "/home/secrets.toml", true, FMRB_REMOTE_FS_ALLOW);
+    expect(R, "/home/secrets.toml", "/home/s.txt", true, FMRB_REMOTE_FS_DENY_SECRET);
+    expect(R, "/etc/secrets.toml", "/home/services.toml", true, FMRB_REMOTE_FS_DENY_SECRET);
+    expect(R, "/flash/etc/secrets.toml", "/app/k", true, FMRB_REMOTE_FS_DENY_SECRET);
+    expect(R, "/home/secrets.toml", "/etc/secrets.toml", true, FMRB_REMOTE_FS_ALLOW);
+    expect(R, "/home/secrets.toml", "/home/wifi.toml", true, FMRB_REMOTE_FS_ALLOW);
+    expect(R, "/home/secrets.toml", "/home/asterism/k.part", true, FMRB_REMOTE_FS_ALLOW);
+    expect(R, "/home/asterism/a.tar", "/home/secrets.toml", true, FMRB_REMOTE_FS_DENY_SECRET);
     expect(R, "/home/asterism/a.tar", "/home/asterism/config.toml", true, FMRB_REMOTE_FS_DENY_SECRET);
     // Nor a directory that holds secrets.
     expect(R, "/home", "/home2", true, FMRB_REMOTE_FS_DENY_SECRET);

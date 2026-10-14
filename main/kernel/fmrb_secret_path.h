@@ -7,10 +7,12 @@
  *
  * Secrets are the Asterism credentials (/home/asterism/<name>.tar, and
  * anything else in that directory but config.toml), never read remotely, and
- * the WiFi settings (/home/wifi.toml, /etc/wifi.toml), read over BLE only
- * while the board's settings window is open (the owner asked for it on the
- * board) and never over devctl. All of them, and /home/asterism/config.toml,
- * are written only while the window is open (doc/ruby_asterism/report/cf2.md).
+ * the passwords: the WiFi settings (/home/wifi.toml, /etc/wifi.toml) and the
+ * API keys (/home/secrets.toml, /etc/secrets.toml), read over BLE only while
+ * the board's settings window is open (the owner asked for it on the board)
+ * and never over devctl. All of them, and /home/asterism/config.toml, are
+ * written only while the window is open (doc/ruby_asterism/report/cf2.md,
+ * doc/user_extension/voice/report/secrets.md).
  *
  * Pure C over strings, no file system access: the rules are tested on the
  * host (test/secret_path).
@@ -26,7 +28,7 @@ extern "C" {
 typedef enum {
     FMRB_PATH_PLAIN = 0,  /**< an ordinary file */
     FMRB_PATH_SETTINGS,   /**< readable, but written only while the window is open */
-    FMRB_PATH_WIFI,       /**< the WiFi password: read only while the window is open */
+    FMRB_PATH_PASSWORD,   /**< the WiFi password or an API key: read only while the window is open */
     FMRB_PATH_SECRET,     /**< holds a key: never read remotely */
 } fmrb_path_class_t;
 

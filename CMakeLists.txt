@@ -63,6 +63,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
             COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/home/services.toml
             COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/usr/share/services
             COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/etc/services.toml
+            COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/etc/secrets.toml
             COMMENT "Retro image: leaving the service host's files out")
     endif()
     # What a board leaves out of its image: config/storage_exclude_<target>.txt

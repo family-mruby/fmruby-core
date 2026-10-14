@@ -326,7 +326,8 @@ static esp_err_t fs_list_handler(httpd_req_t *req)
 
 // Files that hold secrets are not handed out: anyone on the LAN can call
 // this server. The WiFi settings (/home/wifi.toml, /etc/wifi.toml) hold the
-// network's password and /home/asterism the board's Asterism credentials
+// network's password, secrets.toml (/home, /etc) the API keys (the tts key)
+// and /home/asterism the board's Asterism credentials
 // (the .tar with the private key); config.toml there only says where to
 // connect and is read. The rules are shared with the BLE console
 // (fmrb_secret_path.h, doc/ruby_asterism/report/cf2.md), which reads the WiFi
@@ -337,9 +338,9 @@ static esp_err_t fs_get_handler(httpd_req_t *req)
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
     if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
-    // devctl has no settings window: the WiFi files are never read here.
+    // devctl has no settings window: the WiFi files and the keys are never read here.
     fmrb_path_class_t cls = fmrb_path_classify(vpath);
-    if (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_WIFI) {
+    if (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_PASSWORD) {
         return ctl_json(req, "403 Forbidden",
                         "{\"ok\":false,\"err\":\"this file holds keys or passwords and is not read remotely\"}");
     }

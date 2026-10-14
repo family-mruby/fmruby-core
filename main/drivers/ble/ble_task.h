@@ -66,8 +66,10 @@ int ble_ui_state(void);
  * @brief Open (seconds > 0) or close (0) the settings window.
  *
  * While it is open the BLE file service accepts writes, deletes and renames
- * of the connection settings and secrets (WiFi, Asterism config and
- * credentials; fmrb_secret_path.h). Reading the secrets stays refused.
+ * of the connection settings and secrets (WiFi, the API keys in
+ * secrets.toml, Asterism config and credentials; fmrb_secret_path.h), and
+ * reads of the WiFi password and the API keys. Reading the Asterism keys
+ * stays refused.
  * Opening again restarts the countdown. Called from the desktop menu.
  *
  * @return FMRB_OK, FMRB_ERR_INVALID_STATE when BLE is not running (the
