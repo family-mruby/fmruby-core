@@ -20,17 +20,26 @@
 #   timeout_ms = 3000
 #
 # With no PC to run VOICEVOX on, an OpenAI key does the same job over the
-# network, and the machine needs nothing but WiFi:
+# network, and the machine needs nothing but WiFi. The key goes in a file of
+# its own, /home/secrets.toml, not in the service list:
+#
+#   [openai]
+#   api_key = "sk-..."
+#
+# and the rest stays in [tts.config]:
 #
 #   [tts.config]
-#   api_key = "sk-..."                # plain text; see the note below
 #   cloud_model = "gpt-4o-mini-tts"
 #   cloud_voice = "alloy"
 #   cloud_timeout_ms = 10000
 #
-# The key is stored as it is written, on a filesystem the development build
-# serves over HTTP. That is the same bargain the rest of this machine makes;
-# it is a personal device, not a shared one.
+# The service list is an ordinary file that the remote file services (the BLE
+# console, the development build's HTTP server) hand to anyone who asks;
+# secrets.toml is kept like the WiFi password -- never over HTTP, over BLE only
+# while the owner has opened BLE Setup on the board. The key is read from
+# /home/secrets.toml, then /etc/secrets.toml (what a development build bakes
+# in from the developer's ~/.openai_key). Only where the key came from goes
+# into the log, never the key itself.
 #
 # The order is cache -> VOICEVOX (if server is set) -> cloud (if api_key is
 # set). With both set, VOICEVOX answers or the sentence is not said: falling
@@ -83,6 +92,10 @@ class TtsService
   CLOUD_PATH = "/v1/audio/speech"
   DEFAULT_CLOUD_MODEL = "gpt-4o-mini-tts"
   DEFAULT_CLOUD_VOICE = "alloy"
+  # Where the OpenAI key is kept, first match wins: the user's own file, then
+  # the one a development build generates (rakelib/build.rake). Both are
+  # refused to the remote file services like the WiFi password is.
+  SECRETS_FILES = ["/home/secrets.toml", "/etc/secrets.toml"]
   # Not enforced, just reported once. A reboot empties it anyway, and /tmp
   # refuses a write before it overflows rather than failing mid-file.
   CACHE_WARN_COUNT = 100
@@ -94,8 +107,7 @@ class TtsService
     @speaker = (cfg && cfg["speaker"]) ? cfg["speaker"].to_i : DEFAULT_SPEAKER
     @timeout_ms = (cfg && cfg["timeout_ms"]) ? cfg["timeout_ms"].to_i : DEFAULT_TIMEOUT_MS
     @host, @port = split_server(@server)
-    @api_key = cfg ? cfg["api_key"] : nil
-    @api_key = nil if @api_key && @api_key.to_s.empty?
+    @api_key = read_api_key
     @cloud_model = (cfg && cfg["cloud_model"]) ? cfg["cloud_model"].to_s : DEFAULT_CLOUD_MODEL
     @cloud_voice = (cfg && cfg["cloud_voice"]) ? cfg["cloud_voice"].to_s : DEFAULT_CLOUD_VOICE
     @cloud_timeout_ms = (cfg && cfg["cloud_timeout_ms"]) ?
@@ -149,6 +161,64 @@ class TtsService
     return nil unless ok
 
     @ctx.audio.play_wav(path)
+    nil
+  end
+
+  # ---- the key --------------------------------------------------------------
+
+  # The OpenAI key: the user's secrets.toml, then the build's. Only where the
+  # key came from is logged.
+  def read_api_key
+    i = 0
+    while i < SECRETS_FILES.size
+      path = SECRETS_FILES[i]
+      i += 1
+      key = secrets_value(read_text(path), "openai", "api_key")
+      next if key.nil? || key.empty?
+      @ctx.log("tts: api_key from #{path}")
+      return key
+    end
+    nil
+  end
+
+  def read_text(path)
+    return nil unless ::File.exist?(path)
+    text = nil
+    ::File.open(path, "r") { |f| text = f.read }
+    text
+  rescue
+    nil
+  end
+
+  # `key = "value"` under [section] in a small TOML file, or nil. Enough for
+  # secrets.toml: tables and string values, comments and blank lines skipped.
+  # A key has no quotes or backslashes in it, so no escapes are undone.
+  def secrets_value(text, section, key)
+    return nil if text.nil?
+    lines = text.split("\n")
+    inside = false
+    want = "[#{section}]"
+    i = 0
+    while i < lines.size
+      line = lines[i].strip
+      i += 1
+      next if line.empty? || line.start_with?("#")
+      if line.start_with?("[")
+        inside = (line == want)
+        next
+      end
+      next unless inside
+      eq = line.index("=")
+      next if eq.nil?
+      next unless line[0, eq].strip == key
+      v = line[eq + 1, line.length - eq - 1].strip
+      q = v[0, 1]
+      next unless q == "\"" || q == "'"
+      body = v[1, v.length - 1]
+      close = body.index(q)
+      next if close.nil?
+      return body[0, close]
+    end
     nil
   end
 

@@ -17,11 +17,12 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
 
 ## 接続の設定 (Settings、CF2)
 
-端末に WiFi・Asterism の繋ぎ先・証明書の tar を書く画面。開発用の遠隔の道具
+端末に WiFi・OpenAI の API キー・Asterism の繋ぎ先・証明書の tar を書く画面。開発用の遠隔の道具
 (devctl) が無くても、BLE だけで端末を繋がる状態にできる
 (doc/ruby_asterism/report/cf2.md)。
 
 - 書く先: WiFi は `/home/wifi.toml` (`[wifi]` の `enable`・`ssid`・`password`)、
+  API キーは `/home/secrets.toml` (`[openai]` の `api_key`。ファイルのほかの行は残す)、
   Asterism は `/home/asterism/config.toml` (`router`・`node`・`name`、
   `FmrbAsterism.config_text` と同じ形)、証明書は `/home/asterism/<名前>.tar`
   (ブラウザで選ぶ。既定でほかの .tar は消す。端末は名前順で最初の .tar を使うため)。
@@ -31,7 +32,8 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
   出る。閉じているときは書く押しボタンが押せず、押せても端末が断る。
 - **秘密のファイルの読み方**: 証明書の tar (秘密鍵) と `/home/asterism/` の中
   (`config.toml` を除く) は、端末がいつでも GET を断る (なくしたら Asterism の
-  コンソールで出し直す)。WiFi のファイル (`/home/wifi.toml`・`/etc/wifi.toml`) は
+  コンソールで出し直す)。WiFi のファイル (`/home/wifi.toml`・`/etc/wifi.toml`) と
+  API キーのファイル (`/home/secrets.toml`・`/etc/secrets.toml`) は
   **受け付ける時間の間だけ** BLE で読める (端末の前の人が許したとき)。Files の
   一覧ではどれも `secret` と出て、ダウンロードと編集の押しボタンが無い。
   `config.toml` は読んで欄に入れる。
@@ -41,7 +43,14 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
   「set (not shown)」、受け付ける時間が開くと端末から読んで埋める (閉じると消す)。
   パスワードを空のまま書くのは、開いていて今のパスワードを読めたときだけ (それを
   そのまま書く)。それ以外は「enter the password」で書かない。鍵の無い網には対応しない。
-- 効く時: WiFi は端末の起動し直しのあと (メニューの Reset)、Asterism は繋ぐ
+- **API キーの表示**: パスワードと同じ扱い。閉じているときは欄が空で、どのファイルに
+  あるか (`/home/secrets.toml` か、開発ビルドが入れた `/etc/secrets.toml`) と
+  set / not set だけを出す (ファイルの有無は一覧で見る。中身は読まない)。開くと端末から
+  読んで欄を埋め、show で見える (閉じると消す)。空のまま書けるのは読めたときだけ
+  (`/etc` のキーを `/home` に写すことになる)。引用符・バックスラッシュ・空白を含むキーは
+  書かない (tts.rb は逆エスケープしないため)。tts サービスは起動時に読むので、効くのは
+  端末の起動し直しのあと。
+- 効く時: WiFi と API キーは端末の起動し直しのあと (メニューの Reset)、Asterism は繋ぐ
   アプリの起動し直しのあと。書いたあと画面にそう出る。
 - 端末とのやりとりは新しいコマンド `0x17` (受け付ける時間の様子と WiFi の要約:
   `{"ok":true,"open":true,"left":287,"wifi":{...}}`) と、今までの LS / GET / PUT / RM / MKDIR。

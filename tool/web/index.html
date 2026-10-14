@@ -78,6 +78,22 @@
     </section>
 
     <section class="settings-card">
+      <h3>OpenAI API key</h3>
+      <div class="settings-now">On the board: <span id="setKeyNow">-</span></div>
+      <div class="settings-row">
+        <label for="setApiKey">API key</label>
+        <input type="password" id="setApiKey" autocomplete="off" spellcheck="false">
+        <label class="settings-check"><input type="checkbox" id="setKeyShow" onchange="document.getElementById('setApiKey').type = this.checked ? 'text' : 'password'"> show</label>
+      </div>
+      <div class="settings-now" id="setKeyLoaded"></div>
+      <div class="settings-actions">
+        <button class="primary" data-needs-settings disabled onclick="settingsWriteApiKey()">Write API key</button>
+        <span class="settings-msg" id="setKeyMsg"></span>
+      </div>
+      <div class="settings-hint">For the tts service (speech from the cloud). Written to /home/secrets.toml, which the board keeps like the WiFi password: read from the board only while BLE Setup is open there. Takes effect when the board starts again.</div>
+    </section>
+
+    <section class="settings-card">
       <h3>Asterism</h3>
       <div class="settings-now">On the board: <span id="setCfgNow">-</span></div>
       <div class="settings-row">

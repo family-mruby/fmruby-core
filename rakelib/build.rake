@@ -4,27 +4,66 @@
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 
-# Developer's tts key (doc/user_extension/voice). A reflash rewrites the
-# storage image and with it /home, which kept wiping the api_key out of
-# /home/services.toml -- so a dev build bakes the key into the GENERATED
-# /etc/services.toml instead ([tts.config] merges field by field, and a
-# user's own /home entry still wins). The key lives outside the repo in
-# ~/.openai_key, like config/wifi.toml, and flash/etc/services.toml is
-# gitignored, so it cannot be committed. Never on CI: that is where release
-# firmware is built.
-def inject_tts_api_key(toml = 'flash/etc/services.toml')
+# Developer's tts key (doc/user_extension/voice/report/secrets.md). A reflash
+# rewrites the storage image and with it /home, which kept wiping a key the
+# user had typed into /home -- so a dev build bakes the key into a GENERATED
+# /etc/secrets.toml, read by tts.rb after the user's own /home/secrets.toml.
+# It is a file of its own, not a line in /etc/services.toml, because the
+# remote file services refuse to hand out secrets.toml (fmrb_secret_path.c)
+# while the service list stays readable. The key lives outside the repo in
+# ~/.openai_key, like config/wifi.toml; the generated file is gitignored and
+# checked to be untracked before anything is written. Never on CI: that is
+# where release firmware is built. The key's value is never printed.
+DEV_SECRETS_TOML = 'flash/etc/secrets.toml'
+
+def write_dev_secrets(path = DEV_SECRETS_TOML)
+  # Refuse outright if git would pick the file up: a tracked or unignored
+  # secrets file is exactly how a key ends up on GitHub.
+  if system('git', 'ls-files', '--error-unmatch', path, out: File::NULL, err: File::NULL)
+    abort "secrets: #{path} is tracked by git; remove it from the index (git rm --cached) before building"
+  end
+  unless system('git', 'check-ignore', '-q', path)
+    abort "secrets: #{path} is not gitignored; add it to .gitignore before building"
+  end
+  # Always start from nothing, so a key removed from ~/.openai_key does not
+  # linger in an old generated file.
+  rm_f path
   return if ENV['CI']
   key_file = File.expand_path('~/.openai_key')
-  return unless File.exist?(toml) && File.exist?(key_file)
+  return unless File.exist?(key_file)
   key = File.read(key_file).strip
   return if key.empty?
-  File.open(toml, 'a') do |f|
-    f.puts ""
-    f.puts "# Appended by rake from ~/.openai_key (dev build only, not in git)."
-    f.puts "[tts.config]"
+  if key =~ /["\\\s]/
+    abort "secrets: ~/.openai_key holds a quote, backslash or space; it should be the key alone"
+  end
+  File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |f|
+    f.puts "# Written by rake from ~/.openai_key (dev build only, not in git)."
+    f.puts "# Your own key goes in /home/secrets.toml on the board, same shape."
+    f.puts "[openai]"
     f.puts "api_key = \"#{key}\""
   end
-  puts "tts: api_key injected from ~/.openai_key"
+  puts "secrets: api_key from ~/.openai_key written to #{path} (gitignored)"
+end
+
+# tts.rb reads its key from secrets.toml only, so an api_key line in the
+# service list does nothing but leak: the remote file services hand that file
+# to anyone who asks. Stop the build if config/services.toml ever gets one.
+def check_services_toml_has_no_key(path = 'flash/etc/services.toml')
+  return unless File.exist?(path)
+  if File.readlines(path).any? { |l| l =~ /^\s*api_key\s*=/ }
+    abort "secrets: #{path} has an api_key line; keys belong in secrets.toml, not the service list"
+  end
+end
+
+def stage_services(modern)
+  if modern
+    cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+    check_services_toml_has_no_key
+    write_dev_secrets
+  else
+    rm_f 'flash/etc/services.toml'
+    rm_f DEV_SECRETS_TOML
+  end
 end
 
 namespace :build do
@@ -47,12 +86,7 @@ namespace :build do
     # system_conf: config/ is the source, flash/etc/ is generated. Modern only,
     # and a stale copy is removed so a simulator switched back to Retro stands
     # in for a machine that has no services.
-    if MODERN_HW_TARGETS.include?(HW_TARGET)
-      cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
-      inject_tts_api_key
-    else
-      rm_f 'flash/etc/services.toml'
-    end
+    stage_services(MODERN_HW_TARGETS.include?(HW_TARGET))
 
     # File associations (doc/user_extension/assoc). Both machines have this
     # one -- unlike services, opening a file is not Modern-only.
@@ -125,12 +159,7 @@ namespace :build do
     # System service list (doc/user_extension/services), generated the same
     # way as system_conf above. Modern only; the storage image drops the rest
     # of the service files for Retro (top-level CMakeLists).
-    if MODERN_HW_TARGETS.include?(hw_target)
-      cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
-      inject_tts_api_key
-    else
-      rm_f 'flash/etc/services.toml'
-    end
+    stage_services(MODERN_HW_TARGETS.include?(hw_target))
 
     # File associations (doc/user_extension/assoc), both machines.
     cp 'config/associations.toml', 'flash/etc/associations.toml', verbose: true

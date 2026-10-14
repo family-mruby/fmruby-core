@@ -1,8 +1,9 @@
 // ============================================================
 // Connection settings (doc/ruby_asterism/report/cf2.md)
 // ============================================================
-// Writes the board's WiFi settings (/home/wifi.toml), its Asterism settings
-// (/home/asterism/config.toml) and its Asterism credentials
+// Writes the board's WiFi settings (/home/wifi.toml), its OpenAI API key
+// (/home/secrets.toml, doc/user_extension/voice/report/secrets.md), its
+// Asterism settings (/home/asterism/config.toml) and its Asterism credentials
 // (/home/asterism/<name>.tar) over the file service.
 //
 // The board takes these only while its settings window is open (the desktop
@@ -15,13 +16,18 @@
 // out, and the Asterism console can issue it again. The WiFi password is read
 // only while the window is open (the owner asked for it on the board); the
 // rest of the WiFi settings (SSID, which file, the link) comes with every
-// CMD_SETTINGS answer and never carries the password.
+// CMD_SETTINGS answer and never carries the password. The API key is kept
+// the same way as the WiFi password: read only while the window is open,
+// otherwise only whether the file is there.
 
 const CMD_SETTINGS = 0x17;
 const CMD_REBOOT   = 0x18;   // the board takes it only in its setup mode
 
 const WIFI_HOME_PATH   = '/home/wifi.toml';
 const WIFI_ETC_PATH    = '/etc/wifi.toml';
+const SECRETS_HOME_PATH = '/home/secrets.toml';
+const SECRETS_ETC_PATH  = '/etc/secrets.toml';
+const API_KEY_MAX      = 512;
 const ASTERISM_DIR     = '/home/asterism';
 const ASTERISM_CONFIG  = '/home/asterism/config.toml';
 const ASTERISM_KEYS    = ['router', 'node', 'name'];
@@ -37,6 +43,8 @@ let settingsState = {
   wifi: null,        // '/home/wifi.toml' | '/etc/wifi.toml' | '' (none)
   wifiInfo: null,    // { src, on, ssid, conn, ip } from CMD_SETTINGS, null on old firmware
   password: null,    // the current password, read while the window is open
+  keySrc: null,      // '/home/secrets.toml' | '/etc/secrets.toml' | '' (none)
+  apiKey: null,      // the current API key, read while the window is open
   tars: [],          // [{ n, s }] in /home/asterism
   config: null,      // { router, node, name } from config.toml, or null
 };
@@ -160,6 +168,70 @@ function settingsCheckWifi(ssid, password) {
   return '';
 }
 
+// Returns an error message, or '' when the key can be written. tts.rb reads
+// it without undoing escapes, so a key with a quote, a backslash or a space
+// in it cannot be written at all (an OpenAI key has none).
+function settingsCheckApiKey(key) {
+  if (key === '') return 'enter the API key';
+  if (/["'\\\s]/.test(key)) return 'the API key has a quote, a backslash or a space in it';
+  if (/[^\x21-\x7e]/.test(key)) return 'the API key has a character that is not plain ASCII';
+  if (key.length > API_KEY_MAX) return 'the API key is longer than ' + API_KEY_MAX + ' characters';
+  return '';
+}
+
+// One key's string value under [section] of a TOML file, or null. The same
+// reading as TtsService#secrets_value.
+function settingsSecretsValue(text, section, key) {
+  let inside = false;
+  for (const raw of String(text).split('\n')) {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    if (line.startsWith('[')) { inside = line === '[' + section + ']'; continue; }
+    if (!inside) continue;
+    const eq = line.indexOf('=');
+    if (eq < 0 || line.slice(0, eq).trim() !== key) continue;
+    const v = line.slice(eq + 1).trim();
+    const q = v[0];
+    if (q !== '"' && q !== "'") continue;
+    const close = v.indexOf(q, 1);
+    if (close < 0) continue;
+    return v.slice(1, close);
+  }
+  return null;
+}
+
+// /home/secrets.toml with [openai] api_key set to key. The rest of the file
+// (other tables, comments) is kept as it was: the file may hold other keys.
+function settingsSecretsToml(text, key) {
+  const line = 'api_key = "' + key + '"';
+  const header = '# This machine\'s secrets, written by the Family mruby Console.\n' +
+                 '# Kept like the WiFi password: never read over HTTP, over BLE only in BLE Setup.\n';
+  if (text === null || text === undefined || String(text).trim() === '') {
+    return header + '[openai]\n' + line + '\n';
+  }
+  const lines = String(text).replace(/\n$/, '').split('\n');
+  let inside = false;
+  let tableAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.startsWith('[')) {
+      if (inside) break;   // the [openai] table ended without an api_key
+      inside = t === '[openai]';
+      if (inside) tableAt = i;
+      continue;
+    }
+    if (!inside || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq >= 0 && t.slice(0, eq).trim() === 'api_key') {
+      lines[i] = line;
+      return lines.join('\n') + '\n';
+    }
+  }
+  if (tableAt >= 0) lines.splice(tableAt + 1, 0, line);
+  else lines.push('', '[openai]', line);
+  return lines.join('\n') + '\n';
+}
+
 function settingsCheckAsterism(c) {
   for (const k of ASTERISM_KEYS) {
     if (/[\r\n]/.test(c[k] || '')) return k + ' has a line break';
@@ -209,6 +281,9 @@ async function settingsReadState() {
                      : has(home, 'wifi.toml') ? WIFI_HOME_PATH
                      : has(etc, 'wifi.toml') ? WIFI_ETC_PATH : '';
   await settingsReadPassword();
+  settingsState.keySrc = has(home, 'secrets.toml') ? SECRETS_HOME_PATH
+                       : has(etc, 'secrets.toml') ? SECRETS_ETC_PATH : '';
+  await settingsReadApiKey();
 
   const dir = await settingsList(ASTERISM_DIR);
   settingsState.tars = (dir || []).filter(e => e.t === 'f' && /\.tar$/i.test(e.n));
@@ -238,11 +313,32 @@ async function settingsReadPassword() {
   }
 }
 
+// The current API key, the same way as the password: only while the window
+// is open, forgotten when it closes.
+async function settingsReadApiKey() {
+  if (!settingsState.open || !settingsState.keySrc || settingsState.apiKey !== null) return;
+  try {
+    const bytes = await deviceReadFile(settingsState.keySrc);
+    const key = settingsSecretsValue(new TextDecoder().decode(bytes), 'openai', 'api_key');
+    settingsState.apiKey = key === null ? '' : key;
+    const field = settingsEl('setApiKey');
+    if (field && field.value === '') field.value = settingsState.apiKey;
+  } catch (e) {
+    log('settings: could not read the API key: ' + e.message, 'err');
+  }
+}
+
 function settingsForgetPassword() {
-  if (settingsState.password === null) return;
-  settingsState.password = null;
-  const field = settingsEl('setPassword');
-  if (field) field.value = '';
+  if (settingsState.password !== null) {
+    settingsState.password = null;
+    const field = settingsEl('setPassword');
+    if (field) field.value = '';
+  }
+  if (settingsState.apiKey !== null) {
+    settingsState.apiKey = null;
+    const field = settingsEl('setApiKey');
+    if (field) field.value = '';
+  }
 }
 
 // ---- the pane ----
@@ -307,6 +403,24 @@ function settingsRender() {
       st.password !== null ? 'loaded from the board (the settings window is open)' : 'set (not shown)';
   }
 
+  const keyNow = settingsEl('setKeyNow');
+  if (keyNow) {
+    if (!connected || st.keySrc === null) keyNow.textContent = '-';
+    else if (!st.keySrc) keyNow.textContent = 'not set';
+    else if (st.keySrc === SECRETS_HOME_PATH) keyNow.textContent = 'set (' + SECRETS_HOME_PATH + ')';
+    else keyNow.textContent = 'set (the firmware\'s ' + SECRETS_ETC_PATH + '; writing here puts ' +
+                              SECRETS_HOME_PATH + ' in front of it)';
+  }
+  const keyField = settingsEl('setApiKey');
+  if (keyField) {
+    keyField.placeholder = !st.keySrc ? '' : (st.apiKey !== null ? '' : 'set (not shown; open BLE Setup on the board to load it)');
+  }
+  const keyLoaded = settingsEl('setKeyLoaded');
+  if (keyLoaded) {
+    keyLoaded.textContent = (!connected || !st.keySrc) ? '' :
+      st.apiKey !== null ? 'loaded from the board (the settings window is open)' : 'set (not shown)';
+  }
+
   const tarNow = settingsEl('setTarNow');
   if (!connected || st.wifi === null) tarNow.textContent = '-';
   else if (st.tars.length === 0) tarNow.textContent = 'none';
@@ -362,7 +476,10 @@ async function settingsPoll() {
   try {
     await settingsAskWindow();
     if (!settingsState.open) settingsForgetPassword();
-    else if (settingsState.password === null) await settingsReadPassword();
+    else {
+      if (settingsState.password === null) await settingsReadPassword();
+      if (settingsState.apiKey === null) await settingsReadApiKey();
+    }
   } catch (e) {
     // A missed poll is not worth a log line; the next one asks again.
   }
@@ -427,6 +544,27 @@ function settingsWriteWifi() {
     settingsState.password = password;
     return 'WiFi written to ' + WIFI_HOME_PATH + '. It is used from the next start: ' +
            (settingsState.setup ? 'click Reboot.' : 'restart the board (menu > Reset).');
+  });
+}
+
+function settingsWriteApiKey() {
+  let key = settingsEl('setApiKey').value.trim();
+  // Empty keeps the current key only when it was read from the board (window
+  // open), which also copies a firmware /etc key into /home.
+  if (key === '' && settingsState.open && settingsState.apiKey) key = settingsState.apiKey;
+  const bad = settingsCheckApiKey(key);
+  if (bad) { settingsSetMsg('setKeyMsg', bad, 'err'); return; }
+  return settingsWrite('setKeyMsg', async () => {
+    // Keep whatever else /home/secrets.toml holds. Reading it needs the
+    // window, and so does the write: a refusal here is the same refusal.
+    let text = null;
+    if (settingsState.keySrc === SECRETS_HOME_PATH) {
+      text = new TextDecoder().decode(await deviceReadFile(SECRETS_HOME_PATH));
+    }
+    await deviceWriteFile(SECRETS_HOME_PATH, new TextEncoder().encode(settingsSecretsToml(text, key)));
+    settingsState.apiKey = key;
+    return 'API key written to ' + SECRETS_HOME_PATH + '. The tts service reads it when it starts: ' +
+           'restart the board (menu > Reset).';
   });
 }
 
@@ -507,9 +645,12 @@ async function settingsReboot() {
 function settingsOnConnection(connected) {
   if (!connected) {
     settingsState = { supported: null, open: false, left: 0, leftAt: 0, setup: false,
-                      wifi: null, wifiInfo: null, password: null, tars: [], config: null };
+                      wifi: null, wifiInfo: null, password: null, keySrc: null, apiKey: null,
+                      tars: [], config: null };
     const pw = settingsEl('setPassword');
     if (pw) pw.value = '';
+    const key = settingsEl('setApiKey');
+    if (key) key.value = '';
     settingsBusy = false;
     settingsStopPolling();
     settingsRender();

@@ -55,14 +55,21 @@ static bool seg_is(const split_path_t *sp, size_t i, const char *name)
            strncmp(sp->seg[i], name, n) == 0;
 }
 
-// "wifi.toml" and anything named after it ("wifi.toml.part", the upload
+// A segment that is `name` or named after it ("wifi.toml.part", the upload
 // devctl writes before renaming it into place).
-static bool seg_is_wifi(const split_path_t *sp, size_t i)
+static bool seg_starts(const split_path_t *sp, size_t i, const char *name)
 {
-    static const char wifi[] = "wifi.toml";
-    size_t n = sizeof(wifi) - 1;
+    size_t n = strlen(name);
     return i < sp->count && i < SECRET_PATH_SEGS && sp->len[i] >= n &&
-           strncmp(sp->seg[i], wifi, n) == 0;
+           strncmp(sp->seg[i], name, n) == 0;
+}
+
+// The files read only while the settings window is open: the WiFi password
+// and the API keys (secrets.toml, the tts key; report/secrets.md in
+// doc/user_extension/voice).
+static bool seg_is_password(const split_path_t *sp, size_t i)
+{
+    return seg_starts(sp, i, "wifi.toml") || seg_starts(sp, i, "secrets.toml");
 }
 
 fmrb_path_class_t fmrb_path_classify(const char *path)
@@ -77,8 +84,8 @@ fmrb_path_class_t fmrb_path_classify(const char *path)
         return FMRB_PATH_SECRET;
     }
     if (sp.count == 2 && (seg_is(&sp, 0, "home") || seg_is(&sp, 0, "etc")) &&
-        seg_is_wifi(&sp, 1)) {
-        return FMRB_PATH_WIFI;
+        seg_is_password(&sp, 1)) {
+        return FMRB_PATH_PASSWORD;
     }
     return FMRB_PATH_PLAIN;
 }
@@ -98,7 +105,7 @@ bool fmrb_path_contains_secret(const char *path)
 // one kept at least as strongly, or a rename would make it readable.
 static int hide_level(fmrb_path_class_t cls)
 {
-    return cls == FMRB_PATH_SECRET ? 2 : (cls == FMRB_PATH_WIFI ? 1 : 0);
+    return cls == FMRB_PATH_SECRET ? 2 : (cls == FMRB_PATH_PASSWORD ? 1 : 0);
 }
 
 fmrb_remote_fs_verdict_t fmrb_remote_fs_check(fmrb_remote_fs_op_t op, const char *path,
@@ -108,7 +115,7 @@ fmrb_remote_fs_verdict_t fmrb_remote_fs_check(fmrb_remote_fs_op_t op, const char
     switch (op) {
     case FMRB_REMOTE_FS_GET:
         if (cls == FMRB_PATH_SECRET) return FMRB_REMOTE_FS_DENY_SECRET;
-        if (cls == FMRB_PATH_WIFI && !window_open) return FMRB_REMOTE_FS_DENY_CLOSED;
+        if (cls == FMRB_PATH_PASSWORD && !window_open) return FMRB_REMOTE_FS_DENY_CLOSED;
         return FMRB_REMOTE_FS_ALLOW;
 
     case FMRB_REMOTE_FS_PUT:
