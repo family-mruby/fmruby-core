@@ -667,7 +667,14 @@ class FmrbKernelImpl < FmrbKernel
     # Sync RTC to system clock (ESP32 only)
     sync_rtc
 
-    if _boot_mode == BOOT_MODE_APP
+    setup = _boot_mode == BOOT_MODE_SETUP
+    if setup
+      # The setup mode (doc/ruby_asterism/report/cf3.md): the board waits for
+      # its connection settings over BLE. No app and no services: there is no
+      # WiFi to use, and the internal RAM goes to BLE.
+      Log.info("Setup mode: no app started; waiting for settings over BLE")
+      _show_setup
+    elsif _boot_mode == BOOT_MODE_APP
       # One app and nothing else: no desktop, no launcher.
       @boot_app_mode = true
       start_single_app
@@ -683,7 +690,7 @@ class FmrbKernelImpl < FmrbKernel
       end
     end
 
-    spawn_service_host
+    spawn_service_host unless setup
     nil
   end
 
@@ -746,6 +753,7 @@ class FmrbKernelImpl < FmrbKernel
   # log and to the screen, and the machine stays there until reset. Any
   # machine can be set this way; nothing here is board specific.
   BOOT_MODE_APP = 1
+  BOOT_MODE_SETUP = 2
   SINGLE_APP_RESPAWN_DELAY_MS = 1000
 
   def start_single_app

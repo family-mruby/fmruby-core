@@ -23,6 +23,11 @@
 extern "C" {
 #endif
 
+/** The WiFi settings, in the order wifi_task reads them: the first that
+ *  exists is the only one used (doc/ruby_asterism/report/cf1.md 4.3). */
+#define FMRB_WIFI_TOML_HOME_PATH "/home/wifi.toml"
+#define FMRB_WIFI_TOML_ETC_PATH  "/etc/wifi.toml"
+
 typedef enum {
     FMRB_PATH_PLAIN = 0,  /**< an ordinary file */
     FMRB_PATH_SETTINGS,   /**< readable, but written only while the window is open */
@@ -83,6 +88,25 @@ fmrb_remote_fs_verdict_t fmrb_remote_fs_check(fmrb_remote_fs_op_t op, const char
  */
 size_t fmrb_wifi_summary_json(const char *toml_text, const char *src, bool connected,
                               const char *ip, char *out, size_t cap);
+
+/** Why a board boots into the setup mode (doc/ruby_asterism/report/cf3.md). */
+typedef enum {
+    FMRB_SETUP_NONE = 0,     /**< the normal boot */
+    FMRB_SETUP_NO_WIFI,      /**< neither WiFi settings file exists */
+    FMRB_SETUP_BUTTON,       /**< the button was held at boot */
+} fmrb_setup_reason_t;
+
+/**
+ * @brief Whether this boot is the setup mode (BLE only, settings accepted).
+ * @param enabled            system_conf setup_mode (false: never)
+ * @param have_wifi_settings one of the FMRB_WIFI_TOML_* files exists
+ * @param button_held        the button was down at boot
+ */
+fmrb_setup_reason_t fmrb_setup_mode_reason(bool enabled, bool have_wifi_settings,
+                                           bool button_held);
+
+/** @brief A short English line for the log and the screen. */
+const char *fmrb_setup_reason_text(fmrb_setup_reason_t reason);
 
 #ifdef __cplusplus
 }

@@ -278,3 +278,22 @@ size_t fmrb_wifi_summary_json(const char *toml_text, const char *src, bool conne
     memset(ssid, 0, sizeof(ssid));
     return o;
 }
+
+fmrb_setup_reason_t fmrb_setup_mode_reason(bool enabled, bool have_wifi_settings,
+                                           bool button_held)
+{
+    if (!enabled) return FMRB_SETUP_NONE;
+    // The button first: it is the owner asking, whatever the files say.
+    if (button_held) return FMRB_SETUP_BUTTON;
+    if (!have_wifi_settings) return FMRB_SETUP_NO_WIFI;
+    return FMRB_SETUP_NONE;
+}
+
+const char *fmrb_setup_reason_text(fmrb_setup_reason_t reason)
+{
+    switch (reason) {
+    case FMRB_SETUP_NO_WIFI: return "no WiFi settings";
+    case FMRB_SETUP_BUTTON:  return "button held at boot";
+    default:                 return "normal boot";
+    }
+}
