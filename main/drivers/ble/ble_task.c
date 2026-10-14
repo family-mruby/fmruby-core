@@ -13,6 +13,9 @@
 #include "ble_framing.h"
 #include "ble_debug_link.h"
 #include "fmrb_secret_path.h"
+#ifdef FMRB_HAS_WIFI
+#include "wifi_task.h"
+#endif
 
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
@@ -147,6 +150,7 @@ EXT_RAM_BSS_ATTR static ble_dbg_rx_t g_dbg_rx;
 // closed. Written by the desktop task, read by the file service task; one
 // aligned 32-bit word, so no lock. PSRAM, like the rest of this file's state.
 EXT_RAM_BSS_ATTR static volatile uint32_t g_settings_until_s;
+EXT_RAM_BSS_ATTR static volatile bool g_settings_log_wifi;
 
 // Forward declarations
 static void ble_advertise(void);
@@ -204,6 +208,43 @@ static bool json_get_int(const char *json, const char *key, int32_t *value)
 // Settings window and secret files
 // ============================================================
 
+// The non-secret WiFi summary: which file, its SSID, and the link now. The
+// file is read here (not the running settings) so a freshly written one
+// shows before the restart that puts it to use. The password never leaves
+// this function, and the buffer is wiped after use.
+#define BLE_WIFI_TOML_MAX 1024
+
+static size_t ble_fs_wifi_summary(char *out, size_t cap)
+{
+    EXT_RAM_BSS_ATTR static char text[BLE_WIFI_TOML_MAX];
+    static const char *const paths[] = { "/home/wifi.toml", "/etc/wifi.toml" };
+    const char *src = "";
+    bool have_text = false;
+    for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+        fmrb_file_info_t info;
+        if (fmrb_hal_file_stat(paths[i], &info) != FMRB_OK) continue;
+        src = paths[i];
+        fmrb_file_t f;
+        if (fmrb_hal_file_open(paths[i], FMRB_O_RDONLY, &f) == FMRB_OK) {
+            size_t n = 0;
+            fmrb_hal_file_read(f, text, sizeof(text) - 1, &n);
+            fmrb_hal_file_close(f);
+            text[n] = '\0';
+            have_text = true;
+        }
+        break;   // the one wifi_task reads (cf1.md 4.3)
+    }
+    bool connected = false;
+    char ip[16] = "";
+#ifdef FMRB_HAS_WIFI
+    connected = wifi_is_connected();
+    if (connected) wifi_get_ip_str(ip, sizeof(ip));
+#endif
+    size_t len = fmrb_wifi_summary_json(have_text ? text : NULL, src, connected, ip, out, cap);
+    memset(text, 0, sizeof(text));
+    return len;
+}
+
 static uint32_t settings_now_s(void)
 {
     return (uint32_t)(esp_timer_get_time() / 1000000);
@@ -230,13 +271,25 @@ fmrb_err_t ble_settings_window_set(uint32_t seconds)
         return FMRB_ERR_INVALID_STATE;
     }
     g_settings_until_s = settings_now_s() + seconds;
+    // The file service task then logs what the console will see of the WiFi
+    // settings (no password): the file read stays off the desktop's stack.
+    g_settings_log_wifi = true;
     FMRB_LOGI(TAG, "settings window open for %lu s", (unsigned long)seconds);
     return FMRB_OK;
 }
 
 // Close the window once its time is up, so the log says when it ended.
+// Also logs the WiFi summary asked for by ble_settings_window_set.
 static void settings_window_expire_check(void)
 {
+    if (g_settings_log_wifi) {
+        EXT_RAM_BSS_ATTR static char summary[192];
+        g_settings_log_wifi = false;
+        fmrb_semaphore_take(g_fs_ctx.mutex, FMRB_TICK_MAX);
+        ble_fs_wifi_summary(summary, sizeof(summary));
+        fmrb_semaphore_give(g_fs_ctx.mutex);
+        FMRB_LOGI(TAG, "settings window: wifi %s", summary);
+    }
     if (g_settings_until_s != 0 && ble_settings_window_left() == 0) {
         g_settings_until_s = 0;
         FMRB_LOGI(TAG, "settings window closed (time up)");
@@ -252,9 +305,9 @@ static bool ble_fs_allowed(fmrb_remote_fs_op_t op, const char *cmd_name, const c
     fmrb_remote_fs_verdict_t v = fmrb_remote_fs_check(op, path, to, ble_settings_window_left() > 0);
     if (v == FMRB_REMOTE_FS_ALLOW) return true;
     if (v == FMRB_REMOTE_FS_DENY_SECRET) {
-        FMRB_LOGW(TAG, "BLE %s %s refused: holds keys or passwords", cmd_name, path);
+        FMRB_LOGW(TAG, "BLE %s %s refused: holds a key", cmd_name, path);
         snprintf(response, response_size,
-                 "{\"ok\":false,\"denied\":true,\"err\":\"This file holds keys or passwords and is not read over BLE\"}");
+                 "{\"ok\":false,\"denied\":true,\"err\":\"This file holds a key and is not read over BLE\"}");
     } else {
         FMRB_LOGW(TAG, "BLE %s %s refused: settings window closed", cmd_name, path);
         snprintf(response, response_size,
@@ -266,8 +319,15 @@ static bool ble_fs_allowed(fmrb_remote_fs_op_t op, const char *cmd_name, const c
 static void ble_fs_cmd_settings(char *response, size_t response_size)
 {
     uint32_t left = ble_settings_window_left();
-    snprintf(response, response_size, "{\"ok\":true,\"open\":%s,\"left\":%lu}",
-             left > 0 ? "true" : "false", (unsigned long)left);
+    int n = snprintf(response, response_size, "{\"ok\":true,\"open\":%s,\"left\":%lu,\"wifi\":",
+                     left > 0 ? "true" : "false", (unsigned long)left);
+    if (n < 0 || (size_t)n + 2 >= response_size) return;
+    size_t o = (size_t)n;
+    o += ble_fs_wifi_summary(response + o, response_size - o - 1);
+    if (o + 1 < response_size) {
+        response[o++] = '}';
+        response[o] = '\0';
+    }
 }
 
 // ============================================================

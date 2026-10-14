@@ -329,14 +329,17 @@ static esp_err_t fs_list_handler(httpd_req_t *req)
 // network's password and /home/asterism the board's Asterism credentials
 // (the .tar with the private key); config.toml there only says where to
 // connect and is read. The rules are shared with the BLE console
-// (fmrb_secret_path.h, doc/ruby_asterism/report/cf2.md). Secrets can be put,
-// listed and deleted, not read.
+// (fmrb_secret_path.h, doc/ruby_asterism/report/cf2.md), which reads the WiFi
+// files while the board's settings window is open; this server has no such
+// window and never reads them. Secrets can be put, listed and deleted.
 static esp_err_t fs_get_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
     if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
-    if (fmrb_path_classify(vpath) == FMRB_PATH_SECRET) {
+    // devctl has no settings window: the WiFi files are never read here.
+    fmrb_path_class_t cls = fmrb_path_classify(vpath);
+    if (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_WIFI) {
         return ctl_json(req, "403 Forbidden",
                         "{\"ok\":false,\"err\":\"this file holds keys or passwords and is not read remotely\"}");
     }

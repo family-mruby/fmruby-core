@@ -8,6 +8,7 @@
 #include "fmrb_secret_path.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static int g_fail = 0;
 static int g_count = 0;
@@ -28,6 +29,7 @@ static const char *cls_name(fmrb_path_class_t c)
     switch (c) {
     case FMRB_PATH_PLAIN: return "plain";
     case FMRB_PATH_SETTINGS: return "settings";
+    case FMRB_PATH_WIFI: return "wifi";
     case FMRB_PATH_SECRET: return "secret";
     }
     return "?";
@@ -42,21 +44,21 @@ static void expect_class(const char *path, fmrb_path_class_t want)
 static void test_classify(void)
 {
     // The secrets.
-    expect_class("/home/wifi.toml", FMRB_PATH_SECRET);
-    expect_class("/etc/wifi.toml", FMRB_PATH_SECRET);
-    expect_class("/home/wifi.toml.part", FMRB_PATH_SECRET);
+    expect_class("/home/wifi.toml", FMRB_PATH_WIFI);
+    expect_class("/etc/wifi.toml", FMRB_PATH_WIFI);
+    expect_class("/home/wifi.toml.part", FMRB_PATH_WIFI);
     expect_class("/home/asterism/fmruby-aaaaaa.tar", FMRB_PATH_SECRET);
     expect_class("/home/asterism/other.key", FMRB_PATH_SECRET);
     expect_class("/home/asterism/config.toml.part", FMRB_PATH_SECRET);
     expect_class("/home/asterism/sub/x.tar", FMRB_PATH_SECRET);
 
     // The same files under other spellings the file HAL accepts.
-    expect_class("home/wifi.toml", FMRB_PATH_SECRET);
-    expect_class("//home//wifi.toml", FMRB_PATH_SECRET);
-    expect_class("/home/./wifi.toml", FMRB_PATH_SECRET);
-    expect_class("/./etc/wifi.toml/", FMRB_PATH_SECRET);
-    expect_class("/flash/home/wifi.toml", FMRB_PATH_SECRET);
-    expect_class("/flash/etc/wifi.toml", FMRB_PATH_SECRET);
+    expect_class("home/wifi.toml", FMRB_PATH_WIFI);
+    expect_class("//home//wifi.toml", FMRB_PATH_WIFI);
+    expect_class("/home/./wifi.toml", FMRB_PATH_WIFI);
+    expect_class("/./etc/wifi.toml/", FMRB_PATH_WIFI);
+    expect_class("/flash/home/wifi.toml", FMRB_PATH_WIFI);
+    expect_class("/flash/etc/wifi.toml", FMRB_PATH_WIFI);
     expect_class("/flash/home/asterism/a.tar", FMRB_PATH_SECRET);
     expect_class("/home/x/../wifi.toml", FMRB_PATH_SECRET);
     expect_class("/app/../home/asterism/a.tar", FMRB_PATH_SECRET);
@@ -124,12 +126,16 @@ static void expect(fmrb_remote_fs_op_t op, const char *path, const char *to, boo
 
 static void test_get(void)
 {
-    // Secrets are never read, open window or not.
-    expect(FMRB_REMOTE_FS_GET, "/home/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_SECRET);
-    expect(FMRB_REMOTE_FS_GET, "/home/wifi.toml", NULL, true, FMRB_REMOTE_FS_DENY_SECRET);
-    expect(FMRB_REMOTE_FS_GET, "/etc/wifi.toml", NULL, true, FMRB_REMOTE_FS_DENY_SECRET);
+    // The keys are never read, open window or not.
+    expect(FMRB_REMOTE_FS_GET, "/home/asterism/a.tar", NULL, false, FMRB_REMOTE_FS_DENY_SECRET);
     expect(FMRB_REMOTE_FS_GET, "/home/asterism/a.tar", NULL, true, FMRB_REMOTE_FS_DENY_SECRET);
-    expect(FMRB_REMOTE_FS_GET, "/flash/etc/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_SECRET);
+    expect(FMRB_REMOTE_FS_GET, "/home/x/../asterism/a.tar", NULL, true, FMRB_REMOTE_FS_DENY_SECRET);
+    // The WiFi password only while the owner has opened the window.
+    expect(FMRB_REMOTE_FS_GET, "/home/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+    expect(FMRB_REMOTE_FS_GET, "/home/wifi.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
+    expect(FMRB_REMOTE_FS_GET, "/etc/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
+    expect(FMRB_REMOTE_FS_GET, "/etc/wifi.toml", NULL, true, FMRB_REMOTE_FS_ALLOW);
+    expect(FMRB_REMOTE_FS_GET, "/flash/etc/wifi.toml", NULL, false, FMRB_REMOTE_FS_DENY_CLOSED);
     // Everything else reads as before.
     expect(FMRB_REMOTE_FS_GET, "/home/asterism/config.toml", NULL, false, FMRB_REMOTE_FS_ALLOW);
     expect(FMRB_REMOTE_FS_GET, "/app/demo/hello.app.rb", NULL, false, FMRB_REMOTE_FS_ALLOW);
@@ -174,6 +180,10 @@ static void test_rename(void)
     expect(R, "/home/wifi.toml.part", "/home/wifi.toml", true, FMRB_REMOTE_FS_ALLOW);
     // Out of a secret to a readable name: never.
     expect(R, "/home/wifi.toml", "/home/w.txt", true, FMRB_REMOTE_FS_DENY_SECRET);
+    // A key into a WiFi name would make it readable in the window: never.
+    expect(R, "/home/asterism/a.tar", "/home/wifi.toml", true, FMRB_REMOTE_FS_DENY_SECRET);
+    // The WiFi file can go among the keys (kept more strongly).
+    expect(R, "/home/wifi.toml", "/home/asterism/w.part", true, FMRB_REMOTE_FS_ALLOW);
     expect(R, "/etc/wifi.toml", "/home/w.txt", true, FMRB_REMOTE_FS_DENY_SECRET);
     expect(R, "/home/asterism/a.tar", "/home/a.tar", true, FMRB_REMOTE_FS_DENY_SECRET);
     expect(R, "/home/asterism/a.tar", "/home/asterism/config.toml", true, FMRB_REMOTE_FS_DENY_SECRET);
@@ -187,6 +197,39 @@ static void test_rename(void)
     expect(R, "/home/asterism/config.toml", "/home/c.toml", true, FMRB_REMOTE_FS_ALLOW);
 }
 
+static void expect_summary(const char *toml, const char *src, bool conn, const char *ip,
+                           const char *want)
+{
+    char out[256];
+    fmrb_wifi_summary_json(toml, src, conn, ip, out, sizeof(out));
+    CHECK(strcmp(out, want) == 0, "summary: %s\n   want %s", out, want);
+    CHECK(strstr(out, "password") == NULL && strstr(out, "hunter2") == NULL,
+          "summary carries the password: %s", out);
+}
+
+static void test_summary(void)
+{
+    const char *wifi =
+        "# WiFi\n[wifi]\nenable = true\n#ssid = \"old\"\nssid = \"Home Net\"\npassword = \"hunter2\"\n";
+    expect_summary(wifi, "/etc/wifi.toml", true, "192.0.2.7",
+                   "{\"src\":\"/etc/wifi.toml\",\"on\":true,\"ssid\":\"Home Net\",\"conn\":true,\"ip\":\"192.0.2.7\"}");
+    // The password line first, and the ssid escaped both ways.
+    expect_summary("[wifi]\npassword = \"hunter2\"\nssid = \"a\\\"b\\\\c\\u00e9\"\nenable=false\n",
+                   "/home/wifi.toml", false, "",
+                   "{\"src\":\"/home/wifi.toml\",\"on\":false,\"ssid\":\"a\\\"b\\\\c\xc3\xa9\",\"conn\":false,\"ip\":\"\"}");
+    // No file.
+    expect_summary(NULL, "", false, NULL,
+                   "{\"src\":\"\",\"on\":false,\"ssid\":\"\",\"conn\":false,\"ip\":\"\"}");
+    // "ssid2" and "password_ssid" are other keys; a literal string is taken as it is.
+    expect_summary("ssid2 = \"x\"\npassword_ssid = \"hunter2\"\nssid = 'lit'\n", "/etc/wifi.toml", false, "",
+                   "{\"src\":\"/etc/wifi.toml\",\"on\":false,\"ssid\":\"lit\",\"conn\":false,\"ip\":\"\"}");
+    // A small buffer is cut short and stays terminated.
+    char small[20];
+    memset(small, 'x', sizeof(small));
+    size_t n = fmrb_wifi_summary_json(wifi, "/etc/wifi.toml", true, "192.0.2.7", small, sizeof(small));
+    CHECK(n < sizeof(small) && small[n] == '\0', "small buffer: n=%zu", n);
+}
+
 int main(void)
 {
     test_classify();
@@ -194,6 +237,7 @@ int main(void)
     test_get();
     test_put_rm();
     test_rename();
+    test_summary();
     if (g_fail) {
         printf("secret_path: %d of %d checks FAILED\n", g_fail, g_count);
         return 1;
