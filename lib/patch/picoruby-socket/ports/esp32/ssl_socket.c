@@ -11,6 +11,7 @@
  * - Read timeout (FMRB_SOCKET_IO_TIMEOUT_MS) so a silent peer cannot stall
  *   the mruby VM task forever.
  * - Failures are logged with the mbedtls error code.
+ * - PSA is initialised before the first context when TLS 1.3 is built in.
  * Allocations use upstream's vm-threaded picorb_alloc(vm, ...): the old
  * picorb_alloc(NULL) crash is fixed upstream by passing the VM through the
  * ports API, so the former fmrb_sys_malloc replacement is gone.
@@ -28,6 +29,9 @@
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/error.h"
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+#include "psa/crypto.h"
+#endif
 
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
@@ -84,6 +88,16 @@ struct picorb_ssl_socket {
 picorb_ssl_context_t*
 SSLContext_create(picorb_state *vm)
 {
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+  /* mbedTLS 3.x runs TLS 1.3 on PSA, which nobody else initialises for this
+   * port (esp-tls does it for its own users): without it a TLS 1.3
+   * handshake fails. Here, on first use, rather than at boot, so a machine
+   * that never opens a TLS connection pays nothing. Later calls return at
+   * once. */
+  if (psa_crypto_init() != PSA_SUCCESS) {
+    ESP_LOGW(TAG, "psa_crypto_init failed: TLS 1.3 will not work");
+  }
+#endif
   picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)picorb_alloc(vm, sizeof(picorb_ssl_context_t));
   if (!ctx) return NULL;
 

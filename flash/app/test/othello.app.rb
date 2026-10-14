@@ -7,6 +7,9 @@
 #   ws/localhost:7449, or ?zenoh= from the page's URL), else tcp/zenohd:7447.
 #   The ID comes from /home/asterism_node.txt, the mDNS name, the
 #   asterism_node setting (the browser's wasm-XXXXXX) or the board name.
+#   A tls/ locator connects straight to a cloud router with mutual TLS
+#   (G2a): the console's credentials .tar in /home/asterism gives the
+#   certificate, and its name is the ID.
 # - One connection (G1b): Asterism (app "game", object "othello"), and
 #   Asterism.session, its Zenoh session, puts the state on
 #   asterism/<ID>/game/othello/state after every move (and every
@@ -355,6 +358,17 @@ class OthelloApp < FmrbApp
     @locator = first_line(LOCATOR_FILE)
     @locator = conf_value("zenoh_router") if @locator.empty?
     @locator = DEFAULT_LOCATOR if @locator.empty?
+    @creds = nil
+    @creds_error = nil
+    begin
+      @creds = FmrbAsterism.credentials_for(@locator)
+    rescue ::Asterism::Error => e
+      @creds_error = e.message
+    end
+    if @creds && @creds.name != @id
+      Log.info("othello: the certificate's name #{@creds.name} is the ID (not #{@id})")
+      @id = @creds.name
+    end
     width = conf_int("display_width")
     @small = width > 0 && width < 320
     request_fullscreen(true) if @small
@@ -447,7 +461,8 @@ class OthelloApp < FmrbApp
     t0 = Machine.board_millis
     begin
       ::Asterism.close
-      ::Asterism.connect(@locator, node: @id, app: APP)
+      raise ::Asterism::Error, @creds_error if @creds_error
+      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
       ::Asterism.expose(OBJ, OthelloApp::Remote.new(self),
                         methods: { info: 0, invite: 2, answer: 4, cancel: 1, move: 4, resign: 1, state: 0 }) unless @small
       ::Asterism.on_join { |n| @scan = true }

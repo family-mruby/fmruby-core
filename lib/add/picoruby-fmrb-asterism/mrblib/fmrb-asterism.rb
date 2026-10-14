@@ -77,6 +77,42 @@ module FmrbAsterism
     nil
   end
 
+  # The machine's Asterism credentials for a tls/ locator (connecting
+  # straight to a cloud router with mutual TLS, doc/ruby_asterism G2a): the
+  # .tar the console hands out, put in this directory as it is. One file;
+  # with more, the first by name is used. devctl's /fs/get does not read
+  # this directory (it holds the private key).
+  CREDENTIALS_DIR = "/home/asterism"
+
+  # Whether locator ("tls/host:port", "tcp/...", "peer ...") asks for TLS.
+  def self.tls?(locator)
+    locator.to_s.start_with?("tls/")
+  end
+
+  # The path of the credentials .tar, or nil when there is none.
+  def self.credentials_path
+    names = Dir.children(CREDENTIALS_DIR).select { |n| n.end_with?(".tar") }.sort
+    return nil if names.empty?
+    if names.size > 1
+      puts "asterism: #{names.size} credentials in #{CREDENTIALS_DIR}, using #{names[0]}"
+    end
+    "#{CREDENTIALS_DIR}/#{names[0]}"
+  rescue
+    nil
+  end
+
+  # The loaded credentials (Asterism::Credentials) for a tls/ locator, nil
+  # for any other. Raises Asterism::Error when TLS is asked for and there
+  # is no credentials file, or it cannot be read; the node ID of the
+  # connection is then the certificate's name (creds.name), which the
+  # router's access control knows the machine by.
+  def self.credentials_for(locator)
+    return nil unless tls?(locator)
+    path = credentials_path
+    raise Asterism::Error, "#{locator} needs a credentials .tar in #{CREDENTIALS_DIR}" if path.nil?
+    Asterism::Credentials.load(path)
+  end
+
   def self.toml_escape(s)
     out = "".dup
     i = 0

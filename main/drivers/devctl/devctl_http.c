@@ -323,11 +323,37 @@ static esp_err_t fs_list_handler(httpd_req_t *req)
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
+// /home/asterism holds the board's Asterism credentials (the console's .tar
+// with the private key: doc/ruby_asterism/report/g2a.md). Anyone on the LAN
+// can call this server, so nothing under it is handed out: it can be put,
+// listed and deleted, not read. Empty and "." segments are skipped before
+// comparing ("/home//asterism", "/home/./asterism").
+static bool fs_path_secret(const char *vpath)
+{
+    static const char *const secret[] = { "home", "asterism" };
+    size_t matched = 0;
+    const char *p = vpath;
+    while (*p && matched < 2) {
+        while (*p == '/') p++;
+        const char *seg = p;
+        while (*p && *p != '/') p++;
+        size_t len = (size_t)(p - seg);
+        if (len == 0 || (len == 1 && seg[0] == '.')) continue;
+        if (strlen(secret[matched]) != len || strncmp(seg, secret[matched], len) != 0) return false;
+        matched++;
+    }
+    return matched == 2;
+}
+
 static esp_err_t fs_get_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
     if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (fs_path_secret(vpath)) {
+        return ctl_json(req, "403 Forbidden",
+                        "{\"ok\":false,\"err\":\"/home/asterism holds keys and is not read remotely\"}");
+    }
 
     FILE *f = fopen(rpath, "rb");
     if (!f) {

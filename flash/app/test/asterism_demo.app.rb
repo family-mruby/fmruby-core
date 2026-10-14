@@ -9,7 +9,9 @@
 #   locator, else the machine's zenoh_router setting (system_conf.toml; the
 #   browser build has ws/localhost:7449 there, or ?zenoh= from the page's
 #   URL), else tcp/zenohd:7447; "listen <loc>" / "peer <loc>" select peer
-#   mode (no router; not in the browser).
+#   mode (no router; not in the browser). A tls/ locator connects straight
+#   to a cloud router with mutual TLS (G2a): the console's credentials .tar
+#   in /home/asterism gives the certificate, and its name is the node ID.
 # - Exposes, as <ID>/demo/<name>:
 #     apu     play(mml) -> number of notes, stop -> true (the APU, via MML)
 #     screen  say(text) -> text length (shown in this window)
@@ -186,6 +188,14 @@ class AsterismDemoApp < FmrbApp
     @locator = first_line(LOCATOR_FILE)
     @locator = conf_value("zenoh_router") if @locator.empty?
     @locator = DEFAULT_LOCATOR if @locator.empty?
+    @creds = nil
+    @creds_error = nil
+    begin
+      @creds = FmrbAsterism.credentials_for(@locator)
+    rescue ::Asterism::Error => e
+      @creds_error = e.message
+    end
+    @node = @creds.name if @creds
     @state = "connecting"
     @said = "-"
     @lines = []
@@ -222,7 +232,8 @@ class AsterismDemoApp < FmrbApp
       elsif words[0] == "peer"
         ::Asterism.connect(words[1], node: @node, app: APP, mode: :peer)
       else
-        ::Asterism.connect(@locator, node: @node, app: APP)
+        raise ::Asterism::Error, @creds_error if @creds_error
+        ::Asterism.connect(@locator, node: @node, app: APP, credentials: @creds)
       end
       ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
       ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
