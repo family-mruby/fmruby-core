@@ -38,6 +38,19 @@ const LINK_NODE = LINK_NODE_RE.test(String(window.FMRB_ZENOH_NODE || '')) ? Stri
 const LINK_APP = String(window.FMRB_LINK_APP || '');
 try { delete window.FMRB_ZENOH_NODE; delete window.FMRB_LINK_APP; } catch (e) { /* kept in the constants */ }
 
+// A pass comes from a console, and on a network a console runs the console
+// decides who the page is: every link it gives carries the node ID next to
+// the pass (doc/ruby_asterism, 2026-10-14). A link with a pass and no node
+// (a hand-made one, an older console's) would join under this browser's own
+// ID, so the same person would show up under another name depending on the
+// link. The page does not start and says to open it again from the console;
+// the pass is not used. Without a pass (a network with no console: a home
+// router, a development router) the page keeps its own ID as before.
+const PASS_WITHOUT_NODE = !!ZENOH_PASS && !LINK_NODE;
+const PASS_WITHOUT_NODE_TEXT =
+  'This link has a pass but no node ID, so the page does not connect. ' +
+  'Open the browser build again from the console (Browser passes).';
+
 // The app to open this visit: ?app= or the link's #app=.
 function urlApp() {
   return new URLSearchParams(location.search).get('app') || LINK_APP;
@@ -529,6 +542,11 @@ if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
 } else {
   statusLine.textContent = 'ready';
 }
+if (PASS_WITHOUT_NODE) {
+  statusLine.textContent = 'not started: ' + PASS_WITHOUT_NODE_TEXT;
+  startOverlay.textContent = PASS_WITHOUT_NODE_TEXT;
+  startOverlay.classList.add('refused');
+}
 
 const moduleConfig = {
   // The .data (and .wasm) live next to core_web.js, not next to this page;
@@ -572,7 +590,7 @@ moduleConfig.arguments = [];
   if (zenoh) moduleConfig.arguments.push(`--fmrb-conf=zenoh_router="${zenoh}"`);
   // The pass goes to the link through the module object, never as an
   // argument (arguments end up in the machine's settings).
-  if (ZENOH_PASS) {
+  if (ZENOH_PASS && !PASS_WITHOUT_NODE) {
     moduleConfig.zenohPass = ZENOH_PASS;
     moduleConfig.zenohPage = ZENOH_PAGE;
     // The link stopped trying (zp_ws_emscripten.c): with a pass, most likely
@@ -746,7 +764,9 @@ function storedRouter() {
 function showNetworkState() {
   if (nodeStateEl) {
     let text = nodeId ? 'node ' + nodeId : 'node: checking...';
-    if (nodeId && LINK_NODE) text += ' (from the link, this visit)';
+    if (PASS_WITHOUT_NODE) text = 'node: none (the link has a pass but no node ID; not connecting)';
+    if (PASS_WITHOUT_NODE) { /* said above */ }
+    else if (nodeId && LINK_NODE) text += ' (from the link, this visit)';
     else if (nodeId && homeWriter === false) text += ' (this tab only)';
     else if (nodeId && !nodeKept) text += ' (not kept: storage refused)';
     nodeStateEl.textContent = text;
@@ -758,7 +778,7 @@ if (routerInput) {
   if (urlZenoh() && routerNote) {
     routerNote.textContent = 'this visit: ' + urlZenoh() + ' (from the URL)';
   }
-  if (ZENOH_PASS && routerNote) {
+  if (ZENOH_PASS && !PASS_WITHOUT_NODE && routerNote) {
     routerNote.textContent += '; pass: set for this visit (not kept, sent on wss:// only)';
   }
   routerInput.addEventListener('change', () => {
@@ -1955,6 +1975,9 @@ function fsprobeReport(mod) {
 }
 
 startOverlay.addEventListener('click', async () => {
+  // A link with a pass and no node: the machine is not switched on at all
+  // (see PASS_WITHOUT_NODE), so nothing can connect with the pass.
+  if (PASS_WITHOUT_NODE) return;
   startOverlay.style.display = 'none';
   canvas.focus();
   statusLine.textContent = 'booting the firmware...';
