@@ -230,6 +230,24 @@ static void test_summary(void)
     CHECK(n < sizeof(small) && small[n] == '\0', "small buffer: n=%zu", n);
 }
 
+static void test_setup_mode(void)
+{
+    // Off on this board: never, whatever the files and the button say.
+    CHECK(fmrb_setup_mode_reason(false, false, false) == FMRB_SETUP_NONE, "off, nothing");
+    CHECK(fmrb_setup_mode_reason(false, false, true) == FMRB_SETUP_NONE, "off, button");
+    CHECK(fmrb_setup_mode_reason(false, true, true) == FMRB_SETUP_NONE, "off, wifi + button");
+    // On: no WiFi settings, or the button.
+    CHECK(fmrb_setup_mode_reason(true, true, false) == FMRB_SETUP_NONE, "on, wifi");
+    CHECK(fmrb_setup_mode_reason(true, false, false) == FMRB_SETUP_NO_WIFI, "on, no wifi");
+    CHECK(fmrb_setup_mode_reason(true, true, true) == FMRB_SETUP_BUTTON, "on, wifi + button");
+    CHECK(fmrb_setup_mode_reason(true, false, true) == FMRB_SETUP_BUTTON, "on, button, no wifi");
+    CHECK(strcmp(fmrb_setup_reason_text(FMRB_SETUP_NO_WIFI), "no WiFi settings") == 0, "text no wifi");
+    CHECK(strcmp(fmrb_setup_reason_text(FMRB_SETUP_BUTTON), "button held at boot") == 0, "text button");
+    // The WiFi settings files are secrets of the WiFi kind.
+    expect_class(FMRB_WIFI_TOML_HOME_PATH, FMRB_PATH_WIFI);
+    expect_class(FMRB_WIFI_TOML_ETC_PATH, FMRB_PATH_WIFI);
+}
+
 int main(void)
 {
     test_classify();
@@ -238,6 +256,7 @@ int main(void)
     test_put_rm();
     test_rename();
     test_summary();
+    test_setup_mode();
     if (g_fail) {
         printf("secret_path: %d of %d checks FAILED\n", g_fail, g_count);
         return 1;

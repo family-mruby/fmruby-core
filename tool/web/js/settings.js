@@ -6,7 +6,8 @@
 // (/home/asterism/<name>.tar) over the file service.
 //
 // The board takes these only while its settings window is open (the desktop
-// menu's "BLE Setup", a few minutes). The window is asked for with
+// menu's "BLE Setup", a few minutes, or a board in its setup mode, until it
+// restarts: doc/ruby_asterism/report/cf3.md). The window is asked for with
 // CMD_SETTINGS; the board refuses the writes itself when it is closed, so the
 // buttons here being disabled is a courtesy, not the lock.
 //
@@ -17,6 +18,7 @@
 // CMD_SETTINGS answer and never carries the password.
 
 const CMD_SETTINGS = 0x17;
+const CMD_REBOOT   = 0x18;   // the board takes it only in its setup mode
 
 const WIFI_HOME_PATH   = '/home/wifi.toml';
 const WIFI_ETC_PATH    = '/etc/wifi.toml';
@@ -31,6 +33,7 @@ let settingsState = {
   open: false,
   left: 0,
   leftAt: 0,         // Date.now() when `left` was read
+  setup: false,      // the board is in its setup mode: open until it restarts
   wifi: null,        // '/home/wifi.toml' | '/etc/wifi.toml' | '' (none)
   wifiInfo: null,    // { src, on, ssid, conn, ip } from CMD_SETTINGS, null on old firmware
   password: null,    // the current password, read while the window is open
@@ -188,6 +191,7 @@ async function settingsAskWindow() {
   settingsState.wifiInfo = meta.wifi || null;
   settingsState.left = meta.left || 0;
   settingsState.leftAt = Date.now();
+  settingsState.setup = !!(meta.open && meta.until_restart);
 }
 
 async function settingsList(path) {
@@ -257,7 +261,7 @@ function settingsRender() {
   const st = settingsState;
   const win = settingsEl('setWindow');
   const left = settingsWindowLeft();
-  const open = connected && st.supported && st.open && left > 0;
+  const open = connected && st.supported && st.open && (st.setup || left > 0);
 
   if (!connected) {
     win.textContent = 'Not connected.';
@@ -265,6 +269,10 @@ function settingsRender() {
   } else if (st.supported === false) {
     win.textContent = 'This firmware has no settings window: update the board\'s firmware to write settings from here.';
     win.className = 'settings-window closed';
+  } else if (open && st.setup) {
+    win.textContent = 'The board is in its setup mode and accepts settings until it restarts. ' +
+                      'When they are written, click Reboot (or press the board\'s button).';
+    win.className = 'settings-window open';
   } else if (open) {
     const m = Math.floor(left / 60);
     const s = String(left % 60).padStart(2, '0');
@@ -317,6 +325,11 @@ function settingsRender() {
   });
   const reload = settingsEl('setReload');
   if (reload) reload.disabled = !connected || settingsBusy;
+  const reboot = settingsEl('setReboot');
+  if (reboot) {
+    reboot.hidden = !(connected && st.setup);
+    reboot.disabled = settingsBusy;
+  }
 }
 
 // Fill the Asterism fields from what the board has (only on load, so what
@@ -412,7 +425,8 @@ function settingsWriteWifi() {
   return settingsWrite('setWifiMsg', async () => {
     await deviceWriteFile(WIFI_HOME_PATH, new TextEncoder().encode(settingsWifiToml(ssid, password)));
     settingsState.password = password;
-    return 'WiFi written to ' + WIFI_HOME_PATH + '. It is used from the next start: restart the board (menu > Reset).';
+    return 'WiFi written to ' + WIFI_HOME_PATH + '. It is used from the next start: ' +
+           (settingsState.setup ? 'click Reboot.' : 'restart the board (menu > Reset).');
   });
 }
 
@@ -468,10 +482,31 @@ function settingsWriteTar() {
   });
 }
 
+// Restart the board into its normal mode (setup mode only: the board refuses
+// otherwise). The link drops with the restart.
+async function settingsReboot() {
+  if (!rxChar || settingsBusy || !settingsState.setup) return;
+  settingsBusy = true;
+  settingsRender();
+  settingsSetMsg('setRebootMsg', 'Asking the board to restart...', '');
+  try {
+    const { meta } = await sendCommand(CMD_REBOOT, {});
+    if (!meta.ok) throw new Error(meta.err || 'refused');
+    settingsSetMsg('setRebootMsg', 'The board is restarting into its normal mode (WiFi). ' +
+                   'This connection ends now.', 'ok');
+    log('settings: the board is restarting', 'ok');
+  } catch (e) {
+    settingsSetMsg('setRebootMsg', 'Not restarted: ' + e.message, 'err');
+    log('settings: reboot: ' + e.message, 'err');
+  }
+  settingsBusy = false;
+  settingsRender();
+}
+
 // Called by app.js on connect and disconnect.
 function settingsOnConnection(connected) {
   if (!connected) {
-    settingsState = { supported: null, open: false, left: 0, leftAt: 0,
+    settingsState = { supported: null, open: false, left: 0, leftAt: 0, setup: false,
                       wifi: null, wifiInfo: null, password: null, tars: [], config: null };
     const pw = settingsEl('setPassword');
     if (pw) pw.value = '';

@@ -1,6 +1,6 @@
 # CF3 報告: AtomS3R の設定のモード (BLE だけで起動して接続の設定を受け付ける)
 
-> 状態: Step 1 (調べと案) 完了、ユーザの承認待ち | 更新: 2026-10-14 | instruction_cf3.md の Step 1。AtomS3R に BLE を入れる sdkconfig の差分案を 2 つ作り、試しのビルドで静的な内蔵 RAM と flash を測った。Retro と同じ構成 (案 A) は普段のモードで静的な内蔵 RAM が +16,816 B、BLE のコントローラを flash に置く構成 (案 B) は +3,676 B。案 B に、普段のモードの起動で BLE の領域を heap に返す手 (`esp_bt_controller_mem_release`) を足すのを推す。それでも IDF の IRAM のコード約 1.9 KB が残る見込みで、増分 0 になるかは ROM の BLE の領域の大きさ次第 (端末でしか測れない)。設定のモードの空きは約 150 KB の見込み (推定)。sdkconfig・区画の表・ソースは変えていない
+> 状態: Step 2 の最初の計測で止めた (普段のモードの内蔵 RAM が +2,016 B、ユーザの判断待ち) | 更新: 2026-10-14 | 10 章が Step 2 の計測。 instruction_cf3.md の Step 1。AtomS3R に BLE を入れる sdkconfig の差分案を 2 つ作り、試しのビルドで静的な内蔵 RAM と flash を測った。Retro と同じ構成 (案 A) は普段のモードで静的な内蔵 RAM が +16,816 B、BLE のコントローラを flash に置く構成 (案 B) は +3,676 B。案 B に、普段のモードの起動で BLE の領域を heap に返す手 (`esp_bt_controller_mem_release`) を足すのを推す。それでも IDF の IRAM のコード約 1.9 KB が残る見込みで、増分 0 になるかは ROM の BLE の領域の大きさ次第 (端末でしか測れない)。設定のモードの空きは約 150 KB の見込み (推定)。sdkconfig・区画の表・ソースは変えていない
 
 ## 1. 要約
 
@@ -209,3 +209,79 @@ button to restart.
 8. 設定のモードでは startup_app (今は asterism_demo など) を起こさない、でよいか (WiFi が無いので繋がらず、内蔵 RAM も使う)。
 9. WiFi の設定はあるが繋がらない (パスワードの誤りなど) ときに、自動で設定のモードへ戻る仕組みは作らない (ボタンで入る)、でよいか。
 10. 開発のビルドは `config/wifi.toml` から `/etc/wifi.toml` を焼き込むので、WiFi の設定が無い状態にはならない (ボタンで入る)。WiFi の設定を消す確認 (受け入れ条件 1) では `/etc/wifi.toml` も消す必要があるが、devctl のファイルの操作は `/home`・`/app` などに限られ `/etc` に届かない。ボタンで設定のモードに入って BLE のコンソールで消す (受け付ける時間の間は消せる) か、devctl の範囲に `/etc` を足す (開発のビルドだけ) か、を Step 2 で決める。確認のあとはバックアップから戻す。
+
+## 10. Step 2: 最初の計測 (ここで止めた)
+
+ユーザの決定 (2026-10-14、9 章の 10 点はすべて推し案) を受けて Step 2 に入り、案 B の sdkconfig と、普段のモードで BLE の領域を heap に返す手を入れて計測した。**普段のモードの内蔵 RAM が develop より 2,016 B 少ない (増分 0 に届かない)** ので、決定 3 のとおりここで止めた。BLE の書き込みの確認 (決定 1) は、判断の材料になるので止める前に端末の側でできる範囲を行った (10.4)。
+
+### 10.1 作ったもの (コミット済み、未検収)
+
+ブランチ feature/cf3-atoms3r-setup (develop をマージ済み)。止まった状態でも続きから入れるように、Step 2 の作りは一通り入れてコミットした。AtomS3R の ESP32 のビルドと host の試験 (`rake secret:test` 122 項目、`node tool/web/test/settings.mjs`) は通る。ほかの構成のビルド・sim・wasm はまだ回していない。
+
+| 場所 | 中身 |
+|---|---|
+| `config/sdkconfig.defaults.atoms3r` | 案 B の差分 (3.1) と、冒頭の注釈の「no Bluetooth」の直し |
+| `config/system_conf_atoms3r.toml` | `setup_mode = true`。ble_auto_start の注釈を直した |
+| `main/kernel/fmrb_kernel.c/.h` | `read_system_config` で設定のモードを決める (`setup_mode` が true で、WiFi の設定のファイルが無いか、G41 が 10 ms おき 5 回とも Low)。`boot_mode` を `FMRB_BOOT_MODE_SETUP` (2) にする。`setup_mode` の既定は AtomS3R だけ true (/etc が古い端末でも効くように)。設定のモードの画面 `fmrb_kernel_show_setup` (止まった画面と同じ仕組み、紺の地) |
+| `main/kernel/fmrb_secret_path.c/.h` | 判定の純粋な関数 `fmrb_setup_mode_reason` と、WiFi の設定のファイルの道の定義 (wifi_task・ble_task・カーネルが同じものを使う) |
+| `main/prebuild_scripts/kernel/fmrb_kernel.rb` ほか | 設定のモードなら startup_app もサービスも起こさず `_show_setup`。mruby (lib/add の kernel.c) と Spinel (ffi・base) の両方 |
+| `main/boot/boot.c` | 普段のモードは kernel の開始の直後に `ble_release_memory()`。設定のモードは `ble_setup_mode_start(G41)` だけで WiFi と devctl は起こさない |
+| `main/drivers/ble/ble_task.c/.h`・`ble_none.c` | 受け付ける時間を起動し直すまで開ける。`0x17` に `"setup":true,"until_restart":true`。`0x18` (起動し直し、設定のモードのときだけ受ける)。ボタンを放してから押すと起動し直し。`esp_bt_mem_release`。characteristic の表を const の配列に (Retro・P4 の .data も減る) |
+| `tool/web/` | Settings に「Reboot」(設定のモードのときだけ出る)、設定のモードの表示。版 `2026-10-14c`。試験に 9 項目。README |
+
+### 10.2 静的な内蔵 RAM (`idf.py size`、同じコミットで比べた)
+
+develop (sdkconfig は BLE 無し) と、このブランチを同じ作業コピーで `rake clean_all` から作り直して比べた。違いは 10.1 の変更だけ。
+
+| | develop | このブランチ | 差 |
+|---|---|---|---|
+| DIRAM 計 | 111,039 | 114,491 | +3,452 |
+| .text (IRAM に置くコード) | 66,075 | 68,011 | +1,936 |
+| .bss | 22,704 | 23,480 | +776 |
+| .data | 22,260 | 23,000 | +740 |
+| fmruby-core.bin | 4,164,896 | 4,466,000 | +301,104 (区画の空き 776,880 B、14.8%) |
+
+- Step 1 の案 B (+3,676) より 224 B 少ない。characteristic の表を const にした分。
+- ブートローダは中身が同じ (違いは作った時刻の文字列とその後ろの検査の値だけ、37 B)。区画の表は同じ。アプリの区画だけの書き込みで足りる。
+
+### 10.3 端末での内蔵 RAM (AtomS3R、普段のモード)
+
+develop とこのブランチを同じ端末にアプリの区画だけ書き、同じ /home・同じ startup_app (試しのアプリ) で起動した。
+
+| M1 / 周期ダンプ | develop | このブランチ | 差 |
+|---|---|---|---|
+| `boot_start` | 330,124 | 326,820 | -3,304 |
+| `spawn:fmrb_kernel` | 241,988 | 238,692 | -3,296 |
+| `ble_released` (BLE の領域を返した直後) | - | 239,876 | +1,272 を返した |
+| `spawn:` 試しのアプリ | 225,068 | 223,040 | -2,028 |
+| `devctl` | 144,380 | 142,364 | -2,016 |
+| `debugd` | 136,912 | 134,896 | -2,016 |
+| 定常の `IRAM free` | 135,736 | 133,720 | -2,016 |
+| asterism_demo (VPS に TLS で接続中) の `IRAM free` | 117,800 | 115,784 | -2,016 |
+
+- **返せたのは 1,272 B だけ**。コントローラの .bss・.data (1,192 B) とわずかな端数で、Step 1 で当てにした「ROM の BLE の領域」はほとんど無かった (多くて 80 B)。そのため IDF の IRAM のコード (約 1.9 KB) と .bss・.data の残りが相殺されず、**普段のモードで 2,016 B 減る**。
+- asterism_demo は今どおり VPS に TLS で繋がった (1,258 ms。develop は 1,301 ms)。
+- PSRAM は起動の時点で 36 KB 減る (NimBLE の .bss は PSRAM に置かれている)。
+
+### 10.4 設定のモードと、BLE を起こしたままの flash の書き込み (端末の側)
+
+一時のビルド (WiFi の設定を「無い」とみなす 1 行と、試しの書き込みを足したもの。コミットしていない) を焼いて確かめた。
+
+- `kernel: setup mode: no WiFi settings` → カーネルは `Setup mode: no app started` で startup_app を起こさず画面を出し、BLE が起き (`BLE device name: Family-mruby-aaaaaa` の形、画面の名前と一致)、`settings window open until restart (setup mode)`。WiFi・devctl は起きない。ボタンは `button released; press it to restart` まで進んだ (押す確認はユーザ)。
+- 設定のモードの内蔵 RAM: `ble_ready` 153,452 B、定常の `IRAM free` **159,860 B** (Step 1 の見込み約 152 KB より多い。debugd は動いたまま)。
+- **BLE を起こしたまま littlefs に書く**: BLE のファイルのタスクの中で (PUT と同じタスク)、`/home` に 256 KB を 2 KB ずつ書いて読み戻し、消すことを 5 秒おきに 3 回。3 回とも読み戻しが一致し、書き込みは 2.2〜2.6 秒 (1 塊の最悪 194 / 34 / 44 ms)。書いたあとも `synced=1 enabled=1 adv_active=1`、NimBLE の host のリセットやコントローラの assert、再起動は無い。
+- **限界**: この PC に Bluetooth が無いので、つないだまま (connection event がある状態) で書く場面は確かめていない。広告だけの状態で壊れないことまで。つないだまま切れないかは Web Bluetooth で tar を書く確認 (ユーザ) が要る。
+
+### 10.5 判断してほしいこと
+
+増分は 2,016 B (定常、普段のモード)。残りは BLE を入れると IRAM に置かれる IDF のコード (Step 1 の 4.1 の表: esp_system・btbb・freertos・spi_flash・newlib など約 1.9 KB) と .bss・.data の端数で、sdkconfig のこの差分の中では消せない。手は次のどれか。
+
+1. **+2 KB を受け入れる** (設定のモードの利点と引き換え)。
+2. **ほかの場所で同じだけ減らして相殺する**: このブランチの外の内蔵 RAM の削減 (internal_ram_budget.md の候補から 2 KB 以上) を先に入れる。
+3. **BLE を入れたまま IRAM のコードを減らす sdkconfig を探す** (どの項目がどの関数を IRAM に引き込んでいるかを調べてから案を出す。sdkconfig の追加の承認が要る)。
+4. 案 A は +16.8 KB なので悪くなる。BLE を入れない (CF3 をやめる) と 0。
+
+### 10.6 端末と作業コピーの今
+
+- AtomS3R: develop のファーム (アプリの区画だけ) に戻した。/home はそのまま (config.toml・tar・ほかのファイルの名前と大きさが同じ。試しのファイルは消した)。asterism_demo を起動し、VPS に TLS で繋がっている。
+- 作業コピーは develop、build/ は Linux の標準構成 (x86-64)。

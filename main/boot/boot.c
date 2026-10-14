@@ -562,6 +562,18 @@ void fmrb_os_init(void)
     }
     FMRB_LOGI(TAG, "fmrb_kernel_start done");
 
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
+    // A board that may boot into the setup mode (system_conf setup_mode,
+    // doc/ruby_asterism/report/cf3.md) runs BLE in that mode only. Any other
+    // boot gives BLE's memory to the heap now, before the apps take theirs:
+    // the kernel has just read the config and decided which boot this is.
+    if (fmrb_kernel_setup_capable() &&
+        fmrb_kernel_get_config()->boot_mode != FMRB_BOOT_MODE_SETUP &&
+        ble_release_memory() == FMRB_OK) {
+        fmrb_mem_log_boot_snapshot("ble_released");
+    }
+#endif
+
     // Wait for kernel and host initialization
     int timeout_ms = 5000;  // 5 second timeout
     int elapsed_ms = 0;
@@ -584,9 +596,17 @@ void fmrb_os_init(void)
     // menu calls ble_service_start() (doc/reference/internal_ram_budget.md, D axis).
     // WiFi (native radio, Narya only) defaults off and is mutually exclusive
     // with BLE (no coexistence); when both are configured on, BLE wins.
+    // A board with setup_mode = true (doc/ruby_asterism/report/cf3.md) decides
+    // at boot which of the two this boot is: the setup mode is BLE alone, any
+    // other boot never starts BLE (its memory went to the heap above).
     {
         const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
-        if (cfg->ble_auto_start) {
+        if (cfg->boot_mode == FMRB_BOOT_MODE_SETUP) {
+            // BLE only: no WiFi, no devctl.
+            if (ble_setup_mode_start(FMRB_PIN_BUTTON_ENTER) != FMRB_OK) {
+                FMRB_LOGE(TAG, "setup mode: BLE did not start; reset the board to try again");
+            }
+        } else if (cfg->ble_auto_start) {
             if (cfg->wifi_auto_start) {
                 FMRB_LOGW(TAG, "ble_auto_start and wifi_auto_start are both "
                                "set; S3 runs one radio -- starting BLE only");

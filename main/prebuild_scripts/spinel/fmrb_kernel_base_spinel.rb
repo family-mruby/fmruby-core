@@ -259,6 +259,10 @@ class FmrbKernel
     FmrbSpx.fmrb_spx_clear_halt == 1
   end
 
+  def _show_setup
+    FmrbSpx.fmrb_spx_show_setup == 1
+  end
+
   def _set_error_led(level)
     FmrbSpx.fmrb_spx_set_error_led(level)
     nil

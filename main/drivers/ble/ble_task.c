@@ -1,5 +1,10 @@
 #include <string.h>
 #include "esp_attr.h"
+#if defined(CONFIG_BT_CONTROLLER_ENABLED)
+#include "esp_bt.h"           // the on-chip controller (not on Modern's esp_hosted)
+#endif
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "fmrb_rtos.h"
 #include "fmrb_mem.h"
 #include "esp_timer.h"
@@ -84,6 +89,7 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_CMD_STATFS 0x15
 #define BLE_FS_CMD_RENAME 0x16
 #define BLE_FS_CMD_SETTINGS 0x17   // settings window state (doc/ruby_asterism/report/cf2.md)
+#define BLE_FS_CMD_REBOOT   0x18   // restart the board, setup mode only (report/cf3.md)
 #define BLE_FS_CMD_GET    0x21
 #define BLE_FS_CMD_PUT    0x22
 #define BLE_FS_CMD_LOG_SUBSCRIBE   0x31
@@ -152,6 +158,28 @@ EXT_RAM_BSS_ATTR static ble_dbg_rx_t g_dbg_rx;
 EXT_RAM_BSS_ATTR static volatile uint32_t g_settings_until_s;
 EXT_RAM_BSS_ATTR static volatile bool g_settings_log_wifi;
 
+// Setup mode (doc/ruby_asterism/report/cf3.md): the window is held open until
+// the board restarts, and the file service task watches the button and takes
+// the console's restart command. All of it PSRAM, like the window.
+EXT_RAM_BSS_ATTR static volatile bool g_settings_hold;
+EXT_RAM_BSS_ATTR static bool g_setup_has_button;
+EXT_RAM_BSS_ATTR static int g_setup_button;
+EXT_RAM_BSS_ATTR static bool g_setup_button_armed;
+EXT_RAM_BSS_ATTR static uint8_t g_setup_button_low;
+EXT_RAM_BSS_ATTR static uint8_t g_setup_button_high;
+EXT_RAM_BSS_ATTR static volatile bool g_restart_asked;
+// Set by ble_release_memory(): BLE's memory is heap now, it cannot start.
+EXT_RAM_BSS_ATTR static bool g_ble_released;
+
+// While the setup mode holds the window, CMD_SETTINGS reports this as the
+// time left (a console that knows nothing of the setup mode then still sees
+// an open window) along with "until_restart".
+#define BLE_SETTINGS_HOLD_REPORT_S 86399
+// The button is polled this often while the window is held.
+#define BLE_SETUP_BUTTON_POLL_MS   50
+// How long the restart waits after answering, so the answer gets out.
+#define BLE_RESTART_DELAY_MS       500
+
 // Forward declarations
 static void ble_advertise(void);
 static void ble_fs_task_func(void *arg);
@@ -217,7 +245,7 @@ static bool json_get_int(const char *json, const char *key, int32_t *value)
 static size_t ble_fs_wifi_summary(char *out, size_t cap)
 {
     EXT_RAM_BSS_ATTR static char text[BLE_WIFI_TOML_MAX];
-    static const char *const paths[] = { "/home/wifi.toml", "/etc/wifi.toml" };
+    static const char *const paths[] = { FMRB_WIFI_TOML_HOME_PATH, FMRB_WIFI_TOML_ETC_PATH };
     const char *src = "";
     bool have_text = false;
     for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
@@ -252,6 +280,7 @@ static uint32_t settings_now_s(void)
 
 uint32_t ble_settings_window_left(void)
 {
+    if (g_settings_hold) return UINT32_MAX;
     uint32_t until = g_settings_until_s;
     uint32_t now = settings_now_s();
     return (until > now) ? (until - now) : 0;
@@ -260,10 +289,11 @@ uint32_t ble_settings_window_left(void)
 fmrb_err_t ble_settings_window_set(uint32_t seconds)
 {
     if (seconds == 0) {
-        if (g_settings_until_s != 0) {
+        if (g_settings_until_s != 0 || g_settings_hold) {
             FMRB_LOGI(TAG, "settings window closed");
         }
         g_settings_until_s = 0;
+        g_settings_hold = false;
         return FMRB_OK;
     }
     if (!ble_service_is_started()) {
@@ -318,15 +348,55 @@ static bool ble_fs_allowed(fmrb_remote_fs_op_t op, const char *cmd_name, const c
 
 static void ble_fs_cmd_settings(char *response, size_t response_size)
 {
-    uint32_t left = ble_settings_window_left();
-    int n = snprintf(response, response_size, "{\"ok\":true,\"open\":%s,\"left\":%lu,\"wifi\":",
-                     left > 0 ? "true" : "false", (unsigned long)left);
+    bool hold = g_settings_hold;
+    uint32_t left = hold ? BLE_SETTINGS_HOLD_REPORT_S : ble_settings_window_left();
+    int n = snprintf(response, response_size,
+                     "{\"ok\":true,\"open\":%s,\"left\":%lu,%s\"wifi\":",
+                     left > 0 ? "true" : "false", (unsigned long)left,
+                     hold ? "\"setup\":true,\"until_restart\":true," : "");
     if (n < 0 || (size_t)n + 2 >= response_size) return;
     size_t o = (size_t)n;
     o += ble_fs_wifi_summary(response + o, response_size - o - 1);
     if (o + 1 < response_size) {
         response[o++] = '}';
         response[o] = '\0';
+    }
+}
+
+// Restart on the console's word, only in the setup mode (anywhere else a
+// restart over an unauthenticated link would be a way to knock a board off
+// its job). The answer goes out first; the file service task restarts.
+static void ble_fs_cmd_reboot(char *response, size_t response_size)
+{
+    if (!g_settings_hold) {
+        FMRB_LOGW(TAG, "BLE reboot refused: not in the setup mode");
+        snprintf(response, response_size,
+                 "{\"ok\":false,\"denied\":true,\"err\":\"The board restarts from the console only in the setup mode\"}");
+        return;
+    }
+    g_restart_asked = true;
+    snprintf(response, response_size, "{\"ok\":true,\"restart_ms\":%d}", BLE_RESTART_DELAY_MS);
+}
+
+// The setup mode's button: a press (low) restarts the board. The press that
+// may have started the setup mode has to be let go first.
+static void setup_button_check(void)
+{
+    if (!g_setup_has_button) return;
+    int32_t level = fmrb_hal_gpio_get_level(g_setup_button);
+    if (level < 0) return;
+    if (level != 0) {
+        g_setup_button_low = 0;
+        if (!g_setup_button_armed && ++g_setup_button_high >= 2) {
+            g_setup_button_armed = true;
+            FMRB_LOGI(TAG, "setup mode: button released; press it to restart");
+        }
+        return;
+    }
+    g_setup_button_high = 0;
+    if (g_setup_button_armed && ++g_setup_button_low >= 2) {
+        FMRB_LOGI(TAG, "setup mode: button pressed, restarting");
+        g_restart_asked = true;
     }
 }
 
@@ -507,47 +577,54 @@ static int gatt_chr_dbg_tx_cb(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
+// The characteristic tables are named const arrays rather than compound
+// literals in the service table: a compound literal is writable data, which
+// on this chip is internal RAM.
+static const struct ble_gatt_chr_def gatt_chr_fmrb[] = {
+    {
+        .uuid = &gatt_chr_device_info_uuid.u,
+        .access_cb = gatt_chr_device_info_cb,
+        .flags = BLE_GATT_CHR_F_READ,
+    },
+    {
+        .uuid = &gatt_chr_fs_rx_uuid.u,
+        .access_cb = gatt_chr_fs_rx_cb,
+        .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+    },
+    {
+        .uuid = &gatt_chr_fs_tx_uuid.u,
+        .access_cb = gatt_chr_fs_tx_cb,
+        .val_handle = &g_fs_tx_val_handle,
+        .flags = BLE_GATT_CHR_F_NOTIFY,
+    },
+    { 0 },
+};
+
+static const struct ble_gatt_chr_def gatt_chr_dbg[] = {
+    {
+        .uuid = &gatt_chr_dbg_rx_uuid.u,
+        .access_cb = gatt_chr_dbg_rx_cb,
+        .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+    },
+    {
+        .uuid = &gatt_chr_dbg_tx_uuid.u,
+        .access_cb = gatt_chr_dbg_tx_cb,
+        .val_handle = &g_dbg_tx_val_handle,
+        .flags = BLE_GATT_CHR_F_NOTIFY,
+    },
+    { 0 },
+};
+
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &gatt_svr_svc_fmrb_uuid.u,
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {
-                .uuid = &gatt_chr_device_info_uuid.u,
-                .access_cb = gatt_chr_device_info_cb,
-                .flags = BLE_GATT_CHR_F_READ,
-            },
-            {
-                .uuid = &gatt_chr_fs_rx_uuid.u,
-                .access_cb = gatt_chr_fs_rx_cb,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-            },
-            {
-                .uuid = &gatt_chr_fs_tx_uuid.u,
-                .access_cb = gatt_chr_fs_tx_cb,
-                .val_handle = &g_fs_tx_val_handle,
-                .flags = BLE_GATT_CHR_F_NOTIFY,
-            },
-            { 0 },
-        },
+        .characteristics = gatt_chr_fmrb,
     },
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &gatt_svr_svc_dbg_uuid.u,
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {
-                .uuid = &gatt_chr_dbg_rx_uuid.u,
-                .access_cb = gatt_chr_dbg_rx_cb,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-            },
-            {
-                .uuid = &gatt_chr_dbg_tx_uuid.u,
-                .access_cb = gatt_chr_dbg_tx_cb,
-                .val_handle = &g_dbg_tx_val_handle,
-                .flags = BLE_GATT_CHR_F_NOTIFY,
-            },
-            { 0 },
-        },
+        .characteristics = gatt_chr_dbg,
     },
     {
         0,
@@ -1470,6 +1547,11 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
         ble_fs_send_response(json_response, NULL, 0);
         break;
 
+    case BLE_FS_CMD_REBOOT:
+        ble_fs_cmd_reboot(json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
     case BLE_FS_CMD_GET:
         ble_fs_cmd_get(json_params, json_response, sizeof(json_response),
                        binary_buffer, &response_binary_size, sizeof(binary_buffer));
@@ -1543,6 +1625,9 @@ static void ble_fs_task_func(void *arg)
         // When a log subscription is active, shorten the wait so we can poll
         // the log ring buffer at the requested cadence. Otherwise idle 1s.
         uint32_t wait_ms = g_fs_ctx.log_subscribed ? g_fs_ctx.log_period_ms : 1000;
+        if (g_settings_hold && wait_ms > BLE_SETUP_BUTTON_POLL_MS) {
+            wait_ms = BLE_SETUP_BUTTON_POLL_MS;   // the setup mode's button
+        }
         bool got_frame = (fmrb_semaphore_take(g_fs_ctx.rx_sem,
                                               FMRB_MS_TO_TICKS(wait_ms)) == FMRB_TRUE);
 
@@ -1564,6 +1649,14 @@ static void ble_fs_task_func(void *arg)
         ble_fs_poll_logs();
         ble_fs_put_cache_idle_check();
         settings_window_expire_check();
+        if (g_settings_hold) {
+            setup_button_check();
+        }
+        if (g_restart_asked) {
+            fmrb_task_delay_ms(BLE_RESTART_DELAY_MS);
+            FMRB_LOGI(TAG, "setup mode: restarting");
+            esp_restart();
+        }
     }
 }
 
@@ -1870,6 +1963,11 @@ fmrb_err_t ble_service_start(void)
         FMRB_LOGI(TAG, "BLE already running");
         return FMRB_OK;
     }
+    if (g_ble_released) {
+        FMRB_LOGW(TAG, "BLE memory was given to the heap at boot: BLE cannot "
+                       "start until the next boot");
+        return FMRB_ERR_INVALID_STATE;
+    }
 #ifndef CONFIG_IDF_TARGET_ESP32P4
     // Retro: one radio at a time (coex is off; see wifi_task.c).
     if (wifi_task_is_started()) {
@@ -1892,6 +1990,50 @@ fmrb_err_t ble_service_start(void)
         return FMRB_ERR_FAILED;
     }
     return FMRB_OK;
+}
+
+fmrb_err_t ble_setup_mode_start(int button_gpio)
+{
+    g_setup_has_button = button_gpio >= 0;
+    g_setup_button = button_gpio;
+    fmrb_err_t ret = ble_service_start();
+    if (ret != FMRB_OK) {
+        return ret;
+    }
+    // Held open: the owner asked for it (the button) or the board has nothing
+    // else it can do (no WiFi settings). It ends with the restart.
+    g_settings_hold = true;
+    g_settings_log_wifi = true;
+    FMRB_LOGI(TAG, "settings window open until restart (setup mode)");
+    return FMRB_OK;
+}
+
+fmrb_err_t ble_release_memory(void)
+{
+    if (g_ble_released) return FMRB_OK;
+    if (ble_service_is_started()) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+#if !defined(CONFIG_BT_CONTROLLER_ENABLED)
+    // Modern: the controller is on the C6 and NimBLE's memory is small; there
+    // is nothing worth giving back, and Modern does not use the setup mode.
+    return FMRB_ERR_NOT_SUPPORTED;
+#else
+    size_t before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    // Controller and host: their data and BSS, and the DRAM the ROM
+    // controller keeps for itself (reserved from the heap whether or not BLE
+    // ever runs).
+    esp_err_t err = esp_bt_mem_release(ESP_BT_MODE_BLE);
+    size_t after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    if (err != ESP_OK) {
+        FMRB_LOGW(TAG, "esp_bt_mem_release failed: %d", (int)err);
+        return FMRB_ERR_FAILED;
+    }
+    g_ble_released = true;
+    FMRB_LOGI(TAG, "BLE memory given to the heap: internal +%u bytes (BLE off until the next boot)",
+              (unsigned)(after - before));
+    return FMRB_OK;
+#endif
 }
 
 fmrb_err_t ble_task_deinit(void)
