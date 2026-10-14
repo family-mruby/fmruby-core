@@ -62,6 +62,16 @@
  * after ZP_WS_MAX_FAILS failed tries in a row -- its pass has most likely
  * closed -- and tells the page (Module.zenohGaveUp), which says so.
  *
+ * Rooms (doc/ruby_asterism, G2): a page opened with a room's key
+ * (Module.zenohRoom, read by web/main.js from the link's #room=) goes to the
+ * rooms' door instead, wss://<router>/room?t=<key> (on wss:// only, like the
+ * pass, so the key never travels in clear), and gives up like a page with a
+ * pass when the tries keep failing (the room has closed or ended). Every
+ * session of the page gets the room's key space room/<slot> as its
+ * namespace: picoruby-asterism-zenoh asks picoruby_zenoh_default_namespace()
+ * (defined below from Module.zenohNamespace) when a session is opened
+ * without one, so the apps use their usual keys inside the room.
+ *
  * The link is a datagram link to zenoh-pico: one WebSocket message carries
  * one batch, as zenohd's ws/ listener expects. The rest of the contract is
  * picoruby-asterism-zenoh's (include/picoruby_zenoh_link.h): the polled read
@@ -156,11 +166,17 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
                                  /^127[.][0-9]+[.][0-9]+[.][0-9]+$/.test(host) || host === '[::1]';
                 if (!loopback) {
                     url = 'wss' + url.slice(2);
+                    // A room's key (G2, web/main.js): the rooms' door at
+                    // /room checks it; no pass then. Never logged.
+                    const room = Module['zenohRoom'];
+                    if (room) {
+                        url = url.replace(/[/]$/, '') + '/room?t=' + encodeURIComponent(room);
+                    }
                     // The pass from the page's link (#zenoh_pass=, read by
                     // web/index.html and web/main.js): the router door checks
                     // it (doc/ruby_asterism, G1). Only on wss://, so it never
                     // travels in clear; never logged.
-                    const pass = Module['zenohPass'];
+                    const pass = room ? '' : Module['zenohPass'];
                     if (pass) url += (url.indexOf('?') < 0 ? '?' : '&') + 'pass=' + encodeURIComponent(pass);
                     // The page's own key (G1.5b, web/main.js): the door
                     // lets this page, and no other, connect again with the
@@ -360,7 +376,32 @@ static size_t zp_ws_write(const _z_sys_net_socket_t sock, const uint8_t *ptr, si
 /* Main thread: whether the page came with a pass, and telling it that the
  * tries stopped. */
 static bool zp_ws_js_has_pass(void) {
-    return MAIN_THREAD_EM_ASM_INT({ return Module['zenohPass'] ? 1 : 0; }) != 0;
+    return MAIN_THREAD_EM_ASM_INT({ return (Module['zenohPass'] || Module['zenohRoom']) ? 1 : 0; }) != 0;
+}
+
+/* The key space of the page's room (G2), for picoruby-asterism-zenoh (its
+ * weak default returns NULL: no namespace). Read once from
+ * Module.zenohNamespace on the main thread into a static buffer; web/main.js
+ * sets it to room/<slot> from the room's key, or not at all. */
+const char *picoruby_zenoh_default_namespace(void);
+
+static char s_namespace[64];
+static int s_namespace_read; /* 0: not yet, 1: read */
+
+const char *picoruby_zenoh_default_namespace(void) {
+    if (!s_namespace_read) {
+        MAIN_THREAD_EM_ASM(
+            {
+                const ns = String(Module['zenohNamespace'] || '');
+                const u8 = new Uint8Array(wasmMemory.buffer);
+                const n = ns.length < $1 ? ns.length : 0; /* too long: none (the binding would refuse it) */
+                for (let i = 0; i < n; i++) u8[$0 + i] = ns.charCodeAt(i) & 0x7f;
+                u8[$0 + n] = 0;
+            },
+            s_namespace, (int)sizeof(s_namespace));
+        s_namespace_read = 1;
+    }
+    return s_namespace[0] != '\0' ? s_namespace : NULL;
 }
 
 static void zp_ws_js_gave_up(int fails) {
