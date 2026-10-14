@@ -65,7 +65,7 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
   「同じ文を言い直すときの短縮」であって、置き場所ではない。
   電源を切っても鳴ってほしい音 —  時報、アラーム、起動時のあいさつ —
   はこちら。
-- **V2b で 3 段目 (OpenAI TTS) を実装した** — `[tts.config] api_key` を
+- **V2b で 3 段目 (OpenAI TTS) を実装した** — API キー (`/home/secrets.toml` の `[openai] api_key`。当初は `[tts.config] api_key`) を
   書けば `server` 無しで動き、**PC が要らなくなる**。採用理由は
   `POST /v1/audio/speech` が `response_format: "wav"` で**生の WAV** を
   返し、認証が `Authorization: Bearer` の 1 行で済むこと。
@@ -76,8 +76,11 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
   消すとキャッシュを引けなくなる**。行は残したまま届かないままにするのが
   正解 (1 回の接続拒否とログ 1 行で済み、既に言ったことは全部鳴る)。
 - 設定は services.toml の `[tts.config]` (`server` / `speaker` /
-  `timeout_ms`)。鍵は /home に平文で置くことになる — 個人機として許容し、
-  rd_http の /fs で読める点も文書に書く (どちらも開発ビルド限定の口)。
+  `timeout_ms`)。**API キーだけは `/home/secrets.toml` の `[openai] api_key`**
+  (開発ビルドは `~/.openai_key` から `/etc/secrets.toml` を作る)。
+  secrets.toml は WiFi のパスワードと同じ扱いで、devctl の `/fs/get` は断り、
+  BLE は端末で「BLE Setup」を開いている間だけ読める。`services.toml` に残った
+  `api_key` も読むが、ログに移すよう 1 行出す (2026-10-14、`report/secrets.md`)。
 - **TLS の証明書検証は、実は最初から通る**: esp32 の SSL ポートが
   `esp_crt_bundle` を既定で付けているので、公開サイトへの HTTPS に CA の
   焼き込みは要らない。時刻の前提も SYS1 の timesync が満たしている。

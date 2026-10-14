@@ -35,6 +35,7 @@
 | 道 | 分け方 | BLE GET | BLE PUT・RM | BLE RENAME | devctl `/fs/get` |
 |---|---|---|---|---|---|
 | `/home/wifi.toml`・`/etc/wifi.toml` (`wifi.toml` で始まる名前、`.part` も) | WiFi (8 章) | 受け付ける時間だけ | 受け付ける時間だけ | 同じか強く隠す名前へ、時間だけ | 断る |
+| `/home/secrets.toml`・`/etc/secrets.toml` (`secrets.toml` で始まる名前、`.part` も。tts の API キー、9 章) | WiFi と同じ (`FMRB_PATH_PASSWORD`) | 受け付ける時間だけ | 受け付ける時間だけ | 同じか強く隠す名前へ、時間だけ | 断る |
 | `/home/asterism/` の中 (`config.toml` を除く。tar・ほかの鍵・`.part`) | 秘密 | 断る (いつでも) | 時間だけ | 秘密どうしで、時間だけ | 断る |
 | `/home/asterism/config.toml`・`/home/asterism` | 設定 | 読める | 時間だけ | 時間だけ | 読める (CF1 では断っていた) |
 | `/`・`/home`・`/etc` | ふつう (秘密を中に持つ) | - | 今どおり | 断る | - |
@@ -169,3 +170,14 @@ BLE が使えないので、**コンソールの `settings.js` の関数で作�
 - 1 回目と 2 回目の起動で `ble_ready` が 8 B 少なかったので、develop のファームを焼き直して 2 回目の標本を取り (231,300)、このブランチを焼き直して 3 回目を取った (231,300 で develop と同じ)。`ble_nimble_port` から `ble_ready` の間に動くのは今までの初期化だけで、この直しの関数は `0x17` か「BLE Setup」でしか動かない。この間も Services やデスクトップが並んで動くので、その時機で数バイト揺れる。
 - 新しい状態は PSRAM だけ (`.ext_ram.bss`) で、静的な内蔵 RAM は 0。起動のあとしばらくした `IRAM free` は、ネットワークの様子で数百バイト動く (develop でも 208,508 → 208,528 と動いた) ので比べる数字にしなかった。
 - Retro (NARYAv3) の ESP32 のビルドも通る。
+
+## 9. 追記: tts の API キーを secrets.toml に分けた (2026-10-14)
+
+tts サービスの OpenAI の API キーは `services.toml` の `[tts.config] api_key` に
+あり、`services.toml` はふつうのファイルなので BLE の GET でいつでも、devctl の
+`/fs/get` (LAN で無認証) でも読めた。キーを `/home/secrets.toml`
+(開発ビルドが入れるものは `/etc/secrets.toml`) に分け、2 章の表に 1 行足した。
+WiFi のパスワードと同じ強さで扱う (devctl は断る、BLE の GET は受け付ける時間
+だけ、RENAME の順位も WiFi と同じ)。判定の列挙名は `FMRB_PATH_WIFI` から
+`FMRB_PATH_PASSWORD` に改めた。コンソールの Settings に「OpenAI API key」の欄を
+足した。経緯・移し方・確認は `doc/user_extension/voice/report/secrets.md`。
