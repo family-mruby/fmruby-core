@@ -1357,6 +1357,40 @@ static mrb_value mrb_fmrb_app_s_ble_state(mrb_state *mrb, mrb_value klass)
 #endif
 }
 
+// FmrbApp.ble_settings_window(seconds) -> Integer: opens the settings window
+// for that many seconds (0 closes it) and returns the seconds left, 0 when it
+// did not open (BLE not running, or no BLE in this build). While it is open
+// the BLE console may write the WiFi and Asterism settings
+// (doc/ruby_asterism/report/cf2.md). FmrbApp.ble_settings_left -> Integer,
+// allocation-free, for the desktop's 1Hz indicator. Linux has no BLE: 0.
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+extern fmrb_err_t ble_settings_window_set(uint32_t seconds);   // main/drivers/ble/ble_task.h
+extern uint32_t ble_settings_window_left(void);
+#endif
+static mrb_value mrb_fmrb_app_s_ble_settings_window(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int seconds;
+    mrb_get_args(mrb, "i", &seconds);
+    if (seconds < 0) seconds = 0;
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+    ble_settings_window_set((uint32_t)seconds);
+    return mrb_fixnum_value((mrb_int)ble_settings_window_left());
+#else
+    return mrb_fixnum_value(0);
+#endif
+}
+
+static mrb_value mrb_fmrb_app_s_ble_settings_left(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+    return mrb_fixnum_value((mrb_int)ble_settings_window_left());
+#else
+    return mrb_fixnum_value(0);
+#endif
+}
+
 // FmrbApp.set_kana_mode(n) -> nil. 0 = off, 1 = hiragana, 2 = katakana.
 // Behind the clickable mode indicators: the keyboard is not the only way to
 // reach kana input, and on a touch machine it is not even the usual one.
@@ -1828,6 +1862,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "ble_settings_left", mrb_fmrb_app_s_ble_settings_left, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));

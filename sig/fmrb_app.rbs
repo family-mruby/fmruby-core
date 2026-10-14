@@ -1009,6 +1009,27 @@ class FmrbApp
   # ```
   def self.ble_state: () -> Integer
 
+  # BLE で設定を受け付ける時間を開く <<en>> Open the window for settings over BLE
+  #
+  # 秒数だけ開き (0 で閉じる)、残りの秒数を返す。開けなかったときは 0。
+  # 開いている間だけ、BLE のコンソールが WiFi と Asterism の設定を書ける。
+  # <<en>>
+  # Opens it for that many seconds (0 closes it) and returns the seconds
+  # left, 0 when it did not open. While it is open the BLE console may write
+  # the WiFi and Asterism settings.
+  #
+  # ```ruby
+  # FmrbApp.ble_settings_window(300)
+  # ```
+  def self.ble_settings_window: (Integer seconds) -> Integer
+
+  # 設定を受け付ける時間の残り秒数 <<en>> Seconds left in the settings window
+  #
+  # 閉じていれば 0。
+  # <<en>>
+  # 0 when it is closed.
+  def self.ble_settings_left: () -> Integer
+
   # 画面を配信中かどうかの様子 <<en>> Whether the screen is being streamed
   #
   # 遠隔デスクトップに誰か繋がっているか。

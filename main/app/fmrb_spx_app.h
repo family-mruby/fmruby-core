@@ -181,6 +181,8 @@ int fmrb_spx_app_set_cursor_visible(int visible);/**< returns 0 */
 int fmrb_spx_app_reboot(void);                   /**< does not return */
 int fmrb_spx_app_ble_start(void);                /**< manual BLE start; 1 on success */
 int fmrb_spx_app_ble_state(void);                /**< FmrbApp.ble_state (0 = off) */
+int fmrb_spx_app_ble_settings_window(int seconds); /**< open/close the BLE settings window; seconds left */
+int fmrb_spx_app_ble_settings_left(void);        /**< seconds left in the settings window (0 = closed) */
 int fmrb_spx_app_audio_muted(void);              /**< FmrbApp.audio_muted? (1/0) */
 int fmrb_spx_app_set_audio_mute(int on);         /**< FmrbApp.set_audio_mute */
 int fmrb_spx_app_audio_volume(void);             /**< FmrbApp.audio_volume (0-10) */

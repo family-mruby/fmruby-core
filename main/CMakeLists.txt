@@ -53,6 +53,9 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/hid_device_config.c"
     "drivers/ble/ble_framing.c"
     "drivers/debug/fmrb_debug_transport_ble.c"
+    # Which files the BLE console and devctl may read and write (the WiFi
+    # password, the Asterism keys). Pure C, tested on the host (rake secret:test).
+    "kernel/fmrb_secret_path.c"
     "drivers/hw_proxy/hw_proxy.c"
     "drivers/hw_proxy/hw_proxy_file.c"
     "drivers/hw_proxy/hw_proxy_gpio.c"

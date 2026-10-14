@@ -2061,6 +2061,16 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_ble_state
   end
 
+  # The BLE settings window (doc/ruby_asterism/report/cf2.md): open it for
+  # seconds (0 closes), seconds left; same source as the mruby binding.
+  def self.ble_settings_window(seconds)
+    FmrbSpxApp.fmrb_spx_app_ble_settings_window(seconds)
+  end
+
+  def self.ble_settings_left
+    FmrbSpxApp.fmrb_spx_app_ble_settings_left
+  end
+
   def self.wifi_connected?
     FmrbSpxApp.fmrb_spx_app_wifi_connected == 1
   end

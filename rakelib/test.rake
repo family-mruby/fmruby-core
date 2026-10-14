@@ -18,9 +18,9 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + secret files + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "tts:test",
-               "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
@@ -85,6 +85,26 @@ namespace :wav do
   desc "Remove the host WAV test build"
   task :clean do
     rm_rf WAV_TEST_BUILD
+  end
+end
+
+namespace :secret do
+  # Which files the BLE console and devctl may read, write, delete and rename
+  # (main/kernel/fmrb_secret_path.c: the WiFi password and the Asterism keys,
+  # and the settings window, doc/ruby_asterism/report/cf2.md). Pure C over
+  # strings, so it builds with the host cc. Run it after touching that file.
+  SECRET_TEST_DIR   = "test/secret_path"
+  SECRET_TEST_BUILD = "#{SECRET_TEST_DIR}/build"
+  SECRET_RUNNER_BIN = "#{SECRET_TEST_BUILD}/secret_path_test"
+
+  desc "Secret-file rule tests (host cc, no docker)"
+  task :test do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p SECRET_TEST_BUILD
+    sh "#{cc} -std=c11 -O1 -g -Wall -Wextra -Werror -I main/kernel " \
+       "main/kernel/fmrb_secret_path.c #{SECRET_TEST_DIR}/main.c -o #{SECRET_RUNNER_BIN}"
+    sh SECRET_RUNNER_BIN
   end
 end
 
