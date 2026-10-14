@@ -16,7 +16,7 @@
 #   it came on /array_out.
 # - The log has how much of the app's VM each type took to load.
 #
-# From the PC (parent repo, docker-compose.ros2.yml):
+# From the PC (parent repo, docker/asterism/docker-compose.ros2.yml):
 #   docker exec -it fmruby_ros2 ros2 topic pub -t 3 /cmd_vel geometry_msgs/msg/Twist \
 #     "{linear: {x: 0.5, y: 0.0, z: 0.0}, angular: {z: 1.25}}"
 #   docker exec -it fmruby_ros2 ros2 topic echo /cmd_vel_echo

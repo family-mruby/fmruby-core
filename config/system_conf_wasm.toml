@@ -78,7 +78,7 @@ startup_app_retries = 3
 
 # Where Asterism / Zenoh apps find the router (doc/ruby_asterism, B1, B2). A
 # page cannot open TCP, so the browser reaches zenohd over WebSocket: its ws/
-# listener (the parent repository's docker-compose.zenoh-ws.yml). The page's
+# listener (the parent repository's docker/asterism/docker-compose.zenoh-ws.yml). The page's
 # Network panel sets this for good; ?zenoh= in the page's URL replaces it for
 # one visit (?zenoh=ws/192.0.2.10:7449). A page served over https uses wss://
 # for any host but a loopback one (the locator stays ws/). The test apps read

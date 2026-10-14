@@ -18,7 +18,7 @@
 #   tokens, so they show in `ros2 node list` / `ros2 topic list -t`, and go
 #   away when the app closes.
 #
-# From the PC (parent repo, docker-compose.ros2.yml):
+# From the PC (parent repo, docker/asterism/docker-compose.ros2.yml):
 #   docker exec -it fmruby_ros2 ros2 topic echo /chatter std_msgs/msg/String
 #   docker exec -it fmruby_ros2 ros2 topic pub -r 1 /chatter_back \
 #     std_msgs/msg/String "{data: 'hello from ROS 2'}"

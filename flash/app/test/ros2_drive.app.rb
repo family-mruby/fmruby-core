@@ -1,6 +1,6 @@
 # ROS 2 drive (doc/ruby_asterism, S1): drives a ROS 2 robot with the arrow
 # keys and shows its wheel odometry. Made for the MuJoCo rover of the parent
-# repository (docker-compose.mujoco.yml); any robot with a Twist /cmd_vel
+# repository (docker/asterism/docker-compose.mujoco.yml); any robot with a Twist /cmd_vel
 # and an Odometry /odom works.
 #
 # - Connects like ros2_talker: the first line of /home/zenoh_echo.txt is the

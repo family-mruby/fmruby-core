@@ -18,34 +18,34 @@
 
 ## 2. zenohd に ws/ の待ち受けを足す
 
-親リポジトリ (family-mruby) で、docker-compose.zenoh-ws.yml を重ねて zenohd を起動し直す。
+親リポジトリ (family-mruby) で、docker/asterism/docker-compose.zenoh-ws.yml を重ねて zenohd を起動し直す。
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.zenoh-ws.yml up -d zenohd
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-ws.yml up -d zenohd
 ```
 
 - 待ち受けは tcp/7447 (従来) と ws/7449。7449 は 127.0.0.1 にだけ公開する。
-- 端末を LAN からつなぐときも一緒に使うなら、docker-compose.zenoh-lan.yml の**後に**置く
+- 端末を LAN からつなぐときも一緒に使うなら、docker/asterism/docker-compose.zenoh-lan.yml の**後に**置く
   (zenoh-lan.yml がポートの一覧を置き換えるため、前に置くと 7449 が消える)。
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.zenoh-ws.yml up -d zenohd
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.zenoh-ws.yml up -d zenohd
 ```
 
-- docker-compose.relay.yml (zenohd に設定ファイルを渡す形) とは一緒に使わない。
+- docker/asterism/docker-compose.relay.yml (zenohd に設定ファイルを渡す形) とは一緒に使わない。
 - 確かめ: `docker logs fmruby_zenohd | grep listen` に `ws/[::]:7449` が出る。
 - sim_up は zenohd を docker-compose.yml だけで作り直すので、sim を上げた後は上の行をもう一度打つ。
 
 ### 2.1 wss:// の中継 (この PC 以外のブラウザ、https のページ)
 
 https のページは、ループバック以外へは `ws://` を開けない (WebSocket を作るところで SecurityError)。そこで
-TLS を終えて zenohd の `ws/` に流す中継を前に置く。親リポジトリの docker-compose.zenoh-wss.yml (Caddy)。
+TLS を終えて zenohd の `ws/` に流す中継を前に置く。親リポジトリの docker/asterism/docker-compose.zenoh-wss.yml (Caddy)。
 
 ```
 ZENOH_WSS_HOST=<この PC の名前> docker compose -f docker-compose.yml \
-  -f docker-compose.zenoh-lan.yml -f docker-compose.zenoh-ws.yml \
-  -f docker-compose.zenoh-wss.yml up -d zenohd zenohd-wss
+  -f docker/asterism/docker-compose.zenoh-lan.yml -f docker/asterism/docker-compose.zenoh-ws.yml \
+  -f docker/asterism/docker-compose.zenoh-wss.yml up -d zenohd zenohd-wss
 ```
 
 - 待ち受けは `wss://<ZENOH_WSS_HOST>:7450`。ページには `ws/<ZENOH_WSS_HOST>:7450` と書く (https のページなら

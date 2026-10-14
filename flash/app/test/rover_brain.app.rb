@@ -1,5 +1,5 @@
 # Rover brain (doc/ruby_asterism, S4): the board that drives the MuJoCo
-# rover of the parent repository (docker-compose.mujoco.yml, ROS 2) and
+# rover of the parent repository (docker/asterism/docker-compose.mujoco.yml, ROS 2) and
 # exposes it to other machines as one Asterism object, <ID>/brain/rover.
 #
 # - Connects like rover_cam: the first line of /home/zenoh_echo.txt is the

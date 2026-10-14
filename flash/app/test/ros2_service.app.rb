@@ -15,7 +15,7 @@
 #     n: the same call through node.call (a client made on first use)
 #   Each shows the sum and the round trip in ms.
 #
-# From the PC (parent repo, docker-compose.ros2.yml):
+# From the PC (parent repo, docker/asterism/docker-compose.ros2.yml):
 #   docker exec -it fmruby_ros2 ros2 service call \
 #     /fmruby_service_linux/add_two_ints example_interfaces/srv/AddTwoInts "{a: 2, b: 3}"
 #   docker exec -it fmruby_ros2 ros2 run demo_nodes_cpp add_two_ints_server

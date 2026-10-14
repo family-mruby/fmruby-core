@@ -100,7 +100,7 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 - 内蔵 RAM は起動時に増えない。zenoh-pico の確保は PSRAM だけ。接続中は lwIP の側で約 2.4 KB 使い、
   閉じてから約 2 分で戻る (lwIP が閉じた接続を 120 秒持つため)。
 - ESP-IDF の TCP 層も gem 側の実装に差し替えた (受信の時間制限が無く poll が止まる、接続の時間制限が無い)。
-- PC 側は `docker-compose.zenoh-lan.yml` を重ねたときだけ 7447 を LAN に開く (REST の 8000 は PC の中だけ)。
+- PC 側は `docker/asterism/docker-compose.zenoh-lan.yml` を重ねたときだけ 7447 を LAN に開く (REST の 8000 は PC の中だけ)。
   WSL2 (ミラーモード) では Windows の Hyper-V のファイアウォールに 7447 の受信の規則が要る。
 - 切断 (ユーザ決定で案 1・2 を採用、リース切れもそろえた): 接続が切れる・送信が 3 秒で終わらない・リースが
   切れる、のいずれでもセッションを閉じ、`poll` が false、`closed?` が true、`put` が `Asterism::Zenoh::Error` (A1 の改名の後の名前)。自動の
@@ -203,7 +203,7 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 - P4-Nano のアプリが出した std_msgs/String を PC の `ros2 topic echo /chatter` で読め、`ros2 topic pub /chatter_back` が
   機体の画面に出る。`ros2 node list` / `topic list` に機体のノードとトピックが出て、アプリを閉じると消える。
 - ROS 2 Jazzy + rmw_zenoh 0.2.11 (Zenoh 1.8.0)。ルータは既存の zenohd 1.10.1 を使う (rmw_zenohd は使わない)。
-  PC 側は親リポジトリの `docker-compose.ros2.yml` を重ねて上げる (手順はそのファイルのコメントと report/r1.md 7 章)。
+  PC 側は親リポジトリの `docker/asterism/docker-compose.ros2.yml` を重ねて上げる (手順はそのファイルのコメントと report/r1.md 7 章)。
 - gem: put / subscribe の attachment と `Session#zid` を足した。CDR と ROS のノード (`Asterism::CDR`、`Asterism::ROS`) は
   `picoruby-asterism` の中の純 Ruby。attachment はトピックでも必須だった (design.md 5 章を直した)。
 - P4 のファームは +12,272 B (区画の残り 12%)、起動時の内蔵 RAM の増分 0。
@@ -453,8 +453,8 @@ S3 は「マイコンが ROS 2 のロボットを操縦する」だった。S4 �
 
 | 段階 | 内容 |
 |---|---|
-| B1 (完了 2026-10-11、report/b1.md、手順は browser.md) | 手元の http の版で動かすところまで。zenoh-pico を Emscripten で入れ、WebSocket はページの主スレッドの JS が持ち、タスクの側とは共有メモリの輪 2 本で受け渡す (上流の ASYNCIFY 前提の層は使わない。見回り 1 回 0.014 ms)。ルータは `/home/zenoh_echo.txt` → 設定 `zenoh_router` (既定 `ws/localhost:7449`) → URL の `?zenoh=`。ノード名は既定で `wasm` (sim の `linux` と分けた)。`asterism_demo` が console の図に ▣ で出て呼べる、`rover_cam` で台車を操縦しカメラも出る (JPEG はブラウザ版の表示がそのまま読む)。wasm +168 KB・data +147 KB。zenohd の `ws/` は親の docker-compose.zenoh-ws.yml (127.0.0.1:7449) |
-| B2 (完了 2026-10-12、report/b2.md、手順は browser.md) | https の版から網に入る: https のページは、手元 (ループバック) のルータへは `ws://` のまま、それ以外は `wss://` を自動で選ぶ (Chrome・Chromium・Firefox で確かめた)。手元以外のルータは TLS を終える中継 (親の docker-compose.zenoh-wss.yml、Caddy) 越し。ページの「Network」の欄でルータを設定し保存できる。ノードの ID はブラウザごとに `wasm-<16 進 6 桁>` を作って保存 (2 つ目のタブはその回だけの ID)。公開の版への反映はまだ: Chrome の手元のネットワークへの接続の許可 (Local Network Access) を実物のブラウザで確かめること、外のルータには本物の証明書が要ること、ルータに認証が無いこと |
+| B1 (完了 2026-10-11、report/b1.md、手順は browser.md) | 手元の http の版で動かすところまで。zenoh-pico を Emscripten で入れ、WebSocket はページの主スレッドの JS が持ち、タスクの側とは共有メモリの輪 2 本で受け渡す (上流の ASYNCIFY 前提の層は使わない。見回り 1 回 0.014 ms)。ルータは `/home/zenoh_echo.txt` → 設定 `zenoh_router` (既定 `ws/localhost:7449`) → URL の `?zenoh=`。ノード名は既定で `wasm` (sim の `linux` と分けた)。`asterism_demo` が console の図に ▣ で出て呼べる、`rover_cam` で台車を操縦しカメラも出る (JPEG はブラウザ版の表示がそのまま読む)。wasm +168 KB・data +147 KB。zenohd の `ws/` は親の docker/asterism/docker-compose.zenoh-ws.yml (127.0.0.1:7449) |
+| B2 (完了 2026-10-12、report/b2.md、手順は browser.md) | https の版から網に入る: https のページは、手元 (ループバック) のルータへは `ws://` のまま、それ以外は `wss://` を自動で選ぶ (Chrome・Chromium・Firefox で確かめた)。手元以外のルータは TLS を終える中継 (親の docker/asterism/docker-compose.zenoh-wss.yml、Caddy) 越し。ページの「Network」の欄でルータを設定し保存できる。ノードの ID はブラウザごとに `wasm-<16 進 6 桁>` を作って保存 (2 つ目のタブはその回だけの ID)。公開の版への反映はまだ: Chrome の手元のネットワークへの接続の許可 (Local Network Access) を実物のブラウザで確かめること、外のルータには本物の証明書が要ること、ルータに認証が無いこと |
 
 - 確かめること (B1 の最初): zenoh-pico 1.10.1 の Emscripten のシステム層と WebSocket のリンクが動くか。受け取りの見回り (poll) が wasm 版のタスクの動き方の上で画面を止めないか。ブラウザの WebSocket は非同期なので、zenoh-pico の同期の読み書きとどう合わせているか。
 - 止まる条件の目安: zenoh-pico の Emscripten の層が今の版で使えない (直すのに上流の大きな作業が要る) と分かったら、zenoh-ts を JS 連携で呼ぶ案と比べて返す。

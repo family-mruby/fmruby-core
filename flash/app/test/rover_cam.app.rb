@@ -1,5 +1,5 @@
 # Rover camera (doc/ruby_asterism, S3): drives the MuJoCo rover of the parent
-# repository (docker-compose.mujoco.yml, ROS 2) with the arrow keys, shows its
+# repository (docker/asterism/docker-compose.mujoco.yml, ROS 2) with the arrow keys, shows its
 # wheel odometry and the newest picture of its camera
 # (/camera/image/compressed, 160x120 JPEG at 5 Hz).
 #

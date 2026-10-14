@@ -42,8 +42,8 @@ protocol 1 では呼び出しのキーの最後の塊が呼んだ側の ID)。
 端末を LAN からつなぐ形と、ブラウザ版の ws/ の待ち受けを重ねて zenohd を起動する。
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.zenoh-ws.yml up -d zenohd
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.zenoh-ws.yml up -d zenohd
 docker logs fmruby_zenohd | grep listen     # tcp/[::]:7447 と ws/[::]:7449
 ```
 
