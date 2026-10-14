@@ -27,7 +27,7 @@ const CMD_LOG_SET_LEVEL   = 0x33;
 
 const WRITE_CHUNK_SIZE = 200; // Conservative BLE write chunk size
 const FILE_CHUNK_SIZE  = 2048;
-const CONSOLE_BUILD    = '2026-08-21b';  // shown on connect: says which app.js the browser has
+const CONSOLE_BUILD    = '2026-10-14a';  // shown on connect: says which app.js the browser has
 const CMD_RETRIES      = 4;    // one try plus three more before giving up
 const RETRY_BACKOFF_MS = 120;  // grows with the attempt number
 const RESYNC_QUIET_MS  = 250;  // link counts as settled after this much silence
@@ -276,7 +276,19 @@ function clearPending() {
   pendingReject = null;
 }
 
-async function sendCommand(cmd, params, binaryData) {
+// One command at a time: the device answers in order and there is one
+// pending slot, so a second command sent before the first is answered would
+// take its answer. The settings pane polls in the background, which is what
+// makes this matter.
+let commandChain = Promise.resolve();
+
+function sendCommand(cmd, params, binaryData) {
+  const run = commandChain.then(() => sendCommandNow(cmd, params, binaryData));
+  commandChain = run.catch(() => {});
+  return run;
+}
+
+async function sendCommandNow(cmd, params, binaryData) {
   if (!rxChar || !txChar) throw new Error('Not connected');
 
   const frame = buildPacket(cmd, JSON.stringify(params), binaryData);
@@ -349,6 +361,9 @@ async function sendCommandRetry(cmd, params, binaryData, attempts = CMD_RETRIES)
       if (res.meta && res.meta.ok === false) {
         lastErr = new Error(res.meta.err || 'device refused');
         needResync = false;
+        // A refusal on purpose (a secret file, the settings window closed)
+        // will be the same the next time.
+        if (res.meta.denied) break;
         continue;
       }
       if (i > 0) log('  recovered after ' + (i + 1) + ' tries', 'warn');
@@ -405,6 +420,7 @@ async function connect() {
 
     await refreshDir();
     await refreshStatfs();
+    if (window.settingsOnConnection) settingsOnConnection(true);
 
     // If user had a log subscription before disconnecting, restore it.
     if (logWantSubscribe) {
@@ -432,6 +448,7 @@ function onDisconnected() {
   logSubscribed = false;
   logLastSeq = -1;
   dbgDetach();
+  if (window.settingsOnConnection) settingsOnConnection(false);
   setLogStatus(logWantSubscribe ? 'disconnected (will resubscribe)' : 'idle');
   updateLogSubscribeButton();
   document.getElementById('storageInfo').textContent = '';
@@ -934,7 +951,8 @@ function renderFileList(entries) {
   let html = '';
   for (const entry of entries) {
     const isDir = entry.t === 'd';
-    const editable = !isDir && isTextFile(entry.n, entry.s);
+    const secret = !isDir && isSecretPath(currentPath === '/' ? '/' + entry.n : currentPath + '/' + entry.n);
+    const editable = !isDir && !secret && isTextFile(entry.n, entry.s);
     const ext = isDir ? '' : fileExtension(entry.n);
     const isBmp  = ext === 'bmp';
     const isJson = ext === 'json';
@@ -943,7 +961,8 @@ function renderFileList(entries) {
     const name = escapeHtml(entry.n);
     const clickAction = isDir
       ? 'navigateTo(\'' + escapeAttr(currentPath === '/' ? '/' + entry.n : currentPath + '/' + entry.n) + '\')'
-      : (editable
+      : (secret ? 'switchTab(\'settings\')'
+          : editable
           ? 'openEditor(\'' + escapeAttr(entry.n) + '\')'
           : 'downloadFile(\'' + escapeAttr(entry.n) + '\')');
 
@@ -952,7 +971,9 @@ function renderFileList(entries) {
     html += '<div class="name" onclick="' + clickAction + '">' + name + '</div>';
     html += '<div class="size">' + size + '</div>';
     html += '<div class="actions">';
-    if (!isDir) {
+    if (secret) {
+      html += '<span class="secret-tag" title="Holds a key or a password: the board does not hand it out. Write it from Settings.">secret</span>';
+    } else if (!isDir) {
       if (editable) {
         html += '<button onclick="openEditor(\'' + escapeAttr(entry.n) + '\')">Edit</button>';
       }
@@ -1055,7 +1076,7 @@ uploadArea.addEventListener('drop', (e) => {
 // ============================================================
 // Device log streaming (BLE LOG_SUBSCRIBE/UNSUBSCRIBE/SET_LEVEL)
 // ============================================================
-const TAB_IDS = ['files', 'logs', 'sprite', 'map', 'debug'];
+const TAB_IDS = ['files', 'logs', 'sprite', 'map', 'debug', 'settings'];
 const tabChangeListeners = {};
 
 function registerTabChangeListener(name, cb) {
@@ -1247,6 +1268,19 @@ function escapeAttr(s) {
 function fileExtension(name) {
   const idx = name.lastIndexOf('.');
   return idx > 0 ? name.slice(idx + 1).toLowerCase() : '';
+}
+
+// The files the board does not hand out (main/kernel/fmrb_secret_path.c).
+// Only for the file list's buttons: the board refuses on its own.
+function isSecretPath(path) {
+  const segs = path.split('/').filter(p => p !== '' && p !== '.');
+  if (segs[0] === 'flash') segs.shift();
+  if (segs.includes('..')) return true;
+  if (segs[0] === 'home' && segs[1] === 'asterism') {
+    return segs.length > 2 && !(segs.length === 3 && segs[2] === 'config.toml');
+  }
+  return segs.length === 2 && (segs[0] === 'home' || segs[0] === 'etc') &&
+         segs[1].startsWith('wifi.toml');
 }
 
 function isTextFile(name, size) {

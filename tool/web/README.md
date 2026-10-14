@@ -1,7 +1,7 @@
 # Family mruby Console (tool/web)
 
 Web Bluetooth でつながるブラウザ側の道具。ファイル管理、ログ、スプライト /
-マップエディタ、debugd、そしてテキストエディタの**型支援**。
+マップエディタ、debugd、接続の設定 (Settings)、そしてテキストエディタの**型支援**。
 
 ## 開くとき
 
@@ -14,6 +14,31 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
 `file://` でも従来の機能は動くが、**型支援だけは動かない**。ブラウザが
 `file://` から ES モジュール (js/ti.js) を読めないため。その場合はエディタの
 下端にその旨が出る。
+
+## 接続の設定 (Settings、CF2)
+
+端末に WiFi・Asterism の繋ぎ先・証明書の tar を書く画面。開発用の遠隔の道具
+(devctl) が無くても、BLE だけで端末を繋がる状態にできる
+(doc/ruby_asterism/report/cf2.md)。
+
+- 書く先: WiFi は `/home/wifi.toml` (`[wifi]` の `enable`・`ssid`・`password`)、
+  Asterism は `/home/asterism/config.toml` (`router`・`node`・`name`、
+  `FmrbAsterism.config_text` と同じ形)、証明書は `/home/asterism/<名前>.tar`
+  (ブラウザで選ぶ。既定でほかの .tar は消す。端末は名前順で最初の .tar を使うため)。
+- **端末の側で「設定を受け付ける時間」を開いたときだけ書ける**。デスクトップの
+  メニューの「BLE Setup」(日本語では「BLE設定受付」) で 5 分開き、もう一度選ぶと
+  閉じる。開いている間はメニューバーの B の枠が黄色になり、メニューの項目に残り時間が
+  出る。閉じているときは書く押しボタンが押せず、押せても端末が断る。
+- **秘密のファイルは読めない**: `/home/wifi.toml`・`/etc/wifi.toml`・
+  `/home/asterism/` の中 (`config.toml` を除く) は、端末が GET を断る。Files の
+  一覧では `secret` と出て、ダウンロードと編集の押しボタンが無い。画面には
+  「設定あり」だけを出す。`config.toml` は読んで欄に入れる。
+- 効く時: WiFi は端末の起動し直しのあと (メニューの Reset)、Asterism は繋ぐ
+  アプリの起動し直しのあと。書いたあと画面にそう出る。
+- 端末とのやりとりは新しいコマンド `0x17` (受け付ける時間の様子:
+  `{"ok":true,"open":true,"left":287}`) と、今までの LS / GET / PUT / RM / MKDIR。
+  断るときの応答は `{"ok":false,"denied":true,...}` で、コンソールはやり直さない。
+  古いファームでは `0x17` が知らないコマンドになり、画面は「ファームが古い」と出す。
 
 ## エディタの型支援 (P7)
 
@@ -45,7 +70,12 @@ rake ti:wasm                  # tool/web/wasm/ti.js + ti.wasm + help.json
 ```
 node tool/web/wasm/test_wasm.mjs   # WASM モジュールの動作 (Node)
 node tool/web/test/ui.mjs          # ページの操作 (Playwright headless)
+node tool/web/test/settings.mjs    # 接続の設定の画面 (偽の端末を相手に)
 ```
+
+`settings.mjs` は navigator.bluetooth を、同じフレームの形 (COBS + CRC32) で答える偽の
+端末に置き換えて、受け付ける時間の開閉・書く中身・断られたときの表示を見る。
+秘密のファイルの判定そのものは C の試験 (`rake secret:test`) で見る。
 
 `ui.mjs` は静的サーバを立てて headless Chromium で打鍵し、スクリーンショットを
 `tool/web/test/shots/` に残す。`npm i` で playwright が要る。

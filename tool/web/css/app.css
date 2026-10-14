@@ -330,3 +330,27 @@ canvas#mapCanvas { cursor: crosshair; }
   border: 1px solid var(--border); border-radius: 4px; padding: 6px;
   font-family: ui-monospace, Consolas, monospace; font-size: 0.85em;
 }
+
+/* ---- Settings pane (connection settings, doc/ruby_asterism/report/cf2.md) ---- */
+.settings-title { font-size: 1.05em; margin-bottom: 10px; color: var(--ruby-pale); }
+.settings-window { padding: 10px 12px; border-radius: 6px; background: var(--bg-surface);
+                   margin-bottom: 10px; font-size: 0.9em; }
+.settings-window.open { background: #2e4a1e; color: #e8ffd8; }
+.settings-window.closed { border-left: 4px solid var(--warn); }
+.settings-toolbar { margin-bottom: 12px; }
+.settings-card { border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+.settings-card h3 { font-size: 0.95em; margin-bottom: 8px; }
+.settings-now { font-size: 0.85em; color: var(--text-mute); margin-bottom: 8px; word-break: break-all; }
+.settings-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.settings-row > label:first-child { width: 80px; color: var(--text-mute); font-size: 0.85em; }
+.settings-row input[type=text], .settings-row input[type=password] {
+  flex: 1; min-width: 160px; padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border);
+  background: var(--bg-deep); color: var(--text); }
+.settings-check { font-size: 0.85em; color: var(--text-mute); }
+.settings-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.settings-msg { font-size: 0.85em; }
+.settings-msg.ok { color: var(--ok); }
+.settings-msg.err { color: var(--err); }
+.settings-hint { font-size: 0.8em; color: var(--text-mute); margin-top: 6px; }
+.secret-tag { font-size: 0.75em; padding: 2px 6px; border-radius: 8px; background: var(--bg-surface2);
+              color: var(--warn); align-self: center; }

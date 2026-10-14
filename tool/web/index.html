@@ -27,6 +27,7 @@
     <button id="tabSprite" onclick="switchTab('sprite')">Sprite</button>
     <button id="tabMap" onclick="switchTab('map')">Map</button>
     <button id="tabDebug" onclick="switchTab('debug')">Debug</button>
+    <button id="tabSettings" onclick="switchTab('settings')">Settings</button>
   </div>
 
   <div id="filesPane" class="pane active">
@@ -45,6 +46,72 @@
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-text" id="progressText"></div>
     </div>
+  </div>
+
+  <div id="settingsPane" class="pane">
+    <h2 class="settings-title">Connection settings</h2>
+    <div class="settings-window" id="setWindow">Not connected.</div>
+    <div class="settings-toolbar">
+      <button id="setReload" disabled onclick="settingsReload()">Read from board</button>
+    </div>
+
+    <section class="settings-card">
+      <h3>WiFi</h3>
+      <div class="settings-now">On the board: <span id="setWifiNow">-</span></div>
+      <div class="settings-row">
+        <label for="setSsid">SSID</label>
+        <input type="text" id="setSsid" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="settings-row">
+        <label for="setPassword">Password</label>
+        <input type="password" id="setPassword" autocomplete="new-password">
+      </div>
+      <div class="settings-actions">
+        <button class="primary" data-needs-settings disabled onclick="settingsWriteWifi()">Write WiFi</button>
+        <span class="settings-msg" id="setWifiMsg"></span>
+      </div>
+      <div class="settings-hint">Takes effect when the board starts again. The password is never read back.</div>
+    </section>
+
+    <section class="settings-card">
+      <h3>Asterism</h3>
+      <div class="settings-now">On the board: <span id="setCfgNow">-</span></div>
+      <div class="settings-row">
+        <label for="setRouter">Router</label>
+        <input type="text" id="setRouter" placeholder="empty = the router in the .tar" spellcheck="false">
+      </div>
+      <div class="settings-row">
+        <label for="setNode">Node ID</label>
+        <input type="text" id="setNode" placeholder="optional (with a .tar, the certificate's name wins)" spellcheck="false">
+      </div>
+      <div class="settings-row">
+        <label for="setName">Name</label>
+        <input type="text" id="setName" placeholder="shown to the others" spellcheck="false">
+      </div>
+      <div class="settings-actions">
+        <button class="primary" data-needs-settings disabled onclick="settingsWriteAsterism()">Write Asterism settings</button>
+        <span class="settings-msg" id="setCfgMsg"></span>
+      </div>
+      <div class="settings-hint">Applications read it when they start: restart the one that connects.</div>
+    </section>
+
+    <section class="settings-card">
+      <h3>Credentials (.tar)</h3>
+      <div class="settings-now">On the board: <span id="setTarNow">-</span></div>
+      <div class="settings-row">
+        <label for="setTarFile">File</label>
+        <input type="file" id="setTarFile" accept=".tar">
+      </div>
+      <div class="settings-row">
+        <label></label>
+        <label class="settings-check"><input type="checkbox" id="setTarReplace" checked> Remove the other .tar files (the board uses the first by name)</label>
+      </div>
+      <div class="settings-actions">
+        <button class="primary" data-needs-settings disabled onclick="settingsWriteTar()">Write credentials</button>
+        <span class="settings-msg" id="setTarMsg"></span>
+      </div>
+      <div class="settings-hint">The .tar the Asterism console hands out. It holds the private key and is never read back.</div>
+    </section>
   </div>
 
   <div id="debugPane" class="pane">
@@ -267,6 +334,7 @@
 <script type="module" src="js/ti.js"></script>
 <script src="js/ti-editor.js"></script>
 <script src="js/debug.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/bmp332.js"></script>
 <script src="js/sprite-editor.js"></script>
 <script src="js/map-editor.js"></script>
