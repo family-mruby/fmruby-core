@@ -196,3 +196,38 @@ python + bleak + usbipd の道具立てなしに ps / kill / spawn ができる�
    優先度修正前はここで無応答になる)。
 5. その行の **kill** を押し、一覧から消えること、同じアプリを再度 Spawn
    できることを確認。
+
+## 接続の設定と秘密のファイル (CF2、2026-10-14)
+
+Web コンソールの **Settings** タブから、端末に WiFi (`/home/wifi.toml`)・
+Asterism の設定 (`/home/asterism/config.toml`)・証明書の tar
+(`/home/asterism/<名前>.tar`) を書ける。経緯と確認は
+doc/ruby_asterism/report/cf2.md、画面の使い方は tool/web/README.md。
+
+### 端末の側の決まり
+
+判定は `main/kernel/fmrb_secret_path.c` の 1 か所 (devctl の `/fs/get` と共通、
+試験は `rake secret:test`)。
+
+| ファイル | GET | PUT / RM | RENAME |
+|---|---|---|---|
+| `/home/wifi.toml`・`/etc/wifi.toml` (と `wifi.toml` で始まる名前)、`/home/asterism/` の中 (`config.toml` を除く) | 断る (秘密) | 受け付ける時間だけ | 秘密の名前どうしで、受け付ける時間だけ。秘密でない名前へは断る |
+| `/home/asterism/config.toml`・`/home/asterism` | 読める | 受け付ける時間だけ | 受け付ける時間だけ |
+| `/`・`/home`・`/etc` (秘密を中に持つディレクトリ) | - | 今どおり | 断る (中の秘密が読める名前に移るため) |
+| ほか | 今どおり | 今どおり | 今どおり |
+
+- 道の書き方の違いで抜けないよう、空と `.` の段は飛ばし、先頭の `/flash`
+  (file HAL の別名) を外して比べる。`..` を含む道は秘密として扱う (littlefs は
+  `..` を解決する)。
+- LS と MKDIR は今どおり (名前と大きさは見える)。
+- **受け付ける時間**: `ble_settings_window_set(秒)` / `ble_settings_window_left()`
+  (ble_task.h)。デスクトップのメニューの「BLE Setup」で 300 秒開く。もう一度で
+  閉じる。時間切れでも閉じる (ログに `settings window closed (time up)`)。
+  BLE が動いていなければ開かない。状態は PSRAM の 32 ビットの 1 語 (内蔵 RAM は
+  使わない)。PUT は塊ごとに確かめるので、時間切れの途中で書き込みは止まる。
+- 断るときの応答は `{"ok":false,"denied":true,...}` (時間外は `"closed":true` も)。
+- 新しいコマンド `0x17` (SETTINGS): `{"ok":true,"open":<bool>,"left":<秒>}`。
+- BLE には暗号化もペアリングも無い (Windows の Web Bluetooth の都合、上の
+  ble_task.c の注釈)。受け付ける時間は「端末の前にいる人が許したときだけ」を
+  作るためのもので、その間の電波の盗み聞きは防げない。秘密を読み出させないのは
+  時間に関係なく常に守る。
