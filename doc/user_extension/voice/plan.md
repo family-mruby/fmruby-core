@@ -79,8 +79,9 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
   `timeout_ms`)。**API キーだけは `/home/secrets.toml` の `[openai] api_key`**
   (開発ビルドは `~/.openai_key` から `/etc/secrets.toml` を作る)。
   secrets.toml は WiFi のパスワードと同じ扱いで、devctl の `/fs/get` は断り、
-  BLE は端末で「BLE Setup」を開いている間だけ読める。`services.toml` に残った
-  `api_key` も読むが、ログに移すよう 1 行出す (2026-10-14、`report/secrets.md`)。
+  BLE は端末で「BLE Setup」を開いている間だけ読める。`services.toml` の
+  `api_key` は読まない (使っている人がいないので移す手当ては入れない。
+  2026-10-15、`report/secrets.md`)。
 - **TLS の証明書検証は、実は最初から通る**: esp32 の SSL ポートが
   `esp_crt_bundle` を既定で付けているので、公開サイトへの HTTPS に CA の
   焼き込みは要らない。時刻の前提も SYS1 の timesync が満たしている。

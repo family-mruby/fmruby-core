@@ -38,10 +38,8 @@
 # secrets.toml is kept like the WiFi password -- never over HTTP, over BLE only
 # while the owner has opened BLE Setup on the board. The key is read from
 # /home/secrets.toml, then /etc/secrets.toml (what a development build bakes
-# in from the developer's ~/.openai_key). An api_key left in [tts.config] from
-# before still works, but it is logged as one line asking for it to be moved:
-# cut the line out of /home/services.toml and put it under [openai] in
-# /home/secrets.toml. The key itself never goes into the log.
+# in from the developer's ~/.openai_key). Only where the key came from goes
+# into the log, never the key itself.
 #
 # The order is cache -> VOICEVOX (if server is set) -> cloud (if api_key is
 # set). With both set, VOICEVOX answers or the sentence is not said: falling
@@ -109,7 +107,7 @@ class TtsService
     @speaker = (cfg && cfg["speaker"]) ? cfg["speaker"].to_i : DEFAULT_SPEAKER
     @timeout_ms = (cfg && cfg["timeout_ms"]) ? cfg["timeout_ms"].to_i : DEFAULT_TIMEOUT_MS
     @host, @port = split_server(@server)
-    @api_key = read_api_key(cfg)
+    @api_key = read_api_key
     @cloud_model = (cfg && cfg["cloud_model"]) ? cfg["cloud_model"].to_s : DEFAULT_CLOUD_MODEL
     @cloud_voice = (cfg && cfg["cloud_voice"]) ? cfg["cloud_voice"].to_s : DEFAULT_CLOUD_VOICE
     @cloud_timeout_ms = (cfg && cfg["cloud_timeout_ms"]) ?
@@ -168,17 +166,9 @@ class TtsService
 
   # ---- the key --------------------------------------------------------------
 
-  # The OpenAI key: secrets.toml first (the user's, then the build's), the
-  # service list's api_key only when neither has one. The service list is
-  # readable over the network, so a key there is worth one line in the log
-  # even when secrets.toml wins. Only where the key came from is logged.
-  def read_api_key(cfg)
-    legacy = cfg ? cfg["api_key"] : nil
-    legacy = nil if legacy && legacy.to_s.empty?
-    if legacy
-      @ctx.log("tts: api_key in services.toml can be read over the network; " \
-               "move it to /home/secrets.toml under [openai]")
-    end
+  # The OpenAI key: the user's secrets.toml, then the build's. Only where the
+  # key came from is logged.
+  def read_api_key
     i = 0
     while i < SECRETS_FILES.size
       path = SECRETS_FILES[i]
@@ -188,9 +178,7 @@ class TtsService
       @ctx.log("tts: api_key from #{path}")
       return key
     end
-    return nil unless legacy
-    @ctx.log("tts: api_key from services.toml")
-    legacy.to_s
+    nil
   end
 
   def read_text(path)

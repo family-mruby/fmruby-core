@@ -409,33 +409,28 @@ home_text = "[openai]\napi_key = \"#{FAKE_KEY}-home\"\n"
 etc_text = "[openai]\napi_key = \"#{FAKE_KEY}-etc\"\n"
 
 svc, ctx = key_service({ "/home/secrets.toml" => home_text, "/etc/secrets.toml" => etc_text })
-eq("key: /home/secrets.toml wins", svc.read_api_key({}), "#{FAKE_KEY}-home")
+eq("key: /home/secrets.toml wins", svc.read_api_key, "#{FAKE_KEY}-home")
 check("key: the log says where, not what") do
   ctx.lines == ["tts: api_key from /home/secrets.toml"] && ctx.lines.none? { |l| l.include?(FAKE_KEY) }
 end
 
 svc, ctx = key_service({ "/etc/secrets.toml" => etc_text })
-eq("key: then /etc/secrets.toml", svc.read_api_key(nil), "#{FAKE_KEY}-etc")
+eq("key: then /etc/secrets.toml", svc.read_api_key, "#{FAKE_KEY}-etc")
+check("key: and says so") { ctx.lines == ["tts: api_key from /etc/secrets.toml"] }
 
-svc, ctx = key_service({ "/etc/secrets.toml" => etc_text })
-eq("key: secrets.toml wins over services.toml",
-   svc.read_api_key({ "api_key" => "#{FAKE_KEY}-list" }), "#{FAKE_KEY}-etc")
-check("key: a key left in services.toml is still reported") do
-  ctx.lines.any? { |l| l.include?("move it to /home/secrets.toml") } &&
-    ctx.lines.none? { |l| l.include?(FAKE_KEY) }
-end
-
-svc, ctx = key_service({})
-eq("key: services.toml alone still works", svc.read_api_key({ "api_key" => "#{FAKE_KEY}-list" }),
-   "#{FAKE_KEY}-list")
-check("key: and asks for the move, without the value") do
-  ctx.lines.size == 2 && ctx.lines[0].include?("move it to /home/secrets.toml") &&
-    ctx.lines.none? { |l| l.include?(FAKE_KEY) }
-end
+svc, ctx = key_service({ "/home/secrets.toml" => "[openai]\napi_key = \"\"\n", "/etc/secrets.toml" => etc_text })
+eq("key: an empty key in /home falls through to /etc", svc.read_api_key, "#{FAKE_KEY}-etc")
 
 svc, ctx = key_service({ "/home/secrets.toml" => "[openai]\napi_key = \"\"\n" })
-eq("key: none anywhere", svc.read_api_key({ "api_key" => "" }), nil)
+eq("key: none anywhere", svc.read_api_key, nil)
 check("key: nothing logged when there is no key") { ctx.lines.empty? }
+
+check("key: services.toml is not read for the key any more") do
+  # A [tts.config] api_key would sit in a file the remote file services hand
+  # out; the service must not pick it up (and rake refuses to ship one).
+  body = File.read(SERVICE)
+  !body.include?('cfg["api_key"]') && !body.include?("cfg['api_key']")
+end
 
 if $failures > 0
   puts "tts: #{$failures} failure(s)"

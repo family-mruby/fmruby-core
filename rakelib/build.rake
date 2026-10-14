@@ -45,9 +45,9 @@ def write_dev_secrets(path = DEV_SECRETS_TOML)
   puts "secrets: api_key from ~/.openai_key written to #{path} (gitignored)"
 end
 
-# The service list is copied from config/ on every build, so a key appended
-# to an older generated copy is gone with the copy. This only guards against
-# a key ever being written into config/services.toml itself.
+# tts.rb reads its key from secrets.toml only, so an api_key line in the
+# service list does nothing but leak: the remote file services hand that file
+# to anyone who asks. Stop the build if config/services.toml ever gets one.
 def check_services_toml_has_no_key(path = 'flash/etc/services.toml')
   return unless File.exist?(path)
   if File.readlines(path).any? { |l| l =~ /^\s*api_key\s*=/ }
