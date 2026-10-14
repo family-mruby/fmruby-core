@@ -41,7 +41,7 @@
 
 - **触ってよいもの**: picoruby-asterism-zenoh・asterism (main、コミットのみ、版は上げない)、fmruby-core (`feature/asterism-g2a`、develop から、コミットのみ)。push しない。`git commit -a` は使わない (fmruby-core の `.env` にユーザの手元の変更がある)。コミットは必ずファイルを指定する。
 - **触らないもの**: **sdkconfig と sdkconfig.defaults (ステップ 1 では一切。ステップ 2 では承認された項目だけ)**、`.env` (ターゲットは環境変数 `FMRB_HW_TARGET=...` で渡す)、fmruby-graphics-audio、公開済みの gem の版、**VPS (ssh で何かをすることは一切しない)**、`~/asterism-home/`。
-- **端末**: ステップ 1 では焼かない。ステップ 2 では P4-Nano (192.168.10.10、NARYAv4) と AtomS3R にアプリの区画だけを焼いてよい (全体の焼き直しは `/home` を消すのでしない)。シリアルは MCP の serial_* を使う。ミュートのまま。
+- **端末**: ステップ 1 では焼かない。ステップ 2 では P4-Nano (192.0.2.10、NARYAv4) と AtomS3R にアプリの区画だけを焼いてよい (全体の焼き直しは `/home` を消すのでしない)。シリアルは MCP の serial_* を使う。ミュートのまま。
 - **終わったら**: 起動したものを全部止める。fmruby-core の `build/` は Linux の標準構成 (x86-64) に戻す。作業コピーは develop に戻す。
 - **止まる条件**: ステップ 1 の終わり (必ず)。ステップ 2 で、内蔵 RAM を増やさずにできない・承認された範囲の外の sdkconfig の変更が要る・ファームの C の大きな作り替えが要る、と分かったとき。
 - **report** (`doc/ruby_asterism/report/g2a.md`、常体): ステップ 1 は調べの結果・メモリの見積もり・sdkconfig の案の表・証明書の入れ方の案・ステップ 2 の見積もり。ステップ 2 は作り・受け入れ条件ごとの結果と数字・残った課題・ユーザがすること (console での端末の登録、VPS での確かめ)。

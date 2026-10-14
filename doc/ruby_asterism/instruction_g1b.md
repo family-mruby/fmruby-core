@@ -36,7 +36,7 @@
 - **fmruby-core**: develop から `feature/asterism-g1b`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` は変えない)。
 - **asterism-console**: 要る直しがあれば `feature/g1b` にコミットのみ。
 - **触らないもの**: sdkconfig、submodule、VPS、公開済みの版の中身。
-- **端末**: P4-Nano (192.168.10.10、`/dev/ttyACM0`。アプリは tab5_fs。ファームの焼き直しが要るなら、アプリの区画だけ、ポートを明示して)、AtomS3R (`/dev/ttyACM1`、WiFi。焼き直しが要るならアプリの区画だけ、`scratchpad/h1/flash_atoms3r.sh`)。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
+- **端末**: P4-Nano (192.0.2.10、`/dev/ttyACM0`。アプリは tab5_fs。ファームの焼き直しが要るなら、アプリの区画だけ、ポートを明示して)、AtomS3R (`/dev/ttyACM1`、WiFi。焼き直しが要るならアプリの区画だけ、`scratchpad/h1/flash_atoms3r.sh`)。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **終わったら**: 起動したものを全部止める。`build/` は Linux の標準構成 (x86-64)、ブラウザ版のビルドが通る状態。
 - **止まる条件**: ここに無い仕様の選択 (使う人から見える名前・形)、公開済みの版を変える必要。
 - **report**: `doc/ruby_asterism/report/g1b.md`、Japanese plain style (常体)。

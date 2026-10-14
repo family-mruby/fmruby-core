@@ -52,7 +52,7 @@
 - **fmruby-core**: develop から `feature/asterism-v2-5`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない**。`ASTERISM_PIN` は `feature/profile` のコミットを指してよい (マージ後に親が直す)。
 - **asterism-console**: ブランチ `feature/v2-5` にコミットする (push しない。main へのマージは親が検収後に行う)。Gemfile は今の path 指定のまま。
 - **触らないもの**: `.env`、sdkconfig、submodule、fmruby-graphics-audio、公開済みの gem の版 (0.4.x) の中身。
-- **端末**: AtomS3R (`/dev/ttyACM1`、WiFi、ip は mDNS 名から) と P4-Nano (192.168.10.10) を使ってよい。焼き直しが要るなら AtomS3R で。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
+- **端末**: AtomS3R (`/dev/ttyACM1`、WiFi、ip は mDNS 名から) と P4-Nano (192.0.2.10) を使ってよい。焼き直しが要るなら AtomS3R で。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **終わったら**: 起動したものを全部止める。`build/` は Linux の標準構成 (x86-64)。`rake clean_all` を使ったら wasm の libmruby を作り直す (emsdk の環境を読み込んでから)。
 - **止まる条件**: ここに無い仕様の選択 (使う人から見える名前・形)。公開済みの版を変える必要。
 - **report**: `doc/ruby_asterism/report/v2_5.md`、Japanese plain style (常体)。

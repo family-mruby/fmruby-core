@@ -42,7 +42,7 @@
 
 - **触ってよいもの**: asterism-console (main)、fmruby-core (`feature/asterism-g1-5b`)、asterism・asterism-zenoh・picoruby-asterism-zenoh (main)。すべてコミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (fmruby-core の `.env` にユーザの手元の変更がある)。
 - **触らないもの**: `.env`、sdkconfig、fmruby-graphics-audio、公開済みの gem の版、**VPS (ssh で何かをすることは一切しない)**、家のルータの手元の設定 (`~/asterism-home/`)。
-- **端末**: P4-Nano は 192.168.10.10 (tab5_* に ip を渡す。ミュート中)。焼き直しは親に返してから。
+- **端末**: P4-Nano は 192.0.2.10 (tab5_* に ip を渡す。ミュート中)。焼き直しは親に返してから。
 - **終わったら**: 起動したものを全部止める (compose、sim、ブラウザ、rails、zenohd、P4 のアプリ)。試し用の image は消す。`build/` は Linux の標準構成 (x86-64)。
 - **止まる条件**:
   - 端末のつなぎ直しが、内蔵 RAM を増やさずにはできない (測った数字と案を書いて返す)。

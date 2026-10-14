@@ -43,7 +43,7 @@
 
 - **触ってよいもの**: fmruby-core の `flash/app/test/othello.*`・`rt_probe.*`、wasm 版のページと Zenoh のリンク (`wasm/`)、doc。ブランチは develop から `feature/asterism-g1`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` は変えない)。親リポジトリ: docs の追記 (develop にコミットのみ)。asterism-console: 要る直しがあれば (観戦の見せ方など) ブランチ `feature/g1` にコミットのみ。
 - **触らないもの**: 公開済みの gem (直しが要るなら差分を書いて返す)、ファームの C の振る舞い (wasm のリンクの直しは可)、sdkconfig、submodule、VPS。
-- **端末**: P4-Nano (192.168.10.10、`/dev/ttyACM0`。アプリは tab5_fs で送る。焼き直しは要らない見込み)、AtomS3R (`/dev/ttyACM1`、WiFi)。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
+- **端末**: P4-Nano (192.0.2.10、`/dev/ttyACM0`。アプリは tab5_fs で送る。焼き直しは要らない見込み)、AtomS3R (`/dev/ttyACM1`、WiFi)。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **終わったら**: 起動したものを全部止める。`build/` は Linux の標準構成 (x86-64)、ブラウザ版のビルドが通る状態。
 - **止まる条件**: ここに無い仕様の選択 (使う人から見える遊び方・名前で、迷うもの)、公開済みの gem の直し、ACL のキーの範囲を変える必要。
 - **report**: `doc/ruby_asterism/report/g1.md`、Japanese plain style (常体)。

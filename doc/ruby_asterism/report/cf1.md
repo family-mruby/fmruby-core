@@ -48,7 +48,7 @@
 
 - `config.toml` が無く、古いファイル (`/home/zenoh_echo.txt` の 1 行目・`/home/asterism_node.txt` の 1 行目・`/home/asterism_profile.toml` の `name`) が 1 つでもあれば、値のあるものだけを `config.toml` に書き、ログに `asterism: copied ... into /home/asterism/config.toml` を 1 行出す。古いファイルが 1 つも無ければ何も書かない。
 - `config.toml` ができた後は古いファイルを読まない。アプリが設定を読むたびに、残っている古いファイルの名前をログに 1 行出す (`asterism: /home/zenoh_echo.txt, ... not read (/home/asterism/config.toml is)`)。
-- **残す理由**: app だけの焼き直し (開発の普通の道) は FmrbAsterism (ファームの中) を新しくするが、storage の中のアプリは古いまま。古いアプリは自分で `/home/zenoh_echo.txt` を読む。最初の作りは「読み直して同じなら消す」だったが、P4-Nano で app だけ焼き直すと、デスクトップの起動で書き写しと削除が起き、古い othello が `tcp/zenohd:7447` に落ちて繋がらなかった (`othello: fmruby-04a774 down (tcp/zenohd:7447, 32 ms)`)。古いファイルは `/fs/put` で戻し、残す作りに直した (23c0617f)。残しても新しいコードは読まないので、決め手は 1 つ (`config.toml`) のまま。古いファームに戻したときも今の設定で繋がる。
+- **残す理由**: app だけの焼き直し (開発の普通の道) は FmrbAsterism (ファームの中) を新しくするが、storage の中のアプリは古いまま。古いアプリは自分で `/home/zenoh_echo.txt` を読む。最初の作りは「読み直して同じなら消す」だったが、P4-Nano で app だけ焼き直すと、デスクトップの起動で書き写しと削除が起き、古い othello が `tcp/zenohd:7447` に落ちて繋がらなかった (`othello: fmruby-aaaaaa down (tcp/zenohd:7447, 32 ms)`)。古いファイルは `/fs/put` で戻し、残す作りに直した (23c0617f)。残しても新しいコードは読まないので、決め手は 1 つ (`config.toml`) のまま。古いファームに戻したときも今の設定で繋がる。
 - 残すことの欠点: 古い手順で `zenoh_echo.txt` を置き直しても効かない。そのことは上のログの行で分かる。文書と手順 (browser.md 5 章、game.md、親の docker/mujoco/README.md、tools/fmrb_zenoh.rb の注釈) は `config.toml` に直した。全部の機械が新しいアプリになったら、古いファイルは手で消してよい (消すコードは入れていない)。
 
 ## 4. WiFi の置き場所
@@ -89,17 +89,17 @@
 
 `rake wasm:mruby wasm:mrb wasm:web` が通る (最後の作りで 2 回目も)。`?app=/app/test/othello.app.rb` で開くと名前の欄がページの ID (`wasm-4bd85c`) になり、`/flash/home` には何も書かれない。ws/ のルータは立てていないので繋がりはしない (この確認の範囲外)。
 
-### 5.4 P4-Nano (192.168.10.10、NARYAv4、app だけの焼き直し)
+### 5.4 P4-Nano (192.0.2.10、NARYAv4、app だけの焼き直し)
 
-焼き直す前の `/home`: `zenoh_echo.txt` (`tls/silentworlds.info:19296`)・`asterism_profile.toml` (`name = "nano4"`)・`asterism/fmruby-04a774.tar`。`asterism_node.txt` は無い。音は消したまま。
+焼き直す前の `/home`: `zenoh_echo.txt` (`tls/silentworlds.info:19296`)・`asterism_profile.toml` (`name = "nano4"`)・`asterism/fmruby-aaaaaa.tar`。`asterism_node.txt` は無い。音は消したまま。
 
-1. 新しいファーム (消さない作り) を焼き、`config.toml` を一度消し、新しいアプリを送って othello を起動: `asterism: copied /home/zenoh_echo.txt, /home/asterism_profile.toml into /home/asterism/config.toml`、続いて `othello: fmruby-04a774 up (tls/silentworlds.info:19296, 778 ms)`。画面は名前「nano4」、ID `fmruby-04a774 (tls/silentworlds.info:19296)`。`/home/asterism/` は `config.toml` (109 B) と tar (消していない)。古いファイルも残っている。
+1. 新しいファーム (消さない作り) を焼き、`config.toml` を一度消し、新しいアプリを送って othello を起動: `asterism: copied /home/zenoh_echo.txt, /home/asterism_profile.toml into /home/asterism/config.toml`、続いて `othello: fmruby-aaaaaa up (tls/silentworlds.info:19296, 778 ms)`。画面は名前「nano4」、ID `fmruby-aaaaaa (tls/silentworlds.info:19296)`。`/home/asterism/` は `config.toml` (109 B) と tar (消していない)。古いファイルも残っている。
 2. WiFi は `wifi: Settings from /etc/wifi.toml` で今までどおり繋がった (`/home/wifi.toml` は置いていない)。
 3. 最後は othello を閉じ、デスクトップとサービスだけの状態に戻した。
 
 ### 5.5 AtomS3R (未了)
 
-ATOMS3R のファーム (このブランチ) はビルドが通り、写しを `C:\Users\Public\asterism_deploy\cf1_atoms3r\fmruby-core.bin` に置いた。ただ AtomS3R は 192.168.10.15 に応答せず (No route to host)、usbipd にも出ていなかった (Windows に繋がっていない) ので焼けていない。P4-Nano と同じく、焼き直しの後も古いファイルは残るので、storage の古いアプリでも新しいアプリでも今の TLS の設定で繋がるはず。繋いだあとの手順:
+ATOMS3R のファーム (このブランチ) はビルドが通り、写しを `C:\Users\Public\asterism_deploy\cf1_atoms3r\fmruby-core.bin` に置いた。ただ AtomS3R は 192.0.2.15 に応答せず (No route to host)、usbipd にも出ていなかった (Windows に繋がっていない) ので焼けていない。P4-Nano と同じく、焼き直しの後も古いファイルは残るので、storage の古いアプリでも新しいアプリでも今の TLS の設定で繋がるはず。繋いだあとの手順:
 
 ```
 # fmruby-core で (.env は触らない。P4 の build/ からなら先に rake clean_all)

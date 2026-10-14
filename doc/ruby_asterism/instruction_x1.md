@@ -47,7 +47,7 @@
 - **fmruby-core**: develop から `feature/asterism-x1`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` は変えない)。
 - **asterism-console**: `feature/x1` にコミットのみ。Gemfile の rubygems の行は、公開の後で親が上げる (今は `~> 0.6.0` のまま)。
 - **触らないもの**: sdkconfig (zenoh-pico の試験中の機能を入れるのに要るなら、測りの試しのビルドだけで、コミットしない)、submodule、VPS、G0 の `deploy/vps` の中身 (protocol 1 に合わせる直しが要るなら最小限にし、report に書く)。
-- **端末**: P4-Nano (192.168.10.10、`/dev/ttyACM0`)、AtomS3R (WiFi、`/dev/ttyACM1`)。アプリの区画だけを、ポートを明示して焼く。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
+- **端末**: P4-Nano (192.0.2.10、`/dev/ttyACM0`)、AtomS3R (WiFi、`/dev/ttyACM1`)。アプリの区画だけを、ポートを明示して焼く。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **終わったら**: 起動したものを全部止める。`build/` は Linux の標準構成 (x86-64)、ブラウザ版のビルドが通る状態。
 - **止まる条件**: review のおすすめでは決まらない仕様の選択が出たとき、zenoh-pico・zenoh-c の制約で R-14 のキーの形が成り立たないとき。
 - **report**: `doc/ruby_asterism/report/x1.md`、Japanese plain style (常体)。

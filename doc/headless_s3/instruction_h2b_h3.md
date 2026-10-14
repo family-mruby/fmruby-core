@@ -32,7 +32,7 @@
 
 - **触ってよいもの**: instruction_h1.md と同じ範囲、tools/mcp/ (画面の取り込みのため)、lib/add 配下の Asterism の取り込み。ブランチ `feature/headless-h1` に続けてコミット。push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` は変えない)。
 - **触らないもの**: 既存の sdkconfig / defaults (ATOMS3R の defaults は直してよい)、submodule、fmruby-graphics-audio、公開済みの gem (picoruby-asterism-zenoh・asterism。直しが要るなら差分を書いて返す)、`config/wifi.toml` の中身。
-- **端末**: AtomS3R は `/dev/ttyACM1` (ポートを明示する)。焼いてよい。焼くと MCP のシリアルの capture が切れるので、焼いた後は serial_stop → serial_start。P4-Nano (`/dev/ttyACM0`、192.168.10.10) は触らない。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
+- **端末**: AtomS3R は `/dev/ttyACM1` (ポートを明示する)。焼いてよい。焼くと MCP のシリアルの capture が切れるので、焼いた後は serial_stop → serial_start。P4-Nano (`/dev/ttyACM0`、192.0.2.10) は触らない。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **docker**: zenohd と asterism-console を使ってよい。終わったら止める。
 - **ビルド**: `rake clean_all` は wasm の libmruby を消す。終わったら `rake wasm:mruby` などで作り直し、ブラウザ版のビルドが通る状態に戻す (doc/wasm/)。`build/` は Linux の標準構成 (x86-64)。
 - **止まる条件**: ここに無い仕様の選択、Retro・Tab5 の内蔵 RAM の増加、既存の sdkconfig を変える必要、公開済みの gem の直し。

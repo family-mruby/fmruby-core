@@ -37,7 +37,7 @@
 - **fmruby-core**: develop から `feature/asterism-x2`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` は変えない)。PIN は手元の作業場所 (`ASTERISM_DIR` など) でビルドする。
 - **asterism-console**: `feature/x2` にコミットのみ。
 - **触らないもの**: sdkconfig、submodule、VPS。
-- **端末**: P4-Nano (192.168.10.10、`/dev/ttyACM0`)、AtomS3R (WiFi、`/dev/ttyACM1`)。アプリの区画だけを、ポートを明示して焼く。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
+- **端末**: P4-Nano (192.0.2.10、`/dev/ttyACM0`)、AtomS3R (WiFi、`/dev/ttyACM1`)。アプリの区画だけを、ポートを明示して焼く。どちらもミュート中。端末の IP・mDNS の名前・MAC はリポジトリに書かない。
 - **終わったら**: 起動したものを全部止める。`build/` は Linux の標準構成 (x86-64)、ブラウザ版のビルドが通る状態。
 - **止まる条件**: zenoh-pico・zenoh-c の試験中の API で、送り手の情報を付ける・読むことができない (足りないものを書いて返す)。内蔵 RAM が増える。仕様の選択が要る。
 - **report**: `doc/ruby_asterism/report/x2.md`、Japanese plain style (常体)。
