@@ -1,10 +1,10 @@
 # Zenoh round trip check (doc/ruby_asterism, Z1/Z2). The Zenoh gem is in the
 # Linux sim and the Modern (ESP32-P4) builds.
 #
-# - Connects to the router. The locator is the first line of
-#   /home/zenoh_echo.txt (e.g. tcp/192.0.2.2:7447 for a router on the
-#   PC's LAN address); without that file it is tcp/zenohd:7447, the zenohd
-#   service of the sim stack.
+# - Connects to the router of the machine's settings (FmrbAsterism.settings:
+#   router in /home/asterism/config.toml, e.g. tcp/192.0.2.2:7447 for a
+#   router on the PC's LAN address); without one it is tcp/zenohd:7447, the
+#   zenohd service of the sim stack.
 # - Puts a counter on fmrb/test/out once a second.
 # - Subscribes to fmrb/test/in and shows the latest value with the number of
 #   values received and dropped.
@@ -18,22 +18,11 @@
 # again and again exercises.
 
 class ZenohEchoApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
   OUT_KEY = "fmrb/test/out"
   IN_KEY = "fmrb/test/in"
 
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-
-  def locator
-    text = File.open(LOCATOR_FILE, "r") { |f| f.read }
-    line = text.split("\n")[0].to_s.strip
-    line.empty? ? DEFAULT_LOCATOR : line
-  rescue
-    DEFAULT_LOCATOR
-  end
-
   def on_create
-    @locator = locator
+    @locator = ::FmrbAsterism.settings.router
     @state = "connecting"
     @session = nil
     @sub = nil

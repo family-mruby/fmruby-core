@@ -748,7 +748,7 @@ moduleConfig.preRun.push(mountHome);
 // A board is told apart on the network by its mDNS name, fmruby-<6 hex>. A
 // browser has none, so the page makes one on its first visit, wasm-<6 hex>,
 // and keeps it in localStorage; the machine gets it as asterism_node, which
-// the apps use when /home/asterism_node.txt does not name the node.
+// the apps use when /home/asterism/config.toml does not name the node.
 //
 // It is this browser's identity rather than a setting: Erase leaves it, and a
 // backup does not carry it (restored in another browser, it would put two

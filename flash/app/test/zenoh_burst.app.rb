@@ -4,25 +4,15 @@
 # fills and the gem's send time limit (Asterism::Zenoh::SEND_TIMEOUT_MS) has to act.
 # Logs every put that takes 200 ms or more and how the session ends.
 #
-# Same locator as zenoh_echo: the first line of /home/zenoh_echo.txt, or
-# tcp/zenohd:7447. Nothing subscribes on the PC side; the router just drops
+# Same router as zenoh_echo (FmrbAsterism.settings, default
+# tcp/zenohd:7447). Nothing subscribes on the PC side; the router just drops
 # the values.
 
 class ZenohBurstApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
   KEY = "fmrb/test/burst"
 
-  def locator
-    text = File.open(LOCATOR_FILE, "r") { |f| f.read }
-    line = text.split("\n")[0].to_s.strip
-    line.empty? ? DEFAULT_LOCATOR : line
-  rescue
-    DEFAULT_LOCATOR
-  end
-
   def on_create
-    @locator = locator
+    @locator = ::FmrbAsterism.settings.router
     @state = "connecting"
     @session = nil
     @count = 0

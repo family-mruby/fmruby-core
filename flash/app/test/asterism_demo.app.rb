@@ -1,12 +1,12 @@
 # Asterism demo (doc/ruby_asterism, A1): objects of this app called from
 # another machine, and that machine's objects called from here.
 #
-# - Node ID: the first line of /home/asterism_node.txt, else the board's
+# - Node ID and router: the machine's settings (FmrbAsterism.settings, CF1:
+#   /home/asterism/config.toml). The ID is its node, else the board's
 #   mDNS name (fmruby-XXXXXX), else the machine's asterism_node setting (the
 #   browser's own ID, wasm-XXXXXX, which the page makes and keeps), else the
-#   board name ("linux" in the sim, "wasm" in the browser).
-# - Connects like zenoh_echo: the first line of /home/zenoh_echo.txt is the
-#   locator, else the machine's zenoh_router setting (system_conf.toml; the
+#   board name ("linux" in the sim, "wasm" in the browser). The router is
+#   its router, else the machine's zenoh_router setting (system_conf.toml; the
 #   browser build has ws/localhost:7449 there, or ?zenoh= from the page's
 #   URL), else tcp/zenohd:7447; "listen <loc>" / "peer <loc>" select peer
 #   mode (no router; not in the browser). A tls/ locator connects straight
@@ -48,9 +48,6 @@
 #   ruby tools/fmrb_zenoh.rb meta <ID>/demo/apu
 
 class AsterismDemoApp < FmrbApp
-  DEFAULT_LOCATOR = "tcp/zenohd:7447"
-  LOCATOR_FILE = "/home/zenoh_echo.txt"
-  NODE_FILE = "/home/asterism_node.txt"
   CONF_FILE = "/etc/system_conf.toml"
   APP = "demo"
   STATUS_EVERY_MS = 3000
@@ -138,13 +135,6 @@ class AsterismDemoApp < FmrbApp
   attr_accessor :said
   attr_reader :node
 
-  def first_line(path)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n")[0].to_s.strip
-  rescue
-    ""
-  end
-
   # The number in `<key> = 123` in system_conf.toml, or 0.
   def conf_int(key)
     text = File.open(CONF_FILE, "r") { |f| f.read }
@@ -158,44 +148,17 @@ class AsterismDemoApp < FmrbApp
     0
   end
 
-  # The quoted value of `<key> = "..."` in system_conf.toml, or "".
-  def conf_value(key)
-    text = File.open(CONF_FILE, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key)
-      a = line.index("\"")
-      b = a ? line.index("\"", a + 1) : nil
-      return b ? line[a + 1, b - a - 1].to_s.strip : ""
-    end
-    ""
-  rescue
-    ""
-  end
-
   def uptime_ms
     Machine.board_millis - @started
   end
 
   def on_create
     @started = Machine.board_millis
-    @node = first_line(NODE_FILE)
-    if @node.empty?
-      info = FmrbApp.wifi_info
-      @node = info ? info[:hostname].to_s : ""
-    end
-    @node = conf_value("asterism_node") if @node.empty?
-    @node = FmrbConst::BOARD if @node.empty?
-    @locator = first_line(LOCATOR_FILE)
-    @locator = conf_value("zenoh_router") if @locator.empty?
-    @locator = DEFAULT_LOCATOR if @locator.empty?
-    @creds = nil
-    @creds_error = nil
-    begin
-      @creds = FmrbAsterism.credentials_for(@locator)
-    rescue ::Asterism::Error => e
-      @creds_error = e.message
-    end
-    @node = @creds.name if @creds
+    st = ::FmrbAsterism.settings
+    @node = st.node
+    @locator = st.router
+    @creds = st.credentials
+    @creds_error = st.error
     @state = "connecting"
     @said = "-"
     @lines = []
