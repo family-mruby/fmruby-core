@@ -65,12 +65,14 @@
       <div class="settings-row">
         <label for="setPassword">Password</label>
         <input type="password" id="setPassword" autocomplete="new-password">
+        <label class="settings-check"><input type="checkbox" id="setPwShow" onchange="document.getElementById('setPassword').type = this.checked ? 'text' : 'password'"> show</label>
       </div>
+      <div class="settings-now" id="setPwNow"></div>
       <div class="settings-actions">
         <button class="primary" data-needs-settings disabled onclick="settingsWriteWifi()">Write WiFi</button>
         <span class="settings-msg" id="setWifiMsg"></span>
       </div>
-      <div class="settings-hint">Takes effect when the board starts again. The password is never read back.</div>
+      <div class="settings-hint">Takes effect when the board starts again. The password is read from the board only while BLE Setup is open there.</div>
     </section>
 
     <section class="settings-card">
@@ -110,7 +112,7 @@
         <button class="primary" data-needs-settings disabled onclick="settingsWriteTar()">Write credentials</button>
         <span class="settings-msg" id="setTarMsg"></span>
       </div>
-      <div class="settings-hint">The .tar the Asterism console hands out. It holds the private key and is never read back.</div>
+      <div class="settings-hint">The .tar the Asterism console hands out. It holds the private key and is never read back (issue it again from the Asterism console if it is lost).</div>
     </section>
   </div>
 

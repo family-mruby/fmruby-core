@@ -5,8 +5,9 @@
  * Web Bluetooth cannot be reached from a test, so navigator.bluetooth is
  * replaced by a small fake that speaks the file service's framing (COBS +
  * CRC32, the same functions the page uses) over an in-memory file system,
- * with the board's two rules: the secrets are not read, and settings are
- * written only while the settings window is open. The rules themselves are
+ * with the board's rules: the .tar is never read, the WiFi file only while
+ * the settings window is open, settings are written only while it is open,
+ * and CMD_SETTINGS carries a WiFi summary without the password. The rules themselves are
  * tested in C (rake secret:test); this covers the page -- what it shows,
  * what it writes, and that it does not retry a refusal.
  *
@@ -64,7 +65,7 @@ function fakeBoard() {
   files.set("/home/asterism/old-board.tar", new Uint8Array([1, 2, 3]));
   files.set("/home/notes.txt", enc.encode("hello"));
 
-  const board = { files, dirs, windowUntil: 0, commands: [] };
+  const board = { files, dirs, windowUntil: 0, commands: [], sent: [] };
   window.__board = board;
 
   const left = () => Math.max(0, Math.ceil((board.windowUntil - Date.now()) / 1000));
@@ -73,6 +74,7 @@ function fakeBoard() {
     return s[0] === "home" && s[1] === "asterism";
   };
   const writable = (p) => (!isSecretPath(p) && !settingsPath(p)) || left() > 0;
+  const isWifi = (p) => /^\/(home|etc)\/wifi\.toml/.test(p);
   const denyClosed = { ok: false, denied: true, closed: true,
                        err: "The board is not accepting settings: open BLE Setup in its menu" };
 
@@ -97,10 +99,17 @@ function fakeBoard() {
     }
     case 0x15: return [{ ok: true, total: 1 << 20, free: 1 << 19 }];
     case 0x14: dirs.add(params.path); return [{ ok: true }];
-    case 0x17: return [{ ok: true, open: left() > 0, left: left() }];
+    case 0x17: {
+      const src = files.has("/home/wifi.toml") ? "/home/wifi.toml" : files.has("/etc/wifi.toml") ? "/etc/wifi.toml" : "";
+      const text = src ? new TextDecoder().decode(files.get(src)) : "";
+      const ssid = src ? (settingsTomlValue(text, "ssid") || "") : "";
+      return [{ ok: true, open: left() > 0, left: left(),
+                wifi: { src, on: /enable\s*=\s*true/.test(text), ssid, conn: true, ip: "192.0.2.7" } }];
+    }
     case 0x21: {  // GET
-      if (isSecretPath(params.path)) {
-        return [{ ok: false, denied: true, err: "This file holds keys or passwords and is not read over BLE" }];
+      if (isWifi(params.path) && left() === 0) return [denyClosed];
+      if (isSecretPath(params.path) && !isWifi(params.path)) {
+        return [{ ok: false, denied: true, err: "This file holds a key and is not read over BLE" }];
       }
       const data = files.get(params.path);
       if (!data) return [{ ok: false, err: "Cannot open file" }];
@@ -126,6 +135,7 @@ function fakeBoard() {
   }
 
   function respond(tx, meta, bin) {
+    board.sent.push({ open: left() > 0, text: JSON.stringify(meta) + (bin ? new TextDecoder().decode(bin) : "") });
     const json = enc.encode(JSON.stringify(meta));
     const binLen = bin ? bin.length : 0;
     const body = new Uint8Array(3 + json.length + binLen);
@@ -221,7 +231,7 @@ const getResult = await page.evaluate(async () => {
   try { await deviceReadFile("/etc/wifi.toml"); return "read"; }
   catch (e) { return e.message + "|" + (window.__board.commands.length - before); }
 });
-check("GET of a secret is refused once", getResult.endsWith("|1") && getResult.includes("keys or passwords"), getResult);
+check("GET of the WiFi file is refused once while closed", getResult.endsWith("|1") && getResult.includes("not accepting"), getResult);
 
 // ---- Settings tab, window closed ----
 await page.click("#tabSettings");
@@ -229,12 +239,22 @@ await page.waitForFunction(() => document.getElementById("setCfgNow").textConten
 check("closed: says so", (await text("setWindow")).includes("not accepting settings"), await text("setWindow"));
 check("closed: write buttons disabled", await disabled("[data-needs-settings]"));
 check("shows WiFi from the firmware", (await text("setWifiNow")).includes("/etc/wifi.toml"), await text("setWifiNow"));
+check("shows the SSID and the link", (await text("setWifiNow")).includes('SSID "old"') && (await text("setWifiNow")).includes("192.0.2.7"),
+      await text("setWifiNow"));
+check("fills the SSID field", (await page.inputValue("#setSsid")) === "old");
+check("password field empty, said to be set", (await page.inputValue("#setPassword")) === "" &&
+      (await text("setPwNow")) === "set (not shown)", await text("setPwNow"));
+check("the password never sent while closed",
+      await page.evaluate(() => window.__board.sent.filter(r => !r.open).every(r => !r.text.includes("secret-old"))));
 check("shows the current .tar by name", (await text("setTarNow")).includes("old-board.tar"), await text("setTarNow"));
 check("fills the Asterism form from config.toml",
       (await page.inputValue("#setRouter")) === "tls/203.0.113.5:7447" && (await page.inputValue("#setName")) === "nano4");
 await page.screenshot({ path: join(shots, "settings_closed.png"), fullPage: true });
 
 // The board refuses even when the page is made to write anyway.
+await page.fill("#setPassword", "");
+await page.evaluate(() => settingsWriteWifi());
+check("closed: empty password refused in the page", (await text("setWifiMsg")) === "enter the password", await text("setWifiMsg"));
 await page.fill("#setSsid", "Home Net");
 await page.fill("#setPassword", "password1");
 await page.evaluate(() => settingsWriteWifi());
@@ -243,11 +263,26 @@ check("closed: the board's refusal is shown", (await text("setWifiMsg")).include
 check("closed: nothing written", (await fileText("/home/wifi.toml")) === null);
 
 // ---- the window opens on the board ----
+await page.fill("#setPassword", "");
 await page.evaluate(() => { window.__board.windowUntil = Date.now() + 300 * 1000; });
 await page.waitForFunction(() => document.getElementById("setWindow").textContent.includes("accepting settings:"),
                            null, { timeout: 8000 });
 check("open: countdown shown", /[45]:\d\d left/.test(await text("setWindow")), await text("setWindow"));
 check("open: write buttons enabled", !(await disabled("[data-needs-settings]")));
+await page.waitForFunction(() => document.getElementById("setPassword").value !== "", null, { timeout: 8000 }).catch(() => {});
+check("open: the current password is loaded", (await page.inputValue("#setPassword")) === "secret-old" &&
+      (await text("setPwNow")).startsWith("loaded"), await text("setPwNow"));
+const tarGet = await page.evaluate(async () => {
+  try { await deviceReadFile("/home/asterism/old-board.tar"); return "read"; } catch (e) { return e.message; }
+});
+check("open: the .tar is still not read", tarGet.includes("holds a key"), tarGet);
+
+// An empty password keeps the one loaded from the board.
+await page.fill("#setPassword", "");
+await page.click("text=Write WiFi");
+await page.waitForFunction(() => document.getElementById("setWifiMsg").textContent.startsWith("WiFi written"));
+check("empty password keeps the loaded one", (await fileText("/home/wifi.toml")).includes('password = "secret-old"'),
+      await fileText("/home/wifi.toml"));
 
 // WiFi
 await page.fill("#setSsid", "Home \"Net\"");
@@ -258,12 +293,15 @@ const wifi = await fileText("/home/wifi.toml");
 check("wifi.toml content", wifi ===
   "# This machine's WiFi, written by the Family mruby Console\n[wifi]\nenable = true\n" +
   "ssid = \"Home \\\"Net\\\"\"\npassword = \"pa\\\\ss word1\"\n", JSON.stringify(wifi));
-check("password field cleared after writing", (await page.inputValue("#setPassword")) === "");
+
 await page.waitForFunction(() => !window.settingsBusy, null, { timeout: 8000 }).catch(() => {});
-await page.waitForFunction(() => document.getElementById("setWifiNow").textContent.startsWith("set"),
+await page.waitForFunction(() => document.getElementById("setWifiNow").textContent.includes('SSID "Home "Net"" from /home/wifi.toml'),
                            null, { timeout: 8000 }).catch(() => {});
-check("now shows WiFi from /home", (await text("setWifiNow")).startsWith("set (/home/wifi.toml)"), await text("setWifiNow"));
+check("now shows WiFi from /home", (await text("setWifiNow")).includes('SSID "Home "Net"" from /home/wifi.toml'), await text("setWifiNow"));
 check("short password refused in the page", await page.evaluate(() => settingsCheckWifi("a", "short") !== ""));
+check("toml value reader", await page.evaluate(() =>
+  settingsTomlValue('password = "pa\\\\ss \\"x\\" \\u00e9"', "password") === 'pa\\ss "x" \u00e9' &&
+  settingsTomlValue("password = 'lit'", "password") === "lit" && settingsTomlValue("x = 1", "password") === null));
 
 // Asterism
 await page.fill("#setName", "Nano \"4\"");
@@ -301,6 +339,7 @@ await page.evaluate(() => { window.__board.windowUntil = 0; });
 await page.waitForFunction(() => document.getElementById("setWindow").textContent.includes("not accepting"),
                            null, { timeout: 8000 });
 check("closed again: buttons disabled", await disabled("[data-needs-settings]"));
+check("closed again: the password is forgotten", (await page.inputValue("#setPassword")) === "");
 
 // The files the console's other tabs use are unaffected.
 const plain = await page.evaluate(async () => new TextDecoder().decode(await deviceReadFile("/home/notes.txt")));

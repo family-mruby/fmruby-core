@@ -10,8 +10,11 @@
 // CMD_SETTINGS; the board refuses the writes itself when it is closed, so the
 // buttons here being disabled is a courtesy, not the lock.
 //
-// The secrets (the WiFi file, the .tar) are never read back: the board does
-// not hand them out. What is shown of them is whether they are there.
+// The .tar (the private key) is never read back: the board does not hand it
+// out, and the Asterism console can issue it again. The WiFi password is read
+// only while the window is open (the owner asked for it on the board); the
+// rest of the WiFi settings (SSID, which file, the link) comes with every
+// CMD_SETTINGS answer and never carries the password.
 
 const CMD_SETTINGS = 0x17;
 
@@ -29,6 +32,8 @@ let settingsState = {
   left: 0,
   leftAt: 0,         // Date.now() when `left` was read
   wifi: null,        // '/home/wifi.toml' | '/etc/wifi.toml' | '' (none)
+  wifiInfo: null,    // { src, on, ssid, conn, ip } from CMD_SETTINGS, null on old firmware
+  password: null,    // the current password, read while the window is open
   tars: [],          // [{ n, s }] in /home/asterism
   config: null,      // { router, node, name } from config.toml, or null
 };
@@ -105,12 +110,49 @@ function settingsTarName(fileName) {
 }
 
 // Returns an error message, or '' when the WiFi fields can be written.
+// One key's string value from a TOML file (a basic or a literal string), or
+// null. Enough for wifi.toml, which wifi_task.c writes and reads.
+function settingsTomlValue(text, key) {
+  for (const raw of String(text).split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith(key)) continue;
+    let rest = line.slice(key.length).trim();
+    if (!rest.startsWith('=')) continue;
+    rest = rest.slice(1).trim();
+    if (rest.startsWith("'")) {
+      const end = rest.indexOf("'", 1);
+      return end > 0 ? rest.slice(1, end) : null;
+    }
+    if (!rest.startsWith('"')) return null;
+    let v = '';
+    for (let i = 1; i < rest.length; i++) {
+      const ch = rest[i];
+      if (ch === '"') return v;
+      if (ch !== '\\') { v += ch; continue; }
+      const e = rest[++i];
+      const simple = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' };
+      if (e in simple) v += simple[e];
+      else if (e === 'u' || e === 'U') {
+        const len = e === 'u' ? 4 : 8;
+        v += String.fromCodePoint(parseInt(rest.slice(i + 1, i + 1 + len), 16));
+        i += len;
+      } else v += e;
+    }
+    return null;
+  }
+  return null;
+}
+
+// Returns an error message, or '' when the WiFi fields can be written. An
+// empty password is not "keep the old one": the console only keeps it when
+// it has read it (see settingsWriteWifi).
 function settingsCheckWifi(ssid, password) {
   const enc = new TextEncoder();
   if (ssid === '') return 'SSID is empty';
   if (enc.encode(ssid).length > 32) return 'SSID is longer than 32 bytes';
   const n = enc.encode(password).length;
-  if (n > 0 && n < 8) return 'the password is shorter than 8 characters (leave it empty for an open network)';
+  if (n === 0) return 'enter the password';
+  if (n < 8) return 'the password is shorter than 8 characters';
   if (n > 64) return 'the password is longer than 64 characters';
   return '';
 }
@@ -143,6 +185,7 @@ async function settingsAskWindow() {
   }
   settingsState.supported = true;
   settingsState.open = !!meta.open;
+  settingsState.wifiInfo = meta.wifi || null;
   settingsState.left = meta.left || 0;
   settingsState.leftAt = Date.now();
 }
@@ -158,8 +201,10 @@ async function settingsReadState() {
   const home = await settingsList('/home') || [];
   const etc = await settingsList('/etc') || [];
   const has = (list, name) => list.some(e => e.n === name && e.t === 'f');
-  settingsState.wifi = has(home, 'wifi.toml') ? WIFI_HOME_PATH
+  settingsState.wifi = settingsState.wifiInfo ? settingsState.wifiInfo.src
+                     : has(home, 'wifi.toml') ? WIFI_HOME_PATH
                      : has(etc, 'wifi.toml') ? WIFI_ETC_PATH : '';
+  await settingsReadPassword();
 
   const dir = await settingsList(ASTERISM_DIR);
   settingsState.tars = (dir || []).filter(e => e.t === 'f' && /\.tar$/i.test(e.n));
@@ -172,6 +217,28 @@ async function settingsReadState() {
       log('settings: could not read ' + ASTERISM_CONFIG + ': ' + e.message, 'err');
     }
   }
+}
+
+// The current password, read while the window is open (the board refuses
+// otherwise). Forgotten as soon as the window closes.
+async function settingsReadPassword() {
+  if (!settingsState.open || !settingsState.wifi || settingsState.password !== null) return;
+  try {
+    const bytes = await deviceReadFile(settingsState.wifi);
+    const pw = settingsTomlValue(new TextDecoder().decode(bytes), 'password');
+    settingsState.password = pw === null ? '' : pw;
+    const field = settingsEl('setPassword');
+    if (field && field.value === '') field.value = settingsState.password;
+  } catch (e) {
+    log('settings: could not read the WiFi password: ' + e.message, 'err');
+  }
+}
+
+function settingsForgetPassword() {
+  if (settingsState.password === null) return;
+  settingsState.password = null;
+  const field = settingsEl('setPassword');
+  if (field) field.value = '';
 }
 
 // ---- the pane ----
@@ -210,10 +277,27 @@ function settingsRender() {
   }
 
   const wifiNow = settingsEl('setWifiNow');
+  const wi = st.wifiInfo;
+  let where;
+  if (st.wifi === WIFI_HOME_PATH) where = WIFI_HOME_PATH;
+  else if (st.wifi === WIFI_ETC_PATH) where = 'the firmware\'s ' + WIFI_ETC_PATH + ' (writing here puts ' + WIFI_HOME_PATH + ' in front of it)';
   if (!connected || st.wifi === null) wifiNow.textContent = '-';
-  else if (st.wifi === WIFI_HOME_PATH) wifiNow.textContent = 'set (' + WIFI_HOME_PATH + ')';
-  else if (st.wifi === WIFI_ETC_PATH) wifiNow.textContent = 'from the firmware (' + WIFI_ETC_PATH + '); writing here puts ' + WIFI_HOME_PATH + ' in front of it';
-  else wifiNow.textContent = 'none';
+  else if (!st.wifi) wifiNow.textContent = 'none';
+  else if (!wi) wifiNow.textContent = 'set (' + where + ')';
+  else {
+    wifiNow.textContent = 'SSID "' + wi.ssid + '" from ' + where +
+      (wi.on ? '' : ', disabled (enable = false)') +
+      (wi.conn ? '; connected, IP ' + wi.ip : '; not connected now');
+  }
+  const pw = settingsEl('setPassword');
+  if (pw) {
+    pw.placeholder = !st.wifi ? '' : (st.password !== null ? '' : 'set (not shown; open BLE Setup on the board to load it)');
+  }
+  const pwNow = settingsEl('setPwNow');
+  if (pwNow) {
+    pwNow.textContent = (!connected || !st.wifi) ? '' :
+      st.password !== null ? 'loaded from the board (the settings window is open)' : 'set (not shown)';
+  }
 
   const tarNow = settingsEl('setTarNow');
   if (!connected || st.wifi === null) tarNow.textContent = '-';
@@ -238,6 +322,8 @@ function settingsRender() {
 // Fill the Asterism fields from what the board has (only on load, so what
 // the user typed is not overwritten by the poll).
 function settingsFillForm() {
+  const wi = settingsState.wifiInfo;
+  if (wi && wi.ssid) settingsEl('setSsid').value = wi.ssid;
   const c = settingsState.config || {};
   settingsEl('setRouter').value = c.router || '';
   settingsEl('setNode').value = c.node || '';
@@ -262,6 +348,8 @@ async function settingsPoll() {
   if (!rxChar || settingsBusy) { settingsRender(); return; }
   try {
     await settingsAskWindow();
+    if (!settingsState.open) settingsForgetPassword();
+    else if (settingsState.password === null) await settingsReadPassword();
   } catch (e) {
     // A missed poll is not worth a log line; the next one asks again.
   }
@@ -315,12 +403,15 @@ async function settingsEnsureDir() {
 
 function settingsWriteWifi() {
   const ssid = settingsEl('setSsid').value;
-  const password = settingsEl('setPassword').value;
+  let password = settingsEl('setPassword').value;
+  // Empty keeps the current password only when it was read from the board
+  // (window open); otherwise there is nothing to keep it from.
+  if (password === '' && settingsState.open && settingsState.password) password = settingsState.password;
   const bad = settingsCheckWifi(ssid, password);
   if (bad) { settingsSetMsg('setWifiMsg', bad, 'err'); return; }
   return settingsWrite('setWifiMsg', async () => {
     await deviceWriteFile(WIFI_HOME_PATH, new TextEncoder().encode(settingsWifiToml(ssid, password)));
-    settingsEl('setPassword').value = '';
+    settingsState.password = password;
     return 'WiFi written to ' + WIFI_HOME_PATH + '. It is used from the next start: restart the board (menu > Reset).';
   });
 }
@@ -381,7 +472,9 @@ function settingsWriteTar() {
 function settingsOnConnection(connected) {
   if (!connected) {
     settingsState = { supported: null, open: false, left: 0, leftAt: 0,
-                      wifi: null, tars: [], config: null };
+                      wifi: null, wifiInfo: null, password: null, tars: [], config: null };
+    const pw = settingsEl('setPassword');
+    if (pw) pw.value = '';
     settingsBusy = false;
     settingsStopPolling();
     settingsRender();

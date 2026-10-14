@@ -27,7 +27,7 @@ const CMD_LOG_SET_LEVEL   = 0x33;
 
 const WRITE_CHUNK_SIZE = 200; // Conservative BLE write chunk size
 const FILE_CHUNK_SIZE  = 2048;
-const CONSOLE_BUILD    = '2026-10-14a';  // shown on connect: says which app.js the browser has
+const CONSOLE_BUILD    = '2026-10-14b';  // shown on connect: says which app.js the browser has
 const CMD_RETRIES      = 4;    // one try plus three more before giving up
 const RETRY_BACKOFF_MS = 120;  // grows with the attempt number
 const RESYNC_QUIET_MS  = 250;  // link counts as settled after this much silence
