@@ -1,6 +1,6 @@
 # CF3 報告: AtomS3R の設定のモード (BLE だけで起動して接続の設定を受け付ける)
 
-> 状態: Step 2 の最初の計測で止めた (普段のモードの内蔵 RAM が +2,016 B、ユーザの判断待ち) | 更新: 2026-10-14 | 10 章が Step 2 の計測。 instruction_cf3.md の Step 1。AtomS3R に BLE を入れる sdkconfig の差分案を 2 つ作り、試しのビルドで静的な内蔵 RAM と flash を測った。Retro と同じ構成 (案 A) は普段のモードで静的な内蔵 RAM が +16,816 B、BLE のコントローラを flash に置く構成 (案 B) は +3,676 B。案 B に、普段のモードの起動で BLE の領域を heap に返す手 (`esp_bt_controller_mem_release`) を足すのを推す。それでも IDF の IRAM のコード約 1.9 KB が残る見込みで、増分 0 になるかは ROM の BLE の領域の大きさ次第 (端末でしか測れない)。設定のモードの空きは約 150 KB の見込み (推定)。sdkconfig・区画の表・ソースは変えていない
+> 状態: Step 2 実装・確認済み (端末の側)。Web Bluetooth とボタンの確認はユーザ待ち (12 章) | 更新: 2026-10-15 | 10 章が Step 2 の最初の計測と、普段のモードの -2,016 B を受け入れた決定、11 章が受け入れ条件ごとの結果、12 章がユーザの確認の手順。 instruction_cf3.md の Step 1。AtomS3R に BLE を入れる sdkconfig の差分案を 2 つ作り、試しのビルドで静的な内蔵 RAM と flash を測った。Retro と同じ構成 (案 A) は普段のモードで静的な内蔵 RAM が +16,816 B、BLE のコントローラを flash に置く構成 (案 B) は +3,676 B。案 B に、普段のモードの起動で BLE の領域を heap に返す手 (`esp_bt_controller_mem_release`) を足すのを推す。それでも IDF の IRAM のコード約 1.9 KB が残る見込みで、増分 0 になるかは ROM の BLE の領域の大きさ次第 (端末でしか測れない)。設定のモードの空きは約 150 KB の見込み (推定、実測は 159,860 B)。Step 1 の時点では sdkconfig・区画の表・ソースは変えていない
 
 ## 1. 要約
 
@@ -214,9 +214,9 @@ button to restart.
 
 ユーザの決定 (2026-10-14、9 章の 10 点はすべて推し案) を受けて Step 2 に入り、案 B の sdkconfig と、普段のモードで BLE の領域を heap に返す手を入れて計測した。**普段のモードの内蔵 RAM が develop より 2,016 B 少ない (増分 0 に届かない)** ので、決定 3 のとおりここで止めた。BLE の書き込みの確認 (決定 1) は、判断の材料になるので止める前に端末の側でできる範囲を行った (10.4)。
 
-### 10.1 作ったもの (コミット済み、未検収)
+### 10.1 作ったもの
 
-ブランチ feature/cf3-atoms3r-setup (develop をマージ済み)。止まった状態でも続きから入れるように、Step 2 の作りは一通り入れてコミットした。AtomS3R の ESP32 のビルドと host の試験 (`rake secret:test` 122 項目、`node tool/web/test/settings.mjs`) は通る。ほかの構成のビルド・sim・wasm はまだ回していない。
+ブランチ feature/cf3-atoms3r-setup (develop をマージ済み)。止まった時点で Step 2 の作りは一通り入れてコミットし、決定 (10.5) のあとに残りの確認をした (11 章)。そのとき Linux のリンクで `fmrb_secret_path.c` が ESP32 の一覧にしか無いことが分かったので、カーネルと同じ全構成の一覧 (main/CMakeLists.txt・wasm/CMakeLists.txt) に移した。
 
 | 場所 | 中身 |
 |---|---|
@@ -272,16 +272,81 @@ develop とこのブランチを同じ端末にアプリの区画だけ書き、
 - **BLE を起こしたまま littlefs に書く**: BLE のファイルのタスクの中で (PUT と同じタスク)、`/home` に 256 KB を 2 KB ずつ書いて読み戻し、消すことを 5 秒おきに 3 回。3 回とも読み戻しが一致し、書き込みは 2.2〜2.6 秒 (1 塊の最悪 194 / 34 / 44 ms)。書いたあとも `synced=1 enabled=1 adv_active=1`、NimBLE の host のリセットやコントローラの assert、再起動は無い。
 - **限界**: この PC に Bluetooth が無いので、つないだまま (connection event がある状態) で書く場面は確かめていない。広告だけの状態で壊れないことまで。つないだまま切れないかは Web Bluetooth で tar を書く確認 (ユーザ) が要る。
 
-### 10.5 判断してほしいこと
+### 10.5 判断と決定
 
-増分は 2,016 B (定常、普段のモード)。残りは BLE を入れると IRAM に置かれる IDF のコード (Step 1 の 4.1 の表: esp_system・btbb・freertos・spi_flash・newlib など約 1.9 KB) と .bss・.data の端数で、sdkconfig のこの差分の中では消せない。手は次のどれか。
+増分は 2,016 B (定常、普段のモード)。残りは BLE を入れると IRAM に置かれる IDF のコード (Step 1 の 4.1 の表: esp_system・btbb・freertos・spi_flash・newlib など約 1.9 KB) と .bss・.data の端数で、sdkconfig のこの差分の中では消せない。手は次のどれかだった。
 
-1. **+2 KB を受け入れる** (設定のモードの利点と引き換え)。
-2. **ほかの場所で同じだけ減らして相殺する**: このブランチの外の内蔵 RAM の削減 (internal_ram_budget.md の候補から 2 KB 以上) を先に入れる。
-3. **BLE を入れたまま IRAM のコードを減らす sdkconfig を探す** (どの項目がどの関数を IRAM に引き込んでいるかを調べてから案を出す。sdkconfig の追加の承認が要る)。
+1. +2 KB を受け入れる (設定のモードの利点と引き換え)。
+2. ほかの場所で同じだけ減らして相殺する。
+3. BLE を入れたまま IRAM のコードを減らす sdkconfig を探す (追加の承認が要る)。
 4. 案 A は +16.8 KB なので悪くなる。BLE を入れない (CF3 をやめる) と 0。
 
-### 10.6 端末と作業コピーの今
+**決定 (2026-10-15 ユーザ): 1。AtomS3R の普段のモードの -2,016 B を受け入れる。** 理由は、設定のモードを持つための代価であること。画面の操作が無い端末に、開発用の道具も焼き直しも無しで接続の設定を入れる手段は BLE しか無く、BLE をファームに入れると、起こさない起動でも IDF のコードの一部が IRAM に置かれる。この例外は AtomS3R のこの変更に限る。ほかの機種の増分 0 の条件はそのままで、P4 と Retro は静的な DIRAM が develop と比べて増えていないことを確かめた (11.4)。
 
-- AtomS3R: develop のファーム (アプリの区画だけ) に戻した。/home はそのまま (config.toml・tar・ほかのファイルの名前と大きさが同じ。試しのファイルは消した)。asterism_demo を起動し、VPS に TLS で繋がっている。
+### 10.6 止めた時点の端末と作業コピー
+
+- AtomS3R は develop のファームに戻した (アプリの区画だけ)。/home はそのまま。作業コピーは develop、build/ は Linux。11 章の確認で、このブランチのファームに入れ替えた。
+
+## 11. 受け入れ条件ごとの結果 (2026-10-15)
+
+### 11.1 条件 1: WiFi の設定が無い端末が設定のモードで起動し、書いて起動し直すと繋がる
+
+- **端末の側の判定**: 10.4 の一時のビルド (WiFi の設定のファイルを「無い」とみなす 1 行だけを足したもの。ほかのソースはこのブランチと同じ) で、`kernel: setup mode: no WiFi settings` → アプリを起こさずに設定のモードの画面 → BLE だけが起き、受け付ける時間が起動し直すまで開く、を確かめた。判定の関数そのものは `rake secret:test` で見ている (設定のモードの 11 項目)。
+- **コンソール**: `node tool/web/test/settings.mjs` が通る。偽の端末で、設定のモードのとき「until it restarts」と出て残り時間を出さないこと、書く押しボタンが押せること、Reboot が出て押すと `0x18` が端末に届くこと、普段の端末は `0x18` を断り Reboot を出さないこと、設定のモードが終わると Reboot が消えることを見る。
+- **書いた設定で繋がるところ**: 普段のモードで WiFi と Asterism が繋がることは 11.3 で確かめた。BLE で WiFi の設定を消して書き直す流れはユーザの確認 (12 章の 4〜6)。
+
+### 11.2 条件 2: ボタンを押しながら起動すると設定のモード、押さなければ普段どおり
+
+- 押さないとき: このブランチのファームで `kernel: setup mode: not entered (WiFi settings present, button up)` のあと、普段どおり WiFi と試しのアプリが起きた。
+- 押したとき・G41 が押すと Low になるか: ユーザの確認 (12 章の 1)。ファームは 10 ms おき 5 回とも Low のときだけ「押している」とみなす。
+
+### 11.3 条件 3: 普段のモードで Asterism の TLS の接続と asterism_demo が今どおり動く
+
+このブランチのファームを AtomS3R にアプリの区画だけ書いて起動した。`BLE memory given to the heap: internal +1272 bytes`、`M1|debugd` 134,884 B (10.3 の 134,896 B と同じ程度)。asterism_demo を起動すると VPS のルータに TLS で繋がった (1,253 ms)。定常の `IRAM free` は 115,772 B (10.3 の 115,784 B と同じ程度)。内蔵 RAM の -2,016 B は 10.5 の決定で受け入れた。
+
+### 11.4 条件 4: ほかの構成のビルドと試験
+
+| 構成 | 結果 | 静的な DIRAM (develop → このブランチ) | fmruby-core.bin |
+|---|---|---|---|
+| Retro (NARYAv3) | 通る | 126,259 → 126,035 (-224、.data。characteristic の表を const にした分) | 4,477,088 → 4,481,568 |
+| P4-Nano (NARYAv4) | 通る | 125,372 → 125,180 (-192、同じ理由) | 6,609,760 → 6,612,544 |
+| AtomS3R | 通る | 111,039 → 114,491 (+3,452、10.5 で受け入れ) | 4,164,896 → 4,466,000 |
+| Linux | 通る | - | - |
+| wasm (`rake wasm:mruby wasm:mrb wasm:web`) | 通る | - | - |
+
+- 比べ方: develop とこのブランチを同じ作業コピーで `rake clean_all` から順に作り直した (Spinel のカーネル・Spinel のエディタの標準の設定)。
+- P4-Nano と Retro の .text と .bss は develop と同じ。新しい状態はどれも PSRAM (`EXT_RAM_BSS_ATTR`) か const。P4-Nano の BLE の動き (CF2 の受け付ける時間・`0x17`) は、`0x17` の答えに設定のモードのときだけ鍵が増えることを除いて変えていない。P4-Nano は焼いていない。
+- `rake test` が通る (secret 122、BASIC ゴールデン 103 ほか)。tool/web の試験 (`settings.mjs`・`ui.mjs`・`wasm/test_wasm.mjs`) が通る。
+- sim (標準構成、TAB5 の 426x240): 起動し、エディタを起こして 1 打鍵 (`Ln 1, Col 2`) まで。
+
+### 11.5 残った課題
+
+- つないだまま (connection event のある状態で) flash に書く場面は端末の側で確かめられていない (10.4)。12 章の 7 で見る。だめなときは、決定 1 の順 (書く塊を小さくする → 案 A に戻す前に止まる) で進める。
+- WiFi の設定はあるが繋がらないとき (パスワードの誤りなど) は自動で設定のモードへ戻らない (決定 9)。ボタンで入る。
+- BLE で `/etc/wifi.toml` を消すと、ファームの WiFi の設定は全体の焼き直しまで戻らない。`/home/wifi.toml` を書けば足りる。
+
+### 11.6 端末と作業コピーの今
+
+- AtomS3R: このブランチのファーム (アプリの区画だけ書いた)、普段のモード。/home はそのまま (config.toml・tar・ほかのファイルは名前と大きさが同じ)。asterism_demo を起動してあり、VPS に TLS で繋がっている。
+- コンソール: `C:\Users\Public\asterism_deploy\cf3_console\` (このブランチの tool/web から index.html・js・css・assets・vendor)。
 - 作業コピーは develop、build/ は Linux の標準構成 (x86-64)。
+
+## 12. ユーザの確認の手順 (AtomS3R と Windows の Chrome か Edge)
+
+前提: AtomS3R にこのブランチのファームが入っていて、普段のモード (試しのアプリか asterism_demo の画面) で動いている。ボタンは画面の面そのもの (押すと画面ごと沈む)、リセットは側面の小さな穴のボタン。BLE の名前は `Family-mruby-` と BT の MAC の下 6 桁 (例 `Family-mruby-aaaaaa`。WiFi の MAC と最後の桁が違う)。
+
+1. **ボタンで設定のモードに入る (G41 が押すと Low になる確認を兼ねる)**: 画面のボタンを押したまま、リセットを押して放す (か USB を挿し直す)。紺の画面が出るまで (約 2 秒) ボタンを押し続けてから放す。
+   - 合格: 紺の画面に `SETUP MODE`・`button held at boot`・`BLE name:` と `Family-mruby-......` が出る。
+   - 押さずにリセットしたときは今までどおりの画面になる (普段のモード)。
+2. **コンソールでつなぐ**: エクスプローラで `C:\Users\Public\asterism_deploy\cf3_console\index.html` を開く。「Connect」→ 1 の画面の名前を選んで「ペア設定」。
+   - 合格: ログに `Connected (console 2026-10-14c)`。「Settings」のタブで上に緑の「The board is in its setup mode and accepts settings until it restarts...」、「Read from board」の隣に「Reboot」の押しボタンが出る。WiFi の欄に SSID とパスワード (受け付ける時間の間なので読める) が入る。
+3. **ボタンで起動し直す**: 端末のボタンを 1 回押す。
+   - 合格: コンソールの接続が切れ、端末は普段のモードで起動する (紺の画面が消え、いつもの画面)。
+4. **WiFi の設定を消す**: 1・2 をもう一度行い、「Files」で `/etc` を開いて `wifi.toml` の「Del」を押す (`/home` に `wifi.toml` があればそれも)。「Settings」の WiFi の「On the board」が `none` になる。「Reboot」を押す。
+   - 合格: 「The board is restarting...」と出て接続が切れ、端末は**ボタンを押さずに**紺の画面で起動し、2 行目が `no WiFi settings`。
+5. **WiFi の設定を書く**: コンソールでつなぎ直し、「Settings」で SSID とパスワードを入れて「Write WiFi」。
+   - 合格: `WiFi written to /home/wifi.toml. It is used from the next start: click Reboot.`、「On the board」が `/home/wifi.toml` になる。Asterism と Credentials の欄は今のもの (router・name・tar の名前) のまま。
+6. **普段のモードで繋がる**: 「Reboot」を押す。
+   - 合格: 端末が普段のモードで起動する (紺の画面にならない)。そのあと asterism_demo を起動して VPS に繋がる (Claude に頼むか、PowerShell で `curl.exe -X POST "http://<端末の mDNS 名>.local/app/launch?path=/app/test/asterism_demo.app.rb"`)。画面が繋がった表示になれば合格。
+7. **(BLE でつないだまま flash に書く確認)** 1・2 で設定のモードに入り、「Files」で `/home` を開き、「Drop files here or click to upload」に 100 KB〜200 KB ほどのファイルを置いて書き、終わったら「Del」で消す。Asterism のコンソールから受け取った tar が手元にあれば、「Settings」の「Credentials」で書き直してもよい。
+   - 合格: 途中で接続が切れず、一覧の大きさが元のファイルと同じ。切れたときは、どのくらいの大きさで切れたかを Claude に伝える (書く塊を小さくする手を試す)。終わったら「Reboot」。

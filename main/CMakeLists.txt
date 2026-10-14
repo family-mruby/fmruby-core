@@ -12,6 +12,10 @@ set(COMPONENT_SRCS
     "app/fmrb_app.c"
     "app/fmrb_app_spawner.c"
     "kernel/fmrb_kernel.c"
+    # Which files the BLE console and devctl may read and write (the WiFi
+    # password, the Asterism keys), and the setup mode's decision the kernel
+    # makes on every target. Pure C, tested on the host (rake secret:test).
+    "kernel/fmrb_secret_path.c"
     # Battery-backed clock. Target independent on purpose: the whole file is a
     # no-op off ESP32, and keeping it in one list means the kernel Ruby never
     # has to know which engine or platform it is running on.
@@ -53,9 +57,6 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/hid_device_config.c"
     "drivers/ble/ble_framing.c"
     "drivers/debug/fmrb_debug_transport_ble.c"
-    # Which files the BLE console and devctl may read and write (the WiFi
-    # password, the Asterism keys). Pure C, tested on the host (rake secret:test).
-    "kernel/fmrb_secret_path.c"
     "drivers/hw_proxy/hw_proxy.c"
     "drivers/hw_proxy/hw_proxy_file.c"
     "drivers/hw_proxy/hw_proxy_gpio.c"

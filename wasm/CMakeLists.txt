@@ -272,6 +272,7 @@ list(APPEND CORE_SRCS
   ${FMRB_ROOT}/main/app/fmrb_app.c
   ${FMRB_ROOT}/main/app/fmrb_app_spawner.c
   ${FMRB_ROOT}/main/kernel/fmrb_kernel.c
+  ${FMRB_ROOT}/main/kernel/fmrb_secret_path.c
   ${FMRB_ROOT}/main/kernel/fmrb_rtc.c
   ${FMRB_ROOT}/main/kernel/host/host_task.c
   # Modern's "GA storage is our own filesystem" file receiver; the wasm build
