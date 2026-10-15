@@ -10,14 +10,16 @@ class MahjongApp < FmrbApp
   # value per item, in this order (items 0-10 in "ru", 11-14 in "rx"; a
   # host without "rx" has the first eleven only). The owner changes them in
   # the lobby (the host takes rule(token, item, value) before the game
-  # only); everybody sees them.
+  # only); everybody sees them. Item 9 is the extra round ("延長"): the
+  # west round of a hanchan and the south round of a tonpuu game (a host
+  # before MJ-E2 has the west round only).
   B_RULE = 108
   RULE_TURNS = [10, 20, 30, 60]
   RULE_AKA = [0, 3, 4]
 
   def setup_rule_strings
     @rule_names = ["対局", "喰いタン", "赤ドラ", "ダブロン", "三家和", "役満の複合", "数え役満",
-                   "切り上げ満貫", "トビ", "西入", "持ち時間", "途中流局", "流し満貫", "ダブル役満",
+                   "切り上げ満貫", "トビ", "延長", "持ち時間", "途中流局", "流し満貫", "ダブル役満",
                    "テンパイ止め"]
     @rule_sel = 0
   end
@@ -98,10 +100,9 @@ class MahjongApp < FmrbApp
     while i < n
       sel = own && i == @rule_sel
       @gfx.fill_rect(x - u(2), y - u(2), w, u(17), sel ? C_SEL : C_BOX) if own
-      dim = i == 9 && ru[0] == 1 # the west round: a hanchan's only
-      text(x + u(2), y, @rule_names[i], dim ? C_DIM : C_TEXT)
+      text(x + u(2), y, @rule_names[i], C_TEXT)
       v = rule_text(i, ru[i])
-      text_spaced(x + w - tw(v) - u(8), y, v, dim ? C_DIM : (sel ? C_TURN : C_TEXT))
+      text_spaced(x + w - tw(v) - u(8), y, v, sel ? C_TURN : C_TEXT)
       @buttons << [B_RULE, x - u(2), y - u(2), w, u(17), [i]] if own
       y += u(18)
       i += 1
@@ -180,6 +181,7 @@ class MahjongApp < FmrbApp
     why = if r == "tobi" then "トビ"
           elsif r == "all_last_oya_agari" then "アガリ止め"
           elsif r == "all_last_oya_tenpai" then "テンパイ止め"
+          elsif r == "sudden_death" then "サドンデス"
           elsif r == "west" then "西4局まで"
           elsif r == "rounds" then "局数の上限"
           elsif r == "normal_end" then "最後の局まで"
