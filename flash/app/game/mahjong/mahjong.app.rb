@@ -1,17 +1,21 @@
-# Mahjong table (doc/ruby_asterism, MJ1): the screen of a riichi mahjong
+# Mahjong table (doc/ruby_asterism, MJ1-MJ2): the screen of a riichi mahjong
 # table run by a game host (the asterism-games repository) on the same
-# Zenoh network. Step 1: this player and three CPUs.
+# Zenoh network. Up to four players at a table, the other seats CPUs.
 #
-# - The host holds the wall and the hands. This app finds its table (an
-#   object <host>/games/mahjong*), sits (sit(name) -> seat and token) and
-#   asks its own view with the token (view(token)). The host puts the public
-#   state on asterism/<host>/games/<table>/state after every change; a newer
-#   version there makes this app ask its view again (and it asks every
-#   VIEW_EVERY_MS anyway). An action is act(token, sv, type, tiles): the
-#   host takes only what its list for this seat (the view's "a") has.
+# - The host holds the wall and the hands and has one or more tables
+#   (objects <host>/games/mahjong*). This app lists them (the host puts each
+#   table's public state on asterism/<host>/games/<table>/state after every
+#   change and every 5 s), joins one (join(name) -> a token) and waits in its
+#   lobby: sit / stand, the table's owner fills empty seats with CPUs and
+#   starts. In the game it asks its own view with the token (view(token)) when
+#   a put shows a newer version, and every VIEW_EVERY_MS anyway (which also
+#   tells the host it is still there). An action is act(token, sv, type,
+#   tiles): the host takes only what its list for this seat (the view's "a")
+#   has. A member without a seat watches (the table without hands).
 # - The connection is the machine's (FmrbAsterism.settings, as othello). A
-#   line that drops or a host that restarts: the app keeps asking, and the
-#   same node gets its seat and token back from sit.
+#   line that drops or a host that restarts: the app keeps asking. When the
+#   app starts again it asks each table mine() and goes back to the table it
+#   was at (the same node gets its token back).
 # - Modern (Tab5, P4-Nano) and the browser build: 640x360 (fullscreen_hires).
 #   A smaller screen (the Linux sim, 426x240) gets a compact table with the
 #   discards as text, and only the river sheet.
@@ -30,11 +34,14 @@
 # same code as Retro's) refuses; it is loaded only for the big table, which
 # the sim never shows.
 #
-# Keys: left / right choose a tile, Enter discards it (the drawn tile when
-# none is chosen) or goes on after a result, Esc passes a call; r riichi
-# (then Enter: the chosen tile, or the first that declares), t tsumo / ron,
-# p pon, c chi, k kan, n nine kinds. A click on a tile discards it; the
-# buttons are what the host offers now.
+# Keys. The list of tables: up / down choose, Enter joins. The lobby: 1-4
+# sit in that seat, s stand, c fill the empty seats with CPUs (the owner),
+# Enter start (the owner), Esc leave the table. The game: left / right choose
+# a tile, Enter discards it (the drawn tile when none is chosen) or goes on
+# after a result, Esc passes a call (a spectator: leaves); r riichi (then
+# Enter: the chosen tile, or the first that declares), t tsumo / ron, p pon,
+# c chi, k kan, n nine kinds. A click on a tile discards it; the buttons are
+# what the host offers now.
 
 class MahjongApp < FmrbApp
   APP = "game"            # this app's Asterism application name (the G0 range)
@@ -43,6 +50,7 @@ class MahjongApp < FmrbApp
   RECONNECT_MS = 3000
   VIEW_EVERY_MS = 3000
   SCAN_EVERY_MS = 2000
+  PROBE_EVERY_MS = 15000
   WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
   APP_DIR = "/app/game/mahjong"
@@ -57,6 +65,8 @@ class MahjongApp < FmrbApp
   C_BTN = 0x4E
   C_BOX = 0x04
   C_LAST = 0xFC
+  C_SEL = 0x2D
+  C_AWAY = 0xF4           # a seat whose player is away (orange: red does not read on the felt)
   # Action numbers (asterism-games Engine).
   A_DAHAI = 1
   A_RIICHI = 2
@@ -70,30 +80,54 @@ class MahjongApp < FmrbApp
   A_SKIP = 10
   A_KYUUSHU = 11
   A_NEXT = 12
+  # The screen's own buttons (not the host's actions).
+  B_JOIN = 100
+  B_SIT = 101
+  B_STAND = 102
+  B_CPU_ON = 103
+  B_CPU_OFF = 104
+  B_START = 105
+  B_LEAVE = 106
 
   def setup_strings
     FmrbI18n.add({
       "en" => {
         mj_title: "Mahjong", mj_connecting: "Connecting", mj_searching: "Looking for a game host (games/mahjong*)",
-        mj_sitting: "Taking a seat", mj_full: "The table is full", mj_lost: "Line dropped: connecting again",
+        mj_joining: "Joining", mj_full: "The table is full", mj_lost: "Line dropped: connecting again",
         mj_host_away: "The host does not answer: waiting", mj_retro: "This table needs Modern or the browser build",
         mj_left: "left", mj_riichi: "Riichi", mj_tsumo: "Tsumo", mj_ron: "Ron", mj_pon: "Pon", mj_chi: "Chi",
         mj_kan: "Kan", mj_pass: "Pass", mj_kyuushu: "9 kinds", mj_next: "Next", mj_pick: "Pick the riichi tile",
         mj_draw: "Draw", mj_tenpai: "Tenpai", mj_over: "Game over", mj_you: "You", mj_wait: "waiting",
         mj_rest: " s", mj_honba: "honba", mj_sticks: "sticks", mj_dora: "Dora",
-        mj_kyuushu_end: "Nine kinds: redeal",
-        mj_ms: "ms", mj_resp: "reply"
+        mj_kyuushu_end: "Nine kinds: redeal", mj_sanchahou: "Three rons: a draw",
+        mj_ms: "ms", mj_resp: "reply",
+        mj_tables: "Tables (Enter joins)", mj_no_tables: "No table yet", mj_seat: "Seat", mj_empty: "empty",
+        mj_sit: "Sit", mj_stand: "Stand S", mj_cpu: "CPU", mj_cpu_off: "Free", mj_fill: "Fill with CPUs C",
+        mj_start: "Start Enter", mj_leave: "Leave Esc", mj_owner: "owner", mj_away: "away",
+        mj_watchers: "Watching:", mj_lobby: "Lobby", mj_playing: "playing", mj_ended: "game over",
+        mj_humans: "players", mj_cpus: "CPUs", mj_free: "free", mj_members: "at the table",
+        mj_watching: "Watching (Esc leaves)", mj_others: "waiting for the others",
+        mj_owner_starts: "The owner starts when the four seats are taken",
+        mj_back_lobby: "Next: the owner goes back to the lobby"
       },
       "ja" => {
         mj_title: "麻雀", mj_connecting: "つないでいます", mj_searching: "ゲームホストを探しています (games/mahjong*)",
-        mj_sitting: "席に着いています", mj_full: "卓が満席", mj_lost: "網から切れた: つなぎ直し中",
+        mj_joining: "卓に入っています", mj_full: "卓が満員", mj_lost: "網から切れた: つなぎ直し中",
         mj_host_away: "ホストが答えない: 待っています", mj_retro: "この卓は Modern とブラウザ版で動きます",
         mj_left: "残り", mj_riichi: "リーチ", mj_tsumo: "ツモ", mj_ron: "ロン", mj_pon: "ポン", mj_chi: "チー",
         mj_kan: "カン", mj_pass: "パス", mj_kyuushu: "九種九牌", mj_next: "次へ", mj_pick: "リーチの牌を選ぶ",
         mj_draw: "流局", mj_tenpai: "聴牌", mj_over: "終局", mj_you: "自分", mj_wait: "待ち",
         mj_rest: "秒", mj_honba: "本場", mj_sticks: "供託", mj_dora: "ドラ",
-        mj_kyuushu_end: "九種九牌で流局",
-        mj_ms: "ms", mj_resp: "応答"
+        mj_kyuushu_end: "九種九牌で流局", mj_sanchahou: "三家和で流局",
+        mj_ms: "ms", mj_resp: "応答",
+        mj_tables: "卓 (Enter で入る)", mj_no_tables: "卓がまだ無い", mj_seat: "席", mj_empty: "空き",
+        mj_sit: "座る", mj_stand: "立つ S", mj_cpu: "CPU", mj_cpu_off: "空ける", mj_fill: "CPU で埋める C",
+        mj_start: "始める Enter", mj_leave: "卓を出る Esc", mj_owner: "卓の主", mj_away: "途切れ",
+        mj_watchers: "観戦:", mj_lobby: "待ち合わせ", mj_playing: "対局中", mj_ended: "終局",
+        mj_humans: "人", mj_cpus: "CPU", mj_free: "空き", mj_members: "人が卓に",
+        mj_watching: "観戦中 (Esc で出る)", mj_others: "ほかの人の答えを待っています",
+        mj_owner_starts: "4 席がそろったら卓の主が始める",
+        mj_back_lobby: "次へ: 卓の主が待ち合わせに戻す"
       }
     })
   end
@@ -131,16 +165,22 @@ class MahjongApp < FmrbApp
     @net = :connecting
     @net_note = ""
     @retry_at = 0
-    @table = nil          # "<host>/games/<name>"
-    @full = []            # tables that said they are full
+    @tables = {}          # "<host>/games/<name>" => its last public state (or {})
+    @table_list = []
+    @list_sel = 0
+    @probed = []          # tables asked mine()
+    @probe_f = nil
+    @probe_path = nil
+    @probe_at = Machine.board_millis
     @scan_at = 0
     @sub = nil
+    @table = nil          # the table this app is at
+    @join_f = nil
     @token = nil
-    @seat = nil
-    @sit_f = nil
-    @sit_at = 0
+    @seat = nil           # nil: no seat (the lobby or watching)
     @view_f = nil
     @act_f = nil
+    @cmd_f = nil
     @view = nil
     @view_at = 0
     @want_v = 0           # a put said there is this version
@@ -152,6 +192,7 @@ class MahjongApp < FmrbApp
     @act_sv = 0
     @lat = nil
     @deadline = nil
+    @others = false       # the host waits for other seats' calls
     @second = 0
     @mem_at = 0
     draw_screen
@@ -207,9 +248,8 @@ class MahjongApp < FmrbApp
       ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
       @net = :up
       @net_note = ""
-      @sub = nil
       @scan_at = 0
-      subscribe_state if @table
+      subscribe_states
     rescue ::Asterism::Error => e
       @net = :down
       @net_note = e.message.to_s
@@ -225,9 +265,11 @@ class MahjongApp < FmrbApp
     @net_note = why
     @retry_at = Machine.board_millis + RECONNECT_MS
     @sub = nil
-    @sit_f = nil
+    @join_f = nil
     @view_f = nil
     @act_f = nil
+    @cmd_f = nil
+    @probe_f = nil
     begin
       ::Asterism.close
     rescue
@@ -247,48 +289,58 @@ class MahjongApp < FmrbApp
     lost("#{e.class}: #{e.message}")
   end
 
-  def proxy
-    ::Asterism[@table, timeout: CALL_TIMEOUT]
+  def proxy(path = @table)
+    ::Asterism[path, timeout: CALL_TIMEOUT]
   end
 
-  # The first table of a host on the network.
-  def find_table
+  # The tables of the hosts on the network.
+  def find_tables
     now = Machine.board_millis
     return if now - @scan_at < SCAN_EVERY_MS
     @scan_at = now
-    found = nil
     ::Asterism.each("*/#{HOST_APP}/*").each do |px|
       p = px.asterism_path
       o = p.split("/")[2].to_s
-      found = p if found.nil? && o.start_with?("mahjong") && @full.index(p).nil?
+      add_table(p) if o.start_with?("mahjong")
     end
-    @full = [] if found.nil? # every table was full: ask them all again
-    return unless found
-    @table = found
-    Log.info("mahjong: table #{@table}")
-    subscribe_state
-    @dirty = true
   rescue ::Asterism::Error => e
     Log.info("mahjong: scan: #{e.message}")
   end
 
-  def subscribe_state
-    @sub = ::Asterism.session.subscribe("asterism/#{@table}/state", depth: 4)
+  def add_table(p)
+    return if @tables.key?(p)
+    @tables[p] = {}
+    @table_list = @tables.keys.sort
+    @dirty = true
+  end
+
+  # Every table's state, one subscription.
+  def subscribe_states
+    @sub = ::Asterism.session.subscribe("asterism/*/#{HOST_APP}/*/state", depth: 8)
   rescue ::Asterism::Error => e
     Log.info("mahjong: subscribe: #{e.message}")
     @sub = nil
   end
 
-  def watch_state
+  def watch_states
     return unless @sub
     @sub.each_pending do |key, payload, att|
       begin
+        k = key.to_s
+        next unless k.start_with?("asterism/") && k.end_with?("/state")
+        p = k.byteslice(9, k.bytesize - 15)
+        o = p.split("/")[2].to_s
+        next unless o.start_with?("mahjong")
         pv = ::Asterism::Codec.unpack(payload)
-        if pv.is_a?(Hash)
+        next unless pv.is_a?(Hash)
+        add_table(p)
+        @tables[p] = { "st" => pv["st"], "sk" => pv["sk"], "mb" => (pv["mb"].is_a?(Array) ? pv["mb"].size : 0) }
+        @dirty = true if @table.nil?
+        if p == @table
           v = pv["v"].to_i
           @want_v = v if v > @want_v
           @host_away = false
-          @view = pv if @token.nil? # a spectator's picture until seated
+          @view = pv if @token.nil?
         end
       rescue => e
         Log.info("mahjong: state: #{e.message}")
@@ -296,42 +348,104 @@ class MahjongApp < FmrbApp
     end
   end
 
-  def sit
-    return if @sit_f || @table.nil?
-    @sit_f = proxy.async.sit(@name)
+  # A table found for the first time (and every table again every
+  # PROBE_EVERY_MS while the list is shown): was this node at it (the app
+  # started again, or the host seated it)? Then go back to it.
+  def probe_tables
+    if @probe_f
+      return unless @probe_f.done?
+      f = @probe_f
+      p = @probe_path
+      @probe_f = nil
+      begin
+        r = f.value
+        if @table.nil? && r.is_a?(Hash) && r["token"]
+          Log.info("mahjong: back at #{p}")
+          enter_table(p, r)
+        end
+      rescue ::Asterism::Error => e
+        @probed.delete(p) # ask again later
+      end
+      return
+    end
+    now = Machine.board_millis
+    if now - @probe_at >= PROBE_EVERY_MS
+      @probe_at = now
+      @probed = []
+    end
+    i = 0
+    while i < @table_list.size
+      p = @table_list[i]
+      if @probed.index(p).nil?
+        @probed << p
+        @probe_path = p
+        @probe_f = proxy(p).async.mine
+        return
+      end
+      i += 1
+    end
   rescue ::Asterism::Error => e
-    @sit_f = nil
+    @probe_f = nil
   end
 
-  def collect_sit
-    f = @sit_f
+  def join(p)
+    return if @join_f
+    @table = p
+    @join_f = proxy(p).async.join(@name)
+    @dirty = true
+  rescue ::Asterism::Error => e
+    @join_f = nil
+    @table = nil
+    @note = e.message.to_s
+  end
+
+  def collect_join
+    f = @join_f
     return unless f && f.done?
-    @sit_f = nil
-    @sit_at = Machine.board_millis + VIEW_EVERY_MS # when it did not work
+    @join_f = nil
     begin
       r = f.value
       if r.is_a?(Hash) && r["token"]
-        @token = r["token"].to_s
-        @seat = r["seat"].to_i
-        @host_away = false
-        @note = ""
-        Log.info("mahjong: seat #{@seat} (#{f.took_ms} ms)")
-        ask_view
-      elsif r.is_a?(Hash) && r["error"] == "full"
-        # Try the next table of the network.
-        @note = "#{t(:mj_full)}: #{@table}"
-        @full << @table
+        enter_table(@table, r)
+        Log.info("mahjong: joined #{@table} (#{f.took_ms} ms)")
+      else
+        @note = r.is_a?(Hash) && r["error"] == "full" ? "#{t(:mj_full)}: #{@table}" : r.to_s
         @table = nil
-        begin
-          @sub.close if @sub
-        rescue
-        end
-        @sub = nil
       end
     rescue ::Asterism::Error => e
-      @host_away = true
-      Log.info("mahjong: sit: #{e.class}")
+      @note = t(:mj_host_away)
+      @table = nil
     end
+    @dirty = true
+  end
+
+  def enter_table(p, r)
+    @table = p
+    @token = r["token"].to_s
+    s = r["seat"].to_i
+    @seat = s >= 0 ? s : nil
+    @view = nil
+    @want_v = 0
+    @host_away = false
+    @note = ""
+    ask_view
+    @dirty = true
+  end
+
+  # Back to the list of tables.
+  def leave_table
+    begin
+      proxy.async.leave(@token) if @token
+    rescue ::Asterism::Error => e
+    end
+    @table = nil
+    @token = nil
+    @seat = nil
+    @view = nil
+    @view_f = nil
+    @act_f = nil
+    @cmd_f = nil
+    @note = ""
     @dirty = true
   end
 
@@ -350,10 +464,14 @@ class MahjongApp < FmrbApp
     begin
       v = f.value
       if v.is_a?(Hash) && v["error"]
-        # The host lost our seat (a new state): sit again.
+        # The host lost our membership (a new state): back to the list.
+        Log.info("mahjong: the host does not know us: back to the list")
         @token = nil
-        @sit_at = 0
+        @table = nil
         @seat = nil
+        @view = nil
+        @probed = []
+        @dirty = true
       elsif v.is_a?(Hash)
         take_view(v)
       end
@@ -369,8 +487,13 @@ class MahjongApp < FmrbApp
     old = @view
     @view = v
     @want_v = v["v"].to_i if v["v"].to_i > @want_v
+    me = v["me"]
+    @seat = me.is_a?(Integer) && me >= 0 ? me : nil
     dl = v["dl"]
-    @deadline = dl.is_a?(Array) && dl[0] == @seat ? Machine.board_millis + dl[1].to_i : nil
+    mine = @seat ? (1 << @seat) : 0
+    bits = dl.is_a?(Array) ? dl[0].to_i : 0
+    @deadline = bits & mine != 0 ? Machine.board_millis + dl[1].to_i : nil
+    @others = bits & ~mine != 0 && bits & mine == 0
     @pick = false unless offer(A_RIICHI)
     n = hand_codes.size
     @sel = -1 if @sel >= n
@@ -421,6 +544,36 @@ class MahjongApp < FmrbApp
     end
   end
 
+  # A lobby call: sit / stand / cpu / start.
+  def lobby(kind, seat)
+    return if @cmd_f || @token.nil?
+    px = proxy
+    @cmd_f = if kind == B_SIT then px.async.sit(@token, seat)
+             elsif kind == B_STAND then px.async.stand(@token)
+             elsif kind == B_CPU_ON then px.async.cpu(@token, seat, true)
+             elsif kind == B_CPU_OFF then px.async.cpu(@token, seat, false)
+             else px.async.start(@token)
+             end
+  rescue ::Asterism::Error => e
+    @cmd_f = nil
+    @note = e.message.to_s
+    @dirty = true
+  end
+
+  def collect_cmd
+    f = @cmd_f
+    return unless f && f.done?
+    @cmd_f = nil
+    begin
+      r = f.value
+      @note = r == "ok" ? "" : r.to_s
+    rescue ::Asterism::Error => e
+      @host_away = true
+    end
+    ask_view
+    @dirty = true
+  end
+
   # ------------------------------------------------------------ the view
 
   def bytes_of(s)
@@ -436,11 +589,11 @@ class MahjongApp < FmrbApp
   end
 
   def hand_codes
-    @view ? bytes_of(@view["h"]) : []
+    @view && @seat ? bytes_of(@view["h"]) : []
   end
 
   def drawn
-    d = @view ? @view["dt"] : nil
+    d = @view && @seat ? @view["dt"] : nil
     d.is_a?(Integer) ? d : -1
   end
 
@@ -454,18 +607,6 @@ class MahjongApp < FmrbApp
       i += 1
     end
     nil
-  end
-
-  def offers_of(type)
-    out = []
-    a = @view ? @view["a"] : nil
-    return out unless a.is_a?(Array)
-    i = 0
-    while i < a.size
-      out << a[i] if a[i].is_a?(Array) && a[i][0] == type
-      i += 1
-    end
-    out
   end
 
   # Whether tile code c may be discarded now (or chosen for riichi).
@@ -491,10 +632,6 @@ class MahjongApp < FmrbApp
     (seat - (@seat || 0)) % 4
   end
 
-  def seat_at(r)
-    ((@seat || 0) + r) % 4
-  end
-
   WIND = ["東", "南", "西", "北"]
 
   def wind_of(seat)
@@ -512,6 +649,33 @@ class MahjongApp < FmrbApp
     n == 9 ? "0#{s}" : "#{n + 1}#{s}"
   end
 
+  # The screen: :status (connecting, joining), :list, :lobby, :table.
+  def mode
+    return :status if @net != :up && @table.nil?
+    return :list if @table.nil?
+    return :status if @token.nil? || @view.nil?
+    @view["st"] == "wait" ? :lobby : :table
+  end
+
+  # The host waits for calls on a discard (r[7] == 2).
+  def calls_phase?
+    r = @view ? @view["r"] : nil
+    r.is_a?(Array) && r.size > 7 && r[7] == 2
+  end
+
+  def owner?
+    @view && @seat && @view["ow"] == @seat
+  end
+
+  def seat_kinds
+    sk = @view ? @view["sk"] : nil
+    sk.is_a?(Array) ? sk : [0, 0, 0, 0]
+  end
+
+  def away?(seat)
+    @view && (@view["aw"].to_i >> seat) & 1 == 1
+  end
+
   # ------------------------------------------------------------ input
 
   def on_event(ev)
@@ -524,6 +688,55 @@ class MahjongApp < FmrbApp
   end
 
   def run_key(k)
+    m = mode
+    if m == :list
+      list_key(k)
+    elsif m == :lobby
+      lobby_key(k)
+    elsif m == :table
+      if @seat.nil?
+        leave_table if k[0] == FmrbConst::KEY_ESC || k[1] == 27
+      else
+        table_key(k)
+      end
+    end
+  end
+
+  def enter?(k)
+    k[0] == FmrbConst::KEY_ENTER || k[1] == 13 || k[1] == 10
+  end
+
+  def list_key(k)
+    n = @table_list.size
+    return if n == 0
+    if k[0] == FmrbConst::KEY_UP
+      @list_sel = (@list_sel - 1) % n
+      @dirty = true
+    elsif k[0] == FmrbConst::KEY_DOWN
+      @list_sel = (@list_sel + 1) % n
+      @dirty = true
+    elsif enter?(k)
+      join(@table_list[@list_sel % n])
+    end
+  end
+
+  def lobby_key(k)
+    ch = k[1]
+    ch += 32 if ch >= 65 && ch <= 90
+    if k[0] == FmrbConst::KEY_ESC || ch == 27
+      leave_table
+    elsif enter?(k)
+      lobby(B_START, -1) if owner?
+    elsif ch >= 49 && ch <= 52
+      lobby(B_SIT, ch - 49)
+    elsif ch == 115
+      lobby(B_STAND, -1)
+    elsif ch == 99
+      lobby(B_CPU_ON, -1) if owner?
+    end
+  end
+
+  def table_key(k)
     sc = k[0]
     ch = k[1]
     n = hand_codes.size + (drawn >= 0 ? 1 : 0)
@@ -533,7 +746,7 @@ class MahjongApp < FmrbApp
     elsif sc == FmrbConst::KEY_RIGHT
       @sel = @sel >= n - 1 ? 0 : @sel + 1
       @dirty = true
-    elsif sc == FmrbConst::KEY_ENTER || ch == 13 || ch == 10
+    elsif enter?(k)
       if offer(A_NEXT)
         act(A_NEXT, [])
       else
@@ -591,6 +804,7 @@ class MahjongApp < FmrbApp
       end
       i += 1
     end
+    return unless mode == :table && @seat
     idx = hand_index_at(x, y)
     return if idx.nil?
     @sel = idx
@@ -603,6 +817,12 @@ class MahjongApp < FmrbApp
     if type == A_RIICHI
       @pick = !@pick
       @dirty = true
+    elsif type == B_JOIN
+      join(@table_list[tiles[0]]) if tiles[0] < @table_list.size
+    elsif type == B_LEAVE
+      leave_table
+    elsif type >= B_SIT
+      lobby(type, tiles.empty? ? -1 : tiles[0])
     else
       act(type, tiles)
     end
@@ -714,10 +934,15 @@ class MahjongApp < FmrbApp
   def draw_screen
     @buttons = []
     clear_user_area(C_FELT)
-    if @unsupported
+    m = @unsupported ? :retro : mode
+    if m == :retro
       text(@x0 + 8, @y0 + 8, t(:mj_title))
       text(@x0 + 8, @y0 + 26, t(:mj_retro))
-    elsif @view.nil? || @view["st"] == "wait" || @token.nil?
+    elsif m == :status
+      draw_status
+    elsif m == :list
+      draw_list
+    elsif m == :lobby
       draw_lobby
     else
       draw_info
@@ -736,28 +961,139 @@ class MahjongApp < FmrbApp
     end
   end
 
-  def draw_lobby
+  def net_line
+    if @net == :connecting
+      "#{t(:mj_connecting)}: #{@locator}"
+    elsif @net == :down || reconnecting?
+      "#{t(:mj_lost)} #{@net_note}"
+    elsif @host_away
+      t(:mj_host_away)
+    else
+      nil
+    end
+  end
+
+  def draw_status
     x = @x0 + 8
     y = @y0 + 8
     text(x, y, "#{t(:mj_title)}  #{@name}")
-    line = if @net == :connecting
-             "#{t(:mj_connecting)}: #{@locator}"
-           elsif @net == :down || reconnecting?
-             "#{t(:mj_lost)} #{@net_note}"
-           elsif @table.nil?
-             t(:mj_searching)
-           elsif @host_away
-             t(:mj_host_away)
-           else
-             "#{t(:mj_sitting)}: #{@table}"
-           end
+    line = net_line || "#{t(:mj_joining)}: #{@table}"
     text(x, y + 20, line, C_DIM)
     text(x, y + 40, @note, C_TURN) unless @note.empty?
+  end
+
+  # The tables on the network, with what their last put said.
+  def draw_list
+    x = @x0 + 8
+    y = @y0 + 8
+    text(x, y, "#{t(:mj_title)}  #{@name}")
+    l = net_line
+    text(x, y + 18, l, C_DIM) if l
+    y += 40
+    if @table_list.empty?
+      text(x, y, t(:mj_searching), C_DIM)
+    else
+      text(x, y, t(:mj_tables), C_DIM)
+      y += 18
+      i = 0
+      while i < @table_list.size
+        p = @table_list[i]
+        s = @tables[p] || {}
+        @gfx.fill_rect(x - 2, y - 3, @w - 16, 20, C_SEL) if i == @list_sel % @table_list.size
+        # The host's app is always games: show <host>/<table>.
+        parts = p.split("/")
+        line = "#{parts[0]}/#{parts[2]}  #{table_status(s)}"
+        text(x + 2, y + 1, line, i == @list_sel % @table_list.size ? C_TURN : C_TEXT)
+        @buttons << [B_JOIN, x - 2, y - 3, @w - 16, 20, [i]]
+        y += 22
+        i += 1
+      end
+    end
+    text(x, @y0 + @h - 18, @note, C_TURN) unless @note.empty?
+  end
+
+  def table_status(s)
+    st = s["st"].to_s
+    return "" if st.empty?
+    sk = s["sk"].is_a?(Array) ? s["sk"] : []
+    hn = 0
+    cn = 0
+    i = 0
+    while i < sk.size
+      hn += 1 if sk[i] == 1
+      cn += 1 if sk[i] == 2
+      i += 1
+    end
+    head = st == "wait" ? t(:mj_lobby) : (st == "over" ? t(:mj_ended) : t(:mj_playing))
+    line = "#{head}  #{t(:mj_humans)} #{hn} / #{t(:mj_cpus)} #{cn} / #{t(:mj_free)} #{4 - hn - cn}"
+    @big ? "#{line}  (#{s['mb'].to_i} #{t(:mj_members)})" : line
+  end
+
+  # The lobby: the four seats, who watches, the owner's buttons.
+  def draw_lobby
+    v = @view
+    x = @x0 + 8
+    y = @y0 + 8
+    text(x, y, "#{t(:mj_title)}  #{t(:mj_lobby)}  #{@table}")
+    l = net_line
+    text(x, y + 16, l, C_DIM) if l
+    nm = v["nm"].is_a?(Array) ? v["nm"] : []
+    sk = seat_kinds
+    ow = v["ow"].to_i
+    row_h = @big ? 30 : 24
+    y = @y0 + (@big ? 44 : 36)
+    bx = @x0 + (@big ? 330 : 230)
+    s = 0
+    while s < 4
+      @gfx.fill_rect(x - 2, y - 4, @w - 16, row_h - 4, C_SEL) if s == @seat
+      who = sk[s] == 0 ? t(:mj_empty) : nm[s].to_s
+      label = "#{t(:mj_seat)}#{s + 1}  #{who}"
+      label = "#{label}  [#{t(:mj_owner)}]" if s == ow
+      label = "#{label}  (#{t(:mj_away)})" if away?(s)
+      text(x + 2, y + 2, label, sk[s] == 0 ? C_DIM : (s == @seat ? C_TURN : C_TEXT))
+      cx = bx
+      if s == @seat
+        cx += button(B_STAND, [], cx, y - 2, t(:mj_stand)) + 4
+      elsif sk[s] != 1
+        cx += button(B_SIT, [s], cx, y - 2, "#{t(:mj_sit)} #{s + 1}") + 4
+      end
+      if owner? && sk[s] == 0
+        button(B_CPU_ON, [s], cx, y - 2, t(:mj_cpu))
+      elsif owner? && sk[s] == 2
+        button(B_CPU_OFF, [s], cx, y - 2, t(:mj_cpu_off))
+      end
+      y += row_h
+      s += 1
+    end
+    # Members without a seat.
+    mb = v["mb"].is_a?(Array) ? v["mb"] : []
+    w = ""
+    i = 0
+    while i < mb.size
+      m = mb[i]
+      if m.is_a?(Array) && m[1].to_i < 0
+        w = "#{w} #{m[0]}"
+        w = "#{w}(#{t(:mj_away)})" if m[2].to_i & 1 == 1
+      end
+      i += 1
+    end
+    text(x + 2, y + 2, "#{t(:mj_watchers)}#{w}", C_DIM)
+    y += 22
+    cx = x
+    if owner?
+      cx += button(B_CPU_ON, [], cx, y, t(:mj_fill)) + 6 if sk.index(0)
+      cx += button(B_START, [], cx, y, t(:mj_start)) + 6 if sk.index(0).nil?
+    end
+    cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + 6
+    text(x + 2, y + 26, t(:mj_owner_starts), C_DIM) unless owner?
+    text(x + 2, y + 44, @note, C_TURN) unless @note.empty?
   end
 
   def status_line
     return "#{t(:mj_lost)}" if @net != :up || reconnecting?
     return t(:mj_host_away) if @host_away
+    return "#{t(:mj_watching)} #{@note}" if @seat.nil?
+    return "#{t(:mj_others)} #{@note}" if @others && @view["st"] == "play" && calls_phase?
     @note
   end
 
@@ -787,7 +1123,7 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # Name, wind, score, riichi of each seat.
+  # Name, wind, score, riichi, away of each seat.
   def draw_seats
     v = @view
     nm = v["nm"].is_a?(Array) ? v["nm"] : []
@@ -797,13 +1133,39 @@ class MahjongApp < FmrbApp
     cur = r.is_a?(Array) && r.size > 6 ? r[6].to_i : -1
     s = 0
     while s < 4
-      label = "#{wind_of(s)} #{s == @seat ? t(:mj_you) : nm[s].to_s} #{sc[s]}"
-      label = "#{label} #{t(:mj_riichi)}" if (ri >> s) & 1 == 1
-      col = s == cur && v["st"] == "play" ? C_TURN : C_TEXT
-      p = seat_label_pos(rel(s))
+      tail = " #{sc[s]}"
+      tail = "#{tail} #{t(:mj_riichi)}" if (ri >> s) & 1 == 1
+      away = away?(s)
+      tail = "#{tail} (#{t(:mj_away)})" if away
+      head = "#{wind_of(s)} "
+      name = s == @seat ? t(:mj_you) : nm[s].to_s
+      rl = rel(s)
+      # The name gives way so the label stays in its place (the left and the
+      # across labels are on one line).
+      room = (@big ? (rl == 2 ? 330 : 144) : (rl == 2 ? 230 : 86)) - tw(head) - tw(tail)
+      label = "#{head}#{fit(name, room)}#{tail}"
+      col = away ? C_AWAY : (s == cur && v["st"] == "play" ? C_TURN : C_TEXT)
+      p = seat_label_pos(rl)
       text(p[0], p[1], label, col)
       s += 1
     end
+  end
+
+  # s cut (by characters) to at most w pixels, with ".." when cut.
+  def fit(s, w)
+    return s if tw(s) <= w
+    out = ""
+    i = 0
+    n = s.bytesize
+    while i < n
+      b = s.getbyte(i)
+      len = b < 0x80 ? 1 : (b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : 2))
+      ch = s.byteslice(i, len)
+      break if tw(out) + tw(ch) + 12 > w
+      out << ch
+      i += len
+    end
+    "#{out}.."
   end
 
   def seat_label_pos(rl)
@@ -977,6 +1339,7 @@ class MahjongApp < FmrbApp
       bx += button(o[0], tl, bx, y, label) + 4 if label
       i += 1
     end
+    bx += button(B_LEAVE, [], bx, y, t(:mj_leave)) + 4 if @seat.nil?
     # The time left, the note and the last reply time, after the buttons.
     msg = status_line.to_s
     msg = "#{t(:mj_pick)} #{msg}" if @pick
@@ -1004,65 +1367,47 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # The result of a round (or the game) over the middle of the table.
+  # The result of a round (or the game) over the middle of the table. A
+  # double ron has one block per winner, in turn order from the discarder.
   def draw_result
     res = @view["res"]
     fin = @view["fin"]
-    nm = @view["nm"].is_a?(Array) ? @view["nm"] : []
+    wins = res.is_a?(Hash) && res["wn"].is_a?(Array) ? res["wn"] : []
+    multi = wins.size > 1
     bx = @x0 + (@big ? 150 : 40)
-    by = @y0 + (@big ? 62 : 30)
+    by = @y0 + (@big ? (multi ? 40 : 62) : 30)
     bw = @big ? 340 : 346
-    bh = @big ? 206 : 132
+    bh = @big ? (multi ? 270 : 206) : (multi ? 200 : 132)
     @gfx.fill_rect(bx, by, bw, bh, C_BOX)
     @gfx.draw_rect(bx, by, bw, bh, C_TURN)
     x = bx + 6
     y = by + 4
     if res.is_a?(Hash)
       k = res["k"].to_s
-      head = if k == "tsumo_agari" then "#{seat_name(res['w'])} #{t(:mj_tsumo)}"
-             elsif k == "ron_agari" then "#{seat_name(res['w'])} #{t(:mj_ron)} <- #{seat_name(res['f'])}"
-             elsif k == "kyuushu_kyuuhai" then t(:mj_kyuushu_end)
-             else t(:mj_draw)
-             end
-      text(x, y, head, C_TURN)
-      y += 16
-      if res["h"]
-        hc = bytes_of(res["h"])
+      if k == "tsumo_agari" || k == "ron_agari"
         i = 0
-        while i < hc.size
-          if @big
-            small_tile(hc[i], x + i * 23, y)
-          else
-            text(x + i * 13, y, tile_text(hc[i]))
+        while i < wins.size
+          y = draw_win(wins[i], k, res["f"], x, y, multi)
+          i += 1
+        end
+      else
+        head = if k == "kyuushu_kyuuhai" then t(:mj_kyuushu_end)
+               elsif k == "sanchahou" then t(:mj_sanchahou)
+               else t(:mj_draw)
+               end
+        text(x, y, head, C_TURN)
+        y += 16
+        if res["tp"].is_a?(Array)
+          tp = res["tp"]
+          s = ""
+          i = 0
+          while i < tp.size
+            s = "#{s} #{seat_name(tp[i])}"
+            i += 1
           end
-          i += 1
+          text(x, y, "#{t(:mj_tenpai)}:#{s}")
+          y += 16
         end
-        ag = res["ag"].to_i
-        if @big
-          small_tile(ag, x + hc.size * 23 + 6, y)
-        else
-          text(x + hc.size * 13 + 4, y, tile_text(ag), C_TURN)
-        end
-        y += @big ? 36 : 15
-        ys = res["y"].is_a?(Array) ? res["y"] : []
-        i = 0
-        while i < ys.size
-          text(x + (i % 3) * 110, y + (i / 3) * 14, ys[i].to_s)
-          i += 1
-        end
-        y += ((ys.size + 2) / 3) * 14 + 2
-        text_spaced(x, y, res["pt"].to_s, C_TURN)
-        y += 16
-      elsif res["tp"].is_a?(Array)
-        tp = res["tp"]
-        s = ""
-        i = 0
-        while i < tp.size
-          s = "#{s} #{seat_name(tp[i])}"
-          i += 1
-        end
-        text(x, y, "#{t(:mj_tenpai)}:#{s}")
-        y += 16
       end
       d = res["d"].is_a?(Array) ? res["d"] : []
       i = 0
@@ -1073,7 +1418,7 @@ class MahjongApp < FmrbApp
       end
     end
     if fin.is_a?(Array) && @view["st"] == "over"
-      y = by + bh - 74
+      y = by + bh - 88
       text(x, y, t(:mj_over), C_TURN)
       i = 0
       while i < fin.size
@@ -1081,7 +1426,44 @@ class MahjongApp < FmrbApp
         text(x, y + 16 + i * 13, "#{f[1]}. #{seat_name(f[0])} #{f[2]} (#{f[3].to_i / 10}.#{(f[3].to_i % 10).abs})")
         i += 1
       end
+      text(x, y + 72, t(:mj_back_lobby), C_DIM)
     end
+  end
+
+  # One winner's block; returns the y below it. Compact (multi): the yaku in
+  # four columns.
+  def draw_win(w, k, from, x, y, multi)
+    head = k == "tsumo_agari" ? "#{seat_name(w['w'])} #{t(:mj_tsumo)}" : "#{seat_name(w['w'])} #{t(:mj_ron)} <- #{seat_name(from)}"
+    text(x, y, head, C_TURN)
+    y += 16
+    hc = bytes_of(w["h"])
+    i = 0
+    while i < hc.size
+      if @big
+        small_tile(hc[i], x + i * 23, y)
+      else
+        text(x + i * 13, y, tile_text(hc[i]))
+      end
+      i += 1
+    end
+    ag = w["ag"].to_i
+    if @big
+      small_tile(ag, x + hc.size * 23 + 6, y)
+    else
+      text(x + hc.size * 13 + 4, y, tile_text(ag), C_TURN)
+    end
+    y += @big ? 36 : 15
+    ys = w["y"].is_a?(Array) ? w["y"] : []
+    cols = multi ? 4 : 3
+    cw = multi ? 82 : 110
+    i = 0
+    while i < ys.size
+      text(x + (i % cols) * cw, y + (i / cols) * 14, ys[i].to_s)
+      i += 1
+    end
+    y += ((ys.size + cols - 1) / cols) * 14 + 2
+    text_spaced(x, y, w["pt"].to_s, C_TURN)
+    y + 16
   end
 
   def seat_name(s)
@@ -1104,13 +1486,15 @@ class MahjongApp < FmrbApp
     if @net == :up
       exchange
       if @net == :up
+        subscribe_states if @sub.nil?
+        watch_states
+        find_tables
         if @table.nil?
-          find_table
+          probe_tables
         else
-          watch_state
-          sit if @token.nil? && now >= @sit_at
-          collect_sit
+          collect_join
           collect_act
+          collect_cmd
           collect_view
           if @token && @view_f.nil? && (@want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS)
             ask_view
@@ -1121,7 +1505,7 @@ class MahjongApp < FmrbApp
     run_key(@keys.shift) until @keys.empty?
     run_click(@clicks.shift) until @clicks.empty?
     if now >= @mem_at
-      # The VM pool, now and then, for the report (doc/ruby_asterism/report/mj1.md).
+      # The VM pool, now and then, for the report (doc/ruby_asterism/report/mj2.md).
       @mem_at = now + MEM_EVERY_MS
       Log.info("mahjong: pool #{FmrbApp.pool_used / 1024} KB (#{FmrbApp.pool_usage}%)")
     end
