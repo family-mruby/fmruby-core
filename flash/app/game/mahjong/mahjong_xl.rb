@@ -56,7 +56,8 @@ class MahjongApp < FmrbApp
 
   # Items. mark: 0 none, 1 the last discard (a frame), 2 not to be chosen
   # (a bar, while picking the riichi tile), 3 a discard that leaves the hand
-  # tenpai (the riichi help: a triangle at the top).
+  # tenpai (the help: a yellow triangle at the top), 4 one that keeps the
+  # least shanten (the help at level 3: a white triangle).
   def xl_hand_item(c, x, y, mark)
     k = c < 20 ? c : c - 20
     [x, y, 84, 112, img_id(@xl_hand[c < 20 ? 0 : 1]), (k % 10) * 84, (k / 10) * 112, mark, c]
@@ -92,8 +93,8 @@ class MahjongApp < FmrbApp
       @gfx.draw_rect(it[0] + 1, it[1] + 1, it[2] - 2, it[3] - 2, C_LAST)
     elsif it[7] == 2
       @gfx.fill_rect(it[0] + 4, it[1] + it[3] - 14, it[2] - 8, 5, C_DIM)
-    elsif it[7] == 3
-      tenpai_mark(it[0], it[1], it[2], 8)
+    elsif it[7] >= 3
+      tenpai_mark(it[0], it[1], it[2], 8, it[7] == 4 ? C_KEEP : C_TURN)
     end
     @xl_n_items += 1
     @xl_n_px += it[2] * it[3]
@@ -292,7 +293,8 @@ class MahjongApp < FmrbApp
       x = XL_HAND_X + i * 84
       x += 12 if i >= h.size
       y = XL_HAND_Y - (i == @sel ? XL_LIFT : 0)
-      mark = @waits[c] ? 3 : (pick && !can_discard?(c) ? 2 : 0)
+      hm = help_mark(c)
+      mark = hm == :tenpai ? 3 : (hm == :keep ? 4 : (pick && !can_discard?(c) ? 2 : 0))
       out << xl_hand_item(c, x, y, mark)
       i += 1
     end
@@ -476,13 +478,20 @@ class MahjongApp < FmrbApp
     [status_line.to_s, @pick, left && left < 0 ? 0 : left, @lat]
   end
 
-  # The riichi help: nil (nothing shown), [:hint] (the marks are on, no
-  # tenpai discard chosen) or the chosen tile and its waits.
+  # The help: nil (nothing shown), [:hint] (the marks are on, no tenpai
+  # discard chosen), [:keep] (level 3, no tile with its acceptance chosen),
+  # the chosen tile and its waits, or [:uk, tile, shanten, acceptance].
   def xl_waits_sig
-    return nil if @waits.empty? || @seat.nil?
-    w = sel_waits
-    return [:hint] unless w
-    [hand_at(@sel), w]
+    return nil if @seat.nil?
+    unless @waits.empty?
+      w = sel_waits
+      return [:hint] unless w
+      return [hand_at(@sel), w]
+    end
+    return nil if @uk.empty?
+    u = sel_uk
+    return [:keep, @uk_min] unless u
+    [:uk, hand_at(@sel), u[0], u[1]]
   end
 
   # The riichi help over XL_WAITS: the waits of the chosen discard (each
@@ -492,29 +501,61 @@ class MahjongApp < FmrbApp
     x = @x0 + XL_WAITS[0]
     y = @y0 + XL_WAITS[1]
     fnt(16, 1)
-    if sig[0] == :hint
-      tenpai_mark(x + 4, y + 12, 24, 8)
-      text(x + 32, y + 16, t(:mj_help), C_DIM)
+    if sig[0] == :hint || sig[0] == :keep
+      keep = sig[0] == :keep
+      tenpai_mark(x + 4, y + 12, 24, 8, keep ? C_KEEP : C_TURN)
+      text(x + 32, y + 16, keep ? "#{t(:mj_keep)} (#{sig[1]}#{t(:mj_shanten)})" : t(:mj_help), C_DIM)
       return
     end
-    w = sig[1]
     @gfx.fill_round_rect(x, y, XL_WAITS[2], XL_WAITS[3], 6, C_BOX)
     @gfx.draw_round_rect(x, y, XL_WAITS[2], XL_WAITS[3], 6, C_TURN)
     @xl_n_px += XL_WAITS[2] * XL_WAITS[3]
-    text(x + 10, y + 16, t(:mj_waits), C_TURN)
+    if sig[0] == :uk
+      if sig[2] == 0
+        text(x + 10, y + 16, t(:mj_no_wait), C_RED)
+        return
+      end
+      xl_tiles_counts(x, y, "#{sig[2]}#{t(:mj_shanten)}", sig[2] == @uk_min ? C_TURN : C_DIM, sig[3],
+                      "#{sig[3].size}#{t(:mj_kinds)} ")
+      return
+    end
+    xl_tiles_counts(x, y, t(:mj_waits), C_TURN, sig[1], "")
+  end
+
+  # Tiles with what is left of each, then the sum, from x + lx in the help
+  # box; the counts go when they do not fit, then the tiles close up, and
+  # past what fits at 24 px the sum goes up and the tiles' names go below it.
+  def xl_tiles_counts(x, y, head, hcol, w, pre)
+    lx = tw(head) + 22
     sum = 0
     i = 0
     while i < w.size
       sum += w[i][1]
       i += 1
     end
-    tail = "#{t(:mj_total)}#{sum}#{t(:mj_mai)}"
-    room = XL_WAITS[2] - 52 - tw(tail) - 16
+    tail = "#{pre}#{t(:mj_total)}#{sum}#{t(:mj_mai)}"
+    room = XL_WAITS[2] - lx - tw(tail) - 16
     counts = w.size * 42 <= room
     step = counts ? 42 : (w.size * 28 <= room ? 28 : 24)
-    cx = x + 52
+    if w.size * step > room
+      # Too many for the tiles: the sum on the first line, the names below.
+      text_spaced(x + 10, y + 6, head, hcol)
+      text_spaced(x + lx, y + 6, tail, sum == 0 ? C_RED : C_TURN)
+      fnt(12, 1)
+      cx = x + 10
+      i = 0
+      while i < w.size && cx + 18 <= x + XL_WAITS[2] - 6
+        text(cx, y + 30, tile_text(w[i][0]), C_TEXT)
+        cx += 18
+        i += 1
+      end
+      return
+    end
+    n = w.size
+    text_spaced(x + 10, y + 16, head, hcol)
+    cx = x + lx
     i = 0
-    while i < w.size
+    while i < n
       xl_draw_item(xl_tile_item(false, 0, w[i][0], cx, y + 8, 0))
       text(cx + 26, y + 16, w[i][1].to_s, w[i][1] == 0 ? C_RED : C_TEXT) if counts
       cx += step
@@ -524,7 +565,7 @@ class MahjongApp < FmrbApp
   end
 
   def xl_button_sig
-    [@view["a"], @seat.nil?]
+    [@view["a"], @seat.nil?, @assist]
   end
 
   # The centre board: the round, the honba and the sticks, what is left of
@@ -627,6 +668,11 @@ class MahjongApp < FmrbApp
     end
     labels << [B_LEAVE, [], t(:mj_leave)] if @seat.nil?
     fnt(12, 2)
+    # The help level, at the top left (nothing of the table reaches it).
+    if @seat
+      l = assist_label
+      xl_button(B_ASSIST, [], 12, 8, tw(l) + 24, l)
+    end
     x = XL_RIGHT
     i = labels.size - 1
     while i >= 0
@@ -642,7 +688,7 @@ class MahjongApp < FmrbApp
   def xl_button(type, tiles, x, y, w, label)
     @buttons << [type, x, y, w, 40, tiles]
     @xl_btn_rects << [x, y, w, 40]
-    col = type == A_RON || type == A_TSUMO ? C_BTN_WIN : (type == A_SKIP || type == B_LEAVE ? C_BTN_PASS : C_BTN)
+    col = type == A_RON || type == A_TSUMO ? C_BTN_WIN : (type == A_SKIP || type == B_LEAVE || type == B_ASSIST ? C_BTN_PASS : C_BTN)
     @gfx.fill_round_rect(x, y, w, 40, 8, col)
     text(x + 12, y + 8, label)
     @xl_n_px += w * 40

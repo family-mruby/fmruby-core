@@ -50,7 +50,8 @@
 # after a result, Esc passes a call (a spectator: leaves); r riichi (then
 # Enter: the chosen tile, or the first that declares), t tsumo / ron, p pon,
 # c chi, k kan, n nine kinds. A click on a tile discards it; the buttons are
-# what the host offers now.
+# what the host offers now. In the lobby and the game, a (or the help's
+# button) steps the help level 0-3 (ASSIST_FILE keeps it on this machine).
 
 # The 1280x720 table (methods of this class, in a file of its own: an app
 # file is read whole and may be at most 64 KB).
@@ -82,6 +83,7 @@ class MahjongApp < FmrbApp
   C_BOX = 0x04
   C_LAST = 0xFC
   C_SEL = 0x2D
+  C_KEEP = 0x1F           # the help at level 3: a discard that keeps the least shanten (cyan)
   C_AWAY = 0xF4           # a seat whose player is away (orange: red does not read on the felt)
   # Action numbers (asterism-games Engine).
   A_DAHAI = 1
@@ -104,6 +106,14 @@ class MahjongApp < FmrbApp
   B_CPU_OFF = 104
   B_START = 105
   B_LEAVE = 106
+  B_ASSIST = 107
+  # The help this screen asks the host for (asterism-games README "Assist"):
+  # 0 none, 1 the riichi discards and their waits, 2 every discard that
+  # leaves the hand tenpai, 3 as 2 and else the shanten and the acceptance.
+  # The player's own choice, kept in ASSIST_FILE on this machine.
+  ASSIST_FILE = "/home/mahjong.toml"
+  ASSIST_DEFAULT = 1
+  ASSIST_MAX = 3
 
   # The words on the screen are Japanese whatever the machine's language
   # (mj_layout.md 8): a riichi table speaks the game's own words (リーチ,
@@ -128,8 +138,14 @@ class MahjongApp < FmrbApp
       mj_watching: "観戦中 (Esc で出る)", mj_others: "ほかの人の答えを待っています",
       mj_owner_starts: "4 席がそろったら卓の主が始める",
       mj_back_lobby: "次へ: 卓の主が待ち合わせに戻す",
-      mj_waits: "待ち", mj_total: "計", mj_mai: "枚", mj_help: "の牌を切るとテンパイ"
+      mj_waits: "待ち", mj_total: "計", mj_mai: "枚", mj_help: "の牌を切るとテンパイ",
+      mj_assist: "アシスト", mj_shanten: "向聴", mj_ukeire: "受け入れ", mj_kinds: "種",
+      mj_keep: "の牌は向聴数が変わらない", mj_no_wait: "テンパイ (待ちの牌が残っていない)"
     }
+    @assist_names = ["なし", "リーチ", "テンパイ", "向聴"]
+    @assist_notes = ["アシストを出さない", "リーチのとき、切る牌の印と待ちを出す",
+                     "テンパイになる打牌に印と待ちを出す (ダマ・鳴いた手も)",
+                     "テンパイの印に加え、向聴数と打牌ごとの受け入れを出す"]
     # The host's answers (act, sit, ...) that the screen shows.
     @reasons = {
       "token" => "卓の人ではない", "not seated" => "席に着いていない", "stale" => "画面が古い: 読み直し中",
@@ -211,7 +227,10 @@ class MahjongApp < FmrbApp
     @sel = -1             # the chosen hand tile (lifted): by the keys or under the mouse
     @mouse_sel = false    # @sel follows the mouse (moving off the hand drops it)
     @move = nil           # the last mouse position not yet looked at
-    @waits = {}           # the riichi help: discard tile => [[wait, left], ...] (the view's "wt")
+    @waits = {}           # the help: discard tile => [[wait, left], ...] (the view's "wt")
+    @uk = {}              # the help (level 3): discard tile => [shanten, [[tile, left], ...]] (the view's "uk")
+    @uk_min = 9           # the least shanten after a discard (the tiles marked)
+    @assist = load_assist
     @hand_redraw = nil    # the 640x360 table: only these hand tiles changed
     @pick = false         # choosing the riichi tile
     @act_t0 = nil         # when the last action was sent (for the latency)
@@ -487,7 +506,8 @@ class MahjongApp < FmrbApp
   def ask_view
     return if @view_f || @token.nil?
     @view_at = Machine.board_millis
-    @view_f = proxy.async.view(@token)
+    # Level 1 is the host's default: a host from before the levels takes one argument.
+    @view_f = @assist == ASSIST_DEFAULT ? proxy.async.view(@token) : proxy.async.view(@token, @assist)
   rescue ::Asterism::Error => e
     @view_f = nil
   end
@@ -531,6 +551,7 @@ class MahjongApp < FmrbApp
     @others = bits & ~mine != 0 && bits & mine == 0
     @pick = false unless offer(A_RIICHI)
     @waits = parse_waits(v["wt"])
+    parse_uk(v["uk"])
     n = hand_codes.size
     @sel = -1 if @sel >= n
     if @act_t0 && v["sv"].to_i > @act_sv
@@ -558,6 +579,83 @@ class MahjongApp < FmrbApp
       i += 2 + n * 2
     end
     out
+  end
+
+  # The view's "uk": per discard the tile, the shanten after it, n and n
+  # pairs [tile, left] (the tiles that bring the shanten down).
+  def parse_uk(s)
+    @uk = {}
+    @uk_min = 9
+    b = bytes_of(s)
+    i = 0
+    while i + 2 < b.size
+      n = b[i + 2]
+      list = []
+      j = 0
+      while j < n
+        list << [b[i + 3 + j * 2], b[i + 4 + j * 2]]
+        j += 1
+      end
+      @uk[b[i]] = [b[i + 1], list]
+      @uk_min = b[i + 1] if b[i + 1] < @uk_min
+      i += 3 + n * 2
+    end
+  end
+
+  # The acceptance after discarding the chosen tile, [shanten, list] or nil.
+  def sel_uk
+    return nil if @uk.empty? || @sel < 0
+    c = hand_at(@sel)
+    c ? @uk[c] : nil
+  end
+
+  # The mark of hand tile c: :tenpai (a discard that leaves it tenpai),
+  # :keep (level 3: one that keeps the least shanten) or nil.
+  def help_mark(c)
+    return :tenpai if @waits[c]
+    u = @uk[c]
+    u && u[0] == @uk_min ? :keep : nil
+  end
+
+  # ------------------------------------------------------------ the help level
+
+  def load_assist
+    lv = ASSIST_DEFAULT
+    File.open(ASSIST_FILE, "r") do |f|
+      f.read.to_s.split("\n").each do |l|
+        kv = l.split("=")
+        lv = kv[1].strip.to_i if kv.size == 2 && kv[0].strip == "assist"
+      end
+    end
+    lv < 0 || lv > ASSIST_MAX ? ASSIST_DEFAULT : lv
+  rescue
+    ASSIST_DEFAULT
+  end
+
+  def save_assist
+    f = File.open(ASSIST_FILE, "w")
+    f.write("# The mahjong table's help (0 none, 1 riichi, 2 tenpai, 3 shanten)\nassist = #{@assist}\n")
+    f.close
+  rescue => e
+    Log.info("mahjong: #{ASSIST_FILE}: #{e.message}")
+  end
+
+  # The next level (3 goes back to 0); the view is asked again at once.
+  def cycle_assist
+    @assist = @assist >= ASSIST_MAX ? 0 : @assist + 1
+    save_assist
+    @waits = {}
+    @uk = {}
+    @uk_min = 9
+    @view_at = 0
+    @want_v = (@view ? @view["v"].to_i : 0) + 1 if @token
+    @xl_items = nil
+    @dirty = true
+    Log.info("mahjong: assist #{@assist}")
+  end
+
+  def assist_label
+    "#{t(:mj_assist)}: #{@assist_names[@assist]} A"
   end
 
   # The waits after discarding the chosen tile (nil: no riichi help for it).
@@ -799,6 +897,8 @@ class MahjongApp < FmrbApp
       lobby(B_STAND, -1)
     elsif ch == 99
       lobby(B_CPU_ON, -1) if owner?
+    elsif ch == 97
+      cycle_assist
     end
   end
 
@@ -837,6 +937,7 @@ class MahjongApp < FmrbApp
   # first), k kan (the first), n nine kinds.
   def shortcut(ch)
     ch += 32 if ch >= 65 && ch <= 90
+    return cycle_assist if ch == 97
     types = if ch == 114 then [A_RIICHI]
             elsif ch == 116 then [A_TSUMO, A_RON]
             elsif ch == 112 then [A_PON]
@@ -871,16 +972,16 @@ class MahjongApp < FmrbApp
 
   # Chooses hand tile i (-1: none). The 1280x720 table redraws what changed
   # anyway; the 640x360 one redraws the two tiles alone unless the help line
-  # changes too.
+  # (the waits or the acceptance) changes too.
   def choose(i, mouse)
     @mouse_sel = mouse
     return if i == @sel
     old = @sel
-    ow = sel_waits
+    ow = [sel_waits, sel_uk]
     @sel = i
     if @xl || !@big
       @dirty = true
-    elsif ow != sel_waits || @dirty
+    elsif ow != [sel_waits, sel_uk] || @dirty
       @dirty = true
     else
       @hand_redraw = [] if @hand_redraw.nil?
@@ -918,6 +1019,8 @@ class MahjongApp < FmrbApp
       join(@table_list[tiles[0]]) if tiles[0] < @table_list.size
     elsif type == B_LEAVE
       leave_table
+    elsif type == B_ASSIST
+      cycle_assist
     elsif type >= B_SIT
       lobby(type, tiles.empty? ? -1 : tiles[0])
     else
@@ -1238,6 +1341,9 @@ class MahjongApp < FmrbApp
     cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + u(6)
     text(x + u(2), y + u(26), t(:mj_owner_starts), C_DIM) unless owner?
     text(x + u(2), y + u(44), @note, C_TURN) unless @note.empty?
+    y += u(@big ? 68 : 62)
+    cx = x + button(B_ASSIST, [], x, y, assist_label) + u(8)
+    text(cx, y + u(4), @assist_notes[@assist], C_DIM) if @big
   end
 
   def status_line
@@ -1478,18 +1584,19 @@ class MahjongApp < FmrbApp
     else
       small_tile(c, x, y)
     end
-    if @waits[c]
-      tenpai_mark(x, y, tile_w, @big ? 5 : 3)
+    mk = help_mark(c)
+    if mk
+      tenpai_mark(x, y, tile_w, @big ? 5 : 3, mk == :keep ? C_KEEP : C_TURN)
     elsif @pick && !can_discard?(c)
       @gfx.fill_rect(x + 2, y + tile_h - 8, tile_w - 4, 3, C_DIM)
     end
   end
 
   # A downward triangle at the top middle of a tile (r: its half width).
-  def tenpai_mark(x, y, w, r)
+  def tenpai_mark(x, y, w, r, col = C_TURN)
     cx = x + w / 2
     @gfx.fill_triangle(cx - r - 1, y + 2, cx + r + 1, y + 2, cx, y + r + r + 3, 0x00)
-    @gfx.fill_triangle(cx - r, y + 3, cx + r, y + 3, cx, y + r + r + 1, C_TURN)
+    @gfx.fill_triangle(cx - r, y + 3, cx + r, y + 3, cx, y + r + r + 1, col)
   end
 
   # The 640x360 table: only the chosen tile moved (the mouse or the keys).
@@ -1508,7 +1615,7 @@ class MahjongApp < FmrbApp
   # "待ち 1s:3 4s:3 計6枚" for the chosen tile (nil: no help).
   def waits_text
     w = sel_waits
-    return nil unless w
+    return uk_text unless w
     s = t(:mj_waits)
     sum = 0
     i = 0
@@ -1518,6 +1625,26 @@ class MahjongApp < FmrbApp
       i += 1
     end
     "#{s} #{t(:mj_total)}#{sum}#{t(:mj_mai)}"
+  end
+
+  # "1向聴 受け入れ 2m 5p 8s 3種10枚" for the chosen tile (level 3; the
+  # tiles only while the line stays short).
+  def uk_text
+    u = sel_uk
+    return nil unless u
+    return t(:mj_no_wait) if u[0] == 0
+    l = u[1]
+    sum = 0
+    tl = ""
+    i = 0
+    while i < l.size
+      sum += l[i][1]
+      tl = "#{tl} #{tile_text(l[i][0])}"
+      i += 1
+    end
+    head = "#{u[0]}#{t(:mj_shanten)} #{t(:mj_ukeire)}"
+    tail = "#{l.size}#{t(:mj_kinds)}#{sum}#{t(:mj_mai)}"
+    l.size <= 8 ? "#{head}#{tl} #{tail}" : "#{head} #{tail}"
   end
 
   def draw_controls
@@ -1534,6 +1661,10 @@ class MahjongApp < FmrbApp
       i += 1
     end
     bx += button(B_LEAVE, [], bx, y, t(:mj_leave)) + 4 if @seat.nil?
+    if @big && @seat
+      fnt(12, 1)
+      button(B_ASSIST, [], @x0 + @w - tw(assist_label) - 16, @y0 + 2, assist_label)
+    end
     # The time left, the note and the last reply time, after the buttons.
     msg = status_line.to_s
     wt = waits_text
