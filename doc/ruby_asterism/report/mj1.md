@@ -266,3 +266,74 @@ MessagePack の Hash で、牌は 1 バイトの番号を並べたバイナリ (
 - 端末には焼いていない。Tab5・P4-Nano の実機で 420 px の手牌のシートを読むところは、ブラウザ版と同じ display_local のコードで確かめた扱い (実機の確認はまだ)。
 
 画面の写し (`C:\Users\Public\asterism_deploy\screenshots\mj1\`): `s1_sim_table_cpu_names.png`、`s1_web_table_one_hand_sheet.png`、`s2_web_result_score_line.png`、`sheets_preview_one_hand_sheet.png`。
+
+## 10. riichi_engine の Fork での直し (2026-10-15 ユーザの決定)
+
+方針: riichi_engine を使い続け、誤りはユーザの Fork (`riichi_engine/`、origin = Fork、upstream = 上流) で直す。上流へは今は PR を送らないが、送れる形にした (push もしていない)。点数と役は Python の `mahjong` (PyPI) と突き合わせて確かめる (試験のときだけ。gem の依存にはしない)。
+
+### 10.1 ブランチ
+
+上流の main (v0.1.0) から、誤り 1 つにブランチ 1 本・コミット 1 つ。各ブランチに再現する spec (上流の流儀の日本語の `it`) と直しを入れ、ほかのブランチに頼らない。
+
+| ブランチ | 直した誤り | 足した・直した spec |
+|---|---|---|
+| `fix/dora-indicators` | `evaluate_win` がドラ・裏ドラを表示牌そのもので数える | 3 |
+| `fix/houtei` | 最後の打牌のロンに河底撈魚が付かない。河底撈魚だけの手にロンが出ない | 2 (+ NakiDetector の 1 件の期待を直した) |
+| `fix/riichi-discard` | リーチした席に打牌が出ず手番が止まる (エンジンの CPU も止まる)。自摸切りだけを出し、ほかの打牌は弾く | 3 (うち 1 件は既存の `[]` の期待を直した) |
+| `fix/ippatsu` | 一発が本人の次の打牌で消えない | 2 |
+| `fix/red-five` | 赤五が打牌・チー・ポン・槓 (暗槓・大明槓・加槓) ですり替わる・消える | 9 |
+| `fix/call-own-options` | ロン (や大明槓) もできる席がポンを選べない | 3 |
+| `fix/ron-turn-order` | 同じ優先度の宣言が席番号順 (頭はねでない)。`resolve_pending_action` に任意の `from_seat:` | 3 |
+| `fix/wall-seed` | seed が `-` などで切れ、`"round-001"` と `"round-002"` が同じ山 | 2 |
+| `fix/cpu-discard-ukeire` | CPU (normal・hard) が受け入れのいちばん少ない形を残す | 2 |
+| `fix/tonpuu-game-type` | 文書の `"tonpuu"` でゲームが終わらない | 2 |
+| `fix/zeitwerk-eager-load` | `RiichiEngine.loader.eager_load` が失敗 (Rails の本番の eager load で起動できない) | 1 |
+| `fix/tanyao-red-five` | 赤五を含む手に断么九が付かない (突き合わせで見つけた) | 1 (+ 1 件に期待を足した) |
+| `fix/shanpon-ron-fu` | 双碰のロンで完成した刻子を暗刻の符で数える (同) | 2 |
+| `fix/machi-interpretation` | 和了牌が複数の待ちに取れるとき最初の 1 つしか見ない (平和・高い符を逃す) (同) | 3 |
+| `fix/ryanpeiko-four-sequences` | 同じ順子 4 つが一盃口になる (同) | 2 |
+
+- gemspec の license: 上流の gemspec にはもう `spec.license = "MIT"` があり、公開済みの 0.1.0 にも入っている。直すところは無かった。
+- ルールの選択 (天鳳・Mリーグに合わせ、選択の余地があるものは 0.1.0 の既定を変えない側): 河底撈魚は最後の打牌へのロン (槍槓は除く)。一発は本人の次の打牌まで (鳴き・槓で消えるのは元のまま)。ロンが重なったら頭はね。**ダブロンは入れていない** (ルールの `double_ron` は既定 `true` だが今も効かない。入れると遊び方が変わるので別の PR と既定値の相談にする、と下書きに書いた)。
+- 隣り合う変更: `fix/dora-indicators`・`fix/houtei`・`fix/machi-interpretation` が `WinEvaluator` の同じところ、`fix/houtei` と `fix/red-five` が `round_flow.rb` の同じ位置、`fix/call-own-options` と `fix/ron-turn-order` が `highest_priority_action?` の同じ 2 行を触る。先に入った方の後で簡単な rebase が要る (下書きの索引に書いた)。
+
+### 10.2 まとめのブランチと下書き
+
+- `fmrb` (`e2917f1`): main から 15 本を merge (衝突は 4 か所、手で解いた)。版は `0.1.1.fmrb1` にした。0.1.0 のままだと Gemfile.lock の上で公開版と区別できないため。英字を含むので RubyGems では pre-release 扱い。公開はしない。CHANGELOG に Fork の節を足した。spec は 344 件すべて通る。
+- 下書き: `fmrb` の `pr_drafts/` (gem に入る `docs/` の外)。ブランチごとに英語の題・誤り・再現・直し・ルール・互換性と短い日本語。`pr_drafts/README.md` が索引 (順序に依存なし、隣り合う変更、ルールの選択、直していないもの)。上流の関心 (誤りと一貫性) で書き、Asterism や組み込みの事情は書いていない。
+
+### 10.3 Python の mahjong との突き合わせ
+
+- `fmrb` の `spec/compat/`: 和了の形を作って riichi_engine と Python の `mahjong` 2.0.0 の役・翻・符・点数を比べる。形は役ごとの代表 61 と乱数 (面子 4 つと雀頭・七対子・国士。鳴き・暗槓・大明槓・加槓、場風・自風、ツモ・ロン、リーチ・一発・ダブリー・海底・河底・嶺上・槍槓・天和・地和、ドラ・裏ドラ・赤五。5 つに 1 つは一色に寄せる)。Python は `riichi_engine/.venv` (`python3 -m venv`、.gitignore 済み) に入れた。spec は乱数 1000 で、Python とパッケージが無ければ飛ばす (CI でも飛ぶ)。大きく回すときは `ruby spec/compat/run_python_mahjong.rb 件数 seed`。
+- 結果 (乱数 10,000 x seed 1-3 と代表 61): **食い違いは 0**。決まりの違いが 1 種類だけ残る: 役満が 2 つ重なった手 (四暗刻単騎+大四喜、天和+国士など) を riichi_engine は役満 1 つ、Python は 2 つで数える。seed ごとに 4・4・3 件 (代表の 1 件を含む)。天鳳は重ねる。riichi_engine の `double_yakuman` (既定 `false`) は点数計算で使われていない。直さずに残件とした (遊ぶ流れは止めない)。
+- 直す前後 (乱数 10,000 seed 1 + 代表 61、計 10,061 形): v0.1.0 では 3,025 形が食い違い (ドラ 2,043、裏ドラ 462、河底 206、断么九 99、平和 32 ほか)。最初の 11 本を入れた時点で 522 形 (断么九 103、符 239 など)。突き合わせで見つけた 4 本 (断么九の赤五・双碰の符・待ちの取り方・同じ順子 4 つ) を入れて 0。
+
+### 10.4 asterism-games の切り替え
+
+- コミット `09080fb` (main)。Gemfile の riichi_engine を `git: "../riichi_engine", branch: "fmrb"` (隣の clone をローカルの git の取得元にする。Gemfile.lock が版 `e2917f1` を押さえる。push していないので GitHub の URL は使っていない。絶対パスも書いていない)。
+- 外した回避 (`engine 0.1.0:` の印のもの全部): 評価のときのドラと phase の差し替え、リーチの席の打牌の追加、一発の消去、赤五のための並べ替えと槓の記録の取り直し、選んだ鳴きだけ残す処理、ゲームホストの頭はね (エンジンの `resolve_pending_action(..., from_seat:)` に置き換え)、0-9a-z だけの seed、ゲームホストの CPU (`Engine::CpuAi`。エンジンの NormalAi・HardAi に戻した。`cpu_level: engine` も無くした)。engine.rb は 331 行から 180 行ほどに減った。
+- 試験: `bundle exec rake test` (CPU 4 人の半荘 20 回を含む 17 件) が通った: 282 局 (ロン 138・ツモ 72・流局 72)、cpu_refused 0、点の合計は毎局 100,000、見え方の最大 514 B (最悪の形 908 B)。ルータを通す `test_network.rb` は zenohd (`docker compose up -d zenohd`) を立てて通し、止めた。規則の試験のうちエンジンの 0.1.0 の動きを調べていたもの (「落ちたら直った」) は、直った動きを調べる形にし、河底撈魚とロンより先のポンを足した。
+- CPU だけの半荘の流局の割合 (半荘 40 回ずつ):
+
+| エンジン | CPU | 局 | 流局 | 割合 |
+|---|---|---|---|---|
+| 0.1.0 | エンジンの normal (`cpu_level: engine`) | 452 | 341 | 75.4 % |
+| 0.1.0 | ゲームホストが直した CPU (直す前の既定) | 496 | 127 | 25.6 % |
+| fmrb | エンジンの normal | 488 | 85 | 17.4 % |
+| fmrb | エンジンの hard | 496 | 97 | 19.6 % |
+
+  `rake test` の 1 回 (半荘 20 回) では 72/282 = 25.5 % で、回によって揺れる。
+- README の「riichi_engine」の節を、0.1.0 の誤り 15 件・Fork のブランチ・外した回避の表に書き直した。
+
+### 10.5 残件
+
+- 決まりの違い (直していない): 役満の重なりを 1 つとして数える (10.3)。設定にするなら `double_yakuman` とは別のキーが要る。
+- 0.1.0 のまま: 槓で生きている山が減らない (嶺上牌は王牌から取るが補わない)。トビは 0 点ちょうどでは起きない (`state_machine.md` は「負の点数」、`api_reference.md` は「0 点以下」で文書どうしが食い違う)。easy の CPU は受け入れの少ない形を残す (わざとかもしれないので変えていない)。未知の `game_type` ではゲームが終わらない。
+- ダブロン (`double_ron`) と三家和 (`triple_ron_draw`) はルールのキーだけあって効かない。4 人対戦で入れるかは決めてほしい (下の 10.6)。
+- 方針 (2026-10-15) に従い、突き合わせで新しい誤りを探すのはここで区切った。遊ぶ流れを止めるもの (局が進まない・例外・点の授受が合わない) で残っているものは無い。
+
+### 10.6 決めてほしいこと
+
+- ダブロンを入れるか (入れるなら既定は `double_ron: true` のままにするか)。今は頭はね。
+- 上流へ出す時期と順序。出すときは Fork へ push して、ブランチごとに `pr_drafts/` の下書きで PR にする。
+- 版の印 `0.1.1.fmrb1` でよいか。
