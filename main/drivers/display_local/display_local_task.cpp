@@ -2261,7 +2261,11 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         long fsz = ftell(fp);
         fseek(fp, 0, SEEK_SET);
 
-        if (fsz <= 0 || fsz > 65536) {
+        // The whole file is read into the system pool (PSRAM on the P4
+        // boards, 500 KB, shared). 256 KB takes one 640x360 picture, the
+        // largest screen an app gets (231,478 B as an 8-bit BMP), and leaves
+        // the pool room for everyone else.
+        if (fsz <= 0 || fsz > 256 * 1024) {
             FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: invalid file size %ld", fsz);
             fclose(fp);
             return -1;
