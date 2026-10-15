@@ -732,11 +732,7 @@ class MahjongApp < FmrbApp
           i += 1
         end
       else
-        head = if k == "kyuushu_kyuuhai" then t(:mj_kyuushu_end)
-               elsif k == "sanchahou" then t(:mj_sanchahou)
-               else t(:mj_draw)
-               end
-        text(x, y, head, C_TURN)
+        text_spaced(x, y, fit(draw_head(res), bw - 32), C_TURN)
         y += 34
       end
       unless over
@@ -754,7 +750,7 @@ class MahjongApp < FmrbApp
       end
     end
     if over
-      text(x, y, t(:mj_over), C_TURN)
+      text(x, y, over_head, C_TURN)
       y += 34
       i = 0
       while i < fin.size
@@ -823,6 +819,8 @@ class MahjongApp < FmrbApp
     end
     y += ((ys.size + 2) / 3) * 28
     text_spaced(x, y, w["pt"].to_s, C_TURN)
+    pa = pao_text(w)
+    text_spaced(x + tw(w["pt"].to_s) + 8, y, pa, C_AWAY) unless pa.empty?
     y + 36
   end
 end

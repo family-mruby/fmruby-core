@@ -6,22 +6,27 @@
 class MahjongApp < FmrbApp
   # ------------------------------------------------------------ local rules
   #
-  # The view's "ru" (asterism-games README "Local rules"): one value per
-  # item, in this order. The owner changes them in the lobby (the host takes
-  # rule(token, item, value) before the game only); everybody sees them.
+  # The view's "ru" and "rx" (asterism-games README "Local rules"): one
+  # value per item, in this order (items 0-10 in "ru", 11-14 in "rx"; a
+  # host without "rx" has the first eleven only). The owner changes them in
+  # the lobby (the host takes rule(token, item, value) before the game
+  # only); everybody sees them.
   B_RULE = 108
   RULE_TURNS = [10, 20, 30, 60]
   RULE_AKA = [0, 3, 4]
 
   def setup_rule_strings
     @rule_names = ["対局", "喰いタン", "赤ドラ", "ダブロン", "三家和", "役満の複合", "数え役満",
-                   "切り上げ満貫", "トビ", "西入", "持ち時間"]
+                   "切り上げ満貫", "トビ", "西入", "持ち時間", "途中流局", "流し満貫", "ダブル役満",
+                   "テンパイ止め"]
     @rule_sel = 0
   end
 
   def rules
     ru = @view ? @view["ru"] : nil
-    ru.is_a?(Array) ? ru : nil
+    return nil unless ru.is_a?(Array)
+    rx = @view["rx"]
+    rx.is_a?(Array) ? ru + rx : ru
   end
 
   # The value of item i as the screen says it.
@@ -89,7 +94,8 @@ class MahjongApp < FmrbApp
     text(x, y, own ? "ルール (上下 左右キー)" : "ルール (卓の主が決める)", C_DIM)
     y += u(18)
     i = 0
-    while i < ru.size
+    n = ru.size < @rule_names.size ? ru.size : @rule_names.size
+    while i < n
       sel = own && i == @rule_sel
       @gfx.fill_rect(x - u(2), y - u(2), w, u(17), sel ? C_SEL : C_BOX) if own
       dim = i == 9 && ru[0] == 1 # the west round: a hanchan's only
@@ -141,6 +147,47 @@ class MahjongApp < FmrbApp
 
   # ------------------------------------------------------------ the result
 
+  # The head of a round that ended without a win: the draw, an abortive
+  # draw by name, and who made nagashi mangan.
+  def draw_head(res)
+    k = res["k"].to_s
+    head = if k == "kyuushu_kyuuhai" then t(:mj_kyuushu_end)
+           elsif k == "sanchahou" then t(:mj_sanchahou)
+           elsif k == "suufon_renda" then "四風連打で流局"
+           elsif k == "suukaikan" then "四槓散了で流局"
+           elsif k == "suucha_riichi" then "四家立直で流局"
+           else t(:mj_draw)
+           end
+    ng = res["ng"]
+    return head unless ng.is_a?(Array) && ng.size > 0
+    names = []
+    ng.each { |s| names << seat_name(s.to_i) }
+    "#{head}  流し満貫: #{names.join(' ')}"
+  end
+
+  # Pao after the points: "包: <name> (大三元)", "" when none.
+  def pao_text(w)
+    pa = w["pa"]
+    return "" unless pa.is_a?(Array) && pa.size > 0
+    out = []
+    pa.each { |p| out << "#{seat_name(p[0].to_i)} (#{p[1]})" if p.is_a?(Array) }
+    "  包: #{out.join(' ')}"
+  end
+
+  # "終局" and why the game ended, when the host says (the view's "fr").
+  def over_head
+    r = @view["fr"].to_s
+    why = if r == "tobi" then "トビ"
+          elsif r == "all_last_oya_agari" then "アガリ止め"
+          elsif r == "all_last_oya_tenpai" then "テンパイ止め"
+          elsif r == "west" then "西4局まで"
+          elsif r == "rounds" then "局数の上限"
+          elsif r == "normal_end" then "最後の局まで"
+          else ""
+          end
+    why.empty? ? t(:mj_over) : "#{t(:mj_over)} (#{why})"
+  end
+
   # "東1局 0本場" of the round a result is about.
   def round_head(res)
     rd = res["rd"]
@@ -168,6 +215,7 @@ class MahjongApp < FmrbApp
       end
       s = parts[0, parts.size - 1].join(" ") if digits
     end
+    return "#{s} ダブル役満" if h <= -2
     h < 0 ? "#{s} 役満" : "#{s} #{h}翻"
   end
 
@@ -246,11 +294,7 @@ class MahjongApp < FmrbApp
           i += 1
         end
       else
-        head = if k == "kyuushu_kyuuhai" then t(:mj_kyuushu_end)
-               elsif k == "sanchahou" then t(:mj_sanchahou)
-               else t(:mj_draw)
-               end
-        text(x, y, head, C_TURN)
+        text_spaced(x, y, fit(draw_head(res), bw - 16), C_TURN)
         y += 18
       end
       unless over
@@ -267,7 +311,7 @@ class MahjongApp < FmrbApp
     end
     if over
       y = by + bh - 84
-      text(x, y, t(:mj_over), C_TURN)
+      text(x, y, over_head, C_TURN)
       i = 0
       while i < fin.size
         text_spaced(x, y + 16 + i * 13, fin_line(fin[i]))
@@ -328,6 +372,8 @@ class MahjongApp < FmrbApp
     end
     y += ((ys.size + cols - 1) / cols) * 14 + 2
     text_spaced(x, y, w["pt"].to_s, C_TURN)
+    pa = pao_text(w)
+    text_spaced(x + tw(w["pt"].to_s) + 4, y, pa, C_AWAY) unless pa.empty?
     y + (multi ? 16 : 20)
   end
 
