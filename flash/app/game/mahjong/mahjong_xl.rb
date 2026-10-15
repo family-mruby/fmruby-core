@@ -33,6 +33,8 @@ class MahjongApp < FmrbApp
   XL_RIGHT = 1272
   XL_BTN_Y = 540
   XL_STATUS = [16, 530, 470, 56]   # the status lines (below the left player's row, above the hand)
+  XL_WAITS = [56, 480, 430, 48]    # the riichi help (above the status lines, right of the left player's row)
+  XL_LIFT = 10                     # the chosen hand tile is this much higher
   C_BOARD = 0x24
   C_BTN_WIN = 0xA0
   C_BTN_PASS = 0x6D
@@ -53,7 +55,8 @@ class MahjongApp < FmrbApp
   end
 
   # Items. mark: 0 none, 1 the last discard (a frame), 2 not to be chosen
-  # (a bar, while picking the riichi tile).
+  # (a bar, while picking the riichi tile), 3 a discard that leaves the hand
+  # tenpai (the riichi help: a triangle at the top).
   def xl_hand_item(c, x, y, mark)
     k = c < 20 ? c : c - 20
     [x, y, 84, 112, img_id(@xl_hand[c < 20 ? 0 : 1]), (k % 10) * 84, (k / 10) * 112, mark, c]
@@ -89,6 +92,8 @@ class MahjongApp < FmrbApp
       @gfx.draw_rect(it[0] + 1, it[1] + 1, it[2] - 2, it[3] - 2, C_LAST)
     elsif it[7] == 2
       @gfx.fill_rect(it[0] + 4, it[1] + it[3] - 14, it[2] - 8, 5, C_DIM)
+    elsif it[7] == 3
+      tenpai_mark(it[0], it[1], it[2], 8)
     end
     @xl_n_items += 1
     @xl_n_px += it[2] * it[3]
@@ -286,15 +291,16 @@ class MahjongApp < FmrbApp
       c = hand_at(i)
       x = XL_HAND_X + i * 84
       x += 12 if i >= h.size
-      y = XL_HAND_Y - (i == @sel ? 10 : 0)
-      out << xl_hand_item(c, x, y, pick && !can_discard?(c) ? 2 : 0)
+      y = XL_HAND_Y - (i == @sel ? XL_LIFT : 0)
+      mark = @waits[c] ? 3 : (pick && !can_discard?(c) ? 2 : 0)
+      out << xl_hand_item(c, x, y, mark)
       i += 1
     end
     out
   end
 
   def xl_hand_index_at(x, y)
-    return nil if y < XL_HAND_Y - 10 || y >= XL_HAND_Y + 112
+    return nil if y < XL_HAND_Y - XL_LIFT || y >= XL_HAND_Y + 112
     n = hand_codes.size + (drawn >= 0 ? 1 : 0)
     i = 0
     while i < n
@@ -374,9 +380,11 @@ class MahjongApp < FmrbApp
     board = xl_board_sig
     status = xl_status_sig
     btns = xl_button_sig
+    help = xl_waits_sig
     redraw_board = full || board != @xl_sig[:board]
     redraw_status = full || status != @xl_sig[:status]
     redraw_btns = full || btns != @xl_sig[:btns]
+    redraw_help = full || help != @xl_sig[:help]
     if redraw_btns
       i = 0
       while i < @xl_btn_rects.size
@@ -385,6 +393,7 @@ class MahjongApp < FmrbApp
       end
     end
     clears << XL_STATUS if redraw_status && !full
+    clears << XL_WAITS if redraw_help && !full && @xl_sig[:help]
     i = 0
     while i < clears.size
       c = clears[i]
@@ -413,6 +422,11 @@ class MahjongApp < FmrbApp
         end
       end
       j = 0
+      while j < clears.size && !redraw_help
+        redraw_help = true if help && overlap?(XL_WAITS, clears[j])
+        j += 1
+      end
+      j = 0
       while j < clears.size && !redraw_btns
         k = 0
         while k < @xl_btn_rects.size
@@ -436,6 +450,10 @@ class MahjongApp < FmrbApp
       xl_draw_status
       @xl_sig[:status] = status
     end
+    if redraw_help
+      xl_draw_waits(help) if help && !res
+      @xl_sig[:help] = res ? nil : help
+    end
     if res
       xl_draw_result if full
       @xl_btn_rects = []
@@ -458,6 +476,53 @@ class MahjongApp < FmrbApp
     [status_line.to_s, @pick, left && left < 0 ? 0 : left, @lat]
   end
 
+  # The riichi help: nil (nothing shown), [:hint] (the marks are on, no
+  # tenpai discard chosen) or the chosen tile and its waits.
+  def xl_waits_sig
+    return nil if @waits.empty? || @seat.nil?
+    w = sel_waits
+    return [:hint] unless w
+    [hand_at(@sel), w]
+  end
+
+  # The riichi help over XL_WAITS: the waits of the chosen discard (each
+  # with what is left of it unseen) and their sum, or a line that says what
+  # the marks mean.
+  def xl_draw_waits(sig)
+    x = @x0 + XL_WAITS[0]
+    y = @y0 + XL_WAITS[1]
+    fnt(16, 1)
+    if sig[0] == :hint
+      tenpai_mark(x + 4, y + 12, 24, 8)
+      text(x + 32, y + 16, t(:mj_help), C_DIM)
+      return
+    end
+    w = sig[1]
+    @gfx.fill_round_rect(x, y, XL_WAITS[2], XL_WAITS[3], 6, C_BOX)
+    @gfx.draw_round_rect(x, y, XL_WAITS[2], XL_WAITS[3], 6, C_TURN)
+    @xl_n_px += XL_WAITS[2] * XL_WAITS[3]
+    text(x + 10, y + 16, t(:mj_waits), C_TURN)
+    sum = 0
+    i = 0
+    while i < w.size
+      sum += w[i][1]
+      i += 1
+    end
+    tail = "#{t(:mj_total)}#{sum}#{t(:mj_mai)}"
+    room = XL_WAITS[2] - 52 - tw(tail) - 16
+    counts = w.size * 42 <= room
+    step = counts ? 42 : (w.size * 28 <= room ? 28 : 24)
+    cx = x + 52
+    i = 0
+    while i < w.size
+      xl_draw_item(xl_tile_item(false, 0, w[i][0], cx, y + 8, 0))
+      text(cx + 26, y + 16, w[i][1].to_s, w[i][1] == 0 ? C_RED : C_TEXT) if counts
+      cx += step
+      i += 1
+    end
+    text_spaced(cx + 6, y + 16, tail, sum == 0 ? C_RED : C_TURN)
+  end
+
   def xl_button_sig
     [@view["a"], @seat.nil?]
   end
@@ -474,12 +539,11 @@ class MahjongApp < FmrbApp
     @xl_n_px += XL_BW * XL_BH
     r = v["r"]
     return unless r.is_a?(Array)
-    ja = FmrbI18n.lang == "ja"
     fnt(16, 2)
-    head = "#{WIND[r[0].to_i % 4]}#{r[1]}#{ja ? '局' : ''}"
+    head = "#{WIND[r[0].to_i % 4]}#{r[1]}#{t(:mj_kyoku)}"
     text(bx + (XL_BW - tw(head)) / 2, by + 26, head)
     fnt(16, 1)
-    line = ja ? "#{r[2]}#{t(:mj_honba)}  #{t(:mj_sticks)}#{r[3]}" : "#{t(:mj_honba)} #{r[2]}  #{t(:mj_sticks)} #{r[3]}"
+    line = "#{r[2]}#{t(:mj_honba)}  #{t(:mj_sticks)}#{r[3]}"
     line = "#{line}  #{t(:mj_left)}#{r[5]}" if r.size > 5
     text(bx + (XL_BW - tw(line)) / 2, by + 60, line, C_DIM)
     d = bytes_of(v["dora"])
@@ -650,7 +714,7 @@ class MahjongApp < FmrbApp
       i = 0
       while i < fin.size
         f = fin[i]
-        text(x, y, "#{f[1]}. #{seat_name(f[0])} #{f[2]} (#{f[3].to_i / 10}.#{(f[3].to_i % 10).abs})")
+        text(x, y, fin_line(f))
         y += 30
         i += 1
       end
@@ -680,8 +744,7 @@ class MahjongApp < FmrbApp
   end
 
   def xl_draw_win(w, k, from, x, y, big)
-    head = k == "tsumo_agari" ? "#{seat_name(w['w'])} #{t(:mj_tsumo)}" : "#{seat_name(w['w'])} #{t(:mj_ron)} <- #{seat_name(from)}"
-    text(x, y, head, C_TURN)
+    text(x, y, win_head(w, k, from), C_TURN)
     y += 34
     hc = bytes_of(w["h"])
     tw_ = big ? 48 : 24
