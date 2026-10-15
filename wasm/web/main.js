@@ -320,7 +320,7 @@ function unlockAudioOnGesture(ac) {
 // The framebuffer sizes offered. 426x240 is what the hardware runs; the other
 // two are the same desktop with more room, which only the web build can afford
 // (doc/wasm/report/p5.md records what each one looks like).
-const RESOLUTIONS = ['426x240', '640x360', '852x480'];
+const RESOLUTIONS = ['426x240', '640x360', '852x480', '1280x720'];
 const DEFAULT_RES = '426x240';
 // The shipped window default (386x180 of 426x240) kept in proportion, so an
 // app window covers the same share of a larger screen instead of shrinking

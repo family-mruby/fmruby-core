@@ -8,6 +8,7 @@
 #
 #   ruby mahjong_tilegen.rb [OUT_DIR]
 #   ruby mahjong_tilegen.rb --sheets DIR [--force]
+#   ruby mahjong_tilegen.rb --layout-sheets SRC_DIR [DST_DIR] [--preview PNG]
 #
 # Output (OUT_DIR):
 #   OUT_DIR/hand/   42x56 tiles  (hand: 14 + 1 tiles across 640 px)
@@ -24,6 +25,9 @@
 # Grids of 10 x 4 cells without gaps, the same on both sheets: the cell of
 # tile number i (TILES below) is
 #   src_x = (i % 10) * cell width, src_y = (i / 10) * cell height
+# Output (--layout-sheets): the sheets of the 1280x720 table, made from the
+# two sheets in SRC_DIR (scaled and turned, see "big table sheets" below and
+# flash/app/game/mahjong/large/README.md for the list).
 # Tile numbers: 0..8 1m..9m, 9 0m, 10..18 1p..9p, 19 0p, 20..28 1s..9s, 29 0s,
 # 30..36 1z..7z, 37 back (the rest of the last row is empty).
 # The transparent colour (rounded corners, the empty cells) is RGB332 0xE3
@@ -687,7 +691,197 @@ def write_sheets(dir, force)
   File.binwrite(File.join(dir, "sheets_preview.png"), prev.to_png)
 end
 
+# ---------------------------------------------------------------- big table sheets
+#
+# The sheets of the conventional table (1280x720, MJ-L) are made FROM the two
+# sheets above, not from the drawing code: the sheets are the source of truth
+# once edited by hand, so these are only their tiles scaled by whole numbers
+# (nearest neighbour) and turned by quarter turns. Edit tiles_hand.bmp /
+# tiles_river.bmp and run --layout-sheets again; the files it writes are
+# derived and are overwritten without asking.
+#
+# Rotations are clockwise; r90 turns the top of the picture to the right.
+# On the table, a player's own tiles are r0, the player on the left (kamicha)
+# r90, the player across (toimen) r180, the player on the right (shimocha)
+# r270. A tile laid sideways (a riichi tile, the tile a meld was called from)
+# is the seat's own rotation plus 270.
+
+# [file, source sheet, scale, rotation, first tile, count, columns]
+LAYOUT_SHEETS = [
+  ["tiles_hand2_a.bmp", "tiles_hand.bmp", 2, 0, 0, 20, 10],
+  ["tiles_hand2_b.bmp", "tiles_hand.bmp", 2, 0, 20, 18, 10],
+  ["tiles_river2_r0.bmp", "tiles_river.bmp", 2, 0, 0, 38, 10],
+  ["tiles_river2_r90.bmp", "tiles_river.bmp", 2, 90, 0, 38, 10],
+  ["tiles_river2_r180.bmp", "tiles_river.bmp", 2, 180, 0, 38, 10],
+  ["tiles_river2_r270.bmp", "tiles_river.bmp", 2, 270, 0, 38, 10],
+  ["tiles_river_r90.bmp", "tiles_river.bmp", 1, 90, 0, 38, 10],
+  ["tiles_river_r180.bmp", "tiles_river.bmp", 1, 180, 0, 38, 10],
+  ["tiles_river_r270.bmp", "tiles_river.bmp", 1, 270, 0, 38, 10],
+].freeze
+
+# The side of an opponent's concealed tile (the back seen standing), one cell
+# per direction: across (32x20), left (20x32), right (20x32), in a row.
+SIDE_SHEET = "tiles_side.bmp"
+SIDE_LONG = 32
+SIDE_SHORT = 20
+
+# An 8-bit BMP as [w, h, pixels top-down]; the pixel values are the RGB332
+# colours (the palette is not read, as on the device).
+def read_bmp8(path)
+  b = File.binread(path)
+  raise "#{path}: not a BMP" unless b[0, 2] == "BM"
+  off = b[10, 4].unpack1("V")
+  w = b[18, 4].unpack1("l<")
+  h = b[22, 4].unpack1("l<")
+  bpp = b[28, 2].unpack1("v")
+  raise "#{path}: #{bpp} bits per pixel (8 expected)" unless bpp == 8
+  top_down = h < 0
+  h = h.abs
+  row = (w + 3) & ~3
+  px = Array.new(w * h)
+  h.times do |r|
+    y = top_down ? r : h - 1 - r
+    line = b[off + r * row, w].bytes
+    w.times { |x| px[y * w + x] = line[x] }
+  end
+  [w, h, px]
+end
+
+# One cell of a sheet: [w, h, pixels].
+def cell_of(sheet, n, cw, ch, cols)
+  sw, _sh, spx = sheet
+  ox = (n % cols) * cw
+  oy = (n / cols) * ch
+  px = Array.new(cw * ch)
+  ch.times { |y| cw.times { |x| px[y * cw + x] = spx[(oy + y) * sw + ox + x] } }
+  [cw, ch, px]
+end
+
+def scale_cell(c, k)
+  w, h, px = c
+  out = Array.new(w * k * h * k)
+  (h * k).times { |y| (w * k).times { |x| out[y * w * k + x] = px[(y / k) * w + x / k] } }
+  [w * k, h * k, out]
+end
+
+# Clockwise by deg (0, 90, 180, 270).
+def rotate_cell(c, deg)
+  w, h, px = c
+  case deg
+  when 0 then c
+  when 180 then [w, h, px.reverse]
+  when 90
+    # new (x, y) <- old (y, h - 1 - x); new size h x w
+    out = Array.new(w * h)
+    w.times { |y| h.times { |x| out[y * h + x] = px[(h - 1 - x) * w + y] } }
+    [h, w, out]
+  when 270
+    # new (x, y) <- old (w - 1 - y, x)
+    out = Array.new(w * h)
+    w.times { |y| h.times { |x| out[y * h + x] = px[x * w + (w - 1 - y)] } }
+    [h, w, out]
+  else raise "rotation #{deg}"
+  end
+end
+
+def paste(dst, dw, c, ox, oy)
+  w, h, px = c
+  h.times { |y| w.times { |x| dst[(oy + y) * dw + ox + x] = px[y * w + x] } }
+end
+
+# The opponents' concealed tiles seen from the side, in the colours of the
+# back tile (37) of the hand sheet: its outline, its back and its inner ring.
+def side_cells(hand)
+  _w, _h, bp = cell_of(hand, 37, 42, 56, 10)
+  outline = bp[28 * 42 + 0]
+  back = bp[1 * 42 + 21]
+  ring = bp[3 * 42 + 21]
+  w = SIDE_LONG
+  h = SIDE_SHORT
+  px = Array.new(w * h, TRANSPARENT)
+  h.times do |y|
+    w.times do |x|
+      edge = x == 0 || y == 0 || x == w - 1 || y == h - 1
+      px[y * w + x] = if edge then outline
+                      elsif y <= 4 then ring       # the top edge of the standing tile
+                      elsif y == 5 then outline
+                      else back
+                      end
+    end
+  end
+  # Round the four corners like the tiles.
+  [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]].each { |x, y| px[y * w + x] = TRANSPARENT }
+  across = [w, h, px]
+  [across, rotate_cell(across, 90), rotate_cell(across, 270)]
+end
+
+def write_layout_sheets(src_dir, dst_dir, preview_path = nil)
+  FileUtils.mkdir_p(dst_dir)
+  src = {}
+  %w[tiles_hand.bmp tiles_river.bmp].each { |f| src[f] = read_bmp8(File.join(src_dir, f)) }
+  base_cell = { "tiles_hand.bmp" => [42, 56], "tiles_river.bmp" => [24, 32] }
+  shots = []
+  LAYOUT_SHEETS.each do |file, from, k, deg, first, count, cols|
+    bw, bh = base_cell[from]
+    cells = (0...count).map { |i| rotate_cell(scale_cell(cell_of(src[from], first + i, bw, bh, 10), k), deg) }
+    cw, ch = cells[0][0], cells[0][1]
+    rows = (count + cols - 1) / cols
+    # Full rows of cols cells, as the existing sheets (the empty cells are transparent).
+    rows = 4 if count == 38
+    w = cols * cw
+    h = rows * ch
+    raise "#{file}: #{w}x#{h} is over the 2048 px the BMP loader takes" if w > 2048 || h > 2048
+    px = Array.new(w * h, TRANSPARENT)
+    cells.each_with_index { |c, i| paste(px, w, c, (i % cols) * cw, (i / cols) * ch) }
+    data = bmp8(w, h, px)
+    raise "#{file}: #{data.bytesize} B is over the 256 KB a sprite file may be" if data.bytesize > 256 * 1024
+    File.binwrite(File.join(dst_dir, file), data)
+    shots << [w, h, px]
+    puts "wrote #{file} (#{w}x#{h}, cells #{cw}x#{ch}, #{data.bytesize} B)"
+  end
+  sides = side_cells(src["tiles_hand.bmp"])
+  w = SIDE_LONG + SIDE_SHORT * 2
+  h = SIDE_LONG
+  px = Array.new(w * h, TRANSPARENT)
+  paste(px, w, sides[0], 0, 0)
+  paste(px, w, sides[1], SIDE_LONG, 0)
+  paste(px, w, sides[2], SIDE_LONG + SIDE_SHORT, 0)
+  File.binwrite(File.join(dst_dir, SIDE_SHEET), bmp8(w, h, px))
+  shots << [w, h, px]
+  puts "wrote #{SIDE_SHEET} (#{w}x#{h})"
+  # A preview at 1x on the felt, for checking (not next to the sheets: the
+  # app directory is what the boards and the browser get).
+  return unless preview_path
+  pw = shots.map { |sw, _, _| sw }.max
+  ph = shots.sum { |_, sh, _| sh + 4 }
+  prev = Canvas.new(pw, ph, rgb("#3a6b4f"))
+  y0 = 0
+  shots.each do |sw, sh, spx|
+    sh.times do |y|
+      sw.times do |x|
+        v = spx[y * sw + x]
+        prev.set(x, y0 + y, rgb332_to_rgb(v) + [255]) unless v == TRANSPARENT
+      end
+    end
+    y0 += sh + 4
+  end
+  File.binwrite(preview_path, prev.to_png)
+  puts "wrote #{preview_path}"
+end
+
 if $PROGRAM_NAME == __FILE__
+  if ARGV[0] == "--layout-sheets"
+    usage = "usage: #{$PROGRAM_NAME} --layout-sheets SRC_DIR [DST_DIR] [--preview PNG]"
+    args = ARGV.dup
+    preview = nil
+    if (i = args.index("--preview"))
+      preview = args[i + 1] or abort usage
+      args.slice!(i, 2)
+    end
+    abort usage unless args[1]
+    write_layout_sheets(args[1], args[2] || args[1], preview)
+    exit
+  end
   if ARGV[0] == "--sheets"
     abort "usage: #{$PROGRAM_NAME} --sheets DIR [--force]" unless ARGV[1]
     write_sheets(ARGV[1], ARGV.include?("--force"))
