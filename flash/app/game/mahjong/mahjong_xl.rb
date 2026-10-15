@@ -474,8 +474,7 @@ class MahjongApp < FmrbApp
   end
 
   def xl_status_sig
-    left = @deadline ? (@deadline - Machine.board_millis) / 1000 : nil
-    [status_line.to_s, @pick, left && left < 0 ? 0 : left, @lat]
+    [status_line.to_s, @pick, @deadline ? time_left_text : nil, @lat]
   end
 
   # The help: nil (nothing shown), [:hint] (the marks are on, no tenpai
@@ -644,11 +643,7 @@ class MahjongApp < FmrbApp
     msg = "#{t(:mj_pick)} #{msg}" if @pick
     text(x + 4, y + 4, msg, C_TURN) unless msg.strip.empty?
     line = ""
-    if @deadline
-      left = (@deadline - Machine.board_millis) / 1000
-      left = 0 if left < 0
-      line = "#{t(:mj_left)} #{left}#{t(:mj_rest)}"
-    end
+    line = "#{t(:mj_left)} #{time_left_text}" if @deadline
     line = "#{line}  #{t(:mj_resp)} #{@lat}#{t(:mj_ms)}" if @lat
     text(x + 4, y + 28, line, C_TURN) unless line.empty?
     @xl_n_px += XL_STATUS[2] * XL_STATUS[3]
