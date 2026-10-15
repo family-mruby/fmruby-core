@@ -19,6 +19,15 @@
 # - Modern (Tab5, P4-Nano) and the browser build: 640x360 (fullscreen_hires).
 #   A smaller screen (the Linux sim, 426x240) gets a compact table with the
 #   discards as text, and only the river sheet.
+# - The browser build at 1280x720 (MJ-L, doc/ruby_asterism/report/mj_layout.md)
+#   gets a conventional table: the four rivers around a centre board, each
+#   turned to its player, the opponents' hands as rows of tile sides, the
+#   melds with the called tile sideways. It draws only what changed (each
+#   tile is an item; a change clears and redraws the items that differ and
+#   whatever a clear touched). The lists, the lobby and the status screens
+#   are the 640x360 ones at twice the size. Its sheets are in large/, made
+#   from the two sheets below by tools/mahjong_tilegen.rb --layout-sheets
+#   (whole-number scaling and quarter turns; boards leave large/ out).
 # - Retro (S3): its image leaves this app out (config/storage_exclude_naryav3.txt).
 #   A Retro sim keeps the whole tree, so the app still says it has no table.
 #
@@ -43,6 +52,10 @@
 # c chi, k kan, n nine kinds. A click on a tile discards it; the buttons are
 # what the host offers now.
 
+# The 1280x720 table (methods of this class, in a file of its own: an app
+# file is read whole and may be at most 64 KB).
+require "/app/game/mahjong/mahjong_xl"
+
 class MahjongApp < FmrbApp
   APP = "game"            # this app's Asterism application name (the G0 range)
   HOST_APP = "games"      # the host's application
@@ -54,6 +67,9 @@ class MahjongApp < FmrbApp
   WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
   APP_DIR = "/app/game/mahjong"
+  XL_DIR = "large/"       # the 1280x720 table's sheets (under APP_DIR)
+  PERF_ON = "/home/mahjong_perf.on"     # present: the times go to PERF_OUT
+  PERF_OUT = "/home/mahjong_perf.txt"
   CACHE_DIR = "/cache/app/mahjong"
   KEY_COLOR = 0xE3        # the sheets' transparent colour
   # The table's own colours (a game draws its own picture).
@@ -149,6 +165,13 @@ class MahjongApp < FmrbApp
     @unsupported = FmrbConst::HW_FAMILY != "modern"
     @hand_sheet = nil
     @river_sheet = nil
+    @xl_sheets = false
+    @xl_items = nil         # the 1280x720 table's drawn items (nil: draw it all)
+    @fw = 12                # the full-width character width of the text drawn now
+    @perf_on = perf_wanted?
+    @perf = []
+    @xl_n_items = 0         # what the last drawing of the 1280x720 table drew
+    @xl_n_px = 0
     layout
     if @unsupported
       draw_screen
@@ -156,6 +179,7 @@ class MahjongApp < FmrbApp
     end
     @river_sheet = load_sheet("tiles_river.bmp", 240, 128)
     load_hand_sheet
+    load_xl_sheets
     st = ::FmrbAsterism.settings
     @id = st.node
     @locator = st.router
@@ -200,7 +224,11 @@ class MahjongApp < FmrbApp
 
   def on_resize(w, h)
     layout
-    load_hand_sheet unless @unsupported
+    unless @unsupported
+      load_hand_sheet
+      load_xl_sheets
+    end
+    @xl_items = nil
     @dirty = true
   end
 
@@ -210,22 +238,27 @@ class MahjongApp < FmrbApp
     @w = @user_area_width
     @h = @user_area_height
     @big = @w >= 640 && @h >= 360
+    @xl = @w >= 1280 && @h >= 720
+    @k = @xl ? 2 : 1        # the lists and the lobby: the 640x360 screens at twice the size
   end
 
   # A sheet as a SpriteImage, or nil (the tiles are then drawn as text).
-  def load_sheet(name, w, h)
-    @gfx.sync_file("#{APP_DIR}/#{name}", dest: "#{CACHE_DIR}/#{name}")
+  # dir: a directory under APP_DIR (the cache keeps the file name only).
+  def load_sheet(name, w, h, dir = "")
+    t0 = Machine.board_millis
+    @gfx.sync_file("#{APP_DIR}/#{dir}#{name}", dest: "#{CACHE_DIR}/#{name}")
     img = SpriteImage.new(@gfx, width: w, height: h, transparent_color: KEY_COLOR, use_transparent: true)
     img.load_bmp("#{CACHE_DIR}/#{name}")
+    Log.info("mahjong: tiles: #{name} #{Machine.board_millis - t0} ms")
     img
   rescue => e
     Log.error("mahjong: tiles: #{name}: #{e.message}")
     nil
   end
 
-  # The hand sheet, the first time the table is big.
+  # The hand sheet, the first time the table is big (the 640x360 table).
   def load_hand_sheet
-    @hand_sheet = load_sheet("tiles_hand.bmp", 420, 224) if @big && @hand_sheet.nil?
+    @hand_sheet = load_sheet("tiles_hand.bmp", 420, 224) if @big && !@xl && @hand_sheet.nil?
   end
 
   # ------------------------------------------------------------ network
@@ -514,6 +547,7 @@ class MahjongApp < FmrbApp
       i += 1
     end
     @act_t0 = Machine.board_millis
+    @act_type = type
     @act_sv = @view["sv"].to_i
     @act_f = proxy.async.act(@token, @act_sv, type, s)
     @pick = false
@@ -805,7 +839,7 @@ class MahjongApp < FmrbApp
       i += 1
     end
     return unless mode == :table && @seat
-    idx = hand_index_at(x, y)
+    idx = @xl ? xl_hand_index_at(x, y) : hand_index_at(x, y)
     return if idx.nil?
     @sel = idx
     cd = hand_at(idx)
@@ -879,18 +913,31 @@ class MahjongApp < FmrbApp
     @gfx.draw_text(x, y, s, color)
   end
 
-  # Pixel width with the 12 px font (ASCII 6, the rest 12).
+  # The font: px 12 or 16 (efont), scaled by size (1 or 2).
+  def fnt(px, size)
+    @gfx.set_font(:ja, px)
+    @gfx.set_text_size(size)
+    @fw = px * size
+  end
+
+  # The 640x360 screens' pixels at this screen's scale.
+  def u(n)
+    n * @k
+  end
+
+  # Pixel width with the font set by fnt (ASCII half the full width).
   def tw(s)
     w = 0
     i = 0
     n = s.bytesize
+    half = @fw / 2
     while i < n
       b = s.getbyte(i)
       if b < 0x80
-        w += 6
+        w += half
         i += 1
       else
-        w += 12
+        w += @fw
         i += b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : 2)
       end
     end
@@ -924,17 +971,27 @@ class MahjongApp < FmrbApp
   end
 
   def button(type, tiles, x, y, label)
-    w = tw(label) + 12
-    @buttons << [type, x, y, w, 20, tiles]
-    @gfx.fill_round_rect(x, y, w, 20, 4, C_BTN)
-    text(x + 6, y + 4, label)
+    w = tw(label) + u(12)
+    @buttons << [type, x, y, w, u(20), tiles]
+    @gfx.fill_round_rect(x, y, w, u(20), u(4), C_BTN)
+    text(x + u(6), y + u(4), label)
     w
   end
 
   def draw_screen
+    t0 = Machine.board_millis
+    m = @unsupported ? :retro : mode
+    if @xl && m == :table
+      xl_draw
+      @gfx.present
+      perf_note(:draw, Machine.board_millis - t0)
+      note_latency
+      return
+    end
+    @xl_items = nil
     @buttons = []
     clear_user_area(C_FELT)
-    m = @unsupported ? :retro : mode
+    fnt(12, @k)
     if m == :retro
       text(@x0 + 8, @y0 + 8, t(:mj_title))
       text(@x0 + 8, @y0 + 26, t(:mj_retro))
@@ -954,10 +1011,41 @@ class MahjongApp < FmrbApp
       draw_result if @view["res"] || @view["fin"]
     end
     @gfx.present
-    if @lat_pending
-      @lat = @lat_pending
-      @lat_pending = nil
-      Log.info("mahjong: act -> screen #{@lat} ms")
+    perf_note(:draw, Machine.board_millis - t0) if m == :table
+    note_latency
+  end
+
+  def note_latency
+    return unless @lat_pending
+    @lat = @lat_pending
+    @lat_pending = nil
+    Log.info("mahjong: act -> screen #{@lat} ms")
+    perf_note(:lat, @lat)
+  end
+
+  # ------------------------------------------------------------ measuring
+  #
+  # With /home/mahjong_perf.on present, the time of every table drawing and
+  # of every action to its screen go to /home/mahjong_perf.txt (one line
+  # each: "draw ms items px" / "lat ms action"), rewritten every 20 lines.
+
+  def perf_wanted?
+    File.exist?(PERF_ON)
+  rescue
+    false
+  end
+
+  def perf_note(kind, ms)
+    return unless @perf_on
+    @perf << (kind == :draw ? "draw #{ms} #{@xl ? @xl_n_items : 0} #{@xl ? @xl_n_px : 0}" : "lat #{ms} #{@act_type}")
+    @perf.shift if @perf.size > 5000
+    return unless @perf.size % 20 == 0
+    begin
+      f = File.open(PERF_OUT, "w")
+      f.write(@perf.join("\n") + "\n")
+      f.close
+    rescue => e
+      Log.info("mahjong: perf: #{e.message}")
     end
   end
 
@@ -974,42 +1062,42 @@ class MahjongApp < FmrbApp
   end
 
   def draw_status
-    x = @x0 + 8
-    y = @y0 + 8
+    x = @x0 + u(8)
+    y = @y0 + u(8)
     text(x, y, "#{t(:mj_title)}  #{@name}")
     line = net_line || "#{t(:mj_joining)}: #{@table}"
-    text(x, y + 20, line, C_DIM)
-    text(x, y + 40, @note, C_TURN) unless @note.empty?
+    text(x, y + u(20), line, C_DIM)
+    text(x, y + u(40), @note, C_TURN) unless @note.empty?
   end
 
   # The tables on the network, with what their last put said.
   def draw_list
-    x = @x0 + 8
-    y = @y0 + 8
+    x = @x0 + u(8)
+    y = @y0 + u(8)
     text(x, y, "#{t(:mj_title)}  #{@name}")
     l = net_line
-    text(x, y + 18, l, C_DIM) if l
-    y += 40
+    text(x, y + u(18), l, C_DIM) if l
+    y += u(40)
     if @table_list.empty?
       text(x, y, t(:mj_searching), C_DIM)
     else
       text(x, y, t(:mj_tables), C_DIM)
-      y += 18
+      y += u(18)
       i = 0
       while i < @table_list.size
         p = @table_list[i]
         s = @tables[p] || {}
-        @gfx.fill_rect(x - 2, y - 3, @w - 16, 20, C_SEL) if i == @list_sel % @table_list.size
+        @gfx.fill_rect(x - u(2), y - u(3), @w - u(16), u(20), C_SEL) if i == @list_sel % @table_list.size
         # The host's app is always games: show <host>/<table>.
         parts = p.split("/")
         line = "#{parts[0]}/#{parts[2]}  #{table_status(s)}"
-        text(x + 2, y + 1, line, i == @list_sel % @table_list.size ? C_TURN : C_TEXT)
-        @buttons << [B_JOIN, x - 2, y - 3, @w - 16, 20, [i]]
-        y += 22
+        text(x + u(2), y + u(1), line, i == @list_sel % @table_list.size ? C_TURN : C_TEXT)
+        @buttons << [B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i]]
+        y += u(22)
         i += 1
       end
     end
-    text(x, @y0 + @h - 18, @note, C_TURN) unless @note.empty?
+    text(x, @y0 + @h - u(18), @note, C_TURN) unless @note.empty?
   end
 
   def table_status(s)
@@ -1032,35 +1120,35 @@ class MahjongApp < FmrbApp
   # The lobby: the four seats, who watches, the owner's buttons.
   def draw_lobby
     v = @view
-    x = @x0 + 8
-    y = @y0 + 8
+    x = @x0 + u(8)
+    y = @y0 + u(8)
     text(x, y, "#{t(:mj_title)}  #{t(:mj_lobby)}  #{@table}")
     l = net_line
-    text(x, y + 16, l, C_DIM) if l
+    text(x, y + u(16), l, C_DIM) if l
     nm = v["nm"].is_a?(Array) ? v["nm"] : []
     sk = seat_kinds
     ow = v["ow"].to_i
-    row_h = @big ? 30 : 24
-    y = @y0 + (@big ? 44 : 36)
-    bx = @x0 + (@big ? 330 : 230)
+    row_h = u(@big ? 30 : 24)
+    y = @y0 + u(@big ? 44 : 36)
+    bx = @x0 + u(@big ? 330 : 230)
     s = 0
     while s < 4
-      @gfx.fill_rect(x - 2, y - 4, @w - 16, row_h - 4, C_SEL) if s == @seat
+      @gfx.fill_rect(x - u(2), y - u(4), @w - u(16), row_h - u(4), C_SEL) if s == @seat
       who = sk[s] == 0 ? t(:mj_empty) : nm[s].to_s
       label = "#{t(:mj_seat)}#{s + 1}  #{who}"
       label = "#{label}  [#{t(:mj_owner)}]" if s == ow
       label = "#{label}  (#{t(:mj_away)})" if away?(s)
-      text(x + 2, y + 2, label, sk[s] == 0 ? C_DIM : (s == @seat ? C_TURN : C_TEXT))
+      text(x + u(2), y + u(2), label, sk[s] == 0 ? C_DIM : (s == @seat ? C_TURN : C_TEXT))
       cx = bx
       if s == @seat
-        cx += button(B_STAND, [], cx, y - 2, t(:mj_stand)) + 4
+        cx += button(B_STAND, [], cx, y - u(2), t(:mj_stand)) + u(4)
       elsif sk[s] != 1
-        cx += button(B_SIT, [s], cx, y - 2, "#{t(:mj_sit)} #{s + 1}") + 4
+        cx += button(B_SIT, [s], cx, y - u(2), "#{t(:mj_sit)} #{s + 1}") + u(4)
       end
       if owner? && sk[s] == 0
-        button(B_CPU_ON, [s], cx, y - 2, t(:mj_cpu))
+        button(B_CPU_ON, [s], cx, y - u(2), t(:mj_cpu))
       elsif owner? && sk[s] == 2
-        button(B_CPU_OFF, [s], cx, y - 2, t(:mj_cpu_off))
+        button(B_CPU_OFF, [s], cx, y - u(2), t(:mj_cpu_off))
       end
       y += row_h
       s += 1
@@ -1077,16 +1165,16 @@ class MahjongApp < FmrbApp
       end
       i += 1
     end
-    text(x + 2, y + 2, "#{t(:mj_watchers)}#{w}", C_DIM)
-    y += 22
+    text(x + u(2), y + u(2), "#{t(:mj_watchers)}#{w}", C_DIM)
+    y += u(22)
     cx = x
     if owner?
-      cx += button(B_CPU_ON, [], cx, y, t(:mj_fill)) + 6 if sk.index(0)
-      cx += button(B_START, [], cx, y, t(:mj_start)) + 6 if sk.index(0).nil?
+      cx += button(B_CPU_ON, [], cx, y, t(:mj_fill)) + u(6) if sk.index(0)
+      cx += button(B_START, [], cx, y, t(:mj_start)) + u(6) if sk.index(0).nil?
     end
-    cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + 6
-    text(x + 2, y + 26, t(:mj_owner_starts), C_DIM) unless owner?
-    text(x + 2, y + 44, @note, C_TURN) unless @note.empty?
+    cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + u(6)
+    text(x + u(2), y + u(26), t(:mj_owner_starts), C_DIM) unless owner?
+    text(x + u(2), y + u(44), @note, C_TURN) unless @note.empty?
   end
 
   def status_line
