@@ -1,0 +1,7 @@
+app_handle_name = "mahjong"
+app_screen_name = "Mahjong"
+app_screen_name_ja = "麻雀"
+default_window_mode = "fullscreen"
+# 640x360 on Modern and the browser build while it is on top.
+fullscreen_hires = true
+single_instance = true
