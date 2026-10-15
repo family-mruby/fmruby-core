@@ -615,11 +615,13 @@ class MahjongApp < FmrbApp
         lx = bx + (XL_BW - tw(label)) / 2
         ly = rl == 0 ? by + XL_BH - 22 : by + 6
         text(lx, ly, label, col)
+        @gfx.fill_rect(lx, ly + 17, tw(label), 2, C_TURN) if s == cur && v["st"] == "play"
         xl_stick(bx + XL_BW / 2 - 24, rl == 0 ? ly - 8 : ly + 19) if stick
       else
         name = fit(name, 72)
         lx = rl == 3 ? bx + 6 : bx + XL_BW - 6 - (tw("#{head}#{name}") > tw(pts) ? tw("#{head}#{name}") : tw(pts))
         text(lx, by + 112, "#{head}#{name}", col)
+        @gfx.fill_rect(lx, by + 147, tw(pts), 2, C_TURN) if s == cur && v["st"] == "play"
         text(lx, by + 130, pts, col)
         xl_stick(lx, by + 149) if stick
       end
@@ -701,12 +703,13 @@ class MahjongApp < FmrbApp
     fin = @view["fin"]
     wins = res.is_a?(Hash) && res["wn"].is_a?(Array) ? res["wn"] : []
     big = wins.size <= 2
+    over = fin.is_a?(Array) && @view["st"] == "over"
     fnt(12, 2)
     hgt = 24
     wins.each { |w| hgt += xl_win_height(w, big) }
-    hgt += 40 if res.is_a?(Hash) && wins.empty?
-    hgt += 70 if res.is_a?(Hash)
-    over = fin.is_a?(Array) && @view["st"] == "over"
+    hgt += 30 if res.is_a?(Hash) # the round
+    hgt += 34 if res.is_a?(Hash) && wins.empty?
+    hgt += 130 if res.is_a?(Hash) && !over
     hgt += 40 + fin.size * 30 + 34 if over
     hgt += 56
     bw = 800
@@ -720,6 +723,8 @@ class MahjongApp < FmrbApp
     y = by + 12
     if res.is_a?(Hash)
       k = res["k"].to_s
+      text(x, y, round_head(res), C_DIM)
+      y += 30
       if k == "tsumo_agari" || k == "ron_agari"
         i = 0
         while i < wins.size
@@ -732,27 +737,21 @@ class MahjongApp < FmrbApp
                else t(:mj_draw)
                end
         text(x, y, head, C_TURN)
-        y += 30
-        if res["tp"].is_a?(Array)
-          tp = res["tp"]
-          s = ""
-          i = 0
-          while i < tp.size
-            s = "#{s} #{seat_name(tp[i])}"
-            i += 1
-          end
-          text(x, y, "#{t(:mj_tenpai)}:#{s}")
-        end
         y += 34
       end
-      d = res["d"].is_a?(Array) ? res["d"] : []
-      i = 0
-      while i < 4 && i < d.size
-        dv = d[i].to_i
-        text(x + (i % 2) * 380, y + (i / 2) * 30, "#{seat_name(i)} #{dv > 0 ? '+' : ''}#{dv}")
-        i += 1
+      unless over
+        # Every seat: wind, name (and tenpai at a draw), before -> after, the change.
+        i = 0
+        while i < 4
+          l = score_line(i, res)
+          cy = y + i * 30
+          text(x, cy, l[0])
+          text(x + 400, cy, l[1], C_DIM)
+          text(x + 640, cy, l[2], delta_color(i, res))
+          i += 1
+        end
+        y += 130
       end
-      y += 70
     end
     if over
       text(x, y, t(:mj_over), C_TURN)
@@ -800,11 +799,26 @@ class MahjongApp < FmrbApp
       i += 1
     end
     xl_draw_item(xl_tile_item(big, 0, w["ag"].to_i, x + hc.size * tw_ + 12, y, 1))
+    # The melds after the winning tile, smaller when they would not fit.
+    ms = meld_lists(w["w"].to_i)
+    n = 0
+    ms.each { |m| n += m.size }
+    cx = x + (hc.size + 1) * tw_ + 12
+    big_m = big && cx + n * 48 + ms.size * 12 <= x + 768
+    mw = big_m ? 48 : 24
+    my = big_m || !big ? y : y + 32
+    ms.each do |m|
+      cx += 12
+      m.each do |c|
+        xl_draw_item(xl_tile_item(big_m, 0, c, cx, my, 0))
+        cx += mw
+      end
+    end
     y += (big ? 64 : 32) + 10
     ys = w["y"].is_a?(Array) ? w["y"] : []
     i = 0
     while i < ys.size
-      text(x + (i % 3) * 250, y + (i / 3) * 28, ys[i].to_s)
+      text(x + (i % 3) * 256, y + (i / 3) * 28, yaku_label(w, i))
       i += 1
     end
     y += ((ys.size + 2) / 3) * 28

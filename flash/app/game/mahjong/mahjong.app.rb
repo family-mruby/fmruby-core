@@ -45,7 +45,9 @@
 #
 # Keys. The list of tables: up / down choose, Enter joins. The lobby: 1-4
 # sit in that seat, s stand, c fill the empty seats with CPUs (the owner),
-# Enter start (the owner), Esc leave the table. The game: left / right choose
+# Enter start (the owner), Esc leave the table, up / down choose a local
+# rule and left / right change it (the owner; a click on a rule steps it).
+# The game: left / right choose
 # a tile, Enter discards it (the drawn tile when none is chosen) or goes on
 # after a result, Esc passes a call (a spectator: leaves); r riichi (then
 # Enter: the chosen tile, or the first that declares), t tsumo / ron, p pon,
@@ -56,6 +58,8 @@
 # The 1280x720 table (methods of this class, in a file of its own: an app
 # file is read whole and may be at most 64 KB).
 require "/app/game/mahjong/mahjong_xl"
+# The local rules, the spectators' score line, the result of a round (MJ3b).
+require "/app/game/mahjong/mahjong_panels"
 
 class MahjongApp < FmrbApp
   APP = "game"            # this app's Asterism application name (the G0 range)
@@ -152,8 +156,10 @@ class MahjongApp < FmrbApp
       "not offered" => "今はできない", "not playing" => "対局中ではない", "not waiting" => "待ち合わせ中ではない",
       "taken" => "その席は埋まっている", "no seat" => "その席は無い", "humans" => "人の席がもう無い",
       "not owner" => "卓の主だけができる", "seats" => "4 席がそろっていない", "no human" => "人が 1 人もいない",
-      "no change" => "変わらない", "full" => "卓が満員"
+      "no change" => "変わらない", "full" => "卓が満員", "spectators" => "観戦の人数が上限",
+      "value" => "選べない値", "no rule" => "その項目は無い"
     }
+    setup_rule_strings
   end
 
   def t(k)
@@ -463,7 +469,8 @@ class MahjongApp < FmrbApp
         enter_table(@table, r)
         Log.info("mahjong: joined #{@table} (#{f.took_ms} ms)")
       else
-        @note = r.is_a?(Hash) && r["error"] == "full" ? "#{t(:mj_full)}: #{@table}" : reason(r)
+        e = r.is_a?(Hash) ? r["error"] : nil
+        @note = e == "full" ? "#{t(:mj_full)}: #{@table}" : reason(e || r)
         @table = nil
       end
     rescue ::Asterism::Error => e
@@ -887,6 +894,7 @@ class MahjongApp < FmrbApp
   def lobby_key(k)
     ch = k[1]
     ch += 32 if ch >= 65 && ch <= 90
+    return if rule_key(k)
     if k[0] == FmrbConst::KEY_ESC || ch == 27
       leave_table
     elsif enter?(k)
@@ -1021,6 +1029,9 @@ class MahjongApp < FmrbApp
       leave_table
     elsif type == B_ASSIST
       cycle_assist
+    elsif type == B_RULE
+      @rule_sel = tiles[0]
+      rule_step(tiles[0], 1)
     elsif type >= B_SIT
       lobby(type, tiles.empty? ? -1 : tiles[0])
     else
@@ -1299,7 +1310,7 @@ class MahjongApp < FmrbApp
     bx = @x0 + u(@big ? 330 : 230)
     s = 0
     while s < 4
-      @gfx.fill_rect(x - u(2), y - u(4), @w - u(16), row_h - u(4), C_SEL) if s == @seat
+      @gfx.fill_rect(x - u(2), y - u(4), (rules && @big ? u(436) : @w - u(16)), row_h - u(4), C_SEL) if s == @seat
       who = sk[s] == 0 ? t(:mj_empty) : nm[s].to_s
       label = "#{t(:mj_seat)}#{s + 1}  #{who}"
       label = "#{label}  [#{t(:mj_owner)}]" if s == ow
@@ -1331,7 +1342,8 @@ class MahjongApp < FmrbApp
       end
       i += 1
     end
-    text(x + u(2), y + u(2), "#{t(:mj_watchers)}#{w}", C_DIM)
+    text(x + u(2), y + u(2), fit("#{t(:mj_watchers)}#{w}", rules && @big ? u(436) : @w - u(16)), C_DIM)
+    draw_rules
     y += u(22)
     cx = x
     if owner?
@@ -1349,7 +1361,7 @@ class MahjongApp < FmrbApp
   def status_line
     return "#{t(:mj_lost)}" if @net != :up || reconnecting?
     return t(:mj_host_away) if @host_away
-    return "#{t(:mj_watching)} #{@note}" if @seat.nil?
+    return "#{t(:mj_watching)} #{turn_text} #{@note}" if @seat.nil?
     return "#{t(:mj_others)} #{@note}" if @others && @view["st"] == "play" && calls_phase?
     @note
   end
@@ -1402,6 +1414,8 @@ class MahjongApp < FmrbApp
       col = away ? C_AWAY : (s == cur && v["st"] == "play" ? C_TURN : C_TEXT)
       p = seat_label_pos(rl)
       text(p[0], p[1], label, col)
+      # The seat to act: underlined too (a spectator has no hand to tell it).
+      @gfx.fill_rect(p[0], p[1] + 13, tw(label), 2, C_TURN) if s == cur && v["st"] == "play"
       s += 1
     end
   end
@@ -1660,7 +1674,10 @@ class MahjongApp < FmrbApp
       bx += button(o[0], tl, bx, y, label) + 4 if label
       i += 1
     end
-    bx += button(B_LEAVE, [], bx, y, t(:mj_leave)) + 4 if @seat.nil?
+    if @seat.nil?
+      bx += button(B_LEAVE, [], bx, y, t(:mj_leave)) + 4
+      draw_score_strip if @big
+    end
     if @big && @seat
       fnt(12, 1)
       button(B_ASSIST, [], @x0 + @w - tw(assist_label) - 16, @y0 + 2, assist_label)
@@ -1692,118 +1709,6 @@ class MahjongApp < FmrbApp
     when A_KYUUSHU then "#{t(:mj_kyuushu)} N"
     when A_NEXT then "#{t(:mj_next)} Enter"
     end
-  end
-
-  # The result of a round (or the game) over the middle of the table. A
-  # double ron has one block per winner, in turn order from the discarder.
-  def draw_result
-    res = @view["res"]
-    fin = @view["fin"]
-    wins = res.is_a?(Hash) && res["wn"].is_a?(Array) ? res["wn"] : []
-    multi = wins.size > 1
-    bx = @x0 + (@big ? 150 : 40)
-    by = @y0 + (@big ? (multi ? 40 : 62) : 30)
-    bw = @big ? 340 : 346
-    bh = @big ? (multi ? 270 : 206) : (multi ? 200 : 132)
-    @gfx.fill_rect(bx, by, bw, bh, C_BOX)
-    @gfx.draw_rect(bx, by, bw, bh, C_TURN)
-    x = bx + 6
-    y = by + 4
-    if res.is_a?(Hash)
-      k = res["k"].to_s
-      if k == "tsumo_agari" || k == "ron_agari"
-        i = 0
-        while i < wins.size
-          y = draw_win(wins[i], k, res["f"], x, y, multi)
-          i += 1
-        end
-      else
-        head = if k == "kyuushu_kyuuhai" then t(:mj_kyuushu_end)
-               elsif k == "sanchahou" then t(:mj_sanchahou)
-               else t(:mj_draw)
-               end
-        text(x, y, head, C_TURN)
-        y += 16
-        if res["tp"].is_a?(Array)
-          tp = res["tp"]
-          s = ""
-          i = 0
-          while i < tp.size
-            s = "#{s} #{seat_name(tp[i])}"
-            i += 1
-          end
-          text(x, y, "#{t(:mj_tenpai)}:#{s}")
-          y += 16
-        end
-      end
-      d = res["d"].is_a?(Array) ? res["d"] : []
-      i = 0
-      while i < 4 && i < d.size
-        dv = d[i].to_i
-        text(x + (i % 2) * 165, y + (i / 2) * 14, "#{seat_name(i)} #{dv > 0 ? '+' : ''}#{dv}")
-        i += 1
-      end
-    end
-    if fin.is_a?(Array) && @view["st"] == "over"
-      y = by + bh - 88
-      text(x, y, t(:mj_over), C_TURN)
-      i = 0
-      while i < fin.size
-        f = fin[i]
-        text_spaced(x, y + 16 + i * 13, fin_line(f))
-        i += 1
-      end
-      text(x, y + 72, t(:mj_back_lobby), C_DIM)
-    end
-  end
-
-  # One winner's block; returns the y below it. Compact (multi): the yaku in
-  # four columns.
-  def draw_win(w, k, from, x, y, multi)
-    text(x, y, win_head(w, k, from), C_TURN)
-    y += 16
-    hc = bytes_of(w["h"])
-    i = 0
-    while i < hc.size
-      if @big
-        small_tile(hc[i], x + i * 23, y)
-      else
-        text(x + i * 13, y, tile_text(hc[i]))
-      end
-      i += 1
-    end
-    ag = w["ag"].to_i
-    if @big
-      small_tile(ag, x + hc.size * 23 + 6, y)
-    else
-      text(x + hc.size * 13 + 4, y, tile_text(ag), C_TURN)
-    end
-    y += @big ? 36 : 15
-    ys = w["y"].is_a?(Array) ? w["y"] : []
-    cols = multi ? 4 : 3
-    cw = multi ? 82 : 110
-    i = 0
-    while i < ys.size
-      text(x + (i % cols) * cw, y + (i / cols) * 14, ys[i].to_s)
-      i += 1
-    end
-    y += ((ys.size + cols - 1) / cols) * 14 + 2
-    text_spaced(x, y, w["pt"].to_s, C_TURN)
-    y + 16
-  end
-
-  # "<winner> ツモ" / "<winner> ロン (<who dealt in> から)".
-  def win_head(w, k, from)
-    return "#{seat_name(w['w'])} #{t(:mj_tsumo)}" if k == "tsumo_agari"
-    "#{seat_name(w['w'])} #{t(:mj_ron)} (#{seat_name(from)} #{t(:mj_from)})"
-  end
-
-  # A line of the final ranking: "1位 <name> 31200 (+21.2)".
-  def fin_line(f)
-    pt = f[3].to_i
-    sign = pt < 0 ? "-" : "+"
-    pt = -pt if pt < 0
-    "#{f[1]}#{t(:mj_rank)} #{seat_name(f[0])} #{f[2]} (#{sign}#{pt / 10}.#{pt % 10})"
   end
 
   def seat_name(s)
