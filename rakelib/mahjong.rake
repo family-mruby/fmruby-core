@@ -4,7 +4,7 @@
 # up or down in one go. The work is tools/mahjong_local.rb.
 
 namespace :mahjong do
-  desc "Start zenohd, the mahjong game host and the page server, print the address (rake wasm:web first)"
+  desc "Start zenohd, the mahjong game host and the page server, print the address (rake wasm:dist first)"
   task :up do
     sh "ruby #{File.join(ROOT_DIR, 'tools', 'mahjong_local.rb')} up"
   end

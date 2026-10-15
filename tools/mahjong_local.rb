@@ -17,8 +17,10 @@
 #   2. the game host (asterism-games next to fmruby-core, or MAHJONG_GAMES_DIR),
 #      config/example.yml: two tables, mahjong1 and mahjong2. The MAHJONG_*
 #      settings of the environment pass through (MAHJONG_CPU_MS and the rest).
-#   3. the page server (rake wasm:serve, PORT or 8006) for the bundle built by
-#      rake wasm:web.
+#   3. the page server (rake wasm:serve DIST=1, PORT or 8006) for the
+#      self-contained bundle rake wasm:dist made (wasm/build/dist: the page and
+#      the machine of the branch it was built on, so the working copy can move
+#      to another branch while it is served).
 # Each part that is already running is left as it is. Then it prints the
 # address to open. down stops the host and the server this tool started and
 # stops zenohd (KEEP_ZENOHD=1 leaves it).
@@ -27,12 +29,13 @@
 # WebSocket of zenohd); a Windows browser reaches WSL's localhost the same way.
 
 require "fileutils"
+require "net/http"
 require "socket"
 
 # Run from a file, fmruby-core is one up; run as `git show <branch>:tools/
 # mahjong_local.rb | ruby - down` (a working copy on another branch), it is
 # the current directory.
-CORE = __dir__ ? File.expand_path("..", __dir__) : Dir.pwd
+CORE = __FILE__ == "-" ? Dir.pwd : File.expand_path("..", __dir__)
 ROOT = File.expand_path("..", CORE)
 GAMES = File.expand_path(ENV["MAHJONG_GAMES_DIR"] || File.join(ROOT, "asterism-games"))
 RUN = File.join(CORE, "wasm", "build", "mahjong_local")
@@ -40,7 +43,16 @@ PORT = (ENV["PORT"] || 8006).to_i
 WS_PORT = 7449
 COMPOSE = ["docker", "compose", "-f", "docker-compose.yml",
            "-f", "docker/asterism/docker-compose.zenoh-ws.yml"].freeze
-URL = "http://localhost:#{PORT}/wasm/web/index.html?w=1280&h=720&app=/app/game/mahjong/mahjong.app.rb"
+QUERY = "?w=1280&h=720&app=/app/game/mahjong/mahjong.app.rb"
+DIST = File.join(CORE, "wasm", "build", "dist")
+
+# The page's address on the server listening on PORT: the dist bundle is at
+# the root, the development tree under wasm/web/.
+def url
+  root = Net::HTTP.start("127.0.0.1", PORT, open_timeout: 1, read_timeout: 2) { |h| h.head("/index.html").code } rescue nil
+  path = root == "200" ? "/index.html" : "/wasm/web/index.html"
+  "http://localhost:#{PORT}#{path}#{QUERY}"
+end
 
 def listening?(port)
   Socket.tcp("127.0.0.1", port, connect_timeout: 0.5).close
@@ -78,7 +90,7 @@ end
 
 def up
   abort "#{GAMES}: no asterism-games here (set MAHJONG_GAMES_DIR)" unless File.exist?(File.join(GAMES, "bin", "asterism-games"))
-  abort "no browser bundle: run `rake wasm:web` in fmruby-core first" unless File.exist?(File.join(CORE, "wasm", "build", "core_web.js"))
+  abort "no browser bundle: run `rake wasm:dist` in fmruby-core first" unless File.exist?(File.join(DIST, "index.html"))
 
   # 1. zenohd
   if listening?(WS_PORT)
@@ -105,14 +117,14 @@ def up
   if listening?(PORT)
     puts "page server: already listening on #{PORT}"
   else
-    pid = spawn_logged("serve", {}, ["rake", "wasm:serve", "PORT=#{PORT}"], CORE)
+    pid = spawn_logged("serve", {}, ["rake", "wasm:serve", "PORT=#{PORT}", "DIST=1"], CORE)
     wait_for("page server", 30) { listening?(PORT) }
     puts "page server: up (pid #{pid}, port #{PORT})"
   end
 
   puts
   puts "Open (Chrome or Edge on this PC, Windows included):"
-  puts "  #{URL}"
+  puts "  #{url}"
   puts "Stop everything: ruby tools/mahjong_local.rb down (or rake mahjong:down)"
 end
 
@@ -147,7 +159,7 @@ def status
   puts "game host:   #{h ? "running (pid #{h})" : 'not started by this tool'}"
   s = pid_alive?("serve")
   puts "page server: #{listening?(PORT) ? "listening on #{PORT}" : 'down'}#{s ? " (pid #{s})" : ''}"
-  puts "open:        #{URL}"
+  puts "open:        #{url}" if listening?(PORT)
 end
 
 case ARGV[0]

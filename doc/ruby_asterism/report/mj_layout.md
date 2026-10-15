@@ -178,8 +178,8 @@
 
 `C:\Users\Public\asterism_deploy\mj_layout\HOWTO.md` に置いた。要点:
 
-1. WSL の fmruby-core で `rake mahjong:up` (同じもの `ruby tools/mahjong_local.rb up`)。zenohd (ws つき)・ゲームホスト・開発サーバのうち動いていないものを起こし、開く住所を出す。
-2. Windows の Chrome か Edge で `http://localhost:8006/wasm/web/index.html?w=1280&h=720&app=/app/game/mahjong/mahjong.app.rb`。`w=1280&h=720` が解像度 (ページの Resolution の 1280 x 720 と同じ)、`app=` で卓が開く。
+1. WSL の fmruby-core で `rake wasm:dist` (一度)、`rake mahjong:up` (同じもの `ruby tools/mahjong_local.rb up`)。zenohd (ws つき)・ゲームホスト・開発サーバのうち動いていないものを起こし、開く住所を出す。開発サーバは `wasm:dist` の自己完結の束 (`wasm/build/dist`、ページのコードと機械をその時点で写したもの) を出す (`rake wasm:serve DIST=1`)。開発の形 (`/wasm/web/`) だとページのコードが作業コピーから読まれ、develop に戻すと 1280x720 の選択肢が消えるため。
+2. Windows の Chrome か Edge で `http://localhost:8006/index.html?w=1280&h=720&app=/app/game/mahjong/mahjong.app.rb`。`w=1280&h=720` が解像度 (ページの Resolution の 1280 x 720 と同じ)、`app=` で卓が開く。
 3. 卓の一覧で mahjong1 を Enter、`1` で座る、`C` で CPU を入れる、Enter で始める。
 4. 止めるのは `rake mahjong:down` (zenohd を残すなら `KEEP_ZENOHD=1`)。作業コピーが develop のときは `git show feature/mj-layout:tools/mahjong_local.rb | ruby - down` (fmruby-core で)。
 
