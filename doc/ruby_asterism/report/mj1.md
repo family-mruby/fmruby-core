@@ -1,6 +1,6 @@
 # MJ1 報告: 麻雀の Step 1 (ゲームホストと CPU 3 人、牌の画像の卓)
 
-> 状態: 完了 (検収待ち) | 更新: 2026-10-15 | instruction_mj1.md の実装と確認の記録。新しいリポジトリ asterism-games にゲームホスト (CRuby、riichi_engine 0.1.0) を作り、fmruby-core に卓の画面 (flash/app/game/mahjong/、640x360、牌は BMP のシート) と牌の生成スクリプト (tools/mahjong_tilegen.rb) を置いた。手元の zenohd とブラウザ版で、自分 1 人と CPU 3 人の半荘を注入の操作で最後まで打ち、途中でゲームホストを止めて起動し直しても同じ場面から続いた。1 通の最大は 516 B。riichi_engine 0.1.0 には直しの要る点が 10 あり、ゲームホストの側で回避した (6 章)
+> 状態: 完了 (検収待ち) | 更新: 2026-10-15 | instruction_mj1.md の実装と確認の記録 (9 章は検収後の直し: Retro から卓を外す、BMP の上限、手牌のシート 1 枚、点数の行と CPU の名前)。新しいリポジトリ asterism-games にゲームホスト (CRuby、riichi_engine 0.1.0) を作り、fmruby-core に卓の画面 (flash/app/game/mahjong/、640x360、牌は BMP のシート) と牌の生成スクリプト (tools/mahjong_tilegen.rb) を置いた。手元の zenohd とブラウザ版で、自分 1 人と CPU 3 人の半荘を注入の操作で最後まで打ち、途中でゲームホストを止めて起動し直しても同じ場面から続いた。1 通の最大は 516 B。riichi_engine 0.1.0 には直しの要る点が 10 あり、ゲームホストの側で回避した (6 章)
 
 ## 1. 作ったもの
 
@@ -185,8 +185,84 @@ MessagePack の Hash で、牌は 1 バイトの番号を並べたバイナリ (
 - 人間 4 人: 今は `humans: 1`。鳴きの割り込みは「全員の宣言がそろうまで待つ」作りで、人間が何人いても動くが、待ち時間の扱い (先に宣言した人を待たせる長さ、優先の高い人だけ待つ) は決めていない。ダブロンを入れるならエンジンの外で組む (6 章の 8)。
 - 観戦: put の見え方 (手牌なし) がそのまま使える。数手遅らせるならゲームホストの put を遅らせる。
 - `sit` の席の決め方は「呼んだノード ID」で、ID は名乗り (ACL で縛らない限り偽れる)。部屋 (G2) では合言葉と組み合わせているので Step 1 ではこれで十分だが、部屋の中で ID を偽ると他人の席に入れる。座るときにも部屋の鍵から取った値を添える形が要るかもしれない。
-- Retro での扱い (案): (a) 今のまま「Modern とブラウザ版で動きます」と出す、(b) `config/storage_exclude_<Retro の各ボード>.txt` に `app/game/mahjong` を書いて Retro のイメージから外す (シート 130 KB も消える)。(b) を勧める。
-- 手牌のシートを 1 枚にするなら、picoruby-fmrb-bmp332 の 256 px の上限 (行の入れ替えの一時領域が 256 バイトの配列) を上げる。
-- 卓の画面の仕上げ (Step 3): 局の結果の「30符 2翻」で数字と漢字が重なって見える、上家・下家の鳴きが 3 組を超えると河に重なる、横向きの牌 (リーチの宣言牌・鳴いた牌) は絵が無いので、今は赤い線と並びで表している。役の名前の英語、局の結果の箱の配置、鳴きの牌の選び方 (赤五を残すかどうか) もここ。
+- Retro での扱い (案): (a) 今のまま「Modern とブラウザ版で動きます」と出す、(b) `config/storage_exclude_<Retro の各ボード>.txt` に `app/game/mahjong` を書いて Retro のイメージから外す (シート 130 KB も消える)。(b) を勧める。→ (b) にした (9.1)。
+- 手牌のシートを 1 枚にするなら、picoruby-fmrb-bmp332 の 256 px の上限 (行の入れ替えの一時領域が 256 バイトの配列) を上げる。→ 上げて 1 枚にした (9.2・9.3)。
+- 卓の画面の仕上げ (Step 3): 局の結果の「30符 2翻」で数字と漢字が重なって見える (9.4 で直した)、上家・下家の鳴きが 3 組を超えると河に重なる、横向きの牌 (リーチの宣言牌・鳴いた牌) は絵が無いので、今は赤い線と並びで表している。役の名前の英語、局の結果の箱の配置、鳴きの牌の選び方 (赤五を残すかどうか) もここ。
 - ゲームホストを docker の image にして update.sh で更新する形、console の図への見張りは未着手。
 - 端末 (Tab5・P4-Nano) では動かしていない。焼かずに `tab5_fs` で `/app/game/mahjong/` を送れば試せる (ルータは `/home/asterism/config.toml`)。
+
+## 9. 検収後の直し (2026-10-15 ユーザの決定)
+
+コミット: fmruby-core `8799ff76` (feature/mj1-mahjong)、asterism-games `0013b1b` (main)。
+
+### 9.1 Retro から卓を外す
+
+- `config/storage_exclude_naryav3.txt` と `config/storage_exclude_atom_display.txt` (Retro に当たるボードの全部。ATOM_DISPLAY はサポート中断中でビルドは通らないが、再開したときに同じ扱いになるように置いた) に `app/game/mahjong` を書いた。AtomS3R は `app/game` ごと外してあるので触っていない。
+- NARYAv3 のビルドで `build.ninja` に `rm -rf .../storage_root/app/game/mahjong` が入り、`build/storage_root/app/game/` に mahjong が無いことを確かめた。
+- 卓の「Modern とブラウザ版で動きます」の表示は残した。Retro の端末のイメージからは消えるが、Retro の sim (`FMRB_HW_TARGET=NARYAv3 rake build:linux`) は flash/ の全部を持つ (storage_exclude はボードのイメージだけに効く) ので、そこでは卓が起動できる。表示が無いと、320x240 に入らない配置で Asterism につなぎに行く。残す理由はアプリの先頭のコメントに書いた。
+
+### 9.2 BMP の上限
+
+| 場所 | 前 | 後 | 根拠 |
+|---|---|---|---|
+| `fmrb_bmp332_parse` (picoruby-fmrb-bmp332) の幅・高さ | 256 | 2048 (`FMRB_BMP332_MAX_DIM`) | 機械が出す最も広い画面 (NARYAv4 の HDMI 1280 px) を超える。シートや連番の絵の帯は画面より広く並べることがある (手牌のシートは 420)。1024 では 1280 の全画面の絵が入らない。幅・高さは `uint16_t` に収まり、2048 x 2048 でも行の計算は 32 bit を溢れない |
+| 下から上の行の入れ替え | スタックの `uint8_t temp_row[256]` | 1 バイトずつ入れ替える (一時領域なし) | この関数はアプリの VM のタスク (`BMP332.parse`、mrb_malloc) と表示のタスク (display_local、システムのプール) の両方から呼ばれ、ヒープが違う。確保をやめれば、どちらのスタックも内蔵 RAM も増えない。420x224 で 4.7 万回の入れ替えで、読み込み 1 回の手間としては小さい |
+| display_local (Modern・ブラウザ版) の `LOAD_SPRITE_BMP` のファイルの大きさ | 64 KB | 256 KB | ファイル全体をシステムのプール (500 KB、P4 では PSRAM) に読む。256 KB はアプリが持てる最大の画面 640x360 の絵 1 枚 (231,478 B) が入り、プールの半分を超えない |
+| graphics-audio (sim と Retro の WROVER) | 64 KB・256 px | 変えていない | 下の 9.2.1 |
+
+- 画素のずれの確かめ方: ホストの gcc で `fmrb_bmp332_parse` に新しい手牌のシート (420x224) を通し、Ruby で BMP を直接読んだ結果と全画素が一致した。幅 2049、ファイルの外を指す画素の位置 (足すと 32 bit を溢れる値)、1 バイト短いファイルはどれも -1 で断る。画素の位置の確かめは前は足し算が溢れうる形だったので、引き算の形に直した。
+- この gem を通るほかの上限: スプライトの作成 (core の `fmrb_gfx_create_sprite_image`、display_local の `display_local_sprite_image_create`) は幅・高さに上限が無く、画素は PSRAM に取る (420x224 の RGB565 で 188 KB)。`DRAW_TILE` の切り出しの座標は `int16_t` で 32767 まで。送る塊は BMP の中身を運ばない (パスだけ) ので上限に関わらない。
+
+#### 9.2.1 sim と Retro (graphics-audio)
+
+- graphics-audio は BMP の読み込みを自分で持っている (`main/common/fmrb_bmp332.c` が core の gem と同じ中身の写し、`graphics_handler.cpp` の `LOAD_SPRITE_BMP` が 64 KB まで)。Retro の WROVER も sim も同じコード。指示どおり Retro の上限は変えていない。
+- sim は 640x360 にならない (`fmrb_app_fullscreen_hires_size` は display_local とブラウザ版だけ。graphics-audio は画面の切り替えを持たない) ので、sim では手牌の大きい牌を描く場面が無い。そこで卓は**手牌のシートを大きい卓になったときだけ読む** (河のシートは常に読む)。sim は河のシート 1 枚だけを読み、graphics-audio を直さずに済んだ。
+- 大きい BMP を渡したときに壊れずに断ること (sim の graphics-audio で確かめた。Retro の WROVER と同じコード): 一時の試しのアプリで、手牌のシート (95,158 B) は `LOAD_SPRITE_BMP: invalid size 95158`、64 KB 未満で幅 300 px の BMP は `LOAD_SPRITE_BMP: parse failed` のエラー 1 行で断り、続けて読んだ河のシートは普通に読めた。core 側は送るだけなので例外も出ない (アプリはそのまま動く)。試しのアプリはコミットしていない。
+- graphics-audio の上限を上げるなら、core の gem と同じ直し (`fmrb_bmp332.c` の写しと 64 KB) を graphics-audio にもする。WROVER の内蔵 RAM の事情があるので、今回は手を付けていない。
+
+### 9.3 手牌のシートを 1 枚に
+
+| ファイル | 大きさ | 中身 | バイト |
+|---|---|---|---|
+| `tiles_hand.bmp` | 420x224 | 手牌 42x56 の全部 (10 列 x 4 行) | 95,158 |
+| `tiles_river.bmp` | 240x128 | 河 24x32 の全部 (10 列 x 4 行、前と同じ) | 31,798 |
+
+- 2 枚のシートが同じ並びになった: 牌の番号 n の場所は src_x = (n % 10) * 幅、src_y = (n / 10) * 高さ。スクリプトの先頭と卓のアプリの先頭の表を直した。asterism-games の README は牌の番号だけを書いていて (シートの形は書いていない)、直すところは無かった。
+- 絵柄は変えていない: 前のシート 2 枚はスクリプトの出力のままだった (手で直されていない) ことを `cmp` で確かめ、新しいシートの 38 マスが前のシートの同じ牌のマスと全画素一致、空きの 2 マスが透明色だけであることを確かめた。河のシートはバイト単位で前と同じ。
+- storage に足す大きさ: シート 2 枚で 126,956 B (前の 3 枚 128,930 B から 1,974 B 減)。
+- 確認用の `sheets_preview.png` は `C:\Users\Public\asterism_deploy\screenshots\mj1\sheets_preview_one_hand_sheet.png`。
+
+### 9.4 点数の行の「2翻」
+
+- 原因: 文字は重なっていない。efontJA 12 の字形を調べると (LovyanGFX の `lgfx_efont_ja_12` の u8g2 の字形の情報)、半角の「2」は 6 px の升の 1-5 列を使って右端まで塗り、「翻」「符」「点」は 12 px の升の 0 列から始まる。そのため「2翻」は間に空いた列が 1 本も無く、「翻」の左の偏の密な線と「2」がくっついて重なったように見える (「0」は 2-5 列なので 1 列空く)。画面の写しの画素を数えて、字の位置そのものは正しいことを確かめた。
+- 直し: 点数の行 (エンジンが返す `"30符 2翻 2300点"`) を、半角の文字のあとに全角の文字が来るところで 2 px 空けて描く (`text_spaced`)。ほかの行は変えていない。
+- ブラウザ版で CPU のロンの結果を出して確かめた (`s2_web_result_score_line.png`)。
+
+### 9.5 CPU の名前
+
+- 原因: ゲームホストが CPU の席を席の番号で名付けていた (`"CPU#{席 + 1}"`)。自分が席 2 を引くと CPU1・CPU2・CPU4 になる。
+- 直し (asterism-games): CPU は CPU どうしの席の順に番号を振る。人が座ったとき・席を離れたとき・書き出した卓を読み戻したときに振り直す。試験 (`test_cpus_are_numbered_among_themselves`) で、自分がどの席でも CPU1-3、離れると CPU1-4 になることを確かめた。
+- 書き出し済みの状態 (前の名前) も、読み戻したときに振り直される。
+
+### 9.6 確認
+
+| 確認 | 結果 |
+|---|---|
+| fmruby-core `rake test` | 通った (golden 103、MicroPython の smoke) |
+| asterism-games `bundle exec rake test` | 通った (15 件、ネットワークの試験は飛ばす)。`ASTERISM_TEST_ROUTER=tcp/127.0.0.1:7447` の `test_network.rb` も通った |
+| Linux の標準構成の sim (Modern 426x240、Spinel カーネル + Spinel エディタ) | 卓に座り、CPU1・CPU2・CPU3 の名前で局の途中まで描け、打牌できた。graphics-audio が読んだのは河のシートだけ。core のエラー行 0。エディタを起動して 1 打鍵 (`a`) まで通った (`s1_sim_table_cpu_names.png`) |
+| wasm のビルド (`rake wasm:web`) とブラウザ版 | 卓が 640x360 で 1 枚の手牌のシートから描けた (`s1_web_table_one_hand_sheet.png`)。注入の打牌で東 2 局まで進め、CPU のロンの結果の点数の行が読めることを確かめた (`s2_web_result_score_line.png`) |
+| ESP32 のビルド TAB5・NARYAv4・NARYAv3 | 3 つとも通った (`FMRB_HW_TARGET` を環境変数で渡し、切り替えは `rake clean_all`) |
+
+内蔵 RAM (静的な DIRAM、`idf.py size`)。develop は同じ時点の develop (`6b981da8`、このブランチの元のコミットに文書のコミット 1 つを足したもの):
+
+| ボード | develop | このブランチ | 差 | ファームの大きさの差 |
+|---|---|---|---|---|
+| TAB5 | 129,698 (.text 85,210 / .data 14,788 / .bss 29,700) | 129,698 (同じ) | 0 | -48 B |
+| NARYAv4 | 125,180 (.text 85,300 / .data 14,724 / .bss 25,156) | 125,180 (同じ) | 0 | -48 B |
+| NARYAv3 | 126,035 (.text 84,463 / .data 23,116 / .bss 18,456) | 126,035 (同じ) | 0 | -16 B |
+
+- 行のバッファ 256 B はスタック (動くときの値) だったので静的な DIRAM には出ない。今回それが無くなった分、BMP を読むタスクのスタックの使い方は 256 B 減る。
+- 端末には焼いていない。Tab5・P4-Nano の実機で 420 px の手牌のシートを読むところは、ブラウザ版と同じ display_local のコードで確かめた扱い (実機の確認はまだ)。
+
+画面の写し (`C:\Users\Public\asterism_deploy\screenshots\mj1\`): `s1_sim_table_cpu_names.png`、`s1_web_table_one_hand_sheet.png`、`s2_web_result_score_line.png`、`sheets_preview_one_hand_sheet.png`。
