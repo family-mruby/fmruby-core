@@ -12,7 +12,11 @@ class MahjongApp < FmrbApp
   # the lobby (the host takes rule(token, item, value) before the game
   # only); everybody sees them. Item 9 is the extra round ("延長"): the
   # west round of a hanchan and the south round of a tonpuu game (a host
-  # before MJ-E2 has the west round only).
+  # before MJ-E2 has the west round only). Item 10 is the time (MJ-E3,
+  # README "Time"): its value is a code, the seconds for a move plus 1000
+  # times the bank's ("5+20" is 20005, a fixed 20 s is 20); "ru" has the
+  # seconds for a move, "tb" the bank, "tc" the codes to choose from. A
+  # host before MJ-E3 has none of the two: fixed times, RULE_TURNS.
   B_RULE = 108
   RULE_TURNS = [10, 20, 30, 60]
   RULE_AKA = [0, 3, 4]
@@ -31,19 +35,43 @@ class MahjongApp < FmrbApp
     rx.is_a?(Array) ? ru + rx : ru
   end
 
-  # The value of item i as the screen says it.
+  # Item i's value in ru (item 10: its code, with the bank of "tb").
+  def rule_value(ru, i)
+    return ru[i] unless i == 10
+    tb = @view["tb"]
+    ru[i] + (tb.is_a?(Integer) ? tb : 0) * 1000
+  end
+
+  # The value of item i as the screen says it (item 10: the code).
   def rule_text(i, v)
     return v == 1 ? "東風" : "半荘" if i == 0
     return v == 0 ? "なし" : "#{v}枚" if i == 2
     return v == 1 ? "流局" : "全員和了" if i == 4
-    return "#{v}秒" if i == 10
+    return (v >= 1000 ? "#{v % 1000}+#{v / 1000}" : v.to_s) + "秒" if i == 10
     v == 1 ? "あり" : "なし"
   end
 
   def rule_choices(i)
     return RULE_AKA if i == 2
-    return RULE_TURNS if i == 10
+    if i == 10
+      tc = @view["tc"]
+      return tc.is_a?(Array) && tc.size > 0 ? tc : RULE_TURNS
+    end
     [0, 1]
+  end
+
+  # The time left on the player's own move, in whole seconds rounded up:
+  # "3+20秒" (what is left of the move's own time and the bank; "dl" has
+  # the bank's ms as its third number, README "Time") or "12秒".
+  def time_left_text
+    ms = @deadline - Machine.board_millis
+    ms = 0 if ms < 0
+    move = ms - @bank_ms
+    if @bank_ms > 0
+      return "#{(move + 999) / 1000}+#{@bank_ms / 1000}#{t(:mj_rest)}" if move > 0
+      return "0+#{(ms + 999) / 1000}#{t(:mj_rest)}"
+    end
+    "#{(ms + 999) / 1000}#{t(:mj_rest)}"
   end
 
   # The owner steps item i to the next (step 1) or the last (-1) choice.
@@ -51,7 +79,7 @@ class MahjongApp < FmrbApp
     ru = rules
     return unless ru && owner? && i < ru.size
     list = rule_choices(i)
-    k = list.index(ru[i])
+    k = list.index(rule_value(ru, i))
     k = k.nil? ? 0 : (k + step) % list.size
     return if @cmd_f || @token.nil?
     @cmd_f = proxy.async.rule(@token, i, list[k])
@@ -85,7 +113,7 @@ class MahjongApp < FmrbApp
     return unless ru
     unless @big
       # The small screen: one line under the title.
-      s = "#{rule_text(0, ru[0])} 喰タン#{rule_text(1, ru[1])} 赤#{ru[2]} #{rule_text(10, ru[10])}"
+      s = "#{rule_text(0, ru[0])} 喰タン#{rule_text(1, ru[1])} 赤#{ru[2]} #{rule_text(10, rule_value(ru, 10))}"
       text(@x0 + u(8), @y0 + u(22), s, C_DIM) if net_line.nil?
       return
     end
@@ -101,7 +129,7 @@ class MahjongApp < FmrbApp
       sel = own && i == @rule_sel
       @gfx.fill_rect(x - u(2), y - u(2), w, u(17), sel ? C_SEL : C_BOX) if own
       text(x + u(2), y, @rule_names[i], C_TEXT)
-      v = rule_text(i, ru[i])
+      v = rule_text(i, rule_value(ru, i))
       text_spaced(x + w - tw(v) - u(8), y, v, sel ? C_TURN : C_TEXT)
       @buttons << [B_RULE, x - u(2), y - u(2), w, u(17), [i]] if own
       y += u(18)

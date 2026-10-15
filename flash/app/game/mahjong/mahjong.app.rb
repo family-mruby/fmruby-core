@@ -243,6 +243,7 @@ class MahjongApp < FmrbApp
     @act_sv = 0
     @lat = nil
     @deadline = nil
+    @bank_ms = 0          # the bank's ms in the time left of the own move (README "Time")
     @others = false       # the host waits for other seats' calls
     @second = 0
     @mem_at = 0
@@ -555,6 +556,7 @@ class MahjongApp < FmrbApp
     mine = @seat ? (1 << @seat) : 0
     bits = dl.is_a?(Array) ? dl[0].to_i : 0
     @deadline = bits & mine != 0 ? Machine.board_millis + dl[1].to_i : nil
+    @bank_ms = @deadline && dl.size > 2 ? dl[2].to_i : 0
     @others = bits & ~mine != 0 && bits & mine == 0
     @pick = false unless offer(A_RIICHI)
     @waits = parse_waits(v["wt"])
@@ -1687,11 +1689,7 @@ class MahjongApp < FmrbApp
     wt = waits_text
     msg = "#{t(:mj_pick)} #{msg}" if @pick && wt.nil?
     msg = "#{wt} #{msg}" if wt
-    if @deadline
-      left = (@deadline - Machine.board_millis) / 1000
-      left = 0 if left < 0
-      msg = "#{left}#{t(:mj_rest)} #{msg}"
-    end
+    msg = "#{time_left_text} #{msg}" if @deadline
     msg = "#{msg} #{t(:mj_resp)} #{@lat}#{t(:mj_ms)}" if @lat
     text(bx + 4, y + 4, msg, C_TURN) unless msg.strip.empty?
   end
@@ -1758,8 +1756,8 @@ class MahjongApp < FmrbApp
       @mem_at = now + MEM_EVERY_MS
       Log.info("mahjong: pool #{FmrbApp.pool_used / 1024} KB (#{FmrbApp.pool_usage}%)")
     end
-    if @deadline && now / 1000 != @second
-      @second = now / 1000
+    if @deadline && (@deadline - now) / 1000 != @second
+      @second = (@deadline - now) / 1000
       @dirty = true
     end
     if @dirty
