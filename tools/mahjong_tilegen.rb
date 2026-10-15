@@ -18,13 +18,12 @@
 # (SpriteImage#load_bmp + FmrbGfx#draw_tile), 8-bit BMPs whose pixel values
 # are RGB332 colours (the palette is the RGB332 decode, so a paint program
 # shows the right colours; Family mruby reads the index as the colour):
-#   DIR/tiles_hand_0.bmp   210x224  m and p, 42x56 cells
-#   DIR/tiles_hand_1.bmp   210x224  s and z (and back), 42x56 cells
+#   DIR/tiles_hand.bmp     420x224  every tile, 42x56 cells
 #   DIR/tiles_river.bmp    240x128  every tile, 24x32 cells
-#   DIR/sheets_preview.png          the three sheets at 3x, for checking
-# Grids without gaps: the cell of tile number i (TILES below) is
-#   hand:  sheet i / 20, k = i % 20, src_x = (k % 5) * 42, src_y = (k / 5) * 56
-#   river: src_x = (i % 10) * 24, src_y = (i / 10) * 32
+#   DIR/sheets_preview.png          the two sheets at 3x, for checking
+# Grids of 10 x 4 cells without gaps, the same on both sheets: the cell of
+# tile number i (TILES below) is
+#   src_x = (i % 10) * cell width, src_y = (i / 10) * cell height
 # Tile numbers: 0..8 1m..9m, 9 0m, 10..18 1p..9p, 19 0p, 20..28 1s..9s, 29 0s,
 # 30..36 1z..7z, 37 back (the rest of the last row is empty).
 # The transparent colour (rounded corners, the empty cells) is RGB332 0xE3
@@ -635,8 +634,7 @@ end
 
 SHEETS = [
   # [file, profile, columns, rows, first tile number, count]
-  ["tiles_hand_0.bmp", HAND, 5, 4, 0, 20],
-  ["tiles_hand_1.bmp", HAND, 5, 4, 20, 18],
+  ["tiles_hand.bmp", HAND, 10, 4, 0, 38],
   ["tiles_river.bmp", RIVER, 10, 4, 0, 38],
 ].freeze
 

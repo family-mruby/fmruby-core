@@ -14,18 +14,21 @@
 #   same node gets its seat and token back from sit.
 # - Modern (Tab5, P4-Nano) and the browser build: 640x360 (fullscreen_hires).
 #   A smaller screen (the Linux sim, 426x240) gets a compact table with the
-#   discards as text. Retro (S3) has no table: the app says so.
+#   discards as text, and only the river sheet.
+# - Retro (S3): its image leaves this app out (config/storage_exclude_naryav3.txt).
+#   A Retro sim keeps the whole tree, so the app still says it has no table.
 #
 # The tiles are sprite sheets (8-bit BMPs whose pixel values are RGB332;
 # made by tools/mahjong_tilegen.rb --sheets, then edited by hand: the sheets
 # are the source of truth). Tile numbers (one byte on the wire):
 #   0..8 1m..9m, 9 0m (red five), 10..18 1p..9p, 19 0p, 20..28 1s..9s,
 #   29 0s, 30..36 1z..7z (E S W N white green red), 37 back.
-# Cells, without gaps, transparent colour RGB332 0xE3:
-#   tiles_hand_0.bmp / tiles_hand_1.bmp (210x224 each, 5 x 4 cells of 42x56):
-#     sheet n / 20, k = n % 20, src_x = (k % 5) * 42, src_y = (k / 5) * 56
-#   tiles_river.bmp (240x128, 10 x 4 cells of 24x32):
-#     src_x = (n % 10) * 24, src_y = (n / 10) * 32
+# Both sheets are 10 x 4 cells without gaps, transparent colour RGB332 0xE3:
+#   tiles_hand.bmp (420x224, cells of 42x56), tiles_river.bmp (240x128,
+#   cells of 24x32); tile n is at src_x = (n % 10) * w, src_y = (n / 10) * h.
+# The hand sheet is wider than 256 px, which the sim's sprite loader (the
+# same code as Retro's) refuses; it is loaded only for the big table, which
+# the sim never shows.
 #
 # Keys: left / right choose a tile, Enter discards it (the drawn tile when
 # none is chosen) or goes on after a result, Esc passes a call; r riichi
@@ -110,12 +113,15 @@ class MahjongApp < FmrbApp
     @clicks = []
     @buttons = []
     @unsupported = FmrbConst::HW_FAMILY != "modern"
+    @hand_sheet = nil
+    @river_sheet = nil
     layout
     if @unsupported
       draw_screen
       return
     end
-    load_sheets
+    @river_sheet = load_sheet("tiles_river.bmp", 240, 128)
+    load_hand_sheet
     st = ::FmrbAsterism.settings
     @id = st.node
     @locator = st.router
@@ -153,6 +159,7 @@ class MahjongApp < FmrbApp
 
   def on_resize(w, h)
     layout
+    load_hand_sheet unless @unsupported
     @dirty = true
   end
 
@@ -164,24 +171,20 @@ class MahjongApp < FmrbApp
     @big = @w >= 640 && @h >= 360
   end
 
-  def load_sheets
-    @sheets = nil
-    names = ["tiles_hand_0.bmp", "tiles_hand_1.bmp", "tiles_river.bmp"]
-    i = 0
-    while i < names.size
-      @gfx.sync_file("#{APP_DIR}/#{names[i]}", dest: "#{CACHE_DIR}/#{names[i]}")
-      i += 1
-    end
-    h0 = SpriteImage.new(@gfx, width: 210, height: 224, transparent_color: KEY_COLOR, use_transparent: true)
-    h0.load_bmp("#{CACHE_DIR}/tiles_hand_0.bmp")
-    h1 = SpriteImage.new(@gfx, width: 210, height: 224, transparent_color: KEY_COLOR, use_transparent: true)
-    h1.load_bmp("#{CACHE_DIR}/tiles_hand_1.bmp")
-    rv = SpriteImage.new(@gfx, width: 240, height: 128, transparent_color: KEY_COLOR, use_transparent: true)
-    rv.load_bmp("#{CACHE_DIR}/tiles_river.bmp")
-    @sheets = [h0, h1, rv]
+  # A sheet as a SpriteImage, or nil (the tiles are then drawn as text).
+  def load_sheet(name, w, h)
+    @gfx.sync_file("#{APP_DIR}/#{name}", dest: "#{CACHE_DIR}/#{name}")
+    img = SpriteImage.new(@gfx, width: w, height: h, transparent_color: KEY_COLOR, use_transparent: true)
+    img.load_bmp("#{CACHE_DIR}/#{name}")
+    img
   rescue => e
-    Log.error("mahjong: tiles: #{e.message}")
-    @sheets = nil
+    Log.error("mahjong: tiles: #{name}: #{e.message}")
+    nil
+  end
+
+  # The hand sheet, the first time the table is big.
+  def load_hand_sheet
+    @hand_sheet = load_sheet("tiles_hand.bmp", 420, 224) if @big && @hand_sheet.nil?
   end
 
   # ------------------------------------------------------------ network
@@ -638,14 +641,13 @@ class MahjongApp < FmrbApp
   end
 
   def big_tile(c, x, y)
-    return draw_text_tile(c, x, y, 42, 56) unless @sheets
-    k = c % 20
-    @gfx.draw_tile(@sheets[c < 20 ? 0 : 1].id, (k % 5) * 42, (k / 5) * 56, 42, 56, dst_x: x, dst_y: y)
+    return draw_text_tile(c, x, y, 42, 56) unless @hand_sheet
+    @gfx.draw_tile(@hand_sheet.id, (c % 10) * 42, (c / 10) * 56, 42, 56, dst_x: x, dst_y: y)
   end
 
   def small_tile(c, x, y)
-    return draw_text_tile(c, x, y, 24, 32) unless @sheets
-    @gfx.draw_tile(@sheets[2].id, (c % 10) * 24, (c / 10) * 32, 24, 32, dst_x: x, dst_y: y)
+    return draw_text_tile(c, x, y, 24, 32) unless @river_sheet
+    @gfx.draw_tile(@river_sheet.id, (c % 10) * 24, (c / 10) * 32, 24, 32, dst_x: x, dst_y: y)
   end
 
   def draw_text_tile(c, x, y, w, h)
@@ -673,6 +675,32 @@ class MahjongApp < FmrbApp
       end
     end
     w
+  end
+
+  # Text with 2 px between a half-width character and a full-width one
+  # after it. The 12 px font draws some digits up to the right edge of their
+  # cell ("2" fills columns 1-5 of 6) and kanji from the left edge of theirs,
+  # so "2翻" has no blank column between them and the 2 reads as covered.
+  def text_spaced(x, y, s, color = C_TEXT)
+    run = ""
+    wide = false
+    n = s.bytesize
+    i = 0
+    while i < n
+      b = s.getbyte(i)
+      len = b < 0x80 ? 1 : (b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : 2))
+      ch = s.byteslice(i, len)
+      if !run.empty? && (b >= 0x80) != wide
+        text(x, y, run, color)
+        x += tw(run)
+        x += 2 if !wide && run.getbyte(run.bytesize - 1) != 32
+        run = ""
+      end
+      wide = b >= 0x80
+      run << ch
+      i += len
+    end
+    text(x, y, run, color) unless run.empty?
   end
 
   def button(type, tiles, x, y, label)
@@ -1023,7 +1051,7 @@ class MahjongApp < FmrbApp
           i += 1
         end
         y += ((ys.size + 2) / 3) * 14 + 2
-        text(x, y, res["pt"].to_s, C_TURN)
+        text_spaced(x, y, res["pt"].to_s, C_TURN)
         y += 16
       elsif res["tp"].is_a?(Array)
         tp = res["tp"]

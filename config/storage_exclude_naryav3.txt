@@ -1,0 +1,7 @@
+# What the Narya v3 (Retro) storage image leaves out (top-level CMakeLists.txt
+# reads this). Paths are relative to the storage root; the files stay in git
+# and in the simulator.
+#
+# What goes is what only a Modern machine can show.
+
+app/game/mahjong       # the mahjong table: 640x360 and tile sheets Retro does not load

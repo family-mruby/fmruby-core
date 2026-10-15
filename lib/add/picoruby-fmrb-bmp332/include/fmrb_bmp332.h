@@ -8,6 +8,12 @@
 extern "C" {
 #endif
 
+// The largest width and height the parser takes. Wider than any screen a
+// Family mruby machine drives (the widest is NARYAv4's 1280 px HDMI panel), so
+// a sheet or strip of frames may be laid out wider than the screen. What a
+// loader can afford to read is its own limit on the file size.
+#define FMRB_BMP332_MAX_DIM 2048
+
 // Parsed BMP332 result
 typedef struct {
     uint16_t width;

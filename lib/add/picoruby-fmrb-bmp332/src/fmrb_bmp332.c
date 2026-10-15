@@ -35,8 +35,8 @@ int fmrb_bmp332_parse(uint8_t *buf, size_t buf_size, fmrb_bmp332_t *out) {
     uint16_t bpp = read_u16(buf + 28);
     uint32_t compression = read_u32(buf + 30);
 
-    if (width <= 0 || width > 256 || bpp != 8 || compression != 0) {
-        return -1;  // Only 8-bit uncompressed, max 256px wide
+    if (width <= 0 || width > FMRB_BMP332_MAX_DIM || bpp != 8 || compression != 0) {
+        return -1;  // Only 8-bit uncompressed
     }
 
     // height > 0 means bottom-up (standard), height < 0 means top-down
@@ -45,7 +45,7 @@ int fmrb_bmp332_parse(uint8_t *buf, size_t buf_size, fmrb_bmp332_t *out) {
         height = -height;
         bottom_up = 0;
     }
-    if (height <= 0 || height > 256) {
+    if (height <= 0 || height > FMRB_BMP332_MAX_DIM) {
         return -1;
     }
 
@@ -53,21 +53,24 @@ int fmrb_bmp332_parse(uint8_t *buf, size_t buf_size, fmrb_bmp332_t *out) {
     uint32_t row_size = ((uint32_t)width + 3) & ~3u;  // Padded to 4 bytes
     uint32_t pixel_data_size = row_size * (uint32_t)height;
 
-    if (pixel_offset + pixel_data_size > buf_size) {
+    if (pixel_offset > buf_size || pixel_data_size > buf_size - pixel_offset) {
         return -1;  // File too small
     }
 
     uint8_t *pixel_data = buf + pixel_offset;
 
-    // Flip rows in place if bottom-up (convert to top-down)
+    // Flip rows in place if bottom-up (convert to top-down). Byte by byte,
+    // so the width costs no stack and no allocation: this runs both in an
+    // app's VM task and in the display task, which have different heaps.
     if (bottom_up) {
-        uint8_t temp_row[256];  // Max 256 px wide
         for (int y = 0; y < height / 2; y++) {
-            uint8_t *top = pixel_data + y * row_size;
-            uint8_t *bot = pixel_data + (height - 1 - y) * row_size;
-            memcpy(temp_row, top, row_size);
-            memcpy(top, bot, row_size);
-            memcpy(bot, temp_row, row_size);
+            uint8_t *top = pixel_data + (size_t)y * row_size;
+            uint8_t *bot = pixel_data + (size_t)(height - 1 - y) * row_size;
+            for (uint32_t i = 0; i < row_size; i++) {
+                uint8_t t = top[i];
+                top[i] = bot[i];
+                bot[i] = t;
+            }
         }
     }
 
@@ -75,7 +78,7 @@ int fmrb_bmp332_parse(uint8_t *buf, size_t buf_size, fmrb_bmp332_t *out) {
     // For simplicity, if padding exists, compact rows in place
     if (row_size != (uint32_t)width) {
         for (int y = 1; y < height; y++) {
-            memmove(pixel_data + y * width, pixel_data + y * row_size, width);
+            memmove(pixel_data + (size_t)y * width, pixel_data + (size_t)y * row_size, width);
         }
     }
 
