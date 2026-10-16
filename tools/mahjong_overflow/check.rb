@@ -360,8 +360,16 @@ EXTRAS = {
                        a.instance_variable_set(:@name_set, nil)
                        a.instance_variable_set(:@note, "この部屋での名乗りが合わない (部屋のリンクを開き直す)")
                      }]],
-  "rivers_longest_turn" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 2) }]],
-  "assist_ukeire" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 0) }]]
+  # The help marks stand above the tiles (every hand tile marked here),
+  # the chosen tile lifted with its frame: first, last (the drawn tile),
+  # while picking the riichi tile.
+  "rivers_longest_turn" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 2) }],
+                            ["pick_chosen", lambda { |a|
+                              a.instance_variable_set(:@pick, true)
+                              a.instance_variable_set(:@sel, 13)
+                            }]],
+  "assist_ukeire" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 0) }],
+                      ["chosen_drawn", ->(a) { a.instance_variable_set(:@sel, 13) }]]
 }.freeze
 
 if $PROGRAM_NAME == __FILE__
