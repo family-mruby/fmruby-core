@@ -33,7 +33,7 @@ class MahjongApp < FmrbApp
   XL_BW = 288
   XL_BH = 160
   XL_HAND_X = 48
-  XL_HAND_Y = 600
+  XL_HAND_Y = 608                  # the hand's bottom on the screen's (room above it for the marks)
   XL_RIGHT = 1272
   XL_BTN_RIGHT = 1228                # the buttons' right edge (the right player's row is past it)
   XL_BTN_ROWS = [548, 504, 460, 416] # the buttons' rows, the first at the bottom
@@ -52,7 +52,7 @@ class MahjongApp < FmrbApp
     buttons: [496, 416, 732, 172],
     r0: [496, 396, 732, 192], r1: [800, 12, 256, 448], r2: [260, 44, 524, 192], r3: [224, 172, 256, 304],
     o0: [380, 600, 848, 32], o1: [1236, 12, 32, 584], o2: [260, 10, 640, 32], o3: [12, 52, 32, 660],
-    h: [48, 590, 1188, 122], m: [400, 600, 872, 112]
+    h: [48, 588, 1188, 132], m: [400, 608, 872, 112]
   }
 
   def xl_panel(key)
@@ -84,11 +84,20 @@ class MahjongApp < FmrbApp
 
   # Items. mark: 0 none, 1 the last discard (a frame), 2 not to be chosen
   # (a bar, while picking the riichi tile), 3 a discard that leaves the hand
-  # tenpai (the help: a yellow triangle at the top), 4 one that keeps the
-  # least shanten (the help at level 3: a cyan triangle).
-  def xl_hand_item(c, x, y, mark)
+  # tenpai (the help: a yellow triangle above the tile), 4 one that keeps the
+  # least shanten (the help at level 3: a cyan triangle). A hand item has a
+  # tenth element, true when it is the chosen tile (a blue frame).
+  def xl_hand_item(c, x, y, mark, chosen = false)
     k = c < 20 ? c : c - 20
-    [x, y, 84, 112, img_id(@xl_hand[c < 20 ? 0 : 1]), (k % 10) * 84, (k / 10) * 112, mark, c]
+    [x, y, 84, 112, img_id(@xl_hand[c < 20 ? 0 : 1]), (k % 10) * 84, (k / 10) * 112, mark, c, chosen]
+  end
+
+  # The rectangle an item covers on the screen: its tile, and the help mark
+  # above it.
+  def xl_extent(it)
+    return it if it[7] < 3
+    r = mark_rise
+    [it[0], it[1] - r, it[2], it[3] + r]
   end
 
   # A river-size tile (big: 48x64, else 24x32) turned rot quarter turns.
@@ -116,13 +125,14 @@ class MahjongApp < FmrbApp
     else
       draw_text_tile(it[8], it[0], it[1], it[2], it[3])
     end
+    chosen_frame(it[0], it[1], it[2], it[3]) if it[9]
     if it[7] == 1
       @gfx.draw_rect(it[0], it[1], it[2], it[3], C_LAST)
       @gfx.draw_rect(it[0] + 1, it[1] + 1, it[2] - 2, it[3] - 2, C_LAST)
     elsif it[7] == 2
       @gfx.fill_rect(it[0] + 4, it[1] + it[3] - 14, it[2] - 8, 5, C_DIM)
     elsif it[7] >= 3
-      tenpai_mark(it[0], it[1], it[2], 8, it[7] == 4 ? C_KEEP : C_TURN)
+      assist_mark(it[0], it[1], it[2], it[7] == 4 ? C_KEEP : C_TURN)
     end
     @xl_n_items += 1
     @xl_n_px += it[2] * it[3]
@@ -392,7 +402,7 @@ class MahjongApp < FmrbApp
       y = XL_HAND_Y - (i == @sel ? XL_LIFT : 0)
       hm = help_mark(c)
       mark = hm == :tenpai ? 3 : (hm == :keep ? 4 : (pick && !can_discard?(c) ? 2 : 0))
-      out << xl_hand_item(c, x, y, mark)
+      out << xl_hand_item(c, x, y, mark, i == @sel)
       i += 1
     end
     out
@@ -473,7 +483,7 @@ class MahjongApp < FmrbApp
         a = old[i]
         b = items[i]
         if a != b
-          clears << a if a
+          clears << xl_extent(a) if a
           draws << b if b
         end
         i += 1
@@ -514,7 +524,7 @@ class MahjongApp < FmrbApp
           if old[i] == it
             j = 0
             while j < clears.size
-              if overlap?(it, clears[j])
+              if overlap?(xl_extent(it), clears[j])
                 draws << it
                 break
               end

@@ -9,6 +9,7 @@
 #   ruby mahjong_tilegen.rb [OUT_DIR]
 #   ruby mahjong_tilegen.rb --sheets DIR [--force]
 #   ruby mahjong_tilegen.rb --layout-sheets SRC_DIR [DST_DIR] [--preview PNG]
+#   ruby mahjong_tilegen.rb --round DIR
 #
 # Output (OUT_DIR):
 #   OUT_DIR/hand/   42x56 tiles  (hand: 14 + 1 tiles across 640 px)
@@ -32,6 +33,11 @@
 # 30..36 1z..7z, 37 back (the rest of the last row is empty).
 # The transparent colour (rounded corners, the empty cells) is RGB332 0xE3
 # (magenta, TRANSPARENT below); no tile colour rounds to it.
+# The rounded corners are a post-process on the finished cells ("rounded
+# corners" below, radius per sheet in CORNER_R): --sheets and
+# --layout-sheets apply it (the latter to its two sources in place too), and
+# --round DIR applies it to DIR/tiles_hand.bmp and tiles_river.bmp alone,
+# for sheets edited by hand.
 #
 # **The sheets are the source of truth once edited by hand**: Family mruby
 # reads them and nothing else. --sheets refuses to overwrite an existing sheet
@@ -669,6 +675,7 @@ def write_sheets(dir, force)
   shots = []
   SHEETS.each do |file, pf, cols, rows, first, count|
     w, h, px = sheet_pixels(pf, cols, rows, first, count, tiles[pf])
+    round_sheet!(w, h, px, pf.w, pf.h, CORNER_R[file], 1)
     File.binwrite(File.join(dir, file), bmp8(w, h, px))
     shots << [w, h, px]
     puts "wrote #{file} (#{w}x#{h}, #{count} tiles)"
@@ -696,7 +703,8 @@ end
 # The sheets of the conventional table (1280x720, MJ-L) are made FROM the two
 # sheets above, not from the drawing code: the sheets are the source of truth
 # once edited by hand, so these are only their tiles scaled by whole numbers
-# (nearest neighbour) and turned by quarter turns. Edit tiles_hand.bmp /
+# (nearest neighbour), their corners rounded at the new size and turned by
+# quarter turns. Edit tiles_hand.bmp /
 # tiles_river.bmp and run --layout-sheets again; the files it writes are
 # derived and are overwritten without asking.
 #
@@ -810,20 +818,116 @@ def side_cells(hand)
     end
   end
   # Round the four corners like the tiles.
-  [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]].each { |x, y| px[y * w + x] = TRANSPARENT }
-  across = [w, h, px]
+  across = round_cell!([w, h, px], CORNER_R[SIDE_SHEET], 1)
   [across, rotate_cell(across, 90), rotate_cell(across, 270)]
+end
+
+# ---------------------------------------------------------------- rounded corners
+#
+# A post-process on finished cells, so it also holds for sheets edited by
+# hand: run again after an edit (--round, or --layout-sheets, which rounds
+# its two sources first). For each corner of a cell (seen upright, the
+# thickness at the bottom) the pixels outside a quarter circle of radius r
+# become TRANSPARENT, the pixels within t steps of them (t = the outline's
+# thickness: 1 at 1x, 2 at 2x) take the outline colour, so the border goes
+# round the corner without a gap, and a pixel further in that is still
+# transparent or outline (left from a smaller corner, as in a scaled cell)
+# takes the colour of its own row past the corner (face, thickness or
+# shadow). Nothing outside the corner squares is touched; running it twice
+# changes nothing.
+
+# Radius per sheet (px of that sheet). The 1x sheets are the sources; the
+# others are made from them (scaled, then rounded again, then turned).
+CORNER_R = {
+  "tiles_hand.bmp" => 3, "tiles_river.bmp" => 2,
+  "tiles_hand2_a.bmp" => 5, "tiles_hand2_b.bmp" => 5,
+  "tiles_river2_r0.bmp" => 4, "tiles_river2_r90.bmp" => 4,
+  "tiles_river2_r180.bmp" => 4, "tiles_river2_r270.bmp" => 4,
+  "tiles_river_r90.bmp" => 2, "tiles_river_r180.bmp" => 2, "tiles_river_r270.bmp" => 2,
+  "tiles_side.bmp" => 2,
+}.freeze
+
+# Whether corner pixel (dx, dy) (from the corner inwards) is outside radius r.
+def corner_out?(dx, dy, r)
+  return false if dx >= r || dy >= r
+  ax = dx + 0.5 - r
+  ay = dy + 0.5 - r
+  ax * ax + ay * ay > (r - 0.5) * (r - 0.5)
+end
+
+# Rounds the four corners of an upright cell [w, h, px] in place.
+def round_cell!(c, r, t)
+  w, h, px = c
+  return c if r <= 0
+  outline = px[w / 2]
+  z = r + t + 1
+  outs = []
+  r.times { |dy| r.times { |dx| outs << [dx, dy] if corner_out?(dx, dy, r) } }
+  [[0, 0, 1, 1], [w - 1, 0, -1, 1], [0, h - 1, 1, -1], [w - 1, h - 1, -1, -1]].each do |cx, cy, sx, sy|
+    at = ->(dx, dy) { (cy + sy * dy) * w + cx + sx * dx }
+    z.times do |dy|
+      ref = px[at.call(z, dy)]
+      z.times do |dx|
+        i = at.call(dx, dy)
+        if corner_out?(dx, dy, r)
+          px[i] = TRANSPARENT
+          next
+        end
+        d = [dx + 1, dy + 1].min
+        outs.each { |ox, oy| e = (dx - ox).abs + (dy - oy).abs; d = e if e < d }
+        if d <= t
+          px[i] = outline
+        elsif px[i] == TRANSPARENT || px[i] == outline
+          px[i] = ref
+        end
+      end
+    end
+  end
+  c
+end
+
+# Rounds every cell of a sheet's pixels (cells cw x ch) in place.
+def round_sheet!(w, h, px, cw, ch, r, t)
+  (h / ch).times do |row|
+    (w / cw).times do |col|
+      cell = [cw, ch, Array.new(cw * ch)]
+      ch.times { |y| cw.times { |x| cell[2][y * cw + x] = px[(row * ch + y) * w + col * cw + x] } }
+      next if cell[2].all? { |v| v == TRANSPARENT } # an empty cell
+      round_cell!(cell, r, t)
+      paste(px, w, cell, col * cw, row * ch)
+    end
+  end
+  px
+end
+
+# Rounds the two source sheets in DIR in place (only written when changed).
+def round_source_sheets(dir)
+  { "tiles_hand.bmp" => [42, 56], "tiles_river.bmp" => [24, 32] }.each do |file, (cw, ch)|
+    path = File.join(dir, file)
+    w, h, px = read_bmp8(path)
+    old = px.dup
+    round_sheet!(w, h, px, cw, ch, CORNER_R[file], 1)
+    if px == old
+      puts "#{file}: corners already round (r=#{CORNER_R[file]})"
+    else
+      File.binwrite(path, bmp8(w, h, px))
+      puts "rounded #{file} (r=#{CORNER_R[file]})"
+    end
+  end
 end
 
 def write_layout_sheets(src_dir, dst_dir, preview_path = nil)
   FileUtils.mkdir_p(dst_dir)
+  round_source_sheets(src_dir)
   src = {}
   %w[tiles_hand.bmp tiles_river.bmp].each { |f| src[f] = read_bmp8(File.join(src_dir, f)) }
   base_cell = { "tiles_hand.bmp" => [42, 56], "tiles_river.bmp" => [24, 32] }
   shots = []
   LAYOUT_SHEETS.each do |file, from, k, deg, first, count, cols|
     bw, bh = base_cell[from]
-    cells = (0...count).map { |i| rotate_cell(scale_cell(cell_of(src[from], first + i, bw, bh, 10), k), deg) }
+    cells = (0...count).map do |i|
+      rotate_cell(round_cell!(scale_cell(cell_of(src[from], first + i, bw, bh, 10), k), CORNER_R[file], k), deg)
+    end
     cw, ch = cells[0][0], cells[0][1]
     rows = (count + cols - 1) / cols
     # Full rows of cols cells, as the existing sheets (the empty cells are transparent).
@@ -880,6 +984,11 @@ if $PROGRAM_NAME == __FILE__
     end
     abort usage unless args[1]
     write_layout_sheets(args[1], args[2] || args[1], preview)
+    exit
+  end
+  if ARGV[0] == "--round"
+    abort "usage: #{$PROGRAM_NAME} --round DIR" unless ARGV[1]
+    round_source_sheets(ARGV[1])
     exit
   end
   if ARGV[0] == "--sheets"

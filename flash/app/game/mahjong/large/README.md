@@ -9,10 +9,13 @@ truth: edit those, then write these again with
 ruby tools/mahjong_tilegen.rb --layout-sheets flash/app/game/mahjong flash/app/game/mahjong/large
 ```
 
-(run in fmruby-core). The script only scales by whole numbers (nearest
-neighbour) and turns by quarter turns; the pictures are the ones of the two
-source sheets. It overwrites these files without asking, so do not edit them
-by hand.
+(run in fmruby-core). The script scales by whole numbers (nearest
+neighbour), rounds the corners again at the new size and turns by quarter
+turns; the pictures are the ones of the two source sheets. It first rounds
+the corners of the two source sheets in place (only the corner pixels; a
+sheet already round is left as it is), so an edit by hand gets the corners
+back. The radius of each sheet is `CORNER_R` in the script. It overwrites
+these files without asking, so do not edit them by hand.
 
 All are 8-bit BMPs whose pixel values are RGB332 colours, transparent colour
 RGB332 `0xE3`, grids without gaps. Tile numbers as everywhere in the game:

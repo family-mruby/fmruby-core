@@ -95,6 +95,7 @@ class MahjongApp < FmrbApp
   C_LAST = 0xFC
   C_SEL = 0x2D
   C_KEEP = 0x1F           # the help at level 3: a discard that keeps the least shanten (cyan)
+  C_CHOSEN = 0x03         # the chosen hand tile's frame (FmrbGfx::BLUE)
   C_AWAY = 0xF4           # a seat whose player is away (orange: red does not read on the felt)
   # Action numbers (asterism-games Engine).
   A_DAHAI = 1
@@ -1680,9 +1681,9 @@ class MahjongApp < FmrbApp
 
   SEL_LIFT = 6            # the 640x360 table: the chosen tile is this much higher
 
-  # Hand tile i: lifted when chosen; the riichi help marks the discards that
-  # leave the hand tenpai (a triangle at the top); while picking the riichi
-  # tile, the others get a bar.
+  # Hand tile i: lifted and framed in blue when chosen; the help marks the
+  # discards that leave the hand tenpai (a triangle above the tile); while
+  # picking the riichi tile, the others get a bar.
   def draw_hand_tile(i)
     c = hand_at(i)
     return unless c
@@ -1694,15 +1695,17 @@ class MahjongApp < FmrbApp
     else
       small_tile(c, x, y)
     end
+    chosen_frame(x, y, tile_w, tile_h) if i == @sel
     mk = help_mark(c)
     if mk
-      tenpai_mark(x, y, tile_w, @big ? 5 : 3, mk == :keep ? C_KEEP : C_TURN)
+      assist_mark(x, y, tile_w, mk == :keep ? C_KEEP : C_TURN)
     elsif @pick && !can_discard?(c)
       @gfx.fill_rect(x + 2, y + tile_h - 8, tile_w - 4, 3, C_DIM)
     end
   end
 
-  # A downward triangle at the top middle of a tile (r: its half width).
+  # A downward triangle in a w wide box at (x, y) (r: its half width): the
+  # legend of the 1280x720 help line (the hand tiles use assist_mark).
   def tenpai_mark(x, y, w, r, col = C_TURN)
     cx = x + w / 2
     @gfx.fill_triangle(cx - r - 1, y + 2, cx + r + 1, y + 2, cx, y + r + r + 3, 0x00)
@@ -1715,7 +1718,8 @@ class MahjongApp < FmrbApp
     while i < list.size
       k = list[i]
       x = hand_x(k)
-      @gfx.fill_rect(x, hand_y - SEL_LIFT, tile_w, tile_h + SEL_LIFT, C_FELT)
+      top = hand_y - SEL_LIFT - mark_rise
+      @gfx.fill_rect(x, top, tile_w, hand_y + tile_h - top, C_FELT)
       draw_hand_tile(k)
       i += 1
     end
@@ -1759,7 +1763,7 @@ class MahjongApp < FmrbApp
 
   def draw_controls
     x0 = @x0 + (@big ? 152 : 2)
-    y = hand_y - 26
+    y = hand_y - SEL_LIFT - mark_rise - u(20) # clear of the help marks over the lifted tile
     bx = x0
     list = @view["a"].is_a?(Array) ? @view["a"] : []
     i = 0

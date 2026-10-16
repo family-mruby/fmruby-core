@@ -621,6 +621,54 @@ class MahjongApp < FmrbApp
     y + (multi ? 4 : 4)
   end
 
+  # ------------------------------------------------------------ the chosen tile and the help marks
+  #
+  # Here and not in mahjong.app.rb: with these few methods more in the main
+  # file, the Linux sim's spawn failed with NoMemoryError right after the
+  # compile (comments of the same size did not), so the main file is kept
+  # from growing (doc/ruby_asterism/report/mj5.md, chapter 14).
+
+  # The help mark's half width and how far its tip comes down over the
+  # tile's top edge (1280x720, 640x360, the small table).
+  def mark_r
+    @xl ? 7 : (@big ? 4 : 3)
+  end
+
+  def mark_overlap
+    @xl ? 6 : (@big ? 3 : 2)
+  end
+
+  # How far the mark reaches above the tile's top.
+  def mark_rise
+    mark_r * 2 + 2 - mark_overlap
+  end
+
+  # The help mark of a hand tile at (x, y) (its top left, w wide): a
+  # downward triangle above the tile's middle, its tip over the top edge.
+  def assist_mark(x, y, w, col)
+    r = mark_r
+    cx = x + w / 2
+    tip = y + mark_overlap - 1
+    @gfx.fill_triangle(cx - r - 1, tip - r - r - 1, cx + r + 1, tip - r - r - 1, cx, tip, 0x00)
+    @gfx.fill_triangle(cx - r, tip - r - r, cx + r, tip - r - r, cx, tip - 2, col)
+  end
+
+  # The chosen tile's frame, inside the tile (4 px at 1280x720, 2 at
+  # 640x360, 1 on the small table), its corners cut as the tile's.
+  def chosen_frame(x, y, w, h)
+    t = @xl ? 4 : (@big ? 2 : 1)
+    @gfx.fill_rect(x + t, y, w - t - t, t, C_CHOSEN)
+    @gfx.fill_rect(x + t, y + h - t, w - t - t, t, C_CHOSEN)
+    @gfx.fill_rect(x, y + t, t, h - t - t, C_CHOSEN)
+    @gfx.fill_rect(x + w - t, y + t, t, h - t - t, C_CHOSEN)
+    return if t < 2
+    k = t / 2
+    @gfx.fill_rect(x + k, y + k, t, t, C_CHOSEN)
+    @gfx.fill_rect(x + w - k - t, y + k, t, t, C_CHOSEN)
+    @gfx.fill_rect(x + k, y + h - k - t, t, t, C_CHOSEN)
+    @gfx.fill_rect(x + w - k - t, y + h - k - t, t, t, C_CHOSEN)
+  end
+
   # ------------------------------------------------------------ the parts (MJ5)
 
   # The 640x360 table's parts, [x, y, w, h] from the user area's corner (the
@@ -628,7 +676,7 @@ class MahjongApp < FmrbApp
   # the melds and the rivers are laid out in them). The spectators' screen
   # has its own (WATCH, mahjong_watch.rb).
   LAYOUT640 = {
-    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [152, 274, 484, 20], hand: [6, 294, 630, 62],
+    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [152, 267, 484, 20], hand: [6, 287, 630, 69],
     label0: [4, 10, 144, 16], label1: [492, 38, 144, 16], label2: [152, 22, 200, 16], label3: [4, 38, 144, 16],
     melds0: [200, 324, 436, 32], melds1: [492, 54, 144, 64], melds2: [152, 38, 336, 32], melds3: [4, 54, 144, 64],
     river0: [176, 170, 288, 96], river1: [492, 120, 144, 128], river2: [176, 72, 288, 96], river3: [4, 120, 144, 128],
