@@ -1,6 +1,6 @@
 # asterism-games を Asterism の見本にする
 
-> 状態: 計画 | 更新: 2026-10-17 | 麻雀だけのゲームホストを、Asterism でサーバ側のアプリを書く見本にする。共通の枠組み (gem) とゲーム (アプリと image) に分け、書き方を Asterism らしくし、麻雀以外の例・CRuby のクライアント・網を見る CLI・MCP・AI の打ち手を足す
+> 状態: 進行中 | 更新: 2026-10-17 | GS1 完了 (report/gs1.md)、GS2 は instruction_gs2.md。麻雀だけのゲームホストを、Asterism でサーバ側のアプリを書く見本にする。共通の枠組み (gem) とゲーム (アプリと image) に分け、書き方を Asterism らしくし、麻雀以外の例・CRuby のクライアント・網を見る CLI・MCP・AI の打ち手を足す
 
 前提: report/mj1.md〜mj5.md・mj4.md (部屋と常設の卓)・g2b.md (部屋の席)、mje*.md (エンジン)、asterism-games の README、asterism の README (portable API・CRuby API・Who called・Profiles)。
 
@@ -27,7 +27,9 @@
 - CRuby は `Asterism.connect(...) do |net| ... end` の Net の書き方。受け手のスレッドと `on_error` を gem に任せ、ゲームの進行 (時間切れ・CPU) だけを自分の輪に残す。
 - 居る・居ないは `on_join` / `on_leave` で知る (今は呼び出しの間隔で「途切れ」を数えている)。
 - 端末は `on_join` を合図に卓を探し直す (今は数秒ごと)。端末の見え方の場合分けは `case/in`。
-- プロフィール (`Asterism.profile`) に卓の数などを載せる。
+- 卓の数は GS2 では網に載せない。GS4 で読む側 (網を見る CLI の watch・console) と一緒に、状態のキー `asterism/<ID>/<app>/@status` の決まりを作る (2026-10-17 ユーザ。プロフィールは現れたときに 1 回読む自己紹介で、変わり続ける数とは合わない。gs1.md 4.3)。
+- 部屋の卓は、部屋が開くアプリからゲームを引いて、そのゲームの卓を出す。部屋の設定は「開くアプリ」1 つのまま (2026-10-17 ユーザ)。
+- 互換のための部分 (`view` の 1 引数・`join`/`mine` の秘密と `rooms.secret_ids`・`ru`/`rx`/`ry` と `RULE_TURNS`) は GS2 の最初にまとめて落とす (2026-10-17 ユーザ)。
 - 手牌のような席だけの情報は、今どおり「呼び出しの答え」で渡す (購読で流さない。部屋の中は席ごとに ACL を分けても、購読される鍵は守れないため)。
 
 ## 3. 作るもの
@@ -36,7 +38,7 @@
 |---|---|---|
 | 枠組み | 2.2 と 2.3 | asterism-games (gem に切り出せる形) |
 | 麻雀 | 枠組みの上に載せ直す。見た目と動きは変えない | asterism-games (アプリ) |
-| オセロ (ホスト版) | いちばん小さな見本 (数百行)。今の端末どうしのオセロを、ゲームホストを置く形で | asterism-games、画面は fmruby-core |
+| オセロ (ホスト版) | いちばん小さな見本 (数百行)。今の端末どうしのオセロを、ゲームホストを置く形で。今の端末どうしのオセロは「オセロ (直接)」として残し、名前で区別する (2026-10-17 ユーザ) | asterism-games、画面は fmruby-core |
 | 共有のお絵かきボード | 勝ち負けの無い、状態を共有して配る例。履歴 (advanced pub/sub) と console の MCAP の記録・再生 | asterism-games、画面は fmruby-core |
 | CRuby のターミナルのクライアント | アスキーアートでオセロを観戦 (座標を打ち込んで打てる) | asterism-games |
 | 網を見る CLI | `asterism nodes` / `objects` / `watch` / `echo` / `call` / `tree`。管理者の `.tar` (見るだけの役割) で、既定は見るだけ、`call` は明示したときだけ | asterism gem |
@@ -67,4 +69,3 @@
 
 - 枠組みの gem の名前と、いつ gem に切り出すか (GS7 まで同じリポジトリの中でよいか)。
 - AI の打ち手の鍵 (Anthropic の API キー、Cloudflare の API トークン) の置き場所と、費用の上限。Jev の数字 (速さ・料金) は会社の発表なので、使う前に確かめる。
-- オセロのホスト版と、今の端末どうしのオセロを両方残すか。
