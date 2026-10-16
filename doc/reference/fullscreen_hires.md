@@ -59,6 +59,11 @@ fullscreen_hires = true              # 全画面のとき 640x360 にしてよ�
 - 持ち主が 640x360 の絵を出せない状態 (別の大きさにされた、絵が無い) が
   500ms 続いたら、自分で 426x240 に戻る。ログは
   `screen mode: owner N has shown no 640x360 frame ...`。
+- 打ち切りで戻ったあとでも、その持ち主が 640x360 の絵を present したら
+  640x360 に入り直す (最初の絵が遅いアプリのため。初回起動の麻雀は手牌の
+  シートを読む間 1 秒を超えることがある)。ログは
+  `screen mode: 640x360 owner=N (owner presented late, ...)`。新しい要求か、
+  その canvas が消える・隠れると、入り直しの対象から外れる。
 - 自分で戻したときは、入力側 (タッチ・マウス・遠隔入力) の画面の大きさも
   合わせて戻す。
 
@@ -77,9 +82,9 @@ fullscreen_hires = true              # 全画面のとき 640x360 にしてよ�
 ## Linux sim (Modern) での仕組み
 
 - 画面は graphics-audio (Linux ビルド) が描く。SET_SCREEN_MODE の規則は
-  display_local と同じで、加えて「打ち切りで戻ったあと、持ち主が 640x360 の絵を
-  出したら入り直す」を持つ (最初の絵が遅いアプリのため)。経緯は
-  `doc/fullscreen_hires/report/h5_sim.md`。
+  display_local と同じ (「打ち切りで戻ったあと、持ち主が 640x360 の絵を
+  出したら入り直す」も同じ。これは sim で先に入れ、あとで display_local にも
+  入れた)。経緯は `doc/fullscreen_hires/report/h5_sim.md`。
 - graphics-audio は INIT_DISPLAY の ACK の 2 バイト目で対応を伝え
   (`FMRB_LINK_DISPLAY_CAP_SCREEN_MODE`)、core はそれを見て初めて 640x360 を使う。
 - 共有メモリは layout 2 (640x360 の枠、枠ごとの大きさ)。sdl2-display の
