@@ -14,8 +14,9 @@
 #   has. A member without a seat watches (the table without hands).
 # - The connection is the machine's (FmrbAsterism.settings, as othello). A
 #   line that drops or a host that restarts: the app keeps asking. When the
-#   app starts again it asks each table mine() and goes back to the table it
-#   was at (the same node gets its token back).
+#   app starts again it asks each table mine() and marks in the list the
+#   tables it has a seat at; Enter goes back to the seat (the same node gets
+#   its token back). It does not go in by itself.
 # - Modern (Tab5, P4-Nano) and the browser build: 640x360 (fullscreen_hires).
 #   A smaller screen (the Linux sim, 426x240) gets a compact table with the
 #   discards as text, and only the river sheet.
@@ -134,7 +135,7 @@ class MahjongApp < FmrbApp
       mj_rest: "秒", mj_honba: "本場", mj_sticks: "供託", mj_dora: "ドラ", mj_kyoku: "局",
       mj_kyuushu_end: "九種九牌で流局", mj_sanchahou: "三家和で流局",
       mj_ms: "ms", mj_resp: "応答", mj_rank: "位", mj_from: "から",
-      mj_tables: "卓 (Enter で入る)", mj_seat: "席", mj_empty: "空き",
+      mj_tables: "卓 (Enter で入る)", mj_mine: "[自分の席あり]", mj_seat: "席", mj_empty: "空き",
       mj_sit: "座る", mj_stand: "立つ S", mj_cpu: "CPU", mj_cpu_off: "空ける", mj_fill: "CPU で埋める C",
       mj_start: "始める Enter", mj_leave: "卓を出る Esc", mj_owner: "卓の主", mj_away: "途切れ",
       mj_watchers: "観戦:", mj_lobby: "待ち合わせ", mj_playing: "対局中", mj_ended: "終局",
@@ -213,6 +214,7 @@ class MahjongApp < FmrbApp
     @table_list = []
     @list_sel = 0
     @probed = []          # tables asked mine()
+    @mine = {}            # tables where this node has a seat (marked in the list)
     @probe_f = nil
     @probe_path = nil
     @probe_at = Machine.board_millis
@@ -411,7 +413,10 @@ class MahjongApp < FmrbApp
 
   # A table found for the first time (and every table again every
   # PROBE_EVERY_MS while the list is shown): was this node at it (the app
-  # started again, or the host seated it)? Then go back to it.
+  # started again, or the host seated it)? Then the list marks it; Enter
+  # goes back to the seat (join gives the same node its token back). The
+  # app does not go in by itself, so a player who wants to watch another
+  # table is not taken back to its own.
   def probe_tables
     if @probe_f
       return unless @probe_f.done?
@@ -420,10 +425,13 @@ class MahjongApp < FmrbApp
       @probe_f = nil
       begin
         r = f.value
-        if @table.nil? && r.is_a?(Hash) && r["token"]
-          Log.info("mahjong: back at #{p}")
-          enter_table(p, r)
+        had = @mine[p]
+        if r.is_a?(Hash) && r["token"]
+          @mine[p] = true
+        else
+          @mine.delete(p)
         end
+        @dirty = true if had != @mine[p]
       rescue ::Asterism::Error => e
         @probed.delete(p) # ask again later
       end
@@ -534,6 +542,7 @@ class MahjongApp < FmrbApp
         @seat = nil
         @view = nil
         @probed = []
+        @mine = {}
         @dirty = true
       elsif v.is_a?(Hash)
         take_view(v)
@@ -1270,6 +1279,7 @@ class MahjongApp < FmrbApp
         # The host's app is always games: show <host>/<table>.
         parts = p.split("/")
         line = "#{parts[0]}/#{parts[2]}  #{table_status(s)}"
+        line = "#{line}  #{t(:mj_mine)}" if @mine[p]
         text(x + u(2), y + u(1), line, i == @list_sel % @table_list.size ? C_TURN : C_TEXT)
         @buttons << [B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i]]
         y += u(22)
