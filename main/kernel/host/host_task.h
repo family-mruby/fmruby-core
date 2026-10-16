@@ -224,6 +224,16 @@ void fmrb_host_set_screen_size(uint16_t width, uint16_t height);
  */
 void fmrb_host_get_screen_size(int *width, int *height);
 
+#ifdef CONFIG_IDF_TARGET_LINUX
+/**
+ * @brief Display capabilities graphics-audio announced (Linux build only).
+ *
+ * The FMRB_LINK_DISPLAY_CAP_* bits from the INIT_DISPLAY ACK; 0 before the
+ * ACK and for a graphics-audio that predates the capability byte.
+ */
+uint8_t fmrb_host_display_caps(void);
+#endif
+
 /**
  * @brief Read cumulative GFX counters (for runtime monitoring).
  * @param out_cmds Cumulative GFX command count since boot (may be NULL)

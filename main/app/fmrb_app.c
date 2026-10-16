@@ -3289,7 +3289,8 @@ fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_
  */
 fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height)
 {
-#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM) || \
+    (defined(CONFIG_IDF_TARGET_LINUX) && defined(FMRB_HW_FAMILY_MODERN))
     // The input sources read the screen size from here (touch, USB mouse,
     // remote input), so it follows the request before the display has even
     // switched: the cursor is rescaled at once and the next move lands in the
@@ -3343,9 +3344,19 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
 
 bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
 {
-#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
-    // Not FMRB_HW_FAMILY_MODERN: that one is also set for the Linux simulator,
-    // whose display is graphics-audio and does not know SET_SCREEN_MODE.
+#if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM) || \
+    (defined(CONFIG_IDF_TARGET_LINUX) && defined(FMRB_HW_FAMILY_MODERN))
+#if defined(CONFIG_IDF_TARGET_LINUX)
+    // The Modern simulator: graphics-audio draws the screen, and only one
+    // that says it knows SET_SCREEN_MODE (its INIT_DISPLAY ACK) can be given
+    // 640x360 canvases -- an older one would draw them past its buffers.
+    if (!(fmrb_host_display_caps() & FMRB_LINK_DISPLAY_CAP_SCREEN_MODE)) {
+        (void)width; (void)height;
+        return false;
+    }
+#endif
+    // Not FMRB_HW_FAMILY_MODERN alone: that one is also set for a Linux
+    // simulator, which needs the capability check above as well.
     const fmrb_system_config_t *conf = fmrb_kernel_get_config();
     if (conf && conf->display_width == 426 && conf->display_height == 240) {
         if (width)  *width  = 640;

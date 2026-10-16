@@ -17,9 +17,10 @@
 #   app starts again it asks each table mine() and marks in the list the
 #   tables it has a seat at; Enter goes back to the seat (the same node gets
 #   its token back). It does not go in by itself.
-# - Modern (Tab5, P4-Nano) and the browser build: 640x360 (fullscreen_hires).
-#   A smaller screen (the Linux sim, 426x240) gets a compact table with the
-#   discards as text, and only the river sheet.
+# - Modern (Tab5, P4-Nano), the Modern Linux sim and the browser build:
+#   640x360 (fullscreen_hires). A smaller screen (426x240, where the mode is
+#   not available) gets a compact table with the discards as text, and only
+#   the river sheet.
 # - The browser build at 1280x720 (MJ-L, doc/ruby_asterism/report/mj_layout.md)
 #   gets a conventional table: the four rivers around a centre board, each
 #   turned to its player, the opponents' hands as rows of tile sides, the
@@ -40,9 +41,9 @@
 # Both sheets are 10 x 4 cells without gaps, transparent colour RGB332 0xE3:
 #   tiles_hand.bmp (420x224, cells of 42x56), tiles_river.bmp (240x128,
 #   cells of 24x32); tile n is at src_x = (n % 10) * w, src_y = (n / 10) * h.
-# The hand sheet is wider than 256 px, which the sim's sprite loader (the
-# same code as Retro's) refuses; it is loaded only for the big table, which
-# the sim never shows.
+# The hand sheet is wider than 256 px, which Retro's sprite loader refuses
+# (the Linux sim's takes it); it is loaded only for the big table, which a
+# Retro screen never shows.
 #
 # Keys. The list of tables: up / down choose, Enter joins. The lobby: 1-4
 # sit in that seat, s stand, c fill the empty seats with CPUs (the owner),

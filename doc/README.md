@@ -35,7 +35,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
 - [CPU の使用率 (P4、タスクごと・場面ごと)](reference/cpu_usage.md) — **計測済** (2026-10-03) P4-Nano (NARYAv4) の実測。どの場面でも core 1 は最大 55%、core 0 は配信中を除き 17% 以下で、両方とも余っている。表示の描画の長さの大半は PPA の完了待ち (眠っている時間)。core の割り振りは変えない (2026-10-03 決定)。経緯は archive/core_alloc/report/c1.md
 - [DSI (DPI) フレームバッファの置き場所と走査のアンダーラン](reference/dpi_frame_buffer_alignment.md)
-- [全画面の高解像度モード (使い方と仕組み)](reference/fullscreen_hires.md) — **完了** (2026-09-28) P4 系 (Tab5 / NARYAv4) とブラウザ版で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
+- [全画面の高解像度モード (使い方と仕組み)](reference/fullscreen_hires.md) — **完了** (2026-10-16) P4 系 (Tab5 / NARYAv4)、ブラウザ版と Modern の Linux sim で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
 - [描画境界 (FmrbGfx ↔ 描画側) の課題と方針](reference/gfx_boundary_issues.md) — **随時更新** (2026-09-04) 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
 - [次期基板 HDMI 映像出力方式 検討資料](reference/hdmi_video_output_study.md) — **凍結** (2026-08-29) 次期基板 (NARYAv4) の HDMI 方式比較。LT8912B が最有力、基板が動くまで保留
@@ -71,7 +71,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `flash_write_flicker/` [フラッシュへの書き込みで画面が青くちらつく件 (P4)](flash_write_flicker/plan.md) — **完了 (NARYAv4)** (2026-10-02) 原因はアンダーランではなく、4 KB の消去の間 (33-49 ms) キャッシュと割り込みが止まり、DPI の送り出しを 1 フレームごとに再開する割り込みが動けないこと。CONFIG_SPI_FLASH_AUTO_SUSPEND で抜けたフレーム 0、静的な D/IRAM +76 B。ユーザの目視で解消を確認し採用。Tab5 はチップの確認待ち 〔3 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
 - `fs_kill_hang/` [ファイル操作中のアプリの kill でファイル操作が止まる件](fs_kill_hang/plan.md) — **完了** (2026-09-29) K1: 強制 kill でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる。K2: Spinel の File と Lua の io も file HAL 経由にして同じ守りを効かせ、強制 kill で Lua の lua_close を呼ばない (二重解放の修正)。sim と P4-Nano で確認 〔5 files〕
-- `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔11 files〕
+- `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-10-16) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。H5 で Modern の Linux sim も対象にした (report/h5_sim.md)。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔12 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
 - `headless_s3/` [ヘッドレス Family mruby (ESP32-S3、AtomS3R)](headless_s3/plan.md) — **進行中 (H3 まで完了)** (2026-10-13) 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト 〔11 files〕
 - `hosted_mempool/` [ESP-Hosted の転送バッファの溜め込みをやめる](hosted_mempool/plan.md) — **完了** (2026-10-06) P4 の WiFi の通信で内蔵 RAM が戻らなくなる件。ESP-Hosted の mempool を切った (CONFIG_ESP_HOSTED_USE_MEMPOOL=n、採用済)。内蔵 RAM は戻り、細切れも減り、速さは変わらない。Tab5 の確認は device_check_backlog 〔3 files〕

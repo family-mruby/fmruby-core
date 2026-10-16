@@ -184,12 +184,33 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg);
 /**
  * Initialize Graphics Audio layer and subsystems
  */
+#ifdef CONFIG_IDF_TARGET_LINUX
+// The display capabilities graphics-audio announced in its INIT_DISPLAY ACK
+// (FMRB_LINK_DISPLAY_CAP_*); 0 for one that sends the status byte alone.
+static volatile uint8_t g_display_caps;
+
+uint8_t fmrb_host_display_caps(void)
+{
+    return g_display_caps;
+}
+#endif
+
 // Callback for INIT_DISPLAY async response
 static void init_display_response_cb(uint8_t status, const uint8_t *payload,
                                       uint32_t payload_len, void *user_data) {
     volatile bool *flag = (volatile bool *)user_data;
+#ifdef CONFIG_IDF_TARGET_LINUX
+    // [status][caps]: the caps byte is absent from a graphics-audio that
+    // predates it, which then has none. Set before the flag releases the
+    // poller.
+    g_display_caps = (payload && payload_len >= 2) ? payload[1] : 0;
+    *flag = true;
+    FMRB_LOGI(TAG, "INIT_DISPLAY ACK received (status=%u, display caps=0x%02x)",
+              status, g_display_caps);
+#else
     *flag = true;
     FMRB_LOGI(TAG, "INIT_DISPLAY ACK received (status=%u)", status);
+#endif
 }
 
 // The output settings as one SET_OUTPUT command (doc/reference/audio_output.md).

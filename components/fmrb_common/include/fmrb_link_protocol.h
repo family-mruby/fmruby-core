@@ -72,6 +72,11 @@ typedef struct __attribute__((packed)) {
     uint8_t margin_y;       // Vertical margin (top+bottom) in pixels
 } fmrb_control_init_display_t;
 
+// INIT_DISPLAY's ACK payload is [status] (0 = ready), optionally followed by
+// one byte of display capabilities. A display that sends only the status byte
+// has none of them; the core must not assume a capability it was not told.
+#define FMRB_LINK_DISPLAY_CAP_SCREEN_MODE 0x01  // SET_SCREEN_MODE, 640x360 canvases
+
 typedef struct __attribute__((packed)) {
     int64_t tv_sec;          // Seconds since epoch (Unix time)
     int32_t tv_usec;         // Microseconds
@@ -149,10 +154,12 @@ typedef enum {
     FMRB_LINK_GFX_SET_COMPOSITE_REGIONS = 0x56,
     FMRB_LINK_GFX_SET_CANVAS_VIEWPORT = 0x57,
     FMRB_LINK_GFX_SET_SPRITE_CLIP = 0x58,
-    // Fullscreen high-resolution mode (doc/fullscreen_hires/). Only the
-    // Modern display task (display_local, and the browser build that shares it)
-    // knows it; the kernel never sends it to graphics-audio, so it is not
-    // part of the link version the two sides pair on.
+    // Fullscreen high-resolution mode (doc/fullscreen_hires/). The Modern
+    // display task (display_local, and the browser build that shares it) knows
+    // it, and so does graphics-audio's Linux build (the Modern simulator),
+    // which says so in its INIT_DISPLAY ACK (FMRB_LINK_DISPLAY_CAP_SCREEN_MODE).
+    // The kernel sends it to graphics-audio only then, so it is not part of
+    // the link version the two sides pair on.
     FMRB_LINK_GFX_SET_SCREEN_MODE = 0x59,
 
     // Cursor control (global resource, no canvas_id)

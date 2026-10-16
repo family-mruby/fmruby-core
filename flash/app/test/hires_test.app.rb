@@ -20,7 +20,7 @@
 #   F          fast: redraw the status every 30 ms instead of 100 ms
 #   Q / Esc    quit (the display goes back to 426x240 by itself)
 #
-# Where there is no high-resolution mode (Retro, the Linux simulator) it is
+# Where there is no high-resolution mode (Retro, the Retro simulator) it is
 # an ordinary fullscreen app at the screen's size.
 
 class HiresTestApp < FmrbApp
