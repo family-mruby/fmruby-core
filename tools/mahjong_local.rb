@@ -80,6 +80,17 @@ def spawn_logged(name, env, cmd, dir)
   pid
 end
 
+# What a log has after byte offset start (File.size before the process
+# started). Read as bytes: the log has names in Japanese, and a character
+# index at a byte offset lands past the end once there is one.
+def log_since(log, start)
+  return "" unless File.exist?(log)
+  File.open(log, "rb") do |f|
+    f.seek(start)
+    f.read.to_s
+  end
+end
+
 def wait_for(what, seconds)
   t = Time.now
   until yield
@@ -109,7 +120,7 @@ def up
     start = File.exist?(log) ? File.size(log) : 0
     env = { "ASTERISM_GAMES_CONFIG" => ENV["ASTERISM_GAMES_CONFIG"] || "config/example.yml" }
     pid = spawn_logged("host", env, %w[bundle exec bin/asterism-games], GAMES)
-    wait_for("game host (#{log})", 60) { File.exist?(log) && File.read(log)[start..].to_s.include?(" up (") }
+    wait_for("game host (#{log})", 60) { log_since(log, start).include?(" up (") }
     puts "game host: up (pid #{pid}, log #{log})"
   end
 

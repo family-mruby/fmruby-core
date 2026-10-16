@@ -45,6 +45,9 @@ the right r270. A tile laid sideways (a riichi tile, the called tile of a
 meld) takes the seat's turn plus 270. The upright small sheet (r0) is
 `../tiles_river.bmp` itself.
 
-The boards (Tab5, P4-Nano) leave this directory out of their images
-(`config/storage_exclude_tab5.txt`, `storage_exclude_naryav4.txt`): their
-apps get at most 640x360.
+The boards (Tab5, P4-Nano) leave the 2x sheets, the sides and this file
+out of their images (`config/storage_exclude_tab5.txt`,
+`storage_exclude_naryav4.txt`): their apps get at most 640x360. They keep
+the three turned small sheets (`tiles_river_r90/r180/r270.bmp`, about 95 KB):
+the 640x360 spectators' screen (`../mahjong_watch.rb`) turns each hand to
+its player with them.
