@@ -263,7 +263,7 @@ def new_app(w, h)
     started: 0, dirty: true, keys: [], clicks: [], buttons: [], unsupported: false, hand_sheet: :sheet,
     river_sheet: nil, xl_sheets: false, xl_items: nil, fw: 12, perf_on: false, perf: [], xl_n_items: 0, xl_n_px: 0,
     id: "wasm-aaaaaa", name: MjFixtures::LONG_JA[0, 12], name_set: MjFixtures::LONG_JA[0, 12], name_machine: "", name_edit: nil,
-    pending_join: nil, room_secret: nil, net: :up, net_note: "", tables: {}, table_list: [], list_sel: 0,
+    pending_join: nil, net: :up, net_note: "", tables: {}, table_list: [], list_sel: 0,
     probed: [], mine: {}, sub: nil, table: "games-host-aaaaaa/games/mahjong1", token: "t", seat: nil, view: nil,
     view_at: 0, want_v: 0, host_away: false, note: "", sel: -1, mouse_sel: false, waits: {}, uk: {}, uk_min: 9,
     assist: 1, pick: false, lat: 61, deadline: nil, bank_ms: 0, others: false, second: 0, mem_at: 0

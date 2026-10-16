@@ -272,18 +272,6 @@ class MahjongApp < FmrbApp
     (cp >= 0x3041 && cp <= 0x30FF) || (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xFF01 && cp <= 0xFF5E)
   end
 
-  # The secret of this browser in a room (the page writes it; asterism-games
-  # README "Rooms"), or nil. Sent with join and mine; never shown or logged.
-  ROOM_SECRET_FILE = "/etc/asterism_room_secret"
-
-  def load_room_secret
-    s = nil
-    File.open(ROOM_SECRET_FILE, "r") { |f| s = f.read.to_s.strip }
-    s && s.bytesize == 32 ? s : nil
-  rescue
-    nil
-  end
-
   def name_begin
     @name_edit = (@name_set || @name_machine).to_s.dup
     @u8 = ""
@@ -350,7 +338,7 @@ class MahjongApp < FmrbApp
       return join(p)
     end
     return unless changed && @table && @token
-    @rename_f = @room_secret ? proxy.async.join(@name, @room_secret) : proxy.async.join(@name)
+    @rename_f = proxy.async.join(@name)
   rescue ::Asterism::Error => e
     @note = e.message.to_s
   end

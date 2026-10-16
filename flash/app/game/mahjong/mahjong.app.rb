@@ -218,7 +218,6 @@ class MahjongApp < FmrbApp
     @assist = load_assist
     @name_machine = st.name.to_s       # config.toml's name: what the first name prompt starts from
     @name = @name_set || (@name_machine.empty? ? @id : @name_machine) # shown; join waits for @name_set
-    @room_secret = load_room_secret       # the browser build in a room (mahjong_panels.rb)
     @pending_join = nil
     @name_edit = nil      # the name being typed in the lobby (nil: not editing)
     @rename_f = nil
@@ -462,7 +461,7 @@ class MahjongApp < FmrbApp
       if @probed.index(p).nil?
         @probed << p
         @probe_path = p
-        @probe_f = @room_secret ? proxy(p).async.mine(@room_secret) : proxy(p).async.mine
+        @probe_f = proxy(p).async.mine
         return
       end
       i += 1
@@ -480,7 +479,7 @@ class MahjongApp < FmrbApp
       return
     end
     @table = p
-    @join_f = @room_secret ? proxy(p).async.join(@name, @room_secret) : proxy(p).async.join(@name)
+    @join_f = proxy(p).async.join(@name)
     @dirty = true
   rescue ::Asterism::Error => e
     @join_f = nil
