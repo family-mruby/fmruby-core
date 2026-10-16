@@ -211,7 +211,7 @@ typedef struct {
     bool                  fullscreen_switchable; // App survives fullscreen park/unpark (see context struct)
     bool                  fullscreen_hires; // Fullscreen may use the high-resolution screen (see context struct)
     bool                  resizable;        // Allow window resize (default: false)
-    bool                  large_memory;     // Use LARGE memory pool (1MB)
+    bool                  large_memory;     // Use the LARGE pool (one exclusive block, 2x the ordinary pool)
     bool                  single_instance;  // Refuse a second copy of this app (same file)
     const char*           exclusive_group;  // Refuse while another app of this group runs (NULL = none)
     uint16_t              window_width;     // Window Width (if headless, =0)

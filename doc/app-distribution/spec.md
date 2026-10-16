@@ -65,7 +65,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `rounded_corners` | 1 | 角の丸め |
 | `fullscreen_switchable` | 0 | 実行中の全画面切替 |
 | `fullscreen_hires` | false | 全画面の間だけ 640x360 にしてよい (P4 系とブラウザ版。`true` か `1`。reference/fullscreen_hires.md) |
-| `large_memory` | 0 | 大きい方のプールを専有する |
+| `large_memory` | 0 | 大きい方のプール (通常の 2 倍: Retro 1 MB、Modern 2 MB、sim とブラウザ版 3 MB) を専有する。同時に 1 アプリ。本体の `.app.rb` が大きいアプリ (コンパイルの山はソースの十数倍から二十数倍) にも要る (reference/app_memory.md) |
 | `task_stack_kb` | 16 | タスクの C スタック。`[16, 64]` KB に丸められる |
 | `single_instance` | false | 同じファイルのアプリの 2 つ目の起動を断る (`true` か `1`)。断るときはエラーの窓「This app is already running.」 |
 | `exclusive_group` | なし | 同じ名前 (15 バイトまで) を書いたアプリが動いている間は起動を断る。自分の 2 つ目も断る。例: FFT を使うアプリの `"fft"`。窓は「<動いているアプリ> is already running. / Only one "<名前>" app can run at a time.」 |

@@ -315,6 +315,28 @@ mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free_
   return 0;
 }
 
+/* family-mruby: the figures estalloc keeps on its allocation paths (see
+ * est_take_usage in lib/patch/picoruby-mruby/lib/estalloc/estalloc.c). The
+ * largest free block is what tells a full pool from a fragmented one. */
+extern void est_take_usage(ESTALLOC *est, uint32_t *peak, uint32_t *largest,
+                           uint32_t *last_fail, uint32_t *fails);
+
+int
+mrb_get_estalloc_usage(void* est_ptr, size_t* peak, size_t* largest_free,
+                       size_t* last_fail, size_t* fails)
+{
+  if (!est_ptr || !peak || !largest_free || !last_fail || !fails) {
+    return -1;
+  }
+  uint32_t p, l, f, n;
+  est_take_usage((ESTALLOC *)est_ptr, &p, &l, &f, &n);
+  *peak = p;
+  *largest_free = l;
+  *last_fail = f;
+  *fails = n;
+  return 0;
+}
+
 // PICORB_ALLOC_ESTALLOC
 #else
 // DEFAULT

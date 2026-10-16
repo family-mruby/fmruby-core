@@ -13,10 +13,12 @@ Spinel 側は [spinel_aot/spinel_gc_notes.md](spinel_aot/spinel_gc_notes.md)。
 
 - **GC は VM ごと**である。`GC.stat` は**それを呼んだ VM のもの**しか返さない。
   アプリ・desktop・kernel はそれぞれ別の mrb_state を持つ。
-- **ヒープはプール固定**である。アプリは `FMRB_MEM_POOL_SIZE_USER_APP` = 500 KB、
-  `large_memory = 1` を .toml に書いたアプリだけ 1 MB
-  (`components/fmrb_common/include/fmrb_mem_config.h`)。**足りなくなっても
-  伸びない**。
+- **ヒープはプール固定**である。アプリは `FMRB_MEM_POOL_SIZE_USER_APP`
+  (Retro 500 KB、Modern 1 MB、Linux sim とブラウザ版 1.5 MB)、
+  `large_memory = 1` を .toml に書いたアプリだけその 2 倍
+  (`components/fmrb_common/include/fmrb_mem_config.h`、機種別の表と
+  NoMemoryError の読み方は [app_memory.md](app_memory.md))。**足りなく
+  なっても伸びない**。
 - **そのプールは実機では PSRAM にある** (`EXT_RAM_BSS_ATTR`)。マーク・スイープは
   ヒープを舐める処理なので、**GC のコストだけが実機で不釣り合いに高くなる**。
   sim で軽い GC が実機で重いのはこれが理由で、CPU クロック比では説明が付かない。
@@ -304,10 +306,12 @@ end
 **アプリのソースをコンパイルした時点で 500 KB プールの 300 KB 強を使う**
 (11 KB のソースで実測 308 KB)。残り 200 KB が実行時に使える全部である。
 
-- 22 KB のファイルを `File#read` すると、**バッファと String で 2 つ分**が
-  同時に生き、直前のデータを持っていればさらに 1 つ分。
-- 大きいデータを扱うアプリは .toml に `large_memory = 1` を書いて 1 MB プールへ。
-  **ただし 1 MB プールは同時に 1 アプリしか使えない**。
+- 22 KB のファイルを `File#read` すると、String 1 つ分が要る (2026-10-16
+  まではバッファと String で 2 つ分が同時に生きていた)。直前のデータを
+  持っていればさらに 1 つ分。**要るのは一続きの空き**で、コンパイルのあとの
+  プールは細かく割れている (app_memory.md 2 章)。
+- 大きいデータを扱うアプリは .toml に `large_memory = 1` を書いて 2 倍の
+  プールへ。**ただしそのプールは同時に 1 アプリしか使えない**。
 - 症状は `NoMemoryError`。**これは `StandardError` ではない**ので、
   アプリ雛形の `rescue => e` を素通りして**何もログに残さずタスクが終わる**。
   落ちる可能性のあるアプリでは `rescue Exception => e` にしておくと原因が残る。

@@ -29,6 +29,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## 参照資料 (doc/reference/)
 
 - [TODO](reference/TODO.md)
+- [アプリのメモリ (VM プール)](reference/app_memory.md) — **完了** (2026-10-16) mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
 - [音の出力: ミュートと音量 (使い方と仕組み)](reference/audio_output.md) — **完了** (2026-10-02) 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま、出力の最後の段で無音・倍率をかける。全機種・sim・ブラウザ版で同じ。経緯は archive/audio_mute/
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)

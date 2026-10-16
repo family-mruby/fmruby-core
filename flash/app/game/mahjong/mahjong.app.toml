@@ -5,3 +5,8 @@ default_window_mode = "fullscreen"
 # 640x360 on Modern and the browser build while it is on top.
 fullscreen_hires = true
 single_instance = true
+# The LARGE pool (2x the ordinary one). Compiling the 57 KB main file peaks
+# at 94% of the ordinary pool on Modern (986 KB of 1 MB); after that compile
+# the pool is in pieces and the required files no longer fit
+# (doc/reference/app_memory.md).
+large_memory = 1
