@@ -1,5 +1,5 @@
-app_screen_name = "Othello"
-app_screen_name_ja = "オセロ"
+app_screen_name = "Othello (direct)"
+app_screen_name_ja = "オセロ (直接)"
 default_window_mode = "window"
 default_window_width = 372
 default_window_height = 222
