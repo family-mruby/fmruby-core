@@ -439,8 +439,9 @@ fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_
  * same size); the order is: entering, this first and then the resize;
  * leaving, the resize first and then this with 0 x 0.
  *
- * Only the Modern display task knows the command. On other builds (Retro,
- * the Linux simulator) nothing is sent and FMRB_ERR_NOT_SUPPORTED returns.
+ * The Modern display task knows the command, and so does graphics-audio's
+ * Linux build (the Modern simulator). On other builds (Retro, the Retro
+ * simulator) nothing is sent and FMRB_ERR_NOT_SUPPORTED returns.
  *
  * @param pid    App slot id (its main canvas becomes the owner)
  * @param width  640 for the high-resolution screen, 0 for the base one
@@ -454,10 +455,12 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
  *        this display can show it (doc/fullscreen_hires/).
  *
  * True on the builds whose display is the Modern display task in the same
- * process (FMRB_HAS_LOCAL_DISPLAY, FMRB_PLATFORM_WASM) and only while the base screen
- * is 426x240 (the browser build can be started at 640x360 or larger, where the
- * mode means nothing). False on Retro and the Linux simulator, whose display
- * is graphics-audio: the kernel then keeps the usual fullscreen.
+ * process (FMRB_HAS_LOCAL_DISPLAY, FMRB_PLATFORM_WASM), and on the Modern Linux
+ * simulator when its graphics-audio said in the INIT_DISPLAY ACK that it knows
+ * SET_SCREEN_MODE (FMRB_LINK_DISPLAY_CAP_SCREEN_MODE) -- in each case only
+ * while the base screen is 426x240 (the browser build can be started at
+ * 640x360 or larger, where the mode means nothing). False on Retro and the
+ * Retro simulator: the kernel then keeps the usual fullscreen.
  *
  * @param[out] width  640 when true (may be NULL)
  * @param[out] height 360 when true (may be NULL)

@@ -442,8 +442,9 @@ module AppLifecycleMixin
   # An app that declares fullscreen_hires (.app.toml, or the spawner's table)
   # is shown on the 640x360 screen at 2x instead of 426x240 at 3x while it owns
   # the screen in fullscreen -- where the build and the display can do that at
-  # all (_fullscreen_hires_size; nil on Retro and the Linux simulator, which
-  # keep the usual fullscreen). The app only declares; this decides, from the
+  # all (_fullscreen_hires_size; nil on Retro, the Retro simulator and a Modern
+  # simulator whose graphics-audio does not know the mode, which keep the usual
+  # fullscreen). The app only declares; this decides, from the
   # fullscreen stack and nothing else: the top frame owns the screen (a parked
   # app has been popped off it).
   #
