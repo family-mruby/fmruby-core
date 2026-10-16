@@ -200,6 +200,14 @@ typedef struct MEMORY_POOL {
   uint8_t  free_sli_bitmap[ESTALLOC_FLI_BIT_WIDTH +1 +1]; // +1=bit_width, +1=sentinel
   uint8_t  pad[3]; // for alignment compatibility on 16bit and 32bit machines
 
+  // family-mruby: usage accounting, kept up to date on every allocation and
+  // release (block sizes, headers included). 16 bytes so the struct stays a
+  // multiple of 8 on 32- and 64-bit.
+  uint32_t used_now;   // bytes in used blocks now
+  uint32_t peak;       // the highest used_now since est_init
+  uint32_t last_fail;  // request size of the last allocation that failed
+  uint32_t fails;      // number of failed allocations
+
   // free memory block index
   FREE_BLOCK *free_blocks[SIZE_FREE_BLOCKS +1];  // +1=sentinel
 } MEMORY_POOL;
@@ -212,6 +220,20 @@ typedef struct MEMORY_POOL {
 #define MSB_BIT1_SLI 0x80
 #define NLZ_FLI(x) nlz16(x)
 #define NLZ_SLI(x) nlz8(x)
+
+static inline void
+track_used(MEMORY_POOL *pool, uint32_t add)
+{
+  pool->used_now += add;
+  if (pool->used_now > pool->peak) pool->peak = pool->used_now;
+}
+
+static inline void
+track_fail(MEMORY_POOL *pool, unsigned int size)
+{
+  pool->last_fail = size;
+  pool->fails++;
+}
 
 
 #if defined(ESTALLOC_DEBUG)
@@ -522,6 +544,7 @@ est_malloc(ESTALLOC *est, unsigned int size)
   if (alloc_size < ESTALLOC_MIN_MEMORY_BLOCK_SIZE ) alloc_size = ESTALLOC_MIN_MEMORY_BLOCK_SIZE;
 
   if ((uint8_t *)BPOOL_END(pool) - alloc_size < (uint8_t *)BPOOL_TOP(pool)) {
+    track_fail(pool, size);
     return NULL; // request size is too large.
   }
 
@@ -573,6 +596,7 @@ est_malloc(ESTALLOC *est, unsigned int size)
   }
 
   // else out of memory
+  track_fail(pool, size);
   EXIT_CRITICAL(est);
   return NULL;
 
@@ -582,12 +606,14 @@ est_malloc(ESTALLOC *est, unsigned int size)
   target = pool->free_blocks[index];
   //assert(target != NULL);
   if (target == NULL) {
+    track_fail(pool, size);
     EXIT_CRITICAL(est);
     return NULL;
   }
 
  FOUND_TARGET_BLOCK:
   if ((uint8_t *)target + alloc_size > (uint8_t *)BPOOL_END(pool)) {
+    track_fail(pool, size);
     EXIT_CRITICAL(est);
     return NULL; // Check pool boundary.
   }
@@ -615,6 +641,7 @@ est_malloc(ESTALLOC *est, unsigned int size)
   }
 
   SET_USED_BLOCK(target);
+  track_used(pool, BLOCK_SIZE(target));
 
 #if defined(ESTALLOC_DEBUG)
   char *p = (char *)target;
@@ -666,6 +693,7 @@ est_permalloc(ESTALLOC *est, unsigned int size)
     prev->size += BLOCK_SIZE(tail);
     SET_USED_BLOCK( prev);
     tail = prev;
+    track_used(pool, BLOCK_SIZE(prev));
   }
   else {
     // split block
@@ -674,6 +702,7 @@ est_permalloc(ESTALLOC *est, unsigned int size)
     tail->size = tail_size;
     prev->size -= alloc_size;    // w/ flags.
     add_free_block( pool, prev);
+    track_used(pool, alloc_size);
 
 #if defined(ESTALLOC_DEBUG)
     char *p = (char *)tail;
@@ -783,6 +812,7 @@ est_free(ESTALLOC *est, void *ptr)
 
   // get target block
   FREE_BLOCK *target = BLOCK_ADRS(ptr);
+  pool->used_now -= BLOCK_SIZE(target);
 
   // check next block, merge?
   FREE_BLOCK *next = PHYS_NEXT(target);
@@ -838,6 +868,7 @@ est_realloc(ESTALLOC *est, void *ptr, unsigned int size)
   if (alloc_size < ESTALLOC_MIN_MEMORY_BLOCK_SIZE ) alloc_size = ESTALLOC_MIN_MEMORY_BLOCK_SIZE;
 
   ENTER_CRITICAL(est);
+  uint32_t old_block = BLOCK_SIZE(target);
 
   // expand? part1.
   // next phys block is free and enough size?
@@ -857,6 +888,8 @@ est_realloc(ESTALLOC *est, void *ptr, unsigned int size)
     SET_PREV_USED(release);
   } else {
     SET_PREV_USED(next);
+    pool->used_now -= old_block;
+    track_used(pool, BLOCK_SIZE(target));
     PROFILE();
     EXIT_CRITICAL(est);
     return ptr;
@@ -870,6 +903,8 @@ est_realloc(ESTALLOC *est, void *ptr, unsigned int size)
     SET_PREV_FREE(next);
   }
   add_free_block(pool, release);
+  pool->used_now -= old_block;
+  track_used(pool, BLOCK_SIZE(target));
   PROFILE();
   EXIT_CRITICAL(est);
   return ptr;
@@ -908,6 +943,41 @@ est_usable_size(ESTALLOC *est, void *ptr)
   (void)est;
   USED_BLOCK *target = BLOCK_ADRS(ptr);
   return (unsigned int)(BLOCK_SIZE(target) - sizeof(USED_BLOCK));
+}
+
+
+//================================================================
+/*! family-mruby: usage figures kept on the allocation paths, plus the
+  largest free block (a walk, so only when asked). A request fails when no
+  single free block is large enough, whatever the free total says, so the
+  largest block is the number that tells "full" from "fragmented".
+
+  @param  est        Pointer to ESTALLOC.
+  @param  peak       out: highest bytes in used blocks since est_init.
+  @param  largest    out: largest free block (header included).
+  @param  last_fail  out: request size of the last failed allocation (0: none).
+  @param  fails      out: number of failed allocations.
+*/
+void
+est_take_usage(ESTALLOC *est, uint32_t *peak, uint32_t *largest,
+               uint32_t *last_fail, uint32_t *fails)
+{
+  MEMORY_POOL *pool = (MEMORY_POOL *)est;
+
+  ENTER_CRITICAL(est);
+  uint32_t max_free = 0;
+  USED_BLOCK *block = BPOOL_TOP(pool);
+  while (block < (USED_BLOCK *)BPOOL_END(pool)) {
+    if (IS_FREE_BLOCK(block) && BLOCK_SIZE(block) > max_free) {
+      max_free = BLOCK_SIZE(block);
+    }
+    block = PHYS_NEXT(block);
+  }
+  *peak = pool->peak;
+  *largest = max_free;
+  *last_fail = pool->last_fail;
+  *fails = pool->fails;
+  EXIT_CRITICAL(est);
 }
 
 

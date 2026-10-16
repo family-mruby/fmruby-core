@@ -48,6 +48,8 @@
 
 // Forward declaration for estalloc helper function
 extern int mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free, int32_t* frag);
+extern int mrb_get_estalloc_usage(void* est_ptr, size_t* peak, size_t* largest_free,
+                                  size_t* last_fail, size_t* fails);
 
 static const char *TAG = "fmrb_app";
 
@@ -469,6 +471,32 @@ static char* load_script_file(const char* filepath, size_t* out_size) {
 // VM lifecycle helper functions
 // ============================================================================
 
+/*
+ * One line on the app's VM pool. An allocation fails when no single free
+ * block is large enough, so "largest" is printed next to "free": a pool with
+ * most of itself free can still refuse a 32 KB string when the compile has
+ * left it in pieces (doc/reference/app_memory.md).
+ */
+static void log_pool_usage(const fmrb_app_task_context_t *ctx, const char *when, bool as_error)
+{
+    size_t total = 0, used = 0, free_bytes = 0, peak = 0, largest = 0, last_fail = 0, fails = 0;
+    int32_t frag = 0;
+    if (!ctx->est ||
+        mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0 ||
+        mrb_get_estalloc_usage(ctx->est, &peak, &largest, &last_fail, &fails) != 0) {
+        return;
+    }
+    if (as_error) {
+        FMRB_LOGE(TAG, "[%s] VM pool %s: total=%zu used=%zu free=%zu largest_free=%zu peak=%zu "
+                  "frag=%d failed_request=%zu fails=%zu",
+                  ctx->app_name, when, total, used, free_bytes, largest, peak, (int)frag,
+                  last_fail, fails);
+    } else {
+        FMRB_LOGI(TAG, "[%s] VM pool %s: total=%zu used=%zu free=%zu largest_free=%zu peak=%zu frag=%d",
+                  ctx->app_name, when, total, used, free_bytes, largest, peak, (int)frag);
+    }
+}
+
 /**
  * Create mruby VM instance
  * @return 0 on success, -1 on error
@@ -536,7 +564,7 @@ void fmrb_app_dump_vm_pools(void)
     struct {
         char name[24];
         const char *vm;
-        unsigned used, free_bytes, total;
+        unsigned used, free_bytes, total, peak, largest;
         int frag;
         char exc_hw[12];
     } rows[FMRB_MAX_APPS];
@@ -569,6 +597,12 @@ void fmrb_app_dump_vm_pools(void)
         rows[count].free_bytes = (unsigned)free_bytes;
         rows[count].total = (unsigned)total;
         rows[count].frag = (int)frag;
+        size_t peak = 0, largest = 0, last_fail = 0, fails = 0;
+        if (mrb_get_estalloc_usage(ctx->est, &peak, &largest, &last_fail, &fails) != 0) {
+            peak = largest = 0;
+        }
+        rows[count].peak = (unsigned)peak;
+        rows[count].largest = (unsigned)largest;
         rows[count].exc_hw[0] = '-';
         rows[count].exc_hw[1] = '\0';
 #ifdef FMRB_HAVE_SPINEL_HOST
@@ -587,11 +621,13 @@ void fmrb_app_dump_vm_pools(void)
     }
 
     FMRB_LOGI(TAG, "--- VM Pools ---");
-    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s %6s", "Name", "VM", "Used", "Free", "Total", "Frag", "ExcHW");
+    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %8s %8s %5s %6s",
+              "Name", "VM", "Used", "Free", "Total", "Peak", "Largest", "Frag", "ExcHW");
     for (int i = 0; i < count; i++) {
-        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %4d%% %6s",
+        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %8u %8u %4d%% %6s",
                   rows[i].name, rows[i].vm,
-                  rows[i].used, rows[i].free_bytes, rows[i].total, rows[i].frag,
+                  rows[i].used, rows[i].free_bytes, rows[i].total,
+                  rows[i].peak, rows[i].largest, rows[i].frag,
                   rows[i].exc_hw);
         /* See fmrb_task_dump_status: one line of synchronous UART is a few
            ms above every app's priority; yield so they run between lines. */
@@ -838,6 +874,7 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
             if (ctx->mrb->exc == (struct RObject *)ctx->mrb->nomem_err) {
                 // Out of pool while compiling: say what to do about it, not
                 // just what happened.
+                log_pool_usage(ctx, "at compile failure", true);
                 set_last_error(ctx,
                     "Out of memory while compiling.\n"
                     "Set large_memory = 1 in the app's .toml.", NULL);
@@ -865,6 +902,7 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         }
 
         FMRB_LOGI(TAG, "[%s] Ruby script compiled successfully", ctx->app_name);
+        log_pool_usage(ctx, "after compile", false);
 
         // Inspect IREP structure (with script buffer range for analysis)
         inspect_irep(ctx->mrb, ctx->app_name, irep_obj,
@@ -910,6 +948,9 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     }
 
     if (ctx->mrb->exc) {
+        if (ctx->mrb->exc == (struct RObject *)ctx->mrb->nomem_err) {
+            log_pool_usage(ctx, "at NoMemoryError", true);
+        }
         mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
         set_last_error(ctx, RSTRING_PTR(exc_str), ctx->mrb);
         FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
@@ -1801,7 +1842,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                     }
                     ctx->mempool_id = POOL_ID_USER_APP_LARGE;
                     g_large_pool_in_use = true;
-                    FMRB_LOGI(TAG, "USER_APP using LARGE pool (1MB): idx=%d", idx);
+                    FMRB_LOGI(TAG, "USER_APP using LARGE pool (%zu KB): idx=%d",
+                              fmrb_get_mempool_size(POOL_ID_USER_APP_LARGE) / 1024, idx);
                 } else {
                     ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
                 }

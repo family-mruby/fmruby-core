@@ -184,19 +184,19 @@ mrb_file_read(mrb_state *mrb, mrb_value self)
     return mrb_str_new_cstr(mrb, "");
   }
 
-  // Allocate buffer
-  buf = (char *)mrb_malloc(mrb, length + 1);
+  // Read straight into the string. A temporary buffer plus a copy asked the
+  // app's pool for two blocks of the file's size at once, and a contiguous
+  // block that size is what a pool left in pieces by a compile runs out of
+  // first (require reads each file whole; doc/reference/app_memory.md).
+  str = mrb_str_new_capa(mrb, (size_t)length);
+  buf = RSTRING_PTR(str);
 
-  // Read from file
   err = fmrb_hal_file_read(file->handle, buf, length, &bytes_read);
   if (err != FMRB_OK) {
-    mrb_free(mrb, buf);
     mrb_raise(mrb, E_RUNTIME_ERROR, "failed to read from file");
   }
 
-  buf[bytes_read] = '\0';
-  str = mrb_str_new(mrb, buf, bytes_read);
-  mrb_free(mrb, buf);
+  mrb_str_resize(mrb, str, (mrb_int)bytes_read);
 
   return str;
 }

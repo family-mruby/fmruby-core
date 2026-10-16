@@ -137,7 +137,8 @@ path.split(S_SLASH)   # 毎回 "/" と書かない
   (gc_monitoring.md 3.3)。プール天井のストームより、選んだ瞬間の
   1 回が必ず安い。
 - ソースのコンパイルだけで 500KB プールの 6 割が埋まる (gc_monitoring.md
-  5.1)。大きいデータを扱うなら .toml に `large_memory = 1`。
+  5.1)。コンパイルの山はソースの十数倍から二十数倍 (app_memory.md 3 章)。
+  大きいデータを扱うなら、または本体が大きいなら .toml に `large_memory = 1`。
 - `NoMemoryError` は `rescue => e` を**素通りする** (StandardError では
   ない)。落ちる可能性のあるアプリは `rescue Exception => e`。
 

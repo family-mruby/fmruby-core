@@ -489,6 +489,17 @@ class MahjongApp < FmrbApp
         i += 1
       end
     end
+    # A part the new screen does not have (the own hand and melds when a
+    # seated table turns into watching, the bottom row the other way) goes
+    # as a whole.
+    @xl_items.each do |key, old|
+      next if parts[key]
+      i = 0
+      while i < old.size
+        clears << xl_extent(old[i])
+        i += 1
+      end
+    end
     # The texts: the board, the status lines, the buttons.
     board = xl_board_sig
     status = xl_status_sig
