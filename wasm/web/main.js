@@ -52,9 +52,9 @@ try { delete window.FMRB_ZENOH_NODE; delete window.FMRB_LINK_APP; } catch (e) { 
 // (picoruby-asterism-zenoh's namespace, set from Module.zenohNamespace), so
 // the apps run unchanged inside the room. The page reads the slot and the
 // end from the key without checking it (the door checks it). In a room the
-// page is a node under this browser's own ID (wasm-<6 hex>, as on a network
-// with no console): the room has no accounts, everyone in it holds the same
-// key, and the ID only has to be unique in the room. A node ID in the link
+// page is a node under the ID of the seat the door gives it (G2b, see
+// takeSeat below: wasm-0103 is seat 03 of slot 01): the router binds what a
+// seat may write and whom it may call as to that ID. A node ID in the link
 // is not used. A room link carries no pass; if one came with a pass anyway,
 // the room wins and the pass is not used.
 const ROOM_KEY = String(window.FMRB_ROOM_KEY || '');
@@ -742,7 +742,6 @@ function mountHome(mod) {
   });
 }
 moduleConfig.preRun.push(mountHome);
-moduleConfig.preRun.push((mod) => putRoomSecret(mod));
 
 // ---- this browser's Asterism node ID (doc/ruby_asterism, B2) -------------
 //
@@ -775,25 +774,26 @@ function newNodeId() {
   return 'wasm-' + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-// ---- a browser's identity in a room (MJ5) --------------------------------
+// ---- a browser's seat in a room (G2b) -----------------------------------
 //
-// In a room everyone holds the same key, so the router cannot tell pages
-// apart and any page could call under any wasm-* node ID -- and a table's
-// seat goes with the node ID. So in a room the page makes a secret of its
-// own for that room, once (16 random bytes, kept in localStorage under the
-// room's ID), and its node ID is wasm- and the first 6 hex digits of
-// SHA-256(room ID + ":" + secret): the same shape as everywhere else, the
-// same ID again after a reload, another one in another room. The secret
-// goes to the machine as a file (ROOM_SECRET_FILE; not an argument, which
-// would end up in the settings and the log), and the table app sends it
-// with join: the game host of the room works the ID out again and refuses a
-// join whose ID does not come from the secret (asterism-games README "Rooms").
-// A second tab gets a secret of its own that is not kept, as it gets an ID
-// of its own elsewhere.
+// In a room everyone holds the same key, so the key alone cannot tell pages
+// apart. The router can: each slot has seats, each seat a certificate whose
+// ACL lets it write only under its own node ID and call only as itself
+// (asterism-console docs/rooms.md "Seats"). The page makes a secret of its
+// own for the room, once (16 random bytes, kept in localStorage under the
+// room's ID), and before the machine starts it asks the door for a seat with
+// it (takeSeat: POST /room/seat). The door answers with the seat's node ID
+// (wasm-0103), the same one for the same secret until the room is over, so
+// a reload is the same node. The machine runs as that node, and the
+// WebSocket hands the secret over again as its first message
+// (zp_ws_emscripten.c), which is how the door knows which seat's
+// certificate to use. The secret goes nowhere else: not in a URL, an
+// argument, a file of the machine or the log. A second tab gets a secret of
+// its own that is not kept, and so a seat of its own.
 const ROOM_SECRET_STORE = 'fmrb_room_secret_';
-const ROOM_SECRET_FILE = '/flash/etc/asterism_room_secret';
 const SECRET_RE = /^[0-9a-f]{32}$/;
 let roomSecret = '';
+let roomSeat = '';
 
 function newSecret() {
   const b = new Uint8Array(16);
@@ -801,50 +801,13 @@ function newSecret() {
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-// SHA-256 of a string (UTF-8), as hex. Here rather than crypto.subtle, which
-// is asynchronous and missing outside secure contexts.
-function sha256hex(text) {
-  const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
-  const msg = new TextEncoder().encode(text);
-  const len = ((msg.length + 9 + 63) >> 6) << 6;
-  const buf = new Uint8Array(len);
-  buf.set(msg);
-  buf[msg.length] = 0x80;
-  const bits = msg.length * 8;
-  for (let i = 0; i < 4; i++) buf[len - 1 - i] = (bits >>> (8 * i)) & 0xff;
-  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-  const w = new Array(64);
-  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
-  for (let o = 0; o < len; o += 64) {
-    for (let i = 0; i < 16; i++) {
-      w[i] = (buf[o + 4 * i] << 24) | (buf[o + 4 * i + 1] << 16) | (buf[o + 4 * i + 2] << 8) | buf[o + 4 * i + 3];
-    }
-    for (let i = 16; i < 64; i++) {
-      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
-      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
-      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
-    }
-    let [a, b, c, d, e, f, g, k] = h;
-    for (let i = 0; i < 64; i++) {
-      const t1 = (k + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0;
-      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
-      k = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
-    }
-    h[0] = (h[0] + a) | 0; h[1] = (h[1] + b) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0;
-    h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + k) | 0;
+// The room's secret (roomSecret, nodeKept): the kept one, or a new one.
+let roomSecretKept = false;
+function decideRoomSecret() {
+  if (roomSecret) {
+    nodeKept = roomSecretKept;
+    return;
   }
-  return h.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');
-}
-
-// The node ID in a room (and roomSecret): from the kept secret, or a new one.
-function roomNodeId() {
   const key = ROOM_SECRET_STORE + ROOM.room;
   let secret = homeWriter !== false ? readSetting(key, '') : '';
   nodeKept = SECRET_RE.test(secret);
@@ -856,25 +819,95 @@ function roomNodeId() {
     }
   }
   roomSecret = secret;
-  return 'wasm-' + sha256hex(ROOM.room + ':' + secret).slice(0, 6);
+  roomSecretKept = nodeKept;
 }
 
-// The secret for the machine (a preRun step: the file is there before the
-// apps start; /flash/etc is rebuilt from the bundle at every visit).
-function putRoomSecret(mod) {
-  if (!roomSecret) return;
-  try {
-    mod.FS.mkdirTree('/flash/etc');
-    mod.FS.writeFile(ROOM_SECRET_FILE, roomSecret);
-  } catch (e) {
-    console.warn('fmrb: the room identity could not be handed to the machine');
+// Where the room's door takes seat requests: the router of the link (?zenoh=,
+// else the Network panel's) as the WebSocket link reaches it,
+// https://<host>:<port>/room/seat. The link goes through the door only on
+// wss:// (zp_ws_emscripten.c): a page served over https and a router that is
+// not this computer. Anything else: '' (a room cannot be used).
+function seatUrl() {
+  if (location.protocol !== 'https:') return '';
+  const loc = urlZenoh() || storedRouter();
+  if (!loc) return '';
+  let u;
+  try { u = new URL('https://' + loc.slice(3) + '/'); } catch (e) { return ''; }
+  const host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || /^127[.][0-9]+[.][0-9]+[.][0-9]+$/.test(host) ||
+      host === '[::1]') return '';
+  const port = loc.slice(3).match(/:([0-9]+)$/);
+  return 'https://' + u.hostname + (port ? ':' + port[1] : '') + '/room/seat';
+}
+
+// A seat's node ID: the console's prefix, the slot, the seat
+// (^<prefix>[0-9]{4}$; the prefix is wasm- unless the console says otherwise).
+const SEAT_NODE_RE = /^([A-Za-z0-9][A-Za-z0-9_.-]{0,20})([0-9]{2})([0-9]{2})$/;
+
+// Ask the door for this page's seat: { node } or { error, retry }.
+async function takeSeat() {
+  const url = seatUrl();
+  if (!url) {
+    return { error: 'A room needs the page on https:// and a router that is not this computer.' };
   }
+  let res;
+  let data = null;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ t: ROOM.key, s: roomSecret }),
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      credentials: 'omit',
+    });
+    data = await res.json().catch(() => null);
+  } catch (e) {
+    return { error: 'The room\'s router could not be reached.', retry: true };
+  }
+  if (res.status === 200 && data) {
+    const m = SEAT_NODE_RE.exec(String(data.node || ''));
+    if (m && m[2] === ROOM.slot && (!data.seat || String(data.seat) === m[3])) return { node: data.node, seat: m[3] };
+    return { error: 'The room\'s door gave a seat this page cannot use.' };
+  }
+  switch (res.status) {
+    case 409: return { error: 'Every seat in this room is taken.', retry: true };
+    case 410: return { error: 'This room has ended or was closed. Ask for a new link.' };
+    case 403: return { error: 'The room\'s door refused this link. Ask for the link again.' };
+    case 429: return { error: 'Too many tries at the room\'s door; wait a minute.', retry: true };
+    case 404: case 405:
+      return { error: 'The room\'s server is too old for this page (it has no seats). Ask whoever runs it to update.' };
+    default: return { error: 'The room\'s door answered ' + res.status + '.', retry: true };
+  }
+}
+
+// The link lost its seat (closed 4403, zp_ws_emscripten.c): the door no
+// longer holds one for the secret (it went to another page while this one
+// was away, or the table was lost). Take one again: the same node means
+// the link can go on; another node cannot be used by the running machine,
+// so the link stops and the page says to reload.
+let reseating = null;
+function reseat(mod) {
+  if (reseating) return;
+  mod.zenohSeatWait = true;
+  reseating = takeSeat().then((got) => {
+    if (got.node && got.node === nodeId) return;
+    mod.zenohRoomStop = true;
+    const why = got.node ? 'the room\'s door no longer holds this page\'s seat.' : got.error;
+    statusLine.textContent = 'room ' + ROOM.slot + ': not connected: ' + why + ' Reload the page to take a seat again.';
+    showRoomState(' -- not connected (reload the page)');
+  }).finally(() => {
+    mod.zenohSeatWait = false;
+    reseating = null;
+  });
 }
 
 function decideNodeId() {
   nodeKept = false;
   if (ROOM) {
-    nodeId = roomNodeId();
+    // The node is the seat's, known once the door has answered (startMachine).
+    decideRoomSecret();
+    nodeId = roomSeat ? nodeId : '';
   } else if (LINK_NODE && !ROOM) {
     nodeId = LINK_NODE;
   } else if (homeWriter !== false) {
@@ -914,11 +947,12 @@ function storedRouter() {
 function showNetworkState() {
   if (nodeStateEl) {
     let text = nodeId ? 'node ' + nodeId : 'node: checking...';
+    if (ROOM) text = nodeId ? 'node ' + nodeId + ' (seat ' + roomSeat + ' in the room)' : 'node: the room gives a seat at start';
     if (PASS_WITHOUT_NODE) text = 'node: none (the link has a pass but no node ID; not connecting)';
     if (PASS_WITHOUT_NODE) { /* said above */ }
     else if (nodeId && LINK_NODE && !ROOM) text += ' (from the link, this visit)';
-    else if (nodeId && homeWriter === false) text += ' (this tab only)';
-    else if (nodeId && !nodeKept) text += ' (not kept: storage refused)';
+    else if ((nodeId || ROOM) && homeWriter === false) text += ' (this tab only)';
+    else if ((nodeId || ROOM) && !nodeKept) text += ' (not kept: storage refused)';
     nodeStateEl.textContent = text;
   }
   showRoomState('');
@@ -2137,11 +2171,13 @@ function fsprobeReport(mod) {
   }
 }
 
+let starting = false;
 startOverlay.addEventListener('click', async () => {
   // A link with a pass and no node, or a room that has ended or cannot be
   // read: the machine is not switched on at all (see LINK_REFUSED), so
   // nothing connects with it.
-  if (LINK_REFUSED) return;
+  if (LINK_REFUSED || starting) return;
+  starting = true;
   startOverlay.style.display = 'none';
   canvas.focus();
   statusLine.textContent = 'booting the firmware...';
@@ -2161,6 +2197,26 @@ startOverlay.addEventListener('click', async () => {
   // The node ID depends on whether this tab is the one that keeps /home.
   await lockDecided;
   if (!nodeId) decideNodeId();
+  if (ROOM) {
+    // A seat first (G2b): its node ID is the one the router lets this page
+    // write and call as. Without one the machine is not switched on.
+    statusLine.textContent = 'room ' + ROOM.slot + ': taking a seat...';
+    const got = await takeSeat();
+    if (!got.node) {
+      if (ac) ac.close().catch(() => {});
+      statusLine.textContent = 'room ' + ROOM.slot + ': not started: ' + got.error;
+      startOverlay.textContent = got.error + (got.retry ? ' Click to try again.' : '');
+      startOverlay.classList.add('refused');
+      startOverlay.style.display = '';
+      starting = !got.retry;
+      return;
+    }
+    nodeId = got.node;
+    roomSeat = got.seat;
+    showNetworkState();
+    moduleConfig.zenohRoomSecret = roomSecret;
+    moduleConfig.zenohReseat = () => reseat(moduleConfig);
+  }
   moduleConfig.arguments.push(`--fmrb-conf=asterism_node="${nodeId}"`);
 
   const mod = await createFmrbCore(moduleConfig);
@@ -2181,7 +2237,7 @@ startOverlay.addEventListener('click', async () => {
       console.warn('audio unavailable:', e);
     }
   }
-}, { once: true });
+});
 
 // ---- ?drive=1: let a tool outside the browser work the machine -----------
 //

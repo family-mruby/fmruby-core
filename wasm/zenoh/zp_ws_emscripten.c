@@ -72,6 +72,18 @@
  * (defined below from Module.zenohNamespace) when a session is opened
  * without one, so the apps use their usual keys inside the room.
  *
+ * Seats (G2b): the door answers 101 and waits for the page's room secret
+ * (Module.zenohRoomSecret, the one web/main.js took its seat with) as the
+ * first message, a Text {"s":"<secret>"}, sent here before anything of
+ * Zenoh; then it connects to zenohd with the seat's certificate. The secret
+ * is never in the URL or logged. The door's close codes: 4403 (no seat for
+ * the secret: Module.zenohReseat takes one again, and while it does
+ * Module.zenohSeatWait holds the tries back; if the seat cannot be had
+ * again, Module.zenohRoomStop ends them), 4408 (the secret came late) and
+ * 1013 (zenohd is not there), both tried again. Because the door closes
+ * after 101, a WebSocket that closes before anything came back counts as a
+ * failed try (zp_ws_close), so the spacing and the giving up hold.
+ *
  * The link is a datagram link to zenoh-pico: one WebSocket message carries
  * one batch, as zenohd's ws/ listener expects. The rest of the contract is
  * picoruby-asterism-zenoh's (include/picoruby_zenoh_link.h): the polled read
@@ -142,6 +154,9 @@ static uint32_t s_pause_ms;
 static z_clock_t s_failed_at;
 static bool s_gave_up;
 
+/* zp_ws_open_once: the page has stopped the tries (a room's seat is gone). */
+#define ZP_WS_STOPPED ((z_result_t)-200)
+
 /* Main thread: create the WebSocket and wire its events to the ring. The URL
  * is ASCII (the locator's characters are checked by zenoh-pico and the page). */
 static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
@@ -153,6 +168,11 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
             let url = '';
             for (let p = $1; u8[p]; p++) url += String.fromCharCode(u8[p]);
             const zp = Module['zpws'] || (Module['zpws'] = {});
+            // A room whose seat is being taken again: no try now (-1); one
+            // that cannot be had again: no tries any more (-2).
+            if (Module['zenohRoomStop']) return -2;
+            if (Module['zenohSeatWait']) return -1;
+            let roomed = false;
             // ws:// or wss:// (doc/ruby_asterism, B2). The locator is ws/
             // either way (zenoh-pico has no wss); the scheme follows the page.
             // A page served over https may not open ws:// -- the constructor
@@ -171,6 +191,7 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
                     const room = Module['zenohRoom'];
                     if (room) {
                         url = url.replace(/[/]$/, '') + '/room?t=' + encodeURIComponent(room);
+                        roomed = true;
                     }
                     // The pass from the page's link (#zenoh_pass=, read by
                     // web/index.html and web/main.js): the router door checks
@@ -194,8 +215,21 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
             ws.binaryType = 'arraybuffer';
             zp[slot] = ws;
             const words = () => new Int32Array(wasmMemory.buffer, base, 9);
-            ws.onopen = () => Atomics.store(words(), 0, 2);
-            ws.onclose = ws.onerror = () => Atomics.store(words(), 0, 3);
+            // In a room the door's first message is the page's secret (its
+            // seat): sent before the state says open, so before any batch.
+            const secret = roomed ? String(Module['zenohRoomSecret'] || String()) : String();
+            ws.onopen = () => {
+                if (secret) {
+                    try { ws.send(JSON.stringify({ s: secret })); } catch (e) {}
+                }
+                Atomics.store(words(), 0, 2);
+            };
+            ws.onerror = () => Atomics.store(words(), 0, 3);
+            ws.onclose = (ev) => {
+                // 4403: the door holds no seat for the secret any more.
+                if (roomed && ev.code === 4403 && typeof Module['zenohReseat'] === 'function') Module['zenohReseat']();
+                Atomics.store(words(), 0, 3);
+            };
             ws.onmessage = (ev) => {
                 const h = words();
                 const data = new Uint8Array(ev.data);
@@ -316,6 +350,11 @@ static size_t zp_ws_read_now(int slot, uint8_t *ptr, size_t len) {
         }
         __atomic_store_n(&r->rx_rd, rd + 4 + n, __ATOMIC_RELEASE);
         if (fits && n > 0) {
+            if (s_fails > 0) {
+                _Z_INFO("ws: connected again after %u failed tries", (unsigned)s_fails);
+                s_fails = 0;
+                s_pause_ms = 0;
+            }
             return n;
         }
         if (!fits) {
@@ -414,20 +453,9 @@ static void zp_ws_js_gave_up(int fails) {
 
 static z_result_t zp_ws_open_once(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout);
 
-static z_result_t zp_ws_open(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
-    sock->_ws._fd = -1;
-    if (s_gave_up || (s_fails > 0 && z_clock_elapsed_ms(&s_failed_at) < s_pause_ms)) {
-        return _Z_ERR_GENERIC; /* not yet (or not any more): no WebSocket */
-    }
-    z_result_t ret = zp_ws_open_once(sock, rep, tout);
-    if (ret == _Z_RES_OK) {
-        if (s_fails > 0) {
-            _Z_INFO("ws: connected again after %u failed tries", (unsigned)s_fails);
-        }
-        s_fails = 0;
-        s_pause_ms = 0;
-        return ret;
-    }
+/* A try that failed: space the next one out, and give up after
+ * ZP_WS_MAX_FAILS with a pass or a room. */
+static void zp_ws_failed(void) {
     s_fails++;
     s_failed_at = z_clock_now();
     s_pause_ms = s_pause_ms == 0 ? 1000 : s_pause_ms * 2;
@@ -438,6 +466,23 @@ static z_result_t zp_ws_open(_z_sys_net_socket_t *sock, const _z_sys_net_endpoin
         s_gave_up = true;
         zp_ws_js_gave_up((int)s_fails);
     }
+}
+
+static z_result_t zp_ws_open(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
+    sock->_ws._fd = -1;
+    if (s_gave_up || (s_fails > 0 && z_clock_elapsed_ms(&s_failed_at) < s_pause_ms)) {
+        return _Z_ERR_GENERIC; /* not yet (or not any more): no WebSocket */
+    }
+    z_result_t ret = zp_ws_open_once(sock, rep, tout);
+    if (ret == _Z_RES_OK) {
+        /* Counted as connected once something comes back (zp_ws_read_now). */
+        return ret;
+    }
+    if (ret == ZP_WS_STOPPED) {
+        s_gave_up = true; /* the page has said why (web/main.js) */
+        return _Z_ERR_GENERIC;
+    }
+    zp_ws_failed();
     return ret;
 }
 
@@ -463,8 +508,12 @@ static z_result_t zp_ws_open_once(_z_sys_net_socket_t *sock, const _z_sys_net_en
     r->tx_buf = (uint32_t)(uintptr_t)s_tx[slot];
     zp_ws_set_state(slot, ZP_WS_CONNECTING);
     s_used[slot] = true;
-    if (zp_ws_js_open(slot, rep._url, r) != 0) {
+    int opened = zp_ws_js_open(slot, rep._url, r);
+    if (opened != 0) {
         s_used[slot] = false;
+        if (opened == -2) {
+            return ZP_WS_STOPPED;
+        }
         _Z_ERROR_LOG(_Z_ERR_GENERIC);
         return _Z_ERR_GENERIC;
     }
@@ -489,6 +538,11 @@ static z_result_t zp_ws_open_once(_z_sys_net_socket_t *sock, const _z_sys_net_en
 static void zp_ws_close(_z_sys_net_socket_t *sock) {
     int slot = sock->_ws._fd;
     if (zp_ws_valid(slot)) {
+        /* Closed before anything came back: the door (or the router) let
+         * the WebSocket open and then refused it, a failed try. */
+        if (__atomic_load_n(&s_ring[slot].rx_wr, __ATOMIC_ACQUIRE) == 0) {
+            zp_ws_failed();
+        }
         zp_ws_js_close(slot);
         zp_ws_set_state(slot, ZP_WS_FREE);
         s_used[slot] = false;

@@ -1,6 +1,6 @@
 # ブラウザ版を網に入れる手順
 
-> 状態: 進行中 | 更新: 2026-10-14 | ブラウザ版 (wasm) の Family mruby を Asterism のノードとして zenohd につなぐ手順。zenohd の ws/ の待ち受けと wss:// の中継、ブラウザ版のビルドと起動 (手元の http の版と、公開の版と同じ作りを https で配る形)、ルータの設定、ノードの ID の決まり、合言葉の付いた wss:// の入口 (G1)、部屋のリンク (G2)、PC からの呼び出し、台車の操縦、最小の試しのページ
+> 状態: 進行中 | 更新: 2026-10-16 | ブラウザ版 (wasm) の Family mruby を Asterism のノードとして zenohd につなぐ手順。zenohd の ws/ の待ち受けと wss:// の中継、ブラウザ版のビルドと起動 (手元の http の版と、公開の版と同じ作りを https で配る形)、ルータの設定、ノードの ID の決まり、合言葉の付いた wss:// の入口 (G1)、部屋のリンク (G2)、PC からの呼び出し、台車の操縦、最小の試しのページ
 
 作りと実測は report/b1.md (手元の http の版) と report/b2.md (https の版、wss://、設定、ID)。
 
@@ -199,11 +199,12 @@ sim・端末の system_conf には `zenoh_router` が無いので、1・3・4 �
   `node: none (the link has a pass but no node ID; not connecting)`。合言葉の無いページ (console の無い網: 家の
   LAN の zenohd、手元のルータ、公開の studio) は今どおり自分の `wasm-<16 進 6 桁>` を使う
   (report/console_node.md)。
-- **部屋のリンクでは、ブラウザ自身の ID を使う (G2、2026-10-14)**。部屋にはアカウントが無く、部屋の全員が同じ鍵を
-  持つので、ID を console が決めて守ることはできない。ID は部屋の中で重ならなければよいので、合言葉の無いページと
-  同じ `wasm-<16 進 6 桁>` (保存してある ID、2 つ目のタブは使い捨て) にした。部屋の鍵はキーの前置き
-  `room/<枠>` を付けるので、console の網の `wasm-<ハンドル>` とは線の上でも ACL の上でも別の場所になり、ぶつからない。
-  リンクに `zenoh_node` があっても部屋では使わない。
+- **部屋のリンクでは、door が渡す席の ID を使う (G2b、2026-10-16)**。部屋にはアカウントが無く、部屋の全員が同じ鍵を
+  持つ。そこで枠ごとに席 (16 席) の証明書を console が最初に作っておき、door が席を割り当てる。ID は席から決まり
+  (`wasm-<枠><席>`、例 `wasm-0103`。前置きは console の `ASTERISM_BROWSER_NODE_PREFIX`)、ルータの ACL がその ID の下へ
+  の書き込みと、その ID を名乗る呼び出しだけを許す。リンクに `zenoh_node` があっても部屋では使わない。5.4 の
+  「席」の項目。
+  (G2 から MJ5 までは、ブラウザ自身の `wasm-<16 進 6 桁>`、MJ5 では秘密から作る ID だった。G2b で置き換えた。)
 
 ## 5.3 合言葉 (wss:// の入口、G1)
 
@@ -259,7 +260,24 @@ https://<ブラウザ版の置き場>/index.html?zenoh=ws/router.example.org:744
 - 期限の過ぎた鍵・読めない鍵のリンクは、機械を起動せず「This room has ended」「This room link is broken」と出す。
 - 部屋が閉じられる・期限が来ると、door が接続を切り、つなぎ直しは 410 で断られる。ページは 10 回続けて失敗すると
   諦め、状態の行に「the room may have closed or ended」と出す。
-- ノードの ID は 5.2 の最後の項目のとおり、ブラウザ自身の `wasm-<16 進 6 桁>`。
+- **席 (G2b、asterism-console 0.3.0 から)**: ページは部屋ごとの秘密 (16 バイトの乱数、32 桁の 16 進) を一度作って
+  localStorage の `fmrb_room_secret_<部屋の ID>` に残す。機械を起動する前に `POST https://<host>:<port>/room/seat`
+  (本文 `{"t": <鍵>, "s": <秘密>}`、`Content-Type: text/plain`、`cache: "no-store"`、`referrerPolicy: "no-referrer"`。
+  宛先はリンクのルータを WebSocket と同じく読み替えたもの) で席を取り、答えの `node` (`wasm-0103`) で起動する。
+  答えの ID は `^<前置き><枠><席>$` の形で、枠がリンクの鍵と合うことを確かめる。同じ秘密は部屋が終わるまで同じ席
+  なので、読み直しても同じ ID。2 つ目のタブは残さない秘密を別に作るので、別の席になる。
+- 部屋の WebSocket は、開いたら最初に Text `{"s":"<秘密>"}` を 1 通送り、それから Zenoh を流す
+  (`wasm/zenoh/zp_ws_emscripten.c`)。door はこの秘密で席を引き、席の証明書で zenohd へ繋ぐ。秘密は URL・設定の
+  引数・機械のファイル・記録のどこにも出さない (POST の本文と最初の 1 通だけ)。
+- 席を取れないときは機械を起動せず、理由を出す: 409「Every seat in this room is taken.」(クリックで取り直す)、410
+  「This room has ended or was closed.」、403「The room's door refused this link.」、404・405「The room's server is too
+  old for this page」(0.3.0 より前の console。古いサーバには対応しない)。`https://` でないページ・手元のルータ
+  (ループバック) では部屋を使えない (door を通らないため) と出す。
+- door の閉じる符号: 4403 (その秘密に席が無い) なら席を取り直し、同じ ID ならつなぎ直す。別の ID になったら
+  (長く離れている間に席が別のページに渡った、など) 動いている機械はその ID を使えないので、つなぎ直しをやめて
+  「Reload the page to take a seat again.」と出す。1013 (zenohd が居ない)・4408 は今どおりつなぎ直す。door は 101 を
+  返してから断るので、何も返ってこないうちに閉じた WebSocket は失敗の 1 回に数える (間隔を空け、10 回で諦める)。
+- 卓のアプリ (麻雀) は部屋でも `join` / `mine` に秘密を付けない (ゲームホストは席の ID を信じる)。
 
 ## 6. PC から呼ぶ
 
