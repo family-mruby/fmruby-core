@@ -896,8 +896,12 @@ static void render_frame(void) {
         // app's that is about to get (or has just left) the high-resolution
         // screen. Laid out for 640x360, it would show as its top-left corner
         // at 3x; leave it out until the switch completes. A viewport canvas
-        // is exempt: it is a larger surface on purpose.
+        // is exempt: it is a larger surface on purpose. So is every canvas
+        // when the base framebuffer itself is 640x360 (the browser build's
+        // 640x360 page): there the desktop and the fullscreen apps are at
+        // that size by right, and leaving them out left the screen black.
         if (!g_smode.hires && c->view_w == 0 &&
+            (fb_w != DISPLAY_LOCAL_HIRES_W || fb_h != DISPLAY_LOCAL_HIRES_H) &&
             c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) continue;
 
         // Composite the committed buffer, never the working one (commit-on-present).

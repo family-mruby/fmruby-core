@@ -1,7 +1,8 @@
 # Mahjong table: the conventional 1280x720 table of the browser build
-# (MJ-L, doc/ruby_asterism/report/mj_layout.md). Part of MahjongApp
-# (mahjong.app.rb requires this file first; the constants it names are the
-# app's, looked up when the methods run).
+# (MJ-L, doc/ruby_asterism/report/mj_layout.md; the worst cases fitted in
+# MJ5, mj5.md). Part of MahjongApp (mahjong.app.rb requires this file
+# first; the constants it names are the app's, looked up when the methods
+# run).
 
 class MahjongApp < FmrbApp
   # ------------------------------------------------------------ the 1280x720 table (MJ-L)
@@ -11,9 +12,12 @@ class MahjongApp < FmrbApp
   # turns for the other seats, the opponents' melds 24x32 (the river sheet
   # itself and its turns), the backs of the opponents' hands 32x20 / 20x32.
   # The board is 288x160 in the middle (6 river tiles wide); every river
-  # starts at the board's edge and runs from its player's left to right,
-  # six to a row: three rows above and below (the third takes the rest),
-  # four beside it. The layout is worked out in the report (mj_layout.md 4).
+  # starts at the board's edge (the side ones 16 px off it, room for a
+  # sideways tile in the row next to them) and runs from its player's left
+  # to right, six to a row: three rows above and below, four beside it. The
+  # last row takes the rest; past the room of its panel (xl_panel) its
+  # tiles close up. A spectator sees the four hands face up, all in the
+  # small tiles, each row turned to its player (no big hand at the bottom).
   #
   # Drawing: every tile, back and highlight is an item [x, y, w, h, image,
   # src_x, src_y, mark, tile]. A drawing builds the items of each part
@@ -28,16 +32,32 @@ class MahjongApp < FmrbApp
   XL_BY = 236
   XL_BW = 288
   XL_BH = 160
-  XL_HAND_X = 24
+  XL_HAND_X = 48
   XL_HAND_Y = 600
   XL_RIGHT = 1272
-  XL_BTN_Y = 540
-  XL_STATUS = [16, 530, 470, 56]   # the status lines (below the left player's row, above the hand)
-  XL_WAITS = [56, 480, 430, 48]    # the riichi help (above the status lines, right of the left player's row)
+  XL_BTN_RIGHT = 1228                # the buttons' right edge (the right player's row is past it)
+  XL_BTN_ROWS = [548, 504, 460, 416] # the buttons' rows, the first at the bottom
+  XL_STATUS = [52, 530, 434, 56]   # the status lines (right of the left player's row, above the hand)
+  XL_WAITS = [56, 480, 430, 48]    # the riichi help (above the status lines)
   XL_LIFT = 10                     # the chosen hand tile is this much higher
+  XL_SIDE = 16                     # the side rivers stand this far off the board
   C_BOARD = 0x24
   C_BTN_WIN = 0xA0
   C_BTN_PASS = 0x6D
+
+  # The parts of the screen (the overflow checker, tools/mahjong_overflow,
+  # holds every drawing to them): [x, y, w, h].
+  XL_PANELS = {
+    board: [496, 236, 288, 160], status: XL_STATUS, waits: XL_WAITS, assist: [12, 8, 248, 40],
+    buttons: [496, 416, 732, 172],
+    r0: [496, 396, 732, 192], r1: [800, 12, 256, 448], r2: [260, 44, 524, 192], r3: [224, 172, 256, 304],
+    o0: [380, 600, 848, 32], o1: [1236, 12, 32, 584], o2: [260, 10, 640, 32], o3: [12, 52, 32, 660],
+    h: [48, 590, 1188, 122], m: [400, 600, 872, 112]
+  }
+
+  def xl_panel(key)
+    XL_PANELS[key]
+  end
 
   def load_xl_sheets
     return if @xl_sheets || !@xl
@@ -45,9 +65,17 @@ class MahjongApp < FmrbApp
     @xl_hand = [load_sheet("tiles_hand2_a.bmp", 840, 224, XL_DIR), load_sheet("tiles_hand2_b.bmp", 840, 224, XL_DIR)]
     @xl_r2 = [load_sheet("tiles_river2_r0.bmp", 480, 256, XL_DIR), load_sheet("tiles_river2_r90.bmp", 640, 192, XL_DIR),
               load_sheet("tiles_river2_r180.bmp", 480, 256, XL_DIR), load_sheet("tiles_river2_r270.bmp", 640, 192, XL_DIR)]
-    @xl_r1 = [@river_sheet, load_sheet("tiles_river_r90.bmp", 320, 96, XL_DIR),
-              load_sheet("tiles_river_r180.bmp", 240, 128, XL_DIR), load_sheet("tiles_river_r270.bmp", 320, 96, XL_DIR)]
+    load_turned_sheets
+    @xl_r1 = @turned
     @xl_side = load_sheet("tiles_side.bmp", 72, 32, XL_DIR)
+  end
+
+  # The small tiles turned for the four seats ([r0, r90, r180, r270]): the
+  # 1280x720 table's opponents and the 640x360 spectators (mahjong_watch.rb).
+  def load_turned_sheets
+    return if @turned
+    @turned = [@river_sheet, load_sheet("tiles_river_r90.bmp", 320, 96, XL_DIR),
+               load_sheet("tiles_river_r180.bmp", 240, 128, XL_DIR), load_sheet("tiles_river_r270.bmp", 320, 96, XL_DIR)]
   end
 
   def img_id(img)
@@ -57,7 +85,7 @@ class MahjongApp < FmrbApp
   # Items. mark: 0 none, 1 the last discard (a frame), 2 not to be chosen
   # (a bar, while picking the riichi tile), 3 a discard that leaves the hand
   # tenpai (the help: a yellow triangle at the top), 4 one that keeps the
-  # least shanten (the help at level 3: a white triangle).
+  # least shanten (the help at level 3: a cyan triangle).
   def xl_hand_item(c, x, y, mark)
     k = c < 20 ? c : c - 20
     [x, y, 84, 112, img_id(@xl_hand[c < 20 ? 0 : 1]), (k % 10) * 84, (k / 10) * 112, mark, c]
@@ -106,43 +134,85 @@ class MahjongApp < FmrbApp
     [0, 3, 2, 1][rl]
   end
 
-  # A river: [[code, sideways, mark], ...] laid out for the seat rl.
+  # Where each tile of a row goes along it: lens are the tiles' lengths,
+  # room the length there is; past the room the tiles close up (each still
+  # shows its start, the last one whole). Returns the offsets.
+  def close_up(lens, room)
+    total = 0
+    lens.each { |l| total += l }
+    out = []
+    a = 0
+    if total <= room || lens.size < 2
+      lens.each do |l|
+        out << a
+        a += l
+      end
+      return out
+    end
+    last = lens[lens.size - 1]
+    i = 0
+    while i < lens.size
+      out << a * (room - last) / (total - last)
+      a += lens[i]
+      i += 1
+    end
+    out
+  end
+
+  # The room of a river's last row (xl_panel).
+  XL_LAST_ROW = [732, 448, 524, 304]
+
+  # A river: [[code, sideways, mark], ...] laid out for the seat rl. The
+  # bottom river's row ends go to @xl_r0_ends and the rows of the right one
+  # to @xl_r1_rows (the buttons keep clear of them).
   def xl_river_items(rl, list)
     out = []
     side = rl == 1 || rl == 3
     rows = side ? 4 : 3
     base = xl_rot(rl)
     turned = (base + 3) % 4
-    row = 0
-    a = 0
-    i = 0
-    while i < list.size
-      if i > 0 && i % 6 == 0 && i / 6 < rows
-        row += 1
-        a = 0
+    ends = [0, 0, 0, 0]
+    r = 0
+    while r < rows
+      from = r * 6
+      to = r == rows - 1 ? list.size : from + 6
+      to = list.size if to > list.size
+      break if from >= to
+      lens = []
+      i = from
+      while i < to
+        lens << (list[i][1] ? 64 : 48)
+        i += 1
       end
-      e = list[i]
-      sw = e[1]
-      len = sw ? 64 : 48       # along the row
-      off = sw ? 8 : 0         # a sideways tile is 48 deep in a 64 deep row
-      rot = sw ? turned : base
-      if rl == 0
-        x = XL_BX + a
-        y = XL_BY + XL_BH + row * 64 + off
-      elsif rl == 2
-        x = XL_BX + XL_BW - a - len
-        y = XL_BY - (row + 1) * 64 + off
-      elsif rl == 3
-        x = XL_BX - (row + 1) * 64 + off
-        y = XL_BY + XL_BH / 2 - 144 + a
-      else
-        x = XL_BX + XL_BW + row * 64 + off
-        y = XL_BY + XL_BH / 2 + 144 - a - len
+      offs = close_up(lens, r == rows - 1 ? XL_LAST_ROW[rl] : 999)
+      i = from
+      while i < to
+        e = list[i]
+        sw = e[1]
+        len = sw ? 64 : 48       # along the row
+        off = sw ? 8 : 0         # a sideways tile is 48 deep in a 64 deep row
+        a = offs[i - from]
+        if rl == 0
+          x = XL_BX + a
+          y = XL_BY + XL_BH + r * 64 + off
+        elsif rl == 2
+          x = XL_BX + XL_BW - a - len
+          y = XL_BY - (r + 1) * 64 + off
+        elsif rl == 3
+          x = XL_BX - XL_SIDE - (r + 1) * 64 + off
+          y = XL_BY + XL_BH / 2 - 144 + a
+        else
+          x = XL_BX + XL_BW + XL_SIDE + r * 64 + off
+          y = XL_BY + XL_BH / 2 + 144 - a - len
+        end
+        out << xl_tile_item(true, sw ? turned : base, e[0], x, y, e[2])
+        ends[r] = XL_BX + a + len if rl == 0
+        i += 1
       end
-      out << xl_tile_item(true, rot, e[0], x, y, e[2])
-      a += len
-      i += 1
+      r += 1
     end
+    @xl_r0_ends = ends if rl == 0
+    @xl_r1_rows = r if rl == 1
     out
   end
 
@@ -224,42 +294,69 @@ class MahjongApp < FmrbApp
       cx -= w + 8
       k += 1
     end
-    @xl_meld_left = cx
     out
   end
 
-  # Where an item goes on an opponent's row: a along the row from its start
-  # (ox, oy), len along it, t across it, against the screen's edge.
+  # Where an item goes on a row: a along the row from its start (ox, oy),
+  # len along it, t across it, against the screen's edge.
   def xl_place(rl, ox, oy, a, len, t)
     if rl == 2
       [ox - a - len, oy, len, t]
     elsif rl == 3
       [ox, oy + a, t, len]
+    elsif rl == 0
+      [ox + a, oy + 32 - t, len, t]
     else
       [ox - t, oy - a - len, t, len]
     end
   end
 
-  XL_ROW_START = [nil, [1268, 532], [900, 10], [12, 56]]
+  XL_ROW_START = [[380, 600], [1268, 596], [900, 10], [12, 52]]
 
-  # An opponent's row: the backs of its hand (the drawn tile apart), then
-  # its melds in small tiles, the first call at the far end.
+  # A spectator's hand of seat s: [codes, drawn] ("sh", "sd"), or nil (a
+  # host without them, or a seated player's screen).
+  def spec_hand(s)
+    return nil if @seat
+    sh = @view["sh"]
+    return nil unless sh.is_a?(Array) && sh[s]
+    sd = @view["sd"]
+    d = sd.is_a?(Array) ? sd[s].to_i : -1
+    [bytes_of(sh[s]), d]
+  end
+
+  # A row of seat s at rl: the hand (backs, or the faces for a spectator;
+  # the drawn tile apart), then its melds in small tiles, the first call at
+  # the far end.
   def xl_opp_items(s, rl)
     out = []
     o = XL_ROW_START[rl]
-    hc = @view["hc"].is_a?(Array) ? @view["hc"][s].to_i : 13
-    a = 0
-    i = 0
-    while i < hc
-      a += 8 if i == hc - 1 && hc % 3 == 2
-      p = xl_place(rl, o[0], o[1], a, 32, 20)
-      out << xl_side_item(rl, p[0], p[1])
-      a += 32
-      i += 1
-    end
-    a += 14
     base = xl_rot(rl)
     turned = (base + 3) % 4
+    a = 0
+    sp = spec_hand(s)
+    if sp
+      tl = sp[0]
+      tl += [sp[1]] if sp[1] >= 0
+      i = 0
+      while i < tl.size
+        a += 8 if sp[1] >= 0 && i == tl.size - 1
+        p = xl_place(rl, o[0], o[1], a, 24, 32)
+        out << xl_tile_item(false, base, tl[i], p[0], p[1], 0)
+        a += 24
+        i += 1
+      end
+    else
+      hc = @view["hc"].is_a?(Array) ? @view["hc"][s].to_i : 13
+      i = 0
+      while i < hc
+        a += 8 if i == hc - 1 && hc % 3 == 2
+        p = xl_place(rl, o[0], o[1], a, 32, 20)
+        out << xl_side_item(rl, p[0], p[1])
+        a += 32
+        i += 1
+      end
+    end
+    a += 14
     ms = xl_melds(s)
     k = ms.size - 1
     while k >= 0
@@ -328,11 +425,15 @@ class MahjongApp < FmrbApp
       parts["o#{rl}"] = xl_opp_items(s, rl) if rl != 0
       s += 1
     end
-    parts["m"] = xl_own_meld_items(@seat || 0)
     if @seat
+      parts["m"] = xl_own_meld_items(@seat)
       parts["h"] = xl_hand_items
+    elsif spec_hand(0)
+      # Watching: seat 0's row at the bottom, as the others'.
+      parts["o0"] = xl_opp_items(0, 0)
     else
-      # Watching: the player of seat 0 is at the bottom, its hand face down.
+      # Watching a host without the hands: seat 0's hand face down.
+      parts["m"] = xl_own_meld_items(0)
       hc = @view["hc"].is_a?(Array) ? @view["hc"][0].to_i : 0
       hs = []
       i = 0
@@ -463,6 +564,9 @@ class MahjongApp < FmrbApp
       return
     end
     if redraw_btns
+      @buttons = []
+      @xl_btn_rects = []
+      xl_draw_assist
       xl_draw_buttons
       @xl_sig[:btns] = btns
     end
@@ -564,12 +668,14 @@ class MahjongApp < FmrbApp
   end
 
   def xl_button_sig
-    [@view["a"], @seat.nil?, @assist]
+    [@view["a"], @seat.nil?, @assist, xl_btn_lefts]
   end
 
   # The centre board: the round, the honba and the sticks, what is left of
   # the wall, the dora indicators, and each seat's wind, name and points on
-  # the side that faces it.
+  # the side that faces it. Rows (from the top): the seat across, the round
+  # with the side seats' names and points beside it, the dora, the honba
+  # line, the own seat.
   def xl_draw_board
     v = @view
     bx = @x0 + XL_BX
@@ -581,19 +687,19 @@ class MahjongApp < FmrbApp
     return unless r.is_a?(Array)
     fnt(16, 2)
     head = "#{WIND[r[0].to_i % 4]}#{r[1]}#{t(:mj_kyoku)}"
-    text(bx + (XL_BW - tw(head)) / 2, by + 26, head)
+    text(bx + (XL_BW - tw(head)) / 2, by + 24, head)
     fnt(16, 1)
     line = "#{r[2]}#{t(:mj_honba)}  #{t(:mj_sticks)}#{r[3]}"
     line = "#{line}  #{t(:mj_left)}#{r[5]}" if r.size > 5
-    text(bx + (XL_BW - tw(line)) / 2, by + 60, line, C_DIM)
+    text(bx + (XL_BW - tw(line)) / 2, by + 110, line, C_DIM)
     d = bytes_of(v["dora"])
     dl = tw(t(:mj_dora)) + 6 + d.size * 24
     dx = bx + (XL_BW - dl) / 2
-    text(dx, by + 86, t(:mj_dora), C_DIM)
+    text(dx, by + 80, t(:mj_dora), C_DIM)
     dx += tw(t(:mj_dora)) + 6
     i = 0
     while i < d.size
-      xl_draw_item(xl_tile_item(false, 0, d[i], dx + i * 24, by + 78, 0))
+      xl_draw_item(xl_tile_item(false, 0, d[i], dx + i * 24, by + 72, 0))
       i += 1
     end
     nm = v["nm"].is_a?(Array) ? v["nm"] : []
@@ -608,21 +714,23 @@ class MahjongApp < FmrbApp
       head = "#{wind_of(s)} "
       pts = sc[s].to_s
       stick = (ri >> s) & 1 == 1
+      turn = s == cur && v["st"] == "play"
       if rl == 0 || rl == 2
-        name = fit(name, 120)
-        label = "#{head}#{name}  #{pts}"
-        lx = bx + (XL_BW - tw(label)) / 2
-        ly = rl == 0 ? by + XL_BH - 22 : by + 6
+        label = "#{head}#{fit(name, 100)}  #{pts}"
+        lw = tw(label) + (stick ? 54 : 0)
+        lx = bx + (XL_BW - lw) / 2
+        ly = rl == 0 ? by + XL_BH - 24 : by + 4
         text(lx, ly, label, col)
-        @gfx.fill_rect(lx, ly + 17, tw(label), 2, C_TURN) if s == cur && v["st"] == "play"
-        xl_stick(bx + XL_BW / 2 - 24, rl == 0 ? ly - 8 : ly + 19) if stick
+        @gfx.fill_rect(lx, ly + 17, tw(label), 2, C_TURN) if turn
+        xl_stick(lx + tw(label) + 6, ly + 5) if stick
       else
-        name = fit(name, 72)
-        lx = rl == 3 ? bx + 6 : bx + XL_BW - 6 - (tw("#{head}#{name}") > tw(pts) ? tw("#{head}#{name}") : tw(pts))
-        text(lx, by + 112, "#{head}#{name}", col)
-        @gfx.fill_rect(lx, by + 147, tw(pts), 2, C_TURN) if s == cur && v["st"] == "play"
-        text(lx, by + 130, pts, col)
-        xl_stick(lx, by + 149) if stick
+        label = "#{head}#{fit(name, 84 - tw(head))}"
+        lw = tw(label) > tw(pts) ? tw(label) : tw(pts)
+        lx = rl == 3 ? bx + 6 : bx + XL_BW - 6 - lw
+        text(lx, by + 24, label, col)
+        text(lx, by + 42, pts, col)
+        @gfx.fill_rect(lx, by + 59, tw(pts), 2, C_TURN) if turn
+        xl_stick(lx, by + 63) if stick
       end
       s += 1
     end
@@ -641,18 +749,42 @@ class MahjongApp < FmrbApp
     fnt(16, 1)
     msg = status_line.to_s
     msg = "#{t(:mj_pick)} #{msg}" if @pick
-    text(x + 4, y + 4, msg, C_TURN) unless msg.strip.empty?
+    text(x + 4, y + 4, fit(msg, XL_STATUS[2] - 8), C_TURN) unless msg.strip.empty?
     line = ""
     line = "#{t(:mj_left)} #{time_left_text}" if @deadline
     line = "#{line}  #{t(:mj_resp)} #{@lat}#{t(:mj_ms)}" if @lat
-    text(x + 4, y + 28, line, C_TURN) unless line.empty?
+    text(x + 4, y + 28, fit(line, XL_STATUS[2] - 8), C_TURN) unless line.empty?
     @xl_n_px += XL_STATUS[2] * XL_STATUS[3]
   end
 
-  # The buttons, right-aligned above the right end of the hand.
+  # How far left each row of buttons may reach (XL_BTN_ROWS): clear of the
+  # rows of the bottom river beside it, and the top row of the right river.
+  def xl_btn_lefts
+    e = @xl_r0_ends || [0, 0, 0, 0]
+    r1 = @xl_r1_rows || 0
+    out = [e[2], e[1] > e[2] ? e[1] : e[2], e[1], e[0]]
+    out[3] = XL_BX + XL_BW + XL_SIDE + r1 * 64 if r1 > 0 && XL_BX + XL_BW + XL_SIDE + r1 * 64 > out[3]
+    i = 0
+    while i < out.size
+      out[i] = out[i] + 8 < XL_BX ? XL_BX : out[i] + 8
+      i += 1
+    end
+    out
+  end
+
+  # The help level, at the top left (nothing of the table reaches it).
+  def xl_draw_assist
+    return unless @seat
+    fnt(12, 2)
+    l = assist_label
+    xl_button(B_ASSIST, [], 12, 8, tw(l) + 24, l)
+  end
+
+  # The buttons, right-aligned above the right end of the hand, the last at
+  # the bottom right; a row that is full goes on in the row above (each row
+  # clear of the bottom river beside it), and when four rows at the large
+  # font are not enough, the font goes down.
   def xl_draw_buttons
-    @buttons = []
-    @xl_btn_rects = []
     list = @view["a"].is_a?(Array) ? @view["a"] : []
     labels = []
     i = 0
@@ -664,21 +796,41 @@ class MahjongApp < FmrbApp
       i += 1
     end
     labels << [B_LEAVE, [], t(:mj_leave)] if @seat.nil?
-    fnt(12, 2)
-    # The help level, at the top left (nothing of the table reaches it).
-    if @seat
-      l = assist_label
-      xl_button(B_ASSIST, [], 12, 8, tw(l) + 24, l)
+    lefts = xl_btn_lefts
+    place = nil
+    [[12, 2, 24], [16, 1, 16], [12, 1, 12]].each do |px, size, pad|
+      next if place
+      fnt(px, size)
+      place = xl_pack_buttons(labels, lefts, pad)
     end
-    x = XL_RIGHT
+    place ||= xl_pack_buttons(labels, [XL_BX] * 4, 12)
+    i = 0
+    while i < place.size
+      p = place[i]
+      xl_button(labels[i][0], labels[i][1], p[0], p[1], p[2], labels[i][2])
+      i += 1
+    end
+  end
+
+  # [x, y, w] of each label in its row (nil: they do not fit).
+  def xl_pack_buttons(labels, lefts, pad)
+    out = []
+    row = 0
+    x = XL_BTN_RIGHT
     i = labels.size - 1
     while i >= 0
-      w = tw(labels[i][2]) + 24
+      w = tw(labels[i][2]) + pad
+      while x - w < lefts[row]
+        row += 1
+        x = XL_BTN_RIGHT
+        return nil if row >= XL_BTN_ROWS.size
+      end
       x -= w
-      xl_button(labels[i][0], labels[i][1], x, XL_BTN_Y, w, labels[i][2])
+      out.unshift([x, XL_BTN_ROWS[row], w])
       x -= 8
       i -= 1
     end
+    out
   end
 
   # Win buttons red, passing grey, the rest the usual colour (as in the sample).
@@ -687,12 +839,14 @@ class MahjongApp < FmrbApp
     @xl_btn_rects << [x, y, w, 40]
     col = type == A_RON || type == A_TSUMO ? C_BTN_WIN : (type == A_SKIP || type == B_LEAVE || type == B_ASSIST ? C_BTN_PASS : C_BTN)
     @gfx.fill_round_rect(x, y, w, 40, 8, col)
-    text(x + 12, y + 8, label)
+    text(x + (w - tw(label)) / 2, y + (40 - @fw) / 2, label)
     @xl_n_px += w * 40
   end
 
   # A round's result (or the end of the game) in a box over the middle. One
-  # block per winner; with three winners the tiles are the small ones.
+  # block per winner; with three winners the tiles are the small ones. When
+  # the blocks would not fit the screen, the yaku go in four columns of the
+  # smaller font (xl_compact).
   def xl_draw_result
     res = @view["res"]
     fin = @view["fin"]
@@ -700,13 +854,12 @@ class MahjongApp < FmrbApp
     big = wins.size <= 2
     over = fin.is_a?(Array) && @view["st"] == "over"
     fnt(12, 2)
-    hgt = 24
-    wins.each { |w| hgt += xl_win_height(w, big) }
-    hgt += 30 if res.is_a?(Hash) # the round
-    hgt += 34 if res.is_a?(Hash) && wins.empty?
-    hgt += 130 if res.is_a?(Hash) && !over
-    hgt += 40 + fin.size * 30 + 34 if over
-    hgt += 56
+    @xl_compact = false
+    hgt = xl_result_height(res, wins, fin, big, over)
+    if hgt > @h - 8
+      @xl_compact = true
+      hgt = xl_result_height(res, wins, fin, big, over)
+    end
     bw = 800
     bx = @x0 + (@w - bw) / 2
     by = @y0 + (@h - hgt) / 2
@@ -732,16 +885,17 @@ class MahjongApp < FmrbApp
       end
       unless over
         # Every seat: wind, name (and tenpai at a draw), before -> after, the change.
+        lh = @xl_compact ? 26 : 30
         i = 0
         while i < 4
           l = score_line(i, res)
-          cy = y + i * 30
+          cy = y + i * lh
           text(x, cy, l[0])
           text(x + 400, cy, l[1], C_DIM)
           text(x + 640, cy, l[2], delta_color(i, res))
           i += 1
         end
-        y += 130
+        y += lh * 4 + 10
       end
     end
     if over
@@ -750,7 +904,7 @@ class MahjongApp < FmrbApp
       i = 0
       while i < fin.size
         f = fin[i]
-        text(x, y, fin_line(f))
+        text(x, y, fit(fin_line(f), bw - 32))
         y += 30
         i += 1
       end
@@ -774,14 +928,38 @@ class MahjongApp < FmrbApp
     end
   end
 
+  def xl_result_height(res, wins, fin, big, over)
+    hgt = 24
+    wins.each { |w| hgt += xl_win_height(w, big) }
+    hgt += 30 if res.is_a?(Hash) # the round
+    hgt += 34 if res.is_a?(Hash) && wins.empty?
+    hgt += (@xl_compact ? 26 : 30) * 4 + 10 if res.is_a?(Hash) && !over
+    hgt += 40 + fin.size * 30 + 34 if over
+    hgt + 56
+  end
+
+  # The yaku: [columns, line height] (compact: four columns, 16 px font).
+  def xl_yaku_grid
+    @xl_compact ? [4, 20] : [3, 28]
+  end
+
   def xl_win_height(w, big)
     ys = w["y"].is_a?(Array) ? w["y"].size : 0
-    34 + (big ? 64 : 32) + 10 + ((ys + 2) / 3) * 28 + 36
+    cols, lh = xl_yaku_grid
+    c = @xl_compact
+    (c ? 28 : 34) + (big ? 64 : 32) + (c ? 6 : 10) + ((ys + cols - 1) / cols) * lh + xl_pt_lines(w) * (c ? 26 : 30) + (c ? 2 : 6)
+  end
+
+  # The points line, and pao on a line of its own when both do not fit.
+  def xl_pt_lines(w)
+    pa = pao_text(w)
+    return 1 if pa.empty?
+    tw(w["pt"].to_s) + 8 + tw(pa) <= 768 ? 1 : 2
   end
 
   def xl_draw_win(w, k, from, x, y, big)
-    text(x, y, win_head(w, k, from), C_TURN)
-    y += 34
+    text(x, y, fit(win_head(w, k, from), 768), C_TURN)
+    y += @xl_compact ? 28 : 34
     hc = bytes_of(w["h"])
     tw_ = big ? 48 : 24
     i = 0
@@ -805,17 +983,29 @@ class MahjongApp < FmrbApp
         cx += mw
       end
     end
-    y += (big ? 64 : 32) + 10
+    y += (big ? 64 : 32) + (@xl_compact ? 6 : 10)
     ys = w["y"].is_a?(Array) ? w["y"] : []
+    cols, lh = xl_yaku_grid
+    cw = 768 / cols
+    fnt(16, 1) if @xl_compact
     i = 0
     while i < ys.size
-      text(x + (i % 3) * 256, y + (i / 3) * 28, yaku_label(w, i))
+      text_spaced(x + (i % cols) * cw, y + (i / cols) * lh, fit(yaku_label(w, i), cw - 8))
       i += 1
     end
-    y += ((ys.size + 2) / 3) * 28
-    text_spaced(x, y, w["pt"].to_s, C_TURN)
+    fnt(12, 2)
+    y += ((ys.size + cols - 1) / cols) * lh
+    pt = w["pt"].to_s
+    text_spaced(x, y, fit(pt, 768), C_TURN)
     pa = pao_text(w)
-    text_spaced(x + tw(w["pt"].to_s) + 8, y, pa, C_AWAY) unless pa.empty?
-    y + 36
+    unless pa.empty?
+      if xl_pt_lines(w) == 1
+        text_spaced(x + tw(pt) + 8, y, pa, C_AWAY)
+      else
+        y += @xl_compact ? 26 : 30
+        text_spaced(x, y, fit(pa.strip, 768), C_AWAY)
+      end
+    end
+    y + (@xl_compact ? 28 : 36)
   end
 end
