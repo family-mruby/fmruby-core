@@ -22,6 +22,11 @@
 #   4. is a text that overlaps another text or a tile.
 # 1280x720 and 640x360 fail the run; 426x240 (the sim's small table) only
 # warns, but must draw without an exception. Exit status 1 on a failure.
+#
+# It also switches between screens (SWITCHES: seated <-> watching) and
+# checks the redraw after the switch against a drawing of the new screen
+# from a clean one: something of the old screen that no clear covers and
+# that the new screen does not draw is a leftover ("stale").
 
 require_relative "fixtures"
 
@@ -73,7 +78,7 @@ end
 
 # The graphics: records what is drawn, with the scope (panel) it was drawn in.
 class RecGfx
-  Prim = Struct.new(:kind, :x, :y, :w, :h, :panel, :rect, :overlay, :text)
+  Prim = Struct.new(:kind, :x, :y, :w, :h, :panel, :rect, :overlay, :text, :color)
 
   attr_reader :prims
 
@@ -100,7 +105,7 @@ class RecGfx
     record(:text, x, y, text_w(s.to_s), @px * @size, s.to_s)
   end
 
-  def fill_rect(x, y, w, h, _c) = record(:fill, x, y, w, h)
+  def fill_rect(x, y, w, h, c) = record(:fill, x, y, w, h, nil, c)
   def draw_rect(x, y, w, h, _c) = record(:frame, x, y, w, h)
   def fill_round_rect(x, y, w, h, _r, _c) = record(:fill, x, y, w, h)
   def draw_round_rect(x, y, w, h, _r, _c) = record(:frame, x, y, w, h)
@@ -113,13 +118,13 @@ class RecGfx
 
   def draw_tile(_id, _sx, _sy, w, h, dst_x:, dst_y:) = record(:tile, dst_x, dst_y, w, h)
 
-  def record(kind, x, y, w, h, text = nil)
+  def record(kind, x, y, w, h, text = nil, color = nil)
     top = @scopes.last
     if top && top[:box] == :first && kind == :fill
       top[:box] = [x, y, w, h]
     end
     rect = top && (top[:box].is_a?(Array) ? top[:box] : top[:rect])
-    @prims << Prim.new(kind, x, y, w, h, top && top[:name], rect, top && top[:overlay], text)
+    @prims << Prim.new(kind, x, y, w, h, top && top[:name], rect, top && top[:overlay], text, color)
   end
 end
 
@@ -339,6 +344,57 @@ end
 
 SIZES = { "1280x720" => :fail, "640x360" => :fail, "426x240" => :warn }.freeze
 
+# Screen switches: [from, to]. The seated table and the spectators' screen
+# share the "table" screen, so at 1280x720 the switch is a partial redraw.
+# "spectator_backs" is a host that does not show the hands (the own row as
+# backs and melds, as the seated screen has them).
+SWITCHES = [%w[melds_four_kans spectator], %w[spectator melds_four_kans],
+            %w[rivers_longest_turn spectator_closed], %w[spectator_closed rivers_longest_turn],
+            %w[melds_four_kans spectator_backs], %w[spectator_backs spectator]].freeze
+
+def switch_view(name)
+  return MjFixtures.all[name][0] unless name == "spectator_backs"
+  v = MjFixtures.all["spectator"][0]
+  v.delete("sh")
+  v.delete("sd")
+  v
+end
+
+def felt?(p)
+  p.kind == :clear || (p.kind == :fill && p.color == MahjongApp::C_FELT)
+end
+
+# c covers what p shows on a w x h screen (the part off the screen is the
+# overflow check's business).
+def covers?(c, p, w, h)
+  x1 = [p.x + p.w, w].min
+  y1 = [p.y + p.h, h].min
+  [p.x, 0].max >= c.x && [p.y, 0].max >= c.y && x1 <= c.x + c.w && y1 <= c.y + c.h
+end
+
+# Draws `from`, then `to` over it as the app would; returns the leftovers.
+def run_switch(from, to, w, h)
+  app, gfx = new_app(w, h)
+  [from, to].each_with_index do |name, i|
+    v = Marshal.load(Marshal.dump(switch_view(name)))
+    v["v"] = 100 + i
+    app.take_view(v)
+    app.instance_variable_set(:@buttons, [])
+    gfx.prims.clear if i.zero?
+    @n0 = gfx.prims.size
+    app.draw_screen
+  end
+  before = gfx.prims[0...@n0].reject { |p| felt?(p) }
+  after = gfx.prims[@n0..]
+  # Whatever is filled later hides what was under it (the board's own
+  # background included), not only the felt.
+  clears = after.select { |p| %i[clear fill].include?(p.kind) }
+  _, full = run_case(Marshal.load(Marshal.dump(switch_view(to))), w, h)
+  want = full.reject { |p| felt?(p) }.map { |p| [p.kind, p.x, p.y, p.w, p.h, p.text] }
+  before.reject { |p| clears.any? { |c| covers?(c, p, w, h) } || want.include?([p.kind, p.x, p.y, p.w, p.h, p.text]) }
+        .map { |p| "stale: #{desc(p)}" }.uniq
+end
+
 # Extra drawings of some cases: [suffix, preparation].
 EXTRAS = {
   "lobby_owner" => [["page2", ->(a) { a.instance_variable_set(:@rule_page, 1) if a.respond_to?(:rule_pages) }],
@@ -416,6 +472,27 @@ if $PROGRAM_NAME == __FILE__
         puts "#{strict ? 'FAIL' : 'warn'}  #{size}  #{label} (#{what}): #{probs.size}"
         probs.first(verbose ? 1000 : 6).each { |p| puts "        #{p}" }
       end
+    end
+  end
+  SWITCHES.each do |from, to|
+    label = "switch #{from} -> #{to}"
+    next if only && only != from && only != to
+    sizes.each do |size|
+      w, h = size.split("x").map(&:to_i)
+      total += 1
+      begin
+        probs = run_switch(from, to, w, h)
+      rescue StandardError => e
+        probs = ["exception: #{e.class}: #{e.message} (#{e.backtrace.first(3).join(' | ')})"]
+      end
+      if probs.empty?
+        puts "ok    #{size}  #{label}" if verbose
+        next
+      end
+      strict = SIZES[size] == :fail || probs.any? { |p| p.start_with?("exception") }
+      if strict then failed += 1 else warned += 1 end
+      puts "#{strict ? 'FAIL' : 'warn'}  #{size}  #{label}: #{probs.size}"
+      probs.first(verbose ? 1000 : 6).each { |p| puts "        #{p}" }
     end
   end
   puts "#{total} drawings: #{failed} failed, #{warned} warnings (426x240 is a warning only)"
