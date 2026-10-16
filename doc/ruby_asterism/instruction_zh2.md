@@ -37,6 +37,6 @@
 - **触らないもの**: zenohd の image と設定の中身 (cloud.json5 の作り方)、deploy/vps/zenohd/run.sh の今の動き (見張りの要求は今の道を使う。run.sh を変えないと作れないと分かったら止まる)、asterism・asterism-games・fmruby-core のコード、VPS、端末。
 - コミットのみ。push・タグはしない。`git commit -a` は使わない。コミットの末尾は `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。
 - 公開の文書・コミットに実在の IP・ドメイン・端末 ID・鍵を書かない。コミットの前に実在の値の検査をする。
-- 調べの道具 (負荷の客・見張り・手元の構成の手順) は /tmp/claude-1000/-home-kishima-fmrb-family-mruby/ac2e25be-21b2-46ea-8f7c-511bdcdbea0d/scratchpad/zh/w/ と zh1/probe/ にある (写して使う)。docker の container と compose の project は、別に動いている zenohd の直しの試し (名前に `zh-pr` を含む) とぶつからない名前・ポートにする。終わったら起こしたものを名前で止めて消す。前からある image は残す。docker の prune はしない。
+- 調べの道具 (負荷の客・見張り・手元の構成の手順) は親のスクラッチパッドの zh/w/ と zh1/probe/ にある (写して使う)。docker の container と compose の project は、別に動いている zenohd の直しの試し (名前に `zh-pr` を含む) とぶつからない名前・ポートにする。終わったら起こしたものを名前で止めて消す。前からある image は残す。docker の prune はしない。
 - **止まる条件**: run.sh や zenohd の image を変えないと作れない。console に docker の権限が要る。見立てと違う事実が出た (例: 起こし直しても戻らない、負荷なしでも誤検出が出る)。1 章・2 章に無い仕様の選択 (利用者から見た動きや画面を大きく変えるもの) が要る。
 - **report** (`doc/ruby_asterism/report/zh2.md`、常体): 見張りの形 (どこで動くか、既定の値と選んだ理由)、受け入れ条件ごとの結果と数字 (検出から戻るまでの時間 3 回分、誤検出の確かめ)、見立てと違った点、残ったこと。
