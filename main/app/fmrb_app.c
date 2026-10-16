@@ -3346,10 +3346,13 @@ bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
 {
 #if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM) || \
     (defined(CONFIG_IDF_TARGET_LINUX) && defined(FMRB_HW_FAMILY_MODERN))
-#if defined(CONFIG_IDF_TARGET_LINUX)
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
     // The Modern simulator: graphics-audio draws the screen, and only one
     // that says it knows SET_SCREEN_MODE (its INIT_DISPLAY ACK) can be given
     // 640x360 canvases -- an older one would draw them past its buffers.
+    // Not the browser build: it defines CONFIG_IDF_TARGET_LINUX too, but its
+    // screen is display_local, whose INIT_DISPLAY ACK carries no capability
+    // byte and which always knows the mode.
     if (!(fmrb_host_display_caps() & FMRB_LINK_DISPLAY_CAP_SCREEN_MODE)) {
         (void)width; (void)height;
         return false;
