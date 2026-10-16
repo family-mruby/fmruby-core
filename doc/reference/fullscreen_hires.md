@@ -1,6 +1,6 @@
 # 全画面の高解像度モード (使い方と仕組み)
 
-> 状態: 完了 | 更新: 2026-09-28 | P4 系 (Tab5 / NARYAv4) とブラウザ版で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
+> 状態: 完了 | 更新: 2026-10-16 | P4 系 (Tab5 / NARYAv4)、ブラウザ版と Modern の Linux sim で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 
 企画の経緯は `doc/fullscreen_hires/` (plan.md と report/)。
 
@@ -12,8 +12,10 @@
 - 窓に戻る (F11)、別の全画面アプリが上に来る、park される (Ctrl+Tab)、
   終わる、のどれでも 426x240 に戻る。決めるのはカーネルで、アプリは
   「高解像度にしてよい」と宣言するだけ。アプリが実行中に切り替える口は無い。
-- 対象は P4 系とブラウザ版 (基本の大きさが 426x240 のページ) だけ。
-  Retro (S3) と Linux の sim では属性は無視され、従来の全画面になる。
+- 対象は P4 系、ブラウザ版 (基本の大きさが 426x240 のページ) と Modern の
+  Linux sim。Retro (S3) と Retro の sim では属性は無視され、従来の全画面になる。
+  Modern の sim は graphics-audio が INIT_DISPLAY の ACK で対応を伝えたときだけ
+  640x360 になる (古い graphics-audio と組んだときは従来の全画面)。
   ブラウザ版で 640x360 や 852x480 のページを選んでいるときも無視される。
 
 ## アプリの書き方
@@ -71,3 +73,17 @@ fullscreen_hires = true              # 全画面のとき 640x360 にしてよ�
   先に画面を取って大きさを見る。
 - ブラウザ版のページ: 見た目の大きさは選んだ解像度とズームで決まり、
   640x360 に切り替わっても変わらない。
+
+## Linux sim (Modern) での仕組み
+
+- 画面は graphics-audio (Linux ビルド) が描く。SET_SCREEN_MODE の規則は
+  display_local と同じで、加えて「打ち切りで戻ったあと、持ち主が 640x360 の絵を
+  出したら入り直す」を持つ (最初の絵が遅いアプリのため)。経緯は
+  `doc/fullscreen_hires/report/h5_sim.md`。
+- graphics-audio は INIT_DISPLAY の ACK の 2 バイト目で対応を伝え
+  (`FMRB_LINK_DISPLAY_CAP_SCREEN_MODE`)、core はそれを見て初めて 640x360 を使う。
+- 共有メモリは layout 2 (640x360 の枠、枠ごとの大きさ)。sdl2-display の
+  イメージはヘッダを取り込んで作るので、変えたら `docker compose build
+  sdl2-display`。sim_up はイメージの古さを見て止まる。
+- `sim_screenshot` は高解像度中 640x360 を返し、`sim_input` の座標も 640x360。
+- 窓 (GUI) の大きさは変わらず、640x360 の絵が同じ窓に拡大されて出る。

@@ -1,6 +1,6 @@
 # 全画面の高解像度モード (P4 系とブラウザ版)
 
-> 状態: 進行中 | 更新: 2026-09-28 | **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章)
+> 状態: 進行中 | 更新: 2026-10-16 | **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。H5 で Modern の Linux sim も対象にした (report/h5_sim.md)。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章)
 
 ## 目的
 
@@ -11,8 +11,10 @@ Modern (P4) を「作る機械」にするため、エディタを全画面で�
 ## 方針 (ユーザ決定、2026-09-27)
 
 - **対象は P4 系 (Tab5 / NARYAv4) とブラウザ版 (wasm)**。Retro (S3 +
-  WROVER) は対象外。Linux の sim は graphics-audio 側で描くので、今回は
-  対象外 (sim では従来どおり 426x240 の全画面になる)。
+  WROVER) は対象外。Linux の sim は graphics-audio 側で描くので、H0-H4 では
+  対象外だった。**H5 (ユーザ決定、2026-10-16) で Modern の sim も対象にした**:
+  graphics-audio の Linux ビルドだけに SET_SCREEN_MODE を入れる (WROVER の
+  バイナリは変えない)。Retro の sim は従来どおり。
 - **高解像度にするかはアプリが .app.toml で選ぶ**。組み込みアプリは spawner の
   表で同じ属性を持つ。
 - **エディタは P4 系で既定オン**。
@@ -50,7 +52,9 @@ Modern (P4) を「作る機械」にするため、エディタを全画面で�
 4. **キー名**: .app.toml `fullscreen_hires = true`、表・attr・ctx は
    `.fullscreen_hires`。組み込みの editor と editor_fs に付ける (P4 で既定オン)。
    構成の判定は C の 1 関数 (`FMRB_HW_MODERN || FMRB_PLATFORM_WASM` かつ実行時の
-   基本の大きさが 426x240。`HW_FAMILY` は sim でも modern なので使わない)。
+   基本の大きさが 426x240。`HW_FAMILY` は sim でも modern なので単独では使わない。
+   H5 で「Linux かつ `FMRB_HW_FAMILY_MODERN` かつ graphics-audio が INIT_DISPLAY の
+   ACK で SET_SCREEN_MODE を知ると伝えた」を足した)。
    カーネル Ruby へは `_fullscreen_hires_size` (nil か [640,360])。mruby 版と
    Spinel 版の両方。
 5. **入力**: 「いまの画面の大きさ」を host_task に 1 つ置き、touch / usb /
@@ -72,7 +76,9 @@ Modern (P4) を「作る機械」にするため、エディタを全画面で�
 | H3 | エディタ: P4 で既定オン、フォントの選択と /home/editor.toml への保存、LINE_H / CELL_W の変数化 | **完了** (report/h3.md、フォントとドラッグの直しはユーザの目視で合格) |
 | H4 | 残り: 表示側の守り (h3.md 9.5 の固まった件)、遠隔デスクトップ (remote.js) と H.264、ブラウザのページ、MCP の道具、試験用の口を外す、文書 | **実装完了・目視待ち** (report/h4.md)。画面が止まる穴を 1 つ直した。h3.md 9.5 の板ごと固まった件は再現せず原因不明 |
 
-段階ごとに instruction_hN.md を書き、report/hN.md に結果を残す。
+| H5 | Modern の Linux sim: graphics-audio (Linux) に SET_SCREEN_MODE、SHM の layout 2 (640x360 の枠と枠ごとの大きさ)、sdl2-display の追従、能力を INIT_DISPLAY の ACK で伝える、canvas の確保量を超える要求の切り詰め、BMP の上限 (Linux)、道具 | **完了** (report/h5_sim.md、sim の確認まで。GUI の見た目はユーザの目視) |
+
+段階ごとに instruction_hN.md を書き、report/hN.md に結果を残す (H5 は指示書なし、report/h5_sim.md)。
 
 H2 の判断 (ユーザ、2026-09-28): Ctrl+Tab で park するときの順番は変えない。試験用の口 (`_dev_screen_mode`) は H4 で外す。`.app.toml` は `fullscreen_hires = true` を正式とし、整数 1 も受ける。
 
@@ -87,7 +93,10 @@ H2 の判断 (ユーザ、2026-09-28): Ctrl+Tab で park するときの順番�
 - エディタのフォントを選べ、再起動後も残る。
 - 内蔵 RAM (静的な D/IRAM と待機時の空き) が増えない。Tab5 と NARYAv4 と
   S3 のビルドが通る (S3 は機能なしで従来どおり)。
-- sim は従来どおり動く (高解像度にはならない)。
+- Modern の sim でも、属性を持つアプリの全画面が 640x360 になり、抜けると
+  426x240 に戻る (H5 で変更、ユーザ決定 2026-10-16。元は「sim は従来どおり
+  動く (高解像度にはならない)」)。Retro の sim は従来どおり 320x240。
+  WROVER のビルドのサイズは変わらない。
 
 ## 未確定事項
 
