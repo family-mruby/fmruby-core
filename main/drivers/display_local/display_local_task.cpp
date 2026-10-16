@@ -270,7 +270,9 @@ static uint16_t g_display_height = 0;
 // nor a frame laid out for the old size is ever shown. SCREEN_MODE_WAIT_MS
 // bounds the wait. While in the high-resolution mode, the display gives the
 // screen back by itself when the owner canvas is deleted or hidden (an app
-// that died, a park), without waiting for anyone to ask.
+// that died, a park), without waiting for anyone to ask. An owner that was
+// only too slow -- the bound ran out before its first 640x360 frame -- gets
+// the screen back when that frame arrives (late_owner).
 //
 // All of this is state of the display task alone. It lives in PSRAM
 // (FMRB_EXT_RAM_BSS_ATTR): it is read a few times per frame at most, and the
@@ -306,6 +308,14 @@ typedef struct {
     // can be shown (hidden, gone, a committed frame that is not 640x360, or
     // none since a resize); 0 while it has. See screen_mode_poll.
     uint32_t     owner_unshowable_since_ms;
+    // The owner the screen was taken back from because it had nothing to
+    // show in time (screen_mode_poll), not because it left or was asked to.
+    // An app that is slow to draw its first frame -- the mahjong table loads
+    // its tile sheets on its first start, which can take seconds -- gets the
+    // screen back when that frame does arrive at 640x360. Cleared by any
+    // request and when that canvas is hidden or deleted. The Linux
+    // simulator's graphics-audio follows the same rule.
+    uint16_t     late_owner;
     // Remote-desktop capture: the size of the frame in each slot, since the
     // two slots can hold frames of different modes.
     uint16_t     cap_w[2], cap_h[2];
@@ -1172,6 +1182,21 @@ static void screen_mode_try_complete(void) {
     }
 }
 
+// The owner the screen was taken back from presented its 640x360 frame after
+// all (late_owner): it gets the screen now. The kernel still holds the
+// high-resolution mode for it, so nothing else will ask.
+static void screen_mode_late_present(uint16_t canvas_id) {
+    if (canvas_id == 0 || canvas_id != g_smode.late_owner) return;
+    if (g_smode.hires || g_smode.pending || !g_smode.fb_hires) return;
+    p4_canvas_t *c = canvas_find(canvas_id);
+    if (!c || !c->is_visible || !c->committed_fresh ||
+        c->width != DISPLAY_LOCAL_HIRES_W || c->height != DISPLAY_LOCAL_HIRES_H) return;
+    g_smode.late_owner = 0;
+    g_smode.owner = canvas_id;
+    g_smode.owner_resize_unacked = false;
+    screen_mode_apply(true, "owner presented late");
+}
+
 // SET_SCREEN_MODE. width/height 0 (or the base size) asks for the base mode.
 // The last request wins: a new one replaces whatever is pending.
 static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t flags) {
@@ -1198,6 +1223,8 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
         }
         if (!screen_mode_ensure_hires_fb()) return;
     }
+    // A request, either way, supersedes a late owner's claim.
+    g_smode.late_owner = 0;
     FMRB_LOGI(TAG, "SET_SCREEN_MODE: owner=%u %ux%u flags=0x%02x (now %dx%d%s)",
               owner, w, h, flags, g_framebuffer->width(), g_framebuffer->height(),
               g_smode.pending ? ", a switch pending" : "");
@@ -1232,6 +1259,7 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
 // Called when a canvas is hidden or about to be deleted. If it owns the
 // high-resolution screen, the screen goes back to the base mode now.
 static void screen_mode_owner_leaving(uint16_t canvas_id, const char *why) {
+    if (canvas_id != 0 && canvas_id == g_smode.late_owner) g_smode.late_owner = 0;
     if (canvas_id == 0 || canvas_id != g_smode.owner) return;
     if (g_smode.hires) {
         screen_mode_apply(false, why);
@@ -1285,7 +1313,11 @@ static void screen_mode_poll(void) {
               !c ? "gone" : !c->is_visible ? "hidden" :
               (c->width != DISPLAY_LOCAL_HIRES_W || c->height != DISPLAY_LOCAL_HIRES_H)
                   ? "wrong size" : "no frame");
+    // Still there (only late, or hidden for now): it may yet present its
+    // 640x360 frame, and then it gets the screen back (screen_mode_late_present).
+    const uint16_t late = c ? g_smode.owner : 0;
     screen_mode_apply(false, "owner unshowable");
+    g_smode.late_owner = late;
     g_smode.force_render = true;
 }
 
@@ -1994,6 +2026,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             }
             g_needs_render = true;
             if (src->canvas_id == g_smode.owner) screen_mode_try_complete();
+            else screen_mode_late_present(src->canvas_id);
         } else {
             // Push canvas-to-canvas
             p4_canvas_t *dst = canvas_find(cmd->dest_canvas_id);
