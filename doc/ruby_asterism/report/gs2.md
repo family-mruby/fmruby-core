@@ -1,6 +1,6 @@
 # GS2 報告: オセロの卓 (ホスト版) とその画面、CRuby の端末のクライアント
 
-> 状態: 一部完了 (受け入れ条件 4・5 は保留、検収待ち) | 更新: 2026-10-17 | instruction_gs2.md の結果。互換の 3 つを落とし、部屋の卓を開くアプリのゲームから選ぶ形にし、オセロの卓 (asterism-games)・卓のアプリ (fmruby-core)・CRuby の端末のクライアントを作った。条件 4 (部屋) と 5 (常設の卓) は console の手元の構成に使える image が無く、作業コピーからのビルドは取り決めで禁止なので手を付けていない (8 章)
+> 状態: 完了 (検収待ち) | 更新: 2026-10-17 | instruction_gs2.md の結果。互換の 3 つを落とし、部屋の卓を開くアプリのゲームから選ぶ形にし、オセロの卓 (asterism-games)・卓のアプリ (fmruby-core)・CRuby の端末のクライアントを作った。条件 4 (部屋) と 5 (常設の卓) はいったん保留し (8 章)、親の決定 (案 1) のあと console の deploy/local で通した (6.4)
 
 ## 1. コミット
 
@@ -156,12 +156,25 @@ games/games/othello1  over: linux (white) wins, 19-45
 
 どの大きさでも窓は崩れていない (窓の大きさは同じで、1280x720 では画面の左上に小さく出る)。
 
-### 6.4 部屋 (条件 4) と常設の卓 (条件 5): 保留
+### 6.4 部屋 (条件 4) と常設の卓 (条件 5)
 
-8 章。代わりに、次の 6.6 の image の確かめの中で、自分で立てた mTLS の zenohd に対して同じ形を通した (console ではないので条件の代わりにはならない):
+8 章の保留のあと、親の決定 (案 1) で続けた。構成: asterism-console の deploy/local を作業コピー (main `3cbe318`、0.3.2、router watch つき) で `rehearse prepare` → `build` → `bootstrap` → `up`。zenohd は公式の 1.10.1 のまま (mTLS)。`build` は image `asterism-console-rehearsal:0.3.2` が層ごと手元にあり (前の作業のもの)、すぐ終わった。リハーサルの `.env` だけ、`ASTERISM_ROOM_APPS` に `OthelloTable=/app/game/othello/othello.app.rb` を足した (console のコードは書き換えていない)。`PLAY_DIST` は feature/gs2 の `rake wasm:dist`。
 
-- 常設の卓の形: 自分の CA で作った `alice.tar` (`asterism.json` に名前とルータ) で、CRuby のクライアントが `othello1` に座り CPU と 1 局を終局まで (CPU の勝ち 41-23)。
-- 部屋の形: rooms.json に「麻雀を開く部屋 01」「オセロの卓を開く部屋 02」「今のオセロ (直接) を開く部屋 03」と `hosts: ["games"]` を書くと、01 に `mahjong1` だけ、02 に `othello1` だけのホストが上がり、03 には上がらなかった。部屋 02 で `games-tty1` (ホストの名前の下) の CRuby が CPU と 1 局を終局まで、部屋 01 でボット 3 + CPU が東風戦を最後まで。席でない名前 (`wasm-0209`) の CRuby は `identity` で断られた。
+登録の行と役割は console の container の `bin/rails runner` で作った: docs/rooms.md の「A game host's permanent tables」どおりの役割 `games-host` (行 `games`) と `games` (行 `player-a`、`match` も)。鍵は `Relay::Issuer#issue_local` で console の中で作り、「Save all (.tar)」と同じ中身 (鍵・証明書・ca.pem・asterism.json) の .tar にした。もう一度 `bootstrap` してルータの設定を書き、そのあとで stack を上げた。ゲームホストは asterism-games の deploy/vps (image `asterism-games:7c87c17`) を project `asterism-games-rehearsal`、`ASTERISM_PROJECT=asterism-rehearsal`、`games.tar` で上げ、console を `GAMES=1` で上げ直した。
+
+ブラウザは G2b と同じく docker の Playwright 1.56 (Chromium) を rehearsal の web の網に置いた (web_* の道具では部屋のページに入れないため)。部屋は管理画面から作った (Rooms、「Opens」を選ぶ欄が今は select なので、前の補助の台本をそれに合わせた)。
+
+- **条件 4: 合格。**
+  - オセロの卓を開く部屋 (スロット 01) にはホストが `othello1` だけで上がり、麻雀を開く部屋 (02) には `mahjong1` だけで上がった (`room 01: ... opens /app/game/othello/othello.app.rb: host pid 60 (its own certificate games.tar, 16 seats; othello1)`)。
+  - 部屋 01 のリンクで開いた 2 つのブラウザ (席 `wasm-0101`・`wasm-0102`) が卓の一覧から `othello1` に入り (join 52 ms)、S で座り、卓の主が Enter で始め、矢印と Enter で 60 手 (パス 4 回を含む) を終局まで打った (ホストの記録 `game over (count, 19-45, seat 1 wins)`)。会員と席は席の node ID。
+  - 部屋 02 のリンクで開いた麻雀の卓の一覧には `games/games/mahjong1` だけが出て、名前を入れて入り、1 で席 1 に座れた (卓の主)。`status` は `room 01: up, othello1 over (2 seated …)`、`room 02: up, mahjong1 wait (1 seated …)`。
+  - ブラウザ版の卓のアプリの VM プール: 344-356 KB (22-23 %)。
+- **条件 5: 合格。** 行 `player-a` (役割 `games` と `match`) の .tar で、`bin/othello-tty --credentials player-a.tar --router tls/localhost:17448 --table games/games/othello1 --commands "sit,cpu,start,auto"` が常設の卓 `othello1` に座り、CPU と 1 局を終局まで打った (CPU の勝ち 10-54)。
+- 0.3.2 の router watch は 30 秒ごとに新しい session を開いて確かめていて、この間に zenohd を起動し直すことは無かった (RestartCount 0)。
+
+写した画面 (`report/gs2/`): `room_othello_mid.png` (部屋 01 の 21 手目)、`room_othello_over.png` (終局)、`room_mahjong_list.png` (部屋 02 の卓の一覧)、`room_mahjong_seated.png` (席 1 に座った待ち合わせ)。
+
+console を使う前に、6.6 の image の確かめの中で、自分で立てた mTLS の zenohd に対しても同じ形を通していた (自分の CA の `alice.tar` で常設の卓の 1 局、部屋 03「今のオセロを開く」にはホストが上がらない、席でない名前 `wasm-0209` は `identity` で断られる)。
 
 ### 6.5 今の端末どうしのオセロ (条件 6)
 
@@ -193,11 +206,14 @@ idle: nobody sits at a table
 | image: 監督 / 常設 / 部屋 (VmHWM) | 43.3 / 51.2 / 51.4 MB | 43.8 / 47.3 (麻雀 2 + オセロ 1) / 51.2 (麻雀の部屋、東風戦のあと) MB、オセロの部屋 47.0 MB |
 | image: `status` の `rss_kb` (全プロセスの和) | 145.9 MB (部屋 1 + 常設) | 185.0 MB (部屋 2 + 常設) |
 | image: container (docker stats、外からの対局中) | 67.7 MiB | 73-74 MiB (部屋 2 + 常設)。ボットを container の中で動かした間は 157.8 MiB (ボットの分を含む) |
+| deploy/local (console 0.3.2): 監督 / 常設 / 部屋 01 (オセロ) / 部屋 02 (麻雀) (VmHWM) | - | 44.7 / 47.3 / 47.1 / 47.1 MB |
+| deploy/local: `status` の `rss_kb` / container | 145.9 MB / 67.7 MiB | 181.8 MB / 69.7 MiB (部屋 2 + 常設、部屋の対局のあと) |
 | 卓のアプリの VM の使用 (sim) | - | 479-492 KB / 1536 KB (31-32 %)、普通のプール |
+| 卓のアプリの VM の使用 (ブラウザ版、部屋の中) | - | 344-356 KB (22-23 %) |
 
 麻雀の 1 通の最大と RSS は GS1 と同じ幅に入っている。
 
-## 8. 保留した条件 4・5 と選択肢
+## 8. 保留した条件 4・5 と選択肢 (案 1 で解決、6.4)
 
 着いた時点で `docker ps` に `asterism-zh2` の container は無く、asterism-console の `git status` も clean だった (main は 0.3.2 の `3cbe318`)。しかし:
 
@@ -227,8 +243,8 @@ idle: nobody sits at a table
 
 ## 11. 残ったこと
 
-- 条件 4・5 (8 章)。
 - 卓のアプリはまだ実機 (Tab5・P4-Nano) で動かしていない (指示書の範囲外)。
 - 卓のアプリは再起動したときの「自分の席あり」の印 (麻雀の `mine` の探り) を持たない。同じ node は join で同じ token と席に戻る。
 - ブラウザ版の暗いテーマでは、黒の席の印 (黒い丸) が背景に沈んで見えにくい (`table_web_*.png`)。
+- 後片付け (4・5 の分): deploy/local の stack を `GAMES=1 VOLUMES=1 rehearse down` で volume ごと消し、`deploy/local/.env` と `certs/` を消した (console の作業コピーは clean)。asterism-games の rehearsal の project を `down -v` し、volume `asterism-games-rehearsal_state`・image `asterism-games:7c87c17`・deploy/vps の `.env` と `credentials/games.tar` を消した。Playwright は `--rm` で残っていない。image `asterism-console-rehearsal:0.3.2` は前からあったものなので残した。
 - 後片付け: 平文の zenohd `gs2-zenohd`、mTLS の zenohd `gs2-zenohd-tls`、volume `gs2_rooms` と `asterism-games-gs2_state`、network `gs2_router`、作った image `asterism-games:08f3f92`、deploy/vps の `.env` と `credentials/games.tar`、家の LAN の卓のホスト、web_* の開発サーバとブラウザ、sim (音を戻してから sim_down) を止めて消した。`alpine:3` は rooms.json を volume に書くのに使った (前からあったか分からないので残した)。docker の prune はしていない。fmruby-core の build/ は x86-64 のまま (`file build/fmruby-core.elf` で確認)。wasm/build はこの branch で作り直したまま。
