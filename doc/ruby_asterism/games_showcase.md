@@ -1,6 +1,6 @@
 # asterism-games を Asterism の見本にする
 
-> 状態: 進行中 | 更新: 2026-10-17 | GS1-GS5 完了 (report/gs1.md・gs2.md・gs2b.md・gs3.md・gs4.md・gs5.md。GS5 の本物の API での確かめは鍵待ち)、次は GS6。麻雀だけのゲームホストを、Asterism でサーバ側のアプリを書く見本にする。共通の枠組み (gem) とゲーム (アプリと image) に分け、書き方を Asterism らしくし、麻雀以外の例・CRuby のクライアント・網を見る CLI・MCP・AI の打ち手を足す
+> 状態: 進行中 | 更新: 2026-10-17 | GS1-GS5 完了 (report/gs1.md・gs2.md・gs2b.md・gs3.md・gs4.md・gs5.md。GS5 の本物の API での確かめは鍵待ち)、GS6 完了 (report/gs6.md)、次は GS5b (Jev を直接の API に) と GS7。麻雀だけのゲームホストを、Asterism でサーバ側のアプリを書く見本にする。共通の枠組み (gem) とゲーム (アプリと image) に分け、書き方を Asterism らしくし、麻雀以外の例・CRuby のクライアント・網を見る CLI・MCP・AI の打ち手を足す
 
 前提: report/mj1.md〜mj5.md・mj4.md (部屋と常設の卓)・g2b.md (部屋の席)、mje*.md (エンジン)、asterism-games の README、asterism の README (portable API・CRuby API・Who called・Profiles)。
 
@@ -55,7 +55,7 @@
 | GS3 (完了 2026-10-17、report/gs3.md) | 居る・居ないを on_join / on_leave で、端末の探し直し、case/in | 途切れの判定が速くなる。試験。結果: asterism-games 0.8.0。途切れの判定は約 10-14 s から 6-17 ms (家の LAN・部屋・常設。常設は役割 games-host に `Read asterism/*/game` が要る、2026-10-17 ユーザ決定)。卓のアプリは一覧の取り直しをやめてホストの on_join で探し直し (待つ間の問い合わせ 0 回、戻るまで 5-17 ms)。呼び出しの間隔の仕組みは、印が見えないノードだけの備えに残した。席の管理は基底に上げない (共通は 30 行ほど)。残り: アプリの VM の case/in で配列の形が nil で落ちる (コンパイラの直し)、居る・居ないはノード単位 (GS4 へ) |
 | GS4 (完了 2026-10-17、report/gs4.md) | 網を見る CLI と MCP の橋渡し (asterism gem) | CRuby だけで網の全体が見える。MCP のクライアントからオセロと麻雀の卓を呼べる。結果: 状態のキー `asterism/<node>/<app>/@status` (変わったときだけ put、get にも答える、protocol.md 8 章、上限 1024 B) を網の決まりに足した (2026-10-17 ユーザ)。asterism の CLI (nodes / objects / tree / watch / ping / call、`--router` と `--credentials`) と `asterism mcp` (既定は見るだけ、`--allow` で許したメソッドだけがツール)。console 0.3.4 は図の Details に @status、見るだけの役割 viewer。asterism-games 0.9.0 は卓ごとの数を @status で (部屋の中では出さない)。MCP の客から許したオセロの卓で CPU と終局まで打てた。asterism は 0.7.1 のまま (公開はユーザ)、console と games は 0.7.1 でも動く形 |
 | GS5 (完了 2026-10-18、report/gs5.md。本物の API での確かめは鍵待ち) | 麻雀の MCP のツールと AI の打ち手 (Claude API、Jev) | AI が卓に座って半荘を打てる。CPU と比べた数字。結果: asterism の meta に `args` / `doc`、アプリ単位の出入り (`on_app_join` / `on_app_leave`、卓のアプリはアプリ名 `game`)。asterism-games 0.10.0: AI 向けの `describe` / `look` / `choose` / `points` (AI に渡すのはその席に見える範囲だけ)、VPS のゲームホストの中の AI の打ち手 (Claude `claude-sonnet-5-5`・Jev `typesafe/jev`、卓の主が空いた席に入れる)、費用の上限は 1 日の額 (既定 3.0 USD) と 1 ゲームあたりの呼び出し回数 (既定 400)、AI の席の持ち時間は打牌 30 秒・鳴き 15 秒で切れたらその手だけ CPU、Claude が答えを拒んだらその手だけ CPU (2026-10-17〜18 ユーザ)。オセロの AI の打ち手は無し (MCP の客からは打てる) |
-| GS6 | 共有のお絵かきボード (MCAP の記録と再生) | 複数の端末とブラウザで描け、記録を再生できる |
+| GS6 (完了 2026-10-18、report/gs6.md) | 共有のお絵かきボード (MCAP の記録と再生) | 複数の端末とブラウザで描け、記録を再生できる。結果: asterism-games 0.11.0 のゲーム `board` (線の列で配る、ボードごとに保存、全消しは主、各自は自分の最後の線を取り消し、2026-10-18 ユーザ)。枠組みに状態の外に配る `Game#tell` と保存の間引き。アプリ「Board / お絵かき」(fmruby-core)。記録と再生は console の今の V4 のまま (コードの変更なし)。ボード座標 640x360・16 色・4 段、上限 1000 本・40,000 点で古い線から捨てる。残り: 太い線の斜めの縞 (描く側の命令が要る)、白紙にせず再生すると番号が重なる、1280x720 では窓のアプリなので小さい (全画面の高解像度にする候補) |
 | GS7 | 枠組みを gem に、image を ghcr に | gem と image の形が整い、ユーザが公開できる |
 
 ## 5. 受け入れ条件 (全体)
