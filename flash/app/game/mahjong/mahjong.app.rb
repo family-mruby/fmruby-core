@@ -13,7 +13,12 @@
 #   tiles): the host takes only what its list for this seat (the view's "a")
 #   has. A member without a seat watches (the table without hands).
 # - The connection is the machine's (FmrbAsterism.settings, as othello). A
-#   line that drops or a host that restarts: the app keeps asking. When the
+#   line that drops or a host that restarts: the app keeps asking. Who is
+#   there comes from Asterism (GS3): a host that leaves the network
+#   (on_leave) takes its tables off the list and, at its table, shows the
+#   connection lost and stops asking; when it is back (on_join) the app
+#   looks for its tables again at once (and every LIST_EVERY_MS anyway,
+#   should the word not come) and asks its view. When the
 #   app starts again it asks each table mine() and marks in the list the
 #   tables it has a seat at; Enter goes back to the seat (the same node gets
 #   its token back). It does not go in by itself.
@@ -74,7 +79,12 @@ class MahjongApp < FmrbApp
   CALL_TIMEOUT = 3.0
   RECONNECT_MS = 3000
   VIEW_EVERY_MS = 3000
-  SCAN_EVERY_MS = 2000
+  # Tables are looked for on on_join (for RESCAN_MS), else every LIST_EVERY_MS.
+  LIST_EVERY_MS = 30000
+  RESCAN_MS = 3000
+  RESCAN_STEP_MS = 300
+  # The host gone: a view now and then (should on_join not come).
+  HOST_GONE_VIEW_MS = 30000
   PROBE_EVERY_MS = 15000
   WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
@@ -136,7 +146,8 @@ class MahjongApp < FmrbApp
     @str = {
       mj_title: "麻雀", mj_connecting: "つないでいます", mj_searching: "ゲームホストを探しています (games/mahjong*)",
       mj_joining: "卓に入っています", mj_full: "卓が満員", mj_lost: "網から切れた: つなぎ直し中",
-      mj_host_away: "ホストが答えない: 待っています", mj_retro: "この卓は Modern とブラウザ版で動きます",
+      mj_host_away: "ホストが答えない: 待っています",
+      mj_host_left: "ホストとのつながりが切れた", mj_retro: "この卓は Modern とブラウザ版で動きます",
       mj_left: "残り", mj_riichi: "リーチ", mj_tsumo: "ツモ", mj_ron: "ロン", mj_pon: "ポン", mj_chi: "チー",
       mj_kan: "カン", mj_pass: "パス", mj_kyuushu: "九種九牌", mj_next: "次へ", mj_pick: "リーチ: 切る牌を選ぶ (Esc でやめる)",
       mj_draw: "流局", mj_tenpai: "テンパイ", mj_over: "終局", mj_you: "自分",
@@ -234,6 +245,9 @@ class MahjongApp < FmrbApp
     @probe_path = nil
     @probe_at = Machine.board_millis
     @scan_at = 0
+    @rescan_until = 0     # look for tables until then (a node joined)
+    @host_gone = false    # the host of this app's table left the network
+    @gone_at = 0
     @sub = nil
     @table = nil          # the table this app is at
     @join_f = nil
@@ -323,9 +337,13 @@ class MahjongApp < FmrbApp
       ::Asterism.close
       raise ::Asterism::Error, @creds_error if @creds_error
       ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      # Who is there (forgotten by Asterism.close, so given at each connect).
+      ::Asterism.on_join { |n| node_joined(n) }
+      ::Asterism.on_leave { |n| node_left(n) }
       @net = :up
       @net_note = ""
       @scan_at = 0
+      @rescan_until = Machine.board_millis + RESCAN_MS
       subscribe_states
     rescue ::Asterism::Error => e
       @net = :down
@@ -370,10 +388,12 @@ class MahjongApp < FmrbApp
     ::Asterism[path, timeout: CALL_TIMEOUT]
   end
 
-  # The tables of the hosts on the network.
+  # The tables of the hosts on the network (Asterism.each reads the
+  # liveliness the app already follows: nothing is sent).
   def find_tables
     now = Machine.board_millis
-    return if now - @scan_at < SCAN_EVERY_MS
+    every = now < @rescan_until ? RESCAN_STEP_MS : LIST_EVERY_MS
+    return if now - @scan_at < every
     @scan_at = now
     ::Asterism.each("*/#{HOST_APP}/*").each do |px|
       p = px.asterism_path
@@ -388,7 +408,47 @@ class MahjongApp < FmrbApp
     return if @tables.key?(p)
     @tables[p] = {}
     @table_list = @tables.keys.sort
+    Log.info("mahjong: table #{p} on the list")
     @dirty = true
+  end
+
+  def host_of(p)
+    p.split("/")[0]
+  end
+
+  # on_leave: a host's tables leave the list; at its table: connection lost.
+  def node_left(n)
+    gone = @table_list.select { |p| host_of(p) == n }
+    unless gone.empty?
+      gone.each do |p|
+        @tables.delete(p)
+        @mine.delete(p)
+        @probed.delete(p)
+      end
+      @table_list = @tables.keys.sort
+      @list_sel = 0 if @list_sel >= @table_list.size
+      Log.info("mahjong: #{n} left the network: #{gone.size} table(s) off the list")
+      @dirty = true
+    end
+    if @table && host_of(@table) == n
+      @host_gone = true
+      @gone_at = Machine.board_millis
+      @dirty = true
+    end
+  end
+
+  # on_join: look for tables now; this table's host back: ask the view.
+  def node_joined(n)
+    @rescan_until = Machine.board_millis + RESCAN_MS
+    @scan_at = 0
+    if @table && host_of(@table) == n && @host_gone
+      @host_gone = false
+      @host_away = false
+      @view_f = nil
+      @view_at = 0
+      Log.info("mahjong: #{n} is back")
+      @dirty = true
+    end
   end
 
   # Every table's state, one subscription.
@@ -517,6 +577,7 @@ class MahjongApp < FmrbApp
     @view = nil
     @want_v = 0
     @host_away = false
+    @host_gone = false
     @note = ""
     ask_view
     @dirty = true
@@ -535,6 +596,7 @@ class MahjongApp < FmrbApp
     @view_f = nil
     @act_f = nil
     @cmd_f = nil
+    @host_gone = false
     @note = ""
     @dirty = true
   end
@@ -552,9 +614,10 @@ class MahjongApp < FmrbApp
     f = @view_f
     return unless f && f.done?
     @view_f = nil
+    f_sent = @view_at
     begin
-      v = f.value
-      if v.is_a?(Hash) && v["error"]
+      case f.value
+      in Hash => v if v["error"]
         # The host lost our membership (a new state): back to the list.
         Log.info("mahjong: the host does not know us: back to the list")
         @token = nil
@@ -564,10 +627,13 @@ class MahjongApp < FmrbApp
         @probed = []
         @mine = {}
         @dirty = true
-      elsif v.is_a?(Hash)
+      in Hash => v
         take_view(v)
+      else
       end
       @host_away = false
+      # Answered a view sent after the host left: it is back.
+      @host_gone = false if @host_gone && f_sent > @gone_at
     rescue ::Asterism::Error => e
       @host_away = true
       Log.info("mahjong: view: #{e.class}")
@@ -581,11 +647,18 @@ class MahjongApp < FmrbApp
     @want_v = v["v"].to_i if v["v"].to_i > @want_v
     me = v["me"]
     @seat = me.is_a?(Integer) && me >= 0 ? me : nil
-    dl = v["dl"]
+    # dl: the seats whose time runs (bits), the ms left, the bank's ms.
+    # (nil first: the app's VM calls deconstruct on whatever it is given,
+    # so an array pattern must not meet a nil.)
+    bits, left, bank = case v["dl"]
+                       in nil then [0, 0, 0]
+                       in [Integer => b, Integer => l, Integer => k, *] then [b, l, k]
+                       in [Integer => b, Integer => l] then [b, l, 0]
+                       else [0, 0, 0]
+                       end
     mine = @seat ? (1 << @seat) : 0
-    bits = dl.is_a?(Array) ? dl[0].to_i : 0
-    @deadline = bits & mine != 0 ? Machine.board_millis + dl[1].to_i : nil
-    @bank_ms = @deadline && dl.size > 2 ? dl[2].to_i : 0
+    @deadline = bits & mine != 0 ? Machine.board_millis + left : nil
+    @bank_ms = @deadline ? bank : 0
     # In the calls, the screen waits for the others whenever this seat has
     # nothing (more) to answer; who they are it is not told (a host before
     # MJ5 gives their bits, this one the three others' alike).
@@ -1289,6 +1362,8 @@ class MahjongApp < FmrbApp
       "#{t(:mj_connecting)}: #{@locator}"
     elsif @net == :down || reconnecting?
       "#{t(:mj_lost)} #{@net_note}"
+    elsif @host_gone
+      t(:mj_host_left)
     elsif @host_away
       t(:mj_host_away)
     else
@@ -1396,10 +1471,12 @@ class MahjongApp < FmrbApp
     w = ""
     i = 0
     while i < mb.size
-      m = mb[i]
-      if m.is_a?(Array) && m[1].to_i < 0
-        w = "#{w} #{m[0]}"
-        w = "#{w}(#{t(:mj_away)})" if m[2].to_i & 1 == 1
+      # [name, seat (-1: none), flags (1 away, 2 owner)]
+      case mb[i]
+      in [name, Integer => seat, Integer => flags, *] if seat < 0
+        w = "#{w} #{name}"
+        w = "#{w}(#{t(:mj_away)})" if flags & 1 == 1
+      else
       end
       i += 1
     end
@@ -1426,6 +1503,7 @@ class MahjongApp < FmrbApp
 
   def status_line
     return "#{t(:mj_lost)}" if @net != :up || reconnecting?
+    return t(:mj_host_left) if @host_gone
     return t(:mj_host_away) if @host_away
     return "#{t(:mj_watching)} #{turn_text} #{@note}" if @seat.nil?
     return "#{t(:mj_others)} #{@note}" if @others && @view["st"] == "play" && calls_phase?
@@ -1434,12 +1512,17 @@ class MahjongApp < FmrbApp
 
   def draw_info
     v = @view
-    r = v["r"]
     x = @x0 + (@big ? 152 : 92)
     y = @y0 + 2
-    return unless r.is_a?(Array)
-    s = "#{WIND[r[0].to_i % 4]}#{r[1]}#{t(:mj_kyoku)}  #{r[2]}#{t(:mj_honba)}  #{t(:mj_sticks)}#{r[3]}"
-    s = "#{s}  #{t(:mj_left)}#{r[5]}" if r.size > 5
+    # r: [wind, hand, repeats, sticks, dealer, tiles left, ...]
+    case v["r"]
+    in nil then return
+    in [wind, hand, repeats, sticks, *rest]
+      s = "#{WIND[wind.to_i % 4]}#{hand}#{t(:mj_kyoku)}  #{repeats}#{t(:mj_honba)}  #{t(:mj_sticks)}#{sticks}"
+      s = "#{s}  #{t(:mj_left)}#{rest[1]}" if rest.size > 1
+    else
+      return
+    end
     text_spaced(x, y + (@big ? 8 : 0), s)
     dx = x + tw(s) + 20
     d = bytes_of(v["dora"])
@@ -1841,7 +1924,7 @@ class MahjongApp < FmrbApp
             @rename_f = nil
             ask_view
           end
-          if @token && @view_f.nil? && (@want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS)
+          if @token && @view_f.nil? && view_due?(now)
             ask_view
           end
         end
@@ -1871,6 +1954,12 @@ class MahjongApp < FmrbApp
       @hand_redraw = nil
     end
     30
+  end
+
+  # A newer version, or the view that says this app is still there.
+  def view_due?(now)
+    return now - @view_at >= HOST_GONE_VIEW_MS if @host_gone
+    @want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS
   end
 
   def on_destroy
