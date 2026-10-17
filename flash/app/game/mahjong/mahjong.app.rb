@@ -52,8 +52,11 @@
 #
 # Keys. The list of tables: up / down choose, Enter joins. The lobby: 1-4
 # sit in that seat, s stand, c fill the empty seats with CPUs (the owner),
-# Enter start (the owner), Esc leave the table, up / down choose a local
-# rule and left / right change it (the owner; a click on a rule steps it).
+# Enter start (the owner), Esc leave the table, up / down choose a seat or
+# a local rule (the seats come before the first rule) and left / right
+# change it (the owner: a seat goes round empty, CPU and the AI players
+# the host offers, as a click on its button does; a click on a rule steps
+# it).
 # The game: left / right choose
 # a tile, Enter discards it (the drawn tile when none is chosen) or goes on
 # after a result, Esc passes a call (a spectator: leaves); r riichi (then
@@ -130,9 +133,9 @@ class MahjongApp < FmrbApp
   B_LEAVE = 106
   B_ASSIST = 107
   B_NAME = 110
-  # An AI player into an empty seat (asterism-games README "AI players"):
-  # [seat, the index of its kind in the lobby view's "ak"].
-  B_AI_ON = 111
+  # A seat's button in the lobby (the owner): [seat]; it goes round empty,
+  # CPU and the AI players offered (mahjong_panels.rb seat_step).
+  B_SEAT = 111
   # The help this screen asks the host for (asterism-games README "Assist"):
   # 0 none, 1 the riichi discards and their waits, 2 every discard that
   # leaves the hand tenpai, 3 as 2 and else the shanten and the acceptance.
@@ -158,7 +161,7 @@ class MahjongApp < FmrbApp
       mj_kyuushu_end: "九種九牌で流局", mj_sanchahou: "三家和で流局",
       mj_ms: "ms", mj_resp: "応答", mj_rank: "位", mj_from: "から",
       mj_tables: "卓 (Enter で入る)", mj_mine: "[自分の席あり]", mj_seat: "席", mj_empty: "空き",
-      mj_sit: "座る", mj_stand: "立つ S", mj_cpu: "CPU", mj_cpu_off: "空ける", mj_fill: "CPU で埋める C",
+      mj_sit: "座る", mj_stand: "立つ S", mj_cpu: "CPU", mj_fill: "CPU で埋める C",
       mj_start: "始める Enter", mj_leave: "卓を出る Esc", mj_owner: "卓の主", mj_away: "途切れ",
       mj_watchers: "観戦:", mj_lobby: "待ち合わせ", mj_playing: "対局中", mj_ended: "終局",
       mj_humans: "参加", mj_cpus: "CPU", mj_free: "空き", mj_members: "人", mj_ai: "AI",
@@ -180,7 +183,7 @@ class MahjongApp < FmrbApp
       "taken" => "その席は埋まっている", "no seat" => "その席は無い", "humans" => "人の席がもう無い",
       "not owner" => "卓の主だけができる", "seats" => "4 席がそろっていない", "no human" => "人が 1 人もいない",
       "no change" => "変わらない", "full" => "卓が満員", "spectators" => "観戦の人数が上限",
-      "value" => "選べない値", "no rule" => "その項目は無い",
+      "value" => "選べない値", "no rule" => "その項目は無い", "no ai" => "その AI は今は出せない (鍵か 1 日の上限)",
       "identity" => "この部屋での名乗りが合わない (部屋のリンクを開き直す)"
     }
     setup_rule_strings
@@ -834,16 +837,15 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # A lobby call: sit / stand / cpu / start; an AI player (ai: the index
-  # of its kind in "ak") goes in as cpu with its kind's name.
+  # A lobby call: sit / stand / cpu / start; ai (a kind of "ak") puts that
+  # AI player in the seat (in place of the CPU or AI player there).
   def lobby(kind, seat, ai = nil)
     return if @cmd_f || @token.nil?
     px = proxy
     @cmd_f = if kind == B_SIT then px.async.sit(@token, seat)
              elsif kind == B_STAND then px.async.stand(@token)
-             elsif kind == B_CPU_ON then px.async.cpu(@token, seat, true)
+             elsif kind == B_CPU_ON then px.async.cpu(@token, seat, ai || true)
              elsif kind == B_CPU_OFF then px.async.cpu(@token, seat, false)
-             elsif kind == B_AI_ON then px.async.cpu(@token, seat, ai_kinds[ai].to_s)
              else px.async.start(@token)
              end
   rescue ::Asterism::Error => e
@@ -1021,7 +1023,7 @@ class MahjongApp < FmrbApp
     return name_key(k) if @name_edit
     ch = k[1]
     ch += 32 if ch >= 65 && ch <= 90
-    return if rule_key(k)
+    return if seat_key(k) || rule_key(k)
     if k[0] == FmrbConst::KEY_ESC || ch == 27
       leave_table
     elsif enter?(k)
@@ -1162,11 +1164,13 @@ class MahjongApp < FmrbApp
       @name_edit ? name_done : name_begin
     elsif type == B_RULE
       @rule_sel = tiles[0]
+      @seat_sel = nil
       rule_step(tiles[0], 1)
     elsif type == B_RULE_PAGE
       rule_flip(tiles[0])
-    elsif type == B_AI_ON
-      lobby(type, tiles[0], tiles[1])
+    elsif type == B_SEAT
+      @seat_sel = tiles[0]
+      seat_step(tiles[0], 1)
     elsif type >= B_SIT
       lobby(type, tiles.empty? ? -1 : tiles[0])
     else
@@ -1482,11 +1486,7 @@ class MahjongApp < FmrbApp
       elsif sk[s] != 1
         cx += button(B_SIT, [s], cx, y - u(2), "#{t(:mj_sit)} #{s + 1}") + u(4)
       end
-      if owner? && sk[s] == 0
-        button(B_CPU_ON, [s], cx, y - u(2), t(:mj_cpu))
-      elsif owner? && sk[s] == 2
-        button(B_CPU_OFF, [s], cx, y - u(2), t(:mj_cpu_off))
-      end
+      draw_seat_state(s, cx, y - u(2)) if sk[s] != 1
       y += row_h
       s += 1
     end
@@ -1510,14 +1510,6 @@ class MahjongApp < FmrbApp
     cx = x
     if owner?
       cx += button(B_CPU_ON, [], cx, y, t(:mj_fill)) + u(6) if sk.index(0)
-      # An AI player into the first empty seat, one button per kind offered.
-      free = sk.index(0)
-      ak = ai_kinds
-      k = 0
-      while free && k < ak.size
-        cx += button(B_AI_ON, [free, k], cx, y, "+#{ai_label(ak[k])}") + u(6)
-        k += 1
-      end
       cx += button(B_START, [], cx, y, t(:mj_start)) + u(6) if sk.index(0).nil?
     end
     cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + u(6)

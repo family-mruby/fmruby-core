@@ -39,6 +39,7 @@ class MahjongApp < FmrbApp
                    "切り上げ満貫", "トビ", "延長", "持ち時間", "途中流局", "流し満貫", "ダブル役満",
                    "テンパイ止め", "CPU の強さ", "観戦の遅れ"]
     @rule_sel = 0   # the item chosen (its number)
+    @seat_sel = nil # the seat chosen by the keys (nil: a rule is)
     @rule_page = 0
   end
 
@@ -180,6 +181,92 @@ class MahjongApp < FmrbApp
     true
   end
 
+  # ------------------------------------------------------------ the seats (GS5c)
+  #
+  # The owner sets each seat that is not a player's with its button: empty,
+  # CPU, then the AI players the host offers (the lobby view's "ak", in its
+  # order; a kind without its key, or past the day's limit, is not there),
+  # and empty again. One call each (asterism-games 0.12.1 turns a CPU or
+  # AI seat into another kind at once; a refused AI leaves it as it was).
+  # The others see the state only.
+
+  # A seat's state: "" empty, "cpu", an AI player's kind; nil a player's.
+  def seat_state(s)
+    k = seat_kinds[s]
+    return nil if k == 1
+    return "" if k == 0
+    ai = @view["ai"]
+    kind = ai.is_a?(Array) ? ai[s].to_s : ""
+    kind.empty? ? "cpu" : kind
+  end
+
+  def seat_label(st)
+    return t(:mj_empty) if st == ""
+    st == "cpu" ? t(:mj_cpu) : ai_label(st)
+  end
+
+  # The owner turns seat s to the next state (step 1) or the last (-1).
+  def seat_step(s, step)
+    st = seat_state(s)
+    return unless owner? && st
+    list = ["", "cpu"] + ai_kinds
+    i = list.index(st)
+    # An AI player no longer offered: on to empty, or back to a CPU.
+    nx = i.nil? ? (step > 0 ? "" : "cpu") : list[(i + step) % list.size]
+    if nx == ""
+      lobby(B_CPU_OFF, s)
+    else
+      lobby(B_CPU_ON, s, nx == "cpu" ? nil : nx)
+    end
+  end
+
+  # The seat's button (the owner) or its state (the others), at x, y.
+  def draw_seat_state(s, x, y)
+    l = seat_label(seat_state(s))
+    if owner?
+      w = button(B_SEAT, [s], x, y, l)
+      @gfx.draw_round_rect(x, y, w, u(20), u(4), C_TURN) if s == @seat_sel
+    else
+      text(x + u(6), y + u(4), l, C_DIM)
+    end
+  end
+
+  # The owner's keys for the seats: up / down choose a seat (the seats come
+  # before the first rule: up from it, or down from the last), left / right
+  # change the chosen one. True when the key was one of them.
+  def seat_key(k)
+    return false unless owner?
+    sc = k[0]
+    order = rules && @big ? rule_order : []
+    if sc == FmrbConst::KEY_TAB || k[1] == 9
+      @seat_sel = nil
+      return false
+    end
+    up = sc == FmrbConst::KEY_UP
+    if up || sc == FmrbConst::KEY_DOWN
+      if @seat_sel.nil?
+        unless order.empty?
+          edge = up ? order[0][0] : order[order.size - 1][0]
+          return false unless @rule_sel == edge
+        end
+        @seat_sel = up ? 3 : 0
+      elsif !order.empty? && @seat_sel == (up ? 0 : 3)
+        pos = up ? order.size - 1 : 0
+        @rule_sel = order[pos][0]
+        @rule_page = order[pos][1]
+        @seat_sel = nil
+      else
+        @seat_sel = (@seat_sel + (up ? -1 : 1)) % 4
+      end
+      @dirty = true
+      return true
+    end
+    return false if @seat_sel.nil?
+    return false unless sc == FmrbConst::KEY_LEFT || sc == FmrbConst::KEY_RIGHT
+    seat_step(@seat_sel, sc == FmrbConst::KEY_LEFT ? -1 : 1)
+    true
+  end
+
   # The rules beside the seats (640x360, and twice that at 1280x720): the
   # page's groups, a heading and a row an item; the owner's rows are
   # buttons (a click steps the value). The page tabs under the title (a
@@ -219,7 +306,7 @@ class MahjongApp < FmrbApp
       text(x, y, head, C_DIM)
       y += u(16)
       items.each do |i|
-        sel = own && i == @rule_sel
+        sel = own && @seat_sel.nil? && i == @rule_sel
         @gfx.fill_rect(x - u(2), y - u(2), w, u(16), sel ? C_SEL : C_BOX) if own
         v = rule_text(i, rule_value(ru, i))
         text(x + u(6), y, fit(@rule_names[i], w - tw(v) - u(18)), C_TEXT)
