@@ -159,3 +159,20 @@ mcp gem 1.4.0 の客の台本から `asterism mcp --router tcp/127.0.0.1:17567 -
 ## 10. 後片付け
 
 zenohd `gs5-zenohd`、家の LAN のゲームホスト・ボット・MCP の客、web_* の開発サーバとブラウザ、sim (音を戻して sim_down) を止めて消した。scratchpad の台本と状態を消した。前からある image は残した。docker の prune はしていない。fmruby-core の build/ は x86-64 のまま (`file build/fmruby-core.elf`)、ブラウザ版は作り直した (`rake spinel:gen wasm:mruby wasm:mrb wasm:web`)。sim の標準構成でエディタを起動して 1 打鍵した。
+
+## 10. 本物の API での確かめ (2026-10-18 追記、7.5 と gs5b.md 5.2 の保留を解いた)
+
+構成: asterism-games 230a5ca (0.11.1、Jev は TypeSafe の直接の API) を別の作業場所に写し、平文の zenohd (1.10.1) と家の LAN の形で起こした。鍵は作業の環境の変数で渡した (ログ・状態のファイルには出ていない)。卓は mahjong1、東風戦、席は CPU・卓の主 (look / choose で素朴に打つ CRuby の客)・Claude (`claude-sonnet-5-5`)・Jev (`jev-latest`)。
+
+- 東風戦は 210 秒で終局 (`normal_end`、和了 6 局)。順位: CPU 40,000 (1 位)、**Claude 35,000 (2 位)**、卓の主 14,300 (3 位)、**Jev 10,700 (4 位)**。1 回きりなので強さの比べにはならない。
+- 判断: 聞いた 147 回、答え 147 回 (Claude 68・Jev 79)、失敗 0、持ち時間切れ 0 (CPU の代打ちなし)。判断の時間は 2 つ合わせて平均 725 ms・最大 4,618 ms (AI の席の持ち時間 30 秒に十分収まる)。
+- 費用 (`ai_usage.json`、その日の数え):
+
+| | 呼び出し | 入力 | 出力 | キャッシュ書き込み / 読み出し | 額 |
+|---|---|---|---|---|---|
+| Claude (Sonnet 5.5) | 68 | 109,646 | 1,767 | 1,578 / 105,726 | 0.2515 USD |
+| Jev | 79 | 228,337 | 5,967 | - | 0.0096 USD |
+| 合計 | 147 | 445,287 (読み出し込み) | 7,734 | | 0.2611 USD (1 日の上限 3.0 USD) |
+
+- 見積もり (7 章: Claude は東風戦 1 回 0.15-0.25 USD、Jev は 0.004 USD) に対し、Claude は上の端、Jev は約 2.4 倍 (look が見積もりより長く、1 手の入力が約 2,900 トークン)。それでも Jev は Claude の約 26 分の 1。
+- 1 通の最大は look の答えの 2,877 B。
