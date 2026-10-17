@@ -1,0 +1,10 @@
+app_handle_name = "drawing_board"
+app_screen_name = "Board"
+app_screen_name_ja = "お絵かき"
+default_window_mode = "window"
+default_window_width = 372
+default_window_height = 222
+default_window_pos_x = 27
+default_window_pos_y = 15
+icon = "app/game/board/board.icon"
+single_instance = true
