@@ -8,7 +8,13 @@
 #   change and every 5 s. This app lists them, joins one (join(name) -> a
 #   token) and asks its own view (view(token): the table's view and "me",
 #   its seat) when a put shows a newer version, and every VIEW_EVERY_MS
-#   anyway (which also tells the host it is still there).
+#   anyway (which also tells the host it is still there, where the host
+#   does not see the nodes come and go).
+# - Who is there comes from Asterism (GS3): a host that leaves the network
+#   (on_leave) takes its tables off the list and, at its table, shows the
+#   connection lost and stops asking; when it is back (on_join) the app
+#   looks for its tables again at once (and every LIST_EVERY_MS anyway,
+#   should the word not come) and asks its view.
 # - In the lobby: sit / stand, the owner (the first who sat) puts the CPU in
 #   the empty seat and starts. The colours are drawn at the start (seat 0
 #   is black and moves first). A move is move(token, n, "d3") with n the
@@ -34,7 +40,13 @@ class OthelloTableApp < FmrbApp
   CALL_TIMEOUT = 3.0
   RECONNECT_MS = 3000
   VIEW_EVERY_MS = 3000
-  SCAN_EVERY_MS = 2000
+  # Tables are looked for on on_join (for RESCAN_MS), else every LIST_EVERY_MS.
+  LIST_EVERY_MS = 30000
+  RESCAN_MS = 3000
+  RESCAN_STEP_MS = 300
+  # The host gone: a view now and then (should on_join not come).
+  HOST_GONE_VIEW_MS = 30000
+  HOST_LEFT = "ホストとのつながりが切れた"
   WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
   COLS = "abcdefgh"
@@ -73,6 +85,9 @@ class OthelloTableApp < FmrbApp
     @table_list = []
     @list_sel = 0
     @scan_at = 0
+    @rescan_until = 0     # look for tables until then (a node joined)
+    @host_gone = false    # the host of this app's table left the network
+    @gone_at = 0
     @table = nil          # the table this app is at
     @join_f = nil
     @cmd_f = nil
@@ -123,9 +138,13 @@ class OthelloTableApp < FmrbApp
       ::Asterism.close
       raise ::Asterism::Error, @creds_error if @creds_error
       ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      # Who is there (forgotten by Asterism.close, so given at each connect).
+      ::Asterism.on_join { |n| node_joined(n) }
+      ::Asterism.on_leave { |n| node_left(n) }
       @net = :up
       @net_note = ""
       @scan_at = 0
+      @rescan_until = Machine.board_millis + RESCAN_MS
       subscribe_states
     rescue ::Asterism::Error => e
       @net = :down
@@ -172,10 +191,12 @@ class OthelloTableApp < FmrbApp
     p.split("/")[2].to_s.start_with?("othello")
   end
 
-  # The othello tables of the hosts on the network.
+  # The othello tables of the hosts on the network (Asterism.each reads
+  # the liveliness the app already follows: nothing is sent).
   def find_tables
     now = Machine.board_millis
-    return if now - @scan_at < SCAN_EVERY_MS
+    every = now < @rescan_until ? RESCAN_STEP_MS : LIST_EVERY_MS
+    return if now - @scan_at < every
     @scan_at = now
     ::Asterism.each("*/#{HOST_APP}/*").each do |px|
       p = px.asterism_path
@@ -189,7 +210,44 @@ class OthelloTableApp < FmrbApp
     return if @tables.key?(p)
     @tables[p] = nil
     @table_list = @tables.keys.sort
+    Log.info("othello_table: table #{p} on the list")
     @dirty = true
+  end
+
+  def host_of(p)
+    p.split("/")[0]
+  end
+
+  # on_leave: a host's tables leave the list; at its table: connection lost.
+  def node_left(n)
+    gone = @table_list.select { |p| host_of(p) == n }
+    unless gone.empty?
+      gone.each { |p| @tables.delete(p) }
+      @table_list = @tables.keys.sort
+      @list_sel = 0 if @list_sel >= @table_list.size
+      Log.info("othello_table: #{n} left the network: #{gone.size} table(s) off the list")
+      @dirty = true
+    end
+    if @table && host_of(@table) == n
+      @host_gone = true
+      @gone_at = Machine.board_millis
+      @note = HOST_LEFT
+      @dirty = true
+    end
+  end
+
+  # on_join: look for tables now; this table's host back: ask the view.
+  def node_joined(n)
+    @rescan_until = Machine.board_millis + RESCAN_MS
+    @scan_at = 0
+    if @table && host_of(@table) == n && @host_gone
+      @host_gone = false
+      @note = ""
+      @view_f = nil
+      @view_at = 0
+      Log.info("othello_table: #{n} is back")
+      @dirty = true
+    end
   end
 
   def subscribe_states
@@ -240,17 +298,20 @@ class OthelloTableApp < FmrbApp
     return unless f && f.done?
     @join_f = nil
     begin
-      r = f.value
-      if r.is_a?(Hash) && r["token"]
+      case f.value
+      in Hash => r if r["token"]
         @token = r["token"].to_s
         @view = nil
         @want_v = 0
         @confirm = false
+        @host_gone = false
         ask_view
         Log.info("othello_table: joined #{@table} (#{f.took_ms} ms)")
-      else
-        e = r.is_a?(Hash) ? r["error"] : r
-        @note = reason(e)
+      in Hash => r
+        @note = reason(r["error"])
+        @table = nil
+      in r
+        @note = reason(r)
         @table = nil
       end
     rescue ::Asterism::Error => e
@@ -272,6 +333,7 @@ class OthelloTableApp < FmrbApp
     @cmd_f = nil
     @deadline = nil
     @confirm = false
+    @host_gone = false
     @note = ""
     @dirty = true
   end
@@ -288,18 +350,22 @@ class OthelloTableApp < FmrbApp
     f = @view_f
     return unless f && f.done?
     @view_f = nil
+    f_sent = @view_at
     begin
-      v = f.value
-      if v.is_a?(Hash) && v["error"]
+      case f.value
+      in Hash => v if v["error"]
         Log.info("othello_table: the host does not know us: back to the list")
         leave_table
         @note = "卓から外れた"
-      elsif v.is_a?(Hash)
+      in Hash => v
         @view = v
         dl = v["dl"]
         @deadline = dl ? Machine.board_millis + dl.to_i : nil
         @confirm = false unless v["st"] == "play"
+        # Answered a view sent after the host left: it is back.
+        @host_gone = false if @host_gone && f_sent > @gone_at
         @dirty = true
+      else
       end
     rescue ::Asterism::Error => e
       @note = "ホストが答えない: 待っています"
@@ -414,8 +480,7 @@ class OthelloTableApp < FmrbApp
   end
 
   def run_key(k)
-    sc = k[0]
-    ch = k[1]
+    k => [sc, ch]
     enter = sc == FmrbConst::KEY_ENTER || ch == 13 || ch == 10
     esc = sc == FmrbConst::KEY_ESC || ch == 27
     @dirty = true
@@ -591,10 +656,12 @@ class OthelloTableApp < FmrbApp
   end
 
   def status_word(st)
-    return "待ち合わせ" if st == "wait"
-    return "対局中" if st == "play"
-    return "終局" if st == "over"
-    "-"
+    case st
+    in "wait" then "待ち合わせ"
+    in "play" then "対局中"
+    in "over" then "終局"
+    else "-"
+    end
   end
 
   def draw_list
@@ -711,7 +778,8 @@ class OthelloTableApp < FmrbApp
     end
     yy = y + 50
     st = v["st"]
-    if st == "play"
+    case st
+    in "play"
       who = v["tn"] == me ? "あなたの番" : (v["tn"] == 0 ? "黒の番" : "白の番")
       text(x, yy, fit("#{who} (#{v['n'].to_i + 1} 手目)", n), v["tn"] == me ? C_CURSOR : theme_fg)
       if @deadline
@@ -719,7 +787,7 @@ class OthelloTableApp < FmrbApp
         left = 0 if left < 0
         text(x, yy + 15, fit("残り #{left} 秒 (切れたら CPU が打つ)", n), theme_border)
       end
-    elsif st == "over"
+    in "over"
       res = v["res"].is_a?(Hash) ? v["res"] : {}
       w = res["w"].to_i
       word = w < 0 ? "引き分け" : "#{w == 0 ? '黒' : '白'} (#{name_of(w)}) の勝ち"
@@ -781,9 +849,7 @@ class OthelloTableApp < FmrbApp
           collect_join
           collect_cmd
           collect_view
-          if @token && @view_f.nil? && (@want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS)
-            ask_view
-          end
+          ask_view if @token && @view_f.nil? && view_due?(now)
         end
       end
     end
@@ -803,6 +869,12 @@ class OthelloTableApp < FmrbApp
       draw_screen
     end
     50
+  end
+
+  # A newer version, or the view that says this app is still there.
+  def view_due?(now)
+    return now - @view_at >= HOST_GONE_VIEW_MS if @host_gone
+    @want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS
   end
 
   def on_destroy

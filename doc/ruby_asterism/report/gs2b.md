@@ -1,6 +1,6 @@
 # GS2b 報告: console の図で、部屋のゲームホストと常設の卓のホストを見分ける
 
-> 状態: 一部完了・止まる条件 (ACL) で判断待ち | 更新: 2026-10-17 | instruction_gs2b.md の結果。部屋のホストのラベル `games (room NN)` (console 0.3.3) と、常設の卓のホストのプロフィールの名前 `permanent tables` (asterism-games 0.7.1) は入れた。ただしプロフィールが図に出ない原因は console 自身の ACL (`asterism/**` が `@profile` に当たらない) で、直すには ACL の作り方を変える必要があるため止めた (4 章)
+> 状態: 完了 (検収待ち) | 更新: 2026-10-17 | instruction_gs2b.md の結果。部屋のホストのラベル `games (room NN)` (console 0.3.3) と、常設の卓のホストのプロフィールの名前 `permanent tables` (asterism-games 0.7.1) を入れた。プロフィールが図に出ない原因は console 自身の ACL (`asterism/**` が `@profile` に当たらない) で、いったん止めたあと、ユーザの決定 (コードで直す) で cloud_config に console の @profile を読む規則を足した (7 章)
 
 ## 1. コミット
 
@@ -8,7 +8,10 @@
 |---|---|---|---|
 | asterism-console | main | `1f53ced` console 0.3.3 | 部屋のホストのラベル、試験、CHANGELOG・docs/rooms.md・docs/install.md |
 | asterism-games | main | `f2e329e` games 0.7.1 | 常設の卓のホストのプロフィールの名前 `permanent tables`、試験、README |
-| fmruby-core | develop | この報告と同じコミット | この報告と画面 (`report/gs2b/*.png`) |
+| fmruby-core | develop | `b42ce5b0` | この報告 (止めた時点) と画面 2 枚 |
+| asterism-console | main | `5787d52` console 0.3.3 | console の @profile を読む規則 (7 章) |
+| asterism-games | main | `d41e590` | README の但し書きを外した |
+| fmruby-core | develop | この追記と同じコミット | 7 章と画面 `graph_fixed.png` |
 
 push・タグはしていない。コミットの前に差分から実在の IP・ドメイン・端末 ID・鍵を検査して 0 件だった。
 
@@ -97,3 +100,30 @@ push・タグはしていない。コミットの前に差分から実在の IP�
 - ACL の試験の道具 (`test/test_helpers/acl_evaluator.rb`) は `**` が `@` で始まる部分に当たらないことを正しく扱っているが、「console が `asterism/<node>/@profile` を問い合わせ・購読できる」を問う試験が無かった。4 章の 1 をするなら、その試験を一緒に足す。
 - fmruby-core に親の指示書 (`instruction_gs2b.md`・`instruction_gs3.md`) が未追跡のまま残っている (この報告のコミットには入れていない)。
 - 後片付け: deploy/local を `GAMES=1 VOLUMES=1 rehearse down` で volume ごと消し、`deploy/local/.env` と `certs/` を消した。asterism-games の rehearsal の project を `down -v`、volume `asterism-games-rehearsal_state`、deploy/vps の `.env` と `credentials/games.tar` を消した。作った image `asterism-games:gs2b`・`asterism-console-rehearsal:0.3.3` と、確かめの平文の zenohd `gs2b-zenohd` (`--rm`) を消した。前からある image (`asterism-console-rehearsal:0.3.2`・`asterism-games:7c87c17` ほか・`nginx:1.27-alpine`・Playwright) は残した。scratchpad の鍵 (.tar)・TOTP の秘密・cloud.json5 の写しも消した。docker の prune はしていない。console・games の作業コピーは clean。
+
+## 7. 追記: ACL の直し (ユーザの決定のあと)
+
+決定 (親から): (1) @profile はコードで直す。cloud_config.rb で console の主体に `asterism/*/@profile` を読む規則を足す (ACL の作り方の変更として許可、止まる条件は解除)。まだ push していない 0.3.3 に入れる。(2) 部屋のボットにはラベルを付けない (「等しい」のまま)。
+
+### 7.1 直したこと (console `5787d52`)
+
+- `Relay::CloudConfig`: console の証明書 (settings `console`) の主体に 2 つの規則を足した。`console__profiles_in` (console から: `declare_subscriber`・`query`) と `console__profiles_out` (console へ: `put`・`reply`)、鍵は `asterism/*/@profile`。部屋の中の規則 (席の `room/<slot>/asterism/*/@profile`) と同じ考え方で、読むだけ (console は profile を put・queryable しない)。ほかの主体には付かない。
+- 移行は要らない: 登録の行は変えず、規則はコードから出る。更新の `bin/asterism setup --from-update` がルータの設定を書き直し、ルータを起動し直す (CHANGELOG と docs/install.md「From 0.3.2 to 0.3.3」に書いた)。
+- 試験 (cloud_config_test.rb): console が `asterism/games/@profile` を問い合わせ・購読でき、答えと put を受けられること、console からの put・delete・queryable・token・reply は通らないこと、`@other` には当たらないこと、`asterism/**` を持つほかの主体 (viewer・zenohd-home) には通らないこと、規則を持つ主体が console だけで、console の名前が違えば誰にも付かないこと。既存の 2 件は console の規則の並びを直した。
+- 文書: CHANGELOG 0.3.3 の「Known」を直した旨に書き換え、docs/rooms.md の但し書きを「0.3.3 より前は出なかった」に、asterism-games の README の但し書きを外した。
+
+### 7.2 受け入れ
+
+- console `bin/rubocop` 247 files no offenses、`bin/rails test` 437 runs 0 failures。
+- deploy/local を作業コピーから作り直し (image 0.3.3、ゲームホスト image も同じ手順)、**ACL を手で触らずに** `bootstrap` が書いた cloud.json5 に `console__profiles_in`・`console__profiles_out` があることを確かめ、図を写した (`report/gs2b/graph_fixed.png`):
+  - 部屋の枠の中に `games (room 01)` と席 `wasm-0101`
+  - 枠の外に `permanent tables (games)`
+  - 端末 (player-a、`net.profile(name: "Alice's board")`) が `Alice's board (player-a)`
+  - `console (this console)`
+- bridge のログ: `profile games: protocol=1 kind=cruby name=permanent tables icon_hash=2a8c0626`。
+
+### 7.3 片付け
+
+deploy/local (`GAMES=1 VOLUMES=1 rehearse down`、`.env`・`certs/`)、ゲームホストの project と volume `asterism-games-rehearsal_state`、deploy/vps の `.env`・`credentials/games.tar`、作った image `asterism-games:gs2b`・`asterism-console-rehearsal:0.3.3`、scratchpad の鍵と TOTP の秘密を消した。前からある image は残し、prune はしていない。両リポジトリの作業コピーは clean。push・タグはしていない。
+
+4 章の「判断待ち」と 6 章の 1 行目・2 行目は、この追記で片付いた (ボットは付けないと決まった)。
