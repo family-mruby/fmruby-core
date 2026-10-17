@@ -7,7 +7,7 @@
 #   table's public state on asterism/<host>/games/<table>/state after every
 #   change and every 5 s), joins one (join(name) -> a token) and waits in its
 #   lobby: sit / stand, the table's owner fills empty seats with CPUs and
-#   starts. In the game it asks its own view with the token (view(token)) when
+#   starts. In the game it asks its own view with the token (view(token, assist)) when
 #   a put shows a newer version, and every VIEW_EVERY_MS anyway (which also
 #   tells the host it is still there). An action is act(token, sv, type,
 #   tiles): the host takes only what its list for this seat (the view's "a")
@@ -542,8 +542,8 @@ class MahjongApp < FmrbApp
   def ask_view
     return if @view_f || @token.nil?
     @view_at = Machine.board_millis
-    # Level 1 is the host's default: a host from before the levels takes one argument.
-    @view_f = @assist == ASSIST_DEFAULT ? proxy.async.view(@token) : proxy.async.view(@token, @assist)
+    # The help level always goes with the call (asterism-games README "Assist").
+    @view_f = proxy.async.view(@token, @assist)
   rescue ::Asterism::Error => e
     @view_f = nil
   end

@@ -1,0 +1,10 @@
+app_handle_name = "othello_table"
+app_screen_name = "Othello (table)"
+app_screen_name_ja = "オセロ (卓)"
+default_window_mode = "window"
+default_window_width = 372
+default_window_height = 222
+default_window_pos_x = 27
+default_window_pos_y = 15
+icon = "app/test/othello.icon"
+single_instance = true
