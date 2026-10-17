@@ -136,6 +136,7 @@ class MahjongApp < FmrbApp
   # A seat's button in the lobby (the owner): [seat]; it goes round empty,
   # CPU and the AI players offered (mahjong_panels.rb seat_step).
   B_SEAT = 111
+  B_RECORDS = 112         # the recent games (MJ6, mahjong_replay.rb)
   # The help this screen asks the host for (asterism-games README "Assist"):
   # 0 none, 1 the riichi discards and their waits, 2 every discard that
   # leaves the hand tenpai, 3 as 2 and else the shanten and the acceptance.
@@ -159,7 +160,7 @@ class MahjongApp < FmrbApp
       mj_draw: "流局", mj_tenpai: "テンパイ", mj_over: "終局", mj_you: "自分",
       mj_rest: "秒", mj_honba: "本場", mj_sticks: "供託", mj_dora: "ドラ", mj_kyoku: "局",
       mj_kyuushu_end: "九種九牌で流局", mj_sanchahou: "三家和で流局",
-      mj_ms: "ms", mj_resp: "応答", mj_rank: "位", mj_from: "から",
+      mj_rank: "位", mj_from: "から", mj_records: "直近の結果 H",
       mj_tables: "卓 (Enter で入る)", mj_mine: "[自分の席あり]", mj_seat: "席", mj_empty: "空き",
       mj_sit: "座る", mj_stand: "立つ S", mj_cpu: "CPU", mj_fill: "CPU で埋める C",
       mj_start: "始める Enter", mj_leave: "卓を出る Esc", mj_owner: "卓の主", mj_away: "途切れ",
@@ -678,6 +679,7 @@ class MahjongApp < FmrbApp
       @lat_pending = Machine.board_millis - @act_t0
       @act_t0 = nil
     end
+    shout_take(v, old)
     @dirty = true if old.nil? || old["v"] != v["v"]
   end
 
@@ -1008,6 +1010,7 @@ class MahjongApp < FmrbApp
     return name_begin if ch == 110 || ch == 78
     n = @table_list.size
     return if n == 0
+    return rp_open(@table_list[@list_sel % n]) if ch == 104 || ch == 72
     if k[0] == FmrbConst::KEY_UP
       @list_sel = (@list_sel - 1) % n
       @dirty = true
@@ -1038,7 +1041,17 @@ class MahjongApp < FmrbApp
       cycle_assist
     elsif ch == 110
       name_begin
+    elsif ch == 104
+      rp_open(@table)
     end
+  end
+
+  # The recent games and their records (MJ6): a file of its own, read
+  # only when opened (the game itself never loads it).
+  def rp_open(p)
+    return unless p
+    require "#{APP_DIR}/mahjong_replay"
+    rp_start(p)
   end
 
   def table_key(k)
@@ -1171,6 +1184,8 @@ class MahjongApp < FmrbApp
     elsif type == B_SEAT
       @seat_sel = tiles[0]
       seat_step(tiles[0], 1)
+    elsif type == B_RECORDS
+      rp_open(@table || @table_list[tiles[0]])
     elsif type >= B_SIT
       lobby(type, tiles.empty? ? -1 : tiles[0])
     else
@@ -1310,7 +1325,8 @@ class MahjongApp < FmrbApp
     fnt(12, @k)
     if m == :table && watching?
       draw_watch
-      draw_result if @view["res"] || @view["fin"]
+      draw_shout
+      draw_result if (@view["res"] || @view["fin"]) && !@shout
     elsif m == :retro
       text(@x0 + 8, @y0 + 8, t(:mj_title))
       text(@x0 + 8, @y0 + 26, t(:mj_retro))
@@ -1327,7 +1343,8 @@ class MahjongApp < FmrbApp
       draw_melds
       draw_hand
       draw_controls
-      draw_result if @view["res"] || @view["fin"]
+      draw_shout
+      draw_result if (@view["res"] || @view["fin"]) && !@shout
     end
     @gfx.present
     perf_note(:draw, Machine.board_millis - t0) if m == :table
@@ -1405,6 +1422,8 @@ class MahjongApp < FmrbApp
       text(x, y, t(:mj_searching), C_DIM)
     else
       text(x, y, t(:mj_tables), C_DIM)
+      rb = t(:mj_records)
+      button(B_RECORDS, [@list_sel % @table_list.size], @x0 + @w - tw(rb) - u(20), y - u(5), rb)
       y += u(18)
       i = 0
       while i < @table_list.size
@@ -1513,6 +1532,7 @@ class MahjongApp < FmrbApp
       cx += button(B_START, [], cx, y, t(:mj_start)) + u(6) if sk.index(0).nil?
     end
     cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + u(6)
+    button(B_RECORDS, [], cx, y, t(:mj_records)) if @big
     text(x + u(2), y + u(26), t(:mj_owner_starts), C_DIM) unless owner?
     text(x + u(2), y + u(44), @note, C_TURN) unless @note.empty?
     y += u(@big ? 68 : 62)
@@ -1868,37 +1888,6 @@ class MahjongApp < FmrbApp
     l.size <= 8 ? "#{head}#{tl} #{tail}" : "#{head} #{tail}"
   end
 
-  def draw_controls
-    x0 = @x0 + (@big ? 152 : 2)
-    y = hand_y - SEL_LIFT - mark_rise - u(20) # clear of the help marks over the lifted tile
-    bx = x0
-    list = @view["a"].is_a?(Array) ? @view["a"] : []
-    i = 0
-    while i < list.size
-      o = list[i]
-      tl = bytes_of(o[1])
-      label = button_label(o[0], tl)
-      bx += button(o[0], tl, bx, y, label) + 4 if label
-      i += 1
-    end
-    bx += button(B_LEAVE, [], bx, y, t(:mj_leave)) + 4 if @seat.nil?
-    # The time left, the note and the last reply time, after the buttons.
-    msg = status_line.to_s
-    wt = waits_text
-    msg = "#{t(:mj_pick)} #{msg}" if @pick && wt.nil?
-    msg = "#{wt} #{msg}" if wt
-    msg = "#{time_left_text} #{msg}" if @deadline
-    msg = "#{msg} #{t(:mj_resp)} #{@lat}#{t(:mj_ms)}" if @lat
-    text(bx + 4, y + 4, fit(msg, @x0 + @w - bx - 8), C_TURN) unless msg.strip.empty? || bx + 40 > @x0 + @w
-    draw_assist if @big && @seat
-  end
-
-  # The help level's button, at the top right of the 640x360 table.
-  def draw_assist
-    fnt(12, 1)
-    button(B_ASSIST, [], @x0 + @w - tw(assist_label) - 16, @y0 + 2, assist_label)
-  end
-
   def button_label(type, tl)
     case type
     when A_RIICHI then "#{t(:mj_riichi)} R"
@@ -1965,6 +1954,7 @@ class MahjongApp < FmrbApp
       @mem_at = now + MEM_EVERY_MS
       Log.info("mahjong: pool #{FmrbApp.pool_used / 1024} KB (#{FmrbApp.pool_usage}%)")
     end
+    shout_tick(now)
     if @deadline && (@deadline - now) / 1000 != @second
       @second = (@deadline - now) / 1000
       @dirty = true

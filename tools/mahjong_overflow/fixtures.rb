@@ -88,6 +88,63 @@ module MjFixtures
   TEN_YAKU = ["立直", "一発", "門前清自摸和", "断幺九", "平和", "一盃口", "三色同順", "混全帯幺九", "ドラ 4", "赤ドラ 2"].freeze
   TEN_HAN = [1, 1, 1, 1, 1, 1, 2, 2, 4, 2].freeze
 
+  # MJ6: the game records as the host gives them (asterism-games README
+  # "Game records", look's tile names). A list of twenty games of long
+  # names; a game's head; a long round: every seat discards 22 times, a
+  # riichi, a pon made an added kan, a closed kan, a chi, an open kan, kan
+  # dora, three rons with ten yaku each.
+  def replay_list
+    (1..20).map do |i|
+      { "id" => 21 - i, "at" => "2026-10-18 12:#{format('%02d', i)}", "game" => i.odd? ? "tonpuu" : "hanchan",
+        "names" => [LONG_JA, LONG_EN, LONG_JA, LONG_EN], "ranks" => [1, 2, 3, 4].rotate(i), "scores" => [123_400, -12_300, 100_900, -112_000].rotate(i) }
+    end
+  end
+
+  def replay_head
+    { "id" => 7, "at" => "2026-10-18 12:34", "game" => "hanchan", "names" => [LONG_JA, LONG_EN, LONG_JA, LONG_EN],
+      "kinds" => %w[human cpu ai human], "final" => [[0, 1, 123_400, 1084], [2, 2, 100_900, 659], [1, 3, -12_300, -673], [3, 4, -112_000, -1070]],
+      "reason" => "all_last_oya_tenpai", "rounds" => [["east", 1, 0, "ron_agari", [-96_000, 32_000, 32_000, 32_000]]] }
+  end
+
+  def replay_round
+    pool = %w[1z 9m 2p 8s 3z 7p 4m 6s 5z 1p 9s 2m 6z 8p 3s 7m 4z 1s 9p 2s 7z 8m 3p 5s 6m 4p 1m 0m]
+    moves = []
+    k = 0
+    22.times do |turn|
+      4.times do |s|
+        t = pool[k % pool.size]
+        k += 1
+        moves << [s, "draw", t]
+        if s == 0 && turn == 5
+          moves << [s, "riichi", t, true]
+        else
+          moves << [s, "discard", t, true]
+        end
+        if s == 0 && turn == 2
+          moves << [1, "pon", t, [t, t], 0] << [1, "discard", "9s"]
+        elsif s == 1 && turn == 8
+          moves << [2, "draw", "7z"] << [2, "closed_kan", %w[7z 7z 7z 7z]] << [-1, "dora", "5p"] << [2, "draw", "3p"]
+        elsif s == 2 && turn == 10
+          moves << [3, "chi", t, %w[4m 6m], 2] << [3, "discard", "1z"]
+        elsif s == 3 && turn == 12
+          moves << [0, "open_kan", t, [t, t, t], 3] << [0, "draw", "2z"] << [0, "discard", "2z", true] << [-1, "dora", "6z"]
+        elsif s == 1 && turn == 14
+          moves << [1, "draw", "1z"] << [1, "added_kan", "1z"] << [1, "draw", "8m"]
+        end
+      end
+    end
+    moves << [1, "ron", "6m", 0] << [2, "ron", "6m", 0] << [3, "ron", "6m", 0]
+    wins = [1, 2, 3].map do |w|
+      { "seat" => w, "yaku" => TEN_YAKU, "yaku_han" => TEN_HAN, "han" => 16, "fu" => 30, "points" => "30符 16翻 数え役満 32000点",
+        "hand" => %w[1m 2m 3m 4p 5p 6p 7s 8s 9s 1z 1z 2s 3s], "tile" => "6m" }
+    end
+    { "id" => 7, "round" => 0, "of" => 1, "part" => 0, "parts" => 1, "wind" => "west", "number" => 4, "honba" => 12,
+      "riichi_sticks" => 9, "dealer" => 3, "scores" => [123_400, -12_300, 100_900, -112_000],
+      "dora_indicators" => %w[1z 9m 5p], "hands" => [%w[1m 2m 3m 4m 5m 6m 7m 8m 9m 1p 2p 3p 4p]] * 4,
+      "moves" => moves, "result" => { "kind" => "ron_agari", "changes" => [-96_000, 32_000, 32_000, 32_000], "from" => 0, "wins" => wins },
+      "end_scores" => [27_400, 19_700, 132_900, -80_000] }
+  end
+
   # The cases: name => [view, what it is].
   def all
     out = {}

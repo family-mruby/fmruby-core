@@ -459,7 +459,8 @@ class MahjongApp < FmrbApp
   def xl_draw
     @xl_n_items = 0
     @xl_n_px = 0
-    res = @view["res"] || @view["fin"]
+    # A win's result waits while its shout shows (MJ6).
+    res = @shout ? nil : (@view["res"] || @view["fin"])
     screen = res ? "result #{@view['sv']} #{@view['st']}" : "table"
     full = @xl_items.nil? || @xl_screen != screen
     # A result stays as drawn (its box covers the table) until it goes.
@@ -471,6 +472,7 @@ class MahjongApp < FmrbApp
       @xl_items = {}
       @xl_sig = {}
       @xl_btn_rects = []
+      @xl_shouts = nil
     end
     parts = xl_parts
     clears = []
@@ -518,6 +520,17 @@ class MahjongApp < FmrbApp
     end
     clears << XL_STATUS if redraw_status && !full
     clears << XL_WAITS if redraw_help && !full && @xl_sig[:help]
+    # A shout that went (or changed) leaves what was under it to redraw.
+    shout = @shout ? [@shout[0], @shout[1]] : nil
+    shout_new = full || shout != @xl_sig[:shout]
+    if shout_new && @xl_shouts
+      @xl_shouts.each do |r|
+        clears << r
+        redraw_board = true if overlap?(r, [@x0 + XL_BX, @y0 + XL_BY, XL_BW, XL_BH])
+        redraw_status = true if overlap?(r, XL_STATUS)
+      end
+      @xl_shouts = nil
+    end
     i = 0
     while i < clears.size
       c = clears[i]
@@ -590,7 +603,14 @@ class MahjongApp < FmrbApp
       xl_draw_assist
       xl_draw_buttons
       @xl_sig[:btns] = btns
+    elsif clock_parts != @xl_sig[:clock]
+      xl_draw_clock
     end
+    # The shout over everything, again whenever something was drawn.
+    if @shout && (shout_new || !draws.empty? || redraw_board || redraw_btns || redraw_status)
+      @xl_shouts = draw_shout
+    end
+    @xl_sig[:shout] = shout
   end
 
   def xl_board_sig
@@ -599,7 +619,7 @@ class MahjongApp < FmrbApp
   end
 
   def xl_status_sig
-    [status_line.to_s, @pick, @deadline ? time_left_text : nil, @lat]
+    [status_line.to_s, @pick]
   end
 
   # The help: nil (nothing shown), [:hint] (the marks are on, no tenpai
@@ -689,7 +709,7 @@ class MahjongApp < FmrbApp
   end
 
   def xl_button_sig
-    [@view["a"], @seat.nil?, @assist, xl_btn_lefts]
+    [@view["a"], @seat.nil?, @assist, xl_btn_lefts, clock_parts ? true : false]
   end
 
   # The centre board: the round, the honba and the sticks, what is left of
@@ -763,7 +783,8 @@ class MahjongApp < FmrbApp
     @gfx.fill_rect(x + 21, y + 1, 6, 4, C_RED)
   end
 
-  # The status lines: the time left, what the screen waits for, the reply time.
+  # The status line: what the screen waits for (the time left is the
+  # clock's, MJ6).
   def xl_draw_status
     x = @x0 + XL_STATUS[0]
     y = @y0 + XL_STATUS[1]
@@ -771,10 +792,6 @@ class MahjongApp < FmrbApp
     msg = status_line.to_s
     msg = "#{t(:mj_pick)} #{msg}" if @pick
     text(x + 4, y + 4, fit(msg, XL_STATUS[2] - 8), C_TURN) unless msg.strip.empty?
-    line = ""
-    line = "#{t(:mj_left)} #{time_left_text}" if @deadline
-    line = "#{line}  #{t(:mj_resp)} #{@lat}#{t(:mj_ms)}" if @lat
-    text(x + 4, y + 28, fit(line, XL_STATUS[2] - 8), C_TURN) unless line.empty?
     @xl_n_px += XL_STATUS[2] * XL_STATUS[3]
   end
 
@@ -817,6 +834,9 @@ class MahjongApp < FmrbApp
       i += 1
     end
     labels << [B_LEAVE, [], t(:mj_leave)] if @seat.nil?
+    # The clock (MJ6) is the last, at the bottom right, by the drawn tile.
+    labels << [B_CLOCK, [], nil] if clock_parts
+    @xl_clock = nil
     lefts = xl_btn_lefts
     place = nil
     [[12, 2, 24], [16, 1, 16], [12, 1, 12]].each do |px, size, pad|
@@ -828,9 +848,29 @@ class MahjongApp < FmrbApp
     i = 0
     while i < place.size
       p = place[i]
-      xl_button(labels[i][0], labels[i][1], p[0], p[1], p[2], labels[i][2])
+      if labels[i][0] == B_CLOCK
+        @xl_clock = [p[0], p[1], p[2], 40]
+        @xl_btn_rects << @xl_clock
+      else
+        xl_button(labels[i][0], labels[i][1], p[0], p[1], p[2], labels[i][2])
+      end
       i += 1
     end
+    xl_draw_clock
+  end
+
+  XL_CLOCK_W = 120
+  B_CLOCK = -1 # the clock's place among the buttons (not a button)
+
+  # The clock in its place among the buttons (@xl_clock).
+  def xl_draw_clock
+    c = clock_parts
+    r = @xl_clock
+    @xl_sig[:clock] = c
+    return unless c && r
+    @gfx.fill_rect(r[0], r[1], r[2], r[3], C_FELT)
+    clock_box(c, r[0], r[1], r[2], r[3], 16, 2)
+    @xl_n_px += r[2] * r[3]
   end
 
   # [x, y, w] of each label in its row (nil: they do not fit).
@@ -840,7 +880,7 @@ class MahjongApp < FmrbApp
     x = XL_BTN_RIGHT
     i = labels.size - 1
     while i >= 0
-      w = tw(labels[i][2]) + pad
+      w = labels[i][2] ? tw(labels[i][2]) + pad : XL_CLOCK_W
       while x - w < lefts[row]
         row += 1
         x = XL_BTN_RIGHT
