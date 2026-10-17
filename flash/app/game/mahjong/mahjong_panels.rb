@@ -834,10 +834,12 @@ class MahjongApp < FmrbApp
   #
   # The own time in big figures (asterism-games README "Time"): the move's
   # own seconds and the bank after it ("5+20"), only the bank once the
-  # move's own time is up ("+17"). White, yellow from 5 s of the move's own
-  # time, red in the bank. The same for the answer to a call (no bank).
+  # move's own time is up ("+17"). White, yellow from CLOCK_YELLOW_MS of the
+  # move's own time (2 s: the default move is only 5 s), red in the bank. The same for the answer to a call (no bank).
   # 640x360: right of the controls, above the drawn tile (LAYOUT640
   # :clock); 1280x720: at the end of the buttons (mahjong_xl.rb).
+
+  CLOCK_YELLOW_MS = 2000
 
   def clock_parts
     return nil unless @deadline && @seat && mode == :table
@@ -846,7 +848,7 @@ class MahjongApp < FmrbApp
     move = ms - @bank_ms
     return ["+#{(ms + 999) / 1000}", C_RED] if @bank_ms > 0 && move <= 0
     sec = (move + 999) / 1000
-    [@bank_ms > 0 ? "#{sec}+#{@bank_ms / 1000}" : sec.to_s, move <= 5000 ? C_TURN : C_TEXT]
+    [@bank_ms > 0 ? "#{sec}+#{@bank_ms / 1000}" : sec.to_s, move <= CLOCK_YELLOW_MS ? C_TURN : C_TEXT]
   end
 
   # The clock in a dark box at (x, y), w x h: the figures px (scaled by
