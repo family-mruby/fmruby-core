@@ -136,6 +136,9 @@ def load_app
   src = src.lines.reject { |l| l.start_with?("require ") }.join
   src = src.sub(/^begin\n  app = MahjongApp.new.*\z/m, "")
   eval(src, TOPLEVEL_BINDING, "mahjong.app.rb")
+  # The recent games and their records (MJ6): read last, as the app reads
+  # it when they are opened.
+  eval(File.read(File.join(APP_DIR, "mahjong_replay.rb")), TOPLEVEL_BINDING, "mahjong_replay.rb")
 end
 
 load_app
@@ -154,6 +157,9 @@ module Panels
     draw_info: ->(a, _) { ["info", a.panel640(:info)] },
     draw_hand: ->(a, _) { ["hand", a.panel640(:hand)] },
     draw_controls: ->(a, _) { ["controls", a.panel640(:controls)] },
+    draw_clock: ->(a, _) { ["clock", a.panel640(:clock)] },
+    xl_draw_clock: ->(a, _) { ["buttons", a.xl_panel(:buttons)] },
+    draw_shout_box: ->(_, _) { ["shout", :first, true] },
     draw_meld_tiles: ->(a, args) { ["melds#{args[0]}", a.panel640(:"melds#{args[0]}")] },
     draw_assist: ->(a, _) { ["assist", a.panel640(:assist)] },
     xl_draw_assist: ->(a, _) { ["assist", a.xl_panel(:assist)] },
@@ -424,9 +430,54 @@ EXTRAS = {
                               a.instance_variable_set(:@pick, true)
                               a.instance_variable_set(:@sel, 13)
                             }]],
+  # MJ6: the shouts at every seat (the longest word, four at once) over
+  # the table and the spectators' screen; three rons; the clock's widest
+  # figures (a fixed 600 s, 10+20, the bank alone).
+  "melds_four_kans" => [["shout_all", ->(a) { a.instance_variable_set(:@shout, [11, [0, 1, 2, 3], 2_000_000]) }],
+                        ["clock_600", lambda { |a|
+                          a.instance_variable_set(:@deadline, 1_600_000)
+                          a.instance_variable_set(:@bank_ms, 0)
+                        }],
+                        ["clock_bank", lambda { |a|
+                          a.instance_variable_set(:@deadline, 1_030_000)
+                          a.instance_variable_set(:@bank_ms, 20_000)
+                        }],
+                        ["clock_red", lambda { |a|
+                          a.instance_variable_set(:@deadline, 1_017_000)
+                          a.instance_variable_set(:@bank_ms, 20_000)
+                        }]],
+  "spectator" => [["shout_all", ->(a) { a.instance_variable_set(:@shout, [11, [0, 1, 2, 3], 2_000_000]) }]],
+  "rivers_calls" => [["shout_ron", ->(a) { a.instance_variable_set(:@shout, [9, [1, 2, 3], 2_000_000]) }]],
   "assist_ukeire" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 0) }],
                       ["chosen_drawn", ->(a) { a.instance_variable_set(:@sel, 13) }]]
 }.freeze
+
+# MJ6: the recent games and a record, opened from the lobby (the live view
+# is lobby_member's): [label, preparation].
+def replay_prep(state, step = nil)
+  lambda do |a|
+    a.rp_strings
+    a.instance_variable_set(:@rp, "games-host-aaaaaa/games/mahjong1")
+    a.instance_variable_set(:@rp_list, MjFixtures.replay_list)
+    a.instance_variable_set(:@rp_sel, 19)
+    a.instance_variable_set(:@rp_top, 0)
+    a.instance_variable_set(:@rp_note, "")
+    a.instance_variable_set(:@rp_v, 0)
+    a.instance_variable_set(:@rp_state, state)
+    a.instance_variable_set(:@name, MjFixtures::LONG_EN)
+    next unless state == :view
+    a.instance_variable_set(:@rp_head, MjFixtures.replay_head)
+    a.instance_variable_set(:@rp_at_end, false)
+    a.rp_take_round([MjFixtures.replay_round])
+    n = MjFixtures.replay_round["moves"].size
+    a.rp_go({ mid: 120, ron: n, result: n + 1, over: n + 2, deal: 0 }[step])
+    a.instance_variable_set(:@shout, nil) unless step == :ron
+  end
+end
+
+REPLAYS = [["replay_list", replay_prep(:list)], ["replay_deal", replay_prep(:view, :deal)],
+           ["replay_mid", replay_prep(:view, :mid)], ["replay_ron", replay_prep(:view, :ron)],
+           ["replay_result", replay_prep(:view, :result)], ["replay_over", replay_prep(:view, :over)]].freeze
 
 if $PROGRAM_NAME == __FILE__
   sizes = SIZES.keys
@@ -472,6 +523,26 @@ if $PROGRAM_NAME == __FILE__
         puts "#{strict ? 'FAIL' : 'warn'}  #{size}  #{label} (#{what}): #{probs.size}"
         probs.first(verbose ? 1000 : 6).each { |p| puts "        #{p}" }
       end
+    end
+  end
+  REPLAYS.each do |label, prep|
+    next if only && only != label
+    sizes.each do |size|
+      w, h = size.split("x").map(&:to_i)
+      total += 1
+      begin
+        probs, = run_case(Marshal.load(Marshal.dump(MjFixtures.all["lobby_member"][0])), w, h, prep)
+      rescue StandardError => e
+        probs = ["exception: #{e.class}: #{e.message} (#{e.backtrace.first(3).join(' | ')})"]
+      end
+      if probs.empty?
+        puts "ok    #{size}  #{label}" if verbose
+        next
+      end
+      strict = SIZES[size] == :fail || probs.any? { |p| p.start_with?("exception") }
+      if strict then failed += 1 else warned += 1 end
+      puts "#{strict ? 'FAIL' : 'warn'}  #{size}  #{label}: #{probs.size}"
+      probs.first(verbose ? 1000 : 6).each { |p| puts "        #{p}" }
     end
   end
   SWITCHES.each do |from, to|

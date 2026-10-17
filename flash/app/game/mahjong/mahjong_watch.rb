@@ -56,7 +56,7 @@ class MahjongApp < FmrbApp
     draw_score_strip
     # Leaving, and what the screen has to say (the network, a reply).
     fnt(12, 1)
-    button(B_LEAVE, [], @x0 + WATCH[:w_leave][0], @y0 + WATCH[:w_leave][1], "卓を出る Esc")
+    button(B_LEAVE, [], @x0 + WATCH[:w_leave][0], @y0 + WATCH[:w_leave][1], t(:mj_leave))
     note = net_line || @note
     text(@x0 + WATCH[:w_note][0], @y0 + WATCH[:w_note][1], fit(note.to_s, WATCH[:w_note][2]), C_TURN) unless note.to_s.empty?
   end

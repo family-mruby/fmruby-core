@@ -763,7 +763,7 @@ class MahjongApp < FmrbApp
   # the melds and the rivers are laid out in them). The spectators' screen
   # has its own (WATCH, mahjong_watch.rb).
   LAYOUT640 = {
-    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [152, 267, 484, 20], hand: [6, 287, 630, 69],
+    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [4, 267, 548, 20], clock: [560, 250, 76, 34], hand: [6, 287, 630, 69],
     label0: [4, 10, 144, 16], label1: [492, 38, 144, 16], label2: [152, 22, 200, 16], label3: [4, 38, 144, 16],
     melds0: [200, 324, 436, 32], melds1: [492, 54, 144, 64], melds2: [152, 38, 336, 32], melds3: [4, 54, 144, 64],
     river0: [176, 170, 288, 96], river1: [492, 120, 144, 128], river2: [176, 72, 288, 96], river3: [4, 120, 144, 128],
@@ -785,5 +785,167 @@ class MahjongApp < FmrbApp
     sign = pt < 0 ? "-" : "+"
     pt = -pt if pt < 0
     "#{f[1]}#{t(:mj_rank)} #{seat_name(f[0])} #{f[2]} (#{sign}#{pt / 10}.#{pt % 10})"
+  end
+
+  # ------------------------------------------------------------ the controls (640x360 and the small table)
+
+  # The buttons the host offers, then what the screen has to say. At
+  # 640x360 they start right of the left river and move to the left edge
+  # when they would reach the clock (LAYOUT640 :clock, MJ6); the small
+  # table says the time left in the line.
+  def draw_controls
+    y = hand_y - SEL_LIFT - mark_rise - u(20) # clear of the help marks over the lifted tile
+    list = @view["a"].is_a?(Array) ? @view["a"] : []
+    labels = []
+    i = 0
+    while i < list.size
+      o = list[i]
+      tl = bytes_of(o[1])
+      label = button_label(o[0], tl)
+      labels << [o[0], tl, label] if label
+      i += 1
+    end
+    labels << [B_LEAVE, [], t(:mj_leave)] if @seat.nil?
+    right = @big ? @x0 + LAYOUT640[:controls][0] + LAYOUT640[:controls][2] : @x0 + @w
+    bx = @x0 + (@big ? 152 : 2)
+    if @big
+      total = 0
+      labels.each { |l| total += tw(l[2]) + 16 }
+      bx = @x0 + LAYOUT640[:controls][0] + 2 if bx + total > right
+    end
+    labels.each { |l| bx += button(l[0], l[1], bx, y, l[2]) + 4 }
+    msg = status_line.to_s
+    wt = waits_text
+    msg = "#{t(:mj_pick)} #{msg}" if @pick && wt.nil?
+    msg = "#{wt} #{msg}" if wt
+    msg = "#{time_left_text} #{msg}" if @deadline && !@big
+    text(bx + 4, y + 4, fit(msg, right - bx - 8), C_TURN) unless msg.strip.empty? || bx + 40 > right
+    draw_assist if @big && @seat
+    draw_clock if @big
+  end
+
+  # The help level's button, at the top right of the 640x360 table.
+  def draw_assist
+    fnt(12, 1)
+    button(B_ASSIST, [], @x0 + @w - tw(assist_label) - 16, @y0 + 2, assist_label)
+  end
+
+  # ------------------------------------------------------------ the clock (MJ6)
+  #
+  # The own time in big figures (asterism-games README "Time"): the move's
+  # own seconds and the bank after it ("5+20"), only the bank once the
+  # move's own time is up ("+17"). White, yellow from 5 s of the move's own
+  # time, red in the bank. The same for the answer to a call (no bank).
+  # 640x360: right of the controls, above the drawn tile (LAYOUT640
+  # :clock); 1280x720: at the end of the buttons (mahjong_xl.rb).
+
+  def clock_parts
+    return nil unless @deadline && @seat && mode == :table
+    ms = @deadline - Machine.board_millis
+    ms = 0 if ms < 0
+    move = ms - @bank_ms
+    return ["+#{(ms + 999) / 1000}", C_RED] if @bank_ms > 0 && move <= 0
+    sec = (move + 999) / 1000
+    [@bank_ms > 0 ? "#{sec}+#{@bank_ms / 1000}" : sec.to_s, move <= 5000 ? C_TURN : C_TEXT]
+  end
+
+  # The clock in a dark box at (x, y), w x h: the figures px (scaled by
+  # size), at 12 px when they do not fit.
+  def clock_box(c, x, y, w, h, px, size)
+    @gfx.fill_round_rect(x, y, w, h, 4, C_BOX)
+    @gfx.draw_round_rect(x, y, w, h, 4, c[1])
+    fnt(px, size)
+    fnt(12, size) if tw(c[0]) > w - 8
+    text(x + (w - tw(c[0])) / 2, y + (h - @fw) / 2, c[0], c[1])
+  end
+
+  def draw_clock
+    c = clock_parts
+    return unless c
+    r = LAYOUT640[:clock]
+    clock_box(c, @x0 + r[0], @y0 + r[1], r[2], r[3], 12, 2)
+    fnt(12, 1)
+  end
+
+  # ------------------------------------------------------------ declarations (MJ6)
+  #
+  # The view's "cl" (asterism-games README "Views"): the last declaration,
+  # [type, the state version, the seat(s)]. A new one is shown for
+  # SHOUT_MS in big letters at the seat that made it, by its river (where
+  # the player sits on this screen); a win's result waits until it goes.
+  # The first view of a table shows none (that one is old news).
+  SHOUT_MS = 1000
+  # The middle of each seat's river (rl 0-3) from the user area's corner:
+  # 640x360, its spectators' screen (mahjong_watch.rb), 1280x720.
+  SHOUT_640 = [[320, 218], [564, 184], [320, 120], [76, 184]]
+  SHOUT_WATCH = [[320, 262], [452, 198], [320, 134], [188, 198]]
+  SHOUT_XL = [[640, 436], [928, 268], [640, 172], [352, 300]]
+
+  def shout_take(v, old)
+    cl = v["cl"]
+    n = cl.is_a?(Array) && cl.size > 2 ? cl[1] : nil
+    return if n.nil? || n == @cl_n
+    @cl_n = n
+    return if old.nil?
+    @shout = [cl[0], cl[2, cl.size - 2], Machine.board_millis + SHOUT_MS]
+    @dirty = true
+  end
+
+  def shout_tick(now)
+    return unless @shout && now >= @shout[2]
+    @shout = nil
+    @dirty = true
+  end
+
+  def shout_label(type)
+    return t(:mj_ron) if type == A_RON || type == 13
+    return t(:mj_kyuushu) if type == A_KYUUSHU
+    return t(:mj_kan) if type == A_ANKAN || type == A_KAKAN || type == A_MINKAN
+    return t(:mj_riichi) if type == A_RIICHI
+    return t(:mj_tsumo) if type == A_TSUMO
+    type == A_PON ? t(:mj_pon) : t(:mj_chi)
+  end
+
+  # The shout of each seat that declared (1280x720 draws it from xl_draw).
+  def draw_shout
+    return unless @shout
+    seats = @shout[1]
+    l = shout_label(@shout[0])
+    out = []
+    i = 0
+    while i < seats.size
+      rl = rel(seats[i].to_i)
+      if @xl
+        c = SHOUT_XL[rl]
+        out << draw_shout_box(l, c[0], c[1], 16, 3)
+      elsif @big
+        c = (watching? || @rp ? SHOUT_WATCH : SHOUT_640)[rl]
+        out << draw_shout_box(l, c[0], c[1], 16, 2)
+      else
+        a = river_area(rl)
+        out << draw_shout_box(l, a[0] - @x0 + 40, a[1] - @y0 + 14, 12, 1)
+      end
+      i += 1
+    end
+    fnt(12, @k)
+    out
+  end
+
+  # One shout centred on (cx, cy) from the user area's corner, kept on the
+  # screen. Returns its rectangle.
+  def draw_shout_box(label, cx, cy, px, size)
+    fnt(px, size)
+    pad = px * size / 3
+    w = tw(label) + pad * 2
+    h = @fw + pad
+    x = @x0 + cx - w / 2
+    y = @y0 + cy - h / 2
+    x = @x0 + 2 if x < @x0 + 2
+    x = @x0 + @w - w - 2 if x + w > @x0 + @w - 2
+    win = @shout[0] == A_RON || @shout[0] == A_TSUMO || @shout[0] == 13
+    @gfx.fill_round_rect(x, y, w, h, pad / 2 + 2, C_BOX)
+    @gfx.draw_round_rect(x, y, w, h, pad / 2 + 2, win ? C_RED : C_TURN)
+    text(x + pad, y + pad / 2, label, C_TURN)
+    [x, y, w, h]
   end
 end
