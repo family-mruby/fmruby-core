@@ -29,6 +29,7 @@
 class MahjongApp < FmrbApp
   B_RP_ROW = 120
   B_RP_BACK = 121
+  B_RP_STATS = 124
   RP_KINDS = ["draw", "discard", "riichi", "chi", "pon", "open_kan", "closed_kan", "added_kan", "dora", "tsumo",
               "ron", "nine_kinds"]
   # The tiles in a hand's order (the red five after the four).
@@ -247,6 +248,8 @@ class MahjongApp < FmrbApp
     ch = k[1]
     if sc == FmrbConst::KEY_ESC || ch == 27
       rp_close
+    elsif @rp_state == :list && (ch == 115 || ch == 83)
+      st_open
     elsif @rp_state == :list
       n = @rp_list.size
       return if n == 0
@@ -558,10 +561,12 @@ class MahjongApp < FmrbApp
     x = @x0 + u(8)
     y = @y0 + u(8)
     parts = @rp.to_s.split("/")
-    text(x, y, fit("#{t(:mj_rp_title)}  #{parts[0]}/#{parts[2]}", @w - u(120)))
+    text(x, y, fit("#{t(:mj_rp_title)}  #{parts[0]}/#{parts[2]}", @w - u(200)))
     bl = t(:mj_rp_back)
     bw = tw(bl) + u(12)
     button(B_RP_BACK, [], @x0 + @w - bw - u(8), y - u(3), bl)
+    sl = t(:mj_rp_stats)
+    button(B_RP_STATS, [], @x0 + @w - bw - tw(sl) - u(26), y - u(3), sl)
     text(x, y + u(18), fit(t(:mj_rp_keys), @w - u(16)), C_DIM)
     y += u(40)
     unless @rp_note.to_s.empty?
@@ -638,10 +643,18 @@ class MahjongApp < FmrbApp
     if type == B_RP_ROW
       @rp_sel = tiles[0]
       rp_call(:head, @rp_list[@rp_sel]["id"]) if @rp_list[@rp_sel]
+    elsif type == B_RP_STATS
+      st_open
     elsif type == B_RP_BACK || type == B_LEAVE
       rp_close
     end
     @dirty = true
+  end
+
+  # The players' stats (MJ7): a file of its own, read only when opened.
+  def st_open
+    require "#{APP_DIR}/mahjong_stats"
+    st_start
   end
 
   def status_line
@@ -660,7 +673,8 @@ class MahjongApp < FmrbApp
     @str[:mj_rp_none] = "まだ終局した対局が無い"
     @str[:mj_rp_deal] = "配牌"
     @str[:mj_rp_result] = "結果"
-    @str[:mj_rp_keys] = "↑↓ 選ぶ  Enter 牌譜  牌譜: → 次 ← 前 ↓ 次の局 ↑ 局の頭"
+    @str[:mj_rp_keys] = "↑↓ 選ぶ  Enter 牌譜  S 成績  牌譜: → 次 ← 前 ↓ 次の局 ↑ 局の頭"
+    @str[:mj_rp_stats] = "成績 S"
     @str[:mj_rp_view_keys] = "(→ ← ↓ ↑ Esc)"
   end
 end

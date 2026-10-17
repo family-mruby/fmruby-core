@@ -100,6 +100,21 @@ module MjFixtures
     end
   end
 
+  # MJ7: the players' stats as the host gives them (asterism-games README
+  # "Stats"): thirty people of the longest names with the widest numbers,
+  # and the CPU and AI players.
+  def stats_rows
+    rows = (1..30).map do |i|
+      { "kind" => "human", "name" => i.odd? ? LONG_JA : LONG_EN, "games" => 1000 - i, "ranks" => [250, 250, 250, 249 - i],
+        "rounds" => 99_999, "wins" => 22_222, "dealins" => 11_111, "riichi" => 18_888, "avg_score" => -123_456,
+        "points" => -12_345.5 }
+    end
+    rows + [["cpu", "CPU"], ["claude", "Claude"], ["jev", "Jev"]].map do |k, n|
+      { "kind" => k, "name" => n, "games" => 9999, "ranks" => [2500, 2500, 2500, 2499], "rounds" => 99_999, "wins" => 99_999,
+        "dealins" => 0, "riichi" => 1, "avg_score" => 100_000, "points" => 9999.9 }
+    end
+  end
+
   def replay_head
     { "id" => 7, "at" => "2026-10-18 12:34", "game" => "hanchan", "names" => [LONG_JA, LONG_EN, LONG_JA, LONG_EN],
       "kinds" => %w[human cpu ai human], "final" => [[0, 1, 123_400, 1084], [2, 2, 100_900, 659], [1, 3, -12_300, -673], [3, 4, -112_000, -1070]],

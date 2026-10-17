@@ -139,6 +139,8 @@ def load_app
   # The recent games and their records (MJ6): read last, as the app reads
   # it when they are opened.
   eval(File.read(File.join(APP_DIR, "mahjong_replay.rb")), TOPLEVEL_BINDING, "mahjong_replay.rb")
+  # The players' stats (MJ7), opened from the recent games.
+  eval(File.read(File.join(APP_DIR, "mahjong_stats.rb")), TOPLEVEL_BINDING, "mahjong_stats.rb")
 end
 
 load_app
@@ -475,7 +477,26 @@ def replay_prep(state, step = nil)
   end
 end
 
-REPLAYS = [["replay_list", replay_prep(:list)], ["replay_deal", replay_prep(:view, :deal)],
+# MJ7: the stats screen (every page read; the period and the scope at their
+# longest labels).
+def stats_prep(days, scope, note = "")
+  lambda do |a|
+    replay_prep(:list).call(a)
+    a.st_strings
+    a.instance_variable_set(:@st, true)
+    a.instance_variable_set(:@st_days, days)
+    a.instance_variable_set(:@st_scope, scope)
+    a.instance_variable_set(:@st_top, 0)
+    a.instance_variable_set(:@st_rows, MjFixtures.stats_rows)
+    a.instance_variable_set(:@st_games, 123_456)
+    a.instance_variable_set(:@st_note, note)
+    a.instance_variable_set(:@name, MjFixtures::LONG_JA)
+  end
+end
+
+REPLAYS = [["stats", stats_prep(0, 0)], ["stats_30_table", stats_prep(1, 1, "このホストは成績を出さない (0.14.0 より前)")],
+           ["stats_7", stats_prep(2, 0)],
+           ["replay_list", replay_prep(:list)], ["replay_deal", replay_prep(:view, :deal)],
            ["replay_mid", replay_prep(:view, :mid)], ["replay_ron", replay_prep(:view, :ron)],
            ["replay_result", replay_prep(:view, :result)], ["replay_over", replay_prep(:view, :over)]].freeze
 
