@@ -1,6 +1,6 @@
 # asterism-games を Asterism の見本にする
 
-> 状態: 進行中 | 更新: 2026-10-17 | GS1 完了 (report/gs1.md)、GS2 は instruction_gs2.md。麻雀だけのゲームホストを、Asterism でサーバ側のアプリを書く見本にする。共通の枠組み (gem) とゲーム (アプリと image) に分け、書き方を Asterism らしくし、麻雀以外の例・CRuby のクライアント・網を見る CLI・MCP・AI の打ち手を足す
+> 状態: 進行中 | 更新: 2026-10-17 | GS1・GS2 完了 (report/gs1.md・gs2.md)、次は GS3。麻雀だけのゲームホストを、Asterism でサーバ側のアプリを書く見本にする。共通の枠組み (gem) とゲーム (アプリと image) に分け、書き方を Asterism らしくし、麻雀以外の例・CRuby のクライアント・網を見る CLI・MCP・AI の打ち手を足す
 
 前提: report/mj1.md〜mj5.md・mj4.md (部屋と常設の卓)・g2b.md (部屋の席)、mje*.md (エンジン)、asterism-games の README、asterism の README (portable API・CRuby API・Who called・Profiles)。
 
@@ -51,7 +51,7 @@
 | Step | 内容 | 受け入れの目安 |
 |---|---|---|
 | GS1 | 枠組みの切り出しと、麻雀を載せ直す。2.3 の書き方のうち小さいもの (caller: :from、Net の書き方、プロフィール) | 試験 (今の 141 件) が全部通る。部屋・常設・家の LAN の卓が今どおり。1 通の大きさとメモリが変わらない |
-| GS2 | オセロ (ホスト版) とその画面、CRuby のアスキーアートのクライアント | ブラウザ版・端末・CRuby が同じオセロの卓で打てる、観戦できる |
+| GS2 (完了 2026-10-17、report/gs2.md) | オセロ (ホスト版) とその画面、CRuby のアスキーアートのクライアント | ブラウザ版・端末・CRuby が同じオセロの卓で打てる、観戦できる。結果: asterism-games 0.7.0、オセロの卓 (592 行、枠組みへの追加なし)、卓のアプリ「Othello (table)」、`bin/othello-tty`、今のオセロは「Othello (direct)」。部屋の卓は部屋が開くアプリのゲームから選ぶ。互換は view の 1 引数・秘密の道・RULE_TURNS を落とし、ru/rx/ry は今のアプリが読むので残した。遊び方の細部: 色は始めるときにくじ、パスはホストが自動で打つ、終局後も盤が残る、観戦の上限の既定 14。席の管理を基底に上げるかは GS3 で判断 |
 | GS3 | 居る・居ないを on_join / on_leave で、端末の探し直し、case/in | 途切れの判定が速くなる。試験 |
 | GS4 | 網を見る CLI と MCP の橋渡し (asterism gem) | CRuby だけで網の全体が見える。MCP のクライアントからオセロと麻雀の卓を呼べる |
 | GS5 | 麻雀の MCP のツールと AI の打ち手 (Claude API、Jev) | AI が卓に座って半荘を打てる。CPU と比べた数字 |
