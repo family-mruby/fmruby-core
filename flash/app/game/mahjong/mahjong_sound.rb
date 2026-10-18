@@ -33,8 +33,13 @@ class MahjongApp < FmrbApp
   SND_CH = 4              # pulse1, pulse2, triangle, noise (FmrbAudio::CH_*)
   TENSE_LEFT = 10         # :tense from this many tiles left (or a riichi)
   BGM_SLOT = { lobby: 12, play: 13, tense: 14 }.freeze # FMSQ slots (machine-wide)
-  # scene => [path, NSF track] or nil (no tune: silent).
-  BGM = { lobby: nil, play: nil, tense: nil }.freeze
+  # scene => [path, NSF track] or nil (no tune: silent). The defaults are
+  # shiru8bit's tunes shipped next to lost_in_hyperspace.nsf (CC BY 3.0,
+  # ASSETS.md and that directory's CREDITS.md); /home/mahjong.toml's
+  # bgm_lobby / bgm_play / bgm_tense lines replace them (chosen 2026-10-19).
+  BGM = { lobby: ["/usr/share/sounds/nsf/after_the_rain.nsf", 0],
+          play: ["/usr/share/sounds/nsf/spring_thing.nsf", 0],
+          tense: ["/usr/share/sounds/nsf/encounter.nsf", 0] }.freeze
   # A WAV per jingle (nil: the jingle).
   VOICE = { riichi: nil, pon: nil, chi: nil, kan: nil, ron: nil, tsumo: nil, kyuushu: nil, ryuukyoku: nil }.freeze
   SND_KEYS = ["bgm_lobby", "bgm_play", "bgm_tense", "voice_riichi", "voice_pon", "voice_chi", "voice_kan",

@@ -22,6 +22,9 @@ License references (full text):
 | File | License | Author | Source |
 |---|---|---|---|
 | `flash/usr/share/sounds/nsf/lost_in_hyperspace.nsf` | `CC-BY-3.0` | shiru8bit | https://opengameart.org/content/8-bit-chiptune-lost-in-hyperspace |
+| `flash/usr/share/sounds/nsf/after_the_rain.nsf` | `CC-BY-3.0` | shiru8bit | https://opengameart.org/content/8-bit-chiptune-after-the-rain |
+| `flash/usr/share/sounds/nsf/spring_thing.nsf` | `CC-BY-3.0` | shiru8bit | https://opengameart.org/content/8-bit-chiptune-spring-thing |
+| `flash/usr/share/sounds/nsf/encounter.nsf` | `CC-BY-3.0` | shiru8bit | https://opengameart.org/node/100497 |
 | `flash/usr/share/sounds/midi/bach_polonaise_bwv117a.mid` | `Public Domain` | J. S. Bach (engraved by Steven McDougall) | https://www.mutopiaproject.org/ftp/BachJS/BWV117a/BWV-117a/ |
 | `flash/usr/share/sounds/midi/bach_sheep_bwv208.mid` | `Public Domain` | J. S. Bach (engraved by Jeremy Visser) | https://www.mutopiaproject.org/ftp/BachJS/BWV208/Sheep/ |
 | `flash/usr/share/sounds/midi/joplin_entertainer.mid` | `Public Domain` | Scott Joplin (engraved by Chris Sawer) | https://www.mutopiaproject.org/ftp/JoplinS/entertainer/ |
@@ -39,6 +42,24 @@ License references (full text):
 - **Source**: https://opengameart.org/content/8-bit-chiptune-lost-in-hyperspace (published 2019-09-13)
 - **License**: CC BY 3.0 — https://creativecommons.org/licenses/by/3.0/
 - **Modifications**: none
+
+### `flash/usr/share/sounds/nsf/after_the_rain.nsf`, `spring_thing.nsf`, `encounter.nsf`
+
+The mahjong table's background music (lobby, play, a riichi or the last
+tiles: `flash/app/game/mahjong/mahjong_sound.rb`), also playable in the NSF
+player. Each is the NSF from the work's zip as published (FamiTracker,
+2A03 only; the zips also hold the FTM and a FLAC render, not taken).
+Shipped with `CREDITS.md` in the same directory, so the attribution travels
+with the files to the boards and the browser build.
+
+| File | Title | Author | Source |
+|---|---|---|---|
+| `after_the_rain.nsf` | 8-bit Chiptune - After The Rain | shiru8bit | https://opengameart.org/content/8-bit-chiptune-after-the-rain |
+| `spring_thing.nsf` | 8-bit Chiptune - Spring Thing | shiru8bit | https://opengameart.org/content/8-bit-chiptune-spring-thing |
+| `encounter.nsf` | 8-bit Chiptune - Encounter | shiru8bit | https://opengameart.org/node/100497 |
+
+- **License**: CC BY 3.0 — https://creativecommons.org/licenses/by/3.0/
+- **Modifications**: none (the NSF files as in the published zips)
 
 ### `flash/usr/share/sounds/midi/*.mid` (Mutopia Project)
 
