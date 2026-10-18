@@ -430,9 +430,12 @@ EXTRAS = {
                     ["name_edit", ->(a) { a.instance_variable_set(:@name_edit, MjFixtures::LONG_JA[0, 12]) }],
                     # MJ11: the sound's two switches, both off (the longer labels are the same width).
                     ["sound_off", lambda { |a|
-                      a.instance_variable_set(:@snd_bgm, false)
+                      a.instance_variable_set(:@snd_bgm, 0)
                       a.instance_variable_set(:@snd_se, false)
-                    }]],
+                    }],
+                    # MJ12: the BGM's other levels (low is the default).
+                    ["bgm_mid", ->(a) { a.instance_variable_set(:@snd_bgm, 2) }],
+                    ["bgm_high", ->(a) { a.instance_variable_set(:@snd_bgm, 3) }]],
   "lobby_member" => [["name_ascii", ->(a) { a.instance_variable_set(:@name, "WWWWWWWWWWWW") }],
                      ["title", ->(a) { a.instance_variable_set(:@title_until, 2_000_000) }],
                      ["list_prompt", lambda { |a|
@@ -450,8 +453,15 @@ EXTRAS = {
                        a.instance_variable_set(:@table, nil)
                        a.instance_variable_set(:@table_list, tables)
                        a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
-                       a.instance_variable_set(:@snd_bgm, false)
+                       a.instance_variable_set(:@snd_bgm, 0)
                        a.instance_variable_set(:@snd_se, false)
+                     }],
+                     ["list_bgm_high", lambda { |a|
+                       tables = %w[games-host-aaaaaa/games/mahjong1 games/games/mahjong9]
+                       a.instance_variable_set(:@table, nil)
+                       a.instance_variable_set(:@table_list, tables)
+                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
+                       a.instance_variable_set(:@snd_bgm, 3)
                      }],
                      ["list_searching", lambda { |a|
                        a.instance_variable_set(:@table, nil)

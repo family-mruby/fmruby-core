@@ -24,8 +24,13 @@
 #   and /home/mahjong.toml over them:
 #     bgm_lobby = "/home/music/lobby.fmsq"   bgm_play_track = 2 (an NSF's track)
 #     voice_riichi = "/home/voice/riichi.wav"
-# - The player's switches "bgm" and "se" (the jingles are effects) are in
-#   /home/mahjong.toml (save_assist writes them), both on by default.
+# - The player's switches are in /home/mahjong.toml (save_assist writes
+#   them): "bgm" is the BGM's level (MJ12) 0 off, 1 low (the default),
+#   2 mid, 3 high -- an older file's true reads as low and false as off --
+#   and "se" the effects (the jingles are effects) on or off, on by default.
+#   The level is FmrbAudio#main_volume (the MAIN instance only, so the
+#   effects on SUB keep theirs); the kernel puts it back to 100 when the
+#   app ends.
 
 class MahjongApp < FmrbApp
   B_BGM = 130
@@ -33,6 +38,11 @@ class MahjongApp < FmrbApp
   SND_CH = 4              # pulse1, pulse2, triangle, noise (FmrbAudio::CH_*)
   TENSE_LEFT = 10         # :tense from this many tiles left (or a riichi)
   BGM_SLOT = { lobby: 12, play: 13, tense: 14 }.freeze # FMSQ slots (machine-wide)
+  # The BGM's levels (MJ12): off, low, mid, high as MAIN volume percents,
+  # and their names on the button. Tentative values (2026-10-19).
+  BGM_LEVELS = [0, 30, 55, 100].freeze
+  BGM_NAMES = ["切", "小", "中", "大"].freeze
+  BGM_DEFAULT = 1
   # scene => [path, NSF track] or nil (no tune: silent). The defaults are
   # shiru8bit's tunes shipped next to lost_in_hyperspace.nsf (CC BY 3.0,
   # ASSETS.md and that directory's CREDITS.md); /home/mahjong.toml's
@@ -89,11 +99,12 @@ class MahjongApp < FmrbApp
     @snd_tune = nil         # the tune playing now ([path, track]) or nil
     @snd_loaded = {}        # FMSQ slot => the path loaded into it
     @snd_conf = {}
-    @snd_bgm = true
+    @snd_bgm = BGM_DEFAULT
     @snd_se = true
     snd_load_conf
     @audio = nil
     @audio = FmrbAudio.new(self)
+    snd_bgm_volume
     snd_bgm_to(:lobby)
   rescue => e
     Log.info("mahjong: no sound (#{e.message})")
@@ -108,13 +119,10 @@ class MahjongApp < FmrbApp
         next unless i
         k = l[0, i].strip
         v = l[i + 1, l.size].to_s.strip
-        if k == "bgm" || k == "se"
-          on = v != "false" && v != "0"
-          if k == "bgm"
-            @snd_bgm = on
-          else
-            @snd_se = on
-          end
+        if k == "bgm"
+          @snd_bgm = snd_bgm_level(v)
+        elsif k == "se"
+          @snd_se = v != "false" && v != "0"
         elsif v.size >= 2 && v[0] == "\"" && v[v.size - 1] == "\""
           @snd_conf[k] = v[1, v.size - 2] if SND_KEYS.index(k)
         elsif k.size > 6 && k[k.size - 6, 6] == "_track"
@@ -129,23 +137,42 @@ class MahjongApp < FmrbApp
   # What save_assist adds to ASSIST_FILE: the switches and the tunes and
   # voices the player named there.
   def snd_lines
-    s = "# Sound: BGM and the effects on (true) or off (false)\nbgm = #{@snd_bgm}\nse = #{@snd_se}\n"
+    s = "# Sound: the BGM's level (0 off, 1 low, 2 mid, 3 high), the effects on (true) or off (false)\n" +
+        "bgm = #{@snd_bgm}\nse = #{@snd_se}\n"
     @snd_conf.each do |k, v|
       s = v.is_a?(String) ? "#{s}#{k} = \"#{v}\"\n" : "#{s}#{k} = #{v}\n"
     end
     s
   end
 
+  # A saved "bgm" as a level: 0-3, or an older file's true / false.
+  def snd_bgm_level(v)
+    return 0 if v == "false"
+    return BGM_DEFAULT if v == "true"
+    n = v.to_i
+    n >= 0 && n < BGM_LEVELS.size && v == n.to_s ? n : BGM_DEFAULT
+  end
+
+  # The button and B: off -> low -> mid -> high -> off.
   def snd_toggle_bgm
-    @snd_bgm = !@snd_bgm
-    if @snd_bgm
+    @snd_bgm = (@snd_bgm + 1) % BGM_LEVELS.size
+    if @snd_bgm > 0
+      snd_bgm_volume
       snd_bgm_to(@snd_scene)
     else
       snd_bgm_stop
     end
     save_assist
     @dirty = true
-    Log.info("mahjong: bgm #{@snd_bgm}")
+    Log.info("mahjong: bgm #{BGM_LEVELS[@snd_bgm]}%")
+  end
+
+  # The level as the MAIN volume (off leaves it: nothing plays on MAIN).
+  def snd_bgm_volume
+    return unless @audio && @snd_bgm > 0
+    @audio.main_volume = BGM_LEVELS[@snd_bgm]
+  rescue => e
+    Log.info("mahjong: bgm volume: #{e.message}")
   end
 
   def snd_toggle_se
@@ -184,7 +211,7 @@ class MahjongApp < FmrbApp
   # ------------------------------------------------------------ the buttons (the list and the lobby)
 
   def snd_labels
-    ["BGM #{@snd_bgm == false ? '切' : '入'}[B]", "効果音 #{@snd_se == false ? '切' : '入'}[E]"]
+    ["BGM #{BGM_NAMES[@snd_bgm || BGM_DEFAULT]}[B]", "効果音 #{@snd_se == false ? '切' : '入'}[E]"]
   end
 
   # The two switches from x; returns the x after them.
@@ -396,7 +423,7 @@ class MahjongApp < FmrbApp
 
   def snd_bgm_to(scene)
     @snd_scene = scene
-    return unless @audio && @snd_bgm
+    return unless @audio && @snd_bgm > 0
     key = scene == :tense && snd_tune_of(:tense).nil? ? :play : scene
     tune = snd_tune_of(key)
     return if tune == @snd_tune
