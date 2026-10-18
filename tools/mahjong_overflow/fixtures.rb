@@ -340,6 +340,40 @@ module MjFixtures
     v.delete("dl")
     out["spectator_closed"] = [v, "観戦: 4 人とも門前 13 枚と自摸"]
 
+    # MJ10: the spectators' rows at their longest. Every seat with a drawn
+    # tile (only one has it in a game; here all four, the worst of each row).
+    long_rivers = [river(28, riichi: 9), river(31, riichi: 2, start: 3), river(29, riichi: 20, start: 7),
+                   river(30, riichi: 23, start: 11)]
+    v = base(me: -1)
+    v["fu"] = four_kans
+    v["hc"] = [2, 2, 2, 2]
+    v["sh"] = [bin(%w[9p]), bin(%w[9m]), bin(%w[1s]), bin(%w[7z])]
+    v["sd"] = [c("9p"), c("8m"), c("2s"), c("6z")]
+    v["kw"] = long_rivers
+    v["a"] = []
+    v.delete("dl")
+    out["spectator_worst"] = [v, "観戦: 四人とも槓 4 つと自摸の牌、河 28-31 枚"]
+
+    v = base(me: -1)
+    v["sh"] = out["spectator_closed"][0]["sh"]
+    v["sd"] = [c("5p"), c("6s"), c("7m"), c("1z")]
+    v["kw"] = long_rivers
+    v["a"] = []
+    v.delete("dl")
+    out["spectator_long"] = [v, "観戦: 四人とも門前 13 枚と自摸の牌 (行がいちばん長い)、河 28-31 枚"]
+
+    v = base(me: -1)
+    v["fu"] = [melds([meld(4, 2, %w[2p 2p 2p 2p])]), melds([meld(5, 3, %w[1m 1m 1m 1m])]),
+               melds([meld(4, 1, %w[4m 4m 4m 4m])]), melds([meld(3, 0, %w[7z 7z 7z 7z])])]
+    v["hc"] = [11, 11, 11, 11]
+    v["sh"] = [bin(%w[1m 2m 3m 4p 5p 6p 7s 8s 9s 1z]), bin(%w[2m 3m 4m 5m 6m 7m 8p 8p 1s 2s]),
+               bin(%w[3p 4p 5p 6p 7p 8p 9p 2z 2z 3z]), bin(%w[1s 2s 3s 4s 5s 6s 7s 8s 9s 4z])]
+    v["sd"] = [c("1z"), c("8p"), c("3z"), c("4z")]
+    v["kw"] = long_rivers
+    v["a"] = []
+    v.delete("dl")
+    out["spectator_one_kan"] = [v, "観戦: 四人とも槓 1 つ、手牌 10 枚と自摸の牌、河 28-31 枚"]
+
     # MJ8: the guide. Another seat's turn (the longest name), and the
     # others answering a discard (who may call is not told).
     v = base
