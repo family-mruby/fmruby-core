@@ -10,3 +10,4 @@ single_instance = true
 # the pool is in pieces and the required files no longer fit
 # (doc/reference/app_memory.md).
 large_memory = 1
+icon = "app/game/mahjong/mahjong.icon"
