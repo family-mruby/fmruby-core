@@ -764,6 +764,19 @@ module LauncherMixin
     return [label, (max_px - full_w) / 2] if full_w <= max_px
     line1 = FmrbI18n.truncate_to(label, max_px, "")
     consumed = line1.bytesize
+    # Break at the last space that fits, so a word is not cut in two
+    # ("File Manager" -> "File" / "Manager", not "File Manag" / "er").
+    # Bytes, not characters: the names can be Japanese.
+    sp = consumed - 1
+    while sp > 0 && line1.getbyte(sp) != 32
+      sp -= 1
+    end
+    if label.getbyte(consumed) == 32
+      consumed += 1
+    elsif sp > 0
+      line1 = line1.byteslice(0, sp).to_s
+      consumed = sp + 1
+    end
     line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed).to_s : ""
     line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
     [line1, (max_px - FmrbI18n.text_width(line1)) / 2,

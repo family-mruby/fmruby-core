@@ -4,9 +4,11 @@
 # writes that file, and from then on it decides; delete it to come back here.
 # An entry whose app is not on the machine is skipped, so one list serves
 # every board (the mahjong table, for one, is not shipped on Retro).
+# "desktop/file_manager" is not an app: it opens the File Manager.
 apps = [
   "default/editor",
   "default/shell",
+  "desktop/file_manager",
   "/app/game/mahjong/mahjong.app.rb",
   "/app/game/board/board.app.rb",
   "/app/tool/nsf_player.app.rb",

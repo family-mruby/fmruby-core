@@ -16,6 +16,8 @@
 #   apps = ["default/editor", "/app/tool/nsf_player.app.rb"]
 # An entry whose app is not on this machine is skipped (the default set names
 # apps that one board ships and another does not, such as the mahjong table).
+# One entry is not an app: "desktop/file_manager" opens the desktop's own
+# File Manager (the menu's File Manager), shown with a folder icon.
 #
 # Drawing: the icons are stamped onto the background canvas with draw_tile
 # from the launcher's icon SpriteImages (the same bitmaps, shared by icon
@@ -28,6 +30,8 @@ module DesktopIconsMixin
   DICON_DEFAULT_PATH = "/usr/share/desktop/desktop.toml"
   DICON_MAX_BYTES    = 4096
   DICON_KEY          = "apps"
+  DICON_FILE_MANAGER = "desktop/file_manager"
+  DICON_FOLDER_ICON  = "usr/share/icon/folder.icon"
 
   # Layout. A cell is the icon and up to two lines of name under it.
   DICON_MARGIN_X = 4
@@ -212,6 +216,9 @@ module DesktopIconsMixin
   # when the launcher does not list it (its category is excluded, or the
   # launcher cache predates it). nil when the app is not on this machine.
   def desktop_icon_entry(path)
+    if path == DICON_FILE_MANAGER
+      return { label: FmrbI18n.t(:file_manager), app: path, icon_file: DICON_FOLDER_ICON, icon_char: "F" }
+    end
     i = 0
     n = @launcher_apps.size
     while i < n
@@ -361,7 +368,12 @@ module DesktopIconsMixin
     if idx == @dicon_last_idx && (now - @dicon_last_time) < DICON_DOUBLE_TICKS
       @dicon_last_idx = -1
       select_desktop_icon(-1)
-      spawn_app(@dicon_items[idx][:app])
+      app = @dicon_items[idx][:app]
+      if app == DICON_FILE_MANAGER
+        open_file_manager
+      else
+        spawn_app(app)
+      end
     else
       @dicon_last_idx = idx
       @dicon_last_time = now
