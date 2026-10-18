@@ -1000,7 +1000,6 @@ void apu_force_pulse1_test_tone()
 
 void apu_process(void *buffer, int num_samples)
 {
-   static int32 prev_sample = 0;
    static int debug_frame_count = 0;
 
    int16 *buf16;
@@ -1079,13 +1078,13 @@ void apu_process(void *buffer, int num_samples)
 
             if (APU_FILTER_LOWPASS == apu.filter_type)
             {
-               accum += prev_sample;
+               accum += apu.prev_sample;
                accum >>= 1;
             }
             else
-               accum = (accum + accum + accum + prev_sample) >> 2;
+               accum = (accum + accum + accum + apu.prev_sample) >> 2;
 
-            prev_sample = next_sample;
+            apu.prev_sample = next_sample;
          }
 
          /* do clipping */

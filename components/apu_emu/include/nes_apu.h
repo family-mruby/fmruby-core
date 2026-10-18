@@ -205,12 +205,19 @@ typedef struct apu_s
    noise_t noise;
    dmc_t dmc;
    uint8 enable_reg;
+   uint8 mix_enable; /* next to enable_reg: the two bytes share one word */
 
    void *buffer; /* pointer to output buffer */
    int num_samples;
 
-   uint8 mix_enable;
    int filter_type;
+   /* The low-pass filter's last sample, per APU: it was a static in
+      apu_process, shared by the MAIN and SUB instances, so each frame
+      began with the other instance's last sample -- a step 60 times a
+      second (a buzz) in both outputs, and MAIN leaking into SUB past
+      its own volume. Fits in the padding the move above freed, so the
+      struct keeps its size. */
+   int32 prev_sample;
 
    double base_freq;
    float cycle_rate;
