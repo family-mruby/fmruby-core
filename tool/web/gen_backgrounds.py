@@ -6,7 +6,8 @@
 #                     (Luis Zuno / Ansimuz, CC0 -- see ASSETS.md).
 #   bg_WxH.png        the western scene, scaled from the hand-drawn 426x240
 #                     original with nearest-neighbour (852x480 is an exact 2x;
-#                     640x360 is 1.5x and slightly uneven, accepted).
+#                     640x360 is 1.5x and 1280x720 just over 3x, both slightly
+#                     uneven, accepted).
 #
 # Both families are built once at 426x240 and scaled from there, so every size
 # is the same picture rather than a different amount of it.
@@ -24,7 +25,7 @@ from PIL import Image
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "..",
                    "flash", "usr", "share", "backgrounds")
-SIZES = [(426, 240), (640, 360), (852, 480)]
+SIZES = [(426, 240), (640, 360), (852, 480), (1280, 720)]
 
 ART = os.path.join(os.path.dirname(__file__), "assets", "cyberpunk-street.png")
 
@@ -34,7 +35,7 @@ ART = os.path.join(os.path.dirname(__file__), "assets", "cyberpunk-street.png")
 # an invented band over someone else's picture -- and what is left is scaled
 # to the screen. Full height, so the road still sits on the bottom edge.
 #
-# The scale is not a whole number (1.25x, 1.875x, 2.5x) and NEAREST is used
+# The scale is not a whole number (1.25x, 1.875x, 2.5x, 3.75x) and NEAREST is used
 # anyway, as it is for the western one: some pixels come out one wide and some
 # two, which pixel art carries better than a blur does.
 def draw_cyber(w, h):
