@@ -141,6 +141,10 @@ def load_app
   eval(File.read(File.join(APP_DIR, "mahjong_replay.rb")), TOPLEVEL_BINDING, "mahjong_replay.rb")
   # The players' stats (MJ7), opened from the recent games.
   eval(File.read(File.join(APP_DIR, "mahjong_stats.rb")), TOPLEVEL_BINDING, "mahjong_stats.rb")
+  # The 640x360 table's own drawing (MJ8), read when the screen is that size.
+  eval(File.read(File.join(APP_DIR, "mahjong_640.rb")), TOPLEVEL_BINDING, "mahjong_640.rb")
+  # The title (MJ8), read when the app opens.
+  eval(File.read(File.join(APP_DIR, "mahjong_title.rb")), TOPLEVEL_BINDING, "mahjong_title.rb")
 end
 
 load_app
@@ -163,6 +167,7 @@ module Panels
     xl_draw_clock: ->(a, _) { ["buttons", a.xl_panel(:buttons)] },
     draw_shout_box: ->(_, _) { ["shout", :first, true] },
     draw_meld_tiles: ->(a, args) { ["melds#{args[0]}", a.panel640(:"melds#{args[0]}")] },
+    draw_melds640_seat: ->(a, args) { ["melds#{args[0]}", a.panel640(:"melds#{args[0]}")] },
     draw_assist: ->(a, _) { ["assist", a.panel640(:assist)] },
     xl_draw_assist: ->(a, _) { ["assist", a.xl_panel(:assist)] },
     draw_spec_hand: lambda { |a, args|
@@ -183,12 +188,18 @@ module Panels
     draw_list: ->(_, _) { ["list", nil] },
     draw_lobby: ->(_, _) { ["lobby", nil] },
     draw_rules: ->(a, _) { ["rules", a.panel640(:rules)&.map { |v| v * a.instance_variable_get(:@k) }] },
-    draw_status: ->(_, _) { ["status", nil] }
+    draw_status: ->(_, _) { ["status", nil] },
+    draw_title: ->(_, _) { ["title", nil] },
+    own_label: ->(a, _) { ["label0", a.panel640(:label0)] }
   }.freeze
 end
 
 class MahjongApp
   attr_accessor :scopes
+
+  # The app reads some of its files when they are first wanted (watch_load,
+  # rp_open); here every file is loaded already.
+  private def require(path) = path.to_s.start_with?("/app/") ? false : super
 
   # 640x360 (and the small table's) parts, from the drawing code's own
   # numbers; at 1280x720 the parts come from the app (xl_panel).
@@ -408,6 +419,7 @@ EXTRAS = {
   "lobby_owner" => [["page2", ->(a) { a.instance_variable_set(:@rule_page, 1) if a.respond_to?(:rule_pages) }],
                     ["name_edit", ->(a) { a.instance_variable_set(:@name_edit, MjFixtures::LONG_JA[0, 12]) }]],
   "lobby_member" => [["name_ascii", ->(a) { a.instance_variable_set(:@name, "WWWWWWWWWWWW") }],
+                     ["title", ->(a) { a.instance_variable_set(:@title_until, 2_000_000) }],
                      ["list_prompt", lambda { |a|
                        tables = %w[games-host-aaaaaa/games/mahjong1 games-host-aaaaaa/games/mahjong2 games/games/mahjong9]
                        a.instance_variable_set(:@table, nil)
@@ -450,6 +462,10 @@ EXTRAS = {
                         }]],
   "spectator" => [["shout_all", ->(a) { a.instance_variable_set(:@shout, [11, [0, 1, 2, 3], 2_000_000]) }]],
   "rivers_calls" => [["shout_ron", ->(a) { a.instance_variable_set(:@shout, [9, [1, 2, 3], 2_000_000]) }]],
+  # MJ8: the same tiles marked (the red five, then the five chosen); the
+  # title (lobby_member/title).
+  "marks_red_five" => [["chosen_red", ->(a) { a.instance_variable_set(:@sel, 3) }],
+                       ["chosen_five", ->(a) { a.instance_variable_set(:@sel, 13) }]],
   "assist_ukeire" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 0) }],
                       ["chosen_drawn", ->(a) { a.instance_variable_set(:@sel, 13) }]]
 }.freeze

@@ -1,7 +1,7 @@
 # Mahjong table: the 640x360 spectators' screen (MJ5, doc/ruby_asterism/
-# report/mj5.md). Part of MahjongApp (mahjong.app.rb requires this file
-# first, as mahjong_xl.rb; an app file is read whole and may be at most
-# 64 KB).
+# report/mj5.md). Part of MahjongApp, read when the screen is first shown
+# (watch_load in mahjong_panels.rb; MJ8: a seated player's VM never holds
+# it).
 #
 # A spectator sees the four hands (the view's "sh" and "sd"; a host without
 # them gives the backs), each the same size and turned to its player along
@@ -28,10 +28,6 @@ class MahjongApp < FmrbApp
   W_BH = 64
   # The room of a river's last row (rl 0-3).
   W_LAST_ROW = [332, 200, 244, 198]
-
-  def watching?
-    @big && !@xl && @seat.nil? && mode == :table
-  end
 
   # A small tile turned rot quarter turns at (x, y).
   def turned_tile(rot, c, x, y)
@@ -111,8 +107,9 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # A seat's row along the edge: [code, sideways, offset] of its hand (the
-  # drawn tile apart) and its melds (the first call at the far end).
+  # A seat's row along the edge: [code, sideways, offset, stacked] of its
+  # hand (the drawn tile apart) and its melds (the first call at the far
+  # end; stacked: an added kan's tile).
   def watch_row(s)
     out = []
     a = 0
@@ -143,13 +140,17 @@ class MahjongApp < FmrbApp
     while k >= 0
       kind = ms[k][0]
       tl = ms[k][2]
+      n = kind == 5 ? 3 : tl.size
       si = xl_sideways_index(kind, ms[k][1], tl.size)
       j = 0
-      while j < tl.size
+      while j < n
         c = tl[j]
-        c = 37 if kind == 3 && (j == 0 || j == tl.size - 1)
-        sw = j == si || (kind == 5 && j == 3)
+        c = 37 if kind == 3 && (j == 0 || j == n - 1)
+        sw = j == si
         out << [c, sw, a]
+        # An added kan's tile lies on the sideways one (MJ8; 8 px towards
+        # the table, the row being 32 deep).
+        out << [tl[3], true, a, true] if sw && kind == 5
         a += sw ? 32 : 24
         j += 1
       end
@@ -175,7 +176,7 @@ class MahjongApp < FmrbApp
       if i < list.size
         cut = list[i][2]
         rest = []
-        list[i..].each { |e| rest << [e[0], e[1], e[2] - cut] }
+        list[i..].each { |e| rest << [e[0], e[1], e[2] - cut, e[3]] }
         cols = [list[0, i], rest]
       end
     end
@@ -212,6 +213,11 @@ class MahjongApp < FmrbApp
           x = pr[0] + 32 - t
           y = pr[1] + pr[3] - a - len
         end
+        if e[3]
+          d = XL_STACK[rl]
+          x += d[0]
+          y += d[1]
+        end
         turned_tile(e[1] ? turned : base, e[0], @x0 + x, @y0 + y)
         j += 1
       end
@@ -236,21 +242,13 @@ class MahjongApp < FmrbApp
     d = bytes_of(v["dora"])
     w = tw(t(:mj_dora)) + 4 + d.size * 24
     dx = bx + (W_BW - w) / 2
-    text(dx, by + 38, t(:mj_dora), C_DIM)
+    text(dx, by + 38, t(:mj_dora), C_TEXT)
     dx += tw(t(:mj_dora)) + 4
     i = 0
     while i < d.size
       small_tile(d[i], dx + i * 24, by + 26)
       i += 1
     end
-  end
-
-  # "手番: 南 name" (nil: nobody's turn now).
-  def turn_text
-    r = @view ? @view["r"] : nil
-    return nil unless r.is_a?(Array) && r.size > 7 && @view["st"] == "play"
-    s = r[6].to_i
-    "手番: #{wind_of(s)} #{seat_name(s)}"
   end
 
   # The four seats on a line above the board (the 640x360 spectators):

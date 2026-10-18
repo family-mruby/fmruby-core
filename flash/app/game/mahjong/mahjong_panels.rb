@@ -740,10 +740,12 @@ class MahjongApp < FmrbApp
     @gfx.fill_triangle(cx - r, tip - r - r, cx + r, tip - r - r, cx, tip - 2, col)
   end
 
-  # The chosen tile's frame, inside the tile (4 px at 1280x720, 2 at
-  # 640x360, 1 on the small table), its corners cut as the tile's.
+  # The chosen tile's frame, inside the tile (the 1280x720 hand 4 px, its
+  # river 3, the 640x360 tiles and the small ones of both tables 2, the
+  # small table 1), its corners cut as the tile's. Also the frame of a tile
+  # of the chosen one's kind (MJ8).
   def chosen_frame(x, y, w, h)
-    t = @xl ? 4 : (@big ? 2 : 1)
+    t = w >= 80 ? 4 : (w >= 40 ? (@xl ? 3 : 2) : (@big ? 2 : 1))
     @gfx.fill_rect(x + t, y, w - t - t, t, C_CHOSEN)
     @gfx.fill_rect(x + t, y + h - t, w - t - t, t, C_CHOSEN)
     @gfx.fill_rect(x, y + t, t, h - t - t, C_CHOSEN)
@@ -763,9 +765,9 @@ class MahjongApp < FmrbApp
   # the melds and the rivers are laid out in them). The spectators' screen
   # has its own (WATCH, mahjong_watch.rb).
   LAYOUT640 = {
-    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [4, 267, 548, 20], clock: [560, 250, 76, 34], hand: [6, 287, 630, 69],
-    label0: [4, 10, 144, 16], label1: [492, 38, 144, 16], label2: [152, 22, 200, 16], label3: [4, 38, 144, 16],
-    melds0: [200, 324, 436, 32], melds1: [492, 54, 144, 64], melds2: [152, 38, 336, 32], melds3: [4, 54, 144, 64],
+    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [4, 253, 552, 47], clock: [560, 250, 76, 34], hand: [6, 287, 630, 69],
+    label0: [4, 250, 168, 16], label1: [492, 38, 144, 16], label2: [152, 22, 200, 16], label3: [4, 38, 144, 16],
+    melds0: [200, 308, 436, 48], melds1: [492, 54, 144, 64], melds2: [152, 38, 336, 32], melds3: [4, 54, 144, 64],
     river0: [176, 170, 288, 96], river1: [492, 120, 144, 128], river2: [176, 72, 288, 96], river3: [4, 120, 144, 128],
     rules: [448, 34, 192, 326]
   }
@@ -789,10 +791,13 @@ class MahjongApp < FmrbApp
 
   # ------------------------------------------------------------ the controls (640x360 and the small table)
 
-  # The buttons the host offers, then what the screen has to say. At
-  # 640x360 they start right of the left river and move to the left edge
-  # when they would reach the clock (LAYOUT640 :clock, MJ6); the small
-  # table says the time left in the line.
+  # The buttons the host offers and what the screen has to say. 640x360
+  # (MJ8): the buttons right-aligned against the clock (LAYOUT640 :clock),
+  # the line left of them; a call's buttons show their tiles (call_label):
+  # while a discard is answered the whole row is CALL_BTN_H high and stands
+  # on the hand's top (no tile is lifted then), on the own move a kan's
+  # button is that high and the others the usual. The small table: the
+  # texts from the left, the time left in the line.
   def draw_controls
     y = hand_y - SEL_LIFT - mark_rise - u(20) # clear of the help marks over the lifted tile
     list = @view["a"].is_a?(Array) ? @view["a"] : []
@@ -801,27 +806,25 @@ class MahjongApp < FmrbApp
     while i < list.size
       o = list[i]
       tl = bytes_of(o[1])
-      label = button_label(o[0], tl)
+      label = @big ? call_label(o[0], tl) : button_label(o[0], tl)
       labels << [o[0], tl, label] if label
       i += 1
     end
     labels << [B_LEAVE, [], t(:mj_leave)] if @seat.nil?
-    right = @big ? @x0 + LAYOUT640[:controls][0] + LAYOUT640[:controls][2] : @x0 + @w
-    bx = @x0 + (@big ? 152 : 2)
-    if @big
-      total = 0
-      labels.each { |l| total += tw(l[2]) + 16 }
-      bx = @x0 + LAYOUT640[:controls][0] + 2 if bx + total > right
-    end
-    labels.each { |l| bx += button(l[0], l[1], bx, y, l[2]) + 4 }
     msg = status_line.to_s
     wt = waits_text
     msg = "#{t(:mj_pick)} #{msg}" if @pick && wt.nil?
     msg = "#{wt} #{msg}" if wt
-    msg = "#{time_left_text} #{msg}" if @deadline && !@big
-    text(bx + 4, y + 4, fit(msg, right - bx - 8), C_TURN) unless msg.strip.empty? || bx + 40 > right
-    draw_assist if @big && @seat
-    draw_clock if @big
+    if @big
+      draw_buttons640(labels, y, msg)
+      draw_assist if @seat
+      draw_clock
+      return
+    end
+    bx = @x0 + 2
+    labels.each { |l| bx += button(l[0], l[1], bx, y, l[2]) + 4 }
+    msg = "#{time_left_text} #{msg}" if @deadline
+    text(bx + 4, y + 4, fit(msg, @x0 + @w - bx - 8), C_TURN) unless msg.strip.empty? || bx + 40 > @x0 + @w
   end
 
   # The help level's button, at the top right of the 640x360 table.
@@ -949,5 +952,308 @@ class MahjongApp < FmrbApp
     @gfx.draw_round_rect(x, y, w, h, pad / 2 + 2, win ? C_RED : C_TURN)
     text(x + pad, y + pad / 2, label, C_TURN)
     [x, y, w, h]
+  end
+
+  # ------------------------------------------------------------ the guide (MJ8)
+  #
+  # The status line says what the table waits for now: whose turn it is
+  # ("南家 (Claude) の番です"), or that the others are answering a discard
+  # (who may call is not told), and only on the player's own move what to
+  # do. A reply of the host to the player's action goes before it until the
+  # state moves on (took_view).
+
+  def status_line
+    return t(:mj_lost) if @net != :up || reconnecting?
+    return t(:mj_host_left) if @host_gone
+    return t(:mj_host_away) if @host_away
+    g = guide
+    @note.empty? ? g : "#{@note}  #{g}"
+  end
+
+  def guide
+    v = @view
+    return "" unless v && v["st"] == "play"
+    r = v["r"]
+    cur = r.is_a?(Array) && r.size > 7 ? r[6].to_i : -1
+    turn = cur >= 0 ? "#{wind_of(cur)}家 (#{seat_name(cur)}) の番です" : ""
+    return "#{t(:mj_watching)}  #{turn}" if @seat.nil?
+    if calls_phase?
+      return t(:mj_others) if @others
+      return "鳴くかパス (Esc) を選んでください" unless offer(A_RON)
+      return offer(A_PON) || offer(A_CHI) || offer(A_MINKAN) ? "ロン・鳴く・パス (Esc) から選んでください" : "ロンかパス (Esc) を選んでください"
+    end
+    return turn unless cur == @seat
+    offer(A_DAHAI) ? "自分の番: 切る牌をクリック (左右と Enter でも)" : ""
+  end
+
+  # This seat answers a discard now (the call buttons are up).
+  def answering_call?
+    @seat && @view && @view["st"] == "play" && calls_phase? && !@others ? true : false
+  end
+
+  # After take_view: the host's reply goes once the state moves on; no hand
+  # tile stays chosen while a discard is answered; the declarations (MJ6).
+  def took_view(v, old)
+    @note = "" if old && old["sv"] != v["sv"] && v["st"] != "wait"
+    @sel = -1 if answering_call?
+    shout_take(v, old)
+  end
+
+  # ------------------------------------------------------------ the call buttons (MJ8)
+  #
+  # Pon, chi and the kans show their tiles as pictures, the river's 24x32
+  # (both tables): [head, tiles, key]. Pon and chi show the two tiles from
+  # the hand (the offer's), a closed or added kan its tile, an open kan the
+  # discard (the offer has no tiles). Other buttons are texts.
+
+  CALL_BTN_H = 34   # the 640x360 (and small) table's row of call buttons
+
+  def call_label(type, tl)
+    tiles = nil
+    if type == A_ANKAN || type == A_KAKAN
+      tiles = [tl[0]] unless tl.empty?
+    elsif type == A_PON || type == A_CHI || type == A_MINKAN
+      tiles = tl unless tl.empty?
+      ls = @view["ls"]
+      if tiles.nil? && ls.is_a?(Array) && ls.size > 1
+        c = ls[1].to_i & 0x3F
+        tiles = type == A_PON ? [c, c] : [c]
+      end
+    end
+    return button_label(type, tl) unless tiles
+    return [t(:mj_pon), tiles, "P"] if type == A_PON
+    type == A_CHI ? [t(:mj_chi), tiles, "C"] : [t(:mj_kan), tiles, "K"]
+  end
+
+  # The width of a button's contents (a text, or [head, tiles, key]).
+  def btn_label_w(l)
+    return tw(l) unless l.is_a?(Array)
+    gap = @fw / 3
+    w = tw(l[0]) + gap + l[1].size * 24
+    l[2] ? w + gap + tw(l[2]) : w
+  end
+
+  # A button's contents centred in its box.
+  def btn_content(l, x, y, w, h)
+    ty = y + (h - @fw) / 2
+    unless l.is_a?(Array)
+      text(x + (w - tw(l)) / 2, ty, l)
+      return
+    end
+    gap = @fw / 3
+    cx = x + (w - btn_label_w(l)) / 2
+    text(cx, ty, l[0])
+    cx += tw(l[0]) + gap
+    i = 0
+    while i < l[1].size
+      small_tile(l[1][i], cx, y + (h - 32) / 2)
+      cx += 24
+      i += 1
+    end
+    text(cx + gap, ty, l[2]) if l[2]
+  end
+
+  def controls_width(labels, gap)
+    total = 0
+    labels.each { |l| total += btn_label_w(l[2]) + u(12) + gap }
+    total - gap
+  end
+
+  # ------------------------------------------------------------ the same tiles (MJ8)
+  #
+  # While a hand tile is chosen, every river tile, meld tile and dora
+  # indicator of its kind (a red five is a five) gets the chosen tile's blue
+  # frame; @mk is the kind (draw_screen sets it), nil when none is chosen.
+
+  def tile_kind(c)
+    c < 30 && c % 10 == 9 ? c - 5 : c
+  end
+
+  def mark_kind
+    return nil unless @seat && @sel >= 0 && !@rp && mode == :table
+    c = hand_at(@sel)
+    c ? tile_kind(c) : nil
+  end
+
+  def same?(c)
+    @mk ? tile_kind(c) == @mk : false
+  end
+
+  def same_mark(c, x, y, w, h)
+    chosen_frame(x, y, w, h) if @mk && tile_kind(c) == @mk
+  end
+
+  # ------------------------------------------------------------ the title (MJ8)
+  #
+  # "ヒデ雀" when the app opens, while the network comes up (on_update goes
+  # on): until the list of tables is ready, at most TITLE_MS. Its drawing is
+  # in mahjong_title.rb, read when the app opens and taken out of the class
+  # again when the title goes (the VM of a game does not hold it).
+
+  TITLE_MS = 2000
+
+  def title_draw
+    unless @title_in
+      @title_in = true
+      require "#{APP_DIR}/mahjong_title"
+    end
+    draw_title
+  end
+
+  # Any key or click: the title goes at the next update (and the event is
+  # not the list's).
+  def title_skip(t)
+    return false unless @title_until
+    @title_until = 1 if t == :key_down || t == :mouse_up
+    true
+  end
+
+  def title_tick(now)
+    return unless @title_until && (now >= @title_until || list_ready?)
+    @title_until = nil
+    @title_drawn = nil
+    title_unload
+    @dirty = true
+    draw_screen if @unsupported
+  end
+
+  # ------------------------------------------------------------ shared with the 1280x720 table
+  #
+  # Used by every screen (mahjong_xl.rb is read only at 1280x720).
+
+  XL_STACK = [[0, -8], [-8, 0], [0, 8], [8, 0]] # an added kan's tile over the sideways one (rl 0-3)
+
+  # The 1280x720 table's file and sheets, when the screen is that big.
+  def load_xl_sheets
+    return unless @xl
+    unless @xl_in
+      @xl_in = true
+      require "#{APP_DIR}/mahjong_xl"
+    end
+    xl_load_sheets
+  end
+
+  # The small tiles turned for the four seats ([r0, r90, r180, r270]): the
+  # 1280x720 table's opponents and the 640x360 spectators (mahjong_watch.rb);
+  # side_only: only r270, the sideways tile of the 640x360 melds (MJ8). Each
+  # sheet is tried once.
+  def load_turned_sheets(side_only = false)
+    return if @turned_all
+    @turned ||= [@river_sheet, nil, nil, nil]
+    unless @turned_side
+      @turned_side = true
+      @turned[3] = load_sheet("tiles_river_r270.bmp", 320, 96, XL_DIR)
+    end
+    return if side_only
+    @turned_all = true
+    @turned[1] = load_sheet("tiles_river_r90.bmp", 320, 96, XL_DIR)
+    @turned[2] = load_sheet("tiles_river_r180.bmp", 240, 128, XL_DIR)
+  end
+
+  # The base turn of a seat's tiles (rl: 0 self, 1 right, 2 across, 3 left):
+  # the top of the picture points away from its player.
+  def xl_rot(rl)
+    [0, 3, 2, 1][rl]
+  end
+
+  # Where each tile of a row goes along it: lens are the tiles' lengths,
+  # room the length there is; past the room the tiles close up (each still
+  # shows its start, the last one whole). Returns the offsets.
+  def close_up(lens, room)
+    total = 0
+    lens.each { |l| total += l }
+    out = []
+    a = 0
+    if total <= room || lens.size < 2
+      lens.each do |l|
+        out << a
+        a += l
+      end
+      return out
+    end
+    last = lens[lens.size - 1]
+    i = 0
+    while i < lens.size
+      out << a * (room - last) / (total - last)
+      a += lens[i]
+      i += 1
+    end
+    out
+  end
+
+  # The river of a seat as [[code, sideways, mark], ...] (called tiles are
+  # not in it; the tile after a called riichi tile stays upright).
+  def xl_river_list(s)
+    b = bytes_of(@view["kw"][s])
+    ls = @view["ls"]
+    out = []
+    i = 0
+    while i < b.size
+      c = b[i]
+      if c & 0x80 == 0
+        last = i == b.size - 1 && ls.is_a?(Array) && ls[0] == s
+        out << [c & 0x3F, c & 0x40 != 0, last ? 1 : 0]
+      end
+      i += 1
+    end
+    out
+  end
+
+  # The melds of a seat: [[kind, from, [tiles]], ...].
+  def xl_melds(s)
+    fu = @view["fu"]
+    out = []
+    return out unless fu.is_a?(Array)
+    b = bytes_of(fu[s])
+    i = 0
+    while i + 2 < b.size
+      n = b[i + 2]
+      out << [b[i], b[i + 1], b[i + 3, n]]
+      i += 3 + n
+    end
+    out
+  end
+
+  # Which of a meld's tiles lies sideways: the one taken from the player on
+  # the left goes at the left, from across second, from the right at the end.
+  def xl_sideways_index(kind, from, n)
+    return -1 if kind == 3 || from == 0
+    m = kind == 5 ? 3 : n
+    return 0 if from == 3
+    return 1 if from == 2
+    m - 1
+  end
+
+  # A spectator's hand of seat s: [codes, drawn] ("sh", "sd"), or nil (a
+  # host without them, or a seated player's screen).
+  def spec_hand(s)
+    return nil if @seat
+    sh = @view["sh"]
+    return nil unless sh.is_a?(Array) && sh[s]
+    sd = @view["sd"]
+    d = sd.is_a?(Array) ? sd[s].to_i : -1
+    [bytes_of(sh[s]), d]
+  end
+
+  # The 640x360 table's own drawing (mahjong_640.rb), read when the screen
+  # is that size (load_hand_sheet): the 1280x720 table's VM never holds it.
+  def m640_load
+    return if @m640_in
+    @m640_in = true
+    require "#{APP_DIR}/mahjong_640"
+  end
+
+  # ------------------------------------------------------------ the spectators' screen
+
+  def watching?
+    @big && !@xl && @seat.nil? && mode == :table
+  end
+
+  # The 640x360 spectators' screen is read the first time it is wanted
+  # (watching, a record): a seated player's VM never holds it.
+  def watch_load
+    return if @watch_in || !@big || @xl
+    @watch_in = true
+    require "#{APP_DIR}/mahjong_watch"
   end
 end

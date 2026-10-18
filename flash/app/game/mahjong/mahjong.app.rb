@@ -68,13 +68,12 @@
 # join, kept in ASSIST_FILE); the lobby's rules have two pages (Tab). A
 # spectator sees the four hands (MJ5: mahjong_watch.rb at 640x360).
 
-# The 1280x720 table (methods of this class, in a file of its own: an app
-# file is read whole and may be at most 64 KB).
-require "/app/game/mahjong/mahjong_xl"
+# The 1280x720 table (mahjong_xl.rb) is read only when the screen is that
+# big (load_xl_sheets in mahjong_panels.rb).
 # The local rules, the result of a round (MJ3b), the 640x360 layout's parts.
 require "/app/game/mahjong/mahjong_panels"
-# The 640x360 spectators' screen: the four hands (MJ5).
-require "/app/game/mahjong/mahjong_watch"
+# The 640x360 spectators' screen (MJ5, mahjong_watch.rb) is read when it is
+# first shown (watch_load): a seated player never needs it.
 
 class MahjongApp < FmrbApp
   APP = "game"            # this app's Asterism application name (the G0 range)
@@ -151,7 +150,7 @@ class MahjongApp < FmrbApp
   # other apps are left as they are).
   def setup_strings
     @str = {
-      mj_title: "麻雀", mj_connecting: "つないでいます", mj_searching: "ゲームホストを探しています (games/mahjong*)",
+      mj_title: "ヒデ雀", mj_connecting: "つないでいます", mj_searching: "ゲームホストを探しています (games/mahjong*)",
       mj_joining: "卓に入っています", mj_full: "卓が満員", mj_lost: "網から切れた: つなぎ直し中",
       mj_host_away: "ホストが答えない: 待っています",
       mj_host_left: "ホストとのつながりが切れた", mj_retro: "この卓は Modern とブラウザ版で動きます",
@@ -284,6 +283,7 @@ class MahjongApp < FmrbApp
     @others = false       # the host waits for other seats' calls
     @second = 0
     @mem_at = 0
+    @title_until = Machine.board_millis + TITLE_MS # the title (MJ8) while the network comes up
     draw_screen
   end
 
@@ -321,9 +321,12 @@ class MahjongApp < FmrbApp
     nil
   end
 
-  # The hand sheet, the first time the table is big (the 640x360 table).
+  # The hand sheet and mahjong_640.rb, the first time the table is big (the
+  # 640x360 table).
   def load_hand_sheet
-    @hand_sheet = load_sheet("tiles_hand.bmp", 420, 224) if @big && !@xl && @hand_sheet.nil?
+    return unless @big && !@xl
+    m640_load
+    @hand_sheet = load_sheet("tiles_hand.bmp", 420, 224) if @hand_sheet.nil?
   end
 
   # ------------------------------------------------------------ network
@@ -679,7 +682,7 @@ class MahjongApp < FmrbApp
       @lat_pending = Machine.board_millis - @act_t0
       @act_t0 = nil
     end
-    shout_take(v, old)
+    took_view(v, old)
     @dirty = true if old.nil? || old["v"] != v["v"]
   end
 
@@ -976,6 +979,7 @@ class MahjongApp < FmrbApp
 
   def on_event(ev)
     t = ev[:type]
+    return if title_skip(t)
     if t == :key_down
       @keys << [ev[:scancode], ev[:character] || 0]
     elsif t == :mouse_up && ev[:button] == 1
@@ -1051,6 +1055,7 @@ class MahjongApp < FmrbApp
   def rp_open(p)
     return unless p
     require "#{APP_DIR}/mahjong_replay"
+    watch_load
     rp_start(p)
   end
 
@@ -1127,13 +1132,13 @@ class MahjongApp < FmrbApp
   # (the waits or the acceptance) changes too.
   def choose(i, mouse)
     @mouse_sel = mouse
-    return if i == @sel
+    return if i == @sel || (i >= 0 && answering_call?)
     old = @sel
     ow = [sel_waits, sel_uk]
     @sel = i
     if @xl || !@big
       @dirty = true
-    elsif ow != [sel_waits, sel_uk] || @dirty
+    elsif ow != [sel_waits, sel_uk] || @dirty || marks_differ?(old, i)
       @dirty = true
     else
       @hand_redraw = [] if @hand_redraw.nil?
@@ -1301,16 +1306,19 @@ class MahjongApp < FmrbApp
     text(x, y, run, color) unless run.empty?
   end
 
-  def button(type, tiles, x, y, label)
-    w = tw(label) + u(12)
-    @buttons << [type, x, y, w, u(20), tiles]
-    @gfx.fill_round_rect(x, y, w, u(20), u(4), C_BTN)
-    text(x + u(6), y + u(4), label)
+  # label: a text, or a call's [head, tiles, key] (MJ8: the tiles as pictures).
+  def button(type, tiles, x, y, label, h = u(20))
+    w = btn_label_w(label) + u(12)
+    @buttons << [type, x, y, w, h, tiles]
+    @gfx.fill_round_rect(x, y, w, h, u(4), C_BTN)
+    btn_content(label, x, y, w, h)
     w
   end
 
   def draw_screen
+    return title_draw if @title_until
     t0 = Machine.board_millis
+    @mk = mark_kind
     m = @unsupported ? :retro : mode
     if @xl && m == :table
       xl_draw
@@ -1324,6 +1332,7 @@ class MahjongApp < FmrbApp
     clear_user_area(C_FELT)
     fnt(12, @k)
     if m == :table && watching?
+      watch_load
       draw_watch
       draw_shout
       draw_result if (@view["res"] || @view["fin"]) && !@shout
@@ -1545,15 +1554,6 @@ class MahjongApp < FmrbApp
     end
   end
 
-  def status_line
-    return "#{t(:mj_lost)}" if @net != :up || reconnecting?
-    return t(:mj_host_left) if @host_gone
-    return t(:mj_host_away) if @host_away
-    return "#{t(:mj_watching)} #{turn_text} #{@note}" if @seat.nil?
-    return "#{t(:mj_others)} #{@note}" if @others && @view["st"] == "play" && calls_phase?
-    @note
-  end
-
   def draw_info
     v = @view
     x = @x0 + (@big ? 152 : 92)
@@ -1576,6 +1576,7 @@ class MahjongApp < FmrbApp
     while i < d.size
       if @big
         small_tile(d[i], dx + i * 24, y)
+        same_mark(d[i], dx + i * 24, y, 24, 32)
       else
         text(dx + i * 14, y, tile_text(d[i]), C_TURN)
       end
@@ -1602,13 +1603,17 @@ class MahjongApp < FmrbApp
       rl = rel(s)
       # The name gives way so the label stays in its place (the left and the
       # across labels are on one line).
-      room = (@big ? (rl == 2 ? 200 : 144) : (rl == 2 ? 230 : 86)) - tw(head) - tw(tail)
+      room = (@big ? [160, 144, 200, 144][rl] : (rl == 2 ? 230 : 86)) - tw(head) - tw(tail)
       label = "#{head}#{fit(name, room)}#{tail}"
-      col = away ? C_AWAY : (s == cur && v["st"] == "play" ? C_TURN : C_TEXT)
+      turn = s == cur && v["st"] == "play"
       p = seat_label_pos(rl)
-      text(p[0], p[1], label, col)
-      # The seat to act: underlined too (a spectator has no hand to tell it).
-      @gfx.fill_rect(p[0], p[1] + 13, tw(label), 2, C_TURN) if s == cur && v["st"] == "play"
+      if rl == 0 && @big
+        own_label(p[0], p[1], label, away, turn) # MJ8: by the hand, white on a box
+      else
+        text(p[0], p[1], label, away ? C_AWAY : (turn ? C_TURN : C_TEXT))
+        # The seat to act: underlined too (a spectator has no hand to tell it).
+        @gfx.fill_rect(p[0], p[1] + 13, tw(label), 2, C_TURN) if turn
+      end
       s += 1
     end
   end
@@ -1632,7 +1637,7 @@ class MahjongApp < FmrbApp
 
   def seat_label_pos(rl)
     if @big
-      return [[@x0 + 4, @y0 + 10], [@x0 + 492, @y0 + 38], [@x0 + 152, @y0 + 22], [@x0 + 4, @y0 + 38]][rl]
+      return [[@x0 + 4, @y0 + 250], [@x0 + 492, @y0 + 38], [@x0 + 152, @y0 + 22], [@x0 + 4, @y0 + 38]][rl]
     end
     [[@x0 + 92, @y0 + 160], [@x0 + 336, @y0 + 14], [@x0 + 92, @y0 + 14], [@x0 + 2, @y0 + 14]][rl]
   end
@@ -1679,6 +1684,7 @@ class MahjongApp < FmrbApp
           code = c & 0x3F
           if @big
             small_tile(code, x, y)
+            same_mark(code, x, y, 24, 32)
             @gfx.fill_rect(x + 2, y + 28, 20, 3, C_RED) if c & 0x40 != 0
           else
             text(x, y, tile_text(code), c & 0x40 != 0 ? C_RED : C_TEXT)
@@ -1697,6 +1703,7 @@ class MahjongApp < FmrbApp
   def draw_melds
     fu = @view["fu"]
     return unless fu.is_a?(Array)
+    return draw_melds640 if @big
     s = 0
     while s < 4
       b = bytes_of(fu[s])
@@ -1720,80 +1727,34 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # The melds of a seat (tiles, -1 between melds). 640x360: in the small
-  # tiles, the own ones at the bottom right, the across seat's on a line
-  # under its name, a side seat's two to a row (two rows); a row that is
-  # longer than its room closes up. The small screen: the own melds as
-  # short texts ("3m-5m" a chi, "3mx3" a pon, "3mx4" a kan), the others'
-  # as a count.
+  # The small table's melds: the own ones as short texts ("3m-5m" a chi,
+  # "3mx3" a pon, "3mx4" a kan), the others' as a count (640x360:
+  # draw_melds640, mahjong_panels.rb).
   def draw_meld_tiles(rl, tiles)
     return if tiles.empty?
-    unless @big
-      ms = []
-      cur = []
-      tiles.each do |c|
-        if c < 0
-          ms << cur
-          cur = []
-        else
-          cur << c
-        end
-      end
-      if rl == 0
-        s = ""
-        ms.each do |m|
-          f = m[0] == 37 ? m[1] : m[0]
-          s = "#{s} #{m[0] == m[1] || m[0] == 37 ? "#{tile_text(f)}x#{m.size}" : "#{tile_text(m[0])}-#{tile_text(m[m.size - 1])}"}"
-        end
-        text(@x0 + 250, @y0 + 160, s.strip, C_DIM)
-      else
-        k = 0
-        ms.each { |m| k += 1 if m.size == 4 }
-        s = "鳴#{ms.size}"
-        s = "#{s} 槓#{k}" if k > 0
-        text(rl == 2 ? @x0 + 92 : (rl == 1 ? @x0 + 336 : @x0 + 2), @y0 + 27, s, C_DIM)
-      end
-      return
-    end
-    rows = [[]]
-    n = 0
+    ms = []
+    cur = []
     tiles.each do |c|
-      rows[rows.size - 1] << c
-      next unless c < 0
-      n += 1
-      rows << [] if (rl == 1 || rl == 3) && n % 2 == 0
+      if c < 0
+        ms << cur
+        cur = []
+      else
+        cur << c
+      end
     end
-    pr = LAYOUT640[[:melds0, :melds1, :melds2, :melds3][rl]]
-    r = 0
-    while r < rows.size
-      list = rows[r]
-      offs = []
-      a = 0
-      list.each do |c|
-        if c < 0
-          a += 4
-        else
-          offs << a
-          a += 24
-        end
+    if rl == 0
+      s = ""
+      ms.each do |m|
+        f = m[0] == 37 ? m[1] : m[0]
+        s = "#{s} #{m[0] == m[1] || m[0] == 37 ? "#{tile_text(f)}x#{m.size}" : "#{tile_text(m[0])}-#{tile_text(m[m.size - 1])}"}"
       end
-      unless offs.empty?
-        total = offs[offs.size - 1] + 24
-        room = pr[2]
-        x = rl == 1 || rl == 3 ? pr[0] : pr[0] + pr[2] - (total < room ? total : room)
-        y = pr[1] + r * 32
-        i = 0
-        j = 0
-        while i < list.size
-          if list[i] >= 0
-            o = total <= room ? offs[j] : offs[j] * (room - 24) / (total - 24)
-            small_tile(list[i], @x0 + x + o, @y0 + y)
-            j += 1
-          end
-          i += 1
-        end
-      end
-      r += 1
+      text(@x0 + 250, @y0 + 160, s.strip, C_DIM)
+    else
+      k = 0
+      ms.each { |m| k += 1 if m.size == 4 }
+      s = "鳴#{ms.size}"
+      s = "#{s} 槓#{k}" if k > 0
+      text(rl == 2 ? @x0 + 92 : (rl == 1 ? @x0 + 336 : @x0 + 2), @y0 + 27, s, C_DIM)
     end
   end
 
@@ -1913,8 +1874,9 @@ class MahjongApp < FmrbApp
   # ------------------------------------------------------------ the loop
 
   def on_update
-    return 500 if @unsupported
     now = Machine.board_millis
+    title_tick(now)
+    return 500 if @unsupported
     if @net == :connecting
       connect if network_ready?
     elsif @net == :down
