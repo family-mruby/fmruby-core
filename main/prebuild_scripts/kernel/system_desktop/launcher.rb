@@ -612,20 +612,60 @@ module LauncherMixin
     @ui.set_range(:lnc_sb, launcher_total_rows, launcher_visible_rows)
     @ui.set_value(:lnc_sb, @launcher_scroll)
     @ui.set_visible(:lnc_sb, true)
+    # The desktop button sits at the right end of the title bar. A button and
+    # not a right-click on the icon: the right-click already means "rescan"
+    # anywhere in this window, and that stays as it was.
+    @ui.move(:lnc_desk, x + LAUNCHER_W - 3 - LNC_DESK_W, y + 1, LNC_DESK_W, LAUNCHER_TITLE_H - 2)
+    update_launcher_desk_button
     @ui.invalidate_all
   end
 
   LNC_SB_W = 10
+  # Wide enough for the longer of the two labels in either language
+  # ("Remove from desktop" is 19 Font0 characters).
+  LNC_DESK_W = 118
 
   def build_launcher_widgets
     @ui.scrollbar(:lnc_sb, 0, 0, LNC_SB_W, 40, 0, 1)
     @ui.set_visible(:lnc_sb, false)
+    @ui.button(:lnc_desk, 0, 0, LNC_DESK_W, LAUNCHER_TITLE_H - 2, FmrbI18n.t(:desk_add))
+    @ui.set_visible(:lnc_desk, false)
     nil
   end
 
   def handle_launcher_widget(id)
+    if id == :lnc_desk
+      launcher_toggle_desktop
+      return nil
+    end
     return nil unless id == :lnc_sb
     @ui.value(:lnc_sb) > @launcher_scroll ? launcher_scroll_down : launcher_scroll_up
+    nil
+  end
+
+  # The button says what pressing it will do to the selected app: put it on
+  # the desktop, or take it off. Hidden while nothing is selected (a disabled
+  # button is a blank box in the default theme, its text and fill being the
+  # same colour); paint_bg_rect gives the hole back the title bar colour.
+  # Only marks the widget; the caller's flush draws it.
+  def update_launcher_desk_button
+    sel = @launcher_selected
+    if sel < 0 || sel >= @launcher_apps.size
+      @ui.set_visible(:lnc_desk, false)
+      return nil
+    end
+    on = desktop_icon_listed?(@launcher_apps[sel][:app])
+    @ui.set_text(:lnc_desk, FmrbI18n.t(on ? :desk_remove : :desk_add))
+    @ui.set_visible(:lnc_desk, true)
+    nil
+  end
+
+  def launcher_toggle_desktop
+    sel = @launcher_selected
+    return nil if sel < 0 || sel >= @launcher_apps.size
+    toggle_desktop_icon(@launcher_apps[sel][:app])
+    update_launcher_desk_button
+    @ui.flush
     nil
   end
 
@@ -696,19 +736,7 @@ module LauncherMixin
         # column position do not affect them.
         lay = app[:label_layout]
         unless lay
-          label = app[:label]
-          max_px = LAUNCHER_ICON_W
-          full_w = FmrbI18n.text_width(label)
-          if full_w <= max_px
-            lay = [label, (LAUNCHER_ICON_W - full_w) / 2]
-          else
-            line1 = FmrbI18n.truncate_to(label, max_px, "")
-            consumed = line1.bytesize
-            line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed).to_s : ""
-            line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
-            lay = [line1, (LAUNCHER_ICON_W - FmrbI18n.text_width(line1)) / 2,
-                   line2, (LAUNCHER_ICON_W - FmrbI18n.text_width(line2)) / 2]
-          end
+          lay = icon_label_layout(app[:label], LAUNCHER_ICON_W)
           app[:label_layout] = lay
         end
         # draw_text_mixed, not draw_text(mixed: true): the keyword costs one
@@ -724,6 +752,22 @@ module LauncherMixin
       end
       vrow += 1
     end
+  end
+
+  # Where an icon's name goes under it, in a cell max_px wide: one line
+  # centred, or the first max_px of it plus the rest (ellipsised) on a second
+  # line. Returns [line1, x1] or [line1, x1, line2, x2], the x offsets being
+  # within the cell. Shared with the desktop icons (desktop_icons.rb), which
+  # lay their names out the same way.
+  def icon_label_layout(label, max_px)
+    full_w = FmrbI18n.text_width(label)
+    return [label, (max_px - full_w) / 2] if full_w <= max_px
+    line1 = FmrbI18n.truncate_to(label, max_px, "")
+    consumed = line1.bytesize
+    line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed).to_s : ""
+    line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
+    [line1, (max_px - FmrbI18n.text_width(line1)) / 2,
+     line2, (max_px - FmrbI18n.text_width(line2)) / 2]
   end
 
   # Redraw a single icon cell background. The sprite on top of this cell stays
@@ -861,6 +905,8 @@ module LauncherMixin
     @launcher_scroll = 0
     @rescan_cats = nil
     @rescan_prev = nil
+    # A desktop icon whose app was not there before may be now.
+    refresh_desktop_icons_after_rescan
     draw_foreground
     @rescanning = false
 
@@ -891,6 +937,7 @@ module LauncherMixin
     @launcher_selected = -1
     # Hidden before the repaint, like every other overlay's widgets.
     @ui.set_visible(:lnc_sb, false)
+    @ui.set_visible(:lnc_desk, false)
     @ui.flush
     hide_all_icon_sprites
     notify_overlay_state(false, 0, 0, 0, 0)
@@ -946,13 +993,15 @@ module LauncherMixin
         end
         @last_click_idx = icon_idx
         @last_click_time = now
-        @gfx.present
+        update_launcher_desk_button
+        @gfx.present unless @ui.flush
       end
     else
       if @launcher_selected >= 0
         redraw_launcher_icon(@launcher_selected, LAUNCHER_ICON_BG)
         @launcher_selected = -1
-        @gfx.present
+        update_launcher_desk_button
+        @gfx.present unless @ui.flush
       end
     end
     nil  # spawn_app branch is void-typed (Spinel) -> pin a concrete return
@@ -1021,12 +1070,15 @@ module LauncherMixin
     if row < @launcher_scroll || row >= @launcher_scroll + vis
       # Selection left the visible range: scroll to it and repaint the grid
       @launcher_scroll = row < @launcher_scroll ? row : row - vis + 1
+      update_launcher_desk_button
       redraw_launcher_only
+      @ui.flush
     else
       # In-range move: repaint just the two affected cells
       redraw_launcher_icon(prev, LAUNCHER_ICON_BG) if prev >= 0
       redraw_launcher_icon(idx, LAUNCHER_ICON_SEL)
-      @gfx.present
+      update_launcher_desk_button
+      @gfx.present unless @ui.flush
     end
   end
 
