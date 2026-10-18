@@ -154,8 +154,8 @@ load_app
 # rect is its own first fill (the result boxes, drawn over the table).
 module Panels
   BIG = {
-    xl_draw_board: ->(a, _) { ["board", [a.class::XL_BX, a.class::XL_BY, a.class::XL_BW, a.class::XL_BH]] },
-    xl_draw_status: ->(a, _) { ["status", a.class::XL_STATUS] },
+    xl_draw_board: ->(a, _) { ["board", a.xl_panel(:board)] },
+    xl_draw_status: ->(a, _) { ["status", a.xl_panel(:status)] },
     xl_draw_waits: ->(a, _) { ["waits", a.class::XL_WAITS] },
     xl_draw_buttons: ->(a, _) { ["buttons", a.xl_panel(:buttons)] },
     xl_draw_result: ->(_, _) { ["result", :first, true] },

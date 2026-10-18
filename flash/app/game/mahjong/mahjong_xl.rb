@@ -56,8 +56,48 @@ class MahjongApp < FmrbApp
     h: [48, 588, 1188, 132], m: [400, 608, 872, 112]
   }
 
+  # The geometry of the screen: a seated player's (and a spectator's of a
+  # host that does not show the hands), and the spectators' with the four
+  # hands face up (MJ10). by: the board's top; last: the room of each
+  # river's last row (XL_LAST_ROW); rows: where each seat's row starts
+  # (xl_spec_place); status, btn_rows, btn_right: the status line and the
+  # buttons; panels: XL_PANELS.
+  XL_LAST_ROW = [732, 448, 524, 304]
+  XL_SEAT = {
+    by: XL_BY, last: XL_LAST_ROW, status: XL_STATUS, btn_rows: XL_BTN_ROWS, btn_right: XL_BTN_RIGHT, panels: XL_PANELS
+  }
+  # The spectators (MJ10, option "river48"): the hands in the river's
+  # tiles (48x64, turned to their players), one line each, the melds in the
+  # small tiles at the far end; the board and the rivers 44 px lower than
+  # a seated player's (the top row above them), the side rows from top to
+  # bottom of the screen.
+  XL_SPEC = {
+    by: 280, last: [704, 448, 524, 304], status: [80, 540, 400, 56], btn_rows: [592, 548, 504, 460], btn_right: 1196,
+    # The rows: start [x, y] on the screen's edge, the hand tile (along,
+    # across), the gap before the drawn tile, the melds big or small, the
+    # room of a line and the lines (2: the second towards the table).
+    rows: [[296, 712], [1272, 704], [984, 8], [8, 16]], tile: [48, 64], drawn_gap: 12, big_melds: false,
+    room: 688, lines: 1,
+    panels: {
+      board: [496, 280, 288, 160], status: [80, 540, 400, 56], waits: XL_WAITS, assist: [12, 8, 248, 40],
+      buttons: [496, 460, 700, 172],
+      r0: [496, 440, 704, 192], r1: [800, 56, 256, 448], r2: [260, 88, 524, 192], r3: [224, 216, 256, 304],
+      o0: [296, 648, 688, 64], o1: [1208, 16, 64, 688], o2: [296, 8, 688, 64], o3: [8, 16, 64, 688]
+    }
+  }
+
+  # The geometry in use (set by xl_draw).
+  def xg
+    @xg || XL_SEAT
+  end
+
+  # The spectators' screen with the hands face up.
+  def xl_spec?
+    @seat.nil? && !spec_hand(0).nil?
+  end
+
   def xl_panel(key)
-    XL_PANELS[key]
+    xg[:panels][key]
   end
 
   # The sheets (load_xl_sheets in mahjong_panels.rb reads this file first).
@@ -134,9 +174,6 @@ class MahjongApp < FmrbApp
     @xl_n_px += it[2] * it[3]
   end
 
-  # The room of a river's last row (xl_panel).
-  XL_LAST_ROW = [732, 448, 524, 304]
-
   # A river: [[code, sideways, mark], ...] laid out for the seat rl. The
   # bottom river's row ends go to @xl_r0_ends and the rows of the right one
   # to @xl_r1_rows (the buttons keep clear of them).
@@ -146,6 +183,7 @@ class MahjongApp < FmrbApp
     rows = side ? 4 : 3
     base = xl_rot(rl)
     turned = (base + 3) % 4
+    by = xg[:by]
     ends = [0, 0, 0, 0]
     r = 0
     while r < rows
@@ -159,7 +197,7 @@ class MahjongApp < FmrbApp
         lens << (list[i][1] ? 64 : 48)
         i += 1
       end
-      offs = close_up(lens, r == rows - 1 ? XL_LAST_ROW[rl] : 999)
+      offs = close_up(lens, r == rows - 1 ? xg[:last][rl] : 999)
       i = from
       while i < to
         e = list[i]
@@ -169,16 +207,16 @@ class MahjongApp < FmrbApp
         a = offs[i - from]
         if rl == 0
           x = XL_BX + a
-          y = XL_BY + XL_BH + r * 64 + off
+          y = by + XL_BH + r * 64 + off
         elsif rl == 2
           x = XL_BX + XL_BW - a - len
-          y = XL_BY - (r + 1) * 64 + off
+          y = by - (r + 1) * 64 + off
         elsif rl == 3
           x = XL_BX - XL_SIDE - (r + 1) * 64 + off
-          y = XL_BY + XL_BH / 2 - 144 + a
+          y = by + XL_BH / 2 - 144 + a
         else
           x = XL_BX + XL_BW + XL_SIDE + r * 64 + off
-          y = XL_BY + XL_BH / 2 + 144 - a - len
+          y = by + XL_BH / 2 + 144 - a - len
         end
         out << xl_tile_item(true, sw ? turned : base, e[0], x, y, e[2], same?(e[0]))
         ends[r] = XL_BX + a + len if rl == 0
@@ -236,8 +274,6 @@ class MahjongApp < FmrbApp
       [ox - a - len, oy, len, t]
     elsif rl == 3
       [ox, oy + a, t, len]
-    elsif rl == 0
-      [ox + a, oy + 32 - t, len, t]
     else
       [ox - t, oy - a - len, t, len]
     end
@@ -245,37 +281,23 @@ class MahjongApp < FmrbApp
 
   XL_ROW_START = [[380, 600], [1268, 596], [900, 10], [12, 52]]
 
-  # A row of seat s at rl: the hand (backs, or the faces for a spectator;
-  # the drawn tile apart), then its melds in small tiles, the first call at
-  # the far end.
+  # A row of seat s at rl: the hand (backs; the drawn tile apart), then its
+  # melds in small tiles, the first call at the far end. A spectator who
+  # sees the hands has xl_spec_items instead.
   def xl_opp_items(s, rl)
     out = []
     o = XL_ROW_START[rl]
     base = xl_rot(rl)
     turned = (base + 3) % 4
     a = 0
-    sp = spec_hand(s)
-    if sp
-      tl = sp[0]
-      tl += [sp[1]] if sp[1] >= 0
-      i = 0
-      while i < tl.size
-        a += 8 if sp[1] >= 0 && i == tl.size - 1
-        p = xl_place(rl, o[0], o[1], a, 24, 32)
-        out << xl_tile_item(false, base, tl[i], p[0], p[1], 0)
-        a += 24
-        i += 1
-      end
-    else
-      hc = @view["hc"].is_a?(Array) ? @view["hc"][s].to_i : 13
-      i = 0
-      while i < hc
-        a += 8 if i == hc - 1 && hc % 3 == 2
-        p = xl_place(rl, o[0], o[1], a, 32, 20)
-        out << xl_side_item(rl, p[0], p[1])
-        a += 32
-        i += 1
-      end
+    hc = @view["hc"].is_a?(Array) ? @view["hc"][s].to_i : 13
+    i = 0
+    while i < hc
+      a += 8 if i == hc - 1 && hc % 3 == 2
+      p = xl_place(rl, o[0], o[1], a, 32, 20)
+      out << xl_side_item(rl, p[0], p[1])
+      a += 32
+      i += 1
     end
     a += 14
     ms = xl_melds(s)
@@ -305,6 +327,141 @@ class MahjongApp < FmrbApp
       k -= 1
     end
     out
+  end
+
+  # A spectator's row of seat s at rl (MJ10): the hand face up in the hand
+  # tiles of the geometry (the drawn tile apart), then the melds, the first
+  # call at the far end. Built as units [gap, length, pieces], each piece
+  # [along, len, across (from the outer edge), depth, rot, code, same,
+  # hand]; xl_spec_lay puts them on the screen.
+  def xl_spec_items(s, rl)
+    g = xg
+    hl = g[:tile][0]
+    hd = g[:tile][1]
+    base = xl_rot(rl)
+    turned = (base + 3) % 4
+    units = []
+    sp = spec_hand(s)
+    hand = sp[0]
+    i = 0
+    while i < hand.size
+      units << [0, hl, [[0, hl, 0, hd, base, hand[i], false, true]]]
+      i += 1
+    end
+    units << [g[:drawn_gap], hl, [[0, hl, 0, hd, base, sp[1], false, true]]] if sp[1] >= 0
+    big = g[:big_melds]
+    ul = big ? 48 : 24
+    ud = big ? 64 : 32
+    stack = big ? 16 : 8
+    ms = xl_melds(s)
+    k = ms.size - 1
+    gap = 14
+    while k >= 0
+      kind = ms[k][0]
+      tl = ms[k][2]
+      n = kind == 5 ? 3 : tl.size
+      si = xl_sideways_index(kind, ms[k][1], tl.size)
+      pieces = []
+      a = 0
+      j = 0
+      while j < n
+        c = tl[j]
+        c = 37 if kind == 3 && (j == 0 || j == n - 1)
+        if j == si
+          pieces << [a, ud, 0, ul, turned, c, same?(c), false]
+          # An added kan's tile on the sideways one, towards the table.
+          pieces << [a, ud, stack, ul, turned, tl[3], same?(tl[3]), false] if kind == 5
+          a += ud
+        else
+          pieces << [a, ul, 0, ud, base, c, same?(c), false]
+          a += ul
+        end
+        j += 1
+      end
+      units << [gap, a, pieces]
+      gap = big ? 12 : 6
+      k -= 1
+    end
+    xl_spec_lay(rl, units)
+  end
+
+  # The units of a spectator's row on the screen: one line, or (lines 2)
+  # a second line towards the table from the unit that starts past the
+  # middle of the row or would not fit the line (a meld is never split).
+  # A line longer than the room closes up (close_up).
+  def xl_spec_lay(rl, units)
+    g = xg
+    o = g[:rows][rl]
+    depth = g[:tile][1] + 4
+    total = 0
+    i = 0
+    while i < units.size
+      total += units[i][0] + units[i][1]
+      i += 1
+    end
+    # The first unit of the second line (units.size: none).
+    cut = units.size
+    a = 0
+    i = 0
+    while g[:lines] > 1 && i < units.size
+      start = a + units[i][0]
+      if i > 0 && (start * 2 >= total || start + units[i][1] > g[:room])
+        cut = i
+        break
+      end
+      a = start + units[i][1]
+      i += 1
+    end
+    out = []
+    big = g[:big_melds]
+    line = 0
+    from = 0
+    while from < units.size
+      to = line == 0 ? cut : units.size
+      lens = []
+      i = from
+      while i < to
+        lens << (i == from ? 0 : units[i][0]) + units[i][1]
+        i += 1
+      end
+      offs = close_up(lens, g[:room])
+      i = from
+      while i < to
+        u = units[i]
+        start = offs[i - from] + (i == from ? 0 : u[0])
+        ps = u[2]
+        j = 0
+        while j < ps.size
+          pc = ps[j]
+          r = xl_spec_place(rl, o, start + pc[0], pc[1], line * depth + pc[2], pc[3])
+          out << (pc[7] ? xl_spec_tile(pc[4], pc[5], r[0], r[1]) : xl_tile_item(big, pc[4], pc[5], r[0], r[1], 0, pc[6]))
+          j += 1
+        end
+        i += 1
+      end
+      from = to
+      line += 1
+    end
+    out
+  end
+
+  # A spectator's hand tile (the river's 48x64 here).
+  def xl_spec_tile(rot, c, x, y)
+    xl_tile_item(true, rot, c, x, y, 0)
+  end
+
+  # Where a piece of a spectator's row goes: along the row from its start
+  # o (on the screen's edge, at the player's left), across from that edge.
+  def xl_spec_place(rl, o, al, len, across, d)
+    if rl == 0
+      [o[0] + al, o[1] - across - d, len, d]
+    elsif rl == 2
+      [o[0] - al - len, o[1] + across, len, d]
+    elsif rl == 3
+      [o[0] + across, o[1] + al, d, len]
+    else
+      [o[0] - across - d, o[1] - al - len, d, len]
+    end
   end
 
   def xl_hand_items
@@ -350,15 +507,18 @@ class MahjongApp < FmrbApp
     while s < 4
       rl = rel(s)
       parts["r#{rl}"] = xl_river_items(rl, xl_river_list(s))
-      parts["o#{rl}"] = xl_opp_items(s, rl) if rl != 0
+      if @xl_spec
+        parts["o#{rl}"] = xl_spec_items(s, rl)
+      elsif rl != 0
+        parts["o#{rl}"] = xl_opp_items(s, rl)
+      end
       s += 1
     end
-    if @seat
+    if @xl_spec
+      return parts
+    elsif @seat
       parts["m"] = xl_own_meld_items(@seat)
       parts["h"] = xl_hand_items
-    elsif spec_hand(0)
-      # Watching: seat 0's row at the bottom, as the others'.
-      parts["o0"] = xl_opp_items(0, 0)
     else
       # Watching a host without the hands: seat 0's hand face down.
       parts["m"] = xl_own_meld_items(0)
@@ -377,11 +537,14 @@ class MahjongApp < FmrbApp
   def xl_draw
     @xl_n_items = 0
     @xl_n_px = 0
+    spec = xl_spec?
+    @xl_spec = spec
+    @xg = spec ? XL_SPEC : XL_SEAT
     # A win's result waits while its shout shows (MJ6).
     res = @shout ? nil : (@view["res"] || @view["fin"])
     # The result's steps, seconds and OKs (MJ9) draw it again; so does
     # the round's name going.
-    screen = res ? "result #{@view['sv']} #{@view['st']} #{rv_sig}" : (@intro_until ? "intro" : "table")
+    screen = res ? "result #{@view['sv']} #{@view['st']} #{rv_sig}" : (@intro_until ? "intro" : (spec ? "spec" : "table"))
     full = @xl_items.nil? || @xl_screen != screen
     # A result stays as drawn (its box covers the table) until it goes.
     return if res && !full
@@ -438,7 +601,7 @@ class MahjongApp < FmrbApp
         i += 1
       end
     end
-    clears << XL_STATUS if redraw_status && !full
+    clears << xg[:status] if redraw_status && !full
     clears << XL_WAITS if redraw_help && !full && @xl_sig[:help]
     # A shout that went (or changed) leaves what was under it to redraw.
     shout = @shout ? [@shout[0], @shout[1]] : nil
@@ -446,8 +609,8 @@ class MahjongApp < FmrbApp
     if shout_new && @xl_shouts
       @xl_shouts.each do |r|
         clears << r
-        redraw_board = true if overlap?(r, [@x0 + XL_BX, @y0 + XL_BY, XL_BW, XL_BH])
-        redraw_status = true if overlap?(r, XL_STATUS)
+        redraw_board = true if overlap?(r, [@x0 + XL_BX, @y0 + xg[:by], XL_BW, XL_BH])
+        redraw_status = true if overlap?(r, xg[:status])
       end
       @xl_shouts = nil
     end
@@ -641,7 +804,7 @@ class MahjongApp < FmrbApp
   def xl_draw_board
     v = @view
     bx = @x0 + XL_BX
-    by = @y0 + XL_BY
+    by = @y0 + xg[:by]
     @gfx.fill_rect(bx, by, XL_BW, XL_BH, C_BOARD)
     @gfx.draw_rect(bx, by, XL_BW, XL_BH, C_DIM)
     @xl_n_px += XL_BW * XL_BH
@@ -707,13 +870,14 @@ class MahjongApp < FmrbApp
   # The status line: what the screen waits for (the time left is the
   # clock's, MJ6).
   def xl_draw_status
-    x = @x0 + XL_STATUS[0]
-    y = @y0 + XL_STATUS[1]
+    st = xg[:status]
+    x = @x0 + st[0]
+    y = @y0 + st[1]
     fnt(16, 1)
     msg = status_line.to_s
     msg = "#{t(:mj_pick)} #{msg}" if @pick
-    text(x + 4, y + 4, fit(msg, XL_STATUS[2] - 8), C_TURN) unless msg.strip.empty?
-    @xl_n_px += XL_STATUS[2] * XL_STATUS[3]
+    text(x + 4, y + 4, fit(msg, st[2] - 8), C_TURN) unless msg.strip.empty?
+    @xl_n_px += st[2] * st[3]
   end
 
   # How far left each row of buttons may reach (XL_BTN_ROWS): clear of the
@@ -816,17 +980,17 @@ class MahjongApp < FmrbApp
   def xl_pack_buttons(labels, lefts, pad)
     out = []
     row = 0
-    x = XL_BTN_RIGHT
+    x = xg[:btn_right]
     i = labels.size - 1
     while i >= 0
       w = labels[i][2] ? btn_label_w(labels[i][2]) + pad : XL_CLOCK_W
       while x - w < lefts[row]
         row += 1
-        x = XL_BTN_RIGHT
-        return nil if row >= XL_BTN_ROWS.size
+        x = xg[:btn_right]
+        return nil if row >= xg[:btn_rows].size
       end
       x -= w
-      out.unshift([x, XL_BTN_ROWS[row], w])
+      out.unshift([x, xg[:btn_rows][row], w])
       x -= 8
       i -= 1
     end
