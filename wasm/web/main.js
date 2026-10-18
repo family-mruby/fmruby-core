@@ -804,17 +804,34 @@ function newNodeId() {
 // apart. The router can: each slot has seats, each seat a certificate whose
 // ACL lets it write only under its own node ID and call only as itself
 // (asterism-console docs/rooms.md "Seats"). The page makes a secret of its
-// own for the room, once (16 random bytes, kept in localStorage under the
-// room's ID), and before the machine starts it asks the door for a seat with
-// it (takeSeat: POST /room/seat). The door answers with the seat's node ID
-// (wasm-0103), the same one for the same secret until the room is over, so
-// a reload is the same node. The machine runs as that node, and the
-// WebSocket hands the secret over again as its first message
-// (zp_ws_emscripten.c), which is how the door knows which seat's
-// certificate to use. The secret goes nowhere else: not in a URL, an
-// argument, a file of the machine or the log. A second tab gets a secret of
-// its own that is not kept, and so a seat of its own.
+// own for the room, once (16 random bytes), and before the machine starts it
+// asks the door for a seat with it (takeSeat: POST /room/seat). The door
+// answers with the seat's node ID (wasm-0103), the same one for the same
+// secret until the room is over, so a reload is the same node. The machine
+// runs as that node, and the WebSocket hands the secret over again as its
+// first message (zp_ws_emscripten.c), which is how the door knows which
+// seat's certificate to use. The secret goes nowhere else: not in a URL, an
+// argument, a file of the machine or the log.
+//
+// Coming back (GS10): the secret is also the page's way back into the room.
+// It is kept in localStorage for every tab of this browser, under the
+// room's ID (never under or next to the key), with the room's end:
+// fmrb_room_secret_<room> = {"s": <secret>, "exp": <the key's end>}. A tab
+// closed and opened again, or the link opened in a second tab, brings the
+// same secret, so the door gives the same seat -- the same node, and so the
+// same member at the game host: its seat, its name, its hand. The door
+// (asterism-console 0.3.9) cuts the older page's connections on that seat
+// when the newer page asks for it (closed 4403); a door before it gives the
+// seat too and leaves the older connection to end by itself. The tab that
+// asked last has the seat: it writes its own random ID to
+// fmrb_room_holder_<room> before it asks, and an older tab of this browser
+// that is cut (4403 makes it ask for its seat again, reseat) and finds
+// another ID there stops its tries and says the room is open in another
+// tab, instead of taking the seat back. The entries of rooms that have
+// ended are removed when a page starts (forgetEndedRooms), and so are those
+// of before GS10 (the secret alone, no end) of other rooms.
 const ROOM_SECRET_STORE = 'fmrb_room_secret_';
+const ROOM_HOLDER_STORE = 'fmrb_room_holder_';
 const SECRET_RE = /^[0-9a-f]{32}$/;
 let roomSecret = '';
 let roomSeat = '';
@@ -825,7 +842,55 @@ function newSecret() {
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-// The room's secret (roomSecret, nodeKept): the kept one, or a new one.
+// This tab, for fmrb_room_holder_<room> (not a secret: it only tells tabs
+// apart).
+const TAB_ID = newSecret().slice(0, 16);
+
+// The secret of a kept entry ('' when there is none): {"s", "exp"}, or a
+// page's of before GS10, the secret alone.
+function keptSecret(v) {
+  if (SECRET_RE.test(v)) return v;
+  try {
+    const o = JSON.parse(v);
+    return o && typeof o === 'object' && SECRET_RE.test(String(o.s)) ? String(o.s) : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+// The room's end in a kept entry (Unix seconds), 0 when it has none.
+function keptEnd(v) {
+  try {
+    const o = JSON.parse(v);
+    return o && typeof o === 'object' ? Number(o.exp) || 0 : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+// Removes the kept secrets (and holders) of rooms that have ended: every
+// room but this page's own whose entry has no end in the future.
+function forgetEndedRooms() {
+  const now = Date.now() / 1000;
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+  } catch (e) {
+    return;
+  }
+  for (const k of keys) {
+    let room = null;
+    if (k && k.startsWith(ROOM_SECRET_STORE)) room = k.slice(ROOM_SECRET_STORE.length);
+    else if (k && k.startsWith(ROOM_HOLDER_STORE)) room = k.slice(ROOM_HOLDER_STORE.length);
+    if (room === null || (ROOM && room === ROOM.room)) continue;
+    if (keptEnd(readSetting(ROOM_SECRET_STORE + room, '')) > now) continue;
+    try { localStorage.removeItem(k); } catch (e) {}
+  }
+}
+forgetEndedRooms();
+
+// The room's secret (roomSecret, nodeKept): the kept one, or a new one that
+// is kept from now on. Every tab of the browser uses the same one.
 let roomSecretKept = false;
 function decideRoomSecret() {
   if (roomSecret) {
@@ -833,17 +898,34 @@ function decideRoomSecret() {
     return;
   }
   const key = ROOM_SECRET_STORE + ROOM.room;
-  let secret = homeWriter !== false ? readSetting(key, '') : '';
-  nodeKept = SECRET_RE.test(secret);
-  if (!nodeKept) {
-    secret = newSecret();
-    if (homeWriter !== false) {
-      writeSetting(key, secret);
-      nodeKept = readSetting(key, '') === secret;
-    }
-  }
+  let secret = keptSecret(readSetting(key, ''));
+  if (!secret) secret = newSecret();
+  writeSetting(key, JSON.stringify({ s: secret, exp: ROOM.exp }));
+  // Storage refused (a private window in some browsers): the secret lasts
+  // as long as the tab, and the panel says so.
+  nodeKept = keptSecret(readSetting(key, '')) === secret;
   roomSecret = secret;
   roomSecretKept = nodeKept;
+}
+
+// This tab asks for the seat (before the request, so an older tab cut by
+// it already reads this tab's ID).
+function holdRoomSeat() {
+  writeSetting(ROOM_HOLDER_STORE + ROOM.room, TAB_ID);
+}
+
+// Another tab of this browser asked for the seat after this one.
+function roomSeatElsewhere() {
+  const h = readSetting(ROOM_HOLDER_STORE + ROOM.room, '');
+  return h !== '' && h !== TAB_ID;
+}
+
+// This tab gives the seat up to the newer tab: no more tries.
+function giveRoomSeatUp(mod) {
+  mod.zenohRoomStop = true;
+  statusLine.textContent = 'room ' + ROOM.slot + ': not connected: the room was opened in another tab of this ' +
+    'browser, which has this seat now. Reload this page to take it back.';
+  showRoomState(' -- open in another tab (reload to take the seat back)');
 }
 
 // Where the room's door takes seat requests: the router of the link (?zenoh=,
@@ -913,6 +995,12 @@ async function takeSeat() {
 let reseating = null;
 function reseat(mod) {
   if (reseating) return;
+  // Cut because a newer tab of this browser came with the secret: that
+  // tab has the seat, this one does not take it back.
+  if (roomSeatElsewhere()) {
+    giveRoomSeatUp(mod);
+    return;
+  }
   mod.zenohSeatWait = true;
   reseating = takeSeat().then((got) => {
     if (got.node && got.node === nodeId) return;
@@ -975,7 +1063,7 @@ function showNetworkState() {
     if (PASS_WITHOUT_NODE) text = 'node: none (the link has a pass but no node ID; not connecting)';
     if (PASS_WITHOUT_NODE) { /* said above */ }
     else if (nodeId && LINK_NODE && !ROOM) text += ' (from the link, this visit)';
-    else if ((nodeId || ROOM) && homeWriter === false) text += ' (this tab only)';
+    else if (nodeId && !ROOM && homeWriter === false) text += ' (this tab only)';
     else if ((nodeId || ROOM) && !nodeKept) text += ' (not kept: storage refused)';
     nodeStateEl.textContent = text;
   }
@@ -2225,6 +2313,7 @@ startOverlay.addEventListener('click', async () => {
     // A seat first (G2b): its node ID is the one the router lets this page
     // write and call as. Without one the machine is not switched on.
     statusLine.textContent = 'room ' + ROOM.slot + ': taking a seat...';
+    holdRoomSeat();
     const got = await takeSeat();
     if (!got.node) {
       if (ac) ac.close().catch(() => {});
@@ -2240,6 +2329,7 @@ startOverlay.addEventListener('click', async () => {
     showNetworkState();
     moduleConfig.zenohRoomSecret = roomSecret;
     moduleConfig.zenohReseat = () => reseat(moduleConfig);
+
   }
   moduleConfig.arguments.push(`--fmrb-conf=asterism_node="${nodeId}"`);
 
