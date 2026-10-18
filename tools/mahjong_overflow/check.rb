@@ -161,6 +161,7 @@ module Panels
     xl_draw_result: ->(_, _) { ["result", :first, true] },
     draw_result: ->(_, _) { ["result", :first, true] },
     draw_info: ->(a, _) { ["info", a.panel640(:info)] },
+    draw_dora: ->(a, _) { ["dora", a.panel640(:dora)] },
     draw_hand: ->(a, _) { ["hand", a.panel640(:hand)] },
     draw_controls: ->(a, _) { ["controls", a.panel640(:controls)] },
     draw_clock: ->(a, _) { ["clock", a.panel640(:clock)] },

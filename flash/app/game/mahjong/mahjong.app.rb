@@ -1554,32 +1554,54 @@ class MahjongApp < FmrbApp
     end
   end
 
+  # 640x360: the round on two lines at the top left (clear of the opposite
+  # seat's name), the dora at the top right (draw_dora). The small table:
+  # one line, the dora after it.
   def draw_info
     v = @view
-    x = @x0 + (@big ? 152 : 92)
+    x = @x0 + (@big ? 4 : 92)
     y = @y0 + 2
     # r: [wind, hand, repeats, sticks, dealer, tiles left, ...]
     case v["r"]
     in nil then return
     in [wind, hand, repeats, sticks, *rest]
-      s = "#{WIND[wind.to_i % 4]}#{hand}#{t(:mj_kyoku)}  #{repeats}#{t(:mj_honba)}  #{t(:mj_sticks)}#{sticks}"
-      s = "#{s}  #{t(:mj_left)}#{rest[1]}" if rest.size > 1
+      head = "#{WIND[wind.to_i % 4]}#{hand}#{t(:mj_kyoku)}  #{repeats}#{t(:mj_honba)}"
+      tail = "#{t(:mj_sticks)}#{sticks}"
+      tail = "#{tail}  #{t(:mj_left)}#{rest[1]}" if rest.size > 1
     else
       return
     end
-    text_spaced(x, y + (@big ? 8 : 0), s)
+    if @big
+      text_spaced(x, y, head)
+      text_spaced(x, y + 16, tail)
+      return draw_dora
+    end
+    s = "#{head}  #{tail}"
+    text_spaced(x, y, s)
     dx = x + tw(s) + 20
     d = bytes_of(v["dora"])
-    text(dx, y + (@big ? 8 : 0), t(:mj_dora))
+    text(dx, y, t(:mj_dora))
     dx += tw(t(:mj_dora)) + 4
     i = 0
     while i < d.size
-      if @big
-        small_tile(d[i], dx + i * 24, y)
-        same_mark(d[i], dx + i * 24, y, 24, 32)
-      else
-        text(dx + i * 14, y, tile_text(d[i]), C_TURN)
-      end
+      text(dx + i * 14, y, tile_text(d[i]), C_TURN)
+      i += 1
+    end
+  end
+
+  # 640x360: the dora indicators right-aligned against the assist button
+  # (LAYOUT640 :dora), so up to five of them fit.
+  def draw_dora
+    d = bytes_of(@view["dora"])
+    r = layout640(:dora)
+    y = @y0 + r[1]
+    dx = @x0 + r[0] + r[2] - (tw(t(:mj_dora)) + 4 + d.size * 24)
+    text(dx, y + 8, t(:mj_dora))
+    dx += tw(t(:mj_dora)) + 4
+    i = 0
+    while i < d.size
+      small_tile(d[i], dx + i * 24, y)
+      same_mark(d[i], dx + i * 24, y, 24, 32)
       i += 1
     end
   end

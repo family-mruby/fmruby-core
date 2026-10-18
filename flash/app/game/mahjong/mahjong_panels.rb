@@ -765,7 +765,7 @@ class MahjongApp < FmrbApp
   # the melds and the rivers are laid out in them). The spectators' screen
   # has its own (WATCH, mahjong_watch.rb).
   LAYOUT640 = {
-    info: [152, 2, 352, 32], assist: [504, 2, 136, 20], controls: [4, 253, 552, 47], clock: [560, 250, 76, 34], hand: [6, 287, 630, 69],
+    info: [4, 2, 144, 32], dora: [354, 2, 148, 32], assist: [504, 2, 136, 20], controls: [4, 253, 552, 47], clock: [560, 250, 76, 34], hand: [6, 287, 630, 69],
     label0: [4, 250, 168, 16], label1: [492, 38, 144, 16], label2: [152, 22, 200, 16], label3: [4, 38, 144, 16],
     melds0: [200, 308, 436, 48], melds1: [492, 54, 144, 64], melds2: [152, 38, 336, 32], melds3: [4, 54, 144, 64],
     river0: [176, 170, 288, 96], river1: [492, 120, 144, 128], river2: [176, 72, 288, 96], river3: [4, 120, 144, 128],
