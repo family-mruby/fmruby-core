@@ -1086,11 +1086,13 @@ class MahjongApp < FmrbApp
   # ------------------------------------------------------------ the title (MJ8)
   #
   # "ヒデ雀" when the app opens, while the network comes up (on_update goes
-  # on): until the list of tables is ready, at most TITLE_MS. Its drawing is
+  # on): at least TITLE_MIN_MS, then until the list of tables is ready, at
+  # most TITLE_MS (a key or a click skips it at once). Its drawing is
   # in mahjong_title.rb, read when the app opens and taken out of the class
   # again when the title goes (the VM of a game does not hold it).
 
   TITLE_MS = 2000
+  TITLE_MIN_MS = 1000
 
   def title_draw
     unless @title_in
@@ -1109,7 +1111,9 @@ class MahjongApp < FmrbApp
   end
 
   def title_tick(now)
-    return unless @title_until && (now >= @title_until || list_ready?)
+    return unless @title_until
+    shown_min = now >= @title_until - TITLE_MS + TITLE_MIN_MS
+    return unless now >= @title_until || (shown_min && list_ready?)
     @title_until = nil
     @title_drawn = nil
     title_unload
