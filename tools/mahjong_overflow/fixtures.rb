@@ -295,6 +295,34 @@ module MjFixtures
     v.delete("dl")
     out["spectator_closed"] = [v, "観戦: 4 人とも門前 13 枚と自摸"]
 
+    # MJ8: the guide. Another seat's turn (the longest name), and the
+    # others answering a discard (who may call is not told).
+    v = base
+    v["r"] = [2, 4, 12, 9, 3, 7, 1, 1]
+    v["h"] = bin(%w[2m 3m 4m 4m 5m 6p 7p 8p 3s 3s 4s 5s 4z])
+    v["dt"] = -1
+    v["a"] = []
+    v["dl"] = [0b0010, 9_000]
+    out["guide_other_turn"] = [v, "ほかの人の番 (長い名前の席の番)"]
+    v = v.dup
+    v["r"] = [2, 4, 12, 9, 3, 7, 0, 2]
+    v["dl"] = [0b1110, 9_000]
+    out["guide_others_answer"] = [v, "鳴きの答え待ち (自分は答えない)"]
+
+    # MJ8: the same tiles. A red five chosen: fives (red or not) in every
+    # river, in melds of every seat (a pon, a chi, an added kan) and among
+    # the dora indicators.
+    v = base
+    v["h"] = bin(%w[1m 2m 3m 0m 5m 6p 7p 8p 3s 3s 4s 5s 4z])
+    v["dt"] = c("5m")
+    v["a"] = [[1, bin(%w[1m 2m 3m 0m 5m 6p 7p 8p 3s 3s 4s 5s 4z])]]
+    v["kw"] = [bin(%w[1z 5m 9p 0m 2s 7z]), bin(%w[5m 3p 4s]), bin(%w[2z 0m 8m 5m]), bin(%w[9s 5m])]
+    v["fu"] = ["", melds([meld(2, 3, %w[5m 5m 5m])]), melds([meld(1, 3, %w[4m 5m 6m]), meld(5, 1, %w[5m 5m 5m 0m])]),
+               melds([meld(1, 3, %w[3m 4m 0m])])]
+    v["hc"] = [13, 10, 7, 10]
+    v["dora"] = bin(%w[4m 0m 1z])
+    out["marks_red_five"] = [v, "赤五を選んだときの同じ牌の印 (河・3 人の鳴き・ドラ表示牌)"]
+
     # 9. The lobby with the most members and the rules, owner (both pages).
     v = base(st: "wait")
     %w[r sc ri dora kw fu hc ls ev dl].each { |k| v.delete(k) }
