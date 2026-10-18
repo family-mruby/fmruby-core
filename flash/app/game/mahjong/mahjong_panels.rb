@@ -867,7 +867,7 @@ class MahjongApp < FmrbApp
     pad = 6 * size
     w = tw(s) + pad * 2
     h = @fw + pad * 2
-    cy = @xl ? 316 : (@big ? 168 : @h / 2)
+    cy = @xl ? xg[:by] + 80 : (@big ? 168 : @h / 2)
     x = @x0 + (@w - w) / 2
     y = @y0 + cy - h / 2
     @gfx.fill_round_rect(x, y, w, h, pad, C_BOX)
@@ -1091,7 +1091,8 @@ class MahjongApp < FmrbApp
       rl = rel(seats[i].to_i)
       if @xl
         c = SHOUT_XL[rl]
-        out << draw_shout_box(l, c[0], c[1], 16, 3)
+        # The spectators' board is lower (MJ10): the shouts go with it.
+        out << draw_shout_box(l, c[0], c[1] + xg[:by] - XL_BY, 16, 3)
       elsif @big
         c = (watching? || @rp ? SHOUT_WATCH : SHOUT_640)[rl]
         out << draw_shout_box(l, c[0], c[1], 16, 2)
