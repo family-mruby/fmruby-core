@@ -71,6 +71,8 @@ class FmrbApp
   def self.pool_used = 0
   def self.pool_usage = 0
 
+  def stop = nil
+
   def clear_user_area(_c)
     @gfx.record(:clear, @user_area_x0, @user_area_y0, @user_area_width, @user_area_height)
   end
@@ -136,6 +138,9 @@ def load_app
   src = src.lines.reject { |l| l.start_with?("require ") }.join
   src = src.sub(/^begin\n  app = MahjongApp.new.*\z/m, "")
   eval(src, TOPLEVEL_BINDING, "mahjong.app.rb")
+  # The sound (MJ11): read by on_create, after the class body (it wraps
+  # some of its methods); the lobby and the list draw its two switches.
+  eval(File.read(File.join(APP_DIR, "mahjong_sound.rb")), TOPLEVEL_BINDING, "mahjong_sound.rb")
   # The recent games and their records (MJ6): read last, as the app reads
   # it when they are opened.
   eval(File.read(File.join(APP_DIR, "mahjong_replay.rb")), TOPLEVEL_BINDING, "mahjong_replay.rb")
@@ -419,7 +424,12 @@ end
 # Extra drawings of some cases: [suffix, preparation].
 EXTRAS = {
   "lobby_owner" => [["page2", ->(a) { a.instance_variable_set(:@rule_page, 1) if a.respond_to?(:rule_pages) }],
-                    ["name_edit", ->(a) { a.instance_variable_set(:@name_edit, MjFixtures::LONG_JA[0, 12]) }]],
+                    ["name_edit", ->(a) { a.instance_variable_set(:@name_edit, MjFixtures::LONG_JA[0, 12]) }],
+                    # MJ11: the sound's two switches, both off (the longer labels are the same width).
+                    ["sound_off", lambda { |a|
+                      a.instance_variable_set(:@snd_bgm, false)
+                      a.instance_variable_set(:@snd_se, false)
+                    }]],
   "lobby_member" => [["name_ascii", ->(a) { a.instance_variable_set(:@name, "WWWWWWWWWWWW") }],
                      ["title", ->(a) { a.instance_variable_set(:@title_until, 2_000_000) }],
                      ["list_prompt", lambda { |a|
@@ -431,6 +441,18 @@ EXTRAS = {
                        a.instance_variable_set(:@name_set, nil)
                        a.instance_variable_set(:@pending_join, tables[0])
                        a.instance_variable_set(:@name_edit, MjFixtures::LONG_JA[0, 12])
+                     }],
+                     ["list_sound_off", lambda { |a|
+                       tables = %w[games-host-aaaaaa/games/mahjong1 games/games/mahjong9]
+                       a.instance_variable_set(:@table, nil)
+                       a.instance_variable_set(:@table_list, tables)
+                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
+                       a.instance_variable_set(:@snd_bgm, false)
+                       a.instance_variable_set(:@snd_se, false)
+                     }],
+                     ["list_searching", lambda { |a|
+                       a.instance_variable_set(:@table, nil)
+                       a.instance_variable_set(:@table_list, [])
                      }],
                      ["list_unset", lambda { |a|
                        a.instance_variable_set(:@table, nil)

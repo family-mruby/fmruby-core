@@ -285,6 +285,8 @@ class MahjongApp < FmrbApp
     @second = 0
     @mem_at = 0
     @title_until = Machine.board_millis + TITLE_MS # the title (MJ8) while the network comes up
+    require "#{APP_DIR}/mahjong_sound" # MJ11: wraps some methods, so after the class body
+    snd_start
     draw_screen
   end
 
@@ -772,6 +774,7 @@ class MahjongApp < FmrbApp
     f = File.open(ASSIST_FILE, "w")
     f.write("# The mahjong table's help (0 none, 1 riichi, 2 tenpai, 3 shanten)\nassist = #{@assist}\n")
     f.write("# The name shown at the table (none: the machine's)\nname = \"#{@name_set}\"\n") if @name_set
+    f.write(snd_lines) if @snd_conf
     f.close
   rescue => e
     Log.info("mahjong: #{ASSIST_FILE}: #{e.message}")
@@ -1478,7 +1481,9 @@ class MahjongApp < FmrbApp
     # frame to close it by), the name's button in the room left of it.
     qx = @x0 + @w - tw(t(:mj_quit)) - u(20)
     button(B_QUIT, [], qx, y - u(3), t(:mj_quit))
-    draw_name_button(nx, y - u(3), qx - nx - u(8))
+    sx = qx - snd_buttons_w
+    snd_buttons(sx, y - u(3))
+    draw_name_button(nx, y - u(3), sx - nx - u(8))
     l = net_line
     text(x, y + u(18), l, C_DIM) if l
     y += u(40)
@@ -1605,7 +1610,9 @@ class MahjongApp < FmrbApp
     text(cx, y + u(4), @assist_notes[@assist], C_DIM) if @big
     if @big
       draw_name_button(x, y + u(28), @w - u(16))
+      snd_buttons(x, y + u(56))
     else
+      cx = snd_buttons(cx, y)
       draw_name_button(cx, y, @x0 + @w - cx - u(8))
     end
   end

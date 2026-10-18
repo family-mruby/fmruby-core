@@ -233,9 +233,12 @@ class MahjongApp < FmrbApp
       rp_load(d["n"] + 1, false) if d["n"] + 1 < @rp_head["rounds"].size
       return
     end
+    fwd = @rp_step.is_a?(Integer) && step == @rp_step + 1
     @rp_step = step
     @shout = nil
     m = step > 0 && step <= d["moves"].size ? d["moves"][step - 1] : nil
+    # MJ11: a record steps by the keys, so only its discards click.
+    snd_play(:discard_other) if fwd && m && (m[1] == 1 || m[1] == 2) && @audio
     if m && ((m[1] >= 2 && m[1] <= 7) || m[1] >= 9)
       ty = [0, 0, A_RIICHI, A_CHI, A_PON, A_MINKAN, A_ANKAN, A_KAKAN, 0, A_TSUMO, A_RON, A_KYUUSHU][m[1]]
       @shout = [ty, [m[0]], Machine.board_millis + SHOUT_MS]
