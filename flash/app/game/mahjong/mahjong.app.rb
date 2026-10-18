@@ -485,6 +485,7 @@ class MahjongApp < FmrbApp
         next unless pv.is_a?(Hash)
         add_table(p)
         @tables[p] = { "st" => pv["st"], "sk" => pv["sk"], "mb" => (pv["mb"].is_a?(Array) ? pv["mb"].size : 0) }
+        @host_ver = pv["hv"].to_s if pv["hv"].is_a?(String)
         @dirty = true if @table.nil?
         if p == @table
           v = pv["v"].to_i
@@ -1510,6 +1511,7 @@ class MahjongApp < FmrbApp
       end
     end
     text(x, @y0 + @h - u(18), @note, C_TURN) unless @note.empty?
+    draw_host_version(true)
   end
 
   # The AI players the host offers (the lobby view's "ak"; none without
@@ -1615,6 +1617,7 @@ class MahjongApp < FmrbApp
       cx = snd_buttons(cx, y)
       draw_name_button(cx, y, @x0 + @w - cx - u(8))
     end
+    draw_host_version(false)
   end
 
   # 640x360: the round on two lines at the top left (clear of the opposite

@@ -430,6 +430,18 @@ class MahjongApp < FmrbApp
     @note = e.message.to_s
   end
 
+  # The game host's version (its views' "hv", games 0.16.1) at the bottom of
+  # the list (right) and the lobby (left: the rules take the right); nothing
+  # for a host that does not say, nor on the small table (426x240, where
+  # the bottom line is taken).
+  def draw_host_version(right)
+    return unless @big && @host_ver && !@host_ver.empty?
+    fnt(12, @k)
+    s = "ゲームホスト #{@host_ver}"
+    x = right ? @x0 + @w - tw(s) - u(8) : @x0 + u(8)
+    text(x, @y0 + @h - u(16), s, C_DIM)
+  end
+
   # The name's button in the lobby (w: the room for it).
   def draw_name_button(x, y, w)
     l = if @name_edit

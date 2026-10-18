@@ -362,6 +362,9 @@ def run_case(view, w, h, prep = nil)
   me = view["me"]
   app.instance_variable_set(:@seat, me.is_a?(Integer) && me >= 0 ? me : nil)
   app.take_view(view)
+  # The host's version as the longest a host says (games 0.16.1, "hv"):
+  # drawn at the bottom of the list and the lobby.
+  app.instance_variable_set(:@host_ver, "10.10.10")
   prep&.call(app)
   app.instance_variable_set(:@buttons, [])
   app.draw_screen
