@@ -695,7 +695,7 @@ class OthelloTableApp < FmrbApp
     end
     by = @y0 + @user_area_height - 40
     text(x, by - 2, fit(@note, cols), theme_border)
-    button(:join, x, by + 16, 90, "入る (Enter)") unless @table_list.empty?
+    button(:join, x, by + 16, 90, "入る[Enter]") unless @table_list.empty?
   end
 
   def draw_board

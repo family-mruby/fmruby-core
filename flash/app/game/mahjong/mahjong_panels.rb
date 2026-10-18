@@ -1022,7 +1022,7 @@ class MahjongApp < FmrbApp
     end
     return button_label(type, tl) unless tiles
     return [t(:mj_pon), tiles, "[P]"] if type == A_PON
-    type == A_CHI ? [t(:mj_chi), tiles, "[C]"] : [t(:mj_kan), tiles, "[K]"]
+    [type == A_CHI ? t(:mj_chi) : t(:mj_kan), tiles, "[#{call_key(type, tl)}]"]
   end
 
   # The width of a button's contents (a text, or [head, tiles, key]).

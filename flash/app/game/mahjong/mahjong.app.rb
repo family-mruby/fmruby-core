@@ -136,6 +136,7 @@ class MahjongApp < FmrbApp
   # CPU and the AI players offered (mahjong_panels.rb seat_step).
   B_SEAT = 111
   B_RECORDS = 112         # the recent games (MJ6, mahjong_replay.rb)
+  B_QUIT = 113            # closes the app, as Ctrl+Q does (the list and the lobby)
   # The help this screen asks the host for (asterism-games README "Assist"):
   # 0 none, 1 the riichi discards and their waits, 2 every discard that
   # leaves the hand tenpai, 3 as 2 and else the shanten and the acceptance.
@@ -162,7 +163,7 @@ class MahjongApp < FmrbApp
       mj_rank: "位", mj_from: "から", mj_records: "直近の結果[H]",
       mj_tables: "卓 (Enter で入る)", mj_mine: "(自分の席あり)", mj_seat: "席", mj_empty: "空き",
       mj_sit: "座る", mj_stand: "立つ[S]", mj_cpu: "CPU", mj_fill: "CPU で埋める[C]",
-      mj_start: "始める[Enter]", mj_leave: "卓を出る[Esc]", mj_owner: "卓の主", mj_away: "途切れ",
+      mj_quit: "閉じる[Ctrl+Q]", mj_start: "始める[Enter]", mj_leave: "卓を出る[Esc]", mj_owner: "卓の主", mj_away: "途切れ",
       mj_watchers: "観戦:", mj_lobby: "待ち合わせ", mj_playing: "対局中", mj_ended: "終局",
       mj_humans: "参加", mj_cpus: "CPU", mj_free: "空き", mj_members: "人", mj_ai: "AI",
       mj_watching: "観戦中 (Esc で出る)", mj_others: "ほかの人の答えを待っています",
@@ -897,6 +898,42 @@ class MahjongApp < FmrbApp
   end
 
   # The offer [type, tiles] of a type, or nil.
+  # The n-th offer (0 the first) whose type is one of types, as the host
+  # lists them: the order the buttons show them in.
+  def run_nth_offer(types, n)
+    a = @view ? @view["a"] : nil
+    return unless a.is_a?(Array)
+    i = 0
+    while i < a.size
+      o = a[i]
+      if o.is_a?(Array) && types.include?(o[0])
+        return run_button(o[0], bytes_of(o[1])) if n == 0
+        n -= 1
+      end
+      i += 1
+    end
+  end
+
+  # The key of a chi or kan button: C (K) for the first of its kind, V B (L J)
+  # for the next ones, as shortcut reads them.
+  def call_key(type, tl)
+    chi = type == A_CHI
+    keys = chi ? CHI_KEYS : KAN_KEYS
+    a = @view ? @view["a"] : nil
+    return keys[0] unless a.is_a?(Array)
+    n = 0
+    i = 0
+    while i < a.size
+      o = a[i]
+      if o.is_a?(Array) && (chi ? o[0] == A_CHI : (o[0] == A_ANKAN || o[0] == A_KAKAN || o[0] == A_MINKAN))
+        return keys[n < keys.size ? n : keys.size - 1] if o[0] == type && bytes_of(o[1]) == tl
+        n += 1
+      end
+      i += 1
+    end
+    keys[0]
+  end
+
   def offer(type)
     a = @view ? @view["a"] : nil
     return nil unless a.is_a?(Array)
@@ -1090,16 +1127,24 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # Letters for the buttons: r riichi, t tsumo / ron, p pon, c chi (the
-  # first), k kan (the first), n nine kinds.
+  # Letters for the buttons: r riichi, t tsumo / ron, p pon, c v b the
+  # first, second and third chi, k l j the first, second and third kan, n nine
+  # kinds.
+  CHI_KEYS = ["C", "V", "B"].freeze
+  KAN_KEYS = ["K", "L", "J"].freeze
+  CHI_CH = [99, 118, 98].freeze  # c v b
+  KAN_CH = [107, 108, 106].freeze # k l j
+
   def shortcut(ch)
     ch += 32 if ch >= 65 && ch <= 90
     return cycle_assist if ch == 97
+    n = CHI_CH.index(ch)
+    return run_nth_offer([A_CHI], n) if n
+    n = KAN_CH.index(ch)
+    return run_nth_offer([A_ANKAN, A_KAKAN, A_MINKAN], n) if n
     types = if ch == 114 then [A_RIICHI]
             elsif ch == 116 then [A_TSUMO, A_RON]
             elsif ch == 112 then [A_PON]
-            elsif ch == 99 then [A_CHI]
-            elsif ch == 107 then [A_ANKAN, A_KAKAN, A_MINKAN]
             elsif ch == 110 then [A_KYUUSHU]
             else []
             end
@@ -1191,6 +1236,8 @@ class MahjongApp < FmrbApp
       seat_step(tiles[0], 1)
     elsif type == B_RECORDS
       rp_open(@table || @table_list[tiles[0]])
+    elsif type == B_QUIT
+      stop
     elsif type >= B_SIT
       lobby(type, tiles.empty? ? -1 : tiles[0])
     else
@@ -1423,7 +1470,11 @@ class MahjongApp < FmrbApp
     y = @y0 + u(8)
     text(x, y, t(:mj_title))
     nx = x + tw(t(:mj_title)) + u(12)
-    draw_name_button(nx, y - u(3), @x0 + @w - nx - u(8))
+    # The app's close button at the top right (a fullscreen app has no window
+    # frame to close it by), the name's button in the room left of it.
+    qx = @x0 + @w - tw(t(:mj_quit)) - u(20)
+    button(B_QUIT, [], qx, y - u(3), t(:mj_quit))
+    draw_name_button(nx, y - u(3), qx - nx - u(8))
     l = net_line
     text(x, y + u(18), l, C_DIM) if l
     y += u(40)
@@ -1541,7 +1592,8 @@ class MahjongApp < FmrbApp
       cx += button(B_START, [], cx, y, t(:mj_start)) + u(6) if sk.index(0).nil?
     end
     cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + u(6)
-    button(B_RECORDS, [], cx, y, t(:mj_records)) if @big
+    cx += button(B_RECORDS, [], cx, y, t(:mj_records)) + u(6) if @big
+    button(B_QUIT, [], cx, y, t(:mj_quit))
     text(x + u(2), y + u(26), t(:mj_owner_starts), C_DIM) unless owner?
     text(x + u(2), y + u(44), @note, C_TURN) unless @note.empty?
     y += u(@big ? 68 : 62)
@@ -1877,9 +1929,9 @@ class MahjongApp < FmrbApp
     when A_TSUMO then "#{t(:mj_tsumo)}[T]"
     when A_RON then "#{t(:mj_ron)}[T]"
     when A_PON then "#{t(:mj_pon)}[P]"
-    when A_CHI then "#{t(:mj_chi)} #{tile_text(tl[0])}#{tile_text(tl[1])}[C]"
-    when A_ANKAN, A_KAKAN then "#{t(:mj_kan)} #{tile_text(tl[0])}[K]"
-    when A_MINKAN then "#{t(:mj_kan)}[K]"
+    when A_CHI then "#{t(:mj_chi)} #{tile_text(tl[0])}#{tile_text(tl[1])}[#{call_key(type, tl)}]"
+    when A_ANKAN, A_KAKAN then "#{t(:mj_kan)} #{tile_text(tl[0])}[#{call_key(type, tl)}]"
+    when A_MINKAN then "#{t(:mj_kan)}[#{call_key(type, tl)}]"
     when A_SKIP then "#{t(:mj_pass)}[Esc]"
     when A_KYUUSHU then "#{t(:mj_kyuushu)}[N]"
     when A_NEXT then "#{t(:mj_next)}[Enter]"
