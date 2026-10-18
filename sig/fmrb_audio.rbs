@@ -76,6 +76,22 @@ class FmrbAudio
   # ```
   def play_slot: (Integer slot_id) -> void
 
+  # 曲 (MAIN) だけの音量を変える <<en>> Set the volume of the music (MAIN) only
+  #
+  # 0〜100 (%)、最初は 100。play と MAIN の play_slot の曲だけが変わり、
+  # 効果音 (SUB)・WAV・端末の音量はそのまま。アプリを閉じると 100 に戻る。
+  # ```ruby
+  # @audio.main_volume = 30
+  # ```
+  # <<en>>
+  # 0 to 100 (%), 100 to start with. Only the music of play and of
+  # play_slot on MAIN changes; the effects (SUB), WAVs and the machine's
+  # volume stay. It goes back to 100 when the app closes.
+  # ```ruby
+  # @audio.main_volume = 30
+  # ```
+  def main_volume=: (Integer percent) -> void
+
   # 録音した音 (WAV) を鳴らす <<en>> Play a recorded sound (WAV)
   #
   # PCM 16bit・モノラル・8000〜48000Hz・2MB まで。APU の音に重ねて鳴る。

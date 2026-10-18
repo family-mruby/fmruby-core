@@ -52,8 +52,10 @@ void apuif_init_sub(void);
 void apuif_select(int instance);
 
 /* Process both APU instances and mix into output buffer.
- * Returns number of samples written. */
-int apuif_process_mix(int16_t* buff, int len);
+ * main_gain_q16 scales the MAIN instance (NSF, MAIN FMSQ) before the mix,
+ * Q16: 65536 = unity (or more: left as is), 0 = MAIN silent. SUB is never
+ * scaled. Returns number of samples written. */
+int apuif_process_mix(int16_t* buff, int len, uint32_t main_gain_q16);
 
 /*
  * Memory allocation proxy for apu_emu component.

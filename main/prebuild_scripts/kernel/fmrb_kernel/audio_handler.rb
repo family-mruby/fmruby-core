@@ -117,6 +117,23 @@ module AudioHandlerMixin
       # It cleaned up after itself, so there is nothing to stop on its behalf.
       @audio_wav_pids.delete(pid) if @audio_wav_pids
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x0E")
+    when "main_volume"
+      # The MAIN instance's own volume (the BGM under the effects), percent.
+      # Machine-wide, so the app that last lowered it is remembered and the
+      # level goes back to 100 when that app ends (restore_main_volume_for),
+      # however it ends. Binary: cmd_type=0x10 (SET_MAIN_VOLUME) + percent(1)
+      v = data["volume"] || 100
+      v = 0 if v < 0
+      v = 100 if v > 100
+      if v == 100
+        @audio_main_vol_pids.delete(pid) if @audio_main_vol_pids
+      else
+        @audio_main_vol_pids = {}
+        @audio_main_vol_pids[pid] = true
+      end
+      bin = "\x10\x00".b
+      bin.setbyte(1, v & 0xFF)
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "note_on"
       ch = data["ch"] || 0
       freq = data["freq"] || 440
@@ -165,6 +182,18 @@ module AudioHandlerMixin
       ch += 1
     end
     Log.info("Silenced note voices left by pid=#{pid}")
+  end
+
+  # Put the MAIN volume back to 100 when the app that lowered it ends. Only
+  # the last app to lower it is remembered: the level is one value for the
+  # whole machine, and that app's setting is the one in force.
+  def restore_main_volume_for(pid)
+    return unless @audio_main_vol_pids && @audio_main_vol_pids[pid]
+
+    @audio_main_vol_pids.delete(pid)
+    bin = "\x10\x64".b
+    _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
+    Log.info("Main volume back to 100 after pid=#{pid}")
   end
 
   # Remember who started a song, for stop_music_for.

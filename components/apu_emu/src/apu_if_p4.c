@@ -142,7 +142,7 @@ void apuif_select(int instance)
     }
 }
 
-int apuif_process_mix(int16_t* buff, int len)
+int apuif_process_mix(int16_t* buff, int len, uint32_t main_gain_q16)
 {
     /* Process main APU */
     apu_setcontext(_apu);
@@ -159,6 +159,14 @@ int apuif_process_mix(int16_t* buff, int len)
         main_buf[i] = (b8[i] ^ 0x80) << 8;
     }
     apu_getcontext(_apu);
+
+    /* The MAIN volume (the BGM's own level). A gain of at most unity cannot
+     * push a sample out of range, so nothing saturates here. */
+    if (main_gain_q16 < 65536) {
+        for (int i = 0; i < n; i++) {
+            main_buf[i] = (int16_t)(((int32_t)main_buf[i] * (int32_t)main_gain_q16) >> 16);
+        }
+    }
 
     if (_sub_initialized) {
         /* Process sub APU */

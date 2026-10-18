@@ -71,6 +71,10 @@ bool audio_p4_out_silent(void);
 // A level in tenths of a dB as a software gain (65536 = unity; levels above
 // 0 dB are held at unity, a gain above 1 would only clip).
 uint32_t audio_p4_gain_q16(int16_t db_x10);
+// The MAIN instance's volume (FMRB_AUDIO_CMD_SET_MAIN_VOLUME): NSF and an FMSQ
+// on MAIN are scaled before they are mixed with SUB, so the BGM can sit under
+// the effects. Percent, 0-100 (above is 100); 100 at boot.
+void audio_p4_main_volume_set(uint8_t percent);
 
 #if defined(FMRB_HW_MODERN)
 // --- audio_p4_hw.c: the codec's own output level and mute ---

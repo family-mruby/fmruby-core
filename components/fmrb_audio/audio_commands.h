@@ -43,7 +43,13 @@ typedef enum {
      * after INIT_DISPLAY, and the backend keeps the last state across its own
      * reboots so its boot beep obeys it too. A backend older than this
      * command logs it as unknown and carries on, unmuted at full level. */
-    FMRB_AUDIO_CMD_SET_OUTPUT = 0x0F
+    FMRB_AUDIO_CMD_SET_OUTPUT = 0x0F,
+    /* The MAIN instance's own volume (NSF and an FMSQ on MAIN: the BGM),
+     * in percent, 100 = as loud as before this command existed. SUB, WAV
+     * and SET_OUTPUT are untouched. Not saved: the kernel puts it back to
+     * 100 when the app that lowered it ends. A backend older than this
+     * command logs it as unknown and plays MAIN at full level. */
+    FMRB_AUDIO_CMD_SET_MAIN_VOLUME = 0x10
 } fmrb_audio_cmd_type_t;
 
 // Audio status
@@ -96,6 +102,11 @@ typedef struct {
     int16_t level_db_x10;  // the level of that step, tenths of a dB (<= 0 for
                            // a software gain; a codec may go above 0)
 } __attribute__((packed)) fmrb_audio_output_cmd_t;
+
+typedef struct {
+    uint8_t cmd_type;
+    uint8_t percent;       // 0-100; above 100 is taken as 100
+} __attribute__((packed)) fmrb_audio_main_volume_cmd_t;
 
 typedef struct {
     uint8_t cmd_type;

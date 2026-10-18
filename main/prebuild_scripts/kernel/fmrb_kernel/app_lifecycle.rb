@@ -825,6 +825,10 @@ module AppLifecycleMixin
     # counting down, so a crash while one sounds would leave it sounding.
     stop_wav_for(pid)
 
+    # And the BGM's own level, if it lowered it: the next app's music would
+    # otherwise play quieter than it asked for.
+    restore_main_volume_for(pid)
+
     # A fullscreen app terminated: pop its frame, which resumes exactly what that
     # frame had suspended. Nested (editor -> fullscreen game) restores the outer
     # fullscreen app and leaves the desktop suspended.

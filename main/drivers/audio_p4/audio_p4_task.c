@@ -91,6 +91,16 @@ bool audio_p4_out_silent(void) {
     return s_out_silent;
 }
 
+// The MAIN instance's volume, kept as the cut from unity so that the zeroed
+// PSRAM BSS means 100%: gain = 65536 - cut. PSRAM for the same reason as the
+// two above.
+FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t s_main_cut_q16;   // 0 = unity
+
+void audio_p4_main_volume_set(uint8_t percent) {
+    if (percent > 100) percent = 100;
+    s_main_cut_q16 = 65536u - ((uint32_t)percent * 65536u) / 100u;
+}
+
 // The settings as saved: this task makes its first sound (the boot beep)
 // before the kernel has read the config and the host task has sent them.
 // Only the output stage here; the codec's level follows with the host's
@@ -552,7 +562,8 @@ static void audio_p4_task(void *arg) {
         // Process both APU instances and mix output
         int16_t buffer[(NTSC_SAMPLE + 1) * 2];
         memset(buffer, 0, sizeof(buffer));
-        int count = apuif_process_mix(buffer, sizeof(buffer) / sizeof(buffer[0]));
+        int count = apuif_process_mix(buffer, sizeof(buffer) / sizeof(buffer[0]),
+                                      65536u - s_main_cut_q16);
         // PCM rides on top of the APU's own mix, at the same mono rate, so
         // there is nothing to resample here -- play_wav already matched the
         // clip to it. Once the clip ends the mixer adds nothing and the

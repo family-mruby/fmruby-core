@@ -1,6 +1,6 @@
 # 音の出力: ミュートと音量 (使い方と仕組み)
 
-> 状態: 完了 | 更新: 2026-10-02 | 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま、出力の最後の段で無音・倍率をかける。全機種・sim・ブラウザ版で同じ。経緯は archive/audio_mute/
+> 状態: 完了 | 更新: 2026-10-19 | 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま、出力の最後の段で無音・倍率をかける。全機種・sim・ブラウザ版で同じ。経緯は archive/audio_mute/。APU の MAIN 側 (BGM) だけの音量も一節 (MJ12)
 
 ## 使い方
 
@@ -55,6 +55,31 @@
   core とつながる前の起動の音にも効かせる。
 - 経路の一覧 (アプリの FmrbAudio、C の note 経路、MIDI の内蔵 APU、BASIC、MicroPython、起動の音) と、
   どれも最後の段を通ることの確認は archive/audio_mute/report/m1.md の 2 章。
+
+## MAIN 側 (BGM) だけの音量
+
+端末全体の音量とは別に、APU の MAIN 側 (NSF と MAIN で鳴らす FMSQ、つまり
+BGM) にだけ掛ける音量がある。効果音 (SUB の note_on・FMSQ)・WAV・端末全体の
+音量は変わらない。BGM を効果音の下に沈めるためのもの (MJ12、
+ruby_asterism/report/mj12.md)。
+
+- アプリから: `FmrbAudio#main_volume = 30` (0-100 の百分率、既定 100 =
+  この口が無かったときと同じ)。端末で 1 つの値。
+- 戻し方: kernel が最後に下げたアプリの pid を覚えておき、そのアプリが
+  終わると (正常終了・例外・kill のどれでも) 100 に戻す
+  (audio_handler.rb の `restore_main_volume_for`、app_lifecycle の後始末)。
+  保存はしない。音声側の再起動でも 100 に戻る。
+- 命令: `FMRB_AUDIO_CMD_SET_MAIN_VOLUME` (0x10) + percent 1 バイト
+  (audio_commands.h、両リポジトリで同じ)。古い音声側は未知の命令として
+  1 行ログを出し、MAIN は 100% のまま鳴る。
+- 掛ける場所: `apuif_process_mix(buf, len, main_gain_q16)` が MAIN の
+  サンプルに Q16 の倍率を掛けてから SUB と足す。倍率は 1 以下なので値は
+  範囲を出ず、新たな飽和は起きない (足し算後の切り詰めは従来どおり)。
+  - Modern・ブラウザ版: main/drivers/audio_p4/ (audio_p4_task.c の
+    `s_main_cut_q16`。PSRAM の BSS で 0 = 100% にするため「1 からの減り」で
+    持つ)、components/apu_emu/src/apu_if_p4.c。
+  - Retro (WROVER)・Linux sim: fmruby-graphics-audio の main/tasks/audio_task.c
+    (`g_main_gain_q16`)、components/apu_emu/src/apu_if.cpp / apu_if_linux.c。
 
 ## Tab5 の音量の範囲と電源
 

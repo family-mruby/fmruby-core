@@ -293,6 +293,16 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
             }
             break;
 
+        case FMRB_AUDIO_CMD_SET_MAIN_VOLUME:
+            if (size >= sizeof(fmrb_audio_main_volume_cmd_t)) {
+                const fmrb_audio_main_volume_cmd_t *cmd =
+                    (const fmrb_audio_main_volume_cmd_t *)data;
+                audio_p4_main_volume_set(cmd->percent);
+                FMRB_LOGI(TAG, "main volume: %u%%", cmd->percent > 100 ? 100 : cmd->percent);
+                return 0;
+            }
+            break;
+
         case FMRB_AUDIO_CMD_PLAY_SLOT:
             // The trailing instance byte is optional on the wire: a payload
             // that stops after music_id is an older sender and means MAIN.

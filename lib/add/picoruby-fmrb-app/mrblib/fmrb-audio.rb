@@ -95,6 +95,21 @@ class FmrbAudio
       {"cmd" => "play_slot", "slot" => slot_id, "instance" => instance})
   end
 
+  # The MAIN instance's own volume, in percent (0-100, default 100): the
+  # music played with play / play_slot on MAIN, so a BGM can sit under the
+  # effects on SUB. SUB, WAV and the machine's volume are not touched. It is
+  # one value for the whole machine; the kernel puts it back to 100 when the
+  # app that lowered it ends.
+  #
+  #   audio.main_volume = 30
+  def main_volume=(percent)
+    v = percent.to_i
+    v = 0 if v < 0
+    v = 100 if v > 100
+    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
+      {"cmd" => "main_volume", "volume" => v})
+  end
+
   # ---- WAV playback (Modern only) ----
   #
   # Plays a PCM 16-bit mono WAV (8-48 kHz, up to 2 MB) mixed on top of the
