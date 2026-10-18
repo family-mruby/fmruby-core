@@ -191,7 +191,7 @@ module Panels
     draw_rules: ->(a, _) { ["rules", a.panel640(:rules)&.map { |v| v * a.instance_variable_get(:@k) }] },
     draw_status: ->(_, _) { ["status", nil] },
     draw_title: ->(_, _) { ["title", nil] },
-    own_label: ->(a, _) { ["label0", a.panel640(:label0)] }
+    seat_box: ->(a, args) { ["label#{args[0]}", a.panel640(:"label#{args[0]}")] }
   }.freeze
 end
 

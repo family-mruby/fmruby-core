@@ -1625,12 +1625,12 @@ class MahjongApp < FmrbApp
       rl = rel(s)
       # The name gives way so the label stays in its place (the left and the
       # across labels are on one line).
-      room = (@big ? [160, 144, 200, 144][rl] : (rl == 2 ? 230 : 86)) - tw(head) - tw(tail)
+      room = (@big ? [160, 136, 192, 136][rl] : (rl == 2 ? 230 : 86)) - tw(head) - tw(tail)
       label = "#{head}#{fit(name, room)}#{tail}"
       turn = s == cur && v["st"] == "play"
       p = seat_label_pos(rl)
-      if rl == 0 && @big
-        own_label(p[0], p[1], label, away, turn) # MJ8: by the hand, white on a box
+      if @big
+        seat_box(rl, p[0], p[1], label, away, turn) # white on a box, as the own seat's (MJ8)
       else
         text(p[0], p[1], label, away ? C_AWAY : (turn ? C_TURN : C_TEXT))
         # The seat to act: underlined too (a spectator has no hand to tell it).

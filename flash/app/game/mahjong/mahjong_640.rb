@@ -162,11 +162,12 @@ class MahjongApp < FmrbApp
     @gfx.draw_tile(img.id, (c % 10) * 32, (c / 10) * 24, 32, 24, dst_x: x, dst_y: y)
   end
 
-  # ------------------------------------------------------------ the own seat
+  # ------------------------------------------------------------ the seat labels
 
-  # The own seat's wind, name and points (MJ8): by the hand, white on a dark
-  # box, framed in yellow on the own turn.
-  def own_label(x, y, label, away, turn)
+  # A seat's wind, name and points: white on a dark box, framed in yellow on
+  # that seat's turn. The own seat's (MJ8) is by the hand, the others' by
+  # their rivers. rl names the seat for the overflow checker.
+  def seat_box(_rl, x, y, label, away, turn)
     w = tw(label) + 8
     @gfx.fill_rect(x, y, w, 16, C_BOX)
     @gfx.draw_rect(x, y, w, 16, C_TURN) if turn
