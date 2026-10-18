@@ -10,6 +10,7 @@
 #   ruby mahjong_tilegen.rb --sheets DIR [--force]
 #   ruby mahjong_tilegen.rb --layout-sheets SRC_DIR [DST_DIR] [--preview PNG]
 #   ruby mahjong_tilegen.rb --round DIR
+#   ruby mahjong_tilegen.rb --patch DIR TILE...
 #
 # Output (OUT_DIR):
 #   OUT_DIR/hand/   42x56 tiles  (hand: 14 + 1 tiles across 640 px)
@@ -38,6 +39,9 @@
 # --layout-sheets apply it (the latter to its two sources in place too), and
 # --round DIR applies it to DIR/tiles_hand.bmp and tiles_river.bmp alone,
 # for sheets edited by hand.
+# Output (--patch DIR TILE...): draws only the named tiles (e.g. 8s) again
+# into the existing DIR/tiles_hand.bmp and tiles_river.bmp; every other cell
+# stays as it is. Then run --layout-sheets for the 1280x720 sheets.
 #
 # **The sheets are the source of truth once edited by hand**: Family mruby
 # reads them and nothing else. --sheets refuses to overwrite an existing sheet
@@ -516,6 +520,27 @@ def stick(cv, cx, cy, sw, sh, red)
   [y0, (y0 + y1) / 2, y1].each { |y| cv.rect(x0, y, x1, y, dark) }
 end
 
+# A stick leaning from (xt, top) to (xb, bottom): each row is the stick's
+# width centred on the line between them, with the same light/dark edges and
+# three nodes as an upright stick.
+def slant_stick(cv, xt, xb, cy, sw, sh, red)
+  body = red ? C[:red] : C[:green]
+  dark = red ? C[:red_dk] : C[:green_dk]
+  lite = red ? C[:red_lt] : C[:green_lt]
+  y0 = (cy - sh / 2.0).round
+  y1 = y0 + sh - 1
+  nodes = [y0, (y0 + y1) / 2, y1]
+  (y0..y1).each do |y|
+    t = y1 == y0 ? 0.0 : (y - y0).to_f / (y1 - y0)
+    x0 = (xt + (xb - xt) * t - sw / 2.0).round
+    x1 = x0 + sw - 1
+    cv.rect(x0, y, x1, y, nodes.include?(y) ? dark : body)
+    next if nodes.include?(y) || sw < 3
+    cv.set(x0, y, lite)
+    cv.set(x1, y, dark)
+  end
+end
+
 SOU_LAYOUT = {
   # [fx, fy, red?]
   2 => [[0.5, 0.25], [0.5, 0.75]],
@@ -524,8 +549,8 @@ SOU_LAYOUT = {
   5 => [[0.18, 0.25], [0.82, 0.25], [0.5, 0.5, true], [0.18, 0.75], [0.82, 0.75]],
   6 => [[0.2, 0.25], [0.5, 0.25], [0.8, 0.25], [0.2, 0.75], [0.5, 0.75], [0.8, 0.75]],
   7 => [[0.5, 0.15, true], [0.2, 0.5], [0.5, 0.5], [0.8, 0.5], [0.2, 0.84], [0.5, 0.84], [0.8, 0.84]],
-  8 => [[0.14, 0.25], [0.38, 0.25], [0.62, 0.25], [0.86, 0.25],
-        [0.14, 0.75], [0.38, 0.75], [0.62, 0.75], [0.86, 0.75]],
+  # 8 is drawn by draw_sou8 (an M over an upside-down M); listed for the row count.
+  8 => [[0.14, 0.25], [0.14, 0.75]],
   9 => [[0.2, 0.16], [0.5, 0.16, true], [0.8, 0.16], [0.2, 0.5], [0.5, 0.5, true], [0.8, 0.5],
         [0.2, 0.84], [0.5, 0.84, true], [0.8, 0.84]],
 }.freeze
@@ -540,9 +565,26 @@ def draw_sou(cv, box, n, red5, sw: 5, pad: 4)
   rows = SOU_LAYOUT[n].map { |p| p[1] }.uniq.size
   rows = 2 if n == 5 # the center stick sits between the two rows
   sh = (bh / rows) - pad
-  w = n == 8 ? [sw - 1, 3].max : sw
+  return draw_sou8(cv, box, [sw - 1, 3].max, sh, red5) if n == 8
   SOU_LAYOUT[n].each do |fx, fy, red|
-    stick(cv, bx + fx * bw, by + fy * bh, w, sh, red || red5)
+    stick(cv, bx + fx * bw, by + fy * bh, sw, sh, red || red5)
+  end
+end
+
+# 8s: the upper half an M (upright sticks at the sides, the two inner ones
+# leaning in towards the bottom), the lower half the same M upside down.
+def draw_sou8(cv, box, w, sh, red)
+  bx, by, bw, bh = box
+  out_l = 0.14
+  out_r = 0.86
+  far = 0.33  # an inner stick's end away from the middle
+  near = 0.44 # its end towards the middle
+  [[0.25, far, near], [0.75, near, far]].each do |fy, top, bottom|
+    cy = by + fy * bh
+    stick(cv, bx + out_l * bw, cy, w, sh, red)
+    stick(cv, bx + out_r * bw, cy, w, sh, red)
+    slant_stick(cv, bx + top * bw, bx + bottom * bw, cy, w, sh, red)
+    slant_stick(cv, bx + (1 - top) * bw, bx + (1 - bottom) * bw, cy, w, sh, red)
   end
 end
 
@@ -973,7 +1015,34 @@ def write_layout_sheets(src_dir, dst_dir, preview_path = nil)
   puts "wrote #{preview_path}"
 end
 
+# Draws the named tiles again into the existing source sheets in DIR and
+# leaves every other cell as it is (the sheets are the source of truth once
+# edited by hand). The cells are rounded like the rest.
+def patch_sheets(dir, ids)
+  bad = ids - TILES
+  abort "unknown tiles: #{bad.join(' ')} (MPSZ names, e.g. 8s)" unless bad.empty?
+  SHEETS.each do |file, pf, cols, _rows, first, _count|
+    path = File.join(dir, file)
+    w, h, px = read_bmp8(path)
+    ids.each do |id|
+      k = TILES.index(id) - first
+      cv = make_tile(pf, id)
+      cell = [pf.w, pf.h, Array.new(pf.w * pf.h)]
+      pf.h.times { |y| pf.w.times { |x| cell[2][y * pf.w + x] = rgb332(cv.get(x, y)) } }
+      round_cell!(cell, CORNER_R[file], 1)
+      paste(px, w, cell, (k % cols) * pf.w, (k / cols) * pf.h)
+    end
+    File.binwrite(path, bmp8(w, h, px))
+    puts "#{file}: drew #{ids.join(' ')} again"
+  end
+end
+
 if $PROGRAM_NAME == __FILE__
+  if ARGV[0] == "--patch"
+    abort "usage: #{$PROGRAM_NAME} --patch DIR TILE..." unless ARGV[1] && ARGV[2]
+    patch_sheets(ARGV[1], ARGV[2..])
+    exit
+  end
   if ARGV[0] == "--layout-sheets"
     usage = "usage: #{$PROGRAM_NAME} --layout-sheets SRC_DIR [DST_DIR] [--preview PNG]"
     args = ARGV.dup

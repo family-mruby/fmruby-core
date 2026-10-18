@@ -159,10 +159,10 @@ class MahjongApp < FmrbApp
       mj_draw: "流局", mj_tenpai: "テンパイ", mj_over: "終局", mj_you: "自分",
       mj_rest: "秒", mj_honba: "本場", mj_sticks: "供託", mj_dora: "ドラ", mj_kyoku: "局",
       mj_kyuushu_end: "九種九牌で流局", mj_sanchahou: "三家和で流局",
-      mj_rank: "位", mj_from: "から", mj_records: "直近の結果 H",
-      mj_tables: "卓 (Enter で入る)", mj_mine: "[自分の席あり]", mj_seat: "席", mj_empty: "空き",
-      mj_sit: "座る", mj_stand: "立つ S", mj_cpu: "CPU", mj_fill: "CPU で埋める C",
-      mj_start: "始める Enter", mj_leave: "卓を出る Esc", mj_owner: "卓の主", mj_away: "途切れ",
+      mj_rank: "位", mj_from: "から", mj_records: "直近の結果[H]",
+      mj_tables: "卓 (Enter で入る)", mj_mine: "(自分の席あり)", mj_seat: "席", mj_empty: "空き",
+      mj_sit: "座る", mj_stand: "立つ[S]", mj_cpu: "CPU", mj_fill: "CPU で埋める[C]",
+      mj_start: "始める[Enter]", mj_leave: "卓を出る[Esc]", mj_owner: "卓の主", mj_away: "途切れ",
       mj_watchers: "観戦:", mj_lobby: "待ち合わせ", mj_playing: "対局中", mj_ended: "終局",
       mj_humans: "参加", mj_cpus: "CPU", mj_free: "空き", mj_members: "人", mj_ai: "AI",
       mj_watching: "観戦中 (Esc で出る)", mj_others: "ほかの人の答えを待っています",
@@ -791,7 +791,7 @@ class MahjongApp < FmrbApp
   end
 
   def assist_label
-    "#{t(:mj_assist)}: #{@assist_names[@assist]} A"
+    "#{t(:mj_assist)}: #{@assist_names[@assist]}[A]"
   end
 
   # The waits after discarding the chosen tile (nil: no riichi help for it).
@@ -1505,14 +1505,14 @@ class MahjongApp < FmrbApp
       who = sk[s] == 0 ? t(:mj_empty) : nm[s].to_s
       label = "#{t(:mj_seat)}#{s + 1}  #{who}"
       label = "#{label}  [#{t(:mj_ai)}]" if ai_seat?(s)
-      label = "#{label}  [#{t(:mj_owner)}]" if s == ow
+      label = "#{label}  (#{t(:mj_owner)})" if s == ow
       label = "#{label}  (#{t(:mj_away)})" if away?(s)
       text(x + u(2), y + u(2), label, sk[s] == 0 ? C_DIM : (s == @seat ? C_TURN : C_TEXT))
       cx = bx
       if s == @seat
         cx += button(B_STAND, [], cx, y - u(2), t(:mj_stand)) + u(4)
       elsif sk[s] != 1
-        cx += button(B_SIT, [s], cx, y - u(2), "#{t(:mj_sit)} #{s + 1}") + u(4)
+        cx += button(B_SIT, [s], cx, y - u(2), "#{t(:mj_sit)}[#{s + 1}]") + u(4)
       end
       draw_seat_state(s, cx, y - u(2)) if sk[s] != 1
       y += row_h
@@ -1873,16 +1873,16 @@ class MahjongApp < FmrbApp
 
   def button_label(type, tl)
     case type
-    when A_RIICHI then "#{t(:mj_riichi)} R"
-    when A_TSUMO then "#{t(:mj_tsumo)} T"
-    when A_RON then "#{t(:mj_ron)} T"
-    when A_PON then "#{t(:mj_pon)} P"
-    when A_CHI then "#{t(:mj_chi)} #{tile_text(tl[0])}#{tile_text(tl[1])} C"
-    when A_ANKAN, A_KAKAN then "#{t(:mj_kan)} #{tile_text(tl[0])} K"
-    when A_MINKAN then "#{t(:mj_kan)} K"
-    when A_SKIP then "#{t(:mj_pass)} Esc"
-    when A_KYUUSHU then "#{t(:mj_kyuushu)} N"
-    when A_NEXT then "#{t(:mj_next)} Enter"
+    when A_RIICHI then "#{t(:mj_riichi)}[R]"
+    when A_TSUMO then "#{t(:mj_tsumo)}[T]"
+    when A_RON then "#{t(:mj_ron)}[T]"
+    when A_PON then "#{t(:mj_pon)}[P]"
+    when A_CHI then "#{t(:mj_chi)} #{tile_text(tl[0])}#{tile_text(tl[1])}[C]"
+    when A_ANKAN, A_KAKAN then "#{t(:mj_kan)} #{tile_text(tl[0])}[K]"
+    when A_MINKAN then "#{t(:mj_kan)}[K]"
+    when A_SKIP then "#{t(:mj_pass)}[Esc]"
+    when A_KYUUSHU then "#{t(:mj_kyuushu)}[N]"
+    when A_NEXT then "#{t(:mj_next)}[Enter]"
     end
   end
 

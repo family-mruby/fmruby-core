@@ -435,9 +435,9 @@ class MahjongApp < FmrbApp
     l = if @name_edit
           "#{@pending_join ? '名前を入れてから入る' : '名前'}: #{@name_edit}_  (Enter で決める Esc でやめる)"
         elsif @name_set
-          "名前: #{@name}  N"
+          "名前: #{@name} [N]"
         else
-          "名前: (まだ無い: 卓に入る前に決める)  N"
+          "名前: (まだ無い: 卓に入る前に決める) [N]"
         end
     fnt(12, @k)
     l = fit(l, w - u(12))
@@ -1021,8 +1021,8 @@ class MahjongApp < FmrbApp
       end
     end
     return button_label(type, tl) unless tiles
-    return [t(:mj_pon), tiles, "P"] if type == A_PON
-    type == A_CHI ? [t(:mj_chi), tiles, "C"] : [t(:mj_kan), tiles, "K"]
+    return [t(:mj_pon), tiles, "[P]"] if type == A_PON
+    type == A_CHI ? [t(:mj_chi), tiles, "[C]"] : [t(:mj_kan), tiles, "[K]"]
   end
 
   # The width of a button's contents (a text, or [head, tiles, key]).

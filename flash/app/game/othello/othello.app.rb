@@ -821,11 +821,11 @@ class OthelloTableApp < FmrbApp
     end
     sk = @view["sk"].is_a?(Array) ? @view["sk"] : [0, 0]
     if seated?
-      button(:stand, x, by2, 60, "立つ S")
+      button(:stand, x, by2, 60, "立つ[S]")
     elsif sk[0] != 1 || sk[1] != 1
-      button(:sit, x, by2, 60, "座る S")
+      button(:sit, x, by2, 60, "座る[S]")
     end
-    button(:cpu, x + 66, by2, 60, "CPU C") if owner? && (sk[0] == 0 || sk[1] == 0)
+    button(:cpu, x + 66, by2, 60, "CPU[C]") if owner? && (sk[0] == 0 || sk[1] == 0)
     button(:start, x, by, 60, "始める") if owner? && sk[0] != 0 && sk[1] != 0
     button(:leave, x + 66, by, 60, "出る")
   end

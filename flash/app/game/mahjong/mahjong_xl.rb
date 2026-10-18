@@ -733,7 +733,7 @@ class MahjongApp < FmrbApp
     return unless @seat
     fnt(12, 2)
     l = assist_label
-    xl_button(B_ASSIST, [], 12, 8, tw(l) + 24, l)
+    xl_button(B_ASSIST, [], 12, 8, tw(l) + 20, l)
   end
 
   # The buttons, right-aligned above the right end of the hand, the last at
@@ -762,6 +762,12 @@ class MahjongApp < FmrbApp
       fnt(px, size)
       place = xl_pack_buttons(labels, lefts, pad)
     end
+    # Still too many (every call at once): the buttons without their keys
+    # ("[C]") at the small font, before giving up the river's room.
+    unless place
+      labels = labels.map { |l| [l[0], l[1], key_less(l[2])] }
+      place = xl_pack_buttons(labels, lefts, 12)
+    end
     place ||= xl_pack_buttons(labels, [XL_BX] * 4, 12)
     i = 0
     while i < place.size
@@ -775,6 +781,18 @@ class MahjongApp < FmrbApp
       i += 1
     end
     xl_draw_clock
+  end
+
+  # A label without its key hint at the end ("ポン[P]" -> "ポン"; a call's
+  # [head, tiles, key] without the key). nil stays nil (the clock).
+  def key_less(l)
+    return [l[0], l[1], nil] if l.is_a?(Array)
+    return l unless l.is_a?(String) && l.bytesize > 0 && l.getbyte(l.bytesize - 1) == 93 # "]"
+    i = l.bytesize - 1
+    while i > 0 && l.getbyte(i) != 91 # "["
+      i -= 1
+    end
+    i > 0 ? l.byteslice(0, i) : l
   end
 
   XL_CLOCK_W = 120

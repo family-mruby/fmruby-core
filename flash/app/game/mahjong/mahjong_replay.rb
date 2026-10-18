@@ -668,13 +668,13 @@ class MahjongApp < FmrbApp
 
   def rp_strings
     @str[:mj_rp_title] = "直近の結果"
-    @str[:mj_rp_back] = "閉じる Esc"
+    @str[:mj_rp_back] = "閉じる[Esc]"
     @str[:mj_rp_loading] = "読み込み中"
     @str[:mj_rp_none] = "まだ終局した対局が無い"
     @str[:mj_rp_deal] = "配牌"
     @str[:mj_rp_result] = "結果"
     @str[:mj_rp_keys] = "↑↓ 選ぶ  Enter 牌譜  S 成績  牌譜: → 次 ← 前 ↓ 次の局 ↑ 局の頭"
-    @str[:mj_rp_stats] = "成績 S"
+    @str[:mj_rp_stats] = "成績[S]"
     @str[:mj_rp_view_keys] = "(→ ← ↓ ↑ Esc)"
   end
 end
