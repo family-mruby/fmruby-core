@@ -30,6 +30,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 
 - [TODO](reference/TODO.md)
 - [アプリのメモリ (VM プール)](reference/app_memory.md) — **完了** (2026-10-16) mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
+- [APU の 2 つの音源がフィルタの状態を共有していた (60 Hz のビリビリ)](reference/apu_shared_filter_state.md) — **解決** (2026-10-19) 内蔵の音源 (nofrendo の APU) の低域フィルタが「直前のサンプル」を関数の中の `static` 1 つに持っていて、BGM 用 (MAIN) と効果音用 (SUB) の 2 つの音源で共有していた。1 コマごとに相手の最後の値を引き継ぐので、1 秒に 60 回の段差が出る。BGM だけの音量 (MJ12) を足して BGM を小さくしたら、それが「ビリビリ」として聞こえるようになった。値を音源ごとの構造体へ移して直した
 - [音の出力: ミュートと音量 (使い方と仕組み)](reference/audio_output.md) — **完了** (2026-10-19) 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま、出力の最後の段で無音・倍率をかける。全機種・sim・ブラウザ版で同じ。経緯は archive/audio_mute/。APU の MAIN 側 (BGM) だけの音量も一節 (MJ12)
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
