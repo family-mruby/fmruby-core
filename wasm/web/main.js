@@ -347,7 +347,18 @@ function resolutionFromQuery() {
   return RESOLUTIONS.includes(key) ? key : null;
 }
 
+// ?res=WxH is the same for this visit only: it is not stored, so a room link
+// that opens the 1280x720 mahjong table (docs of asterism-console, the room
+// page) leaves this browser's own choice as it was. The zoom of such a visit
+// is not stored either (sessionResolution below).
+function sessionResolution() {
+  const r = new URLSearchParams(location.search).get('res');
+  return r && RESOLUTIONS.includes(r) ? r : null;
+}
+
 function currentResolution() {
+  const session = sessionResolution();
+  if (session) return session;
   const fromQuery = resolutionFromQuery();
   if (fromQuery) {
     writeSetting('fmrb_web_res', fromQuery);
@@ -468,22 +479,35 @@ const resSelect = document.getElementById('res-select');
 resSelect.value = currentResolution();
 resSelect.addEventListener('change', () => {
   writeSetting('fmrb_web_res', resSelect.value);
-  // Drop a stale ?w=&h= on the way out, or it would win over the new choice.
+  // Drop a stale ?w=&h= (or ?res=) on the way out, or it would win over the
+  // new choice.
   location.replace(location.pathname + location.hash);
 });
 
 // The resolution is the framebuffer; the zoom is only how large that
 // framebuffer is drawn, so it takes effect without a reload.
 const zoomSelect = document.getElementById('zoom-select');
-// 2x by default on a screen with room for it. A phone has not: at 2x the
-// machine is 852 CSS px wide and the visitor sees about half of it, with the
-// settings and the explanation off the side of the page. So the first visit
-// on a narrow screen starts fitted instead. Only the first: once the selector
-// has been used, that choice is what comes back.
-zoomSelect.value = readSetting('fmrb_web_zoom', null) ||
-  (document.documentElement.clientWidth < baseSize()[0] * 2 + 24 ? 'fit' : '2');
+// By default the largest whole multiple that fits the window (1x, 2x or 3x):
+// pixels stay square and even, which a fractional Fit does not keep (at
+// 1280x720 Fit would draw most screens at an odd scale). Only when not even
+// 1x fits (a phone) does it start fitted. Only the first visit: once the
+// selector has been used, that choice is what comes back -- except on a
+// visit with ?res=, whose zoom belongs to that resolution and is neither
+// read nor stored.
+const sessionRes = sessionResolution() !== null;
+
+function defaultZoom() {
+  const [baseW, baseH] = baseSize();
+  const top = screenBox.getBoundingClientRect().top;
+  const availW = document.documentElement.clientWidth - 24;
+  const availH = document.documentElement.clientHeight - top - 24;
+  const z = Math.floor(Math.min(availW / baseW, availH / baseH));
+  return z >= 1 ? String(Math.min(z, 3)) : 'fit';
+}
+
+zoomSelect.value = (sessionRes ? null : readSetting('fmrb_web_zoom', null)) || defaultZoom();
 zoomSelect.addEventListener('change', () => {
-  writeSetting('fmrb_web_zoom', zoomSelect.value);
+  if (!sessionRes) writeSetting('fmrb_web_zoom', zoomSelect.value);
   applyZoom();
 });
 
