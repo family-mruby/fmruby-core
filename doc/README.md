@@ -62,7 +62,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
-- `desktop_icons/` [デスクトップにアプリのアイコンを並べる](desktop_icons/plan.md) — **計画済** (2026-10-18) アプリが増えたので、代表的なアプリをデスクトップの背景にアイコンで並べ、ダブルクリック (タップ) で起動できるようにする。既定の組を出し、利用者が置く・外すを変えられる 〔1 files〕
+- `desktop_icons/` [デスクトップにアプリのアイコンを並べる](desktop_icons/plan.md) — **進行中** (2026-10-18) 代表的なアプリをデスクトップの背景にアイコンで並べ、ダブルクリック (タップ) で起動する。DS1 で実装 (sim・ブラウザ版で確認済)。残りは Tab5 のタップ確認と実機の内蔵 RAM 比較 〔2 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
 - `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-05) P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔2 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕

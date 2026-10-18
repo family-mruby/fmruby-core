@@ -5,10 +5,12 @@
 #
 # Modules (loaded from system_desktop/ subdirectory):
 #   LauncherMixin     - App launcher with icon grid
+#   DesktopIconsMixin - App icons on the wallpaper (background layer)
 #   FileSelectorMixin - File open/save dialog
 
 class SystemDesktopApp < FmrbApp
   include LauncherMixin
+  include DesktopIconsMixin
   include FileSelectorMixin
   include FileManagerMixin
   include ConfirmDialogMixin
@@ -145,6 +147,14 @@ class SystemDesktopApp < FmrbApp
     @last_click_time = 0
     @last_click_idx = -1
     @launcher_apps = []
+
+    # Desktop icons (desktop_icons.rb)
+    @dicon_paths = []
+    @dicon_items = []
+    @dicon_missing = false
+    @dicon_selected = -1
+    @dicon_last_idx = -1
+    @dicon_last_time = 0
 
     # File selector state
     @file_selector_open = false
@@ -289,6 +299,9 @@ class SystemDesktopApp < FmrbApp
     # open_launcher is cheap (all WROVER-side sprite uploads happen here).
     scan_apps
     ensure_icon_sprites
+    # The desktop icons resolve against the launcher list and share its
+    # bitmaps, so they come after it. Drawn with the wallpaper.
+    build_desktop_icons
 
     # Center file selector
     @fsel_x = (@window_width - FSEL_W) / 2
@@ -670,6 +683,7 @@ class SystemDesktopApp < FmrbApp
       @bg_gfx.draw_image(img[:id], x: 0, y: 0)
       @bg_gfx.delete_image(img[:id])
     end
+    draw_desktop_icons
     @bg_gfx.present
   end
 
@@ -1408,9 +1422,21 @@ class SystemDesktopApp < FmrbApp
   # open; add one here if that changes.
   def paint_bg_rect(gfx, x, y, w, h)
     c = FmrbApp::TRANSPARENT_COLOR
-    c = PANEL_BG if hole_inside_open_panel?(x, y, w, h)
+    if launcher_title_hole?(x, y, w, h)
+      # The launcher's desktop button lives in its title bar and hides while
+      # nothing is selected; the ground there is the title bar, not the panel.
+      c = LauncherMixin::LAUNCHER_TITLE_BG
+    elsif hole_inside_open_panel?(x, y, w, h)
+      c = PANEL_BG
+    end
     gfx.fill_rect(x, y, w, h, c)
     nil
+  end
+
+  def launcher_title_hole?(x, y, w, h)
+    return false unless @launcher_open
+    rect_covers?(@launcher_x, @launcher_y, LauncherMixin::LAUNCHER_W,
+                 LauncherMixin::LAUNCHER_TITLE_H, x, y, w, h)
   end
 
   def hole_inside_open_panel?(x, y, w, h)
@@ -2044,6 +2070,10 @@ class SystemDesktopApp < FmrbApp
       else
         handle_taskbar_click(x, y)
       end
+    else
+      # Below the menu bar with nothing open: the bare desktop, where the
+      # icons are.
+      handle_desktop_icon_click(x, y)
     end
   end
 

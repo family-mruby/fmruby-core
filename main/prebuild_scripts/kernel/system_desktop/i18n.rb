@@ -82,6 +82,8 @@ FmrbI18n.add(
     net_browser:     "The browser handles the network here.",
     net_browser2:    "This machine has none of its own.",
     refresh:         "Refresh",
+    desk_add:        "Add to desktop",
+    desk_remove:     "Remove from desktop",
   },
   "ja" => {
     shell:           "シェル",
@@ -159,5 +161,7 @@ FmrbI18n.add(
     net_browser:     "通信はブラウザが受け持ちます。",
     net_browser2:    "この機械自身は網を持ちません。",
     refresh:         "更新",
+    desk_add:        "デスクトップに置く",
+    desk_remove:     "デスクトップから外す",
   },
 )
