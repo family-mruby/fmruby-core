@@ -708,8 +708,9 @@ const STORES = [
 let homeStore = 'volatile';
 
 // One tab writes. Two machines sharing one IndexedDB would overwrite each
-// other wholesale (last one to sync wins), so the second tab runs with a
-// throw-away /home rather than eating the first one's work. The lock is held
+// other wholesale (last one to sync wins), so the second tab runs on a
+// copy of /home that is read once and thrown away, rather than eating the
+// first one's work. The lock is held
 // for the life of the page, which is exactly how long the machine runs.
 let homeWriter = null;
 let lockDecided = Promise.resolve();
@@ -732,11 +733,30 @@ function mountHome(mod) {
   mod.addRunDependency(HOME_DEP);
   lockDecided.then(() => {
     if (homeWriter === false) {
+      // A copy of what the writing tab saved, read once and never written
+      // back: the apps find their settings (the mahjong name, the switches)
+      // as the first tab left them, and nothing this tab changes reaches
+      // IndexedDB. No autoPersist, and every syncfs(false) below is only for
+      // homeStore === 'persistent'. It used to start empty, which made a
+      // room opened next to another tab forget the player's name.
       homeStore = 'second tab';
       console.warn('fmrb: another tab owns /home; this one runs on a copy ' +
                    'that is thrown away');
-      mod.removeRunDependency(HOME_DEP);
-      showStorageState();
+      try {
+        for (const st of STORES) {
+          mod.FS.mkdirTree(st.path);
+          mod.FS.mount(mod.FS.filesystems.IDBFS, { autoPersist: false }, st.path);
+        }
+        mod.FS.syncfs(true, (err) => {
+          if (err) console.warn('fmrb: the copy of the saved files could not be read:', err);
+          mod.removeRunDependency(HOME_DEP);
+          showStorageState();
+        });
+      } catch (e) {
+        console.warn('fmrb: the copy of the saved files could not be read:', e);
+        mod.removeRunDependency(HOME_DEP);
+        showStorageState();
+      }
       return;
     }
     try {
