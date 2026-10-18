@@ -127,7 +127,7 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
 //
 // Volume step n (1-10) plays at audio_level_min + (max - min) * n / 10 dB;
 // step 0 is silence. The range defaults to 0 dB at the top and -50 dB at the
-// bottom on every machine (user decision after hearing +32 dB on the ES8311:
+// bottom on every machine but the Tab5 (below) (user decision after hearing +32 dB on the ES8311:
 // nothing is boosted above what the source already is), which makes the
 // steps 5 dB apart: 7 = -15 dB, 10 = 0 dB. The volume defaults to 7.
 // audio_level_min / audio_level_max in system_conf move the range, within
@@ -143,6 +143,13 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
 // ES8388 DAC digital volume: 0x00 = 0 dB to 0xC0 = -96 dB, 0.5 dB steps.
 #define AUDIO_LEVEL_HW_MIN_X10  (-960)
 #define AUDIO_LEVEL_HW_MAX_X10  0
+// The Tab5's own speaker is quiet: by ear, -15 dB (step 7 of the -50 dB
+// range) was barely heard and -5 dB was right. Its range starts at
+// -16.7 dB instead, so step 7 plays at -5 dB and 10 stays at 0 dB (user
+// decision 2026-10-18). At 0 dB a computer's USB port alone may not carry
+// the speaker: the board browned out there until it had a second supply.
+#undef  AUDIO_LEVEL_DEFAULT_MIN_X10
+#define AUDIO_LEVEL_DEFAULT_MIN_X10  (-167)
 #else
 // A software gain at the last output stage (graphics-audio on Retro and in
 // the simulator, audio_p4 in the browser). Unity at the top: a gain above 1

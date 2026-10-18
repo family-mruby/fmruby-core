@@ -64,7 +64,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `desktop_icons/` [デスクトップにアプリのアイコンを並べる](desktop_icons/plan.md) — **進行中** (2026-10-18) 代表的なアプリをデスクトップの背景にアイコンで並べ、ダブルクリック (タップ) で起動する。DS1 で実装 (sim・ブラウザ版で確認済)。残りは Tab5 のタップ確認と実機の内蔵 RAM 比較 〔2 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
-- `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-05) P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔2 files〕
+- `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-18) Tab5 は全部済 (2026-10-18)、残りは Retro。 P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔2 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕

@@ -56,6 +56,12 @@
 - 経路の一覧 (アプリの FmrbAudio、C の note 経路、MIDI の内蔵 APU、BASIC、MicroPython、起動の音) と、
   どれも最後の段を通ることの確認は archive/audio_mute/report/m1.md の 2 章。
 
+## Tab5 の音量の範囲と電源
+
+- Tab5 の本体のスピーカーは小さい。2026-10-18 に耳で確かめた結果 (440 Hz の WAV): -15 dB はかすか、-10 dB は小さい、-5 dB はちょうどよい、0 dB は少し大きい。
+- そのため Tab5 だけ、既定の範囲を -16.7 〜 0 dB にしている (fmrb_kernel.c の `AUDIO_LEVEL_DEFAULT_MIN_X10`)。段 7 (既定) が -5 dB、10 が 0 dB。ほかの機種は -50 〜 0 dB のまま。system_conf の `audio_level_min` / `audio_level_max` を書けば、そちらが勝つ。
+- **電源**: パソコンの USB の口だけから電源を取ると、0 dB で鳴らした瞬間に電圧が下がってリセットした (ログ `E BOD: Brownout detector was triggered`、続いて `rst:0x3`)。USB の電源アダプタか補助の電源を足すと、0 dB でも落ちなかった。大きな音量で使うときは、十分な電源をつなぐ。
+
 ## 未確認・残り
 
 - Retro の実機での確認 (WROVER のファームの更新が要る)。
