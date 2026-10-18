@@ -571,11 +571,13 @@ class MahjongApp < FmrbApp
     wins = res.is_a?(Hash) && res["wn"].is_a?(Array) ? res["wn"] : []
     multi = wins.size > 1
     over = fin.is_a?(Array) && @view["st"] == "over"
+    shown = rv_shown
     if @big
       bx = @x0 + (multi ? 20 : 60)
       bw = multi ? 600 : 520
       by = @y0 + (multi ? 4 : 6)
       bh = multi ? 352 : 296
+      bh += 22 if rv_on? && !multi # the OK line (MJ9)
     else
       bx = @x0 + 20
       bw = @w - 40
@@ -593,7 +595,10 @@ class MahjongApp < FmrbApp
       y += 16
       if k == "tsumo_agari" || k == "ron_agari"
         i = 0
+        before = 0
         while i < wins.size
+          @rv_k = shown - before
+          before += rv_steps(wins[i])
           y = draw_win(wins[i], k, res["f"], x, y, multi, bw - 16)
           i += 1
         end
@@ -601,7 +606,7 @@ class MahjongApp < FmrbApp
         text_spaced(x, y, fit(draw_head(res), bw - 16), C_TURN)
         y += 18
       end
-      unless over
+      unless over || shown < rv_total
         cols = multi ? 2 : 1
         cw = (bw - 16) / cols
         i = 0
@@ -626,6 +631,7 @@ class MahjongApp < FmrbApp
       end
       text(x, y + 70, t(:mj_back_lobby), C_DIM)
     end
+    ok_footer(bx, by, bw, bh) if rv_on?
   end
 
   # One winner's block; returns the y below it. With several winners the
@@ -633,14 +639,18 @@ class MahjongApp < FmrbApp
   def draw_win(w, k, from, x, y, multi, bw)
     pt = w["pt"].to_s
     head = win_head(w, k, from)
+    ys = w["y"].is_a?(Array) ? w["y"] : []
+    rk = @rv_k || 9999
+    pt_on = rk > ys.size
     if multi
-      text(x, y, fit(head, bw - tw(pt) - 16), C_TURN)
-      text_spaced(x + bw - tw(pt) - 8, y, pt, C_TURN)
-    else
+      text(x, y, fit(head, bw - tw(pt) - 16), C_TURN) if rk > 0
+      text_spaced(x + bw - tw(pt) - 8, y, pt, C_TURN) if pt_on
+    elsif rk > 0
       text(x, y, fit(head, bw), C_TURN)
     end
     y += 16
     hc = bytes_of(w["h"])
+    hc = [] if rk <= 0
     step = @big ? 23 : 13
     i = 0
     while i < hc.size
@@ -653,14 +663,16 @@ class MahjongApp < FmrbApp
     end
     ag = w["ag"].to_i
     cx = x + hc.size * step + 6
-    if @big
+    if rk <= 0
+      # not reached yet: nothing drawn
+    elsif @big
       small_tile(ag, cx, y)
       @gfx.draw_rect(cx, y, 23, 31, C_LAST)
     else
       text(cx - 2, y, tile_text(ag), C_TURN)
     end
     cx += step
-    ms = meld_lists(w["w"].to_i)
+    ms = rk > 0 ? meld_lists(w["w"].to_i) : []
     # The melds after the winning tile, closer when they would not fit.
     n = 0
     ms.each { |m| n += m.size }
@@ -683,29 +695,186 @@ class MahjongApp < FmrbApp
       i += 1
     end
     y += @big ? 36 : 15
-    ys = w["y"].is_a?(Array) ? w["y"] : []
     cols = multi ? 5 : 3
     cw = bw / cols
     i = 0
-    while i < ys.size
+    while i < ys.size && i < rk
       text_spaced(x + (i % cols) * cw, y + (i / cols) * 14, fit(yaku_label(w, i), cw - 6))
       i += 1
     end
     y += ((ys.size + cols - 1) / cols) * 14 + 2
     pa = pao_text(w)
     unless multi
-      text_spaced(x, y, fit(pt, bw), C_TURN)
+      text_spaced(x, y, fit(pt, bw), C_TURN) if pt_on
       if !pa.empty? && tw(pt) + 4 + tw(pa) <= bw
-        text_spaced(x + tw(pt) + 4, y, pa, C_AWAY)
+        text_spaced(x + tw(pt) + 4, y, pa, C_AWAY) if pt_on
         pa = ""
       end
       y += 16
     end
     unless pa.empty?
-      text_spaced(x, y, fit(pa.strip, bw), C_AWAY)
+      text_spaced(x, y, fit(pa.strip, bw), C_AWAY) if pt_on
       y += 14
     end
     y + (multi ? 4 : 4)
+  end
+
+  # ------------------------------------------------------------ the round's start and the OKs (MJ9)
+  #
+  # asterism-games README "Result" (games 0.15.0). After the deal the host
+  # waits a moment (the view's "in", the ms left): the round's name in big
+  # letters over the middle of the table. A result of a table with humans
+  # has "ok" ([the seats that gave their OK, the seats still waited for,
+  # the ms until it moves on by itself]): the box shows each winner's yaku
+  # one a second, then the points (the host's count, the same rule:
+  # per winner a step a yaku line and one for the points, the winners one
+  # after the other, one step without a win); a press shows the rest at
+  # once and the next one is the OK (the next, 12). A host without the
+  # keys (0.14.0) gets the screen as before.
+
+  RV_STEP_MS = 1000
+
+  def round_take(v)
+    now = Machine.board_millis
+    n = v["in"]
+    @intro_until = n.is_a?(Integer) && n > 0 && v["st"] == "play" ? now + n : nil
+    ok = v["ok"]
+    unless v["st"] == "result" && ok.is_a?(Array) && ok.size > 2 && v["res"].is_a?(Hash)
+      @rv_key = nil
+      return
+    end
+    @ok_until = now + ok[2].to_i
+    return if @rv_key == v["sv"]
+    @rv_key = v["sv"]
+    # The steps start when the box shows (after a win's shout).
+    @rv_at = @shout ? @shout[2] : now
+    @rv_all = false
+    @rv_sig = nil
+  end
+
+  # The result shows by steps (a host with the OKs).
+  def rv_on?
+    v = @view
+    v && v["st"] == "result" && v["ok"].is_a?(Array) && !@rv_key.nil? && @rv_key == v["sv"] ? true : false
+  end
+
+  def rv_steps(w)
+    ys = w["y"]
+    (ys.is_a?(Array) ? ys.size : 0) + 1
+  end
+
+  def rv_total
+    res = @view ? @view["res"] : nil
+    wins = res.is_a?(Hash) && res["wn"].is_a?(Array) ? res["wn"] : []
+    return 1 if wins.empty?
+    n = 0
+    i = 0
+    while i < wins.size
+      n += rv_steps(wins[i])
+      i += 1
+    end
+    n
+  end
+
+  # The steps shown now (all of them without the OKs or after a press).
+  def rv_shown
+    return 9999 unless rv_on?
+    total = rv_total
+    return total if @rv_all
+    d = Machine.board_millis - @rv_at
+    return 0 if d < 0
+    n = d / RV_STEP_MS + 1
+    n > total ? total : n
+  end
+
+  # A press while the steps run: the rest at once (true: the press is used).
+  def rv_skip
+    return false unless rv_on? && rv_shown < rv_total
+    @rv_all = true
+    @dirty = true
+    true
+  end
+
+  def ok_secs
+    return 0 unless @ok_until
+    ms = @ok_until - Machine.board_millis
+    ms > 0 ? (ms + 999) / 1000 : 0
+  end
+
+  # The steps, the seconds and the OKs: what the drawn box shows.
+  def rv_sig
+    return nil unless rv_on?
+    [rv_shown, ok_secs, @view["ok"][0], @view["ok"][1]]
+  end
+
+  # From on_update: the round's name goes, a step or a second passes.
+  def round_tick(now)
+    if @intro_until && now >= @intro_until
+      @intro_until = nil
+      @dirty = true
+    end
+    sig = rv_sig
+    return if sig.nil? || sig == @rv_sig
+    @rv_sig = sig
+    @dirty = true
+  end
+
+  def bit_count(n)
+    c = 0
+    while n > 0
+      c += n & 1
+      n >>= 1
+    end
+    c
+  end
+
+  # The bottom line of the result box: "OK を待っています (n/m) あと N 秒"
+  # and the own OK (the button, "待っています" once given, none while the
+  # steps run: a press shows the rest).
+  def ok_footer(bx, by, bw, bh)
+    ok = @view["ok"]
+    done = ok[0].to_i
+    m = bit_count(done | ok[1].to_i)
+    msg = "OK を待っています (#{bit_count(done)}/#{m})  あと #{ok_secs} 秒"
+    h = @xl ? 40 : u(20)
+    y = by + bh - h - (@xl ? 10 : 4)
+    fnt(12, @xl ? 2 : 1)
+    label = nil
+    if @seat && rv_shown >= rv_total
+      label = offer(A_NEXT) ? "OK[Enter]" : "待っています"
+    end
+    lw = label ? tw(label) + (@xl ? 24 : 12) : 0
+    x = bx + bw - (@xl ? 12 : 8) - lw
+    if label && offer(A_NEXT)
+      @xl ? xl_button(A_NEXT, [], x, y, lw, label) : button(A_NEXT, [], x, y, label, h)
+    elsif label
+      @gfx.fill_round_rect(x, y, lw, h, @xl ? 8 : 4, C_SEL)
+      text(x + (lw - tw(label)) / 2, y + (h - @fw) / 2, label, C_DIM)
+    end
+    room = x - bx - (@xl ? 32 : 16)
+    text(bx + (@xl ? 16 : 8), y + (h - @fw) / 2, fit(msg, room), C_DIM) if room > 40
+  end
+
+  # The round's name over the middle of the table while the host waits
+  # after the deal.
+  def draw_intro
+    return unless @intro_until && @view && @view["st"] == "play"
+    r = @view["r"]
+    return unless r.is_a?(Array) && r.size > 2
+    s = "#{WIND[r[0].to_i % 4]}#{r[1]}#{t(:mj_kyoku)} #{r[2]}#{t(:mj_honba)}"
+    size = @xl ? 5 : (@big ? 3 : 2)
+    fnt(12, size)
+    pad = 6 * size
+    w = tw(s) + pad * 2
+    h = @fw + pad * 2
+    cy = @xl ? 316 : (@big ? 168 : @h / 2)
+    x = @x0 + (@w - w) / 2
+    y = @y0 + cy - h / 2
+    @gfx.fill_round_rect(x, y, w, h, pad, C_BOX)
+    @gfx.draw_round_rect(x, y, w, h, pad, C_TURN)
+    text(x + pad, y + pad, s, C_TURN)
+    fnt(12, @k)
+    [x, y, w, h]
   end
 
   # ------------------------------------------------------------ the chosen tile and the help marks
@@ -997,6 +1166,7 @@ class MahjongApp < FmrbApp
     @note = "" if old && old["sv"] != v["sv"] && v["st"] != "wait"
     @sel = -1 if answering_call?
     shout_take(v, old)
+    round_take(v)
   end
 
   # ------------------------------------------------------------ the call buttons (MJ8)

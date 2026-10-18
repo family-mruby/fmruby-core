@@ -379,7 +379,9 @@ class MahjongApp < FmrbApp
     @xl_n_px = 0
     # A win's result waits while its shout shows (MJ6).
     res = @shout ? nil : (@view["res"] || @view["fin"])
-    screen = res ? "result #{@view['sv']} #{@view['st']}" : "table"
+    # The result's steps, seconds and OKs (MJ9) draw it again; so does
+    # the round's name going.
+    screen = res ? "result #{@view['sv']} #{@view['st']} #{rv_sig}" : (@intro_until ? "intro" : "table")
     full = @xl_items.nil? || @xl_screen != screen
     # A result stays as drawn (its box covers the table) until it goes.
     return if res && !full
@@ -529,6 +531,7 @@ class MahjongApp < FmrbApp
       @xl_shouts = draw_shout
     end
     @xl_sig[:shout] = shout
+    draw_intro if @intro_until && (full || !draws.empty? || redraw_board || redraw_status)
   end
 
   def xl_board_sig
@@ -850,6 +853,7 @@ class MahjongApp < FmrbApp
     wins = res.is_a?(Hash) && res["wn"].is_a?(Array) ? res["wn"] : []
     big = wins.size <= 2
     over = fin.is_a?(Array) && @view["st"] == "over"
+    shown = rv_shown
     fnt(12, 2)
     @xl_compact = false
     hgt = xl_result_height(res, wins, fin, big, over)
@@ -872,7 +876,10 @@ class MahjongApp < FmrbApp
       y += 30
       if k == "tsumo_agari" || k == "ron_agari"
         i = 0
+        before = 0
         while i < wins.size
+          @rv_k = shown - before
+          before += rv_steps(wins[i])
           y = xl_draw_win(wins[i], k, res["f"], x, y, big)
           i += 1
         end
@@ -883,7 +890,7 @@ class MahjongApp < FmrbApp
       unless over
         # Every seat: wind, name (and tenpai at a draw), before -> after, the change.
         lh = @xl_compact ? 26 : 30
-        i = 0
+        i = shown < rv_total ? 4 : 0 # the points after the count (MJ9)
         while i < 4
           l = score_line(i, res)
           cy = y + i * lh
@@ -907,9 +914,11 @@ class MahjongApp < FmrbApp
       end
       text(x, y, t(:mj_back_lobby), C_DIM)
     end
-    # The buttons (next) at the bottom right of the box.
+    # The buttons (next) at the bottom right of the box; with the OKs the
+    # OK line (MJ9).
     @buttons = []
     @xl_btn_rects = []
+    return ok_footer(bx, by, bw, hgt) if rv_on?
     list = @view["a"].is_a?(Array) ? @view["a"] : []
     bxr = bx + bw - 12
     i = list.size - 1
@@ -955,18 +964,20 @@ class MahjongApp < FmrbApp
   end
 
   def xl_draw_win(w, k, from, x, y, big)
-    text(x, y, fit(win_head(w, k, from), 768), C_TURN)
+    ys = w["y"].is_a?(Array) ? w["y"] : []
+    rk = @rv_k || 9999 # the steps of this winner shown (MJ9)
+    text(x, y, fit(win_head(w, k, from), 768), C_TURN) if rk > 0
     y += @xl_compact ? 28 : 34
     hc = bytes_of(w["h"])
     tw_ = big ? 48 : 24
     i = 0
-    while i < hc.size
+    while i < hc.size && rk > 0
       xl_draw_item(xl_tile_item(big, 0, hc[i], x + i * tw_, y, 0))
       i += 1
     end
-    xl_draw_item(xl_tile_item(big, 0, w["ag"].to_i, x + hc.size * tw_ + 12, y, 1))
+    xl_draw_item(xl_tile_item(big, 0, w["ag"].to_i, x + hc.size * tw_ + 12, y, 1)) if rk > 0
     # The melds after the winning tile, smaller when they would not fit.
-    ms = meld_lists(w["w"].to_i)
+    ms = rk > 0 ? meld_lists(w["w"].to_i) : []
     n = 0
     ms.each { |m| n += m.size }
     cx = x + (hc.size + 1) * tw_ + 12
@@ -981,26 +992,26 @@ class MahjongApp < FmrbApp
       end
     end
     y += (big ? 64 : 32) + (@xl_compact ? 6 : 10)
-    ys = w["y"].is_a?(Array) ? w["y"] : []
     cols, lh = xl_yaku_grid
     cw = 768 / cols
     fnt(16, 1) if @xl_compact
     i = 0
-    while i < ys.size
+    while i < ys.size && i < rk
       text_spaced(x + (i % cols) * cw, y + (i / cols) * lh, fit(yaku_label(w, i), cw - 8))
       i += 1
     end
     fnt(12, 2)
     y += ((ys.size + cols - 1) / cols) * lh
     pt = w["pt"].to_s
-    text_spaced(x, y, fit(pt, 768), C_TURN)
+    pt_on = rk > ys.size
+    text_spaced(x, y, fit(pt, 768), C_TURN) if pt_on
     pa = pao_text(w)
     unless pa.empty?
       if xl_pt_lines(w) == 1
-        text_spaced(x + tw(pt) + 8, y, pa, C_AWAY)
+        text_spaced(x + tw(pt) + 8, y, pa, C_AWAY) if pt_on
       else
         y += @xl_compact ? 26 : 30
-        text_spaced(x, y, fit(pa.strip, 768), C_AWAY)
+        text_spaced(x, y, fit(pa.strip, 768), C_AWAY) if pt_on
       end
     end
     y + (@xl_compact ? 28 : 36)

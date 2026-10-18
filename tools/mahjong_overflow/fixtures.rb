@@ -255,6 +255,51 @@ module MjFixtures
       out["result_#{k}"] = [v, "途中流局 (#{k})"]
     end
 
+    # 6b. MJ9: a result that waits for the OKs ("ok": the seats that gave
+    # it, the seats waited for, the ms left). The steps are set by
+    # check.rb's EXTRAS (the first view shows the first step).
+    v = Marshal.load(Marshal.dump(out["result_yakuman"][0]))
+    v["ok"] = [0b0010, 0b1101, 17_000]
+    out["result_ok_yakuman"] = [v, "OK 待ち: 役満の複合と包 (役を 1 つずつ)"]
+    v = Marshal.load(Marshal.dump(out["result_triple_ron"][0]))
+    v["ok"] = [0b0110, 0b1001, 38_000]
+    out["result_ok_triple"] = [v, "OK 待ち: 3 人の和了 (役 10 個ずつを 1 つずつ)"]
+    v = Marshal.load(Marshal.dump(out["result_triple_ron_closed"][0]))
+    v["ok"] = [0b0001, 0b1110, 9_000]
+    v["a"] = []
+    out["result_ok_given"] = [v, "OK を押したあと (待っています)、3 人の和了"]
+    v = Marshal.load(Marshal.dump(out["result_nagashi"][0]))
+    v["ok"] = [0, 0b1111, 11_000]
+    out["result_ok_draw"] = [v, "OK 待ち: 流し満貫の流局 (1 秒)"]
+    v = base(me: -1, st: "result")
+    v.delete("dl")
+    v["a"] = []
+    v["res"] = out["result_yakuman"][0]["res"]
+    v["fu"] = out["result_yakuman"][0]["fu"]
+    v["hc"] = [4, 13, 13, 13]
+    v["ok"] = [0b0011, 0b1100, 12_000]
+    out["result_ok_spectator"] = [v, "観戦の画面の OK 待ち (ボタンなし)"]
+
+    # 6c. MJ9: the round's name after the deal ("in"): a dealt hand, no clock.
+    v = base
+    v["r"] = [3, 4, 12, 9, 0, 70, 0, 0]
+    v["kw"] = ["".b] * 4
+    v["fu"] = ["".b] * 4
+    v["hc"] = [13, 13, 13, 13]
+    v["h"] = bin(%w[1m 2m 3m 4p 5p 6p 7s 8s 9s 1z 1z 2s 3s])
+    v["dt"] = -1
+    v["a"] = []
+    v.delete("dl")
+    v["in"] = 2000
+    out["intro"] = [v, "局の始まり: 北4局 12本場 (いちばん長い名前)"]
+    v = Marshal.load(Marshal.dump(v))
+    v["me"] = -1
+    v.delete("h")
+    v.delete("dt")
+    v["sh"] = [bin(%w[1m 2m 3m 4p 5p 6p 7s 8s 9s 1z 1z 2s 3s])] * 4
+    v["sd"] = [-1, -1, -1, -1]
+    out["intro_spectator"] = [v, "観戦の画面の局の始まり"]
+
     # 7. The end of the game.
     v = base(st: "over")
     v.delete("dl")

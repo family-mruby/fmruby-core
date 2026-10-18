@@ -167,6 +167,7 @@ module Panels
     draw_clock: ->(a, _) { ["clock", a.panel640(:clock)] },
     xl_draw_clock: ->(a, _) { ["buttons", a.xl_panel(:buttons)] },
     draw_shout_box: ->(_, _) { ["shout", :first, true] },
+    draw_intro: ->(_, _) { ["intro", :first, true] },
     draw_meld_tiles: ->(a, args) { ["melds#{args[0]}", a.panel640(:"melds#{args[0]}")] },
     draw_melds640_seat: ->(a, args) { ["melds#{args[0]}", a.panel640(:"melds#{args[0]}")] },
     draw_assist: ->(a, _) { ["assist", a.panel640(:assist)] },
@@ -468,7 +469,18 @@ EXTRAS = {
   "marks_red_five" => [["chosen_red", ->(a) { a.instance_variable_set(:@sel, 3) }],
                        ["chosen_five", ->(a) { a.instance_variable_set(:@sel, 13) }]],
   "assist_ukeire" => [["chosen", ->(a) { a.instance_variable_set(:@sel, 0) }],
-                      ["chosen_drawn", ->(a) { a.instance_variable_set(:@sel, 13) }]]
+                      ["chosen_drawn", ->(a) { a.instance_variable_set(:@sel, 13) }]],
+  # MJ9: the result by steps (the first view shows step 1; a second is a
+  # step): in the middle of the yaku, at the points, all shown with the OK
+  # to press; three winners in the second's yaku; the round's name at the
+  # start of a round (the first view has it).
+  "result_ok_yakuman" => [["step3", ->(a) { a.instance_variable_set(:@rv_at, 1_000_000 - 2500) }],
+                          ["points", ->(a) { a.instance_variable_set(:@rv_at, 1_000_000 - 5500) }],
+                          ["all", ->(a) { a.instance_variable_set(:@rv_all, true) }]],
+  "result_ok_triple" => [["second", ->(a) { a.instance_variable_set(:@rv_at, 1_000_000 - 14_500) }],
+                         ["all", ->(a) { a.instance_variable_set(:@rv_all, true) }]],
+  "result_ok_given" => [["all", ->(a) { a.instance_variable_set(:@rv_all, true) }]],
+  "result_ok_spectator" => [["all", ->(a) { a.instance_variable_set(:@rv_all, true) }]]
 }.freeze
 
 # MJ6: the recent games and a record, opened from the lobby (the live view

@@ -1033,6 +1033,7 @@ class MahjongApp < FmrbApp
     elsif m == :lobby
       lobby_key(k)
     elsif m == :table
+      return if rv_skip
       if @seat.nil?
         leave_table if k[0] == FmrbConst::KEY_ESC || k[1] == 27
       else
@@ -1193,6 +1194,7 @@ class MahjongApp < FmrbApp
   end
 
   def run_click(c)
+    return if mode == :table && rv_skip
     x = c[0]
     y = c[1]
     i = 0
@@ -1383,6 +1385,7 @@ class MahjongApp < FmrbApp
       draw_watch
       draw_shout
       draw_result if (@view["res"] || @view["fin"]) && !@shout
+      draw_intro
     elsif m == :retro
       text(@x0 + 8, @y0 + 8, t(:mj_title))
       text(@x0 + 8, @y0 + 26, t(:mj_retro))
@@ -1401,6 +1404,7 @@ class MahjongApp < FmrbApp
       draw_controls
       draw_shout
       draw_result if (@view["res"] || @view["fin"]) && !@shout
+      draw_intro
     end
     @gfx.present
     perf_note(:draw, Machine.board_millis - t0) if m == :table
@@ -1991,6 +1995,7 @@ class MahjongApp < FmrbApp
       Log.info("mahjong: pool #{FmrbApp.pool_used / 1024} KB (#{FmrbApp.pool_usage}%)")
     end
     shout_tick(now)
+    round_tick(now)
     if @deadline && (@deadline - now) / 1000 != @second
       @second = (@deadline - now) / 1000
       @dirty = true
