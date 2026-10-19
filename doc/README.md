@@ -79,6 +79,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `headless_s3/` [ヘッドレス Family mruby (ESP32-S3、AtomS3R)](headless_s3/plan.md) — **進行中 (H3 まで完了)** (2026-10-13) 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト 〔11 files〕
 - `hosted_mempool/` [ESP-Hosted の転送バッファの溜め込みをやめる](hosted_mempool/plan.md) — **完了** (2026-10-06) P4 の WiFi の通信で内蔵 RAM が戻らなくなる件。ESP-Hosted の mempool を切った (CONFIG_ESP_HOSTED_USE_MEMPOOL=n、採用済)。内蔵 RAM は戻り、細切れも減り、速さは変わらない。Tab5 の確認は device_check_backlog 〔3 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
+- `iot_demo/` [ゲーム以外の IoT 連携のデモ (アイデア)](iot_demo/ideas.md) — **アイデア** (2026-10-19) Asterism の認証の仕組み (証明書・ACL・役割・期限つきの招待・部屋) がしっかりしてきたので、ゲーム以外の IoT 連携のデモを強くしたい (ユーザ)。「誰が・いつまで・何をできるか」が目に見えるデモが映える。まだ計画ではない: 進めるときに plan.md を書く 〔1 files〕
 - `iram_reduction/` [内蔵 RAM の削減 (第 2 弾)](iram_reduction/plan.md) — **進行中** (2026-10-01) **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01) 〔7 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
