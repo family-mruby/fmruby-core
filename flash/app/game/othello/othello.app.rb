@@ -34,6 +34,10 @@
 # - The same game between two machines without a host is "Othello
 #   (direct)", flash/app/test/othello.app.rb (this file copies its board's
 #   drawing).
+# - A screen narrower than the window (Retro, 320x240: the window of
+#   .app.toml is 372x222 for Modern) asks for the whole screen instead, and
+#   the board and the panel are laid out on it (a smaller board); the list
+#   then has a close button (Ctrl+Q closes it too). Modern keeps its window.
 # - Keys. The list: up / down choose, Enter joins. At the table: arrows move
 #   the cursor, Enter plays there (in the lobby: the owner starts), s sits or
 #   stands, c puts the CPU in the empty seat (the owner; Jev back into the
@@ -65,6 +69,9 @@ class OthelloTableApp < FmrbApp
   C_CURSOR = 0xE0
   C_HINT = 0x6D
   C_LAST = 0xFC
+  # The window's width in .app.toml: a screen narrower than it is taken whole.
+  WINDOW_W = 372
+  CONF_FILE = "/etc/system_conf.toml"
 
   # The host's answers the screen shows.
   REASONS = {
@@ -79,6 +86,8 @@ class OthelloTableApp < FmrbApp
 
   def on_create
     @gfx.set_font(:ja, 12)
+    dw = conf_int("display_width")
+    request_fullscreen(true) if dw > 0 && dw < WINDOW_W
     @started = Machine.board_millis
     st = ::FmrbAsterism.settings
     @id = st.node
@@ -122,6 +131,19 @@ class OthelloTableApp < FmrbApp
   def on_resize(w, h)
     layout
     @dirty = true
+  end
+
+  # An integer setting of /etc/system_conf.toml (0 when it is not there).
+  def conf_int(key)
+    text = File.open(CONF_FILE, "r") { |f| f.read }
+    text.split("\n").each do |line|
+      next unless line.start_with?(key + " ") || line.start_with?(key + "=")
+      eq = line.index("=")
+      return eq ? line[eq + 1, line.length].to_s.strip.to_i : 0
+    end
+    0
+  rescue
+    0
   end
 
   def my_name
@@ -621,6 +643,7 @@ class OthelloTableApp < FmrbApp
     when :yes then send_cmd(:resign)
     when :no then @confirm = false
     when :leave then leave_table
+    when :quit then stop
     end
   end
 
@@ -740,6 +763,8 @@ class OthelloTableApp < FmrbApp
     by = @y0 + @user_area_height - 40
     text(x, by - 2, fit(@note, cols), theme_border)
     button(:join, x, by + 16, 90, "入る[Enter]") unless @table_list.empty?
+    # Taking the whole screen there is no window frame to close it by.
+    button(:quit, x + 96, by + 16, 90, "閉じる[Ctrl+Q]") if fullscreen?
   end
 
   def draw_board
