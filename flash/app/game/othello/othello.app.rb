@@ -22,6 +22,12 @@
 #   move. With a time per move (the host's turn_seconds) the CPU plays a
 #   move whose time ran out. After the game the board and the result stay
 #   until someone sits, stands or the owner starts again.
+# - AI players (GS13, asterism-games 0.17.0): when the host offers one
+#   (the lobby view's "ak": ["jev"] with its key, absent from older hosts)
+#   the owner may put Jev in the other seat (Jev[A]) or turn the CPU there
+#   into Jev; CPU[C] turns it back. The seats' "ai" names an AI seat
+#   ("[AI]"), and its move is shown as thinking. A host without "ak" gives
+#   the screen it always had.
 # - The connection is the machine's (FmrbAsterism.settings, as othello and
 #   mahjong): the router, the ID, a credentials .tar, the room's seat in
 #   the browser build. The player's name is the profile's (the ID without one).
@@ -30,7 +36,8 @@
 #   drawing).
 # - Keys. The list: up / down choose, Enter joins. At the table: arrows move
 #   the cursor, Enter plays there (in the lobby: the owner starts), s sits or
-#   stands, c puts the CPU in the empty seat (the owner), Esc leaves (asks
+#   stands, c puts the CPU in the empty seat (the owner; Jev back into the
+#   CPU), a puts Jev in the other seat (the owner, when offered), Esc leaves (asks
 #   to resign first while playing a seat); y / n answer. A click on a square
 #   plays there; the buttons take clicks.
 
@@ -66,7 +73,8 @@ class OthelloTableApp < FmrbApp
     "not waiting" => "対局中は席を変えられない", "taken" => "その席は埋まっている", "no seat" => "その席は無い",
     "not owner" => "卓の主だけができる", "seats" => "2 席がそろっていない", "no human" => "人が 1 人もいない",
     "no change" => "変わらない", "full" => "卓が満員", "spectators" => "観戦の人数が上限",
-    "identity" => "この部屋での名乗りが合わない (部屋のリンクを開き直す)"
+    "identity" => "この部屋での名乗りが合わない (部屋のリンクを開き直す)",
+    "no ai" => "その AI は今は選べない"
   }
 
   def on_create
@@ -379,10 +387,12 @@ class OthelloTableApp < FmrbApp
     return if @cmd_f || @token.nil?
     tok = @token
     px = proxy.async
+    o = other_seat
     @cmd_f = case what
              when :sit then px.sit(tok, -1)
              when :stand then px.stand(tok)
-             when :cpu then px.cpu(tok, -1, true)
+             when :cpu then o >= 0 && ai_seat?(o) ? px.cpu(tok, o, true) : px.cpu(tok, -1, true)
+             when :ai then ai_seat?(o) ? px.cpu(tok, o, true) : px.cpu(tok, o, ai_kinds[0])
              when :start then px.start(tok)
              when :resign then px.resign(tok)
              end
@@ -462,6 +472,37 @@ class OthelloTableApp < FmrbApp
     false
   end
 
+  # The AI players the host offers (the lobby view's "ak"; none from a
+  # host without them), as the mahjong app reads them.
+  def ai_kinds
+    ak = @view ? @view["ak"] : nil
+    ak.is_a?(Array) ? ak : []
+  end
+
+  def ai_seat?(i)
+    ai = @view ? @view["ai"] : nil
+    i >= 0 && ai.is_a?(Array) && !ai[i].to_s.empty?
+  end
+
+  def ai_label(kind)
+    kind == "claude" ? "Claude" : (kind == "jev" ? "Jev" : kind.to_s)
+  end
+
+  # The seat that is not this member's (-1 without a seat).
+  def other_seat
+    seated? ? 1 - me : -1
+  end
+
+  # Whether the owner's Jev[A] does something: an AI player offered and
+  # the other seat empty or the CPU's (Jev there: back to the CPU).
+  def ai_choice?
+    return false unless owner?
+    o = other_seat
+    sk = @view["sk"].is_a?(Array) ? @view["sk"] : [0, 0]
+    return true if ai_seat?(o)
+    !ai_kinds.empty? && sk[o] != 1
+  end
+
   def name_of(i)
     nm = @view ? @view["nm"] : nil
     n = nm.is_a?(Array) ? nm[i].to_s : ""
@@ -526,6 +567,8 @@ class OthelloTableApp < FmrbApp
       send_cmd(seated? ? :stand : :sit) unless playing?
     elsif ch == 99 || ch == 67  # c
       send_cmd(:cpu) unless playing?
+    elsif ch == 97 || ch == 65  # a
+      send_cmd(:ai) if !playing? && ai_choice?
     end
   end
 
@@ -572,6 +615,7 @@ class OthelloTableApp < FmrbApp
     when :sit then send_cmd(:sit)
     when :stand then send_cmd(:stand)
     when :cpu then send_cmd(:cpu)
+    when :ai then send_cmd(:ai)
     when :start then send_cmd(:start)
     when :resign then @confirm = true
     when :yes then send_cmd(:resign)
@@ -767,6 +811,7 @@ class OthelloTableApp < FmrbApp
       @gfx.draw_circle(x + 5, yy + 6, 5, theme_border)
       tags = ""
       tags += "*" if v["ow"] == i
+      tags += " [AI]" if ai_seat?(i)
       tags += " (自分)" if i == me
       tags += " 途切れ" if (aw >> i) & 1 == 1
       label = name_of(i) + tags
@@ -780,7 +825,9 @@ class OthelloTableApp < FmrbApp
     st = v["st"]
     case st
     in "play"
+      tn = v["tn"].to_i
       who = v["tn"] == me ? "あなたの番" : (v["tn"] == 0 ? "黒の番" : "白の番")
+      who = "#{name_of(tn)} が考え中" if ai_seat?(tn)
       text(x, yy, fit("#{who} (#{v['n'].to_i + 1} 手目)", n), v["tn"] == me ? C_CURSOR : theme_fg)
       if @deadline
         left = (@deadline - Machine.board_millis + 999) / 1000
@@ -825,7 +872,10 @@ class OthelloTableApp < FmrbApp
     elsif sk[0] != 1 || sk[1] != 1
       button(:sit, x, by2, 60, "座る[S]")
     end
-    button(:cpu, x + 66, by2, 60, "CPU[C]") if owner? && (sk[0] == 0 || sk[1] == 0)
+    button(:cpu, x + 66, by2, 60, "CPU[C]") if owner? && (sk[0] == 0 || sk[1] == 0 || ai_seat?(other_seat))
+    if ai_choice? && !ai_seat?(other_seat)
+      button(:ai, x + 66, by2 - 20, 60, "#{ai_label(ai_kinds[0])}[A]")
+    end
     button(:start, x, by, 60, "始める") if owner? && sk[0] != 0 && sk[1] != 0
     button(:leave, x + 66, by, 60, "出る")
   end
