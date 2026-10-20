@@ -641,7 +641,7 @@ class MahjongApp < FmrbApp
         text_spaced(x, y + 16 + i * 13, fit(fin_line(fin[i]), bw - 16))
         i += 1
       end
-      text(x, y + 70, t(:mj_back_lobby), C_DIM)
+      text(x, y + 70, back_lobby_text, C_DIM)
     end
     ok_footer(bx, by, bw, bh) if rv_on?
   end
@@ -1158,7 +1158,10 @@ class MahjongApp < FmrbApp
     r = v["r"]
     cur = r.is_a?(Array) && r.size > 7 ? r[6].to_i : -1
     turn = cur >= 0 ? "#{wind_of(cur)}家 (#{seat_name(cur)}) の番です" : ""
-    return "#{t(:mj_watching)}  #{turn}" if @seat.nil?
+    if @seat.nil?
+      return "#{t(:mj_watch_game)}  #{turn}" if v["wm"] == 1
+      return "#{t(:mj_watching)}  #{turn}"
+    end
     if calls_phase?
       return t(:mj_others) if @others
       return "鳴くかパス (Esc) を選んでください" unless offer(A_RON)
@@ -1428,6 +1431,12 @@ class MahjongApp < FmrbApp
     return if @m640_in
     @m640_in = true
     require "#{APP_DIR}/mahjong_640"
+  end
+
+  # The line under the end of a game: a watch game (GS15) goes back to the
+  # lobby by itself.
+  def back_lobby_text
+    @view && @view["wm"] == 1 ? t(:mj_watch_over) : t(:mj_back_lobby)
   end
 
   # ------------------------------------------------------------ the spectators' screen

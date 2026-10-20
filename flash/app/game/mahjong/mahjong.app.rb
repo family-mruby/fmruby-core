@@ -52,7 +52,9 @@
 #
 # Keys. The list of tables: up / down choose, Enter joins. The lobby: 1-4
 # sit in that seat, s stand, c fill the empty seats with CPUs (the owner),
-# Enter start (the owner), Esc leave the table, up / down choose a seat or
+# Enter start (the owner), w a watch game (the owner, seated or not: the
+# four seats CPUs or AI players; asterism-games 0.20.0 "Watch games", the
+# lobby view's "wc"), Esc leave the table, up / down choose a seat or
 # a local rule (the seats come before the first rule) and left / right
 # change it (the owner: a seat goes round empty, CPU and the AI players
 # the host offers, as a click on its button does; a click on a rule steps
@@ -137,6 +139,7 @@ class MahjongApp < FmrbApp
   B_SEAT = 111
   B_RECORDS = 112         # the recent games (MJ6, mahjong_replay.rb)
   B_QUIT = 113            # closes the app, as Ctrl+Q does (the list and the lobby)
+  B_WATCH = 114           # the owner starts a watch game (GS15)
   # The help this screen asks the host for (asterism-games README "Assist"):
   # 0 none, 1 the riichi discards and their waits, 2 every discard that
   # leaves the hand tenpai, 3 as 2 and else the shanten and the acceptance.
@@ -168,6 +171,8 @@ class MahjongApp < FmrbApp
       mj_humans: "参加", mj_cpus: "CPU", mj_free: "空き", mj_members: "人", mj_ai: "AI",
       mj_watching: "観戦中 (Esc で出る)", mj_others: "ほかの人の答えを待っています",
       mj_owner_starts: "4 席がそろったら卓の主が始める",
+      mj_watch: "観戦で始める[W]", mj_watch_ai: "観戦対局の AI は Claude 1 席・Jev 4 席まで",
+      mj_watch_over: "観戦対局: しばらくすると待ち合わせに戻る", mj_watch_game: "観戦対局",
       mj_back_lobby: "次へ: 卓の主が待ち合わせに戻す",
       mj_waits: "待ち", mj_total: "計", mj_mai: "枚", mj_help: "の牌を切るとテンパイ",
       mj_assist: "アシスト", mj_shanten: "向聴", mj_ukeire: "受け入れ", mj_kinds: "種",
@@ -185,7 +190,8 @@ class MahjongApp < FmrbApp
       "not owner" => "卓の主だけができる", "seats" => "4 席がそろっていない", "no human" => "人が 1 人もいない",
       "no change" => "変わらない", "full" => "卓が満員", "spectators" => "観戦の人数が上限",
       "value" => "選べない値", "no rule" => "その項目は無い", "no ai" => "その AI は今は出せない (鍵か 1 日の上限)",
-      "identity" => "この部屋での名乗りが合わない (部屋のリンクを開き直す)"
+      "identity" => "この部屋での名乗りが合わない (部屋のリンクを開き直す)",
+      "human" => "人が座っている (観戦対局は 4 席とも CPU か AI)", "ai limit" => "観戦対局の AI は Claude 1 席・Jev 4 席まで"
     }
     setup_rule_strings
   end
@@ -856,6 +862,7 @@ class MahjongApp < FmrbApp
              elsif kind == B_STAND then px.async.stand(@token)
              elsif kind == B_CPU_ON then px.async.cpu(@token, seat, ai || true)
              elsif kind == B_CPU_OFF then px.async.cpu(@token, seat, false)
+             elsif kind == B_WATCH then px.async.watch(@token)
              else px.async.start(@token)
              end
   rescue ::Asterism::Error => e
@@ -1003,8 +1010,21 @@ class MahjongApp < FmrbApp
     r.is_a?(Array) && r.size > 7 && r[7] == 2
   end
 
+  # The owner: "mo" says so in this member's own view (asterism-games
+  # 0.20.0: an owner without a seat too); an older host's "ow" is the
+  # owner's seat.
   def owner?
-    @view && @seat && @view["ow"] == @seat
+    return false unless @view
+    return true if @view["mo"] == 1
+    @seat && @view["ow"] == @seat
+  end
+
+  # The host says a watch game may start now (the lobby view's "wc": 1
+  # yes, 2 the seats are over the AI limit; none from an older host).
+  def watch_code
+    wc = @view ? @view["wc"] : nil
+    # (the app's VM has no nil.to_i)
+    wc.is_a?(Integer) ? wc : 0
   end
 
   def seat_kinds
@@ -1083,6 +1103,8 @@ class MahjongApp < FmrbApp
       lobby(B_STAND, -1)
     elsif ch == 99
       lobby(B_CPU_ON, -1) if owner?
+    elsif ch == 119
+      lobby(B_WATCH, -1) if owner? && watch_code == 1
     elsif ch == 97
       cycle_assist
     elsif ch == 110
@@ -1589,6 +1611,7 @@ class MahjongApp < FmrbApp
       case mb[i]
       in [name, Integer => seat, Integer => flags, *] if seat < 0
         w = "#{w} #{name}"
+        w = "#{w}(#{t(:mj_owner)})" if flags & 2 == 2
         w = "#{w}(#{t(:mj_away)})" if flags & 1 == 1
       else
       end
@@ -1598,14 +1621,26 @@ class MahjongApp < FmrbApp
     draw_rules
     y += u(22)
     cx = x
+    wc = watch_code
     if owner?
       cx += button(B_CPU_ON, [], cx, y, t(:mj_fill)) + u(6) if sk.index(0)
-      cx += button(B_START, [], cx, y, t(:mj_start)) + u(6) if sk.index(0).nil?
+      # Every seat a CPU or an AI player: a watch game (GS15) in place of
+      # the start, which needs a person.
+      if wc == 1
+        cx += button(B_WATCH, [], cx, y, t(:mj_watch)) + u(6)
+      elsif sk.index(0).nil? && sk.index(1)
+        # (the start needs a person seated)
+        cx += button(B_START, [], cx, y, t(:mj_start)) + u(6)
+      end
     end
     cx += button(B_LEAVE, [], cx, y, t(:mj_leave)) + u(6)
     cx += button(B_RECORDS, [], cx, y, t(:mj_records)) + u(6) if @big
     button(B_QUIT, [], cx, y, t(:mj_quit))
-    text(x + u(2), y + u(26), t(:mj_owner_starts), C_DIM) unless owner?
+    if !owner?
+      text(x + u(2), y + u(26), t(:mj_owner_starts), C_DIM)
+    elsif wc == 2
+      text(x + u(2), y + u(26), t(:mj_watch_ai), C_DIM)
+    end
     text(x + u(2), y + u(44), @note, C_TURN) unless @note.empty?
     y += u(@big ? 68 : 62)
     cx = x + button(B_ASSIST, [], x, y, assist_label) + u(8)

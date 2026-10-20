@@ -1076,7 +1076,7 @@ class MahjongApp < FmrbApp
         y += 30
         i += 1
       end
-      text(x, y, t(:mj_back_lobby), C_DIM)
+      text(x, y, back_lobby_text, C_DIM)
     end
     # The buttons (next) at the bottom right of the box; with the OKs the
     # OK line (MJ9).

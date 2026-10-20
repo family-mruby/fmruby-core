@@ -591,7 +591,10 @@ class MahjongApp < FmrbApp
       at = e["at"].to_s
       at = at.byteslice(5, at.bytesize - 5).to_s if at.bytesize > 5
       head = @big ? "#{at} #{e['game'] == 'tonpuu' ? '東風' : '半荘'}" : at
-      text(x, y, head, chosen ? C_TURN : C_TEXT)
+      # A watch game (GS15, asterism-games 0.20.0 "watch"): marked 観 after
+      # the length (640x360 and up), its time in cyan on the small screen.
+      head = "#{head}観" if @big && e["watch"]
+      text(x, y, head, chosen ? C_TURN : (e["watch"] ? C_KEEP : C_TEXT))
       cx = x + u(@big ? 112 : 70)
       nm = e["names"].is_a?(Array) ? e["names"] : []
       rk = e["ranks"].is_a?(Array) ? e["ranks"] : []
