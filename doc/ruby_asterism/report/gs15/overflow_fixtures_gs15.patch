@@ -1,0 +1,63 @@
+diff --git a/tools/mahjong_overflow/fixtures.rb b/tools/mahjong_overflow/fixtures.rb
+index 99f036f8..76f56b66 100644
+--- a/tools/mahjong_overflow/fixtures.rb
++++ b/tools/mahjong_overflow/fixtures.rb
+@@ -97,6 +97,7 @@ module MjFixtures
+     (1..20).map do |i|
+       { "id" => 21 - i, "at" => "2026-10-18 12:#{format('%02d', i)}", "game" => i.odd? ? "tonpuu" : "hanchan",
+         "names" => [LONG_JA, LONG_EN, LONG_JA, LONG_EN], "ranks" => [1, 2, 3, 4].rotate(i), "scores" => [123_400, -12_300, 100_900, -112_000].rotate(i) }
++        .tap { |e| e["watch"] = true if (i % 3).zero? } # GS15: a watch game is marked
+     end
+   end
+ 
+@@ -309,6 +310,12 @@ module MjFixtures
+     v["fin"] = [[0, 1, 123_400, 1084], [2, 2, 100_900, 659], [1, 3, -12_300, -673], [3, 4, -112_000, -1070]]
+     v["fr"] = "all_last_oya_tenpai"
+     out["over"] = [v, "終局 (6 桁と負の点、長い名前、理由)"]
++    # GS15: the end of a watch game, seen by a member without a seat.
++    w = v.dup
++    w["me"] = -1
++    w["a"] = []
++    w["wm"] = 1
++    out["over_watch"] = [w, "観戦対局の終局 (しばらくすると待ち合わせに戻る)"]
+ 
+     # 8. The spectators' screen: the four hands.
+     v = base(me: -1)
+@@ -322,6 +329,11 @@ module MjFixtures
+     v["a"] = []
+     v.delete("dl")
+     out["spectator"] = [v, "観戦: 4 人の手牌 (副露あり、手番の席に自摸の牌)"]
++    w = v.dup
++    w["wm"] = 1
++    w["sk"] = [2, 2, 2, 2]
++    w["hu"] = 0
++    out["spectator_watch_game"] = [w, "観戦対局: 4 人の手牌と「観戦対局」の行"]
+ 
+     v = base(me: -1)
+     v["fu"] = four_kans
+@@ -412,6 +424,25 @@ module MjFixtures
+     v = v.dup
+     v["me"] = 1
+     out["lobby_member"] = [v, "待ち合わせ: 卓の主でない人"]
++    # GS15: the owner without a seat, the four seats CPUs and AI players.
++    w = v.dup
++    w["me"] = -1
++    w["ow"] = -1
++    w["mo"] = 1
++    w["sk"] = [2, 2, 2, 2]
++    w["hu"] = 0
++    w["ai"] = ["claude", "jev", "jev", ""]
++    w["nm"] = %w[Claude Jev1 Jev2 CPU1]
++    w["aw"] = 0
++    w["ak"] = %w[claude jev]
++    w["wc"] = 1
++    w["mb"] = [[LONG_JA, -1, 3]] + (0...15).map { |i| ["#{LONG_JA[0, 8]}観戦#{i}", -1, i.odd? ? 1 : 0] }
++    out["lobby_watch_owner"] = [w, "待ち合わせ: 座っていない卓の主、4 席が CPU と AI (観戦で始める)"]
++    w = w.dup
++    w["ai"] = ["claude", "claude", "jev", ""]
++    w["nm"] = %w[Claude1 Claude2 Jev CPU1]
++    w["wc"] = 2
++    out["lobby_watch_ai_limit"] = [w, "待ち合わせ: 座っていない卓の主、Claude が 2 席 (上限の案内)"]
+     out
+   end
+ end
