@@ -243,26 +243,26 @@ app.instance_variable_set(:@snd_voices, { pon: "/v/pon.wav", ron: "/v/ron.wav", 
 app.instance_variable_set(:@snd_vo_on, true)
 app.instance_variable_set(:@snd_vo, [0, 0])
 Machine.now = 10_000
-app.snd_voice(:pon)
+eq "a voice that starts says so (no jingle)", app.snd_voice(:pon), true
 Machine.now = 10_200
 app.snd_voice(:ron)
 eq "a pon then a ron: both start, the ron last (it replaces the pon)", au.played, ["/v/pon.wav", "/v/ron.wav"]
 Machine.now = 10_400
-app.snd_voice(:chi)
+eq "a chi right after the ron: no voice (its jingle plays)", app.snd_voice(:chi), false
 eq "a chi right after the ron is not heard", au.played.size, 2
 Machine.now = 11_300
 app.snd_voice(:chi)
 eq "after the ron's time it is", au.played.last, "/v/chi.wav"
-app.snd_voice(:kan)
+eq "a word without a file: the jingle", app.snd_voice(:kan), false
 eq "a word without a file: nothing", au.played.size, 3
 app.instance_variable_set(:@snd_vo_on, false)
 Machine.now = 20_000
-app.snd_voice(:ron)
+eq "the switch off: the jingle", app.snd_voice(:ron), false
 eq "the switch off: nothing", au.played.size, 3
 app.instance_variable_set(:@snd_vo_on, true)
 app.instance_variable_set(:@snd_vo, [0, 0])
 au.answer = false
-app.snd_voice(:pon)
+eq "play_wav false (Retro): the jingle", app.snd_voice(:pon), false
 eq "play_wav false (Retro): nothing held", app.instance_variable_get(:@snd_vo), [0, 0]
 
 # The switch's label and the saved line.

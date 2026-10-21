@@ -20,8 +20,9 @@
 #   is silent (the fanfare plays alone). No tune: no BGM. FmrbMidi's
 #   MmlPlayer is not used: it plays on SUB, with the effects.
 # - The declarations' voices (C4, doc/commentary/report/c4.md): a WAV per
-#   declaration, played with FmrbAudio#play_wav over its jingle (Retro's
-#   play_wav is false: nothing more happens). Each of VOICE_NAMES is looked
+#   declaration, played with FmrbAudio#play_wav in place of its jingle (the
+#   jingle plays when no voice starts: the switch off, no file, a higher
+#   voice still on, or Retro's play_wav false). Each of VOICE_NAMES is looked
 #   for in VOICE_DIRS in order: the user's /home/voice/mahjong/ (a Tab5
 #   takes it without a reflash), the user's own voice the device image
 #   carries from flash_local/ (tools/mahjong_voice.rb, VOICEVOX), then the
@@ -393,8 +394,7 @@ class MahjongApp < FmrbApp
     snd_play(:round) if @intro_until && intro.nil?
     if @shout && !@shout.equal?(shout)
       j = snd_jingle(@shout[0])
-      snd_play(j)
-      snd_voice(j)
+      snd_play(j) unless snd_voice(j)
     end
     if st == "play" && old["st"] == "play"
       if snd_river_n(v) > snd_river_n(old)
@@ -472,19 +472,23 @@ class MahjongApp < FmrbApp
     now >= cur[1] || pri >= cur[0]
   end
 
-  # The declaration's voice, if there is one and the switch is on.
+  # The declaration's voice, if there is one and the switch is on; true
+  # when it started (the jingle is then left out).
   def snd_voice(name)
-    return unless @audio && @snd_vo_on && @snd_voices
+    return false unless @audio && @snd_vo_on && @snd_voices
     path = @snd_voices[name]
-    return unless path
+    return false unless path
     now = Machine.board_millis
     pri = VOICE_PRI[name] || 1
-    return unless snd_voice_ok?(pri, @snd_vo, now)
+    return false unless snd_voice_ok?(pri, @snd_vo, now)
     ok = @audio.play_wav(path)
     Log.info("mahjong: voice #{name} #{path} #{ok}")
-    @snd_vo = [pri, now + VOICE_HOLD_MS] if ok
+    return false unless ok
+    @snd_vo = [pri, now + VOICE_HOLD_MS]
+    true
   rescue => e
     Log.info("mahjong: voice #{name}: #{e.message}")
+    false
   end
 
   # The fanfare of this seat's rank (a spectator: the winner's); after a
