@@ -229,3 +229,28 @@ ruby tools/mahjong_sounds.rb --check ../asterism-games/lib/asterism_games/commen
   recording.md に足してよいかもしれない。
 - 最初のホストを止めたつもりで、記録していた pid が bundle の外側のものだったため、ホストが残っていた (2 つ目が「already on the
   network」で待った)。`ps` で見つけて pid で止めた。
+
+## 11. 追加: 1 手ごとの音は打牌だけ (9 章 1 の選択肢 3)
+
+ユーザが 9 章 1 の選択肢 3 を選んだ。アプリの観戦者と同じく、1 手で鳴るのは打牌の音 (discard_other) だけにし、ツモ (draw) と
+手番 (turn) の音は鳴らさない。ジングル (鳴き・リーチ・和了・流局)、局の始まり、points、終局のファンファーレはそのまま。
+
+- asterism-games main に 1 コミット: `2fe2c32 games 0.21.0: the commentary's effects as the app's spectator hears them`
+  (1b13f19 の上。版は 0.21.0 のまま。push・タグはしていない)。`MahjongSounds.effects` から draw と turn を外し
+  (`NAMES` と `TURN_DELAY_MS` も)、試験 (1 手は打牌だけ、ツモと手番の移りだけの様子は無音、記録した対局で draw と turn が 0)、
+  README の「The sound」、CHANGELOG 0.21.0 を直した。音のファイル (draw.wav・turn.wav) は道具が作るアプリの音の全部として残る。
+- 試験: `MJ_GAMES=4 bundle exec rake test` 405 runs / 0 failures / 4 skips、`bundle exec rake test:gem` 164 runs / 0 failures /
+  10 skips。
+- 記録した対局 (C1 の東風戦、383 の様子、5 局) での効果音の数:
+
+| | 前 (0.21.0 の最初) | 今 |
+|---|---|---|
+| 打牌 | 285 | 285 |
+| ツモ | 276 | 0 |
+| 手番 | 281 | 0 |
+| ジングルなど (ポン 5・リーチ 6・ロン 4・points 4・局 4・流局 1・終局 1) | 25 | 25 |
+| 計 | 867 | 310 |
+| 1 分あたり (実際の卓の長さ約 3.5 分で割る) | 約 248 | 約 89 |
+
+- 6.2 の録画 (57.9 秒) のログに当てはめると、鳴った 169 回から draw 53・turn 53 を除いて 63 回 (1 分あたり約 65 回、ほぼ打牌)。
+  新しい録画はしていない。
