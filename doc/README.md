@@ -63,7 +63,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_exit/` [アプリの終了の後始末 (mrb_close と、同じ Spinel アプリの同時起動)](app_exit/plan.md) — **進行中** (2026-10-03) E1 (mrb_close) と終了時の競合の修正は完了。E2 で入れた同じ Spinel アプリの同時起動の制限は、ユーザ未確認の仕様の変更 (退行) だったので E3 で外す。根本の直し (Spinel の変数をインスタンスごとに) は doc/spinel_multi_instance で計画 〔5 files〕
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
-- `asterism_recording/` [Asterism: アプリから頼むキーの記録](asterism_recording/plan.md) — **構想** (2026-10-21) console の記録 (V4、今は管理者が画面で手で始める) を、Asterism のオブジェクトとしてアプリから始め・止め・一覧できるようにする。誰が何を録れるか (権限) は未確定で、案を並べて決める 〔1 files〕
+- `asterism_recording/` [Asterism: アプリから頼むキーの記録](asterism_recording/plan.md) — **構想** (2026-10-21) console の記録 (V4、今は管理者が画面で手で始める) を、Asterism のオブジェクトとしてアプリから始め・止め・一覧できるようにする。誰が何を録れるか (権限) は未確定で、案を並べて決める 〔2 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `commentary/` [麻雀の実況 (PC の実況アプリ、宣言の声、AI のひとこと)](commentary/plan.md) — **計画済** (2026-10-20) ゲームホストの観戦用の様子 (GS14、手牌入り) を読んで、麻雀を実況する。まず PC の実況アプリ (ブラウザで卓を見る、決まりの実況、声)、つぎに AI のひとこと、端末の麻雀アプリの宣言の声 (WAV)。観戦者が増えたら、文章づくりをサーバへ移す 〔13 files〕
 - `desktop_icons/` [デスクトップにアプリのアイコンを並べる](desktop_icons/plan.md) — **進行中** (2026-10-18) 代表的なアプリをデスクトップの背景にアイコンで並べ、ダブルクリック (タップ) で起動する。DS1 で実装 (sim・ブラウザ版で確認済)。残りは Tab5 のタップ確認と実機の内蔵 RAM 比較 〔2 files〕
