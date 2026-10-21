@@ -32,8 +32,8 @@
 
 | 段 | 中身 | 誰が | まとめ方 |
 |---|---|---|---|
-| R1 | **手元を 3.4 に**: ruby-build を更新し、3.4 系の最新を rbenv に入れて global にする (3.2.6 は戻せるよう残す)。手元で使う gem (bundler・rbs など) を入れ直す。**全部のリポジトリの試験を 3.4 で一気に流す**: fmruby-core `rake test`、asterism・asterism-zenoh・asterism-games (`MJ_GAMES=4 bundle exec rake test`)・asterism-console の試験、picoruby-asterism-zenoh の host 試験、ルートの道具 (`ruby tools/...` の --help 程度) と MCP サーバの起動。落ちたものを直す | サブ Opus (指示書)、親が検収 | 1 回で |
-| R2 | **リポジトリの版を上げる**: console の `.ruby-version` と Dockerfile、games の Dockerfile を 3.4 系の最新に。asterism・asterism-zenoh・asterism-games の gemspec の下限を `>= 3.4` に、CI を 3.4 と 4.0 に。手元で両方の image を作り、中の `ruby -v`、試験、信頼リスト (G3 が無いこと) を確かめる | 同上 (R1 と同じサブで続けて) | R1 と一緒に |
+| R1 (完了 2026-10-22、report/r1.md: 3.4.11、全リポジトリの試験が通った。3.4 で壊れたのは console の image の起動 1 件 (RubyGems 3.6 が Gemfile.lock の Bundler 4.0.6 に切り替え、lock を touch して root の持ち物で止まる → lock を rails の持ち物に)) | **手元を 3.4 に**: ruby-build を更新し、3.4 系の最新を rbenv に入れて global にする (3.2.6 は戻せるよう残す)。手元で使う gem (bundler・rbs など) を入れ直す。**全部のリポジトリの試験を 3.4 で一気に流す**: fmruby-core `rake test`、asterism・asterism-zenoh・asterism-games (`MJ_GAMES=4 bundle exec rake test`)・asterism-console の試験、picoruby-asterism-zenoh の host 試験、ルートの道具 (`ruby tools/...` の --help 程度) と MCP サーバの起動。落ちたものを直す | サブ Opus (指示書)、親が検収 | 1 回で |
+| R2 (完了 2026-10-22: asterism a251807・asterism-zenoh 8231a77・asterism-games 14a5758・asterism-console 9082e65、未 push。image は Debian 13、G3 無し) | **リポジトリの版を上げる**: console の `.ruby-version` と Dockerfile、games の Dockerfile を 3.4 系の最新に。asterism・asterism-zenoh・asterism-games の gemspec の下限を `>= 3.4` に、CI を 3.4 と 4.0 に。手元で両方の image を作り、中の `ruby -v`、試験、信頼リスト (G3 が無いこと) を確かめる | 同上 (R1 と同じサブで続けて) | R1 と一緒に |
 | R3 | **公開**: 各リポジトリの push、console と games の版を上げてタグ (CI が ghcr に image を出す)、gemspec を変えたなら asterism・asterism-zenoh の gem の公開 | push・タグはユーザの許可、gem push はユーザ | 許可をもらって 1 回で |
 | R4 | **VPS に入れる**: console (0.3.9 → 新しい版) と games (0.20.0 → 新しい版) を**1 本のスクリプトで**入れ替える。中の `ruby -v`、G3 が無いこと、console の画面、部屋・卓、AI の 1 回の呼び出し、MCP からの網の見え方を確かめる | スクリプトは親、流すのはユーザ (sudo) | 1 回で |
 | R5 | **残り**: tdiary のコンテナの Ruby の版 (IP 制限の内側なので急がない)、asterism-watch (非公開リポ) の CI の版、手元から 3.2.6 を消すか | 親 | 必要なら |
@@ -55,5 +55,4 @@ image は rubygems の今の版の asterism 系 gem を使う (`>= 3.2` の版�
 
 ## 未確定事項
 
-1. 3.4 系の最新の番号: R1 の着手時に ruby-build の一覧と ruby-lang.org で確かめる (2026-03-11 の 3.4.9 より新しいものが出ているかもしれない)。
-2. 各版の番号 (R3 で決める): gem は下限を変えるので次のマイナー (asterism 0.11.0、asterism-zenoh 0.5.0、asterism-games 0.22.0 の案)、console は 0.3.11 の案。
+1. 各版の番号 (R3 で決める): gem は下限を変えるので次のマイナー (asterism 0.11.0、asterism-zenoh 0.5.0、asterism-games 0.22.0 の案)、console は 0.3.11 の案。
