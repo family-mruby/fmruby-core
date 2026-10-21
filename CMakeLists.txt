@@ -55,6 +55,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
     # sample services and both lists are in the tree because the simulator and
     # the Modern image want them; a Retro image must not carry them, so they
     # come back out of the staged copy here. The files themselves stay in git.
+    # The mahjong declarations' voices (WAVs, the bundled ones and a
+    # flash_local/ one) go too: Retro's play_wav does not play.
     include(${CMAKE_SOURCE_DIR}/components/fmrb_common/fmrb_hw_defines.cmake)
     fmrb_hw_family_is_modern(FMRB_IMAGE_IS_MODERN)
     if(NOT FMRB_IMAGE_IS_MODERN)
@@ -64,7 +66,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
             COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/usr/share/services
             COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/etc/services.toml
             COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/etc/secrets.toml
-            COMMENT "Retro image: leaving the service host's files out")
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/usr/share/sounds/voice/mahjong
+            COMMENT "Retro image: leaving the service host's files and the voices out")
     endif()
     # What a board leaves out of its image: config/storage_exclude_<target>.txt
     # (target lower-cased, e.g. storage_exclude_atoms3r.txt), one path per
