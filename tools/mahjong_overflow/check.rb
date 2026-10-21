@@ -424,6 +424,13 @@ def run_switch(from, to, w, h)
         .map { |p| "stale: #{desc(p)}" }.uniq
 end
 
+# The declarations' voices (C4): every one found, from two directories.
+def voice_on(app)
+  app.instance_variable_set(:@snd_voices, app.class::VOICE_NAMES.to_h { |n| [n, "/home/voice/mahjong/#{n}.wav"] })
+  app.instance_variable_set(:@snd_credit, "VOICEVOX:ずんだもん / Open JTalk (Mei, CC BY 3.0)")
+  app.instance_variable_set(:@snd_vo_on, true)
+end
+
 # Extra drawings of some cases: [suffix, preparation].
 EXTRAS = {
   "lobby_owner" => [["page2", ->(a) { a.instance_variable_set(:@rule_page, 1) if a.respond_to?(:rule_pages) }],
@@ -435,7 +442,13 @@ EXTRAS = {
                     }],
                     # MJ12: the BGM's other levels (low is the default).
                     ["bgm_mid", ->(a) { a.instance_variable_set(:@snd_bgm, 2) }],
-                    ["bgm_high", ->(a) { a.instance_variable_set(:@snd_bgm, 3) }]],
+                    ["bgm_high", ->(a) { a.instance_variable_set(:@snd_bgm, 3) }],
+                    # C4: the voices' switch and the longest credit (two directories used).
+                    ["voice", ->(a) { voice_on(a) }],
+                    ["voice_off", lambda { |a|
+                      voice_on(a)
+                      a.instance_variable_set(:@snd_vo_on, false)
+                    }]],
   "lobby_member" => [["name_ascii", ->(a) { a.instance_variable_set(:@name, "WWWWWWWWWWWW") }],
                      ["title", ->(a) { a.instance_variable_set(:@title_until, 2_000_000) }],
                      ["list_prompt", lambda { |a|
@@ -462,6 +475,14 @@ EXTRAS = {
                        a.instance_variable_set(:@table_list, tables)
                        a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
                        a.instance_variable_set(:@snd_bgm, 3)
+                     }],
+                     ["list_voice", lambda { |a|
+                       tables = %w[games-host-aaaaaa/games/mahjong1 games/games/mahjong9]
+                       a.instance_variable_set(:@table, nil)
+                       a.instance_variable_set(:@table_list, tables)
+                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
+                       a.instance_variable_set(:@snd_bgm, 3)
+                       voice_on(a)
                      }],
                      ["list_searching", lambda { |a|
                        a.instance_variable_set(:@table, nil)

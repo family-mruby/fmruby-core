@@ -1647,7 +1647,7 @@ class MahjongApp < FmrbApp
     text(cx, y + u(4), @assist_notes[@assist], C_DIM) if @big
     if @big
       draw_name_button(x, y + u(28), @w - u(16))
-      snd_buttons(x, y + u(56))
+      snd_credit(snd_buttons(x, y + u(56)), y + u(56))
     else
       cx = snd_buttons(cx, y)
       draw_name_button(cx, y, @x0 + @w - cx - u(8))

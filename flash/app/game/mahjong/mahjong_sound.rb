@@ -19,15 +19,24 @@
 #   TENSE_LEFT tiles left; without a tune it is :play). The end of a game
 #   is silent (the fanfare plays alone). No tune: no BGM. FmrbMidi's
 #   MmlPlayer is not used: it plays on SUB, with the effects.
-# - Tunes and voices (a WAV in place of a jingle, Modern only; Retro and a
-#   failed play_wav fall back to the jingle) come from BGM / VOICE below,
-#   and /home/mahjong.toml over them:
+# - The declarations' voices (C4, doc/commentary/report/c4.md): a WAV per
+#   declaration, played with FmrbAudio#play_wav over its jingle (Retro's
+#   play_wav is false: nothing more happens). Each of VOICE_NAMES is looked
+#   for in VOICE_DIRS in order: the user's /home/voice/mahjong/ (a Tab5
+#   takes it without a reflash), the user's own voice the device image
+#   carries from flash_local/ (tools/mahjong_voice.rb, VOICEVOX), then the
+#   bundled Open JTalk voice (tools/mahjong_voice_default.rb). The credit of
+#   each directory used is shown in the lobby. Declarations close together
+#   (a pon and a ron) keep the higher of VOICE_PRI for VOICE_HOLD_MS.
+# - Tunes (and a voice of one's own per jingle) come from BGM below, and
+#   /home/mahjong.toml over them:
 #     bgm_lobby = "/home/music/lobby.fmsq"   bgm_play_track = 2 (an NSF's track)
-#     voice_riichi = "/home/voice/riichi.wav"
+#     voice_riichi = "/home/voice/riichi.wav"   (voice_kyuushu, voice_ryuukyoku too)
 # - The player's switches are in /home/mahjong.toml (save_assist writes
 #   them): "bgm" is the BGM's level (MJ12) 0 off, 1 low (the default),
 #   2 mid, 3 high -- an older file's true reads as low and false as off --
-#   and "se" the effects (the jingles are effects) on or off, on by default.
+#   "se" the effects (the jingles are effects) on or off, on by default,
+#   and "voice" the declarations' voices on or off, on by default.
 #   The level is FmrbAudio#main_volume (the MAIN instance only, so the
 #   effects on SUB keep theirs); the kernel puts it back to 100 when the
 #   app ends.
@@ -35,6 +44,7 @@
 class MahjongApp < FmrbApp
   B_BGM = 130
   B_SE = 131
+  B_VOICE = 132
   SND_CH = 4              # pulse1, pulse2, triangle, noise (FmrbAudio::CH_*)
   TENSE_LEFT = 10         # :tense from this many tiles left (or a riichi)
   BGM_SLOT = { lobby: 12, play: 13, tense: 14 }.freeze # FMSQ slots (machine-wide)
@@ -50,8 +60,16 @@ class MahjongApp < FmrbApp
   BGM = { lobby: ["/usr/share/sounds/nsf/after_the_rain.nsf", 0],
           play: ["/usr/share/sounds/nsf/spring_thing.nsf", 0],
           tense: ["/usr/share/sounds/nsf/encounter.nsf", 0] }.freeze
-  # A WAV per jingle (nil: the jingle).
-  VOICE = { riichi: nil, pon: nil, chi: nil, kan: nil, ron: nil, tsumo: nil, kyuushu: nil, ryuukyoku: nil }.freeze
+  # The declarations with a voice (NAME.wav), and where they are looked for:
+  # [directory, its credit] (nil: the first line of its CREDITS.txt when that
+  # names VOICEVOX, else VOICE_CREDIT -- the voice users make, chosen
+  # 2026-10-21).
+  VOICE_NAMES = [:riichi, :pon, :chi, :kan, :tsumo, :ron].freeze
+  VOICE_DIRS = [["/home/voice/mahjong", nil], ["/usr/share/sounds/voice/mahjong", nil],
+                ["/usr/share/sounds/voice/mahjong/default", "Open JTalk (Mei, CC BY 3.0)"]].freeze
+  VOICE_CREDIT = "VOICEVOX:ずんだもん"
+  VOICE_PRI = { riichi: 1, kyuushu: 1, chi: 2, pon: 3, kan: 4, tsumo: 5, ron: 6, ryuukyoku: 6 }.freeze
+  VOICE_HOLD_MS = 1000
   SND_KEYS = ["bgm_lobby", "bgm_play", "bgm_tense", "voice_riichi", "voice_pon", "voice_chi", "voice_kan",
               "voice_ron", "voice_tsumo", "voice_kyuushu", "voice_ryuukyoku"].freeze
 
@@ -101,7 +119,16 @@ class MahjongApp < FmrbApp
     @snd_conf = {}
     @snd_bgm = BGM_DEFAULT
     @snd_se = true
+    @snd_vo_on = true
+    @snd_vo = [0, 0]        # the voice playing: [its VOICE_PRI, until (ms)]
     snd_load_conf
+    found = snd_find_voices(VOICE_DIRS)
+    @snd_voices = found[0]
+    @snd_credit = found[1]
+    VOICE_PRI.each do |n, _|
+      w = @snd_conf["voice_#{n}"]
+      @snd_voices[n] = w if w && !w.empty?
+    end
     @audio = nil
     @audio = FmrbAudio.new(self)
     snd_bgm_volume
@@ -123,6 +150,8 @@ class MahjongApp < FmrbApp
           @snd_bgm = snd_bgm_level(v)
         elsif k == "se"
           @snd_se = v != "false" && v != "0"
+        elsif k == "voice"
+          @snd_vo_on = v != "false" && v != "0"
         elsif v.size >= 2 && v[0] == "\"" && v[v.size - 1] == "\""
           @snd_conf[k] = v[1, v.size - 2] if SND_KEYS.index(k)
         elsif k.size > 6 && k[k.size - 6, 6] == "_track"
@@ -137,8 +166,8 @@ class MahjongApp < FmrbApp
   # What save_assist adds to ASSIST_FILE: the switches and the tunes and
   # voices the player named there.
   def snd_lines
-    s = "# Sound: the BGM's level (0 off, 1 low, 2 mid, 3 high), the effects on (true) or off (false)\n" +
-        "bgm = #{@snd_bgm}\nse = #{@snd_se}\n"
+    s = "# Sound: the BGM's level (0 off, 1 low, 2 mid, 3 high), the effects and the voices on (true) or off (false)\n" +
+        "bgm = #{@snd_bgm}\nse = #{@snd_se}\nvoice = #{@snd_vo_on != false}\n"
     @snd_conf.each do |k, v|
       s = v.is_a?(String) ? "#{s}#{k} = \"#{v}\"\n" : "#{s}#{k} = #{v}\n"
     end
@@ -183,6 +212,19 @@ class MahjongApp < FmrbApp
     Log.info("mahjong: se #{@snd_se}")
   end
 
+  def snd_toggle_voice
+    @snd_vo_on = !@snd_vo_on
+    unless @snd_vo_on
+      @audio.stop_wav if @audio
+      @snd_vo = [0, 0]
+    end
+    save_assist
+    @dirty = true
+    Log.info("mahjong: voice #{@snd_vo_on}")
+  rescue => e
+    Log.info("mahjong: voice: #{e.message}")
+  end
+
   # Every effect stops (the pending notes, the four channels, a WAV).
   def snd_quiet
     return unless @audio
@@ -210,23 +252,36 @@ class MahjongApp < FmrbApp
 
   # ------------------------------------------------------------ the buttons (the list and the lobby)
 
+  # The switches' labels; the voice's only while there is one.
   def snd_labels
-    ["BGM #{BGM_NAMES[@snd_bgm || BGM_DEFAULT]}[B]", "効果音 #{@snd_se == false ? '切' : '入'}[E]"]
+    l = ["BGM #{BGM_NAMES[@snd_bgm || BGM_DEFAULT]}[B]", "効果音 #{@snd_se == false ? '切' : '入'}[E]"]
+    l << "声 #{@snd_vo_on == false ? '切' : '入'}[V]" if @snd_voices && !@snd_voices.empty?
+    l
   end
 
-  # The two switches from x; returns the x after them.
+  # The switches from x; returns the x after them.
   def snd_buttons(x, y)
     l = snd_labels
     x += button(B_BGM, [], x, y, l[0]) + u(6)
-    x + button(B_SE, [], x, y, l[1]) + u(6)
+    x += button(B_SE, [], x, y, l[1]) + u(6)
+    x += button(B_VOICE, [], x, y, l[2]) + u(6) if l.size > 2
+    x
   end
 
   def snd_buttons_w
-    l = snd_labels
-    tw(l[0]) + tw(l[1]) + u(36)
+    w = 0
+    snd_labels.each { |s| w += tw(s) + u(18) }
+    w
   end
 
-  # B or E in the list and the lobby (not while a name is typed).
+  # The voices' credit (the VOICEVOX terms, the voice's licence) right of
+  # the lobby's switches at (x, y), while a voice file is used.
+  def snd_credit(x, y)
+    return unless @snd_credit && @snd_vo_on != false
+    text(x + u(2), y + u(4), fit("声: #{@snd_credit}", @x0 + @w - x - u(10)), C_DIM)
+  end
+
+  # B, E or V (with voices) in the list and the lobby (not while a name is typed).
   def snd_key(k)
     return false if @name_edit
     ch = k[1]
@@ -235,6 +290,8 @@ class MahjongApp < FmrbApp
       snd_toggle_bgm
     elsif ch == 101
       snd_toggle_se
+    elsif ch == 118 && @snd_voices && !@snd_voices.empty?
+      snd_toggle_voice
     else
       return false
     end
@@ -243,12 +300,9 @@ class MahjongApp < FmrbApp
 
   # ------------------------------------------------------------ effects
 
-  # Starts a sound (at the next snd_tick, plus delay ms). A jingle with a
-  # voice tries the WAV first.
+  # Starts a sound (at the next snd_tick, plus delay ms).
   def snd_play(name, delay = 0)
     return unless @audio && @snd_se
-    w = @snd_conf["voice_#{name}"] || VOICE[name]
-    return if w && delay == 0 && @audio.play_wav(w)
     @snd_req << [name, delay]
     Log.info("mahjong: sfx #{name}")
   rescue => e
@@ -337,7 +391,11 @@ class MahjongApp < FmrbApp
     return if old.nil?
     st = v["st"]
     snd_play(:round) if @intro_until && intro.nil?
-    snd_play(snd_jingle(@shout[0])) if @shout && !@shout.equal?(shout)
+    if @shout && !@shout.equal?(shout)
+      j = snd_jingle(@shout[0])
+      snd_play(j)
+      snd_voice(j)
+    end
     if st == "play" && old["st"] == "play"
       if snd_river_n(v) > snd_river_n(old)
         ls = v["ls"]
@@ -368,6 +426,65 @@ class MahjongApp < FmrbApp
     return :kyuushu if type == A_KYUUSHU
     return :pon if type == A_PON
     type == A_CHI ? :chi : :kan
+  end
+
+  # ------------------------------------------------------------ the voices (C4)
+
+  # [{name => path}, the credits joined or nil]: each of VOICE_NAMES from
+  # the first of dirs that has it.
+  def snd_find_voices(dirs)
+    found = {}
+    used = []
+    VOICE_NAMES.each do |n|
+      i = 0
+      while i < dirs.size
+        p = "#{dirs[i][0]}/#{n}.wav"
+        if File.exist?(p)
+          found[n] = p
+          used << i unless used.index(i)
+          break
+        end
+        i += 1
+      end
+    end
+    credits = []
+    used.sort.each do |i|
+      c = dirs[i][1] || snd_credit_file(dirs[i][0]) || VOICE_CREDIT
+      credits << c unless credits.index(c)
+    end
+    [found, credits.empty? ? nil : credits.join(" / ")]
+  end
+
+  # The first line of dir/CREDITS.txt when it is a VOICEVOX credit
+  # (tools/mahjong_voice.rb writes "VOICEVOX:<character>").
+  def snd_credit_file(dir)
+    l = nil
+    File.open("#{dir}/CREDITS.txt", "r") { |f| l = f.read.to_s.split("\n")[0].to_s.strip }
+    l && l.size > 9 && l[0, 9] == "VOICEVOX:" ? l : nil
+  rescue
+    nil
+  end
+
+  # Whether a voice of priority pri may start now over the one in cur
+  # ([priority, until]): a higher or equal one replaces it, a lower one
+  # waits until it is over.
+  def snd_voice_ok?(pri, cur, now)
+    now >= cur[1] || pri >= cur[0]
+  end
+
+  # The declaration's voice, if there is one and the switch is on.
+  def snd_voice(name)
+    return unless @audio && @snd_vo_on && @snd_voices
+    path = @snd_voices[name]
+    return unless path
+    now = Machine.board_millis
+    pri = VOICE_PRI[name] || 1
+    return unless snd_voice_ok?(pri, @snd_vo, now)
+    ok = @audio.play_wav(path)
+    Log.info("mahjong: voice #{name} #{path} #{ok}")
+    @snd_vo = [pri, now + VOICE_HOLD_MS] if ok
+  rescue => e
+    Log.info("mahjong: voice #{name}: #{e.message}")
   end
 
   # The fanfare of this seat's rank (a spectator: the winner's); after a
@@ -505,6 +622,8 @@ class MahjongApp < FmrbApp
       snd_toggle_bgm
     elsif type == B_SE
       snd_toggle_se
+    elsif type == B_VOICE
+      snd_toggle_voice
     else
       snd_base_run_button(type, tiles)
     end
