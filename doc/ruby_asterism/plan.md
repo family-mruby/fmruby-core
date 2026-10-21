@@ -405,13 +405,10 @@ console は数値のフィールドを線グラフにでき (V3 の生の値、V
 
 **形を知る仕組み (網の決まりに足す、2026-10-21 ユーザ「プロトコルを更新しても追加すべき」)**: Asterism のキーは MessagePack で型を運ばず、Zenoh の encoding も使わない (protocol.md 3 章・9 章)。今は V3 が最初の値から推し量っている。アプリが自分の出すキーの形を宣言する口を足す。
 
-- 案 1 (推): アプリごとの宣言の鍵 `asterism/<node>/<app>/@keys` (status (8 章) と同じ作り: queryable で答え、変わったら put)。中身は `{"<object>/<more>" => {"type" => 形, "doc" => 説明, "unit" => 単位, ...}}`。予約済みの `asterism/<node>/<app>/@profile` に入れる手もある。
-- 案 2: put の値そのものに型の印を付ける (包む)。値ごとに分かるが、全部の put が太り、今のアプリが読めなくなる。
-- 形の名前: 組み込みの小さな語彙 (number、vector3、pose2d、image/jpeg、image/png、state、text、log) と、アプリの名前空間つきの名前 (例 `asterism-games/board.strokes`) に、任意でフィールドの形を付ける。ROS 2 のトピックは型名があるので、それで表示を選ぶ。
-- 端末 (picoruby-asterism) の側は、queryable を 1 つ増やすと zenoh-pico の資源と RAM を使う。内蔵 RAM を増やさない方針に照らして、増分を測ってから決める (status の queryable と相乗りできないかも見る)。
+- **2026-10-21 の方針**: 互換性を考えず、protocol 2 としてデータの決まりを作る (protocol2_design.md)。形式は Zenoh の encoding (MessagePack は付けない、画像は決まった番号)、型は流す口の宣言 (`@pubs`) に 1 回だけ、通し番号は attachment。
 - 宣言の無いキーは今どおり推し量る。
 
-**段 (案)**: (1) 形の宣言を網の決まりに足す (asterism の protocol.md・適合の試験・CRuby と端末の実装)。(2) console の生の値の表示を形で選ぶ (軌跡・帯・画像)。(3) 記録 (V4) の時間の帯に同じ表示を載せる。(4) アプリ固有の描き手 (お絵かき)。記録の権限 (V6、doc/asterism_recording/) とは独立に進められる。
+**段 (案)**: (1) 形の宣言を網の決まりに足す (protocol2_design.md の P0-P3)。(2) console の生の値の表示を形で選ぶ (軌跡・帯・画像)。(3) 記録 (V4) の時間の帯に同じ表示を載せる。(4) アプリ固有の描き手 (お絵かき)。記録の権限 (V6、doc/asterism_recording/) とは独立に進められる。
 
 ## C8: コンパイラの case/in の直しと gem 0.4.0 (完了 2026-10-09)
 
