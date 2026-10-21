@@ -391,6 +391,7 @@ V2.2 では、端末か CRuby かを名前の決まり (`fmruby-XXXXXX` / `linux
 | V3 (完了 2026-10-09、console の docs/v3.md) | 見る道具: 数値のフィールド (例: `/cmd_vel` の `linear.x`) の時間の線グラフ。ログの一覧 (`/rosout` と機体のログ、重要度・送り手で絞る) | rqt_plot、rqt_console |
 | V4 (完了 2026-10-09、console の docs/v4.md) | 記録と再生: 選んだキーを MCAP で記録し、時間の帯で見て再生する。ROS 2 は CDR のまま、Asterism は MessagePack のまま 1 つのファイルに入れる (ros2 bag と Foxglove でも開ける)。網の構造の変化も時刻付きで記録し、グラフを巻き戻せる。再生は本物の網に流すか、画面の中だけで見るかを選べる。MCAP の読み書きは Ruby で書く (公式の Ruby の部品は無い) | rosbag (ros2 bag)、rqt_bag |
 | V5 | 網のための irb: 画面の中で Ruby を書き、網のオブジェクトや記録を触る。強い権限なので管理者だけ、記録付き | (無い。Ruby ならでは) |
+| V6 (構想 2026-10-21、doc/asterism_recording/plan.md) | アプリから頼むキーの記録: console の記録を Asterism のオブジェクトとして出し、アプリが権限つきで始め・止め・一覧する。権限 (誰がどのキーを録れるか・誰が見られるか・知らせ) は未確定 | rosbag の record をサービスで呼ぶ形 |
 
 ## C8: コンパイラの case/in の直しと gem 0.4.0 (完了 2026-10-09)
 
