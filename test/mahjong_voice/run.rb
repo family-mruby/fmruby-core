@@ -4,8 +4,8 @@
 # The tools' pure parts (tools/mahjong_voice.rb: the words, the character's
 # number by name, the query's rate, the WAV header, the credits, the guide
 # when VOICEVOX is not there; tools/mahjong_voice_default.rb's credits and
-# the shipped default WAVs), and the app's side (mahjong_sound.rb, loaded
-# as it ships into a stand-in MahjongApp): which declaration plays which
+# the shipped default WAVs; the peak normalisation of C4b), and the app's
+# side (mahjong_sound.rb, loaded as it ships into a stand-in MahjongApp): which declaration plays which
 # file, where the files are looked for and in which order, the credit, and
 # which of two close declarations is heard.
 #
@@ -102,6 +102,52 @@ raises("an engine that is not there", /Errno::ECONNREFUSED|Connection refused|Op
 end
 raises("not an http URL", /not an http/) { MahjongVoice::Client.new("ftp://x") }
 
+# ---- the normalisation (C4b) ---------------------------------------------------
+
+puts "== peak normalisation"
+# A WAV whose samples are the given values.
+def pcm_wav(samples)
+  w = wav(frames: samples.size)
+  off, = MahjongVoice.data_chunk(w)
+  w[off, samples.size * 2] = samples.pack("s<*")
+  w
+end
+
+def samples_of(w)
+  off, len = MahjongVoice.data_chunk(w)
+  w[off, len].unpack("s<*")
+end
+
+def dbfs(pk) = 20.0 * Math.log10(pk / 32_768.0)
+
+eq "the target is -1 dBFS", MahjongVoice::PEAK_DBFS, -1.0
+eq "-1 dBFS as a sample", MahjongVoice.peak_target, 29_205
+check("which is -1 dBFS within 0.01 dB") { (dbfs(MahjongVoice.peak_target) + 1.0).abs < 0.01 }
+eq "the data chunk of a 3-sample WAV", MahjongVoice.data_chunk(pcm_wav([1, 2, 3])), [44, 6]
+eq "the peak counts negatives", MahjongVoice.peak([100, -2000, 300].pack("s<*")), 2000
+eq "-32768 is 32768", MahjongVoice.peak([-32_768, 5].pack("s<*")), 32_768
+eq "the gain for a peak of 10000", MahjongVoice.normalize_wav(pcm_wav([10_000]))[1].round(4), 2.9205
+w, g, pk = MahjongVoice.normalize_wav(pcm_wav([0, 1000, -10_000, 5000, -1, 1]))
+eq "the peak before", pk, 10_000
+eq "scaled samples (rounded half away from zero)", samples_of(w), [0, 2921, -29_205, 14_603, -3, 3]
+eq "the gain in dB", MahjongVoice.gain_db(g).round(2), 9.31
+eq "the header is kept", w[0, 44], pcm_wav([0, 1000, -10_000, 5000, -1, 1])[0, 44]
+check("a loud one is brought down to -1 dBFS") do
+  s = samples_of(MahjongVoice.normalize_wav(pcm_wav([32_767, -32_768, 100]))[0])
+  s == [29_204, -29_205, 89]
+end
+eq "silence is left alone", MahjongVoice.normalize_wav(pcm_wav([0, 0, 0]))[1..2], [1.0, 0]
+eq "and its bytes", MahjongVoice.normalize_wav(pcm_wav([0, 0]))[0], pcm_wav([0, 0])
+r = Random.new(42)
+noise = Array.new(4000) { r.rand(-7000..7000) }
+n1 = MahjongVoice.normalize_wav(pcm_wav(noise))
+check("noise peaks at -1 dBFS after (#{dbfs(MahjongVoice.peak(samples_of(n1[0]).pack('s<*'))).round(3)})") do
+  (dbfs(MahjongVoice.peak(samples_of(n1[0]).pack("s<*"))) + 1.0).abs < 0.01
+end
+eq "the same input, the same bytes", MahjongVoice.normalize_wav(pcm_wav(noise))[0], n1[0]
+eq "normalising twice changes nothing", MahjongVoice.normalize_wav(n1[0])[0], n1[0]
+check("still 16-bit mono 16 kHz") { MahjongVoice.check_wav!(n1[0]) }
+
 # ---- the bundled default voice -----------------------------------------------
 
 puts "== tools/mahjong_voice_default.rb and its WAVs"
@@ -119,7 +165,13 @@ MahjongVoice::WORDS.each do |n, _|
     i = MahjongVoice.check_wav!(File.binread(File.join(MahjongVoiceDefault::DIR, "#{n}.wav")), n)
     i[:seconds] > 0.3 && i[:seconds] < 1.0
   end
+  check("default/#{n}.wav peaks at -1 dBFS (normalised)") do
+    w = File.binread(File.join(MahjongVoiceDefault::DIR, "#{n}.wav"))
+    off, len = MahjongVoice.data_chunk(w)
+    MahjongVoice.peak(w[off, len]) == MahjongVoice.peak_target
+  end
 end
+check("CREDITS.md says how they were scaled") { md.include?("peak is at -1 dBFS") }
 
 # ---- the app (mahjong_sound.rb) ----------------------------------------------
 

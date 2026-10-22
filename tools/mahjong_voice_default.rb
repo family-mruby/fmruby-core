@@ -20,7 +20,9 @@
 # dictionary are Debian bookworm's packages at a fixed version, and the
 # options are fixed here. The WAVs are 16-bit mono 16000 Hz (Mei is a
 # 48 kHz voice: -s 16000 with the 5 ms frame as -p 80), lifted by 12 dB
-# (the loudest word peaks near -4 dBFS). CREDITS.md is written next to
+# in open_jtalk (no word clips: the loudest peaks near -4 dBFS), then each
+# word is scaled in Ruby so its peak is at -1 dBFS (MahjongVoice.
+# normalize_wav, integer arithmetic: the same bytes every time). CREDITS.md is written next to
 # them. Needs docker and the network (the zip from SourceForge, the
 # packages from Debian); nothing is left running.
 
@@ -102,7 +104,8 @@ module MahjongVoiceDefault
         Technology and Nagoya Institute of Technology), Debian bookworm packages `1.11-3`.
         The program and the dictionary are not shipped, only the audio they made.
       - **Generated, not edited**: rendered by `tools/mahjong_voice_default.rb`
-        (open_jtalk `#{OPTIONS}`: 16-bit mono 16000 Hz, +12 dB). Run it again to reproduce them.
+        (open_jtalk `#{OPTIONS}`: 16-bit mono 16000 Hz, +12 dB; then each word scaled so its
+        peak is at #{MahjongVoice::PEAK_DBFS.round} dBFS). Run it again to reproduce them.
 
       The app shows the credit 「声: Open JTalk (Mei, CC BY 3.0)」 while these are played.
     MD
@@ -130,8 +133,10 @@ module MahjongVoiceDefault
       MahjongVoice::WORDS.each do |n, t|
         wav = File.binread(File.join(outdir, "#{n}.wav"))
         info = MahjongVoice.check_wav!(wav, "#{n}.wav")
+        wav, gain, = MahjongVoice.normalize_wav(wav)
         File.binwrite(File.join(dir, "#{n}.wav"), wav)
-        out.puts format("  %-12s %-8s %6d bytes  %.2f s  %d Hz", "#{n}.wav", t, wav.bytesize, info[:seconds], info[:rate])
+        out.puts format("  %-12s %-8s %6d bytes  %.2f s  %d Hz  x%.3f (%+.1f dB)", "#{n}.wav", t, wav.bytesize,
+                        info[:seconds], info[:rate], gain, MahjongVoice.gain_db(gain))
       end
       File.write(File.join(dir, "CREDITS.md"), credits)
       out.puts "Wrote #{dir}"

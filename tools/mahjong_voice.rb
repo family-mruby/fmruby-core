@@ -18,12 +18,14 @@
 # /home/voice/mahjong/ (rake voice:mahjong_push IP=...).
 #
 # The WAVs are 16-bit mono 16000 Hz (FmrbAudio#play_wav takes 8000-48000 Hz
-# mono; 16 kHz keeps them small). The character's number is looked up by
+# mono; 16 kHz keeps them small), each scaled so its peak is at -1 dBFS
+# (normalize_wav, C4b: VOICEVOX's own level was far below the BGM and the
+# effects). The character's number is looked up by
 # name in /speakers, never assumed. CREDITS.txt goes next to them; its first
 # line ("VOICEVOX:<name>") is what the app shows as the credit.
 #
 # Standard library only. The pure parts (the words, the lookup, the query's
-# rate, the WAV header, the guide) are tested by test/mahjong_voice/run.rb.
+# rate, the WAV header, the normalisation, the guide) are tested by test/mahjong_voice/run.rb.
 
 require "json"
 require "net/http"
@@ -105,6 +107,62 @@ module MahjongVoice
     i
   end
 
+  # Peak normalisation (C4b): every word's loudest sample is brought to
+  # PEAK_DBFS. Full scale is 32768 (as ffmpeg's volumedetect counts it),
+  # so the target sample is round(32768 * 10^(PEAK_DBFS / 20)).
+  PEAK_DBFS = -1.0
+  FULL_SCALE = 32_768
+
+  # The sample value PEAK_DBFS stands for (29205 for -1 dBFS).
+  def peak_target(dbfs = PEAK_DBFS)
+    (FULL_SCALE * (10.0**(dbfs / 20.0))).round
+  end
+
+  # [offset, length] of a WAV's data chunk (its bytes inside data).
+  def data_chunk(data)
+    data = data.b
+    raise Error, "not a WAV (no RIFF/WAVE header)" unless data.size >= 12 && data[0, 4] == "RIFF" && data[8, 4] == "WAVE"
+    pos = 12
+    while pos + 8 <= data.size
+      len = data[pos + 4, 4].unpack1("V")
+      return [pos + 8, [len, data.size - pos - 8].min] if data[pos, 4] == "data"
+      pos += 8 + len + (len & 1)
+    end
+    raise Error, "WAV: no data chunk"
+  end
+
+  # The largest |sample| of 16-bit little-endian PCM (-32768 counts as 32768).
+  def peak(pcm)
+    pcm.unpack("s<*").map(&:abs).max || 0
+  end
+
+  # One sample scaled by target/pk in integers (rounded half away from
+  # zero, kept in 16 bits), so the same input always gives the same bytes.
+  def scale_sample(s, target, pk)
+    v = ((s.abs * target * 2) + pk) / (pk * 2)
+    v = -v if s.negative?
+    v.clamp(-FULL_SCALE, FULL_SCALE - 1)
+  end
+
+  # A 16-bit mono WAV with its peak at dbfs. Returns [wav, gain, peak
+  # before]; the header is kept as it is. Silence is left alone (gain 1).
+  def normalize_wav(data, dbfs = PEAK_DBFS)
+    data = data.b
+    off, len = data_chunk(data)
+    len -= len & 1
+    pcm = data[off, len]
+    pk = peak(pcm)
+    return [data, 1.0, 0] if pk.zero?
+    target = peak_target(dbfs)
+    out = pcm.unpack("s<*").map { |s| scale_sample(s, target, pk) }.pack("s<*")
+    res = data.dup
+    res[off, len] = out
+    [res, target.to_f / pk, pk]
+  end
+
+  # A gain as dB (for the tools' output and the report).
+  def gain_db(gain) = 20.0 * Math.log10(gain)
+
   # CREDITS.txt next to the WAVs. The first line is the app's credit.
   def credits_text(speaker, style)
     <<~TXT
@@ -178,8 +236,10 @@ module MahjongVoice
     made = WORDS.map do |name, text|
       wav = vv.synthesize(text, id)
       info = check_wav!(wav, "#{name}.wav")
+      wav, gain, = normalize_wav(wav)
       File.binwrite(File.join(dir, "#{name}.wav"), wav)
-      out.puts format("  %-12s %-8s %6d bytes  %.2f s  %d Hz", "#{name}.wav", text, wav.bytesize, info[:seconds], info[:rate])
+      out.puts format("  %-12s %-8s %6d bytes  %.2f s  %d Hz  x%.3f (%+.1f dB)", "#{name}.wav", text, wav.bytesize,
+                      info[:seconds], info[:rate], gain, gain_db(gain))
       [name, info]
     end
     File.write(File.join(dir, "CREDITS.txt"), credits_text(speaker, style))
