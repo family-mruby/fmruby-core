@@ -64,6 +64,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `asterism_recording/` [Asterism: アプリから頼むキーの記録](asterism_recording/plan.md) — **構想** (2026-10-21) console の記録 (V4、今は管理者が画面で手で始める) を、Asterism のオブジェクトとしてアプリから始め・止め・一覧できるようにする。誰が何を録れるか (権限) は未確定で、案を並べて決める 〔2 files〕
+- `ca_bundle/` [端末の証明書の束から信頼できないルートを外す](ca_bundle/plan.md) — **進行中** (2026-10-22) ESP32 の端末の HTTPS が使う ESP-IDF の証明書の束 (全部入り) に、eMudhra の件 (2026-10、中間認証局 8 つの秘密鍵が誰でも計算できた) の大本 emSign ECC Root CA - G3 が入っている。IDF の束から外す一覧を除いた自前の束を作って使う 〔2 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `commentary/` [麻雀の実況 (PC の実況アプリ、宣言の声、AI のひとこと)](commentary/plan.md) — **計画済** (2026-10-20) ゲームホストの観戦用の様子 (GS14、手牌入り) を読んで、麻雀を実況する。まず PC の実況アプリ (ブラウザで卓を見る、決まりの実況、声)、つぎに AI のひとこと、端末の麻雀アプリの宣言の声 (WAV)。観戦者が増えたら、文章づくりをサーバへ移す 〔13 files〕
 - `desktop_icons/` [デスクトップにアプリのアイコンを並べる](desktop_icons/plan.md) — **進行中** (2026-10-18) 代表的なアプリをデスクトップの背景にアイコンで並べ、ダブルクリック (タップ) で起動する。DS1 で実装 (sim・ブラウザ版で確認済)。残りは Tab5 のタップ確認と実機の内蔵 RAM 比較 〔2 files〕
@@ -98,7 +99,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
-- `ruby34/` [Ruby を 3.4 系の最新に上げる](ruby34/plan.md) — **計画済** (2026-10-22) 手元 (WSL の rbenv) と asterism-console・asterism-games の image が、サポートの終わった Ruby 3.2.6 のまま。3.4 系の最新に上げる。手元とリポジトリはまとめて一気に、公開と VPS は許可を得て 1 回で 〔1 files〕
+- `ruby34/` [Ruby を 3.4 系の最新に上げる](ruby34/plan.md) — **進行中 (R5 だけ)** (2026-10-22) 手元 (WSL の rbenv) と asterism-console・asterism-games の image が、サポートの終わった Ruby 3.2.6 のまま。3.4 系の最新に上げる。手元とリポジトリはまとめて一気に、公開と VPS は許可を得て 1 回で 〔3 files〕
 - `ruby_asterism/` [Asterism: 計画](ruby_asterism/plan.md) — **進行中** (2026-10-16) 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス)・R3 (メッセージ型の変換器)・C1 (CRuby 版) 完了 〔190 files〕
 - `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **完了** (2026-10-02) 主因は estalloc の ESTALLOC_DEBUG の解放ごとの全走査と、それが隠していたアプリ終了時の二重解放 (mrc_irep_free)。二重解放を直し (不正な解放 510 → 0)、統計だけを残して全走査を止めた。Shell の打鍵で 50 ms 超え 52% → 2%、負荷時 98% → 10%。Spinel にも効く。残りはエディタの同時 2 つ起動での abort (別段階) 〔9 files〕
 - `sim_boot_eintr/` [sim の起動が、ソケットの準備の割り込み (EINTR) で失敗する件](sim_boot_eintr/plan.md) — **完了** (2026-10-05) Linux の sim で、graphics-audio のソケットの bind / listen が EINTR で失敗して起動しない。FreeRTOS の POSIX ポートの SIGALRM が系統呼び出しを割り込むのが原因の見込み。E1 で原因を確かめて直す 〔3 files〕
