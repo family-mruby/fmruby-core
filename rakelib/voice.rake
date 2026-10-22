@@ -18,9 +18,13 @@ namespace :voice do
     abort "IP=<the Tab5's address> is needed (the remote desktop's address)" if ip.empty?
     src = File.join(ROOT_DIR, "flash_local", "usr", "share", "sounds", "voice", "mahjong")
     abort "#{src} has no voices: rake voice:mahjong first" if Dir.glob(File.join(src, "*.wav")).empty?
-    # The directory as it is (CREDITS.txt with the WAVs; the directories
-    # are made as needed). --force: a voice made again may keep its size.
-    sh "ruby", File.expand_path("../tools/fmrb_rd_fs.rb", ROOT_DIR), ip, "push", src, "/home/voice/mahjong", "--force"
+    # The directory as it is (CREDITS.txt with the WAVs). push makes only
+    # the last directory, so /home/voice comes first (a board fresh from a
+    # full flash has an empty /home; an existing one is not an error).
+    # --force: a voice made again may keep its size.
+    rd_fs = File.expand_path("../tools/fmrb_rd_fs.rb", ROOT_DIR)
+    system("ruby", rd_fs, ip, "mkdir", "/home/voice", out: File::NULL, err: File::NULL)
+    sh "ruby", rd_fs, ip, "push", src, "/home/voice/mahjong", "--force"
   end
 
   desc "Render the bundled mahjong declarations (Open JTalk, the MMDAgent voice Mei, CC BY 3.0) into flash/ (docker)"
