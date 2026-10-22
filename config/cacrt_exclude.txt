@@ -1,0 +1,10 @@
+# Certificates dropped from ESP-IDF's "full" CA bundle when building
+# config/cacrt_fmrb.pem (rake certs:bundle). One name per line, spelt exactly
+# as the name line above the certificate in IDF's cacrt_all.pem. '#' starts a
+# comment. A name that is not found stops the build of the bundle.
+
+# 2026-10: the private keys of eight intermediate CAs under this root could be
+# computed by anyone. Mozilla, Google, Apple and Microsoft blocked it; Chrome
+# removes the root on 2026-10-27. The device does not check revocation, so the
+# root itself has to go.
+emSign ECC Root CA - G3

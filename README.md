@@ -145,6 +145,8 @@ This project uses third-party open source software. See [THIRD_PARTY_LICENSES.md
 
 Creative assets bundled with this repository ship under their own licenses (CC0 / CC BY) — see [ASSETS.md](ASSETS.md).
 
+The CA bundle the boards trust for HTTPS, `config/cacrt_fmrb.pem`, is ESP-IDF's full bundle (Mozilla's CA list, MPL-2.0) minus the roots in `config/cacrt_exclude.txt`; rebuild it with `rake certs:bundle`.
+
 ### Your apps
 
 Apps you write and run on Family mruby are your own work. They are Ruby (or Lua,

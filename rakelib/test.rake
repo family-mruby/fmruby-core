@@ -18,9 +18,9 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + secret files + mahjong screen overflow and voices + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "tts:test",
-               "secret:test", "mahjong:overflow", "voice:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
