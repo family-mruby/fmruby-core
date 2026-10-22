@@ -1,6 +1,6 @@
 # 端末の証明書の束から信頼できないルートを外す
 
-> 状態: 進行中 | 更新: 2026-10-22 | ESP32 の端末の HTTPS が使う ESP-IDF の証明書の束 (全部入り) に、eMudhra の件 (2026-10、中間認証局 8 つの秘密鍵が誰でも計算できた) の大本 emSign ECC Root CA - G3 が入っている。IDF の束から外す一覧を除いた自前の束を作って使う
+> 状態: 完了 | 更新: 2026-10-22 | ESP32 の端末の HTTPS が使う ESP-IDF の証明書の束 (全部入り) に、eMudhra の件 (2026-10、中間認証局 8 つの秘密鍵が誰でも計算できた) の大本 emSign ECC Root CA - G3 が入っている。IDF の束から外す一覧を除いた自前の束を作って使う
 
 ## 目的
 
@@ -23,8 +23,8 @@
 
 | 段 | 中身 |
 |---|---|
-| B1 | `rake certs:bundle` と外す一覧と自前の束、host の試験、4 つの機種の sdkconfig.defaults、Tab5 向けのビルドで束の中身を確認 (サブ、instruction_b1.md) |
-| B2 | Tab5 に焼き (先に /home を退避)、天気のデモと TTS が HTTPS でつながることを確認 (親) |
+| B1 (完了 2026-10-22、report/b1.md: 149 枚、09e729cf・e8d842b5) | `rake certs:bundle` と外す一覧と自前の束、host の試験、4 つの機種の sdkconfig.defaults、Tab5 向けのビルドで束の中身を確認 (サブ、instruction_b1.md) |
+| B2 (完了 2026-10-22: Tab5 にアプリの区画だけ焼いた (/home の Asterism の証明書は遠隔で読めず写しも無いため全部は焼かない)。起動は健全。天気のデモ (api.open-meteo.com、ISRG) と example.com が `Certificate validated` で 200、self-signed.badssl.com は `No matching trusted root` で断られた。TTS (api.openai.com、GlobalSign Root CA は束にある) は鍵と費用が要るので流していない) | Tab5 に焼き、HTTPS がつながることを確認 (親) |
 
 ## 未確定事項
 
