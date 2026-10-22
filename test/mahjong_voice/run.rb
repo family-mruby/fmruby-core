@@ -7,7 +7,7 @@
 # the shipped default WAVs; the peak normalisation of C4b), and the app's
 # side (mahjong_sound.rb, loaded as it ships into a stand-in MahjongApp): which declaration plays which
 # file, where the files are looked for and in which order, the credit, and
-# which of two close declarations is heard.
+# which of two close declarations is heard, and the effects' gain (C4b).
 #
 #   ruby test/mahjong_voice/run.rb
 
@@ -316,6 +316,49 @@ app.instance_variable_set(:@snd_vo, [0, 0])
 au.answer = false
 eq "play_wav false (Retro): the jingle", app.snd_voice(:pon), false
 eq "play_wav false (Retro): nothing held", app.instance_variable_get(:@snd_vo), [0, 0]
+
+# The effects' gain (C4b).
+eq "the effects' gain is 3/4", [MahjongApp::SE_GAIN_NUM, MahjongApp::SE_GAIN_DEN], [3, 4]
+eq "volumes 0-15 with the gain", (0..15).map { |v| app.snd_se_vol(v) }, [0, 1, 2, 2, 3, 4, 5, 5, 6, 7, 8, 8, 9, 10, 11, 11]
+eq "0 stays 0 (the triangle)", app.snd_se_vol(0), 0
+eq "15 is 11", app.snd_se_vol(15), 11
+eq "1 is still heard", app.snd_se_vol(1), 1
+check("no note of SFX goes silent, none gets louder") do
+  MahjongApp::SFX.all? do |_, d|
+    d[1..].all? do |v|
+      (2...v.size).step(3).all? { |j| v[j + 2].zero? ? app.snd_se_vol(0).zero? : app.snd_se_vol(v[j + 2]).between?(1, v[j + 2]) }
+    end
+  end
+end
+
+class NoteAudio
+  attr_reader :notes
+
+  def initialize = @notes = []
+  def note_on(ch, freq, vol, duty, _sweep) = @notes << [ch, freq, vol, duty]
+  def note_off(_ch) = nil
+end
+na = NoteAudio.new
+sa = MahjongApp.new
+sa.instance_variable_set(:@audio, na)
+sa.instance_variable_set(:@snd_se, true)
+sa.instance_variable_set(:@snd_req, [])
+sa.instance_variable_set(:@snd_q, [])
+sa.instance_variable_set(:@snd_gen, [0, 0, 0, 0])
+sa.instance_variable_set(:@snd_busy, [0, 0, 0, 0])
+sa.instance_variable_set(:@snd_pri, [0, 0, 0, 0])
+Machine.now = 50_000
+sa.snd_play(:chi)
+sa.snd_tick(100)
+Machine.now = 50_060
+sa.snd_tick(100)
+eq "chi's notes go out at 11 and 10 -> 8 and 8", na.notes, [[0, 1319, 8, 1], [0, 1047, 8, 1]]
+na.notes.clear
+sa.snd_play(:kan)
+Machine.now = 51_000
+sa.snd_tick(100)
+eq "the triangle keeps volume 0", na.notes.select { |n| n[0] == 2 }.map { |n| n[2] }, [0]
+eq "kan's first pulse note 12 -> 9", na.notes.find { |n| n[0] == 0 }[2], 9
 
 # The switch's label and the saved line.
 app.instance_variable_set(:@snd_bgm, 1)

@@ -74,6 +74,14 @@ class MahjongApp < FmrbApp
   SND_KEYS = ["bgm_lobby", "bgm_play", "bgm_tense", "voice_riichi", "voice_pon", "voice_chi", "voice_kan",
               "voice_ron", "voice_tsumo", "voice_kyuushu", "voice_ryuukyoku"].freeze
 
+  # The effects' gain (C4b, 2026-10-22: the effects felt a little loud next
+  # to the voices): every note_on volume of SFX is scaled by
+  # SE_GAIN_NUM / SE_GAIN_DEN, rounded, with 0 kept at 0 and anything above
+  # 0 kept at 1 or more (no note goes silent). 3/4 is about -2.5 dB (the
+  # APU's 0-15 is linear in amplitude). The BGM (MAIN) is not touched.
+  SE_GAIN_NUM = 3
+  SE_GAIN_DEN = 4
+
   # name => [priority, voice, ...]; a voice is [channel, duty, then per note
   # freq (Hz; the noise: its period 0-15), ms, volume 0-15]; freq -1 rests.
   # The triangle has no volume (0). Priorities: 1 the frequent clicks, 2 the
@@ -322,7 +330,7 @@ class MahjongApp < FmrbApp
       e = @snd_q[i]
       if e[0] <= now
         if @snd_gen[e[1]] == e[5]
-          e[2] >= 0 ? @audio.note_on(e[1], e[2], e[3], e[4], 0) : @audio.note_off(e[1])
+          e[2] >= 0 ? @audio.note_on(e[1], e[2], snd_se_vol(e[3]), e[4], 0) : @audio.note_off(e[1])
         end
         @snd_q.delete_at(i)
       else
@@ -334,6 +342,14 @@ class MahjongApp < FmrbApp
     d = nxt - now
     d = 5 if d < 5
     d < wait ? d : wait
+  end
+
+  # A note's volume (0-15) with the effects' gain: 0 stays 0, above 0 is
+  # at least 1.
+  def snd_se_vol(v)
+    return 0 if v <= 0
+    g = (v * SE_GAIN_NUM * 2 + SE_GAIN_DEN) / (SE_GAIN_DEN * 2)
+    g < 1 ? 1 : g
   end
 
   # Lays a sound's notes out as deadlines from now + its delay.
