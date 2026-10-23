@@ -66,7 +66,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `asterism_recording/` [Asterism: アプリから頼むキーの記録](asterism_recording/plan.md) — **構想** (2026-10-21) console の記録 (V4、今は管理者が画面で手で始める) を、Asterism のオブジェクトとしてアプリから始め・止め・一覧できるようにする。誰が何を録れるか (権限) は未確定で、案を並べて決める 〔2 files〕
 - `ca_bundle/` [端末の証明書の束から信頼できないルートを外す](ca_bundle/plan.md) — **完了** (2026-10-22) ESP32 の端末の HTTPS が使う ESP-IDF の証明書の束 (全部入り) に、eMudhra の件 (2026-10、中間認証局 8 つの秘密鍵が誰でも計算できた) の大本 emSign ECC Root CA - G3 が入っている。IDF の束から外す一覧を除いた自前の束を作って使う 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
-- `commentary/` [麻雀の実況 (PC の実況アプリ、宣言の声、AI のひとこと)](commentary/plan.md) — **計画済** (2026-10-20) ゲームホストの観戦用の様子 (GS14、手牌入り) を読んで、麻雀を実況する。まず PC の実況アプリ (ブラウザで卓を見る、決まりの実況、声)、つぎに AI のひとこと、端末の麻雀アプリの宣言の声 (WAV)。観戦者が増えたら、文章づくりをサーバへ移す 〔13 files〕
+- `commentary/` [麻雀の実況 (PC の実況アプリ、宣言の声、AI のひとこと)](commentary/plan.md) — **計画済** (2026-10-23) ゲームホストの観戦用の様子 (GS14、手牌入り) を読んで、麻雀を実況する。まず PC の実況アプリ (ブラウザで卓を見る、決まりの実況、声)、つぎに AI のひとこと、端末の麻雀アプリの宣言の声 (WAV)。観戦者が増えたら、文章づくりをサーバへ移す 〔17 files〕
 - `desktop_icons/` [デスクトップにアプリのアイコンを並べる](desktop_icons/plan.md) — **進行中** (2026-10-18) 代表的なアプリをデスクトップの背景にアイコンで並べ、ダブルクリック (タップ) で起動する。DS1 で実装 (sim・ブラウザ版で確認済)。残りは Tab5 のタップ確認と実機の内蔵 RAM 比較 〔2 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
 - `device_check_backlog/` [実機の確認が溜まっているもの (Tab5 / Retro)](device_check_backlog/plan.md) — **計画済** (2026-10-18) Tab5 は全部済 (2026-10-18)、残りは Retro。 P4-Nano (NARYAv4) と sim で確かめた変更のうち、Tab5 と Retro (S3) の実機でまだ動かしていないものの一覧。実機をつないだ日にまとめて確かめる (ユーザ決定: 後日) 〔2 files〕
