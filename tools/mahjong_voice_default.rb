@@ -18,11 +18,15 @@
 # Reproducible: the voice comes from the MMDAgent sample script's official
 # zip (its SHA-256 and the voice file's are checked), Open JTalk and its
 # dictionary are Debian bookworm's packages at a fixed version, and the
-# options are fixed here. The WAVs are 16-bit mono 16000 Hz (Mei is a
-# 48 kHz voice: -s 16000 with the 5 ms frame as -p 80), lifted by 12 dB
-# in open_jtalk (no word clips: the loudest peaks near -4 dBFS), then each
-# word is scaled in Ruby so its peak is at -1 dBFS (MahjongVoice.
-# normalize_wav, integer arithmetic: the same bytes every time). CREDITS.md is written next to
+# options are fixed here. open_jtalk renders at Mei's own 48000 Hz (no -s
+# or -p: its 240-sample frame), lifted by 6 dB (no sample clips; any that
+# did would stop the tool). Mei's frequency warping (all-pass constant
+# 0.55) is made for 48 kHz: rendered directly at 16 kHz its spectrum is
+# bent and リーチ sounds like ぱーぱ (doc/commentary/report/c4c.md). Ruby
+# then brings each word to 16-bit mono 16000 Hz (MahjongVoice.decimate:
+# a 7200 Hz windowed-sinc low-pass, every 3rd sample) and scales it so its
+# peak is at -1 dBFS (MahjongVoice.normalize_wav), both in integer
+# arithmetic: the same bytes every time. CREDITS.md is written next to
 # them. Needs docker and the network (the zip from SourceForge, the
 # packages from Debian); nothing is left running.
 
@@ -43,9 +47,9 @@ module MahjongVoiceDefault
   VOICE_SHA256 = "b19e8e5ddef4d9d9559d654f395818e2bb3c0bbdbbca533f96086de21ac5db2b"
   IMAGE = "debian:bookworm-slim"
   PACKAGES = ["open-jtalk=1.11-3", "open-jtalk-mecab-naist-jdic=1.11-3", "unzip"].freeze
-  # open_jtalk's options besides the files: the rate, the frame for that
-  # rate, the gain in dB.
-  OPTIONS = "-s 16000 -p 80 -g 12"
+  # open_jtalk's options besides the files: the gain in dB. The rate and
+  # the frame are the voice's own (48000 Hz, 240 samples).
+  OPTIONS = "-g 6"
 
   module_function
 
@@ -104,8 +108,11 @@ module MahjongVoiceDefault
         Technology and Nagoya Institute of Technology), Debian bookworm packages `1.11-3`.
         The program and the dictionary are not shipped, only the audio they made.
       - **Generated, not edited**: rendered by `tools/mahjong_voice_default.rb`
-        (open_jtalk `#{OPTIONS}`: 16-bit mono 16000 Hz, +12 dB; then each word scaled so its
-        peak is at #{MahjongVoice::PEAK_DBFS.round} dBFS). Run it again to reproduce them.
+        (open_jtalk `#{OPTIONS}` at the voice's own 48000 Hz, +6 dB; then brought to 16-bit mono
+        16000 Hz by a #{MahjongVoice::LOWPASS_CUTOFF.round} Hz windowed-sinc low-pass (#{MahjongVoice::LOWPASS_TAPS} taps, Blackman) keeping
+        every 3rd sample; then each word scaled so its peak is at #{MahjongVoice::PEAK_DBFS.round} dBFS). Mei is a
+        48 kHz voice: rendered directly at 16 kHz its frequency warping is wrong and the words
+        blur. Run it again to reproduce them.
 
       The app shows the credit 「声: Open JTalk (Mei, CC BY 3.0)」 while these are played.
     MD
@@ -131,7 +138,11 @@ module MahjongVoiceDefault
       raise MahjongVoice::Error, "the container failed (docker run #{IMAGE})" unless ok
       FileUtils.mkdir_p(dir)
       MahjongVoice::WORDS.each do |n, t|
-        wav = File.binread(File.join(outdir, "#{n}.wav"))
+        wav48 = File.binread(File.join(outdir, "#{n}.wav"))
+        off, len = MahjongVoice.data_chunk(wav48)
+        clipped = MahjongVoice.clipped_samples(wav48.b[off, len - (len & 1)])
+        raise MahjongVoice::Error, "#{n}.wav: #{clipped} samples clipped at 48 kHz (lower -g)" if clipped.positive?
+        wav = MahjongVoice.decimate_wav(wav48, "#{n}.wav")
         info = MahjongVoice.check_wav!(wav, "#{n}.wav")
         wav, gain, = MahjongVoice.normalize_wav(wav)
         File.binwrite(File.join(dir, "#{n}.wav"), wav)

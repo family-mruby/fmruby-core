@@ -25,7 +25,8 @@
 # line ("VOICEVOX:<name>") is what the app shows as the credit.
 #
 # Standard library only. The pure parts (the words, the lookup, the query's
-# rate, the WAV header, the normalisation, the guide) are tested by test/mahjong_voice/run.rb.
+# rate, the WAV header, the normalisation, the 48 -> 16 kHz decimation used
+# by mahjong_voice_default.rb, the guide) are tested by test/mahjong_voice/run.rb.
 
 require "json"
 require "net/http"
@@ -162,6 +163,77 @@ module MahjongVoice
 
   # A gain as dB (for the tools' output and the report).
   def gain_db(gain) = 20.0 * Math.log10(gain)
+
+  # Decimation 48000 -> 16000 Hz (C4c, the bundled Open JTalk voice): a
+  # windowed-sinc low-pass (cutoff 7200 Hz, 191 taps, Blackman window,
+  # normalised to a sum of 1), then every 3rd sample. The taps are integers
+  # in Q20 and the sums are integer, so the same input gives the same bytes.
+  DECIMATE_IN = 48_000
+  DECIMATE_FACTOR = 3
+  LOWPASS_CUTOFF = 7200.0
+  LOWPASS_TAPS = 191
+  LOWPASS_SHIFT = 20
+
+  # The low-pass's taps in Q20: each rounded (half away from zero, Ruby's
+  # Float#round), then the middle tap takes what is left so they sum to
+  # exactly 1 << 20 (DC passes unchanged).
+  def lowpass_taps
+    n = LOWPASS_TAPS
+    fc = LOWPASS_CUTOFF / DECIMATE_IN
+    h = (0...n).map do |i|
+      m = i - ((n - 1) / 2)
+      s = m.zero? ? 2 * fc : Math.sin(2 * Math::PI * fc * m) / (Math::PI * m)
+      s * (0.42 - (0.5 * Math.cos(2 * Math::PI * i / (n - 1))) + (0.08 * Math.cos(4 * Math::PI * i / (n - 1))))
+    end
+    g = h.sum
+    one = 1 << LOWPASS_SHIFT
+    q = h.map { |x| (x / g * one).round }
+    q[(n - 1) / 2] += one - q.sum
+    q
+  end
+
+  # 16-bit samples (Integers) at 48 kHz -> 16 kHz:
+  # y[k] = sum_i h[i] * x[3k + i - 95] (outside the input counts as 0),
+  # rounded half away from zero and kept in 16 bits. floor(size / 3) out.
+  def decimate(x, taps = lowpass_taps)
+    n = taps.size
+    half = (n - 1) / 2
+    size = x.size
+    one = 1 << LOWPASS_SHIFT
+    rnd = one >> 1
+    Array.new(size / DECIMATE_FACTOR) do |k|
+      c = (DECIMATE_FACTOR * k) - half
+      i = c.negative? ? -c : 0
+      last = [n, size - c].min
+      acc = 0
+      while i < last
+        acc += taps[i] * x[c + i]
+        i += 1
+      end
+      v = (acc.abs + rnd) >> LOWPASS_SHIFT
+      v = -v if acc.negative?
+      v.clamp(-FULL_SCALE, FULL_SCALE - 1)
+    end
+  end
+
+  # A 16-bit mono 48 kHz WAV as a 16-bit mono RATE one (a plain 44-byte header).
+  def decimate_wav(data, name = "WAV")
+    i = wav_info(data)
+    unless i[:format] == 1 && i[:bits] == 16 && i[:channels] == 1 && i[:rate] == DECIMATE_IN
+      raise Error, "#{name}: #{i[:bits]}-bit #{i[:channels]}ch #{i[:rate]} Hz (format #{i[:format]}), " \
+                   "want 16-bit mono #{DECIMATE_IN} Hz PCM"
+    end
+    off, len = data_chunk(data)
+    pcm = decimate(data.b[off, len - (len & 1)].unpack("s<*")).pack("s<*")
+    "RIFF".b + [36 + pcm.bytesize].pack("V") + "WAVEfmt " +
+      [16, 1, 1, RATE, RATE * 2, 2, 16].pack("VvvVVvv") + "data" + [pcm.bytesize].pack("V") + pcm
+  end
+
+  # How many samples sit at the 16-bit limits (+32767 or -32768): a sign of
+  # clipping in the synthesiser.
+  def clipped_samples(pcm)
+    pcm.unpack("s<*").count { |s| s == FULL_SCALE - 1 || s == -FULL_SCALE }
+  end
 
   # CREDITS.txt next to the WAVs. The first line is the app's credit.
   def credits_text(speaker, style)

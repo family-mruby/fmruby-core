@@ -4,7 +4,8 @@
 # The tools' pure parts (tools/mahjong_voice.rb: the words, the character's
 # number by name, the query's rate, the WAV header, the credits, the guide
 # when VOICEVOX is not there; tools/mahjong_voice_default.rb's credits and
-# the shipped default WAVs; the peak normalisation of C4b), and the app's
+# the shipped default WAVs; the peak normalisation of C4b; the 48 -> 16 kHz
+# decimation of C4c), and the app's
 # side (mahjong_sound.rb, loaded as it ships into a stand-in MahjongApp): which declaration plays which
 # file, where the files are looked for and in which order, the credit, and
 # which of two close declarations is heard, and the effects' gain (C4b).
@@ -148,6 +149,53 @@ eq "the same input, the same bytes", MahjongVoice.normalize_wav(pcm_wav(noise))[
 eq "normalising twice changes nothing", MahjongVoice.normalize_wav(n1[0])[0], n1[0]
 check("still 16-bit mono 16 kHz") { MahjongVoice.check_wav!(n1[0]) }
 
+# ---- the 48 -> 16 kHz decimation (C4c) ---------------------------------------
+
+puts "== decimation 48000 -> 16000 Hz"
+taps = MahjongVoice.lowpass_taps
+eq "191 taps", taps.size, 191
+eq "the taps sum to 1 in Q20", taps.sum, 1 << 20
+eq "the taps are symmetric", taps, taps.reverse
+eq "the taps are integers", taps.all?(Integer), true
+eq "the same taps every time", MahjongVoice.lowpass_taps, taps
+
+def sine(freq, n, amp = 10_000) = Array.new(n) { |i| (amp * Math.sin(2 * Math::PI * freq * i / 48_000.0)).round }
+def rms_of(x) = Math.sqrt(x.sum { |s| s * s }.to_f / x.size)
+# Away from the ends (where the filter runs off the input).
+def middle(y) = y[100...-100]
+
+s1k = sine(1000, 4800)
+y1k = MahjongVoice.decimate(s1k)
+eq "the length is a third", y1k.size, 1600
+eq "a third, rounded down", MahjongVoice.decimate(sine(1000, 4802)).size, 1600
+g1k = 20 * Math.log10(rms_of(middle(y1k)) / rms_of(s1k))
+check("1 kHz passes (#{g1k.round(3)} dB)") { g1k.abs < 0.1 }
+check("and stays 1 kHz (16 samples a period)") do
+  m = middle(y1k)
+  m.each_with_index.all? { |v, i| i + 16 >= m.size || (v - m[i + 16]).abs <= 2 }
+end
+y10k = MahjongVoice.decimate(sine(10_000, 4800))
+g10k = 20 * Math.log10([rms_of(middle(y10k)), 1e-9].max / rms_of(sine(10_000, 4800)))
+check("10 kHz is stopped (#{g10k.round(1)} dB, under -60)") { g10k < -60 }
+eq "DC passes unchanged", middle(MahjongVoice.decimate(Array.new(900, 1234))).uniq, [1234]
+eq "silence stays silence", MahjongVoice.decimate(Array.new(900, 0)).uniq, [0]
+eq "full scale is kept in 16 bits", MahjongVoice.decimate(Array.new(900) { |i| i.even? ? 32_767 : -32_768 }).all? { |v| v.between?(-32_768, 32_767) }, true
+r48 = Random.new(7)
+noise48 = Array.new(3000) { r48.rand(-9000..9000) }
+eq "the same input, the same output", MahjongVoice.decimate(noise48.dup), MahjongVoice.decimate(noise48)
+def wav48(samples)
+  d = samples.pack("s<*")
+  "RIFF".b + [36 + d.bytesize].pack("V") + "WAVEfmt " + [16, 1, 1, 48_000, 96_000, 2, 16].pack("VvvVVvv") +
+    "data" + [d.bytesize].pack("V") + d
+end
+dw = MahjongVoice.decimate_wav(wav48(noise48))
+check("decimate_wav gives 16-bit mono 16 kHz") { MahjongVoice.check_wav!(dw)[:rate] == 16_000 }
+eq "with the decimated samples", samples_of(dw), MahjongVoice.decimate(noise48)
+eq "and the same bytes twice", MahjongVoice.decimate_wav(wav48(noise48)), dw
+raises("a 16 kHz WAV is not decimated", /want 16-bit mono 48000 Hz/) { MahjongVoice.decimate_wav(wav(frames: 30)) }
+eq "clipped samples are counted", MahjongVoice.clipped_samples([32_767, -32_768, 32_766, 0, 32_767].pack("s<*")), 3
+eq "none in a quiet one", MahjongVoice.clipped_samples([100, -100].pack("s<*")), 0
+
 # ---- the bundled default voice -----------------------------------------------
 
 puts "== tools/mahjong_voice_default.rb and its WAVs"
@@ -172,6 +220,12 @@ MahjongVoice::WORDS.each do |n, _|
   end
 end
 check("CREDITS.md says how they were scaled") { md.include?("peak is at -1 dBFS") }
+check("CREDITS.md: rendered at 48000 Hz and brought to 16000 Hz") do
+  md.include?("48000 Hz") && md.include?("16000 Hz") && md.include?("7200 Hz windowed-sinc low-pass")
+end
+check("open_jtalk at the voice's own rate (no -s, no -p)") do
+  !MahjongVoiceDefault::OPTIONS.include?("-s") && !MahjongVoiceDefault::OPTIONS.include?("-p")
+end
 
 # ---- the app (mahjong_sound.rb) ----------------------------------------------
 

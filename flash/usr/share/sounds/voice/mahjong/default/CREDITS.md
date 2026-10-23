@@ -17,7 +17,10 @@ played by `flash/app/game/mahjong/mahjong_sound.rb` when someone declares.
   Technology and Nagoya Institute of Technology), Debian bookworm packages `1.11-3`.
   The program and the dictionary are not shipped, only the audio they made.
 - **Generated, not edited**: rendered by `tools/mahjong_voice_default.rb`
-  (open_jtalk `-s 16000 -p 80 -g 12`: 16-bit mono 16000 Hz, +12 dB; then each word scaled so its
-  peak is at -1 dBFS). Run it again to reproduce them.
+  (open_jtalk `-g 6` at the voice's own 48000 Hz, +6 dB; then brought to 16-bit mono
+  16000 Hz by a 7200 Hz windowed-sinc low-pass (191 taps, Blackman) keeping
+  every 3rd sample; then each word scaled so its peak is at -1 dBFS). Mei is a
+  48 kHz voice: rendered directly at 16 kHz its frequency warping is wrong and the words
+  blur. Run it again to reproduce them.
 
 The app shows the credit 「声: Open JTalk (Mei, CC BY 3.0)」 while these are played.
