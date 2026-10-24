@@ -5,3 +5,7 @@
 # What goes is what only a Modern machine can show.
 
 app/game/mahjong       # the mahjong table: 640x360 and tile sheets Retro does not load
+app/demo/walk_scroller.app.rb    # walk_scroller: its 426-wide scenery is past the
+app/demo/walk_scroller.app.toml  # WROVER's 256-dot sprite limit, so Retro cannot run it
+app/demo/walk_scroller
+usr/share/sprites/walk_scroller

@@ -16,3 +16,4 @@ cache/launcher         # the launcher's cache
 app/game               # desktop games, laid out for 320x240 and up
 app/demo               # desktop demos, likewise
 app/debug              # debugging tools for the desktop
+usr/share/sprites/walk_scroller  # walk_scroller's pictures (the app is left out with app/demo)
