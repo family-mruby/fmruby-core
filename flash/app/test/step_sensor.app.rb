@@ -6,11 +6,12 @@
 #   every 10 ms (no sample is lost when an update runs late). Steps are found here, in
 #   Ruby, from the magnitude of the acceleration (StepDetector below), not
 #   with the sensor's own step counter (it reports several steps at once).
-# - Network: waits for WiFi, then connects as <ID>/step (the node ID and the
+# - Network: FmrbAsterism::Link waits for WiFi (and, on a small screen, for
+#   the fullscreen canvas), then connects as <ID>/step (the node ID and the
 #   router come from FmrbAsterism.settings, as asterism_demo). When it cannot
-#   connect, or the connection is lost, it tries again every RETRY_MS (also
-#   when the router still has the previous run of this app: "already on the
-#   network").
+#   connect, or the connection is lost, it tries again every 3 s (also when
+#   the router still has the previous run of this app: "already on the
+#   network"). link_up exposes the pedometer after every connect.
 # - Each step is put on asterism/<ID>/step/pedometer/step as a MessagePack
 #   map (state_hash below): steps (total), t_ms (the board's clock at the
 #   step), interval_ms, cadence (steps per minute over the last steps, 0
@@ -202,9 +203,7 @@ class StepSensorApp < FmrbApp
   POLL_MS = 10          # read the sensor's FIFO this often
   ODR_MS = 10           # the sensor makes a sample every 10 ms (100 Hz)
   STATS_MS = 10000      # a line in the log: samples and steps
-  RETRY_MS = 3000       # connect again after a failure or a lost connection
   REPEAT_MS = 3000      # the same value again while nothing changes
-  WIFI_WAIT_MS = 20000
   SCREEN_WAIT_MS = 2000 # connect anyway if the fullscreen answer never comes
   KEY1_PIN = 11         # front button, Low when pressed
   RAW_EVERY = 5         # raw values: every 5th sample (20 Hz)
@@ -243,20 +242,18 @@ class StepSensorApp < FmrbApp
   attr_reader :detector
 
   def on_create
-    @started = Machine.board_millis
-    st = ::FmrbAsterism.settings
-    @node = st.node
-    @locator = st.router
-    @creds = st.credentials
-    @creds_error = st.error
-    @net = "waiting for WiFi"
-    @next_try = 0
+    # The first connect blocks the app for the whole TLS handshake (10-20 s
+    # with mTLS), and the switch to fullscreen only arrives (on_resize) in
+    # the wait between two updates. Connecting from the first update left
+    # the new fullscreen canvas black until the handshake was over, so on a
+    # small screen the first connect waits for on_resize, or SCREEN_WAIT_MS.
+    @link = ::FmrbAsterism::Link.new(self, APP, tag: "step_sensor", screen_wait_ms: SCREEN_WAIT_MS)
+    node = @link.node
     @next_repeat = 0
     @event = "state"
-    @connects = 0
     @puts = 0
-    @key = "asterism/#{@node}/#{APP}/#{OBJECT}/step"
-    @raw_key = "asterism/#{@node}/#{APP}/#{OBJECT}/accel"
+    @key = "asterism/#{node}/#{APP}/#{OBJECT}/step"
+    @raw_key = "asterism/#{node}/#{APP}/#{OBJECT}/accel"
     @raw_puts = 0
     set_raw(RAW_DEFAULT)
     @detector = StepDetector.new
@@ -280,30 +277,21 @@ class StepSensorApp < FmrbApp
     width = conf_int(CONF_FILE, "display_width")
     @small = width > 0 && width < 320
     request_fullscreen(true) if @small
-    # The first connect blocks the app for the whole TLS handshake (10-20 s
-    # with mTLS), and the switch to fullscreen only arrives (on_resize) in
-    # the wait between two updates. Connecting from the first update left
-    # the new fullscreen canvas black until the handshake was over, so the
-    # first connect waits for the screen (on_resize), or SCREEN_WAIT_MS.
-    @screen_ready = !@small
+    @link.screen_ready unless @small
     open_sensor
     @drawn = nil
     draw_screen
   end
 
   def on_resize(w, h)
-    @screen_ready = true
+    @link.screen_ready
     @drawn = nil
     draw_screen
   end
 
   def on_destroy
-    ::Asterism.close
+    @link.close
     @i2c.close if @i2c
-  end
-
-  def uptime_ms
-    Machine.board_millis - @started
   end
 
   # The number in `<key> = 123` of a small TOML file, or nil.
@@ -472,7 +460,7 @@ class StepSensorApp < FmrbApp
   def put_raw
     @raw_ready = false
     pk = @detector.take_peak
-    return unless ::Asterism.connected? && !::Asterism.reconnecting?
+    return unless @link.up?
     r = @raw_last
     pk = r[5] if pk.nil?
     v = { "x" => (r[0] * 1000).round, "y" => (r[1] * 1000).round, "z" => (r[2] * 1000).round,
@@ -516,7 +504,7 @@ class StepSensorApp < FmrbApp
   def publish(event)
     @event = event
     @next_repeat = Machine.board_millis + REPEAT_MS
-    return unless ::Asterism.connected?
+    return unless @link.connected?
     begin
       ::Asterism.session.put(@key, ::MessagePack.pack(state_hash(event)))
       @puts += 1
@@ -527,62 +515,17 @@ class StepSensorApp < FmrbApp
     end
   end
 
-  def network_ready?
-    info = FmrbApp.wifi_info
-    return true if info.nil? || info[:connected]
-    uptime_ms > WIFI_WAIT_MS
-  end
-
-  def connect
-    t0 = Machine.board_millis
-    begin
-      raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @node, app: APP, credentials: @creds)
-      ::Asterism.expose(OBJECT, StepSensorApp::Pedometer.new(self),
-                        methods: { reset: 0, state: 0, clock: 0, tune: 2, save: 0, raw: 1 })
-      @connects += 1
-      @net = "connected"
-      Log.info("step_sensor: #{@node}/#{APP} connected (#{@locator}, #{Machine.board_millis - t0} ms)")
-      publish("state")
-    rescue ::Asterism::Error => e
-      ::Asterism.close
-      @net = e.message.include?("already on the network") ? "still on the network, waiting" : "retrying"
-      @next_try = Machine.board_millis + RETRY_MS
-      Log.warn("step_sensor: connect: #{e.message}")
-    rescue => e
-      ::Asterism.close
-      @net = "retrying"
-      @next_try = Machine.board_millis + RETRY_MS
-      Log.warn("step_sensor: connect: #{e.class}: #{e.message}")
-    end
+  # After every connect (FmrbAsterism::Link): Asterism.close forgot the
+  # exposed object.
+  def link_up(link)
+    ::Asterism.expose(OBJECT, StepSensorApp::Pedometer.new(self),
+                      methods: { reset: 0, state: 0, clock: 0, tune: 2, save: 0, raw: 1 })
+    publish("state")
   end
 
   def network
-    now = Machine.board_millis
-    if ::Asterism.connected?
-      begin
-        ::Asterism.poll
-      rescue => e
-        Log.warn("step_sensor: poll: #{e.class}: #{e.message}")
-      end
-      if ::Asterism.connected?
-        @net = ::Asterism.reconnecting? ? "reconnecting" : "connected"
-        publish("repeat") if now >= @next_repeat && !::Asterism.reconnecting?
-        return
-      end
-      @net = "lost, retrying"
-      Log.warn("step_sensor: lost: #{::Asterism.lost_reason}")
-      ::Asterism.close
-      @next_try = now + RETRY_MS
-      return
-    end
-    return unless now >= @next_try
-    return unless network_ready?
-    return unless @screen_ready || uptime_ms > SCREEN_WAIT_MS
-    # connect blocks: show "AST .." before it, not after.
-    @net = "connecting"
-    draw_screen
-    connect
+    return unless @link.update
+    publish("repeat") if @link.up? && Machine.board_millis >= @next_repeat
   end
 
   def check_key
@@ -611,7 +554,7 @@ class StepSensorApp < FmrbApp
     if @next_stats > 0
       Log.info("step_sensor: #{@samples} samples in #{now - @stats_from} ms, steps #{@detector.count}, " \
                "puts #{@puts}, raw puts #{@raw_puts}, update busy #{@busy_sum} ms (max #{@busy_max}), " \
-               "net #{@net}, sensor #{@sensor}")
+               "net #{@link.state}, sensor #{@sensor}")
     end
     @busy_max = 0
     @busy_sum = 0
@@ -661,7 +604,8 @@ class StepSensorApp < FmrbApp
   def draw_screen
     now = Machine.board_millis
     cad = @detector.cadence(now)
-    ast = @net == "connected" ? "ok" : (@net == "connecting" || @net == "reconnecting" ? ".." : "--")
+    st = @link.state
+    ast = st == :connected ? "ok" : (st == :connecting || st == :reconnecting ? ".." : "--")
     shown = [@detector.count, wifi_ok?, ast, bottom_line(cad)]
     return if @drawn && @drawn[0] == shown[0] && @drawn[1] == shown[1] &&
               @drawn[2] == shown[2] && @drawn[3] == shown[3]
