@@ -28,7 +28,7 @@
 #   (the largest magnitude since the last put), dyn (the magnitude above its
 #   slow average, what the detector compares with rise), rise, and steps.
 #   Put after the step, never before it. On by default (RAW_DEFAULT).
-# - Screen: WiFi and Asterism each ok / -- on the top line, the count as
+# - Screen: WiFi ok / -- and Asterism ok / .. (connecting) / -- on the top line, the count as
 #   large as it fits, the cadence on the bottom line (text at 2x at least). KEY1 (the front button) resets
 #   the count.
 #
@@ -144,6 +144,7 @@ class StepSensorApp < FmrbApp
   RETRY_MS = 3000       # connect again after a failure or a lost connection
   REPEAT_MS = 3000      # the same value again while nothing changes
   WIFI_WAIT_MS = 20000
+  SCREEN_WAIT_MS = 2000 # connect anyway if the fullscreen answer never comes
   KEY1_PIN = 11         # front button, Low when pressed
   RAW_EVERY = 5         # raw values: every 5th sample (20 Hz)
   RAW_DEFAULT = true    # raw values on from the start
@@ -213,12 +214,19 @@ class StepSensorApp < FmrbApp
     width = conf_int(CONF_FILE, "display_width")
     @small = width > 0 && width < 320
     request_fullscreen(true) if @small
+    # The first connect blocks the app for the whole TLS handshake (10-20 s
+    # with mTLS), and the switch to fullscreen only arrives (on_resize) in
+    # the wait between two updates. Connecting from the first update left
+    # the new fullscreen canvas black until the handshake was over, so the
+    # first connect waits for the screen (on_resize), or SCREEN_WAIT_MS.
+    @screen_ready = !@small
     open_sensor
     @drawn = nil
     draw_screen
   end
 
   def on_resize(w, h)
+    @screen_ready = true
     @drawn = nil
     draw_screen
   end
@@ -434,7 +442,10 @@ class StepSensorApp < FmrbApp
     end
     return unless now >= @next_try
     return unless network_ready?
-    @net = "connecting" if @net == "waiting for WiFi"
+    return unless @screen_ready || uptime_ms > SCREEN_WAIT_MS
+    # connect blocks: show "AST .." before it, not after.
+    @net = "connecting"
+    draw_screen
     connect
   end
 
@@ -473,7 +484,7 @@ class StepSensorApp < FmrbApp
     @next_stats = now + STATS_MS
   end
 
-  # The screen: WiFi and Asterism (the router session) each ok / -- on the
+  # The screen: WiFi ok / -- and Asterism (the router session) ok / .. (connecting) / -- on the
   # top line, the count as large as it fits (seven-segment digits), the
   # cadence (or the sensor's trouble) on the bottom line. Text is the 6x8
   # font at 2x, so it
@@ -514,7 +525,7 @@ class StepSensorApp < FmrbApp
   def draw_screen
     now = Machine.board_millis
     cad = @detector.cadence(now)
-    ast = @net == "connected"
+    ast = @net == "connected" ? "ok" : (@net == "connecting" || @net == "reconnecting" ? ".." : "--")
     shown = [@detector.count, wifi_ok?, ast, bottom_line(cad)]
     return if @drawn && @drawn[0] == shown[0] && @drawn[1] == shown[1] &&
               @drawn[2] == shown[2] && @drawn[3] == shown[3]
@@ -529,8 +540,8 @@ class StepSensorApp < FmrbApp
     # Top line (16 px): WiFi on the left, Asterism on the right.
     @gfx.fill_rect(x0, y0, w, 18, theme_bg)
     @gfx.draw_text(x0 + 2, y0 + 1, shown[1] ? "WiFi ok" : "WiFi --", shown[1] ? theme_fg : theme_accent)
-    at = ast ? "AST ok" : "AST --"
-    @gfx.draw_text(x0 + w - 2 - 12 * at.length, y0 + 1, at, ast ? theme_fg : theme_accent)
+    at = "AST #{ast}"
+    @gfx.draw_text(x0 + w - 2 - 12 * at.length, y0 + 1, at, ast == "ok" ? theme_fg : theme_accent)
     # Bottom line: the cadence, or what is wrong with the sensor.
     @gfx.fill_rect(x0, y0 + h - 18, w, 18, theme_bg)
     bl = shown[3]
