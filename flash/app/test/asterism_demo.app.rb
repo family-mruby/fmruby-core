@@ -12,6 +12,9 @@
 #   mode (no router; not in the browser). A tls/ locator connects straight
 #   to a cloud router with mutual TLS (G2a): the console's credentials .tar
 #   in /home/asterism gives the certificate, and its name is the node ID.
+# - Connects once (FmrbAsterism::Link without retries), after WiFi has an
+#   address (machines without WiFi at once, else up to 20 s). A failed
+#   connect or a lost connection stays on the screen.
 # - Exposes, as <ID>/demo/<name>:
 #     apu     play(mml) -> number of notes, stop -> true (the APU, via MML)
 #     screen  say(text) -> text length (shown in this window)
@@ -154,11 +157,8 @@ class AsterismDemoApp < FmrbApp
 
   def on_create
     @started = Machine.board_millis
-    st = ::FmrbAsterism.settings
-    @node = st.node
-    @locator = st.router
-    @creds = st.credentials
-    @creds_error = st.error
+    @link = ::FmrbAsterism::Link.new(self, APP, tag: "asterism_demo", retry_ms: nil)
+    @node = @link.node
     @state = "connecting"
     @said = "-"
     @lines = []
@@ -186,30 +186,28 @@ class AsterismDemoApp < FmrbApp
     @lines.shift while @lines.size > 5
   end
 
-  def connect
-    t0 = Machine.board_millis
-    words = @locator.split(" ")
-    begin
-      if words[0] == "listen"
-        ::Asterism.connect(nil, node: @node, app: APP, mode: :peer, listen: words[1])
-      elsif words[0] == "peer"
-        ::Asterism.connect(words[1], node: @node, app: APP, mode: :peer)
-      else
-        raise ::Asterism::Error, @creds_error if @creds_error
-        ::Asterism.connect(@locator, node: @node, app: APP, credentials: @creds)
-      end
-      ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
-      ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
-      ::Asterism.expose("info", AsterismDemoApp::Info.new(self),
-                        methods: { status: 0, relay: 1, boom: 0, echo: 1, profile: 2 })
-      # Called from Asterism.poll (on_update), not from a waiting call.
-      ::Asterism.on_join { |n| joined(n) }
-      ::Asterism.on_leave { |n| left(n) }
-      @state = "connected"
-    rescue ::Asterism::Error => e
-      @state = "failed: #{e.message}"
+  # After the connect (FmrbAsterism::Link).
+  def link_up(link)
+    ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
+    ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
+    ::Asterism.expose("info", AsterismDemoApp::Info.new(self),
+                      methods: { status: 0, relay: 1, boom: 0, echo: 1, profile: 2 })
+    # Called from Asterism.poll (on_update), not from a waiting call.
+    ::Asterism.on_join { |n| joined(n) }
+    ::Asterism.on_leave { |n| left(n) }
+    @state = "connected"
+    note("#{@node} #{@state} (#{link.router}, #{link.took_ms} ms)")
+  end
+
+  # The connect failed, or the connection went away (no retries).
+  def link_down(link)
+    if link.state == :lost
+      @state = "disconnected: #{::Asterism.lost_reason}"
+      note(@state)
+    else
+      @state = "failed: #{link.reason}"
+      note("#{@node} #{@state} (#{link.router}, #{link.took_ms} ms)")
     end
-    note("#{@node} #{@state} (#{@locator}, #{Machine.board_millis - t0} ms)")
   end
 
   def read_file(path)
@@ -399,28 +397,11 @@ class AsterismDemoApp < FmrbApp
     @gfx.present
   end
 
-  # Started at boot (a single-app machine's startup_app), the app comes up
-  # before WiFi has an address: wait for it, up to WIFI_WAIT_MS, rather than
-  # fail the one connection attempt. Machines without WiFi (wifi_info nil)
-  # connect at once.
-  WIFI_WAIT_MS = 20000
-
-  def network_ready?
-    info = FmrbApp.wifi_info
-    return true if info.nil? || info[:connected]
-    uptime_ms > WIFI_WAIT_MS
-  end
-
   def on_update
-    connect if @state == "connecting" && network_ready?
-    if ::Asterism.connected?
-      ::Asterism.poll
+    if @link.update
       find_peer
       run_key(@keys.shift) until @keys.empty?
       ask_status
-    elsif @state == "connected"
-      @state = "disconnected: #{::Asterism.lost_reason}"
-      note(@state)
     end
     draw_screen
     wait = @apu.player.playing? ? @apu.player.next_delay(50) : 50
