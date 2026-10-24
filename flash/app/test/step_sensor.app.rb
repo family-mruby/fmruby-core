@@ -37,7 +37,11 @@
 #   asterism/<ID>/step/pedometer/accel, a MessagePack map at 20 Hz of
 #   integers in mg: x, y, z (the last sample), m (its magnitude), m_peak
 #   (the largest magnitude since the last put), dyn (the magnitude above its
-#   slow average, what the detector compares with rise), rise, and steps.
+#   slow average, what the detector compares with rise, at the put),
+#   dyn_peak (the largest dyn of all the samples fed to the detector since
+#   the last put: at 100 Hz an impact is too short for dyn at 20 Hz to
+#   catch, so a counted step always shows as dyn_peak >= rise), rise, and
+#   steps.
 #   Put after the step, never before it. On by default (RAW_DEFAULT).
 # - Screen: WiFi ok / -- and Asterism ok / .. (connecting) / -- on the top line, the count as
 #   large as it fits, the cadence on the bottom line (text at 2x at least). KEY1 (the front button) resets
@@ -87,6 +91,7 @@ class StepDetector
     @interval_ms = 0
     @intervals = []
     @dynamic = 0.0
+    @peak = nil
     @steady_lo = 0.0
     @steady_hi = 0.0
     @steady_from = 0
@@ -102,6 +107,14 @@ class StepDetector
     @intervals = []
     @interval_ms = 0
     @last_ms = nil
+  end
+
+  # The largest dynamic (g) of the samples fed since the last call, nil
+  # when none was. Only for showing; detection does not use it.
+  def take_peak
+    pk = @peak
+    @peak = nil
+    pk
   end
 
   # Steps per minute over the last intervals; 0 before two steps or after a
@@ -136,6 +149,7 @@ class StepDetector
     @prev_ms = t_ms
     @smooth += (m - @smooth) * dt / (SMOOTH_MS + dt).to_f
     @dynamic = @smooth - @base
+    @peak = @dynamic if @peak.nil? || @dynamic > @peak
     # The span of the magnitude since it last moved by more than STEADY_G.
     @steady_hi = @smooth if @smooth > @steady_hi
     @steady_lo = @smooth if @smooth < @steady_lo
@@ -457,10 +471,13 @@ class StepSensorApp < FmrbApp
 
   def put_raw
     @raw_ready = false
+    pk = @detector.take_peak
     return unless ::Asterism.connected? && !::Asterism.reconnecting?
     r = @raw_last
+    pk = r[5] if pk.nil?
     v = { "x" => (r[0] * 1000).round, "y" => (r[1] * 1000).round, "z" => (r[2] * 1000).round,
           "m" => (r[3] * 1000).round, "m_peak" => (r[4] * 1000).round, "dyn" => (r[5] * 1000).round,
+          "dyn_peak" => (pk * 1000).round,
           "rise" => rise_mg, "steps" => @detector.count }
     begin
       ::Asterism.session.put(@raw_key, ::MessagePack.pack(v))
@@ -475,6 +492,7 @@ class StepSensorApp < FmrbApp
     @raw_n = 0
     @raw_peak = nil
     @raw_ready = false
+    @detector.take_peak if @detector # nil when on_create sets the default
     Log.info("step_sensor: raw #{@raw_on ? 'on' : 'off'}")
     @raw_on
   end

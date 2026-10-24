@@ -2,7 +2,8 @@
 # synthetic accelerometer data: walking at 1.5 to 2.5 steps per second,
 # lying still, noise, slow tilting, a walk with a pause, and shaking the board
 # hard for a while and then putting it down (dyn must come back to 0 and a
-# walk right after must count as usual). Prints the count and the delay of
+# walk right after must count as usual), and the accel values for a plot
+# (every put whose steps went up has dyn_peak >= rise). Prints the count and the delay of
 # each case and exits non-zero when a case is off.
 #
 #   ruby tool/imu/test/step_detector_test.rb [-v]
@@ -209,6 +210,73 @@ CASES.each_with_index do |(name, segs, gen, run, miss_ok, extra_ok), idx|
 end
 puts format("all walking: %d steps, delay median %d ms, p90 %d ms, max %d ms",
             all_delays.size, pct(all_delays, 0.5), pct(all_delays, 0.9), all_delays.max || 0)
+
+# The raw values for a plot (accel, 20 Hz): as in the app, every RAW_EVERY
+# samples the last one is kept (dyn) and, after the read, put with
+# dyn_peak = take_peak (the largest dyn since the previous put). Every put
+# whose steps went up must show dyn_peak >= rise; dyn alone (the value at
+# the put) usually does not, which is why the panel plots dyn_peak.
+RAW_EVERY = 5
+def raw_puts(w, det, samples, poll_ms: 10, poll_jitter: 6, stall_every: 40, stall_ms: 60)
+  rng = Random.new(77)
+  puts_ = []
+  t = 0.0
+  next_index = 0
+  reads = 0
+  raw_n = 0
+  ready = false
+  snap = 0.0
+  while t <= samples.last[0]
+    last = [(t / Walk::ODR_MS).floor, samples.size - 1].min
+    if last >= next_index
+      now = t.round + 2
+      n = last - next_index + 1
+      (next_index..last).each_with_index do |i, k|
+        s = samples[i]
+        det.feed(now - (n - 1 - k) * Walk::ODR_MS, s[1], s[2], s[3])
+        raw_n += 1
+        next if raw_n < RAW_EVERY
+        raw_n = 0
+        snap = det.dynamic
+        ready = true
+      end
+      next_index = last + 1
+      if ready
+        ready = false
+        pk = det.take_peak || snap
+        puts_ << [det.count, (pk * 1000).round, (snap * 1000).round]
+      end
+    end
+    reads += 1
+    t += poll_ms + rng.rand * poll_jitter
+    t += stall_ms if stall_every > 0 && reads % stall_every == 0
+  end
+  puts_
+end
+
+puts format("%-40s %7s %9s %12s", "accel puts (dyn_peak)", "steps", "peak<rise", "dyn<rise")
+CASES.each_with_index do |(name, segs, gen, run), idx|
+  next unless name.start_with?("walk")
+  w = Walk.new(1000 + idx)
+  samples, = w.generate(segs, **gen)
+  det = StepDetector.new
+  rise = (det.rise * 1000).round
+  prev = 0
+  stepped = 0
+  bad_peak = 0
+  bad_dyn = 0
+  raw_puts(w, det, samples, **run.slice(:poll_ms, :poll_jitter, :stall_every, :stall_ms)).each do |steps, pk, dyn|
+    if steps > prev
+      stepped += 1
+      bad_peak += 1 if pk < rise
+      bad_dyn += 1 if dyn < rise
+    end
+    prev = steps
+  end
+  ok = bad_peak == 0 && stepped > 0
+  failed += 1 unless ok
+  puts format("%-40s %7d %9d %12d%s", name, stepped, bad_peak, bad_dyn, ok ? "" : "  FAIL")
+end
 
 # Shaking: the board shaken by hand for some seconds (a sine along a random
 # direction, its amplitude wandering, with a second harmonic, the axes

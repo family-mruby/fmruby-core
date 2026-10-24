@@ -36,9 +36,11 @@
 #   writes /home/step_sensor.toml and keeps the values across a restart),
 #   0 asks for the defaults (150 mg / 250 ms; S to keep them). Below, the
 #   last few seconds of the sensor's raw values (asterism/<node>/step/
-#   pedometer/accel, subscribed only while the panel is open): dyn as a
-#   line with the threshold across it (a step is a peak that crosses it)
-#   and the largest dyn of the window as a number. The sensor tuned is the
+#   pedometer/accel, subscribed only while the panel is open): dyn_peak
+#   (the largest dyn of the sensor's samples since its previous put; dyn,
+#   the value at the put, from a sender without it) as a line with the
+#   threshold across it (a step is a peak that crosses it) and the largest
+#   of the window as a number. The sensor tuned is the
 #   script's `node`, else the last node that sent a step (else the last
 #   node heard from).
 # - Network: node ID and router from FmrbAsterism.settings (as
@@ -201,7 +203,7 @@ class WalkScrollerApp < FmrbApp
     @tune_poll_at = 0
     @accel_sub = nil
     @accel_node = ""
-    @accel = []           # dyn (mg) of the last raw values
+    @accel = []           # dyn_peak (else dyn) in mg of the last raw values
     @accel_rise = 0
     @accel_new = false
 
@@ -1297,7 +1299,9 @@ class WalkScrollerApp < FmrbApp
   def accel_value(payload)
     v = ::Asterism::Codec.unpack(payload)
     return unless v.is_a?(Hash)
-    d = v["dyn"]
+    # dyn_peak catches the impacts dyn at 20 Hz misses; older senders lack it.
+    d = v["dyn_peak"]
+    d = v["dyn"] unless d.is_a?(Integer)
     return unless d.is_a?(Integer)
     @accel << d
     @accel.shift while @accel.size > GRAPH_N
@@ -1386,7 +1390,8 @@ class WalkScrollerApp < FmrbApp
            else @tune_note
            end
     @gfx.draw_text(4, 33, fit(line, PANEL_CHARS), bad ? 0xEC : 0xB6)
-    # The graph: dyn of the last GRAPH_N raw values, the threshold across.
+    # The graph: dyn_peak (or dyn) of the last GRAPH_N raw values, the
+    # threshold across.
     gx = 4
     gy = 45
     gw = GRAPH_N * 2
