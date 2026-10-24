@@ -96,6 +96,11 @@ MRuby::CrossBuild.new("esp32") do |conf|
   # RTC driver (pure Ruby, depends on picoruby-i2c)
   conf.gem core: "picoruby-rx8900"
 
+  # Six-axis sensor driver (pure Ruby, depends on picoruby-i2c). Only with
+  # FMRB_IMU=1 (the StickS3's default; see the Rakefile): Retro and the
+  # AtomS3R build leave it out.
+  conf.gem core: "picoruby-bmi270" if ENV['FMRB_IMU'] == '1'
+
   # Ruby networking client API (see doc/reference/ruby_network_api_design.md). Narya
   # only: ATOM shares this build config but keeps WiFi disabled in its
   # sdkconfig, and picoruby-socket would pull mbedTLS into an image that can

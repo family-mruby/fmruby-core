@@ -53,7 +53,7 @@ end
 #   the mruby one, the Spinel FFT is left out and so are the Japanese fonts.
 #   It is a node of an Asterism network, so Asterism is in.
 #   STICKS3: the same chip, partitions and role as the AtomS3R, so the same
-#   defaults.
+#   defaults, plus its six-axis sensor (the BMI270 driver, FMRB_IMU).
 MINI_BUILD_DEFAULTS = {
   "FMRB_APP_ENGINE_EDITOR" => "mruby",
   "FMRB_FFT_SPINEL" => "0",
@@ -62,7 +62,7 @@ MINI_BUILD_DEFAULTS = {
 }.freeze
 BOARD_BUILD_DEFAULTS = {
   "ATOMS3R" => MINI_BUILD_DEFAULTS,
-  "STICKS3" => MINI_BUILD_DEFAULTS,
+  "STICKS3" => MINI_BUILD_DEFAULTS.merge("FMRB_IMU" => "1").freeze,
 }
 (BOARD_BUILD_DEFAULTS[ENV.fetch("FMRB_HW_TARGET", "").strip] || {}).each do |key, value|
   next if ENV.key?(key) && !DOTENV_KEYS.include?(key)
@@ -306,6 +306,13 @@ FMRB_FONT_JA = (ENV["FMRB_FONT_JA"] || "1") != "0"
 # components/picoruby-esp32/CMakeLists.txt (their ESP-IDF port sources), so
 # the two cannot disagree. Changing it means `rake clean` (libmruby).
 FMRB_ASTERISM = ENV["FMRB_ASTERISM"] == "1"
+# The BMI270 six-axis sensor driver (picoruby-bmi270, pure Ruby) on an S3
+# board that has the sensor. The Modern (P4) build always has it; on the S3
+# it is in only with FMRB_IMU=1 (the StickS3's default, BOARD_BUILD_DEFAULTS
+# above), so the other S3 boards' flash and RAM stay as they are. Read inside
+# the container by lib/add/family_mruby_esp32.rb. Changing it means
+# `rake clean` (libmruby).
+FMRB_IMU = ENV["FMRB_IMU"] == "1"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 # Pin the build container to the IDF version tag above -- never :latest. Two
@@ -345,6 +352,7 @@ ENGINE_ENV_OPTS = [
   "-e FMRB_FFT_SPINEL=#{FMRB_FFT_SPINEL ? 1 : 0}",
   "-e FMRB_FONT_JA=#{FMRB_FONT_JA ? 1 : 0}",
   "-e FMRB_ASTERISM=#{FMRB_ASTERISM ? 1 : 0}",
+  "-e FMRB_IMU=#{FMRB_IMU ? 1 : 0}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
   # (lib/add/family_mruby_*.rb) and the CMake side

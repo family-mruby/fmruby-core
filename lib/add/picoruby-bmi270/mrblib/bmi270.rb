@@ -1,8 +1,9 @@
 # BMI270 six-axis IMU driver (pure Ruby, uses the I2C gem).
 # Used on M5Stack Tab5 (Modern), where the part shares the internal I2C bus
-# with the touch controller, the IO expanders, the codec and the RTC. That bus
-# is serialized by the display driver, so ordinary I2C calls from an app are
-# safe here.
+# with the touch controller, the IO expanders, the codec and the RTC, and on
+# the M5StickS3 (system I2C, with the power controller and the codec). On
+# both the bus is serialized by the display driver, so ordinary I2C calls
+# from an app are safe there.
 #
 # The sensor answers on the bus straight after reset but produces no
 # measurement until an 8192-byte configuration image is written into its
@@ -36,8 +37,15 @@ class BMI270
   REG_PWR_CONF        = 0x7C
   REG_PWR_CTRL        = 0x7D
   REG_CMD             = 0x7E
+  REG_FIFO_LENGTH_0   = 0x24
+  REG_FIFO_DATA       = 0x26
+  REG_FIFO_CONFIG_1   = 0x49
 
   CMD_SOFT_RESET = 0xB6
+  CMD_FIFO_FLUSH = 0xB0
+  FIFO_ACC_ONLY  = 0x40   # FIFO_CONFIG_1: accelerometer frames, no headers
+  FIFO_FRAME_BYTES = 6
+  FIFO_READ_FRAMES = 40   # 240 bytes a transaction
   RESET_TRIES    = 20   # 2 ms apart, so up to 40 ms for the reset to finish
   PWR_CTRL_ON    = 0x0E   # temperature + accelerometer + gyroscope enabled
   INIT_OK        = 0x01   # low nibble of INTERNAL_STATUS after a good load
@@ -195,6 +203,59 @@ class BMI270
     return nil unless raw
     res = GYR_RANGE_DPS / 32768.0
     { x: raw[:gx] * res, y: raw[:gy] * res, z: raw[:gz] * res }
+  end
+
+  # The FIFO, accelerometer frames only (6 bytes each, no headers): every
+  # sample the sensor makes (100 Hz by default) is kept until read, so a
+  # reader that polls late or unevenly still sees all of them. The FIFO
+  # holds 2 KB (about 3 s of samples at 100 Hz); older frames are dropped
+  # when it is full. Starts empty.
+  def fifo_accel_start
+    write8(REG_FIFO_CONFIG_1, FIFO_ACC_ONLY)
+    write8(REG_CMD, CMD_FIFO_FLUSH)
+  end
+
+  # The accelerometer frames waiting in the FIFO, oldest first, as raw
+  # signed counts in one flat Array [x, y, z, x, y, z, ...] (empty when
+  # none; nil when the bus fails). At most max_frames are read; the rest
+  # stay for the next call.
+  def read_fifo_accel(max_frames = FIFO_READ_FRAMES)
+    len_data = begin
+      @i2c.read(@address, 2, REG_FIFO_LENGTH_0)
+    rescue
+      nil
+    end
+    return nil unless len_data && len_data.bytesize >= 2
+    len = len_data.getbyte(0) | ((len_data.getbyte(1) & 0x3F) << 8)
+    frames = len / FIFO_FRAME_BYTES
+    frames = max_frames if frames > max_frames
+    out = []
+    while frames > 0
+      # One transaction stays under the 255-byte limit of the bus service.
+      n = frames > FIFO_READ_FRAMES ? FIFO_READ_FRAMES : frames
+      data = begin
+        @i2c.read(@address, n * FIFO_FRAME_BYTES, REG_FIFO_DATA)
+      rescue
+        nil
+      end
+      return nil unless data && data.bytesize >= n * FIFO_FRAME_BYTES
+      i = 0
+      while i < n
+        o = i * FIFO_FRAME_BYTES
+        x = s16(data, o)
+        y = s16(data, o + 2)
+        z = s16(data, o + 4)
+        # 0x8000 on all three axes is the FIFO's "no data" frame.
+        unless x == -32768 && y == -32768 && z == -32768
+          out << x
+          out << y
+          out << z
+        end
+        i += 1
+      end
+      frames -= n
+    end
+    out
   end
 
   # Die temperature in degrees Celsius. Reads warm: it is the sensor, not the

@@ -35,6 +35,8 @@ class FakeDevice
   REG_PWR_CONF        = 0x7C
   REG_PWR_CTRL        = 0x7D
   REG_CMD             = 0x7E
+  REG_FIFO_LENGTH_0   = 0x24
+  REG_FIFO_DATA       = 0x26
 
   attr_reader :log, :uploaded, :chunk_sizes, :closed
 
@@ -60,6 +62,15 @@ class FakeDevice
     @sensor = bytes
   end
 
+  # Bytes waiting in the FIFO (a read takes them from the front).
+  def fifo_bytes=(bytes)
+    @fifo = bytes.dup
+  end
+
+  def fifo_reads
+    @log.count { |kind, r, _| kind == :read && r == REG_FIFO_DATA }
+  end
+
   def read(addr, len, reg = nil)
     raise IOError, "no device at 0x#{addr.to_s(16)}" unless addr == @addr
     if @nack_left > 0
@@ -72,6 +83,12 @@ class FakeDevice
     when REG_INTERNAL_STATUS then [@status].pack("C")
     when REG_TEMPERATURE     then [0x00, 0x08].pack("C*")   # 23 + 2048/512 = 27 C
     when REG_ACC_X_LSB       then (@sensor || Array.new(12, 0)).pack("C*")
+    when REG_FIFO_LENGTH_0
+      n = (@fifo || []).size
+      [n & 0xFF, n >> 8].pack("C*")
+    when REG_FIFO_DATA
+      raise IOError, "transaction over 255 bytes" if len > 255
+      (@fifo || []).shift(len).pack("C*")
     else "\x00" * len
     end
   end
@@ -256,6 +273,42 @@ end
 check("reads the die temperature") do
   t = imu.read_temperature
   [(t - 27.0).abs < 1e-6, t.inspect]
+end
+
+puts "fifo"
+imu.fifo_accel_start
+check("selects accelerometer frames without headers, then flushes") do
+  [device.writes_to(0x49).last == [0x40] && device.writes_to(0x7E).last == [0xB0],
+   [device.writes_to(0x49), device.writes_to(0x7E)].inspect]
+end
+# Frame 1: +1000, -1000, +16384; frame 2: the "no data" marker; frame 3:
+# -1, 2, -3.
+device.fifo_bytes = [0xE8, 0x03, 0x18, 0xFC, 0x00, 0x40,
+                     0x00, 0x80, 0x00, 0x80, 0x00, 0x80,
+                     0xFF, 0xFF, 0x02, 0x00, 0xFD, 0xFF]
+check("reads the frames in order and skips the no-data frame") do
+  f = imu.read_fifo_accel
+  [f == [1000, -1000, 16384, -1, 2, -3], f.inspect]
+end
+check("returns an empty list when the FIFO is empty") do
+  f = imu.read_fifo_accel
+  [f == [], f.inspect]
+end
+# 100 frames waiting: read in transactions of at most 255 bytes, all of
+# them, oldest first.
+frames = (0...100).flat_map { |i| [i & 0xFF, 0, 0, 0, 0, 0] }
+device.fifo_bytes = frames
+before = device.fifo_reads
+check("reads a long backlog in transactions under 255 bytes") do
+  f = imu.read_fifo_accel(200)
+  [f.size == 300 && f[0] == 0 && f[297] == 99 && device.fifo_reads - before == 3,
+   "#{f.size / 3} frames in #{device.fifo_reads - before} reads"]
+end
+device.fifo_bytes = frames
+check("leaves frames past max_frames for the next call") do
+  a = imu.read_fifo_accel(10)
+  b = imu.read_fifo_accel(200)
+  [a.size == 30 && b.size == 270 && b[0] == 10, "#{a.size / 3} + #{b.size / 3}"]
 end
 
 puts
