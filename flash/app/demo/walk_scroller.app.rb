@@ -43,9 +43,10 @@
 #   of the window as a number. The sensor tuned is the
 #   script's `node`, else the last node that sent a step (else the last
 #   node heard from).
-# - Network: node ID and router from FmrbAsterism.settings (as
-#   asterism_demo; the browser build reaches zenohd over ws/). Tries again
-#   every RETRY_MS while it cannot connect or after the connection is lost.
+# - Network: FmrbAsterism::Link, node ID and router from
+#   FmrbAsterism.settings (as asterism_demo; the browser build reaches
+#   zenohd over ws/). Tries again every 3 s while it cannot connect or
+#   after the connection is lost; link_up subscribes after every connect.
 #   After the frame that shows a step it puts its progress on
 #   asterism/<ID>/walk/scroller/progress (count, mark, src, src_steps), so
 #   a sender can time a step from its put to the screen.
@@ -92,7 +93,6 @@ class WalkScrollerApp < FmrbApp
   APP = "walk"
   SAMPLE_SCRIPT = "/app/demo/walk_scroller/sample.toml"
   HOME_SCRIPTS = ["/home/walk_scroller.toml", "/home/walk_scroller.json"]
-  RETRY_MS = 3000
   FRAME_MS = 33         # while something moves
   IDLE_MS = 20          # standing still: only the network is polled
   STATS_MS = 10000
@@ -207,16 +207,9 @@ class WalkScrollerApp < FmrbApp
     @accel_rise = 0
     @accel_new = false
 
-    @net = :down
-    @reconnecting = false
-    @net_note = ""
-    @retry_at = 0
     @sub = nil
-    st = ::FmrbAsterism.settings
-    @node = st.node
-    @locator = st.router
-    @creds = st.credentials
-    @creds_error = st.error
+    # No wait for WiFi: the first update already tries (a failure retries).
+    @link = ::FmrbAsterism::Link.new(self, APP, tag: "walk_scroller", wifi_wait_ms: 0)
 
     @frames_n = 0
     @render_sum = 0
@@ -228,15 +221,12 @@ class WalkScrollerApp < FmrbApp
     make_sprites
     apply_mark(true)
     render(Machine.board_millis)
-    Log.info("walk_scroller: #{@w}x#{@h}, script #{@script_path} (#{@marks.size} marks), node #{@node}, router #{@locator}")
+    Log.info("walk_scroller: #{@w}x#{@h}, script #{@script_path} (#{@marks.size} marks), node #{@link.node}, router #{@link.router}")
   end
 
   def on_destroy
     close_accel
-    begin
-      ::Asterism.close
-    rescue
-    end
+    @link.close
   end
 
   # ---- script ----
@@ -711,7 +701,7 @@ class WalkScrollerApp < FmrbApp
     @gfx.fill_rect(0, 0, @status_w, 10, TKEY)
     if @status_on
       now = Machine.board_millis
-      c = if @net != :up || @reconnecting then 0xE0
+      c = if !@link.up? then 0xE0
           elsif @seen_at > 0 && now - @seen_at < 5000 then 0x1C
           else 0xFC
           end
@@ -724,9 +714,9 @@ class WalkScrollerApp < FmrbApp
   end
 
   def update_status(now)
-    t = if @net == :up && @reconnecting
+    t = if @link.state == :reconnecting
           "reconnecting #{@count}"
-        elsif @net == :up
+        elsif @link.connected?
           src = @seen_node.empty? ? "waiting" : @seen_node
           "#{src} #{@count}"
         else
@@ -742,7 +732,7 @@ class WalkScrollerApp < FmrbApp
       n = n[0, room] if n.length > room
       t = "#{n}  #{t}"
     end
-    key = "#{t}|#{@net}|#{@reconnecting}|#{@seen_at > 0 && now - @seen_at < 5000}|#{@status_on}"
+    key = "#{t}|#{@link.state}|#{@seen_at > 0 && now - @seen_at < 5000}|#{@status_on}"
     return false if key == @status_key
     @status_key = key
     @status_text = t
@@ -1048,56 +1038,29 @@ class WalkScrollerApp < FmrbApp
 
   # ---- network ----
 
-  def connect(now)
-    begin
-      begin
-        ::Asterism.close
-      rescue
-      end
-      raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @node, app: APP, credentials: @creds)
-      who = @follow.empty? ? "*" : @follow
-      @sub = ::Asterism.session.subscribe("asterism/#{who}/step/pedometer/step", depth: 16)
-      @progress_key = "asterism/#{@node}/#{APP}/scroller/progress"
-      @net = :up
-      @net_note = ""
-    rescue => e
-      @net = :down
-      @net_note = e.message.to_s
-      @retry_at = now + RETRY_MS
-      @sub = nil
-    end
-    Log.info("walk_scroller: #{@node} #{@net} (#{@locator}) #{@net_note}")
+  # After every connect (FmrbAsterism::Link): Asterism.close forgot the
+  # subscription.
+  def link_up(link)
+    who = @follow.empty? ? "*" : @follow
+    @sub = ::Asterism.session.subscribe("asterism/#{who}/step/pedometer/step", depth: 16)
+    @progress_key = "asterism/#{link.node}/#{APP}/scroller/progress"
   end
 
-  def lost(why, now)
-    Log.info("walk_scroller: lost: #{why}")
-    @net = :down
-    @reconnecting = false
-    @net_note = why
-    @retry_at = now + RETRY_MS
+  # A connect failed or the connection went away (closed by the Link).
+  def link_down(link)
     @sub = nil
     @accel_sub = nil
     @accel_node = ""
     @tune_call = nil
-    begin
-      ::Asterism.close
-    rescue
-    end
   end
 
   def network(now)
-    if @net != :up
-      connect(now) if now >= @retry_at
-      return
-    end
+    return unless @link.update
     begin
-      return lost("asterism: #{::Asterism.lost_reason}", now) unless ::Asterism.poll
-      @reconnecting = ::Asterism.reconnecting?
       @sub.each_pending { |key, payload, att| step_value(key, payload, now) } if @sub
       tune_network(now) if @panel_on
     rescue => e
-      lost("#{e.class}: #{e.message}", now)
+      @link.lost("#{e.class}: #{e.message}")
     end
   end
 
@@ -1133,7 +1096,7 @@ class WalkScrollerApp < FmrbApp
   def put_progress(now)
     a = @ack
     @ack = nil
-    return unless a && @net == :up
+    return unless a && @link.connected?
     v = { "count" => @count, "mark" => @shown_mark, "src" => a[0], "src_steps" => a[1], "ms" => now }
     ::Asterism.session.put(@progress_key, ::Asterism::Codec.pack(v))
   rescue => e
@@ -1383,9 +1346,9 @@ class WalkScrollerApp < FmrbApp
     end
     age = sec >= 0 ? "read #{sec} s ago" : "not read yet"
     @gfx.draw_text(w - 4 - age.length * 6, 23, age, 0xB6)
-    bad = !@tune_err.empty? || @net != :up
+    bad = !@tune_err.empty? || !@link.connected?
     line = if !@tune_err.empty? then @tune_err
-           elsif @net != :up then "offline: #{@net_note}"
+           elsif !@link.connected? then "offline: #{@link.reason}"
            elsif @tune_node.empty? then "waiting for a step or script node"
            else @tune_note
            end
@@ -1495,7 +1458,7 @@ class WalkScrollerApp < FmrbApp
     end
     if now >= @stats_at
       avg = @frames_n > 0 ? @render_sum * 10 / @frames_n : 0
-      Log.info("walk_scroller: #{@frames_n} frames in #{STATS_MS / 1000} s, render avg #{avg / 10}.#{avg % 10} ms max #{@render_max} ms, count #{@count}, #{@net} #{@net_note}")
+      Log.info("walk_scroller: #{@frames_n} frames in #{STATS_MS / 1000} s, render avg #{avg / 10}.#{avg % 10} ms max #{@render_max} ms, count #{@count}, #{@link.state} #{@link.reason}")
       @frames_n = 0
       @render_sum = 0
       @render_max = 0
