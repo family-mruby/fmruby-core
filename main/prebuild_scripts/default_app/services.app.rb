@@ -94,7 +94,7 @@ class ServicesApp < FmrbApp
   USR_DIR  = "/home/services"
   # The host's own file, and the only one it writes: which services the user
   # has switched on and off, so the choice outlives a reboot. Their list stays
-  # exactly as they typed it (see SvcConf.parse_state).
+  # exactly as they typed it (see SvcConf.state_from_toml).
   USR_STATE = "/home/services_state.toml"
 
   # Where ps / kill / svc talk to the host. Requests carry a "reply_to" topic
@@ -211,10 +211,10 @@ class ServicesApp < FmrbApp
   # Three layers, in this order: the system list, the user's list on top of it,
   # and the state file on top of both.
   def read_lists
-    sys = SvcConf.parse(read_file(SYS_TOML))
-    usr = SvcConf.parse(read_file(USR_TOML))
+    sys = SvcConf.from_toml(FmrbToml.load(SYS_TOML))
+    usr = SvcConf.from_toml(FmrbToml.load(USR_TOML))
     conf = SvcConf.merge(sys, usr)
-    @state = SvcConf.parse_state(read_file(USR_STATE))
+    @state = SvcConf.state_from_toml(FmrbToml.load(USR_STATE))
     unknown = SvcConf.apply_state(conf, @state)
     # A name left in the state file after its service was deleted is not an
     # error -- said once and ignored, so an old file cannot stop the machine.
@@ -244,23 +244,6 @@ class ServicesApp < FmrbApp
       rescue
       end
       false
-    end
-  end
-
-  def read_file(path)
-    f = nil
-    begin
-      f = File.open(path, "r")
-      text = f.read
-      f.close
-      f = nil
-      text
-    rescue => e
-      # Missing is the normal case for both files -- a machine with no user
-      # services has no /home/services.toml -- so this is not an error.
-      Log.info("services: no #{path} (#{e.message})")
-      f.close if f
-      nil
     end
   end
 

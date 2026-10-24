@@ -33,122 +33,46 @@ module SvcConf
   # there is nothing to wake for.
   IDLE_SLEEP_MS = 30000
 
-  # Parse the subset of toml a service list uses: "[name]" tables,
-  # "[name.config]" sub-tables, and "key = value" lines with string, integer
-  # and boolean values.
+  # A service list as FmrbToml reads it -> the entries: "[name]" tables with
+  # their string, integer and boolean fields, and a "[name.config]" table
+  # under "config". Any other sub-table, and anything that is not a table at
+  # the top, is left out.
   #
-  # Written here rather than bound to the C parser (fmrb_toml, used by the
-  # spawner) because a service list is two small files read once at boot, and
-  # a Ruby reader keeps the host self-contained -- there is no Ruby binding
-  # for fmrb_toml and adding one to read ten lines is not worth a C API.
-  #
-  # A line that does not parse is skipped, not raised over: a typo in one
-  # entry of a hand-written list must not stop the services spelled correctly.
+  # The file itself is read by FmrbToml (the firmware's TOML reader), so a
+  # list with a TOML error is not read at all and the host says so in one
+  # log line -- the other layer still counts. An unquoted word reaches the
+  # service as its text (FmrbToml hands it back as a String).
   #
   # Returns { "name" => { "file" => "chime.rb", ..., "config" => {...} } } in
-  # file order.
-  def self.parse(text)
+  # file order. nil (no file, or not TOML) is an empty list.
+  def self.from_toml(conf)
     out = {}
-    return out unless text
-    sec = nil    # table the following key/value lines belong to
-    cfg = nil    # non-nil while inside [name.config]
-    lines = text.split("\n")
-    i = 0
-    while i < lines.size
-      line = lines[i].strip
-      i += 1
-      next if line.empty?
-      next if line.start_with?("#")
-
-      if line.start_with?("[")
-        close = line.index("]")
-        next unless close
-        next if close < 2
-        path = line[1, close - 1].strip
-        next if path.empty?
-        dot = path.index(".")
-        if dot
-          # Only [name.config] is understood; any other sub-table is skipped
-          # along with the lines under it (sec = nil).
-          base = path[0, dot]
-          rest = path[dot + 1, path.length - dot - 1]
-          if rest == "config" && !base.empty?
-            entry = out[base]
-            unless entry
-              entry = {}
-              out[base] = entry
-            end
-            sub = entry["config"]
-            unless sub
-              sub = {}
-              entry["config"] = sub
-            end
-            sec = entry
-            cfg = sub
-          else
-            sec = nil
-            cfg = nil
-          end
-        else
-          entry = out[path]
-          unless entry
-            entry = {}
-            out[path] = entry
-          end
-          sec = entry
-          cfg = nil
+    return out unless conf.is_a?(Hash)
+    conf.each do |name, tab|
+      next unless tab.is_a?(Hash)
+      entry = {}
+      tab.each do |key, val|
+        if key == "config"
+          entry["config"] = scalars(val) if val.is_a?(Hash)
+        elsif scalar?(val)
+          entry[key] = val
         end
-        next
       end
-
-      next unless sec
-      eq = line.index("=")
-      next unless eq
-      next if eq == 0
-      key = line[0, eq].strip
-      next if key.empty?
-      val = parse_value(line[eq + 1, line.length - eq - 1].strip)
-      if cfg
-        cfg[key] = val
-      else
-        sec[key] = val
-      end
+      out[name] = entry
     end
     out
   end
 
-  # One toml scalar: "quoted string", true / false, an integer, or -- for
-  # anything else -- the bare text, so an unquoted word still reaches the
-  # service instead of turning into 0.
-  def self.parse_value(raw)
-    return "" if raw.nil?
-    s = raw
-    if s.start_with?("\"")
-      body = s[1, s.length - 1]
-      close = body.index("\"")
-      return close ? body[0, close] : body
-    end
-    hash = s.index("#")
-    s = s[0, hash].strip if hash
-    return true if s == "true"
-    return false if s == "false"
-    return s.to_i if integer?(s)
-    s
+  def self.scalar?(v)
+    v.is_a?(String) || v.is_a?(Integer) || v == true || v == false
   end
 
-  # to_i answers 0 for "abc" as happily as for "0", so the digits are checked
-  # before the conversion is trusted.
-  def self.integer?(s)
-    return false if s.nil? || s.empty?
-    i = 0
-    i = 1 if s.start_with?("-")
-    return false if i >= s.length
-    while i < s.length
-      b = s.getbyte(i)
-      return false if b < 48 || b > 57
-      i += 1
+  def self.scalars(tab)
+    out = {}
+    tab.each do |key, val|
+      out[key] = val if scalar?(val)
     end
-    true
+    out
   end
 
   # The state file (/home/services_state.toml): one "name = true/false" per
@@ -159,24 +83,14 @@ module SvcConf
   # host editing a file a person wrote. A user's list carries their comments,
   # their order and their spelling; rewriting it to flip one flag would lose
   # some of that sooner or later.
-  def self.parse_state(text)
+  #
+  # conf is the file as FmrbToml reads it; keys that are not true/false are
+  # left out.
+  def self.state_from_toml(conf)
     out = {}
-    return out unless text
-    lines = text.split("\n")
-    i = 0
-    while i < lines.size
-      line = lines[i].strip
-      i += 1
-      next if line.empty?
-      next if line.start_with?("#")
-      eq = line.index("=")
-      next unless eq
-      next if eq == 0
-      name = line[0, eq].strip
-      next if name.empty?
-      val = line[eq + 1, line.length - eq - 1].strip
-      next unless val == "true" || val == "false"
-      out[name] = val == "true"
+    return out unless conf.is_a?(Hash)
+    conf.each do |name, val|
+      out[name] = val if val == true || val == false
     end
     out
   end

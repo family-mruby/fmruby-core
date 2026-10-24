@@ -15,7 +15,12 @@
 #
 #   ruby test/services/run.rb        (or: rake services:test)
 
+require_relative "../toml/host_toml"
 load File.expand_path("../../main/prebuild_scripts/default_app/services/registry.rb", __dir__)
+
+# What the host does with a list: FmrbToml reads it, SvcConf takes the entries.
+def svc(text) = SvcConf.from_toml(text.nil? ? nil : FmrbToml.parse(text))
+def state(text) = SvcConf.state_from_toml(text.nil? ? nil : FmrbToml.parse(text))
 
 module Check
   @failed = 0
@@ -53,7 +58,7 @@ SAMPLE = <<~TOML
   volume = 8
 TOML
 
-conf = SvcConf.parse(SAMPLE)
+conf = svc(SAMPLE)
 check("both tables", conf.keys, ["heartbeat", "chime"])
 check("string value loses its quotes", conf["heartbeat"]["file"], "heartbeat.rb")
 check("true is a boolean", conf["heartbeat"]["enable"], true)
@@ -65,36 +70,43 @@ check("a quoted value may contain a #", conf["chime"]["config"]["label"], "top o
 check("and its neighbours still parse", conf["chime"]["config"]["volume"], 8)
 check("config is not a plain field", conf["heartbeat"]["config"], nil)
 
-# A hand-written list has typos in it. They must cost their own line and
-# nothing else -- the whole point of parsing rather than eval'ing.
+# A hand-written list has typos in it. FmrbToml does not read a file with a
+# TOML error at all (and says why in one log line), so a broken list is an
+# empty one -- the other layer is a file of its own and still counts.
 BROKEN = <<~TOML
   [good
   file = "orphan.rb"
   [ok]
   file = "ok.rb"
-  no equals sign here
-  = 5
-  interval_ms = 100
+TOML
+check("a list with a TOML error is not read", svc(BROKEN).keys, [])
+check("and FmrbToml says where", FmrbToml.error, "line 1: invalid key")
+check("no file is an empty list", svc(nil).keys, [])
+
+conf = svc(<<~TOML)
+  [ok]
+  file = "ok.rb"
+  word = hello
+  odd = 12ab
+  list = [1, 2]
   [ok.other]
   ignored = 1
   [ok.config]
   n = 1
+  deeper = { x = 1 }
+  top = 1
 TOML
-conf = SvcConf.parse(BROKEN)
-check("an unterminated table is skipped", conf.keys, ["ok"])
-check("and so are the lines under it", conf["ok"]["file"], "ok.rb")
-check("junk lines do not stop the table", conf["ok"]["interval_ms"], 100)
 check("an unknown sub-table is dropped", conf["ok"]["other"], nil)
 check("but config after it still lands", conf["ok"]["config"]["n"], 1)
-check("empty text is an empty list", SvcConf.parse(nil).keys, [])
-
-check("bare words stay strings", SvcConf.parse_value("hello"), "hello")
-check("so does an empty value", SvcConf.parse_value(""), "")
-check("not-a-number does not become 0", SvcConf.parse_value("12ab"), "12ab")
+check("bare words stay strings", conf["ok"]["word"], "hello")
+check("not-a-number does not become 0", conf["ok"]["odd"], "12ab")
+check("an array is not a service field", conf["ok"].key?("list"), false)
+check("nor a table inside config", conf["ok"]["config"].key?("deeper"), false)
+check("a top-level key is not a service", svc("x = 1\n[a]\nfile = \"a.rb\"\n").keys, ["a"])
 
 # --- the two layers -------------------------------------------------------
 
-sys = SvcConf.parse(<<~TOML)
+sys = svc(<<~TOML)
   [clock]
   file = "clock.rb"
   class = "ClockService"
@@ -103,7 +115,7 @@ sys = SvcConf.parse(<<~TOML)
   quiet_hours = 0
   tone = "bell"
 TOML
-usr = SvcConf.parse(<<~TOML)
+usr = svc(<<~TOML)
   [clock]
   enable = false
   [clock.config]
@@ -315,25 +327,25 @@ check("a service entry is not restarted this way",
 
 # --- the state file, and the third layer (S2 T2) ---------------------------
 
-st = SvcConf.parse_state(<<~TXT)
+st = state(<<~TXT)
   # a comment
   chime = false
   clock = true
 
-  junk without an equals
-  bad = maybe
-  = true
+  bad = "maybe"
+  n = 1
 TXT
 check("only true/false lines count", st, { "chime" => false, "clock" => true })
-check("nothing is not an empty switch", SvcConf.parse_state(nil), {})
+check("a state file with a TOML error is not read", state("chime = false\njunk\n"), {})
+check("nothing is not an empty switch", state(nil), {})
 
 # It has to survive a round trip, or "disable" would stop meaning anything
 # after the file is read back at the next boot.
-check("round trip", SvcConf.parse_state(SvcConf.render_state(st)), st)
+check("round trip", state(SvcConf.render_state(st)), st)
 
 three = SvcConf.merge(
-  SvcConf.parse("[clock]\nfile = \"c.rb\"\nenable = true\n"),
-  SvcConf.parse("[chime]\nfile = \"ch.rb\"\nenable = true\n"))
+  svc("[clock]\nfile = \"c.rb\"\nenable = true\n"),
+  svc("[chime]\nfile = \"ch.rb\"\nenable = true\n"))
 unknown = SvcConf.apply_state(three, { "clock" => false, "gone" => true })
 check("the state file beats both lists", three["clock"]["enable"], false)
 check("and leaves the rest alone", three["chime"]["enable"], true)
@@ -343,8 +355,8 @@ check("nothing else is invented", three.keys, ["clock", "chime"])
 # A user list that switches something off is itself overridden by the file,
 # which is what makes "svc enable" work on a service the list disables.
 back_on = SvcConf.merge(
-  SvcConf.parse("[clock]\nfile = \"c.rb\"\n"),
-  SvcConf.parse("[clock]\nenable = false\n"))
+  svc("[clock]\nfile = \"c.rb\"\n"),
+  svc("[clock]\nenable = false\n"))
 SvcConf.apply_state(back_on, { "clock" => true })
 check("enable overrides a list that says false", back_on["clock"]["enable"], true)
 
