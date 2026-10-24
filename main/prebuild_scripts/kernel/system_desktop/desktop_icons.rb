@@ -16,8 +16,11 @@
 #   apps = ["default/editor", "/app/tool/nsf_player.app.rb"]
 # An entry whose app is not on this machine is skipped (the default set names
 # apps that one board ships and another does not, such as the mahjong table).
-# One entry is not an app: "desktop/file_manager" opens the desktop's own
-# File Manager (the menu's File Manager), shown with a folder icon.
+# Two entries are not apps: "desktop/launcher" opens the launcher (the menu's
+# Launcher, shortcut l), shown with a grid of tiles, and "desktop/file_manager"
+# opens the desktop's own File Manager (the menu's File Manager), shown with a
+# folder icon. Neither is in the launcher's list, so the launcher's button
+# cannot add or remove them; they are written into the file by hand.
 #
 # Drawing: the icons are stamped onto the background canvas with draw_tile
 # from the launcher's icon SpriteImages (the same bitmaps, shared by icon
@@ -30,13 +33,15 @@ module DesktopIconsMixin
   DICON_DEFAULT_PATH = "/usr/share/desktop/desktop.toml"
   DICON_MAX_BYTES    = 4096
   DICON_KEY          = "apps"
+  DICON_LAUNCHER     = "desktop/launcher"
   DICON_FILE_MANAGER = "desktop/file_manager"
+  DICON_LAUNCHER_ICON = "usr/share/icon/launcher.icon"
   DICON_FOLDER_ICON  = "usr/share/icon/folder.icon"
 
   # Layout. A cell is the icon and up to two lines of name under it.
   DICON_MARGIN_X = 4
   DICON_MARGIN_Y = 4
-  DICON_CELL_W   = 64   # "NSF Player" (10 Font0 characters) on one line
+  DICON_CELL_W   = 68   # "Breakout.py" (11 Font0 characters, 66 px) on one line
   DICON_CELL_H   = 44
   DICON_COL_GAP  = 4
   DICON_ICON_Y   = 2     # icon top within the cell
@@ -216,6 +221,9 @@ module DesktopIconsMixin
   # when the launcher does not list it (its category is excluded, or the
   # launcher cache predates it). nil when the app is not on this machine.
   def desktop_icon_entry(path)
+    if path == DICON_LAUNCHER
+      return { label: FmrbI18n.t(:launcher), app: path, icon_file: DICON_LAUNCHER_ICON, icon_char: "L" }
+    end
     if path == DICON_FILE_MANAGER
       return { label: FmrbI18n.t(:file_manager), app: path, icon_file: DICON_FOLDER_ICON, icon_char: "F" }
     end
@@ -369,7 +377,9 @@ module DesktopIconsMixin
       @dicon_last_idx = -1
       select_desktop_icon(-1)
       app = @dicon_items[idx][:app]
-      if app == DICON_FILE_MANAGER
+      if app == DICON_LAUNCHER
+        open_launcher
+      elsif app == DICON_FILE_MANAGER
         open_file_manager
       else
         spawn_app(app)

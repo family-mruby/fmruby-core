@@ -3,13 +3,16 @@
 # Used while /home/desktop.toml does not exist. The launcher's desktop button
 # writes that file, and from then on it decides; delete it to come back here.
 # An entry whose app is not on the machine is skipped, so one list serves
-# every board (the mahjong table, for one, is not shipped on Retro).
-# "desktop/file_manager" is not an app: it opens the File Manager.
+# every board (a board whose storage leaves an app out just shows one less).
+# "desktop/launcher" and "desktop/file_manager" are not apps: they open the
+# launcher (the menu's Launcher) and the File Manager.
 apps = [
+  "desktop/launcher",
   "default/editor",
   "default/shell",
   "desktop/file_manager",
-  "/app/game/mahjong/mahjong.app.rb",
-  "/app/game/board/board.app.rb",
+  "/app/game/flappy.app.rb",
+  "/app/basic/basic.app.bas",
+  "/app/game/breakout/breakout.app.py",
   "/app/tool/nsf_player.app.rb",
 ]

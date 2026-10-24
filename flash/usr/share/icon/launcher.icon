@@ -1,0 +1,15 @@
+# Launcher (12x12) color=0x1C
+# Four app tiles in a grid, the usual picture of an app list. Green (0x1C)
+# so it does not read as a Ruby app (red) or the folder (orange) beside it.
+............
+.1111..1111.
+.1..1..1..1.
+.1..1..1..1.
+.1111..1111.
+............
+............
+.1111..1111.
+.1..1..1..1.
+.1..1..1..1.
+.1111..1111.
+............
