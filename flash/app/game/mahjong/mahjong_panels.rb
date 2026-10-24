@@ -320,7 +320,7 @@ class MahjongApp < FmrbApp
   # ------------------------------------------------------------ the player's name (MJ5)
   #
   # Set in the list of tables or the lobby (n, or a click on its button),
-  # kept on this machine in ASSIST_FILE (name = "..."; the browser build
+  # kept on this machine in /home/mahjong.toml (name = "..."; the browser build
   # keeps /home across a reload), and sent with join: the host keeps a
   # member's name and a join again from the same node changes it, at the
   # seat too. A name is needed before joining a table: the first Enter on a

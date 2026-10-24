@@ -260,7 +260,8 @@ class MahjongApp < FmrbApp
   A_MINKAN = 8
   A_RON = 9
   A_KYUUSHU = 11
-  ASSIST_FILE = "/nonexistent/mahjong.toml"
+  # /home/mahjong.toml as FmrbApp#app_settings reads it: none here.
+  def app_settings = {}
   CACHE_DIR = "/nonexistent"
   %i[take_view round_tick leave_table on_update lobby_key list_key run_button stop on_destroy save_assist].each do |m|
     define_method(m) { |*| nil }
@@ -421,7 +422,7 @@ app.instance_variable_set(:@snd_conf, {})
 eq "the voices' switch", app.snd_labels.last, "声 入[V]"
 app.instance_variable_set(:@snd_vo_on, false)
 eq "off", app.snd_labels.last, "声 切[V]"
-check("saved as voice = false") { app.snd_lines.include?("voice = false\n") }
+check("saved as voice = false") { app.snd_settings({})["voice"] == false }
 app.instance_variable_set(:@snd_voices, {})
 eq "no voices: no switch", app.snd_labels.size, 2
 

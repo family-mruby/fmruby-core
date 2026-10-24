@@ -65,9 +65,9 @@
 # Enter: the chosen tile, or the first that declares), t tsumo / ron, p pon,
 # c chi, k kan, n nine kinds. A click on a tile discards it; the buttons are
 # what the host offers now. In the lobby and the game, a (or the help's
-# button) steps the help level 0-3 (ASSIST_FILE keeps it on this machine).
+# button) steps the help level 0-3 (/home/mahjong.toml keeps it on this machine).
 # The list and the lobby: n edits the player's name (asked before the first
-# join, kept in ASSIST_FILE); the lobby's rules have two pages (Tab). A
+# join, kept in /home/mahjong.toml); the lobby's rules have two pages (Tab). A
 # spectator sees the four hands (MJ5: mahjong_watch.rb at 640x360).
 
 # The 1280x720 table (mahjong_xl.rb) is read only when the screen is that
@@ -143,8 +143,8 @@ class MahjongApp < FmrbApp
   # The help this screen asks the host for (asterism-games README "Assist"):
   # 0 none, 1 the riichi discards and their waits, 2 every discard that
   # leaves the hand tenpai, 3 as 2 and else the shanten and the acceptance.
-  # The player's own choice, kept in ASSIST_FILE on this machine.
-  ASSIST_FILE = "/home/mahjong.toml"
+  # The player's own choice, kept in /home/mahjong.toml (app_settings) on
+  # this machine.
   ASSIST_DEFAULT = 1
   ASSIST_MAX = 3
 
@@ -754,37 +754,42 @@ class MahjongApp < FmrbApp
 
   # ------------------------------------------------------------ the help level
 
-  # ASSIST_FILE: "assist = N" and the player's name ("name = \"...\"",
-  # mahjong_panels.rb), each on a line of its own. Sets @name_set too.
+  # /home/mahjong.toml (app_settings): "assist = N" and the player's name
+  # ("name = \"...\"", mahjong_panels.rb). Sets @name_set too.
   def load_assist
-    lv = ASSIST_DEFAULT
+    conf = app_settings
     @name_set = nil
-    File.open(ASSIST_FILE, "r") do |f|
-      f.read.to_s.split("\n").each do |l|
-        i = l.index("=")
-        next unless i
-        k = l[0, i].strip
-        v = l[i + 1, l.size].to_s.strip
-        lv = v.to_i if k == "assist"
-        if k == "name" && v.size >= 2 && v[0] == "\"" && v[v.size - 1] == "\""
-          n = clean_player_name(v[1, v.size - 2])
-          @name_set = n unless n.empty?
-        end
-      end
+    n = conf["name"]
+    if n.is_a?(String)
+      n = clean_player_name(n)
+      @name_set = n unless n.empty?
     end
+    lv = conf["assist"]
+    lv = ASSIST_DEFAULT unless lv.is_a?(Integer)
     lv < 0 || lv > ASSIST_MAX ? ASSIST_DEFAULT : lv
-  rescue
-    ASSIST_DEFAULT
   end
 
+  # Writes the help level, the name (none: the line goes) and the sound
+  # switches into /home/mahjong.toml. Only those lines change
+  # (save_app_settings, FmrbToml.update): the player's comments and any
+  # other line stay. A new file starts with a comment that says what is in it.
   def save_assist
-    f = File.open(ASSIST_FILE, "w")
-    f.write("# The mahjong table's help (0 none, 1 riichi, 2 tenpai, 3 shanten)\nassist = #{@assist}\n")
-    f.write("# The name shown at the table (none: the machine's)\nname = \"#{@name_set}\"\n") if @name_set
-    f.write(snd_lines) if @snd_conf
-    f.close
-  rescue => e
-    Log.info("mahjong: #{ASSIST_FILE}: #{e.message}")
+    v = { "assist" => @assist, "name" => @name_set }
+    snd_settings(v) if @snd_conf
+    path = app_settings_path
+    unless File.exist?(path)
+      begin
+        File.open(path, "w") do |f|
+          f.write("# The mahjong table: assist (help, 0 none, 1 riichi, 2 tenpai, 3 shanten),\n" \
+                  "# name (shown at the table; none: the machine's), bgm (0 off, 1 low, 2 mid,\n" \
+                  "# 3 high), se and voice (true / false)\n")
+        end
+      rescue => e
+        Log.info("mahjong: #{path}: #{e.message}")
+        return
+      end
+    end
+    Log.info("mahjong: #{FmrbToml.error}") unless save_app_settings(v)
   end
 
   # The next level (3 goes back to 0); the view is asked again at once.

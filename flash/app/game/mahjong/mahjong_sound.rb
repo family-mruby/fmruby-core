@@ -147,48 +147,40 @@ class MahjongApp < FmrbApp
     @audio = nil
   end
 
-  # ASSIST_FILE's lines for the sound (load_assist reads the rest).
+  # The sound's settings out of /home/mahjong.toml (app_settings;
+  # load_assist reads the rest).
   def snd_load_conf
-    File.open(ASSIST_FILE, "r") do |f|
-      f.read.to_s.split("\n").each do |l|
-        i = l.index("=")
-        next unless i
-        k = l[0, i].strip
-        v = l[i + 1, l.size].to_s.strip
-        if k == "bgm"
-          @snd_bgm = snd_bgm_level(v)
-        elsif k == "se"
-          @snd_se = v != "false" && v != "0"
-        elsif k == "voice"
-          @snd_vo_on = v != "false" && v != "0"
-        elsif v.size >= 2 && v[0] == "\"" && v[v.size - 1] == "\""
-          @snd_conf[k] = v[1, v.size - 2] if SND_KEYS.index(k)
-        elsif k.size > 6 && k[k.size - 6, 6] == "_track"
-          @snd_conf[k] = v.to_i
-        end
+    conf = app_settings
+    v = conf["bgm"]
+    @snd_bgm = snd_bgm_level(v) unless v.nil?
+    v = conf["se"]
+    @snd_se = v != false && v != 0 unless v.nil?
+    v = conf["voice"]
+    @snd_vo_on = v != false && v != 0 unless v.nil?
+    conf.each do |k, x|
+      if x.is_a?(String)
+        @snd_conf[k] = x if SND_KEYS.index(k)
+      elsif x.is_a?(Integer) && k.size > 6 && k[k.size - 6, 6] == "_track"
+        @snd_conf[k] = x
       end
     end
-  rescue
-    nil
   end
 
-  # What save_assist adds to ASSIST_FILE: the switches and the tunes and
+  # What save_assist writes for the sound: the switches and the tunes and
   # voices the player named there.
-  def snd_lines
-    s = "# Sound: the BGM's level (0 off, 1 low, 2 mid, 3 high), the effects and the voices on (true) or off (false)\n" +
-        "bgm = #{@snd_bgm}\nse = #{@snd_se}\nvoice = #{@snd_vo_on != false}\n"
-    @snd_conf.each do |k, v|
-      s = v.is_a?(String) ? "#{s}#{k} = \"#{v}\"\n" : "#{s}#{k} = #{v}\n"
-    end
-    s
+  def snd_settings(v)
+    v["bgm"] = @snd_bgm
+    v["se"] = @snd_se
+    v["voice"] = @snd_vo_on != false
+    @snd_conf.each { |k, x| v[k] = x }
+    v
   end
 
   # A saved "bgm" as a level: 0-3, or an older file's true / false.
   def snd_bgm_level(v)
-    return 0 if v == "false"
-    return BGM_DEFAULT if v == "true"
-    n = v.to_i
-    n >= 0 && n < BGM_LEVELS.size && v == n.to_s ? n : BGM_DEFAULT
+    return 0 if v == false
+    return BGM_DEFAULT if v == true
+    v.is_a?(Integer) && v >= 0 && v < BGM_LEVELS.size ? v : BGM_DEFAULT
   end
 
   # The button and B: off -> low -> mid -> high -> off.
