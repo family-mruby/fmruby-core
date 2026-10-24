@@ -26,6 +26,9 @@
 # - The connection is the machine's (FmrbAsterism.settings, as the other
 #   table apps): the router, the ID, a credentials .tar, the room's seat
 #   in the browser build. The member's name is the profile's.
+#   Staying connected, the list, joining, leaving and the view are the
+#   table client's (FmrbAsterism::TableClient, doc/app_refactor R4); this
+#   file has the board: the strokes, the picture, the screen.
 # - Keys. The list: up / down choose, Enter joins. At the board: 1-4 the
 #   width, U takes back your last stroke, C clears (the owner; y / n),
 #   R reads the picture again, Esc leaves. A click picks a colour or a
@@ -48,16 +51,6 @@ class BoardOutStroke
 end
 
 class DrawingBoardApp < FmrbApp
-  APP = "game"            # this app's Asterism application name (the G0 range)
-  HOST_APP = "games"      # the host's application
-  CALL_TIMEOUT = 3.0
-  RECONNECT_MS = 3000
-  VIEW_EVERY_MS = 3000
-  LIST_EVERY_MS = 30000
-  RESCAN_MS = 3000
-  RESCAN_STEP_MS = 300
-  HOST_GONE_VIEW_MS = 30000
-  WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
   # The board (the host's lim says the same).
   BW = 640
@@ -87,35 +80,19 @@ class DrawingBoardApp < FmrbApp
 
   def on_create
     @gfx.set_font(:ja, 12)
-    @started = Machine.board_millis
-    st = ::FmrbAsterism.settings
-    @id = st.node
-    @locator = st.router
-    @creds = st.credentials
-    @creds_error = st.error
-    @net = :connecting
-    @net_note = ""
-    @retry_at = 0
-    @sub = nil
-    @ssub = nil
-    @tables = {}          # "<host>/games/<board>" => [strokes, members] from its last put
-    @table_list = []
+    # The boards ("<host>/games/board*", tables[p] = [strokes, members]
+    # from its last put), the board this app is at, its token: the table
+    # client's. A newer version is asked no sooner than 1 s after the last
+    # view (the strokes show the changes meanwhile).
+    @tc = ::FmrbAsterism::TableClient.new(self, "board", tag: "board")
+    @tc.view_min_ms = 1000
+    @id = @tc.link.node
+    @sub = nil            # the strokes of every board
     @list_sel = 0
-    @scan_at = 0
-    @rescan_until = 0
-    @host_gone = false
-    @gone_at = 0
-    @table = nil
-    @join_f = nil
     @cmd_f = nil
-    @view_f = nil
     @pic_f = nil
     @send_f = nil
-    @token = nil
     @view = nil
-    @view_at = 0
-    @want_v = 0
-    @host_v = 0
     @owner = false
     @confirm = false
     @replay = false
@@ -168,144 +145,66 @@ class DrawingBoardApp < FmrbApp
   end
 
   # ------------------------------------------------------------ network
+  # The connection, the list, joining and the view are @tc's
+  # (FmrbAsterism::TableClient); these are its calls, the strokes and the
+  # board's own calls.
 
-  def network_ready?
-    return true if FmrbConst::PLATFORM != "esp32"
-    info = FmrbApp.wifi_info
-    return true if info.nil? || info[:connected]
-    Machine.board_millis - @started > WIFI_WAIT_MS
+  # A put of a board: [strokes, members] for the list.
+  def table_state(p, pv)
+    @dirty = true if @tc.table.nil?
+    [pv["n"].to_i, pv["mb"].is_a?(Array) ? pv["mb"].size : 0]
   end
 
-  def connect
-    begin
-      ::Asterism.close
-      raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      ::Asterism.on_join { |n| node_joined(n) }
-      ::Asterism.on_leave { |n| node_left(n) }
-      @net = :up
-      @net_note = ""
-      @scan_at = 0
-      @rescan_until = Machine.board_millis + RESCAN_MS
-      subscribe_keys
-      @note = ""
-      # Back at a board: read the picture again.
-      start_picture if @token
-    rescue ::Asterism::Error => e
-      @net = :down
-      @net_note = e.message.to_s
-      @retry_at = Machine.board_millis + RECONNECT_MS
-    end
-    Log.info("board: #{@id} #{@net} (#{@locator}) #{@net_note}")
-    @dirty = true if @table.nil?
+  def tables_changed(added)
+    @list_sel = 0 if !added && @list_sel >= @tc.table_list.size
+    @dirty = true if added || @tc.table.nil?
+  end
+
+  def table_link_up(link)
+    subscribe_strokes
+    @note = ""
+    # Back at a board: read the picture again.
+    start_picture if @tc.token
+    @dirty = true if @tc.table.nil?
     @panel_dirty = true
   end
 
-  def lost(why)
-    Log.info("board: lost: #{why}")
-    @net = :down
-    @net_note = why
-    @retry_at = Machine.board_millis + RECONNECT_MS
+  def table_link_down(link)
     @sub = nil
-    @ssub = nil
-    @join_f = nil
     @cmd_f = nil
-    @view_f = nil
     @pic_f = nil
     @send_f = nil
     @loading = false
     @out = []
-    begin
-      ::Asterism.close
-    rescue
-    end
-    @dirty = true if @table.nil?
-    @note = "網から切れた: つなぎ直し中" if @table
+    @dirty = true if @tc.table.nil?
+    @note = "網から切れた: つなぎ直し中" if @tc.table
     @panel_dirty = true
   end
 
-  def reconnecting?
-    @net == :up && ::Asterism.respond_to?(:reconnecting?) && ::Asterism.reconnecting?
-  rescue
-    false
+  def table_host_gone
+    @note = "ホストとのつながりが切れた"
+    @panel_dirty = true
   end
 
-  def exchange
-    lost("asterism: #{::Asterism.lost_reason}") unless ::Asterism.poll
-  rescue => e
-    lost("#{e.class}: #{e.message}")
+  def table_host_back
+    @note = ""
+    start_picture
+    @panel_dirty = true
   end
 
-  def proxy(path = @table)
-    ::Asterism[path, timeout: CALL_TIMEOUT]
+  # The strokes before the states: a state put follows the strokes of its
+  # version, so a stroke older than the last state seen is a recording
+  # played back.
+  def table_watch
+    subscribe_strokes if @sub.nil?
+    watch_strokes if @tc.table
   end
 
-  def board?(p)
-    p.split("/")[2].to_s.start_with?("board")
-  end
-
-  def find_tables
-    now = Machine.board_millis
-    every = now < @rescan_until ? RESCAN_STEP_MS : LIST_EVERY_MS
-    return if now - @scan_at < every
-    @scan_at = now
-    ::Asterism.each("*/#{HOST_APP}/*").each do |px|
-      p = px.asterism_path
-      add_table(p) if board?(p)
-    end
-  rescue ::Asterism::Error => e
-    Log.info("board: scan: #{e.message}")
-  end
-
-  def add_table(p)
-    return if @tables.key?(p)
-    @tables[p] = nil
-    @table_list = @tables.keys.sort
-    Log.info("board: #{p} on the list")
-    @dirty = true
-  end
-
-  def host_of(p)
-    p.split("/")[0]
-  end
-
-  def node_left(n)
-    gone = @table_list.select { |p| host_of(p) == n }
-    unless gone.empty?
-      gone.each { |p| @tables.delete(p) }
-      @table_list = @tables.keys.sort
-      @list_sel = 0 if @list_sel >= @table_list.size
-      @dirty = true if @table.nil?
-    end
-    if @table && host_of(@table) == n
-      @host_gone = true
-      @gone_at = Machine.board_millis
-      @note = "ホストとのつながりが切れた"
-      @panel_dirty = true
-    end
-  end
-
-  def node_joined(n)
-    @rescan_until = Machine.board_millis + RESCAN_MS
-    @scan_at = 0
-    if @table && host_of(@table) == n && @host_gone
-      @host_gone = false
-      @note = ""
-      @view_f = nil
-      @view_at = 0
-      Log.info("board: #{n} is back")
-      start_picture
-      @panel_dirty = true
-    end
-  end
-
-  def subscribe_keys
-    @ssub = ::Asterism.session.subscribe("asterism/*/#{HOST_APP}/*/state", depth: 8)
-    @sub = ::Asterism.session.subscribe("asterism/*/#{HOST_APP}/*/strokes", depth: 32)
+  def subscribe_strokes
+    @sub = ::Asterism.session.subscribe("asterism/*/games/*/strokes", depth: 32)
   rescue ::Asterism::Error => e
     Log.info("board: subscribe: #{e.message}")
     @sub = nil
-    @ssub = nil
   end
 
   # "asterism/<host>/games/<board>/<last>" -> "<host>/games/<board>", or nil.
@@ -314,38 +213,16 @@ class DrawingBoardApp < FmrbApp
     k.byteslice(9, k.bytesize - 9 - last.bytesize)
   end
 
-  def watch_states
-    return unless @ssub
-    @ssub.each_pending do |key, payload, att|
-      begin
-        p = path_of(key.to_s, "/state")
-        next unless p && board?(p)
-        pv = ::Asterism::Codec.unpack(payload)
-        next unless pv.is_a?(Hash)
-        add_table(p)
-        mb = pv["mb"].is_a?(Array) ? pv["mb"].size : 0
-        @tables[p] = [pv["n"].to_i, mb]
-        @dirty = true if @table.nil?
-        if p == @table
-          v = pv["v"].to_i
-          @host_v = v if v > @host_v
-          @want_v = v if v > @want_v
-        end
-      rescue => e
-        Log.info("board: state: #{e.message}")
-      end
-    end
-  end
-
   # The strokes of this board as they come: drawn now (or kept while the
   # picture is read). The time from taking them to the screen is measured.
   def watch_strokes
     return unless @sub
     t0 = Machine.board_millis
     drew = false
+    table = @tc.table
     @sub.each_pending do |key, payload, att|
       begin
-        next unless @table && @token && path_of(key.to_s, "/strokes") == @table
+        next unless table && @tc.token && path_of(key.to_s, "/strokes") == table
         m = ::Asterism::Codec.unpack(payload)
         next unless m.is_a?(Hash)
         if @loading
@@ -353,7 +230,7 @@ class DrawingBoardApp < FmrbApp
           next
         end
         v = m["v"].to_i
-        if v < @host_v && !@replay
+        if v < @tc.want_v && !@replay
           @replay = true
           @panel_dirty = true
         end
@@ -408,60 +285,29 @@ class DrawingBoardApp < FmrbApp
   end
 
   def join(p)
-    return if @join_f || p.nil?
-    @table = p
-    @join_f = proxy(p).async.join(my_name)
-    @note = ""
+    return if @tc.joining? || p.nil?
+    err = @tc.join(p, my_name)
+    @note = err || ""
     @dirty = true
-  rescue ::Asterism::Error => e
-    @join_f = nil
-    @table = nil
-    @note = e.message.to_s
   end
 
-  def collect_join
-    f = @join_f
-    return unless f && f.done?
-    @join_f = nil
-    begin
-      case f.value
-      in Hash => r if r["token"]
-        @token = r["token"].to_s
-        @owner = r["owner"] ? true : false
-        @view = nil
-        @want_v = 0
-        @host_v = 0
-        @confirm = false
-        @host_gone = false
-        Log.info("board: joined #{@table} (#{f.took_ms} ms)")
-        @dirty = false
-        draw_screen
-        start_picture
-        ask_view
-        return
-      in Hash => r
-        @note = reason(r["error"])
-        @table = nil
-      in r
-        @note = reason(r)
-        @table = nil
-      end
-    rescue ::Asterism::Error => e
-      @note = "ホストが答えない"
-      @table = nil
-    end
+  def table_joined(r)
+    @owner = r["owner"] ? true : false
+    @view = nil
+    @confirm = false
+    @dirty = false
+    draw_screen
+    start_picture
+  end
+
+  def table_refused(why)
+    @note = why ? reason(why) : "ホストが答えない"
     @dirty = true
   end
 
   def leave_table
-    begin
-      proxy.async.leave(@token) if @token
-    rescue ::Asterism::Error => e
-    end
-    @table = nil
-    @token = nil
+    @tc.leave
     @view = nil
-    @view_f = nil
     @cmd_f = nil
     @pic_f = nil
     @send_f = nil
@@ -470,48 +316,32 @@ class DrawingBoardApp < FmrbApp
     @drawing = false
     @confirm = false
     @replay = false
-    @host_gone = false
     @note = ""
     clear_picture
     @dirty = true
   end
 
-  def ask_view
-    return if @view_f || @token.nil?
-    @view_at = Machine.board_millis
-    @view_f = proxy.async.view(@token)
-  rescue ::Asterism::Error => e
-    @view_f = nil
+  def table_dropped
+    leave_table
+    @note = "ボードから外れた"
   end
 
-  def collect_view
-    f = @view_f
-    return unless f && f.done?
-    @view_f = nil
-    sent = @view_at
-    begin
-      case f.value
-      in Hash => v if v["error"]
-        Log.info("board: the host does not know us: back to the list")
-        leave_table
-        @note = "ボードから外れた"
-      in Hash => v
-        @view = v
-        @owner = v["own"] ? true : false
-        @host_gone = false if @host_gone && sent > @gone_at
-        @panel_dirty = true
-      else
-      end
-    rescue ::Asterism::Error => e
-      @note = "ホストが答えない: 待っています"
-      @panel_dirty = true
-    end
+  def table_view(v)
+    @view = v
+    @owner = v["own"] ? true : false
+    @panel_dirty = true
+  end
+
+  def table_view_failed
+    @note = "ホストが答えない: 待っています"
+    @panel_dirty = true
   end
 
   def send_cmd(what)
-    return if @cmd_f || @token.nil?
-    px = proxy.async
-    @cmd_f = what == :undo ? px.undo(@token) : px.clear(@token)
+    tok = @tc.token
+    return if @cmd_f || tok.nil?
+    px = @tc.proxy.async
+    @cmd_f = what == :undo ? px.undo(tok) : px.clear(tok)
     @confirm = false
     @panel_dirty = true
   rescue ::Asterism::Error => e
@@ -529,8 +359,7 @@ class DrawingBoardApp < FmrbApp
     rescue ::Asterism::Error => e
       @note = "ホストが答えない"
     end
-    @view_f = nil
-    ask_view
+    @tc.refresh_view
     @panel_dirty = true
   end
 
@@ -544,7 +373,7 @@ class DrawingBoardApp < FmrbApp
   # Reads the whole picture again, in pages; messages that come meanwhile
   # wait in @pic_q.
   def start_picture
-    return unless @token
+    return unless @tc.token
     clear_picture
     paint_paper
     @gfx.present
@@ -558,7 +387,7 @@ class DrawingBoardApp < FmrbApp
   end
 
   def ask_picture(id, at)
-    @pic_f = proxy.async.picture(id, at)
+    @pic_f = @tc.proxy.async.picture(id, at)
   rescue ::Asterism::Error => e
     @pic_f = nil
     @loading = false
@@ -922,7 +751,7 @@ class DrawingBoardApp < FmrbApp
   end
 
   def pen_down(x, y)
-    return unless @token && !@loading && in_picture?(x, y)
+    return unless @tc.token && !@loading && in_picture?(x, y)
     @drawing = true
     st = BoardOutStroke.new(@color, @width)
     @out << st
@@ -966,7 +795,8 @@ class DrawingBoardApp < FmrbApp
   # a new stroke goes on from the last point.
   def pump_send(now)
     collect_send
-    return if @send_f || @out.empty? || @token.nil?
+    tok = @tc.token
+    return if @send_f || @out.empty? || tok.nil?
     st = @out[0]
     if st.pts.empty?
       @out.shift if st.done && (st.asked == false || st.id || st.sent == 0)
@@ -990,8 +820,8 @@ class DrawingBoardApp < FmrbApp
     st.pts = st.pts[n * 2, st.pts.size - n * 2] || []
     @sent_x = part[part.size - 2]
     @sent_y = part[part.size - 1]
-    px = proxy.async
-    @send_f = st.asked ? px.more(@token, st.id, part) : px.line(@token, st.c, st.w, part)
+    px = @tc.proxy.async
+    @send_f = st.asked ? px.more(tok, st.id, part) : px.line(tok, st.c, st.w, part)
     st.asked = true
     st.sent += n
     @sent_at = now
@@ -1051,7 +881,7 @@ class DrawingBoardApp < FmrbApp
       x = m[1]
       y = m[2]
       if kind == 0
-        if @table && @token && in_picture?(x, y)
+        if @tc.token && in_picture?(x, y)
           pen_down(x, y)
           drew = true
         end
@@ -1079,13 +909,13 @@ class DrawingBoardApp < FmrbApp
     ch = k[1]
     enter = sc == FmrbConst::KEY_ENTER || ch == 13 || ch == 10
     esc = sc == FmrbConst::KEY_ESC || ch == 27
-    if @table.nil?
+    if @tc.table.nil?
       if sc == FmrbConst::KEY_UP
         @list_sel -= 1 if @list_sel > 0
       elsif sc == FmrbConst::KEY_DOWN
-        @list_sel += 1 if @list_sel < @table_list.size - 1
+        @list_sel += 1 if @list_sel < @tc.table_list.size - 1
       elsif enter
-        join(@table_list[@list_sel])
+        join(@tc.table_list[@list_sel])
       end
       @dirty = true
       return
@@ -1130,11 +960,11 @@ class DrawingBoardApp < FmrbApp
       run_button(b)
       return
     end
-    if @table.nil?
+    if @tc.table.nil?
       row = (y - @list_y) / 15
-      if y >= @list_y && row >= 0 && row < @table_list.size
+      if y >= @list_y && row >= 0 && row < @tc.table_list.size
         if row == @list_sel
-          join(@table_list[row])
+          join(@tc.table_list[row])
         else
           @list_sel = row
         end
@@ -1155,7 +985,7 @@ class DrawingBoardApp < FmrbApp
   def run_button(id)
     @panel_dirty = true
     case id
-    when :join then join(@table_list[@list_sel])
+    when :join then join(@tc.table_list[@list_sel])
     when :undo then send_cmd(:undo)
     when :clear then @confirm = true if @owner
     when :yes then send_cmd(:clear)
@@ -1230,7 +1060,7 @@ class DrawingBoardApp < FmrbApp
   def draw_screen
     @buttons = []
     clear_user_area
-    if @table
+    if @tc.table
       # The strokes kept so far (while the picture is read, what came of it).
       redraw_picture
       draw_panel
@@ -1242,9 +1072,10 @@ class DrawingBoardApp < FmrbApp
   end
 
   def net_line
-    return "つないでいます: #{@locator}" if @net == :connecting
-    return "網から切れた: つなぎ直し中" if @net == :down || reconnecting?
-    "#{@id} (#{@locator})"
+    net = @tc.net
+    return "つないでいます: #{@tc.link.router}" if net == :connecting
+    return "網から切れた: つなぎ直し中" if net == :down || @tc.reconnecting?
+    "#{@id} (#{@tc.link.router})"
   end
 
   def draw_list
@@ -1253,13 +1084,13 @@ class DrawingBoardApp < FmrbApp
     cols = (@user_area_width - 8) / 6
     text(x, y, fit("お絵かき: ボードを選ぶ (Enter で入る)", cols))
     text(x, y + 15, fit(net_line, cols), theme_border)
-    if @table_list.empty?
-      text(x, @list_y, fit(@net == :up ? "ゲームホストを探しています (games/board*)" : "-", cols), theme_border)
+    if @tc.table_list.empty?
+      text(x, @list_y, fit(@tc.net == :up ? "ゲームホストを探しています (games/board*)" : "-", cols), theme_border)
     end
     i = 0
-    while i < @table_list.size && i < 8
-      p = @table_list[i]
-      t = @tables[p]
+    while i < @tc.table_list.size && i < 8
+      p = @tc.table_list[i]
+      t = @tc.tables[p]
       line = p
       line = "#{p}  線 #{t[0]}  #{t[1]} 人" if t
       yy = @list_y + i * 15
@@ -1273,7 +1104,7 @@ class DrawingBoardApp < FmrbApp
     end
     by = @y0 + @user_area_height - 40
     text(x, by - 2, fit(@note, cols), theme_border)
-    button(:join, x, by + 16, 90, "入る[Enter]") unless @table_list.empty?
+    button(:join, x, by + 16, 90, "入る[Enter]") unless @tc.table_list.empty?
   end
 
   # The panel at the right: the board, the palette, the widths, the buttons.
@@ -1283,7 +1114,7 @@ class DrawingBoardApp < FmrbApp
     @gfx.fill_rect(x - 1, @y0, @pw + 3, @user_area_height, theme_bg)
     n = @pw / 6
     v = @view
-    text(x, @y0 + 1, fit(@table.split("/")[2].to_s, n))
+    text(x, @y0 + 1, fit(@tc.table.split("/")[2].to_s, n))
     @shown_n = @s_id.size
     info = v ? "線#{@s_id.size} #{v['mb'].is_a?(Array) ? v['mb'].size : 0}人" : "..."
     info = "読込中" if @loading
@@ -1331,30 +1162,14 @@ class DrawingBoardApp < FmrbApp
 
   def on_update
     now = Machine.board_millis
-    if @net == :connecting
-      connect if network_ready?
-    elsif @net == :down
-      connect if now >= @retry_at
-    end
     run_moves
-    if @net == :up
-      exchange
-      if @net == :up
-        subscribe_keys if @sub.nil?
-        # The strokes before the states: a state put follows the strokes
-        # of its version, so a stroke older than the last state seen is
-        # a recording played back.
-        watch_strokes if @table
-        watch_states
-        find_tables
-        if @table
-          collect_join
-          collect_cmd
-          collect_view
-          collect_picture
-          pump_send(now)
-          ask_view if @token && @view_f.nil? && view_due?(now)
-        end
+    # The strokes come first (table_watch), then the states, the list, the join.
+    if @tc.update
+      collect_cmd if @tc.table
+      @tc.update_view(now)
+      if @tc.table
+        collect_picture
+        pump_send(now)
       end
     end
     run_key(@keys.shift) until @keys.empty?
@@ -1369,7 +1184,7 @@ class DrawingBoardApp < FmrbApp
     if @dirty
       @dirty = false
       draw_screen
-    elsif @panel_dirty && @table
+    elsif @panel_dirty && @tc.table
       @panel_dirty = false
       draw_panel
       @gfx.present
@@ -1377,14 +1192,9 @@ class DrawingBoardApp < FmrbApp
     @drawing || @loading ? 20 : 40
   end
 
-  def view_due?(now)
-    return now - @view_at >= HOST_GONE_VIEW_MS if @host_gone
-    @want_v > (@view ? @view["v"].to_i : 0) && now - @view_at >= 1000 || now - @view_at >= VIEW_EVERY_MS
-  end
-
   def on_destroy
-    leave_table if @token
-    ::Asterism.close
+    leave_table if @tc.token
+    @tc.close
     Log.info("board: closed")
   rescue => e
     Log.info("board: close: #{e.message}")
