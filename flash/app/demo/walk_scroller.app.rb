@@ -1205,10 +1205,6 @@ class WalkScrollerApp < FmrbApp
     @panel_dirty = true
   end
 
-  def fit(t, n)
-    t.length > n ? t[0, n] : t
-  end
-
   # Redraws the panel's sprite when something in it changed (the graph at
   # most every GRAPH_MS, the age of the last answer once a second). True
   # when it was redrawn.
@@ -1235,7 +1231,7 @@ class WalkScrollerApp < FmrbApp
     @gfx.fill_rect(0, 0, w, h, PANEL_BG)
     @gfx.draw_rect(0, 0, w, h, 0x92)
     node = @tune_node.empty? ? "(no sensor yet)" : @tune_node
-    @gfx.draw_text(4, 3, fit("TUNE #{node}", PANEL_CHARS), 0xFF)
+    @gfx.draw_text(4, 3, @gfx.fit_text("TUNE #{node}", PANEL_CHARS * 6), 0xFF)
     v = @tune_vals
     if v
       @gfx.draw_text(4, 13, "rise #{v[0]} mg  gap #{v[1]} ms", 0xFF)
@@ -1251,7 +1247,7 @@ class WalkScrollerApp < FmrbApp
            elsif @tune_node.empty? then "waiting for a step or script node"
            else @tune_note
            end
-    @gfx.draw_text(4, 33, fit(line, PANEL_CHARS), bad ? 0xEC : 0xB6)
+    @gfx.draw_text(4, 33, @gfx.fit_text(line, PANEL_CHARS * 6), bad ? 0xEC : 0xB6)
     # The graph: dyn_peak (or dyn) of the last GRAPH_N raw values, the
     # threshold across.
     gx = 4
