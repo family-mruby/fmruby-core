@@ -8,16 +8,18 @@
 #   change and every 5 s), joins one (join(name) -> a token) and waits in its
 #   lobby: sit / stand, the table's owner fills empty seats with CPUs and
 #   starts. In the game it asks its own view with the token (view(token, assist)) when
-#   a put shows a newer version, and every VIEW_EVERY_MS anyway (which also
+#   a put shows a newer version, and every 3 s anyway (which also
 #   tells the host it is still there). An action is act(token, sv, type,
 #   tiles): the host takes only what its list for this seat (the view's "a")
 #   has. A member without a seat watches (the table without hands).
-# - The connection is the machine's (FmrbAsterism.settings, as othello). A
+# - The connection, the list, joining and the view are
+#   FmrbAsterism::TableClient's (doc/app_refactor, R4), as othello's; the
+#   connection is the machine's (FmrbAsterism.settings). A
 #   line that drops or a host that restarts: the app keeps asking. Who is
 #   there comes from Asterism (GS3): a host that leaves the network
 #   (on_leave) takes its tables off the list and, at its table, shows the
 #   connection lost and stops asking; when it is back (on_join) the app
-#   looks for its tables again at once (and every LIST_EVERY_MS anyway,
+#   looks for its tables again at once (and every 30 s anyway,
 #   should the word not come) and asks its view. When the
 #   app starts again it asks each table mine() and marks in the list the
 #   tables it has a seat at; Enter goes back to the seat (the same node gets
@@ -78,19 +80,8 @@ require "/app/game/mahjong/mahjong_panels"
 # first shown (watch_load): a seated player never needs it.
 
 class MahjongApp < FmrbApp
-  APP = "game"            # this app's Asterism application name (the G0 range)
-  HOST_APP = "games"      # the host's application
-  CALL_TIMEOUT = 3.0
-  RECONNECT_MS = 3000
-  VIEW_EVERY_MS = 3000
-  # Tables are looked for on on_join (for RESCAN_MS), else every LIST_EVERY_MS.
-  LIST_EVERY_MS = 30000
-  RESCAN_MS = 3000
-  RESCAN_STEP_MS = 300
-  # The host gone: a view now and then (should on_join not come).
-  HOST_GONE_VIEW_MS = 30000
+  CALL_TIMEOUT = 3.0      # the recent games' calls (the table's are @tc's)
   PROBE_EVERY_MS = 15000
-  WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
   APP_DIR = "/app/game/mahjong"
   XL_DIR = "large/"       # the 1280x720 table's sheets (under APP_DIR)
@@ -236,43 +227,28 @@ class MahjongApp < FmrbApp
     load_hand_sheet
     load_xl_sheets
     st = ::FmrbAsterism.settings
-    @id = st.node
-    @locator = st.router
-    @creds = st.credentials
-    @creds_error = st.error
+    # The tables ("<host>/games/mahjong*", tables[p] = {st, sk, mb} from its
+    # last put, {} before one), the table this app is at, its token: the
+    # table client's.
+    @tc = ::FmrbAsterism::TableClient.new(self, "mahjong", tag: "mahjong", settings: st, blank: {})
     @assist = load_assist
     @name_machine = st.name.to_s       # config.toml's name: what the first name prompt starts from
-    @name = @name_set || (@name_machine.empty? ? @id : @name_machine) # shown; join waits for @name_set
+    @name = @name_set || (@name_machine.empty? ? st.node : @name_machine) # shown; join waits for @name_set
     @pending_join = nil
+    @join_to = nil        # the table the last join went to (the refusal names it)
     @name_edit = nil      # the name being typed in the lobby (nil: not editing)
     @rename_f = nil
-    @net = :connecting
-    @net_note = ""
-    @retry_at = 0
-    @tables = {}          # "<host>/games/<name>" => its last public state (or {})
-    @table_list = []
     @list_sel = 0
     @probed = []          # tables asked mine()
     @mine = {}            # tables where this node has a seat (marked in the list)
     @probe_f = nil
     @probe_path = nil
     @probe_at = Machine.board_millis
-    @scan_at = 0
-    @rescan_until = 0     # look for tables until then (a node joined)
-    @host_gone = false    # the host of this app's table left the network
-    @gone_at = 0
-    @sub = nil
-    @table = nil          # the table this app is at
-    @join_f = nil
-    @token = nil
     @seat = nil           # nil: no seat (the lobby or watching)
-    @view_f = nil
     @act_f = nil
     @cmd_f = nil
     @view = nil
-    @view_at = 0
-    @want_v = 0           # a put said there is this version
-    @host_away = false
+    @host_away = false    # the host did not answer a call (its state puts clear it)
     @note = ""
     @sel = -1             # the chosen hand tile (lifted): by the keys or under the mouse
     @mouse_sel = false    # @sel follows the mouse (moving off the hand drops it)
@@ -339,170 +315,79 @@ class MahjongApp < FmrbApp
   end
 
   # ------------------------------------------------------------ network
+  # The connection, the list, joining and the view are @tc's
+  # (FmrbAsterism::TableClient); these are its calls and the game's own.
 
-  def uptime_ms
-    Machine.board_millis - @started
-  end
-
-  def network_ready?
-    return true if FmrbConst::PLATFORM != "esp32"
-    info = FmrbApp.wifi_info
-    return true if info.nil? || info[:connected]
-    uptime_ms > WIFI_WAIT_MS
-  end
-
-  def connect
-    begin
-      ::Asterism.close
-      raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      # Who is there (forgotten by Asterism.close, so given at each connect).
-      ::Asterism.on_join { |n| node_joined(n) }
-      ::Asterism.on_leave { |n| node_left(n) }
-      @net = :up
-      @net_note = ""
-      @scan_at = 0
-      @rescan_until = Machine.board_millis + RESCAN_MS
-      subscribe_states
-    rescue ::Asterism::Error => e
-      @net = :down
-      @net_note = e.message.to_s
-      @retry_at = Machine.board_millis + RECONNECT_MS
+  # A put of a mahjong table: {st, sk, mb} for the list (a table not put
+  # yet keeps {}); at this table the host is there, and before the token
+  # the put is the view.
+  def table_state(p, pv)
+    @host_ver = pv["hv"].to_s if pv["hv"].is_a?(String)
+    @dirty = true if @tc.table.nil?
+    if p == @tc.table
+      @host_away = false
+      @view = pv if @tc.token.nil?
     end
-    Log.info("mahjong: #{@id} #{@net} (#{@locator}) #{@net_note}")
+    { "st" => pv["st"], "sk" => pv["sk"], "mb" => (pv["mb"].is_a?(Array) ? pv["mb"].size : 0) }
+  end
+
+  # A host's tables left the list: their marks go too.
+  def tables_changed(added)
+    unless added
+      l = @tc.table_list
+      @mine.keys.each { |p| @mine.delete(p) if l.index(p).nil? }
+      @probed = @probed.select { |p| l.index(p) }
+      @list_sel = 0 if @list_sel >= l.size
+    end
     @dirty = true
   end
 
-  def lost(why)
-    Log.info("mahjong: lost: #{why}")
-    @net = :down
-    @net_note = why
-    @retry_at = Machine.board_millis + RECONNECT_MS
-    @sub = nil
-    @join_f = nil
-    @view_f = nil
+  def table_link_up(link)
+    @dirty = true
+  end
+
+  def table_link_down(link)
     @act_f = nil
     @cmd_f = nil
     @probe_f = nil
-    begin
-      ::Asterism.close
-    rescue
-    end
     @dirty = true
   end
 
-  def reconnecting?
-    @net == :up && ::Asterism.respond_to?(:reconnecting?) && ::Asterism.reconnecting?
-  rescue
-    false
-  end
-
-  def exchange
-    lost("asterism: #{::Asterism.lost_reason}") unless ::Asterism.poll
-  rescue => e
-    lost("#{e.class}: #{e.message}")
-  end
-
-  def proxy(path = @table)
-    ::Asterism[path, timeout: CALL_TIMEOUT]
-  end
-
-  # The tables of the hosts on the network (Asterism.each reads the
-  # liveliness the app already follows: nothing is sent).
-  def find_tables
-    now = Machine.board_millis
-    every = now < @rescan_until ? RESCAN_STEP_MS : LIST_EVERY_MS
-    return if now - @scan_at < every
-    @scan_at = now
-    ::Asterism.each("*/#{HOST_APP}/*").each do |px|
-      p = px.asterism_path
-      o = p.split("/")[2].to_s
-      add_table(p) if o.start_with?("mahjong")
-    end
-  rescue ::Asterism::Error => e
-    Log.info("mahjong: scan: #{e.message}")
-  end
-
-  def add_table(p)
-    return if @tables.key?(p)
-    @tables[p] = {}
-    @table_list = @tables.keys.sort
-    Log.info("mahjong: table #{p} on the list")
+  def table_host_gone
     @dirty = true
   end
 
-  def host_of(p)
-    p.split("/")[0]
+  def table_host_back
+    @host_away = false
+    @dirty = true
   end
 
-  # on_leave: a host's tables leave the list; at its table: connection lost.
-  def node_left(n)
-    gone = @table_list.select { |p| host_of(p) == n }
-    unless gone.empty?
-      gone.each do |p|
-        @tables.delete(p)
-        @mine.delete(p)
-        @probed.delete(p)
-      end
-      @table_list = @tables.keys.sort
-      @list_sel = 0 if @list_sel >= @table_list.size
-      Log.info("mahjong: #{n} left the network: #{gone.size} table(s) off the list")
-      @dirty = true
-    end
-    if @table && host_of(@table) == n
-      @host_gone = true
-      @gone_at = Machine.board_millis
-      @dirty = true
-    end
+  # The help level always goes with the call (asterism-games README "Assist").
+  def table_ask_view(px, token)
+    px.view(token, @assist)
   end
 
-  # on_join: look for tables now; this table's host back: ask the view.
-  def node_joined(n)
-    @rescan_until = Machine.board_millis + RESCAN_MS
-    @scan_at = 0
-    if @table && host_of(@table) == n && @host_gone
-      @host_gone = false
-      @host_away = false
-      @view_f = nil
-      @view_at = 0
-      Log.info("mahjong: #{n} is back")
-      @dirty = true
-    end
+  def table_view(v)
+    @host_away = false
+    take_view(v)
   end
 
-  # Every table's state, one subscription.
-  def subscribe_states
-    @sub = ::Asterism.session.subscribe("asterism/*/#{HOST_APP}/*/state", depth: 8)
-  rescue ::Asterism::Error => e
-    Log.info("mahjong: subscribe: #{e.message}")
-    @sub = nil
+  def table_view_failed
+    @host_away = true
+    Log.info("mahjong: view: no answer")
+    @dirty = true
   end
 
-  def watch_states
-    return unless @sub
-    @sub.each_pending do |key, payload, att|
-      begin
-        k = key.to_s
-        next unless k.start_with?("asterism/") && k.end_with?("/state")
-        p = k.byteslice(9, k.bytesize - 15)
-        o = p.split("/")[2].to_s
-        next unless o.start_with?("mahjong")
-        pv = ::Asterism::Codec.unpack(payload)
-        next unless pv.is_a?(Hash)
-        add_table(p)
-        @tables[p] = { "st" => pv["st"], "sk" => pv["sk"], "mb" => (pv["mb"].is_a?(Array) ? pv["mb"].size : 0) }
-        @host_ver = pv["hv"].to_s if pv["hv"].is_a?(String)
-        @dirty = true if @table.nil?
-        if p == @table
-          v = pv["v"].to_i
-          @want_v = v if v > @want_v
-          @host_away = false
-          @view = pv if @token.nil?
-        end
-      rescue => e
-        Log.info("mahjong: state: #{e.message}")
-      end
-    end
+  # The host lost our membership (a new state): back to the list, without
+  # a leave (it does not know the token).
+  def table_dropped
+    @tc.forget
+    @seat = nil
+    @view = nil
+    @probed = []
+    @mine = {}
+    @host_away = false
+    @dirty = true
   end
 
   # A table found for the first time (and every table again every
@@ -536,13 +421,14 @@ class MahjongApp < FmrbApp
       @probe_at = now
       @probed = []
     end
+    l = @tc.table_list
     i = 0
-    while i < @table_list.size
-      p = @table_list[i]
+    while i < l.size
+      p = l[i]
       if @probed.index(p).nil?
         @probed << p
         @probe_path = p
-        @probe_f = proxy(p).async.mine
+        @probe_f = @tc.proxy(p).async.mine
         return
       end
       i += 1
@@ -552,119 +438,50 @@ class MahjongApp < FmrbApp
   end
 
   def join(p)
-    return if @join_f
+    return if @tc.joining? || p.nil?
     # A name first (MJ5): the table shows it; asked once, kept on this machine.
     unless @name_set
       @pending_join = p
       name_begin
       return
     end
-    @table = p
-    @join_f = proxy(p).async.join(@name)
-    @dirty = true
-  rescue ::Asterism::Error => e
-    @join_f = nil
-    @table = nil
-    @note = e.message.to_s
-  end
-
-  def collect_join
-    f = @join_f
-    return unless f && f.done?
-    @join_f = nil
-    begin
-      r = f.value
-      if r.is_a?(Hash) && r["token"]
-        enter_table(@table, r)
-        Log.info("mahjong: joined #{@table} (#{f.took_ms} ms)")
-      else
-        e = r.is_a?(Hash) ? r["error"] : nil
-        @note = e == "full" ? "#{t(:mj_full)}: #{@table}" : reason(e || r)
-        @table = nil
-      end
-    rescue ::Asterism::Error => e
-      @note = t(:mj_host_away)
-      @table = nil
-    end
+    @join_to = p
+    err = @tc.join(p, @name)
+    @note = err if err
     @dirty = true
   end
 
-  def enter_table(p, r)
-    @table = p
-    @token = r["token"].to_s
+  def table_joined(r)
     s = r["seat"].to_i
     @seat = s >= 0 ? s : nil
     @view = nil
-    @want_v = 0
     @host_away = false
-    @host_gone = false
     @note = ""
-    ask_view
+    @dirty = true
+  end
+
+  def table_refused(why)
+    @note = if why.nil? then t(:mj_host_away)
+            elsif why == "full" then "#{t(:mj_full)}: #{@join_to}"
+            else reason(why)
+            end
     @dirty = true
   end
 
   # Back to the list of tables.
   def leave_table
-    begin
-      proxy.async.leave(@token) if @token
-    rescue ::Asterism::Error => e
-    end
-    @table = nil
-    @token = nil
+    @tc.leave
     @seat = nil
     @view = nil
-    @view_f = nil
     @act_f = nil
     @cmd_f = nil
-    @host_gone = false
     @note = ""
     @dirty = true
-  end
-
-  def ask_view
-    return if @view_f || @token.nil?
-    @view_at = Machine.board_millis
-    # The help level always goes with the call (asterism-games README "Assist").
-    @view_f = proxy.async.view(@token, @assist)
-  rescue ::Asterism::Error => e
-    @view_f = nil
-  end
-
-  def collect_view
-    f = @view_f
-    return unless f && f.done?
-    @view_f = nil
-    f_sent = @view_at
-    begin
-      case f.value
-      in Hash => v if v["error"]
-        # The host lost our membership (a new state): back to the list.
-        Log.info("mahjong: the host does not know us: back to the list")
-        @token = nil
-        @table = nil
-        @seat = nil
-        @view = nil
-        @probed = []
-        @mine = {}
-        @dirty = true
-      in Hash => v
-        take_view(v)
-      else
-      end
-      @host_away = false
-      # Answered a view sent after the host left: it is back.
-      @host_gone = false if @host_gone && f_sent > @gone_at
-    rescue ::Asterism::Error => e
-      @host_away = true
-      Log.info("mahjong: view: #{e.class}")
-      @dirty = true
-    end
   end
 
   def take_view(v)
     old = @view
     @view = v
-    @want_v = v["v"].to_i if v["v"].to_i > @want_v
     me = v["me"]
     @seat = me.is_a?(Integer) && me >= 0 ? me : nil
     # dl: the seats whose time runs (bits), the ms left, the bank's ms.
@@ -799,8 +616,7 @@ class MahjongApp < FmrbApp
     @waits = {}
     @uk = {}
     @uk_min = 9
-    @view_at = 0
-    @want_v = (@view ? @view["v"].to_i : 0) + 1 if @token
+    @tc.refresh_view
     @xl_items = nil
     @dirty = true
     Log.info("mahjong: assist #{@assist}")
@@ -819,7 +635,7 @@ class MahjongApp < FmrbApp
 
   # Sends an action; tiles are tile numbers.
   def act(type, tiles)
-    return if @act_f || @token.nil? || @view.nil?
+    return if @act_f || @tc.token.nil? || @view.nil?
     s = ("\x00" * tiles.size).b
     i = 0
     while i < tiles.size
@@ -829,7 +645,7 @@ class MahjongApp < FmrbApp
     @act_t0 = Machine.board_millis
     @act_type = type
     @act_sv = @view["sv"].to_i
-    @act_f = proxy.async.act(@token, @act_sv, type, s)
+    @act_f = @tc.proxy.async.act(@tc.token, @act_sv, type, s)
     @pick = false
   rescue ::Asterism::Error => e
     @act_f = nil
@@ -844,11 +660,11 @@ class MahjongApp < FmrbApp
     begin
       r = f.value
       if r == "ok"
-        ask_view
+        @tc.ask_view
       else
         @note = reason(r)
         @act_t0 = nil
-        ask_view
+        @tc.ask_view
         @dirty = true
       end
     rescue ::Asterism::Error => e
@@ -861,14 +677,15 @@ class MahjongApp < FmrbApp
   # A lobby call: sit / stand / cpu / start; ai (a kind of "ak") puts that
   # AI player in the seat (in place of the CPU or AI player there).
   def lobby(kind, seat, ai = nil)
-    return if @cmd_f || @token.nil?
-    px = proxy
-    @cmd_f = if kind == B_SIT then px.async.sit(@token, seat)
-             elsif kind == B_STAND then px.async.stand(@token)
-             elsif kind == B_CPU_ON then px.async.cpu(@token, seat, ai || true)
-             elsif kind == B_CPU_OFF then px.async.cpu(@token, seat, false)
-             elsif kind == B_WATCH then px.async.watch(@token)
-             else px.async.start(@token)
+    tok = @tc.token
+    return if @cmd_f || tok.nil?
+    px = @tc.proxy.async
+    @cmd_f = if kind == B_SIT then px.sit(tok, seat)
+             elsif kind == B_STAND then px.stand(tok)
+             elsif kind == B_CPU_ON then px.cpu(tok, seat, ai || true)
+             elsif kind == B_CPU_OFF then px.cpu(tok, seat, false)
+             elsif kind == B_WATCH then px.watch(tok)
+             else px.start(tok)
              end
   rescue ::Asterism::Error => e
     @cmd_f = nil
@@ -886,7 +703,7 @@ class MahjongApp < FmrbApp
     rescue ::Asterism::Error => e
       @host_away = true
     end
-    ask_view
+    @tc.ask_view
     @dirty = true
   end
 
@@ -1003,9 +820,9 @@ class MahjongApp < FmrbApp
 
   # The screen: :status (connecting, joining), :list, :lobby, :table.
   def mode
-    return :status if @net != :up && @table.nil?
-    return :list if @table.nil?
-    return :status if @token.nil? || @view.nil?
+    return :status if @tc.net != :up && @tc.table.nil?
+    return :list if @tc.table.nil?
+    return :status if @tc.token.nil? || @view.nil?
     @view["st"] == "wait" ? :lobby : :table
   end
 
@@ -1079,9 +896,10 @@ class MahjongApp < FmrbApp
     return name_key(k) if @name_edit
     ch = k[1]
     return name_begin if ch == 110 || ch == 78
-    n = @table_list.size
+    l = @tc.table_list
+    n = l.size
     return if n == 0
-    return rp_open(@table_list[@list_sel % n]) if ch == 104 || ch == 72
+    return rp_open(l[@list_sel % n]) if ch == 104 || ch == 72
     if k[0] == FmrbConst::KEY_UP
       @list_sel = (@list_sel - 1) % n
       @dirty = true
@@ -1089,7 +907,7 @@ class MahjongApp < FmrbApp
       @list_sel = (@list_sel + 1) % n
       @dirty = true
     elsif enter?(k)
-      join(@table_list[@list_sel % n])
+      join(l[@list_sel % n])
     end
   end
 
@@ -1115,7 +933,7 @@ class MahjongApp < FmrbApp
     elsif ch == 110
       name_begin
     elsif ch == 104
-      rp_open(@table)
+      rp_open(@tc.table)
     end
   end
 
@@ -1251,7 +1069,7 @@ class MahjongApp < FmrbApp
       @pick = !@pick
       @dirty = true
     elsif type == B_JOIN
-      join(@table_list[tiles[0]]) if tiles[0] < @table_list.size
+      join(@tc.table_list[tiles[0]])
     elsif type == B_LEAVE
       leave_table
     elsif type == B_ASSIST
@@ -1268,7 +1086,7 @@ class MahjongApp < FmrbApp
       @seat_sel = tiles[0]
       seat_step(tiles[0], 1)
     elsif type == B_RECORDS
-      rp_open(@table || @table_list[tiles[0]])
+      rp_open(@tc.table || @tc.table_list[tiles[0]])
     elsif type == B_QUIT
       stop
     elsif type >= B_SIT
@@ -1477,11 +1295,12 @@ class MahjongApp < FmrbApp
   end
 
   def net_line
-    if @net == :connecting
-      "#{t(:mj_connecting)}: #{@locator}"
-    elsif @net == :down || reconnecting?
-      "#{t(:mj_lost)} #{@net_note}"
-    elsif @host_gone
+    net = @tc.net
+    if net == :connecting
+      "#{t(:mj_connecting)}: #{@tc.link.router}"
+    elsif net == :down || @tc.reconnecting?
+      "#{t(:mj_lost)} #{@tc.link.reason}"
+    elsif @tc.host_gone?
       t(:mj_host_left)
     elsif @host_away
       t(:mj_host_away)
@@ -1494,7 +1313,7 @@ class MahjongApp < FmrbApp
     x = @x0 + u(8)
     y = @y0 + u(8)
     text(x, y, "#{t(:mj_title)}  #{@name}")
-    line = net_line || "#{t(:mj_joining)}: #{@table}"
+    line = net_line || "#{t(:mj_joining)}: #{@tc.table}"
     text(x, y + u(20), line, C_DIM)
     text(x, y + u(40), @note, C_TURN) unless @note.empty?
   end
@@ -1515,23 +1334,24 @@ class MahjongApp < FmrbApp
     l = net_line
     text(x, y + u(18), l, C_DIM) if l
     y += u(40)
-    if @table_list.empty?
+    l = @tc.table_list
+    if l.empty?
       text(x, y, t(:mj_searching), C_DIM)
     else
       text(x, y, t(:mj_tables), C_DIM)
       rb = t(:mj_records)
-      button(B_RECORDS, [@list_sel % @table_list.size], @x0 + @w - tw(rb) - u(20), y - u(5), rb)
+      button(B_RECORDS, [@list_sel % l.size], @x0 + @w - tw(rb) - u(20), y - u(5), rb)
       y += u(18)
       i = 0
-      while i < @table_list.size
-        p = @table_list[i]
-        s = @tables[p] || {}
-        @gfx.fill_rect(x - u(2), y - u(3), @w - u(16), u(20), C_SEL) if i == @list_sel % @table_list.size
+      while i < l.size
+        p = l[i]
+        s = @tc.tables[p] || {}
+        @gfx.fill_rect(x - u(2), y - u(3), @w - u(16), u(20), C_SEL) if i == @list_sel % l.size
         # The host's app is always games: show <host>/<table>.
         parts = p.split("/")
         line = "#{parts[0]}/#{parts[2]}  #{table_status(s)}"
         line = "#{line}  #{t(:mj_mine)}" if @mine[p]
-        text(x + u(2), y + u(1), fit(line, @w - u(20)), i == @list_sel % @table_list.size ? C_TURN : C_TEXT)
+        text(x + u(2), y + u(1), fit(line, @w - u(20)), i == @list_sel % l.size ? C_TURN : C_TEXT)
         @buttons << [B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i]]
         y += u(22)
         i += 1
@@ -1579,7 +1399,7 @@ class MahjongApp < FmrbApp
     v = @view
     x = @x0 + u(8)
     y = @y0 + u(8)
-    text(x, y, "#{t(:mj_title)}  #{t(:mj_lobby)}  #{@table}")
+    text(x, y, "#{t(:mj_title)}  #{t(:mj_lobby)}  #{@tc.table}")
     l = net_line
     text(x, y + u(16), l, C_DIM) if l
     nm = v["nm"].is_a?(Array) ? v["nm"] : []
@@ -2005,31 +1825,16 @@ class MahjongApp < FmrbApp
     now = Machine.board_millis
     title_tick(now)
     return 500 if @unsupported
-    if @net == :connecting
-      connect if network_ready?
-    elsif @net == :down
-      connect if now >= @retry_at
-    end
-    if @net == :up
-      exchange
-      if @net == :up
-        subscribe_states if @sub.nil?
-        watch_states
-        find_tables
-        if @table.nil?
-          probe_tables
-        else
-          collect_join
-          collect_act
-          collect_cmd
-          collect_view
-          if @rename_f && @rename_f.done?
-            @rename_f = nil
-            ask_view
-          end
-          if @token && @view_f.nil? && view_due?(now)
-            ask_view
-          end
+    if @tc.update
+      if @tc.table.nil?
+        probe_tables
+      else
+        collect_act
+        collect_cmd
+        @tc.update_view(now)
+        if @rename_f && @rename_f.done?
+          @rename_f = nil
+          @tc.ask_view
         end
       end
     end
@@ -2061,14 +1866,10 @@ class MahjongApp < FmrbApp
     30
   end
 
-  # A newer version, or the view that says this app is still there.
-  def view_due?(now)
-    return now - @view_at >= HOST_GONE_VIEW_MS if @host_gone
-    @want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS
-  end
-
+  # The host keeps the seat (a player who closes the app comes back to it):
+  # no leave, the connection closed only.
   def on_destroy
-    ::Asterism.close unless @unsupported
+    @tc.close unless @unsupported
     Log.info("mahjong: closed")
   rescue => e
     Log.info("mahjong: close: #{e.message}")

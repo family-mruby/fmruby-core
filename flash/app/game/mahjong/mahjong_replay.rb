@@ -98,7 +98,7 @@ class MahjongApp < FmrbApp
 
   def rp_poll
     # The game starts while this player sits at the table: back to it.
-    rp_close while @rp && @token && @seat && @view && @view["st"] != "wait"
+    rp_close while @rp && @tc.token && @seat && @view && @view["st"] != "wait"
     f = @rp_f
     return unless f && f.done?
     @rp_f = nil

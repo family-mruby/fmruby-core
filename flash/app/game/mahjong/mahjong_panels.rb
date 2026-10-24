@@ -143,8 +143,8 @@ class MahjongApp < FmrbApp
     list = rule_choices(i)
     k = list.index(rule_value(ru, i))
     k = k.nil? ? 0 : (k + step) % list.size
-    return if @cmd_f || @token.nil?
-    @cmd_f = proxy.async.rule(@token, i, list[k])
+    return if @cmd_f || @tc.token.nil?
+    @cmd_f = @tc.proxy.async.rule(@tc.token, i, list[k])
   rescue ::Asterism::Error => e
     @cmd_f = nil
     @note = e.message.to_s
@@ -424,8 +424,8 @@ class MahjongApp < FmrbApp
       @pending_join = nil
       return join(p)
     end
-    return unless changed && @table && @token
-    @rename_f = proxy.async.join(@name)
+    return unless changed && @tc.table && @tc.token
+    @rename_f = @tc.proxy.async.join(@name)
   rescue ::Asterism::Error => e
     @note = e.message.to_s
   end
@@ -1145,8 +1145,8 @@ class MahjongApp < FmrbApp
   # state moves on (took_view).
 
   def status_line
-    return t(:mj_lost) if @net != :up || reconnecting?
-    return t(:mj_host_left) if @host_gone
+    return t(:mj_lost) if @tc.net != :up || @tc.reconnecting?
+    return t(:mj_host_left) if @tc.host_gone?
     return t(:mj_host_away) if @host_away
     g = guide
     @note.empty? ? g : "#{@note}  #{g}"

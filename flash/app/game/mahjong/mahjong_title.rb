@@ -41,10 +41,10 @@ class MahjongApp < FmrbApp
   end
 
   def list_ready?
-    return false unless @table_list
+    return false unless @tc
     i = 0
-    while i < @table_list.size
-      st = @tables[@table_list[i]]
+    while i < @tc.table_list.size
+      st = @tc.tables[@tc.table_list[i]]
       return true if st && st["st"]
       i += 1
     end

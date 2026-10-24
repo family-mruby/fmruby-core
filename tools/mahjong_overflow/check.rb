@@ -280,6 +280,31 @@ MahjongApp.prepend(Scoping)
 
 # ---------------------------------------------------------------- checking
 
+# The table client's side the screen reads (FmrbAsterism::TableClient,
+# doc/app_refactor R4): connected, at a table with a token.
+class StubLink
+  def router = "tcp/192.0.2.1:7447"
+  def reason = ""
+end
+
+class StubTableClient
+  attr_accessor :net, :table, :token, :tables, :table_list, :host_gone
+
+  def initialize
+    @net = :up
+    @table = "games-host-aaaaaa/games/mahjong1"
+    @token = "t"
+    @tables = {}
+    @table_list = []
+    @host_gone = false
+  end
+
+  def host_gone? = @host_gone
+  def reconnecting? = false
+  def link = StubLink.new
+  def joining? = false
+end
+
 def new_app(w, h)
   app = MahjongApp.allocate
   app.scopes = []
@@ -294,9 +319,8 @@ def new_app(w, h)
     started: 0, dirty: true, keys: [], clicks: [], buttons: [], unsupported: false, hand_sheet: :sheet,
     river_sheet: nil, xl_sheets: false, xl_items: nil, fw: 12, perf_on: false, perf: [], xl_n_items: 0, xl_n_px: 0,
     id: "wasm-aaaaaa", name: MjFixtures::LONG_JA[0, 12], name_set: MjFixtures::LONG_JA[0, 12], name_machine: "", name_edit: nil,
-    pending_join: nil, net: :up, net_note: "", tables: {}, table_list: [], list_sel: 0,
-    probed: [], mine: {}, sub: nil, table: "games-host-aaaaaa/games/mahjong1", token: "t", seat: nil, view: nil,
-    view_at: 0, want_v: 0, host_away: false, note: "", sel: -1, mouse_sel: false, waits: {}, uk: {}, uk_min: 9,
+    pending_join: nil, tc: StubTableClient.new, list_sel: 0,
+    probed: [], mine: {}, seat: nil, view: nil, host_away: false, note: "", sel: -1, mouse_sel: false, waits: {}, uk: {}, uk_min: 9,
     assist: 1, pick: false, lat: 61, deadline: nil, bank_ms: 0, others: false, second: 0, mem_at: 0
   }.each { |k, v| app.instance_variable_set(:"@#{k}", v) }
   app.layout
@@ -453,9 +477,9 @@ EXTRAS = {
                      ["title", ->(a) { a.instance_variable_set(:@title_until, 2_000_000) }],
                      ["list_prompt", lambda { |a|
                        tables = %w[games-host-aaaaaa/games/mahjong1 games-host-aaaaaa/games/mahjong2 games/games/mahjong9]
-                       a.instance_variable_set(:@table, nil)
-                       a.instance_variable_set(:@table_list, tables)
-                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "play", "sk" => [1, 1, 2, 2], "mb" => 16 }] })
+                       a.instance_variable_get(:@tc).table = nil
+                       a.instance_variable_get(:@tc).table_list = tables
+                       a.instance_variable_get(:@tc).tables = tables.to_h { |t| [t, { "st" => "play", "sk" => [1, 1, 2, 2], "mb" => 16 }] }
                        a.instance_variable_set(:@mine, { tables[0] => true })
                        a.instance_variable_set(:@name_set, nil)
                        a.instance_variable_set(:@pending_join, tables[0])
@@ -463,34 +487,34 @@ EXTRAS = {
                      }],
                      ["list_sound_off", lambda { |a|
                        tables = %w[games-host-aaaaaa/games/mahjong1 games/games/mahjong9]
-                       a.instance_variable_set(:@table, nil)
-                       a.instance_variable_set(:@table_list, tables)
-                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
+                       a.instance_variable_get(:@tc).table = nil
+                       a.instance_variable_get(:@tc).table_list = tables
+                       a.instance_variable_get(:@tc).tables = tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] }
                        a.instance_variable_set(:@snd_bgm, 0)
                        a.instance_variable_set(:@snd_se, false)
                      }],
                      ["list_bgm_high", lambda { |a|
                        tables = %w[games-host-aaaaaa/games/mahjong1 games/games/mahjong9]
-                       a.instance_variable_set(:@table, nil)
-                       a.instance_variable_set(:@table_list, tables)
-                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
+                       a.instance_variable_get(:@tc).table = nil
+                       a.instance_variable_get(:@tc).table_list = tables
+                       a.instance_variable_get(:@tc).tables = tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] }
                        a.instance_variable_set(:@snd_bgm, 3)
                      }],
                      ["list_voice", lambda { |a|
                        tables = %w[games-host-aaaaaa/games/mahjong1 games/games/mahjong9]
-                       a.instance_variable_set(:@table, nil)
-                       a.instance_variable_set(:@table_list, tables)
-                       a.instance_variable_set(:@tables, tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] })
+                       a.instance_variable_get(:@tc).table = nil
+                       a.instance_variable_get(:@tc).table_list = tables
+                       a.instance_variable_get(:@tc).tables = tables.to_h { |t| [t, { "st" => "wait", "sk" => [1, 0, 2, 0], "mb" => 3 }] }
                        a.instance_variable_set(:@snd_bgm, 3)
                        voice_on(a)
                      }],
                      ["list_searching", lambda { |a|
-                       a.instance_variable_set(:@table, nil)
-                       a.instance_variable_set(:@table_list, [])
+                       a.instance_variable_get(:@tc).table = nil
+                       a.instance_variable_get(:@tc).table_list = []
                      }],
                      ["list_unset", lambda { |a|
-                       a.instance_variable_set(:@table, nil)
-                       a.instance_variable_set(:@table_list, %w[games-host-aaaaaa/games/mahjong1])
+                       a.instance_variable_get(:@tc).table = nil
+                       a.instance_variable_get(:@tc).table_list = %w[games-host-aaaaaa/games/mahjong1]
                        a.instance_variable_set(:@name_set, nil)
                        a.instance_variable_set(:@note, "この部屋での名乗りが合わない (部屋のリンクを開き直す)")
                      }]],

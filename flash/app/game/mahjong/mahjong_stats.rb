@@ -71,7 +71,7 @@ class MahjongApp < FmrbApp
   def rp_poll
     return st_base_rp_poll unless @st
     # The game starts while this player sits at the table: back to it.
-    if @token && @seat && @view && @view["st"] != "wait"
+    if @tc.token && @seat && @view && @view["st"] != "wait"
       st_close
       return st_base_rp_poll
     end
