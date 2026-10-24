@@ -10,7 +10,7 @@ class MahjongApp < FmrbApp
   def draw_title
     return if @title_drawn == @w
     @title_drawn = @w
-    @buttons = []
+    @buttons.clear
     clear_user_area(C_FELT)
     big = @big ? 4 : 3 # the text scale stops at 4
     tw_ = @xl ? 84 : (@big ? 42 : 24)

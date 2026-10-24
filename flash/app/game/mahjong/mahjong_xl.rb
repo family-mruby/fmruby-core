@@ -681,7 +681,7 @@ class MahjongApp < FmrbApp
       return
     end
     if redraw_btns
-      @buttons = []
+      @buttons.clear
       @xl_btn_rects = []
       xl_draw_assist
       xl_draw_buttons
@@ -999,7 +999,7 @@ class MahjongApp < FmrbApp
 
   # Win buttons red, passing grey, the rest the usual colour (as in the sample).
   def xl_button(type, tiles, x, y, w, label)
-    @buttons << [type, x, y, w, 40, tiles]
+    @buttons.add(type, x, y, w, 40, tiles)
     @xl_btn_rects << [x, y, w, 40]
     col = type == A_RON || type == A_TSUMO ? C_BTN_WIN : (type == A_SKIP || type == B_LEAVE || type == B_ASSIST ? C_BTN_PASS : C_BTN)
     @gfx.fill_round_rect(x, y, w, 40, 8, col)
@@ -1080,7 +1080,7 @@ class MahjongApp < FmrbApp
     end
     # The buttons (next) at the bottom right of the box; with the OKs the
     # OK line (MJ9).
-    @buttons = []
+    @buttons.clear
     @xl_btn_rects = []
     return ok_footer(bx, by, bw, hgt) if rv_on?
     list = @view["a"].is_a?(Array) ? @view["a"] : []

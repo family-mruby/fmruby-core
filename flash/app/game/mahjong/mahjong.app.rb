@@ -206,7 +206,7 @@ class MahjongApp < FmrbApp
     @dirty = true
     @keys = []
     @clicks = []
-    @buttons = []
+    @buttons = FmrbButtons.new(@gfx)
     @unsupported = FmrbConst::HW_FAMILY != "modern"
     @hand_sheet = nil
     @river_sheet = nil
@@ -1046,15 +1046,8 @@ class MahjongApp < FmrbApp
     return if mode == :table && rv_skip
     x = c[0]
     y = c[1]
-    i = 0
-    while i < @buttons.size
-      b = @buttons[i]
-      if x >= b[1] && x < b[1] + b[3] && y >= b[2] && y < b[2] + b[4]
-        run_button(b[0], b[5])
-        return
-      end
-      i += 1
-    end
+    b = @buttons.at(x, y)
+    return run_button(b[0], b[5]) if b
     return unless mode == :table && @seat
     idx = @xl ? xl_hand_index_at(x, y) : hand_index_at(x, y)
     return if idx.nil?
@@ -1207,7 +1200,7 @@ class MahjongApp < FmrbApp
   # label: a text, or a call's [head, tiles, key] (MJ8: the tiles as pictures).
   def button(type, tiles, x, y, label, h = u(20))
     w = btn_label_w(label) + u(12)
-    @buttons << [type, x, y, w, h, tiles]
+    @buttons.add(type, x, y, w, h, tiles)
     @gfx.fill_round_rect(x, y, w, h, u(4), C_BTN)
     btn_content(label, x, y, w, h)
     w
@@ -1226,7 +1219,7 @@ class MahjongApp < FmrbApp
       return
     end
     @xl_items = nil
-    @buttons = []
+    @buttons.clear
     clear_user_area(C_FELT)
     fnt(12, @k)
     if m == :table && watching?
@@ -1352,7 +1345,7 @@ class MahjongApp < FmrbApp
         line = "#{parts[0]}/#{parts[2]}  #{table_status(s)}"
         line = "#{line}  #{t(:mj_mine)}" if @mine[p]
         text(x + u(2), y + u(1), fit(line, @w - u(20)), i == @list_sel % l.size ? C_TURN : C_TEXT)
-        @buttons << [B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i]]
+        @buttons.add(B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i])
         y += u(22)
         i += 1
       end
@@ -1566,21 +1559,10 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # s cut (by characters) to at most w pixels, with ".." when cut.
+  # s cut (by characters) to at most w pixels, with ".." when cut. The room
+  # kept for ".." is 12 px at any text size (as it always was).
   def fit(s, w)
-    return s if tw(s) <= w
-    out = ""
-    i = 0
-    n = s.bytesize
-    while i < n
-      b = s.getbyte(i)
-      len = b < 0x80 ? 1 : (b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : 2))
-      ch = s.byteslice(i, len)
-      break if tw(out) + tw(ch) + 12 > w
-      out << ch
-      i += len
-    end
-    "#{out}.."
+    @gfx.fit_text(s, w, "..", 12)
   end
 
   def seat_label_pos(rl)

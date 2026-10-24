@@ -32,6 +32,13 @@ require_relative "fixtures"
 
 CORE = File.expand_path("../..", __dir__)
 APP_DIR = File.join(CORE, "flash", "app", "game", "mahjong")
+GEM_DIR = File.join(CORE, "lib", "add", "picoruby-fmrb-app", "mrblib")
+
+# The app's fit and click targets are the firmware's own (FmrbText on its
+# @gfx, FmrbButtons); they are plain Ruby and load as they ship.
+class FmrbGfx; end
+load File.join(GEM_DIR, "fmrb-text.rb")
+load File.join(GEM_DIR, "fmrb-buttons.rb")
 
 # ---------------------------------------------------------------- stand-ins
 
@@ -80,6 +87,8 @@ end
 
 # The graphics: records what is drawn, with the scope (panel) it was drawn in.
 class RecGfx
+  include FmrbText
+
   Prim = Struct.new(:kind, :x, :y, :w, :h, :panel, :rect, :overlay, :text, :color)
 
   attr_reader :prims
@@ -101,6 +110,9 @@ class RecGfx
     s.each_char { |ch| w += ch.bytesize == 1 ? @px * @size / 2 : @px * @size }
     w
   end
+  alias text_width text_w
+
+  def font_height = @px * @size
 
   def draw_text(x, y, s, _c)
     return if s.to_s.empty?
@@ -310,13 +322,14 @@ def new_app(w, h)
   app.scopes = []
   gfx = RecGfx.new(app.scopes)
   app.instance_variable_set(:@gfx, gfx)
+  app.instance_variable_set(:@buttons, FmrbButtons.new(gfx))
   app.instance_variable_set(:@user_area_x0, 0)
   app.instance_variable_set(:@user_area_y0, 0)
   app.instance_variable_set(:@user_area_width, w)
   app.instance_variable_set(:@user_area_height, h)
   app.setup_strings
   {
-    started: 0, dirty: true, keys: [], clicks: [], buttons: [], unsupported: false, hand_sheet: :sheet,
+    started: 0, dirty: true, keys: [], clicks: [], unsupported: false, hand_sheet: :sheet,
     river_sheet: nil, xl_sheets: false, xl_items: nil, fw: 12, perf_on: false, perf: [], xl_n_items: 0, xl_n_px: 0,
     id: "wasm-aaaaaa", name: MjFixtures::LONG_JA[0, 12], name_set: MjFixtures::LONG_JA[0, 12], name_machine: "", name_edit: nil,
     pending_join: nil, tc: StubTableClient.new, list_sel: 0,
@@ -390,7 +403,7 @@ def run_case(view, w, h, prep = nil)
   # drawn at the bottom of the list and the lobby.
   app.instance_variable_set(:@host_ver, "10.10.10")
   prep&.call(app)
-  app.instance_variable_set(:@buttons, [])
+  app.instance_variable_get(:@buttons).clear
   app.draw_screen
   [problems(gfx.prims, w, h), gfx.prims]
 end
@@ -432,7 +445,7 @@ def run_switch(from, to, w, h)
     v = Marshal.load(Marshal.dump(switch_view(name)))
     v["v"] = 100 + i
     app.take_view(v)
-    app.instance_variable_set(:@buttons, [])
+    app.instance_variable_get(:@buttons).clear
     gfx.prims.clear if i.zero?
     @n0 = gfx.prims.size
     app.draw_screen

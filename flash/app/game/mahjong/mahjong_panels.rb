@@ -297,7 +297,7 @@ class MahjongApp < FmrbApp
         @gfx.draw_rect(x - u(2) + pi * tw2, y - u(2), tw2 - u(2), u(16), C_TURN) if on
         l = "#{pi + 1} / #{pages.size}"
         text(x - u(2) + pi * tw2 + (tw2 - tw(l)) / 2, y, l, on ? C_TURN : C_DIM)
-        @buttons << [B_RULE_PAGE, x - u(2) + pi * tw2, y - u(2), tw2 - u(2), u(16), [pi]]
+        @buttons.add(B_RULE_PAGE, x - u(2) + pi * tw2, y - u(2), tw2 - u(2), u(16), [pi])
         pi += 1
       end
       y += u(19)
@@ -311,7 +311,7 @@ class MahjongApp < FmrbApp
         v = rule_text(i, rule_value(ru, i))
         text(x + u(6), y, fit(@rule_names[i], w - tw(v) - u(18)), C_TEXT)
         text_spaced(x + w - tw(v) - u(8), y, v, sel ? C_TURN : C_TEXT)
-        @buttons << [B_RULE, x - u(2), y - u(2), w, u(16), [i]] if own
+        @buttons.add(B_RULE, x - u(2), y - u(2), w, u(16), [i]) if own
         y += u(17)
       end
     end
