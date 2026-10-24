@@ -27,7 +27,7 @@
 | 段 | 内容 | 載せ替えるアプリ |
 |---|---|---|
 | R1 | **繋がり続ける口**: WiFi を待つ、画面の準備を待てる、失敗・切断で決まった間隔で繋ぎ直す、「already on the network」は待って繋ぎ直す、状態 (待ち・接続中・接続・繋ぎ直し中・理由) を 1 つの値で返す、繋がったときの処理 (expose・購読・on_join) を一度書けば繋ぎ直しのたびに流れる。置き場は fmrb-asterism (`lib/add/picoruby-fmrb-asterism`)。asterism の gem 本体を変える必要があるかは R1 の最初に読んで決める | step_sensor → walk_scroller → asterism_demo |
-| R2 | **/home の小さな設定**: `key = value` の数行の TOML を読む・1 行だけ書き換えて残りを保つ、を共通の口に (今の conf_int・save_tune・台本の読みの一部)。置き場は既存の設定まわり (FmrbAsterism.settings の近く) か小さな gem | step_sensor・オセロ・walk_scroller・麻雀 |
+| R2 | **小さな TOML の読み書き**: 芯は FmrbApp の外の 1 つのモジュール (例 `FmrbToml`、picoruby-fmrb-app の gem): `key = value`・`[section]`・数・文字列・真偽を読み、1 行だけ書き換えて残りを保つ。今ばらばらにある読み手 (SvcConf.parse、FmrbColors.parse、FmrbAssoc、FmrbAsterism.settings、FmrbI18n・FmrbApp のテーマの system_conf の読み、アプリの conf_int・save_tune) を順に寄せる。FmrbApp には薄い入口だけ (例 `app_settings` で `/home/<app_handle_name>.toml`、`save_app_settings`)。**FmrbApp は mruby 版と Spinel 版 (`main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`) の 2 か所**、入口はメソッドだけでインスタンス変数を足さない (基底の ivar で Spinel の配置がずれた前例) (2026-10-24 ユーザと相談) | step_sensor・オセロ・walk_scroller・麻雀、サービス・色・関連付け |
 | R3 | **step_sensor の整理**: 生の値を 1 つの組に (m_peak と dyn_peak の持ち主をそろえる、`r[5]` のような番号を名前に)、調べるための記録 (直前の標本・処理時間) を小さく、一歩の検知の 3 段の平均を考え直す (合成の波形の試験はそのまま通す) | step_sensor |
 | R4 | **卓のクライアントの共通部分**: 卓の一覧、入る・出る、席の札 (token)、様子 (view) の問い合わせの間隔、ホストがいなくなったときの扱い。asterism-games のホスト側の枠組みと対になる、端末側の小さな枠組みにする | オセロ (いちばん小さい) → ボード → 麻雀 |
 | R5 | **画面の小物**: 文字の幅 (text_w)、幅に詰める (fit・fit_dots)、2 行に折る (wrap2)、ボタン。既存の FmrbUI に寄せられるものは寄せる | オセロ・ボード・麻雀・walk_scroller |
