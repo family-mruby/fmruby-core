@@ -1,0 +1,9 @@
+app_handle_name = "step_sensor"
+app_screen_name = "Step Sensor"
+app_screen_name_ja = "歩数センサ"
+default_window_mode = "window"
+default_window_width = 240
+default_window_height = 150
+default_window_pos_x = 10
+default_window_pos_y = 30
+single_instance = true

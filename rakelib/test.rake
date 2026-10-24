@@ -18,9 +18,19 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "tts:test",
-               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "ti:test", "basic:test", "micropython:smoke"]
+
+namespace :imu do
+  # The BMI270 driver against a fake device, and the step sensor app's step
+  # detector against synthetic walking and still data (host Ruby, no docker).
+  desc "BMI270 driver and step detector tests (host Ruby, no docker)"
+  task :test do
+    sh "ruby tool/imu/test/verify.rb"
+    sh "ruby tool/imu/test/step_detector_test.rb"
+  end
+end
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs

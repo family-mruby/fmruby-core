@@ -45,7 +45,7 @@ audio_volume = 7
 # and windows; "app" runs startup_app alone, full screen, with no desktop.
 boot_mode = "app"
 # The app, by path. With boot_mode = "app" it is the only thing that runs.
-startup_app = "/app/test/asterism_demo.app.rb"
+startup_app = "/app/test/step_sensor.app.rb"
 # boot_mode = "app": how many times an app that dies is started again before
 # the machine gives up and shows why (on the screen and the serial log).
 # 0 = never restart.
