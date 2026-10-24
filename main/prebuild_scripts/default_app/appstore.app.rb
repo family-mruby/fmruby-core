@@ -463,25 +463,12 @@ class AppStoreApp < FmrbApp
     value_of(text, "app_version") || "?"
   end
 
-  # One key out of the flat toml the device itself reads. No Regexp on this
-  # machine, so this walks the lines.
+  # One top-level key of a .app.toml, as text (nil without it, or when the
+  # file is not TOML). Read through FmrbToml, the reader the spawner uses.
   def value_of(text, key)
-    lines = text.split("\n")
-    i = 0
-    while i < lines.size
-      line = lines[i].strip
-      i += 1
-      next if line.empty?
-      next if line.start_with?("#")
-      eq = line.index("=")
-      next unless eq
-      next unless line[0, eq].strip == key
-      v = line[eq + 1, line.length - eq - 1].strip
-      len = v.length
-      v = v[1, len - 2] if len >= 2 && v[0] == "\"" && v[len - 1] == "\""
-      return v
-    end
-    nil
+    conf = FmrbToml.parse(text)
+    v = conf ? conf[key] : nil
+    v.nil? ? nil : v.to_s
   end
 
   # ---- installing ---------------------------------------------------------

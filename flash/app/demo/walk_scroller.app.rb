@@ -251,11 +251,16 @@ class WalkScrollerApp < FmrbApp
     end
     conf = nil
     if text
-      begin
-        conf = path.end_with?(".json") ? ::JSON.parse(text) : parse_toml(text)
-      rescue => e
-        Log.warn("walk_scroller: #{path}: #{e.message}")
-        conf = nil
+      if path.end_with?(".json")
+        begin
+          conf = ::JSON.parse(text)
+        rescue => e
+          Log.warn("walk_scroller: #{path}: #{e.message}")
+          conf = nil
+        end
+      else
+        conf = FmrbToml.parse(text)
+        Log.warn("walk_scroller: #{path}: #{FmrbToml.error}") if conf.nil?
       end
     end
     conf = { "mark" => [{ "step" => 0, "text" => "Walk Scroller", "sub" => "no script" }] } unless conf.is_a?(Hash)
@@ -304,112 +309,6 @@ class WalkScrollerApp < FmrbApp
     File.open(path, "r") { |f| f.read }
   rescue
     nil
-  end
-
-  # A small part of TOML: key = value lines at the top and in [[mark]]
-  # tables; strings ("..." with \n \t \" \\), integers (also 0x..),
-  # true / false; # comments.
-  def parse_toml(text)
-    top = {}
-    marks = []
-    cur = top
-    lines = text.split("\n")
-    i = 0
-    while i < lines.size
-      line = toml_strip_comment(lines[i]).strip
-      i += 1
-      next if line.empty?
-      if line == "[[mark]]"
-        cur = {}
-        marks << cur
-        next
-      end
-      if line.start_with?("[")
-        cur = {} # another table: not ours
-        next
-      end
-      eq = line.index("=")
-      next unless eq
-      key = line[0, eq].strip
-      key = key[1, key.length - 2] if key.start_with?("\"") && key.end_with?("\"")
-      cur[key] = toml_value(line[eq + 1, line.length].to_s.strip)
-    end
-    top["mark"] = marks
-    top
-  end
-
-  def toml_strip_comment(line)
-    in_str = false
-    j = 0
-    n = line.bytesize
-    while j < n
-      b = line.getbyte(j)
-      if in_str
-        if b == 92 # backslash
-          j += 1
-        elsif b == 34
-          in_str = false
-        end
-      elsif b == 34
-        in_str = true
-      elsif b == 35 # #
-        return line.byteslice(0, j)
-      end
-      j += 1
-    end
-    line
-  end
-
-  def toml_value(s)
-    return "" if s.empty?
-    if s.getbyte(0) == 34
-      out = ""
-      j = 1
-      seg = 1
-      n = s.bytesize
-      while j < n
-        b = s.getbyte(j)
-        if b == 34
-          out << s.byteslice(seg, j - seg)
-          return out
-        elsif b == 92 && j + 1 < n
-          out << s.byteslice(seg, j - seg)
-          c = s.getbyte(j + 1)
-          if c == 110
-            out << "\n"
-          elsif c == 116
-            out << "\t"
-          else
-            out << s.byteslice(j + 1, 1)
-          end
-          j += 2
-          seg = j
-          next
-        end
-        j += 1
-      end
-      out << s.byteslice(seg, n - seg)
-      return out
-    end
-    return true if s == "true"
-    return false if s == "false"
-    if s.start_with?("0x") || s.start_with?("0X")
-      v = 0
-      j = 2
-      while j < s.bytesize
-        b = s.getbyte(j)
-        d = if b >= 48 && b <= 57 then b - 48
-            elsif b >= 97 && b <= 102 then b - 87
-            elsif b >= 65 && b <= 70 then b - 55
-            else -1
-            end
-        break if d < 0
-        v = v * 16 + d
-        j += 1
-      end
-      return v
-    end
-    s.to_i
   end
 
   # The mark in effect at the current count, and the scene of the last

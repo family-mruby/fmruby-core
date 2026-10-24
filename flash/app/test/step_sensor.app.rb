@@ -199,7 +199,6 @@ class StepSensorApp < FmrbApp
   APP = "step"
   OBJECT = "pedometer"
   CONF_FILE = "/etc/system_conf.toml"
-  TUNE_FILE = "/home/step_sensor.toml"
   POLL_MS = 10          # read the sensor's FIFO this often
   ODR_MS = 10           # the sensor makes a sample every 10 ms (100 Hz)
   STATS_MS = 10000      # a line in the log: samples and steps
@@ -257,7 +256,7 @@ class StepSensorApp < FmrbApp
     @raw_puts = 0
     set_raw(RAW_DEFAULT)
     @detector = StepDetector.new
-    @saved_tune = nil # [rise_mg, min_gap_ms] as in TUNE_FILE, nil without one
+    @saved_tune = nil # [rise_mg, min_gap_ms] as in app_settings, nil without them
     load_tune
     @sensor = "no sensor"
     @imu = nil
@@ -274,7 +273,7 @@ class StepSensorApp < FmrbApp
     rescue => e
       Log.warn("step_sensor: KEY1: #{e.message}")
     end
-    width = conf_int(CONF_FILE, "display_width")
+    width = system_conf_int("display_width")
     @small = width > 0 && width < 320
     request_fullscreen(true) if @small
     @link.screen_ready unless @small
@@ -294,22 +293,20 @@ class StepSensorApp < FmrbApp
     @i2c.close if @i2c
   end
 
-  # The number in `<key> = 123` of a small TOML file, or nil.
-  def conf_int(path, key)
-    text = File.open(path, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key)
-      eq = line.index("=")
-      return eq ? line[eq + 1, line.length].to_s.strip.to_i : nil
-    end
-    nil
-  rescue
-    nil
+  # An integer of system_conf.toml (0 when it is not there).
+  def system_conf_int(key)
+    conf = FmrbToml.load(CONF_FILE)
+    v = conf ? conf[key] : nil
+    v.is_a?(Integer) ? v : 0
   end
 
+  # The saved settings (/home/step_sensor.toml, app_settings).
   def load_tune
-    rise = conf_int(TUNE_FILE, "rise_mg")
-    gap = conf_int(TUNE_FILE, "min_gap_ms")
+    s = app_settings
+    rise = s["rise_mg"]
+    gap = s["min_gap_ms"]
+    rise = nil unless rise.is_a?(Integer)
+    gap = nil unless gap.is_a?(Integer)
     return unless rise || gap
     t = tune(rise || 150, gap || 250)
     @saved_tune = [t["rise_mg"], t["min_gap_ms"]]
@@ -332,56 +329,19 @@ class StepSensorApp < FmrbApp
     { "rise_mg" => rise_mg, "min_gap_ms" => min_gap_ms, "saved" => tune_saved? }
   end
 
-  # Writes the settings in effect to TUNE_FILE: the rise_mg and min_gap_ms
-  # lines are replaced (added when missing), every other line is kept. The
-  # file is read back to tell whether it holds them now.
+  # Writes the settings in effect to /home/step_sensor.toml: the rise_mg and
+  # min_gap_ms lines are replaced (added when missing), every other line is
+  # kept, and the file is read back (save_app_settings, FmrbToml.update).
   def save_tune
     rise = rise_mg
     gap = @detector.min_gap_ms
-    v = { "rise_mg" => rise, "min_gap_ms" => gap, "saved" => false, "file" => TUNE_FILE }
-    old = nil
-    begin
-      old = File.open(TUNE_FILE, "r") { |f| f.read }
-    rescue
-      old = nil
-    end
-    out = []
-    seen_rise = false
-    seen_gap = false
-    if old
-      lines = old.split("\n")
-      i = 0
-      while i < lines.size
-        line = lines[i]
-        i += 1
-        if line.start_with?("rise_mg")
-          out << "rise_mg = #{rise}" unless seen_rise
-          seen_rise = true
-        elsif line.start_with?("min_gap_ms")
-          out << "min_gap_ms = #{gap}" unless seen_gap
-          seen_gap = true
-        else
-          out << line
-        end
-      end
-    end
-    out << "rise_mg = #{rise}" unless seen_rise
-    out << "min_gap_ms = #{gap}" unless seen_gap
-    begin
-      File.open(TUNE_FILE, "w") { |f| f.write(out.join("\n") + "\n") }
-    rescue => e
-      v["error"] = "#{TUNE_FILE}: #{e.message}"
-      Log.warn("step_sensor: save: #{v["error"]}")
-      return v
-    end
-    r = conf_int(TUNE_FILE, "rise_mg")
-    g = conf_int(TUNE_FILE, "min_gap_ms")
-    if r == rise && g == gap
+    v = { "rise_mg" => rise, "min_gap_ms" => gap, "saved" => false, "file" => app_settings_path }
+    if save_app_settings("rise_mg" => rise, "min_gap_ms" => gap)
       @saved_tune = [rise, gap]
       v["saved"] = true
-      Log.info("step_sensor: saved rise=#{rise} mg min_gap=#{gap} ms to #{TUNE_FILE}")
+      Log.info("step_sensor: saved rise=#{rise} mg min_gap=#{gap} ms to #{v["file"]}")
     else
-      v["error"] = "#{TUNE_FILE} reads back #{r.inspect} / #{g.inspect}"
+      v["error"] = FmrbToml.error.to_s
       Log.warn("step_sensor: save: #{v["error"]}")
     end
     v

@@ -135,15 +135,9 @@ class OthelloTableApp < FmrbApp
 
   # An integer setting of /etc/system_conf.toml (0 when it is not there).
   def conf_int(key)
-    text = File.open(CONF_FILE, "r") { |f| f.read }
-    text.split("\n").each do |line|
-      next unless line.start_with?(key + " ") || line.start_with?(key + "=")
-      eq = line.index("=")
-      return eq ? line[eq + 1, line.length].to_s.strip.to_i : 0
-    end
-    0
-  rescue
-    0
+    conf = FmrbToml.load(CONF_FILE)
+    v = conf ? conf[key] : nil
+    v.is_a?(Integer) ? v : 0
   end
 
   def my_name
