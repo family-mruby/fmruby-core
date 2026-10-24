@@ -48,6 +48,15 @@
 #   table_view_failed         a view was not answered
 #   table_dropped             the host does not know this member any more;
 #                             without it the client leaves (leave)
+#   table_ask_view(px, token) asks the view on px (the table's async proxy)
+#                             and returns the future, for a game whose view
+#                             takes more than the token (mahjong's assist);
+#                             without it the client calls view(token)
+#
+# Two rules every game shares (2026-10-25): leaving (or forgetting) a table
+# while its join is not answered drops that answer, so the next join goes
+# out at once; and any answer of the view, an error too, says the host is
+# there (host gone is cleared before table_dropped runs).
 module FmrbAsterism
   class TableClient
     HOST_APP = "games"
@@ -69,10 +78,12 @@ module FmrbAsterism
     # owner: the application. kind: the start of the game's table names
     # ("othello" finds <host>/games/othello1). app: this application's name
     # on the network. wifi_wait_ms: nil waits on the ESP32 only (the sim and
-    # the browser have their network at once).
+    # the browser have their network at once). blank: what the list keeps
+    # for a table not put yet (a copy of it; nil by default, {} for mahjong).
     def initialize(owner, kind, tag: nil, app: "game", host_app: HOST_APP, retry_ms: 3000,
-                   wifi_wait_ms: nil, settings: nil)
+                   wifi_wait_ms: nil, settings: nil, blank: nil)
       @owner = owner
+      @blank = blank
       @kind = kind
       @tag = tag || kind
       @host_app = host_app
@@ -105,6 +116,7 @@ module FmrbAsterism
       @on_back = owner.respond_to?(:table_host_back)
       @on_failed = owner.respond_to?(:table_view_failed)
       @on_dropped = owner.respond_to?(:table_dropped)
+      @on_ask = owner.respond_to?(:table_ask_view)
       if wifi_wait_ms.nil?
         wifi_wait_ms = ::FmrbConst::PLATFORM == "esp32" ? ::FmrbAsterism::Link::DEFAULT_WIFI_WAIT_MS : 0
       end
@@ -197,8 +209,10 @@ module FmrbAsterism
       forget
     end
 
-    # Off the table without telling the host.
+    # Off the table without telling the host. A join on its way is dropped:
+    # its answer is not read, and the next join goes out at once.
     def forget
+      @join_f = nil
       @table = nil
       @token = nil
       @view_f = nil
@@ -209,7 +223,8 @@ module FmrbAsterism
     def ask_view
       return if @view_f || @token.nil?
       @view_at = ::Machine.board_millis
-      @view_f = proxy.async.view(@token)
+      px = proxy.async
+      @view_f = @on_ask ? @owner.table_ask_view(px, @token) : px.view(@token)
     rescue ::Asterism::Error
       @view_f = nil
     end
@@ -293,7 +308,7 @@ module FmrbAsterism
 
     def add_table(p)
       return if @tables.key?(p)
-      @tables[p] = nil
+      @tables[p] = @blank.nil? ? nil : @blank.dup
       @table_list = @tables.keys.sort
       ::Log.info("#{@tag}: table #{p} on the list")
       @owner.tables_changed(true) if @on_changed
@@ -366,6 +381,9 @@ module FmrbAsterism
         @owner.table_view_failed if @on_failed
         return
       end
+      # Answered (a view sent after the host left): it is there, whatever
+      # the answer says.
+      @host_gone = false if @host_gone && sent > @gone_at
       return unless v.is_a?(Hash)
       if v["error"]
         ::Log.info("#{@tag}: the host does not know us: back to the list")
@@ -377,8 +395,6 @@ module FmrbAsterism
         return
       end
       @view_v = v["v"].to_i
-      # Answered a view sent after the host left: it is back.
-      @host_gone = false if @host_gone && sent > @gone_at
       @owner.table_view(v)
     end
   end

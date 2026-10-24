@@ -267,7 +267,7 @@ class Owner
   def table_host_gone = @log << [:gone]
   def table_host_back = @log << [:back]
   def table_view_failed = @log << [:view_failed]
-  def table_dropped = @log << [:dropped]
+  def table_dropped = @log << [:dropped, tc.host_gone?]
 
   def kinds = @log.map { |e| e[0] }
   def last(kind) = @log.reverse.find { |e| e[0] == kind }
@@ -573,6 +573,81 @@ check("WiFi: Link's wait on the ESP32", tc.link.instance_variable_get(:@wifi_wai
 tc, owner = fresh(wifi_wait_ms: 500, retry_ms: 1000)
 check("given wifi_wait_ms and retry_ms", [tc.link.instance_variable_get(:@wifi_wait_ms),
                                          tc.link.instance_variable_get(:@retry_ms)], [500, 1000])
+
+puts "leaving while the join is not answered (Esc in the lobby): the next join goes out at once"
+FmrbConst.send(:remove_const, :PLATFORM)
+FmrbConst.const_set(:PLATFORM, "linux")
+tc, owner = fresh
+tc.update
+tc.update
+Asterism.host.hold = true
+tc.join("h/games/othello1", "me")
+tc.leave
+check("not joining, off the table, nothing to leave (no token)",
+      [tc.joining?, tc.table, Asterism.host.count(:leave)], [false, nil, 0])
+check("a join right after goes out", [tc.join("h/games/othello2", "me"), Asterism.host.count(:join)], [nil, 2])
+check("joining the second", [tc.joining?, tc.table], [true, "h/games/othello2"])
+Asterism.host.hold = false
+Asterism.host.release
+tc.update
+check("the first answer was dropped: joined the second once", [owner.count(:joined), tc.table, owner.count(:refused)],
+      [1, "h/games/othello2", 0])
+check("the view of the second", Asterism.host.calls.last[0, 2], ["h/games/othello2", :view])
+tc, owner = fresh
+tc.update
+tc.update
+Asterism.host.hold = true
+tc.join("h/games/othello1", "me")
+tc.forget
+check("forget drops the join too", [tc.joining?, tc.join("h/games/othello1", "me"), Asterism.host.count(:join)],
+      [false, nil, 2])
+
+puts "an error answer of the view says the host is there"
+tc, owner = seated
+Asterism.on_leave_block.call("h")
+check("host gone", tc.host_gone?, true)
+Machine.advance(30_000)
+Asterism.host.drop = true
+tc.update_view
+tc.update_view
+check("table_dropped sees host gone cleared", owner.last(:dropped), [:dropped, false])
+check("no table_host_back for it", owner.count(:back), 0)
+tc, owner = seated
+Asterism.host.hold = true
+Asterism.host.drop = true
+tc.refresh_view
+Machine.advance(10)
+Asterism.on_leave_block.call("h")
+Asterism.host.hold = false
+Asterism.host.release
+tc.update_view
+check("a view sent before the host left does not clear it (as before)", owner.last(:dropped), [:dropped, true])
+tc, owner = seated(owner: Minimal.new)
+Asterism.on_leave_block.call("h")
+Machine.advance(30_000)
+tc.update_view
+tc.instance_variable_get(:@view_f).result = "not a hash"
+tc.update_view
+check("an answer that is not a Hash clears it too", tc.host_gone?, false)
+
+puts "a game that asks the view its own way (mahjong's assist), the list's blank"
+class AskOwner < Owner
+  def table_ask_view(px, token)
+    @log << [:ask, token]
+    px.view(token, 2)
+  end
+end
+tc, owner = seated(owner: AskOwner.new)
+check("table_ask_view called with the token", owner.last(:ask), [:ask, "tok-me"])
+check("the game's call", Asterism.host.calls.find { |c| c[1] == :view }, ["h/games/othello1", :view, "tok-me", 2])
+check("its answer reaches table_view", owner.last(:view), [:view, 1])
+tc, owner = fresh(kind: "othello", blank: {})
+tc.update
+tc.update
+a = tc.tables["h/games/othello1"]
+b = tc.tables["h/games/othello2"]
+check("blank: {} kept for a table not put yet", [a, b], [{}, {}])
+check("each a copy of its own", a.equal?(b), false)
 
 puts
 if Check.failed.zero?
