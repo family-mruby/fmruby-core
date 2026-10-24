@@ -26,7 +26,7 @@
 
 ## 3. 確認
 
-- **step_sensor (StickS3 の実機)**: tab5_fs で置き換えて起動し (ip 192.168.10.19、焼かない、シリアルを開かない)、画面が「WiFi ok / AST ..」→「AST ok」になる。いま VPS のルータに mTLS で繋がっている (`/home/asterism/config.toml` と証明書の tar には触らない)。asterism の MCP (VPS 側) で値と `state` が読め、歩数を送り、`tune`・`save` が前と同じに動く (保存してあるしきい値 130 mg / 250 ms は変えない。試したら必ず 130 / 250 に戻して保存しておく)。アプリを kill して起動し直すと「already on the network」を待って繋がる。
+- **step_sensor (StickS3 の実機)**: tab5_fs で置き換えて起動し (ip は LAN の住所を tab5_* に渡す、焼かない、シリアルを開かない)、画面が「WiFi ok / AST ..」→「AST ok」になる。いま VPS のルータに mTLS で繋がっている (`/home/asterism/config.toml` と証明書の tar には触らない)。asterism の MCP (VPS 側) で値と `state` が読め、歩数を送り、`tune`・`save` が前と同じに動く (保存してあるしきい値 130 mg / 250 ms は変えない。試したら必ず 130 / 250 に戻して保存しておく)。アプリを kill して起動し直すと「already on the network」を待って繋がる。
 - **walk_scroller (ブラウザ版)**: 手元の zenohd (親の compose に lan と ws を重ねる、private-notes にある手順を参照してよい) と `tool/imu/step_send.rb` で、歩数で歩く、zenohd を止めると赤、戻すと繋がり直す、が前と同じ。T の調整の画面も動く。
 - **asterism_demo**: sim で手元の zenohd に繋がる (H3 の確認と同じ)。
 - `rake test` と新しい試験。Retro・Tab5・StickS3 のビルドで内蔵 RAM が増えない (共通の gem を変えたら、Retro と Tab5 の `idf.py size` の D/IRAM を前後で比べる)。
