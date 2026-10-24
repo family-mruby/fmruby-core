@@ -211,21 +211,20 @@ end
 puts format("all walking: %d steps, delay median %d ms, p90 %d ms, max %d ms",
             all_delays.size, pct(all_delays, 0.5), pct(all_delays, 0.9), all_delays.max || 0)
 
-# The raw values for a plot (accel, 20 Hz): as in the app, every RAW_EVERY
-# samples the last one is kept (dyn) and, after the read, put with
-# dyn_peak = take_peak (the largest dyn since the previous put). Every put
-# whose steps went up must show dyn_peak >= rise; dyn alone (the value at
-# the put) usually does not, which is why the panel plots dyn_peak.
-RAW_EVERY = 5
+# The raw values for a plot (accel, 20 Hz): as in the app, every sample fed
+# to the detector also goes to an AccelTrace, and after a read with a new
+# snapshot the accel map is taken (dyn_peak = the largest dyn since the
+# previous take). Every put whose steps went up must show dyn_peak >= rise;
+# dyn alone (the value at the put) usually does not, which is why the panel
+# plots dyn_peak.
 def raw_puts(w, det, samples, poll_ms: 10, poll_jitter: 6, stall_every: 40, stall_ms: 60)
   rng = Random.new(77)
+  trace = AccelTrace.new
+  rise = (det.rise * 1000).round
   puts_ = []
   t = 0.0
   next_index = 0
   reads = 0
-  raw_n = 0
-  ready = false
-  snap = 0.0
   while t <= samples.last[0]
     last = [(t / Walk::ODR_MS).floor, samples.size - 1].min
     if last >= next_index
@@ -234,17 +233,12 @@ def raw_puts(w, det, samples, poll_ms: 10, poll_jitter: 6, stall_every: 40, stal
       (next_index..last).each_with_index do |i, k|
         s = samples[i]
         det.feed(now - (n - 1 - k) * Walk::ODR_MS, s[1], s[2], s[3])
-        raw_n += 1
-        next if raw_n < RAW_EVERY
-        raw_n = 0
-        snap = det.dynamic
-        ready = true
+        trace.add(s[1], s[2], s[3], det.dynamic)
       end
       next_index = last + 1
-      if ready
-        ready = false
-        pk = det.take_peak || snap
-        puts_ << [det.count, (pk * 1000).round, (snap * 1000).round]
+      if trace.ready
+        v = trace.take(rise, det.count)
+        puts_ << [v["steps"], v["dyn_peak"], v["dyn"]]
       end
     end
     reads += 1
