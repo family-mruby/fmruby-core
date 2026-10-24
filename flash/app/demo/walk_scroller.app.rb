@@ -1,4 +1,4 @@
-# Walk Scroller: a pixel-art walker whose every step comes from a step
+# Walk Scroller: a walker drawn from BMP frames whose every step comes from a step
 # sensor on Asterism, over a background that scrolls in layers (parallax).
 #
 # - Steps: subscribes to asterism/<node>/step/pedometer/step, the value a
@@ -28,11 +28,42 @@
 #   After the frame that shows a step it puts its progress on
 #   asterism/<ID>/walk/scroller/progress (count, mark, src, src_steps), so
 #   a sender can time a step from its put to the screen.
-# - Drawing: the scenery is drawn once per scene into three SpriteImages
-#   (far, middle, ground), each as wide as the screen and seamless at its
-#   ends; a frame is the sky bands, two draw_tile calls per layer at its own
-#   offset, and the sprites (walker, text, status). Text is drawn into a
-#   sprite only when it changes.
+# - Drawing: a frame is the sky (four bands and the sun or moon, drawn in
+#   code), three scenery layers each drawn with draw_tile at its own offset
+#   (two calls when the layer is as wide as the screen), and the sprites
+#   (walker, text, status). Text is drawn into a sprite only when it
+#   changes.
+# - Pictures: BMP files read with SpriteImage#load_bmp, the defaults in
+#   /usr/share/sprites/walk_scroller/. They are 8-bit BMPs whose pixel
+#   bytes are RGB332 colours, with the RGB332 palette (what the Family
+#   mruby Console sprite editor and tools/fm_asset_editor write). 0x00
+#   (black) is transparent everywhere, so draw black as 0x24. Nothing is
+#   scaled. A file over 256 KB is refused.
+# - Scenery: scene<N>_far.bmp, scene<N>_mid.bmp and scene<N>_gnd.bmp for
+#   the scenes 0-4. The ground layer stands on the bottom of the screen,
+#   the middle and the far layer stand on the ground layer, the sky fills
+#   what is above (the defaults: far 426x160, mid 426x84, gnd 426x50).
+#   A layer is any width up to 1024 that tiles: its left and right edges
+#   meet, and it repeats when narrower than the screen. The far and middle
+#   layers are mostly 0x00 so the sky shows through. They scroll at 20%,
+#   50% and 100% of the walking distance (far_speed, mid_speed, gnd_speed
+#   in the script). Only the current scene's layers are in memory; a layer
+#   of the size already held is read into the same image.
+# - Your own pictures: the script's `scenery` key names a folder (e.g.
+#   "/home/walk_scroller/scenery") whose scene<N>_<layer>.bmp files are
+#   used instead of the defaults, file by file; `walker` names a folder of
+#   walker frames used instead of the default walker as a whole. A walker
+#   folder holds walker_0.bmp, walker_1.bmp, ... (the walking frames, as
+#   many as there are in a row, up to 8; together they are one walking
+#   cycle, which is two steps) and walker_stand.bmp (standing; left out,
+#   walker_0 is used), at most 160x160 and all the same size. The frame's
+#   middle is at a quarter of the screen and its bottom row 8 pixels below
+#   the top of the ground layer; the default frames are 48x75 (a 16x24
+#   drawing at 3x, the passing frames drawn 3 pixels higher). A bad file
+#   and the defaults are used, with the reason in the status line and the
+#   log. L reads the script and the pictures again. All the layers are
+#   brought to the graphics side at start (the first start after a change
+#   copies them, which takes long in the Linux simulator).
 #
 # From the PC (fmruby-core): ruby tool/imu/step_send.rb --help
 
@@ -51,83 +82,42 @@ class WalkScrollerApp < FmrbApp
   TKEY = 0x00
   INK = 0x24            # the darkest colour drawn in sprites
   SCENES = 5
-
-  # The walker, facing right. K outline, H cap, S skin, E eye, B shirt,
-  # A arm, P near leg, Q far leg, O shoes. Rows 0-17 are shared, the legs
-  # (rows 18-23) and the arm differ per frame.
-  CHAR_BODY = [
-    "................",
-    ".....KKKKK......",
-    "....KHHHHHK.....",
-    "...KHHHHHHHK....",
-    "...KHHHHHHHKKK..",
-    "...KKKKKKKKKKKK.",
-    "...KSSSSSSSK....",
-    "...KSSSSSSESK...",
-    "...KSSSSSSSSK...",
-    "...KKSSSSSSK....",
-    "....KKKKKKK.....",
-    "...KBBBBBBK.....",
-    "..KBBBBBBBBK....",
-    "..KBBBBBBBBK....",
-    "..KBBBBBBBBK....",
-    "..KBBBBBBBBK....",
-    "...KPPPPPPK.....",
-    "...KPPPPPPK....."
-  ]
-  LEGS_STAND = [
-    "....KPPKPPK.....",
-    "....KPPKPPK.....",
-    "....KPPKPPK.....",
-    "....KPPKPPK.....",
-    "....KOOKOOOK....",
-    "....KKKKKKKK...."
-  ]
-  LEGS_STRIDE = [
-    "...KQQKKPPK.....",
-    "..KQQK..KPPK....",
-    "..KQQK...KPPK...",
-    ".KQQK....KPPK...",
-    "KOOOK....KOOOK..",
-    "KKKK......KKKK.."
-  ]
-  LEGS_PASS = [
-    "....KPPKQQK.....",
-    "....KPPKQQK.....",
-    "....KPPKKQQK....",
-    "....KPPK.KOOK...",
-    "....KOOOKKKK....",
-    "....KKKKK......."
-  ]
-  # [row, col, pixels] laid over the body
-  ARM_BACK = [[12, 1, "KA"], [13, 0, "KSA"], [14, 0, "KK"]]
-  ARM_FRONT = [[12, 10, "AK"], [13, 10, "ASK"], [14, 11, "KK"]]
-  ARM_DOWN = [[12, 6, "A"], [13, 6, "A"], [14, 6, "A"], [15, 6, "S"]]
+  SPRITE_DIR = "/usr/share/sprites/walk_scroller"
+  CACHE = "/cache/app/walk_scroller"
+  MAX_WALK = 8          # walking frames read from a folder (walker_0..7)
+  MAX_ART = 160         # largest walker frame side accepted
+  WALKER_SINK = 8
+  LAYERS = ["far", "mid", "gnd"]
+  SPEEDS = [20, 50, 100] # layer scroll speeds, % of the walking distance
+  LAYER_MAX_W = 1024
+  LAYER_MAX_H = 240
+  BMP_MAX_FILE = 262144 # what the graphics side reads in one go
+  NOTE_MS = 6000        # how long "walker: <folder>" stays in the status line
 
   def on_create
     @w = @user_area_width
     @h = @user_area_height
     @ox = @user_area_x0
     @oy = @user_area_y0
-    # Laid out for 426x240 (the hardware's screen); a larger screen (the
-    # browser build offers up to 1280x720) scales by whole steps. Text
-    # stops growing at the largest text size (4).
+    # Laid out for 426x240 (the hardware's screen). On a larger screen (the
+    # browser build offers up to 1280x720) the text and the step scale by
+    # whole steps (text stops growing at the largest size, 4); the BMPs are
+    # shown as they are, the layers tiled across and the sky filling the top.
     @s = @h / 240
     @s = 1 if @s < 1
-    @art = 2 * @s         # scenery: one art pixel is @art x @art screen pixels
-    @cs = 3 * @s          # the walker: 16x24 art pixels at @cs
     @text_h = 124 * @s
     @top_y = 6 * @s
-    @aw = (@w + @art - 1) / @art
-    @lw = @aw * @art      # layer width: whole art pixels, at least the screen
-    @ground_y = @h - 50 * @s
-    @far_y = 30 * @s
-    @far_h = @ground_y - @far_y
-    @mid_h = 84 * @s
-    @mid_y = @ground_y - @mid_h
-    @gnd_h = @h - @ground_y
-    @char_x = @w / 4 - 8 * @s
-    @char_y = @ground_y + 8 * @s - 24 * @cs
+    # The layers stand on the bottom of the screen; build_scene sets these
+    # from the heights of the scene's BMPs.
+    @ground_y = @h - 50
+    @far_y = 30
+    @mid_y = 106
+    @layers = [nil, nil, nil]
+    @layer_files = nil
+    # The walker stands with the middle of its frame here and its bottom
+    # row WALKER_SINK pixels into the ground layer (frames of any size line
+    # up the same way).
+    @char_cx = @w / 4 + 16 * @s
 
     @seed = 1
     @count = 0
@@ -136,7 +126,12 @@ class WalkScrollerApp < FmrbApp
     @speed = 0.0
     @last_step_at = 0
     @last_manual_at = 0
-    @frame = 4
+    @frame = 0
+    @walk_n = 1
+    @walker = nil
+    @walker_note = ""
+    @walker_note_until = 0
+    @scenery_note = ""
     @shown_frame = -1
     @shown_mark = -2
     @scene = -1
@@ -227,6 +222,15 @@ class WalkScrollerApp < FmrbApp
     @step_px *= @s # the script's pixels are 426x240 ones
     @stop_ms = conf["stop_ms"].to_i
     @stop_ms = 800 if @stop_ms <= 0
+    @walker_dir = conf["walker"].to_s
+    @scenery_dir = conf["scenery"].to_s
+    @speeds = []
+    i = 0
+    while i < 3
+      v = conf["#{LAYERS[i]}_speed"]
+      @speeds << (v.is_a?(Integer) && v >= 0 ? v : SPEEDS[i]) / 100.0
+      i += 1
+    end
     marks = conf["mark"]
     marks = [] unless marks.is_a?(Array)
     @marks = []
@@ -404,96 +408,175 @@ class WalkScrollerApp < FmrbApp
   # ---- sprites ----
 
   def make_sprites
-    @far_img = SpriteImage.new(@gfx, width: @lw, height: @far_h, transparent_color: TKEY, use_transparent: true)
-    @mid_img = SpriteImage.new(@gfx, width: @lw, height: @mid_h, transparent_color: TKEY, use_transparent: true)
-    @gnd_img = SpriteImage.new(@gfx, width: @lw, height: @gnd_h)
-    frames = []
-    frames << char_image(LEGS_STRIDE, false, ARM_BACK)
-    frames << char_image(LEGS_PASS, false, ARM_DOWN)
-    frames << char_image(LEGS_STRIDE, true, ARM_FRONT)
-    frames << char_image(LEGS_PASS, true, ARM_DOWN)
-    frames << char_image(LEGS_STAND, false, ARM_DOWN)
-    @char_frames = frames
-    @walker = SpriteInstance.new(@gfx, frames, x: @ox + @char_x, y: @oy + @char_y, z: 2)
-    @walker.frame = 4
+    prepare_scenery
+    load_walker
     @text_img = SpriteImage.new(@gfx, width: @w, height: @text_h, transparent_color: TKEY, use_transparent: true)
     @text_sp = SpriteInstance.new(@gfx, @text_img, x: @ox, y: @oy + @top_y, z: 3)
-    @status_w = 220
+    @status_w = 300
     @status_img = SpriteImage.new(@gfx, width: @status_w, height: 10, transparent_color: TKEY, use_transparent: true)
     @status_sp = SpriteInstance.new(@gfx, @status_img, x: @ox + @w - @status_w - 2, y: @oy + @h - 11, z: 4)
     draw_status_sprite
   end
 
-  def char_color(ch)
-    case ch
-    when "K" then INK
-    when "H" then 0xE0
-    when "S" then 0xF6
-    when "E" then INK
-    when "B" then 0xF8
-    when "A" then 0xD0
-    when "P" then 0x2B
-    when "Q" then 0x06
-    when "O" then 0x88
-    else TKEY
-    end
+  # The walker's frames: walker_0.bmp, walker_1.bmp, ... (as many as there
+  # are in a row, up to MAX_WALK; they make one walking cycle of two steps)
+  # and walker_stand.bmp (left out: walker_0 stands in). The script's
+  # `walker` folder is tried first; anything wrong with it (no walker_0, a
+  # file that is not an 8-bit BMP, frames of different sizes) and the
+  # defaults in SPRITE_DIR are used, with the reason in the status line and
+  # the log.
+  # After the script was read again: its folders may have changed, or the
+  # files in them.
+  def reload_art
+    prepare_scenery
+    load_walker
+    @scene = -1
+    apply_mark(true)
   end
 
-  def swap_legs(r)
-    out = ""
-    j = 0
-    while j < r.length
-      ch = r[j]
-      out << (ch == "P" ? "Q" : (ch == "Q" ? "P" : ch))
-      j += 1
-    end
-    out
-  end
-
-  # One frame of the walker; swap exchanges the near and the far leg.
-  def char_image(legs, swap, arm)
-    rows = []
-    i = 0
-    while i < CHAR_BODY.size
-      rows << CHAR_BODY[i].dup
-      i += 1
-    end
-    i = 0
-    while i < legs.size
-      r = legs[i]
-      r = swap_legs(r) if swap
-      rows << r
-      i += 1
-    end
-    i = 0
-    while i < arm.size
-      a = arm[i]
-      row = rows[a[0]]
-      col = a[1]
-      px = a[2]
-      rows[a[0]] = row[0, col] + px + row[col + px.length, row.length].to_s
-      i += 1
-    end
-    s = @cs
-    img = SpriteImage.new(@gfx, width: 16 * s, height: rows.size * s, transparent_color: TKEY, use_transparent: true)
-    img.set_target
-    @gfx.fill_rect(0, 0, 16 * s, rows.size * s, TKEY)
-    y = 0
-    while y < rows.size
-      row = rows[y]
-      x = 0
-      while x < 16
-        ch = row[x]
-        x2 = x
-        x2 += 1 while x2 + 1 < 16 && row[x2 + 1] == ch
-        c = char_color(ch)
-        @gfx.fill_rect(x * s, y * s, (x2 - x + 1) * s, s, c) if c != TKEY
-        x = x2 + 1
+  def load_walker
+    old = @walker
+    old_imgs = @walker_imgs
+    set = nil
+    if !@walker_dir.empty?
+      set = walker_set(@walker_dir, "user")
+      if set.is_a?(String)
+        note_walker("#{set} (default walker)", 0)
+        Log.warn("walk_scroller: #{@walker_dir}: #{set}; using the default walker")
+        set = nil
+      else
+        note_walker("walker: #{@walker_dir}", NOTE_MS)
       end
-      y += 1
+    else
+      note_walker("", 0)
     end
-    img.reset_target
-    img
+    if set.nil?
+      set = walker_set(SPRITE_DIR, "default")
+      if set.is_a?(String)
+        Log.error("walk_scroller: #{SPRITE_DIR}: #{set}")
+        note_walker("walker: none (#{set})", 0)
+        set = nil
+      end
+    end
+    @walker = nil
+    old.destroy if old
+    if old_imgs
+      i = 0
+      while i < old_imgs.size
+        old_imgs[i].destroy
+        i += 1
+      end
+    end
+    @walker_imgs = nil
+    @walk_n = 1
+    @frame = 0
+    @shown_frame = -1
+    @dirty = true
+    return unless set
+    w = set[0]
+    h = set[1]
+    paths = set[2]
+    imgs = []
+    begin
+      i = 0
+      while i < paths.size
+        img = SpriteImage.new(@gfx, width: w, height: h, transparent_color: TKEY, use_transparent: true)
+        img.load_bmp(paths[i])
+        imgs << img
+        i += 1
+      end
+    rescue => e
+      Log.warn("walk_scroller: walker #{w}x#{h}: #{e.message}")
+      note_walker("walker: no room for #{w}x#{h}", 0)
+      i = 0
+      while i < imgs.size
+        imgs[i].destroy
+        i += 1
+      end
+      return
+    end
+    # frames: the walking ones, then the stand frame (walker_0 if none)
+    @walk_n = set[3] ? imgs.size - 1 : imgs.size
+    frames = imgs.dup
+    frames << imgs[0] unless set[3]
+    @walker_imgs = imgs
+    @frame = @walk_n
+    @walker_w = w
+    @walker_h = h
+    @walker = SpriteInstance.new(@gfx, frames, x: @ox + @char_cx - w / 2, y: @oy + @ground_y + WALKER_SINK - h, z: 2)
+    @walker.frame = @frame
+    @shown_frame = @frame
+    Log.info("walk_scroller: walker from #{set[4]} (#{@walk_n} walking frames + stand, #{w}x#{h})")
+  end
+
+  # Checks the frames in dir and brings them to the graphics side. Returns
+  # [w, h, cache paths (the walking frames, then walker_stand if there is
+  # one), has_stand, dir], or a short reason why not.
+  def walker_set(dir, tag)
+    names = []
+    i = 0
+    while i < MAX_WALK
+      name = "walker_#{i}.bmp"
+      break unless ::File.exist?("#{dir}/#{name}")
+      names << name
+      i += 1
+    end
+    return "no walker_0.bmp" if names.empty?
+    has_stand = ::File.exist?("#{dir}/walker_stand.bmp")
+    names << "walker_stand.bmp" if has_stand
+    w = 0
+    h = 0
+    paths = []
+    i = 0
+    while i < names.size
+      name = names[i]
+      size = bmp_size("#{dir}/#{name}", MAX_ART, MAX_ART)
+      return "#{name} #{size}" if size.is_a?(String)
+      if i == 0
+        w = size[0]
+        h = size[1]
+      elsif size[0] != w || size[1] != h
+        return "#{name} not #{w}x#{h}"
+      end
+      dest = "#{CACHE}/#{tag}/#{name}"
+      return "#{name} copy failed" unless @gfx.sync_file("#{dir}/#{name}", dest: dest)
+      paths << dest
+      i += 1
+    end
+    [w, h, paths, has_stand, dir]
+  end
+
+  # [width, height] of an 8-bit uncompressed BMP, or what is wrong with it
+  # (what the sprite loader on the graphics side accepts).
+  def bmp_size(path, max_w, max_h)
+    d = read_file(path)
+    return "unreadable" if d.nil?
+    return "file over 256 KB" if d.bytesize > BMP_MAX_FILE
+    return "not a BMP" if d.bytesize < 54 || d.getbyte(0) != 66 || d.getbyte(1) != 77
+    return "not 8-bit" if le(d, 28, 2) != 8
+    return "compressed" if le(d, 30, 4) != 0
+    w = le(d, 18, 4)
+    h = le(d, 22, 4)
+    h = 4294967296 - h if h >= 2147483648 # top-down
+    return "size #{w}x#{h}" if w <= 0 || h <= 0 || w > max_w || h > max_h
+    return "too short" if le(d, 10, 4) + ((w + 3) / 4 * 4) * h > d.bytesize
+    [w, h]
+  end
+
+  def le(d, at, n)
+    v = 0
+    i = n - 1
+    while i >= 0
+      v = v * 256 + d.getbyte(at + i)
+      i -= 1
+    end
+    v
+  end
+
+  def note_walker(text, ms)
+    @walker_note = text
+    @walker_note_until = ms > 0 ? Machine.board_millis + ms : 0
+    @status_key = nil
   end
 
   def draw_text_sprite(m)
@@ -597,6 +680,14 @@ class WalkScrollerApp < FmrbApp
         end
     t = "#{@fps_text}#{t}" if @timing_on
     t = t[t.length - 34, 34] if t.length > 34
+    n = ""
+    n = @walker_note if !@walker_note.empty? && (@walker_note_until == 0 || now < @walker_note_until)
+    n = n.empty? ? @scenery_note : "#{n}  #{@scenery_note}" unless @scenery_note.empty?
+    if !n.empty?
+      room = 50 - t.length - 2
+      n = n[0, room] if n.length > room
+      t = "#{n}  #{t}"
+    end
     key = "#{t}|#{@net}|#{@reconnecting}|#{@seen_at > 0 && now - @seen_at < 5000}|#{@status_on}"
     return false if key == @status_key
     @status_key = key
@@ -612,33 +703,6 @@ class WalkScrollerApp < FmrbApp
     (@seed / 65536) % n
   end
 
-  # A rectangle in art pixels, wrapped at the image's ends.
-  def ar(x, y, w, h, c)
-    x = x % @aw
-    @gfx.fill_rect(x * @art, y * @art, w * @art, h * @art, c)
-    @gfx.fill_rect((x - @aw) * @art, y * @art, w * @art, h * @art, c) if x + w > @aw
-  end
-
-  def ac(x, y, r, c)
-    x = x % @aw
-    @gfx.fill_circle(x * @art, y * @art, r * @art, c)
-    @gfx.fill_circle((x - @aw) * @art, y * @art, r * @art, c) if x + r > @aw
-    @gfx.fill_circle((x + @aw) * @art, y * @art, r * @art, c) if x - r < 0
-  end
-
-  def atri(x0, y0, x1, y1, x2, y2, c)
-    sh = 0
-    while sh <= 1
-      d = sh * @aw
-      @gfx.fill_triangle((x0 - d) * @art, y0 * @art, (x1 - d) * @art, y1 * @art, (x2 - d) * @art, y2 * @art, c)
-      sh += 1
-    end
-    if x0 < 0 || x1 < 0 || x2 < 0
-      d = @aw
-      @gfx.fill_triangle((x0 + d) * @art, y0 * @art, (x1 + d) * @art, y1 * @art, (x2 + d) * @art, y2 * @art, c)
-    end
-  end
-
   # Sky bands (top to bottom), the sun or moon [x, y, r, colour] in screen
   # pixels.
   def sky_of(n)
@@ -652,272 +716,108 @@ class WalkScrollerApp < FmrbApp
     end
   end
 
+  # The layers of every scene, chosen and brought to the graphics side once
+  # (at start and with L) so that a scene change only loads three files:
+  # @layer_files[scene][layer] = [cache path, width, height]. A layer from
+  # the script's `scenery` folder replaces the default when it is there and
+  # readable; a bad one is reported and the default used.
+  def prepare_scenery
+    first = @layer_files.nil?
+    @layer_files = []
+    bad = ""
+    mine = 0
+    n = 0
+    while n < SCENES
+      row = []
+      l = 0
+      while l < 3
+        name = "scene#{n}_#{LAYERS[l]}.bmp"
+        loading(name, n * 3 + l + 1) if first
+        f = nil
+        if !@scenery_dir.empty? && ::File.exist?("#{@scenery_dir}/#{name}")
+          f = layer_file(@scenery_dir, name, "user")
+          if f.is_a?(String)
+            Log.warn("walk_scroller: #{@scenery_dir}/#{name}: #{f}; using the default")
+            bad = "#{name} #{f}" if bad.empty?
+            f = nil
+          else
+            mine += 1
+          end
+        end
+        if f.nil?
+          f = layer_file(SPRITE_DIR, name, "default")
+          if f.is_a?(String)
+            Log.error("walk_scroller: #{SPRITE_DIR}/#{name}: #{f}")
+            f = nil
+          end
+        end
+        row << f
+        l += 1
+      end
+      @layer_files << row
+      n += 1
+    end
+    @scenery_note = bad.empty? ? "" : "#{bad} (default used)"
+    @status_key = nil
+    Log.info("walk_scroller: scenery: #{mine} layers from #{@scenery_dir}") unless @scenery_dir.empty?
+  end
+
+  # Progress while the layers go to the graphics side at start: the first
+  # start after an update copies them all, which takes a while where that
+  # side is a separate machine (seconds in the Linux simulator).
+  def loading(name, i)
+    @gfx.fill_rect(@ox, @oy, @w, @h, 0x53)
+    @gfx.draw_text(@ox + 8, @oy + 8, "Walk Scroller: loading #{name} (#{i}/#{SCENES * 3})", 0xFF)
+    @gfx.present
+  end
+
+  def layer_file(dir, name, tag)
+    size = bmp_size("#{dir}/#{name}", LAYER_MAX_W, LAYER_MAX_H)
+    return size if size.is_a?(String)
+    dest = "#{CACHE}/#{tag}/#{name}"
+    return "copy failed" unless @gfx.sync_file("#{dir}/#{name}", dest: dest)
+    [dest, size[0], size[1]]
+  end
+
+  # Loads the scene's three layers (only the current scene is in memory)
+  # and lays them out: the ground layer on the bottom of the screen, the
+  # middle and the far layer standing on it, the sky above. A layer of the
+  # size already held is read into the same image: freeing a large image
+  # and asking for one as large again can fail on the graphics side's pool.
   def build_scene(n)
     t0 = Machine.board_millis
     @scene = n
+    l = 0
+    while l < 3
+      f = @layer_files[n][l]
+      img = @layers[l]
+      if img && (f.nil? || img.width != f[1] || img.height != f[2])
+        img.destroy
+        img = nil
+      end
+      if f && img.nil?
+        begin
+          img = SpriteImage.new(@gfx, width: f[1], height: f[2], transparent_color: TKEY, use_transparent: true)
+        rescue => e
+          Log.warn("walk_scroller: #{f[0]} (#{f[1]}x#{f[2]}): #{e.message}")
+          @scenery_note = "scenery: no room for #{LAYERS[l]} #{f[1]}x#{f[2]}"
+          @status_key = nil
+          img = nil
+        end
+      end
+      img.load_bmp(f[0]) if img
+      @layers[l] = img
+      l += 1
+    end
+    gh = @layers[2] ? @layers[2].height : 50
+    @ground_y = @h - gh
+    @mid_y = @ground_y - (@layers[1] ? @layers[1].height : 0)
+    @far_y = @ground_y - (@layers[0] ? @layers[0].height : 0)
     sk = sky_of(n)
     @sky = sk[0]
     @sun = sk[1]
-    fh = @far_h / @art
-    mh = @mid_h / @art
-    gh = @gnd_h / @art
-
-    @seed = 7 + n * 31
-    @far_img.set_target
-    @gfx.fill_rect(0, 0, @lw, @far_h, TKEY)
-    build_far(n, fh)
-    @far_img.reset_target
-
-    @seed = 101 + n * 17
-    @mid_img.set_target
-    @gfx.fill_rect(0, 0, @lw, @mid_h, TKEY)
-    build_mid(n, mh)
-    @mid_img.reset_target
-
-    @seed = 211 + n * 13
-    @gnd_img.set_target
-    build_ground(n, gh)
-    @gnd_img.reset_target
-    Log.info("walk_scroller: scene #{n} built in #{Machine.board_millis - t0} ms")
-  end
-
-  def build_far(n, fh)
-    case n
-    when 1 # mountains with snow
-      x = 0
-      while x < @aw
-        hgt = 34 + rnd(26)
-        half = 22 + rnd(14)
-        top = fh - hgt
-        atri(x - half, fh, x, top, x + half, fh, 0x6E)
-        atri(x - half / 4, top + hgt / 4, x, top, x + half / 4, top + hgt / 4, 0xFF)
-        x += 30 + rnd(20)
-      end
-      x = 10
-      while x < @aw
-        ac(x, fh + 6, 16 + rnd(8), 0x4D)
-        x += 26 + rnd(10)
-      end
-    when 2 # far buildings
-      x = 0
-      while x < @aw
-        bw = 8 + rnd(10)
-        bh = 18 + rnd(30)
-        ar(x, fh - bh, bw, bh, 0x92)
-        yy = fh - bh + 3
-        while yy < fh - 2
-          ar(x + 2, yy, bw - 4, 1, 0xB6)
-          yy += 4
-        end
-        x += bw + 1 + rnd(4)
-      end
-      cloud(20, 8)
-      cloud(120, 14)
-    when 3 # the sea at sunset
-      ar(0, fh - 22, @aw, 22, 0x4A)
-      i = 0
-      while i < 40
-        ar(rnd(@aw), fh - 21 + rnd(20), 3 + rnd(6), 1, i % 3 == 0 ? 0xF4 : 0x6E)
-        i += 1
-      end
-      ar(40, fh - 26, 30, 4, 0x45)
-      ar(46, fh - 29, 16, 3, 0x45)
-    when 4 # night: stars and towers
-      i = 0
-      while i < 50
-        ar(rnd(@aw), rnd(fh - 30), 1, 1, i % 4 == 0 ? 0xB6 : 0xFF)
-        i += 1
-      end
-      x = 0
-      while x < @aw
-        bw = 10 + rnd(12)
-        bh = 24 + rnd(36)
-        ar(x, fh - bh, bw, bh, 0x25)
-        yy = fh - bh + 2
-        while yy < fh - 2
-          xx = x + 2
-          while xx < x + bw - 2
-            ar(xx, yy, 1, 2, 0xF8) if rnd(3) == 0
-            xx += 3
-          end
-          yy += 4
-        end
-        x += bw + rnd(3)
-      end
-    else # meadow: hills and clouds
-      cloud(10, 6)
-      cloud(80, 14)
-      cloud(150, 4)
-      x = 0
-      while x < @aw
-        ac(x, fh + 14, 28 + rnd(14), 0x71)
-        x += 36 + rnd(16)
-      end
-      x = 18
-      while x < @aw
-        ac(x, fh + 12, 18 + rnd(8), 0x51)
-        x += 30 + rnd(14)
-      end
-    end
-  end
-
-  def cloud(x, y)
-    ac(x, y + 4, 5, 0xFF)
-    ac(x + 6, y + 2, 7, 0xFF)
-    ac(x + 13, y + 4, 5, 0xFF)
-    ar(x, y + 4, 14, 5, 0xFF)
-  end
-
-  def build_mid(n, mh)
-    case n
-    when 1 # pines
-      x = 4
-      while x < @aw
-        hgt = 22 + rnd(12)
-        ar(x - 1, mh - 6, 3, 6, 0x44)
-        k = 0
-        while k < 3
-          ty = mh - 6 - hgt + k * (hgt / 3)
-          wd = 5 + k * 3
-          atri(x - wd, ty + hgt / 3 + 3, x, ty, x + wd, ty + hgt / 3 + 3, k == 0 ? 0x30 : 0x2C)
-          k += 1
-        end
-        x += 16 + rnd(14)
-      end
-    when 2 # houses
-      walls = [0xF5, 0xFA, 0xD6, 0xB9]
-      x = 0
-      i = 0
-      while x < @aw - 10
-        hw = 18 + rnd(8)
-        hh = 14 + rnd(8)
-        top = mh - hh
-        ar(x, top, hw, hh, walls[i % 4])
-        atri(x - 2, top, x + hw / 2, top - 9, x + hw + 2, top, 0xC4)
-        ar(x + 3, top + 4, 4, 4, 0x4F)
-        ar(x + hw - 7, top + 4, 4, 4, 0x4F)
-        ar(x + hw / 2 - 2, mh - 7, 4, 7, 0x88)
-        x += hw + 6 + rnd(6)
-        i += 1
-      end
-    when 3 # palms
-      x = 8
-      while x < @aw
-        h = 18 + rnd(10)
-        k = 0
-        while k < h
-          ar(x + k / 6, mh - k, 2, 1, 0x20)
-          k += 1
-        end
-        tx = x + h / 6
-        ty = mh - h
-        ar(tx - 8, ty, 18, 2, 0x20)
-        ar(tx - 6, ty - 2, 4, 2, 0x20)
-        ar(tx + 4, ty - 2, 4, 2, 0x20)
-        ar(tx - 9, ty + 2, 3, 3, 0x20)
-        ar(tx + 8, ty + 2, 3, 3, 0x20)
-        x += 34 + rnd(26)
-      end
-    when 4 # street: near buildings and lamps
-      x = 0
-      while x < @aw
-        bw = 14 + rnd(10)
-        bh = 16 + rnd(16)
-        ar(x, mh - bh, bw, bh, 0x49)
-        yy = mh - bh + 3
-        while yy < mh - 3
-          ar(x + 3, yy, 2, 2, rnd(2) == 0 ? 0xFC : 0x6D)
-          ar(x + bw - 5, yy, 2, 2, rnd(2) == 0 ? 0xFC : 0x6D)
-          yy += 5
-        end
-        x += bw + 4 + rnd(8)
-      end
-      x = 10
-      while x < @aw
-        ar(x, mh - 22, 1, 22, 0x6D)
-        ar(x - 1, mh - 24, 3, 2, 0xFE)
-        x += 40
-      end
-    else # meadow: round trees and bushes
-      x = 6
-      while x < @aw
-        r = 7 + rnd(4)
-        ar(x - 1, mh - 12, 3, 12, 0x64)
-        ac(x, mh - 12 - r, r, 0x30)
-        ac(x - r / 2 - 1, mh - 10 - r / 2, r - 3, 0x30)
-        ac(x + r / 2 + 1, mh - 10 - r / 2, r - 3, 0x30)
-        ac(x - 2, mh - 14 - r - r / 3, r / 3 + 1, 0x54)
-        x += 26 + rnd(22)
-      end
-      x = 0
-      while x < @aw
-        ac(x, mh, 4 + rnd(3), 0x34)
-        x += 14 + rnd(10)
-      end
-    end
-  end
-
-  def build_ground(n, gh)
-    case n
-    when 2, 4 # pavement and a road
-      side = n == 2 ? 0xB6 : 0x6D
-      line = n == 2 ? 0x92 : 0x49
-      road = n == 2 ? 0x49 : 0x24
-      ar(0, 0, @aw, 9, side)
-      x = 0
-      while x < @aw
-        ar(x, 0, 1, 9, line)
-        x += 12
-      end
-      ar(0, 9, @aw, 2, line)
-      ar(0, 11, @aw, gh - 11, road)
-      x = 0
-      while x < @aw
-        ar(x, 17, 10, 2, n == 2 ? 0xFF : 0xF8)
-        x += 20
-      end
-    when 3 # sand
-      ar(0, 0, @aw, gh, 0xF9)
-      i = 0
-      while i < 50
-        ar(rnd(@aw), rnd(gh), 2 + rnd(4), 1, 0xD4)
-        i += 1
-      end
-      i = 0
-      while i < 8
-        ar(rnd(@aw), 2 + rnd(gh - 4), 2, 2, 0xE4)
-        i += 1
-      end
-    else # grass and a path
-      grass = n == 1 ? 0x30 : 0x34
-      ar(0, 0, @aw, gh, grass)
-      ar(0, 4, @aw, 9, n == 1 ? 0xB5 : 0xD5)
-      i = 0
-      while i < 30
-        ar(rnd(@aw), 5 + rnd(7), 2, 1, 0x8C)
-        i += 1
-      end
-      i = 0
-      while i < 40
-        x = rnd(@aw)
-        y = 14 + rnd(gh - 15)
-        ar(x, y, 1, 2, 0x2C)
-        ar(x + 2, y + 1, 1, 1, 0x2C)
-        i += 1
-      end
-      i = 0
-      while i < 14
-        c = i % 2 == 0 ? 0xFF : 0xE3
-        c = 0xFC if i % 3 == 0
-        ar(rnd(@aw), 14 + rnd(gh - 15), 1, 1, c)
-        i += 1
-      end
-      i = 0
-      while i < @aw
-        ar(i, 0, 1, 1, 0x54)
-        i += 3
-      end
-    end
+    @walker.move(@ox + @char_cx - @walker_w / 2, @oy + @ground_y + WALKER_SINK - @walker_h) if @walker
+    Log.info("walk_scroller: scene #{n} loaded in #{Machine.board_millis - t0} ms")
   end
 
   # ---- motion ----
@@ -974,7 +874,7 @@ class WalkScrollerApp < FmrbApp
     @target = 0.0
     @last_steps = {}
     apply_mark(true)
-    @frame = 4
+    @frame = @walk_n
     @last_step_at = 0
     @dirty = true
   end
@@ -988,9 +888,10 @@ class WalkScrollerApp < FmrbApp
       moved = true
     end
     if moved || now - @last_step_at < @stop_ms
-      @frame = ((@pos * 2 / @step_px).to_i) % 4
+      # one step is half a walking cycle
+      @frame = ((@pos * @walk_n / (2 * @step_px)).to_i) % @walk_n
     else
-      @frame = 4
+      @frame = @walk_n
     end
     if @text_y < @top_y
       @text_y += dt * 0.25 * @s
@@ -1036,12 +937,21 @@ class WalkScrollerApp < FmrbApp
 
   # ---- frame ----
 
-  def tile_layer(img, h, y, speed)
-    off = (@pos * speed).to_i % @lw
-    first = @lw - off
-    first = @w if first > @w
-    @gfx.draw_tile(img.id, off, 0, first, h, dst_x: @ox, dst_y: @oy + y)
-    @gfx.draw_tile(img.id, 0, 0, @w - first, h, dst_x: @ox + first, dst_y: @oy + y) if first < @w
+  # A layer across the screen at its offset: two draw_tile calls when it
+  # is at least as wide as the screen, more when it is narrower.
+  def tile_layer(img, y, speed)
+    return unless img
+    lw = img.width
+    h = img.height
+    off = (@pos * speed).to_i % lw
+    x = 0
+    while x < @w
+      n = lw - off
+      n = @w - x if n > @w - x
+      @gfx.draw_tile(img.id, off, 0, n, h, dst_x: @ox + x, dst_y: @oy + y)
+      x += n
+      off = 0
+    end
   end
 
   def render(now)
@@ -1054,7 +964,7 @@ class WalkScrollerApp < FmrbApp
       i += 1
     end
     @gfx.fill_circle(@ox + @sun[0], @oy + @sun[1], @sun[2], @sun[3])
-    tile_layer(@far_img, @far_h, @far_y, 0.2)
+    tile_layer(@layers[0], @far_y, @speeds[0])
     if @effect == "fireworks"
       i = 0
       while i < @particles.size
@@ -1064,12 +974,10 @@ class WalkScrollerApp < FmrbApp
         i += 1
       end
     end
-    tile_layer(@mid_img, @mid_h, @mid_y, 0.5)
-    tile_layer(@gnd_img, @gnd_h, @ground_y, 1.0)
+    tile_layer(@layers[1], @mid_y, @speeds[1])
+    tile_layer(@layers[2], @ground_y, @speeds[2])
     if @frame != @shown_frame
-      @walker.frame = @frame
-      bob = (@frame == 1 || @frame == 3) ? -@cs : 0
-      @walker.move(@ox + @char_x, @oy + @char_y + bob)
+      @walker.frame = @frame if @walker
       @shown_frame = @frame
     end
     @text_sp.move(@ox, @oy + @text_y.to_i)
@@ -1178,7 +1086,7 @@ class WalkScrollerApp < FmrbApp
   def on_control(msg)
     return unless msg["cmd"] == "file_selected"
     load_script(msg["path"].to_s)
-    apply_mark(true)
+    reload_art
   end
 
   # Keys are noted here and acted on in on_update (one place drives the
@@ -1198,7 +1106,7 @@ class WalkScrollerApp < FmrbApp
       when 0x15 then restart(now)        # r
       when 0x0F                          # l
         load_script(nil)
-        apply_mark(true)
+        reload_art
       when 0x07                          # d
         @timing_on = !@timing_on
         @status_key = nil

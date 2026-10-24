@@ -5,6 +5,33 @@
 #   node     the node whose steps drive the walk ("" = any node)
 #   step_px  how far the ground moves for one step (pixels, default 32)
 #   stop_ms  no step for this long and the walker stands (default 800)
+#   walker   a folder with your own walker frames, used instead of the
+#            default walker (copy /usr/share/sprites/walk_scroller/walker_*
+#            and change them). In it: walker_0.bmp, walker_1.bmp, ...
+#            (walking, as many as you like up to 8, one cycle = two steps)
+#            and walker_stand.bmp (standing; left out, walker_0 is used).
+#            All the same size, at most 160x160, shown unscaled with the
+#            middle at a quarter of the screen and the bottom row 8 pixels
+#            into the ground layer (the defaults are 48x75).
+#   scenery  a folder with your own scenery layers, used file by file
+#            instead of the defaults: scene<N>_far.bmp, scene<N>_mid.bmp,
+#            scene<N>_gnd.bmp for the scenes 0-4 (see `scene` below). The
+#            ground layer stands on the bottom of the screen, the middle
+#            and far layers stand on it, the sky (in the app) fills the
+#            rest. Default sizes: far 426x160, mid 426x84, gnd 426x50. Any
+#            width up to 1024 whose left and right edges meet (it repeats
+#            across the screen), height up to 240.
+#   far_speed, mid_speed, gnd_speed
+#            how fast the layers scroll, % of the walking distance
+#            (default 20, 50, 100)
+#
+# The pictures are 8-bit BMPs whose pixel bytes are RGB332 colours, with the
+# RGB332 palette: what the Family mruby Console sprite editor saves (up to
+# 256x256, enough for the walker) and tools/fm_asset_editor (larger sheets,
+# the 426-wide layers). Black (0x00) is transparent: draw black as 0x24,
+# and leave the far and middle layers 0x00 where the sky should show. A
+# missing or bad file and the defaults are used (the status line says why).
+# Press L after changing a file.
 #
 # Each [[mark]] takes effect when the step count reaches `step`:
 #   text       the big text ("\n" breaks the line; Japanese is fine)
@@ -21,6 +48,8 @@
 node = ""
 step_px = 32
 stop_ms = 800
+# walker = "/home/walk_scroller/walker"
+# scenery = "/home/walk_scroller/scenery"
 
 [[mark]]
 step = 0
