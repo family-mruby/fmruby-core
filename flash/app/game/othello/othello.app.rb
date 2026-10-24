@@ -31,6 +31,9 @@
 # - The connection is the machine's (FmrbAsterism.settings, as othello and
 #   mahjong): the router, the ID, a credentials .tar, the room's seat in
 #   the browser build. The player's name is the profile's (the ID without one).
+#   Staying connected, the list, joining, leaving and the view are the
+#   table client's (FmrbAsterism::TableClient, doc/app_refactor R4); this
+#   file has the game: the seats, the moves, the screen.
 # - The same game between two machines without a host is "Othello
 #   (direct)", flash/app/test/othello.app.rb (this file copies its board's
 #   drawing).
@@ -46,19 +49,7 @@
 #   plays there; the buttons take clicks.
 
 class OthelloTableApp < FmrbApp
-  APP = "game"            # this app's Asterism application name (the G0 range)
-  HOST_APP = "games"      # the host's application
-  CALL_TIMEOUT = 3.0
-  RECONNECT_MS = 3000
-  VIEW_EVERY_MS = 3000
-  # Tables are looked for on on_join (for RESCAN_MS), else every LIST_EVERY_MS.
-  LIST_EVERY_MS = 30000
-  RESCAN_MS = 3000
-  RESCAN_STEP_MS = 300
-  # The host gone: a view now and then (should on_join not come).
-  HOST_GONE_VIEW_MS = 30000
   HOST_LEFT = "ホストとのつながりが切れた"
-  WIFI_WAIT_MS = 20000
   MEM_EVERY_MS = 30000
   COLS = "abcdefgh"
   # The game's own colours (a board game draws its own picture).
@@ -88,31 +79,13 @@ class OthelloTableApp < FmrbApp
     @gfx.set_font(:ja, 12)
     dw = conf_int("display_width")
     request_fullscreen(true) if dw > 0 && dw < WINDOW_W
-    @started = Machine.board_millis
-    st = ::FmrbAsterism.settings
-    @id = st.node
-    @locator = st.router
-    @creds = st.credentials
-    @creds_error = st.error
-    @net = :connecting
-    @net_note = ""
-    @retry_at = 0
-    @sub = nil
-    @tables = {}          # "<host>/games/<name>" => [st, names] from its last put
-    @table_list = []
+    # The tables ("<host>/games/othello*", tables[p] = [st, names] from its
+    # last put), the table this app is at, its token: the table client's.
+    @tc = ::FmrbAsterism::TableClient.new(self, "othello", tag: "othello_table")
+    @id = @tc.link.node
     @list_sel = 0
-    @scan_at = 0
-    @rescan_until = 0     # look for tables until then (a node joined)
-    @host_gone = false    # the host of this app's table left the network
-    @gone_at = 0
-    @table = nil          # the table this app is at
-    @join_f = nil
     @cmd_f = nil
-    @view_f = nil
-    @token = nil
     @view = nil
-    @view_at = 0
-    @want_v = 0
     @deadline = nil
     @confirm = false
     @note = ""
@@ -149,260 +122,93 @@ class OthelloTableApp < FmrbApp
   end
 
   # ------------------------------------------------------------ network
+  # The connection, the list, joining and the view are @tc's
+  # (FmrbAsterism::TableClient); these are its calls and the game's own.
 
-  def network_ready?
-    return true if FmrbConst::PLATFORM != "esp32"
-    info = FmrbApp.wifi_info
-    return true if info.nil? || info[:connected]
-    Machine.board_millis - @started > WIFI_WAIT_MS
+  # A put of an othello table: [st, names] for the list; before the token
+  # the table's own put is the view.
+  def table_state(p, pv)
+    @dirty = true if @tc.table.nil?
+    @view = pv if p == @tc.table && @tc.token.nil?
+    [pv["st"].to_s, pv["nm"].is_a?(Array) ? pv["nm"] : []]
   end
 
-  def connect
-    begin
-      ::Asterism.close
-      raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      # Who is there (forgotten by Asterism.close, so given at each connect).
-      ::Asterism.on_join { |n| node_joined(n) }
-      ::Asterism.on_leave { |n| node_left(n) }
-      @net = :up
-      @net_note = ""
-      @scan_at = 0
-      @rescan_until = Machine.board_millis + RESCAN_MS
-      subscribe_states
-    rescue ::Asterism::Error => e
-      @net = :down
-      @net_note = e.message.to_s
-      @retry_at = Machine.board_millis + RECONNECT_MS
-    end
-    Log.info("othello_table: #{@id} #{@net} (#{@locator}) #{@net_note}")
+  def tables_changed(added)
+    @list_sel = 0 if !added && @list_sel >= @tc.table_list.size
     @dirty = true
   end
 
-  def lost(why)
-    Log.info("othello_table: lost: #{why}")
-    @net = :down
-    @net_note = why
-    @retry_at = Machine.board_millis + RECONNECT_MS
-    @sub = nil
-    @join_f = nil
+  def table_link_up(link)
+    @dirty = true
+  end
+
+  def table_link_down(link)
     @cmd_f = nil
-    @view_f = nil
-    begin
-      ::Asterism.close
-    rescue
-    end
     @dirty = true
   end
 
-  def reconnecting?
-    @net == :up && ::Asterism.respond_to?(:reconnecting?) && ::Asterism.reconnecting?
-  rescue
-    false
-  end
-
-  def exchange
-    lost("asterism: #{::Asterism.lost_reason}") unless ::Asterism.poll
-  rescue => e
-    lost("#{e.class}: #{e.message}")
-  end
-
-  def proxy(path = @table)
-    ::Asterism[path, timeout: CALL_TIMEOUT]
-  end
-
-  def othello?(p)
-    p.split("/")[2].to_s.start_with?("othello")
-  end
-
-  # The othello tables of the hosts on the network (Asterism.each reads
-  # the liveliness the app already follows: nothing is sent).
-  def find_tables
-    now = Machine.board_millis
-    every = now < @rescan_until ? RESCAN_STEP_MS : LIST_EVERY_MS
-    return if now - @scan_at < every
-    @scan_at = now
-    ::Asterism.each("*/#{HOST_APP}/*").each do |px|
-      p = px.asterism_path
-      add_table(p) if othello?(p)
-    end
-  rescue ::Asterism::Error => e
-    Log.info("othello_table: scan: #{e.message}")
-  end
-
-  def add_table(p)
-    return if @tables.key?(p)
-    @tables[p] = nil
-    @table_list = @tables.keys.sort
-    Log.info("othello_table: table #{p} on the list")
+  def table_host_gone
+    @note = HOST_LEFT
     @dirty = true
   end
 
-  def host_of(p)
-    p.split("/")[0]
-  end
-
-  # on_leave: a host's tables leave the list; at its table: connection lost.
-  def node_left(n)
-    gone = @table_list.select { |p| host_of(p) == n }
-    unless gone.empty?
-      gone.each { |p| @tables.delete(p) }
-      @table_list = @tables.keys.sort
-      @list_sel = 0 if @list_sel >= @table_list.size
-      Log.info("othello_table: #{n} left the network: #{gone.size} table(s) off the list")
-      @dirty = true
-    end
-    if @table && host_of(@table) == n
-      @host_gone = true
-      @gone_at = Machine.board_millis
-      @note = HOST_LEFT
-      @dirty = true
-    end
-  end
-
-  # on_join: look for tables now; this table's host back: ask the view.
-  def node_joined(n)
-    @rescan_until = Machine.board_millis + RESCAN_MS
-    @scan_at = 0
-    if @table && host_of(@table) == n && @host_gone
-      @host_gone = false
-      @note = ""
-      @view_f = nil
-      @view_at = 0
-      Log.info("othello_table: #{n} is back")
-      @dirty = true
-    end
-  end
-
-  def subscribe_states
-    @sub = ::Asterism.session.subscribe("asterism/*/#{HOST_APP}/*/state", depth: 8)
-  rescue ::Asterism::Error => e
-    Log.info("othello_table: subscribe: #{e.message}")
-    @sub = nil
-  end
-
-  def watch_states
-    return unless @sub
-    @sub.each_pending do |key, payload, att|
-      begin
-        k = key.to_s
-        next unless k.start_with?("asterism/") && k.end_with?("/state")
-        p = k.byteslice(9, k.bytesize - 15)
-        next unless othello?(p)
-        pv = ::Asterism::Codec.unpack(payload)
-        next unless pv.is_a?(Hash)
-        add_table(p)
-        @tables[p] = [pv["st"].to_s, pv["nm"].is_a?(Array) ? pv["nm"] : []]
-        @dirty = true if @table.nil?
-        if p == @table
-          v = pv["v"].to_i
-          @want_v = v if v > @want_v
-          @view = pv if @token.nil?
-        end
-      rescue => e
-        Log.info("othello_table: state: #{e.message}")
-      end
-    end
+  def table_host_back
+    @note = ""
+    @dirty = true
   end
 
   def join(p)
-    return if @join_f || p.nil?
-    @table = p
-    @join_f = proxy(p).async.join(my_name)
-    @note = ""
+    return if @tc.joining? || p.nil?
+    err = @tc.join(p, my_name)
+    @note = err || ""
     @dirty = true
-  rescue ::Asterism::Error => e
-    @join_f = nil
-    @table = nil
-    @note = e.message.to_s
   end
 
-  def collect_join
-    f = @join_f
-    return unless f && f.done?
-    @join_f = nil
-    begin
-      case f.value
-      in Hash => r if r["token"]
-        @token = r["token"].to_s
-        @view = nil
-        @want_v = 0
-        @confirm = false
-        @host_gone = false
-        ask_view
-        Log.info("othello_table: joined #{@table} (#{f.took_ms} ms)")
-      in Hash => r
-        @note = reason(r["error"])
-        @table = nil
-      in r
-        @note = reason(r)
-        @table = nil
-      end
-    rescue ::Asterism::Error => e
-      @note = "ホストが答えない"
-      @table = nil
-    end
+  def table_joined(r)
+    @view = nil
+    @confirm = false
+    @dirty = true
+  end
+
+  def table_refused(why)
+    @note = why ? reason(why) : "ホストが答えない"
     @dirty = true
   end
 
   def leave_table
-    begin
-      proxy.async.leave(@token) if @token
-    rescue ::Asterism::Error => e
-    end
-    @table = nil
-    @token = nil
+    @tc.leave
     @view = nil
-    @view_f = nil
     @cmd_f = nil
     @deadline = nil
     @confirm = false
-    @host_gone = false
     @note = ""
     @dirty = true
   end
 
-  def ask_view
-    return if @view_f || @token.nil?
-    @view_at = Machine.board_millis
-    @view_f = proxy.async.view(@token)
-  rescue ::Asterism::Error => e
-    @view_f = nil
+  def table_dropped
+    leave_table
+    @note = "卓から外れた"
   end
 
-  def collect_view
-    f = @view_f
-    return unless f && f.done?
-    @view_f = nil
-    f_sent = @view_at
-    begin
-      case f.value
-      in Hash => v if v["error"]
-        Log.info("othello_table: the host does not know us: back to the list")
-        leave_table
-        @note = "卓から外れた"
-      in Hash => v
-        @view = v
-        dl = v["dl"]
-        @deadline = dl ? Machine.board_millis + dl.to_i : nil
-        @confirm = false unless v["st"] == "play"
-        # Answered a view sent after the host left: it is back.
-        @host_gone = false if @host_gone && f_sent > @gone_at
-        @dirty = true
-      else
-      end
-    rescue ::Asterism::Error => e
-      @note = "ホストが答えない: 待っています"
-      @dirty = true
-    end
+  def table_view(v)
+    @view = v
+    dl = v["dl"]
+    @deadline = dl ? Machine.board_millis + dl.to_i : nil
+    @confirm = false unless v["st"] == "play"
+    @dirty = true
+  end
+
+  def table_view_failed
+    @note = "ホストが答えない: 待っています"
+    @dirty = true
   end
 
   # One call at a time (sit, stand, cpu, start, move, resign); the view is
   # asked again when it is answered.
   def send_cmd(what)
-    return if @cmd_f || @token.nil?
-    tok = @token
-    px = proxy.async
+    tok = @tc.token
+    return if @cmd_f || tok.nil?
+    px = @tc.proxy.async
     o = other_seat
     @cmd_f = case what
              when :sit then px.sit(tok, -1)
@@ -428,7 +234,7 @@ class OthelloTableApp < FmrbApp
       @dirty = true
       return
     end
-    @cmd_f = proxy.async.move(@token, v["n"].to_i, code)
+    @cmd_f = @tc.proxy.async.move(@tc.token, v["n"].to_i, code)
     @note = ""
     @dirty = true
   rescue ::Asterism::Error => e
@@ -446,8 +252,7 @@ class OthelloTableApp < FmrbApp
     rescue ::Asterism::Error => e
       @note = "ホストが答えない"
     end
-    @view_f = nil
-    ask_view
+    @tc.refresh_view
     @dirty = true
   end
 
@@ -463,7 +268,7 @@ class OthelloTableApp < FmrbApp
   end
 
   def seated?
-    @token && me >= 0 && me < 2
+    @tc.token && me >= 0 && me < 2
   end
 
   def owner?
@@ -541,13 +346,13 @@ class OthelloTableApp < FmrbApp
     enter = sc == FmrbConst::KEY_ENTER || ch == 13 || ch == 10
     esc = sc == FmrbConst::KEY_ESC || ch == 27
     @dirty = true
-    if @table.nil?
+    if @tc.table.nil?
       if sc == FmrbConst::KEY_UP
         @list_sel -= 1 if @list_sel > 0
       elsif sc == FmrbConst::KEY_DOWN
-        @list_sel += 1 if @list_sel < @table_list.size - 1
+        @list_sel += 1 if @list_sel < @tc.table_list.size - 1
       elsif enter
-        join(@table_list[@list_sel])
+        join(@tc.table_list[@list_sel])
       end
       return
     end
@@ -604,11 +409,11 @@ class OthelloTableApp < FmrbApp
     @dirty = true
     b = button_at(x, y)
     return run_button(b) if b
-    if @table.nil?
+    if @tc.table.nil?
       row = (y - @list_y) / 15
-      if y >= @list_y && row >= 0 && row < @table_list.size
+      if y >= @list_y && row >= 0 && row < @tc.table_list.size
         if row == @list_sel
-          join(@table_list[row])
+          join(@tc.table_list[row])
         else
           @list_sel = row
         end
@@ -627,7 +432,7 @@ class OthelloTableApp < FmrbApp
 
   def run_button(id)
     case id
-    when :join then join(@table_list[@list_sel])
+    when :join then join(@tc.table_list[@list_sel])
     when :sit then send_cmd(:sit)
     when :stand then send_cmd(:stand)
     when :cpu then send_cmd(:cpu)
@@ -742,7 +547,7 @@ class OthelloTableApp < FmrbApp
   def draw_screen
     @buttons = []
     clear_user_area
-    if @table
+    if @tc.table
       draw_board
       draw_panel
     else
@@ -752,9 +557,10 @@ class OthelloTableApp < FmrbApp
   end
 
   def net_line
-    return "つないでいます: #{@locator}" if @net == :connecting
-    return "網から切れた: つなぎ直し中" if @net == :down || reconnecting?
-    "#{@id} (#{@locator})"
+    net = @tc.net
+    return "つないでいます: #{@tc.link.router}" if net == :connecting
+    return "網から切れた: つなぎ直し中" if net == :down || @tc.reconnecting?
+    "#{@id} (#{@tc.link.router})"
   end
 
   def status_word(st)
@@ -772,13 +578,13 @@ class OthelloTableApp < FmrbApp
     cols = (@user_area_width - 8) / 6
     text(x, y, fit("オセロ (卓): 卓を選ぶ (Enter で入る)", cols))
     text(x, y + 15, fit(net_line, cols), theme_border)
-    if @table_list.empty?
-      text(x, @list_y, fit(@net == :up ? "ゲームホストを探しています (games/othello*)" : "-", cols), theme_border)
+    if @tc.table_list.empty?
+      text(x, @list_y, fit(@tc.net == :up ? "ゲームホストを探しています (games/othello*)" : "-", cols), theme_border)
     end
     i = 0
-    while i < @table_list.size && i < 8
-      p = @table_list[i]
-      t = @tables[p]
+    while i < @tc.table_list.size && i < 8
+      p = @tc.table_list[i]
+      t = @tc.tables[p]
       line = p
       if t
         nm = t[1]
@@ -797,7 +603,7 @@ class OthelloTableApp < FmrbApp
     end
     by = @y0 + @user_area_height - 40
     text(x, by - 2, fit(@note, cols), theme_border)
-    button(:join, x, by + 16, 90, "入る[Enter]") unless @table_list.empty?
+    button(:join, x, by + 16, 90, "入る[Enter]") unless @tc.table_list.empty?
     # Taking the whole screen there is no window frame to close it by.
     button(:quit, x + 96, by + 16, 90, "閉じる[Ctrl+Q]") if fullscreen?
   end
@@ -860,7 +666,7 @@ class OthelloTableApp < FmrbApp
     y = @y0 + 3
     n = @pw / 6
     v = @view
-    text(x, y, fit_dots(@table.split("/")[2].to_s + (v ? "  " + status_word(v["st"]) : ""), n))
+    text(x, y, fit_dots(@tc.table.split("/")[2].to_s + (v ? "  " + status_word(v["st"]) : ""), n))
     unless v
       text(x, y + 15, "入っています...", theme_border)
       return
@@ -952,24 +758,9 @@ class OthelloTableApp < FmrbApp
 
   def on_update
     now = Machine.board_millis
-    if @net == :connecting
-      connect if network_ready?
-    elsif @net == :down
-      connect if now >= @retry_at
-    end
-    if @net == :up
-      exchange
-      if @net == :up
-        subscribe_states if @sub.nil?
-        watch_states
-        find_tables
-        if @table
-          collect_join
-          collect_cmd
-          collect_view
-          ask_view if @token && @view_f.nil? && view_due?(now)
-        end
-      end
+    if @tc.update
+      collect_cmd if @tc.table
+      @tc.update_view(now)
     end
     run_key(@keys.shift) until @keys.empty?
     run_click(@clicks.shift) until @clicks.empty?
@@ -989,15 +780,9 @@ class OthelloTableApp < FmrbApp
     50
   end
 
-  # A newer version, or the view that says this app is still there.
-  def view_due?(now)
-    return now - @view_at >= HOST_GONE_VIEW_MS if @host_gone
-    @want_v > (@view ? @view["v"].to_i : 0) || now - @view_at >= VIEW_EVERY_MS
-  end
-
   def on_destroy
-    leave_table if @token
-    ::Asterism.close
+    leave_table if @tc.token
+    @tc.close
     Log.info("othello_table: closed")
   rescue => e
     Log.info("othello_table: close: #{e.message}")
