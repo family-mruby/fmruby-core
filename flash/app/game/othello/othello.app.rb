@@ -93,7 +93,7 @@ class OthelloTableApp < FmrbApp
     @cy = 3
     @keys = []
     @clicks = []
-    @buttons = []
+    @buttons = FmrbButtons.new(@gfx)
     @second = 0
     @mem_at = 0
     @dirty = true
@@ -393,21 +393,11 @@ class OthelloTableApp < FmrbApp
     end
   end
 
-  def button_at(x, y)
-    i = 0
-    while i < @buttons.size
-      b = @buttons[i]
-      return b[0] if x >= b[1] && x < b[1] + b[3] && y >= b[2] && y < b[2] + b[4]
-      i += 1
-    end
-    nil
-  end
-
   def run_click(c)
     x = c[0]
     y = c[1]
     @dirty = true
-    b = button_at(x, y)
+    b = @buttons.id_at(x, y)
     return run_button(b) if b
     if @tc.table.nil?
       row = (y - @list_y) / 15
@@ -465,79 +455,9 @@ class OthelloTableApp < FmrbApp
     @list_y = @y0 + 34
   end
 
-  # The width of s as drawn (a wide character counts 2 columns of 6 px).
-  def text_w(s)
-    w = 0
-    i = 0
-    while i < s.length
-      w += s[i, 1].bytesize > 1 ? 12 : 6
-      i += 1
-    end
-    w
-  end
-
-  # s cut to fit cols columns (a wide character counts 2).
-  def fit(s, cols)
-    s = s.to_s
-    out = ""
-    used = 0
-    i = 0
-    while i < s.length
-      ch = s[i, 1]
-      w = ch.bytesize > 1 ? 2 : 1
-      break if used + w > cols
-      out += ch
-      used += w
-      i += 1
-    end
-    out
-  end
-
-  # s cut to fit cols columns, ending in "…" when it was cut, so a cut never
-  # looks like the window's edge. "…" is counted as 2 columns (text_w's rule
-  # for a wide character); efont draws it in 1, so the cut errs short.
-  def fit_dots(s, cols)
-    s = s.to_s
-    return s if text_w(s) <= cols * 6
-    return "" if cols < 2
-    fit(s, cols - 2) + "…"
-  end
-
-  # s in at most two lines of cols columns. The break goes at the last space
-  # of the first line when the rest then fits; the second line ends in "…"
-  # if it is still too long.
-  def wrap2(s, cols)
-    s = s.to_s
-    return [s] if text_w(s) <= cols * 6
-    first = fit(s, cols)
-    sp = -1
-    i = 0
-    while i < first.length
-      sp = i if first[i, 1] == " "
-      i += 1
-    end
-    if sp > 0 && text_w(s[sp + 1, s.length].to_s) <= cols * 6
-      return [s[0, sp], s[sp + 1, s.length].to_s]
-    end
-    [first, fit_dots(s[first.length, s.length].to_s, cols)]
-  end
-
-  # The lines of wrap2(s, cols) from y down, 15 px apart; answers the y
-  # under them.
-  def text_lines(x, y, s, cols, color)
-    ls = wrap2(s, cols)
-    i = 0
-    while i < ls.size
-      text(x, y + i * 15, ls[i], color)
-      i += 1
-    end
-    y + ls.size * 15
-  end
-
+  # A button of the panel and the list (theme colours, 16 px high).
   def button(id, x, y, w, label)
-    @buttons << [id, x, y, w, 16]
-    @gfx.fill_round_rect(x, y, w, 16, 3, theme_accent)
-    @gfx.draw_text(x + (w - text_w(label)) / 2, y + 2, label, theme_fg_light)
+    @buttons.button(id, x, y, w, 16, label, theme_accent, theme_fg_light)
   end
 
   def text(x, y, s, color = nil)
@@ -545,7 +465,7 @@ class OthelloTableApp < FmrbApp
   end
 
   def draw_screen
-    @buttons = []
+    @buttons.clear
     clear_user_area
     if @tc.table
       draw_board
@@ -575,11 +495,11 @@ class OthelloTableApp < FmrbApp
   def draw_list
     x = @x0 + 4
     y = @y0 + 3
-    cols = (@user_area_width - 8) / 6
-    text(x, y, fit("オセロ (卓): 卓を選ぶ (Enter で入る)", cols))
-    text(x, y + 15, fit(net_line, cols), theme_border)
+    w = @user_area_width - 8
+    text(x, y, @gfx.fit_text("オセロ (卓): 卓を選ぶ (Enter で入る)", w))
+    text(x, y + 15, @gfx.fit_text(net_line, w), theme_border)
     if @tc.table_list.empty?
-      text(x, @list_y, fit(@tc.net == :up ? "ゲームホストを探しています (games/othello*)" : "-", cols), theme_border)
+      text(x, @list_y, @gfx.fit_text(@tc.net == :up ? "ゲームホストを探しています (games/othello*)" : "-", w), theme_border)
     end
     i = 0
     while i < @tc.table_list.size && i < 8
@@ -595,14 +515,14 @@ class OthelloTableApp < FmrbApp
       yy = @list_y + i * 15
       if i == @list_sel
         @gfx.fill_rect(@x0 + 2, yy - 1, @user_area_width - 4, 14, theme_accent)
-        text(x, yy, fit(line, cols), theme_fg_light)
+        text(x, yy, @gfx.fit_text(line, w), theme_fg_light)
       else
-        text(x, yy, fit(line, cols))
+        text(x, yy, @gfx.fit_text(line, w))
       end
       i += 1
     end
     by = @y0 + @user_area_height - 40
-    text(x, by - 2, fit(@note, cols), theme_border)
+    text(x, by - 2, @gfx.fit_text(@note, w), theme_border)
     button(:join, x, by + 16, 90, "入る[Enter]") unless @tc.table_list.empty?
     # Taking the whole screen there is no window frame to close it by.
     button(:quit, x + 96, by + 16, 90, "閉じる[Ctrl+Q]") if fullscreen?
@@ -664,9 +584,8 @@ class OthelloTableApp < FmrbApp
   def draw_panel
     x = @px
     y = @y0 + 3
-    n = @pw / 6
     v = @view
-    text(x, y, fit_dots(@tc.table.split("/")[2].to_s + (v ? "  " + status_word(v["st"]) : ""), n))
+    text(x, y, @gfx.fit_text(@tc.table.split("/")[2].to_s + (v ? "  " + status_word(v["st"]) : ""), @pw, "…"))
     unless v
       text(x, y + 15, "入っています...", theme_border)
       return
@@ -688,8 +607,8 @@ class OthelloTableApp < FmrbApp
       name = "CPU" if sk[i] == 2 && name == "(空き)"
       num = cnt ? " #{cnt[i]}" : ""
       color = v["tn"] == i ? theme_accent : theme_fg
-      room = (@pw - 14 - text_w(tags + num)) / 6
-      text(x + 14, yy, fit_dots(name, room) + tags + num, color)
+      room = @pw - 14 - @gfx.text_width(tags + num)
+      text(x + 14, yy, @gfx.fit_text(name, room, "…") + tags + num, color)
       i += 1
     end
     # Three slots (one or two lines each), then the note.
@@ -700,11 +619,11 @@ class OthelloTableApp < FmrbApp
       tn = v["tn"].to_i
       who = v["tn"] == me ? "あなたの番" : (v["tn"] == 0 ? "黒の番" : "白の番")
       who = "#{name_of(tn)} が考え中" if ai_seat?(tn)
-      yy = text_lines(x, yy, "#{who} (#{v['n'].to_i + 1} 手目)", n, v["tn"] == me ? C_CURSOR : theme_fg)
+      yy = @gfx.draw_text_lines(x, yy, "#{who} (#{v['n'].to_i + 1} 手目)", @pw, v["tn"] == me ? C_CURSOR : theme_fg, 15)
       if @deadline
         left = (@deadline - Machine.board_millis + 999) / 1000
         left = 0 if left < 0
-        yy = text_lines(x, yy, "残り #{left} 秒 (切れたら CPU が打つ)", n, theme_border)
+        yy = @gfx.draw_text_lines(x, yy, "残り #{left} 秒 (切れたら CPU が打つ)", @pw, theme_border, 15)
       else
         yy += 15
       end
@@ -714,15 +633,15 @@ class OthelloTableApp < FmrbApp
       word = w < 0 ? "引き分け" : "#{w == 0 ? '黒' : '白'} (#{name_of(w)}) の勝ち"
       word = "あなたの勝ち" if w >= 0 && w == me
       word = "あなたの負け" if w >= 0 && me >= 0 && me < 2 && w != me
-      yy = text_lines(x, yy, "終局 #{res['b']}-#{res['wc']}#{res['why'] == 'resign' ? ' 投了' : ''}", n, theme_accent)
-      yy = text_lines(x, yy, word, n, theme_accent)
+      yy = @gfx.draw_text_lines(x, yy, "終局 #{res['b']}-#{res['wc']}#{res['why'] == 'resign' ? ' 投了' : ''}", @pw, theme_accent, 15)
+      yy = @gfx.draw_text_lines(x, yy, word, @pw, theme_accent, 15)
     else
-      yy = text_lines(x, yy, seated? ? "席に着いた (色は始めるときに決まる)" : "観戦中: 空いた席に座れる", n, theme_border)
-      yy = text_lines(x, yy, "卓の主 (*) が始める", n, theme_border)
+      yy = @gfx.draw_text_lines(x, yy, seated? ? "席に着いた (色は始めるときに決まる)" : "観戦中: 空いた席に座れる", @pw, theme_border, 15)
+      yy = @gfx.draw_text_lines(x, yy, "卓の主 (*) が始める", @pw, theme_border, 15)
     end
     last = v["last"]
-    text(x, yy, fit_dots("最後: #{last == '--' ? 'パス' : last}", n), theme_border) if last && st == "play"
-    text_lines(x, yy + 15, @note, n, theme_border)
+    text(x, yy, @gfx.fit_text("最後: #{last == '--' ? 'パス' : last}", @pw, "…"), theme_border) if last && st == "play"
+    @gfx.draw_text_lines(x, yy + 15, @note, @pw, theme_border, 15)
     draw_buttons(x)
   end
 

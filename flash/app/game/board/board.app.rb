@@ -118,7 +118,7 @@ class DrawingBoardApp < FmrbApp
     @sent_at = 0
     @keys = []
     @moves = []
-    @buttons = []
+    @buttons = FmrbButtons.new(@gfx)
     @mem_at = 0
     @lat_n = 0
     @lat_sum = 0
@@ -942,20 +942,10 @@ class DrawingBoardApp < FmrbApp
     end
   end
 
-  def button_at(x, y)
-    i = 0
-    while i < @buttons.size
-      b = @buttons[i]
-      return b[0] if x >= b[1] && x < b[1] + b[3] && y >= b[2] && y < b[2] + b[4]
-      i += 1
-    end
-    nil
-  end
-
   def run_click(c)
     x = c[0]
     y = c[1]
-    b = button_at(x, y)
+    b = @buttons.id_at(x, y)
     if b
       run_button(b)
       return
@@ -1021,36 +1011,9 @@ class DrawingBoardApp < FmrbApp
     @list_y = @y0 + 34
   end
 
-  def text_w(s)
-    w = 0
-    i = 0
-    while i < s.length
-      w += s[i, 1].bytesize > 1 ? 12 : 6
-      i += 1
-    end
-    w
-  end
-
-  def fit(s, cols)
-    s = s.to_s
-    out = ""
-    used = 0
-    i = 0
-    while i < s.length
-      ch = s[i, 1]
-      w = ch.bytesize > 1 ? 2 : 1
-      break if used + w > cols
-      out += ch
-      used += w
-      i += 1
-    end
-    out
-  end
-
+  # A button of the panel and the list (theme colours, 15 px high).
   def button(id, x, y, w, label)
-    @buttons << [id, x, y, w, 15]
-    @gfx.fill_round_rect(x, y, w, 15, 3, theme_accent)
-    @gfx.draw_text(x + (w - text_w(label)) / 2, y + 1, label, theme_fg_light)
+    @buttons.button(id, x, y, w, 15, label, theme_accent, theme_fg_light)
   end
 
   def text(x, y, s, color = nil)
@@ -1058,7 +1021,7 @@ class DrawingBoardApp < FmrbApp
   end
 
   def draw_screen
-    @buttons = []
+    @buttons.clear
     clear_user_area
     if @tc.table
       # The strokes kept so far (while the picture is read, what came of it).
@@ -1081,11 +1044,11 @@ class DrawingBoardApp < FmrbApp
   def draw_list
     x = @x0 + 4
     y = @y0 + 3
-    cols = (@user_area_width - 8) / 6
-    text(x, y, fit("お絵かき: ボードを選ぶ (Enter で入る)", cols))
-    text(x, y + 15, fit(net_line, cols), theme_border)
+    w = @user_area_width - 8
+    text(x, y, @gfx.fit_text("お絵かき: ボードを選ぶ (Enter で入る)", w))
+    text(x, y + 15, @gfx.fit_text(net_line, w), theme_border)
     if @tc.table_list.empty?
-      text(x, @list_y, fit(@tc.net == :up ? "ゲームホストを探しています (games/board*)" : "-", cols), theme_border)
+      text(x, @list_y, @gfx.fit_text(@tc.net == :up ? "ゲームホストを探しています (games/board*)" : "-", w), theme_border)
     end
     i = 0
     while i < @tc.table_list.size && i < 8
@@ -1096,29 +1059,28 @@ class DrawingBoardApp < FmrbApp
       yy = @list_y + i * 15
       if i == @list_sel
         @gfx.fill_rect(@x0 + 2, yy - 1, @user_area_width - 4, 14, theme_accent)
-        text(x, yy, fit(line, cols), theme_fg_light)
+        text(x, yy, @gfx.fit_text(line, w), theme_fg_light)
       else
-        text(x, yy, fit(line, cols))
+        text(x, yy, @gfx.fit_text(line, w))
       end
       i += 1
     end
     by = @y0 + @user_area_height - 40
-    text(x, by - 2, fit(@note, cols), theme_border)
+    text(x, by - 2, @gfx.fit_text(@note, w), theme_border)
     button(:join, x, by + 16, 90, "入る[Enter]") unless @tc.table_list.empty?
   end
 
   # The panel at the right: the board, the palette, the widths, the buttons.
   def draw_panel
-    @buttons = []
+    @buttons.clear
     x = @px
     @gfx.fill_rect(x - 1, @y0, @pw + 3, @user_area_height, theme_bg)
-    n = @pw / 6
     v = @view
-    text(x, @y0 + 1, fit(@tc.table.split("/")[2].to_s, n))
+    text(x, @y0 + 1, @gfx.fit_text(@tc.table.split("/")[2].to_s, @pw))
     @shown_n = @s_id.size
     info = v ? "線#{@s_id.size} #{v['mb'].is_a?(Array) ? v['mb'].size : 0}人" : "..."
     info = "読込中" if @loading
-    text(x, @y0 + 14, fit(info, n), theme_border)
+    text(x, @y0 + 14, @gfx.fit_text(info, @pw), theme_border)
     i = 0
     while i < 16
       cx = x + (i % 4) * 14
@@ -1143,7 +1105,7 @@ class DrawingBoardApp < FmrbApp
     end
     by = @wid_y + 18
     if @confirm
-      text(x, by, fit("全部消す?", n), theme_accent)
+      text(x, by, @gfx.fit_text("全部消す?", @pw), theme_accent)
       button(:yes, x, by + 15, 27, "はい")
       button(:no, x + 29, by + 15, 27, "いや")
     else
@@ -1155,7 +1117,7 @@ class DrawingBoardApp < FmrbApp
     note = @note
     note = "再生中" if @replay && note.empty?
     note = "主" if note.empty? && @owner
-    text(x, by + 36, fit(note, n), theme_border) unless note.empty?
+    text(x, by + 36, @gfx.fit_text(note, @pw), theme_border) unless note.empty?
   end
 
   # ------------------------------------------------------------ the loop
