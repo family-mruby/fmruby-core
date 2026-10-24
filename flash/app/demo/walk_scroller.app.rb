@@ -21,7 +21,26 @@
 #   N next mark, B previous mark, R back to the start, L read the script
 #   again, H hide / show the status line, D frame timing in the status
 #   line (frames per second and the ms a frame takes here, over the last
-#   second).
+#   second), T the tuning panel (below).
+# - Tuning panel (T opens and closes it; it is never shown otherwise, and
+#   the walk goes on while it is open): the step sensor's detector as the
+#   sensor itself reports it -- the threshold (rise_mg), the shortest gap
+#   between steps (min_gap_ms), whether those are saved on the sensor, the
+#   sensor's node and how long ago it last answered (or why it does not:
+#   no node yet, offline, no answer, an error from the sensor). It calls
+#   pedometer.state when it opens and every TUNE_POLL_MS. While it is open,
+#   Up / Down change the threshold by 10 mg and Left / Right the gap by
+#   10 ms (Right is no longer a step then; Space still is), each press
+#   calling pedometer.tune at once; the panel shows the values the sensor
+#   answers, not the ones asked for. S calls pedometer.save (the sensor
+#   writes /home/step_sensor.toml and keeps the values across a restart),
+#   0 asks for the defaults (150 mg / 250 ms; S to keep them). Below, the
+#   last few seconds of the sensor's raw values (asterism/<node>/step/
+#   pedometer/accel, subscribed only while the panel is open): dyn as a
+#   line with the threshold across it (a step is a peak that crosses it)
+#   and the largest dyn of the window as a number. The sensor tuned is the
+#   script's `node`, else the last node that sent a step (else the last
+#   node heard from).
 # - Network: node ID and router from FmrbAsterism.settings (as
 #   asterism_demo; the browser build reaches zenohd over ws/). Tries again
 #   every RETRY_MS while it cannot connect or after the connection is lost.
@@ -93,6 +112,18 @@ class WalkScrollerApp < FmrbApp
   LAYER_MAX_H = 240
   BMP_MAX_FILE = 262144 # what the graphics side reads in one go
   NOTE_MS = 6000        # how long "walker: <folder>" stays in the status line
+  # Tuning panel (T)
+  TUNE_POLL_MS = 3000   # pedometer.state again this often while open
+  TUNE_CALL_MS = 2000   # time limit of one call to the sensor
+  TUNE_DEFAULT = [150, 250]
+  TUNE_STEP = 10        # mg / ms per key press
+  PANEL_W = 240
+  PANEL_H = 120
+  PANEL_CHARS = 38     # 6x8 characters on a line of the panel
+  PANEL_BG = 0x25       # not TKEY, so the panel is solid
+  GRAPH_BG = 0x24
+  GRAPH_N = 80          # raw values kept (20 Hz: 4 s)
+  GRAPH_MS = 100        # redraw the graph at most this often
 
   def on_create
     @w = @user_area_width
@@ -150,9 +181,29 @@ class WalkScrollerApp < FmrbApp
     @keys = []
     @last_steps = {}
     @seen_node = ""
+    @step_node = ""       # the last node whose value was a step
     @seen_at = 0
     @ack = nil
     @dirty = true
+    @panel_on = false
+    @panel_img = nil
+    @panel_sp = nil
+    @panel_dirty = false
+    @panel_drawn_at = 0
+    @panel_sec = -1
+    @tune_node = ""
+    @tune_vals = nil      # [rise_mg, min_gap_ms, saved] as the sensor answered
+    @tune_ok_at = 0
+    @tune_err = ""
+    @tune_note = ""
+    @tune_call = nil      # [Future, kind] of the call on its way
+    @tune_want = nil      # a tune or save waiting for the call on its way
+    @tune_poll_at = 0
+    @accel_sub = nil
+    @accel_node = ""
+    @accel = []           # dyn (mg) of the last raw values
+    @accel_rise = 0
+    @accel_new = false
 
     @net = :down
     @reconnecting = false
@@ -179,6 +230,7 @@ class WalkScrollerApp < FmrbApp
   end
 
   def on_destroy
+    close_accel
     begin
       ::Asterism.close
     rescue
@@ -1023,6 +1075,9 @@ class WalkScrollerApp < FmrbApp
     @net_note = why
     @retry_at = now + RETRY_MS
     @sub = nil
+    @accel_sub = nil
+    @accel_node = ""
+    @tune_call = nil
     begin
       ::Asterism.close
     rescue
@@ -1038,6 +1093,7 @@ class WalkScrollerApp < FmrbApp
       return lost("asterism: #{::Asterism.lost_reason}", now) unless ::Asterism.poll
       @reconnecting = ::Asterism.reconnecting?
       @sub.each_pending { |key, payload, att| step_value(key, payload, now) } if @sub
+      tune_network(now) if @panel_on
     rescue => e
       lost("#{e.class}: #{e.message}", now)
     end
@@ -1063,6 +1119,7 @@ class WalkScrollerApp < FmrbApp
       d = steps - prev
     end
     return if d <= 0
+    @step_node = src
     d = MAX_BURST if d > MAX_BURST
     iv = v["interval_ms"].to_i
     cad = v["cadence"].to_i
@@ -1079,6 +1136,295 @@ class WalkScrollerApp < FmrbApp
     ::Asterism.session.put(@progress_key, ::Asterism::Codec.pack(v))
   rescue => e
     Log.warn("walk_scroller: progress put: #{e.message}")
+  end
+
+  # ---- tuning panel ----
+
+  def toggle_panel(now)
+    @panel_on = !@panel_on
+    if @panel_on
+      unless @panel_img
+        @panel_img = SpriteImage.new(@gfx, width: PANEL_W, height: PANEL_H, transparent_color: TKEY, use_transparent: true)
+        @panel_sp = SpriteInstance.new(@gfx, @panel_img, x: @ox + 4, y: @oy + 4, z: 5)
+      end
+      @panel_sp.visible = true
+      @tune_poll_at = now # read the state at once
+      @tune_note = ""
+      @accel = []
+      Log.info("walk_scroller: tuning panel open")
+    else
+      @panel_sp.visible = false if @panel_sp
+      close_accel
+      @tune_want = nil
+      Log.info("walk_scroller: tuning panel closed")
+    end
+    @panel_dirty = true
+    @dirty = true
+  end
+
+  # A key while the panel is open; true when the panel took it.
+  def panel_key(sc)
+    if sc == FmrbConst::KEY_UP
+      tune_key(TUNE_STEP, 0)
+    elsif sc == FmrbConst::KEY_DOWN
+      tune_key(-TUNE_STEP, 0)
+    elsif sc == FmrbConst::KEY_RIGHT
+      tune_key(0, TUNE_STEP)
+    elsif sc == FmrbConst::KEY_LEFT
+      tune_key(0, -TUNE_STEP)
+    elsif sc == 0x16 # s
+      tune_save
+    elsif sc == 0x27 # 0: the defaults
+      tune_key(nil, nil)
+    else
+      return false
+    end
+    true
+  end
+
+  # The node whose detector is tuned: the script's, else the last node
+  # that sent a step (a sensor's repeated values do not count), else the
+  # last node that sent anything.
+  def tune_target
+    return @follow unless @follow.empty?
+    @step_node.empty? ? @seen_node : @step_node
+  end
+
+  def close_accel
+    s = @accel_sub
+    @accel_sub = nil
+    @accel_node = ""
+    return unless s
+    begin
+      s.close
+    rescue
+    end
+  end
+
+  # While the panel is open (from network, after the poll): follows the
+  # target node with the raw-value subscription, collects the answer of the
+  # call on its way, then sends the next call (a waiting tune / save, or
+  # the periodic state). One call at a time.
+  def tune_network(now)
+    node = tune_target
+    if node != @tune_node
+      @tune_node = node
+      @tune_vals = nil
+      @tune_ok_at = 0
+      @tune_err = ""
+      @tune_poll_at = now
+      @panel_dirty = true
+    end
+    if node != @accel_node
+      close_accel
+      unless node.empty?
+        begin
+          @accel_sub = ::Asterism.session.subscribe("asterism/#{node}/step/pedometer/accel", depth: 32)
+          @accel_node = node
+          @accel = []
+        rescue => e
+          Log.warn("walk_scroller: accel subscribe: #{e.message}")
+        end
+      end
+    end
+    @accel_sub.each_pending { |key, payload, att| accel_value(payload) } if @accel_sub
+    c = @tune_call
+    if c && c[0].done?
+      @tune_call = nil
+      tune_answer(c[0], c[1], now)
+    end
+    return if @tune_call || node.empty?
+    w = @tune_want
+    if w
+      @tune_want = nil
+      send_tune(node, w[0], w[1], now)
+    elsif now >= @tune_poll_at
+      send_tune(node, :state, nil, now)
+    end
+  end
+
+  def send_tune(node, kind, args, now)
+    @tune_poll_at = now + TUNE_POLL_MS
+    method = kind == :tune ? "tune" : (kind == :save ? "save" : "state")
+    begin
+      f = ::Asterism.call_async("#{node}/step/pedometer", method, args, nil, TUNE_CALL_MS)
+      @tune_call = [f, kind]
+    rescue => e
+      tune_failed(e, kind)
+    end
+  end
+
+  def tune_answer(f, kind, now)
+    v = nil
+    begin
+      v = f.value
+    rescue => e
+      tune_failed(e, kind)
+      return
+    end
+    unless v.is_a?(Hash) && v["rise_mg"].is_a?(Integer)
+      @tune_err = "#{kind}: no settings in the answer (old step_sensor?)"
+      @panel_dirty = true
+      return
+    end
+    @tune_vals = [v["rise_mg"], v["min_gap_ms"].to_i, v["saved"] == true]
+    @tune_ok_at = now
+    @tune_err = ""
+    if kind == :save
+      @tune_note = v["saved"] == true ? "saved on the sensor" : "save failed: #{v["error"]}"
+    elsif kind == :tune
+      @tune_note = "tuned (S to save)"
+    end
+    err = v["error"] ? " (#{v["error"]})" : ""
+    Log.info("walk_scroller: #{kind} #{@tune_node}: rise #{@tune_vals[0]} gap #{@tune_vals[1]} saved #{@tune_vals[2]}#{err}") if kind != :state
+    @panel_dirty = true
+  end
+
+  def tune_failed(e, kind)
+    @tune_err = if e.is_a?(::Asterism::TimeoutError)
+                  e.message.include?("nobody answers") ? "no answer: sensor gone or not allowed" : "no answer within #{TUNE_CALL_MS / 1000} s"
+                elsif e.is_a?(::Asterism::RemoteError)
+                  "#{e.remote_kind || 'error'}: #{e.remote_message}"
+                elsif e.is_a?(::Asterism::Disconnected)
+                  "offline: #{e.message}"
+                else
+                  "#{e.class}: #{e.message}"
+                end
+    Log.warn("walk_scroller: #{kind} #{@tune_node}: #{@tune_err}")
+    @panel_dirty = true
+  end
+
+  def accel_value(payload)
+    v = ::Asterism::Codec.unpack(payload)
+    return unless v.is_a?(Hash)
+    d = v["dyn"]
+    return unless d.is_a?(Integer)
+    @accel << d
+    @accel.shift while @accel.size > GRAPH_N
+    r = v["rise"]
+    @accel_rise = r if r.is_a?(Integer)
+    @accel_new = true
+  end
+
+  # A key on the panel: a change of the values in view (nil: the defaults).
+  # It waits behind the call on its way; the last one asked wins.
+  def tune_key(d_rise, d_gap)
+    if @tune_node.empty?
+      @tune_note = "no sensor to tune yet"
+      @panel_dirty = true
+      return
+    end
+    base = @tune_want && @tune_want[0] == :tune ? @tune_want[1] : @tune_vals
+    if d_rise.nil?
+      args = [TUNE_DEFAULT[0], TUNE_DEFAULT[1]]
+    elsif base.nil?
+      @tune_note = "waiting for the sensor's values"
+      @panel_dirty = true
+      return
+    else
+      args = [base[0] + d_rise, base[1] + d_gap]
+    end
+    @tune_want = [:tune, args]
+    @tune_note = "asking #{args[0]} mg / #{args[1]} ms"
+    @panel_dirty = true
+  end
+
+  def tune_save
+    if @tune_node.empty?
+      @tune_note = "no sensor to save on"
+    else
+      @tune_want = [:save, nil]
+      @tune_note = "saving..."
+    end
+    @panel_dirty = true
+  end
+
+  def fit(t, n)
+    t.length > n ? t[0, n] : t
+  end
+
+  # Redraws the panel's sprite when something in it changed (the graph at
+  # most every GRAPH_MS, the age of the last answer once a second). True
+  # when it was redrawn.
+  def update_panel(now)
+    return false unless @panel_on
+    sec = @tune_ok_at > 0 ? (now - @tune_ok_at) / 1000 : -1
+    if sec != @panel_sec
+      @panel_sec = sec
+      @panel_dirty = true
+    end
+    @panel_dirty = true if @accel_new && now - @panel_drawn_at >= GRAPH_MS
+    return false unless @panel_dirty
+    @panel_dirty = false
+    @accel_new = false
+    @panel_drawn_at = now
+    draw_panel(sec)
+    true
+  end
+
+  def draw_panel(sec)
+    w = PANEL_W
+    h = PANEL_H
+    @panel_img.set_target
+    @gfx.fill_rect(0, 0, w, h, PANEL_BG)
+    @gfx.draw_rect(0, 0, w, h, 0x92)
+    node = @tune_node.empty? ? "(no sensor yet)" : @tune_node
+    @gfx.draw_text(4, 3, fit("TUNE #{node}", PANEL_CHARS), 0xFF)
+    v = @tune_vals
+    if v
+      @gfx.draw_text(4, 13, "rise #{v[0]} mg  gap #{v[1]} ms", 0xFF)
+      @gfx.draw_text(4, 23, v[2] ? "saved" : "not saved", v[2] ? 0x1C : 0xFC)
+    else
+      @gfx.draw_text(4, 13, "rise -- mg  gap -- ms", 0xB6)
+    end
+    age = sec >= 0 ? "read #{sec} s ago" : "not read yet"
+    @gfx.draw_text(w - 4 - age.length * 6, 23, age, 0xB6)
+    bad = !@tune_err.empty? || @net != :up
+    line = if !@tune_err.empty? then @tune_err
+           elsif @net != :up then "offline: #{@net_note}"
+           elsif @tune_node.empty? then "waiting for a step or script node"
+           else @tune_note
+           end
+    @gfx.draw_text(4, 33, fit(line, PANEL_CHARS), bad ? 0xEC : 0xB6)
+    # The graph: dyn of the last GRAPH_N raw values, the threshold across.
+    gx = 4
+    gy = 45
+    gw = GRAPH_N * 2
+    gh = h - gy - 14
+    rise = @accel_rise > 0 ? @accel_rise : (v ? v[0] : TUNE_DEFAULT[0])
+    top = rise * 2
+    top = 400 if top < 400
+    low = -top / 4
+    span = top - low
+    @gfx.fill_rect(gx, gy, gw, gh, GRAPH_BG)
+    ty = gy + gh - 1 - (rise - low) * (gh - 1) / span
+    @gfx.draw_line(gx, ty, gx + gw - 1, ty, 0xE0)
+    zy = gy + gh - 1 - (0 - low) * (gh - 1) / span
+    @gfx.draw_line(gx, zy, gx + gw - 1, zy, 0x49)
+    a = @accel
+    peak = nil
+    px = 0
+    py = 0
+    x0 = gx + gw - a.size * 2
+    i = 0
+    while i < a.size
+      d = a[i]
+      peak = d if peak.nil? || d > peak
+      d = top if d > top
+      d = low if d < low
+      y = gy + gh - 1 - (d - low) * (gh - 1) / span
+      x = x0 + i * 2
+      @gfx.draw_line(px, py, x, y, 0x1F) if i > 0
+      px = x
+      py = y
+      i += 1
+    end
+    lx = gx + gw + 4
+    @gfx.draw_text(lx, ty - 4, "#{rise}", 0xE0)
+    @gfx.draw_text(lx, gy + gh - 18, "peak", 0xB6)
+    @gfx.draw_text(lx, gy + gh - 8, peak ? "#{peak}" : "--", 0x1F)
+    @gfx.draw_text(4, h - 11, "Up/Dn rise Lt/Rt gap S save 0 dflt", 0x92)
+    @panel_img.reset_target
   end
 
   # ---- input and the loop ----
@@ -1099,7 +1445,9 @@ class WalkScrollerApp < FmrbApp
   def run_keys(now)
     while @keys.size > 0
       sc = @keys.shift
+      next if @panel_on && panel_key(sc)
       case sc
+      when 0x17 then toggle_panel(now)   # t
       when FmrbConst::KEY_SPACE, FmrbConst::KEY_RIGHT then manual_step(now)
       when 0x11 then jump_mark(1, now)   # n
       when 0x05 then jump_mark(-1, now)  # b
@@ -1126,7 +1474,12 @@ class WalkScrollerApp < FmrbApp
     run_keys(now)
     changed = advance(dt, now)
     changed = true if update_status(now)
-    render(now) if changed || @dirty
+    panel = update_panel(now)
+    if changed || @dirty
+      render(now)
+    elsif panel
+      @gfx.present # only the panel's sprite changed
+    end
     put_progress(now) if @ack
     if now >= @fps_at
       @fps_text = "#{@fps_n}fps #{@fps_n > 0 ? @fps_ms / @fps_n : 0}/#{@fps_max}ms "

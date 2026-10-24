@@ -44,6 +44,20 @@
 #              4 night city (left out: the scene stays as it was)
 #   effect     "fireworks" or nothing
 # A mark without text shows no text.
+#
+# Tuning the step sensor (flash/app/test/step_sensor.app.rb) from here: T
+# opens a hidden panel (top left; the walk goes on, T again closes it). It
+# shows the sensor's threshold (rise_mg), the shortest gap between steps
+# (min_gap_ms), whether they are saved on the sensor, its node, and when
+# it last answered (or why it does not). Up / Down: threshold +-10 mg,
+# Left / Right: gap +-10 ms (Right is not a step while the panel is open),
+# 0: back to 150 mg / 250 ms, S: save on the sensor (its
+# /home/step_sensor.toml, kept across a restart). Without S a change is
+# lost when the sensor restarts. The graph is the sensor's last 4 seconds
+# of dyn with the threshold as the red line: each step's peak should cross
+# it, and nothing else. The sensor tuned is `node` below, else the last
+# node that sent a step. Over a router with access rules, this node needs
+# the right to call <node>/step/pedometer.
 
 node = ""
 step_px = 32
