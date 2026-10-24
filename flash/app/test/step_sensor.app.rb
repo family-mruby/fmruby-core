@@ -14,14 +14,25 @@
 # - Each step is put on asterism/<ID>/step/pedometer/step as a MessagePack
 #   map (state_hash below): steps (total), t_ms (the board's clock at the
 #   step), interval_ms, cadence (steps per minute over the last steps, 0
-#   when walking stopped), ago_ms, sent_ms (the board's clock at the put) and
+#   when walking stopped), ago_ms, sent_ms (the board's clock at the put),
 #   event ("step", "repeat" every REPEAT_MS so a late reader sees the
-#   current value, or "reset").
+#   current value, or "reset"), and the detector's settings: rise_mg,
+#   min_gap_ms and saved (true when they are what /home/step_sensor.toml
+#   holds).
 # - Exposes <ID>/step/pedometer: reset -> the state after reset, state -> the
 #   state, clock -> the board's clock in ms (to relate t_ms to the reader's
-#   clock), tune(rise_mg, min_gap_ms) -> the detector's settings (not kept
-#   across a restart; /home/step_sensor.toml keeps them: rise_mg = 150,
-#   min_gap_ms = 250), raw(on) -> switches the raw values (below) on/off.
+#   clock), tune(rise_mg, min_gap_ms) -> the detector's settings
+#   ({rise_mg, min_gap_ms, saved}; rise at least 30 mg, the gap at least
+#   100 ms), save -> writes the settings in effect to /home/step_sensor.toml
+#   and answers {rise_mg, min_gap_ms, saved, file} (saved false and error:
+#   the reason when it could not), raw(on) -> switches the raw values
+#   (below) on/off.
+# - Settings across a restart: /home/step_sensor.toml (rise_mg = 150,
+#   min_gap_ms = 250) is read at start. tune alone is forgotten at a
+#   restart; save keeps it. save rewrites only the rise_mg and min_gap_ms
+#   lines (other lines stay) and is the only thing here that writes to the
+#   flash. The tuning panel of flash/app/demo/walk_scroller.app.rb (T)
+#   calls state, tune and save.
 # - Raw values for a plot (asterism-console draws the numbers of a value):
 #   asterism/<ID>/step/pedometer/accel, a MessagePack map at 20 Hz of
 #   integers in mg: x, y, z (the last sample), m (its magnitude), m_peak
@@ -170,6 +181,10 @@ class StepSensorApp < FmrbApp
       @app.tune(rise_mg.to_i, min_gap_ms.to_i)
     end
 
+    def save
+      @app.save_tune
+    end
+
     def raw(on)
       @app.set_raw(on)
     end
@@ -195,6 +210,7 @@ class StepSensorApp < FmrbApp
     @raw_puts = 0
     set_raw(RAW_DEFAULT)
     @detector = StepDetector.new
+    @saved_tune = nil # [rise_mg, min_gap_ms] as in TUNE_FILE, nil without one
     load_tune
     @sensor = "no sensor"
     @imu = nil
@@ -257,7 +273,17 @@ class StepSensorApp < FmrbApp
     rise = conf_int(TUNE_FILE, "rise_mg")
     gap = conf_int(TUNE_FILE, "min_gap_ms")
     return unless rise || gap
-    tune(rise || 150, gap || 250)
+    t = tune(rise || 150, gap || 250)
+    @saved_tune = [t["rise_mg"], t["min_gap_ms"]]
+  end
+
+  def rise_mg
+    (@detector.rise * 1000).round
+  end
+
+  def tune_saved?
+    s = @saved_tune
+    s ? s[0] == rise_mg && s[1] == @detector.min_gap_ms : false
   end
 
   def tune(rise_mg, min_gap_ms)
@@ -265,7 +291,62 @@ class StepSensorApp < FmrbApp
     min_gap_ms = 100 if min_gap_ms < 100
     @detector.tune(rise_mg / 1000.0, min_gap_ms)
     Log.info("step_sensor: tune rise=#{rise_mg} mg min_gap=#{min_gap_ms} ms")
-    { "rise_mg" => rise_mg, "min_gap_ms" => min_gap_ms }
+    { "rise_mg" => rise_mg, "min_gap_ms" => min_gap_ms, "saved" => tune_saved? }
+  end
+
+  # Writes the settings in effect to TUNE_FILE: the rise_mg and min_gap_ms
+  # lines are replaced (added when missing), every other line is kept. The
+  # file is read back to tell whether it holds them now.
+  def save_tune
+    rise = rise_mg
+    gap = @detector.min_gap_ms
+    v = { "rise_mg" => rise, "min_gap_ms" => gap, "saved" => false, "file" => TUNE_FILE }
+    old = nil
+    begin
+      old = File.open(TUNE_FILE, "r") { |f| f.read }
+    rescue
+      old = nil
+    end
+    out = []
+    seen_rise = false
+    seen_gap = false
+    if old
+      lines = old.split("\n")
+      i = 0
+      while i < lines.size
+        line = lines[i]
+        i += 1
+        if line.start_with?("rise_mg")
+          out << "rise_mg = #{rise}" unless seen_rise
+          seen_rise = true
+        elsif line.start_with?("min_gap_ms")
+          out << "min_gap_ms = #{gap}" unless seen_gap
+          seen_gap = true
+        else
+          out << line
+        end
+      end
+    end
+    out << "rise_mg = #{rise}" unless seen_rise
+    out << "min_gap_ms = #{gap}" unless seen_gap
+    begin
+      File.open(TUNE_FILE, "w") { |f| f.write(out.join("\n") + "\n") }
+    rescue => e
+      v["error"] = "#{TUNE_FILE}: #{e.message}"
+      Log.warn("step_sensor: save: #{v["error"]}")
+      return v
+    end
+    r = conf_int(TUNE_FILE, "rise_mg")
+    g = conf_int(TUNE_FILE, "min_gap_ms")
+    if r == rise && g == gap
+      @saved_tune = [rise, gap]
+      v["saved"] = true
+      Log.info("step_sensor: saved rise=#{rise} mg min_gap=#{gap} ms to #{TUNE_FILE}")
+    else
+      v["error"] = "#{TUNE_FILE} reads back #{r.inspect} / #{g.inspect}"
+      Log.warn("step_sensor: save: #{v["error"]}")
+    end
+    v
   end
 
   def open_sensor
@@ -344,7 +425,7 @@ class StepSensorApp < FmrbApp
     r = @raw_last
     v = { "x" => (r[0] * 1000).round, "y" => (r[1] * 1000).round, "z" => (r[2] * 1000).round,
           "m" => (r[3] * 1000).round, "m_peak" => (r[4] * 1000).round, "dyn" => (r[5] * 1000).round,
-          "rise" => (@detector.rise * 1000).round, "steps" => @detector.count }
+          "rise" => rise_mg, "steps" => @detector.count }
     begin
       ::Asterism.session.put(@raw_key, ::MessagePack.pack(v))
       @raw_puts += 1
@@ -374,7 +455,8 @@ class StepSensorApp < FmrbApp
     last = @detector.last_ms
     { "steps" => @detector.count, "t_ms" => last, "interval_ms" => @detector.interval_ms,
       "cadence" => @detector.cadence(now), "ago_ms" => last ? now - last : nil,
-      "sent_ms" => now, "event" => event, "sensor" => @sensor, "raw" => @raw_on }
+      "sent_ms" => now, "event" => event, "sensor" => @sensor, "raw" => @raw_on,
+      "rise_mg" => rise_mg, "min_gap_ms" => @detector.min_gap_ms, "saved" => tune_saved? }
   end
 
   def publish(event)
@@ -403,7 +485,7 @@ class StepSensorApp < FmrbApp
       raise ::Asterism::Error, @creds_error if @creds_error
       ::Asterism.connect(@locator, node: @node, app: APP, credentials: @creds)
       ::Asterism.expose(OBJECT, StepSensorApp::Pedometer.new(self),
-                        methods: { reset: 0, state: 0, clock: 0, tune: 2, raw: 1 })
+                        methods: { reset: 0, state: 0, clock: 0, tune: 2, save: 0, raw: 1 })
       @connects += 1
       @net = "connected"
       Log.info("step_sensor: #{@node}/#{APP} connected (#{@locator}, #{Machine.board_millis - t0} ms)")

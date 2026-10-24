@@ -7,3 +7,6 @@ default_window_height = 150
 default_window_pos_x = 10
 default_window_pos_y = 30
 single_instance = true
+# Over about 20 KB of source the compile does not fit the ordinary pool of
+# the small boards (500 KB); this is the only app those boards run.
+large_memory = 1
