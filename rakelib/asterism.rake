@@ -45,4 +45,12 @@ namespace :asterism do
   task :link_test do
     sh "ruby test/asterism/link_run.rb"
   end
+
+  # FmrbAsterism::TableClient (doc/app_refactor, R4): the list of a game
+  # host's tables, join / leave, the view, the host gone and back, on top of
+  # Link. Against a fake Asterism and a fake game host; part of `rake test`.
+  desc "Run the FmrbAsterism::TableClient tests (CRuby, no docker)"
+  task :table_test do
+    sh "ruby test/asterism/table_run.rb"
+  end
 end
