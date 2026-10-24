@@ -18,6 +18,27 @@ extern "C" {
  */
 void fmrb_toml_init(void);
 
+/**
+ * Let the calling task allocate tomlc99's memory from its own pool.
+ *
+ * tomlc99 has one process-wide allocator, set by fmrb_toml_init to the SYSTEM
+ * pool. With hooks installed, every tomlc99 allocation first asks alloc: it
+ * returns true when the calling task takes the request (and stores the block,
+ * NULL on failure, in *out), false to leave it to the SYSTEM pool. free is
+ * asked the same way. The decision must depend only on the calling task, so
+ * a block is freed by the pool that gave it (the Ruby binding uses this for
+ * the app VM that is parsing).
+ */
+typedef bool (*fmrb_toml_task_alloc_t)(size_t size, void **out);
+typedef bool (*fmrb_toml_task_free_t)(void *ptr);
+void fmrb_toml_set_task_allocator(fmrb_toml_task_alloc_t alloc, fmrb_toml_task_free_t free_fn);
+
+/**
+ * Free memory tomlc99 handed out (a string from toml_rtos and the like),
+ * through the same allocator that gave it.
+ */
+void fmrb_toml_xfree(void *ptr);
+
 // ============================================================================
 // File loading and parsing
 // ============================================================================

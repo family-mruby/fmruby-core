@@ -9,12 +9,42 @@
 #include "fmrb_mem.h"
 #include "fmrb_app.h"
 #include "fmrb_toml.h"
+#include "fmrb_attr.h"
 
 const static char* TAG = "toml";
 
 // ============================================================================
 // Helper functions for easier TOML file loading and access
 // ============================================================================
+
+// PSRAM on the boards: the hooks cost no internal RAM.
+FMRB_EXT_RAM_BSS_ATTR static fmrb_toml_task_alloc_t s_task_alloc;
+FMRB_EXT_RAM_BSS_ATTR static fmrb_toml_task_free_t s_task_free;
+
+static void *toml_alloc_cb(size_t size) {
+    void *p = NULL;
+    fmrb_toml_task_alloc_t a = s_task_alloc;
+    if (a && a(size, &p)) {
+        return p;
+    }
+    return fmrb_sys_malloc(size);
+}
+
+void fmrb_toml_xfree(void *ptr) {
+    if (!ptr) {
+        return;
+    }
+    fmrb_toml_task_free_t f = s_task_free;
+    if (f && f(ptr)) {
+        return;
+    }
+    fmrb_sys_free(ptr);
+}
+
+void fmrb_toml_set_task_allocator(fmrb_toml_task_alloc_t alloc, fmrb_toml_task_free_t free_fn) {
+    s_task_free = free_fn;
+    s_task_alloc = alloc;
+}
 
 void fmrb_toml_init(void) {
     static bool initialized = false;
@@ -24,7 +54,7 @@ void fmrb_toml_init(void) {
     }
     initialized = true;
 
-    toml_set_memutil(fmrb_sys_malloc, fmrb_sys_free);
+    toml_set_memutil(toml_alloc_cb, fmrb_toml_xfree);
     FMRB_LOGI(TAG, "fmrb_toml_init done");
 }
 
@@ -243,7 +273,7 @@ void dump_toml_table(toml_table_t *tab, int indent) {
                 toml_datum_t elem = toml_string_at(arr, k);
                 if (elem.ok) {
                     FMRB_LOGI(TAG, "%s  [%d] \"%s\"", indent_str, k, elem.u.s);
-                    fmrb_sys_free(elem.u.s);
+                    fmrb_toml_xfree(elem.u.s);
                 } else {
                     toml_datum_t num = toml_int_at(arr, k);
                     if (num.ok) {
@@ -258,7 +288,7 @@ void dump_toml_table(toml_table_t *tab, int indent) {
         v = toml_string_in(tab, key);
         if (v.ok) {
             FMRB_LOGI(TAG, "%s%s = \"%s\"", indent_str, key, v.u.s);
-            fmrb_sys_free(v.u.s);
+            fmrb_toml_xfree(v.u.s);
             continue;
         }
 

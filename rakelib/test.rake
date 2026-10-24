@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + services + assoc + Asterism link + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "services:test", "assoc:test", "asterism:link_test", "wav:test", "tts:test",
+desc "Run all native host test suites (FmrbUI + FmrbToml + services + assoc + Asterism link + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "toml:test", "services:test", "assoc:test", "asterism:link_test", "wav:test", "tts:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -39,6 +39,16 @@ namespace :ui do
   desc "FmrbUI widget tests (host Ruby, no docker)"
   task :test do
     sh "ruby test/fmrb_ui/run.rb"
+  end
+end
+
+namespace :toml do
+  # FmrbToml: the shipped Ruby half with the C half played by tomlc99 and the
+  # firmware's own walk (toml_walk.c) built with the host cc. Run it after
+  # touching mrblib/fmrb-toml.rb or ports/esp32/toml_walk.c.
+  desc "FmrbToml read/update tests (host Ruby + cc, no docker)"
+  task :test do
+    sh "ruby test/toml/run.rb"
   end
 end
 

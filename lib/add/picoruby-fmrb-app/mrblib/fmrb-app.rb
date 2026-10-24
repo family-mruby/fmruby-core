@@ -194,6 +194,50 @@ class FmrbApp
   def theme_border; FmrbConst::THEME_BORDER; end      # rules, boxes, muted text
   def theme_fg_light; FmrbConst::THEME_TEXT_LIGHT; end # ink on accent / button
 
+  # ---- This app's own settings ----
+  #
+  # /home/<app_handle_name>.toml, read and written through FmrbToml: a Hash
+  # ({} when there is no file, or it is not TOML -- that one is logged), and
+  # save_app_settings("rise_mg" => 130) rewrites only the lines of the keys
+  # given (see FmrbToml.update for what it returns). Methods only, no
+  # instance variables: subclasses lay theirs out after the base's.
+  def app_settings
+    FmrbToml.load(app_settings_path) || {}
+  end
+
+  def save_app_settings(values)
+    FmrbToml.update(app_settings_path, values)
+  end
+
+  def app_settings_path
+    "/home/" + app_handle_name + ".toml"
+  end
+
+  # app_handle_name from the app's .app.toml, else the file name without
+  # .app.rb (/app/test/step_sensor.app.rb -> "step_sensor"), else the name.
+  def app_handle_name
+    path = FmrbApp.script_path.to_s
+    return name.to_s if path.empty?
+    dot = path.rindex(".")
+    if dot
+      conf = path[0, dot] + ".toml"
+      if File.exist?(conf)
+        h = FmrbToml.load(conf)
+        n = h ? h["app_handle_name"] : nil
+        return n if n.is_a?(String) && !n.empty?
+      end
+    end
+    base = path
+    slash = base.rindex("/")
+    base = base[slash + 1, base.length - slash - 1] if slash
+    if base.end_with?(".app.rb")
+      base = base[0, base.length - 7]
+    elsif dot && base.rindex(".")
+      base = base[0, base.rindex(".")]
+    end
+    base
+  end
+
   # Clear the user area (region inside the window frame, excluding the title
   # bar) with the given color. Use this instead of @gfx.clear to keep the
   # title bar and close button intact.

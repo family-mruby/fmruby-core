@@ -1053,6 +1053,15 @@ static mrb_value mrb_fmrb_app_s_config(mrb_state *mrb, mrb_value self)
     return result;
 }
 
+// FmrbApp.script_path -> String: the file this app was started from ("" for
+// an app built into the firmware). FmrbApp#app_handle_name starts from it.
+static mrb_value mrb_fmrb_app_s_script_path(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    return mrb_str_new_cstr(mrb, ctx ? ctx->filepath : "");
+}
+
 // FmrbApp.uptime_us() -> Integer
 // Microseconds since boot, for profiling from Ruby. Log timestamps only have
 // millisecond resolution and each log line blocks the console UART for several
@@ -1854,6 +1863,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "uptime_us", mrb_fmrb_app_s_uptime_us, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "script_path", mrb_fmrb_app_s_script_path, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
@@ -1884,6 +1894,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);
     mrb_fmrb_gfx_block_init(mrb);
+
+    // FmrbToml (toml.c): the firmware's TOML reader for Ruby
+    mrb_fmrb_toml_init(mrb);
 
     // Audio subsystem will be initialized when needed
     //mrb_fmrb_audio_init(mrb);
