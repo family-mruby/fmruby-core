@@ -24,6 +24,12 @@ module LauncherMixin
   LAUNCHER_ICON_COLS = 4
   LAUNCHER_ICON_PAD_X = 12
   LAUNCHER_ICON_PAD_Y = 8
+  # A name may spill into the gap between cells, leaving 2 px between two
+  # neighbouring names: 66 px is 11 Font0 characters ("FlappyDemo" and
+  # "Breakout.py" stay on one line). The last column still ends well left
+  # of the scrollbar.
+  LAUNCHER_LABEL_W = LAUNCHER_ICON_W + LAUNCHER_ICON_PAD_X - 2
+  LAUNCHER_LABEL_OFF = (LAUNCHER_ICON_W - LAUNCHER_LABEL_W) / 2
   LAUNCHER_BG = FmrbConst::THEME_WINDOW_BG
   LAUNCHER_TITLE_BG = FmrbConst::THEME_MENU_BG
   LAUNCHER_ICON_BG = FmrbConst::THEME_WINDOW_BG
@@ -876,18 +882,19 @@ module LauncherMixin
         # column position do not affect them.
         lay = app[:label_layout]
         unless lay
-          lay = icon_label_layout(app[:label], LAUNCHER_ICON_W)
+          lay = icon_label_layout(app[:label], LAUNCHER_LABEL_W)
           app[:label_layout] = lay
         end
+        lx = icon_x + LAUNCHER_LABEL_OFF
         # draw_text_mixed, not draw_text(mixed: true): the keyword costs one
         # object per call in mruby, and this loop runs per visible cell on
         # every scroll repaint. (The public positional form exists on both
         # engines; the private _draw_text_hybrid it used to call does not.)
         if lay.size == 2
-          @gfx.draw_text_mixed(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT)
+          @gfx.draw_text_mixed(lx + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT)
         else
-          @gfx.draw_text_mixed(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT)
-          @gfx.draw_text_mixed(icon_x + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT)
+          @gfx.draw_text_mixed(lx + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT)
+          @gfx.draw_text_mixed(lx + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT)
         end
       end
       vrow += 1
@@ -971,7 +978,9 @@ module LauncherMixin
   # or for the launcher itself on empty space. Not on the title bar.
   def handle_launcher_right_click(x, y)
     return nil if y < @launcher_y + LAUNCHER_TITLE_H
-    @lnc_ctx_open = false
+    # A second right click moves the menu: take the old one down first, which
+    # repaints its area and brings back the sprites it hid.
+    lnc_close_menu if @lnc_ctx_open
     content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
     idx = find_icon_at(x, y, content_y)
     prev = @launcher_selected
@@ -982,7 +991,22 @@ module LauncherMixin
     end
     # A fresh click after the menu is not the second half of a double click.
     @last_click_idx = -1
+    # Below the clicked icon's picture, not across it: the picture is a
+    # sprite above the canvas, so a menu opened at the pointer over its lower
+    # part had to hide the whole icon that was just clicked.
+    y = lnc_below_icon_sprite(idx, y) if idx >= 0
     lnc_open_menu(idx, x, y)
+  end
+
+  # The first y at or below y that clears the sprite of icon idx.
+  def lnc_below_icon_sprite(idx, y)
+    start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
+    return y if idx < start_idx
+    vrow = (idx - start_idx) / LAUNCHER_ICON_COLS
+    icon_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y +
+             vrow * (LAUNCHER_ICON_H + LAUNCHER_ICON_PAD_Y)
+    bottom = icon_y + (LAUNCHER_ICON_H - 18 - ICON_SPRITE_H) / 2 + ICON_SPRITE_H
+    y < bottom ? bottom : y
   end
 
   # Reload (the title bar button, F5, or the menu) rescans the app
@@ -1323,8 +1347,11 @@ module LauncherMixin
     spawn_app(app_name)
   end
 
+  # Scrolling takes the menu down (its target may scroll away); the repaint
+  # shows every visible sprite again.
   def launcher_scroll_up
     if @launcher_scroll > 0
+      @lnc_ctx_open = false
       @launcher_scroll -= 1
       redraw_launcher_only
     end
@@ -1333,6 +1360,7 @@ module LauncherMixin
   def launcher_scroll_down
     max_scroll = launcher_total_rows - launcher_visible_rows
     if max_scroll > 0 && @launcher_scroll < max_scroll
+      @lnc_ctx_open = false
       @launcher_scroll += 1
       redraw_launcher_only
     end
