@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "toml:test", "services:test", "assoc:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test",
+desc "Run all native host test suites (FmrbUI + FmrbText/FmrbButtons + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -39,6 +39,17 @@ namespace :ui do
   desc "FmrbUI widget tests (host Ruby, no docker)"
   task :test do
     sh "ruby test/fmrb_ui/run.rb"
+  end
+end
+
+namespace :text do
+  # FmrbText (fit a text into a width, wrap it in two lines) and FmrbButtons
+  # (click targets) with the real fmrb-gfx.rb metrics, against the helpers
+  # the game apps had before (doc/app_refactor R5). Run it after touching
+  # mrblib/fmrb-text.rb, fmrb-buttons.rb or FONT_METRICS.
+  desc "FmrbText and FmrbButtons tests (host Ruby, no docker)"
+  task :test do
+    sh "ruby test/fmrb_text/run.rb"
   end
 end
 
