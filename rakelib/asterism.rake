@@ -36,4 +36,13 @@ namespace :asterism do
     creds = File.join(asterism_dir!, "mrblib/credentials.rb")
     sh({ "ASTERISM_CREDENTIALS_RB" => creds }, "ruby test/asterism/run.rb")
   end
+
+  # FmrbAsterism::Link (doc/app_refactor, R1): waiting for WiFi and the
+  # screen, connecting, retrying, a lost connection, the application's
+  # setup after every connect. The gem file runs under CRuby against a fake
+  # Asterism; it needs no checkout, so it is part of `rake test`.
+  desc "Run the FmrbAsterism::Link tests (CRuby, no docker)"
+  task :link_test do
+    sh "ruby test/asterism/link_run.rb"
+  end
 end
