@@ -694,6 +694,47 @@ class OthelloTableApp < FmrbApp
     out
   end
 
+  # s cut to fit cols columns, ending in "…" when it was cut, so a cut never
+  # looks like the window's edge. "…" is counted as 2 columns (text_w's rule
+  # for a wide character); efont draws it in 1, so the cut errs short.
+  def fit_dots(s, cols)
+    s = s.to_s
+    return s if text_w(s) <= cols * 6
+    return "" if cols < 2
+    fit(s, cols - 2) + "…"
+  end
+
+  # s in at most two lines of cols columns. The break goes at the last space
+  # of the first line when the rest then fits; the second line ends in "…"
+  # if it is still too long.
+  def wrap2(s, cols)
+    s = s.to_s
+    return [s] if text_w(s) <= cols * 6
+    first = fit(s, cols)
+    sp = -1
+    i = 0
+    while i < first.length
+      sp = i if first[i, 1] == " "
+      i += 1
+    end
+    if sp > 0 && text_w(s[sp + 1, s.length].to_s) <= cols * 6
+      return [s[0, sp], s[sp + 1, s.length].to_s]
+    end
+    [first, fit_dots(s[first.length, s.length].to_s, cols)]
+  end
+
+  # The lines of wrap2(s, cols) from y down, 15 px apart; answers the y
+  # under them.
+  def text_lines(x, y, s, cols, color)
+    ls = wrap2(s, cols)
+    i = 0
+    while i < ls.size
+      text(x, y + i * 15, ls[i], color)
+      i += 1
+    end
+    y + ls.size * 15
+  end
+
   def button(id, x, y, w, label)
     @buttons << [id, x, y, w, 16]
     @gfx.fill_round_rect(x, y, w, 16, 3, theme_accent)
@@ -816,12 +857,16 @@ class OthelloTableApp < FmrbApp
     end
   end
 
+  # The panel right of the board. Every line stays inside @pw: a seat's name
+  # gives way (to "…") before its marks and its count, and a long line of
+  # the three slots under the seats or the note wraps to a second line,
+  # pushing the rest down.
   def draw_panel
     x = @px
     y = @y0 + 3
     n = @pw / 6
     v = @view
-    text(x, y, fit(@table.split("/")[2].to_s + (v ? "  " + status_word(v["st"]) : ""), n))
+    text(x, y, fit_dots(@table.split("/")[2].to_s + (v ? "  " + status_word(v["st"]) : ""), n))
     unless v
       text(x, y + 15, "入っています...", theme_border)
       return
@@ -839,13 +884,15 @@ class OthelloTableApp < FmrbApp
       tags += " [AI]" if ai_seat?(i)
       tags += " (自分)" if i == me
       tags += " 途切れ" if (aw >> i) & 1 == 1
-      label = name_of(i) + tags
-      label = "CPU" + tags if sk[i] == 2 && name_of(i) == "(空き)"
+      name = name_of(i)
+      name = "CPU" if sk[i] == 2 && name == "(空き)"
       num = cnt ? " #{cnt[i]}" : ""
       color = v["tn"] == i ? theme_accent : theme_fg
-      text(x + 14, yy, fit(label, n - 6) + num, color)
+      room = (@pw - 14 - text_w(tags + num)) / 6
+      text(x + 14, yy, fit_dots(name, room) + tags + num, color)
       i += 1
     end
+    # Three slots (one or two lines each), then the note.
     yy = y + 50
     st = v["st"]
     case st
@@ -853,11 +900,13 @@ class OthelloTableApp < FmrbApp
       tn = v["tn"].to_i
       who = v["tn"] == me ? "あなたの番" : (v["tn"] == 0 ? "黒の番" : "白の番")
       who = "#{name_of(tn)} が考え中" if ai_seat?(tn)
-      text(x, yy, fit("#{who} (#{v['n'].to_i + 1} 手目)", n), v["tn"] == me ? C_CURSOR : theme_fg)
+      yy = text_lines(x, yy, "#{who} (#{v['n'].to_i + 1} 手目)", n, v["tn"] == me ? C_CURSOR : theme_fg)
       if @deadline
         left = (@deadline - Machine.board_millis + 999) / 1000
         left = 0 if left < 0
-        text(x, yy + 15, fit("残り #{left} 秒 (切れたら CPU が打つ)", n), theme_border)
+        yy = text_lines(x, yy, "残り #{left} 秒 (切れたら CPU が打つ)", n, theme_border)
+      else
+        yy += 15
       end
     in "over"
       res = v["res"].is_a?(Hash) ? v["res"] : {}
@@ -865,15 +914,15 @@ class OthelloTableApp < FmrbApp
       word = w < 0 ? "引き分け" : "#{w == 0 ? '黒' : '白'} (#{name_of(w)}) の勝ち"
       word = "あなたの勝ち" if w >= 0 && w == me
       word = "あなたの負け" if w >= 0 && me >= 0 && me < 2 && w != me
-      text(x, yy, fit("終局 #{res['b']}-#{res['wc']}#{res['why'] == 'resign' ? ' 投了' : ''}", n), theme_accent)
-      text(x, yy + 15, fit(word, n), theme_accent)
+      yy = text_lines(x, yy, "終局 #{res['b']}-#{res['wc']}#{res['why'] == 'resign' ? ' 投了' : ''}", n, theme_accent)
+      yy = text_lines(x, yy, word, n, theme_accent)
     else
-      text(x, yy, fit(seated? ? "席に着いた (色は始めるときに決まる)" : "観戦中: 空いた席に座れる", n), theme_border)
-      text(x, yy + 15, fit("卓の主 (*) が始める", n), theme_border)
+      yy = text_lines(x, yy, seated? ? "席に着いた (色は始めるときに決まる)" : "観戦中: 空いた席に座れる", n, theme_border)
+      yy = text_lines(x, yy, "卓の主 (*) が始める", n, theme_border)
     end
     last = v["last"]
-    text(x, yy + 30, fit("最後: #{last == '--' ? 'パス' : last}", n), theme_border) if last && st == "play"
-    text(x, yy + 45, fit(@note, n), theme_border)
+    text(x, yy, fit_dots("最後: #{last == '--' ? 'パス' : last}", n), theme_border) if last && st == "play"
+    text_lines(x, yy + 15, @note, n, theme_border)
     draw_buttons(x)
   end
 
