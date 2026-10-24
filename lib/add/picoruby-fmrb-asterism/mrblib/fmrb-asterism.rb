@@ -90,24 +90,21 @@ module FmrbAsterism
     Asterism.profile
   end
 
-  # config.toml -> Hash (lines of key = "value"; other lines are left out).
+  # config.toml -> Hash: the top-level string values of CONFIG_KEYS, read
+  # through FmrbToml ({} without the file, or when it is not TOML -- that one
+  # is logged).
   def self.read_config
-    parse_config(read_file(CONFIG_FILE).to_s)
+    strings_of(FmrbToml.load(CONFIG_FILE), CONFIG_KEYS)
   end
 
-  def self.parse_config(text)
+  # The keys of keys whose values are Strings in conf (a Hash or nil).
+  def self.strings_of(conf, keys)
     h = {}
-    lines = text.split("\n")
+    return h unless conf
     i = 0
-    while i < lines.size
-      line = lines[i]
-      j = 0
-      while j < CONFIG_KEYS.size
-        k = CONFIG_KEYS[j]
-        v = toml_string(line, k)
-        h[k] = v if v && !h.key?(k)
-        j += 1
-      end
+    while i < keys.size
+      v = conf[keys[i]]
+      h[keys[i]] = v if v.is_a?(String)
       i += 1
     end
     h
@@ -127,7 +124,7 @@ module FmrbAsterism
     i = 0
     while i < CONFIG_KEYS.size
       k = CONFIG_KEYS[i]
-      out << "#{k} = \"#{toml_escape(c[k].to_s)}\"\n" if c.key?(k)
+      out << "#{k} = #{FmrbToml.dump_value(c[k].to_s)}\n" if c.key?(k)
       i += 1
     end
     out
@@ -144,7 +141,7 @@ module FmrbAsterism
       i += 1
       next unless File.exist?(path)
       found << path
-      v = how == :line ? first_line(read_file(path)) : parse_config(read_file(path).to_s)["name"].to_s
+      v = how == :line ? first_line(read_file(path)) : strings_of(FmrbToml.load(path), ["name"])["name"].to_s
       c[key] = v unless v.empty?
     end
     return c if found.empty?
@@ -181,16 +178,9 @@ module FmrbAsterism
     text.to_s.split("\n")[0].to_s.strip
   end
 
-  # The value of key = "..." in /etc/system_conf.toml ("" without it).
+  # The top-level string key of /etc/system_conf.toml ("" without it).
   def self.system_conf(key)
-    lines = read_file(SYSTEM_CONF).to_s.split("\n")
-    i = 0
-    while i < lines.size
-      v = toml_string(lines[i], key)
-      return v.strip if v
-      i += 1
-    end
-    ""
+    strings_of(FmrbToml.load(SYSTEM_CONF), [key])[key].to_s.strip
   end
 
   # The board's mDNS name ("" without WiFi).
@@ -263,31 +253,6 @@ module FmrbAsterism
     Settings.new(router, node, c["name"].to_s, creds, error)
   end
 
-  # key = "value" on one line -> value (only \" and \\ are unescaped), or nil.
-  def self.toml_string(line, key)
-    s = line.strip
-    return nil unless s.start_with?(key)
-    rest = s[key.length, s.length].to_s.strip
-    return nil unless rest.start_with?("=")
-    rest = rest[1, rest.length].to_s.strip
-    return nil unless rest.start_with?("\"")
-    out = "".dup
-    i = 1
-    n = rest.bytesize
-    while i < n
-      c = rest.byteslice(i, 1)
-      if c == "\\" && i + 1 < n
-        out << rest.byteslice(i + 1, 1)
-        i += 2
-        next
-      end
-      return out if c == "\""
-      out << c
-      i += 1
-    end
-    nil
-  end
-
   # The machine's Asterism credentials for a tls/ locator (connecting
   # straight to a cloud router with mutual TLS, doc/ruby_asterism G2a): the
   # .tar the console hands out, put in DIR as it is. One file; with more,
@@ -322,22 +287,6 @@ module FmrbAsterism
     path = credentials_path
     raise Asterism::Error, "#{locator} needs a credentials .tar in #{CREDENTIALS_DIR}" if path.nil?
     Asterism::Credentials.load(path)
-  end
-
-  def self.toml_escape(s)
-    out = "".dup
-    i = 0
-    n = s.bytesize
-    while i < n
-      c = s.byteslice(i, 1)
-      if c == "\\" || c == "\""
-        out << "\\" << c
-      elsif c.getbyte(0) >= 32
-        out << c
-      end
-      i += 1
-    end
-    out
   end
 end
 

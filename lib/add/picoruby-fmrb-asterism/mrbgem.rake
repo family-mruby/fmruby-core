@@ -9,4 +9,6 @@ MRuby::Gem::Specification.new('picoruby-fmrb-asterism') do |spec|
 
   spec.add_dependency 'picoruby-fmrb-const'
   spec.add_dependency 'picoruby-asterism'
+  # FmrbToml reads config.toml when this gem's file runs (the saved name).
+  spec.add_dependency 'picoruby-fmrb-app'
 end

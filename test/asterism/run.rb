@@ -62,6 +62,9 @@ module Asterism
   end
 end
 
+# FmrbToml as the boards have it (test/toml/host_toml.rb).
+require_relative "../toml/host_toml"
+
 unless File.exist?(CREDS_FILE)
   abort "#{CREDS_FILE} is missing: run rake asterism:config_test (or rake setup first)"
 end
@@ -259,6 +262,22 @@ put(OLD_NAME, "name = \"Old\"\n")
 quiet { FmrbAsterism.save_name("New") }
 check("save_name moves the old files first", FmrbAsterism.read_config,
       { "router" => "tcp/192.0.2.2:7447", "name" => "New" })
+
+puts "config.toml through FmrbToml (R2)"
+reset
+put(CONFIG, "router = \"tcp/192.0.2.2:7447\"\nrouter = \"tcp/192.0.2.3:7447\"\n")
+Log.lines.clear
+s, = settings
+check("a config.toml with a TOML error is not read", s.router, "tcp/zenohd:7447")
+check("which is logged", Log.lines.size, 1)
+put(CONFIG, "name = \"Ivy\"\n[other]\nrouter = \"tcp/192.0.2.2:7447\"\n")
+s, = settings
+check("a key inside a table is not a setting", s.router, "tcp/zenohd:7447")
+check("a top-level one is", s.name, "Ivy")
+put("#{ETC}/system_conf.toml", "asterism_node = \"  wasm-x  \"\n[theme]\nzenoh_router = \"tcp/x:1\"\n")
+s, = settings
+check("system_conf: a top-level value, stripped", s.node, "wasm-x")
+check("system_conf: not one inside a table", s.router, "tcp/zenohd:7447")
 
 puts
 if Check.failed > 0
