@@ -17,11 +17,14 @@
 # also the only directory that survives a reload, and it travels in the
 # exported tar with everything else they made.
 #
-# Read once, where an app resolves its colour constants. The parser is the
-# same small toml subset SvcConf.parse handles, for the same reason: there is
-# no Ruby binding for the C toml reader and this is twenty lines. Base-16
+# Read once, where an app resolves its colour constants, through FmrbToml
+# (the firmware's TOML reader): a file with a TOML error is not read at all
+# and the theme stays (one log line says why). A colour name may be written
+# without quotes -- FmrbToml hands an unquoted word back as its text -- and
+# that is how set writes one. The Spinel build has its own copy of this
+# module (fmrb_app_base_spinel.rb), which keeps its line reader. Base-16
 # String#to_i and String#downcase are avoided on purpose -- the digits are
-# looked up by hand so this file compiles under Spinel as well as mruby.
+# looked up by hand.
 module FmrbColors
   PATH = "/home/colors.toml"
   HEX = "0123456789abcdefABCDEF"
@@ -155,7 +158,20 @@ module FmrbColors
 
   # { "bg" => 0x24, ... } for one section; empty when there is nothing to say.
   def self.section(name)
-    parse(read, name)
+    out = {}
+    conf = FmrbToml.load(PATH)
+    sec = conf ? conf[name] : nil
+    return out unless sec.is_a?(Hash)
+    sec.each do |key, val|
+      col = nil
+      if val.is_a?(Integer)
+        col = val & 0xFF if val >= 0
+      elsif val.is_a?(String)
+        col = to_color(val)
+      end
+      out[key] = col unless col.nil?
+    end
+    out
   end
 
   def self.read
@@ -168,36 +184,6 @@ module FmrbColors
       return nil
     end
     text
-  end
-
-  def self.parse(text, name)
-    out = {}
-    return out if text.nil?
-    want = "[" + name + "]"
-    inside = false
-    lines = text.split("\n")
-    i = 0
-    while i < lines.size
-      line = lines[i].strip
-      i += 1
-      next if line.length == 0
-      next if line.start_with?("#")
-      if line.start_with?("[")
-        inside = (line == want)
-        next
-      end
-      next unless inside
-      eq = line.index("=")
-      next if eq.nil?
-      key = line[0, eq].strip
-      val = line[eq + 1, line.length - eq - 1].strip
-      cut = val.index("#")
-      val = val[0, cut].strip unless cut.nil?
-      next if key.length == 0 || val.length == 0
-      col = to_color(val)
-      out[key] = col unless col.nil?
-    end
-    out
   end
 
   # "0x24", "36", "black" or "\"black\"" -> 36. nil for anything else, so a
@@ -237,57 +223,16 @@ module FmrbColors
 
   # ---- writing it back ----------------------------------------------------
   #
-  # Line-level edits of whatever is already in the file, so comments, the
-  # other app's section and keys nobody here knows about all survive -- the
-  # same rule the system Config dialog follows for system_conf.toml. A file
-  # somebody wrote by hand must still look like theirs afterwards.
+  # Line-level edits of whatever is already in the file (FmrbToml.update), so
+  # comments, the other app's section and keys nobody here knows about all
+  # survive -- the same rule the system Config dialog follows for
+  # system_conf.toml. A file somebody wrote by hand must still look like
+  # theirs afterwards.
 
-  # value nil removes the key. Returns true when the file was written.
+  # value nil removes the key. Returns true when the file holds it now.
   def self.set(section, key, value)
-    want = "[" + section + "]"
-    text = read
-    lines = text.nil? ? [] : text.split("\n")
-    seen = false
-    i = 0
-    while i < lines.size
-      seen = true if lines[i].strip == want
-      i += 1
-    end
-    out = []
-    in_sec = false
-    placed = false
-    i = 0
-    while i < lines.size
-      line = lines[i]
-      t = line.strip
-      i += 1
-      if t.start_with?("[")
-        if in_sec && !placed && !value.nil?
-          out << (key + " = " + to_text(value))
-          placed = true
-        end
-        in_sec = (t == want)
-        out << line
-        next
-      end
-      if in_sec && !t.start_with?("#")
-        eq = t.index("=")
-        if !eq.nil? && t[0, eq].strip == key
-          if !value.nil? && !placed
-            out << (key + " = " + to_text(value))
-            placed = true
-          end
-          next                  # the old line goes, duplicates with it
-        end
-      end
-      out << line
-    end
-    if !value.nil? && !placed
-      out << "" if out.size > 0 && out[out.size - 1].strip.length > 0 && !seen
-      out << want unless seen
-      out << (key + " = " + to_text(value))
-    end
-    write(out)
+    v = value.nil? ? nil : FmrbToml.raw(to_text(value))
+    !FmrbToml.update(PATH, { section + "." + key => v }).nil?
   end
 
   # Everything this app had to say goes away, so it follows the theme again.

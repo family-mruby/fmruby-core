@@ -69,7 +69,8 @@ namespace :assoc do
   # replaced. Run it after touching mrblib/fmrb-assoc.rb.
   desc "File association tests (host Ruby, no docker)"
   task :test do
-    sh "ruby test/assoc/run.rb"
+    sh "ruby test/assoc/run.rb mruby"
+    sh "ruby test/assoc/run.rb spinel"
   end
 end
 
