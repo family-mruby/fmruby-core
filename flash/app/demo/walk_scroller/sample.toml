@@ -1,0 +1,69 @@
+# Walk Scroller script (a sample). Copy it to /home/walk_scroller.toml and
+# change it; the app reads that file first (L reads it again).
+#
+# Top level:
+#   node     the node whose steps drive the walk ("" = any node)
+#   step_px  how far the ground moves for one step (pixels, default 32)
+#   stop_ms  no step for this long and the walker stands (default 800)
+#
+# Each [[mark]] takes effect when the step count reaches `step`:
+#   text       the big text ("\n" breaks the line; Japanese is fine)
+#   size       its size, 1-4 (default 3)
+#   color      its colour, RGB332 (default 0xFF, white)
+#   sub        a second, smaller text under it
+#   sub_size   1-4 (default 2)
+#   sub_color  RGB332 (default 0xFC, yellow)
+#   scene      0 meadow, 1 mountains, 2 town, 3 seaside at sunset,
+#              4 night city (left out: the scene stays as it was)
+#   effect     "fireworks" or nothing
+# A mark without text shows no text.
+
+node = ""
+step_px = 32
+stop_ms = 800
+
+[[mark]]
+step = 0
+scene = 0
+text = "Hello"
+sub = "walk to start"
+
+[[mark]]
+step = 5
+text = ""
+
+[[mark]]
+step = 20
+scene = 1
+text = "Mountains"
+size = 3
+sub = "20 steps"
+
+[[mark]]
+step = 25
+text = ""
+
+[[mark]]
+step = 40
+scene = 2
+text = "Town"
+sub = "40 steps"
+
+[[mark]]
+step = 45
+text = ""
+
+[[mark]]
+step = 55
+scene = 3
+text = "Seaside"
+sub = "55 steps"
+
+[[mark]]
+step = 60
+scene = 4
+text = "World"
+size = 4
+color = 0xFC
+sub = "こんにちは"
+effect = "fireworks"
