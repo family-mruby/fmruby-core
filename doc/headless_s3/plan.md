@@ -1,6 +1,6 @@
 # ヘッドレス Family mruby (ESP32-S3、AtomS3R)
 
-> 状態: 進行中 (H3 まで完了) | 更新: 2026-10-13 | 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト
+> 状態: 進行中 (H3・M3s・S1 まで完了) | 更新: 2026-10-24 | 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト
 
 ## 目的
 
@@ -144,6 +144,8 @@ AtomS3R の作り (H1-H3) には、描画の部品の中に AtomS3R 専用の分
 | M1 (完了 2026-10-12、report/m1_m2.md) | 名前を実態に合わせる: `display_p4` (フォルダ・タスク・関数) を「端末の中で描く描画」の名前 (例: `display_local`) に機械的に変える。振る舞いは変えない (Tab5・NARYAv4・AtomS3R・ブラウザ版・Linux のファームの大きさと内蔵 RAM が同じ) |
 | M2 (完了 2026-10-12、report/m1_m2.md、口は `board/board_display.h`。NARYAv4 (P4-Nano) は実機で確かめ、HDMI の映りもユーザが目視で合格 (2026-10-12)。Tab5 の実機の確かめはユーザ待ち) | 描画の部品から端末名の分岐を追い出す: 描画の部品は「端末の画面の口」(初期化・矩形の送り出し・背光・I2C の持ち主) だけを呼ぶ。端末ごとの違いは口の実装 1 つにまとめる。`#if defined(FMRB_HW_ATOMS3R)` を描画の部品から 0 にする。小さい画面の振る舞いは今と同じく画面の幅で決める |
 | M3 | M5 の機種をまとめる: M5 の機種用の口の実装を 1 つ作り、中で M5GFX の自動判別を使う (まず画面だけ。電源・ボタンが要る機種が来たら M5Unified を検討)。**2 台目は M5StickS3** (2026-10-12 ユーザ) で確かめる。起動の時間、ピンのぶつかり (I2C の持ち主)、flash の増えを測る |
+| M3s (完了 2026-10-24、report/m3s.md) | M5StickS3 を `FMRB_HW_TARGET=STICKS3` として足す (ATOMS3R と同じ書き方。M3 の「M5 の口のまとめ」は後回し)。画面 240x135、ボタン 2 つ、電源の石 M5PM1、BMI270。WiFi・devctl・Asterism (VPS のルータへ mTLS も) が動く。sdkconfig は ATOMS3R のものを共用 |
+| S1 (完了 2026-10-24、report/s1.md) | StickS3 の BMI270 で一歩ごとに検知して Asterism に出す `step_sensor` (FIFO を全部読む、立ち上がりで数える、tune/save、生の加速度 20 Hz と dyn_peak)。振ったあと基準が戻らない不具合は 371ee7ce で直した。受け側の見本は `flash/app/demo/walk_scroller` |
 | M4 (完了 2026-10-12、ATOMS3R のジョブ) | CI に `build-esp32 (ATOMS3R)` を足す (M3 の後は StickS3 も) |
 
 - 順はこのとおり (2026-10-12 ユーザ「その順でおすすめで」)。
