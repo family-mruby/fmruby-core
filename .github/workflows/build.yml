@@ -16,12 +16,14 @@ jobs:
     # (display_local with the CPU backend, no child chip), single-app, with
     # its board defaults (Rakefile BOARD_BUILD_DEFAULTS) -- the mruby editor,
     # no Spinel FFT, no Japanese fonts, and Asterism fetched and built in.
+    # STICKS3 is the same shape on another board (its own pins and panel
+    # driver), built so the second mini board does not rot.
     name: build-esp32 (${{ matrix.hw_target }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        hw_target: [NARYAv3, TAB5, ATOMS3R]
+        hw_target: [NARYAv3, TAB5, ATOMS3R, STICKS3]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -68,6 +70,8 @@ jobs:
         run: |
           sed -i 's/^FMRB_HW_TARGET=/#FMRB_HW_TARGET=/' .env
           sed -i 's/^#FMRB_HW_TARGET=${{ matrix.hw_target }}$/FMRB_HW_TARGET=${{ matrix.hw_target }}/' .env
+          # A target .env has no commented-out line for (STICKS3) is added.
+          grep -q '^FMRB_HW_TARGET=' .env || echo 'FMRB_HW_TARGET=${{ matrix.hw_target }}' >> .env
           test "$(grep -c '^FMRB_HW_TARGET=' .env)" = 1
           grep '^FMRB_HW_TARGET=${{ matrix.hw_target }}$' .env
 
