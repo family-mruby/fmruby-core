@@ -147,6 +147,10 @@ class SystemDesktopApp < FmrbApp
     @last_click_time = 0
     @last_click_idx = -1
     @launcher_apps = []
+    @lnc_ctx_open = false
+    @lnc_ctx_target = -1
+    @lnc_ctx_x = 0
+    @lnc_ctx_y = 0
 
     # Desktop icons (desktop_icons.rb)
     @dicon_paths = []
@@ -1423,8 +1427,8 @@ class SystemDesktopApp < FmrbApp
   def paint_bg_rect(gfx, x, y, w, h)
     c = FmrbApp::TRANSPARENT_COLOR
     if launcher_title_hole?(x, y, w, h)
-      # The launcher's desktop button lives in its title bar and hides while
-      # nothing is selected; the ground there is the title bar, not the panel.
+      # The launcher's Reload button lives in its title bar and hides when the
+      # launcher closes; the ground there is the title bar, not the panel.
       c = LauncherMixin::LAUNCHER_TITLE_BG
     elsif hole_inside_open_panel?(x, y, w, h)
       c = PANEL_BG
@@ -1499,8 +1503,8 @@ class SystemDesktopApp < FmrbApp
       return BOOT_FRAME_MS
     end
 
-    # A rescan asked for by a right-click runs here rather than in the input
-    # handler (see handle_launcher_right_click). Returning straight after it
+    # A rescan asked for by the launcher's Reload runs here rather than in the
+    # input handler (see launcher_request_rescan). Returning straight after it
     # gives the queue a turn to drain before anything else is done.
     #
     # Drive the collector between rescan slices when the pool is tight. This
@@ -1850,7 +1854,7 @@ class SystemDesktopApp < FmrbApp
         end
       end
       if button == 3 && @launcher_open
-        # Right click in launcher: rescan to pick up newly added apps
+        # Right click in launcher: the icon menu (add to / remove from desktop)
         if hit_launcher?(ev[:x], ev[:y])
           handle_launcher_right_click(ev[:x], ev[:y])
           return
@@ -1887,9 +1891,10 @@ class SystemDesktopApp < FmrbApp
       end
 
       # Launcher: arrows move the selection (scrolling as needed), Enter
-      # launches. See handle_launcher_key in launcher.rb.
+      # launches, Tab opens the icon menu, D adds/removes the desktop icon,
+      # F5 reloads, Esc closes. See handle_launcher_key in launcher.rb.
       if @launcher_open
-        return if handle_launcher_key(keycode, character)
+        return if handle_launcher_key(keycode, character, scancode)
       end
 
       # File selector: arrows and Enter first. In save mode whatever is left

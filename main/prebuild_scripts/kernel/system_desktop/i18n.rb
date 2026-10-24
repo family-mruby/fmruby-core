@@ -84,6 +84,9 @@ FmrbI18n.add(
     refresh:         "Refresh",
     desk_add:        "Add to desktop",
     desk_remove:     "Remove from desktop",
+    lnc_self_add:    "Add Launcher icon",
+    lnc_self_remove: "Remove Launcher icon",
+    lnc_reload:      "Reload",
   },
   "ja" => {
     shell:           "シェル",
@@ -163,5 +166,8 @@ FmrbI18n.add(
     refresh:         "更新",
     desk_add:        "デスクトップに置く",
     desk_remove:     "デスクトップから外す",
+    lnc_self_add:    "ランチャーを置く",
+    lnc_self_remove: "ランチャーを外す",
+    lnc_reload:      "再読込",
   },
 )

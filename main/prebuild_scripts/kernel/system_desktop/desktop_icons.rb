@@ -8,7 +8,8 @@
 #
 # Which apps: /home/desktop.toml when the user has one, otherwise the default
 # set shipped in /usr/share/desktop/desktop.toml (/home ships empty). The
-# launcher's desktop button adds and removes apps and writes /home/desktop.toml.
+# launcher's icon menu (right click, or the D key) adds and removes apps and
+# writes /home/desktop.toml.
 # A file that cannot be read or parsed counts as absent, so a broken user
 # file falls back to the default set instead of an empty desktop.
 #
@@ -19,8 +20,10 @@
 # Two entries are not apps: "desktop/launcher" opens the launcher (the menu's
 # Launcher, shortcut l), shown with a grid of tiles, and "desktop/file_manager"
 # opens the desktop's own File Manager (the menu's File Manager), shown with a
-# folder icon. Neither is in the launcher's list, so the launcher's button
-# cannot add or remove them; they are written into the file by hand.
+# folder icon. Neither is in the launcher's list: the launcher's own icon is
+# added and removed from the menu a right click on the launcher's empty space
+# opens (or D with nothing selected); the File Manager's only by editing the
+# file.
 #
 # Drawing: the icons are stamped onto the background canvas with draw_tile
 # from the launcher's icon SpriteImages (the same bitmaps, shared by icon
@@ -67,7 +70,7 @@ module DesktopIconsMixin
   # ---- Which apps ----
 
   # Read the list and resolve it into icons. Boot calls this once the launcher
-  # list exists; the launcher's button calls it again after a change.
+  # list exists.
   def build_desktop_icons
     mark = ::FmrbApp.pool_used
     @dicon_paths = load_desktop_icon_paths
@@ -102,7 +105,7 @@ module DesktopIconsMixin
     @dicon_paths.index(path) ? true : false
   end
 
-  # The launcher's button. Adds the app at the bottom or takes it off, keeps
+  # The launcher's icon menu. Adds the app at the bottom or takes it off, keeps
   # the choice in /home and repaints the background: taking an icon off has
   # to give the wallpaper under it back, and that is only had by redrawing it.
   def toggle_desktop_icon(path)
@@ -204,7 +207,7 @@ module DesktopIconsMixin
 
   def save_desktop_icon_paths
     buf = "# Apps shown as icons on the desktop, top to bottom. The launcher's\n"
-    buf << "# desktop button writes this file; delete it to get the default set back.\n"
+    buf << "# icon menu (right click) writes this file; delete it to get the default set back.\n"
     buf << "apps = [\n"
     @dicon_paths.each { |p| buf << "  \"#{p}\",\n" }
     buf << "]\n"

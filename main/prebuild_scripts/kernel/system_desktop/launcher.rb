@@ -1,5 +1,18 @@
 # Launcher module for SystemDesktopApp
 # Provides app launcher window with icon grid and double-click launch
+#
+# The title bar holds the name, a Reload button (rescans /app; key F5) and the
+# round close button the other windows have. A right click on an icon opens a
+# small menu with "Add to desktop" / "Remove from desktop" for that app; a
+# right click on empty space opens the same menu for the launcher's own
+# desktop icon ("desktop/launcher") plus Reload. Like the file manager's menu
+# it prints the key beside each item. On a Tab5 the right click is the
+# two-finger tap.
+#
+# Keys: arrows move the selection, Enter launches, Tab opens the menu on the
+# selection, D adds or removes the selected app on the desktop (the launcher's
+# own icon when nothing is selected), F5 reloads, Esc closes the menu or else
+# the launcher.
 
 module LauncherMixin
   # Launcher window layout
@@ -213,8 +226,8 @@ module LauncherMixin
   # written to a flat file and replayed instead. Boot trusts the cache without
   # revalidating it - checking would mean walking the directories again, which
   # is most of what the cache exists to avoid. The launcher already has an
-  # explicit rescan on right-click, and that is what picks up added or removed
-  # apps; it rewrites the cache afterwards.
+  # explicit rescan (its Reload button, F5), and that is what picks up added or
+  # removed apps; it rewrites the cache afterwards.
   #
   # Format: a version+language header line, then one app per line, tab
   # separated: label, app path, icon char, icon file. No quoting - the scan
@@ -286,7 +299,7 @@ module LauncherMixin
   end
 
   # Boot path: replay the index cache when there is one, walk /app when there
-  # is not. The right-click rescan does not come through here -- it walks /app
+  # is not. The Reload rescan does not come through here -- it walks /app
   # in slices (rescan_start / rescan_step) so the machine keeps running.
   def scan_apps
     @launcher_apps = builtin_apps
@@ -546,6 +559,7 @@ module LauncherMixin
   def draw_launcher
     draw_launcher_frame
     draw_launcher_cells
+    draw_launcher_menu if @lnc_ctx_open
   end
 
   # Scroll-path repaint: everything a scroll does NOT change (window frame,
@@ -612,30 +626,39 @@ module LauncherMixin
     @ui.set_range(:lnc_sb, launcher_total_rows, launcher_visible_rows)
     @ui.set_value(:lnc_sb, @launcher_scroll)
     @ui.set_visible(:lnc_sb, true)
-    # The desktop button sits at the right end of the title bar. A button and
-    # not a right-click on the icon: the right-click already means "rescan"
-    # anywhere in this window, and that stays as it was.
-    @ui.move(:lnc_desk, x + LAUNCHER_W - 3 - LNC_DESK_W, y + 1, LNC_DESK_W, LAUNCHER_TITLE_H - 2)
-    update_launcher_desk_button
+    # Reload at the right end of the title bar, left of the close button.
+    @ui.move(:lnc_reload, x + LAUNCHER_W - LNC_RELOAD_RIGHT - LNC_RELOAD_W, y + 1,
+             LNC_RELOAD_W, LAUNCHER_TITLE_H - 2)
+    @ui.set_visible(:lnc_reload, true)
+    # Close button: the small filled circle every window has (file manager,
+    # app windows), at the same place and with the same hit square.
+    @gfx.fill_circle(x + LAUNCHER_W - LNC_CLOSE_INSET, y + LAUNCHER_TITLE_H / 2, 3,
+                     FmrbConst::THEME_TEXT_LIGHT)
     @ui.invalidate_all
   end
 
   LNC_SB_W = 10
-  # Wide enough for the longer of the two labels in either language
-  # ("Remove from desktop" is 19 Font0 characters).
-  LNC_DESK_W = 118
+  # "Reload (F5)" is 11 Font0 characters (66 px); the Japanese label is
+  # narrower. The close button's hit square ends 2 px from the frame and
+  # starts 12 px in, so the button stops 14 px from the right edge.
+  LNC_RELOAD_W = 72
+  LNC_RELOAD_RIGHT = 14
+  LNC_CLOSE_INSET = 7
+  LNC_CLOSE_HIT = 5
 
   def build_launcher_widgets
     @ui.scrollbar(:lnc_sb, 0, 0, LNC_SB_W, 40, 0, 1)
     @ui.set_visible(:lnc_sb, false)
-    @ui.button(:lnc_desk, 0, 0, LNC_DESK_W, LAUNCHER_TITLE_H - 2, FmrbI18n.t(:desk_add))
-    @ui.set_visible(:lnc_desk, false)
+    @ui.button(:lnc_reload, 0, 0, LNC_RELOAD_W, LAUNCHER_TITLE_H - 2,
+               "#{FmrbI18n.t(:lnc_reload)} (F5)")
+    @ui.set_visible(:lnc_reload, false)
     nil
   end
 
   def handle_launcher_widget(id)
-    if id == :lnc_desk
-      launcher_toggle_desktop
+    if id == :lnc_reload
+      lnc_close_menu if @lnc_ctx_open
+      launcher_request_rescan
       return nil
     end
     return nil unless id == :lnc_sb
@@ -643,29 +666,146 @@ module LauncherMixin
     nil
   end
 
-  # The button says what pressing it will do to the selected app: put it on
-  # the desktop, or take it off. Hidden while nothing is selected (a disabled
-  # button is a blank box in the default theme, its text and fill being the
-  # same colour); paint_bg_rect gives the hole back the title bar colour.
-  # Only marks the widget; the caller's flush draws it.
-  def update_launcher_desk_button
-    sel = @launcher_selected
-    if sel < 0 || sel >= @launcher_apps.size
-      @ui.set_visible(:lnc_desk, false)
-      return nil
+  # ---- Icon menu (right click / Tab) ----
+  #
+  # One item for an app: put it on the desktop or take it off. Opened on
+  # empty space (target -1) it acts on the launcher's own desktop icon and
+  # also offers Reload. Drawn on the launcher's canvas, inside the launcher's
+  # rectangle (that is the overlay region the kernel composites), so the icon
+  # sprites under it -- composited above the canvas -- are hidden while it is
+  # up and shown again by the repaint that takes it down.
+  LNC_CTX_W = 150       # "Remove Launcher icon" (120 px) plus the key column
+  LNC_CTX_ITEM_H = 14
+  LNC_CTX_KEY_COLOR = 0x49
+  LNC_KEY_DESK = "D"
+  LNC_KEY_RELOAD = "F5"
+  LNC_ITEM_DESK = 0
+  LNC_ITEM_RELOAD = 1
+
+  def lnc_ctx_items
+    @lnc_ctx_target < 0 ? [LNC_ITEM_DESK, LNC_ITEM_RELOAD] : [LNC_ITEM_DESK]
+  end
+
+  # The desktop entry the menu (or the D key) acts on.
+  def lnc_target_path(target)
+    if target >= 0 && target < @launcher_apps.size
+      @launcher_apps[target][:app]
+    else
+      DesktopIconsMixin::DICON_LAUNCHER
     end
-    on = desktop_icon_listed?(@launcher_apps[sel][:app])
-    @ui.set_text(:lnc_desk, FmrbI18n.t(on ? :desk_remove : :desk_add))
-    @ui.set_visible(:lnc_desk, true)
+  end
+
+  def lnc_ctx_label(item)
+    return FmrbI18n.t(:lnc_reload) if item == LNC_ITEM_RELOAD
+    on = desktop_icon_listed?(lnc_target_path(@lnc_ctx_target))
+    if @lnc_ctx_target < 0
+      FmrbI18n.t(on ? :lnc_self_remove : :lnc_self_add)
+    else
+      FmrbI18n.t(on ? :desk_remove : :desk_add)
+    end
+  end
+
+  # Open the menu for target (an app index, or -1 for the launcher itself)
+  # with its top left at (x, y), pulled inside the icon area.
+  def lnc_open_menu(target, x, y)
+    @lnc_ctx_target = target
+    h = LNC_CTX_ITEM_H * lnc_ctx_items.size + 2
+    min_x = @launcher_x + 1
+    max_x = @launcher_x + LAUNCHER_W - LNC_SB_W - 1 - LNC_CTX_W
+    min_y = @launcher_y + LAUNCHER_TITLE_H
+    max_y = @launcher_y + LAUNCHER_H - 1 - h
+    x = max_x if x > max_x
+    x = min_x if x < min_x
+    y = max_y if y > max_y
+    y = min_y if y < min_y
+    @lnc_ctx_x = x
+    @lnc_ctx_y = y
+    @lnc_ctx_open = true
+    draw_launcher_menu
+    @gfx.present
     nil
   end
 
-  def launcher_toggle_desktop
-    sel = @launcher_selected
-    return nil if sel < 0 || sel >= @launcher_apps.size
-    toggle_desktop_icon(@launcher_apps[sel][:app])
-    update_launcher_desk_button
-    @ui.flush
+  # Taking the menu down repaints the icon area, which also brings back the
+  # sprites the menu hid.
+  def lnc_close_menu
+    @lnc_ctx_open = false
+    redraw_launcher_only
+    nil
+  end
+
+  def draw_launcher_menu
+    return nil unless @lnc_ctx_open
+    items = lnc_ctx_items
+    cx = @lnc_ctx_x
+    cy = @lnc_ctx_y
+    ch = LNC_CTX_ITEM_H * items.size + 2
+    lnc_hide_sprites_under(cx, cy, LNC_CTX_W, ch)
+    @gfx.fill_rect(cx, cy, LNC_CTX_W, ch, LAUNCHER_BG)
+    @gfx.draw_rect(cx, cy, LNC_CTX_W, ch, FmrbConst::THEME_BORDER)
+    i = 0
+    while i < items.size
+      item = items[i]
+      iy = cy + 1 + i * LNC_CTX_ITEM_H
+      @gfx.draw_text_mixed(cx + 6, iy + 3, lnc_ctx_label(item), LAUNCHER_TEXT)
+      key = item == LNC_ITEM_RELOAD ? LNC_KEY_RELOAD : LNC_KEY_DESK
+      # Right-aligned, at 6 pixels per character (the system font's advance).
+      @gfx.draw_text(cx + LNC_CTX_W - 4 - key.length * 6, iy + 3, key,
+                     LNC_CTX_KEY_COLOR, LAUNCHER_BG)
+      i += 1
+    end
+    nil
+  end
+
+  # Hide the visible icon sprites that overlap the rectangle.
+  def lnc_hide_sprites_under(rx, ry, rw, rh)
+    return nil unless @icon_sprite_instances
+    start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
+    vis_end = start_idx + launcher_visible_rows * LAUNCHER_ICON_COLS
+    content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
+    i = start_idx
+    while i < vis_end && i < @icon_sprite_instances.length
+      inst = @icon_sprite_instances[i]
+      if inst
+        col = (i - start_idx) % LAUNCHER_ICON_COLS
+        vrow = (i - start_idx) / LAUNCHER_ICON_COLS
+        bx = @launcher_x + LAUNCHER_ICON_PAD_X + col * (LAUNCHER_ICON_W + LAUNCHER_ICON_PAD_X) +
+             (LAUNCHER_ICON_W - ICON_SPRITE_W) / 2
+        by = content_y + vrow * (LAUNCHER_ICON_H + LAUNCHER_ICON_PAD_Y) +
+             (LAUNCHER_ICON_H - 18 - ICON_SPRITE_H) / 2
+        if bx < rx + rw && bx + ICON_SPRITE_W > rx && by < ry + rh && by + ICON_SPRITE_H > ry
+          inst.visible = false
+        end
+      end
+      i += 1
+    end
+    nil
+  end
+
+  def hit_launcher_menu?(x, y)
+    return false unless @lnc_ctx_open
+    ch = LNC_CTX_ITEM_H * lnc_ctx_items.size + 2
+    x >= @lnc_ctx_x && x < @lnc_ctx_x + LNC_CTX_W && y >= @lnc_ctx_y && y < @lnc_ctx_y + ch
+  end
+
+  def handle_launcher_menu_click(x, y)
+    items = lnc_ctx_items
+    idx = (y - @lnc_ctx_y - 1) / LNC_CTX_ITEM_H
+    target = @lnc_ctx_target
+    lnc_close_menu
+    return nil if idx < 0 || idx >= items.size
+    if items[idx] == LNC_ITEM_RELOAD
+      launcher_request_rescan
+    else
+      launcher_toggle_desktop(target)
+    end
+    nil
+  end
+
+  # Put the entry on the desktop or take it off. The desktop icons live on
+  # the background canvas, so the launcher on top needs no repaint.
+  def launcher_toggle_desktop(target)
+    toggle_desktop_icon(lnc_target_path(target))
     nil
   end
 
@@ -819,6 +959,7 @@ module LauncherMixin
     @launcher_scroll = 0
     @last_click_time = 0
     @last_click_idx = -1
+    @lnc_ctx_open = false
 
     # Notify kernel: overlay covers launcher area
     notify_overlay_state(true, @launcher_x, @launcher_y, LAUNCHER_W, LAUNCHER_H)
@@ -826,29 +967,50 @@ module LauncherMixin
     draw_foreground
   end
 
-  # Right-click anywhere inside the launcher rescans the app directories so
-  # newly added/removed apps (e.g. via `create_app` or BLE upload) appear
-  # without rebooting.
+  # Right click: the icon menu for the icon under the pointer (selecting it),
+  # or for the launcher itself on empty space. Not on the title bar.
+  def handle_launcher_right_click(x, y)
+    return nil if y < @launcher_y + LAUNCHER_TITLE_H
+    @lnc_ctx_open = false
+    content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
+    idx = find_icon_at(x, y, content_y)
+    prev = @launcher_selected
+    if idx != prev
+      redraw_launcher_icon(prev, LAUNCHER_ICON_BG) if prev >= 0
+      @launcher_selected = idx
+      redraw_launcher_icon(idx, LAUNCHER_ICON_SEL) if idx >= 0
+    end
+    # A fresh click after the menu is not the second half of a double click.
+    @last_click_idx = -1
+    lnc_open_menu(idx, x, y)
+  end
+
+  # Reload (the title bar button, F5, or the menu) rescans the app
+  # directories so newly added/removed apps (e.g. via `create_app` or BLE
+  # upload) appear without rebooting.
   # The rescan does not run here. It walks /app, opens and parses every
   # .app.toml and rebuilds the icon sprites -- 7.8 s on a board -- and doing
   # that inside the input handler means the desktop stops draining its
   # message queue for the whole of it (measured: msg_send TIMEOUT with
   # waiting=64), on top of the event-dispatch frames, with a second
-  # right-click able to re-enter the whole thing. Mark it and let on_update
+  # second request able to re-enter the whole thing. Mark it and let on_update
   # pick it up, which is the shallowest point in the loop and cannot nest.
-  def handle_launcher_right_click(x, y)
-    return if @rescan_pending || @rescanning
+  def launcher_request_rescan
+    return nil if @rescan_pending || @rescanning
     @rescan_pending = true
     draw_launcher_status("Rescanning...")
+    nil
   end
 
   # Show immediate visual feedback in the title bar so the user knows the
   # rescan was accepted. The actual work (filesystem scan + sprite uploads)
-  # may take 1-2 seconds before the new icons are visible.
+  # may take 1-2 seconds before the new icons are visible. Only the left
+  # part is painted: the Reload and close buttons stay where they are.
   def draw_launcher_status(text, color = FmrbGfx::YELLOW)
     x = @launcher_x
     y = @launcher_y
-    @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
+    @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - LNC_RELOAD_RIGHT - LNC_RELOAD_W - 2,
+                   LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
     @gfx.draw_text(x + 4, y + 3, text, color, LAUNCHER_TITLE_BG, mixed: true)
     @gfx.present
   end
@@ -948,9 +1110,10 @@ module LauncherMixin
     return unless @launcher_open
     @launcher_open = false
     @launcher_selected = -1
+    @lnc_ctx_open = false
     # Hidden before the repaint, like every other overlay's widgets.
     @ui.set_visible(:lnc_sb, false)
-    @ui.set_visible(:lnc_desk, false)
+    @ui.set_visible(:lnc_reload, false)
     @ui.flush
     hide_all_icon_sprites
     notify_overlay_state(false, 0, 0, 0, 0)
@@ -982,6 +1145,26 @@ module LauncherMixin
   end
 
   def handle_launcher_click(x, y)
+    # The menu takes the first click: on an item it acts, anywhere else it
+    # only goes away.
+    if @lnc_ctx_open
+      if hit_launcher_menu?(x, y)
+        handle_launcher_menu_click(x, y)
+      else
+        lnc_close_menu
+      end
+      return nil
+    end
+
+    # Close button hit square, around the circle draw_launcher_frame draws.
+    ccx = @launcher_x + LAUNCHER_W - LNC_CLOSE_INSET
+    ccy = @launcher_y + LAUNCHER_TITLE_H / 2
+    if x >= ccx - LNC_CLOSE_HIT && x <= ccx + LNC_CLOSE_HIT &&
+       y >= ccy - LNC_CLOSE_HIT && y <= ccy + LNC_CLOSE_HIT
+      close_launcher
+      return nil
+    end
+
     # Icon hit test
     content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
     icon_idx = find_icon_at(x, y, content_y)
@@ -1006,15 +1189,13 @@ module LauncherMixin
         end
         @last_click_idx = icon_idx
         @last_click_time = now
-        update_launcher_desk_button
-        @gfx.present unless @ui.flush
+        @gfx.present
       end
     else
       if @launcher_selected >= 0
         redraw_launcher_icon(@launcher_selected, LAUNCHER_ICON_BG)
         @launcher_selected = -1
-        update_launcher_desk_button
-        @gfx.present unless @ui.flush
+        @gfx.present
       end
     end
     nil  # spawn_app branch is void-typed (Spinel) -> pin a concrete return
@@ -1050,9 +1231,34 @@ module LauncherMixin
   # Arrow keys move the selection through the grid (scrolling when it
   # crosses the visible range), Enter launches. Faster than positioning
   # the trackpad cursor and double-tapping, which is the reason it exists.
+  # Tab, D, F5 and Esc are read from the scancode (the HID usage ID on the
+  # device and the SDL scancode in the simulator, the same numbers), D from
+  # the character.
 
   # Returns true when the key was consumed (desktop's on_event stops there).
-  def handle_launcher_key(keycode, character)
+  def handle_launcher_key(keycode, character, scancode)
+    if @lnc_ctx_open
+      # As in the file manager: the first key takes the menu down, and only
+      # Esc and Tab are spent doing that -- the rest act as usual.
+      lnc_close_menu
+      return true if scancode == FmrbConst::KEY_ESC || scancode == FmrbConst::KEY_TAB
+    end
+    if scancode == FmrbConst::KEY_ESC
+      close_launcher
+      return true
+    end
+    if scancode == FmrbConst::KEY_F5
+      launcher_request_rescan
+      return true
+    end
+    if scancode == FmrbConst::KEY_TAB
+      launcher_open_menu_for_selection
+      return true
+    end
+    if character == 100 || character == 68          # d / D
+      launcher_toggle_desktop(@launcher_selected)
+      return true
+    end
     case keycode
     when FmrbConst::KEY_UP    then launcher_move_selection(-LAUNCHER_ICON_COLS)
     when FmrbConst::KEY_DOWN  then launcher_move_selection(LAUNCHER_ICON_COLS)
@@ -1083,16 +1289,31 @@ module LauncherMixin
     if row < @launcher_scroll || row >= @launcher_scroll + vis
       # Selection left the visible range: scroll to it and repaint the grid
       @launcher_scroll = row < @launcher_scroll ? row : row - vis + 1
-      update_launcher_desk_button
       redraw_launcher_only
-      @ui.flush
     else
       # In-range move: repaint just the two affected cells
       redraw_launcher_icon(prev, LAUNCHER_ICON_BG) if prev >= 0
       redraw_launcher_icon(idx, LAUNCHER_ICON_SEL)
-      update_launcher_desk_button
-      @gfx.present unless @ui.flush
+      @gfx.present
     end
+  end
+
+  # Tab: the menu a right click would open, anchored under the selected icon
+  # (or at the top left of the icon area for the launcher itself) rather than
+  # at the pointer, which is wherever the mouse was last left.
+  def launcher_open_menu_for_selection
+    sel = @launcher_selected
+    sel = -1 if sel >= @launcher_apps.size
+    x = @launcher_x + LAUNCHER_ICON_PAD_X
+    y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
+    start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
+    if sel >= start_idx
+      col = (sel - start_idx) % LAUNCHER_ICON_COLS
+      vrow = (sel - start_idx) / LAUNCHER_ICON_COLS
+      x += col * (LAUNCHER_ICON_W + LAUNCHER_ICON_PAD_X)
+      y += vrow * (LAUNCHER_ICON_H + LAUNCHER_ICON_PAD_Y) + LAUNCHER_ICON_H
+    end
+    lnc_open_menu(sel, x, y)
   end
 
   def launcher_launch_selected
