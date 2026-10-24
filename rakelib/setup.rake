@@ -4,13 +4,15 @@
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 
-desc "Regenerate the launcher icon BMPs from their .icon sources"
+desc "Regenerate the icon BMPs from their .icon sources (shared and in the app folders)"
 task :icons do
   # The .icon text files are the editable source; the BMPs beside them are what
   # the device actually loads (graphics-audio decodes them, instead of the
   # launcher pushing pixels one GFX command at a time). Re-run after editing an
-  # .icon and commit both.
-  sh "ruby tool/gen_icon_bmp.rb"
+  # .icon and commit both. Every folder under flash/ that holds an .icon is
+  # converted: usr/share/icon and the apps' own (an .app.toml's icon = ...).
+  dirs = Dir.glob(File.join(ROOT_DIR, "flash", "**", "*.icon")).map { |f| File.dirname(f) }.uniq.sort
+  dirs.each { |d| sh "ruby", File.join(ROOT_DIR, "tool", "gen_icon_bmp.rb"), d }
 end
 
 desc "Regenerate the game BGM .fmsq files from their .mml scores"
