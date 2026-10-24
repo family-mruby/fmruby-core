@@ -1,0 +1,19 @@
+# What the StickS3's storage image leaves out (top-level CMakeLists.txt reads
+# this). Paths are relative to the storage root; the files stay in git.
+#
+# The board runs one app on a 240x135 screen with no sound output (yet), no
+# keyboard and no desktop, and it shares the AtomS3R's partition table
+# (config/partitions_atoms3r.csv, storage 3008K), which the whole tree does
+# not fit. What goes is what only the desktop, the editor or a sound output
+# would ever open.
+
+help                   # the editor's F1 help
+usr/share/backgrounds  # desktop wallpapers
+usr/share/icon         # launcher icons
+usr/share/samples      # the editor's sample programs
+usr/share/sounds       # no sound output
+usr/share/music        # no sound output
+cache/launcher         # the launcher's cache
+app/game               # desktop games, laid out for 320x240 and up
+app/demo               # desktop demos, likewise
+app/debug              # debugging tools for the desktop

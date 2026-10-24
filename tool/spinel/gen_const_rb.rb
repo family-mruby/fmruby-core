@@ -136,7 +136,7 @@ hw_target = ENV["FMRB_HW_TARGET"].to_s
 # Keep in step with MODERN_HW_TARGETS in the Rakefile.
 hw_family =
   if %w[TAB5 NARYAv4].include?(hw_target) then "modern"
-  elsif hw_target == "ATOMS3R" then "mini"   # FMRB_HW_FAMILY_MINI
+  elsif %w[ATOMS3R STICKS3].include?(hw_target) then "mini"   # FMRB_HW_FAMILY_MINI
   else "retro"
   end
 
@@ -155,6 +155,7 @@ board, chip_model =
   when hw_target == "TAB5"    then ["tab5",     "ESP32-P4"]
   when hw_target == "NARYAv4" then ["naryav4",  "ESP32-P4"]
   when hw_target == "ATOMS3R" then ["atoms3r",  "ESP32-S3"]
+  when hw_target == "STICKS3" then ["sticks3",  "ESP32-S3"]
   else                             ["narya_v3", "ESP32-S3"]
   end
 

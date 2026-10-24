@@ -1,3 +1,7 @@
+# FMRB_HW_* board / chip-generation macros (fmrb_add_hw_defines() below) and
+# the board lists the source choice reads (FMRB_HW_MINI_TARGETS).
+include(${CMAKE_CURRENT_LIST_DIR}/../fmrb_common/fmrb_hw_defines.cmake)
+
 # Set common sources
 set(COMMON_SRCS
     "fmrb_hal.c"
@@ -21,7 +25,7 @@ if(IDF_TARGET STREQUAL "linux")
     set(PLATFORM_REQUIRES pthread log fmrb_msg fmrb_log fmrb_mem fmrb_cobs fmrb_common)
     set(PLATFORM_PRIV_REQUIRES )
 else()
-    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY, ATOMS3R, TAB5, NARYAv4")
+    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY, ATOMS3R, STICKS3, TAB5, NARYAv4")
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_time_esp32.c"
         "platform/esp32/fmrb_hal_gpio_esp32.c"
@@ -37,8 +41,9 @@ else()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
         message(STATUS "HW target: ATOM_DISPLAY (local Message Buffer link)")
-    elseif(IDF_TARGET STREQUAL "esp32p4" OR FMRB_HW_TARGET STREQUAL "ATOMS3R")
-        # Modern (TAB5 / NARYAv4) and the AtomS3R: monolithic, no WROVER. gfx
+    elseif(IDF_TARGET STREQUAL "esp32p4" OR FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
+        # Modern (TAB5 / NARYAv4) and the mini boards (AtomS3R, StickS3):
+        # monolithic, no WROVER. gfx
         # commands are consumed in-process by the local display task, so use
         # the local link (fmrb_hw_has_local_display).
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
@@ -70,10 +75,8 @@ idf_component_register(
     PRIV_REQUIRES ${PLATFORM_PRIV_REQUIRES}
 )
 
-# FMRB_HW_* board / chip-generation macros: this component compiles
-# fmrb_pin_assign.h consumers (pin manager, link header), and the macros are
-# PRIVATE per component.
-include(${CMAKE_CURRENT_LIST_DIR}/../fmrb_common/fmrb_hw_defines.cmake)
+# This component compiles fmrb_pin_assign.h consumers (pin manager, link
+# header), and the FMRB_HW_* macros are PRIVATE per component.
 fmrb_add_hw_defines()
 
 # Add Linux-specific compiler definitions

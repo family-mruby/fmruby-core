@@ -13,6 +13,9 @@
 //   board/naryav4/  NARYA v4: LT8912B DSI-to-HDMI bridge, the board's I2C bus
 //   board/atoms3r/  M5Stack AtomS3R: 128x128 SPI panel (ST7735S or GC9107),
 //                   LP5562 backlight on the system I2C bus
+//   board/sticks3/  M5Stack StickS3: 135x240 SPI panel (ST7789P3) used
+//                   landscape, PWM backlight, the M5PM1 power manager
+//                   switching the panel's rail on the system I2C bus
 //   board/none/     no panel at all (the browser build): the canvases and the
 //                   compositor run, nothing is put on glass
 //

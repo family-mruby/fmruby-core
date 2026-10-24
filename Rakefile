@@ -52,13 +52,17 @@ end
 #   ATOMS3R: its factory partition is 5M (doc/headless_s3/), so the editor is
 #   the mruby one, the Spinel FFT is left out and so are the Japanese fonts.
 #   It is a node of an Asterism network, so Asterism is in.
+#   STICKS3: the same chip, partitions and role as the AtomS3R, so the same
+#   defaults.
+MINI_BUILD_DEFAULTS = {
+  "FMRB_APP_ENGINE_EDITOR" => "mruby",
+  "FMRB_FFT_SPINEL" => "0",
+  "FMRB_FONT_JA" => "0",
+  "FMRB_ASTERISM" => "1",
+}.freeze
 BOARD_BUILD_DEFAULTS = {
-  "ATOMS3R" => {
-    "FMRB_APP_ENGINE_EDITOR" => "mruby",
-    "FMRB_FFT_SPINEL" => "0",
-    "FMRB_FONT_JA" => "0",
-    "FMRB_ASTERISM" => "1",
-  },
+  "ATOMS3R" => MINI_BUILD_DEFAULTS,
+  "STICKS3" => MINI_BUILD_DEFAULTS,
 }
 (BOARD_BUILD_DEFAULTS[ENV.fetch("FMRB_HW_TARGET", "").strip] || {}).each do |key, value|
   next if ENV.key?(key) && !DOTENV_KEYS.include?(key)

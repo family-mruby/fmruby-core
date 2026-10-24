@@ -63,12 +63,13 @@ fmrb_err_t fmrb_rtc_sync_system_clock(void)
 #if defined(CONFIG_IDF_TARGET_LINUX)
     // No RTC hardware in the simulation; the host clock is already right.
     return FMRB_ERR_NOT_SUPPORTED;
-#elif defined(FMRB_HW_NARYAV4) || defined(FMRB_HW_ATOMS3R)
-    // NARYA v4 and the AtomS3R carry no RTC chip (nothing answers on 0x32 on
-    // the AtomS3R's system bus). The time comes from the timesync service
-    // over the network instead (doc/naryav4/plan.md); probing an empty address
-    // every boot would only produce a warning nobody can act on. The final
-    // board is expected to fit one, at which point this comes back.
+#elif defined(FMRB_HW_NARYAV4) || defined(FMRB_HW_ATOMS3R) || defined(FMRB_HW_STICKS3)
+    // NARYA v4, the AtomS3R and the StickS3 carry no RTC chip (nothing
+    // answers on 0x32 on the AtomS3R's or the StickS3's system bus). The time
+    // comes from the timesync service over the network instead
+    // (doc/naryav4/plan.md); probing an empty address every boot would only
+    // produce a warning nobody can act on. The final NARYA v4 board is
+    // expected to fit one, at which point this comes back.
     return FMRB_ERR_NOT_SUPPORTED;
 #else
     if (fmrb_hal_i2c_init(RTC_I2C_UNIT, RTC_I2C_FREQ, FMRB_PIN_I2C1_SDA,

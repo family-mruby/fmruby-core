@@ -21,16 +21,18 @@
 #     FMRB_HW_ATOM_DISPLAY AtomS3 + Atom Display (Retro)
 #     FMRB_HW_ATOMS3R      M5Stack AtomS3R, an ESP32-S3 with a 128x128 LCD of
 #                          its own and no child chip (doc/headless_s3/)
+#     FMRB_HW_STICKS3      M5Stack StickS3, the same shape with a 135x240 LCD,
+#                          two buttons and a power manager (M5PM1)
 #     (no macro)           Narya v3 (Retro default)
 #   Machine family, besides FMRB_HW_FAMILY_MODERN above:
-#     FMRB_HW_FAMILY_MINI  a small single-app machine (AtomS3R). Neither
+#     FMRB_HW_FAMILY_MINI  a small single-app machine (AtomS3R, StickS3). Neither
 #                          Retro (no WROVER) nor Modern (no P4).
 #   What the board has, for code that asks about a capability rather than a
 #   chip or a board:
 #     FMRB_HAS_LOCAL_DISPLAY  this chip composites and drives the screen
 #                          itself (display_local_task + the local link), instead
 #                          of shipping draw commands to a child chip. Both P4
-#                          boards and the AtomS3R. (The wasm build is the same
+#                          boards, the AtomS3R and the StickS3. (The wasm build is the same
 #                          shape and says so with FMRB_PLATFORM_WASM.)
 #     FMRB_HAS_PPA         the P4's 2D engine (PPA) and JPEG codec exist.
 #     FMRB_HAS_USB_HOST    a USB host port for keyboards and mice.
@@ -42,6 +44,12 @@
 #                          Where the fonts live in another chip's firmware
 #                          (Retro's WROVER) only the selection changes.
 #
+# The FMRB_HW_TARGET values of the mini family: an ESP32-S3 that draws on its
+# own SPI panel and runs one app (doc/headless_s3/). They share the build
+# shape (sources, local link, no USB host); only the pins and the board
+# display implementation (board/<target lower-cased>/) differ.
+set(FMRB_HW_MINI_TARGETS ATOMS3R STICKS3)
+
 # fmrb_hw_family_is_modern(<out_var>) answers the same question at configure
 # time, for build lists rather than compile macros: whether this build is a
 # Modern machine or a simulator standing in for one. Callable before
@@ -92,6 +100,12 @@ function(fmrb_add_hw_defines)
         target_compile_definitions(${COMPONENT_LIB} PRIVATE
             FMRB_HW_ATOMS3R FMRB_HW_FAMILY_MINI FMRB_HAS_LOCAL_DISPLAY
             FMRB_HAS_WIFI)
+    elseif(FMRB_HW_TARGET STREQUAL "STICKS3")
+        # StickS3 (ESP32-S3): the AtomS3R's shape -- draws on its own panel,
+        # native WiFi, no USB host.
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE
+            FMRB_HW_STICKS3 FMRB_HW_FAMILY_MINI FMRB_HAS_LOCAL_DISPLAY
+            FMRB_HAS_WIFI)
     else()
         # Narya v3 (Retro, ESP32-S3): native WiFi. Runtime policy keeps it
         # mutually exclusive with BLE (no coexistence, see wifi_task.c).
@@ -104,7 +118,7 @@ endfunction()
 # firmware composites and drives its own screen (the display_local sources and
 # the local link) rather than talking to a child chip.
 function(fmrb_hw_has_local_display out_var)
-    if(IDF_TARGET STREQUAL "esp32p4" OR FMRB_HW_TARGET STREQUAL "ATOMS3R")
+    if(IDF_TARGET STREQUAL "esp32p4" OR FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
         set(${out_var} TRUE PARENT_SCOPE)
     else()
         set(${out_var} FALSE PARENT_SCOPE)
@@ -113,7 +127,7 @@ endfunction()
 
 # The board display interface implementation (main/drivers/display_local/
 # board/<name>/, see board_display.h there) for a firmware that composites
-# its own screen: tab5, naryav4 or atoms3r. Empty when the screen belongs to
+# its own screen: tab5, naryav4, atoms3r or sticks3. Empty when the screen belongs to
 # a child chip (Retro) or there is no local display. The browser build uses
 # board/none and says so in wasm/CMakeLists.txt.
 function(fmrb_hw_board_display out_var)
@@ -123,8 +137,9 @@ function(fmrb_hw_board_display out_var)
         else()
             set(${out_var} "tab5" PARENT_SCOPE)
         endif()
-    elseif(IDF_TARGET STREQUAL "esp32s3" AND FMRB_HW_TARGET STREQUAL "ATOMS3R")
-        set(${out_var} "atoms3r" PARENT_SCOPE)
+    elseif(IDF_TARGET STREQUAL "esp32s3" AND FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
+        string(TOLOWER "${FMRB_HW_TARGET}" board)
+        set(${out_var} "${board}" PARENT_SCOPE)
     else()
         set(${out_var} "" PARENT_SCOPE)
     endif()

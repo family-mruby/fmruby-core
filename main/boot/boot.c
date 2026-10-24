@@ -530,6 +530,8 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "Running on ESP32-P4 (M5Stack Tab5) - Production mode");
 #elif defined(FMRB_HW_ATOMS3R)
     FMRB_LOGI(TAG, "Running on ESP32-S3 (M5Stack AtomS3R) - Production mode");
+#elif defined(FMRB_HW_STICKS3)
+    FMRB_LOGI(TAG, "Running on ESP32-S3 (M5Stack StickS3) - Production mode");
 #else
     FMRB_LOGI(TAG, "Running on ESP32-S3-N16R8 - Production mode");
 #endif

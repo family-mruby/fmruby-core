@@ -268,8 +268,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
         list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event
              esp_http_server esp_driver_jpeg esp_h264)
     else()
-        if(FMRB_HW_TARGET STREQUAL "ATOMS3R")
-            # AtomS3R: the S3 draws on its own 128x128 SPI panel with the
+        if(FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
+            # AtomS3R, StickS3: the S3 draws on its own SPI panel with the
             # Modern display task and the software compositor (the wasm
             # drawing path; doc/headless_s3/report/h0.md 5.1). No PPA and no
             # JPEG engine on this chip (display_nojpeg.c), no sound output
@@ -288,7 +288,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
                 "kernel/host/host_file_local.c"
             )
         endif()
-        # The display's components for the AtomS3R, required on every S3
+        # The display's components for the mini boards, required on every S3
         # board: IDF's requirement scan runs this file without the -D values,
         # so FMRB_HW_TARGET cannot decide a requirement. On the others nothing
         # references them and the linker leaves them out.
@@ -309,9 +309,9 @@ if(NOT IDF_TARGET STREQUAL "linux")
             endif()
         endif()
     endif()
-    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY" OR FMRB_HW_TARGET STREQUAL "ATOMS3R")
+    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY" OR FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
         # No USB host (FMRB_HAS_USB_HOST): ATOM_DISPLAY's USB is the Atom's
-        # own, and the AtomS3R's only USB port is its console.
+        # own, and a mini board's only USB port is its console.
         list(REMOVE_ITEM COMPONENT_ESP32_SRCS
             "drivers/usb/usb_task.c"
             "drivers/usb/hid_report_parser.c"

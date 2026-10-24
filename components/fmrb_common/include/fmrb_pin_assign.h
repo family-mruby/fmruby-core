@@ -275,6 +275,92 @@
 #define FMRB_PIN_TOUCH_INT     GPIO_NUM_NC
 
 // ============================================================
+// Pin assignments for M5Stack StickS3 (ESP32-S3-PICO-1-N8R8)
+// From the board schematic and M5GFX / M5Unified, checked on the device
+// (doc/headless_s3/report/m3s.md). Same chip and the same headless setup as
+// the AtomS3R: no WROVER, no SD slot, no USB host; the USB-C port is the S3's
+// own USB-Serial-JTAG. Power is managed by the M5PM1 (a PY32 MCU) on the
+// system I2C bus: it switches the S3's own 3.3 V rail (on by a click of the
+// power button, off by a double click) and the LCD / audio rail (its G2),
+// so there is no hold pin for the S3 to drive.
+// ============================================================
+#elif defined(FMRB_HW_STICKS3)
+
+// Restricted pins
+#define FMRB_PIN_RESTRICTED_BOOT    GPIO_NUM_0   // driven by the M5PM1 (BOOT_OUT) for download mode
+#define FMRB_PIN_RESTRICTED_JTAG    GPIO_NUM_NC  // GPIO3 is a Hat2 pin; JTAG source is not strapped
+#define FMRB_PIN_RESTRICTED_USB_DN  GPIO_NUM_19  // USB-Serial-JTAG console
+#define FMRB_PIN_RESTRICTED_USB_DP  GPIO_NUM_20
+#define FMRB_PIN_RESTRICTED_PSRAM0  GPIO_NUM_35  // in-package octal PSRAM (33-37)
+#define FMRB_PIN_RESTRICTED_PSRAM1  GPIO_NUM_36
+#define FMRB_PIN_RESTRICTED_PSRAM2  GPIO_NUM_37
+#define FMRB_PIN_RESTRICTED_STRAP1  GPIO_NUM_NC  // GPIO45 is the LCD DC; VDD_SPI fixed by eFuse
+#define FMRB_PIN_RESTRICTED_STRAP2  GPIO_NUM_NC  // GPIO46 is the IR LED, held low by its FET's pull-down
+
+// System I2C: M5PM1 power manager (0x6E), BMI270 (0x68), and the ES8311
+// codec (0x18) behind a level shifter that is powered only while the
+// LCD / audio rail is on. 2.2K pull-ups on the board.
+#define FMRB_PIN_I2C1_SDA      GPIO_NUM_47
+#define FMRB_PIN_I2C1_SCL      GPIO_NUM_48
+// Grove (HY2.0-4P): yellow = G9, white = G10. No pull-ups.
+#define FMRB_PIN_I2C2_SDA      GPIO_NUM_9
+#define FMRB_PIN_I2C2_SCL      GPIO_NUM_10
+
+// LCD: ST7789P3, 135x240, 3-wire SPI (no MISO). Powered from the rail the
+// M5PM1's G2 switches.
+#define FMRB_PIN_LCD_SPI_MOSI  GPIO_NUM_39
+#define FMRB_PIN_LCD_SPI_SCLK  GPIO_NUM_40
+#define FMRB_PIN_LCD_SPI_CS    GPIO_NUM_41
+#define FMRB_PIN_LCD_SPI_DC    GPIO_NUM_45
+#define FMRB_PIN_LCD_SPI_RST   GPIO_NUM_21
+#define FMRB_PIN_LCD_BACKLIGHT GPIO_NUM_38   // PWM, active high (through a FET)
+
+// ES8311 codec (not driven yet; the board builds without sound output).
+#define FMRB_PIN_I2S_MCLK      GPIO_NUM_18
+#define FMRB_PIN_I2S_SCLK      GPIO_NUM_17
+#define FMRB_PIN_I2S_LRCK      GPIO_NUM_15
+#define FMRB_PIN_I2S_DOUT      GPIO_NUM_14
+#define FMRB_PIN_I2S_DIN       GPIO_NUM_16
+
+#define FMRB_PIN_PM1_IRQ       GPIO_NUM_13   // M5PM1 G1, interrupt out
+#define FMRB_PIN_IR_TX         GPIO_NUM_46
+#define FMRB_PIN_IR_RX         GPIO_NUM_42
+// Buttons: KEY1 (the large one on the face, M5Unified's BtnA) and KEY2 (the
+// side one, BtnB), each active low with a 10K pull-up. The third button
+// (power) belongs to the M5PM1 and is not a GPIO.
+#define FMRB_PIN_BUTTON_ENTER  GPIO_NUM_11   // KEY1
+#define FMRB_PIN_BUTTON_DOWN   GPIO_NUM_12   // KEY2
+#define FMRB_PIN_BUTTON_UP     GPIO_NUM_NC
+
+// Hat2 header (not claimed by the system): G1-G8, G43, G44 (and G0, above).
+
+// Not on this board
+#define FMRB_PIN_SD_CS         GPIO_NUM_NC
+#define FMRB_PIN_SD_MOSI       GPIO_NUM_NC
+#define FMRB_PIN_SD_SCLK       GPIO_NUM_NC
+#define FMRB_PIN_SD_MISO       GPIO_NUM_NC
+#define FMRB_PIN_SD_DETECT     GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MOSI  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MISO  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_SCLK  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_CS    GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_INTR  GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_TX   GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_RX   GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_RTS  GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_CTS  GPIO_NUM_NC
+#define FMRB_PIN_USB_POWER     GPIO_NUM_NC
+#define FMRB_PIN_STATUS_LED    GPIO_NUM_NC   // the green LED is the M5PM1's
+#define FMRB_PIN_ERROR_LED     GPIO_NUM_NC
+#define FMRB_PIN_WROVER_RESET  GPIO_NUM_NC
+#define FMRB_PIN_KBD_I2C_SDA   GPIO_NUM_NC
+#define FMRB_PIN_KBD_I2C_SCL   GPIO_NUM_NC
+#define FMRB_PIN_KBD_INT       GPIO_NUM_NC
+#define FMRB_PIN_TOUCH_I2C_SDA GPIO_NUM_NC
+#define FMRB_PIN_TOUCH_I2C_SCL GPIO_NUM_NC
+#define FMRB_PIN_TOUCH_INT     GPIO_NUM_NC
+
+// ============================================================
 // Pin assignments for Narya board v3 (N16R8, default)
 // ============================================================
 #elif !defined(FMRB_HW_ATOM_DISPLAY)

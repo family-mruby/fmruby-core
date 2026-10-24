@@ -138,6 +138,11 @@ namespace :build do
       # and runs one app (doc/headless_s3/).
       'ATOMS3R'      => { chip: 'esp32s3', sdkconfig: 'config/sdkconfig.defaults.atoms3r',
                           system_conf: 'config/system_conf_atoms3r.toml' },
+      # M5Stack StickS3 (ESP32-S3, 8MB flash): the AtomS3R's shape with a
+      # 135x240 LCD. Same chip and partitions, so the same sdkconfig defaults
+      # (which name partitions_atoms3r.csv).
+      'STICKS3'      => { chip: 'esp32s3', sdkconfig: 'config/sdkconfig.defaults.atoms3r',
+                          system_conf: 'config/system_conf_sticks3.toml' },
     }
     default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
     default_system_conf = 'config/system_conf_n16r8.toml'

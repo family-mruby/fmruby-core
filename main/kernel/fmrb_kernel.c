@@ -209,9 +209,10 @@ fmrb_err_t fmrb_kernel_load_audio_conf(void)
 
 // The button, read at boot for the setup mode: held means low on every one of
 // a few samples 10 ms apart (a bounce or a stray pulse is not a press).
-// The AtomS3R is the board the setup mode is for (no screen to type on): on
-// by default there, so a board whose /etc predates the key has it too.
-#if defined(FMRB_HW_ATOMS3R)
+// The mini boards (AtomS3R, StickS3) are what the setup mode is for (no
+// keyboard to type on): on by default there, so a board whose /etc predates
+// the key has it too.
+#if defined(FMRB_HW_FAMILY_MINI)
 #define SETUP_MODE_DEFAULT     true
 #else
 #define SETUP_MODE_DEFAULT     false
