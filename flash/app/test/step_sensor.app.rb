@@ -52,10 +52,23 @@
 # impact, so the delay is the sensor's sampling and a short smoothing only.
 # Another step needs the magnitude to fall back under the average first
 # (once per stride's up and down) and MIN_GAP_MS since the last one (the
-# impact's own ringing). Lying still, the magnitude stays within a few mg of
-# the average and nothing is counted.
+# impact's own ringing; a rise inside the gap is not a step and needs the
+# fall under the average again). Lying still, the magnitude stays within a
+# few mg of the average and nothing is counted.
+# The average follows within BASE_TAU_MS while the magnitude is under
+# average + RISE, and much more slowly (BASE_SLOW_TAU_MS) above it, so the
+# impacts of a walk do not pull it up. It must never stop following: long
+# shaking spends much of its time above, the average falls behind (below
+# 1 g), and if it only followed under average + RISE, a board put down would
+# keep dyn above RISE for good. Once the magnitude has stayed within STEADY_G
+# for STEADY_MS (put down or held still) the average follows within
+# STEADY_TAU_MS whatever the difference, and dyn is back at 0 in 1 to 4 s.
 class StepDetector
   BASE_TAU_MS = 1000    # the slow average (gravity) follows within ~1 s
+  BASE_SLOW_TAU_MS = 10000 # ... and within ~10 s while above average + rise
+  STEADY_G = 0.06       # the magnitude staying within this span ...
+  STEADY_MS = 400       # ... this long is steady (no step, no shaking)
+  STEADY_TAU_MS = 400   # steady, the average follows within ~0.4 s
   SMOOTH_MS = 12        # a light low-pass on the magnitude (sensor noise)
   CADENCE_STEPS = 4     # cadence from the last few intervals
   CADENCE_MAX_GAP_MS = 2000 # a longer pause ends the walk (cadence 0)
@@ -74,6 +87,9 @@ class StepDetector
     @interval_ms = 0
     @intervals = []
     @dynamic = 0.0
+    @steady_lo = 0.0
+    @steady_hi = 0.0
+    @steady_from = 0
   end
 
   def tune(rise, min_gap_ms)
@@ -109,6 +125,9 @@ class StepDetector
       @base = m
       @smooth = m
       @prev_ms = t_ms
+      @steady_lo = m
+      @steady_hi = m
+      @steady_from = t_ms
       return false
     end
     dt = t_ms - @prev_ms
@@ -117,15 +136,32 @@ class StepDetector
     @prev_ms = t_ms
     @smooth += (m - @smooth) * dt / (SMOOTH_MS + dt).to_f
     @dynamic = @smooth - @base
-    # The average does not follow the peaks: it would rise into a walk and
-    # make the next impacts look smaller.
-    if @dynamic < @rise
-      @base += (@smooth - @base) * dt / (BASE_TAU_MS + dt).to_f
+    # The span of the magnitude since it last moved by more than STEADY_G.
+    @steady_hi = @smooth if @smooth > @steady_hi
+    @steady_lo = @smooth if @smooth < @steady_lo
+    if @steady_hi - @steady_lo > STEADY_G
+      @steady_lo = @smooth
+      @steady_hi = @smooth
+      @steady_from = t_ms
     end
+    # The average hardly follows the peaks: it would rise into a walk and
+    # make the next impacts look smaller. It always follows, though, or a
+    # lag left by shaking would stay for good (dyn stuck above rise).
+    if t_ms - @steady_from >= STEADY_MS
+      tau = STEADY_TAU_MS
+    elsif @dynamic >= @rise
+      tau = BASE_SLOW_TAU_MS
+    else
+      tau = BASE_TAU_MS
+    end
+    @base += (@smooth - @base) * dt / (tau + dt).to_f
     @armed = true if @dynamic < 0.0
     return false unless @armed && @dynamic >= @rise
-    return false if @last_ms && t_ms - @last_ms < @min_gap_ms
     @armed = false
+    # A rise this soon after a step is its ringing: it uses up the arming,
+    # or a magnitude that stays up (the average still catching up after
+    # shaking) would count a step the moment the gap is over.
+    return false if @last_ms && t_ms - @last_ms < @min_gap_ms
     if @last_ms
       gap = t_ms - @last_ms
       if gap <= CADENCE_MAX_GAP_MS

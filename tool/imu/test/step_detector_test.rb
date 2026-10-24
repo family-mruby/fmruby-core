@@ -1,7 +1,9 @@
 # Checks the step detector of flash/app/test/step_sensor.app.rb against
 # synthetic accelerometer data: walking at 1.5 to 2.5 steps per second,
-# lying still, noise, slow tilting, and a walk with a pause. Prints the count
-# and the delay of each case and exits non-zero when a case is off.
+# lying still, noise, slow tilting, a walk with a pause, and shaking the board
+# hard for a while and then putting it down (dyn must come back to 0 and a
+# walk right after must count as usual). Prints the count and the delay of
+# each case and exits non-zero when a case is off.
 #
 #   ruby tool/imu/test/step_detector_test.rb [-v]
 #
@@ -183,6 +185,7 @@ CASES = [
   ["walk, pause 5 s, walk", [[:walk, 10, 2.0], [:still, 5], [:walk, 10, 1.8]], {}, {}, 2, 0],
   ["still 120 s (noise 0.004 g)", [[:still, 120]], { noise: 0.004 }, {}, 0, 0],
   ["still 120 s (noise 0.03 g)", [[:still, 120]], { noise: 0.03 }, {}, 0, 0],
+  ["still 300 s (noise 0.01 g)", [[:still, 300]], {}, {}, 0, 0],
   ["still 60 s, slowly tilted 90 deg", [[:still, 60]], { noise: 0.004, tilt: Math::PI / 2 }, {}, 0, 0],
 ]
 
@@ -206,6 +209,115 @@ CASES.each_with_index do |(name, segs, gen, run, miss_ok, extra_ok), idx|
 end
 puts format("all walking: %d steps, delay median %d ms, p90 %d ms, max %d ms",
             all_delays.size, pct(all_delays, 0.5), pct(all_delays, 0.9), all_delays.max || 0)
+
+# Shaking: the board shaken by hand for some seconds (a sine along a random
+# direction, its amplitude wandering, with a second harmonic, the axes
+# clipped at the sensor's range), then put down. The shaking itself counts
+# as steps (nothing tells them apart); what matters is what follows: dyn
+# (averaged over 500 ms) back within SHAKE_SETTLE_G of 0 within
+# SHAKE_SETTLE_MS of the rest, no step
+# at rest, and a walk after a short rest counted as usual.
+SHAKE_SETTLE_G = 0.02
+SHAKE_SETTLE_MS = 5000
+SHAKE_AVG = 50 # 500 ms
+RANGE_G = 8.0
+
+# along: :g shakes along gravity (up and down), :any in a random direction.
+def shake_samples(rng, w, secs, freq, amp, along, rest_ms, noise: 0.01, t0: 0)
+  g = w.unit_vector
+  u = along == :g ? g : w.unit_vector
+  out = []
+  t = t0
+  t_end = t0 + (secs * 1000).round
+  phase = 0.0
+  a = amp
+  while t < t_end
+    phase += 2 * Math::PI * freq * (1.0 + 0.1 * (rng.rand * 2 - 1)) * 0.01
+    a += (amp * (1.0 + 0.3 * (rng.rand * 2 - 1)) - a) * 0.05
+    k = a * (Math.sin(phase) + 0.3 * Math.sin(2 * phase + 0.7))
+    out << [t, *[0, 1, 2].map { |i| (g[i] + u[i] * k + noise * w.gauss).clamp(-RANGE_G, RANGE_G) }]
+    t += Walk::ODR_MS
+  end
+  rest_from = t
+  while t < rest_from + rest_ms
+    out << [t, *[0, 1, 2].map { |i| g[i] + noise * w.gauss }]
+    t += Walk::ODR_MS
+  end
+  [out, rest_from, g]
+end
+
+# Feeds samples as read by the app (every 10 ms here); returns
+# [step times, [[t, dyn]]].
+def feed_all(det, samples)
+  steps = []
+  dyns = []
+  samples.each do |t, x, y, z|
+    steps << t if det.feed(t, x, y, z)
+    dyns << [t, det.dynamic]
+  end
+  [steps, dyns]
+end
+
+SHAKES = [
+  # seconds, frequency (Hz), amplitude (g)
+  [5, 2.0, 0.5, :g], [5, 3.0, 1.0, :g], [8, 4.0, 1.5, :g], [5, 5.0, 2.0, :g], [10, 6.0, 3.0, :g],
+  [5, 3.0, 6.0, :g], [5, 2.0, 0.5, :any], [5, 3.0, 1.0, :any], [8, 4.0, 1.5, :any],
+  [5, 5.0, 2.0, :any], [5, 8.0, 4.0, :any], [5, 3.0, 6.0, :any], [20, 2.5, 0.8, :any],
+  [3, 10.0, 1.0, :any],
+]
+puts format("%-32s %7s %10s %12s %10s", "shake then rest", "steps", "recover ms", "rest steps", "dyn at 5 s")
+recovers = []
+SHAKES.each_with_index do |(secs, freq, amp, along), idx|
+  [0.004, 0.03].each do |noise|
+    rng = Random.new(5000 + idx)
+    w = Walk.new(5000 + idx)
+    samples, rest_from, = shake_samples(rng, w, secs, freq, amp, along, 30000, noise: noise)
+    det = StepDetector.new
+    steps, dyns = feed_all(det, samples)
+    # The last sample (at rest) with dyn off by more than SHAKE_SETTLE_G,
+    # dyn averaged over SHAKE_AVG samples (the noise alone moves it by about 20 mg
+    # at 0.03 g).
+    avg = []
+    dyns.each_with_index do |(t, _), i|
+      next if t < rest_from
+      win = dyns[[i - SHAKE_AVG + 1, 0].max..i]
+      avg << [t, win.sum { |_, d| d } / win.size]
+    end
+    last_off = avg.select { |_, d| d.abs > SHAKE_SETTLE_G }.map(&:first).max
+    rec = last_off ? last_off + Walk::ODR_MS - rest_from : 0
+    # Rest starts at the first sample of rest; the drop to 1 g is the
+    # shaking's last movement and may count as its last step.
+    rest_steps = steps.count { |t| t > rest_from + 100 }
+    d5 = avg.find { |t, _| t >= rest_from + SHAKE_SETTLE_MS }[1]
+    ok = rec <= SHAKE_SETTLE_MS && rest_steps == 0
+    failed += 1 unless ok
+    recovers << rec
+    puts format("%-32s %7d %10d %12d %8d mg%s", format("%ds %.1f Hz %.1f g %s n%.3f", secs, freq, amp, along, noise),
+                steps.count { |t| t <= rest_from + 100 }, rec, rest_steps, (d5 * 1000).round, ok ? "" : "  FAIL")
+  end
+end
+puts format("recover (dyn within %d mg for good): median %d ms, max %d ms",
+            (SHAKE_SETTLE_G * 1000).round, pct(recovers, 0.5), recovers.max)
+
+# A walk right after shaking: 3 s at rest, then 20 s at 2 steps/s.
+[[5, 3.0, 1.0, :g], [8, 4.0, 1.5, :g], [5, 3.0, 6.0, :any], [20, 2.5, 0.8, :any]].each_with_index do |(secs, freq, amp, along), idx|
+  rng = Random.new(6000 + idx)
+  w = Walk.new(6000 + idx)
+  shake, rest_from, = shake_samples(rng, w, secs, freq, amp, along, 2000)
+  walk, true_steps = w.generate([[:walk, 20, 2.0]])
+  # Walk starts after its own second of rest: 3 s at rest in all.
+  off = shake.last[0] + Walk::ODR_MS
+  walk.each { |s| s[0] += off }
+  true_steps = true_steps.map { |t| t + off }
+  det = StepDetector.new
+  found, = feed_all(det, shake + walk)
+  found = found.select { |t| t > rest_from + 100 }
+  delays, extra, missed = match(found, true_steps)
+  ok = missed <= 1 && extra == 0
+  failed += 1 unless ok
+  puts format("walk after shaking %ds %.1f Hz %.1f g %s: %d steps, found %d, miss %d, extra %d, delay median %d ms%s",
+              secs, freq, amp, along, true_steps.size, found.size, missed, extra, pct(delays, 0.5), ok ? "" : "  FAIL")
+end
 
 # Cadence: 2 steps/s regular is 120 steps/min.
 det = StepDetector.new
