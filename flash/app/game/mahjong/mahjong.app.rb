@@ -1559,10 +1559,10 @@ class MahjongApp < FmrbApp
     end
   end
 
-  # s cut (by characters) to at most w pixels, with ".." when cut. The room
-  # kept for ".." is 12 px at any text size (as it always was).
+  # s cut (by characters) to at most w pixels, with ".." when cut (the room
+  # for ".." measured at the current text size).
   def fit(s, w)
-    @gfx.fit_text(s, w, "..", 12)
+    @gfx.fit_text(s, w, "..")
   end
 
   def seat_label_pos(rl)

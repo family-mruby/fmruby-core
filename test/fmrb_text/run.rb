@@ -149,7 +149,8 @@ TEXTS.each do |s|
   end
 end
 
-# The mahjong table at both text sizes (the ".." keeps 12 px at size 2 too).
+# The mahjong table's old fit (a fixed 12 px for "..") through mark_w, and
+# the measured mark it uses now, at both text sizes.
 [[12, 1], [12, 2], [16, 1]].each do |px, size|
   g.set_font(:ja, px)
   g.set_text_size(size)
@@ -157,6 +158,9 @@ end
   TEXTS.each do |s|
     [0, 6, 11, 12, 24, 40, 80, 100, 141, 200].each do |w|
       check("mahjong fit #{s.inspect} #{w} at #{px}x#{size}", g.fit_text(s, w, "..", 12), Old.mj_fit(s, w, fw))
+      # With the mark measured (mahjong since R5), a cut line never passes w.
+      r = g.fit_text(s, w, "..")
+      check("mahjong fit #{s.inspect} #{w} at #{px}x#{size} stays inside", g.text_width(r) <= w || w < g.text_width(".."), true)
     end
   end
 end
