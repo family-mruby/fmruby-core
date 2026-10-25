@@ -35,7 +35,7 @@ module UiScenes
       ["tetris", "0.9.1", "Blocks", "ブロック", "Falling blocks", "落ちものパズル", "game"]
     ]
     apps.each do |a|
-      rows << (["A"] + a + ["kishima", "retro,modern,web", "200", "150", "100", "120", "0" * 64, "apps/#{a[0]}/",
+      rows << (["A"] + a + ["author-a", "retro,modern,web", "200", "150", "100", "120", "0" * 64, "apps/#{a[0]}/",
                             "thumb.png", "100"]).join("\t")
       rows << ["F", "#{a[0]}.app.rb", "1234"].join("\t")
       rows << ["F", "#{a[0]}.app.toml", "120"].join("\t")
