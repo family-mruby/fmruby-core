@@ -124,7 +124,7 @@ TEXTS = [
   "卓の主 (*) が始める", "残り 30 秒 (切れたら CPU が打つ)", "OwnLongName-abcdefgh",
   "LongPlayerName-abcdefghijklmnopq", "ながいなまえのプレイヤーさんabcdefg",
   "オセロ (卓): 卓を選ぶ (Enter で入る)", "ゲームホストを探しています (games/othello*)",
-  "r4agames/games/othello1  対局中  fmruby-90bce8 / Jev", "a b c d e f g h i j k l m n o p",
+  "r4agames/games/othello1  対局中  fmruby-a1b2c3 / Jev", "a b c d e f g h i j k l m n o p",
   " leading space and more words", "nospaceatallbutquitealongwordindeed", "ｱｲｳｴｵ ﾊﾝｶｸ", "…already…",
   "東 ながいなまえ 25000", "絵文字なし mixed 日本語 and English words here"
 ]
