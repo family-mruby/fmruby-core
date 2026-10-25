@@ -34,15 +34,17 @@ CORE = File.expand_path("../..", __dir__)
 APP_DIR = File.join(CORE, "flash", "app", "game", "mahjong")
 GEM_DIR = File.join(CORE, "lib", "add", "picoruby-fmrb-app", "mrblib")
 
-# The app's fit and click targets are the firmware's own (FmrbText on its
-# @gfx, FmrbButtons); they are plain Ruby and load as they ship.
-class FmrbGfx; end
-load File.join(GEM_DIR, "fmrb-text.rb")
-load File.join(GEM_DIR, "fmrb-buttons.rb")
-
 # ---------------------------------------------------------------- stand-ins
 
 module FmrbConst
+  # The theme colours fmrb-ui.rb reads when it loads (any value: the table
+  # uses only FmrbUI::HitAreas, which draws nothing).
+  THEME_WINDOW_BG = 0xFF
+  THEME_TEXT = 0x00
+  THEME_TEXT_LIGHT = 0xFF
+  THEME_HIGHLIGHT = 0x1F
+  THEME_BORDER = 0x6D
+  THEME_BUTTON = 0x6D
   HW_FAMILY = "modern"
   PLATFORM = "wasm"
   KEY_UP = 0x52
@@ -53,6 +55,12 @@ module FmrbConst
   KEY_ESC = 0x29
   KEY_TAB = 0x2B
 end
+
+# The app's fit and click targets are the firmware's own (FmrbText on its
+# @gfx, FmrbUI::HitAreas); they are plain Ruby and load as they ship.
+class FmrbGfx; end
+load File.join(GEM_DIR, "fmrb-text.rb")
+load File.join(GEM_DIR, "fmrb-ui.rb")
 
 module Machine
   def self.board_millis
@@ -325,7 +333,7 @@ def new_app(w, h)
   app.scopes = []
   gfx = RecGfx.new(app.scopes)
   app.instance_variable_set(:@gfx, gfx)
-  app.instance_variable_set(:@buttons, FmrbButtons.new(gfx))
+  app.instance_variable_set(:@hits, FmrbUI::HitAreas.new)
   app.instance_variable_set(:@user_area_x0, 0)
   app.instance_variable_set(:@user_area_y0, 0)
   app.instance_variable_set(:@user_area_width, w)
@@ -406,7 +414,7 @@ def run_case(view, w, h, prep = nil)
   # drawn at the bottom of the list and the lobby.
   app.instance_variable_set(:@host_ver, "10.10.10")
   prep&.call(app)
-  app.instance_variable_get(:@buttons).clear
+  app.instance_variable_get(:@hits).clear
   app.draw_screen
   [problems(gfx.prims, w, h), gfx.prims]
 end
@@ -448,7 +456,7 @@ def run_switch(from, to, w, h)
     v = Marshal.load(Marshal.dump(switch_view(name)))
     v["v"] = 100 + i
     app.take_view(v)
-    app.instance_variable_get(:@buttons).clear
+    app.instance_variable_get(:@hits).clear
     gfx.prims.clear if i.zero?
     @n0 = gfx.prims.size
     app.draw_screen

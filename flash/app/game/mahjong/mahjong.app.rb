@@ -206,7 +206,7 @@ class MahjongApp < FmrbApp
     @dirty = true
     @keys = []
     @clicks = []
-    @buttons = FmrbButtons.new(@gfx)
+    @hits = FmrbUI::HitAreas.new
     @unsupported = FmrbConst::HW_FAMILY != "modern"
     @hand_sheet = nil
     @river_sheet = nil
@@ -1046,7 +1046,7 @@ class MahjongApp < FmrbApp
     return if mode == :table && rv_skip
     x = c[0]
     y = c[1]
-    b = @buttons.at(x, y)
+    b = @hits.at(x, y)
     return run_button(b[0], b[5]) if b
     return unless mode == :table && @seat
     idx = @xl ? xl_hand_index_at(x, y) : hand_index_at(x, y)
@@ -1200,7 +1200,7 @@ class MahjongApp < FmrbApp
   # label: a text, or a call's [head, tiles, key] (MJ8: the tiles as pictures).
   def button(type, tiles, x, y, label, h = u(20))
     w = btn_label_w(label) + u(12)
-    @buttons.add(type, x, y, w, h, tiles)
+    @hits.add(type, x, y, w, h, tiles)
     @gfx.fill_round_rect(x, y, w, h, u(4), C_BTN)
     btn_content(label, x, y, w, h)
     w
@@ -1219,7 +1219,7 @@ class MahjongApp < FmrbApp
       return
     end
     @xl_items = nil
-    @buttons.clear
+    @hits.clear
     clear_user_area(C_FELT)
     fnt(12, @k)
     if m == :table && watching?
@@ -1345,7 +1345,7 @@ class MahjongApp < FmrbApp
         line = "#{parts[0]}/#{parts[2]}  #{table_status(s)}"
         line = "#{line}  #{t(:mj_mine)}" if @mine[p]
         text(x + u(2), y + u(1), fit(line, @w - u(20)), i == @list_sel % l.size ? C_TURN : C_TEXT)
-        @buttons.add(B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i])
+        @hits.add(B_JOIN, x - u(2), y - u(3), @w - u(16), u(20), [i])
         y += u(22)
         i += 1
       end

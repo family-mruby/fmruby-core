@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbText (fitting a text into a width) and FmrbButtons
-# (click targets), lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb and
-# fmrb-buttons.rb.
+# Host tests for FmrbText (fitting a text into a width), FmrbGfx#draw_button
+# and FmrbUI::HitAreas (click targets): lib/add/picoruby-fmrb-app/mrblib/
+# fmrb-text.rb, fmrb-gfx.rb and fmrb-ui.rb.
 #
-# Both are plain Ruby over FmrbGfx#text_width, so the real gem files run
+# All are plain Ruby over FmrbGfx#text_width, so the real gem files run
 # here -- fmrb-gfx.rb included, with its C half stubbed -- and the answers
 # are compared with the helpers the apps had before (doc/app_refactor R5):
 # the othello table's column counting (a wide character 2 columns of 6 px)
@@ -14,6 +14,13 @@
 module FmrbConst
   HW_FAMILY = "modern"
   FONT_JA = true
+  # Read by fmrb-ui.rb when it loads.
+  THEME_WINDOW_BG = 0xFF
+  THEME_TEXT = 0x00
+  THEME_TEXT_LIGHT = 0xFF
+  THEME_HIGHLIGHT = 0x1F
+  THEME_BORDER = 0x6D
+  THEME_BUTTON = 0x6D
 end
 
 GEM = File.expand_path("../../lib/add/picoruby-fmrb-app/mrblib", __dir__)
@@ -30,7 +37,7 @@ class FmrbGfx
 end
 load File.join(GEM, "fmrb-gfx.rb")
 load File.join(GEM, "fmrb-text.rb")
-load File.join(GEM, "fmrb-buttons.rb")
+load File.join(GEM, "fmrb-ui.rb")
 
 $failed = 0
 $n = 0
@@ -173,6 +180,13 @@ g.set_text_size(1)
   check("walk fit #{s}", g.fit_text(s, 38 * 6), Old.ws_fit(s, 38))
 end
 
+# FmrbUI measures in the mixed renderer's font whatever font is selected:
+# family :default, ASCII 6 px and a wide character 8 px.
+g.set_font(:ja, 12)
+check("family :default fits", g.fit_text("あいう abc", 48, "..", nil, :default), "あいう abc")
+check("family :default cuts", g.fit_text("あいう abcdef", 42, "..", nil, :default), "あいう ..")
+check("family :default, current font", g.fit_text("あいう abcdef", 42, ".."), "あい..")
+
 # ---------------------------------------------------------------- draw_text_lines
 
 g.set_font(:ja, 12)
@@ -184,12 +198,14 @@ g.log.clear
 check("one line", g.draw_text_lines(0, 0, "short", 60, 1, 15), 15)
 check("nothing to wrap", g.log.size, 1)
 
-# ---------------------------------------------------------------- FmrbButtons
+# ---------------------------------------------------------------- draw_button, HitAreas
 
-b = FmrbButtons.new(g)
+b = FmrbUI::HitAreas.new
 g.log.clear
-b.button(:stand, 210, 180, 60, 16, "立つ[S]", 0x13, 0xFF)
-b.button(:undo, 300, 100, 27, 15, "戻", 0x13, 0xFF)
+g.draw_button(210, 180, 60, 16, "立つ[S]", 0x13, 0xFF)
+b.add(:stand, 210, 180, 60, 16)
+g.draw_button(300, 100, 27, 15, "戻", 0x13, 0xFF)
+b.add(:undo, 300, 100, 27, 15)
 check("round box", g.log[0], [:round, 210, 180, 60, 16, 3, 0x13])
 # "立つ[S]" is 2 x 12 + 3 x 6 = 42 px: centred in 60, 2 px down in 16 (the othello button).
 check("label centred (16 high)", g.log[1], [:text, 210 + (60 - 42) / 2, 182, "立つ[S]", 0xFF])

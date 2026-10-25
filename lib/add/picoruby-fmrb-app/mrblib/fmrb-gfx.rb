@@ -229,6 +229,16 @@ class FmrbGfx
     metrics[:line_h] * @current_text_size
   end
 
+  # A rounded button: filled with fill, label centred in fg with the current
+  # font. Only the picture -- the click target is the app's
+  # (FmrbUI::HitAreas#add), so a screen redrawn every time draws a button
+  # and adds its target in two lines.
+  def draw_button(x, y, w, h, label, fill, fg, radius = 3)
+    fill_round_rect(x, y, w, h, radius, fill)
+    draw_text(x + (w - text_width(label)) / 2, y + (h - font_height) / 2, label, fg)
+    self
+  end
+
   # Read a single RGB332 pixel back from this canvas. Synchronous round
   # trip to the graphics backend, so use sparingly in tight loops.
   # Returns 0 when (x, y) is outside the canvas bounds.

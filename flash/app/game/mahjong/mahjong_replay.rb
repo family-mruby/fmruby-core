@@ -508,7 +508,7 @@ class MahjongApp < FmrbApp
       rp_draw_view
     else
       @xl_items = nil
-      @buttons.clear
+      @hits.clear
       clear_user_area(C_FELT)
       fnt(12, @k)
       rp_draw_list
@@ -534,7 +534,7 @@ class MahjongApp < FmrbApp
         xl_draw
       else
         @xl_items = nil
-        @buttons.clear
+        @hits.clear
         clear_user_area(C_FELT)
         fnt(12, @k)
         if @big
@@ -587,7 +587,7 @@ class MahjongApp < FmrbApp
       e = @rp_list[i]
       chosen = i == @rp_sel
       @gfx.fill_rect(x - u(2), y - u(2), @w - u(12), u(17), C_SEL) if chosen
-      @buttons.add(B_RP_ROW, x - u(2), y - u(2), @w - u(12), u(17), [i])
+      @hits.add(B_RP_ROW, x - u(2), y - u(2), @w - u(12), u(17), [i])
       at = e["at"].to_s
       at = at.byteslice(5, at.bytesize - 5).to_s if at.bytesize > 5
       head = @big ? "#{at} #{e['game'] == 'tonpuu' ? '東風' : '半荘'}" : at
@@ -632,7 +632,7 @@ class MahjongApp < FmrbApp
 
   def run_click(c)
     return rp_base_run_click(c) unless @rp
-    b = @buttons.at(c[0], c[1])
+    b = @hits.at(c[0], c[1])
     return run_button(b[0], b[5]) if b
     rp_go(@rp_step + 1) if @rp_state == :view && @rp_data && @rp_f.nil?
   end

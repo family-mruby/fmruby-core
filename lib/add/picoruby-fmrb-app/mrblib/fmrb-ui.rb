@@ -829,6 +829,52 @@ class FmrbUI
     end
   end
 
+  # The click targets of a screen the app redraws whole every time (the game
+  # tables, the drawing board): clear before drawing, add each target as it
+  # is drawn, at(x, y) for a click. It draws nothing -- the picture of a
+  # rounded button is FmrbGfx#draw_button -- so a button is two lines, draw
+  # it and add it.
+  #
+  # Not mixed with the widgets above, which are made once and keep their
+  # state (pressed look, focus, act on release); a target is only a
+  # rectangle, valid until the next clear. The app acts on the press.
+  #
+  # A target is [id, x, y, w, h, data]: data is whatever the app wants back
+  # with the click (nil when not given). The first target that holds the
+  # point wins.
+  class HitAreas
+    def initialize
+      @list = []
+    end
+
+    def clear
+      @list.clear
+      self
+    end
+
+    def add(id, x, y, w, h, data = nil)
+      @list << [id, x, y, w, h, data]
+      self
+    end
+
+    # The target [id, x, y, w, h, data] at (x, y), or nil.
+    def at(x, y)
+      i = 0
+      while i < @list.size
+        b = @list[i]
+        return b if x >= b[1] && x < b[1] + b[3] && y >= b[2] && y < b[2] + b[4]
+        i += 1
+      end
+      nil
+    end
+
+    # The id of the target at (x, y), or nil.
+    def id_at(x, y)
+      b = at(x, y)
+      b ? b[0] : nil
+    end
+  end
+
   # ----------------------------------------------------------------------
   # Container
   # ----------------------------------------------------------------------

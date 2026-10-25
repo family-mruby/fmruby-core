@@ -93,7 +93,7 @@ class OthelloTableApp < FmrbApp
     @cy = 3
     @keys = []
     @clicks = []
-    @buttons = FmrbButtons.new(@gfx)
+    @hits = FmrbUI::HitAreas.new
     @second = 0
     @mem_at = 0
     @dirty = true
@@ -397,7 +397,7 @@ class OthelloTableApp < FmrbApp
     x = c[0]
     y = c[1]
     @dirty = true
-    b = @buttons.id_at(x, y)
+    b = @hits.id_at(x, y)
     return run_button(b) if b
     if @tc.table.nil?
       row = (y - @list_y) / 15
@@ -457,7 +457,8 @@ class OthelloTableApp < FmrbApp
 
   # A button of the panel and the list (theme colours, 16 px high).
   def button(id, x, y, w, label)
-    @buttons.button(id, x, y, w, 16, label, theme_accent, theme_fg_light)
+    @gfx.draw_button(x, y, w, 16, label, theme_accent, theme_fg_light)
+    @hits.add(id, x, y, w, 16)
   end
 
   def text(x, y, s, color = nil)
@@ -465,7 +466,7 @@ class OthelloTableApp < FmrbApp
   end
 
   def draw_screen
-    @buttons.clear
+    @hits.clear
     clear_user_area
     if @tc.table
       draw_board

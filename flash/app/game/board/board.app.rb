@@ -118,7 +118,7 @@ class DrawingBoardApp < FmrbApp
     @sent_at = 0
     @keys = []
     @moves = []
-    @buttons = FmrbButtons.new(@gfx)
+    @hits = FmrbUI::HitAreas.new
     @mem_at = 0
     @lat_n = 0
     @lat_sum = 0
@@ -945,7 +945,7 @@ class DrawingBoardApp < FmrbApp
   def run_click(c)
     x = c[0]
     y = c[1]
-    b = @buttons.id_at(x, y)
+    b = @hits.id_at(x, y)
     if b
       run_button(b)
       return
@@ -1013,7 +1013,8 @@ class DrawingBoardApp < FmrbApp
 
   # A button of the panel and the list (theme colours, 15 px high).
   def button(id, x, y, w, label)
-    @buttons.button(id, x, y, w, 15, label, theme_accent, theme_fg_light)
+    @gfx.draw_button(x, y, w, 15, label, theme_accent, theme_fg_light)
+    @hits.add(id, x, y, w, 15)
   end
 
   def text(x, y, s, color = nil)
@@ -1021,7 +1022,7 @@ class DrawingBoardApp < FmrbApp
   end
 
   def draw_screen
-    @buttons.clear
+    @hits.clear
     clear_user_area
     if @tc.table
       # The strokes kept so far (while the picture is read, what came of it).
@@ -1072,7 +1073,7 @@ class DrawingBoardApp < FmrbApp
 
   # The panel at the right: the board, the palette, the widths, the buttons.
   def draw_panel
-    @buttons.clear
+    @hits.clear
     x = @px
     @gfx.fill_rect(x - 1, @y0, @pw + 3, @user_area_height, theme_bg)
     v = @view

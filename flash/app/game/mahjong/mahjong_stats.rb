@@ -147,7 +147,7 @@ class MahjongApp < FmrbApp
     return st_base_rp_draw unless @st
     t0 = Machine.board_millis
     @xl_items = nil
-    @buttons.clear
+    @hits.clear
     clear_user_area(C_FELT)
     fnt(12, @k)
     st_draw
