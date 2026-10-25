@@ -72,5 +72,5 @@ end
 
 - デスクトップとエディタ (Spinel で作るとき) は `fmrb-text.rb` と `fmrb-ui.rb` を取り込む (`tool/spinel/gen_app_combined.rb`)。`fmrb-text.rb` は Spinel 版の FmrbGfx (`main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`。text_width と FONT_METRICS は同じ) に混ざる。
 - `fit_text` は渡された値に `to_s`・`to_i` をかけてから回すので、FmrbUI のように型の決まらない値を渡しても、中の繰り返しは整数と C の文字列で動く。型の決まった呼び出し元からなら 3 つとも型の決まった関数になる。
-- 呼ばれないメソッドは生成されない (`draw_button` は mruby の FmrbGfx だけにある。Spinel の側では使わない)。モジュールとクラスは 1 つずつ内蔵 RAM の数え (プールの記録) を持つ。
+- 呼ばれないメソッドは生成されない (`draw_button` は mruby の FmrbGfx だけにある。Spinel の側では使わない)。モジュール (FmrbText) とクラス (HitAreas) は 1 つずつプールの数えを持つが、生成 TU の BSS なので P4 では PSRAM に置かれる (R6 の実測: エディタの TU の内蔵の分は 92 B のまま、PSRAM が +116 B)。
 - FmrbText に書き足すときは Spinel の制約 (doc/spinel_aot/ruby_writing_constraints.md) を守る: ブロックと Hash を使わない、文字列リテラルを直接変えない (`"".dup` から足す)。
