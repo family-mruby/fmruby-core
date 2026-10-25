@@ -1,6 +1,6 @@
 # R6 指示書: FmrbText・FmrbButtons を広げ、FmrbUI も FmrbText で詰める
 
-> 状態: 指示 | 更新: 2026-10-25 | plan.md の R6。R5 で作った FmrbText (`lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb`)・FmrbButtons (`fmrb-buttons.rb`) を既存のアプリに広げ、FmrbUI のラベル・ボタンが長い文字を FmrbText で詰めるようにする。使い分けを文書にする (2026-10-25 ユーザ決定、選択形式)。**実機は使わない**
+> 状態: 指示 | 更新: 2026-10-25 (確認を RG の道具に) | plan.md の R6。R5 で作った FmrbText (`lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb`)・FmrbButtons (`fmrb-buttons.rb`) を既存のアプリに広げ、FmrbUI のラベル・ボタンが長い文字を FmrbText で詰めるようにする。使い分けを文書にする (2026-10-25 ユーザ決定、選択形式)。**実機は使わない**
 
 言葉: 文書は常体、「確かめ」ではなく「確認」。コードのコメントは英語。
 
@@ -21,11 +21,20 @@
 
 ## 3. 確認
 
-- sim の Modern と Retro、ブラウザ版で、5 つのアプリの前後の画面を並べる (差 0 が目標、差は report に)。
-- FmrbUI: デスクトップ (Config・ランチャーの確認の画面など)・エディタ・シェル・NSF/SMF プレイヤ・appstore などで、ふだんの文字の画面が前と同じ (画素で比べる)。わざと長い文字 (言語を ja/en で切り替える、長いファイル名など) を出して詰まることを確かめる。
-- Spinel: 標準構成 (Spinel のカーネル・エディタ) で起動し、エディタを 1 回起動して 1 打鍵。全 mruby の構成でも同じ (engine_policy: 標準+全 mruby の 2 点)。
-- `rake test`、`rake mahjong:overflow` (前と同じ)、`rake spinel:doctor` があれば指摘の前後。
-- 内蔵 RAM: Tab5・Retro・StickS3 の DIRAM の前後 (Spinel のプログラムの分、約 16 B × 本数までの増え)。
+確認は回帰の道具 (doc/regression/usage.md、RG1・RG3b) を主にし、画面を撮るのは道具が受け持てない所だけにする (2026-10-25 ユーザ決定: R6 の前に RG を作り、R6 の確認を RG で済ませる)。
+
+- **段ごとに `rake regress`** (ホストの試験 + 描画の記録の比較、約 17 秒)。基準は R6 の前のコードで取ってある。
+  - 載せ替える 5 アプリ・オセロの卓・ボード・麻雀は**差 0** が条件 (見た目は変えない)。
+  - FmrbUI のわざと長い文字の場面は、詰めるようになるので差が出てよい。差が出た場面の一覧と、差分の要点 (どの文字がどう詰まったか) を report に書き、**そのうえで基準の更新を別のコミット** (`test: regress baseline ...`) にする。収まる文字の場面に差が出たら止まる。親がこのコミットを読んで検収する。
+  - `tools/mahjong_overflow/check.rb` は `fmrb-buttons.rb` をファイル名で読んでいるので、消すときに直す。`rake mahjong:overflow` の結果は前と同じ。
+- **内蔵 RAM は `rake regress:size`** (全 5 端末、約 10 分、build/ は元に戻る)。Spinel のプログラムの TU の内蔵の分が、1 本あたり約 16 B までの増えなら想定どおり (表を report に貼る)。DIRAM の増えでこの道具は落ちるが、**size の基準は更新しない** (親が検収してから更新する)。
+- **`rake regress:run`** (sim、約 4.4 分): gem に足した分だけコンパイル直後の使用量が増える見込み。増えた量を report に書き、基準は更新しない。
+- **道具が受け持てない所だけ画面で確認する**:
+  - Spinel: 標準構成 (Spinel のカーネル・エディタ) の sim で起動し、エディタを 1 回起動して 1 打鍵。全 mruby の構成でも同じ (engine_policy: 標準+全 mruby の 2 点)。Modern と Retro の両方、各 1〜2 枚。
+  - ブラウザ版: Spinel の生成物と wasm を作り直して起動し、デスクトップとエディタの 1 打鍵、5 アプリのうち 1 つを開く。
+  - それ以外の画面の並べ比べは不要 (描画の記録の比較で済んでいる)。
+- `rake spinel:doctor` があれば指摘の前後。
+- report に、確認にかかった手間 (流したコマンドと時間、撮った枚数) も書く (RG の最後の報告で節約量を見積もるため)。
 
 ## 4. 範囲・決まり
 
