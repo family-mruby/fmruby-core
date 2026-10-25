@@ -1,6 +1,6 @@
 # Asterism を使うアプリの共通部分を切り出す
 
-> 状態: 計画済 | 更新: 2026-10-24 | step_sensor・walk_scroller・オセロの卓・お絵かきボード・麻雀・asterism_demo が、それぞれ同じこと (WiFi を待つ、繋ぐ、繋ぎ直す、卓に入る・出る、/home の小さな設定を読み書きする、幅に合わせて文字を詰める) を自前で書いている。共通の部分を部品に移し、アプリを短くする。R1 から順に進める
+> 状態: 進行中 | 更新: 2026-10-25 | R1-R6 済 (R6: FmrbText を Spinel でも、FmrbUI が収まらない文字を `..` で詰める、FmrbButtons → FmrbUI::HitAreas + FmrbGfx#draw_button、使い分けは doc/reference/screen_helpers.md)。 step_sensor・walk_scroller・オセロの卓・お絵かきボード・麻雀・asterism_demo が、それぞれ同じこと (WiFi を待つ、繋ぐ、繋ぎ直す、卓に入る・出る、/home の小さな設定を読み書きする、幅に合わせて文字を詰める) を自前で書いている。共通の部分を部品に移し、アプリを短くする。R1 から順に進める
 
 ## 1. 目的
 
