@@ -4,7 +4,97 @@
 # 描くメソッドは自分自身を返すので、続けて書ける。
 # 色は RGB332 の数 (FmrbGfx.rgb_to_332 で作れる)。
 
+# 文字を px で測って詰める・折る道具 <<en>> Fit and wrap a text in pixels
+#
+# FmrbGfx に混ぜてあるので、`@gfx.fit_text` のように呼ぶ。幅は呼んだ
+# 時点のフォントと文字の大きさで測る (text_width と同じ数字)。何も
+# 覚えない。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb。
+#
+# ```ruby
+# s = @gfx.fit_text(name, 80)
+# @gfx.draw_text(x, y, s, theme_fg)
+# ```
+# <<en>>
+# Mixed into FmrbGfx, so call it on @gfx. Widths are measured with the
+# font and text size selected at the time of the call (the same numbers as
+# text_width). It remembers nothing. Implemented in
+# lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb.
+#
+# ```ruby
+# s = @gfx.fit_text(name, 80)
+# @gfx.draw_text(x, y, s, theme_fg)
+# ```
+module FmrbText
+  # 文字を幅に収まるよう切る <<en>> Cut a text to fit a width in pixels
+  #
+  # **収まる文字はそのまま返る**。切ったときだけ 3 番目の引数の印
+  # (`"…"`、`".."`) を付け、その幅の分を空けて切る。印を省くと何も
+  # 付けずに切る。4 番目は印の幅 (px、nil で測る)、5 番目は測る
+  # フォント (nil で今のフォント)。
+  #
+  # ```ruby
+  # @gfx.fit_text(title, 100)
+  # @gfx.fit_text(title, 100, "…")
+  # @gfx.fit_text(name, w, "..", nil,
+  #               :default)
+  # ```
+  # <<en>>
+  # **A text that fits comes back unchanged.** Only when it has to be cut
+  # is the third argument appended as a mark ("…", ".."), with room kept
+  # for it; without a mark the text is just cut. The fourth argument is the
+  # mark's width in pixels (nil measures it), the fifth the font to measure
+  # with (nil means the current one).
+  #
+  # ```ruby
+  # @gfx.fit_text(title, 100)
+  # @gfx.fit_text(title, 100, "…")
+  # @gfx.fit_text(name, w, "..", nil,
+  #               :default)
+  # ```
+  def fit_text: (String str, Integer width) -> String
+
+  # 文字を最大 2 行に折る <<en>> Wrap a text into at most two lines
+  #
+  # 戻り値は 1 つか 2 つの文字列の配列。1 行目の最後の空白で割って
+  # 残りが 1 行に収まればそこで、だめなら幅で割り、2 行目がまだ長ければ
+  # `…` で詰める。3 行以上は fit_text で 1 行ずつ切る。
+  #
+  # ```ruby
+  # lines = @gfx.wrap_text(msg, 120)
+  # ```
+  # <<en>>
+  # Answers an array of one or two strings. The break goes at the last
+  # space of the first line when the rest then fits on one line; otherwise
+  # at the width, and a second line still too long ends in "…". For three
+  # lines or more, cut one line at a time with fit_text.
+  #
+  # ```ruby
+  # lines = @gfx.wrap_text(msg, 120)
+  # ```
+  def wrap_text: (String str, Integer width) -> Array[String]
+
+  # 折った文字を行ごとに描く <<en>> Draw a text wrapped into lines
+  #
+  # wrap_text の行を line_h 間隔で下へ描き、最後の行の下の y を返す。
+  #
+  # ```ruby
+  # y = @gfx.draw_text_lines(x, y, msg,
+  #       120, theme_fg, 15)
+  # ```
+  # <<en>>
+  # Draws the lines of wrap_text downwards, line_h apart, and answers the y
+  # under the last one.
+  #
+  # ```ruby
+  # y = @gfx.draw_text_lines(x, y, msg,
+  #       120, theme_fg, 15)
+  # ```
+  def draw_text_lines: (Integer x, Integer y, String str, Integer width, Integer color, Integer line_h) -> Integer
+end
+
 class FmrbGfx
+  include FmrbText
+
   # ---- 色 ----
   #
   # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
@@ -265,6 +355,30 @@ class FmrbGfx
   #                     6, theme_bg)
   # ```
   def fill_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
+
+  # 角の丸いボタンの絵を描く <<en>> Draw the picture of a rounded button
+  #
+  # 地を fill で塗り、label を fg で中央に描く (今のフォント)。**絵だけ**で、
+  # 押せる範囲は持たない。毎回描く画面では FmrbUI::HitAreas#add と
+  # 2 行で使う。8 番目に角の半径を渡せる (既定 3)。
+  #
+  # ```ruby
+  # @gfx.draw_button(x, y, 60, 16, "OK",
+  #   theme_accent, theme_fg_light)
+  # @hits.add(:ok, x, y, 60, 16)
+  # ```
+  # <<en>>
+  # Fills it with fill and centres label in fg with the current font. **Only
+  # the picture**: it has no click target. On a screen redrawn every time,
+  # pair it with FmrbUI::HitAreas#add. An eighth argument sets the corner
+  # radius (default 3).
+  #
+  # ```ruby
+  # @gfx.draw_button(x, y, 60, 16, "OK",
+  #   theme_accent, theme_fg_light)
+  # @hits.add(:ok, x, y, 60, 16)
+  # ```
+  def draw_button: (Integer x, Integer y, Integer w, Integer h, String label, Integer fill, Integer fg) -> FmrbGfx
 
   # 円のふちを描く <<en>> Draw a circle outline
   #

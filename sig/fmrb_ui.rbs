@@ -583,3 +583,109 @@ class FmrbUI::Stepper < FmrbUI::Widget
   # Set it once, right after creating the stepper (e.g. "%").
   def suffix=: (String s) -> void
 end
+
+# 毎回描く画面の押せる範囲 <<en>> Click targets of a screen redrawn every time
+#
+# ゲームの卓のように画面をまるごと描き直す物で使う。描く前に clear し、
+# 描きながら add し、クリックの点を id_at で引く。**何も描かない**
+# (ボタンの絵は FmrbGfx#draw_button)。FmrbUI の部品とは混ぜない。
+# 押した時点でアプリが動く。
+#
+# ```ruby
+# @hits = FmrbUI::HitAreas.new
+#
+# @hits.clear
+# @gfx.draw_button(x, y, 60, 16, "OK",
+#   theme_accent, theme_fg_light)
+# @hits.add(:ok, x, y, 60, 16)
+#
+# id = @hits.id_at(ev[:x], ev[:y])
+# ```
+# <<en>>
+# For screens drawn whole every time, like a game table: clear before
+# drawing, add each target as it is drawn, and look a click up with id_at.
+# **It draws nothing** (the button picture is FmrbGfx#draw_button). Do not
+# mix it with the FmrbUI widgets; the app acts on the press.
+#
+# ```ruby
+# @hits = FmrbUI::HitAreas.new
+#
+# @hits.clear
+# @gfx.draw_button(x, y, 60, 16, "OK",
+#   theme_accent, theme_fg_light)
+# @hits.add(:ok, x, y, 60, 16)
+#
+# id = @hits.id_at(ev[:x], ev[:y])
+# ```
+class FmrbUI::HitAreas
+  # 空の一覧を作る <<en>> Create an empty list
+  #
+  # ```ruby
+  # @hits = FmrbUI::HitAreas.new
+  # ```
+  def self.new: () -> FmrbUI::HitAreas
+
+  # 一覧を空にする <<en>> Empty the list
+  #
+  # ```ruby
+  # @hits.clear
+  # ```
+  def clear: () -> FmrbUI::HitAreas
+
+  # 押せる範囲を足す <<en>> Add a click target
+  #
+  # 6 番目に data を渡すと、at の結果に入って戻る (麻雀の牌など)。
+  # 範囲は次の clear まで有効。
+  #
+  # ```ruby
+  # @hits.add(:ok, x, y, 60, 16)
+  # @hits.add(:tile, x, y, 16, 24, t)
+  # ```
+  # <<en>>
+  # A sixth argument, data, comes back in the result of at (a mahjong tile,
+  # say). A target lasts until the next clear.
+  #
+  # ```ruby
+  # @hits.add(:ok, x, y, 60, 16)
+  # @hits.add(:tile, x, y, 16, 24, t)
+  # ```
+  def add: (untyped id, Integer x, Integer y, Integer w, Integer h) -> FmrbUI::HitAreas
+
+  # 点にある範囲を引く <<en>> The target at a point
+  #
+  # 戻り値は `[id, x, y, w, h, data]` か nil。重なっているときは
+  # **先に足した方が勝つ**。
+  #
+  # ```ruby
+  # b = @hits.at(ev[:x], ev[:y])
+  # tile = b[5] if b
+  # ```
+  # <<en>>
+  # Answers [id, x, y, w, h, data] or nil. Where targets overlap, **the one
+  # added first wins**.
+  #
+  # ```ruby
+  # b = @hits.at(ev[:x], ev[:y])
+  # tile = b[5] if b
+  # ```
+  def at: (Integer x, Integer y) -> Array?
+
+  # 点にある範囲の id <<en>> The id of the target at a point
+  #
+  # 無ければ nil。重なっているときは先に足した方。
+  #
+  # ```ruby
+  # case @hits.id_at(ev[:x], ev[:y])
+  # when :ok then close
+  # end
+  # ```
+  # <<en>>
+  # nil when there is none; where targets overlap, the one added first.
+  #
+  # ```ruby
+  # case @hits.id_at(ev[:x], ev[:y])
+  # when :ok then close
+  # end
+  # ```
+  def id_at: (Integer x, Integer y) -> untyped
+end
