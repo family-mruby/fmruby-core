@@ -1,0 +1,47 @@
+# scene mml/start
+# profile retro-320x240
+# window 178x214 lang en
+== start
+sprite_clip 1 11 176 202
+composite_regions [0,0,0,0,4,4,1,174,0,174,0,4,4,1,0,210,0,210,4,4,1,174,210,174,210,4,4,1,4,0,4,0,170,4,0,4,210,4,210,170,4,0,0,4,0,4,178,206,0]
+fill_rect 1 11 176 202 #FF
+text 9 15 "MML" #00 bg=#FF defaultx1
+text 9 27 "ready" #00 bg=#FF defaultx1
+fill_rect 9 37 160 15 #25
+text 15 41 "1 Scale" #FF defaultx1
+fill_rect 9 55 160 15 #25
+text 15 59 "2 Round" #FF defaultx1
+fill_rect 9 73 160 15 #25
+text 15 77 "3 March" #FF defaultx1
+fill_rect 9 91 160 15 #25
+text 15 95 "4 Chime" #FF defaultx1
+fill_rect 9 109 160 15 #25
+text 15 113 "5 (no file yet)" #FF defaultx1
+fill_rect 9 127 160 15 #25
+text 15 131 "f Open file..." #FF defaultx1
+fill_rect 9 145 160 15 #25
+text 15 149 "o Out: APU" #FF defaultx1
+fill_rect 9 163 160 15 #25
+text 15 167 "l Loop: off" #FF defaultx1
+fill_rect 9 181 160 15 #25
+text 15 185 "space Stop" #FF defaultx1
+gfxblock 1 {w:178,h:214}
+fill_round_rect 0 0 178 11 4 #C5
+fill_rect 0 4 178 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "MML" #FF defaultx1
+fill_circle 172 5 3 #FF
+draw_round_rect 0 0 178 214 4 #60
+gfxblock 2 {w:178,h:214}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 176 0 177 0 #01
+draw_line 177 1 177 1 #01
+draw_line 0 212 0 213 #01
+draw_line 1 213 1 213 #01
+draw_line 177 212 177 213 #01
+draw_line 176 213 176 213 #01
+present
+== update

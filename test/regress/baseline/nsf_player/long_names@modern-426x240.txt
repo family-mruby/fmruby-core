@@ -1,0 +1,111 @@
+# scene nsf_player/long_names
+# profile modern-426x240
+# window 280x200 lang en
+== start
+sprite_clip 1 11 278 188
+composite_regions [0,0,0,0,4,4,1,276,0,276,0,4,4,1,0,196,0,196,4,4,1,276,196,276,196,4,4,1,4,0,4,0,272,4,0,4,196,4,196,272,4,0,0,4,0,4,280,192,0]
+fill_rect 1 11 278 188 #FF
+gfxblock 1 {w:280,h:200}
+fill_round_rect 0 0 280 11 4 #C5
+fill_rect 0 4 280 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "NSF Player" #FF defaultx1
+fill_circle 274 5 3 #FF
+draw_round_rect 0 0 280 200 4 #60
+gfxblock 2 {w:280,h:200}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 278 0 279 0 #01
+draw_line 279 1 279 1 #01
+draw_line 0 198 0 199 #01
+draw_line 1 199 1 199 #01
+draw_line 279 198 279 199 #01
+draw_line 278 199 278 199 #01
+fill_rect 1 13 270 10 #EE
+text 3 14 "after_the_rain.nsf" #FF bg=#EE defaultx1
+text 239 14 "1trk" #FF bg=#EE defaultx1
+text 3 24 "an_extremely_long_file_name_for_a_chiptune_album.nsf" #00 bg=#FF defaultx1
+text 3 34 "encounter.nsf" #00 bg=#FF defaultx1
+text 3 44 "lost_in_hyperspace.nsf" #00 bg=#FF defaultx1
+text 3 54 "spring_thing.nsf" #00 bg=#FF defaultx1
+text 3 64 "test.nsf" #00 bg=#FF defaultx1
+text 3 74 "zz_とても長い日本語のファイル名の曲.nsf" #00 bg=#FF defaultx1
+draw_line 1 161 279 161 #60
+text 3 163 "After the Rain" #00 bg=#FF defaultx1
+text 3 173 "Shiru 01'11" #00 bg=#FF defaultx1
+fill_rect 17 184 38 11 #FF
+draw_rect 17 184 38 11 #60
+textm 27 185 "1/1" #00 x1
+fill_rect 3 184 14 11 #60
+draw_rect 3 184 14 11 #60
+textm 7 185 "<" #FF x1
+fill_rect 55 184 14 11 #60
+draw_rect 55 184 14 11 #60
+textm 59 185 ">" #FF x1
+fill_rect 199 184 35 11 #60
+draw_rect 199 184 35 11 #60
+textm 204 185 "Play" #FF x1
+fill_rect 269 13 10 140 #FF
+present
+== key down
+== update
+== click 216,189
+fill_rect 199 184 35 11 #60
+draw_rect 199 184 35 11 #60
+draw_rect 200 185 33 9 #FF
+textm 204 185 "Play" #FF x1
+present
+fill_rect 1 11 278 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 270 10 #EE
+text 3 14 "after_the_rain.nsf" #FF bg=#EE defaultx1
+text 239 14 "1trk" #FF bg=#EE defaultx1
+text 3 24 "an_extremely_long_file_name_for_a_chiptune_album.nsf" #00 bg=#FF defaultx1
+text 3 34 "encounter.nsf" #00 bg=#FF defaultx1
+text 3 44 "lost_in_hyperspace.nsf" #00 bg=#FF defaultx1
+text 3 54 "spring_thing.nsf" #00 bg=#FF defaultx1
+text 3 64 "test.nsf" #00 bg=#FF defaultx1
+text 3 74 "zz_とても長い日本語のファイル名の曲.nsf" #00 bg=#FF defaultx1
+draw_line 1 161 279 161 #60
+text 3 163 "After the Rain" #00 bg=#FF defaultx1
+text 3 173 "Shiru 01'11" #00 bg=#FF defaultx1
+fill_rect 17 184 38 11 #FF
+draw_rect 17 184 38 11 #60
+textm 27 185 "1/1" #00 x1
+fill_rect 3 184 14 11 #60
+draw_rect 3 184 14 11 #60
+textm 7 185 "<" #FF x1
+fill_rect 55 184 14 11 #60
+draw_rect 55 184 14 11 #60
+textm 59 185 ">" #FF x1
+fill_rect 199 184 35 11 #EE
+draw_rect 199 184 35 11 #60
+textm 204 185 "Stop" #00 x1
+fill_rect 269 13 10 140 #FF
+present
+== update
+== click 65,189
+fill_rect 17 184 38 11 #FF
+draw_rect 17 184 38 11 #60
+textm 27 185 "1/1" #00 x1
+fill_rect 3 184 14 11 #60
+draw_rect 3 184 14 11 #60
+textm 7 185 "<" #FF x1
+fill_rect 55 184 14 11 #FF
+draw_rect 55 184 14 11 #60
+textm 59 185 ">" #60 x1
+present
+fill_rect 17 184 38 11 #FF
+draw_rect 17 184 38 11 #60
+textm 27 185 "1/1" #00 x1
+fill_rect 3 184 14 11 #60
+draw_rect 3 184 14 11 #60
+textm 7 185 "<" #FF x1
+fill_rect 55 184 14 11 #60
+draw_rect 55 184 14 11 #60
+textm 59 185 ">" #FF x1
+present
+== update

@@ -1,0 +1,50 @@
+# scene othello_direct/small_watching
+# profile mini-128x128
+# window 372x222 lang en
+== start
+sprite_clip 1 11 370 210
+composite_regions [0,0,0,0,4,4,1,368,0,368,0,4,4,1,0,218,0,218,4,4,1,368,218,368,218,4,4,1,4,0,4,0,364,4,0,4,218,4,218,364,4,0,0,4,0,4,372,214,0]
+fill_rect 1 11 370 210 #00
+gfxblock 1 {w:372,h:222}
+fill_round_rect 0 0 372 11 4 #C5
+fill_rect 0 4 372 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Othello (direct)" #FF defaultx1
+fill_circle 366 5 3 #FF
+draw_round_rect 0 0 372 222 4 #60
+gfxblock 2 {w:372,h:222}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 370 0 371 0 #01
+draw_line 371 1 371 1 #01
+draw_line 0 220 0 221 #01
+draw_line 1 221 1 221 #01
+draw_line 371 220 371 221 #01
+draw_line 370 221 370 221 #01
+text 3 13 "othello" #FF defaultx1
+text 3 25 "too small to play" #FF defaultx1
+text 3 37 "net connecting" #FF defaultx1
+present
+== kernel enter_fullscreen
+sprite_clip 0 0 0 0
+== update 1/2
+fill_rect 0 0 128 128 #00
+text 2 2 "othello" #FF defaultx1
+text 2 14 "too small to play" #FF defaultx1
+text 2 26 "watching..." #FF defaultx1
+present
+== update 2/2
+== update
+fill_rect 0 0 128 128 #00
+fill_rect 12 1 104 104 #10
+fill_circle 44 33 5 #00
+fill_circle 57 33 5 #00
+fill_circle 70 33 5 #00
+fill_circle 57 46 5 #00
+fill_circle 70 46 5 #FF
+fill_circle 57 59 5 #FF
+fill_circle 70 59 5 #00
+text 2 108 "B5 W3 white" #FF defaultx1
+present

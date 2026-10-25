@@ -1,0 +1,220 @@
+# scene othello_direct/game
+# profile modern-426x240
+# window 372x222 lang en
+== start
+sprite_clip 1 11 370 210
+composite_regions [0,0,0,0,4,4,1,368,0,368,0,4,4,1,0,218,0,218,4,4,1,368,218,368,218,4,4,1,4,0,4,0,364,4,0,4,218,4,218,364,4,0,0,4,0,4,372,214,0]
+fill_rect 1 11 370 210 #FF
+gfxblock 1 {w:372,h:222}
+fill_round_rect 0 0 372 11 4 #C5
+fill_rect 0 4 372 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Othello (direct)" #FF defaultx1
+fill_circle 366 5 3 #FF
+draw_round_rect 0 0 372 222 4 #60
+gfxblock 2 {w:372,h:222}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 370 0 371 0 #01
+draw_line 371 1 371 1 #01
+draw_line 0 220 0 221 #01
+draw_line 1 221 1 221 #01
+draw_line 371 220 371 221 #01
+draw_line 370 221 370 221 #01
+text 5 14 "オセロ: 相手を選んで誘う" #00 ja12x1
+text 165 14 "名前: Player" #00 ja12x1
+text 5 29 "つないでいます: tcp/192.0.2.1:7447" #60 ja12x1
+text 5 45 "-" #60 ja12x1
+fill_round_rect 103 197 90 16 3 #EE
+text 121 199 "名前 (F2)" #FF ja12x1
+present
+== run 1500 ms
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 5 14 "オセロ: 相手を選んで誘う" #00 ja12x1
+text 165 14 "名前: Player" #00 ja12x1
+text 5 29 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 3 44 366 14 #EE
+text 5 45 "fmruby-d4e5f6  ?" #FF ja12x1
+text 5 60 "wasm-0f0f0f  ?" #00 ja12x1
+fill_round_rect 5 197 90 16 3 #EE
+text 14 199 "誘う (Enter)" #FF ja12x1
+fill_round_rect 103 197 90 16 3 #EE
+text 121 199 "名前 (F2)" #FF ja12x1
+present
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 5 14 "オセロ: 相手を選んで誘う" #00 ja12x1
+text 165 14 "名前: Player" #00 ja12x1
+text 5 29 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 3 44 366 14 #EE
+text 5 45 "とても長い名前のプレイヤーさん (fmruby-d4e5f6)  待っている" #FF ja12x1
+text 5 60 "wasm-0f0f0f  ?" #00 ja12x1
+fill_round_rect 5 197 90 16 3 #EE
+text 14 199 "誘う (Enter)" #FF ja12x1
+fill_round_rect 103 197 90 16 3 #EE
+text 121 199 "名前 (F2)" #FF ja12x1
+present
+== update
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 5 14 "オセロ: 相手を選んで誘う" #00 ja12x1
+text 165 14 "名前: Player" #00 ja12x1
+text 5 29 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 3 44 366 14 #EE
+text 5 45 "とても長い名前のプレイヤーさん (fmruby-d4e5f6)  待っている" #FF ja12x1
+text 5 60 "wasm-0f0f0f  ?" #00 ja12x1
+text 5 179 "Alice から誘い。受ける?" #EE ja12x1
+fill_round_rect 5 197 90 16 3 #EE
+text 20 199 "受ける (Y)" #FF ja12x1
+fill_round_rect 103 197 90 16 3 #EE
+text 124 199 "断る (N)" #FF ja12x1
+present
+== key "y"
+== update 1/2
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 4 14 201 201 #10
+draw_line 4 14 4 214 #00
+draw_line 4 14 204 14 #00
+draw_line 29 14 29 214 #00
+draw_line 4 39 204 39 #00
+draw_line 54 14 54 214 #00
+draw_line 4 64 204 64 #00
+draw_line 79 14 79 214 #00
+draw_line 4 89 204 89 #00
+draw_line 104 14 104 214 #00
+draw_line 4 114 204 114 #00
+draw_line 129 14 129 214 #00
+draw_line 4 139 204 139 #00
+draw_line 154 14 154 214 #00
+draw_line 4 164 204 164 #00
+draw_line 179 14 179 214 #00
+draw_line 4 189 204 189 #00
+draw_line 204 14 204 214 #00
+draw_line 4 214 204 214 #00
+fill_circle 91 101 10 #FF
+draw_circle 91 101 10 #00
+fill_circle 116 101 10 #00
+fill_circle 91 126 10 #00
+fill_circle 116 126 10 #FF
+draw_circle 116 126 10 #00
+fill_circle 91 76 2 #6D
+fill_circle 66 101 2 #6D
+fill_circle 141 126 2 #6D
+fill_circle 116 151 2 #6D
+draw_rect 80 90 24 24 #E0
+draw_rect 81 91 22 22 #E0
+fill_circle 215 20 5 #00
+draw_circle 215 20 5 #60
+text 224 14 "あなた 2" #00 ja12x1
+fill_circle 215 35 5 #FF
+draw_circle 215 35 5 #60
+text 224 29 "Alice 2" #00 ja12x1
+text 210 48 "あなたの番 (黒)" #EE ja12x1
+text 210 78 "0 手目 最後: -" #60 ja12x1
+text 210 93 "Alice と対戦 (黒、黒が先)" #60 ja12x1
+fill_round_rect 276 201 60 16 3 #EE
+text 294 203 "投了" #FF ja12x1
+present
+== update 2/2
+== key right
+== update
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 4 14 201 201 #10
+draw_line 4 14 4 214 #00
+draw_line 4 14 204 14 #00
+draw_line 29 14 29 214 #00
+draw_line 4 39 204 39 #00
+draw_line 54 14 54 214 #00
+draw_line 4 64 204 64 #00
+draw_line 79 14 79 214 #00
+draw_line 4 89 204 89 #00
+draw_line 104 14 104 214 #00
+draw_line 4 114 204 114 #00
+draw_line 129 14 129 214 #00
+draw_line 4 139 204 139 #00
+draw_line 154 14 154 214 #00
+draw_line 4 164 204 164 #00
+draw_line 179 14 179 214 #00
+draw_line 4 189 204 189 #00
+draw_line 204 14 204 214 #00
+draw_line 4 214 204 214 #00
+fill_circle 91 101 10 #FF
+draw_circle 91 101 10 #00
+fill_circle 116 101 10 #00
+fill_circle 91 126 10 #00
+fill_circle 116 126 10 #FF
+draw_circle 116 126 10 #00
+fill_circle 91 76 2 #6D
+fill_circle 66 101 2 #6D
+fill_circle 141 126 2 #6D
+fill_circle 116 151 2 #6D
+draw_rect 105 90 24 24 #E0
+draw_rect 106 91 22 22 #E0
+fill_circle 215 20 5 #00
+draw_circle 215 20 5 #60
+text 224 14 "あなた 2" #00 ja12x1
+fill_circle 215 35 5 #FF
+draw_circle 215 35 5 #60
+text 224 29 "Alice 2" #00 ja12x1
+text 210 48 "あなたの番 (黒)" #EE ja12x1
+text 210 78 "0 手目 最後: -" #60 ja12x1
+text 210 93 "Alice と対戦 (黒、黒が先)" #60 ja12x1
+fill_round_rect 276 201 60 16 3 #EE
+text 294 203 "投了" #FF ja12x1
+present
+== click 56,91
+== update 1/2
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 4 14 201 201 #10
+draw_line 4 14 4 214 #00
+draw_line 4 14 204 14 #00
+draw_line 29 14 29 214 #00
+draw_line 4 39 204 39 #00
+draw_line 54 14 54 214 #00
+draw_line 4 64 204 64 #00
+draw_line 79 14 79 214 #00
+draw_line 4 89 204 89 #00
+draw_line 104 14 104 214 #00
+draw_line 4 114 204 114 #00
+draw_line 129 14 129 214 #00
+draw_line 4 139 204 139 #00
+draw_line 154 14 154 214 #00
+draw_line 4 164 204 164 #00
+draw_line 179 14 179 214 #00
+draw_line 4 189 204 189 #00
+draw_line 204 14 204 214 #00
+draw_line 4 214 204 214 #00
+fill_circle 66 101 10 #00
+fill_rect 65 100 3 3 #FC
+fill_circle 91 101 10 #00
+fill_circle 116 101 10 #00
+fill_circle 91 126 10 #00
+fill_circle 116 126 10 #FF
+draw_circle 116 126 10 #00
+draw_rect 55 90 24 24 #E0
+draw_rect 56 91 22 22 #E0
+fill_circle 215 20 5 #00
+draw_circle 215 20 5 #60
+text 224 14 "あなた 4" #00 ja12x1
+fill_circle 215 35 5 #FF
+draw_circle 215 35 5 #60
+text 224 29 "Alice 1" #00 ja12x1
+text 210 48 "相手の番 (白)" #00 ja12x1
+text 210 78 "1 手目 最後: c4" #60 ja12x1
+text 210 93 "c4 (5 ms)" #60 ja12x1
+fill_round_rect 276 201 60 16 3 #EE
+text 294 203 "投了" #FF ja12x1
+present
+== update 2/2

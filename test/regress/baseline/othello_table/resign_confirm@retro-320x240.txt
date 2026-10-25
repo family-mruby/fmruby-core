@@ -1,0 +1,255 @@
+# scene othello_table/resign_confirm
+# profile retro-320x240
+# window 372x222 lang en
+== start
+sprite_clip 1 11 370 210
+composite_regions [0,0,0,0,4,4,1,368,0,368,0,4,4,1,0,218,0,218,4,4,1,368,218,368,218,4,4,1,4,0,4,0,364,4,0,4,218,4,218,364,4,0,0,4,0,4,372,214,0]
+fill_rect 1 11 370 210 #FF
+gfxblock 1 {w:372,h:222}
+fill_round_rect 0 0 372 11 4 #C5
+fill_rect 0 4 372 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Othello (table)" #FF defaultx1
+fill_circle 366 5 3 #FF
+draw_round_rect 0 0 372 222 4 #60
+gfxblock 2 {w:372,h:222}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 370 0 371 0 #01
+draw_line 371 1 371 1 #01
+draw_line 0 220 0 221 #01
+draw_line 1 221 1 221 #01
+draw_line 371 220 371 221 #01
+draw_line 370 221 370 221 #01
+text 5 14 "オセロ (卓): 卓を選ぶ (Enter で入る)" #00 ja12x1
+text 5 29 "つないでいます: tcp/192.0.2.1:7447" #60 ja12x1
+text 5 45 "-" #60 ja12x1
+present
+== kernel enter_fullscreen
+sprite_clip 0 0 0 0
+== update 1/2
+fill_rect 0 0 318 224 #FF
+text 4 3 "オセロ (卓): 卓を選ぶ (Enter で入る)" #00 ja12x1
+text 4 18 "つないでいます: tcp/192.0.2.1:7447" #60 ja12x1
+text 4 34 "-" #60 ja12x1
+fill_round_rect 100 200 90 16 3 #EE
+text 103 202 "閉じる[Ctrl+Q]" #FF ja12x1
+present
+== update 2/2
+fill_rect 0 0 318 224 #FF
+text 4 3 "オセロ (卓): 卓を選ぶ (Enter で入る)" #00 ja12x1
+text 4 18 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 2 33 314 14 #EE
+text 4 34 "games-host-a1b2c3/games/othello1" #FF ja12x1
+text 4 49 "games-host-a1b2c3/games/othello2" #00 ja12x1
+fill_round_rect 4 200 90 16 3 #EE
+text 16 202 "入る[Enter]" #FF ja12x1
+fill_round_rect 100 200 90 16 3 #EE
+text 103 202 "閉じる[Ctrl+Q]" #FF ja12x1
+present
+== update
+fill_rect 0 0 318 224 #FF
+text 4 3 "オセロ (卓): 卓を選ぶ (Enter で入る)" #00 ja12x1
+text 4 18 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 2 33 314 14 #EE
+text 4 34 "games-host-a1b2c3/games/othello1  対局中  alice / " #FF ja12x1
+text 4 49 "games-host-a1b2c3/games/othello2  待ち合わせ  - / -" #00 ja12x1
+fill_round_rect 4 200 90 16 3 #EE
+text 16 202 "入る[Enter]" #FF ja12x1
+fill_round_rect 100 200 90 16 3 #EE
+text 103 202 "閉じる[Ctrl+Q]" #FF ja12x1
+present
+== key down
+== update
+fill_rect 0 0 318 224 #FF
+text 4 3 "オセロ (卓): 卓を選ぶ (Enter で入る)" #00 ja12x1
+text 4 18 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+text 4 34 "games-host-a1b2c3/games/othello1  対局中  alice / " #00 ja12x1
+fill_rect 2 48 314 14 #EE
+text 4 49 "games-host-a1b2c3/games/othello2  待ち合わせ  - / -" #FF ja12x1
+fill_round_rect 4 200 90 16 3 #EE
+text 16 202 "入る[Enter]" #FF ja12x1
+fill_round_rect 100 200 90 16 3 #EE
+text 103 202 "閉じる[Ctrl+Q]" #FF ja12x1
+present
+== key enter
+== update 1/3
+fill_rect 0 0 318 224 #FF
+fill_rect 3 3 169 169 #10
+draw_line 3 3 3 171 #00
+draw_line 3 3 171 3 #00
+draw_line 24 3 24 171 #00
+draw_line 3 24 171 24 #00
+draw_line 45 3 45 171 #00
+draw_line 3 45 171 45 #00
+draw_line 66 3 66 171 #00
+draw_line 3 66 171 66 #00
+draw_line 87 3 87 171 #00
+draw_line 3 87 171 87 #00
+draw_line 108 3 108 171 #00
+draw_line 3 108 171 108 #00
+draw_line 129 3 129 171 #00
+draw_line 3 129 171 129 #00
+draw_line 150 3 150 171 #00
+draw_line 3 150 171 150 #00
+draw_line 171 3 171 171 #00
+draw_line 3 171 171 171 #00
+text 177 3 "othello2" #00 ja12x1
+text 177 18 "入っています..." #60 ja12x1
+present
+== update 2/3
+fill_rect 0 0 318 224 #FF
+fill_rect 3 3 169 169 #10
+draw_line 3 3 3 171 #00
+draw_line 3 3 171 3 #00
+draw_line 24 3 24 171 #00
+draw_line 3 24 171 24 #00
+draw_line 45 3 45 171 #00
+draw_line 3 45 171 45 #00
+draw_line 66 3 66 171 #00
+draw_line 3 66 171 66 #00
+draw_line 87 3 87 171 #00
+draw_line 3 87 171 87 #00
+draw_line 108 3 108 171 #00
+draw_line 3 108 171 108 #00
+draw_line 129 3 129 171 #00
+draw_line 3 129 171 129 #00
+draw_line 150 3 150 171 #00
+draw_line 3 150 171 150 #00
+draw_line 171 3 171 171 #00
+draw_line 3 171 171 171 #00
+fill_circle 55 55 8 #00
+fill_rect 54 54 3 3 #FC
+fill_circle 76 55 8 #00
+fill_circle 97 55 8 #00
+fill_circle 76 76 8 #00
+fill_circle 97 76 8 #FF
+draw_circle 97 76 8 #00
+fill_circle 76 97 8 #FF
+draw_circle 76 97 8 #00
+fill_circle 97 97 8 #00
+fill_circle 55 76 2 #6D
+fill_circle 97 55 2 #6D
+fill_circle 118 118 2 #6D
+draw_rect 67 67 20 20 #E0
+draw_rect 68 68 18 18 #E0
+text 177 3 "othello2  対局中" #00 ja12x1
+fill_circle 182 26 5 #00
+draw_circle 182 26 5 #60
+text 191 20 "とても長…* (自分) 4" #EE ja12x1
+fill_circle 182 41 5 #FF
+draw_circle 182 41 5 #60
+text 191 35 "CPU 3" #00 ja12x1
+text 177 53 "あなたの番 (6 手目)" #E0 ja12x1
+text 177 68 "残り 30 秒 (切れたら" #60 ja12x1
+text 177 83 "CPU が打つ)" #60 ja12x1
+text 177 98 "最後: c3" #60 ja12x1
+fill_round_rect 177 204 60 16 3 #EE
+text 195 206 "投了" #FF ja12x1
+present
+== update 3/3
+fill_rect 0 0 318 224 #FF
+fill_rect 3 3 169 169 #10
+draw_line 3 3 3 171 #00
+draw_line 3 3 171 3 #00
+draw_line 24 3 24 171 #00
+draw_line 3 24 171 24 #00
+draw_line 45 3 45 171 #00
+draw_line 3 45 171 45 #00
+draw_line 66 3 66 171 #00
+draw_line 3 66 171 66 #00
+draw_line 87 3 87 171 #00
+draw_line 3 87 171 87 #00
+draw_line 108 3 108 171 #00
+draw_line 3 108 171 108 #00
+draw_line 129 3 129 171 #00
+draw_line 3 129 171 129 #00
+draw_line 150 3 150 171 #00
+draw_line 3 150 171 150 #00
+draw_line 171 3 171 171 #00
+draw_line 3 171 171 171 #00
+fill_circle 55 55 8 #00
+fill_rect 54 54 3 3 #FC
+fill_circle 76 55 8 #00
+fill_circle 97 55 8 #00
+fill_circle 76 76 8 #00
+fill_circle 97 76 8 #FF
+draw_circle 97 76 8 #00
+fill_circle 76 97 8 #FF
+draw_circle 76 97 8 #00
+fill_circle 97 97 8 #00
+fill_circle 55 76 2 #6D
+fill_circle 97 55 2 #6D
+fill_circle 118 118 2 #6D
+draw_rect 67 67 20 20 #E0
+draw_rect 68 68 18 18 #E0
+text 177 3 "othello2  対局中" #00 ja12x1
+fill_circle 182 26 5 #00
+draw_circle 182 26 5 #60
+text 191 20 "とても長…* (自分) 4" #EE ja12x1
+fill_circle 182 41 5 #FF
+draw_circle 182 41 5 #60
+text 191 35 "CPU 3" #00 ja12x1
+text 177 53 "あなたの番 (6 手目)" #E0 ja12x1
+text 177 68 "残り 30 秒 (切れたら" #60 ja12x1
+text 177 83 "CPU が打つ)" #60 ja12x1
+text 177 98 "最後: c3" #60 ja12x1
+fill_round_rect 177 204 60 16 3 #EE
+text 195 206 "投了" #FF ja12x1
+present
+== key esc
+== update
+fill_rect 0 0 318 224 #FF
+fill_rect 3 3 169 169 #10
+draw_line 3 3 3 171 #00
+draw_line 3 3 171 3 #00
+draw_line 24 3 24 171 #00
+draw_line 3 24 171 24 #00
+draw_line 45 3 45 171 #00
+draw_line 3 45 171 45 #00
+draw_line 66 3 66 171 #00
+draw_line 3 66 171 66 #00
+draw_line 87 3 87 171 #00
+draw_line 3 87 171 87 #00
+draw_line 108 3 108 171 #00
+draw_line 3 108 171 108 #00
+draw_line 129 3 129 171 #00
+draw_line 3 129 171 129 #00
+draw_line 150 3 150 171 #00
+draw_line 3 150 171 150 #00
+draw_line 171 3 171 171 #00
+draw_line 3 171 171 171 #00
+fill_circle 55 55 8 #00
+fill_rect 54 54 3 3 #FC
+fill_circle 76 55 8 #00
+fill_circle 97 55 8 #00
+fill_circle 76 76 8 #00
+fill_circle 97 76 8 #FF
+draw_circle 97 76 8 #00
+fill_circle 76 97 8 #FF
+draw_circle 76 97 8 #00
+fill_circle 97 97 8 #00
+fill_circle 55 76 2 #6D
+fill_circle 97 55 2 #6D
+fill_circle 118 118 2 #6D
+draw_rect 67 67 20 20 #E0
+draw_rect 68 68 18 18 #E0
+text 177 3 "othello2  対局中" #00 ja12x1
+fill_circle 182 26 5 #00
+draw_circle 182 26 5 #60
+text 191 20 "とても長…* (自分) 4" #EE ja12x1
+fill_circle 182 41 5 #FF
+draw_circle 182 41 5 #60
+text 191 35 "CPU 3" #00 ja12x1
+text 177 53 "あなたの番 (6 手目)" #E0 ja12x1
+text 177 68 "残り 30 秒 (切れたら" #60 ja12x1
+text 177 83 "CPU が打つ)" #60 ja12x1
+text 177 98 "最後: c3" #60 ja12x1
+text 177 186 "投了しますか?" #E0 ja12x1
+fill_round_rect 177 204 60 16 3 #EE
+text 195 206 "はい" #FF ja12x1
+fill_round_rect 243 204 60 16 3 #EE
+text 255 206 "いいえ" #FF ja12x1
+present

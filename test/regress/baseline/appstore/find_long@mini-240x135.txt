@@ -1,0 +1,105 @@
+# scene appstore/find_long
+# profile mini-240x135
+# window 280x190 lang ja
+== start
+sprite_clip 1 11 278 178
+composite_regions [0,0,0,0,4,4,1,276,0,276,0,4,4,1,0,186,0,186,4,4,1,276,186,276,186,4,4,1,4,0,4,0,272,4,0,4,186,4,186,272,4,0,0,4,0,4,280,182,0]
+fill_rect 1 11 278 178 #FF
+gfxblock 1 {w:280,h:190}
+fill_round_rect 0 0 280 11 4 #C5
+fill_rect 0 4 280 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "App Store" #FF defaultx1
+fill_circle 274 5 3 #FF
+draw_round_rect 0 0 280 190 4 #60
+gfxblock 2 {w:280,h:190}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 278 0 279 0 #01
+draw_line 279 1 279 1 #01
+draw_line 0 188 0 189 #01
+draw_line 1 189 1 189 #01
+draw_line 279 188 279 189 #01
+draw_line 278 189 278 189 #01
+fill_rect 1 13 66 14 #EE
+draw_rect 1 13 66 14 #60
+textm 22 16 "Find" #00 x1
+fill_rect 71 13 66 14 #60
+draw_rect 71 13 66 14 #60
+textm 77 16 "Installed" #FF x1
+fill_rect 213 13 66 14 #60
+draw_rect 213 13 66 14 #60
+textm 228 16 "Reload" #FF x1
+fill_rect 1 31 66 16 #60
+draw_rect 1 31 66 16 #60
+textm 13 35 "Install" #FF x1
+fill_rect 71 31 66 16 #60
+draw_rect 71 31 66 16 #60
+textm 86 35 "Remove" #FF x1
+present
+fill_rect 1 56 278 87 #FF
+text 3 58 "(nothing yet)" #00 defaultx1
+draw_line 1 51 278 51 #60
+draw_line 1 145 278 145 #60
+fill_rect 1 148 242 40 #FF
+text 3 168 "fetching the list..." #00 bg=#FF defaultx1
+fill_rect 245 148 32 24 #FF
+draw_rect 245 148 32 24 #60
+gfxblock 1 again
+gfxblock 2 again
+present
+== update 1/2
+fill_rect 1 11 278 178 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 66 14 #EE
+draw_rect 1 13 66 14 #60
+textm 22 16 "Find" #00 x1
+fill_rect 71 13 66 14 #60
+draw_rect 71 13 66 14 #60
+textm 77 16 "Installed" #FF x1
+fill_rect 213 13 66 14 #60
+draw_rect 213 13 66 14 #60
+textm 228 16 "Reload" #FF x1
+fill_rect 1 31 66 16 #60
+draw_rect 1 31 66 16 #60
+textm 13 35 "Install" #FF x1
+fill_rect 71 31 66 16 #60
+draw_rect 71 31 66 16 #60
+textm 86 35 "Remove" #FF x1
+present
+fill_rect 1 56 278 87 #FF
+fill_rect 1 56 278 11 #FF
+text 3 57 ">" #60 bg=#FF defaultx1
+text 11 57 " " #60 bg=#FF defaultx1
+text 21 57 "Clock v1.2.0" #60 bg=#FF defaultx1
+fill_rect 1 67 278 11 #FF
+text 3 68 " " #60 bg=#FF defaultx1
+text 11 68 " " #60 bg=#FF defaultx1
+text 21 68 "An application with a very long name indee" #60 bg=#FF defaultx1
+fill_rect 1 78 278 11 #FF
+text 3 79 " " #60 bg=#FF defaultx1
+text 11 79 " " #60 bg=#FF defaultx1
+text 21 79 "Blocks v0.9.1" #60 bg=#FF defaultx1
+draw_line 1 51 278 51 #60
+draw_line 1 145 278 145 #60
+fill_rect 1 148 242 40 #FF
+text 3 148 "v1.2.0 tool" #00 bg=#FF defaultx1
+text 3 158 "not checked on mini" #60 bg=#FF defaultx1
+text 3 168 "3 apps - mini" #00 bg=#FF defaultx1
+fill_rect 245 148 32 24 #FF
+draw_rect 245 148 32 24 #60
+gfxblock 1 again
+gfxblock 2 again
+present
+fill_rect 245 148 32 24 #FF
+create_image 101 "/cache/app/appstore/clock.png"
+draw_image 101 245 148 1.00 0.00
+present
+== update 2/2
+== key down
+== update 1/3
+== update 2/3
+== update 3/3

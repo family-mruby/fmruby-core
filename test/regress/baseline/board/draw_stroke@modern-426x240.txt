@@ -1,0 +1,398 @@
+# scene board/draw_stroke
+# profile modern-426x240
+# window 372x222 lang en
+== start
+sprite_clip 1 11 370 210
+composite_regions [0,0,0,0,4,4,1,368,0,368,0,4,4,1,0,218,0,218,4,4,1,368,218,368,218,4,4,1,4,0,4,0,364,4,0,4,218,4,218,364,4,0,0,4,0,4,372,214,0]
+fill_rect 1 11 370 210 #FF
+gfxblock 1 {w:372,h:222}
+fill_round_rect 0 0 372 11 4 #C5
+fill_rect 0 4 372 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Board" #FF defaultx1
+fill_circle 366 5 3 #FF
+draw_round_rect 0 0 372 222 4 #60
+gfxblock 2 {w:372,h:222}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 370 0 371 0 #01
+draw_line 371 1 371 1 #01
+draw_line 0 220 0 221 #01
+draw_line 1 221 1 221 #01
+draw_line 371 220 371 221 #01
+draw_line 370 221 370 221 #01
+text 5 14 "お絵かき: ボードを選ぶ (Enter で入る)" #00 ja12x1
+text 5 29 "つないでいます: tcp/192.0.2.1:7447" #60 ja12x1
+text 5 45 "-" #60 ja12x1
+present
+== update 1/2
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 5 14 "お絵かき: ボードを選ぶ (Enter で入る)" #00 ja12x1
+text 5 29 "つないでいます: tcp/192.0.2.1:7447" #60 ja12x1
+text 5 45 "-" #60 ja12x1
+present
+== update 2/2
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 5 14 "お絵かき: ボードを選ぶ (Enter で入る)" #00 ja12x1
+text 5 29 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 3 44 366 14 #EE
+text 5 45 "games-host-a1b2c3/games/board1" #FF ja12x1
+text 5 60 "games-host-a1b2c3/games/board2" #00 ja12x1
+fill_round_rect 5 197 90 15 3 #EE
+text 17 198 "入る[Enter]" #FF ja12x1
+present
+== update
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 5 14 "お絵かき: ボードを選ぶ (Enter で入る)" #00 ja12x1
+text 5 29 "fmruby-a1b2c3 (tcp/192.0.2.1:7447)" #60 ja12x1
+fill_rect 3 44 366 14 #EE
+text 5 45 "games-host-a1b2c3/games/board1  線 12  0 人" #FF ja12x1
+text 5 60 "games-host-a1b2c3/games/board2  線 0  0 人" #00 ja12x1
+fill_round_rect 5 197 90 15 3 #EE
+text 17 198 "入る[Enter]" #FF ja12x1
+present
+== key enter
+== update 1/5
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 3 31 301 169 #FF
+draw_rect 2 30 303 171 #92
+fill_rect 310 11 61 210 #FF
+text 311 12 "board1" #00 ja12x1
+text 311 25 "..." #60 ja12x1
+fill_rect 311 41 13 13 #00
+draw_rect 311 41 13 13 #92
+draw_rect 310 40 15 15 #00
+draw_rect 312 42 11 11 #FF
+fill_rect 325 41 13 13 #92
+draw_rect 325 41 13 13 #92
+fill_rect 339 41 13 13 #DB
+draw_rect 339 41 13 13 #92
+fill_rect 353 41 13 13 #FF
+draw_rect 353 41 13 13 #92
+fill_rect 311 55 13 13 #E0
+draw_rect 311 55 13 13 #92
+fill_rect 325 55 13 13 #F0
+draw_rect 325 55 13 13 #92
+fill_rect 339 55 13 13 #FC
+draw_rect 339 55 13 13 #92
+fill_rect 353 55 13 13 #88
+draw_rect 353 55 13 13 #92
+fill_rect 311 69 13 13 #14
+draw_rect 311 69 13 13 #92
+fill_rect 325 69 13 13 #5C
+draw_rect 325 69 13 13 #92
+fill_rect 339 69 13 13 #1F
+draw_rect 339 69 13 13 #92
+fill_rect 353 69 13 13 #03
+draw_rect 353 69 13 13 #92
+fill_rect 311 83 13 13 #02
+draw_rect 311 83 13 13 #92
+fill_rect 325 83 13 13 #82
+draw_rect 325 83 13 13 #92
+fill_rect 339 83 13 13 #E3
+draw_rect 339 83 13 13 #92
+fill_rect 353 83 13 13 #F2
+draw_rect 353 83 13 13 #92
+fill_rect 311 101 13 13 #FF
+draw_rect 311 101 13 13 #92
+fill_rect 317 107 1 1 #00
+fill_rect 325 101 13 13 #EE
+draw_rect 325 101 13 13 #92
+fill_rect 330 106 2 2 #FF
+fill_rect 339 101 13 13 #FF
+draw_rect 339 101 13 13 #92
+fill_rect 343 105 4 4 #00
+fill_rect 353 101 13 13 #FF
+draw_rect 353 101 13 13 #92
+fill_rect 355 103 8 8 #00
+fill_round_rect 311 119 27 15 3 #EE
+text 318 120 "戻" #FF ja12x1
+fill_round_rect 311 136 27 15 3 #EE
+text 318 137 "読" #FF ja12x1
+fill_round_rect 340 136 27 15 3 #EE
+text 347 137 "出" #FF ja12x1
+present
+== update 2/5
+fill_rect 1 11 370 210 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 3 31 301 169 #FF
+draw_rect 2 30 303 171 #92
+fill_rect 310 11 61 210 #FF
+text 311 12 "board1" #00 ja12x1
+text 311 25 "..." #60 ja12x1
+fill_rect 311 41 13 13 #00
+draw_rect 311 41 13 13 #92
+draw_rect 310 40 15 15 #00
+draw_rect 312 42 11 11 #FF
+fill_rect 325 41 13 13 #92
+draw_rect 325 41 13 13 #92
+fill_rect 339 41 13 13 #DB
+draw_rect 339 41 13 13 #92
+fill_rect 353 41 13 13 #FF
+draw_rect 353 41 13 13 #92
+fill_rect 311 55 13 13 #E0
+draw_rect 311 55 13 13 #92
+fill_rect 325 55 13 13 #F0
+draw_rect 325 55 13 13 #92
+fill_rect 339 55 13 13 #FC
+draw_rect 339 55 13 13 #92
+fill_rect 353 55 13 13 #88
+draw_rect 353 55 13 13 #92
+fill_rect 311 69 13 13 #14
+draw_rect 311 69 13 13 #92
+fill_rect 325 69 13 13 #5C
+draw_rect 325 69 13 13 #92
+fill_rect 339 69 13 13 #1F
+draw_rect 339 69 13 13 #92
+fill_rect 353 69 13 13 #03
+draw_rect 353 69 13 13 #92
+fill_rect 311 83 13 13 #02
+draw_rect 311 83 13 13 #92
+fill_rect 325 83 13 13 #82
+draw_rect 325 83 13 13 #92
+fill_rect 339 83 13 13 #E3
+draw_rect 339 83 13 13 #92
+fill_rect 353 83 13 13 #F2
+draw_rect 353 83 13 13 #92
+fill_rect 311 101 13 13 #FF
+draw_rect 311 101 13 13 #92
+fill_rect 317 107 1 1 #00
+fill_rect 325 101 13 13 #EE
+draw_rect 325 101 13 13 #92
+fill_rect 330 106 2 2 #FF
+fill_rect 339 101 13 13 #FF
+draw_rect 339 101 13 13 #92
+fill_rect 343 105 4 4 #00
+fill_rect 353 101 13 13 #FF
+draw_rect 353 101 13 13 #92
+fill_rect 355 103 8 8 #00
+fill_round_rect 311 119 27 15 3 #EE
+text 318 120 "戻" #FF ja12x1
+fill_round_rect 340 119 27 15 3 #EE
+text 347 120 "消" #FF ja12x1
+fill_round_rect 311 136 27 15 3 #EE
+text 318 137 "読" #FF ja12x1
+fill_round_rect 340 136 27 15 3 #EE
+text 347 137 "出" #FF ja12x1
+text 311 155 "主" #60 ja12x1
+present
+fill_rect 3 31 301 169 #FF
+draw_rect 2 30 303 171 #92
+present
+draw_line 7 35 97 49 #E0
+draw_line 97 49 153 172 #E0
+draw_line 286 41 21 192 #03
+draw_line 286 40 21 191 #03
+draw_line 286 39 21 190 #03
+present
+fill_rect 310 11 61 210 #FF
+text 311 12 "board1" #00 ja12x1
+text 311 25 "読込中" #60 ja12x1
+fill_rect 311 41 13 13 #00
+draw_rect 311 41 13 13 #92
+draw_rect 310 40 15 15 #00
+draw_rect 312 42 11 11 #FF
+fill_rect 325 41 13 13 #92
+draw_rect 325 41 13 13 #92
+fill_rect 339 41 13 13 #DB
+draw_rect 339 41 13 13 #92
+fill_rect 353 41 13 13 #FF
+draw_rect 353 41 13 13 #92
+fill_rect 311 55 13 13 #E0
+draw_rect 311 55 13 13 #92
+fill_rect 325 55 13 13 #F0
+draw_rect 325 55 13 13 #92
+fill_rect 339 55 13 13 #FC
+draw_rect 339 55 13 13 #92
+fill_rect 353 55 13 13 #88
+draw_rect 353 55 13 13 #92
+fill_rect 311 69 13 13 #14
+draw_rect 311 69 13 13 #92
+fill_rect 325 69 13 13 #5C
+draw_rect 325 69 13 13 #92
+fill_rect 339 69 13 13 #1F
+draw_rect 339 69 13 13 #92
+fill_rect 353 69 13 13 #03
+draw_rect 353 69 13 13 #92
+fill_rect 311 83 13 13 #02
+draw_rect 311 83 13 13 #92
+fill_rect 325 83 13 13 #82
+draw_rect 325 83 13 13 #92
+fill_rect 339 83 13 13 #E3
+draw_rect 339 83 13 13 #92
+fill_rect 353 83 13 13 #F2
+draw_rect 353 83 13 13 #92
+fill_rect 311 101 13 13 #FF
+draw_rect 311 101 13 13 #92
+fill_rect 317 107 1 1 #00
+fill_rect 325 101 13 13 #EE
+draw_rect 325 101 13 13 #92
+fill_rect 330 106 2 2 #FF
+fill_rect 339 101 13 13 #FF
+draw_rect 339 101 13 13 #92
+fill_rect 343 105 4 4 #00
+fill_rect 353 101 13 13 #FF
+draw_rect 353 101 13 13 #92
+fill_rect 355 103 8 8 #00
+fill_round_rect 311 119 27 15 3 #EE
+text 318 120 "戻" #FF ja12x1
+fill_round_rect 340 119 27 15 3 #EE
+text 347 120 "消" #FF ja12x1
+fill_round_rect 311 136 27 15 3 #EE
+text 318 137 "読" #FF ja12x1
+fill_round_rect 340 136 27 15 3 #EE
+text 347 137 "出" #FF ja12x1
+text 311 155 "主" #60 ja12x1
+present
+== update 3/5
+draw_line 50 115 257 115 #00
+draw_line 257 115 153 59 #00
+draw_line 153 59 50 115 #00
+present
+fill_rect 310 11 61 210 #FF
+text 311 12 "board1" #00 ja12x1
+text 311 25 "線3 3人" #60 ja12x1
+fill_rect 311 41 13 13 #00
+draw_rect 311 41 13 13 #92
+draw_rect 310 40 15 15 #00
+draw_rect 312 42 11 11 #FF
+fill_rect 325 41 13 13 #92
+draw_rect 325 41 13 13 #92
+fill_rect 339 41 13 13 #DB
+draw_rect 339 41 13 13 #92
+fill_rect 353 41 13 13 #FF
+draw_rect 353 41 13 13 #92
+fill_rect 311 55 13 13 #E0
+draw_rect 311 55 13 13 #92
+fill_rect 325 55 13 13 #F0
+draw_rect 325 55 13 13 #92
+fill_rect 339 55 13 13 #FC
+draw_rect 339 55 13 13 #92
+fill_rect 353 55 13 13 #88
+draw_rect 353 55 13 13 #92
+fill_rect 311 69 13 13 #14
+draw_rect 311 69 13 13 #92
+fill_rect 325 69 13 13 #5C
+draw_rect 325 69 13 13 #92
+fill_rect 339 69 13 13 #1F
+draw_rect 339 69 13 13 #92
+fill_rect 353 69 13 13 #03
+draw_rect 353 69 13 13 #92
+fill_rect 311 83 13 13 #02
+draw_rect 311 83 13 13 #92
+fill_rect 325 83 13 13 #82
+draw_rect 325 83 13 13 #92
+fill_rect 339 83 13 13 #E3
+draw_rect 339 83 13 13 #92
+fill_rect 353 83 13 13 #F2
+draw_rect 353 83 13 13 #92
+fill_rect 311 101 13 13 #FF
+draw_rect 311 101 13 13 #92
+fill_rect 317 107 1 1 #00
+fill_rect 325 101 13 13 #EE
+draw_rect 325 101 13 13 #92
+fill_rect 330 106 2 2 #FF
+fill_rect 339 101 13 13 #FF
+draw_rect 339 101 13 13 #92
+fill_rect 343 105 4 4 #00
+fill_rect 353 101 13 13 #FF
+draw_rect 353 101 13 13 #92
+fill_rect 355 103 8 8 #00
+fill_round_rect 311 119 27 15 3 #EE
+text 318 120 "戻" #FF ja12x1
+fill_round_rect 340 119 27 15 3 #EE
+text 347 120 "消" #FF ja12x1
+fill_round_rect 311 136 27 15 3 #EE
+text 318 137 "読" #FF ja12x1
+fill_round_rect 340 136 27 15 3 #EE
+text 347 137 "出" #FF ja12x1
+text 311 155 "主" #60 ja12x1
+present
+== update 4/5
+== update 5/5
+== click 342,58
+== key "3"
+== update
+fill_rect 310 11 61 210 #FF
+text 311 12 "board1" #00 ja12x1
+text 311 25 "線3 3人" #60 ja12x1
+fill_rect 311 41 13 13 #00
+draw_rect 311 41 13 13 #92
+fill_rect 325 41 13 13 #92
+draw_rect 325 41 13 13 #92
+fill_rect 339 41 13 13 #DB
+draw_rect 339 41 13 13 #92
+fill_rect 353 41 13 13 #FF
+draw_rect 353 41 13 13 #92
+fill_rect 311 55 13 13 #E0
+draw_rect 311 55 13 13 #92
+fill_rect 325 55 13 13 #F0
+draw_rect 325 55 13 13 #92
+fill_rect 339 55 13 13 #FC
+draw_rect 339 55 13 13 #92
+draw_rect 338 54 15 15 #00
+draw_rect 340 56 11 11 #00
+fill_rect 353 55 13 13 #88
+draw_rect 353 55 13 13 #92
+fill_rect 311 69 13 13 #14
+draw_rect 311 69 13 13 #92
+fill_rect 325 69 13 13 #5C
+draw_rect 325 69 13 13 #92
+fill_rect 339 69 13 13 #1F
+draw_rect 339 69 13 13 #92
+fill_rect 353 69 13 13 #03
+draw_rect 353 69 13 13 #92
+fill_rect 311 83 13 13 #02
+draw_rect 311 83 13 13 #92
+fill_rect 325 83 13 13 #82
+draw_rect 325 83 13 13 #92
+fill_rect 339 83 13 13 #E3
+draw_rect 339 83 13 13 #92
+fill_rect 353 83 13 13 #F2
+draw_rect 353 83 13 13 #92
+fill_rect 311 101 13 13 #FF
+draw_rect 311 101 13 13 #92
+fill_rect 317 107 1 1 #00
+fill_rect 325 101 13 13 #FF
+draw_rect 325 101 13 13 #92
+fill_rect 330 106 2 2 #00
+fill_rect 339 101 13 13 #EE
+draw_rect 339 101 13 13 #92
+fill_rect 343 105 4 4 #FF
+fill_rect 353 101 13 13 #FF
+draw_rect 353 101 13 13 #92
+fill_rect 355 103 8 8 #00
+fill_round_rect 311 119 27 15 3 #EE
+text 318 120 "戻" #FF ja12x1
+fill_round_rect 340 119 27 15 3 #EE
+text 347 120 "消" #FF ja12x1
+fill_round_rect 311 136 27 15 3 #EE
+text 318 137 "読" #FF ja12x1
+fill_round_rect 340 136 27 15 3 #EE
+text 347 137 "出" #FF ja12x1
+text 311 155 "主" #60 ja12x1
+present
+== press 23,51
+== move 63,61
+== move 93,101
+== release 103,111
+== update 1/4
+draw_line 22 50 22 50 #FC
+draw_line 22 50 62 60 #FC
+draw_line 62 60 92 100 #FC
+draw_line 92 100 102 110 #FC
+present
+== update 2/4
+== update 3/4
+== update 4/4

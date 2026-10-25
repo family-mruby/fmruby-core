@@ -1,0 +1,878 @@
+# scene kamon/change
+# profile retro-320x240
+# window 300x210 lang en
+== start
+sprite_clip 1 11 298 198
+composite_regions [0,0,0,0,4,4,1,296,0,296,0,4,4,1,0,206,0,206,4,4,1,296,206,296,206,4,4,1,4,0,4,0,292,4,0,4,206,4,206,292,4,0,0,4,0,4,300,202,0]
+fill_rect 1 11 298 198 #FF
+gfxblock 1 {w:300,h:210}
+fill_round_rect 0 0 300 11 4 #C5
+fill_rect 0 4 300 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Kamon" #FF defaultx1
+fill_circle 294 5 3 #FF
+draw_round_rect 0 0 300 210 4 #60
+gfxblock 2 {w:300,h:210}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 298 0 299 0 #01
+draw_line 299 1 299 1 #01
+draw_line 0 208 0 209 #01
+draw_line 1 209 1 209 #01
+draw_line 299 208 299 209 #01
+draw_line 298 209 298 209 #01
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+fill_circle 95 76 13 #00
+fill_circle 122 96 13 #00
+fill_circle 112 128 13 #00
+fill_circle 78 128 13 #00
+fill_circle 68 96 13 #00
+fill_circle 95 105 7 #FF
+fill_rect 189 15 108 10 #FF
+textm 189 16 "紋様" #00 x1
+fill_rect 189 25 50 16 #EE
+draw_rect 189 25 50 16 #60
+textm 210 29 "円" #00 x1
+fill_rect 247 25 50 16 #60
+draw_rect 247 25 50 16 #60
+textm 268 29 "菱" #FF x1
+fill_rect 189 43 50 16 #60
+draw_rect 189 43 50 16 #60
+textm 210 47 "花" #FF x1
+fill_rect 247 43 50 16 #60
+draw_rect 247 43 50 16 #60
+textm 268 47 "扇" #FF x1
+fill_rect 189 61 50 16 #60
+draw_rect 189 61 50 16 #60
+textm 210 65 "鱗" #FF x1
+fill_rect 189 83 108 10 #FF
+textm 189 84 "中央" #00 x1
+fill_rect 189 93 50 16 #60
+draw_rect 189 93 50 16 #60
+textm 210 97 "無" #FF x1
+fill_rect 247 93 50 16 #EE
+draw_rect 247 93 50 16 #60
+textm 268 97 "白" #00 x1
+fill_rect 189 111 50 16 #60
+draw_rect 189 111 50 16 #60
+textm 210 115 "黒" #FF x1
+fill_rect 247 111 50 16 #60
+draw_rect 247 111 50 16 #60
+textm 268 115 "輪" #FF x1
+fill_rect 189 131 108 10 #FF
+textm 189 132 "数" #00 x1
+fill_rect 203 141 80 14 #FF
+draw_rect 203 141 80 14 #60
+textm 240 144 "5" #00 x1
+fill_rect 189 141 14 14 #60
+draw_rect 189 141 14 14 #60
+textm 193 144 "<" #FF x1
+fill_rect 283 141 14 14 #60
+draw_rect 283 141 14 14 #60
+textm 287 144 ">" #FF x1
+fill_rect 189 159 108 10 #FF
+textm 189 160 "大きさ" #00 x1
+fill_rect 203 171 80 14 #FF
+draw_rect 203 171 80 14 #60
+textm 234 174 "70%" #00 x1
+fill_rect 189 171 14 14 #60
+draw_rect 189 171 14 14 #60
+textm 193 174 "<" #FF x1
+fill_rect 283 171 14 14 #60
+draw_rect 283 171 14 14 #60
+textm 287 174 ">" #FF x1
+fill_rect 189 185 108 12 #60
+draw_rect 189 185 108 12 #60
+textm 228 187 "反転 切" #FF x1
+fill_rect 3 199 294 9 #FF
+textm 3 199 "https://ksbmyk.github.io/sketch/events/kamon.html" #00 x1
+present
+== click 214,51
+fill_rect 189 43 50 16 #60
+draw_rect 189 43 50 16 #60
+draw_rect 190 44 48 14 #FF
+textm 210 47 "花" #FF x1
+present
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+fill_triangle 95 105 98 102 100 98 #00
+fill_triangle 95 105 100 98 103 95 #00
+fill_triangle 95 105 103 95 104 91 #00
+fill_triangle 95 105 104 91 105 88 #00
+fill_triangle 95 105 105 88 106 84 #00
+fill_triangle 95 105 106 84 105 81 #00
+fill_triangle 95 105 105 81 104 77 #00
+fill_triangle 95 105 104 77 103 74 #00
+fill_triangle 95 105 103 74 100 70 #00
+fill_triangle 95 105 100 70 98 67 #00
+fill_triangle 95 105 98 67 95 64 #00
+fill_triangle 95 105 95 64 95 64 #00
+fill_triangle 95 105 95 64 92 67 #00
+fill_triangle 95 105 92 67 90 70 #00
+fill_triangle 95 105 90 70 87 74 #00
+fill_triangle 95 105 87 74 86 77 #00
+fill_triangle 95 105 86 77 85 81 #00
+fill_triangle 95 105 85 81 84 84 #00
+fill_triangle 95 105 84 84 85 88 #00
+fill_triangle 95 105 85 88 86 91 #00
+fill_triangle 95 105 86 91 87 95 #00
+fill_triangle 95 105 87 95 90 98 #00
+fill_triangle 95 105 90 98 92 102 #00
+fill_triangle 95 105 92 102 95 105 #00
+fill_triangle 95 105 99 107 103 108 #00
+fill_triangle 95 105 103 108 107 109 #00
+fill_triangle 95 105 107 109 111 110 #00
+fill_triangle 95 105 111 110 115 110 #00
+fill_triangle 95 105 115 110 118 109 #00
+fill_triangle 95 105 118 109 121 107 #00
+fill_triangle 95 105 121 107 124 105 #00
+fill_triangle 95 105 124 105 127 103 #00
+fill_triangle 95 105 127 103 129 99 #00
+fill_triangle 95 105 129 99 132 96 #00
+fill_triangle 95 105 132 96 134 92 #00
+fill_triangle 95 105 134 92 134 92 #00
+fill_triangle 95 105 134 92 130 91 #00
+fill_triangle 95 105 130 91 126 89 #00
+fill_triangle 95 105 126 89 122 88 #00
+fill_triangle 95 105 122 88 118 88 #00
+fill_triangle 95 105 118 88 115 88 #00
+fill_triangle 95 105 115 88 111 88 #00
+fill_triangle 95 105 111 88 108 90 #00
+fill_triangle 95 105 108 90 105 92 #00
+fill_triangle 95 105 105 92 102 95 #00
+fill_triangle 95 105 102 95 100 98 #00
+fill_triangle 95 105 100 98 97 101 #00
+fill_triangle 95 105 97 101 95 105 #00
+fill_triangle 95 105 95 109 95 114 #00
+fill_triangle 95 105 95 114 95 118 #00
+fill_triangle 95 105 95 118 96 122 #00
+fill_triangle 95 105 96 122 97 125 #00
+fill_triangle 95 105 97 125 98 128 #00
+fill_triangle 95 105 98 128 101 131 #00
+fill_triangle 95 105 101 131 104 133 #00
+fill_triangle 95 105 104 133 107 135 #00
+fill_triangle 95 105 107 135 111 136 #00
+fill_triangle 95 105 111 136 115 137 #00
+fill_triangle 95 105 115 137 119 139 #00
+fill_triangle 95 105 119 139 119 139 #00
+fill_triangle 95 105 119 139 120 134 #00
+fill_triangle 95 105 120 134 120 130 #00
+fill_triangle 95 105 120 130 119 126 #00
+fill_triangle 95 105 119 126 119 122 #00
+fill_triangle 95 105 119 122 118 118 #00
+fill_triangle 95 105 118 118 116 115 #00
+fill_triangle 95 105 116 115 114 113 #00
+fill_triangle 95 105 114 113 111 111 #00
+fill_triangle 95 105 111 111 107 109 #00
+fill_triangle 95 105 107 109 103 107 #00
+fill_triangle 95 105 103 107 99 106 #00
+fill_triangle 95 105 99 106 95 105 #00
+fill_triangle 95 105 91 106 87 107 #00
+fill_triangle 95 105 87 107 83 109 #00
+fill_triangle 95 105 83 109 79 111 #00
+fill_triangle 95 105 79 111 76 113 #00
+fill_triangle 95 105 76 113 74 115 #00
+fill_triangle 95 105 74 115 72 118 #00
+fill_triangle 95 105 72 118 71 122 #00
+fill_triangle 95 105 71 122 71 126 #00
+fill_triangle 95 105 71 126 70 130 #00
+fill_triangle 95 105 70 130 70 134 #00
+fill_triangle 95 105 70 134 71 139 #00
+fill_triangle 95 105 71 139 71 139 #00
+fill_triangle 95 105 71 139 75 137 #00
+fill_triangle 95 105 75 137 79 136 #00
+fill_triangle 95 105 79 136 83 135 #00
+fill_triangle 95 105 83 135 86 133 #00
+fill_triangle 95 105 86 133 89 131 #00
+fill_triangle 95 105 89 131 92 128 #00
+fill_triangle 95 105 92 128 93 125 #00
+fill_triangle 95 105 93 125 94 122 #00
+fill_triangle 95 105 94 122 95 118 #00
+fill_triangle 95 105 95 118 95 114 #00
+fill_triangle 95 105 95 114 95 109 #00
+fill_triangle 95 105 95 109 95 105 #00
+fill_triangle 95 105 93 101 90 98 #00
+fill_triangle 95 105 90 98 88 95 #00
+fill_triangle 95 105 88 95 85 92 #00
+fill_triangle 95 105 85 92 82 90 #00
+fill_triangle 95 105 82 90 79 88 #00
+fill_triangle 95 105 79 88 75 88 #00
+fill_triangle 95 105 75 88 72 88 #00
+fill_triangle 95 105 72 88 68 88 #00
+fill_triangle 95 105 68 88 64 89 #00
+fill_triangle 95 105 64 89 60 91 #00
+fill_triangle 95 105 60 91 56 92 #00
+fill_triangle 95 105 56 92 56 92 #00
+fill_triangle 95 105 56 92 58 96 #00
+fill_triangle 95 105 58 96 61 99 #00
+fill_triangle 95 105 61 99 63 103 #00
+fill_triangle 95 105 63 103 66 105 #00
+fill_triangle 95 105 66 105 69 107 #00
+fill_triangle 95 105 69 107 72 109 #00
+fill_triangle 95 105 72 109 75 110 #00
+fill_triangle 95 105 75 110 79 110 #00
+fill_triangle 95 105 79 110 83 109 #00
+fill_triangle 95 105 83 109 87 108 #00
+fill_triangle 95 105 87 108 91 107 #00
+fill_triangle 95 105 91 107 95 105 #00
+fill_circle 95 105 7 #FF
+fill_rect 189 25 50 16 #60
+draw_rect 189 25 50 16 #60
+textm 210 29 "円" #FF x1
+fill_rect 189 43 50 16 #EE
+draw_rect 189 43 50 16 #60
+textm 210 47 "花" #00 x1
+present
+== click 272,119
+fill_rect 247 111 50 16 #60
+draw_rect 247 111 50 16 #60
+draw_rect 248 112 48 14 #FF
+textm 268 115 "輪" #FF x1
+present
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+fill_triangle 95 105 98 102 100 98 #00
+fill_triangle 95 105 100 98 103 95 #00
+fill_triangle 95 105 103 95 104 91 #00
+fill_triangle 95 105 104 91 105 88 #00
+fill_triangle 95 105 105 88 106 84 #00
+fill_triangle 95 105 106 84 105 81 #00
+fill_triangle 95 105 105 81 104 77 #00
+fill_triangle 95 105 104 77 103 74 #00
+fill_triangle 95 105 103 74 100 70 #00
+fill_triangle 95 105 100 70 98 67 #00
+fill_triangle 95 105 98 67 95 64 #00
+fill_triangle 95 105 95 64 95 64 #00
+fill_triangle 95 105 95 64 92 67 #00
+fill_triangle 95 105 92 67 90 70 #00
+fill_triangle 95 105 90 70 87 74 #00
+fill_triangle 95 105 87 74 86 77 #00
+fill_triangle 95 105 86 77 85 81 #00
+fill_triangle 95 105 85 81 84 84 #00
+fill_triangle 95 105 84 84 85 88 #00
+fill_triangle 95 105 85 88 86 91 #00
+fill_triangle 95 105 86 91 87 95 #00
+fill_triangle 95 105 87 95 90 98 #00
+fill_triangle 95 105 90 98 92 102 #00
+fill_triangle 95 105 92 102 95 105 #00
+fill_triangle 95 105 99 107 103 108 #00
+fill_triangle 95 105 103 108 107 109 #00
+fill_triangle 95 105 107 109 111 110 #00
+fill_triangle 95 105 111 110 115 110 #00
+fill_triangle 95 105 115 110 118 109 #00
+fill_triangle 95 105 118 109 121 107 #00
+fill_triangle 95 105 121 107 124 105 #00
+fill_triangle 95 105 124 105 127 103 #00
+fill_triangle 95 105 127 103 129 99 #00
+fill_triangle 95 105 129 99 132 96 #00
+fill_triangle 95 105 132 96 134 92 #00
+fill_triangle 95 105 134 92 134 92 #00
+fill_triangle 95 105 134 92 130 91 #00
+fill_triangle 95 105 130 91 126 89 #00
+fill_triangle 95 105 126 89 122 88 #00
+fill_triangle 95 105 122 88 118 88 #00
+fill_triangle 95 105 118 88 115 88 #00
+fill_triangle 95 105 115 88 111 88 #00
+fill_triangle 95 105 111 88 108 90 #00
+fill_triangle 95 105 108 90 105 92 #00
+fill_triangle 95 105 105 92 102 95 #00
+fill_triangle 95 105 102 95 100 98 #00
+fill_triangle 95 105 100 98 97 101 #00
+fill_triangle 95 105 97 101 95 105 #00
+fill_triangle 95 105 95 109 95 114 #00
+fill_triangle 95 105 95 114 95 118 #00
+fill_triangle 95 105 95 118 96 122 #00
+fill_triangle 95 105 96 122 97 125 #00
+fill_triangle 95 105 97 125 98 128 #00
+fill_triangle 95 105 98 128 101 131 #00
+fill_triangle 95 105 101 131 104 133 #00
+fill_triangle 95 105 104 133 107 135 #00
+fill_triangle 95 105 107 135 111 136 #00
+fill_triangle 95 105 111 136 115 137 #00
+fill_triangle 95 105 115 137 119 139 #00
+fill_triangle 95 105 119 139 119 139 #00
+fill_triangle 95 105 119 139 120 134 #00
+fill_triangle 95 105 120 134 120 130 #00
+fill_triangle 95 105 120 130 119 126 #00
+fill_triangle 95 105 119 126 119 122 #00
+fill_triangle 95 105 119 122 118 118 #00
+fill_triangle 95 105 118 118 116 115 #00
+fill_triangle 95 105 116 115 114 113 #00
+fill_triangle 95 105 114 113 111 111 #00
+fill_triangle 95 105 111 111 107 109 #00
+fill_triangle 95 105 107 109 103 107 #00
+fill_triangle 95 105 103 107 99 106 #00
+fill_triangle 95 105 99 106 95 105 #00
+fill_triangle 95 105 91 106 87 107 #00
+fill_triangle 95 105 87 107 83 109 #00
+fill_triangle 95 105 83 109 79 111 #00
+fill_triangle 95 105 79 111 76 113 #00
+fill_triangle 95 105 76 113 74 115 #00
+fill_triangle 95 105 74 115 72 118 #00
+fill_triangle 95 105 72 118 71 122 #00
+fill_triangle 95 105 71 122 71 126 #00
+fill_triangle 95 105 71 126 70 130 #00
+fill_triangle 95 105 70 130 70 134 #00
+fill_triangle 95 105 70 134 71 139 #00
+fill_triangle 95 105 71 139 71 139 #00
+fill_triangle 95 105 71 139 75 137 #00
+fill_triangle 95 105 75 137 79 136 #00
+fill_triangle 95 105 79 136 83 135 #00
+fill_triangle 95 105 83 135 86 133 #00
+fill_triangle 95 105 86 133 89 131 #00
+fill_triangle 95 105 89 131 92 128 #00
+fill_triangle 95 105 92 128 93 125 #00
+fill_triangle 95 105 93 125 94 122 #00
+fill_triangle 95 105 94 122 95 118 #00
+fill_triangle 95 105 95 118 95 114 #00
+fill_triangle 95 105 95 114 95 109 #00
+fill_triangle 95 105 95 109 95 105 #00
+fill_triangle 95 105 93 101 90 98 #00
+fill_triangle 95 105 90 98 88 95 #00
+fill_triangle 95 105 88 95 85 92 #00
+fill_triangle 95 105 85 92 82 90 #00
+fill_triangle 95 105 82 90 79 88 #00
+fill_triangle 95 105 79 88 75 88 #00
+fill_triangle 95 105 75 88 72 88 #00
+fill_triangle 95 105 72 88 68 88 #00
+fill_triangle 95 105 68 88 64 89 #00
+fill_triangle 95 105 64 89 60 91 #00
+fill_triangle 95 105 60 91 56 92 #00
+fill_triangle 95 105 56 92 56 92 #00
+fill_triangle 95 105 56 92 58 96 #00
+fill_triangle 95 105 58 96 61 99 #00
+fill_triangle 95 105 61 99 63 103 #00
+fill_triangle 95 105 63 103 66 105 #00
+fill_triangle 95 105 66 105 69 107 #00
+fill_triangle 95 105 69 107 72 109 #00
+fill_triangle 95 105 72 109 75 110 #00
+fill_triangle 95 105 75 110 79 110 #00
+fill_triangle 95 105 79 110 83 109 #00
+fill_triangle 95 105 83 109 87 108 #00
+fill_triangle 95 105 87 108 91 107 #00
+fill_triangle 95 105 91 107 95 105 #00
+draw_circle 95 105 7 #00
+fill_rect 247 93 50 16 #60
+draw_rect 247 93 50 16 #60
+textm 268 97 "白" #FF x1
+fill_rect 247 111 50 16 #EE
+draw_rect 247 111 50 16 #60
+textm 268 115 "輪" #00 x1
+present
+== click 293,148
+fill_rect 203 141 80 14 #FF
+draw_rect 203 141 80 14 #60
+textm 240 144 "5" #00 x1
+fill_rect 189 141 14 14 #60
+draw_rect 189 141 14 14 #60
+textm 193 144 "<" #FF x1
+fill_rect 283 141 14 14 #FF
+draw_rect 283 141 14 14 #60
+textm 287 144 ">" #60 x1
+present
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+fill_triangle 95 105 98 102 100 98 #00
+fill_triangle 95 105 100 98 103 95 #00
+fill_triangle 95 105 103 95 104 91 #00
+fill_triangle 95 105 104 91 105 88 #00
+fill_triangle 95 105 105 88 106 84 #00
+fill_triangle 95 105 106 84 105 81 #00
+fill_triangle 95 105 105 81 104 77 #00
+fill_triangle 95 105 104 77 103 74 #00
+fill_triangle 95 105 103 74 100 70 #00
+fill_triangle 95 105 100 70 98 67 #00
+fill_triangle 95 105 98 67 95 64 #00
+fill_triangle 95 105 95 64 95 64 #00
+fill_triangle 95 105 95 64 92 67 #00
+fill_triangle 95 105 92 67 90 70 #00
+fill_triangle 95 105 90 70 87 74 #00
+fill_triangle 95 105 87 74 86 77 #00
+fill_triangle 95 105 86 77 85 81 #00
+fill_triangle 95 105 85 81 84 84 #00
+fill_triangle 95 105 84 84 85 88 #00
+fill_triangle 95 105 85 88 86 91 #00
+fill_triangle 95 105 86 91 87 95 #00
+fill_triangle 95 105 87 95 90 98 #00
+fill_triangle 95 105 90 98 92 102 #00
+fill_triangle 95 105 92 102 95 105 #00
+fill_triangle 95 105 99 106 104 106 #00
+fill_triangle 95 105 104 106 108 106 #00
+fill_triangle 95 105 108 106 112 106 #00
+fill_triangle 95 105 112 106 115 105 #00
+fill_triangle 95 105 115 105 118 104 #00
+fill_triangle 95 105 118 104 121 102 #00
+fill_triangle 95 105 121 102 124 99 #00
+fill_triangle 95 105 124 99 126 96 #00
+fill_triangle 95 105 126 96 128 92 #00
+fill_triangle 95 105 128 92 129 88 #00
+fill_triangle 95 105 129 88 131 84 #00
+fill_triangle 95 105 131 84 131 84 #00
+fill_triangle 95 105 131 84 126 84 #00
+fill_triangle 95 105 126 84 122 83 #00
+fill_triangle 95 105 122 83 118 83 #00
+fill_triangle 95 105 118 83 114 83 #00
+fill_triangle 95 105 114 83 111 84 #00
+fill_triangle 95 105 111 84 108 85 #00
+fill_triangle 95 105 108 85 105 87 #00
+fill_triangle 95 105 105 87 102 90 #00
+fill_triangle 95 105 102 90 100 93 #00
+fill_triangle 95 105 100 93 98 97 #00
+fill_triangle 95 105 98 97 97 101 #00
+fill_triangle 95 105 97 101 95 105 #00
+fill_triangle 95 105 97 109 98 113 #00
+fill_triangle 95 105 98 113 100 117 #00
+fill_triangle 95 105 100 117 102 120 #00
+fill_triangle 95 105 102 120 105 123 #00
+fill_triangle 95 105 105 123 108 125 #00
+fill_triangle 95 105 108 125 111 126 #00
+fill_triangle 95 105 111 126 114 127 #00
+fill_triangle 95 105 114 127 118 127 #00
+fill_triangle 95 105 118 127 122 127 #00
+fill_triangle 95 105 122 127 126 126 #00
+fill_triangle 95 105 126 126 131 126 #00
+fill_triangle 95 105 131 126 131 126 #00
+fill_triangle 95 105 131 126 129 122 #00
+fill_triangle 95 105 129 122 128 118 #00
+fill_triangle 95 105 128 118 126 114 #00
+fill_triangle 95 105 126 114 124 111 #00
+fill_triangle 95 105 124 111 121 108 #00
+fill_triangle 95 105 121 108 118 106 #00
+fill_triangle 95 105 118 106 115 105 #00
+fill_triangle 95 105 115 105 112 104 #00
+fill_triangle 95 105 112 104 108 104 #00
+fill_triangle 95 105 108 104 104 104 #00
+fill_triangle 95 105 104 104 99 104 #00
+fill_triangle 95 105 99 104 95 105 #00
+fill_triangle 95 105 92 108 90 112 #00
+fill_triangle 95 105 90 112 87 115 #00
+fill_triangle 95 105 87 115 86 119 #00
+fill_triangle 95 105 86 119 85 122 #00
+fill_triangle 95 105 85 122 84 126 #00
+fill_triangle 95 105 84 126 85 129 #00
+fill_triangle 95 105 85 129 86 133 #00
+fill_triangle 95 105 86 133 87 136 #00
+fill_triangle 95 105 87 136 90 140 #00
+fill_triangle 95 105 90 140 92 143 #00
+fill_triangle 95 105 92 143 95 146 #00
+fill_triangle 95 105 95 146 95 146 #00
+fill_triangle 95 105 95 146 98 143 #00
+fill_triangle 95 105 98 143 100 140 #00
+fill_triangle 95 105 100 140 103 136 #00
+fill_triangle 95 105 103 136 104 133 #00
+fill_triangle 95 105 104 133 105 129 #00
+fill_triangle 95 105 105 129 106 126 #00
+fill_triangle 95 105 106 126 105 122 #00
+fill_triangle 95 105 105 122 104 119 #00
+fill_triangle 95 105 104 119 103 115 #00
+fill_triangle 95 105 103 115 100 112 #00
+fill_triangle 95 105 100 112 98 108 #00
+fill_triangle 95 105 98 108 95 105 #00
+fill_triangle 95 105 91 104 86 104 #00
+fill_triangle 95 105 86 104 82 104 #00
+fill_triangle 95 105 82 104 78 104 #00
+fill_triangle 95 105 78 104 75 105 #00
+fill_triangle 95 105 75 105 72 106 #00
+fill_triangle 95 105 72 106 69 108 #00
+fill_triangle 95 105 69 108 66 111 #00
+fill_triangle 95 105 66 111 64 114 #00
+fill_triangle 95 105 64 114 62 118 #00
+fill_triangle 95 105 62 118 61 122 #00
+fill_triangle 95 105 61 122 59 126 #00
+fill_triangle 95 105 59 126 59 126 #00
+fill_triangle 95 105 59 126 64 126 #00
+fill_triangle 95 105 64 126 68 127 #00
+fill_triangle 95 105 68 127 72 127 #00
+fill_triangle 95 105 72 127 76 127 #00
+fill_triangle 95 105 76 127 79 126 #00
+fill_triangle 95 105 79 126 82 125 #00
+fill_triangle 95 105 82 125 85 123 #00
+fill_triangle 95 105 85 123 88 120 #00
+fill_triangle 95 105 88 120 90 117 #00
+fill_triangle 95 105 90 117 92 113 #00
+fill_triangle 95 105 92 113 93 109 #00
+fill_triangle 95 105 93 109 95 105 #00
+fill_triangle 95 105 93 101 92 97 #00
+fill_triangle 95 105 92 97 90 93 #00
+fill_triangle 95 105 90 93 88 90 #00
+fill_triangle 95 105 88 90 85 87 #00
+fill_triangle 95 105 85 87 82 85 #00
+fill_triangle 95 105 82 85 79 84 #00
+fill_triangle 95 105 79 84 76 83 #00
+fill_triangle 95 105 76 83 72 83 #00
+fill_triangle 95 105 72 83 68 83 #00
+fill_triangle 95 105 68 83 64 84 #00
+fill_triangle 95 105 64 84 59 84 #00
+fill_triangle 95 105 59 84 59 84 #00
+fill_triangle 95 105 59 84 61 88 #00
+fill_triangle 95 105 61 88 62 92 #00
+fill_triangle 95 105 62 92 64 96 #00
+fill_triangle 95 105 64 96 66 99 #00
+fill_triangle 95 105 66 99 69 102 #00
+fill_triangle 95 105 69 102 72 104 #00
+fill_triangle 95 105 72 104 75 105 #00
+fill_triangle 95 105 75 105 78 106 #00
+fill_triangle 95 105 78 106 82 106 #00
+fill_triangle 95 105 82 106 86 106 #00
+fill_triangle 95 105 86 106 91 106 #00
+fill_triangle 95 105 91 106 95 105 #00
+draw_circle 95 105 7 #00
+fill_rect 203 141 80 14 #FF
+draw_rect 203 141 80 14 #60
+textm 240 144 "6" #00 x1
+fill_rect 189 141 14 14 #60
+draw_rect 189 141 14 14 #60
+textm 193 144 "<" #FF x1
+fill_rect 283 141 14 14 #60
+draw_rect 283 141 14 14 #60
+textm 287 144 ">" #FF x1
+present
+== click 192,178
+fill_rect 203 171 80 14 #FF
+draw_rect 203 171 80 14 #60
+textm 234 174 "70%" #00 x1
+fill_rect 189 171 14 14 #FF
+draw_rect 189 171 14 14 #60
+textm 193 174 "<" #60 x1
+fill_rect 283 171 14 14 #60
+draw_rect 283 171 14 14 #60
+textm 287 174 ">" #FF x1
+present
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+fill_triangle 95 105 97 102 100 99 #00
+fill_triangle 95 105 100 99 102 96 #00
+fill_triangle 95 105 102 96 103 93 #00
+fill_triangle 95 105 103 93 104 90 #00
+fill_triangle 95 105 104 90 104 87 #00
+fill_triangle 95 105 104 87 104 84 #00
+fill_triangle 95 105 104 84 103 81 #00
+fill_triangle 95 105 103 81 102 78 #00
+fill_triangle 95 105 102 78 100 75 #00
+fill_triangle 95 105 100 75 97 72 #00
+fill_triangle 95 105 97 72 95 70 #00
+fill_triangle 95 105 95 70 95 70 #00
+fill_triangle 95 105 95 70 93 72 #00
+fill_triangle 95 105 93 72 90 75 #00
+fill_triangle 95 105 90 75 88 78 #00
+fill_triangle 95 105 88 78 87 81 #00
+fill_triangle 95 105 87 81 86 84 #00
+fill_triangle 95 105 86 84 86 87 #00
+fill_triangle 95 105 86 87 86 90 #00
+fill_triangle 95 105 86 90 87 93 #00
+fill_triangle 95 105 87 93 88 96 #00
+fill_triangle 95 105 88 96 90 99 #00
+fill_triangle 95 105 90 99 93 102 #00
+fill_triangle 95 105 93 102 95 105 #00
+fill_triangle 95 105 99 106 102 106 #00
+fill_triangle 95 105 102 106 106 106 #00
+fill_triangle 95 105 106 106 109 106 #00
+fill_triangle 95 105 109 106 112 105 #00
+fill_triangle 95 105 112 105 115 104 #00
+fill_triangle 95 105 115 104 117 102 #00
+fill_triangle 95 105 117 102 119 100 #00
+fill_triangle 95 105 119 100 121 97 #00
+fill_triangle 95 105 121 97 123 94 #00
+fill_triangle 95 105 123 94 124 91 #00
+fill_triangle 95 105 124 91 126 87 #00
+fill_triangle 95 105 126 87 126 87 #00
+fill_triangle 95 105 126 87 122 87 #00
+fill_triangle 95 105 122 87 118 86 #00
+fill_triangle 95 105 118 86 115 86 #00
+fill_triangle 95 105 115 86 111 86 #00
+fill_triangle 95 105 111 86 108 87 #00
+fill_triangle 95 105 108 87 106 88 #00
+fill_triangle 95 105 106 88 103 90 #00
+fill_triangle 95 105 103 90 101 92 #00
+fill_triangle 95 105 101 92 99 95 #00
+fill_triangle 95 105 99 95 98 98 #00
+fill_triangle 95 105 98 98 96 101 #00
+fill_triangle 95 105 96 101 95 105 #00
+fill_triangle 95 105 96 109 98 112 #00
+fill_triangle 95 105 98 112 99 115 #00
+fill_triangle 95 105 99 115 101 118 #00
+fill_triangle 95 105 101 118 103 120 #00
+fill_triangle 95 105 103 120 106 122 #00
+fill_triangle 95 105 106 122 108 123 #00
+fill_triangle 95 105 108 123 111 124 #00
+fill_triangle 95 105 111 124 115 124 #00
+fill_triangle 95 105 115 124 118 124 #00
+fill_triangle 95 105 118 124 122 123 #00
+fill_triangle 95 105 122 123 126 123 #00
+fill_triangle 95 105 126 123 126 123 #00
+fill_triangle 95 105 126 123 124 119 #00
+fill_triangle 95 105 124 119 123 116 #00
+fill_triangle 95 105 123 116 121 113 #00
+fill_triangle 95 105 121 113 119 110 #00
+fill_triangle 95 105 119 110 117 108 #00
+fill_triangle 95 105 117 108 115 106 #00
+fill_triangle 95 105 115 106 112 105 #00
+fill_triangle 95 105 112 105 109 104 #00
+fill_triangle 95 105 109 104 106 104 #00
+fill_triangle 95 105 106 104 102 104 #00
+fill_triangle 95 105 102 104 99 104 #00
+fill_triangle 95 105 99 104 95 105 #00
+fill_triangle 95 105 93 108 90 111 #00
+fill_triangle 95 105 90 111 88 114 #00
+fill_triangle 95 105 88 114 87 117 #00
+fill_triangle 95 105 87 117 86 120 #00
+fill_triangle 95 105 86 120 86 123 #00
+fill_triangle 95 105 86 123 86 126 #00
+fill_triangle 95 105 86 126 87 129 #00
+fill_triangle 95 105 87 129 88 132 #00
+fill_triangle 95 105 88 132 90 135 #00
+fill_triangle 95 105 90 135 93 138 #00
+fill_triangle 95 105 93 138 95 140 #00
+fill_triangle 95 105 95 140 95 140 #00
+fill_triangle 95 105 95 140 97 138 #00
+fill_triangle 95 105 97 138 100 135 #00
+fill_triangle 95 105 100 135 102 132 #00
+fill_triangle 95 105 102 132 103 129 #00
+fill_triangle 95 105 103 129 104 126 #00
+fill_triangle 95 105 104 126 104 123 #00
+fill_triangle 95 105 104 123 104 120 #00
+fill_triangle 95 105 104 120 103 117 #00
+fill_triangle 95 105 103 117 102 114 #00
+fill_triangle 95 105 102 114 100 111 #00
+fill_triangle 95 105 100 111 97 108 #00
+fill_triangle 95 105 97 108 95 105 #00
+fill_triangle 95 105 91 104 88 104 #00
+fill_triangle 95 105 88 104 84 104 #00
+fill_triangle 95 105 84 104 81 104 #00
+fill_triangle 95 105 81 104 78 105 #00
+fill_triangle 95 105 78 105 75 106 #00
+fill_triangle 95 105 75 106 73 108 #00
+fill_triangle 95 105 73 108 71 110 #00
+fill_triangle 95 105 71 110 69 113 #00
+fill_triangle 95 105 69 113 67 116 #00
+fill_triangle 95 105 67 116 66 119 #00
+fill_triangle 95 105 66 119 64 123 #00
+fill_triangle 95 105 64 123 64 123 #00
+fill_triangle 95 105 64 123 68 123 #00
+fill_triangle 95 105 68 123 72 124 #00
+fill_triangle 95 105 72 124 75 124 #00
+fill_triangle 95 105 75 124 79 124 #00
+fill_triangle 95 105 79 124 82 123 #00
+fill_triangle 95 105 82 123 84 122 #00
+fill_triangle 95 105 84 122 87 120 #00
+fill_triangle 95 105 87 120 89 118 #00
+fill_triangle 95 105 89 118 91 115 #00
+fill_triangle 95 105 91 115 92 112 #00
+fill_triangle 95 105 92 112 94 109 #00
+fill_triangle 95 105 94 109 95 105 #00
+fill_triangle 95 105 94 101 92 98 #00
+fill_triangle 95 105 92 98 91 95 #00
+fill_triangle 95 105 91 95 89 92 #00
+fill_triangle 95 105 89 92 87 90 #00
+fill_triangle 95 105 87 90 84 88 #00
+fill_triangle 95 105 84 88 82 87 #00
+fill_triangle 95 105 82 87 79 86 #00
+fill_triangle 95 105 79 86 75 86 #00
+fill_triangle 95 105 75 86 72 86 #00
+fill_triangle 95 105 72 86 68 87 #00
+fill_triangle 95 105 68 87 64 87 #00
+fill_triangle 95 105 64 87 64 87 #00
+fill_triangle 95 105 64 87 66 91 #00
+fill_triangle 95 105 66 91 67 94 #00
+fill_triangle 95 105 67 94 69 97 #00
+fill_triangle 95 105 69 97 71 100 #00
+fill_triangle 95 105 71 100 73 102 #00
+fill_triangle 95 105 73 102 75 104 #00
+fill_triangle 95 105 75 104 78 105 #00
+fill_triangle 95 105 78 105 81 106 #00
+fill_triangle 95 105 81 106 84 106 #00
+fill_triangle 95 105 84 106 88 106 #00
+fill_triangle 95 105 88 106 91 106 #00
+fill_triangle 95 105 91 106 95 105 #00
+draw_circle 95 105 6 #00
+fill_rect 203 171 80 14 #FF
+draw_rect 203 171 80 14 #60
+textm 234 174 "60%" #00 x1
+fill_rect 189 171 14 14 #60
+draw_rect 189 171 14 14 #60
+textm 193 174 "<" #FF x1
+fill_rect 283 171 14 14 #60
+draw_rect 283 171 14 14 #60
+textm 287 174 ">" #FF x1
+present
+== click 243,191
+fill_rect 189 185 108 12 #60
+draw_rect 189 185 108 12 #60
+draw_rect 190 186 106 10 #FF
+textm 228 187 "反転 切" #FF x1
+present
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+draw_line 95 105 97 102 #00
+draw_line 97 102 100 99 #00
+draw_line 100 99 102 96 #00
+draw_line 102 96 103 93 #00
+draw_line 103 93 104 90 #00
+draw_line 104 90 104 87 #00
+draw_line 104 87 104 84 #00
+draw_line 104 84 103 81 #00
+draw_line 103 81 102 78 #00
+draw_line 102 78 100 75 #00
+draw_line 100 75 97 72 #00
+draw_line 97 72 95 70 #00
+draw_line 95 70 95 70 #00
+draw_line 95 70 93 72 #00
+draw_line 93 72 90 75 #00
+draw_line 90 75 88 78 #00
+draw_line 88 78 87 81 #00
+draw_line 87 81 86 84 #00
+draw_line 86 84 86 87 #00
+draw_line 86 87 86 90 #00
+draw_line 86 90 87 93 #00
+draw_line 87 93 88 96 #00
+draw_line 88 96 90 99 #00
+draw_line 90 99 93 102 #00
+draw_line 93 102 95 105 #00
+draw_line 95 105 95 105 #00
+draw_line 95 105 99 106 #00
+draw_line 99 106 102 106 #00
+draw_line 102 106 106 106 #00
+draw_line 106 106 109 106 #00
+draw_line 109 106 112 105 #00
+draw_line 112 105 115 104 #00
+draw_line 115 104 117 102 #00
+draw_line 117 102 119 100 #00
+draw_line 119 100 121 97 #00
+draw_line 121 97 123 94 #00
+draw_line 123 94 124 91 #00
+draw_line 124 91 126 87 #00
+draw_line 126 87 126 87 #00
+draw_line 126 87 122 87 #00
+draw_line 122 87 118 86 #00
+draw_line 118 86 115 86 #00
+draw_line 115 86 111 86 #00
+draw_line 111 86 108 87 #00
+draw_line 108 87 106 88 #00
+draw_line 106 88 103 90 #00
+draw_line 103 90 101 92 #00
+draw_line 101 92 99 95 #00
+draw_line 99 95 98 98 #00
+draw_line 98 98 96 101 #00
+draw_line 96 101 95 105 #00
+draw_line 95 105 95 105 #00
+draw_line 95 105 96 109 #00
+draw_line 96 109 98 112 #00
+draw_line 98 112 99 115 #00
+draw_line 99 115 101 118 #00
+draw_line 101 118 103 120 #00
+draw_line 103 120 106 122 #00
+draw_line 106 122 108 123 #00
+draw_line 108 123 111 124 #00
+draw_line 111 124 115 124 #00
+draw_line 115 124 118 124 #00
+draw_line 118 124 122 123 #00
+draw_line 122 123 126 123 #00
+draw_line 126 123 126 123 #00
+draw_line 126 123 124 119 #00
+draw_line 124 119 123 116 #00
+draw_line 123 116 121 113 #00
+draw_line 121 113 119 110 #00
+draw_line 119 110 117 108 #00
+draw_line 117 108 115 106 #00
+draw_line 115 106 112 105 #00
+draw_line 112 105 109 104 #00
+draw_line 109 104 106 104 #00
+draw_line 106 104 102 104 #00
+draw_line 102 104 99 104 #00
+draw_line 99 104 95 105 #00
+draw_line 95 105 95 105 #00
+draw_line 95 105 93 108 #00
+draw_line 93 108 90 111 #00
+draw_line 90 111 88 114 #00
+draw_line 88 114 87 117 #00
+draw_line 87 117 86 120 #00
+draw_line 86 120 86 123 #00
+draw_line 86 123 86 126 #00
+draw_line 86 126 87 129 #00
+draw_line 87 129 88 132 #00
+draw_line 88 132 90 135 #00
+draw_line 90 135 93 138 #00
+draw_line 93 138 95 140 #00
+draw_line 95 140 95 140 #00
+draw_line 95 140 97 138 #00
+draw_line 97 138 100 135 #00
+draw_line 100 135 102 132 #00
+draw_line 102 132 103 129 #00
+draw_line 103 129 104 126 #00
+draw_line 104 126 104 123 #00
+draw_line 104 123 104 120 #00
+draw_line 104 120 103 117 #00
+draw_line 103 117 102 114 #00
+draw_line 102 114 100 111 #00
+draw_line 100 111 97 108 #00
+draw_line 97 108 95 105 #00
+draw_line 95 105 95 105 #00
+draw_line 95 105 91 104 #00
+draw_line 91 104 88 104 #00
+draw_line 88 104 84 104 #00
+draw_line 84 104 81 104 #00
+draw_line 81 104 78 105 #00
+draw_line 78 105 75 106 #00
+draw_line 75 106 73 108 #00
+draw_line 73 108 71 110 #00
+draw_line 71 110 69 113 #00
+draw_line 69 113 67 116 #00
+draw_line 67 116 66 119 #00
+draw_line 66 119 64 123 #00
+draw_line 64 123 64 123 #00
+draw_line 64 123 68 123 #00
+draw_line 68 123 72 124 #00
+draw_line 72 124 75 124 #00
+draw_line 75 124 79 124 #00
+draw_line 79 124 82 123 #00
+draw_line 82 123 84 122 #00
+draw_line 84 122 87 120 #00
+draw_line 87 120 89 118 #00
+draw_line 89 118 91 115 #00
+draw_line 91 115 92 112 #00
+draw_line 92 112 94 109 #00
+draw_line 94 109 95 105 #00
+draw_line 95 105 95 105 #00
+draw_line 95 105 94 101 #00
+draw_line 94 101 92 98 #00
+draw_line 92 98 91 95 #00
+draw_line 91 95 89 92 #00
+draw_line 89 92 87 90 #00
+draw_line 87 90 84 88 #00
+draw_line 84 88 82 87 #00
+draw_line 82 87 79 86 #00
+draw_line 79 86 75 86 #00
+draw_line 75 86 72 86 #00
+draw_line 72 86 68 87 #00
+draw_line 68 87 64 87 #00
+draw_line 64 87 64 87 #00
+draw_line 64 87 66 91 #00
+draw_line 66 91 67 94 #00
+draw_line 67 94 69 97 #00
+draw_line 69 97 71 100 #00
+draw_line 71 100 73 102 #00
+draw_line 73 102 75 104 #00
+draw_line 75 104 78 105 #00
+draw_line 78 105 81 106 #00
+draw_line 81 106 84 106 #00
+draw_line 84 106 88 106 #00
+draw_line 88 106 91 106 #00
+draw_line 91 106 95 105 #00
+draw_line 95 105 95 105 #00
+draw_circle 95 105 6 #00
+fill_rect 189 185 108 12 #EE
+draw_rect 189 185 108 12 #60
+textm 228 187 "反転 入" #00 x1
+present
+== update

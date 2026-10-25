@@ -1,0 +1,70 @@
+# scene stackchan_remote/start
+# profile retro-320x240
+# window 210x150 lang en
+== start
+sprite_clip 1 11 208 138
+composite_regions [0,0,0,0,4,4,1,206,0,206,0,4,4,1,0,146,0,146,4,4,1,206,146,206,146,4,4,1,4,0,4,0,202,4,0,4,146,4,146,202,4,0,0,4,0,4,210,142,0]
+fill_rect 1 11 208 138 #FF
+gfxblock 1 {w:210,h:150}
+fill_round_rect 0 0 210 11 4 #C5
+fill_rect 0 4 210 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "StackChan Remote" #FF defaultx1
+fill_circle 204 5 3 #FF
+draw_round_rect 0 0 210 150 4 #60
+gfxblock 2 {w:210,h:150}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 208 0 209 0 #01
+draw_line 209 1 209 1 #01
+draw_line 0 148 0 149 #01
+draw_line 1 149 1 149 #01
+draw_line 209 148 209 149 #01
+draw_line 208 149 208 149 #01
+text 5 37 "Emotion:" #60 defaultx1
+text 5 97 "Emote:" #60 defaultx1
+fill_rect 5 13 92 20 #03
+draw_rect 5 13 92 20 #60
+text 24 19 "Talk: off" #FF bg=#03 defaultx1
+fill_rect 101 13 92 20 #03
+draw_rect 101 13 92 20 #60
+text 123 19 "Lip: off" #FF bg=#03 defaultx1
+fill_rect 5 47 60 20 #03
+draw_rect 5 47 60 20 #60
+text 14 53 "Neutral" #FF bg=#03 defaultx1
+fill_rect 69 47 60 20 #03
+draw_rect 69 47 60 20 #60
+text 84 53 "Happy" #FF bg=#03 defaultx1
+fill_rect 133 47 60 20 #03
+draw_rect 133 47 60 20 #60
+text 148 53 "Angry" #FF bg=#03 defaultx1
+fill_rect 5 71 60 20 #03
+draw_rect 5 71 60 20 #60
+text 26 77 "Sad" #FF bg=#03 defaultx1
+fill_rect 69 71 60 20 #03
+draw_rect 69 71 60 20 #60
+text 84 77 "Doubt" #FF bg=#03 defaultx1
+fill_rect 133 71 60 20 #03
+draw_rect 133 71 60 20 #60
+text 145 77 "Sleepy" #FF bg=#03 defaultx1
+fill_rect 5 109 60 20 #03
+draw_rect 5 109 60 20 #60
+text 20 115 "Heart" #FF bg=#03 defaultx1
+fill_rect 69 109 60 20 #03
+draw_rect 69 109 60 20 #60
+text 90 115 "Shy" #FF bg=#03 defaultx1
+fill_rect 133 109 60 20 #03
+draw_rect 133 109 60 20 #60
+text 148 115 "Sweat" #FF bg=#03 defaultx1
+fill_rect 5 133 60 20 #03
+draw_rect 5 133 60 20 #60
+text 20 139 "Dizzy" #FF bg=#03 defaultx1
+fill_rect 69 133 60 20 #03
+draw_rect 69 133 60 20 #60
+text 84 139 "Clear" #FF bg=#03 defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+== update

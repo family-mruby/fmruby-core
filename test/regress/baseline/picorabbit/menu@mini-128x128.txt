@@ -1,0 +1,29 @@
+# scene picorabbit/menu
+# profile mini-128x128
+# window 128x128 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+clear #FF
+fill_rect 0 0 128 12 #C5
+text 4 2 "PicoRabbit" #00 bg=#C5 defaultx1
+text 82 2 "3 decks" #00 bg=#C5 defaultx1
+fill_rect 2 15 124 10 #EE
+text 6 16 "/usr/share/samples/slides/demo.md" #FF bg=#EE defaultx1
+fill_rect 2 25 124 10 #FF
+text 6 26 "/usr/share/samples/slides/demo_ja.md" #00 bg=#FF defaultx1
+fill_rect 2 35 124 10 #FF
+text 6 36 "/usr/share/samples/slides/intro_ja.md" #00 bg=#FF defaultx1
+fill_rect 0 96 128 10 #FF
+draw_line 2 96 126 96 #60
+text 4 98 "no card at /mnt/sd - nothing to export to" #60 bg=#FF defaultx1
+fill_rect 4 108 64 16 #60
+draw_rect 4 108 64 16 #60
+textm 21 112 "Start" #FF x1
+fill_rect 72 108 64 16 #60
+draw_rect 72 108 64 16 #60
+textm 86 112 "Export" #60 x1
+fill_rect 140 108 64 16 #60
+draw_rect 140 108 64 16 #60
+textm 160 112 "Quit" #FF x1
+present
+== update

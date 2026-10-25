@@ -1,0 +1,1488 @@
+# scene walk_scroller/walking
+# profile modern-426x240
+# window 426x240 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_far.bmp (1/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_mid.bmp (2/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_gnd.bmp (3/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_far.bmp (4/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_mid.bmp (5/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_gnd.bmp (6/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_far.bmp (7/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_mid.bmp (8/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_gnd.bmp (9/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_far.bmp (10/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_mid.bmp (11/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_gnd.bmp (12/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_far.bmp (13/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_mid.bmp (14/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_gnd.bmp (15/15)" #FF defaultx1
+present
+sprite_image 101 48 75 0 1
+load_bmp 101 "/cache/app/walk_scroller/default/walker_0.bmp"
+sprite_image 102 48 75 0 1
+load_bmp 102 "/cache/app/walk_scroller/default/walker_1.bmp"
+sprite_image 103 48 75 0 1
+load_bmp 103 "/cache/app/walk_scroller/default/walker_2.bmp"
+sprite_image 104 48 75 0 1
+load_bmp 104 "/cache/app/walk_scroller/default/walker_3.bmp"
+sprite_image 105 48 75 0 1
+load_bmp 105 "/cache/app/walk_scroller/default/walker_stand.bmp"
+sprite 106 [101,102,103,104,105] 98 123 2
+sprite_frame 106 4
+sprite_image 107 426 124 0 1
+sprite 108 [107] 0 6 3
+sprite_image 109 300 10 0 1
+sprite 110 [109] 124 229 4
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+sprite_target 0
+sprite_image 111 426 160 0 1
+load_bmp 111 "/cache/app/walk_scroller/default/scene0_far.bmp"
+sprite_image 112 426 84 0 1
+load_bmp 112 "/cache/app/walk_scroller/default/scene0_mid.bmp"
+sprite_image 113 426 50 0 1
+load_bmp 113 "/cache/app/walk_scroller/default/scene0_gnd.bmp"
+sprite_move 106 98 123
+sprite_target 107
+fill_rect 0 0 426 124 #00
+text 151 16 "Hello" #24 ja16x3
+text 153 16 "Hello" #24 ja16x3
+text 155 16 "Hello" #24 ja16x3
+text 151 18 "Hello" #24 ja16x3
+text 155 18 "Hello" #24 ja16x3
+text 151 20 "Hello" #24 ja16x3
+text 153 20 "Hello" #24 ja16x3
+text 155 20 "Hello" #24 ja16x3
+text 153 18 "Hello" #FF ja16x3
+text 108 69 "walk to start" #24 ja16x2
+text 109 69 "walk to start" #24 ja16x2
+text 110 69 "walk to start" #24 ja16x2
+text 108 70 "walk to start" #24 ja16x2
+text 110 70 "walk to start" #24 ja16x2
+text 108 71 "walk to start" #24 ja16x2
+text 109 71 "walk to start" #24 ja16x2
+text 110 71 "walk to start" #24 ja16x2
+text 109 70 "walk to start" #FC ja16x2
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -40
+present
+== update 1/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+text 236 1 "offline 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -40
+present
+== update 2/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #FC
+text 236 1 "waiting 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -31
+present
+== update
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 1" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 1 0 425 84 0 106
+draw_tile 112 0 0 1 84 425 106
+draw_tile 113 2 0 424 50 0 190
+draw_tile 113 0 0 2 50 424 190
+sprite_frame 106 0
+sprite_move 108 0 -23
+present
+== run 520 ms
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 2" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 1 0 425 160 0 30
+draw_tile 111 0 0 1 160 425 30
+draw_tile 112 2 0 424 84 0 106
+draw_tile 112 0 0 2 84 424 106
+draw_tile 113 5 0 421 50 0 190
+draw_tile 113 0 0 5 50 421 190
+sprite_move 108 0 -15
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 1 0 425 160 0 30
+draw_tile 111 0 0 1 160 425 30
+draw_tile 112 4 0 422 84 0 106
+draw_tile 112 0 0 4 84 422 106
+draw_tile 113 9 0 417 50 0 190
+draw_tile 113 0 0 9 50 417 190
+sprite_move 108 0 -7
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 2 0 424 160 0 30
+draw_tile 111 0 0 2 160 424 30
+draw_tile 112 6 0 420 84 0 106
+draw_tile 112 0 0 6 84 420 106
+draw_tile 113 13 0 413 50 0 190
+draw_tile 113 0 0 13 50 413 190
+sprite_move 108 0 1
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 3 0 423 160 0 30
+draw_tile 111 0 0 3 160 423 30
+draw_tile 112 8 0 418 84 0 106
+draw_tile 112 0 0 8 84 418 106
+draw_tile 113 17 0 409 50 0 190
+draw_tile 113 0 0 17 50 409 190
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 4 0 422 160 0 30
+draw_tile 111 0 0 4 160 422 30
+draw_tile 112 10 0 416 84 0 106
+draw_tile 112 0 0 10 84 416 106
+draw_tile 113 21 0 405 50 0 190
+draw_tile 113 0 0 21 50 405 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 5 0 421 160 0 30
+draw_tile 111 0 0 5 160 421 30
+draw_tile 112 12 0 414 84 0 106
+draw_tile 112 0 0 12 84 414 106
+draw_tile 113 25 0 401 50 0 190
+draw_tile 113 0 0 25 50 401 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 5 0 421 160 0 30
+draw_tile 111 0 0 5 160 421 30
+draw_tile 112 14 0 412 84 0 106
+draw_tile 112 0 0 14 84 412 106
+draw_tile 113 29 0 397 50 0 190
+draw_tile 113 0 0 29 50 397 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 6 0 420 160 0 30
+draw_tile 111 0 0 6 160 420 30
+draw_tile 112 16 0 410 84 0 106
+draw_tile 112 0 0 16 84 410 106
+draw_tile 113 33 0 393 50 0 190
+draw_tile 113 0 0 33 50 393 190
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 7 0 419 160 0 30
+draw_tile 111 0 0 7 160 419 30
+draw_tile 112 18 0 408 84 0 106
+draw_tile 112 0 0 18 84 408 106
+draw_tile 113 37 0 389 50 0 190
+draw_tile 113 0 0 37 50 389 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 8 0 418 160 0 30
+draw_tile 111 0 0 8 160 418 30
+draw_tile 112 20 0 406 84 0 106
+draw_tile 112 0 0 20 84 406 106
+draw_tile 113 41 0 385 50 0 190
+draw_tile 113 0 0 41 50 385 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 9 0 417 160 0 30
+draw_tile 111 0 0 9 160 417 30
+draw_tile 112 22 0 404 84 0 106
+draw_tile 112 0 0 22 84 404 106
+draw_tile 113 45 0 381 50 0 190
+draw_tile 113 0 0 45 50 381 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 9 0 417 160 0 30
+draw_tile 111 0 0 9 160 417 30
+draw_tile 112 24 0 402 84 0 106
+draw_tile 112 0 0 24 84 402 106
+draw_tile 113 49 0 377 50 0 190
+draw_tile 113 0 0 49 50 377 190
+sprite_frame 106 3
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 10 0 416 160 0 30
+draw_tile 111 0 0 10 160 416 30
+draw_tile 112 26 0 400 84 0 106
+draw_tile 112 0 0 26 84 400 106
+draw_tile 113 53 0 373 50 0 190
+draw_tile 113 0 0 53 50 373 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 11 0 415 160 0 30
+draw_tile 111 0 0 11 160 415 30
+draw_tile 112 28 0 398 84 0 106
+draw_tile 112 0 0 28 84 398 106
+draw_tile 113 57 0 369 50 0 190
+draw_tile 113 0 0 57 50 369 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 12 0 414 160 0 30
+draw_tile 111 0 0 12 160 414 30
+draw_tile 112 30 0 396 84 0 106
+draw_tile 112 0 0 30 84 396 106
+draw_tile 113 61 0 365 50 0 190
+draw_tile 113 0 0 61 50 365 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 12 0 414 160 0 30
+draw_tile 111 0 0 12 160 414 30
+draw_tile 112 32 0 394 84 0 106
+draw_tile 112 0 0 32 84 394 106
+draw_tile 113 64 0 362 50 0 190
+draw_tile 113 0 0 64 50 362 190
+sprite_frame 106 0
+sprite_move 108 0 6
+present
+== run 520 ms
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 3" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 12 0 414 160 0 30
+draw_tile 111 0 0 12 160 414 30
+draw_tile 112 32 0 394 84 0 106
+draw_tile 112 0 0 32 84 394 106
+draw_tile 113 64 0 362 50 0 190
+draw_tile 113 0 0 64 50 362 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 13 0 413 160 0 30
+draw_tile 111 0 0 13 160 413 30
+draw_tile 112 33 0 393 84 0 106
+draw_tile 112 0 0 33 84 393 106
+draw_tile 113 66 0 360 50 0 190
+draw_tile 113 0 0 66 50 360 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 13 0 413 160 0 30
+draw_tile 111 0 0 13 160 413 30
+draw_tile 112 34 0 392 84 0 106
+draw_tile 112 0 0 34 84 392 106
+draw_tile 113 68 0 358 50 0 190
+draw_tile 113 0 0 68 50 358 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 14 0 412 160 0 30
+draw_tile 111 0 0 14 160 412 30
+draw_tile 112 35 0 391 84 0 106
+draw_tile 112 0 0 35 84 391 106
+draw_tile 113 70 0 356 50 0 190
+draw_tile 113 0 0 70 50 356 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 14 0 412 160 0 30
+draw_tile 111 0 0 14 160 412 30
+draw_tile 112 36 0 390 84 0 106
+draw_tile 112 0 0 36 84 390 106
+draw_tile 113 72 0 354 50 0 190
+draw_tile 113 0 0 72 50 354 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 14 0 412 160 0 30
+draw_tile 111 0 0 14 160 412 30
+draw_tile 112 37 0 389 84 0 106
+draw_tile 112 0 0 37 84 389 106
+draw_tile 113 74 0 352 50 0 190
+draw_tile 113 0 0 74 50 352 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 15 0 411 160 0 30
+draw_tile 111 0 0 15 160 411 30
+draw_tile 112 38 0 388 84 0 106
+draw_tile 112 0 0 38 84 388 106
+draw_tile 113 76 0 350 50 0 190
+draw_tile 113 0 0 76 50 350 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 15 0 411 160 0 30
+draw_tile 111 0 0 15 160 411 30
+draw_tile 112 39 0 387 84 0 106
+draw_tile 112 0 0 39 84 387 106
+draw_tile 113 78 0 348 50 0 190
+draw_tile 113 0 0 78 50 348 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 16 0 410 160 0 30
+draw_tile 111 0 0 16 160 410 30
+draw_tile 112 40 0 386 84 0 106
+draw_tile 112 0 0 40 84 386 106
+draw_tile 113 80 0 346 50 0 190
+draw_tile 113 0 0 80 50 346 190
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 16 0 410 160 0 30
+draw_tile 111 0 0 16 160 410 30
+draw_tile 112 41 0 385 84 0 106
+draw_tile 112 0 0 41 84 385 106
+draw_tile 113 82 0 344 50 0 190
+draw_tile 113 0 0 82 50 344 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 16 0 410 160 0 30
+draw_tile 111 0 0 16 160 410 30
+draw_tile 112 42 0 384 84 0 106
+draw_tile 112 0 0 42 84 384 106
+draw_tile 113 84 0 342 50 0 190
+draw_tile 113 0 0 84 50 342 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 17 0 409 160 0 30
+draw_tile 111 0 0 17 160 409 30
+draw_tile 112 43 0 383 84 0 106
+draw_tile 112 0 0 43 84 383 106
+draw_tile 113 86 0 340 50 0 190
+draw_tile 113 0 0 86 50 340 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 17 0 409 160 0 30
+draw_tile 111 0 0 17 160 409 30
+draw_tile 112 44 0 382 84 0 106
+draw_tile 112 0 0 44 84 382 106
+draw_tile 113 88 0 338 50 0 190
+draw_tile 113 0 0 88 50 338 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 18 0 408 160 0 30
+draw_tile 111 0 0 18 160 408 30
+draw_tile 112 45 0 381 84 0 106
+draw_tile 112 0 0 45 84 381 106
+draw_tile 113 90 0 336 50 0 190
+draw_tile 113 0 0 90 50 336 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 18 0 408 160 0 30
+draw_tile 111 0 0 18 160 408 30
+draw_tile 112 46 0 380 84 0 106
+draw_tile 112 0 0 46 84 380 106
+draw_tile 113 92 0 334 50 0 190
+draw_tile 113 0 0 92 50 334 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 18 0 408 160 0 30
+draw_tile 111 0 0 18 160 408 30
+draw_tile 112 47 0 379 84 0 106
+draw_tile 112 0 0 47 84 379 106
+draw_tile 113 94 0 332 50 0 190
+draw_tile 113 0 0 94 50 332 190
+sprite_move 108 0 6
+present
+== run 520 ms
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 4" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 19 0 407 160 0 30
+draw_tile 111 0 0 19 160 407 30
+draw_tile 112 48 0 378 84 0 106
+draw_tile 112 0 0 48 84 378 106
+draw_tile 113 96 0 330 50 0 190
+draw_tile 113 0 0 96 50 330 190
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 19 0 407 160 0 30
+draw_tile 111 0 0 19 160 407 30
+draw_tile 112 49 0 377 84 0 106
+draw_tile 112 0 0 49 84 377 106
+draw_tile 113 98 0 328 50 0 190
+draw_tile 113 0 0 98 50 328 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 20 0 406 160 0 30
+draw_tile 111 0 0 20 160 406 30
+draw_tile 112 50 0 376 84 0 106
+draw_tile 112 0 0 50 84 376 106
+draw_tile 113 100 0 326 50 0 190
+draw_tile 113 0 0 100 50 326 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 20 0 406 160 0 30
+draw_tile 111 0 0 20 160 406 30
+draw_tile 112 51 0 375 84 0 106
+draw_tile 112 0 0 51 84 375 106
+draw_tile 113 102 0 324 50 0 190
+draw_tile 113 0 0 102 50 324 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 20 0 406 160 0 30
+draw_tile 111 0 0 20 160 406 30
+draw_tile 112 52 0 374 84 0 106
+draw_tile 112 0 0 52 84 374 106
+draw_tile 113 104 0 322 50 0 190
+draw_tile 113 0 0 104 50 322 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 21 0 405 160 0 30
+draw_tile 111 0 0 21 160 405 30
+draw_tile 112 53 0 373 84 0 106
+draw_tile 112 0 0 53 84 373 106
+draw_tile 113 106 0 320 50 0 190
+draw_tile 113 0 0 106 50 320 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 21 0 405 160 0 30
+draw_tile 111 0 0 21 160 405 30
+draw_tile 112 54 0 372 84 0 106
+draw_tile 112 0 0 54 84 372 106
+draw_tile 113 109 0 317 50 0 190
+draw_tile 113 0 0 109 50 317 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 22 0 404 160 0 30
+draw_tile 111 0 0 22 160 404 30
+draw_tile 112 55 0 371 84 0 106
+draw_tile 112 0 0 55 84 371 106
+draw_tile 113 111 0 315 50 0 190
+draw_tile 113 0 0 111 50 315 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 22 0 404 160 0 30
+draw_tile 111 0 0 22 160 404 30
+draw_tile 112 56 0 370 84 0 106
+draw_tile 112 0 0 56 84 370 106
+draw_tile 113 113 0 313 50 0 190
+draw_tile 113 0 0 113 50 313 190
+sprite_frame 106 3
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 23 0 403 160 0 30
+draw_tile 111 0 0 23 160 403 30
+draw_tile 112 57 0 369 84 0 106
+draw_tile 112 0 0 57 84 369 106
+draw_tile 113 115 0 311 50 0 190
+draw_tile 113 0 0 115 50 311 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 23 0 403 160 0 30
+draw_tile 111 0 0 23 160 403 30
+draw_tile 112 58 0 368 84 0 106
+draw_tile 112 0 0 58 84 368 106
+draw_tile 113 117 0 309 50 0 190
+draw_tile 113 0 0 117 50 309 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 23 0 403 160 0 30
+draw_tile 111 0 0 23 160 403 30
+draw_tile 112 59 0 367 84 0 106
+draw_tile 112 0 0 59 84 367 106
+draw_tile 113 119 0 307 50 0 190
+draw_tile 113 0 0 119 50 307 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 24 0 402 160 0 30
+draw_tile 111 0 0 24 160 402 30
+draw_tile 112 60 0 366 84 0 106
+draw_tile 112 0 0 60 84 366 106
+draw_tile 113 121 0 305 50 0 190
+draw_tile 113 0 0 121 50 305 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 24 0 402 160 0 30
+draw_tile 111 0 0 24 160 402 30
+draw_tile 112 61 0 365 84 0 106
+draw_tile 112 0 0 61 84 365 106
+draw_tile 113 123 0 303 50 0 190
+draw_tile 113 0 0 123 50 303 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 25 0 401 160 0 30
+draw_tile 111 0 0 25 160 401 30
+draw_tile 112 62 0 364 84 0 106
+draw_tile 112 0 0 62 84 364 106
+draw_tile 113 125 0 301 50 0 190
+draw_tile 113 0 0 125 50 301 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 25 0 401 160 0 30
+draw_tile 111 0 0 25 160 401 30
+draw_tile 112 63 0 363 84 0 106
+draw_tile 112 0 0 63 84 363 106
+draw_tile 113 127 0 299 50 0 190
+draw_tile 113 0 0 127 50 299 190
+sprite_move 108 0 6
+present
+== run 520 ms
+sprite_target 107
+fill_rect 0 0 426 124 #00
+sprite_target 0
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 5" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 25 0 401 160 0 30
+draw_tile 111 0 0 25 160 401 30
+draw_tile 112 64 0 362 84 0 106
+draw_tile 112 0 0 64 84 362 106
+draw_tile 113 129 0 297 50 0 190
+draw_tile 113 0 0 129 50 297 190
+sprite_frame 106 0
+sprite_move 108 0 -33
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 26 0 400 160 0 30
+draw_tile 111 0 0 26 160 400 30
+draw_tile 112 65 0 361 84 0 106
+draw_tile 112 0 0 65 84 361 106
+draw_tile 113 131 0 295 50 0 190
+draw_tile 113 0 0 131 50 295 190
+sprite_move 108 0 -25
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 26 0 400 160 0 30
+draw_tile 111 0 0 26 160 400 30
+draw_tile 112 66 0 360 84 0 106
+draw_tile 112 0 0 66 84 360 106
+draw_tile 113 133 0 293 50 0 190
+draw_tile 113 0 0 133 50 293 190
+sprite_move 108 0 -17
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 27 0 399 160 0 30
+draw_tile 111 0 0 27 160 399 30
+draw_tile 112 67 0 359 84 0 106
+draw_tile 112 0 0 67 84 359 106
+draw_tile 113 135 0 291 50 0 190
+draw_tile 113 0 0 135 50 291 190
+sprite_move 108 0 -9
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 27 0 399 160 0 30
+draw_tile 111 0 0 27 160 399 30
+draw_tile 112 68 0 358 84 0 106
+draw_tile 112 0 0 68 84 358 106
+draw_tile 113 137 0 289 50 0 190
+draw_tile 113 0 0 137 50 289 190
+sprite_move 108 0 0
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 27 0 399 160 0 30
+draw_tile 111 0 0 27 160 399 30
+draw_tile 112 69 0 357 84 0 106
+draw_tile 112 0 0 69 84 357 106
+draw_tile 113 139 0 287 50 0 190
+draw_tile 113 0 0 139 50 287 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 28 0 398 160 0 30
+draw_tile 111 0 0 28 160 398 30
+draw_tile 112 70 0 356 84 0 106
+draw_tile 112 0 0 70 84 356 106
+draw_tile 113 141 0 285 50 0 190
+draw_tile 113 0 0 141 50 285 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 28 0 398 160 0 30
+draw_tile 111 0 0 28 160 398 30
+draw_tile 112 71 0 355 84 0 106
+draw_tile 112 0 0 71 84 355 106
+draw_tile 113 143 0 283 50 0 190
+draw_tile 113 0 0 143 50 283 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 29 0 397 160 0 30
+draw_tile 111 0 0 29 160 397 30
+draw_tile 112 72 0 354 84 0 106
+draw_tile 112 0 0 72 84 354 106
+draw_tile 113 145 0 281 50 0 190
+draw_tile 113 0 0 145 50 281 190
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 29 0 397 160 0 30
+draw_tile 111 0 0 29 160 397 30
+draw_tile 112 73 0 353 84 0 106
+draw_tile 112 0 0 73 84 353 106
+draw_tile 113 147 0 279 50 0 190
+draw_tile 113 0 0 147 50 279 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 29 0 397 160 0 30
+draw_tile 111 0 0 29 160 397 30
+draw_tile 112 74 0 352 84 0 106
+draw_tile 112 0 0 74 84 352 106
+draw_tile 113 149 0 277 50 0 190
+draw_tile 113 0 0 149 50 277 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 30 0 396 160 0 30
+draw_tile 111 0 0 30 160 396 30
+draw_tile 112 75 0 351 84 0 106
+draw_tile 112 0 0 75 84 351 106
+draw_tile 113 151 0 275 50 0 190
+draw_tile 113 0 0 151 50 275 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 30 0 396 160 0 30
+draw_tile 111 0 0 30 160 396 30
+draw_tile 112 76 0 350 84 0 106
+draw_tile 112 0 0 76 84 350 106
+draw_tile 113 153 0 273 50 0 190
+draw_tile 113 0 0 153 50 273 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 31 0 395 160 0 30
+draw_tile 111 0 0 31 160 395 30
+draw_tile 112 77 0 349 84 0 106
+draw_tile 112 0 0 77 84 349 106
+draw_tile 113 155 0 271 50 0 190
+draw_tile 113 0 0 155 50 271 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 31 0 395 160 0 30
+draw_tile 111 0 0 31 160 395 30
+draw_tile 112 78 0 348 84 0 106
+draw_tile 112 0 0 78 84 348 106
+draw_tile 113 157 0 269 50 0 190
+draw_tile 113 0 0 157 50 269 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 32 0 394 160 0 30
+draw_tile 111 0 0 32 160 394 30
+draw_tile 112 80 0 346 84 0 106
+draw_tile 112 0 0 80 84 346 106
+draw_tile 113 160 0 266 50 0 190
+draw_tile 113 0 0 160 50 266 190
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+== run 520 ms
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 6" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 32 0 394 160 0 30
+draw_tile 111 0 0 32 160 394 30
+draw_tile 112 80 0 346 84 0 106
+draw_tile 112 0 0 80 84 346 106
+draw_tile 113 160 0 266 50 0 190
+draw_tile 113 0 0 160 50 266 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 32 0 394 160 0 30
+draw_tile 111 0 0 32 160 394 30
+draw_tile 112 81 0 345 84 0 106
+draw_tile 112 0 0 81 84 345 106
+draw_tile 113 162 0 264 50 0 190
+draw_tile 113 0 0 162 50 264 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 32 0 394 160 0 30
+draw_tile 111 0 0 32 160 394 30
+draw_tile 112 82 0 344 84 0 106
+draw_tile 112 0 0 82 84 344 106
+draw_tile 113 164 0 262 50 0 190
+draw_tile 113 0 0 164 50 262 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 33 0 393 160 0 30
+draw_tile 111 0 0 33 160 393 30
+draw_tile 112 83 0 343 84 0 106
+draw_tile 112 0 0 83 84 343 106
+draw_tile 113 166 0 260 50 0 190
+draw_tile 113 0 0 166 50 260 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 33 0 393 160 0 30
+draw_tile 111 0 0 33 160 393 30
+draw_tile 112 84 0 342 84 0 106
+draw_tile 112 0 0 84 84 342 106
+draw_tile 113 168 0 258 50 0 190
+draw_tile 113 0 0 168 50 258 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 34 0 392 160 0 30
+draw_tile 111 0 0 34 160 392 30
+draw_tile 112 85 0 341 84 0 106
+draw_tile 112 0 0 85 84 341 106
+draw_tile 113 170 0 256 50 0 190
+draw_tile 113 0 0 170 50 256 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 34 0 392 160 0 30
+draw_tile 111 0 0 34 160 392 30
+draw_tile 112 86 0 340 84 0 106
+draw_tile 112 0 0 86 84 340 106
+draw_tile 113 172 0 254 50 0 190
+draw_tile 113 0 0 172 50 254 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 34 0 392 160 0 30
+draw_tile 111 0 0 34 160 392 30
+draw_tile 112 87 0 339 84 0 106
+draw_tile 112 0 0 87 84 339 106
+draw_tile 113 174 0 252 50 0 190
+draw_tile 113 0 0 174 50 252 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 35 0 391 160 0 30
+draw_tile 111 0 0 35 160 391 30
+draw_tile 112 88 0 338 84 0 106
+draw_tile 112 0 0 88 84 338 106
+draw_tile 113 176 0 250 50 0 190
+draw_tile 113 0 0 176 50 250 190
+sprite_frame 106 3
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 35 0 391 160 0 30
+draw_tile 111 0 0 35 160 391 30
+draw_tile 112 89 0 337 84 0 106
+draw_tile 112 0 0 89 84 337 106
+draw_tile 113 178 0 248 50 0 190
+draw_tile 113 0 0 178 50 248 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 36 0 390 160 0 30
+draw_tile 111 0 0 36 160 390 30
+draw_tile 112 90 0 336 84 0 106
+draw_tile 112 0 0 90 84 336 106
+draw_tile 113 180 0 246 50 0 190
+draw_tile 113 0 0 180 50 246 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 36 0 390 160 0 30
+draw_tile 111 0 0 36 160 390 30
+draw_tile 112 91 0 335 84 0 106
+draw_tile 112 0 0 91 84 335 106
+draw_tile 113 182 0 244 50 0 190
+draw_tile 113 0 0 182 50 244 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 36 0 390 160 0 30
+draw_tile 111 0 0 36 160 390 30
+draw_tile 112 92 0 334 84 0 106
+draw_tile 112 0 0 92 84 334 106
+draw_tile 113 184 0 242 50 0 190
+draw_tile 113 0 0 184 50 242 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 37 0 389 160 0 30
+draw_tile 111 0 0 37 160 389 30
+draw_tile 112 93 0 333 84 0 106
+draw_tile 112 0 0 93 84 333 106
+draw_tile 113 186 0 240 50 0 190
+draw_tile 113 0 0 186 50 240 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 37 0 389 160 0 30
+draw_tile 111 0 0 37 160 389 30
+draw_tile 112 94 0 332 84 0 106
+draw_tile 112 0 0 94 84 332 106
+draw_tile 113 188 0 238 50 0 190
+draw_tile 113 0 0 188 50 238 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 38 0 388 160 0 30
+draw_tile 111 0 0 38 160 388 30
+draw_tile 112 95 0 331 84 0 106
+draw_tile 112 0 0 95 84 331 106
+draw_tile 113 190 0 236 50 0 190
+draw_tile 113 0 0 190 50 236 190
+sprite_move 108 0 6
+present
+== run 520 ms
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 7" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 38 0 388 160 0 30
+draw_tile 111 0 0 38 160 388 30
+draw_tile 112 96 0 330 84 0 106
+draw_tile 112 0 0 96 84 330 106
+draw_tile 113 192 0 234 50 0 190
+draw_tile 113 0 0 192 50 234 190
+sprite_frame 106 0
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 38 0 388 160 0 30
+draw_tile 111 0 0 38 160 388 30
+draw_tile 112 97 0 329 84 0 106
+draw_tile 112 0 0 97 84 329 106
+draw_tile 113 194 0 232 50 0 190
+draw_tile 113 0 0 194 50 232 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 39 0 387 160 0 30
+draw_tile 111 0 0 39 160 387 30
+draw_tile 112 98 0 328 84 0 106
+draw_tile 112 0 0 98 84 328 106
+draw_tile 113 196 0 230 50 0 190
+draw_tile 113 0 0 196 50 230 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 39 0 387 160 0 30
+draw_tile 111 0 0 39 160 387 30
+draw_tile 112 99 0 327 84 0 106
+draw_tile 112 0 0 99 84 327 106
+draw_tile 113 198 0 228 50 0 190
+draw_tile 113 0 0 198 50 228 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 40 0 386 160 0 30
+draw_tile 111 0 0 40 160 386 30
+draw_tile 112 100 0 326 84 0 106
+draw_tile 112 0 0 100 84 326 106
+draw_tile 113 200 0 226 50 0 190
+draw_tile 113 0 0 200 50 226 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 40 0 386 160 0 30
+draw_tile 111 0 0 40 160 386 30
+draw_tile 112 101 0 325 84 0 106
+draw_tile 112 0 0 101 84 325 106
+draw_tile 113 202 0 224 50 0 190
+draw_tile 113 0 0 202 50 224 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 41 0 385 160 0 30
+draw_tile 111 0 0 41 160 385 30
+draw_tile 112 102 0 324 84 0 106
+draw_tile 112 0 0 102 84 324 106
+draw_tile 113 205 0 221 50 0 190
+draw_tile 113 0 0 205 50 221 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 41 0 385 160 0 30
+draw_tile 111 0 0 41 160 385 30
+draw_tile 112 103 0 323 84 0 106
+draw_tile 112 0 0 103 84 323 106
+draw_tile 113 207 0 219 50 0 190
+draw_tile 113 0 0 207 50 219 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 41 0 385 160 0 30
+draw_tile 111 0 0 41 160 385 30
+draw_tile 112 104 0 322 84 0 106
+draw_tile 112 0 0 104 84 322 106
+draw_tile 113 209 0 217 50 0 190
+draw_tile 113 0 0 209 50 217 190
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 42 0 384 160 0 30
+draw_tile 111 0 0 42 160 384 30
+draw_tile 112 105 0 321 84 0 106
+draw_tile 112 0 0 105 84 321 106
+draw_tile 113 211 0 215 50 0 190
+draw_tile 113 0 0 211 50 215 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 42 0 384 160 0 30
+draw_tile 111 0 0 42 160 384 30
+draw_tile 112 106 0 320 84 0 106
+draw_tile 112 0 0 106 84 320 106
+draw_tile 113 213 0 213 50 0 190
+draw_tile 113 0 0 213 50 213 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 43 0 383 160 0 30
+draw_tile 111 0 0 43 160 383 30
+draw_tile 112 107 0 319 84 0 106
+draw_tile 112 0 0 107 84 319 106
+draw_tile 113 215 0 211 50 0 190
+draw_tile 113 0 0 215 50 211 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 43 0 383 160 0 30
+draw_tile 111 0 0 43 160 383 30
+draw_tile 112 108 0 318 84 0 106
+draw_tile 112 0 0 108 84 318 106
+draw_tile 113 217 0 209 50 0 190
+draw_tile 113 0 0 217 50 209 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 43 0 383 160 0 30
+draw_tile 111 0 0 43 160 383 30
+draw_tile 112 109 0 317 84 0 106
+draw_tile 112 0 0 109 84 317 106
+draw_tile 113 219 0 207 50 0 190
+draw_tile 113 0 0 219 50 207 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 44 0 382 160 0 30
+draw_tile 111 0 0 44 160 382 30
+draw_tile 112 110 0 316 84 0 106
+draw_tile 112 0 0 110 84 316 106
+draw_tile 113 221 0 205 50 0 190
+draw_tile 113 0 0 221 50 205 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 44 0 382 160 0 30
+draw_tile 111 0 0 44 160 382 30
+draw_tile 112 111 0 315 84 0 106
+draw_tile 112 0 0 111 84 315 106
+draw_tile 113 223 0 203 50 0 190
+draw_tile 113 0 0 223 50 203 190
+sprite_move 108 0 6
+present
+== run 1500 ms
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 44 0 382 160 0 30
+draw_tile 111 0 0 44 160 382 30
+draw_tile 112 112 0 314 84 0 106
+draw_tile 112 0 0 112 84 314 106
+draw_tile 113 224 0 202 50 0 190
+draw_tile 113 0 0 224 50 202 190
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 44 0 382 160 0 30
+draw_tile 111 0 0 44 160 382 30
+draw_tile 112 112 0 314 84 0 106
+draw_tile 112 0 0 112 84 314 106
+draw_tile 113 224 0 202 50 0 190
+draw_tile 113 0 0 224 50 202 190
+sprite_frame 106 4
+sprite_move 108 0 6
+present

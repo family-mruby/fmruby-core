@@ -1,0 +1,72 @@
+# scene video_play/no_file
+# profile retro-320x240
+# window 332x218 lang en
+== start
+sprite_clip 1 11 330 206
+composite_regions [0,0,0,0,4,4,1,328,0,328,0,4,4,1,0,214,0,214,4,4,1,328,214,328,214,4,4,1,4,0,4,0,324,4,0,4,214,4,214,324,4,0,0,4,0,4,332,210,0]
+fill_rect 1 11 330 206 #FF
+gfxblock 1 {w:332,h:218}
+fill_round_rect 0 0 332 11 4 #C5
+fill_rect 0 4 332 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "VideoPlay" #FF defaultx1
+fill_circle 326 5 3 #FF
+draw_round_rect 0 0 332 218 4 #60
+gfxblock 2 {w:332,h:218}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 330 0 331 0 #01
+draw_line 331 1 331 1 #01
+draw_line 0 216 0 217 #01
+draw_line 1 217 1 217 #01
+draw_line 331 216 331 217 #01
+draw_line 330 217 330 217 #01
+fill_rect 5 15 44 10 #03
+draw_rect 5 15 44 10 #60
+text 15 16 "Play" #FF bg=#03 defaultx1
+fill_rect 53 15 44 10 #03
+draw_rect 53 15 44 10 #60
+text 60 16 "Pause" #FF bg=#03 defaultx1
+fill_rect 101 15 44 10 #03
+draw_rect 101 15 44 10 #60
+text 105 16 "Rewind" #FF bg=#03 defaultx1
+fill_rect 149 15 44 10 #03
+draw_rect 149 15 44 10 #60
+text 159 16 "Open" #FF bg=#03 defaultx1
+fill_rect 197 15 44 10 #03
+draw_rect 197 15 44 10 #60
+text 204 16 "15fps" #FF bg=#03 defaultx1
+fill_rect 5 26 322 8 #FF
+present
+gfxblock 1 again
+gfxblock 2 again
+present
+fill_rect 5 36 322 179 #00
+video_open "/sd/movie/demo.mjpg" 5 36 15 true
+fill_rect 1 11 330 206 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 5 15 44 10 #03
+draw_rect 5 15 44 10 #60
+text 15 16 "Play" #FF bg=#03 defaultx1
+fill_rect 53 15 44 10 #03
+draw_rect 53 15 44 10 #60
+text 60 16 "Pause" #FF bg=#03 defaultx1
+fill_rect 101 15 44 10 #03
+draw_rect 101 15 44 10 #60
+text 105 16 "Rewind" #FF bg=#03 defaultx1
+fill_rect 149 15 44 10 #03
+draw_rect 149 15 44 10 #60
+text 159 16 "Open" #FF bg=#03 defaultx1
+fill_rect 197 15 44 10 #03
+draw_rect 197 15 44 10 #60
+text 204 16 "15fps" #FF bg=#03 defaultx1
+fill_rect 5 26 322 8 #FF
+text 5 26 "cannot play demo.mjpg" #00 defaultx1
+present
+gfxblock 1 again
+gfxblock 2 again
+present
+== update

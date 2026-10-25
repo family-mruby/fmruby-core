@@ -1,0 +1,252 @@
+# scene logviewer/wrap_and_level
+# profile mini-128x128
+# window 300x200 lang en
+== start
+sprite_clip 1 11 298 188
+composite_regions [0,0,0,0,4,4,1,296,0,296,0,4,4,1,0,196,0,196,4,4,1,296,196,296,196,4,4,1,4,0,4,0,292,4,0,4,196,4,196,292,4,0,0,4,0,4,300,192,0]
+fill_rect 1 11 298 188 #FF
+fill_rect 1 11 298 14 #80
+fill_rect 3 12 56 12 #60
+text 7 14 "Lv:E/W/I" #FF bg=#60 defaultx1
+fill_rect 63 12 32 12 #60
+text 67 14 "Wrap" #FF bg=#60 defaultx1
+text 257 14 "[AUTO]" #1C bg=#80 defaultx1
+text 3 26 "[E] app: something failed at step 19" #E0 bg=#FF defaultx1
+text 3 34 "[I] kernel: app 20 spawned (pid 23)" #00 bg=#FF defaultx1
+text 3 42 "[D] gfx: frame 21 took 0 ms" #60 bg=#FF defaultx1
+text 3 50 "[W] wifi: rssi -82 dBm" #E8 bg=#FF defaultx1
+text 3 58 "[E] app: something failed at step 23" #E0 bg=#FF defaultx1
+text 3 66 "[I] kernel: app 24 spawned (pid 27)" #00 bg=#FF defaultx1
+text 3 74 "[D] gfx: frame 25 took 4 ms" #60 bg=#FF defaultx1
+text 3 82 "[W] wifi: rssi -86 dBm" #E8 bg=#FF defaultx1
+text 3 90 "[E] app: something failed at step 27" #E0 bg=#FF defaultx1
+text 3 98 "[I] kernel: app 28 spawned (pid 31)" #00 bg=#FF defaultx1
+text 3 106 "[D] gfx: frame 29 took 1 ms" #60 bg=#FF defaultx1
+text 3 114 "[W] wifi: rssi -90 dBm" #E8 bg=#FF defaultx1
+text 3 122 "[E] app: something failed at step 31" #E0 bg=#FF defaultx1
+text 3 130 "[I] kernel: app 32 spawned (pid 35)" #00 bg=#FF defaultx1
+text 3 138 "[D] gfx: frame 33 took 5 ms" #60 bg=#FF defaultx1
+text 3 146 "[W] wifi: rssi -94 dBm" #E8 bg=#FF defaultx1
+text 3 154 "[E] app: something failed at step 35" #E0 bg=#FF defaultx1
+text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
+text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
+text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
+text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+gfxblock 1 {w:300,h:200}
+fill_round_rect 0 0 300 11 4 #C5
+fill_rect 0 4 300 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "LogViewer" #FF defaultx1
+fill_circle 294 5 3 #FF
+draw_round_rect 0 0 300 200 4 #60
+gfxblock 2 {w:300,h:200}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 298 0 299 0 #01
+draw_line 299 1 299 1 #01
+draw_line 0 198 0 199 #01
+draw_line 1 199 1 199 #01
+draw_line 299 198 299 199 #01
+draw_line 298 199 298 199 #01
+draw_line 289 25 289 198 #60
+fill_rect 289 25 10 10 #FF
+draw_rect 289 25 10 10 #60
+draw_line 294 27 291 32 #60
+draw_line 294 27 297 32 #60
+draw_line 291 32 297 32 #60
+fill_rect 289 189 10 10 #FF
+draw_rect 289 189 10 10 #60
+draw_line 294 196 291 191 #60
+draw_line 294 196 297 191 #60
+draw_line 291 191 297 191 #60
+fill_rect 290 35 9 154 #FF
+fill_rect 291 112 6 77 #60
+draw_rect 291 112 6 77 #60
+present
+== key "w"
+fill_rect 1 11 298 188 #FF
+fill_rect 1 11 298 14 #80
+fill_rect 3 12 56 12 #60
+text 7 14 "Lv:E/W/I" #FF bg=#60 defaultx1
+fill_rect 63 12 26 12 #60
+text 67 14 "Cut" #FF bg=#60 defaultx1
+text 257 14 "[AUTO]" #1C bg=#80 defaultx1
+text 3 26 "[E] app: something failed at step 19" #E0 bg=#FF defaultx1
+text 3 34 "[I] kernel: app 20 spawned (pid 23)" #00 bg=#FF defaultx1
+text 3 42 "[D] gfx: frame 21 took 0 ms" #60 bg=#FF defaultx1
+text 3 50 "[W] wifi: rssi -82 dBm" #E8 bg=#FF defaultx1
+text 3 58 "[E] app: something failed at step 23" #E0 bg=#FF defaultx1
+text 3 66 "[I] kernel: app 24 spawned (pid 27)" #00 bg=#FF defaultx1
+text 3 74 "[D] gfx: frame 25 took 4 ms" #60 bg=#FF defaultx1
+text 3 82 "[W] wifi: rssi -86 dBm" #E8 bg=#FF defaultx1
+text 3 90 "[E] app: something failed at step 27" #E0 bg=#FF defaultx1
+text 3 98 "[I] kernel: app 28 spawned (pid 31)" #00 bg=#FF defaultx1
+text 3 106 "[D] gfx: frame 29 took 1 ms" #60 bg=#FF defaultx1
+text 3 114 "[W] wifi: rssi -90 dBm" #E8 bg=#FF defaultx1
+text 3 122 "[E] app: something failed at step 31" #E0 bg=#FF defaultx1
+text 3 130 "[I] kernel: app 32 spawned (pid 35)" #00 bg=#FF defaultx1
+text 3 138 "[D] gfx: frame 33 took 5 ms" #60 bg=#FF defaultx1
+text 3 146 "[W] wifi: rssi -94 dBm" #E8 bg=#FF defaultx1
+text 3 154 "[E] app: something failed at step 35" #E0 bg=#FF defaultx1
+text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
+text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
+text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
+text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+draw_line 289 25 289 198 #60
+fill_rect 289 25 10 10 #FF
+draw_rect 289 25 10 10 #60
+draw_line 294 27 291 32 #60
+draw_line 294 27 297 32 #60
+draw_line 291 32 297 32 #60
+fill_rect 289 189 10 10 #FF
+draw_rect 289 189 10 10 #60
+draw_line 294 196 291 191 #60
+draw_line 294 196 297 191 #60
+draw_line 291 191 297 191 #60
+fill_rect 290 35 9 154 #FF
+fill_rect 291 109 6 80 #60
+draw_rect 291 109 6 80 #60
+present
+== click 7,15
+fill_rect 1 11 298 188 #FF
+fill_rect 1 11 298 14 #80
+fill_rect 3 12 68 12 #60
+text 7 14 "Lv:E/W/I/D" #FF bg=#60 defaultx1
+fill_rect 75 12 26 12 #60
+text 79 14 "Cut" #FF bg=#60 defaultx1
+text 257 14 "[AUTO]" #1C bg=#80 defaultx1
+text 3 26 "[E] app: something failed at step 19" #E0 bg=#FF defaultx1
+text 3 34 "[I] kernel: app 20 spawned (pid 23)" #00 bg=#FF defaultx1
+text 3 42 "[D] gfx: frame 21 took 0 ms" #60 bg=#FF defaultx1
+text 3 50 "[W] wifi: rssi -82 dBm" #E8 bg=#FF defaultx1
+text 3 58 "[E] app: something failed at step 23" #E0 bg=#FF defaultx1
+text 3 66 "[I] kernel: app 24 spawned (pid 27)" #00 bg=#FF defaultx1
+text 3 74 "[D] gfx: frame 25 took 4 ms" #60 bg=#FF defaultx1
+text 3 82 "[W] wifi: rssi -86 dBm" #E8 bg=#FF defaultx1
+text 3 90 "[E] app: something failed at step 27" #E0 bg=#FF defaultx1
+text 3 98 "[I] kernel: app 28 spawned (pid 31)" #00 bg=#FF defaultx1
+text 3 106 "[D] gfx: frame 29 took 1 ms" #60 bg=#FF defaultx1
+text 3 114 "[W] wifi: rssi -90 dBm" #E8 bg=#FF defaultx1
+text 3 122 "[E] app: something failed at step 31" #E0 bg=#FF defaultx1
+text 3 130 "[I] kernel: app 32 spawned (pid 35)" #00 bg=#FF defaultx1
+text 3 138 "[D] gfx: frame 33 took 5 ms" #60 bg=#FF defaultx1
+text 3 146 "[W] wifi: rssi -94 dBm" #E8 bg=#FF defaultx1
+text 3 154 "[E] app: something failed at step 35" #E0 bg=#FF defaultx1
+text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
+text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
+text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
+text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+draw_line 289 25 289 198 #60
+fill_rect 289 25 10 10 #FF
+draw_rect 289 25 10 10 #60
+draw_line 294 27 291 32 #60
+draw_line 294 27 297 32 #60
+draw_line 291 32 297 32 #60
+fill_rect 289 189 10 10 #FF
+draw_rect 289 189 10 10 #60
+draw_line 294 196 291 191 #60
+draw_line 294 196 297 191 #60
+draw_line 291 191 297 191 #60
+fill_rect 290 35 9 154 #FF
+fill_rect 291 109 6 80 #60
+draw_rect 291 109 6 80 #60
+present
+== update
+fill_rect 1 11 298 188 #FF
+fill_rect 1 11 298 14 #80
+fill_rect 3 12 68 12 #60
+text 7 14 "Lv:E/W/I/D" #FF bg=#60 defaultx1
+fill_rect 75 12 26 12 #60
+text 79 14 "Cut" #FF bg=#60 defaultx1
+text 257 14 "[AUTO]" #1C bg=#80 defaultx1
+text 3 26 "[E] app: something failed at step 19" #E0 bg=#FF defaultx1
+text 3 34 "[I] kernel: app 20 spawned (pid 23)" #00 bg=#FF defaultx1
+text 3 42 "[D] gfx: frame 21 took 0 ms" #60 bg=#FF defaultx1
+text 3 50 "[W] wifi: rssi -82 dBm" #E8 bg=#FF defaultx1
+text 3 58 "[E] app: something failed at step 23" #E0 bg=#FF defaultx1
+text 3 66 "[I] kernel: app 24 spawned (pid 27)" #00 bg=#FF defaultx1
+text 3 74 "[D] gfx: frame 25 took 4 ms" #60 bg=#FF defaultx1
+text 3 82 "[W] wifi: rssi -86 dBm" #E8 bg=#FF defaultx1
+text 3 90 "[E] app: something failed at step 27" #E0 bg=#FF defaultx1
+text 3 98 "[I] kernel: app 28 spawned (pid 31)" #00 bg=#FF defaultx1
+text 3 106 "[D] gfx: frame 29 took 1 ms" #60 bg=#FF defaultx1
+text 3 114 "[W] wifi: rssi -90 dBm" #E8 bg=#FF defaultx1
+text 3 122 "[E] app: something failed at step 31" #E0 bg=#FF defaultx1
+text 3 130 "[I] kernel: app 32 spawned (pid 35)" #00 bg=#FF defaultx1
+text 3 138 "[D] gfx: frame 33 took 5 ms" #60 bg=#FF defaultx1
+text 3 146 "[W] wifi: rssi -94 dBm" #E8 bg=#FF defaultx1
+text 3 154 "[E] app: something failed at step 35" #E0 bg=#FF defaultx1
+text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
+text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
+text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
+text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+draw_line 289 25 289 198 #60
+fill_rect 289 25 10 10 #FF
+draw_rect 289 25 10 10 #60
+draw_line 294 27 291 32 #60
+draw_line 294 27 297 32 #60
+draw_line 291 32 297 32 #60
+fill_rect 289 189 10 10 #FF
+draw_rect 289 189 10 10 #60
+draw_line 294 196 291 191 #60
+draw_line 294 196 297 191 #60
+draw_line 291 191 297 191 #60
+fill_rect 290 35 9 154 #FF
+fill_rect 291 109 6 80 #60
+draw_rect 291 109 6 80 #60
+present
+== wheel 1
+fill_rect 1 11 298 188 #FF
+fill_rect 1 11 298 14 #80
+fill_rect 3 12 68 12 #60
+text 7 14 "Lv:E/W/I/D" #FF bg=#60 defaultx1
+fill_rect 75 12 26 12 #60
+text 79 14 "Cut" #FF bg=#60 defaultx1
+text 257 14 "[HOLD]" #E0 bg=#80 defaultx1
+text 3 26 "[I] kernel: app 16 spawned (pid 19)" #00 bg=#FF defaultx1
+text 3 34 "[D] gfx: frame 17 took 3 ms" #60 bg=#FF defaultx1
+text 3 42 "[W] wifi: rssi -78 dBm" #E8 bg=#FF defaultx1
+text 3 50 "[E] app: something failed at step 19" #E0 bg=#FF defaultx1
+text 3 58 "[I] kernel: app 20 spawned (pid 23)" #00 bg=#FF defaultx1
+text 3 66 "[D] gfx: frame 21 took 0 ms" #60 bg=#FF defaultx1
+text 3 74 "[W] wifi: rssi -82 dBm" #E8 bg=#FF defaultx1
+text 3 82 "[E] app: something failed at step 23" #E0 bg=#FF defaultx1
+text 3 90 "[I] kernel: app 24 spawned (pid 27)" #00 bg=#FF defaultx1
+text 3 98 "[D] gfx: frame 25 took 4 ms" #60 bg=#FF defaultx1
+text 3 106 "[W] wifi: rssi -86 dBm" #E8 bg=#FF defaultx1
+text 3 114 "[E] app: something failed at step 27" #E0 bg=#FF defaultx1
+text 3 122 "[I] kernel: app 28 spawned (pid 31)" #00 bg=#FF defaultx1
+text 3 130 "[D] gfx: frame 29 took 1 ms" #60 bg=#FF defaultx1
+text 3 138 "[W] wifi: rssi -90 dBm" #E8 bg=#FF defaultx1
+text 3 146 "[E] app: something failed at step 31" #E0 bg=#FF defaultx1
+text 3 154 "[I] kernel: app 32 spawned (pid 35)" #00 bg=#FF defaultx1
+text 3 162 "[D] gfx: frame 33 took 5 ms" #60 bg=#FF defaultx1
+text 3 170 "[W] wifi: rssi -94 dBm" #E8 bg=#FF defaultx1
+text 3 178 "[E] app: something failed at step 35" #E0 bg=#FF defaultx1
+text 3 186 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+draw_line 289 25 289 198 #60
+fill_rect 289 25 10 10 #FF
+draw_rect 289 25 10 10 #60
+draw_line 294 27 291 32 #60
+draw_line 294 27 297 32 #60
+draw_line 291 32 297 32 #60
+fill_rect 289 189 10 10 #FF
+draw_rect 289 189 10 10 #60
+draw_line 294 196 291 191 #60
+draw_line 294 196 297 191 #60
+draw_line 291 191 297 191 #60
+fill_rect 290 35 9 154 #FF
+fill_rect 291 97 6 80 #60
+draw_rect 291 97 6 80 #60
+present
+== update

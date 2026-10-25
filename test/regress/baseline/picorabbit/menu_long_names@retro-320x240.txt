@@ -1,0 +1,33 @@
+# scene picorabbit/menu_long_names
+# profile retro-320x240
+# window 318x224 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+clear #FF
+fill_rect 0 0 318 12 #C5
+text 4 2 "PicoRabbit" #00 bg=#C5 defaultx1
+text 272 2 "5 decks" #00 bg=#C5 defaultx1
+fill_rect 2 15 314 10 #EE
+text 6 16 "/home/slides/a_presentation_with_a_really_long_file_name_that_goes_on.md" #FF bg=#EE defaultx1
+fill_rect 2 25 314 10 #FF
+text 6 26 "/home/slides/日本語のとても長い名前の発表資料です.md" #00 bg=#FF defaultx1
+fill_rect 2 35 314 10 #FF
+text 6 36 "/usr/share/samples/slides/demo.md" #00 bg=#FF defaultx1
+fill_rect 2 45 314 10 #FF
+text 6 46 "/usr/share/samples/slides/demo_ja.md" #00 bg=#FF defaultx1
+fill_rect 2 55 314 10 #FF
+text 6 56 "/usr/share/samples/slides/intro_ja.md" #00 bg=#FF defaultx1
+fill_rect 0 192 318 10 #FF
+draw_line 2 192 316 192 #60
+text 4 194 "no card at /mnt/sd - nothing to export to" #60 bg=#FF defaultx1
+fill_rect 4 204 64 16 #60
+draw_rect 4 204 64 16 #60
+textm 21 208 "Start" #FF x1
+fill_rect 72 204 64 16 #60
+draw_rect 72 204 64 16 #60
+textm 86 208 "Export" #60 x1
+fill_rect 140 204 64 16 #60
+draw_rect 140 204 64 16 #60
+textm 160 208 "Quit" #FF x1
+present
+== update

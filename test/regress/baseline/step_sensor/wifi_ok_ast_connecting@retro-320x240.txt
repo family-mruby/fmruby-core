@@ -1,0 +1,72 @@
+# scene step_sensor/wifi_ok_ast_connecting
+# profile retro-320x240
+# window 240x150 lang en
+== start
+sprite_clip 1 11 238 138
+composite_regions [0,0,0,0,4,4,1,236,0,236,0,4,4,1,0,146,0,146,4,4,1,236,146,236,146,4,4,1,4,0,4,0,232,4,0,4,146,4,146,232,4,0,0,4,0,4,240,142,0]
+fill_rect 1 11 238 138 #FF
+gfxblock 1 {w:240,h:150}
+fill_round_rect 0 0 240 11 4 #C5
+fill_rect 0 4 240 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Step Sensor" #FF defaultx1
+fill_circle 234 5 3 #FF
+draw_round_rect 0 0 240 150 4 #60
+gfxblock 2 {w:240,h:150}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 238 0 239 0 #01
+draw_line 239 1 239 1 #01
+draw_line 0 148 0 149 #01
+draw_line 1 149 1 149 #01
+draw_line 239 148 239 149 #01
+draw_line 238 149 238 149 #01
+fill_rect 1 11 238 18 #FF
+text 3 12 "WiFi ok" #00 defaultx2
+text 165 12 "AST --" #EE defaultx2
+fill_rect 1 131 238 18 #FF
+fill_rect 1 32 238 96 #FF
+text 108 64 "0" #00 defaultx4
+gfxblock 1 again
+gfxblock 2 again
+present
+== run 300 ms
+fill_rect 1 11 238 18 #FF
+text 3 12 "WiFi ok" #00 defaultx2
+text 165 12 "AST .." #EE defaultx2
+fill_rect 1 131 238 18 #FF
+fill_rect 1 32 238 96 #FF
+text 108 64 "0" #00 defaultx4
+gfxblock 1 again
+gfxblock 2 again
+present
+fill_rect 1 11 238 18 #FF
+text 3 12 "WiFi ok" #00 defaultx2
+text 165 12 "AST ok" #00 defaultx2
+fill_rect 1 131 238 18 #FF
+fill_rect 1 32 238 96 #FF
+text 108 64 "0" #00 defaultx4
+gfxblock 1 again
+gfxblock 2 again
+present
+== run 300 ms
+fill_rect 1 11 238 18 #FF
+text 3 12 "WiFi ok" #00 defaultx2
+text 165 12 "AST .." #EE defaultx2
+fill_rect 1 131 238 18 #FF
+fill_rect 1 32 238 96 #FF
+text 108 64 "0" #00 defaultx4
+gfxblock 1 again
+gfxblock 2 again
+present
+fill_rect 1 11 238 18 #FF
+text 3 12 "WiFi ok" #00 defaultx2
+text 165 12 "AST .." #EE defaultx2
+fill_rect 1 131 238 18 #FF
+fill_rect 1 32 238 96 #FF
+text 108 64 "1" #00 defaultx4
+gfxblock 1 again
+gfxblock 2 again
+present

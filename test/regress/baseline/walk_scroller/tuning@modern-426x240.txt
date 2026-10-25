@@ -1,0 +1,793 @@
+# scene walk_scroller/tuning
+# profile modern-426x240
+# window 426x240 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_far.bmp (1/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_mid.bmp (2/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_gnd.bmp (3/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_far.bmp (4/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_mid.bmp (5/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_gnd.bmp (6/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_far.bmp (7/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_mid.bmp (8/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_gnd.bmp (9/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_far.bmp (10/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_mid.bmp (11/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_gnd.bmp (12/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_far.bmp (13/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_mid.bmp (14/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_gnd.bmp (15/15)" #FF defaultx1
+present
+sprite_image 101 48 75 0 1
+load_bmp 101 "/cache/app/walk_scroller/default/walker_0.bmp"
+sprite_image 102 48 75 0 1
+load_bmp 102 "/cache/app/walk_scroller/default/walker_1.bmp"
+sprite_image 103 48 75 0 1
+load_bmp 103 "/cache/app/walk_scroller/default/walker_2.bmp"
+sprite_image 104 48 75 0 1
+load_bmp 104 "/cache/app/walk_scroller/default/walker_3.bmp"
+sprite_image 105 48 75 0 1
+load_bmp 105 "/cache/app/walk_scroller/default/walker_stand.bmp"
+sprite 106 [101,102,103,104,105] 98 123 2
+sprite_frame 106 4
+sprite_image 107 426 124 0 1
+sprite 108 [107] 0 6 3
+sprite_image 109 300 10 0 1
+sprite 110 [109] 124 229 4
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+sprite_target 0
+sprite_image 111 426 160 0 1
+load_bmp 111 "/cache/app/walk_scroller/default/scene0_far.bmp"
+sprite_image 112 426 84 0 1
+load_bmp 112 "/cache/app/walk_scroller/default/scene0_mid.bmp"
+sprite_image 113 426 50 0 1
+load_bmp 113 "/cache/app/walk_scroller/default/scene0_gnd.bmp"
+sprite_move 106 98 123
+sprite_target 107
+fill_rect 0 0 426 124 #00
+text 151 16 "Hello" #24 ja16x3
+text 153 16 "Hello" #24 ja16x3
+text 155 16 "Hello" #24 ja16x3
+text 151 18 "Hello" #24 ja16x3
+text 155 18 "Hello" #24 ja16x3
+text 151 20 "Hello" #24 ja16x3
+text 153 20 "Hello" #24 ja16x3
+text 155 20 "Hello" #24 ja16x3
+text 153 18 "Hello" #FF ja16x3
+text 108 69 "walk to start" #24 ja16x2
+text 109 69 "walk to start" #24 ja16x2
+text 110 69 "walk to start" #24 ja16x2
+text 108 70 "walk to start" #24 ja16x2
+text 110 70 "walk to start" #24 ja16x2
+text 108 71 "walk to start" #24 ja16x2
+text 109 71 "walk to start" #24 ja16x2
+text 110 71 "walk to start" #24 ja16x2
+text 109 70 "walk to start" #FC ja16x2
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -40
+present
+== update 1/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+text 236 1 "offline 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -40
+present
+== update 2/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #FC
+text 236 1 "waiting 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -31
+present
+== update
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #1C
+text 200 1 "fmruby-d4e5f6 1" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 1 0 425 84 0 106
+draw_tile 112 0 0 1 84 425 106
+draw_tile 113 2 0 424 50 0 190
+draw_tile 113 0 0 2 50 424 190
+sprite_frame 106 0
+sprite_move 108 0 -23
+present
+== key "t"
+== run 500 ms
+sprite_image 114 240 120 0 1
+sprite 115 [114] 4 4 5
+sprite_visible 115 true
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE (no sensor yet)" #FF defaultx1
+text 4 13 "rise -- mg  gap -- ms" #B6 defaultx1
+text 164 23 "not read yet" #B6 defaultx1
+text 4 33 "waiting for a step or script node" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "--" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 2 0 424 84 0 106
+draw_tile 112 0 0 2 84 424 106
+draw_tile 113 4 0 422 50 0 190
+draw_tile 113 0 0 4 50 422 190
+sprite_move 108 0 -15
+present
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise -- mg  gap -- ms" #B6 defaultx1
+text 164 23 "not read yet" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "--" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 1 0 425 160 0 30
+draw_tile 111 0 0 1 160 425 30
+draw_tile 112 3 0 423 84 0 106
+draw_tile 112 0 0 3 84 423 106
+draw_tile 113 6 0 420 50 0 190
+draw_tile 113 0 0 6 50 420 190
+sprite_move 108 0 -7
+present
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "--" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 1 0 425 160 0 30
+draw_tile 111 0 0 1 160 425 30
+draw_tile 112 4 0 422 84 0 106
+draw_tile 112 0 0 4 84 422 106
+draw_tile 113 8 0 418 50 0 190
+draw_tile 113 0 0 8 50 418 190
+sprite_move 108 0 1
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 2 0 424 160 0 30
+draw_tile 111 0 0 2 160 424 30
+draw_tile 112 5 0 421 84 0 106
+draw_tile 112 0 0 5 84 421 106
+draw_tile 113 10 0 416 50 0 190
+draw_tile 113 0 0 10 50 416 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 2 0 424 160 0 30
+draw_tile 111 0 0 2 160 424 30
+draw_tile 112 6 0 420 84 0 106
+draw_tile 112 0 0 6 84 420 106
+draw_tile 113 12 0 414 50 0 190
+draw_tile 113 0 0 12 50 414 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 2 0 424 160 0 30
+draw_tile 111 0 0 2 160 424 30
+draw_tile 112 7 0 419 84 0 106
+draw_tile 112 0 0 7 84 419 106
+draw_tile 113 14 0 412 50 0 190
+draw_tile 113 0 0 14 50 412 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 3 0 423 160 0 30
+draw_tile 111 0 0 3 160 423 30
+draw_tile 112 8 0 418 84 0 106
+draw_tile 112 0 0 8 84 418 106
+draw_tile 113 16 0 410 50 0 190
+draw_tile 113 0 0 16 50 410 190
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 3 0 423 160 0 30
+draw_tile 111 0 0 3 160 423 30
+draw_tile 112 9 0 417 84 0 106
+draw_tile 112 0 0 9 84 417 106
+draw_tile 113 18 0 408 50 0 190
+draw_tile 113 0 0 18 50 408 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 4 0 422 160 0 30
+draw_tile 111 0 0 4 160 422 30
+draw_tile 112 10 0 416 84 0 106
+draw_tile 112 0 0 10 84 416 106
+draw_tile 113 20 0 406 50 0 190
+draw_tile 113 0 0 20 50 406 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 4 0 422 160 0 30
+draw_tile 111 0 0 4 160 422 30
+draw_tile 112 11 0 415 84 0 106
+draw_tile 112 0 0 11 84 415 106
+draw_tile 113 22 0 404 50 0 190
+draw_tile 113 0 0 22 50 404 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 4 0 422 160 0 30
+draw_tile 111 0 0 4 160 422 30
+draw_tile 112 12 0 414 84 0 106
+draw_tile 112 0 0 12 84 414 106
+draw_tile 113 24 0 402 50 0 190
+draw_tile 113 0 0 24 50 402 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 5 0 421 160 0 30
+draw_tile 111 0 0 5 160 421 30
+draw_tile 112 13 0 413 84 0 106
+draw_tile 112 0 0 13 84 413 106
+draw_tile 113 26 0 400 50 0 190
+draw_tile 113 0 0 26 50 400 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 5 0 421 160 0 30
+draw_tile 111 0 0 5 160 421 30
+draw_tile 112 14 0 412 84 0 106
+draw_tile 112 0 0 14 84 412 106
+draw_tile 113 28 0 398 50 0 190
+draw_tile 113 0 0 28 50 398 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 6 0 420 160 0 30
+draw_tile 111 0 0 6 160 420 30
+draw_tile 112 15 0 411 84 0 106
+draw_tile 112 0 0 15 84 411 106
+draw_tile 113 30 0 396 50 0 190
+draw_tile 113 0 0 30 50 396 190
+sprite_move 108 0 6
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 6 0 420 160 0 30
+draw_tile 111 0 0 6 160 420 30
+draw_tile 112 16 0 410 84 0 106
+draw_tile 112 0 0 16 84 410 106
+draw_tile 113 32 0 394 50 0 190
+draw_tile 113 0 0 32 50 394 190
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "60" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 158 86 160 80 #1F
+draw_line 160 80 162 74 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "166" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 154 86 156 80 #1F
+draw_line 156 80 158 74 #1F
+draw_line 158 74 160 67 #1F
+draw_line 160 67 162 61 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "272" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 6 0 420 160 0 30
+draw_tile 111 0 0 6 160 420 30
+draw_tile 112 16 0 410 84 0 106
+draw_tile 112 0 0 16 84 410 106
+draw_tile 113 32 0 394 50 0 190
+draw_tile 113 0 0 32 50 394 190
+sprite_frame 106 4
+sprite_move 108 0 6
+present
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 150 86 152 80 #1F
+draw_line 152 80 154 74 #1F
+draw_line 154 74 156 67 #1F
+draw_line 156 67 158 61 #1F
+draw_line 158 61 160 83 #1F
+draw_line 160 83 162 77 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "272" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 146 86 148 80 #1F
+draw_line 148 80 150 74 #1F
+draw_line 150 74 152 67 #1F
+draw_line 152 67 154 61 #1F
+draw_line 154 61 156 83 #1F
+draw_line 156 83 158 77 #1F
+draw_line 158 77 160 71 #1F
+draw_line 160 71 162 64 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "272" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 142 86 144 80 #1F
+draw_line 144 80 146 74 #1F
+draw_line 146 74 148 67 #1F
+draw_line 148 67 150 61 #1F
+draw_line 150 61 152 83 #1F
+draw_line 152 83 154 77 #1F
+draw_line 154 77 156 71 #1F
+draw_line 156 71 158 64 #1F
+draw_line 158 64 160 58 #1F
+draw_line 160 58 162 80 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 1 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 140 86 142 80 #1F
+draw_line 142 80 144 74 #1F
+draw_line 144 74 146 67 #1F
+draw_line 146 67 148 61 #1F
+draw_line 148 61 150 83 #1F
+draw_line 150 83 152 77 #1F
+draw_line 152 77 154 71 #1F
+draw_line 154 71 156 64 #1F
+draw_line 156 64 158 58 #1F
+draw_line 158 58 160 80 #1F
+draw_line 160 80 162 74 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 1 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 136 86 138 80 #1F
+draw_line 138 80 140 74 #1F
+draw_line 140 74 142 67 #1F
+draw_line 142 67 144 61 #1F
+draw_line 144 61 146 83 #1F
+draw_line 146 83 148 77 #1F
+draw_line 148 77 150 71 #1F
+draw_line 150 71 152 64 #1F
+draw_line 152 64 154 58 #1F
+draw_line 154 58 156 80 #1F
+draw_line 156 80 158 74 #1F
+draw_line 158 74 160 68 #1F
+draw_line 160 68 162 61 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 1 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 132 86 134 80 #1F
+draw_line 134 80 136 74 #1F
+draw_line 136 74 138 67 #1F
+draw_line 138 67 140 61 #1F
+draw_line 140 61 142 83 #1F
+draw_line 142 83 144 77 #1F
+draw_line 144 77 146 71 #1F
+draw_line 146 71 148 64 #1F
+draw_line 148 64 150 58 #1F
+draw_line 150 58 152 80 #1F
+draw_line 152 80 154 74 #1F
+draw_line 154 74 156 68 #1F
+draw_line 156 68 158 61 #1F
+draw_line 158 61 160 84 #1F
+draw_line 160 84 162 77 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 1 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 128 86 130 80 #1F
+draw_line 130 80 132 74 #1F
+draw_line 132 74 134 67 #1F
+draw_line 134 67 136 61 #1F
+draw_line 136 61 138 83 #1F
+draw_line 138 83 140 77 #1F
+draw_line 140 77 142 71 #1F
+draw_line 142 71 144 64 #1F
+draw_line 144 64 146 58 #1F
+draw_line 146 58 148 80 #1F
+draw_line 148 80 150 74 #1F
+draw_line 150 74 152 68 #1F
+draw_line 152 68 154 61 #1F
+draw_line 154 61 156 84 #1F
+draw_line 156 84 158 77 #1F
+draw_line 158 77 160 71 #1F
+draw_line 160 71 162 65 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== run 50 ms
+== run 50 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 1 s ago" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 124 86 126 80 #1F
+draw_line 126 80 128 74 #1F
+draw_line 128 74 130 67 #1F
+draw_line 130 67 132 61 #1F
+draw_line 132 61 134 83 #1F
+draw_line 134 83 136 77 #1F
+draw_line 136 77 138 71 #1F
+draw_line 138 71 140 64 #1F
+draw_line 140 64 142 58 #1F
+draw_line 142 58 144 80 #1F
+draw_line 144 80 146 74 #1F
+draw_line 146 74 148 68 #1F
+draw_line 148 68 150 61 #1F
+draw_line 150 61 152 84 #1F
+draw_line 152 84 154 77 #1F
+draw_line 154 77 156 71 #1F
+draw_line 156 71 158 65 #1F
+draw_line 158 65 160 58 #1F
+draw_line 160 58 162 81 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+== key up
+== run 300 ms
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 150 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 1 s ago" #B6 defaultx1
+text 4 33 "asking 160 mg / 250 ms" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 75 163 75 #E0
+draw_line 4 93 163 93 #49
+draw_line 124 86 126 80 #1F
+draw_line 126 80 128 74 #1F
+draw_line 128 74 130 67 #1F
+draw_line 130 67 132 61 #1F
+draw_line 132 61 134 83 #1F
+draw_line 134 83 136 77 #1F
+draw_line 136 77 138 71 #1F
+draw_line 138 71 140 64 #1F
+draw_line 140 64 142 58 #1F
+draw_line 142 58 144 80 #1F
+draw_line 144 80 146 74 #1F
+draw_line 146 74 148 68 #1F
+draw_line 148 68 150 61 #1F
+draw_line 150 61 152 84 #1F
+draw_line 152 84 154 77 #1F
+draw_line 154 77 156 71 #1F
+draw_line 156 71 158 65 #1F
+draw_line 158 65 160 58 #1F
+draw_line 160 58 162 81 #1F
+text 168 71 "150" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present
+sprite_target 114
+fill_rect 0 0 240 120 #25
+draw_rect 0 0 240 120 #92
+text 4 3 "TUNE fmruby-d4e5f6" #FF defaultx1
+text 4 13 "rise 160 mg  gap 250 ms" #FF defaultx1
+text 4 23 "not saved" #FC defaultx1
+text 164 23 "read 0 s ago" #B6 defaultx1
+text 4 33 "tuned (S to save)" #B6 defaultx1
+fill_rect 4 45 160 61 #24
+draw_line 4 74 163 74 #E0
+draw_line 4 93 163 93 #49
+draw_line 124 86 126 80 #1F
+draw_line 126 80 128 74 #1F
+draw_line 128 74 130 67 #1F
+draw_line 130 67 132 61 #1F
+draw_line 132 61 134 83 #1F
+draw_line 134 83 136 77 #1F
+draw_line 136 77 138 71 #1F
+draw_line 138 71 140 64 #1F
+draw_line 140 64 142 58 #1F
+draw_line 142 58 144 80 #1F
+draw_line 144 80 146 74 #1F
+draw_line 146 74 148 68 #1F
+draw_line 148 68 150 61 #1F
+draw_line 150 61 152 84 #1F
+draw_line 152 84 154 77 #1F
+draw_line 154 77 156 71 #1F
+draw_line 156 71 158 65 #1F
+draw_line 158 65 160 58 #1F
+draw_line 160 58 162 81 #1F
+text 168 70 "160" #E0 defaultx1
+text 168 88 "peak" #B6 defaultx1
+text 168 98 "297" #1F defaultx1
+text 4 109 "Up/Dn rise Lt/Rt gap S save 0 dflt" #92 defaultx1
+sprite_target 0
+present

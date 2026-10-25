@@ -1,0 +1,165 @@
+# scene fmrbui_sheet/operate_long_ja
+# profile modern-426x240
+# window 300x160 lang ja
+== start
+sprite_clip 1 11 298 148
+composite_regions [0,0,0,0,4,4,1,296,0,296,0,4,4,1,0,156,0,156,4,4,1,296,156,296,156,4,4,1,4,0,4,0,292,4,0,4,156,4,156,292,4,0,0,4,0,4,300,152,0]
+fill_rect 1 11 298 148 #FF
+gfxblock 1 {w:300,h:160}
+fill_round_rect 0 0 300 11 4 #C5
+fill_rect 0 4 300 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "FmrbUI" #FF defaultx1
+fill_circle 294 5 3 #FF
+draw_round_rect 0 0 300 160 4 #60
+gfxblock 2 {w:300,h:160}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 298 0 299 0 #01
+draw_line 299 1 299 1 #01
+draw_line 0 158 0 159 #01
+draw_line 1 159 1 159 #01
+draw_line 299 158 299 159 #01
+draw_line 298 159 298 159 #01
+fill_rect 5 15 160 10 #FF
+textm 5 16 "部品の幅よりずっと長い文字の見出しがここに入る" #00 x1
+fill_rect 5 27 160 10 #FF
+textm -7 28 "部品の幅よりずっと長い文字の見出しがここに入る" #00 x1
+fill_rect 171 15 100 18 #FF
+textm 171 16 "大きすぎる文字" #00 x2
+fill_rect 5 41 70 16 #60
+draw_rect 5 41 70 16 #60
+textm 0 45 "変更をすぐに反映する" #FF x1
+fill_rect 81 41 70 16 #E0
+draw_rect 81 41 70 16 #60
+textm 76 45 "変更をすぐに反映する" #FF x1
+fill_rect 5 61 120 16 #60
+draw_rect 5 61 120 16 #60
+textm 13 65 "背景の音楽と効果音を鳴らす" #FF x1
+fill_rect 131 61 40 16 #EE
+draw_rect 131 61 40 16 #60
+textm 119 65 "いちばん小さい音" #00 x1
+fill_rect 173 61 40 16 #60
+draw_rect 173 61 40 16 #60
+textm 169 65 "中くらいの音" #FF x1
+fill_rect 19 81 52 14 #FF
+draw_rect 19 81 52 14 #60
+textm 42 84 "5" #00 x1
+fill_rect 5 81 14 14 #60
+draw_rect 5 81 14 14 #60
+textm 9 84 "<" #FF x1
+fill_rect 71 81 14 14 #60
+draw_rect 71 81 14 14 #60
+textm 75 84 ">" #FF x1
+fill_rect 105 81 92 14 #FF
+draw_rect 105 81 92 14 #60
+textm 127 84 "中くらいの音" #00 x1
+fill_rect 91 81 14 14 #60
+draw_rect 91 81 14 14 #60
+textm 95 84 "<" #FF x1
+fill_rect 197 81 14 14 #60
+draw_rect 197 81 14 14 #60
+textm 201 84 ">" #FF x1
+fill_rect 5 101 150 12 #FF
+draw_rect 5 101 150 12 #60
+textm 7 103 "とても長いファイルの名前です.txt" #00 x1
+draw_line 251 41 251 160 #60
+fill_rect 251 41 10 10 #FF
+draw_rect 251 41 10 10 #60
+draw_line 256 43 253 48 #60
+draw_line 256 43 259 48 #60
+draw_line 253 48 259 48 #60
+fill_rect 251 151 10 10 #FF
+draw_rect 251 151 10 10 #60
+draw_line 256 158 253 153 #60
+draw_line 256 158 259 153 #60
+draw_line 253 153 259 153 #60
+fill_rect 252 51 9 100 #FF
+fill_rect 253 63 6 25 #60
+draw_rect 253 63 6 25 #60
+fill_rect 5 121 70 16 #60
+draw_rect 5 121 70 16 #60
+textm 0 125 "変更をすぐに反映する" #60 x1
+present
+== click 65,69
+fill_rect 5 61 120 16 #60
+draw_rect 5 61 120 16 #60
+draw_rect 6 62 118 14 #FF
+textm 13 65 "背景の音楽と効果音を鳴らす" #FF x1
+present
+fill_rect 5 61 120 16 #EE
+draw_rect 5 61 120 16 #60
+textm 3 65 "背景の音楽と効果音を鳴らす: 入" #00 x1
+present
+== click 207,88
+fill_rect 105 81 92 14 #FF
+draw_rect 105 81 92 14 #60
+textm 127 84 "中くらいの音" #00 x1
+fill_rect 91 81 14 14 #60
+draw_rect 91 81 14 14 #60
+textm 95 84 "<" #FF x1
+fill_rect 197 81 14 14 #FF
+draw_rect 197 81 14 14 #60
+textm 201 84 ">" #60 x1
+present
+fill_rect 105 81 92 14 #FF
+draw_rect 105 81 92 14 #60
+textm 119 84 "いちばん大きな音" #00 x1
+fill_rect 91 81 14 14 #60
+draw_rect 91 81 14 14 #60
+textm 95 84 "<" #FF x1
+fill_rect 197 81 14 14 #60
+draw_rect 197 81 14 14 #60
+textm 201 84 ">" #FF x1
+present
+== click 207,88
+fill_rect 105 81 92 14 #FF
+draw_rect 105 81 92 14 #60
+textm 119 84 "いちばん大きな音" #00 x1
+fill_rect 91 81 14 14 #60
+draw_rect 91 81 14 14 #60
+textm 95 84 "<" #FF x1
+fill_rect 197 81 14 14 #FF
+draw_rect 197 81 14 14 #60
+textm 201 84 ">" #60 x1
+present
+fill_rect 105 81 92 14 #FF
+draw_rect 105 81 92 14 #60
+textm 119 84 "いちばん大きな音" #00 x1
+fill_rect 91 81 14 14 #60
+draw_rect 91 81 14 14 #60
+textm 95 84 "<" #FF x1
+fill_rect 197 81 14 14 #60
+draw_rect 197 81 14 14 #60
+textm 201 84 ">" #FF x1
+present
+== click 80,107
+fill_rect 5 101 150 12 #FF
+draw_rect 5 101 150 12 #60
+textm 7 103 "とても長いファイルの名前です.txt" #00 x1
+present
+fill_rect 5 101 150 12 #FF
+draw_rect 5 101 150 12 #EE
+textm 7 103 "とても長いファイルの名前です.txt" #00 x1
+draw_line 143 103 143 110 #00
+present
+== key "x"
+fill_rect 5 101 150 12 #FF
+draw_rect 5 101 150 12 #EE
+textm 7 103 "とても長いファイルの名前です.txtx" #00 x1
+draw_line 149 103 149 110 #00
+present
+== key "y"
+fill_rect 5 101 150 12 #FF
+draw_rect 5 101 150 12 #EE
+textm 7 103 "とても長いファイルの名前です.txtxy" #00 x1
+draw_line 153 103 153 110 #00
+present
+== key "z"
+fill_rect 5 101 150 12 #FF
+draw_rect 5 101 150 12 #EE
+textm 7 103 "とても長いファイルの名前です.txtxyz" #00 x1
+draw_line 153 103 153 110 #00
+present

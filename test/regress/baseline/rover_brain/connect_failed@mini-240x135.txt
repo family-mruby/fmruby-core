@@ -1,0 +1,55 @@
+# scene rover_brain/connect_failed
+# profile mini-240x135
+# window 330x150 lang en
+== start
+sprite_clip 1 11 328 138
+composite_regions [0,0,0,0,4,4,1,326,0,326,0,4,4,1,0,146,0,146,4,4,1,326,146,326,146,4,4,1,4,0,4,0,322,4,0,4,146,4,146,322,4,0,0,4,0,4,330,142,0]
+fill_rect 1 11 328 138 #FF
+gfxblock 1 {w:330,h:150}
+fill_round_rect 0 0 330 11 4 #C5
+fill_rect 0 4 330 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Rover Brain" #FF defaultx1
+fill_circle 324 5 3 #FF
+draw_round_rect 0 0 330 150 4 #60
+gfxblock 2 {w:330,h:150}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 328 0 329 0 #01
+draw_line 329 1 329 1 #01
+draw_line 0 148 0 149 #01
+draw_line 1 149 1 149 #01
+draw_line 329 148 329 149 #01
+draw_line 328 149 328 149 #01
+fill_rect 5 14 320 130 #FF
+text 5 14 "fmruby-a1b2c3/brain/rover connecting" #00 defaultx1
+text 5 27 "odom: nothing yet" #00 defaultx1
+text 5 53 "idle  cmd v +0.0 w +0.0" #EE defaultx1
+text 5 66 "job: none yet" #00 defaultx1
+text 5 94 "from -: - " #00 defaultx1
+text 5 107 "calls 0  cmd sent 0  odom 0" #60 defaultx1
+text 5 120 "loop 0/0 ms  period 50 ms  iram " #60 defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+== run 300 ms
+fill_rect 5 14 320 130 #FF
+text 5 14 "fmruby-a1b2c3/brain/rover failed: tls/192.0.2.1:7447" #00 defaultx1
+text 5 27 "odom: nothing yet" #00 defaultx1
+text 5 53 "idle  cmd v +0.0 w +0.0" #EE defaultx1
+text 5 66 "job: none yet" #00 defaultx1
+text 5 94 "from -: - " #00 defaultx1
+text 5 107 "calls 0  cmd sent 0  odom 0" #60 defaultx1
+text 5 120 "loop 0/0 ms  period 50 ms  iram 90000" #60 defaultx1
+present
+fill_rect 5 14 320 130 #FF
+text 5 14 "fmruby-a1b2c3/brain/rover failed: tls/192.0.2.1:7447" #00 defaultx1
+text 5 27 "odom: nothing yet" #00 defaultx1
+text 5 53 "idle  cmd v +0.0 w +0.0" #EE defaultx1
+text 5 66 "job: none yet" #00 defaultx1
+text 5 94 "from -: - " #00 defaultx1
+text 5 107 "calls 0  cmd sent 0  odom 0" #60 defaultx1
+text 5 120 "loop 0/0 ms  period 30 ms  iram 90000" #60 defaultx1
+present

@@ -1,0 +1,209 @@
+# scene walk_scroller/status_off
+# profile modern-426x240
+# window 426x240 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_far.bmp (1/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_mid.bmp (2/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene0_gnd.bmp (3/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_far.bmp (4/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_mid.bmp (5/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene1_gnd.bmp (6/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_far.bmp (7/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_mid.bmp (8/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene2_gnd.bmp (9/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_far.bmp (10/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_mid.bmp (11/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene3_gnd.bmp (12/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_far.bmp (13/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_mid.bmp (14/15)" #FF defaultx1
+present
+fill_rect 0 0 426 240 #53
+text 8 8 "Walk Scroller: loading scene4_gnd.bmp (15/15)" #FF defaultx1
+present
+sprite_image 101 48 75 0 1
+load_bmp 101 "/cache/app/walk_scroller/default/walker_0.bmp"
+sprite_image 102 48 75 0 1
+load_bmp 102 "/cache/app/walk_scroller/default/walker_1.bmp"
+sprite_image 103 48 75 0 1
+load_bmp 103 "/cache/app/walk_scroller/default/walker_2.bmp"
+sprite_image 104 48 75 0 1
+load_bmp 104 "/cache/app/walk_scroller/default/walker_3.bmp"
+sprite_image 105 48 75 0 1
+load_bmp 105 "/cache/app/walk_scroller/default/walker_stand.bmp"
+sprite 106 [101,102,103,104,105] 98 123 2
+sprite_frame 106 4
+sprite_image 107 426 124 0 1
+sprite 108 [107] 0 6 3
+sprite_image 109 300 10 0 1
+sprite 110 [109] 124 229 4
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+sprite_target 0
+sprite_image 111 426 160 0 1
+load_bmp 111 "/cache/app/walk_scroller/default/scene0_far.bmp"
+sprite_image 112 426 84 0 1
+load_bmp 112 "/cache/app/walk_scroller/default/scene0_mid.bmp"
+sprite_image 113 426 50 0 1
+load_bmp 113 "/cache/app/walk_scroller/default/scene0_gnd.bmp"
+sprite_move 106 98 123
+sprite_target 107
+fill_rect 0 0 426 124 #00
+text 151 16 "Hello" #24 ja16x3
+text 153 16 "Hello" #24 ja16x3
+text 155 16 "Hello" #24 ja16x3
+text 151 18 "Hello" #24 ja16x3
+text 155 18 "Hello" #24 ja16x3
+text 151 20 "Hello" #24 ja16x3
+text 153 20 "Hello" #24 ja16x3
+text 155 20 "Hello" #24 ja16x3
+text 153 18 "Hello" #FF ja16x3
+text 108 69 "walk to start" #24 ja16x2
+text 109 69 "walk to start" #24 ja16x2
+text 110 69 "walk to start" #24 ja16x2
+text 108 70 "walk to start" #24 ja16x2
+text 110 70 "walk to start" #24 ja16x2
+text 108 71 "walk to start" #24 ja16x2
+text 109 71 "walk to start" #24 ja16x2
+text 110 71 "walk to start" #24 ja16x2
+text 109 70 "walk to start" #FC ja16x2
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -40
+present
+== update 1/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+text 236 1 "offline 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -40
+present
+== update 2/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #FC
+text 236 1 "waiting 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -31
+present
+== key "h"
+== key "d"
+== run 1200 ms
+sprite_target 109
+fill_rect 0 0 300 10 #00
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -23
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -15
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 -7
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 1
+present
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 6
+present
+sprite_target 109
+fill_rect 0 0 300 10 #00
+sprite_target 0
+fill_rect 0 0 426 47 #53
+fill_rect 0 47 426 47 #57
+fill_rect 0 94 426 47 #7B
+fill_rect 0 141 426 49 #9F
+fill_circle 336 36 14 #FC
+draw_tile 111 0 0 426 160 0 30
+draw_tile 112 0 0 426 84 0 106
+draw_tile 113 0 0 426 50 0 190
+sprite_move 108 0 6
+present

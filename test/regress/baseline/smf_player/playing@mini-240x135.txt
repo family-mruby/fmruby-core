@@ -1,0 +1,387 @@
+# scene smf_player/playing
+# profile mini-240x135
+# window 280x200 lang ja
+== start
+sprite_clip 1 11 278 188
+composite_regions [0,0,0,0,4,4,1,276,0,276,0,4,4,1,0,196,0,196,4,4,1,276,196,276,196,4,4,1,4,0,4,0,272,4,0,4,196,4,196,272,4,0,0,4,0,4,280,192,0]
+fill_rect 1 11 278 188 #FF
+gfxblock 1 {w:280,h:200}
+fill_round_rect 0 0 280 11 4 #C5
+fill_rect 0 4 280 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "SMF Player" #FF defaultx1
+fill_circle 274 5 3 #FF
+draw_round_rect 0 0 280 200 4 #60
+gfxblock 2 {w:280,h:200}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 278 0 279 0 #01
+draw_line 279 1 279 1 #01
+draw_line 0 198 0 199 #01
+draw_line 1 199 1 199 #01
+draw_line 279 198 279 199 #01
+draw_line 278 199 278 199 #01
+fill_rect 1 13 270 10 #EE
+text 3 14 "a_very_long_name_of_a_standard_midi_file_song.mid" #FF bg=#EE defaultx1
+text 3 24 "bach_polonaise_bwv117a.mid" #00 bg=#FF defaultx1
+text 3 34 "bach_sheep_bwv208.mid" #00 bg=#FF defaultx1
+text 3 44 "joplin_bethena.mid" #00 bg=#FF defaultx1
+text 3 54 "joplin_entertainer.mid" #00 bg=#FF defaultx1
+text 3 64 "old_100th.mid" #00 bg=#FF defaultx1
+text 3 74 "scale.mid" #00 bg=#FF defaultx1
+text 3 84 "tempo_change.mid" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #60
+draw_rect 3 174 35 11 #60
+textm 8 175 "Play" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 62 175 "x1.0" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #60
+draw_rect 219 174 56 11 #60
+textm 238 175 "APU" #FF x1
+fill_rect 3 188 12 11 #60
+draw_rect 3 188 12 11 #60
+textm 6 189 "-" #FF x1
+fill_rect 17 188 12 11 #60
+draw_rect 17 188 12 11 #60
+textm 20 189 "+" #FF x1
+fill_rect 235 188 40 11 #60
+draw_rect 235 188 40 11 #60
+textm 243 189 "File" #FF x1
+present
+draw_line 1 151 279 151 #60
+text 3 153 "a_very_long_name_of_a_standard_midi_file_song.mid" #00 bg=#FF defaultx1
+text 3 163 "1 trk  1 ch  8 notes" #00 bg=#FF defaultx1
+text 3 189 "Enter play  < > tempo  o output" #00 bg=#FF defaultx1
+fill_rect 3 188 12 11 #FF
+fill_rect 17 188 12 11 #FF
+fill_rect 235 188 40 11 #FF
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #60
+draw_rect 3 174 35 11 #60
+textm 8 175 "Play" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 62 175 "x1.0" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #60
+draw_rect 219 174 56 11 #60
+textm 238 175 "APU" #FF x1
+present
+== key enter
+fill_rect 1 11 278 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 270 10 #EE
+text 3 14 "a_very_long_name_of_a_standard_midi_file_song.mid" #FF bg=#EE defaultx1
+text 3 24 "bach_polonaise_bwv117a.mid" #00 bg=#FF defaultx1
+text 3 34 "bach_sheep_bwv208.mid" #00 bg=#FF defaultx1
+text 3 44 "joplin_bethena.mid" #00 bg=#FF defaultx1
+text 3 54 "joplin_entertainer.mid" #00 bg=#FF defaultx1
+text 3 64 "old_100th.mid" #00 bg=#FF defaultx1
+text 3 74 "scale.mid" #00 bg=#FF defaultx1
+text 3 84 "tempo_change.mid" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #60
+draw_rect 3 174 35 11 #60
+textm 8 175 "Play" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 62 175 "x1.0" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #60
+draw_rect 219 174 56 11 #60
+textm 238 175 "APU" #FF x1
+present
+draw_line 1 151 279 151 #60
+text 3 153 "a_very_long_name_of_a_standard_midi_file_song.mid" #00 bg=#FF defaultx1
+text 3 163 "1 trk  1 ch  8 notes" #00 bg=#FF defaultx1
+text 3 189 "Enter play  < > tempo  o output" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 62 175 "x1.0" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #60
+draw_rect 219 174 56 11 #60
+textm 238 175 "APU" #FF x1
+present
+== run 600 ms
+== click 101,179
+fill_rect 1 11 278 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 270 10 #EE
+text 3 14 "a_very_long_name_of_a_standard_midi_file_song.mid" #FF bg=#EE defaultx1
+text 3 24 "bach_polonaise_bwv117a.mid" #00 bg=#FF defaultx1
+text 3 34 "bach_sheep_bwv208.mid" #00 bg=#FF defaultx1
+text 3 44 "joplin_bethena.mid" #00 bg=#FF defaultx1
+text 3 54 "joplin_entertainer.mid" #00 bg=#FF defaultx1
+text 3 64 "old_100th.mid" #00 bg=#FF defaultx1
+text 3 74 "scale.mid" #00 bg=#FF defaultx1
+text 3 84 "tempo_change.mid" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #60
+draw_rect 219 174 56 11 #60
+textm 238 175 "APU" #FF x1
+present
+draw_line 1 151 279 151 #60
+text 3 153 "a_very_long_name_of_a_standard_midi_file_song.mid" #00 bg=#FF defaultx1
+text 3 163 "1 trk  1 ch  8 notes" #00 bg=#FF defaultx1
+text 3 189 "Enter play  < > tempo  o output" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #60
+draw_rect 219 174 56 11 #60
+textm 238 175 "APU" #FF x1
+present
+== click 247,179
+fill_rect 1 11 278 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 270 10 #EE
+text 3 14 "a_very_long_name_of_a_standard_midi_file_song.mid" #FF bg=#EE defaultx1
+text 3 24 "bach_polonaise_bwv117a.mid" #00 bg=#FF defaultx1
+text 3 34 "bach_sheep_bwv208.mid" #00 bg=#FF defaultx1
+text 3 44 "joplin_bethena.mid" #00 bg=#FF defaultx1
+text 3 54 "joplin_entertainer.mid" #00 bg=#FF defaultx1
+text 3 64 "old_100th.mid" #00 bg=#FF defaultx1
+text 3 74 "scale.mid" #00 bg=#FF defaultx1
+text 3 84 "tempo_change.mid" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #1C
+draw_rect 219 174 56 11 #60
+textm 223 175 "MIDI out" #FF x1
+present
+draw_line 1 151 279 151 #60
+text 3 153 "a_very_long_name_of_a_standard_midi_file_song.mid" #00 bg=#FF defaultx1
+text 3 163 "1 trk  1 ch  8 notes" #00 bg=#FF defaultx1
+text 33 189 "0 Ac Grand Piano" #60 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #1C
+draw_rect 219 174 56 11 #60
+textm 223 175 "MIDI out" #FF x1
+fill_rect 3 188 12 11 #60
+draw_rect 3 188 12 11 #60
+textm 6 189 "-" #FF x1
+fill_rect 17 188 12 11 #60
+draw_rect 17 188 12 11 #60
+textm 20 189 "+" #FF x1
+fill_rect 235 188 40 11 #60
+draw_rect 235 188 40 11 #60
+textm 243 189 "File" #FF x1
+present
+== update
+== click 255,193
+fill_rect 1 11 278 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 270 10 #EE
+text 3 14 "a_very_long_name_of_a_standard_midi_file_song.mid" #FF bg=#EE defaultx1
+text 3 24 "bach_polonaise_bwv117a.mid" #00 bg=#FF defaultx1
+text 3 34 "bach_sheep_bwv208.mid" #00 bg=#FF defaultx1
+text 3 44 "joplin_bethena.mid" #00 bg=#FF defaultx1
+text 3 54 "joplin_entertainer.mid" #00 bg=#FF defaultx1
+text 3 64 "old_100th.mid" #00 bg=#FF defaultx1
+text 3 74 "scale.mid" #00 bg=#FF defaultx1
+text 3 84 "tempo_change.mid" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #1C
+draw_rect 219 174 56 11 #60
+textm 223 175 "MIDI out" #FF x1
+fill_rect 3 188 12 11 #60
+draw_rect 3 188 12 11 #60
+textm 6 189 "-" #FF x1
+fill_rect 17 188 12 11 #60
+draw_rect 17 188 12 11 #60
+textm 20 189 "+" #FF x1
+fill_rect 235 188 40 11 #1C
+draw_rect 235 188 40 11 #60
+textm 246 189 "Own" #FF x1
+present
+draw_line 1 151 279 151 #60
+text 3 153 "a_very_long_name_of_a_standard_midi_file_song.mid" #00 bg=#FF defaultx1
+text 3 163 "1 trk  1 ch  8 notes" #00 bg=#FF defaultx1
+text 33 189 "0 Ac Grand Piano" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #1C
+draw_rect 219 174 56 11 #60
+textm 223 175 "MIDI out" #FF x1
+fill_rect 3 188 12 11 #60
+draw_rect 3 188 12 11 #60
+textm 6 189 "-" #FF x1
+fill_rect 17 188 12 11 #60
+draw_rect 17 188 12 11 #60
+textm 20 189 "+" #FF x1
+fill_rect 235 188 40 11 #1C
+draw_rect 235 188 40 11 #60
+textm 246 189 "Own" #FF x1
+present
+== click 23,193
+fill_rect 1 11 278 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 1 13 270 10 #EE
+text 3 14 "a_very_long_name_of_a_standard_midi_file_song.mid" #FF bg=#EE defaultx1
+text 3 24 "bach_polonaise_bwv117a.mid" #00 bg=#FF defaultx1
+text 3 34 "bach_sheep_bwv208.mid" #00 bg=#FF defaultx1
+text 3 44 "joplin_bethena.mid" #00 bg=#FF defaultx1
+text 3 54 "joplin_entertainer.mid" #00 bg=#FF defaultx1
+text 3 64 "old_100th.mid" #00 bg=#FF defaultx1
+text 3 74 "scale.mid" #00 bg=#FF defaultx1
+text 3 84 "tempo_change.mid" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #1C
+draw_rect 219 174 56 11 #60
+textm 223 175 "MIDI out" #FF x1
+fill_rect 3 188 12 11 #60
+draw_rect 3 188 12 11 #60
+textm 6 189 "-" #FF x1
+fill_rect 17 188 12 11 #60
+draw_rect 17 188 12 11 #60
+textm 20 189 "+" #FF x1
+fill_rect 235 188 40 11 #1C
+draw_rect 235 188 40 11 #60
+textm 246 189 "Own" #FF x1
+present
+draw_line 1 151 279 151 #60
+text 3 153 "a_very_long_name_of_a_standard_midi_file_song.mid" #00 bg=#FF defaultx1
+text 3 163 "1 trk  1 ch  8 notes" #00 bg=#FF defaultx1
+text 33 189 "1 Bright Piano" #00 bg=#FF defaultx1
+fill_rect 269 13 10 130 #FF
+fill_rect 3 174 35 11 #E0
+draw_rect 3 174 35 11 #60
+textm 8 175 "Stop" #FF x1
+fill_rect 57 174 34 11 #FF
+draw_rect 57 174 34 11 #60
+textm 59 175 "x1.25" #00 x1
+fill_rect 43 174 14 11 #60
+draw_rect 43 174 14 11 #60
+textm 47 175 "<" #FF x1
+fill_rect 91 174 14 11 #60
+draw_rect 91 174 14 11 #60
+textm 95 175 ">" #FF x1
+fill_rect 219 174 56 11 #1C
+draw_rect 219 174 56 11 #60
+textm 223 175 "MIDI out" #FF x1
+fill_rect 3 188 12 11 #60
+draw_rect 3 188 12 11 #60
+textm 6 189 "-" #FF x1
+fill_rect 17 188 12 11 #60
+draw_rect 17 188 12 11 #60
+textm 20 189 "+" #FF x1
+fill_rect 235 188 40 11 #1C
+draw_rect 235 188 40 11 #60
+textm 246 189 "Own" #FF x1
+present
+== update

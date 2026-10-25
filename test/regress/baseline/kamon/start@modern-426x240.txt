@@ -1,0 +1,96 @@
+# scene kamon/start
+# profile modern-426x240
+# window 300x210 lang ja
+== start
+sprite_clip 1 11 298 198
+composite_regions [0,0,0,0,4,4,1,296,0,296,0,4,4,1,0,206,0,206,4,4,1,296,206,296,206,4,4,1,4,0,4,0,292,4,0,4,206,4,206,292,4,0,0,4,0,4,300,202,0]
+fill_rect 1 11 298 198 #FF
+gfxblock 1 {w:300,h:210}
+fill_round_rect 0 0 300 11 4 #C5
+fill_rect 0 4 300 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Kamon" #FF defaultx1
+fill_circle 294 5 3 #FF
+draw_round_rect 0 0 300 210 4 #60
+gfxblock 2 {w:300,h:210}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 298 0 299 0 #01
+draw_line 299 1 299 1 #01
+draw_line 0 208 0 209 #01
+draw_line 1 209 1 209 #01
+draw_line 299 208 299 209 #01
+draw_line 298 209 298 209 #01
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 5 15 180 180 #FF
+fill_arc 95 105 66 70 0 360 #00
+draw_circle 95 105 62 #00
+fill_circle 95 76 13 #00
+fill_circle 122 96 13 #00
+fill_circle 112 128 13 #00
+fill_circle 78 128 13 #00
+fill_circle 68 96 13 #00
+fill_circle 95 105 7 #FF
+fill_rect 189 15 108 10 #FF
+textm 189 16 "紋様" #00 x1
+fill_rect 189 25 50 16 #EE
+draw_rect 189 25 50 16 #60
+textm 210 29 "円" #00 x1
+fill_rect 247 25 50 16 #60
+draw_rect 247 25 50 16 #60
+textm 268 29 "菱" #FF x1
+fill_rect 189 43 50 16 #60
+draw_rect 189 43 50 16 #60
+textm 210 47 "花" #FF x1
+fill_rect 247 43 50 16 #60
+draw_rect 247 43 50 16 #60
+textm 268 47 "扇" #FF x1
+fill_rect 189 61 50 16 #60
+draw_rect 189 61 50 16 #60
+textm 210 65 "鱗" #FF x1
+fill_rect 189 83 108 10 #FF
+textm 189 84 "中央" #00 x1
+fill_rect 189 93 50 16 #60
+draw_rect 189 93 50 16 #60
+textm 210 97 "無" #FF x1
+fill_rect 247 93 50 16 #EE
+draw_rect 247 93 50 16 #60
+textm 268 97 "白" #00 x1
+fill_rect 189 111 50 16 #60
+draw_rect 189 111 50 16 #60
+textm 210 115 "黒" #FF x1
+fill_rect 247 111 50 16 #60
+draw_rect 247 111 50 16 #60
+textm 268 115 "輪" #FF x1
+fill_rect 189 131 108 10 #FF
+textm 189 132 "数" #00 x1
+fill_rect 203 141 80 14 #FF
+draw_rect 203 141 80 14 #60
+textm 240 144 "5" #00 x1
+fill_rect 189 141 14 14 #60
+draw_rect 189 141 14 14 #60
+textm 193 144 "<" #FF x1
+fill_rect 283 141 14 14 #60
+draw_rect 283 141 14 14 #60
+textm 287 144 ">" #FF x1
+fill_rect 189 159 108 10 #FF
+textm 189 160 "大きさ" #00 x1
+fill_rect 203 171 80 14 #FF
+draw_rect 203 171 80 14 #60
+textm 234 174 "70%" #00 x1
+fill_rect 189 171 14 14 #60
+draw_rect 189 171 14 14 #60
+textm 193 174 "<" #FF x1
+fill_rect 283 171 14 14 #60
+draw_rect 283 171 14 14 #60
+textm 287 174 ">" #FF x1
+fill_rect 189 185 108 12 #60
+draw_rect 189 185 108 12 #60
+textm 228 187 "反転 切" #FF x1
+fill_rect 3 199 294 9 #FF
+textm 3 199 "https://ksbmyk.github.io/sketch/events/kamon.html" #00 x1
+present
+== update

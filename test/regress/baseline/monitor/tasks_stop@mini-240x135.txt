@@ -1,0 +1,143 @@
+# scene monitor/tasks_stop
+# profile mini-240x135
+# window 240x200 lang en
+== start
+sprite_clip 1 11 238 188
+composite_regions [0,0,0,0,4,4,1,236,0,236,0,4,4,1,0,196,0,196,4,4,1,236,196,236,196,4,4,1,4,0,4,0,232,4,0,4,196,4,196,232,4,0,0,4,0,4,240,192,0]
+fill_rect 1 11 238 188 #FF
+gfxblock 1 {w:240,h:200}
+fill_round_rect 0 0 240 11 4 #C5
+fill_rect 0 4 240 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "Monitor" #FF defaultx1
+fill_circle 234 5 3 #FF
+draw_round_rect 0 0 240 200 4 #60
+gfxblock 2 {w:240,h:200}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 238 0 239 0 #01
+draw_line 239 1 239 1 #01
+draw_line 0 198 0 199 #01
+draw_line 1 199 1 199 #01
+draw_line 239 198 239 199 #01
+draw_line 238 199 238 199 #01
+text 3 13 "Memory" #00 bg=#FF defaultx1
+text 3 25 "IRAM free: 87/292K" #00 bg=#FF defaultx1
+text 3 36 "desktop" #00 bg=#FF defaultx1
+fill_rect 53 35 184 10 #60
+fill_rect 54 36 182 8 #34
+fill_rect 54 36 63 8 #C4
+text 109 36 "180/512K 35%" #FF defaultx1
+text 3 48 "app" #00 bg=#FF defaultx1
+fill_rect 53 47 184 10 #60
+fill_rect 54 48 182 8 #34
+fill_rect 54 48 17 8 #C4
+text 112 48 "96/1024K 9%" #FF defaultx1
+text 3 60 "a_rather" #60 bg=#FF defaultx1
+fill_rect 53 59 184 10 #60
+fill_rect 54 60 182 8 #34
+fill_rect 54 60 124 8 #C4
+text 106 60 "700/1024K 68%" #FF defaultx1
+text 3 190 "<" #00 bg=#FF defaultx1
+text 231 190 ">" #00 bg=#FF defaultx1
+text 111 190 "1/3" #00 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+== update
+fill_rect 1 11 238 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 3 13 "Memory" #00 bg=#FF defaultx1
+text 3 25 "IRAM free: 87/292K" #00 bg=#FF defaultx1
+text 3 36 "desktop" #00 bg=#FF defaultx1
+fill_rect 53 35 184 10 #60
+fill_rect 54 36 182 8 #34
+fill_rect 54 36 63 8 #C4
+text 109 36 "180/512K 35%" #FF defaultx1
+text 3 48 "app" #00 bg=#FF defaultx1
+fill_rect 53 47 184 10 #60
+fill_rect 54 48 182 8 #34
+fill_rect 54 48 17 8 #C4
+text 112 48 "96/1024K 9%" #FF defaultx1
+text 3 60 "a_rather" #60 bg=#FF defaultx1
+fill_rect 53 59 184 10 #60
+fill_rect 54 60 182 8 #34
+fill_rect 54 60 124 8 #C4
+text 106 60 "700/1024K 68%" #FF defaultx1
+text 3 190 "<" #00 bg=#FF defaultx1
+text 231 190 ">" #00 bg=#FF defaultx1
+text 111 190 "1/3" #00 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+== click 6,192
+fill_rect 1 11 238 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 3 13 "ID NAME           STATE    " #60 bg=#FF defaultx1
+text 3 190 "<" #00 bg=#FF defaultx1
+text 231 190 ">" #00 bg=#FF defaultx1
+text 111 190 "3/3" #00 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+fill_rect 3 24 234 156 #FF
+text 3 24 "0  kernel         running      " #00 bg=#FF defaultx1
+text 3 33 "2  desktop        running      " #00 bg=#FF defaultx1
+text 3 42 "3  app            running      " #00 bg=#FF defaultx1
+text 3 51 "4  a_rather_long_ suspended    " #60 bg=#FF defaultx1
+fill_rect 193 51 44 9 #60
+draw_rect 193 51 44 9 #60
+textm 197 51 "[stop]" #FF x1
+present
+== update
+== click 215,55
+fill_rect 193 51 44 9 #FF
+draw_rect 193 51 44 9 #60
+textm 197 51 "[stop]" #60 x1
+present
+fill_rect 3 24 234 156 #FF
+text 3 24 "0  kernel         running      " #00 bg=#FF defaultx1
+text 3 33 "2  desktop        running      " #00 bg=#FF defaultx1
+text 3 42 "3  app            running      " #00 bg=#FF defaultx1
+text 3 51 "4  a_rather_long_ suspended    " #60 bg=#FF defaultx1
+fill_rect 3 180 234 8 #FF
+text 3 180 "click again to end PID 4" #00 bg=#FF defaultx1
+fill_rect 193 51 44 9 #60
+draw_rect 193 51 44 9 #60
+textm 194 51 "[sure?]" #FF x1
+present
+== update
+== click 215,55
+fill_rect 193 51 44 9 #FF
+draw_rect 193 51 44 9 #60
+textm 194 51 "[sure?]" #60 x1
+present
+fill_rect 3 24 234 156 #FF
+text 3 24 "0  kernel         running      " #00 bg=#FF defaultx1
+text 3 33 "2  desktop        running      " #00 bg=#FF defaultx1
+text 3 42 "3  app            running      " #00 bg=#FF defaultx1
+text 3 51 "4  a_rather_long_ suspended    " #60 bg=#FF defaultx1
+fill_rect 3 180 234 8 #FF
+text 3 180 "asking PID 4 ..." #00 bg=#FF defaultx1
+fill_rect 193 51 44 9 #60
+draw_rect 193 51 44 9 #60
+textm 197 51 "[stop]" #FF x1
+present
+msg 1 {cmd:"kill",pid:4}
+== control kill_result
+fill_rect 3 24 234 156 #FF
+text 3 24 "0  kernel         running      " #00 bg=#FF defaultx1
+text 3 33 "2  desktop        running      " #00 bg=#FF defaultx1
+text 3 42 "3  app            running      " #00 bg=#FF defaultx1
+text 3 51 "4  a_rather_long_ suspended    " #60 bg=#FF defaultx1
+fill_rect 3 180 234 8 #FF
+text 3 180 "asked a_rather_long_application_name (P" #00 bg=#FF defaultx1
+fill_rect 193 51 44 9 #60
+draw_rect 193 51 44 9 #60
+textm 197 51 "[stop]" #FF x1
+present
+== update

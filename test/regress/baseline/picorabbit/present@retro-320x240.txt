@@ -1,0 +1,143 @@
+# scene picorabbit/present
+# profile retro-320x240
+# window 318x224 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+clear #FF
+fill_rect 0 0 318 12 #C5
+text 4 2 "PicoRabbit" #00 bg=#C5 defaultx1
+text 272 2 "3 decks" #00 bg=#C5 defaultx1
+fill_rect 2 15 314 10 #EE
+text 6 16 "/usr/share/samples/slides/demo.md" #FF bg=#EE defaultx1
+fill_rect 2 25 314 10 #FF
+text 6 26 "/usr/share/samples/slides/demo_ja.md" #00 bg=#FF defaultx1
+fill_rect 2 35 314 10 #FF
+text 6 36 "/usr/share/samples/slides/intro_ja.md" #00 bg=#FF defaultx1
+fill_rect 0 192 318 10 #FF
+draw_line 2 192 316 192 #60
+text 4 194 "no card at /mnt/sd - nothing to export to" #60 bg=#FF defaultx1
+fill_rect 4 204 64 16 #60
+draw_rect 4 204 64 16 #60
+textm 21 208 "Start" #FF x1
+fill_rect 72 204 64 16 #60
+draw_rect 72 204 64 16 #60
+textm 86 208 "Export" #60 x1
+fill_rect 140 204 64 16 #60
+draw_rect 140 204 64 16 #60
+textm 160 208 "Quit" #FF x1
+present
+== key down
+fill_rect 2 15 314 10 #FF
+text 6 16 "/usr/share/samples/slides/demo.md" #00 bg=#FF defaultx1
+fill_rect 2 25 314 10 #EE
+text 6 26 "/usr/share/samples/slides/demo_ja.md" #FF bg=#EE defaultx1
+present
+== key enter
+sprite_image 101 16 16 0 1
+load_bmp 101 "/cache/app/picorabbit/usagi_run1.bmp"
+sprite_image 102 16 16 0 1
+load_bmp 102 "/cache/app/picorabbit/usagi_run2.bmp"
+sprite_image 103 16 16 0 1
+load_bmp 103 "/cache/app/picorabbit/usagi_jump.bmp"
+sprite_image 104 16 16 0 1
+load_bmp 104 "/cache/app/picorabbit/usagi_sleep.bmp"
+sprite_image 105 16 16 0 1
+load_bmp 105 "/cache/app/picorabbit/usagi_hurry.bmp"
+sprite_image 106 16 16 0 1
+load_bmp 106 "/cache/app/picorabbit/kame_walk1.bmp"
+sprite_image 107 16 16 0 1
+load_bmp 107 "/cache/app/picorabbit/kame_walk2.bmp"
+sprite_image 108 16 16 0 1
+load_bmp 108 "/cache/app/picorabbit/kame_banzai.bmp"
+sprite 109 [106,107,108] 0 208 2
+sprite 110 [101,102,103,104,105] 0 208 3
+sprite_visible 110 true
+sprite_visible 109 true
+clear #FF
+text 111 73 "Family mruby" #00 bg=#FF ja16x1
+text 79 93 "ちいさな Ruby の機械" #00 bg=#FF ja16x1
+text 99 121 "日本語の発表サンプル" #00 bg=#FF ja12x1
+text 84 136 "Family mruby プロジェクト" #00 bg=#FF ja12x1
+fill_rect 0 208 318 16 #FF
+text 296 212 "1/8" #60 bg=#FF defaultx1
+fill_rect 250 212 42 8 #FF
+fill_rect 6 210 1 12 #60
+fill_rect 7 210 6 4 #E0
+fill_rect 244 210 1 12 #60
+fill_rect 245 210 6 4 #03
+sprite_move 109 0 208
+sprite_frame 109 0
+sprite_move 110 0 208
+sprite_frame 110 0
+present
+== update
+== key space
+clear #FF
+text 4 2 "はじめに" #00 bg=#FF ja16x1
+fill_rect 6 18 308 2 #03
+text 4 31 "Family mruby は、Ruby だけで動く小さなコンピュータ" #00 bg=#FF ja12x1
+text 4 46 "です。電源を入れると" #00 bg=#FF ja12x1
+text 4 61 "Ruby が立ち上がり、そのまま書いて動かせます。" #00 bg=#FF ja12x1
+text 4 83 "- " #1C bg=#FF ja12x1
+text 16 83 "キーボードとテレビだけで完結する" #00 bg=#FF ja12x1
+text 16 98 "  - " #1C bg=#FF ja12x1
+text 40 98 "母艦の PC は要らない" #00 bg=#FF ja12x1
+text 4 113 "- " #1C bg=#FF ja12x1
+text 16 113 "ぜんぶ Ruby で書いてある" #00 bg=#FF ja12x1
+fill_rect 0 208 318 16 #FF
+text 296 212 "2/8" #60 bg=#FF defaultx1
+fill_rect 250 212 42 8 #FF
+fill_rect 6 210 1 12 #60
+fill_rect 7 210 6 4 #E0
+fill_rect 244 210 1 12 #60
+fill_rect 245 210 6 4 #03
+sprite_frame 109 1
+present
+== update
+== key right
+clear #FF
+text 4 2 "中身のはなし" #00 bg=#FF ja16x1
+fill_rect 6 18 308 2 #03
+text 4 39 "基板" #00 bg=#FF ja12x1
+text 28 39 "の上には ESP32 が載っていて、その上で mruby が" #00 bg=#FF ja12x1
+text 4 31 "きばん" #00 bg=#FF ja8x1
+text 4 54 "動きます。" #00 bg=#FF ja12x1
+text 4 76 "1. " #1C bg=#FF ja12x1
+text 22 76 "画面と音は別のマイコンが担当する" #00 bg=#FF ja12x1
+text 4 91 "2. " #1C bg=#FF ja12x1
+text 22 91 "二つは UART でつながっている" #00 bg=#FF ja12x1
+text 10 121 "小さいけれど、" #60 bg=#FF ja12x1
+text 100 121 "侮" #60 bg=#FF ja12x1
+text 118 121 "れない性能です。" #60 bg=#FF ja12x1
+text 94 113 "あなど" #60 bg=#FF ja8x1
+fill_rect 4 113 2 20 #60
+fill_rect 0 208 318 16 #FF
+text 296 212 "3/8" #60 bg=#FF defaultx1
+fill_rect 250 212 42 8 #FF
+fill_rect 6 210 1 12 #60
+fill_rect 7 210 6 4 #E0
+fill_rect 244 210 1 12 #60
+fill_rect 245 210 6 4 #03
+sprite_frame 109 0
+sprite_move 110 37 208
+present
+== update
+== key "i"
+sprite_visible 110 false
+sprite_visible 109 false
+clear #FF
+fill_rect 0 0 318 12 #03
+text 4 2 "Index" #FC bg=#03 defaultx1
+text 296 2 "3/8" #FC bg=#03 defaultx1
+text 262 2 "04:57" #FC bg=#03 defaultx1
+textm 4 16 " 1. Family mruby" #00 bg=#FF x1
+textm 4 26 " 2. はじめに" #00 bg=#FF x1
+fill_rect 3 35 308 10 #03
+textm 4 36 ">3. 中身のはなし" #FC bg=#03 x1
+textm 4 46 " 4. 積みかさね" #00 bg=#FF x1
+textm 4 56 " 5. 書きかた" #00 bg=#FF x1
+textm 4 66 " 6. 動画" #00 bg=#FF x1
+textm 4 76 " 7. 大きさ" #00 bg=#FF x1
+textm 4 86 " 8. おわりに" #00 bg=#FF x1
+present
+== update

@@ -1,0 +1,122 @@
+# scene midi_apu/modes
+# profile retro-320x240
+# window 160x220 lang en
+== start
+sprite_clip 1 11 158 208
+composite_regions [0,0,0,0,4,4,1,156,0,156,0,4,4,1,0,216,0,216,4,4,1,156,216,156,216,4,4,1,4,0,4,0,152,4,0,4,216,4,216,152,4,0,0,4,0,4,160,212,0]
+fill_rect 1 11 158 208 #FF
+gfxblock 1 {w:160,h:220}
+fill_round_rect 0 0 160 11 4 #C5
+fill_rect 0 4 160 7 #C5
+fill_rect 3 3 9 1 #FF
+fill_rect 3 5 9 1 #FF
+fill_rect 3 7 9 1 #FF
+text 15 2 "MIDI APU" #FF defaultx1
+fill_circle 154 5 3 #FF
+draw_round_rect 0 0 160 220 4 #60
+gfxblock 2 {w:160,h:220}
+draw_line 0 0 1 0 #01
+draw_line 0 1 0 1 #01
+draw_line 158 0 159 0 #01
+draw_line 159 1 159 1 #01
+draw_line 0 218 0 219 #01
+draw_line 1 219 1 219 #01
+draw_line 159 218 159 219 #01
+draw_line 158 219 158 219 #01
+gfxblock 1 again
+gfxblock 2 again
+fill_rect 9 17 142 10 #FF
+textm 9 18 "MIDI -> APU" #00 x1
+fill_rect 9 29 142 10 #FF
+textm 9 30 "ready" #00 x1
+fill_rect 9 45 142 18 #60
+draw_rect 9 45 142 18 #60
+textm 59 50 "1 Scale" #FF x1
+fill_rect 9 67 142 18 #60
+draw_rect 9 67 142 18 #60
+textm 59 72 "2 Chord" #FF x1
+fill_rect 9 89 142 18 #60
+draw_rect 9 89 142 18 #60
+textm 59 94 "3 Drums" #FF x1
+fill_rect 9 111 142 18 #60
+draw_rect 9 111 142 18 #60
+textm 65 116 "4 BGM" #FF x1
+fill_rect 9 133 142 18 #60
+draw_rect 9 133 142 18 #60
+textm 65 138 "5 SMF" #FF x1
+fill_rect 9 155 142 18 #60
+draw_rect 9 155 142 18 #60
+textm 62 160 "6 Fast" #FF x1
+fill_rect 9 177 142 18 #60
+draw_rect 9 177 142 18 #60
+textm 65 182 "7 Out" #FF x1
+present
+== update
+== click 80,76
+fill_rect 9 67 142 18 #60
+draw_rect 9 67 142 18 #60
+draw_rect 10 68 140 16 #FF
+textm 59 72 "2 Chord" #FF x1
+present
+fill_rect 9 29 142 10 #FF
+textm 9 30 "chord playing" #00 x1
+fill_rect 9 67 142 18 #EE
+draw_rect 9 67 142 18 #60
+textm 59 72 "2 Chord" #00 x1
+present
+== run 300 ms
+== click 80,98
+fill_rect 9 89 142 18 #60
+draw_rect 9 89 142 18 #60
+draw_rect 10 90 140 16 #FF
+textm 59 94 "3 Drums" #FF x1
+present
+fill_rect 9 29 142 10 #FF
+textm 9 30 "drums playing" #00 x1
+fill_rect 9 67 142 18 #60
+draw_rect 9 67 142 18 #60
+textm 59 72 "2 Chord" #FF x1
+fill_rect 9 89 142 18 #EE
+draw_rect 9 89 142 18 #60
+textm 59 94 "3 Drums" #00 x1
+present
+== run 300 ms
+== click 80,120
+fill_rect 9 111 142 18 #60
+draw_rect 9 111 142 18 #60
+draw_rect 10 112 140 16 #FF
+textm 65 116 "4 BGM" #FF x1
+present
+fill_rect 9 29 142 10 #FF
+textm 9 30 "BGM on" #00 x1
+fill_rect 9 111 142 18 #EE
+draw_rect 9 111 142 18 #60
+textm 65 116 "4 BGM" #00 x1
+present
+== run 300 ms
+== click 80,164
+fill_rect 9 155 142 18 #60
+draw_rect 9 155 142 18 #60
+draw_rect 10 156 140 16 #FF
+textm 62 160 "6 Fast" #FF x1
+present
+fill_rect 9 29 142 10 #FF
+textm 9 30 "tempo x1.5" #00 x1
+fill_rect 9 155 142 18 #EE
+draw_rect 9 155 142 18 #60
+textm 62 160 "6 Fast" #00 x1
+present
+== run 300 ms
+== click 80,186
+fill_rect 9 177 142 18 #60
+draw_rect 9 177 142 18 #60
+draw_rect 10 178 140 16 #FF
+textm 65 182 "7 Out" #FF x1
+present
+fill_rect 9 29 142 10 #FF
+textm 9 30 "out: serial" #00 x1
+fill_rect 9 177 142 18 #EE
+draw_rect 9 177 142 18 #60
+textm 41 182 "7 Out: serial" #00 x1
+present
+== run 300 ms
