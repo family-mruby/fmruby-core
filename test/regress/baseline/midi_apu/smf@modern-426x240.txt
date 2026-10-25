@@ -58,7 +58,7 @@ draw_rect 10 134 140 16 #FF
 textm 65 138 "5 SMF" #FF x1
 present
 fill_rect 9 29 142 10 #FF
-textm 9 30 "smf: joplin_entertainer.mid" #00 x1
+textm 9 30 "smf: joplin_entertain.." #00 x1
 fill_rect 9 133 142 18 #EE
 draw_rect 9 133 142 18 #60
 textm 65 138 "5 SMF" #00 x1
