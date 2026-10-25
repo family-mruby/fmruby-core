@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-25 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全端末のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章
+> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章
 
 ## 1. 流し方
 
@@ -26,7 +26,7 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 ## 3. 端末の一覧 (端末を足すとき)
 
 - 端末と画面の大きさは `tools/regress/targets.rb` の 1 か所にある。1 行 1 端末: 名前・種類 (modern / retro / mini)・画面の大きさ・高解像度の全画面 (あれば)・全画面の余白・窓の既定の大きさ・日本語フォントの有無・`config/` の system_conf と storage_exclude・ファームの FMRB_HW_TARGET (`firmware`、ブラウザ版は無し) とそのビルドの設定 (`build`)。
-- `firmware` のある端末は `rake regress:size` (7 章) の表にも入る。ファームの設定は `FIRMWARE_ENV` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ) に端末ごとの `build` を重ねたもので、`.env` には左右されない。Rakefile の BOARD_BUILD_DEFAULTS と食い違うと `rake regress:size` が止まる。
+- `firmware` のある端末は `rake regress:size ALL=1` (7 章) の表にも入る (既定で作るのは `size_default` の付いた S3・P4 の 1 台ずつ)。ファームの設定は `FIRMWARE_ENV` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ) に端末ごとの `build` を重ねたもので、`.env` には左右されない。Rakefile の BOARD_BUILD_DEFAULTS と食い違うと `rake regress:size` が止まる。
 - **端末を 1 台足すときは、この一覧に 1 行足す**。次の `rake regress` でその端末の記録が「基準が無い」と出るので、記録を見て `rake regress:update` する。
 - 画面が同じ端末 (Tab5・NARYAv4・ブラウザ版) は同じ絵になるので、1 組の記録を共有する (端末の組、`modern-426x240` のような名前)。新しい大きさの端末だけが記録を増やす。端末が増えても確認の手間は大きさの種類の分しか増えない。
 - どの場面をどの端末で描くか: その端末の storage_exclude がアプリのファイルを外していれば描かない (Retro は walk_scroller と麻雀、StickS3・AtomS3R は app/game・app/demo を外す)。それに加えて場面ごとに条件を書ける (`on:`)。
@@ -71,8 +71,9 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run (全部で 15 分ほど)
-rake regress:size                # 全端末のファームを作り、idf.py size の数字を基準と比べる (10 分ほど、1 端末は 2 分ほど)
+rake regress:full                # rake regress + regress:size + regress:run (全部で 9 分ほど)
+rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
+rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
 rake regress:size TABLE=1        # 作らずに、前回の結果から表だけ出す
 rake regress:size NO_RESTORE=1   # 最後の端末のビルドを build/ に残す (元の build/ は退避されたまま)
@@ -89,6 +90,8 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 - `rake regress:full` に ONLY= は効かない (部分ごとに意味が違う)。絞るときは部分を 1 つずつ流す。
 
 ### 7.1 ビルドの時点の表 (rake regress:size)
+
+- 既定は S3 と P4 で 1 台ずつ (2026-10-26 ユーザ決定)。アプリや gem の直しはどの端末にも同じように効くので、これで足りる。端末ごとに差が出る所 (ドライバ・sdkconfig・区画・storage の除外) を触ったときと、端末を足したときは `ALL=1` で全端末を作る。
 
 - 端末ごとに `rake clean_all` → `FMRB_HW_TARGET=<端末> rake build:esp32` (設定は targets.rb で固定) → `esp_idf_size` (idf.py size・size-components・size-files の中身、json2) を map ファイルにかける。結果は `tmp/regress/size/<端末>.json` (と生の json2、ビルドのログ)。
 - 表は端末ごとに 1 行: DIRAM・IRAM (S3 だけ。P4 は DIRAM に含まれる)・ほかの内蔵 (S3 の RTC、P4 の HP core RAM・LP RAM)・アプリのイメージ (.bin の大きさ)・一番小さいアプリ区画の空き。数字の後ろが基準との差。

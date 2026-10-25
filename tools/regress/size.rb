@@ -3,14 +3,16 @@
 #
 # size.rb - the firmware size table (rake regress:size, doc/regression/usage.md).
 #
-#   ruby tools/regress/size.rb                # build every board with firmware, compare
+#   ruby tools/regress/size.rb                # build one board per chip (size_default), compare
+#   ruby tools/regress/size.rb --all          # build every board with firmware
 #   ruby tools/regress/size.rb --only sticks3 # one board (name or FMRB_HW_TARGET, comma list)
 #   ruby tools/regress/size.rb --table        # no build: compare the last saved results
 #   ruby tools/regress/size.rb --update       # the saved results become the baseline
 #   ruby tools/regress/size.rb --restore      # put back a build tree a killed run left aside
 #   ruby tools/regress/size.rb --no-restore   # leave the last board's build in build/
 #
-# For each board in targets.rb that has `firmware`: clean_all, `rake
+# For each selected board in targets.rb (`size_default`, or every board
+# with `firmware` under --all): clean_all, `rake
 # build:esp32` with FMRB_HW_TARGET and the pinned build options
 # (Target#firmware_env, so .env does not move the numbers), then esp_idf_size
 # (the tool behind `idf.py size` / `size-components` / `size-files`, json2)
@@ -57,9 +59,12 @@ module Regress
       :internal
     end
 
-    def boards(only)
+    def boards(only, every = false)
       all = TARGETS.select(&:firmware)
-      return all if only.nil? || only.empty?
+      if only.nil? || only.empty?
+        return all if every
+        return all.select(&:size_default)
+      end
       want = only.split(",").map { |w| w.strip.downcase }
       sel = all.select { |t| want.include?(t.name.downcase) || want.include?(t.firmware.downcase) }
       raise "ONLY=#{only}: no such board (#{all.map(&:firmware).join(', ')})" if sel.empty?
@@ -281,9 +286,10 @@ module Regress
     # --- main -----------------------------------------------------------------
 
     def main(argv)
-      opts = { only: ENV["ONLY"], table: false, update: false, restore: true }
+      opts = { only: ENV["ONLY"], all: ENV["ALL"] == "1", table: false, update: false, restore: true }
       OptionParser.new do |o|
         o.on("--only LIST") { |v| opts[:only] = v }
+        o.on("--all") { opts[:all] = true }
         o.on("--table") { opts[:table] = true }
         o.on("--update") { opts[:update] = true }
         o.on("--no-restore") { opts[:restore] = false }
@@ -294,7 +300,7 @@ module Regress
         puts "build/: #{tree.restore!}"
         return 0
       end
-      sel = boards(opts[:only])
+      sel = boards(opts[:only], opts[:all])
       return update(sel) if opts[:update]
 
       t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)

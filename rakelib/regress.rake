@@ -14,11 +14,15 @@
 # No docker, no sim, no device for those. The heavy ones (rake regress:full)
 # build firmware in docker and start the sim:
 #
-#   rake regress:size      every board's firmware (tools/regress/targets.rb):
-#                          idf.py size numbers against
-#                          test/regress/size_baseline.json; fails when internal
-#                          RAM grows. ONLY=<board>[,..], TABLE=1 (no build, the
-#                          last results), NO_RESTORE=1 (leave the last build)
+#   rake regress:size      one board per chip (S3, P4; size_default in
+#                          tools/regress/targets.rb): idf.py size numbers
+#                          against test/regress/size_baseline.json; fails when
+#                          internal RAM grows. ALL=1 (every board: after
+#                          touching drivers, sdkconfig, partitions, storage
+#                          excludes, or adding a board), ONLY=<board>[,..],
+#                          TABLE=1 (no build, the last results), NO_RESTORE=1
+#                          (leave the last build)
+#   rake regress:size:all  the same as ALL=1
 #   rake regress:size:update   the last results become the baseline
 #   rake regress:run       a fixed sim scenario on Retro and Modern: VM pool
 #                          usage and the periodic dump's free memory against
@@ -88,11 +92,12 @@ def regress_check_board_defaults
 end
 
 namespace :regress do
-  desc "Firmware size table for every board (ONLY=<board>, TABLE=1 no build, NO_RESTORE=1)"
+  desc "Firmware size table, one board per chip (ALL=1 every board, ONLY=<board>, TABLE=1 no build, NO_RESTORE=1)"
   task :size do
     regress_check_board_defaults
     args = []
     args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+    args << "--all" if ENV["ALL"] == "1"
     args << "--table" if ENV["TABLE"] == "1"
     args << "--no-restore" if ENV["NO_RESTORE"] == "1"
     ok = system({ "REGRESS_IDF_IMAGE" => IMAGE }, Gem.ruby, REGRESS_SIZE, *args)
@@ -103,7 +108,14 @@ namespace :regress do
     desc "Write the last regress:size results as the size baseline (only for a change a person has checked)"
     task :update do
       args = ENV["ONLY"] ? ["--only", ENV["ONLY"]] : []
+      args << "--all" if ENV["ALL"] == "1"
       abort "regress:size:update: failed" unless system(Gem.ruby, REGRESS_SIZE, "--update", *args)
+    end
+
+    desc "Firmware size table for every board with firmware (the same as regress:size ALL=1)"
+    task :all do
+      ENV["ALL"] = "1"
+      Rake::Task["regress:size"].invoke
     end
   end
 end
@@ -127,7 +139,7 @@ namespace :regress do
     end
   end
 
-  desc "Everything: regress + regress:size (all boards' firmware) + regress:run (sim). Takes about an hour"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run (sim). About 9 minutes"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only

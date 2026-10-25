@@ -27,6 +27,11 @@
 #   build   build options of that firmware beyond FIRMWARE_ENV (a board's
 #           Rakefile BOARD_BUILD_DEFAULTS; rake regress:size checks the two
 #           agree)
+#   size_default  built by a plain rake regress:size: one board per chip
+#           (S3, P4). App and gem changes move every board alike, so these
+#           two are enough; ALL=1 builds every board with firmware (for a
+#           change to drivers, sdkconfig, partitions, storage excludes, or
+#           a new board)
 #
 # Boards with the same screen (everything above but name and conf) draw the
 # same picture, so they share one set of records: the profile. Tab5,
@@ -59,7 +64,7 @@ module Regress
   }.freeze
 
   Target = Struct.new(:name, :family, :screen, :hires, :margin, :app, :font_ja, :conf, :exclude, :firmware, :build,
-                      keyword_init: true) do
+                      :size_default, keyword_init: true) do
     # The environment its firmware is built with (FMRB_HW_TARGET included).
     def firmware_env
       FIRMWARE_ENV.merge(build || {}).merge("FMRB_HW_TARGET" => firmware)
@@ -88,10 +93,10 @@ module Regress
   TARGETS = [
     Target.new(name: "narya_v3", family: "retro", screen: [320, 240], hires: nil, margin: [2, 16], app: [280, 180],
                font_ja: true, conf: "system_conf_n16r8.toml", exclude: "storage_exclude_naryav3.txt",
-               firmware: "NARYAv3"),
+               firmware: "NARYAv3", size_default: true),
     Target.new(name: "tab5", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
                font_ja: true, conf: "system_conf_p4.toml", exclude: "storage_exclude_tab5.txt",
-               firmware: "TAB5"),
+               firmware: "TAB5", size_default: true),
     Target.new(name: "naryav4", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
                font_ja: true, conf: "system_conf_naryav4.toml", exclude: "storage_exclude_naryav4.txt",
                firmware: "NARYAv4"),
