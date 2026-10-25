@@ -153,6 +153,10 @@ class FmrbUI
     # Which way a held scrollbar is going: -1 up, 0 not held, 1 down.
     def direction; 0; end
     def set_text(text, gfx); nil; end
+    # Work out again what the text looks like at the current width (the
+    # widget was moved to a different width). Named for the same reason
+    # draw_widget is: it is called on a base-typed receiver.
+    def fit_widget_text(gfx); nil; end
     def group; nil; end
     def on?; false; end
     def set_on(flag); nil; end
@@ -181,6 +185,17 @@ class FmrbUI
       gfx.text_width(str, :default) / gfx.current_text_size * @ts
     end
 
+    # str as this widget shows it: as it is when its width tw fits in box
+    # pixels, otherwise cut by FmrbText#fit_text to room pixels with "..".
+    # Only a text wider than its box is touched, so whatever fits is drawn
+    # exactly as before. ".." is two Font0 cells, which the mixed renderer
+    # has on every machine. Like #measure, the width goes to fit_text at the
+    # app's current size (the division by @ts is exact, see #measure).
+    def fit_shown(gfx, str, tw, box, room)
+      return str if tw <= box
+      gfx.fit_text(str, room / @ts * gfx.current_text_size, "..", nil, :default)
+    end
+
     # Text position for a horizontally centered single line.
     def center_text(tw)
       @tx = @x + (@w - tw) / 2
@@ -197,17 +212,23 @@ class FmrbUI
       super(id, x, y, w, h, text_size)
       @align = align
       @text = text
-      @tw = measure(gfx, text)
-      relayout
+      fit_widget_text(gfx)
     end
 
     def set_text(text, gfx)
       return nil if @text == text
       @text = text
-      @tw = measure(gfx, text)
-      relayout
+      fit_widget_text(gfx)
       @dirty = true
       nil
+    end
+
+    # A label has no border: a text wider than the label is cut to its width.
+    def fit_widget_text(gfx)
+      tw = measure(gfx, @text)
+      @show = fit_shown(gfx, @text, tw, @w, @w)
+      @tw = tw <= @w ? tw : measure(gfx, @show)
+      relayout
     end
 
     def relayout
@@ -225,7 +246,7 @@ class FmrbUI
     def draw_widget(gfx)
       gfx.fill_rect(@x, @y, @w, @h, @bg)
       color = @enabled ? C_TEXT : C_BORDER
-      gfx.draw_text_mixed(@tx, @ty, @text, color)
+      gfx.draw_text_mixed(@tx, @ty, @show, color)
       nil
     end
   end
@@ -238,18 +259,24 @@ class FmrbUI
       super(id, x, y, w, h, text_size)
       @accent = accent
       @text = text
-      @tw = measure(gfx, text)
       @pressed = false
-      relayout
+      fit_widget_text(gfx)
     end
 
     def set_text(text, gfx)
       return nil if @text == text
       @text = text
-      @tw = measure(gfx, text)
-      relayout
+      fit_widget_text(gfx)
       @dirty = true
       nil
+    end
+
+    # A text wider than the button is cut to inside its border.
+    def fit_widget_text(gfx)
+      tw = measure(gfx, @text)
+      @show = fit_shown(gfx, @text, tw, @w, @w - 2)
+      @tw = tw <= @w ? tw : measure(gfx, @show)
+      relayout
     end
 
     def relayout
@@ -277,12 +304,12 @@ class FmrbUI
       if @pressed
         gfx.fill_rect(@x, @y, @w, @h, C_TEXT_LIGHT)
         gfx.draw_rect(@x, @y, @w, @h, C_BORDER)
-        gfx.draw_text_mixed(@tx, @ty, @text, fill)
+        gfx.draw_text_mixed(@tx, @ty, @show, fill)
       else
         gfx.fill_rect(@x, @y, @w, @h, fill)
         gfx.draw_rect(@x, @y, @w, @h, C_BORDER)
         color = @enabled ? C_TEXT_LIGHT : C_BORDER
-        gfx.draw_text_mixed(@tx, @ty, @text, color)
+        gfx.draw_text_mixed(@tx, @ty, @show, color)
       end
       nil
     end
@@ -302,9 +329,7 @@ class FmrbUI
       @group = group
       @on = on
       @pressed = false
-      @tw = measure(gfx, text)
-      @on_tw = on_text ? measure(gfx, on_text) : @tw
-      relayout
+      fit_widget_text(gfx)
     end
 
     def group; @group; end
@@ -321,10 +346,26 @@ class FmrbUI
     def set_text(text, gfx)
       return nil if @text == text
       @text = text
-      @tw = measure(gfx, text)
-      relayout
+      fit_widget_text(gfx)
       @dirty = true
       nil
+    end
+
+    # Both labels are cut to inside the border, like a Button's.
+    def fit_widget_text(gfx)
+      tw = measure(gfx, @text)
+      @show = fit_shown(gfx, @text, tw, @w, @w - 2)
+      @tw = tw <= @w ? tw : measure(gfx, @show)
+      ot = @on_text
+      if ot
+        otw = measure(gfx, ot)
+        @on_show = fit_shown(gfx, ot, otw, @w, @w - 2)
+        @on_tw = otw <= @w ? otw : measure(gfx, @on_show)
+      else
+        @on_show = @show
+        @on_tw = @tw
+      end
+      relayout
     end
 
     def relayout
@@ -360,7 +401,7 @@ class FmrbUI
     end
 
     def draw_widget(gfx)
-      label = (@on && @on_text) ? @on_text : @text
+      label = (@on && @on_text) ? @on_show : @show
       if @on
         # An accent is a saturated colour chosen to mean something, so its
         # text is light; the theme highlight is pale and takes dark text.
@@ -398,9 +439,8 @@ class FmrbUI
       @gfx = gfx
       @suffix = nil
       @text = build_text
-      @tw = measure(gfx, @text)
       @pressed = 0
-      relayout
+      fit_widget_text(gfx)
     end
 
     # Unit shown after the number ("%" etc). Usually set once after creation,
@@ -410,8 +450,7 @@ class FmrbUI
       return nil if @suffix == s
       @suffix = s
       @text = build_text
-      @tw = measure(@gfx, @text)
-      relayout
+      fit_widget_text(@gfx)
       @dirty = true
       nil
     end
@@ -432,10 +471,19 @@ class FmrbUI
       return false if nv == @value
       @value = nv
       @text = build_text
-      @tw = measure(@gfx, @text)
-      relayout
+      fit_widget_text(@gfx)
       @dirty = true
       true
+    end
+
+    # The value is cut to inside the value box between the arrows (an Enum
+    # choice longer than the box would run under them).
+    def fit_widget_text(gfx)
+      tw = measure(gfx, @text)
+      box = @w - arrow_w * 2
+      @show = fit_shown(gfx, @text, tw, box, box - 2)
+      @tw = tw <= box ? tw : measure(gfx, @show)
+      relayout
     end
 
     # The < and > halves widen with the text, so a stepper asked for text
@@ -482,7 +530,7 @@ class FmrbUI
       mid_w = @w - aw * 2
       gfx.fill_rect(mid_x, @y, mid_w, @h, @bg)
       gfx.draw_rect(mid_x, @y, mid_w, @h, C_BORDER)
-      gfx.draw_text_mixed(@tx, @ty, @text, C_TEXT)
+      gfx.draw_text_mixed(@tx, @ty, @show, C_TEXT)
       draw_arrow(gfx, @x, "<", @pressed == -1)
       draw_arrow(gfx, @x + @w - aw, ">", @pressed == 1)
       nil
@@ -1037,7 +1085,12 @@ class FmrbUI
   def move(id, x, y, w, h)
     t = find(id)
     return nil if t.nil?
+    old_w = t.w
     t.place(@ox + x, @oy + y, w, h)
+    # A text cut for the old width is worked out again for the new one. Only
+    # when the width moved: the monitor moves rows while running, and
+    # measuring allocates.
+    t.fit_widget_text(@gfx) if t.w != old_w
     nil
   end
 
