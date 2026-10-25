@@ -43,6 +43,7 @@ APPS = {
       File.join(MRBLIB_DIR, "fmrb-i18n.rb"),
       File.join(MRBLIB_DIR, "fmrb-sprite.rb"),
       File.join(MRBLIB_DIR, "fmrb-audio.rb"),
+      File.join(MRBLIB_DIR, "fmrb-text.rb"),    # FmrbText (FmrbUI fits with it)
       File.join(MRBLIB_DIR, "fmrb-ui.rb"),
       File.join(MRBLIB_DIR, "fmrb-assoc.rb"),   # FmrbAssoc (file -> app)
       File.join(SPINEL_DIR, "fmrb_assoc_spinel.rb"), # its table reader (no FmrbToml here)
@@ -58,6 +59,7 @@ APPS = {
   "editor" => {
     libs: [
       File.join(MRBLIB_DIR, "fmrb-i18n.rb"),         # FmrbI18n (module only)
+      File.join(MRBLIB_DIR, "fmrb-text.rb"),         # FmrbText (FmrbUI fits with it)
       File.join(MRBLIB_DIR, "fmrb-ui.rb"),           # FmrbUI widget set
       File.join(SPINEL_DIR, "fmrb_editor_ffi.rb"),   # FmrbSpxEc + EditorCore
       File.join(SPINEL_DIR, "editor_debug_stub.rb"), # module EditorDebugPane (no-op)

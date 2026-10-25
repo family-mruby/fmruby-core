@@ -110,7 +110,10 @@ class RecGfx
     s.each_char { |ch| w += ch.bytesize == 1 ? @px * @size / 2 : @px * @size }
     w
   end
-  alias text_width text_w
+
+  # FmrbText measures with text_width(str, family); the mahjong table has
+  # only the efont it set, whatever the family.
+  def text_width(s, _family = nil) = text_w(s)
 
   def font_height = @px * @size
 
