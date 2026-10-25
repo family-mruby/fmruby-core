@@ -11,7 +11,22 @@
 #                          changed. Only after a person has looked at the diff
 #                          and the change is the one intended
 #
-# No docker, no sim, no device.
+# No docker, no sim, no device for those. The heavy ones (rake regress:full)
+# build firmware in docker and start the sim:
+#
+#   rake regress:size      every board's firmware (tools/regress/targets.rb):
+#                          idf.py size numbers against
+#                          test/regress/size_baseline.json; fails when internal
+#                          RAM grows. ONLY=<board>[,..], TABLE=1 (no build, the
+#                          last results), NO_RESTORE=1 (leave the last build)
+#   rake regress:size:update   the last results become the baseline
+#   rake regress:run       a fixed sim scenario on Retro and Modern: VM pool
+#                          usage and the periodic dump's free memory against
+#                          test/regress/sim_baseline.json (with a tolerance).
+#                          ONLY=retro|modern, TABLE=1 (no sim, the last results)
+#   rake regress:run:update    the last results become the baseline
+#   rake regress:full      regress + regress:size + regress:run (ONLY= goes to
+#                          neither: run the parts by hand to narrow them)
 
 REGRESS_RUN = File.join(ROOT_DIR, "tools", "regress", "run.rb")
 
@@ -54,5 +69,77 @@ namespace :regress do
   task :update do
     ok = system(Gem.ruby, REGRESS_RUN, "--update", *regress_draw_args)
     abort "regress:update: some runs failed" unless ok
+  end
+end
+
+REGRESS_SIZE = File.join(ROOT_DIR, "tools", "regress", "size.rb")
+
+# targets.rb pins each firmware's build options so .env cannot move the
+# numbers; a board's Rakefile defaults have to say the same thing.
+def regress_check_board_defaults
+  require_relative "../tools/regress/targets"
+  Regress::TARGETS.select(&:firmware).each do |t|
+    (BOARD_BUILD_DEFAULTS[t.firmware] || {}).each do |k, v|
+      next if t.firmware_env[k] == v
+      abort "regress: tools/regress/targets.rb builds #{t.firmware} with #{k}=#{t.firmware_env[k].inspect}, " \
+            "but the Rakefile's BOARD_BUILD_DEFAULTS say #{v.inspect}; make them agree"
+    end
+  end
+end
+
+namespace :regress do
+  desc "Firmware size table for every board (ONLY=<board>, TABLE=1 no build, NO_RESTORE=1)"
+  task :size do
+    regress_check_board_defaults
+    args = []
+    args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+    args << "--table" if ENV["TABLE"] == "1"
+    args << "--no-restore" if ENV["NO_RESTORE"] == "1"
+    ok = system({ "REGRESS_IDF_IMAGE" => IMAGE }, Gem.ruby, REGRESS_SIZE, *args)
+    abort "regress:size: failed" unless ok
+  end
+
+  namespace :size do
+    desc "Write the last regress:size results as the size baseline (only for a change a person has checked)"
+    task :update do
+      args = ENV["ONLY"] ? ["--only", ENV["ONLY"]] : []
+      abort "regress:size:update: failed" unless system(Gem.ruby, REGRESS_SIZE, "--update", *args)
+    end
+  end
+end
+
+REGRESS_SIM = File.join(ROOT_DIR, "tools", "regress", "sim_run.rb")
+
+namespace :regress do
+  desc "Fixed sim scenario (Retro, Modern): VM pools and free memory vs baseline (ONLY=retro|modern, TABLE=1)"
+  task :run do
+    args = []
+    args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+    args << "--table" if ENV["TABLE"] == "1"
+    abort "regress:run: failed" unless system(Gem.ruby, REGRESS_SIM, *args)
+  end
+
+  namespace :run do
+    desc "Write the last regress:run results as the sim baseline (only for a change a person has checked)"
+    task :update do
+      args = ENV["ONLY"] ? ["--only", ENV["ONLY"]] : []
+      abort "regress:run:update: failed" unless system(Gem.ruby, REGRESS_SIM, "--update", *args)
+    end
+  end
+
+  desc "Everything: regress + regress:size (all boards' firmware) + regress:run (sim). Takes about an hour"
+  task :full do
+    only = ENV.delete("ONLY")
+    warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
+    failed = []
+    %w[regress regress:size regress:run].each do |t|
+      begin
+        Rake::Task[t].invoke
+      rescue SystemExit
+        failed << t
+      end
+    end
+    abort "regress:full: failed: #{failed.join(', ')}" unless failed.empty?
+    puts "regress:full: ok"
   end
 end
