@@ -124,6 +124,21 @@ jobs:
         # (public HTTPS, see lib/add/PICORUBY_TI_PIN) on first use.
         run: rake test
 
+      - name: Compare draw records
+        # The apps' screens drawn under host Ruby against a recording
+        # stand-in for the graphics, compared with test/regress/baseline/
+        # (tools/regress/, doc/regression/usage.md). The full diff of a
+        # failure is in tmp/regress/diff.txt.
+        run: rake regress:draw
+
+      - name: Keep the draw-record diff
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: regress-diff
+          path: tmp/regress/diff.txt
+          if-no-files-found: ignore
+
   spinel-gen:
     # Spinel code generation for every Ruby program that can be built on that
     # engine (kernel, desktop, editor), on the runner's own gcc -- no docker.
