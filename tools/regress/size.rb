@@ -75,7 +75,9 @@ module Regress
     def commit
       out, st = Open3.capture2("git", "-C", CORE, "rev-parse", "--short=8", "HEAD")
       sha = st.success? ? out.strip : "?"
-      dirty, = Open3.capture2("git", "-C", CORE, "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all")
+      # Documents and the regression tool itself do not go into a firmware.
+      dirty, = Open3.capture2("git", "-C", CORE, "status", "--porcelain", "--untracked-files=no",
+                              "--ignore-submodules=all", "--", ".", ":!doc", ":!test/regress", ":!tools/regress")
       dirty.strip.empty? ? sha : "#{sha}+dirty"
     end
 
