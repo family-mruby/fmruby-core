@@ -48,6 +48,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [picoruby 上流PR候補メモ (ネットワークAPI検証で発見したバグ)](reference/picoruby_upstream_pr_candidates.md)
 - [ESP32-P4 PPA と LovyanGFX の RGB565 描画パイプライン知見](reference/ppa_lgfx_notes.md)
 - [Ruby ネットワークAPI 設計書 (Net::HTTP / WebSocket / TLS)](reference/ruby_network_api_design.md)
+- [画面の小物の使い分け (FmrbGfx・FmrbText・FmrbUI)](reference/screen_helpers.md) — **完了** (2026-10-25) アプリが窓の中を描くときの 3 つの道具の分け方。FmrbGfx = 描く (文字の詰め FmrbText とボタンの絵 draw_button を含む)、FmrbUI = 操作 (作ったら残る部品と、毎回描く画面の押せる範囲 HitAreas)。経緯は app_refactor の R5・R6
 - [Linux sim がまれに固まる: ログロックの優先度逆転](reference/sim_log_deadlock.md)
 - [stdio Design Limitation: Global $stdout/$stdin in Sandbox Execution](reference/stdio_design_limitation.md)
 - [ESP32-P4対応指針](reference/support_esp32p4.md)

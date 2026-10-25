@@ -1,5 +1,13 @@
 # FmrbUI - small widget set for apps that draw their own window
 #
+# Which helper (doc/reference/screen_helpers.md): FmrbGfx draws -- the text
+# helpers (FmrbText: measure, fit, wrap) and the rounded button picture
+# (FmrbGfx#draw_button) included. FmrbUI operates: the widgets below, made
+# once and keeping their state (focus, keys, act on release, theme colours;
+# settings and tool screens, shared with the Spinel programs), and
+# FmrbUI::HitAreas, the click targets of a screen the app redraws whole
+# every time. A widget's text that does not fit is cut with FmrbText.
+#
 # Goal: make a tool with a screen short to write. Apps used to build their own
 # button tables, hit tests and pressed-state drawing; this holds one copy of
 # that.

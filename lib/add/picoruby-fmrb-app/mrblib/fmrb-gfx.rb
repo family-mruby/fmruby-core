@@ -1,6 +1,12 @@
 # FmrbGfx - Graphics API for Family mruby applications
 # Core class is defined in C (gfx.c)
 # This file provides Ruby-level wrapper methods
+#
+# FmrbGfx draws, and that includes the text helpers mixed in from FmrbText
+# (fit_text, wrap_text, draw_text_lines) and the rounded button picture
+# (draw_button). What can be clicked is FmrbUI's: its widgets, or
+# FmrbUI::HitAreas for a screen redrawn every time
+# (doc/reference/screen_helpers.md).
 
 class FmrbGfx
   # Color constants (8-bit RGB332 format: 3-bit R, 3-bit G, 2-bit B)
