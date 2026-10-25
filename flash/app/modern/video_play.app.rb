@@ -46,6 +46,13 @@ class VideoPlayApp < FmrbApp
     @last_status_ms = 0
     @path = MOVIE_PATH
     @rate_index = DEFAULT_RATE_INDEX
+    # The buttons stay where they are, so their click targets are made once.
+    @hits = FmrbUI::HitAreas.new
+    i = BTN_PLAY
+    while i <= BTN_RATE
+      @hits.add(i, button_x(i), @user_area_y0 + BTN_Y, BTN_W, BTN_H)
+      i += 1
+    end
 
     draw_screen
     open_video(@path)
@@ -130,12 +137,6 @@ class VideoPlayApp < FmrbApp
     @gfx.draw_text(lx, y + 1, label, FmrbGfx::WHITE, FmrbGfx::BLUE)
   end
 
-  def hit_button?(ev, index)
-    x = button_x(index)
-    y = @user_area_y0 + BTN_Y
-    ev[:x] >= x && ev[:x] < x + BTN_W && ev[:y] >= y && ev[:y] < y + BTN_H
-  end
-
   # One status line under the buttons. Kept outside the picture rect so the
   # player never overwrites it.
   def draw_status
@@ -156,10 +157,11 @@ class VideoPlayApp < FmrbApp
   def on_event(ev)
     return unless ev[:type] == :mouse_up
     return unless ev[:button] == 1 || ev[:button] == 3
+    hit = @hits.id_at(ev[:x], ev[:y])
 
     # Six rates is a long way round with one button, so the right button walks
     # back. Everything else answers to the left button only.
-    if hit_button?(ev, BTN_RATE)
+    if hit == BTN_RATE
       step = (ev[:button] == 3) ? -1 : 1
       # + length first: a negative left operand of % is not somewhere to rely
       # on picoruby matching Ruby.
@@ -173,7 +175,7 @@ class VideoPlayApp < FmrbApp
     return unless ev[:button] == 1
 
     # Open works with no file loaded; the transport buttons do not.
-    if hit_button?(ev, BTN_OPEN)
+    if hit == BTN_OPEN
       @message = "pick a file (SD is under /mnt/sd)"
       draw_status
       request_file_select("open")
@@ -182,11 +184,11 @@ class VideoPlayApp < FmrbApp
 
     return if @video.nil?
 
-    if hit_button?(ev, BTN_PLAY)
+    if hit == BTN_PLAY
       @video.play
-    elsif hit_button?(ev, BTN_PAUSE)
+    elsif hit == BTN_PAUSE
       @video.pause
-    elsif hit_button?(ev, BTN_REWIND)
+    elsif hit == BTN_REWIND
       @video.rewind
     else
       return

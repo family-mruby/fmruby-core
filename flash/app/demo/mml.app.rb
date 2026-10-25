@@ -61,6 +61,7 @@ class MmlDemoApp < FmrbApp
     @file_path = nil
     @file_name = nil
     @status = "ready"
+    @hits = FmrbUI::HitAreas.new
   end
 
   def on_create
@@ -110,7 +111,7 @@ class MmlDemoApp < FmrbApp
         stop_tune
       end
     when :mouse_up
-      index = button_at(ev[:x], ev[:y])
+      index = @hits.id_at(ev[:x], ev[:y])
       return if index.nil?
 
       case index
@@ -274,17 +275,6 @@ class MmlDemoApp < FmrbApp
     [@user_area_x0 + 8, @user_area_y0 + 26 + (index * 18), @user_area_width - 16, 15]
   end
 
-  def button_at(x, y)
-    i = 0
-    while i < BTN_COUNT
-      r = button_rect(i)
-      return i if x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]
-
-      i += 1
-    end
-    nil
-  end
-
   # A name longer than the button would be drawn over the edge of it.
   def fitted(name)
     return name if name.length <= 16
@@ -321,9 +311,11 @@ class MmlDemoApp < FmrbApp
     @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 4, "MML", COL_TEXT, COL_BG)
     @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 16, @status, COL_TEXT, COL_BG)
 
+    @hits.clear
     i = 0
     while i < BTN_COUNT
       r = button_rect(i)
+      @hits.add(i, r[0], r[1], r[2], r[3])
       @gfx.fill_rect(r[0], r[1], r[2], r[3], lit?(i) ? COL_ON : COL_BTN)
       @gfx.draw_text(r[0] + 6, r[1] + 4, label_for(i), FmrbGfx::WHITE)
       i += 1

@@ -495,7 +495,8 @@ class RoverBrainApp < FmrbApp
     x = @user_area_x0 + 4
     y = @user_area_y0 + 3
     @gfx.fill_rect(x, y, @user_area_width - 8, 13 * 10, theme_bg)
-    @gfx.draw_text(x, y, "#{@id}/brain/rover #{@state}"[0, 52], theme_fg)
+    # The long lines are cut at 312 px, 52 cells of the 6x8 font.
+    @gfx.draw_text(x, y, @gfx.fit_text("#{@id}/brain/rover #{@state}", 312), theme_fg)
     p = @pose
     if p
       @gfx.draw_text(x, y + 13, "x #{fmt(p[0], 3)} y #{fmt(p[1], 3)} m  heading #{fmt(p[2] * DEG, 1)}", theme_fg)
@@ -506,7 +507,7 @@ class RoverBrainApp < FmrbApp
     @gfx.draw_text(x, y + 39, "#{@mode}  cmd v #{fmt(@out_v, 2)} w #{fmt(@out_w, 2)}", theme_accent)
     if @job_id > 0
       unit = @job_kind == "go" ? "m" : "deg"
-      @gfx.draw_text(x, y + 52, "job #{@job_id} #{@job_kind} #{@job_target} #{unit}: #{@job_status}"[0, 52], theme_fg)
+      @gfx.draw_text(x, y + 52, @gfx.fit_text("job #{@job_id} #{@job_kind} #{@job_target} #{unit}: #{@job_status}", 312), theme_fg)
       bw = @user_area_width - 70
       @gfx.draw_rect(x, y + 66, bw, 8, theme_border)
       fill = (bw - 2) * progress
@@ -516,7 +517,7 @@ class RoverBrainApp < FmrbApp
       @gfx.draw_text(x, y + 52, "job: none yet", theme_fg)
     end
     ago = @last_call_at > 0 ? "#{(Machine.board_millis - @last_call_at) / 1000}s ago" : ""
-    @gfx.draw_text(x, y + 80, "from #{@last_caller}: #{@last_call} #{ago}"[0, 52], theme_fg)
+    @gfx.draw_text(x, y + 80, @gfx.fit_text("from #{@last_caller}: #{@last_call} #{ago}", 312), theme_fg)
     @gfx.draw_text(x, y + 93, "calls #{@calls}  cmd sent #{@sent}  odom #{@odom_n}", theme_border)
     @gfx.draw_text(x, y + 106, "loop #{@loop_ms}/#{@loop_max} ms  period #{(@period * 1000).round} ms  iram #{@iram}", theme_border)
   end

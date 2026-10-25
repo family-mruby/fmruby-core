@@ -372,7 +372,7 @@ class OthelloApp < FmrbApp
     @hints = []
     @keys = []
     @clicks = []
-    @buttons = []
+    @hits = FmrbUI::HitAreas.new
     @edit = nil             # the name being typed (a String), or nil
     @u8 = nil               # a UTF-8 character coming in byte by byte (kana input)
     @u8_need = 0
@@ -1048,20 +1048,10 @@ class OthelloApp < FmrbApp
     @dirty = true
   end
 
-  def button_at(x, y)
-    i = 0
-    while i < @buttons.size
-      b = @buttons[i]
-      return b[0] if x >= b[1] && x < b[1] + b[3] && y >= b[2] && y < b[2] + b[4]
-      i += 1
-    end
-    nil
-  end
-
   def run_click(c)
     x = c[0]
     y = c[1]
-    b = button_at(x, y)
+    b = @hits.id_at(x, y)
     if b
       run_button(b)
       @dirty = true
@@ -1168,24 +1158,6 @@ class OthelloApp < FmrbApp
     @dirty = true
   end
 
-  # s cut to fit cols columns (a wide character counts 2), as drawn.
-  def fit(s, cols)
-    s = s.to_s
-    return s if s.bytesize <= cols && s.length == s.bytesize
-    out = "".dup
-    used = 0
-    i = 0
-    while i < s.length
-      ch = s[i, 1]
-      w = ch.bytesize > 1 ? 2 : 1
-      break if used + w > cols
-      out << ch
-      used += w
-      i += 1
-    end
-    out
-  end
-
   # ------------------------------------------------------------ the screen
 
   def layout
@@ -1207,17 +1179,8 @@ class OthelloApp < FmrbApp
   end
 
   def button(id, x, y, w, label)
-    @buttons << [id, x, y, w, 16]
-    @gfx.fill_round_rect(x, y, w, 16, 3, theme_accent)
-    tw = label.length * 6
-    i = 0
-    wide = 0
-    while i < label.length
-      wide += 1 if label[i, 1].bytesize > 1
-      i += 1
-    end
-    tw += wide * 6
-    @gfx.draw_text(x + (w - tw) / 2, y + 2, label, theme_fg_light)
+    @gfx.draw_button(x, y, w, 16, label, theme_accent, theme_fg_light)
+    @hits.add(id, x, y, w, 16)
   end
 
   def text(x, y, s, color = nil)
@@ -1225,7 +1188,7 @@ class OthelloApp < FmrbApp
   end
 
   def draw_screen
-    @buttons = []
+    @hits.clear
     return draw_small if @small
     clear_user_area
     if @mode == :game && @g
@@ -1254,11 +1217,11 @@ class OthelloApp < FmrbApp
   def draw_lobby
     x = @x0 + 4
     y = @y0 + 3
-    cols = (@user_area_width - 8) / 6
+    lw = @user_area_width - 8
     text(x, y, "オセロ: 相手を選んで誘う")
     me = my_name
-    text(x + 160, y, fit("名前: #{me}", cols - 27), me == @id ? theme_border : theme_fg)
-    text(x, y + 15, fit(net_line, cols), theme_border)
+    text(x + 160, y, fit("名前: #{me}", lw - 162), me == @id ? theme_border : theme_fg)
+    text(x, y + 15, fit(net_line, lw), theme_border)
     ly = @list_y
     if @peers.empty?
       text(x, ly, @net == :up ? "相手を探しています (同じ網で othello を開く)" : "-", theme_border)
@@ -1273,31 +1236,31 @@ class OthelloApp < FmrbApp
       yy = ly + i * 15
       if i == @sel
         @gfx.fill_rect(@x0 + 2, yy - 1, @user_area_width - 4, 14, theme_accent)
-        text(x, yy, fit("#{label}  #{word}", cols), theme_fg_light)
+        text(x, yy, fit("#{label}  #{word}", lw), theme_fg_light)
       else
-        text(x, yy, fit("#{label}  #{word}", cols))
+        text(x, yy, fit("#{label}  #{word}", lw))
       end
       i += 1
     end
     by = @y0 + @user_area_height - 40
     if @edit
-      text(x, by - 2, fit("名前: Enter で保存、Esc でやめる、空なら ID", cols), theme_accent)
+      text(x, by - 2, fit("名前: Enter で保存、Esc でやめる、空なら ID", lw), theme_accent)
       @gfx.fill_rect(x, by + 15, 196, 18, theme_fg_light)
       @gfx.draw_rect(x, by + 15, 196, 18, theme_accent)
       shown = @edit
-      shown = shown[1, shown.length] while shown.length > 0 && fit(shown, 30) != shown
+      shown = shown[1, shown.length] while shown.length > 0 && fit(shown, 180) != shown
       text(x + 3, by + 18, "#{shown}_")
       button(:name_save, x + 202, by + 16, 60, "保存")
       button(:name_cancel, x + 268, by + 16, 70, "やめる")
     elsif @inv_in
-      text(x, by - 2, fit("#{@inv_in[1]} から誘い。受ける?", cols), theme_accent)
+      text(x, by - 2, fit("#{@inv_in[1]} から誘い。受ける?", lw), theme_accent)
       button(:accept, x, by + 16, 90, "受ける (Y)")
       button(:decline, x + 98, by + 16, 90, "断る (N)")
     elsif @inv_out
-      text(x, by - 2, fit("#{peer_name(@inv_out[0])} を誘っています...", cols), theme_accent)
+      text(x, by - 2, fit("#{peer_name(@inv_out[0])} を誘っています...", lw), theme_accent)
       button(:cancel, x, by + 16, 110, "取り消す (Esc)")
     else
-      text(x, by - 2, fit(@note, cols), theme_border)
+      text(x, by - 2, fit(@note, lw), theme_border)
       button(:invite, x, by + 16, 90, "誘う (Enter)") unless @peers.empty?
       button(:name, x + 98, by + 16, 90, "名前 (F2)")
     end
@@ -1365,11 +1328,11 @@ class OthelloApp < FmrbApp
     text(x + 14, y, "あなた #{mc}"[0, n])
     @gfx.fill_circle(x + 5, y + 21, 5, @my == 1 ? C_WHITE : C_BLACK)
     @gfx.draw_circle(x + 5, y + 21, 5, theme_border)
-    text(x + 14, y + 15, fit(@opp_name, n - 7) + " #{tc}")
+    text(x + 14, y + 15, fit(@opp_name, @pw - 42) + " #{tc}")
     yy = y + 34
     if g.over
       text(x, yy, "終わり", theme_accent)
-      wrap(x, yy + 15, @end_note, n, 3)
+      wrap(x, yy + 15, @end_note, @pw, 3)
       button(:lobby, x, @y0 + @user_area_height - 20, 100, "ロビーへ")
       return
     end
@@ -1389,7 +1352,7 @@ class OthelloApp < FmrbApp
     end
     l = g.last
     text(x, yy + 30, "#{g.n} 手目 最後: #{l ? (l == '--' ? 'パス' : l) : '-'}"[0, n], theme_border)
-    wrap(x, yy + 45, @note, n, 2)
+    wrap(x, yy + 45, @note, @pw, 2)
     by = @y0 + @user_area_height - 20
     if @confirm
       text(x, by - 16, "投了しますか?", C_CURSOR)
@@ -1401,26 +1364,22 @@ class OthelloApp < FmrbApp
     end
   end
 
-  # Draws s in lines of at most n columns (a wide character counts 2).
-  def wrap(x, y, s, n, max_lines)
-    line = ""
-    cols = 0
+  # s cut to w pixels in the current font (no mark).
+  def fit(s, w)
+    @gfx.fit_text(s, w)
+  end
+
+  # Draws s in up to max_lines lines of w pixels, 14 apart, cut anywhere.
+  def wrap(x, y, s, w, max_lines)
+    rest = s.to_s
     row = 0
-    i = 0
-    while i < s.length && row < max_lines
-      ch = s[i, 1]
-      w = ch.bytesize > 1 ? 2 : 1
-      if cols + w > n
-        text(x, y + row * 14, line, theme_border)
-        row += 1
-        line = ""
-        cols = 0
-      end
-      line << ch
-      cols += w
-      i += 1
+    while row < max_lines && !rest.empty?
+      line = @gfx.fit_text(rest, w)
+      break if line.empty?
+      text(x, y + row * 14, line, theme_border)
+      rest = rest.byteslice(line.bytesize, rest.bytesize - line.bytesize).to_s
+      row += 1
     end
-    text(x, y + row * 14, line, theme_border) if row < max_lines && !line.empty?
   end
 
   # Small screens: the latest state any game put, without playing.

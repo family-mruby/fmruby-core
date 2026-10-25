@@ -21,11 +21,13 @@ class StackChanRemoteApp < FmrbApp
     draw_screen
   end
 
-  # Build the button list with auto-computed positions (2-3 columns).
+  # Build the button list with auto-computed positions (2-3 columns). Their
+  # click targets carry the button (FmrbUI::HitAreas).
   def build_buttons
     x0 = @user_area_x0 + 4
     y0 = @user_area_y0 + 2
     @buttons = []
+    @hits = FmrbUI::HitAreas.new
     # Row 0: two wide toggles
     @buttons << { x: x0,       y: y0, w: 92, h: 20, type: :talk }
     @buttons << { x: x0 + 96,  y: y0, w: 92, h: 20, type: :lip }
@@ -54,6 +56,7 @@ class StackChanRemoteApp < FmrbApp
     end
     @emos_label_y = y0 + 24
     @emotes_label_y = my - 12
+    @buttons.each { |b| @hits.add(b[:type], b[:x], b[:y], b[:w], b[:h], b) }
   end
 
   def button_label(b)
@@ -92,12 +95,8 @@ class StackChanRemoteApp < FmrbApp
   def on_event(ev)
     return unless running?
     return unless ev[:type] == :mouse_up && ev[:button] == 1
-    @buttons.each do |b|
-      next unless ev[:x] >= b[:x] && ev[:x] < b[:x] + b[:w] &&
-                  ev[:y] >= b[:y] && ev[:y] < b[:y] + b[:h]
-      handle_button(b)
-      break
-    end
+    hit = @hits.at(ev[:x], ev[:y])
+    handle_button(hit[5]) if hit
   end
 
   def handle_button(b)
