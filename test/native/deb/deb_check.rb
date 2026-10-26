@@ -30,6 +30,9 @@
 #      back to an earlier release's (with values of the user's own in them)
 #      and associations.toml removed; the next start must add what is
 #      missing, log it, and keep every line the user had
+#   7. the package's rules (L3c): the release system_conf (debug_mode false,
+#      no "Development mode", zenoh_router empty), debugd not listening; with
+#      debugd = true it listens on 127.0.0.1:5565 only
 #
 # The run directory (control and inject sockets) is a host directory mounted
 # into the container, so the root tools drive the program from outside
@@ -105,6 +108,18 @@ def ctl(request, timeout: 30)
   end
   sock.close
   data
+end
+
+DEBUGD_PORT = 5565
+
+# Listening TCP sockets in the container, as "a.b.c.d:port" (from
+# /proc/net/tcp: the base image has no ss or netstat).
+def tcp_listeners
+  out, = dexec("cat /proc/net/tcp")
+  out.lines.drop(1).map(&:split).select { |f| f[3] == "0A" }.map do |f|
+    hex, port = f[1].split(":")
+    "#{[hex].pack('H*').bytes.reverse.join('.')}:#{port.to_i(16)}"
+  end
 end
 
 SHOT = File.join(OUT, "capture.png")
@@ -205,6 +220,16 @@ begin
   paths = File.read(log)[/native: system=.*/].to_s
   puts "  #{paths}"
 
+  # 3b. the package's rules (L3c): the release system_conf, no debugd.
+  boot_text = File.read(log)
+  conf_now, = dexec("cat /root/.local/share/family-mruby/etc/system_conf.toml")
+  result("release settings", !boot_text.include?("Development mode") && conf_now =~ /^debug_mode = false$/ &&
+         conf_now =~ /^zenoh_router = ""$/ && conf_now =~ /^debugd = false$/,
+         "boot line: #{boot_text[/Running as a native Linux program.*/]}; debug_mode = false, zenoh_router = \"\", debugd = false in the user's system_conf")
+  listen = tcp_listeners
+  result("debugd off by default", listen.none? { |a| a.end_with?(":#{DEBUGD_PORT}") } && boot_text.include?("debugd off"),
+         "TCP listeners: #{listen.empty? ? 'none' : listen.join(' ')}")
+
   input("move", 420, 60)
   sleep 1
   input("move", 420, 60)
@@ -300,6 +325,36 @@ begin
            new_services[/\[clock\][^\[]*/].include?("enable = false") && File.exist?(File.join(new_dir, "associations.toml"))
   result("/etc update", text.include?("Boot complete") && kept && values && !added.empty?,
          "#{added.length} log line(s): #{added.join('; ')}; old lines all kept in order: #{kept}; user values kept and new items present: #{!!values}")
+
+  # 7. debugd turned on in system_conf: 127.0.0.1:5565 only. A client in the
+  #    container reaches it; the container's own address does not, from the
+  #    host or from inside.
+  dexec("sed -i 's/^debugd = false$/debugd = true/' #{user_etc}/system_conf.toml")
+  File.delete(log)
+  sh!("docker", "exec", "-d", NAME, "bash", "-c",
+      "umask 0; cd /root; SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy FMRB_NATIVE_RUN_DIR=/run/fmrb " \
+      "exec #{bin} --machine sdl > /run/fmrb/core.log 2>&1")
+  deadline = now + opts[:timeout]
+  sleep 0.5 until (File.exist?(log) && File.read(log).include?("Boot complete")) || now > deadline
+  text = File.read(log)
+  FileUtils.cp(log, File.join(OUT, "core.debugd.log"))
+  listen = tcp_listeners
+  ip, = sh!("docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", NAME)
+  ip = ip.strip
+  inside, = dexec("timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/#{DEBUGD_PORT}' 2>/dev/null && echo open || echo closed", ok: false)
+  via_ip, = dexec("timeout 3 bash -c 'exec 3<>/dev/tcp/#{ip}/#{DEBUGD_PORT}' 2>/dev/null && echo open || echo closed", ok: false)
+  from_host = begin
+    Socket.tcp(ip, DEBUGD_PORT, connect_timeout: 3).close
+    "open"
+  rescue StandardError => e
+    "closed (#{e.class.name.split('::').last})"
+  end
+  ok = listen == ["127.0.0.1:#{DEBUGD_PORT}"] && inside.strip == "open" && via_ip.strip == "closed" && from_host.start_with?("closed")
+  result("debugd on: loopback only", ok,
+         "listeners #{listen.join(' ')}; 127.0.0.1 in the container #{inside.strip}, #{ip} in the container #{via_ip.strip}, " \
+         "#{ip} from the host #{from_host}; log: #{text[/listening on .*/]}")
+  ctl("quit", timeout: 30)
+  sleep 2
 rescue StandardError => e
   result("run", false, e.message)
 ensure

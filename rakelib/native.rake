@@ -270,6 +270,26 @@ namespace :native do
     SH
   end
 
+  # The release system_conf differs from the development one in these keys
+  # only (doc/linux_native/report/l3c.md); comments may differ.
+  NATIVE_RELEASE_CONF = "config/system_conf_native_release.toml"
+  NATIVE_RELEASE_CONF_KEYS = %w[debug_mode zenoh_router debugd].freeze
+
+  def native_check_release_conf!(dev, release)
+    settings = lambda do |path|
+      File.readlines(path).map(&:strip).reject { |l| l.empty? || l.start_with?("#") }
+          .map { |l| l.sub(/\s+#.*\z/, "") }
+          .reject { |l| NATIVE_RELEASE_CONF_KEYS.include?(l[/\A([A-Za-z0-9_]+)\s*=/, 1]) }
+    end
+    a = settings.call(dev)
+    b = settings.call(release)
+    return if a == b
+    extra = (b - a).first(3)
+    missing = (a - b).first(3)
+    abort "native:root: #{NATIVE_RELEASE_CONF} drifted from system_conf_native.toml beyond " \
+          "#{NATIVE_RELEASE_CONF_KEYS.join(', ')} (only in release: #{extra.inspect}, only in development: #{missing.inspect})"
+  end
+
   desc "Stage the package's distribution tree (git-tracked flash/ + generated etc, machines, help)"
   task :root => [:etc, "ti:help"] do
     root = File.join(NATIVE_DEB_DIR, "root")
@@ -303,6 +323,11 @@ namespace :native do
     # add to it) and the machine definitions, as native:etc staged them.
     cp_r File.join(NATIVE_ROOT_STAGE, "etc"), File.join(root, "etc")
     cp_r File.join(NATIVE_ROOT_STAGE, "machines"), File.join(root, "machines")
+    # The package's system_conf is the release one (L3c): the development
+    # file's settings but for NATIVE_RELEASE_CONF_KEYS.
+    release = File.join(ROOT_DIR, NATIVE_RELEASE_CONF)
+    native_check_release_conf!(File.join(ROOT_DIR, "config/system_conf_native.toml"), release)
+    %w[system_conf.toml system_conf.factory.toml].each { |n| cp release, File.join(root, "etc", n) }
     puts "native:root: #{files.length} tracked files + etc, machines, help, Asterism messages -> #{root}"
   end
 

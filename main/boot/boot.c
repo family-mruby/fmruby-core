@@ -526,6 +526,8 @@ void fmrb_os_init(void)
     FMRB_LOGD(TAG, "Debug log level enabled");
 #if defined(FMRB_PLATFORM_WASM)
     FMRB_LOGI(TAG, "Running on WebAssembly target - Development mode");
+#elif defined(FMRB_PLATFORM_NATIVE) && defined(FMRB_NATIVE_PACKAGE) && FMRB_NATIVE_PACKAGE
+    FMRB_LOGI(TAG, "Running as a native Linux program (installed package)");
 #elif defined(FMRB_PLATFORM_NATIVE)
     FMRB_LOGI(TAG, "Running as a native Linux program - Development mode");
 #elif defined(CONFIG_IDF_TARGET_LINUX)

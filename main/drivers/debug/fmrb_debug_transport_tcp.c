@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/select.h>
+#include <arpa/inet.h>
 
 #include "fmrb_log.h"
 #include "fmrb_eintr.h"
@@ -29,6 +30,18 @@ static const char *TAG = "dbg_tcp";
 static int  s_listen_fd = -1;
 static int  s_client_fd = -1;
 static int  s_port = FMRB_DEBUG_TCP_PORT;
+static struct in_addr s_bind = { .s_addr = 0 };   // INADDR_ANY until set
+static char s_bind_text[INET_ADDRSTRLEN] = "0.0.0.0";
+
+fmrb_err_t fmrb_debug_transport_tcp_set_bind(const char *addr) {
+    struct in_addr a;
+    if (addr == NULL || inet_pton(AF_INET, addr, &a) != 1) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    s_bind = a;
+    inet_ntop(AF_INET, &a, s_bind_text, sizeof(s_bind_text));
+    return FMRB_OK;
+}
 
 // Stream reassembly buffer: holds the 4-byte length prefix + up to one max body.
 static uint8_t s_rx[4 + FMRB_DEBUG_MAX_FRAME];
@@ -66,10 +79,10 @@ static fmrb_err_t tcp_init(void) {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_addr = s_bind;
     addr.sin_port = htons((uint16_t)s_port);
     if (FMRB_RETRY_EINTR(bind(s_listen_fd, (struct sockaddr *)&addr, sizeof(addr))) < 0) {
-        FMRB_LOGE(TAG, "bind(:%d) failed: %s", s_port, strerror(errno));
+        FMRB_LOGE(TAG, "bind(%s:%d) failed: %s", s_bind_text, s_port, strerror(errno));
         close(s_listen_fd);
         s_listen_fd = -1;
         return FMRB_ERR_FAILED;
@@ -81,7 +94,7 @@ static fmrb_err_t tcp_init(void) {
         return FMRB_ERR_FAILED;
     }
     set_nonblock(s_listen_fd);
-    FMRB_LOGI(TAG, "listening on 0.0.0.0:%d", s_port);
+    FMRB_LOGI(TAG, "listening on %s:%d", s_bind_text, s_port);
     return FMRB_OK;
 }
 

@@ -28,6 +28,10 @@ typedef struct {
 
 // Linux TCP transport (fmrb_debug_transport_tcp.c). Linux build only.
 extern const fmrb_debug_transport_ops_t fmrb_debug_transport_tcp;
+// The IPv4 address the TCP transport listens on ("0.0.0.0" = every interface,
+// the default). Call before the debugd task starts. FMRB_ERR_INVALID_PARAM if
+// the text is not a dotted IPv4 address.
+fmrb_err_t fmrb_debug_transport_tcp_set_bind(const char *addr);
 
 // BLE GATT transport (fmrb_debug_transport_ble.c). ESP32 targets only.
 extern const fmrb_debug_transport_ops_t fmrb_debug_transport_ble;

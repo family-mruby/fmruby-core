@@ -21,6 +21,10 @@
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
 #include "host_task.h"
+#ifdef CONFIG_IDF_TARGET_LINUX
+#include "fmrb_mem.h"
+#include "fmrb_toml.h"
+#endif
 
 static const char *TAG = "debugd";
 
@@ -435,9 +439,68 @@ static void debugd_main(void *arg) {
     }
 }
 
+#ifdef CONFIG_IDF_TARGET_LINUX
+// Whether debugd runs, and where its TCP transport listens: system_conf's
+// debugd / debugd_bind. It starts and kills apps for anyone who can reach the
+// port, with no authentication, so the installed native package (which runs
+// as root on the Cardputer) has it off by default and, when turned on, keeps
+// it on the loopback (reach it from elsewhere through an ssh forward). The
+// simulation and the development native build keep listening on every
+// interface (the simulation is driven from outside its container).
+#if defined(FMRB_NATIVE_PACKAGE) && FMRB_NATIVE_PACKAGE
+#define DEBUGD_DEFAULT_ON      false
+#define DEBUGD_DEFAULT_BIND    "127.0.0.1"
+#define DEBUGD_LOOPBACK_ONLY   1
+#else
+#define DEBUGD_DEFAULT_ON      true
+#define DEBUGD_DEFAULT_BIND    "0.0.0.0"
+#define DEBUGD_LOOPBACK_ONLY   0
+#endif
+
+static const char k_default_bind[] = DEBUGD_DEFAULT_BIND;
+
+static bool debugd_conf_enabled(void) {
+    char errbuf[64];
+    toml_table_t *conf = fmrb_toml_load_file("/etc/system_conf.toml", errbuf, sizeof(errbuf));
+    if (!conf) {
+        conf = fmrb_toml_load_file("/etc/system_conf.factory.toml", errbuf, sizeof(errbuf));
+    }
+    bool on = DEBUGD_DEFAULT_ON;
+    const char *bind = k_default_bind;
+    if (conf) {
+        on = fmrb_toml_get_bool(conf, "debugd", DEBUGD_DEFAULT_ON);
+        bind = fmrb_toml_get_string(conf, "debugd_bind", k_default_bind);
+    }
+    if (bind == NULL || bind[0] == '\0') {
+        if (bind != NULL && bind != k_default_bind) fmrb_sys_free((void *)bind);
+        bind = k_default_bind;
+    }
+#if DEBUGD_LOOPBACK_ONLY
+    if (strcmp(bind, "127.0.0.1") != 0) {
+        FMRB_LOGW(TAG, "debugd_bind \"%s\" ignored: this build listens on 127.0.0.1 only", bind);
+        if (bind != k_default_bind) fmrb_sys_free((void *)bind);
+        bind = k_default_bind;
+    }
+#endif
+    if (on && fmrb_debug_transport_tcp_set_bind(bind) != FMRB_OK) {
+        FMRB_LOGE(TAG, "debugd_bind \"%s\" is not an IPv4 address; debugd not started", bind);
+        on = false;
+    }
+    if (bind != k_default_bind) fmrb_sys_free((void *)bind);
+    if (conf) toml_free(conf);
+    if (!on) {
+        FMRB_LOGI(TAG, "debugd off (system_conf debugd = false)");
+    }
+    return on;
+}
+#endif
+
 void fmrb_debugd_init(void) {
     if (s_started) return;
     s_started = true;
+#ifdef CONFIG_IDF_TARGET_LINUX
+    if (!debugd_conf_enabled()) return;
+#endif
     fmrb_task_handle_t handle;
     fmrb_task_create_ex(debugd_main, "debugd", FMRB_DEBUGD_TASK_STACK_SIZE,
                         NULL, FMRB_DEBUGD_TASK_PRIORITY, &handle,
