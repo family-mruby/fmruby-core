@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章
+> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim とブラウザ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章
 
 ## 1. 流し方
 
@@ -66,12 +66,12 @@ end
 
 - 本当の画素 (フォントの字形、LovyanGFX の角丸の描き方、合成、透過色)。記録は「何をどこに描くよう頼んだか」まで。
 - 音、実機の入力 (タッチは相対移動)、表示の後段 (HDMI・NTSC)、Spinel のプログラム (デスクトップ・エディタ・シェル。CRuby では読めない)。
-- これらは sim・ブラウザ版の画面の比較 (RG2) と実機で見る。
+- これらは sim・ブラウザ版の画面の比較 (`rake regress:screens`、9 章) と実機で見る。
 
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run (全部で 9 分ほど)
+rake regress:full                # rake regress + regress:size + regress:run + regress:screens (全部で 17 分ほど)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -139,4 +139,56 @@ boot: naryav4 vs baseline 2.1.0-847-g802b16a3-dirty, ok (0.6 min: capture 36s; n
 - よい向きに幅を超えた数と、基準に無い新しい `M1|` の段は `moved` の行に出るだけ (落ちない)。VM プールは表に出すだけで比べない (カーネルは自分の GC の都合で動く)。
 - 基準があるのは今は P4-Nano (NARYAv4) だけ。ほかの端末は、つないだときに 1 回流し、ログと表を人が見てから `rake regress:boot:update BOARD=<端末>` する。端末を足すときは targets.rb の行に `serial:` (VID:PID・リセットのしかた・ボーレート) を書く。
 - 落ちたら全文のログ (`tmp/regress/boot/<端末>.log`) の、落ちた項目の行を見る。内蔵 RAM が減ったなら、ビルドの時点の数 (`rake regress:size`) とどちらで減ったかを比べる (静的な領域が増えたのか、起動中の確保が増えたのか)。
+
+## 9. 画面の比較 (rake regress:screens)
+
+```
+rake regress:screens                    # sim の Retro・Modern (標準構成) とブラウザ版で全場面 (8 分ほど)
+rake regress:screens ONLY=modern        # 1 つだけ (retro・modern・web。FULL=1 のときは modern で modern-mruby も)
+rake regress:screens SCENE=editor       # 名前にこの文字を含む場面だけ (カンマで複数)
+rake regress:screens FULL=1             # 全 mruby の構成 (retro-mruby・modern-mruby) も足す (12.5 分ほど)
+rake regress:screens:update             # 前回の結果のうち落ちた・基準の無い写しを基準にする (5 章の決まりを守る)
+ruby tools/regress/screens.rb --list    # 場面と、それを流す構成の一覧、基準の大きさ
+ruby tools/regress/screens.rb --attach modern   # もう動いている sim (web なら --port のページ) に台本だけ流す
+```
+
+- `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
+- 構成は 5 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)。
+- 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016、`WEB_PORT=` で変える)** とヘッドレスのブラウザを起こし、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。
+- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。build/ は 7 章と同じく退避して戻す。wasm/build は今の checkout から作ったものが残る (wasm の libmruby も新しいものが戻る)。
+- 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
+
+### 9.1 台本の書き方
+
+`test/regress/screens/*.rb` に書く (ファイル名の順に流れる)。共通の手順は `helpers.rb`。
+
+```ruby
+Regress::Screens.scene "editor_type", on: %w[modern retro web modern-mruby retro-mruby] do |s|
+  s.open_editor      # helpers.rb: デスクトップのメニューから開き、窓が出るまで待つ
+  s.mark             # 今の画面を覚える
+  s.key "a"
+  s.wait_change      # 覚えた画面から変わるまで
+  s.park             # ポインタを決まった場所へ
+  s.shot             # 落ち着くのを待って基準と比べる
+end
+```
+
+- 入力: `key`・`text`・`click(x, y)`・`move`・`press`・`release`・`wheel` (tools/fmrb_input.rb・fmrb_web.rb と同じ言葉)。`launch(path)` は sim だけ (debug server の spawn)。ブラウザ版はランチャーから開く (`open_app(path, web_index:)`)。
+- 待つ: 時間ではなく画面で待つ。`wait_stable(quiet: 1.0)` (その秒数だけ画面が変わらなくなるまで)、`wait_change(rect)` (直前の入力の前の画面、か `mark` した画面から変わるまで)、`wait_until("説明") { |img| ... }`・`wait_pixel(x, y, [r, g, b])`、`wait_log(/re/)` (sim のコアのログ)。どれも上限の秒数を持ち、超えたら場面が落ちる。`pause(ms)` は最後の手段。
+- `shot(名前 = nil, quiet:, timeout:, rect:)`: 画面が落ち着くのを待ち、基準があればそれと同じになるまで最大 timeout 秒 (既定 8) 待ってから比べる。1 つの場面で何枚撮ってもよい (名前を付ける)。
+- 隠す範囲: `mask(x, y, w, h)` はその場面のすべての比較と待ちから外す。helpers.rb の `before_scene` が全場面でメニューバーの時計 (日付と秒、右端から 90 px) と、置いたポインタの所を隠す。
+- 各場面はデスクトップに何も開いていない状態から始まる。場面の後で、道具は場面が開いたアプリを閉じ (sim はプロセスの一覧で、ブラウザ版はページの読み直しで)、**デスクトップが起動直後の画面と画素で同じに戻ること**を確認する。戻らないとその場面が落ちる (ダイアログを閉じた跡が残る不具合を拾う)。デスクトップのダイアログ (メニュー・ランチャー・Config) は場面の中で自分で閉じる。
+- テーマが違う: sim は Light、ブラウザ版は Cyberpunk (設定の既定)。窓の題の色・ボタンの色は helpers.rb の `title_rgb`・`button_rgb` が構成ごとに返す。
+
+### 9.2 基準と落ちたとき
+
+- 基準は `test/regress/screens/baseline/<構成>/<場面>.png` (git に入れる。28 枚で 150 KB ほど)。今回の写しは `tmp/regress/screens/out/`、差分の絵は `tmp/regress/screens/diff/` (基準を灰色に、違う画素を赤紫、隠した範囲を紺で塗ったもの)、結果の一覧は `tmp/regress/screens/results.json`、sim のコアのログは `tmp/regress/screens/<構成>.log`。
+- 落ちたら差分の絵と写しを見る。意図した変化なら、人が確認してから `rake regress:screens:update` (前回の結果の落ちた・新しい写しだけを基準に写す。流し直さない)。
+- 場面を足したら一度流すと `NEW ... no baseline` と出る。写しを見て、思ったとおりなら `rake regress:screens:update`。
+- 場面を書くときは `--attach`: sim を `--keep` を付けて流すと最後の構成の sim を起こしたまま (build/ も退避したまま) 終わるので、`ruby tools/regress/screens.rb --attach modern --scene <名前>` を繰り返す。済んだら `docker compose ... down` と `ruby tools/regress/size.rb --restore`。
+
+### 9.3 画面の比較で分からないこと
+
+- 音、実機の入力、表示の後段 (HDMI・NTSC)、実機だけの初期化。sim とブラウザ版の画面は実機と同じ描画の部品 (LovyanGFX) を通るが、Retro の実機は WROVER の側で描くので、Retro の実機の画素は見ていない。
+- 時計の中身と日付 (隠している)。
 
