@@ -28,6 +28,7 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 - 端末と画面の大きさは `tools/regress/targets.rb` の 1 か所にある。1 行 1 端末: 名前・種類 (modern / retro / mini)・画面の大きさ・高解像度の全画面 (あれば)・全画面の余白・窓の既定の大きさ・日本語フォントの有無・`config/` の system_conf と storage_exclude・ファームの FMRB_HW_TARGET (`firmware`、ブラウザ版は無し) とそのビルドの設定 (`build`)・実機のつなぎ方 (`serial`、8 章)。
 - `firmware` のある端末は `rake regress:size ALL=1` (7 章) の表にも入る (既定で作るのは `size_default` の付いた S3・P4 の 1 台ずつ)。ファームの設定は `FIRMWARE_ENV` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ) に端末ごとの `build` を重ねたもので、`.env` には左右されない。Rakefile の BOARD_BUILD_DEFAULTS と食い違うと `rake regress:size` が止まる。
 - **端末を 1 台足すときは、この一覧に 1 行足す**。次の `rake regress` でその端末の記録が「基準が無い」と出るので、記録を見て `rake regress:update` する。
+- 実機の起動ログ (8 章) と sim の台本 (7.2) の基準と幅は、手で数回流して見比べずに calibrate で取る: `rake regress:boot:calibrate BOARD=<端末>` → 数行の要約を読む → `APPLY=1` (8.1)。
 - 画面が同じ端末 (Tab5・NARYAv4・ブラウザ版) は同じ絵になるので、1 組の記録を共有する (端末の組、`modern-426x240` のような名前)。新しい大きさの端末だけが記録を増やす。端末が増えても確認の手間は大きさの種類の分しか増えない。
 - どの場面をどの端末で描くか: その端末の storage_exclude がアプリのファイルを外していれば描かない (Retro は walk_scroller と麻雀、StickS3・AtomS3R は app/game・app/demo を外す)。それに加えて場面ごとに条件を書ける (`on:`)。
 
@@ -82,6 +83,8 @@ rake regress:run                 # sim (Retro・Modern) で決まった台本を
 rake regress:run ONLY=modern     # 片方だけ
 rake regress:run TABLE=1         # sim を起こさずに、前回の結果から表だけ出す
 rake regress:run:update          # 前回の結果を基準にする
+rake regress:run:calibrate ONLY=modern [RUNS=5]   # 1 回作って台本を RUNS 回流し、揺れと幅の案を出す (RUNS=3 で 3 分ほど)
+rake regress:run:calibrate APPLY=1 ONLY=modern    # 前回の calibrate を基準と幅にする (regress:run:calibrate:apply も同じ)
 ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避した build/ を戻す
 ```
 
@@ -104,6 +107,8 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 - Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → アプリ 4 つ (kamon・MML・StackChan Remote・Spinel Hello) を順に起動 → 控え (running) → 閉じる → 控え (closed)。控えは debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
 - 結果は `tmp/regress/sim/<種類>.json` とコアのログ (`<種類>.log`)。基準は `test/regress/sim_baseline.json`。
 - 比べ方 (幅): 起動したアプリ・デスクトップの使用量は 512 B、カーネルとサービスホスト (自分の GC の都合で動く) は 4 KB か 3% の大きい方、スタックの空きは 512 B、コンパイル直後は 256 B まで動いてよい。悪い向き (使用量が増える・空きが減る) に幅を超えたら落ちる。閉じた直後のカーネルの使用量は比べない (ごみを集めたかどうかで 40 KB 動く)。幅の根拠は `report/rg3b.md`。
+- 幅は種類ごとに基準の json の `tolerance` が既定で、種類 (retro・modern) ごとの `families.<種類>.tolerance` があればそれが勝つ (calibrate の APPLY=1 が書く)。
+- **台本や構成を変えて揺れ方が変わったとき**: `rake regress:run:calibrate ONLY=<種類>` → 要約を読む → `APPLY=1`。要約の読み方は 8.1 と同じ。sim では幅の案は絶対値の部分だけで、割合の部分 (カーネル・サービスホストの 3%) は今の値のまま。比べない数 (閉じた直後のカーネル) の揺れも `not compared:` の行に出る。結果は `tmp/regress/sim/<種類>.calibrate.json`、各回のコアのログは `<種類>.calibrate.<n>.log`。
 - sim で取れないもの: 起動ログの M1| (Linux のビルドは出さない) と周期ダンプの IRAM free (sim では周期ダンプが出ない)。これらは実機の起動の確認 (RG4) で見る。
 
 ### 7.3 落ちたとき
@@ -118,7 +123,9 @@ rake regress:boot BOARD=naryav4          # ファームを作り、app の区画
 rake regress:boot BOARD=naryav4 FLASH=0  # 焼かずに、今入っているファームの起動だけ見る (40 秒ほど)
 rake regress:boot BOARD=naryav4 TABLE=1  # 実機を使わずに、前回の結果から表だけ出す
 rake regress:boot:update BOARD=naryav4   # 前回の結果を基準にする (5 章の決まりを守る)
-rake regress:boot:test                   # 解析部の試験 (作り物のログ、実機は要らない。rake test・rake regress に入っている)
+rake regress:boot:test                   # 解析部と calibrate の計算の試験 (作り物のログ、実機は要らない。rake test・rake regress に入っている)
+rake regress:boot:calibrate BOARD=naryav4 [RUNS=5]   # 焼かずに RUNS 回起動し、揺れと幅の案を出す (RUNS=3 で 2 分ほど)。FLASH=1 で最初に 1 回だけ焼く
+rake regress:boot:calibrate APPLY=1 BOARD=naryav4    # 前回の calibrate を基準と幅にする (regress:boot:calibrate:apply も同じ。実機は使わない)
 ```
 
 - **実機がつながっていて、使ってよいときだけ流す**。`rake regress`・`rake regress:full` には入らない。`BOARD=` は targets.rb の名前か FMRB_HW_TARGET (省略すると環境変数の FMRB_HW_TARGET)。ポートは targets.rb の USB の VID:PID で探す。同じ VID:PID の端末が 2 台あるとき (Tab5・StickS3・AtomS3R は 303a:1001 で同じ) は `PORT=/dev/ttyACMx` で指定する。
@@ -137,8 +144,36 @@ boot: naryav4 vs baseline 2.1.0-847-g802b16a3-dirty, ok (0.6 min: capture 36s; n
 
 - **落ちるもの**: crash マーカーが 1 つでもある、取っている間に 2 回以上起動した (勝手にリブートした)、`Boot complete`・周期ダンプ・`M1|` が無い、基準にある `M1|` の段やタスクが無い、基準より悪い向き (空きが減る) に幅を超えた数。幅は M1| の internal 1 KB・largest 8 KB・psram 16 KB、IRAM free 1 KB、stack の空き 384 B (同じファームで 5 回起動した揺れの 2 倍ほど。根拠は `report/rg4.md`)。基準の json の `tolerance` で変えられる。
 - よい向きに幅を超えた数と、基準に無い新しい `M1|` の段は `moved` の行に出るだけ (落ちない)。VM プールは表に出すだけで比べない (カーネルは自分の GC の都合で動く)。
-- 基準があるのは今は P4-Nano (NARYAv4) だけ。ほかの端末は、つないだときに 1 回流し、ログと表を人が見てから `rake regress:boot:update BOARD=<端末>` する。端末を足すときは targets.rb の行に `serial:` (VID:PID・リセットのしかた・ボーレート) を書く。
+- 基準があるのは今は P4-Nano (NARYAv4) だけ。ほかの端末は、つないだときに `rake regress:boot:calibrate BOARD=<端末>` で基準と幅を取る (8.1)。端末を足すときは targets.rb の行に `serial:` (VID:PID・リセットのしかた・ボーレート) を書く。
+- 幅は基準の json の `tolerance` が既定で、端末ごとの `boards.<端末>.tolerance` があればそれが勝つ (calibrate の APPLY=1 が書く。`regress:boot:update` は端末の幅を残す)。
 - 落ちたら全文のログ (`tmp/regress/boot/<端末>.log`) の、落ちた項目の行を見る。内蔵 RAM が減ったなら、ビルドの時点の数 (`rake regress:size`) とどちらで減ったかを比べる (静的な領域が増えたのか、起動中の確保が増えたのか)。
+
+### 8.1 端末を足したとき (calibrate)
+
+端末を足したとき、端末の作りが変わって揺れ方が変わったときは、幅を道具に測らせる。
+
+1. `rake regress:boot:calibrate BOARD=<端末>`: 今入っているファームで RUNS 回 (既定 5) リセットして起動ログを取り、数ごとの揺れ (最大 - 最小) を測る。焼かない (`FLASH=1` なら最初に 1 回だけ app の区画を焼く)。
+2. 出てくる要約を読む:
+
+```
+  kind         items moved  spread (where)                         now            proposal
+  m1_internal     24     5  436 (M1|ble_nimble_port internal)      1,024          1,024
+  m1_largest      24     2  4,096 (M1|ble_nimble_port largest)     8,192          8,192
+  m1_psram        24     0  0                                      16,384         16,384
+  iram_free        1     1  456 (IRAM free)                        1,024          1,024
+  stack_free      11     6  144 (stack fmrb_host)                  384            384
+  boot 8.9-8.9s
+  candidate vs the baseline now: 7 of 84 numbers differ (most: IRAM free +36)
+calibrate: naryav4 3 boots (1.8 min: capture 36-36s x3); tmp/regress/boot/naryav4.calibrate.json
+```
+
+   - 1 行が幅の種類 1 つ: 数の個数、動いた数の個数、一番大きい揺れとその数、今の幅、幅の案。案が今と違う行には `*` が付く。
+   - 幅の案 = 揺れの 2 倍ほどを丸めた値 (内蔵 RAM・IRAM free は 256 B、stack は 128 B 単位)、ただし下限を持つ (internal・IRAM free 512 B、stack 256 B、psram 16 KB)。largest は 4 KB 刻みで動くので揺れそのものを 4 KB に丸め、下限は 8 KB。数回では見えない揺れ (たまにしか起きない確保の順) を下限で受ける。
+   - 基準の案は数ごとの中央値 (偶数回なら小さい方。どれかの回で実際に出た値)。最後の行は今の基準と何個違うか。
+   - crash・リブートのあった回があると `NOT CLEAN` と出て、APPLY は断る。揺れが大きすぎて案が意味を持たない (内蔵 RAM が数 KB 動くなど) ときは、取り込まずに揺れの元を調べる。
+3. 人が要約を見て、よければ `rake regress:boot:calibrate APPLY=1 BOARD=<端末>`。基準と端末の幅が `test/regress/boot_baseline.json` に書かれる (`calibration` に回数と揺れも残る)。5 章の決まりは同じ (基準を変えるのは人が決める)。
+
+sim の台本 (7.2) も同じ形: `rake regress:run:calibrate ONLY=<種類>` → 要約 → `APPLY=1`。
 
 ## 9. 画面の比較 (rake regress:screens)
 
