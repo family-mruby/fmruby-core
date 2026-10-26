@@ -15,6 +15,7 @@
 #include <errno.h>
 
 #include "fmrb_tmpfs_posix.h"
+#include "fmrb_hal_file_layout.h"
 
 const char* TAG = "file_posix";
 
@@ -63,9 +64,6 @@ static fmrb_dir_handle_t *s_open_dirs = NULL;
         (h)->prev = (h)->next = NULL;                       \
     } while (0)
 
-// Base path for file operations - mount data/ directory
-#define BASE_PATH "flash"
-
 // Check if handle is a standard stream
 static bool is_std_stream(fmrb_file_t handle) {
     return (handle == FMRB_STDIN_HANDLE ||
@@ -81,31 +79,241 @@ static FILE* get_std_stream_fp(fmrb_file_t handle) {
     return NULL;
 }
 
-// Resolve a virtual path to the underlying VFS path. POSIX has no SD/flash
-// alias table; everything is rooted under BASE_PATH (the local "flash"
-// directory) so the dev environment mirrors the on-device "/" namespace.
+// ---------------------------------------------------------------------------
+// The namespace table (fmrb_hal_file_layout.h).
+//
+// One resolver, two tables. Each entry names a top-level place in the Family
+// mruby namespace and the host root it lives under; the host path is that
+// root followed by the whole virtual path, so every root is a tree shaped
+// like the namespace itself. The first entry whose top matches (at a '/'
+// boundary) wins, so the more specific places come first; "" matches
+// everything.
+//
+// What a write may touch is part of the same entry, so the checks below ask
+// the table rather than spell places out.
+
+typedef enum {
+    ROOT_SYSTEM = 0,   // distribution tree (flat: the writable flash/)
+    ROOT_USER,         // the user's files
+    ROOT_CACHE,        // things that can be rebuilt
+    ROOT_HOST,         // the host's own files, passed through (L7, unused)
+    ROOT_COUNT
+} fs_root_t;
+
+typedef struct {
+    const char *top;
+    fs_root_t   root;
+    bool        read_only;
+} fs_mount_t;
+
+// The simulation and the browser: everything in the one writable flash/.
+static const fs_mount_t s_flat_table[] = {
+    { "",         ROOT_SYSTEM, false },
+};
+
+// The native program (doc/linux_native/plan.md). /data is the cache rather
+// than the distribution: nothing in it is shipped, and the desktop syncs its
+// wallpaper and icons there for the graphics side, which is a rebuildable
+// copy. A ROOT_HOST entry ("/mnt/host" onto the user's home, say) is where
+// the host's own files will be shown; which and how writable is L7's call,
+// so there is none yet.
+static const fs_mount_t s_layered_table[] = {
+    { "/app/usr", ROOT_USER,   false },
+    { "/home",    ROOT_USER,   false },
+    { "/etc",     ROOT_USER,   false },
+    { "/var",     ROOT_CACHE,  false },
+    { "/cache",   ROOT_CACHE,  false },
+    { "/data",    ROOT_CACHE,  false },
+    { "/tmp",     ROOT_CACHE,  false },
+    { "",         ROOT_SYSTEM, true  },
+};
+
+// The top-level names the layered table puts outside the distribution tree:
+// a listing of "/" (or "/app") has to show them even where the distribution
+// has no directory of that name (fmrb_hal_file_virtual_children).
+static const char *const s_layered_root_children[] = {
+    "home", "etc", "var", "cache", "data", "tmp",
+};
+static const char *const s_layered_app_children[] = { "usr" };
+
+#define FS_ROOT_MAX 384
+
+static const fs_mount_t *s_table = s_flat_table;
+static size_t s_table_len = sizeof(s_flat_table) / sizeof(s_flat_table[0]);
+static char s_roots[ROOT_COUNT][FS_ROOT_MAX] = { "flash", "flash", "flash", "" };
+static char s_etc_seed[FS_ROOT_MAX + 8];
+static bool s_layered = false;
+
+static fmrb_err_t copy_root(char *dst, const char *src) {
+    if (src == NULL || src[0] == '\0') {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    int n = snprintf(dst, FS_ROOT_MAX, "%s", src);
+    if (n < 0 || n >= FS_ROOT_MAX) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    // A trailing '/' would double up with the virtual path's leading one.
+    while (n > 1 && dst[n - 1] == '/') {
+        dst[--n] = '\0';
+    }
+    return FMRB_OK;
+}
+
+fmrb_err_t fmrb_hal_file_set_layout(const fmrb_hal_file_layout_t *layout) {
+    if (layout == NULL ||
+        copy_root(s_roots[ROOT_SYSTEM], layout->system_root) != FMRB_OK ||
+        copy_root(s_roots[ROOT_USER], layout->user_root) != FMRB_OK ||
+        copy_root(s_roots[ROOT_CACHE], layout->cache_root) != FMRB_OK) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (layout->etc_seed != NULL) {
+        if (copy_root(s_etc_seed, layout->etc_seed) != FMRB_OK) {
+            return FMRB_ERR_INVALID_PARAM;
+        }
+    } else {
+        snprintf(s_etc_seed, sizeof(s_etc_seed), "%s/etc", s_roots[ROOT_SYSTEM]);
+    }
+    s_roots[ROOT_HOST][0] = '\0';
+    s_table = s_layered_table;
+    s_table_len = sizeof(s_layered_table) / sizeof(s_layered_table[0]);
+    s_layered = true;
+    return FMRB_OK;
+}
+
+// Collapse "//", "." and ".." in a virtual path, making it absolute. ".."
+// stops at the root, so no virtual path can name a host path above the root
+// it resolves under. Only the layered table normalizes: the flat one keeps
+// passing paths through exactly as it always has.
+static bool normalize_virtual(const char *in, char *out, size_t out_len) {
+    if (out_len < 2) {
+        return false;
+    }
+    size_t o = 0;
+    out[o++] = '/';
+    const char *p = in;
+    while (*p) {
+        while (*p == '/') p++;
+        if (*p == '\0') break;
+        const char *seg = p;
+        while (*p && *p != '/') p++;
+        size_t len = (size_t)(p - seg);
+        if (len == 1 && seg[0] == '.') {
+            continue;
+        }
+        if (len == 2 && seg[0] == '.' && seg[1] == '.') {
+            while (o > 1 && out[o - 1] != '/') o--;   // drop the last segment
+            if (o > 1) o--;                           // and its slash
+            continue;
+        }
+        if (o > 1) {
+            if (o + 1 >= out_len) return false;
+            out[o++] = '/';
+        }
+        if (o + len >= out_len) return false;
+        memcpy(out + o, seg, len);
+        o += len;
+    }
+    out[o] = '\0';
+    return true;
+}
+
+static bool top_matches(const char *path, const char *top) {
+    size_t n = strlen(top);
+    return strncmp(path, top, n) == 0 && (path[n] == '\0' || path[n] == '/');
+}
+
+// The table entry a normalized virtual path falls under.
+static const fs_mount_t *lookup_mount(const char *norm) {
+    for (size_t i = 0; i < s_table_len; i++) {
+        if (s_table[i].top[0] == '\0' || top_matches(norm, s_table[i].top)) {
+            return &s_table[i];
+        }
+    }
+    return &s_table[s_table_len - 1];
+}
+
+// Resolve a virtual path to the host path. The flat table keeps the shape the
+// simulation has always had ("flash" + path, relative paths under flash/);
+// the layered one normalizes first and then picks the root from the table.
 fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
                                       char *out, size_t out_len) {
     if (virtual_path == NULL || out == NULL || out_len == 0) {
         return FMRB_ERR_INVALID_PARAM;
     }
-    if (virtual_path[0] == '/') {
-        snprintf(out, out_len, "%s%s", BASE_PATH, virtual_path);
+    int n;
+    if (!s_layered) {
+        const char *base = s_roots[ROOT_SYSTEM];
+        if (virtual_path[0] == '/') {
+            n = snprintf(out, out_len, "%s%s", base, virtual_path);
+        } else {
+            n = snprintf(out, out_len, "%s/%s", base, virtual_path);
+        }
     } else {
-        snprintf(out, out_len, "%s/%s", BASE_PATH, virtual_path);
+        char norm[512];
+        if (!normalize_virtual(virtual_path, norm, sizeof(norm))) {
+            return FMRB_ERR_INVALID_PARAM;
+        }
+        const fs_mount_t *m = lookup_mount(norm);
+        const char *root = s_roots[m->root];
+        if (root[0] == '\0') {
+            return FMRB_ERR_NOT_FOUND;
+        }
+        n = snprintf(out, out_len, "%s%s", root, strcmp(norm, "/") == 0 ? "" : norm);
+    }
+    if (n < 0 || (size_t)n >= out_len) {
+        return FMRB_ERR_INVALID_PARAM;
     }
     return FMRB_OK;
 }
 
-// Internal alias for legacy callsites in this file.
-static inline void build_path(const char *path, char *full_path, size_t max_len) {
-    fmrb_hal_file_resolve_path(path, full_path, max_len);
+bool fmrb_hal_file_path_is_read_only(const char *virtual_path) {
+    if (virtual_path == NULL || !s_layered) {
+        return false;
+    }
+    char norm[512];
+    if (!normalize_virtual(virtual_path, norm, sizeof(norm))) {
+        return true;
+    }
+    return lookup_mount(norm)->read_only;
 }
 
-// POSIX dev environment has no SD card and no virtual mount points.
+// Internal alias for legacy callsites in this file.
+static inline void build_path(const char *path, char *full_path, size_t max_len) {
+    if (fmrb_hal_file_resolve_path(path, full_path, max_len) != FMRB_OK && max_len > 0) {
+        full_path[0] = '\0';
+    }
+}
+
+// Refuse a change to the read-only part of the namespace, and say so.
+#define REFUSE_IF_READ_ONLY(path) do {                                  \
+        if (fmrb_hal_file_path_is_read_only(path)) {                    \
+            FMRB_LOGW(TAG, "%s: read-only (the distribution tree)", (path)); \
+            return FMRB_ERR_READ_ONLY;                                  \
+        }                                                               \
+    } while (0)
+
+// The flat table has no SD card and no virtual mount points. The layered one
+// lists the places it keeps outside the distribution tree under "/" and
+// "/app", so a directory listing shows them whichever tree holds the rest.
 const char *const *fmrb_hal_file_virtual_children(const char *virtual_path,
                                                   size_t *out_count) {
-    (void)virtual_path;
+    if (s_layered && virtual_path != NULL) {
+        char norm[512];
+        if (normalize_virtual(virtual_path, norm, sizeof(norm))) {
+            if (strcmp(norm, "/") == 0) {
+                if (out_count) {
+                    *out_count = sizeof(s_layered_root_children) / sizeof(s_layered_root_children[0]);
+                }
+                return s_layered_root_children;
+            }
+            if (strcmp(norm, "/app") == 0) {
+                if (out_count) {
+                    *out_count = sizeof(s_layered_app_children) / sizeof(s_layered_app_children[0]);
+                }
+                return s_layered_app_children;
+            }
+        }
+    }
     if (out_count) *out_count = 0;
     return NULL;
 }
@@ -167,6 +375,99 @@ static int mkdir_recursive(const char *path) {
     return 0;
 }
 
+// Copy one host directory tree into another (the first start's /etc).
+// Bounded depth; regular files and directories only.
+static int copy_tree(const char *src, const char *dst, int depth) {
+    if (depth > 8) {
+        return -1;
+    }
+    if (mkdir_recursive(dst) != 0) {
+        return -1;
+    }
+    DIR *dir = opendir(src);
+    if (dir == NULL) {
+        return -1;
+    }
+    int err = 0;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+            continue;
+        }
+        char from[1024];
+        char to[1024];
+        snprintf(from, sizeof(from), "%s/%s", src, ent->d_name);
+        snprintf(to, sizeof(to), "%s/%s", dst, ent->d_name);
+        struct stat st;
+        if (stat(from, &st) != 0) {
+            continue;
+        }
+        if (S_ISDIR(st.st_mode)) {
+            if (copy_tree(from, to, depth + 1) != 0) err = -1;
+            continue;
+        }
+        if (!S_ISREG(st.st_mode)) {
+            continue;
+        }
+        FILE *in = fopen(from, "rb");
+        FILE *out = in ? fopen(to, "wb") : NULL;
+        if (in == NULL || out == NULL) {
+            err = -1;
+        } else {
+            char buf[4096];
+            size_t n;
+            while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+                if (fwrite(buf, 1, n, out) != n) {
+                    err = -1;
+                    break;
+                }
+            }
+        }
+        if (in) fclose(in);
+        if (out) fclose(out);
+    }
+    closedir(dir);
+    return err;
+}
+
+// Make the directory a virtual path resolves to (an empty store's /home).
+static void ensure_virtual_dir(const char *virtual_path) {
+    char host[512];
+    build_path(virtual_path, host, sizeof(host));
+    if (host[0] != '\0' && mkdir_recursive(host) != 0) {
+        FMRB_LOGW(TAG, "cannot create %s: %s", host, strerror(errno));
+    }
+}
+
+// The layered table's first start: the roots outside the distribution tree
+// are made, and /etc is filled from the seed when the user has none yet.
+// Settings added by a later release are not merged in here (the packaging
+// stage does that, from system_conf.factory.toml).
+static fmrb_err_t init_layered_roots(void) {
+    if (mkdir_recursive(s_roots[ROOT_USER]) != 0 || mkdir_recursive(s_roots[ROOT_CACHE]) != 0) {
+        FMRB_LOGE(TAG, "cannot create the user (%s) or cache (%s) root: %s",
+                  s_roots[ROOT_USER], s_roots[ROOT_CACHE], strerror(errno));
+        return FMRB_ERR_FAILED;
+    }
+    char etc[512];
+    build_path("/etc", etc, sizeof(etc));
+    struct stat st;
+    if (stat(etc, &st) != 0) {
+        if (copy_tree(s_etc_seed, etc, 0) == 0) {
+            FMRB_LOGI(TAG, "first start: %s copied from %s", etc, s_etc_seed);
+        } else {
+            FMRB_LOGW(TAG, "first start: copying %s to %s failed", s_etc_seed, etc);
+        }
+    }
+    ensure_virtual_dir("/app/usr");
+    ensure_virtual_dir("/var");
+    ensure_virtual_dir("/cache");
+    ensure_virtual_dir("/data");
+    FMRB_LOGI(TAG, "namespace: system=%s (read-only) user=%s cache=%s",
+              s_roots[ROOT_SYSTEM], s_roots[ROOT_USER], s_roots[ROOT_CACHE]);
+    return FMRB_OK;
+}
+
 // Initialize file system
 fmrb_err_t fmrb_hal_file_init(void) {
     // Create mutex for file operations
@@ -175,8 +476,14 @@ fmrb_err_t fmrb_hal_file_init(void) {
         return FMRB_ERR_NO_MEMORY;
     }
 
-    // Create base directory if it doesn't exist
-    if (mkdir_recursive(BASE_PATH) != 0 && errno != EEXIST) {
+    if (s_layered) {
+        if (init_layered_roots() != FMRB_OK) {
+            fmrb_semaphore_delete(s_file_mutex);
+            s_file_mutex = NULL;
+            return FMRB_ERR_FAILED;
+        }
+    } else if (mkdir_recursive(s_roots[ROOT_SYSTEM]) != 0 && errno != EEXIST) {
+        // Create base directory if it doesn't exist
         fmrb_semaphore_delete(s_file_mutex);
         s_file_mutex = NULL;
         return FMRB_ERR_FAILED;
@@ -208,6 +515,10 @@ void fmrb_hal_file_deinit(void) {
 fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
     if (path == NULL || out_handle == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC | FMRB_O_APPEND)) {
+        REFUSE_IF_READ_ONLY(path);
     }
 
     LOCK();
@@ -412,6 +723,8 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    REFUSE_IF_READ_ONLY(path);
+
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
 
@@ -430,6 +743,9 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
     if (old_path == NULL || new_path == NULL) {
         return FMRB_ERR_INVALID_PARAM;
     }
+
+    REFUSE_IF_READ_ONLY(old_path);
+    REFUSE_IF_READ_ONLY(new_path);
 
     char old_full_path[512];
     char new_full_path[512];
@@ -511,11 +827,13 @@ fmrb_err_t fmrb_hal_file_mkdir(const char *path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    REFUSE_IF_READ_ONLY(path);
+
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
 
     // The device's /tmp is flat, so nothing may be created inside it.
-    if (fmrb_tmpfs_owns_path(full_path) && strcmp(full_path, "flash" FMRB_TMPFS_MOUNT) != 0) {
+    if (fmrb_tmpfs_owns_path(full_path) && strcmp(full_path, fmrb_tmpfs_host_dir()) != 0) {
         FMRB_LOGW(TAG, "%s: /tmp holds files, not subdirectories", path);
         return FMRB_ERR_NOT_SUPPORTED;
     }
@@ -531,6 +849,8 @@ fmrb_err_t fmrb_hal_file_rmdir(const char *path) {
     if (path == NULL) {
         return FMRB_ERR_INVALID_PARAM;
     }
+
+    REFUSE_IF_READ_ONLY(path);
 
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
@@ -705,6 +1025,8 @@ fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    REFUSE_IF_READ_ONLY(path);
+
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
 
@@ -723,6 +1045,8 @@ fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr) {
     if (path == NULL) {
         return FMRB_ERR_INVALID_PARAM;
     }
+
+    REFUSE_IF_READ_ONLY(path);
 
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));

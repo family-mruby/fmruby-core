@@ -29,6 +29,9 @@
 #include "fmrb_attr.h"
 #include "fmrb_audio.h"
 #include "fmrb_kernel.h"
+#ifdef FMRB_PLATFORM_HOSTED
+#include "fmrb_hal_file.h"
+#endif
 
 static const char *TAG = "audio_p4";
 
@@ -133,6 +136,29 @@ static void wav_release_locked(void) {
 // Read `path` (LittleFS-relative) and hand its samples to the mixer.
 // Returns 0 on success; every refusal logs exactly one line and leaves
 // whatever was already playing alone.
+void audio_p4_resolve_path(const char *path, int len, char *out, size_t out_size) {
+    if (len < 0) len = (int)strlen(path);
+#ifdef FMRB_PLATFORM_HOSTED
+    char vpath[192];
+    snprintf(vpath, sizeof(vpath), "%.*s", len, path);
+    if (fmrb_hal_file_resolve_path(vpath, out, out_size) != FMRB_OK && out_size > 0) {
+        out[0] = '\0';
+    }
+#else
+    // App paths live under /flash, except the ones that name another mount.
+    // /tmp is a filesystem of its own (PSRAM, registered with the VFS), and
+    // that is where anything big and short-lived belongs -- the tts service
+    // caches its speech there rather than writing 200 KB of WAV to the flash
+    // for every sentence. Prefixing those with /flash would look for a
+    // directory that does not exist.
+    if (len >= 5 && strncmp(path, "/tmp/", 5) == 0) {
+        snprintf(out, out_size, "%.*s", len, path);
+    } else {
+        snprintf(out, out_size, AUDIO_P4_FLASH_BASE "%.*s", len, path);
+    }
+#endif
+}
+
 int audio_p4_engine_play_wav(const char *path) {
     if (!g_engine_ready) return -1;
     if (!path || path[0] == '\0') {
@@ -140,18 +166,8 @@ int audio_p4_engine_play_wav(const char *path) {
         return -1;
     }
 
-    // App paths live under /flash, except the ones that name another mount.
-    // /tmp is a filesystem of its own (PSRAM, registered with the VFS), and
-    // that is where anything big and short-lived belongs -- the tts service
-    // caches its speech there rather than writing 200 KB of WAV to the flash
-    // for every sentence. Prefixing those with /flash would look for a
-    // directory that does not exist.
     char full_path[256];
-    if (strncmp(path, "/tmp/", 5) == 0) {
-        snprintf(full_path, sizeof(full_path), "%s", path);
-    } else {
-        snprintf(full_path, sizeof(full_path), AUDIO_P4_FLASH_BASE "%s", path);
-    }
+    audio_p4_resolve_path(path, -1, full_path, sizeof(full_path));
 
     FILE *fp = fopen(full_path, "rb");
     if (!fp) {
@@ -228,7 +244,7 @@ int audio_p4_engine_nsf_play(const char *path, int track) {
     }
 
     char full_path[256];
-    snprintf(full_path, sizeof(full_path), AUDIO_P4_FLASH_BASE "%s", path);
+    audio_p4_resolve_path(path, -1, full_path, sizeof(full_path));
     FMRB_LOGI(TAG, "NSF play: %s track=%d", full_path, track);
 
     engine_lock();

@@ -16,6 +16,9 @@ typedef enum {
     FMRB_ERR_NOT_FOUND = -7,
     FMRB_ERR_INVALID_STATE = -8,
     FMRB_ERR_NO_RESOURCE = -9,
+    // A write, delete or rename aimed at a read-only part of the namespace
+    // (the native build's distribution tree, doc/linux_native/).
+    FMRB_ERR_READ_ONLY = -10,
 } fmrb_err_t;
 
 #ifdef __cplusplus

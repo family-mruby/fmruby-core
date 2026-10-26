@@ -1,6 +1,11 @@
 /*
 ** dir_hal.c - Directory HAL for ESP32 (ESP-IDF VFS)
 **
+** Also the directory HAL of the native Linux build (doc/linux_native/),
+** whose namespace is spread over several host roots by the same resolver;
+** there the mruby-dir posix port (flat "flash/" prefix) is dropped by the
+** name-only gem hal-dir-fmrb.
+**
 ** ESP-IDF VFS provides POSIX directory APIs (opendir/readdir/closedir/mkdir/
 ** rmdir/chdir/getcwd/stat) but lacks chroot(), seekdir(), and telldir().
 **
@@ -37,7 +42,12 @@
 #include "hw_proxy_internal.h"
 #endif
 
+// Room for a resolved path. The device's are "/flash/..." and short; the
+// native build's roots are absolute host directories, so it passes a larger
+// bound.
+#ifndef DIR_HAL_PATH_MAX
 #define DIR_HAL_PATH_MAX 128
+#endif
 
 // Largest synthetic child list we dedup against. The tables in fmrb_hal are
 // {"mnt","tmp"} for "/" and {"sd"} for "/mnt"; 8 is permanent headroom.
@@ -214,6 +224,10 @@ mrb_hal_dir_mkdir(mrb_state *mrb, const char *path, int mode)
     errno = EEXIST;
     return -1;
   }
+  if (fmrb_hal_file_path_is_read_only(path)) {
+    errno = EROFS;
+    return -1;
+  }
   char resolved[DIR_HAL_PATH_MAX];
   if (fmrb_hal_file_resolve_path(path, resolved, sizeof(resolved)) != FMRB_OK) {
     return -1;
@@ -231,6 +245,10 @@ mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
   // Synthetic mount-point parents are not removable.
   if (fmrb_hal_file_virtual_children(path, NULL) != NULL) {
     errno = EPERM;
+    return -1;
+  }
+  if (fmrb_hal_file_path_is_read_only(path)) {
+    errno = EROFS;
     return -1;
   }
   char resolved[DIR_HAL_PATH_MAX];

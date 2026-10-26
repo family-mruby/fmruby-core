@@ -2,8 +2,9 @@
  * /tmp on the Linux dev build.
  *
  * The device keeps /tmp in RAM (platform/esp32/fmrb_tmpfs_esp32.c). Here it is
- * a host directory under the same "flash" root the rest of the namespace uses,
- * which the POSIX path resolver already reaches without a special case. Two
+ * a host directory: wherever the POSIX path resolver puts /tmp -- flash/tmp in
+ * the simulation and the browser, the cache root on the native build -- so the
+ * resolver reaches it without a special case. Two
  * behaviours have to be reproduced by hand so the simulator is a fair test of
  * the device:
  *
@@ -25,20 +26,27 @@
 #include <errno.h>
 
 #include "fmrb_tmpfs.h"
+#include "fmrb_hal_file.h"
 #include "fmrb_log.h"
 
 static const char *TMPFS_TAG = "fmrb_tmpfs";
 
-/* Same root as fmrb_hal_file_posix's BASE_PATH; kept local so this file does
-   not reach into the HAL's internals. */
-#define TMPFS_HOST_DIR "flash" FMRB_TMPFS_MOUNT
+/* Where /tmp lives on the host, asked of the resolver once at init (so this
+   file does not reach into the HAL's internals). */
+static char s_host_dir[512];
+#define TMPFS_HOST_DIR s_host_dir
+
+const char *fmrb_tmpfs_host_dir(void)
+{
+    return s_host_dir;
+}
 
 static size_t s_used = 0;
 
 /* True when a resolved host path lives under the /tmp mount. */
 bool fmrb_tmpfs_owns_path(const char *host_path)
 {
-    if (host_path == NULL) {
+    if (host_path == NULL || s_host_dir[0] == '\0') {
         return false;
     }
     size_t n = strlen(TMPFS_HOST_DIR);
@@ -93,6 +101,11 @@ size_t fmrb_tmpfs_file_size(const char *host_path)
 
 fmrb_err_t fmrb_tmpfs_init(void)
 {
+    if (fmrb_hal_file_resolve_path(FMRB_TMPFS_MOUNT, s_host_dir, sizeof(s_host_dir)) != FMRB_OK) {
+        s_host_dir[0] = '\0';
+        FMRB_LOGE(TMPFS_TAG, "cannot resolve %s", FMRB_TMPFS_MOUNT);
+        return FMRB_ERR_FAILED;
+    }
     if (mkdir(TMPFS_HOST_DIR, 0755) != 0 && errno != EEXIST) {
         FMRB_LOGE(TMPFS_TAG, "cannot create %s: %s", TMPFS_HOST_DIR, strerror(errno));
         return FMRB_ERR_FAILED;
@@ -107,7 +120,7 @@ fmrb_err_t fmrb_tmpfs_init(void)
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                 continue;
             }
-            char path[512];
+            char path[sizeof(s_host_dir) + sizeof(entry->d_name) + 1];
             snprintf(path, sizeof(path), "%s/%s", TMPFS_HOST_DIR, entry->d_name);
             if (unlink(path) == 0) {
                 removed++;

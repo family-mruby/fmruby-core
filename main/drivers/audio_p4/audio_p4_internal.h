@@ -8,15 +8,15 @@
 #include "audio_commands.h"
 
 // This driver opens sound files with plain fopen() rather than through the
-// fmrb file HAL (the players want a FILE*), so it has to spell the storage
-// root itself. On the device the VFS mounts LittleFS at /flash; the wasm
-// build reaches the same tree through the POSIX HAL's cwd-relative "flash"
-// directory. Same split, same reason, as LOCAL_BASE_PATH in
-// main/kernel/host/host_file_local.c -- and getting it wrong is silent:
-// the file simply fails to open and the music does not play.
-#ifdef FMRB_PLATFORM_WASM
-#define AUDIO_P4_FLASH_BASE "flash"
-#else
+// fmrb file HAL (the players want a FILE*), so it has to turn an app's path
+// into a host path itself: audio_p4_resolve_path() below. On the device the
+// VFS mounts LittleFS at /flash (and /tmp is a mount of its own); the hosted
+// builds (wasm, native) ask the file HAL's resolver, whose table is what puts
+// a native /home in the user's directory and /usr in the distribution tree.
+// Same split, same reason, as build_full_path in
+// main/kernel/host/host_file_local.c -- and getting it wrong is silent: the
+// file simply fails to open and the music does not play.
+#ifndef FMRB_PLATFORM_HOSTED
 #define AUDIO_P4_FLASH_BASE "/flash"
 #endif
 
@@ -37,6 +37,10 @@ void audio_p4_mic_selftest(void);
 // The loudest frequency currently being heard, in Hz (-1 when nothing could be
 // read). One 512-point window through the C FFT.
 int audio_p4_mic_peak_hz(void);
+
+// --- audio_p4_task.c (paths) ---
+// The host path of the first len bytes of an app path (len < 0: all of it).
+void audio_p4_resolve_path(const char *path, int len, char *out, size_t out_size);
 
 // --- audio_p4_handler.c (music track slots) ---
 int audio_p4_store_track(uint32_t music_id, const uint8_t *data, uint32_t size);

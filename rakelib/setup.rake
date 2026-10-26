@@ -138,6 +138,11 @@ task :setup do
   # mrbgem.rake and doc/work_picoruby_merge/instruct_d7_b1_tick.md sec 3.5)
   sh "rm -rf #{mrbgem_path}/hal-task-freertos"
   sh "cp -rf lib/add/hal-task-freertos #{mrbgem_path}/"
+  # hal-dir-fmrb (name-only gem: makes mruby-dir drop its flat "flash/" posix
+  # port; the native build compiles lib/add/hal-esp32-dir/dir_hal.c against
+  # the file HAL's resolver instead -- doc/linux_native/)
+  sh "rm -rf #{mrbgem_path}/hal-dir-fmrb"
+  sh "cp -rf lib/add/hal-dir-fmrb #{mrbgem_path}/"
   # picoruby-asterism-zenoh (Asterism::Zenoh, the Zenoh client:
   # doc/ruby_asterism). Not ours to keep here: like picoruby-ti it comes from
   # a pinned checkout (rake asterism:setup, PICORUBY_ASTERISM_ZENOH_DIR

@@ -84,6 +84,21 @@ fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
                                       char *out, size_t out_len);
 
 /**
+ * @brief Whether a virtual path lies in a read-only part of the namespace.
+ *
+ * True only where the platform keeps a tree it must not change: the native
+ * Linux build's distribution tree (/usr, /lib, /app, ...; doc/linux_native/).
+ * Writes, deletes and renames there fail with FMRB_ERR_READ_ONLY rather than
+ * landing somewhere else. Always false on the devices, the simulation and the
+ * browser, whose storage is one writable volume. Callers that bypass the file
+ * HAL with libc (the directory HAL, the local file receiver) ask this first.
+ *
+ * @param virtual_path Path as seen by user code (must not be NULL).
+ * @return true when the path must not be written.
+ */
+bool fmrb_hal_file_path_is_read_only(const char *virtual_path);
+
+/**
  * @brief Look up the synthetic children of a virtual mount-point directory.
  *
  * Some directories ("/" containing the "mnt" mount-point parent, "/mnt"

@@ -23,3 +23,7 @@ void fmrb_tmpfs_release(size_t bytes);
 
 // Current size of a regular file, 0 when absent.
 size_t fmrb_tmpfs_file_size(const char *host_path);
+
+// The host directory that holds /tmp (the resolver's answer for
+// FMRB_TMPFS_MOUNT, fixed at fmrb_tmpfs_init).
+const char *fmrb_tmpfs_host_dir(void);

@@ -6,6 +6,9 @@
 
 #include "fmrb_log.h"
 #include "fmrb_link_cobs.h"
+#ifdef FMRB_PLATFORM_HOSTED
+#include "fmrb_hal_file.h"
+#endif
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -17,15 +20,52 @@
 
 static const char *TAG = "host_file";
 
-// On the device the VFS mounts LittleFS at /flash; the wasm build reaches
-// the same tree through the POSIX HAL's cwd-relative "flash" directory.
-#ifdef FMRB_PLATFORM_WASM
-#define LOCAL_BASE_PATH "flash"
-#else
+// On the device the VFS mounts LittleFS at /flash. The hosted builds (wasm,
+// native) resolve through the file HAL's table instead: the native build
+// spreads the namespace over several roots (doc/linux_native/), and on wasm
+// the table still says "everything under the cwd-relative flash/".
+#ifndef FMRB_PLATFORM_HOSTED
 #define LOCAL_BASE_PATH "/flash"
-#endif
 #define LOCAL_MAX_PATH  256
+#else
+#define LOCAL_MAX_PATH  512
+#endif
 
+#ifdef FMRB_PLATFORM_HOSTED
+// Copy a /flash-relative path (leading '/' tolerated) out as "/<path>", the
+// form the file HAL resolves.
+static int copy_virtual_path(char *out, size_t out_size,
+                             const char *rel_path, uint16_t path_len)
+{
+    if (!rel_path || path_len == 0 || path_len >= 120) {
+        return -1;
+    }
+
+    const char *p = rel_path;
+    uint16_t len = path_len;
+    if (p[0] == '/') {
+        p++;
+        len--;
+    }
+
+    int written = snprintf(out, out_size, "/%.*s", (int)len, p);
+    if (written < 0 || (size_t)written >= out_size) {
+        return -1;
+    }
+    return 0;
+}
+
+// Build full path from a /flash-relative path (leading '/' tolerated)
+static int build_full_path(char *out, size_t out_size,
+                           const char *rel_path, uint16_t path_len)
+{
+    char vpath[128];
+    if (copy_virtual_path(vpath, sizeof(vpath), rel_path, path_len) != 0) {
+        return -1;
+    }
+    return (fmrb_hal_file_resolve_path(vpath, out, out_size) == FMRB_OK) ? 0 : -1;
+}
+#else
 // Build full path from a /flash-relative path (leading '/' tolerated)
 static int build_full_path(char *out, size_t out_size,
                            const char *rel_path, uint16_t path_len)
@@ -47,6 +87,25 @@ static int build_full_path(char *out, size_t out_size,
     }
     return 0;
 }
+#endif
+
+// Whether the place a write or delete names is the read-only part of the
+// namespace (the native build's distribution tree). Always false on the
+// device, whose storage is one writable volume.
+static bool target_is_read_only(const char *rel_path, uint16_t path_len)
+{
+#ifdef FMRB_PLATFORM_HOSTED
+    char vpath[128];
+    if (copy_virtual_path(vpath, sizeof(vpath), rel_path, path_len) != 0) {
+        return false;
+    }
+    return fmrb_hal_file_path_is_read_only(vpath);
+#else
+    (void)rel_path;
+    (void)path_len;
+    return false;
+#endif
+}
 
 // Create parent directories recursively
 static void ensure_parent_dirs(const char *path)
@@ -55,7 +114,13 @@ static void ensure_parent_dirs(const char *path)
     strncpy(tmp, path, sizeof(tmp) - 1);
     tmp[sizeof(tmp) - 1] = '\0';
 
+#ifdef FMRB_PLATFORM_HOSTED
+    // The resolved root differs per top-level name; walking from the start
+    // only meets existing directories first, which mkdir leaves alone.
+    for (char *p = tmp + 1; *p; p++) {
+#else
     for (char *p = tmp + strlen(LOCAL_BASE_PATH) + 1; *p; p++) {
+#endif
         if (*p == '/') {
             *p = '\0';
             mkdir(tmp, 0755);
@@ -71,6 +136,10 @@ fmrb_err_t host_file_local_write(const char *path, uint16_t path_len,
     if (build_full_path(full_path, sizeof(full_path), path, path_len) != 0) {
         FMRB_LOGE(TAG, "write: invalid path");
         return FMRB_ERR_INVALID_PARAM;
+    }
+    if (target_is_read_only(path, path_len)) {
+        FMRB_LOGE(TAG, "write: %.*s is read-only", (int)path_len, path);
+        return FMRB_ERR_READ_ONLY;
     }
 
     ensure_parent_dirs(full_path);
@@ -144,6 +213,10 @@ fmrb_err_t host_file_local_delete(const char *path, uint16_t path_len)
     char full_path[LOCAL_MAX_PATH];
     if (build_full_path(full_path, sizeof(full_path), path, path_len) != 0) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+    if (target_is_read_only(path, path_len)) {
+        FMRB_LOGE(TAG, "delete: %.*s is read-only", (int)path_len, path);
+        return FMRB_ERR_READ_ONLY;
     }
 
     if (remove(full_path) != 0) {
@@ -231,8 +304,16 @@ static int rmdir_recursive(char *path, size_t path_cap, int depth,
 // WROVER handler: RMDIR is a cache-management operation only).
 static bool path_is_inside_cache(const char *full_path)
 {
+#ifdef FMRB_PLATFORM_HOSTED
+    char prefix[LOCAL_MAX_PATH];
+    if (fmrb_hal_file_resolve_path("/cache", prefix, sizeof(prefix)) != FMRB_OK) {
+        return false;
+    }
+    const size_t plen = strlen(prefix);
+#else
     static const char prefix[] = LOCAL_BASE_PATH "/cache";
     const size_t plen = sizeof(prefix) - 1;
+#endif
     if (strncmp(full_path, prefix, plen) != 0) {
         return false;
     }
