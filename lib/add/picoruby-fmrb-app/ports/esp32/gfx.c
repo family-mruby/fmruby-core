@@ -1049,7 +1049,7 @@ static mrb_value mrb_gfx_video_open(mrb_state *mrb, mrb_value self)
     mrb_bool loop;
     mrb_get_args(mrb, "ziiib", &path, &x, &y, &fps, &loop);
 
-#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_WASM)
+#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
     // Retro has no JPEG decoder and its display backend cannot read this
     // board's filesystem. Answer immediately instead of letting the app wait
     // out a sync timeout on a command the backend will never know.
@@ -1143,7 +1143,7 @@ static mrb_value mrb_gfx_video_control(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &action);
     (void)self;
 
-#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_WASM)
+#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
     (void)action;
     return mrb_nil_value();
 #else
@@ -1170,7 +1170,7 @@ static mrb_value mrb_gfx_video_control(mrb_state *mrb, mrb_value self)
 static mrb_value mrb_gfx_video_status(mrb_state *mrb, mrb_value self)
 {
     (void)self;
-#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_WASM)
+#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
     return mrb_nil_value();
 #else
     uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];

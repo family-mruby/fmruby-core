@@ -1,5 +1,6 @@
 /*
- * fmrb_log_port_wasm.c - the wasm logging backend behind fmrb_log_port.h.
+ * fmrb_log_port_hosted.c - the logging backend behind fmrb_log_port.h for the
+ * hosted builds (wasm and native).
  *
  * The ESP_LOG-compatible surface over printf, with one global runtime level
  * (per-tag levels are not kept: esp_log_level_set("*", ...) sets the global

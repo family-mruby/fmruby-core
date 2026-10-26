@@ -43,6 +43,8 @@ MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
   # It cannot ask FMRB_HW_MODERN -- that means P4 silicon -- nor
   # FMRB_HW_FAMILY_MODERN, which the Linux simulator also sets.
   conf.cc.defines << 'FMRB_PLATFORM_WASM=1'
+  # One process, no ESP-IDF (shared with the native build, doc/linux_native/).
+  conf.cc.defines << 'FMRB_PLATFORM_HOSTED=1'
   # Concurrent app ceiling: the mrbgem ports (picoruby-fmrb-app/kernel) size
   # per-app arrays by it, so it MUST match wasm/CMakeLists.txt.
   conf.cc.defines << 'FMRB_MAX_APPS=32'

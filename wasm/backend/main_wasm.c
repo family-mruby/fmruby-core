@@ -9,9 +9,18 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "input_source.h"
+
 void app_main(void);
 void fmrb_wasm_page_settings_parse(int argc, char **argv);
 void fmrb_wasm_page_settings_apply(void);
+
+/* The browser's input: the page's event ring (input_wasm.c). */
+extern const fmrb_input_source_t fmrb_input_source_wasm;
+const fmrb_input_source_t *const fmrb_input_sources[] = {
+    &fmrb_input_source_wasm,
+    NULL,
+};
 
 #define MAIN_TASK_STACK_BYTES  (256 * 1024)
 #define MAIN_TASK_PRIORITY     5

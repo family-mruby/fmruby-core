@@ -1,13 +1,19 @@
 /*
- * FreeRTOS port for Emscripten (WebAssembly). Cooperative.
+ * Cooperative FreeRTOS port for the hosted builds: the browser (Emscripten /
+ * WebAssembly) and the native Linux program (doc/linux_native/). One port for
+ * both; the only things that differ between them are reading the clock and
+ * sleeping, which go through port_clock.h (port_clock_wasm.c /
+ * port_clock_posix.c).
  *
  * Structure follows the upstream POSIX port (one pthread per task, parked on a
  * condition variable when not running), with the two things that port gets from
  * the operating system replaced:
  *
  *   - Preemption. The POSIX port delivers SIGALRM to the running task's thread
- *     and switches from the handler. wasm has no signal delivery, so there is
- *     none: a task keeps the CPU until it blocks or yields.
+ *     and switches from the handler. wasm has no signal delivery, and the
+ *     native build deliberately uses none (it shares the process with SDL
+ *     and, later, ALSA and wlroots), so there is none: a task keeps the CPU
+ *     until it blocks or yields.
  *
  *   - The tick. Without a timer interrupt nobody calls xTaskIncrementTick(), so
  *     this port derives the tick from the wall clock and feeds the kernel the
@@ -31,8 +37,8 @@
  *     same rule the hardware follows: a tick interrupt cannot land while
  *     interrupts are masked.
  *
- * What a task actually runs on is an Emscripten pthread stack, not the block
- * the kernel allocated for it. The kernel's block is used only to hold this
+ * What a task actually runs on is a pthread stack (an Emscripten one on wasm),
+ * not the block the kernel allocated for it. The kernel's block is used only to hold this
  * port's per-task record (the Thread_t below), the way the POSIX port does it;
  * the rest of it goes untouched. See prvGetStackBytes() for how the requested
  * size is turned into the pthread stack size.
@@ -46,15 +52,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <emscripten/emscripten.h>
-#include <emscripten/threading.h>
-
 #include "FreeRTOS.h"
 #include "task.h"
 /* For TlsDeleteCallbackFunction_t: FreeRTOS.h pulls this in only on ESP_PLATFORM. */
 #include "freertos/idf_additions.h"
 
 #include "wait_for_event.h"
+#include "port_clock.h"
 
 /*-----------------------------------------------------------*/
 
@@ -63,13 +67,24 @@
  * Xtensa/RISC-V frames and go as low as 2KB (mruby_tick), which is not enough
  * for the same C code compiled to wasm. Emscripten's own default is 64KB.
  */
-#ifndef portWASM_MIN_TASK_STACK_BYTES
-    #define portWASM_MIN_TASK_STACK_BYTES    ( 64 * 1024 )
+#ifndef portHOSTED_MIN_TASK_STACK_BYTES
+    #define portHOSTED_MIN_TASK_STACK_BYTES    ( 64 * 1024 )
+#endif
+
+/*
+ * Multiplier applied to the stack size a task asks for. The requests are
+ * device numbers (32-bit frames); a 64-bit build's frames are about twice as
+ * large and glibc's stdio wants more than newlib's, so the native build asks
+ * for a multiple. Address space, not memory: untouched pages are never
+ * backed. 1 on wasm, where the clamp above has always been enough.
+ */
+#ifndef portHOSTED_TASK_STACK_SCALE
+    #define portHOSTED_TASK_STACK_SCALE    ( 1 )
 #endif
 
 /* How long the idle task sleeps before feeding the kernel the elapsed ticks. */
-#ifndef portWASM_IDLE_SLEEP_MS
-    #define portWASM_IDLE_SLEEP_MS    ( 1.0 )
+#ifndef portHOSTED_IDLE_SLEEP_MS
+    #define portHOSTED_IDLE_SLEEP_MS    ( 1.0 )
 #endif
 
 typedef struct THREAD
@@ -122,7 +137,7 @@ static void * prvWaitForStart( void * pvParams );
 static void prvFatalError( const char * pcCall,
                            int iErrno )
 {
-    fprintf( stderr, "wasm port: %s: %s\n", pcCall, strerror( iErrno ) );
+    fprintf( stderr, "hosted port: %s: %s\n", pcCall, strerror( iErrno ) );
     abort();
 }
 
@@ -148,7 +163,7 @@ static BaseType_t prvCatchUpTicks( void )
     xInCatchUp = pdTRUE;
     ullCatchUpCalls++;
 
-    ullDue = ( uint64_t ) ( ( emscripten_get_now() - dTickBaseMs ) / ( double ) portTICK_PERIOD_MS );
+    ullDue = ( uint64_t ) ( ( dPortClockNowMs() - dTickBaseMs ) / ( double ) portTICK_PERIOD_MS );
 
     while( ullTicksFed < ullDue )
     {
@@ -191,7 +206,7 @@ uint64_t ullPortGetTickCatchUpCalls( void )
  */
 void esp_vApplicationIdleHook( void )
 {
-    emscripten_thread_sleep( portWASM_IDLE_SLEEP_MS );
+    vPortClockSleepMs( portHOSTED_IDLE_SLEEP_MS );
 
     if( prvCatchUpTicks() != pdFALSE )
     {
@@ -209,11 +224,11 @@ void esp_vApplicationIdleHook( void )
 static size_t prvGetStackBytes( const StackType_t * pxTopOfStack,
                                 const StackType_t * pxEndOfStack )
 {
-    size_t xBytes = ( size_t ) ( pxTopOfStack - pxEndOfStack );
+    size_t xBytes = ( size_t ) ( pxTopOfStack - pxEndOfStack ) * portHOSTED_TASK_STACK_SCALE;
 
-    if( xBytes < portWASM_MIN_TASK_STACK_BYTES )
+    if( xBytes < portHOSTED_MIN_TASK_STACK_BYTES )
     {
-        xBytes = portWASM_MIN_TASK_STACK_BYTES;
+        xBytes = portHOSTED_MIN_TASK_STACK_BYTES;
     }
 
     return xBytes;
@@ -243,8 +258,9 @@ StackType_t * pxPortInitialiseStack( StackType_t * pxTopOfStack,
 
     pthread_attr_init( &xThreadAttributes );
 
-    /* The task does not run on the kernel's block: Emscripten allocates the
-     * real stack, and only its size comes from the caller's request. */
+    /* The task does not run on the kernel's block: the thread library
+     * allocates the real stack, and only its size comes from the caller's
+     * request. */
     ( void ) pthread_attr_setstacksize( &xThreadAttributes, pxThread->xStackBytes );
 
     vPortEnterCritical();
@@ -270,12 +286,14 @@ BaseType_t xPortStartScheduler( void )
 
     pxSchedulerEndEvent = event_create();
 
-    dTickBaseMs = emscripten_get_now();
+    dTickBaseMs = dPortClockNowMs();
     ullTicksFed = 0;
     xSchedulerStarted = pdTRUE;
 
-    /* Start the first task, then park this thread. It is main()'s thread (a
-     * Worker, under -sPROXY_TO_PTHREAD) and owns nothing the scheduler needs. */
+    /* Start the first task, then park this thread. It owns nothing the
+     * scheduler needs: on wasm it is main()'s thread (a Worker, under
+     * -sPROXY_TO_PTHREAD), on native the thread main() started for the
+     * scheduler (main() itself keeps the SDL loop). */
     pxFirstThread = prvGetThreadFromTask( xTaskGetCurrentTaskHandle() );
     prvResumeThread( pxFirstThread );
 
@@ -510,7 +528,7 @@ static void prvResumeThread( Thread_t * pxThread )
 
 unsigned long ulPortGetRunTime( void )
 {
-    return ( unsigned long ) emscripten_get_now();
+    return ( unsigned long ) dPortClockNowMs();
 }
 
 void vPortSetStackWatchpoint( void * pxStackStart )

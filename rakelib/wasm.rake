@@ -39,47 +39,13 @@ namespace :wasm do
   task :build do
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
-    sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target poc freertos_wasm"
+    sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target poc freertos_hosted"
   end
 
-  # LovyanGFX for the wasm display: the M5GFX copy (same library the Tab5
-  # firmware draws with), fetched shallow and given a wasm platform branch.
-  # Only the sprite/font core is compiled -- no bus, no panel, no touch.
-  M5GFX_REPO = "https://github.com/m5stack/M5GFX"
-  M5GFX_PIN = "d91077b9a607b59404e4e4a49f775c792bfae382" # 2026-08-25
-  M5GFX_DIR = File.join(WASM_DIR, "vendor", "m5gfx")
-
-  def wasm_patch_m5gfx!
-    # Insert a wasm branch at the head of the two platform-selection chains.
-    # The framebuffer platform's common.hpp is already free of Linux
-    # dependencies; its .cpp is not compiled (wasm/backend/lgfx_common_wasm.cpp
-    # provides millis/delay instead).
-    {
-      "src/lgfx/v1/platforms/common.hpp" =>
-        ["#if defined (ESP_PLATFORM)",
-         "#if defined (FMRB_LGFX_WASM)\n\n#include \"framebuffer/common.hpp\"\n\n#elif defined (ESP_PLATFORM)"],
-      "src/lgfx/v1/platforms/device.hpp" =>
-        ["#if defined (ESP_PLATFORM)",
-         "#if defined (FMRB_LGFX_WASM)\n\n// sprite-only build: no bus or panel headers\n\n#elif defined (ESP_PLATFORM)"],
-    }.each do |rel, (from, to)|
-      path = File.join(M5GFX_DIR, rel)
-      src = File.read(path)
-      next if src.include?("FMRB_LGFX_WASM")
-      src.sub!(from) { to } or abort "wasm:setup: anchor not found in #{rel}"
-      File.write(path, src)
-    end
-  end
-
-  desc "Fetch + patch LovyanGFX (M5GFX #{M5GFX_PIN[0, 8]}) for the wasm display"
-  task :setup do
-    unless File.directory?(M5GFX_DIR)
-      sh "git clone --depth 1 #{M5GFX_REPO} #{M5GFX_DIR}"
-      sh "cd #{M5GFX_DIR} && (git checkout #{M5GFX_PIN} 2>/dev/null || " \
-         "(git fetch --depth 1 origin #{M5GFX_PIN} && git checkout #{M5GFX_PIN}))"
-    end
-    wasm_patch_m5gfx!
-    puts "wasm:setup done (#{M5GFX_DIR})"
-  end
+  # LovyanGFX is shared with the native build (rakelib/hosted.rake); the
+  # name stays because the docs and habits say wasm:setup.
+  desc "Fetch + patch LovyanGFX for the wasm display (same as hosted:m5gfx)"
+  task :setup => "hosted:m5gfx"
 
   # "^setup" is the ROOT setup task (a bare :setup here would resolve to
   # wasm:setup, which is the M5GFX fetch). Both are wanted, and the root one
@@ -107,51 +73,11 @@ namespace :wasm do
   # alone therefore linked yesterday's bytecode without a word -- an hour went
   # into a shell command that "did not exist" because of it. This runs the two
   # commands that CMake step runs, for whatever is older than its sources.
+  # The bytecode the hosted builds cannot make themselves, and the libmruby
+  # check before it (rakelib/hosted.rake says why both bit).
   desc "Regenerate stale mruby app/kernel bytecode (the wasm build cannot)"
   task :mrb do
-    # Same trap one level down: the gems under lib/add are compiled into
-    # libmruby, which wasm:core links but never rebuilds. Adding a method to
-    # the app base and building for the browser linked the library from
-    # before it, and the desktop died on the first event with a NoMethodError
-    # it had no way to report. Cheap check, expensive miss.
-    lib_a = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/build",
-                      "family-mruby-wasm/lib/libmruby.a")
-    newest_gem = Dir[File.join(ROOT_DIR, "lib/add/**/*.{rb,c,h}")]
-                 .map { |f| File.mtime(f) }.max
-    if newest_gem && (!File.exist?(lib_a) || File.mtime(lib_a) < newest_gem)
-      puts "wasm:mrb: lib/add is newer than libmruby -- rebuilding it first"
-      Rake::Task["wasm:mruby"].invoke
-    end
-    mrbc = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/bin/mrbc")
-    unless File.exist?(mrbc)
-      puts "wasm:mrb: no #{mrbc} yet -- skipped (a full build makes it)"
-      next
-    end
-    gen = File.join(ROOT_DIR, "tool/debug/gen_combined_rb.py")
-    [File.join(ROOT_DIR, "main/prebuild_scripts/default_app"),
-     File.join(ROOT_DIR, "main/prebuild_scripts/kernel")].each do |dir|
-      Dir[File.join(dir, "*.rb")].sort.each do |rb|
-        # CMake's NAME_WE: the longest extension goes, so shell.app.rb is
-        # "shell" and its mixins live in shell/.
-        name = File.basename(rb).sub(/\..*\z/, "")
-        out_c = File.join(dir, "mrb", "#{name}.c")
-        subdir = File.join(dir, name)
-        sources = [rb]
-        sources += Dir[File.join(subdir, "*.rb")].sort if File.directory?(subdir)
-        newest = sources.map { |f| File.mtime(f) }.max
-        next if File.exist?(out_c) && File.mtime(out_c) >= newest
-        if File.directory?(subdir)
-          combined = File.join(dir, "mrb", "#{name}_combined.rb")
-          map = File.join(dir, "mrb", "#{name}_combined.map.json")
-          sh "python3 #{gen} #{combined} #{map} " \
-             "#{(sources - [rb]).join(' ')} #{rb}"
-          sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
-        else
-          sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
-        end
-        puts "wasm:mrb: #{name} rebuilt"
-      end
-    end
+    hosted_regen_mrb!("wasm:mrb", "family-mruby-wasm", "wasm:mruby")
   end
 
   desc "Build the core firmware for wasm (doc/wasm/ P4a; needs wasm:mruby once)"

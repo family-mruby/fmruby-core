@@ -10,7 +10,8 @@
  * back before it has reached its own event_wait().
  *
  * Under Emscripten these are futexes over the shared memory (Atomics.wait /
- * Atomics.notify), so a parked task's Worker really sleeps.
+ * Atomics.notify), so a parked task's Worker really sleeps; on Linux they are
+ * the same futexes underneath glibc.
  */
 
 #include <assert.h>

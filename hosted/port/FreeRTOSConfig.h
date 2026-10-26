@@ -1,5 +1,5 @@
 /*
- * FreeRTOS configuration for the Emscripten (wasm) port.
+ * FreeRTOS configuration for the cooperative hosted port (wasm and native).
  *
  * The values follow ESP-IDF's generated FreeRTOSConfig.h as resolved by the
  * Linux simulation build (config/sdkconfig.defaults.linux), so that code

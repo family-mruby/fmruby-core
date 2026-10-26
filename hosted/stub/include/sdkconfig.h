@@ -1,5 +1,5 @@
 /*
- * Minimal sdkconfig.h for the Emscripten (wasm) FreeRTOS port.
+ * Minimal sdkconfig.h for the hosted (wasm and native) FreeRTOS port.
  *
  * The vendored kernel is ESP-IDF's copy, so its sources and the esp_additions
  * we vendor with it read CONFIG_* directly. There is no Kconfig here: this file
@@ -8,8 +8,8 @@
  * the IDF defaults it inherits).
  *
  * Anything not listed here is deliberately absent: the kernel treats an
- * undefined CONFIG_* as 0, which is what we want for every IDF service the wasm
- * target does not have.
+ * undefined CONFIG_* as 0, which is what we want for every IDF service the
+ * hosted targets do not have.
  */
 #pragma once
 
@@ -17,10 +17,13 @@
  * some of them with #ifdef, so defining one to 0 would turn the feature on. */
 
 /* The core sources gate POSIX-vs-ESP32 behavior on CONFIG_IDF_TARGET_LINUX,
- * and Emscripten is POSIX enough to take the same side everywhere those
- * branches reach (no IDF drivers, libc time, plain files). The places where
- * the linux side is wrong for wasm are overridden with FMRB_PLATFORM_WASM
- * (boot.c, the display/input/audio backends) -- see doc/wasm/report/p4.md. */
+ * and both hosts (Emscripten, glibc) are POSIX enough to take the same side
+ * everywhere those branches reach (no IDF drivers, libc time, plain files).
+ * The places where the linux side means "the 3-process simulation" and is
+ * wrong for a one-process build are overridden with FMRB_PLATFORM_HOSTED
+ * (boot.c, the display/input/audio paths); what only the browser needs, with
+ * FMRB_PLATFORM_WASM -- see doc/wasm/report/p4a.md and
+ * doc/linux_native/report/l1.md. */
 #define CONFIG_IDF_TARGET_LINUX                   1
 #define CONFIG_FREERTOS_UNICORE                   1
 #define CONFIG_FREERTOS_NUMBER_OF_CORES           1

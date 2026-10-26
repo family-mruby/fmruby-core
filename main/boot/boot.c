@@ -55,7 +55,7 @@
 #endif
 #endif
 
-#ifdef FMRB_PLATFORM_WASM
+#ifdef FMRB_PLATFORM_HOSTED
 #include "display_local_task.h"
 #include "audio_p4.h"
 #endif
@@ -63,7 +63,7 @@
 #include "boot.h"
 
 #ifndef FMRB_PLATFORM_WASM
-#include "fmrb_debugd.h"     // remote-debugger daemon (linux TCP / esp32 BLE)
+#include "fmrb_debugd.h"     // remote-debugger daemon (linux/native TCP, esp32 BLE)
 #endif
 
 static const char *TAG = "boot";
@@ -94,7 +94,7 @@ void fmrb_host_set_ready(void) {
 
 extern int Machine_get_config_int(int type);
 
-#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_RTOS_COOPERATIVE)
 
 #include <unistd.h>
 #include <signal.h>
@@ -275,21 +275,22 @@ static bool init_hardware(void)
         return false;
     }
 
-#ifdef FMRB_PLATFORM_WASM
+#ifdef FMRB_PLATFORM_HOSTED
     // The Modern in-process display task, sprite-only: same receive loop and
     // command interpreter as the Tab5, compositing through the shared software
-    // core, presenting into the RGBA frame the browser reads (doc/wasm/ P4a).
+    // core, presenting through the build's backend (the RGBA frame the browser
+    // reads, doc/wasm/ P4a; the SDL window, doc/linux_native/).
     ret = display_local_task_init();
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to init wasm display task");
+        FMRB_LOGE(TAG, "Failed to init the local display task");
         return false;
     }
 
-    // Audio: the APU emulator over the wasm ring backend. On the Tab5 the
+    // Audio: the APU emulator over the build's ring backend. On the Tab5 the
     // display task brings the codec up; here there is no codec, so init the
     // backend directly before spawning the APU task.
     if (audio_backend()->init() != FMRB_OK) {
-        FMRB_LOGW(TAG, "wasm audio backend init failed, continuing without sound");
+        FMRB_LOGW(TAG, "audio backend init failed, continuing without sound");
     } else if (audio_p4_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init APU task, continuing without sound");
     }
@@ -509,10 +510,11 @@ static void init_mem(void)
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
-#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_RTOS_COOPERATIVE)
     // Before the first log line: the simulator's log path has to be made safe
-    // against the tick signal (boot/sim_log_guard.c). The wasm port has no
-    // tick signal (ticks are caught up cooperatively), so no guard there.
+    // against the tick signal (boot/sim_log_guard.c). The cooperative port
+    // (wasm, native) has no tick signal (ticks are caught up cooperatively),
+    // so no guard there.
     fmrb_sim_log_guard_init();
 #endif
     //set log level
@@ -524,6 +526,8 @@ void fmrb_os_init(void)
     FMRB_LOGD(TAG, "Debug log level enabled");
 #if defined(FMRB_PLATFORM_WASM)
     FMRB_LOGI(TAG, "Running on WebAssembly target - Development mode");
+#elif defined(FMRB_PLATFORM_NATIVE)
+    FMRB_LOGI(TAG, "Running as a native Linux program - Development mode");
 #elif defined(CONFIG_IDF_TARGET_LINUX)
     FMRB_LOGI(TAG, "Running on Linux target - Development mode");
 #elif defined(CONFIG_IDF_TARGET_ESP32P4)
@@ -538,7 +542,7 @@ void fmrb_os_init(void)
 
     show_config();
 
-#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_RTOS_COOPERATIVE)
     //install_sigalrm_logger();
     dump_signal_mask("app_main(before)");
     log_itimer_real("app_main(before)");

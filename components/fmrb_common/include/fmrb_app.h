@@ -455,7 +455,7 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
  *        this display can show it (doc/fullscreen_hires/).
  *
  * True on the builds whose display is the Modern display task in the same
- * process (FMRB_HAS_LOCAL_DISPLAY, FMRB_PLATFORM_WASM), and on the Modern Linux
+ * process (FMRB_HAS_LOCAL_DISPLAY, FMRB_PLATFORM_HOSTED), and on the Modern Linux
  * simulator when its graphics-audio said in the INIT_DISPLAY ACK that it knows
  * SET_SCREEN_MODE (FMRB_LINK_DISPLAY_CAP_SCREEN_MODE) -- in each case only
  * while the base screen is 426x240 (the browser build can be started at

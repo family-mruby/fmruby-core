@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>   // fmrb_mem_handle_t
+
 // One pool per user app slot, so the slot count is the app ceiling.
 #include "fmrb_limits.h"
 

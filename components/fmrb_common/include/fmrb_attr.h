@@ -11,7 +11,7 @@
 
 #include "sdkconfig.h"
 
-#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_HOSTED)
 
 #include "esp_attr.h"
 

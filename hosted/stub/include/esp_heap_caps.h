@@ -1,7 +1,7 @@
 /*
- * Stub of ESP-IDF's esp_heap_caps.h for the wasm target.
+ * Stub of ESP-IDF's esp_heap_caps.h for the hosted targets (wasm, native).
  *
- * There is one heap in a wasm module, so every capability bit collapses to the
+ * There is one heap in a hosted process, so every capability bit collapses to the
  * same malloc. The bits are kept only so callers that ask for internal/8-bit
  * memory still compile; heap_caps_get_free_size() answers from the same
  * accounting the port keeps for xPortGetFreeHeapSize().

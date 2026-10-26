@@ -89,10 +89,10 @@ void* fmrb_hal_link_get_shared_memory(size_t size);
 void fmrb_hal_link_release_shared_memory(void *ptr);
 
 // Extended API for the local Message Buffer link (ATOM_DISPLAY, the boards
-// that draw locally -- Modern P4 and the AtomS3R -- and the wasm build, whose
+// that draw locally -- Modern P4 and the AtomS3R -- and the hosted builds (wasm, native), whose
 // in-process display task reuses the same link). The in-process display task
 // uses these to read commands from Core and send ACK responses back.
-#if defined(FMRB_HW_ATOM_DISPLAY) || defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_WASM)
+#if defined(FMRB_HW_ATOM_DISPLAY) || defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_HOSTED)
 fmrb_err_t fmrb_hal_link_local_receive_cmd(fmrb_link_channel_t channel,
                                             fmrb_link_message_t *msg,
                                             uint32_t timeout_ms);

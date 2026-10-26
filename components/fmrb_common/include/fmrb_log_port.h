@@ -6,18 +6,18 @@
 // can use it without a dependency cycle.
 //
 //   ESP-IDF targets (esp32* and the linux simulation): esp_log.h, as always.
-//   wasm: the same ESP_LOG-compatible surface over printf, implemented in
-//         platform/wasm/fmrb_log_port_wasm.c.
+//   hosted (wasm, native): the same ESP_LOG-compatible surface over printf,
+//         implemented in platform/hosted/fmrb_log_port_hosted.c.
 //
 // The ESP_LOG* names stay visible on every platform on purpose: several
 // shared files and the posix HAL log through them without the log-buffer
 // copy FMRB_LOG* adds, and changing that routing would be a behavior change.
 
-#ifndef FMRB_PLATFORM_WASM
+#ifndef FMRB_PLATFORM_HOSTED
 
 #include "esp_log.h"
 
-#else /* FMRB_PLATFORM_WASM */
+#else /* FMRB_PLATFORM_HOSTED */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -60,4 +60,4 @@ void esp_log_write(esp_log_level_t level, const char *tag,
 }
 #endif
 
-#endif /* FMRB_PLATFORM_WASM */
+#endif /* FMRB_PLATFORM_HOSTED */

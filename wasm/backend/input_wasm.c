@@ -1,5 +1,6 @@
 /*
- * input_wasm.c - the wasm input backend (doc/wasm/ P4b).
+ * input_wasm.c - the browser's input source (doc/wasm/ P4b;
+ * hosted/backend/input_source.h).
  *
  * The browser's key and mouse handlers write fixed-size records into a ring
  * in wasm memory (Atomics on the write counter); the poller task drains it
@@ -7,8 +8,7 @@
  * socket. Key semantics follow rd_input.c, the proven browser bridge:
  * key_code = scancode = HID usage ID, modifiers already FMRB_KEYMAP_MOD_*.
  *
- * The usb_task_* device-list surface stays stubbed: there is no USB bus, so
- * the HID Inspector reports no devices and raw-report subscription fails.
+ * The usb_task_* surface around it is hosted/backend/input_hosted.c.
  */
 
 #include <string.h>
@@ -16,7 +16,7 @@
 #include "fmrb_err.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
-#include "usb_task.h"
+#include "input_source.h"
 #include "host_task.h"
 
 #include <emscripten/emscripten.h>
@@ -98,46 +98,17 @@ static void input_wasm_task(void *arg)
     }
 }
 
-fmrb_err_t usb_task_init(void)
+static fmrb_err_t input_wasm_start(void)
 {
     if (fmrb_task_create(input_wasm_task, "input_wasm", 65536, NULL, 5, NULL)
             != FMRB_PASS) {
         FMRB_LOGE(TAG, "failed to create input task");
         return FMRB_ERR_FAILED;
     }
-    FMRB_LOGI(TAG, "input backend up (browser event ring)");
     return FMRB_OK;
 }
 
-fmrb_err_t usb_task_power_on_root_port(void)
-{
-    return FMRB_OK;
-}
-
-void usb_task_start(void)
-{
-}
-
-void usb_task_stop(void)
-{
-}
-
-int usb_task_get_device_info(fmrb_usb_device_info_t *out, int max_count)
-{
-    (void)out;
-    (void)max_count;
-    return 0;
-}
-
-fmrb_err_t usb_task_subscribe_raw_reports(int8_t slot_index, uint16_t subscriber_pid)
-{
-    (void)slot_index;
-    (void)subscriber_pid;
-    return FMRB_ERR_NOT_SUPPORTED;
-}
-
-fmrb_err_t usb_task_unsubscribe_raw_reports(int8_t slot_index)
-{
-    (void)slot_index;
-    return FMRB_ERR_NOT_SUPPORTED;
-}
+const fmrb_input_source_t fmrb_input_source_wasm = {
+    .name  = "browser event ring",
+    .start = input_wasm_start,
+};

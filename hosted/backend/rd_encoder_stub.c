@@ -1,6 +1,6 @@
-/* rd_encoder_stub.c - rd_encoder_jpeg.h for the wasm build.
+/* rd_encoder_stub.c - rd_encoder_jpeg.h for the hosted builds.
  *
- * EXPORT_FRAME rides the P4's hardware JPEG encoder; out of scope on wasm
+ * EXPORT_FRAME rides the P4's hardware JPEG encoder; out of scope on wasm and native
  * (implementation plan scope table), so the encode fails cleanly and the
  * command answers an error.
  */

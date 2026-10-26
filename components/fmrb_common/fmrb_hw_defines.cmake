@@ -32,8 +32,8 @@
 #     FMRB_HAS_LOCAL_DISPLAY  this chip composites and drives the screen
 #                          itself (display_local_task + the local link), instead
 #                          of shipping draw commands to a child chip. Both P4
-#                          boards, the AtomS3R and the StickS3. (The wasm build is the same
-#                          shape and says so with FMRB_PLATFORM_WASM.)
+#                          boards, the AtomS3R and the StickS3. (The hosted builds -- wasm, native -- are the same
+#                          shape and say so with FMRB_PLATFORM_HOSTED.)
 #     FMRB_HAS_PPA         the P4's 2D engine (PPA) and JPEG codec exist.
 #     FMRB_HAS_USB_HOST    a USB host port for keyboards and mice.
 #     FMRB_HAS_WIFI        a radio for WiFi STA.

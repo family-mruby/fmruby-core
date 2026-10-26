@@ -1,15 +1,16 @@
 /*
- * FreeRTOS port layer for Emscripten (WebAssembly), cooperative.
+ * FreeRTOS port layer for the hosted builds (wasm and native), cooperative.
  *
  * Shape of the port (the whole idea in one place):
  *
- *   - One task is one pthread, which under Emscripten is one Web Worker over a
- *     SharedArrayBuffer. Exactly one of them runs at a time; every other task's
+ *   - One task is one pthread (under Emscripten, one Web Worker over a
+ *     SharedArrayBuffer). Exactly one of them runs at a time; every other task's
  *     thread is parked on its own condition variable inside prvSuspendSelf().
  *     A context switch is "signal the next one's condition variable, then park
  *     on my own" -- the same skeleton the upstream POSIX port uses.
  *
- *   - There are no interrupts, because wasm has no signal delivery. So the
+ *   - There are no interrupts: wasm has no signal delivery, and the native
+ *     build uses no signals so that SDL and friends can share the process. So the
  *     critical-section and interrupt-mask macros are just a nesting counter:
  *     there is nothing asynchronous to keep out. The counter still matters,
  *     because the port refuses to advance the tick while it is non-zero (see

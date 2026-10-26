@@ -1,7 +1,7 @@
 /*
- * Heap for the wasm FreeRTOS build.
+ * Heap for the hosted FreeRTOS builds (wasm and native).
  *
- * ESP-IDF puts the kernel's allocations on heap_caps (heap_idf.c); a wasm module
+ * ESP-IDF puts the kernel's allocations on heap_caps (heap_idf.c); a hosted build
  * has one linear memory and one malloc, so both pvPortMalloc() and
  * heap_caps_malloc() land there. The only thing worth keeping is the running
  * total, so xPortGetFreeHeapSize() and heap_caps_get_free_size() can answer with
@@ -20,8 +20,8 @@
 #include "task.h"
 #include "esp_heap_caps.h"
 
-#ifndef portWASM_HEAP_BUDGET_BYTES
-    #define portWASM_HEAP_BUDGET_BYTES    ( 64u * 1024u * 1024u )
+#ifndef portHOSTED_HEAP_BUDGET_BYTES
+    #define portHOSTED_HEAP_BUDGET_BYTES    ( 64u * 1024u * 1024u )
 #endif
 
 /* Every block carries its size (so the accounting survives free()) and the
@@ -110,15 +110,15 @@ void vPortInitialiseBlocks( void )
 
 size_t xPortGetFreeHeapSize( void )
 {
-    return ( xBytesInUse < portWASM_HEAP_BUDGET_BYTES )
-           ? ( portWASM_HEAP_BUDGET_BYTES - xBytesInUse )
+    return ( xBytesInUse < portHOSTED_HEAP_BUDGET_BYTES )
+           ? ( portHOSTED_HEAP_BUDGET_BYTES - xBytesInUse )
            : 0u;
 }
 
 size_t xPortGetMinimumEverFreeHeapSize( void )
 {
-    return ( xPeakBytesInUse < portWASM_HEAP_BUDGET_BYTES )
-           ? ( portWASM_HEAP_BUDGET_BYTES - xPeakBytesInUse )
+    return ( xPeakBytesInUse < portHOSTED_HEAP_BUDGET_BYTES )
+           ? ( portHOSTED_HEAP_BUDGET_BYTES - xPeakBytesInUse )
            : 0u;
 }
 

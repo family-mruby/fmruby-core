@@ -6,7 +6,7 @@
 
 #include <cstring>
 #include "esp_heap_caps.h"
-#ifndef FMRB_PLATFORM_WASM
+#ifndef FMRB_PLATFORM_HOSTED
 #include "esp_private/esp_cache_private.h"
 #endif
 #include "fmrb_attr.h"
@@ -61,7 +61,7 @@ uint16_t display_local_sprite_image_create(uint16_t canvas_id,
     // Cache-aligned buffer for PPA compatibility
     size_t buf_size = (size_t)width * height * 2;
     size_t cache_line_size = 64;
-#ifndef FMRB_PLATFORM_WASM
+#ifndef FMRB_PLATFORM_HOSTED
     esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
 #endif
     buf_size = (buf_size + cache_line_size - 1) & ~(cache_line_size - 1);

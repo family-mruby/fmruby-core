@@ -1,8 +1,9 @@
 /*
- * lgfx_common_wasm.cpp - LovyanGFX platform layer for the wasm build.
+ * lgfx_common_hosted.cpp - LovyanGFX platform layer for the hosted builds
+ * (wasm and native).
  *
  * The header side is the framebuffer platform's common.hpp (selected by the
- * FMRB_LGFX_WASM branch rake wasm:setup patches in); this supplies the
+ * FMRB_LGFX_HOSTED branch rake hosted:m5gfx patches in); this supplies the
  * implementations without that platform's <linux/fb.h> baggage. Only what
  * sprite and font work reaches: the clock, the delays, and GPIO as no-ops.
  */

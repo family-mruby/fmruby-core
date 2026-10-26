@@ -48,7 +48,7 @@ extern "C" {
 #include <msgpack.h>
 #include <cstring>
 #include <cstdlib>  // qsort
-#ifndef FMRB_PLATFORM_WASM
+#ifndef FMRB_PLATFORM_HOSTED
 #include "esp_private/esp_cache_private.h"
 #include "esp_cache.h"
 #include "esp_app_desc.h"
@@ -76,7 +76,7 @@ static size_t g_cache_line_size = 64;
 
 static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
     size_t cache_line_size = 64;
-#ifndef FMRB_PLATFORM_WASM
+#ifndef FMRB_PLATFORM_HOSTED
     esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
 #endif
     g_cache_line_size = cache_line_size;

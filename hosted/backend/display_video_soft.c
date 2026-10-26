@@ -1,10 +1,11 @@
 /*
- * display_video_wasm.c - display_local_video.h for the wasm build.
+ * display_video_soft.c - display_local_video.h for the hosted builds (wasm,
+ * native): MJPEG playback with a software decoder.
  *
  * The P4 does this with its hardware JPEG engine (main/drivers/display_local/
  * display_local_video.cpp). There is no such engine in a browser, but there is
  * already a decoder in the binary: LovyanGFX brings TJpgDec along
- * (lgfx/utility/lgfx_tjpgd.c, compiled into lgfx_wasm), so playback needs no
+ * (lgfx/utility/lgfx_tjpgd.c, compiled into lgfx_hosted), so playback needs no
  * new dependency -- only the software equivalent of what the P4 does in
  * silicon.
  *
@@ -58,7 +59,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *TAG = "wasm_video";
+static const char *TAG = "soft_video";
 
 /* A frame larger than this is either not ours or a broken file. */
 #define VIDEO_MAX_FRAME_BYTES (512 * 1024)
@@ -662,7 +663,7 @@ fmrb_err_t display_local_video_open(uint16_t canvas_id, int16_t x, int16_t y,
     s_p.state = FMRB_LINK_GFX_VIDEO_STATE_PAUSED;
     player_unlock();
 
-    BaseType_t ok = xTaskCreatePinnedToCore(player_task, "wasm_video",
+    BaseType_t ok = xTaskCreatePinnedToCore(player_task, "soft_video",
                                             FMRB_VIDEO_P4_TASK_STACK_SIZE, NULL,
                                             FMRB_VIDEO_P4_TASK_PRIORITY,
                                             &s_p.task, FMRB_VIDEO_P4_TASK_CORE);
