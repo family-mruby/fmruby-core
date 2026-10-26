@@ -41,9 +41,18 @@
 #                          default 8016)
 #   rake regress:screens:update  the last run's failed or new shots become the
 #                          baseline (ONLY=, SCENE= narrow it)
+#   rake regress:live      live scenes (test/regress/live/*.rb) on the Modern
+#                          sim with their counterparts started by the tool: a
+#                          local game host (othello, board, mahjong), a step
+#                          sender (walk_scroller), the serial MIDI monitor, the
+#                          APU's samples; the counterparts' state against
+#                          test/regress/live/baseline/. ONLY=<text> (or
+#                          SCENE=) narrows the scenes
+#   rake regress:live:update   the last run's failed or new checks and shots
+#                          become the baseline (ONLY= narrows it)
 #   rake regress:full      regress + regress:size + regress:run +
-#                          regress:screens (ONLY= goes to none of them: run the
-#                          parts by hand to narrow them)
+#                          regress:screens + regress:live (ONLY= goes to none
+#                          of them: run the parts by hand to narrow them)
 
 REGRESS_RUN = File.join(ROOT_DIR, "tools", "regress", "run.rb")
 
@@ -171,12 +180,12 @@ namespace :regress do
     end
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser). About 17 minutes"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live. About 20 minutes"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
     failed = []
-    %w[regress regress:size regress:run regress:screens].each do |t|
+    %w[regress regress:size regress:run regress:screens regress:live].each do |t|
       begin
         Rake::Task[t].invoke
       rescue SystemExit
@@ -212,6 +221,27 @@ namespace :regress do
       args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
       args += ["--scene", ENV["SCENE"]] if ENV["SCENE"]
       abort "regress:screens:update: failed" unless system(Gem.ruby, REGRESS_SCREENS, *args)
+    end
+  end
+end
+
+REGRESS_LIVE = File.join(ROOT_DIR, "tools", "regress", "live.rb")
+
+def regress_live_args
+  scene = ENV["ONLY"] || ENV["SCENE"]
+  scene ? ["--scene", scene] : []
+end
+
+namespace :regress do
+  desc "Live scenes on the Modern sim, counterparts started by the tool (game host, step sender, MIDI monitor, audio probe) vs baseline (ONLY=<scene text>)"
+  task :live do
+    abort "regress:live: failed" unless system(Gem.ruby, REGRESS_LIVE, *regress_live_args)
+  end
+
+  namespace :live do
+    desc "Write the last regress:live run's failed or new checks and shots as the baseline (only for a change a person has checked)"
+    task :update do
+      abort "regress:live:update: failed" unless system(Gem.ruby, REGRESS_LIVE, "--update", *regress_live_args)
     end
   end
 end

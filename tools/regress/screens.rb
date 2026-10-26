@@ -83,6 +83,15 @@ module Regress
     end
 
     class Runner
+      # What a runner of another kind of scene (live.rb) changes: where its
+      # scenes, baselines and results are, and its session class.
+      def scene_list = SCENES
+      def session_class = Session
+      def out_dir = OUT
+      def baseline_dir = BASELINE
+      def results_path = File.join(out_dir, "results.json")
+      def label = "screens"
+
       def initialize(opts)
         @opts = opts
         @results = []
@@ -91,9 +100,9 @@ module Regress
         @scene_secs = []
       end
 
-      def baseline_path(config, id) = File.join(BASELINE, config.name, "#{id}.png")
-      def out_path(config, id) = File.join(OUT, "out", config.name, "#{id}.png")
-      def diff_path(config, id) = File.join(OUT, "diff", config.name, "#{id}.png")
+      def baseline_path(config, id) = File.join(baseline_dir, config.name, "#{id}.png")
+      def out_path(config, id) = File.join(out_dir, "out", config.name, "#{id}.png")
+      def diff_path(config, id) = File.join(out_dir, "diff", config.name, "#{id}.png")
 
       def rel(path) = path.sub("#{CORE}/", "")
 
@@ -111,7 +120,7 @@ module Regress
       end
 
       def scenes_for(config)
-        list = SCENES.select { |s| s.on.include?(config.name) }
+        list = scene_list.select { |s| s.on.include?(config.name) }
         if @opts[:scene]
           want = @opts[:scene].split(",").map(&:strip)
           list = list.select { |s| want.any? { |w| s.name.include?(w) } }
@@ -125,7 +134,7 @@ module Regress
         t0 = now
         configs = selected_configs.reject { |c| scenes_for(c).empty? }
         raise "no scene matches" if configs.empty?
-        FileUtils.rm_rf(File.join(OUT, "diff"))
+        FileUtils.rm_rf(File.join(out_dir, "diff"))
         return run_attached(configs) if @opts[:attach]
 
         sims = configs.select { |c| c.kind == :sim }
@@ -170,15 +179,15 @@ module Regress
       end
 
       def tmp_dir
-        d = File.join(OUT, "tmp")
+        d = File.join(out_dir, "tmp")
         FileUtils.mkdir_p(d)
         d
       end
 
       def run_sim_config(config, tree)
-        FileUtils.mkdir_p(OUT)
+        FileUtils.mkdir_p(out_dir)
         tree.clean_all!
-        blog = File.join(OUT, "#{config.name}.build.log")
+        blog = File.join(out_dir, "#{config.name}.build.log")
         ok, bsecs = SimRun.run_logged(config.env, [ENV["RAKE"] || "rake", "build:linux"], blog)
         raise "build:linux for #{config.name} failed (#{rel(blog)})" unless ok
         raise "build/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
@@ -187,13 +196,13 @@ module Regress
         driver = SimDriver.new(SimRun, tmp_dir)
         driver.settle_baseline!
         run_scenes(config, driver)
-        File.write(File.join(OUT, "#{config.name}.log"), SimRun.core_log)
+        File.write(File.join(out_dir, "#{config.name}.log"), SimRun.core_log)
         @timings << "#{config.name} build #{bsecs.round}s + run #{(now - t0).round}s"
       rescue RuntimeError, DriverError => e
         @errors << "#{config.name}: #{e.message}"
         if SimRun.core_running?
-          File.write(File.join(OUT, "#{config.name}.fail.log"), SimRun.core_log)
-          File.write(File.join(OUT, "#{config.name}.fail.ga.log"), SimRun.sh("docker", "logs", "fmruby_graphics_audio")[1])
+          File.write(File.join(out_dir, "#{config.name}.fail.log"), SimRun.core_log)
+          File.write(File.join(out_dir, "#{config.name}.fail.ga.log"), SimRun.sh("docker", "logs", "fmruby_graphics_audio")[1])
         end
       ensure
         SimRun.down if SimRun.core_running? && !(@opts[:keep] && config == selected_configs.select { |c| c.kind == :sim }.last)
@@ -217,18 +226,18 @@ module Regress
 
       def run_scenes(config, driver)
         driver.capture # the screen size, before anything asks for it
-        boot = Session.new(self, config, Scene.new(name: "_boot", on: [], block: nil), driver)
+        boot = session_class.new(self, config, Scene.new(name: "_boot", on: [], block: nil), driver)
         boot.before_scene if boot.respond_to?(:before_scene)
         @desktop = boot.respond_to?(:after_boot) ? boot.after_boot : nil
         scenes_for(config).each do |scene|
           driver.mark_log!
           t_scene = now
-          s = Session.new(self, config, scene, driver)
+          s = session_class.new(self, config, scene, driver)
           error = nil
           begin
             s.before_scene if s.respond_to?(:before_scene)
             scene.block.call(s)
-            error = "no shot taken" if s.shots.empty?
+            error = "nothing compared" unless s.compared?
           rescue Failure, DriverError => e
             error = e.message
           end
@@ -255,7 +264,7 @@ module Regress
         end
         return if img.same?(@desktop, session.masks)
         count, box = @desktop.diff(img, session.masks)
-        left = File.join(OUT, "out", session.config.name, "#{session.scene_name}.left.png")
+        left = File.join(out_dir, "out", session.config.name, "#{session.scene_name}.left.png")
         FileUtils.mkdir_p(File.dirname(left))
         img.write(left)
         @results << { "config" => session.config.name, "scene" => session.scene_name,
@@ -317,7 +326,7 @@ module Regress
       # it) and the bundle. The fresh libmruby replaces the stashed one, so
       # the developer gets a current one back.
       def build_web(tree)
-        log = File.join(OUT, "web.build.log")
+        log = File.join(out_dir, "web.build.log")
         cfg = Screens.configs.find { |c| c.kind == :web }
         env = cfg.env.reject { |k, _| k == "FMRB_HW_TARGET" }
         cmd = ["bash", "-c", "source #{EMSDK_ENV} >/dev/null 2>&1; " \
@@ -335,7 +344,7 @@ module Regress
       def run_web_config(config)
         t0 = now
         port = @opts[:port]
-        serve_log = File.join(OUT, "web.serve.log")
+        serve_log = File.join(out_dir, "web.serve.log")
         @serve_pid = Process.spawn({}, ENV["RAKE"] || "rake", "wasm:serve", "PORT=#{port}", chdir: CORE,
                                    in: File::NULL, out: serve_log, err: serve_log, pgroup: true)
         SimRun.wait_for(30, "the development server on port #{port}") { port_open?(port) }
@@ -385,8 +394,8 @@ module Regress
       # --- the summary ------------------------------------------------------------
 
       def finish(t0)
-        FileUtils.mkdir_p(OUT)
-        File.write(RESULTS, JSON.pretty_generate("results" => @results, "errors" => @errors,
+        FileUtils.mkdir_p(out_dir)
+        File.write(results_path, JSON.pretty_generate("results" => @results, "errors" => @errors,
                                                  "scene_seconds" => @scene_secs, "timings" => @timings))
         shots = @results.select { |r| r["status"] }
         broken = @results.select { |r| r["error"] }
@@ -397,21 +406,20 @@ module Regress
         end
         @errors.each { |e| puts "FAIL #{e}" }
         broken.each { |r| puts "FAIL #{r['config']} #{r['scene']}: #{r['error']}" }
-        failed.first(6).each do |r|
-          if r["status"] == "new"
-            puts "NEW  #{r['config']} #{r['scene']}: no baseline (#{r['out']})"
-          else
-            b = r["box"]
-            puts "FAIL #{r['config']} #{r['scene']}: #{r['pixels']} px in (#{b[0]},#{b[1]})-(#{b[2]},#{b[3]}) -> #{r['diff']}"
-          end
-        end
-        puts "     ... #{failed.size - 6} more (#{rel(RESULTS)})" if failed.size > 6
+        failed.first(6).each { |r| puts fail_line(r) }
+        puts "     ... #{failed.size - 6} more (#{rel(results_path)})" if failed.size > 6
         n_ok = shots.size - failed.size
         n_bad = failed.size + broken.size
         took = now - t0
-        puts "screens: #{n_ok} passed / #{n_bad} failed (#{per.join(', ')}; #{(took / 60).round(1)} min" \
+        puts "#{label}: #{n_ok} passed / #{n_bad} failed (#{per.join(', ')}; #{(took / 60).round(1)} min" \
              "#{@timings.empty? ? '' : ": #{@timings.join(', ')}"})"
         n_bad.zero? && @errors.empty? ? 0 : 1
+      end
+
+      def fail_line(r)
+        return "NEW  #{r['config']} #{r['scene']}: no baseline (#{r['out']})" if r["status"] == "new"
+        b = r["box"]
+        "FAIL #{r['config']} #{r['scene']}: #{r['pixels']} px in (#{b[0]},#{b[1]})-(#{b[2]},#{b[3]}) -> #{r['diff']}"
       end
 
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)

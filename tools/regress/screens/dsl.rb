@@ -93,6 +93,9 @@ module Regress
       # after such a scene: it has no process list to close apps by).
       def touched? = @touched
 
+      # Whether the scene compared anything (a scene that does not fails).
+      def compared? = !@shots.empty?
+
       # Open an app by its path (the sim's debug server; the browser build
       # has no such door, so a web scene goes through the launcher instead).
       def launch(path)
