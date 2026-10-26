@@ -1,0 +1,9 @@
+{
+  "st": "wait",
+  "members": 1,
+  "seats": [
+    "device",
+    "cpu"
+  ],
+  "owner": true
+}

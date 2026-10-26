@@ -1,0 +1,22 @@
+{
+  "st": "play",
+  "members": 1,
+  "seats": [
+    "cpu",
+    "device"
+  ],
+  "owner": true,
+  "board": [
+    "........",
+    "........",
+    "..DDDO..",
+    "..OOO...",
+    "...OD...",
+    "........",
+    "........",
+    "........"
+  ],
+  "moves": 5,
+  "turn": "device",
+  "result": null
+}

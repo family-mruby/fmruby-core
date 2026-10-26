@@ -1,0 +1,15 @@
+{
+  "st": "draw",
+  "strokes": 1,
+  "members": [
+    "owner"
+  ],
+  "picture": [
+    {
+      "c": 0,
+      "w": 1,
+      "from": "63,72",
+      "to": "360,199"
+    }
+  ]
+}

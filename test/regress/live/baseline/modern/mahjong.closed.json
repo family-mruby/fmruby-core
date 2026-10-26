@@ -1,0 +1,10 @@
+{
+  "st": "play",
+  "members": 1,
+  "seats": [
+    "cpu",
+    "cpu",
+    "cpu",
+    "member"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "notes": [
+    "C4/ch1",
+    "D4/ch1",
+    "E4/ch1",
+    "F4/ch1",
+    "G4/ch1",
+    "A4/ch1",
+    "B4/ch1",
+    "C5/ch1"
+  ],
+  "all_off_first": true,
+  "note_ms": 200,
+  "step_ms": 260,
+  "steady": true
+}

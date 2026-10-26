@@ -1,0 +1,25 @@
+{
+  "st": "over",
+  "members": 1,
+  "seats": [
+    "device",
+    "cpu"
+  ],
+  "owner": true,
+  "board": [
+    "........",
+    "........",
+    ".DDDO...",
+    "...OO...",
+    "...DO...",
+    "........",
+    "........",
+    "........"
+  ],
+  "moves": 4,
+  "turn": "none",
+  "result": {
+    "winner": "other",
+    "why": "resign"
+  }
+}
