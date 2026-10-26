@@ -304,7 +304,7 @@ MahjongApp.prepend(Scoping)
 # ---------------------------------------------------------------- checking
 
 # The table client's side the screen reads (FmrbAsterism::TableClient,
-# doc/app_refactor R4): connected, at a table with a token.
+# doc/archive/app_refactor R4): connected, at a table with a token.
 class StubLink
   def router = "tcp/192.0.2.1:7447"
   def reason = ""

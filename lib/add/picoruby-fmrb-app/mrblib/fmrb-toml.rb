@@ -1,4 +1,4 @@
-# TOML for the machine's Ruby (doc/app_refactor R2).
+# TOML for the machine's Ruby (doc/archive/app_refactor R2).
 #
 # Reading is the firmware's own TOML reader (components/fmrb_toml, tomlc99,
 # the one that reads system_conf.toml and every .app.toml), so a file means

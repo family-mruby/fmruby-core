@@ -4,7 +4,7 @@
 # which rewrites only the lines of the keys it is given.
 #
 # What this cannot see: the mruby objects toml.c builds and the per-VM
-# allocator. Those are checked in the simulator (doc/app_refactor/report/r2.md).
+# allocator. Those are checked in the simulator (doc/archive/app_refactor/report/r2.md).
 #
 #   ruby test/toml/run.rb        (or: rake toml:test)
 

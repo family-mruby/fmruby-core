@@ -1,5 +1,5 @@
 # FmrbAsterism::TableClient: the device side of a game host's table
-# (doc/app_refactor, R4). The othello table, the drawing board and mahjong
+# (doc/archive/app_refactor, R4). The othello table, the drawing board and mahjong
 # each copied the same part: staying connected (now FmrbAsterism::Link),
 # the list of the hosts' tables (looked for on on_join for rescan_ms, else
 # every list_every_ms, and from the state puts), joining one (the token)

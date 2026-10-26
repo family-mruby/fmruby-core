@@ -45,7 +45,7 @@ end
 namespace :text do
   # FmrbText (fit a text into a width, wrap it in two lines), draw_button and
   # FmrbUI::HitAreas (click targets) with the real fmrb-gfx.rb metrics, against the helpers
-  # the game apps had before (doc/app_refactor R5). Run it after touching
+  # the game apps had before (doc/archive/app_refactor R5). Run it after touching
   # mrblib/fmrb-text.rb, HitAreas in fmrb-ui.rb or FONT_METRICS.
   desc "FmrbText, draw_button and FmrbUI::HitAreas tests (host Ruby, no docker)"
   task :test do

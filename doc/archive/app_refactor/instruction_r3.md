@@ -26,4 +26,4 @@
 - push・タグはしない。`git commit -a` は使わない。件名 `app:`、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。doc (この指示書・report) はコミットしない (親がする)。
 - 終わったら sim を片付ける。StickS3 は新しい step_sensor で VPS に繋がった状態で残す。
 - **止まる条件**: 網に出す値やメソッドを変えないと整理できない、合成の波形の試験の数値が悪くなる。
-- **report**: `doc/app_refactor/report/r3.md` (常体): 変えたこと、行数の前後、検知を変えたか (変えたなら試験の数値の前後)、表示の画面、実機の確認、残件、コミット。
+- **report**: `doc/archive/app_refactor/report/r3.md` (常体): 変えたこと、行数の前後、検知を変えたか (変えたなら試験の数値の前後)、表示の画面、実機の確認、残件、コミット。

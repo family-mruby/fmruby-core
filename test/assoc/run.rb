@@ -11,7 +11,7 @@
 # through FmrbToml, played here by test/toml/host_toml.rb) and the Spinel
 # desktop's line reader (main/prebuild_scripts/spinel/fmrb_assoc_spinel.rb).
 # Everything runs against both, except what a broken file does, where they
-# differ on purpose (doc/app_refactor/report/r2.md).
+# differ on purpose (doc/archive/app_refactor/report/r2.md).
 #
 # What this cannot see: whether the file manager and the shell act on the
 # answer. That stays with the simulator (doc/user_extension/assoc/report/a1.md).

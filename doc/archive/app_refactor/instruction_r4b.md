@@ -31,4 +31,4 @@
 - push・タグはしない (親がする)。`git commit -a` は使わない。件名 `asterism:` `mahjong:` `game:`、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。実在の値を書かない。doc (この指示書・report) はコミットしない。
 - 終わったら sim・web・手元のゲームホストを片付ける (前から動いていたものは残す)。
 - **止まる条件**: asterism-games のホストの変更が要る、決まった 2 点以外で振る舞いを変えないと載せ替えられない、内蔵 RAM が増える。
-- **report**: `doc/app_refactor/report/r4b.md` (常体): 足した口、2 つの直しと試験、麻雀の行数の前後、確認の結果、RAM と VM プール、残件 (実機での確認が要るものを含む)、コミット。
+- **report**: `doc/archive/app_refactor/report/r4b.md` (常体): 足した口、2 つの直しと試験、麻雀の行数の前後、確認の結果、RAM と VM プール、残件 (実機での確認が要るものを含む)、コミット。

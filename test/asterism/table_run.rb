@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbAsterism::TableClient (doc/app_refactor, R4:
+# Host tests for FmrbAsterism::TableClient (doc/archive/app_refactor, R4:
 # lib/add/picoruby-fmrb-asterism/mrblib/table_client.rb), the device side
 # of a game host's table, on top of FmrbAsterism::Link (link.rb).
 #
@@ -12,7 +12,7 @@
 #   ruby test/asterism/table_run.rb     (part of rake test: asterism:table_test)
 #
 # What this cannot see: a real game host, the router and the screen. Those
-# stay with the sim and the browser build (doc/app_refactor/report/r4a.md).
+# stay with the sim and the browser build (doc/archive/app_refactor/report/r4a.md).
 
 module Check
   @failed = 0

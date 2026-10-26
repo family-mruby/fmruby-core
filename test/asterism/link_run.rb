@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbAsterism::Link (doc/app_refactor, R1:
+# Host tests for FmrbAsterism::Link (doc/archive/app_refactor, R1:
 # lib/add/picoruby-fmrb-asterism/mrblib/link.rb), the part that keeps an
 # application connected.
 #
@@ -13,7 +13,7 @@
 #
 # What this cannot see: a real router, the TLS handshake's time and the
 # screen. Those stay with the sim, the browser build and the boards
-# (doc/app_refactor/report/r1.md).
+# (doc/archive/app_refactor/report/r1.md).
 
 module Check
   @failed = 0

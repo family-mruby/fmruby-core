@@ -6,7 +6,7 @@
 
 ## 1. 読むもの
 
-- `tools/mahjong_overflow/` (check.rb・fixtures.rb・fixture_host.rb) と `rake mahjong:overflow`、report (doc/ruby_asterism/report/mj5.md の「overflow checker」、doc/app_refactor/report/r5.md の `--dump` の使い方)。
+- `tools/mahjong_overflow/` (check.rb・fixtures.rb・fixture_host.rb) と `rake mahjong:overflow`、report (doc/ruby_asterism/report/mj5.md の「overflow checker」、doc/archive/app_refactor/report/r5.md の `--dump` の使い方)。
 - 対象のアプリと部品: オセロの卓 (`flash/app/game/othello/`)、お絵かきボード (`flash/app/game/board/`)、walk_scroller (`flash/app/demo/`)、step_sensor (`flash/app/test/`)、オセロ (直接) (`flash/app/test/othello.app.rb`)、MML (`flash/app/demo/mml.app.rb`)、StackChan Remote・動画の再生・rover_brain (R6 で載せ替える 5 アプリ)、FmrbUI を使う mruby のアプリ (appstore・logviewer・monitor・NSF/SMF プレイヤ・midi_apu・kamon・picorabbit など、`grep -rln FmrbUI`)。FmrbUI・FmrbText・FmrbButtons・FmrbGfx は gem (`lib/add/picoruby-fmrb-app/mrblib/`) の Ruby をそのまま読む (R5 の check.rb と同じ)。
 - doc/regression/plan.md (方針、決まり)。
 

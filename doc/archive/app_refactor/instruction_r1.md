@@ -38,4 +38,4 @@
 - push・タグはしない。`git commit -a` は使わない。件名 `asterism:` `app:` など、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。実在の値 (IP・ドメイン・端末名) をコミット・doc に書かない。doc (この指示書・report) はコミットしない (親がする)。
 - 終わったら sim・web を片付ける。StickS3 は新しい step_sensor で VPS に繋がった状態で残す。
 - **止まる条件**: asterism の gem 本体の変更が要る、内蔵 RAM が増える、振る舞いを変えないと載せ替えられない、StickS3 を VPS に戻せない。
-- **report**: `doc/app_refactor/report/r1.md` (常体): 3 アプリの違いの表、口の設計、載せ替えの前後の行数、確認の結果、RAM、R4 (卓のアプリ) で口をどう使うかの見通し、残件、コミット。
+- **report**: `doc/archive/app_refactor/report/r1.md` (常体): 3 アプリの違いの表、口の設計、載せ替えの前後の行数、確認の結果、RAM、R4 (卓のアプリ) で口をどう使うかの見通し、残件、コミット。

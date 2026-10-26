@@ -63,7 +63,6 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **完了** (2026-09-26) **P1-P3 完了 (Retro 実機も確認済)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** — **起動 10.0 秒 → 0.45 秒**、`large_memory` も不要に (report/builtin_move.md)。Retro 実機も 2026-09-26 に確認済み。 〔14 files〕
 - `app_exit/` [アプリの終了の後始末 (mrb_close と、同じ Spinel アプリの同時起動)](app_exit/plan.md) — **進行中** (2026-10-03) E1 (mrb_close) と終了時の競合の修正は完了。E2 で入れた同じ Spinel アプリの同時起動の制限は、ユーザ未確認の仕様の変更 (退行) だったので E3 で外す。根本の直し (Spinel の変数をインスタンスごとに) は doc/spinel_multi_instance で計画 〔5 files〕
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
-- `app_refactor/` [Asterism を使うアプリの共通部分を切り出す](app_refactor/plan.md) — **進行中** (2026-10-25) R1-R6 済 (R6: FmrbText を Spinel でも、FmrbUI が収まらない文字を `..` で詰める、FmrbButtons → FmrbUI::HitAreas + FmrbGfx#draw_button、使い分けは doc/reference/screen_helpers.md)。 step_sensor・walk_scroller・オセロの卓・お絵かきボード・麻雀・asterism_demo が、それぞれ同じこと (WiFi を待つ、繋ぐ、繋ぎ直す、卓に入る・出る、/home の小さな設定を読み書きする、幅に合わせて文字を詰める) を自前で書いている。共通の部分を部品に移し、アプリを短くする。R1 から順に進める 〔15 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `asterism_recording/` [Asterism: アプリから頼むキーの記録](asterism_recording/plan.md) — **構想** (2026-10-21) console の記録 (V4、今は管理者が画面で手で始める) を、Asterism のオブジェクトとしてアプリから始め・止め・一覧できるようにする。誰が何を録れるか (権限) は未確定で、案を並べて決める 〔2 files〕
 - `ca_bundle/` [端末の証明書の束から信頼できないルートを外す](ca_bundle/plan.md) — **完了** (2026-10-22) ESP32 の端末の HTTPS が使う ESP-IDF の証明書の束 (全部入り) に、eMudhra の件 (2026-10、中間認証局 8 つの秘密鍵が誰でも計算できた) の大本 emSign ECC Root CA - G3 が入っている。IDF の束から外す一覧を除いた自前の束を作って使う 〔3 files〕
@@ -98,7 +97,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
-- `regression/` [回帰の確認を、安く・コマンド 1 つで](regression/plan.md) — **計画済** (2026-10-25) リファクタリングや機能の直しのたびに、サブエージェントが sim・ブラウザ版を立ち上げて画面を撮り、ゲームホストを手で動かして前後を見比べている (app_refactor の R4〜R6 で 1 段 30〜45 万トークン、その多くが確認の往復)。確認を「コマンド 1 つ、結果は短い要約」にして、トークンと人の手間を減らす (2026-10-25 ユーザ) 〔10 files〕
+- `regression/` [回帰の確認を、安く・コマンド 1 つで](regression/plan.md) — **進行中** (2026-10-26) リファクタリングや機能の直しのたびに、サブエージェントが sim・ブラウザ版を立ち上げて画面を撮り、ゲームホストを手で動かして前後を見比べている (app_refactor の R4〜R6 で 1 段 30〜45 万トークン、その多くが確認の往復)。確認を「コマンド 1 つ、結果は短い要約」にして、トークンと人の手間を減らす (2026-10-25 ユーザ) 〔12 files〕
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
@@ -118,6 +117,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## アーカイブ (完結したテーマ)
 
 - `archive/app_kill_fix/` [fmrb_app_kill 到達不能問題の診断と修正](archive/app_kill_fix/README.md)
+- `archive/app_refactor/` [Asterism を使うアプリの共通部分を切り出す](archive/app_refactor/plan.md)
 - `archive/audio_mute/` [ミュート (音を出さない設定)](archive/audio_mute/plan.md)
 - `archive/core_alloc/` [P4 の core の割り振り](archive/core_alloc/plan.md)
 - `archive/focus_switch/` [Ctrl+Tab フォーカス切替 / フルスクリーン退避 - 実装と検証状況 (P1)](archive/focus_switch/report/p1.md)

@@ -8,7 +8,7 @@
 
 - doc/regression/plan.md、usage.md、report/rg2.md (台本の書き方。RG3 も同じ台本の形に乗せる)・rg3b.md (sim の起こし方)。
 - 相手の道具:
-  - Asterism のゲームホスト: asterism-games を手元で起こす口 (`rake mahjong:up` など、rakelib を grep)、端末のクライアント `asterism-games play ...`、doc/app_refactor/report/r4a.md・r4b.md (卓に入る・出る・ホストを止めて戻す、を手でやった手順)。
+  - Asterism のゲームホスト: asterism-games を手元で起こす口 (`rake mahjong:up` など、rakelib を grep)、端末のクライアント `asterism-games play ...`、doc/archive/app_refactor/report/r4a.md・r4b.md (卓に入る・出る・ホストを止めて戻す、を手でやった手順)。
   - zenohd と CRuby の Asterism の相手 (歩数の送り手 step_send など、doc/headless_s3/ と walk_scroller)。
   - MIDI: `tools/fmrb_midi_monitor.rb` (ルート)。音: `tools/fmrb_audio_probe.rb`。
   - HTTP の偽の相手 (天気などのアプリが使う口があれば)。

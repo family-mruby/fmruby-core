@@ -27,7 +27,7 @@
 #   table apps): the router, the ID, a credentials .tar, the room's seat
 #   in the browser build. The member's name is the profile's.
 #   Staying connected, the list, joining, leaving and the view are the
-#   table client's (FmrbAsterism::TableClient, doc/app_refactor R4); this
+#   table client's (FmrbAsterism::TableClient, doc/archive/app_refactor R4); this
 #   file has the board: the strokes, the picture, the screen.
 # - Keys. The list: up / down choose, Enter joins. At the board: 1-4 the
 #   width, U takes back your last stroke, C clears (the owner; y / n),

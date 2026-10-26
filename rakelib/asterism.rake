@@ -37,7 +37,7 @@ namespace :asterism do
     sh({ "ASTERISM_CREDENTIALS_RB" => creds }, "ruby test/asterism/run.rb")
   end
 
-  # FmrbAsterism::Link (doc/app_refactor, R1): waiting for WiFi and the
+  # FmrbAsterism::Link (doc/archive/app_refactor, R1): waiting for WiFi and the
   # screen, connecting, retrying, a lost connection, the application's
   # setup after every connect. The gem file runs under CRuby against a fake
   # Asterism; it needs no checkout, so it is part of `rake test`.
@@ -46,7 +46,7 @@ namespace :asterism do
     sh "ruby test/asterism/link_run.rb"
   end
 
-  # FmrbAsterism::TableClient (doc/app_refactor, R4): the list of a game
+  # FmrbAsterism::TableClient (doc/archive/app_refactor, R4): the list of a game
   # host's tables, join / leave, the view, the host gone and back, on top of
   # Link. Against a fake Asterism and a fake game host; part of `rake test`.
   desc "Run the FmrbAsterism::TableClient tests (CRuby, no docker)"

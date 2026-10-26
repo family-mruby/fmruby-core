@@ -32,7 +32,7 @@
 #   mahjong): the router, the ID, a credentials .tar, the room's seat in
 #   the browser build. The player's name is the profile's (the ID without one).
 #   Staying connected, the list, joining, leaving and the view are the
-#   table client's (FmrbAsterism::TableClient, doc/app_refactor R4); this
+#   table client's (FmrbAsterism::TableClient, doc/archive/app_refactor R4); this
 #   file has the game: the seats, the moves, the screen.
 # - The same game between two machines without a host is "Othello
 #   (direct)", flash/app/test/othello.app.rb (this file copies its board's

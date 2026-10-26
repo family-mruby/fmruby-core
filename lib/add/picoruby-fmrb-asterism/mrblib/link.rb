@@ -1,4 +1,4 @@
-# FmrbAsterism::Link: staying connected (doc/app_refactor, R1).
+# FmrbAsterism::Link: staying connected (doc/archive/app_refactor, R1).
 #
 # What every application on Asterism did for itself: wait for WiFi, connect
 # with the machine's settings (FmrbAsterism.settings), poll, notice a lost

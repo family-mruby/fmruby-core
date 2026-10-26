@@ -5,7 +5,7 @@
 #
 # All are plain Ruby over FmrbGfx#text_width, so the real gem files run
 # here -- fmrb-gfx.rb included, with its C half stubbed -- and the answers
-# are compared with the helpers the apps had before (doc/app_refactor R5):
+# are compared with the helpers the apps had before (doc/archive/app_refactor R5):
 # the othello table's column counting (a wide character 2 columns of 6 px)
 # and the mahjong table's pixel fit with "..".
 #

@@ -1,4 +1,4 @@
-# FmrbText - measuring, fitting and wrapping a text in pixels (doc/app_refactor
+# FmrbText - measuring, fitting and wrapping a text in pixels (doc/archive/app_refactor
 # R5, R6). Stateless: it remembers nothing between calls.
 #
 # Which helper (doc/reference/screen_helpers.md):

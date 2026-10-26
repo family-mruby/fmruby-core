@@ -35,4 +35,4 @@
 - push・タグはしない。`git commit -a` は使わない。件名 `app:` `services:` `toml:` など履歴に合わせ、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。doc (この指示書・report) はコミットしない (親がする)。
 - 終わったら sim・web を片付ける。
 - **止まる条件**: fmrb_toml が入っていない構成があり入れるのに大きな変更が要る、内蔵 RAM が増える、Spinel から使えない (判断材料を返す)、振る舞いを変えないと寄せられない読み手がある (一覧にして返す)。
-- **report**: `doc/app_refactor/report/r2.md` (常体): 1 の確認結果、FmrbToml と入口の形、寄せた読み手と残したもの (理由)、行数の前後、試験、RAM とファームの大きさ、残件、コミット。
+- **report**: `doc/archive/app_refactor/report/r2.md` (常体): 1 の確認結果、FmrbToml と入口の形、寄せた読み手と残したもの (理由)、行数の前後、試験、RAM とファームの大きさ、残件、コミット。

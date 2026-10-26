@@ -29,4 +29,4 @@
 - push・タグはしない (親がする)。`git commit -a` は使わない。件名 `app:` `game:` `mahjong:` など、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。doc (この指示書・report) はコミットしない。
 - 終わったら sim・web・手元のゲームホストを片付ける (前から動いていたものは残す)。
 - **止まる条件**: 見た目を変えないと共通にできない (どちらに合わせるか選択肢で返す)、既存の口を変えると Spinel のプログラムの振る舞いが変わる、内蔵 RAM が増える。
-- **report**: `doc/app_refactor/report/r5.md` (常体): 違いの表、共通の口の設計、載せ替えの前後の行数、画面の比較、RAM、残件、コミット。
+- **report**: `doc/archive/app_refactor/report/r5.md` (常体): 違いの表、共通の口の設計、載せ替えの前後の行数、画面の比較、RAM、残件、コミット。

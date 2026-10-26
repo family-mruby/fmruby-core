@@ -40,7 +40,7 @@
 
 - **触ってよいもの**: fmruby-core (develop) の picoruby-fmrb-app の gem、Spinel のプログラムの取り込みの設定 (要る範囲)、5 つのアプリ、試験、doc/reference/ の新しい資料、report。lib/ を触ったら `rake clean`、ターゲットの切り替えは `rake clean_all`、Spinel の生成物は作り直す (wasm も)。
 - **触らないもの**: 実機、sdkconfig、asterism-games・asterism の gem 本体・console、VPS、`~/asterism_keys/`、麻雀の手描きの牌の絵。
-- push・タグはしない (親がする)。`git commit -a` は使わない。件名 `app:` `ui:` `spinel:` など履歴に合わせ、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。doc/app_refactor の指示書・report はコミットしない (親がする)。doc/reference/ の新しい資料はコミットしてよい。
+- push・タグはしない (親がする)。`git commit -a` は使わない。件名 `app:` `ui:` `spinel:` など履歴に合わせ、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。doc/archive/app_refactor の指示書・report はコミットしない (親がする)。doc/reference/ の新しい資料はコミットしてよい。
 - 終わったら sim・web を片付ける (前から動いていたものは残す)。
 - **止まる条件**: Spinel の内蔵 RAM が 1 プログラムあたり約 16 B を超えて増える、FmrbUI の収まる文字の見た目が変わる、Spinel で FmrbText が型の決まらない形にしかならない (選択肢で返す)。
-- **report**: `doc/app_refactor/report/r6.md` (常体): Spinel で使えるようにした方法、FmrbUI の詰め方、5 アプリの前後の行数と画面、RAM、残件、コミット。
+- **report**: `doc/archive/app_refactor/report/r6.md` (常体): Spinel で使えるようにした方法、FmrbUI の詰め方、5 アプリの前後の行数と画面、RAM、残件、コミット。

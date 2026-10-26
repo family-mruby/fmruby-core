@@ -13,7 +13,7 @@
 #   tiles): the host takes only what its list for this seat (the view's "a")
 #   has. A member without a seat watches (the table without hands).
 # - The connection, the list, joining and the view are
-#   FmrbAsterism::TableClient's (doc/app_refactor, R4), as othello's; the
+#   FmrbAsterism::TableClient's (doc/archive/app_refactor, R4), as othello's; the
 #   connection is the machine's (FmrbAsterism.settings). A
 #   line that drops or a host that restarts: the app keeps asking. Who is
 #   there comes from Asterism (GS3): a host that leaves the network
