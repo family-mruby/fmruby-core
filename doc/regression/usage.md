@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章
+> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章
 
 ## 1. 流し方
 
@@ -25,7 +25,7 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 
 ## 3. 端末の一覧 (端末を足すとき)
 
-- 端末と画面の大きさは `tools/regress/targets.rb` の 1 か所にある。1 行 1 端末: 名前・種類 (modern / retro / mini)・画面の大きさ・高解像度の全画面 (あれば)・全画面の余白・窓の既定の大きさ・日本語フォントの有無・`config/` の system_conf と storage_exclude・ファームの FMRB_HW_TARGET (`firmware`、ブラウザ版は無し) とそのビルドの設定 (`build`)。
+- 端末と画面の大きさは `tools/regress/targets.rb` の 1 か所にある。1 行 1 端末: 名前・種類 (modern / retro / mini)・画面の大きさ・高解像度の全画面 (あれば)・全画面の余白・窓の既定の大きさ・日本語フォントの有無・`config/` の system_conf と storage_exclude・ファームの FMRB_HW_TARGET (`firmware`、ブラウザ版は無し) とそのビルドの設定 (`build`)・実機のつなぎ方 (`serial`、8 章)。
 - `firmware` のある端末は `rake regress:size ALL=1` (7 章) の表にも入る (既定で作るのは `size_default` の付いた S3・P4 の 1 台ずつ)。ファームの設定は `FIRMWARE_ENV` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ) に端末ごとの `build` を重ねたもので、`.env` には左右されない。Rakefile の BOARD_BUILD_DEFAULTS と食い違うと `rake regress:size` が止まる。
 - **端末を 1 台足すときは、この一覧に 1 行足す**。次の `rake regress` でその端末の記録が「基準が無い」と出るので、記録を見て `rake regress:update` する。
 - 画面が同じ端末 (Tab5・NARYAv4・ブラウザ版) は同じ絵になるので、1 組の記録を共有する (端末の組、`modern-426x240` のような名前)。新しい大きさの端末だけが記録を増やす。端末が増えても確認の手間は大きさの種類の分しか増えない。
@@ -110,3 +110,33 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 
 - 内蔵 RAM が増えた: 表の行と「差のあった部品」で、どのアーカイブが増えたかが分かる。シンボルまで見るなら、その端末を `ONLY=<端末> NO_RESTORE=1` で作り直して build/ に残し、`idf.py size-files` / `size-symbols` を当てる (済んだら `ruby tools/regress/size.rb --restore`)。
 - 増えるのが意図したもの (機能を足した) なら、人が確認してから `rake regress:size:update` し、コミットの本文に増えた量と理由を書く。内蔵 RAM は増やさない方針 (doc/reference/internal_ram_budget.md) なので、増やす前に PSRAM へ置けないかを先に考える。
+
+## 8. 実機の起動ログ (rake regress:boot)
+
+```
+rake regress:boot BOARD=naryav4          # ファームを作り、app の区画だけ焼き、リセットして起動ログを基準と比べる (5 分ほど)
+rake regress:boot BOARD=naryav4 FLASH=0  # 焼かずに、今入っているファームの起動だけ見る (40 秒ほど)
+rake regress:boot BOARD=naryav4 TABLE=1  # 実機を使わずに、前回の結果から表だけ出す
+rake regress:boot:update BOARD=naryav4   # 前回の結果を基準にする (5 章の決まりを守る)
+rake regress:boot:test                   # 解析部の試験 (作り物のログ、実機は要らない。rake test・rake regress に入っている)
+```
+
+- **実機がつながっていて、使ってよいときだけ流す**。`rake regress`・`rake regress:full` には入らない。`BOARD=` は targets.rb の名前か FMRB_HW_TARGET (省略すると環境変数の FMRB_HW_TARGET)。ポートは targets.rb の USB の VID:PID で探す。同じ VID:PID の端末が 2 台あるとき (Tab5・StickS3・AtomS3R は 303a:1001 で同じ) は `PORT=/dev/ttyACMx` で指定する。
+- **焼くのは app の区画だけ** (`rake flash:app`)。storage と /home は消えない。全体の書き込み (`rake flash`) はしない。焼く速さは targets.rb の `flash_baud` (落ちたら 115200 で 1 回やり直す)。ビルドの設定は `rake regress:size` と同じ固定のもの (`firmware_env`) で、`.env` には左右されない。build/ は退避して戻す (7 章と同じ)。
+- **ポートを使っている物がいたら始めない**: MCP サーバの serial_start・flash (ポートごとの錠 `~/.fmrb_mcp/<port>.lock`) か、ポートを開いているほかのプロセス (ユーザのモニタなど) が見つかると、ポートに触らずに止まる (`port busy: ...`)。MCP の capture なら serial_stop してから流す。流している間は同じ錠を取るので、MCP の serial_* と flash は断られる。
+- 起動ログは、リセットしてから周期ダンプ (10 秒ごと) が 3 回出るまで取る (`DUMPS=n` で変えられる)。リセットは端末ごと (targets.rb の `reset`): 外付けの USB-UART (NARYAv3・P4-Nano) は RTS で EN を引く。チップの USB-Serial-JTAG (Tab5・StickS3・AtomS3R) はポートを開くだけでリブートするので、何も送らない。
+- 集めるもの: crash マーカー (`Guru Meditation`・`abort()`・`Backtrace:`・`panic'ed`・`assert failed`・stack overflow・`CORRUPT HEAP` など)、リセット原因 (`rst:0x..`) と取っている間に起動した回数、`M1|` の各段 (internal・largest・psram)、最後の周期ダンプの `IRAM free:`・タスクごとの stack の空き・VM プール (used・peak・ExcHW)、`Boot complete` までの秒数 (行が届いた時刻から。0.5 秒刻み)。
+- 結果は `tmp/regress/boot/<端末>.json`、全文のログは `<端末>.log` (各行に届いた時刻。mDNS の名前・IP・MAC・アクセスポイントの名前は伏せてある)、ビルドと焼いたときのログは `.build.log`・`.flash.log`。基準は `test/regress/boot_baseline.json`。
+
+```
+board    reset              boot    crash M1 steps  M1 last internal    IRAM free           least stack free             dumps
+NARYAv4  POWERON            8.9s    0     24        212,636 +0          208,592 -24         status_led 1,508 +0          3
+  pools (used/peak): fmrb_kernel 100,824/126,208  system_desktop 649,096/708,888  Services 391,040/475,648
+boot: naryav4 vs baseline 2.1.0-847-g802b16a3-dirty, ok (0.6 min: capture 36s; not flashed; log tmp/regress/boot/naryav4.log)
+```
+
+- **落ちるもの**: crash マーカーが 1 つでもある、取っている間に 2 回以上起動した (勝手にリブートした)、`Boot complete`・周期ダンプ・`M1|` が無い、基準にある `M1|` の段やタスクが無い、基準より悪い向き (空きが減る) に幅を超えた数。幅は M1| の internal 1 KB・largest 8 KB・psram 16 KB、IRAM free 1 KB、stack の空き 384 B (同じファームで 5 回起動した揺れの 2 倍ほど。根拠は `report/rg4.md`)。基準の json の `tolerance` で変えられる。
+- よい向きに幅を超えた数と、基準に無い新しい `M1|` の段は `moved` の行に出るだけ (落ちない)。VM プールは表に出すだけで比べない (カーネルは自分の GC の都合で動く)。
+- 基準があるのは今は P4-Nano (NARYAv4) だけ。ほかの端末は、つないだときに 1 回流し、ログと表を人が見てから `rake regress:boot:update BOARD=<端末>` する。端末を足すときは targets.rb の行に `serial:` (VID:PID・リセットのしかた・ボーレート) を書く。
+- 落ちたら全文のログ (`tmp/regress/boot/<端末>.log`) の、落ちた項目の行を見る。内蔵 RAM が減ったなら、ビルドの時点の数 (`rake regress:size`) とどちらで減ったかを比べる (静的な領域が増えたのか、起動中の確保が増えたのか)。
+
