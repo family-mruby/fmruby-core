@@ -1,0 +1,30 @@
+# Machine definition: development of the Cardputer Zero's own screen on a PC
+# (doc/linux_native/, L4) -- the 320x170 screen and the keyboard-only desktop
+# in an SDL window, magnified 4 times.
+#
+# The same screen and desktop as cardputer_zero.toml, with the PC's window,
+# keyboard and sound instead of the board's LCD, keyboard and codec. Headless
+# with SDL_VIDEODRIVER=dummy, as tools/fmrb_native.rb runs it.
+# Field reference: native/machine/native_machine.h.
+description = "development: the 320x170 keyboard-only desktop in an SDL window"
+
+[screen]
+form = "320x170"
+
+[display]
+backend = "sdl"
+scale = 4
+rotate = 0
+
+[input]
+backend = "sdl"
+
+[audio]
+backend = "sdl"
+
+[desktop]
+variant = "keys"
+
+[system]
+services = "none"
+exit_key = "esc_long"        # Esc held on the desktop ends the program

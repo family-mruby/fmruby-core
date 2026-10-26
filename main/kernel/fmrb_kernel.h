@@ -239,6 +239,40 @@ int fmrb_kernel_get_config_section(const char *section,
                                    fmrb_config_table_t *tables_out,
                                    int max_tables);
 
+#if defined(FMRB_PLATFORM_NATIVE)
+/**
+ * @brief What the native program's machine definition says about the screen
+ *        and the desktop (doc/linux_native, L4), plus the keys desktop's
+ *        settings from system_conf.
+ *
+ * The machine definition (native/machine) is read before the kernel starts,
+ * and its screen wins over system_conf's display_width / display_height: the
+ * user's /etc follows the user from one machine to another, the screen does
+ * not. Native only -- nothing here exists on a device, the simulation or the
+ * browser.
+ */
+typedef struct {
+    uint16_t screen_w;          // base screen, 0 = system_conf decides
+    uint16_t screen_h;
+    bool keys_desktop;          // desktop.variant = "keys"
+    bool esc_long_quits;        // system.exit_key = "esc_long"
+    uint8_t switcher_mod;       // keys_switcher_key: FMRB_KEYMAP_MOD_* (either side)
+    uint8_t switcher_scancode;  // keys_switcher_key: HID usage
+    uint16_t esc_long_ms;       // keys_esc_long_ms
+} fmrb_native_machine_conf_t;
+
+/** Called by main_native.c before the kernel starts. */
+void fmrb_kernel_set_native_machine(uint16_t screen_w, uint16_t screen_h,
+                                    bool keys_desktop, bool esc_long_quits);
+
+/** The values above, the system_conf part filled once the kernel read it. */
+const fmrb_native_machine_conf_t *fmrb_kernel_native_machine(void);
+
+/** Ask the native program to end, as its control socket's quit does
+ *  (native/backend/main_native.c). */
+void fmrb_native_request_quit(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

@@ -78,6 +78,7 @@
 #include "task.h"
 
 #include "etc_update.h"
+#include "fmrb_kernel.h"
 #include "fmrb_gate.h"
 #include "net_wrap.h"
 #include "fmrb_hal_file_layout.h"
@@ -377,6 +378,14 @@ static void on_quit_signal(int sig)
     s_quit_signal = 1;
 }
 
+/* The machine asking to end (the keys desktop's Esc held on the desktop):
+ * the same way out as the control socket's quit. */
+void fmrb_native_request_quit(void)
+{
+    fprintf(stderr, "native: quit asked for by the machine\n");
+    s_quit_signal = 1;
+}
+
 /* SDL turns SIGINT/SIGTERM into SDL_QUIT itself; the other outputs have no
  * event queue, so the loop looks at a flag. The handler only sets it. */
 static void install_quit_signals(void)
@@ -472,10 +481,14 @@ int main(int argc, char **argv)
     if (native_machine_check(m, why, sizeof(why)) != 0) return refuse("definition", why);
     native_backends_t be;
     if (!native_backends_select(m, &be, why, sizeof(why))) return refuse("backend", why);
-    if (strcmp(m->system.services, "none") != 0 || strcmp(m->system.exit_key, "none") != 0) {
-        fprintf(stderr, "native: system.services=%s exit_key=%s: not implemented yet (L5/L6), ignored\n",
-                m->system.services, m->system.exit_key);
+    if (strcmp(m->system.services, "none") != 0) {
+        fprintf(stderr, "native: system.services=%s: not implemented yet (L6), ignored\n",
+                m->system.services);
     }
+    /* The screen and the desktop the kernel will use (fmrb_kernel.h). */
+    fmrb_kernel_set_native_machine((uint16_t)m->screen.w, (uint16_t)m->screen.h,
+                                   strcmp(m->desktop.variant, "keys") == 0,
+                                   strcmp(m->system.exit_key, "esc_long") == 0);
 
     /* The sockets live here, and a Unix socket's path has to fit in 108
      * bytes: refuse a run directory that would silently truncate them. */

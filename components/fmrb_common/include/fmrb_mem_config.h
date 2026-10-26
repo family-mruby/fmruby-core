@@ -51,7 +51,17 @@ typedef int8_t fmrb_mem_handle_t;
 
 //PSRAM
 #define FMRB_MEM_POOL_SIZE_SYSTEM (500*1024) //for system functions
+// The same 64-bit rule as the pools below, for the all-mruby kernel: on a
+// 64-bit Linux build (the simulation, the native program) it sat at 506 KB of
+// these 500 KB right after boot, and the next method added to the kernel
+// failed its boot with NoMemoryError (doc/linux_native/report/l4.md). The
+// devices and the browser build (wasm32) have the 32-bit object model and
+// keep 500 KB; the Spinel kernel uses a third of it.
+#if defined(CONFIG_IDF_TARGET_LINUX) && UINTPTR_MAX > 0xFFFFFFFFu
+#define FMRB_MEM_POOL_SIZE_KERNEL (1024*1024)
+#else
 #define FMRB_MEM_POOL_SIZE_KERNEL (500*1024)
+#endif
 // 64-bit Linux doubles object headers/pointers vs 32-bit ESP32, so the same
 // desktop has ~2x the live set on Linux; sizing both alike is inaccurate. The
 // ESP32 800KB stays put pending 32-bit measurement + sp_gc_hdr slimming.

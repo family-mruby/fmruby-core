@@ -36,18 +36,15 @@ module LauncherMixin
   LAUNCHER_ICON_SEL = FmrbConst::THEME_HIGHLIGHT
   LAUNCHER_TEXT = FmrbConst::THEME_TEXT
 
-  # Built-in app entries. Labels are resolved through FmrbI18n at scan time so
+  # Built-in app entries, from the catalog both desktops share
+  # (desktop_common.rb). Labels are resolved through FmrbI18n at scan time so
   # they pick up the active language ("ja" / "en") from system_conf.toml.
   def builtin_apps
-    [
-      { label: FmrbI18n.t(:shell),  app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
-      { label: FmrbI18n.t(:editor), app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
-      # The store is built in like the other two: it installs apps, so it must
-      # not be one of the things it can uninstall. Its .app.toml is gone, so
-      # this list is the only place its name and icon now live.
-      { label: FmrbI18n.t(:app_store), app: "default/appstore",
-        icon_file: "usr/share/icon/appstore.icon" },
-    ]
+    out = []
+    builtin_app_catalog.each do |b|
+      out << { label: b[:label], app: b[:app], icon_file: b[:icon_file] }
+    end
+    out
   end
 
   # Default icon files per VM type
@@ -1143,22 +1140,6 @@ module LauncherMixin
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
-  end
-
-  # +open_path+ asks the kernel to hand that file to the new app as soon as it
-  # has a queue, as a file_selected control message. The kernel does the
-  # waiting (its spawn handler defers the send until the app can receive it),
-  # which is why nothing here counts ticks any more.
-  def spawn_app(app_name, open_path = nil)
-    Log.info("Requesting spawn: #{app_name}#{open_path ? " with #{open_path}" : ""}")
-    data = { "cmd" => "spawn", "app_name" => app_name }
-    data["open_path"] = open_path if open_path
-    success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
-    if success
-      Log.info("Spawn request sent successfully")
-    else
-      Log.error("Failed to send spawn request")
-    end
   end
 
   # ---- Launcher hit testing ----

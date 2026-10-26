@@ -79,10 +79,18 @@ def hosted_regen_mrb!(label, mruby_build, mruby_task)
       subdir = File.join(dir, name)
       sources = [rb]
       sources += Dir[File.join(subdir, "*.rb")].sort if File.directory?(subdir)
+      # A program built for the hosted builds only can take its mixins from
+      # another program's directory: a "# combine: a/x.rb b/y.rb" line names
+      # them, relative to this directory (system_desktop_keys.app.rb shares
+      # the mouse desktop's panels).
+      combine = File.foreach(rb).first(80).find { |l| l.start_with?("# combine:") }
+      if combine
+        sources += combine.sub("# combine:", "").split.map { |f| File.join(dir, f) }
+      end
       newest = sources.map { |f| File.mtime(f) }.max
       next if File.exist?(out_c) && File.mtime(out_c) >= newest
       mkdir_p File.join(dir, "mrb")
-      if File.directory?(subdir)
+      if sources.size > 1
         combined = File.join(dir, "mrb", "#{name}_combined.rb")
         map = File.join(dir, "mrb", "#{name}_combined.map.json")
         sh "python3 #{gen} #{combined} #{map} " \

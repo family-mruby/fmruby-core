@@ -38,6 +38,12 @@ module FileManagerMixin
     "Run" => "Ent", "Edit" => "E", "Copy" => "C", "Delete" => "Del", "Paste" => "V"
   }
 
+
+  # The panel's size. The mouse desktop shows a window of FMGR_W x FMGR_H;
+  # a desktop that wants another size (the keys desktop fills the screen
+  # under its bar) defines these two itself.
+  def fmgr_w; FMGR_W; end
+  def fmgr_h; FMGR_H; end
   def open_file_manager
     @file_manager_open = true
     @file_manager_dir = "/"
@@ -55,7 +61,7 @@ module FileManagerMixin
     close_launcher
     close_dropdown
     scan_file_manager_dir
-    notify_overlay_state(true, @fmgr_x, @fmgr_y, FMGR_W, FMGR_H)
+    notify_overlay_state(true, @fmgr_x, @fmgr_y, fmgr_w, fmgr_h)
     update_composite_regions
     draw_foreground
   end
@@ -150,27 +156,27 @@ module FileManagerMixin
     y = @fmgr_y
 
     # Window frame
-    @gfx.fill_rect(x, y, FMGR_W, FMGR_H, FMGR_BG)
-    @gfx.draw_rect(x, y, FMGR_W, FMGR_H, FmrbConst::THEME_BORDER)
+    @gfx.fill_rect(x, y, fmgr_w, fmgr_h, FMGR_BG)
+    @gfx.draw_rect(x, y, fmgr_w, fmgr_h, FmrbConst::THEME_BORDER)
 
     # Title bar
-    @gfx.fill_rect(x + 1, y + 1, FMGR_W - 2, FMGR_TITLE_H - 1, FMGR_TITLE_BG)
+    @gfx.fill_rect(x + 1, y + 1, fmgr_w - 2, FMGR_TITLE_H - 1, FMGR_TITLE_BG)
     title = "File: #{@file_manager_dir}"
-    max_title_len = (FMGR_W - 60) / 6
+    max_title_len = (fmgr_w - 60) / 6
     title = title[0, max_title_len] if title.length > max_title_len
     @gfx.draw_text(x + 4, y + 3, title, FmrbConst::THEME_TEXT_LIGHT, FMGR_TITLE_BG)
 
     # Close button on title bar (small filled circle, matches app windows).
-    close_cx = x + FMGR_W - 7
+    close_cx = x + fmgr_w - 7
     close_cy = y + FMGR_TITLE_H / 2
     @gfx.fill_circle(close_cx, close_cy, 3, FmrbConst::THEME_TEXT_LIGHT)
 
     # Column header
     header_y = y + FMGR_TITLE_H + 1
     header_bg = FmrbConst::THEME_HIGHLIGHT
-    @gfx.fill_rect(x + 1, header_y, FMGR_W - 2, FMGR_ITEM_H, header_bg)
+    @gfx.fill_rect(x + 1, header_y, fmgr_w - 2, FMGR_ITEM_H, header_bg)
     @gfx.draw_text(x + 6, header_y + 2, "Name", FMGR_TEXT, header_bg)
-    size_col_x = x + FMGR_W - 60
+    size_col_x = x + fmgr_w - 60
     @gfx.draw_text(size_col_x, header_y + 2, "Size", FMGR_TEXT, header_bg)
 
     # Copy indicator — themed accent so it pops against the header band.
@@ -192,7 +198,7 @@ module FileManagerMixin
       item_y = list_y + i * FMGR_ITEM_H
 
       if idx == @file_manager_selected || idx == @fmgr_pressed_idx
-        @gfx.fill_rect(x + 2, item_y, FMGR_W - 4, FMGR_ITEM_H, FMGR_SEL_BG)
+        @gfx.fill_rect(x + 2, item_y, fmgr_w - 4, FMGR_ITEM_H, FMGR_SEL_BG)
         text_color = FmrbConst::THEME_TEXT_LIGHT
         text_bg = FMGR_SEL_BG
         size_color = FmrbConst::THEME_TEXT_LIGHT
@@ -206,7 +212,7 @@ module FileManagerMixin
       prefix = entry[:is_dir] ? "[" : " "
       suffix = entry[:is_dir] ? "]" : ""
       label = "#{prefix}#{entry[:name]}#{suffix}"
-      max_name_len = (FMGR_W - 72) / 6
+      max_name_len = (fmgr_w - 72) / 6
       label = label[0, max_name_len] if label.length > max_name_len
       @gfx.draw_text(x + 6, item_y + 2, label, text_color, text_bg)
 
@@ -219,7 +225,7 @@ module FileManagerMixin
     end
 
     # One pixel inside, clear of the panel's border (see file_selector).
-    @ui.move(:fmgr_sb, x + FMGR_W - 1 - FMGR_SB_W, list_y, FMGR_SB_W, m[:list_h])
+    @ui.move(:fmgr_sb, x + fmgr_w - 1 - FMGR_SB_W, list_y, FMGR_SB_W, m[:list_h])
     @ui.set_range(:fmgr_sb, @file_manager_entries.size, max_visible)
     @ui.set_value(:fmgr_sb, @file_manager_scroll)
     @ui.set_visible(:fmgr_sb, true)
@@ -292,7 +298,7 @@ module FileManagerMixin
   def fmgr_list_metrics
     header_y = @fmgr_y + FMGR_TITLE_H + 1
     list_y = header_y + FMGR_ITEM_H + 1
-    list_h = FMGR_H - FMGR_TITLE_H - FMGR_ITEM_H - 4
+    list_h = fmgr_h - FMGR_TITLE_H - FMGR_ITEM_H - 4
     max_visible = list_h / FMGR_ITEM_H
     { list_y: list_y, list_h: list_h, max_visible: max_visible }
   end
@@ -359,7 +365,7 @@ module FileManagerMixin
 
     # Close button hit zone — square around the circle drawn in
     # draw_file_manager. Slightly larger than the circle for tap tolerance.
-    close_cx = fx + FMGR_W - 7
+    close_cx = fx + fmgr_w - 7
     close_cy = fy + FMGR_TITLE_H / 2
     if x >= close_cx - 5 && x <= close_cx + 5 &&
        y >= close_cy - 5 && y <= close_cy + 5
@@ -424,11 +430,11 @@ module FileManagerMixin
     @fmgr_ctx_y = y
     # Clamp context menu within file manager window
     ctx_h = FMGR_CTX_ITEM_H * items.size + 2
-    if @fmgr_ctx_x + FMGR_CTX_W > @fmgr_x + FMGR_W
-      @fmgr_ctx_x = @fmgr_x + FMGR_W - FMGR_CTX_W
+    if @fmgr_ctx_x + FMGR_CTX_W > @fmgr_x + fmgr_w
+      @fmgr_ctx_x = @fmgr_x + fmgr_w - FMGR_CTX_W
     end
-    if @fmgr_ctx_y + ctx_h > @fmgr_y + FMGR_H
-      @fmgr_ctx_y = @fmgr_y + FMGR_H - ctx_h
+    if @fmgr_ctx_y + ctx_h > @fmgr_y + fmgr_h
+      @fmgr_ctx_y = @fmgr_y + fmgr_h - ctx_h
     end
     @fmgr_ctx_open = true
     draw_foreground
@@ -600,11 +606,11 @@ module FileManagerMixin
     m = fmgr_list_metrics
     row = idx - @file_manager_scroll
     row = 0 if row < 0
-    @fmgr_ctx_x = @fmgr_x + FMGR_W / 3
+    @fmgr_ctx_x = @fmgr_x + fmgr_w / 3
     @fmgr_ctx_y = m[:list_y] + (row + 1) * FMGR_ITEM_H
     ctx_h = FMGR_CTX_ITEM_H * items.size + 2
-    if @fmgr_ctx_y + ctx_h > @fmgr_y + FMGR_H
-      @fmgr_ctx_y = @fmgr_y + FMGR_H - ctx_h
+    if @fmgr_ctx_y + ctx_h > @fmgr_y + fmgr_h
+      @fmgr_ctx_y = @fmgr_y + fmgr_h - ctx_h
     end
     @fmgr_ctx_open = true
     draw_foreground
@@ -790,7 +796,7 @@ module FileManagerMixin
     if @fmgr_ctx_open && hit_fmgr_context_menu?(x, y)
       return true
     end
-    x >= @fmgr_x && x < @fmgr_x + FMGR_W &&
-      y >= @fmgr_y && y < @fmgr_y + FMGR_H
+    x >= @fmgr_x && x < @fmgr_x + fmgr_w &&
+      y >= @fmgr_y && y < @fmgr_y + fmgr_h
   end
 end

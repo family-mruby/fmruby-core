@@ -1706,6 +1706,146 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg)
     host_task_process_host_message(msg);
 }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+// ---- Keyboard-only desktop (doc/linux_native, L4) -------------------------
+//
+// With the keys desktop (machine definition desktop.variant = "keys") two
+// keys belong to the machine rather than to the app in front:
+//
+//   - the switcher key (system_conf keys_switcher_key, Ctrl+Tab unless set)
+//     opens the switcher: the kernel's cycle_focus, as Ctrl+Tab is on the
+//     mouse desktop. It replaces the fixed Ctrl+Tab / Ctrl+comma pair there.
+//   - Esc is held back until it is released or held long enough. Released
+//     sooner than keys_esc_long_ms, it goes to the app as a press and a
+//     release, the app's ordinary "back". Held that long, it closes the app
+//     in front (the kernel's Ctrl+Q path), or -- while the desktop itself
+//     has the keyboard (its menu, switcher or panels) and the machine says
+//     exit_key = "esc_long" -- ends the program. Decided on press and
+//     release and the clock, never on key repeat.
+//
+// Native only: the devices, the simulation and the browser keep their keys.
+
+#define KEYS_SC_ESC 0x29
+
+static bool s_keys_esc_held;
+static bool s_keys_esc_fired;
+static bool s_keys_replaying;
+static fmrb_time_t s_keys_esc_down_us;
+static int s_keys_esc_key_code;
+
+static void host_send_kernel_control(const char *payload, size_t size)
+{
+    fmrb_msg_t sys_msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = PROC_ID_HOST,
+        .size = size
+    };
+    memcpy(sys_msg.data, payload, size);
+    fmrb_msg_send(0, &sys_msg, 1000);  // PID 0 = kernel
+}
+
+static bool keys_desktop_on(void)
+{
+    const fmrb_native_machine_conf_t *nm = fmrb_kernel_native_machine();
+    return nm->keys_desktop;
+}
+
+// Modifiers folded to one side, so "ctrl" matches either Ctrl key.
+static uint8_t keys_fold_mod(uint8_t mod)
+{
+    uint8_t out = 0;
+    if (mod & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL)) out |= FMRB_KEYMAP_MOD_LCTRL;
+    if (mod & (FMRB_KEYMAP_MOD_LSHIFT | FMRB_KEYMAP_MOD_RSHIFT)) out |= FMRB_KEYMAP_MOD_LSHIFT;
+    if (mod & (FMRB_KEYMAP_MOD_LALT | FMRB_KEYMAP_MOD_RALT)) out |= FMRB_KEYMAP_MOD_LALT;
+    return out;
+}
+
+// Is the keyboard with the desktop (its menu, switcher or panels)?
+static bool keys_target_is_desktop(void)
+{
+    fmrb_hid_routing_t routing;
+    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return false;
+    if (!routing.routing_enabled || routing.target_pid == 0xFF) return true;
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(routing.target_pid);
+    return ctx == NULL || strcmp(ctx->app_name, "system_desktop") == 0;
+}
+
+static void keys_esc_long(void)
+{
+    const fmrb_native_machine_conf_t *nm = fmrb_kernel_native_machine();
+    if (keys_target_is_desktop()) {
+        if (nm->esc_long_quits) {
+            FMRB_LOGI(TAG, "Esc held on the desktop: ending the program");
+            fmrb_native_request_quit();
+        } else {
+            FMRB_LOGI(TAG, "Esc held on the desktop (exit_key is not esc_long): nothing to do");
+        }
+        return;
+    }
+    FMRB_LOGI(TAG, "Esc held: closing the app in front");
+    host_send_kernel_control("\x81\xa3""cmd\xb0""system_interrupt", 22);
+}
+
+// The Esc that was held back, to the app after all (a short press).
+static void keys_esc_replay(void)
+{
+    host_message_t m;
+    memset(&m, 0, sizeof(m));
+    m.data.key.key_code = s_keys_esc_key_code;
+    m.data.key.scancode = KEYS_SC_ESC;
+    s_keys_replaying = true;
+    m.type = HOST_MSG_HID_KEY_DOWN;
+    host_task_process_host_message(&m);
+    m.type = HOST_MSG_HID_KEY_UP;
+    host_task_process_host_message(&m);
+    s_keys_replaying = false;
+}
+
+// True when the key was the machine's and must not reach the app.
+static bool keys_intercept(const host_message_t *msg)
+{
+    if (s_keys_replaying || !keys_desktop_on()) return false;
+    uint8_t mod = keys_fold_mod((uint8_t)(msg->data.key.modifier & 0xFF));
+    uint8_t sc = (uint8_t)(msg->data.key.scancode & 0xFF);
+    bool down = (msg->type == HOST_MSG_HID_KEY_DOWN);
+    if (sc == KEYS_SC_ESC && (mod == 0 || s_keys_esc_held)) {
+        if (down) {
+            if (!s_keys_esc_held) {
+                s_keys_esc_held = true;
+                s_keys_esc_fired = false;
+                s_keys_esc_down_us = fmrb_hal_time_get_us();
+                s_keys_esc_key_code = msg->data.key.key_code;
+            }
+            return true;   // a repeat while held changes nothing
+        }
+        bool was_held = s_keys_esc_held;
+        bool fired = s_keys_esc_fired;
+        s_keys_esc_held = false;
+        s_keys_esc_fired = false;
+        if (was_held && !fired) keys_esc_replay();
+        return true;
+    }
+    const fmrb_native_machine_conf_t *nm = fmrb_kernel_native_machine();
+    if (down && sc == nm->switcher_scancode && mod == nm->switcher_mod) {
+        FMRB_LOGI(TAG, "switcher key (sc=0x%02x)", sc);
+        host_send_kernel_control("\x81\xa3""cmd\xab""cycle_focus", 17);
+        return true;
+    }
+    return false;
+}
+
+// From the host loop: Esc held long enough fires while still held.
+static void keys_tick(void)
+{
+    if (!s_keys_esc_held || s_keys_esc_fired) return;
+    const fmrb_native_machine_conf_t *nm = fmrb_kernel_native_machine();
+    fmrb_time_t now = fmrb_hal_time_get_us();
+    if (now - s_keys_esc_down_us < (fmrb_time_t)nm->esc_long_ms * 1000) return;
+    s_keys_esc_fired = true;
+    keys_esc_long();
+}
+#endif
+
 /**
  * Process a host-specific message
  */
@@ -1714,6 +1854,9 @@ static void host_task_process_host_message(const host_message_t *msg)
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
         case HOST_MSG_HID_KEY_UP: {
+#if defined(FMRB_PLATFORM_NATIVE)
+            if (keys_intercept(msg)) break;
+#endif
             // Global hotkey: Ctrl+Q (intercept before routing)
             if (msg->type == HOST_MSG_HID_KEY_DOWN) {
                 uint8_t mod = (uint8_t)(msg->data.key.modifier & 0xFF);
@@ -1756,7 +1899,12 @@ static void host_task_process_host_message(const host_message_t *msg)
                 // underneath -- this intercept runs before routing, so taking
                 // one would take it from the editor. Comma is on both layouts,
                 // means nothing to a text editor, and no browser wants it.
-                if (has_ctrl && (sc == 0x2B || sc == 0x36)) {  // Tab, comma
+                bool fixed_switch_keys = true;
+#if defined(FMRB_PLATFORM_NATIVE)
+                // The keys desktop has its own (keys_intercept).
+                fixed_switch_keys = !keys_desktop_on();
+#endif
+                if (fixed_switch_keys && has_ctrl && (sc == 0x2B || sc == 0x36)) {  // Tab, comma
                     FMRB_LOGI(TAG, "cycle_focus hotkey (sc=0x%02x)", sc);
                     fmrb_msg_t sys_msg = {
                         .type = FMRB_MSG_TYPE_APP_CONTROL,
@@ -2111,6 +2259,10 @@ static void fmrb_host_task(void *pvParameters)
 
         // Coalesced save of the mute and volume (doc/reference/audio_output.md).
         host_audio_save_tick();
+
+#if defined(FMRB_PLATFORM_NATIVE)
+        keys_tick();
+#endif
 
         // File transfer interleaving: send one chunk per loop iteration
         // This ensures GFX commands are processed between chunks

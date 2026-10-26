@@ -9,8 +9,9 @@
  * it), a path is read as it is. --set section.key=value changes one field
  * after the file, and the L1 options (--scale) still win over both.
  *
- *   [screen]   form           "426x240" (Modern). "320x170" is defined but
- *                             refused until the 320x170 screen exists (L4)
+ *   [screen]   form           "426x240" (Modern) | "320x170" (the Cardputer
+ *                             Zero's LCD). The base screen: the kernel's
+ *                             display size whatever the user's system_conf says
  *   [display]  backend        sdl | fbdev | drm
  *              device         fbdev: "auto", "auto:<name in /proc/fb>" or a
  *                             path; drm: "auto" or a /dev/dri/card path
@@ -27,9 +28,11 @@
  *   [audio]    backend        sdl | alsa | none
  *              device         alsa: the PCM name ("default")
  *              latency_ms     alsa: the device buffer (100)
- *   [desktop]  variant        mouse (the Modern desktop) | keys (L4)
+ *   [desktop]  variant        mouse (the Modern desktop) | keys (the
+ *                             keyboard-only desktop, system_desktop_keys)
  *   [system]   services       none | linux (L6; accepted, not implemented)
- *              exit_key       none | esc_long (L5; accepted, not implemented)
+ *              exit_key       none | esc_long: with the keys desktop, Esc
+ *                             held on the desktop ends the program
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this

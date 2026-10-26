@@ -6,6 +6,7 @@
 #   InputRouterMixin    - HID event routing and coordinate transformation
 #   AppLifecycleMixin   - Fullscreen, suspend/resume, app termination
 #   AudioHandlerMixin   - Audio message forwarding to host task
+#   KeysDesktopMixin    - Apps full screen under the keyboard-only desktop's bar
 
 # Per-message trace logging on the kernel's hot paths (message receive,
 # audio forward). Off by default: even when the C log level discards the
@@ -21,6 +22,7 @@ class FmrbKernelImpl < FmrbKernel
   include InputRouterMixin
   include AppLifecycleMixin
   include AudioHandlerMixin
+  include KeysDesktopMixin
 
   # Constants
   MIN_WINDOW_WIDTH = 50
@@ -116,6 +118,9 @@ class FmrbKernelImpl < FmrbKernel
     @suspended_pids = []
     # Fullscreen app holding the high-resolution screen (sync_screen_mode).
     @screen_hires_pid = nil
+    # The keyboard-only desktop's state (keys_desktop.rb); off until that
+    # desktop announces itself.
+    keys_init
 
     # Deferred "open this file in the app I just spawned" (spawn open_path).
     # A freshly spawned app registers its message queue only once its task
@@ -373,10 +378,11 @@ class FmrbKernelImpl < FmrbKernel
       end
     when "enter_fullscreen"
       # A running app asking for the whole screen (editor F11). Same VM, so the
-      # buffer survives; see request_enter_fullscreen.
-      request_enter_fullscreen(pid)
+      # buffer survives; see request_enter_fullscreen. Under the keys desktop
+      # every app already is, and stays.
+      request_enter_fullscreen(pid) unless @keys_mode
     when "exit_fullscreen"
-      request_exit_fullscreen(pid)
+      request_exit_fullscreen(pid) unless @keys_mode
     when "overlay_state"
       @desktop_overlay_active = data["active"] || false
       @desktop_overlay_keyless = data["keyless"] || false
@@ -485,8 +491,13 @@ class FmrbKernelImpl < FmrbKernel
         end
       end
     when "cycle_focus"
-      # Ctrl+Tab (intercepted in host_task, works even in fullscreen)
-      handle_cycle_focus
+      # Ctrl+Tab (intercepted in host_task, works even in fullscreen). Under
+      # the keys desktop it is the switcher key, and the desktop draws it.
+      if @keys_mode
+        keys_open_switcher
+      else
+        handle_cycle_focus
+      end
     when "kill"
       # Asked for by the shell ("kill <pid>") and the monitor's task page.
       # Cooperative only -- see handle_kill_request.
@@ -545,7 +556,8 @@ class FmrbKernelImpl < FmrbKernel
     when "resume"
       Log.info("Resume request (not implemented)")
     else
-      Log.warn("Unknown app control command: #{cmd}")
+      handled = keys_control(cmd, pid, data)
+      Log.warn("Unknown app control command: #{cmd}") unless handled
     end
   end
 

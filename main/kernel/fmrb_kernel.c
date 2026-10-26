@@ -265,6 +265,122 @@ static void decide_setup_mode(const toml_table_t *conf)
     }
 }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+// The native program's machine (fmrb_kernel.h). Native only, so a device's
+// internal RAM does not carry it.
+static fmrb_native_machine_conf_t g_native_machine = {
+    .switcher_mod = FMRB_KEYMAP_MOD_LCTRL,
+    .switcher_scancode = 0x2B,   // Tab
+    .esc_long_ms = 1000,
+};
+
+void fmrb_kernel_set_native_machine(uint16_t screen_w, uint16_t screen_h,
+                                    bool keys_desktop, bool esc_long_quits)
+{
+    g_native_machine.screen_w = screen_w;
+    g_native_machine.screen_h = screen_h;
+    g_native_machine.keys_desktop = keys_desktop;
+    g_native_machine.esc_long_quits = esc_long_quits;
+}
+
+const fmrb_native_machine_conf_t *fmrb_kernel_native_machine(void)
+{
+    return &g_native_machine;
+}
+
+// keys_switcher_key: "ctrl+tab", "alt+s", "ctrl+shift+f1" ... -- modifiers
+// joined to one key name with '+'. The names are the keys' own (HID usages):
+// they mean the same key whatever keyboard_layout says.
+static const struct { const char *name; uint8_t usage; } k_switcher_keys[] = {
+    { "tab", 0x2B }, { "space", 0x2C }, { "enter", 0x28 }, { "backspace", 0x2A },
+    { "minus", 0x2D }, { "equal", 0x2E }, { "leftbracket", 0x2F },
+    { "rightbracket", 0x30 }, { "backslash", 0x31 }, { "semicolon", 0x33 },
+    { "quote", 0x34 }, { "comma", 0x36 }, { "period", 0x37 }, { "slash", 0x38 },
+};
+
+static bool parse_switcher_key(const char *spec, uint8_t *mod_out, uint8_t *usage_out)
+{
+    char buf[48];
+    size_t len = strlen(spec);
+    if (len == 0 || len >= sizeof(buf)) return false;
+    for (size_t i = 0; i <= len; i++) {
+        char c = spec[i];
+        buf[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    uint8_t mod = 0;
+    char *part = buf;
+    for (;;) {
+        char *plus = strchr(part, '+');
+        if (plus == NULL) break;
+        *plus = '\0';
+        if (strcmp(part, "ctrl") == 0) mod |= FMRB_KEYMAP_MOD_LCTRL;
+        else if (strcmp(part, "shift") == 0) mod |= FMRB_KEYMAP_MOD_LSHIFT;
+        else if (strcmp(part, "alt") == 0) mod |= FMRB_KEYMAP_MOD_LALT;
+        else return false;
+        part = plus + 1;
+    }
+    uint8_t usage = 0;
+    if (strlen(part) == 1 && part[0] >= 'a' && part[0] <= 'z') {
+        usage = (uint8_t)(0x04 + (part[0] - 'a'));
+    } else if (strlen(part) == 1 && part[0] >= '1' && part[0] <= '9') {
+        usage = (uint8_t)(0x1E + (part[0] - '1'));
+    } else if (strcmp(part, "0") == 0) {
+        usage = 0x27;
+    } else if (part[0] == 'f' && part[1] >= '1' && part[1] <= '9') {
+        int n = atoi(part + 1);
+        if (n >= 1 && n <= 12) usage = (uint8_t)(0x3A + n - 1);
+    } else {
+        for (size_t i = 0; i < sizeof(k_switcher_keys) / sizeof(k_switcher_keys[0]); i++) {
+            if (strcmp(part, k_switcher_keys[i].name) == 0) {
+                usage = k_switcher_keys[i].usage;
+                break;
+            }
+        }
+    }
+    // A bare letter would take the letter away from every app.
+    if (usage == 0 || mod == 0) return false;
+    *mod_out = mod;
+    *usage_out = usage;
+    return true;
+}
+
+// The machine's screen over system_conf's, and the keys desktop's settings.
+static void apply_native_machine(const toml_table_t *conf)
+{
+    if (g_native_machine.screen_w > 0 && g_native_machine.screen_h > 0) {
+        if (g_system_config.display_width != g_native_machine.screen_w ||
+            g_system_config.display_height != g_native_machine.screen_h) {
+            FMRB_LOGI(TAG, "Display %ux%u from the machine definition (system_conf says %ux%u)",
+                      (unsigned)g_native_machine.screen_w, (unsigned)g_native_machine.screen_h,
+                      (unsigned)g_system_config.display_width, (unsigned)g_system_config.display_height);
+        }
+        g_system_config.display_width = g_native_machine.screen_w;
+        g_system_config.display_height = g_native_machine.screen_h;
+        g_system_config.display_margin_x = 0;
+        g_system_config.display_margin_y = 0;
+    }
+    if (!g_native_machine.keys_desktop) return;
+    const char *spec = fmrb_toml_get_string(conf, "keys_switcher_key", NULL);
+    if (spec) {
+        uint8_t mod = 0, usage = 0;
+        if (parse_switcher_key(spec, &mod, &usage)) {
+            g_native_machine.switcher_mod = mod;
+            g_native_machine.switcher_scancode = usage;
+        } else {
+            FMRB_LOGW(TAG, "keys_switcher_key \"%s\" is not modifier+key; using ctrl+tab", spec);
+        }
+        fmrb_sys_free((void *)spec);
+    }
+    int ms = (int)fmrb_toml_get_int(conf, "keys_esc_long_ms", g_native_machine.esc_long_ms);
+    if (ms < 300) ms = 300;
+    if (ms > 5000) ms = 5000;
+    g_native_machine.esc_long_ms = (uint16_t)ms;
+    FMRB_LOGI(TAG, "Keys desktop: switcher key mod=0x%02x usage=0x%02x, Esc long %d ms%s",
+              g_native_machine.switcher_mod, g_native_machine.switcher_scancode, ms,
+              g_native_machine.esc_long_quits ? " (ends the program on the desktop)" : "");
+}
+#endif
+
 static bool read_system_config(void)
 {
     const char *config_path = "/etc/system_conf.toml";
@@ -308,6 +424,10 @@ static bool read_system_config(void)
                                                                     g_system_config.display_margin_x);
     g_system_config.display_margin_y = (uint8_t)fmrb_toml_get_int(conf, "display_margin_y",
                                                                     g_system_config.display_margin_y);
+
+#if defined(FMRB_PLATFORM_NATIVE)
+    apply_native_machine(conf);
+#endif
 
     // Read default user app window size
     g_system_config.default_user_app_width = (uint16_t)fmrb_toml_get_int(conf, "default_user_app_width",

@@ -1,8 +1,8 @@
 # Machine definition: M5Stack Cardputer Zero on its own -- the 320x170 LCD
 # (fbdev, fb_st7789v), the built-in keyboard (evdev) and the ES8389 (ALSA).
 #
-# The 320x170 screen and the keyboard-only desktop come in L4, so this
-# definition is refused at start ("320x170 is not supported yet") until then.
+# The 320x170 screen and the keyboard-only desktop (L4); sdl_keys.toml is the
+# same screen and desktop in an SDL window for development.
 # Field reference: native/machine/native_machine.h. What the device side
 # still has to confirm on the board (fb format, device names): L0.
 description = "Cardputer Zero: LCD and built-in keyboard"
@@ -31,4 +31,4 @@ variant = "keys"
 
 [system]
 services = "linux"
-exit_key = "esc_long"        # Esc short = back, long = quit (L5)
+exit_key = "esc_long"        # Esc short = back, long = close the app / quit

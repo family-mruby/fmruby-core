@@ -143,6 +143,13 @@ module AppLifecycleMixin
     # resumed it -- the indicator appeared minutes later, over an app that had
     # long since started.
     clear_starting(pid)
+    # Under the keys desktop every app with a window runs full screen under
+    # its bar, whatever it asked for (keys_desktop.rb).
+    if @keys_mode
+      take_spawn_fullscreen(pid)
+      keys_place(pid)
+      return nil
+    end
     # Whether it wants the screen is written on the app itself, so ask the
     # context rather than remembering. A remembered pid was a single slot:
     # two fullscreen apps starting close together (F5 from the editor while
@@ -189,7 +196,11 @@ module AppLifecycleMixin
     Log.warn("Start indicator timed out for pid=#{@starting_pid}")
     pid = @starting_pid
     info = pid ? _get_app_info(pid) : nil
-    enter_fullscreen(pid) if info && info[:fullscreen] && @fullscreen_pid != pid
+    if @keys_mode
+      keys_place(pid) if info
+    elsif info && info[:fullscreen] && @fullscreen_pid != pid
+      enter_fullscreen(pid)
+    end
     clear_starting(nil)
   end
 
@@ -895,6 +906,8 @@ module AppLifecycleMixin
         end
       end
     end
+    # Under the keys desktop: what comes to the front when this one was there.
+    keys_after_exit(pid)
     @run_parent.delete(pid) if @run_parent
     @launch_prev_hid.delete(pid)
 

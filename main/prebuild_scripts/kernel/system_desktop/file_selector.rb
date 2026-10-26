@@ -21,6 +21,11 @@ module FileSelectorMixin
   FSEL_SEL_BG = FmrbConst::THEME_HIGHLIGHT
   FSEL_CANCEL_BG = FmrbConst::THEME_BUTTON
 
+
+  # The dialog's size, FSEL_W x FSEL_H unless the desktop defines these
+  # itself (the keys desktop fills the screen under its bar).
+  def fsel_w; FSEL_W; end
+  def fsel_h; FSEL_H; end
   def open_file_selector(requester_pid, mode = "open")
     @file_selector_open = true
     @file_selector_mode = mode
@@ -40,7 +45,7 @@ module FileSelectorMixin
     close_launcher
     close_dropdown
     scan_file_selector_dir
-    notify_overlay_state(true, @fsel_x, @fsel_y, FSEL_W, FSEL_H)
+    notify_overlay_state(true, @fsel_x, @fsel_y, fsel_w, fsel_h)
     update_composite_regions
     draw_foreground
   end
@@ -109,7 +114,7 @@ module FileSelectorMixin
   # keyboard all need the same three numbers, and a keyboard selection that
   # scrolls needs max_visible in particular.
   def fsel_list_metrics
-    bottom_y = @fsel_y + FSEL_H - 32
+    bottom_y = @fsel_y + fsel_h - 32
     list_y = @fsel_y + FSEL_TITLE_H + 2
     list_h = bottom_y - list_y - 2
     { bottom_y: bottom_y, list_y: list_y, list_h: list_h,
@@ -123,16 +128,16 @@ module FileSelectorMixin
     y = @fsel_y
 
     # Window
-    @gfx.fill_rect(x, y, FSEL_W, FSEL_H, FSEL_BG)
-    @gfx.draw_rect(x, y, FSEL_W, FSEL_H, FmrbConst::THEME_BORDER)
+    @gfx.fill_rect(x, y, fsel_w, fsel_h, FSEL_BG)
+    @gfx.draw_rect(x, y, fsel_w, fsel_h, FmrbConst::THEME_BORDER)
 
     # Title bar
-    @gfx.fill_rect(x + 1, y + 1, FSEL_W - 2, FSEL_TITLE_H - 1, FSEL_TITLE_BG)
+    @gfx.fill_rect(x + 1, y + 1, fsel_w - 2, FSEL_TITLE_H - 1, FSEL_TITLE_BG)
     # The dialog does two jobs and looked like one: the title said "Open" while
     # the Save button and the name field sat below it.
     verb = @file_selector_mode == "save" ? "Save" : "Open"
     title = "#{verb}: #{@file_selector_dir}"
-    title = title[0, FSEL_W / 6 - 2] if title.length > FSEL_W / 6 - 2
+    title = title[0, fsel_w / 6 - 2] if title.length > fsel_w / 6 - 2
     @gfx.draw_text(x + 4, y + 3, title, FmrbConst::THEME_TEXT_LIGHT, FSEL_TITLE_BG)
 
     # Bottom area: filename input (save mode) + buttons
@@ -142,12 +147,12 @@ module FileSelectorMixin
     save_mode = (@file_selector_mode == "save")
     if save_mode
       @gfx.draw_text(x + 4, bottom_y, "Name:", FSEL_TEXT, FSEL_BG)
-      @ui.move(:fsel_name, x + 40, bottom_y - 1, FSEL_W - 100, 10)
-      @ui.move(:fsel_save, x + FSEL_W - 100, bottom_y + 14, 40, 12)
+      @ui.move(:fsel_name, x + 40, bottom_y - 1, fsel_w - 100, 10)
+      @ui.move(:fsel_save, x + fsel_w - 100, bottom_y + 14, 40, 12)
     end
     @ui.set_visible(:fsel_name, save_mode)
     @ui.set_visible(:fsel_save, save_mode)
-    @ui.move(:fsel_cancel, x + FSEL_W - 50, bottom_y + 14, 44, 12)
+    @ui.move(:fsel_cancel, x + fsel_w - 50, bottom_y + 14, 44, 12)
     @ui.set_visible(:fsel_cancel, true)
 
     # File list
@@ -155,7 +160,7 @@ module FileSelectorMixin
     list_h = metrics[:list_h]
     max_visible = metrics[:max_visible]
     has_scrollbar = @file_selector_entries.size > max_visible
-    text_area_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 4 : FSEL_W - 12
+    text_area_w = has_scrollbar ? fsel_w - FmrbApp::SCROLLBAR_W - 4 : fsel_w - 12
 
     i = 0
     while i < max_visible
@@ -166,7 +171,7 @@ module FileSelectorMixin
       item_y = list_y + i * FSEL_ITEM_H
 
       if idx == @file_selector_selected
-        item_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 2 : FSEL_W - 4
+        item_w = has_scrollbar ? fsel_w - FmrbApp::SCROLLBAR_W - 2 : fsel_w - 4
         @gfx.fill_rect(x + 2, item_y, item_w, FSEL_ITEM_H, FSEL_SEL_BG)
         text_color = FmrbConst::THEME_TEXT_LIGHT
         text_bg = FSEL_SEL_BG
@@ -188,7 +193,7 @@ module FileSelectorMixin
     # One pixel inside: the panel's border is the last column, and the bar
     # paints its whole rect -- with the background when it is not needed --
     # so sitting on the border erases it.
-    @ui.move(:fsel_sb, x + FSEL_W - 1 - FSEL_SB_W, list_y, FSEL_SB_W, list_h)
+    @ui.move(:fsel_sb, x + fsel_w - 1 - FSEL_SB_W, list_y, FSEL_SB_W, list_h)
     @ui.set_range(:fsel_sb, @file_selector_entries.size, max_visible)
     @ui.set_value(:fsel_sb, @file_selector_scroll)
     @ui.set_visible(:fsel_sb, true)
@@ -418,7 +423,7 @@ module FileSelectorMixin
   end
 
   def hit_file_selector?(x, y)
-    x >= @fsel_x && x < @fsel_x + FSEL_W &&
-      y >= @fsel_y && y < @fsel_y + FSEL_H
+    x >= @fsel_x && x < @fsel_x + fsel_w &&
+      y >= @fsel_y && y < @fsel_y + fsel_h
   end
 end

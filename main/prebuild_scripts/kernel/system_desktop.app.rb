@@ -9,6 +9,7 @@
 #   FileSelectorMixin - File open/save dialog
 
 class SystemDesktopApp < FmrbApp
+  include DesktopCommonMixin
   include LauncherMixin
   include DesktopIconsMixin
   include FileSelectorMixin
@@ -578,37 +579,6 @@ class SystemDesktopApp < FmrbApp
     spawn_app(name)
   rescue => e
     Log.error("startup_app failed: #{e.message}")
-  end
-
-  # One top-level `key = "value"` out of system_conf. No Regexp on this
-  # machine, so this walks the lines, the way the launcher reads a .app.toml.
-  def read_conf_string(key)
-    text = File.open("/etc/system_conf.toml", "r") { |f| f.read }
-    return nil unless text
-    lines = text.split("\n")
-    i = 0
-    while i < lines.size
-      line = lines[i].strip
-      i += 1
-      next if line.empty?
-      next if line.start_with?("#")
-      # A section header means the top-level keys are behind us.
-      break if line.start_with?("[")
-      eq = line.index("=")
-      next unless eq
-      next unless line[0, eq].strip == key
-      v = line[eq + 1, line.length - eq - 1].strip
-      # Trim a trailing comment before the quotes are taken off.
-      hash = v.index("#")
-      v = v[0, hash].strip if hash && hash > 0
-      len = v.length
-      v = v[1, len - 2] if len >= 2 && v[0] == "\"" && v[len - 1] == "\""
-      return v
-    end
-    nil
-  rescue => e
-    Log.warn("could not read #{key} from system_conf: #{e.message}")
-    nil
   end
 
   # The key is folded to lower case here, once, rather than on every key press:

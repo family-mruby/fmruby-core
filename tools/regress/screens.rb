@@ -61,7 +61,8 @@ module Regress
       "FMRB_APP_ENGINE_EDITOR" => "mruby"
     }.freeze
 
-    Config = Struct.new(:name, :family, :engine, :kind, :target, :full, keyword_init: true) do
+    # machine: the native program's machine definition (nil = sdl).
+    Config = Struct.new(:name, :family, :engine, :kind, :target, :full, :machine, keyword_init: true) do
       def env
         e = target.firmware_env
         engine == "mruby" ? e.merge(MRUBY_ENV) : e
@@ -78,7 +79,11 @@ module Regress
                        target: TARGETS.find { |t| t.name == "wasm" }, full: false)
       native = Config.new(name: "native", family: "modern", engine: "standard", kind: :native,
                           target: TARGETS.find { |t| t.name == "wasm" }, full: false)
-      std + mr + [web, native]
+      # The same program on the 320x170 screen with the keyboard-only desktop
+      # (doc/linux_native, L4): its own scenes (40_keys.rb), same build.
+      keys = Config.new(name: "native-keys", family: "modern", engine: "standard", kind: :native,
+                        target: TARGETS.find { |t| t.name == "wasm" }, full: false, machine: "sdl_keys")
+      std + mr + [web, native, keys]
     end
 
     def self.load_scenes
@@ -121,7 +126,7 @@ module Regress
         if @opts[:only]
           want = @opts[:only].split(",").map(&:strip)
           all = all.select { |c| want.include?(c.name) || (c.kind == :sim && want.include?(c.family)) || want.include?(c.kind.to_s) }
-          raise "ONLY=#{@opts[:only]}: no such configuration (retro, modern, web, native, retro-mruby, modern-mruby)" if all.empty?
+          raise "ONLY=#{@opts[:only]}: no such configuration (retro, modern, web, native, native-keys, retro-mruby, modern-mruby)" if all.empty?
         end
         all
       end
@@ -146,7 +151,7 @@ module Regress
 
         sims = configs.select { |c| c.kind == :sim }
         web = configs.find { |c| c.kind == :web }
-        native = configs.find { |c| c.kind == :native }
+        natives = configs.select { |c| c.kind == :native }
         raise "a sim stack is already running (someone's?); leave it or take it down first" if SimRun.core_running?
         check_web_free! if web
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
@@ -156,7 +161,7 @@ module Regress
         begin
           sims.each { |c| run_sim_config(c, tree) }
           build_web(tree) if web
-          build_native(tree, gen: !@web_built) if native
+          build_native(tree, gen: !@web_built) unless natives.empty?
         ensure
           SimRun.down if SimRun.core_running? && !@opts[:keep]
           if @opts[:keep]
@@ -166,7 +171,7 @@ module Regress
           end
         end
         run_web_config(web) if web && @web_built
-        run_native_config(native) if native && @native_built
+        natives.each { |c| run_native_config(c) } if @native_built
         finish(t0)
       end
 
@@ -419,19 +424,19 @@ module Regress
         t0 = now
         driver = NativeDriver.new(tmp_dir)
         raise "a native program is already running in #{NativeDriver::RUN_DIR} (an earlier run's?)" if driver.running?
-        home = File.join(out_dir, "native_home")
+        home = File.join(out_dir, "#{config.name}_home")
         FileUtils.rm_rf(home)
         user = File.join(home, "user")
         cache = File.join(home, "cache")
         FileUtils.mkdir_p([user, cache])
-        driver.up(user, cache)
+        driver.up(user, cache, machine: config.machine || "sdl")
         driver.settle_baseline!
         run_scenes(config, driver)
-        FileUtils.cp(driver.log_path, File.join(out_dir, "native.log")) if File.exist?(driver.log_path)
-        @timings << "native build #{@native_build_secs}s + run #{(now - t0).round}s"
+        FileUtils.cp(driver.log_path, File.join(out_dir, "#{config.name}.log")) if File.exist?(driver.log_path)
+        @timings << "#{config.name} build #{@native_build_secs}s + run #{(now - t0).round}s"
       rescue RuntimeError, DriverError => e
-        @errors << "native: #{e.message}"
-        FileUtils.cp(driver.log_path, File.join(out_dir, "native.fail.log")) if driver && File.exist?(driver.log_path)
+        @errors << "#{config.name}: #{e.message}"
+        FileUtils.cp(driver.log_path, File.join(out_dir, "#{config.name}.fail.log")) if driver && File.exist?(driver.log_path)
       ensure
         if driver && !@opts[:keep]
           begin

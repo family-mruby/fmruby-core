@@ -23,6 +23,13 @@ extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
 extern const uint8_t appstore_irep[];
+#if defined(FMRB_PLATFORM_NATIVE)
+// The keyboard-only desktop (doc/linux_native, L4). Built for the hosted
+// programs only (main/CMakeLists.txt leaves it out of the device and
+// simulation firmware); the native program starts it in place of the mouse
+// desktop when the machine definition says desktop.variant = "keys".
+extern const uint8_t system_desktop_keys_irep[];
+#endif
 #ifdef FMRB_HW_FAMILY_MODERN
 // Service host: Modern only, so Retro does not compile its bytecode
 // (main/CMakeLists.txt drops it from the glob) and has no symbol to link.
@@ -409,6 +416,17 @@ static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* o
     FMRB_LOGI(TAG, "Spawning built-in app: %s", entry->lookup_name);
 
     fmrb_spawn_attr_t attr = entry->attr;
+#if defined(FMRB_PLATFORM_NATIVE)
+    // The same "system_desktop" to the rest of the machine (the kernel and
+    // the window list know it by that name), the keys program inside.
+    if (strcmp(entry->lookup_name, "system/desktop") == 0 &&
+        fmrb_kernel_native_machine()->keys_desktop) {
+        attr.vm_type = FMRB_VM_TYPE_MRUBY;
+        attr.load_mode = FMRB_LOAD_MODE_BYTECODE;
+        attr.bytecode = system_desktop_keys_irep;
+        FMRB_LOGI(TAG, "Desktop: the keyboard-only variant (system_desktop_keys)");
+    }
+#endif
     // Fullscreen built-ins leave the window size at 0 and take the fullscreen
     // size here, the same way the .app.toml path does for a fullscreen app
     // (fmrb_app_init would otherwise fall back to default_user_app_*).

@@ -519,8 +519,14 @@ static void test_machine(void)
           strcmp(m.input.keymap_device, "tca8418") == 0 && strcmp(m.audio.backend, "alsa") == 0 &&
           m.screen.w == 320 && m.screen.h == 170 && strcmp(m.desktop.variant, "keys") == 0,
           "cardputer_zero fields");
-    CHECK(native_machine_check(&m, err, sizeof(err)) != 0 && strstr(err, "320x170") != NULL,
-          "cardputer_zero refused for 320x170 (%s)", err);
+    CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "cardputer_zero check: %s", err);
+
+    // The same screen and desktop in an SDL window (L4).
+    CHECK(load(&m, "sdl_keys", err, sizeof(err)) == 0, "sdl_keys: %s", err);
+    CHECK(strcmp(m.display.backend, "sdl") == 0 && m.display.scale == 4 && m.screen.w == 320 &&
+          m.screen.h == 170 && strcmp(m.desktop.variant, "keys") == 0 &&
+          strcmp(m.system.exit_key, "esc_long") == 0, "sdl_keys fields");
+    CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "sdl_keys check: %s", err);
 
     CHECK(load(&m, "cardputer_zero_hdmi", err, sizeof(err)) == 0, "cardputer_zero_hdmi: %s", err);
     CHECK(strcmp(m.display.backend, "drm") == 0 && strcmp(m.display.mode, "1280x720") == 0 &&
@@ -545,7 +551,14 @@ static void test_machine(void)
     CHECK(native_machine_set(&m, "display.colour", "red", err, sizeof(err)) != 0 && strstr(err, "unknown") != NULL,
           "unknown key refused (%s)", err);
     CHECK(native_machine_set(&m, "desktop.variant", "keys", err, sizeof(err)) == 0 &&
-          native_machine_check(&m, err, sizeof(err)) != 0 && strstr(err, "L4") != NULL, "keys desktop refused");
+          native_machine_check(&m, err, sizeof(err)) == 0, "keys desktop accepted (%s)", err);
+    CHECK(native_machine_set(&m, "desktop.variant", "touch", err, sizeof(err)) == 0 &&
+          native_machine_check(&m, err, sizeof(err)) != 0 && strstr(err, "mouse or keys") != NULL,
+          "unknown desktop refused (%s)", err);
+    native_machine_defaults(&m);
+    CHECK(native_machine_set(&m, "screen.form", "640x480", err, sizeof(err)) == 0 &&
+          native_machine_check(&m, err, sizeof(err)) != 0 && strstr(err, "640x480") != NULL,
+          "unknown screen refused (%s)", err);
 
     char path[256];
     native_machine_resolve("sdl", "/d", path, sizeof(path));

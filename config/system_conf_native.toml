@@ -52,6 +52,15 @@ keyboard_layout = "jp" # "jp" or "us"
 app_spawn_margin_kb = 30
 language = "en" # "ja" or "en"
 
+# The keyboard-only desktop (machines with desktop.variant = "keys",
+# doc/linux_native): the key that opens the list of running apps --
+# modifiers and one key, "ctrl+tab", "alt+s", "ctrl+shift+f1" -- and how long
+# Esc is held (ms) to close the app in front, or, on the desktop itself, to
+# end the program on a machine with exit_key = "esc_long". A shorter press is
+# the app's own Esc.
+keys_switcher_key = "ctrl+tab"
+keys_esc_long_ms = 1000
+
 # The logo and the jingle at power-on. false skips both and saves about 2.7
 # seconds -- for a machine that exists to run one thing, the ceremony is not
 # wanted every time. Nothing else changes: the cursor, the status LED and

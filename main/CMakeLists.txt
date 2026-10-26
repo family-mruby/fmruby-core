@@ -90,6 +90,12 @@ if(NOT FMRB_BUILD_IS_MODERN)
          ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/services.app.rb)
 endif()
 
+# The keyboard-only desktop (doc/linux_native, L4) runs on the native
+# program only, which builds its bytecode itself (rakelib/hosted.rake): no
+# device or simulation firmware carries it.
+list(REMOVE_ITEM KERNEL_RUBY_FILES
+     ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/system_desktop_keys.app.rb)
+
 # Step 1: Prepare Ruby bytecode sources (add C files to COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb COMPONENT_SRCS)

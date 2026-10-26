@@ -284,17 +284,14 @@ void native_machine_resolve(const char *arg, const char *machines_dir, char *out
 
 int native_machine_check(const native_machine_t *m, char *err, size_t n)
 {
-    if (!(m->screen.w == 426 && m->screen.h == 240)) {
-        if (m->screen.w == 320 && m->screen.h == 170) {
-            return fail(err, n, "screen.form 320x170 is not supported yet (the 320x170 screen and the "
-                                "keyboard-only desktop come in L4); this build runs 426x240 only");
-        }
-        return fail(err, n, "screen.form %s is not a screen this program has (426x240)", m->screen.form);
+    /* The screens this program has: Modern's 426x240 (its fullscreen
+     * high-resolution mode stays with it) and the Cardputer's 320x170. */
+    if (!(m->screen.w == 426 && m->screen.h == 240) &&
+        !(m->screen.w == 320 && m->screen.h == 170)) {
+        return fail(err, n, "screen.form %s is not a screen this program has (426x240, 320x170)",
+                    m->screen.form);
     }
-    if (strcmp(m->desktop.variant, "mouse") != 0) {
-        if (strcmp(m->desktop.variant, "keys") == 0) {
-            return fail(err, n, "desktop.variant keys (the keyboard-only desktop) is not there yet (L4)");
-        }
+    if (strcmp(m->desktop.variant, "mouse") != 0 && strcmp(m->desktop.variant, "keys") != 0) {
         return fail(err, n, "desktop.variant \"%s\" is not mouse or keys", m->desktop.variant);
     }
     if (m->input.keymap[0] != '\0' && strcmp(m->input.keymap, "cardputer_zero") != 0) {
