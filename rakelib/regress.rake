@@ -29,8 +29,17 @@
 #                          test/regress/sim_baseline.json (with a tolerance).
 #                          ONLY=retro|modern, TABLE=1 (no sim, the last results)
 #   rake regress:run:update    the last results become the baseline
-#   rake regress:full      regress + regress:size + regress:run (ONLY= goes to
-#                          neither: run the parts by hand to narrow them)
+#   rake regress:screens   scripted screens (test/regress/screens/*.rb) on the
+#                          sim (Retro, Modern) and the browser build, pixel
+#                          for pixel against test/regress/screens/baseline/.
+#                          ONLY=retro|modern|web, SCENE=<text>, FULL=1 (also
+#                          everything on mruby), WEB_PORT=n (the page's server,
+#                          default 8016)
+#   rake regress:screens:update  the last run's failed or new shots become the
+#                          baseline (ONLY=, SCENE= narrow it)
+#   rake regress:full      regress + regress:size + regress:run +
+#                          regress:screens (ONLY= goes to none of them: run the
+#                          parts by hand to narrow them)
 
 REGRESS_RUN = File.join(ROOT_DIR, "tools", "regress", "run.rb")
 
@@ -139,12 +148,12 @@ namespace :regress do
     end
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run (sim). About 9 minutes"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser). About 17 minutes"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
     failed = []
-    %w[regress regress:size regress:run].each do |t|
+    %w[regress regress:size regress:run regress:screens].each do |t|
       begin
         Rake::Task[t].invoke
       rescue SystemExit
@@ -153,6 +162,34 @@ namespace :regress do
     end
     abort "regress:full: failed: #{failed.join(', ')}" unless failed.empty?
     puts "regress:full: ok"
+  end
+end
+
+REGRESS_SCREENS = File.join(ROOT_DIR, "tools", "regress", "screens.rb")
+
+def regress_screens_args
+  args = []
+  args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+  args += ["--scene", ENV["SCENE"]] if ENV["SCENE"]
+  args << "--full" if ENV["FULL"] == "1"
+  args += ["--port", ENV["WEB_PORT"]] if ENV["WEB_PORT"]
+  args
+end
+
+namespace :regress do
+  desc "Scripted screens on the sim and the browser build vs baseline PNGs (ONLY=retro|modern|web, SCENE=, FULL=1, WEB_PORT=)"
+  task :screens do
+    abort "regress:screens: failed" unless system(Gem.ruby, REGRESS_SCREENS, *regress_screens_args)
+  end
+
+  namespace :screens do
+    desc "Write the last regress:screens run's failed or new shots as the baseline (only for a change a person has checked)"
+    task :update do
+      args = ["--update"]
+      args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+      args += ["--scene", ENV["SCENE"]] if ENV["SCENE"]
+      abort "regress:screens:update: failed" unless system(Gem.ruby, REGRESS_SCREENS, *args)
+    end
   end
 end
 

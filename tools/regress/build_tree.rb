@@ -93,6 +93,18 @@ module Regress
       describe
     end
 
+    # A borrowed build made a fresher copy of one libmruby the stash holds
+    # (rake regress:screens builds the wasm one): it replaces the stashed
+    # copy, so restore! hands the developer the current one.
+    def keep_built!(child)
+      from = path("#{PICORUBY_BUILD}/#{child}")
+      return unless stashed? && File.directory?(from)
+      to = path("#{STASH_ASIDE}/picoruby_build/#{child}")
+      FileUtils.rm_rf(to)
+      FileUtils.mkdir_p(File.dirname(to))
+      FileUtils.mv(from, to)
+    end
+
     # rake clean_all, without starting rake (the same three removals).
     def clean_all!
       FileUtils.rm_f(path("sdkconfig"))
