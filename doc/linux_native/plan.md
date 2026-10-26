@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-26 | L1・L2・L2n・L3a・L3c・L4 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ)。次は L5 の WSL2 でできる部分と L6、実機が来たら L0・L3b。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス)。次は実機が来たら L0・L3b・L5b、並行して L7 (PC の入口、VM で練習できる)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -109,7 +109,8 @@
     `zenoh_router`・`debugd` の 3 項目だけで、`native:root` が差を確かめる)。
   - Zenoh のルータが空のとき、Asterism のアプリは sim の既定のルータの名前に
     落ち、すぐ分かるエラーで止まる (固まらない)。パッケージ版で引けない
-    名前なので、空のときの扱いは残件 (L5a)。
+    名前なので、L5a で native のパッケージ版 (zenoh_router が空の行) では
+    「ルータが設定されていない」のエラーにした。sim・端末・ブラウザ版は今のまま。
 - 確認の道具: ルートの `tools/fmrb_native.rb` (`up|down|shot|input|app`)。
   debugd は TCP 5565、注入のソケットは sim と別の場所。
 
@@ -268,6 +269,14 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
     ミュートの操作が本体のスピーカーの音量そのものを動かす。
   - 電源の操作は**形で分ける**。(1)(2) は「終了 (APPLaunch に戻る)」だけ、
     (3) は電源断・再起動・休止。どちらにするかは機種の定義で選ぶ。
+- 実装 (L6 で確定): 受け口は `main/kernel/fmrb_platform_sys.h` の関数の表
+  (ネットワーク・電池・OS の音量・電源の操作)。既定の表が今までの端末・sim・
+  ブラウザ版の答えを持ち、native は `native/sys/` の linux の表を入れる。
+  ネットワークは /proc と sysfs を読むだけ、電池は power_supply、音量は ALSA の
+  mixer (開けないときは中の音量)、電源は logind (libsystemd を実行時に読み込み、
+  待つ所は blocking-call gate)。機種の定義に `audio.mixer`・`system.power`
+  (`exit` / `logind`)・`system.power_log_only` (試験用に要求をログに出すだけ) を足した。
+  デスクトップの電源の項目は `FmrbApp.power_actions` の答えで出し分ける。
 
 ### コンポジタと外の窓 ((3) だけ)
 
