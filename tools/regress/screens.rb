@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 #
-# screens.rb - scripted screens on the sim and the browser build, compared
-# pixel for pixel with baseline PNGs (rake regress:screens,
-# doc/regression/usage.md chapter 9).
+# screens.rb - scripted screens on the sim, the browser build and the native
+# Linux program, compared pixel for pixel with baseline PNGs (rake
+# regress:screens, doc/regression/usage.md chapter 9).
 #
-#   ruby tools/regress/screens.rb                  # retro, modern, web
-#   ruby tools/regress/screens.rb --only modern    # one family (retro|modern|web, or a config name)
+#   ruby tools/regress/screens.rb                  # retro, modern, web, native
+#   ruby tools/regress/screens.rb --only modern    # one family (retro|modern|web|native, or a config name)
 #   ruby tools/regress/screens.rb --scene editor   # scenes whose name has this (comma: several)
 #   ruby tools/regress/screens.rb --full           # also everything on mruby (retro-mruby, modern-mruby)
 #   ruby tools/regress/screens.rb --update         # the last run's shots that failed become the baseline
@@ -22,7 +22,12 @@
 # no app open. For the browser build: `rake spinel:gen wasm:mruby wasm:web`
 # (the standard configuration), a development server of its own on --port
 # (default 8016, not the 8006 a developer keeps) and a headless browser,
-# erased first so the page starts from the shipped settings.
+# erased first so the page starts from the shipped settings. For the native
+# program: `rake native:mruby native:core` (the standard configuration, after
+# the browser build's spinel:gen), started headless as machine "sdl" by
+# tools/fmrb_native.rb in a run directory, debug port and user directory of
+# its own (a fresh /home and /etc each run), so a developer's copy can stay
+# up beside it.
 #
 # A running sim or a browser started by tools/fmrb_web.rb (someone's) is
 # never touched: the run refuses to start. The build tree is moved aside and
@@ -71,7 +76,9 @@ module Regress
       mr = sim.map { |f, t| Config.new(name: "#{f}-mruby", family: f, engine: "mruby", kind: :sim, target: t, full: true) }
       web = Config.new(name: "web", family: "modern", engine: "standard", kind: :web,
                        target: TARGETS.find { |t| t.name == "wasm" }, full: false)
-      std + mr + [web]
+      native = Config.new(name: "native", family: "modern", engine: "standard", kind: :native,
+                          target: TARGETS.find { |t| t.name == "wasm" }, full: false)
+      std + mr + [web, native]
     end
 
     def self.load_scenes
@@ -114,7 +121,7 @@ module Regress
         if @opts[:only]
           want = @opts[:only].split(",").map(&:strip)
           all = all.select { |c| want.include?(c.name) || (c.kind == :sim && want.include?(c.family)) || want.include?(c.kind.to_s) }
-          raise "ONLY=#{@opts[:only]}: no such configuration (retro, modern, web, retro-mruby, modern-mruby)" if all.empty?
+          raise "ONLY=#{@opts[:only]}: no such configuration (retro, modern, web, native, retro-mruby, modern-mruby)" if all.empty?
         end
         all
       end
@@ -139,6 +146,7 @@ module Regress
 
         sims = configs.select { |c| c.kind == :sim }
         web = configs.find { |c| c.kind == :web }
+        native = configs.find { |c| c.kind == :native }
         raise "a sim stack is already running (someone's?); leave it or take it down first" if SimRun.core_running?
         check_web_free! if web
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
@@ -148,6 +156,7 @@ module Regress
         begin
           sims.each { |c| run_sim_config(c, tree) }
           build_web(tree) if web
+          build_native(tree, gen: !@web_built) if native
         ensure
           SimRun.down if SimRun.core_running? && !@opts[:keep]
           if @opts[:keep]
@@ -157,6 +166,7 @@ module Regress
           end
         end
         run_web_config(web) if web && @web_built
+        run_native_config(native) if native && @native_built
         finish(t0)
       end
 
@@ -167,6 +177,13 @@ module Regress
         if c.kind == :sim
           raise "no sim is running to attach to" unless SimRun.core_running?
           driver = SimDriver.new(SimRun, tmp_dir)
+          driver.settle_baseline!
+          run_scenes(c, driver)
+        elsif c.kind == :native
+          # The developer's copy (tools/fmrb_native.rb up), where it runs.
+          driver = NativeDriver.new(tmp_dir, run_dir: "/tmp/fmrb-native-#{Process.uid}",
+                                             port: (ENV["FMRB_DEBUG_TCP_PORT"] || 5565).to_i)
+          raise "no native program is running to attach to" unless driver.running?
           driver.settle_baseline!
           run_scenes(c, driver)
         else
@@ -373,6 +390,55 @@ module Regress
             nil
           end
           Process.wait(@serve_pid) rescue nil # rubocop:disable Style/RescueModifier
+        end
+      end
+
+      # --- the native program ---------------------------------------------------
+
+      # spinel:gen when the browser build did not just run it (the sim builds
+      # may have left another configuration's programs), the native libmruby
+      # (clean_all took it) and the program. The fresh libmruby replaces the
+      # stashed one, as the browser's does.
+      def build_native(tree, gen:)
+        log = File.join(out_dir, "native.build.log")
+        cfg = Screens.configs.find { |c| c.kind == :native }
+        env = cfg.env.reject { |k, _| k == "FMRB_HW_TARGET" }.merge("NATIVE_ENGINE" => "standard")
+        rake = ENV["RAKE"] || "rake"
+        steps = gen ? "#{rake} spinel:gen && " : ""
+        cmd = ["bash", "-c", "#{steps}#{rake} native:mruby && #{rake} native:core"]
+        ok, secs = SimRun.run_logged(env, cmd, log)
+        raise "the native build failed (#{rel(log)})" unless ok
+        tree.keep_built!("family-mruby-native")
+        @native_build_secs = secs.round
+        @native_built = true
+      rescue RuntimeError => e
+        @errors << "native: #{e.message}"
+      end
+
+      def run_native_config(config)
+        t0 = now
+        driver = NativeDriver.new(tmp_dir)
+        raise "a native program is already running in #{NativeDriver::RUN_DIR} (an earlier run's?)" if driver.running?
+        home = File.join(out_dir, "native_home")
+        FileUtils.rm_rf(home)
+        user = File.join(home, "user")
+        cache = File.join(home, "cache")
+        FileUtils.mkdir_p([user, cache])
+        driver.up(user, cache)
+        driver.settle_baseline!
+        run_scenes(config, driver)
+        FileUtils.cp(driver.log_path, File.join(out_dir, "native.log")) if File.exist?(driver.log_path)
+        @timings << "native build #{@native_build_secs}s + run #{(now - t0).round}s"
+      rescue RuntimeError, DriverError => e
+        @errors << "native: #{e.message}"
+        FileUtils.cp(driver.log_path, File.join(out_dir, "native.fail.log")) if driver && File.exist?(driver.log_path)
+      ensure
+        if driver && !@opts[:keep]
+          begin
+            driver.down
+          rescue DriverError
+            nil
+          end
         end
       end
 

@@ -66,6 +66,7 @@ module Regress
       def family = @config.family
       def web? = @config.kind == :web
       def sim? = @config.kind == :sim
+      def native? = @config.kind == :native
       def mruby? = @config.engine == "mruby"
       def w = @driver.width
       def h = @driver.height

@@ -6,7 +6,7 @@
 # up while only the editor dies is a real failure mode
 # (doc/spinel_aot/reports/editor_ivar_layout_bug.md).
 
-Regress::Screens.scene "editor_type", on: %w[modern retro web modern-mruby retro-mruby] do |s|
+Regress::Screens.scene "editor_type", on: %w[modern retro web native modern-mruby retro-mruby] do |s|
   s.open_editor
   s.mark
   s.key "a"

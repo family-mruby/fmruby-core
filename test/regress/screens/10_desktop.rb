@@ -5,7 +5,7 @@
 # dialog. Each one is closed again; the runner checks that the desktop
 # comes back pixel for pixel.
 
-Regress::Screens.scene "desktop", on: %w[modern retro web modern-mruby retro-mruby] do |s|
+Regress::Screens.scene "desktop", on: %w[modern retro web native modern-mruby retro-mruby] do |s|
   s.shot
 end
 

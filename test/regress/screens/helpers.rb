@@ -53,8 +53,14 @@ Regress::Screens.helpers do
 
   # The title bar colour of a focused window, and a point on the editor's
   # title bar the desktop and its dropdown never colour. The themes differ:
-  # Light on the sim (config/system_conf_*.toml), Cyberpunk on the page.
-  def title_rgb = web? ? [32, 0, 172] : [218, 36, 85]
+  # Light on the sim (config/system_conf_*.toml), Cyberpunk on the page. The
+  # native program has the sim's theme, but its shots are the RGB565 frame
+  # itself, where the sim's pass through RGB332 (graphics-audio's shared
+  # memory): the same red is a little different.
+  def title_rgb
+    return [32, 0, 172] if web?
+    native? ? [222, 36, 82] : [218, 36, 85]
+  end
 
   # Until a window's title bar shows at column x, somewhere in the top half
   # (the Config dialog is centred, so its title sits lower when it has
