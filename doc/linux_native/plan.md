@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-26 | L1 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-26 | L1・L2 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -105,26 +105,38 @@
 ### 機種の定義
 
 受け口の選び方・画面の形・デスクトップの種類を 1 枚の設定 (TOML) に書き、
-起動の引数で選ぶ。system_conf と同じく config/ から生成する。
+起動の引数 `--machine <名前またはパス>` (環境変数 `FMRB_NATIVE_MACHINE`) で選ぶ。
+正は `config/machines/*.toml` で、`rake native:etc` が配布物の木の `machines/` に
+置く。`--set 項目=値` で 1 項目だけ変えられる。定義に書かれた受け口が無い・
+装置が開けないときは、理由を出して終了コード 3 で断る (SDL に逃げない)。
+用意済みの定義: `sdl`・`cardputer_zero`・`cardputer_zero_hdmi`・`linux_pc_drm`。
 
 ```toml
-# cardputer_zero.toml (例。項目名は L2 で確定する)
+# config/machines/cardputer_zero_hdmi.toml (L2 で確定した項目)
+name = "cardputer_zero_hdmi"
+description = "..."
 [screen]
-form = "320x170"          # 320x170 / 426x240
+form = "426x240"          # 320x170 は L4 まで断る
 [display]
-backend = "fbdev"         # fbdev / drm / sdl / wlr
-device = "auto:fb_st7789v" # /proc/fb から探す。fb0 と決め打ちしない
+backend = "drm"           # sdl / fbdev / drm
+device = "auto"           # fbdev は "auto:fb_st7789v" のように /proc/fb の名前でも
+mode = "1280x720"         # auto / WxH / WxH@Hz (DRM)
+rotate = 0                # 0 / 90 / 180 / 270
+scale = "auto"            # auto (出力に整数倍で収まる最大) / 1-16
 [input]
-backend = "evdev"
+backend = "evdev"         # sdl / evdev
 devices = ["auto"]
-keymap = "cardputer_zero" # Sym・Fn の層の表
+keymap = "cardputer_zero" # 記号の層の追加の表
+keymap_device = "tca8418" # 追加の表を当てる装置 (evdev の名前に含まれる文字列)
 [audio]
-backend = "alsa"
+backend = "alsa"          # sdl / alsa / none
+device = "default"
+latency_ms = 40
 [desktop]
-variant = "keys"          # mouse / keys
+variant = "mouse"         # mouse / keys
 [system]
 services = "linux"
-exit_key = "esc_long"     # Esc の短押し = 戻る、長押し = 終える
+exit_key = "esc_long"     # L2 では読むだけ (未実装)
 ```
 
 (2) は `form = "426x240"`、`display.backend = "drm"`、`variant = "mouse"`。
@@ -406,5 +418,11 @@ Shell から Linux のコマンド (全部の形):
   アプリに許すか (権限。L7 で、Linux のファイルを見せる範囲と一緒に決める)。
 - Family mruby を終えるとき、起動した Linux のアプリを一緒に閉じるか残すか (L9)。
 - Shell で端末の制御の文字をどこまで解釈するか (L10)。
+- Cardputer Zero のキーボードの細部 (L0・L5、実機で決める): 記号の層の Shift の
+  位置が KEY_KPPLUS で届き、M5Stack のコンソールの表でも割り当てが無い
+  (今はテンキーの `+` として届く)。記号の層は他のキーのコードを借りて届くので、
+  追加の表は `keymap_device` の装置だけに当てている。
+- fbdev・DRM で動くときのテキストのコンソール (VT) との関係、キーボードの
+  独占 (EVIOCGRAB)、起動後の抜き差し、タッチパッド (EV_ABS) の扱い (L3・L7)。
 - コンポジタの合成で、外の窓をどの前後関係まで Family mruby の窓と混ぜられるか
   (Family mruby の窓が外の窓の上に重なる場合の扱い、L9)。
