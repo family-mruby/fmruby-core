@@ -1,0 +1,32 @@
+# Machine definition: M5Stack Cardputer Zero on HDMI -- DRM/KMS at 1280x720
+# (426x240 at 3x, the high-resolution 640x360 at 2x), USB mouse and keyboard
+# plus the built-in keyboard (evdev), sound on ALSA.
+# Field reference: native/machine/native_machine.h.
+description = "Cardputer Zero: HDMI with USB mouse and keyboard"
+
+[screen]
+form = "426x240"
+
+[display]
+backend = "drm"
+device = "auto"              # the first card with a connected output
+mode = "1280x720"            # the connector's preferred mode when it has none
+rotate = 0
+scale = "auto"
+
+[input]
+backend = "evdev"
+devices = ["auto"]
+keymap = "cardputer_zero"
+keymap_device = "tca8418"
+
+[audio]
+backend = "alsa"
+device = "default"
+
+[desktop]
+variant = "mouse"
+
+[system]
+services = "linux"
+exit_key = "none"

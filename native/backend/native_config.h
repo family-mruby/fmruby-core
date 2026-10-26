@@ -1,12 +1,14 @@
 /*
  * native_config.h - how the native program was started.
  *
- * Filled by main_native.c from the command line and the environment before
- * anything else runs, read by the host side (host_sdl.c, native_ctl.c). The
- * machine definition of L2 (doc/linux_native/plan.md, "機種の定義") replaces
- * the output and input choices here; the paths stay.
+ * Filled by main_native.c from the command line, the environment and the
+ * machine definition (native_machine.h) before anything else runs, read by
+ * the host side. The machine says which backends run (native_backends.h);
+ * the paths say where the file layers are.
  */
 #pragma once
+
+#include "native_machine.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,7 +17,8 @@ extern "C" {
 #define NATIVE_PATH_MAX 384
 
 typedef struct {
-    int  scale;                          /* window magnification, default 3 */
+    native_machine_t machine;
+    char machines_dir[NATIVE_PATH_MAX];  /* where --machine <name> looks */
     char system_dir[NATIVE_PATH_MAX];    /* distribution tree (read-only) */
     char etc_seed[NATIVE_PATH_MAX];      /* the first start's /etc */
     char user_dir[NATIVE_PATH_MAX];      /* the user's /home, /etc, /app/usr */

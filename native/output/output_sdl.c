@@ -1,15 +1,22 @@
 /*
- * host_sdl.c - see host_sdl.h. Main thread only; never calls into FreeRTOS
- * or the fmrb_mem pools (this thread is not a task).
+ * output_sdl.c - the SDL2 window as an output (native_backends.h), for
+ * development on a PC (machine "sdl"). Main thread only; never calls into
+ * FreeRTOS or the fmrb_mem pools (this thread is not a task).
  *
- * SDL's own scancodes are the USB HID usage IDs of the keyboard page for
- * every key the firmware's tables know (letters at 4, Enter 40, F1 58,
- * International1 135 ...), so a key goes through unchanged, as the
- * simulation's sdl2-display passes it. Unlike that path, the modifier byte is
- * built here from SDL's full mask, so Alt reaches the machine.
+ * The window is created once the display task says how big its base frame
+ * is: that frame at display.scale (3 by default; 1280x720), widened to 16:9
+ * so the high-resolution frame also gets a whole scale. The frame is drawn
+ * into a streaming RGB565 texture of the renderer's output size through the
+ * shared present core, so the window can be resized freely. Headless runs use
+ * SDL_VIDEODRIVER=dummy; nothing here changes for them.
+ *
+ * Input: SDL's own scancodes are the USB HID usage IDs of the keyboard page
+ * for every key the firmware's tables know (letters at 4, Enter 40, F1 58,
+ * International1 135 ...), so a key goes through unchanged into the sdl
+ * input source, as the simulation's sdl2-display passes it. Unlike that
+ * path, the modifier byte is built here from SDL's full mask, so Alt reaches
+ * the machine.
  */
-
-#include "host_sdl.h"
 
 #include <SDL.h>
 #include <stdio.h>
@@ -18,73 +25,40 @@
 
 #include "fmrb_keymap.h"
 #include "fmrb_present.h"
-#include "native_audio.h"
-#include "native_config.h"
-#include "native_ctl.h"
+#include "native_backends.h"
 #include "native_frame.h"
 #include "native_input.h"
 
-/* Largest frame the loop copies out (any size the display task can make). */
-#define FRAME_CAP_PX (1920 * 1080)
 /* How often pointer motion is passed on: the machine redraws its cursor per
  * event, and a mouse reports at hundreds of Hz. */
 #define MOTION_INTERVAL_MS 16
+/* The window's magnification when the definition says auto. */
+#define SDL_DEFAULT_SCALE 3
 
 static SDL_Window *s_window = NULL;
 static SDL_Renderer *s_renderer = NULL;
 static SDL_Texture *s_texture = NULL;
 static int s_out_w = 0, s_out_h = 0;          /* texture (output surface) size */
-static uint16_t *s_frame = NULL;              /* last frame copied out */
 static int s_fb_w = 0, s_fb_h = 0;
-static uint32_t s_shown_seq = 0;
 static int s_dirty = 1;
+static int s_scale = SDL_DEFAULT_SCALE;
+static int s_rotate = 0;
 static fmrb_present_place_t s_place;
-static SDL_AudioDeviceID s_audio = 0;
 
 /* Pending pointer motion, coalesced. */
 static int s_motion_pending = 0;
 static int s_motion_x = 0, s_motion_y = 0;
 static uint32_t s_motion_last_ms = 0;
 
-static void audio_callback(void *ud, Uint8 *stream, int len)
-{
-    (void)ud;
-    native_audio_read((int16_t *)stream, len / (int)sizeof(int16_t));
-}
-
-static void open_audio(void)
-{
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-        fprintf(stderr, "native: no audio (%s); running silent\n", SDL_GetError());
-        return;
-    }
-    SDL_AudioSpec want, have;
-    SDL_zero(want);
-    want.freq = NATIVE_AUDIO_RATE;
-    want.format = AUDIO_S16SYS;
-    want.channels = 1;
-    want.samples = 512;
-    want.callback = audio_callback;
-    /* No allowed changes: SDL converts the APU's rate to the device's. */
-    s_audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-    if (s_audio == 0) {
-        fprintf(stderr, "native: cannot open audio (%s); running silent\n", SDL_GetError());
-        return;
-    }
-    SDL_PauseAudioDevice(s_audio, 0);
-    fprintf(stderr, "native: audio on '%s' (%d Hz from %d Hz)\n",
-            SDL_GetCurrentAudioDriver(), have.freq, NATIVE_AUDIO_RATE);
-}
-
-int host_sdl_init(void)
+static bool sdl_open(const native_machine_t *m, char *why, size_t why_len)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
-        fprintf(stderr, "native: SDL_Init: %s\n", SDL_GetError());
-        return 0;
+        snprintf(why, why_len, "SDL video: %s", SDL_GetError());
+        return false;
     }
-    open_audio();
-    s_frame = (uint16_t *)malloc((size_t)FRAME_CAP_PX * sizeof(uint16_t));
-    return s_frame != NULL;
+    s_scale = m->display.scale > 0 ? m->display.scale : SDL_DEFAULT_SCALE;
+    s_rotate = m->display.rotate;
+    return true;
 }
 
 static int ensure_texture(int w, int h)
@@ -111,7 +85,10 @@ static void ensure_window(void)
     native_frame_base_size(&bw, &bh);
     if (bw <= 0 || bh <= 0) return;
     int w = 0, h = 0;
-    fmrb_present_surface_size(bw, bh, g_native_config.scale, &w, &h);
+    fmrb_present_surface_size(bw, bh, s_scale, &w, &h);
+    if (s_rotate == 90 || s_rotate == 270) {
+        int t = w; w = h; h = t;
+    }
     s_window = SDL_CreateWindow("Family mruby", SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED, w, h,
                                 SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
@@ -129,23 +106,17 @@ static void ensure_window(void)
     }
     /* The machine draws its own cursor. */
     SDL_ShowCursor(SDL_DISABLE);
-    fprintf(stderr, "native: window %dx%d (frame %dx%d at %dx), video '%s'\n",
-            w, h, bw, bh, g_native_config.scale, SDL_GetCurrentVideoDriver());
+    fprintf(stderr, "native: window %dx%d (frame %dx%d at %dx, rotate %d), video '%s'\n",
+            w, h, bw, bh, s_scale, s_rotate, SDL_GetCurrentVideoDriver());
 }
 
-static void present(void)
+static void sdl_present(const uint16_t *px, int w, int h, bool changed)
 {
     if (s_renderer == NULL) return;
-    uint32_t seq = native_frame_seq();
-    if (seq != s_shown_seq) {
-        int w = 0, h = 0;
-        uint32_t got = 0;
-        if (native_frame_copy(s_frame, FRAME_CAP_PX, &w, &h, &got)) {
-            s_fb_w = w;
-            s_fb_h = h;
-            s_shown_seq = got;
-            s_dirty = 1;
-        }
+    if (changed) {
+        s_fb_w = w;
+        s_fb_h = h;
+        s_dirty = 1;
     }
     int ow = 0, oh = 0;
     SDL_GetRendererOutputSize(s_renderer, &ow, &oh);
@@ -154,12 +125,16 @@ static void present(void)
     if (!s_dirty) return;
     s_dirty = 0;
 
-    fmrb_present_place(s_out_w, s_out_h, s_fb_w, s_fb_h, &s_place);
     void *pixels = NULL;
     int pitch = 0;
     if (SDL_LockTexture(s_texture, NULL, &pixels, &pitch) != 0) return;
-    fmrb_present_blit_rgb565(s_frame, s_fb_w, s_fb_h, (uint16_t *)pixels,
-                             s_out_w, s_out_h, pitch / (int)sizeof(uint16_t), &s_place);
+    fmrb_present_surface_t surface = {
+        .pixels = pixels, .w = s_out_w, .h = s_out_h, .stride_bytes = pitch,
+        .format = FMRB_PRESENT_RGB565, .rotate = s_rotate,
+    };
+    /* The window grows freely: always the largest scale that fits it. */
+    fmrb_present_place(&surface, s_fb_w, s_fb_h, 0, &s_place);
+    fmrb_present_draw(px, s_fb_w, s_fb_h, &surface, &s_place);
     SDL_UnlockTexture(s_texture);
     SDL_RenderClear(s_renderer);
     SDL_RenderCopy(s_renderer, s_texture, NULL, NULL);
@@ -280,23 +255,35 @@ static int handle_event(const SDL_Event *e)
     return 0;
 }
 
-int host_sdl_run(void)
+static bool sdl_pump(int wait_ms)
 {
     int quit = 0;
-    while (!quit) {
-        SDL_Event e;
-        if (SDL_WaitEventTimeout(&e, 5)) {
+    SDL_Event e;
+    if (SDL_WaitEventTimeout(&e, wait_ms)) {
+        quit |= handle_event(&e);
+        while (!quit && SDL_PollEvent(&e)) {
             quit |= handle_event(&e);
-            while (!quit && SDL_PollEvent(&e)) {
-                quit |= handle_event(&e);
-            }
         }
-        flush_motion(0);
-        ensure_window();
-        present();
-        if (native_ctl_poll()) quit = 1;
     }
-    native_ctl_close();
-    if (s_audio != 0) SDL_CloseAudioDevice(s_audio);
-    return 0;
+    flush_motion(0);
+    ensure_window();
+    return quit != 0;
 }
+
+static void sdl_close(void)
+{
+    if (s_texture != NULL) SDL_DestroyTexture(s_texture);
+    if (s_renderer != NULL) SDL_DestroyRenderer(s_renderer);
+    if (s_window != NULL) SDL_DestroyWindow(s_window);
+    s_texture = NULL;
+    s_renderer = NULL;
+    s_window = NULL;
+}
+
+const native_output_t native_output_sdl = {
+    .name    = "sdl",
+    .open    = sdl_open,
+    .pump    = sdl_pump,
+    .present = sdl_present,
+    .close   = sdl_close,
+};

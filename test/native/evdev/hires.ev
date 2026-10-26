@@ -1,0 +1,12 @@
+# The same mouse while a fullscreen high-resolution app is up (640x360 on a
+# 426x240 base): a count moves 640/426 as far, so the cursor crosses the
+# screen at the same speed.
+screen 640 360 base 426 240 scale 1.0 1.0
+EV_REL REL_X 2
+EV_REL REL_Y 2
+EV_SYN SYN_REPORT 0
+EV_REL REL_X 1
+EV_SYN SYN_REPORT 0
+--- expect
+move 323 183
+move 324 183

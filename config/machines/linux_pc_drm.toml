@@ -1,0 +1,30 @@
+# Machine definition: a Linux PC on the console, DRM/KMS directly (a try-out
+# before the compositor, L7): the panel's preferred mode, keyboard and
+# touchpad or mouse through evdev, ALSA.
+# Field reference: native/machine/native_machine.h.
+description = "Linux PC: DRM/KMS on the console"
+
+[screen]
+form = "426x240"
+
+[display]
+backend = "drm"
+device = "auto"
+mode = "auto"                # the panel's preferred mode
+rotate = 0                   # 90 or 270 for a panel mounted sideways
+scale = "auto"
+
+[input]
+backend = "evdev"
+devices = ["auto"]
+
+[audio]
+backend = "alsa"
+device = "default"
+
+[desktop]
+variant = "mouse"
+
+[system]
+services = "linux"
+exit_key = "none"

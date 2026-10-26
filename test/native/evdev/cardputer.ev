@@ -1,0 +1,39 @@
+# The Cardputer Zero's built-in keyboard (keymap cardputer_zero): a plain
+# letter, then Sym held -- the kernel reports the Sym key itself as KEY_CD and
+# "1" as KEY_LEFTBRACE, which the console table types as "!" -- then "-"
+# (KEY_KP7) and Fn+arrow (an ordinary KEY_UP). Every key of this device is
+# sent US-decoded.
+keymap cardputer_zero
+EV_KEY KEY_A 1
+EV_KEY KEY_A 0
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_CD 1
+EV_KEY KEY_LEFTBRACE 1
+EV_KEY KEY_LEFTBRACE 0
+EV_KEY KEY_KP7 1
+EV_KEY KEY_KP7 0
+EV_KEY KEY_CD 0
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_DVD 1
+EV_KEY KEY_UP 1
+EV_KEY KEY_UP 0
+EV_KEY KEY_DVD 0
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_LEFTSHIFT 1
+EV_KEY KEY_COMMA 1
+EV_KEY KEY_COMMA 0
+EV_KEY KEY_LEFTSHIFT 0
+EV_SYN SYN_REPORT 0
+--- expect
+key down 04 00 us
+key up 04 00 us
+key down 1e 01 us
+key up 1e 01 us
+key down 2d 00 us
+key up 2d 00 us
+key down 52 00 us
+key up 52 00 us
+key down e1 01 us
+key down 24 01 us
+key up 24 01 us
+key up e1 00 us

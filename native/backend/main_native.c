@@ -1,37 +1,51 @@
 /*
  * main_native.c - process entry of the native Linux program
- * (doc/linux_native/, L1).
+ * (doc/linux_native/).
  *
  * Two kinds of thread, kept apart:
  *
- *   the main thread  SDL (window, events, audio device), the control socket.
- *                    Not a FreeRTOS task; talks to the machine only through
- *                    native_frame (screen), native_audio (sound) and the
- *                    input ring (native_input), the way the browser's page
- *                    talks to the wasm machine.
+ *   the main thread  the output (SDL window, fbdev, DRM), the control socket
+ *                    and the main loop; the audio sink has a thread of its
+ *                    own. Not FreeRTOS tasks; they talk to the machine only
+ *                    through native_frame (screen), native_audio (sound) and
+ *                    the input sources, the way the browser's page talks to
+ *                    the wasm machine.
  *   the machine      every FreeRTOS task, on the cooperative port
  *                    (hosted/port/), started from a thread of its own that
- *                    then parks in the scheduler. No signal is used, so SDL
- *                    and the scheduler share the process without the
- *                    simulation's SIGALRM trouble.
+ *                    then parks in the scheduler. No signal is used by it.
+ *
+ * Which output, sound and input run is the machine definition's
+ * (native_machine.h), chosen with --machine; native_backends.c turns it into
+ * backends and refuses, with the reason, what this build or this system
+ * cannot do -- before the machine starts, so a refusal is a clean exit.
  *
  * Options (each also as an environment variable; the option wins):
  *
- *   --scale N         FMRB_NATIVE_SCALE      window magnification (3)
- *   --user-dir DIR    FMRB_NATIVE_USER_DIR   /home /etc /app/usr
+ *   --machine NAME|PATH  FMRB_NATIVE_MACHINE    the machine definition (sdl)
+ *   --machines-dir DIR   FMRB_NATIVE_MACHINES_DIR  where a NAME is looked up
+ *                                            (native/build/root/machines)
+ *   --set KEY=VALUE      one field over the definition (display.rotate=90);
+ *                        may be repeated
+ *   --scale N            FMRB_NATIVE_SCALE      display.scale (the window's
+ *                                            magnification on sdl, 3)
+ *   --user-dir DIR       FMRB_NATIVE_USER_DIR   /home /etc /app/usr
  *                                            ($XDG_DATA_HOME/family-mruby-dev)
- *   --cache-dir DIR   FMRB_NATIVE_CACHE_DIR  /var /cache /data /tmp
+ *   --cache-dir DIR      FMRB_NATIVE_CACHE_DIR  /var /cache /data /tmp
  *                                            ($XDG_CACHE_HOME/family-mruby-dev)
- *   --system-dir DIR  FMRB_NATIVE_SYSTEM_DIR distribution tree, read-only
+ *   --system-dir DIR     FMRB_NATIVE_SYSTEM_DIR distribution tree, read-only
  *                                            (the repository's flash/)
- *   --etc-seed DIR    FMRB_NATIVE_ETC_SEED   the first start's /etc
+ *   --etc-seed DIR       FMRB_NATIVE_ETC_SEED   the first start's /etc
  *                                            (native/build/root/etc)
- *   --run-dir DIR     FMRB_NATIVE_RUN_DIR    control and inject sockets, pid
+ *   --run-dir DIR        FMRB_NATIVE_RUN_DIR    control and inject sockets, pid
  *                                            (/tmp/fmrb-native-<uid>)
+ *
+ * Exit codes: 0 quit, 1 a failure while running, 2 bad options, 3 the
+ * machine was refused (the reason is on stderr, "native: refused: ...").
  */
 
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,26 +56,23 @@
 #include "task.h"
 
 #include "fmrb_hal_file_layout.h"
-#include "host_sdl.h"
-#include "input_source.h"
+#include "native_backends.h"
 #include "native_config.h"
 #include "native_ctl.h"
+#include "native_frame.h"
 #include "native_input.h"
+#include "native_machine.h"
 
 void app_main(void);
-
-/* The native program's input: the window, and the injection socket the
- * headless tools use. */
-const fmrb_input_source_t *const fmrb_input_sources[] = {
-    &fmrb_input_source_sdl,
-    &fmrb_input_source_inject,
-    NULL,
-};
 
 native_config_t g_native_config;
 
 #define MAIN_TASK_STACK_BYTES  (256 * 1024)
 #define MAIN_TASK_PRIORITY     5
+/* Largest frame the loop copies out (any size the display task can make). */
+#define FRAME_CAP_PX (1920 * 1080)
+#define LOOP_WAIT_MS 5
+#define MAX_SETS 16
 
 #ifndef FMRB_NATIVE_DEFAULT_SYSTEM_DIR
 #error "FMRB_NATIVE_DEFAULT_SYSTEM_DIR must be set by native/CMakeLists.txt"
@@ -69,13 +80,20 @@ native_config_t g_native_config;
 #ifndef FMRB_NATIVE_DEFAULT_ETC_SEED
 #error "FMRB_NATIVE_DEFAULT_ETC_SEED must be set by native/CMakeLists.txt"
 #endif
+#ifndef FMRB_NATIVE_DEFAULT_MACHINES_DIR
+#error "FMRB_NATIVE_DEFAULT_MACHINES_DIR must be set by native/CMakeLists.txt"
+#endif
+
+static volatile sig_atomic_t s_quit_signal = 0;
 
 static void usage(const char *argv0)
 {
     fprintf(stderr,
-            "usage: %s [--scale N] [--user-dir DIR] [--cache-dir DIR]\n"
-            "          [--system-dir DIR] [--etc-seed DIR] [--run-dir DIR]\n",
-            argv0);
+            "usage: %s [--machine NAME|PATH] [--set KEY=VALUE]... [--scale N]\n"
+            "          [--machines-dir DIR] [--user-dir DIR] [--cache-dir DIR]\n"
+            "          [--system-dir DIR] [--etc-seed DIR] [--run-dir DIR]\n"
+            "outputs in this build: %s; audio: %s; input: sdl, evdev\n",
+            argv0, native_backends_outputs_built(), native_backends_audio_built());
 }
 
 static void set_path(char *dst, const char *value)
@@ -107,19 +125,69 @@ static void make_absolute(char *path)
     set_path(path, abs);
 }
 
+/* The definition: the file (or the built-in one when none was asked for
+ * and the default file is not staged), then every --set, then --scale. */
+static int load_machine(const char *machine_arg, const char *const *sets, int n_sets,
+                        const char *scale_arg)
+{
+    native_config_t *c = &g_native_config;
+    native_machine_t *m = &c->machine;
+    char err[400];
+    native_machine_defaults(m);
+    char path[NATIVE_PATH_MAX * 2];
+    native_machine_resolve(machine_arg ? machine_arg : "sdl", c->machines_dir, path, sizeof(path));
+    struct stat st;
+    if (machine_arg == NULL && stat(path, &st) != 0) {
+        fprintf(stderr, "native: no %s (rake native:etc stages it); using the built-in sdl machine\n", path);
+    } else if (native_machine_load_file(m, path, err, sizeof(err)) != 0) {
+        fprintf(stderr, "native: refused: machine definition: %s\n", err);
+        return 3;
+    }
+    for (int i = 0; i < n_sets; i++) {
+        char key[96];
+        const char *eq = strchr(sets[i], '=');
+        if (eq == NULL || (size_t)(eq - sets[i]) >= sizeof(key)) {
+            fprintf(stderr, "native: --set %s: expected KEY=VALUE\n", sets[i]);
+            return 2;
+        }
+        memcpy(key, sets[i], (size_t)(eq - sets[i]));
+        key[eq - sets[i]] = '\0';
+        if (native_machine_set(m, key, eq + 1, err, sizeof(err)) != 0) {
+            fprintf(stderr, "native: refused: --set %s\n", err);
+            return 3;
+        }
+    }
+    if (scale_arg != NULL) {
+        int s = atoi(scale_arg);
+        if (s < 1) s = 1;
+        if (s > 8) s = 8;
+        char v[8];
+        snprintf(v, sizeof(v), "%d", s);
+        native_machine_set(m, "display.scale", v, err, sizeof(err));
+    }
+    return 0;
+}
+
 static int parse_options(int argc, char **argv)
 {
     native_config_t *c = &g_native_config;
     memset(c, 0, sizeof(*c));
-    c->scale = 3;
+    set_path(c->machines_dir, FMRB_NATIVE_DEFAULT_MACHINES_DIR);
     set_path(c->system_dir, FMRB_NATIVE_DEFAULT_SYSTEM_DIR);
     set_path(c->etc_seed, FMRB_NATIVE_DEFAULT_ETC_SEED);
     xdg_path(c->user_dir, "XDG_DATA_HOME", ".local/share", "family-mruby-dev");
     xdg_path(c->cache_dir, "XDG_CACHE_HOME", ".cache", "family-mruby-dev");
     snprintf(c->run_dir, NATIVE_PATH_MAX, "/tmp/fmrb-native-%u", (unsigned)getuid());
 
+    const char *machine_arg = NULL;
+    const char *scale_arg = NULL;
+    const char *sets[MAX_SETS];
+    int n_sets = 0;
+
     const char *v;
-    if ((v = getenv("FMRB_NATIVE_SCALE")) != NULL) c->scale = atoi(v);
+    if ((v = getenv("FMRB_NATIVE_MACHINE")) != NULL && v[0] != '\0') machine_arg = v;
+    if ((v = getenv("FMRB_NATIVE_MACHINES_DIR")) != NULL) set_path(c->machines_dir, v);
+    if ((v = getenv("FMRB_NATIVE_SCALE")) != NULL) scale_arg = v;
     if ((v = getenv("FMRB_NATIVE_USER_DIR")) != NULL) set_path(c->user_dir, v);
     if ((v = getenv("FMRB_NATIVE_CACHE_DIR")) != NULL) set_path(c->cache_dir, v);
     if ((v = getenv("FMRB_NATIVE_SYSTEM_DIR")) != NULL) set_path(c->system_dir, v);
@@ -134,9 +202,19 @@ static int parse_options(int argc, char **argv)
             exit(0);
         } else if (next == NULL) {
             usage(argv[0]);
-            return -1;
+            return 2;
+        } else if (strcmp(a, "--machine") == 0) {
+            machine_arg = next;
+        } else if (strcmp(a, "--machines-dir") == 0) {
+            set_path(c->machines_dir, next);
+        } else if (strcmp(a, "--set") == 0) {
+            if (n_sets >= MAX_SETS) {
+                fprintf(stderr, "native: more than %d --set\n", MAX_SETS);
+                return 2;
+            }
+            sets[n_sets++] = next;
         } else if (strcmp(a, "--scale") == 0) {
-            c->scale = atoi(next);
+            scale_arg = next;
         } else if (strcmp(a, "--user-dir") == 0) {
             set_path(c->user_dir, next);
         } else if (strcmp(a, "--cache-dir") == 0) {
@@ -149,18 +227,17 @@ static int parse_options(int argc, char **argv)
             set_path(c->run_dir, next);
         } else {
             usage(argv[0]);
-            return -1;
+            return 2;
         }
         i++;
     }
-    if (c->scale < 1) c->scale = 1;
-    if (c->scale > 8) c->scale = 8;
+    make_absolute(c->machines_dir);
     make_absolute(c->user_dir);
     make_absolute(c->cache_dir);
     make_absolute(c->system_dir);
     make_absolute(c->etc_seed);
     make_absolute(c->run_dir);
-    return 0;
+    return load_machine(machine_arg, sets, n_sets, scale_arg);
 }
 
 static void prvMainTask(void *arg)
@@ -197,10 +274,82 @@ static void write_pid_file(void)
     }
 }
 
+static void on_quit_signal(int sig)
+{
+    (void)sig;
+    s_quit_signal = 1;
+}
+
+/* SDL turns SIGINT/SIGTERM into SDL_QUIT itself; the other outputs have no
+ * event queue, so the loop looks at a flag. The handler only sets it. */
+static void install_quit_signals(void)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_quit_signal;
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+}
+
+/* The machine's frames onto the output until something says quit. */
+static int main_loop(const native_output_t *out)
+{
+    uint16_t *frame = (uint16_t *)malloc((size_t)FRAME_CAP_PX * sizeof(uint16_t));
+    if (frame == NULL) {
+        fprintf(stderr, "native: no memory for the frame copy\n");
+        return 1;
+    }
+    uint32_t shown = 0;
+    int w = 0, h = 0;
+    bool quit = false;
+    while (!quit) {
+        quit |= out->pump(LOOP_WAIT_MS);
+        bool changed = false;
+        if (native_frame_seq() != shown) {
+            int nw = 0, nh = 0;
+            uint32_t got = 0;
+            if (native_frame_copy(frame, FRAME_CAP_PX, &nw, &nh, &got)) {
+                w = nw;
+                h = nh;
+                shown = got;
+                changed = true;
+            }
+        }
+        if (w > 0 && h > 0) out->present(frame, w, h, changed);
+        if (native_ctl_poll()) quit = true;
+        if (s_quit_signal) quit = true;
+    }
+    free(frame);
+    return 0;
+}
+
+static int refuse(const char *what, const char *why)
+{
+    fprintf(stderr, "native: refused: machine %s: %s: %s\n", g_native_config.machine.name, what, why);
+    return 3;
+}
+
 int main(int argc, char **argv)
 {
-    if (parse_options(argc, argv) != 0) return 2;
+    int prc = parse_options(argc, argv);
+    if (prc != 0) return prc;
     const native_config_t *c = &g_native_config;
+    const native_machine_t *m = &c->machine;
+
+    char line[600];
+    native_machine_describe(m, line, sizeof(line));
+    fprintf(stderr, "native: %s\n", line);
+
+    /* Everything a machine can be refused for, before anything starts. */
+    char why[512];
+    if (native_machine_check(m, why, sizeof(why)) != 0) return refuse("definition", why);
+    native_backends_t be;
+    if (!native_backends_select(m, &be, why, sizeof(why))) return refuse("backend", why);
+    if (strcmp(m->system.services, "none") != 0 || strcmp(m->system.exit_key, "none") != 0) {
+        fprintf(stderr, "native: system.services=%s exit_key=%s: not implemented yet (L5/L6), ignored\n",
+                m->system.services, m->system.exit_key);
+    }
 
     /* The sockets live here, and a Unix socket's path has to fit in 108
      * bytes: refuse a run directory that would silently truncate them. */
@@ -234,10 +383,22 @@ int main(int argc, char **argv)
     snprintf(sock, sizeof(sock), "%s/inject", c->run_dir);
     native_input_set_inject_path(sock);
 
-    fprintf(stderr, "native: system=%s user=%s cache=%s run=%s scale=%d\n",
-            c->system_dir, c->user_dir, c->cache_dir, c->run_dir, c->scale);
+    fprintf(stderr, "native: system=%s user=%s cache=%s run=%s\n",
+            c->system_dir, c->user_dir, c->cache_dir, c->run_dir);
 
-    if (!host_sdl_init()) return 1;
+    /* The devices: screen, sound, input. Each one either is had now or the
+     * machine does not start. */
+    if (!be.output->open(m, why, sizeof(why))) return refuse("display", why);
+    if (!be.audio->open(m, why, sizeof(why))) {
+        be.output->close();
+        return refuse("audio", why);
+    }
+    if (!native_backends_open_input(m, why, sizeof(why))) {
+        be.audio->close();
+        be.output->close();
+        return refuse("input", why);
+    }
+    if (be.output != &native_output_sdl) install_quit_signals();
 
     snprintf(sock, sizeof(sock), "%s/ctl", c->run_dir);
     if (!native_ctl_open(sock)) {
@@ -256,8 +417,11 @@ int main(int argc, char **argv)
     }
     pthread_attr_destroy(&attr);
 
-    int rc = host_sdl_run();
+    int rc = main_loop(be.output);
 
+    native_ctl_close();
+    be.audio->close();
+    be.output->close();
     char pid_path[NATIVE_PATH_MAX + 16];
     snprintf(pid_path, sizeof(pid_path), "%s/pid", c->run_dir);
     unlink(pid_path);

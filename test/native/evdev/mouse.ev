@@ -1,0 +1,37 @@
+# A mouse on the 426x240 desktop with mouse_scale 0.5 (system_conf_native):
+# the cursor starts at the centre, half a pixel per count with the fraction
+# kept, a click lands where its report moved, the wheel, the edge clamp.
+screen 426 240 base 426 240 scale 0.5 0.5
+EV_REL REL_X 3
+EV_REL REL_Y -2
+EV_SYN SYN_REPORT 0
+EV_REL REL_X 1
+EV_SYN SYN_REPORT 0
+EV_REL REL_X 4
+EV_KEY BTN_LEFT 1
+EV_SYN SYN_REPORT 0
+EV_KEY BTN_LEFT 0
+EV_SYN SYN_REPORT 0
+EV_KEY BTN_RIGHT 1
+EV_KEY BTN_RIGHT 0
+EV_REL REL_WHEEL -1
+EV_SYN SYN_REPORT 0
+EV_REL REL_X 2000
+EV_REL REL_Y 2000
+EV_SYN SYN_REPORT 0
+EV_REL REL_X 9
+EV_SYN SYN_DROPPED 0
+EV_SYN SYN_REPORT 0
+EV_REL REL_X -6
+EV_SYN SYN_REPORT 0
+--- expect
+move 214 119
+move 215 119
+move 217 119
+button 1 down 217 119
+button 1 up 217 119
+button 3 down 217 119
+button 3 up 217 119
+wheel -1 217 119
+move 425 239
+move 422 239

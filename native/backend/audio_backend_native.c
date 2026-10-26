@@ -4,8 +4,8 @@
  *
  * The browser build's shape (wasm/backend/audio_backend_wasm.c): write()
  * pushes the APU's mono int16 into a ring, and the consumer -- here SDL's
- * audio callback (host_sdl.c), there an AudioWorklet -- drains it at its own
- * pace. The APU task paces itself on the wall clock (audio_p4_task.c), so the
+ * audio callback or the ALSA thread (native/audio/), there an AudioWorklet --
+ * drains it at its own pace. The APU task paces itself on the wall clock (audio_p4_task.c), so the
  * writer never blocks.
  *
  * The two clocks drift apart slowly, so the reader keeps the queue between a

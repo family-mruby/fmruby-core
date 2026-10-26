@@ -7,7 +7,7 @@
  *   shot   "OK <bytes> <w> <h>\n" then a PNG of the composited frame at its
  *          own size (426x240, or 640x360 in the fullscreen high-resolution
  *          mode) -- the RGB565 the display task made, not the scaled window
- *   info   "OK <w> <h> <frame seq> <pid>\n"
+ *   info   "OK <w> <h> <frame seq> <pid> <machine>\n"
  *   quit   "OK\n", then the program exits
  *
  * Anything else gets "ERR ...\n". tools/fmrb_native.rb is the client.

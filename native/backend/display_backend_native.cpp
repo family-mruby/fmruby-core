@@ -5,8 +5,8 @@
  * Compositing is the shared software core (display_blend_cpu.c, the same
  * file the P4 CPU backend and the browser run). "Presenting" hands the
  * finished RGB565 frame to native_frame.c, from where the program's main
- * thread puts it on its output (an SDL window: host_sdl.c, scaling with
- * native/present/) and takes screenshots. The frame changes size with the
+ * thread puts it on its output (an SDL window, fbdev or DRM: native/output/,
+ * scaling with native/present/) and takes screenshots. The frame changes size with the
  * fullscreen high-resolution mode; the output follows the size it is given
  * and paints the border black.
  */

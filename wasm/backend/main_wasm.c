@@ -17,10 +17,11 @@ void fmrb_wasm_page_settings_apply(void);
 
 /* The browser's input: the page's event ring (input_wasm.c). */
 extern const fmrb_input_source_t fmrb_input_source_wasm;
-const fmrb_input_source_t *const fmrb_input_sources[] = {
+static const fmrb_input_source_t *const s_input_sources[] = {
     &fmrb_input_source_wasm,
     NULL,
 };
+const fmrb_input_source_t *const *fmrb_input_sources = s_input_sources;
 
 #define MAIN_TASK_STACK_BYTES  (256 * 1024)
 #define MAIN_TASK_PRIORITY     5

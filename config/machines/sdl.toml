@@ -1,0 +1,28 @@
+# Machine definition: development on a PC, an SDL window (doc/linux_native/).
+#
+# The native program's default (no --machine): the L1 program. The window is
+# the frame at `scale` (3 gives 1280x720), headless with SDL_VIDEODRIVER=dummy
+# and SDL_AUDIODRIVER=disk, as tools/fmrb_native.rb runs it.
+# Field reference: native/machine/native_machine.h.
+description = "development: an SDL window"
+
+[screen]
+form = "426x240"
+
+[display]
+backend = "sdl"
+scale = "auto"     # the window's magnification; auto = 3
+rotate = 0
+
+[input]
+backend = "sdl"    # the window's keys and mouse (the inject socket is always on)
+
+[audio]
+backend = "sdl"
+
+[desktop]
+variant = "mouse"
+
+[system]
+services = "none"
+exit_key = "none"

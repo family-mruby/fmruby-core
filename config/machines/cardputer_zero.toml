@@ -1,0 +1,34 @@
+# Machine definition: M5Stack Cardputer Zero on its own -- the 320x170 LCD
+# (fbdev, fb_st7789v), the built-in keyboard (evdev) and the ES8389 (ALSA).
+#
+# The 320x170 screen and the keyboard-only desktop come in L4, so this
+# definition is refused at start ("320x170 is not supported yet") until then.
+# Field reference: native/machine/native_machine.h. What the device side
+# still has to confirm on the board (fb format, device names): L0.
+description = "Cardputer Zero: LCD and built-in keyboard"
+
+[screen]
+form = "320x170"
+
+[display]
+backend = "fbdev"
+device = "auto:fb_st7789v"   # found by name in /proc/fb, not fb0 by number
+rotate = 0
+scale = "auto"
+
+[input]
+backend = "evdev"
+devices = ["auto"]
+keymap = "cardputer_zero"    # the Sym layer's symbols
+keymap_device = "tca8418"    # the built-in keyboard's evdev name
+
+[audio]
+backend = "alsa"
+device = "default"
+
+[desktop]
+variant = "keys"
+
+[system]
+services = "linux"
+exit_key = "esc_long"        # Esc short = back, long = quit (L5)

@@ -14,6 +14,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "native_config.h"
 #include "native_frame.h"
 #include "png_write.h"
 
@@ -119,9 +120,10 @@ bool native_ctl_poll(void)
         } else if (strcmp(line, "info") == 0) {
             int fw = 0, fh = 0;
             native_frame_size(&fw, &fh);
-            char out[96];
-            snprintf(out, sizeof(out), "OK %d %d %u %d\n", fw, fh,
-                     (unsigned)native_frame_seq(), (int)getpid());
+            char out[160];
+            snprintf(out, sizeof(out), "OK %d %d %u %d %s\n", fw, fh,
+                     (unsigned)native_frame_seq(), (int)getpid(),
+                     g_native_config.machine.name[0] ? g_native_config.machine.name : "?");
             reply(fd, out);
         } else if (strcmp(line, "quit") == 0) {
             reply(fd, "OK\n");

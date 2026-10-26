@@ -3,8 +3,8 @@
  * output.
  *
  * The APU task (FreeRTOS) writes mono int16 at NATIVE_AUDIO_RATE through the
- * audio_backend_t table; the output (SDL's audio callback, a thread of SDL's
- * own) reads them. One writer, one reader, no lock: two counters, each moved
+ * audio_backend_t table; the sink (SDL's audio callback, or the ALSA sink's
+ * thread -- native/audio/) reads them. One writer, one reader, no lock: two counters, each moved
  * by one side only.
  */
 #pragma once

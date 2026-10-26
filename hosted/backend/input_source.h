@@ -9,9 +9,10 @@
  * ends in. Key semantics are the ones rd_input.c and the browser established:
  * key_code = scancode = HID usage ID, modifiers in FMRB_KEYMAP_MOD_* bits.
  *
- * The build lists its sources in fmrb_input_sources (NULL-terminated), and
- * input_hosted.c starts each from usb_task_init -- the call boot.c already
- * makes on every target. That keeps the device path (usb_task.c, the USB host
+ * The build lists its sources in fmrb_input_sources (NULL-terminated; the
+ * browser's list is fixed, the native program's is filled from the machine
+ * definition before the machine starts), and input_hosted.c starts each from
+ * usb_task_init -- the call boot.c already makes on every target. That keeps the device path (usb_task.c, the USB host
  * stack with its device enumeration) untouched: on the hosted builds the
  * usb_task_* names are only the door, there is no USB bus behind them.
  *
@@ -34,8 +35,8 @@ typedef struct {
     fmrb_err_t (*start)(void);
 } fmrb_input_source_t;
 
-/* The sources this build has, NULL-terminated. Defined by the platform. */
-extern const fmrb_input_source_t *const fmrb_input_sources[];
+/* The sources this build runs, NULL-terminated. Defined by the platform. */
+extern const fmrb_input_source_t *const *fmrb_input_sources;
 
 #ifdef __cplusplus
 }

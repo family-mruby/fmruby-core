@@ -2,7 +2,7 @@
  * native_input.h - the native program's input sources (input_source.h).
  *
  *   sdl     the window's keys, buttons, motion and wheel. The main thread
- *           (host_sdl.c, outside FreeRTOS) pushes them into a ring; the
+ *           (output_sdl.c, outside FreeRTOS) pushes them into a ring; the
  *           source's task drains it into fmrb_host_send_*. The browser's ring
  *           (wasm/backend/input_wasm.c), with a real thread on the far side.
  *   inject  the headless way in: the simulation's packet format

@@ -1,0 +1,39 @@
+# A USB keyboard types "Ab", Ctrl+C, and holds a key long enough to repeat.
+# Format (test/native/main.c reads it): one event per line,
+#   <type> <code> <value>
+# with the kernel's names; then "--- expect" and what has to come out, one
+# line per call of the sink:
+#   key <down|up> <usage hex> <mods hex> [us]
+#   move <x> <y> | button <n> <down|up> <x> <y> | wheel <n> <x> <y>
+# Options before the events: "keymap cardputer_zero", "screen W H base W H
+# scale SX SY".
+EV_KEY KEY_LEFTSHIFT 1
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_A 1
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_A 0
+EV_KEY KEY_LEFTSHIFT 0
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_B 1
+EV_KEY KEY_B 2
+EV_KEY KEY_B 2
+EV_KEY KEY_B 0
+EV_SYN SYN_REPORT 0
+EV_KEY KEY_RIGHTCTRL 1
+EV_KEY KEY_C 1
+EV_KEY KEY_C 0
+EV_KEY KEY_RIGHTCTRL 0
+EV_KEY KEY_PLAYPAUSE 1
+EV_KEY KEY_PLAYPAUSE 0
+EV_SYN SYN_REPORT 0
+--- expect
+key down e1 01
+key down 04 01
+key up 04 01
+key up e1 00
+key down 05 00
+key up 05 00
+key down e4 08
+key down 06 08
+key up 06 08
+key up e4 00

@@ -4,7 +4,7 @@
  *
  * The display task (a FreeRTOS task, one of the cooperative port's threads)
  * puts each finished frame here; the native program's main thread -- which
- * owns SDL, and is not a FreeRTOS task -- takes the newest one when the
+ * owns the output (SDL, fbdev, DRM), and is not a FreeRTOS task -- takes the newest one when the
  * sequence number moves, presents it, and answers the screenshot request from
  * the same copy. The same split the browser has between the machine and the
  * page (wasm/backend/display_backend_wasm.cpp), with a lock because these are
