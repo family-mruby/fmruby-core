@@ -1,0 +1,56 @@
+# System services for the native Linux program (/etc/services.toml of its
+# first start; doc/linux_native/report/l2n.md).
+#
+# Same shape and same meaning as config/services.toml, which the simulation
+# uses. Differences:
+#
+#   timesync  off. The program keeps the PC's clock: Family mruby does not
+#             set the time of the Linux it runs on (the machine's OS does
+#             that, with its own NTP client).
+#   net       as on the simulation: FmrbApp.wifi_connected? / wifi_info read
+#             the host's first non-loopback IPv4 (getifaddrs), and the
+#             service publishes net/state from that. Asking the OS for the
+#             real link state (NetworkManager) comes with the OS services
+#             (fmrb_platform_sys, L6).
+#
+# The user's own list is /home/services.toml. It is read after this one and
+# wins field by field.
+
+[clock]
+file = "clock.rb"
+class = "ClockService"
+enable = true
+interval_ms = 60000
+
+# Rings a note on the hour (off, as on a device; see config/services.toml).
+[hourly_chime]
+file = "hourly_chime.rb"
+class = "HourlyChimeService"
+enable = false
+
+# Watches the network and publishes net/state.
+[net]
+file = "net.rb"
+class = "NetWatch"
+enable = true
+interval_ms = 5000
+
+# Off on purpose (see the top of this file). Even switched on in Services it
+# would not touch the clock: timesync.rb applies a time only where
+# FmrbConst::PLATFORM is "esp32", and logs "would set the clock" elsewhere.
+[timesync]
+file = "timesync.rb"
+class = "TimeSync"
+enable = false
+interval_ms = 86400000
+
+[timesync.config]
+server = "pool.ntp.org"
+interval_hours = 24
+
+# Speech (off, as on the simulation; see config/services.toml for the
+# settings).
+[tts]
+file = "tts.rb"
+class = "TtsService"
+enable = false

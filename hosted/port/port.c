@@ -59,6 +59,7 @@
 
 #include "wait_for_event.h"
 #include "port_clock.h"
+#include "port_hosted.h"
 
 /*-----------------------------------------------------------*/
 
@@ -126,6 +127,14 @@ static BaseType_t xInCatchUp = pdFALSE;
 static uint32_t ulMaxTickBurst;
 static uint64_t ullCatchUpCalls;
 
+/* Work done outside FreeRTOS (port_hosted.h). */
+static PortHostedPollHook_t pxPollHook;
+static PortHostedDeleteHook_t pxDeleteHook;
+
+/* Set on the thread of every task once it starts; the threads the port did
+ * not create (main, a backend's own, a gate helper) never have it. */
+static __thread BaseType_t xIsTaskThread = pdFALSE;
+
 static void prvSuspendSelf( Thread_t * pxThread );
 static void prvResumeThread( Thread_t * pxThread );
 static void prvSwitchThread( Thread_t * pxThreadToResume,
@@ -181,13 +190,50 @@ static BaseType_t prvCatchUpTicks( void )
         ulMaxTickBurst = ulBurst;
     }
 
+    /* Completions from outside FreeRTOS are handed over here, at the same
+     * safe moment as the ticks. */
+    if( ( pxPollHook != NULL ) && ( pxPollHook() != pdFALSE ) )
+    {
+        xSwitchRequired = pdTRUE;
+    }
+
     xInCatchUp = pdFALSE;
     return xSwitchRequired;
+}
+
+void vPortHostedSetPollHook( PortHostedPollHook_t pxHook )
+{
+    pxPollHook = pxHook;
+}
+
+void vPortHostedSetDeleteHook( PortHostedDeleteHook_t pxHook )
+{
+    pxDeleteHook = pxHook;
+}
+
+BaseType_t xPortHostedTaskMayBlock( void )
+{
+    if( ( xIsTaskThread == pdFALSE ) || ( xSchedulerStarted == pdFALSE ) || ( uxCriticalNesting != 0 ) )
+    {
+        return pdFALSE;
+    }
+
+    if( xTaskGetSchedulerState() != taskSCHEDULER_RUNNING )
+    {
+        return pdFALSE;
+    }
+
+    return ( xTaskGetCurrentTaskHandle() != xTaskGetIdleTaskHandle() ) ? pdTRUE : pdFALSE;
 }
 
 uint32_t ulPortGetMaxTickBurst( void )
 {
     return ulMaxTickBurst;
+}
+
+void vPortResetMaxTickBurst( void )
+{
+    ulMaxTickBurst = 0;
 }
 
 uint64_t ullPortGetTickCatchUpCalls( void )
@@ -444,6 +490,11 @@ void vPortCleanUpTCB( void * pxTCB )
         prvRunTlsDeleteCallbacks( ( TaskHandle_t ) pxTCB );
     #endif
 
+    if( pxDeleteHook != NULL )
+    {
+        pxDeleteHook( ( TaskHandle_t ) pxTCB );
+    }
+
     if( pthread_equal( pxThread->pthread, pthread_self() ) != 0 )
     {
         /* Would be a task freeing its own TCB from its own thread; the kernel
@@ -466,6 +517,7 @@ static void * prvWaitForStart( void * pvParams )
     prvSuspendSelf( pxThread );
 
     uxCriticalNesting = 0;
+    xIsTaskThread = pdTRUE;
 
     pxThread->pxCode( pxThread->pvParams );
 

@@ -1,0 +1,6 @@
+app_screen_name = "L2n Net"
+default_window_mode = "window"
+default_window_width = 380
+default_window_height = 140
+default_window_pos_x = 20
+default_window_pos_y = 30

@@ -66,9 +66,9 @@ namespace :native do
   # The first start's /etc and the machine definitions, staged outside
   # flash/: system_conf is generated from config/ (the rule for every target), and the repository's flash/etc
   # holds whatever the last simulation build put there. Tracked files of
-  # flash/etc are carried over; the service list is the browser's, the
-  # services that need no network (net and timesync open blocking sockets,
-  # which would stop a cooperative scheduler).
+  # flash/etc are carried over; the service list is its own
+  # (config/services_native.toml: the simulation's, with timesync off --
+  # the program keeps the PC's clock).
   desc "Stage the native program's first-start /etc and machine definitions into native/build/root"
   task :etc do
     etc = File.join(NATIVE_ROOT_STAGE, "etc")
@@ -82,7 +82,7 @@ namespace :native do
     conf = File.join(ROOT_DIR, "config/system_conf_native.toml")
     cp conf, File.join(etc, "system_conf.toml")
     cp conf, File.join(etc, "system_conf.factory.toml")
-    cp File.join(ROOT_DIR, "config/services_wasm.toml"), File.join(etc, "services.toml")
+    cp File.join(ROOT_DIR, "config/services_native.toml"), File.join(etc, "services.toml")
     cp File.join(ROOT_DIR, "config/associations.toml"), File.join(etc, "associations.toml")
     bad = Dir.glob(File.join(etc, "**/*")).grep(%r{wifi\.toml|secrets})
     abort "native:etc: refusing to stage #{bad.inspect}" unless bad.empty?

@@ -8,6 +8,11 @@
  *          own size (426x240, or 640x360 in the fullscreen high-resolution
  *          mode) -- the RGB565 the display task made, not the scaled window
  *   info   "OK <w> <h> <frame seq> <pid> <machine>\n"
+ *   stats  "OK gate calls=.. busy=.. orphans=.. helpers=.. idle=.. cancels=..
+ *          deleted=.. burst_ms=..\n": the blocking-call gate's counters
+ *          (hosted/gate/fmrb_gate.h) and the longest stretch without a task
+ *          switch (port_hosted.h). "stats reset" answers the same and then
+ *          starts that stretch over.
  *   quit   "OK\n", then the program exits
  *
  * Anything else gets "ERR ...\n". tools/fmrb_native.rb is the client.

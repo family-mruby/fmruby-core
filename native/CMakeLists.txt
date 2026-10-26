@@ -25,6 +25,8 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+# picoruby-socket's posix SSLSocket is OpenSSL, as on the Linux simulation.
+pkg_check_modules(OPENSSL REQUIRED IMPORTED_TARGET openssl)
 
 # The device backends that need a library are built when it is there
 # (native/backend/native_backends.c refuses a machine that names one this
@@ -89,6 +91,10 @@ set(NATIVE_BACKEND_SRCS
   ${N}/input/keymap_cardputer_zero.c
   ${N}/input/evdev_decode.c
   ${N}/input/input_evdev.c
+  # Networking (L2n): the blocking-call gate of the cooperative port, and the
+  # wrappers that route the waiting network calls through it.
+  ${FMRB_ROOT}/hosted/gate/fmrb_gate.c
+  ${N}/net/net_wrap.c
   # mruby-dir's HAL over the file HAL's resolver (the ESP32 targets' file;
   # the name-only gem hal-dir-fmrb dropped the flat posix one from libmruby)
   ${FMRB_ROOT}/lib/add/hal-esp32-dir/dir_hal.c
@@ -106,7 +112,9 @@ target_include_directories(core_objs PRIVATE
   ${N}/present
   ${N}/output
   ${N}/audio
-  ${N}/input)
+  ${N}/input
+  ${N}/net
+  ${FMRB_ROOT}/hosted/gate)
 target_compile_definitions(core_objs PRIVATE
   FMRB_PLATFORM_NATIVE=1
   NATIVE_HAVE_DRM=${NATIVE_HAVE_DRM}
@@ -130,10 +138,23 @@ if(NATIVE_HAVE_ALSA)
   set_source_files_properties(${N}/audio/audio_alsa.c PROPERTIES COMPILE_OPTIONS "${ALSA_CFLAGS}")
 endif()
 
+set_source_files_properties(${N}/net/net_wrap.c PROPERTIES COMPILE_OPTIONS "${OPENSSL_CFLAGS}")
+
 add_executable(fmruby-native $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(fmruby-native PRIVATE
   freertos_hosted lgfx_hosted ${FMRB_HOSTED_LIBMRUBY}
-  PkgConfig::SDL2 m pthread)
+  PkgConfig::SDL2 PkgConfig::OPENSSL m pthread)
+# The calls that wait in the kernel, as the networking gems in libmruby make
+# them, go through native/net/net_wrap.c (__wrap_X; __real_X is the library's).
+# Only references from the objects linked here are redirected: SDL, ALSA and
+# libssl's own internal calls are untouched.
+# socket and close are wrapped to remember which task opened which socket
+# (closed for a task deleted by force).
+set(NATIVE_NET_WRAPPED getaddrinfo connect accept recv recvfrom send sendto select poll
+    SSL_connect SSL_read SSL_write SSL_shutdown SSL_get_error socket close)
+foreach(sym ${NATIVE_NET_WRAPPED})
+  target_link_options(fmruby-native PRIVATE -Wl,--wrap=${sym})
+endforeach()
 if(NATIVE_HAVE_DRM)
   target_link_libraries(fmruby-native PRIVATE PkgConfig::LIBDRM)
 endif()

@@ -24,6 +24,13 @@ display_mode = "sdl2" # SDL2 window, Linux simulation (ntsc_ipc / spi_direct / h
 # (hosted/hosted.cmake), and say so here. Anything above the ceiling is
 # clamped with a warning at boot.
 max_apps = 32
+# Where Asterism / Zenoh apps find the router when /home/asterism/config.toml
+# does not name one (doc/ruby_asterism; FmrbAsterism.settings). The
+# simulation's apps reach the zenohd service by its compose name; this
+# program runs on the PC itself, where docker compose publishes zenohd's
+# 7447 on the loopback (`docker compose up -d zenohd` in the parent
+# repository starts it alone).
+zenoh_router = "tcp/127.0.0.1:7447"
 debug_mode = true
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5

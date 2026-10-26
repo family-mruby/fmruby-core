@@ -75,10 +75,24 @@ MRuby::CrossBuild.new('family-mruby-native') do |conf|
   conf.gem gemdir: "#{dir}/mruby-sprintf"
   conf.gem gemdir: "#{dir}/mruby-math"
 
-  # No networking gems yet (picoruby-socket / net-http / net-websocket, and
-  # the Zenoh client that would ride on them). Their calls block in the
-  # kernel, and on a cooperative scheduler a blocked task stops the screen
-  # with it -- the browser's reason too, for a different cause. Bringing them
-  # back needs non-blocking sockets polled from the task (doc/linux_native/
-  # report/l1.md, remaining work).
+  # Networking (doc/linux_native/report/l2n.md): the Linux simulation's set.
+  # The gems are unchanged; their posix ports wait in recv, connect,
+  # getaddrinfo and OpenSSL, which on the cooperative scheduler would stop
+  # every task with them, so the native link routes those calls through the
+  # blocking-call gate (native/net/net_wrap.c, hosted/gate/): a helper thread
+  # outside FreeRTOS makes the call while the task sleeps. SSL is OpenSSL
+  # (linked by native/CMakeLists.txt), verified against the system CA store
+  # as on the simulation.
+  conf.gem core: "picoruby-socket"
+  conf.gem core: "picoruby-net-http"
+  conf.gem core: "picoruby-net-websocket"
+
+  # Zenoh and Asterism, as on the simulation: zenoh-pico built single-threaded
+  # for its unix platform (ZENOH_LINUX, the gem's default for this build name)
+  # and polled from Ruby, its TCP link the gem's own (src/zp_tcp_posix.c).
+  # The router is the machine's zenoh_router setting
+  # (config/system_conf_native.toml: tcp/127.0.0.1:7447).
+  conf.gem core: "picoruby-asterism-zenoh"
+  conf.gem core: "picoruby-asterism"
+  conf.gem core: "picoruby-fmrb-asterism"
 end

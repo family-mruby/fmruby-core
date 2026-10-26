@@ -14,6 +14,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "fmrb_gate.h"
+#include "port_hosted.h"
 #include "native_config.h"
 #include "native_frame.h"
 #include "png_write.h"
@@ -124,6 +126,19 @@ bool native_ctl_poll(void)
             snprintf(out, sizeof(out), "OK %d %d %u %d %s\n", fw, fh,
                      (unsigned)native_frame_seq(), (int)getpid(),
                      g_native_config.machine.name[0] ? g_native_config.machine.name : "?");
+            reply(fd, out);
+        } else if (strcmp(line, "stats") == 0 || strcmp(line, "stats reset") == 0) {
+            fmrb_gate_stats_t g;
+            fmrb_gate_get_stats(&g);
+            char out[224];
+            snprintf(out, sizeof(out),
+                     "OK gate calls=%u busy=%u orphans=%u helpers=%u idle=%u cancels=%u "
+                     "deleted=%u burst_ms=%u\n",
+                     g.calls, g.busy, g.orphans, g.helpers, g.helpers_idle, g.cancels,
+                     g.deleted, (unsigned)ulPortGetMaxTickBurst());
+            if (strcmp(line, "stats reset") == 0) {
+                vPortResetMaxTickBurst();
+            }
             reply(fd, out);
         } else if (strcmp(line, "quit") == 0) {
             reply(fd, "OK\n");

@@ -39,6 +39,13 @@
  *   --run-dir DIR        FMRB_NATIVE_RUN_DIR    control and inject sockets, pid
  *                                            (/tmp/fmrb-native-<uid>)
  *
+ * Diagnostics (environment only):
+ *
+ *   FMRB_NATIVE_GATE=off  waiting network calls are made on the task's own
+ *                         thread, as without the blocking-call gate -- every
+ *                         task stops while one waits. For measuring what the
+ *                         gate is for (doc/linux_native/report/l2n.md).
+ *
  * Exit codes: 0 quit, 1 a failure while running, 2 bad options, 3 the
  * machine was refused (the reason is on stderr, "native: refused: ...").
  */
@@ -55,6 +62,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "fmrb_gate.h"
+#include "net_wrap.h"
 #include "fmrb_hal_file_layout.h"
 #include "native_backends.h"
 #include "native_config.h"
@@ -252,6 +261,14 @@ static void prvMainTask(void *arg)
 static void *machine_thread(void *arg)
 {
     (void)arg;
+    /* Waiting network calls go to helper threads (native/net/net_wrap.c). */
+    const char *gate = getenv("FMRB_NATIVE_GATE");
+    if (gate != NULL && strcmp(gate, "off") == 0) {
+        fprintf(stderr, "native: FMRB_NATIVE_GATE=off: waiting calls stop every task\n");
+    } else {
+        fmrb_gate_init();
+        native_net_init();
+    }
     if (xTaskCreate(prvMainTask, "app_main", MAIN_TASK_STACK_BYTES, NULL,
                     MAIN_TASK_PRIORITY, NULL) != pdPASS) {
         fprintf(stderr, "native: could not create the main task\n");
