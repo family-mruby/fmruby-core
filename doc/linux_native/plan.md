@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-26 | L1・L2・L2n・L3a 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh)。arm64・amd64 の .deb を arm64 のコンテナで確認済。次は L4 (キーボード専用のデスクトップ)、実機が来たら L3b。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-26 | L1・L2・L2n・L3a・L3c・L4 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ)。次は L5 の WSL2 でできる部分と L6、実機が来たら L0・L3b。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -102,6 +102,14 @@
   - 配布する system_conf は**配布用の値を別に用意**する (debug_mode = false、
     起動の表示は通常、Zenoh のルータは空で利用者が設定する)。開発用
     (`rake native:core`) は開発用の値のまま。
+  - 実装 (L3c で確定): system_conf の `debugd` と `debugd_bind`。sim・開発用の
+    既定は true / "0.0.0.0"、パッケージ版の既定は false / "127.0.0.1" で、
+    パッケージ版は 127.0.0.1 以外を警告して使わない。配布用の設定は
+    `config/system_conf_native_release.toml` (開発用との差は `debug_mode`・
+    `zenoh_router`・`debugd` の 3 項目だけで、`native:root` が差を確かめる)。
+  - Zenoh のルータが空のとき、Asterism のアプリは sim の既定のルータの名前に
+    落ち、すぐ分かるエラーで止まる (固まらない)。パッケージ版で引けない
+    名前なので、空のときの扱いは残件 (L5)。
 - 確認の道具: ルートの `tools/fmrb_native.rb` (`up|down|shot|input|app`)。
   debugd は TCP 5565、注入のソケットは sim と別の場所。
 
@@ -141,7 +149,7 @@
 name = "cardputer_zero_hdmi"
 description = "..."
 [screen]
-form = "426x240"          # 320x170 は L4 まで断る
+form = "426x240"          # 426x240 / 320x170 (system_conf の画面の大きさより優先)
 [display]
 backend = "drm"           # sdl / fbdev / drm
 device = "auto"           # fbdev は "auto:fb_st7789v" のように /proc/fb の名前でも
@@ -161,8 +169,10 @@ latency_ms = 40
 variant = "mouse"         # mouse / keys
 [system]
 services = "linux"
-exit_key = "esc_long"     # L2 では読むだけ (未実装)
+exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログラムを終える
 ```
+
+用意済みの定義に、開発用の `sdl_keys` (SDL・320x170・keys・倍率 4) を L4 で足した。
 
 (2) は `form = "426x240"`、`display.backend = "drm"`、`variant = "mouse"`。
 (3) は `display.backend = "wlr"`、`input.backend = "wlr"`、`variant = "mouse"`、
@@ -202,13 +212,31 @@ exit_key = "esc_long"     # L2 では読むだけ (未実装)
   キーボードで押せる組を実機で決める (L5)。
 - 最初に対応させるアプリ (2026-10-26 ユーザ決定): **エディタ・Shell・
   File Manager**。
+- 実装 (L4 で確定): デスクトップは 2 つのプログラム (`system_desktop.app.rb` と
+  `system_desktop_keys.app.rb`) で、kernel から見ればどちらも `system_desktop`。
+  native の spawner が `desktop.variant` で中身を選ぶ。共通の部分は
+  `system_desktop/desktop_common.rb` (組み込みアプリの一覧と宣言・起動) と、
+  大きさをメソッドにした File Manager・ファイル選択・i18n。keys のプログラムは
+  native だけが持つ (端末・sim のビルドには入らない)。
+- キー (L4 の仮の決め。ユーザ確認待ち): 切り替えの一覧は system_conf の
+  `keys_switcher_key` (既定 `ctrl+tab`、修飾キー + 1 キー)。Esc は押した・離したと
+  時刻で判断し、`keys_esc_long_ms` (既定 1000) より短ければアプリへ、長ければ
+  アプリの中ではアプリを閉じてメニューへ、デスクトップ (メニュー・一覧・
+  File Manager) では `exit_key = "esc_long"` の機種でプログラムを終える。
+  どちらも host_task が受け、native の keys のときだけ働く。
+- 起動の絵と音は keys では出さない。電池は値が来るまで (L6) 出さない。
 
 ### 全画面アプリの切り替え
 
-- 今は全画面のアプリを退避できる枠が 1 つしかない (`@parked_fullscreen_pid`、
-  Ctrl+Tab)。これを**全画面のアプリの一覧**に広げ、キーで巡回する。
-  keys のデスクトップではこれが通常の操作になる。mouse でも使える
-  (Modern の全画面エディタ 2 つの行き来など)。
+- mouse の全画面 (入れ子の積み重ね `@fs_stack` と退避の 1 枠
+  `@parked_fullscreen_pid`) は**変えない** (L4 で確定)。積み重ねは「全画面の
+  アプリがデスクトップも止める」形で、帯を出し続ける keys とは前提が違うため。
+- keys では別の小さな状態 (`fmrb_kernel/keys_desktop.rb`) を持つ。デスクトップが
+  起動時に `desktop_keys` (アプリを置く四角) を知らせて初めて有効になり、
+  窓を持ったアプリを帯の下の全画面に置いて前に出し、前にいたアプリを
+  suspend する。切り替えの一覧は動いているアプリとメニューを並べ、
+  前に出す・終えるを kernel に頼む。mouse で全画面のアプリの一覧を使う形は
+  今は作らない。
 - 一覧を開くキーは設定で変えられるようにし、Cardputer のキーボードで押せる組を実機で決める (L5)。
 
 ### アプリの宣言
@@ -217,6 +245,9 @@ exit_key = "esc_long"     # L2 では読むだけ (未実装)
   (`needs_pointer`) を宣言する欄を足す。
 - keys のメニューには、320x170 に対応し、マウスの要らないアプリだけを出す。
   宣言の無いアプリは出さない (縮小して無理に出すことはしない)。
+- 組み込みのアプリ (エディタ・Shell) の宣言は、デスクトップの共通の一覧
+  (`desktop_common.rb`) に置く (L4 で確定。C の表を増やさないため)。
+  `.app.toml` の 2 つの欄の手引きは L5 で書く。
 - 対応するアプリは使い道の大きいもの (エディタ・Shell・File Manager・BASIC・
   ゲームの一部) から順に増やす。
 
@@ -393,7 +424,7 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 | L3c | **パッケージ版の決まり**: debugd を既定で止め、有効時も 127.0.0.1 だけ。配布用の system_conf | (1)(2)(3) |
 | L3b | **(2) の形を実機で**: Cardputer Zero (または Pi Zero 2 W) で DRM で HDMI に Modern、USB のマウス・キーボード、APPLaunch からの起動と終了の決まり、L2 の実機の確認の一覧 | (2) |
 | L4 | **キーボード専用のデスクトップ**: デスクトップの共通部分の切り出し、keys のデスクトップ、320x170 の画面の形、全画面アプリの一覧と巡回、`.app.toml` の宣言 | (1) |
-| L5 | **(1) の形**: fbdev で本体の LCD、本体のキーボードの表、対応アプリの最初の組、App Store の準備 (アイコン・画面写真) | (1) |
+| L5 | **(1) の形**: fbdev で本体の LCD、本体のキーボードの表、対応アプリの最初の組、App Store の準備 (アイコン・画面写真)。APPLaunch の 320x170 用の入口、L4 の残件 (一覧・File Manager での Esc の長押し、一覧から終えた後に戻る先、`.app.toml` の欄の手引き、Zenoh のルータが空のときの扱い) | (1) |
 | L6 | **OS のサービス**: `fmrb_platform_sys` と linux 実装、デスクトップの表示と電源の操作をつなぎ替える | 全部 |
 | L7 | **(3) の入口**: GPD でログイン画面から選べる項目 (まず cage + SDL で全画面)、拡大・回転の確認 | (3) |
 | L8 | **コンポジタの試作**: tinywl に Family mruby の画面を 1 枚の絵として敷き、その上に端末を 1 つ出す。二つの動作の流れの受け渡しを確かめる | (3) |
@@ -439,7 +470,8 @@ Shell から Linux のコマンド (全部の形):
 
 ## 未確定事項
 
-- 機種の定義の項目名と、引数での選び方 (L2)。
+- keys のキーの既定 (L4 の仮の決め、ユーザ確認待ち): 一覧は Ctrl+Tab、Esc の
+  長押し (約 1 秒) でアプリを閉じる・メニューではプログラムを終える。
 - Cardputer の OS で、DRM から HDMI のモードを変えられるか (L0)。
   変えられなければ、(2) は利用者に設定の変更を頼む形になる。
 - APPLaunch から起動したとき、アプリが画面 (LCD の fb) と入力を
