@@ -21,6 +21,8 @@
 #   @keys_mode       true once the keys desktop has announced itself
 #   @keys_x/y/w/h    the rectangle apps are placed in
 #   @keys_front_pid  the app in front, -1 when the desktop's menu is
+#   @keys_recent     the apps that have been in front, the most recent last
+#                    (L5a): what comes back when the app in front ends
 module KeysDesktopMixin
   def keys_init
     @keys_mode = false
@@ -29,6 +31,7 @@ module KeysDesktopMixin
     @keys_w = 0
     @keys_h = 0
     @keys_front_pid = -1
+    @keys_recent = []
     nil
   end
 
@@ -69,6 +72,8 @@ module KeysDesktopMixin
       drop_suspended(pid)
     end
     @keys_front_pid = pid
+    keys_recent_drop(pid)
+    @keys_recent << pid
     _bring_to_front(pid)
     _set_hid_target(pid)
     @hid_target_pid = pid
@@ -121,13 +126,20 @@ module KeysDesktopMixin
   end
 
   # "Quit" from the switcher: the app comes to the front first (a built-in
-  # may want to ask about unsaved work), then it is asked to end, the way
-  # Ctrl+Q asks.
+  # may want to ask about unsaved work, and a parked app cannot read the
+  # request), then it is asked to end, the way Ctrl+Q asks. One that was
+  # behind goes in the order of use just under the app that was in front,
+  # so that app comes back when it ends (keys_after_exit).
   def keys_close(pid)
     info = _get_app_info(pid)
     return nil unless info
     return nil if pid == @desktop_pid
+    front = @keys_front_pid
     keys_show(pid)
+    if front >= 0 && front != pid
+      keys_recent_drop(front)
+      @keys_recent << front
+    end
     _mark_expected_stop(pid)
     cmd = run_path_allowed?(info[:path].to_s) ? "stop" : "quit_request"
     Log.info("Keys desktop: #{cmd} to PID #{pid}")
@@ -137,21 +149,50 @@ module KeysDesktopMixin
 
   # From cleanup_terminated_app, after the keyboard has been handed back. The
   # app that was in front is gone: the app the keyboard went to (the editor
-  # an F5 run came from) comes to the front, else the menu.
+  # an F5 run came from) comes to the front, else the app used before it
+  # (@keys_recent), else the menu. An app that ended behind the one in front
+  # changes nothing on screen.
   def keys_after_exit(pid)
     return nil unless @keys_mode
     # A parked app that ended is not suspended any more.
     drop_suspended(pid) if app_suspended?(pid)
+    keys_recent_drop(pid)
     return nil unless pid == @keys_front_pid
     @keys_front_pid = -1
+    to = -1
     back = @hid_target_pid
     if back && back != @desktop_pid && back != pid && _get_app_info(back)
-      keys_show(back)
+      to = back
+    else
+      to = keys_recent_last(pid)
+    end
+    if to >= 0
+      keys_show(to)
     else
       keys_focus_desktop
       keys_notify_front
     end
     nil
+  end
+
+  def keys_recent_drop(pid)
+    kept = []
+    @keys_recent.each { |p| kept << p unless p == pid }
+    @keys_recent = kept
+    nil
+  end
+
+  # The most recently used app that is still there (not +gone+, not the
+  # desktop), or -1.
+  def keys_recent_last(gone)
+    i = @keys_recent.size - 1
+    while i >= 0
+      p = @keys_recent[i]
+      i -= 1
+      next if p == gone || p == @desktop_pid
+      return p if _get_app_info(p)
+    end
+    -1
   end
 
   # Control messages only the keys desktop sends. True when handled.

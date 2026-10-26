@@ -14,9 +14,11 @@
 # but the package and what apt pulls in for it):
 #
 #   1. apt install ./family-mruby_*.deb  (the Depends have to resolve)
-#   2. the per-machine launcher (family-mruby-hdmi) is run: in a container
-#      there is no DRM device, so it must be refused for that reason, with
-#      the machine the launcher named
+#   2. the per-machine launchers are run, each with its APPLaunch entry:
+#      family-mruby-lcd (the device's 320x170 screen, "Family mruby") and
+#      family-mruby-hdmi ("Family mruby (HDMI)"). A container has no fbdev
+#      and no DRM device, so each must be refused for that reason (exit 3),
+#      with the machine the launcher named
 #   3. the program as root, headless (SDL dummy), --machine sdl: the time to
 #      "Boot complete", the desktop against the x86_64 native baseline
 #      (test/regress/screens/baseline/native/desktop.png, clock and pointer
@@ -190,13 +192,22 @@ begin
   dexec("find /usr/share/family-mruby/root -type f -print0 | sort -z | xargs -0 md5sum > /tmp/root.before; " \
         "touch /tmp/marker; sleep 1")
 
-  # 2. the launcher
+  # 2. the launchers and their entries
   if arch == "arm64"
-    out, st = dexec("cd /root && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy /usr/share/APPLaunch/bin/family-mruby-hdmi 2>&1", ok: false)
-    File.write(File.join(OUT, "launcher.log"), out)
-    refusal = out[/native: refused: .*/].to_s
-    result("launcher family-mruby-hdmi", st.exitstatus == 3 && refusal.include?("machine cardputer_zero_hdmi"),
-           "exit #{st.exitstatus}: #{refusal}")
+    # suffix => [machine, the entry's Name, the device it lacks here]
+    { "lcd" => ["cardputer_zero", "Family mruby", "display: "],
+      "hdmi" => ["cardputer_zero_hdmi", "Family mruby (HDMI)", "display: no DRM device"] }.each do |suffix, (machine, title, why)|
+      out, st = dexec("cd /root && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy /usr/share/APPLaunch/bin/family-mruby-#{suffix} 2>&1", ok: false)
+      File.write(File.join(OUT, "launcher-#{suffix}.log"), out)
+      refusal = out[/native: refused: .*/].to_s
+      result("launcher family-mruby-#{suffix}",
+             st.exitstatus == 3 && refusal.start_with?("native: refused: machine #{machine}: #{why}"),
+             "exit #{st.exitstatus}: #{refusal}")
+      entry, = dexec("cat /usr/share/APPLaunch/applications/family-mruby-#{suffix}.desktop", ok: false)
+      result("entry family-mruby-#{suffix}.desktop",
+             entry.include?("\nName=#{title}\n") && entry.include?("\nExec=/usr/share/APPLaunch/bin/family-mruby-#{suffix}\n"),
+             entry[/^Name=.*/].to_s)
+    end
   end
 
   # 3. boot to the desktop

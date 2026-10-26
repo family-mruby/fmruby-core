@@ -16,8 +16,10 @@
 # Keys: arrows and Enter in the menu; the switcher (kernel cycle_focus, the
 # key system_conf's keys_switcher_key names) lists the running apps, Enter
 # brings one to the front, Delete ends it, Esc goes back. Esc held for
-# keys_esc_long_ms closes the app in front (host_task), and on this desktop
-# ends Family mruby.
+# keys_esc_long_ms closes the app in front (host_task). Held while this
+# desktop has the keyboard, host_task asks it ("keys_esc_long"): the
+# switcher, the File Manager and the file dialog close back to the menu, and
+# on the menu itself it ends Family mruby (when the machine allows it).
 #
 # Shared with the mouse desktop (system_desktop/): the strings (i18n.rb), the
 # File Manager and the file dialog, the error dialog, the built-in app list
@@ -631,8 +633,37 @@ class KeysDesktopApp < FmrbApp
       open_error_dialog(msg["app"] || "Unknown", "Failed to launch.\n" + reason)
     elsif cmd == "apps_changed"
       draw_foreground if @switcher_open || @front_pid >= 0
+    elsif cmd == "keys_esc_long"
+      esc_held(msg["quit"] == true)
     elsif cmd == "do_reboot"
       FmrbApp.reboot
+    end
+    nil
+  end
+
+  # Esc held while this desktop has the keyboard (from host_task). What is
+  # open closes back to the menu; on the menu, the program ends when the
+  # machine allows it (+quit+, its exit_key).
+  def esc_held(quit)
+    if @error_dlg_open
+      close_error_dialog
+    elsif @switcher_open
+      @switcher_open = false
+      kernel_cmd("keys_menu", -1)
+      update_composite_regions
+      draw_foreground
+    elsif @file_selector_open
+      # The app that asked for a file gets "nothing chosen", as with Esc.
+      close_file_selector(nil)
+    elsif @file_manager_open
+      close_file_manager
+    elsif !menu_visible?
+      # The keyboard is here with nothing of ours open: back to the app.
+      kernel_cmd("keys_show", @front_pid)
+    elsif quit
+      Log.info("keys desktop: Esc held on the menu, ending the program")
+      # The host ends the program (host_task.c, keys_host_control).
+      send_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_CONTROL, { "cmd" => "keys_quit" })
     end
     nil
   end

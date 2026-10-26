@@ -48,7 +48,8 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 
 ### 3.1 実機が実際に読む鍵
 
-`fmrb_app_spawner.c` と `launcher.rb` が読む鍵は以下がすべて。ここに無い鍵は
+`fmrb_app_spawner.c` と `launcher.rb` (と、`screens`・`needs_pointer` は
+キーボード専用のデスクトップ `system_desktop_keys.app.rb`) が読む鍵は以下がすべて。ここに無い鍵は
 黙って無視される (未知の鍵を足しても壊れない)。
 
 | 鍵 | 既定 | 効果 |
@@ -69,6 +70,8 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `task_stack_kb` | 16 | タスクの C スタック。`[16, 64]` KB に丸められる |
 | `single_instance` | false | 同じファイルのアプリの 2 つ目の起動を断る (`true` か `1`)。断るときはエラーの窓「This app is already running.」 |
 | `exclusive_group` | なし | 同じ名前 (15 バイトまで) を書いたアプリが動いている間は起動を断る。自分の 2 つ目も断る。例: FFT を使うアプリの `"fft"`。窓は「<動いているアプリ> is already running. / Only one "<名前>" app can run at a time.」 |
+| `screens` | なし | 描ける画面の形の並び。`["426x240", "320x170"]` のように書く。今読むのはキーボード専用のデスクトップ (Linux 版の 320x170、doc/linux_native) だけで、`"320x170"` を含むアプリだけをメニューに出す。320x170 ではアプリは帯の下の 320x160 の全画面で動くので、その大きさで読める (窓の大きさを固定で描かない) アプリにだけ書く。この 2 つは最初の `[表]` より前 (一番上の階層) に書く |
+| `needs_pointer` | なし | マウス・タッチが要るか (`true` / `false`)。キーボード専用のデスクトップは `false` と**明記した**アプリだけを出す (書いていないアプリは要るものとみなす)。キーだけで全部の操作ができるアプリにだけ `false` を書く |
 
 `app_handle_name` は 67 個の `.app.toml` に書かれているが、**どのコードも読んで
 いない**。配布では使わない。

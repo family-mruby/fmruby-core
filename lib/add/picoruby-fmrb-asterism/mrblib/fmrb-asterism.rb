@@ -20,7 +20,10 @@
 #
 # FmrbAsterism.settings resolves them for an application: the router from
 # config.toml, else the machine's zenoh_router setting (the browser page's),
-# else the credentials' asterism.json, else tcp/zenohd:7447; the node ID
+# else the credentials' asterism.json, else tcp/zenohd:7447 (the sim's
+# router; on the native Linux program, whose package writes zenoh_router =
+# "" to say the user has not named one, there is no fallback and the
+# settings are in error: "no Zenoh router is set ..."); the node ID
 # from config.toml, else the mDNS name, else the asterism_node setting (the
 # browser's wasm-XXXXXX), else the board name -- and with credentials the
 # certificate's name, which the router's access control knows the machine
@@ -53,6 +56,7 @@ module FmrbAsterism
   ]
   SYSTEM_CONF = "/etc/system_conf.toml"
   DEFAULT_ROUTER = "tcp/zenohd:7447"
+  NO_ROUTER = "no Zenoh router is set (router in #{CONFIG_FILE}, or zenoh_router in #{SYSTEM_CONF})"
 
   def self.host
     board = FmrbConst::BOARD
@@ -183,6 +187,20 @@ module FmrbAsterism
     strings_of(FmrbToml.load(SYSTEM_CONF), [key])[key].to_s.strip
   end
 
+  # Whether the machine has no default router to fall back on: the native
+  # Linux program's package writes zenoh_router = "" (the user names the
+  # router; nothing is assumed). The sim, the devices and the browser never
+  # write the key empty (the browser page leaves it out), so they keep
+  # DEFAULT_ROUTER. BOARD "linux" is the sim and the native program.
+  def self.router_unset?
+    return false unless FmrbConst::BOARD == "linux"
+    conf = FmrbToml.load(SYSTEM_CONF)
+    return false unless conf && conf.key?("zenoh_router")
+    conf["zenoh_router"].to_s.strip.empty?
+  rescue
+    false
+  end
+
   # The board's mDNS name ("" without WiFi).
   def self.hostname
     return "" unless Object.const_defined?(:FmrbApp)
@@ -231,7 +249,10 @@ module FmrbAsterism
         error = e.message
       end
     end
-    router = DEFAULT_ROUTER if router.empty?
+    if router.empty? && error.nil? && router_unset?
+      error = NO_ROUTER
+    end
+    router = DEFAULT_ROUTER if router.empty? && error.nil?
     if creds.nil? && error.nil?
       begin
         creds = credentials_for(router)

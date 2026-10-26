@@ -1667,6 +1667,10 @@ void fmrb_host_set_kana_mode(uint8_t mode)
     host_broadcast_kana_mode();
 }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+static bool keys_host_control(const fmrb_msg_t *m);
+#endif
+
 static void host_task_process_message(const fmrb_msg_t *hal_msg)
 {
     // Check if it's a GFX message first - use batch processing
@@ -1701,6 +1705,15 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg)
         return;
     }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+    if (hal_msg->type == FMRB_MSG_TYPE_APP_CONTROL) {
+        if (!keys_host_control(hal_msg)) {
+            FMRB_LOGW(TAG, "APP_CONTROL from PID %d to the host: ignored", hal_msg->src_pid);
+        }
+        return;
+    }
+#endif
+
     // Otherwise, extract host_message_t (for HID messages)
     host_message_t *msg = (host_message_t *)hal_msg->data;
     host_task_process_host_message(msg);
@@ -1718,10 +1731,13 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg)
 //   - Esc is held back until it is released or held long enough. Released
 //     sooner than keys_esc_long_ms, it goes to the app as a press and a
 //     release, the app's ordinary "back". Held that long, it closes the app
-//     in front (the kernel's Ctrl+Q path), or -- while the desktop itself
-//     has the keyboard (its menu, switcher or panels) and the machine says
-//     exit_key = "esc_long" -- ends the program. Decided on press and
-//     release and the clock, never on key repeat.
+//     in front (the kernel's Ctrl+Q path). While the desktop itself has the
+//     keyboard, the desktop decides (L5a): it is told "keys_esc_long" and
+//     closes what it has open (the switcher, the File Manager, the file
+//     dialog) back to the menu, and on the menu -- when the machine says
+//     exit_key = "esc_long" -- asks for the end with "keys_quit". Only the
+//     desktop knows which of its screens is up, so the host does not guess.
+//     Decided on press and release and the clock, never on key repeat.
 //
 // Native only: the devices, the simulation and the browser keep their keys.
 
@@ -1760,30 +1776,75 @@ static uint8_t keys_fold_mod(uint8_t mod)
     return out;
 }
 
-// Is the keyboard with the desktop (its menu, switcher or panels)?
-static bool keys_target_is_desktop(void)
+static bool keys_is_desktop(int pid)
+{
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(pid);
+    return ctx != NULL && strcmp(ctx->app_name, "system_desktop") == 0;
+}
+
+// Where the keyboard is: the app's pid, KEYS_TARGET_NONE when nobody has it
+// (or the slot is gone), KEYS_TARGET_DESKTOP plus the desktop's pid in *pid.
+#define KEYS_TARGET_NONE 0
+#define KEYS_TARGET_DESKTOP 1
+#define KEYS_TARGET_APP 2
+static int keys_target(int *pid)
 {
     fmrb_hid_routing_t routing;
-    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return false;
-    if (!routing.routing_enabled || routing.target_pid == 0xFF) return true;
-    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(routing.target_pid);
-    return ctx == NULL || strcmp(ctx->app_name, "system_desktop") == 0;
+    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return KEYS_TARGET_APP;
+    if (!routing.routing_enabled || routing.target_pid == 0xFF) return KEYS_TARGET_NONE;
+    if (fmrb_app_get_context_by_id(routing.target_pid) == NULL) return KEYS_TARGET_NONE;
+    *pid = routing.target_pid;
+    return keys_is_desktop(routing.target_pid) ? KEYS_TARGET_DESKTOP : KEYS_TARGET_APP;
 }
 
 static void keys_esc_long(void)
 {
     const fmrb_native_machine_conf_t *nm = fmrb_kernel_native_machine();
-    if (keys_target_is_desktop()) {
-        if (nm->esc_long_quits) {
-            FMRB_LOGI(TAG, "Esc held on the desktop: ending the program");
-            fmrb_native_request_quit();
-        } else {
-            FMRB_LOGI(TAG, "Esc held on the desktop (exit_key is not esc_long): nothing to do");
-        }
+    int pid = -1;
+    switch (keys_target(&pid)) {
+    case KEYS_TARGET_DESKTOP: {
+        // {"cmd":"keys_esc_long","quit":<bool>}: the desktop closes what it
+        // has open, or on its menu asks for the end when quit is true.
+        FMRB_LOGI(TAG, "Esc held on the desktop: the desktop decides (quit %s)",
+                  nm->esc_long_quits ? "allowed" : "not allowed");
+        fmrb_msg_t m = {
+            .type = FMRB_MSG_TYPE_APP_CONTROL,
+            .src_pid = PROC_ID_HOST,
+            .size = 25
+        };
+        memcpy(m.data, "\x82\xa3""cmd\xad""keys_esc_long\xa4""quit", 24);
+        m.data[24] = nm->esc_long_quits ? 0xc3 : 0xc2;
+        fmrb_msg_send(pid, &m, 1000);
         return;
     }
-    FMRB_LOGI(TAG, "Esc held: closing the app in front");
-    host_send_kernel_control("\x81\xa3""cmd\xb0""system_interrupt", 22);
+    case KEYS_TARGET_NONE:
+        // Nobody to ask (no desktop yet, or it is gone): the old rule.
+        if (nm->esc_long_quits) {
+            FMRB_LOGI(TAG, "Esc held with no keyboard target: ending the program");
+            fmrb_native_request_quit();
+        }
+        return;
+    default:
+        FMRB_LOGI(TAG, "Esc held: closing the app in front");
+        host_send_kernel_control("\x81\xa3""cmd\xb0""system_interrupt", 22);
+        return;
+    }
+}
+
+// An APP_CONTROL message to the host: only the keys desktop sends one,
+// {"cmd":"keys_quit"} (Esc held on its menu). True when it was handled.
+static bool keys_host_control(const fmrb_msg_t *m)
+{
+    static const char quit[] = "\x81\xa3""cmd\xa9""keys_quit";
+    if (!keys_desktop_on()) return false;
+    if (m->size != sizeof(quit) - 1 || memcmp(m->data, quit, sizeof(quit) - 1) != 0) return false;
+    if (!keys_is_desktop(m->src_pid)) {
+        FMRB_LOGW(TAG, "keys_quit from PID %d (not the desktop): ignored", m->src_pid);
+        return true;
+    }
+    FMRB_LOGI(TAG, "Esc held on the menu: ending the program");
+    fmrb_native_request_quit();
+    return true;
 }
 
 // The Esc that was held back, to the app after all (a short press).

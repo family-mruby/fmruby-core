@@ -188,9 +188,13 @@ NATIVE_DEB_LAYOUT = {
     bin_dir: "usr/share/APPLaunch/bin",
     data_rel: "../../family-mruby/root",
     gnu: "aarch64-linux-gnu",
-    # suffix => [machine, the entry's name]; one entry for now, the HDMI
-    # output (the 320x170 screen of the device itself comes in L4/L5).
-    launchers: { "hdmi" => ["cardputer_zero_hdmi", "Family mruby (HDMI)"] },
+    # suffix => [machine, the entry's name]. The device's own 320x170
+    # screen is the main entry, "Family mruby" (L5a); the HDMI output is
+    # the one that says so.
+    launchers: {
+      "lcd" => ["cardputer_zero", "Family mruby"],
+      "hdmi" => ["cardputer_zero_hdmi", "Family mruby (HDMI)"],
+    },
   },
   "amd64" => {
     bin_dir: "usr/bin",

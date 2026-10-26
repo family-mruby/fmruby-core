@@ -167,6 +167,33 @@ s, = settings
 check("config.toml's router wins", s.router, "ws/192.0.2.9:7449")
 check("config.toml's node wins", s.node, "carol")
 
+puts "an empty zenoh_router (the native package's: no router named, L5a)"
+reset
+put("#{ETC}/system_conf.toml", "zenoh_router = \"\"\n")
+s, = settings
+check("no fallback to the sim's router", s.router, "")
+check("the settings say so", s.error.to_s.start_with?("no Zenoh router is set"), true)
+put(CONFIG, "router = \"tcp/192.0.2.2:7447\"\n")
+s, = settings
+check("config.toml's router is used", s.router, "tcp/192.0.2.2:7447")
+check("and there is no error", s.error, nil)
+FileUtils.rm_f(CONFIG)
+put_tar("#{HOME}/asterism/erin.tar", "erin", "tls/203.0.113.5:7447")
+s, = settings
+check("the credentials' router is used", s.router, "tls/203.0.113.5:7447")
+check("and there is no error either", s.error, nil)
+reset
+put("#{ETC}/system_conf.toml", "debug_mode = true\n")
+s, = settings
+check("without the key the sim's router stays", s.router, "tcp/zenohd:7447")
+FmrbConst.send(:remove_const, :BOARD)
+FmrbConst.const_set(:BOARD, "tab5")
+put("#{ETC}/system_conf.toml", "zenoh_router = \"\"\n")
+s, = settings
+check("a device keeps the fallback", s.router, "tcp/zenohd:7447")
+FmrbConst.send(:remove_const, :BOARD)
+FmrbConst.const_set(:BOARD, "linux")
+
 puts "the files before CF1"
 reset
 put(OLD_ROUTER, "tls/203.0.113.5:7447\n")
