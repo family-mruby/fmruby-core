@@ -1,0 +1,20 @@
+# The distribution's settings (a newer release than old/).
+system_name = "Family mruby OS (Native)"
+display_width = 426
+max_apps = 32
+debug_mode = true
+keyboard_layout = "us" # changed by the user
+language = "ja"
+# my own note
+boot_splash = false
+
+audio_mute = true
+audio_volume = 3
+
+[theme]
+desktop_bg = 0x12
+menu_bg = 0xC5
+
+[[shortcuts]]
+key = "x"
+app = "default/shell"

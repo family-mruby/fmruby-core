@@ -109,6 +109,8 @@ wasm/build/
 # engine configuration.
 native/build/
 native/build-mruby/
+# The packages and their builds (rake native:cross / native:deb)
+native/build-deb/
 # LovyanGFX for the hosted displays, wasm and native (fetched + patched by
 # rake hosted:m5gfx).
 hosted/vendor/m5gfx/

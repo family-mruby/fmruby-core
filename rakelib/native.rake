@@ -143,12 +143,308 @@ namespace :native do
     toml = "components/toml_parser/tomlc99"
     # tomlc99 is a submodule with its own style; built apart, warnings off.
     sh "#{cc} -std=c11 -O1 -g -w -I #{toml} -c #{toml}/toml.c -o #{NATIVE_TEST_BUILD}/toml.o"
-    incs = %w[native/present native/input native/machine native/output main/drivers/usb].push(toml)
+    incs = %w[native/present native/input native/machine native/output native/etc main/drivers/usb].push(toml)
     srcs = %w[native/present/fmrb_present.c native/input/linux_keys.c native/input/keymap_cardputer_zero.c
               native/input/evdev_decode.c native/output/fbdev_info.c native/machine/native_machine.c
+              native/etc/etc_update.c
               main/drivers/usb/fmrb_keymap.c].push("#{NATIVE_TEST_DIR}/main.c")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{incs.map { |i| "-I #{i}" }.join(' ')} " \
        "#{srcs.join(' ')} #{NATIVE_TEST_BUILD}/toml.o -lm -o #{NATIVE_TEST_BUILD}/native_test"
     sh "#{NATIVE_TEST_BUILD}/native_test #{ROOT_DIR}"
+  end
+end
+
+# ---------------------------------------------------------------- packages
+#
+# The .deb packages (doc/linux_native/report/l3a.md). Both are built inside
+# native/docker's image (Debian trixie, pinned), so they link against what
+# the Cardputer Zero's Raspberry Pi OS trixie and a trixie PC have; the
+# developer's own build above stays the host's (Ubuntu) and is untouched.
+#
+#   rake native:image              build the image (once; again when the
+#                                  Dockerfile changes). Local only, never pushed
+#   rake native:cross ARCH=arm64   libmruby and the program for one
+#                                  architecture (arm64 cross, amd64 native)
+#   rake native:root               the distribution tree: git-tracked flash/
+#                                  only, plus the generated etc, machines,
+#                                  help and Asterism messages
+#   rake native:deb ARCH=arm64     the package, then native:scan on it
+#   rake native:scan ARCH=arm64    no untracked file, no credential
+#
+# Everything lands in native/build-deb/ (git-ignored). The repository is
+# mounted into the container at /src and the build runs as the calling user.
+
+require "shellwords"
+
+NATIVE_DEB_DIR = File.join(NATIVE_DIR, "build-deb")
+NATIVE_DOCKERFILE = File.join(NATIVE_DIR, "docker", "Dockerfile")
+
+# The layout of each package. arm64 is the Cardputer Zero's: M5Stack's
+# APPLaunch launcher looks in /usr/share/APPLaunch for programs, entries
+# and icons. amd64 is a PC's ordinary /usr/bin (its login-screen entry comes
+# with L7). The distribution tree is in the same place for both.
+NATIVE_DEB_LAYOUT = {
+  "arm64" => {
+    bin_dir: "usr/share/APPLaunch/bin",
+    data_rel: "../../family-mruby/root",
+    gnu: "aarch64-linux-gnu",
+    # suffix => [machine, the entry's name]; one entry for now, the HDMI
+    # output (the 320x170 screen of the device itself comes in L4/L5).
+    launchers: { "hdmi" => ["cardputer_zero_hdmi", "Family mruby (HDMI)"] },
+  },
+  "amd64" => {
+    bin_dir: "usr/bin",
+    data_rel: "../share/family-mruby/root",
+    gnu: "x86_64-linux-gnu",
+    launchers: {},
+  },
+}.freeze
+NATIVE_DEB_ROOT = "usr/share/family-mruby/root"
+
+def native_deb_arch
+  arch = (ENV["ARCH"] || "arm64").strip
+  abort "ARCH must be one of #{NATIVE_DEB_LAYOUT.keys.join(', ')} (got #{arch})" unless NATIVE_DEB_LAYOUT.key?(arch)
+  arch
+end
+
+# The image's tag: the base's date and the Dockerfile's own hash, so a
+# changed Dockerfile is a new image rather than a stale one.
+def native_image
+  require "digest"
+  from = File.read(NATIVE_DOCKERFILE)[/^FROM\s+debian:(\S+)/, 1] or abort "native:image: no FROM debian: in #{NATIVE_DOCKERFILE}"
+  "fmrb-native-build:#{from}-#{Digest::SHA256.file(NATIVE_DOCKERFILE).hexdigest[0, 8]}"
+end
+
+# A script in the build image, as the calling user, with the repository at /src.
+def native_docker(script, env = {})
+  envs = env.map { |k, v| "-e #{k}=#{Shellwords.escape(v)}" }.join(" ")
+  sh "docker run --rm -u #{Process.uid}:#{Process.gid} -v #{ROOT_DIR}:/src -w /src #{envs} " \
+     "#{native_image} bash -euc #{Shellwords.escape(script)}"
+end
+
+def native_deb_version
+  d = `git -C #{ROOT_DIR} describe --tags --long --match '[0-9]*' 2>/dev/null`.strip
+  m = /\A(\d+(?:\.\d+)*)-(\d+)-g([0-9a-f]+)\z/.match(d) or abort "native:deb: cannot make a version from git describe (#{d.inspect})"
+  m[2] == "0" ? m[1] : "#{m[1]}+git#{m[2]}.#{m[3]}"
+end
+
+namespace :native do
+  desc "Build the package build image (native/docker, Debian trixie; local only)"
+  task :image do
+    img = native_image
+    if system("docker image inspect #{img} > /dev/null 2>&1")
+      puts "native:image: #{img} (present)"
+    else
+      sh "docker build -t #{img} #{File.dirname(NATIVE_DOCKERFILE)}"
+      puts "native:image: #{img}"
+    end
+  end
+
+  desc "Build libmruby and the program for a package (ARCH=arm64|amd64, in the build image)"
+  task :cross => ["^setup", "hosted:m5gfx", :mrb, :image] do
+    arch = native_deb_arch
+    lay = NATIVE_DEB_LAYOUT[arch]
+    gen = File.join(ROOT_DIR, "main/prebuild_scripts/spinel/gen")
+    needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c fmrb_kernel_combined.c editor_combined.c]
+    missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
+    abort "native:cross: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
+    dir = File.join(NATIVE_DEB_DIR, arch)
+    mkdir_p dir
+    rel = dir.sub("#{ROOT_DIR}/", "")
+    # libmruby: the same configuration as the developer's, in a build tree
+    # of its own (the host tools in it are the image's, not the host's).
+    native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",
+                  "FMRB_NATIVE_ARCH" => arch,
+                  "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
+                  "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb")
+    toolchain = arch == "arm64" ? "-DCMAKE_TOOLCHAIN_FILE=/src/native/docker/aarch64-linux-gnu.cmake" : ""
+    launchers = lay[:launchers].map { |suffix, (machine, _)| "#{suffix}=#{machine}" }.join(";")
+    targets = ["fmruby-native"] + lay[:launchers].keys.map { |s| "family-mruby-#{s}" }
+    native_docker(<<~SH)
+      cmake -S native -B #{rel}/cmake #{toolchain} -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        #{native_engine_defines} -DNATIVE_PACKAGE=ON \
+        -DNATIVE_PACKAGE_DATA_REL=#{lay[:data_rel]} '-DNATIVE_LAUNCHERS=#{launchers}' \
+        -DFMRB_HOSTED_MRUBY_DIR=/src/#{rel}/mruby/family-mruby-native
+      cmake --build #{rel}/cmake -j#{ENV['JOBS'] || 8} --target #{targets.join(' ')}
+      file #{rel}/cmake/fmruby-native
+    SH
+  end
+
+  desc "Stage the package's distribution tree (git-tracked flash/ + generated etc, machines, help)"
+  task :root => [:etc, "ti:help"] do
+    root = File.join(NATIVE_DEB_DIR, "root")
+    rm_rf root
+    mkdir_p root
+    files = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
+    abort "native:root: git ls-files returned nothing" if files.empty?
+    # Same rights rule as the browser bundle (wasm:webflash): only our own
+    # tunes ship. And nothing under the places the native layout gives to
+    # the user or the cache (/etc /home /app/usr /var /cache /data /tmp):
+    # the program never reads them from the distribution tree.
+    user_tops = %r{\Aflash/(etc|home|app/usr|var|cache|data|tmp)/}
+    files = files.reject { |f| f.end_with?(".nsf") && !f.start_with?("flash/usr/share/sounds/nsf/") }
+    files = files.reject { |f| f =~ user_tops }
+    files.each do |f|
+      dest = File.join(root, f.sub(%r{\Aflash/}, ""))
+      mkdir_p File.dirname(dest)
+      cp File.join(ROOT_DIR, f), dest
+    end
+    msgs = File.join(ROOT_DIR, ASTERISM_MSGS_DIR)
+    abort "native:root: #{ASTERISM_MSGS_DIR} is missing (rake setup makes it)" unless Dir.exist?(msgs)
+    mkdir_p File.join(root, "usr/share/asterism")
+    cp_r msgs, File.join(root, "usr/share/asterism/msgs")
+    help_src = File.join(ROOT_DIR, "flash/help")
+    Dir.glob(File.join(help_src, "**/*")).select { |f| File.file?(f) }.each do |f|
+      dest = File.join(root, "help", f.sub(help_src + "/", ""))
+      mkdir_p File.dirname(dest)
+      cp f, dest
+    end
+    # The first start's /etc (seed of the user's, and what later releases
+    # add to it) and the machine definitions, as native:etc staged them.
+    cp_r File.join(NATIVE_ROOT_STAGE, "etc"), File.join(root, "etc")
+    cp_r File.join(NATIVE_ROOT_STAGE, "machines"), File.join(root, "machines")
+    puts "native:root: #{files.length} tracked files + etc, machines, help, Asterism messages -> #{root}"
+  end
+
+  desc "Build the .deb (ARCH=arm64|amd64) into native/build-deb/, then scan it"
+  task :deb => [:cross, :root] do
+    arch = native_deb_arch
+    lay = NATIVE_DEB_LAYOUT[arch]
+    dir = File.join(NATIVE_DEB_DIR, arch)
+    rel = dir.sub("#{ROOT_DIR}/", "")
+    pkg = File.join(dir, "pkg")
+    rm_rf pkg
+    bin = File.join(pkg, lay[:bin_dir])
+    mkdir_p bin
+    cp File.join(dir, "cmake", "fmruby-native"), File.join(bin, "family-mruby")
+    lay[:launchers].each_key { |s| cp File.join(dir, "cmake", "family-mruby-#{s}"), bin }
+    Dir.glob(File.join(bin, "*")).each { |f| chmod 0o755, f }
+    mkdir_p File.dirname(File.join(pkg, NATIVE_DEB_ROOT))
+    cp_r File.join(NATIVE_DEB_DIR, "root"), File.join(pkg, NATIVE_DEB_ROOT)
+    unless lay[:launchers].empty?
+      # APPLaunch: an entry per launcher (Exec is a path to an executable,
+      # no arguments, no shell), and the icon (a 1:1 PNG of our own: the
+      # boot logo).
+      apps = File.join(pkg, "usr/share/APPLaunch/applications")
+      icons = File.join(pkg, "usr/share/APPLaunch/share/images")
+      mkdir_p apps
+      mkdir_p icons
+      cp File.join(ROOT_DIR, "flash/boot/boot.png"), File.join(icons, "family-mruby.png")
+      lay[:launchers].each do |suffix, (machine, title)|
+        File.write(File.join(apps, "family-mruby-#{suffix}.desktop"), <<~DESKTOP)
+          [Desktop Entry]
+          Type=Application
+          Name=#{title}
+          Comment=Family mruby on the #{machine} machine definition
+          Exec=/#{lay[:bin_dir]}/family-mruby-#{suffix}
+          Icon=/usr/share/APPLaunch/share/images/family-mruby.png
+          Terminal=false
+          Categories=Development;Education;
+        DESKTOP
+      end
+    end
+    version = native_deb_version
+    deb = File.join(NATIVE_DEB_DIR, "family-mruby_#{version}_#{arch}.deb")
+    maintainer = ENV["FMRB_DEB_MAINTAINER"] || "Family mruby developers <noreply@family-mruby.invalid>"
+    # Strip in the image (the cross binutils), work out Depends from the
+    # libraries the binaries need (dpkg-shlibdeps, against the image's
+    # trixie packages), write the control file and build.
+    bins = Dir.glob(File.join(bin, "*")).map { |f| f.sub("#{ROOT_DIR}/", "") }
+    native_docker(<<~SH)
+      #{lay[:gnu]}-strip --strip-unneeded #{bins.join(' ')}
+      work=$(mktemp -d)
+      mkdir -p $work/debian
+      printf 'Source: family-mruby\\n\\nPackage: family-mruby\\nArchitecture: #{arch}\\n' > $work/debian/control
+      (cd $work && dpkg-shlibdeps -O --ignore-missing-info -l/usr/lib/#{lay[:gnu]} #{bins.map { |b| "/src/#{b}" }.join(' ')}) \
+        > #{rel}/shlibs.txt
+      rm -rf $work
+    SH
+    depends = File.read(File.join(dir, "shlibs.txt"))[/shlibs:Depends=(.*)$/, 1] or abort "native:deb: dpkg-shlibdeps gave no Depends"
+    size_kb = `du -sk --exclude=DEBIAN #{pkg}`.to_i
+    mkdir_p File.join(pkg, "DEBIAN")
+    File.write(File.join(pkg, "DEBIAN", "control"), <<~CONTROL)
+      Package: family-mruby
+      Version: #{version}
+      Architecture: #{arch}
+      Maintainer: #{maintainer}
+      Installed-Size: #{size_kb}
+      Depends: #{depends.strip}
+      Section: misc
+      Priority: optional
+      Homepage: https://github.com/family-mruby
+      Description: Family mruby, a Ruby computer, as a Linux program
+       The Family mruby firmware (the Modern desktop, its apps and the Ruby
+       engines) running as one Linux process. The distribution tree is in
+       /usr/share/family-mruby/root; each user's files go to
+       $XDG_DATA_HOME/family-mruby and $XDG_CACHE_HOME/family-mruby.
+    CONTROL
+    rm_f deb
+    native_docker("dpkg-deb --root-owner-group -Zxz --build #{rel}/pkg #{deb.sub("#{ROOT_DIR}/", '')}")
+    puts "native:deb: #{deb} (#{(File.size(deb) / 1024.0 / 1024).round(1)} MB, installed #{(size_kb / 1024.0).round(1)} MB)"
+    puts "  Depends: #{depends.strip}"
+    Rake::Task["native:scan"].invoke
+  end
+
+  # What a package may contain is decided in native:root (git-tracked flash/
+  # only); this checks the RESULT, the staged package tree, the way wasm:scan
+  # checks what the browser bundle packed.
+  desc "Check a staged package (ARCH=...): no untracked file, no credential"
+  task :scan do
+    arch = native_deb_arch
+    pkg = File.join(NATIVE_DEB_DIR, arch, "pkg")
+    abort "#{pkg} not found; run rake native:deb ARCH=#{arch} first" unless Dir.exist?(pkg)
+    root = File.join(pkg, NATIVE_DEB_ROOT)
+    problems = []
+    tracked = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0").to_set
+    generated = Dir.glob(File.join(NATIVE_ROOT_STAGE, "{etc,machines}", "**", "*"))
+                   .select { |f| File.file?(f) }.map { |f| f.sub("#{NATIVE_ROOT_STAGE}/", "") }.to_set
+    files = Dir.glob(File.join(pkg, "**", "*"), File::FNM_DOTMATCH).select { |f| File.file?(f) }
+    files.each do |f|
+      r = f.sub("#{pkg}/", "")
+      next if r.start_with?("DEBIAN/")
+      if r.start_with?("#{NATIVE_DEB_ROOT}/")
+        t = r.sub("#{NATIVE_DEB_ROOT}/", "")
+        next if tracked.include?("flash/#{t}")
+        next if generated.include?(t)
+        # The editor's help (ti:help from sig/) and Asterism's message types
+        # (rake setup from the pinned asterism checkout).
+        next if t.start_with?("help/") || t.start_with?("usr/share/asterism/msgs/")
+        problems << "neither tracked in flash/ nor a known generated file: #{r}"
+      else
+        layout = NATIVE_DEB_LAYOUT[arch]
+        ok = r.start_with?("#{layout[:bin_dir]}/") || r.start_with?("usr/share/APPLaunch/")
+        problems << "outside the package layout: #{r}" unless ok
+      end
+      base = File.basename(r)
+      problems << "credential file by name: #{r}" if base =~ /\A(wifi\.toml|secrets\.toml)/
+      problems << "NSF tune from outside usr/share/sounds/nsf (rights): #{r}" if r.end_with?(".nsf") && !r.include?("/usr/share/sounds/nsf/")
+    end
+    problems << "the distribution tree ships a /home" if Dir.exist?(File.join(root, "home"))
+    # The package itself holds exactly the staged files (nothing between the
+    # staging and dpkg-deb added any).
+    deb = Dir[File.join(NATIVE_DEB_DIR, "family-mruby_*_#{arch}.deb")].max_by { |f| File.mtime(f) }
+    if deb
+      in_deb = `dpkg-deb -c #{Shellwords.escape(deb)}`.lines.reject { |l| l.start_with?("d") }
+                                                       .map { |l| l.split(" ", 6)[5].strip.sub(%r{\A\./}, "") }.sort
+      staged = files.map { |f| f.sub("#{pkg}/", "") }.reject { |r| r.start_with?("DEBIAN/") }.sort
+      (in_deb - staged).each { |r| problems << "in #{File.basename(deb)} but not staged: #{r}" }
+      (staged - in_deb).each { |r| problems << "staged but not in #{File.basename(deb)}: #{r}" }
+    else
+      problems << "no family-mruby_*_#{arch}.deb to compare with the staging"
+    end
+    secrets = wasm_local_secrets
+    files.each do |f|
+      blob = File.binread(f)
+      problems << "a local credential appears in #{f.sub("#{pkg}/", '')}" if secrets.any? { |s| blob.include?(s) }
+      # A PEM key is its header followed by the key itself: the bare headers
+      # are in the program as the TLS library's parser constants.
+      { "OpenAI-style key" => /sk-[A-Za-z0-9_-]{20}/n,
+        "PEM private key" => %r{BEGIN [A-Z ]*PRIVATE KEY-----\s*[A-Za-z0-9+/=]{40}}n }.each do |what, re|
+        problems << "#{what} in #{f.sub("#{pkg}/", '')}" if blob.b =~ re
+      end
+    end
+    abort "native:scan found #{problems.length} problem(s):\n  " + problems.join("\n  ") unless problems.empty?
+    puts "native:scan: #{files.length} files in #{arch}/pkg, #{secrets.length} local credential(s) searched for, " \
+         "no untracked file, no credential"
   end
 end

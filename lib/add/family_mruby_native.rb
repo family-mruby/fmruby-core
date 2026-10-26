@@ -9,12 +9,26 @@
 # hosted/hosted.cmake passes to the sources that include mruby headers (the
 # same rule as mruby_abi_defines.cmake on the IDF side). The boot-time guard
 # in fmrb_app_init compares sizeof(mrb_state) across the boundary.
+#
+# Architectures (L3a): the packages are built by rake native:cross inside
+# native/docker's image with FMRB_NATIVE_ARCH set. arm64 cross-compiles with
+# Debian's aarch64-linux-gnu toolchain; amd64 (or unset, the developer's own
+# build on the host) is the plain gcc. Only the target's compiler changes:
+# the host tools (mrbc) stay x86_64, and every define below is the same for
+# every architecture -- the Ruby bytecode and the Spinel output are shared.
+FMRB_NATIVE_TOOL_PREFIX =
+  case ENV['FMRB_NATIVE_ARCH'].to_s
+  when '', 'amd64' then ''
+  when 'arm64' then 'aarch64-linux-gnu-'
+  else raise "FMRB_NATIVE_ARCH must be arm64 or amd64 (got #{ENV['FMRB_NATIVE_ARCH']})"
+  end
+
 MRuby::CrossBuild.new('family-mruby-native') do |conf|
   conf.toolchain('gcc')
 
-  conf.cc.command = ENV['FMRB_NATIVE_CC'] || 'gcc'
-  conf.linker.command = ENV['FMRB_NATIVE_CC'] || 'gcc'
-  conf.archiver.command = ENV['FMRB_NATIVE_AR'] || 'ar'
+  conf.cc.command = ENV['FMRB_NATIVE_CC'] || "#{FMRB_NATIVE_TOOL_PREFIX}gcc"
+  conf.linker.command = ENV['FMRB_NATIVE_CC'] || "#{FMRB_NATIVE_TOOL_PREFIX}gcc"
+  conf.archiver.command = ENV['FMRB_NATIVE_AR'] || "#{FMRB_NATIVE_TOOL_PREFIX}ar"
 
   conf.cc.host_command = 'gcc'
 

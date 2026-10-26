@@ -14,16 +14,23 @@
 //   fbdev     native/output/fbdev_info.c: /proc/fb and the screeninfo
 //             answers
 //   machine   native/machine/native_machine.c over config/machines/*.toml
+//   etc       native/etc/etc_update.c: an old user /etc (test/native/etc/old)
+//             brought up to a newer distribution's (seed) must come out
+//             byte for byte as test/native/etc/expected, and a second run
+//             must change nothing
 //
 // Usage: native_test <fmruby-core dir>
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+#include "etc_update.h"
 #include "evdev_decode.h"
 #include "fbdev_info.h"
 #include "fmrb_keymap.h"
@@ -561,6 +568,98 @@ static void test_machine(void)
     unlink(tmp);
 }
 
+// ------------------------------------------------------------------ etc
+
+static char *slurp(const char *path, size_t *len)
+{
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) return NULL;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc((size_t)n + 1);
+    if (buf != NULL && fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        free(buf);
+        buf = NULL;
+    }
+    fclose(f);
+    if (buf != NULL) {
+        buf[n] = '\0';
+        *len = (size_t)n;
+    }
+    return buf;
+}
+
+static void etc_log(void *ctx, const char *line)
+{
+    int *n = ctx;
+    (*n)++;
+    printf("  etc: %s\n", line);
+}
+
+// Every file of a against b (same names, same bytes).
+static int same_dirs(const char *a, const char *b)
+{
+    int diff = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        const char *x = pass ? b : a, *y = pass ? a : b;
+        DIR *d = opendir(x);
+        if (d == NULL) return -1;
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            if (e->d_name[0] == '.') continue;
+            char px[512], py[512];
+            snprintf(px, sizeof(px), "%s/%s", x, e->d_name);
+            snprintf(py, sizeof(py), "%s/%s", y, e->d_name);
+            size_t lx = 0, ly = 0;
+            char *bx = slurp(px, &lx), *by = slurp(py, &ly);
+            if (bx == NULL || by == NULL || lx != ly || memcmp(bx, by, lx) != 0) {
+                printf("  etc: %s differs from %s\n", px, py);
+                diff++;
+            }
+            free(bx);
+            free(by);
+        }
+        closedir(d);
+    }
+    return diff;
+}
+
+static void test_etc(void)
+{
+    char seed[256], old[256], expected[256], work[] = "/tmp/fmrb_native_etc_XXXXXX";
+    snprintf(seed, sizeof(seed), "%s/test/native/etc/seed", g_core);
+    snprintf(old, sizeof(old), "%s/test/native/etc/old", g_core);
+    snprintf(expected, sizeof(expected), "%s/test/native/etc/expected", g_core);
+    CHECK(mkdtemp(work) != NULL, "mkdtemp");
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "cp %s/* %s/", old, work);
+    CHECK(system(cmd) == 0, "copy old etc");
+
+    int lines = 0;
+    int added = native_etc_update(seed, work, etc_log, &lines);
+    // system_conf: zenoh_router, greeting, wallpaper, theme.dir_color,
+    // [clock_face], [[launcher_exclude]] x2; services: [net], [timesync];
+    // hid_devices.toml copied; the factory copy does not parse (left alone).
+    CHECK(added == 10, "additions %d, want 10", added);
+    CHECK(same_dirs(work, expected) == 0, "the updated etc is not test/native/etc/expected");
+
+    lines = 0;
+    added = native_etc_update(seed, work, etc_log, &lines);
+    CHECK(added == 0, "second run added %d", added);
+    CHECK(same_dirs(work, expected) == 0, "the second run changed the etc");
+
+    // No user etc yet: nothing to do (the first start copies the seed).
+    char none[300];
+    snprintf(none, sizeof(none), "%s/none", work);
+    CHECK(native_etc_update(seed, none, etc_log, &lines) == 0, "missing etc");
+    struct stat st;
+    CHECK(stat(none, &st) != 0, "a missing etc is not created");
+
+    snprintf(cmd, sizeof(cmd), "rm -rf %s", work);
+    CHECK(system(cmd) == 0, "clean up");
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) g_core = argv[1];
@@ -570,10 +669,11 @@ int main(int argc, char **argv)
     test_evdev();
     test_fbdev();
     test_machine();
+    test_etc();
     if (g_fail) {
         printf("native: %d of %d checks failed\n", g_fail, g_count);
         return 1;
     }
-    printf("native: %d checks passed (present, keys, evdev, cardputer, fbdev, machine)\n", g_count);
+    printf("native: %d checks passed (present, keys, evdev, cardputer, fbdev, machine, etc)\n", g_count);
     return 0;
 }

@@ -35,7 +35,11 @@ set(FMRB_ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(FMRB_HOSTED_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(PICORUBY_DIR ${FMRB_ROOT}/components/picoruby-esp32/picoruby)
 set(MRBGEMS ${PICORUBY_DIR}/mrbgems)
-set(FMRB_HOSTED_MRUBY_DIR ${PICORUBY_DIR}/build/${FMRB_HOSTED_MRUBY_BUILD})
+# A package build (native:cross) keeps its own picoruby build tree per
+# architecture (MRUBY_BUILD_DIR) and names it here.
+if(NOT FMRB_HOSTED_MRUBY_DIR)
+  set(FMRB_HOSTED_MRUBY_DIR ${PICORUBY_DIR}/build/${FMRB_HOSTED_MRUBY_BUILD})
+endif()
 set(FMRB_HOSTED_LIBMRUBY ${FMRB_HOSTED_MRUBY_DIR}/lib/libmruby.a)
 
 if(NOT FMRB_HOSTED_PLATFORM MATCHES "^(wasm|native)$")

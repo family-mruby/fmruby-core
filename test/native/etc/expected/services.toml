@@ -1,0 +1,27 @@
+# System services (older).
+
+[clock]
+file = "clock.rb"
+class = "ClockService"
+enable = false # the user switched it off
+
+[tts]
+file = "tts.rb"
+class = "TtsService"
+enable = true
+
+# Watches the network and publishes net/state.
+[net]
+file = "net.rb"
+class = "NetWatch"
+enable = true
+interval_ms = 5000
+
+# Off on purpose.
+[timesync]
+file = "timesync.rb"
+class = "TimeSync"
+enable = false
+
+[timesync.config]
+server = "pool.ntp.org"

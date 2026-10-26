@@ -1,0 +1,45 @@
+# The distribution's settings (a newer release than old/).
+system_name = "Family mruby OS (Native)"
+display_width = 426
+max_apps = 32
+# Where Asterism / Zenoh apps find the router.
+zenoh_router = "tcp/127.0.0.1:7447"
+debug_mode = true
+keyboard_layout = "jp" # "jp" or "us"
+language = "en" # "ja" or "en"
+
+# The logo and the jingle at power-on.
+boot_splash = true
+
+audio_mute = false
+audio_volume = 7
+greeting = """
+multi-line [ value
+"""
+wallpaper = ""
+
+[theme]
+desktop_bg = 0xF6
+menu_bg = 0xC5
+dir_color = 0x03
+
+[clock_face]
+style = "digital"
+seconds = [
+  true,
+]
+
+[[shortcuts]]
+key = "l"
+app = "launcher"
+
+[[shortcuts]]
+key = "e"
+app = "default/editor"
+
+# Hidden from the launcher.
+[[launcher_exclude]]
+dir = "debug"
+
+[[launcher_exclude]]
+dir = "test"

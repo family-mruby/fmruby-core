@@ -1,0 +1,29 @@
+# System services (newer).
+
+[clock]
+file = "clock.rb"
+class = "ClockService"
+enable = true
+interval_ms = 60000
+
+# Watches the network and publishes net/state.
+[net]
+file = "net.rb"
+class = "NetWatch"
+enable = true
+interval_ms = 5000
+
+# Off on purpose.
+[timesync]
+file = "timesync.rb"
+class = "TimeSync"
+enable = false
+
+[timesync.config]
+server = "pool.ntp.org"
+
+# Speech.
+[tts]
+file = "tts.rb"
+class = "TtsService"
+enable = false

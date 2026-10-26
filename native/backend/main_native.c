@@ -39,6 +39,19 @@
  *   --run-dir DIR        FMRB_NATIVE_RUN_DIR    control and inject sockets, pid
  *                                            (/tmp/fmrb-native-<uid>)
  *
+ * The defaults in parentheses are the development build's. A package build
+ * (NATIVE_PACKAGE, rake native:deb) has none of the repository's paths in
+ * it: it finds the distribution tree from where it is installed (its own
+ * executable, /proc/self/exe, then FMRB_NATIVE_DATA_REL: the .deb puts the
+ * tree at /usr/share/family-mruby/root), takes machines/ and etc/ from that
+ * tree, and keeps the user's files under the name family-mruby
+ * ($XDG_DATA_HOME/family-mruby, $XDG_CACHE_HOME/family-mruby), apart from a
+ * development build's family-mruby-dev.
+ *
+ * Every start after the first brings the user's /etc up to the
+ * distribution's (native/etc/etc_update.h): keys, service sections and files
+ * the user does not have yet are added; nothing the user has is changed.
+ *
  * Diagnostics (environment only):
  *
  *   FMRB_NATIVE_GATE=off  waiting network calls are made on the task's own
@@ -51,8 +64,10 @@
  */
 
 #include <errno.h>
+#include <limits.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +77,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "etc_update.h"
 #include "fmrb_gate.h"
 #include "net_wrap.h"
 #include "fmrb_hal_file_layout.h"
@@ -83,6 +99,12 @@ native_config_t g_native_config;
 #define LOOP_WAIT_MS 5
 #define MAX_SETS 16
 
+#if FMRB_NATIVE_PACKAGE
+#ifndef FMRB_NATIVE_DATA_REL
+#error "FMRB_NATIVE_DATA_REL must be set by native/CMakeLists.txt for a package build"
+#endif
+#define USER_LEAF "family-mruby"
+#else
 #ifndef FMRB_NATIVE_DEFAULT_SYSTEM_DIR
 #error "FMRB_NATIVE_DEFAULT_SYSTEM_DIR must be set by native/CMakeLists.txt"
 #endif
@@ -91,6 +113,8 @@ native_config_t g_native_config;
 #endif
 #ifndef FMRB_NATIVE_DEFAULT_MACHINES_DIR
 #error "FMRB_NATIVE_DEFAULT_MACHINES_DIR must be set by native/CMakeLists.txt"
+#endif
+#define USER_LEAF "family-mruby-dev"
 #endif
 
 static volatile sig_atomic_t s_quit_signal = 0;
@@ -133,6 +157,34 @@ static void make_absolute(char *path)
     snprintf(abs, sizeof(abs), "%s/%s", cwd, path);
     set_path(path, abs);
 }
+
+#if FMRB_NATIVE_PACKAGE
+/* The installed distribution tree: FMRB_NATIVE_DATA_REL from the directory
+ * of this executable, never a path of the build machine. 0 when it is there;
+ * otherwise -1 with the place it was looked for in root. */
+static int find_installed_root(char *root)
+{
+    char exe[NATIVE_PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (n <= 0) {
+        snprintf(root, NATIVE_PATH_MAX, "(/proc/self/exe: %s)", strerror(errno));
+        return -1;
+    }
+    exe[n] = '\0';
+    char *slash = strrchr(exe, '/');
+    if (slash != NULL) *slash = '\0';
+    char want[NATIVE_PATH_MAX * 2];
+    snprintf(want, sizeof(want), "%s/%s", exe, FMRB_NATIVE_DATA_REL);
+    char real[PATH_MAX];
+    struct stat st;
+    if (realpath(want, real) == NULL || stat(real, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        snprintf(root, NATIVE_PATH_MAX, "%s", want);
+        return -1;
+    }
+    snprintf(root, NATIVE_PATH_MAX, "%s", real);
+    return 0;
+}
+#endif
 
 /* The definition: the file (or the built-in one when none was asked for
  * and the default file is not staged), then every --set, then --scale. */
@@ -177,15 +229,33 @@ static int load_machine(const char *machine_arg, const char *const *sets, int n_
     return 0;
 }
 
+#if FMRB_NATIVE_PACKAGE
+static bool has_option(int argc, char **argv, const char *name)
+{
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], name) == 0) return true;
+    }
+    return false;
+}
+#endif
+
 static int parse_options(int argc, char **argv)
 {
     native_config_t *c = &g_native_config;
     memset(c, 0, sizeof(*c));
+#if FMRB_NATIVE_PACKAGE
+    char root[NATIVE_PATH_MAX];
+    bool installed = find_installed_root(root) == 0;
+    snprintf(c->system_dir, NATIVE_PATH_MAX, "%s", root);
+    snprintf(c->etc_seed, NATIVE_PATH_MAX, "%.*s/etc", NATIVE_PATH_MAX - 8, root);
+    snprintf(c->machines_dir, NATIVE_PATH_MAX, "%.*s/machines", NATIVE_PATH_MAX - 16, root);
+#else
     set_path(c->machines_dir, FMRB_NATIVE_DEFAULT_MACHINES_DIR);
     set_path(c->system_dir, FMRB_NATIVE_DEFAULT_SYSTEM_DIR);
     set_path(c->etc_seed, FMRB_NATIVE_DEFAULT_ETC_SEED);
-    xdg_path(c->user_dir, "XDG_DATA_HOME", ".local/share", "family-mruby-dev");
-    xdg_path(c->cache_dir, "XDG_CACHE_HOME", ".cache", "family-mruby-dev");
+#endif
+    xdg_path(c->user_dir, "XDG_DATA_HOME", ".local/share", USER_LEAF);
+    xdg_path(c->cache_dir, "XDG_CACHE_HOME", ".cache", USER_LEAF);
     snprintf(c->run_dir, NATIVE_PATH_MAX, "/tmp/fmrb-native-%u", (unsigned)getuid());
 
     const char *machine_arg = NULL;
@@ -240,6 +310,16 @@ static int parse_options(int argc, char **argv)
         }
         i++;
     }
+#if FMRB_NATIVE_PACKAGE
+    /* An installed program without its tree is a broken installation; it
+     * must not go looking for a repository's flash/. Pointing all three
+     * places elsewhere by hand (a tree unpacked somewhere) is still allowed. */
+    if (!installed && getenv("FMRB_NATIVE_SYSTEM_DIR") == NULL && !has_option(argc, argv, "--system-dir")) {
+        fprintf(stderr, "native: the distribution tree is not at %s, where this installed program "
+                        "expects it (reinstall the package, or give --system-dir)\n", root);
+        return 2;
+    }
+#endif
     make_absolute(c->machines_dir);
     make_absolute(c->user_dir);
     make_absolute(c->cache_dir);
@@ -341,6 +421,35 @@ static int main_loop(const native_output_t *out)
     return 0;
 }
 
+static void etc_log(void *ctx, const char *line)
+{
+    (void)ctx;
+    fprintf(stderr, "native: /etc: %s\n", line);
+}
+
+/* A user's /etc from an earlier release gets what this one added
+ * (native/etc/etc_update.h). Before the machine starts, so nothing reads the
+ * files while they change; on the first start there is no user etc yet and
+ * the file HAL copies the seed whole. */
+static void update_user_etc(const char *seed)
+{
+    const native_config_t *c = &g_native_config;
+    char seed_dir[NATIVE_PATH_MAX + 8];
+    char user_etc[NATIVE_PATH_MAX + 8];
+    if (seed != NULL) {
+        snprintf(seed_dir, sizeof(seed_dir), "%s", seed);
+    } else {
+        snprintf(seed_dir, sizeof(seed_dir), "%s/etc", c->system_dir);
+    }
+    snprintf(user_etc, sizeof(user_etc), "%s/etc", c->user_dir);
+    int n = native_etc_update(seed_dir, user_etc, etc_log, NULL);
+    if (n > 0) {
+        fprintf(stderr, "native: /etc: %d addition(s) from %s\n", n, seed_dir);
+    } else if (n < 0) {
+        fprintf(stderr, "native: /etc: the update from %s was not complete (see above)\n", seed_dir);
+    }
+}
+
 static int refuse(const char *what, const char *why)
 {
     fprintf(stderr, "native: refused: machine %s: %s: %s\n", g_native_config.machine.name, what, why);
@@ -395,6 +504,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "native: bad directory layout\n");
         return 2;
     }
+    update_user_etc(layout.etc_seed);
 
     char sock[NATIVE_PATH_MAX + 16];
     snprintf(sock, sizeof(sock), "%s/inject", c->run_dir);

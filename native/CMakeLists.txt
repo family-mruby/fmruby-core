@@ -58,7 +58,19 @@ set(FMRB_HOSTED_NATIVE_ISA ON)
 set(FMRB_HOSTED_PTR32 OFF)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../hosted/hosted.cmake)
 
-# Where the program looks by default: the repository's flash/ (the
+# A package build (rake native:cross / native:deb, L3a) carries no path of
+# this checkout: the program finds the distribution tree relative to its own
+# installed executable (NATIVE_PACKAGE_DATA_REL; the .deb layout decides it
+# per architecture) and keeps the user's files as family-mruby rather than
+# family-mruby-dev. It also builds the small per-machine launchers
+# (NATIVE_LAUNCHERS, "<suffix>=<machine>" each: family-mruby-<suffix> runs the
+# program beside it with --machine <machine>).
+option(NATIVE_PACKAGE "Build for an installed package (paths from the executable's place)" OFF)
+set(NATIVE_PACKAGE_DATA_REL "../share/family-mruby/root" CACHE STRING
+    "The distribution tree, relative to the installed executable's directory")
+set(NATIVE_LAUNCHERS "" CACHE STRING "Launchers to build: suffix=machine;...")
+
+# Where a development build looks by default: the repository's flash/ (the
 # distribution tree, read-only) and the /etc that rake native:etc staged.
 set(FMRB_NATIVE_SYSTEM_DIR ${FMRB_ROOT}/flash CACHE PATH "Default distribution tree")
 set(FMRB_NATIVE_ETC_SEED ${CMAKE_CURRENT_SOURCE_DIR}/build/root/etc CACHE PATH "Default first-start /etc")
@@ -95,6 +107,8 @@ set(NATIVE_BACKEND_SRCS
   # wrappers that route the waiting network calls through it.
   ${FMRB_ROOT}/hosted/gate/fmrb_gate.c
   ${N}/net/net_wrap.c
+  # The user's /etc brought up to the distribution's (L3a)
+  ${N}/etc/etc_update.c
   # mruby-dir's HAL over the file HAL's resolver (the ESP32 targets' file;
   # the name-only gem hal-dir-fmrb dropped the flat posix one from libmruby)
   ${FMRB_ROOT}/lib/add/hal-esp32-dir/dir_hal.c
@@ -114,6 +128,7 @@ target_include_directories(core_objs PRIVATE
   ${N}/audio
   ${N}/input
   ${N}/net
+  ${N}/etc
   ${FMRB_ROOT}/hosted/gate)
 target_compile_definitions(core_objs PRIVATE
   FMRB_PLATFORM_NATIVE=1
@@ -123,10 +138,17 @@ target_compile_definitions(core_objs PRIVATE
   # (FMRB_DEBUG_TCP_PORT in the environment moves it again at run time).
   FMRB_DEBUG_TCP_PORT=5565
   # Resolved host paths are absolute directories here, not "/flash/...".
-  DIR_HAL_PATH_MAX=512
-  FMRB_NATIVE_DEFAULT_SYSTEM_DIR="${FMRB_NATIVE_SYSTEM_DIR_ABS}"
-  FMRB_NATIVE_DEFAULT_ETC_SEED="${FMRB_NATIVE_ETC_SEED_ABS}"
-  FMRB_NATIVE_DEFAULT_MACHINES_DIR="${FMRB_NATIVE_MACHINES_DIR_ABS}")
+  DIR_HAL_PATH_MAX=512)
+if(NATIVE_PACKAGE)
+  target_compile_definitions(core_objs PRIVATE
+    FMRB_NATIVE_PACKAGE=1
+    FMRB_NATIVE_DATA_REL="${NATIVE_PACKAGE_DATA_REL}")
+else()
+  target_compile_definitions(core_objs PRIVATE
+    FMRB_NATIVE_DEFAULT_SYSTEM_DIR="${FMRB_NATIVE_SYSTEM_DIR_ABS}"
+    FMRB_NATIVE_DEFAULT_ETC_SEED="${FMRB_NATIVE_ETC_SEED_ABS}"
+    FMRB_NATIVE_DEFAULT_MACHINES_DIR="${FMRB_NATIVE_MACHINES_DIR_ABS}")
+endif()
 # Only the output and sound files talk to their libraries; everything else
 # stays free of them.
 set_source_files_properties(${N}/output/output_sdl.c ${N}/audio/audio_sdl.c
@@ -162,3 +184,16 @@ if(NATIVE_HAVE_ALSA)
   target_link_libraries(fmruby-native PRIVATE PkgConfig::ALSA)
 endif()
 target_link_options(fmruby-native PRIVATE -pthread -Wl,--gc-sections)
+
+# The per-machine launchers of a package (APPLaunch's .desktop has a bare
+# Exec, so each entry points at an executable that adds the arguments).
+if(NATIVE_PACKAGE)
+  foreach(entry ${NATIVE_LAUNCHERS})
+    string(REPLACE "=" ";" parts "${entry}")
+    list(GET parts 0 suffix)
+    list(GET parts 1 machine)
+    add_executable(family-mruby-${suffix} ${N}/package/launcher.c)
+    target_compile_definitions(family-mruby-${suffix} PRIVATE
+      FMRB_LAUNCH_PROGRAM="family-mruby" FMRB_LAUNCH_MACHINE="${machine}")
+  endforeach()
+endif()
