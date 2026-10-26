@@ -119,11 +119,14 @@ namespace :flash do
   # The storage image (and with it the device's /home) is not written, so this
   # is the loop for iterating on firmware code. It silently leaves the storage
   # partition stale: if flash/ or config/ changed, use the full `rake flash`.
-  desc "Flash only the app partition (keeps storage incl. the device's /home)"
+  # PORT=/dev/ttyACMx flashes that port instead of the cached one (rake
+  # regress:boot finds its board by VID:PID and passes it here).
+  desc "Flash only the app partition (keeps storage incl. the device's /home; PORT= overrides .serial_port)"
   task :app do
     baud = ENV['FLASH_BAUD']
     baud_opt = baud && !baud.empty? ? "-b #{baud}" : ''
-    sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} #{baud_opt} app-flash".gsub(/\s+/, ' ')
+    port = ENV['PORT'] && !ENV['PORT'].empty? ? ENV['PORT'] : get_serial_port
+    sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{port} #{baud_opt} app-flash".gsub(/\s+/, ' ')
   end
 end
 

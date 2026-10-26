@@ -32,6 +32,19 @@
 #           two are enough; ALL=1 builds every board with firmware (for a
 #           change to drivers, sdkconfig, partitions, storage excludes, or
 #           a new board)
+#   serial  how rake regress:boot (tools/regress/boot.rb) reaches the board:
+#           usb   "vid:pid" of its serial port (the port is looked up by it;
+#                 PORT= when two boards share one, the Espressif native USB
+#                 303a:1001 on the Tab5, StickS3 and AtomS3R)
+#           reset "rts": an external USB-UART bridge, RTS pulses EN (the
+#                 esptool circuit) and opening without it does not reset;
+#                 "open": the chip's own USB-Serial-JTAG, opening the port
+#                 reboots it by itself (no pulse is sent)
+#           baud  the console's baud rate; flash_baud the app-only flash
+#                 (115200 when 460800 is unreliable under WSL2)
+#           Only the P4-Nano (NARYAv4) values were checked by regress:boot
+#           itself (doc/regression/report/rg4.md); the others come from the
+#           earlier device reports.
 #
 # Boards with the same screen (everything above but name and conf) draw the
 # same picture, so they share one set of records: the profile. Tab5,
@@ -64,7 +77,7 @@ module Regress
   }.freeze
 
   Target = Struct.new(:name, :family, :screen, :hires, :margin, :app, :font_ja, :conf, :exclude, :firmware, :build,
-                      :size_default, keyword_init: true) do
+                      :size_default, :serial, keyword_init: true) do
     # The environment its firmware is built with (FMRB_HW_TARGET included).
     def firmware_env
       FIRMWARE_ENV.merge(build || {}).merge("FMRB_HW_TARGET" => firmware)
@@ -93,20 +106,25 @@ module Regress
   TARGETS = [
     Target.new(name: "narya_v3", family: "retro", screen: [320, 240], hires: nil, margin: [2, 16], app: [280, 180],
                font_ja: true, conf: "system_conf_n16r8.toml", exclude: "storage_exclude_naryav3.txt",
-               firmware: "NARYAv3", size_default: true),
+               firmware: "NARYAv3", size_default: true,
+               serial: { usb: "1a86:7523", reset: "rts", baud: 115_200, flash_baud: 115_200 }),
     Target.new(name: "tab5", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
                font_ja: true, conf: "system_conf_p4.toml", exclude: "storage_exclude_tab5.txt",
-               firmware: "TAB5", size_default: true),
+               firmware: "TAB5", size_default: true,
+               serial: { usb: "303a:1001", reset: "open", baud: 115_200, flash_baud: 115_200 }),
     Target.new(name: "naryav4", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
                font_ja: true, conf: "system_conf_naryav4.toml", exclude: "storage_exclude_naryav4.txt",
-               firmware: "NARYAv4"),
+               firmware: "NARYAv4",
+               serial: { usb: "1a86:55d3", reset: "rts", baud: 115_200, flash_baud: 460_800 }),
     Target.new(name: "wasm", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
                font_ja: true, conf: "system_conf_wasm.toml"),
     Target.new(name: "sticks3", family: "mini", screen: [240, 135], hires: nil, margin: [0, 0], app: [240, 135],
                font_ja: false, conf: "system_conf_sticks3.toml", exclude: "storage_exclude_sticks3.txt",
-               firmware: "STICKS3", build: MINI_BUILD.merge("FMRB_IMU" => "1")),
+               firmware: "STICKS3", build: MINI_BUILD.merge("FMRB_IMU" => "1"),
+               serial: { usb: "303a:1001", reset: "open", baud: 115_200, flash_baud: 460_800 }),
     Target.new(name: "atoms3r", family: "mini", screen: [128, 128], hires: nil, margin: [0, 0], app: [128, 128],
                font_ja: false, conf: "system_conf_atoms3r.toml", exclude: "storage_exclude_atoms3r.txt",
-               firmware: "ATOMS3R", build: MINI_BUILD)
+               firmware: "ATOMS3R", build: MINI_BUILD,
+               serial: { usb: "303a:1001", reset: "open", baud: 115_200, flash_baud: 115_200 })
   ].freeze
 end

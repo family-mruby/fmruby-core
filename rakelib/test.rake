@@ -18,9 +18,9 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test",
-               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
   # The BMI270 driver against a fake device, and the step sensor app's step

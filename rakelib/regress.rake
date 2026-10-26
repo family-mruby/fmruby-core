@@ -155,3 +155,39 @@ namespace :regress do
     puts "regress:full: ok"
   end
 end
+
+# The boot log of a connected board against test/regress/boot_baseline.json
+# (tools/regress/boot.rb, doc/regression/usage.md chapter 8). Needs the board
+# and its serial port, so it is in neither rake regress nor rake regress:full.
+REGRESS_BOOT = File.join(ROOT_DIR, "tools", "regress", "boot.rb")
+
+def regress_boot_args
+  args = []
+  args += ["--board", ENV["BOARD"]] if ENV["BOARD"]
+  args << "--no-flash" if ENV["FLASH"] == "0"
+  args << "--table" if ENV["TABLE"] == "1"
+  args += ["--dumps", ENV["DUMPS"]] if ENV["DUMPS"]
+  args
+end
+
+namespace :regress do
+  desc "Boot log of a connected board vs baseline: build, app-only flash, capture (BOARD=<name>, FLASH=0, TABLE=1, DUMPS=n, PORT=)"
+  task :boot do
+    regress_check_board_defaults
+    ok = system({ "RAKE" => ENV["RAKE"] || "rake" }, Gem.ruby, REGRESS_BOOT, *regress_boot_args)
+    abort "regress:boot: failed" unless ok
+  end
+
+  namespace :boot do
+    desc "Write the last regress:boot result of BOARD= as its baseline (only for a boot a person has checked)"
+    task :update do
+      args = ENV["BOARD"] ? ["--board", ENV["BOARD"]] : []
+      abort "regress:boot:update: failed" unless system(Gem.ruby, REGRESS_BOOT, "--update", *args)
+    end
+
+    desc "Boot log reader tests: made-up logs, no device (host Ruby)"
+    task :test do
+      sh "#{Gem.ruby} test/regress/boot_log_test.rb"
+    end
+  end
+end
