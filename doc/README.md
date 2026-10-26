@@ -97,7 +97,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
-- `regression/` [回帰の確認を、安く・コマンド 1 つで](regression/plan.md) — **進行中** (2026-10-26) リファクタリングや機能の直しのたびに、サブエージェントが sim・ブラウザ版を立ち上げて画面を撮り、ゲームホストを手で動かして前後を見比べている (app_refactor の R4〜R6 で 1 段 30〜45 万トークン、その多くが確認の往復)。確認を「コマンド 1 つ、結果は短い要約」にして、トークンと人の手間を減らす (2026-10-25 ユーザ) 〔13 files〕
+- `regression/` [回帰の確認を、安く・コマンド 1 つで](regression/plan.md) — **進行中** (2026-10-26) リファクタリングや機能の直しのたびに、サブエージェントが sim・ブラウザ版を立ち上げて画面を撮り、ゲームホストを手で動かして前後を見比べている (app_refactor の R4〜R6 で 1 段 30〜45 万トークン、その多くが確認の往復)。確認を「コマンド 1 つ、結果は短い要約」にして、トークンと人の手間を減らす (2026-10-25 ユーザ) 〔14 files〕
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
