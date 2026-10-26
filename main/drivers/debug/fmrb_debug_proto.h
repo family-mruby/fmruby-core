@@ -16,7 +16,12 @@
 #include "fmrb_err.h"
 
 // --- Compile-time limits / config -----------------------------------------
-#define FMRB_DEBUG_TCP_PORT        5555     // 0.0.0.0:<port> TCP listen
+// 0.0.0.0:<port> TCP listen. The native build listens elsewhere (its CMake
+// passes another default, and FMRB_DEBUG_TCP_PORT in the environment beats
+// that), so it can run beside the simulation.
+#ifndef FMRB_DEBUG_TCP_PORT
+#define FMRB_DEBUG_TCP_PORT        5555
+#endif
 #define FMRB_DEBUG_MAX_FRAME       4096     // max msgpack body bytes per frame
 #define FMRB_DEBUG_MAX_ATTACH      4        // max simultaneously attached VMs
 #define FMRB_DEBUG_MAX_BP          16       // breakpoints per attached VM

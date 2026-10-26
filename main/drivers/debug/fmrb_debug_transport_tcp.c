@@ -17,11 +17,18 @@
 
 #include "fmrb_log.h"
 #include "fmrb_eintr.h"
+#if defined(FMRB_RTOS_COOPERATIVE)
+#include "fmrb_rtos.h"
+#endif
+#if defined(FMRB_PLATFORM_NATIVE)
+#include <stdlib.h>
+#endif
 
 static const char *TAG = "dbg_tcp";
 
 static int  s_listen_fd = -1;
 static int  s_client_fd = -1;
+static int  s_port = FMRB_DEBUG_TCP_PORT;
 
 // Stream reassembly buffer: holds the 4-byte length prefix + up to one max body.
 static uint8_t s_rx[4 + FMRB_DEBUG_MAX_FRAME];
@@ -41,6 +48,13 @@ static void drop_client(void) {
 }
 
 static fmrb_err_t tcp_init(void) {
+#if defined(FMRB_PLATFORM_NATIVE)
+    // A second native instance, or one beside another tool, picks its own.
+    const char *env = getenv("FMRB_DEBUG_TCP_PORT");
+    if (env != NULL && atoi(env) > 0 && atoi(env) < 65536) {
+        s_port = atoi(env);
+    }
+#endif
     s_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (s_listen_fd < 0) {
         FMRB_LOGE(TAG, "socket() failed: %s", strerror(errno));
@@ -53,9 +67,9 @@ static fmrb_err_t tcp_init(void) {
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(FMRB_DEBUG_TCP_PORT);
+    addr.sin_port = htons((uint16_t)s_port);
     if (FMRB_RETRY_EINTR(bind(s_listen_fd, (struct sockaddr *)&addr, sizeof(addr))) < 0) {
-        FMRB_LOGE(TAG, "bind(:%d) failed: %s", FMRB_DEBUG_TCP_PORT, strerror(errno));
+        FMRB_LOGE(TAG, "bind(:%d) failed: %s", s_port, strerror(errno));
         close(s_listen_fd);
         s_listen_fd = -1;
         return FMRB_ERR_FAILED;
@@ -67,7 +81,7 @@ static fmrb_err_t tcp_init(void) {
         return FMRB_ERR_FAILED;
     }
     set_nonblock(s_listen_fd);
-    FMRB_LOGI(TAG, "listening on 0.0.0.0:%d", FMRB_DEBUG_TCP_PORT);
+    FMRB_LOGI(TAG, "listening on 0.0.0.0:%d", s_port);
     return FMRB_OK;
 }
 
@@ -109,15 +123,28 @@ static int tcp_poll(uint8_t *buf, size_t cap, uint32_t timeout_ms) {
     if (maxfd < 0) return 0;
 
     struct timeval tv;
+#if defined(FMRB_RTOS_COOPERATIVE)
+    // A cooperative scheduler runs nothing else while this thread sits in
+    // select(), so look without waiting and do the waiting as a FreeRTOS
+    // delay, where the other tasks get the CPU.
+    tv.tv_sec  = 0;
+    tv.tv_usec = 0;
+#else
     tv.tv_sec  = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
+#endif
     int n = select(maxfd + 1, &rfds, NULL, NULL, &tv);
     if (n < 0) {
         if (errno == EINTR) return 0;
         FMRB_LOGE(TAG, "select() failed: %s", strerror(errno));
         return -1;
     }
-    if (n == 0) return 0;   // timeout
+    if (n == 0) {   // timeout
+#if defined(FMRB_RTOS_COOPERATIVE)
+        fmrb_task_delay_ms(timeout_ms);
+#endif
+        return 0;
+    }
 
     // New connection.
     if (s_listen_fd >= 0 && FD_ISSET(s_listen_fd, &rfds)) {
