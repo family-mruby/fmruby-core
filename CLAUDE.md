@@ -70,7 +70,25 @@ rake -T # その他のコマンドの使い方
 
 ## テスト
 
-テストは 2 層に分かれている。
+**まず回帰の道具** (doc/regression/usage.md)。コマンドを流し、要約 (通ったら
+2〜4 行) を読み、落ちたものだけ見る。画面を撮って見比べるのは、道具が
+受け持たない所だけにする。
+
+| コマンド | 確認するもの | 時間 |
+|---|---|---|
+| `rake regress` | ホストの試験 (`rake test`) + 描画の記録の比較 | 約 17 秒 |
+| `rake regress:size` | 内蔵 RAM とファームの大きさ (S3・P4。`ALL=1` で全端末) | 約 4 分 |
+| `rake regress:run` | sim のアプリごとの VM プール | 約 4 分 |
+| `rake regress:screens` | sim (Retro・Modern) とブラウザ版の画面 (エディタの 1 打鍵を含む) | 約 8 分 |
+| `rake regress:live` | 相手のいる通し (卓のゲームホスト・歩数・MIDI・音) | 約 2.5 分 |
+| `rake regress:boot BOARD=..` | 実機の起動ログ (つないだ端末だけ) | 焼かずに約 40 秒 |
+
+- `rake regress:full` は boot 以外を全部流す。基準の更新 (`:update`) は、
+  変化が意図したものだと人が確認したときだけ。
+- 端末を足すときは `tools/regress/targets.rb` に 1 行、揺れの幅は
+  `:calibrate` が測る (usage.md)。
+
+テストの中身は 2 層に分かれている。
 
 - **ネイティブ host テスト**: `rake test` で picoruby-ti / BASIC ゴールデン /
   MicroPython smoke をまとめて実行する。docker も実機も不要で、ランナー
