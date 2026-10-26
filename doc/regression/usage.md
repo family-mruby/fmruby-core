@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim とブラウザ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章
+> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim とブラウザ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章
 
 ## 1. 流し方
 
@@ -72,7 +72,7 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run + regress:screens (全部で 17 分ほど)
+rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live (全部で 21 分ほど)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -227,3 +227,73 @@ end
 - 音、実機の入力、表示の後段 (HDMI・NTSC)、実機だけの初期化。sim とブラウザ版の画面は実機と同じ描画の部品 (LovyanGFX) を通るが、Retro の実機は WROVER の側で描くので、Retro の実機の画素は見ていない。
 - 時計の中身と日付 (隠している)。
 
+## 10. 相手のいる通し (rake regress:live)
+
+```
+rake regress:live                     # Modern の sim で全場面 (ビルド込みで 2.5 分ほど)
+rake regress:live ONLY=othello        # 名前にこの文字を含む場面だけ (カンマで複数。SCENE= も同じ)
+rake regress:live:update              # 前回の結果のうち落ちた・基準の無いものを基準にする (5 章の決まりを守る)
+ruby tools/regress/live.rb --list     # 場面と基準のファイルの数
+ruby tools/regress/live.rb --attach modern --scene board   # もう動いている sim に台本だけ流す
+```
+
+- `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
+- アプリが外の相手とやり取りする場面を、**相手を道具が立てて**流し、相手の側の状態 (卓の様子・受けたバイト列・音の数値) を基準と比べる。実機・VPS は使わない。相手はすべてこの PC の上: sim の zenohd (tcp 127.0.0.1:7447)、asterism-games の作業コピー (fmruby-core の隣、`ASTERISM_GAMES_DIR` で変える) から起こすゲームホスト、ルートの `tools/fmrb_midi_monitor.rb`・`tools/fmrb_audio_probe.rb`、`tool/imu/step_send.rb`。
+- 流れは 9 章と同じ (build/ を退避 → clean_all → `rake build:linux` (TAB5) → sim を headless で起こす → 場面ごとにデスクトップから始めて、終わったらアプリを閉じてデスクトップが元どおりか見る → 片付け)。構成は `modern` だけ (Asterism・卓のアプリ・walk_scroller がそろう。麻雀は 640x360)。
+- 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `live: N passed / 0 failed (...)`)。落ちたときは `FAIL modern <場面>.<名前>: <違う所>` が 6 つまで。
+
+### 10.1 相手 (tools/regress/counterparts/)
+
+| 相手 | 台本での立て方 | 中身 |
+|---|---|---|
+| ゲームホスト | `g = s.counterpart :games, table: :othello` (`:board`・`:mahjong`) | asterism-games を `bundle exec bin/asterism-games` で、卓 1 つの設定と空の状態のディレクトリ (`tmp/regress/live/counterparts/<場面>/games/`) で起こす。node は `rghost`。AI の鍵・資格情報・外のルータは環境から外す。`g.table` (卓の view)、`g.call(:look, g.token)` (卓の任意のメソッド)、`g.member`・`g.token` (保存された状態の端末の札)、`g.stop` (SIGTERM: ホストは保存して網から去る)・`g.resume` (同じ状態で起こし直す) |
+| 歩数の送り手 | `st = s.counterpart :steps` | `tool/imu/step_send.rb --measure` を node `rgsteps` で。`st.walk(10, cadence: 120)`、`st.state` は送った数と、walk_scroller が描いた後に置く progress (歩数・count・印) の列 |
+| MIDI のモニタ | `m = s.counterpart :midi` | ルートの `fmrb_midi_monitor.rb` を起こし、出力を記録。`m.messages` (時刻・バイト列・種類)、`m.notes` (音名・鳴り始め・止め・チャンネル) |
+| 音の探り | `a = s.counterpart :audio` | ルートの `fmrb_audio_probe.rb`。`a.listen(秒) { 鳴らす操作 }` が窓の数・鳴った窓の数・ピークを返す |
+
+- 相手の 4 つの言葉: start (場面で立てたとき)、state、stop・resume (場面の途中で止めて戻す。できない相手は誤りを返す)、close (場面の後に道具が呼ぶ。落ちた場面でも)。足すときは `Regress::Counterparts::Base` を継いで `register` する。
+- 卓の状態を読むのは、道具の中の CRuby の Asterism の接続 1 本 (node `rgprobe`、asterism gem)。
+
+### 10.2 台本の書き方
+
+`test/regress/live/*.rb` に書く。9 章の台本の言葉 (`key`・`click`・`launch`・`wait_log`・`shot` …、`test/regress/screens/helpers.rb` の助け) はそのまま使え、次が足される。共通の手順は `test/regress/live/helpers.rb`。
+
+```ruby
+Regress::Live.scene "board" do |s|
+  g = s.counterpart :games, table: :board
+  s.open_table_app "/app/game/board/board.app.rb", "board", g   # 一覧に卓が出るまで
+  s.join_table g, "board"                                       # Enter、ホストの会員に入るまで
+  s.board_stroke [[60, 80], [100, 100], [150, 120], [200, 140]]
+  s.poll("the stroke at the host") { g.table["n"] == 1 }
+  s.check "stroke", s.board_summary(g)                          # 要約を基準と比べる
+  s.restart_host g, "board"                                     # 止めて戻す (アプリのログで去った・戻ったを待つ)
+  ...
+end
+```
+
+- `check(名前, 要約, variant: nil)`: 要約 (Hash) を `test/regress/live/baseline/<構成>/<場面>.<名前>[.<variant>].json` と比べる。違えば違う葉を `path: 前 -> 今` で出す。**要約に揺れる物 (名前・札・版・時刻・麻雀の牌) を入れない**のは台本の側の決まり。ホストが引く物 (オセロの色) で結果が決まった数の形のどれかになるときは `variant:` で形ごとに基準を持つ (`othello.move.black` と `.white`)。
+- `poll(説明, timeout:) { 値 }`: 値が返るまで待つ (相手の状態で待つ)。`expect(説明) { 真偽 }`: 偽なら落ちる。
+- 相手の誤り (ホストが起きない、モニタが死んだ、呼び出しが答えない) は、その場面の失敗になる。
+
+### 10.3 場面
+
+| 場面 | 相手 | 確認すること |
+|---|---|---|
+| `othello` | ゲームホスト (othello1、CPU 200 ms) | 一覧 → Enter で入る → s で座る → c で CPU → Enter で始める (`lobby`) → 端末の番に最初の合法手をクリック、CPU が返す (`move`) → ホストを止めて戻す → 次の手が通る (`after_host`) → Esc と y で投了 (`resigned`) → Esc で出る、会員から消える (`left`)。盤は端末の石を D、相手を O で比べる |
+| `board` | ゲームホスト (board1) | 入る → 1 本描く (色・幅・始点・終点) → ホストを止めて戻す、絵を読み直す (`picture read: 1 strokes`) → 2 本目が届く → Esc で出る |
+| `mahjong` | ゲームホスト (mahjong1、東風、CPU 300 ms) | 入る (名前を聞かれたら Enter) → 1 で座る → c で CPU 3 人 → 始める → 端末の番に Enter で打牌し、ホストの河に 1 枚増える → ホストを止めて戻す → もう 1 打牌 → Ctrl+Q で閉じる (席はホストに残る) |
+| `walk_scroller` | 歩数の送り手 | 120 歩/分で 10 歩。描いた後の progress が 10 回、最後の count が 10、通った印。歩いた後の画面も撮る (`walked.png`) |
+| `midi_serial` | MIDI のモニタ | MIDI APU で 7 (serial へ) → 1 (音階)。C4〜C5 の 8 音が ch1 で、長さ 200 ms・間 260 ms (中央値を 10 ms に丸めて比べ、1 音ずつは ±40 ms に収まること)、前に 16 チャンネル分の all off |
+| `apu_sound` | 音の探り | MIDI APU (APU のまま) で、鳴らす前の 1 秒は無音、1 (音階) を押しながらの 3 秒で鳴った (ピーク > 256) こと、鳴った窓の数を秒に丸めた値 (2 秒) |
+
+### 10.4 基準と落ちたとき
+
+- 今回の要約は `tmp/regress/live/out/modern/`、結果の一覧は `tmp/regress/live/results.json`、相手のログ (ホスト・モニタ・送り手・探り) は `tmp/regress/live/counterparts/<場面>/`、sim のコアのログは `tmp/regress/live/modern.log`。
+- 意図した変化なら、人が確認してから `rake regress:live:update`。オセロの色の形のように一方の基準が無いときは `NEW ... no baseline` と出るので、写しを見て update する。
+- わざと止めた相手を戻さない、相手が別の答えを返す、のどちらも場面の失敗として出る。
+
+### 10.5 分からないこと
+
+- 本当の網の揺れ (遅延・切断の途中)、TLS と資格情報の付いた接続 (VPS・常設の卓)、ブラウザ版の ws の経路。Retro (卓のアプリは Retro の実機には無い)。
+- HTTP の相手 (天気のアプリ): 決まった外の HTTPS に繋ぐ作りで、偽の相手に向ける口が無いので入れていない。
+- 音の善し悪し (数値で鳴ったか・長さだけを見る)。MIDI の時刻は PC に届いた時刻 (FIFO) で、実機の UART の時刻ではない。
