@@ -222,7 +222,10 @@
         }
       },
       "boot_seconds": 8.9,
-      "dumps": 3
+      "dumps": 3,
+      "tolerance": {
+        "iram_free": 2048
+      }
     }
   },
   "tolerance": {
