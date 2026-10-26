@@ -51,7 +51,42 @@ module Regress
       "stack_free" => 384
     }.freeze
 
+    # How rake regress:boot:calibrate turns a measured spread into a
+    # tolerance (calibrate.rb): about twice the spread, rounded up to the
+    # unit, never below the floor. largest moves in 4 KB steps, so it takes
+    # the spread itself with two steps as the floor (the RG4 choice); psram
+    # did not move in RG4 but can with WiFi's allocation order, hence 16 KB.
+    CALIBRATE = {
+      "m1_internal" => { factor: 2, unit: 256, floor: 512 },
+      "m1_largest" => { factor: 1, unit: 4096, floor: 8192 },
+      "m1_psram" => { factor: 2, unit: 4096, floor: 16_384 },
+      "iram_free" => { factor: 2, unit: 256, floor: 512 },
+      "stack_free" => { factor: 2, unit: 128, floor: 256 }
+    }.freeze
+
+    # The parts of a result that are numbers of one boot (the baseline
+    # candidate of a calibration takes their medians).
+    MEASURED = %w[m1 iram_free psram_free tasks pools boot_seconds].freeze
+
     module_function
+
+    # [[key, value, tolerance kind], ...]: every number compare looks at.
+    def flat(res)
+      out = []
+      res["m1"].each do |label, v|
+        out << ["M1|#{label} internal", v["internal"], "m1_internal"]
+        out << ["M1|#{label} largest", v["largest"], "m1_largest"]
+        out << ["M1|#{label} psram", v["psram"], "m1_psram"]
+      end
+      out << ["IRAM free", res["iram_free"], "iram_free"]
+      res["tasks"].each { |name, t| out << ["stack #{name}", t["free"], "stack_free"] }
+      out
+    end
+
+    # A boot fit to be a baseline: no crash, one boot, Boot complete, a dump.
+    def clean?(res)
+      res["crash"].empty? && res["boots"] <= 1 && res["boot_complete"] && res["dumps"].positive?
+    end
 
     # Device names, addresses and the access point's name.
     def mask(text)

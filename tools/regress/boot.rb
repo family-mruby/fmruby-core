@@ -9,6 +9,8 @@
 #   ruby tools/regress/boot.rb --board naryav4 --no-flash   # the firmware already on it
 #   ruby tools/regress/boot.rb --board naryav4 --table      # no device: the last result again
 #   ruby tools/regress/boot.rb --board naryav4 --update     # the last result becomes the baseline
+#   ruby tools/regress/boot.rb --board naryav4 --calibrate 5   # boot 5 times, measure the spread
+#   ruby tools/regress/boot.rb --board naryav4 --apply      # the last calibration becomes the baseline
 #
 # One run:
 #   1. finds the board's port by the VID:PID in targets.rb (PORT= overrides)
@@ -31,6 +33,14 @@
 #      the stamped log <board>.log (device names and addresses masked), and
 #      compares with test/regress/boot_baseline.json
 #
+# Calibration (--calibrate N): the firmware on the board (--flash: build and
+# flash it once first) is booted N times; each number's spread over the runs
+# gives a tolerance proposal per kind (calibrate.rb, BootLog::CALIBRATE) and
+# the per-number medians a baseline candidate. Both go to
+# tmp/regress/boot/<board>.calibrate.json with a few lines of summary;
+# --apply writes them to the baseline (the board's own "tolerance" there
+# overrides the file's default one), after a person has read the summary.
+#
 # Exit status 1 on a crash marker, a reboot, a missing step, a number worse
 # than its tolerance, no baseline, or a failed build / flash / capture.
 require "fileutils"
@@ -40,6 +50,7 @@ require "time"
 require_relative "targets"
 require_relative "build_tree"
 require_relative "boot_log"
+require_relative "calibrate"
 
 module Regress
   CORE = File.expand_path("../..", __dir__) unless const_defined?(:CORE)
@@ -257,12 +268,16 @@ module Regress
       File.exist?(BASELINE) ? JSON.parse(File.read(BASELINE)) : { "boards" => {} }
     end
 
-    def tolerance(doc)
-      BootLog::TOLERANCE.merge(doc["tolerance"] || {})
+    # The default tolerance (the file's, over BootLog's), or a board's: its
+    # own "tolerance" in the baseline (a calibration's) over the default.
+    def tolerance(doc, board = nil)
+      tol = BootLog::TOLERANCE.merge(doc["tolerance"] || {})
+      board ? tol.merge(doc.dig("boards", board, "tolerance") || {}) : tol
     end
 
+    # One board per call (the tolerance is the board's).
     def show(results, doc, timing)
-      lines, failed = BootLog.table(results, doc["boards"], tolerance(doc))
+      lines, failed = BootLog.table(results, doc["boards"], tolerance(doc, results.keys.first))
       puts lines
       verdict = failed.empty? ? "ok" : "FAILED"
       puts "boot: #{results.keys.join(', ')} vs baseline #{doc['commit'] || 'none'}, #{verdict} (#{timing})"
@@ -271,10 +286,13 @@ module Regress
 
     def main(argv)
       opts = { board: ENV["BOARD"], flash: ENV["FLASH"] != "0", table: ENV["TABLE"] == "1", update: false,
-               dumps: (ENV["DUMPS"] || 3).to_i }
+               dumps: (ENV["DUMPS"] || 3).to_i, calibrate: nil, apply: false }
       OptionParser.new do |o|
         o.on("--board NAME") { |v| opts[:board] = v }
         o.on("--no-flash") { opts[:flash] = false }
+        o.on("--flash") { opts[:flash_once] = true } # calibration only: it never flashes otherwise
+        o.on("--calibrate N", Integer) { |v| opts[:calibrate] = v }
+        o.on("--apply") { opts[:apply] = true }
         o.on("--table") { opts[:table] = true }
         o.on("--update") { opts[:update] = true }
         o.on("--dumps N", Integer) { |v| opts[:dumps] = v }
@@ -283,6 +301,8 @@ module Regress
       FileUtils.mkdir_p(OUT)
       json = File.join(OUT, "#{t.name}.json")
       return update(t, json) if opts[:update]
+      return apply(t) if opts[:apply]
+      return calibrate(t, opts.merge(flash: opts[:flash_once] == true)) if opts[:calibrate]
 
       doc = load_baseline
       if opts[:table]
@@ -320,19 +340,126 @@ module Regress
     def update(t, json)
       raise "no saved result for #{t.name} (run rake regress:boot first)" unless File.exist?(json)
       r = JSON.parse(File.read(json))
-      unless r["crash"].empty? && r["boots"] <= 1 && r["boot_complete"] && r["dumps"].positive?
+      unless BootLog.clean?(r)
         raise "#{t.name}: the last boot was not clean (crash / reboot / no dump); not a baseline"
       end
       doc = load_baseline
       keep = %w[board firmware flashed commit version running_on reset m1 iram_free psram_free tasks pools
                 boot_seconds dumps]
-      doc["boards"][t.name] = r.slice(*keep)
+      # a calibrated tolerance stays with the board
+      doc["boards"][t.name] = r.slice(*keep).merge((doc["boards"][t.name] || {}).slice("tolerance", "calibration"))
       doc["boards"] = doc["boards"].sort.to_h
+      write_baseline(doc)
+      puts "baseline: #{t.firmware} from #{r['commit'] || r['version']} (#{r['m1'].size} M1| steps, #{r['tasks'].size} tasks)"
+      0
+    end
+
+    KEEP = %w[board firmware flashed commit version running_on reset m1 iram_free psram_free tasks pools
+              boot_seconds dumps].freeze
+
+    def write_baseline(doc)
       doc["tolerance"] = tolerance(doc)
       doc["commit"] = doc["boards"].values.map { |b| b["commit"] || b["version"] }.uniq.join(",")
       FileUtils.mkdir_p(File.dirname(BASELINE))
       File.write(BASELINE, JSON.pretty_generate(doc) + "\n")
-      puts "baseline: #{t.firmware} from #{r['commit'] || r['version']} (#{r['m1'].size} M1| steps, #{r['tasks'].size} tasks)"
+    end
+
+    # --- calibration -----------------------------------------------------------
+
+    def calibrate(t, opts)
+      runs = opts[:calibrate]
+      raise "--calibrate needs at least 2 runs" if runs < 2
+      timings = {}
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      port = resolve_port(t)
+      lock = claim_port(port)
+      results = []
+      begin
+        build_and_flash(t, port, timings) if opts[:flash]
+        runs.times do |i|
+          log = File.join(OUT, "#{t.name}.calibrate.#{i + 1}.log")
+          text, secs = capture(t, port, opts[:dumps], log)
+          (timings["capture"] ||= []) << secs.round
+          results << BootLog.parse(text)
+        end
+      ensure
+        lock.truncate(0) rescue nil
+        lock.flock(File::LOCK_UN) rescue nil
+        lock.close rescue nil
+      end
+      doc = load_baseline
+      cal = calibration(t, results, doc, flashed: opts[:flash])
+      cal["timings"] = timings
+      json = File.join(OUT, "#{t.name}.calibrate.json")
+      File.write(json, JSON.pretty_generate(cal))
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+      caps = timings["capture"]
+      timing = "#{(took / 60).round(1)} min: #{timings['build'] ? "build #{timings['build']}s, flash #{timings['flash']}s, " : ''}" \
+               "capture #{caps.min}-#{caps.max}s x#{caps.size}"
+      puts calibration_summary(cal, doc)
+      puts "calibrate: #{t.name} #{runs} boots (#{timing}); #{json.sub("#{CORE}/", '')}"
+      if cal["clean"]
+        puts "  to make it the baseline, after reading the above: rake regress:boot:calibrate:apply BOARD=#{t.name}"
+        0
+      else
+        1
+      end
+    end
+
+    # The numbers of N boots -> spreads, proposals and the baseline candidate.
+    def calibration(t, results, doc, flashed:)
+      items = Calibrate.collect(results.map { |r| BootLog.flat(r) })
+      stats = Calibrate.measure(items, BootLog::CALIBRATE, results.size)
+      unclean = results.each_with_index.reject { |r, _| BootLog.clean?(r) }.map do |r, i|
+        "run #{i + 1}: crash #{r['crash'].size}, boots #{r['boots']}, boot complete #{r['boot_complete']}, dumps #{r['dumps']}"
+      end
+      cand = Calibrate.median_record(results, BootLog::MEASURED)
+      base = { "board" => t.name, "firmware" => t.firmware, "flashed" => flashed,
+               "commit" => flashed ? commit : nil }.merge(cand).slice(*KEEP)
+      { "board" => t.name, "firmware" => t.firmware, "runs" => results.size, "clean" => unclean.empty?,
+        "unclean" => unclean, "captured_at" => Time.now.iso8601,
+        "boot_seconds" => results.filter_map { |r| r["boot_seconds"] }, "stats" => stats,
+        "now" => tolerance(doc, t.name), "tolerance" => stats.transform_values { |s| s["proposal"] },
+        "baseline" => base }
+    end
+
+    def calibration_summary(cal, doc)
+      now = cal["now"].transform_values { |v| Calibrate.fmt(v) }
+      lines = Calibrate.table(cal["stats"], now)
+      cal["unclean"].each { |u| lines << "  NOT CLEAN #{u} (no proposal can be applied)" }
+      secs = cal["boot_seconds"]
+      lines << "  boot #{secs.min}-#{secs.max}s" unless secs.empty?
+      old = doc.dig("boards", cal["board"])
+      if old
+        b = cal["baseline"]
+        was = BootLog.flat(old).to_h { |k, v, _| [k, v] }
+        diffs = BootLog.flat(b).filter_map { |k, v, _| (w = was[k]) && v && v != w ? [k, v - w] : nil }
+        missing = (was.keys - BootLog.flat(b).map(&:first)).size
+        top = diffs.max_by { |_, d| d.abs }
+        lines << "  candidate vs the baseline now: #{diffs.size} of #{was.size} numbers differ" \
+                 "#{top ? " (most: #{top[0]} #{top[1].positive? ? '+' : ''}#{Calibrate.fmt(top[1])})" : ''}" \
+                 "#{missing.positive? ? ", #{missing} missing" : ''}"
+      else
+        lines << "  no baseline for #{cal['board']} yet"
+      end
+      lines
+    end
+
+    def apply(t)
+      json = File.join(OUT, "#{t.name}.calibrate.json")
+      raise "no calibration for #{t.name} (run rake regress:boot:calibrate first)" unless File.exist?(json)
+      cal = JSON.parse(File.read(json))
+      raise "#{t.name}: the calibration had boots that were not clean; not a baseline" unless cal["clean"]
+      doc = load_baseline
+      doc["boards"][t.name] = cal["baseline"].merge(
+        "tolerance" => cal["tolerance"],
+        "calibration" => { "runs" => cal["runs"], "at" => cal["captured_at"],
+                           "spread" => cal["stats"].transform_values { |s| s["spread"] } }
+      )
+      doc["boards"] = doc["boards"].sort.to_h
+      write_baseline(doc)
+      tol = cal["tolerance"].map { |k, v| "#{k} #{Calibrate.fmt(v)}" }.join(", ")
+      puts "baseline: #{t.firmware} from a #{cal['runs']}-boot calibration (medians); tolerance #{tol}"
       0
     end
   end

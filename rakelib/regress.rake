@@ -29,6 +29,10 @@
 #                          test/regress/sim_baseline.json (with a tolerance).
 #                          ONLY=retro|modern, TABLE=1 (no sim, the last results)
 #   rake regress:run:update    the last results become the baseline
+#   rake regress:run:calibrate the scenario RUNS times on one build: spreads
+#                          and tolerance proposals (APPLY=1 or :apply writes
+#                          them, after a person has read the summary). The
+#                          same for a board: rake regress:boot:calibrate
 #   rake regress:screens   scripted screens (test/regress/screens/*.rb) on the
 #                          sim (Retro, Modern) and the browser build, pixel
 #                          for pixel against test/regress/screens/baseline/.
@@ -146,6 +150,25 @@ namespace :regress do
       args = ENV["ONLY"] ? ["--only", ENV["ONLY"]] : []
       abort "regress:run:update: failed" unless system(Gem.ruby, REGRESS_SIM, "--update", *args)
     end
+
+    desc "Run the sim scenario RUNS times (default 5) on one build per family (ONLY=retro|modern), propose tolerances; APPLY=1 writes the last calibration as the baseline"
+    task :calibrate do
+      if ENV["APPLY"] == "1"
+        Rake::Task["regress:run:calibrate:apply"].invoke
+        next
+      end
+      args = ["--calibrate", ENV["RUNS"] || "5"]
+      args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+      abort "regress:run:calibrate: failed" unless system(Gem.ruby, REGRESS_SIM, *args)
+    end
+
+    namespace :calibrate do
+      desc "Write the last regress:run:calibrate (medians and tolerances) to the sim baseline (after a person has read its summary)"
+      task :apply do
+        args = ENV["ONLY"] ? ["--only", ENV["ONLY"]] : []
+        abort "regress:run:calibrate:apply: failed" unless system(Gem.ruby, REGRESS_SIM, "--apply", *args)
+      end
+    end
   end
 
   desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser). About 17 minutes"
@@ -222,9 +245,33 @@ namespace :regress do
       abort "regress:boot:update: failed" unless system(Gem.ruby, REGRESS_BOOT, "--update", *args)
     end
 
-    desc "Boot log reader tests: made-up logs, no device (host Ruby)"
+    desc "Boot log reader and calibration tests: made-up logs, no device (host Ruby)"
     task :test do
       sh "#{Gem.ruby} test/regress/boot_log_test.rb"
+      sh "#{Gem.ruby} test/regress/calibrate_test.rb"
+    end
+
+    desc "Boot BOARD= RUNS times (default 5) on the firmware it has (FLASH=1: build and flash once first), propose tolerances; APPLY=1 writes the last calibration as the baseline"
+    task :calibrate do
+      if ENV["APPLY"] == "1"
+        Rake::Task["regress:boot:calibrate:apply"].invoke
+        next
+      end
+      regress_check_board_defaults if ENV["FLASH"] == "1"
+      args = ["--calibrate", ENV["RUNS"] || "5"]
+      args += ["--board", ENV["BOARD"]] if ENV["BOARD"]
+      args << "--flash" if ENV["FLASH"] == "1"
+      args += ["--dumps", ENV["DUMPS"]] if ENV["DUMPS"]
+      ok = system({ "RAKE" => ENV["RAKE"] || "rake" }, Gem.ruby, REGRESS_BOOT, *args)
+      abort "regress:boot:calibrate: failed" unless ok
+    end
+
+    namespace :calibrate do
+      desc "Write the last regress:boot:calibrate of BOARD= (medians and tolerances) to the boot baseline (after a person has read its summary)"
+      task :apply do
+        args = ENV["BOARD"] ? ["--board", ENV["BOARD"]] : []
+        abort "regress:boot:calibrate:apply: failed" unless system(Gem.ruby, REGRESS_BOOT, "--apply", *args)
+      end
     end
   end
 end

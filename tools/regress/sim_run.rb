@@ -8,6 +8,8 @@
 #   ruby tools/regress/sim_run.rb --only modern # one family
 #   ruby tools/regress/sim_run.rb --table       # no sim: compare the last saved results
 #   ruby tools/regress/sim_run.rb --update      # the saved results become the baseline
+#   ruby tools/regress/sim_run.rb --calibrate 5 # one build, the scenario 5 times: spreads
+#   ruby tools/regress/sim_run.rb --apply       # the last calibration becomes the baseline
 #
 # For each family (the first board of that family with firmware in
 # targets.rb): clean_all, `rake build:linux` with that board's
@@ -34,12 +36,21 @@
 # anything else is shown only when it moved past it. A running stack
 # (someone's sim) is never touched: the run refuses to start. The
 # developer's build tree is moved aside and put back (build_tree.rb).
+#
+# Calibration (--calibrate N): each family is built once and the scenario
+# run N times on it (the stack taken down and brought up between runs).
+# Each number's spread gives a proposal for the absolute part of its kind's
+# tolerance (calibrate.rb, CALIBRATE below; the relative part is kept), the
+# per-number medians a baseline candidate: tmp/regress/sim/<family>.calibrate.json
+# and a few lines of summary. --apply writes them to the baseline, the
+# tolerance as the family's own (it overrides the file's default).
 require "fileutils"
 require "json"
 require "open3"
 require "optparse"
 require_relative "targets"
 require_relative "build_tree"
+require_relative "calibrate"
 
 module Regress
   CORE = File.expand_path("../..", __dir__) unless const_defined?(:CORE)
@@ -74,6 +85,17 @@ module Regress
       "gc_used" => [0.03, 4096],
       "stack_free" => [0.0, 512],
       "compile" => [0.0, 256]
+    }.freeze
+    # How a calibration turns a spread into the absolute part of a tolerance:
+    # about twice the spread, rounded up, never below the floor. The floors
+    # are the RG3b choices for numbers that did not move (512 B for apps,
+    # 256 B after compiling) and, for the GC-timed pools, the 4 KB a few runs
+    # may not show (a GC that ran in none of them).
+    CALIBRATE = {
+      "app_used" => { factor: 2, unit: 256, floor: 512 },
+      "gc_used" => { factor: 2, unit: 512, floor: 4096 },
+      "stack_free" => { factor: 2, unit: 256, floor: 512 },
+      "compile" => { factor: 2, unit: 256, floor: 256 }
     }.freeze
     # VMs whose pool follows their own GC rather than the scenario.
     GC_TIMED = %w[fmrb_kernel Services].freeze
@@ -172,13 +194,25 @@ module Regress
     end
 
     def scenario(family, t, tree)
+      bsecs = build(family, t, tree)
+      res = boot_and_run(family, t)
+      res["build_seconds"] = bsecs.round
+      res
+    end
+
+    def build(family, t, tree)
       FileUtils.mkdir_p(OUT)
       tree.clean_all!
       blog = File.join(OUT, "#{family}.build.log")
       ok, bsecs = run_logged(t.firmware_env, [ENV["RAKE"] || "rake", "build:linux"], blog)
       raise "build:linux for #{t.firmware} failed (#{blog.sub("#{CORE}/", '')})" unless ok
       raise "build/fmruby-core.elf is not an x86-64 build after build:linux" unless elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
+      bsecs
+    end
 
+    # One boot of the built family and the scenario on it; the core's log
+    # goes to <log>.
+    def boot_and_run(family, t, log_name: "#{family}.log")
       t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       # graphics-audio applies a new frame-buffer size on the next boot, so
       # the first boot after a family switch comes up at the old size, or
@@ -207,7 +241,7 @@ module Regress
       sleep SETTLE
       points["closed"] = ps
       log = core_log
-      File.write(File.join(OUT, "#{family}.log"), log)
+      File.write(File.join(OUT, log_name), log)
       res = { "points" => points, "compile" => compile_lines(log) }
       started = points["running"].keys - points["idle"].keys
       if started.size != SCENARIO_APPS.size
@@ -216,7 +250,6 @@ module Regress
       res["family"] = family
       res["board"] = t.firmware
       res["commit"] = sh("git", "rev-parse", "--short=8", "HEAD", chdir: CORE)[1].strip
-      res["build_seconds"] = bsecs.round
       res["sim_seconds"] = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0).round
       res
     rescue RuntimeError
@@ -257,12 +290,12 @@ module Regress
       out
     end
 
-    def allowed(kind, base)
-      rel, abs = TOLERANCE.fetch(kind)
+    def allowed(kind, base, tol = TOLERANCE)
+      rel, abs = tol.fetch(kind)
       [abs, (base.abs * rel).ceil].max
     end
 
-    def compare(cur, base)
+    def compare(cur, base, tol = TOLERANCE)
       fails = []
       moved = []
       return [["no baseline"], []] unless base
@@ -275,7 +308,7 @@ module Regress
           next
         end
         d = val - was
-        next if d.abs <= allowed(kind, was)
+        next if d.abs <= allowed(kind, was, tol)
         worse = good == :down ? d.positive? : d.negative?
         (worse ? fails : moved) << "#{key} #{was} -> #{val} (#{d.positive? ? '+' : ''}#{d})"
       end
@@ -301,21 +334,36 @@ module Regress
       end
     end
 
+    def load_doc
+      File.exist?(BASELINE) ? JSON.parse(File.read(BASELINE)) : { "families" => {} }
+    end
+
     def load_baseline
-      File.exist?(BASELINE) ? JSON.parse(File.read(BASELINE)).fetch("families") : {}
+      load_doc.fetch("families")
+    end
+
+    # The default tolerance (the file's over TOLERANCE), or a family's: its
+    # own "tolerance" in the baseline (a calibration's) over the default.
+    def tolerance(doc, family = nil)
+      tol = TOLERANCE.merge(doc["tolerance"] || {})
+      family ? tol.merge(doc.dig("families", family, "tolerance") || {}) : tol
     end
 
     # --- main -----------------------------------------------------------------
 
     def main(argv)
-      opts = { only: ENV["ONLY"], table: false, update: false }
+      opts = { only: ENV["ONLY"], table: false, update: false, calibrate: nil, apply: false }
       OptionParser.new do |o|
         o.on("--only LIST") { |v| opts[:only] = v }
         o.on("--table") { opts[:table] = true }
         o.on("--update") { opts[:update] = true }
+        o.on("--calibrate N", Integer) { |v| opts[:calibrate] = v }
+        o.on("--apply") { opts[:apply] = true }
       end.parse!(argv)
       fams = families(opts[:only])
       return update(fams) if opts[:update]
+      return apply(fams) if opts[:apply]
+      return calibrate(fams, opts[:calibrate]) if opts[:calibrate]
 
       t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       errors = []
@@ -345,11 +393,12 @@ module Regress
       end
       errors.each { |e| puts "FAIL #{e}" }
       results = load_results(fams)
-      baseline = load_baseline
+      doc = load_doc
+      baseline = doc.fetch("families")
       failed = !errors.empty?
       results.each do |f, r|
         puts summary_line(r)
-        fails, moved = compare(r, baseline[f])
+        fails, moved = compare(r, baseline[f], tolerance(doc, f))
         failed ||= !fails.empty?
         fails.first(8).each { |l| puts "  FAIL #{l}" }
         puts "  ... #{fails.size - 8} more (tmp/regress/sim/#{f}.json)" if fails.size > 8
@@ -367,11 +416,125 @@ module Regress
       raise "no saved results to write (run rake regress:run first)" if results.empty?
       doc = File.exist?(BASELINE) ? JSON.parse(File.read(BASELINE)) : { "families" => {} }
       results.each do |f, r|
-        doc["families"][f] = r.reject { |k, _| %w[build_seconds sim_seconds].include?(k) }
+        # a calibrated tolerance stays with the family
+        keep = (doc["families"][f] || {}).slice("tolerance", "calibration")
+        doc["families"][f] = r.reject { |k, _| %w[build_seconds sim_seconds].include?(k) }.merge(keep)
         puts "baseline: #{f} (#{r['board']})"
       end
-      doc["tolerance"] = TOLERANCE
+      doc["tolerance"] = tolerance(doc)
       FileUtils.mkdir_p(File.dirname(BASELINE))
+      File.write(BASELINE, JSON.pretty_generate(doc) + "\n")
+      0
+    end
+
+    # --- calibration -----------------------------------------------------------
+
+    def calibrate(fams, runs)
+      raise "--calibrate needs at least 2 runs" if runs < 2
+      raise "a sim stack is already running (someone's?); leave it or take it down first" if core_running?
+      ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
+      raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless elf_x86?(ga)
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      doc = load_doc
+      cals = {}
+      errors = []
+      timings = []
+      tree = BuildTree.new(CORE)
+      tree.stash!
+      @ours = true
+      begin
+        fams.each do |f, t|
+          results = []
+          bsecs = build(f, t, tree)
+          runs.times do |i|
+            results << boot_and_run(f, t, log_name: "#{f}.calibrate.#{i + 1}.log")
+          end
+          secs = results.map { |r| r["sim_seconds"] }
+          timings << "#{f} build #{bsecs.round}s + sim #{secs.min}-#{secs.max}s x#{runs}"
+          cals[f] = calibration(f, results, doc)
+          File.write(File.join(OUT, "#{f}.calibrate.json"), JSON.pretty_generate(cals[f]))
+        rescue RuntimeError => e
+          errors << "#{f}: #{e.message}"
+        end
+      ensure
+        down if core_running?
+        puts "build/: #{tree.restore!}"
+      end
+      errors.each { |e| puts "FAIL #{e}" }
+      cals.each { |f, cal| puts calibration_summary(f, cal, doc) }
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+      puts "calibrate: #{cals.size} families, #{runs} runs each (#{(took / 60).round(1)} min: #{timings.join(', ')}); " \
+           "tmp/regress/sim/<family>.calibrate.json"
+      unless cals.empty?
+        only = cals.size == families(nil).size ? "" : " ONLY=#{cals.keys.join(',')}"
+        puts "  to make it the baseline, after reading the above: rake regress:run:calibrate:apply#{only}"
+      end
+      errors.empty? ? 0 : 1
+    end
+
+    # The numbers of N runs -> spreads, proposals and the baseline candidate.
+    def calibration(family, results, doc)
+      flats = results.map { |r| flatten(r).map { |k, v, kind, _| [k, v, kind] } }
+      items = Calibrate.collect(flats)
+      stats = Calibrate.measure(items, CALIBRATE, results.size)
+      # what is kept but not compared: its spread for the record
+      info = UNCOMPARED.to_h do |key|
+        pt, *rest = key.split
+        app = rest[0..-2].join(" ")
+        vals = results.filter_map { |r| r.dig("points", pt, app, "used") }
+        [key, vals.empty? ? nil : vals.max - vals.min]
+      end
+      now = tolerance(doc, family)
+      cand = Calibrate.median_record(results, %w[points compile])
+      cand = cand.reject { |k, _| %w[build_seconds sim_seconds].include?(k) }
+      { "family" => family, "board" => results.last["board"], "runs" => results.size,
+        "captured_at" => Time.now.strftime("%Y-%m-%dT%H:%M:%S%z"), "stats" => stats, "uncompared_spread" => info,
+        "now" => now, "tolerance" => stats.to_h { |kind, s| [kind, [now[kind][0], s["proposal"]]] },
+        "baseline" => cand }
+    end
+
+    def tol_text(rel, abs)
+      rel.to_f.positive? ? "#{Calibrate.fmt(abs)} or #{(rel * 100).round(1).to_s.sub(/\.0\z/, '')}%" : Calibrate.fmt(abs)
+    end
+
+    def calibration_summary(family, cal, doc)
+      now = cal["now"].transform_values { |rel, abs| tol_text(rel, abs) }
+      shown = cal["tolerance"].transform_values { |rel, abs| tol_text(rel, abs) }
+      lines = ["#{family} (#{cal['board']}, #{cal['runs']} runs):"] + Calibrate.table(cal["stats"], now, shown)
+      cal["uncompared_spread"].each { |k, d| lines << "  not compared: #{k} moved #{Calibrate.fmt(d)}" if d }
+      old = doc.dig("families", family)
+      if old
+        was = flatten(old).to_h { |k, v, *| [k, v] }
+        now_vals = flatten(cal["baseline"]).to_h { |k, v, *| [k, v] }
+        diffs = now_vals.filter_map { |k, v| (w = was[k]) && v != w ? [k, v - w] : nil }
+        top = diffs.max_by { |_, d| d.abs }
+        missing = (was.keys - now_vals.keys).size
+        lines << "  candidate vs the baseline now: #{diffs.size} of #{was.size} numbers differ" \
+                 "#{top ? " (most: #{top[0]} #{top[1].positive? ? '+' : ''}#{Calibrate.fmt(top[1])})" : ''}" \
+                 "#{missing.positive? ? ", #{missing} missing" : ''}"
+      else
+        lines << "  no baseline for #{family} yet"
+      end
+      lines
+    end
+
+    def apply(fams)
+      doc = load_doc
+      done = fams.filter_map do |f, _t|
+        p = File.join(OUT, "#{f}.calibrate.json")
+        next unless File.exist?(p)
+        cal = JSON.parse(File.read(p))
+        doc["families"][f] = cal["baseline"].merge(
+          "tolerance" => cal["tolerance"],
+          "calibration" => { "runs" => cal["runs"], "at" => cal["captured_at"],
+                             "spread" => cal["stats"].transform_values { |s| s["spread"] } }
+        )
+        tol = cal["tolerance"].map { |k, (rel, abs)| "#{k} #{tol_text(rel, abs)}" }.join(", ")
+        puts "baseline: #{f} (#{cal['board']}) from a #{cal['runs']}-run calibration (medians); tolerance #{tol}"
+        f
+      end
+      raise "no calibration to write (run rake regress:run:calibrate first)" if done.empty?
+      doc["tolerance"] = tolerance(doc)
       File.write(BASELINE, JSON.pretty_generate(doc) + "\n")
       0
     end
