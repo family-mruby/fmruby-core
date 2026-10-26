@@ -23,6 +23,7 @@ keymap_device = "tca8418"
 [audio]
 backend = "alsa"
 device = "default"
+mixer = "auto"               # the volume the desktop moves (Master, PCM, Speaker, ...)
 
 [desktop]
 variant = "mouse"
@@ -30,3 +31,4 @@ variant = "mouse"
 [system]
 services = "linux"
 exit_key = "none"
+power = "exit"               # the desktop's power entries: end the program only

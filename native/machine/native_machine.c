@@ -76,9 +76,12 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->audio.backend, sizeof(m->audio.backend), "sdl");
     snprintf(m->audio.device, sizeof(m->audio.device), "default");
     m->audio.latency_ms = 100;
+    snprintf(m->audio.mixer, sizeof(m->audio.mixer), "auto");
     snprintf(m->desktop.variant, sizeof(m->desktop.variant), "mouse");
-    snprintf(m->system.services, sizeof(m->system.services), "none");
+    snprintf(m->system.services, sizeof(m->system.services), "linux");
     snprintf(m->system.exit_key, sizeof(m->system.exit_key), "none");
+    snprintf(m->system.power, sizeof(m->system.power), "exit");
+    m->system.power_log_only = false;
 }
 
 static int set_devices(native_machine_t *m, const char *value, char *err, size_t n)
@@ -165,6 +168,10 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
         m->audio.latency_ms = v;
         return 0;
     }
+    if (strcmp(key, "audio.mixer") == 0) {
+        if (value[0] == '\0') return fail(err, n, "audio.mixer: empty (use \"auto\" or \"none\")");
+        return copy_str(m->audio.mixer, sizeof(m->audio.mixer), value, key, err, n);
+    }
 
     if (strcmp(key, "desktop.variant") == 0) return copy_str(m->desktop.variant, sizeof(m->desktop.variant), value, key, err, n);
 
@@ -179,6 +186,18 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
             return fail(err, n, "system.exit_key: \"%s\" is not none or esc_long", value);
         }
         return copy_str(m->system.exit_key, sizeof(m->system.exit_key), value, key, err, n);
+    }
+    if (strcmp(key, "system.power") == 0) {
+        if (strcmp(value, "exit") != 0 && strcmp(value, "logind") != 0) {
+            return fail(err, n, "system.power: \"%s\" is not exit or logind", value);
+        }
+        return copy_str(m->system.power, sizeof(m->system.power), value, key, err, n);
+    }
+    if (strcmp(key, "system.power_log_only") == 0) {
+        if (strcmp(value, "true") == 0) m->system.power_log_only = true;
+        else if (strcmp(value, "false") == 0) m->system.power_log_only = false;
+        else return fail(err, n, "system.power_log_only: \"%s\" is not true or false", value);
+        return 0;
     }
 
     return fail(err, n, "unknown key \"%s\"", key);
@@ -308,10 +327,11 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s, "
-             "input %s%s%s, audio %s%s%s, desktop %s, services %s",
+             "input %s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
-             m->desktop.variant, m->system.services);
+             m->desktop.variant, m->system.services, m->system.power,
+             m->system.power_log_only ? " (log only)" : "");
 }

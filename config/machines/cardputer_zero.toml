@@ -25,6 +25,7 @@ keymap_device = "tca8418"    # the built-in keyboard's evdev name
 [audio]
 backend = "alsa"
 device = "default"
+mixer = "auto"               # the volume the desktop moves (Master, PCM, Speaker, ...)
 
 [desktop]
 variant = "keys"
@@ -32,3 +33,4 @@ variant = "keys"
 [system]
 services = "linux"
 exit_key = "esc_long"        # Esc short = back, long = close the app / quit
+power = "exit"               # the desktop's power entries: end the program only

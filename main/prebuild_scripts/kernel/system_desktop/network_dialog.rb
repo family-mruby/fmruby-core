@@ -99,6 +99,9 @@ module NetworkDialogMixin
 
       ssid = @net_info[:ssid]
       ssid = "-" if ssid.nil? || ssid.empty?
+      # The signal, where the OS tells it (the native program, L6).
+      signal = @net_info[:signal]
+      ssid = "#{ssid} (#{signal}%)" if signal
       ip = @net_info[:ip] || "-"
       host = @net_info[:hostname]
 

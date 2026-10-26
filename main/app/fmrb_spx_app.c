@@ -32,12 +32,10 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #include "host_task.h"
 #include "usb_task.h"
 #include "status_led.h"
+#include "fmrb_platform_sys.h"
 
 #ifdef CONFIG_IDF_TARGET_LINUX
 #include <sys/sysinfo.h>
-#include <ifaddrs.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <unistd.h>
 #else
 #include "esp_heap_caps.h"
@@ -53,9 +51,6 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #include "fmrb_attr.h"
 #define FMRB_SPX_BSS_ATTR FMRB_EXT_RAM_BSS_ATTR
 
-#if defined(FMRB_HAS_WIFI)
-#include "wifi_task.h"
-#endif
 #if !defined(CONFIG_IDF_TARGET_LINUX)
 #include "ble_task.h"
 #include "fmrb_sysinfo.h"
@@ -629,12 +624,9 @@ int fmrb_spx_app_reboot(void)
     FMRB_LOGI(TAG, "reboot requested");
     fmrb_host_audio_flush_save();  /* a mute / volume change still waiting to be saved */
     fmrb_task_delay_ms(100);
-#ifdef CONFIG_IDF_TARGET_LINUX
-    exit(0);
-#else
-    esp_restart();
-#endif
-    return 0;  /* unreachable */
+    /* The OS services' reset (fmrb_platform_sys.h), as FmrbApp.reboot. */
+    fmrb_platform_sys_power(FMRB_SYS_POWER_RESET);
+    return 0;
 }
 
 int fmrb_spx_app_ble_start(void)
@@ -709,31 +701,9 @@ const char *fmrb_spx_app_bt_mac(void)
 
 int fmrb_spx_app_wifi_connected(void)
 {
-    /* FmrbApp.wifi_connected?: the same test fmrb_spx_app_wifi_info makes
-       for its first byte, without building the record. */
-#if defined(FMRB_HAS_WIFI)
-    return wifi_is_connected() ? 1 : 0;
-#elif defined(CONFIG_IDF_TARGET_LINUX)
-    int connected = 0;
-    struct ifaddrs *ifaddr = NULL;
-    if (getifaddrs(&ifaddr) == 0) {
-        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
-            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
-                continue;
-            }
-            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
-            if ((ntohl(sin->sin_addr.s_addr) >> 24) == 127) {
-                continue;
-            }
-            connected = 1;
-            break;
-        }
-        freeifaddrs(ifaddr);
-    }
-    return connected;
-#else
-    return 0;
-#endif
+    /* FmrbApp.wifi_connected?: the OS services' answer (fmrb_platform_sys.h),
+       the same as the mruby binding's. */
+    return fmrb_platform_sys_net_connected() ? 1 : 0;
 }
 
 const char *fmrb_spx_app_wifi_info(void)
@@ -741,46 +711,16 @@ const char *fmrb_spx_app_wifi_info(void)
     FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WIFI_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
-
-#if defined(FMRB_HAS_WIFI)
-    char ip[16], ssid[33], host[32];
-    wifi_get_ip_str(ip, sizeof(ip));
-    wifi_get_ssid(ssid, sizeof(ssid));
-    wifi_get_hostname(host, sizeof(host));
-    buf[0] = wifi_is_connected() ? 1 : 0;
-    pack_name(buf + 1, 16, ip);
-    pack_name(buf + 17, 33, ssid);
-    pack_name(buf + 50, 32, host);
-    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WIFI_RECORD_SIZE;
-    return (const char *)buf;
-#elif defined(CONFIG_IDF_TARGET_LINUX)
-    char ip[16] = "127.0.0.1";
-    bool connected = false;
-    struct ifaddrs *ifaddr = NULL;
-    if (getifaddrs(&ifaddr) == 0) {
-        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
-            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
-                continue;
-            }
-            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
-            uint32_t a = ntohl(sin->sin_addr.s_addr);
-            if ((a >> 24) == 127) {
-                continue;
-            }
-            inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
-            connected = true;
-            break;
-        }
-        freeifaddrs(ifaddr);
+    fmrb_sys_net_t n;
+    if (!fmrb_platform_sys_net_info(&n)) {
+        return "";  /* no network on this machine -> Ruby nil */
     }
-    buf[0] = connected ? 1 : 0;
-    pack_name(buf + 1, 16, ip);
-    /* ssid / hostname stay empty on the Linux dev build */
+    buf[0] = n.connected ? 1 : 0;
+    pack_name(buf + 1, 16, n.ip);
+    pack_name(buf + 17, 33, n.ssid);
+    pack_name(buf + 50, 32, n.hostname);
     *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WIFI_RECORD_SIZE;
     return (const char *)buf;
-#else
-    return "";  /* Retro: no networking -> Ruby nil */
-#endif
 }
 
 const char *fmrb_spx_app_clear_cache(const char *path, int len)

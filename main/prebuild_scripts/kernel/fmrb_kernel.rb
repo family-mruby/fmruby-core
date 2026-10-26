@@ -551,6 +551,8 @@ class FmrbKernelImpl < FmrbKernel
         binary = MessagePack.pack(fwd)
         _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
       end
+    when "power"
+      forward_power(pid, data)
     when "suspend"
       Log.info("Suspend request (not implemented)")
     when "resume"
@@ -559,6 +561,18 @@ class FmrbKernelImpl < FmrbKernel
       handled = keys_control(cmd, pid, data)
       Log.warn("Unknown app control command: #{cmd}") unless handled
     end
+  end
+
+  # A power entry the user confirmed (the desktop's confirm dialog sends it
+  # here, as it sends "reboot"): done in the desktop's VM, which has
+  # FmrbApp.power (doc/linux_native L6).
+  def forward_power(pid, data)
+    action = data["action"].to_s
+    Log.info("Power #{action} requested by PID #{pid}; forwarding to desktop")
+    return nil unless @desktop_pid
+    fwd = { "cmd" => "do_power", "action" => action }
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(fwd))
+    nil
   end
 
   def main_loop

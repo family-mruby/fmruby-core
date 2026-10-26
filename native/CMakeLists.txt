@@ -109,6 +109,10 @@ set(NATIVE_BACKEND_SRCS
   ${N}/net/net_wrap.c
   # The user's /etc brought up to the distribution's (L3a)
   ${N}/etc/etc_update.c
+  # The OS services on Linux (L6): battery, network, mixer, power
+  ${N}/sys/platform_sys_linux.c
+  ${N}/sys/sys_linux_read.c
+  ${N}/sys/sys_linux_mixer.c
   # mruby-dir's HAL over the file HAL's resolver (the ESP32 targets' file;
   # the name-only gem hal-dir-fmrb dropped the flat posix one from libmruby)
   ${FMRB_ROOT}/lib/add/hal-esp32-dir/dir_hal.c
@@ -129,6 +133,7 @@ target_include_directories(core_objs PRIVATE
   ${N}/input
   ${N}/net
   ${N}/etc
+  ${N}/sys
   ${FMRB_ROOT}/hosted/gate)
 target_compile_definitions(core_objs PRIVATE
   FMRB_PLATFORM_NATIVE=1
@@ -157,7 +162,8 @@ if(NATIVE_HAVE_DRM)
   set_source_files_properties(${N}/output/output_drm.c PROPERTIES COMPILE_OPTIONS "${LIBDRM_CFLAGS}")
 endif()
 if(NATIVE_HAVE_ALSA)
-  set_source_files_properties(${N}/audio/audio_alsa.c PROPERTIES COMPILE_OPTIONS "${ALSA_CFLAGS}")
+  set_source_files_properties(${N}/audio/audio_alsa.c ${N}/sys/sys_linux_mixer.c
+    PROPERTIES COMPILE_OPTIONS "${ALSA_CFLAGS}")
 endif()
 
 set_source_files_properties(${N}/net/net_wrap.c PROPERTIES COMPILE_OPTIONS "${OPENSSL_CFLAGS}")
@@ -165,7 +171,7 @@ set_source_files_properties(${N}/net/net_wrap.c PROPERTIES COMPILE_OPTIONS "${OP
 add_executable(fmruby-native $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(fmruby-native PRIVATE
   freertos_hosted lgfx_hosted ${FMRB_HOSTED_LIBMRUBY}
-  PkgConfig::SDL2 PkgConfig::OPENSSL m pthread)
+  PkgConfig::SDL2 PkgConfig::OPENSSL m pthread ${CMAKE_DL_LIBS})
 # The calls that wait in the kernel, as the networking gems in libmruby make
 # them, go through native/net/net_wrap.c (__wrap_X; __real_X is the library's).
 # Only references from the objects linked here are redirected: SDL, ALSA and

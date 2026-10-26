@@ -78,7 +78,13 @@ class SystemDesktopApp < FmrbApp
   # and the localized label resolved via FmrbI18n.t(:key) at draw time, so the
   # menu picks up the system language ("ja" / "en") from system_conf.toml.
   # Network is Modern-only (ESP32-P4 has WiFi via the C6 coprocessor).
-  # Reset is ESP32-only (esp_restart); on Linux the host process just exits.
+  # The power entries come from the OS services (FmrbApp.power_actions,
+  # doc/linux_native L6): Reset on the devices (esp_restart), none in the
+  # simulation and the browser, and on the native program Exit, or Power off,
+  # Restart and Suspend, as its machine definition says.
+  POWER_KEYS = { reset: :reset, exit: :power_exit, power_off: :power_off,
+                 restart: :power_restart, suspend: :power_suspend }
+  POWER_ITEMS = FmrbApp.power_actions.map { |a| { key: POWER_KEYS[a], power: a } }
   DROPDOWN_ITEMS = [
     { key: :launcher },
     # The editor is a built-in, so it never appears in the launcher (that list is
@@ -116,7 +122,7 @@ class SystemDesktopApp < FmrbApp
     (FmrbConst::PLATFORM == "esp32" ? [{ key: :ble_setup }] : []) + [
     { key: :shortcuts },
     { key: :about },
-  ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
+  ] + POWER_ITEMS
 
   DROPDOWN_X = 0
   DROPDOWN_Y = MENU_BAR_HEIGHT
@@ -853,6 +859,7 @@ class SystemDesktopApp < FmrbApp
     draw_clock
     draw_wifi_icon
     draw_meminfo
+    draw_battery
     draw_ble_icon
     draw_kana_icon
     draw_sound_icon
@@ -976,6 +983,27 @@ class SystemDesktopApp < FmrbApp
     return if ON_WEB
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
+  end
+
+  # Battery, left of the free-RAM readout, only where the OS gives a value
+  # (FmrbApp.battery_level: the native program on a machine with a battery,
+  # L6). Elsewhere it is nil and nothing is drawn, so the bar is as before.
+  # A small battery outline filled to the charge, the percent beside it, and
+  # a "+" while charging. Allocation free but for the number's String.
+  BATTERY_W = 38
+
+  def draw_battery
+    level = FmrbApp.battery_level
+    return unless level
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 -
+        MEMINFO_W - 4 - BATTERY_W
+    @gfx.fill_rect(x, 1, BATTERY_W, 10, MENU_BG)
+    @gfx.draw_rect(x, 3, 9, 6, FmrbGfx::WHITE)
+    @gfx.fill_rect(x + 9, 5, 1, 2, FmrbGfx::WHITE)
+    fill = level * 7 / 100
+    @gfx.fill_rect(x + 1, 4, fill, 4, FmrbGfx::WHITE) if fill > 0
+    label = FmrbApp.battery_charging? ? "#{level}+" : "#{level}%"
+    @gfx.draw_text(x + 12, 2, label, FmrbGfx::WHITE, MENU_BG)
   end
 
   # BLE indicator, left of the free-RAM readout, drawn as a filled box so
@@ -1533,6 +1561,7 @@ class SystemDesktopApp < FmrbApp
         draw_clock
         draw_wifi_icon
         draw_meminfo
+        draw_battery
         draw_ble_icon
         draw_kana_icon
         draw_sound_icon
@@ -1663,6 +1692,10 @@ class SystemDesktopApp < FmrbApp
     elsif msg["cmd"] == "do_reboot"
       Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
       FmrbApp.reboot
+    elsif msg["cmd"] == "do_power"
+      action = msg["action"].to_s
+      Log.info("Desktop: do_power #{action}")
+      FmrbApp.power(action.to_sym) unless action.empty?
     elsif msg["cmd"] == "resize_preview_start" || msg["cmd"] == "resize_preview_update"
       was_active = @resize_preview_active
       @resize_preview_active = true
@@ -2103,6 +2136,10 @@ class SystemDesktopApp < FmrbApp
       toggle_ble_setup
     when :reset
       open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
+    when :power_exit, :power_off, :power_restart, :power_suspend
+      # Confirmed, then the kernel hands it back as do_power (forward_power).
+      open_confirm_dialog(FmrbI18n.t(:"#{item[:key]}_confirm"), "power",
+                          { "action" => item[:power].to_s })
     else
       spawn_app(item[:app]) if item[:app]
     end

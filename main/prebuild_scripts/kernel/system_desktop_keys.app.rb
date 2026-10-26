@@ -8,7 +8,7 @@
 #
 # The screen:
 #   - a thin bar along the top, always there: the app in front, the kana
-#     input mode, the clock (and the battery once there is a value, L6);
+#     input mode, the clock, and the battery where the OS gives a value (L6);
 #   - below it, the whole rest of the screen: the menu of apps, the File
 #     Manager, the file dialog, or the app in front. Apps always run full
 #     screen there (the kernel places them, see desktop_keys).
@@ -16,7 +16,9 @@
 # Keys: arrows and Enter in the menu; the switcher (kernel cycle_focus, the
 # key system_conf's keys_switcher_key names) lists the running apps, Enter
 # brings one to the front, Delete ends it, Esc goes back. Esc held for
-# keys_esc_long_ms closes the app in front (host_task). Held while this
+# keys_esc_long_ms closes the app in front (host_task). The menu ends with
+# the machine's power entries (FmrbApp.power_actions, L6): Exit alone on the
+# Cardputer, or Power off / Restart / Suspend, each asked once more first. Held while this
 # desktop has the keyboard, host_task asks it ("keys_esc_long"): the
 # switcher, the File Manager and the file dialog close back to the menu, and
 # on the menu itself it ends Family mruby (when the machine allows it).
@@ -34,12 +36,14 @@ FmrbI18n.add(
     keys_launch:       "Menu (start an app)",
     keys_switch_title: "Running apps",
     keys_switch_help:  "Enter:show  Del:quit  Esc:back",
+    keys_confirm_help: "Enter:yes  Esc:no",
   },
   "ja" => {
     keys_menu_title:   "アプリ",
     keys_launch:       "メニュー (アプリを起動)",
     keys_switch_title: "動いているアプリ",
     keys_switch_help:  "Enter:表示 Del:終了 Esc:戻る",
+    keys_confirm_help: "Enter:はい Esc:いいえ",
   }
 )
 
@@ -85,6 +89,7 @@ class KeysDesktopApp < FmrbApp
     @sw_sel = 0
     @starting_name = nil
     @starting_at = 0
+    @power_confirm = nil
 
     @file_selector_open = false
     @file_selector_mode = "open"
@@ -181,9 +186,23 @@ class KeysDesktopApp < FmrbApp
     end
     items << { label: FmrbI18n.t(:file_manager), app: "file_manager" }
     scan_declared_apps(items)
+    add_power_items(items)
     @menu_items = items
     @menu_sel = 0 if @menu_sel >= items.size
     @menu_top = 0
+  end
+
+  # The machine's power entries, last (FmrbApp.power_actions). Exit alone
+  # where ending the program is all there is (the Cardputer: back to
+  # APPLaunch).
+  POWER_LABELS = { exit: :power_exit, power_off: :power_off,
+                   restart: :power_restart, suspend: :power_suspend }
+
+  def add_power_items(items)
+    FmrbApp.power_actions.each do |a|
+      key = POWER_LABELS[a]
+      items << { label: FmrbI18n.t(key), power: a } if key
+    end
   end
 
   def keys_capable?(screens, needs_pointer)
@@ -344,6 +363,10 @@ class KeysDesktopApp < FmrbApp
   def menu_activate
     item = @menu_items[@menu_sel]
     return unless item
+    if item[:power]
+      power_chosen(item[:power])
+      return
+    end
     if item[:app] == "file_manager"
       open_file_manager
     else
@@ -352,6 +375,42 @@ class KeysDesktopApp < FmrbApp
     # The menu comes back at the top, where Enter opens the editor.
     @menu_sel = 0
     @menu_top = 0
+  end
+
+  # ---- Power ----
+  #
+  # Exit ends the program at once (as Esc held on the menu does); the
+  # computer's own power entries are asked once more on a line of their own.
+
+  def power_chosen(action)
+    if action == :exit
+      Log.info("keys desktop: Exit chosen")
+      FmrbApp.power(:exit)
+      return
+    end
+    @power_confirm = action
+    draw_foreground
+  end
+
+  def power_confirm_key(scancode)
+    action = @power_confirm
+    @power_confirm = nil
+    if scancode == FmrbConst::KEY_ENTER
+      Log.info("keys desktop: #{action} confirmed")
+      FmrbApp.power(action)
+    end
+    draw_foreground
+  end
+
+  def draw_power_confirm
+    key = POWER_LABELS[@power_confirm]
+    return unless key
+    y = @window_height - 30
+    w = @window_width - 16
+    @gfx.fill_rect(8, y, w, 26, PANEL_BG)
+    @gfx.draw_rect(8, y, w, 26, BORDER)
+    @gfx.draw_text(14, y + 3, FmrbI18n.t(:"#{key}_confirm"), TEXT, PANEL_BG, mixed: true)
+    @gfx.draw_text(14, y + 14, FmrbI18n.t(:keys_confirm_help), BORDER, PANEL_BG, mixed: true)
   end
 
   # ---- The switcher ----
@@ -500,14 +559,22 @@ class KeysDesktopApp < FmrbApp
     nil
   end
 
-  # The right end: kana cell, clock. The battery joins them once the OS
-  # service gives a value (L6); with none there is nothing to show.
+  # The right end: battery, kana cell, clock. The battery only where the OS
+  # gives a value (FmrbApp.battery_level, L6); with none nothing is drawn.
+  BATTERY_W = 24        # "100%" in the 6-pixel font
+
   def draw_bar_status
     cx = @window_width - CLOCK_W - 1
     @gfx.draw_wallclock(cx, 1, BAR_FG, BAR_BG)
     kx = cx - 4 - KANA_W
     @gfx.fill_rect(kx, 0, KANA_W, BAR_H, BAR_FG)
     @gfx.draw_text(kx + 1, 1, KANA_LABELS[@kana_mode] || "A", BAR_BG, BAR_FG, mixed: true)
+    level = FmrbApp.battery_level
+    return unless level
+    bx = kx - 4 - BATTERY_W
+    @gfx.fill_rect(bx, 0, BATTERY_W, BAR_H, BAR_BG)
+    label = FmrbApp.battery_charging? ? "#{level}+" : "#{level}%"
+    @gfx.draw_text(bx + BATTERY_W - label.length * 6, 1, label, BAR_FG, BAR_BG)
   end
 
   def draw_foreground
@@ -519,6 +586,7 @@ class KeysDesktopApp < FmrbApp
       draw_file_manager
     elsif menu_visible?
       draw_menu
+      draw_power_confirm if @power_confirm
     end
     draw_switcher if @switcher_open
     draw_starting if @starting_name
@@ -645,7 +713,10 @@ class KeysDesktopApp < FmrbApp
   # open closes back to the menu; on the menu, the program ends when the
   # machine allows it (+quit+, its exit_key).
   def esc_held(quit)
-    if @error_dlg_open
+    if @power_confirm
+      @power_confirm = nil
+      draw_foreground
+    elsif @error_dlg_open
       close_error_dialog
     elsif @switcher_open
       @switcher_open = false
@@ -706,6 +777,10 @@ class KeysDesktopApp < FmrbApp
       return
     end
     return unless menu_visible?
+    if @power_confirm
+      power_confirm_key(scancode)
+      return
+    end
     case scancode
     when FmrbConst::KEY_UP then menu_move(-1)
     when FmrbConst::KEY_DOWN then menu_move(1)

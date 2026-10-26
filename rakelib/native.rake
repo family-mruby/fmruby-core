@@ -143,10 +143,11 @@ namespace :native do
     toml = "components/toml_parser/tomlc99"
     # tomlc99 is a submodule with its own style; built apart, warnings off.
     sh "#{cc} -std=c11 -O1 -g -w -I #{toml} -c #{toml}/toml.c -o #{NATIVE_TEST_BUILD}/toml.o"
-    incs = %w[native/present native/input native/machine native/output native/etc main/drivers/usb].push(toml)
+    incs = %w[native/present native/input native/machine native/output native/etc native/sys main/kernel
+              main/drivers/usb components/fmrb_common/include].push(toml)
     srcs = %w[native/present/fmrb_present.c native/input/linux_keys.c native/input/keymap_cardputer_zero.c
               native/input/evdev_decode.c native/output/fbdev_info.c native/machine/native_machine.c
-              native/etc/etc_update.c
+              native/etc/etc_update.c native/sys/sys_linux_read.c
               main/drivers/usb/fmrb_keymap.c].push("#{NATIVE_TEST_DIR}/main.c")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{incs.map { |i| "-I #{i}" }.join(' ')} " \
        "#{srcs.join(' ')} #{NATIVE_TEST_BUILD}/toml.o -lm -o #{NATIVE_TEST_BUILD}/native_test"
@@ -389,6 +390,9 @@ namespace :native do
       rm -rf $work
     SH
     depends = File.read(File.join(dir, "shlibs.txt"))[/shlibs:Depends=(.*)$/, 1] or abort "native:deb: dpkg-shlibdeps gave no Depends"
+    # libsystemd0 is opened at run time (dlopen, native/sys/platform_sys_linux.c:
+    # logind's power entries), so dpkg-shlibdeps cannot see it.
+    depends = "#{depends.strip}, libsystemd0"
     size_kb = `du -sk --exclude=DEBIAN #{pkg}`.to_i
     mkdir_p File.join(pkg, "DEBIAN")
     File.write(File.join(pkg, "DEBIAN", "control"), <<~CONTROL)

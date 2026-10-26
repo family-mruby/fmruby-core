@@ -15,6 +15,7 @@
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
 #include "fmrb_rtc.h"
+#include "fmrb_platform_sys.h"
 #include "boot.h"
 #include "fmrb_transport.h"
 #include "host/host_task.h"
@@ -190,6 +191,18 @@ static void apply_audio_conf(const toml_table_t *conf)
     if (vol > FMRB_AUDIO_VOLUME_MAX) vol = FMRB_AUDIO_VOLUME_MAX;
     fmrb_audio_set_volume_step((uint8_t)vol);
     fmrb_audio_set_muted(fmrb_toml_get_bool(conf, "audio_mute", false));
+#if defined(FMRB_PLATFORM_NATIVE)
+    // The OS holds the volume and the mute (the ALSA mixer, L6): the internal
+    // stage stays at full and open, and system_conf's values are not used.
+    int os_step = 0;
+    bool os_muted = false;
+    if (fmrb_platform_sys_volume_get(&os_step, &os_muted, FMRB_AUDIO_VOLUME_MAX)) {
+        fmrb_audio_set_volume_step((uint8_t)FMRB_AUDIO_VOLUME_MAX);
+        fmrb_audio_set_muted(false);
+        FMRB_LOGI(TAG, "audio: the OS mixer holds the volume (%d/%d%s); internal at full",
+                  os_step, FMRB_AUDIO_VOLUME_MAX, os_muted ? ", muted" : "");
+    }
+#endif
 }
 
 fmrb_err_t fmrb_kernel_load_audio_conf(void)

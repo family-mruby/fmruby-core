@@ -26,5 +26,6 @@ backend = "sdl"
 variant = "keys"
 
 [system]
-services = "none"
+services = "linux"           # the OS services from Linux (L6): network, battery
 exit_key = "esc_long"        # Esc held on the desktop ends the program
+power = "exit"               # the desktop's power entries: end the program only

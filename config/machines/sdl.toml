@@ -24,5 +24,6 @@ backend = "sdl"
 variant = "mouse"
 
 [system]
-services = "none"
+services = "linux"           # the OS services from Linux (L6): network, battery
 exit_key = "none"
+power = "exit"               # the desktop's power entries: end the program only

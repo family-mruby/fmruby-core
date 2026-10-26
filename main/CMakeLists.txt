@@ -20,6 +20,10 @@ set(COMPONENT_SRCS
     # no-op off ESP32, and keeping it in one list means the kernel Ruby never
     # has to know which engine or platform it is running on.
     "kernel/fmrb_rtc.c"
+    # The OS services the desktop asks (network, battery, volume, power):
+    # the default table, what every target answered before L6
+    # (doc/linux_native). The native program installs a Linux one.
+    "kernel/fmrb_platform_sys.c"
     "kernel/host/host_task.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/usb/fmrb_kana.c"

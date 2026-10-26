@@ -28,6 +28,7 @@
 #include "fmrb_gfx.h"
 #include "fmrb_app_canvas.h"
 #include "fmrb_kernel.h"
+#include "fmrb_platform_sys.h"
 #include "fmrb_hal_time.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
@@ -46,27 +47,12 @@
 #include <stdlib.h>
 #endif
 
-#if defined(FMRB_HAS_WIFI)
-// WiFi STA: Modern (radio on the C6) and Narya S3 (native radio). ATOM has
-// no WiFi and FmrbApp.wifi_info returns nil there (see below).
-#include "wifi_task.h"
-#endif
-
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 // Microphone (doc/mic_spectrum). Modern only: the ES7210 is Tab5 hardware and
 // the driver is compiled for that target alone. Everywhere else FmrbMic still
 // answers -- available? is false and the rest are no-ops -- so an app can ask
 // without knowing which machine it is on.
 #include "audio_p4.h"
-#endif
-
-#if defined(CONFIG_IDF_TARGET_LINUX)
-// Linux dev build reports the host network state through FmrbApp.wifi_info
-// so the desktop status icon and network dialog work like on Modern.
-#include <ifaddrs.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
 #endif
 
 static const char* TAG = "app";
@@ -1321,24 +1307,89 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
-// FmrbApp.reboot -> never returns
-// Restarts the system. On ESP32 calls esp_restart() (returns no power-cycle
-// reset reason on next boot). On Linux exits the host process so the SDL
-// harness comes back via the launcher script. The dropdown only exposes the
-// menu entry on ESP32 (FmrbConst::PLATFORM == "esp32"), but the API itself is
-// safe to call on either platform.
+// FmrbApp.reboot -> never returns (on the native program: the program ends
+// shortly after)
+// Restarts the system. On ESP32 esp_restart() (no power-cycle reset reason
+// on next boot). In the simulation the host process exits so the SDL harness
+// comes back via the launcher script. The dropdown only exposes the menu
+// entry on ESP32 (FmrbConst::PLATFORM == "esp32"), but the API itself is
+// safe to call on any platform.
 static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
     FMRB_LOGI(TAG, "Reboot requested by user");
     fmrb_host_audio_flush_save();  // a mute / volume change still waiting to be saved
     fmrb_task_delay_ms(100);
-#ifdef CONFIG_IDF_TARGET_LINUX
-    exit(0);
-#else
-    esp_restart();
-#endif
-    return mrb_nil_value();  // unreachable
+    // The OS services' reset (fmrb_platform_sys.h): esp_restart on a device,
+    // the process ends in the simulation, the native program ends.
+    fmrb_platform_sys_power(FMRB_SYS_POWER_RESET);
+    return mrb_nil_value();
+}
+
+// FmrbApp.power_actions -> Array of Symbols: what the desktop's power menu
+// offers on this machine (fmrb_platform_sys.h). [:reset] on a device, [] in
+// the simulation and the browser, [:exit] or [:power_off, :restart,
+// :suspend] on the native program by its machine definition.
+static const struct {
+    uint32_t bit;
+    const char *name;
+} s_power_names[] = {
+    { FMRB_SYS_POWER_RESET, "reset" },
+    { FMRB_SYS_POWER_EXIT, "exit" },
+    { FMRB_SYS_POWER_OFF, "power_off" },
+    { FMRB_SYS_POWER_RESTART, "restart" },
+    { FMRB_SYS_POWER_SUSPEND, "suspend" },
+};
+#define POWER_NAMES_N (sizeof(s_power_names) / sizeof(s_power_names[0]))
+
+static mrb_value mrb_fmrb_app_s_power_actions(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    uint32_t bits = fmrb_platform_sys_power_actions();
+    mrb_value ary = mrb_ary_new(mrb);
+    for (size_t i = 0; i < POWER_NAMES_N; i++) {
+        if (bits & s_power_names[i].bit) {
+            mrb_ary_push(mrb, ary, mrb_symbol_value(mrb_intern_cstr(mrb, s_power_names[i].name)));
+        }
+    }
+    return ary;
+}
+
+// FmrbApp.power(action) -> false when it did not happen. action is one of
+// power_actions' symbols. :exit ends the program (it returns true and the
+// program stops shortly after); the others go to the OS.
+static mrb_value mrb_fmrb_app_s_power(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_sym sym;
+    mrb_get_args(mrb, "n", &sym);
+    const char *name = mrb_sym_name(mrb, sym);
+    for (size_t i = 0; i < POWER_NAMES_N; i++) {
+        if (strcmp(name, s_power_names[i].name) != 0) continue;
+        if (!(fmrb_platform_sys_power_actions() & s_power_names[i].bit)) break;
+        FMRB_LOGI(TAG, "power: %s requested", name);
+        fmrb_host_audio_flush_save();
+        return mrb_bool_value(fmrb_platform_sys_power((fmrb_sys_power_t)s_power_names[i].bit) == FMRB_OK);
+    }
+    FMRB_LOGW(TAG, "power: %s is not offered here", name);
+    return mrb_false_value();
+}
+
+// FmrbApp.battery_level -> Integer 0-100, or nil without a battery value.
+// FmrbApp.battery_charging? -> bool. Allocation free, for the 1 Hz status.
+static mrb_value mrb_fmrb_app_s_battery_level(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_sys_battery_t b;
+    if (!fmrb_platform_sys_battery(&b)) return mrb_nil_value();
+    return mrb_fixnum_value(b.percent);
+}
+
+static mrb_value mrb_fmrb_app_s_battery_charging_p(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_sys_battery_t b;
+    return mrb_bool_value(fmrb_platform_sys_battery(&b) && b.charging);
 }
 
 // FmrbApp.ble_start -> true/false
@@ -1501,94 +1552,34 @@ static mrb_value mrb_fmrb_app_s_rd_stream_state(mrb_state *mrb, mrb_value klass)
 static mrb_value mrb_fmrb_app_s_wifi_connected_p(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
-#if defined(FMRB_HAS_WIFI)
-    return mrb_bool_value(wifi_is_connected());
-#elif defined(CONFIG_IDF_TARGET_LINUX)
-    bool connected = false;
-    struct ifaddrs *ifaddr = NULL;
-    if (getifaddrs(&ifaddr) == 0) {
-        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
-            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
-                continue;
-            }
-            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
-            if ((ntohl(sin->sin_addr.s_addr) >> 24) == 127) {
-                continue;  // skip loopback
-            }
-            connected = true;
-            break;
-        }
-        freeifaddrs(ifaddr);
-    }
-    return mrb_bool_value(connected);
-#else
-    return mrb_false_value();
-#endif
+    return mrb_bool_value(fmrb_platform_sys_net_connected());
 }
 
-// FmrbApp.wifi_info() -> Hash {connected:, ip:, ssid:, hostname:} or nil.
-// Modern (ESP32-P4): the WiFi STA runs locally on the P4 (radio on the C6
-// coprocessor). Linux dev build: reports the host network state (first
-// non-loopback IPv4) so the desktop icon/dialog behave like on Modern.
-// Retro: no WiFi, returns nil and the desktop hides the icon.
+// FmrbApp.wifi_info() -> Hash {connected:, ip:, ssid:, hostname:[, signal:]}
+// or nil, from the OS services (fmrb_platform_sys.h): the WiFi STA on the
+// boards that have one, the host network on the Linux builds, the OS's link
+// on the native program (with the signal 0-100 when it is wireless). nil
+// where there is no network, and the desktop greys the icon.
 static mrb_value mrb_fmrb_app_s_wifi_info(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
-#if defined(FMRB_HAS_WIFI)
-    char ip[16];
-    char ssid[33];
-    char host[32];
-    wifi_get_ip_str(ip, sizeof(ip));
-    wifi_get_ssid(ssid, sizeof(ssid));
-    wifi_get_hostname(host, sizeof(host));
-
-    mrb_value hash = mrb_hash_new_capa(mrb, 4);
+    fmrb_sys_net_t n;
+    if (!fmrb_platform_sys_net_info(&n)) return mrb_nil_value();
+    mrb_value hash = mrb_hash_new_capa(mrb, 5);
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "connected")),
-                 mrb_bool_value(wifi_is_connected()));
+                 mrb_bool_value(n.connected));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ip")),
-                 mrb_str_new_cstr(mrb, ip));
+                 mrb_str_new_cstr(mrb, n.ip));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ssid")),
-                 mrb_str_new_cstr(mrb, ssid));
+                 mrb_str_new_cstr(mrb, n.ssid));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hostname")),
-                 mrb_str_new_cstr(mrb, host));
-    return hash;
-#elif defined(CONFIG_IDF_TARGET_LINUX)
-    char ip[16] = "127.0.0.1";
-    bool connected = false;
-    struct ifaddrs *ifaddr = NULL;
-    if (getifaddrs(&ifaddr) == 0) {
-        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
-            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
-                continue;
-            }
-            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
-            uint32_t a = ntohl(sin->sin_addr.s_addr);
-            if ((a >> 24) == 127) {
-                continue;  // skip loopback
-            }
-            inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
-            connected = true;
-            break;
-        }
-        freeifaddrs(ifaddr);
+                 mrb_str_new_cstr(mrb, n.hostname));
+    // Only where the OS tells it (the native program on a wireless link).
+    if (n.signal >= 0) {
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "signal")),
+                     mrb_fixnum_value(n.signal));
     }
-
-    mrb_value hash = mrb_hash_new_capa(mrb, 4);
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "connected")),
-                 mrb_bool_value(connected));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ip")),
-                 mrb_str_new_cstr(mrb, ip));
-    // No SSID/mDNS hostname on the Linux dev build; the dialog shows "-"
-    // for the AP row and hides the hostname row.
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ssid")),
-                 mrb_str_new_cstr(mrb, ""));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hostname")),
-                 mrb_str_new_cstr(mrb, ""));
     return hash;
-#else
-    (void)mrb;
-    return mrb_nil_value();
-#endif
 }
 
 // FmrbApp._clear_cache(path) -> Hash {ok:, deleted:, status:}
@@ -1870,6 +1861,10 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "power_actions", mrb_fmrb_app_s_power_actions, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));

@@ -84,6 +84,7 @@
 #include "fmrb_hal_file_layout.h"
 #include "native_backends.h"
 #include "native_config.h"
+#include "sys_linux.h"
 #include "native_ctl.h"
 #include "native_frame.h"
 #include "native_input.h"
@@ -481,10 +482,6 @@ int main(int argc, char **argv)
     if (native_machine_check(m, why, sizeof(why)) != 0) return refuse("definition", why);
     native_backends_t be;
     if (!native_backends_select(m, &be, why, sizeof(why))) return refuse("backend", why);
-    if (strcmp(m->system.services, "none") != 0) {
-        fprintf(stderr, "native: system.services=%s: not implemented yet (L6), ignored\n",
-                m->system.services);
-    }
     /* The screen and the desktop the kernel will use (fmrb_kernel.h). */
     fmrb_kernel_set_native_machine((uint16_t)m->screen.w, (uint16_t)m->screen.h,
                                    strcmp(m->desktop.variant, "keys") == 0,
@@ -539,6 +536,20 @@ int main(int argc, char **argv)
         return refuse("input", why);
     }
     if (be.output != &native_output_sdl) install_quit_signals();
+
+    /* The OS services (L6): the Linux table when the machine says so, with
+     * the ALSA mixer behind the volume when the sound goes out through ALSA.
+     * No mixer (the SDL output, WSL2) leaves the internal volume in charge. */
+    if (strcmp(m->system.services, "linux") == 0) {
+        if (strcmp(m->audio.backend, "alsa") == 0) {
+            if (sys_linux_mixer_open(m->audio.device, m->audio.mixer, why, sizeof(why))) {
+                fprintf(stderr, "native: volume: the mixer %s\n", sys_linux_mixer_name());
+            } else {
+                fprintf(stderr, "native: volume: the internal volume (%s)\n", why);
+            }
+        }
+        sys_linux_install();
+    }
 
     snprintf(sock, sizeof(sock), "%s/ctl", c->run_dir);
     if (!native_ctl_open(sock)) {

@@ -18,6 +18,10 @@
 //             brought up to a newer distribution's (seed) must come out
 //             byte for byte as test/native/etc/expected, and a second run
 //             must change nothing
+//   sys       native/sys/sys_linux_read.c (L6): the battery and the network
+//             link from a made-up sysfs and procfs written under /tmp
+//             (battery none / there / charging / full, wired and wireless,
+//             connected or not), the mixer steps and logind's methods
 //
 // Usage: native_test <fmruby-core dir>
 
@@ -38,6 +42,8 @@
 #include "keymap_extra.h"
 #include "linux_keys.h"
 #include "native_machine.h"
+#include "sys_linux_read.h"
+#include "fmrb_platform_sys.h"
 
 static int g_fail = 0;
 static int g_count = 0;
@@ -533,11 +539,29 @@ static void test_machine(void)
           strcmp(m.input.keymap, "cardputer_zero") == 0 && strcmp(m.audio.device, "default") == 0, "hdmi fields");
     CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "hdmi check: %s", err);
 
+    // The power entries by the form (L6): the Cardputer's two end the
+    // program, the PC asks logind, the development windows end the program.
+    CHECK(strcmp(m.system.power, "exit") == 0 && strcmp(m.system.services, "linux") == 0 &&
+          strcmp(m.audio.mixer, "auto") == 0 && !m.system.power_log_only, "hdmi power exit, mixer auto");
+    CHECK(load(&def, "sdl_keys", err, sizeof(err)) == 0 && strcmp(def.system.power, "exit") == 0 &&
+          strcmp(def.system.services, "linux") == 0, "sdl_keys power exit, services linux");
+    CHECK(load(&def, "cardputer_zero", err, sizeof(err)) == 0 && strcmp(def.system.power, "exit") == 0,
+          "cardputer_zero power exit");
     CHECK(load(&m, "linux_pc_drm", err, sizeof(err)) == 0, "linux_pc_drm: %s", err);
+    CHECK(strcmp(m.system.power, "logind") == 0, "linux_pc_drm power logind");
     CHECK(strcmp(m.display.mode, "auto") == 0 && m.input.keymap[0] == '\0' &&
           m.input.n_devices == 1 && strcmp(m.input.devices[0], "auto") == 0, "linux_pc_drm fields");
 
     // --set and its refusals.
+    native_machine_defaults(&m);
+    CHECK(native_machine_set(&m, "system.power", "logind", err, sizeof(err)) == 0 &&
+          native_machine_set(&m, "system.power_log_only", "true", err, sizeof(err)) == 0 &&
+          strcmp(m.system.power, "logind") == 0 && m.system.power_log_only, "--set power logind, log only");
+    CHECK(native_machine_set(&m, "system.power", "halt", err, sizeof(err)) != 0, "power halt refused");
+    CHECK(native_machine_set(&m, "system.power_log_only", "yes", err, sizeof(err)) != 0, "power_log_only yes refused");
+    CHECK(native_machine_set(&m, "audio.mixer", "Speaker", err, sizeof(err)) == 0 &&
+          strcmp(m.audio.mixer, "Speaker") == 0, "--set mixer");
+    CHECK(native_machine_set(&m, "audio.mixer", "", err, sizeof(err)) != 0, "empty mixer refused");
     native_machine_defaults(&m);
     CHECK(native_machine_set(&m, "display.rotate", "270", err, sizeof(err)) == 0 && m.display.rotate == 270, "rotate");
     CHECK(native_machine_set(&m, "display.rotate", "45", err, sizeof(err)) != 0, "rotate 45 refused");
@@ -673,6 +697,151 @@ static void test_etc(void)
     CHECK(system(cmd) == 0, "clean up");
 }
 
+// ---- sys: the battery and the network link from a made-up sysfs / procfs (L6)
+
+static char g_tree[256];
+
+static void put_file(const char *rel, const char *text)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", g_tree, rel);
+    for (char *p = path + strlen(g_tree) + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(path, 0755);
+            *p = '/';
+        }
+    }
+    FILE *f = fopen(path, "w");
+    CHECK(f != NULL, "cannot write %s", path);
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static void put_dir(const char *rel)
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s/.keep", g_tree, rel);
+    put_file(path + strlen(g_tree) + 1, "");
+}
+
+static void new_tree(void)
+{
+    if (g_tree[0]) {
+        char cmd[300];
+        snprintf(cmd, sizeof(cmd), "rm -rf '%s'", g_tree);
+        if (system(cmd) != 0) printf("cannot remove %s\n", g_tree);
+    }
+    snprintf(g_tree, sizeof(g_tree), "/tmp/fmrb-native-sys-XXXXXX");
+    CHECK(mkdtemp(g_tree) != NULL, "mkdtemp");
+    put_dir("sys/class/power_supply");
+    put_dir("sys/class/net");
+    put_file("proc/net/route", "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\n");
+    put_file("proc/net/wireless",
+             "Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE\n"
+             " face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22\n");
+}
+
+static void test_sys(void)
+{
+    char sys[300], proc[300];
+    sys_linux_battery_t b;
+    sys_linux_link_t l;
+
+    // Battery: none (a mains supply only), there, charging, full, from charge_*.
+    new_tree();
+    snprintf(sys, sizeof(sys), "%s/sys", g_tree);
+    snprintf(proc, sizeof(proc), "%s/proc", g_tree);
+    CHECK(!sys_linux_battery_read(sys, &b), "no power_supply: no battery");
+    put_file("sys/class/power_supply/AC/type", "Mains\n");
+    put_file("sys/class/power_supply/AC/online", "1\n");
+    CHECK(!sys_linux_battery_read(sys, &b), "mains only: no battery");
+    put_file("sys/class/power_supply/BAT0/type", "Battery\n");
+    put_file("sys/class/power_supply/BAT0/present", "1\n");
+    put_file("sys/class/power_supply/BAT0/capacity", "87\n");
+    put_file("sys/class/power_supply/BAT0/status", "Discharging\n");
+    CHECK(sys_linux_battery_read(sys, &b) && b.percent == 87 && !b.charging && strcmp(b.name, "BAT0") == 0,
+          "BAT0 87%% discharging: %d %d %s", b.percent, b.charging, b.name);
+    put_file("sys/class/power_supply/BAT0/status", "Charging\n");
+    CHECK(sys_linux_battery_read(sys, &b) && b.percent == 87 && b.charging, "BAT0 charging");
+    put_file("sys/class/power_supply/BAT0/status", "Full\n");
+    put_file("sys/class/power_supply/BAT0/capacity", "104\n");
+    CHECK(sys_linux_battery_read(sys, &b) && b.percent == 100 && !b.charging, "full, clamped to 100");
+    put_file("sys/class/power_supply/BAT0/present", "0\n");
+    CHECK(!sys_linux_battery_read(sys, &b), "a battery not present is none");
+    put_file("sys/class/power_supply/BAT1/type", "Battery\n");
+    put_file("sys/class/power_supply/BAT1/charge_now", "1500000\n");
+    put_file("sys/class/power_supply/BAT1/charge_full", "2000000\n");
+    put_file("sys/class/power_supply/BAT1/status", "Charging\n");
+    CHECK(sys_linux_battery_read(sys, &b) && b.percent == 75 && b.charging && strcmp(b.name, "BAT1") == 0,
+          "BAT1 from charge_now/charge_full: %d", b.percent);
+
+    // Network: no interface, loopback only, wired with the default route,
+    // wireless connected with its signal, wireless not connected.
+    new_tree();
+    snprintf(sys, sizeof(sys), "%s/sys", g_tree);
+    snprintf(proc, sizeof(proc), "%s/proc", g_tree);
+    CHECK(!sys_linux_link_read(sys, proc, &l), "no interface");
+    put_file("sys/class/net/lo/type", "772\n");
+    put_file("sys/class/net/lo/operstate", "unknown\n");
+    CHECK(!sys_linux_link_read(sys, proc, &l), "loopback only is no interface");
+    put_file("sys/class/net/eth0/type", "1\n");
+    put_file("sys/class/net/eth0/operstate", "down\n");
+    CHECK(sys_linux_link_read(sys, proc, &l) && !l.connected && !l.wireless && strcmp(l.iface, "eth0") == 0 &&
+          l.signal == -1, "wired, no route: not connected");
+    put_file("sys/class/net/eth0/operstate", "up\n");
+    CHECK(sys_linux_link_read(sys, proc, &l) && !l.connected, "wired up but no default route: not connected");
+    put_file("proc/net/route",
+             "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\n"
+             "eth0\t0002A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\n"
+             "eth0\t00000000\t0102A8C0\t0003\t0\t0\t100\t00000000\n");
+    CHECK(sys_linux_link_read(sys, proc, &l) && l.connected && !l.wireless && strcmp(l.iface, "eth0") == 0 &&
+          l.signal == -1, "wired with the default route: connected");
+    put_file("sys/class/net/wlan0/type", "1\n");
+    put_file("sys/class/net/wlan0/operstate", "up\n");
+    put_dir("sys/class/net/wlan0/wireless");
+    put_file("proc/net/wireless",
+             "Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE\n"
+             " face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22\n"
+             " wlan0: 0000   49.  -61.  -256        0      0      0      0     12        0\n");
+    put_file("proc/net/route",
+             "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\n"
+             "wlan0\t00000000\t0102A8C0\t0003\t0\t0\t600\t00000000\n");
+    CHECK(sys_linux_link_read(sys, proc, &l) && l.connected && l.wireless && strcmp(l.iface, "wlan0") == 0 &&
+          l.signal == 70, "wireless with the route: connected, signal 49/70 -> %d", l.signal);
+    put_file("sys/class/net/wlan0/operstate", "dormant\n");
+    CHECK(sys_linux_link_read(sys, proc, &l) && !l.connected && l.wireless && strcmp(l.iface, "wlan0") == 0 &&
+          l.signal == -1, "wireless not associated (dormant): not connected");
+    put_file("proc/net/route", "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\n");
+    put_file("sys/class/net/wlan0/operstate", "down\n");
+    CHECK(sys_linux_link_read(sys, proc, &l) && !l.connected && strcmp(l.iface, "wlan0") == 0,
+          "no route: the wireless interface is the one shown");
+    CHECK(sys_linux_wireless_signal(proc, "wlan1") == -1, "no line for wlan1");
+
+    // The mixer's steps and logind's methods.
+    CHECK(sys_linux_mixer_to_step(0, 0, 255, 10) == 0 && sys_linux_mixer_to_step(255, 0, 255, 10) == 10 &&
+          sys_linux_mixer_to_step(128, 0, 255, 10) == 5 && sys_linux_mixer_to_step(-5, 0, 255, 10) == 0,
+          "mixer -> step");
+    CHECK(sys_linux_step_to_mixer(0, -10239, 400, 10) == -10239 && sys_linux_step_to_mixer(10, -10239, 400, 10) == 400 &&
+          sys_linux_mixer_to_step(sys_linux_step_to_mixer(7, 0, 127, 10), 0, 127, 10) == 7, "step -> mixer, round trip");
+    int round_trip_ok = 1;
+    for (int st = 0; st <= 10; st++) {
+        if (sys_linux_mixer_to_step(sys_linux_step_to_mixer(st, 0, 63, 10), 0, 63, 10) != st) round_trip_ok = 0;
+    }
+    CHECK(round_trip_ok, "every step survives a 0..63 mixer");
+    CHECK(strcmp(sys_linux_logind_method(FMRB_SYS_POWER_OFF), "PowerOff") == 0 &&
+          strcmp(sys_linux_logind_method(FMRB_SYS_POWER_RESTART), "Reboot") == 0 &&
+          strcmp(sys_linux_logind_method(FMRB_SYS_POWER_SUSPEND), "Suspend") == 0 &&
+          sys_linux_logind_method(FMRB_SYS_POWER_EXIT) == NULL &&
+          sys_linux_logind_method(FMRB_SYS_POWER_RESET) == NULL, "logind methods");
+
+    char cmd[300];
+    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", g_tree);
+    if (system(cmd) != 0) printf("cannot remove %s\n", g_tree);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) g_core = argv[1];
@@ -683,10 +852,11 @@ int main(int argc, char **argv)
     test_fbdev();
     test_machine();
     test_etc();
+    test_sys();
     if (g_fail) {
         printf("native: %d of %d checks failed\n", g_fail, g_count);
         return 1;
     }
-    printf("native: %d checks passed (present, keys, evdev, cardputer, fbdev, machine, etc)\n", g_count);
+    printf("native: %d checks passed (present, keys, evdev, cardputer, fbdev, machine, etc, sys)\n", g_count);
     return 0;
 }

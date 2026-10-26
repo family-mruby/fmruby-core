@@ -28,11 +28,22 @@
  *   [audio]    backend        sdl | alsa | none
  *              device         alsa: the PCM name ("default")
  *              latency_ms     alsa: the device buffer (100)
+ *              mixer          alsa: the mixer element the desktop's volume
+ *                             moves: "auto" (Master, PCM, Speaker, ...),
+ *                             "none" (the internal volume) or a name (L6)
  *   [desktop]  variant        mouse (the Modern desktop) | keys (the
  *                             keyboard-only desktop, system_desktop_keys)
- *   [system]   services       none | linux (L6; accepted, not implemented)
+ *   [system]   services       none | linux: the OS services the desktop
+ *                             shows and uses (L6, native/sys/); none keeps
+ *                             the simulation's answers
  *              exit_key       none | esc_long: with the keys desktop, Esc
  *                             held on the desktop ends the program
+ *              power          exit | logind: the desktop's power entries,
+ *                             ending the program only (the Cardputer), or
+ *                             power off / restart / suspend through logind
+ *              power_log_only true: log the logind request instead of
+ *                             sending it (every test; never power off a
+ *                             development machine)
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this
@@ -80,6 +91,7 @@ typedef struct {
         char backend[16];
         char device[128];
         int latency_ms;
+        char mixer[64];
     } audio;
 
     struct {
@@ -89,6 +101,8 @@ typedef struct {
     struct {
         char services[16];
         char exit_key[16];
+        char power[16];
+        bool power_log_only;
     } system;
 } native_machine_t;
 

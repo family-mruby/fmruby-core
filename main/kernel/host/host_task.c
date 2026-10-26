@@ -9,6 +9,7 @@
 #include "fmrb_msg.h"
 #include "fmrb_hid_msg.h"
 #include "host_task.h"
+#include "fmrb_platform_sys.h"
 #include "fmrb_gfx.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_audio.h"
@@ -1605,8 +1606,16 @@ static int host_audio_clamp_step(int step)
     return step;
 }
 
+// With the OS holding the volume (fmrb_platform_sys: the native program's
+// ALSA mixer, L6) the four calls below move the OS's own value and the
+// internal stage stays at full; nothing is saved to system_conf, the OS keeps
+// it. Everywhere else there is no OS volume and they work as before.
 void fmrb_host_set_audio_mute(bool on)
 {
+    if (fmrb_platform_sys_mute_set(on)) {
+        FMRB_LOGI(TAG, "audio mute=%s (the OS mixer)", on ? "on" : "off");
+        return;
+    }
     fmrb_audio_set_muted(on);
     host_audio_send_output();
     FMRB_LOGI(TAG, "audio mute=%s", on ? "on" : "off");
@@ -1617,6 +1626,10 @@ void fmrb_host_set_audio_mute(bool on)
 void fmrb_host_set_audio_volume(int step)
 {
     step = host_audio_clamp_step(step);
+    if (fmrb_platform_sys_volume_set(step, FMRB_AUDIO_VOLUME_MAX)) {
+        FMRB_LOGI(TAG, "audio volume=%d (the OS mixer)", step);
+        return;
+    }
     fmrb_audio_set_volume_step((uint8_t)step);
     host_audio_send_output();
     FMRB_LOGI(TAG, "audio volume=%d", step);
@@ -1627,6 +1640,10 @@ void fmrb_host_set_audio_volume(int step)
 void fmrb_host_preview_audio_volume(int step)
 {
     step = host_audio_clamp_step(step);
+    if (fmrb_platform_sys_volume_set(step, FMRB_AUDIO_VOLUME_MAX)) {
+        FMRB_LOGI(TAG, "audio volume=%d (preview, the OS mixer)", step);
+        return;
+    }
     fmrb_audio_set_volume_step((uint8_t)step);
     host_audio_send_output();
     FMRB_LOGI(TAG, "audio volume=%d (preview)", step);
@@ -1646,11 +1663,15 @@ void fmrb_host_audio_conf_written(void)
 
 int fmrb_host_audio_volume(void)
 {
+    int step = 0;
+    if (fmrb_platform_sys_volume_get(&step, NULL, FMRB_AUDIO_VOLUME_MAX)) return step;
     return fmrb_audio_volume_step();
 }
 
 bool fmrb_host_audio_muted(void)
 {
+    bool muted = false;
+    if (fmrb_platform_sys_volume_get(NULL, &muted, FMRB_AUDIO_VOLUME_MAX)) return muted;
     return fmrb_audio_is_muted();
 }
 
