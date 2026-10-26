@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-26 | L1・L2 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-26 | L1・L2・L2n 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh)。次は L3a (aarch64 のビルドと .deb、WSL2 の arm64 コンテナで確認)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -77,6 +77,14 @@
   `FMRB_PLATFORM_NATIVE` (それぞれ固有)。sim と端末はどれも定義しない。
 - 入力の受け口: hosted の両方は関数の表 (`input_source.h`) に載せた。端末の
   USB と sim は今の形のまま。
+- 待つ呼び出しの受け口 (L2n): `hosted/gate/` の補助スレッドに、待つシステム
+  コールを任せ、呼んだタスクは FreeRTOS のセマフォで眠る。native は
+  `-Wl,--wrap=` でソケット・名前解決・OpenSSL の呼び出しを `native/net/net_wrap.c`
+  に向ける (gem・submodule は変えない)。協調 port には poll と delete の口を
+  足した (設定しなければ何もしない。ブラウザ版は設定しない)。L10 の pty にも使う。
+- サービス: `config/services_native.toml` (timesync は無効。Linux の時計を使う)。
+  Zenoh のルータは `system_conf_native.toml` の `zenoh_router`
+  (開発中は `tcp/127.0.0.1:7447`、docker の zenohd)。
 - 確認の道具: ルートの `tools/fmrb_native.rb` (`up|down|shot|input|app`)。
   debugd は TCP 5565、注入のソケットは sim と別の場所。
 
@@ -355,7 +363,8 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 | L1 | **土台**: 共通ソース一覧の切り出し、協調 port の native 版、x86_64 で SDL の受け口 (画面・入力・音) で起動、ファイルの置き場所の振り分け (開発中の形)、ヘッドレスで確認する口 (画面の取得・入力の注入・アプリの起動)。今のデスクトップと既存アプリが動く | 全部 |
 | L2 | **受け口と機種の定義**: 機種の定義の読み込み、fbdev・DRM・evdev・ALSA の実装、拡大・黒帯・回転の共通部品、Linux のキーコードの表。native を MCP の道具と回帰の道具に載せる | 全部 |
 | L2n | **ネットワーク**: native にソケット系の gem と Zenoh を入れる。協調 port では待ち続けるソケットが全体を止めるので、待たずに確かめる (poll する) 形にする。サービス (net・timesync) の扱い (L1 で見つかった残件) | 全部 |
-| L3 | **(2) の形**: aarch64 のクロスビルド、DRM で HDMI に Modern、USB のマウス・キーボード、`.deb` と APPLaunch への登録、終了の決まり | (2) |
+| L3a | **aarch64 と .deb (WSL2)**: Debian trixie のコンテナで aarch64 と x86_64 をビルドし、`.deb` を作る (Cardputer は APPLaunch の置き方、PC は普通の置き方)。arm64 のコンテナ (qemu) で入れて起動を確認。`/etc` の更新の規則 (無い項目だけ足す) | (1)(2)(3) |
+| L3b | **(2) の形を実機で**: Cardputer Zero (または Pi Zero 2 W) で DRM で HDMI に Modern、USB のマウス・キーボード、APPLaunch からの起動と終了の決まり、L2 の実機の確認の一覧 | (2) |
 | L4 | **キーボード専用のデスクトップ**: デスクトップの共通部分の切り出し、keys のデスクトップ、320x170 の画面の形、全画面アプリの一覧と巡回、`.app.toml` の宣言 | (1) |
 | L5 | **(1) の形**: fbdev で本体の LCD、本体のキーボードの表、対応アプリの最初の組、App Store の準備 (アイコン・画面写真) | (1) |
 | L6 | **OS のサービス**: `fmrb_platform_sys` と linux 実装、デスクトップの表示と電源の操作をつなぎ替える | 全部 |
