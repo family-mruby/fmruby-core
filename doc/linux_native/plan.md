@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-26 | L1・L2・L2n 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh)。次は L3a (aarch64 のビルドと .deb、WSL2 の arm64 コンテナで確認)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-26 | L1・L2・L2n・L3a 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh)。arm64・amd64 の .deb を arm64 のコンテナで確認済。次は L4 (キーボード専用のデスクトップ)、実機が来たら L3b。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -85,6 +85,16 @@
 - サービス: `config/services_native.toml` (timesync は無効。Linux の時計を使う)。
   Zenoh のルータは `system_conf_native.toml` の `zenoh_router`
   (開発中は `tcp/127.0.0.1:7447`、docker の zenohd)。
+- パッケージ (L3a): `native/docker/` の Debian trixie のイメージ (日付で固定) で
+  arm64 をクロスビルド、amd64 もビルドし、`rake native:deb ARCH=arm64|amd64`
+  で `.deb` を作る。配布物の木は git で追跡している `flash/` だけから作り、
+  `rake native:scan` で追跡外と認証情報が無いことを確かめる。パッケージ版は
+  自分の実行ファイルの場所から配布物の木を見つけ、利用者の場所は
+  `$XDG_*/family-mruby` (開発用は `family-mruby-dev`)。arm64 は APPLaunch の置き方で、
+  入口は機種ごとの小さな起動用の実行ファイル (今は HDMI 用の 1 つ)。
+- `/etc` の更新の規則 (L3a、native だけ): 起動のたびに、利用者の `/etc` に無い
+  キー・サービスの節・ファイルだけを配布物から足す。利用者の値は変えない。
+  利用者が消したキーは次の起動で足し直される。
 - 確認の道具: ルートの `tools/fmrb_native.rb` (`up|down|shot|input|app`)。
   debugd は TCP 5565、注入のソケットは sim と別の場所。
 
@@ -176,6 +186,15 @@ exit_key = "esc_long"     # L2 では読むだけ (未実装)
   keys の最小限の帯)、アプリを選ぶ画面 (mouse はランチャーの窓、keys は
   全画面のメニュー)、窓の扱いの方針 (mouse は窓、keys は常に全画面)。
 - keys では、アプリは常に全画面で起動する。マウスは使わない (使えても前提にしない)。
+- 画面の形 (2026-10-26 ユーザ決定): **上端に細い帯 (約 10px) を常に出し**、
+  今のアプリの名前・かなの状態・時計・電池を表示する。残りの 320x160 を
+  アプリの全画面に使う。アプリを選ぶメニューも帯の下に全画面で出す。
+- アプリの切り替え (2026-10-26 ユーザ決定): 決まったキーで**切り替えの一覧**を
+  開き、動いているアプリと「アプリを起動」を並べ、矢印と Enter で選ぶ。
+  終了もここからできる。キーの組は設定で変えられるようにし、Cardputer の
+  キーボードで押せる組を実機で決める (L5)。
+- 最初に対応させるアプリ (2026-10-26 ユーザ決定): **エディタ・Shell・
+  File Manager**。
 
 ### 全画面アプリの切り替え
 
@@ -183,7 +202,7 @@ exit_key = "esc_long"     # L2 では読むだけ (未実装)
   Ctrl+Tab)。これを**全画面のアプリの一覧**に広げ、キーで巡回する。
   keys のデスクトップではこれが通常の操作になる。mouse でも使える
   (Modern の全画面エディタ 2 つの行き来など)。
-- 巡回のキーは、Cardputer のキーボードで押せる組にする (L4 で決める)。
+- 一覧を開くキーは設定で変えられるようにし、Cardputer のキーボードで押せる組を実機で決める (L5)。
 
 ### アプリの宣言
 
@@ -418,9 +437,7 @@ Shell から Linux のコマンド (全部の形):
 - APPLaunch から起動したとき、アプリが画面 (LCD の fb) と入力を
   独占できるか。ランチャーが更新を止めるだけで、evdev を開いたままに
   していないか (L0)。
-- 全画面アプリを巡回するキーの組 (Cardputer のキーボードで押せるもの、L4)。
-- keys のデスクトップの見た目 (帯の有無、メニューの形、L4。ユーザが決める)。
-- 320x170 に最初に対応させるアプリの組 (L5。ユーザが決める)。
+- 切り替えの一覧を開くキーの組 (Cardputer のキーボードで押せるもの、実機で決める、L5)。
 - App Store の審査の基準 (ライセンス、パッケージの大きさ、root で動くこと)。
 - (3) の Linux の配布 (GPD に入れる OS) と、wlroots の版。
 - Linux のプログラムの起動・Linux のコマンドの実行を、どの Family mruby の
@@ -433,5 +450,7 @@ Shell から Linux のコマンド (全部の形):
   追加の表は `keymap_device` の装置だけに当てている。
 - fbdev・DRM で動くときのテキストのコンソール (VT) との関係、キーボードの
   独占 (EVIOCGRAB)、起動後の抜き差し、タッチパッド (EV_ABS) の扱い (L3・L7)。
+- パッケージ版の debugd (TCP 5565、認証なし) の扱い、配布する system_conf の値
+  (今は開発用の debug_mode などのまま)。L3b でネットワークにつなぐ前に決める。
 - コンポジタの合成で、外の窓をどの前後関係まで Family mruby の窓と混ぜられるか
   (Family mruby の窓が外の窓の上に重なる場合の扱い、L9)。
