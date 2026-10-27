@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L10 (Shell から Linux のコマンド)。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済。次は L7c (削除の確認)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L10 (Shell から Linux のコマンド)。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。次は L7c (削除の確認)。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
