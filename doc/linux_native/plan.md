@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9b (Linux のアプリの起動の口、Xwayland、ログイン画面の入口の切り替え、実装中)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 での確認はユーザ (手順は report/l9b.md の 7 章)。次は L11 (Linux のファイルを Linux のアプリで開く)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -324,7 +324,8 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
 - L9 は L9a (窓の組み込み) と L9b (Linux のアプリの起動の口、Xwayland、
   ログイン画面の入口の切り替え) に分ける。
 - 決定 (2026-10-27 ユーザ、L9b): Linux のアプリはランチャーの「Linux」の
-  区分にまとめて並べる (Family mruby のアプリと混ぜない)。ログイン画面の
+  区分にまとめて並べる (Family mruby のアプリと混ぜない。区分を押すと一覧が
+  入れ替わり、「..」で戻る)。ログイン画面の
   「Family mruby」の入口は cage からこのコンポジタに置き換える (cage の機種の
   定義は残す)。Xwayland は X11 のアプリが来たときに起こす。
 - X11 のアプリは Xwayland で動かす。ポップアップ・メニュー・クリップボードは
@@ -496,7 +497,7 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 | L7b | **電源ボタン**: mouse のデスクトップのメニューバーの右上に電源ボタンを置き、電源の項目をそのサブメニューに移す (全端末) | 全部 |
 | L7c | **削除の確認**: File Manager の削除の前に確認を出す (mouse・keys とも、Enter = はい、Esc = いいえ) | 全部 |
 | L8 | **コンポジタの試作**: tinywl に Family mruby の画面を 1 枚の絵として敷き、その上に端末を 1 つ出す。二つの動作の流れの受け渡しを確かめる | (3) |
-| L9 | **コンポジタの本実装**: L9a (完了) は外の窓を代役のアプリで window manager と input router に扱わせ、解像度を混ぜて合成する。L9b は Xwayland、Linux のアプリの起動 (起動の口、XDG の `.desktop` の一覧をランチャーに並べる)、ログイン画面の入口を cage からこのコンポジタへ | (3) |
+| L9 | **コンポジタの本実装**: L9a (完了) は外の窓を代役のアプリで window manager と input router に扱わせ、解像度を混ぜて合成する。L9b (完了) は Xwayland、Linux のアプリの起動 (起動の口、XDG の `.desktop` の一覧をランチャーに並べる)、ログイン画面の入口を cage からこのコンポジタへ | (3) |
 | L10 | **Shell から Linux のコマンド**: pty につないだ実行の口、出力と入力の受け渡し、色の基本。L1 の後ならいつでもでき、L9 を待たない (L6 の後を目安) | 全部 |
 | L11 | **Linux のファイルを Linux のアプリで開く**: L7 のファイルを見せる仕組みと L9 の起動の口を使い、`associations.toml` に Linux のアプリの行き先を足す | (3) |
 
@@ -551,10 +552,11 @@ L7c の検収で見つけたもの。急がないが、改善する。
 - L7 の残件: 書き込みの判定から実際に開くまでの間にリンクを差し替えられる隙
   (`openat` と `O_NOFOLLOW` で 1 段ずつ辿れば閉じる)、`/proc/kcore` の大きさが
   表の桁からはみ出す、装置などの特殊なファイルを一覧から隠すか。
-- L9a の残件: アプリが自分で大きさを変えたとき代役を合わせる (foot が文字の
-  格子に合わせて小さく描いた余りが黒い)、xdg の move・resize の頼みの自動の
-  確認、最大化・全画面、クリップボード、Linux の窓へのかな入力、タスクバーの
-  名前が題に追従すること、代役の四隅の外側 3 画素、終える前の 5 秒の間に
+- L9a・L9b の残件: xdg と X11 の move・resize の頼みの自動の確認、最大化・
+  全画面 (X11 の前に出す頼みも無視している)、クリップボード、Linux の窓への
+  かな入力、自分で題の帯を描く X11 の窓は帯が二重になる (枠だけの代役を足す
+  かは仕様の判断)、SVG や Breeze のテーマのアイコンと代役のアイコン、Qt の
+  アプリが Plasma の見た目にならないことがある、ランチャーの「Linux」の区分の印が無地の四角に見える、代役の四隅の外側 3 画素、終える前の 5 秒の間に
   制御の口 (shot・quit) が届かないこと、GLES と人の手での操作の確認。
 
 ## 未確定事項
