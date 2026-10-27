@@ -20,6 +20,9 @@
  *              rotate         0 / 90 / 180 / 270, clockwise
  *              scale          "auto" (largest whole scale that fits; the
  *                             window's magnification 3 on sdl) or a number
+ *              fullscreen     sdl: true opens the window full screen on its
+ *                             output (the frame at the largest whole scale,
+ *                             black around it); false a window (L7)
  *   [input]    backend        sdl | evdev (the inject socket is always on)
  *              devices        evdev: ["auto"] or paths (/dev/input/by-path/..)
  *              keymap         "" or "cardputer_zero": the extra table for the
@@ -38,12 +41,20 @@
  *                             the simulation's answers
  *              exit_key       none | esc_long: with the keys desktop, Esc
  *                             held on the desktop ends the program
- *              power          exit | logind: the desktop's power entries,
- *                             ending the program only (the Cardputer), or
- *                             power off / restart / suspend through logind
+ *              power          exit | logind, or both as a list
+ *                             (["logind", "exit"]): the desktop's power
+ *                             entries, ending the program (the Cardputer:
+ *                             back to APPLaunch; a PC session: back to the
+ *                             login screen) and/or power off / restart /
+ *                             suspend through logind
  *              power_log_only true: log the logind request instead of
  *                             sending it (every test; never power off a
  *                             development machine)
+ *   [files]    host           /mnt/host, Linux's files read-write: "auto"
+ *                             (the user's home, $HOME), a directory, or
+ *                             "none" to leave it out (L7)
+ *              root           /mnt/root, Linux's files read-only: "auto"
+ *                             ("/"), a directory, or "none"
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this
@@ -77,6 +88,7 @@ typedef struct {
         char mode[32];                   /* "auto" or "1280x720[@60]" */
         int rotate;
         int scale;                       /* 0 = auto */
+        bool fullscreen;                 /* sdl only */
     } display;
 
     struct {
@@ -101,9 +113,14 @@ typedef struct {
     struct {
         char services[16];
         char exit_key[16];
-        char power[16];
+        char power[32];                  /* "exit", "logind" or "logind,exit" */
         bool power_log_only;
     } system;
+
+    struct {
+        char host[NATIVE_MACHINE_STR];   /* "auto", "none" or a directory */
+        char root[NATIVE_MACHINE_STR];
+    } files;
 } native_machine_t;
 
 /* The built-in definition: the same as config/machines/sdl.toml (the L1
@@ -129,6 +146,9 @@ void native_machine_resolve(const char *arg, const char *machines_dir,
 /* Values every build refuses, whatever backends it has: the screen forms
  * and desktops that do not exist yet. Returns 0, or -1 with the reason. */
 int native_machine_check(const native_machine_t *m, char *err, size_t err_len);
+
+/* Whether system.power lists this group ("exit" or "logind"). */
+bool native_machine_power_has(const native_machine_t *m, const char *group);
 
 /* One line for the log. */
 void native_machine_describe(const native_machine_t *m, char *out, size_t out_len);

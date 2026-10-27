@@ -13,9 +13,10 @@
  *   volume   the ALSA mixer (sys_linux_mixer.c) when the sound goes out
  *            through ALSA and a mixer element opens; else none, and the
  *            internal volume stays in charge.
- *   power    system.power = "exit": only ending the program (the Cardputer:
- *            back to APPLaunch). "logind": power off, restart and suspend
- *            through logind on the system bus, from a helper thread of the
+ *   power    system.power lists "exit" (ending the program: the Cardputer
+ *            back to APPLaunch, a PC session back to the login screen),
+ *            "logind" (power off, restart and suspend), or both. logind is
+ *            reached on the system bus, from a helper thread of the
  *            blocking-call gate. system.power_log_only = true logs the
  *            request instead of sending it (every test uses it).
  */
@@ -146,15 +147,19 @@ static bool linux_mute_set(bool on)
 
 static bool power_logind(void)
 {
-    return strcmp(g_native_config.machine.system.power, "logind") == 0;
+    return native_machine_power_has(&g_native_config.machine, "logind");
 }
 
 static uint32_t linux_power_actions(void)
 {
-    if (power_logind()) {
-        return FMRB_SYS_POWER_OFF | FMRB_SYS_POWER_RESTART | FMRB_SYS_POWER_SUSPEND;
+    uint32_t bits = 0;
+    if (native_machine_power_has(&g_native_config.machine, "exit")) {
+        bits |= FMRB_SYS_POWER_EXIT;
     }
-    return FMRB_SYS_POWER_EXIT;
+    if (power_logind()) {
+        bits |= FMRB_SYS_POWER_OFF | FMRB_SYS_POWER_RESTART | FMRB_SYS_POWER_SUSPEND;
+    }
+    return bits;
 }
 
 /* sd-bus, opened at run time: libsystemd0 is on every systemd machine (the
@@ -270,7 +275,7 @@ static fmrb_err_t linux_power(fmrb_sys_power_t action)
         return FMRB_OK;
     default:
         if (!power_logind()) {
-            FMRB_LOGW(TAG, "power: action 0x%x needs system.power = \"logind\"", (unsigned)action);
+            FMRB_LOGW(TAG, "power: action 0x%x needs \"logind\" in system.power", (unsigned)action);
             return FMRB_ERR_NOT_SUPPORTED;
         }
         return logind_request(action);

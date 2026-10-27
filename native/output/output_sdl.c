@@ -8,7 +8,9 @@
  * so the high-resolution frame also gets a whole scale. The frame is drawn
  * into a streaming RGB565 texture of the renderer's output size through the
  * shared present core, so the window can be resized freely. Headless runs use
- * SDL_VIDEODRIVER=dummy; nothing here changes for them.
+ * SDL_VIDEODRIVER=dummy; nothing here changes for them. display.fullscreen
+ * (the linux_pc machine, under cage) takes the whole output instead: the
+ * same present core then gives the largest whole scale with black around.
  *
  * Input: SDL's own scancodes are the USB HID usage IDs of the keyboard page
  * for every key the firmware's tables know (letters at 4, Enter 40, F1 58,
@@ -43,6 +45,7 @@ static int s_fb_w = 0, s_fb_h = 0;
 static int s_dirty = 1;
 static int s_scale = SDL_DEFAULT_SCALE;
 static int s_rotate = 0;
+static bool s_fullscreen = false;
 static fmrb_present_place_t s_place;
 
 /* Pending pointer motion, coalesced. */
@@ -58,6 +61,7 @@ static bool sdl_open(const native_machine_t *m, char *why, size_t why_len)
     }
     s_scale = m->display.scale > 0 ? m->display.scale : SDL_DEFAULT_SCALE;
     s_rotate = m->display.rotate;
+    s_fullscreen = m->display.fullscreen;
     return true;
 }
 
@@ -91,7 +95,8 @@ static void ensure_window(void)
     }
     s_window = SDL_CreateWindow("Family mruby", SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED, w, h,
-                                SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+                                SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
+                                (s_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (s_window == NULL) {
         fprintf(stderr, "native: window: %s\n", SDL_GetError());
         return;
@@ -106,8 +111,12 @@ static void ensure_window(void)
     }
     /* The machine draws its own cursor. */
     SDL_ShowCursor(SDL_DISABLE);
-    fprintf(stderr, "native: window %dx%d (frame %dx%d at %dx, rotate %d), video '%s'\n",
-            w, h, bw, bh, s_scale, s_rotate, SDL_GetCurrentVideoDriver());
+    if (s_fullscreen) {
+        SDL_GetWindowSize(s_window, &w, &h);
+    }
+    fprintf(stderr, "native: window %dx%d%s (frame %dx%d at %dx, rotate %d), video '%s'\n",
+            w, h, s_fullscreen ? " full screen" : "", bw, bh, s_scale, s_rotate,
+            SDL_GetCurrentVideoDriver());
 }
 
 static void sdl_present(const uint16_t *px, int w, int h, bool changed)
@@ -134,6 +143,15 @@ static void sdl_present(const uint16_t *px, int w, int h, bool changed)
     };
     /* The window grows freely: always the largest scale that fits it. */
     fmrb_present_place(&surface, s_fb_w, s_fb_h, 0, &s_place);
+    /* One line whenever the placement changes (a resize, the high-resolution
+     * frame): what a full-screen session shows can be read off the log. */
+    static fmrb_present_place_t s_logged;
+    if (memcmp(&s_logged, &s_place, sizeof(s_place)) != 0) {
+        s_logged = s_place;
+        fprintf(stderr, "native: output %dx%d: frame %dx%d at %dx, %dx%d at (%d,%d), black around\n",
+                s_out_w, s_out_h, s_fb_w, s_fb_h, s_place.scale, s_place.w, s_place.h,
+                s_place.x, s_place.y);
+    }
     fmrb_present_draw(px, s_fb_w, s_fb_h, &surface, &s_place);
     SDL_UnlockTexture(s_texture);
     SDL_RenderClear(s_renderer);

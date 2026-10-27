@@ -82,6 +82,65 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->system.exit_key, sizeof(m->system.exit_key), "none");
     snprintf(m->system.power, sizeof(m->system.power), "exit");
     m->system.power_log_only = false;
+    snprintf(m->files.host, sizeof(m->files.host), "auto");
+    snprintf(m->files.root, sizeof(m->files.root), "auto");
+}
+
+/* system.power: "exit", "logind", or both, comma-separated (a TOML list
+ * arrives that way), each once. */
+static int set_power(native_machine_t *m, const char *value, char *err, size_t n)
+{
+    char out[sizeof(m->system.power)];
+    size_t used = 0;
+    int count = 0;
+    const char *p = value;
+    out[0] = '\0';
+    for (;;) {
+        const char *comma = strchr(p, ',');
+        size_t len = comma ? (size_t)(comma - p) : strlen(p);
+        while (len > 0 && *p == ' ') { p++; len--; }
+        while (len > 0 && p[len - 1] == ' ') len--;
+        bool is_exit = len == 4 && strncmp(p, "exit", 4) == 0;
+        bool is_logind = len == 6 && strncmp(p, "logind", 6) == 0;
+        if (!is_exit && !is_logind) {
+            return fail(err, n, "system.power: \"%s\" is not exit, logind or a list of them", value);
+        }
+        if (strstr(out, is_exit ? "exit" : "logind") != NULL) {
+            return fail(err, n, "system.power: \"%s\" names one twice", value);
+        }
+        int w = snprintf(out + used, sizeof(out) - used, "%s%.*s", count ? "," : "", (int)len, p);
+        if (w < 0 || (size_t)w >= sizeof(out) - used) return fail(err, n, "system.power: too long");
+        used += (size_t)w;
+        count++;
+        if (comma == NULL) break;
+        p = comma + 1;
+    }
+    memcpy(m->system.power, out, used + 1);
+    return 0;
+}
+
+bool native_machine_power_has(const native_machine_t *m, const char *group)
+{
+    size_t len = strlen(group);
+    const char *p = m->system.power;
+    while (*p != '\0') {
+        const char *comma = strchr(p, ',');
+        size_t item = comma ? (size_t)(comma - p) : strlen(p);
+        if (item == len && strncmp(p, group, len) == 0) return true;
+        if (comma == NULL) break;
+        p = comma + 1;
+    }
+    return false;
+}
+
+/* files.host / files.root: "auto", "none" or an absolute directory. */
+static int set_files_place(char *dst, size_t cap, const char *value, const char *key,
+                           char *err, size_t n)
+{
+    if (strcmp(value, "auto") != 0 && strcmp(value, "none") != 0 && value[0] != '/') {
+        return fail(err, n, "%s: \"%s\" is not auto, none or an absolute directory", key, value);
+    }
+    return copy_str(dst, cap, value, key, err, n);
 }
 
 static int set_devices(native_machine_t *m, const char *value, char *err, size_t n)
@@ -155,6 +214,13 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
         return 0;
     }
 
+    if (strcmp(key, "display.fullscreen") == 0) {
+        if (strcmp(value, "true") == 0) m->display.fullscreen = true;
+        else if (strcmp(value, "false") == 0) m->display.fullscreen = false;
+        else return fail(err, n, "display.fullscreen: \"%s\" is not true or false", value);
+        return 0;
+    }
+
     if (strcmp(key, "input.backend") == 0) return copy_str(m->input.backend, sizeof(m->input.backend), value, key, err, n);
     if (strcmp(key, "input.devices") == 0) return set_devices(m, value, err, n);
     if (strcmp(key, "input.keymap") == 0) return copy_str(m->input.keymap, sizeof(m->input.keymap), value, key, err, n);
@@ -187,17 +253,19 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
         }
         return copy_str(m->system.exit_key, sizeof(m->system.exit_key), value, key, err, n);
     }
-    if (strcmp(key, "system.power") == 0) {
-        if (strcmp(value, "exit") != 0 && strcmp(value, "logind") != 0) {
-            return fail(err, n, "system.power: \"%s\" is not exit or logind", value);
-        }
-        return copy_str(m->system.power, sizeof(m->system.power), value, key, err, n);
-    }
+    if (strcmp(key, "system.power") == 0) return set_power(m, value, err, n);
     if (strcmp(key, "system.power_log_only") == 0) {
         if (strcmp(value, "true") == 0) m->system.power_log_only = true;
         else if (strcmp(value, "false") == 0) m->system.power_log_only = false;
         else return fail(err, n, "system.power_log_only: \"%s\" is not true or false", value);
         return 0;
+    }
+
+    if (strcmp(key, "files.host") == 0) {
+        return set_files_place(m->files.host, sizeof(m->files.host), value, key, err, n);
+    }
+    if (strcmp(key, "files.root") == 0) {
+        return set_files_place(m->files.root, sizeof(m->files.root), value, key, err, n);
     }
 
     return fail(err, n, "unknown key \"%s\"", key);
@@ -255,7 +323,7 @@ static int load_table(native_machine_t *m, const toml_table_t *tab, const char *
         toml_table_t *sub = toml_table_in(tab, key);
         if (sub != NULL) {
             if (section[0] != '\0') return fail(err, n, "[%s]: nested tables are not used", dotted);
-            static const char *const known[] = { "screen", "display", "input", "audio", "desktop", "system", NULL };
+            static const char *const known[] = { "screen", "display", "input", "audio", "desktop", "system", "files", NULL };
             bool ok = false;
             for (int k = 0; known[k] != NULL; k++) ok |= (strcmp(key, known[k]) == 0);
             if (!ok) return fail(err, n, "unknown section [%s]", key);
@@ -326,12 +394,13 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     else snprintf(scale, sizeof(scale), "auto");
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     snprintf(out, out_len,
-             "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s, "
-             "input %s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s",
+             "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
+             "input %s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s, files host=%s root=%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
+             m->display.fullscreen ? " fullscreen" : "",
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
              m->desktop.variant, m->system.services, m->system.power,
-             m->system.power_log_only ? " (log only)" : "");
+             m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root);
 }

@@ -152,6 +152,16 @@ namespace :native do
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{incs.map { |i| "-I #{i}" }.join(' ')} " \
        "#{srcs.join(' ')} #{NATIVE_TEST_BUILD}/toml.o -lm -o #{NATIVE_TEST_BUILD}/native_test"
     sh "#{NATIVE_TEST_BUILD}/native_test #{ROOT_DIR}"
+
+    # The file namespace's Linux places (L7): the POSIX file HAL itself, with
+    # test/native/stub standing in for the RTOS, the pools and the log.
+    fincs = %W[#{NATIVE_TEST_DIR}/stub components/fmrb_hal components/fmrb_hal/platform/posix
+               components/fmrb_common/include]
+    fsrcs = %w[components/fmrb_hal/platform/posix/fmrb_hal_file_posix.c
+               components/fmrb_hal/platform/posix/fmrb_tmpfs_posix.c].push("#{NATIVE_TEST_DIR}/file_hal.c")
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DCONFIG_IDF_TARGET_LINUX " \
+       "#{fincs.map { |i| "-I #{i}" }.join(' ')} #{fsrcs.join(' ')} -o #{NATIVE_TEST_BUILD}/native_file_test"
+    sh "#{NATIVE_TEST_BUILD}/native_file_test"
   end
 end
 
@@ -182,8 +192,8 @@ NATIVE_DOCKERFILE = File.join(NATIVE_DIR, "docker", "Dockerfile")
 
 # The layout of each package. arm64 is the Cardputer Zero's: M5Stack's
 # APPLaunch launcher looks in /usr/share/APPLaunch for programs, entries
-# and icons. amd64 is a PC's ordinary /usr/bin (its login-screen entry comes
-# with L7). The distribution tree is in the same place for both.
+# and icons. amd64 is a PC's ordinary /usr/bin, with the login screen's
+# session entry (L7). The distribution tree is in the same place for both.
 NATIVE_DEB_LAYOUT = {
   "arm64" => {
     bin_dir: "usr/share/APPLaunch/bin",
@@ -202,9 +212,16 @@ NATIVE_DEB_LAYOUT = {
     data_rel: "../share/family-mruby/root",
     gnu: "x86_64-linux-gnu",
     launchers: {},
+    # The login screen's entry (L7): a Wayland session that runs cage with
+    # the program inside it (native/package/family-mruby-session, machine
+    # linux_pc). cage is recommended, not required: without it the entry is
+    # still listed and the session says what is missing.
+    session: true,
+    recommends: "cage",
   },
 }.freeze
 NATIVE_DEB_ROOT = "usr/share/family-mruby/root"
+NATIVE_DEB_SESSIONS = "usr/share/wayland-sessions"
 
 def native_deb_arch
   arch = (ENV["ARCH"] || "arm64").strip
@@ -348,6 +365,13 @@ namespace :native do
     mkdir_p bin
     cp File.join(dir, "cmake", "fmruby-native"), File.join(bin, "family-mruby")
     lay[:launchers].each_key { |s| cp File.join(dir, "cmake", "family-mruby-#{s}"), bin }
+    if lay[:session]
+      # The session's starter (a shell script, not built) and its entry.
+      cp File.join(NATIVE_DIR, "package", "family-mruby-session"), bin
+      sessions = File.join(pkg, NATIVE_DEB_SESSIONS)
+      mkdir_p sessions
+      cp File.join(NATIVE_DIR, "package", "family-mruby.desktop"), sessions
+    end
     Dir.glob(File.join(bin, "*")).each { |f| chmod 0o755, f }
     mkdir_p File.dirname(File.join(pkg, NATIVE_DEB_ROOT))
     cp_r File.join(NATIVE_DEB_DIR, "root"), File.join(pkg, NATIVE_DEB_ROOT)
@@ -379,7 +403,7 @@ namespace :native do
     # Strip in the image (the cross binutils), work out Depends from the
     # libraries the binaries need (dpkg-shlibdeps, against the image's
     # trixie packages), write the control file and build.
-    bins = Dir.glob(File.join(bin, "*")).map { |f| f.sub("#{ROOT_DIR}/", "") }
+    bins = Dir.glob(File.join(bin, "*")).reject { |f| File.read(f, 2) == "#!" }.map { |f| f.sub("#{ROOT_DIR}/", "") }
     native_docker(<<~SH)
       #{lay[:gnu]}-strip --strip-unneeded #{bins.join(' ')}
       work=$(mktemp -d)
@@ -402,7 +426,7 @@ namespace :native do
       Maintainer: #{maintainer}
       Installed-Size: #{size_kb}
       Depends: #{depends.strip}
-      Section: misc
+      #{lay[:recommends] ? "Recommends: #{lay[:recommends]}\n" : ''}Section: misc
       Priority: optional
       Homepage: https://github.com/family-mruby
       Description: Family mruby, a Ruby computer, as a Linux program
@@ -445,7 +469,8 @@ namespace :native do
         problems << "neither tracked in flash/ nor a known generated file: #{r}"
       else
         layout = NATIVE_DEB_LAYOUT[arch]
-        ok = r.start_with?("#{layout[:bin_dir]}/") || r.start_with?("usr/share/APPLaunch/")
+        ok = r.start_with?("#{layout[:bin_dir]}/") || r.start_with?("usr/share/APPLaunch/") ||
+             (layout[:session] && r == "#{NATIVE_DEB_SESSIONS}/family-mruby.desktop")
         problems << "outside the package layout: #{r}" unless ok
       end
       base = File.basename(r)

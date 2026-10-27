@@ -584,6 +584,40 @@ static void test_machine(void)
           native_machine_check(&m, err, sizeof(err)) != 0 && strstr(err, "640x480") != NULL,
           "unknown screen refused (%s)", err);
 
+    // The PC's login-screen session (L7): full screen SDL, both power groups.
+    CHECK(load(&m, "linux_pc", err, sizeof(err)) == 0, "linux_pc: %s", err);
+    CHECK(strcmp(m.display.backend, "sdl") == 0 && m.display.fullscreen && m.display.scale == 0 &&
+          m.display.rotate == 0 && strcmp(m.input.backend, "sdl") == 0 && strcmp(m.audio.backend, "sdl") == 0 &&
+          strcmp(m.desktop.variant, "mouse") == 0 && m.screen.w == 426, "linux_pc fields");
+    CHECK(strcmp(m.system.power, "logind,exit") == 0 && native_machine_power_has(&m, "logind") &&
+          native_machine_power_has(&m, "exit"), "linux_pc power logind and exit (%s)", m.system.power);
+    CHECK(strcmp(m.files.host, "auto") == 0 && strcmp(m.files.root, "auto") == 0, "linux_pc files");
+    CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "linux_pc check: %s", err);
+    native_machine_defaults(&m);
+    CHECK(!m.display.fullscreen && strcmp(m.files.host, "auto") == 0 && strcmp(m.files.root, "auto") == 0,
+          "defaults: a window, both Linux places shown");
+    CHECK(native_machine_power_has(&m, "exit") && !native_machine_power_has(&m, "logind") &&
+          !native_machine_power_has(&m, "exi"), "default power exit only");
+    CHECK(native_machine_set(&m, "system.power", "exit, logind", err, sizeof(err)) == 0 &&
+          strcmp(m.system.power, "exit,logind") == 0, "power list (%s)", m.system.power);
+    CHECK(native_machine_set(&m, "system.power", "exit,exit", err, sizeof(err)) != 0, "power twice refused");
+    CHECK(native_machine_set(&m, "system.power", "", err, sizeof(err)) != 0, "empty power refused");
+    CHECK(native_machine_set(&m, "system.power", "logind,halt", err, sizeof(err)) != 0, "power list with halt refused");
+    CHECK(native_machine_set(&m, "display.fullscreen", "true", err, sizeof(err)) == 0 && m.display.fullscreen,
+          "--set fullscreen");
+    CHECK(native_machine_set(&m, "display.fullscreen", "yes", err, sizeof(err)) != 0, "fullscreen yes refused");
+    CHECK(native_machine_set(&m, "files.host", "none", err, sizeof(err)) == 0 &&
+          native_machine_set(&m, "files.root", "/srv", err, sizeof(err)) == 0 &&
+          strcmp(m.files.host, "none") == 0 && strcmp(m.files.root, "/srv") == 0, "--set files");
+    CHECK(native_machine_set(&m, "files.host", "home", err, sizeof(err)) != 0, "relative files.host refused");
+    // Every shipped machine shows both places (the user's decision, 2026-10-27).
+    static const char *const shipped[] = { "sdl", "sdl_keys", "cardputer_zero", "cardputer_zero_hdmi",
+                                           "linux_pc_drm", "linux_pc" };
+    for (size_t i = 0; i < sizeof(shipped) / sizeof(shipped[0]); i++) {
+        CHECK(load(&m, shipped[i], err, sizeof(err)) == 0 && strcmp(m.files.host, "auto") == 0 &&
+              strcmp(m.files.root, "auto") == 0, "%s shows /mnt/host and /mnt/root", shipped[i]);
+    }
+
     char path[256];
     native_machine_resolve("sdl", "/d", path, sizeof(path));
     CHECK(strcmp(path, "/d/sdl.toml") == 0, "resolve name: %s", path);

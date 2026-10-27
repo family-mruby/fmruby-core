@@ -1,0 +1,42 @@
+# Machine definition: a Linux PC's login-screen session (L7). The session
+# entry (/usr/share/wayland-sessions/family-mruby.desktop) runs
+# family-mruby-session, which starts cage and this program inside it as a
+# Wayland client: one SDL window taking the whole output, the frame at the
+# largest whole scale with black around it.
+#
+# A panel mounted sideways is turned by cage, not here (display.rotate stays
+# 0): the compositor then also turns the pointer, so the touchpad moves the
+# cursor the way the picture is turned. The session's settings are in
+# /etc/default/family-mruby-session (ROTATE=0/90/180/270).
+#
+# Sound through SDL, which finds PipeWire or PulseAudio in a desktop
+# session; the volume is Family mruby's own (no ALSA mixer to move).
+# Field reference: native/machine/native_machine.h.
+description = "Linux PC: the login-screen session (SDL, full screen under cage)"
+
+[screen]
+form = "426x240"
+
+[display]
+backend = "sdl"
+scale = "auto"
+rotate = 0
+fullscreen = true
+
+[input]
+backend = "sdl"              # the compositor's keyboard, touchpad and mouse
+
+[audio]
+backend = "sdl"
+
+[desktop]
+variant = "mouse"
+
+[system]
+services = "linux"
+exit_key = "none"
+power = ["logind", "exit"]   # power off / restart / suspend, and Exit (back to the login screen)
+
+[files]
+host = "auto"                # /mnt/host: the user's home
+root = "auto"                # /mnt/root: "/" (read-only)

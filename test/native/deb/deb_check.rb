@@ -19,6 +19,10 @@
 #      family-mruby-hdmi ("Family mruby (HDMI)"). A container has no fbdev
 #      and no DRM device, so each must be refused for that reason (exit 3),
 #      with the machine the launcher named
+#   2b. amd64: the login screen's session (L7) -- its entry in
+#      /usr/share/wayland-sessions, cage only recommended, and the session
+#      starter refusing with a clear message where cage is missing; arm64:
+#      neither file is there
 #   3. the program as root, headless (SDL dummy), --machine sdl: the time to
 #      "Boot complete", the desktop against the x86_64 native baseline
 #      (test/regress/screens/baseline/native/desktop.png, clock and pointer
@@ -208,6 +212,27 @@ begin
              entry.include?("\nName=#{title}\n") && entry.include?("\nExec=/usr/share/APPLaunch/bin/family-mruby-#{suffix}\n"),
              entry[/^Name=.*/].to_s)
     end
+  end
+
+  # 2b. the login screen's session (L7): amd64 only. The container has no
+  #     cage (a Recommends, not installed with --no-install-recommends), so
+  #     the session must say so and stop rather than fail obscurely.
+  session_files = "/usr/share/wayland-sessions/family-mruby.desktop /usr/bin/family-mruby-session"
+  if arch == "amd64"
+    entry, = dexec("cat /usr/share/wayland-sessions/family-mruby.desktop", ok: false)
+    result("session entry family-mruby.desktop",
+           entry.include?("\nName=Family mruby\n") && entry.include?("\nExec=/usr/bin/family-mruby-session\n") &&
+           entry.include?("\nTryExec=/usr/bin/family-mruby-session\n"), entry[/^Exec=.*/].to_s)
+    control, = dexec("dpkg-query -W -f='${Recommends}' family-mruby", ok: false)
+    out, st = dexec("command -v cage || true; test -x /usr/bin/family-mruby-session && " \
+                    "/usr/bin/family-mruby-session 2>&1", ok: false)
+    File.write(File.join(OUT, "session.log"), out)
+    result("session without cage", control.strip == "cage" && st.exitstatus == 1 &&
+           out.include?("cage is not installed") && out.include?("sudo apt install cage"),
+           "Recommends: #{control.strip}; exit #{st.exitstatus}: #{out.lines.first.to_s.strip}")
+  else
+    out, = dexec("ls #{session_files} 2>&1 | grep -c 'No such file'", ok: false)
+    result("no session entry on #{arch}", out.strip == "2", "#{out.strip} of 2 session files absent")
   end
 
   # 3. boot to the desktop

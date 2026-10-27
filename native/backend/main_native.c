@@ -66,6 +66,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <pthread.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -460,6 +461,34 @@ static void update_user_etc(const char *seed)
     }
 }
 
+/* files.host / files.root to the host directory the file HAL shows, or ""
+ * to leave the place out. "auto" is the user's home ($HOME, else the
+ * password entry's) for /mnt/host and "/" for /mnt/root. A directory that
+ * is not there leaves the place out, with a line on stderr. */
+static void files_place(const char *value, bool home, char *out, size_t out_len)
+{
+    out[0] = '\0';
+    if (strcmp(value, "none") == 0) return;
+    const char *dir = value;
+    if (strcmp(value, "auto") == 0) {
+        dir = "/";
+        if (home) {
+            dir = getenv("HOME");
+            if (dir == NULL || dir[0] != '/') {
+                struct passwd *pw = getpwuid(getuid());
+                dir = (pw != NULL) ? pw->pw_dir : NULL;
+            }
+        }
+    }
+    struct stat st;
+    if (dir == NULL || dir[0] != '/' || stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "native: /mnt/%s: %s is not a directory here; not shown\n",
+                home ? "host" : "root", dir ? dir : "(no home directory)");
+        return;
+    }
+    snprintf(out, out_len, "%s", dir);
+}
+
 static int refuse(const char *what, const char *why)
 {
     fprintf(stderr, "native: refused: machine %s: %s: %s\n", g_native_config.machine.name, what, why);
@@ -498,11 +527,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* Linux's own files (L7): the user's home at /mnt/host, "/" at
+     * /mnt/root (read-only), as the machine definition's [files] says. */
+    char host_home[NATIVE_PATH_MAX];
+    char host_root[NATIVE_PATH_MAX];
+    files_place(m->files.host, true, host_home, sizeof(host_home));
+    files_place(m->files.root, false, host_root, sizeof(host_root));
+
     fmrb_hal_file_layout_t layout = {
         .system_root = c->system_dir,
         .user_root   = c->user_dir,
         .cache_root  = c->cache_dir,
         .etc_seed    = c->etc_seed,
+        .host_home   = host_home,
+        .host_root   = host_root,
     };
     struct stat st;
     if (stat(c->etc_seed, &st) != 0 || !S_ISDIR(st.st_mode)) {
