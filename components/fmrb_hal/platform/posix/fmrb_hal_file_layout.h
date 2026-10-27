@@ -12,6 +12,9 @@
  *            置き場所"). The top-level name decides the root: the
  *            distribution tree (read-only), the user's directory (/home, /etc,
  *            /app/usr) or the cache directory (/var, /cache, /data, /tmp).
+ *            Under /mnt it also passes Linux's own files through (L7):
+ *            /mnt/host is the user's home (read-write, writes kept inside
+ *            it) and /mnt/root is "/" (read-only).
  *
  * Only the native build calls this header's function, before
  * fmrb_hal_file_init.
@@ -30,6 +33,14 @@ typedef struct {
     /* Copied to <user_root>/etc on the first start, when that does not exist
      * yet. NULL: <system_root>/etc. */
     const char *etc_seed;
+    /* Linux's own files, passed through (doc/linux_native L7). Each is a
+     * host directory, or NULL / "" to leave the place out of the namespace.
+     * host_home is shown at /mnt/host and may be written, but only inside
+     * itself: a write whose real location (after symbolic links) leaves it
+     * is refused. host_root is shown at /mnt/root and is never written.
+     * Under both, only regular files open (no device, FIFO or socket). */
+    const char *host_home;
+    const char *host_root;
 } fmrb_hal_file_layout_t;
 
 /*
