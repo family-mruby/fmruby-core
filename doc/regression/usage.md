@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-27 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章
+> 状態: 進行中 | 更新: 2026-10-28 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章
 
 ## 1. 流し方
 
@@ -302,7 +302,7 @@ end
 ## 11. コンポジタ (rake regress:wl)
 
 ```
-rake regress:wl                       # 標準と全部 mruby の 2 つで、作って (rake native:wl) 確認する (9 分ほど)
+rake regress:wl                       # 標準と全部 mruby の 2 つで、作って (rake native:wl) 確認する (10 分ほど)
 rake native:wl_check                  # 1 つの形だけを、自動と pixman の 2 つのレンダラで (NATIVE_ENGINE=mruby で全部 mruby)
 rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓が出る。マウスを窓の上に置かない)
 ```
@@ -310,6 +310,6 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓
 - ネイティブ版をコンポジタとして動かし (doc/linux_native の L8・L9a、`--machine linux_pc_wl`)、Linux の窓 (foot) を Family mruby の窓として扱えるかを確認する。Ubuntu 26.04 のイメージ (約 1 GB) の中で作って動かす。手元の Ubuntu 22.04 には wlroots 0.19 が無いため。
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。headless (出力は 1280x800 の仮のもの。Family mruby の画面はその半分の 640x400 で、2 倍で出力を埋める。`wl_check.rb --output 1920x1080` などで出力を変えられる)、レンダラは pixman (WSL2 では自動で選んでも pixman になる)。
 - 基準の絵を持たない。grim で撮った合成後の画面を、同じ時に撮った Family mruby の絵 (`shot`) を倍率どおりに置いたものと比べ、Linux の窓が見えるべき所 (穴) 以外は 1 画素も違わないこと、穴には foot が出ていることを見る。foot の版や字体が変わっても揺れない。エディタの 1 打鍵だけはネイティブ版の基準 `editor_type.png` (426x240) とエディタの窓の範囲で比べる (窓の四隅は後ろの壁紙が透けるので除く)。全部 mruby のエディタはメニューに Debug が 1 つ多いので、その行は除く。
-- 確認の台本は 4 つ。`test/native/wl/wl_check.rb` (L9a: 窓の扱い)、`test/native/wl/wl_dialog_check.rb` (L9c: 親を持つダイアログが親の上の真ん中に枠つきで出て前後が正しいこと、メニューが絵の矩形の外に出ないこと。出力を 90 度回して黒い帯を広く取って数える)、`test/native/wl/wl_apps_check.rb` (L9b: ランチャーの「Linux」の区分、一覧から起こす、Xwayland の遅延起動と X11 の窓、自分で大きさを決める窓に代役が合うこと、.desktop を 300 個足したときの開く時間、Exit で起こしたもの全部と Xwayland が終わること)、`test/native/wl/wl_keys_check.rb` (L9d: 偽の `/etc/default/keyboard` を入れ物の中にかぶせ、配列を選んでいない (`auto`) ときに foot と Family mruby の Shell の両方が Linux の配列に合うこと、Config で選んだ配列が勝つこと)。wl_dialog_check.rb は出力を回すので画面は 426x240 のまま。
-- wl_check.rb で確認する中身は頭の説明 (起動、画面の大きさ、枠、移動と大きさの変更、foot へのキーとポインタ、Family mruby へのキー、前後、Ctrl+Tab、全画面のアプリが最大の整数倍で真ん中に出ること、時間、代役の四隅、閉じるボタン、終わり方)。結果と画面は `tmp/wl_check/<形>-<出し方>-<レンダラ>/`、作りのログは `tmp/wl_check/build-<形>.log`。
+- 確認の台本は 4 つ。`test/native/wl/wl_check.rb` (L9a: 窓の扱い)、`test/native/wl/wl_dialog_check.rb` (L9c: 親を持つダイアログが親の上の真ん中に枠つきで出て前後が正しいこと、メニューが絵の矩形の外に出ないこと。出力を 90 度回して黒い帯を広く取って数える。L9e: 親を押すとキーボードもダイアログに移ること、止まった矢印の下に窓が来るとその窓に矢印が行くこと、ポインタを握る X11 のメニューが Family mruby を押すと閉じること)、`test/native/wl/wl_apps_check.rb` (L9b: ランチャーの「Linux」の区分、一覧から起こす、Xwayland の遅延起動と X11 の窓、自分で大きさを決める窓に代役が合うこと、.desktop を 300 個足したときの開く時間、Exit で起こしたもの全部と Xwayland が終わること。L9e: Breeze の SVG しか無いアイコンが一覧に出ること)、`test/native/wl/wl_keys_check.rb` (L9d: 偽の `/etc/default/keyboard` を入れ物の中にかぶせ、配列を選んでいない (`auto`) ときに foot と Family mruby の Shell の両方が Linux の配列に合うこと、Config で選んだ配列が勝つこと)。wl_dialog_check.rb は出力を回すので画面は 426x240 のまま。
+- wl_check.rb で確認する中身は頭の説明 (起動、画面の大きさ、枠、移動と大きさの変更、foot へのキーとポインタ、Family mruby へのキー、エディタの全画面が画面の大きさで出ること (L9e)、前後、Ctrl+Tab、全画面のアプリが最大の整数倍で真ん中に出ること (shooter は 426x240、640x360 で並べた hires_test と麻雀は 640x360。見せ方がフレームと一緒に変わる回数も)、時間、代役の四隅、閉じるボタン、終わり方、終える前の待ちの間も制御の口が答えること (L9e))。結果と画面は `tmp/wl_check/<形>-<出し方>-<レンダラ>/`、作りのログは `tmp/wl_check/build-<形>.log`。
 - 分からないこと: GLES での描画 (WSL2 の GPU では動かない)、人の手のキーボードとマウスでの操作、ポップアップの多いアプリ (GTK・Qt のメニュー)、VM や実機の DRM での session。

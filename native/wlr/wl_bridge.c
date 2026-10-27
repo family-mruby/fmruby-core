@@ -24,9 +24,10 @@
  *   - every POLL_MS: the stand-ins' windows from the window list (content
  *     rectangle, z order, suspended or not) and the keyboard's owner from
  *     the HID routing, published as places (comp_link_place sends only
- *     changes). With them the view (L9d): when the topmost running window
- *     is a fullscreen app smaller than the screen (426x240 on a 640x400
- *     one), the compositor shows that rectangle alone.
+ *     changes).
+ *   - every frame (on the display task, frame_view): when it holds a
+ *     fullscreen app's canvas smaller than the screen (426x240 on a 640x400
+ *     one), the compositor shows that rectangle alone (L9d, L9e).
  *   - a window asks to be moved or resized (notice, from xdg move/resize):
  *     the stand-in's window is moved / resized through the same calls the
  *     input router makes.
@@ -154,6 +155,29 @@ static void tell_kernel_spawned(int pid)
     d[p++] = 0xA7;
     memcpy(&d[p], "spawned", 7);
     p += 7;
+    d[p++] = 0xA3;
+    memcpy(&d[p], "pid", 3);
+    p += 3;
+    d[p++] = (uint8_t)pid;
+    msg.size = p;
+    fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
+}
+
+/* {"cmd":"focus_app","pid":N}, as the taskbar sends it: the kernel brings
+ * the app in front and gives it the keyboard. */
+static void tell_kernel_focus(int pid)
+{
+    if (pid < 0 || pid > 0x7F) return;
+    fmrb_msg_t msg = { .type = FMRB_MSG_TYPE_APP_CONTROL, .src_pid = (fmrb_proc_id_t)pid };
+    uint8_t *d = msg.data;
+    size_t p = 0;
+    d[p++] = 0x82;
+    d[p++] = 0xA3;
+    memcpy(&d[p], "cmd", 3);
+    p += 3;
+    d[p++] = 0xA9;
+    memcpy(&d[p], "focus_app", 9);
+    p += 9;
     d[p++] = 0xA3;
     memcpy(&d[p], "pid", 3);
     p += 3;
@@ -384,31 +408,48 @@ static void build_places(comp_places_t *pl)
             break;
         }
     }
-    /* The view (L9d): a fullscreen app smaller than the screen (Modern's
-     * 426x240 on the compositor's wider one) as the topmost running window
-     * is shown alone, at its own largest whole scale. */
-    int scale = 0, base_w = 0, base_h = 0;
-    comp_link_geometry(&scale, &base_w, &base_h);
-    int top = -1;
-    for (int j = 0; j < n; j++) {
-        fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(s_list[j].pid);
-        if (ctx == NULL || ctx->state != PROC_STATE_RUNNING) continue;
-        if (top < 0 || s_list[j].z_order > s_list[top].z_order) top = j;
+}
+
+/* The view (L9d, L9e): a fullscreen app's canvas smaller than the screen
+ * (Modern's 426x240, or 640x360 for an app laid out for it, on the
+ * compositor's wider screen) is shown alone, at its own largest whole scale.
+ * Decided on the display task from the canvases each frame was made of, so
+ * the view changes with the very frame that has the app (or no longer has
+ * it): never a frame shown the old way. The topmost such canvas; any canvas
+ * over it lies inside it or is cut. */
+static bool frame_view(const native_frame_canvas_t *c, int n, int fb_w, int fb_h, int view[4])
+{
+    int base_w = 0, base_h = 0;
+    native_frame_base_size(&base_w, &base_h);
+    if (fb_w != base_w || fb_h != base_h) return false;
+    for (int i = n - 1; i >= 0; i--) {
+        if (!fmrb_app_canvas_fullscreen(c[i].canvas_id)) continue;
+        int x0 = c[i].x < 0 ? 0 : c[i].x, y0 = c[i].y < 0 ? 0 : c[i].y;
+        int x1 = c[i].x + c[i].w > fb_w ? fb_w : c[i].x + c[i].w;
+        int y1 = c[i].y + c[i].h > fb_h ? fb_h : c[i].y + c[i].h;
+        if (x1 - x0 <= 0 || y1 - y0 <= 0 || (x1 - x0 >= fb_w && y1 - y0 >= fb_h)) return false;
+        view[0] = x0;
+        view[1] = y0;
+        view[2] = x1 - x0;
+        view[3] = y1 - y0;
+        return true;
     }
-    if (top >= 0 && s_list[top].fullscreen && base_w > 0 && base_h > 0 &&
-        (s_list[top].width < base_w || s_list[top].height < base_h)) {
-        pl->view_x = s_list[top].x;
-        pl->view_y = s_list[top].y;
-        pl->view_w = s_list[top].width;
-        pl->view_h = s_list[top].height;
-    }
+    return false;
 }
 
 /* A dialog's stand-in in front of its parent's whenever the parent's is above
- * it (one raise per pass; chains of dialogs take a pass per link). Without
- * the lock: the pids are copied first. */
+ * it (one raise per pass; chains of dialogs take a pass per link), and the
+ * keyboard with it (L9e): the kernel is asked to focus the dialog as the
+ * taskbar would. That request is handled after whatever raised the parent
+ * (a click gives the parent the keyboard in the same handling), so the
+ * dialog ends with it; the compositor follows the focus with the next
+ * places. Asked once per FOCUS_ASK_MS for a dialog. Without the lock: the
+ * pids are copied first. */
+#define FOCUS_ASK_MS 300
 static void keep_dialogs_above(void)
 {
+    static int asked_pid = -1;
+    static uint32_t asked_ms;
     int pairs[COMP_MAX_WINDOWS][2];
     int np = 0;
     fmrb_semaphore_take(s_br.lock, FMRB_TICK_MAX);
@@ -432,8 +473,15 @@ static void keep_dialogs_above(void)
                 if (s_list[i].pid == pairs[k][1]) zp = s_list[i].z_order;
             }
             if (zd < 0 || zp < 0 || zd > zp) continue;
+            uint32_t t = ms_now();
+            if (asked_pid != pairs[k][0] || t - asked_ms >= FOCUS_ASK_MS) {
+                asked_pid = pairs[k][0];
+                asked_ms = t;
+                tell_kernel_focus(pairs[k][0]);
+            }
             if (fmrb_app_bring_to_front((uint8_t)pairs[k][0]) == FMRB_OK) {
-                FMRB_LOGI(TAG, "stand-in pid %d in front of its parent's (pid %d)", pairs[k][0], pairs[k][1]);
+                FMRB_LOGI(TAG, "stand-in pid %d in front of its parent's (pid %d), the keyboard asked for", pairs[k][0],
+                          pairs[k][1]);
                 raised = true;
             }
         }
@@ -532,6 +580,7 @@ static void bridge_task(void *arg)
 
 static fmrb_err_t bridge_start(void)
 {
+    native_frame_set_view_fn(frame_view);
     s_br.lock = fmrb_semaphore_create_mutex();
     if (s_br.lock == NULL) return FMRB_ERR_NO_MEMORY;
     if (fmrb_task_create(bridge_task, "wl_bridge", 16384, NULL, 5, NULL) != FMRB_PASS) {

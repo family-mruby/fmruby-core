@@ -225,8 +225,10 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .min_window_width = 220,
         .min_window_height = 80,
         // F11 takes it to the high-resolution fullscreen where the build can
-        // show one (doc/fullscreen_hires/); elsewhere this is ignored.
-        .fullscreen_hires = true,
+        // show one (doc/fullscreen_hires/); elsewhere this is ignored. It lays
+        // itself out at any size (recompute_layout): the whole of a wider
+        // screen (doc/linux_native L9e).
+        .fullscreen_hires = FMRB_FULLSCREEN_HIRES_ANY,
         .rounded_corners = true
     }},
     // Fullscreen editor ("serious mode", doc/editor_serious_mode/plan.md).
@@ -258,8 +260,9 @@ static const builtin_app_entry_t builtin_app_table[] = {
         // Ctrl+Tab may park it: the editor keeps its buffer while parked and
         // repaints on resume (EditorApp#on_resume).
         .fullscreen_switchable = true,
-        // High-resolution fullscreen where available (doc/fullscreen_hires/).
-        .fullscreen_hires = true,
+        // High-resolution fullscreen where available (doc/fullscreen_hires/),
+        // any size (see default/editor).
+        .fullscreen_hires = FMRB_FULLSCREEN_HIRES_ANY,
         // Same window behaviour as default/editor once F11 makes it a window:
         // without these the corner drag is refused and the window is stuck at
         // whatever size it fell back to.
@@ -399,14 +402,12 @@ static void notify_kernel_app_spawned(int32_t pid);
 
 // The window a fullscreen app starts with: the display size, or the
 // high-resolution screen for an app that declares fullscreen_hires where the
-// build can show it (doc/fullscreen_hires/). Starting at that size means the
+// build can show it (doc/fullscreen_hires/; fmrb_app_fullscreen_size_for has
+// the native compositor's wider screen). Starting at that size means the
 // canvas is created large enough and the kernel's switch needs no resize.
-static void fullscreen_window_size(bool hires, uint16_t* w, uint16_t* h)
+static void fullscreen_window_size(uint8_t hires, uint16_t* w, uint16_t* h)
 {
-    if (hires && fmrb_app_fullscreen_hires_size(w, h)) {
-        return;
-    }
-    fmrb_kernel_fullscreen_size(w, h);
+    fmrb_app_fullscreen_size_for(hires, w, h);
 }
 
 static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* out_pid)
@@ -730,7 +731,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int min_window_height = 0;
     bool rounded_corners = true;
     bool fullscreen_switchable = false;
-    bool fullscreen_hires = false;
+    uint8_t fullscreen_hires = 0;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
@@ -788,9 +789,11 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // Parse fullscreen_hires: the app may be shown on the high-resolution
         // screen while it is fullscreen (doc/fullscreen_hires/). Written as
         // `true`, or as 1 like the older flags; ignored where the build cannot
-        // show that screen.
-        fullscreen_hires = fmrb_toml_get_bool(config, "fullscreen_hires", false) ||
-                           fmrb_toml_get_int(config, "fullscreen_hires", 0) != 0;
+        // show that screen. Such an app is laid out for 640x360
+        // (FMRB_FULLSCREEN_HIRES_FIXED).
+        fullscreen_hires = (fmrb_toml_get_bool(config, "fullscreen_hires", false) ||
+                            fmrb_toml_get_int(config, "fullscreen_hires", 0) != 0)
+                               ? FMRB_FULLSCREEN_HIRES_FIXED : 0;
 
         // Parse window dimensions and position
         if (fullscreen) {

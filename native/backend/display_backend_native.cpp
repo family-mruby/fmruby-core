@@ -34,17 +34,36 @@ static void native_first_frame(void)
 {
 }
 
+/* The canvases of the frame being composited, bottom to top (the display
+ * task blends them in that order and presents once a frame): handed over
+ * with the frame, so that what part of it to show is decided from the frame
+ * itself (L9e) and never lags a switch by a frame. A viewport canvas (a
+ * window onto a larger surface) is left out. Display task only. */
+#define NATIVE_FRAME_CANVASES 64
+static native_frame_canvas_t s_canvases[NATIVE_FRAME_CANVASES];
+static int s_n_canvases = 0;
+
 static void native_blend_block(const display_blend_req_t *r)
 {
     display_blend_cpu_block(r);
+    if (r->is_viewport || s_n_canvases >= NATIVE_FRAME_CANVASES) return;
+    if (s_n_canvases > 0 && s_canvases[s_n_canvases - 1].canvas_id == r->canvas_id) return;
+    native_frame_canvas_t *c = &s_canvases[s_n_canvases++];
+    c->canvas_id = r->canvas_id;
+    c->x = r->dst_x - r->src_x;
+    c->y = r->dst_y - r->src_y;
+    c->w = r->fg_pic_w;
+    c->h = r->fg_pic_h;
 }
 
 static void native_present(LGFX_Sprite *fb, size_t fb_size)
 {
     (void)fb_size;
     const uint16_t *pixels = (const uint16_t *)fb->getBuffer();
+    int n = s_n_canvases;
+    s_n_canvases = 0;
     if (!pixels) return;
-    native_frame_put(pixels, fb->width(), fb->height());
+    native_frame_put_canvases(pixels, fb->width(), fb->height(), s_canvases, n);
 }
 
 static void native_present_patch(const uint16_t *block, int x0, int y0, int w, int h,

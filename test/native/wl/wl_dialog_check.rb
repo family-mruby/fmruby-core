@@ -32,6 +32,9 @@
 #      the keyboard and keys, closed by its button
 #   8. an X11 menu (override-redirect) asked for across the picture's edge
 #      is moved inside it
+#   L9e: the parent clicked gives the dialog the keyboard as well (6); a
+#   window coming under a pointer that stands still gets the pointer (7);
+#   an X11 menu holding the pointer closes on a press on Family mruby (9)
 #
 # Shots, logs and a summary go to tmp/wl_check/dialog-<engine>-<renderer>/.
 
@@ -167,6 +170,11 @@ class DialogRun
   end
 
   def win(inf, id) = inf["windows"].find { |w| w[:id] == id }
+
+  def stats
+    r = comp("stats")
+    r.split.drop(1).to_h { |kv| k, v = kv.split("=", 2); [k, v.include?(".") ? v.to_f : v.to_i] }
+  end
 
   def to_out(fx, fy, inf = @info)
     s = inf["scale"].to_i
@@ -488,15 +496,38 @@ class DialogRun
            "to top #{still_above.inspect}); after a click on the parent at #{pt.inspect} #{again}, bottom to top " \
            "#{order.inspect} (the dialog above its parent: #{above}; raised by the bridge: #{raised}); keyboard on " \
            "#{inf['focus']}")
+    # ... and the keyboard went to the dialog with it (L9e).
+    dkeys0 = client_log("wl_dialog").lines.grep(/^key dialog \d+ 1/).size
+    pkeys0 = client_log("wl_dialog").lines.grep(/^key parent \d+ 1/).size
+    type("hello")
+    sleep 0.5
+    dkeys = client_log("wl_dialog").lines.grep(/^key dialog \d+ 1/).size - dkeys0
+    pkeys = client_log("wl_dialog").lines.grep(/^key parent \d+ 1/).size - pkeys0
+    result("the parent clicked: the keyboard to the dialog", inf["focus"] == dlg[:id].to_s && dkeys == 5 && pkeys.zero?,
+           "keyboard on #{inf['focus']} (the dialog #{dlg[:id]}, its parent #{parent[:id]}); 5 keys typed: " \
+           "#{dkeys} reached the dialog, #{pkeys} the parent (#{log_text[/stand-in pid \d+ in front of its parent's[^\n]*/]})")
     tell("wl_dialog", "quit")
     gone?(parent[:id])
 
-    # 7. X11: a transient dialog
+    # 7. X11: a transient dialog. Before it, the pointer is left resting in
+    #    the middle of the screen, where the parent will come (L9e): without
+    #    a move, the pointer is found over the new window (Family mruby's
+    #    own arrow covers the hole under it).
+    comp("move", *to_out(fw / 2, fh / 2 + 5))
+    sleep 0.8
+    rc0 = stats["pointer_rechecks"]
     before = info["windows"].map { |w| w[:id] }
     client("x11_dialog")
     xp = new_window(before)
     sleep 0.8
     xp = win(info, xp[:id])
+    still = wait_for("the pointer over the new window", 5) { i = info; i["ptr"].to_s.start_with?("#{xp[:id]}:") && i } rescue info
+    rc = stats["pointer_rechecks"] - rc0
+    result("a window coming under a still pointer", still["ptr"].to_s.start_with?("#{xp[:id]}:") &&
+           still["cursor"] == "window" && rc.positive?,
+           "the pointer at frame (#{fw / 2},#{fh / 2 + 5}) not moved; window #{xp[:id]} came under it at " \
+           "(#{xp[:fx]},#{xp[:fy]}) #{xp[:fw]}x#{xp[:fh]}; the pointer now on #{still['ptr']}, cursor " \
+           "#{still['cursor']}; #{rc} recheck(s)")
     before = info["windows"].map { |w| w[:id] }
     tell("x11_dialog", "dialog 160 90")
     xd = new_window(before)
@@ -538,6 +569,28 @@ class DialogRun
     result("an X11 menu by the picture's edge", xin && yel == 150 * 100 && mout.zero?,
            "asked at (#{mx},#{my}) 150x100, now at (#{mconf[0]},#{mconf[1]}) #{mconf[2]}x#{mconf[3]}; inside the " \
            "picture #{rect.inspect}: #{xin}; #{yel} yellow pixels, #{mout} outside")
+
+    # 9. an X11 menu holding the pointer (a toolkit's menu: typed a popup
+    #    menu, a grab) closes on a press on Family mruby (L9e)
+    tell("x11_dialog", "unmenu")
+    sleep 0.3
+    tell("x11_dialog", "grabmenu #{rect[0] + 20} #{rect[1] + 60} 150 100")
+    grabbed = wait_for("the menu's grab", 10) { client_log("x11_dialog")[/^menu grab (\d+)/, 1] } rescue nil
+    sleep 0.8
+    img = grim("x11_grab_menu")
+    shown = count(img, YELLOW)
+    p0 = stats["x11_menu_presses"]
+    comp("click", *to_out(fw - 30, fh - 20))
+    closed = wait_for("the menu closed", 10) { client_log("x11_dialog").include?("menu closed by a press outside") } rescue false
+    sleep 0.5
+    img = grim("x11_grab_menu_closed")
+    left = count(img, YELLOW)
+    passed = stats["x11_menu_presses"] - p0
+    result("a press on Family mruby closes an X11 menu", grabbed == "0" && shown == 150 * 100 && closed && left.zero? &&
+           passed == 1,
+           "the menu's grab #{grabbed.inspect} (0 = taken); #{shown} yellow pixels; a press on the desktop: passed " \
+           "to the menu #{passed} time(s), the program closed it #{closed ? true : false}, #{left} yellow pixels left " \
+           "(#{log_text[/a press elsewhere passed to X11 menu[^\n]*/]})")
     tell("x11_dialog", "quit")
     ctl("quit")
     wait_for("the container to end", 30) { !system("docker inspect #{@name} > /dev/null 2>&1") } rescue nil

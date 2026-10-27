@@ -3413,6 +3413,69 @@ bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
     return false;
 }
 
+void fmrb_app_fullscreen_size_for(uint8_t hires, uint16_t *width, uint16_t *height)
+{
+    if (hires != 0 && fmrb_app_fullscreen_hires_size(width, height)) {
+        return;
+    }
+#if defined(FMRB_PLATFORM_NATIVE)
+    // The compositor's screen wider than Modern's (doc/linux_native L9e): a
+    // plain fullscreen app keeps Modern's 426x240 (fullscreen_w), and there
+    // is no high-resolution mode to switch to. An app that lays itself out at
+    // any size takes the whole screen instead; one laid out for 640x360 gets
+    // that where it fits, and is shown alone at the output's largest whole
+    // scale like any fullscreen app smaller than the screen.
+    const fmrb_native_machine_conf_t *m = fmrb_kernel_native_machine();
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    if (hires != 0 && m->fullscreen_w > 0 && conf != NULL) {
+        uint16_t sw = (uint16_t)(conf->display_width - conf->display_margin_x);
+        uint16_t sh = (uint16_t)(conf->display_height - conf->display_margin_y);
+        if (hires == FMRB_FULLSCREEN_HIRES_ANY) {
+            *width = sw;
+            *height = sh;
+            return;
+        }
+        if (sw >= 640 && sh >= 360) {
+            *width = 640;
+            *height = 360;
+            return;
+        }
+    }
+#endif
+    fmrb_kernel_fullscreen_size(width, height);
+}
+
+#if defined(FMRB_PLATFORM_NATIVE)
+bool fmrb_app_canvas_fullscreen(uint16_t canvas_id)
+{
+    if (canvas_id == 0) return false;
+    // Without the lock: asked by the display task with every frame, and a
+    // task waiting on the display may hold it. A slot changing meanwhile
+    // gives the old answer or the new one, either of them right for a frame.
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        const volatile fmrb_app_task_context_t *ctx = &g_ctx_pool[i];
+        if (ctx->state != PROC_STATE_FREE && ctx->canvas_id == canvas_id) return ctx->fullscreen;
+    }
+    return false;
+}
+#endif
+
+bool fmrb_app_fullscreen_size(uint8_t pid, uint16_t *width, uint16_t *height)
+{
+    uint8_t hires = 0;
+    bool found = false;
+    if (pid < FMRB_MAX_APPS) {
+        fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+        if (g_ctx_pool[pid].state != PROC_STATE_FREE) {
+            hires = g_ctx_pool[pid].fullscreen_hires;
+            found = true;
+        }
+        fmrb_semaphore_give(g_ctx_lock);
+    }
+    fmrb_app_fullscreen_size_for(hires, width, height);
+    return found;
+}
+
 /* ---------------------------------------------------------------------------
  * Audio note messages
  *

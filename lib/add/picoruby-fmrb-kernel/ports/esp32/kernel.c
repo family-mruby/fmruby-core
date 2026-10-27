@@ -489,6 +489,20 @@ static mrb_value mrb_kernel_fullscreen_hires_size(mrb_state *mrb, mrb_value self
     return ary;
 }
 
+// FmrbKernel#_fullscreen_size(pid) -> [w, h]
+// The size a fullscreen window of the app gets (fmrb_app_fullscreen_size).
+static mrb_value mrb_kernel_fullscreen_size(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+    uint16_t w = 0, h = 0;
+    fmrb_app_fullscreen_size((uint8_t)(pid < 0 || pid > 255 ? 255 : pid), &w, &h);
+    mrb_value ary = mrb_ary_new_capa(mrb, 2);
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(w));
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(h));
+    return ary;
+}
+
 // FmrbKernel#_set_app_screen_mode(pid, width, height) -> bool
 // Give the app's main canvas the high-resolution screen (640, 360) or give the
 // screen back (0, 0). See fmrb_app_set_screen_mode for the order to keep with
@@ -667,6 +681,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_set_app_fullscreen", mrb_kernel_set_app_fullscreen, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, handler_class, "_fullscreen_hires_size", mrb_kernel_fullscreen_hires_size, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_fullscreen_size", mrb_kernel_fullscreen_size, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_app_screen_mode", mrb_kernel_set_app_screen_mode, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));

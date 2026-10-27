@@ -14,13 +14,18 @@
  *                       button closes it
  *   menu X Y W H        an override-redirect window at (X, Y) of the screen,
  *                       W x H, yellow
+ *   grabmenu X Y W H    the same as a toolkit's menu (L9e): typed a popup
+ *                       menu (_NET_WM_WINDOW_TYPE_POPUP_MENU), holding the
+ *                       pointer (a grab) once it shows, and closed by a press
+ *                       outside it
  *   unmenu              the menu destroyed
  *   quit                end
  *
  * The log: "configure parent|dialog|menu X Y W H" (each ConfigureNotify),
  * "key parent|dialog CODE 1|0" (X key codes), "button parent|dialog|menu B
  * 1|0 X Y", "focus parent|dialog", "dialog closed by its button", "close
- * parent|dialog" (WM_DELETE_WINDOW).
+ * parent|dialog" (WM_DELETE_WINDOW), "menu grab N" (XGrabPointer's answer,
+ * 0 = GrabSuccess), "menu closed by a press outside".
  *
  * A test program, not part of the product: plain libc and Xlib.
  */
@@ -49,6 +54,8 @@ static Atom wm_delete;
 static FILE *logf;
 static bool quit;
 static bool btn_down_on_button;
+static bool menu_wants_grab;
+static int menu_w, menu_h;
 
 static void say(const char *fmt, ...)
 {
@@ -112,10 +119,22 @@ static void command(char *line)
     } else if (sscanf(line, "menu %d %d %d %d", &x, &y, &w, &h) == 4) {
         if (menu != 0) XDestroyWindow(d, menu);
         menu = make("XMenu", "XMenu", x, y, w, h, colour(255, 255, 0), true);
+        menu_w = menu_h = 0;
+        XMapRaised(d, menu);
+    } else if (sscanf(line, "grabmenu %d %d %d %d", &x, &y, &w, &h) == 4) {
+        if (menu != 0) XDestroyWindow(d, menu);
+        menu = make("XMenu", "XMenu", x, y, w, h, colour(255, 255, 0), true);
+        Atom type = XInternAtom(d, "_NET_WM_WINDOW_TYPE", False);
+        Atom popup = XInternAtom(d, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
+        XChangeProperty(d, menu, type, XA_ATOM, 32, PropModeReplace, (unsigned char *)&popup, 1);
+        menu_w = w;
+        menu_h = h;
+        menu_wants_grab = true;
         XMapRaised(d, menu);
     } else if (strcmp(line, "unmenu") == 0) {
         if (menu != 0) XDestroyWindow(d, menu);
         menu = 0;
+        menu_w = menu_h = 0;
     } else if (strcmp(line, "quit") == 0) {
         quit = true;
     } else {
@@ -128,6 +147,14 @@ static void event(XEvent *e)
 {
     Window w = e->xany.window;
     switch (e->type) {
+    case MapNotify:
+        if (w == menu && menu != 0 && menu_wants_grab) {
+            menu_wants_grab = false;
+            int st = XGrabPointer(d, menu, False, ButtonPressMask | ButtonReleaseMask, GrabModeAsync, GrabModeAsync,
+                                  None, None, CurrentTime);
+            say("menu grab %d", st);
+        }
+        break;
     case Expose:
         if (w == dialog) draw_dialog();
         break;
@@ -148,6 +175,14 @@ static void event(XEvent *e)
         bool down = e->type == ButtonPress;
         int bx = e->xbutton.x, by = e->xbutton.y;
         say("button %s %u %d %d %d", name_of(w), e->xbutton.button, down ? 1 : 0, bx, by);
+        if (down && w == menu && menu != 0 && menu_w > 0 && (bx < 0 || by < 0 || bx >= menu_w || by >= menu_h)) {
+            say("menu closed by a press outside");
+            XUngrabPointer(d, CurrentTime);
+            XDestroyWindow(d, menu);
+            menu = 0;
+            menu_w = menu_h = 0;
+            break;
+        }
         bool on_button = w == dialog && dialog != 0 && bx >= dlg_w - BTN_W && by >= dlg_h - BTN_H;
         if (down) {
             btn_down_on_button = on_button;

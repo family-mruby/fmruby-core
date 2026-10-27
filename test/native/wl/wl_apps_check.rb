@@ -18,7 +18,8 @@
 # outside the run directory and the container.
 #
 #   1. the list: the launcher offers the Linux group; NoDisplay=true is not
-#      listed, Name[ja] is used, foot is listed with an icon (comp app)
+#      listed, Name[ja] is used, foot is listed with an icon (comp app); an
+#      entry whose icon only Breeze has, as an SVG, gets it (L9e)
 #   2. from the launcher (keys: the group, then the entry): foot starts, its
 #      stand-in carries the list's name ("Foot", where foot's app id is
 #      "foot"), and what the scale leaves between foot and its frame is the
@@ -129,6 +130,8 @@ class AppsRun
     desktop("fmrb-eyes.desktop", "Name=Eyes\nName[ja]=\u76EE\u7389\nExec=xeyes\nIcon=xterm\nStartupWMClass=XEyes\n")
     desktop("fmrb-xtyper.desktop", "Name=X Typer\nExec=xterm -xrm XTerm*allowWindowOps:true -e /run/fmrb/xterm.sh\n")
     desktop("fmrb-sleeper.desktop", "Name=Sleeper\nExec=sleep 1000\n")
+    # An icon only the Breeze theme has, and only as SVG (L9e).
+    desktop("fmrb-calc.desktop", "Name=Calc Icon\nExec=foot\nIcon=accessories-calculator\n")
     # The xterm resizes itself after a moment (12 rows, 50 columns: the
     # window-ops sequence), then writes what it is typed to a file.
     File.write(File.join(@run, "xterm.sh"), "#!/bin/sh\nsleep 3\nprintf '\\033[8;12;50t'\nexec cat > /run/fmrb/xtyped\n")
@@ -384,6 +387,22 @@ class AppsRun
            "the group offered: #{offered}; #{count} entries (#{log_text[/linux apps: \d+ entries[^\n]*/]}); " \
            "NoDisplay=true listed: #{hidden[:index] >= 0}; Name[ja]: #{eyes[:name]}; foot at #{foot[:index]} " \
            "named #{foot[:name]} with icon #{foot[:icon]}")
+
+    # 1b. a Breeze SVG icon (L9e): no theme set, so Plasma's default
+    #     (breeze, then hicolor); the SVG made a 24x24 icon with pixels in it.
+    calc = app("fmrb-calc.desktop")
+    themes = log_text[/linux apps: icon themes ([^\n]*)/, 1].to_s
+    bmp = calc[:icon].to_s.start_with?("/var/cache/linux/") ? calc[:icon].sub("/var/cache/linux/", "") : nil
+    drawn = 0
+    if bmp
+      out, = sh!("docker", "exec", @name, "bash", "-c",
+                 "f=$(find / -xdev -name #{bmp} 2>/dev/null | head -1); od -An -v -tu1 -j 1078 \"$f\"", ok: false)
+      drawn = out.split.count { |v| v.to_i != 0 }
+    end
+    result("a Breeze SVG icon", calc[:index] >= 0 && !bmp.nil? && drawn > 24 && themes.start_with?("breeze > hicolor") &&
+           themes =~ /[1-9]\d* SVGs? converted/,
+           "Icon=accessories-calculator (an SVG of Breeze's alone): #{calc[:icon]}, #{drawn} of 576 pixels drawn; " \
+           "icon themes #{themes}")
 
     # 2. foot from the launcher
     t_open = 3.times.map { |i| time_open_launcher("open#{i}") }.sort[1]

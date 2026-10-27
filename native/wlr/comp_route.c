@@ -261,6 +261,24 @@ bool comp_route_hole(const comp_route_t *r, int id, int fx, int fy)
     return r->px[(size_t)fy * (size_t)r->fb_w + (size_t)fx] == COMP_HOLE_565;
 }
 
+void comp_route_set_cursor(comp_route_t *r, bool on, int fx, int fy)
+{
+    r->cur_on = on;
+    r->cur_fx = fx;
+    r->cur_fy = fy;
+}
+
+static comp_hit_t window_hit(const comp_window_t *w, int x, int y, int fx, int fy)
+{
+    comp_hit_t hit = { .target = w->id };
+    hit.x = x - w->x;
+    hit.y = y - w->y;
+    hit.fx = fx;
+    hit.fy = fy;
+    hit.in_picture = false;
+    return hit;
+}
+
 comp_hit_t comp_route_at(const comp_route_t *r, int x, int y)
 {
     comp_hit_t hit = { .target = COMP_FMRB };
@@ -272,14 +290,22 @@ comp_hit_t comp_route_at(const comp_route_t *r, int x, int y)
     if (!hit.in_picture) return hit;
     for (int i = r->n - 1; i >= 0; i--) {
         const comp_window_t *w = &r->win[i];
-        if (!comp_route_hole(r, w->id, fx, fy)) continue;
-        hit.target = w->id;
-        hit.x = x - w->x;
-        hit.y = y - w->y;
-        hit.fx = fx;
-        hit.fy = fy;
-        hit.in_picture = false;
-        return hit;
+        if (comp_route_hole(r, w->id, fx, fy)) return window_hit(w, x, y, fx, fy);
+    }
+    /* The arrow's tip: the pixel is the arrow's own, not the frame's. The
+     * arrow reaches right and down from its tip, so the pixels just left of
+     * it and just above it are the frame's. */
+    if (r->cur_on && fx == r->cur_fx && fy == r->cur_fy) {
+        static const int beside[][2] = { { -1, 0 }, { 0, -1 }, { -1, -1 } };
+        for (int i = r->n - 1; i >= 0; i--) {
+            const comp_window_t *w = &r->win[i];
+            if (!w->visible || !in_rect(w, fx, fy)) continue;
+            for (size_t k = 0; k < sizeof(beside) / sizeof(beside[0]); k++) {
+                if (comp_route_hole(r, w->id, fx + beside[k][0], fy + beside[k][1])) {
+                    return window_hit(w, x, y, fx, fy);
+                }
+            }
+        }
     }
     return hit;
 }

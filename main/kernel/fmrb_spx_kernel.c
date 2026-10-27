@@ -183,6 +183,13 @@ int fmrb_spx_fullscreen_hires_size(void)
     return ((int)w << 16) | (int)h;
 }
 
+int fmrb_spx_fullscreen_size(int pid)
+{
+    uint16_t w = 0, h = 0;
+    fmrb_app_fullscreen_size((uint8_t)(pid < 0 || pid > 255 ? 255 : pid), &w, &h);
+    return ((int)w << 16) | (int)h;
+}
+
 int fmrb_spx_set_app_screen_mode(int pid, int w, int h)
 {
     if (pid < 0 || pid > 255 || w < 0 || w > 65535 || h < 0 || h > 65535) {

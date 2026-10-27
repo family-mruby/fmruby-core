@@ -48,7 +48,8 @@
 #      pixel apart (finer than Family mruby's pixel); Family mruby's picture
 #      unchanged
 #   5. keys to Family mruby: the editor from the menu, one "a", the editor's
-#      window against the native baseline editor_type.png; foot got nothing
+#      window against the native baseline editor_type.png; foot got nothing;
+#      F11 gives the editor the whole screen (L9e), a key reaches it
 #   6. stacking: the editor over foot (only the uncovered part of foot shows),
 #      a click on foot brings it in front (all of it shows); the desktop's
 #      menu and the exit question over foot; each a grim against the picture
@@ -61,7 +62,9 @@
 #  10. the end: a third foot that ignores the request to close (stopped),
 #      then Family mruby's Exit from the power menu: the windows are asked
 #      to close, the stopped one is ended within seconds, the program ends,
-#      and no process is left in the container
+#      and no process is left in the container; while it waits for the
+#      windows, the control socket answers a shot and comp info, and a quit
+#      ends the wait (L9e)
 #
 # The run directory is a host directory mounted into the container
 # (/run/fmrb): the control socket, the inject socket, the log, the
@@ -100,6 +103,7 @@ KEY_TAB = 15
 KEY_2 = 3
 KEY_7 = 8
 KEY_LEFTBRACE = 26
+KEY_F11 = 87
 # Shift+2, the key right of P, Shift+7 on a JIS keyboard.
 JP_SYMBOLS = "\"@'"
 
@@ -692,6 +696,42 @@ class Run
            "editor_type: #{count} differing pixels#{box ? " (box #{box.inspect})" : ''}; foot got nothing more: " \
            "#{typed == want}")
 
+    # 5b. the editor's fullscreen (L9e): F11 on the wider screen gives the
+    #     editor the whole screen (the output over 2: 640x400, 960x540), not
+    #     Modern's 426x240 -- the picture fills the output with no view, and
+    #     a key reaches it. F11 again gives the window back.
+    fs_before = log_text.scan(/Runtime fullscreen: PID \d+ -> (\d+x\d+)/).size
+    tap(KEY_F11)
+    fs_size = wait_for("the editor fullscreen", 15) do
+      l = log_text.scan(/Runtime fullscreen: PID \d+ -> (\d+x\d+)/)
+      l.size > fs_before && l.last[0]
+    end
+    sleep 1.5
+    inf = info
+    fw, fh = frame_size(inf)
+    fs_shot = shot(File.join(@out, "editor_fullscreen.png"))
+    type("a")
+    fs_typed = begin
+      wait_for("the key in the fullscreen editor", 10) do
+        i = shot(File.join(@out, "editor_fullscreen_type.png"))
+        !i.same?(fs_shot, frame_masks(i)) && i
+      end
+    rescue StandardError
+      nil
+    end
+    # The editor's own status line at the bottom of the screen: its rows
+    # are not the wallpaper's (the desktop is behind it otherwise).
+    fs_g = grim(File.join(@out, "editor_fullscreen_grim.png"))
+    fills = inf["view"] == "0,0,#{fw}x#{fh}" && inf["vscale"] == inf["scale"] && inf["vat"] == inf["at"] &&
+            inf["at"] == "0,0" && fs_g.w == fw * 2 && fs_g.h == fh * 2
+    tap(KEY_F11)
+    back = wait_for("the editor windowed again", 15) { log_text.include?("Runtime windowed") } rescue false
+    sleep 1.0
+    result("the editor's fullscreen fills the screen", fs_size == "#{fw}x#{fh}" && fills && !fs_typed.nil? && back,
+           "F11: the editor at #{fs_size} on the #{fw}x#{fh} screen; shown whole at #{inf['vscale']}x at " \
+           "(#{inf['vat']}) on the #{inf['out']} output (view #{inf['view']}); a key changed the picture: " \
+           "#{!fs_typed.nil?}; F11 again: windowed #{back ? true : false}")
+
     # 6. stacking. foot dragged half over the editor (the press on its title
     #    bar brings it in front), then the editor clicked in front of it.
     drag(250 + 40, 48 + 5, -100, 0)
@@ -748,12 +788,16 @@ class Run
     result("Ctrl+Tab is Family mruby's", f0 == @foot.to_s && switched && typed == want,
            "focus on window #{f0}, after Ctrl+Tab on #{info['focus']}; foot got nothing: #{typed == want}")
 
-    # 7b. fullscreen apps on the wider screen (L9d): Modern's 426x240, shown
-    #     alone at the largest whole scale, centred, black around; the Linux
-    #     windows hidden meanwhile, back after. hires_test (a still test
-    #     card; the high-resolution screen is not offered on a screen as
-    #     wide as it) for the pixels, shooter for the view's place.
-    views = [["hires_test", "/app/test/hires_test.app.rb"], ["shooter", "/app/game/shooter.app.rb"]].map do |label, app|
+    # 7b. fullscreen apps on the wider screen (L9d): shooter gets Modern's
+    #     426x240, shown alone at the largest whole scale, centred, black
+    #     around; the Linux windows hidden meanwhile, back after. The apps
+    #     laid out for the 640x360 screen (.app.toml fullscreen_hires: the
+    #     test card hires_test, mahjong) get 640x360, shown alone the same
+    #     way (L9e; at 1280x800: 2x at (0,40)). The view changes with the
+    #     frames themselves (comp stats view_changes: in and out).
+    views = [["hires_test", "/app/test/hires_test.app.rb"], ["shooter", "/app/game/shooter.app.rb"],
+             ["mahjong", "/app/game/mahjong/mahjong.app.rb"]].map do |label, app|
+      stats(reset: true)
       out, st = native_tool("app", "spawn", app)
       raise "app spawn #{app}: #{out.strip}" unless st.success? && out.include?("pid")
       vpid = out[/"pid":\s*(\d+)/, 1]
@@ -763,7 +807,13 @@ class Run
       hidden = vinf["windows"].none? { |w| w[:vis] }
       native_tool("app", "kill", vpid)
       back = wait_for("#{label}'s view gone", 15) { i = info; i["view"] == "0,0,#{i['frame']}" && win(i, @foot)[:vis] && i } rescue nil
-      [label, vok && hidden && !back.nil?, "#{label}: #{vdetail}; foot hidden: #{hidden}; back after: #{!back.nil?}"]
+      vw = vinf["view"].split(",")[2]
+      fw0, fh0 = frame_size(vinf)
+      want_v = label != "shooter" && fw0 >= 640 && fh0 >= 360 ? "640x360" : "426x240"
+      changes = stats["view_changes"]
+      [label, vok && hidden && !back.nil? && vw == want_v && changes >= 2,
+       "#{label}: #{vdetail}; #{vw} (#{want_v} wanted); foot hidden: #{hidden}; back after: #{!back.nil?}; " \
+       "the view changed #{changes} times with a frame"]
     end
     views.each { |label, ok, detail| result("fullscreen #{label}", ok, detail) }
     click_foot(@foot)
@@ -851,6 +901,27 @@ class Run
     grim(File.join(@out, "exit_question.png"))
     t_exit = now
     click(*question(:yes))    # "Yes"
+    # The wait for the windows (up to 5 s) answers the control socket (L9e):
+    # a shot shows the picture, comp info the windows, and a quit ends the
+    # wait at once.
+    wait_for("the wait for the windows", 10) { log_text =~ /compositor: asked \d+ window/ }
+    sleep 0.3
+    linger_shot = begin
+      shot(File.join(@out, "linger_shot.png"))
+    rescue StandardError
+      nil
+    end
+    linger_info = begin
+      info
+    rescue StandardError
+      nil
+    end
+    begin
+      ctl("quit", timeout: 5)
+    rescue StandardError
+      nil
+    end
+    linger_ok = !linger_shot.nil? && [linger_shot.w, linger_shot.h] == frame_size && !linger_info.nil?
     gone = begin
       wait_for("the container to end", 30) { !system("docker inspect #{@name} > /dev/null 2>&1") }
       true
@@ -865,9 +936,14 @@ class Run
     left = left.reject { |l| l =~ /\A\d+ (docker-init|bash|ps)\z/ }
     exited = log_text[/^exit=(\d+)/, 1]
     killed = lines.any? { |l| l.include?("SIGKILL") || l.include?("SIGTERM") }
+    quit_early = log_text.include?("quit asked for while waiting for the windows")
     result("the end", gone && exited == "0" && killed && left.empty? && took < 15,
            "Exit to the program's end #{took} s; #{lines.join(' / ')}; exit=#{exited}; processes left: " \
            "#{left.empty? ? 'none' : left.join(', ')}")
+    result("the control socket while waiting for the windows", linger_ok && quit_early && took < 4.5,
+           "during the wait: a shot #{linger_shot ? "#{linger_shot.w}x#{linger_shot.h}" : 'not answered'}, " \
+           "comp info #{linger_info ? 'answered' : 'not answered'}; quit ended the wait: #{quit_early} " \
+           "(the end #{took} s after Exit, the wait being 5 s)")
   rescue StandardError => e
     result("run", false, e.message.lines.first(3).join.strip)
     FileUtils.cp(File.join(@run, "core.log"), File.join(@out, "core.log")) if File.exist?(File.join(@run, "core.log"))

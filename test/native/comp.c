@@ -373,6 +373,87 @@ static void test_dialogs(void)
     comp_route_destroy(&r);
 }
 
+// Family mruby's arrow over a hole (L9e): the arrow's own pixels at its tip
+// cover the hole, so a window coming under a pointer that stands still is
+// known by the pixels left of and above the tip.
+static void test_cursor_tip(void)
+{
+    comp_route_t r;
+    comp_route_init(&r);
+    comp_route_layout(&r, 1280, 720, 426, 240);
+    comp_route_set_base(&r, 426, 240);
+    frame_clear();
+    comp_route_set_frame(&r, g_frame);
+    comp_route_window_add(&r, 1, 600, 300, 0, "foot");
+    comp_place_t p1 = { .id = 1, .x = 100, .y = 50, .w = 200, .h = 100, .shown = true };
+    comp_route_place(&r, &p1, 1, COMP_FMRB);
+    frame_fill(100, 50, 200, 100, COMP_HOLE_565);
+    // The arrow drawn with its tip at (150,80): its pixels reach right and down.
+    frame_fill(150, 80, 2, 1, 0xFFFF);
+    frame_fill(150, 81, 3, 1, 0xFFFF);
+    int ox = 1 + 3 * 150 + 1, oy = 3 * 80 + 1;
+    CHECK(comp_route_at(&r, ox, oy).target == COMP_FMRB, "no arrow known: the tip's pixel is Family mruby's");
+    comp_route_set_cursor(&r, true, 150, 80);
+    comp_hit_t h = comp_route_at(&r, ox, oy);
+    CHECK(h.target == 1 && h.fx == 150 && h.fy == 80, "the arrow's tip over the hole: window %d", h.target);
+    h = comp_route_at(&r, 1 + 3 * 151 + 1, oy);
+    CHECK(h.target == COMP_FMRB, "another arrow pixel than the tip: Family mruby (%d)", h.target);
+    // Over Family mruby's own drawing beside the tip (a menu): no hole.
+    frame_fill(140, 70, 10, 30, 0xF800);
+    frame_fill(150, 70, 10, 10, 0xF800);
+    CHECK(comp_route_at(&r, ox, oy).target == COMP_FMRB, "covered beside the tip: Family mruby");
+    // Outside every window: nothing to find.
+    comp_route_set_cursor(&r, true, 20, 20);
+    CHECK(comp_route_at(&r, 1 + 3 * 20 + 1, 3 * 20 + 1).target == COMP_FMRB, "no window there");
+    comp_route_set_cursor(&r, false, 0, 0);
+    comp_route_destroy(&r);
+}
+
+// The view with the frame (L9e): what part of a frame to show is decided
+// from the canvases it was made of, kept with it and copied with it.
+static int g_view_calls;
+static bool fake_view(const native_frame_canvas_t *c, int n, int fb_w, int fb_h, int view[4])
+{
+    g_view_calls++;
+    (void)fb_w;
+    (void)fb_h;
+    for (int i = n - 1; i >= 0; i--) {
+        if (c[i].canvas_id != 7) continue;
+        view[0] = c[i].x;
+        view[1] = c[i].y;
+        view[2] = c[i].w;
+        view[3] = c[i].h;
+        return true;
+    }
+    return false;
+}
+
+static void test_frame_view(void)
+{
+    static uint16_t fb[640 * 400], copy[640 * 400];
+    CHECK(native_frame_init(640, 400), "init 640x400");
+    native_frame_set_view_fn(fake_view);
+    native_frame_canvas_t c[2] = { { .canvas_id = 1, .x = 0, .y = 0, .w = 640, .h = 400 },
+                                   { .canvas_id = 7, .x = 0, .y = 0, .w = 426, .h = 240 } };
+    native_frame_put_canvases(fb, 640, 400, c, 2);
+    int w = 0, h = 0, v[4] = { -1, -1, -1, -1 };
+    uint32_t seq = 0;
+    CHECK(native_frame_copy(copy, 640 * 400, &w, &h, &seq), "copied");
+    native_frame_copied_view(v);
+    CHECK(v[0] == 0 && v[1] == 0 && v[2] == 426 && v[3] == 240 && g_view_calls == 1,
+          "the fullscreen canvas's view with its frame: %d,%d %dx%d", v[0], v[1], v[2], v[3]);
+    native_frame_put_canvases(fb, 640, 400, c, 1);
+    native_frame_copy(copy, 640 * 400, &w, &h, &seq);
+    native_frame_copied_view(v);
+    CHECK(v[2] == 0 && v[3] == 0, "the next frame without it: the whole frame (%dx%d)", v[2], v[3]);
+    native_frame_put_canvases(fb, 640, 400, c, 2);
+    native_frame_put(fb, 640, 400);
+    native_frame_copy(copy, 640 * 400, &w, &h, &seq);
+    native_frame_copied_view(v);
+    CHECK(v[2] == 0, "a frame put without canvases has no view");
+    native_frame_set_view_fn(NULL);
+}
+
 // The other direction: places and commands from Family mruby's side wake
 // the compositor's loop, and only changes count.
 static void test_link(void)
@@ -555,10 +636,12 @@ int main(void)
     test_dialogs();
     test_link();
     test_frame();
+    test_cursor_tip();
+    test_frame_view();
     if (g_fail) {
         printf("native comp: %d of %d checks failed\n", g_fail, g_count);
         return 1;
     }
-    printf("native comp: %d checks passed (route, holes, stacking, focus, notices, places, frame hand-over)\n", g_count);
+    printf("native comp: %d checks passed (route, holes, stacking, focus, notices, places, frame hand-over, the arrow's tip, the view with the frame)\n", g_count);
     return 0;
 }

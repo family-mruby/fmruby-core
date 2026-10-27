@@ -115,6 +115,9 @@ int fmrb_spx_set_app_fullscreen(int pid, int on, int w, int h);
 /** The fullscreen high-resolution screen as (w << 16 | h), or 0 when this
     build/display has none (fmrb_app_fullscreen_hires_size). */
 int fmrb_spx_fullscreen_hires_size(void);
+/** The size a fullscreen window of app pid gets (fmrb_app_fullscreen_size),
+    as (w << 16 | h). */
+int fmrb_spx_fullscreen_size(int pid);
 /** SET_SCREEN_MODE for the app's main canvas (fmrb_app_set_screen_mode):
     640x360 takes the high-resolution screen, 0x0 gives it back. 1/0/neg */
 int fmrb_spx_set_app_screen_mode(int pid, int w, int h);

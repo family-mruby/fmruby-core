@@ -25,6 +25,16 @@ static int s_base_w = 0;
 static int s_base_h = 0;
 static volatile uint32_t s_seq = 0;
 static int s_wake_fd = -1;
+/* The view of the frame on hand (0x0: all of it), and the hook deciding it. */
+static int s_view[4];
+static native_frame_view_fn s_view_fn = NULL;
+/* The view of the frame each thread copied last. */
+static __thread int t_copied_view[4];
+
+void native_frame_set_view_fn(native_frame_view_fn fn)
+{
+    s_view_fn = fn;
+}
 
 void native_frame_set_wake_fd(int fd)
 {
@@ -65,7 +75,7 @@ bool native_frame_init(int base_w, int base_h)
     return true;
 }
 
-void native_frame_put(const uint16_t *fb, int w, int h)
+static void put_view(const uint16_t *fb, int w, int h, const int view[4])
 {
     if (fb == NULL || w <= 0 || h <= 0) return;
     pthread_mutex_lock(&s_lock);
@@ -73,10 +83,25 @@ void native_frame_put(const uint16_t *fb, int w, int h)
         memcpy(s_px, fb, (size_t)w * (size_t)h * sizeof(uint16_t));
         s_w = w;
         s_h = h;
+        memcpy(s_view, view, sizeof(s_view));
         s_seq++;
     }
     pthread_mutex_unlock(&s_lock);
     wake();
+}
+
+void native_frame_put(const uint16_t *fb, int w, int h)
+{
+    static const int all[4] = { 0, 0, 0, 0 };
+    put_view(fb, w, h, all);
+}
+
+void native_frame_put_canvases(const uint16_t *fb, int w, int h, const native_frame_canvas_t *c, int n)
+{
+    int view[4] = { 0, 0, 0, 0 };
+    native_frame_view_fn fn = s_view_fn;
+    if (fn == NULL || !fn(c, n, w, h, view)) memset(view, 0, sizeof(view));
+    put_view(fb, w, h, view);
 }
 
 void native_frame_put_rect(const uint16_t *block, int x0, int y0, int w, int h,
@@ -126,8 +151,14 @@ bool native_frame_copy(uint16_t *dst, int cap_px, int *w, int *h, uint32_t *seq)
         *w = s_w;
         *h = s_h;
         *seq = s_seq;
+        memcpy(t_copied_view, s_view, sizeof(t_copied_view));
         ok = true;
     }
     pthread_mutex_unlock(&s_lock);
     return ok;
+}
+
+void native_frame_copied_view(int view[4])
+{
+    memcpy(view, t_copied_view, sizeof(t_copied_view));
 }

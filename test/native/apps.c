@@ -10,10 +10,12 @@
 // made from a hicolor PNG and the group's mark; starting an entry (no shell,
 // a session of its own, XDG_CURRENT_DESKTOP, the working directory); a
 // window's name by its process and by its app id; and the end, which leaves
-// no process of the started session (a background child included).
+// no process of the started session (a background child included). Then
+// the icon themes (L9e).
 //
-// Everything is under a directory of its own in /tmp (HOME, XDG_DATA_HOME,
-// XDG_DATA_DIRS, PATH's first directory); nothing outside it is written.
+// Everything is under a directory of its own in /tmp (HOME, XDG_CONFIG_HOME,
+// XDG_DATA_HOME, XDG_DATA_DIRS, PATH's first directory); nothing outside it
+// is written.
 //
 // Usage: native_apps_test
 
@@ -387,6 +389,110 @@ static void test_tree(void)
     CHECK(linux_apps_end_all(500) == 0, "a second end has nothing to do");
 }
 
+// The icon themes (L9e): the user's theme from kdeglobals (else GTK's
+// settings.ini), what it inherits, hicolor last; the directory nearest the
+// launcher's 24 first; a theme's SVG made an icon through librsvg (when the
+// host has it).
+static void test_themes(void)
+{
+    char path[600], out[700], why[700];
+    write_file("sys1/icons/mytheme/index.theme",
+               "[Icon Theme]\nName=Mine\nInherits=parenttheme,hicolor\n"
+               "Directories=apps/16,apps/22,apps/48,apps/22@2x\n\n"
+               "[apps/16]\nSize=16\nType=Fixed\n\n[apps/22]\nSize=22\nType=Fixed\n\n"
+               "[apps/48]\nSize=48\nType=Fixed\n\n[apps/22@2x]\nSize=22\nScale=2\nType=Fixed\n",
+               0644);
+    write_file("sys2/icons/parenttheme/index.theme",
+               "[Icon Theme]\nName=Parent\nDirectories=apps/scalable\n\n"
+               "[apps/scalable]\nSize=48\nMinSize=8\nMaxSize=512\nType=Scalable\n",
+               0644);
+    write_file("sys1/icons/hicolor/index.theme",
+               "[Icon Theme]\nName=Hicolor\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Threshold\n",
+               0644);
+    // near: 22 (an SVG) beats 48 (a PNG); 22@2x is not looked at.
+    write_file("sys1/icons/mytheme/apps/48/near.png", "x", 0644);
+    write_file("sys1/icons/mytheme/apps/22/near.svg", "x", 0644);
+    write_file("sys1/icons/mytheme/apps/22@2x/scaled.png", "x", 0644);
+    write_file("sys2/icons/parenttheme/apps/scalable/inherited.svg", "x", 0644);
+    write_file("sys2/icons/parenttheme/apps/scalable/fakeicon.svg", "x", 0644);
+    write_file("sys1/icons/mytheme/apps/16/small.png", "x", 0644);
+
+    snprintf(path, sizeof(path), "%s/config", g_root);
+    setenv("XDG_CONFIG_HOME", path, 1);
+    char theme[64];
+    CHECK(!linux_apps_user_icon_theme(theme, sizeof(theme), why, sizeof(why)) && strcmp(theme, "breeze") == 0,
+          "nothing set: breeze (%s, %s)", theme, why);
+    write_file("config/gtk-3.0/settings.ini", "[Settings]\ngtk-icon-theme-name = gtktheme\n", 0644);
+    CHECK(linux_apps_user_icon_theme(theme, sizeof(theme), why, sizeof(why)) && strcmp(theme, "gtktheme") == 0,
+          "GTK's: %s (%s)", theme, why);
+    write_file("config/kdeglobals", "[General]\nTheme=wrong\n\n[Icons]\nTheme=mytheme\n", 0644);
+    CHECK(linux_apps_user_icon_theme(theme, sizeof(theme), why, sizeof(why)) && strcmp(theme, "mytheme") == 0,
+          "Plasma's first: %s (%s)", theme, why);
+
+    linux_icon_themes_t *th = linux_apps_icon_themes(theme);
+    linux_apps_icon_theme_names(th, out, sizeof(out));
+    CHECK(strcmp(out, "mytheme > parenttheme > hicolor") == 0, "the chain: %s", out);
+    CHECK(linux_apps_find_icon(th, "near", out, sizeof(out)) && strstr(out, "mytheme/apps/22/near.svg") != NULL,
+          "the nearest size first: %s", out);
+    CHECK(linux_apps_find_icon(th, "small", out, sizeof(out)) && strstr(out, "apps/16/small.png") != NULL,
+          "the only size there is: %s", out);
+    CHECK(!linux_apps_find_icon(th, "scaled", out, sizeof(out)), "a scaled directory is not looked in");
+    CHECK(linux_apps_find_icon(th, "inherited", out, sizeof(out)) && strstr(out, "parenttheme") != NULL,
+          "from the inherited theme: %s", out);
+    CHECK(linux_apps_find_icon(th, "fakeicon", out, sizeof(out)) && strstr(out, "parenttheme") != NULL,
+          "an inherited theme before hicolor: %s", out);
+    linux_apps_icon_themes_free(th);
+
+    th = linux_apps_icon_themes("not-installed");
+    linux_apps_icon_theme_names(th, out, sizeof(out));
+    CHECK(strcmp(out, "hicolor") == 0, "a theme not installed: %s", out);
+    CHECK(linux_apps_find_icon(th, "fakeicon", out, sizeof(out)) && strstr(out, "hicolor/48x48") != NULL,
+          "hicolor's: %s", out);
+    linux_apps_icon_themes_free(th);
+
+#if NATIVE_HAVE_PNG
+    if (!linux_apps_svg_available()) {
+        printf("native apps: no librsvg on this host: the SVG icon is not checked\n");
+        return;
+    }
+    // An SVG only (the left half red), made an icon by a reading of the list.
+    write_file("sys1/icons/mytheme/apps/22/svgonly.svg",
+               "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"22\" height=\"22\" viewBox=\"0 0 22 22\">"
+               "<rect x=\"0\" y=\"0\" width=\"11\" height=\"22\" fill=\"#ff0000\"/></svg>\n",
+               0644);
+    write_file("sys1/applications/svgapp.desktop",
+               "[Desktop Entry]\nType=Application\nName=Svg App\nExec=fakeapp\nIcon=svgonly\n", 0644);
+    list(LINUX_APPS_RESCAN, "ja");
+    CHECK(linux_apps_wait_scan(5000), "the read with the theme ends");
+    list(LINUX_APPS_LIST, "ja");
+    const char *l = line_of("svgapp.desktop");
+    const char *icon = l ? strrchr(l, '\t') + 1 : "";
+    CHECK(strncmp(icon, "/var/cache/linux/lx", 19) == 0, "an icon from the theme's SVG: %s", icon);
+    snprintf(path, sizeof(path), "%s/cache/var/cache/linux/%s", g_root, icon + strlen("/var/cache/linux/"));
+    FILE *f = fopen(path, "rb");
+    uint8_t bmp[54 + 1024 + 576];
+    size_t got = f ? fread(bmp, 1, sizeof(bmp), f) : 0;
+    if (f) fclose(f);
+    CHECK(got == sizeof(bmp), "the SVG's icon is 24x24 8-bit (%zu bytes)", got);
+    if (got == sizeof(bmp)) {
+        const uint8_t *row = bmp + 54 + 1024 + 12 * 24;
+        CHECK(row[2] == 0xE0 && row[11] == 0xE0 && row[12] == 0x00 && row[22] == 0x00,
+              "SVG: left red, right transparent: %02x %02x %02x %02x", row[2], row[11], row[12], row[22]);
+    }
+#endif
+}
+
+// Qt's look (L9e): Plasma's platform theme found under a root.
+static void test_plasma_qt(void)
+{
+    char root[160], found[600];
+    snprintf(root, sizeof(root), "%s/qtroot", g_root);
+    CHECK(!linux_apps_plasma_qt(root, found, sizeof(found)), "no Plasma: not found");
+    write_file("qtroot/usr/lib/x86_64-linux-gnu/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.so", "x", 0644);
+    CHECK(linux_apps_plasma_qt(root, found, sizeof(found)) && strstr(found, "KDEPlasmaPlatformTheme6.so") != NULL,
+          "Plasma's Qt 6 theme: %s", found);
+}
+
 int main(void)
 {
     snprintf(g_root, sizeof(g_root), "/tmp/fmrb-apps-test-%d", (int)getpid());
@@ -395,9 +501,14 @@ int main(void)
         return 2;
     }
     setenv("HOME", g_root, 1);
+    char cfg[160];
+    snprintf(cfg, sizeof(cfg), "%s/config", g_root);
+    setenv("XDG_CONFIG_HOME", cfg, 1);
 
     test_split();
     test_tree();
+    test_themes();
+    test_plasma_qt();
 
     char cmd[160];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", g_root);

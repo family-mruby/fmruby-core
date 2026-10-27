@@ -12,11 +12,12 @@
  *             the high-resolution mode) at the largest whole scale that fits
  *             the output, centred, black around (fmrb_present_place, the rule
  *             every output shares). It is drawn ABOVE the Linux windows.
- *   view      Family mruby may ask to show only a part of the frame: a
- *             fullscreen app smaller than the screen (426x240 on a 640x400
- *             one, L9d). That part alone is then laid out as the picture is
- *             (the largest whole scale, centred, black around); the Linux
- *             windows are hidden meanwhile, as under any fullscreen app.
+ *   view      a frame may come with only a part of it to show: a
+ *             fullscreen app smaller than the screen (426x240, or 640x360
+ *             for an app laid out for it, on a 640x400 one; L9d, L9e). That
+ *             part alone is then laid out as the picture is (the largest
+ *             whole scale, centred, black around); the Linux windows are
+ *             hidden meanwhile, as under any fullscreen app.
  *   windows   Linux windows, each standing in for a Family mruby window
  *             (a stand-in app draws its title bar and frame, L9a). Family
  *             mruby places them: the content rectangle of the stand-in's
@@ -142,6 +143,10 @@ typedef struct {
 
     /* The frame on hand (the caller's memory), for the holes. */
     const uint16_t *px;
+    /* Family mruby's own arrow, drawn into the frame with its tip at
+     * (cur_fx, cur_fy) while cur_on (L9e). */
+    bool cur_on;
+    int cur_fx, cur_fy;
 
     /* The notices, for another thread: the compositor's thread writes, the
      * reader takes under the lock. When the reader falls COMP_NOTICES
@@ -173,6 +178,12 @@ bool comp_route_to_frame(const comp_route_t *r, int x, int y, int *fx, int *fy);
 /* The frame on hand, for the holes (px stays the caller's; it must hold
  * fb_w x fb_h pixels until the next call). */
 void comp_route_set_frame(comp_route_t *r, const uint16_t *px);
+
+/* Where Family mruby draws its arrow (its tip, frame coordinates), or that
+ * it draws none. The arrow covers the holes under it; at its tip, a hole is
+ * known by the pixels beside the arrow (left of it and above it), so that a
+ * window coming under a pointer that stands still is found (L9e). */
+void comp_route_set_cursor(comp_route_t *r, bool on, int fx, int fy);
 
 /* A window appeared (on top, not placed yet; parent: its parent's id, 0
  * none) / changed size / went away. False when there is no room or no such

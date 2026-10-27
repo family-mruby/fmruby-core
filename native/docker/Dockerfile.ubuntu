@@ -12,7 +12,9 @@
 # takes the composited screen through wlr-screencopy (grim), and for the X11
 # programs (L9b) Xwayland with two light X11 programs to put on it (xterm,
 # and xeyes from x11-apps) and xterm's bitmap fonts. libpng is the launcher's
-# Linux icons (the amd64 package's Depends gets it from dpkg-shlibdeps).
+# Linux icons (the amd64 package's Depends gets it from dpkg-shlibdeps);
+# librsvg (opened at run time) and the Breeze icon theme, for the launcher's
+# SVG icons and the icon theme lookup (L9e).
 #
 # The base is pinned to a dated tag, never a moving one (the same rule as
 # the trixie image). Built and used by rake native:image ARCH=amd64,
@@ -33,6 +35,7 @@ RUN apt-get update \
       foot grim fonts-dejavu-core xkb-data \
       xwayland xterm x11-apps xfonts-base \
       libgl1-mesa-dri libegl-mesa0 \
+      librsvg2-2 breeze-icon-theme \
  && rm -rf /var/lib/apt/lists/*
 
 # rake and the picoruby build write their caches under $HOME; the calling

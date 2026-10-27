@@ -910,8 +910,14 @@ static void render_frame(void) {
         // when the base framebuffer itself is 640x360 (the browser build's
         // 640x360 page): there the desktop and the fullscreen apps are at
         // that size by right, and leaving them out left the screen black.
+        // The native compositor's screen wider than that (doc/linux_native
+        // L9e) has no high-resolution mode at all: a 640x360 canvas there is
+        // a fullscreen app laid out for 640x360, shown as it is.
         if (!g_smode.hires && c->view_w == 0 &&
             (fb_w != DISPLAY_LOCAL_HIRES_W || fb_h != DISPLAY_LOCAL_HIRES_H) &&
+#if defined(FMRB_PLATFORM_NATIVE)
+            (fb_w < DISPLAY_LOCAL_HIRES_W || fb_h < DISPLAY_LOCAL_HIRES_H) &&
+#endif
             c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) continue;
 
         // Composite the committed buffer, never the working one (commit-on-present).

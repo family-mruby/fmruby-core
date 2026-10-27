@@ -166,6 +166,7 @@
 #include "linux_apps.h"
 #include "linux_keys.h"
 #include "native_backends.h"
+#include "native_ctl.h"
 #include "native_frame.h"
 #include "native_input.h"
 
@@ -332,6 +333,9 @@ static struct {
         unsigned key_lat_n;
         uint64_t key_lat_sum_ms;
         uint64_t key_lat_max_ms;
+        unsigned view_changes;              /* the shown part changed with a frame (L9e) */
+        unsigned pointer_rechecks;          /* what a still pointer is over changed (L9e) */
+        unsigned x11_menu_presses;          /* presses passed to an X11 menu (L9e) */
     } stats;
 } s;
 
@@ -750,14 +754,18 @@ static void apply_focus(void)
     }
 }
 
+static void recheck_pointer(void);
+
 /* Family mruby's places, stacking and focus, and its requests. */
 static void take_from_fmrb(void)
 {
     comp_places_t pl;
     if (comp_link_take_places(&pl)) {
-        bool view = comp_route_set_view(&s.route, pl.view_x, pl.view_y, pl.view_w, pl.view_h);
         int ch = comp_route_place(&s.route, pl.p, pl.n, pl.focus);
-        if (view || (ch & (COMP_PLACE_MOVED | COMP_PLACE_ORDER))) apply_layout();
+        if (ch & (COMP_PLACE_MOVED | COMP_PLACE_ORDER)) {
+            apply_layout();
+            recheck_pointer();
+        }
         if (ch & COMP_PLACE_FOCUS) {
             apply_focus();
             fprintf(stderr, "native: compositor: keyboard to %s%d (Family mruby's focus)\n",
@@ -1699,10 +1707,12 @@ static void process_motion(uint32_t time_msec)
         s.motion_y = p.hit.y;
         s.motion_pending = true;
         fmrb_cursor(true);
+        comp_route_set_cursor(&s.route, true, p.hit.x, p.hit.y);
         flush_motion(false);
         return;
     }
     fmrb_cursor(false);
+    comp_route_set_cursor(&s.route, false, 0, 0);
     if (p.surf == NULL) {
         wlr_seat_pointer_clear_focus(s.seat);
         return;
@@ -1715,6 +1725,24 @@ static void process_motion(uint32_t time_msec)
     s.ptr_id = p.hit.target;
     s.ptr_sx = p.sx;
     s.ptr_sy = p.sy;
+}
+
+/* The pointer stands still while what is under it changes (a window comes,
+ * goes or moves; a hole opens or closes in a new frame): what it is over is
+ * found again, as a move would (L9e). Nothing is sent when that has not
+ * changed. Not while a button is held or a window is being moved. */
+static void recheck_pointer(void)
+{
+    if (s.cursor == NULL || s.grab.mode != GRAB_NONE || s.buttons_held > 0) return;
+    ptr_hit_t p = pointer_hit();
+    bool over = p.hit.target != COMP_FMRB;
+    if (!over && !s.fmrb_cursor_hidden) return;
+    if (over && s.fmrb_cursor_hidden && p.hit.target == s.ptr_id &&
+        s.seat->pointer_state.focused_surface == p.surf) {
+        return;
+    }
+    s.stats.pointer_rechecks++;
+    process_motion((uint32_t)now_ms());
 }
 
 static void cursor_motion(struct wl_listener *l, void *data)
@@ -1752,6 +1780,57 @@ static void fmrb_press(int fx, int fy, int b, bool down)
     native_input_push(NATIVE_INPUT_MOUSE_BUTTON, (uint32_t)fx, (uint32_t)fy, (uint32_t)b, down ? 1 : 0);
 }
 
+#if WLR_HAS_XWAYLAND
+static bool x11_is_menu(struct wlr_xwayland_surface *xs)
+{
+    return wlr_xwayland_surface_has_window_type(xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_POPUP_MENU) ||
+           wlr_xwayland_surface_has_window_type(xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DROPDOWN_MENU) ||
+           wlr_xwayland_surface_has_window_type(xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_MENU) ||
+           wlr_xwayland_surface_has_window_type(xs, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_COMBO);
+}
+#endif
+
+/* An X11 menu holds the pointer in X (a grab) and closes on a press
+ * anywhere else -- but Xwayland only sees what lands on its own surfaces, so
+ * a press on Family mruby or on a Wayland window never reached it (L9c).
+ * Such a press is passed to it too (L9e): through the menu's surface, at
+ * the press's place (outside the menu), down and up; the X server hands it
+ * to the program holding the grab. Only windows that say they are menus
+ * (their window type): a tooltip holds no grab, and a press passed through
+ * it would land on whatever X11 window is at that place. Not for a press on
+ * an X11 window, which Xwayland sees itself. */
+static void press_x11_menus(int target, uint32_t time_msec, uint32_t button)
+{
+#if WLR_HAS_XWAYLAND
+    if (target != COMP_FMRB) {
+        window_t *tw = window_by_id(target);
+        if (tw != NULL && tw->kind == WIN_X11) return;
+    }
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (!is_or(w) || !w->mapped || w->id <= 0 || w->xs->surface == NULL || !x11_is_menu(w->xs)) continue;
+        int nx = 0, ny = 0;
+        wlr_scene_node_coords(&w->tree->node, &nx, &ny);
+        double sx = s.cursor->x - nx, sy = s.cursor->y - ny;
+        wlr_seat_pointer_notify_enter(s.seat, w->xs->surface, sx, sy);
+        wlr_seat_pointer_notify_motion(s.seat, time_msec, sx, sy);
+        wlr_seat_pointer_notify_button(s.seat, time_msec, button, WL_POINTER_BUTTON_STATE_PRESSED);
+        wlr_seat_pointer_notify_button(s.seat, time_msec, button, WL_POINTER_BUTTON_STATE_RELEASED);
+        wlr_seat_pointer_notify_frame(s.seat);
+        wlr_seat_pointer_clear_focus(s.seat);
+        s.stats.x11_menu_presses++;
+        fprintf(stderr, "native: compositor: a press elsewhere passed to X11 menu %d (%.0f,%.0f of it)\n", w->id, sx,
+                sy);
+        /* One is enough: the grab's owner gets it whichever surface it came through. */
+        return;
+    }
+#else
+    (void)target;
+    (void)time_msec;
+    (void)button;
+#endif
+}
+
 static void end_grab(void)
 {
     if (s.grab.mode == GRAB_RESIZE &&
@@ -1779,6 +1858,8 @@ static void cursor_button(struct wl_listener *l, void *data)
             /* Menus close on a press outside them (but on their own window,
              * which closes them itself as it sees fit). */
             close_popups(comp_route_at(&s.route, (int)s.cursor->x, (int)s.cursor->y).target);
+            press_x11_menus(comp_route_at(&s.route, (int)s.cursor->x, (int)s.cursor->y).target, ev->time_msec,
+                            ev->button);
             bool changed = false;
             comp_hit_t h = comp_route_press(&s.route, (int)s.cursor->x, (int)s.cursor->y, &changed);
             s.pointer_target = h.target;
@@ -2034,7 +2115,9 @@ static void tool_wheel(int notches)
  *                        (surface-local, output pixels)
  *   comp stats [reset]   pictures (count, mean and longest gap), output
  *                        commits, keys sent to a window and the time from
- *                        each to the window's next commit, since the last
+ *                        each to the window's next commit, and how often
+ *                        the shown part of the frame changed with a frame
+ *                        (a fullscreen app's view, L9e), since the last
  *                        reset
  *   comp key CODE 1|0    a Linux key code down / up, through the seat
  *   comp move X Y        the pointer to output coordinates
@@ -2142,12 +2225,14 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
         unsigned gaps = s.stats.pictures > 1 ? s.stats.pictures - 1 : 0;
         snprintf(out, cap,
                  "OK span_s=%.1f pictures=%u gap_mean_ms=%.1f gap_max_ms=%llu commits=%u keys=%u "
-                 "key_commit_n=%u key_commit_mean_ms=%.1f key_commit_max_ms=%llu\n",
+                 "key_commit_n=%u key_commit_mean_ms=%.1f key_commit_max_ms=%llu view_changes=%u pointer_rechecks=%u "
+                 "x11_menu_presses=%u\n",
                  span, s.stats.pictures,
                  gaps ? (double)s.stats.picture_gap_sum_ms / gaps : 0.0,
                  (unsigned long long)s.stats.picture_gap_max_ms, s.stats.commits, s.stats.keys,
                  s.stats.key_lat_n, s.stats.key_lat_n ? (double)s.stats.key_lat_sum_ms / s.stats.key_lat_n : 0.0,
-                 (unsigned long long)s.stats.key_lat_max_ms);
+                 (unsigned long long)s.stats.key_lat_max_ms, s.stats.view_changes, s.stats.pointer_rechecks,
+                 s.stats.x11_menu_presses);
         if (strcmp(a, "stats reset") == 0) {
             memset(&s.stats, 0, sizeof(s.stats));
             s.stats.since_ms = t;
@@ -2238,6 +2323,26 @@ static int on_wake(int fd, uint32_t mask, void *data)
     ssize_t n = read(fd, &v, sizeof(v));
     (void)n;
     return 0;
+}
+
+/* Qt programs look as they do in Plasma (L9e). Qt picks its platform theme
+ * from XDG_CURRENT_DESKTOP, which is ours (family-mruby: the launcher's
+ * OnlyShowIn / NotShowIn rules and the programs' own see that name), so it
+ * never picks Plasma's. Where Plasma's is installed and nothing chose
+ * otherwise, it is named outright for every program started from here (the
+ * launcher, the autostart, the Shell's "!", Xwayland's). */
+static void qt_look(void)
+{
+    const char *have = getenv("QT_QPA_PLATFORMTHEME");
+    if (have != NULL && have[0] != '\0') {
+        fprintf(stderr, "native: compositor: Qt's look: QT_QPA_PLATFORMTHEME=%s (as set)\n", have);
+        return;
+    }
+    char found[512];
+    if (linux_apps_plasma_qt("", found, sizeof(found))) {
+        setenv("QT_QPA_PLATFORMTHEME", "kde", 1);
+        fprintf(stderr, "native: compositor: Qt's look: Plasma's (QT_QPA_PLATFORMTHEME=kde; %s)\n", found);
+    }
 }
 
 static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
@@ -2352,6 +2457,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
      * program's own children, and the Shell's "!" programs, see this one
      * (and this one's Xwayland, never the parent's X server). */
     setenv("WAYLAND_DISPLAY", s.socket, 1);
+    qt_look();
     xwayland_init();
 
     s.wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -2414,10 +2520,22 @@ static void wlr_present(const uint16_t *px, int w, int h, bool changed)
     if (s.picture == NULL) return;
     s.frame = px;
     comp_route_set_frame(&s.route, px);
+    bool relaid = false;
     if (w != s.route.fb_w || h != s.route.fb_h) {
         int ow = s.route.out_w, oh = s.route.out_h;
-        if (comp_route_layout(&s.route, ow, oh, w, h)) apply_layout();
+        relaid = comp_route_layout(&s.route, ow, oh, w, h);
     }
+    if (changed) {
+        /* The part of the frame to show came with it (L9e): the view
+         * changes with the frame that needs it, not a frame later. */
+        int v[4];
+        native_frame_copied_view(v);
+        if (comp_route_set_view(&s.route, v[0], v[1], v[2], v[3])) {
+            relaid = true;
+            s.stats.view_changes++;
+        }
+    }
+    if (relaid) apply_layout();
     if (!changed && !s.recompose) return;
     compose();
     if (!changed) return;
@@ -2429,6 +2547,7 @@ static void wlr_present(const uint16_t *px, int w, int h, bool changed)
         const comp_window_t *cw = comp_route_window(&s.route, bw->id);
         if (cw != NULL && cw->placed && bw->backdrop != NULL) set_backdrop_colour(bw, cw);
     }
+    recheck_pointer();
     uint64_t t = now_ms();
     if (s.stats.pictures > 0) {
         uint64_t gap = t - s.stats.last_picture_ms;
@@ -2504,7 +2623,9 @@ static int signal_clients(int sig)
 
 /* The end, step one: ask every Linux window to close and keep going --
  * Family mruby's picture still on screen, so a program can ask about
- * unsaved work and be answered -- until they have gone or LINGER_MS. */
+ * unsaved work and be answered -- until they have gone or LINGER_MS. The
+ * control socket is still answered meanwhile (a shot shows the picture; a
+ * quit ends the wait at once). */
 static void linger(void)
 {
     int asked = 0;
@@ -2553,6 +2674,10 @@ static void linger(void)
         linux_apps_pump();
         wl_display_flush_clients(s.display);
         reap_child();
+        if (native_ctl_poll()) {
+            fprintf(stderr, "native: compositor: quit asked for while waiting for the windows: not waiting\n");
+            break;
+        }
         if (frame != NULL && native_frame_seq() != shown) {
             int fw = 0, fh = 0;
             if (native_frame_copy(frame, cap, &fw, &fh, &shown)) wlr_present(frame, fw, fh, true);

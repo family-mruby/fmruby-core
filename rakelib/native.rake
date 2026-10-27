@@ -178,10 +178,11 @@ namespace :native do
     sh "ruby #{NATIVE_TEST_DIR}/session_test.rb"
 
     # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps.c,
-    # plain POSIX, with libpng for the icons when the host has it.
+    # plain POSIX, with libpng for the icons when the host has it (and
+    # librsvg, opened at run time, for the SVG ones: L9e).
     png = system("pkg-config --exists libpng")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DNATIVE_HAVE_PNG=#{png ? 1 : 0} -I native/sys " \
-       "native/sys/linux_apps.c #{NATIVE_TEST_DIR}/apps.c -lpthread #{png ? '-lpng' : ''} " \
+       "native/sys/linux_apps.c #{NATIVE_TEST_DIR}/apps.c -lpthread -ldl #{png ? '-lpng' : ''} " \
        "-o #{NATIVE_TEST_BUILD}/native_apps_test"
     sh "#{NATIVE_TEST_BUILD}/native_apps_test"
 
@@ -478,6 +479,10 @@ namespace :native do
     # libsystemd0 is opened at run time (dlopen, native/sys/platform_sys_linux.c:
     # logind's power entries), so dpkg-shlibdeps cannot see it.
     depends = "#{depends.strip}, libsystemd0"
+    # librsvg is opened at run time too (native/sys/linux_apps.c: the SVG
+    # icons of the launcher's Linux group, L9e), and only the compositor
+    # (amd64) has that group.
+    depends = "#{depends}, librsvg2-2" if arch == "amd64"
     size_kb = `du -sk --exclude=DEBIAN #{pkg}`.to_i
     mkdir_p File.join(pkg, "DEBIAN")
     File.write(File.join(pkg, "DEBIAN", "control"), <<~CONTROL)

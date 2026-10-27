@@ -163,6 +163,13 @@ class FmrbKernel
     [packed >> 16, packed & 0xFFFF]
   end
 
+  # The size a fullscreen window of the app gets ([w, h];
+  # fmrb_app_fullscreen_size). Packed in one int, as above.
+  def _fullscreen_size(pid)
+    packed = FmrbSpx.fmrb_spx_fullscreen_size(pid)
+    [packed >> 16, packed & 0xFFFF]
+  end
+
   def _set_app_screen_mode(pid, w, h)
     FmrbSpx.fmrb_spx_set_app_screen_mode(pid, w, h) == 1
   end

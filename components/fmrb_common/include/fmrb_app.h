@@ -124,8 +124,10 @@ typedef struct fmrb_app_task_context_s {
     // 2x instead of 426x240 at 3x) while it owns the screen in fullscreen
     // (.app.toml fullscreen_hires, doc/fullscreen_hires/). Only a declaration:
     // the kernel decides when, and only where fmrb_app_fullscreen_hires_size
-    // says the build and the display can do it.
-    bool                  fullscreen_hires;
+    // says the build and the display can do it. 0, or FMRB_FULLSCREEN_HIRES_*:
+    // the two differ only on the native compositor's wider screen
+    // (fmrb_app_fullscreen_size).
+    uint8_t               fullscreen_hires;
     bool                  resizable;         // Allow window resize (default: false)
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
     uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
@@ -186,6 +188,15 @@ typedef struct fmrb_app_task_context_s {
  */
 void fmrb_app_notify_started(fmrb_app_task_context_t* ctx);
 
+// fullscreen_hires values (fmrb_app_task_context_t). Both take the 640x360
+// screen where there is one. On the native compositor's screen wider than
+// Modern's (doc/linux_native L9e), where there is no such mode, an app laid
+// out for 640x360 (.app.toml fullscreen_hires) gets 640x360, shown alone at
+// the output's largest whole scale, and one that lays itself out at any size
+// (the editor) gets the whole screen.
+#define FMRB_FULLSCREEN_HIRES_FIXED 1
+#define FMRB_FULLSCREEN_HIRES_ANY   2
+
 // Spawn attributes for creating new app task
 typedef struct {
     fmrb_proc_id_t        app_id;           // Fixed slot ID
@@ -209,7 +220,7 @@ typedef struct {
     bool                  has_background_canvas; // Desktop only: create bg canvas (z=0)
     bool                  fullscreen;       // Fullscreen app (suspend others, no menu bar)
     bool                  fullscreen_switchable; // App survives fullscreen park/unpark (see context struct)
-    bool                  fullscreen_hires; // Fullscreen may use the high-resolution screen (see context struct)
+    uint8_t               fullscreen_hires; // Fullscreen may use the high-resolution screen (see context struct)
     bool                  resizable;        // Allow window resize (default: false)
     bool                  large_memory;     // Use the LARGE pool (one exclusive block, 2x the ordinary pool)
     bool                  single_instance;  // Refuse a second copy of this app (same file)
@@ -467,6 +478,34 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
  * @return true if the high-resolution screen is available
  */
 bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height);
+
+/**
+ * @brief The size a fullscreen window gets, for an app's fullscreen_hires
+ *        value (0 or FMRB_FULLSCREEN_HIRES_*).
+ *
+ * The high-resolution screen for a hires app where there is one
+ * (fmrb_app_fullscreen_hires_size), else fmrb_kernel_fullscreen_size -- but
+ * for a hires app on the native compositor's wider screen (doc/linux_native
+ * L9e): the whole screen for FMRB_FULLSCREEN_HIRES_ANY, 640x360 for
+ * FMRB_FULLSCREEN_HIRES_FIXED when the screen holds it.
+ */
+void fmrb_app_fullscreen_size_for(uint8_t hires, uint16_t *width, uint16_t *height);
+
+/**
+ * @brief fmrb_app_fullscreen_size_for with app pid's fullscreen_hires.
+ * @return false for a free slot (width and height are then the plain
+ *         fullscreen size)
+ */
+bool fmrb_app_fullscreen_size(uint8_t pid, uint16_t *width, uint16_t *height);
+
+#if defined(FMRB_PLATFORM_NATIVE)
+/**
+ * @brief Whether canvas_id is the main canvas of a fullscreen app (the
+ *        native compositor's view, doc/linux_native L9e). Takes no lock: the
+ *        display task asks it.
+ */
+bool fmrb_app_canvas_fullscreen(uint16_t canvas_id);
+#endif
 
 // Last error info (stored in PSRAM static buffer)
 const char* fmrb_app_get_last_error_name(void);

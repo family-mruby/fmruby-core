@@ -623,9 +623,11 @@ int main(int argc, char **argv)
 
     int rc = main_loop(be.output);
 
-    native_ctl_close();
+    /* The output's close may wait for the Linux windows (the compositor,
+     * L9a): the control socket stays open until after it (L9e). */
     be.audio->close();
     be.output->close();
+    native_ctl_close();
     char pid_path[NATIVE_PATH_MAX + 16];
     snprintf(pid_path, sizeof(pid_path), "%s/pid", c->run_dir);
     unlink(pid_path);

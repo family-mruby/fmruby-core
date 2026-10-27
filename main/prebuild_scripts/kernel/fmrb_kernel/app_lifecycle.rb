@@ -523,18 +523,14 @@ module AppLifecycleMixin
     _set_app_fullscreen(want, true, w, h)
   end
 
-  # Size a fullscreen window gets: the high-resolution screen for an app that
-  # takes it (screen_mode_for), else what the spawner gives a fullscreen app
-  # (_screen_width / _screen_height: the display minus its margins, which is
-  # also the desktop's window -- or Modern's 426x240 on the native
-  # compositor's wider screen, doc/linux_native L9d, where the desktop's
-  # window is the whole screen and a fullscreen app is not).
+  # Size a fullscreen window gets, the same the spawner gives a fullscreen
+  # app (fmrb_app_fullscreen_size): the high-resolution screen for an app that
+  # takes it (screen_mode_for), else the display minus its margins -- which on
+  # the native compositor's wider screen (doc/linux_native L9d, L9e) is
+  # Modern's 426x240 for a plain fullscreen app, and the whole screen or
+  # 640x360 for one that declares fullscreen_hires.
   def fullscreen_size(pid)
-    if screen_mode_for(pid)
-      hires = _fullscreen_hires_size
-      return hires if hires
-    end
-    [_screen_width, _screen_height]
+    _fullscreen_size(pid)
   end
 
   def request_enter_fullscreen(pid)

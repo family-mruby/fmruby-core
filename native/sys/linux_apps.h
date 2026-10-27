@@ -15,12 +15,16 @@
  *              not there, Terminal=true with no terminal to run it in (foot,
  *              else x-terminal-emulator). The name is Name[<lang>] when there
  *              is one. Read on a thread of its own, never on the caller's.
- *   icons      the entry's Icon: an absolute PNG, or a PNG of that name in
- *              the hicolor theme (the size nearest 24 first) or pixmaps/,
- *              made a 24x24 RGB332 BMP (the launcher's sprites) in the icon
- *              directory, once per source file. None found: no icon (the
- *              launcher shows its own mark, a window, for those; the group's
- *              mark, a penguin, is the launcher's too: flash/usr/share/icon).
+ *   icons      the entry's Icon: an absolute PNG or SVG, or one of that
+ *              name in the icon themes (L9e: the user's theme -- Plasma's,
+ *              else GTK's, else breeze -- what it inherits, then hicolor;
+ *              the directories nearest 24 first, a PNG before an SVG) or
+ *              pixmaps/, made a 24x24 RGB332 BMP (the launcher's sprites)
+ *              in the icon directory, once per source file. SVGs through
+ *              librsvg, opened at run time (without it: no SVG icons). None
+ *              found: no icon (the launcher shows its own mark, a window,
+ *              for those; the group's mark, a penguin, is the launcher's
+ *              too: flash/usr/share/icon).
  *   starting   by the entry's id: Exec split by the Desktop Entry rules
  *              (quoting, field codes; no files are passed), started without
  *              a shell on the compositor's main thread in a session of its
@@ -104,6 +108,27 @@ void linux_apps_free_argv(char **argv);
 bool linux_apps_wait_scan(int timeout_ms);
 /* The pid of the last program started (tests). */
 pid_t linux_apps_last_pid(void);
+
+/* The icon themes, as the list reading uses them (L9e). */
+typedef struct linux_icon_themes linux_icon_themes_t;
+/* The user's theme into out; why says where it was found. False when none
+ * is set (out is then breeze, Plasma's default). */
+bool linux_apps_user_icon_theme(char *out, size_t cap, char *why, size_t why_cap);
+/* The themes to look in: user_theme (when installed), what it inherits,
+ * hicolor. NULL only when out of memory. */
+linux_icon_themes_t *linux_apps_icon_themes(const char *user_theme);
+void linux_apps_icon_themes_free(linux_icon_themes_t *th);
+/* "breeze > hicolor" (into out). */
+const char *linux_apps_icon_theme_names(const linux_icon_themes_t *th, char *out, size_t cap);
+/* The image file (PNG or SVG) an Icon value names, or false. */
+bool linux_apps_find_icon(const linux_icon_themes_t *th, const char *icon, char *out, size_t cap);
+/* librsvg could be opened (SVG icons are made). */
+bool linux_apps_svg_available(void);
+
+/* Plasma's platform theme for Qt is installed under root ("" for /): its
+ * file into found. The compositor then starts Qt programs with
+ * QT_QPA_PLATFORMTHEME=kde (L9e). */
+bool linux_apps_plasma_qt(const char *root, char *found, size_t cap);
 
 #ifdef __cplusplus
 }
