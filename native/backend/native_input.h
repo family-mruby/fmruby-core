@@ -33,6 +33,8 @@ enum {
     NATIVE_INPUT_MOUSE_WHEEL,    /* a=x, b=y, c=notches (signed) */
     NATIVE_INPUT_CURSOR,         /* a=1 show / 0 hide Family mruby's cursor (the
                                   * compositor, over a Linux window) */
+    NATIVE_INPUT_TEXT,           /* a=byte count (<= 12), b..d=the bytes: text the
+                                  * PC's IME committed (native_ime.h) */
 };
 
 /* From the main thread: one event for the sdl source. Never blocks; when the

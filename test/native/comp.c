@@ -625,9 +625,47 @@ static void test_view(void)
     comp_route_destroy(&r);
 }
 
+// The IME's places (L12b): a frame point to the output, through the view
+// too, and where a candidate window goes for the text being typed.
+static void test_ime_place(void)
+{
+    comp_route_t r;
+    comp_route_init(&r);
+    comp_route_layout(&r, 1280, 800, 640, 400);
+    comp_route_set_base(&r, 640, 400);
+    int x = 0, y = 0, sc = 0;
+    CHECK(comp_route_from_frame(&r, 100, 50, &x, &y, &sc) && x == 200 && y == 100 && sc == 2,
+          "frame 100,50 at 2x: %d,%d (%d)", x, y, sc);
+    int fx = 0, fy = 0;
+    comp_route_to_frame(&r, x, y, &fx, &fy);
+    CHECK(fx == 100 && fy == 50, "and back: %d,%d", fx, fy);
+    comp_route_set_view(&r, 0, 0, 426, 240);
+    CHECK(comp_route_from_frame(&r, 100, 50, &x, &y, &sc) && x == 1 + 300 && y == 40 + 150 && sc == 3,
+          "through the view at 3x: %d,%d (%d)", x, y, sc);
+    CHECK(!comp_route_from_frame(&r, 500, 50, &x, &y, &sc), "outside the view: not shown");
+    comp_route_set_view(&r, 0, 0, 0, 0);
+    // Under the text, left edges lined up.
+    comp_ime_place(200, 100, 16, 24, 300, 200, 0, 0, 1280, 800, &x, &y);
+    CHECK(x == 200 && y == 124, "under the text: %d,%d", x, y);
+    // No room under it: above it.
+    comp_ime_place(200, 700, 16, 24, 300, 200, 0, 0, 1280, 800, &x, &y);
+    CHECK(x == 200 && y == 500, "above the text: %d,%d", x, y);
+    // At the right edge: moved left.
+    comp_ime_place(1200, 100, 16, 24, 300, 200, 0, 0, 1280, 800, &x, &y);
+    CHECK(x == 980 && y == 124, "moved left: %d,%d", x, y);
+    // No room either way (a tall one): kept in, at the bottom.
+    comp_ime_place(200, 300, 16, 24, 300, 700, 0, 0, 1280, 800, &x, &y);
+    CHECK(x == 200 && y == 100, "tall, kept in: %d,%d", x, y);
+    // Larger than the box: its top-left.
+    comp_ime_place(200, 100, 16, 24, 1400, 900, 10, 20, 1260, 760, &x, &y);
+    CHECK(x == 10 && y == 20, "larger than the box: %d,%d", x, y);
+    comp_route_destroy(&r);
+}
+
 int main(void)
 {
     test_place();
+    test_ime_place();
     test_view();
     test_hits();
     test_stacking();
@@ -642,6 +680,6 @@ int main(void)
         printf("native comp: %d of %d checks failed\n", g_fail, g_count);
         return 1;
     }
-    printf("native comp: %d checks passed (route, holes, stacking, focus, notices, places, frame hand-over, the arrow's tip, the view with the frame)\n", g_count);
+    printf("native comp: %d checks passed (route, holes, stacking, focus, notices, places, frame hand-over, the arrow's tip, the view with the frame, the IME's places)\n", g_count);
     return 0;
 }

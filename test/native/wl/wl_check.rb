@@ -552,7 +552,10 @@ class Run
     # 1. boot, with foot running `cat > typed`
     t0 = now
     sh!(*docker_args(@name, @run, @mode, @renderer,
-                     ["--set", "compositor.autostart=foot -e sh -c 'cat > /run/fmrb/typed'",
+                     # No IME (L12b, wl_ime_check.rb has it): the editor is
+                     # compared with the native baseline, whose status line
+                     # has the kana badge an IME hides.
+                     ["--set", "compositor.autostart=foot -e sh -c 'cat > /run/fmrb/typed'", "--set", "compositor.ime=",
                       *(@mode == :headless ? ["--set", "display.mode=#{OUTPUT}"] : [])]))
     wait_for("Boot complete", 120) { log_text.include?("Boot complete") || log_text.include?("refused") }
     raise "refused: #{log_text[/native: refused.*/]}" if log_text.include?("native: refused")

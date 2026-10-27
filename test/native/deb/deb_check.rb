@@ -234,8 +234,11 @@ begin
     result("session entry family-mruby.desktop",
            entry.include?("\nName=Family mruby\n") && entry.include?("\nExec=/usr/bin/family-mruby-session\n") &&
            entry.include?("\nTryExec=/usr/bin/family-mruby-session\n"), entry[/^Exec=.*/].to_s)
-    control, = dexec("dpkg-query -W -f='${Recommends}|${Depends}' family-mruby", ok: false)
-    recommends, depends = control.split("|", 2)
+    control, = dexec("dpkg-query -W -f='${Recommends}|${Depends}|${Suggests}' family-mruby", ok: false)
+    recommends, depends, suggests = control.split("|", 3)
+    # The IME (L12b): suggested, never pulled in.
+    result("IME suggested", suggests.to_s.strip == "fcitx5, fcitx5-mozc" && !depends.to_s.include?("fcitx") &&
+           !recommends.to_s.include?("fcitx"), "Suggests: #{suggests.to_s.strip}")
     script, = dexec("cat /usr/bin/family-mruby-session", ok: false)
     result("session runs the compositor", recommends.strip == "xwayland" && !depends.to_s.include?("cage") &&
            script.include?("--machine linux_pc_wl") && !script.include?("cage"),

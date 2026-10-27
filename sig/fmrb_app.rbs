@@ -980,6 +980,24 @@ class FmrbApp
   # ```
   def self.set_kana_mode: (Integer mode) -> void
 
+  # 文字カーソルの位置を知らせる (PC の IME 用) <<en>> Tell where the text cursor is (for a PC's IME)
+  #
+  # 文字を打つアプリが、カーソルを描くたびに呼ぶ。x, y は canvas の座標
+  # (行の左上)、h は行の高さ。h = 0 で「今は文字を打たない」。PC の IME
+  # (fcitx5 など) は、変換中の文字と候補をここに出す。端末では何もしない。
+  # ```ruby
+  # FmrbApp.set_text_cursor(x, y, 12)
+  # ```
+  # <<en>>
+  # Apps that take text call this whenever they draw their cursor: x, y in
+  # canvas coordinates (the top-left of the cell), h the line's height;
+  # h = 0 says no text is taken now. A PC's IME (fcitx5 and the like) shows
+  # the text being composed and its candidates there. Nothing on the devices.
+  # ```ruby
+  # FmrbApp.set_text_cursor(x, y, 12)
+  # ```
+  def self.set_text_cursor: (Integer x, Integer y, Integer h) -> void
+
   # 本体の音を消す・戻す <<en>> Mute or unmute the whole machine
   #
   # true で消音。音は鳴り続けたまま出力だけ無音になる (スピーカのミュート)。

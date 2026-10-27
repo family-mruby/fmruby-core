@@ -565,6 +565,14 @@ int fmrb_spx_app_set_kana_mode(int mode)
     return 0;
 }
 
+/* FmrbApp.set_text_cursor(x, y, h): where the app's text cursor is, for a
+ * PC's IME (fmrb_host_set_text_cursor; nothing on the devices). */
+int fmrb_spx_app_set_text_cursor(int x, int y, int h)
+{
+    fmrb_host_set_text_cursor(x, y, h);
+    return 0;
+}
+
 /* FmrbApp.path_read_only?(path): whether the entry at a virtual path cannot be
  * deleted or renamed (fmrb_hal_file_entry_is_read_only). Same call as the
  * mruby binding. */

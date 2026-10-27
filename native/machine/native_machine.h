@@ -40,6 +40,12 @@
  *              keymap         "" or "cardputer_zero": the extra table for the
  *                             devices whose name contains keymap_device
  *              keymap_device  substring of the evdev device name
+ *              ime            the PC's IME for the Family mruby apps (L12b):
+ *                             "none" (Family mruby's own kana input), "sdl"
+ *                             (SDL's text input: ibus, fcitx; display sdl)
+ *                             or "wayland" (the compositor serves the IME
+ *                             protocols; display wlroots). Without an IME
+ *                             present the kana input stays
  *   [audio]    backend        sdl | alsa | none
  *              device         alsa: the PCM name ("default")
  *              latency_ms     alsa: the device buffer (100)
@@ -72,6 +78,10 @@
  *                             with WAYLAND_DISPLAY set to the compositor's
  *                             own socket ("foot"); "" starts none. It is
  *                             ended with the program
+ *              ime            wlroots only (L12b): the IME program started
+ *                             once the compositor is up ("fcitx5"; "" none),
+ *                             through /bin/sh -c, without DISPLAY. Not
+ *                             installed: one line, and the kana input stays
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this
@@ -114,6 +124,7 @@ typedef struct {
         int n_devices;
         char keymap[32];
         char keymap_device[64];
+        char ime[16];                    /* "none", "sdl" or "wayland" */
     } input;
 
     struct {
@@ -141,6 +152,7 @@ typedef struct {
 
     struct {
         char autostart[NATIVE_MACHINE_STR];
+        char ime[NATIVE_MACHINE_STR];    /* the IME program, "" none */
     } compositor;
 } native_machine_t;
 

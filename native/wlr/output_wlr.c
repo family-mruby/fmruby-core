@@ -177,6 +177,7 @@
 #include "native_frame.h"
 #include "native_input.h"
 #include "wl_clip.h"
+#include "wl_ime.h"
 
 /* Pointer motion to Family mruby is passed on at most this often (the
  * machine redraws its cursor per event), as from the SDL window. */
@@ -194,6 +195,8 @@
  * DesktopNames, native/package/family-mruby.desktop). */
 #define LINUX_ICON_DIR "/var/cache/linux"
 #define DESKTOP_NAME "family-mruby"
+/* Where a key went down: Family mruby, a window (> 0), or the IME (L12b). */
+#define KEY_TO_IME (-1)
 
 /* ------------------------------------------------------------- state */
 
@@ -242,6 +245,8 @@ typedef struct deco {
 typedef struct keyboard {
     struct wl_list link;
     struct wlr_keyboard *wlr;
+    bool own_keymap;                        /* the IME's virtual keyboard: its keymap is its own */
+    int key_target[KEY_MAX + 1];            /* where each held key went down */
     struct wl_listener modifiers, key, destroy;
 } keyboard_t;
 
@@ -262,6 +267,8 @@ static struct {
     struct wlr_scene_tree *windows_tree;
     struct wlr_scene_buffer *picture;
     struct wlr_scene_tree *popups_tree;
+    struct wlr_scene_tree *ime_tree;        /* the IME's candidates and composing text (L12b) */
+    bool ime;                               /* input.ime = "wayland" */
     struct wlr_xdg_shell *xdg_shell;
     struct wlr_xdg_decoration_manager_v1 *deco_mgr;
     struct wlr_compositor *compositor;
@@ -290,7 +297,6 @@ static struct {
     bool recompose;                         /* the holes moved: compose the picture again */
     int layout_kb;                          /* the windows' keymap: FMRB_KEYMAP_LAYOUT_*, -1 none yet */
     uint8_t mods;                           /* Family mruby's modifier bits */
-    int key_target[KEY_MAX + 1];            /* where each held key went down */
     int pointer_target;                     /* while a button is held: where it went down */
     bool pointer_fmrb_too;                  /* ...and the press went to Family mruby as well */
     int buttons_held;
@@ -711,6 +717,7 @@ static void apply_layout(void)
         if (is_or(w) && w->mapped) wlr_scene_node_raise_to_top(&w->tree->node);
     }
     clip_popups();
+    wl_ime_relayout();
     s.recompose = true;
     static fmrb_present_place_t logged;
     if (memcmp(&logged, &r->show, sizeof(logged)) != 0) {
@@ -740,6 +747,27 @@ static void relayout(void)
 
 /* ---------------------------------------------------------- the focus */
 
+/* Where a Linux window's surface has its origin on the output (the IME's
+ * candidates go by its text cursor, L12b). */
+static bool surface_origin(struct wlr_surface *surface, int *x, int *y)
+{
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (!w->mapped || w->id <= 0 || win_surface(w) != surface) continue;
+        int tx = 0, ty = 0;
+        if (!wlr_scene_node_coords(&w->tree->node, &tx, &ty)) return false;
+        if (w->kind == WIN_XDG) {
+            struct wlr_box g = win_geometry(w);
+            tx -= g.x;
+            ty -= g.y;
+        }
+        *x = tx;
+        *y = ty;
+        return true;
+    }
+    return false;
+}
+
 static void apply_focus(void)
 {
     int focus = comp_route_focus(&s.route);
@@ -751,6 +779,7 @@ static void apply_focus(void)
     struct wlr_surface *surf = (fw != NULL && fw->mapped) ? win_surface(fw) : NULL;
     if (surf == NULL) {
         wlr_seat_keyboard_notify_clear_focus(s.seat);
+        wl_ime_focus(NULL, focus == COMP_FMRB);
         return;
     }
     win_activate(fw, true);
@@ -760,6 +789,7 @@ static void apply_focus(void)
     } else {
         wlr_seat_keyboard_notify_enter(s.seat, surf, NULL, 0, NULL);
     }
+    wl_ime_focus(surf, false);
 }
 
 static void recheck_pointer(void);
@@ -1462,12 +1492,20 @@ static void keyboard_key(struct wl_listener *l, void *data)
         if (down) s.mods |= bit;
         else s.mods &= (uint8_t)~bit;
     }
-    /* A key goes up where it went down, whoever has the keyboard now. */
+    /* A key goes up where it went down, whoever has the keyboard now. The
+     * IME (L12b) takes the keys while it serves the focused text input,
+     * but for the switching hotkeys; the ones it does not use come back on
+     * its own keyboard and go where the focus is. */
     int target = comp_route_focus(&s.route);
     if (down && fmrb_hotkey(code)) target = COMP_FMRB;
+    else if (down && wl_ime_takes_keys(k->wlr)) target = KEY_TO_IME;
     if (code <= KEY_MAX) {
-        if (down) s.key_target[code] = target;
-        else target = s.key_target[code];
+        if (down) k->key_target[code] = target;
+        else target = k->key_target[code];
+    }
+    if (target == KEY_TO_IME) {
+        wl_ime_key(k->wlr, ev->time_msec, code, ev->state);
+        return;
     }
     if (target == COMP_FMRB || window_by_id(target) == NULL) {
         send_fmrb_key(code, down);
@@ -1485,6 +1523,7 @@ static void keyboard_modifiers(struct wl_listener *l, void *data)
 {
     (void)data;
     keyboard_t *k = wl_container_of(l, k, modifiers);
+    if (wl_ime_modifiers(k->wlr)) return;
     if (comp_route_focus(&s.route) == COMP_FMRB) return;
     wlr_seat_set_keyboard(s.seat, k->wlr);
     wlr_seat_keyboard_notify_modifiers(s.seat, &k->wlr->modifiers);
@@ -1523,18 +1562,23 @@ static void follow_layout(void)
     if (layout == s.layout_kb) return;
     s.layout_kb = layout;
     keyboard_t *k;
-    wl_list_for_each(k, &s.keyboards, link) set_keymap(k->wlr, layout);
+    wl_list_for_each(k, &s.keyboards, link) {
+        if (!k->own_keymap) set_keymap(k->wlr, layout);
+    }
     fprintf(stderr, "native: compositor: the windows' keymap is %s (keyboard_layout)\n",
             layout == FMRB_KEYMAP_LAYOUT_JP ? "jp" : "us");
 }
 
-static void add_keyboard(struct wlr_keyboard *wkb)
+static void add_keyboard_as(struct wlr_keyboard *wkb, bool own_keymap)
 {
     keyboard_t *k = calloc(1, sizeof(*k));
     if (k == NULL) return;
     k->wlr = wkb;
-    set_keymap(wkb, s.layout_kb < 0 ? (int)fmrb_keymap_get_layout() : s.layout_kb);
-    wlr_keyboard_set_repeat_info(wkb, 25, 600);
+    k->own_keymap = own_keymap;
+    if (!own_keymap) {
+        set_keymap(wkb, s.layout_kb < 0 ? (int)fmrb_keymap_get_layout() : s.layout_kb);
+        wlr_keyboard_set_repeat_info(wkb, 25, 600);
+    }
     k->modifiers.notify = keyboard_modifiers;
     wl_signal_add(&wkb->events.modifiers, &k->modifiers);
     k->key.notify = keyboard_key;
@@ -1542,7 +1586,18 @@ static void add_keyboard(struct wlr_keyboard *wkb)
     k->destroy.notify = keyboard_destroy;
     wl_signal_add(&wkb->base.events.destroy, &k->destroy);
     wl_list_insert(&s.keyboards, &k->link);
-    wlr_seat_set_keyboard(s.seat, wkb);
+    if (!own_keymap) wlr_seat_set_keyboard(s.seat, wkb);
+}
+
+static void add_keyboard(struct wlr_keyboard *wkb)
+{
+    add_keyboard_as(wkb, false);
+}
+
+/* The IME's virtual keyboard (L12b): the keys it hands back, in its keymap. */
+static void add_ime_keyboard(struct wlr_keyboard *wkb)
+{
+    add_keyboard_as(wkb, true);
 }
 
 static void new_input(struct wl_listener *l, void *data)
@@ -2247,6 +2302,11 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
         }
         return true;
     }
+    if (strcmp(a, "ime") == 0) {
+        /* The IME (L12b): whom it serves, the composing text, the popups. */
+        wl_ime_describe(out, cap);
+        return true;
+    }
     if (strcmp(a, "clip") == 0) {
         /* The clipboard (L12a): who owns the selection and the counts. */
         wl_clip_stats_t c;
@@ -2436,6 +2496,9 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     s.picture = wlr_scene_buffer_create(&s.scene->tree, NULL);
     wlr_scene_buffer_set_filter_mode(s.picture, WLR_SCALE_FILTER_NEAREST);
     s.popups_tree = wlr_scene_tree_create(&s.scene->tree);
+    /* The IME's candidates and Family mruby's composing text over all. */
+    s.ime_tree = wlr_scene_tree_create(&s.scene->tree);
+    s.ime = strcmp(m->input.ime, "wayland") == 0;
 
     s.new_output.notify = new_output;
     wl_signal_add(&s.backend->events.new_output, &s.new_output);
@@ -2472,6 +2535,10 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     s.request_set_selection.notify = request_set_selection;
     wl_signal_add(&s.seat->events.request_set_selection, &s.request_set_selection);
     tool_devices_init();
+    if (s.ime) {
+        static const wl_ime_host_t ime_host = { .surface_origin = surface_origin, .add_keyboard = add_ime_keyboard };
+        wl_ime_init(s.display, s.seat, s.ime_tree, &s.route, &ime_host);
+    }
 
     wlr_screencopy_manager_v1_create(s.display);
     wlr_xdg_output_manager_v1_create(s.display, s.layout);
@@ -2491,6 +2558,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     setenv("WAYLAND_DISPLAY", s.socket, 1);
     qt_look();
     xwayland_init();
+    if (s.ime) wl_ime_start(m->compositor.ime, s.socket);
 
     s.wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (s.wake_fd >= 0) {
@@ -2543,6 +2611,7 @@ static bool wlr_pump(int wait_ms)
     follow_layout();
     take_from_fmrb();
     wl_clip_pump();
+    wl_ime_pump();
     linux_apps_pump();
     wl_display_flush_clients(s.display);
     flush_motion(false);
@@ -2772,6 +2841,7 @@ static void wlr_close(void)
     if (s.display == NULL) return;
     linger();
     wl_clip_fini();
+    wl_ime_fini();
     end_clients();
     /* What the launcher started and is still there, with a window or not. */
     int left = linux_apps_end_all(TERM_GRACE_MS);

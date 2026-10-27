@@ -284,6 +284,14 @@ const fmrb_native_machine_conf_t *fmrb_kernel_native_machine(void);
 /** Ask the native program to end, as its control socket's quit does
  *  (native/backend/main_native.c). */
 void fmrb_native_request_quit(void);
+
+/** True while an IME on the PC types for the apps (L12b; the main thread
+ *  says so, native/backend/native_ime.c). Any task. */
+bool fmrb_native_ime_present(void);
+
+/** The focused app's text cursor (frame coordinates, h the line height),
+ *  or that it has none, for the main thread's IME. The host task. */
+void fmrb_native_ime_publish_cursor(bool on, int fx, int fy, int h);
 #endif
 
 #ifdef __cplusplus

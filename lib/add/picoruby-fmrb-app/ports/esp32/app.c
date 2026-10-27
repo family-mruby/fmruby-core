@@ -1785,6 +1785,19 @@ static mrb_value mrb_fmrb_app_s_set_kana_mode(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
+// FmrbApp.set_text_cursor(x, y, h) -> nil. Where this app's text cursor is
+// (canvas coordinates, h the line's height; 0 says it takes no text now), so
+// a PC's IME shows the text being composed and its candidates there
+// (doc/linux_native L12b). Nothing happens on the devices.
+static mrb_value mrb_fmrb_app_s_set_text_cursor(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int x, y, h;
+    mrb_get_args(mrb, "iii", &x, &y, &h);
+    fmrb_host_set_text_cursor((int)x, (int)y, (int)h);
+    return mrb_nil_value();
+}
+
 // FmrbApp.audio_muted? -> bool. The machine-wide mute (doc/reference/audio_output.md).
 // Allocation-free: the desktop's speaker cell reads it every second, which is
 // how a change made remotely shows up there.
@@ -2224,6 +2237,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "ble_settings_left", mrb_fmrb_app_s_ble_settings_left, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "set_text_cursor", mrb_fmrb_app_s_set_text_cursor, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "path_read_only?", mrb_fmrb_app_s_path_read_only_p, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));

@@ -92,6 +92,12 @@ void fmrb_host_set_cursor_visible(bool visible)
     host_send_cursor_visible(visible);
 }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+// Bytes of committed text per host message (a longer text takes several,
+// in order on the same queue).
+#define HOST_TEXT_CHUNK 16
+#endif
+
 // Host message types
 typedef enum {
     HOST_MSG_HID_KEY_DOWN = 1,
@@ -103,6 +109,9 @@ typedef enum {
     HOST_MSG_HID_GAMEPAD_BUTTON = 7,
     HOST_MSG_HID_GAMEPAD_AXIS = 8,
     HOST_MSG_HID_MOUSE_WHEEL = 9,
+#if defined(FMRB_PLATFORM_NATIVE)
+    HOST_MSG_HID_TEXT = 10,      // text committed by the PC's IME (L12b)
+#endif
 } host_msg_type_t;
 
 // Host message structure (now uses HAL message format)
@@ -144,6 +153,12 @@ typedef struct {
             int axis_num;    // 0-5
             int value;       // -128 to 127 (sticks) or 0 to 255 (triggers)
         } gamepad_axis;
+#if defined(FMRB_PLATFORM_NATIVE)
+        struct {
+            int len;
+            char bytes[HOST_TEXT_CHUNK];
+        } text;
+#endif
         gfx_cmd_t gfx;
     } data;
 } host_message_t;
@@ -1490,11 +1505,49 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
     fmrb_msg_send(target_pid, &msg, 200);
 }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+// ---- The PC's IME (doc/linux_native, L12b) ---------------------------------
+//
+// On a PC (the compositor, the SDL window) Linux's IME types for the Family
+// mruby apps too. The main thread says when one is there
+// (fmrb_native_ime_present). While it is, Family mruby's own kana input steps
+// aside: the composer is not fed, the clickable indicators cannot turn it
+// on, and the apps are told FMRB_KANA_MODE_IME, which hides their indicators
+// (the IME's own state is not known here). The IME's committed text comes in
+// as HOST_MSG_HID_TEXT and leaves as the same one-byte key events a composed
+// kana does.
+//
+// The apps that take text say where their cursor is (FmrbApp.set_text_cursor,
+// canvas coordinates). The focused app's, in frame coordinates, goes to the
+// main thread (fmrb_native_ime_publish_cursor), which puts the IME's
+// candidates and the text being composed there.
+//
+// Native only: the devices, the simulation and the browser keep their kana
+// input as it is, and none of this is in their builds.
+
+#define IME_CURSOR_POLL_MS 20
+
+typedef struct {
+    uint32_t gen;       // the app's context generation when it was set
+    int16_t x, y, h;    // canvas coordinates, h the line height
+    bool on;
+} host_text_cursor_t;
+
+static host_text_cursor_t s_text_cursor[FMRB_MAX_APPS];
+static bool s_ime_on;               // the host task's view of the IME
+// Per app slot, the context generation told FMRB_KANA_MODE_IME (0 none).
+static uint32_t s_ime_told_gen[FMRB_MAX_APPS];
+static uint32_t s_ime_cursor_ms;
+#endif
+
 // Tell the focused app and the kernel (which passes it to the desktop) what
 // kana input is doing now. Both indicators are drawn from this.
 static void host_broadcast_kana_mode(void)
 {
     uint8_t mode = (uint8_t)fmrb_kana_get_mode();
+#if defined(FMRB_PLATFORM_NATIVE)
+    if (s_ime_on) mode = FMRB_KANA_MODE_IME;
+#endif
     fmrb_hid_routing_t routing;
     if (fmrb_kernel_get_hid_routing(&routing) == FMRB_OK &&
         routing.routing_enabled && routing.target_pid != 0xFF) {
@@ -1683,10 +1736,115 @@ void fmrb_host_set_kana_mode(uint8_t mode)
     // Called from an app task (the clickable mode indicators), not from
     // host_task. Only a plain enum store, and the message sends below are the
     // same ones every app already makes.
+#if defined(FMRB_PLATFORM_NATIVE)
+    if (s_ime_on) {
+        // The PC's IME has the text input: kana input stays off, and the
+        // asker hears so again.
+        FMRB_LOGI(TAG, "kana mode=%d asked while the PC's IME types: ignored", mode);
+        host_broadcast_kana_mode();
+        return;
+    }
+#endif
     fmrb_kana_set_mode((fmrb_kana_mode_t)mode);
     FMRB_LOGI(TAG, "kana mode=%d (set by app)", mode);
     host_broadcast_kana_mode();
 }
+
+void fmrb_host_set_text_cursor(int x, int y, int h)
+{
+#if defined(FMRB_PLATFORM_NATIVE)
+    // From the app's own task: its slot only. The host task reads it with
+    // the generation, so a slot taken over by a new app is not believed.
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx == NULL || ctx->app_id >= FMRB_MAX_APPS) return;
+    host_text_cursor_t *c = &s_text_cursor[ctx->app_id];
+    if (c->gen != ctx->gen) {
+        // Its first cursor: the app is set up by now, so it is told the
+        // IME's mode again (a word sent while it started may have been
+        // overwritten by its own start).
+        s_ime_told_gen[ctx->app_id] = 0;
+    }
+    c->gen = ctx->gen;
+    c->x = (int16_t)x;
+    c->y = (int16_t)y;
+    c->h = (int16_t)(h > 0 ? h : 0);
+    c->on = h > 0;
+#else
+    (void)x;
+    (void)y;
+    (void)h;
+#endif
+}
+
+#if defined(FMRB_PLATFORM_NATIVE)
+// The focused app's text cursor in frame coordinates, false when it has
+// none (it never said, said off, or is not running).
+static bool ime_focused_cursor(uint8_t pid, int *fx, int *fy, int *h)
+{
+    if (pid >= FMRB_MAX_APPS) return false;
+    host_text_cursor_t c = s_text_cursor[pid];
+    if (!c.on) return false;
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(pid);
+    if (ctx == NULL || ctx->gen != c.gen || ctx->state != PROC_STATE_RUNNING) return false;
+    static fmrb_window_info_t list[FMRB_MAX_APPS];
+    int n = fmrb_app_get_window_list(list, FMRB_MAX_APPS);
+    for (int i = 0; i < n; i++) {
+        if (list[i].pid != pid) continue;
+        *fx = list[i].x + c.x;
+        *fy = list[i].y + c.y;
+        *h = c.h;
+        return true;
+    }
+    return false;
+}
+
+// From the host loop: the IME coming and going, the focused app told, the
+// focused app's cursor handed to the main thread.
+static void ime_tick(void)
+{
+    bool on = fmrb_native_ime_present();
+    if (on != s_ime_on) {
+        s_ime_on = on;
+        if (on) {
+            // Whatever kana input was doing, it stops (pending romaji too).
+            fmrb_kana_set_mode(FMRB_KANA_OFF);
+            FMRB_LOGI(TAG, "the PC's IME types for the apps: Family mruby's kana input steps aside");
+        } else {
+            FMRB_LOGI(TAG, "no IME on the PC any more: Family mruby's kana input is back");
+        }
+        host_broadcast_kana_mode();
+    }
+    fmrb_hid_routing_t routing;
+    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return;
+    int target = (routing.routing_enabled && routing.target_pid != 0xFF) ? routing.target_pid : -1;
+    if (target >= 0 && target < FMRB_MAX_APPS) {
+        // The focused app hears the mode as it is now: an app that came to
+        // the front (or started) after the IME did has its indicator, and
+        // the desktop's, hidden too; one told so before the IME went is
+        // told the kana mode again.
+        fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((uint8_t)target);
+        if (ctx != NULL && ctx->state == PROC_STATE_RUNNING) {
+            if (s_ime_on && s_ime_told_gen[target] != ctx->gen) {
+                s_ime_told_gen[target] = ctx->gen;
+                host_send_kana_mode((uint8_t)target, FMRB_KANA_MODE_IME);
+                host_send_kana_mode(0, FMRB_KANA_MODE_IME);
+                FMRB_LOGI(TAG, "PID %d told the PC's IME types (its kana indicator hidden)", target);
+            } else if (!s_ime_on && s_ime_told_gen[target] != 0) {
+                s_ime_told_gen[target] = 0;
+                uint8_t mode = (uint8_t)fmrb_kana_get_mode();
+                host_send_kana_mode((uint8_t)target, mode);
+                host_send_kana_mode(0, mode);
+            }
+        }
+    }
+    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    if (now - s_ime_cursor_ms < IME_CURSOR_POLL_MS) return;
+    s_ime_cursor_ms = now;
+    int fx = 0, fy = 0, h = 0;
+    bool has = target >= 0 && ime_focused_cursor((uint8_t)target, &fx, &fy, &h);
+    fmrb_native_ime_publish_cursor(has, fx, fy, h);
+}
+#endif
 
 #if defined(FMRB_PLATFORM_NATIVE)
 static bool keys_host_control(const fmrb_msg_t *m);
@@ -2059,7 +2217,11 @@ static void host_task_process_host_message(const host_message_t *msg)
             // each driver. It runs on both layouts: which keys reach it is a
             // keyboard question (half/full-width is JIS-only, Ctrl+Space
             // works anywhere), while the layout setting picks the symbol
-            // table. With kana input off every key passes straight through.
+            // table. With kana input off every key passes straight through,
+            // and on a PC whose IME types for the apps it is not fed at all.
+#if defined(FMRB_PLATFORM_NATIVE)
+            if (!s_ime_on)
+#endif
             {
                 fmrb_kana_result_t kana;
                 fmrb_kana_action_t action = fmrb_kana_feed(
@@ -2116,6 +2278,26 @@ static void host_task_process_host_message(const host_message_t *msg)
             }
             break;
         }
+
+#if defined(FMRB_PLATFORM_NATIVE)
+        case HOST_MSG_HID_TEXT: {
+            // Text the PC's IME committed: to the focused app as one-byte key
+            // events, like a composed kana. Control characters are not text.
+            fmrb_hid_routing_t routing;
+            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK ||
+                !routing.routing_enabled || routing.target_pid == 0xFF) {
+                break;
+            }
+            int len = msg->data.text.len;
+            if (len > HOST_TEXT_CHUNK) len = HOST_TEXT_CHUNK;
+            for (int i = 0; i < len; i++) {
+                uint8_t b = (uint8_t)msg->data.text.bytes[i];
+                if (b < 0x20 || b == 0x7F) continue;
+                host_send_kana_byte(routing.target_pid, b);
+            }
+            break;
+        }
+#endif
 
         case HOST_MSG_HID_MOUSE_MOVE: {
             int x = msg->data.mouse_move.x;
@@ -2344,6 +2526,7 @@ static void fmrb_host_task(void *pvParameters)
 
 #if defined(FMRB_PLATFORM_NATIVE)
         keys_tick();
+        ime_tick();
 #endif
 
         // File transfer interleaving: send one chunk per loop iteration
@@ -2544,6 +2727,24 @@ int fmrb_host_send_key_up_us(int key_code, int scancode, int modifier)
 {
     return host_send_key(HOST_MSG_HID_KEY_UP, key_code, scancode, modifier, 1);
 }
+
+#if defined(FMRB_PLATFORM_NATIVE)
+int fmrb_host_send_text(const char *utf8, int len)
+{
+    int sent = 0;
+    while (len > 0) {
+        host_message_t msg = { .type = HOST_MSG_HID_TEXT };
+        int n = len > HOST_TEXT_CHUNK ? HOST_TEXT_CHUNK : len;
+        msg.data.text.len = n;
+        memcpy(msg.data.text.bytes, utf8, (size_t)n);
+        if (fmrb_host_send_message(&msg) != 0) return -1;
+        utf8 += n;
+        len -= n;
+        sent += n;
+    }
+    return sent;
+}
+#endif
 
 int fmrb_host_send_mouse_move(int x, int y)
 {

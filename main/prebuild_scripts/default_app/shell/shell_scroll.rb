@@ -106,6 +106,8 @@ module ShellScrollMixin
     cursor_x = content_x + c * @char_width
     cursor_y = input_y + r * @char_height + @char_height - 1
     @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    # Where a PC's IME shows what is being composed (nothing on the devices).
+    FmrbApp.set_text_cursor(cursor_x, input_y + r * @char_height, @char_height)
   end
 
   def display_rows_for(entry)

@@ -1124,6 +1124,13 @@ class SystemDesktopApp < FmrbApp
       return
     end
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
+    if @kana_mode >= 3
+      # Mode 3: a PC's IME types instead, and its state is not known here,
+      # so the cell is left out (painted over, in case it was drawn).
+      @kana_icon_x = nil
+      @gfx.fill_rect(x, 1, KANA_CELL_W, 10, MENU_BG)
+      return
+    end
     @kana_icon_x = x
     # One fixed style for every mode: white box, menu-colored glyph. The old
     # gray direct-input cell sat next to the BLE icon's disconnected gray and

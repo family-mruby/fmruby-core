@@ -11,6 +11,13 @@
 # display manager shows the login screen again. The power entries (power
 # off, restart, suspend) go to logind from inside Family mruby.
 #
+# Japanese input (L12b): when fcitx5 is installed (with fcitx5-mozc for
+# kana-kanji conversion), the compositor starts it and it types both into
+# Linux programs and into Family mruby's apps; Ctrl+Space (or the
+# half/full-width key) switches it. Without fcitx5, Family mruby's own kana
+# input works as on the devices. FMRB_ARGS="--set compositor.ime=" leaves
+# fcitx5 out.
+#
 # Settings: /etc/default/family-mruby-session (a shell fragment, optional;
 # every variable set there is passed on to the program):
 #

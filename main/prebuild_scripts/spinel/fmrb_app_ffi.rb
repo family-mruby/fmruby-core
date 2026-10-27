@@ -124,6 +124,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_config, [:str, :int], :binstr
   ffi_func :fmrb_spx_app_language, [], :binstr
   ffi_func :fmrb_spx_app_set_kana_mode, [:int], :int
+  ffi_func :fmrb_spx_app_set_text_cursor, [:int, :int, :int], :int
   ffi_func :fmrb_spx_app_clipboard_gen, [], :int
   ffi_func :fmrb_spx_app_clipboard_length, [], :int
   ffi_func :fmrb_spx_app_clipboard_chunk, [:int, :int], :binstr

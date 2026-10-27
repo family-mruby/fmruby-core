@@ -292,6 +292,11 @@ NATIVE_DEB_LAYOUT = {
     # it X11 programs do not run and the log says so; Wayland ones do.
     session: true,
     recommends: "xwayland",
+    # The IME for Japanese (L12b): started by the compositor when installed
+    # (machine linux_pc_wl, compositor.ime); without it Family mruby's own
+    # kana input stays. Suggested only: an IME is the user's choice, and on
+    # a PC without one nothing changes.
+    suggests: "fcitx5, fcitx5-mozc",
   },
 }.freeze
 NATIVE_DEB_ROOT = "usr/share/family-mruby/root"
@@ -510,7 +515,7 @@ namespace :native do
       Maintainer: #{maintainer}
       Installed-Size: #{size_kb}
       Depends: #{depends.strip}
-      #{lay[:recommends] ? "Recommends: #{lay[:recommends]}\n" : ''}Section: misc
+      #{lay[:recommends] ? "Recommends: #{lay[:recommends]}\n" : ''}#{lay[:suggests] ? "Suggests: #{lay[:suggests]}\n" : ''}Section: misc
       Priority: optional
       Homepage: https://github.com/family-mruby
       Description: Family mruby, a Ruby computer, as a Linux program

@@ -27,6 +27,20 @@
  * after copying elsewhere covers the rest), and handed over if it differs
  * from the last text either way. Reading can wait on the owner briefly
  * under X11; it happens only on those events.
+ *
+ * The desktop's IME (L12b, input.ime = "sdl"): SDL's text input, which
+ * reaches ibus and fcitx (over D-Bus under X11, text-input-v3 under
+ * Wayland), is on while the focused app says where its text cursor is
+ * (native_ime.h), and the candidates are asked to go there
+ * (SDL_SetTextInputRect). Keys the IME uses never come as key events; what
+ * it commits comes as SDL_TEXTINPUT and goes to the app as UTF-8 key events
+ * (native_ime_commit). A TEXTINPUT right after a key passed on is that
+ * key's own text (plain typing), which the key already carried: dropped.
+ * The text being composed (SDL_TEXTEDITING) is drawn over the picture at the
+ * cursor in Family mruby's font. Whether an IME is there cannot be asked of
+ * SDL: the first composing text, or committed text no key carried, says so
+ * (the machine's own kana input steps aside from then on). Other machines
+ * on this output (cage's linux_pc) leave SDL's text events alone.
  */
 
 #include <SDL.h>
@@ -40,6 +54,7 @@
 #include "native_backends.h"
 #include "native_clip.h"
 #include "native_frame.h"
+#include "native_ime.h"
 #include "native_input.h"
 
 /* How often pointer motion is passed on: the machine redraws its cursor per
@@ -62,6 +77,20 @@ static fmrb_present_place_t s_place;
 static char *s_clip_last = NULL;
 static size_t s_clip_last_len = 0;
 
+/* The desktop's IME (input.ime = "sdl"). */
+static bool s_ime = false;
+static bool s_text_on = false;          /* SDL's text input started */
+static unsigned s_cur_seq = 0;
+static bool s_cur_on = false;
+static int s_cur_fx, s_cur_fy, s_cur_h;
+static bool s_key_text_pending = false; /* a key passed on may still bring its text */
+static char s_preedit[512];
+static int s_pre_begin = -1, s_pre_end = -1;   /* byte offsets */
+static SDL_Texture *s_pre_tex = NULL;
+static int s_pre_tex_w = 0, s_pre_tex_h = 0;
+#define PRE_CAP (1024 * 18)
+static uint32_t s_pre_px[PRE_CAP];
+
 /* Pending pointer motion, coalesced. */
 static int s_motion_pending = 0;
 static int s_motion_x = 0, s_motion_y = 0;
@@ -76,6 +105,15 @@ static bool sdl_open(const native_machine_t *m, char *why, size_t why_len)
     s_scale = m->display.scale > 0 ? m->display.scale : SDL_DEFAULT_SCALE;
     s_rotate = m->display.rotate;
     s_fullscreen = m->display.fullscreen;
+    s_ime = strcmp(m->input.ime, "sdl") == 0;
+    if (s_ime) {
+#ifdef SDL_HINT_IME_SUPPORT_EXTENDED_TEXT
+        SDL_SetHint(SDL_HINT_IME_SUPPORT_EXTENDED_TEXT, "1");
+#endif
+        /* Off until an app says where its cursor is: a game's keys go
+         * straight. */
+        SDL_StopTextInput();
+    }
     native_clip_install(NULL);
     return true;
 }
@@ -175,6 +213,30 @@ static void ensure_window(void)
             SDL_GetCurrentVideoDriver());
 }
 
+/* The text being composed, over the picture at the app's cursor (output
+ * pixels: the renderer's). */
+static void draw_preedit(void)
+{
+    if (!s_ime || s_preedit[0] == '\0' || !s_cur_on || s_place.scale <= 0) return;
+    int w = 0, h = 0;
+    if (!native_preedit_render(s_preedit, s_pre_begin, s_pre_end, s_cur_h, s_pre_px, PRE_CAP, &w, &h)) return;
+    if (s_pre_tex == NULL || w > s_pre_tex_w || h > s_pre_tex_h) {
+        if (s_pre_tex != NULL) SDL_DestroyTexture(s_pre_tex);
+        s_pre_tex_w = w > s_pre_tex_w ? w : s_pre_tex_w;
+        s_pre_tex_h = h > s_pre_tex_h ? h : s_pre_tex_h;
+        s_pre_tex = SDL_CreateTexture(s_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+                                      s_pre_tex_w, s_pre_tex_h);
+        if (s_pre_tex == NULL) return;
+    }
+    SDL_Rect src = { 0, 0, w, h };
+    SDL_UpdateTexture(s_pre_tex, &src, s_pre_px, w * 4);
+    int sc = s_place.scale;
+    SDL_Rect dst = { s_place.x + (s_cur_fx - 1) * sc, s_place.y + (s_cur_fy - 1) * sc, w * sc, h * sc };
+    if (dst.x + dst.w > s_place.x + s_place.w) dst.x = s_place.x + s_place.w - dst.w;
+    if (dst.x < s_place.x) dst.x = s_place.x;
+    SDL_RenderCopy(s_renderer, s_pre_tex, &src, &dst);
+}
+
 static void sdl_present(const uint16_t *px, int w, int h, bool changed)
 {
     if (s_renderer == NULL) return;
@@ -212,6 +274,7 @@ static void sdl_present(const uint16_t *px, int w, int h, bool changed)
     SDL_UnlockTexture(s_texture);
     SDL_RenderClear(s_renderer);
     SDL_RenderCopy(s_renderer, s_texture, NULL, NULL);
+    draw_preedit();
     SDL_RenderPresent(s_renderer);
 }
 
@@ -225,6 +288,72 @@ static int to_frame(int wx, int wy, int *fx, int *fy)
     int sy = (wh > 0) ? (int)((long)wy * s_out_h / wh) : wy;
     fmrb_present_to_frame(&s_place, s_fb_w, s_fb_h, sx, sy, fx, fy);
     return 1;
+}
+
+/* SDL's text input follows the focused app's cursor: on, with the
+ * candidates asked to go under it (window coordinates), or off. */
+static void ime_follow(void)
+{
+    if (!s_ime || s_window == NULL) return;
+    int fx = 0, fy = 0, h = 0;
+    unsigned seq = 0;
+    bool on = native_ime_cursor(&fx, &fy, &h, &seq);
+    if (seq == s_cur_seq) return;
+    s_cur_seq = seq;
+    s_cur_on = on;
+    s_cur_fx = fx;
+    s_cur_fy = fy;
+    s_cur_h = h;
+    s_dirty = 1;
+    if (!on) {
+        if (s_text_on) SDL_StopTextInput();
+        s_text_on = false;
+        s_preedit[0] = '\0';
+        return;
+    }
+    int ww = 0, wh = 0;
+    SDL_GetWindowSize(s_window, &ww, &wh);
+    int sc = s_place.scale > 0 ? s_place.scale : 1;
+    int ox = s_place.x + fx * sc, oy = s_place.y + fy * sc;
+    SDL_Rect r = { 0, 0, 1, 1 };
+    if (s_out_w > 0 && s_out_h > 0) {
+        r.x = (int)((long)ox * ww / s_out_w);
+        r.y = (int)((long)oy * wh / s_out_h);
+        r.w = (int)((long)(h > 0 ? h / 2 : 4) * sc * ww / s_out_w);
+        r.h = (int)((long)(h > 0 ? h : 8) * sc * wh / s_out_h);
+    }
+    SDL_SetTextInputRect(&r);
+    if (!s_text_on) {
+        SDL_StartTextInput();
+        s_text_on = true;
+    }
+}
+
+/* An IME is there: the first sign of one. */
+static void ime_seen(void)
+{
+    native_ime_set_present(true, "the desktop's IME (SDL's text input)");
+}
+
+/* The byte offset of character n of s. */
+static int byte_of_char(const char *s, int n)
+{
+    int i = 0;
+    while (s[i] != '\0' && n > 0) {
+        i++;
+        while ((s[i] & 0xC0) == 0x80) i++;
+        n--;
+    }
+    return i;
+}
+
+static void set_preedit(const char *text, int start, int length)
+{
+    snprintf(s_preedit, sizeof(s_preedit), "%s", text ? text : "");
+    if (s_preedit[0] != '\0') ime_seen();
+    s_pre_begin = byte_of_char(s_preedit, start);
+    s_pre_end = length > 0 ? byte_of_char(s_preedit, start + length) : s_pre_begin;
+    s_dirty = 1;
 }
 
 static void flush_motion(int force)
@@ -286,8 +415,40 @@ static int handle_event(const SDL_Event *e)
         flush_motion(1);
         native_input_push(e->type == SDL_KEYDOWN ? NATIVE_INPUT_KEY_DOWN : NATIVE_INPUT_KEY_UP,
                           (uint32_t)sc, sdl_mod_to_fmrb(e->key.keysym.mod), 0, 0);
+        /* A key that types: its text is the TEXTINPUT that follows, before
+         * its release. */
+        if (e->type == SDL_KEYDOWN) {
+            SDL_Keycode sym = e->key.keysym.sym;
+            s_key_text_pending = (e->key.keysym.mod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI)) == 0 &&
+                                 sym >= 0x20 && sym != 0x7F && (sym & SDLK_SCANCODE_MASK) == 0;
+        } else {
+            s_key_text_pending = false;
+        }
         break;
     }
+    case SDL_TEXTINPUT:
+        if (!s_ime) break;
+        if (s_key_text_pending) {
+            /* The key just passed on, typed: the machine has it already. */
+            s_key_text_pending = false;
+            break;
+        }
+        ime_seen();
+        native_ime_commit(e->text.text);
+        s_preedit[0] = '\0';
+        s_dirty = 1;
+        break;
+    case SDL_TEXTEDITING:
+        if (!s_ime) break;
+        set_preedit(e->edit.text, e->edit.start, e->edit.length);
+        break;
+#ifdef SDL_HINT_IME_SUPPORT_EXTENDED_TEXT
+    case SDL_TEXTEDITING_EXT:
+        if (!s_ime) break;
+        set_preedit(e->editExt.text, e->editExt.start, e->editExt.length);
+        SDL_free(e->editExt.text);
+        break;
+#endif
     case SDL_MOUSEMOTION: {
         int fx, fy;
         if (to_frame(e->motion.x, e->motion.y, &fx, &fy)) {
@@ -346,12 +507,15 @@ static bool sdl_pump(int wait_ms)
     flush_motion(0);
     ensure_window();
     if (s_window != NULL) clip_write();
+    ime_follow();
     return quit != 0;
 }
 
 static void sdl_close(void)
 {
     if (s_texture != NULL) SDL_DestroyTexture(s_texture);
+    if (s_pre_tex != NULL) SDL_DestroyTexture(s_pre_tex);
+    s_pre_tex = NULL;
     if (s_renderer != NULL) SDL_DestroyRenderer(s_renderer);
     if (s_window != NULL) SDL_DestroyWindow(s_window);
     s_texture = NULL;

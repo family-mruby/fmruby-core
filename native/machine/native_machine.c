@@ -73,6 +73,7 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->input.backend, sizeof(m->input.backend), "sdl");
     snprintf(m->input.devices[0], sizeof(m->input.devices[0]), "auto");
     m->input.n_devices = 1;
+    snprintf(m->input.ime, sizeof(m->input.ime), "none");
     snprintf(m->audio.backend, sizeof(m->audio.backend), "sdl");
     snprintf(m->audio.device, sizeof(m->audio.device), "default");
     m->audio.latency_ms = 100;
@@ -85,6 +86,7 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->files.host, sizeof(m->files.host), "auto");
     snprintf(m->files.root, sizeof(m->files.root), "auto");
     m->compositor.autostart[0] = '\0';
+    m->compositor.ime[0] = '\0';
 }
 
 /* system.power: "exit", "logind", or both, comma-separated (a TOML list
@@ -231,6 +233,12 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
     if (strcmp(key, "input.devices") == 0) return set_devices(m, value, err, n);
     if (strcmp(key, "input.keymap") == 0) return copy_str(m->input.keymap, sizeof(m->input.keymap), value, key, err, n);
     if (strcmp(key, "input.keymap_device") == 0) return copy_str(m->input.keymap_device, sizeof(m->input.keymap_device), value, key, err, n);
+    if (strcmp(key, "input.ime") == 0) {
+        if (strcmp(value, "none") != 0 && strcmp(value, "sdl") != 0 && strcmp(value, "wayland") != 0) {
+            return fail(err, n, "input.ime: \"%s\" is not none, sdl or wayland", value);
+        }
+        return copy_str(m->input.ime, sizeof(m->input.ime), value, key, err, n);
+    }
 
     if (strcmp(key, "audio.backend") == 0) return copy_str(m->audio.backend, sizeof(m->audio.backend), value, key, err, n);
     if (strcmp(key, "audio.device") == 0) return copy_str(m->audio.device, sizeof(m->audio.device), value, key, err, n);
@@ -276,6 +284,9 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
 
     if (strcmp(key, "compositor.autostart") == 0) {
         return copy_str(m->compositor.autostart, sizeof(m->compositor.autostart), value, key, err, n);
+    }
+    if (strcmp(key, "compositor.ime") == 0) {
+        return copy_str(m->compositor.ime, sizeof(m->compositor.ime), value, key, err, n);
     }
 
     return fail(err, n, "unknown key \"%s\"", key);
@@ -400,6 +411,12 @@ int native_machine_check(const native_machine_t *m, char *err, size_t n)
     if (strcmp(m->desktop.variant, "mouse") != 0 && strcmp(m->desktop.variant, "keys") != 0) {
         return fail(err, n, "desktop.variant \"%s\" is not mouse or keys", m->desktop.variant);
     }
+    if (strcmp(m->input.ime, "sdl") == 0 && strcmp(m->display.backend, "sdl") != 0) {
+        return fail(err, n, "input.ime sdl needs display.backend sdl (it is %s)", m->display.backend);
+    }
+    if (strcmp(m->input.ime, "wayland") == 0 && strcmp(m->display.backend, "wlroots") != 0) {
+        return fail(err, n, "input.ime wayland needs display.backend wlroots (it is %s)", m->display.backend);
+    }
     if (m->input.keymap[0] != '\0' && strcmp(m->input.keymap, "cardputer_zero") != 0) {
         return fail(err, n, "input.keymap \"%s\" is not \"\" or cardputer_zero", m->input.keymap);
     }
@@ -460,13 +477,15 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
-             "input %s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s, files host=%s root=%s%s%s",
+             "input %s%s%s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s, files host=%s root=%s%s%s%s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
              m->display.fullscreen ? " fullscreen" : "",
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
+             strcmp(m->input.ime, "none") != 0 ? " ime=" : "", strcmp(m->input.ime, "none") != 0 ? m->input.ime : "",
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
              m->desktop.variant, m->system.services, m->system.power,
              m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root,
-             m->compositor.autostart[0] ? ", autostart " : "", m->compositor.autostart);
+             m->compositor.autostart[0] ? ", autostart " : "", m->compositor.autostart,
+             m->compositor.ime[0] ? ", IME program " : "", m->compositor.ime);
 }

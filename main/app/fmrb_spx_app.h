@@ -173,6 +173,7 @@ int fmrb_spx_app_clipboard_gen(void);
 int fmrb_spx_app_clipboard_length(void);
 const char *fmrb_spx_app_clipboard_chunk(int off, int limit);
 int fmrb_spx_app_set_clipboard(const char *s, int len);
+int fmrb_spx_app_set_text_cursor(int x, int y, int h);
 
 /**
  * @brief Current wall clock (FmrbApp.wallclock). :binstr of six u16 LE:

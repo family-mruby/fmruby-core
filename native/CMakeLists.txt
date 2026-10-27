@@ -117,6 +117,8 @@ set(NATIVE_BACKEND_SRCS
   ${N}/backend/native_ctl.c
   # The machine's clipboard joined to Linux's (L12a)
   ${N}/backend/native_clip.c
+  ${N}/backend/native_ime.c
+  ${N}/backend/native_preedit.cpp
   ${N}/backend/native_frame.c
   ${N}/backend/png_write.c
   ${N}/backend/display_backend_native.cpp
@@ -169,7 +171,7 @@ if(NATIVE_HAVE_WLROOTS)
     COMMAND ${WAYLAND_SCANNER} server-header
             ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
     DEPENDS ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
-  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
        # The launcher's Linux applications (L9b): started by the compositor;
        # files opened in them (L11).
        ${N}/sys/linux_apps.c ${N}/sys/linux_mime.c)
@@ -221,7 +223,7 @@ endif()
 
 if(NATIVE_HAVE_WLROOTS)
   set(NATIVE_WLR_CFLAGS ${WLROOTS_CFLAGS} -I${NATIVE_WLR_GEN})
-  set_source_files_properties(${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c PROPERTIES COMPILE_OPTIONS "${NATIVE_WLR_CFLAGS}")
+  set_source_files_properties(${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c PROPERTIES COMPILE_OPTIONS "${NATIVE_WLR_CFLAGS}")
   set_source_files_properties(${N}/sys/linux_apps.c PROPERTIES COMPILE_OPTIONS
     "-DNATIVE_HAVE_PNG=${NATIVE_HAVE_PNG};${LIBPNG_CFLAGS}")
 endif()

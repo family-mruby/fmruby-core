@@ -33,6 +33,11 @@ typedef enum {
 // Cycled by the on-screen indicators: off -> hiragana -> katakana -> off.
 #define FMRB_KANA_MODE_COUNT 3
 
+// Not a mode of the composer: what the apps are told (the KANA_MODE event)
+// while the PC's IME types for them instead (the native program on a PC,
+// doc/linux_native L12b). Their indicators hide; the devices never send it.
+#define FMRB_KANA_MODE_IME 3
+
 typedef enum {
     FMRB_KANA_PASS = 0,     // forward the event untouched
     FMRB_KANA_CONSUME,      // swallow it (mode toggle, or a backspace that

@@ -231,6 +231,18 @@ void comp_route_picture_box(const comp_route_t *r, int ox, int oy, int *x, int *
  * True when it moved. */
 bool comp_route_inside(const comp_route_t *r, int *x, int *y, int w, int h);
 
+/* A frame point to the output through what is shown (the inverse of
+ * comp_route_to_frame): the top-left of its pixel, and the scale it is shown
+ * at. False when the point is not shown (outside the view). */
+bool comp_route_from_frame(const comp_route_t *r, int fx, int fy, int *x, int *y, int *scale);
+
+/* Where an IME's candidate window (pw x ph) goes for the text at the anchor
+ * rectangle (ax, ay, aw, ah; output coordinates, L12b): under it, its left
+ * edges lined up; above it when there is no room under it inside the box
+ * (bx, by, bw, bh: the picture's rectangle); moved left to stay in the box;
+ * at the box's top-left when larger than it. */
+void comp_ime_place(int ax, int ay, int aw, int ah, int pw, int ph, int bx, int by, int bw, int bh, int *x, int *y);
+
 /* Where a dialog's stand-in window (ww x wh, frame coordinates) goes: its
  * content's middle on the parent's content middle (the parent's content
  * rectangle px, py, pw, ph), the content being the window less the frame

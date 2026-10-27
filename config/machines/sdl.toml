@@ -16,6 +16,7 @@ rotate = 0
 
 [input]
 backend = "sdl"    # the window's keys and mouse (the inject socket is always on)
+ime = "sdl"        # the desktop's IME (ibus, fcitx) through SDL's text input (L12b); none there: the kana input
 
 [audio]
 backend = "sdl"

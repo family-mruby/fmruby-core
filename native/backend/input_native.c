@@ -21,6 +21,7 @@
  * header of the same name, the decoder, earlier on the include path). */
 #include "../../main/include/fmrb_hid_event.h"
 #include "host_task.h"
+#include "native_ime.h"
 #include "native_input.h"
 
 static const char *TAG = "input_native";
@@ -73,6 +74,9 @@ static void dispatch(const native_event_t *ev)
         break;
     case NATIVE_INPUT_CURSOR:
         fmrb_host_set_cursor_visible(ev->a != 0);
+        break;
+    case NATIVE_INPUT_TEXT:
+        native_ime_deliver(ev->a, ev->b, ev->c, ev->d);
         break;
     default:
         FMRB_LOGW(TAG, "unknown input event type %u", (unsigned)ev->type);

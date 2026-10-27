@@ -618,6 +618,23 @@ static void test_machine(void)
           strcmp(m.display.mode, "auto") == 0 && m.compositor.autostart[0] == '\0',
           "linux_pc_wl fields");
     CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "linux_pc_wl check: %s", err);
+    // The PC's IME (L12b): the compositor serves it and starts fcitx5; the
+    // SDL window takes SDL's; the others keep the kana input.
+    CHECK(strcmp(m.input.ime, "wayland") == 0 && strcmp(m.compositor.ime, "fcitx5") == 0, "linux_pc_wl ime %s, %s",
+          m.input.ime, m.compositor.ime);
+    {
+        native_machine_t t;
+        CHECK(load(&t, "sdl", err, sizeof(err)) == 0 && strcmp(t.input.ime, "sdl") == 0, "sdl ime %s", t.input.ime);
+        CHECK(load(&t, "linux_pc", err, sizeof(err)) == 0 && strcmp(t.input.ime, "none") == 0, "linux_pc ime %s",
+              t.input.ime);
+        CHECK(load(&t, "cardputer_zero", err, sizeof(err)) == 0 && strcmp(t.input.ime, "none") == 0,
+              "cardputer_zero ime %s", t.input.ime);
+        CHECK(native_machine_set(&t, "input.ime", "maybe", err, sizeof(err)) != 0, "input.ime maybe refused");
+        CHECK(native_machine_set(&t, "input.ime", "wayland", err, sizeof(err)) == 0 &&
+              native_machine_check(&t, err, sizeof(err)) != 0, "input.ime wayland on fbdev refused");
+        CHECK(load(&t, "linux_pc", err, sizeof(err)) == 0 && native_machine_set(&t, "input.ime", "sdl", err, sizeof(err)) == 0 &&
+              native_machine_check(&t, err, sizeof(err)) == 0, "input.ime sdl on the SDL window: %s", err);
+    }
     {
         static const struct { int ow, oh, scale, w, h; } cases[] = {
             { 1280, 800, 2, 640, 400 }, { 1920, 1080, 2, 960, 540 }, { 1280, 720, 2, 640, 360 },

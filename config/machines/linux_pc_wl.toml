@@ -33,6 +33,7 @@ mode = "auto"                # or "WxH": the output's mode (any size on headless
 
 [input]
 backend = "wlroots"          # the compositor's seat: keyboard, touchpad, mouse
+ime = "wayland"              # IMEs over input-method-v2 for Linux windows and Family mruby apps (L12b)
 
 [audio]
 backend = "sdl"
@@ -51,3 +52,4 @@ root = "auto"
 
 [compositor]
 autostart = ""               # e.g. "foot": started with WAYLAND_DISPLAY set to this compositor
+ime = "fcitx5"               # the IME started with it (L12b); not installed: the kana input stays

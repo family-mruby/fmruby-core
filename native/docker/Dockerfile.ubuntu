@@ -14,7 +14,9 @@
 # and xeyes from x11-apps) and xterm's bitmap fonts. libpng is the launcher's
 # Linux icons (the amd64 package's Depends gets it from dpkg-shlibdeps);
 # librsvg (opened at run time) and the Breeze icon theme, for the launcher's
-# SVG icons and the icon theme lookup (L9e).
+# SVG icons and the icon theme lookup (L9e). For the IME (L12b): fcitx5 with
+# mozc, a D-Bus session for it (dbus-run-session), and a Japanese font for
+# its candidate window.
 #
 # The base is pinned to a dated tag, never a moving one (the same rule as
 # the trixie image). Built and used by rake native:image ARCH=amd64,
@@ -36,6 +38,7 @@ RUN apt-get update \
       xwayland xterm x11-apps xfonts-base \
       libgl1-mesa-dri libegl-mesa0 \
       librsvg2-2 breeze-icon-theme \
+      fcitx5 fcitx5-mozc dbus-daemon fonts-ipafont-gothic \
  && rm -rf /var/lib/apt/lists/*
 
 # rake and the picoruby build write their caches under $HOME; the calling

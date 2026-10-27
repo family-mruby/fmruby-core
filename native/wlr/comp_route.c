@@ -392,6 +392,31 @@ bool comp_route_inside(const comp_route_t *r, int *x, int *y, int w, int h)
     return moved;
 }
 
+bool comp_route_from_frame(const comp_route_t *r, int fx, int fy, int *x, int *y, int *scale)
+{
+    const fmrb_present_place_t *p = r->viewing ? &r->show : &r->place;
+    int ox = r->viewing ? r->view_x : 0, oy = r->viewing ? r->view_y : 0;
+    int vw = r->viewing ? r->view_w : r->fb_w, vh = r->viewing ? r->view_h : r->fb_h;
+    int sc = p->scale > 0 ? p->scale : 1;
+    *x = p->x + (fx - ox) * sc;
+    *y = p->y + (fy - oy) * sc;
+    *scale = sc;
+    return fx >= ox && fy >= oy && fx < ox + vw && fy < oy + vh;
+}
+
+void comp_ime_place(int ax, int ay, int aw, int ah, int pw, int ph, int bx, int by, int bw, int bh, int *x, int *y)
+{
+    (void)aw;
+    int nx = ax, ny = ay + ah;
+    if (ny + ph > by + bh && ay - ph >= by) ny = ay - ph;
+    if (ny + ph > by + bh) ny = by + bh - ph;
+    if (nx + pw > bx + bw) nx = bx + bw - pw;
+    if (nx < bx) nx = bx;
+    if (ny < by) ny = by;
+    *x = nx;
+    *y = ny;
+}
+
 void comp_dialog_place(int px, int py, int pw, int ph, int ww, int wh, int fl, int ft, int fw, int fh,
                        int base_w, int base_h, int top, int *x, int *y)
 {

@@ -2034,6 +2034,13 @@ class FmrbApp
     nil
   end
 
+  # Where the app's text cursor is (canvas coordinates, h the line's height;
+  # 0 = no text input now), for a PC's IME. Nothing on the devices.
+  def self.set_text_cursor(x, y, h)
+    FmrbSpxApp.fmrb_spx_app_set_text_cursor(x, y, h)
+    nil
+  end
+
   # The machine-wide mute (doc/reference/audio_output.md), applied at the output stage;
   # set_audio_mute saves the setting.
   def self.audio_muted?

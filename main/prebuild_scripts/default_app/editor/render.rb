@@ -173,7 +173,9 @@ module EditorRender
 
     # ---- right zone: measure the badges, right to left ----
     right = @user_area_x0 + @user_area_width
-    if @kana_mode
+    # Mode 3: the PC's IME types instead (its own state is not known), so no
+    # badge.
+    if @kana_mode < 3
       @kana_badge_w = FmrbI18n.text_width(kana_badge) + 2
       right -= @kana_badge_w
       @kana_badge_x = right
@@ -558,10 +560,15 @@ module EditorRender
 
   def draw_cursor
     box = cursor_cell_box
-    return if box.nil?
+    if box.nil?
+      FmrbApp.set_text_cursor(0, 0, 0)
+      return
+    end
     x = box[0]
     y = box[1]
     w_cells = box[2]
+    # Where a PC's IME shows what is being composed (nothing on the devices).
+    FmrbApp.set_text_cursor(x, y, @line_h)
 
     # Draw block cursor
     @gfx.fill_rect(x, y, w_cells * @cell_w, @line_h, CURSOR_COLOR)

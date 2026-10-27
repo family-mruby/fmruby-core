@@ -116,6 +116,32 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
 void fmrb_host_set_kana_mode(uint8_t mode);
 
 /**
+ * @brief Where the calling app's text cursor is, for the PC's IME.
+ *
+ * On a PC (the native program with an IME, doc/linux_native L12b) the IME's
+ * candidates and the text being composed are shown at the focused app's
+ * cursor. Apps that take text (the editor, the Shell) say where it is, in
+ * their canvas coordinates, whenever they draw it. Callable from an app task;
+ * a no-op on the devices, the simulation and the browser.
+ *
+ * @param x Left of the cursor cell (canvas coordinates)
+ * @param y Top of the line
+ * @param h The line's height; 0 says the app takes no text now
+ */
+void fmrb_host_set_text_cursor(int x, int y, int h);
+
+#if defined(FMRB_PLATFORM_NATIVE)
+/**
+ * @brief Text the PC's IME committed, to the focused app (native only).
+ *
+ * Delivered as one-byte key events, the way a composed kana is. Callable from
+ * a task (the native input sources), not from the program's main thread.
+ * @return The bytes queued, -1 when the host queue was full
+ */
+int fmrb_host_send_text(const char *utf8, int len);
+#endif
+
+/**
  * @brief Mute or unmute the whole machine, and remember it.
  *
  * Like a speaker's mute switch: every source keeps running as usual (apps,
