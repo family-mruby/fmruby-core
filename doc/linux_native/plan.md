@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9a (Linux の窓の組み込み、実装中)。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9b (Linux のアプリの起動の口、Xwayland、ログイン画面の入口の切り替え)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -299,13 +299,21 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   整数倍に拡大して敷き、Linux のアプリの窓は液晶の本来の解像度のまま重ねる。
   窓の位置と大きさは、Family mruby の座標を倍率で写した場所に合わせる。
   窓枠・メニューバーは Family mruby の粗い画素、中身は精細になる。
-- **外の窓を kernel に知らせる**: コンポジタは Linux のアプリの窓ができた・
-  消えた・大きさが変わった、を kernel に送る。kernel の window manager
-  (window_manager.rb) は、それを「中身を Family mruby が描かない窓」として
-  扱い、配置・前後関係・フォーカスを今の仕組みで決める。Family mruby は
-  その窓の場所を透過で空けて合成し、コンポジタがそこに Linux の窓を描く。
-- 入力: input_router.rb がフォーカスを持つ窓を決め、外の窓ならコンポジタに
-  返し、コンポジタが wlroots の seat 経由で Linux のアプリへ配る。
+- **外の窓は代役のアプリで表す (L9a)**: コンポジタは Linux のアプリの窓が
+  できた・消えた・大きさ・題を、ネイティブ版だけにあるブリッジのタスクへ送る。
+  ブリッジは Linux の窓 1 つに、代役の小さなアプリ (linux_window.app.rb) を
+  1 つ起動する。代役は Family mruby の題の帯・枠・閉じるボタン・つまみを描き、
+  中身を透過の色 0x01 で塗る。window manager と input_router は代役を普通の
+  窓として動かし、前後とフォーカスを決める (kernel の Ruby は変えない)。
+  ブリッジは代役の中身の矩形・前後・キーボードの持ち主をコンポジタへ渡す。
+- 合成: コンポジタは Linux の窓を絵の下に描き、代役の中身の矩形の中で 0x01 の
+  まま残った画素だけを透明にする。Family mruby の窓・メニュー・ダイアログが
+  重なればそこは透けないので、前後関係は絵が決める。ポップアップは絵の上。
+- 入力: 前にある窓が代役なら、キーはコンポジタから Linux の窓へ直接送る
+  (Ctrl+Tab と Ctrl+, はいつも Family mruby)。ポインタは穴の上なら出力の
+  画素の細かさで Linux の窓へ。キーの配列は keyboard_layout に追従する。
+  題の帯の操作・閉じるボタン (xdg の close を頼む) は Family mruby の窓と同じ。
+  最大化・全画面は今は断る。
 - 動作の流れ: wlroots の処理の流れ (`wl_event_loop`) と FreeRTOS の協調の
   スレッド群は別々に走らせ、受け渡しの口を 2 つ (画面の絵・窓の通知と入力)
   だけにする。
@@ -332,8 +340,8 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   `/usr/share/applications/` と利用者の側) を読み、Family mruby のランチャーと
   メニューに「Linux のアプリ」として並べる。デスクトップのアイコンにも置ける。
 - 窓の閉じるボタンは、Wayland の決まった手順でアプリに閉じるよう頼む。
-  Family mruby を終えるときに、起動した Linux のアプリをどうするか
-  (一緒に閉じる・残す) は L9 で決める。
+  Family mruby を終えるときは、全部の窓に閉じるよう頼み、5 秒待ち、
+  残ったものを止める (L9a)。
 - GNOME の上の SDL の窓で動かす途中段階でも、起動の口は使える (窓は
   Family mruby の外、GNOME の普通の窓として出る)。cage の全画面の段階では
   見えないので使わない。
@@ -484,7 +492,7 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 | L7b | **電源ボタン**: mouse のデスクトップのメニューバーの右上に電源ボタンを置き、電源の項目をそのサブメニューに移す (全端末) | 全部 |
 | L7c | **削除の確認**: File Manager の削除の前に確認を出す (mouse・keys とも、Enter = はい、Esc = いいえ) | 全部 |
 | L8 | **コンポジタの試作**: tinywl に Family mruby の画面を 1 枚の絵として敷き、その上に端末を 1 つ出す。二つの動作の流れの受け渡しを確かめる | (3) |
-| L9 | **コンポジタの本実装**: 外の窓の通知を kernel に入れ、window manager と input router で扱う。解像度を混ぜた描画、Xwayland。Linux のアプリの起動 (起動の口、XDG の `.desktop` の一覧をランチャーに並べる、終了の扱い) | (3) |
+| L9 | **コンポジタの本実装**: L9a (完了) は外の窓を代役のアプリで window manager と input router に扱わせ、解像度を混ぜて合成する。L9b は Xwayland、Linux のアプリの起動 (起動の口、XDG の `.desktop` の一覧をランチャーに並べる)、ログイン画面の入口を cage からこのコンポジタへ | (3) |
 | L10 | **Shell から Linux のコマンド**: pty につないだ実行の口、出力と入力の受け渡し、色の基本。L1 の後ならいつでもでき、L9 を待たない (L6 の後を目安) | 全部 |
 | L11 | **Linux のファイルを Linux のアプリで開く**: L7 のファイルを見せる仕組みと L9 の起動の口を使い、`associations.toml` に Linux のアプリの行き先を足す | (3) |
 
@@ -539,6 +547,11 @@ L7c の検収で見つけたもの。急がないが、改善する。
 - L7 の残件: 書き込みの判定から実際に開くまでの間にリンクを差し替えられる隙
   (`openat` と `O_NOFOLLOW` で 1 段ずつ辿れば閉じる)、`/proc/kcore` の大きさが
   表の桁からはみ出す、装置などの特殊なファイルを一覧から隠すか。
+- L9a の残件: アプリが自分で大きさを変えたとき代役を合わせる (foot が文字の
+  格子に合わせて小さく描いた余りが黒い)、xdg の move・resize の頼みの自動の
+  確認、最大化・全画面、クリップボード、Linux の窓へのかな入力、タスクバーの
+  名前が題に追従すること、代役の四隅の外側 3 画素、終える前の 5 秒の間に
+  制御の口 (shot・quit) が届かないこと、GLES と人の手での操作の確認。
 
 ## 未確定事項
 
