@@ -45,7 +45,11 @@ if ! command -v cage >/dev/null 2>&1; then
 fi
 
 # SDL draws through Wayland (cage's socket); without this it may try X11.
+# No libdecor: cage draws no decorations anyway, and SDL 2.32 with libdecor
+# never gets its window from cage 0.2 (it waits in SDL_CreateWindow, plugins
+# or not); plain xdg-shell does.
 export SDL_VIDEODRIVER=wayland
+export SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0
 unset DISPLAY
 
 case "$ROTATE" in
