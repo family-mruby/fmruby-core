@@ -103,6 +103,16 @@ module ConfirmDialogMixin
     nil
   end
 
+  # Enter answers Yes, Esc answers No; the same paths as the two buttons.
+  def handle_confirm_dialog_key(scancode)
+    if scancode == FmrbConst::KEY_ENTER
+      handle_confirm_dialog_widget(:cdlg_yes)
+    elsif scancode == FmrbConst::KEY_ESC
+      handle_confirm_dialog_widget(:cdlg_no)
+    end
+    nil
+  end
+
   def hit_confirm_dialog?(x, y)
     @cdlg_open &&
       x >= @cdlg_x && x < @cdlg_x + CDLG_W &&

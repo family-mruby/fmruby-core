@@ -1964,6 +1964,15 @@ class SystemDesktopApp < FmrbApp
         return
       end
 
+      # The confirm dialog answers from the keyboard wherever it is used:
+      # Enter = Yes, Esc = No. It is modal, so every other key is swallowed
+      # here too -- nothing behind it (the file manager, the menu bar's F10,
+      # the shortcuts) may act while a question is on screen.
+      if @cdlg_open
+        handle_confirm_dialog_key(scancode)
+        return
+      end
+
       # Menu bar first: while it is open it owns the arrows and Enter.
       if @dropdown_open
         return if handle_dropdown_key(scancode)
