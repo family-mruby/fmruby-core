@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9b (Linux のアプリの起動の口、Xwayland、ログイン画面の入口の切り替え)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9b (Linux のアプリの起動の口、Xwayland、ログイン画面の入口の切り替え、実装中)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -323,6 +323,10 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   終わらなければ止める。コンポジタの確認の一式は `rake regress:full` に載せる。
 - L9 は L9a (窓の組み込み) と L9b (Linux のアプリの起動の口、Xwayland、
   ログイン画面の入口の切り替え) に分ける。
+- 決定 (2026-10-27 ユーザ、L9b): Linux のアプリはランチャーの「Linux」の
+  区分にまとめて並べる (Family mruby のアプリと混ぜない)。ログイン画面の
+  「Family mruby」の入口は cage からこのコンポジタに置き換える (cage の機種の
+  定義は残す)。Xwayland は X11 のアプリが来たときに起こす。
 - X11 のアプリは Xwayland で動かす。ポップアップ・メニュー・クリップボードは
   段階的に広げる。
 
