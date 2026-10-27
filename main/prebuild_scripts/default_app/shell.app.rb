@@ -4,11 +4,14 @@
 #   shell_commands.rb - ShellCommandsMixin (filesystem, run, ps, tab completion)
 #   shell_irb.rb      - ShellIrbMixin (interactive Ruby)
 #   shell_scroll.rb   - ShellScrollMixin (wrapping, scrollback, drawing)
+#   shell_linux.rb    - ShellLinuxMixin ("!" lines run on Linux)
+#   shell_term.rb     - ShellTerm (a Linux program's output into lines)
 
 class ShellApp < FmrbApp
   include ShellCommandsMixin
   include ShellIrbMixin
   include ShellScrollMixin
+  include ShellLinuxMixin
 
   def initialize
     super()
@@ -82,6 +85,14 @@ class ShellApp < FmrbApp
     @less_offset = 0
     @less_filename = ""
     @less_help_visible = false
+
+    # A Linux program running for a "!" line (shell/shell_linux.rb): its
+    # handle, the terminal reading its output, and whether this machine
+    # has Linux at all (asked once).
+    @linux_h = nil
+    @linux_term = nil
+    @linux_ok = nil
+    @linux_colors = nil
   end
 
   # Key reference shown by the less-mode help overlay (toggled with '?').
@@ -369,11 +380,7 @@ class ShellApp < FmrbApp
 
   def append_output(line)
     @history << line
-    # Keep ~3 pages of scrollback
-    max_entries = @visible_rows * 3
-    while @history.length > max_entries
-      @history.shift
-    end
+    trim_history
     scroll_to_bottom
     @need_full_redraw = true
   end
@@ -493,6 +500,9 @@ class ShellApp < FmrbApp
         @ctrl_pressed = true
         return
       end
+      # A Linux program takes Ctrl+letters as control bytes.
+      return if @linux_h && linux_key(ev)
+
       # Detect Ctrl-C
       if @ctrl_pressed && (keycode == 99 || character == 99)  # 'c'
         @ctrl_pressed = false
@@ -555,6 +565,7 @@ class ShellApp < FmrbApp
     max_scroll = total > @visible_rows ? total - @visible_rows : 0
     @scroll = max_scroll if @scroll > max_scroll
     @need_full_redraw = true
+    FmrbApp.linux_resize(@linux_h, @max_chars, @visible_rows) if @linux_h
     Log.info("Shell resize: #{new_width}x#{new_height} " \
              "-> #{@max_chars}x#{@visible_rows}")
     nil
@@ -581,6 +592,8 @@ class ShellApp < FmrbApp
     begin
       if @irb_mode
         irb_eval(entered_line)
+      elsif entered_line.start_with?("!")
+        cmd_linux(entered_line[1, entered_line.length - 1].to_s)
       else
         cmd, args = parse_command(entered_line)
         if cmd
@@ -596,11 +609,7 @@ class ShellApp < FmrbApp
     # alone — skip shell-history trim/scroll/redraw which would clobber it.
     return if @less_mode
 
-    # Trim old entries (keep ~3 pages)
-    max_entries = @visible_rows * 3
-    while @history.length > max_entries
-      @history.shift
-    end
+    trim_history
 
     # Auto-scroll to bottom
     scroll_to_bottom

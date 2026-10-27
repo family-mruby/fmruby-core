@@ -195,3 +195,52 @@ fmrb_err_t fmrb_platform_sys_power(fmrb_sys_power_t action)
     if (!s->power) return FMRB_ERR_NOT_SUPPORTED;
     return s->power(action);
 }
+
+bool fmrb_platform_sys_proc_available(void)
+{
+    return fmrb_platform_sys()->proc_start != NULL;
+}
+
+fmrb_err_t fmrb_platform_sys_proc_start(const fmrb_sys_proc_spec_t *spec, int32_t *id,
+                                        char *why, size_t why_cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    if (!s->proc_start) return FMRB_ERR_NOT_SUPPORTED;
+    return s->proc_start(spec, id, why, why_cap);
+}
+
+int32_t fmrb_platform_sys_proc_read(int32_t id, void *buf, size_t cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->proc_read ? s->proc_read(id, buf, cap) : -1;
+}
+
+int32_t fmrb_platform_sys_proc_write(int32_t id, const void *buf, size_t len)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->proc_write ? s->proc_write(id, buf, len) : -1;
+}
+
+fmrb_err_t fmrb_platform_sys_proc_signal(int32_t id, fmrb_sys_signal_t sig)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->proc_signal ? s->proc_signal(id, sig) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+bool fmrb_platform_sys_proc_exited(int32_t id, int *code)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->proc_exited ? s->proc_exited(id, code) : true;
+}
+
+fmrb_err_t fmrb_platform_sys_proc_resize(int32_t id, uint16_t cols, uint16_t rows)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->proc_resize ? s->proc_resize(id, cols, rows) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+void fmrb_platform_sys_proc_close(int32_t id)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    if (s->proc_close) s->proc_close(id);
+}

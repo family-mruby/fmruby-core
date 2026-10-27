@@ -1392,6 +1392,128 @@ static mrb_value mrb_fmrb_app_s_battery_charging_p(mrb_state *mrb, mrb_value kla
     return mrb_bool_value(fmrb_platform_sys_battery(&b) && b.charging);
 }
 
+// ---- Linux programs (doc/linux_native L10, fmrb_platform_sys.h) ----
+//
+// FmrbApp.linux_available? -> bool. false on the devices, the simulation and
+//   the browser; the rest below then raise or answer "ended".
+// FmrbApp.linux_start(command, cwd, cols, rows) -> Integer handle. command
+//   nil starts the interactive shell. cwd is a Family mruby path. Raises
+//   RuntimeError with the reason when it cannot start.
+// FmrbApp.linux_read(h) -> String of what it printed ("" nothing just now),
+//   nil when no more output will come.
+// FmrbApp.linux_write(h, str) -> Integer bytes taken (-1: it takes no more).
+// FmrbApp.linux_signal(h, sym) -> bool. :int, :term, :kill, :hup.
+// FmrbApp.linux_exit_code(h) -> nil while it runs, else Integer.
+// FmrbApp.linux_resize(h, cols, rows) -> bool.
+// FmrbApp.linux_close(h) -> nil. Ends it if it still runs (no wait).
+//
+// Each program belongs to the calling app's task and ends with it, however
+// the app ends. None of these waits.
+#define LINUX_READ_CHUNK 4096
+
+static mrb_value mrb_fmrb_app_s_linux_available_p(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_bool_value(fmrb_platform_sys_proc_available());
+}
+
+static mrb_value mrb_fmrb_app_s_linux_start(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_value cmd;
+    const char *cwd;
+    mrb_int cols, rows;
+    mrb_get_args(mrb, "ozii", &cmd, &cwd, &cols, &rows);
+    if (!fmrb_platform_sys_proc_available()) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Linux commands are not available on this machine");
+    }
+    if (cols < 1) cols = 1;
+    if (cols > 1000) cols = 1000;
+    if (rows < 1) rows = 1;
+    if (rows > 1000) rows = 1000;
+    fmrb_sys_proc_spec_t spec = {
+        .command = mrb_nil_p(cmd) ? NULL : mrb_str_to_cstr(mrb, cmd),
+        .cwd = cwd,
+        .cols = (uint16_t)cols,
+        .rows = (uint16_t)rows,
+    };
+    char why[160] = "";
+    int32_t id = 0;
+    fmrb_err_t err = fmrb_platform_sys_proc_start(&spec, &id, why, sizeof(why));
+    if (err != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "%s", why[0] ? why : "cannot start");
+    }
+    return mrb_fixnum_value(id);
+}
+
+static mrb_value mrb_fmrb_app_s_linux_read(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id;
+    mrb_get_args(mrb, "i", &id);
+    if (!fmrb_platform_sys_proc_available()) return mrb_nil_value();
+    mrb_value str = mrb_str_new_capa(mrb, LINUX_READ_CHUNK);
+    int32_t n = fmrb_platform_sys_proc_read((int32_t)id, RSTRING_PTR(str), LINUX_READ_CHUNK);
+    if (n < 0) return mrb_nil_value();
+    mrb_str_resize(mrb, str, n);
+    return str;
+}
+
+static mrb_value mrb_fmrb_app_s_linux_write(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id;
+    mrb_value str;
+    mrb_get_args(mrb, "iS", &id, &str);
+    int32_t n = fmrb_platform_sys_proc_write((int32_t)id, RSTRING_PTR(str), (size_t)RSTRING_LEN(str));
+    return mrb_fixnum_value(n);
+}
+
+static mrb_value mrb_fmrb_app_s_linux_signal(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id;
+    mrb_sym sym;
+    mrb_get_args(mrb, "in", &id, &sym);
+    const char *name = mrb_sym_name(mrb, sym);
+    fmrb_sys_signal_t sig;
+    if (strcmp(name, "int") == 0) sig = FMRB_SYS_SIG_INT;
+    else if (strcmp(name, "term") == 0) sig = FMRB_SYS_SIG_TERM;
+    else if (strcmp(name, "kill") == 0) sig = FMRB_SYS_SIG_KILL;
+    else if (strcmp(name, "hup") == 0) sig = FMRB_SYS_SIG_HUP;
+    else return mrb_false_value();
+    return mrb_bool_value(fmrb_platform_sys_proc_signal((int32_t)id, sig) == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_linux_exit_code(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id;
+    mrb_get_args(mrb, "i", &id);
+    int code = 0;
+    if (!fmrb_platform_sys_proc_exited((int32_t)id, &code)) return mrb_nil_value();
+    return mrb_fixnum_value(code);
+}
+
+static mrb_value mrb_fmrb_app_s_linux_resize(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id, cols, rows;
+    mrb_get_args(mrb, "iii", &id, &cols, &rows);
+    if (cols < 1 || rows < 1 || cols > 1000 || rows > 1000) return mrb_false_value();
+    return mrb_bool_value(fmrb_platform_sys_proc_resize((int32_t)id, (uint16_t)cols,
+                                                        (uint16_t)rows) == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_linux_close(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id;
+    mrb_get_args(mrb, "i", &id);
+    fmrb_platform_sys_proc_close((int32_t)id);
+    return mrb_nil_value();
+}
+
 // FmrbApp.ble_start -> true/false
 // Manual BLE start for the ble_auto_start=false configuration (desktop menu).
 // Retro (built-in radio) only: Modern's C6 radio path manages itself, and
@@ -1865,6 +1987,14 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "linux_start", mrb_fmrb_app_s_linux_start, MRB_ARGS_REQ(4));
+    mrb_define_class_method(mrb, app_class, "linux_read", mrb_fmrb_app_s_linux_read, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "linux_write", mrb_fmrb_app_s_linux_write, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, app_class, "linux_signal", mrb_fmrb_app_s_linux_signal, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, app_class, "linux_exit_code", mrb_fmrb_app_s_linux_exit_code, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "linux_resize", mrb_fmrb_app_s_linux_resize, MRB_ARGS_REQ(3));
+    mrb_define_class_method(mrb, app_class, "linux_close", mrb_fmrb_app_s_linux_close, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));

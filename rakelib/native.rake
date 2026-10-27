@@ -13,7 +13,9 @@
 #                                  or ARGS="--machine cardputer_zero_hdmi"
 #   rake native:test               host tests of the backends' processing
 #                                  halves (present core, key tables, evdev
-#                                  decoding, fbdev formats, machine files)
+#                                  decoding, fbdev formats, machine files,
+#                                  the file namespace, the pty programs and
+#                                  the Shell's reading of their output)
 #
 # Headless use (screenshots, input, apps) goes through tools/fmrb_native.rb
 # in the parent repository.
@@ -162,6 +164,15 @@ namespace :native do
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DCONFIG_IDF_TARGET_LINUX " \
        "#{fincs.map { |i| "-I #{i}" }.join(' ')} #{fsrcs.join(' ')} -o #{NATIVE_TEST_BUILD}/native_file_test"
     sh "#{NATIVE_TEST_BUILD}/native_file_test"
+
+    # Linux programs under pseudo terminals (L10): native/sys/linux_pty.c is
+    # plain POSIX and runs as it is.
+    pincs = %w[native/sys components/fmrb_common/include]
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{pincs.map { |i| "-I #{i}" }.join(' ')} " \
+       "native/sys/linux_pty.c #{NATIVE_TEST_DIR}/pty.c -lpthread -o #{NATIVE_TEST_BUILD}/native_pty_test"
+    sh "#{NATIVE_TEST_BUILD}/native_pty_test"
+    # ...and the Shell's reading of their output (lines and SGR colours).
+    sh "ruby #{NATIVE_TEST_DIR}/shell_term_test.rb"
   end
 end
 

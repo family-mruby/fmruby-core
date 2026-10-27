@@ -146,7 +146,7 @@ static void task_deleted(void *task)
 
 void native_net_init(void)
 {
-    fmrb_gate_set_task_deleted_listener(task_deleted);
+    fmrb_gate_add_task_deleted_listener(task_deleted);
 }
 
 /* ------------------------------------------------------------ helpers */

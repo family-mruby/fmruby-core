@@ -90,7 +90,8 @@ static unsigned g_helpers_idle;
 static int g_done_pending;
 
 static bool g_ready;
-static void (*g_task_deleted)(void *task);
+static void (*g_task_deleted[FMRB_GATE_MAX_LISTENERS])(void *task);
+static int g_task_deleted_count;
 static unsigned g_calls;
 static unsigned g_cancels;
 static unsigned g_deleted;
@@ -253,14 +254,18 @@ static void gate_delete_hook(TaskHandle_t task)
                       (unsigned)GATE_DELETE_WAIT_MS);
         }
     }
-    if (g_task_deleted != NULL) {
-        g_task_deleted(task);
+    for (int i = 0; i < g_task_deleted_count; i++) {
+        g_task_deleted[i](task);
     }
 }
 
-void fmrb_gate_set_task_deleted_listener(void (*fn)(void *task))
+void fmrb_gate_add_task_deleted_listener(void (*fn)(void *task))
 {
-    g_task_deleted = fn;
+    if (fn == NULL || g_task_deleted_count >= FMRB_GATE_MAX_LISTENERS) {
+        FMRB_LOGE(TAG, "task-deleted listener not added (%d in use)", g_task_deleted_count);
+        return;
+    }
+    g_task_deleted[g_task_deleted_count++] = fn;
 }
 
 static bool exit_requested(void)

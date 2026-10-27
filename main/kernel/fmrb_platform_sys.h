@@ -10,7 +10,8 @@
  * Linux program installs its own (native/sys/) when the machine definition
  * says system.services = "linux": it reads the battery and the network from
  * sysfs and procfs, the volume from the ALSA mixer, and asks logind for the
- * power actions.
+ * power actions; and (L10) Linux programs under a pseudo terminal, for the
+ * Shell's "!" lines.
  *
  * Every entry may be NULL; fmrb_platform_sys_*() below then answer "no
  * value" (false, 0). None of them may block for long: the hosted builds run
@@ -20,6 +21,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "fmrb_err.h"
 
@@ -51,6 +53,23 @@ typedef enum {
     FMRB_SYS_POWER_SUSPEND  = 1u << 4,  /* suspend the computer */
 } fmrb_sys_power_t;
 
+/** A Linux program to start under a pseudo terminal (L10). */
+typedef struct {
+    const char *command;  /* run with /bin/sh -c; NULL: the interactive shell */
+    const char *cwd;      /* the Family mruby path to work in (resolved by the
+                           * file namespace; a place outside it is refused) */
+    uint16_t cols;        /* the terminal's size */
+    uint16_t rows;
+} fmrb_sys_proc_spec_t;
+
+/** Signals an app may send to its program. */
+typedef enum {
+    FMRB_SYS_SIG_INT = 1,   /* Ctrl+C */
+    FMRB_SYS_SIG_TERM,
+    FMRB_SYS_SIG_KILL,
+    FMRB_SYS_SIG_HUP,
+} fmrb_sys_signal_t;
+
 typedef struct {
     const char *name;
 
@@ -75,6 +94,23 @@ typedef struct {
     /* Do one. Returns only when it did not happen (or is under way and the
      * program goes on until the OS stops it). */
     fmrb_err_t (*power)(fmrb_sys_power_t action);
+
+    /* Linux programs (L10). None of these waits: the terminal is read and
+     * written without blocking. NULL proc_start: this machine runs none.
+     * The program belongs to the calling task; it is ended when the task is
+     * deleted. why (may be NULL) says why a start failed. */
+    fmrb_err_t (*proc_start)(const fmrb_sys_proc_spec_t *spec, int32_t *id,
+                             char *why, size_t why_cap);
+    /* > 0 bytes read; 0 nothing just now; -1 no more output. */
+    int32_t (*proc_read)(int32_t id, void *buf, size_t cap);
+    /* Bytes taken (0: the input is full just now); -1 it takes no more. */
+    int32_t (*proc_write)(int32_t id, const void *buf, size_t len);
+    fmrb_err_t (*proc_signal)(int32_t id, fmrb_sys_signal_t sig);
+    /* true once it ended; *code is the exit status (128 + signal). */
+    bool (*proc_exited)(int32_t id, int *code);
+    fmrb_err_t (*proc_resize)(int32_t id, uint16_t cols, uint16_t rows);
+    /* Forget it; one still running is ended without the caller waiting. */
+    void (*proc_close)(int32_t id);
 } fmrb_platform_sys_t;
 
 /** The table in use: the default one unless a platform installed its own. */
@@ -92,6 +128,18 @@ bool fmrb_platform_sys_volume_set(int step, int max_step);
 bool fmrb_platform_sys_mute_set(bool on);
 uint32_t fmrb_platform_sys_power_actions(void);
 fmrb_err_t fmrb_platform_sys_power(fmrb_sys_power_t action);
+/* Linux programs: proc_available() false on every machine without them (the
+ * devices, the simulation, the browser), where the rest answer
+ * FMRB_ERR_NOT_SUPPORTED / -1 / true (ended). */
+bool fmrb_platform_sys_proc_available(void);
+fmrb_err_t fmrb_platform_sys_proc_start(const fmrb_sys_proc_spec_t *spec, int32_t *id,
+                                        char *why, size_t why_cap);
+int32_t fmrb_platform_sys_proc_read(int32_t id, void *buf, size_t cap);
+int32_t fmrb_platform_sys_proc_write(int32_t id, const void *buf, size_t len);
+fmrb_err_t fmrb_platform_sys_proc_signal(int32_t id, fmrb_sys_signal_t sig);
+bool fmrb_platform_sys_proc_exited(int32_t id, int *code);
+fmrb_err_t fmrb_platform_sys_proc_resize(int32_t id, uint16_t cols, uint16_t rows);
+void fmrb_platform_sys_proc_close(int32_t id);
 
 #ifdef __cplusplus
 }

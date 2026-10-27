@@ -132,6 +132,10 @@ module ShellCommandsMixin
       @history << "  svc enable|disable <name> - ...and remember it across boots"
       @history << "  color [bg|text <colour>] - The shell's own two colours"
       @history << "  logo - Draw the PicoRuby logo"
+      if FmrbApp.linux_available?
+        @history << "  !<command> - Run a Linux command here (Ctrl+C stops it)"
+        @history << "  ! - The Linux shell; exit (or Ctrl+D) comes back"
+      end
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"

@@ -86,6 +86,7 @@
 #include "native_backends.h"
 #include "native_config.h"
 #include "sys_linux.h"
+#include "linux_pty.h"
 #include "native_ctl.h"
 #include "native_frame.h"
 #include "native_input.h"
@@ -621,5 +622,7 @@ int main(int argc, char **argv)
      * FILE has its own lock, so this is safe beside them) and leave without
      * running the C++ destructors of objects those threads may be using. */
     fflush(NULL);
+    /* The Shell's Linux programs (L10) end with the machine. */
+    linux_pty_close_all();
     _exit(rc);
 }

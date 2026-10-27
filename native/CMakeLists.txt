@@ -113,6 +113,7 @@ set(NATIVE_BACKEND_SRCS
   ${N}/sys/platform_sys_linux.c
   ${N}/sys/sys_linux_read.c
   ${N}/sys/sys_linux_mixer.c
+  ${N}/sys/linux_pty.c
   # mruby-dir's HAL over the file HAL's resolver (the ESP32 targets' file;
   # the name-only gem hal-dir-fmrb dropped the flat posix one from libmruby)
   ${FMRB_ROOT}/lib/add/hal-esp32-dir/dir_hal.c

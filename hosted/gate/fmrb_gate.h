@@ -84,8 +84,11 @@ fmrb_gate_result_t fmrb_gate_call(fmrb_gate_job_t *job);
 
 /* fn(task) runs when a FreeRTOS task is deleted (any task, in the deleter's
  * context, after the gate has finished with the task's jobs): the place to
- * release what the task held outside FreeRTOS. One listener. */
-void fmrb_gate_set_task_deleted_listener(void (*fn)(void *task));
+ * release what the task held outside FreeRTOS. Up to
+ * FMRB_GATE_MAX_LISTENERS, called in the order they were added (the socket
+ * registry, the Linux programs of sys_linux_proc.c). */
+#define FMRB_GATE_MAX_LISTENERS 4
+void fmrb_gate_add_task_deleted_listener(void (*fn)(void *task));
 
 typedef struct {
     unsigned calls;         /* fmrb_gate_call that ran a job */

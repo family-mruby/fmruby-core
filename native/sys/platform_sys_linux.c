@@ -19,10 +19,16 @@
  *            reached on the system bus, from a helper thread of the
  *            blocking-call gate. system.power_log_only = true logs the
  *            request instead of sending it (every test uses it).
+ *   programs Linux programs under a pseudo terminal (linux_pty.c, L10),
+ *            for the Shell's "!" lines. The Family mruby working directory
+ *            becomes a real one through the file namespace; each program
+ *            belongs to the task that started it and ends with it.
  */
 
 #include <errno.h>
 #include <dlfcn.h>
+#include <limits.h>
+#include <signal.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <arpa/inet.h>
@@ -35,6 +41,9 @@
 #include <unistd.h>
 #include <linux/wireless.h>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "fmrb_platform_sys.h"
 #include "fmrb_kernel.h"
 #include "fmrb_log.h"
@@ -42,6 +51,8 @@
 #include "native_config.h"
 #include "sys_linux_read.h"
 #include "sys_linux.h"
+#include "linux_pty.h"
+#include "fmrb_hal_file.h"
 
 static const char TAG[] = "sys_linux";
 
@@ -282,6 +293,58 @@ static fmrb_err_t linux_power(fmrb_sys_power_t action)
     }
 }
 
+/* ---- Linux programs (L10) ---- */
+
+static fmrb_err_t linux_proc_start(const fmrb_sys_proc_spec_t *spec, int32_t *id,
+                                   char *why, size_t why_cap)
+{
+    if (spec == NULL || spec->cwd == NULL || id == NULL) return FMRB_ERR_INVALID_PARAM;
+    char host[PATH_MAX];
+    char real[PATH_MAX];
+    if (fmrb_hal_file_resolve_path(spec->cwd, host, sizeof(host)) != FMRB_OK ||
+        realpath(host, real) == NULL) {
+        if (why != NULL && why_cap > 0) {
+            snprintf(why, why_cap, "%s is not a place on Linux", spec->cwd);
+        }
+        return FMRB_ERR_NOT_FOUND;
+    }
+    linux_pty_spec_t ps = {
+        .command = spec->command,
+        .cwd = real,
+        .cols = spec->cols,
+        .rows = spec->rows,
+        .owner = (void *)xTaskGetCurrentTaskHandle(),
+    };
+    fmrb_err_t err = linux_pty_start(&ps, id, why, why_cap);
+    if (err == FMRB_OK) {
+        FMRB_LOGI(TAG, "program %ld in %s: %s", (long)*id, real,
+                  spec->command ? spec->command : "(interactive shell)");
+    }
+    return err;
+}
+
+static fmrb_err_t linux_proc_signal(int32_t id, fmrb_sys_signal_t sig)
+{
+    int s;
+    switch (sig) {
+    case FMRB_SYS_SIG_INT:  s = SIGINT; break;
+    case FMRB_SYS_SIG_TERM: s = SIGTERM; break;
+    case FMRB_SYS_SIG_KILL: s = SIGKILL; break;
+    case FMRB_SYS_SIG_HUP:  s = SIGHUP; break;
+    default: return FMRB_ERR_INVALID_PARAM;
+    }
+    return linux_pty_signal(id, s);
+}
+
+/* A task deleted (an app ended or killed): its programs go with it. */
+static void proc_task_deleted(void *task)
+{
+    int n = linux_pty_close_owned(task);
+    if (n > 0) {
+        FMRB_LOGI(TAG, "ended %d program(s) of a deleted task", n);
+    }
+}
+
 static const fmrb_platform_sys_t s_linux_sys = {
     .name = "linux",
     .net_info = linux_net_info,
@@ -292,6 +355,13 @@ static const fmrb_platform_sys_t s_linux_sys = {
     .mute_set = linux_mute_set,
     .power_actions = linux_power_actions,
     .power = linux_power,
+    .proc_start = linux_proc_start,
+    .proc_read = linux_pty_read,
+    .proc_write = linux_pty_write,
+    .proc_signal = linux_proc_signal,
+    .proc_exited = linux_pty_exited,
+    .proc_resize = linux_pty_resize,
+    .proc_close = linux_pty_close,
 };
 
 void sys_linux_install(void)
@@ -301,6 +371,7 @@ void sys_linux_install(void)
     if (sysfs && sysfs[0]) snprintf(s_sysfs, sizeof(s_sysfs), "%s", sysfs);
     if (procfs && procfs[0]) snprintf(s_procfs, sizeof(s_procfs), "%s", procfs);
     fmrb_platform_sys_install(&s_linux_sys);
+    fmrb_gate_add_task_deleted_listener(proc_task_deleted);
     const native_machine_t *m = &g_native_config.machine;
     FMRB_LOGI(TAG, "power %s%s, mixer %s, sysfs %s, procfs %s", m->system.power,
               m->system.power_log_only ? " (log only)" : "",

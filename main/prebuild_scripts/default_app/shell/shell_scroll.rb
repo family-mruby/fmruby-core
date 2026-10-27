@@ -69,7 +69,13 @@ module ShellScrollMixin
   # wrap_chunks folds the text. During foreground script input the cursor
   # simply follows the end of the text.
   def input_cursor_rc(input_text)
-    upto = @fg_sandbox ? input_text.length : @prompt.length + @cursor_pos
+    upto = if @linux_term
+             @linux_term.cursor
+           elsif @fg_sandbox
+             input_text.length
+           else
+             @prompt.length + @cursor_pos
+           end
     # Pure ASCII folds every @max_chars, so the cell is arithmetic -- and
     # walking it would make a one-character String per character typed.
     if input_text.bytesize == input_text.length
@@ -106,7 +112,7 @@ module ShellScrollMixin
     if entry.is_a?(Hash) && entry[:type] == :logo_line
       1
     else
-      text = entry.to_s
+      text = entry.is_a?(Hash) ? entry[:text].to_s : entry.to_s
       return 1 if text.empty?
       if text.bytesize == text.length
         (text.length + @max_chars - 1) / @max_chars
@@ -130,7 +136,10 @@ module ShellScrollMixin
   end
 
   def current_input_text
-    if @fg_sandbox && @script_input_line
+    if @linux_term
+      e = @linux_term.partial_entry
+      e.is_a?(Hash) ? e[:text] : e
+    elsif @fg_sandbox && @script_input_line
       @script_input_line
     elsif !@fg_sandbox
       @prompt + @current_line
@@ -283,6 +292,12 @@ module ShellScrollMixin
             draw_logo_line(content_x, y, entry)
             screen_row += 1
           end
+        elsif ansi_entry?(entry)
+          rows = entry_rows - vis_start
+          rows = avail - screen_row if rows > avail - screen_row
+          y = @user_area_y0 + 2 + screen_row * @char_height
+          draw_entry_rows(content_x, y, entry, wrap_chunks(entry[:text]), vis_start, rows)
+          screen_row += rows
         else
           chunks = wrap_chunks(entry.to_s)
           r = vis_start
@@ -308,7 +323,12 @@ module ShellScrollMixin
     input_y_after_history = @user_area_y0 + 2 + screen_row * @char_height
     input_y_bottom = @user_area_y0 + 2 + avail * @char_height
     input_y = input_y_after_history < input_y_bottom ? input_y_after_history : input_y_bottom
-    draw_wrapped_text_at(content_x, input_y, input_text, input_rows)
+    partial = @linux_term ? @linux_term.partial_entry : nil
+    if partial && ansi_entry?(partial)
+      draw_entry_rows(content_x, input_y, partial, wrap_chunks(input_text), 0, input_rows)
+    else
+      draw_wrapped_text_at(content_x, input_y, input_text, input_rows)
+    end
 
     draw_input_cursor(content_x, input_y, input_text)
     end_text_font
