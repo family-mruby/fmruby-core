@@ -99,6 +99,10 @@ endif()
 # device or simulation firmware carries it.
 list(REMOVE_ITEM KERNEL_RUBY_FILES
      ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/system_desktop_keys.app.rb)
+# Likewise the stand-in for a Linux window (doc/linux_native, L9a): only the
+# native program as a compositor starts it.
+list(REMOVE_ITEM KERNEL_RUBY_FILES
+     ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/linux_window.app.rb)
 
 # Step 1: Prepare Ruby bytecode sources (add C files to COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)

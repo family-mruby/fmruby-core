@@ -1,12 +1,11 @@
 /*
  * output_wlr.c - the program as a Wayland compositor (doc/linux_native/,
- * L8): the "wlroots" output and input of native_backends.h. Started from
- * tinywl (wlroots 0.19's smallest example) and cut down to what the
- * prototype needs.
+ * L8, L9a): the "wlroots" output and input of native_backends.h. Started
+ * from tinywl (wlroots 0.19's smallest example).
  *
  * Threads. wlroots runs on the program's main thread, which is not a
  * FreeRTOS task (main_native.c): pump() is wl_event_loop_dispatch. The
- * machine's threads never call wlroots. Two hand-overs only:
+ * machine's threads never call wlroots. The hand-overs:
  *
  *   picture  the display task puts each composited frame into native_frame
  *            (its lock, a copy) and writes an eventfd this file has added to
@@ -15,16 +14,33 @@
  *            turns it into a wlr_buffer for the scene.
  *   input    the seat's events meant for Family mruby go into the main-
  *            thread ring of native_input.h (the SDL window's: one writer,
- *            atomics, no lock); the machine's input task drains it. Window
- *            notices for the kernel (L9) are queued in comp_route.h under
- *            its lock.
+ *            atomics, no lock); the machine's input task drains it.
+ *   windows  comp_link.h, with Family mruby's side in wl_bridge.c: notices
+ *            of the Linux windows out (appeared, retitled, asked to move or
+ *            resize, gone), places, stacking, focus and close requests in.
+ *            The same eventfd wakes this loop for them.
  *
- * Scene, bottom to top: black over the whole output, the picture at the
- * largest whole scale (nearest-neighbour, by the renderer: GLES or pixman),
- * the Linux windows at their own size, centred (comp_route.h decides places,
- * what a point is over and who has the keyboard). The cursor is wlroots'
- * over the windows and hidden over the picture (Family mruby draws its
- * own).
+ * Scene, bottom to top: black over the whole output; the Linux windows,
+ * each where Family mruby's stand-in for it has its content (the content
+ * rectangle times the picture's scale), clipped to it, in Family mruby's
+ * stacking; the picture at the largest whole scale (nearest-neighbour, by
+ * the renderer), transparent where a stand-in's content is on screen (the
+ * holes, comp_route.h); the popups of the Linux windows, over everything.
+ * A Family mruby window or menu over a stand-in covers the Linux window
+ * there, so the two kinds of windows stack freely.
+ *
+ * Pointer: over a hole (or a popup) it goes to that Linux window at the
+ * output's own resolution, with wlroots' cursor (Family mruby's is hidden);
+ * a press there also goes to Family mruby, whose window manager raises and
+ * focuses the stand-in as for any click. Anywhere else it goes to Family
+ * mruby. Keys go where Family mruby's focus is (a stand-in's: its Linux
+ * window), except Ctrl+Tab / Ctrl+comma, which are always Family mruby's
+ * (switching windows). The windows' keymap follows keyboard_layout.
+ *
+ * Linux windows are told to draw no decoration of their own
+ * (xdg-decoration, server side): the stand-in draws the frame. Maximize and
+ * fullscreen requests are answered without a change; move and resize
+ * requests become moves and resizes of the stand-in.
  *
  * Also served: wlr-screencopy and xdg-output, so grim takes the composited
  * screen; and requests on the control socket ("comp ...", see wlr_ctl
@@ -33,14 +49,20 @@
  *
  * compositor.autostart, when set, is started once through /bin/sh -c in a
  * session of its own with WAYLAND_DISPLAY naming this compositor (also set
- * in the program's environment, so the Shell's "!" programs inherit it), and
- * ended with the program.
+ * in the program's environment, so the Shell's "!" programs inherit it).
+ *
+ * The end (close): every Linux window is asked to close, and the loop goes
+ * on -- Family mruby still on screen -- until they have all gone or
+ * LINGER_MS has passed, so a program can ask about unsaved work. Then the
+ * clients still connected get SIGTERM, and SIGKILL half a second later;
+ * the autostart's session last.
  */
 
 #define _GNU_SOURCE
 #define WLR_USE_UNSTABLE 1
 
 #include <errno.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,12 +97,15 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 #include <wlr/version.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "comp_link.h"
 #include "comp_route.h"
 #include "fmrb_keymap.h"
 #include "linux_keys.h"
@@ -91,6 +116,12 @@
 /* Pointer motion to Family mruby is passed on at most this often (the
  * machine redraws its cursor per event), as from the SDL window. */
 #define MOTION_INTERVAL_MS 16
+/* How long the end waits for the Linux windows to close when asked. */
+#define LINGER_MS 5000
+/* After the last window, how long its program has to disconnect by itself. */
+#define CLIENT_LEAVE_MS 1000
+/* Then SIGTERM, and SIGKILL this much later. */
+#define TERM_GRACE_MS 500
 
 /* ------------------------------------------------------------- state */
 
@@ -98,9 +129,13 @@ typedef struct window {
     struct wl_list link;
     int id;
     struct wlr_xdg_toplevel *toplevel;
-    struct wlr_scene_tree *tree;
+    struct wlr_scene_tree *tree;            /* the xdg tree: origin = geometry's top-left */
+    struct wlr_scene_tree *popups;          /* its popups, in the popup layer */
+    struct wlr_xdg_toplevel_decoration_v1 *deco;
     bool mapped;
+    int asked_w, asked_h;                   /* the last size asked (configure) */
     struct wl_listener map, unmap, commit, destroy;
+    struct wl_listener set_title, request_move, request_resize, request_maximize, request_fullscreen;
 } window_t;
 
 typedef struct popup {
@@ -108,11 +143,18 @@ typedef struct popup {
     struct wl_listener commit, destroy;
 } popup_t;
 
+typedef struct deco {
+    struct wlr_xdg_toplevel_decoration_v1 *wlr;
+    struct wl_listener request_mode, destroy;
+} deco_t;
+
 typedef struct keyboard {
     struct wl_list link;
     struct wlr_keyboard *wlr;
     struct wl_listener modifiers, key, destroy;
 } keyboard_t;
+
+typedef enum { GRAB_NONE = 0, GRAB_MOVE, GRAB_RESIZE } grab_mode_t;
 
 static struct {
     struct wl_display *display;
@@ -126,9 +168,11 @@ static struct {
     struct wlr_output *output;              /* the one output used */
     struct wlr_scene_output *scene_output;
     struct wlr_scene_rect *black;
-    struct wlr_scene_buffer *picture;
     struct wlr_scene_tree *windows_tree;
+    struct wlr_scene_buffer *picture;
+    struct wlr_scene_tree *popups_tree;
     struct wlr_xdg_shell *xdg_shell;
+    struct wlr_xdg_decoration_manager_v1 *deco_mgr;
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *xcursor;
     struct wlr_seat *seat;
@@ -141,10 +185,29 @@ static struct {
     int next_id;
 
     comp_route_t route;
+    const uint16_t *frame;                  /* the frame on hand (main_native's copy) */
+    bool recompose;                         /* the holes moved: compose the picture again */
+    int layout_kb;                          /* the windows' keymap: FMRB_KEYMAP_LAYOUT_*, -1 none yet */
     uint8_t mods;                           /* Family mruby's modifier bits */
     int key_target[KEY_MAX + 1];            /* where each held key went down */
     int pointer_target;                     /* while a button is held: where it went down */
+    bool pointer_fmrb_too;                  /* ...and the press went to Family mruby as well */
     int buttons_held;
+    bool fmrb_cursor_hidden;                /* Family mruby's cursor, hidden over a window */
+
+    /* An interactive move or resize a window asked for (xdg). */
+    struct {
+        grab_mode_t mode;
+        int id;
+        uint32_t edges;
+        double cx, cy;                      /* the cursor where it began */
+        int fx, fy, fw, fh;                 /* the content rectangle then (frame coordinates) */
+        int nx, ny, nw, nh;                 /* where it is now */
+    } grab;
+
+    /* The last pointer position sent to a window (comp info). */
+    int ptr_id;
+    double ptr_sx, ptr_sy;
 
     /* Coalesced pointer motion for Family mruby. */
     bool motion_pending;
@@ -158,7 +221,7 @@ static struct {
     pid_t child;                            /* compositor.autostart */
     char autostart[NATIVE_MACHINE_STR];
 
-    struct wl_listener new_output, new_input, new_toplevel, new_popup;
+    struct wl_listener new_output, new_input, new_toplevel, new_popup, new_decoration;
     struct wl_listener output_frame, output_request_state, output_destroy;
     struct wl_listener cursor_motion, cursor_motion_absolute, cursor_button,
                        cursor_axis, cursor_frame;
@@ -208,7 +271,8 @@ static window_t *window_by_id(int id)
 /* ------------------------------------------------------- the picture */
 
 /* A frame as a wlr_buffer the renderer reads through a data pointer. Freed
- * buffers are kept for the next frames (a frame is 400 KB). */
+ * buffers are kept for the next frames (a frame is 400 KB). ARGB: the holes
+ * are transparent. */
 typedef struct {
     struct wlr_buffer base;
     uint32_t *px;
@@ -238,7 +302,7 @@ static bool pic_begin(struct wlr_buffer *wb, uint32_t flags, void **data, uint32
     pic_buf_t *b = wl_container_of(wb, b, base);
     if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE) return false;
     *data = b->px;
-    *format = DRM_FORMAT_XRGB8888;
+    *format = DRM_FORMAT_ARGB8888;
     *stride = (size_t)b->w * 4;
     return true;
 }
@@ -276,6 +340,44 @@ static pic_buf_t *pic_get(int w, int h)
     return b;
 }
 
+/* The picture from the frame on hand, holes and all. */
+static void compose(void)
+{
+    const comp_route_t *r = &s.route;
+    if (s.frame == NULL || r->fb_w <= 0 || r->fb_h <= 0) return;
+    pic_buf_t *b = pic_get(r->fb_w, r->fb_h);
+    if (b == NULL) return;
+    comp_route_compose(r, s.frame, b->px);
+    wlr_scene_buffer_set_buffer(s.picture, &b->base);
+    wlr_buffer_drop(&b->base);
+    s.recompose = false;
+}
+
+/* One window's scene from the route: shown or not, where, clipped to its
+ * content rectangle, and asked to take that size. */
+static void apply_window(window_t *w)
+{
+    const comp_window_t *cw = comp_route_window(&s.route, w->id);
+    bool on = w->mapped && cw != NULL && cw->visible;
+    wlr_scene_node_set_enabled(&w->tree->node, on);
+    wlr_scene_node_set_enabled(&w->popups->node, on);
+    if (cw == NULL || !cw->placed) return;
+    /* The scene's xdg tree puts the window's geometry (not its surface,
+     * which may reach out for a shadow) at the tree's origin. */
+    wlr_scene_node_set_position(&w->tree->node, cw->x, cw->y);
+    wlr_scene_node_set_position(&w->popups->node, cw->x, cw->y);
+    int ww = 0, wh = 0;
+    if (!comp_route_wanted_size(&s.route, w->id, &ww, &wh)) return;
+    struct wlr_box g = w->toplevel->base->geometry;
+    struct wlr_box clip = { .x = g.x, .y = g.y, .width = ww, .height = wh };
+    wlr_scene_subsurface_tree_set_clip(&w->tree->node, &clip);
+    if (w->mapped && (ww != w->asked_w || wh != w->asked_h) && ww > 0 && wh > 0) {
+        w->asked_w = ww;
+        w->asked_h = wh;
+        wlr_xdg_toplevel_set_size(w->toplevel, ww, wh);
+    }
+}
+
 /* Place the black, the picture and the windows from the route. */
 static void apply_layout(void)
 {
@@ -283,15 +385,15 @@ static void apply_layout(void)
     wlr_scene_rect_set_size(s.black, r->out_w, r->out_h);
     wlr_scene_node_set_position(&s.picture->node, r->place.x, r->place.y);
     wlr_scene_buffer_set_dest_size(s.picture, r->place.w, r->place.h);
-    window_t *w;
-    wl_list_for_each(w, &s.windows, link) {
-        const comp_window_t *cw = comp_route_window(r, w->id);
-        if (cw == NULL) continue;
-        /* The scene's xdg tree already puts the window's geometry (not its
-         * surface, which may reach out for a title bar or a shadow) at the
-         * tree's origin. */
-        wlr_scene_node_set_position(&w->tree->node, cw->x, cw->y);
+    /* Bottom to top, as the route has them. */
+    for (int i = 0; i < r->n; i++) {
+        window_t *w = window_by_id(r->win[i].id);
+        if (w == NULL) continue;
+        wlr_scene_node_raise_to_top(&w->tree->node);
+        wlr_scene_node_raise_to_top(&w->popups->node);
+        apply_window(w);
     }
+    s.recompose = true;
     static fmrb_present_place_t logged;
     if (memcmp(&logged, &r->place, sizeof(logged)) != 0) {
         logged = r->place;
@@ -299,6 +401,9 @@ static void apply_layout(void)
                 r->out_w, r->out_h, r->fb_w, r->fb_h, r->place.scale, r->place.w, r->place.h,
                 r->place.x, r->place.y);
     }
+    int bw = 0, bh = 0;
+    native_frame_base_size(&bw, &bh);
+    comp_link_set_geometry(r->place.scale, bw, bh);
 }
 
 static void relayout(void)
@@ -318,19 +423,40 @@ static void apply_focus(void)
         if (w->mapped) wlr_xdg_toplevel_set_activated(w->toplevel, w->id == focus);
     }
     window_t *fw = focus != COMP_FMRB ? window_by_id(focus) : NULL;
-    if (fw == NULL) {
+    if (fw == NULL || !fw->mapped) {
         wlr_seat_keyboard_notify_clear_focus(s.seat);
         return;
     }
-    const comp_window_t *cw = comp_route_window(&s.route, fw->id);
-    (void)cw;
-    wlr_scene_node_raise_to_top(&fw->tree->node);
     struct wlr_keyboard *kb = wlr_seat_get_keyboard(s.seat);
     if (kb != NULL) {
         wlr_seat_keyboard_notify_enter(s.seat, fw->toplevel->base->surface, kb->keycodes,
                                        kb->num_keycodes, &kb->modifiers);
     } else {
         wlr_seat_keyboard_notify_enter(s.seat, fw->toplevel->base->surface, NULL, 0, NULL);
+    }
+}
+
+/* Family mruby's places, stacking and focus, and its requests. */
+static void take_from_fmrb(void)
+{
+    comp_places_t pl;
+    if (comp_link_take_places(&pl)) {
+        int ch = comp_route_place(&s.route, pl.p, pl.n, pl.focus);
+        if (ch & (COMP_PLACE_MOVED | COMP_PLACE_ORDER)) apply_layout();
+        if (ch & COMP_PLACE_FOCUS) {
+            apply_focus();
+            fprintf(stderr, "native: compositor: keyboard to %s%d (Family mruby's focus)\n",
+                    pl.focus == COMP_FMRB ? "Family mruby " : "window ", comp_route_focus(&s.route));
+        }
+    }
+    comp_cmd_kind_t kind;
+    int id;
+    while (comp_link_take_command(&kind, &id)) {
+        window_t *w = window_by_id(id);
+        if (kind == COMP_CMD_CLOSE && w != NULL) {
+            fprintf(stderr, "native: compositor: window %d asked to close\n", id);
+            wlr_xdg_toplevel_send_close(w->toplevel);
+        }
     }
 }
 
@@ -342,11 +468,15 @@ static void window_map(struct wl_listener *l, void *data)
     window_t *w = wl_container_of(l, w, map);
     struct wlr_box g = w->toplevel->base->geometry;
     w->mapped = true;
-    comp_route_window_add(&s.route, w->id, g.width, g.height);
-    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d\n", w->id,
-            w->toplevel->title ? w->toplevel->title : "", g.width, g.height);
+    const char *app_id = w->toplevel->app_id ? w->toplevel->app_id : "";
+    comp_route_window_add(&s.route, w->id, g.width, g.height, app_id);
+    if (w->toplevel->title != NULL) {
+        comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->toplevel->title);
+    }
+    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (decoration: %s)\n", w->id,
+            w->toplevel->title ? w->toplevel->title : "", g.width, g.height,
+            w->deco != NULL ? "server side" : "none asked");
     apply_layout();
-    wlr_scene_node_raise_to_top(&w->tree->node);
 }
 
 static void window_unmap(struct wl_listener *l, void *data)
@@ -357,7 +487,10 @@ static void window_unmap(struct wl_listener *l, void *data)
     int focus = comp_route_focus(&s.route);
     comp_route_window_remove(&s.route, w->id);
     fprintf(stderr, "native: compositor: window %d gone\n", w->id);
+    if (s.grab.id == w->id) s.grab.mode = GRAB_NONE;
+    if (s.pointer_target == w->id) s.pointer_target = COMP_FMRB;
     if (focus == w->id) apply_focus();
+    apply_layout();
 }
 
 static void window_commit(struct wl_listener *l, void *data)
@@ -365,8 +498,15 @@ static void window_commit(struct wl_listener *l, void *data)
     (void)data;
     window_t *w = wl_container_of(l, w, commit);
     if (w->toplevel->base->initial_commit) {
-        /* The client picks its own size. */
+        /* The client picks its own size until Family mruby places it; the
+         * frame is ours. */
         wlr_xdg_toplevel_set_size(w->toplevel, 0, 0);
+        if (wl_resource_get_version(w->toplevel->resource) >= XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION) {
+            wlr_xdg_toplevel_set_wm_capabilities(w->toplevel, 0);
+        }
+        if (w->deco != NULL) {
+            wlr_xdg_toplevel_decoration_v1_set_mode(w->deco, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+        }
         return;
     }
     if (!w->mapped) return;
@@ -374,7 +514,7 @@ static void window_commit(struct wl_listener *l, void *data)
     const comp_window_t *cw = comp_route_window(&s.route, w->id);
     if (cw != NULL && (cw->w != g.width || cw->h != g.height)) {
         comp_route_window_resize(&s.route, w->id, g.width, g.height);
-        apply_layout();
+        apply_window(w);
     }
     if (s.stats.key_sent_ms != 0 && w->id == comp_route_focus(&s.route)) {
         uint64_t lat = now_ms() - s.stats.key_sent_ms;
@@ -385,6 +525,69 @@ static void window_commit(struct wl_listener *l, void *data)
     }
 }
 
+static void window_set_title(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, set_title);
+    if (!w->mapped || w->toplevel->title == NULL) return;
+    comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->toplevel->title);
+}
+
+/* Move and resize asked by the window itself (its own title bar or edges,
+ * when it draws any): an interactive move or resize of the stand-in while
+ * the button that started it is held. */
+static void begin_grab(window_t *w, grab_mode_t mode, uint32_t edges)
+{
+    const comp_window_t *cw = comp_route_window(&s.route, w->id);
+    if (cw == NULL || !cw->visible || s.buttons_held == 0 || s.pointer_target != w->id) return;
+    s.grab.mode = mode;
+    s.grab.id = w->id;
+    s.grab.edges = edges;
+    s.grab.cx = s.cursor->x;
+    s.grab.cy = s.cursor->y;
+    s.grab.fx = s.grab.nx = cw->fx;
+    s.grab.fy = s.grab.ny = cw->fy;
+    s.grab.fw = s.grab.nw = cw->fw;
+    s.grab.fh = s.grab.nh = cw->fh;
+    wlr_seat_pointer_clear_focus(s.seat);
+    fprintf(stderr, "native: compositor: window %d asked to be %s\n", w->id, mode == GRAB_MOVE ? "moved" : "resized");
+}
+
+static void window_request_move(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, request_move);
+    begin_grab(w, GRAB_MOVE, 0);
+}
+
+static void window_request_resize(struct wl_listener *l, void *data)
+{
+    struct wlr_xdg_toplevel_resize_event *ev = data;
+    window_t *w = wl_container_of(l, w, request_resize);
+    begin_grab(w, GRAB_RESIZE, ev->edges);
+}
+
+/* Maximize and fullscreen are not offered (L9a): the protocol still wants a
+ * configure in answer, with nothing changed. */
+static void window_request_state(struct wlr_xdg_toplevel *t)
+{
+    if (t->base->initialized) wlr_xdg_surface_schedule_configure(t->base);
+}
+
+static void window_request_maximize(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, request_maximize);
+    window_request_state(w->toplevel);
+}
+
+static void window_request_fullscreen(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, request_fullscreen);
+    window_request_state(w->toplevel);
+}
+
 static void window_destroy(struct wl_listener *l, void *data)
 {
     (void)data;
@@ -393,7 +596,13 @@ static void window_destroy(struct wl_listener *l, void *data)
     wl_list_remove(&w->unmap.link);
     wl_list_remove(&w->commit.link);
     wl_list_remove(&w->destroy.link);
+    wl_list_remove(&w->set_title.link);
+    wl_list_remove(&w->request_move.link);
+    wl_list_remove(&w->request_resize.link);
+    wl_list_remove(&w->request_maximize.link);
+    wl_list_remove(&w->request_fullscreen.link);
     wl_list_remove(&w->link);
+    wlr_scene_node_destroy(&w->popups->node);
     free(w);
 }
 
@@ -407,7 +616,11 @@ static void new_toplevel(struct wl_listener *l, void *data)
     w->toplevel = t;
     w->tree = wlr_scene_xdg_surface_create(s.windows_tree, t->base);
     w->tree->node.data = w;
-    t->base->data = w->tree;
+    w->popups = wlr_scene_tree_create(s.popups_tree);
+    wlr_scene_node_set_enabled(&w->tree->node, false);
+    wlr_scene_node_set_enabled(&w->popups->node, false);
+    /* Popups go into the popup layer, over the picture. */
+    t->base->data = w->popups;
     w->map.notify = window_map;
     wl_signal_add(&t->base->surface->events.map, &w->map);
     w->unmap.notify = window_unmap;
@@ -416,6 +629,16 @@ static void new_toplevel(struct wl_listener *l, void *data)
     wl_signal_add(&t->base->surface->events.commit, &w->commit);
     w->destroy.notify = window_destroy;
     wl_signal_add(&t->events.destroy, &w->destroy);
+    w->set_title.notify = window_set_title;
+    wl_signal_add(&t->events.set_title, &w->set_title);
+    w->request_move.notify = window_request_move;
+    wl_signal_add(&t->events.request_move, &w->request_move);
+    w->request_resize.notify = window_request_resize;
+    wl_signal_add(&t->events.request_resize, &w->request_resize);
+    w->request_maximize.notify = window_request_maximize;
+    wl_signal_add(&t->events.request_maximize, &w->request_maximize);
+    w->request_fullscreen.notify = window_request_fullscreen;
+    wl_signal_add(&t->events.request_fullscreen, &w->request_fullscreen);
     wl_list_insert(&s.windows, &w->link);
 }
 
@@ -451,18 +674,64 @@ static void new_popup(struct wl_listener *l, void *data)
     wl_signal_add(&xp->events.destroy, &p->destroy);
 }
 
+/* xdg-decoration: every window is told the frame is the server's. */
+static void deco_request_mode(struct wl_listener *l, void *data)
+{
+    (void)data;
+    deco_t *d = wl_container_of(l, d, request_mode);
+    if (d->wlr->toplevel->base->initialized) {
+        wlr_xdg_toplevel_decoration_v1_set_mode(d->wlr, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    }
+}
+
+static void deco_destroy(struct wl_listener *l, void *data)
+{
+    (void)data;
+    deco_t *d = wl_container_of(l, d, destroy);
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (w->deco == d->wlr) w->deco = NULL;
+    }
+    wl_list_remove(&d->request_mode.link);
+    wl_list_remove(&d->destroy.link);
+    free(d);
+}
+
+static void new_decoration(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_xdg_toplevel_decoration_v1 *wd = data;
+    deco_t *d = calloc(1, sizeof(*d));
+    if (d == NULL) return;
+    d->wlr = wd;
+    d->request_mode.notify = deco_request_mode;
+    wl_signal_add(&wd->events.request_mode, &d->request_mode);
+    d->destroy.notify = deco_destroy;
+    wl_signal_add(&wd->events.destroy, &d->destroy);
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (w->toplevel == wd->toplevel) w->deco = wd;
+    }
+    if (wd->toplevel->base->initialized) {
+        wlr_xdg_toplevel_decoration_v1_set_mode(wd, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    }
+}
+
 /* ----------------------------------------------------------- keyboard */
 
 static void send_fmrb_key(uint32_t code, bool down)
 {
     uint8_t usage = fmrb_linux_key_to_hid(code);
-    uint8_t bit = fmrb_linux_key_mod_bit(code);
-    if (bit != 0) {
-        if (down) s.mods |= bit;
-        else s.mods &= (uint8_t)~bit;
-    }
     if (usage == 0) return;
     native_input_push(down ? NATIVE_INPUT_KEY_DOWN : NATIVE_INPUT_KEY_UP, usage, s.mods, 0, 0);
+}
+
+/* Keys that stay Family mruby's whoever has the keyboard: the window
+ * switching hotkeys (host_task.c), so a Linux window cannot trap them. */
+static bool fmrb_hotkey(uint32_t code)
+{
+    bool ctrl = (s.mods & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL)) != 0;
+    return ctrl && (code == KEY_TAB || code == KEY_COMMA);
 }
 
 static void keyboard_key(struct wl_listener *l, void *data)
@@ -471,8 +740,16 @@ static void keyboard_key(struct wl_listener *l, void *data)
     struct wlr_keyboard_key_event *ev = data;
     uint32_t code = ev->keycode;
     bool down = ev->state == WL_KEYBOARD_KEY_STATE_PRESSED;
+    /* Family mruby's modifier bits follow every key, wherever it goes, so a
+     * hotkey sent to Family mruby carries the modifiers held for a window. */
+    uint8_t bit = fmrb_linux_key_mod_bit(code);
+    if (bit != 0) {
+        if (down) s.mods |= bit;
+        else s.mods &= (uint8_t)~bit;
+    }
     /* A key goes up where it went down, whoever has the keyboard now. */
     int target = comp_route_focus(&s.route);
+    if (down && fmrb_hotkey(code)) target = COMP_FMRB;
     if (code <= KEY_MAX) {
         if (down) s.key_target[code] = target;
         else target = s.key_target[code];
@@ -509,20 +786,39 @@ static void keyboard_destroy(struct wl_listener *l, void *data)
     free(k);
 }
 
-static void add_keyboard(struct wlr_keyboard *wkb)
+/* The windows' keymap: the layout Family mruby's keyboard_layout names
+ * (the keys themselves are Linux key codes whatever the layout; Family
+ * mruby reads them with its own tables). */
+static void set_keymap(struct wlr_keyboard *wkb, int layout)
 {
-    keyboard_t *k = calloc(1, sizeof(*k));
-    if (k == NULL) return;
-    k->wlr = wkb;
-    /* The keys are Linux key codes whatever the layout; the keymap is for
-     * the windows (xkb), US unless XKB_DEFAULT_* say otherwise. */
+    struct xkb_rule_names names = { 0 };
+    names.layout = layout == FMRB_KEYMAP_LAYOUT_JP ? "jp" : "us";
     struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    struct xkb_keymap *map = xkb_keymap_new_from_names(ctx, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    struct xkb_keymap *map = xkb_keymap_new_from_names(ctx, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
     if (map != NULL) {
         wlr_keyboard_set_keymap(wkb, map);
         xkb_keymap_unref(map);
     }
     xkb_context_unref(ctx);
+}
+
+static void follow_layout(void)
+{
+    int layout = (int)fmrb_keymap_get_layout();
+    if (layout == s.layout_kb) return;
+    s.layout_kb = layout;
+    keyboard_t *k;
+    wl_list_for_each(k, &s.keyboards, link) set_keymap(k->wlr, layout);
+    fprintf(stderr, "native: compositor: the windows' keymap is %s (keyboard_layout)\n",
+            layout == FMRB_KEYMAP_LAYOUT_JP ? "jp" : "us");
+}
+
+static void add_keyboard(struct wlr_keyboard *wkb)
+{
+    keyboard_t *k = calloc(1, sizeof(*k));
+    if (k == NULL) return;
+    k->wlr = wkb;
+    set_keymap(wkb, s.layout_kb < 0 ? (int)fmrb_keymap_get_layout() : s.layout_kb);
     wlr_keyboard_set_repeat_info(wkb, 25, 600);
     k->modifiers.notify = keyboard_modifiers;
     wl_signal_add(&wkb->events.modifiers, &k->modifiers);
@@ -559,64 +855,158 @@ static void flush_motion(bool force)
     s.motion_last_ms = t;
 }
 
-/* The pointer's target: the press's while a button is held. */
-static comp_hit_t pointer_hit(void)
+/* Family mruby's cursor: hidden while the pointer is over a Linux window
+ * (wlroots' shows there), back when it leaves. */
+static void fmrb_cursor(bool show)
 {
-    comp_hit_t hit = comp_route_at(&s.route, (int)s.cursor->x, (int)s.cursor->y);
-    if (s.buttons_held > 0 && hit.target != s.pointer_target) {
-        hit.target = s.pointer_target;
-        if (hit.target == COMP_FMRB) {
-            /* Clamped into the frame, as a drag out of the picture is. */
-            fmrb_present_to_frame(&s.route.place, s.route.fb_w, s.route.fb_h,
-                                  (int)s.cursor->x, (int)s.cursor->y, &hit.x, &hit.y);
-        }
-    }
-    return hit;
+    if (show == !s.fmrb_cursor_hidden) return;
+    s.fmrb_cursor_hidden = !show;
+    native_input_push(NATIVE_INPUT_CURSOR, show ? 1u : 0u, 0, 0, 0);
 }
 
-/* The surface under the cursor inside window id, with surface-local
- * coordinates. */
+/* A popup of a shown window under the point: its window's id, the surface
+ * and surface-local coordinates. */
+static int popup_at(double x, double y, struct wlr_surface **surf, double *sx, double *sy)
+{
+    const comp_route_t *r = &s.route;
+    for (int i = r->n - 1; i >= 0; i--) {
+        if (!r->win[i].visible) continue;
+        window_t *w = window_by_id(r->win[i].id);
+        if (w == NULL) continue;
+        struct wlr_scene_node *node = wlr_scene_node_at(&w->popups->node, x, y, sx, sy);
+        if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) continue;
+        struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+        if (ss == NULL) continue;
+        *surf = ss->surface;
+        return w->id;
+    }
+    return COMP_FMRB;
+}
+
+/* The surface of window id under the point (its subsurfaces included), with
+ * surface-local coordinates; its main surface when the point is in its
+ * rectangle but on no surface of it. */
 static struct wlr_surface *surface_at(int id, double *sx, double *sy)
 {
-    struct wlr_scene_node *node = wlr_scene_node_at(&s.scene->tree.node, s.cursor->x, s.cursor->y, sx, sy);
-    if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
-        window_t *w = window_by_id(id);
-        if (w == NULL) return NULL;
-        /* Over the window's box but not a surface of it (its shadow, say):
-         * keep the window's main surface, coordinates from its origin. */
-        const comp_window_t *cw = comp_route_window(&s.route, id);
-        struct wlr_box g = w->toplevel->base->geometry;
-        *sx = s.cursor->x - cw->x + g.x;
-        *sy = s.cursor->y - cw->y + g.y;
-        return w->toplevel->base->surface;
+    window_t *w = window_by_id(id);
+    if (w == NULL) return NULL;
+    struct wlr_scene_node *node = wlr_scene_node_at(&w->tree->node, s.cursor->x, s.cursor->y, sx, sy);
+    if (node != NULL && node->type == WLR_SCENE_NODE_BUFFER) {
+        struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+        if (ss != NULL) return ss->surface;
     }
-    struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
-    return ss != NULL ? ss->surface : NULL;
+    const comp_window_t *cw = comp_route_window(&s.route, id);
+    if (cw == NULL) return NULL;
+    struct wlr_box g = w->toplevel->base->geometry;
+    *sx = s.cursor->x - cw->x + g.x;
+    *sy = s.cursor->y - cw->y + g.y;
+    return w->toplevel->base->surface;
+}
+
+typedef struct {
+    comp_hit_t hit;
+    struct wlr_surface *surf;               /* a window: the surface */
+    double sx, sy;
+    bool popup;                             /* over one of its popups */
+} ptr_hit_t;
+
+/* What the pointer is over: a popup, a hole, or Family mruby. While a
+ * button is held, the press's target keeps it. */
+static ptr_hit_t pointer_hit(void)
+{
+    ptr_hit_t p = { 0 };
+    double x = s.cursor->x, y = s.cursor->y;
+    int pid = popup_at(x, y, &p.surf, &p.sx, &p.sy);
+    if (pid != COMP_FMRB) {
+        p.hit.target = pid;
+        p.popup = true;
+    } else {
+        p.hit = comp_route_at(&s.route, (int)x, (int)y);
+    }
+    if (s.buttons_held > 0 && p.hit.target != s.pointer_target) {
+        p.hit.target = s.pointer_target;
+        p.popup = false;
+        p.surf = NULL;
+        if (p.hit.target == COMP_FMRB) {
+            /* Clamped into the frame, as a drag out of the picture is. */
+            fmrb_present_to_frame(&s.route.place, s.route.fb_w, s.route.fb_h, (int)x, (int)y,
+                                  &p.hit.x, &p.hit.y);
+        }
+    }
+    if (p.hit.target != COMP_FMRB && p.surf == NULL) p.surf = surface_at(p.hit.target, &p.sx, &p.sy);
+    return p;
+}
+
+/* Where the pointer is in frame coordinates, clamped. */
+static void pointer_frame(int *fx, int *fy)
+{
+    fmrb_present_to_frame(&s.route.place, s.route.fb_w, s.route.fb_h, (int)s.cursor->x, (int)s.cursor->y,
+                          fx, fy);
+}
+
+static void grab_motion(void)
+{
+    int sc = s.route.place.scale > 0 ? s.route.place.scale : 1;
+    int dx = (int)floor((s.cursor->x - s.grab.cx) / sc);
+    int dy = (int)floor((s.cursor->y - s.grab.cy) / sc);
+    if (s.grab.mode == GRAB_MOVE) {
+        int nx = s.grab.fx + dx, ny = s.grab.fy + dy;
+        if (nx != s.grab.nx || ny != s.grab.ny) {
+            s.grab.nx = nx;
+            s.grab.ny = ny;
+            comp_route_notice(&s.route, COMP_NOTICE_MOVE, s.grab.id, nx, ny, 0, 0, NULL);
+        }
+        return;
+    }
+    int x = s.grab.fx, y = s.grab.fy, w = s.grab.fw, h = s.grab.fh;
+    if (s.grab.edges & WLR_EDGE_RIGHT) w += dx;
+    if (s.grab.edges & WLR_EDGE_BOTTOM) h += dy;
+    if (s.grab.edges & WLR_EDGE_LEFT) {
+        x += dx;
+        w -= dx;
+    }
+    if (s.grab.edges & WLR_EDGE_TOP) {
+        y += dy;
+        h -= dy;
+    }
+    if (w < 16) w = 16;
+    if (h < 16) h = 16;
+    s.grab.nx = x;
+    s.grab.ny = y;
+    s.grab.nw = w;
+    s.grab.nh = h;
 }
 
 static void process_motion(uint32_t time_msec)
 {
-    comp_hit_t hit = pointer_hit();
-    if (hit.target == COMP_FMRB) {
+    if (s.grab.mode != GRAB_NONE) {
+        grab_motion();
+        return;
+    }
+    ptr_hit_t p = pointer_hit();
+    if (p.hit.target == COMP_FMRB) {
         wlr_seat_pointer_clear_focus(s.seat);
         wlr_cursor_unset_image(s.cursor);
-        s.motion_x = hit.x;
-        s.motion_y = hit.y;
+        s.motion_x = p.hit.x;
+        s.motion_y = p.hit.y;
         s.motion_pending = true;
+        fmrb_cursor(true);
         flush_motion(false);
         return;
     }
-    double sx = 0, sy = 0;
-    struct wlr_surface *surf = surface_at(hit.target, &sx, &sy);
-    if (surf == NULL) {
+    fmrb_cursor(false);
+    if (p.surf == NULL) {
         wlr_seat_pointer_clear_focus(s.seat);
         return;
     }
-    if (s.seat->pointer_state.focused_surface != surf) {
+    if (s.seat->pointer_state.focused_surface != p.surf) {
         wlr_cursor_set_xcursor(s.cursor, s.xcursor, "default");
     }
-    wlr_seat_pointer_notify_enter(s.seat, surf, sx, sy);
-    wlr_seat_pointer_notify_motion(s.seat, time_msec, sx, sy);
+    wlr_seat_pointer_notify_enter(s.seat, p.surf, p.sx, p.sy);
+    wlr_seat_pointer_notify_motion(s.seat, time_msec, p.sx, p.sy);
+    s.ptr_id = p.hit.target;
+    s.ptr_sx = p.sx;
+    s.ptr_sy = p.sy;
 }
 
 static void cursor_motion(struct wl_listener *l, void *data)
@@ -645,40 +1035,76 @@ static int fmrb_button(uint32_t linux_button)
     }
 }
 
+static void fmrb_press(int fx, int fy, int b, bool down)
+{
+    s.motion_x = fx;
+    s.motion_y = fy;
+    s.motion_pending = true;
+    flush_motion(true);
+    native_input_push(NATIVE_INPUT_MOUSE_BUTTON, (uint32_t)fx, (uint32_t)fy, (uint32_t)b, down ? 1 : 0);
+}
+
+static void end_grab(void)
+{
+    if (s.grab.mode == GRAB_RESIZE &&
+        (s.grab.nw != s.grab.fw || s.grab.nh != s.grab.fh || s.grab.nx != s.grab.fx || s.grab.ny != s.grab.fy)) {
+        comp_route_notice(&s.route, COMP_NOTICE_RESIZE, s.grab.id, s.grab.nx, s.grab.ny, s.grab.nw, s.grab.nh,
+                          NULL);
+    }
+    s.grab.mode = GRAB_NONE;
+}
+
 static void cursor_button(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_button_event *ev = data;
     bool down = ev->state == WL_POINTER_BUTTON_STATE_PRESSED;
-    comp_hit_t hit;
+    int b = fmrb_button(ev->button);
+    ptr_hit_t p;
     if (down && s.buttons_held == 0) {
-        bool changed = false;
-        hit = comp_route_press(&s.route, (int)s.cursor->x, (int)s.cursor->y, &changed);
-        s.pointer_target = hit.target;
-        if (changed) {
-            apply_focus();
-            fprintf(stderr, "native: compositor: keyboard to %s%d\n",
-                    hit.target == COMP_FMRB ? "Family mruby " : "window ", hit.target);
-        } else if (hit.target != COMP_FMRB) {
-            window_t *w = window_by_id(hit.target);
-            if (w != NULL) wlr_scene_node_raise_to_top(&w->tree->node);
+        p = pointer_hit();
+        s.pointer_fmrb_too = false;
+        if (p.popup) {
+            /* A popup is the window's own business: no focus change. */
+            s.pointer_target = p.hit.target;
+        } else {
+            bool changed = false;
+            comp_hit_t h = comp_route_press(&s.route, (int)s.cursor->x, (int)s.cursor->y, &changed);
+            s.pointer_target = h.target;
+            if (changed) {
+                apply_focus();
+                fprintf(stderr, "native: compositor: keyboard to %s%d\n",
+                        h.target == COMP_FMRB ? "Family mruby " : "window ", h.target);
+            }
+            if (h.target != COMP_FMRB) {
+                apply_layout();
+                /* Family mruby gets the press too, at the frame pixel: its
+                 * window manager raises and focuses the stand-in. */
+                if (b != 0) {
+                    fmrb_press(h.fx, h.fy, b, true);
+                    s.pointer_fmrb_too = true;
+                }
+            }
         }
-        apply_layout();
     } else {
-        hit = pointer_hit();
+        p = pointer_hit();
     }
     s.buttons_held += down ? 1 : -1;
     if (s.buttons_held < 0) s.buttons_held = 0;
 
-    if (hit.target == COMP_FMRB) {
-        int b = fmrb_button(ev->button);
+    if (p.hit.target == COMP_FMRB) {
         if (b == 0) return;
-        s.motion_x = hit.x;
-        s.motion_y = hit.y;
-        s.motion_pending = true;
-        flush_motion(true);
-        native_input_push(NATIVE_INPUT_MOUSE_BUTTON, (uint32_t)hit.x, (uint32_t)hit.y, (uint32_t)b, down ? 1 : 0);
+        fmrb_press(p.hit.x, p.hit.y, b, down);
         return;
+    }
+    if (!down && s.pointer_fmrb_too && b != 0) {
+        int fx = 0, fy = 0;
+        pointer_frame(&fx, &fy);
+        fmrb_press(fx, fy, b, false);
+        if (s.buttons_held == 0) s.pointer_fmrb_too = false;
+    }
+    if (s.grab.mode != GRAB_NONE && !down) {
+        end_grab();
     }
     process_motion(ev->time_msec);
     wlr_seat_pointer_notify_button(s.seat, ev->time_msec, ev->button, ev->state);
@@ -688,15 +1114,15 @@ static void cursor_axis(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_axis_event *ev = data;
-    comp_hit_t hit = pointer_hit();
-    if (hit.target == COMP_FMRB) {
+    ptr_hit_t p = pointer_hit();
+    if (p.hit.target == COMP_FMRB) {
         if (ev->orientation != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
         /* Wayland's positive is towards the user; the system's is away. */
         int notches = ev->delta_discrete != 0 ? -ev->delta_discrete / WLR_POINTER_AXIS_DISCRETE_STEP
                                               : (ev->delta > 0 ? -1 : (ev->delta < 0 ? 1 : 0));
         if (notches == 0) return;
         flush_motion(true);
-        native_input_push(NATIVE_INPUT_MOUSE_WHEEL, (uint32_t)hit.x, (uint32_t)hit.y,
+        native_input_push(NATIVE_INPUT_MOUSE_WHEEL, (uint32_t)p.hit.x, (uint32_t)p.hit.y,
                           (uint32_t)(int32_t)notches, 0);
         return;
     }
@@ -865,7 +1291,13 @@ static void tool_wheel(int notches)
  * The control socket's "comp ..." (tools/fmrb_native.rb comp):
  *
  *   comp info            "OK out=WxH frame=WxH scale=S at=X,Y focus=F
- *                        windows=ID:WxH+X+Y,... socket=NAME renderer=R"
+ *                        windows=ID:WxH+X+Y/FXxFY+FWxFH/V,... ptr=ID:SX,SY
+ *                        cursor=fmrb|window keymap=us|jp socket=NAME
+ *                        renderer=R": each window's size and place on the
+ *                        output, its content rectangle in frame coordinates
+ *                        and whether it shows (V 1/0), bottom to top; the
+ *                        last pointer position sent to a window
+ *                        (surface-local, output pixels)
  *   comp stats [reset]   pictures (count, mean and longest gap), output
  *                        commits, keys sent to a window and the time from
  *                        each to the window's next commit, since the last
@@ -893,10 +1325,14 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
                          r->focus);
         for (int i = 0; i < r->n && n > 0 && (size_t)n < cap; i++) {
             const comp_window_t *w = &r->win[i];
-            n += snprintf(out + n, cap - (size_t)n, "%s%d:%dx%d+%d+%d", i ? "," : "", w->id, w->w, w->h, w->x, w->y);
+            n += snprintf(out + n, cap - (size_t)n, "%s%d:%dx%d+%d+%d/%dx%d+%dx%d/%d", i ? "," : "", w->id, w->w,
+                          w->h, w->x, w->y, w->fx, w->fy, w->fw, w->fh, w->visible ? 1 : 0);
         }
-        if (n > 0 && (size_t)n < cap) snprintf(out + n, cap - (size_t)n, " socket=%s renderer=%s\n", s.socket,
-                                              renderer_name());
+        if (n > 0 && (size_t)n < cap) {
+            snprintf(out + n, cap - (size_t)n, " ptr=%d:%.2f,%.2f cursor=%s keymap=%s socket=%s renderer=%s\n",
+                     s.ptr_id, s.ptr_sx, s.ptr_sy, s.fmrb_cursor_hidden ? "window" : "fmrb",
+                     s.layout_kb == FMRB_KEYMAP_LAYOUT_JP ? "jp" : "us", s.socket, renderer_name());
+        }
         return true;
     }
     if (strncmp(a, "stats", 5) == 0) {
@@ -1003,6 +1439,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
 {
     memset(&s, 0, sizeof(s));
     s.wake_fd = -1;
+    s.layout_kb = -1;
     comp_route_init(&s.route);
     wl_list_init(&s.windows);
     wl_list_init(&s.keyboards);
@@ -1045,17 +1482,24 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     s.scene_layout = wlr_scene_attach_output_layout(s.scene, s.layout);
     static const float black[4] = { 0, 0, 0, 1 };
     s.black = wlr_scene_rect_create(&s.scene->tree, 0, 0, black);
+    /* The Linux windows under the picture, their popups over it. */
+    s.windows_tree = wlr_scene_tree_create(&s.scene->tree);
     s.picture = wlr_scene_buffer_create(&s.scene->tree, NULL);
     wlr_scene_buffer_set_filter_mode(s.picture, WLR_SCALE_FILTER_NEAREST);
-    s.windows_tree = wlr_scene_tree_create(&s.scene->tree);
+    s.popups_tree = wlr_scene_tree_create(&s.scene->tree);
 
     s.new_output.notify = new_output;
     wl_signal_add(&s.backend->events.new_output, &s.new_output);
-    s.xdg_shell = wlr_xdg_shell_create(s.display, 3);
+    /* Version 5: the window is told which window-manager features there
+     * are (none of maximize, fullscreen, minimize, window menu: L9a). */
+    s.xdg_shell = wlr_xdg_shell_create(s.display, 5);
     s.new_toplevel.notify = new_toplevel;
     wl_signal_add(&s.xdg_shell->events.new_toplevel, &s.new_toplevel);
     s.new_popup.notify = new_popup;
     wl_signal_add(&s.xdg_shell->events.new_popup, &s.new_popup);
+    s.deco_mgr = wlr_xdg_decoration_manager_v1_create(s.display);
+    s.new_decoration.notify = new_decoration;
+    wl_signal_add(&s.deco_mgr->events.new_toplevel_decoration, &s.new_decoration);
 
     s.cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(s.cursor, s.layout);
@@ -1101,6 +1545,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         s.wake_source = wl_event_loop_add_fd(s.loop, s.wake_fd, WL_EVENT_READABLE, on_wake, NULL);
         native_frame_set_wake_fd(s.wake_fd);
     }
+    comp_link_attach(&s.route, s.wake_fd);
     fprintf(stderr, "native: compositor: wlroots %s on WAYLAND_DISPLAY=%s (backends %s, renderer %s)\n",
             WLR_VERSION_STR, s.socket, getenv("WLR_BACKENDS") ? getenv("WLR_BACKENDS") : "auto",
             renderer_name());
@@ -1108,10 +1553,23 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     return true;
 }
 
+static void take_base_size(void)
+{
+    if (s.route.base_w > 0) return;
+    int bw = 0, bh = 0;
+    native_frame_base_size(&bw, &bh);
+    if (bw <= 0 || bh <= 0) return;
+    comp_route_set_base(&s.route, bw, bh);
+    comp_link_set_geometry(s.route.place.scale, bw, bh);
+}
+
 static bool wlr_pump(int wait_ms)
 {
     wl_display_flush_clients(s.display);
     wl_event_loop_dispatch(s.loop, wait_ms);
+    take_base_size();
+    follow_layout();
+    take_from_fmrb();
     wl_display_flush_clients(s.display);
     flush_motion(false);
     reap_child();
@@ -1120,17 +1578,16 @@ static bool wlr_pump(int wait_ms)
 
 static void wlr_present(const uint16_t *px, int w, int h, bool changed)
 {
-    if (!changed || s.picture == NULL) return;
-    pic_buf_t *b = pic_get(w, h);
-    if (b == NULL) return;
-    size_t n = (size_t)w * (size_t)h;
-    for (size_t i = 0; i < n; i++) b->px[i] = fmrb_present_565_to_8888(px[i]);
-    wlr_scene_buffer_set_buffer(s.picture, &b->base);
-    wlr_buffer_drop(&b->base);
+    if (s.picture == NULL) return;
+    s.frame = px;
+    comp_route_set_frame(&s.route, px);
     if (w != s.route.fb_w || h != s.route.fb_h) {
         int ow = s.route.out_w, oh = s.route.out_h;
         if (comp_route_layout(&s.route, ow, oh, w, h)) apply_layout();
     }
+    if (!changed && !s.recompose) return;
+    compose();
+    if (!changed) return;
     uint64_t t = now_ms();
     if (s.stats.pictures > 0) {
         uint64_t gap = t - s.stats.last_picture_ms;
@@ -1141,9 +1598,113 @@ static void wlr_present(const uint16_t *px, int w, int h, bool changed)
     s.stats.pictures++;
 }
 
+static int window_count(void)
+{
+    int n = 0;
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) n++;
+    return n;
+}
+
+static int client_count(void)
+{
+    int n = 0;
+    struct wl_list *clients = wl_display_get_client_list(s.display);
+    for (struct wl_list *it = clients->next; it != clients; it = it->next) n++;
+    return n;
+}
+
+/* Signal every client process still connected. */
+static int signal_clients(int sig)
+{
+    int n = 0;
+    struct wl_list *clients = wl_display_get_client_list(s.display);
+    for (struct wl_list *it = clients->next; it != clients; it = it->next) {
+        struct wl_client *c = wl_client_from_link(it);
+        pid_t pid = 0;
+        wl_client_get_credentials(c, &pid, NULL, NULL);
+        if (pid > 0 && pid != getpid()) {
+            kill(pid, sig);
+            n++;
+        }
+    }
+    return n;
+}
+
+/* The end, step one: ask every Linux window to close and keep going --
+ * Family mruby's picture still on screen, so a program can ask about
+ * unsaved work and be answered -- until they have gone or LINGER_MS. */
+static void linger(void)
+{
+    int asked = 0;
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (w->toplevel->base->initialized) {
+            wlr_xdg_toplevel_send_close(w->toplevel);
+            asked++;
+        }
+    }
+    if (asked == 0) return;
+    fprintf(stderr, "native: compositor: asked %d window%s to close\n", asked, asked == 1 ? "" : "s");
+    uint16_t *frame = malloc((size_t)640 * 360 * sizeof(uint16_t));
+    uint64_t t0 = now_ms();
+    uint64_t closed_at = 0;
+    uint32_t shown = 0;
+    while (now_ms() - t0 < LINGER_MS && s.output != NULL) {
+        /* Once the windows have gone, a moment more for their programs to
+         * leave on their own. */
+        if (window_count() == 0) {
+            if (closed_at == 0) closed_at = now_ms();
+            if (client_count() == 0 || now_ms() - closed_at >= CLIENT_LEAVE_MS) break;
+        }
+        wl_display_flush_clients(s.display);
+        wl_event_loop_dispatch(s.loop, 5);
+        take_from_fmrb();
+        wl_display_flush_clients(s.display);
+        reap_child();
+        if (frame != NULL && native_frame_seq() != shown) {
+            int fw = 0, fh = 0;
+            if (native_frame_copy(frame, 640 * 360, &fw, &fh, &shown)) wlr_present(frame, fw, fh, true);
+        } else if (frame != NULL && s.recompose && s.route.fb_w > 0) {
+            wlr_present(frame, s.route.fb_w, s.route.fb_h, false);
+        }
+    }
+    int left = window_count();
+    fprintf(stderr, "native: compositor: %s after %llu ms (%d client%s still connected)\n",
+            left == 0 ? "every window closed" : "windows still open", (unsigned long long)(now_ms() - t0),
+            client_count(), client_count() == 1 ? "" : "s");
+    /* The picture keeps pointing at this copy until the scene goes; it is
+     * not freed (the program ends right after). */
+    s.frame = NULL;
+}
+
+/* Step two: the clients still connected are ended. */
+static void end_clients(void)
+{
+    if (client_count() == 0) return;
+    int n = signal_clients(SIGTERM);
+    fprintf(stderr, "native: compositor: SIGTERM to %d client%s still connected\n", n, n == 1 ? "" : "s");
+    uint64_t t0 = now_ms();
+    while (client_count() > 0 && now_ms() - t0 < TERM_GRACE_MS) {
+        wl_event_loop_dispatch(s.loop, 5);
+        wl_display_flush_clients(s.display);
+    }
+    if (client_count() > 0) {
+        n = signal_clients(SIGKILL);
+        fprintf(stderr, "native: compositor: SIGKILL to %d client%s\n", n, n == 1 ? "" : "s");
+        t0 = now_ms();
+        while (client_count() > 0 && now_ms() - t0 < TERM_GRACE_MS) {
+            wl_event_loop_dispatch(s.loop, 5);
+        }
+    }
+}
+
 static void wlr_close(void)
 {
     if (s.display == NULL) return;
+    linger();
+    end_clients();
+    comp_link_detach();
     native_frame_set_wake_fd(-1);
     stop_child();
     wl_display_destroy_clients(s.display);

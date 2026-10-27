@@ -31,6 +31,8 @@ enum {
     NATIVE_INPUT_MOUSE_BUTTON,   /* a=x, b=y, c=button (1=L 2=M 3=R), d=state */
     NATIVE_INPUT_MOUSE_MOVE,     /* a=x, b=y (frame coordinates) */
     NATIVE_INPUT_MOUSE_WHEEL,    /* a=x, b=y, c=notches (signed) */
+    NATIVE_INPUT_CURSOR,         /* a=1 show / 0 hide Family mruby's cursor (the
+                                  * compositor, over a Linux window) */
 };
 
 /* From the main thread: one event for the sdl source. Never blocks; when the

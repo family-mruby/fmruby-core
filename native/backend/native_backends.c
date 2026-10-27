@@ -10,6 +10,9 @@
 
 #include "input_evdev.h"
 #include "native_input.h"
+#if NATIVE_HAVE_WLROOTS
+#include "wl_bridge.h"
+#endif
 
 static const native_output_t *const s_outputs[] = {
     &native_output_sdl,
@@ -141,7 +144,7 @@ bool native_backends_select(const native_machine_t *m, native_backends_t *out,
 }
 
 /* The machine's sources (input_source.h), NULL-terminated. */
-static const fmrb_input_source_t *s_sources[4];
+static const fmrb_input_source_t *s_sources[5];
 const fmrb_input_source_t *const *fmrb_input_sources = s_sources;
 
 bool native_backends_open_input(const native_machine_t *m, char *why, size_t why_len)
@@ -155,6 +158,10 @@ bool native_backends_open_input(const native_machine_t *m, char *why, size_t why
          * one from the same main thread. */
         s_sources[n++] = &fmrb_input_source_sdl;
     }
+#if NATIVE_HAVE_WLROOTS
+    /* The compositor's Linux windows as Family mruby windows (L9a). */
+    if (strcmp(m->input.backend, "wlroots") == 0) s_sources[n++] = &fmrb_input_source_wl_bridge;
+#endif
     /* The headless tools' way in, on every machine. */
     s_sources[n++] = &fmrb_input_source_inject;
     s_sources[n] = NULL;

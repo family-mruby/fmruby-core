@@ -132,6 +132,12 @@ set(NATIVE_BACKEND_SRCS
   ${N}/sys/sys_linux_read.c
   ${N}/sys/sys_linux_mixer.c
   ${N}/sys/linux_pty.c
+  # The compositor's hand-overs and Family mruby's side of its windows (L9a):
+  # plain C, in every build (the stand-in's gem calls are always there; the
+  # task only starts when the program is the compositor).
+  ${N}/wlr/comp_route.c
+  ${N}/wlr/comp_link.c
+  ${N}/wlr/wl_bridge.c
   # mruby-dir's HAL over the file HAL's resolver (the ESP32 targets' file;
   # the name-only gem hal-dir-fmrb dropped the flat posix one from libmruby)
   ${FMRB_ROOT}/lib/add/hal-esp32-dir/dir_hal.c
@@ -152,8 +158,7 @@ if(NATIVE_HAVE_WLROOTS)
     COMMAND ${WAYLAND_SCANNER} server-header
             ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
     DEPENDS ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
-  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/comp_route.c
-       ${NATIVE_WLR_GEN}/xdg-shell-protocol.h)
+  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h)
 endif()
 target_sources(core_objs PRIVATE ${NATIVE_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE

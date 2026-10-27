@@ -1514,6 +1514,41 @@ static mrb_value mrb_fmrb_app_s_linux_close(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
+#if defined(FMRB_PLATFORM_NATIVE)
+// ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
+//
+// For the stand-in app the compositor's bridge starts for each Linux window
+// (main/prebuild_scripts/kernel/linux_window.app.rb). The native program only:
+// no other build defines these methods.
+//
+// FmrbApp.wl_window -> String (the window's title) while the Linux window is
+//   there, false once it has gone, nil when the caller is no stand-in (yet).
+// FmrbApp.wl_close -> bool. Ask the Linux window to close (the program may ask
+//   about unsaved work first, or refuse).
+extern int native_wl_window_state(int pid, char *title, size_t cap);
+extern bool native_wl_window_close(int pid);
+
+static mrb_value mrb_fmrb_app_s_wl_window(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) return mrb_nil_value();
+    char title[64];
+    int st = native_wl_window_state((int)ctx->app_id, title, sizeof(title));
+    if (st < 0) return mrb_nil_value();
+    if (st == 0) return mrb_false_value();
+    return mrb_str_new_cstr(mrb, title);
+}
+
+static mrb_value mrb_fmrb_app_s_wl_close(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) return mrb_false_value();
+    return mrb_bool_value(native_wl_window_close((int)ctx->app_id));
+}
+#endif
+
 // FmrbApp.ble_start -> true/false
 // Manual BLE start for the ble_auto_start=false configuration (desktop menu).
 // Retro (built-in radio) only: Modern's C6 radio path manages itself, and
@@ -1995,6 +2030,10 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "linux_exit_code", mrb_fmrb_app_s_linux_exit_code, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_resize", mrb_fmrb_app_s_linux_resize, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "linux_close", mrb_fmrb_app_s_linux_close, MRB_ARGS_REQ(1));
+#if defined(FMRB_PLATFORM_NATIVE)
+    mrb_define_class_method(mrb, app_class, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());
+#endif
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));

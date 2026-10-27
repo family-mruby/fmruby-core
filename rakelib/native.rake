@@ -175,11 +175,14 @@ namespace :native do
     # ...and the Shell's reading of their output (lines and SGR colours).
     sh "ruby #{NATIVE_TEST_DIR}/shell_term_test.rb"
 
-    # The compositor's hand-overs (L8) without wlroots: where things lie and
-    # who gets the input (native/wlr/comp_route.c), and the frame handed from
-    # one thread to another with an eventfd (native/backend/native_frame.c).
+    # The compositor's hand-overs (L8, L9a) without wlroots: where things lie,
+    # the holes Family mruby leaves for its Linux windows and who gets the
+    # input (native/wlr/comp_route.c), the places and commands from Family
+    # mruby's side (comp_link.c), and the frame handed from one thread to
+    # another with an eventfd (native/backend/native_frame.c).
     cincs = %w[native/wlr native/present native/backend]
-    csrcs = %w[native/wlr/comp_route.c native/present/fmrb_present.c native/backend/native_frame.c]
+    csrcs = %w[native/wlr/comp_route.c native/wlr/comp_link.c native/present/fmrb_present.c
+               native/backend/native_frame.c]
               .push("#{NATIVE_TEST_DIR}/comp.c")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{cincs.map { |i| "-I #{i}" }.join(' ')} " \
        "#{csrcs.join(' ')} -lpthread -o #{NATIVE_TEST_BUILD}/native_comp_test"
@@ -564,7 +567,10 @@ end
 
 NATIVE_WL_DIR = File.join(NATIVE_DIR, "build-wl")
 
-def native_wl_binary = File.join(NATIVE_WL_DIR, "cmake", "fmruby-native")
+# NATIVE_ENGINE=mruby builds the all-mruby configuration beside the standard
+# one (cmake-mruby), as native:core does with build-mruby.
+def native_wl_cmake_dir = File.join(NATIVE_WL_DIR, native_engine == "mruby" ? "cmake-mruby" : "cmake")
+def native_wl_binary = File.join(native_wl_cmake_dir, "fmruby-native")
 
 namespace :native do
   desc "Build the program with the wlroots compositor in the Ubuntu 26.04 image (native/build-wl)"
@@ -576,13 +582,14 @@ namespace :native do
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
     abort "native:wl: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
     rel = NATIVE_WL_DIR.sub("#{ROOT_DIR}/", "")
+    crel = native_wl_cmake_dir.sub("#{ROOT_DIR}/", "")
     native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",
                   { "FMRB_NATIVE_ARCH" => "amd64", "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
                     "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb" }, arch: "amd64")
     native_docker(<<~SH, {}, arch: "amd64")
-      cmake -S native -B #{rel}/cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo #{native_engine_defines} \
+      cmake -S native -B #{crel} -DCMAKE_BUILD_TYPE=RelWithDebInfo #{native_engine_defines} \
         -DFMRB_HOSTED_MRUBY_DIR=/src/#{rel}/mruby/family-mruby-native
-      cmake --build #{rel}/cmake -j#{ENV['JOBS'] || 8} --target fmruby-native
+      cmake --build #{crel} -j#{ENV['JOBS'] || 8} --target fmruby-native
     SH
     puts "native:wl: #{native_wl_binary}"
   end
@@ -590,13 +597,14 @@ namespace :native do
   desc "Run the compositor build nested in WSLg (ARGS=\"--set compositor.autostart=foot\")"
   task :wl_run do
     abort "#{native_wl_binary} not found; run rake native:wl first" unless File.exist?(native_wl_binary)
-    sh "ruby #{File.join(ROOT_DIR, 'test/native/wl/wl_check.rb')} --run " \
+    sh "ruby #{File.join(ROOT_DIR, 'test/native/wl/wl_check.rb')} --run --engine #{native_engine} " \
        "#{ENV['ARGS'] ? "-- #{ENV['ARGS']}" : ''}"
   end
 
-  desc "The compositor's checks in a container (WLR_RENDERER=pixman too; NESTED=1 on WSLg)"
+  desc "The compositor's checks in a container (WLR_RENDERER=pixman too; NESTED=1 on WSLg; NATIVE_ENGINE=mruby)"
   task :wl_check do
     abort "#{native_wl_binary} not found; run rake native:wl first" unless File.exist?(native_wl_binary)
-    sh "ruby #{File.join(ROOT_DIR, 'test/native/wl/wl_check.rb')}#{ENV['NESTED'] ? ' --nested' : ''}"
+    sh "ruby #{File.join(ROOT_DIR, 'test/native/wl/wl_check.rb')} --engine #{native_engine}" \
+       "#{ENV['NESTED'] ? ' --nested' : ''}"
   end
 end

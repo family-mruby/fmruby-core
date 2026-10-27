@@ -71,6 +71,9 @@ static void dispatch(const native_event_t *ev)
         fmrb_host_send_mouse_wheel((uint16_t)ev->a, (uint16_t)ev->b,
                                    (int)(int32_t)ev->c);
         break;
+    case NATIVE_INPUT_CURSOR:
+        fmrb_host_set_cursor_visible(ev->a != 0);
+        break;
     default:
         FMRB_LOGW(TAG, "unknown input event type %u", (unsigned)ev->type);
         break;
