@@ -24,6 +24,16 @@
 #                        draw the mouse pointer into the picture (when no
 #                        pointer shows, as in some virtual machines)
 #
+# In a virtual machine (systemd-detect-virt --vm names one: VirtualBox,
+# VMware, QEMU/KVM, Hyper-V, ...) both of the last two are set by this
+# script when neither the file nor the environment sets them: a virtual
+# machine's display adapter rarely gives wlroots a GPU it can draw with
+# (VirtualBox's VMSVGA without 3D stays black), and drawing without the GPU
+# always works there. What the file sets wins, so a virtual machine with
+# working 3D can still try the GPU (WLR_RENDERER=gles2). On a PC that is
+# not a virtual machine nothing changes: wlroots picks the renderer itself.
+# The choice is logged in one line.
+#
 # FMRB_SESSION_CONF names another settings file (for trying settings out).
 #
 # Its output (and Family mruby's log) goes where the display manager puts a
@@ -49,6 +59,35 @@ if [ ! -x "$prog" ]; then
     say "$prog is missing; reinstall the family-mruby package"
     exit 1
 fi
+
+# Drawing in a virtual machine (see above).
+virt=$(systemd-detect-virt --vm 2>/dev/null) || virt=""
+case "$virt" in
+    ""|none) ;;
+    *)
+        set_here=""
+        kept=""
+        if [ -z "${WLR_RENDERER:-}" ]; then
+            WLR_RENDERER=pixman
+            export WLR_RENDERER
+            set_here="WLR_RENDERER=pixman"
+        else
+            kept="WLR_RENDERER=$WLR_RENDERER"
+        fi
+        if [ -z "${WLR_NO_HARDWARE_CURSORS:-}" ]; then
+            WLR_NO_HARDWARE_CURSORS=1
+            export WLR_NO_HARDWARE_CURSORS
+            set_here="${set_here:+$set_here }WLR_NO_HARDWARE_CURSORS=1"
+        else
+            kept="${kept:+$kept }WLR_NO_HARDWARE_CURSORS=$WLR_NO_HARDWARE_CURSORS"
+        fi
+        if [ -n "$set_here" ]; then
+            say "a virtual machine ($virt): drawing without the GPU ($set_here${kept:+; kept as set: $kept}); set WLR_RENDERER in $CONF to choose otherwise"
+        else
+            say "a virtual machine ($virt): kept as set: $kept"
+        fi
+        ;;
+esac
 
 case "$ROTATE" in
     0|90|180|270) ;;

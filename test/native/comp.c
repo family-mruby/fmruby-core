@@ -106,8 +106,8 @@ static void test_hits(void)
     CHECK(h.target == COMP_FMRB && !h.in_picture && h.x == 0 && h.y == 233, "border hit %d,%d", h.x, h.y);
 
     // A window that is not placed yet is nowhere.
-    CHECK(comp_route_window_add(&r, 1, 600, 400, "foot"), "add 1");
-    CHECK(!comp_route_window_add(&r, 1, 10, 10, NULL), "the same id twice refused");
+    CHECK(comp_route_window_add(&r, 1, 600, 400, 0, "foot"), "add 1");
+    CHECK(!comp_route_window_add(&r, 1, 10, 10, 0, NULL), "the same id twice refused");
     const comp_window_t *w = comp_route_window(&r, 1);
     CHECK(w != NULL && !w->placed && !w->visible, "not placed: hidden");
     frame_fill(100, 50, 200, 100, COMP_HOLE_565);
@@ -180,8 +180,8 @@ static void test_stacking(void)
     comp_route_set_base(&r, 426, 240);
     frame_clear();
     comp_route_set_frame(&r, g_frame);
-    comp_route_window_add(&r, 1, 600, 400, "a");
-    comp_route_window_add(&r, 2, 200, 200, "b");
+    comp_route_window_add(&r, 1, 600, 400, 0, "a");
+    comp_route_window_add(&r, 2, 200, 200, 0, "b");
     // 1 at (100,50) 200x100, 2 at (150,70) 100x100 over it: both stand-ins
     // draw the hole colour, the upper one last.
     comp_place_t p[2] = {
@@ -222,8 +222,8 @@ static void test_focus(void)
     comp_route_layout(&r, 1280, 720, 426, 240);
     frame_clear();
     comp_route_set_frame(&r, g_frame);
-    comp_route_window_add(&r, 1, 600, 400, NULL);
-    comp_route_window_add(&r, 2, 300, 300, NULL);
+    comp_route_window_add(&r, 1, 600, 400, 0, NULL);
+    comp_route_window_add(&r, 2, 300, 300, 0, NULL);
     comp_place_t p[2] = {
         { .id = 1, .x = 100, .y = 50, .w = 200, .h = 100, .shown = true },
         { .id = 2, .x = 150, .y = 70, .w = 100, .h = 100, .shown = true },
@@ -260,6 +260,7 @@ typedef struct {
     comp_route_t *r;
     int got[16];
     char title[COMP_TEXT];
+    int parent[16];             /* a MAPPED notice's parent (x) */
     int n;
 } reader_t;
 
@@ -269,6 +270,7 @@ static void *notice_reader(void *arg)
     for (int spins = 0; spins < 2000 && rd->n < 8; spins++) {
         comp_notice_t nt;
         while (rd->n < 16 && comp_link_take_notice(&nt)) {
+            rd->parent[rd->n] = nt.kind == COMP_NOTICE_MAPPED ? nt.x : -1;
             rd->got[rd->n++] = (int)nt.kind * 10 + nt.id;
             if (nt.kind == COMP_NOTICE_TITLE) snprintf(rd->title, sizeof(rd->title), "%s", nt.text);
         }
@@ -289,7 +291,7 @@ static void test_notices(void)
     pthread_t t;
     pthread_create(&t, NULL, notice_reader, &rd);
     bool changed;
-    comp_route_window_add(&r, 1, 600, 400, "foot");                     // MAPPED 1
+    comp_route_window_add(&r, 1, 600, 400, 0, "foot");                     // MAPPED 1
     comp_route_notice(&r, COMP_NOTICE_TITLE, 1, 0, 0, 0, 0, "~/src");   // TITLE 1
     comp_route_window_resize(&r, 1, 700, 400);                          // RESIZED 1
     comp_route_window_resize(&r, 1, 700, 400);                          // same size: nothing
@@ -299,7 +301,7 @@ static void test_notices(void)
     comp_route_press(&r, 1 + 3 * 110, 3 * 60, &changed);                // FOCUS 1
     comp_route_notice(&r, COMP_NOTICE_MOVE, 1, 90, 40, 0, 0, NULL);     // MOVE 1
     comp_route_window_remove(&r, 1);                                    // UNMAPPED 1, FOCUS 0
-    comp_route_window_add(&r, 2, 10, 10, NULL);                         // MAPPED 2
+    comp_route_window_add(&r, 2, 10, 10, 1, NULL);                      // MAPPED 2 (parent 1)
     pthread_join(t, NULL);
     int want[] = { COMP_NOTICE_MAPPED * 10 + 1, COMP_NOTICE_TITLE * 10 + 1, COMP_NOTICE_RESIZED * 10 + 1,
                    COMP_NOTICE_FOCUS * 10 + 1, COMP_NOTICE_MOVE * 10 + 1, COMP_NOTICE_UNMAPPED * 10 + 1,
@@ -307,6 +309,7 @@ static void test_notices(void)
     CHECK(rd.n == 8, "eight notices from the other thread (%d)", rd.n);
     for (int i = 0; i < 8 && i < rd.n; i++) CHECK(rd.got[i] == want[i], "notice %d: %d, want %d", i, rd.got[i], want[i]);
     CHECK(strcmp(rd.title, "~/src") == 0, "the title came with its text (%s)", rd.title);
+    CHECK(rd.parent[0] == 0 && rd.parent[7] == 1, "MAPPED carries the parent (%d, %d)", rd.parent[0], rd.parent[7]);
 
     // A reader that does not come: the oldest are dropped, the newest kept.
     for (int i = 0; i < COMP_NOTICES + 5; i++) comp_route_window_resize(&r, 2, 20 + i, 10);
@@ -320,6 +323,52 @@ static void test_notices(void)
           "full queue: %d kept, %u dropped, last w %d", n, r.notices_dropped, last_w);
     comp_link_detach();
     CHECK(!comp_link_take_notice(&nt), "detached: nothing to take");
+    comp_route_destroy(&r);
+}
+
+// Dialogs and menus (L9c): a dialog's stand-in in the middle of its
+// parent's, kept in the frame; menus kept in the picture.
+static void test_dialogs(void)
+{
+    int x = 0, y = 0;
+    // The parent's content 300x150 at (63,56); the dialog's window 162x102
+    // (content 160x90, frame 1/11, 2x12): its content's middle on the
+    // parent's (213,131).
+    comp_dialog_place(63, 56, 300, 150, 162, 102, 1, 11, 2, 12, 426, 240, 13, &x, &y);
+    CHECK(x + 1 + 80 == 213 && y + 11 + 45 == 131, "centred: window at (%d,%d)", x, y);
+    // Odd sizes: the middles differ by under a pixel.
+    comp_dialog_place(10, 20, 101, 51, 62, 42, 1, 11, 2, 12, 426, 240, 13, &x, &y);
+    CHECK(abs((2 * (x + 1) + 60) - (2 * 10 + 101)) <= 1 && abs((2 * (y + 11) + 30) - (2 * 20 + 51)) <= 1,
+          "odd sizes: window at (%d,%d)", x, y);
+    // Near the right and bottom edges: moved back into the frame.
+    comp_dialog_place(300, 180, 120, 50, 162, 102, 1, 11, 2, 12, 426, 240, 13, &x, &y);
+    CHECK(x == 426 - 162 && y == 240 - 102, "kept in at the bottom right: (%d,%d)", x, y);
+    // Near the top left: below the menu bar.
+    comp_dialog_place(0, 13, 40, 20, 162, 102, 1, 11, 2, 12, 426, 240, 13, &x, &y);
+    CHECK(x == 0 && y == 13, "kept in at the top left: (%d,%d)", x, y);
+    // Larger than the frame: its top-left in.
+    comp_dialog_place(100, 100, 50, 50, 500, 300, 1, 11, 2, 12, 426, 240, 13, &x, &y);
+    CHECK(x == 0 && y == 13, "larger than the frame: (%d,%d)", x, y);
+
+    comp_route_t r;
+    comp_route_init(&r);
+    comp_route_layout(&r, 720, 1280, 426, 240);         // 1x at (147,520)
+    int bx, by, bw, bh;
+    comp_route_picture_box(&r, 210, 576, &bx, &by, &bw, &bh);
+    CHECK(bx == 147 - 210 && by == 520 - 576 && bw == 426 && bh == 240, "the popup box: %d,%d %dx%d", bx, by, bw, bh);
+    int mx = 147 + 426 - 60, my = 560;
+    CHECK(comp_route_inside(&r, &mx, &my, 150, 100) && mx == 147 + 426 - 150 && my == 560,
+          "a menu across the right edge moved in: (%d,%d)", mx, my);
+    mx = 100;
+    my = 1000;
+    CHECK(comp_route_inside(&r, &mx, &my, 50, 50) && mx == 147 && my == 520 + 240 - 50,
+          "a menu below and left of the picture moved in: (%d,%d)", mx, my);
+    mx = 200;
+    my = 600;
+    CHECK(!comp_route_inside(&r, &mx, &my, 50, 50) && mx == 200 && my == 600, "a menu inside stays");
+    mx = 140;
+    my = 500;
+    CHECK(comp_route_inside(&r, &mx, &my, 600, 300) && mx == 147 && my == 520, "a menu larger: its top-left in");
     comp_route_destroy(&r);
 }
 
@@ -450,6 +499,7 @@ int main(void)
     test_stacking();
     test_focus();
     test_notices();
+    test_dialogs();
     test_link();
     test_frame();
     if (g_fail) {

@@ -92,7 +92,7 @@ static int index_of(const comp_route_t *r, int id)
     return -1;
 }
 
-bool comp_route_window_add(comp_route_t *r, int id, int w, int h, const char *app_id)
+bool comp_route_window_add(comp_route_t *r, int id, int w, int h, int parent, const char *app_id)
 {
     if (id <= 0 || r->n >= COMP_MAX_WINDOWS || index_of(r, id) >= 0) return false;
     comp_window_t *win = &r->win[r->n++];
@@ -100,7 +100,7 @@ bool comp_route_window_add(comp_route_t *r, int id, int w, int h, const char *ap
     win->id = id;
     win->w = w;
     win->h = h;
-    comp_route_notice(r, COMP_NOTICE_MAPPED, id, 0, 0, w, h, app_id);
+    comp_route_notice(r, COMP_NOTICE_MAPPED, id, parent > 0 ? parent : 0, 0, w, h, app_id);
     return true;
 }
 
@@ -299,4 +299,43 @@ bool comp_route_take_notice(comp_route_t *r, comp_notice_t *out)
     }
     pthread_mutex_unlock(&r->lock);
     return got;
+}
+
+void comp_route_picture_box(const comp_route_t *r, int ox, int oy, int *x, int *y, int *w, int *h)
+{
+    *x = r->place.x - ox;
+    *y = r->place.y - oy;
+    *w = r->place.w;
+    *h = r->place.h;
+}
+
+bool comp_route_inside(const comp_route_t *r, int *x, int *y, int w, int h)
+{
+    if (r->place.w <= 0 || r->place.h <= 0) return false;
+    int nx = *x, ny = *y;
+    if (nx + w > r->place.x + r->place.w) nx = r->place.x + r->place.w - w;
+    if (ny + h > r->place.y + r->place.h) ny = r->place.y + r->place.h - h;
+    if (nx < r->place.x) nx = r->place.x;
+    if (ny < r->place.y) ny = r->place.y;
+    bool moved = nx != *x || ny != *y;
+    *x = nx;
+    *y = ny;
+    return moved;
+}
+
+void comp_dialog_place(int px, int py, int pw, int ph, int ww, int wh, int fl, int ft, int fw, int fh,
+                       int base_w, int base_h, int top, int *x, int *y)
+{
+    /* Middles in doubled units, so that odd sizes round the same way on
+     * both sides. */
+    int cx2 = 2 * px + pw;
+    int cy2 = 2 * py + ph;
+    int nx = (cx2 - (ww - fw)) / 2 - fl;
+    int ny = (cy2 - (wh - fh)) / 2 - ft;
+    if (nx + ww > base_w) nx = base_w - ww;
+    if (ny + wh > base_h) ny = base_h - wh;
+    if (nx < 0) nx = 0;
+    if (ny < top) ny = top;
+    *x = nx;
+    *y = ny;
 }

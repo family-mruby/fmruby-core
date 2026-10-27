@@ -36,7 +36,14 @@
  *             anywhere else gives it back to Family mruby.
  *
  * A window may be an xdg toplevel or an X11 window (Xwayland, L9b): the
- * same numbering, the same rules.
+ * same numbering, the same rules. A window may have a parent (a dialog: an
+ * xdg toplevel's set_parent, X11's WM_TRANSIENT_FOR; L9c): it is a window
+ * with a stand-in like any other, placed in the middle of its parent's and
+ * kept above it by Family mruby's side (comp_dialog_place, wl_bridge.c).
+ *
+ * Menus and tooltips (xdg popups, X11 override-redirect windows) have no
+ * stand-in: they lie over the picture, and are kept inside its rectangle
+ * (comp_route_inside) -- never on the black around it.
  *
  * Window changes are queued as notices (comp_notice_t) for Family mruby's
  * side (native/wlr/wl_bridge.c) to take from another thread.
@@ -91,7 +98,7 @@ typedef struct {
 } comp_hit_t;
 
 typedef enum {
-    COMP_NOTICE_MAPPED = 1,     /* a window appeared (w, h; text: its app id) */
+    COMP_NOTICE_MAPPED = 1,     /* a window appeared (w, h; x: its parent's id, 0 none; text: its app id) */
     COMP_NOTICE_RESIZED,        /* its size changed (w, h) */
     COMP_NOTICE_UNMAPPED,       /* it went away */
     COMP_NOTICE_FOCUS,          /* the keyboard went to id (COMP_FMRB = Family mruby) */
@@ -100,6 +107,7 @@ typedef enum {
     COMP_NOTICE_RESIZE,         /* it asked to be resized: content size (w, h) at (x, y), frame coordinates */
     COMP_NOTICE_FIT,            /* it settled on a size of its own (w, h, output pixels) other than the
                                  * one asked: its stand-in is to fit it (L9b) */
+    COMP_NOTICE_PARENT,         /* its parent changed (x: the parent's id, 0 none; L9c) */
 } comp_notice_kind_t;
 
 typedef struct {
@@ -145,9 +153,10 @@ void comp_route_set_base(comp_route_t *r, int base_w, int base_h);
  * fb_w x fb_h pixels until the next call). */
 void comp_route_set_frame(comp_route_t *r, const uint16_t *px);
 
-/* A window appeared (on top, not placed yet) / changed size / went away.
- * False when there is no room or no such window. */
-bool comp_route_window_add(comp_route_t *r, int id, int w, int h, const char *app_id);
+/* A window appeared (on top, not placed yet; parent: its parent's id, 0
+ * none) / changed size / went away. False when there is no room or no such
+ * window. */
+bool comp_route_window_add(comp_route_t *r, int id, int w, int h, int parent, const char *app_id);
 bool comp_route_window_resize(comp_route_t *r, int id, int w, int h);
 bool comp_route_window_remove(comp_route_t *r, int id);
 
@@ -179,6 +188,24 @@ comp_hit_t comp_route_press(comp_route_t *r, int x, int y, bool *focus_changed);
 
 /* Who has the keyboard. */
 int comp_route_focus(const comp_route_t *r);
+
+/* The picture's rectangle on the output, relative to (ox, oy): the box a
+ * window's popups are kept in (xdg_positioner's constraint area, in the
+ * coordinates of the window whose top-left is (ox, oy)). */
+void comp_route_picture_box(const comp_route_t *r, int ox, int oy, int *x, int *y, int *w, int *h);
+
+/* A w x h rectangle at (*x, *y) on the output moved the least that puts it
+ * inside the picture's rectangle (its top-left kept in when it is larger).
+ * True when it moved. */
+bool comp_route_inside(const comp_route_t *r, int *x, int *y, int w, int h);
+
+/* Where a dialog's stand-in window (ww x wh, frame coordinates) goes: its
+ * content's middle on the parent's content middle (the parent's content
+ * rectangle px, py, pw, ph), the content being the window less the frame
+ * (left fl, top ft, the whole frame fw x fh); then moved the least that keeps
+ * the window in the frame's base size, below the menu bar (top). */
+void comp_dialog_place(int px, int py, int pw, int ph, int ww, int wh, int fl, int ft, int fw, int fh,
+                       int base_w, int base_h, int top, int *x, int *y);
 
 /* The frame (fb_w x fb_h RGB565) as the picture over the windows: ARGB8888,
  * opaque, except the holes, which are fully transparent. */

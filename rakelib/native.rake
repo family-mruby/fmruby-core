@@ -174,6 +174,8 @@ namespace :native do
     sh "#{NATIVE_TEST_BUILD}/native_pty_test"
     # ...and the Shell's reading of their output (lines and SGR colours).
     sh "ruby #{NATIVE_TEST_DIR}/shell_term_test.rb"
+    # The login screen's session starter: the renderer in a virtual machine (L9c).
+    sh "ruby #{NATIVE_TEST_DIR}/session_test.rb"
 
     # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps.c,
     # plain POSIX, with libpng for the icons when the host has it.

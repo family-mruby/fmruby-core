@@ -43,10 +43,12 @@
 #      no "Development mode", zenoh_router empty), debugd not listening; with
 #      debugd = true it listens on 127.0.0.1:5565 only
 #   8. amd64: the session itself (L9b), headless (WLR_BACKENDS=headless) with
-#      a settings file of ROTATE=90 and WLR_RENDERER=pixman: the compositor
-#      comes up on the pixman renderer, the output turned (720x1280, grim's
-#      screen of it too), and Family mruby's Exit ends the session (exit 0,
-#      no process of it left)
+#      a settings file of ROTATE=90 only, in what systemd-detect-virt (a
+#      stand-in on the PATH) says is a virtual machine (L9c): the session
+#      chooses pixman and the software pointer and says why in one line, the
+#      compositor comes up on the pixman renderer, the output turned
+#      (720x1280, grim's screen of it too), and Family mruby's Exit ends the
+#      session (exit 0, no process of it left)
 #
 # The run directory (control and inject sockets) is a host directory mounted
 # into the container, so the root tools drive the program from outside
@@ -414,13 +416,18 @@ begin
   if arch == "amd64"
     out, st = dexec("apt-get install -y --no-install-recommends grim > /tmp/grim.log 2>&1; command -v grim", ok: false)
     raise "grim did not install (#{out.strip})" unless st.success?
-    File.write(File.join(RUN, "session.conf"), "ROTATE=90\nWLR_RENDERER=pixman\n")
+    File.write(File.join(RUN, "session.conf"), "ROTATE=90\n")
+    # The virtual machine's answer, ahead of whatever the image has.
+    FileUtils.mkdir_p(File.join(RUN, "virt"))
+    File.write(File.join(RUN, "virt/systemd-detect-virt"), "#!/bin/sh\necho oracle\n")
+    File.chmod(0o755, File.join(RUN, "virt/systemd-detect-virt"))
     File.delete(log) if File.exist?(log)
     slog = File.join(RUN, "session.log")
     sh!("docker", "exec", "-d", NAME, "bash", "-c",
         "umask 0; cd /root; mkdir -p -m 700 /run/fmrb/xdg; export XDG_RUNTIME_DIR=/run/fmrb/xdg " \
         "FMRB_NATIVE_RUN_DIR=/run/fmrb FMRB_SESSION_CONF=/run/fmrb/session.conf WLR_BACKENDS=headless " \
-        "WLR_HEADLESS_OUTPUTS=1 SDL_AUDIODRIVER=dummy; /usr/bin/family-mruby-session > /run/fmrb/session.log 2>&1; " \
+        "WLR_HEADLESS_OUTPUTS=1 SDL_AUDIODRIVER=dummy PATH=/run/fmrb/virt:$PATH; " \
+        "/usr/bin/family-mruby-session > /run/fmrb/session.log 2>&1; " \
         "echo \"exit=$?\" >> /run/fmrb/session.log")
     deadline = now + opts[:timeout]
     text = ""
@@ -436,11 +443,13 @@ begin
     FileUtils.cp(File.join(RUN, "session_screen.png"), File.join(OUT, "session_screen.png"))
     screen = Regress::Screens::Image.load(File.join(OUT, "session_screen.png"))
     renderer = text[/renderer (\w+)/, 1]
+    vm_line = text[/family-mruby-session: a virtual machine.*/].to_s
     up = text.include?("starting /usr/bin/family-mruby --machine linux_pc_wl (rotate 90)") &&
-         text.include?("compositor: wlroots") && renderer == "pixman"
+         text.include?("compositor: wlroots") && renderer == "pixman" &&
+         vm_line.include?("(oracle): drawing without the GPU (WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1)")
     turned = inf["out"] == "720x1280" && inf["rotate"] == "90" && screen.w == 720 && screen.h == 1280
-    result("session: the compositor, turned", up && turned,
-           "#{text[/family-mruby-session: starting.*/]}; renderer #{renderer}; output #{inf['out']} " \
+    result("session: a virtual machine, pixman, turned", up && turned,
+           "#{vm_line}; #{text[/family-mruby-session: starting.*/]}; renderer #{renderer}; output #{inf['out']} " \
            "(rotate #{inf['rotate']}), picture #{inf['frame']} at #{inf['scale']}x at (#{inf['at']}); grim's screen " \
            "#{screen.w}x#{screen.h}")
     # Exit from the power menu (frame coordinates to the output's).

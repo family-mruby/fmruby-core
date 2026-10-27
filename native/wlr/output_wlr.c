@@ -37,6 +37,17 @@
  * window), except Ctrl+Tab / Ctrl+comma, which are always Family mruby's
  * (switching windows). The windows' keymap follows keyboard_layout.
  *
+ * Dialogs (L9c): a window with a parent (xdg set_parent, X11
+ * WM_TRANSIENT_FOR) is a Linux window like the others, with its stand-in;
+ * the notice of it names the parent, and Family mruby's side puts it in the
+ * middle of the parent's and keeps it above (wl_bridge.c). Menus and
+ * tooltips (xdg popups, X11 override-redirect windows) have no stand-in and
+ * lie over the picture, but never outside its rectangle: an xdg popup is
+ * unconstrained against it (its positioner's slide, flip and resize), cut
+ * at its edge if it still reaches out; an X11 menu is moved into it. A
+ * button pressed anywhere but on a window's popups closes them (popup_done),
+ * as a click outside a menu does on any desktop.
+ *
  * Linux windows are told to draw no decoration of their own
  * (xdg-decoration, server side): the stand-in draws the frame. Maximize and
  * fullscreen requests are answered without a change; move and resize
@@ -188,6 +199,7 @@ typedef struct window {
     uint64_t hold_until_ms;                 /* X11: its own size stands until then (0: none) */
     struct wl_listener map, unmap, commit, destroy;
     struct wl_listener set_title, request_move, request_resize, request_maximize, request_fullscreen;
+    struct wl_listener set_parent;
 #if WLR_HAS_XWAYLAND
     struct wlr_xwayland_surface *xs;        /* WIN_X11 */
     bool or_win;                            /* override-redirect: a menu or tooltip, no stand-in */
@@ -196,8 +208,11 @@ typedef struct window {
 } window_t;
 
 typedef struct popup {
+    struct wl_list link;                    /* s.popups, parents before their children */
     struct wlr_xdg_popup *popup;
-    struct wl_listener commit, destroy;
+    struct wlr_scene_tree *tree;            /* its scene (in its window's popups tree) */
+    int win_id;                             /* the window it belongs to (its root toplevel's) */
+    struct wl_listener commit, reposition, destroy;
 } popup_t;
 
 typedef struct deco {
@@ -242,6 +257,7 @@ static struct {
     struct wlr_xcursor_manager *xcursor;
     struct wlr_seat *seat;
     struct wl_list windows;                 /* window_t */
+    struct wl_list popups;                  /* popup_t */
     struct wl_list keyboards;               /* keyboard_t */
     struct wl_event_source *wake_source;
     int wake_fd;
@@ -332,6 +348,17 @@ static window_t *window_by_id(int id)
         if (w->id == id) return w;
     }
     return NULL;
+}
+
+/* The id of the window an xdg toplevel is, 0 when it has none (not mapped). */
+static int toplevel_id(const struct wlr_xdg_toplevel *t)
+{
+    if (t == NULL) return 0;
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (w->kind == WIN_XDG && w->toplevel == t) return w->mapped ? w->id : 0;
+    }
+    return 0;
 }
 
 /* ---------------------------------------------- xdg and X11 windows alike */
@@ -567,6 +594,70 @@ static void apply_window(window_t *w)
     }
 }
 
+/* A popup cut at the picture's edge, whatever its positioner allowed: the
+ * clip is in its own surface's coordinates (its scene tree's place on the
+ * output less its geometry's offset). Its children get theirs after it (the
+ * list has parents first), since a clip reaches the subsurface trees under
+ * the node. */
+static void popup_clip(popup_t *p)
+{
+    int tx = 0, ty = 0;
+    wlr_scene_node_coords(&p->tree->node, &tx, &ty);
+    struct wlr_box g = p->popup->base->current.geometry;
+    int bx = 0, by = 0, bw = 0, bh = 0;
+    comp_route_picture_box(&s.route, tx - g.x, ty - g.y, &bx, &by, &bw, &bh);
+    struct wlr_box clip = { .x = bx, .y = by, .width = bw, .height = bh };
+    wlr_scene_subsurface_tree_set_clip(&p->tree->node, &clip);
+}
+
+static void clip_popups(void)
+{
+    popup_t *p;
+    wl_list_for_each(p, &s.popups, link) popup_clip(p);
+}
+
+/* Close every popup but those of window keep (a press elsewhere). */
+static void close_popups(int keep)
+{
+    int n = 0;
+    for (int guard = 0, again = 1; again && guard < 64; guard++) {
+        again = 0;
+        popup_t *p;
+        wl_list_for_each(p, &s.popups, link) {
+            if (p->win_id == keep) continue;
+            /* The outermost of each chain: wlroots closes its children with
+             * it, which takes them off the list -- so the walk starts over. */
+            struct wlr_xdg_surface *ps = wlr_xdg_surface_try_from_wlr_surface(p->popup->parent);
+            if (ps != NULL && ps->role == WLR_XDG_SURFACE_ROLE_POPUP) continue;
+            wlr_xdg_popup_destroy(p->popup);
+            n++;
+            again = 1;
+            break;
+        }
+    }
+    if (n > 0) fprintf(stderr, "native: compositor: %d menu%s closed (a press elsewhere)\n", n, n == 1 ? "" : "s");
+}
+
+#if WLR_HAS_XWAYLAND
+/* An X11 menu or tooltip moved into the picture's rectangle (the least move)
+ * and cut at its edge if larger. */
+static void or_keep_inside(window_t *w)
+{
+    struct wlr_xwayland_surface *xs = w->xs;
+    int x = xs->x, y = xs->y;
+    if (comp_route_inside(&s.route, &x, &y, xs->width, xs->height)) {
+        fprintf(stderr, "native: compositor: X11 menu %d %dx%d moved from (%d,%d) to (%d,%d), inside the picture\n",
+                w->id, xs->width, xs->height, xs->x, xs->y, x, y);
+        wlr_xwayland_surface_configure(xs, (int16_t)x, (int16_t)y, xs->width, xs->height);
+    }
+    wlr_scene_node_set_position(&w->tree->node, x, y);
+    int bx = 0, by = 0, bw = 0, bh = 0;
+    comp_route_picture_box(&s.route, x, y, &bx, &by, &bw, &bh);
+    struct wlr_box clip = { .x = bx, .y = by, .width = bw, .height = bh };
+    wlr_scene_subsurface_tree_set_clip(&w->tree->node, &clip);
+}
+#endif
+
 /* Place the black, the picture and the windows from the route. */
 static void apply_layout(void)
 {
@@ -587,6 +678,7 @@ static void apply_layout(void)
     wl_list_for_each_reverse(w, &s.windows, link) {
         if (is_or(w) && w->mapped) wlr_scene_node_raise_to_top(&w->tree->node);
     }
+    clip_popups();
     s.recompose = true;
     static fmrb_present_place_t logged;
     if (memcmp(&logged, &r->place, sizeof(logged)) != 0) {
@@ -666,13 +758,16 @@ static void window_map(struct wl_listener *l, void *data)
     const char *app_id = w->toplevel->app_id ? w->toplevel->app_id : "";
     char name[COMP_TEXT];
     window_name(app_id, NULL, win_pid(w), name, 32);
-    comp_route_window_add(&s.route, w->id, g.width, g.height, name);
+    int parent = toplevel_id(w->toplevel->parent);
+    comp_route_window_add(&s.route, w->id, g.width, g.height, parent, name);
     if (w->toplevel->title != NULL) {
         comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->toplevel->title);
     }
-    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (decoration: %s; app id %s, named %s)\n", w->id,
+    char rel[32] = "";
+    if (parent > 0) snprintf(rel, sizeof(rel), ", a dialog of window %d", parent);
+    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (decoration: %s; app id %s, named %s%s)\n", w->id,
             w->toplevel->title ? w->toplevel->title : "", g.width, g.height,
-            w->deco != NULL ? "server side" : "none asked", app_id, name);
+            w->deco != NULL ? "server side" : "none asked", app_id, name, rel);
     apply_layout();
 }
 
@@ -731,6 +826,17 @@ static void window_commit(struct wl_listener *l, void *data)
         s.stats.key_lat_sum_ms += lat;
         if (lat > s.stats.key_lat_max_ms) s.stats.key_lat_max_ms = lat;
     }
+}
+
+/* A parent set (or unset) after the window appeared. */
+static void window_set_parent(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, set_parent);
+    if (!w->mapped) return;
+    int parent = toplevel_id(w->toplevel->parent);
+    comp_route_notice(&s.route, COMP_NOTICE_PARENT, w->id, parent, 0, 0, 0, NULL);
+    fprintf(stderr, "native: compositor: window %d: parent now %d\n", w->id, parent);
 }
 
 static void window_set_title(struct wl_listener *l, void *data)
@@ -809,6 +915,7 @@ static void window_destroy(struct wl_listener *l, void *data)
     wl_list_remove(&w->request_resize.link);
     wl_list_remove(&w->request_maximize.link);
     wl_list_remove(&w->request_fullscreen.link);
+    wl_list_remove(&w->set_parent.link);
     wl_list_remove(&w->link);
     wlr_scene_node_destroy(&w->popups->node);
     wlr_scene_node_destroy(&w->backdrop->node);
@@ -852,14 +959,46 @@ static void new_toplevel(struct wl_listener *l, void *data)
     wl_signal_add(&t->events.request_maximize, &w->request_maximize);
     w->request_fullscreen.notify = window_request_fullscreen;
     wl_signal_add(&t->events.request_fullscreen, &w->request_fullscreen);
+    w->set_parent.notify = window_set_parent;
+    wl_signal_add(&t->events.set_parent, &w->set_parent);
     wl_list_insert(&s.windows, &w->link);
+}
+
+/* The popup's first configure: placed by its positioner inside the picture's
+ * rectangle (in the coordinates of its window's surface, whose geometry lies
+ * at the window's place). */
+static void popup_unconstrain(popup_t *p)
+{
+    window_t *w = window_by_id(p->win_id);
+    const comp_window_t *cw = w != NULL ? comp_route_window(&s.route, w->id) : NULL;
+    if (cw == NULL || !cw->placed || s.route.place.w <= 0) {
+        wlr_xdg_surface_schedule_configure(p->popup->base);
+        return;
+    }
+    struct wlr_box g = w->toplevel->base->current.geometry;
+    int bx = 0, by = 0, bw = 0, bh = 0;
+    comp_route_picture_box(&s.route, cw->x - g.x, cw->y - g.y, &bx, &by, &bw, &bh);
+    struct wlr_box box = { .x = bx, .y = by, .width = bw, .height = bh };
+    wlr_xdg_popup_unconstrain_from_box(p->popup, &box);
 }
 
 static void popup_commit(struct wl_listener *l, void *data)
 {
     (void)data;
     popup_t *p = wl_container_of(l, p, commit);
-    if (p->popup->base->initial_commit) wlr_xdg_surface_schedule_configure(p->popup->base);
+    if (p->popup->base->initial_commit) {
+        popup_unconstrain(p);
+        return;
+    }
+    popup_clip(p);
+}
+
+/* xdg_popup.reposition: its new positioner, inside the picture again. */
+static void popup_reposition(struct wl_listener *l, void *data)
+{
+    (void)data;
+    popup_t *p = wl_container_of(l, p, reposition);
+    popup_unconstrain(p);
 }
 
 static void popup_destroy(struct wl_listener *l, void *data)
@@ -867,7 +1006,9 @@ static void popup_destroy(struct wl_listener *l, void *data)
     (void)data;
     popup_t *p = wl_container_of(l, p, destroy);
     wl_list_remove(&p->commit.link);
+    wl_list_remove(&p->reposition.link);
     wl_list_remove(&p->destroy.link);
+    wl_list_remove(&p->link);
     free(p);
 }
 
@@ -877,14 +1018,25 @@ static void new_popup(struct wl_listener *l, void *data)
     struct wlr_xdg_popup *xp = data;
     struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xp->parent);
     if (parent == NULL || parent->data == NULL) return;
+    /* Its window: up the chain of popups to the toplevel. */
+    struct wlr_xdg_surface *root = parent;
+    while (root != NULL && root->role == WLR_XDG_SURFACE_ROLE_POPUP && root->popup != NULL) {
+        root = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
+    }
+    if (root == NULL || root->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL) return;
     popup_t *p = calloc(1, sizeof(*p));
     if (p == NULL) return;
     p->popup = xp;
-    xp->base->data = wlr_scene_xdg_surface_create(parent->data, xp->base);
+    p->win_id = toplevel_id(root->toplevel);
+    p->tree = wlr_scene_xdg_surface_create(parent->data, xp->base);
+    xp->base->data = p->tree;
     p->commit.notify = popup_commit;
     wl_signal_add(&xp->base->surface->events.commit, &p->commit);
+    p->reposition.notify = popup_reposition;
+    wl_signal_add(&xp->events.reposition, &p->reposition);
     p->destroy.notify = popup_destroy;
     wl_signal_add(&xp->events.destroy, &p->destroy);
+    wl_list_insert(s.popups.prev, &p->link);
 }
 
 /* xdg-decoration: every window is told the frame is the server's. */
@@ -935,6 +1087,15 @@ static void new_decoration(struct wl_listener *l, void *data)
 #if WLR_HAS_XWAYLAND
 static void begin_grab(window_t *w, grab_mode_t mode, uint32_t edges);
 
+/* The id of an X11 window's parent (WM_TRANSIENT_FOR), 0 when it has none
+ * that is a Family mruby window. */
+static int x11_parent_id(const struct wlr_xwayland_surface *xs)
+{
+    const window_t *p = xs->parent != NULL ? xs->parent->data : NULL;
+    if (p == NULL || !p->mapped || p->or_win) return 0;
+    return p->id;
+}
+
 static void x11_map(struct wl_listener *l, void *data)
 {
     (void)data;
@@ -945,9 +1106,10 @@ static void x11_map(struct wl_listener *l, void *data)
     w->or_win = xs->override_redirect;
     w->id = ++s.next_id;
     if (w->or_win) {
-        /* A menu or a tooltip: over the picture, where the program puts it. */
+        /* A menu or a tooltip: over the picture, where the program puts it
+         * if that is inside the picture. */
         wlr_scene_node_reparent(&w->tree->node, s.popups_tree);
-        wlr_scene_node_set_position(&w->tree->node, xs->x, xs->y);
+        or_keep_inside(w);
         wlr_scene_node_set_enabled(&w->tree->node, true);
         wlr_scene_node_raise_to_top(&w->tree->node);
         return;
@@ -960,14 +1122,17 @@ static void x11_map(struct wl_listener *l, void *data)
     w->hold_until_ms = 0;
     char name[COMP_TEXT];
     window_name(xs->class, xs->instance, xs->pid, name, 32);
-    comp_route_window_add(&s.route, w->id, xs->width, xs->height, name);
+    int parent = x11_parent_id(xs);
+    comp_route_window_add(&s.route, w->id, xs->width, xs->height, parent, name);
     if (xs->title != NULL) comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, xs->title);
-    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (X11 %s/%s, decorations %s; named %s)\n", w->id,
+    char rel[32] = "";
+    if (parent > 0) snprintf(rel, sizeof(rel), ", a dialog of window %d", parent);
+    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (X11 %s/%s, decorations %s; named %s%s)\n", w->id,
             xs->title ? xs->title : "", xs->width, xs->height, xs->instance ? xs->instance : "",
             xs->class ? xs->class : "",
             xs->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL ? "the window manager's"
                                                                      : "its own (two title bars)",
-            name);
+            name, rel);
     apply_layout();
 }
 
@@ -1059,7 +1224,7 @@ static void x11_set_geometry(struct wl_listener *l, void *data)
     struct wlr_xwayland_surface *xs = w->xs;
     if (!w->mapped) return;
     if (w->or_win) {
-        wlr_scene_node_set_position(&w->tree->node, xs->x, xs->y);
+        or_keep_inside(w);
         return;
     }
     const comp_window_t *cw = comp_route_window(&s.route, w->id);
@@ -1074,6 +1239,16 @@ static void x11_set_title(struct wl_listener *l, void *data)
     window_t *w = wl_container_of(l, w, set_title);
     if (!w->mapped || w->or_win || w->xs->title == NULL) return;
     comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->xs->title);
+}
+
+static void x11_set_parent(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, set_parent);
+    if (!w->mapped || w->or_win) return;
+    int parent = x11_parent_id(w->xs);
+    comp_route_notice(&s.route, COMP_NOTICE_PARENT, w->id, parent, 0, 0, 0, NULL);
+    fprintf(stderr, "native: compositor: window %d (X11): parent now %d\n", w->id, parent);
 }
 
 static void x11_request_move(struct wl_listener *l, void *data)
@@ -1102,6 +1277,7 @@ static void x11_destroy(struct wl_listener *l, void *data)
     wl_list_remove(&w->request_configure.link);
     wl_list_remove(&w->set_geometry.link);
     wl_list_remove(&w->set_title.link);
+    wl_list_remove(&w->set_parent.link);
     wl_list_remove(&w->request_move.link);
     wl_list_remove(&w->request_resize.link);
     wl_list_remove(&w->link);
@@ -1141,6 +1317,8 @@ static void x11_new_surface(struct wl_listener *l, void *data)
     wl_signal_add(&xs->events.set_geometry, &w->set_geometry);
     w->set_title.notify = x11_set_title;
     wl_signal_add(&xs->events.set_title, &w->set_title);
+    w->set_parent.notify = x11_set_parent;
+    wl_signal_add(&xs->events.set_parent, &w->set_parent);
     w->request_move.notify = x11_request_move;
     wl_signal_add(&xs->events.request_move, &w->request_move);
     w->request_resize.notify = x11_request_resize;
@@ -1572,6 +1750,9 @@ static void cursor_button(struct wl_listener *l, void *data)
             /* A popup is the window's own business: no focus change. */
             s.pointer_target = p.hit.target;
         } else {
+            /* Menus close on a press outside them (but on their own window,
+             * which closes them itself as it sees fit). */
+            close_popups(comp_route_at(&s.route, (int)s.cursor->x, (int)s.cursor->y).target);
             bool changed = false;
             comp_hit_t h = comp_route_press(&s.route, (int)s.cursor->x, (int)s.cursor->y, &changed);
             s.pointer_target = h.target;
@@ -2022,6 +2203,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     s.layout_kb = -1;
     comp_route_init(&s.route);
     wl_list_init(&s.windows);
+    wl_list_init(&s.popups);
     wl_list_init(&s.keyboards);
     snprintf(s.autostart, sizeof(s.autostart), "%s", m->compositor.autostart);
     s.rotate = m->display.rotate;

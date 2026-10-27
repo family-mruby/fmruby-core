@@ -13,7 +13,14 @@
  *   - a window appears (notice): spawn its stand-in, sized to the window
  *     (its size over the picture's scale, rounded up), centred; the kernel
  *     is told as for any spawn outside it ("spawned"), and gives it the
- *     keyboard.
+ *     keyboard (and puts it in front).
+ *   - a dialog (a window with a parent, L9c): its stand-in comes once the
+ *     parent's has (or after PARENT_WAIT_MS), with its content's middle on
+ *     the parent's content's middle, kept in the screen. Whenever the
+ *     parent's stand-in is above the dialog's (the parent was clicked, or
+ *     brought in front any other way), the dialog's is brought in front of
+ *     it, so a dialog never hides behind its parent; the keyboard stays
+ *     where the window manager put it.
  *   - every POLL_MS: the stand-ins' windows from the window list (content
  *     rectangle, z order, suspended or not) and the keyboard's owner from
  *     the HID routing, published as places (comp_link_place sends only
@@ -61,6 +68,8 @@ static const char *TAG = "wl_bridge";
 /* A stand-in killed while its window stays: the window is asked to close,
  * and if it is still there after this long, a new stand-in comes. */
 #define RESPAWN_MS 2000
+/* A dialog's stand-in waits this long at most for its parent's. */
+#define PARENT_WAIT_MS 1000
 /* The frame the stand-in draws around the content (FmrbApp's user area). */
 #define FRAME_X 1
 #define FRAME_TOP 11
@@ -80,6 +89,8 @@ typedef struct {
     int pid;                    /* the stand-in, -1 none */
     uint32_t gen;               /* its context's generation (slot reuse) */
     uint32_t spawn_at_ms;       /* when to spawn a stand-in (pid -1) */
+    int parent;                 /* the parent's compositor id (a dialog), 0 none */
+    uint32_t mapped_ms;         /* when the window appeared */
 } bw_t;
 
 static struct {
@@ -148,20 +159,44 @@ static void tell_kernel_spawned(int pid)
     fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
 }
 
-/* Start a stand-in for the window (called without the lock). */
-static int spawn_standin(int id, int nat_w, int nat_h, const char *app_id, uint32_t *gen)
+/* The window (frame coordinates) of a stand-in, false when it has none. */
+static bool standin_window(int pid, fmrb_window_info_t *out)
+{
+    if (pid < 0) return false;
+    int n = fmrb_app_get_window_list(s_list, FMRB_MAX_APPS);
+    for (int i = 0; i < n; i++) {
+        if (s_list[i].pid == pid) {
+            *out = s_list[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Start a stand-in for the window (called without the lock). parent_pid:
+ * the parent's stand-in for a dialog, -1 none. */
+static int spawn_standin(int id, int nat_w, int nat_h, const char *app_id, int parent_pid, uint32_t *gen)
 {
     int scale = 0, base_w = 0, base_h = 0;
     if (!comp_link_geometry(&scale, &base_w, &base_h)) return -1;
     int ww = 0, wh = 0;
     if (!fit_size(nat_w, nat_h, &ww, &wh)) return -1;
-    int step = (s_br.spawned % 5) * 10;
-    int x = (base_w - ww) / 2 + step;
-    int y = MENU_BAR_H + (base_h - MENU_BAR_H - wh) / 2 + step;
-    if (x + ww > base_w) x = base_w - ww;
-    if (y + wh > base_h) y = base_h - wh;
-    if (x < 0) x = 0;
-    if (y < MENU_BAR_H) y = MENU_BAR_H;
+    int x = 0, y = 0;
+    fmrb_window_info_t pw;
+    bool dialog = standin_window(parent_pid, &pw);
+    if (dialog) {
+        /* In the middle of the parent's content. */
+        comp_dialog_place(pw.x + FRAME_X, pw.y + FRAME_TOP, pw.width - FRAME_W, pw.height - FRAME_H, ww, wh,
+                          FRAME_X, FRAME_TOP, FRAME_W, FRAME_H, base_w, base_h, MENU_BAR_H, &x, &y);
+    } else {
+        int step = (s_br.spawned % 5) * 10;
+        x = (base_w - ww) / 2 + step;
+        y = MENU_BAR_H + (base_h - MENU_BAR_H - wh) / 2 + step;
+        if (x + ww > base_w) x = base_w - ww;
+        if (y + wh > base_h) y = base_h - wh;
+        if (x < 0) x = 0;
+        if (y < MENU_BAR_H) y = MENU_BAR_H;
+    }
 
     char name[FMRB_MAX_APP_NAME];
     snprintf(name, sizeof(name), "%s", app_id[0] ? app_id : "linux");
@@ -196,9 +231,9 @@ static int spawn_standin(int id, int nat_w, int nat_h, const char *app_id, uint3
     }
     fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(pid);
     *gen = ctx ? ctx->gen : 0;
-    s_br.spawned++;
-    FMRB_LOGI(TAG, "window %d (%s %dx%d): stand-in pid %d, %dx%d at (%d,%d)", id, name, nat_w, nat_h,
-              (int)pid, ww, wh, x, y);
+    if (!dialog) s_br.spawned++;
+    FMRB_LOGI(TAG, "window %d (%s %dx%d): stand-in pid %d, %dx%d at (%d,%d)%s", id, name, nat_w, nat_h,
+              (int)pid, ww, wh, x, y, dialog ? ", in the middle of its parent's" : "");
     tell_kernel_spawned(pid);
     return pid;
 }
@@ -229,7 +264,12 @@ static void take_notices(action_t *act, int *n_act)
             snprintf(b->title, sizeof(b->title), "%s", nt.text);
             b->alive = true;
             b->pid = -1;
-            b->spawn_at_ms = ms_now();
+            b->parent = nt.x;
+            b->mapped_ms = ms_now();
+            b->spawn_at_ms = b->mapped_ms;
+            break;
+        case COMP_NOTICE_PARENT:
+            if (b != NULL) b->parent = nt.x;
             break;
         case COMP_NOTICE_TITLE:
             if (b != NULL) {
@@ -342,6 +382,43 @@ static void build_places(comp_places_t *pl)
     }
 }
 
+/* A dialog's stand-in in front of its parent's whenever the parent's is above
+ * it (one raise per pass; chains of dialogs take a pass per link). Without
+ * the lock: the pids are copied first. */
+static void keep_dialogs_above(void)
+{
+    int pairs[COMP_MAX_WINDOWS][2];
+    int np = 0;
+    fmrb_semaphore_take(s_br.lock, FMRB_TICK_MAX);
+    for (int i = 0; i < COMP_MAX_WINDOWS; i++) {
+        bw_t *b = &s_br.w[i];
+        if (b->id == 0 || b->pid < 0 || b->parent <= 0 || !b->alive) continue;
+        bw_t *pb = by_id(b->parent);
+        if (pb == NULL || pb->pid < 0) continue;
+        pairs[np][0] = b->pid;
+        pairs[np][1] = pb->pid;
+        np++;
+    }
+    fmrb_semaphore_give(s_br.lock);
+    for (int pass = 0; pass < np; pass++) {
+        int n = fmrb_app_get_window_list(s_list, FMRB_MAX_APPS);
+        bool raised = false;
+        for (int k = 0; k < np && !raised; k++) {
+            int zd = -1, zp = -1;
+            for (int i = 0; i < n; i++) {
+                if (s_list[i].pid == pairs[k][0]) zd = s_list[i].z_order;
+                if (s_list[i].pid == pairs[k][1]) zp = s_list[i].z_order;
+            }
+            if (zd < 0 || zp < 0 || zd > zp) continue;
+            if (fmrb_app_bring_to_front((uint8_t)pairs[k][0]) == FMRB_OK) {
+                FMRB_LOGI(TAG, "stand-in pid %d in front of its parent's (pid %d)", pairs[k][0], pairs[k][1]);
+                raised = true;
+            }
+        }
+        if (!raised) break;
+    }
+}
+
 static void bridge_task(void *arg)
 {
     (void)arg;
@@ -364,7 +441,7 @@ static void bridge_task(void *arg)
         action_t act[COMP_MAX_WINDOWS];
         int n_act = 0;
         struct {
-            int id, w, h;
+            int id, w, h, parent_pid;
             char app_id[32];
         } want[COMP_MAX_WINDOWS];
         int n_want = 0;
@@ -391,6 +468,10 @@ static void bridge_task(void *arg)
                 continue;
             }
             if (b->alive && b->pid < 0 && (int32_t)(t - b->spawn_at_ms) >= 0) {
+                /* A dialog waits a moment for its parent's stand-in. */
+                bw_t *pb = b->parent > 0 ? by_id(b->parent) : NULL;
+                if (pb != NULL && pb->alive && pb->pid < 0 && (int32_t)(t - b->mapped_ms) < PARENT_WAIT_MS) continue;
+                want[n_want].parent_pid = pb != NULL ? pb->pid : -1;
                 want[n_want].id = b->id;
                 want[n_want].w = b->nat_w;
                 want[n_want].h = b->nat_h;
@@ -405,7 +486,7 @@ static void bridge_task(void *arg)
         for (int i = 0; i < n_act; i++) do_action(&act[i]);
         for (int i = 0; i < n_want; i++) {
             uint32_t gen = 0;
-            int pid = spawn_standin(want[i].id, want[i].w, want[i].h, want[i].app_id, &gen);
+            int pid = spawn_standin(want[i].id, want[i].w, want[i].h, want[i].app_id, want[i].parent_pid, &gen);
             if (pid < 0) continue;
             fmrb_semaphore_take(s_br.lock, FMRB_TICK_MAX);
             bw_t *b = by_id(want[i].id);
@@ -415,6 +496,8 @@ static void bridge_task(void *arg)
             }
             fmrb_semaphore_give(s_br.lock);
         }
+
+        keep_dialogs_above();
 
         comp_places_t pl;
         fmrb_semaphore_take(s_br.lock, FMRB_TICK_MAX);
