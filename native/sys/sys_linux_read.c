@@ -6,6 +6,7 @@
 
 #include "sys_linux_read.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -255,4 +256,66 @@ const char *sys_linux_logind_method(unsigned action)
     case FMRB_SYS_POWER_SUSPEND: return "Suspend";
     default:                     return NULL;
     }
+}
+
+/* The value of key in a KEY=VALUE file (shell or ini style; in an ini file
+ * only inside [section], when one is named), quotes and blanks taken off.
+ * false when the key is not there or is empty. */
+static bool conf_value(const char *path, const char *section, const char *key, char *out, size_t cap)
+{
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return false;
+    char line[512];
+    bool in = section == NULL;
+    bool got = false;
+    size_t klen = strlen(key);
+    while (fgets(line, sizeof(line), f) != NULL) {
+        char *p = line;
+        while (isspace((unsigned char)*p)) p++;
+        p[strcspn(p, "\r\n")] = '\0';
+        if (*p == '[') {
+            if (section != NULL) {
+                size_t slen = strlen(section);
+                in = strncmp(p + 1, section, slen) == 0 && p[1 + slen] == ']';
+            }
+            continue;
+        }
+        if (!in || strncmp(p, key, klen) != 0) continue;
+        char *q = p + klen;
+        while (*q == ' ' || *q == '\t') q++;
+        if (*q != '=') continue;
+        q++;
+        while (*q == ' ' || *q == '\t' || *q == '"' || *q == '\'') q++;
+        size_t n = strlen(q);
+        while (n > 0 && (q[n - 1] == ' ' || q[n - 1] == '\t' || q[n - 1] == '"' || q[n - 1] == '\'')) n--;
+        q[n] = '\0';
+        snprintf(out, cap, "%s", q);
+        got = out[0] != '\0';
+    }
+    fclose(f);
+    return got;
+}
+
+/* The first of a comma-separated list, as jp or us. */
+static const char *layout_of(char *list)
+{
+    list[strcspn(list, ", ")] = '\0';
+    return strcmp(list, "jp") == 0 ? "jp" : "us";
+}
+
+const char *sys_linux_keyboard_layout(const char *kxkbrc, const char *keyboard, char *how, size_t how_len)
+{
+    char v[256];
+    char use[16];
+    if (kxkbrc != NULL && conf_value(kxkbrc, "Layout", "Use", use, sizeof(use)) && strcmp(use, "true") == 0 &&
+        conf_value(kxkbrc, "Layout", "LayoutList", v, sizeof(v))) {
+        if (how) snprintf(how, how_len, "LayoutList=%s in %s", v, kxkbrc);
+        return layout_of(v);
+    }
+    if (keyboard != NULL && conf_value(keyboard, NULL, "XKBLAYOUT", v, sizeof(v))) {
+        if (how) snprintf(how, how_len, "XKBLAYOUT=%s in %s", v, keyboard);
+        return layout_of(v);
+    }
+    if (how) snprintf(how, how_len, "no layout set in %s or %s", kxkbrc ? kxkbrc : "-", keyboard ? keyboard : "-");
+    return "us";
 }

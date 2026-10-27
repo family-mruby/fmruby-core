@@ -279,6 +279,9 @@ static void decide_setup_mode(const toml_table_t *conf)
 }
 
 #if defined(FMRB_PLATFORM_NATIVE)
+// keyboard_layout = "auto": Linux's layout (native/sys/platform_sys_linux.c).
+extern bool native_linux_keyboard_jp(char *how, size_t how_len);
+
 // The native program's machine (fmrb_kernel.h). Native only, so a device's
 // internal RAM does not carry it.
 static fmrb_native_machine_conf_t g_native_machine = {
@@ -294,6 +297,12 @@ void fmrb_kernel_set_native_machine(uint16_t screen_w, uint16_t screen_h,
     g_native_machine.screen_h = screen_h;
     g_native_machine.keys_desktop = keys_desktop;
     g_native_machine.esc_long_quits = esc_long_quits;
+}
+
+void fmrb_kernel_set_native_fullscreen(uint16_t width, uint16_t height)
+{
+    g_native_machine.fullscreen_w = width;
+    g_native_machine.fullscreen_h = height;
 }
 
 const fmrb_native_machine_conf_t *fmrb_kernel_native_machine(void)
@@ -578,6 +587,18 @@ static bool read_system_config(void)
 
     // Read keyboard layout and apply
     const char *kbd_layout_str = fmrb_toml_get_string(conf, "keyboard_layout", NULL);
+#if defined(FMRB_PLATFORM_NATIVE)
+    // "auto" (the native program's default, doc/linux_native L9d): the
+    // layout Linux is set to, unless the user chose one in Config.
+    if (kbd_layout_str && strcmp(kbd_layout_str, "auto") == 0) {
+        char how[256];
+        bool jp = native_linux_keyboard_jp(how, sizeof(how));
+        fmrb_keymap_set_layout(jp ? FMRB_KEYMAP_LAYOUT_JP : FMRB_KEYMAP_LAYOUT_US);
+        FMRB_LOGI(TAG, "Keyboard layout: auto -> %s (Linux's: %s)", jp ? "jp" : "us", how);
+        fmrb_sys_free((void *)kbd_layout_str);
+        kbd_layout_str = NULL;
+    } else
+#endif
     if (kbd_layout_str) {
         fmrb_keymap_layout_t layout = parse_keyboard_layout(kbd_layout_str);
         fmrb_keymap_set_layout(layout);
@@ -1267,6 +1288,18 @@ int fmrb_kernel_setup_reason(void)
 const fmrb_system_config_t* fmrb_kernel_get_config(void)
 {
     return &g_system_config;
+}
+
+void fmrb_kernel_fullscreen_size(uint16_t *width, uint16_t *height)
+{
+    *width = (uint16_t)(g_system_config.display_width - g_system_config.display_margin_x);
+    *height = (uint16_t)(g_system_config.display_height - g_system_config.display_margin_y);
+#if defined(FMRB_PLATFORM_NATIVE)
+    if (g_native_machine.fullscreen_w > 0 && g_native_machine.fullscreen_h > 0) {
+        *width = g_native_machine.fullscreen_w;
+        *height = g_native_machine.fullscreen_h;
+    }
+#endif
 }
 
 // The halt screen: white on dark red, the 6x8 default font, wrapped at the

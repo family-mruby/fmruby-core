@@ -47,6 +47,9 @@ typedef struct {
     void (*close)(void);
     /* Requests of its own on the control socket (native_ctl.h), or NULL. */
     bool (*ctl)(const char *request, char *reply, size_t cap);
+    /* The output's size once open (as the picture is laid out on it), for
+     * the screen form "output"; NULL where the form is not offered. */
+    bool (*size)(int *w, int *h);
 } native_output_t;
 
 typedef struct {

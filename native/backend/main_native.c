@@ -513,10 +513,6 @@ int main(int argc, char **argv)
     if (native_machine_check(m, why, sizeof(why)) != 0) return refuse("definition", why);
     native_backends_t be;
     if (!native_backends_select(m, &be, why, sizeof(why))) return refuse("backend", why);
-    /* The screen and the desktop the kernel will use (fmrb_kernel.h). */
-    fmrb_kernel_set_native_machine((uint16_t)m->screen.w, (uint16_t)m->screen.h,
-                                   strcmp(m->desktop.variant, "keys") == 0,
-                                   strcmp(m->system.exit_key, "esc_long") == 0);
 
     /* The sockets live here, and a Unix socket's path has to fit in 108
      * bytes: refuse a run directory that would silently truncate them. */
@@ -566,6 +562,22 @@ int main(int argc, char **argv)
     /* The devices: screen, sound, input. Each one either is had now or the
      * machine does not start. */
     if (!be.output->open(m, why, sizeof(why))) return refuse("display", why);
+    /* The screen and the desktop the kernel will use (fmrb_kernel.h): the
+     * definition's form, or (form "output", L9d) the output over the scale,
+     * known only now that the output is open. A fullscreen app keeps
+     * Modern's 426x240 on a larger one, laid on the output by itself. */
+    int screen_w = m->screen.w, screen_h = m->screen.h;
+    if (native_machine_screen_from_output(m)) {
+        int ow = 0, oh = 0;
+        if (be.output->size == NULL || !be.output->size(&ow, &oh)) ow = oh = 0;
+        char how[160];
+        native_machine_output_screen(m, ow, oh, &screen_w, &screen_h, how, sizeof(how));
+        fprintf(stderr, "native: screen %dx%d (%s)\n", screen_w, screen_h, how);
+        if (screen_w > 426 || screen_h > 240) fmrb_kernel_set_native_fullscreen(426, 240);
+    }
+    fmrb_kernel_set_native_machine((uint16_t)screen_w, (uint16_t)screen_h,
+                                   strcmp(m->desktop.variant, "keys") == 0,
+                                   strcmp(m->system.exit_key, "esc_long") == 0);
     if (!be.audio->open(m, why, sizeof(why))) {
         be.output->close();
         return refuse("audio", why);

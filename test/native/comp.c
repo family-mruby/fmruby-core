@@ -3,7 +3,8 @@
 //
 //   route   native/wlr/comp_route.c: the picture's place on outputs of
 //           several sizes (whole scale, centred, black around; the
-//           high-resolution frame), windows placed by Family mruby (its
+//           high-resolution frame; a fullscreen app's part of a wide frame
+//           alone, L9d), windows placed by Family mruby (its
 //           stand-ins' content rectangles times the scale; hidden when not
 //           placed, not shown, or in the high-resolution mode), the holes
 //           (the hole colour inside a shown window's rectangle: what the
@@ -492,9 +493,61 @@ static void test_frame(void)
     close(fd);
 }
 
+// The wide screen (L9d): a 640x400 frame filling a 1280x800 output at 2x,
+// and the view -- a fullscreen app's 426x240 alone at 3x, centred -- with
+// the pointer through it and the windows hidden meanwhile.
+static void test_view(void)
+{
+    comp_route_t r;
+    comp_route_init(&r);
+    comp_route_layout(&r, 1280, 800, 640, 400);
+    comp_route_set_base(&r, 640, 400);
+    CHECK(r.place.scale == 2 && r.place.x == 0 && r.place.y == 0 && r.place.w == 1280 && r.place.h == 800,
+          "640x400 fills 1280x800 at 2x (%d at %d,%d)", r.place.scale, r.place.x, r.place.y);
+    CHECK(!r.viewing && r.show.scale == 2, "no view: the whole frame is shown");
+    CHECK(comp_route_window_add(&r, 1, 400, 300, 0, "foot"), "add");
+    comp_place_t p = { .id = 1, .x = 300, .y = 100, .w = 200, .h = 150, .shown = true };
+    comp_route_place(&r, &p, 1, 1);
+    const comp_window_t *w = comp_route_window(&r, 1);
+    int ww = 0, wh = 0;
+    CHECK(w->visible && w->x == 600 && w->y == 200 && comp_route_wanted_size(&r, 1, &ww, &wh) && ww == 400 &&
+          wh == 300, "a window at 2x: (%d,%d) %dx%d", w->x, w->y, ww, wh);
+
+    CHECK(comp_route_set_view(&r, 0, 0, 426, 240), "a view changes what is shown");
+    CHECK(!comp_route_set_view(&r, 0, 0, 426, 240), "the same view again: no change");
+    CHECK(r.viewing && r.show.scale == 3 && r.show.x == 1 && r.show.y == 40 && r.show.w == 1278 && r.show.h == 720,
+          "426x240 alone at 3x, (%d,%d) %dx%d", r.show.x, r.show.y, r.show.w, r.show.h);
+    CHECK(r.place.scale == 2, "the windows keep the frame's scale (%d)", r.place.scale);
+    w = comp_route_window(&r, 1);
+    CHECK(!w->visible, "windows hidden under the view");
+    int fx = 0, fy = 0;
+    CHECK(comp_route_to_frame(&r, 1 + 3 * 100 + 1, 40 + 3 * 50 + 2, &fx, &fy) && fx == 100 && fy == 50,
+          "a point through the view: %d,%d", fx, fy);
+    CHECK(!comp_route_to_frame(&r, 1279, 10, &fx, &fy) && fx == 425 && fy == 0, "the band: clamped to %d,%d", fx,
+          fy);
+    comp_hit_t h = comp_route_at(&r, 1 + 3 * 425 + 1, 40 + 3 * 239 + 1);
+    CHECK(h.target == COMP_FMRB && h.in_picture && h.x == 425 && h.y == 239, "hit through the view %d,%d", h.x,
+          h.y);
+    // Not smaller than the frame, or not inside it: no view.
+    CHECK(comp_route_set_view(&r, 0, 0, 640, 400) && !r.viewing, "a view of the whole frame is none");
+    comp_route_set_view(&r, 300, 0, 426, 240);
+    CHECK(!r.viewing, "a view reaching out of the frame is none");
+    comp_route_set_view(&r, 0, 0, 426, 240);
+    // The high-resolution frame (not the base) ignores the view.
+    comp_route_layout(&r, 1280, 800, 640, 360);
+    CHECK(!r.viewing && r.show.scale == 2, "another frame than the base: no view");
+    comp_route_layout(&r, 1280, 800, 640, 400);
+    CHECK(r.viewing, "the base frame again: the view again");
+    comp_route_set_view(&r, 0, 0, 0, 0);
+    w = comp_route_window(&r, 1);
+    CHECK(!r.viewing && w->visible && w->x == 600, "the view gone: the window shows again");
+    comp_route_destroy(&r);
+}
+
 int main(void)
 {
     test_place();
+    test_view();
     test_hits();
     test_stacking();
     test_focus();

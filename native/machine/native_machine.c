@@ -176,6 +176,11 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
     if (strcmp(key, "name") == 0) return copy_str(m->name, sizeof(m->name), value, key, err, n);
     if (strcmp(key, "description") == 0) return copy_str(m->description, sizeof(m->description), value, key, err, n);
 
+    if (strcmp(key, "screen.form") == 0 && strcmp(value, "output") == 0) {
+        m->screen.w = 0;
+        m->screen.h = 0;
+        return copy_str(m->screen.form, sizeof(m->screen.form), value, key, err, n);
+    }
     if (strcmp(key, "screen.form") == 0) {
         int w = 0, h = 0;
         if (parse_form(value, &w, &h) != 0) return fail(err, n, "screen.form: \"%s\" is not WxH", value);
@@ -378,10 +383,18 @@ void native_machine_resolve(const char *arg, const char *machines_dir, char *out
 int native_machine_check(const native_machine_t *m, char *err, size_t n)
 {
     /* The screens this program has: Modern's 426x240 (its fullscreen
-     * high-resolution mode stays with it) and the Cardputer's 320x170. */
-    if (!(m->screen.w == 426 && m->screen.h == 240) &&
-        !(m->screen.w == 320 && m->screen.h == 170)) {
-        return fail(err, n, "screen.form %s is not a screen this program has (426x240, 320x170)",
+     * high-resolution mode stays with it), the Cardputer's 320x170, and the
+     * compositor's output over its scale (L9d). */
+    if (native_machine_screen_from_output(m)) {
+        if (strcmp(m->display.backend, "wlroots") != 0) {
+            return fail(err, n, "screen.form output needs display.backend wlroots (it is %s)", m->display.backend);
+        }
+        if (strcmp(m->desktop.variant, "mouse") != 0) {
+            return fail(err, n, "screen.form output needs desktop.variant mouse");
+        }
+    } else if (!(m->screen.w == 426 && m->screen.h == 240) &&
+               !(m->screen.w == 320 && m->screen.h == 170)) {
+        return fail(err, n, "screen.form %s is not a screen this program has (426x240, 320x170, output)",
                     m->screen.form);
     }
     if (strcmp(m->desktop.variant, "mouse") != 0 && strcmp(m->desktop.variant, "keys") != 0) {
@@ -391,6 +404,52 @@ int native_machine_check(const native_machine_t *m, char *err, size_t n)
         return fail(err, n, "input.keymap \"%s\" is not \"\" or cardputer_zero", m->input.keymap);
     }
     return 0;
+}
+
+bool native_machine_screen_from_output(const native_machine_t *m)
+{
+    return strcmp(m->screen.form, "output") == 0;
+}
+
+/* The smallest screen the desktop is laid out for (Modern's). */
+#define OUTPUT_SCREEN_MIN_W 426
+#define OUTPUT_SCREEN_MIN_H 240
+/* The largest: what the program's frame copy holds (main_native.c's
+ * FRAME_CAP_PX); a 4K output at scale 1 gets this, laid on it at 2x. */
+#define OUTPUT_SCREEN_MAX_W 1920
+#define OUTPUT_SCREEN_MAX_H 1080
+
+void native_machine_output_screen(const native_machine_t *m, int out_w, int out_h, int *w, int *h,
+                                  char *why, size_t why_len)
+{
+    int s = m->display.scale > 0 ? m->display.scale : 2;
+    *w = OUTPUT_SCREEN_MIN_W;
+    *h = OUTPUT_SCREEN_MIN_H;
+    if (out_w <= 0 || out_h <= 0) {
+        if (why) snprintf(why, why_len, "the output's size is not known");
+        return;
+    }
+    if (out_h > out_w) {
+        if (why) snprintf(why, why_len, "a portrait output (%dx%d): the %dx%d screen", out_w, out_h, *w, *h);
+        return;
+    }
+    int sw = out_w / s, sh = out_h / s;
+    if (sw < OUTPUT_SCREEN_MIN_W || sh < OUTPUT_SCREEN_MIN_H) {
+        if (why) {
+            snprintf(why, why_len, "output %dx%d over %d is %dx%d, under %dx%d: the %dx%d screen", out_w, out_h, s,
+                     sw, sh, OUTPUT_SCREEN_MIN_W, OUTPUT_SCREEN_MIN_H, *w, *h);
+        }
+        return;
+    }
+    bool capped = sw > OUTPUT_SCREEN_MAX_W || sh > OUTPUT_SCREEN_MAX_H;
+    if (sw > OUTPUT_SCREEN_MAX_W) sw = OUTPUT_SCREEN_MAX_W;
+    if (sh > OUTPUT_SCREEN_MAX_H) sh = OUTPUT_SCREEN_MAX_H;
+    *w = sw;
+    *h = sh;
+    if (why) {
+        snprintf(why, why_len, "output %dx%d over %d%s", out_w, out_h, s,
+                 capped ? ", kept within 1920x1080" : "");
+    }
 }
 
 void native_machine_describe(const native_machine_t *m, char *out, size_t out_len)

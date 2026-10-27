@@ -8,6 +8,13 @@ static const char *TAG = "app_canvas";
 // in RGB332). Every binding used this same value.
 #define APP_CANVAS_TRANSPARENT_KEY 0x01
 
+#if defined(FMRB_PLATFORM_NATIVE)
+// The native compositor's stand-ins for Linux windows key their canvas on a
+// colour of their own, so their content (0x01, the compositor's hole) stays
+// opaque while their corners show through (native/wlr/wl_bridge.c, L9d).
+extern uint8_t native_wl_canvas_key(const fmrb_app_task_context_t *ctx, uint8_t key);
+#endif
+
 static fmrb_err_t create_canvas(fmrb_app_task_context_t *ctx, uint16_t width,
                                 uint16_t height, int16_t z_order,
                                 bool use_transparent, uint8_t transparent_color,
@@ -104,10 +111,13 @@ fmrb_err_t fmrb_app_canvas_init(fmrb_app_task_context_t *ctx,
     // Colour-key transparency only for a non-fullscreen window that kept its
     // rounded corners; opting out skips the per-pixel compare in the
     // compositor.
+    uint8_t key = APP_CANVAS_TRANSPARENT_KEY;
+#if defined(FMRB_PLATFORM_NATIVE)
+    key = native_wl_canvas_key(ctx, key);
+#endif
     fmrb_err_t ret = fmrb_app_canvas_create_main(
         ctx, ctx->window_width, ctx->window_height, ctx->z_order,
-        !ctx->fullscreen && ctx->rounded_corners, APP_CANVAS_TRANSPARENT_KEY,
-        out_canvas);
+        !ctx->fullscreen && ctx->rounded_corners, key, out_canvas);
     if (ret != FMRB_OK) {
         return ret;
     }

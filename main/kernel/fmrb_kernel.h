@@ -73,6 +73,13 @@ void fmrb_kernel_stop(void);
 const fmrb_system_config_t* fmrb_kernel_get_config(void);
 
 /**
+ * @brief The size a fullscreen window gets: the display minus its margins,
+ *        except on the native compositor machine with a screen larger than
+ *        Modern's, where fullscreen apps keep Modern's 426x240 (L9d).
+ */
+void fmrb_kernel_fullscreen_size(uint16_t *width, uint16_t *height);
+
+/**
  * @brief The startup_app path from system_conf ("" when none).
  *
  * Kept apart from fmrb_system_config_t so the path lives in external RAM.
@@ -254,6 +261,8 @@ int fmrb_kernel_get_config_section(const char *section,
 typedef struct {
     uint16_t screen_w;          // base screen, 0 = system_conf decides
     uint16_t screen_h;
+    uint16_t fullscreen_w;      // what a fullscreen app gets, 0 = the screen
+    uint16_t fullscreen_h;
     bool keys_desktop;          // desktop.variant = "keys"
     bool esc_long_quits;        // system.exit_key = "esc_long"
     uint8_t switcher_mod;       // keys_switcher_key: FMRB_KEYMAP_MOD_* (either side)
@@ -264,6 +273,10 @@ typedef struct {
 /** Called by main_native.c before the kernel starts. */
 void fmrb_kernel_set_native_machine(uint16_t screen_w, uint16_t screen_h,
                                     bool keys_desktop, bool esc_long_quits);
+
+/** A fullscreen app's size when it is not the screen's (the compositor's
+ *  wide screen, L9d); 0x0 = the screen. Before the kernel starts. */
+void fmrb_kernel_set_native_fullscreen(uint16_t width, uint16_t height);
 
 /** The values above, the system_conf part filled once the kernel read it. */
 const fmrb_native_machine_conf_t *fmrb_kernel_native_machine(void);

@@ -407,3 +407,25 @@ void sys_linux_install(void)
               m->system.power_log_only ? " (log only)" : "",
               sys_linux_mixer_name(), s_sysfs, s_procfs);
 }
+
+/* ---- keyboard layout (L9d) ---- */
+
+/* keyboard_layout = "auto" (fmrb_kernel.c): Linux's layout, the user's
+ * Plasma setting ($XDG_CONFIG_HOME/kxkbrc) before the system's
+ * (/etc/default/keyboard). True for jp. Every native machine, whatever its
+ * services: the kernel asks before they matter. */
+bool native_linux_keyboard_jp(char *how, size_t how_len)
+{
+    char kxkbrc[512];
+    const char *cfg = getenv("XDG_CONFIG_HOME");
+    const char *home = getenv("HOME");
+    if (cfg != NULL && cfg[0] == '/') {
+        snprintf(kxkbrc, sizeof(kxkbrc), "%s/kxkbrc", cfg);
+    } else if (home != NULL && home[0] == '/') {
+        snprintf(kxkbrc, sizeof(kxkbrc), "%s/.config/kxkbrc", home);
+    } else {
+        kxkbrc[0] = '\0';
+    }
+    const char *l = sys_linux_keyboard_layout(kxkbrc[0] ? kxkbrc : NULL, "/etc/default/keyboard", how, how_len);
+    return strcmp(l, "jp") == 0;
+}

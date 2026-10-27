@@ -6,7 +6,9 @@
 # (native/build-wl), --machine linux_pc_wl, with foot started on it.
 #
 #   ruby test/native/wl/wl_check.rb             headless (WLR_BACKENDS=headless,
-#                                               a 1280x720 output), the renderer
+#                                               a 1280x800 output, --output WxH
+#                                               another: the screen is it over
+#                                               2, 640x400), the renderer
 #                                               wlroots picks and pixman
 #   ruby test/native/wl/wl_check.rb --nested    the same, nested in WSLg's Wayland
 #                                               (a window opens on the desktop for
@@ -101,7 +103,7 @@ KEY_LEFTBRACE = 26
 # Shift+2, the key right of P, Shift+7 on a JIS keyboard.
 JP_SYMBOLS = "\"@'"
 
-opts = { mode: :headless, renderers: %w[auto pixman], keep: false, engine: "standard" }
+opts = { mode: :headless, renderers: %w[auto pixman], keep: false, engine: "standard", output: "1280x800" }
 args = ARGV.dup
 pass = (i = args.index("--")) ? args.slice!(i..)[1..] : nil
 OptionParser.new do |o|
@@ -110,8 +112,13 @@ OptionParser.new do |o|
   o.on("--renderer R") { |v| opts[:renderers] = [v] }
   o.on("--engine E") { |v| opts[:engine] = v }
   o.on("--keep") { opts[:keep] = true }
+  o.on("--output WxH") { |v| opts[:output] = v }
 end.parse!(args)
 abort "--engine standard|mruby" unless %w[standard mruby].include?(opts[:engine])
+abort "--output WxH" unless opts[:output] =~ /\A\d+x\d+\z/
+# The headless output's size (display.mode): the screen is it over the
+# machine's scale, 2 (L9d).
+OUTPUT = opts[:output]
 BIN = "native/build-wl/#{opts[:engine] == 'mruby' ? 'cmake-mruby' : 'cmake'}/fmruby-native"
 ENGINE = opts[:engine]
 
@@ -262,6 +269,18 @@ class Run
     comp("click", *to_out(fx, fy))
   end
 
+  # The frame's size (640x400 on the default output, L9d), and where the
+  # menu bar's power button, its Exit entry and the exit question's buttons
+  # are on it (laid out from the right edge, and centred).
+  def frame_size(inf = @info) = inf["frame"].split("x").map(&:to_i)
+  def power_button = [frame_size[0] - 11, 5]
+  def power_exit = [frame_size[0] - 71, 19]
+
+  def question(button)
+    w, h = frame_size
+    [(button == :yes ? 182 : 243) + (w - 426) / 2, 143 + (h - 240) / 2]
+  end
+
   # A press at one frame point, the pointer moved in steps, the release.
   def drag(fx, fy, dx, dy, steps: 6)
     comp("move", *to_out(fx, fy))
@@ -300,7 +319,15 @@ class Run
     Regress::Screens::Image.load(path)
   end
 
-  def frame_masks(img) = [[img.w - 90, 0, 90, MENU_BAR_H], [img.w - 6, 60, 6, 16]]
+  # The clock and the parked pointer (frame 420,60: where the native
+  # baselines have it; the whole arrow on a screen wider than 426).
+  def frame_masks(img) = [[img.w - 90, 0, 90, MENU_BAR_H], [420, 60, 12, 18]]
+
+  # The top-left w x h of a picture (the native baselines are 426x240; the
+  # screen is wider here, L9d).
+  def crop(img, w, h)
+    Regress::Screens::Image.new(w, h, img.rows[0, h].map { |r| r.byteslice(0, w * 3) })
+  end
 
   def typed = File.exist?(File.join(@run, "typed")) ? File.read(File.join(@run, "typed")) : ""
 
@@ -396,6 +423,47 @@ class Run
     [false, "the picture kept changing", 0]
   end
 
+  # A fullscreen app's view (L9d): the output against the picture's view
+  # rectangle at vscale from vat, black around it. The app may animate, so a
+  # shot is taken on each side of the output's and the closer one counted;
+  # around the view every pixel is black.
+  def view_check(label, inf)
+    a = shot(File.join(@out, "#{label}_picture.png"))
+    g = grim(File.join(@out, "#{label}_composite.png"))
+    ow, oh = inf["out"].split("x").map(&:to_i)
+    vx, vy, vwh = inf["view"].split(",")
+    vx = vx.to_i
+    vy = vy.to_i
+    vw, vh = vwh.split("x").map(&:to_i)
+    s = inf["vscale"].to_i
+    x0, y0 = inf["vat"].split(",").map(&:to_i)
+    band = 0
+    inside = 0
+    same = 0
+    oh.times do |y|
+      grow = g.rows[y]
+      fy = y >= y0 ? (y - y0) / s : -1
+      ow.times do |x|
+        o = x * 3
+        fx = x >= x0 ? (x - x0) / s : -1
+        if fy.negative? || fy >= vh || fx.negative? || fx >= vw
+          band += 1 unless grow.getbyte(o).zero? && grow.getbyte(o + 1).zero? && grow.getbyte(o + 2).zero?
+          next
+        end
+        inside += 1
+        po = (vx + fx) * 3
+        prow = a.rows[vy + fy]
+        same += 1 if grow.getbyte(o) == prow.getbyte(po) && grow.getbyte(o + 1) == prow.getbyte(po + 1) &&
+                     grow.getbyte(o + 2) == prow.getbyte(po + 2)
+      end
+    end
+    want_s = [ow / vw, oh / vh].min
+    placed = s == want_s && x0 == (ow - vw * s) / 2 && y0 == (oh - vh * s) / 2
+    ok = placed && band.zero? && same >= inside * 98 / 100
+    [ok, "view #{inf['view']} of the frame #{inf['frame']} at #{s}x at (#{x0},#{y0}) (#{want_s}x centred wanted); " \
+         "#{band} pixels around it not black; #{same} of #{inside} inside as the picture"]
+  end
+
   def wait_for(what, timeout)
     deadline = now + timeout
     loop do
@@ -480,7 +548,8 @@ class Run
     # 1. boot, with foot running `cat > typed`
     t0 = now
     sh!(*docker_args(@name, @run, @mode, @renderer,
-                     ["--set", "compositor.autostart=foot -e sh -c 'cat > /run/fmrb/typed'"]))
+                     ["--set", "compositor.autostart=foot -e sh -c 'cat > /run/fmrb/typed'",
+                      *(@mode == :headless ? ["--set", "display.mode=#{OUTPUT}"] : [])]))
     wait_for("Boot complete", 120) { log_text.include?("Boot complete") || log_text.include?("refused") }
     raise "refused: #{log_text[/native: refused.*/]}" if log_text.include?("native: refused")
     # The stand-in carries the launcher entry's name (foot.desktop: "Foot", L9b).
@@ -498,6 +567,16 @@ class Run
            "picture #{@info['frame']} at #{@info['scale']}x at (#{@info['at']}); foot #{foot[:w]}x#{foot[:h]} " \
            "at (#{foot[:x]},#{foot[:y]}), its content #{foot[:fw]}x#{foot[:fh]} at (#{foot[:fx]},#{foot[:fy]}) in " \
            "the frame; decoration: #{deco}")
+
+    # The screen (L9d): the output over the scale, 2, filling it.
+    ow, oh = @info["out"].split("x").map(&:to_i)
+    fw, fh = frame_size
+    want_w, want_h = ow / 2, oh / 2
+    want_w, want_h = 426, 240 if oh > ow || want_w < 426 || want_h < 240
+    fills = @info["scale"] == "2" && @info["at"] == "#{(ow - fw * 2) / 2},#{(oh - fh * 2) / 2}"
+    result("screen", fw == want_w && fh == want_h && fills,
+           "output #{ow}x#{oh}: the screen #{fw}x#{fh} (#{want_w}x#{want_h} wanted) at #{@info['scale']}x at " \
+           "(#{@info['at']}); #{log_text[/native: screen .*/]}")
 
     # The pointer where the native baselines have it (frame 420,60).
     comp("move", *to_out(420, 60))
@@ -532,8 +611,8 @@ class Run
       win(info, @foot)
     end
     @area = sized[:fw] * sized[:fh]
-    result("resize by the frame", (sized[:w] - 504).abs < 24 && (sized[:h] - 384).abs < 40 && fits.call(sized),
-           "content #{foot[:fw]}x#{foot[:fh]} -> 168x128 dragged (asked 504x384 of foot); " \
+    result("resize by the frame", (sized[:w] - 168 * sc).abs < 24 && (sized[:h] - 128 * sc).abs < 40 && fits.call(sized),
+           "content #{foot[:fw]}x#{foot[:fh]} -> 168x128 dragged (asked #{168 * sc}x#{128 * sc} of foot); " \
            "foot draws itself #{foot[:w]}x#{foot[:h]} -> #{sized[:w]}x#{sized[:h]} (its cell grid); " \
            "the stand-in fitted it: content #{sized[:fw]}x#{sized[:fh]}")
     drag(wx + 40, wy + 5, 250 - wx, 48 - wy)
@@ -604,7 +683,10 @@ class Run
     # out for it.
     ed_masks = frame_masks(img)
     ed_masks += [[5, 25, 240, 10]] if ENGINE == "mruby"
-    count, box = img.diff(base, ed_masks, rect: [5, 15, 240, 200])
+    # The window's rounded corners let the wallpaper through, and the
+    # wallpaper is the screen's (L9d: another picture on a wider screen).
+    ed_masks += [[5, 15, 2, 2], [243, 15, 2, 2], [5, 213, 2, 2], [243, 213, 2, 2]]
+    count, box = crop(img, base.w, base.h).diff(base, ed_masks, rect: [5, 15, 240, 200])
     result("keys to Family mruby", focus_back && count.zero? && typed == want,
            "keyboard back on Family mruby after the click on its menu: #{focus_back}; the editor's window vs " \
            "editor_type: #{count} differing pixels#{box ? " (box #{box.inspect})" : ''}; foot got nothing more: " \
@@ -634,14 +716,26 @@ class Run
     result("the desktop's menu over foot", ok && under_menu < all, "#{detail} (#{all} without it)")
     click(300, 220)
     sleep 1.0
-    click(415, 5)
+    # The question is in the middle of the screen: foot under it there.
+    fw, fh = frame_size
+    qdx = (fw - 426) / 2
+    qdy = (fh - 240) / 2
+    if qdx != 0 || qdy != 0
+      drag(41 + 40, 40 + 5, qdx, qdy)
+      wait_for("foot under the question", 10) { win(info, @foot)[:fx] == 41 + qdx }
+    end
+    click(*power_button)
     sleep 1.0
-    click(355, 19)
+    click(*power_exit)
     sleep 1.2
     ok, detail, under_q = composite_check("question_over_foot")
     result("the exit question over foot", ok && under_q < all, "#{detail} (#{all} without it)")
-    click(243, 143)    # "No"
+    click(*question(:no))    # "No"
     sleep 1.0
+    if qdx != 0 || qdy != 0
+      drag(41 + qdx + 40, 40 + qdy + 5, -qdx, -qdy)
+      wait_for("foot back", 10) { win(info, @foot)[:fx] == 41 }
+    end
     # Back beside the editor, so that the editor in front leaves it visible.
     drag(41 + 40, 40 + 5, 209, 8)
     wait_for("foot beside the editor", 10) { win(info, @foot)[:fx] == 250 }
@@ -653,6 +747,26 @@ class Run
     switched = wait_for("Ctrl+Tab", 5) { info["focus"] != @foot.to_s } rescue false
     result("Ctrl+Tab is Family mruby's", f0 == @foot.to_s && switched && typed == want,
            "focus on window #{f0}, after Ctrl+Tab on #{info['focus']}; foot got nothing: #{typed == want}")
+
+    # 7b. fullscreen apps on the wider screen (L9d): Modern's 426x240, shown
+    #     alone at the largest whole scale, centred, black around; the Linux
+    #     windows hidden meanwhile, back after. hires_test (a still test
+    #     card; the high-resolution screen is not offered on a screen as
+    #     wide as it) for the pixels, shooter for the view's place.
+    views = [["hires_test", "/app/test/hires_test.app.rb"], ["shooter", "/app/game/shooter.app.rb"]].map do |label, app|
+      out, st = native_tool("app", "spawn", app)
+      raise "app spawn #{app}: #{out.strip}" unless st.success? && out.include?("pid")
+      vpid = out[/"pid":\s*(\d+)/, 1]
+      vinf = wait_for("#{label}'s view", 30) { i = info; i["view"] != "0,0,#{i['frame']}" && i }
+      sleep 1.5
+      vok, vdetail = view_check(label, info)
+      hidden = vinf["windows"].none? { |w| w[:vis] }
+      native_tool("app", "kill", vpid)
+      back = wait_for("#{label}'s view gone", 15) { i = info; i["view"] == "0,0,#{i['frame']}" && win(i, @foot)[:vis] && i } rescue nil
+      [label, vok && hidden && !back.nil?, "#{label}: #{vdetail}; foot hidden: #{hidden}; back after: #{!back.nil?}"]
+    end
+    views.each { |label, ok, detail| result("fullscreen #{label}", ok, detail) }
+    click_foot(@foot)
 
     # 8. timings: idle; with an app animating on its own (stackchan, about 25
     #    pictures a second); with one holding the CPU (spin_hog, 20 s
@@ -692,8 +806,29 @@ class Run
     end
     native_tool("app", "kill", spawned["animating"])
 
-    # 9. the close button of a second foot
+    # 9. the close button of a second foot; before it, its stand-in's
+    #    corners (L9d): the three pixels outside each rounded corner show
+    #    what is behind (here the first foot's stand-in or the wallpaper),
+    #    as every window's do, and the composite matches the picture.
+    comp("move", *to_out(420, 60))
+    sleep 0.5
+    behind = shot(File.join(@out, "corners_before.png"))
     second = start_foot("closeme")
+    sleep 1.5
+    w2 = win(info, second)
+    after = shot(File.join(@out, "corners_after.png"))
+    cx, cy, cw, ch = w2[:fx] - 1, w2[:fy] - FRAME_TOP, w2[:fw] + 2, w2[:fh] + 12
+    outside = [[0, 0], [1, 0], [0, 1]]
+    corner_px = []
+    [[cx, cy, 1, 1], [cx + cw - 1, cy, -1, 1], [cx, cy + ch - 1, 1, -1], [cx + cw - 1, cy + ch - 1, -1, -1]].each do |x0, y0, dx, dy|
+      outside.each { |ox, oy| corner_px << [x0 + ox * dx, y0 + oy * dy] }
+    end
+    seen = corner_px.count { |x, y| after.pixel(x, y) == behind.pixel(x, y) }
+    framed = after.pixel(cx + cw / 2, cy + 1) == TITLE_RGB
+    cok, cdetail, = composite_check("corners")
+    result("the stand-in's corners", seen == corner_px.size && framed && cok,
+           "window at (#{cx},#{cy}) #{cw}x#{ch}: #{seen} of #{corner_px.size} corner pixels show what is behind; " \
+           "its title bar drawn: #{framed}; #{cdetail}")
     w2 = win(info, second)
     pid2 = log_text[/wl_bridge: window #{second} \(closeme .*stand-in pid (\d+)/, 1]
     click(w2[:fx] - 1 + w2[:fw] + 2 - 6, w2[:fy] - FRAME_TOP + 5)
@@ -709,13 +844,13 @@ class Run
     stuck = start_foot("stuck")
     stuck_pid = ps.grep(/--app-id=stuck/).first.to_s.split.first
     sh!("docker", "exec", @name, "kill", "-STOP", stuck_pid)
-    click(415, 5)
+    click(*power_button)
     sleep 1.0
-    click(355, 19)
+    click(*power_exit)
     sleep 1.2
     grim(File.join(@out, "exit_question.png"))
     t_exit = now
-    click(182, 143)    # "Yes"
+    click(*question(:yes))    # "Yes"
     gone = begin
       wait_for("the container to end", 30) { !system("docker inspect #{@name} > /dev/null 2>&1") }
       true

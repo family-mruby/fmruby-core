@@ -24,7 +24,9 @@
  *   - every POLL_MS: the stand-ins' windows from the window list (content
  *     rectangle, z order, suspended or not) and the keyboard's owner from
  *     the HID routing, published as places (comp_link_place sends only
- *     changes).
+ *     changes). With them the view (L9d): when the topmost running window
+ *     is a fullscreen app smaller than the screen (426x240 on a 640x400
+ *     one), the compositor shows that rectangle alone.
  *   - a window asks to be moved or resized (notice, from xdg move/resize):
  *     the stand-in's window is moved / resized through the same calls the
  *     input router makes.
@@ -58,6 +60,7 @@
 #include "fmrb_msg.h"
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
+#include "fmrb_theme.h"
 #include "input_source.h"
 #include "native_frame.h"
 #include "wl_bridge.h"
@@ -219,9 +222,10 @@ static int spawn_standin(int id, int nat_w, int nat_h, const char *app_id, int p
         .window_pos_y = (uint16_t)y,
         .min_window_width = 64,
         .min_window_height = 40,
-        /* The content is the hole colour, which a colour-keyed canvas would
-         * let through to the desktop; this canvas composites opaque. */
-        .rounded_corners = false,
+        /* Rounded like every window: its canvas is keyed on a colour of
+         * its own (native_wl_canvas_key), so the content -- the hole
+         * colour, 0x01 -- stays opaque and the corners show through. */
+        .rounded_corners = true,
     };
     int32_t pid = -1;
     fmrb_err_t err = fmrb_app_spawn(&a, &pid);
@@ -380,6 +384,24 @@ static void build_places(comp_places_t *pl)
             break;
         }
     }
+    /* The view (L9d): a fullscreen app smaller than the screen (Modern's
+     * 426x240 on the compositor's wider one) as the topmost running window
+     * is shown alone, at its own largest whole scale. */
+    int scale = 0, base_w = 0, base_h = 0;
+    comp_link_geometry(&scale, &base_w, &base_h);
+    int top = -1;
+    for (int j = 0; j < n; j++) {
+        fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(s_list[j].pid);
+        if (ctx == NULL || ctx->state != PROC_STATE_RUNNING) continue;
+        if (top < 0 || s_list[j].z_order > s_list[top].z_order) top = j;
+    }
+    if (top >= 0 && s_list[top].fullscreen && base_w > 0 && base_h > 0 &&
+        (s_list[top].width < base_w || s_list[top].height < base_h)) {
+        pl->view_x = s_list[top].x;
+        pl->view_y = s_list[top].y;
+        pl->view_w = s_list[top].width;
+        pl->view_h = s_list[top].height;
+    }
 }
 
 /* A dialog's stand-in in front of its parent's whenever the parent's is above
@@ -524,7 +546,28 @@ const fmrb_input_source_t fmrb_input_source_wl_bridge = {
     .start = bridge_start,
 };
 
-/* ---- the stand-ins' calls (FmrbApp.wl_window / wl_close) ---------------- */
+/* ---- the stand-ins' calls (FmrbApp.wl_window / wl_close / wl_key) ------- */
+
+/* The stand-in's canvas key (L9d): a colour its frame never draws -- not the
+ * hole (0x01), nor the theme's title bar, text and border it is drawn in --
+ * the first of a few dark ones that is free. Every other canvas keeps key.
+ * Asked by the canvas's creation (fmrb_app_canvas.c) and by the stand-in,
+ * which paints it outside its rounded corners. */
+uint8_t native_wl_canvas_key(const fmrb_app_task_context_t *ctx, uint8_t key)
+{
+    if (ctx == NULL || ctx->load_mode != FMRB_LOAD_MODE_BYTECODE || ctx->load_data != (const void *)linux_window_irep) {
+        return key;
+    }
+    static const uint8_t candidates[] = { 0x02, 0x03, 0x05, 0x06, 0x07 };
+    const fmrb_theme_t *t = fmrb_theme_get();
+    for (size_t i = 0; i < sizeof(candidates); i++) {
+        uint8_t c = candidates[i];
+        if (c == key || c == 0x01) continue;
+        if (t != NULL && (c == t->menu_bg || c == t->text_light || c == t->border)) continue;
+        return c;
+    }
+    return key;
+}
 
 int native_wl_window_state(int pid, char *title, size_t cap)
 {

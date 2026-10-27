@@ -7,10 +7,16 @@
  * The compositor (output_wlr.c) owns one of these on its thread and asks it;
  * the host tests (test/native/) drive it with numbers alone.
  *
- *   picture   the frame (426x240, or 640x360 in the high-resolution mode)
- *             at the largest whole scale that fits the output, centred,
- *             black around (fmrb_present_place, the rule every output
- *             shares). It is drawn ABOVE the Linux windows.
+ *   picture   the frame (the base screen -- 426x240, or the output over
+ *             display.scale on the compositor machine, L9d -- or 640x360 in
+ *             the high-resolution mode) at the largest whole scale that fits
+ *             the output, centred, black around (fmrb_present_place, the rule
+ *             every output shares). It is drawn ABOVE the Linux windows.
+ *   view      Family mruby may ask to show only a part of the frame: a
+ *             fullscreen app smaller than the screen (426x240 on a 640x400
+ *             one, L9d). That part alone is then laid out as the picture is
+ *             (the largest whole scale, centred, black around); the Linux
+ *             windows are hidden meanwhile, as under any fullscreen app.
  *   windows   Linux windows, each standing in for a Family mruby window
  *             (a stand-in app draws its title bar and frame, L9a). Family
  *             mruby places them: the content rectangle of the stand-in's
@@ -122,7 +128,14 @@ typedef struct {
     int out_w, out_h;                   /* the output, 0x0 before it is known */
     int fb_w, fb_h;                     /* the frame on hand, 0x0 before the first */
     int base_w, base_h;                 /* the frame's base size (0x0: any) */
-    fmrb_present_place_t place;         /* the picture on the output */
+    fmrb_present_place_t place;         /* the whole frame on the output: the
+                                         * windows' places and scale */
+    int view_x, view_y, view_w, view_h; /* the part of the frame Family mruby
+                                         * asks to show, 0x0 = all of it */
+    bool viewing;                       /* that part is shown (it lies in the
+                                         * base frame and is smaller) */
+    fmrb_present_place_t show;          /* the shown part on the output (= place
+                                         * unless viewing) */
     comp_window_t win[COMP_MAX_WINDOWS];/* bottom to top */
     int n;
     int focus;                          /* COMP_FMRB or a window id */
@@ -148,6 +161,14 @@ bool comp_route_layout(comp_route_t *r, int out_w, int out_h, int fb_w, int fb_h
 
 /* The frame's base size: windows show only while the frame is that size. */
 void comp_route_set_base(comp_route_t *r, int base_w, int base_h);
+
+/* The part of the frame to show (frame coordinates; 0x0 for all of it).
+ * True when what is shown changed. */
+bool comp_route_set_view(comp_route_t *r, int x, int y, int w, int h);
+
+/* A point on the output to frame coordinates through what is shown (the
+ * view when there is one), clamped into it. False outside it. */
+bool comp_route_to_frame(const comp_route_t *r, int x, int y, int *fx, int *fy);
 
 /* The frame on hand, for the holes (px stays the caller's; it must hold
  * fb_w x fb_h pixels until the next call). */

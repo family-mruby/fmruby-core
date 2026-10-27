@@ -11,8 +11,10 @@
 # every colour-keyed canvas). The compositor draws the Linux window under the
 # picture and lets it through wherever those pixels are still on screen, so a
 # Family mruby window or menu over the stand-in hides that part of the Linux
-# window. Its canvas is not colour-keyed (rounded_corners = false at spawn),
-# so the 0x01 pixels reach the screen.
+# window. Its canvas is keyed on a colour of its own (FmrbApp.wl_key, L9d),
+# not on 0x01 as other windows' are: the 0x01 pixels reach the screen, and
+# the corners outside the rounded frame, painted in the key, show what is
+# behind the window as every window's do.
 #
 # The close button asks the Linux window to close (it may ask about unsaved
 # work, or refuse); the stand-in ends when the window has gone.
@@ -27,6 +29,7 @@ class LinuxWindowApp < FmrbApp
   WAIT_POLLS = 50   # 5 s for the bridge to know this stand-in
 
   def on_create
+    @key = FmrbApp.wl_key
     @title = name
     @alive = true
     @unknown = 0
@@ -81,9 +84,7 @@ class LinuxWindowApp < FmrbApp
     border = FmrbConst::THEME_BORDER
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
-    # The corners outside the rounded border: the canvas is opaque, so they
-    # take the desktop's colour rather than the hole's.
-    @gfx.fill_rect(0, 0, w, h, FmrbConst::THEME_DESKTOP_BG)
+    @gfx.fill_rect(0, 0, w, h, border)
     @gfx.fill_round_rect(0, 0, w, TITLE_BAR_H, CORNER_R, bar)
     @gfx.fill_rect(0, CORNER_R, w, TITLE_BAR_H - CORNER_R, bar)
     @gfx.fill_rect(0, TITLE_BAR_H, w, h - TITLE_BAR_H - CORNER_R, border)
@@ -107,7 +108,23 @@ class LinuxWindowApp < FmrbApp
     @gfx.fill_rect(gx, gy, GRIP, GRIP, bar)
     @gfx.draw_line(gx + 2, gy + GRIP - 2, gx + GRIP - 2, gy + 2, on_bar)
     @gfx.draw_line(gx + 5, gy + GRIP - 2, gx + GRIP - 2, gy + 5, on_bar)
+    clear_corners(w, h)
     @gfx.present
+  end
+
+  # The three pixels outside each rounded corner in the canvas's key, the
+  # ones every window's frame leaves transparent (FmrbApp's corner clear):
+  # what is behind the window shows there.
+  def clear_corners(w, h)
+    k = @key
+    @gfx.draw_line(0, 0, 1, 0, k)
+    @gfx.draw_line(0, 1, 0, 1, k)
+    @gfx.draw_line(w - 2, 0, w - 1, 0, k)
+    @gfx.draw_line(w - 1, 1, w - 1, 1, k)
+    @gfx.draw_line(0, h - 2, 0, h - 1, k)
+    @gfx.draw_line(1, h - 1, 1, h - 1, k)
+    @gfx.draw_line(w - 1, h - 2, w - 1, h - 1, k)
+    @gfx.draw_line(w - 2, h - 1, w - 2, h - 1, k)
   end
 
   def redraw_close_button

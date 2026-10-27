@@ -61,6 +61,8 @@ class SystemDesktopApp < FmrbApp
   # chosen picture is transferred over that name first (which is what the
   # boot-time [[sync_files]] entry used to be for on its own).
   BG_DIR = "/usr/share/backgrounds/"
+  # The sizes the shipped pictures come in, smallest first (wallpaper_cover).
+  BG_SIZES = [[426, 240], [640, 360], [852, 480], [1280, 720]]
   BG_LOCAL = (FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL == "ESP32-P4")
   BG_SHARED_NAME = "bg_426x240.png"
   BG_IMAGE_PATH = BG_LOCAL ? "#{BG_DIR}#{BG_SHARED_NAME}" : "/data/#{BG_SHARED_NAME}"
@@ -670,7 +672,7 @@ class SystemDesktopApp < FmrbApp
     path = wallpaper_path
     img = path ? @bg_gfx.create_image(path) : nil
     if img
-      @bg_gfx.draw_image(img[:id], x: 0, y: 0)
+      @bg_gfx.draw_image(img[:id], x: @wallpaper_x, y: @wallpaper_y)
       @bg_gfx.delete_image(img[:id])
     end
     draw_desktop_icons
@@ -685,6 +687,8 @@ class SystemDesktopApp < FmrbApp
   def wallpaper_path
     return @wallpaper_path if @wallpaper_resolved
     @wallpaper_resolved = true
+    @wallpaper_x = 0
+    @wallpaper_y = 0
     @wallpaper_path = resolve_wallpaper
     # Not the assignment on its own: Spinel compiles a trailing `@x = f` as a
     # statement and returns nil, so the first call handed back nothing and the
@@ -727,11 +731,37 @@ class SystemDesktopApp < FmrbApp
     # gfx.file_status would ask the graphics side about a file it never has.
     sized = "#{BG_DIR}#{stem}#{@window_width}x#{@window_height}.png"
     return sized if File.exist?(sized)
+    if @window_width > BG_SIZES[0][0] || @window_height > BG_SIZES[0][1]
+      cover = wallpaper_cover(stem)
+      return cover if cover
+    end
     smallest = "#{BG_DIR}#{stem}426x240.png"
     return smallest if File.exist?(smallest)
     fallback = "#{BG_DIR}bg_426x240.png"
     Log.warn("wallpaper: #{smallest} is missing, using #{fallback}")
     fallback
+  end
+
+  # A screen larger than every device's with no picture of its own size (the
+  # native compositor's, doc/linux_native L9d: 640x400 on a 1280x800 output):
+  # the smallest shipped picture that covers it, centred (cropped evenly),
+  # else the largest, centred on the desktop's colour. nil when there is none.
+  def wallpaper_cover(stem)
+    found = nil
+    i = 0
+    while i < BG_SIZES.size
+      w = BG_SIZES[i][0]
+      h = BG_SIZES[i][1]
+      path = "#{BG_DIR}#{stem}#{w}x#{h}.png"
+      if File.exist?(path)
+        found = path
+        @wallpaper_x = (@window_width - w) / 2
+        @wallpaper_y = (@window_height - h) / 2
+        return found if w >= @window_width && h >= @window_height
+      end
+      i += 1
+    end
+    found
   end
 
   # The `wallpaper` line of system_conf.toml, or nil when it is not set. Read

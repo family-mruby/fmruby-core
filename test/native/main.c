@@ -594,11 +594,40 @@ static void test_machine(void)
     CHECK(strcmp(m.files.host, "auto") == 0 && strcmp(m.files.root, "auto") == 0, "linux_pc files");
     CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "linux_pc check: %s", err);
     // The compositor prototype (L8): wlroots for both, no autostart unless set.
+    // Its screen is the output over the scale, 2 (L9d).
     CHECK(load(&m, "linux_pc_wl", err, sizeof(err)) == 0, "linux_pc_wl: %s", err);
     CHECK(strcmp(m.display.backend, "wlroots") == 0 && strcmp(m.input.backend, "wlroots") == 0 &&
-          m.display.scale == 0 && m.screen.w == 426 && m.compositor.autostart[0] == '\0',
+          m.display.scale == 2 && native_machine_screen_from_output(&m) && m.screen.w == 0 &&
+          strcmp(m.display.mode, "auto") == 0 && m.compositor.autostart[0] == '\0',
           "linux_pc_wl fields");
     CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "linux_pc_wl check: %s", err);
+    {
+        static const struct { int ow, oh, scale, w, h; } cases[] = {
+            { 1280, 800, 2, 640, 400 }, { 1920, 1080, 2, 960, 540 }, { 1280, 720, 2, 640, 360 },
+            { 1281, 801, 2, 640, 400 },     // the odd pixel is left black
+            { 800, 1280, 2, 426, 240 },     // portrait: Modern's screen
+            { 800, 480, 2, 426, 240 },      // under 426x240 at that scale
+            { 1920, 1080, 3, 640, 360 }, { 1280, 800, 0, 640, 400 },  // auto is 2
+            { 0, 0, 2, 426, 240 },
+            { 3840, 2160, 1, 1920, 1080 },  // kept within the frame copy
+        };
+        for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+            int w = 0, h = 0;
+            char how[160];
+            m.display.scale = cases[i].scale;
+            native_machine_output_screen(&m, cases[i].ow, cases[i].oh, &w, &h, how, sizeof(how));
+            CHECK(w == cases[i].w && h == cases[i].h, "output %dx%d over %d: %dx%d (%s)", cases[i].ow, cases[i].oh,
+                  cases[i].scale, w, h, how);
+        }
+        m.display.scale = 2;
+    }
+    CHECK(native_machine_set(&m, "display.backend", "sdl", err, sizeof(err)) == 0 &&
+          native_machine_check(&m, err, sizeof(err)) != 0 && strstr(err, "wlroots") != NULL,
+          "screen.form output refused on sdl (%s)", err);
+    CHECK(load(&m, "linux_pc_wl", err, sizeof(err)) == 0 &&
+          native_machine_set(&m, "screen.form", "426x240", err, sizeof(err)) == 0 && m.screen.w == 426 &&
+          !native_machine_screen_from_output(&m) && native_machine_check(&m, err, sizeof(err)) == 0,
+          "--set screen.form=426x240 on linux_pc_wl");
     CHECK(native_machine_set(&m, "compositor.autostart", "foot -e sh", err, sizeof(err)) == 0 &&
           strcmp(m.compositor.autostart, "foot -e sh") == 0, "--set compositor.autostart");
     native_machine_defaults(&m);
@@ -873,6 +902,36 @@ static void test_sys(void)
         if (sys_linux_mixer_to_step(sys_linux_step_to_mixer(st, 0, 63, 10), 0, 63, 10) != st) round_trip_ok = 0;
     }
     CHECK(round_trip_ok, "every step survives a 0..63 mixer");
+    // The keyboard layout Linux is set to (L9d): Plasma's per-user setting
+    // first, else /etc/default/keyboard; jp is jp, anything else us.
+    {
+        char kb[600], kx[600], how[300];
+        snprintf(kb, sizeof(kb), "%s/keyboard", g_tree);
+        snprintf(kx, sizeof(kx), "%s/kxkbrc", g_tree);
+        FILE *f = fopen(kb, "w");
+        if (f) { fputs("XKBMODEL=\"pc105\"\nXKBLAYOUT=\"jp\"\nXKBVARIANT=\"\"\n", f); fclose(f); }
+        unlink(kx);
+        CHECK(strcmp(sys_linux_keyboard_layout(kx, kb, how, sizeof(how)), "jp") == 0 && strstr(how, "XKBLAYOUT=jp"),
+              "keyboard: XKBLAYOUT jp (%s)", how);
+        f = fopen(kb, "w");
+        if (f) { fputs("XKBLAYOUT=us,jp\n", f); fclose(f); }
+        CHECK(strcmp(sys_linux_keyboard_layout(kx, kb, how, sizeof(how)), "us") == 0, "keyboard: us,jp is us (%s)", how);
+        f = fopen(kb, "w");
+        if (f) { fputs("XKBLAYOUT=\"de\"\n", f); fclose(f); }
+        CHECK(strcmp(sys_linux_keyboard_layout(kx, kb, how, sizeof(how)), "us") == 0, "keyboard: de is us (%s)", how);
+        f = fopen(kx, "w");
+        if (f) { fputs("[Layout]\nDisplayNames=,\nLayoutList=jp,us\nUse=true\n", f); fclose(f); }
+        CHECK(strcmp(sys_linux_keyboard_layout(kx, kb, how, sizeof(how)), "jp") == 0 && strstr(how, "kxkbrc"),
+              "keyboard: Plasma's LayoutList first (%s)", how);
+        f = fopen(kx, "w");
+        if (f) { fputs("[Layout]\nLayoutList=jp\nUse=false\n", f); fclose(f); }
+        CHECK(strcmp(sys_linux_keyboard_layout(kx, kb, how, sizeof(how)), "us") == 0,
+              "keyboard: Plasma's list unused (Use=false) is not read (%s)", how);
+        unlink(kb);
+        unlink(kx);
+        CHECK(strcmp(sys_linux_keyboard_layout(kx, kb, how, sizeof(how)), "us") == 0, "keyboard: none set is us (%s)",
+              how);
+    }
     CHECK(strcmp(sys_linux_logind_method(FMRB_SYS_POWER_OFF), "PowerOff") == 0 &&
           strcmp(sys_linux_logind_method(FMRB_SYS_POWER_RESTART), "Reboot") == 0 &&
           strcmp(sys_linux_logind_method(FMRB_SYS_POWER_SUSPEND), "Suspend") == 0 &&

@@ -363,18 +363,20 @@ static mrb_value mrb_kernel_startup_app(mrb_state *mrb, mrb_value self)
 }
 
 // FmrbKernel#_screen_width / _screen_height -> the size a fullscreen window
-// gets: the display minus its margins (fmrb_app.c sizes the system app the
-// same way). For a machine with no desktop to read it from.
+// gets (fmrb_kernel_fullscreen_size): the display minus its margins, or
+// Modern's screen on the native compositor's wide one.
 static mrb_value mrb_kernel_screen_width(mrb_state *mrb, mrb_value self)
 {
-    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
-    return mrb_fixnum_value(conf ? conf->display_width - conf->display_margin_x : 0);
+    uint16_t w = 0, h = 0;
+    fmrb_kernel_fullscreen_size(&w, &h);
+    return mrb_fixnum_value(w);
 }
 
 static mrb_value mrb_kernel_screen_height(mrb_state *mrb, mrb_value self)
 {
-    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
-    return mrb_fixnum_value(conf ? conf->display_height - conf->display_margin_y : 0);
+    uint16_t w = 0, h = 0;
+    fmrb_kernel_fullscreen_size(&w, &h);
+    return mrb_fixnum_value(h);
 }
 
 // FmrbKernel#_display_width -> the whole panel, margins included: the width

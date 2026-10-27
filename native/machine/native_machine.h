@@ -10,18 +10,27 @@
  * after the file, and the L1 options (--scale) still win over both.
  *
  *   [screen]   form           "426x240" (Modern) | "320x170" (the Cardputer
- *                             Zero's LCD). The base screen: the kernel's
- *                             display size whatever the user's system_conf says
+ *                             Zero's LCD) | "output" (wlroots only, L9d: the
+ *                             output over display.scale, 1280x800 at scale 2
+ *                             a 640x400 screen; a portrait output or one
+ *                             under 426x240 at that scale gets 426x240, one
+ *                             over 1920x1080 is kept within it).
+ *                             The base screen: the kernel's display size
+ *                             whatever the user's system_conf says
  *   [display]  backend        sdl | fbdev | drm | wlroots (the program is the
  *                             Wayland compositor, L8; input.backend is then
  *                             wlroots too)
  *              device         fbdev: "auto", "auto:<name in /proc/fb>" or a
  *                             path; drm: "auto" or a /dev/dri/card path
- *              mode           drm: "WxH" or "WxH@Hz", "auto" = the
- *                             connector's preferred mode
+ *              mode           drm, wlroots: "WxH" or "WxH@Hz", "auto" = the
+ *                             connector's preferred mode (wlroots: a custom
+ *                             mode when the output does not list it -- the
+ *                             headless and nested outputs take any size)
  *              rotate         0 / 90 / 180 / 270, clockwise
  *              scale          "auto" (largest whole scale that fits; the
- *                             window's magnification 3 on sdl) or a number
+ *                             window's magnification 3 on sdl) or a number;
+ *                             with screen.form "output" the divisor of the
+ *                             output (auto = 2)
  *              fullscreen     sdl: true opens the window full screen on its
  *                             output (the frame at the largest whole scale,
  *                             black around it); false a window (L7)
@@ -86,8 +95,8 @@ typedef struct {
     char description[NATIVE_MACHINE_STR];
 
     struct {
-        char form[16];                   /* "426x240" */
-        int w, h;
+        char form[16];                   /* "426x240", or "output" */
+        int w, h;                        /* 0x0 for "output" (known once the output is) */
     } screen;
 
     struct {
@@ -158,6 +167,17 @@ void native_machine_resolve(const char *arg, const char *machines_dir,
 /* Values every build refuses, whatever backends it has: the screen forms
  * and desktops that do not exist yet. Returns 0, or -1 with the reason. */
 int native_machine_check(const native_machine_t *m, char *err, size_t err_len);
+
+/* Whether the screen is the output over display.scale (screen.form
+ * "output"). */
+bool native_machine_screen_from_output(const native_machine_t *m);
+
+/* The screen for an output of out_w x out_h (screen.form "output"): the
+ * output over display.scale (auto 2), or 426x240 when the output is portrait
+ * or that would be smaller than 426x240. why (may be NULL) says which, for
+ * the log. */
+void native_machine_output_screen(const native_machine_t *m, int out_w, int out_h, int *w, int *h,
+                                  char *why, size_t why_len);
 
 /* Whether system.power lists this group ("exit" or "logind"). */
 bool native_machine_power_has(const native_machine_t *m, const char *group);

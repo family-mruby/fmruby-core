@@ -37,7 +37,7 @@ mouse_scale_y = 0.5
 # Rows one notch of the mouse wheel scrolls (1-20).
 wheel_lines = 3
 timezone = "JST-9"
-keyboard_layout = "jp" # "jp" or "us"
+keyboard_layout = "jp" # "auto" (Linux's), "jp" or "us"; the package ships auto
 # Internal RAM (KB) a spawn must leave for the rest of the machine; a start
 # that would eat into this is refused with "Not enough memory". 30 is the
 # floor that keeps drivers and networking able to allocate. 0 disables the

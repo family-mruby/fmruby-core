@@ -84,9 +84,16 @@ module ConfigDialogMixin
   CFG_RADIO_OTHER = { "ble_auto_start"  => "wifi_auto_start",
                       "wifi_auto_start" => "ble_auto_start" }
 
+  # keyboard_layout: "auto" follows the layout Linux is set to, and only the
+  # native program (Linux) offers it (doc/linux_native L9d) -- it alone has
+  # FmrbApp.linux_keyboard. Devices, the simulation and the browser keep
+  # jp / us.
+  CFG_KBD_AUTO = FmrbApp.respond_to?(:linux_keyboard)
+  CFG_KBD_OPTIONS = CFG_KBD_AUTO ? ["auto", "jp", "us"] : ["jp", "us"]
+
   CFG_SETTINGS = [
     { key: :language,         field: "language",         type: :enum,  options: ["en", "ja"] },
-    { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: ["jp", "us"] },
+    { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: CFG_KBD_OPTIONS },
     { key: :mouse_scale_x,    field: "mouse_scale_x",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
     { key: :mouse_scale_y,    field: "mouse_scale_y",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
     { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "cyberpunk"] },
@@ -468,6 +475,8 @@ module ConfigDialogMixin
         FmrbI18n.t("theme_#{v}".to_sym)
       elsif s[:key] == :wallpaper
         cfg_wallpaper_text(v.to_s)
+      elsif s[:key] == :keyboard_layout && v.to_s == "auto" && CFG_KBD_AUTO
+        "auto (#{FmrbApp.linux_keyboard})"
       else
         v.to_s
       end

@@ -19,8 +19,8 @@
  *              the hicolor theme (the size nearest 24 first) or pixmaps/,
  *              made a 24x24 RGB332 BMP (the launcher's sprites) in the icon
  *              directory, once per source file. None found: no icon (the
- *              launcher's own mark). A generic mark for the group itself is
- *              written there at start (linux.bmp).
+ *              launcher shows its own mark, a window, for those; the group's
+ *              mark, a penguin, is the launcher's too: flash/usr/share/icon).
  *   starting   by the entry's id: Exec split by the Desktop Entry rules
  *              (quoting, field codes; no files are passed), started without
  *              a shell on the compositor's main thread in a session of its
@@ -64,8 +64,8 @@ typedef struct {
 
 /* ---- the compositor's side (its main thread) ---- */
 
-/* Make the icon directory and the group's mark, and read the entries (on a
- * thread of its own). From here on available() is true. */
+/* Make the icon directory, and read the entries (on a thread of its own).
+ * From here on available() is true. */
 void linux_apps_start(const linux_apps_config_t *cfg);
 /* Start what was asked for, reap what ended. Never waits. */
 void linux_apps_pump(void);
@@ -83,7 +83,7 @@ int linux_apps_running(void);
 
 bool linux_apps_available(void);
 /* The list as text into buf (cap bytes, not NUL-terminated):
- *   "ready\t<group mark>\n" or "loading\t<group mark>\n", then for
+ *   "ready\n" or "loading\n", then for
  *   LINUX_APPS_LIST when ready one line per entry, sorted by name:
  *   "<name>\t<desktop file id>\t<icon BMP, Family mruby path, or empty>\n"
  * Returns the length (more than cap: nothing written, call again with

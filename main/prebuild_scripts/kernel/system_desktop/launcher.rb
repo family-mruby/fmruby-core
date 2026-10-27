@@ -70,6 +70,10 @@ module LauncherMixin
   LNX_MODE_LIST = 0
   LNX_MODE_RESCAN = 1
   LNX_MODE_HEADER = 2
+  # The marks (L9d): the group's a penguin, an application's without an icon
+  # of its own a window.
+  LNX_GROUP_ICON = "usr/share/icon/linux.icon"
+  LNX_APP_ICON = "usr/share/icon/linux_app.icon"
 
   def linux_entry?(app)
     app.to_s.start_with?(LNX_PREFIX)
@@ -80,11 +84,8 @@ module LauncherMixin
   def linux_group_entry
     head = FmrbApp.linux_apps(LNX_MODE_HEADER, FmrbI18n.lang)
     return nil if head.empty?
-    f = head.split(S_NEWLINE)[0].to_s.split(S_TAB)
-    icon = f[1]
-    icon = nil if icon == S_EMPTY
     Log.info("Launcher: the Linux group is offered")
-    { label: "Linux", app: LNX_GROUP, icon_char: "L", icon_file: icon }
+    { label: "Linux", app: LNX_GROUP, icon_char: "L", icon_file: LNX_GROUP_ICON }
   end
 
   def linux_back_entry
@@ -94,8 +95,7 @@ module LauncherMixin
   # The list text into launcher entries; false while it is still being read.
   def linux_take_list(text)
     lines = text.split(S_NEWLINE)
-    head = lines[0].to_s.split(S_TAB)
-    return false unless head[0] == LNX_READY
+    return false unless lines[0].to_s == LNX_READY
     apps = [linux_back_entry]
     i = 1
     n = lines.size
@@ -104,7 +104,7 @@ module LauncherMixin
       i += 1
       next unless f[0] && f[1]
       icon = f[2]
-      icon = nil if icon == S_EMPTY
+      icon = LNX_APP_ICON if icon.nil? || icon == S_EMPTY
       apps << { label: f[0], app: "#{LNX_PREFIX}#{f[1]}", icon_char: "L", icon_file: icon }
     end
     @launcher_apps = apps

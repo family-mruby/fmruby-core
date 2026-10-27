@@ -328,17 +328,19 @@ const char *fmrb_spx_startup_app(void)
     return path;
 }
 
-/* The size a fullscreen window gets (display minus margins). */
+/* The size a fullscreen window gets (fmrb_kernel_fullscreen_size). */
 int fmrb_spx_screen_width(void)
 {
-    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
-    return conf ? (int)(conf->display_width - conf->display_margin_x) : 0;
+    uint16_t w = 0, h = 0;
+    fmrb_kernel_fullscreen_size(&w, &h);
+    return (int)w;
 }
 
 int fmrb_spx_screen_height(void)
 {
-    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
-    return conf ? (int)(conf->display_height - conf->display_margin_y) : 0;
+    uint16_t w = 0, h = 0;
+    fmrb_kernel_fullscreen_size(&w, &h);
+    return (int)h;
 }
 
 /* The whole panel, margins included: the width the halt screen is drawn at. */

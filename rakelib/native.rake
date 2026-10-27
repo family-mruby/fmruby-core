@@ -356,7 +356,7 @@ namespace :native do
   # The release system_conf differs from the development one in these keys
   # only (doc/linux_native/report/l3c.md); comments may differ.
   NATIVE_RELEASE_CONF = "config/system_conf_native_release.toml"
-  NATIVE_RELEASE_CONF_KEYS = %w[debug_mode zenoh_router debugd].freeze
+  NATIVE_RELEASE_CONF_KEYS = %w[debug_mode zenoh_router debugd keyboard_layout].freeze
 
   def native_check_release_conf!(dev, release)
     settings = lambda do |path|

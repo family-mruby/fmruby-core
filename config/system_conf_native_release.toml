@@ -7,6 +7,9 @@
 #   zenoh_router  empty (the user names their router; nothing is assumed)
 #   debugd        false (no remote app control unless the user turns it on;
 #                 the package then listens on 127.0.0.1 only)
+#   keyboard_layout  auto (Linux's layout -- the user's Plasma setting, else
+#                 /etc/default/keyboard -- until the user picks one in
+#                 Config; the development file keeps jp, its keyboard's)
 system_name = "Family mruby OS (Native)"
 display_width = 426
 display_height = 240
@@ -34,7 +37,7 @@ mouse_scale_y = 0.5
 # Rows one notch of the mouse wheel scrolls (1-20).
 wheel_lines = 3
 timezone = "JST-9"
-keyboard_layout = "jp" # "jp" or "us"
+keyboard_layout = "auto" # "auto" (Linux's), "jp" or "us"
 # Internal RAM (KB) a spawn must leave for the rest of the machine; a start
 # that would eat into this is refused with "Not enough memory". 30 is the
 # floor that keeps drivers and networking able to allocate. 0 disables the

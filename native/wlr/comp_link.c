@@ -91,6 +91,8 @@ void comp_link_place(const comp_places_t *pl)
 {
     pthread_mutex_lock(&s_link.lock);
     bool same = s_link.places.n == pl->n && s_link.places.focus == pl->focus &&
+                s_link.places.view_x == pl->view_x && s_link.places.view_y == pl->view_y &&
+                s_link.places.view_w == pl->view_w && s_link.places.view_h == pl->view_h &&
                 memcmp(s_link.places.p, pl->p, sizeof(pl->p[0]) * (size_t)pl->n) == 0;
     int fd = -1;
     if (!same) {

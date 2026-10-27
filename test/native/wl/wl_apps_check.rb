@@ -4,10 +4,12 @@
 # wl_apps_check.rb - the Linux PC's applications in the launcher, Xwayland
 # and the end (doc/linux_native/, L9b), in the Ubuntu 26.04 image with the
 # program built by rake native:wl, headless (WLR_BACKENDS=headless, a
-# 1280x720 output), --machine linux_pc_wl, no autostart.
+# 1280x800 output by default, --output WxH: a 640x400 screen at 2x),
+# --machine linux_pc_wl, no autostart.
 #
 #   ruby test/native/wl/wl_apps_check.rb [--engine standard|mruby]
 #                                        [--renderer pixman|auto] [--keep]
+#                                        [--output WxH]
 #
 # XDG_DATA_HOME is a directory of the run (the run directory, a host
 # directory mounted at /run/fmrb), with .desktop entries of the check's own
@@ -61,14 +63,18 @@ KEY_F5 = 63
 BUILTINS = 3
 BULK = 300
 
-opts = { engine: "standard", renderer: "pixman", keep: false }
+opts = { engine: "standard", renderer: "pixman", keep: false, output: "1280x800" }
 OptionParser.new do |o|
   o.on("--engine E") { |v| opts[:engine] = v }
   o.on("--renderer R") { |v| opts[:renderer] = v }
   o.on("--keep") { opts[:keep] = true }
+  o.on("--output WxH") { |v| opts[:output] = v }
 end.parse!
 abort "--engine standard|mruby" unless %w[standard mruby].include?(opts[:engine])
+abort "--output WxH" unless opts[:output] =~ /\A\d+x\d+\z/
 ENGINE = opts[:engine]
+# The headless output's size: the screen is it over the scale, 2 (L9d).
+OUTPUT = opts[:output]
 BIN = "native/build-wl/#{ENGINE == 'mruby' ? 'cmake-mruby' : 'cmake'}/fmruby-native"
 
 def image_name
@@ -138,7 +144,7 @@ class AppsRun
          "-e", "WLR_BACKENDS=headless", "-e", "WLR_HEADLESS_OUTPUTS=1", "-e", "SDL_AUDIODRIVER=dummy"]
     a += ["-e", "WLR_RENDERER=#{@renderer}"] if @renderer != "auto"
     env.each { |k, v| a += ["-e", "#{k}=#{v}"] }
-    prog = "#{BIN} --machine linux_pc_wl #{env.key?('ARGS') ? env['ARGS'] : ''}"
+    prog = "#{BIN} --machine linux_pc_wl --set display.mode=#{OUTPUT} #{env.key?('ARGS') ? env['ARGS'] : ''}"
     inner = "mkdir -p -m 700 /run/fmrb/xdg /tmp/home && #{prog} > /run/fmrb/core.log 2>&1; " \
             "echo \"exit=$?\" >> /run/fmrb/core.log; ps -e -o pid=,comm= > /run/fmrb/ps_after"
     sh!(*a, IMAGE, "bash", "-c", inner)
@@ -195,6 +201,18 @@ class AppsRun
   end
 
   def click(fx, fy) = comp("click", *to_out(fx, fy))
+
+  # The frame's size (640x400 on the default output, L9d), and where the
+  # menu bar's power button, its Exit entry and the exit question's buttons
+  # are on it (laid out from the right edge, and centred).
+  def frame_size(inf = @info) = inf["frame"].split("x").map(&:to_i)
+  def power_button = [frame_size[0] - 11, 5]
+  def power_exit = [frame_size[0] - 71, 19]
+
+  def question(button)
+    w, h = frame_size
+    [(button == :yes ? 182 : 243) + (w - 426) / 2, 143 + (h - 240) / 2]
+  end
   def key(code, down) = comp("key", code, down ? 1 : 0)
 
   def tap(code)
@@ -484,12 +502,12 @@ class AppsRun
     # 5. the end, with xeyes stopped (it cannot answer the request to close)
     eyes_pid = ps.find { |l| l.split[1] == "xeyes" }.to_s.split.first
     sh!("docker", "exec", @name, "kill", "-STOP", eyes_pid) if eyes_pid
-    click(415, 5)
+    click(*power_button)
     sleep 1.0
-    click(355, 19)
+    click(*power_exit)
     sleep 1.2
     t_exit = now
-    click(182, 143)
+    click(*question(:yes))
     gone = begin
       wait_for("the container to end", 40) { !system("docker inspect #{@name} > /dev/null 2>&1") }
       true

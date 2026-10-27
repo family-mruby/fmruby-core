@@ -292,11 +292,9 @@ static void test_tree(void)
     list(LINUX_APPS_LIST, "ja");
     CHECK(linux_apps_wait_scan(5000), "the read ends");
     int32_t n = list(LINUX_APPS_LIST, "ja");
-    CHECK(n > 0 && strncmp(g_list, "ready\t/var/cache/linux/linux.bmp\n", 33) == 0, "header: %.40s", g_list);
-    if (snprintf(path, sizeof(path), "%s/linux.bmp", icons) < 0) return;
+    CHECK(n > 0 && strncmp(g_list, "ready\n", 6) == 0, "header: %.40s", g_list);
     struct stat st;
-    CHECK(stat(path, &st) == 0 && st.st_size == 54 + 1024 + 24 * 24, "the group's mark is a 24x24 8-bit BMP (%ld)",
-          (long)st.st_size);
+    CHECK(stat(icons, &st) == 0 && S_ISDIR(st.st_mode), "the icon directory is made");
 
     const char *l = line_of("fake.desktop");
     CHECK(l != NULL && strncmp(l, "\xe5\x81\xbd\xe7\x89\xa9\t", 7) == 0, "Name[ja] and XDG_DATA_HOME first: %s",

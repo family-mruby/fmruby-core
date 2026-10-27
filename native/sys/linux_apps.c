@@ -85,7 +85,6 @@ static struct {
     char icon_dir[512];
     char icon_fm_dir[256];
     char desktop[64];
-    char mark_fm[300];
     launch_t q[QUEUE_MAX];
     int qn;
 } s = { .lock = PTHREAD_MUTEX_INITIALIZER };
@@ -357,6 +356,7 @@ char **linux_apps_split_exec(const char *exec, const char *name, const char *ico
 
 /* -------------------------------------------------------------- icons */
 
+#if NATIVE_HAVE_PNG
 /* RGB332, black kept off 0 (the sprites' transparent colour) and 0x01 (the
  * compositor's hole colour; never a visible colour). */
 static uint8_t rgb332(unsigned r, unsigned g, unsigned b)
@@ -396,7 +396,7 @@ static bool write_bmp(const char *path, const uint8_t *px, int w, int h)
     memcpy(&hdr[38], &res, 4);
     memcpy(&hdr[42], &res, 4);
     memcpy(&hdr[46], &ncol, 4);
-    char tmp[600];
+    char tmp[768];
     snprintf(tmp, sizeof(tmp), "%s.tmp%ld", path, (long)getpid());
     FILE *f = fopen(tmp, "wb");
     if (f == NULL) return false;
@@ -419,29 +419,6 @@ static bool write_bmp(const char *path, const uint8_t *px, int w, int h)
     return true;
 }
 
-/* The group's own mark: a small terminal window. */
-static void draw_mark(uint8_t *px)
-{
-    const int n = LINUX_APPS_ICON_PX;
-    memset(px, 0, (size_t)n * n);
-    for (int y = 3; y <= 20; y++) {
-        for (int x = 1; x <= 22; x++) {
-            uint8_t c = 0x25;
-            if (y <= 6) c = 0x4B;
-            if (x == 1 || x == 22 || y == 3 || y == 20) c = 0x92;
-            px[y * n + x] = c;
-        }
-    }
-    /* ">" and "_" */
-    static const int prompt[][2] = { { 4, 9 }, { 5, 10 }, { 6, 11 }, { 5, 12 }, { 4, 13 } };
-    for (size_t i = 0; i < sizeof(prompt) / sizeof(prompt[0]); i++) {
-        px[prompt[i][1] * n + prompt[i][0]] = 0x1C;
-        px[prompt[i][1] * n + prompt[i][0] + 1] = 0x1C;
-    }
-    for (int x = 9; x <= 13; x++) px[14 * n + x] = 0xFF;
-}
-
-#if NATIVE_HAVE_PNG
 /* A PNG fitted into the icon square (aspect kept, centred): each icon pixel
  * is the alpha-weighted mean of the source pixels under it, and opaque when
  * at least half covered. */
@@ -970,20 +947,13 @@ void linux_apps_start(const linux_apps_config_t *cfg)
     if (s.want_lang[0] == '\0') snprintf(s.want_lang, sizeof(s.want_lang), "en");
     pthread_mutex_unlock(&s.lock);
 
-    bool dir_ok = mkdirs(cfg->icon_dir);
-    char mark[600];
-    snprintf(mark, sizeof(mark), "%s/linux.bmp", cfg->icon_dir);
-    uint8_t px[LINUX_APPS_ICON_PX * LINUX_APPS_ICON_PX];
-    draw_mark(px);
-    bool mark_ok = dir_ok && write_bmp(mark, px, LINUX_APPS_ICON_PX, LINUX_APPS_ICON_PX);
-    if (!mark_ok) {
+    if (!mkdirs(cfg->icon_dir)) {
         fprintf(stderr, "native: linux apps: cannot write icons to %s (%s); no icons\n", cfg->icon_dir,
                 strerror(errno));
     }
     snprintf(s_env_desktop, sizeof(s_env_desktop), "XDG_CURRENT_DESKTOP=%s", cfg->desktop_name);
 
     pthread_mutex_lock(&s.lock);
-    if (mark_ok) snprintf(s.mark_fm, sizeof(s.mark_fm), "%s/linux.bmp", cfg->icon_fm_dir);
     s.started = true;
     kick_locked();
     pthread_mutex_unlock(&s.lock);
@@ -1022,9 +992,7 @@ int32_t linux_apps_list(int mode, const char *lang, char *buf, size_t cap)
     }
     bool ready = s.ready && !s.scanning;
     size_t len = 0;
-    put(buf, cap, &len, ready ? "ready\t" : "loading\t");
-    put(buf, cap, &len, s.mark_fm);
-    put(buf, cap, &len, "\n");
+    put(buf, cap, &len, ready ? "ready\n" : "loading\n");
     if (ready && mode == LINUX_APPS_LIST) {
         for (int i = 0; i < s.n; i++) {
             put(buf, cap, &len, s.e[i].name);

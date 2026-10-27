@@ -10,7 +10,9 @@
  *             (comp_route's queue, taken through here)
  *   places    Family mruby -> compositor: where each window's stand-in is
  *             (its content rectangle in frame coordinates), the stacking and
- *             the focus. The newest set wins; the compositor is woken.
+ *             the focus, and the part of the frame to show (a fullscreen
+ *             app smaller than the screen, L9d). The newest set wins; the
+ *             compositor is woken.
  *   commands  Family mruby -> compositor: ask a window to close. Queued.
  *   geometry  compositor -> Family mruby: the picture's scale and the
  *             frame's base size, to size a new stand-in.
@@ -32,6 +34,7 @@ typedef struct {
     int n;
     comp_place_t p[COMP_MAX_WINDOWS];   /* bottom to top */
     int focus;                          /* a window id, or COMP_FMRB */
+    int view_x, view_y, view_w, view_h; /* the part of the frame to show, 0x0 = all */
 } comp_places_t;
 
 typedef enum {

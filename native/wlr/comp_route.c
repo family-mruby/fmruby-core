@@ -33,6 +33,7 @@ void comp_route_init(comp_route_t *r)
     pthread_mutex_init(&r->lock, NULL);
     r->focus = COMP_FMRB;
     r->place.scale = 1;
+    r->show.scale = 1;
 }
 
 void comp_route_destroy(comp_route_t *r)
@@ -50,11 +51,34 @@ static bool base_frame(const comp_route_t *r)
 static void locate(const comp_route_t *r, comp_window_t *w)
 {
     int s = r->place.scale > 0 ? r->place.scale : 1;
-    w->visible = w->placed && w->shown && base_frame(r) && r->fb_w > 0;
+    w->visible = w->placed && w->shown && base_frame(r) && r->fb_w > 0 && !r->viewing;
     if (w->placed) {
         w->x = r->place.x + w->fx * s;
         w->y = r->place.y + w->fy * s;
     }
+}
+
+/* The view applies to the base frame only, inside it and smaller than it. */
+static bool view_applies(const comp_route_t *r)
+{
+    if (r->view_w <= 0 || r->view_h <= 0 || r->fb_w <= 0 || r->fb_h <= 0) return false;
+    if (r->base_w > 0 && !base_frame(r)) return false;
+    if (r->view_x < 0 || r->view_y < 0 || r->view_x + r->view_w > r->fb_w || r->view_y + r->view_h > r->fb_h) {
+        return false;
+    }
+    return r->view_w < r->fb_w || r->view_h < r->fb_h;
+}
+
+static void place_all(comp_route_t *r)
+{
+    if (r->out_w > 0 && r->out_h > 0 && r->fb_w > 0 && r->fb_h > 0) {
+        fmrb_present_surface_t s = { .w = r->out_w, .h = r->out_h, .rotate = 0 };
+        fmrb_present_place(&s, r->fb_w, r->fb_h, 0, &r->place);
+        r->viewing = view_applies(r);
+        if (r->viewing) fmrb_present_place(&s, r->view_w, r->view_h, 0, &r->show);
+        else r->show = r->place;
+    }
+    for (int i = 0; i < r->n; i++) locate(r, &r->win[i]);
 }
 
 bool comp_route_layout(comp_route_t *r, int out_w, int out_h, int fb_w, int fb_h)
@@ -64,19 +88,38 @@ bool comp_route_layout(comp_route_t *r, int out_w, int out_h, int fb_w, int fb_h
     r->out_h = out_h;
     r->fb_w = fb_w;
     r->fb_h = fb_h;
-    if (out_w > 0 && out_h > 0 && fb_w > 0 && fb_h > 0) {
-        fmrb_present_surface_t s = { .w = out_w, .h = out_h, .rotate = 0 };
-        fmrb_present_place(&s, fb_w, fb_h, 0, &r->place);
-    }
-    for (int i = 0; i < r->n; i++) locate(r, &r->win[i]);
+    place_all(r);
     return true;
+}
+
+bool comp_route_set_view(comp_route_t *r, int x, int y, int w, int h)
+{
+    if (w <= 0 || h <= 0) x = y = w = h = 0;
+    if (x == r->view_x && y == r->view_y && w == r->view_w && h == r->view_h) return false;
+    bool was = r->viewing;
+    fmrb_present_place_t shown = r->show;
+    r->view_x = x;
+    r->view_y = y;
+    r->view_w = w;
+    r->view_h = h;
+    place_all(r);
+    return was != r->viewing || memcmp(&shown, &r->show, sizeof(shown)) != 0;
+}
+
+bool comp_route_to_frame(const comp_route_t *r, int x, int y, int *fx, int *fy)
+{
+    if (!r->viewing) return fmrb_present_to_frame(&r->place, r->fb_w, r->fb_h, x, y, fx, fy);
+    bool in = fmrb_present_to_frame(&r->show, r->view_w, r->view_h, x, y, fx, fy);
+    *fx += r->view_x;
+    *fy += r->view_y;
+    return in;
 }
 
 void comp_route_set_base(comp_route_t *r, int base_w, int base_h)
 {
     r->base_w = base_w;
     r->base_h = base_h;
-    for (int i = 0; i < r->n; i++) locate(r, &r->win[i]);
+    place_all(r);
 }
 
 void comp_route_set_frame(comp_route_t *r, const uint16_t *px)
@@ -223,7 +266,7 @@ comp_hit_t comp_route_at(const comp_route_t *r, int x, int y)
     comp_hit_t hit = { .target = COMP_FMRB };
     if (r->fb_w <= 0 || r->fb_h <= 0) return hit;
     int fx = 0, fy = 0;
-    hit.in_picture = fmrb_present_to_frame(&r->place, r->fb_w, r->fb_h, x, y, &fx, &fy);
+    hit.in_picture = comp_route_to_frame(r, x, y, &fx, &fy);
     hit.x = fx;
     hit.y = fy;
     if (!hit.in_picture) return hit;

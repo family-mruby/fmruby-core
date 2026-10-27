@@ -29,6 +29,16 @@
  * A Family mruby window or menu over a stand-in covers the Linux window
  * there, so the two kinds of windows stack freely.
  *
+ * The screen (L9d): with screen.form "output" the frame is the output over
+ * display.scale (main_native.c asks wlr_size once the output is up), so it
+ * fills the output at that scale. A fullscreen app smaller than the frame
+ * (Modern's 426x240) is shown alone: Family mruby's side names its
+ * rectangle (the view, comp_link.h), and only that part of the picture is
+ * laid on the output at its own largest whole scale (the scene buffer's
+ * source box), the Linux windows hidden as under any fullscreen app.
+ * display.mode sets the output's mode (a custom one on the headless and
+ * nested backends, for the tests and a window of a chosen size).
+ *
  * Pointer: over a hole (or a popup) it goes to that Linux window at the
  * output's own resolution, with wlroots' cursor (Family mruby's is hidden);
  * a press there also goes to Family mruby, whose window manager raises and
@@ -248,6 +258,7 @@ static struct {
     struct wlr_compositor *compositor;
     struct wlr_session *session;            /* on a console: the seat (logind / seatd) */
     int rotate;                             /* display.rotate: the output's transform */
+    int mode_w, mode_h, mode_hz;            /* display.mode, 0x0 = the output's preferred */
 #if WLR_HAS_XWAYLAND
     struct wlr_xwayland *xwayland;          /* NULL: none (not installed, or failed) */
     bool xwayland_up;                       /* the server has started (lazily) */
@@ -663,8 +674,17 @@ static void apply_layout(void)
 {
     const comp_route_t *r = &s.route;
     wlr_scene_rect_set_size(s.black, r->out_w, r->out_h);
-    wlr_scene_node_set_position(&s.picture->node, r->place.x, r->place.y);
-    wlr_scene_buffer_set_dest_size(s.picture, r->place.w, r->place.h);
+    /* What is shown: the whole frame, or the part Family mruby asked for
+     * (a fullscreen app smaller than the screen, L9d), each at its own
+     * largest whole scale. */
+    wlr_scene_node_set_position(&s.picture->node, r->show.x, r->show.y);
+    wlr_scene_buffer_set_dest_size(s.picture, r->show.w, r->show.h);
+    if (r->viewing) {
+        struct wlr_fbox src = { .x = r->view_x, .y = r->view_y, .width = r->view_w, .height = r->view_h };
+        wlr_scene_buffer_set_source_box(s.picture, &src);
+    } else {
+        wlr_scene_buffer_set_source_box(s.picture, NULL);
+    }
     /* Bottom to top, as the route has them. */
     for (int i = 0; i < r->n; i++) {
         window_t *w = window_by_id(r->win[i].id);
@@ -681,11 +701,18 @@ static void apply_layout(void)
     clip_popups();
     s.recompose = true;
     static fmrb_present_place_t logged;
-    if (memcmp(&logged, &r->place, sizeof(logged)) != 0) {
-        logged = r->place;
-        fprintf(stderr, "native: compositor: output %dx%d: frame %dx%d at %dx, %dx%d at (%d,%d), black around\n",
-                r->out_w, r->out_h, r->fb_w, r->fb_h, r->place.scale, r->place.w, r->place.h,
-                r->place.x, r->place.y);
+    if (memcmp(&logged, &r->show, sizeof(logged)) != 0) {
+        logged = r->show;
+        if (r->viewing) {
+            fprintf(stderr, "native: compositor: output %dx%d: %dx%d of the frame %dx%d (a fullscreen app) at %dx, "
+                            "%dx%d at (%d,%d), black around\n",
+                    r->out_w, r->out_h, r->view_w, r->view_h, r->fb_w, r->fb_h, r->show.scale, r->show.w,
+                    r->show.h, r->show.x, r->show.y);
+        } else {
+            fprintf(stderr, "native: compositor: output %dx%d: frame %dx%d at %dx, %dx%d at (%d,%d), black around\n",
+                    r->out_w, r->out_h, r->fb_w, r->fb_h, r->place.scale, r->place.w, r->place.h,
+                    r->place.x, r->place.y);
+        }
     }
     int bw = 0, bh = 0;
     native_frame_base_size(&bw, &bh);
@@ -728,8 +755,9 @@ static void take_from_fmrb(void)
 {
     comp_places_t pl;
     if (comp_link_take_places(&pl)) {
+        bool view = comp_route_set_view(&s.route, pl.view_x, pl.view_y, pl.view_w, pl.view_h);
         int ch = comp_route_place(&s.route, pl.p, pl.n, pl.focus);
-        if (ch & (COMP_PLACE_MOVED | COMP_PLACE_ORDER)) apply_layout();
+        if (view || (ch & (COMP_PLACE_MOVED | COMP_PLACE_ORDER))) apply_layout();
         if (ch & COMP_PLACE_FOCUS) {
             apply_focus();
             fprintf(stderr, "native: compositor: keyboard to %s%d (Family mruby's focus)\n",
@@ -1611,8 +1639,7 @@ static ptr_hit_t pointer_hit(void)
         p.surf = NULL;
         if (p.hit.target == COMP_FMRB) {
             /* Clamped into the frame, as a drag out of the picture is. */
-            fmrb_present_to_frame(&s.route.place, s.route.fb_w, s.route.fb_h, (int)x, (int)y,
-                                  &p.hit.x, &p.hit.y);
+            comp_route_to_frame(&s.route, (int)x, (int)y, &p.hit.x, &p.hit.y);
         }
     }
     if (p.hit.target != COMP_FMRB && p.surf == NULL) p.surf = surface_at(p.hit.target, &p.sx, &p.sy);
@@ -1622,8 +1649,7 @@ static ptr_hit_t pointer_hit(void)
 /* Where the pointer is in frame coordinates, clamped. */
 static void pointer_frame(int *fx, int *fy)
 {
-    fmrb_present_to_frame(&s.route.place, s.route.fb_w, s.route.fb_h, (int)s.cursor->x, (int)s.cursor->y,
-                          fx, fy);
+    comp_route_to_frame(&s.route, (int)s.cursor->x, (int)s.cursor->y, fx, fy);
 }
 
 static void grab_motion(void)
@@ -1886,7 +1912,22 @@ static void new_output(struct wl_listener *l, void *data)
     wlr_output_state_init(&st);
     wlr_output_state_set_enabled(&st, true);
     struct wlr_output_mode *mode = wlr_output_preferred_mode(out);
-    if (mode != NULL) wlr_output_state_set_mode(&st, mode);
+    if (s.mode_w > 0) {
+        /* display.mode: that mode when the output lists it, else a custom
+         * one (the headless and nested outputs take any size). */
+        struct wlr_output_mode *m, *pick = NULL;
+        wl_list_for_each(m, &out->modes, link) {
+            if (m->width == s.mode_w && m->height == s.mode_h &&
+                (s.mode_hz == 0 || (m->refresh + 500) / 1000 == s.mode_hz)) {
+                pick = m;
+                break;
+            }
+        }
+        if (pick != NULL) wlr_output_state_set_mode(&st, pick);
+        else wlr_output_state_set_custom_mode(&st, s.mode_w, s.mode_h, s.mode_hz * 1000);
+    } else if (mode != NULL) {
+        wlr_output_state_set_mode(&st, mode);
+    }
     /* display.rotate turns the output clockwise, as wlr-randr --transform
      * did in the cage session (L7); the pointer turns with it. */
     static const enum wl_output_transform turns[] = { WL_OUTPUT_TRANSFORM_NORMAL, WL_OUTPUT_TRANSFORM_90,
@@ -1982,7 +2023,8 @@ static void tool_wheel(int notches)
 /*
  * The control socket's "comp ..." (tools/fmrb_native.rb comp):
  *
- *   comp info            "OK out=WxH frame=WxH scale=S at=X,Y focus=F
+ *   comp info            "OK out=WxH frame=WxH scale=S at=X,Y
+ *                        view=VX,VY,VWxVH vscale=S vat=X,Y focus=F
  *                        windows=ID:WxH+X+Y/FXxFY+FWxFH/V,... ptr=ID:SX,SY
  *                        cursor=fmrb|window keymap=us|jp socket=NAME
  *                        renderer=R": each window's size and place on the
@@ -2030,7 +2072,7 @@ static void apps_ctl(const char *a, char *out, size_t cap)
         return;
     }
     buf[got] = '\0';
-    bool ready = strncmp(buf, "ready\t", 6) == 0;
+    bool ready = strncmp(buf, "ready\n", 6) == 0;
     int count = 0, index = -1;
     char name[160] = "", icon[300] = "-";
     char *save = NULL;
@@ -2062,9 +2104,11 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
     unsigned code = 0;
     if (strcmp(a, "info") == 0 || a[0] == '\0') {
         const comp_route_t *r = &s.route;
-        int n = snprintf(out, cap, "OK out=%dx%d frame=%dx%d scale=%d at=%d,%d focus=%d windows=",
+        int n = snprintf(out, cap, "OK out=%dx%d frame=%dx%d scale=%d at=%d,%d view=%d,%d,%dx%d vscale=%d vat=%d,%d "
+                         "focus=%d windows=",
                          r->out_w, r->out_h, r->fb_w, r->fb_h, r->place.scale, r->place.x, r->place.y,
-                         r->focus);
+                         r->viewing ? r->view_x : 0, r->viewing ? r->view_y : 0, r->viewing ? r->view_w : r->fb_w,
+                         r->viewing ? r->view_h : r->fb_h, r->show.scale, r->show.x, r->show.y, r->focus);
         for (int i = 0; i < r->n && n > 0 && (size_t)n < cap; i++) {
             const comp_window_t *w = &r->win[i];
             n += snprintf(out + n, cap - (size_t)n, "%s%d:%dx%d+%d+%d/%dx%d+%dx%d/%d", i ? "," : "", w->id, w->w,
@@ -2207,6 +2251,11 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     wl_list_init(&s.keyboards);
     snprintf(s.autostart, sizeof(s.autostart), "%s", m->compositor.autostart);
     s.rotate = m->display.rotate;
+    if (strcmp(m->display.mode, "auto") != 0 &&
+        sscanf(m->display.mode, "%dx%d@%d", &s.mode_w, &s.mode_h, &s.mode_hz) < 2) {
+        snprintf(why, why_len, "display.mode \"%s\" is not auto, WxH or WxH@Hz", m->display.mode);
+        return false;
+    }
     s.stats.since_ms = now_ms();
     if (getenv("XDG_RUNTIME_DIR") == NULL) {
         snprintf(why, why_len, "XDG_RUNTIME_DIR is not set (the compositor's socket goes there)");
@@ -2327,6 +2376,15 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     return true;
 }
 
+/* The output as the picture sees it (turned by display.rotate): the size the
+ * screen form "output" divides (main_native.c). */
+static bool wlr_size(int *w, int *h)
+{
+    if (s.output == NULL) return false;
+    wlr_output_effective_resolution(s.output, w, h);
+    return *w > 0 && *h > 0;
+}
+
 static void take_base_size(void)
 {
     if (s.route.base_w > 0) return;
@@ -2363,6 +2421,14 @@ static void wlr_present(const uint16_t *px, int w, int h, bool changed)
     if (!changed && !s.recompose) return;
     compose();
     if (!changed) return;
+    /* The backdrops take their colour from the frame, which may have come
+     * after the place it was read for (a window moved over where a hole had
+     * been): read again from each new frame. */
+    window_t *bw;
+    wl_list_for_each(bw, &s.windows, link) {
+        const comp_window_t *cw = comp_route_window(&s.route, bw->id);
+        if (cw != NULL && cw->placed && bw->backdrop != NULL) set_backdrop_colour(bw, cw);
+    }
     uint64_t t = now_ms();
     if (s.stats.pictures > 0) {
         uint64_t gap = t - s.stats.last_picture_ms;
@@ -2449,12 +2515,31 @@ static void linger(void)
             asked++;
         }
     }
-    if (asked == 0) return;
+    if (asked == 0) {
+        /* The main loop's copy is gone: nothing may read it any more. */
+        s.frame = NULL;
+        comp_route_set_frame(&s.route, NULL);
+        return;
+    }
     fprintf(stderr, "native: compositor: asked %d window%s to close\n", asked, asked == 1 ? "" : "s");
-    uint16_t *frame = malloc((size_t)640 * 360 * sizeof(uint16_t));
+    /* A copy of the frame of its own: the main loop's is gone by now. As
+     * large as the frame can be (the base screen, which may be larger than
+     * the high-resolution one since L9d), and taken at once, so the picture
+     * never points at the main loop's copy. */
+    int bw = 0, bh = 0;
+    native_frame_base_size(&bw, &bh);
+    int cap = bw * bh > 640 * 360 ? bw * bh : 640 * 360;
+    uint16_t *frame = malloc((size_t)cap * sizeof(uint16_t));
     uint64_t t0 = now_ms();
     uint64_t closed_at = 0;
     uint32_t shown = 0;
+    int fw0 = 0, fh0 = 0;
+    if (frame != NULL && native_frame_copy(frame, cap, &fw0, &fh0, &shown)) {
+        wlr_present(frame, fw0, fh0, true);
+    } else {
+        s.frame = NULL;
+        comp_route_set_frame(&s.route, NULL);
+    }
     while (now_ms() - t0 < LINGER_MS && s.output != NULL) {
         /* Once the windows have gone, a moment more for their programs to
          * leave on their own. */
@@ -2470,8 +2555,8 @@ static void linger(void)
         reap_child();
         if (frame != NULL && native_frame_seq() != shown) {
             int fw = 0, fh = 0;
-            if (native_frame_copy(frame, 640 * 360, &fw, &fh, &shown)) wlr_present(frame, fw, fh, true);
-        } else if (frame != NULL && s.recompose && s.route.fb_w > 0) {
+            if (native_frame_copy(frame, cap, &fw, &fh, &shown)) wlr_present(frame, fw, fh, true);
+        } else if (frame != NULL && s.frame == frame && s.recompose && s.route.fb_w > 0) {
             wlr_present(frame, s.route.fb_w, s.route.fb_h, false);
         }
     }
@@ -2560,4 +2645,5 @@ const native_output_t native_output_wlroots = {
     .present = wlr_present,
     .close   = wlr_close,
     .ctl     = wlr_ctl,
+    .size    = wlr_size,
 };

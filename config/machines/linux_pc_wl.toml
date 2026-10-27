@@ -3,8 +3,14 @@
 # WAYLAND_DISPLAY is set (WSLg, a desktop), on DRM/KMS from a console
 # otherwise (WLR_BACKENDS chooses; headless for the tests).
 #
-# The Family mruby screen is laid on the output at the largest whole scale,
-# black around. Linux windows are Family mruby windows (L9a): each gets the
+# The Family mruby screen is the output over display.scale (L9d): 1280x800
+# at scale 2 is a 640x400 screen filling the output, 1920x1080 a 960x540 one
+# (an odd pixel left over is black). A portrait output, or one under 426x240
+# at that scale, gets the 426x240 screen. The size is taken once, when the
+# output comes up; if the output changes later (the nested window resized),
+# the screen stays and is laid on it at the largest whole scale that fits.
+# A fullscreen app keeps Modern's 426x240 and is shown alone at the largest
+# whole scale, centred, black around. Linux windows are Family mruby windows (L9a): each gets the
 # Family mruby title bar, frame and close button, and shows through it at
 # the output's own resolution; the window manager moves, resizes, stacks and
 # focuses them with the other windows. Family mruby's Exit asks them to
@@ -18,11 +24,12 @@
 description = "Linux PC: the program as the Wayland compositor (wlroots)"
 
 [screen]
-form = "426x240"
+form = "output"              # the output over display.scale
 
 [display]
 backend = "wlroots"
-scale = "auto"
+scale = 2                    # the output's pixels to one Family mruby pixel
+mode = "auto"                # or "WxH": the output's mode (any size on headless and nested)
 
 [input]
 backend = "wlroots"          # the compositor's seat: keyboard, touchpad, mouse

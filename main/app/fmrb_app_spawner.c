@@ -406,9 +406,7 @@ static void fullscreen_window_size(bool hires, uint16_t* w, uint16_t* h)
     if (hires && fmrb_app_fullscreen_hires_size(w, h)) {
         return;
     }
-    const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
-    *w = (uint16_t)(sys_config->display_width  - sys_config->display_margin_x);
-    *h = (uint16_t)(sys_config->display_height - sys_config->display_margin_y);
+    fmrb_kernel_fullscreen_size(w, h);
 }
 
 static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* out_pid)

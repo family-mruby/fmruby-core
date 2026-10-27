@@ -1566,8 +1566,11 @@ static mrb_value mrb_fmrb_app_s_linux_launch(mrb_state *mrb, mrb_value klass)
 //   there, false once it has gone, nil when the caller is no stand-in (yet).
 // FmrbApp.wl_close -> bool. Ask the Linux window to close (the program may ask
 //   about unsaved work first, or refuse).
+// FmrbApp.wl_key -> Integer: the colour key of the caller's canvas (RGB332),
+//   which the stand-in paints outside its rounded corners (L9d).
 extern int native_wl_window_state(int pid, char *title, size_t cap);
 extern bool native_wl_window_close(int pid);
+extern uint8_t native_wl_canvas_key(const fmrb_app_task_context_t *ctx, uint8_t key);
 
 static mrb_value mrb_fmrb_app_s_wl_window(mrb_state *mrb, mrb_value klass)
 {
@@ -1587,6 +1590,24 @@ static mrb_value mrb_fmrb_app_s_wl_close(mrb_state *mrb, mrb_value klass)
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) return mrb_false_value();
     return mrb_bool_value(native_wl_window_close((int)ctx->app_id));
+}
+
+// FmrbApp.linux_keyboard -> "jp" or "us": the layout Linux is set to, what
+//   keyboard_layout = "auto" follows (L9d). Native only, like the calls above.
+extern bool native_linux_keyboard_jp(char *how, size_t how_len);
+
+static mrb_value mrb_fmrb_app_s_linux_keyboard(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    return mrb_str_new_cstr(mrb, native_linux_keyboard_jp(NULL, 0) ? "jp" : "us");
+}
+
+static mrb_value mrb_fmrb_app_s_wl_key(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) return mrb_fixnum_value(0x01);
+    return mrb_fixnum_value(native_wl_canvas_key(ctx, 0x01));
 }
 #endif
 
@@ -2076,6 +2097,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 #if defined(FMRB_PLATFORM_NATIVE)
     mrb_define_class_method(mrb, app_class, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "wl_key", mrb_fmrb_app_s_wl_key, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "linux_keyboard", mrb_fmrb_app_s_linux_keyboard, MRB_ARGS_NONE());
 #endif
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
