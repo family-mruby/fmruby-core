@@ -1,4 +1,4 @@
-# L9d 指示書: 画面を 2 倍で埋める、Linux の窓の角を透かす、Linux の印
+# L9d 指示書: 画面を 2 倍で埋める、Linux の窓の角を透かす、Linux の印、配列を Linux に合わせる
 
 > 計画: doc/linux_native/plan.md (段取りの L9、「後で直すもの」)。
 > 前段の結果: report/l9a.md (代役と穴の作り、四隅の 3 画素の残件)、
@@ -18,6 +18,9 @@
   画面を「出力 ÷ 2」の大きさにして出力を埋める (1280x800 なら 640x400、
   1920x1080 なら 960x540)。黒い帯を無くす。倍率は設定で変えられる。
 - **角丸**: Linux の窓の枠の四隅の外側も、普通の窓と同じく後ろが透けて見える。
+- **キーボードの配列**: Linux の機種では、利用者が Family mruby の Config で
+  配列を選んでいなければ、Linux の配列 (Kubuntu の設定) に自動で合わせる。
+  jp なら jp、それ以外なら us。Config で選んだときはそれが勝つ。
 - **印**: 「Linux」の区分の印は**自分で描いた小さなペンギン** (Tux の写しでは
   なく、Family mruby のほかの印と同じ筆致)。各 Linux のアプリの共通の印
   (アイコンが無いもの) は**窓の絵**にする。
@@ -68,6 +71,19 @@
   L9b のように実行時に描くかを選び、report に書く。`flash/` に置くなら、
   native とコンテナの像に入ることを確かめる。
 
+### 4. キーボードの配列を Linux の設定に合わせる
+
+- Linux の配列は、システムの設定 (`/etc/default/keyboard` の `XKBLAYOUT`、
+  `localectl` が書くもの。`dpkg-reconfigure keyboard-configuration` で変わる) を
+  読む。Plasma の利用者ごとの配列の設定 (kxkbrc) も読むべきかを調べ、report に
+  書く。
+- 「利用者が選んでいない」をどう表すか (Config の `keyboard_layout` に `auto` を
+  足して Linux の機種の既定にする、など) を作りを読んで選び、report に書く。
+  端末・sim・ブラウザ版の Config の選択肢と既定は変えない (`auto` を出すのは
+  Linux の機種だけ)。
+- 合わせた結果は Family mruby のキーの表と、Linux の窓の keymap (L9a) の両方に
+  効くこと。どの配列に決めたかをログに 1 行出す。
+
 ## 触ってよい範囲
 
 - fmruby-core: `native/`、`hosted/`、`config/machines/`、`main/` の表示・kernel・
@@ -110,6 +126,10 @@
    report に書き、基準の更新は別のコミットに)。`rake native:test`、amd64 と
    arm64 の deb_check が通る。
 7. 1・2・4 を標準と全部 mruby の両方で、pixman で。
+8. 一時の場所に置いた偽の `/etc/default/keyboard` (`XKBLAYOUT="jp"`) で起こすと、
+   Config で選んでいないとき Family mruby と Linux の窓 (foot) の配列が jp になる
+   (jp の記号が配列どおりに入る)。`us` なら us。Config で us を選ぶと、Linux が
+   jp でも us になる。端末・sim の Config の選択肢は今のまま。
 
 ## 止まる条件
 
@@ -127,6 +147,7 @@
   直した決め打ちの所
 - 四隅を透かす作りとその理由
 - 印の描き方と置き場所
+- 配列の読み方と「選んでいない」の表し方
 - 受け入れ条件ごとの結果と、確かめたコマンド・数値 (内蔵 RAM・flash の差)、
   画面
 - VM で人が確かめる手順、撤回した見立て、踏んだ罠、残件
