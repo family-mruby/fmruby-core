@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9 (コンポジタの本実装)。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L9a (Linux の窓の組み込み、実装中)。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -309,6 +309,12 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
 - 動作の流れ: wlroots の処理の流れ (`wl_event_loop`) と FreeRTOS の協調の
   スレッド群は別々に走らせ、受け渡しの口を 2 つ (画面の絵・窓の通知と入力)
   だけにする。
+- 決定 (2026-10-27 ユーザ): Family mruby の窓と Linux の窓は自由に前後する
+  (Linux の窓を下に描き、Family mruby が見えるべき所を透過で空ける)。Family
+  mruby を終えるときは、起動した Linux のアプリも閉じるよう頼み、数秒で
+  終わらなければ止める。コンポジタの確認の一式は `rake regress:full` に載せる。
+- L9 は L9a (窓の組み込み) と L9b (Linux のアプリの起動の口、Xwayland、
+  ログイン画面の入口の切り替え) に分ける。
 - X11 のアプリは Xwayland で動かす。ポップアップ・メニュー・クリップボードは
   段階的に広げる。
 
@@ -544,12 +550,9 @@ L7c の検収で見つけたもの。急がないが、改善する。
 - 切り替えの一覧を開くキーの組 (Cardputer のキーボードで押せるもの、実機で決める、L5b)。
 - App Store の審査の基準 (ライセンス、パッケージの大きさ、root で動くこと)。
 - (3) の小型 PC (Chuwi MiniBook X を検討中)。
-- Family mruby を終えるとき、起動した Linux のアプリを一緒に閉じるか残すか (L9)。
 - Cardputer Zero のキーボードの細部 (L0・L5、実機で決める): 記号の層の Shift の
   位置が KEY_KPPLUS で届き、M5Stack のコンソールの表でも割り当てが無い
   (今はテンキーの `+` として届く)。記号の層は他のキーのコードを借りて届くので、
   追加の表は `keymap_device` の装置だけに当てている。
 - fbdev・DRM で動くときのテキストのコンソール (VT) との関係、キーボードの
   独占 (EVIOCGRAB)、起動後の抜き差し、タッチパッド (EV_ABS) の扱い (L3)。
-- コンポジタの合成で、外の窓をどの前後関係まで Family mruby の窓と混ぜられるか
-  (Family mruby の窓が外の窓の上に重なる場合の扱い、L9)。
