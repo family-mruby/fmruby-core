@@ -82,8 +82,9 @@ class EditorApp < FmrbApp
     # Selection (anchor side; cursor side is the moving end). nil = no selection.
     @sel_anchor_x = nil
     @sel_anchor_y = nil
-    # Clipboard lives in EditorCore too (copy_range / paste_at), so a copied
-    # block never becomes a String on this VM's heap.
+    # The clipboard is the machine's, reached through EditorCore (copy_range /
+    # paste_at; editor/clipboard.rb), so a copied block never becomes a String
+    # on this VM's heap.
     # Syntax highlight: default comes from the file type (Ruby only -- the
     # tokenizer is a Ruby lexer), and a manual toggle wins until another file is
     # opened. A new unnamed buffer starts on: this machine is a Ruby machine.

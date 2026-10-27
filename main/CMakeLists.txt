@@ -24,6 +24,8 @@ set(COMPONENT_SRCS
     # the default table, what every target answered before L6
     # (doc/linux_native). The native program installs a Linux one.
     "kernel/fmrb_platform_sys.c"
+    # The machine's clipboard (L12a), one text every app shares.
+    "kernel/fmrb_clipboard.c"
     "kernel/host/host_task.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/usb/fmrb_kana.c"

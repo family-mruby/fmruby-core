@@ -14,6 +14,7 @@
 void app_main(void);
 void fmrb_wasm_page_settings_parse(int argc, char **argv);
 void fmrb_wasm_page_settings_apply(void);
+void fmrb_wasm_clip_install(void);
 
 /* The browser's input: the page's event ring (input_wasm.c). */
 extern const fmrb_input_source_t fmrb_input_source_wasm;
@@ -39,6 +40,8 @@ static void prvMainTask(void *arg)
 int main(int argc, char **argv)
 {
     fmrb_wasm_page_settings_parse(argc, argv);
+    /* The machine's clipboard joined to the browser's (clip_wasm.c, L12a). */
+    fmrb_wasm_clip_install();
     if (xTaskCreate(prvMainTask, "app_main", MAIN_TASK_STACK_BYTES, NULL,
                     MAIN_TASK_PRIORITY, NULL) != pdPASS) {
         printf("bootstrap failed: could not create the main task\n");

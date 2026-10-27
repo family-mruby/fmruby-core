@@ -93,6 +93,11 @@ class ShellApp < FmrbApp
     @linux_term = nil
     @linux_ok = nil
     @linux_colors = nil
+    # Pasted texts waiting for a running Linux program (shell_linux.rb), in
+    # step with the keys queued around them, and what its input has not
+    # taken yet.
+    @paste_q = []
+    @linux_out = ""
   end
 
   # Key reference shown by the less-mode help overlay (toggled with '?').
@@ -500,6 +505,15 @@ class ShellApp < FmrbApp
         @ctrl_pressed = true
         return
       end
+      # Paste (doc/linux_native L12a): Ctrl+V as in the editor, and
+      # Ctrl+Shift+V as in Linux terminals. A running Linux program keeps
+      # Ctrl+V for itself (its ^V); Ctrl+Shift+V pastes into its input.
+      if (ev[:scancode] || 0) == 0x19 && (ev_ctrl?(ev) || @ctrl_pressed) &&
+         (!@linux_h || ev_shift?(ev))
+        @ctrl_pressed = false
+        paste_clipboard
+        return
+      end
       # A Linux program takes Ctrl+letters as control bytes.
       return if @linux_h && linux_key(ev)
 
@@ -569,6 +583,56 @@ class ShellApp < FmrbApp
     Log.info("Shell resize: #{new_width}x#{new_height} " \
              "-> #{@max_chars}x#{@visible_rows}")
     nil
+  end
+
+  # ---- Paste ----
+
+  # The most of the clipboard one paste reads at the prompt, in bytes (the
+  # line holds @max_line_length characters anyway).
+  PASTE_PROMPT_MAX = 1024
+
+  # The clipboard into the input, as if typed. At the prompt (and in irb, and
+  # for a script reading the keyboard) the text goes into the one line: each
+  # line break and tab becomes a space, other control characters are left
+  # out, and what the line has no room for is dropped -- nothing runs until
+  # Enter. A running Linux program gets the text as it is, line breaks as
+  # Enter (CR), in turn with the keys queued before it.
+  def paste_clipboard
+    if @linux_h
+      text = FmrbApp.clipboard
+      return if text.empty?
+      @paste_q << text
+      queue_key(-8)
+      return
+    end
+    text = FmrbApp.clipboard(PASTE_PROMPT_MAX)
+    return if text.empty?
+    line = ""
+    i = 0
+    n = text.bytesize
+    while i < n
+      b = text.getbyte(i)
+      if b == 10 || b == 13 || b == 9
+        line << " "
+      elsif b >= 32 && b != 127
+        line << one_byte_string(b)
+      end
+      i += 1
+    end
+    # A copied line usually ends in its line break: no space for it.
+    while line.bytesize > 0 && line.getbyte(line.bytesize - 1) == 32
+      line = line.byteslice(0, line.bytesize - 1).to_s
+    end
+    room = @max_line_length - @current_line.length
+    return if room <= 0
+    line = line[0, room].to_s if line.length > room
+    i = 0
+    n = line.bytesize
+    while i < n
+      @input_buffer << line.getbyte(i)
+      i += 1
+    end
+    request_early_update
   end
 
   # ---- Command input handling ----

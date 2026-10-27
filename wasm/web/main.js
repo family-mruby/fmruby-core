@@ -126,6 +126,7 @@ function pushInput(type, a, b, c, d) {
 function paint() {
   requestAnimationFrame(paint);
   if (!M) return;
+  if (M._fmrb_wasm_clip_out_seq_ptr) clipPollOut();
   const seq = M._fmrb_wasm_frame_seq();
   if (seq === lastSeq) return;
   lastSeq = seq;
@@ -249,6 +250,12 @@ function hookInput() {
   canvas.addEventListener('keydown', (ev) => {
     const sc = RD_HID_KEYMAP[ev.code];
     if (!sc) return;
+    // The paste key: let the browser fire its paste event (the browser's
+    // text, with no permission asked) and hold the key until the text is in.
+    if ((ev.ctrlKey || ev.metaKey) && ev.code === 'KeyV' && M && M._fmrb_wasm_clip_in_seq_ptr) {
+      holdPasteKey(sc, rdModMask(ev));
+      return;
+    }
     ev.preventDefault();
     pushInput(1, sc, rdModMask(ev), 0, 0);
   });
@@ -256,8 +263,76 @@ function hookInput() {
     const sc = RD_HID_KEYMAP[ev.code];
     if (!sc) return;
     ev.preventDefault();
+    if (heldPaste && heldPaste.sc === sc) releasePasteKey();
     pushInput(2, sc, rdModMask(ev), 0, 0);
   });
+  document.addEventListener('paste', (ev) => {
+    if (!M || !heldPaste) return;   // only the machine's paste key
+    ev.preventDefault();
+    const text = ev.clipboardData ? ev.clipboardData.getData('text/plain') : '';
+    if (text) clipWriteIn(text);
+    releasePasteKey();
+  });
+}
+
+// ---- clipboard (doc/linux_native L12a, wasm/backend/clip_wasm.c) ----------
+//
+// The machine's clipboard joined to the browser's. Out: the module's slot is
+// polled each animation frame and a new text goes to
+// navigator.clipboard.writeText. In: the paste event of the paste key. Each
+// slot has a sequence that is odd while it is being written. When the
+// browser refuses (writeText rejected, no paste event), the machine keeps its
+// own clipboard and the console says so.
+
+const CLIP_PASTE_WAIT_MS = 300;   // how long the paste key waits for the text
+let clipOutSeq = 0;
+let heldPaste = null;             // { sc, mod, timer } while waiting
+
+function clipPollOut() {
+  const heap = M.HEAPU32;
+  const seqIdx = M._fmrb_wasm_clip_out_seq_ptr() >> 2;
+  const s0 = Atomics.load(heap, seqIdx);
+  if (s0 === clipOutSeq || (s0 & 1)) return;
+  const len = Atomics.load(heap, M._fmrb_wasm_clip_out_len_ptr() >> 2);
+  const ptr = M._fmrb_wasm_clip_out_buf();
+  const bytes = M.HEAPU8.slice(ptr, ptr + len);   // a copy, out of the SAB
+  if (Atomics.load(heap, seqIdx) !== s0) return;  // rewritten: next frame
+  clipOutSeq = s0;
+  const text = new TextDecoder().decode(bytes);
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    console.warn('clipboard: this browser has no clipboard to write to; the machine keeps its own');
+    return;
+  }
+  navigator.clipboard.writeText(text).catch((e) => {
+    console.warn('clipboard: the browser refused the copy (' + e + '); the machine keeps its own');
+  });
+}
+
+function clipWriteIn(text) {
+  const bytes = new TextEncoder().encode(text);
+  const heap = M.HEAPU32;
+  const seqIdx = M._fmrb_wasm_clip_in_seq_ptr() >> 2;
+  Atomics.add(heap, seqIdx, 1);                    // odd: writing
+  // Over the maximum only the length goes: the machine refuses it.
+  if (bytes.length <= M._fmrb_wasm_clip_in_cap()) M.HEAPU8.set(bytes, M._fmrb_wasm_clip_in_buf());
+  Atomics.store(heap, M._fmrb_wasm_clip_in_len_ptr() >> 2, bytes.length);
+  Atomics.add(heap, seqIdx, 1);                    // even: done
+}
+
+function holdPasteKey(sc, mod) {
+  releasePasteKey();
+  heldPaste = { sc, mod, timer: setTimeout(() => {
+    if (heldPaste) console.warn('clipboard: no paste from the browser; the machine pastes its own');
+    releasePasteKey();
+  }, CLIP_PASTE_WAIT_MS) };
+}
+
+function releasePasteKey() {
+  if (!heldPaste) return;
+  clearTimeout(heldPaste.timer);
+  const { sc, mod } = heldPaste;
+  heldPaste = null;
+  pushInput(1, sc, mod, 0, 0);
 }
 
 // ---- audio ----------------------------------------------------------------

@@ -24,6 +24,7 @@
 #include "fmrb_hal_file.h"
 #include "fmrb_log.h"
 #include "fmrb_attr.h"
+#include "fmrb_clipboard.h"
 
 #include "../../include/editor_core_api.h"
 
@@ -59,8 +60,6 @@ typedef struct {
     ed_line_t *lines;
     int32_t    count;
     int32_t    cap;
-    char      *clip;     /* clipboard bytes ('\n' separated) */
-    int32_t    clip_len;
     int        hl_on;
 } ed_doc_t;
 
@@ -148,9 +147,6 @@ void ec_close_slot(int slot)
     ed_doc_t *d = doc_of(slot);
     if (!d) return;
     doc_clear(d);
-    ed_free(d->clip);
-    d->clip = NULL;
-    d->clip_len = 0;
     d->used = 0;
 }
 
@@ -933,6 +929,9 @@ const char *ec_find(int slot, const char *q, int qlen, int from_y, int from_x,
 
 /* ---- API: clipboard ---------------------------------------------------- */
 
+/* The clipboard is the machine's (fmrb_clipboard.h, L12a), shared by every
+   editor and app; the selection is staged here in the document arena and
+   handed over in one piece. */
 int ec_copy_range(int slot, int sy, int sx, int ey, int ex)
 {
     ed_doc_t *d = doc_of(slot);
@@ -947,6 +946,7 @@ int ec_copy_range(int slot, int sy, int sx, int ey, int ex)
         if (b1 > b0) total += b1 - b0;
         if (y < ey) total += 1;
     }
+    if (total > FMRB_CLIPBOARD_MAX) return EC_ERR_TOOBIG;
     char *buf = (total > 0) ? (char *)ed_alloc((size_t)total) : NULL;
     if (total > 0 && !buf) return EC_ERR_NOMEM;
 
@@ -961,25 +961,28 @@ int ec_copy_range(int slot, int sy, int sx, int ey, int ex)
         }
         if (y < ey) buf[at++] = '\n';
     }
-    ed_free(d->clip);
-    d->clip = buf;
-    d->clip_len = total;
+    fmrb_err_t err = fmrb_clipboard_set(buf, (size_t)total);
+    ed_free(buf);
+    if (err != FMRB_OK) return EC_ERR_TOOBIG;
     return total;
 }
 
 const char *ec_paste_at(int slot, int y, int x, int *out_len)
 {
     ed_doc_t *d = doc_of(slot);
-    if (!d || !y_ok(d, y) || d->clip_len == 0) return pos_record(y, x, out_len);
+    if (!d || !y_ok(d, y)) return pos_record(y, x, out_len);
+    size_t len = 0;
+    const char *clip = fmrb_clipboard_lock(&len);
+    if (!clip) return pos_record(y, x, out_len);
     int32_t ny = y, nx = x;
-    int r = doc_insert_multiline(d, y, x, d->clip, d->clip_len, &ny, &nx);
+    int r = (len > 0) ? doc_insert_multiline(d, y, x, clip, (int32_t)len, &ny, &nx) : -1;
+    fmrb_clipboard_unlock();
     if (r < 0) return pos_record(y, x, out_len);
     return pos_record(ny, nx, out_len);
 }
 
 int ec_clipboard_length(int slot)
 {
-    ed_doc_t *d = doc_of(slot);
-    if (!d) return 0;
-    return d->clip_len;
+    (void)slot;
+    return (int)fmrb_clipboard_length();
 }

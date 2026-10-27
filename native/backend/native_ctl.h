@@ -13,6 +13,8 @@
  *          (hosted/gate/fmrb_gate.h) and the longest stretch without a task
  *          switch (port_hosted.h). "stats reset" answers the same and then
  *          starts that stretch over.
+ *   clip   "OK joined=.. out=.. last_out=.. in=.. in_big=.. last_in=.. taken=..\n":
+ *          the clipboard's hand-overs with Linux (native_clip.h, L12a)
  *   quit   "OK\n", then the program exits
  *
  * A request the output has words of its own for (the compositor's "comp

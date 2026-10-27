@@ -23,6 +23,7 @@ extern "C" {
 #define EC_ERR_RANGE  (-1)
 #define EC_ERR_NOMEM  (-2)
 #define EC_ERR_IO     (-3)
+#define EC_ERR_TOOBIG (-4)   /* over the clipboard's maximum (fmrb_clipboard.h) */
 
 /* Slots. Claim one per editor instance; close it when the VM goes away. */
 int  ec_open_slot(void);
@@ -69,7 +70,9 @@ int  ec_save_file(int slot, const char *path);
 const char *ec_find(int slot, const char *q, int qlen, int from_y, int from_x,
                     int after, int *out_len);
 
-/* Clipboard */
+/* Clipboard: the machine's (fmrb_clipboard.h), shared by every editor and
+   app. ec_copy_range returns the bytes copied or EC_ERR_*; ec_clipboard_length
+   ignores the slot. */
 int  ec_copy_range(int slot, int sy, int sx, int ey, int ex);
 const char *ec_paste_at(int slot, int y, int x, int *out_len);
 int  ec_clipboard_length(int slot);

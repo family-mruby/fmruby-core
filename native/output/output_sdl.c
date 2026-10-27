@@ -18,6 +18,15 @@
  * input source, as the simulation's sdl2-display passes it. Unlike that
  * path, the modifier byte is built here from SDL's full mask, so Alt reaches
  * the machine.
+ *
+ * Clipboard (L12a): the machine's clipboard is joined to SDL's (the desktop's
+ * clipboard under X11 or Wayland). What an app copies is set with
+ * SDL_SetClipboardText from this thread; the desktop's text is read when SDL
+ * says the clipboard changed and when the window gains focus (SDL 2.0's X11
+ * only tells a change to a clipboard it owned; coming back to the window
+ * after copying elsewhere covers the rest), and handed over if it differs
+ * from the last text either way. Reading can wait on the owner briefly
+ * under X11; it happens only on those events.
  */
 
 #include <SDL.h>
@@ -25,9 +34,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fmrb_clipboard.h"
 #include "fmrb_keymap.h"
 #include "fmrb_present.h"
 #include "native_backends.h"
+#include "native_clip.h"
 #include "native_frame.h"
 #include "native_input.h"
 
@@ -47,6 +58,9 @@ static int s_scale = SDL_DEFAULT_SCALE;
 static int s_rotate = 0;
 static bool s_fullscreen = false;
 static fmrb_present_place_t s_place;
+/* The clipboard's last text either way (to tell the desktop's from ours). */
+static char *s_clip_last = NULL;
+static size_t s_clip_last_len = 0;
 
 /* Pending pointer motion, coalesced. */
 static int s_motion_pending = 0;
@@ -62,7 +76,49 @@ static bool sdl_open(const native_machine_t *m, char *why, size_t why_len)
     s_scale = m->display.scale > 0 ? m->display.scale : SDL_DEFAULT_SCALE;
     s_rotate = m->display.rotate;
     s_fullscreen = m->display.fullscreen;
+    native_clip_install(NULL);
     return true;
+}
+
+static void clip_remember(const char *text, size_t len)
+{
+    char *copy = (char *)malloc(len + 1);
+    if (copy == NULL) return;
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+    free(s_clip_last);
+    s_clip_last = copy;
+    s_clip_last_len = len;
+}
+
+/* The desktop's text, if it is new. */
+static void clip_read(void)
+{
+    if (!SDL_HasClipboardText()) return;
+    char *t = SDL_GetClipboardText();
+    if (t == NULL) return;
+    size_t len = strlen(t);
+    if (len > 0 && !(s_clip_last != NULL && len == s_clip_last_len && memcmp(t, s_clip_last, len) == 0)) {
+        native_clip_offer(len <= FMRB_CLIPBOARD_MAX ? t : NULL, len);
+        clip_remember(t, len);
+        fprintf(stderr, "native: clipboard: took %zu bytes from the desktop%s\n", len,
+                len > FMRB_CLIPBOARD_MAX ? " (over the maximum: refused)" : "");
+    }
+    SDL_free(t);
+}
+
+/* An app's new text onto the desktop's clipboard. */
+static void clip_write(void)
+{
+    char *t = NULL;
+    size_t len = 0;
+    if (!native_clip_take_out(&t, &len)) return;
+    /* SDL's clipboard is a C string: the text up to a NUL byte, if any. */
+    if (SDL_SetClipboardText(t) != 0) {
+        fprintf(stderr, "native: clipboard: %s\n", SDL_GetError());
+    }
+    clip_remember(t, strlen(t));
+    free(t);
 }
 
 static int ensure_texture(int w, int h)
@@ -213,6 +269,10 @@ static int handle_event(const SDL_Event *e)
             e->window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
             s_dirty = 1;
         }
+        if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) clip_read();
+        break;
+    case SDL_CLIPBOARDUPDATE:
+        clip_read();
         break;
     case SDL_KEYDOWN:
     case SDL_KEYUP: {
@@ -285,6 +345,7 @@ static bool sdl_pump(int wait_ms)
     }
     flush_motion(0);
     ensure_window();
+    if (s_window != NULL) clip_write();
     return quit != 0;
 }
 

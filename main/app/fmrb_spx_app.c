@@ -33,6 +33,7 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #include "usb_task.h"
 #include "status_led.h"
 #include "fmrb_platform_sys.h"
+#include "fmrb_clipboard.h"
 
 #ifdef CONFIG_IDF_TARGET_LINUX
 #include <sys/sysinfo.h>
@@ -488,6 +489,55 @@ const char *fmrb_spx_app_language(void)
     const char *lang = (cfg && cfg->language[0]) ? cfg->language : "en";
     *sp_ctx_ffi_bin_len() = (int)strlen(lang);
     return lang;
+}
+
+/* The machine's clipboard (L12a). */
+int fmrb_spx_app_clipboard_gen(void)
+{
+    return (int)fmrb_clipboard_generation();
+}
+
+int fmrb_spx_app_clipboard_length(void)
+{
+    return (int)fmrb_clipboard_length();
+}
+
+const char *fmrb_spx_app_clipboard_chunk(int off, int limit)
+{
+    /* One reader at a time is the usual case; like the other :binstr
+     * buffers here this one is shared, and the caller copies at once. */
+    FMRB_SPX_BSS_ATTR static char buf[FMRB_SPX_APP_CLIP_CHUNK + 4];
+    *sp_ctx_ffi_bin_len() = 0;
+    if (off < 0) return "";
+    size_t end = fmrb_clipboard_length();
+    bool cut = false;
+    if (limit > 0 && (size_t)limit < end) {
+        end = (size_t)limit;
+        cut = true;
+    }
+    if ((size_t)off >= end) return "";
+    size_t want = end - (size_t)off;
+    if (want > FMRB_SPX_APP_CLIP_CHUNK) {
+        want = FMRB_SPX_APP_CLIP_CHUNK;
+        cut = false;
+    }
+    /* Three bytes more, to see whether the limit splits a character. */
+    size_t got = fmrb_clipboard_read((size_t)off, buf, cut ? want + 3 : want, NULL);
+    if (cut && got > want) {
+        size_t n = want;
+        while (n > 0 && ((unsigned char)buf[n] & 0xC0) == 0x80) n--;
+        got = n;
+    } else if (got > want) {
+        got = want;
+    }
+    *sp_ctx_ffi_bin_len() = (int)got;
+    return buf;
+}
+
+int fmrb_spx_app_set_clipboard(const char *s, int len)
+{
+    if (len < 0) return 0;
+    return fmrb_clipboard_set(s, (size_t)len) == FMRB_OK ? 1 : 0;
 }
 
 /* What remote desktop video is going out right now: 0 none / 1 MJPEG /

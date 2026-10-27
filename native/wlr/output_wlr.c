@@ -63,6 +63,12 @@
  * fullscreen requests are answered without a change; move and resize
  * requests become moves and resizes of the stand-in.
  *
+ * The clipboard (L12a, wl_clip.c): the machine's clipboard is the seat's
+ * selection, both ways -- what a Family mruby app copies becomes the
+ * selection (the compositor its owner), and a selection a Linux program sets
+ * (X11 ones too, through Xwayland's bridge) is read and handed to Family
+ * mruby, never waiting. The primary selection is not served.
+ *
  * Also served: wlr-screencopy and xdg-output, so grim takes the composited
  * screen; and requests on the control socket ("comp ...", see wlr_ctl
  * below) that drive a keyboard and a pointer of the tools' own through the
@@ -167,8 +173,10 @@
 #include "linux_keys.h"
 #include "native_backends.h"
 #include "native_ctl.h"
+#include "native_clip.h"
 #include "native_frame.h"
 #include "native_input.h"
+#include "wl_clip.h"
 
 /* Pointer motion to Family mruby is passed on at most this often (the
  * machine redraws its cursor per event), as from the SDL window. */
@@ -2239,6 +2247,20 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
         }
         return true;
     }
+    if (strcmp(a, "clip") == 0) {
+        /* The clipboard (L12a): who owns the selection and the counts. */
+        wl_clip_stats_t c;
+        wl_clip_stats(&c);
+        native_clip_stats_t k;
+        native_clip_stats(&k);
+        snprintf(out, cap,
+                 "OK owner=%s kept=%zu gave=%u last_gave=%zu served=%u linux_sets=%u took=%u last_took=%zu "
+                 "refused=%u not_text=%u timeouts=%u owned=%u kept_again=%u fmrb_out=%u fmrb_taken=%u\n",
+                 c.owner == 0 ? "none" : c.owner == 1 ? "fmrb" : "linux", c.kept_len, c.gave, c.last_gave,
+                 c.served, c.linux_sets, c.took, c.last_took, c.refused, c.not_text, c.timeouts, c.owned,
+                 c.kept, k.out, k.taken);
+        return true;
+    }
     if (strncmp(a, "apps", 4) == 0 || strncmp(a, "app ", 4) == 0) {
         apps_ctl(a, out, cap);
         return true;
@@ -2257,7 +2279,7 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
     } else if (sscanf(a, "wheel %d", &n) == 1) {
         tool_wheel(n);
     } else {
-        snprintf(out, cap, "ERR comp: info, stats [reset], key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N\n");
+        snprintf(out, cap, "ERR comp: info, stats [reset], clip, key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N\n");
         return true;
     }
     wl_display_flush_clients(s.display);
@@ -2343,6 +2365,16 @@ static void qt_look(void)
         setenv("QT_QPA_PLATFORMTHEME", "kde", 1);
         fprintf(stderr, "native: compositor: Qt's look: Plasma's (QT_QPA_PLATFORMTHEME=kde; %s)\n", found);
     }
+}
+
+/* The clipboard's wake (native_clip.h): from the task that copied. */
+static void clip_wake(void)
+{
+    int fd = s.wake_fd;
+    if (fd < 0) return;
+    uint64_t one = 1;
+    ssize_t n = write(fd, &one, sizeof(one));
+    (void)n;
 }
 
 static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
@@ -2466,6 +2498,8 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         native_frame_set_wake_fd(s.wake_fd);
     }
     comp_link_attach(&s.route, s.wake_fd);
+    wl_clip_init(s.display, s.loop, s.seat);
+    native_clip_install(clip_wake);
     fprintf(stderr, "native: compositor: wlroots %s on WAYLAND_DISPLAY=%s (backends %s, renderer %s%s)\n",
             WLR_VERSION_STR, s.socket, getenv("WLR_BACKENDS") ? getenv("WLR_BACKENDS") : "auto",
             renderer_name(), s.session != NULL ? ", seat from the session" : "");
@@ -2508,6 +2542,7 @@ static bool wlr_pump(int wait_ms)
     take_base_size();
     follow_layout();
     take_from_fmrb();
+    wl_clip_pump();
     linux_apps_pump();
     wl_display_flush_clients(s.display);
     flush_motion(false);
@@ -2736,6 +2771,7 @@ static void wlr_close(void)
 {
     if (s.display == NULL) return;
     linger();
+    wl_clip_fini();
     end_clients();
     /* What the launcher started and is still there, with a window or not. */
     int left = linux_apps_end_all(TERM_GRACE_MS);

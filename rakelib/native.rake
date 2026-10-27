@@ -138,6 +138,13 @@ namespace :native do
   NATIVE_TEST_DIR = "test/native"
   NATIVE_TEST_BUILD = "#{NATIVE_TEST_DIR}/build"
 
+  # The clipboard joined to SDL's (L12a) on the built program: an X server
+  # of its own (Xvfb) and another SDL program as the desktop application.
+  desc "The sdl machine's clipboard with the desktop's, on Xvfb (needs rake native:core; NATIVE_ENGINE=mruby)"
+  task :sdl_clip do
+    sh "ruby #{File.join(ROOT_DIR, 'test/native/sdl/sdl_clip_check.rb')} --engine #{native_engine}"
+  end
+
   desc "Host tests of the native backends' processing halves (cc, no device)"
   task :test do
     cc = ENV["CC"] || "cc"
@@ -199,6 +206,16 @@ namespace :native do
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{cincs.map { |i| "-I #{i}" }.join(' ')} " \
        "#{csrcs.join(' ')} -lpthread -o #{NATIVE_TEST_BUILD}/native_comp_test"
     sh "#{NATIVE_TEST_BUILD}/native_comp_test"
+
+    # The machine's clipboard and its join with Linux's (L12a): the kernel's
+    # clipboard (main/kernel/fmrb_clipboard.c) with test/native/stub for the
+    # RTOS and the log, and the hand-overs with the main thread
+    # (native/backend/native_clip.c).
+    kincs = %W[#{NATIVE_TEST_DIR}/stub main/kernel native/backend components/fmrb_common/include]
+    ksrcs = %w[main/kernel/fmrb_clipboard.c native/backend/native_clip.c].push("#{NATIVE_TEST_DIR}/clip.c")
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DCONFIG_IDF_TARGET_LINUX " \
+       "#{kincs.map { |i| "-I #{i}" }.join(' ')} #{ksrcs.join(' ')} -lpthread -o #{NATIVE_TEST_BUILD}/native_clip_test"
+    sh "#{NATIVE_TEST_BUILD}/native_clip_test"
   end
 end
 

@@ -16,6 +16,7 @@
 #include "fmrb_kernel.h"
 #include "fmrb_rtc.h"
 #include "fmrb_platform_sys.h"
+#include "fmrb_clipboard.h"
 #include "boot.h"
 #include "fmrb_transport.h"
 #include "host/host_task.h"
@@ -1169,6 +1170,9 @@ fmrb_err_t fmrb_kernel_start(void)
         return FMRB_ERR_FAILED;
     }
     if(!init_file_sync()){
+        return FMRB_ERR_FAILED;
+    }
+    if (fmrb_clipboard_init() != FMRB_OK) {
         return FMRB_ERR_FAILED;
     }
     fmrb_mem_log_boot_snapshot("file_sync");

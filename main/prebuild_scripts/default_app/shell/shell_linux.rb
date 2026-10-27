@@ -83,6 +83,8 @@ module ShellLinuxMixin
     ensure
       FmrbApp.linux_close(h)
       @linux_h = nil
+      @linux_out = ""
+      @paste_q = []
     end
     linux_add_lines(@linux_term.finish)
     @linux_term = nil
@@ -142,11 +144,17 @@ module ShellLinuxMixin
     @need_full_redraw = true
   end
 
-  # Keys typed since the last look, as the bytes a terminal sends.
+  # Keys typed since the last look, as the bytes a terminal sends, after
+  # whatever its input did not take last time. A paste (-8, shell.app.rb)
+  # is its text with line breaks as CR.
   def linux_send_keys(h)
-    out = ""
+    out = @linux_out
+    @linux_out = ""
     while (ch = getch_nonblock)
-      if ch >= 0
+      if ch == -8
+        text = @paste_q.shift
+        out << linux_paste_bytes(text) if text
+      elsif ch >= 0
         if ch == 10 || ch == 13
           out << "\r"
         elsif ch == 8
@@ -168,7 +176,29 @@ module ShellLinuxMixin
         end
       end
     end
-    FmrbApp.linux_write(h, out) unless out.empty?
+    return if out.empty?
+    n = FmrbApp.linux_write(h, out)
+    if n >= 0 && n < out.bytesize
+      @linux_out = out.byteslice(n, out.bytesize - n).to_s
+    end
+  end
+
+  # Pasted text as a terminal sends it: "\n" as CR.
+  def linux_paste_bytes(text)
+    out = ""
+    i = 0
+    n = text.bytesize
+    start = 0
+    while i < n
+      if text.getbyte(i) == 10
+        out << text.byteslice(start, i - start).to_s if i > start
+        out << "\r"
+        start = i + 1
+      end
+      i += 1
+    end
+    out << text.byteslice(start, n - start).to_s if n > start
+    out
   end
 
   # A key while a program runs (on_event). Ctrl+letter becomes its control

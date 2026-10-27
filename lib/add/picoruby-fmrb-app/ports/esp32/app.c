@@ -29,6 +29,7 @@
 #include "fmrb_app_canvas.h"
 #include "fmrb_kernel.h"
 #include "fmrb_platform_sys.h"
+#include "fmrb_clipboard.h"
 #include "fmrb_hal_time.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
@@ -1597,6 +1598,65 @@ static mrb_value mrb_fmrb_app_s_linux_open(mrb_state *mrb, mrb_value klass)
     return name[0] ? mrb_str_new_cstr(mrb, name) : mrb_str_new_lit(mrb, "?");
 }
 
+// ---- The machine's clipboard (doc/linux_native L12a, fmrb_clipboard.h) ----
+//
+// FmrbApp.clipboard(limit = 0) -> String. The text every app shares ("" when
+//   empty); with a limit > 0, at most that many bytes, cut before a character
+//   that would not fit whole. On the Linux PC and in the browser it is what
+//   was last copied there or here.
+// FmrbApp.set_clipboard(str) -> true, or false when str is over the maximum
+//   (64 KB; the clipboard is then unchanged).
+// FmrbApp.clipboard_gen -> Integer: how many times the text has changed, to
+//   tell a change without reading the text.
+/* The first n bytes of b without a last character that is not all there. */
+static size_t clip_utf8_whole(const unsigned char *b, size_t n)
+{
+    size_t i = n;
+    for (int k = 0; i > 0 && k < 4; k++) {
+        i--;
+        if ((b[i] & 0xC0) != 0x80) break;
+    }
+    if (i >= n) return n;
+    unsigned char c = b[i];
+    size_t need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+    return (n - i >= need) ? n : i;
+}
+
+static mrb_value mrb_fmrb_app_s_clipboard(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int limit = 0;
+    mrb_get_args(mrb, "|i", &limit);
+    for (int tries = 0; tries < 4; tries++) {
+        uint32_t gen0 = fmrb_clipboard_generation();
+        size_t len = fmrb_clipboard_length();
+        size_t want = (limit > 0 && (size_t)limit < len) ? (size_t)limit : len;
+        if (want == 0) return mrb_str_new_lit(mrb, "");
+        mrb_value str = mrb_str_new_capa(mrb, want);
+        uint32_t gen1 = 0;
+        size_t got = fmrb_clipboard_read(0, RSTRING_PTR(str), want, &gen1);
+        if (gen1 != gen0 || got != want) continue;   /* changed meanwhile */
+        if (want < len) got = clip_utf8_whole((const unsigned char *)RSTRING_PTR(str), got);
+        mrb_str_resize(mrb, str, (mrb_int)got);
+        return str;
+    }
+    return mrb_str_new_lit(mrb, "");
+}
+
+static mrb_value mrb_fmrb_app_s_set_clipboard(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_value str;
+    mrb_get_args(mrb, "S", &str);
+    return mrb_bool_value(fmrb_clipboard_set(RSTRING_PTR(str), (size_t)RSTRING_LEN(str)) == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_clipboard_gen(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value((mrb_int)fmrb_clipboard_generation());
+}
+
 #if defined(FMRB_PLATFORM_NATIVE)
 // ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
 //
@@ -2150,6 +2210,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "linux_exit_code", mrb_fmrb_app_s_linux_exit_code, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_resize", mrb_fmrb_app_s_linux_resize, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "linux_close", mrb_fmrb_app_s_linux_close, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "clipboard", mrb_fmrb_app_s_clipboard, MRB_ARGS_OPT(1));
+    mrb_define_class_method(mrb, app_class, "set_clipboard", mrb_fmrb_app_s_set_clipboard, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "clipboard_gen", mrb_fmrb_app_s_clipboard_gen, MRB_ARGS_NONE());
 #if defined(FMRB_PLATFORM_NATIVE)
     mrb_define_class_method(mrb, app_class, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());

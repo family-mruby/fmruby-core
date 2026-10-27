@@ -316,6 +316,7 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/kernel/fmrb_secret_path.c
   ${FMRB_ROOT}/main/kernel/fmrb_rtc.c
   ${FMRB_ROOT}/main/kernel/fmrb_platform_sys.c
+  ${FMRB_ROOT}/main/kernel/fmrb_clipboard.c
   ${FMRB_ROOT}/main/kernel/host/host_task.c
   # Modern's "GA storage is our own filesystem" file receiver; the hosted
   # builds have the same one-process shape (host_task.c guards widened

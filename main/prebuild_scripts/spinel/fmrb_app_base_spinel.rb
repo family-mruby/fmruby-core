@@ -1983,6 +1983,43 @@ class FmrbApp
     ""
   end
 
+  # The machine's clipboard (doc/linux_native L12a), the same as the mruby
+  # FmrbApp's (lib/add/picoruby-fmrb-app): the text every app shares, at
+  # most limit bytes when limit > 0 (cut before a character that would not
+  # fit whole); set_clipboard is false when over the maximum (64 KB);
+  # clipboard_gen counts the changes. Read in pieces, again if it changed
+  # meanwhile.
+  def self.clipboard(limit = 0)
+    tries = 0
+    while tries < 4
+      gen = FmrbSpxApp.fmrb_spx_app_clipboard_gen
+      out = ""
+      off = 0
+      loop_on = true
+      while loop_on
+        part = FmrbSpxApp.fmrb_spx_app_clipboard_chunk(off, limit)
+        n = part.bytesize
+        if n == 0
+          loop_on = false
+        else
+          out = out + part
+          off += n
+        end
+      end
+      return out if FmrbSpxApp.fmrb_spx_app_clipboard_gen == gen
+      tries += 1
+    end
+    ""
+  end
+
+  def self.set_clipboard(str)
+    FmrbSpxApp.fmrb_spx_app_set_clipboard(str, str.bytesize) == 1
+  end
+
+  def self.clipboard_gen
+    FmrbSpxApp.fmrb_spx_app_clipboard_gen
+  end
+
   # UI language ("en" / "ja"). Read at run time rather than from FmrbConst:
   # that table is generated when the Spinel program is compiled, and the
   # language is a setting the Config app changes.

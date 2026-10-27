@@ -3,6 +3,7 @@
  */
 
 #include "native_ctl.h"
+#include "native_clip.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -148,6 +149,14 @@ bool native_ctl_poll(void)
             if (strcmp(line, "stats reset") == 0) {
                 vPortResetMaxTickBurst();
             }
+            reply(fd, out);
+        } else if (strcmp(line, "clip") == 0) {
+            /* The clipboard's hand-overs with Linux (L12a). */
+            native_clip_stats_t c;
+            native_clip_stats(&c);
+            char out[224];
+            snprintf(out, sizeof(out), "OK joined=%d out=%u last_out=%zu in=%u in_big=%u last_in=%zu taken=%u\n",
+                     native_clip_installed() ? 1 : 0, c.out, c.last_out, c.in, c.in_big, c.last_in, c.taken);
             reply(fd, out);
         } else if (strcmp(line, "quit") == 0) {
             reply(fd, "OK\n");

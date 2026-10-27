@@ -1,8 +1,12 @@
 # Selection and clipboard for the editor.
 #
 # Split out of editor.app.rb (doc/editor_refactor). Pure instance-variable
-# state (@sel_*, @clipboard) and EditorCore calls -- no constants to share, so
-# this mixin needs no shared constants, so it does not include EditorConst.
+# state (@sel_*) and EditorCore calls -- no constants to share, so this mixin
+# does not include EditorConst. The clipboard itself is the machine's
+# (main/kernel/fmrb_clipboard.h, doc/linux_native L12a): every editor, the
+# Shell and any app share it, and on the PC and in the browser it is joined
+# to theirs. EditorCore hands the text over in C, so a copied block never
+# becomes a String on this VM's heap.
 module EditorClipboard
 
   # ---- Selection ----
@@ -79,21 +83,29 @@ module EditorClipboard
 
   # ---- Clipboard ops ----
 
+  # True when the selection is on the clipboard.
   def copy_selection
-    return unless has_selection?
+    return false unless has_selection?
     sx, sy, ex, ey = selection_range
     n = EditorCore.copy_range(sy, sx, ey, ex)
+    if n == -4
+      # EC_ERR_TOOBIG: over the clipboard's 64 KB, nothing copied.
+      flash_status(FmrbI18n.t(:b_too_large).to_s)
+      @need_redraw = true
+      return false
+    end
     if n < 0
       doc_full
-      return
+      return false
     end
     Log.info("Copied #{n} bytes")
+    true
   end
 
+  # The selection goes only once it is on the clipboard.
   def cut_selection
     return unless has_selection?
-    copy_selection
-    delete_selection
+    delete_selection if copy_selection
   end
 
   def paste_clipboard

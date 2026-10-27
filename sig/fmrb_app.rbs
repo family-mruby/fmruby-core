@@ -770,6 +770,52 @@ class FmrbApp
   # ```
   def self.language: () -> String
 
+  # クリップボードの文字 <<en>> The text on the clipboard
+  #
+  # どのアプリとも同じ 1 つのクリップボード。空なら `""`。
+  # PC とブラウザ版では、そちらでコピーした文字も入る。
+  # `FmrbApp.clipboard(100)` のように数を渡すと、
+  # そのバイト数までを、文字の途中で切らずに返す。
+  # ```ruby
+  # text = FmrbApp.clipboard
+  # ```
+  # <<en>>
+  # One clipboard shared by every app; `""` when empty.
+  # On the PC and in the browser, text copied there too.
+  # Given a number, at most that many bytes, never
+  # cutting a character.
+  # ```ruby
+  # text = FmrbApp.clipboard
+  # ```
+  def self.clipboard: () -> String
+
+  # クリップボードに文字を入れる <<en>> Put text on the clipboard
+  #
+  # 64 KB より大きいと入れずに false を返す。
+  # ```ruby
+  # FmrbApp.set_clipboard("hello")
+  # ```
+  # <<en>>
+  # Over 64 KB it is not put there, and the answer is
+  # false.
+  # ```ruby
+  # FmrbApp.set_clipboard("hello")
+  # ```
+  def self.set_clipboard: (String text) -> bool
+
+  # クリップボードが変わった回数 <<en>> How many times the clipboard changed
+  #
+  # 文字を読まずに、変わったかどうかを知るのに使う。
+  # ```ruby
+  # g = FmrbApp.clipboard_gen
+  # ```
+  # <<en>>
+  # To tell a change without reading the text.
+  # ```ruby
+  # g = FmrbApp.clipboard_gen
+  # ```
+  def self.clipboard_gen: () -> Integer
+
   # 動いているアプリの一覧 <<en>> The apps that are running
   #
   # 動いているアプリの一覧。1 つずつが名前と pid を持つ Hash。

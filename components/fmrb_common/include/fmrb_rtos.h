@@ -18,6 +18,9 @@ extern "C" {
 // Type aliases
 typedef TaskHandle_t fmrb_task_handle_t;
 typedef SemaphoreHandle_t fmrb_semaphore_t;
+// The block of a semaphore made in memory the caller chooses (PSRAM, to keep
+// a long-lived lock out of internal RAM).
+typedef StaticSemaphore_t fmrb_static_semaphore_t;
 typedef QueueHandle_t fmrb_queue_t;
 typedef UBaseType_t fmrb_task_priority_t;
 typedef BaseType_t fmrb_base_type_t;
@@ -112,6 +115,7 @@ void fmrb_task_dump_status(void);
 
 // Semaphore management
 #define fmrb_semaphore_create_mutex() xSemaphoreCreateMutex()
+#define fmrb_semaphore_create_mutex_static(block) xSemaphoreCreateMutexStatic(block)
 #define fmrb_semaphore_create_binary() xSemaphoreCreateBinary()
 #define fmrb_semaphore_create_counting(max, initial) xSemaphoreCreateCounting(max, initial)
 #define fmrb_semaphore_take(sem, ticks) xSemaphoreTake(sem, ticks)
