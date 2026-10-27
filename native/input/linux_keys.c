@@ -62,6 +62,10 @@ static const uint8_t s_hid[KEY_F24 + 1] = {
 
 uint8_t fmrb_linux_key_to_hid(unsigned code)
 {
+    /* The kernel gives KEY_BACKSLASH to both HID 0x31 (US \|) and 0x32
+     * (Non-US #). A JIS keyboard's ] key, right of :, is 0x32, which is
+     * where the firmware's jp table has it. */
+    if (code == KEY_BACKSLASH && fmrb_keymap_get_layout() == FMRB_KEYMAP_LAYOUT_JP) return 0x32;
     return code < sizeof(s_hid) ? s_hid[code] : 0;
 }
 

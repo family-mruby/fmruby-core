@@ -120,6 +120,7 @@ static const keymap_entry_t jp_keymap[] = {
     [56]  = {'/', '?'},    // 0x38: //?
     [50]  = {']', '}'},    // 0x32: ]/} (JP: the key right of ':'; JIS sends Non-US-# here)
     [135] = {'\\', '_'},   // 0x87: \/_ (JP: International1, the RO key)
+    [137] = {'\\', '|'},   // 0x89: \/| (JP: International3, the yen key right of ^)
     // 0x88 (International2) is the hiragana/katakana key, not a printable
     // one -- it used to sit here mapped to ]/}, so the bracket key typed
     // nothing and the kana key typed ']'.

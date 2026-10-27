@@ -211,6 +211,9 @@ static void test_keys(void)
         { KEY_SEMICOLON, ';' }, { KEY_APOSTROPHE, '\'' }, { KEY_GRAVE, '`' }, { KEY_BACKSLASH, '\\' },
         { KEY_COMMA, ',' }, { KEY_DOT, '.' }, { KEY_SLASH, '/' }, { KEY_SPACE, ' ' },
     };
+    // The US layout: KEY_BACKSLASH is 0x31 there (0x32 on jp, below).
+    fmrb_keymap_layout_t was = fmrb_keymap_get_layout();
+    fmrb_keymap_set_layout(FMRB_KEYMAP_LAYOUT_US);
     for (size_t i = 0; i < sizeof(legend) / sizeof(legend[0]); i++) {
         uint8_t u = fmrb_linux_key_to_hid(legend[i].code);
         char c = fmrb_keymap_scancode_to_char(u, 0, FMRB_KEYMAP_LAYOUT_US);
@@ -247,6 +250,20 @@ static void test_keys(void)
         }
         owner[u] = (int)c;
     }
+    // A JIS keyboard on the jp layout: ] right of : and the yen key type.
+    fmrb_keymap_set_layout(FMRB_KEYMAP_LAYOUT_JP);
+    static const struct { unsigned code; uint8_t mod; char ch; } jis[] = {
+        { KEY_BACKSLASH, 0, ']' }, { KEY_BACKSLASH, FMRB_KEYMAP_MOD_LSHIFT, '}' },
+        { KEY_YEN, 0, '\\' }, { KEY_YEN, FMRB_KEYMAP_MOD_LSHIFT, '|' },
+        { KEY_RO, 0, '\\' }, { KEY_RO, FMRB_KEYMAP_MOD_LSHIFT, '_' },
+    };
+    for (size_t i = 0; i < sizeof(jis) / sizeof(jis[0]); i++) {
+        uint8_t u = fmrb_linux_key_to_hid(jis[i].code);
+        char c = fmrb_keymap_scancode_to_char(u, jis[i].mod, FMRB_KEYMAP_LAYOUT_JP);
+        CHECK(c == jis[i].ch, "jp: KEY %u (mod %u) -> usage 0x%02x -> '%c', want '%c'", jis[i].code, jis[i].mod, u,
+              c, jis[i].ch);
+    }
+    fmrb_keymap_set_layout(was);
     CHECK(fmrb_linux_key_mod_bit(KEY_LEFTSHIFT) == FMRB_KEYMAP_MOD_LSHIFT &&
           fmrb_linux_key_mod_bit(KEY_RIGHTALT) == FMRB_KEYMAP_MOD_RALT &&
           fmrb_linux_key_mod_bit(KEY_RIGHTCTRL) == FMRB_KEYMAP_MOD_RCTRL &&

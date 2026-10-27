@@ -17,7 +17,8 @@
 extern "C" {
 #endif
 
-/* The HID usage (keyboard page) of a Linux key code, 0 when it has none. */
+/* The HID usage (keyboard page) of a Linux key code, 0 when it has none.
+ * KEY_BACKSLASH is 0x32 on the jp layout (a JIS keyboard's ] key), else 0x31. */
 uint8_t fmrb_linux_key_to_hid(unsigned code);
 
 /* The FMRB_KEYMAP_MOD_* bit a Linux modifier key holds (Shift, Ctrl, Alt;
