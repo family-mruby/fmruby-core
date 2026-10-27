@@ -12,7 +12,9 @@
  *   audio sink   drains native_audio.h's ring into a device (SDL, ALSA) on a
  *                thread of its own, or nothing.
  *   input        the machine's input sources (input_source.h): the inject
- *                socket always, plus the window (sdl) or the devices (evdev).
+ *                socket always, plus the window (sdl), the devices (evdev)
+ *                or the compositor's seat (wlroots; it hands its events to
+ *                the same main-thread ring as the window).
  *
  * A backend the definition names but this build does not have (compiled
  * without libdrm or ALSA, or one of a later phase) is refused with the
@@ -43,6 +45,8 @@ typedef struct {
      * changed is true when it differs from the last call's. */
     void (*present)(const uint16_t *px, int w, int h, bool changed);
     void (*close)(void);
+    /* Requests of its own on the control socket (native_ctl.h), or NULL. */
+    bool (*ctl)(const char *request, char *reply, size_t cap);
 } native_output_t;
 
 typedef struct {
@@ -68,12 +72,18 @@ bool native_backends_open_input(const native_machine_t *m, char *why, size_t why
 /* What this build has, for --help and the refusals ("sdl, fbdev, drm"). */
 const char *native_backends_outputs_built(void);
 const char *native_backends_audio_built(void);
+const char *native_backends_inputs_built(void);
 
 /* The individual backends (native/output/, native/audio/). */
 extern const native_output_t native_output_sdl;
 extern const native_output_t native_output_fbdev;
 #if NATIVE_HAVE_DRM
 extern const native_output_t native_output_drm;
+#endif
+#if NATIVE_HAVE_WLROOTS
+/* The program as a Wayland compositor (native/wlr/, L8): output and input
+ * at once. */
+extern const native_output_t native_output_wlroots;
 #endif
 extern const native_audio_sink_t native_audio_sdl;
 extern const native_audio_sink_t native_audio_none;

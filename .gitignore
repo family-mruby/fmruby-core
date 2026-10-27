@@ -111,6 +111,8 @@ native/build/
 native/build-mruby/
 # The packages and their builds (rake native:cross / native:deb)
 native/build-deb/
+# The compositor build in the Ubuntu 26.04 image (rake native:wl)
+native/build-wl/
 # LovyanGFX for the hosted displays, wasm and native (fetched + patched by
 # rake hosted:m5gfx).
 hosted/vendor/m5gfx/

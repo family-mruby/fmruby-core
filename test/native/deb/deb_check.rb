@@ -1,9 +1,10 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 #
-# deb_check.rb - install a native package into a plain Debian trixie
-# container and check it the way a user would meet it (doc/linux_native/
-# report/l3a.md, acceptance 2-4).
+# deb_check.rb - install a native package into a plain container of the
+# distribution it is built for (arm64: Debian trixie; amd64: Ubuntu 26.04,
+# L8) and check it the way a user would meet it (doc/linux_native/report/
+# l3a.md, acceptance 2-4).
 #
 #   ruby test/native/deb/deb_check.rb --arch arm64     # the Cardputer's (qemu)
 #   ruby test/native/deb/deb_check.rb --arch amd64
@@ -23,6 +24,8 @@
 #      /usr/share/wayland-sessions, cage only recommended, and the session
 #      starter refusing with a clear message where cage is missing; arm64:
 #      neither file is there
+#   2c. amd64: the compositor (L8) is in the program (wlroots among the
+#      outputs) and linux_pc_wl is shipped; arm64: it is not built in
 #   3. the program as root, headless (SDL dummy), --machine sdl: the time to
 #      "Boot complete", the desktop against the x86_64 native baseline
 #      (test/regress/screens/baseline/native/desktop.png, clock and pointer
@@ -56,7 +59,7 @@ require_relative "../../../tools/regress/screens/image"
 
 CORE = File.expand_path("../../..", __dir__)
 TOOLS = File.expand_path("../tools", CORE)
-BASE_IMAGE = "debian:trixie-20261020"
+BASE_IMAGES = { "arm64" => "debian:trixie-20261020", "amd64" => "ubuntu:resolute-20261024.1" }.freeze
 BASELINE = File.join(CORE, "test/regress/screens/baseline/native")
 TITLE_RGB = [222, 36, 82]    # a focused window's title bar (test/regress/screens/helpers.rb)
 MENU_BAR_H = 13
@@ -76,6 +79,7 @@ abort "--arch is arm64 or amd64" unless %w[arm64 amd64].include?(arch)
 deb = opts[:deb] || Dir[File.join(CORE, "native/build-deb/family-mruby_*_#{arch}.deb")].max_by { |f| File.mtime(f) }
 abort "no package for #{arch}; rake native:deb ARCH=#{arch}" unless deb && File.exist?(deb)
 bin = arch == "arm64" ? "/usr/share/APPLaunch/bin/family-mruby" : "/usr/bin/family-mruby"
+BASE_IMAGE = BASE_IMAGES.fetch(arch)
 
 OUT = File.join(CORE, "tmp/deb_check", arch)
 FileUtils.rm_rf(OUT)
@@ -233,6 +237,16 @@ begin
   else
     out, = dexec("ls #{session_files} 2>&1 | grep -c 'No such file'", ok: false)
     result("no session entry on #{arch}", out.strip == "2", "#{out.strip} of 2 session files absent")
+  end
+
+  # 2c. the compositor (L8): amd64 only.
+  out, = dexec("#{bin} --help 2>&1; ls /usr/share/family-mruby/root/machines/linux_pc_wl.toml 2>&1", ok: false)
+  outputs = out[/outputs in this build: ([^;]*)/, 1].to_s
+  shipped = !out.include?("No such file")
+  if arch == "amd64"
+    result("compositor built in", outputs.include?("wlroots") && shipped, "outputs: #{outputs}; linux_pc_wl shipped: #{shipped}")
+  else
+    result("no compositor on #{arch}", !outputs.empty? && !outputs.include?("wlroots"), "outputs: #{outputs}")
   end
 
   # 3. boot to the desktop

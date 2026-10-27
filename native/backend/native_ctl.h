@@ -15,11 +15,14 @@
  *          starts that stretch over.
  *   quit   "OK\n", then the program exits
  *
+ * A request the output has words of its own for (the compositor's "comp
+ * ...", L8) goes to the output's handler (native_ctl_set_output_handler).
  * Anything else gets "ERR ...\n". tools/fmrb_native.rb is the client.
  */
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,6 +33,12 @@ bool native_ctl_open(const char *path);
  * asked the program to quit. */
 bool native_ctl_poll(void);
 void native_ctl_close(void);
+
+/* The output's own requests: answer one line into reply (with its "\n") and
+ * return true, or return false when the request is not the output's. Called
+ * on the main thread from native_ctl_poll. NULL for none. */
+typedef bool (*native_ctl_output_fn)(const char *request, char *reply, size_t cap);
+void native_ctl_set_output_handler(native_ctl_output_fn fn);
 
 #ifdef __cplusplus
 }

@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* The fullscreen high-resolution frame (doc/fullscreen_hires/). */
 #define NATIVE_FRAME_HIRES_W 640
@@ -23,6 +24,23 @@ static int s_h = 0;
 static int s_base_w = 0;
 static int s_base_h = 0;
 static volatile uint32_t s_seq = 0;
+static int s_wake_fd = -1;
+
+void native_frame_set_wake_fd(int fd)
+{
+    s_wake_fd = fd;
+}
+
+/* After the lock is let go: the waiting thread copies under it. A full
+ * counter (EAGAIN) still wakes the reader, so the result is not looked at. */
+static void wake(void)
+{
+    if (s_wake_fd >= 0) {
+        uint64_t one = 1;
+        ssize_t n = write(s_wake_fd, &one, sizeof(one));
+        (void)n;
+    }
+}
 
 bool native_frame_init(int base_w, int base_h)
 {
@@ -58,6 +76,7 @@ void native_frame_put(const uint16_t *fb, int w, int h)
         s_seq++;
     }
     pthread_mutex_unlock(&s_lock);
+    wake();
 }
 
 void native_frame_put_rect(const uint16_t *block, int x0, int y0, int w, int h,
@@ -74,6 +93,7 @@ void native_frame_put_rect(const uint16_t *block, int x0, int y0, int w, int h,
         s_seq++;
     }
     pthread_mutex_unlock(&s_lock);
+    wake();
 }
 
 uint32_t native_frame_seq(void)

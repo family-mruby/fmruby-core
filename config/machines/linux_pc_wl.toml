@@ -1,0 +1,44 @@
+# Machine definition: a Linux PC where the program is the Wayland compositor
+# itself (L8, the prototype): wlroots 0.19, nested in another compositor
+# when WAYLAND_DISPLAY is set (WSLg, a desktop), on DRM/KMS from a console
+# otherwise (WLR_BACKENDS chooses; headless for the tests).
+#
+# The Family mruby screen is laid on the output at the largest whole scale,
+# black around; Linux windows go on top of it at their own resolution,
+# centred. The keyboard is Family mruby's until a window is clicked, and
+# comes back with a click on the picture. compositor.autostart starts one
+# Linux program on it (--set compositor.autostart=foot).
+#
+# Needs a build with wlroots 0.19 (rake native:wl, or the amd64 package);
+# other builds refuse it with the reason. Placing the windows from the
+# kernel's window manager is L9.
+# Field reference: native/machine/native_machine.h.
+description = "Linux PC: the program as the Wayland compositor (wlroots, prototype)"
+
+[screen]
+form = "426x240"
+
+[display]
+backend = "wlroots"
+scale = "auto"
+
+[input]
+backend = "wlroots"          # the compositor's seat: keyboard, touchpad, mouse
+
+[audio]
+backend = "sdl"
+
+[desktop]
+variant = "mouse"
+
+[system]
+services = "linux"
+exit_key = "none"
+power = ["logind", "exit"]
+
+[files]
+host = "auto"
+root = "auto"
+
+[compositor]
+autostart = ""               # e.g. "foot": started with WAYLAND_DISPLAY set to this compositor

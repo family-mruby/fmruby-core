@@ -47,6 +47,12 @@ void native_frame_base_size(int *w, int *h);
  * before the first frame. */
 void native_frame_size(int *w, int *h);
 
+/* An eventfd (or any descriptor a uint64_t can be written to) to wake the
+ * output's thread with on every put, so a loop waiting in poll sees a new
+ * frame at once (the compositor, L8). -1 for none. Set before the machine
+ * starts. */
+void native_frame_set_wake_fd(int fd);
+
 /* Copy the frame on hand into dst (room for cap_px pixels). Returns false
  * when there is none yet or it does not fit. */
 bool native_frame_copy(uint16_t *dst, int cap_px, int *w, int *h, uint32_t *seq);

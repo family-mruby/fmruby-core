@@ -1,0 +1,37 @@
+# The build image of the native program's amd64 package and of the
+# compositor (doc/linux_native/, L8).
+#
+# Ubuntu 26.04 (Kubuntu 26.04 is the Linux PC the package aims at): it has
+# wlroots 0.19, which the compositor machine (linux_pc_wl, native/wlr/) is
+# written against, and the amd64 .deb links against its libraries. The
+# arm64 package (the Cardputer Zero, which never runs the compositor) stays
+# on the Debian trixie image beside this file.
+#
+# Besides the build tools, the image carries what running the compositor in
+# a container needs: a light terminal to put on it (foot) and the tool that
+# takes the composited screen through wlr-screencopy (grim).
+#
+# The base is pinned to a dated tag, never a moving one (the same rule as
+# the trixie image). Built and used by rake native:image ARCH=amd64,
+# native:cross / native:deb ARCH=amd64 and native:wl (rakelib/native.rake),
+# never pushed anywhere. The repository is mounted at /src and everything
+# runs as the calling user.
+FROM ubuntu:resolute-20261024.1
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential cmake pkg-config git ca-certificates file \
+      ruby rake bison \
+      dpkg-dev fakeroot \
+      libsdl2-dev libdrm-dev libasound2-dev libssl-dev \
+      libwlroots-0.19-dev libwayland-dev wayland-protocols libxkbcommon-dev libpixman-1-dev \
+      foot grim fonts-dejavu-core xkb-data \
+      libgl1-mesa-dri libegl-mesa0 \
+ && rm -rf /var/lib/apt/lists/*
+
+# rake and the picoruby build write their caches under $HOME; the calling
+# user has no home inside the image.
+ENV HOME=/tmp
+WORKDIR /src

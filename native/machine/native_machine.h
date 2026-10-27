@@ -12,7 +12,9 @@
  *   [screen]   form           "426x240" (Modern) | "320x170" (the Cardputer
  *                             Zero's LCD). The base screen: the kernel's
  *                             display size whatever the user's system_conf says
- *   [display]  backend        sdl | fbdev | drm
+ *   [display]  backend        sdl | fbdev | drm | wlroots (the program is the
+ *                             Wayland compositor, L8; input.backend is then
+ *                             wlroots too)
  *              device         fbdev: "auto", "auto:<name in /proc/fb>" or a
  *                             path; drm: "auto" or a /dev/dri/card path
  *              mode           drm: "WxH" or "WxH@Hz", "auto" = the
@@ -23,7 +25,8 @@
  *              fullscreen     sdl: true opens the window full screen on its
  *                             output (the frame at the largest whole scale,
  *                             black around it); false a window (L7)
- *   [input]    backend        sdl | evdev (the inject socket is always on)
+ *   [input]    backend        sdl | evdev | wlroots (the inject socket is
+ *                             always on)
  *              devices        evdev: ["auto"] or paths (/dev/input/by-path/..)
  *              keymap         "" or "cardputer_zero": the extra table for the
  *                             devices whose name contains keymap_device
@@ -55,6 +58,11 @@
  *                             "none" to leave it out (L7)
  *              root           /mnt/root, Linux's files read-only: "auto"
  *                             ("/"), a directory, or "none"
+ *   [compositor] autostart    wlroots only (L8): one Linux program started
+ *                             once the compositor is up, through /bin/sh -c,
+ *                             with WAYLAND_DISPLAY set to the compositor's
+ *                             own socket ("foot"); "" starts none. It is
+ *                             ended with the program
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this
@@ -121,6 +129,10 @@ typedef struct {
         char host[NATIVE_MACHINE_STR];   /* "auto", "none" or a directory */
         char root[NATIVE_MACHINE_STR];
     } files;
+
+    struct {
+        char autostart[NATIVE_MACHINE_STR];
+    } compositor;
 } native_machine_t;
 
 /* The built-in definition: the same as config/machines/sdl.toml (the L1

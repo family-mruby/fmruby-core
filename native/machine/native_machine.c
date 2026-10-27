@@ -84,6 +84,7 @@ void native_machine_defaults(native_machine_t *m)
     m->system.power_log_only = false;
     snprintf(m->files.host, sizeof(m->files.host), "auto");
     snprintf(m->files.root, sizeof(m->files.root), "auto");
+    m->compositor.autostart[0] = '\0';
 }
 
 /* system.power: "exit", "logind", or both, comma-separated (a TOML list
@@ -268,6 +269,10 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
         return set_files_place(m->files.root, sizeof(m->files.root), value, key, err, n);
     }
 
+    if (strcmp(key, "compositor.autostart") == 0) {
+        return copy_str(m->compositor.autostart, sizeof(m->compositor.autostart), value, key, err, n);
+    }
+
     return fail(err, n, "unknown key \"%s\"", key);
 }
 
@@ -323,7 +328,8 @@ static int load_table(native_machine_t *m, const toml_table_t *tab, const char *
         toml_table_t *sub = toml_table_in(tab, key);
         if (sub != NULL) {
             if (section[0] != '\0') return fail(err, n, "[%s]: nested tables are not used", dotted);
-            static const char *const known[] = { "screen", "display", "input", "audio", "desktop", "system", "files", NULL };
+            static const char *const known[] = { "screen", "display", "input", "audio", "desktop", "system", "files",
+                                                  "compositor", NULL };
             bool ok = false;
             for (int k = 0; known[k] != NULL; k++) ok |= (strcmp(key, known[k]) == 0);
             if (!ok) return fail(err, n, "unknown section [%s]", key);
@@ -395,12 +401,13 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
-             "input %s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s, files host=%s root=%s",
+             "input %s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s, files host=%s root=%s%s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
              m->display.fullscreen ? " fullscreen" : "",
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
              m->desktop.variant, m->system.services, m->system.power,
-             m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root);
+             m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root,
+             m->compositor.autostart[0] ? ", autostart " : "", m->compositor.autostart);
 }

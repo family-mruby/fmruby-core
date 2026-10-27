@@ -22,6 +22,12 @@
 
 static int s_listen_fd = -1;
 static char s_path[108];
+static native_ctl_output_fn s_output_fn = NULL;
+
+void native_ctl_set_output_handler(native_ctl_output_fn fn)
+{
+    s_output_fn = fn;
+}
 
 bool native_ctl_open(const char *path)
 {
@@ -115,9 +121,12 @@ bool native_ctl_poll(void)
     for (;;) {
         int fd = accept(s_listen_fd, NULL, NULL);
         if (fd < 0) break;
-        char line[64];
+        char line[160];
+        char own[1024];
         read_line(fd, line, sizeof(line));
-        if (strcmp(line, "shot") == 0) {
+        if (s_output_fn != NULL && s_output_fn(line, own, sizeof(own))) {
+            reply(fd, own);
+        } else if (strcmp(line, "shot") == 0) {
             serve_shot(fd);
         } else if (strcmp(line, "info") == 0) {
             int fw = 0, fh = 0;

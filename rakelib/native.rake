@@ -15,7 +15,8 @@
 #                                  halves (present core, key tables, evdev
 #                                  decoding, fbdev formats, machine files,
 #                                  the file namespace, the pty programs and
-#                                  the Shell's reading of their output)
+#                                  the Shell's reading of their output, the
+#                                  compositor's routing and frame hand-over)
 #
 # Headless use (screenshots, input, apps) goes through tools/fmrb_native.rb
 # in the parent repository.
@@ -173,18 +174,31 @@ namespace :native do
     sh "#{NATIVE_TEST_BUILD}/native_pty_test"
     # ...and the Shell's reading of their output (lines and SGR colours).
     sh "ruby #{NATIVE_TEST_DIR}/shell_term_test.rb"
+
+    # The compositor's hand-overs (L8) without wlroots: where things lie and
+    # who gets the input (native/wlr/comp_route.c), and the frame handed from
+    # one thread to another with an eventfd (native/backend/native_frame.c).
+    cincs = %w[native/wlr native/present native/backend]
+    csrcs = %w[native/wlr/comp_route.c native/present/fmrb_present.c native/backend/native_frame.c]
+              .push("#{NATIVE_TEST_DIR}/comp.c")
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{cincs.map { |i| "-I #{i}" }.join(' ')} " \
+       "#{csrcs.join(' ')} -lpthread -o #{NATIVE_TEST_BUILD}/native_comp_test"
+    sh "#{NATIVE_TEST_BUILD}/native_comp_test"
   end
 end
 
 # ---------------------------------------------------------------- packages
 #
-# The .deb packages (doc/linux_native/report/l3a.md). Both are built inside
-# native/docker's image (Debian trixie, pinned), so they link against what
-# the Cardputer Zero's Raspberry Pi OS trixie and a trixie PC have; the
-# developer's own build above stays the host's (Ubuntu) and is untouched.
+# The .deb packages (doc/linux_native/report/l3a.md). Each is built inside
+# an image of native/docker/, pinned: arm64 in Debian trixie (Dockerfile;
+# what the Cardputer Zero's Raspberry Pi OS trixie has), amd64 in Ubuntu
+# 26.04 (Dockerfile.ubuntu, L8: Kubuntu 26.04 PCs, and wlroots 0.19 for the
+# compositor). The developer's own build above stays the host's (Ubuntu
+# 22.04, no wlroots) and is untouched.
 #
-#   rake native:image              build the image (once; again when the
-#                                  Dockerfile changes). Local only, never pushed
+#   rake native:image ARCH=..      build the architecture's image (once; again
+#                                  when its Dockerfile changes). Local only,
+#                                  never pushed
 #   rake native:cross ARCH=arm64   libmruby and the program for one
 #                                  architecture (arm64 cross, amd64 native)
 #   rake native:root               the distribution tree: git-tracked flash/
@@ -193,13 +207,30 @@ end
 #   rake native:deb ARCH=arm64     the package, then native:scan on it
 #   rake native:scan ARCH=arm64    no untracked file, no credential
 #
+# The compositor (L8) is built and run in the amd64 image too, since only
+# it has wlroots 0.19:
+#
+#   rake native:wl                 a development build with the compositor,
+#                                  in native/build-wl (the image's own
+#                                  libmruby in native/build-wl/mruby)
+#   rake native:wl_run             run it in a container, nested in WSLg's
+#                                  Wayland (ARGS="--set compositor.autostart=foot"
+#                                  by default); the window closes with it
+#   rake native:wl_check           the compositor's checks in a container,
+#                                  headless: grim against the picture, keys
+#                                  to foot and to Family mruby, timings
+#                                  (test/native/wl/wl_check.rb)
+#
 # Everything lands in native/build-deb/ (git-ignored). The repository is
 # mounted into the container at /src and the build runs as the calling user.
 
 require "shellwords"
 
 NATIVE_DEB_DIR = File.join(NATIVE_DIR, "build-deb")
-NATIVE_DOCKERFILE = File.join(NATIVE_DIR, "docker", "Dockerfile")
+NATIVE_DOCKERFILES = {
+  "arm64" => File.join(NATIVE_DIR, "docker", "Dockerfile"),
+  "amd64" => File.join(NATIVE_DIR, "docker", "Dockerfile.ubuntu"),
+}.freeze
 
 # The layout of each package. arm64 is the Cardputer Zero's: M5Stack's
 # APPLaunch launcher looks in /usr/share/APPLaunch for programs, entries
@@ -240,19 +271,31 @@ def native_deb_arch
   arch
 end
 
-# The image's tag: the base's date and the Dockerfile's own hash, so a
+# The image's tag: the base's tag and the Dockerfile's own hash, so a
 # changed Dockerfile is a new image rather than a stale one.
-def native_image
+def native_image(arch = native_deb_arch)
   require "digest"
-  from = File.read(NATIVE_DOCKERFILE)[/^FROM\s+debian:(\S+)/, 1] or abort "native:image: no FROM debian: in #{NATIVE_DOCKERFILE}"
-  "fmrb-native-build:#{from}-#{Digest::SHA256.file(NATIVE_DOCKERFILE).hexdigest[0, 8]}"
+  file = NATIVE_DOCKERFILES.fetch(arch)
+  from = File.read(file)[/^FROM\s+(?:debian|ubuntu):(\S+)/, 1] or abort "native:image: no FROM debian:/ubuntu: in #{file}"
+  "fmrb-native-build:#{from}-#{Digest::SHA256.file(file).hexdigest[0, 8]}"
 end
 
 # A script in the build image, as the calling user, with the repository at /src.
-def native_docker(script, env = {})
+def native_docker(script, env = {}, arch: native_deb_arch)
   envs = env.map { |k, v| "-e #{k}=#{Shellwords.escape(v)}" }.join(" ")
   sh "docker run --rm -u #{Process.uid}:#{Process.gid} -v #{ROOT_DIR}:/src -w /src #{envs} " \
-     "#{native_image} bash -euc #{Shellwords.escape(script)}"
+     "#{native_image(arch)} bash -euc #{Shellwords.escape(script)}"
+end
+
+def native_image_build(arch)
+  img = native_image(arch)
+  if system("docker image inspect #{img} > /dev/null 2>&1")
+    puts "native:image: #{img} (present)"
+  else
+    file = NATIVE_DOCKERFILES.fetch(arch)
+    sh "docker build -t #{img} -f #{file} #{File.dirname(file)}"
+    puts "native:image: #{img}"
+  end
 end
 
 def native_deb_version
@@ -262,15 +305,9 @@ def native_deb_version
 end
 
 namespace :native do
-  desc "Build the package build image (native/docker, Debian trixie; local only)"
+  desc "Build the package build image (ARCH=arm64: Debian trixie, amd64: Ubuntu 26.04; local only)"
   task :image do
-    img = native_image
-    if system("docker image inspect #{img} > /dev/null 2>&1")
-      puts "native:image: #{img} (present)"
-    else
-      sh "docker build -t #{img} #{File.dirname(NATIVE_DOCKERFILE)}"
-      puts "native:image: #{img}"
-    end
+    native_image_build(native_deb_arch)
   end
 
   desc "Build libmruby and the program for a package (ARCH=arm64|amd64, in the build image)"
@@ -287,9 +324,9 @@ namespace :native do
     # libmruby: the same configuration as the developer's, in a build tree
     # of its own (the host tools in it are the image's, not the host's).
     native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",
-                  "FMRB_NATIVE_ARCH" => arch,
-                  "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
-                  "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb")
+                  { "FMRB_NATIVE_ARCH" => arch,
+                    "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
+                    "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb" })
     toolchain = arch == "arm64" ? "-DCMAKE_TOOLCHAIN_FILE=/src/native/docker/aarch64-linux-gnu.cmake" : ""
     launchers = lay[:launchers].map { |suffix, (machine, _)| "#{suffix}=#{machine}" }.join(";")
     targets = ["fmruby-native"] + lay[:launchers].keys.map { |s| "family-mruby-#{s}" }
@@ -515,5 +552,51 @@ namespace :native do
     abort "native:scan found #{problems.length} problem(s):\n  " + problems.join("\n  ") unless problems.empty?
     puts "native:scan: #{files.length} files in #{arch}/pkg, #{secrets.length} local credential(s) searched for, " \
          "no untracked file, no credential"
+  end
+end
+
+# ------------------------------------------------------------ compositor
+#
+# The compositor (L8, native/wlr/) needs wlroots 0.19, which the developer's
+# Ubuntu 22.04 does not have: it is built and run in the amd64 image. The
+# build is a development one (the repository's flash/ and the staged /etc,
+# as /src in the container), apart from the host's native/build.
+
+NATIVE_WL_DIR = File.join(NATIVE_DIR, "build-wl")
+
+def native_wl_binary = File.join(NATIVE_WL_DIR, "cmake", "fmruby-native")
+
+namespace :native do
+  desc "Build the program with the wlroots compositor in the Ubuntu 26.04 image (native/build-wl)"
+  task :wl => ["^setup", "hosted:m5gfx", :mrb, :etc] do
+    native_image_build("amd64")
+    gen = File.join(ROOT_DIR, "main/prebuild_scripts/spinel/gen")
+    needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c]
+    needed += %w[fmrb_kernel_combined.c editor_combined.c] if native_engine == "standard"
+    missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
+    abort "native:wl: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
+    rel = NATIVE_WL_DIR.sub("#{ROOT_DIR}/", "")
+    native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",
+                  { "FMRB_NATIVE_ARCH" => "amd64", "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
+                    "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb" }, arch: "amd64")
+    native_docker(<<~SH, {}, arch: "amd64")
+      cmake -S native -B #{rel}/cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo #{native_engine_defines} \
+        -DFMRB_HOSTED_MRUBY_DIR=/src/#{rel}/mruby/family-mruby-native
+      cmake --build #{rel}/cmake -j#{ENV['JOBS'] || 8} --target fmruby-native
+    SH
+    puts "native:wl: #{native_wl_binary}"
+  end
+
+  desc "Run the compositor build nested in WSLg (ARGS=\"--set compositor.autostart=foot\")"
+  task :wl_run do
+    abort "#{native_wl_binary} not found; run rake native:wl first" unless File.exist?(native_wl_binary)
+    sh "ruby #{File.join(ROOT_DIR, 'test/native/wl/wl_check.rb')} --run " \
+       "#{ENV['ARGS'] ? "-- #{ENV['ARGS']}" : ''}"
+  end
+
+  desc "The compositor's checks in a container (WLR_RENDERER=pixman too; NESTED=1 on WSLg)"
+  task :wl_check do
+    abort "#{native_wl_binary} not found; run rake native:wl first" unless File.exist?(native_wl_binary)
+    sh "ruby #{File.join(ROOT_DIR, 'test/native/wl/wl_check.rb')}#{ENV['NESTED'] ? ' --nested' : ''}"
   end
 end

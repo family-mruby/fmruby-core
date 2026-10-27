@@ -34,8 +34,14 @@ pkg_check_modules(OPENSSL REQUIRED IMPORTED_TARGET openssl)
 # them out on purpose. fbdev and evdev need only the kernel headers.
 option(NATIVE_WITH_DRM "DRM/KMS output (libdrm)" ON)
 option(NATIVE_WITH_ALSA "ALSA sound (libasound)" ON)
+# The compositor (L8): wlroots 0.19 exactly (Ubuntu 26.04's; the API moves
+# between releases). The developer's Ubuntu 22.04 has none, so the program
+# is built without it there and with it in native/docker/Dockerfile.ubuntu
+# (rake native:wl, native:deb ARCH=amd64).
+option(NATIVE_WITH_WLROOTS "The wlroots compositor (wlroots-0.19)" ON)
 set(NATIVE_HAVE_DRM 0)
 set(NATIVE_HAVE_ALSA 0)
+set(NATIVE_HAVE_WLROOTS 0)
 if(NATIVE_WITH_DRM)
   pkg_check_modules(LIBDRM IMPORTED_TARGET libdrm)
   if(LIBDRM_FOUND)
@@ -48,7 +54,19 @@ if(NATIVE_WITH_ALSA)
     set(NATIVE_HAVE_ALSA 1)
   endif()
 endif()
-message(STATUS "native backends: sdl fbdev evdev; drm=${NATIVE_HAVE_DRM} alsa=${NATIVE_HAVE_ALSA}")
+if(NATIVE_WITH_WLROOTS)
+  pkg_check_modules(WLROOTS IMPORTED_TARGET wlroots-0.19 wayland-server xkbcommon)
+  if(WLROOTS_FOUND)
+    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
+    if(WAYLAND_PROTOCOLS_DIR AND WAYLAND_SCANNER)
+      set(NATIVE_HAVE_WLROOTS 1)
+    else()
+      message(STATUS "wlroots-0.19 found, but not wayland-protocols / wayland-scanner: no compositor")
+    endif()
+  endif()
+endif()
+message(STATUS "native backends: sdl fbdev evdev; drm=${NATIVE_HAVE_DRM} alsa=${NATIVE_HAVE_ALSA} wlroots=${NATIVE_HAVE_WLROOTS}")
 
 # ------------------------------------------- shared with the browser build
 
@@ -124,6 +142,19 @@ endif()
 if(NATIVE_HAVE_ALSA)
   list(APPEND NATIVE_BACKEND_SRCS ${N}/audio/audio_alsa.c)
 endif()
+if(NATIVE_HAVE_WLROOTS)
+  # wlroots' xdg-shell header includes the protocol's server header, which
+  # every compositor generates for itself.
+  set(NATIVE_WLR_GEN ${CMAKE_CURRENT_BINARY_DIR}/wlr-protocols)
+  file(MAKE_DIRECTORY ${NATIVE_WLR_GEN})
+  add_custom_command(
+    OUTPUT ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+    COMMAND ${WAYLAND_SCANNER} server-header
+            ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+    DEPENDS ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
+  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/comp_route.c
+       ${NATIVE_WLR_GEN}/xdg-shell-protocol.h)
+endif()
 target_sources(core_objs PRIVATE ${NATIVE_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE
   ${N}/backend
@@ -135,11 +166,13 @@ target_include_directories(core_objs PRIVATE
   ${N}/net
   ${N}/etc
   ${N}/sys
+  ${N}/wlr
   ${FMRB_ROOT}/hosted/gate)
 target_compile_definitions(core_objs PRIVATE
   FMRB_PLATFORM_NATIVE=1
   NATIVE_HAVE_DRM=${NATIVE_HAVE_DRM}
   NATIVE_HAVE_ALSA=${NATIVE_HAVE_ALSA}
+  NATIVE_HAVE_WLROOTS=${NATIVE_HAVE_WLROOTS}
   # The debugger listens beside the simulation's 5555
   # (FMRB_DEBUG_TCP_PORT in the environment moves it again at run time).
   FMRB_DEBUG_TCP_PORT=5565
@@ -167,6 +200,11 @@ if(NATIVE_HAVE_ALSA)
     PROPERTIES COMPILE_OPTIONS "${ALSA_CFLAGS}")
 endif()
 
+if(NATIVE_HAVE_WLROOTS)
+  set(NATIVE_WLR_CFLAGS ${WLROOTS_CFLAGS} -I${NATIVE_WLR_GEN})
+  set_source_files_properties(${N}/wlr/output_wlr.c PROPERTIES COMPILE_OPTIONS "${NATIVE_WLR_CFLAGS}")
+endif()
+
 set_source_files_properties(${N}/net/net_wrap.c PROPERTIES COMPILE_OPTIONS "${OPENSSL_CFLAGS}")
 
 add_executable(fmruby-native $<TARGET_OBJECTS:core_objs>)
@@ -189,6 +227,9 @@ if(NATIVE_HAVE_DRM)
 endif()
 if(NATIVE_HAVE_ALSA)
   target_link_libraries(fmruby-native PRIVATE PkgConfig::ALSA)
+endif()
+if(NATIVE_HAVE_WLROOTS)
+  target_link_libraries(fmruby-native PRIVATE PkgConfig::WLROOTS)
 endif()
 target_link_options(fmruby-native PRIVATE -pthread -Wl,--gc-sections)
 

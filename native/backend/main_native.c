@@ -129,8 +129,9 @@ static void usage(const char *argv0)
             "usage: %s [--machine NAME|PATH] [--set KEY=VALUE]... [--scale N]\n"
             "          [--machines-dir DIR] [--user-dir DIR] [--cache-dir DIR]\n"
             "          [--system-dir DIR] [--etc-seed DIR] [--run-dir DIR]\n"
-            "outputs in this build: %s; audio: %s; input: sdl, evdev\n",
-            argv0, native_backends_outputs_built(), native_backends_audio_built());
+            "outputs in this build: %s; audio: %s; input: %s\n",
+            argv0, native_backends_outputs_built(), native_backends_audio_built(),
+            native_backends_inputs_built());
 }
 
 static void set_path(char *dst, const char *value)
@@ -591,6 +592,7 @@ int main(int argc, char **argv)
     }
 
     snprintf(sock, sizeof(sock), "%s/ctl", c->run_dir);
+    native_ctl_set_output_handler(be.output->ctl);
     if (!native_ctl_open(sock)) {
         fprintf(stderr, "native: control socket unavailable (screenshots and quit "
                         "from the tools will not work)\n");

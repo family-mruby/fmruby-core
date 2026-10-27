@@ -17,6 +17,9 @@ static const native_output_t *const s_outputs[] = {
 #if NATIVE_HAVE_DRM
     &native_output_drm,
 #endif
+#if NATIVE_HAVE_WLROOTS
+    &native_output_wlroots,
+#endif
     NULL,
 };
 
@@ -29,26 +32,42 @@ static const native_audio_sink_t *const s_sinks[] = {
     NULL,
 };
 
-/* Names a definition may use that some build (or a later phase) has. */
+#define WLROOTS_MISSING "this build has no wlroots compositor (built without wlroots 0.19; " \
+                        "rake native:wl builds it in the Ubuntu 26.04 image)"
+
+/* Names a definition may use that some build has. */
 static const char *later(const char *kind, const char *name)
 {
     if (strcmp(kind, "display") == 0) {
         if (strcmp(name, "drm") == 0) return "this build has no DRM output (built without libdrm; install its development files and rebuild)";
-        if (strcmp(name, "wlr") == 0) return "the wlroots output comes in L8";
+        if (strcmp(name, "wlroots") == 0) return WLROOTS_MISSING;
     } else if (strcmp(kind, "audio") == 0) {
         if (strcmp(name, "alsa") == 0) return "this build has no ALSA output (built without libasound; install its development files and rebuild)";
     } else if (strcmp(kind, "input") == 0) {
-        if (strcmp(name, "wlr") == 0) return "the wlroots input comes in L8";
+        if (strcmp(name, "wlroots") == 0) return WLROOTS_MISSING;
     }
     return NULL;
 }
 
 const char *native_backends_outputs_built(void)
 {
-#if NATIVE_HAVE_DRM
+#if NATIVE_HAVE_DRM && NATIVE_HAVE_WLROOTS
+    return "sdl, fbdev, drm, wlroots";
+#elif NATIVE_HAVE_DRM
     return "sdl, fbdev, drm";
+#elif NATIVE_HAVE_WLROOTS
+    return "sdl, fbdev, wlroots";
 #else
     return "sdl, fbdev";
+#endif
+}
+
+const char *native_backends_inputs_built(void)
+{
+#if NATIVE_HAVE_WLROOTS
+    return "sdl, evdev, wlroots";
+#else
+    return "sdl, evdev";
 #endif
 }
 
@@ -90,16 +109,32 @@ bool native_backends_select(const native_machine_t *m, native_backends_t *out,
         }
         return false;
     }
+    bool wl_out = strcmp(out->output->name, "wlroots") == 0;
     if (strcmp(m->input.backend, "sdl") == 0) {
         if (out->output != &native_output_sdl) {
             snprintf(why, why_len, "input.backend sdl reads the SDL window, and display.backend is %s "
                                    "(use evdev)", m->display.backend);
             return false;
         }
+    } else if (strcmp(m->input.backend, "wlroots") == 0 && NATIVE_HAVE_WLROOTS) {
+        if (!wl_out) {
+            snprintf(why, why_len, "input.backend wlroots is the compositor's seat, and display.backend is %s "
+                                   "(use wlroots for both)", m->display.backend);
+            return false;
+        }
     } else if (strcmp(m->input.backend, "evdev") != 0) {
         const char *l = later("input", m->input.backend);
         snprintf(why, why_len, "input.backend \"%s\": %s", m->input.backend,
-                 l ? l : "no such input (this build has: sdl, evdev)");
+                 l ? l : "no such input");
+        if (l == NULL) {
+            size_t n = strlen(why);
+            snprintf(why + n, why_len - n, " (this build has: %s)", native_backends_inputs_built());
+        }
+        return false;
+    }
+    if (wl_out && strcmp(m->input.backend, "wlroots") != 0) {
+        snprintf(why, why_len, "display.backend wlroots takes its input from its own seat "
+                               "(input.backend must be wlroots, not %s)", m->input.backend);
         return false;
     }
     return true;
@@ -116,6 +151,8 @@ bool native_backends_open_input(const native_machine_t *m, char *why, size_t why
         if (!native_evdev_open(m, why, why_len)) return false;
         s_sources[n++] = &fmrb_input_source_evdev;
     } else {
+        /* The SDL window's ring; the compositor (wlroots) fills the same
+         * one from the same main thread. */
         s_sources[n++] = &fmrb_input_source_sdl;
     }
     /* The headless tools' way in, on every machine. */

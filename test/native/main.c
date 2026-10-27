@@ -593,6 +593,14 @@ static void test_machine(void)
           native_machine_power_has(&m, "exit"), "linux_pc power logind and exit (%s)", m.system.power);
     CHECK(strcmp(m.files.host, "auto") == 0 && strcmp(m.files.root, "auto") == 0, "linux_pc files");
     CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "linux_pc check: %s", err);
+    // The compositor prototype (L8): wlroots for both, no autostart unless set.
+    CHECK(load(&m, "linux_pc_wl", err, sizeof(err)) == 0, "linux_pc_wl: %s", err);
+    CHECK(strcmp(m.display.backend, "wlroots") == 0 && strcmp(m.input.backend, "wlroots") == 0 &&
+          m.display.scale == 0 && m.screen.w == 426 && m.compositor.autostart[0] == '\0',
+          "linux_pc_wl fields");
+    CHECK(native_machine_check(&m, err, sizeof(err)) == 0, "linux_pc_wl check: %s", err);
+    CHECK(native_machine_set(&m, "compositor.autostart", "foot -e sh", err, sizeof(err)) == 0 &&
+          strcmp(m.compositor.autostart, "foot -e sh") == 0, "--set compositor.autostart");
     native_machine_defaults(&m);
     CHECK(!m.display.fullscreen && strcmp(m.files.host, "auto") == 0 && strcmp(m.files.root, "auto") == 0,
           "defaults: a window, both Linux places shown");
@@ -612,7 +620,7 @@ static void test_machine(void)
     CHECK(native_machine_set(&m, "files.host", "home", err, sizeof(err)) != 0, "relative files.host refused");
     // Every shipped machine shows both places (the user's decision, 2026-10-27).
     static const char *const shipped[] = { "sdl", "sdl_keys", "cardputer_zero", "cardputer_zero_hdmi",
-                                           "linux_pc_drm", "linux_pc" };
+                                           "linux_pc_drm", "linux_pc", "linux_pc_wl" };
     for (size_t i = 0; i < sizeof(shipped) / sizeof(shipped[0]); i++) {
         CHECK(load(&m, shipped[i], err, sizeof(err)) == 0 && strcmp(m.files.host, "auto") == 0 &&
               strcmp(m.files.root, "auto") == 0, "%s shows /mnt/host and /mnt/root", shipped[i]);
