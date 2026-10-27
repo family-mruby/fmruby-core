@@ -75,14 +75,8 @@ module ConfirmDialogMixin
     @ui.set_visible(:cdlg_yes, false)
     @ui.set_visible(:cdlg_no, false)
     @ui.flush
-    if local && @file_manager_open
-      # The question came from the File Manager, which is still open: the
-      # kernel's one overlay rectangle goes back to it rather than to nothing,
-      # or clicks on the list would fall through to the window beneath.
-      notify_overlay_state(true, @fmgr_x, @fmgr_y, fmgr_w, fmgr_h)
-    else
-      notify_overlay_state(false, 0, 0, 0, 0)
-    end
+    # Back to the File Manager's rectangle while it is open (file_manager.rb).
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end

@@ -68,6 +68,10 @@ class KeysDesktopApp < FmrbApp
 
   ROW_H = 12
   TITLE_H = 12
+  # The question line at the bottom (draw_confirm_line: 26 rows high, 4 above
+  # the bottom edge) and a gap of 2 above it. While a question is up, the list
+  # it belongs to ends above this, so the line covers none of its rows.
+  CONFIRM_H = 32
   CLOCK_W = 84          # "MM/DD hh:mm:ss" in the 6-pixel font
   KANA_W = 10
   KANA_LABELS = ["A", "あ", "ア"]
@@ -127,7 +131,7 @@ class KeysDesktopApp < FmrbApp
   # The mouse desktop shows them as windows of a fixed size; here they fill
   # the area under the bar.
   def fmgr_w; @window_width; end
-  def fmgr_h; @window_height - BAR_H; end
+  def fmgr_h; @window_height - BAR_H - (@fmgr_confirm ? CONFIRM_H : 0); end
   def fsel_w; @window_width; end
   def fsel_h; @window_height - BAR_H; end
 
@@ -324,7 +328,7 @@ class KeysDesktopApp < FmrbApp
   end
 
   def menu_rows
-    (@window_height - BAR_H - TITLE_H - 2) / ROW_H
+    (@window_height - BAR_H - TITLE_H - 2 - (@power_confirm ? CONFIRM_H : 0)) / ROW_H
   end
 
   def draw_menu
@@ -347,6 +351,14 @@ class KeysDesktopApp < FmrbApp
       end
       i += 1
     end
+  end
+
+  # The menu is taller again once a question has gone: no empty rows at its end.
+  def menu_clamp_top
+    max_top = @menu_items.size - menu_rows
+    max_top = 0 if max_top < 0
+    @menu_top = max_top if @menu_top > max_top
+    nil
   end
 
   def menu_move(delta)
@@ -391,12 +403,17 @@ class KeysDesktopApp < FmrbApp
       return
     end
     @power_confirm = action
+    # The list got shorter for the question: keep the chosen entry (the power
+    # entries are the last ones) in sight above it.
+    rows = menu_rows
+    @menu_top = @menu_sel - rows + 1 if @menu_sel >= @menu_top + rows
     draw_foreground
   end
 
   def power_confirm_key(scancode)
     action = @power_confirm
     @power_confirm = nil
+    menu_clamp_top
     if scancode == FmrbConst::KEY_ENTER
       Log.info("keys desktop: #{action} confirmed")
       FmrbApp.power(action)
@@ -433,6 +450,9 @@ class KeysDesktopApp < FmrbApp
 
   def fmgr_ask_delete(message)
     @fmgr_confirm = message
+    # The list now ends above the question line; the row being asked about
+    # stays in sight.
+    fmgr_reveal(@file_manager_selected) if @file_manager_selected >= 0
     draw_foreground
     nil
   end
@@ -450,6 +470,11 @@ class KeysDesktopApp < FmrbApp
 
   def fmgr_confirm_cancel
     @fmgr_confirm = nil
+    # The list is taller again: take up the rows the question line had, so
+    # it does not end on empty rows.
+    max_top = @file_manager_entries.size - fmgr_list_metrics[:max_visible]
+    max_top = 0 if max_top < 0
+    @file_manager_scroll = max_top if @file_manager_scroll > max_top
     fmgr_delete_cancelled
     draw_foreground
     nil
@@ -626,7 +651,12 @@ class KeysDesktopApp < FmrbApp
       draw_file_selector
     elsif @file_manager_open
       draw_file_manager
-      draw_confirm_line(@fmgr_confirm) if @fmgr_confirm
+      if @fmgr_confirm
+        # Below the shortened panel: the ground the question line sits on.
+        top = @fmgr_y + fmgr_h
+        @gfx.fill_rect(0, top, @window_width, @window_height - top, PANEL_BG)
+        draw_confirm_line(@fmgr_confirm)
+      end
     elsif menu_visible?
       draw_menu
       draw_power_confirm if @power_confirm
@@ -758,6 +788,7 @@ class KeysDesktopApp < FmrbApp
   def esc_held(quit)
     if @power_confirm
       @power_confirm = nil
+      menu_clamp_top
       draw_foreground
     elsif @fmgr_confirm && @file_manager_open && !@file_selector_open
       fmgr_confirm_cancel

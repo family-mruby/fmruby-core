@@ -1692,6 +1692,18 @@ static mrb_value mrb_fmrb_app_s_audio_muted_p(mrb_state *mrb, mrb_value klass)
     return mrb_bool_value(fmrb_host_audio_muted());
 }
 
+// FmrbApp.path_read_only?(path) -> bool. Whether the entry at a virtual path
+// cannot be deleted or renamed (fmrb_hal_file_entry_is_read_only): the native
+// build's distribution tree and /mnt/root. Always false on the devices, the
+// simulation and the browser. The File Manager asks before it offers a delete.
+static mrb_value mrb_fmrb_app_s_path_read_only_p(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *path;
+    mrb_get_args(mrb, "z", &path);
+    return mrb_bool_value(fmrb_hal_file_entry_is_read_only(path));
+}
+
 // FmrbApp.set_audio_mute(on) -> nil. Mutes or unmutes the whole machine at
 // the output stage and saves it to system_conf; see fmrb_host_set_audio_mute.
 static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
@@ -2106,6 +2118,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "ble_settings_left", mrb_fmrb_app_s_ble_settings_left, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "path_read_only?", mrb_fmrb_app_s_path_read_only_p, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "audio_volume", mrb_fmrb_app_s_audio_volume, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));

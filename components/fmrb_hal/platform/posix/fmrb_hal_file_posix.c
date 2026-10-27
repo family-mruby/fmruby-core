@@ -1,3 +1,7 @@
+// O_PATH and the *at calls of the /mnt/host walk (host_walk).
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "fmrb_hal.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_rtos.h"
@@ -441,6 +445,236 @@ bool fmrb_hal_file_path_is_read_only(const char *virtual_path) {
     return check_write(virtual_path, true, &why) != FMRB_OK;
 }
 
+bool fmrb_hal_file_entry_is_read_only(const char *virtual_path) {
+    const char *why;
+    return check_write(virtual_path, false, &why) != FMRB_OK;
+}
+
+// ---------------------------------------------------------------------------
+// Changes under /mnt/host, made where they were checked (L7d).
+//
+// check_write judges a path by its real location, but the change itself used
+// to go to the host path afterwards by name, so a symbolic link swapped in
+// between the two (by another program of the same user) could carry the
+// write out of the home. The changes below walk from the home's real
+// directory one name at a time instead: every directory is opened with
+// O_NOFOLLOW relative to the one before it, a symbolic link met on the way is
+// read and followed only while it stays inside the home (".." never climbs
+// above the home, an absolute target has to name a place in it), and the
+// change is made with the *at call on the directory that was reached. The
+// check stays in front for its reasons in the log; the walk is what holds.
+
+#define HOST_WALK_LINKS 40      // links followed in one walk (Linux's own limit)
+#define HOST_WALK_DEPTH 64      // directories deep below the home
+
+typedef struct {
+    int  dirfd;                 // the directory holding the leaf (owned)
+    char leaf[256];             // the last name; "" when the path is the directory itself
+} host_at_t;
+
+#ifdef FMRB_HAL_FILE_TEST_HOOK
+// Test only (test/native/file_hal.c): called between the check and the walk,
+// where a swapped link would have slipped through before.
+void (*fmrb_hal_file_test_after_check)(const char *virtual_path) = NULL;
+#define AFTER_CHECK(path) do {                                          \
+        if (fmrb_hal_file_test_after_check) fmrb_hal_file_test_after_check(path); \
+    } while (0)
+#else
+#define AFTER_CHECK(path) do { (void)(path); } while (0)
+#endif
+
+// The writable host place a virtual path is under (/mnt/host), or NULL.
+// norm receives the normalized path.
+static const fs_mount_t *host_rw_mount(const char *virtual_path, char *norm, size_t norm_len) {
+    if (!s_layered || virtual_path == NULL ||
+        !normalize_virtual(virtual_path, norm, norm_len)) {
+        return NULL;
+    }
+    const fs_mount_t *m = lookup_mount(norm);
+    if (!m->host || m->read_only || s_roots[m->root][0] == '\0') {
+        return NULL;
+    }
+    return m;
+}
+
+// What an absolute link target names below the root, or NULL when it is not
+// inside it. The root is given as configured and as its real location, since
+// a link may be written with either.
+static const char *below_root(const char *target, const char *root, const char *real_root) {
+    const char *roots[2] = { root, real_root };
+    for (int i = 0; i < 2; i++) {
+        size_t n = strlen(roots[i]);
+        if (strncmp(target, roots[i], n) == 0 && (target[n] == '\0' || target[n] == '/')) {
+            return target + n;
+        }
+    }
+    return NULL;
+}
+
+static void close_fds(int *fds, int depth) {
+    for (int i = 0; i <= depth; i++) {
+        close(fds[i]);
+    }
+}
+
+// Walk the part of a normalized /mnt/host path below the home.
+//   follow_leaf: a link in the last place is followed too (writing a file,
+//                utime, chmod); otherwise the last name is the entry itself
+//                (remove, rename, mkdir, rmdir).
+//   make_dirs:   directories missing on the way are made (a create's parents).
+// FMRB_ERR_READ_ONLY when the walk would leave the home; FMRB_ERR_FAILED with
+// errno for anything else.
+static fmrb_err_t host_walk(const fs_mount_t *m, const char *norm, bool follow_leaf,
+                            bool make_dirs, host_at_t *out) {
+    char real_root[PATH_MAX];
+    if (realpath(s_roots[m->root], real_root) == NULL) {
+        return FMRB_ERR_FAILED;
+    }
+    int fds[HOST_WALK_DEPTH];
+    int depth = 0;
+    fds[0] = open(real_root, O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (fds[0] < 0) {
+        return FMRB_ERR_FAILED;
+    }
+    char buf[1024];
+    char next[1024];
+    snprintf(buf, sizeof(buf), "%s", norm + strlen(m->top));
+    const char *p = buf;
+    int links = 0;
+
+    for (;;) {
+        while (*p == '/') p++;
+        if (*p == '\0') {
+            // Nothing left: the path names the directory reached.
+            out->leaf[0] = '\0';
+            break;
+        }
+        const char *seg = p;
+        while (*p && *p != '/') p++;
+        size_t len = (size_t)(p - seg);
+        if (len >= sizeof(out->leaf)) {
+            close_fds(fds, depth);
+            errno = ENAMETOOLONG;
+            return FMRB_ERR_FAILED;
+        }
+        char name[256];
+        memcpy(name, seg, len);
+        name[len] = '\0';
+        const char *rest = p;
+        while (*rest == '/') rest++;
+        bool last = (*rest == '\0');
+
+        if (strcmp(name, ".") == 0) {
+            continue;
+        }
+        if (strcmp(name, "..") == 0) {
+            if (depth == 0) {
+                close_fds(fds, depth);
+                return FMRB_ERR_READ_ONLY;     // above the home
+            }
+            close(fds[depth--]);
+            continue;
+        }
+        if (last && !follow_leaf) {
+            snprintf(out->leaf, sizeof(out->leaf), "%s", name);
+            break;
+        }
+
+        struct stat st;
+        if (fstatat(fds[depth], name, &st, AT_SYMLINK_NOFOLLOW) != 0) {
+            if (errno != ENOENT) {
+                close_fds(fds, depth);
+                return FMRB_ERR_FAILED;
+            }
+            if (last) {
+                snprintf(out->leaf, sizeof(out->leaf), "%s", name);   // to be created
+                break;
+            }
+            if (!make_dirs || (mkdirat(fds[depth], name, 0755) != 0 && errno != EEXIST)) {
+                int e = errno;
+                close_fds(fds, depth);
+                errno = make_dirs ? e : ENOENT;
+                return FMRB_ERR_FAILED;
+            }
+        } else if (S_ISLNK(st.st_mode)) {
+            char target[PATH_MAX];
+            ssize_t n = readlinkat(fds[depth], name, target, sizeof(target) - 1);
+            if (++links > HOST_WALK_LINKS || n <= 0) {
+                close_fds(fds, depth);
+                errno = ELOOP;
+                return FMRB_ERR_FAILED;
+            }
+            target[n] = '\0';
+            const char *t = target;
+            if (target[0] == '/') {
+                t = below_root(target, s_roots[m->root], real_root);
+                if (t == NULL) {
+                    close_fds(fds, depth);
+                    return FMRB_ERR_READ_ONLY;   // a link out of the home
+                }
+                // From the home again.
+                close_fds(fds + 1, depth - 1);
+                depth = 0;
+            }
+            int w = snprintf(next, sizeof(next), "%s/%s", t, p);
+            if (w < 0 || (size_t)w >= sizeof(next)) {
+                close_fds(fds, depth);
+                errno = ENAMETOOLONG;
+                return FMRB_ERR_FAILED;
+            }
+            memcpy(buf, next, (size_t)w + 1);
+            p = buf;
+            continue;
+        } else if (last) {
+            snprintf(out->leaf, sizeof(out->leaf), "%s", name);
+            break;
+        }
+
+        if (depth + 1 >= HOST_WALK_DEPTH) {
+            close_fds(fds, depth);
+            errno = ELOOP;
+            return FMRB_ERR_FAILED;
+        }
+        int fd = openat(fds[depth], name, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (fd < 0) {
+            // Swapped for a link (or not a directory) since the look above.
+            close_fds(fds, depth);
+            return errno == ELOOP ? FMRB_ERR_READ_ONLY : FMRB_ERR_FAILED;
+        }
+        fds[++depth] = fd;
+    }
+    close_fds(fds, depth - 1);
+    out->dirfd = fds[depth];
+    return FMRB_OK;
+}
+
+// Log a walk that was refused for leaving the home (the check before it
+// passed, so something changed in between).
+static fmrb_err_t host_walk_logged(const char *virtual_path, const fs_mount_t *m, const char *norm,
+                                   bool follow_leaf, bool make_dirs, host_at_t *out) {
+    (void)virtual_path;   // unused when the log is compiled out
+    fmrb_err_t err = host_walk(m, norm, follow_leaf, make_dirs, out);
+    if (err == FMRB_ERR_READ_ONLY) {
+        FMRB_LOGW(TAG, "%s: read-only (it would land outside the home directory)", virtual_path);
+    }
+    return err;
+}
+
+// The directory and name a change under /mnt/host is made at. *handled is
+// false (and nothing is opened) when the path is not under /mnt/host, where
+// the caller goes on by name as before.
+static fmrb_err_t host_at(const char *virtual_path, bool follow_leaf, bool make_dirs,
+                          host_at_t *at, bool *handled) {
+    char norm[512];
+    const fs_mount_t *m = host_rw_mount(virtual_path, norm, sizeof(norm));
+    *handled = (m != NULL);
+    if (m == NULL) {
+        return FMRB_OK;
+    }
+    AFTER_CHECK(virtual_path);
+    return host_walk_logged(virtual_path, m, norm, follow_leaf, make_dirs, at);
+}
+
 // Whether a virtual path is under a host place (/mnt/host, /mnt/root).
 static bool path_is_host(const char *virtual_path) {
     if (!s_layered || virtual_path == NULL) {
@@ -527,24 +761,20 @@ static void flags_to_mode(uint32_t flags, char *mode) {
     strcat(mode, "b");
 }
 
-// fopen for Linux's own files: the same modes, but the descriptor is opened
-// with O_NONBLOCK and O_NOCTTY and has to be a regular file once open (the
-// resolver already turned devices, FIFOs and sockets away by name; this
-// closes the gap of one swapped in between). O_NONBLOCK also keeps a procfs
-// file that waits for data (kmsg) from stopping the cooperative machine.
-static FILE *host_fopen(const char *host, const char *mode) {
-    int oflags;
+// The open(2) flags of an fopen mode ("r", "w+", "ab", ...).
+static bool mode_oflags(const char *mode, int *oflags) {
     bool plus = strchr(mode, '+') != NULL;
     switch (mode[0]) {
-    case 'r': oflags = plus ? O_RDWR : O_RDONLY; break;
-    case 'w': oflags = (plus ? O_RDWR : O_WRONLY) | O_CREAT | O_TRUNC; break;
-    case 'a': oflags = (plus ? O_RDWR : O_WRONLY) | O_CREAT | O_APPEND; break;
-    default: return NULL;
+    case 'r': *oflags = plus ? O_RDWR : O_RDONLY; return true;
+    case 'w': *oflags = (plus ? O_RDWR : O_WRONLY) | O_CREAT | O_TRUNC; return true;
+    case 'a': *oflags = (plus ? O_RDWR : O_WRONLY) | O_CREAT | O_APPEND; return true;
+    default: return false;
     }
-    int fd = open(host, oflags | O_NONBLOCK | O_NOCTTY | O_CLOEXEC, 0666);
-    if (fd < 0) {
-        return NULL;
-    }
+}
+
+// A descriptor of Linux's own files as a FILE*, once it is known to be a
+// regular file. The descriptor is closed when it is not.
+static FILE *host_fdopen(int fd, const char *mode) {
     struct stat st;
     if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
         close(fd);
@@ -556,6 +786,53 @@ static FILE *host_fopen(const char *host, const char *mode) {
         close(fd);
     }
     return fp;
+}
+
+// fopen for Linux's own files: the same modes, but the descriptor is opened
+// with O_NONBLOCK and O_NOCTTY and has to be a regular file once open (the
+// resolver already turned devices, FIFOs and sockets away by name; this
+// closes the gap of one swapped in between). O_NONBLOCK also keeps a procfs
+// file that waits for data (kmsg) from stopping the cooperative machine.
+static FILE *host_fopen(const char *host, const char *mode) {
+    int oflags;
+    if (!mode_oflags(mode, &oflags)) {
+        return NULL;
+    }
+    int fd = open(host, oflags | O_NONBLOCK | O_NOCTTY | O_CLOEXEC, 0666);
+    if (fd < 0) {
+        return NULL;
+    }
+    return host_fdopen(fd, mode);
+}
+
+// The same for a write under /mnt/host, opened where the walk from the home
+// arrived (host_walk) and not followed through a link swapped in since.
+static fmrb_err_t host_fopen_write(const char *virtual_path, const fs_mount_t *m, const char *norm,
+                                   const char *mode, bool create, FILE **out) {
+    *out = NULL;
+    int oflags;
+    if (!mode_oflags(mode, &oflags)) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    host_at_t at;
+    fmrb_err_t err = host_walk_logged(virtual_path, m, norm, true, create, &at);
+    if (err != FMRB_OK) {
+        return err;
+    }
+    if (at.leaf[0] == '\0') {
+        close(at.dirfd);
+        errno = EISDIR;
+        return FMRB_ERR_FAILED;
+    }
+    int fd = openat(at.dirfd, at.leaf, oflags | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY | O_CLOEXEC, 0666);
+    int e = errno;
+    close(at.dirfd);
+    if (fd < 0) {
+        errno = e;
+        return e == ELOOP ? FMRB_ERR_READ_ONLY : FMRB_ERR_FAILED;
+    }
+    *out = host_fdopen(fd, mode);
+    return *out ? FMRB_OK : FMRB_ERR_FAILED;
 }
 
 // Helper function to create directory recursively
@@ -758,25 +1035,41 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     handle->in_tmp = fmrb_tmpfs_owns_path(full_path);
     handle->counted = handle->in_tmp ? fmrb_tmpfs_file_size(full_path) : 0;
 
-    // Create parent directory if needed
-    if (flags & FMRB_O_CREAT) {
-        char dir_path[512];
-        snprintf(dir_path, sizeof(dir_path), "%s", full_path);
-        char *last_slash = strrchr(dir_path, '/');
-        if (last_slash != NULL) {
-            *last_slash = '\0';
-            mkdir_recursive(dir_path);
-        }
-    }
-
     char mode[8];
     flags_to_mode(flags, mode);
 
-    handle->fp = path_is_host(path) ? host_fopen(full_path, mode) : fopen(full_path, mode);
-    if (handle->fp == NULL) {
-        fmrb_sys_free(handle);
-        UNLOCK();
-        return FMRB_ERR_FAILED;
+    // A write under /mnt/host goes by the walk from the home, which also
+    // makes a create's missing parents.
+    char norm[512];
+    const fs_mount_t *hm = NULL;
+    if (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC | FMRB_O_APPEND)) {
+        hm = host_rw_mount(path, norm, sizeof(norm));
+    }
+    if (hm != NULL) {
+        AFTER_CHECK(path);
+        fmrb_err_t err = host_fopen_write(path, hm, norm, mode, (flags & FMRB_O_CREAT) != 0, &handle->fp);
+        if (err != FMRB_OK) {
+            fmrb_sys_free(handle);
+            UNLOCK();
+            return err;
+        }
+    } else {
+        // Create parent directory if needed
+        if (flags & FMRB_O_CREAT) {
+            char dir_path[512];
+            snprintf(dir_path, sizeof(dir_path), "%s", full_path);
+            char *last_slash = strrchr(dir_path, '/');
+            if (last_slash != NULL) {
+                *last_slash = '\0';
+                mkdir_recursive(dir_path);
+            }
+        }
+        handle->fp = path_is_host(path) ? host_fopen(full_path, mode) : fopen(full_path, mode);
+        if (handle->fp == NULL) {
+            fmrb_sys_free(handle);
+            UNLOCK();
+            return FMRB_ERR_FAILED;
+        }
     }
 
     // Truncating hands the old contents back to the mount.
@@ -940,6 +1233,21 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
 
     REFUSE_CHANGE(path, false);
 
+    host_at_t at;
+    bool handled;
+    LOCK();
+    fmrb_err_t herr = host_at(path, false, false, &at, &handled);
+    if (handled) {
+        int hret = -1;
+        if (herr == FMRB_OK) {
+            hret = at.leaf[0] ? unlinkat(at.dirfd, at.leaf, 0) : -1;
+            close(at.dirfd);
+        }
+        UNLOCK();
+        return herr != FMRB_OK ? herr : (hret == 0 ? FMRB_OK : FMRB_ERR_FAILED);
+    }
+    UNLOCK();
+
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
 
@@ -972,18 +1280,50 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    // A side under /mnt/host is reached by the walk from the home; the other
+    // keeps its name.
+    host_at_t old_at = { .dirfd = AT_FDCWD };
+    host_at_t new_at = { .dirfd = AT_FDCWD };
+    bool old_host, new_host;
     LOCK();
+    fmrb_err_t herr = host_at(old_path, false, false, &old_at, &old_host);
+    if (herr == FMRB_OK) {
+        herr = host_at(new_path, false, false, &new_at, &new_host);
+    } else {
+        new_host = false;
+    }
+    if (herr != FMRB_OK) {
+        if (old_host && old_at.dirfd >= 0) close(old_at.dirfd);
+        UNLOCK();
+        return herr;
+    }
+    const char *old_name = old_full_path;
+    const char *new_name = new_full_path;
+    if (old_host) old_name = old_at.leaf;
+    if (new_host) new_name = new_at.leaf;
+    if ((old_host && old_name[0] == '\0') || (new_host && new_name[0] == '\0')) {
+        if (old_host) close(old_at.dirfd);
+        if (new_host) close(new_at.dirfd);
+        UNLOCK();
+        return FMRB_ERR_READ_ONLY;
+    }
+
     // Moving in or out of /tmp moves the bytes on and off the mount's books.
     bool from_tmp = fmrb_tmpfs_owns_path(old_full_path);
     bool to_tmp = fmrb_tmpfs_owns_path(new_full_path);
     size_t bytes = (from_tmp || to_tmp) ? fmrb_tmpfs_file_size(old_full_path) : 0;
     if (to_tmp && !from_tmp && !fmrb_tmpfs_charge(bytes)) {
+        if (old_host) close(old_at.dirfd);
+        if (new_host) close(new_at.dirfd);
         UNLOCK();
         FMRB_LOGW(TAG, "%s is full: cannot move %s in", FMRB_TMPFS_MOUNT, old_path);
         return FMRB_ERR_NO_MEMORY;
     }
     size_t overwritten = to_tmp ? fmrb_tmpfs_file_size(new_full_path) : 0;
-    int ret = rename(old_full_path, new_full_path);
+    int ret = (old_host || new_host) ? renameat(old_at.dirfd, old_name, new_at.dirfd, new_name)
+                                     : rename(old_full_path, new_full_path);
+    if (old_host) close(old_at.dirfd);
+    if (new_host) close(new_at.dirfd);
     if (ret == 0) {
         if (overwritten > 0) {
             fmrb_tmpfs_release(overwritten);
@@ -1053,8 +1393,21 @@ fmrb_err_t fmrb_hal_file_mkdir(const char *path) {
         return FMRB_ERR_NOT_SUPPORTED;
     }
 
+    host_at_t at;
+    bool handled;
     LOCK();
-    int ret = mkdir_recursive(full_path);
+    fmrb_err_t herr = host_at(path, false, true, &at, &handled);
+    int ret;
+    if (handled) {
+        if (herr != FMRB_OK) {
+            UNLOCK();
+            return herr;
+        }
+        ret = (at.leaf[0] == '\0' || mkdirat(at.dirfd, at.leaf, 0755) == 0 || errno == EEXIST) ? 0 : -1;
+        close(at.dirfd);
+    } else {
+        ret = mkdir_recursive(full_path);
+    }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -1070,8 +1423,21 @@ fmrb_err_t fmrb_hal_file_rmdir(const char *path) {
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
 
+    host_at_t at;
+    bool handled;
     LOCK();
-    int ret = rmdir(full_path);
+    fmrb_err_t herr = host_at(path, false, false, &at, &handled);
+    int ret;
+    if (handled) {
+        if (herr != FMRB_OK) {
+            UNLOCK();
+            return herr;
+        }
+        ret = at.leaf[0] ? unlinkat(at.dirfd, at.leaf, AT_REMOVEDIR) : -1;
+        close(at.dirfd);
+    } else {
+        ret = rmdir(full_path);
+    }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -1249,8 +1615,22 @@ fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {
     times.actime = mtime;
     times.modtime = mtime;
 
+    host_at_t at;
+    bool handled;
     LOCK();
-    int ret = utime(full_path, &times);
+    fmrb_err_t herr = host_at(path, true, false, &at, &handled);
+    int ret;
+    if (handled) {
+        if (herr != FMRB_OK) {
+            UNLOCK();
+            return herr;
+        }
+        struct timespec ts[2] = { { .tv_sec = mtime }, { .tv_sec = mtime } };
+        ret = utimensat(at.dirfd, at.leaf[0] ? at.leaf : ".", ts, AT_SYMLINK_NOFOLLOW);
+        close(at.dirfd);
+    } else {
+        ret = utime(full_path, &times);
+    }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -1267,10 +1647,59 @@ fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr) {
     build_path(path, full_path, sizeof(full_path));
 
     // On POSIX, attr is mode_t
+    host_at_t at;
+    bool handled;
     LOCK();
-    int ret = chmod(full_path, (mode_t)attr);
+    fmrb_err_t herr = host_at(path, true, false, &at, &handled);
+    int ret;
+    if (handled) {
+        if (herr != FMRB_OK) {
+            UNLOCK();
+            return herr;
+        }
+        ret = fchmodat(at.dirfd, at.leaf[0] ? at.leaf : ".", (mode_t)attr, AT_SYMLINK_NOFOLLOW);
+        close(at.dirfd);
+    } else {
+        ret = chmod(full_path, (mode_t)attr);
+    }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Dir.mkdir / Dir.rmdir under /mnt/host (the directory HAL, lib/add's
+// dir_hal.c): one directory, by the walk from the home.
+bool fmrb_hal_file_host_dir_change(const char *virtual_path, bool remove, int mode, int *out_ret) {
+    char norm[512];
+    if (host_rw_mount(virtual_path, norm, sizeof(norm)) == NULL) {
+        return false;
+    }
+    *out_ret = -1;
+    const char *why;
+    if (check_write(virtual_path, false, &why) != FMRB_OK) {
+        FMRB_LOGW(TAG, "%s: read-only (%s)", virtual_path, why);
+        errno = EROFS;
+        return true;
+    }
+    host_at_t at;
+    bool handled;
+    LOCK();
+    fmrb_err_t err = host_at(virtual_path, false, false, &at, &handled);
+    if (err != FMRB_OK) {
+        UNLOCK();
+        if (err == FMRB_ERR_READ_ONLY) errno = EROFS;
+        return true;
+    }
+    if (at.leaf[0] == '\0') {
+        errno = remove ? EBUSY : EEXIST;
+    } else {
+        *out_ret = remove ? unlinkat(at.dirfd, at.leaf, AT_REMOVEDIR)
+                          : mkdirat(at.dirfd, at.leaf, (mode_t)mode);
+    }
+    int e = errno;
+    close(at.dirfd);
+    UNLOCK();
+    errno = e;
+    return true;
 }
 
 // Get filesystem statistics

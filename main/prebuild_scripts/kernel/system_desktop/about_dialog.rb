@@ -33,7 +33,7 @@ module AboutDialogMixin
   def close_about_dialog
     return unless @about_open
     @about_open = false
-    notify_overlay_state(false, 0, 0, 0, 0)
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end

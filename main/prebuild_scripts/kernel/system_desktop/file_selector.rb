@@ -67,7 +67,7 @@ module FileSelectorMixin
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
 
     @file_selector_requester = nil
-    notify_overlay_state(false, 0, 0, 0, 0)
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end

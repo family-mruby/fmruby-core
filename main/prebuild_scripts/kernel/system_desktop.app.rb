@@ -29,6 +29,10 @@ class SystemDesktopApp < FmrbApp
   # Max cursor travel (virtual px) between mouse_down and mouse_up for the
   # release to still count as a click; larger travel is treated as a drag.
   CLICK_MOVE_THRESHOLD = 3
+  # How long after the kernel's "closed outside" signal the press that caused
+  # it may arrive. The kernel sends the two back to back (find_window_at), so
+  # this only has to cover the desktop's own queue, not the user.
+  SWALLOW_CLICK_MS = 300
   MENU_BG = FmrbConst::THEME_MENU_BG
   DROPDOWN_BG = FmrbConst::THEME_WINDOW_BG
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
@@ -210,6 +214,10 @@ class SystemDesktopApp < FmrbApp
     @fmgr_copy_path = nil
     @fmgr_copy_is_dir = false
     @fmgr_delete_path = nil
+    # The click that closed a dialog over the File Manager (L7d): until when
+    # its press may still arrive, and whether its release is to be dropped.
+    @swallow_click_until = 0
+    @swallow_click_up = false
 
     # Confirm dialog state
     @cdlg_open = false
@@ -1923,6 +1931,22 @@ class SystemDesktopApp < FmrbApp
     # the only widget that wants them, and it has to take its turn after the
     # arrows and Enter that drive the list; feeding keys here as well made
     # every character arrive twice.
+    # The click whose press closed a question or a notice over the File
+    # Manager (below, at (0,0)) is spent on that: it must not also reach the
+    # File Manager, which takes a click outside itself as "close" too.
+    if ev[:type] == :mouse_down && @swallow_click_until > 0
+      soon = Machine.board_millis < @swallow_click_until
+      @swallow_click_until = 0
+      if soon
+        @swallow_click_up = true
+        return
+      end
+    end
+    if ev[:type] == :mouse_up && @swallow_click_up && !(ev[:x] == 0 && ev[:y] == 0)
+      @swallow_click_up = false
+      return
+    end
+
     if ev[:type] == :mouse_down || ev[:type] == :mouse_up
       wid = @ui.handle(ev)
       if wid
@@ -1962,7 +1986,14 @@ class SystemDesktopApp < FmrbApp
       if ev[:x] == 0 && ev[:y] == 0
         @mouse_down_x = nil
         @mouse_down_y = nil
+        # The confirm dialog and the error dialog the File Manager raises
+        # close on this alone; the press that caused it follows and goes to
+        # the desktop when it landed on nothing else.
+        over_fmgr = @file_manager_open && (@cdlg_open || @error_dlg_open)
         handle_click(0, 0)
+        if over_fmgr && @file_manager_open
+          @swallow_click_until = Machine.board_millis + SWALLOW_CLICK_MS
+        end
         return
       end
 
@@ -2015,6 +2046,12 @@ class SystemDesktopApp < FmrbApp
       end
       if @about_open
         close_about_dialog
+        return
+      end
+      # A notice over the File Manager (fmgr_notice) closes on any key, as on
+      # the keys desktop; otherwise the File Manager behind it took the key.
+      if @error_dlg_open && @file_manager_open
+        close_error_dialog
         return
       end
 

@@ -515,6 +515,20 @@ int fmrb_spx_app_set_kana_mode(int mode)
     return 0;
 }
 
+/* FmrbApp.path_read_only?(path): whether the entry at a virtual path cannot be
+ * deleted or renamed (fmrb_hal_file_entry_is_read_only). Same call as the
+ * mruby binding. */
+int fmrb_spx_app_path_read_only(const char *path, int len)
+{
+    char vpath[256];
+    if (!path || len <= 0 || len >= (int)sizeof(vpath)) {
+        return 0;
+    }
+    memcpy(vpath, path, (size_t)len);
+    vpath[len] = '\0';
+    return fmrb_hal_file_entry_is_read_only(vpath) ? 1 : 0;
+}
+
 /* The machine's mute and volume (doc/reference/audio_output.md): FmrbApp.audio_muted?,
  * set_audio_mute, audio_volume and set_audio_volume. Same calls as the mruby
  * binding. */

@@ -99,6 +99,38 @@ fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
 bool fmrb_hal_file_path_is_read_only(const char *virtual_path);
 
 /**
+ * @brief Whether the entry at a virtual path may not be removed or renamed.
+ *
+ * The question a delete asks before it is made: the same places as
+ * fmrb_hal_file_path_is_read_only (the native build's distribution tree and
+ * /mnt/root), but judged on the entry rather than on what it points at, so a
+ * symbolic link in the home that points out of it may still be removed.
+ * Always false on the devices, the simulation and the browser.
+ *
+ * @param virtual_path Path as seen by user code (must not be NULL).
+ * @return true when removing or renaming the entry would be refused.
+ */
+bool fmrb_hal_file_entry_is_read_only(const char *virtual_path);
+
+/**
+ * @brief Make or remove one directory under a host place (POSIX HAL only).
+ *
+ * The directory HAL's Dir.mkdir / Dir.rmdir on the native Linux build. Under
+ * /mnt/host the change is made by walking from the home one name at a time
+ * (openat, O_NOFOLLOW), so a symbolic link swapped in after the read-only
+ * check cannot carry it out of the home. Not implemented on ESP32; callers
+ * guard the call with FMRB_PLATFORM_HOSTED.
+ *
+ * @param virtual_path Path as seen by user code.
+ * @param remove       true: rmdir, false: mkdir with @p mode.
+ * @param mode         Permission bits for mkdir.
+ * @param out_ret      Set to 0 or -1 (errno set), like mkdir(2) / rmdir(2).
+ * @return true when the path is under a host place and the call was made
+ *         here; false when the caller should do it as before.
+ */
+bool fmrb_hal_file_host_dir_change(const char *virtual_path, bool remove, int mode, int *out_ret);
+
+/**
  * @brief Look up the synthetic children of a virtual mount-point directory.
  *
  * Some directories ("/" containing the "mnt" mount-point parent, "/mnt"

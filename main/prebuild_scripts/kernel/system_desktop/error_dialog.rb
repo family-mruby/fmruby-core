@@ -65,7 +65,7 @@ module ErrorDialogMixin
   def close_error_dialog
     return unless @error_dlg_open
     @error_dlg_open = false
-    notify_overlay_state(false, 0, 0, 0, 0)
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end

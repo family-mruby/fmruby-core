@@ -216,6 +216,11 @@ bool fmrb_hal_file_path_is_read_only(const char *virtual_path) {
     return false;
 }
 
+bool fmrb_hal_file_entry_is_read_only(const char *virtual_path) {
+    (void)virtual_path;
+    return false;
+}
+
 // Convert flags to POSIX mode string
 static void flags_to_mode(uint32_t flags, char *mode) {
     if (flags & FMRB_O_RDWR) {

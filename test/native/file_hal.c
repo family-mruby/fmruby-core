@@ -12,7 +12,10 @@
 // /mnt/root refused with FMRB_ERR_READ_ONLY; writes through symbolic links
 // that leave the home refused (and nothing lands outside); ".." cannot climb
 // out; devices, FIFOs and sockets do not open (and do not block); the
-// listing of "/" and "/mnt"; a place the layout leaves out.
+// listing of "/" and "/mnt"; a place the layout leaves out. L7d: a link
+// swapped in between the check and the change (through the HAL's test hook)
+// does not carry the change out of the home; the entry question a delete asks
+// first; Dir.mkdir / Dir.rmdir's walk.
 //
 // The real home is never touched: every path here is under the made-up tree.
 //
@@ -31,6 +34,9 @@
 
 #include "fmrb_hal_file.h"
 #include "fmrb_hal_file_layout.h"
+
+// The HAL calls this between its check and its change (FMRB_HAL_FILE_TEST_HOOK).
+extern void (*fmrb_hal_file_test_after_check)(const char *virtual_path);
 
 static int g_fail = 0;
 static int g_count = 0;
@@ -345,6 +351,155 @@ static void test_special(void)
     CHECK(seen_passwd, "/mnt/root/etc lists passwd");
 }
 
+// ---- L7d: a link swapped in after the check ----
+//
+// The hook below runs where the HAL has checked the path and is about to make
+// the change: it turns <t>/home/<g_swap> (a directory or a file of the home)
+// into a symbolic link to g_swap_to, once. The change must then fail and
+// nothing may land outside.
+static const char *g_swap;
+static char g_swap_to[PATH_MAX];
+static int g_swaps;
+
+static void swap_hook(const char *virtual_path)
+{
+    (void)virtual_path;
+    if (g_swap == NULL) return;
+    char p[PATH_MAX], away[PATH_MAX];
+    snprintf(p, sizeof(p), "%s/home/%s", g_t, g_swap);
+    snprintf(away, sizeof(away), "%s/home/%s.away", g_t, g_swap);
+    if (rename(p, away) != 0 || symlink(g_swap_to, p) != 0) {
+        printf("swap of %s failed\n", p);
+        exit(2);
+    }
+    g_swap = NULL;
+    g_swaps++;
+}
+
+// Make home/<rel> a directory (or a file) again, to be swapped by the next call.
+static void arm_swap(const char *rel, bool is_dir, const char *to_rel)
+{
+    char p[PATH_MAX], away[PATH_MAX];
+    snprintf(p, sizeof(p), "%s/home/%s", g_t, rel);
+    snprintf(away, sizeof(away), "%s/home/%s.away", g_t, rel);
+    unlink(p);
+    char cmd[PATH_MAX * 2 + 16];
+    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", away);
+    if (system(cmd) != 0) exit(2);
+    if (is_dir) {
+        if (mkdir(p, 0755) != 0) exit(2);
+        char inner[PATH_MAX + 16];
+        snprintf(inner, sizeof(inner), "%s/old", p);
+        if (mkdir(inner, 0755) != 0) exit(2);
+    } else {
+        FILE *f = fopen(p, "w");
+        if (f == NULL) exit(2);
+        fputs("mine\n", f);
+        fclose(f);
+    }
+    tpath(g_swap_to, sizeof(g_swap_to), to_rel);
+    g_swap = rel;
+}
+
+static void test_swapped_links(void)
+{
+    fmrb_hal_file_test_after_check = swap_hook;
+    dir("outside/old");
+    put("outside/old/keep.txt", "keep\n");
+    put("outside/keep2.txt", "keep2\n");
+    fmrb_file_t h = NULL;
+
+    arm_swap("sw", true, "outside");
+    CHECK(hal_write("/mnt/host/sw/new.txt", "x") == FMRB_ERR_READ_ONLY && !exists("outside/new.txt"),
+          "create through a directory swapped for a link out: refused, nothing outside");
+    arm_swap("sw", true, "outside");
+    CHECK(hal_write("/mnt/host/sw/deep/new.txt", "x") == FMRB_ERR_READ_ONLY && !exists("outside/deep"),
+          "a create's parents through it: refused");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_remove("/mnt/host/sw/keep2.txt") == FMRB_ERR_READ_ONLY && exists("outside/keep2.txt"),
+          "remove through it: refused, the file outside stays");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_mkdir("/mnt/host/sw/made") == FMRB_ERR_READ_ONLY && !exists("outside/made"),
+          "mkdir through it: refused");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_rmdir("/mnt/host/sw/old") == FMRB_ERR_READ_ONLY && exists("outside/old"),
+          "rmdir through it: refused");
+    put("home/mv.txt", "mv");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_rename("/mnt/host/mv.txt", "/mnt/host/sw/mv.txt") == FMRB_ERR_READ_ONLY &&
+          !exists("outside/mv.txt") && exists("home/mv.txt"), "rename into it: refused");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_rename("/mnt/host/sw/keep2.txt", "/mnt/host/got.txt") == FMRB_ERR_READ_ONLY &&
+          exists("outside/keep2.txt") && !exists("home/got.txt"), "rename out of it: refused");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_utime("/mnt/host/sw/keep2.txt", 1) == FMRB_ERR_READ_ONLY, "utime through it: refused");
+    arm_swap("sw", true, "outside");
+    CHECK(fmrb_hal_file_chmod("/mnt/host/sw/keep2.txt", 0600) == FMRB_ERR_READ_ONLY, "chmod through it: refused");
+
+    // The file itself swapped for a link to a file outside.
+    arm_swap("victim.txt", false, "outside/keep2.txt");
+    CHECK(hal_write("/mnt/host/victim.txt", "overwritten") != FMRB_OK &&
+          host_text_is("outside/keep2.txt", "keep2\n"), "a file swapped for a link out is not written through");
+    arm_swap("victim.txt", false, "outside/keep2.txt");
+    CHECK(fmrb_hal_file_open("/mnt/host/victim.txt", FMRB_O_WRONLY | FMRB_O_APPEND, &h) != FMRB_OK &&
+          host_text_is("outside/keep2.txt", "keep2\n"), "nor appended to");
+    // A relative link that climbs out ("../outside").
+    link_to("../outside", "home/rel_out");
+    CHECK(hal_write("/mnt/host/rel_out/r.txt", "x") == FMRB_ERR_READ_ONLY && !exists("outside/r.txt"),
+          "a relative link up and out is refused");
+    CHECK(g_swaps == 11, "every swap happened (%d)", g_swaps);
+    fmrb_hal_file_test_after_check = NULL;
+
+    // Links that stay in the home are still followed by the walk.
+    link_to("sub", "home/rel_in");
+    CHECK(hal_write("/mnt/host/rel_in/r.txt", "in") == FMRB_OK && host_text_is("home/sub/r.txt", "in"),
+          "a relative link inside the home is written through");
+    char abs_in[PATH_MAX];
+    tpath(abs_in, sizeof(abs_in), "home/sub/r.txt");
+    link_to(abs_in, "home/file_in");
+    CHECK(hal_write("/mnt/host/file_in", "again") == FMRB_OK && host_text_is("home/sub/r.txt", "again"),
+          "an absolute link to a file inside the home is written through");
+    CHECK(fmrb_hal_file_mkdir("/mnt/host/rel_in/m1/m2") == FMRB_OK && exists("home/sub/m1/m2"),
+          "mkdir -p through a link inside");
+    CHECK(fmrb_hal_file_utime("/mnt/host/file_in", 1000) == FMRB_OK, "utime through a link inside");
+    CHECK(fmrb_hal_file_rename("/mnt/host/rel_in/r.txt", "/home/r.txt") == FMRB_OK && exists("user/home/r.txt"),
+          "rename from /mnt/host to the user's /home");
+    CHECK(fmrb_hal_file_rename("/home/r.txt", "/mnt/host/r2.txt") == FMRB_OK && exists("home/r2.txt"),
+          "and back into /mnt/host");
+}
+
+static void test_entry_read_only(void)
+{
+    CHECK(fmrb_hal_file_entry_is_read_only("/mnt/root/etc/passwd"), "an entry under /mnt/root is read-only");
+    CHECK(fmrb_hal_file_entry_is_read_only("/usr/x"), "so is one in the distribution tree");
+    CHECK(!fmrb_hal_file_entry_is_read_only("/mnt/host/sub"), "one in the home is not");
+    CHECK(!fmrb_hal_file_entry_is_read_only("/home/x"), "nor one in the user's /home");
+    link_to("/", "home/link_root");
+    CHECK(!fmrb_hal_file_entry_is_read_only("/mnt/host/link_root") &&
+          fmrb_hal_file_path_is_read_only("/mnt/host/link_root"),
+          "a link out of the home: the entry may go, what it points at may not be written");
+    CHECK(fmrb_hal_file_entry_is_read_only("/mnt/host"), "the home itself is not removed");
+}
+
+static void test_dir_change(void)
+{
+    int ret = 0;
+    CHECK(fmrb_hal_file_host_dir_change("/mnt/host/dd", false, 0755, &ret) && ret == 0 && exists("home/dd"),
+          "Dir.mkdir under /mnt/host");
+    CHECK(fmrb_hal_file_host_dir_change("/mnt/host/dd", false, 0755, &ret) && ret == -1 && errno == EEXIST,
+          "twice: EEXIST, as mkdir(2)");
+    CHECK(fmrb_hal_file_host_dir_change("/mnt/host/no/dd", false, 0755, &ret) && ret == -1 && !exists("home/no"),
+          "no parents made (ENOENT)");
+    CHECK(fmrb_hal_file_host_dir_change("/mnt/host/dd", true, 0, &ret) && ret == 0 && !exists("home/dd"),
+          "Dir.rmdir under /mnt/host");
+    CHECK(fmrb_hal_file_host_dir_change("/mnt/host/link_out/dd", false, 0755, &ret) && ret == -1 &&
+          errno == EROFS && !exists("outside/dd"), "through a link out: EROFS");
+    CHECK(fmrb_hal_file_host_dir_change("/mnt/host/link_out/old", true, 0, &ret) && ret == -1 &&
+          exists("outside/old"), "rmdir through it: refused");
+    CHECK(!fmrb_hal_file_host_dir_change("/home/dd", false, 0755, &ret), "not /mnt/host: left to the caller");
+    CHECK(!fmrb_hal_file_host_dir_change("/mnt/root/dd", false, 0755, &ret), "nor /mnt/root (read-only before)");
+}
+
 static void test_listing(void)
 {
     CHECK(lists("/", "mnt") && lists("/", "home"), "/ lists mnt");
@@ -374,6 +529,9 @@ int main(void)
     test_links_out();
     test_dotdot();
     test_special();
+    test_swapped_links();
+    test_entry_read_only();
+    test_dir_change();
     test_listing();
 
     char cmd[128];
@@ -383,6 +541,6 @@ int main(void)
         printf("native files: %d of %d checks failed\n", g_fail, g_count);
         return 1;
     }
-    printf("native files: %d checks passed (/mnt/host, /mnt/root, links, .., special files, listing)\n", g_count);
+    printf("native files: %d checks passed (/mnt/host, /mnt/root, links, .., special files, swapped links, listing)\n", g_count);
     return 0;
 }

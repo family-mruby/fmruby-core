@@ -224,6 +224,14 @@ mrb_hal_dir_mkdir(mrb_state *mrb, const char *path, int mode)
     errno = EEXIST;
     return -1;
   }
+#if defined(FMRB_PLATFORM_HOSTED)
+  // Under /mnt/host the file HAL makes it, walking from the home so that a
+  // link swapped in after the check cannot carry it out (doc/linux_native L7d).
+  int host_ret;
+  if (fmrb_hal_file_host_dir_change(path, false, mode, &host_ret)) {
+    return host_ret;
+  }
+#endif
   if (fmrb_hal_file_path_is_read_only(path)) {
     errno = EROFS;
     return -1;
@@ -247,6 +255,12 @@ mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
     errno = EPERM;
     return -1;
   }
+#if defined(FMRB_PLATFORM_HOSTED)
+  int host_ret;
+  if (fmrb_hal_file_host_dir_change(path, true, 0, &host_ret)) {
+    return host_ret;
+  }
+#endif
   if (fmrb_hal_file_path_is_read_only(path)) {
     errno = EROFS;
     return -1;

@@ -40,7 +40,7 @@ module ShortcutsDialogMixin
   def close_shortcuts_dialog
     return unless @skey_open
     @skey_open = false
-    notify_overlay_state(false, 0, 0, 0, 0)
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end

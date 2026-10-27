@@ -26,7 +26,7 @@ module TbdDialogMixin
   def close_tbd_dialog
     return unless @tbd_open
     @tbd_open = false
-    notify_overlay_state(false, 0, 0, 0, 0)
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end

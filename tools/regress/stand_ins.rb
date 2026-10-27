@@ -191,6 +191,7 @@ class FmrbApp
   def self.ble_settings_left = nil
   def self.set_kana_mode(*) = nil
   def self.audio_muted? = false
+  def self.path_read_only?(_path) = false
   def self.wifi_info = Regress::Env.wifi
   def self.method_missing(n, *) = Regress::Env.note_unstubbed("FmrbApp.#{n}")
   def self.respond_to_missing?(*) = true

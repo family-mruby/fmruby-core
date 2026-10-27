@@ -1994,6 +1994,13 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_audio_muted == 1
   end
 
+  # Whether the entry at a virtual path cannot be deleted or renamed (the
+  # native build's distribution tree and /mnt/root; false on the devices).
+  def self.path_read_only?(path)
+    s = path.to_s
+    FmrbSpxApp.fmrb_spx_app_path_read_only(s, s.bytesize) == 1
+  end
+
   def self.set_audio_mute(on)
     FmrbSpxApp.fmrb_spx_app_set_audio_mute(on ? 1 : 0)
     nil

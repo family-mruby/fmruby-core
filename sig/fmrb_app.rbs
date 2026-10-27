@@ -957,6 +957,15 @@ class FmrbApp
   # ```
   def self.audio_muted?: () -> bool
 
+  # 消せない・名前を変えられない場所か <<en>> Whether the entry cannot be deleted or renamed
+  #
+  # PC 版の配布物の木と /mnt/root で true。端末・sim・ブラウザ版では常に false。
+  # 削除を確かめる前に聞く用 (File Manager)。
+  # ```ruby
+  # FmrbApp.path_read_only?("/mnt/root/etc/hostname")
+  # ```
+  def self.path_read_only?: (String path) -> bool
+
   # 本体の音量を変える (0-10) <<en>> Set the machine's volume (0-10)
   #
   # 0 は無音、10 が最大。ミュートとは別で、ミュートを外すとこの音量に戻る。

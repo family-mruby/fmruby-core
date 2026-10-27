@@ -79,7 +79,7 @@ module FileManagerMixin
 
   def scan_file_manager_dir
     @file_manager_entries = []
-    @file_manager_entries << { name: "..", is_dir: true, size: 0 } unless @file_manager_dir == "/"
+    @file_manager_entries << { name: "..", is_dir: true, size: 0, special: false } unless @file_manager_dir == "/"
 
     begin
       dir = Dir.open(@file_manager_dir)
@@ -96,6 +96,7 @@ module FileManagerMixin
       names.sort.each do |name|
         vpath = @file_manager_dir == "/" ? "/#{name}" : "#{@file_manager_dir}/#{name}"
         is_dir = false
+        special = false
         file_size = 0
         begin
           d = Dir.open(vpath)
@@ -105,10 +106,13 @@ module FileManagerMixin
           begin
             file_size = File.size(vpath)
           rescue
-            file_size = 0
+            # Listed but neither a directory nor a file that stats: on the
+            # PC, a device, a FIFO or a socket under /mnt (the file HAL does
+            # not open those), or a link to nothing. Shown, marked, not opened.
+            special = true
           end
         end
-        @file_manager_entries << { name: name, is_dir: is_dir, size: file_size }
+        @file_manager_entries << { name: name, is_dir: is_dir, size: file_size, special: special }
       end
     rescue => e
       Log.warn("File manager: cannot scan #{@file_manager_dir}: #{e.message}")
@@ -121,14 +125,19 @@ module FileManagerMixin
     @fmgr_last_click_time = 0
   end
 
+  # Fits the size column (at most four digits and the unit) whatever the size:
+  # /proc/kcore on the PC says 128 TB. Divided step by step rather than by
+  # 1024 ** n, so no constant needs more than the engine's 32-bit integers.
+  FMGR_SIZE_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"]
+
   def format_size(bytes)
-    if bytes >= 1024 * 1024
-      "#{bytes / (1024 * 1024)}MB"
-    elsif bytes >= 1024
-      "#{bytes / 1024}KB"
-    else
-      "#{bytes}B"
+    n = bytes
+    unit = 0
+    while n >= 1024 && unit < FileManagerMixin::FMGR_SIZE_UNITS.size - 1
+      n = n / 1024
+      unit += 1
     end
+    "#{n}#{FileManagerMixin::FMGR_SIZE_UNITS[unit]}"
   end
 
   def fmgr_selected_virtual_path
@@ -216,9 +225,10 @@ module FileManagerMixin
       label = label[0, max_name_len] if label.length > max_name_len
       @gfx.draw_text(x + 6, item_y + 2, label, text_color, text_bg)
 
-      # Size column (files only)
+      # Size column (files only). A file that cannot be opened says so there
+      # instead of a size (fmgr_cannot_open).
       unless entry[:is_dir]
-        size_str = format_size(entry[:size])
+        size_str = entry[:special] ? "special" : format_size(entry[:size])
         @gfx.draw_text(size_col_x, item_y + 2, size_str, size_color, text_bg)
       end
       i += 1
@@ -642,6 +652,7 @@ module FileManagerMixin
   def fmgr_run_file(idx)
     return if idx < 0 || idx >= @file_manager_entries.size
     entry = @file_manager_entries[idx]
+    return fmgr_cannot_open(entry) if entry[:special]
     vpath = fmgr_selected_virtual_path
     return unless vpath
 
@@ -655,6 +666,7 @@ module FileManagerMixin
     return if idx < 0 || idx >= @file_manager_entries.size
     entry = @file_manager_entries[idx]
     return if entry[:is_dir]
+    return fmgr_cannot_open(entry) if entry[:special]
 
     vpath = fmgr_selected_virtual_path
     return unless vpath
@@ -679,6 +691,7 @@ module FileManagerMixin
     return if idx < 0 || idx >= @file_manager_entries.size
     entry = @file_manager_entries[idx]
     return if entry[:is_dir]
+    return fmgr_cannot_open(entry) if entry[:special]
     vpath = fmgr_selected_virtual_path
     return unless vpath
 
@@ -700,6 +713,7 @@ module FileManagerMixin
   def fmgr_copy_file(idx)
     return if idx < 0 || idx >= @file_manager_entries.size
     entry = @file_manager_entries[idx]
+    return fmgr_cannot_open(entry) if entry[:special]
     vpath = if @file_manager_dir == "/"
               "/#{entry[:name]}"
             else
@@ -765,6 +779,13 @@ module FileManagerMixin
             else
               "#{@file_manager_dir}/#{entry[:name]}"
             end
+    # A place that cannot be changed (/mnt/root, the PC's distribution tree)
+    # says so before the question rather than after it (L7d).
+    if FmrbApp.path_read_only?(vpath)
+      Log.info("File manager: #{vpath} is read-only")
+      fmgr_notice("Cannot delete #{entry[:name]}:\n#{@file_manager_dir} is read-only.")
+      return nil
+    end
     @fmgr_delete_path = vpath
     fmgr_ask_delete(fmgr_delete_question(entry[:name]))
     nil
@@ -797,8 +818,40 @@ module FileManagerMixin
       draw_foreground
     rescue => e
       Log.error("File manager: delete failed: #{e.message}")
+      # On screen too (L7d): the log alone left a Yes that did nothing.
+      fmgr_notice("Could not delete #{file_path}.")
     end
     nil  # begin arm ends in a void-typed call (Spinel) -> pin a concrete return
+  end
+
+  # ---- Notices ----
+  #
+  # What the File Manager cannot do, on the error dialog (both desktops have
+  # it). It sits over the File Manager, which stays open behind it.
+  def fmgr_notice(message)
+    # The dialog draws in the system font only, so its title stays English.
+    open_error_dialog("File Manager", message)
+    nil
+  end
+
+  # A listed entry the file HAL will not open (scan_file_manager_dir).
+  def fmgr_cannot_open(entry)
+    fmgr_notice("Cannot open #{entry[:name]}:\nnot a regular file (a device, a FIFO,\na socket or a link to nothing).")
+    nil
+  end
+
+  # A dialog over the File Manager closed. The kernel keeps one overlay
+  # rectangle for its hit testing, and opening the dialog replaced the File
+  # Manager's with the dialog's: give it back while the File Manager is still
+  # open, or clicks on its list would fall through to the window beneath.
+  # With nothing left open this is the old "no overlay".
+  def notify_overlay_after_dialog
+    if @file_manager_open
+      notify_overlay_state(true, @fmgr_x, @fmgr_y, fmgr_w, fmgr_h)
+    else
+      notify_overlay_state(false, 0, 0, 0, 0)
+    end
+    nil
   end
 
   # ---- Scroll ----

@@ -215,7 +215,7 @@ module ConfigDialogMixin
     # was behind the dialog.
     show_config_widgets(false)
     @ui.flush
-    notify_overlay_state(false, 0, 0, 0, 0)
+    notify_overlay_after_dialog
     update_composite_regions
     draw_foreground
   end
