@@ -204,7 +204,10 @@ void *apuemu_malloc(uint32_t size)
     return heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
 }
 
+/* Freed with the allocator's own partner. On ESP-IDF heap_caps_free() and
+ * free() are the same release; the hosted heap (wasm, native) puts a header
+ * in front of each block, so a plain free() there gets the wrong address. */
 void apuemu_free(void *ptr)
 {
-    free(ptr);
+    heap_caps_free(ptr);
 }

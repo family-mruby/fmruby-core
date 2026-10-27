@@ -59,9 +59,10 @@ int apuif_process_mix(int16_t* buff, int len, uint32_t main_gain_q16);
 
 /*
  * Memory allocation proxy for apu_emu component.
- * On ESP32, these map to heap_caps_malloc (PSRAM).
- * On Linux, these map to standard malloc/free.
- * Implemented in apu_if_linux.c / apu_if.cpp respectively.
+ * Both map to heap_caps_malloc (PSRAM) / heap_caps_free, implemented in
+ * apu_if_p4.c. The hosted builds (wasm, native) get the same pair from the
+ * hosted heap stub; memory from apuemu_malloc must go back through
+ * apuemu_free, never plain free().
  */
 void *apuemu_malloc(uint32_t size);
 void  apuemu_free(void *ptr);
