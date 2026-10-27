@@ -38,7 +38,8 @@
 #      except the holes (the stand-in's content where it is on screen), which
 #      show foot, not the hole colour; the stand-in's title bar over foot
 #   3. move and resize: the title bar dragged, the grip dragged; foot follows
-#      to the place times the scale and draws itself at the new size
+#      to the place times the scale and draws itself at the new size (to its
+#      cell grid), and the stand-in fits what foot took (L9b)
 #   4. keys and the pointer to foot: a click on its window, "hello" and
 #      Enter, then symbols on the jp layout (the windows' keymap follows
 #      keyboard_layout); pointer moves of one output pixel reach foot one
@@ -482,7 +483,8 @@ class Run
                      ["--set", "compositor.autostart=foot -e sh -c 'cat > /run/fmrb/typed'"]))
     wait_for("Boot complete", 120) { log_text.include?("Boot complete") || log_text.include?("refused") }
     raise "refused: #{log_text[/native: refused.*/]}" if log_text.include?("native: refused")
-    wait_for("foot's stand-in", 60) { log_text[/wl_bridge: window \d+ \(foot .*stand-in pid \d+/] }
+    # The stand-in carries the launcher entry's name (foot.desktop: "Foot", L9b).
+    wait_for("foot's stand-in", 60) { log_text[/wl_bridge: window \d+ \(Foot .*stand-in pid \d+/] }
     @socket = log_text[/WAYLAND_DISPLAY=(wayland-\d+)/, 1]
     used = log_text[/renderer (\w+)\)/, 1]
     @info = wait_for("foot placed", 20) { i = info; i["windows"].any? { |w| w[:vis] } && i }
@@ -490,7 +492,7 @@ class Run
     @pid = ctl("info").split[4].to_i
     foot = @info["windows"].first
     @foot = foot[:id]
-    deco = log_text[/window #{@foot} "foot" \d+x\d+ \(decoration: ([^)]+)\)/, 1]
+    deco = log_text[/window #{@foot} "foot" \d+x\d+ \(decoration: ([^;)]+)/, 1]
     result("boot", (@renderer == "auto" || used == @renderer) && deco == "server side",
            "Boot complete and foot placed in #{boot_s} s; renderer #{used}; output #{@info['out']}, " \
            "picture #{@info['frame']} at #{@info['scale']}x at (#{@info['at']}); foot #{foot[:w]}x#{foot[:h]} " \
@@ -511,24 +513,29 @@ class Run
            "#{detail}; the stand-in's title bar over foot: #{title_ok}; holes #{nholes} of the content's #{full}")
 
     # 3. move and resize. The grip (the window's bottom-right corner) first:
-    #    content 232x165 -> 168x128; then the title bar, to the right.
+    #    content 232x165 -> 168x128, foot takes its cell grid's size of that
+    #    and the stand-in fits it (the content: foot's size over the scale,
+    #    rounded up); then the title bar, to the right.
     wx = foot[:fx] - 1
     wy = foot[:fy] - FRAME_TOP
     ww = foot[:fw] + 2
     wh = foot[:fh] + 12
+    sc = @info["scale"].to_i
+    fits = ->(w) { w[:fw] == (w[:w] + sc - 1) / sc && w[:fh] == (w[:h] + sc - 1) / sc }
     drag(wx + ww - 4, wy + wh - 4, 168 - foot[:fw], 128 - foot[:fh])
     sized = begin
-      wait_for("foot resized", 10) do
+      wait_for("foot resized and fitted", 10) do
         w = win(info, @foot)
-        w[:fw] == 168 && w[:fh] == 128 && (w[:w] - 168 * 3).abs < 24 && (w[:h] - 128 * 3).abs < 40 && w
+        (w[:w] - 168 * sc).abs < 24 && (w[:h] - 128 * sc).abs < 40 && fits.call(w) && w
       end
     rescue StandardError
       win(info, @foot)
     end
-    result("resize by the frame", sized[:fw] == 168 && sized[:fh] == 128 &&
-           (sized[:w] - 504).abs < 24 && (sized[:h] - 384).abs < 40,
-           "content #{foot[:fw]}x#{foot[:fh]} -> #{sized[:fw]}x#{sized[:fh]} (asked 504x384 of foot); " \
-           "foot draws itself #{foot[:w]}x#{foot[:h]} -> #{sized[:w]}x#{sized[:h]} (its cell grid)")
+    @area = sized[:fw] * sized[:fh]
+    result("resize by the frame", (sized[:w] - 504).abs < 24 && (sized[:h] - 384).abs < 40 && fits.call(sized),
+           "content #{foot[:fw]}x#{foot[:fh]} -> 168x128 dragged (asked 504x384 of foot); " \
+           "foot draws itself #{foot[:w]}x#{foot[:h]} -> #{sized[:w]}x#{sized[:h]} (its cell grid); " \
+           "the stand-in fitted it: content #{sized[:fw]}x#{sized[:fh]}")
     drag(wx + 40, wy + 5, 250 - wx, 48 - wy)
     moved = begin
       wait_for("foot moved", 10) { w = win(info, @foot); w[:fx] == 251 && w[:fy] == 59 && w }
@@ -611,12 +618,12 @@ class Run
     sleep 1.2
     inf = info
     ok, detail, partly = composite_check("editor_over_foot", inf)
-    result("the editor over foot", ok && partly < 168 * 128 * 7 / 10 && inf["focus"] == "0",
+    result("the editor over foot", ok && partly < @area * 7 / 10 && inf["focus"] == "0",
            "#{detail}; keyboard on #{inf['focus']} (Family mruby)")
     click_foot(@foot)
     inf = info
     ok, detail, all = composite_check("foot_over_editor", inf)
-    result("a click brings foot in front", ok && all > partly && all >= 168 * 128 - 100 && inf["focus"] == @foot.to_s,
+    result("a click brings foot in front", ok && all > partly && all >= @area - 100 && inf["focus"] == @foot.to_s,
            "#{detail} (#{partly} while covered); keyboard on window #{inf['focus']}")
     # The desktop's menu and the exit question, foot under them.
     drag(151 + 40, 48 + 5, -110, -8)

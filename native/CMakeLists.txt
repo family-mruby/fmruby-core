@@ -66,7 +66,16 @@ if(NATIVE_WITH_WLROOTS)
     endif()
   endif()
 endif()
-message(STATUS "native backends: sdl fbdev evdev; drm=${NATIVE_HAVE_DRM} alsa=${NATIVE_HAVE_ALSA} wlroots=${NATIVE_HAVE_WLROOTS}")
+# The Linux applications' icons in the launcher (L9b, the compositor only):
+# PNG through libpng when it is there; without it the entries have none.
+set(NATIVE_HAVE_PNG 0)
+if(NATIVE_HAVE_WLROOTS)
+  pkg_check_modules(LIBPNG IMPORTED_TARGET libpng)
+  if(LIBPNG_FOUND)
+    set(NATIVE_HAVE_PNG 1)
+  endif()
+endif()
+message(STATUS "native backends: sdl fbdev evdev; drm=${NATIVE_HAVE_DRM} alsa=${NATIVE_HAVE_ALSA} wlroots=${NATIVE_HAVE_WLROOTS} png=${NATIVE_HAVE_PNG}")
 
 # ------------------------------------------- shared with the browser build
 
@@ -158,7 +167,9 @@ if(NATIVE_HAVE_WLROOTS)
     COMMAND ${WAYLAND_SCANNER} server-header
             ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
     DEPENDS ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
-  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h)
+  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+       # The launcher's Linux applications (L9b): started by the compositor.
+       ${N}/sys/linux_apps.c)
 endif()
 target_sources(core_objs PRIVATE ${NATIVE_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE
@@ -208,6 +219,8 @@ endif()
 if(NATIVE_HAVE_WLROOTS)
   set(NATIVE_WLR_CFLAGS ${WLROOTS_CFLAGS} -I${NATIVE_WLR_GEN})
   set_source_files_properties(${N}/wlr/output_wlr.c PROPERTIES COMPILE_OPTIONS "${NATIVE_WLR_CFLAGS}")
+  set_source_files_properties(${N}/sys/linux_apps.c PROPERTIES COMPILE_OPTIONS
+    "-DNATIVE_HAVE_PNG=${NATIVE_HAVE_PNG};${LIBPNG_CFLAGS}")
 endif()
 
 set_source_files_properties(${N}/net/net_wrap.c PROPERTIES COMPILE_OPTIONS "${OPENSSL_CFLAGS}")
@@ -235,6 +248,9 @@ if(NATIVE_HAVE_ALSA)
 endif()
 if(NATIVE_HAVE_WLROOTS)
   target_link_libraries(fmruby-native PRIVATE PkgConfig::WLROOTS)
+endif()
+if(NATIVE_HAVE_PNG)
+  target_link_libraries(fmruby-native PRIVATE PkgConfig::LIBPNG)
 endif()
 target_link_options(fmruby-native PRIVATE -pthread -Wl,--gc-sections)
 

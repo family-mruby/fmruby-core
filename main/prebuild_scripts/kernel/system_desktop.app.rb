@@ -158,6 +158,10 @@ class SystemDesktopApp < FmrbApp
     @last_click_time = 0
     @last_click_idx = -1
     @launcher_apps = []
+    # The Linux list in the launcher (launcher.rb, L9b)
+    @lnc_linux = false
+    @lnc_linux_wait = false
+    @lnc_fm_apps = nil
     @lnc_ctx_open = false
     @lnc_ctx_target = -1
     @lnc_ctx_x = 0

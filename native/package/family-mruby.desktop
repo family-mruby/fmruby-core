@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Family mruby
-Comment=Family mruby full screen (cage); its Exit entry returns to the login screen
+Comment=Family mruby as the desktop (its own Wayland compositor); its Exit entry returns to the login screen
 Exec=/usr/bin/family-mruby-session
 TryExec=/usr/bin/family-mruby-session
 DesktopNames=family-mruby

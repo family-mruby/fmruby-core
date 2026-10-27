@@ -1,21 +1,28 @@
 #!/bin/sh
 # family-mruby-session - the login screen's "Family mruby" session on a
-# Linux PC (doc/linux_native/ L7). The display manager runs this from
-# /usr/share/wayland-sessions/family-mruby.desktop; it starts cage, a
-# compositor that shows one program full screen, with Family mruby inside it
-# as a Wayland client (--machine linux_pc: an SDL window taking the whole
-# output). When Family mruby ends (its Exit entry), cage ends with it and the
+# Linux PC (doc/linux_native/ L7, L9b). The display manager runs this from
+# /usr/share/wayland-sessions/family-mruby.desktop; it starts Family mruby
+# as the Wayland compositor itself (--machine linux_pc_wl): it takes the
+# screen (DRM/KMS) and the seat from logind (or seatd) through libseat, and
+# Linux programs started from its launcher, its Shell or by themselves come
+# as Family mruby windows (X11 ones through Xwayland, started when the
+# first is). When Family mruby ends (its Exit entry: the Linux windows are
+# asked to close, those still there after a few seconds are ended), the
 # display manager shows the login screen again. The power entries (power
 # off, restart, suspend) go to logind from inside Family mruby.
 #
-# Settings: /etc/default/family-mruby-session (a shell fragment, optional):
+# Settings: /etc/default/family-mruby-session (a shell fragment, optional;
+# every variable set there is passed on to the program):
 #
 #   ROTATE=0|90|180|270  turn the output clockwise, for a panel mounted
 #                        sideways. The compositor turns it, so the pointer
-#                        (touchpad, mouse) turns with the picture. cage 0.1
-#                        does it itself (-r); a cage without -r needs
-#                        wlr-randr, run inside the session.
+#                        (touchpad, mouse) turns with the picture.
 #   FMRB_ARGS="..."      more arguments for family-mruby (--set key=value)
+#   WLR_RENDERER=pixman  draw without the GPU (a virtual machine whose
+#                        graphics wlroots cannot use)
+#   WLR_NO_HARDWARE_CURSORS=1
+#                        draw the mouse pointer into the picture (when no
+#                        pointer shows, as in some virtual machines)
 #
 # FMRB_SESSION_CONF names another settings file (for trying settings out).
 #
@@ -27,8 +34,12 @@ set -u
 ROTATE=0
 FMRB_ARGS=""
 CONF=${FMRB_SESSION_CONF:-/etc/default/family-mruby-session}
+# What the file sets reaches the program's environment (WLR_RENDERER and
+# the like).
+set -a
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
+set +a
 
 say() { echo "family-mruby-session: $*" >&2; }
 
@@ -38,51 +49,20 @@ if [ ! -x "$prog" ]; then
     say "$prog is missing; reinstall the family-mruby package"
     exit 1
 fi
-if ! command -v cage >/dev/null 2>&1; then
-    say "cage is not installed. This session runs Family mruby inside cage:"
-    say "install it with 'sudo apt install cage' and log in again."
-    exit 1
-fi
-
-# SDL draws through Wayland (cage's socket); without this it may try X11.
-# No libdecor: cage draws no decorations anyway, and SDL 2.32 with libdecor
-# never gets its window from cage 0.2 (it waits in SDL_CreateWindow, plugins
-# or not); plain xdg-shell does.
-export SDL_VIDEODRIVER=wayland
-export SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR=0
-unset DISPLAY
 
 case "$ROTATE" in
     0|90|180|270) ;;
     *) say "ROTATE=$ROTATE in $CONF is not 0, 90, 180 or 270; not turning"; ROTATE=0 ;;
 esac
 
-# cage 0.1 turns the output with -r (once per 90 degrees); later versions
-# dropped the option in favour of the output-management protocol, which
-# wlr-randr speaks from inside the session.
-turns=""
-if [ "$ROTATE" != 0 ] && cage -h 2>&1 | grep -q -- '^ *-r'; then
-    n=$((ROTATE / 90))
-    while [ "$n" -gt 0 ]; do turns="$turns -r"; n=$((n - 1)); done
-    ROTATE=0
+# The compositor goes onto the console (DRM/KMS): a parent compositor's or
+# X server's names, should the display manager pass any, would nest it in
+# them instead. WLR_BACKENDS, when set, says where on purpose (the tests'
+# headless output) and is left alone.
+if [ -z "${WLR_BACKENDS:-}" ]; then
+    unset WAYLAND_DISPLAY DISPLAY
 fi
 
-say "starting cage$turns with $prog --machine linux_pc $FMRB_ARGS (rotate $ROTATE after start)"
-if [ "$ROTATE" = 0 ]; then
-    # shellcheck disable=SC2086
-    exec cage -s $turns -- "$prog" --machine linux_pc $FMRB_ARGS "$@"
-fi
-if ! command -v wlr-randr >/dev/null 2>&1; then
-    say "ROTATE=$ROTATE needs cage -r (cage 0.1) or wlr-randr (sudo apt install wlr-randr); not turning"
-    # shellcheck disable=SC2086
-    exec cage -s -- "$prog" --machine linux_pc $FMRB_ARGS "$@"
-fi
-# Inside cage: turn the first output, then become Family mruby.
-# shellcheck disable=SC2016,SC2086
-exec cage -s -- /bin/sh -c '
-    out=$(wlr-randr | sed -n "s/^\([^ ]\{1,\}\).*/\1/p" | head -n 1)
-    [ -n "$out" ] && wlr-randr --output "$out" --transform "$1" ||
-        echo "family-mruby-session: wlr-randr could not turn the output" >&2
-    shift
-    exec "$@"
-' family-mruby-session "$ROTATE" "$prog" --machine linux_pc $FMRB_ARGS "$@"
+say "starting $prog --machine linux_pc_wl (rotate $ROTATE) $FMRB_ARGS"
+# shellcheck disable=SC2086
+exec "$prog" --machine linux_pc_wl --set display.rotate="$ROTATE" $FMRB_ARGS "$@"

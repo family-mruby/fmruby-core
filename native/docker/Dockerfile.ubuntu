@@ -8,8 +8,11 @@
 # on the Debian trixie image beside this file.
 #
 # Besides the build tools, the image carries what running the compositor in
-# a container needs: a light terminal to put on it (foot) and the tool that
-# takes the composited screen through wlr-screencopy (grim).
+# a container needs: a light terminal to put on it (foot), the tool that
+# takes the composited screen through wlr-screencopy (grim), and for the X11
+# programs (L9b) Xwayland with two light X11 programs to put on it (xterm,
+# and xeyes from x11-apps) and xterm's bitmap fonts. libpng is the launcher's
+# Linux icons (the amd64 package's Depends gets it from dpkg-shlibdeps).
 #
 # The base is pinned to a dated tag, never a moving one (the same rule as
 # the trixie image). Built and used by rake native:image ARCH=amd64,
@@ -26,8 +29,9 @@ RUN apt-get update \
       ruby rake bison \
       dpkg-dev fakeroot \
       libsdl2-dev libdrm-dev libasound2-dev libssl-dev \
-      libwlroots-0.19-dev libwayland-dev wayland-protocols libxkbcommon-dev libpixman-1-dev \
+      libwlroots-0.19-dev libwayland-dev wayland-protocols libxkbcommon-dev libpixman-1-dev libpng-dev \
       foot grim fonts-dejavu-core xkb-data \
+      xwayland xterm x11-apps xfonts-base \
       libgl1-mesa-dri libegl-mesa0 \
  && rm -rf /var/lib/apt/lists/*
 

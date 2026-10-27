@@ -47,15 +47,42 @@
  * below) that drive a keyboard and a pointer of the tools' own through the
  * same handlers as real devices, and report sizes and timings.
  *
+ * X11 programs (L9b): Xwayland, started by wlroots when the first X11
+ * program connects (lazy), never at start. Its windows are Linux windows
+ * like the xdg ones: the same numbering in comp_route, a stand-in each,
+ * placed with wlr_xwayland_surface_configure (at their place on the output,
+ * so their menus land where the program means them). Every X11 window gets
+ * the stand-in's frame, whatever _MOTIF_WM_HINTS says: one that draws its
+ * own title bar shows two (logged with its decorations), since without the
+ * frame it could not be moved or closed the Family mruby way. Override-
+ * redirect windows (X11 menus, tooltips) go into the popup layer, over the
+ * picture, at their own place. No Xwayland installed: one line says X11
+ * programs cannot run, DISPLAY is unset, the rest goes on.
+ *
+ * A window that settles on a size of its own (foot to its cell grid, an X11
+ * program asking for one) is told to Family mruby (COMP_NOTICE_FIT), whose
+ * stand-in then fits it; what the scale still leaves between the two (under
+ * one frame pixel) shows the stand-in's frame colour (the backdrop under
+ * each window), not black.
+ *
  * compositor.autostart, when set, is started once through /bin/sh -c in a
  * session of its own with WAYLAND_DISPLAY naming this compositor (also set
- * in the program's environment, so the Shell's "!" programs inherit it).
+ * in the program's environment, so the Shell's "!" programs inherit it, and
+ * DISPLAY naming Xwayland's). The launcher's Linux applications
+ * (native/sys/linux_apps.h, L9b) are started from this thread too, and give
+ * their windows' stand-ins the entries' names.
+ *
+ * On a console (the login screen's session) the backend takes the seat
+ * through logind or seatd (libseat); Ctrl+Alt+F1..F12 switch virtual
+ * terminals. display.rotate turns the output (its transform), the pointer
+ * with it.
  *
  * The end (close): every Linux window is asked to close, and the loop goes
  * on -- Family mruby still on screen -- until they have all gone or
  * LINGER_MS has passed, so a program can ask about unsaved work. Then the
- * clients still connected get SIGTERM, and SIGKILL half a second later;
- * the autostart's session last.
+ * clients still connected (and the X11 programs) get SIGTERM, and SIGKILL
+ * half a second later; then whatever the launcher started that is still
+ * there, windowless or not; the autostart's session last.
  */
 
 #define _GNU_SOURCE
@@ -76,6 +103,8 @@
 #include <linux/input-event-codes.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
+#include <wlr/backend/session.h>
+#include <wlr/config.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/interfaces/wlr_pointer.h>
@@ -103,11 +132,17 @@
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 #include <wlr/version.h>
+#if WLR_HAS_XWAYLAND
+#include <wlr/xwayland.h>
+#include <wlr/xwayland/server.h>
+#endif
 #include <xkbcommon/xkbcommon.h>
 
 #include "comp_link.h"
 #include "comp_route.h"
+#include "fmrb_hal_file.h"
 #include "fmrb_keymap.h"
+#include "linux_apps.h"
 #include "linux_keys.h"
 #include "native_backends.h"
 #include "native_frame.h"
@@ -122,20 +157,42 @@
 #define CLIENT_LEAVE_MS 1000
 /* Then SIGTERM, and SIGKILL this much later. */
 #define TERM_GRACE_MS 500
+/* An X11 program's own size stands this long for its stand-in to fit it. */
+#define FIT_HOLD_MS 500
+/* Where the launcher's Linux icons go (a Family mruby path; L9b), and the
+ * desktop name the .desktop entries are matched against (the session's
+ * DesktopNames, native/package/family-mruby.desktop). */
+#define LINUX_ICON_DIR "/var/cache/linux"
+#define DESKTOP_NAME "family-mruby"
 
 /* ------------------------------------------------------------- state */
 
+typedef enum { WIN_XDG = 0, WIN_X11 } win_kind_t;
+
 typedef struct window {
     struct wl_list link;
-    int id;
-    struct wlr_xdg_toplevel *toplevel;
-    struct wlr_scene_tree *tree;            /* the xdg tree: origin = geometry's top-left */
+    int id;                                 /* > 0 while it has a number (X11: while mapped) */
+    win_kind_t kind;
+    struct wlr_xdg_toplevel *toplevel;      /* WIN_XDG */
+    struct wlr_scene_tree *tree;            /* xdg: its tree, origin = geometry's top-left; X11: ours */
+    struct wlr_scene_tree *content;         /* X11: the surface's tree in it, while mapped */
     struct wlr_scene_tree *popups;          /* its popups, in the popup layer */
+    struct wlr_scene_rect *backdrop;        /* under it, its frame's colour where it does not reach */
     struct wlr_xdg_toplevel_decoration_v1 *deco;
     bool mapped;
+    int asked_x, asked_y;                   /* X11: the last place configured */
     int asked_w, asked_h;                   /* the last size asked (configure) */
+    uint32_t asked_serial;                  /* xdg: that configure's serial */
+    int fit_w, fit_h;                       /* the last size of its own told to Family mruby */
+    int hold_w, hold_h;                     /* X11: the size its stand-in will ask once fitted */
+    uint64_t hold_until_ms;                 /* X11: its own size stands until then (0: none) */
     struct wl_listener map, unmap, commit, destroy;
     struct wl_listener set_title, request_move, request_resize, request_maximize, request_fullscreen;
+#if WLR_HAS_XWAYLAND
+    struct wlr_xwayland_surface *xs;        /* WIN_X11 */
+    bool or_win;                            /* override-redirect: a menu or tooltip, no stand-in */
+    struct wl_listener associate, dissociate, request_configure, set_geometry;
+#endif
 } window_t;
 
 typedef struct popup {
@@ -173,6 +230,14 @@ static struct {
     struct wlr_scene_tree *popups_tree;
     struct wlr_xdg_shell *xdg_shell;
     struct wlr_xdg_decoration_manager_v1 *deco_mgr;
+    struct wlr_compositor *compositor;
+    struct wlr_session *session;            /* on a console: the seat (logind / seatd) */
+    int rotate;                             /* display.rotate: the output's transform */
+#if WLR_HAS_XWAYLAND
+    struct wlr_xwayland *xwayland;          /* NULL: none (not installed, or failed) */
+    bool xwayland_up;                       /* the server has started (lazily) */
+    struct wl_listener xw_new_surface, xw_ready;
+#endif
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *xcursor;
     struct wlr_seat *seat;
@@ -261,11 +326,86 @@ static const char *renderer_name(void)
 
 static window_t *window_by_id(int id)
 {
+    if (id <= 0) return NULL;
     window_t *w;
     wl_list_for_each(w, &s.windows, link) {
         if (w->id == id) return w;
     }
     return NULL;
+}
+
+/* ---------------------------------------------- xdg and X11 windows alike */
+
+static bool is_or(const window_t *w)
+{
+#if WLR_HAS_XWAYLAND
+    return w->kind == WIN_X11 && w->or_win;
+#else
+    (void)w;
+    return false;
+#endif
+}
+
+static struct wlr_surface *win_surface(const window_t *w)
+{
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) return w->xs != NULL ? w->xs->surface : NULL;
+#endif
+    return w->toplevel->base->surface;
+}
+
+/* Where the window's own content starts in its surface (xdg: its geometry,
+ * which may leave room for a shadow; X11: the surface's corner). */
+static struct wlr_box win_geometry(const window_t *w)
+{
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) return (struct wlr_box){ 0, 0, w->xs->width, w->xs->height };
+#endif
+    return w->toplevel->base->geometry;
+}
+
+static void win_activate(window_t *w, bool on)
+{
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) {
+        wlr_xwayland_surface_activate(w->xs, on);
+        if (on) wlr_xwayland_surface_restack(w->xs, NULL, XCB_STACK_MODE_ABOVE);
+        return;
+    }
+#endif
+    wlr_xdg_toplevel_set_activated(w->toplevel, on);
+}
+
+/* Ask it to close (an xdg close; WM_DELETE_WINDOW, or the X11 kill when the
+ * program does not take that). */
+static void win_close(window_t *w)
+{
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) {
+        wlr_xwayland_surface_close(w->xs);
+        return;
+    }
+#endif
+    wlr_xdg_toplevel_send_close(w->toplevel);
+}
+
+/* The process behind it, 0 when unknown. */
+static pid_t win_pid(const window_t *w)
+{
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) return w->xs->pid;
+#endif
+    pid_t pid = 0;
+    wl_client_get_credentials(wl_resource_get_client(w->toplevel->resource), &pid, NULL, NULL);
+    return pid;
+}
+
+/* The name its stand-in carries (the taskbar's): the launcher entry's when
+ * one matches (linux_apps.h), else app_id. */
+static void window_name(const char *app_id, const char *alt, pid_t pid, char *out, size_t cap)
+{
+    if (linux_apps_available() && linux_apps_window_name(app_id, alt, pid, out, cap)) return;
+    snprintf(out, cap, "%s", app_id && app_id[0] ? app_id : (alt && alt[0] ? alt : "linux"));
 }
 
 /* ------------------------------------------------------- the picture */
@@ -353,6 +493,22 @@ static void compose(void)
     s.recompose = false;
 }
 
+/* The backdrop takes the stand-in's frame colour: its left border, halfway
+ * down (frame pixels, RGB565), black before there is a frame. */
+static void set_backdrop_colour(window_t *w, const comp_window_t *cw)
+{
+    float c[4] = { 0, 0, 0, 1 };
+    const comp_route_t *r = &s.route;
+    int fx = cw->fx - 1, fy = cw->fy + cw->fh / 2;
+    if (s.frame != NULL && fx >= 0 && fy >= 0 && fx < r->fb_w && fy < r->fb_h) {
+        uint16_t p = s.frame[fy * r->fb_w + fx];
+        c[0] = (float)((p >> 11) & 0x1F) / 31.0f;
+        c[1] = (float)((p >> 5) & 0x3F) / 63.0f;
+        c[2] = (float)(p & 0x1F) / 31.0f;
+    }
+    wlr_scene_rect_set_color(w->backdrop, c);
+}
+
 /* One window's scene from the route: shown or not, where, clipped to its
  * content rectangle, and asked to take that size. */
 static void apply_window(window_t *w)
@@ -361,20 +517,53 @@ static void apply_window(window_t *w)
     bool on = w->mapped && cw != NULL && cw->visible;
     wlr_scene_node_set_enabled(&w->tree->node, on);
     wlr_scene_node_set_enabled(&w->popups->node, on);
+    wlr_scene_node_set_enabled(&w->backdrop->node, on);
     if (cw == NULL || !cw->placed) return;
     /* The scene's xdg tree puts the window's geometry (not its surface,
-     * which may reach out for a shadow) at the tree's origin. */
+     * which may reach out for a shadow) at the tree's origin; ours for an
+     * X11 window holds its surface at the origin. */
     wlr_scene_node_set_position(&w->tree->node, cw->x, cw->y);
     wlr_scene_node_set_position(&w->popups->node, cw->x, cw->y);
     int ww = 0, wh = 0;
     if (!comp_route_wanted_size(&s.route, w->id, &ww, &wh)) return;
+    wlr_scene_node_set_position(&w->backdrop->node, cw->x, cw->y);
+    wlr_scene_rect_set_size(w->backdrop, ww, wh);
+    set_backdrop_colour(w, cw);
+    wlr_scene_node_place_below(&w->backdrop->node, &w->tree->node);
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) {
+        if (w->content != NULL) {
+            struct wlr_box clip = { .x = 0, .y = 0, .width = ww, .height = wh };
+            wlr_scene_subsurface_tree_set_clip(&w->content->node, &clip);
+        }
+        if (!w->mapped || ww <= 0 || wh <= 0) return;
+        /* After the program asked for a size of its own, it keeps it until
+         * the stand-in has fitted it (or FIT_HOLD_MS). */
+        if (w->hold_until_ms != 0) {
+            if ((ww != w->hold_w || wh != w->hold_h) && now_ms() < w->hold_until_ms) {
+                ww = w->asked_w;
+                wh = w->asked_h;
+            } else {
+                w->hold_until_ms = 0;
+            }
+        }
+        if (ww != w->asked_w || wh != w->asked_h || cw->x != w->asked_x || cw->y != w->asked_y) {
+            w->asked_x = cw->x;
+            w->asked_y = cw->y;
+            w->asked_w = ww;
+            w->asked_h = wh;
+            wlr_xwayland_surface_configure(w->xs, (int16_t)cw->x, (int16_t)cw->y, (uint16_t)ww, (uint16_t)wh);
+        }
+        return;
+    }
+#endif
     struct wlr_box g = w->toplevel->base->geometry;
     struct wlr_box clip = { .x = g.x, .y = g.y, .width = ww, .height = wh };
     wlr_scene_subsurface_tree_set_clip(&w->tree->node, &clip);
     if (w->mapped && (ww != w->asked_w || wh != w->asked_h) && ww > 0 && wh > 0) {
         w->asked_w = ww;
         w->asked_h = wh;
-        wlr_xdg_toplevel_set_size(w->toplevel, ww, wh);
+        w->asked_serial = wlr_xdg_toplevel_set_size(w->toplevel, ww, wh);
     }
 }
 
@@ -392,6 +581,11 @@ static void apply_layout(void)
         wlr_scene_node_raise_to_top(&w->tree->node);
         wlr_scene_node_raise_to_top(&w->popups->node);
         apply_window(w);
+    }
+    /* X11 menus and tooltips over every window's popups. */
+    window_t *w;
+    wl_list_for_each_reverse(w, &s.windows, link) {
+        if (is_or(w) && w->mapped) wlr_scene_node_raise_to_top(&w->tree->node);
     }
     s.recompose = true;
     static fmrb_present_place_t logged;
@@ -420,19 +614,20 @@ static void apply_focus(void)
     int focus = comp_route_focus(&s.route);
     window_t *w;
     wl_list_for_each(w, &s.windows, link) {
-        if (w->mapped) wlr_xdg_toplevel_set_activated(w->toplevel, w->id == focus);
+        if (w->mapped && w->id > 0 && !is_or(w) && w->id != focus) win_activate(w, false);
     }
     window_t *fw = focus != COMP_FMRB ? window_by_id(focus) : NULL;
-    if (fw == NULL || !fw->mapped) {
+    struct wlr_surface *surf = (fw != NULL && fw->mapped) ? win_surface(fw) : NULL;
+    if (surf == NULL) {
         wlr_seat_keyboard_notify_clear_focus(s.seat);
         return;
     }
+    win_activate(fw, true);
     struct wlr_keyboard *kb = wlr_seat_get_keyboard(s.seat);
     if (kb != NULL) {
-        wlr_seat_keyboard_notify_enter(s.seat, fw->toplevel->base->surface, kb->keycodes,
-                                       kb->num_keycodes, &kb->modifiers);
+        wlr_seat_keyboard_notify_enter(s.seat, surf, kb->keycodes, kb->num_keycodes, &kb->modifiers);
     } else {
-        wlr_seat_keyboard_notify_enter(s.seat, fw->toplevel->base->surface, NULL, 0, NULL);
+        wlr_seat_keyboard_notify_enter(s.seat, surf, NULL, 0, NULL);
     }
 }
 
@@ -455,7 +650,7 @@ static void take_from_fmrb(void)
         window_t *w = window_by_id(id);
         if (kind == COMP_CMD_CLOSE && w != NULL) {
             fprintf(stderr, "native: compositor: window %d asked to close\n", id);
-            wlr_xdg_toplevel_send_close(w->toplevel);
+            win_close(w);
         }
     }
 }
@@ -469,13 +664,15 @@ static void window_map(struct wl_listener *l, void *data)
     struct wlr_box g = w->toplevel->base->geometry;
     w->mapped = true;
     const char *app_id = w->toplevel->app_id ? w->toplevel->app_id : "";
-    comp_route_window_add(&s.route, w->id, g.width, g.height, app_id);
+    char name[COMP_TEXT];
+    window_name(app_id, NULL, win_pid(w), name, 32);
+    comp_route_window_add(&s.route, w->id, g.width, g.height, name);
     if (w->toplevel->title != NULL) {
         comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->toplevel->title);
     }
-    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (decoration: %s)\n", w->id,
+    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (decoration: %s; app id %s, named %s)\n", w->id,
             w->toplevel->title ? w->toplevel->title : "", g.width, g.height,
-            w->deco != NULL ? "server side" : "none asked");
+            w->deco != NULL ? "server side" : "none asked", app_id, name);
     apply_layout();
 }
 
@@ -515,6 +712,17 @@ static void window_commit(struct wl_listener *l, void *data)
     if (cw != NULL && (cw->w != g.width || cw->h != g.height)) {
         comp_route_window_resize(&s.route, w->id, g.width, g.height);
         apply_window(w);
+    }
+    /* Its answer to the size last asked is a size of its own (foot keeps to
+     * its cell grid): the stand-in is to fit it, once per size. */
+    cw = comp_route_window(&s.route, w->id);
+    if (cw != NULL && cw->placed && w->asked_w > 0 && w->toplevel->base->current.configure_serial == w->asked_serial &&
+        (g.width != w->asked_w || g.height != w->asked_h) && (g.width != w->fit_w || g.height != w->fit_h)) {
+        w->fit_w = g.width;
+        w->fit_h = g.height;
+        comp_route_notice(&s.route, COMP_NOTICE_FIT, w->id, 0, 0, g.width, g.height, NULL);
+        fprintf(stderr, "native: compositor: window %d took %dx%d for the %dx%d asked; its stand-in fits it\n",
+                w->id, g.width, g.height, w->asked_w, w->asked_h);
     }
     if (s.stats.key_sent_ms != 0 && w->id == comp_route_focus(&s.route)) {
         uint64_t lat = now_ms() - s.stats.key_sent_ms;
@@ -603,8 +811,11 @@ static void window_destroy(struct wl_listener *l, void *data)
     wl_list_remove(&w->request_fullscreen.link);
     wl_list_remove(&w->link);
     wlr_scene_node_destroy(&w->popups->node);
+    wlr_scene_node_destroy(&w->backdrop->node);
     free(w);
 }
+
+static const float s_black[4] = { 0, 0, 0, 1 };
 
 static void new_toplevel(struct wl_listener *l, void *data)
 {
@@ -617,8 +828,10 @@ static void new_toplevel(struct wl_listener *l, void *data)
     w->tree = wlr_scene_xdg_surface_create(s.windows_tree, t->base);
     w->tree->node.data = w;
     w->popups = wlr_scene_tree_create(s.popups_tree);
+    w->backdrop = wlr_scene_rect_create(s.windows_tree, 0, 0, s_black);
     wlr_scene_node_set_enabled(&w->tree->node, false);
     wlr_scene_node_set_enabled(&w->popups->node, false);
+    wlr_scene_node_set_enabled(&w->backdrop->node, false);
     /* Popups go into the popup layer, over the picture. */
     t->base->data = w->popups;
     w->map.notify = window_map;
@@ -717,6 +930,275 @@ static void new_decoration(struct wl_listener *l, void *data)
     }
 }
 
+/* ------------------------------------------------------- X11 windows */
+
+#if WLR_HAS_XWAYLAND
+static void begin_grab(window_t *w, grab_mode_t mode, uint32_t edges);
+
+static void x11_map(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, map);
+    struct wlr_xwayland_surface *xs = w->xs;
+    if (w->content == NULL) w->content = wlr_scene_subsurface_tree_create(w->tree, xs->surface);
+    w->mapped = true;
+    w->or_win = xs->override_redirect;
+    w->id = ++s.next_id;
+    if (w->or_win) {
+        /* A menu or a tooltip: over the picture, where the program puts it. */
+        wlr_scene_node_reparent(&w->tree->node, s.popups_tree);
+        wlr_scene_node_set_position(&w->tree->node, xs->x, xs->y);
+        wlr_scene_node_set_enabled(&w->tree->node, true);
+        wlr_scene_node_raise_to_top(&w->tree->node);
+        return;
+    }
+    wlr_scene_node_reparent(&w->tree->node, s.windows_tree);
+    w->asked_w = w->asked_h = 0;
+    w->asked_x = xs->x;
+    w->asked_y = xs->y;
+    w->fit_w = w->fit_h = 0;
+    w->hold_until_ms = 0;
+    char name[COMP_TEXT];
+    window_name(xs->class, xs->instance, xs->pid, name, 32);
+    comp_route_window_add(&s.route, w->id, xs->width, xs->height, name);
+    if (xs->title != NULL) comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, xs->title);
+    fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (X11 %s/%s, decorations %s; named %s)\n", w->id,
+            xs->title ? xs->title : "", xs->width, xs->height, xs->instance ? xs->instance : "",
+            xs->class ? xs->class : "",
+            xs->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL ? "the window manager's"
+                                                                     : "its own (two title bars)",
+            name);
+    apply_layout();
+}
+
+static void x11_unmap(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, unmap);
+    w->mapped = false;
+    if (w->content != NULL) {
+        wlr_scene_node_destroy(&w->content->node);
+        w->content = NULL;
+    }
+    int id = w->id;
+    w->id = 0;
+    if (w->or_win) {
+        wlr_scene_node_set_enabled(&w->tree->node, false);
+        if (s.pointer_target == id) s.pointer_target = COMP_FMRB;
+        return;
+    }
+    wlr_scene_node_set_enabled(&w->tree->node, false);
+    wlr_scene_node_set_enabled(&w->backdrop->node, false);
+    int focus = comp_route_focus(&s.route);
+    comp_route_window_remove(&s.route, id);
+    fprintf(stderr, "native: compositor: window %d gone\n", id);
+    if (s.grab.id == id) s.grab.mode = GRAB_NONE;
+    if (s.pointer_target == id) s.pointer_target = COMP_FMRB;
+    if (focus == id) apply_focus();
+    apply_layout();
+}
+
+static void x11_associate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, associate);
+    w->map.notify = x11_map;
+    wl_signal_add(&w->xs->surface->events.map, &w->map);
+    w->unmap.notify = x11_unmap;
+    wl_signal_add(&w->xs->surface->events.unmap, &w->unmap);
+}
+
+static void x11_dissociate(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, dissociate);
+    wl_list_remove(&w->map.link);
+    wl_list_remove(&w->unmap.link);
+    wl_list_init(&w->map.link);
+    wl_list_init(&w->unmap.link);
+}
+
+/* The program asks for a place and size. Before it is mapped, and for menus,
+ * granted as asked. Once it is a Family mruby window its place is the stand-
+ * in's, and a size of its own is granted and told to Family mruby, whose
+ * stand-in then fits it (COMP_NOTICE_FIT). */
+static void x11_request_configure(struct wl_listener *l, void *data)
+{
+    window_t *w = wl_container_of(l, w, request_configure);
+    struct wlr_xwayland_surface_configure_event *ev = data;
+    struct wlr_xwayland_surface *xs = w->xs;
+    const comp_window_t *cw = w->mapped && !w->or_win ? comp_route_window(&s.route, w->id) : NULL;
+    if (cw == NULL || !cw->placed) {
+        wlr_xwayland_surface_configure(xs, ev->x, ev->y, ev->width, ev->height);
+        return;
+    }
+    if (ev->width == w->asked_w && ev->height == w->asked_h) {
+        wlr_xwayland_surface_configure(xs, (int16_t)w->asked_x, (int16_t)w->asked_y, ev->width, ev->height);
+        return;
+    }
+    int sc = s.route.place.scale > 0 ? s.route.place.scale : 1;
+    w->asked_w = ev->width;
+    w->asked_h = ev->height;
+    w->hold_w = (ev->width + sc - 1) / sc * sc;
+    w->hold_h = (ev->height + sc - 1) / sc * sc;
+    w->hold_until_ms = now_ms() + FIT_HOLD_MS;
+    wlr_xwayland_surface_configure(xs, (int16_t)w->asked_x, (int16_t)w->asked_y, ev->width, ev->height);
+    comp_route_window_resize(&s.route, w->id, ev->width, ev->height);
+    w->fit_w = ev->width;
+    w->fit_h = ev->height;
+    comp_route_notice(&s.route, COMP_NOTICE_FIT, w->id, 0, 0, ev->width, ev->height, NULL);
+    fprintf(stderr, "native: compositor: window %d (X11) asked to be %dx%d; its stand-in fits it\n", w->id,
+            ev->width, ev->height);
+}
+
+/* A configure took effect: a menu moved, or a window's size changed. */
+static void x11_set_geometry(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, set_geometry);
+    struct wlr_xwayland_surface *xs = w->xs;
+    if (!w->mapped) return;
+    if (w->or_win) {
+        wlr_scene_node_set_position(&w->tree->node, xs->x, xs->y);
+        return;
+    }
+    const comp_window_t *cw = comp_route_window(&s.route, w->id);
+    if (cw != NULL && (cw->w != xs->width || cw->h != xs->height)) {
+        comp_route_window_resize(&s.route, w->id, xs->width, xs->height);
+    }
+}
+
+static void x11_set_title(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, set_title);
+    if (!w->mapped || w->or_win || w->xs->title == NULL) return;
+    comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->xs->title);
+}
+
+static void x11_request_move(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, request_move);
+    if (w->mapped && !w->or_win) begin_grab(w, GRAB_MOVE, 0);
+}
+
+static void x11_request_resize(struct wl_listener *l, void *data)
+{
+    struct wlr_xwayland_resize_event *ev = data;
+    window_t *w = wl_container_of(l, w, request_resize);
+    if (w->mapped && !w->or_win) begin_grab(w, GRAB_RESIZE, ev->edges);
+}
+
+static void x11_destroy(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, destroy);
+    wl_list_remove(&w->map.link);
+    wl_list_remove(&w->unmap.link);
+    wl_list_remove(&w->destroy.link);
+    wl_list_remove(&w->associate.link);
+    wl_list_remove(&w->dissociate.link);
+    wl_list_remove(&w->request_configure.link);
+    wl_list_remove(&w->set_geometry.link);
+    wl_list_remove(&w->set_title.link);
+    wl_list_remove(&w->request_move.link);
+    wl_list_remove(&w->request_resize.link);
+    wl_list_remove(&w->link);
+    wlr_scene_node_destroy(&w->tree->node);
+    wlr_scene_node_destroy(&w->popups->node);
+    wlr_scene_node_destroy(&w->backdrop->node);
+    free(w);
+}
+
+static void x11_new_surface(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_xwayland_surface *xs = data;
+    window_t *w = calloc(1, sizeof(*w));
+    if (w == NULL) return;
+    w->kind = WIN_X11;
+    w->xs = xs;
+    xs->data = w;
+    w->tree = wlr_scene_tree_create(s.windows_tree);
+    w->tree->node.data = w;
+    w->popups = wlr_scene_tree_create(s.popups_tree);
+    w->backdrop = wlr_scene_rect_create(s.windows_tree, 0, 0, s_black);
+    wlr_scene_node_set_enabled(&w->tree->node, false);
+    wlr_scene_node_set_enabled(&w->popups->node, false);
+    wlr_scene_node_set_enabled(&w->backdrop->node, false);
+    wl_list_init(&w->map.link);
+    wl_list_init(&w->unmap.link);
+    w->destroy.notify = x11_destroy;
+    wl_signal_add(&xs->events.destroy, &w->destroy);
+    w->associate.notify = x11_associate;
+    wl_signal_add(&xs->events.associate, &w->associate);
+    w->dissociate.notify = x11_dissociate;
+    wl_signal_add(&xs->events.dissociate, &w->dissociate);
+    w->request_configure.notify = x11_request_configure;
+    wl_signal_add(&xs->events.request_configure, &w->request_configure);
+    w->set_geometry.notify = x11_set_geometry;
+    wl_signal_add(&xs->events.set_geometry, &w->set_geometry);
+    w->set_title.notify = x11_set_title;
+    wl_signal_add(&xs->events.set_title, &w->set_title);
+    w->request_move.notify = x11_request_move;
+    wl_signal_add(&xs->events.request_move, &w->request_move);
+    w->request_resize.notify = x11_request_resize;
+    wl_signal_add(&xs->events.request_resize, &w->request_resize);
+    wl_list_insert(&s.windows, &w->link);
+}
+
+static void x11_ready(struct wl_listener *l, void *data)
+{
+    (void)l;
+    (void)data;
+    s.xwayland_up = true;
+    wlr_xwayland_set_seat(s.xwayland, s.seat);
+    if (wlr_xcursor_manager_load(s.xcursor, 1)) {
+        struct wlr_xcursor *xc = wlr_xcursor_manager_get_xcursor(s.xcursor, "default", 1);
+        if (xc != NULL && xc->image_count > 0) {
+            struct wlr_xcursor_image *im = xc->images[0];
+            wlr_xwayland_set_cursor(s.xwayland, im->buffer, im->width * 4, im->width, im->height,
+                                    (int32_t)im->hotspot_x, (int32_t)im->hotspot_y);
+        }
+    }
+    fprintf(stderr, "native: compositor: Xwayland started on DISPLAY=%s (an X11 program connected)\n",
+            s.xwayland->display_name);
+}
+
+/* Xwayland, started when the first X11 program connects. */
+static void xwayland_init(void)
+{
+    const char *bin = getenv("WLR_XWAYLAND");
+    if (bin == NULL || bin[0] == '\0') bin = "/usr/bin/Xwayland";
+    if (access(bin, X_OK) != 0) {
+        unsetenv("DISPLAY");
+        fprintf(stderr, "native: compositor: X11 programs cannot run here: Xwayland is not installed (%s; "
+                        "sudo apt install xwayland). Wayland programs run as before\n", bin);
+        return;
+    }
+    s.xwayland = wlr_xwayland_create(s.display, s.compositor, true);
+    if (s.xwayland == NULL) {
+        unsetenv("DISPLAY");
+        fprintf(stderr, "native: compositor: X11 programs cannot run here: Xwayland did not set up\n");
+        return;
+    }
+    s.xw_new_surface.notify = x11_new_surface;
+    wl_signal_add(&s.xwayland->events.new_surface, &s.xw_new_surface);
+    s.xw_ready.notify = x11_ready;
+    wl_signal_add(&s.xwayland->events.ready, &s.xw_ready);
+    setenv("DISPLAY", s.xwayland->display_name, 1);
+    fprintf(stderr, "native: compositor: X11 programs on DISPLAY=%s (Xwayland starts when the first connects)\n",
+            s.xwayland->display_name);
+}
+#else
+static void xwayland_init(void)
+{
+    unsetenv("DISPLAY");
+    fprintf(stderr, "native: compositor: X11 programs cannot run here: this wlroots has no Xwayland\n");
+}
+#endif
+
 /* ----------------------------------------------------------- keyboard */
 
 static void send_fmrb_key(uint32_t code, bool down)
@@ -740,6 +1222,17 @@ static void keyboard_key(struct wl_listener *l, void *data)
     struct wlr_keyboard_key_event *ev = data;
     uint32_t code = ev->keycode;
     bool down = ev->state == WL_KEYBOARD_KEY_STATE_PRESSED;
+    /* On a console: Ctrl+Alt+F1..F12 go to another virtual terminal. */
+    if (down && s.session != NULL && k->wlr->xkb_state != NULL) {
+        const xkb_keysym_t *syms = NULL;
+        int n = xkb_state_key_get_syms(k->wlr->xkb_state, code + 8, &syms);
+        for (int i = 0; i < n; i++) {
+            if (syms[i] >= XKB_KEY_XF86Switch_VT_1 && syms[i] <= XKB_KEY_XF86Switch_VT_12) {
+                wlr_session_change_vt(s.session, syms[i] - XKB_KEY_XF86Switch_VT_1 + 1);
+                return;
+            }
+        }
+    }
     /* Family mruby's modifier bits follow every key, wherever it goes, so a
      * hotkey sent to Family mruby carries the modifiers held for a window. */
     uint8_t bit = fmrb_linux_key_mod_bit(code);
@@ -868,6 +1361,17 @@ static void fmrb_cursor(bool show)
  * and surface-local coordinates. */
 static int popup_at(double x, double y, struct wlr_surface **surf, double *sx, double *sy)
 {
+    /* X11 menus and tooltips first: they are over everything. */
+    window_t *ow;
+    wl_list_for_each(ow, &s.windows, link) {
+        if (!is_or(ow) || !ow->mapped || ow->id <= 0) continue;
+        struct wlr_scene_node *node = wlr_scene_node_at(&ow->tree->node, x, y, sx, sy);
+        if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) continue;
+        struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+        if (ss == NULL) continue;
+        *surf = ss->surface;
+        return ow->id;
+    }
     const comp_route_t *r = &s.route;
     for (int i = r->n - 1; i >= 0; i--) {
         if (!r->win[i].visible) continue;
@@ -897,10 +1401,10 @@ static struct wlr_surface *surface_at(int id, double *sx, double *sy)
     }
     const comp_window_t *cw = comp_route_window(&s.route, id);
     if (cw == NULL) return NULL;
-    struct wlr_box g = w->toplevel->base->geometry;
+    struct wlr_box g = win_geometry(w);
     *sx = s.cursor->x - cw->x + g.x;
     *sy = s.cursor->y - cw->y + g.y;
-    return w->toplevel->base->surface;
+    return win_surface(w);
 }
 
 typedef struct {
@@ -1202,6 +1706,12 @@ static void new_output(struct wl_listener *l, void *data)
     wlr_output_state_set_enabled(&st, true);
     struct wlr_output_mode *mode = wlr_output_preferred_mode(out);
     if (mode != NULL) wlr_output_state_set_mode(&st, mode);
+    /* display.rotate turns the output clockwise, as wlr-randr --transform
+     * did in the cage session (L7); the pointer turns with it. */
+    static const enum wl_output_transform turns[] = { WL_OUTPUT_TRANSFORM_NORMAL, WL_OUTPUT_TRANSFORM_90,
+                                                      WL_OUTPUT_TRANSFORM_180, WL_OUTPUT_TRANSFORM_270 };
+    int turn = (s.rotate / 90) & 3;
+    if (turn != 0) wlr_output_state_set_transform(&st, turns[turn]);
     wlr_output_commit_state(out, &st);
     wlr_output_state_finish(&st);
 
@@ -1216,7 +1726,8 @@ static void new_output(struct wl_listener *l, void *data)
     struct wlr_output_layout_output *lo = wlr_output_layout_add_auto(s.layout, out);
     s.scene_output = wlr_scene_output_create(s.scene, out);
     wlr_scene_output_layout_add_output(s.scene_layout, lo, s.scene_output);
-    fprintf(stderr, "native: compositor: output %s %dx%d\n", out->name, out->width, out->height);
+    fprintf(stderr, "native: compositor: output %s %dx%d, rotate %d\n", out->name, out->width, out->height,
+            s.rotate);
     relayout();
 }
 
@@ -1307,10 +1818,60 @@ static void tool_wheel(int notches)
  *   comp button B 1|0    1 left, 2 middle, 3 right
  *   comp click X Y       move, then left down and up
  *   comp wheel N         notches, + away from the user
+ *   comp apps LANG       the launcher's Linux list (linux_apps.h) as LANG
+ *                        names it: "OK ready=0|1 count=N"
+ *   comp app ID LANG     one entry of it: "OK index=K name=NAME icon=PATH"
+ *                        (K from 0 in the list's order, -1 when not listed;
+ *                        icon "-" for none)
  *
  * The tools' keyboard and pointer go through the same handlers (focus,
  * routing) as the backend's devices.
  */
+/* comp apps / comp app (see wlr_ctl). */
+static void apps_ctl(const char *a, char *out, size_t cap)
+{
+    char id[256] = "", lang[16] = "en";
+    bool one = strncmp(a, "app ", 4) == 0;
+    if (one) {
+        if (sscanf(a + 4, "%255s %15s", id, lang) < 1) {
+            snprintf(out, cap, "ERR comp app ID LANG\n");
+            return;
+        }
+    } else {
+        sscanf(a + 4, " %15s", lang);
+    }
+    int32_t need = linux_apps_list(LINUX_APPS_LIST, lang, NULL, 0);
+    char *buf = need > 0 ? malloc((size_t)need + 1) : NULL;
+    int32_t got = buf ? linux_apps_list(LINUX_APPS_LIST, lang, buf, (size_t)need) : -1;
+    if (got < 0 || got > need) {
+        snprintf(out, cap, "ERR no Linux apps here\n");
+        free(buf);
+        return;
+    }
+    buf[got] = '\0';
+    bool ready = strncmp(buf, "ready\t", 6) == 0;
+    int count = 0, index = -1;
+    char name[160] = "", icon[300] = "-";
+    char *save = NULL;
+    char *line = strtok_r(buf, "\n", &save);   /* the header */
+    for (line = strtok_r(NULL, "\n", &save); line != NULL; line = strtok_r(NULL, "\n", &save), count++) {
+        char *t1 = strchr(line, '\t');
+        char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+        if (t1 == NULL || t2 == NULL || !one || index >= 0) continue;
+        *t1 = *t2 = '\0';
+        if (strcmp(t1 + 1, id) != 0) continue;
+        index = count;
+        snprintf(name, sizeof(name), "%s", line);
+        if (t2[1] != '\0') snprintf(icon, sizeof(icon), "%s", t2 + 1);
+    }
+    free(buf);
+    if (one) {
+        snprintf(out, cap, "OK index=%d name=%s icon=%s\n", index, name, icon);
+    } else {
+        snprintf(out, cap, "OK ready=%d count=%d\n", ready ? 1 : 0, count);
+    }
+}
+
 static bool wlr_ctl(const char *req, char *out, size_t cap)
 {
     if (strncmp(req, "comp ", 5) != 0 && strcmp(req, "comp") != 0) return false;
@@ -1329,9 +1890,24 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
                           w->h, w->x, w->y, w->fx, w->fy, w->fw, w->fh, w->visible ? 1 : 0);
         }
         if (n > 0 && (size_t)n < cap) {
-            snprintf(out + n, cap - (size_t)n, " ptr=%d:%.2f,%.2f cursor=%s keymap=%s socket=%s renderer=%s\n",
-                     s.ptr_id, s.ptr_sx, s.ptr_sy, s.fmrb_cursor_hidden ? "window" : "fmrb",
-                     s.layout_kb == FMRB_KEYMAP_LAYOUT_JP ? "jp" : "us", s.socket, renderer_name());
+            n += snprintf(out + n, cap - (size_t)n, " ptr=%d:%.2f,%.2f cursor=%s keymap=%s socket=%s renderer=%s x11=",
+                          s.ptr_id, s.ptr_sx, s.ptr_sy, s.fmrb_cursor_hidden ? "window" : "fmrb",
+                          s.layout_kb == FMRB_KEYMAP_LAYOUT_JP ? "jp" : "us", s.socket, renderer_name());
+        }
+        /* The X11 windows' ids (menus marked m), and Xwayland: off (none
+         * here), lazy (not started yet) or up. */
+        const char *xw = "off";
+        int k = 0;
+#if WLR_HAS_XWAYLAND
+        window_t *w;
+        wl_list_for_each_reverse(w, &s.windows, link) {
+            if (w->kind != WIN_X11 || !w->mapped || w->id <= 0 || n <= 0 || (size_t)n >= cap) continue;
+            n += snprintf(out + n, cap - (size_t)n, "%s%d%s", k++ ? "," : "", w->id, w->or_win ? "m" : "");
+        }
+        if (s.xwayland != NULL) xw = s.xwayland_up ? "up" : "lazy";
+#endif
+        if (n > 0 && (size_t)n < cap) {
+            snprintf(out + n, cap - (size_t)n, "%s xwayland=%s rotate=%d\n", k ? "" : "-", xw, s.rotate);
         }
         return true;
     }
@@ -1351,6 +1927,10 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
             memset(&s.stats, 0, sizeof(s.stats));
             s.stats.since_ms = t;
         }
+        return true;
+    }
+    if (strncmp(a, "apps", 4) == 0 || strncmp(a, "app ", 4) == 0) {
+        apps_ctl(a, out, cap);
         return true;
     }
     int b = 0, st = 0, n = 0;
@@ -1444,6 +2024,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     wl_list_init(&s.windows);
     wl_list_init(&s.keyboards);
     snprintf(s.autostart, sizeof(s.autostart), "%s", m->compositor.autostart);
+    s.rotate = m->display.rotate;
     s.stats.since_ms = now_ms();
     if (getenv("XDG_RUNTIME_DIR") == NULL) {
         snprintf(why, why_len, "XDG_RUNTIME_DIR is not set (the compositor's socket goes there)");
@@ -1455,7 +2036,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     s.loop = wl_display_get_event_loop(s.display);
     /* Nested in another compositor when WAYLAND_DISPLAY or DISPLAY is set,
      * DRM/KMS on a console; WLR_BACKENDS chooses (headless for the tests). */
-    s.backend = wlr_backend_autocreate(s.loop, NULL);
+    s.backend = wlr_backend_autocreate(s.loop, &s.session);
     if (s.backend == NULL) {
         snprintf(why, why_len, "no wlroots backend (WAYLAND_DISPLAY=%s, WLR_BACKENDS=%s; FMRB_WLR_DEBUG=1 says why)",
                  getenv("WAYLAND_DISPLAY") ? getenv("WAYLAND_DISPLAY") : "",
@@ -1473,7 +2054,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         snprintf(why, why_len, "no wlroots allocator");
         return false;
     }
-    wlr_compositor_create(s.display, 5, s.renderer);
+    s.compositor = wlr_compositor_create(s.display, 5, s.renderer);
     wlr_subcompositor_create(s.display);
     wlr_data_device_manager_create(s.display);
 
@@ -1537,8 +2118,10 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         return false;
     }
     /* The parent compositor (nested) is connected by now: from here on the
-     * program's own children, and the Shell's "!" programs, see this one. */
+     * program's own children, and the Shell's "!" programs, see this one
+     * (and this one's Xwayland, never the parent's X server). */
     setenv("WAYLAND_DISPLAY", s.socket, 1);
+    xwayland_init();
 
     s.wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (s.wake_fd >= 0) {
@@ -1546,9 +2129,18 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         native_frame_set_wake_fd(s.wake_fd);
     }
     comp_link_attach(&s.route, s.wake_fd);
-    fprintf(stderr, "native: compositor: wlroots %s on WAYLAND_DISPLAY=%s (backends %s, renderer %s)\n",
+    fprintf(stderr, "native: compositor: wlroots %s on WAYLAND_DISPLAY=%s (backends %s, renderer %s%s)\n",
             WLR_VERSION_STR, s.socket, getenv("WLR_BACKENDS") ? getenv("WLR_BACKENDS") : "auto",
-            renderer_name());
+            renderer_name(), s.session != NULL ? ", seat from the session" : "");
+    /* The launcher's Linux applications (L9b): icons into the cache the
+     * file namespace shows at LINUX_ICON_DIR. */
+    char icon_dir[512];
+    if (fmrb_hal_file_resolve_path(LINUX_ICON_DIR, icon_dir, sizeof(icon_dir)) == FMRB_OK) {
+        linux_apps_config_t ac = { .icon_dir = icon_dir, .icon_fm_dir = LINUX_ICON_DIR, .desktop_name = DESKTOP_NAME };
+        linux_apps_start(&ac);
+    } else {
+        fprintf(stderr, "native: compositor: no place for the Linux icons (%s); no Linux apps\n", LINUX_ICON_DIR);
+    }
     start_child();
     return true;
 }
@@ -1570,6 +2162,7 @@ static bool wlr_pump(int wait_ms)
     take_base_size();
     follow_layout();
     take_from_fmrb();
+    linux_apps_pump();
     wl_display_flush_clients(s.display);
     flush_motion(false);
     reap_child();
@@ -1598,29 +2191,59 @@ static void wlr_present(const uint16_t *px, int w, int h, bool changed)
     s.stats.pictures++;
 }
 
+/* The windows a close is asked of and waited for: every xdg toplevel, and
+ * the X11 windows that are on screen (not menus). */
+static bool closable(const window_t *w)
+{
+    if (w->kind == WIN_XDG) return w->toplevel->base->initialized;
+    return w->mapped && !is_or(w);
+}
+
 static int window_count(void)
 {
     int n = 0;
     window_t *w;
-    wl_list_for_each(w, &s.windows, link) n++;
+    wl_list_for_each(w, &s.windows, link) n += w->kind == WIN_XDG || closable(w);
     return n;
+}
+
+/* Xwayland's own connection: not a program to wait for or signal (it ends
+ * with wlr_xwayland_destroy, after its X11 programs). */
+static bool is_xwayland(struct wl_client *c)
+{
+#if WLR_HAS_XWAYLAND
+    return s.xwayland != NULL && s.xwayland->server != NULL && s.xwayland->server->client == c;
+#else
+    (void)c;
+    return false;
+#endif
 }
 
 static int client_count(void)
 {
     int n = 0;
     struct wl_list *clients = wl_display_get_client_list(s.display);
-    for (struct wl_list *it = clients->next; it != clients; it = it->next) n++;
+    for (struct wl_list *it = clients->next; it != clients; it = it->next) {
+        n += !is_xwayland(wl_client_from_link(it));
+    }
     return n;
 }
 
-/* Signal every client process still connected. */
+/* Signal every client process still connected (Xwayland among them), and
+ * the X11 programs whose windows are still there. */
 static int signal_clients(int sig)
 {
     int n = 0;
+#if WLR_HAS_XWAYLAND
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) {
+        if (w->kind == WIN_X11 && w->xs->pid > 0 && w->xs->pid != getpid() && kill(w->xs->pid, sig) == 0) n++;
+    }
+#endif
     struct wl_list *clients = wl_display_get_client_list(s.display);
     for (struct wl_list *it = clients->next; it != clients; it = it->next) {
         struct wl_client *c = wl_client_from_link(it);
+        if (is_xwayland(c)) continue;
         pid_t pid = 0;
         wl_client_get_credentials(c, &pid, NULL, NULL);
         if (pid > 0 && pid != getpid()) {
@@ -1639,8 +2262,8 @@ static void linger(void)
     int asked = 0;
     window_t *w;
     wl_list_for_each(w, &s.windows, link) {
-        if (w->toplevel->base->initialized) {
-            wlr_xdg_toplevel_send_close(w->toplevel);
+        if (closable(w)) {
+            win_close(w);
             asked++;
         }
     }
@@ -1660,6 +2283,7 @@ static void linger(void)
         wl_display_flush_clients(s.display);
         wl_event_loop_dispatch(s.loop, 5);
         take_from_fmrb();
+        linux_apps_pump();
         wl_display_flush_clients(s.display);
         reap_child();
         if (frame != NULL && native_frame_seq() != shown) {
@@ -1679,21 +2303,38 @@ static void linger(void)
 }
 
 /* Step two: the clients still connected are ended. */
+/* The X11 programs that can still be told apart (their windows give a
+ * pid), which end when signalled or when Xwayland goes. */
+static int x11_programs(void)
+{
+    int n = 0;
+#if WLR_HAS_XWAYLAND
+    window_t *w;
+    wl_list_for_each(w, &s.windows, link) n += w->kind == WIN_X11 && w->xs->pid > 0;
+#endif
+    return n;
+}
+
+static bool anyone_left(void)
+{
+    return client_count() > 0 || x11_programs() > 0;
+}
+
 static void end_clients(void)
 {
-    if (client_count() == 0) return;
+    if (!anyone_left()) return;
     int n = signal_clients(SIGTERM);
     fprintf(stderr, "native: compositor: SIGTERM to %d client%s still connected\n", n, n == 1 ? "" : "s");
     uint64_t t0 = now_ms();
-    while (client_count() > 0 && now_ms() - t0 < TERM_GRACE_MS) {
+    while (anyone_left() && now_ms() - t0 < TERM_GRACE_MS) {
         wl_event_loop_dispatch(s.loop, 5);
         wl_display_flush_clients(s.display);
     }
-    if (client_count() > 0) {
+    if (anyone_left()) {
         n = signal_clients(SIGKILL);
         fprintf(stderr, "native: compositor: SIGKILL to %d client%s\n", n, n == 1 ? "" : "s");
         t0 = now_ms();
-        while (client_count() > 0 && now_ms() - t0 < TERM_GRACE_MS) {
+        while (anyone_left() && now_ms() - t0 < TERM_GRACE_MS) {
             wl_event_loop_dispatch(s.loop, 5);
         }
     }
@@ -1704,6 +2345,21 @@ static void wlr_close(void)
     if (s.display == NULL) return;
     linger();
     end_clients();
+    /* What the launcher started and is still there, with a window or not. */
+    int left = linux_apps_end_all(TERM_GRACE_MS);
+    if (left > 0) {
+        fprintf(stderr, "native: compositor: ended %d process%s started from the launcher\n", left,
+                left == 1 ? "" : "es");
+    }
+#if WLR_HAS_XWAYLAND
+    if (s.xwayland != NULL) {
+        /* wlroots wants its signals free of listeners by then. */
+        wl_list_remove(&s.xw_new_surface.link);
+        wl_list_remove(&s.xw_ready.link);
+        wlr_xwayland_destroy(s.xwayland);
+        s.xwayland = NULL;
+    }
+#endif
     comp_link_detach();
     native_frame_set_wake_fd(-1);
     stop_child();

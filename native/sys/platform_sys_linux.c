@@ -23,6 +23,9 @@
  *            for the Shell's "!" lines. The Family mruby working directory
  *            becomes a real one through the file namespace; each program
  *            belongs to the task that started it and ends with it.
+ *   apps     the Linux PC's applications for the launcher (linux_apps.c,
+ *            L9b), on the compositor machine only: the compositor starts
+ *            them and starts the programs on its own thread.
  */
 
 #include <errno.h>
@@ -53,6 +56,9 @@
 #include "sys_linux.h"
 #include "linux_pty.h"
 #include "fmrb_hal_file.h"
+#if NATIVE_HAVE_WLROOTS
+#include "linux_apps.h"
+#endif
 
 static const char TAG[] = "sys_linux";
 
@@ -345,6 +351,26 @@ static void proc_task_deleted(void *task)
     }
 }
 
+#if NATIVE_HAVE_WLROOTS
+/* The Linux PC's applications (L9b): there once the compositor has started
+ * them (native/sys/linux_apps.h); -1 before and on any other output. */
+static int32_t linux_apps_list_entry(int mode, const char *lang, char *buf, size_t cap)
+{
+    return linux_apps_list(mode, lang, buf, cap);
+}
+
+static fmrb_err_t linux_apps_launch_entry(const char *id)
+{
+    if (!linux_apps_available()) return FMRB_ERR_NOT_SUPPORTED;
+    if (linux_apps_launch(id) != 0) {
+        FMRB_LOGW(TAG, "linux app %s: no such entry (or too many waiting to start)", id);
+        return FMRB_ERR_NOT_FOUND;
+    }
+    FMRB_LOGI(TAG, "linux app %s: asked to start", id);
+    return FMRB_OK;
+}
+#endif
+
 static const fmrb_platform_sys_t s_linux_sys = {
     .name = "linux",
     .net_info = linux_net_info,
@@ -362,6 +388,10 @@ static const fmrb_platform_sys_t s_linux_sys = {
     .proc_exited = linux_pty_exited,
     .proc_resize = linux_pty_resize,
     .proc_close = linux_pty_close,
+#if NATIVE_HAVE_WLROOTS
+    .apps_list = linux_apps_list_entry,
+    .apps_launch = linux_apps_launch_entry,
+#endif
 };
 
 void sys_linux_install(void)

@@ -20,10 +20,10 @@
 #      family-mruby-hdmi ("Family mruby (HDMI)"). A container has no fbdev
 #      and no DRM device, so each must be refused for that reason (exit 3),
 #      with the machine the launcher named
-#   2b. amd64: the login screen's session (L7) -- its entry in
-#      /usr/share/wayland-sessions, cage only recommended, and the session
-#      starter refusing with a clear message where cage is missing; arm64:
-#      neither file is there
+#   2b. amd64: the login screen's session (L7, L9b) -- its entry in
+#      /usr/share/wayland-sessions, Xwayland only recommended, the session
+#      starter running the program as the compositor (linux_pc_wl, no cage);
+#      arm64: neither file is there
 #   2c. amd64: the compositor (L8) is in the program (wlroots among the
 #      outputs) and linux_pc_wl is shipped; arm64: it is not built in
 #   3. the program as root, headless (SDL dummy), --machine sdl: the time to
@@ -42,6 +42,11 @@
 #   7. the package's rules (L3c): the release system_conf (debug_mode false,
 #      no "Development mode", zenoh_router empty), debugd not listening; with
 #      debugd = true it listens on 127.0.0.1:5565 only
+#   8. amd64: the session itself (L9b), headless (WLR_BACKENDS=headless) with
+#      a settings file of ROTATE=90 and WLR_RENDERER=pixman: the compositor
+#      comes up on the pixman renderer, the output turned (720x1280, grim's
+#      screen of it too), and Family mruby's Exit ends the session (exit 0,
+#      no process of it left)
 #
 # The run directory (control and inject sockets) is a host directory mounted
 # into the container, so the root tools drive the program from outside
@@ -218,22 +223,21 @@ begin
     end
   end
 
-  # 2b. the login screen's session (L7): amd64 only. The container has no
-  #     cage (a Recommends, not installed with --no-install-recommends), so
-  #     the session must say so and stop rather than fail obscurely.
+  # 2b. the login screen's session (L7, L9b): amd64 only. The program is the
+  #     compositor itself; Xwayland is a Recommends (not installed with
+  #     --no-install-recommends), cage is not needed at all.
   session_files = "/usr/share/wayland-sessions/family-mruby.desktop /usr/bin/family-mruby-session"
   if arch == "amd64"
     entry, = dexec("cat /usr/share/wayland-sessions/family-mruby.desktop", ok: false)
     result("session entry family-mruby.desktop",
            entry.include?("\nName=Family mruby\n") && entry.include?("\nExec=/usr/bin/family-mruby-session\n") &&
            entry.include?("\nTryExec=/usr/bin/family-mruby-session\n"), entry[/^Exec=.*/].to_s)
-    control, = dexec("dpkg-query -W -f='${Recommends}' family-mruby", ok: false)
-    out, st = dexec("command -v cage || true; test -x /usr/bin/family-mruby-session && " \
-                    "/usr/bin/family-mruby-session 2>&1", ok: false)
-    File.write(File.join(OUT, "session.log"), out)
-    result("session without cage", control.strip == "cage" && st.exitstatus == 1 &&
-           out.include?("cage is not installed") && out.include?("sudo apt install cage"),
-           "Recommends: #{control.strip}; exit #{st.exitstatus}: #{out.lines.first.to_s.strip}")
+    control, = dexec("dpkg-query -W -f='${Recommends}|${Depends}' family-mruby", ok: false)
+    recommends, depends = control.split("|", 2)
+    script, = dexec("cat /usr/bin/family-mruby-session", ok: false)
+    result("session runs the compositor", recommends.strip == "xwayland" && !depends.to_s.include?("cage") &&
+           script.include?("--machine linux_pc_wl") && !script.include?("cage"),
+           "Recommends: #{recommends.strip}; the starter runs #{script[/exec "\$prog" [^\n]*/]}")
   else
     out, = dexec("ls #{session_files} 2>&1 | grep -c 'No such file'", ok: false)
     result("no session entry on #{arch}", out.strip == "2", "#{out.strip} of 2 session files absent")
@@ -405,6 +409,62 @@ begin
          "#{ip} from the host #{from_host}; log: #{text[/listening on .*/]}")
   ctl("quit", timeout: 30)
   sleep 2
+
+  # 8. the session, headless, turned and on pixman from its settings file.
+  if arch == "amd64"
+    out, st = dexec("apt-get install -y --no-install-recommends grim > /tmp/grim.log 2>&1; command -v grim", ok: false)
+    raise "grim did not install (#{out.strip})" unless st.success?
+    File.write(File.join(RUN, "session.conf"), "ROTATE=90\nWLR_RENDERER=pixman\n")
+    File.delete(log) if File.exist?(log)
+    slog = File.join(RUN, "session.log")
+    sh!("docker", "exec", "-d", NAME, "bash", "-c",
+        "umask 0; cd /root; mkdir -p -m 700 /run/fmrb/xdg; export XDG_RUNTIME_DIR=/run/fmrb/xdg " \
+        "FMRB_NATIVE_RUN_DIR=/run/fmrb FMRB_SESSION_CONF=/run/fmrb/session.conf WLR_BACKENDS=headless " \
+        "WLR_HEADLESS_OUTPUTS=1 SDL_AUDIODRIVER=dummy; /usr/bin/family-mruby-session > /run/fmrb/session.log 2>&1; " \
+        "echo \"exit=$?\" >> /run/fmrb/session.log")
+    deadline = now + opts[:timeout]
+    text = ""
+    until text.include?("Boot complete") || now > deadline
+      sleep 0.5
+      text = File.exist?(slog) ? File.read(slog) : ""
+    end
+    sleep 2
+    comp = ->(req) { r = ctl("comp #{req}"); raise "comp #{req}: #{r}" unless r.start_with?("OK"); r }
+    inf = comp.call("info").split.drop(1).to_h { |kv| kv.split("=", 2) }
+    sock = text[/WAYLAND_DISPLAY=(wayland-\d+)/, 1]
+    dexec("XDG_RUNTIME_DIR=/run/fmrb/xdg WAYLAND_DISPLAY=#{sock} grim /run/fmrb/session_screen.png")
+    FileUtils.cp(File.join(RUN, "session_screen.png"), File.join(OUT, "session_screen.png"))
+    screen = Regress::Screens::Image.load(File.join(OUT, "session_screen.png"))
+    renderer = text[/renderer (\w+)/, 1]
+    up = text.include?("starting /usr/bin/family-mruby --machine linux_pc_wl (rotate 90)") &&
+         text.include?("compositor: wlroots") && renderer == "pixman"
+    turned = inf["out"] == "720x1280" && inf["rotate"] == "90" && screen.w == 720 && screen.h == 1280
+    result("session: the compositor, turned", up && turned,
+           "#{text[/family-mruby-session: starting.*/]}; renderer #{renderer}; output #{inf['out']} " \
+           "(rotate #{inf['rotate']}), picture #{inf['frame']} at #{inf['scale']}x at (#{inf['at']}); grim's screen " \
+           "#{screen.w}x#{screen.h}")
+    # Exit from the power menu (frame coordinates to the output's).
+    sc = inf["scale"].to_i
+    x0, y0 = inf["at"].split(",").map(&:to_i)
+    click = ->(fx, fy) { comp.call("click #{x0 + fx * sc + sc / 2} #{y0 + fy * sc + sc / 2}") }
+    click.call(415, 5)
+    sleep 1.0
+    click.call(355, 19)
+    sleep 1.2
+    t0 = now
+    click.call(182, 143)
+    ended = nil
+    until ended || now > t0 + 30
+      sleep 0.5
+      text = File.read(slog)
+      ended = text[/^exit=(\d+)/, 1]
+    end
+    left, = dexec("ps -e -o comm= | grep -E 'family-mruby|Xwayland' || true", ok: false)
+    FileUtils.cp(slog, File.join(OUT, "session.log"))
+    result("session: Exit ends it", ended == "0" && left.strip.empty?,
+           "the session ended #{(now - t0).round(1)} s after Exit with exit=#{ended.inspect}; " \
+           "processes of it left: #{left.strip.empty? ? 'none' : left.split.join(' ')}")
+  end
 rescue StandardError => e
   result("run", false, e.message)
 ensure

@@ -244,3 +244,15 @@ void fmrb_platform_sys_proc_close(int32_t id)
     const fmrb_platform_sys_t *s = fmrb_platform_sys();
     if (s->proc_close) s->proc_close(id);
 }
+
+int32_t fmrb_platform_sys_apps_list(int mode, const char *lang, char *buf, size_t cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->apps_list ? s->apps_list(mode, lang, buf, cap) : -1;
+}
+
+fmrb_err_t fmrb_platform_sys_apps_launch(const char *id)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->apps_launch ? s->apps_launch(id) : FMRB_ERR_NOT_SUPPORTED;
+}

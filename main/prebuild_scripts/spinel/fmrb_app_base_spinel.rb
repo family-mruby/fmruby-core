@@ -1962,6 +1962,18 @@ class FmrbApp
     tables
   end
 
+  # The Linux PC's applications for the launcher (doc/linux_native L9b): only
+  # the native program as the compositor has them, and its desktop is the
+  # mruby one (lib/add/picoruby-fmrb-app: FmrbApp.linux_apps). A Spinel
+  # desktop answers as every machine without them does.
+  def self.linux_apps(mode, lang)
+    ""
+  end
+
+  def self.linux_launch(id)
+    -1
+  end
+
   # UI language ("en" / "ja"). Read at run time rather than from FmrbConst:
   # that table is generated when the Spinel program is compiled, and the
   # language is a setting the Config app changes.

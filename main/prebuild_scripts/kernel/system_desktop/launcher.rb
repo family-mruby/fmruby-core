@@ -13,6 +13,16 @@
 # selection, D adds or removes the selected app on the desktop (the launcher's
 # own icon when nothing is selected), F5 reloads, Esc closes the menu or else
 # the launcher.
+#
+# Linux apps (doc/linux_native L9b): where the program is the Wayland
+# compositor of a Linux PC, one more entry follows the built-ins, "Linux".
+# Opening it puts the PC's applications (its XDG .desktop entries, read with
+# their icons by the native side, native/sys/linux_apps.c) in the grid in
+# place of the Family mruby apps, with ".." first to come back; the two are
+# never mixed. Only the entries in view get icon sprites, so a PC with
+# hundreds of them costs what one screen of icons costs. Reload reads the
+# entries again. Closing the launcher goes back to the Family mruby apps.
+# Everywhere else FmrbApp.linux_apps answers "" and there is no such entry.
 
 module LauncherMixin
   # Launcher window layout
@@ -44,7 +54,138 @@ module LauncherMixin
     builtin_app_catalog.each do |b|
       out << { label: b[:label], app: b[:app], icon_file: b[:icon_file] }
     end
+    lnx = linux_group_entry
+    out << lnx if lnx
     out
+  end
+
+  # ---- Linux apps (doc/linux_native L9b) ----
+  #
+  # The entries' app field carries LNX_PREFIX: "linux:*" is the group,
+  # "linux:.." the way back, "linux:<desktop file id>" an application.
+  LNX_PREFIX = "linux:"
+  LNX_GROUP = "linux:*"
+  LNX_BACK = "linux:.."
+  LNX_READY = "ready"
+  LNX_MODE_LIST = 0
+  LNX_MODE_RESCAN = 1
+  LNX_MODE_HEADER = 2
+
+  def linux_entry?(app)
+    app.to_s.start_with?(LNX_PREFIX)
+  end
+
+  # The group's entry, or nil where there are no Linux apps (every machine
+  # but the compositor: the call answers "").
+  def linux_group_entry
+    head = FmrbApp.linux_apps(LNX_MODE_HEADER, FmrbI18n.lang)
+    return nil if head.empty?
+    f = head.split(S_NEWLINE)[0].to_s.split(S_TAB)
+    icon = f[1]
+    icon = nil if icon == S_EMPTY
+    Log.info("Launcher: the Linux group is offered")
+    { label: "Linux", app: LNX_GROUP, icon_char: "L", icon_file: icon }
+  end
+
+  def linux_back_entry
+    { label: "..", app: LNX_BACK, icon_char: "<", icon_file: nil }
+  end
+
+  # The list text into launcher entries; false while it is still being read.
+  def linux_take_list(text)
+    lines = text.split(S_NEWLINE)
+    head = lines[0].to_s.split(S_TAB)
+    return false unless head[0] == LNX_READY
+    apps = [linux_back_entry]
+    i = 1
+    n = lines.size
+    while i < n
+      f = lines[i].split(S_TAB)
+      i += 1
+      next unless f[0] && f[1]
+      icon = f[2]
+      icon = nil if icon == S_EMPTY
+      apps << { label: f[0], app: "#{LNX_PREFIX}#{f[1]}", icon_char: "L", icon_file: icon }
+    end
+    @launcher_apps = apps
+    Log.info("Launcher: Linux: #{apps.size - 1} apps")
+    true
+  end
+
+  # Ask for the list (mode LNX_MODE_RESCAN reads the entries again first);
+  # until it is ready, on_update keeps asking (tick_rescan).
+  def linux_load(mode)
+    text = FmrbApp.linux_apps(mode, FmrbI18n.lang)
+    if mode == LNX_MODE_LIST && linux_take_list(text)
+      @lnc_linux_wait = false
+    else
+      @launcher_apps = [linux_back_entry]
+      @lnc_linux_wait = true
+    end
+    destroy_icon_instances_only
+    @launcher_selected = 0
+    @launcher_scroll = 0
+    nil
+  end
+
+  def linux_enter
+    @lnc_fm_apps = @launcher_apps unless @lnc_linux
+    @lnc_linux = true
+    @lnc_ctx_open = false
+    linux_load(LNX_MODE_LIST)
+    draw_foreground
+    draw_launcher_status("Loading...") if @lnc_linux_wait
+    nil
+  end
+
+  # Back to the Family mruby apps (the way back, or the launcher closing).
+  def linux_leave
+    return nil unless @lnc_linux
+    @lnc_linux = false
+    @lnc_linux_wait = false
+    @launcher_apps = @lnc_fm_apps || builtin_apps
+    @lnc_fm_apps = nil
+    destroy_icon_instances_only
+    ensure_icon_sprites
+    @launcher_selected = @launcher_apps.empty? ? -1 : 0
+    @launcher_scroll = 0
+    nil
+  end
+
+  # Called from tick_rescan while the list is being read.
+  def tick_linux_wait
+    return false unless @lnc_linux_wait
+    if linux_take_list(FmrbApp.linux_apps(LNX_MODE_LIST, FmrbI18n.lang))
+      @lnc_linux_wait = false
+      destroy_icon_instances_only
+      @launcher_selected = 0
+      @launcher_scroll = 0
+      draw_foreground if @launcher_open
+    end
+    true
+  end
+
+  # An entry chosen (double click, Enter): a Family mruby app starts as
+  # before; the group, the way back and a Linux app are handled here.
+  def launcher_activate(app_name)
+    if app_name == LNX_GROUP
+      linux_enter
+    elsif app_name == LNX_BACK
+      linux_leave
+      draw_foreground
+    elsif linux_entry?(app_name)
+      id = app_name[LNX_PREFIX.length, app_name.length - LNX_PREFIX.length].to_s
+      close_launcher
+      if FmrbApp.linux_launch(id) == 0
+        Log.info("Launcher: Linux app #{id} asked to start")
+      else
+        Log.warn("Launcher: Linux app #{id} could not start")
+      end
+    else
+      close_launcher
+      spawn_app(app_name)
+    end
+    nil
   end
 
   # Default icon files per VM type
@@ -134,12 +275,22 @@ module LauncherMixin
   # Idempotent: instances already created are skipped. SpriteImages are shared
   # across apps that reference the same icon file.
   def ensure_icon_sprites
+    ensure_icon_sprites_range(0, @launcher_apps.size)
+  end
+
+  # Only the entries from first up to (not including) last: the Linux list
+  # makes the sprites of the icons in view as they come into view.
+  def ensure_icon_sprites_range(first, last)
     @icon_sprite_images    ||= {}
     @icon_sprite_instances ||= []
     @icon_sprite_metrics   ||= []
 
-    @launcher_apps.each_with_index do |app, idx|
-      next if @icon_sprite_instances[idx]
+    last = @launcher_apps.size if last > @launcher_apps.size
+    idx = first
+    while idx < last
+      app = @launcher_apps[idx]
+      idx += 1
+      next if @icon_sprite_instances[idx - 1]
       icon_file = app[:icon_file]
       next unless icon_file
 
@@ -152,8 +303,8 @@ module LauncherMixin
 
       inst = SpriteInstance.new(@gfx, img, x: 0, y: 0, z: 1)
       inst.visible = false
-      @icon_sprite_instances[idx] = inst
-      @icon_sprite_metrics[idx] = { bmp_w: ICON_SPRITE_W, bmp_h: ICON_SPRITE_H }
+      @icon_sprite_instances[idx - 1] = inst
+      @icon_sprite_metrics[idx - 1] = { bmp_w: ICON_SPRITE_W, bmp_h: ICON_SPRITE_H }
       # Yield so status_led gets to toggle while sprites are being built.
       Machine.delay_ms(1)
     end
@@ -619,8 +770,8 @@ module LauncherMixin
     @gfx.fill_rect(x, y, LAUNCHER_W, LAUNCHER_H, LAUNCHER_BG)
     @gfx.draw_rect(x, y, LAUNCHER_W, LAUNCHER_H, FmrbConst::THEME_BORDER)
     @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
-    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:launcher),
-                   FmrbConst::THEME_TEXT_LIGHT, LAUNCHER_TITLE_BG, mixed: true)
+    title = @lnc_linux ? "#{FmrbI18n.t(:launcher)} / Linux" : FmrbI18n.t(:launcher)
+    @gfx.draw_text(x + 4, y + 3, title, FmrbConst::THEME_TEXT_LIGHT, LAUNCHER_TITLE_BG, mixed: true)
     bar_y = y + LAUNCHER_TITLE_H
     bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
     # The launcher is a grid, but it scrolls by row, so the bar sees the same
@@ -686,6 +837,8 @@ module LauncherMixin
   LNC_ITEM_RELOAD = 1
 
   def lnc_ctx_items
+    # The Linux list has no desktop icons to add: Reload only.
+    return [LNC_ITEM_RELOAD] if @lnc_linux
     @lnc_ctx_target < 0 ? [LNC_ITEM_DESK, LNC_ITEM_RELOAD] : [LNC_ITEM_DESK]
   end
 
@@ -808,7 +961,9 @@ module LauncherMixin
   # Put the entry on the desktop or take it off. The desktop icons live on
   # the background canvas, so the launcher on top needs no repaint.
   def launcher_toggle_desktop(target)
-    toggle_desktop_icon(lnc_target_path(target))
+    # The Linux entries are not desktop icons (L9b).
+    path = lnc_target_path(target)
+    toggle_desktop_icon(path) unless linux_entry?(path)
     nil
   end
 
@@ -820,6 +975,7 @@ module LauncherMixin
     content_y = y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
     start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
     vis_end = start_idx + vis_rows * LAUNCHER_ICON_COLS
+    ensure_icon_sprites_range(start_idx, vis_end) if @lnc_linux
 
     # Hide sprites that are not in the visible range
     if @icon_sprite_instances
@@ -1117,6 +1273,13 @@ module LauncherMixin
 
   # Called from on_update. Nothing else runs the scan.
   def tick_rescan
+    if @rescan_pending && @lnc_linux
+      # Reload in the Linux list: the native side reads the entries again.
+      @rescan_pending = false
+      linux_load(LNX_MODE_RESCAN)
+      return true
+    end
+    return true if tick_linux_wait
     if @rescan_pending
       @rescan_pending = false
       rescan_start
@@ -1137,6 +1300,7 @@ module LauncherMixin
     @ui.set_visible(:lnc_reload, false)
     @ui.flush
     hide_all_icon_sprites
+    linux_leave
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
@@ -1179,9 +1343,7 @@ module LauncherMixin
       now = @counter
       if icon_idx == @last_click_idx && (now - @last_click_time) < 5
         # Double click - launch app
-        app_name = @launcher_apps[icon_idx][:app]
-        close_launcher
-        spawn_app(app_name)
+        launcher_activate(@launcher_apps[icon_idx][:app])
       else
         # Single click - partial redraw for selection change
         prev = @launcher_selected
@@ -1323,9 +1485,7 @@ module LauncherMixin
 
   def launcher_launch_selected
     return if @launcher_selected < 0 || @launcher_selected >= @launcher_apps.size
-    app_name = @launcher_apps[@launcher_selected][:app]
-    close_launcher
-    spawn_app(app_name)
+    launcher_activate(@launcher_apps[@launcher_selected][:app])
   end
 
   # Scrolling takes the menu down (its target may scroll away); the repaint

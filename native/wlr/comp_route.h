@@ -35,6 +35,9 @@
  *             gets the same press and agrees a moment later); pressed
  *             anywhere else gives it back to Family mruby.
  *
+ * A window may be an xdg toplevel or an X11 window (Xwayland, L9b): the
+ * same numbering, the same rules.
+ *
  * Window changes are queued as notices (comp_notice_t) for Family mruby's
  * side (native/wlr/wl_bridge.c) to take from another thread.
  */
@@ -95,6 +98,8 @@ typedef enum {
     COMP_NOTICE_TITLE,          /* its title (text) */
     COMP_NOTICE_MOVE,           /* it asked to be moved: content top-left (x, y), frame coordinates */
     COMP_NOTICE_RESIZE,         /* it asked to be resized: content size (w, h) at (x, y), frame coordinates */
+    COMP_NOTICE_FIT,            /* it settled on a size of its own (w, h, output pixels) other than the
+                                 * one asked: its stand-in is to fit it (L9b) */
 } comp_notice_kind_t;
 
 typedef struct {

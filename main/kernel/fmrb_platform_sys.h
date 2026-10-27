@@ -13,6 +13,9 @@
  * power actions; and (L10) Linux programs under a pseudo terminal, for the
  * Shell's "!" lines.
  *
+ * And (L9b) the Linux PC's applications for the launcher, where the program
+ * is the Wayland compositor.
+ *
  * Every entry may be NULL; fmrb_platform_sys_*() below then answer "no
  * value" (false, 0). None of them may block for long: the hosted builds run
  * a cooperative scheduler, and a call that waits on the OS goes through the
@@ -111,6 +114,16 @@ typedef struct {
     fmrb_err_t (*proc_resize)(int32_t id, uint16_t cols, uint16_t rows);
     /* Forget it; one still running is ended without the caller waiting. */
     void (*proc_close)(int32_t id);
+
+    /* The Linux PC's applications (L9b), where the program is the
+     * compositor. apps_list writes the launcher's list as text into buf
+     * (native/sys/linux_apps.h: a header line, then "name\tid\ticon" per
+     * entry) and returns its length -- more than cap: nothing written, ask
+     * again with room -- or -1 when this machine has none. mode: 0 the list,
+     * 1 read the entries again, 2 the header only. apps_launch asks for the
+     * entry with that id to be started; neither waits. */
+    int32_t (*apps_list)(int mode, const char *lang, char *buf, size_t cap);
+    fmrb_err_t (*apps_launch)(const char *id);
 } fmrb_platform_sys_t;
 
 /** The table in use: the default one unless a platform installed its own. */
@@ -140,6 +153,10 @@ fmrb_err_t fmrb_platform_sys_proc_signal(int32_t id, fmrb_sys_signal_t sig);
 bool fmrb_platform_sys_proc_exited(int32_t id, int *code);
 fmrb_err_t fmrb_platform_sys_proc_resize(int32_t id, uint16_t cols, uint16_t rows);
 void fmrb_platform_sys_proc_close(int32_t id);
+/* The Linux PC's applications: -1 / FMRB_ERR_NOT_SUPPORTED on every
+ * machine without them. */
+int32_t fmrb_platform_sys_apps_list(int mode, const char *lang, char *buf, size_t cap);
+fmrb_err_t fmrb_platform_sys_apps_launch(const char *id);
 
 #ifdef __cplusplus
 }

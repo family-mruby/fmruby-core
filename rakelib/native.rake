@@ -175,6 +175,14 @@ namespace :native do
     # ...and the Shell's reading of their output (lines and SGR colours).
     sh "ruby #{NATIVE_TEST_DIR}/shell_term_test.rb"
 
+    # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps.c,
+    # plain POSIX, with libpng for the icons when the host has it.
+    png = system("pkg-config --exists libpng")
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DNATIVE_HAVE_PNG=#{png ? 1 : 0} -I native/sys " \
+       "native/sys/linux_apps.c #{NATIVE_TEST_DIR}/apps.c -lpthread #{png ? '-lpng' : ''} " \
+       "-o #{NATIVE_TEST_BUILD}/native_apps_test"
+    sh "#{NATIVE_TEST_BUILD}/native_apps_test"
+
     # The compositor's hand-overs (L8, L9a) without wlroots: where things lie,
     # the holes Family mruby leaves for its Linux windows and who gets the
     # input (native/wlr/comp_route.c), the places and commands from Family
@@ -257,12 +265,12 @@ NATIVE_DEB_LAYOUT = {
     data_rel: "../share/family-mruby/root",
     gnu: "x86_64-linux-gnu",
     launchers: {},
-    # The login screen's entry (L7): a Wayland session that runs cage with
-    # the program inside it (native/package/family-mruby-session, machine
-    # linux_pc). cage is recommended, not required: without it the entry is
-    # still listed and the session says what is missing.
+    # The login screen's entry (L7, L9b): a Wayland session in which the
+    # program is the compositor itself (native/package/family-mruby-session,
+    # machine linux_pc_wl). Xwayland is recommended, not required: without
+    # it X11 programs do not run and the log says so; Wayland ones do.
     session: true,
-    recommends: "cage",
+    recommends: "xwayland",
   },
 }.freeze
 NATIVE_DEB_ROOT = "usr/share/family-mruby/root"

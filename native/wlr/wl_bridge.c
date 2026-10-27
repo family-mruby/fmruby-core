@@ -21,6 +21,11 @@
  *   - a window asks to be moved or resized (notice, from xdg move/resize):
  *     the stand-in's window is moved / resized through the same calls the
  *     input router makes.
+ *   - a window settles on a size of its own (notice FIT, L9b: foot's cell
+ *     grid, an X11 program's own size): the stand-in is resized so that its
+ *     content is that size over the scale, rounded up -- the window fills
+ *     it but for under a frame pixel, which the compositor paints in the
+ *     frame's colour.
  *   - a window goes away: the stand-in sees it (FmrbApp.wl_window) and ends.
  *   - the stand-in's close button: FmrbApp.wl_close asks the window to close
  *     (xdg close), so the program can ask about unsaved work first.
@@ -85,6 +90,8 @@ static struct {
 
 static fmrb_window_info_t s_list[FMRB_MAX_APPS];
 
+static bool fit_size(int w, int h, int *ww, int *wh);
+
 static uint32_t ms_now(void)
 {
     return (uint32_t)fmrb_hal_time_get_ms();
@@ -146,14 +153,8 @@ static int spawn_standin(int id, int nat_w, int nat_h, const char *app_id, uint3
 {
     int scale = 0, base_w = 0, base_h = 0;
     if (!comp_link_geometry(&scale, &base_w, &base_h)) return -1;
-    int cw = (nat_w + scale - 1) / scale;
-    int ch = (nat_h + scale - 1) / scale;
-    int ww = cw + FRAME_W;
-    int wh = ch + FRAME_H;
-    if (ww > base_w) ww = base_w;
-    if (wh > base_h - MENU_BAR_H) wh = base_h - MENU_BAR_H;
-    if (ww < 64) ww = 64;
-    if (wh < 40) wh = 40;
+    int ww = 0, wh = 0;
+    if (!fit_size(nat_w, nat_h, &ww, &wh)) return -1;
     int step = (s_br.spawned % 5) * 10;
     int x = (base_w - ww) / 2 + step;
     int y = MENU_BAR_H + (base_h - MENU_BAR_H - wh) / 2 + step;
@@ -203,7 +204,7 @@ static int spawn_standin(int id, int nat_w, int nat_h, const char *app_id, uint3
 }
 
 typedef struct {
-    int kind;                   /* 1 move, 2 resize */
+    int kind;                   /* 1 move, 2 resize, 3 fit (w, h: output pixels) */
     int pid;
     int x, y, w, h;
 } action_t;
@@ -250,14 +251,54 @@ static void take_notices(action_t *act, int *n_act)
                                               nt.h + FRAME_H };
             }
             break;
+        case COMP_NOTICE_FIT:
+            if (b != NULL && *n_act < COMP_MAX_WINDOWS) {
+                if (b->pid >= 0) {
+                    act[(*n_act)++] = (action_t){ 3, b->pid, 0, 0, nt.w, nt.h };
+                } else {
+                    /* No stand-in yet: it will be made at this size. */
+                    b->nat_w = nt.w;
+                    b->nat_h = nt.h;
+                }
+            }
+            break;
         default:
             break;
         }
     }
 }
 
+/* The stand-in's window size for a Linux window of w x h output pixels. */
+static bool fit_size(int w, int h, int *ww, int *wh)
+{
+    int scale = 0, base_w = 0, base_h = 0;
+    if (!comp_link_geometry(&scale, &base_w, &base_h) || scale <= 0) return false;
+    *ww = (w + scale - 1) / scale + FRAME_W;
+    *wh = (h + scale - 1) / scale + FRAME_H;
+    if (*ww > base_w) *ww = base_w;
+    if (*wh > base_h - MENU_BAR_H) *wh = base_h - MENU_BAR_H;
+    if (*ww < 64) *ww = 64;
+    if (*wh < 40) *wh = 40;
+    return true;
+}
+
 static void do_action(const action_t *a)
 {
+    if (a->kind == 3) {
+        int ww = 0, wh = 0;
+        if (!fit_size(a->w, a->h, &ww, &wh)) return;
+        int n = fmrb_app_get_window_list(s_list, FMRB_MAX_APPS);
+        for (int i = 0; i < n; i++) {
+            if (s_list[i].pid != a->pid) continue;
+            if (s_list[i].width != ww || s_list[i].height != wh) {
+                FMRB_LOGI(TAG, "stand-in pid %d: %dx%d -> %dx%d to fit its window (%dx%d)", a->pid,
+                          s_list[i].width, s_list[i].height, ww, wh, a->w, a->h);
+                fmrb_app_update_window_size((uint8_t)a->pid, (uint16_t)ww, (uint16_t)wh);
+            }
+            break;
+        }
+        return;
+    }
     int x = a->x < 0 ? 0 : a->x;
     int y = a->y < 0 ? 0 : a->y;
     if (a->kind == 2) fmrb_app_update_window_size((uint8_t)a->pid, (uint16_t)a->w, (uint16_t)a->h);

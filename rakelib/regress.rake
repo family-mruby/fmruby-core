@@ -51,13 +51,15 @@
 #                          SCENE=) narrows the scenes
 #   rake regress:live:update   the last run's failed or new checks and shots
 #                          become the baseline (ONLY= narrows it)
-#   rake regress:wl        the compositor (doc/linux_native, L8/L9a): the
+#   rake regress:wl        the compositor (doc/linux_native, L8/L9a/L9b): the
 #                          program with wlroots built in the Ubuntu 26.04 image
 #                          (rake native:wl) for the standard and the all-mruby
 #                          configuration, and rake native:wl_check headless on
-#                          pixman for each (test/native/wl/wl_check.rb). No
-#                          baseline: the composited screen is checked against
-#                          the picture taken at the same moment
+#                          pixman for each (test/native/wl/wl_check.rb), then
+#                          the launcher's Linux apps, Xwayland and the end
+#                          (test/native/wl/wl_apps_check.rb). No baseline: the
+#                          composited screen is checked against the picture
+#                          taken at the same moment
 #   rake regress:full      regress + regress:size + regress:run +
 #                          regress:screens + regress:live + regress:wl (ONLY=
 #                          goes to none of them: run the parts by hand to
@@ -189,7 +191,7 @@ namespace :regress do
     end
   end
 
-  desc "The compositor in the Ubuntu 26.04 image: native:wl and native:wl_check (headless, pixman), standard and all-mruby. About 5 minutes"
+  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check and wl_apps_check (headless, pixman), standard and all-mruby. About 8 minutes"
   task :wl do
     failed = []
     %w[standard mruby].each do |engine|
@@ -203,6 +205,9 @@ namespace :regress do
       ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_check.rb"), "--engine", engine,
                   "--renderer", "pixman")
       failed << engine unless ok
+      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_apps_check.rb"), "--engine", engine,
+                  "--renderer", "pixman")
+      failed << "#{engine} apps" unless ok
     end
     abort "regress:wl: failed: #{failed.join(', ')}" unless failed.empty?
     puts "regress:wl: ok (tmp/wl_check/)"

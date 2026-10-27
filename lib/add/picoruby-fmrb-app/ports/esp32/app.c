@@ -1514,6 +1514,47 @@ static mrb_value mrb_fmrb_app_s_linux_close(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
+// ---- The Linux PC's applications (doc/linux_native L9b, fmrb_platform_sys.h) ----
+//
+// FmrbApp.linux_apps(mode, lang) -> String. "" on every machine without them
+//   (the devices, the simulation, the browser, a native machine that is not
+//   the compositor). Else the launcher's list as text: a header line
+//   ("ready\t<group icon>" or "loading\t<group icon>"), then for mode 0 one
+//   "name\tid\ticon" line per entry. mode 1 reads the entries again, mode 2
+//   gives the header only. lang picks the names (Name[ja] for "ja").
+// FmrbApp.linux_launch(id) -> Integer. 0 asked to start, -1 no such entry or
+//   not available. Never waits.
+static mrb_value mrb_fmrb_app_s_linux_apps(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int mode;
+    const char *lang;
+    mrb_get_args(mrb, "iz", &mode, &lang);
+    int32_t need = fmrb_platform_sys_apps_list((int)mode, lang, NULL, 0);
+    if (need < 0) return mrb_str_new_lit(mrb, "");
+    // The list may grow between the two calls: ask again with the new size.
+    for (int tries = 0; tries < 4; tries++) {
+        mrb_value str = mrb_str_new_capa(mrb, (size_t)need + 1);
+        int32_t got = fmrb_platform_sys_apps_list(mode == 1 ? 2 : (int)mode, lang, RSTRING_PTR(str),
+                                                  (size_t)need + 1);
+        if (got < 0) return mrb_str_new_lit(mrb, "");
+        if (got <= need + 1) {
+            mrb_str_resize(mrb, str, got);
+            return str;
+        }
+        need = got;
+    }
+    return mrb_str_new_lit(mrb, "");
+}
+
+static mrb_value mrb_fmrb_app_s_linux_launch(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *id;
+    mrb_get_args(mrb, "z", &id);
+    return mrb_fixnum_value(fmrb_platform_sys_apps_launch(id) == FMRB_OK ? 0 : -1);
+}
+
 #if defined(FMRB_PLATFORM_NATIVE)
 // ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
 //
@@ -2023,6 +2064,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, app_class, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_start", mrb_fmrb_app_s_linux_start, MRB_ARGS_REQ(4));
     mrb_define_class_method(mrb, app_class, "linux_read", mrb_fmrb_app_s_linux_read, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_write", mrb_fmrb_app_s_linux_write, MRB_ARGS_REQ(2));
