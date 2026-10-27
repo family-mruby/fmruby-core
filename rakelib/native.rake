@@ -178,11 +178,12 @@ namespace :native do
     sh "ruby #{NATIVE_TEST_DIR}/session_test.rb"
 
     # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps.c,
-    # plain POSIX, with libpng for the icons when the host has it (and
+    # and opening files in them (L11: native/sys/linux_mime.c), plain POSIX, with libpng for the icons when the host has it (and
     # librsvg, opened at run time, for the SVG ones: L9e).
     png = system("pkg-config --exists libpng")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DNATIVE_HAVE_PNG=#{png ? 1 : 0} -I native/sys " \
-       "native/sys/linux_apps.c #{NATIVE_TEST_DIR}/apps.c -lpthread -ldl #{png ? '-lpng' : ''} " \
+       "native/sys/linux_apps.c native/sys/linux_mime.c #{NATIVE_TEST_DIR}/apps.c -lpthread -ldl " \
+       "#{png ? '-lpng' : ''} " \
        "-o #{NATIVE_TEST_BUILD}/native_apps_test"
     sh "#{NATIVE_TEST_BUILD}/native_apps_test"
 

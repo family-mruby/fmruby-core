@@ -39,6 +39,7 @@
 #endif
 
 #include "linux_apps.h"
+#include "linux_mime.h"
 
 extern char **environ;
 
@@ -59,6 +60,14 @@ typedef struct {
     char **argv;        /* as Exec gives it (argv[0] as written) */
     char *dir;          /* Path=, or NULL */
     char *icon;         /* the icon BMP as a Family mruby path, or NULL */
+    /* For opening a file in it (L11). */
+    char *exec;         /* Exec as written */
+    char *iconname;     /* Icon as written (%i) */
+    char *file;         /* the .desktop file (%k) */
+    char *prog;         /* Exec's program, an absolute path (exe is the terminal's for Terminal=true) */
+    char *mime;         /* MimeType ("a/b;c/d;"), or NULL */
+    bool terminal;      /* Terminal=true: run in the terminal */
+    bool listed;        /* in the launcher's list (false: kept only to open files with) */
 } entry_t;
 
 typedef struct {
@@ -90,6 +99,8 @@ static struct {
     char desktop[64];
     launch_t q[QUEUE_MAX];
     int qn;
+    char term[512];     /* the terminal for Terminal=true ("" none), as last read */
+    bool term_foot;
 } s = { .lock = PTHREAD_MUTEX_INITIALIZER };
 
 /* The compositor's main thread only. */
@@ -114,6 +125,11 @@ static void free_entry(entry_t *e)
     free(e->exe);
     free(e->dir);
     free(e->icon);
+    free(e->exec);
+    free(e->iconname);
+    free(e->file);
+    free(e->prog);
+    free(e->mime);
     linux_apps_free_argv(e->argv);
     memset(e, 0, sizeof(*e));
 }
@@ -279,17 +295,36 @@ static bool vec_push(vec_t *a, const char *s, size_t len)
 
 static bool is_drop_code(char c)
 {
-    /* Files and URLs (none are passed), and the deprecated codes. */
+    /* Files and URLs (when none is passed), and the deprecated codes. */
     return strchr("fFuUdDnNvm", c) != NULL;
 }
 
+static bool is_file_code(char c)
+{
+    return strchr("fFuU", c) != NULL;
+}
+
+/* What the split is given: the entry's own values for %c %i %k, and the
+ * file to open (NULL: none). took is set when a field code took the file. */
+typedef struct {
+    const char *name, *icon, *file, *open;
+    bool took;
+} exec_ctx_t;
+
 /* One unquoted argument with its field codes: whole-argument codes are
  * dropped or expanded to whole arguments; inside an argument they expand to
- * nothing ("%%" to "%"). */
-static bool push_unquoted(vec_t *a, const char *tok, const char *name, const char *icon, const char *file)
+ * nothing ("%%" to "%"), except a file's code when there is a file to open
+ * (L11): a local path stands for %u and %U too, which the spec allows. */
+static bool push_unquoted(vec_t *a, const char *tok, exec_ctx_t *x)
 {
+    const char *name = x->name, *icon = x->icon, *file = x->file;
     if (tok[0] == '%' && tok[1] != '\0' && tok[2] == '\0') {
         char c = tok[1];
+        if (x->open != NULL && is_file_code(c)) {
+            if (x->took) return true;   /* one file: the first code takes it */
+            x->took = true;
+            return vec_push(a, x->open, strlen(x->open));
+        }
         if (is_drop_code(c)) return true;
         if (c == 'i') {
             if (icon == NULL || icon[0] == '\0') return true;
@@ -299,13 +334,20 @@ static bool push_unquoted(vec_t *a, const char *tok, const char *name, const cha
         if (c == 'k') return vec_push(a, file ? file : "", file ? strlen(file) : 0);
     }
     size_t n = strlen(tok);
-    char *out = malloc(n + 1);
+    size_t extra = x->open != NULL ? strlen(x->open) : 0;
+    char *out = malloc(n + extra + 1);
     if (out == NULL) return false;
     size_t w = 0;
     for (size_t i = 0; i < n; i++) {
         if (tok[i] == '%' && i + 1 < n) {
             i++;
-            if (tok[i] == '%') out[w++] = '%';
+            if (tok[i] == '%') {
+                out[w++] = '%';
+            } else if (x->open != NULL && is_file_code(tok[i]) && !x->took) {
+                x->took = true;
+                memcpy(out + w, x->open, extra);
+                w += extra;
+            }
             continue;
         }
         out[w++] = tok[i];
@@ -315,7 +357,7 @@ static bool push_unquoted(vec_t *a, const char *tok, const char *name, const cha
     return ok;
 }
 
-char **linux_apps_split_exec(const char *exec, const char *name, const char *icon, const char *file)
+static char **split_exec(const char *exec, exec_ctx_t *x)
 {
     if (exec == NULL) return NULL;
     vec_t a = { 0 };
@@ -346,7 +388,7 @@ char **linux_apps_split_exec(const char *exec, const char *name, const char *ico
         if (quoted) {
             ok = vec_push(&a, tok, w);
         } else {
-            ok = push_unquoted(&a, tok, name, icon, file);
+            ok = push_unquoted(&a, tok, x);
         }
     }
     free(tok);
@@ -355,6 +397,36 @@ char **linux_apps_split_exec(const char *exec, const char *name, const char *ico
         return NULL;
     }
     return a.v;
+}
+
+char **linux_apps_split_exec(const char *exec, const char *name, const char *icon, const char *file)
+{
+    exec_ctx_t x = { .name = name, .icon = icon, .file = file };
+    return split_exec(exec, &x);
+}
+
+char **linux_apps_split_exec_open(const char *exec, const char *name, const char *icon, const char *file,
+                                  const char *open)
+{
+    exec_ctx_t x = { .name = name, .icon = icon, .file = file, .open = open };
+    char **argv = split_exec(exec, &x);
+    if (argv == NULL || open == NULL || x.took) return argv;
+    /* No field code for a file: the file goes last (what GLib and KIO do;
+     * the spec leaves it open). */
+    int n = 0;
+    while (argv[n] != NULL) n++;
+    char **v = realloc(argv, (size_t)(n + 2) * sizeof(char *));
+    if (v == NULL) {
+        linux_apps_free_argv(argv);
+        return NULL;
+    }
+    v[n] = strdup(open);
+    v[n + 1] = NULL;
+    if (v[n] == NULL) {
+        linux_apps_free_argv(v);
+        return NULL;
+    }
+    return v;
 }
 
 /* -------------------------------------------------------------- icons */
@@ -596,35 +668,6 @@ static bool has_suffix(const char *s, const char *suf)
     return a >= b && strcmp(s + a - b, suf) == 0;
 }
 
-/* The data directories, most important first: $XDG_DATA_HOME (or
- * ~/.local/share), then $XDG_DATA_DIRS (or /usr/local/share:/usr/share). */
-static int data_dirs(char dirs[][512], int max)
-{
-    int n = 0;
-    const char *home = getenv("XDG_DATA_HOME");
-    if (home != NULL && home[0] == '/') {
-        snprintf(dirs[n++], 512, "%s", home);
-    } else if (getenv("HOME") != NULL) {
-        snprintf(dirs[n++], 512, "%s/.local/share", getenv("HOME"));
-    }
-    const char *sys = getenv("XDG_DATA_DIRS");
-    if (sys == NULL || sys[0] == '\0') sys = "/usr/local/share:/usr/share";
-    const char *p = sys;
-    while (*p && n < max) {
-        const char *end = strchr(p, ':');
-        size_t len = end ? (size_t)(end - p) : strlen(p);
-        if (len > 0 && p[0] == '/') {
-            snprintf(dirs[n], 512, "%.*s", (int)len, p);
-            bool dup = false;
-            for (int i = 0; i < n; i++) dup |= strcmp(dirs[i], dirs[n]) == 0;
-            if (!dup) n++;
-        }
-        if (end == NULL) break;
-        p = end + 1;
-    }
-    return n;
-}
-
 /* --------------------------------------------------- the icon themes (L9e)
  *
  * The freedesktop icon theme lookup, for the launcher's size: the user's
@@ -835,7 +878,7 @@ static bool theme_listed(const linux_icon_themes_t *th, const char *name)
 linux_icon_themes_t *linux_apps_icon_themes(const char *user_theme)
 {
     char dirs[16][512];
-    int nd = data_dirs(dirs, 16);
+    int nd = linux_xdg_data_dirs(dirs, 16);
     char bases[ICON_BASES_MAX][512];
     int nb = icon_bases(dirs, nd, bases, ICON_BASES_MAX);
     linux_icon_themes_t *th = calloc(1, sizeof(*th));
@@ -938,7 +981,7 @@ bool linux_apps_find_icon(const linux_icon_themes_t *th, const char *icon, char 
         }
     }
     char dirs[16][512];
-    int nd = data_dirs(dirs, 16);
+    int nd = linux_xdg_data_dirs(dirs, 16);
     for (int d = 0; d < nd; d++) {
         for (size_t e = 0; e < 2; e++) {
             if (pathf(out, cap, "%s/pixmaps/%s.%s", dirs[d], name, exts[e]) && access(out, R_OK) == 0) return true;
@@ -1041,7 +1084,7 @@ static bool is_true(const char *v)
 
 typedef struct {
     char *type, *name, *name_l, *exec, *tryexec, *icon, *nodisplay, *hidden, *onlyshow,
-        *notshow, *terminal, *wmclass, *path;
+        *notshow, *terminal, *wmclass, *path, *mime;
     int name_l_rank;
 } fields_t;
 
@@ -1060,6 +1103,7 @@ static void free_fields(fields_t *f)
     free(f->terminal);
     free(f->wmclass);
     free(f->path);
+    free(f->mime);
 }
 
 static void set_field(char **slot, const char *v)
@@ -1137,6 +1181,7 @@ static bool read_fields(const char *path, const char *lang, fields_t *f)
         else if (strcmp(k, "Terminal") == 0) set_field(&f->terminal, v);
         else if (strcmp(k, "StartupWMClass") == 0) set_field(&f->wmclass, v);
         else if (strcmp(k, "Path") == 0) set_field(&f->path, v);
+        else if (strcmp(k, "MimeType") == 0) set_field(&f->mime, v);
     }
     free(buf);
     char **all[] = { &f->name, &f->name_l, &f->exec, &f->tryexec, &f->icon, &f->wmclass, &f->path };
@@ -1198,9 +1243,15 @@ static void add_file(build_t *b, const char *path, const char *id, const char *l
     fields_t f = { 0 };
     if (!read_fields(path, lang, &f)) goto out;
     if (f.type == NULL || strcmp(f.type, "Application") != 0) goto out;
-    if (is_true(f.nodisplay) || is_true(f.hidden)) goto out;
-    if (f.onlyshow != NULL && !list_has(f.onlyshow, desktop)) goto out;
-    if (f.notshow != NULL && list_has(f.notshow, desktop)) goto out;
+    if (is_true(f.hidden)) goto out;
+    /* NoDisplay and OnlyShowIn / NotShowIn keep an entry out of the
+     * launcher, not out of opening files: a type's handler is often an
+     * entry made for nothing else (NoDisplay=true). Such an entry is kept
+     * when it says which types it opens (L11). */
+    bool listed = !is_true(f.nodisplay) && !(f.onlyshow != NULL && !list_has(f.onlyshow, desktop)) &&
+                  !(f.notshow != NULL && list_has(f.notshow, desktop));
+    bool opens = f.mime != NULL && f.mime[0] != '\0';
+    if (!listed && !opens) goto out;
     if (f.exec == NULL || f.name == NULL) goto out;
     char found[1024];
     if (f.tryexec != NULL && !find_program(f.tryexec, found, sizeof(found))) goto out;
@@ -1212,6 +1263,8 @@ static void add_file(build_t *b, const char *path, const char *id, const char *l
         linux_apps_free_argv(argv);
         goto out;
     }
+    char prog[1024];
+    snprintf(prog, sizeof(prog), "%s", exe);
     const char *prog_name = base_name(argv[0]);
     char key[128];
     snprintf(key, sizeof(key), "%s", f.wmclass ? f.wmclass : prog_name);
@@ -1248,6 +1301,13 @@ static void add_file(build_t *b, const char *path, const char *id, const char *l
     e->argv = argv;
     e->dir = (f.path && f.path[0] == '/') ? strdup(f.path) : NULL;
     e->icon = f.icon ? strdup(f.icon) : NULL;   /* the Icon value for now; the BMP below */
+    e->exec = strdup(f.exec);
+    e->iconname = f.icon ? strdup(f.icon) : NULL;
+    e->file = strdup(path);
+    e->prog = strdup(prog);
+    e->mime = opens ? strdup(f.mime) : NULL;
+    e->terminal = is_true(f.terminal);
+    e->listed = listed;
 out:
     free_fields(&f);
 }
@@ -1312,7 +1372,7 @@ static void *reader(void *arg)
             b.term[0] = '\0';
         }
         char dirs[16][512];
-        int nd = data_dirs(dirs, 16);
+        int nd = linux_xdg_data_dirs(dirs, 16);
         for (int i = 0; i < nd; i++) {
             char apps[600];
             if (pathf(apps, sizeof(apps), "%s/applications", dirs[i])) walk(&b, apps, "", 0, lang, desktop);
@@ -1326,10 +1386,14 @@ static void *reader(void *arg)
          * The icons follow into the same list; only this thread replaces
          * the list, so it is still this one meanwhile. */
         char **raw = calloc((size_t)(b.n > 0 ? b.n : 1), sizeof(char *));
+        int shown = 0;
         for (int i = 0; i < b.n; i++) {
-            if (raw != NULL) raw[i] = b.e[i].icon;
+            /* Only the launcher shows icons: none for an entry kept to open
+             * files with (L11). */
+            if (raw != NULL && b.e[i].listed) raw[i] = b.e[i].icon;
             else free(b.e[i].icon);
             b.e[i].icon = NULL;
+            shown += b.e[i].listed;
         }
         pthread_mutex_lock(&s.lock);
         entry_t *old = s.e;
@@ -1337,6 +1401,8 @@ static void *reader(void *arg)
         s.e = b.e;
         s.n = b.n;
         snprintf(s.lang, sizeof(s.lang), "%s", lang);
+        snprintf(s.term, sizeof(s.term), "%s", b.term);
+        s.term_foot = b.term_foot;
         s.ready = true;
         pthread_mutex_unlock(&s.lock);
         free_list(old, old_n);
@@ -1375,9 +1441,9 @@ static void *reader(void *arg)
                 (unsigned long long)(t2 - t1), svgs, svgs == 1 ? "" : "s");
         linux_apps_icon_themes_free(th);
         fprintf(stderr, "native: linux apps: %d entries of %d desktop files (%s), %d with icons; "
-                        "read in %llu ms, icons in %llu ms; terminal %s\n",
-                b.n, b.nseen, lang, icons, (unsigned long long)(t1 - t0), (unsigned long long)(ms_now() - t1),
-                b.term[0] ? b.term : "none (Terminal=true entries left out)");
+                        "read in %llu ms, icons in %llu ms; terminal %s; %d more to open files with\n",
+                shown, b.nseen, lang, icons, (unsigned long long)(t1 - t0), (unsigned long long)(ms_now() - t1),
+                b.term[0] ? b.term : "none (Terminal=true entries left out)", b.n - shown);
     }
 }
 
@@ -1467,6 +1533,7 @@ int32_t linux_apps_list(int mode, const char *lang, char *buf, size_t cap)
     put(buf, cap, &len, ready ? "ready\n" : "loading\n");
     if (ready && mode == LINUX_APPS_LIST) {
         for (int i = 0; i < s.n; i++) {
+            if (!s.e[i].listed) continue;
             put(buf, cap, &len, s.e[i].name);
             put(buf, cap, &len, "\t");
             put(buf, cap, &len, s.e[i].id);
@@ -1511,6 +1578,264 @@ int linux_apps_launch(const char *id)
         }
     }
     pthread_mutex_unlock(&s.lock);
+    return rc;
+}
+
+/* ------------------------------------------------ opening files (L11) */
+
+#define CANDS_MAX 64
+#define IDS_MAX 32
+
+/* What a file is and what the lists say, read outside the lock. */
+typedef struct {
+    char type[LINUX_MIME_TYPE_MAX];
+    char chain[LINUX_MIME_CHAIN_MAX][LINUX_MIME_TYPE_MAX];
+    int nchain;
+    linux_mime_lists_t *lists;
+} open_query_t;
+
+static void query_load(open_query_t *q, const char *path, const char *desktop)
+{
+    memset(q, 0, sizeof(*q));
+    if (!linux_mime_type(path, q->type, sizeof(q->type))) q->type[0] = '\0';
+    q->nchain = linux_mime_chain(q->type, q->chain, LINUX_MIME_CHAIN_MAX);
+    q->lists = q->nchain > 0 ? linux_mime_lists_load(desktop) : NULL;
+}
+
+/* Under the lock. The entry with this desktop file id ("x" finds
+ * "x.desktop" too), or -1. */
+static int entry_index_locked(const char *id)
+{
+    if (id == NULL || id[0] == '\0') return -1;
+    for (int i = 0; i < s.n; i++) {
+        if (strcmp(s.e[i].id, id) == 0) return i;
+    }
+    if (!has_suffix(id, ".desktop")) {
+        char with[300];
+        snprintf(with, sizeof(with), "%s.desktop", id);
+        for (int i = 0; i < s.n; i++) {
+            if (strcmp(s.e[i].id, with) == 0) return i;
+        }
+    }
+    return -1;
+}
+
+/* The ids of a "a.desktop;b.desktop;" value, in order. */
+static int split_ids(const char *v, char ids[][256], int max)
+{
+    int n = 0;
+    while (v != NULL && *v && n < max) {
+        const char *end = strchr(v, ';');
+        size_t len = end ? (size_t)(end - v) : strlen(v);
+        while (len > 0 && (*v == ' ')) {
+            v++;
+            len--;
+        }
+        if (len > 0 && len < 256) snprintf(ids[n++], 256, "%.*s", (int)len, v);
+        if (end == NULL) break;
+        v = end + 1;
+    }
+    return n;
+}
+
+static bool in_ids(char ids[][256], int n, const char *id)
+{
+    for (int i = 0; i < n; i++) {
+        if (strcmp(ids[i], id) == 0) return true;
+    }
+    return false;
+}
+
+static int add_cand(int *out, int n, int max, int idx)
+{
+    if (idx < 0 || n >= max) return n;
+    for (int i = 0; i < n; i++) {
+        if (out[i] == idx) return n;
+    }
+    out[n] = idx;
+    return n + 1;
+}
+
+/* Under the lock: the entries that open the query's type, the default
+ * first. For each of the type's kinds in turn (the type, then what it is a
+ * kind of), through the lists in their order: the first installed entry of
+ * a [Default Applications] line is the default (the first found wins);
+ * [Added Associations] add entries, [Removed Associations] take entries out
+ * of what the lists further down and the desktop entries add; then the
+ * entries whose MimeType has the kind, by name. No default line: the first
+ * of the rest is the default. Returns how many. */
+static int candidates_locked(const open_query_t *q, int *out, int max)
+{
+    static char removed[IDS_MAX * 4][256];
+    int nremoved = 0;
+    int def = -1;
+    int n = 0;
+    int nfiles = linux_mime_lists_count(q->lists);
+    for (int c = 0; c < q->nchain; c++) {
+        const char *t = q->chain[c];
+        for (int f = 0; f < nfiles; f++) {
+            char ids[IDS_MAX][256];
+            int k;
+            if (def < 0) {
+                k = split_ids(linux_mime_lists_get(q->lists, f, LINUX_MIME_DEFAULT, t), ids, IDS_MAX);
+                for (int i = 0; i < k && def < 0; i++) def = entry_index_locked(ids[i]);
+            }
+            k = split_ids(linux_mime_lists_get(q->lists, f, LINUX_MIME_ADDED, t), ids, IDS_MAX);
+            for (int i = 0; i < k; i++) {
+                if (!in_ids(removed, nremoved, ids[i])) n = add_cand(out, n, max, entry_index_locked(ids[i]));
+            }
+            k = split_ids(linux_mime_lists_get(q->lists, f, LINUX_MIME_REMOVED, t), ids, IDS_MAX);
+            for (int i = 0; i < k && nremoved < IDS_MAX * 4; i++) {
+                memcpy(removed[nremoved++], ids[i], 256);
+            }
+        }
+        for (int i = 0; i < s.n; i++) {
+            if (s.e[i].mime != NULL && list_has(s.e[i].mime, t) && !in_ids(removed, nremoved, s.e[i].id)) {
+                n = add_cand(out, n, max, i);
+            }
+        }
+    }
+    if (def < 0) return n;
+    int m = 0;
+    int tmp[CANDS_MAX];
+    tmp[m++] = def;
+    for (int i = 0; i < n && m < CANDS_MAX && m < max; i++) {
+        if (out[i] != def) tmp[m++] = out[i];
+    }
+    memcpy(out, tmp, (size_t)m * sizeof(int));
+    return m;
+}
+
+int32_t linux_apps_handlers(const char *path, char *buf, size_t cap)
+{
+    if (!linux_apps_available() || path == NULL) return -1;
+    char desktop[64];
+    pthread_mutex_lock(&s.lock);
+    snprintf(desktop, sizeof(desktop), "%s", s.desktop);
+    pthread_mutex_unlock(&s.lock);
+    open_query_t q;
+    query_load(&q, path, desktop);
+    size_t len = 0;
+    put(buf, cap, &len, "type\t");
+    put(buf, cap, &len, q.type);
+    put(buf, cap, &len, "\n");
+    pthread_mutex_lock(&s.lock);
+    if (s.ready) {
+        int idx[CANDS_MAX];
+        int n = candidates_locked(&q, idx, CANDS_MAX);
+        for (int i = 0; i < n; i++) {
+            put(buf, cap, &len, s.e[idx[i]].name);
+            put(buf, cap, &len, "\t");
+            put(buf, cap, &len, s.e[idx[i]].id);
+            put(buf, cap, &len, "\n");
+        }
+    }
+    pthread_mutex_unlock(&s.lock);
+    linux_mime_lists_free(q.lists);
+    return len > 0x7fffffff ? -1 : (int32_t)len;
+}
+
+/* Under the lock: entry e opening path, queued. 0, or -1 with why. */
+static int queue_open_locked(const entry_t *e, const char *path, char *why, size_t why_cap)
+{
+    if (s.qn >= QUEUE_MAX) {
+        snprintf(why, why_cap, "too many programs waiting to start");
+        return -1;
+    }
+    char **argv = linux_apps_split_exec_open(e->exec, e->name, e->iconname, e->file, path);
+    if (argv == NULL) {
+        snprintf(why, why_cap, "%s: its Exec cannot be read", e->id);
+        return -1;
+    }
+    const char *exe = e->prog;
+    if (e->terminal) {
+        if (s.term[0] == '\0') {
+            linux_apps_free_argv(argv);
+            snprintf(why, why_cap, "%s runs in a terminal, and there is none", e->id);
+            return -1;
+        }
+        int n = 0;
+        while (argv[n] != NULL) n++;
+        char **t = calloc((size_t)n + 3, sizeof(char *));
+        if (t == NULL) {
+            linux_apps_free_argv(argv);
+            snprintf(why, why_cap, "out of memory");
+            return -1;
+        }
+        t[0] = strdup(s.term_foot ? "foot" : "x-terminal-emulator");
+        t[1] = strdup(s.term_foot ? "--" : "-e");
+        for (int i = 0; i < n; i++) t[i + 2] = argv[i];
+        free(argv);
+        argv = t;
+        exe = s.term;
+    }
+    launch_t *l = &s.q[s.qn];
+    memset(l, 0, sizeof(*l));
+    l->argv = argv;
+    l->exe = dup_str(exe);
+    l->dir = dup_str(e->dir);
+    l->name = dup_str(e->name);
+    l->key = dup_str(e->key);
+    l->idkey = dup_str(e->idkey);
+    if (l->exe == NULL || l->name == NULL) {
+        linux_apps_free_argv(l->argv);
+        free(l->exe);
+        free(l->dir);
+        free(l->name);
+        free(l->key);
+        free(l->idkey);
+        snprintf(why, why_cap, "out of memory");
+        return -1;
+    }
+    s.qn++;
+    return 0;
+}
+
+int linux_apps_open(const char *id, const char *path, char *name, size_t name_cap, char *why, size_t why_cap)
+{
+    char dummy[8];
+    if (why == NULL || why_cap == 0) {
+        why = dummy;
+        why_cap = sizeof(dummy);
+    }
+    why[0] = '\0';
+    if (name != NULL && name_cap > 0) name[0] = '\0';
+    if (!linux_apps_available()) {
+        snprintf(why, why_cap, "no Linux applications here");
+        return -1;
+    }
+    struct stat st;
+    if (path == NULL || path[0] != '/' || stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        snprintf(why, why_cap, "%s is not a file", path ? path : "(none)");
+        return -1;
+    }
+    char desktop[64];
+    pthread_mutex_lock(&s.lock);
+    snprintf(desktop, sizeof(desktop), "%s", s.desktop);
+    pthread_mutex_unlock(&s.lock);
+    bool by_default = id == NULL || id[0] == '\0';
+    open_query_t q;
+    if (by_default) query_load(&q, path, desktop);
+    pthread_mutex_lock(&s.lock);
+    int rc = -1;
+    int idx = -1;
+    if (!s.ready) {
+        snprintf(why, why_cap, "the applications are still being read");
+    } else if (by_default) {
+        int c[CANDS_MAX];
+        int n = candidates_locked(&q, c, CANDS_MAX);
+        if (n > 0) idx = c[0];
+        else snprintf(why, why_cap, "no application opens %s", q.type[0] ? q.type : "files of this kind");
+    } else {
+        idx = entry_index_locked(id);
+        if (idx < 0) snprintf(why, why_cap, "no application %s", id);
+    }
+    if (idx >= 0) {
+        rc = queue_open_locked(&s.e[idx], path, why, why_cap);
+        if (name != NULL && name_cap > 0) copy_utf8(name, name_cap, s.e[idx].name);
+    }
+    pthread_mutex_unlock(&s.lock);
+    if (by_default) linux_mime_lists_free(q.lists);
     return rc;
 }
 

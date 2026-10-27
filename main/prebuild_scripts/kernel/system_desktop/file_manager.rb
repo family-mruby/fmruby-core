@@ -35,8 +35,16 @@ module FileManagerMixin
   # letter, and Delete stays on the Delete key rather than a letter that could
   # be hit while reaching for something else.
   FMGR_CTX_KEYS = {
-    "Run" => "Ent", "Edit" => "E", "Copy" => "C", "Delete" => "Del", "Paste" => "V"
+    "Run" => "Ent", "Edit" => "E", "Copy" => "C", "Delete" => "Del", "Paste" => "V", "Linux" => "L"
   }
+
+  # "Open in a Linux app" (L11): the menu item, on the machines that have
+  # Linux apps (the PC's compositor) and only there. It opens a second menu,
+  # the apps that open the file, the default first; FMGR_LX_PAGE of them at
+  # a time, then "Other..." for the next ones.
+  FMGR_CTX_LINUX = "Linux"
+  FMGR_LX_PAGE = 6
+  FMGR_LX_MIN_W = 100
 
 
   # The panel's size. The mouse desktop shows a window of FMGR_W x FMGR_H;
@@ -58,6 +66,11 @@ module FileManagerMixin
     @fmgr_ctx_y = 0
     @fmgr_ctx_idx = -1
     @fmgr_copy_path = nil
+    @fmgr_lx_open = false
+    # Asked once per opening: "" on every machine without Linux apps (the
+    # devices, the simulation, the browser, a native machine that is not the
+    # compositor), so the item and the Linux defaults are never offered there.
+    @fmgr_linux = FmrbApp.linux_apps(2, FmrbI18n.lang) != ""
     close_launcher
     close_dropdown
     scan_file_manager_dir
@@ -70,6 +83,7 @@ module FileManagerMixin
     return unless @file_manager_open
     @file_manager_open = false
     @fmgr_ctx_open = false
+    @fmgr_lx_open = false
     @ui.set_visible(:fmgr_sb, false)
     @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
@@ -243,6 +257,7 @@ module FileManagerMixin
 
     # Context menu (drawn on top)
     draw_fmgr_context_menu if @fmgr_ctx_open
+    draw_fmgr_linux_menu if @fmgr_lx_open
   end
 
   FMGR_SB_W = 10
@@ -269,18 +284,31 @@ module FileManagerMixin
     cx = @fmgr_ctx_x
     cy = @fmgr_ctx_y
     ch = FMGR_CTX_ITEM_H * items.size + 2
+    cw = fmgr_ctx_w(items)
 
-    @gfx.fill_rect(cx, cy, FMGR_CTX_W, ch, FMGR_CTX_BG)
-    @gfx.draw_rect(cx, cy, FMGR_CTX_W, ch, FMGR_CTX_BORDER)
+    @gfx.fill_rect(cx, cy, cw, ch, FMGR_CTX_BG)
+    @gfx.draw_rect(cx, cy, cw, ch, FMGR_CTX_BORDER)
 
     items.each_with_index do |label, i|
       iy = cy + 1 + i * FMGR_CTX_ITEM_H
-      @gfx.draw_text(cx + 6, iy + 3, label, FMGR_CTX_TEXT, FMGR_CTX_BG)
+      if label == FMGR_CTX_LINUX
+        # The one item in the user's language (Japanese needs the mixed font).
+        @gfx.draw_text_mixed(cx + 6, iy + 3, FmrbI18n.t(:fmgr_open_linux), FMGR_CTX_TEXT)
+      else
+        @gfx.draw_text(cx + 6, iy + 3, label, FMGR_CTX_TEXT, FMGR_CTX_BG)
+      end
       key = FMGR_CTX_KEYS[label]
       # Right-aligned, at 6 pixels per character (the system font's advance).
-      @gfx.draw_text(cx + FMGR_CTX_W - 4 - key.length * 6, iy + 3, key,
+      @gfx.draw_text(cx + cw - 4 - key.length * 6, iy + 3, key,
                      FMGR_SIZE_COLOR, FMGR_CTX_BG) if key
     end
+  end
+
+  # The menu's width: FMGR_CTX_W, wider when the Linux item's label needs it.
+  def fmgr_ctx_w(items)
+    return FMGR_CTX_W unless items.include?(FMGR_CTX_LINUX)
+    w = FmrbI18n.text_width(FmrbI18n.t(:fmgr_open_linux)) + 6 + 12 + 6 + 4
+    w > FMGR_CTX_W ? w : FMGR_CTX_W
   end
 
   def fmgr_ctx_items
@@ -295,6 +323,7 @@ module FileManagerMixin
       else
         items = FMGR_CTX_ITEMS_FILE.dup
         items.delete("Run") unless fmgr_runnable?(entry[:name])
+        items << FMGR_CTX_LINUX if @fmgr_linux && !entry[:special]
       end
     end
 
@@ -352,7 +381,16 @@ module FileManagerMixin
     had_pressed = @fmgr_pressed_idx >= 0
     @fmgr_pressed_idx = -1
 
-    # Context menu takes priority
+    # The Linux apps' menu, then the context menu, take priority
+    if @fmgr_lx_open
+      if hit_fmgr_linux_menu?(x, y)
+        fmgr_linux_choose((y - @fmgr_lx_y - 1) / FMGR_CTX_ITEM_H)
+      else
+        @fmgr_lx_open = false
+        draw_foreground
+      end
+      return
+    end
     if @fmgr_ctx_open
       if hit_fmgr_context_menu?(x, y)
         handle_fmgr_context_click(x, y)
@@ -415,6 +453,7 @@ module FileManagerMixin
   def handle_file_manager_right_click(x, y)
     # Close existing context menu first
     @fmgr_ctx_open = false
+    @fmgr_lx_open = false
 
     m = fmgr_list_metrics
     list_y = m[:list_y]
@@ -440,8 +479,9 @@ module FileManagerMixin
     @fmgr_ctx_y = y
     # Clamp context menu within file manager window
     ctx_h = FMGR_CTX_ITEM_H * items.size + 2
-    if @fmgr_ctx_x + FMGR_CTX_W > @fmgr_x + fmgr_w
-      @fmgr_ctx_x = @fmgr_x + fmgr_w - FMGR_CTX_W
+    ctx_w = fmgr_ctx_w(items)
+    if @fmgr_ctx_x + ctx_w > @fmgr_x + fmgr_w
+      @fmgr_ctx_x = @fmgr_x + fmgr_w - ctx_w
     end
     if @fmgr_ctx_y + ctx_h > @fmgr_y + fmgr_h
       @fmgr_ctx_y = @fmgr_y + fmgr_h - ctx_h
@@ -454,7 +494,7 @@ module FileManagerMixin
     return false unless @fmgr_ctx_open
     items = fmgr_ctx_items
     ch = FMGR_CTX_ITEM_H * items.size + 2
-    x >= @fmgr_ctx_x && x < @fmgr_ctx_x + FMGR_CTX_W &&
+    x >= @fmgr_ctx_x && x < @fmgr_ctx_x + fmgr_ctx_w(items) &&
       y >= @fmgr_ctx_y && y < @fmgr_ctx_y + ch
   end
 
@@ -477,6 +517,8 @@ module FileManagerMixin
       fmgr_delete_file(@fmgr_ctx_idx)
     when "Paste"
       fmgr_paste_file
+    when FMGR_CTX_LINUX
+      fmgr_open_linux_menu(@fmgr_ctx_idx, true)
     end
   end
 
@@ -558,6 +600,25 @@ module FileManagerMixin
   # keycode is a character on one and an SDL keysym on the other. The letters
   # below do come from the character, since that is what a letter is.
   def handle_file_manager_key(scancode, character)
+    if @fmgr_lx_open
+      # The Linux apps' menu is the one menu with a selection of its own:
+      # arrows move it, Enter takes it, Esc and Tab take the menu down. Any
+      # other key takes it down and acts on the row underneath.
+      case scancode
+      when FmrbConst::KEY_UP
+        fmgr_linux_move(-1)
+        return nil
+      when FmrbConst::KEY_DOWN
+        fmgr_linux_move(1)
+        return nil
+      when FmrbConst::KEY_ENTER
+        fmgr_linux_choose(@fmgr_lx_sel)
+        return nil
+      end
+      @fmgr_lx_open = false
+      draw_foreground
+      return nil if scancode == FmrbConst::KEY_ESC || scancode == FmrbConst::KEY_TAB
+    end
     if @fmgr_ctx_open
       # The menu is in the way of everything: the first key takes it down, and
       # only Esc is spent doing that -- the rest act on the row underneath.
@@ -591,6 +652,8 @@ module FileManagerMixin
         fmgr_copy_file(@file_manager_selected)
       elsif character == 118 || character == 86     # v / V
         fmgr_paste_file
+      elsif (character == 108 || character == 76) && @fmgr_linux  # l / L
+        fmgr_open_linux_menu(@file_manager_selected, false)
       end
     end
     nil  # same reason as fmgr_activate
@@ -695,7 +758,18 @@ module FileManagerMixin
     vpath = fmgr_selected_virtual_path
     return unless vpath
 
-    action = FmrbAssoc.resolve(vpath)
+    # A kind of file the table does not list goes to Linux's default app
+    # where there are Linux apps (L11), and to the editor as before where
+    # there are none or Linux has no app for it.
+    action = fmgr_assoc_listed(vpath)
+    unless action
+      return nil if @fmgr_linux && fmgr_linux_open("", vpath, entry[:name], false)
+      action = FmrbAssoc::EDIT
+    end
+    if fmgr_assoc_linux?(action)
+      fmgr_open_by_table(action, vpath, idx)
+      return nil
+    end
     if action == FmrbAssoc::RUN
       fmgr_run_file(idx)
       return nil
@@ -707,6 +781,204 @@ module FileManagerMixin
     Log.info("File manager: open #{vpath} with #{action}")
     close_file_manager
     spawn_app(action, vpath)
+    nil
+  end
+
+  # ---- Linux apps (L11) ----
+  #
+  # The association table's answer for this file, or nil when the table
+  # does not list its kind (FmrbAssoc.resolve would answer "edit" then).
+  def fmgr_assoc_listed(vpath)
+    ext = FmrbAssoc.extension_of(vpath)
+    return nil if ext.empty?
+    FmrbAssoc.load_table[ext]
+  end
+
+  # A table answer that names a Linux app: "linux" (Linux's default for the
+  # file's kind) or "linux:<desktop file id>".
+  def fmgr_assoc_linux?(action)
+    action == "linux" || action.start_with?("linux:")
+  end
+
+  # The table says Linux. Where there are no Linux apps the line means
+  # nothing, and the file opens the way an unlisted one does: the editor.
+  def fmgr_open_by_table(action, vpath, idx)
+    unless @fmgr_linux
+      Log.info("File manager: #{vpath}: \"#{action}\" needs Linux apps; the editor instead")
+      fmgr_edit_file(idx)
+      return nil
+    end
+    id = action == "linux" ? "" : action[6, action.length - 6]
+    entry = @file_manager_entries[idx]
+    fmgr_linux_open(id, vpath, entry[:name], true)
+    nil
+  end
+
+  # Ask for vpath to be opened in the Linux app id ("": Linux's default for
+  # its kind). The File Manager closes, as it does for an app of ours. When
+  # nothing starts: with tell, a notice says so; without, the caller goes on
+  # (false).
+  def fmgr_linux_open(id, vpath, name, tell)
+    app = FmrbApp.linux_open(id, vpath)
+    if app.empty?
+      Log.info("File manager: no Linux app opened #{vpath}#{id.empty? ? '' : ' (' + id + ')'}")
+      if tell
+        what = id.empty? ? "no Linux app opens this kind of file" : "#{id} could not start"
+        fmgr_notice("Cannot open #{name}:\n#{what}.")
+      end
+      return false
+    end
+    Log.info("File manager: open #{vpath} in the Linux app #{app}")
+    close_file_manager
+    true
+  end
+
+  # The menu of the Linux apps that open the file at idx: where the context
+  # menu was (at_menu), else under the row (the L key).
+  def fmgr_open_linux_menu(idx, at_menu)
+    return nil if idx < 0 || idx >= @file_manager_entries.size
+    entry = @file_manager_entries[idx]
+    return nil if entry[:is_dir] || entry[:special] || entry[:name] == ".."
+    vpath = @file_manager_dir == "/" ? "/#{entry[:name]}" : "#{@file_manager_dir}/#{entry[:name]}"
+    text = FmrbApp.linux_handlers(vpath)
+    apps = []
+    lines = text.split("\n")
+    type = ""
+    i = 0
+    while i < lines.size
+      parts = lines[i].split("\t")
+      if i == 0
+        type = parts.size > 1 ? parts[1] : ""
+      elsif parts.size >= 2
+        apps << [parts[0], parts[1]]
+      end
+      i += 1
+    end
+    if apps.empty?
+      Log.info("File manager: no Linux app opens #{vpath} (#{type.empty? ? 'kind not known' : type})")
+      fmgr_notice("No Linux app opens #{entry[:name]}#{type.empty? ? '' : "\n(#{type})"}.")
+      return nil
+    end
+    Log.info("File manager: Linux apps for #{vpath} (#{type}): #{apps.size}")
+    @fmgr_lx_apps = apps
+    @fmgr_lx_path = vpath
+    @fmgr_lx_name = entry[:name]
+    @fmgr_lx_page = 0
+    @fmgr_lx_sel = 0
+    @fmgr_ctx_open = false
+    unless at_menu
+      m = fmgr_list_metrics
+      row = idx - @file_manager_scroll
+      row = 0 if row < 0
+      @fmgr_ctx_x = @fmgr_x + fmgr_w / 3
+      @fmgr_ctx_y = m[:list_y] + (row + 1) * FMGR_ITEM_H
+    end
+    @fmgr_lx_open = true
+    fmgr_place_linux_menu
+    draw_foreground
+    nil
+  end
+
+  # The labels of the page shown: the apps of this page, then "Other..."
+  # when more follow. The default (the first app) says so.
+  def fmgr_linux_labels
+    labels = []
+    apps = @fmgr_lx_apps
+    i = @fmgr_lx_page
+    last = @fmgr_lx_page + FMGR_LX_PAGE
+    while i < last && i < apps.size
+      label = apps[i][0]
+      label = "#{label} #{FmrbI18n.t(:fmgr_linux_default)}" if i == 0
+      labels << label
+      i += 1
+    end
+    labels << FmrbI18n.t(:fmgr_linux_other) if apps.size > last
+    labels
+  end
+
+  def fmgr_linux_menu_w
+    w = FMGR_LX_MIN_W
+    labels = fmgr_linux_labels
+    labels.each do |label|
+      lw = FmrbI18n.text_width(label) + 12
+      w = lw if lw > w
+    end
+    max = fmgr_w - 8
+    w > max ? max : w
+  end
+
+  # Inside the File Manager's rectangle (the overlay the kernel composites).
+  def fmgr_place_linux_menu
+    h = FMGR_CTX_ITEM_H * fmgr_linux_labels.size + 2
+    w = fmgr_linux_menu_w
+    x = @fmgr_ctx_x
+    y = @fmgr_ctx_y
+    x = @fmgr_x + fmgr_w - w - 2 if x + w > @fmgr_x + fmgr_w - 2
+    x = @fmgr_x + 2 if x < @fmgr_x + 2
+    y = @fmgr_y + fmgr_h - h - 2 if y + h > @fmgr_y + fmgr_h - 2
+    y = @fmgr_y + FMGR_TITLE_H if y < @fmgr_y + FMGR_TITLE_H
+    @fmgr_lx_x = x
+    @fmgr_lx_y = y
+    nil
+  end
+
+  def draw_fmgr_linux_menu
+    labels = fmgr_linux_labels
+    w = fmgr_linux_menu_w
+    h = FMGR_CTX_ITEM_H * labels.size + 2
+    x = @fmgr_lx_x
+    y = @fmgr_lx_y
+    @gfx.fill_rect(x, y, w, h, FMGR_CTX_BG)
+    @gfx.draw_rect(x, y, w, h, FMGR_CTX_BORDER)
+    i = 0
+    while i < labels.size
+      iy = y + 1 + i * FMGR_CTX_ITEM_H
+      label = FmrbI18n.truncate_to(labels[i], w - 10)
+      if i == @fmgr_lx_sel
+        @gfx.fill_rect(x + 1, iy, w - 2, FMGR_CTX_ITEM_H, FMGR_CTX_HL)
+        @gfx.draw_text_mixed(x + 5, iy + 3, label, FmrbConst::THEME_TEXT_LIGHT)
+      else
+        @gfx.draw_text_mixed(x + 5, iy + 3, label, FMGR_CTX_TEXT)
+      end
+      i += 1
+    end
+    nil
+  end
+
+  def hit_fmgr_linux_menu?(x, y)
+    return false unless @fmgr_lx_open
+    h = FMGR_CTX_ITEM_H * fmgr_linux_labels.size + 2
+    x >= @fmgr_lx_x && x < @fmgr_lx_x + fmgr_linux_menu_w && y >= @fmgr_lx_y && y < @fmgr_lx_y + h
+  end
+
+  def fmgr_linux_move(delta)
+    n = fmgr_linux_labels.size
+    sel = @fmgr_lx_sel + delta
+    sel = 0 if sel < 0
+    sel = n - 1 if sel >= n
+    return nil if sel == @fmgr_lx_sel
+    @fmgr_lx_sel = sel
+    draw_foreground
+    nil
+  end
+
+  # Row i of the menu taken: an app opens the file, "Other..." shows the
+  # next page.
+  def fmgr_linux_choose(i)
+    n = fmgr_linux_labels.size
+    return nil if i < 0 || i >= n
+    at = @fmgr_lx_page + i
+    if at >= @fmgr_lx_page + FMGR_LX_PAGE
+      @fmgr_lx_page += FMGR_LX_PAGE
+      @fmgr_lx_sel = 0
+      fmgr_place_linux_menu
+      draw_foreground
+      return nil
+    end
+    app = @fmgr_lx_apps[at]
+    @fmgr_lx_open = false
+    Log.info("File manager: chose the Linux app #{app[1]} for #{@fmgr_lx_path}")
+    draw_foreground unless fmgr_linux_open(app[1], @fmgr_lx_path, @fmgr_lx_name, true)
     nil
   end
 
@@ -878,6 +1150,7 @@ module FileManagerMixin
     if @fmgr_ctx_open && hit_fmgr_context_menu?(x, y)
       return true
     end
+    return true if @fmgr_lx_open && hit_fmgr_linux_menu?(x, y)
     x >= @fmgr_x && x < @fmgr_x + fmgr_w &&
       y >= @fmgr_y && y < @fmgr_y + fmgr_h
   end

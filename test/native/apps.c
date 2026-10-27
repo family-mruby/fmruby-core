@@ -34,6 +34,7 @@
 #endif
 
 #include "linux_apps.h"
+#include "linux_mime.h"
 
 static int g_fail = 0;
 static int g_count = 0;
@@ -131,6 +132,27 @@ static void test_split(void)
     }
     CHECK(linux_apps_split_exec("", NULL, NULL, NULL) == NULL, "empty Exec gives no argv");
     CHECK(linux_apps_split_exec("%U", NULL, NULL, NULL) == NULL, "only a field code gives no argv");
+
+    // With a file to open (L11): the first file code takes it, inside an
+    // argument too; none: the file goes last.
+    struct {
+        const char *exec;
+        const char *want[8];
+    } open_cases[] = {
+        { "viewer %f", { "viewer", "/h/a b.pdf", NULL } },
+        { "viewer %U --x", { "viewer", "/h/a b.pdf", "--x", NULL } },
+        { "viewer --file=%u", { "viewer", "--file=/h/a b.pdf", NULL } },
+        { "viewer %F %U", { "viewer", "/h/a b.pdf", NULL } },
+        { "viewer --new", { "viewer", "--new", "/h/a b.pdf", NULL } },
+        { "viewer \"%f\"", { "viewer", "%f", "/h/a b.pdf", NULL } },
+    };
+    for (size_t i = 0; i < sizeof(open_cases) / sizeof(open_cases[0]); i++) {
+        char **a = linux_apps_split_exec_open(open_cases[i].exec, "V", NULL, "/x/v.desktop", "/h/a b.pdf");
+        char got[256];
+        show(a, got, sizeof(got));
+        CHECK(argv_is(a, open_cases[i].want), "split \"%s\" with a file gave %s", open_cases[i].exec, got);
+        linux_apps_free_argv(a);
+    }
 }
 
 #if NATIVE_HAVE_PNG
@@ -493,6 +515,192 @@ static void test_plasma_qt(void)
           "Plasma's Qt 6 theme: %s", found);
 }
 
+static char g_handlers[8192];
+
+static int32_t handlers(const char *rel)
+{
+    char path[600];
+    snprintf(path, sizeof(path), "%s/%s", g_root, rel);
+    int32_t n = linux_apps_handlers(path, g_handlers, sizeof(g_handlers) - 1);
+    if (n >= 0 && (size_t)n < sizeof(g_handlers)) g_handlers[n] = '\0';
+    return n;
+}
+
+// What a started fakeopen was given ("" when nothing came in time).
+static const char *opened(void)
+{
+    char path[600];
+    snprintf(path, sizeof(path), "%s/opened", g_root);
+    char *out = NULL;
+    for (int i = 0; i < 200; i++) {
+        linux_apps_pump();
+        out = read_file(path);
+        if (out != NULL && strchr(out, '\n') != NULL) break;
+        nap(10);
+    }
+    static char got[1024];
+    snprintf(got, sizeof(got), "%s", out ? out : "");
+    unlink(path);
+    return got;
+}
+
+// Opening a file in a Linux application (L11): a file's type by
+// shared-mime-info's globs (weights, the longest pattern, case, a literal
+// name), by the table of extensions when there are no globs; the kinds of a
+// type (an alias, a subclass, text/plain); the default and the candidates by
+// the mimeapps.list rules (the user's file before the desktop's, the first
+// installed default, Added, Removed, NoDisplay handlers kept, the entries'
+// MimeType); and opening: the path in Exec, the default for a type, an
+// unknown id, an unknown type, Terminal=true.
+static void test_open(void)
+{
+    char path[600];
+    write_file("sys1/mime/globs2",
+               "# comment\n"
+               "50:application/pdf:*.pdf\n"
+               "50:text/x-cpp:*.C:cs\n"
+               "50:text/x-cpp:*.C\n"
+               "50:text/x-csrc:*.c:cs\n"
+               "50:text/x-csrc:*.c\n"
+               "50:text/x-makefile:makefile\n"
+               "80:application/x-tarz:*.tar.z\n"
+               "50:application/x-compress:*.z\n"
+               "50:text/x-weird:*.W:cs\n",
+               0644);
+    write_file("sys1/mime/aliases", "application/x-pdf application/pdf\n", 0644);
+    write_file("sys1/mime/subclasses", "text/x-csrc text/x-c\ntext/x-c text/plain\n", 0644);
+    write_file("bin/fakeopen", "#!/bin/sh\necho \"$*\" > \"$OPEN_OUT\"\n", 0755);
+    write_file("home/applications/pdfview.desktop",
+               "[Desktop Entry]\nType=Application\nName=PDF View\nExec=fakeopen --view %f\n"
+               "MimeType=application/pdf;\n",
+               0644);
+    write_file("home/applications/pdfedit.desktop",
+               "[Desktop Entry]\nType=Application\nName=PDF Edit\nExec=fakeopen --edit %U\n"
+               "MimeType=application/x-pdf;\nNoDisplay=true\n",
+               0644);
+    write_file("home/applications/added.desktop",
+               "[Desktop Entry]\nType=Application\nName=Added\nExec=fakeopen --added\n", 0644);
+    write_file("home/applications/removed.desktop",
+               "[Desktop Entry]\nType=Application\nName=Removed\nExec=fakeopen --removed %f\n"
+               "MimeType=application/pdf;\n",
+               0644);
+    write_file("home/applications/textedit.desktop",
+               "[Desktop Entry]\nType=Application\nName=Text Edit\nExec=fakeopen --text %F\n"
+               "MimeType=text/plain;\n",
+               0644);
+    write_file("home/applications/termview.desktop",
+               "[Desktop Entry]\nType=Application\nName=Term View\nExec=fakeopen --term %f\n"
+               "MimeType=text/x-weird;\nTerminal=true\n",
+               0644);
+    write_file("config/mimeapps.list",
+               "[Default Applications]\napplication/pdf=missing.desktop;pdfedit.desktop;\n"
+               "[Removed Associations]\napplication/pdf=removed.desktop;\n",
+               0644);
+    write_file("config/family-mruby-mimeapps.list",
+               "[Added Associations]\napplication/pdf=added.desktop;\n", 0644);
+    write_file("docs/a.pdf", "%PDF", 0644);
+    write_file("docs/B.PDF", "%PDF", 0644);
+    write_file("docs/x.c", "int x;", 0644);
+    write_file("docs/Makefile", "all:", 0644);
+    write_file("docs/a.tar.z", "z", 0644);
+    write_file("docs/a.W", "w", 0644);
+    write_file("docs/a.w", "w", 0644);
+    write_file("docs/a.zzz", "?", 0644);
+    snprintf(path, sizeof(path), "%s/opened", g_root);
+    setenv("OPEN_OUT", path, 1);
+
+    char t[LINUX_MIME_TYPE_MAX];
+    snprintf(path, sizeof(path), "%s/docs/B.PDF", g_root);
+    CHECK(linux_mime_type(path, t, sizeof(t)) && strcmp(t, "application/pdf") == 0, "B.PDF by a glob, any case");
+    CHECK(linux_mime_type("/d/x.c", t, sizeof(t)) && strcmp(t, "text/x-csrc") == 0,
+          "*.C of another kind, listed with and without cs, does not take x.c: %s", t);
+    CHECK(linux_mime_type("/d/x.C", t, sizeof(t)) && strcmp(t, "text/x-cpp") == 0, "... and takes x.C: %s", t);
+    CHECK(linux_mime_type("/d/Makefile", t, sizeof(t)) && strcmp(t, "text/x-makefile") == 0, "a literal name: %s", t);
+    CHECK(linux_mime_type("/d/a.tar.z", t, sizeof(t)) && strcmp(t, "application/x-tarz") == 0,
+          "the higher weight wins: %s", t);
+    CHECK(linux_mime_type("/d/a.W", t, sizeof(t)) && strcmp(t, "text/x-weird") == 0, "a case-sensitive glob");
+    CHECK(!linux_mime_type("/d/a.w", t, sizeof(t)), "... not in the other case");
+    CHECK(!linux_mime_type("/d/a.zzz", t, sizeof(t)), "nothing matches: no type");
+
+    char chain[LINUX_MIME_CHAIN_MAX][LINUX_MIME_TYPE_MAX];
+    int nc = linux_mime_chain("text/x-csrc", chain, LINUX_MIME_CHAIN_MAX);
+    CHECK(nc == 3 && strcmp(chain[1], "text/x-c") == 0 && strcmp(chain[2], "text/plain") == 0,
+          "subclasses, breadth first (%d)", nc);
+    nc = linux_mime_chain("application/x-pdf", chain, LINUX_MIME_CHAIN_MAX);
+    CHECK(nc == 2 && strcmp(chain[1], "application/pdf") == 0, "an alias's canonical name (%d)", nc);
+    nc = linux_mime_chain("text/x-makefile", chain, LINUX_MIME_CHAIN_MAX);
+    CHECK(nc == 2 && strcmp(chain[1], "text/plain") == 0, "text/... is text/plain too (%d)", nc);
+
+    linux_mime_lists_t *l = linux_mime_lists_load("family-mruby");
+    CHECK(linux_mime_lists_count(l) == 2 && strstr(linux_mime_lists_path(l, 0), "family-mruby-mimeapps.list") != NULL,
+          "the desktop's own list before mimeapps.list (%d files)", linux_mime_lists_count(l));
+    CHECK(linux_mime_lists_get(l, 1, LINUX_MIME_REMOVED, "application/pdf") != NULL, "a removed association");
+    linux_mime_lists_free(l);
+
+    // The table, where no data directory has globs.
+    char *dh = strdup(getenv("XDG_DATA_HOME")), *dd = strdup(getenv("XDG_DATA_DIRS"));
+    snprintf(path, sizeof(path), "%s/empty", g_root);
+    setenv("XDG_DATA_HOME", path, 1);
+    setenv("XDG_DATA_DIRS", path, 1);
+    CHECK(linux_mime_type("/d/report.PDF", t, sizeof(t)) && strcmp(t, "application/pdf") == 0,
+          "no globs2: the table of extensions");
+    setenv("XDG_DATA_HOME", dh, 1);
+    setenv("XDG_DATA_DIRS", dd, 1);
+    free(dh);
+    free(dd);
+
+    list(LINUX_APPS_RESCAN, "en");
+    CHECK(linux_apps_wait_scan(5000), "the entries read again");
+    list(LINUX_APPS_LIST, "en");
+    CHECK(line_of("pdfedit.desktop") == NULL && line_of("pdfview.desktop") != NULL,
+          "a NoDisplay handler is not in the launcher's list");
+
+    CHECK(handlers("docs/a.pdf") > 0 &&
+              strcmp(g_handlers, "type\tapplication/pdf\nPDF Edit\tpdfedit.desktop\nAdded\tadded.desktop\n"
+                                 "PDF View\tpdfview.desktop\n") == 0,
+          "a.pdf: the first installed default (NoDisplay, its MimeType only an alias), Added, MimeType; not the removed one:\n%s",
+          g_handlers);
+    CHECK(handlers("docs/x.c") > 0 && strcmp(g_handlers, "type\ttext/x-csrc\nText Edit\ttextedit.desktop\n") == 0,
+          "x.c: text/plain's entry through the subclasses:\n%s", g_handlers);
+    CHECK(handlers("docs/a.zzz") > 0 && strcmp(g_handlers, "type\t\n") == 0, "an unknown type: nothing:\n%s",
+          g_handlers);
+
+    char name[64], why[256];
+    snprintf(path, sizeof(path), "%s/docs/a.pdf", g_root);
+    char want[700];
+    CHECK(linux_apps_open("", path, name, sizeof(name), why, sizeof(why)) == 0 && strcmp(name, "PDF Edit") == 0,
+          "a.pdf by default: %s (%s)", name, why);
+    snprintf(want, sizeof(want), "--edit %s\n", path);
+    const char *got = opened();
+    CHECK(strcmp(got, want) == 0, "the default got the path: %s", got);
+    CHECK(linux_apps_open("pdfview", path, name, sizeof(name), why, sizeof(why)) == 0, "by an id without .desktop");
+    snprintf(want, sizeof(want), "--view %s\n", path);
+    got = opened();
+    CHECK(strcmp(got, want) == 0, "%%f: %s", got);
+    CHECK(linux_apps_open("added.desktop", path, name, sizeof(name), why, sizeof(why)) == 0, "Added");
+    snprintf(want, sizeof(want), "--added %s\n", path);
+    got = opened();
+    CHECK(strcmp(got, want) == 0, "no field code: the path last: %s", got);
+    CHECK(linux_apps_open("nope.desktop", path, name, sizeof(name), why, sizeof(why)) == -1 &&
+              strstr(why, "no application nope.desktop") != NULL,
+          "an unknown id: %s", why);
+    snprintf(path, sizeof(path), "%s/docs/a.zzz", g_root);
+    CHECK(linux_apps_open(NULL, path, name, sizeof(name), why, sizeof(why)) == -1 &&
+              strstr(why, "no application opens") != NULL,
+          "an unknown type by default: %s", why);
+    snprintf(path, sizeof(path), "%s/docs", g_root);
+    CHECK(linux_apps_open("pdfview", path, name, sizeof(name), why, sizeof(why)) == -1 && strstr(why, "not a file"),
+          "a directory: %s", why);
+    // Terminal=true: in the tree's terminal (bin/foot exits at once, so the
+    // argv is what is looked at: foot -- fakeopen --term <path>).
+    snprintf(path, sizeof(path), "%s/docs/a.W", g_root);
+    CHECK(linux_apps_open("", path, name, sizeof(name), why, sizeof(why)) == 0 && strcmp(name, "Term View") == 0,
+          "Terminal=true by default: %s", why);
+    linux_apps_pump();
+    CHECK(linux_apps_last_pid() > 0, "started in the terminal");
+    linux_apps_end_all(500);
+}
+
 int main(void)
 {
     snprintf(g_root, sizeof(g_root), "/tmp/fmrb-apps-test-%d", (int)getpid());
@@ -509,6 +717,7 @@ int main(void)
     test_tree();
     test_themes();
     test_plasma_qt();
+    test_open();
 
     char cmd[160];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", g_root);
@@ -518,6 +727,6 @@ int main(void)
         return 1;
     }
     printf("native apps: %d checks passed (Exec, the entries and their rules, Name[ja], %s, starting, "
-           "window names, the end)\n", g_count, NATIVE_HAVE_PNG ? "icons" : "no libpng: icons not checked");
+           "window names, the end, opening files)\n", g_count, NATIVE_HAVE_PNG ? "icons" : "no libpng: icons not checked");
     return 0;
 }

@@ -168,8 +168,9 @@ if(NATIVE_HAVE_WLROOTS)
             ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
     DEPENDS ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
   list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
-       # The launcher's Linux applications (L9b): started by the compositor.
-       ${N}/sys/linux_apps.c)
+       # The launcher's Linux applications (L9b): started by the compositor;
+       # files opened in them (L11).
+       ${N}/sys/linux_apps.c ${N}/sys/linux_mime.c)
 endif()
 target_sources(core_objs PRIVATE ${NATIVE_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE

@@ -1974,6 +1974,15 @@ class FmrbApp
     -1
   end
 
+  # Opening a file in a Linux application (L11): the same, none here.
+  def self.linux_handlers(path)
+    ""
+  end
+
+  def self.linux_open(id, path)
+    ""
+  end
+
   # UI language ("en" / "ja"). Read at run time rather than from FmrbConst:
   # that table is generated when the Spinel program is compiled, and the
   # language is a setting the Config app changes.

@@ -25,7 +25,8 @@
  *            belongs to the task that started it and ends with it.
  *   apps     the Linux PC's applications for the launcher (linux_apps.c,
  *            L9b), on the compositor machine only: the compositor starts
- *            them and starts the programs on its own thread.
+ *            them and starts the programs on its own thread. Files are
+ *            opened in them the same way (L11, linux_mime.c for the types).
  */
 
 #include <errno.h>
@@ -41,6 +42,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <linux/wireless.h>
 
@@ -56,6 +58,7 @@
 #include "sys_linux.h"
 #include "linux_pty.h"
 #include "fmrb_hal_file.h"
+#include "fmrb_mem.h"
 #if NATIVE_HAVE_WLROOTS
 #include "linux_apps.h"
 #endif
@@ -369,6 +372,106 @@ static fmrb_err_t linux_apps_launch_entry(const char *id)
     FMRB_LOGI(TAG, "linux app %s: asked to start", id);
     return FMRB_OK;
 }
+
+/* Opening a file in a Linux application (L11). The Family mruby path is
+ * made the file's place on Linux through the file namespace (the file HAL's
+ * table: /mnt/host is the home, /mnt/root is /, /home is the user
+ * directory...), then the real path of a regular file; anything else is
+ * refused. The type and the lists are files, read on a helper thread of the
+ * blocking-call gate. */
+typedef struct {
+    const char *id;
+    char host[PATH_MAX];
+    char *buf;
+    size_t cap;
+    int32_t rc;
+    char name[128];
+    char why[300];
+} open_job_t;
+
+static bool host_file(open_job_t *job)
+{
+    char real[PATH_MAX];
+    struct stat st;
+    if (realpath(job->host, real) == NULL || stat(real, &st) != 0 || !S_ISREG(st.st_mode)) {
+        snprintf(job->why, sizeof(job->why), "not a file on Linux");
+        return false;
+    }
+    snprintf(job->host, sizeof(job->host), "%s", real);
+    return true;
+}
+
+/* On a helper thread of the gate (no FreeRTOS, no fmrb calls). */
+static void handlers_run(void *arg)
+{
+    open_job_t *job = (open_job_t *)arg;
+    job->rc = host_file(job) ? linux_apps_handlers(job->host, job->buf, job->cap) : -1;
+}
+
+static void open_run(void *arg)
+{
+    open_job_t *job = (open_job_t *)arg;
+    job->rc = host_file(job) ? linux_apps_open(job->id, job->host, job->name, sizeof(job->name), job->why,
+                                               sizeof(job->why))
+                             : -1;
+}
+
+static bool resolve_file(const char *path, open_job_t *job)
+{
+    if (path == NULL || fmrb_hal_file_resolve_path(path, job->host, sizeof(job->host)) != FMRB_OK) {
+        snprintf(job->why, sizeof(job->why), "%s has no place on Linux", path ? path : "(none)");
+        return false;
+    }
+    return true;
+}
+
+static void gate_run(void (*run)(void *), open_job_t *job)
+{
+    fmrb_gate_job_t gj;
+    memset(&gj, 0, sizeof(gj));
+    gj.run = run;
+    gj.arg = job;
+    if (fmrb_gate_call(&gj) == FMRB_GATE_UNAVAILABLE) run(job);
+}
+
+static int32_t linux_apps_handlers_entry(const char *path, char *buf, size_t cap)
+{
+    if (!linux_apps_available()) return -1;
+    open_job_t *job = (open_job_t *)fmrb_sys_malloc(sizeof(open_job_t));
+    if (job == NULL) return -1;
+    memset(job, 0, sizeof(*job));
+    job->buf = buf;
+    job->cap = cap;
+    job->rc = -1;
+    if (resolve_file(path, job)) gate_run(handlers_run, job);
+    if (job->rc < 0) FMRB_LOGW(TAG, "linux apps for %s: %s", path ? path : "(none)", job->why);
+    int32_t rc = job->rc;
+    fmrb_sys_free(job);
+    return rc;
+}
+
+static fmrb_err_t linux_apps_open_entry(const char *id, const char *path, char *name, size_t name_cap,
+                                        char *why, size_t why_cap)
+{
+    if (!linux_apps_available()) return FMRB_ERR_NOT_SUPPORTED;
+    open_job_t *job = (open_job_t *)fmrb_sys_malloc(sizeof(open_job_t));
+    if (job == NULL) return FMRB_ERR_NO_MEMORY;
+    memset(job, 0, sizeof(*job));
+    job->id = id;
+    job->rc = -1;
+    if (resolve_file(path, job)) gate_run(open_run, job);
+    fmrb_err_t err = FMRB_OK;
+    if (job->rc != 0) {
+        FMRB_LOGW(TAG, "open %s in %s: %s", path ? path : "(none)", (id && id[0]) ? id : "the default", job->why);
+        err = FMRB_ERR_NOT_FOUND;
+    } else {
+        FMRB_LOGI(TAG, "open %s (%s) in \"%s\": asked to start", path, job->host, job->name);
+    }
+    if (name != NULL && name_cap > 0) snprintf(name, name_cap, "%s", job->name);
+    if (why != NULL && why_cap > 0) snprintf(why, why_cap, "%s", job->why);
+    fmrb_sys_free(job);
+    return err;
+}
 #endif
 
 static const fmrb_platform_sys_t s_linux_sys = {
@@ -391,6 +494,8 @@ static const fmrb_platform_sys_t s_linux_sys = {
 #if NATIVE_HAVE_WLROOTS
     .apps_list = linux_apps_list_entry,
     .apps_launch = linux_apps_launch_entry,
+    .apps_handlers = linux_apps_handlers_entry,
+    .apps_open = linux_apps_open_entry,
 #endif
 };
 

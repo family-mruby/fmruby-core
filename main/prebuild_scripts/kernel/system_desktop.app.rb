@@ -211,6 +211,16 @@ class SystemDesktopApp < FmrbApp
     @fmgr_ctx_x = 0
     @fmgr_ctx_y = 0
     @fmgr_ctx_idx = -1
+    # The Linux apps' menu (file_manager.rb, L11).
+    @fmgr_linux = false
+    @fmgr_lx_open = false
+    @fmgr_lx_apps = []
+    @fmgr_lx_path = ""
+    @fmgr_lx_name = ""
+    @fmgr_lx_page = 0
+    @fmgr_lx_sel = 0
+    @fmgr_lx_x = 0
+    @fmgr_lx_y = 0
     @fmgr_copy_path = nil
     @fmgr_copy_is_dir = false
     @fmgr_delete_path = nil

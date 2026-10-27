@@ -26,7 +26,8 @@
  *              for those; the group's mark, a penguin, is the launcher's
  *              too: flash/usr/share/icon).
  *   starting   by the entry's id: Exec split by the Desktop Entry rules
- *              (quoting, field codes; no files are passed), started without
+ *              (quoting, field codes; no files are passed from the
+ *              launcher, a file from linux_apps_open), started without
  *              a shell on the compositor's main thread in a session of its
  *              own, with the program's environment (WAYLAND_DISPLAY and
  *              DISPLAY are the compositor's) and XDG_CURRENT_DESKTOP set to
@@ -98,11 +99,32 @@ int32_t linux_apps_list(int mode, const char *lang, char *buf, size_t cap);
  * -1: no such entry / too many waiting. */
 int linux_apps_launch(const char *id);
 
+/* Opening a file in a Linux application (L11; the type and the lists:
+ * linux_mime.h). path is a host path. The entries that open the file's
+ * type, the default first, as text into buf (as list() does):
+ *   "type\t<type, or empty when not known>\n", then per entry
+ *   "<name>\t<desktop file id>\n"
+ * The entries are all of them, NoDisplay=true ones included (a type's
+ * handler is often one of those), not only the launcher's. -1 when not
+ * available. Reads the type and the lists (small files) on the caller's
+ * thread. */
+int32_t linux_apps_handlers(const char *path, char *buf, size_t cap);
+/* Ask for path to be opened (on the next pump) in the entry with this id
+ * ("" or NULL: the default for its type). Exec's %f %F %u %U become the
+ * path (no field code: the path goes last); Terminal=true runs in the
+ * terminal as the launcher does. 0, with the entry's name into name; -1
+ * with why (no such entry, no application for the type, not a file, too
+ * many waiting). */
+int linux_apps_open(const char *id, const char *path, char *name, size_t name_cap, char *why, size_t why_cap);
+
 /* ---- for the tests ---- */
 
 /* Exec split by the Desktop Entry rules into a NULL-terminated, malloc'd
  * argv (linux_apps_free_argv). name, icon and file give %c, %i and %k. */
 char **linux_apps_split_exec(const char *exec, const char *name, const char *icon, const char *file);
+/* The same, with a file to open (L11): see linux_apps_open. */
+char **linux_apps_split_exec_open(const char *exec, const char *name, const char *icon, const char *file,
+                                  const char *open);
 void linux_apps_free_argv(char **argv);
 /* Wait (tests only) until no read of the entries is under way. */
 bool linux_apps_wait_scan(int timeout_ms);

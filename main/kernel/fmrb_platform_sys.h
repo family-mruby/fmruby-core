@@ -124,6 +124,20 @@ typedef struct {
      * entry with that id to be started; neither waits. */
     int32_t (*apps_list)(int mode, const char *lang, char *buf, size_t cap);
     fmrb_err_t (*apps_launch)(const char *id);
+
+    /* Opening a file in a Linux application (L11). path is a Family mruby
+     * path (/mnt/host/..., /home/...), made the file's place on Linux
+     * here; one that has none is refused. apps_handlers writes the
+     * applications that open it, the default first, as text into buf
+     * (native/sys/linux_apps.h: "type\t<type>" then "name\tid" per entry)
+     * and returns its length (more than cap: nothing written, ask again
+     * with room), or -1 when this machine has none or the file has no place
+     * on Linux. apps_open asks for it to be opened in the entry with that
+     * id ("": the default for its type); the entry's name goes into name,
+     * the reason it did not into why. Neither waits for the application. */
+    int32_t (*apps_handlers)(const char *path, char *buf, size_t cap);
+    fmrb_err_t (*apps_open)(const char *id, const char *path, char *name, size_t name_cap,
+                            char *why, size_t why_cap);
 } fmrb_platform_sys_t;
 
 /** The table in use: the default one unless a platform installed its own. */
@@ -157,6 +171,11 @@ void fmrb_platform_sys_proc_close(int32_t id);
  * machine without them. */
 int32_t fmrb_platform_sys_apps_list(int mode, const char *lang, char *buf, size_t cap);
 fmrb_err_t fmrb_platform_sys_apps_launch(const char *id);
+/* Opening a file in a Linux application: -1 / FMRB_ERR_NOT_SUPPORTED on
+ * every machine without them. */
+int32_t fmrb_platform_sys_apps_handlers(const char *path, char *buf, size_t cap);
+fmrb_err_t fmrb_platform_sys_apps_open(const char *id, const char *path, char *name, size_t name_cap,
+                                       char *why, size_t why_cap);
 
 #ifdef __cplusplus
 }

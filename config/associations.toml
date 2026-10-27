@@ -4,14 +4,24 @@
 # this file -- not flash/etc/associations.toml -- is the one to edit. A user
 # overrides any line of it in /home/associations.toml, per extension.
 #
-# One line per extension, no dot, and one of three answers:
+# One line per extension, no dot, and one of these answers:
 #   "run"        the file IS a program: spawn it
 #   "edit"       open it in the editor
 #   "/app/..."   spawn that app and hand it the file
+#   "linux"      Linux's default app for the file's kind (the PC only, below)
+#   "linux:<id>" that Linux app: its desktop file id, ".desktop" optional
 #
-# An extension that is not listed gets "edit". A directory is never opened
-# this way. The table is read once when an app starts, so a change takes
-# effect the next time it does.
+# An extension that is not listed gets "edit" -- except on the PC with Linux
+# apps (the compositor), where the File Manager opens it in Linux's default
+# app for its kind (xdg-mime, mimeapps.list) and falls back to the editor
+# only when Linux has none. A "linux" line on a machine without Linux apps
+# opens the editor. A directory is never opened this way. The table is read
+# once when an app starts, so a change takes effect the next time it does.
+#
+# For example, in /home/associations.toml:
+#   pdf  = "linux"                        # Linux's default PDF viewer
+#   html = "linux:firefox"                # always Firefox
+#   txt  = "linux:org.kde.kate.desktop"   # Kate rather than our editor
 
 # Programs run themselves.
 rb  = "run"

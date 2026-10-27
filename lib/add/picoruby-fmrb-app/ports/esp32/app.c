@@ -1555,6 +1555,48 @@ static mrb_value mrb_fmrb_app_s_linux_launch(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value(fmrb_platform_sys_apps_launch(id) == FMRB_OK ? 0 : -1);
 }
 
+// ---- Opening a file in a Linux application (doc/linux_native L11) ----
+//
+// FmrbApp.linux_handlers(path) -> String. "" on every machine without Linux
+//   applications, and for a file with no place on Linux. Else
+//   "type\t<MIME type, or empty>\n", then "name\tid\n" for each application
+//   that opens it, the default first. path is a Family mruby path.
+// FmrbApp.linux_open(id, path) -> String. The application's name when it was
+//   asked to start (id "" is the default for the file's type), "" when not
+//   (the reason is in the log). Never waits for the application.
+static mrb_value mrb_fmrb_app_s_linux_handlers(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *path;
+    mrb_get_args(mrb, "z", &path);
+    size_t cap = 2048;
+    for (int tries = 0; tries < 3; tries++) {
+        mrb_value str = mrb_str_new_capa(mrb, cap);
+        int32_t got = fmrb_platform_sys_apps_handlers(path, RSTRING_PTR(str), cap);
+        if (got < 0) return mrb_str_new_lit(mrb, "");
+        if ((size_t)got <= cap) {
+            mrb_str_resize(mrb, str, got);
+            return str;
+        }
+        cap = (size_t)got + 256;
+    }
+    return mrb_str_new_lit(mrb, "");
+}
+
+static mrb_value mrb_fmrb_app_s_linux_open(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *id;
+    const char *path;
+    mrb_get_args(mrb, "zz", &id, &path);
+    char name[128];
+    name[0] = '\0';
+    if (fmrb_platform_sys_apps_open(id, path, name, sizeof(name), NULL, 0) != FMRB_OK) {
+        return mrb_str_new_lit(mrb, "");
+    }
+    return name[0] ? mrb_str_new_cstr(mrb, name) : mrb_str_new_lit(mrb, "?");
+}
+
 #if defined(FMRB_PLATFORM_NATIVE)
 // ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
 //
@@ -2099,6 +2141,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, app_class, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "linux_handlers", mrb_fmrb_app_s_linux_handlers, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "linux_open", mrb_fmrb_app_s_linux_open, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, app_class, "linux_start", mrb_fmrb_app_s_linux_start, MRB_ARGS_REQ(4));
     mrb_define_class_method(mrb, app_class, "linux_read", mrb_fmrb_app_s_linux_read, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_write", mrb_fmrb_app_s_linux_write, MRB_ARGS_REQ(2));

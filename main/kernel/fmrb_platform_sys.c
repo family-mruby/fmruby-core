@@ -256,3 +256,16 @@ fmrb_err_t fmrb_platform_sys_apps_launch(const char *id)
     const fmrb_platform_sys_t *s = fmrb_platform_sys();
     return s->apps_launch ? s->apps_launch(id) : FMRB_ERR_NOT_SUPPORTED;
 }
+
+int32_t fmrb_platform_sys_apps_handlers(const char *path, char *buf, size_t cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->apps_handlers ? s->apps_handlers(path, buf, cap) : -1;
+}
+
+fmrb_err_t fmrb_platform_sys_apps_open(const char *id, const char *path, char *name, size_t name_cap,
+                                       char *why, size_t why_cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->apps_open ? s->apps_open(id, path, name, name_cap, why, why_cap) : FMRB_ERR_NOT_SUPPORTED;
+}
