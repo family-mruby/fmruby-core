@@ -203,12 +203,14 @@ class SystemDesktopApp < FmrbApp
     @fmgr_ctx_idx = -1
     @fmgr_copy_path = nil
     @fmgr_copy_is_dir = false
+    @fmgr_delete_path = nil
 
     # Confirm dialog state
     @cdlg_open = false
     @cdlg_message = nil
     @cdlg_on_yes_cmd = nil
     @cdlg_on_yes_data = nil
+    @cdlg_on_yes_local = nil
     @cdlg_x = 0
     @cdlg_y = 0
 
@@ -1790,6 +1792,24 @@ class SystemDesktopApp < FmrbApp
     end
     nil  # keep a concrete return: a branch (FmrbApp.reboot) is noreturn, which
          # would otherwise make the if/elsif value void (Spinel)
+  end
+
+  # ---- Questions answered inside the desktop (ConfirmDialogMixin) ----
+
+  # The File Manager's delete asks on the confirm dialog (L7c).
+  def fmgr_ask_delete(message)
+    open_local_confirm_dialog(message, :fmgr_delete)
+    nil
+  end
+
+  def confirm_local_yes(action)
+    fmgr_delete_confirmed if action == :fmgr_delete
+    nil
+  end
+
+  def confirm_local_no(action)
+    fmgr_delete_cancelled if action == :fmgr_delete
+    nil
   end
 
   # Everything FmrbUI reports lands here. One case per dialog keeps the

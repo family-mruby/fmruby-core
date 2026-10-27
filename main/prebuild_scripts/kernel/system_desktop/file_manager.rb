@@ -749,6 +749,12 @@ module FileManagerMixin
     nil  # begin arm ends in a void-typed call (Spinel) -> pin a concrete return
   end
 
+  # Delete asks first (L7c): /mnt/host shows the user's own files, so one
+  # stray key must not lose one. This only remembers the path and puts the
+  # question up; the desktop answers through fmgr_delete_confirmed (Yes) or
+  # fmgr_delete_cancelled (No). How the question is shown is the desktop's
+  # (fmgr_ask_delete): the mouse desktop's confirm dialog, the keys desktop's
+  # line at the bottom.
   def fmgr_delete_file(idx)
     return if idx < 0 || idx >= @file_manager_entries.size
     entry = @file_manager_entries[idx]
@@ -759,7 +765,30 @@ module FileManagerMixin
             else
               "#{@file_manager_dir}/#{entry[:name]}"
             end
-    file_path = vpath
+    @fmgr_delete_path = vpath
+    fmgr_ask_delete(fmgr_delete_question(entry[:name]))
+    nil
+  end
+
+  # "Delete <name>?" in the user's language. The table's "%s" is replaced by
+  # hand: sprintf with a String argument is not something the kernel Ruby
+  # uses anywhere else, and the slicing below works the same on both engines.
+  def fmgr_delete_question(name)
+    t = FmrbI18n.t(:fmgr_delete_confirm)
+    at = t.index("%s")
+    return "#{t} #{name}" unless at
+    t[0, at] + name + t[at + 2, t.length - at - 2]
+  end
+
+  def fmgr_delete_cancelled
+    @fmgr_delete_path = nil
+    nil
+  end
+
+  def fmgr_delete_confirmed
+    file_path = @fmgr_delete_path
+    @fmgr_delete_path = nil
+    return nil unless file_path
 
     begin
       File.unlink(file_path)

@@ -118,6 +118,8 @@ class KeysDesktopApp < FmrbApp
     @fmgr_copy_path = nil
     @fmgr_copy_is_dir = false
     @fmgr_pressed_idx = -1
+    @fmgr_delete_path = nil
+    @fmgr_confirm = nil
   end
 
   # ---- The shared panels at full size ----
@@ -405,12 +407,52 @@ class KeysDesktopApp < FmrbApp
   def draw_power_confirm
     key = POWER_LABELS[@power_confirm]
     return unless key
+    draw_confirm_line(FmrbI18n.t(:"#{key}_confirm"))
+  end
+
+  # A question on a line of its own at the bottom, with the keys that answer
+  # it under it. The power entries and the File Manager's delete share it.
+  # A long message is cut the way the mouse desktop's confirm dialog cuts it.
+  def draw_confirm_line(message)
     y = @window_height - 30
     w = @window_width - 16
     @gfx.fill_rect(8, y, w, 26, PANEL_BG)
     @gfx.draw_rect(8, y, w, 26, BORDER)
-    @gfx.draw_text(14, y + 3, FmrbI18n.t(:"#{key}_confirm"), TEXT, PANEL_BG, mixed: true)
+    msg = FmrbI18n.truncate_to(message, w - 12)
+    @gfx.draw_text(14, y + 3, msg, TEXT, PANEL_BG, mixed: true)
     @gfx.draw_text(14, y + 14, FmrbI18n.t(:keys_confirm_help), BORDER, PANEL_BG, mixed: true)
+    nil
+  end
+
+  # ---- The File Manager's delete (L7c) ----
+  #
+  # Asked on the same line as the power entries. Enter deletes, Esc (a short
+  # press; host_task hands it over on release) does not; every other key is
+  # swallowed while the question is up, as the mouse desktop's dialog does.
+  # Esc held closes the question (esc_held), not the File Manager.
+
+  def fmgr_ask_delete(message)
+    @fmgr_confirm = message
+    draw_foreground
+    nil
+  end
+
+  def fmgr_confirm_key(scancode)
+    if scancode == FmrbConst::KEY_ENTER
+      @fmgr_confirm = nil
+      fmgr_delete_confirmed
+      draw_foreground
+    elsif scancode == FmrbConst::KEY_ESC
+      fmgr_confirm_cancel
+    end
+    nil
+  end
+
+  def fmgr_confirm_cancel
+    @fmgr_confirm = nil
+    fmgr_delete_cancelled
+    draw_foreground
+    nil
   end
 
   # ---- The switcher ----
@@ -584,6 +626,7 @@ class KeysDesktopApp < FmrbApp
       draw_file_selector
     elsif @file_manager_open
       draw_file_manager
+      draw_confirm_line(@fmgr_confirm) if @fmgr_confirm
     elsif menu_visible?
       draw_menu
       draw_power_confirm if @power_confirm
@@ -716,6 +759,8 @@ class KeysDesktopApp < FmrbApp
     if @power_confirm
       @power_confirm = nil
       draw_foreground
+    elsif @fmgr_confirm && @file_manager_open && !@file_selector_open
+      fmgr_confirm_cancel
     elsif @error_dlg_open
       close_error_dialog
     elsif @switcher_open
@@ -773,7 +818,11 @@ class KeysDesktopApp < FmrbApp
       return
     end
     if @file_manager_open
-      handle_file_manager_key(scancode, character)
+      if @fmgr_confirm
+        fmgr_confirm_key(scancode)
+      else
+        handle_file_manager_key(scancode, character)
+      end
       return
     end
     return unless menu_visible?

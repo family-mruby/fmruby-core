@@ -32,7 +32,21 @@ module ConfirmDialogMixin
     nil
   end
 
+  # Yes sends +on_yes_cmd+ to the kernel (power, Reset, an app's reload).
   def open_confirm_dialog(message, on_yes_cmd, on_yes_data = nil)
+    @cdlg_on_yes_local = nil
+    show_confirm_dialog(message, on_yes_cmd, on_yes_data)
+  end
+
+  # Yes stays in the desktop: it calls confirm_local_yes(+action+), a Symbol
+  # the desktop dispatches on (the File Manager's delete). No and a click
+  # outside call confirm_local_no(+action+).
+  def open_local_confirm_dialog(message, action)
+    @cdlg_on_yes_local = action
+    show_confirm_dialog(message, nil, nil)
+  end
+
+  def show_confirm_dialog(message, on_yes_cmd, on_yes_data)
     @cdlg_open = true
     @cdlg_message = message
     @cdlg_on_yes_cmd = on_yes_cmd
@@ -47,15 +61,28 @@ module ConfirmDialogMixin
     draw_foreground
   end
 
-  def close_confirm_dialog
+  # +yes+ is true only from the Yes answer, which runs the action itself.
+  def close_confirm_dialog(yes = false)
     return unless @cdlg_open
     @cdlg_open = false
+    local = @cdlg_on_yes_local
+    @cdlg_on_yes_local = nil
+    # Whatever closes the dialog without Yes (No, Esc, a click outside) is a
+    # No for a local question.
+    confirm_local_no(local) if local && !yes
     # Hidden before the repaint, or their holes would be punched into
     # whatever is behind the dialog on the next flush.
     @ui.set_visible(:cdlg_yes, false)
     @ui.set_visible(:cdlg_no, false)
     @ui.flush
-    notify_overlay_state(false, 0, 0, 0, 0)
+    if local && @file_manager_open
+      # The question came from the File Manager, which is still open: the
+      # kernel's one overlay rectangle goes back to it rather than to nothing,
+      # or clicks on the list would fall through to the window beneath.
+      notify_overlay_state(true, @fmgr_x, @fmgr_y, fmgr_w, fmgr_h)
+    else
+      notify_overlay_state(false, 0, 0, 0, 0)
+    end
     update_composite_regions
     draw_foreground
   end
@@ -89,8 +116,11 @@ module ConfirmDialogMixin
     if id == :cdlg_yes
       cmd = @cdlg_on_yes_cmd
       data = @cdlg_on_yes_data
-      close_confirm_dialog
-      if cmd
+      local = @cdlg_on_yes_local
+      close_confirm_dialog(true)
+      if local
+        confirm_local_yes(local)
+      elsif cmd
         msg = { "cmd" => cmd }
         if data.is_a?(Hash)
           data.each { |k, v| msg[k] = v }
