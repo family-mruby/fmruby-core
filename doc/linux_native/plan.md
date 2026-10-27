@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 での確認はユーザ (手順は report/l9b.md の 7 章)。次は L11 (Linux のファイルを Linux のアプリで開く)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 でユーザ確認済 (2026-10-27: ログイン画面の入口から起動、Linux の区分、Konsole、重なり、xeyes、Exit でログイン画面へ。VMSVGA では GLES で画面が黒く、設定ファイルに pixman と矢印のソフト描画を書いて動いた。親の窓に付いたダイアログが枠なしで一番上に出て絵の外へはみ出す不具合あり)。次は L11 (Linux のファイルを Linux のアプリで開く)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -552,6 +552,11 @@ L7c の検収で見つけたもの。急がないが、改善する。
 - L7 の残件: 書き込みの判定から実際に開くまでの間にリンクを差し替えられる隙
   (`openat` と `O_NOFOLLOW` で 1 段ずつ辿れば閉じる)、`/proc/kcore` の大きさが
   表の桁からはみ出す、装置などの特殊なファイルを一覧から隠すか。
+- VM で見つけたもの (2026-10-27): 親の窓に付いたダイアログ (例: 「Saved
+  Sessions」の窓) が、代役の枠なしで全部の窓の上に出て、Family mruby の絵の外
+  (黒い帯) まではみ出す。VirtualBox の VMSVGA では GLES の描画で画面が黒くなり、
+  設定ファイルに `WLR_RENDERER=pixman` と `WLR_NO_HARDWARE_CURSORS=1` を書くと
+  動く (自動で切り替えたい)。
 - L9a・L9b の残件: xdg と X11 の move・resize の頼みの自動の確認、最大化・
   全画面 (X11 の前に出す頼みも無視している)、クリップボード、Linux の窓への
   かな入力、自分で題の帯を描く X11 の窓は帯が二重になる (枠だけの代役を足す
