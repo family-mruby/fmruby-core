@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-26 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章
+> 状態: 進行中 | 更新: 2026-10-27 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓) の一式 `rake regress:wl` は 11 章
 
 ## 1. 流し方
 
@@ -72,7 +72,7 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live (全部で 21 分ほど)
+rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl (全部で 26 分ほど)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -298,3 +298,17 @@ end
 - 本当の網の揺れ (遅延・切断の途中)、TLS と資格情報の付いた接続 (VPS・常設の卓)、ブラウザ版の ws の経路。Retro (卓のアプリは Retro の実機には無い)。
 - HTTP の相手 (天気のアプリ): 決まった外の HTTPS に繋ぐ作りで、偽の相手に向ける口が無いので入れていない。
 - 音の善し悪し (数値で鳴ったか・長さだけを見る)。MIDI の時刻は PC に届いた時刻 (FIFO) で、実機の UART の時刻ではない。
+
+## 11. コンポジタ (rake regress:wl)
+
+```
+rake regress:wl                       # 標準と全部 mruby の 2 つで、作って (rake native:wl) 確認する (5 分ほど)
+rake native:wl_check                  # 1 つの形だけを、自動と pixman の 2 つのレンダラで (NATIVE_ENGINE=mruby で全部 mruby)
+rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓が出る。マウスを窓の上に置かない)
+```
+
+- ネイティブ版をコンポジタとして動かし (doc/linux_native の L8・L9a、`--machine linux_pc_wl`)、Linux の窓 (foot) を Family mruby の窓として扱えるかを確認する。Ubuntu 26.04 のイメージ (約 1 GB) の中で作って動かす。手元の Ubuntu 22.04 には wlroots 0.19 が無いため。
+- `rake regress:full` に入っている。`rake regress` (安い方) には入らない。headless (出力は 1280x720 の仮のもの)、レンダラは pixman (WSL2 では自動で選んでも pixman になる)。
+- 基準の絵を持たない。grim で撮った合成後の画面を、同じ時に撮った Family mruby の絵 (`shot`) を 3 倍して置いたものと比べ、Linux の窓が見えるべき所 (穴) 以外は 1 画素も違わないこと、穴には foot が出ていることを見る。foot の版や字体が変わっても揺れない。エディタの 1 打鍵だけはネイティブ版の基準 `editor_type.png` (エディタの窓の範囲) と比べる。全部 mruby のエディタはメニューに Debug が 1 つ多いので、その行は除く。
+- 確認する中身は `test/native/wl/wl_check.rb` の頭の説明 (起動、枠、移動と大きさの変更、foot へのキーとポインタ、Family mruby へのキー、前後、Ctrl+Tab、時間、閉じるボタン、終わり方)。結果と画面は `tmp/wl_check/<形>-<出し方>-<レンダラ>/`、作りのログは `tmp/wl_check/build-<形>.log`。
+- 分からないこと: GLES での描画 (WSL2 の GPU では動かない)、人の手のキーボードとマウスでの操作、foot 以外のアプリ (ポップアップの多いもの、X11 のアプリ)。

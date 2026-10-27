@@ -51,9 +51,17 @@
 #                          SCENE=) narrows the scenes
 #   rake regress:live:update   the last run's failed or new checks and shots
 #                          become the baseline (ONLY= narrows it)
+#   rake regress:wl        the compositor (doc/linux_native, L8/L9a): the
+#                          program with wlroots built in the Ubuntu 26.04 image
+#                          (rake native:wl) for the standard and the all-mruby
+#                          configuration, and rake native:wl_check headless on
+#                          pixman for each (test/native/wl/wl_check.rb). No
+#                          baseline: the composited screen is checked against
+#                          the picture taken at the same moment
 #   rake regress:full      regress + regress:size + regress:run +
-#                          regress:screens + regress:live (ONLY= goes to none
-#                          of them: run the parts by hand to narrow them)
+#                          regress:screens + regress:live + regress:wl (ONLY=
+#                          goes to none of them: run the parts by hand to
+#                          narrow them)
 
 REGRESS_RUN = File.join(ROOT_DIR, "tools", "regress", "run.rb")
 
@@ -181,12 +189,31 @@ namespace :regress do
     end
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live. About 20 minutes"
+  desc "The compositor in the Ubuntu 26.04 image: native:wl and native:wl_check (headless, pixman), standard and all-mruby. About 5 minutes"
+  task :wl do
+    failed = []
+    %w[standard mruby].each do |engine|
+      env = { "NATIVE_ENGINE" => engine }
+      log = File.join(ROOT_DIR, "tmp/wl_check/build-#{engine}.log")
+      FileUtils.mkdir_p(File.dirname(log))
+      unless system(env, "rake", "-f", File.join(ROOT_DIR, "Rakefile"), "native:wl", out: log, err: [:child, :out])
+        failed << "#{engine} build (#{log})"
+        next
+      end
+      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_check.rb"), "--engine", engine,
+                  "--renderer", "pixman")
+      failed << engine unless ok
+    end
+    abort "regress:wl: failed: #{failed.join(', ')}" unless failed.empty?
+    puts "regress:wl: ok (tmp/wl_check/)"
+  end
+
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor). About 25 minutes"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
     failed = []
-    %w[regress regress:size regress:run regress:screens regress:live].each do |t|
+    %w[regress regress:size regress:run regress:screens regress:live regress:wl].each do |t|
       begin
         Rake::Task[t].invoke
       rescue SystemExit
