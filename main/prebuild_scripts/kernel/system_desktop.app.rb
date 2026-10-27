@@ -81,7 +81,10 @@ class SystemDesktopApp < FmrbApp
   # The power entries come from the OS services (FmrbApp.power_actions,
   # doc/linux_native L6): Reset on the devices (esp_restart), none in the
   # simulation and the browser, and on the native program Exit, or Power off,
-  # Restart and Suspend, as its machine definition says.
+  # Restart and Suspend, as its machine definition says. They are not in this
+  # menu: they open from the power button at the right end of the menu bar
+  # (POWER_ITEMS, doc/linux_native L7b), which is not drawn where there are
+  # none.
   POWER_KEYS = { reset: :reset, exit: :power_exit, power_off: :power_off,
                  restart: :power_restart, suspend: :power_suspend }
   POWER_ITEMS = FmrbApp.power_actions.map { |a| { key: POWER_KEYS[a], power: a } }
@@ -122,7 +125,7 @@ class SystemDesktopApp < FmrbApp
     (FmrbConst::PLATFORM == "esp32" ? [{ key: :ble_setup }] : []) + [
     { key: :shortcuts },
     { key: :about },
-  ] + POWER_ITEMS
+  ]
 
   DROPDOWN_X = 0
   DROPDOWN_Y = MENU_BAR_HEIGHT
@@ -141,6 +144,7 @@ class SystemDesktopApp < FmrbApp
     @resize_preview_h = 0
 
     @dropdown_open = false
+    @dropdown_menu = :main
     @dropdown_hover_idx = -1
     @about_open = false
     @skey_open = false
@@ -863,6 +867,7 @@ class SystemDesktopApp < FmrbApp
     draw_ble_icon
     draw_kana_icon
     draw_sound_icon
+    draw_power_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
@@ -870,7 +875,7 @@ class SystemDesktopApp < FmrbApp
     # Entirely in C (one text command formatted on the C stack): the 1Hz
     # tick is the desktop's steady state and must create no Ruby object.
     # The Ruby route cost a wallclock Hash + a sprintf String per second.
-    @gfx.draw_wallclock(@window_width - 90, 2, FmrbGfx::WHITE, MENU_BG)
+    @gfx.draw_wallclock(@window_width - CLOCK_RIGHT, 2, FmrbGfx::WHITE, MENU_BG)
   end
 
   # Network status icon just left of the clock. Shown on Modern (WiFi) and
@@ -879,10 +884,21 @@ class SystemDesktopApp < FmrbApp
   # Clicking the icon opens the network dialog (see handle_click).
   WIFI_ICON_W = 10
 
+  # The power button is the rightmost cell, right of the clock, and only where
+  # there is something to put in its menu (POWER_ITEMS). Where it is drawn
+  # every cell to its left moves over by POWER_PAD (the button and the gap
+  # before it); elsewhere POWER_PAD is 0 and the bar is as it always was. The
+  # clock ("MM/DD hh:mm:ss", 84 px) starts CLOCK_RIGHT from the right edge,
+  # and the button sits in the 6 px margin's place after it.
+  POWER_CELL_W = 10
+  POWER_PAD = POWER_ITEMS.empty? ? 0 : POWER_CELL_W + 4
+  CLOCK_RIGHT = 90 + POWER_PAD
+  POWER_CELL_RIGHT = 6 + POWER_CELL_W
+
   # The speaker cell sits right beside the clock (it is the status cell people
   # reach for), so every other cell starts this far from the right edge.
   SOUND_CELL_W = 10
-  STATUS_RIGHT = 90 + 4 + SOUND_CELL_W
+  STATUS_RIGHT = CLOCK_RIGHT + 4 + SOUND_CELL_W
 
   # Free internal RAM readout, leftmost of the status cells, always shown --
   # internal RAM is the scarce resource here (one running app costs ~25KB),
@@ -1077,7 +1093,7 @@ class SystemDesktopApp < FmrbApp
   # here within one tick. Allocation-free (one bool and a few rectangles and
   # lines).
   def draw_sound_icon
-    x = @window_width - 90 - 4 - SOUND_CELL_W
+    x = @window_width - CLOCK_RIGHT - 4 - SOUND_CELL_W
     @sound_icon_x = x
     muted = FmrbApp.audio_muted?
     box = muted ? FmrbGfx::WHITE : MENU_BG
@@ -1095,6 +1111,34 @@ class SystemDesktopApp < FmrbApp
       @gfx.draw_line(x + 7, 4, x + 7, 7, fg)
       @gfx.draw_line(x + 9, 3, x + 9, 8, fg)
     end
+  end
+
+  # The power button: a circle open at the top with a bar through the gap, in
+  # a cell the size of the speaker's and drawn the same way (white on the bar
+  # color; inverted while its menu is open, as the muted speaker is). Only
+  # drawn when there are power entries; @power_icon_x stays nil otherwise, so
+  # nothing there takes a click.
+  def draw_power_icon
+    if POWER_ITEMS.empty?
+      @power_icon_x = nil
+      return
+    end
+    x = @window_width - POWER_CELL_RIGHT
+    @power_icon_x = x
+    lit = @dropdown_open && @dropdown_menu == :power
+    box = lit ? FmrbGfx::WHITE : MENU_BG
+    fg = lit ? MENU_BG : FmrbGfx::WHITE
+    @gfx.fill_rect(x, 1, POWER_CELL_W, 10, box)
+    # The ring, centered on x + 5, broken at the top.
+    @gfx.draw_line(x + 3, 3, x + 2, 4, fg)
+    @gfx.draw_line(x + 7, 3, x + 8, 4, fg)
+    @gfx.draw_line(x + 1, 5, x + 1, 8, fg)
+    @gfx.draw_line(x + 9, 5, x + 9, 8, fg)
+    @gfx.draw_line(x + 2, 9, x + 2, 9, fg)
+    @gfx.draw_line(x + 8, 9, x + 8, 9, fg)
+    @gfx.draw_line(x + 3, 10, x + 7, 10, fg)
+    # The bar.
+    @gfx.draw_line(x + 5, 1, x + 5, 6, fg)
   end
 
   # The menu's BLE Setup: open the settings window, or close it when it is
@@ -1165,15 +1209,33 @@ class SystemDesktopApp < FmrbApp
     end
   end
 
+  # Two menus open from the bar and share everything below: the system menu
+  # under "Family mruby" (DROPDOWN_ITEMS, at the left) and the power menu under
+  # the power button (POWER_ITEMS, right-aligned with the button).
+  # @dropdown_menu says which one is open; it keeps its value after closing,
+  # nothing reads it then.
+  def dropdown_items
+    @dropdown_menu == :power ? POWER_ITEMS : DROPDOWN_ITEMS
+  end
+
+  def dropdown_x
+    return DROPDOWN_X unless @dropdown_menu == :power
+    @window_width - POWER_CELL_RIGHT + POWER_CELL_W - DROPDOWN_W
+  end
+
+  def dropdown_h
+    DROPDOWN_ITEM_H * dropdown_items.size + 2
+  end
+
   def draw_dropdown
-    x = DROPDOWN_X
+    x = dropdown_x
     y = DROPDOWN_Y
-    h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
+    h = dropdown_h
 
     @gfx.fill_rect(x, y, DROPDOWN_W, h, DROPDOWN_BG)
     @gfx.draw_rect(x, y, DROPDOWN_W, h, 0x00)
 
-    DROPDOWN_ITEMS.each_with_index do |item, i|
+    dropdown_items.each_with_index do |item, i|
       item_y = y + 1 + i * DROPDOWN_ITEM_H
       label = dropdown_label(item[:key])
       if i == @dropdown_hover_idx
@@ -1204,19 +1266,20 @@ class SystemDesktopApp < FmrbApp
   def dropdown_item_at(x, y)
     return -1 unless hit_dropdown?(x, y)
     idx = (y - DROPDOWN_Y - 1) / DROPDOWN_ITEM_H
-    return -1 if idx < 0 || idx >= DROPDOWN_ITEMS.size
+    return -1 if idx < 0 || idx >= dropdown_items.size
     idx
   end
 
   # ---- State management ----
 
-  def open_dropdown
+  # menu: :main (the system menu) or :power (the power button's).
+  def open_dropdown(menu = :main)
     return if @dropdown_open
     @dropdown_open = true
+    @dropdown_menu = menu
     close_launcher
 
-    dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
-    notify_overlay_state(true, DROPDOWN_X, DROPDOWN_Y, DROPDOWN_W, dropdown_h)
+    notify_overlay_state(true, dropdown_x, DROPDOWN_Y, DROPDOWN_W, dropdown_h)
     update_composite_regions
     draw_foreground
   end
@@ -1225,10 +1288,21 @@ class SystemDesktopApp < FmrbApp
   # arrows move, Enter runs, Esc or F10 again closes. The highlight is the same
   # @dropdown_hover_idx the mouse moves, so the two ways of driving the menu
   # cannot disagree about what is selected.
-  def open_dropdown_from_key
-    open_dropdown
+  def open_dropdown_from_key(menu = :main)
+    open_dropdown(menu)
     @dropdown_hover_idx = 0
     draw_foreground
+  end
+
+  # Left and Right go from one menu of the bar to the other, the way a menu
+  # bar is walked on a desktop: the system menu is the left end, the power
+  # menu the right end, and with only the two of them either arrow reaches
+  # the other one. Not where there is no power menu: there is nowhere to go.
+  def switch_dropdown_from_key
+    return if POWER_ITEMS.empty?
+    other = @dropdown_menu == :power ? :main : :power
+    close_dropdown
+    open_dropdown_from_key(other)
   end
 
   # Returns true when the key was spent on the menu.
@@ -1237,11 +1311,12 @@ class SystemDesktopApp < FmrbApp
     when FmrbConst::KEY_UP    then dropdown_move(-1)
     when FmrbConst::KEY_DOWN  then dropdown_move(1)
     when FmrbConst::KEY_HOME  then dropdown_move_to(0)
-    when FmrbConst::KEY_END   then dropdown_move_to(DROPDOWN_ITEMS.size - 1)
+    when FmrbConst::KEY_END   then dropdown_move_to(dropdown_items.size - 1)
+    when FmrbConst::KEY_LEFT, FmrbConst::KEY_RIGHT then switch_dropdown_from_key
     when FmrbConst::KEY_ENTER
-      idx = @dropdown_hover_idx
+      item = dropdown_items[@dropdown_hover_idx] if @dropdown_hover_idx >= 0
       close_dropdown
-      run_dropdown_item(idx)
+      run_dropdown_item(item)
     when FmrbConst::KEY_ESC, FmrbConst::KEY_F10
       close_dropdown
     else
@@ -1253,7 +1328,7 @@ class SystemDesktopApp < FmrbApp
   # Wraps at both ends: the menu is short, and a list that stops dead at the
   # bottom makes the last entries the awkward ones to reach.
   def dropdown_move(delta)
-    n = DROPDOWN_ITEMS.size
+    n = dropdown_items.size
     return if n == 0
     idx = @dropdown_hover_idx
     idx = (delta > 0 ? -1 : 0) if idx < 0
@@ -1276,15 +1351,17 @@ class SystemDesktopApp < FmrbApp
 
   # One dropdown row, highlighted or not according to @dropdown_hover_idx.
   def draw_dropdown_row(i)
-    return if i < 0 || i >= DROPDOWN_ITEMS.size
+    items = dropdown_items
+    return if i < 0 || i >= items.size
+    x = dropdown_x
     item_y = DROPDOWN_Y + 1 + i * DROPDOWN_ITEM_H
-    label = dropdown_label(DROPDOWN_ITEMS[i][:key])
+    label = dropdown_label(items[i][:key])
     if i == @dropdown_hover_idx
-      @gfx.fill_rect(DROPDOWN_X + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
-      @gfx.draw_text(DROPDOWN_X + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT, mixed: true)
+      @gfx.fill_rect(x + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
+      @gfx.draw_text(x + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT, mixed: true)
     else
-      @gfx.fill_rect(DROPDOWN_X + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_BG)
-      @gfx.draw_text(DROPDOWN_X + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
+      @gfx.fill_rect(x + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_BG)
+      @gfx.draw_text(x + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
     end
   end
 
@@ -1351,8 +1428,7 @@ class SystemDesktopApp < FmrbApp
                    h: STARTING_H, transparent: true }
     end
     if @dropdown_open
-      dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
-      regions << { dst_x: DROPDOWN_X, dst_y: DROPDOWN_Y, w: DROPDOWN_W, h: dropdown_h, transparent: false }
+      regions << { dst_x: dropdown_x, dst_y: DROPDOWN_Y, w: DROPDOWN_W, h: dropdown_h, transparent: false }
     end
     if @launcher_open
       regions << { dst_x: @launcher_x, dst_y: @launcher_y,
@@ -2069,6 +2145,8 @@ class SystemDesktopApp < FmrbApp
     if y < MENU_BAR_HEIGHT
       if x < 80
         open_dropdown
+      elsif @power_icon_x && x >= @power_icon_x && x < @power_icon_x + POWER_CELL_W
+        open_dropdown(:power)
       elsif @wifi_icon_x && x >= @wifi_icon_x - 2 && x < @wifi_icon_x + WIFI_ICON_W + 2
         open_network_dialog
       elsif @kana_icon_x && x >= @kana_icon_x && x < @kana_icon_x + KANA_CELL_W
@@ -2086,22 +2164,24 @@ class SystemDesktopApp < FmrbApp
   end
 
   def hit_dropdown?(x, y)
-    dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
-    x >= DROPDOWN_X && x < DROPDOWN_X + DROPDOWN_W &&
+    mx = dropdown_x
+    x >= mx && x < mx + DROPDOWN_W &&
       y >= DROPDOWN_Y && y < DROPDOWN_Y + dropdown_h
   end
 
   def handle_dropdown_click(x, y)
+    items = dropdown_items
     item_idx = (y - DROPDOWN_Y - 1) / DROPDOWN_ITEM_H
-    return if item_idx < 0 || item_idx >= DROPDOWN_ITEMS.size
+    return if item_idx < 0 || item_idx >= items.size
+    item = items[item_idx]
     close_dropdown
-    run_dropdown_item(item_idx)
+    run_dropdown_item(item)
   end
 
-  # What a menu entry does, whether it was clicked or chosen with the keyboard.
-  def run_dropdown_item(item_idx)
-    return if item_idx < 0 || item_idx >= DROPDOWN_ITEMS.size
-    item = DROPDOWN_ITEMS[item_idx]
+  # What a menu entry does, whether it was clicked or chosen with the keyboard,
+  # in either menu of the bar. The item is taken before the menu closes.
+  def run_dropdown_item(item)
+    return unless item
 
     case item[:key]
     when :launcher

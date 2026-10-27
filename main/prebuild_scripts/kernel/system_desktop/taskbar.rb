@@ -74,10 +74,10 @@ module TaskbarMixin
   def draw_taskbar
     return if @taskbar_apps.empty?
 
-    # Reserved for the status cells: clock, speaker, wifi, BLE, kana and the
-    # free-IRAM readout (leftmost cell starts at width-180; keep a small
-    # margin).
-    clock_area = 184
+    # Reserved for the status cells: power button (where there is one, its
+    # POWER_PAD), clock, speaker, wifi, BLE, kana and the free-IRAM readout
+    # (leftmost cell starts at width-180-POWER_PAD; keep a small margin).
+    clock_area = 184 + self.class::POWER_PAD
     max_x = @window_width - clock_area
     x = TASKBAR_X_START
 
@@ -108,7 +108,7 @@ module TaskbarMixin
 
     # Must match draw_taskbar: clicks past the drawn icons would otherwise
     # focus an app whose icon was cut off by the status cells.
-    clock_area = 170
+    clock_area = 170 + self.class::POWER_PAD
     max_x = @window_width - clock_area
     x = TASKBAR_X_START
 
