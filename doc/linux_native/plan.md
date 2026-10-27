@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L8 (コンポジタの試作)。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-27 | L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、並行して L8 (コンポジタの試作、実装中)。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -286,6 +286,9 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
 ### コンポジタと外の窓 ((3) だけ)
 
 - wlroots を土台にする。出発点は付属の最小の例 (tinywl)。
+- 版 (2026-10-27 ユーザ決定): Kubuntu 26.04 の wlroots 0.19 に合わせる。amd64 の
+  `.deb` は Ubuntu 26.04 のコンテナで作り、arm64 (Cardputer、コンポジタを
+  使わない) は trixie のまま。
 - **解像度を混ぜて描く**: Family mruby の画面 (426x240 の合成済みの絵) を
   整数倍に拡大して敷き、Linux のアプリの窓は液晶の本来の解像度のまま重ねる。
   窓の位置と大きさは、Family mruby の座標を倍率で写した場所に合わせる。
@@ -534,7 +537,7 @@ L7c の検収で見つけたもの。急がないが、改善する。
   していないか (L0)。
 - 切り替えの一覧を開くキーの組 (Cardputer のキーボードで押せるもの、実機で決める、L5b)。
 - App Store の審査の基準 (ライセンス、パッケージの大きさ、root で動くこと)。
-- (3) の Linux の配布 (Kubuntu 26.04 を予定、小型 PC は Chuwi MiniBook X を検討中) と、wlroots の版。
+- (3) の小型 PC (Chuwi MiniBook X を検討中)。
 - Family mruby を終えるとき、起動した Linux のアプリを一緒に閉じるか残すか (L9)。
 - Cardputer Zero のキーボードの細部 (L0・L5、実機で決める): 記号の層の Shift の
   位置が KEY_KPPLUS で届き、M5Stack のコンソールの表でも割り当てが無い
