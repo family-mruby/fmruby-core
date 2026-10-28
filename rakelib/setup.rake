@@ -272,8 +272,14 @@ task :setup do
   # picoruby-net-websocket: fix mruby-pack gemdir (upstream points to a
   # non-existent picoruby-pack path inside the mruby tree)
   sh "cp -f lib/patch/picoruby-net-websocket/mrbgem.rake #{mrbgem_path}/picoruby-net-websocket/"
+  # client.rb: the handshake accepts any "HTTP/1.1 101" status line (not only
+  # "Switching Protocols"), Host carries a non-default port, and #receive
+  # re-polls every 30 ms instead of 100 ms.
+  sh "cp -f lib/patch/picoruby-net-websocket/mrblib/client.rb #{mrbgem_path}/picoruby-net-websocket/mrblib/"
 
-  # picoruby-net-http: accept URI objects in get/get_response/post_form (CRuby style)
+  # picoruby-net-http: accept URI objects in get/get_response/post_form (CRuby
+  # style); read headers and chunks with readpartial so a server that keeps
+  # the connection open does not stall the response
   sh "cp -f lib/patch/picoruby-net-http/mrblib/http_client.rb #{mrbgem_path}/picoruby-net-http/mrblib/"
 
   # (picoruby-json parse_float patch dropped: upstream fixed the decimal handling)

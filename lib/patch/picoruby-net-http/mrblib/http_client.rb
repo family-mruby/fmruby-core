@@ -4,6 +4,15 @@
 # Net::HTTP.get_response(URI.parse(...))) fell into the plain-host branch
 # and tried to connect to the URI object itself on port 80. Accept URI
 # objects via duck typing (respond_to?(:host)) in the three class methods.
+#
+# read_response read the headers and the chunks with @socket.read(8192).
+# BasicSocket#read(n) does not return until n bytes have arrived or the peer
+# closes, so a response shorter than 8192 bytes from a server that keeps the
+# connection open (Chrome's DevTools /json/list ignores "Connection: close")
+# sat in the buffer until the read timeout. Those two loops now use
+# readpartial(8192), which returns whatever has arrived (EOF is mapped back to
+# nil so the loops end as before). The Content-Length read(remaining) and the
+# read-until-close branch are left as they were: there, waiting is correct.
 require 'socket'
 
 module Net
@@ -270,7 +279,7 @@ module Net
 
       # Read status line and headers
       while true
-        line = @socket.read(8192)
+        line = read_some
         break unless line
 
         response += line
@@ -341,7 +350,7 @@ module Net
         # (Guard against re-reading when the whole body already arrived with
         # the headers: reading again would block until the socket timeout.)
         until response.end_with?("0\r\n\r\n")
-          chunk = @socket.read(8192)
+          chunk = read_some
           break unless chunk
           response += chunk
         end
@@ -358,6 +367,16 @@ module Net
       end
 
       response
+    end
+
+    # Return what has arrived (up to 8192 bytes) without waiting for more;
+    # nil at EOF, like BasicSocket#read.
+    def read_some
+      begin
+        @socket.readpartial(8192)
+      rescue EOFError
+        nil
+      end
     end
 
     # Decode HTTP/1.1 chunked transfer-encoding into the raw body.
