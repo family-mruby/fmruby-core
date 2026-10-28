@@ -33,3 +33,4 @@ window_ops = false           # no PC window operations (L13)
 services = "linux"
 exit_key = "none"
 power = "exit"               # the desktop's power entries: end the program only
+settings = false             # no PC settings or notifications (L14)

@@ -30,6 +30,13 @@
  *            L9b), on the compositor machine only: the compositor starts
  *            them and starts the programs on its own thread. Files are
  *            opened in them the same way (L11, linux_mime.c for the types).
+ *   settings the PC's (L14, where the machine says system.settings): Wi-Fi
+ *            through NetworkManager (linux_net.c), Bluetooth through BlueZ
+ *            (linux_bt.c), the volume through PipeWire / PulseAudio before
+ *            the ALSA mixer (sys_linux_pw.c), and the notices at the top
+ *            right with the freedesktop notification service
+ *            (linux_notify.c). Each on a thread of its own; the entries only
+ *            copy and queue.
  */
 
 #include <errno.h>
@@ -63,6 +70,9 @@
 #include "fmrb_hal_file.h"
 #include "fmrb_mem.h"
 #include "comp_link.h"
+#include "linux_net.h"
+#include "linux_bt.h"
+#include "linux_notify.h"
 #if NATIVE_HAVE_WLROOTS
 #include "linux_apps.h"
 #endif
@@ -152,18 +162,23 @@ static bool linux_battery(fmrb_sys_battery_t *out)
 
 /* ---- volume ---- */
 
+/* The desktop's sound server when one answered (the PC), else the ALSA
+ * mixer, else none (the internal volume). */
 static bool linux_volume_get(int *step, bool *muted, int max_step)
 {
+    if (sys_linux_pw_active()) return sys_linux_pw_get(step, muted, max_step);
     return sys_linux_mixer_get(step, muted, max_step);
 }
 
 static bool linux_volume_set(int step, int max_step)
 {
+    if (sys_linux_pw_active()) return sys_linux_pw_set(step, max_step);
     return sys_linux_mixer_set(step, max_step);
 }
 
 static bool linux_mute_set(bool on)
 {
+    if (sys_linux_pw_active()) return sys_linux_pw_mute(on);
     return sys_linux_mixer_mute(on);
 }
 
@@ -484,6 +499,93 @@ static fmrb_err_t linux_apps_open_entry(const char *id, const char *path, char *
 }
 #endif
 
+/* ---- the PC's settings and notices (L14) ---- */
+
+static bool settings_on(void)
+{
+    return g_native_config.machine.system.settings;
+}
+
+static int32_t linux_wifi_list_entry(bool scan, char *buf, size_t cap)
+{
+    return settings_on() ? linux_net_list(scan, buf, cap) : -1;
+}
+
+static fmrb_err_t linux_wifi_connect_entry(const char *ssid, const char *password)
+{
+    if (!settings_on()) return FMRB_ERR_NOT_SUPPORTED;
+    fmrb_err_t err = linux_net_connect(ssid, password);
+    FMRB_LOGI(TAG, "wifi: connect to \"%s\"%s: %s", ssid ? ssid : "",
+              (password && password[0]) ? " with a password" : "", err == FMRB_OK ? "queued" : "refused");
+    return err;
+}
+
+static fmrb_err_t linux_wifi_disconnect_entry(void)
+{
+    return settings_on() ? linux_net_disconnect() : FMRB_ERR_NOT_SUPPORTED;
+}
+
+static int32_t linux_bt_list_entry(char *buf, size_t cap)
+{
+    return settings_on() ? linux_bt_list(buf, cap) : -1;
+}
+
+static fmrb_err_t linux_bt_power_entry(bool on)
+{
+    return settings_on() ? linux_bt_power(on) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+static fmrb_err_t linux_bt_connect_entry(const char *address, bool on)
+{
+    return settings_on() ? linux_bt_connect(address, on) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+/* The session's "started again" (sys_linux_settings_start), held until the
+ * desktop first looks: its time on screen starts then, not during the boot. */
+static char s_restarted[96];
+
+static int32_t linux_notice_gen_entry(void)
+{
+    if (!settings_on()) return -1;
+    if (s_restarted[0] != '\0') {
+        linux_notify_post("restarted", "Family mruby", "", s_restarted, 10000, 0);
+        s_restarted[0] = '\0';
+    }
+    return (int32_t)(linux_notify_gen() & 0x7FFFFFFF);
+}
+
+static int32_t linux_notice_list_entry(char *buf, size_t cap)
+{
+    return settings_on() ? linux_notify_list(buf, cap) : -1;
+}
+
+static fmrb_err_t linux_notice_post_entry(const char *app, const char *summary, const char *body, int timeout_ms)
+{
+    if (!settings_on()) return FMRB_ERR_NOT_SUPPORTED;
+    linux_notify_post("app", app, summary, body, timeout_ms, 0);
+    return FMRB_OK;
+}
+
+static void linux_notice_dismiss_entry(uint32_t id)
+{
+    if (settings_on()) linux_notify_dismiss(id);
+}
+
+void sys_linux_settings_start(void)
+{
+    if (!settings_on()) return;
+    /* Wi-Fi and Bluetooth start on the settings window's first look. */
+    linux_notify_serve();
+    /* The session started the program again after it had ended
+     * abnormally (native/package/family-mruby-session): say so once. */
+    const char *how = getenv("FMRB_SESSION_RESTARTED");
+    if (how != NULL && how[0] != '\0') {
+        FMRB_LOGW(TAG, "the session started Family mruby again (the last run ended abnormally: %s)", how);
+        snprintf(s_restarted, sizeof(s_restarted), "%s", how);
+        unsetenv("FMRB_SESSION_RESTARTED");
+    }
+}
+
 static const fmrb_platform_sys_t s_linux_sys = {
     .name = "linux",
     .net_info = linux_net_info,
@@ -507,6 +609,16 @@ static const fmrb_platform_sys_t s_linux_sys = {
     .apps_handlers = linux_apps_handlers_entry,
     .apps_open = linux_apps_open_entry,
 #endif
+    .wifi_list = linux_wifi_list_entry,
+    .wifi_connect = linux_wifi_connect_entry,
+    .wifi_disconnect = linux_wifi_disconnect_entry,
+    .bt_list = linux_bt_list_entry,
+    .bt_power = linux_bt_power_entry,
+    .bt_connect = linux_bt_connect_entry,
+    .notice_gen = linux_notice_gen_entry,
+    .notice_list = linux_notice_list_entry,
+    .notice_post = linux_notice_post_entry,
+    .notice_dismiss = linux_notice_dismiss_entry,
 };
 
 void sys_linux_install(void)
@@ -518,9 +630,10 @@ void sys_linux_install(void)
     fmrb_platform_sys_install(&s_linux_sys);
     fmrb_gate_add_task_deleted_listener(proc_task_deleted);
     const native_machine_t *m = &g_native_config.machine;
-    FMRB_LOGI(TAG, "power %s%s, mixer %s, sysfs %s, procfs %s", m->system.power,
+    FMRB_LOGI(TAG, "power %s%s, volume %s, settings %s, sysfs %s, procfs %s", m->system.power,
               m->system.power_log_only ? " (log only)" : "",
-              sys_linux_mixer_name(), s_sysfs, s_procfs);
+              sys_linux_pw_active() ? sys_linux_pw_name() : sys_linux_mixer_name(),
+              m->system.settings ? "on" : "off", s_sysfs, s_procfs);
 }
 
 /* ---- keyboard layout (L9d) ---- */

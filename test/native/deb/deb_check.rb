@@ -23,7 +23,8 @@
 #   2b. amd64: the login screen's session (L7, L9b) -- its entry in
 #      /usr/share/wayland-sessions, Xwayland only recommended, the session
 #      starter running the program as the compositor (linux_pc_wl, no cage);
-#      arm64: neither file is there
+#      the screen share's portal settings (L14: family-mruby-portals.conf,
+#      xdg-desktop-portal-wlr's, a conffile); arm64: neither file is there
 #   2c. amd64: the compositor (L8) is in the program (wlroots among the
 #      outputs) and linux_pc_wl is shipped; arm64: it is not built in
 #   3. the program as root, headless (SDL dummy), --machine sdl: the time to
@@ -240,10 +241,22 @@ begin
     result("IME suggested", suggests.to_s.strip == "fcitx5, fcitx5-mozc" && !depends.to_s.include?("fcitx") &&
            !recommends.to_s.include?("fcitx"), "Suggests: #{suggests.to_s.strip}")
     script, = dexec("cat /usr/bin/family-mruby-session", ok: false)
-    # The screen lock (L13): swaylock recommended beside Xwayland.
-    result("session runs the compositor", recommends.strip == "xwayland, swaylock" && !depends.to_s.include?("cage") &&
+    # The screen lock (L13): swaylock recommended beside Xwayland; the
+    # screen share (L14): xdg-desktop-portal-wlr.
+    result("session runs the compositor",
+           recommends.strip == "xwayland, swaylock, xdg-desktop-portal-wlr" && !depends.to_s.include?("cage") &&
            script.include?("--machine linux_pc_wl") && !script.include?("cage"),
-           "Recommends: #{recommends.strip}; the starter runs #{script[/exec "\$prog" [^\n]*/]}")
+           "Recommends: #{recommends.strip}; the starter runs #{script[/"\$prog" --machine [^\n]*/]}")
+    # The portal's choice for the session (L14): the backends by interface,
+    # and xdg-desktop-portal-wlr's settings for our desktop name (a conffile).
+    portals, = dexec("cat /usr/share/xdg-desktop-portal/family-mruby-portals.conf", ok: false)
+    xdpw, = dexec("cat /etc/xdg/xdg-desktop-portal-wlr/family-mruby", ok: false)
+    conffiles, = dexec("dpkg-query -W -f='${Conffiles}' family-mruby", ok: false)
+    result("the screen share's portal settings",
+           portals.include?("org.freedesktop.impl.portal.ScreenCast=wlr") && xdpw.include?("chooser_type=none") &&
+           conffiles.include?("/etc/xdg/xdg-desktop-portal-wlr/family-mruby"),
+           "portals.conf #{portals.include?('ScreenCast=wlr') ? 'ScreenCast=wlr' : 'missing'}; xdpw " \
+           "#{xdpw[/chooser_type=\S+/] || 'missing'}; conffiles #{conffiles.strip.split.first || 'none'}")
   else
     out, = dexec("ls #{session_files} 2>&1 | grep -c 'No such file'", ok: false)
     result("no session entry on #{arch}", out.strip == "2", "#{out.strip} of 2 session files absent")

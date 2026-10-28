@@ -269,3 +269,63 @@ fmrb_err_t fmrb_platform_sys_apps_open(const char *id, const char *path, char *n
     const fmrb_platform_sys_t *s = fmrb_platform_sys();
     return s->apps_open ? s->apps_open(id, path, name, name_cap, why, why_cap) : FMRB_ERR_NOT_SUPPORTED;
 }
+
+int32_t fmrb_platform_sys_wifi_list(bool scan, char *buf, size_t cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->wifi_list ? s->wifi_list(scan, buf, cap) : -1;
+}
+
+fmrb_err_t fmrb_platform_sys_wifi_connect(const char *ssid, const char *password)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->wifi_connect ? s->wifi_connect(ssid, password) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+fmrb_err_t fmrb_platform_sys_wifi_disconnect(void)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->wifi_disconnect ? s->wifi_disconnect() : FMRB_ERR_NOT_SUPPORTED;
+}
+
+int32_t fmrb_platform_sys_bt_list(char *buf, size_t cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->bt_list ? s->bt_list(buf, cap) : -1;
+}
+
+fmrb_err_t fmrb_platform_sys_bt_power(bool on)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->bt_power ? s->bt_power(on) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+fmrb_err_t fmrb_platform_sys_bt_connect(const char *address, bool on)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->bt_connect ? s->bt_connect(address, on) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+int32_t fmrb_platform_sys_notice_gen(void)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->notice_gen ? s->notice_gen() : -1;
+}
+
+int32_t fmrb_platform_sys_notice_list(char *buf, size_t cap)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->notice_list ? s->notice_list(buf, cap) : -1;
+}
+
+fmrb_err_t fmrb_platform_sys_notice_post(const char *app, const char *summary, const char *body, int timeout_ms)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->notice_post ? s->notice_post(app, summary, body, timeout_ms) : FMRB_ERR_NOT_SUPPORTED;
+}
+
+void fmrb_platform_sys_notice_dismiss(uint32_t id)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    if (s->notice_dismiss) s->notice_dismiss(id);
+}

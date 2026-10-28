@@ -37,6 +37,7 @@ window_ops = true            # title double-click maximizes, Super+arrows lay wi
 services = "linux"
 exit_key = "none"
 power = ["logind", "exit"]   # power off / restart / suspend, and Exit (back to the login screen)
+settings = true              # Wi-Fi, Bluetooth, the PipeWire volume, notifications (L14)
 
 [files]
 host = "auto"                # /mnt/host: the user's home

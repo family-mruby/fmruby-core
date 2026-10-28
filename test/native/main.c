@@ -641,6 +641,24 @@ static void test_machine(void)
         CHECK(t.desktop.window_ops, "the built-in is sdl.toml's");
         CHECK(native_machine_set(&t, "desktop.window_ops", "maybe", err, sizeof(err)) != 0, "window_ops maybe refused");
     }
+    // The PC's settings and notices (L14): the PC's machines (and sdl, the
+    // built-in) have them, the Cardputer and the keys desktop not.
+    {
+        native_machine_t t;
+        const char *pcs[] = { "sdl", "linux_pc", "linux_pc_drm", "linux_pc_wl" };
+        for (size_t i = 0; i < sizeof(pcs) / sizeof(pcs[0]); i++) {
+            CHECK(load(&t, pcs[i], err, sizeof(err)) == 0 && t.system.settings, "%s: settings", pcs[i]);
+        }
+        const char *others[] = { "cardputer_zero", "cardputer_zero_hdmi", "sdl_keys" };
+        for (size_t i = 0; i < sizeof(others) / sizeof(others[0]); i++) {
+            CHECK(load(&t, others[i], err, sizeof(err)) == 0 && !t.system.settings, "%s: no settings", others[i]);
+        }
+        native_machine_defaults(&t);
+        CHECK(t.system.settings, "settings: the built-in is sdl.toml's");
+        CHECK(native_machine_set(&t, "system.settings", "false", err, sizeof(err)) == 0 && !t.system.settings,
+              "system.settings false");
+        CHECK(native_machine_set(&t, "system.settings", "maybe", err, sizeof(err)) != 0, "settings maybe refused");
+    }
     {
         native_machine_t t;
         CHECK(load(&t, "sdl", err, sizeof(err)) == 0 && strcmp(t.input.ime, "sdl") == 0, "sdl ime %s", t.input.ime);

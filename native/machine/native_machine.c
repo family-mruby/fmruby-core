@@ -84,6 +84,7 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->system.exit_key, sizeof(m->system.exit_key), "none");
     snprintf(m->system.power, sizeof(m->system.power), "exit");
     m->system.power_log_only = false;
+    m->system.settings = true;
     snprintf(m->files.host, sizeof(m->files.host), "auto");
     snprintf(m->files.root, sizeof(m->files.root), "auto");
     m->compositor.autostart[0] = '\0';
@@ -280,6 +281,12 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
         if (strcmp(value, "true") == 0) m->system.power_log_only = true;
         else if (strcmp(value, "false") == 0) m->system.power_log_only = false;
         else return fail(err, n, "system.power_log_only: \"%s\" is not true or false", value);
+        return 0;
+    }
+    if (strcmp(key, "system.settings") == 0) {
+        if (strcmp(value, "true") == 0) m->system.settings = true;
+        else if (strcmp(value, "false") == 0) m->system.settings = false;
+        else return fail(err, n, "system.settings: \"%s\" is not true or false", value);
         return 0;
     }
 
@@ -488,7 +495,7 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
-             "input %s%s%s%s%s, audio %s%s%s, desktop %s%s, services %s, power %s%s, "
+             "input %s%s%s%s%s, audio %s%s%s, desktop %s%s, services %s%s, power %s%s, "
              "files host=%s root=%s%s%s%s%s%s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
@@ -496,7 +503,8 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
              strcmp(m->input.ime, "none") != 0 ? " ime=" : "", strcmp(m->input.ime, "none") != 0 ? m->input.ime : "",
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
-             m->desktop.variant, m->desktop.window_ops ? " (window ops)" : "", m->system.services, m->system.power,
+             m->desktop.variant, m->desktop.window_ops ? " (window ops)" : "", m->system.services,
+             m->system.settings ? " (settings)" : "", m->system.power,
              m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root,
              m->compositor.autostart[0] ? ", autostart " : "", m->compositor.autostart,
              m->compositor.ime[0] ? ", IME program " : "", m->compositor.ime,

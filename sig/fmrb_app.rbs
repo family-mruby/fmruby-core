@@ -816,6 +816,24 @@ class FmrbApp
   # ```
   def self.clipboard_gen: () -> Integer
 
+  # 画面の右上に小さな知らせを出す <<en>> Show a small notice at the top right
+  #
+  # 数秒で消える。上にアプリの名前、その下に文と本文
+  # (2 行まで)。知らせを出せるのは PC だけで、
+  # ほかの端末では何も出さずに false を返す。
+  # ```ruby
+  # FmrbApp.notify("Saved", "/home/a.txt")
+  # ```
+  # <<en>>
+  # It goes after a few seconds: the app's name, the
+  # text and the body (two lines at most). Only the PC
+  # shows them; elsewhere nothing shows and the answer
+  # is false.
+  # ```ruby
+  # FmrbApp.notify("Saved", "/home/a.txt")
+  # ```
+  def self.notify: (String summary, String body) -> bool
+
   # 動いているアプリの一覧 <<en>> The apps that are running
   #
   # 動いているアプリの一覧。1 つずつが名前と pid を持つ Hash。

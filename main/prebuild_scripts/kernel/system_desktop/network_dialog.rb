@@ -12,6 +12,11 @@
 #
 # While open, on_update re-reads wifi_info every ~1s so the IP appears as
 # soon as DHCP completes without the user reopening the dialog.
+#
+# On the PC (L14), where the OS lets Family mruby choose the network
+# (FmrbApp.wifi_networks is not ""), a third button opens the settings
+# window's Wi-Fi page (the networks in reach, connecting, disconnecting).
+# Everywhere else the dialog is as it was.
 
 module NetworkDialogMixin
   NET_W       = 240
@@ -129,6 +134,11 @@ module NetworkDialogMixin
     lc = FmrbI18n.t(:close)
     @ui.button(:net_refresh, 0, 0, FmrbI18n.text_width(lr) + 12, NET_BTN_H, lr)
     @ui.button(:net_close, 0, 0, FmrbI18n.text_width(lc) + 12, NET_BTN_H, lc)
+    @net_settings_ok = FmrbApp.wifi_networks != ""
+    if @net_settings_ok
+      lw = FmrbI18n.t(:wifi_settings)
+      @ui.button(:net_wifi, 0, 0, FmrbI18n.text_width(lw) + 12, NET_BTN_H, lw)
+    end
     show_network_widgets(false)
     nil
   end
@@ -136,6 +146,7 @@ module NetworkDialogMixin
   def show_network_widgets(on)
     @ui.set_visible(:net_refresh, on && !self.class::ON_WEB)
     @ui.set_visible(:net_close, on)
+    @ui.set_visible(:net_wifi, on) if @net_settings_ok
     nil
   end
 
@@ -143,9 +154,11 @@ module NetworkDialogMixin
     btn_y = @net_y + NET_H - 22
     rw = @ui.find(:net_refresh).w
     cw = @ui.find(:net_close).w
-    bx = @net_x + (NET_W - (rw + 8 + cw)) / 2
+    ww = @net_settings_ok ? @ui.find(:net_wifi).w + 8 : 0
+    bx = @net_x + (NET_W - (rw + 8 + ww + cw)) / 2
     @ui.move(:net_refresh, bx, btn_y, rw, NET_BTN_H)
-    @ui.move(:net_close, bx + rw + 8, btn_y, cw, NET_BTN_H)
+    @ui.move(:net_wifi, bx + rw + 8, btn_y, ww - 8, NET_BTN_H) if @net_settings_ok
+    @ui.move(:net_close, bx + rw + 8 + ww, btn_y, cw, NET_BTN_H)
     @ui.invalidate_all
   end
 
@@ -157,6 +170,9 @@ module NetworkDialogMixin
       net_refresh
       draw_foreground
     when :net_close then close_network_dialog
+    when :net_wifi
+      close_network_dialog
+      FmrbApp.linux_settings("wifi")
     end
     nil
   end

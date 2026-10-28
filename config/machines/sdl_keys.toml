@@ -30,3 +30,4 @@ window_ops = false           # no PC window operations (L13)
 services = "linux"           # the OS services from Linux (L6): network, battery
 exit_key = "esc_long"        # Esc held on the desktop ends the program
 power = "exit"               # the desktop's power entries: end the program only
+settings = false             # no PC settings or notifications (L14)

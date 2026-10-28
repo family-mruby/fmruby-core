@@ -1659,6 +1659,146 @@ static mrb_value mrb_fmrb_app_s_clipboard_gen(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value((mrb_int)fmrb_clipboard_generation());
 }
 
+// ---- The PC's settings and notices (doc/linux_native L14, fmrb_platform_sys.h) ----
+//
+// Every device, the simulation and the browser answer "not available":
+// "" for the texts, false, -1 for notices_gen.
+//
+// FmrbApp.wifi_networks(scan = false) -> String. The Wi-Fi state and the
+//   networks in reach: "wifi\t<status>\t<active>\t<busy>\t<code>\t<arg>"
+//   then "ap\t<ssid>\t<strength>\t<secured>\t<active>\t<saved>" per
+//   network (native/sys/linux_net.h). scan true asks for a scan too.
+// FmrbApp.wifi_connect(ssid, password = "") -> bool (queued). The password
+//   goes to the OS (NetworkManager) and is not kept here.
+// FmrbApp.wifi_disconnect -> bool.
+// FmrbApp.bt_devices -> String. "bt\t<status>\t<powered>\t<busy>\t<code>\t<arg>"
+//   then "dev\t<address>\t<name>\t<connected>\t<icon>" per known device.
+// FmrbApp.bt_power(on) -> bool. FmrbApp.bt_connect(address, on) -> bool.
+// FmrbApp.notices_gen -> Integer, changes when the notices do (-1: none
+//   are shown on this machine). Allocation free, for every update.
+// FmrbApp.notices -> String, newest first: "id\tkind\tapp\tsummary\tbody"
+//   per line (a line break in the body is 0x1F).
+// FmrbApp.notice_dismiss(id) -> nil.
+// FmrbApp.notify(summary, body = "") -> bool. A notice from the calling app
+//   (its name above the text), for a few seconds; false where there are
+//   none (only the PC shows them).
+typedef int32_t (*sys_text_fn)(const void *ud, char *buf, size_t cap);
+
+static mrb_value sys_text(mrb_state *mrb, sys_text_fn fn, const void *ud)
+{
+    int32_t need = fn(ud, NULL, 0);
+    if (need < 0) return mrb_str_new_lit(mrb, "");
+    for (int tries = 0; tries < 4; tries++) {
+        mrb_value str = mrb_str_new_capa(mrb, (size_t)need + 1);
+        int32_t got = fn(ud, RSTRING_PTR(str), (size_t)need + 1);
+        if (got < 0) return mrb_str_new_lit(mrb, "");
+        if (got <= need) {
+            mrb_str_resize(mrb, str, got);
+            return str;
+        }
+        need = got + 256;
+    }
+    return mrb_str_new_lit(mrb, "");
+}
+
+static int32_t wifi_text(const void *ud, char *buf, size_t cap)
+{
+    bool scan = ud != NULL && buf == NULL;   /* ask for the scan once, on the measuring call */
+    return fmrb_platform_sys_wifi_list(scan, buf, cap);
+}
+
+static int32_t bt_text(const void *ud, char *buf, size_t cap)
+{
+    (void)ud;
+    return fmrb_platform_sys_bt_list(buf, cap);
+}
+
+static int32_t notice_text(const void *ud, char *buf, size_t cap)
+{
+    (void)ud;
+    return fmrb_platform_sys_notice_list(buf, cap);
+}
+
+static mrb_value mrb_fmrb_app_s_wifi_networks(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_bool scan = false;
+    mrb_get_args(mrb, "|b", &scan);
+    return sys_text(mrb, wifi_text, scan ? (const void *)1 : NULL);
+}
+
+static mrb_value mrb_fmrb_app_s_wifi_connect(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *ssid;
+    mrb_value pw = mrb_nil_value();
+    mrb_get_args(mrb, "z|S", &ssid, &pw);
+    const char *p = "";
+    if (mrb_string_p(pw)) p = mrb_str_to_cstr(mrb, pw);
+    return mrb_bool_value(fmrb_platform_sys_wifi_connect(ssid, p) == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_wifi_disconnect(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_bool_value(fmrb_platform_sys_wifi_disconnect() == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_bt_devices(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    return sys_text(mrb, bt_text, NULL);
+}
+
+static mrb_value mrb_fmrb_app_s_bt_power(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_bool on;
+    mrb_get_args(mrb, "b", &on);
+    return mrb_bool_value(fmrb_platform_sys_bt_power(on) == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_bt_connect(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *addr;
+    mrb_bool on;
+    mrb_get_args(mrb, "zb", &addr, &on);
+    return mrb_bool_value(fmrb_platform_sys_bt_connect(addr, on) == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_notices_gen(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value(fmrb_platform_sys_notice_gen());
+}
+
+static mrb_value mrb_fmrb_app_s_notices(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    return sys_text(mrb, notice_text, NULL);
+}
+
+static mrb_value mrb_fmrb_app_s_notice_dismiss(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int id;
+    mrb_get_args(mrb, "i", &id);
+    if (id > 0) fmrb_platform_sys_notice_dismiss((uint32_t)id);
+    return mrb_nil_value();
+}
+
+static mrb_value mrb_fmrb_app_s_notify(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *summary;
+    const char *body = "";
+    mrb_get_args(mrb, "z|z", &summary, &body);
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    const char *app = ctx ? ctx->app_name : "";
+    return mrb_bool_value(fmrb_platform_sys_notice_post(app, summary, body, -1) == FMRB_OK);
+}
+
 #if defined(FMRB_PLATFORM_NATIVE)
 // ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
 //
@@ -1704,6 +1844,28 @@ static mrb_value mrb_fmrb_app_s_linux_keyboard(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
     return mrb_str_new_cstr(mrb, native_linux_keyboard_jp(NULL, 0) ? "jp" : "us");
+}
+
+// FmrbApp.linux_settings(page) -> bool: open the PC's settings window (L14,
+//   native/backend/native_settings.c) on the "wifi" or "bluetooth" page, or
+//   bring it in front there. FmrbApp.settings_page -> Integer: the page
+//   asked for last in the low bit (0 Wi-Fi, 1 Bluetooth), the count of the
+//   asks above it (the window turns to it when it changes). Native only.
+extern bool native_settings_open(const char *page);
+extern int native_settings_page(void);
+
+static mrb_value mrb_fmrb_app_s_linux_settings(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *page;
+    mrb_get_args(mrb, "z", &page);
+    return mrb_bool_value(native_settings_open(page));
+}
+
+static mrb_value mrb_fmrb_app_s_settings_page(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value(native_settings_page());
 }
 
 static mrb_value mrb_fmrb_app_s_wl_key(mrb_state *mrb, mrb_value klass)
@@ -2228,11 +2390,23 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "clipboard", mrb_fmrb_app_s_clipboard, MRB_ARGS_OPT(1));
     mrb_define_class_method(mrb, app_class, "set_clipboard", mrb_fmrb_app_s_set_clipboard, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "clipboard_gen", mrb_fmrb_app_s_clipboard_gen, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "wifi_networks", mrb_fmrb_app_s_wifi_networks, MRB_ARGS_OPT(1));
+    mrb_define_class_method(mrb, app_class, "wifi_connect", mrb_fmrb_app_s_wifi_connect, MRB_ARGS_ARG(1, 1));
+    mrb_define_class_method(mrb, app_class, "wifi_disconnect", mrb_fmrb_app_s_wifi_disconnect, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "bt_devices", mrb_fmrb_app_s_bt_devices, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "bt_power", mrb_fmrb_app_s_bt_power, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "bt_connect", mrb_fmrb_app_s_bt_connect, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, app_class, "notices_gen", mrb_fmrb_app_s_notices_gen, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "notices", mrb_fmrb_app_s_notices, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "notice_dismiss", mrb_fmrb_app_s_notice_dismiss, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "notify", mrb_fmrb_app_s_notify, MRB_ARGS_ARG(1, 1));
 #if defined(FMRB_PLATFORM_NATIVE)
     mrb_define_class_method(mrb, app_class, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wl_key", mrb_fmrb_app_s_wl_key, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_keyboard", mrb_fmrb_app_s_linux_keyboard, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "linux_settings", mrb_fmrb_app_s_linux_settings, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "settings_page", mrb_fmrb_app_s_settings_page, MRB_ARGS_NONE());
 #endif
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());

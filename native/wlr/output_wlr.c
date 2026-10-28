@@ -83,7 +83,10 @@
  * mruby, never waiting. The primary selection is not served.
  *
  * Also served: wlr-screencopy and xdg-output, so grim takes the composited
- * screen; and requests on the control socket ("comp ...", see wlr_ctl
+ * screen; ext-image-copy-capture with the output capture source, so the
+ * desktop portal's wlroots backend shares the screen (L14, a browser's
+ * meeting, a recorder), the portal told where the screen is
+ * (activation_env); and requests on the control socket ("comp ...", see wlr_ctl
  * below) that drive a keyboard and a pointer of the tools' own through the
  * same handlers as real devices, and report sizes and timings.
  *
@@ -137,6 +140,8 @@
 #include <sys/eventfd.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
+#include <spawn.h>
+#include <pthread.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -164,6 +169,8 @@
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
@@ -1659,6 +1666,9 @@ static void keyboard_key(struct wl_listener *l, void *data)
     int winop = down ? winop_key(code) : 0;
     if (winop != 0) target = KEY_TAKEN;
     else if (down && fmrb_hotkey(code)) target = COMP_FMRB;
+    /* The volume keys (L14) are Family mruby's too: they move the
+     * machine's volume (native/backend/input_native.c). */
+    else if (down && (code == KEY_MUTE || code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN)) target = COMP_FMRB;
     else if (down && wl_ime_takes_keys(k->wlr)) target = KEY_TO_IME;
     if (code <= KEY_MAX) {
         if (down) k->key_target[code] = target;
@@ -2935,6 +2945,64 @@ static int on_wake(int fd, uint32_t mask, void *data)
     return 0;
 }
 
+/* The session's programs started by D-Bus or systemd (the desktop portal
+ * and its wlroots backend, L14: a browser's screen sharing) learn where
+ * the screen is: WAYLAND_DISPLAY (and DISPLAY, Xwayland's) and the desktop
+ * name the portal picks its backends by (family-mruby-portals.conf). On
+ * the console only (the login screen's session), or when the checks ask
+ * (FMRB_COMPOSITOR_ACTIVATION_ENV=1): nested in another desktop, its
+ * session's environment is that desktop's, not ours to change. The tool
+ * runs on a thread of its own and is waited for there. */
+static void *activation_env_run(void *arg)
+{
+    char **argv = arg;
+    pid_t pid = 0;
+    extern char **environ;
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+    int rc = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    int status = 0;
+    if (rc == 0) waitpid(pid, &status, 0);
+    fprintf(stderr, "native: compositor: the session's activation environment: %s%s\n",
+            rc != 0 ? "dbus-update-activation-environment is missing" :
+            (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? "WAYLAND_DISPLAY and XDG_CURRENT_DESKTOP" : "not updated",
+            rc == 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0 && getenv("DISPLAY") ? " (and DISPLAY)" : "");
+    for (char **a = argv; *a; a++) free(*a);
+    free(argv);
+    return NULL;
+}
+
+static void activation_env(void)
+{
+    const char *ask = getenv("FMRB_COMPOSITOR_ACTIVATION_ENV");
+    if (s.session == NULL && !(ask != NULL && strcmp(ask, "1") == 0)) return;
+    char **argv = calloc(8, sizeof(char *));
+    if (argv == NULL) return;
+    int n = 0;
+    char buf[160];
+    argv[n++] = strdup("dbus-update-activation-environment");
+    argv[n++] = strdup("--systemd");
+    snprintf(buf, sizeof(buf), "WAYLAND_DISPLAY=%s", s.socket);
+    argv[n++] = strdup(buf);
+    snprintf(buf, sizeof(buf), "XDG_CURRENT_DESKTOP=%s", DESKTOP_NAME);
+    argv[n++] = strdup(buf);
+    const char *d = getenv("DISPLAY");
+    if (d != NULL && d[0] != '\0') {
+        snprintf(buf, sizeof(buf), "DISPLAY=%s", d);
+        argv[n++] = strdup(buf);
+    }
+    argv[n] = NULL;
+    pthread_t t;
+    if (pthread_create(&t, NULL, activation_env_run, argv) == 0) {
+        pthread_detach(t);
+    } else {
+        for (char **a = argv; *a; a++) free(*a);
+        free(argv);
+    }
+}
+
 /* Qt programs look as they do in Plasma (L9e). Qt picks its platform theme
  * from XDG_CURRENT_DESKTOP, which is ours (family-mruby: the launcher's
  * OnlyShowIn / NotShowIn rules and the programs' own see that name), so it
@@ -3071,6 +3139,12 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     /* The screen lock over everything (L13). */
     lock_init(m);
     wlr_screencopy_manager_v1_create(s.display);
+    /* The screen's capture for xdg-desktop-portal-wlr (L14: sharing the
+     * screen from a browser's meeting, a recorder): it takes an output
+     * through ext-image-copy-capture, or wlr-screencopy only with dmabuf,
+     * which the pixman renderer (a virtual machine) does not give. */
+    wlr_ext_image_copy_capture_manager_v1_create(s.display, 1);
+    wlr_ext_output_image_capture_source_manager_v1_create(s.display, 1);
     wlr_xdg_output_manager_v1_create(s.display, s.layout);
 
     s.socket = wl_display_add_socket_auto(s.display);
@@ -3089,6 +3163,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     qt_look();
     xwayland_init();
     if (s.ime) wl_ime_start(m->compositor.ime, s.socket);
+    activation_env();
 
     s.wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (s.wake_fd >= 0) {

@@ -17,6 +17,15 @@
 # wins, the pointer still in software); both set by the settings or the
 # environment (kept); not a virtual machine (nothing set, nothing said);
 # no systemd-detect-virt (as not a virtual machine).
+#
+# And (L14) starting it again: a stand-in that ends as a plan says (SIGKILL,
+# SIGUSR1, an exit status, SIGTERM, a normal end) on each run: signals that
+# leave no core (on WSL a core goes to the host's crash capture whatever the
+# limit; the compositor's check ends the real program with SIGSEGV). A crash
+# is followed by a new run told how the last ended (FMRB_SESSION_RESTARTED);
+# the 4th abnormal end within a minute ends the session (status 1); a
+# normal end (the Exit entry) and SIGTERM are never followed by a run;
+# SIGTERM to the session itself goes to the program and ends the session.
 
 require "fileutils"
 require "open3"
@@ -105,5 +114,82 @@ Dir.mktmpdir("fmrb-session-test") do |dir|
   check(out.include?("--set display.rotate=90") && out.start_with?("R=pixman "), "VM and ROTATE: #{out}")
 end
 
-puts "session: #{$count - $fail}/#{$count} checks passed (the renderer in a virtual machine)"
+Dir.mktmpdir("fmrb-session-restart") do |dir|
+  bin = File.join(dir, "bin")
+  FileUtils.mkdir_p(bin)
+  FileUtils.cp(SCRIPT, File.join(bin, "family-mruby-session"))
+  plan = File.join(dir, "plan")
+  # The stand-in: one line of the plan per run.
+  File.write(File.join(bin, "family-mruby"), <<~SH)
+    #!/bin/sh
+    n=$(cat "#{plan}.n" 2> /dev/null || echo 0)
+    n=$((n + 1))
+    echo "$n" > "#{plan}.n"
+    echo "run $n [$FMRB_SESSION_RESTARTED]" >> "#{plan}.log"
+    act=$(sed -n "${n}p" "#{plan}")
+    case "$act" in
+      kill) kill -KILL $$ ;;
+      usr1) kill -USR1 $$ ;;
+      term) kill -TERM $$ ;;
+      exit3) exit 3 ;;
+      hold) trap 'echo "got TERM" >> "#{plan}.log"; exit 0' TERM; sleep 30 & wait ;;
+      *) exit 0 ;;
+    esac
+  SH
+  File.chmod(0o755, File.join(bin, "family-mruby"), File.join(bin, "family-mruby-session"))
+  tools = File.join(dir, "tools")
+  FileUtils.mkdir_p(tools)
+  %w[dirname readlink cat sed date sleep].each do |t|
+    path = %w[/usr/bin /bin].map { |d| File.join(d, t) }.find { |f| File.executable?(f) }
+    abort "#{t} not found" unless path
+    File.symlink(path, File.join(tools, t))
+  end
+  env = { "PATH" => tools, "FMRB_SESSION_CONF" => File.join(dir, "none.conf"), "WLR_BACKENDS" => "headless" }
+  restart = lambda do |*acts|
+    File.write(plan, acts.join("\n") + "\n")
+    FileUtils.rm_f(["#{plan}.n", "#{plan}.log"])
+    _out, err, st = Open3.capture3(env, "/bin/sh", File.join(bin, "family-mruby-session"), unsetenv_others: true)
+    runs = File.exist?("#{plan}.log") ? File.readlines("#{plan}.log", chomp: true) : []
+    [runs, err, st]
+  end
+
+  runs, err, st = restart.call("kill", "exit")
+  check(st.exitstatus == 0 && runs == ["run 1 []", "run 2 [SIGKILL]"],
+        "a crash, then the Exit: #{runs.inspect} (#{st.exitstatus})")
+  check(err.include?("Family mruby ended by SIGKILL; starting it again (1 of 3 within 60s)") &&
+        err.include?("Family mruby ended (its Exit entry)"), "a crash, then the Exit: the lines (#{err.lines.last(3).join.strip})")
+
+  runs, err, st = restart.call("kill", "usr1", "exit3", "kill", "exit")
+  check(st.exitstatus == 1 && runs.size == 4 && runs[1] == "run 2 [SIGKILL]" &&
+        runs[2] == "run 3 [SIGUSR1]" && runs[3] == "run 4 [status 3]",
+        "the 4th abnormal end in a minute: #{runs.inspect} (#{st.exitstatus})")
+  check(err.include?("that is 4 abnormal ends within 60s: not starting it again"),
+        "the 4th abnormal end: the line (#{err.lines.last.to_s.strip})")
+
+  runs, err, st = restart.call("exit")
+  check(st.exitstatus == 0 && runs == ["run 1 []"], "the Exit alone: #{runs.inspect} (#{st.exitstatus})")
+
+  runs, err, st = restart.call("term", "exit")
+  check(st.exitstatus == 143 && runs == ["run 1 []"] && err.include?("ended by SIGTERM: not a crash"),
+        "SIGTERM to the program: #{runs.inspect} (#{st.exitstatus}, #{err.lines.last.to_s.strip})")
+
+  # SIGTERM to the session (a logout): the program gets it, no new run.
+  File.write(plan, "hold\nexit\n")
+  FileUtils.rm_f(["#{plan}.n", "#{plan}.log"])
+  r, w = IO.pipe
+  pid = Process.spawn(env, "/bin/sh", File.join(bin, "family-mruby-session"), err: w, out: File::NULL,
+                      unsetenv_others: true)
+  w.close
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+  sleep 0.1 until File.exist?("#{plan}.log") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+  sleep 0.3
+  Process.kill("TERM", pid)
+  _, st = Process.wait2(pid)
+  err = r.read
+  runs = File.readlines("#{plan}.log", chomp: true)
+  check(runs == ["run 1 []", "got TERM"] && err.include?("the session ends (SIGTERM)"),
+        "SIGTERM to the session: #{runs.inspect} (#{st.exitstatus}, #{err.lines.last.to_s.strip})")
+end
+
+puts "session: #{$count - $fail}/#{$count} checks passed (the renderer in a virtual machine, starting again after a crash)"
 exit($fail.zero? ? 0 : 1)

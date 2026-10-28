@@ -29,3 +29,4 @@ window_ops = true            # title double-click maximizes, Super+arrows lay wi
 services = "linux"           # the OS services from Linux (L6): network, battery
 exit_key = "none"
 power = "exit"               # the desktop's power entries: end the program only
+settings = true              # Wi-Fi, Bluetooth, the PipeWire volume, notifications (L14)

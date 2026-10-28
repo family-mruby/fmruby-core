@@ -16,6 +16,12 @@
  * And (L9b) the Linux PC's applications for the launcher, where the program
  * is the Wayland compositor.
  *
+ * And (L14) the PC's settings and notices: Wi-Fi (NetworkManager),
+ * Bluetooth (BlueZ), and the small notices the desktop shows at the top
+ * right (Linux programs' freedesktop notifications, the apps' own). Every
+ * device, the simulation and the browser answer "not available" (-1,
+ * FMRB_ERR_NOT_SUPPORTED): their tables leave these NULL.
+ *
  * Every entry may be NULL; fmrb_platform_sys_*() below then answer "no
  * value" (false, 0). None of them may block for long: the hosted builds run
  * a cooperative scheduler, and a call that waits on the OS goes through the
@@ -139,6 +145,33 @@ typedef struct {
     int32_t (*apps_handlers)(const char *path, char *buf, size_t cap);
     fmrb_err_t (*apps_open)(const char *id, const char *path, char *name, size_t name_cap,
                             char *why, size_t why_cap);
+
+    /* Wi-Fi (L14, native/sys/linux_net.h): the state and the networks in
+     * reach as text into buf ("wifi\t<status>\t..." then "ap\t..." per
+     * network), its length (more than cap: nothing written), -1 when this
+     * machine has none. scan also asks for a scan. connect queues the
+     * connection (the password goes to the OS and is not kept here). None
+     * of them waits. */
+    int32_t (*wifi_list)(bool scan, char *buf, size_t cap);
+    fmrb_err_t (*wifi_connect)(const char *ssid, const char *password);
+    fmrb_err_t (*wifi_disconnect)(void);
+
+    /* Bluetooth (L14, native/sys/linux_bt.h): the adapter and the devices
+     * paired before, as text ("bt\t..." then "dev\t..." per device); -1
+     * none. power and connect are queued. */
+    int32_t (*bt_list)(char *buf, size_t cap);
+    fmrb_err_t (*bt_power)(bool on);
+    fmrb_err_t (*bt_connect)(const char *address, bool on);
+
+    /* The notices at the top right (L14, native/sys/linux_notify.h).
+     * notice_gen changes whenever they do (-1: this machine shows none);
+     * notice_list writes them, newest first, one line each
+     * ("id\tkind\tapp\tsummary\tbody"). notice_post adds an app's;
+     * notice_dismiss closes one (a click). */
+    int32_t (*notice_gen)(void);
+    int32_t (*notice_list)(char *buf, size_t cap);
+    fmrb_err_t (*notice_post)(const char *app, const char *summary, const char *body, int timeout_ms);
+    void (*notice_dismiss)(uint32_t id);
 } fmrb_platform_sys_t;
 
 /** The table in use: the default one unless a platform installed its own. */
@@ -177,6 +210,18 @@ fmrb_err_t fmrb_platform_sys_apps_launch(const char *id);
 int32_t fmrb_platform_sys_apps_handlers(const char *path, char *buf, size_t cap);
 fmrb_err_t fmrb_platform_sys_apps_open(const char *id, const char *path, char *name, size_t name_cap,
                                        char *why, size_t why_cap);
+/* The PC's settings and notices (L14): -1 / FMRB_ERR_NOT_SUPPORTED on
+ * every machine without them. */
+int32_t fmrb_platform_sys_wifi_list(bool scan, char *buf, size_t cap);
+fmrb_err_t fmrb_platform_sys_wifi_connect(const char *ssid, const char *password);
+fmrb_err_t fmrb_platform_sys_wifi_disconnect(void);
+int32_t fmrb_platform_sys_bt_list(char *buf, size_t cap);
+fmrb_err_t fmrb_platform_sys_bt_power(bool on);
+fmrb_err_t fmrb_platform_sys_bt_connect(const char *address, bool on);
+int32_t fmrb_platform_sys_notice_gen(void);
+int32_t fmrb_platform_sys_notice_list(char *buf, size_t cap);
+fmrb_err_t fmrb_platform_sys_notice_post(const char *app, const char *summary, const char *body, int timeout_ms);
+void fmrb_platform_sys_notice_dismiss(uint32_t id);
 
 #ifdef __cplusplus
 }

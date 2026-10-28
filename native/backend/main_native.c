@@ -596,7 +596,16 @@ int main(int argc, char **argv)
      * the ALSA mixer behind the volume when the sound goes out through ALSA.
      * No mixer (the SDL output, WSL2) leaves the internal volume in charge. */
     if (strcmp(m->system.services, "linux") == 0) {
-        if (strcmp(m->audio.backend, "alsa") == 0) {
+        /* The PC (L14): the desktop's sound server holds the volume when
+         * one answers (PipeWire, PulseAudio), whatever the sound goes out
+         * through; else the ALSA mixer as before. */
+        bool server = false;
+        if (m->system.settings) {
+            server = sys_linux_pw_open(why, sizeof(why));
+            if (server) fprintf(stderr, "native: volume: %s\n", sys_linux_pw_name());
+            else fprintf(stderr, "native: volume: no sound server (%s)\n", why);
+        }
+        if (!server && strcmp(m->audio.backend, "alsa") == 0) {
             if (sys_linux_mixer_open(m->audio.device, m->audio.mixer, why, sizeof(why))) {
                 fprintf(stderr, "native: volume: the mixer %s\n", sys_linux_mixer_name());
             } else {
@@ -604,6 +613,7 @@ int main(int argc, char **argv)
             }
         }
         sys_linux_install();
+        sys_linux_settings_start();
     }
 
     snprintf(sock, sizeof(sock), "%s/ctl", c->run_dir);

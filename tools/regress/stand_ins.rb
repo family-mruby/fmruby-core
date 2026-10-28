@@ -193,6 +193,11 @@ class FmrbApp
   def self.audio_muted? = false
   def self.path_read_only?(_path) = false
   def self.wifi_info = Regress::Env.wifi
+  # The PC's settings and notices (L14): none, as on the devices.
+  def self.wifi_networks(_scan = false) = ""
+  def self.bt_devices = ""
+  def self.notices_gen = -1
+  def self.notices = ""
   def self.method_missing(n, *) = Regress::Env.note_unstubbed("FmrbApp.#{n}")
   def self.respond_to_missing?(*) = true
 

@@ -143,11 +143,21 @@ set(NATIVE_BACKEND_SRCS
   ${N}/net/net_wrap.c
   # The user's /etc brought up to the distribution's (L3a)
   ${N}/etc/etc_update.c
-  # The OS services on Linux (L6): battery, network, mixer, power
+  # The OS services on Linux (L6): battery, network, mixer, power; the PC's
+  # settings and notices (L14): D-Bus, NetworkManager, BlueZ, notifications,
+  # the sound server
   ${N}/sys/platform_sys_linux.c
   ${N}/sys/sys_linux_read.c
   ${N}/sys/sys_linux_mixer.c
   ${N}/sys/linux_pty.c
+  ${N}/sys/linux_bus.c
+  ${N}/sys/linux_net.c
+  ${N}/sys/linux_bt.c
+  ${N}/sys/linux_notify.c
+  ${N}/sys/sys_linux_pw.c
+  # The PC's settings window (L14): the spawner and the app's bytecode
+  # (rake native:mrb compiles native/apps/*.app.rb)
+  ${N}/backend/native_settings.c
   # The compositor's hand-overs and Family mruby's side of its windows (L9a):
   # plain C, in every build (the stand-in's gem calls are always there; the
   # task only starts when the program is the compositor).
@@ -174,13 +184,25 @@ if(NATIVE_HAVE_WLROOTS)
     COMMAND ${WAYLAND_SCANNER} server-header
             ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
     DEPENDS ${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml)
+  # The screen's capture for the desktop portal (L14): wlroots' header for
+  # it includes the protocol's server header too.
+  set(NATIVE_WLR_CAPTURE_XML ${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-copy-capture/ext-image-copy-capture-v1.xml)
+  add_custom_command(
+    OUTPUT ${NATIVE_WLR_GEN}/ext-image-copy-capture-v1-protocol.h
+    COMMAND ${WAYLAND_SCANNER} server-header ${NATIVE_WLR_CAPTURE_XML}
+            ${NATIVE_WLR_GEN}/ext-image-copy-capture-v1-protocol.h
+    DEPENDS ${NATIVE_WLR_CAPTURE_XML})
   list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+       ${NATIVE_WLR_GEN}/ext-image-copy-capture-v1-protocol.h
        # The launcher's Linux applications (L9b): started by the compositor;
        # files opened in them (L11).
        ${N}/sys/linux_apps.c ${N}/sys/linux_mime.c
        # logind's Lock and PrepareForSleep lock the screen (L13)
        ${N}/sys/linux_logind.c)
 endif()
+# The bytecode of the apps only the native program carries (L14).
+file(GLOB NATIVE_APP_MRB_SRCS ${N}/apps/mrb/*.c)
+list(APPEND NATIVE_BACKEND_SRCS ${NATIVE_APP_MRB_SRCS})
 target_sources(core_objs PRIVATE ${NATIVE_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE
   ${N}/backend

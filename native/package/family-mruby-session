@@ -47,6 +47,24 @@
 # not a virtual machine nothing changes: wlroots picks the renderer itself.
 # The choice is logged in one line.
 #
+# Settings and notices (L14): the menu's Bluetooth and the network
+# dialog's Wi-Fi open Family mruby's settings window (NetworkManager and
+# BlueZ do the work; a password goes to NetworkManager), the volume and its
+# keys move PipeWire's (or PulseAudio's) output, and Linux programs'
+# notifications show at the top right. Sharing the screen from a browser's
+# meeting (or recording it) goes through xdg-desktop-portal-wlr (a
+# Recommends): this script names the desktop (XDG_CURRENT_DESKTOP, the
+# portal's family-mruby-portals.conf) to the session's services before the
+# start, and Family mruby tells them where the screen is once it is up.
+#
+# When Family mruby ends other than by its Exit entry (it crashed, or was
+# killed), this script starts it again and the new one says so in a notice;
+# the reason is logged. After the 4th such end within a minute it stops
+# trying and the login screen comes back. Ending it with SIGTERM (a logout,
+# a shutdown, kill) is not a crash: the session ends. Linux programs started
+# inside Family mruby end with it (a Wayland program's windows belong to the
+# compositor); the new one starts none of them again.
+#
 # FMRB_SESSION_CONF names another settings file (for trying settings out).
 #
 # Its output (and Family mruby's log) goes where the display manager puts a
@@ -115,6 +133,82 @@ if [ -z "${WLR_BACKENDS:-}" ]; then
     unset WAYLAND_DISPLAY DISPLAY
 fi
 
-say "starting $prog --machine linux_pc_wl (rotate $ROTATE) $FMRB_ARGS"
-# shellcheck disable=SC2086
-exec "$prog" --machine linux_pc_wl --set display.rotate="$ROTATE" $FMRB_ARGS "$@"
+# The desktop's name for the session's services (the desktop portal picks
+# its backends by it); the display manager sets it from the session entry's
+# DesktopNames, this covers a start without one.
+XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-family-mruby}
+XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-wayland}
+export XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
+if command -v dbus-update-activation-environment > /dev/null 2>&1; then
+    dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP XDG_SESSION_TYPE > /dev/null 2>&1 ||
+        say "the session's services were not told the desktop's name (no session bus?)"
+fi
+
+# Starting again after an abnormal end (see above).
+MAX_ENDS=3          # abnormal ends a minute that are started again
+WINDOW_S=60
+ends=""             # the times (s) of the abnormal ends within the window
+restarted=""        # how the last run ended (SIGSEGV, status 3), for the new one's notice
+child=""
+stopping=""
+
+on_signal() {
+    stopping=$1
+    [ -n "$child" ] && kill "-$1" "$child" 2> /dev/null
+}
+trap 'on_signal TERM' TERM
+trap 'on_signal HUP' HUP
+trap 'on_signal INT' INT
+
+while :; do
+    say "starting $prog --machine linux_pc_wl (rotate $ROTATE) $FMRB_ARGS${restarted:+ (again: the last run ended abnormally, $restarted)}"
+    # shellcheck disable=SC2086
+    FMRB_SESSION_RESTARTED="$restarted" "$prog" --machine linux_pc_wl --set display.rotate="$ROTATE" $FMRB_ARGS "$@" &
+    child=$!
+    # wait returns early when a trapped signal comes; wait again for the end.
+    while :; do
+        wait "$child"
+        rc=$?
+        kill -0 "$child" 2> /dev/null || break
+    done
+    child=""
+    if [ -n "$stopping" ]; then
+        say "the session ends (SIG$stopping)"
+        exit "$rc"
+    fi
+    if [ "$rc" -eq 0 ]; then
+        say "Family mruby ended (its Exit entry)"
+        exit 0
+    fi
+    if [ "$rc" -gt 128 ]; then
+        sig=$(kill -l "$((rc - 128))" 2> /dev/null) || sig=$((rc - 128))
+        why="SIG$sig"
+        how="ended by SIG$sig"
+        case "$sig" in
+            TERM|HUP|INT)
+                say "Family mruby $how: not a crash, the session ends"
+                exit "$rc"
+                ;;
+        esac
+    else
+        why="status $rc"
+        how="exited with status $rc"
+    fi
+    now=$(date +%s)
+    kept=""
+    count=0
+    for t in $ends $now; do
+        if [ $((now - t)) -lt "$WINDOW_S" ]; then
+            kept="$kept $t"
+            count=$((count + 1))
+        fi
+    done
+    ends=$kept
+    if [ "$count" -gt "$MAX_ENDS" ]; then
+        say "Family mruby $how; that is $count abnormal ends within ${WINDOW_S}s: not starting it again (back to the login screen)"
+        exit 1
+    fi
+    say "Family mruby $how; starting it again ($count of $MAX_ENDS within ${WINDOW_S}s)"
+    restarted=$why
+    sleep 1
+done

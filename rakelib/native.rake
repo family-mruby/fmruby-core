@@ -49,6 +49,23 @@ def native_binary
   File.join(native_build_dir, "fmruby-native")
 end
 
+# The apps built into the native program only (native/apps/, L14: the PC's
+# settings window): their bytecode next to them in native/apps/mrb/ (not
+# tracked), as the kernel's own programs get theirs, for every native build.
+def native_regen_apps_mrb!
+  mrbc = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/bin/mrbc")
+  return puts("native:mrb: no #{mrbc} yet -- the native apps skipped") unless File.exist?(mrbc)
+  dir = File.join(NATIVE_DIR, "apps")
+  Dir[File.join(dir, "*.app.rb")].sort.each do |rb|
+    name = File.basename(rb).sub(/\..*\z/, "")
+    out_c = File.join(dir, "mrb", "#{name}.c")
+    next if File.exist?(out_c) && File.mtime(out_c) >= File.mtime(rb)
+    mkdir_p File.dirname(out_c)
+    sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
+    puts "native:mrb: #{name} rebuilt"
+  end
+end
+
 namespace :native do
   # "^setup" is the ROOT setup task: the gem sources libmruby is built from
   # are the COPIES under components/picoruby-esp32/picoruby, and root setup
@@ -64,6 +81,7 @@ namespace :native do
   desc "Regenerate stale mruby app/kernel bytecode (the native build cannot)"
   task :mrb do
     hosted_regen_mrb!("native:mrb", NATIVE_MRUBY_BUILD, "native:mruby")
+    native_regen_apps_mrb!
   end
 
   # The first start's /etc and the machine definitions, staged outside
@@ -181,8 +199,16 @@ namespace :native do
     sh "#{NATIVE_TEST_BUILD}/native_pty_test"
     # ...and the Shell's reading of their output (lines and SGR colours).
     sh "ruby #{NATIVE_TEST_DIR}/shell_term_test.rb"
-    # The login screen's session starter: the renderer in a virtual machine (L9c).
+    # The login screen's session starter: the renderer in a virtual machine
+    # (L9c), starting it again after a crash (L14).
     sh "ruby #{NATIVE_TEST_DIR}/session_test.rb"
+    # The PC's settings and notices (L14): the parts without a bus.
+    sincs = %w[native/sys components/fmrb_common/include]
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{sincs.map { |i| "-I #{i}" }.join(' ')} " \
+       "native/sys/linux_notify.c native/sys/linux_bus.c native/sys/linux_net.c native/sys/linux_bt.c " \
+       "native/sys/sys_linux_pw.c #{NATIVE_TEST_DIR}/settings.c -lpthread -ldl " \
+       "-o #{NATIVE_TEST_BUILD}/native_settings_test"
+    sh "#{NATIVE_TEST_BUILD}/native_settings_test"
 
     # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps.c,
     # and opening files in them (L11: native/sys/linux_mime.c), plain POSIX, with libpng for the icons when the host has it (and
@@ -292,7 +318,10 @@ NATIVE_DEB_LAYOUT = {
     # it X11 programs do not run and the log says so; Wayland ones do.
     session: true,
     # The screen lock program (L13, ext-session-lock): the power menu's Lock.
-    recommends: "xwayland, swaylock",
+    # Sharing the screen (L14): the desktop portal's wlroots backend, with
+    # the files that point the session's portal at it (portals below).
+    recommends: "xwayland, swaylock, xdg-desktop-portal-wlr",
+    portals: true,
     # The IME for Japanese (L12b): started by the compositor when installed
     # (machine linux_pc_wl, compositor.ime); without it Family mruby's own
     # kana input stays. Suggested only: an IME is the user's choice, and on
@@ -302,6 +331,12 @@ NATIVE_DEB_LAYOUT = {
 }.freeze
 NATIVE_DEB_ROOT = "usr/share/family-mruby/root"
 NATIVE_DEB_SESSIONS = "usr/share/wayland-sessions"
+# The desktop portal's choice for the session (L14): the backends by
+# interface, and xdg-desktop-portal-wlr's own settings for our desktop name.
+NATIVE_DEB_PORTALS = {
+  "usr/share/xdg-desktop-portal/family-mruby-portals.conf" => "family-mruby-portals.conf",
+  "etc/xdg/xdg-desktop-portal-wlr/family-mruby" => "xdg-desktop-portal-wlr.conf",
+}.freeze
 
 def native_deb_arch
   arch = (ENV["ARCH"] || "arm64").strip
@@ -458,6 +493,12 @@ namespace :native do
       mkdir_p sessions
       cp File.join(NATIVE_DIR, "package", "family-mruby.desktop"), sessions
     end
+    if lay[:portals]
+      NATIVE_DEB_PORTALS.each do |dest, src|
+        mkdir_p File.dirname(File.join(pkg, dest))
+        cp File.join(NATIVE_DIR, "package", src), File.join(pkg, dest)
+      end
+    end
     Dir.glob(File.join(bin, "*")).each { |f| chmod 0o755, f }
     mkdir_p File.dirname(File.join(pkg, NATIVE_DEB_ROOT))
     cp_r File.join(NATIVE_DEB_DIR, "root"), File.join(pkg, NATIVE_DEB_ROOT)
@@ -525,6 +566,10 @@ namespace :native do
        /usr/share/family-mruby/root; each user's files go to
        $XDG_DATA_HOME/family-mruby and $XDG_CACHE_HOME/family-mruby.
     CONTROL
+    # What the package puts under /etc is the administrator's to change, and
+    # an upgrade keeps their change (L14: the portal backend's settings).
+    etc = Dir.glob(File.join(pkg, "etc", "**", "*")).select { |f| File.file?(f) }.map { |f| f.sub(pkg, "") }.sort
+    File.write(File.join(pkg, "DEBIAN", "conffiles"), etc.join("\n") + "\n") unless etc.empty?
     rm_f deb
     native_docker("dpkg-deb --root-owner-group -Zxz --build #{rel}/pkg #{deb.sub("#{ROOT_DIR}/", '')}")
     puts "native:deb: #{deb} (#{(File.size(deb) / 1024.0 / 1024).round(1)} MB, installed #{(size_kb / 1024.0).round(1)} MB)"
@@ -560,7 +605,8 @@ namespace :native do
       else
         layout = NATIVE_DEB_LAYOUT[arch]
         ok = r.start_with?("#{layout[:bin_dir]}/") || r.start_with?("usr/share/APPLaunch/") ||
-             (layout[:session] && r == "#{NATIVE_DEB_SESSIONS}/family-mruby.desktop")
+             (layout[:session] && r == "#{NATIVE_DEB_SESSIONS}/family-mruby.desktop") ||
+             (layout[:portals] && NATIVE_DEB_PORTALS.key?(r))
         problems << "outside the package layout: #{r}" unless ok
       end
       base = File.basename(r)

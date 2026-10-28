@@ -24,6 +24,7 @@ class SystemDesktopApp < FmrbApp
   include AboutDialogMixin
   include ShortcutsDialogMixin
   include TbdDialogMixin
+  include NoticesMixin
 
   MENU_BAR_HEIGHT = 13
   # Max cursor travel (virtual px) between mouse_down and mouse_up for the
@@ -120,6 +121,9 @@ class SystemDesktopApp < FmrbApp
     # stored /home, and that lives on the page around the screen.
     (ON_WEB ? [] : [{ key: :storage }]) +
     (FmrbConst::HAS_WIFI ? [{ key: :network }] : []) +
+    # The PC's Bluetooth (L14): its settings window. Only where the OS has
+    # them (bt_devices is "" on every device, the simulation and the page).
+    (FmrbApp.bt_devices != "" ? [{ key: :bluetooth }] : []) +
     # Retro only: manual BLE start for the ble_auto_start=false configuration
     # (on Modern the C6 radio path manages itself). Harmless when BLE is
     # already up -- the C side is idempotent.
@@ -150,6 +154,8 @@ class SystemDesktopApp < FmrbApp
     @resize_preview_h = 0
 
     @dropdown_open = false
+    @ntc_on = false
+    @ntc_items = []
     @dropdown_menu = :main
     @dropdown_hover_idx = -1
     @about_open = false
@@ -355,6 +361,7 @@ class SystemDesktopApp < FmrbApp
 
     init_taskbar
     @taskbar_focused_pid = nil
+    setup_notices
 
     start_boot_animation
   end
@@ -886,6 +893,7 @@ class SystemDesktopApp < FmrbApp
     draw_starting if @starting_name
     draw_tbd_dialog if @tbd_open
     draw_resize_preview if @resize_preview_active
+    draw_notices
     # flush presents when a widget was drawn; otherwise the present is ours.
     @gfx.present unless @ui.flush
   end
@@ -1540,6 +1548,7 @@ class SystemDesktopApp < FmrbApp
                    w: TbdDialogMixin::TBD_W, h: TbdDialogMixin::TBD_H, transparent: false }
     end
 
+    notice_regions(regions)
     @gfx.set_composite_regions(regions)
   end
 
@@ -1671,6 +1680,8 @@ class SystemDesktopApp < FmrbApp
 
     #draw_memory_stats
     @counter += 1
+    # The PC's notices (L14): nothing on the devices (setup_notices).
+    tick_notices
 
     # Update clock and taskbar every ~1 second (500ms * 2 = 1s). The spin
     # timeout below is also the idle window idle_gc steps in; it must clear
@@ -2324,6 +2335,8 @@ class SystemDesktopApp < FmrbApp
       open_storage_dialog
     when :network
       open_network_dialog
+    when :bluetooth
+      FmrbApp.linux_settings("bluetooth")
     when :audio_mute
       toggle_audio_mute
     when :ble_start

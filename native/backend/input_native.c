@@ -24,6 +24,9 @@
 #include "native_ime.h"
 #include "native_input.h"
 #include "native_winops.h"
+#include "native_config.h"
+#include "linux_notify.h"
+#include "fmrb_audio.h"
 
 static const char *TAG = "input_native";
 
@@ -53,14 +56,57 @@ void native_input_push(uint32_t type, uint32_t a, uint32_t b, uint32_t c, uint32
     atomic_store_explicit(&s_wr, wr + 1, memory_order_release);
 }
 
+/* ---- the volume keys (L14) ------------------------------------------- */
+
+/* Keyboard usages of the HID tables (linux_keys.c gives KEY_MUTE,
+ * KEY_VOLUMEDOWN and KEY_VOLUMEUP these; SDL's scancodes are the same). */
+#define USAGE_MUTE 0x7F
+#define USAGE_VOLUME_UP 0x80
+#define USAGE_VOLUME_DOWN 0x81
+
+static uint32_t s_volume_notice;
+
+/* Taken here, whichever window has the keyboard: one step up or down (the
+ * desktop's volume, the OS's where it holds it), or the mute; up also
+ * unmutes. On the PC a small notice shows the level. */
+static bool volume_key(uint8_t usage, bool down)
+{
+    if (usage != USAGE_MUTE && usage != USAGE_VOLUME_UP && usage != USAGE_VOLUME_DOWN) return false;
+    if (!down) return true;
+    bool muted = fmrb_host_audio_muted();
+    int step = fmrb_host_audio_volume();
+    if (usage == USAGE_MUTE) {
+        muted = !muted;
+        fmrb_host_set_audio_mute(muted);
+    } else {
+        step += usage == USAGE_VOLUME_UP ? 1 : -1;
+        if (step < 0) step = 0;
+        if (step > FMRB_AUDIO_VOLUME_MAX) step = FMRB_AUDIO_VOLUME_MAX;
+        fmrb_host_set_audio_volume(step);
+        if (muted && usage == USAGE_VOLUME_UP) {
+            muted = false;
+            fmrb_host_set_audio_mute(false);
+        }
+    }
+    FMRB_LOGI(TAG, "volume key: %d/%d%s", step, FMRB_AUDIO_VOLUME_MAX, muted ? " muted" : "");
+    if (g_native_config.machine.system.settings) {
+        char level[8];
+        snprintf(level, sizeof(level), "%d", step * 100 / FMRB_AUDIO_VOLUME_MAX);
+        s_volume_notice = linux_notify_post("volume", "", level, muted ? "muted" : "", 1500, s_volume_notice);
+    }
+    return true;
+}
+
 static void dispatch(const native_event_t *ev)
 {
     switch (ev->type) {
     case NATIVE_INPUT_KEY_DOWN:
+        if (volume_key((uint8_t)ev->a, true)) break;
         if (native_winops_key((uint8_t)ev->a, true)) break;
         fmrb_host_send_key_down((uint8_t)ev->a, (uint8_t)ev->a, (uint8_t)ev->b);
         break;
     case NATIVE_INPUT_KEY_UP:
+        if (volume_key((uint8_t)ev->a, false)) break;
         if (native_winops_key((uint8_t)ev->a, false)) break;
         fmrb_host_send_key_up((uint8_t)ev->a, (uint8_t)ev->a, (uint8_t)ev->b);
         break;
@@ -154,6 +200,7 @@ static void inject_packet(uint8_t type, const uint8_t *data, uint16_t len)
         if (len >= sizeof(hid_keyboard_event_t)) {
             const hid_keyboard_event_t *k = (const hid_keyboard_event_t *)data;
             uint8_t mod = sdl_mod_to_fmrb(k->modifier);
+            if (volume_key(k->scancode, type == HID_EVENT_KEY_DOWN)) break;
             if (native_winops_key(k->scancode, type == HID_EVENT_KEY_DOWN)) break;
             /* The scancode is the HID usage; the key code the sender put
              * next to it is SDL's keysym, which this build does not use. */

@@ -73,6 +73,12 @@
  *              power_log_only true: log the logind request instead of
  *                             sending it (every test; never power off a
  *                             development machine)
+ *              settings       true: the PC's settings and notifications
+ *                             (L14, with services = "linux"): Wi-Fi through
+ *                             NetworkManager, Bluetooth through BlueZ, the
+ *                             volume through PipeWire / PulseAudio, the
+ *                             freedesktop notifications; false (the
+ *                             Cardputer, the keys desktop) none of them
  *   [files]    host           /mnt/host, Linux's files read-write: "auto"
  *                             (the user's home, $HOME), a directory, or
  *                             "none" to leave it out (L7)
@@ -154,6 +160,7 @@ typedef struct {
         char exit_key[16];
         char power[32];                  /* "exit", "logind" or "logind,exit" */
         bool power_log_only;
+        bool settings;                   /* the PC's settings and notifications (L14) */
     } system;
 
     struct {

@@ -46,6 +46,7 @@ window_ops = true            # title double-click maximizes, Super+arrows lay wi
 services = "linux"
 exit_key = "none"
 power = ["logind", "exit"]
+settings = true              # Wi-Fi, Bluetooth, the PipeWire volume, notifications (L14)
 
 [files]
 host = "auto"
