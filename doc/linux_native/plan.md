@@ -623,9 +623,12 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
 - NET1 (2026-10-28 検収済、3417cc12): PicoRuby から Chrome の DevTools Protocol を
   動かす確認で見つけた gem の欠点を直した (Net::HTTP は届いた分を読む、WebSocket は
   どの 101 も受ける・Host にポート、受信の見直しは 100 ms から 30 ms)。1 往復は
-  約 100 ms から約 30 ms。残件: 30 ms の見直しは実機 (S3・Tab5) で未確認 (受信待ちの
-  アプリが 1 秒に約 33 回起きる負担。30 ms より短くするのは実機の確認の後、ユーザ
-  決定)、`close` の待ち (100 ms 刻み、最大 1 秒) はそのまま、client.rb は丸ごとの
+  約 100 ms から約 30 ms。NET2 (2026-10-28 検収済、b364c1a5): Linux 版
+  (`FmrbConst::PLATFORM == "linux"`、ネイティブ版と sim) だけ見直しを 5 → 10 → 30 ms、
+  その待ちで 1 秒何も来なければ 100 ms にした (ユーザ決定)。CDP の 1 往復は約 5 ms。
+  ブラウザ版はこの gem を持たない。残件: 実機 (S3・Tab5) は一定の 30 ms のままで、
+  30 ms の負担も段階の見直しも実機で未確認 (確認の後に段階を実機にも広げるかは
+  ユーザ決定)、`close` の待ち (100 ms 刻み、最大 1 秒) はそのまま、client.rb は丸ごとの
   写しなので submodule を進めたら写し直す。上流への提案は台帳
   (reference/picoruby_upstream_pr_candidates.md の 2026-10-28 追加)。
 - L14 の残件: VM での確認 (本物の NetworkManager・BlueZ と polkit、Plasma の
