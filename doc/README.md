@@ -113,6 +113,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔18 files〕
 - `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **完了** (2026-09-26) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。音の可聴確認とスマホでの実操作も確認済み 〔27 files〕
+- `web_crt/` [ブラウザ版の CRT 風の表示](web_crt/plan.md) — **計画済** (2026-10-29) ブラウザ版の画面を WebGL のシェーダーでブラウン管風に描く選び口を足す。元の絵と画面写しはそのまま 〔2 files〕
 
 ## アーカイブ (完結したテーマ)
 
