@@ -602,7 +602,8 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   (「Cannot delete etc: /mnt/root is read-only.」) の右の端が、File Manager の
   スクロールバーに上書きされて「(click to close)」が欠ける (知らせの上に
   スクロールバーが描かれる)。ユーザ指示で今は直さない。日本語入力 (fcitx5 +
-  Mozc) は VM で打てた。
+  Mozc) は VM で打てた。Firefox (snap) からの画面の共有も VM で確認済 (https の
+  ページで。http では Firefox が共有を許さず何も起きない)。
 - L14 の残件: VM での確認 (本物の NetworkManager・BlueZ と polkit、Plasma の
   portal との並び、ブラウザからの共有)、通知のボタン・markup・アイコン、全画面の
   アプリの上には知らせが出ない、Wi-Fi の無線の入り切りは表示だけ、arm64 の .deb は
