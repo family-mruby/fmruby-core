@@ -598,6 +598,11 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   閉じる (同じ扱いにするかは仕様の判断)、受け取りのファイル転送
   (`host_file_local.c`) は名前で開くので判定と書き込みの間の隙が残る、知らせの
   文は英語のまま、ブラウザ版の画面の比較は未実施。
+- VM で見つけたもの (2026-10-28、L14 までの .deb): File Manager のエラーの知らせ
+  (「Cannot delete etc: /mnt/root is read-only.」) の右の端が、File Manager の
+  スクロールバーに上書きされて「(click to close)」が欠ける (知らせの上に
+  スクロールバーが描かれる)。ユーザ指示で今は直さない。日本語入力 (fcitx5 +
+  Mozc) は VM で打てた。
 - L14 の残件: VM での確認 (本物の NetworkManager・BlueZ と polkit、Plasma の
   portal との並び、ブラウザからの共有)、通知のボタン・markup・アイコン、全画面の
   アプリの上には知らせが出ない、Wi-Fi の無線の入り切りは表示だけ、arm64 の .deb は
