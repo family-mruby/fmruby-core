@@ -370,7 +370,7 @@ namespace :wasm do
     mkdir_p dist
 
     payload = %w[core_web.js core_web.wasm core_web.data].map { |f| File.join(WASM_BUILD_DIR, f) }
-    page    = [File.join(web, "main.js"), File.join(web, "audio-worklet.js"),
+    page    = [File.join(web, "main.js"), File.join(web, "crt.js"), File.join(web, "audio-worklet.js"),
                File.join(ROOT_DIR, "tool/web/remote/keymap.js"),
                File.join(web, "vendor/coi-serviceworker.js")]
     version = wasm_dist_version(payload + page)
@@ -386,6 +386,7 @@ namespace :wasm do
       %q{src="vendor/coi-serviceworker.js"}     => %Q{src="coi-serviceworker.js?v=#{version}"},
       %q{src="../../tool/web/remote/keymap.js"} => %Q{src="keymap.js?v=#{version}"},
       %q{src="../build/core_web.js"}            => %Q{src="core_web.js?v=#{version}"},
+      %q{src="crt.js"}                          => %Q{src="crt.js?v=#{version}"},
       %q{src="main.js"}                         => %Q{src="main.js?v=#{version}"},
       %q{window.FMRB_WASM_BASE = '../build/';}  => %q{window.FMRB_WASM_BASE = '';},
       %q{window.FMRB_WASM_VER = '';}            => %Q{window.FMRB_WASM_VER = '?v=#{version}';},

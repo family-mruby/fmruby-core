@@ -105,6 +105,12 @@ let M = null;          // the emscripten module instance
 let lastSeq = -1;
 let imageData = null;
 
+// The CRT look (crt.js, doc/web_crt/): the WebGL2 view over #screen while it
+// is on, null while the page draws plain pixels.
+const crtCanvas = document.getElementById('crt-view');
+let crt = null;
+let crtSettings = Object.assign({}, FmrbCrt.DEFAULTS);
+
 function pushInput(type, a, b, c, d) {
   if (!M) return;
   const ring = M._fmrb_wasm_input_ring();
@@ -127,7 +133,10 @@ function paint() {
   requestAnimationFrame(paint);
   if (!M) return;
   const seq = M._fmrb_wasm_frame_seq();
-  if (seq === lastSeq) return;
+  if (seq === lastSeq) {
+    if (crt) crt.flush();   // a resize or a setting; nothing when neither
+    return;
+  }
   lastSeq = seq;
   const w = M._fmrb_wasm_frame_width();
   const h = M._fmrb_wasm_frame_height();
@@ -142,11 +151,19 @@ function paint() {
   // Copy out of the SharedArrayBuffer (ImageData refuses a SAB view).
   imageData.data.set(new Uint8Array(M.HEAPU8.buffer, ptr, w * h * 4));
   ctx.putImageData(imageData, 0, 0);
+  if (crt) {
+    crt.setImage(imageData);
+    crt.flush();
+  }
 }
 
 // ---- input ----------------------------------------------------------------
 
+// Where the pointer is on the machine's screen, in its pixels. With the CRT
+// look the curve is undone with the shader's own formula (crt.js), and a
+// point the curve leaves outside the picture gives null.
 function canvasPos(ev) {
+  if (crt) return crtPos(ev.clientX, ev.clientY);
   const r = canvas.getBoundingClientRect();
   const x = Math.round((ev.clientX - r.left) * canvas.width / r.width);
   const y = Math.round((ev.clientY - r.top) * canvas.height / r.height);
@@ -154,21 +171,42 @@ function canvasPos(ev) {
           Math.min(Math.max(y, 0), canvas.height - 1)];
 }
 
+function crtPos(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  const p = FmrbCrt.warpToSource((clientX - r.left) / r.width, (clientY - r.top) / r.height,
+                                 crtSettings.curve);
+  if (!FmrbCrt.inside(p)) return null;
+  return [Math.min(Math.floor(p[0] * canvas.width), canvas.width - 1),
+          Math.min(Math.floor(p[1] * canvas.height), canvas.height - 1)];
+}
+
+// The last place the machine was told the pointer is. A release over the
+// curve's black edge goes there (a press must always end), and so does a
+// wheel turned there.
+let lastPointer = [0, 0];
+
 function hookInput() {
   canvas.addEventListener('mousemove', (ev) => {
-    const [x, y] = canvasPos(ev);
-    pushInput(4, x, y, 0, 0);
+    const pos = canvasPos(ev);
+    if (!pos) return;
+    lastPointer = pos;
+    pushInput(4, pos[0], pos[1], 0, 0);
   });
   canvas.addEventListener('mousedown', (ev) => {
     ev.preventDefault();
     canvas.focus();
-    const [x, y] = canvasPos(ev);
+    const pos = canvasPos(ev);
+    if (!pos) return;
+    lastPointer = pos;
+    const [x, y] = pos;
     const btn = ev.button === 2 ? 3 : ev.button === 1 ? 2 : 1;
     pushInput(3, x, y, btn, 1);
   });
   canvas.addEventListener('mouseup', (ev) => {
     ev.preventDefault();
-    const [x, y] = canvasPos(ev);
+    const pos = canvasPos(ev) || lastPointer;
+    lastPointer = pos;
+    const [x, y] = pos;
     const btn = ev.button === 2 ? 3 : ev.button === 1 ? 2 : 1;
     pushInput(3, x, y, btn, 0);
   });
@@ -187,6 +225,7 @@ function hookInput() {
   // way to raise the on-screen keyboard for a canvas.
   let touchId = null;
   function touchPos(t) {
+    if (crt) return crtPos(t.clientX, t.clientY);
     const r = canvas.getBoundingClientRect();
     const x = Math.round((t.clientX - r.left) * canvas.width / r.width);
     const y = Math.round((t.clientY - r.top) * canvas.height / r.height);
@@ -198,8 +237,11 @@ function hookInput() {
     ev.preventDefault();
     canvas.focus();
     const t = ev.changedTouches[0];
+    const pos = touchPos(t);
+    if (!pos) return;
     touchId = t.identifier;
-    const [x, y] = touchPos(t);
+    lastPointer = pos;
+    const [x, y] = pos;
     // Put the pointer there first: the machine tracks a cursor, and a press
     // arriving from somewhere it has never been would act at the old place.
     pushInput(4, x, y, 0, 0);
@@ -210,8 +252,10 @@ function hookInput() {
     ev.preventDefault();
     for (const t of ev.changedTouches) {
       if (t.identifier !== touchId) continue;
-      const [x, y] = touchPos(t);
-      pushInput(4, x, y, 0, 0);
+      const pos = touchPos(t);
+      if (!pos) continue;
+      lastPointer = pos;
+      pushInput(4, pos[0], pos[1], 0, 0);
     }
   }, { passive: false });
   function touchRelease(ev) {
@@ -219,7 +263,9 @@ function hookInput() {
     for (const t of ev.changedTouches) {
       if (t.identifier !== touchId) continue;
       ev.preventDefault();
-      const [x, y] = touchPos(t);
+      const pos = touchPos(t) || lastPointer;
+      lastPointer = pos;
+      const [x, y] = pos;
       pushInput(3, x, y, 1, 0);
       touchId = null;
     }
@@ -242,7 +288,9 @@ function hookInput() {
     const notches = wheelAccum > 0 ? Math.floor(wheelAccum) : Math.ceil(wheelAccum);
     if (notches === 0) return;
     wheelAccum -= notches;
-    const [x, y] = canvasPos(ev);
+    const pos = canvasPos(ev);
+    if (pos) lastPointer = pos;
+    const [x, y] = pos || lastPointer;
     pushInput(5, x, y, notches, 0);
   }, { passive: false });
 
@@ -545,6 +593,7 @@ function applyZoom() {
   }
   canvas.style.width = Math.round(baseW * scale) + 'px';
   canvas.style.height = Math.round(baseH * scale) + 'px';
+  placeCrtView();
 }
 
 window.addEventListener('resize', () => applyZoom());
@@ -588,7 +637,131 @@ document.addEventListener('fullscreenchange', () => {
   applyZoom();
 });
 
-// ---- bootstrap ------------------------------------------------------------
+// ---- the CRT look ---------------------------------------------------------
+//
+// Off by default: the page is then exactly what it was, #screen drawn by the
+// browser with pixelated scaling. On, a WebGL2 canvas (crt.js) covers #screen
+// at the same place and size, in device pixels, and lets the events through
+// to it; #screen stays the picture (screenshots and the regression read it)
+// and keeps the focus. ?look=crt turns it on with the default strengths for
+// one visit, like ?res=, and stores nothing.
+
+const LOOK_STORE = 'fmrb_web_look';
+const CRT_STORE = 'fmrb_web_crt';
+const lookSelect = document.getElementById('look-select');
+const lookNote = document.getElementById('look-note');
+const crtControls = document.getElementById('crt-controls');
+const crtSliders = {};
+for (const k of FmrbCrt.KEYS) crtSliders[k] = document.getElementById('crt-' + k);
+const sessionLook = (() => {
+  const l = new URLSearchParams(location.search).get('look');
+  return l === 'crt' || l === 'flat' ? l : null;
+})();
+// ?webgl=0: behave as a browser without WebGL2 (to check the fallback).
+const NO_WEBGL = new URLSearchParams(location.search).get('webgl') === '0';
+
+function storedCrtSettings() {
+  const out = Object.assign({}, FmrbCrt.DEFAULTS);
+  try {
+    const o = JSON.parse(readSetting(CRT_STORE, '') || '{}');
+    for (const k of FmrbCrt.KEYS) {
+      const v = Number(o[k]);
+      if (Number.isFinite(v)) out[k] = Math.max(0, Math.min(100, Math.round(v)));
+    }
+  } catch (e) {}
+  return out;
+}
+
+// Put the view exactly over #screen, at device-pixel resolution. Called from
+// applyZoom (zoom, window size, full screen); a change of the device pixel
+// ratio (the browser's own zoom) arrives there as a resize too.
+function placeCrtView() {
+  if (!crt) return;
+  const r = canvas.getBoundingClientRect();
+  const box = screenBox.getBoundingClientRect();
+  crtCanvas.style.left = (r.left - box.left - screenBox.clientLeft) + 'px';
+  crtCanvas.style.top = (r.top - box.top - screenBox.clientTop) + 'px';
+  crtCanvas.style.width = r.width + 'px';
+  crtCanvas.style.height = r.height + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  crt.resize(r.width * dpr, r.height * dpr);
+}
+
+function lookUnavailable(why) {
+  lookSelect.value = 'flat';
+  lookSelect.disabled = true;
+  crtControls.hidden = true;
+  lookNote.textContent = 'CRT: ' + why;
+  lookNote.hidden = false;
+}
+
+// The view is made the first time it is wanted and kept (hidden) after that,
+// so turning the look off and on again does not build a new GL context.
+let crtView = null;
+
+function setLook(look) {
+  if (look === 'crt' && !crt) {
+    if (!crtView) {
+      if (NO_WEBGL) {
+        console.warn('fmrb: CRT look unavailable: WebGL2 turned off by ?webgl=0');
+      } else {
+        crtView = FmrbCrt.create(crtCanvas);
+      }
+      if (!crtView) {
+        lookUnavailable('not available in this browser (no WebGL2)');
+        return false;
+      }
+    }
+    if (crtView.lost) {
+      lookUnavailable('the graphics context was lost; reload the page');
+      return false;
+    }
+    crt = crtView;
+    crtCanvas.hidden = false;
+    crt.setSettings(crtSettings);
+    if (imageData) crt.setImage(imageData);
+    placeCrtView();
+  } else if (look !== 'crt' && crt) {
+    crt = null;
+    crtCanvas.hidden = true;
+  }
+  lookSelect.value = crt ? 'crt' : 'flat';
+  crtControls.hidden = !crt;
+  return !!crt;
+}
+
+function showCrtSliders() {
+  for (const k of FmrbCrt.KEYS) crtSliders[k].value = String(crtSettings[k]);
+}
+
+// A change from the panel (or the driver, which goes through the same door):
+// stored, except on a ?look= visit, whose look is that visit's only.
+function chooseLook(look) {
+  const on = setLook(look);
+  if (!sessionLook) writeSetting(LOOK_STORE, on ? 'crt' : 'flat');
+  return on;
+}
+
+function chooseCrtSettings(values) {
+  for (const k of FmrbCrt.KEYS) {
+    const v = Number(values[k]);
+    if (Number.isFinite(v)) crtSettings[k] = Math.max(0, Math.min(100, Math.round(v)));
+  }
+  if (crt) crt.setSettings(crtSettings);
+  showCrtSliders();
+  if (!sessionLook) writeSetting(CRT_STORE, JSON.stringify(crtSettings));
+}
+
+lookSelect.addEventListener('change', () => chooseLook(lookSelect.value));
+for (const k of FmrbCrt.KEYS) {
+  crtSliders[k].addEventListener('input', () => chooseCrtSettings({ [k]: crtSliders[k].value }));
+}
+document.getElementById('crt-defaults').addEventListener('click',
+  () => chooseCrtSettings(FmrbCrt.DEFAULTS));
+
+crtSettings = sessionLook === 'crt' ? Object.assign({}, FmrbCrt.DEFAULTS) : storedCrtSettings();
+showCrtSliders();
+setLook(sessionLook || readSetting(LOOK_STORE, 'flat'));
 
 // The machine does not power on until the click -- that is the "start"
 // the overlay promises, and it puts the AudioContext (which needs the
@@ -1245,6 +1418,8 @@ function settingsSnapshot() {
     conf: readConfSettings(),
     res: readSetting('fmrb_web_res', ''),
     zoom: readSetting('fmrb_web_zoom', ''),
+    look: readSetting('fmrb_web_look', ''),
+    crt: readSetting('fmrb_web_crt', ''),
   });
 }
 
@@ -1257,6 +1432,8 @@ function applySettingsSnapshot(text) {
   if (o.conf && typeof o.conf === 'object') writeConfSettings(o.conf);
   if (o.res) writeSetting('fmrb_web_res', o.res);
   if (o.zoom) writeSetting('fmrb_web_zoom', o.zoom);
+  if (o.look) writeSetting('fmrb_web_look', o.look);
+  if (o.crt) writeSetting('fmrb_web_crt', o.crt);
   return true;
 }
 
@@ -2048,7 +2225,7 @@ if (importBtn && importInput) {
 // language behind is a promise the word does not make.
 // The node ID (NODE_STORE) is not among them: it is who this browser is on
 // the network, not a setting, and a board keeps its name through a reset too.
-const PAGE_SETTING_KEYS = ['fmrb_web_res', 'fmrb_web_zoom'];
+const PAGE_SETTING_KEYS = ['fmrb_web_res', 'fmrb_web_zoom', 'fmrb_web_look', 'fmrb_web_crt'];
 
 // Separate from the button so the driver can call it as well: headless
 // Chrome answers window.confirm with "no", so a test that went through the
@@ -2468,6 +2645,67 @@ async function runDriveCommand(cmd) {
       const url = canvas.toDataURL('image/png');
       return { width: canvas.width, height: canvas.height,
                png: url.slice(url.indexOf(',') + 1) };
+    }
+    case 'view': {
+      // What the page shows: the CRT view at its device-pixel size while the
+      // look is on, otherwise the plain picture (as `screenshot`).
+      const look = crt ? 'crt' : 'flat';
+      const before = crt ? Object.assign({}, crt.stats) : null;
+      const url = crt ? crt.snapshot() : canvas.toDataURL('image/png');
+      const src = crt ? crtCanvas : canvas;
+      return { look, width: src.width, height: src.height, stats_before: before,
+               png: url.slice(url.indexOf(',') + 1) };
+    }
+    case 'crt': {
+      // The Look selector and the sliders, through the panel's own doors
+      // (stored like a hand's choice). Answers the state and the counters:
+      // uploads and draws of the view, frames of the picture.
+      if (cmd.defaults) chooseCrtSettings(FmrbCrt.DEFAULTS);
+      if (cmd.values) chooseCrtSettings(cmd.values);
+      if (cmd.look) chooseLook(cmd.look);
+      const bench = crt && cmd.bench ? crt.bench(cmd.bench) : undefined;
+      return {
+        bench_ms_per_draw: bench === undefined || bench === null ? undefined : Math.round(bench * 1000) / 1000,
+        look: crt ? 'crt' : 'flat',
+        available: !lookSelect.disabled,
+        settings: crtSettings,
+        stats: crtView ? Object.assign({}, crtView.stats) : null,
+        frame: M ? M._fmrb_wasm_frame_seq() : 0,
+        view: crt ? { width: crtCanvas.width, height: crtCanvas.height } : null,
+        css: { width: canvas.getBoundingClientRect().width, height: canvas.getBoundingClientRect().height },
+        dpr: window.devicePixelRatio || 1,
+      };
+    }
+    case 'zoom': {
+      // The Zoom selector, as a hand would use it (stored, except on a ?res=
+      // visit); `forget` drops the stored choice so the next visit picks its
+      // own again. Answers the value and whether one is stored.
+      if (cmd.value) {
+        zoomSelect.value = cmd.value;
+        zoomSelect.dispatchEvent(new Event('change'));
+      }
+      if (cmd.forget) { try { localStorage.removeItem('fmrb_web_zoom'); } catch (e) {} }
+      return { zoom: zoomSelect.value, stored: readSetting('fmrb_web_zoom', null) };
+    }
+    case 'dom': {
+      // Real DOM mouse events at a point of the shown screen (CSS pixels from
+      // its top-left corner), dispatched on #screen the way the browser
+      // would: they go through canvasPos (and the curve's inverse), unlike
+      // `input`, which writes the ring directly.
+      const r = canvas.getBoundingClientRect();
+      const clientX = r.left + cmd.x, clientY = r.top + cmd.y;
+      const types = cmd.kind === 'click' ? ['mousemove', 'mousedown', 'mouseup']
+                  : [cmd.kind === 'move' ? 'mousemove' : cmd.kind];
+      const mapped = crt ? crtPos(clientX, clientY)
+                   : canvasPos({ clientX, clientY });
+      for (const type of types) {
+        canvas.dispatchEvent(new MouseEvent(type, {
+          bubbles: true, cancelable: true, clientX, clientY, button: 0,
+          buttons: type === 'mouseup' ? 0 : 1, view: window,
+        }));
+        if (type !== 'mouseup') await driveSleep(cmd.gap_ms || 60);
+      }
+      return { types, machine: mapped };
     }
     case 'status':
       return {

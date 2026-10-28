@@ -30,6 +30,14 @@
     background: #000;
     outline: none;
   }
+  /* The CRT look (crt.js) draws here, over #screen, which stays the picture
+     and keeps the pointer, the touches and the keyboard focus: this canvas
+     lets every event through. main.js places and sizes it. */
+  #crt-view {
+    position: absolute; left: 0; top: 0;
+    pointer-events: none;
+    image-rendering: auto;
+  }
   #start {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -123,6 +131,7 @@
 <h1>Family mruby Web Studio</h1>
 <div id="screen-box">
   <canvas id="screen" width="426" height="240" tabindex="0"></canvas>
+  <canvas id="crt-view" hidden></canvas>
   <div id="start">Click to start</div>
 </div>
 <div id="status">loading...</div>
@@ -147,6 +156,22 @@
         <option value="3">3x</option>
       </select>
     </div>
+    <div class="field">
+      <label for="look-select">Look</label>
+      <select id="look-select">
+        <option value="flat">Sharp pixels</option>
+        <option value="crt">CRT</option>
+      </select>
+    </div>
+    <div class="group" id="crt-controls" hidden>
+      <div class="field"><label for="crt-scan">Scanlines</label><input id="crt-scan" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-mask">Grille</label><input id="crt-mask" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-glow">Glow</label><input id="crt-glow" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-curve">Curve</label><input id="crt-curve" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-vignette">Corners</label><input id="crt-vignette" type="range" min="0" max="100"></div>
+      <div class="row"><span class="lead"></span><button id="crt-defaults" type="button">Defaults</button></div>
+    </div>
+    <p class="note" id="look-note" hidden></p>
     <div class="row"><button id="fullscreen-btn" type="button">Full screen</button></div>
   </section>
 
@@ -225,6 +250,10 @@
       <code>wss://</code>, except to this computer. This browser joins as
       the node shown in the panel; a second tab joins under a name of its
       own that is not kept.</li>
+    <li><b>Look:</b> <b>CRT</b> draws the screen like a picture tube
+      (scanlines, the grille, glow, a curved glass); each effect has its
+      own strength, and 0 turns it off. <code>?look=crt</code> in the
+      address opens a visit with it, without changing what you chose.</li>
     <li><b>Resolution</b> reloads the page when changed. <b>Colours</b> are
       the machine's own: pick a theme in Config, inside it.</li>
     <li><b>Full screen:</b> where the browser allows it the machine keeps
@@ -309,6 +338,7 @@
   window.FMRB_WASM_VER = '';
 </script>
 <script src="../build/core_web.js"></script>
+<script src="crt.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

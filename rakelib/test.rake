@@ -18,9 +18,18 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test",
-               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "ti:test", "basic:test", "micropython:smoke"]
+
+namespace :webcrt do
+  # The browser build's CRT look (doc/web_crt/): the curve that the shader
+  # draws and that clicks are sent back through, and its inverse, under node.
+  desc "CRT look curve and its inverse round trip (node, no browser)"
+  task :test do
+    sh "node test/web_crt/warp_test.js"
+  end
+end
 
 namespace :imu do
   # The BMI270 driver against a fake device, and the step sensor app's step
