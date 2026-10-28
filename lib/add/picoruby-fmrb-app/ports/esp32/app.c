@@ -1330,7 +1330,8 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
 // FmrbApp.power_actions -> Array of Symbols: what the desktop's power menu
 // offers on this machine (fmrb_platform_sys.h). [:reset] on a device, [] in
 // the simulation and the browser, [:exit] or [:power_off, :restart,
-// :suspend] on the native program by its machine definition.
+// :suspend] on the native program by its machine definition, and :lock on
+// the PC's compositor with a lock program (L13).
 static const struct {
     uint32_t bit;
     const char *name;
@@ -1340,6 +1341,7 @@ static const struct {
     { FMRB_SYS_POWER_OFF, "power_off" },
     { FMRB_SYS_POWER_RESTART, "restart" },
     { FMRB_SYS_POWER_SUSPEND, "suspend" },
+    { FMRB_SYS_POWER_LOCK, "lock" },
 };
 #define POWER_NAMES_N (sizeof(s_power_names) / sizeof(s_power_names[0]))
 

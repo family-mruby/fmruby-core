@@ -23,6 +23,8 @@ static struct {
         int id;
     } cmd[COMP_CMDS];
     unsigned cmd_wr, cmd_rd;
+    bool lock_available;
+    comp_lock_state_t lock_state;
 } s_link = { .lock = PTHREAD_MUTEX_INITIALIZER, .wake_fd = -1 };
 
 static void wake(int fd)
@@ -112,6 +114,30 @@ bool comp_link_take_places(comp_places_t *out)
     }
     pthread_mutex_unlock(&s_link.lock);
     return got;
+}
+
+void comp_link_set_lock(bool available, comp_lock_state_t state)
+{
+    pthread_mutex_lock(&s_link.lock);
+    s_link.lock_available = available;
+    s_link.lock_state = state;
+    pthread_mutex_unlock(&s_link.lock);
+}
+
+bool comp_link_lock_available(void)
+{
+    pthread_mutex_lock(&s_link.lock);
+    bool a = s_link.lock_available && s_link.route != NULL;
+    pthread_mutex_unlock(&s_link.lock);
+    return a;
+}
+
+comp_lock_state_t comp_link_lock_state(void)
+{
+    pthread_mutex_lock(&s_link.lock);
+    comp_lock_state_t st = s_link.lock_state;
+    pthread_mutex_unlock(&s_link.lock);
+    return st;
 }
 
 void comp_link_command(comp_cmd_kind_t kind, int id)

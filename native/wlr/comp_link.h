@@ -16,6 +16,8 @@
  *   commands  Family mruby -> compositor: ask a window to close. Queued.
  *   geometry  compositor -> Family mruby: the picture's scale and the
  *             frame's base size, to size a new stand-in.
+ *   lock      compositor -> anyone: whether there is a lock program to
+ *             start (the power menu's Lock) and the lock's state (L13).
  *
  * Nothing is attached (comp_link_attached() is false) unless the program
  * runs as the compositor.
@@ -38,7 +40,15 @@ typedef struct {
 
 typedef enum {
     COMP_CMD_CLOSE = 1,                 /* ask the window to close (xdg close) */
+    COMP_CMD_LOCK,                      /* lock the screen: start the lock program (L13; id unused) */
 } comp_cmd_kind_t;
+
+/* The screen lock (L13, ext-session-lock): as the compositor tells it. */
+typedef enum {
+    COMP_LOCK_NONE = 0,                 /* not locked */
+    COMP_LOCK_LOCKING,                  /* the lock program is starting, not covering yet */
+    COMP_LOCK_LOCKED,                   /* covered: nothing reaches Family mruby or a window */
+} comp_lock_state_t;
 
 /* The compositor's side: attach its route (the notices) and the descriptor
  * a write wakes its loop with; detach at the end. */
@@ -57,6 +67,10 @@ void comp_link_place(const comp_places_t *pl);
 /* The compositor's side: true and a copy when the places changed since the
  * last take. */
 bool comp_link_take_places(comp_places_t *out);
+
+void comp_link_set_lock(bool available, comp_lock_state_t state);
+bool comp_link_lock_available(void);
+comp_lock_state_t comp_link_lock_state(void);
 
 void comp_link_command(comp_cmd_kind_t kind, int id);
 bool comp_link_take_command(comp_cmd_kind_t *kind, int *id);

@@ -54,6 +54,7 @@ typedef enum {
     FMRB_SYS_POWER_OFF      = 1u << 2,  /* power the computer off */
     FMRB_SYS_POWER_RESTART  = 1u << 3,  /* restart the computer */
     FMRB_SYS_POWER_SUSPEND  = 1u << 4,  /* suspend the computer */
+    FMRB_SYS_POWER_LOCK     = 1u << 5,  /* lock the screen (the PC's lock program, L13) */
 } fmrb_sys_power_t;
 
 /** A Linux program to start under a pseudo terminal (L10). */

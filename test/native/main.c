@@ -622,6 +622,25 @@ static void test_machine(void)
     // SDL window takes SDL's; the others keep the kana input.
     CHECK(strcmp(m.input.ime, "wayland") == 0 && strcmp(m.compositor.ime, "fcitx5") == 0, "linux_pc_wl ime %s, %s",
           m.input.ime, m.compositor.ime);
+    // The PC's window operations and lock program (L13): the
+    // PC's machines have them, the Cardputer and the keys desktop not.
+    CHECK(m.desktop.window_ops && strcmp(m.compositor.locker, "swaylock") == 0, "linux_pc_wl window ops, locker");
+    {
+        native_machine_t t;
+        const char *pcs[] = { "sdl", "linux_pc", "linux_pc_drm" };
+        for (size_t i = 0; i < sizeof(pcs) / sizeof(pcs[0]); i++) {
+            CHECK(load(&t, pcs[i], err, sizeof(err)) == 0 && t.desktop.window_ops && t.compositor.locker[0] == '\0',
+                  "%s: window ops", pcs[i]);
+        }
+        const char *others[] = { "cardputer_zero", "cardputer_zero_hdmi", "sdl_keys" };
+        for (size_t i = 0; i < sizeof(others) / sizeof(others[0]); i++) {
+            CHECK(load(&t, others[i], err, sizeof(err)) == 0 && !t.desktop.window_ops, "%s: no window ops",
+                  others[i]);
+        }
+        native_machine_defaults(&t);
+        CHECK(t.desktop.window_ops, "the built-in is sdl.toml's");
+        CHECK(native_machine_set(&t, "desktop.window_ops", "maybe", err, sizeof(err)) != 0, "window_ops maybe refused");
+    }
     {
         native_machine_t t;
         CHECK(load(&t, "sdl", err, sizeof(err)) == 0 && strcmp(t.input.ime, "sdl") == 0, "sdl ime %s", t.input.ime);

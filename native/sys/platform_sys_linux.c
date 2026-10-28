@@ -23,6 +23,9 @@
  *            for the Shell's "!" lines. The Family mruby working directory
  *            becomes a real one through the file namespace; each program
  *            belongs to the task that started it and ends with it.
+ *   lock     the screen lock (L13): on the compositor machine, where a lock
+ *            program is installed (compositor.locker), the power menu's
+ *            Lock asks the compositor to start it (native/wlr/comp_link.h).
  *   apps     the Linux PC's applications for the launcher (linux_apps.c,
  *            L9b), on the compositor machine only: the compositor starts
  *            them and starts the programs on its own thread. Files are
@@ -59,6 +62,7 @@
 #include "linux_pty.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_mem.h"
+#include "comp_link.h"
 #if NATIVE_HAVE_WLROOTS
 #include "linux_apps.h"
 #endif
@@ -179,6 +183,7 @@ static uint32_t linux_power_actions(void)
     if (power_logind()) {
         bits |= FMRB_SYS_POWER_OFF | FMRB_SYS_POWER_RESTART | FMRB_SYS_POWER_SUSPEND;
     }
+    if (comp_link_lock_available()) bits |= FMRB_SYS_POWER_LOCK;
     return bits;
 }
 
@@ -285,6 +290,11 @@ static fmrb_err_t logind_request(fmrb_sys_power_t action)
 static fmrb_err_t linux_power(fmrb_sys_power_t action)
 {
     switch (action) {
+    case FMRB_SYS_POWER_LOCK:
+        if (!comp_link_lock_available()) return FMRB_ERR_NOT_SUPPORTED;
+        FMRB_LOGI(TAG, "power: locking the screen");
+        comp_link_command(COMP_CMD_LOCK, 0);
+        return FMRB_OK;
     case FMRB_SYS_POWER_RESET:
         /* FmrbApp.reboot: Family mruby starts again from its launcher, so
          * ending the program is the nearest thing (never the computer's

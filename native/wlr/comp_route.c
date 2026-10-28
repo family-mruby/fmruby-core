@@ -211,9 +211,10 @@ int comp_route_place(comp_route_t *r, const comp_place_t *p, int n, int focus)
         w.fy = p[j].y;
         w.fw = p[j].w;
         w.fh = p[j].h;
+        w.state = p[j].state;
         locate(r, &w);
         if (!was.placed || was.visible != w.visible || was.fx != w.fx || was.fy != w.fy || was.fw != w.fw ||
-            was.fh != w.fh) {
+            was.fh != w.fh || was.state != w.state) {
             changed |= COMP_PLACE_MOVED;
         }
         sorted[k++] = w;

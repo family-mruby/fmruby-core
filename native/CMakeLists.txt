@@ -124,6 +124,9 @@ set(NATIVE_BACKEND_SRCS
   ${N}/backend/display_backend_native.cpp
   ${N}/backend/audio_backend_native.c
   ${N}/backend/input_native.c
+  # The PC's window operations (L13): maximize, halves, back
+  ${N}/backend/native_winops.c
+  ${N}/backend/winops_geom.c
   ${N}/machine/native_machine.c
   ${N}/present/fmrb_present.c
   ${N}/output/output_sdl.c
@@ -174,7 +177,9 @@ if(NATIVE_HAVE_WLROOTS)
   list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
        # The launcher's Linux applications (L9b): started by the compositor;
        # files opened in them (L11).
-       ${N}/sys/linux_apps.c ${N}/sys/linux_mime.c)
+       ${N}/sys/linux_apps.c ${N}/sys/linux_mime.c
+       # logind's Lock and PrepareForSleep lock the screen (L13)
+       ${N}/sys/linux_logind.c)
 endif()
 target_sources(core_objs PRIVATE ${NATIVE_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE

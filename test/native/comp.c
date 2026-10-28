@@ -12,8 +12,14 @@
 //           stacking Family mruby gives, the keyboard moving with presses
 //           and with Family mruby's focus, a window going away, and the
 //           notices taken from another thread
-//   link    native/wlr/comp_link.c: places (only changes wake the loop) and
-//           close commands from Family mruby's side
+//           ; the layout (maximized, a half; L13) carried with the
+//           places
+//   winops  native/backend/winops_geom.c (L13): the work area and its
+//           halves, the title a double-click is on, a double-click's time
+//           and distance
+//   link    native/wlr/comp_link.c: places (only changes wake the loop),
+//           close and lock commands from Family mruby's side, the lock's
+//           state
 //   frame   native/backend/native_frame.c: a frame put by one thread wakes
 //           an eventfd the output's thread waits on with poll, the newest
 //           frame wins, and a put while the reader copies never tears (the
@@ -34,6 +40,7 @@
 #include "comp_link.h"
 #include "comp_route.h"
 #include "native_frame.h"
+#include "winops_geom.h"
 
 static int g_fail = 0;
 static int g_count = 0;
@@ -493,8 +500,17 @@ static void test_link(void)
     int id = 0;
     CHECK(poll(&p, 1, 0) == 1 && comp_link_take_command(&k, &id) && k == COMP_CMD_CLOSE && id == 7, "close 7");
     CHECK(!comp_link_take_command(&k, &id), "one command");
+    // The lock (L13): asked as a command, its state published.
+    CHECK(read(fd, &v, sizeof(v)) == sizeof(v), "drained");
+    comp_link_command(COMP_CMD_LOCK, 1);
+    CHECK(poll(&p, 1, 0) == 1 && comp_link_take_command(&k, &id) && k == COMP_CMD_LOCK && id == 1, "lock");
+    CHECK(!comp_link_lock_available() && comp_link_lock_state() == COMP_LOCK_NONE, "no lock program yet");
+    comp_link_set_lock(true, COMP_LOCK_LOCKED);
+    CHECK(comp_link_lock_available() && comp_link_lock_state() == COMP_LOCK_LOCKED, "a lock program, locked");
     comp_link_detach();
     CHECK(!comp_link_attached(), "detached");
+    CHECK(!comp_link_lock_available(), "detached: no lock to ask for");
+    comp_link_set_lock(false, COMP_LOCK_NONE);
     close(fd);
     comp_route_destroy(&r);
 }
@@ -662,9 +678,44 @@ static void test_ime_place(void)
     comp_route_destroy(&r);
 }
 
+static void test_layout_state(void)
+{
+    comp_route_t r;
+    comp_route_init(&r);
+    comp_route_layout(&r, 1280, 800, 426, 240);
+    comp_route_set_base(&r, 426, 240);
+    CHECK(comp_route_window_add(&r, 1, 300, 200, 0, "max"), "add 1");
+    comp_place_t p = { .id = 1, .x = 0, .y = 13, .w = 426, .h = 227, .shown = true, .state = COMP_STATE_MAX };
+    CHECK(comp_route_place(&r, &p, 1, 1) & COMP_PLACE_MOVED, "placed");
+    CHECK(comp_route_window(&r, 1)->state == COMP_STATE_MAX, "the layout carried");
+    p.state = COMP_STATE_LEFT;
+    CHECK(comp_route_place(&r, &p, 1, 1) & COMP_PLACE_MOVED, "a layout change is a change");
+    CHECK(comp_route_place(&r, &p, 1, 1) == 0, "the same: no change");
+    comp_route_destroy(&r);
+}
+
+static void test_winops(void)
+{
+    winops_rect_t m = winops_layout_rect(WINOPS_MAX, 426, 240);
+    CHECK(m.x == 0 && m.y == 13 && m.w == 426 && m.h == 227, "max %d,%d %dx%d", m.x, m.y, m.w, m.h);
+    winops_rect_t l = winops_layout_rect(WINOPS_LEFT, 427, 240);
+    winops_rect_t r = winops_layout_rect(WINOPS_RIGHT, 427, 240);
+    CHECK(l.x == 0 && l.w == 213 && r.x == 213 && r.w == 214 && l.y == 13 && r.h == 227, "halves %d+%d", l.w, r.w);
+    m = winops_layout_rect(WINOPS_MAX, 640, 400);
+    CHECK(m.w == 640 && m.h == 387, "a wide screen %dx%d", m.w, m.h);
+    // The title: right of the menu button, left of the close button.
+    CHECK(winops_on_title(14, 0, 200) && winops_on_title(187, 10, 200), "title ends");
+    CHECK(!winops_on_title(13, 5, 200) && !winops_on_title(188, 5, 200) && !winops_on_title(50, 11, 200),
+          "the buttons and the content are not the title");
+    CHECK(winops_double(1000, 50, 5, 1400, 54, 1) && !winops_double(1000, 50, 5, 1401, 50, 5) &&
+          !winops_double(1000, 50, 5, 1100, 55, 5), "a double-click's time and distance");
+}
+
 int main(void)
 {
     test_place();
+    test_layout_state();
+    test_winops();
     test_ime_place();
     test_view();
     test_hits();
@@ -680,6 +731,6 @@ int main(void)
         printf("native comp: %d of %d checks failed\n", g_fail, g_count);
         return 1;
     }
-    printf("native comp: %d checks passed (route, holes, stacking, focus, notices, places, frame hand-over, the arrow's tip, the view with the frame, the IME's places)\n", g_count);
+    printf("native comp: %d checks passed (route, holes, stacking, focus, notices, places, frame hand-over, the arrow's tip, the view with the frame, the IME's places, the windows' layout, window operations)\n", g_count);
     return 0;
 }

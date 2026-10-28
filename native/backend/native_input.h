@@ -35,6 +35,9 @@ enum {
                                   * compositor, over a Linux window) */
     NATIVE_INPUT_TEXT,           /* a=byte count (<= 12), b..d=the bytes: text the
                                   * PC's IME committed (native_ime.h) */
+    NATIVE_INPUT_WINOP,          /* a=winops_do_t: a window operation on the
+                                  * window in front (the compositor took Super
+                                  * and an arrow, L13; native_winops.h) */
 };
 
 /* From the main thread: one event for the sdl source. Never blocks; when the

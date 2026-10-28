@@ -79,6 +79,7 @@ void native_machine_defaults(native_machine_t *m)
     m->audio.latency_ms = 100;
     snprintf(m->audio.mixer, sizeof(m->audio.mixer), "auto");
     snprintf(m->desktop.variant, sizeof(m->desktop.variant), "mouse");
+    m->desktop.window_ops = true;
     snprintf(m->system.services, sizeof(m->system.services), "linux");
     snprintf(m->system.exit_key, sizeof(m->system.exit_key), "none");
     snprintf(m->system.power, sizeof(m->system.power), "exit");
@@ -87,6 +88,7 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->files.root, sizeof(m->files.root), "auto");
     m->compositor.autostart[0] = '\0';
     m->compositor.ime[0] = '\0';
+    m->compositor.locker[0] = '\0';
 }
 
 /* system.power: "exit", "logind", or both, comma-separated (a TOML list
@@ -254,6 +256,12 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
     }
 
     if (strcmp(key, "desktop.variant") == 0) return copy_str(m->desktop.variant, sizeof(m->desktop.variant), value, key, err, n);
+    if (strcmp(key, "desktop.window_ops") == 0) {
+        if (strcmp(value, "true") == 0) m->desktop.window_ops = true;
+        else if (strcmp(value, "false") == 0) m->desktop.window_ops = false;
+        else return fail(err, n, "desktop.window_ops: \"%s\" is not true or false", value);
+        return 0;
+    }
 
     if (strcmp(key, "system.services") == 0) {
         if (strcmp(value, "none") != 0 && strcmp(value, "linux") != 0) {
@@ -287,6 +295,9 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
     }
     if (strcmp(key, "compositor.ime") == 0) {
         return copy_str(m->compositor.ime, sizeof(m->compositor.ime), value, key, err, n);
+    }
+    if (strcmp(key, "compositor.locker") == 0) {
+        return copy_str(m->compositor.locker, sizeof(m->compositor.locker), value, key, err, n);
     }
 
     return fail(err, n, "unknown key \"%s\"", key);
@@ -477,15 +488,17 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
-             "input %s%s%s%s%s, audio %s%s%s, desktop %s, services %s, power %s%s, files host=%s root=%s%s%s%s%s",
+             "input %s%s%s%s%s, audio %s%s%s, desktop %s%s, services %s, power %s%s, "
+             "files host=%s root=%s%s%s%s%s%s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
              m->display.fullscreen ? " fullscreen" : "",
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
              strcmp(m->input.ime, "none") != 0 ? " ime=" : "", strcmp(m->input.ime, "none") != 0 ? m->input.ime : "",
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
-             m->desktop.variant, m->system.services, m->system.power,
+             m->desktop.variant, m->desktop.window_ops ? " (window ops)" : "", m->system.services, m->system.power,
              m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root,
              m->compositor.autostart[0] ? ", autostart " : "", m->compositor.autostart,
-             m->compositor.ime[0] ? ", IME program " : "", m->compositor.ime);
+             m->compositor.ime[0] ? ", IME program " : "", m->compositor.ime,
+             m->compositor.locker[0] ? ", lock program " : "", m->compositor.locker);
 }

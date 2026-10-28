@@ -25,7 +25,8 @@
  * rectangle times the picture's scale), clipped to it, in Family mruby's
  * stacking; the picture at the largest whole scale (nearest-neighbour, by
  * the renderer), transparent where a stand-in's content is on screen (the
- * holes, comp_route.h); the popups of the Linux windows, over everything.
+ * holes, comp_route.h); the popups of the Linux windows; the IME's; the
+ * screen lock (L13), over everything.
  * A Family mruby window or menu over a stand-in covers the Linux window
  * there, so the two kinds of windows stack freely.
  *
@@ -59,9 +60,21 @@
  * as a click outside a menu does on any desktop.
  *
  * Linux windows are told to draw no decoration of their own
- * (xdg-decoration, server side): the stand-in draws the frame. Maximize and
- * fullscreen requests are answered without a change; move and resize
- * requests become moves and resizes of the stand-in.
+ * (xdg-decoration, server side): the stand-in draws the frame. Move and
+ * resize requests become moves and resizes of the stand-in.
+ *
+ * The PC's windows and screen (L13):
+ *   maximize    a window's request (xdg, X11 _NET_WM_STATE) is passed to
+ *               Family mruby's side, whose window operations
+ *               (native_winops.h: also a title's double-click and
+ *               Super+arrows, which this file takes from the keyboard
+ *               whoever has it) lay the stand-in out; each window is told
+ *               how it is laid out (maximized, tiled left / right).
+ *               Fullscreen requests are answered without a change.
+ *   lock        ext-session-lock: see "the screen lock" below. The lock
+ *               program (compositor.locker) is started by the power menu's
+ *               Lock and by logind's Lock and PrepareForSleep
+ *               (native/sys/linux_logind.c).
  *
  * The clipboard (L12a, wl_clip.c): the machine's clipboard is the seat's
  * selection, both ways -- what a Family mruby app copies becomes the
@@ -122,6 +135,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/eventfd.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -151,6 +165,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
@@ -170,12 +185,14 @@
 #include "fmrb_hal_file.h"
 #include "fmrb_keymap.h"
 #include "linux_apps.h"
+#include "linux_logind.h"
 #include "linux_keys.h"
 #include "native_backends.h"
 #include "native_ctl.h"
 #include "native_clip.h"
 #include "native_frame.h"
 #include "native_input.h"
+#include "native_winops.h"
 #include "wl_clip.h"
 #include "wl_ime.h"
 
@@ -222,12 +239,22 @@ typedef struct window {
     struct wl_listener map, unmap, commit, destroy;
     struct wl_listener set_title, request_move, request_resize, request_maximize, request_fullscreen;
     struct wl_listener set_parent;
+    int told_state;                         /* COMP_STATE_* last told to it (L13) */
 #if WLR_HAS_XWAYLAND
     struct wlr_xwayland_surface *xs;        /* WIN_X11 */
     bool or_win;                            /* override-redirect: a menu or tooltip, no stand-in */
     struct wl_listener associate, dissociate, request_configure, set_geometry;
+    struct wl_listener x_request_maximize;
 #endif
 } window_t;
+
+/* A lock surface (ext-session-lock, L13): one per output. */
+typedef struct lock_surface {
+    struct wl_list link;
+    struct wlr_session_lock_surface_v1 *wlr;
+    struct wlr_scene_tree *tree;
+    struct wl_listener map, destroy;
+} lock_surface_t;
 
 typedef struct popup {
     struct wl_list link;                    /* s.popups, parents before their children */
@@ -268,6 +295,7 @@ static struct {
     struct wlr_scene_buffer *picture;
     struct wlr_scene_tree *popups_tree;
     struct wlr_scene_tree *ime_tree;        /* the IME's candidates and composing text (L12b) */
+    struct wlr_scene_tree *lock_tree;       /* the screen lock, over everything (L13) */
     bool ime;                               /* input.ime = "wayland" */
     struct wlr_xdg_shell *xdg_shell;
     struct wlr_xdg_decoration_manager_v1 *deco_mgr;
@@ -286,6 +314,25 @@ static struct {
     struct wl_list windows;                 /* window_t */
     struct wl_list popups;                  /* popup_t */
     struct wl_list keyboards;               /* keyboard_t */
+    bool super_held[2];                     /* left and right Super (L13) */
+
+    /* The screen lock (L13). */
+    struct {
+        struct wlr_session_lock_manager_v1 *mgr;
+        struct wlr_session_lock_v1 *lock;   /* the lock program's, NULL none (or it died) */
+        bool locked;                        /* covered: no input to Family mruby or a window */
+        bool sent_locked;
+        struct wlr_scene_rect *cover;       /* what shows while locked, under the lock surfaces */
+        struct wl_list surfaces;            /* lock_surface_t */
+        struct wlr_surface *focus;          /* the lock surface with the keyboard */
+        char program[NATIVE_MACHINE_STR];   /* compositor.locker */
+        bool available;                     /* the program is installed */
+        pid_t pid;                          /* the program started, 0 none */
+        bool awaiting;                      /* started, its lock not asked for yet */
+        uint64_t started_ms;
+        unsigned locks, unlocks, died, keys_held_back, starts;
+        struct wl_listener new_lock, lock_unlock, lock_destroy, lock_new_surface;
+    } lk;
     struct wl_event_source *wake_source;
     int wake_fd;
     const char *socket;
@@ -350,6 +397,8 @@ static struct {
         unsigned view_changes;              /* the shown part changed with a frame (L9e) */
         unsigned pointer_rechecks;          /* what a still pointer is over changed (L9e) */
         unsigned x11_menu_presses;          /* presses passed to an X11 menu (L9e) */
+        unsigned to_fmrb;                   /* input events pushed to Family mruby (L13) */
+        unsigned winops;                    /* Super+arrows taken (L13) */
     } stats;
 } s;
 
@@ -567,6 +616,36 @@ static void set_backdrop_colour(window_t *w, const comp_window_t *cw)
 
 /* One window's scene from the route: shown or not, where, clipped to its
  * content rectangle, and asked to take that size. */
+/* Tell the window how Family mruby has laid it out (L13): maximized, a half
+ * (xdg's tiled edges). Only on a change. */
+static void tell_state(window_t *w, const comp_window_t *cw)
+{
+    if (!w->mapped) return;
+    int st = cw->state;
+    if (st == w->told_state) return;
+    const char *what = st == COMP_STATE_MAX ? "maximized" : st == COMP_STATE_LEFT ? "the left half"
+                     : st == COMP_STATE_RIGHT ? "the right half" : "as placed";
+#if WLR_HAS_XWAYLAND
+    if (w->kind == WIN_X11) {
+        w->told_state = st;
+        wlr_xwayland_surface_set_maximized(w->xs, st == COMP_STATE_MAX, st == COMP_STATE_MAX);
+        fprintf(stderr, "native: compositor: window %d (X11) told: %s\n", w->id, what);
+        return;
+    }
+#endif
+    if (!w->toplevel->base->initialized) return;
+    w->told_state = st;
+    wlr_xdg_toplevel_set_maximized(w->toplevel, st == COMP_STATE_MAX);
+    if (wl_resource_get_version(w->toplevel->resource) >= XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION) {
+        uint32_t edges = st == COMP_STATE_MAX ? (WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT | WLR_EDGE_RIGHT)
+                       : st == COMP_STATE_LEFT ? (WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT)
+                       : st == COMP_STATE_RIGHT ? (WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT)
+                       : WLR_EDGE_NONE;
+        wlr_xdg_toplevel_set_tiled(w->toplevel, edges);
+    }
+    fprintf(stderr, "native: compositor: window %d told: %s\n", w->id, what);
+}
+
 static void apply_window(window_t *w)
 {
     const comp_window_t *cw = comp_route_window(&s.route, w->id);
@@ -575,6 +654,7 @@ static void apply_window(window_t *w)
     wlr_scene_node_set_enabled(&w->popups->node, on);
     wlr_scene_node_set_enabled(&w->backdrop->node, on);
     if (cw == NULL || !cw->placed) return;
+    tell_state(w, cw);
     /* The scene's xdg tree puts the window's geometry (not its surface,
      * which may reach out for a shadow) at the tree's origin; ours for an
      * X11 window holds its surface at the origin. */
@@ -738,11 +818,16 @@ static void apply_layout(void)
     comp_link_set_geometry(r->place.scale, bw, bh);
 }
 
+static void lock_relayout(void);
+
 static void relayout(void)
 {
     int ow = 0, oh = 0;
     if (s.output != NULL) wlr_output_effective_resolution(s.output, &ow, &oh);
-    if (comp_route_layout(&s.route, ow, oh, s.route.fb_w, s.route.fb_h)) apply_layout();
+    if (comp_route_layout(&s.route, ow, oh, s.route.fb_w, s.route.fb_h)) {
+        apply_layout();
+        lock_relayout();
+    }
 }
 
 /* ---------------------------------------------------------- the focus */
@@ -770,6 +855,8 @@ static bool surface_origin(struct wlr_surface *surface, int *x, int *y)
 
 static void apply_focus(void)
 {
+    /* Locked (L13): the lock surface keeps the keyboard. */
+    if (s.lk.locked) return;
     int focus = comp_route_focus(&s.route);
     window_t *w;
     wl_list_for_each(w, &s.windows, link) {
@@ -793,6 +880,7 @@ static void apply_focus(void)
 }
 
 static void recheck_pointer(void);
+static void lock_start(const char *why);
 
 /* Family mruby's places, stacking and focus, and its requests. */
 static void take_from_fmrb(void)
@@ -817,6 +905,8 @@ static void take_from_fmrb(void)
         if (kind == COMP_CMD_CLOSE && w != NULL) {
             fprintf(stderr, "native: compositor: window %d asked to close\n", id);
             win_close(w);
+        } else if (kind == COMP_CMD_LOCK) {
+            lock_start(id == 1 ? "logind asked" : "the power menu's Lock");
         }
     }
 }
@@ -837,6 +927,9 @@ static void window_map(struct wl_listener *l, void *data)
     if (w->toplevel->title != NULL) {
         comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, w->toplevel->title);
     }
+    w->told_state = COMP_STATE_NONE;
+    /* Asked before it was mapped (a program that starts maximized). */
+    if (w->toplevel->requested.maximized) comp_route_notice(&s.route, COMP_NOTICE_MAXIMIZE, w->id, 1, 0, 0, 0, NULL);
     char rel[32] = "";
     if (parent > 0) snprintf(rel, sizeof(rel), ", a dialog of window %d", parent);
     fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (decoration: %s; app id %s, named %s%s)\n", w->id,
@@ -867,8 +960,10 @@ static void window_commit(struct wl_listener *l, void *data)
         /* The client picks its own size until Family mruby places it; the
          * frame is ours. */
         wlr_xdg_toplevel_set_size(w->toplevel, 0, 0);
+        /* Maximize is offered (L13): Family mruby's window operations do
+         * it. Fullscreen is not. */
         if (wl_resource_get_version(w->toplevel->resource) >= XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION) {
-            wlr_xdg_toplevel_set_wm_capabilities(w->toplevel, 0);
+            wlr_xdg_toplevel_set_wm_capabilities(w->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE);
         }
         if (w->deco != NULL) {
             wlr_xdg_toplevel_decoration_v1_set_mode(w->deco, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
@@ -955,8 +1050,12 @@ static void window_request_resize(struct wl_listener *l, void *data)
     begin_grab(w, GRAB_RESIZE, ev->edges);
 }
 
-/* Maximize and fullscreen are not offered (L9a): the protocol still wants a
- * configure in answer, with nothing changed. */
+/* Maximize asked by the window (L13): passed to Family mruby's side, which
+ * lays its stand-in out; the window is told the state with the places that
+ * follow (tell_state). The protocol wants a configure in answer at once, so
+ * one is sent with nothing changed yet. Before the window is mapped the
+ * request waits (its requested state is read at the map). Fullscreen is not
+ * offered: answered without a change. */
 static void window_request_state(struct wlr_xdg_toplevel *t)
 {
     if (t->base->initialized) wlr_xdg_surface_schedule_configure(t->base);
@@ -966,6 +1065,11 @@ static void window_request_maximize(struct wl_listener *l, void *data)
 {
     (void)data;
     window_t *w = wl_container_of(l, w, request_maximize);
+    if (w->mapped) {
+        bool on = w->toplevel->requested.maximized;
+        comp_route_notice(&s.route, COMP_NOTICE_MAXIMIZE, w->id, on ? 1 : 0, 0, 0, 0, NULL);
+        fprintf(stderr, "native: compositor: window %d asked to be %s\n", w->id, on ? "maximized" : "unmaximized");
+    }
     window_request_state(w->toplevel);
 }
 
@@ -1199,6 +1303,10 @@ static void x11_map(struct wl_listener *l, void *data)
     int parent = x11_parent_id(xs);
     comp_route_window_add(&s.route, w->id, xs->width, xs->height, parent, name);
     if (xs->title != NULL) comp_route_notice(&s.route, COMP_NOTICE_TITLE, w->id, 0, 0, 0, 0, xs->title);
+    w->told_state = COMP_STATE_NONE;
+    if (xs->maximized_horz && xs->maximized_vert) {
+        comp_route_notice(&s.route, COMP_NOTICE_MAXIMIZE, w->id, 1, 0, 0, 0, NULL);
+    }
     char rel[32] = "";
     if (parent > 0) snprintf(rel, sizeof(rel), ", a dialog of window %d", parent);
     fprintf(stderr, "native: compositor: window %d \"%s\" %dx%d (X11 %s/%s, decorations %s; named %s%s)\n", w->id,
@@ -1339,6 +1447,20 @@ static void x11_request_resize(struct wl_listener *l, void *data)
     if (w->mapped && !w->or_win) begin_grab(w, GRAB_RESIZE, ev->edges);
 }
 
+/* _NET_WM_STATE's maximize asked by the program (L13): as for an xdg
+ * window. The state it asks for is in the surface already; it is told the
+ * one Family mruby gives with the places that follow. */
+static void x11_request_maximize(struct wl_listener *l, void *data)
+{
+    (void)data;
+    window_t *w = wl_container_of(l, w, x_request_maximize);
+    if (!w->mapped || w->or_win) return;
+    bool on = w->xs->maximized_horz && w->xs->maximized_vert;
+    comp_route_notice(&s.route, COMP_NOTICE_MAXIMIZE, w->id, on ? 1 : 0, 0, 0, 0, NULL);
+    fprintf(stderr, "native: compositor: window %d (X11) asked to be %s\n", w->id, on ? "maximized" : "unmaximized");
+    w->told_state = -1;   /* tell it again, whatever Family mruby decides */
+}
+
 static void x11_destroy(struct wl_listener *l, void *data)
 {
     (void)data;
@@ -1354,6 +1476,7 @@ static void x11_destroy(struct wl_listener *l, void *data)
     wl_list_remove(&w->set_parent.link);
     wl_list_remove(&w->request_move.link);
     wl_list_remove(&w->request_resize.link);
+    wl_list_remove(&w->x_request_maximize.link);
     wl_list_remove(&w->link);
     wlr_scene_node_destroy(&w->tree->node);
     wlr_scene_node_destroy(&w->popups->node);
@@ -1397,6 +1520,8 @@ static void x11_new_surface(struct wl_listener *l, void *data)
     wl_signal_add(&xs->events.request_move, &w->request_move);
     w->request_resize.notify = x11_request_resize;
     wl_signal_add(&xs->events.request_resize, &w->request_resize);
+    w->x_request_maximize.notify = x11_request_maximize;
+    wl_signal_add(&xs->events.request_maximize, &w->x_request_maximize);
     wl_list_insert(&s.windows, &w->link);
 }
 
@@ -1453,12 +1578,39 @@ static void xwayland_init(void)
 
 /* ----------------------------------------------------------- keyboard */
 
+/* Everything for Family mruby's input goes through here (counted: a lock
+ * must stop it all, L13). */
+static void push_fmrb(uint32_t type, uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{
+    s.stats.to_fmrb++;
+    native_input_push(type, a, b, c, d);
+}
+
 static void send_fmrb_key(uint32_t code, bool down)
 {
     uint8_t usage = fmrb_linux_key_to_hid(code);
     if (usage == 0) return;
-    native_input_push(down ? NATIVE_INPUT_KEY_DOWN : NATIVE_INPUT_KEY_UP, usage, s.mods, 0, 0);
+    push_fmrb(down ? NATIVE_INPUT_KEY_DOWN : NATIVE_INPUT_KEY_UP, usage, s.mods, 0, 0);
 }
+
+/* Where a key taken by the compositor itself went (its release goes nowhere). */
+#define KEY_TAKEN (-2)
+
+/* Super and an arrow (L13): the window operation, for the window in front
+ * whoever has the keyboard. 0 when the key is not one. */
+static int winop_key(uint32_t code)
+{
+    if (!native_winops_enabled() || !(s.super_held[0] || s.super_held[1])) return 0;
+    switch (code) {
+    case KEY_LEFT: return WINOPS_DO_LEFT;
+    case KEY_RIGHT: return WINOPS_DO_RIGHT;
+    case KEY_UP: return WINOPS_DO_MAX;
+    case KEY_DOWN: return WINOPS_DO_RESTORE;
+    default: return 0;
+    }
+}
+
+static void lock_key(keyboard_t *k, struct wlr_keyboard_key_event *ev);
 
 /* Keys that stay Family mruby's whoever has the keyboard: the window
  * switching hotkeys (host_task.c), so a Linux window cannot trap them. */
@@ -1492,16 +1644,32 @@ static void keyboard_key(struct wl_listener *l, void *data)
         if (down) s.mods |= bit;
         else s.mods &= (uint8_t)~bit;
     }
+    if (code == KEY_LEFTMETA) s.super_held[0] = down;
+    if (code == KEY_RIGHTMETA) s.super_held[1] = down;
+    /* Locked (L13): the lock surface's, nobody else's. */
+    if (s.lk.locked) {
+        lock_key(k, ev);
+        return;
+    }
     /* A key goes up where it went down, whoever has the keyboard now. The
      * IME (L12b) takes the keys while it serves the focused text input,
      * but for the switching hotkeys; the ones it does not use come back on
      * its own keyboard and go where the focus is. */
     int target = comp_route_focus(&s.route);
-    if (down && fmrb_hotkey(code)) target = COMP_FMRB;
+    int winop = down ? winop_key(code) : 0;
+    if (winop != 0) target = KEY_TAKEN;
+    else if (down && fmrb_hotkey(code)) target = COMP_FMRB;
     else if (down && wl_ime_takes_keys(k->wlr)) target = KEY_TO_IME;
     if (code <= KEY_MAX) {
         if (down) k->key_target[code] = target;
         else target = k->key_target[code];
+    }
+    if (target == KEY_TAKEN) {
+        if (winop != 0) {
+            s.stats.winops++;
+            native_input_push(NATIVE_INPUT_WINOP, (uint32_t)winop, 0, 0, 0);
+        }
+        return;
     }
     if (target == KEY_TO_IME) {
         wl_ime_key(k->wlr, ev->time_msec, code, ev->state);
@@ -1523,6 +1691,13 @@ static void keyboard_modifiers(struct wl_listener *l, void *data)
 {
     (void)data;
     keyboard_t *k = wl_container_of(l, k, modifiers);
+    if (s.lk.locked) {
+        if (s.lk.focus != NULL) {
+            wlr_seat_set_keyboard(s.seat, k->wlr);
+            wlr_seat_keyboard_notify_modifiers(s.seat, &k->wlr->modifiers);
+        }
+        return;
+    }
     if (wl_ime_modifiers(k->wlr)) return;
     if (comp_route_focus(&s.route) == COMP_FMRB) return;
     wlr_seat_set_keyboard(s.seat, k->wlr);
@@ -1620,7 +1795,7 @@ static void flush_motion(bool force)
     if (!s.motion_pending) return;
     uint32_t t = (uint32_t)now_ms();
     if (!force && t - s.motion_last_ms < MOTION_INTERVAL_MS) return;
-    native_input_push(NATIVE_INPUT_MOUSE_MOVE, (uint32_t)s.motion_x, (uint32_t)s.motion_y, 0, 0);
+    push_fmrb(NATIVE_INPUT_MOUSE_MOVE, (uint32_t)s.motion_x, (uint32_t)s.motion_y, 0, 0);
     s.motion_pending = false;
     s.motion_last_ms = t;
 }
@@ -1756,8 +1931,14 @@ static void grab_motion(void)
     s.grab.nh = h;
 }
 
+static void lock_motion(uint32_t time_msec);
+
 static void process_motion(uint32_t time_msec)
 {
+    if (s.lk.locked) {
+        lock_motion(time_msec);
+        return;
+    }
     if (s.grab.mode != GRAB_NONE) {
         grab_motion();
         return;
@@ -1796,7 +1977,7 @@ static void process_motion(uint32_t time_msec)
  * changed. Not while a button is held or a window is being moved. */
 static void recheck_pointer(void)
 {
-    if (s.cursor == NULL || s.grab.mode != GRAB_NONE || s.buttons_held > 0) return;
+    if (s.cursor == NULL || s.grab.mode != GRAB_NONE || s.buttons_held > 0 || s.lk.locked) return;
     ptr_hit_t p = pointer_hit();
     bool over = p.hit.target != COMP_FMRB;
     if (!over && !s.fmrb_cursor_hidden) return;
@@ -1840,7 +2021,7 @@ static void fmrb_press(int fx, int fy, int b, bool down)
     s.motion_y = fy;
     s.motion_pending = true;
     flush_motion(true);
-    native_input_push(NATIVE_INPUT_MOUSE_BUTTON, (uint32_t)fx, (uint32_t)fy, (uint32_t)b, down ? 1 : 0);
+    push_fmrb(NATIVE_INPUT_MOUSE_BUTTON, (uint32_t)fx, (uint32_t)fy, (uint32_t)b, down ? 1 : 0);
 }
 
 #if WLR_HAS_XWAYLAND
@@ -1910,6 +2091,13 @@ static void cursor_button(struct wl_listener *l, void *data)
     struct wlr_pointer_button_event *ev = data;
     bool down = ev->state == WL_POINTER_BUTTON_STATE_PRESSED;
     int b = fmrb_button(ev->button);
+    if (s.lk.locked) {
+        /* The lock surface's, when it has the pointer (L13). */
+        if (s.seat->pointer_state.focused_surface != NULL) {
+            wlr_seat_pointer_notify_button(s.seat, ev->time_msec, ev->button, ev->state);
+        }
+        return;
+    }
     ptr_hit_t p;
     if (down && s.buttons_held == 0) {
         p = pointer_hit();
@@ -1969,6 +2157,13 @@ static void cursor_axis(struct wl_listener *l, void *data)
 {
     (void)l;
     struct wlr_pointer_axis_event *ev = data;
+    if (s.lk.locked) {
+        if (s.seat->pointer_state.focused_surface != NULL) {
+            wlr_seat_pointer_notify_axis(s.seat, ev->time_msec, ev->orientation, ev->delta, ev->delta_discrete,
+                                         ev->source, ev->relative_direction);
+        }
+        return;
+    }
     ptr_hit_t p = pointer_hit();
     if (p.hit.target == COMP_FMRB) {
         if (ev->orientation != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
@@ -1977,7 +2172,7 @@ static void cursor_axis(struct wl_listener *l, void *data)
                                               : (ev->delta > 0 ? -1 : (ev->delta < 0 ? 1 : 0));
         if (notches == 0) return;
         flush_motion(true);
-        native_input_push(NATIVE_INPUT_MOUSE_WHEEL, (uint32_t)p.hit.x, (uint32_t)p.hit.y,
+        push_fmrb(NATIVE_INPUT_MOUSE_WHEEL, (uint32_t)p.hit.x, (uint32_t)p.hit.y,
                           (uint32_t)(int32_t)notches, 0);
         return;
     }
@@ -2095,6 +2290,322 @@ static void new_output(struct wl_listener *l, void *data)
     fprintf(stderr, "native: compositor: output %s %dx%d, rotate %d\n", out->name, out->width, out->height,
             s.rotate);
     relayout();
+}
+
+/* ------------------------------------------------- the screen lock (L13) */
+
+/* ext-session-lock-v1: a lock program (swaylock, compositor.locker) asks to
+ * lock; the screen is covered at once (a plain colour), and the program's
+ * lock surface goes over it. While locked, nothing reaches Family mruby or a
+ * Linux window: keys and the pointer go to the lock surface alone (the
+ * virtual-terminal switch stays the machine's). The
+ * program unlocks when it is satisfied (it checks the password; Family mruby
+ * never sees one). A program that goes away without unlocking leaves the
+ * screen locked, as the protocol says: the cover stays, and a key (or
+ * logind's Lock, or the power menu's) starts the program again. */
+
+/* The used output's lock surface takes the keyboard and the pointer (the
+ * others are not shown). */
+static bool lock_primary(const lock_surface_t *ls)
+{
+    return ls->wlr->output == s.output;
+}
+
+static void lock_cover_size(void)
+{
+    if (s.lk.cover == NULL) return;
+    struct wlr_box box;
+    wlr_output_layout_get_box(s.layout, NULL, &box);
+    wlr_scene_node_set_position(&s.lk.cover->node, box.x, box.y);
+    wlr_scene_rect_set_size(s.lk.cover, box.width, box.height);
+}
+
+static void lock_relayout(void)
+{
+    lock_cover_size();
+    lock_surface_t *ls;
+    wl_list_for_each(ls, &s.lk.surfaces, link) {
+        int ew = 0, eh = 0;
+        if (ls->wlr->output != NULL) wlr_output_effective_resolution(ls->wlr->output, &ew, &eh);
+        if (ew > 0 && eh > 0) wlr_session_lock_surface_v1_configure(ls->wlr, (uint32_t)ew, (uint32_t)eh);
+    }
+}
+
+static void lock_publish(void)
+{
+    comp_lock_state_t st = s.lk.locked ? COMP_LOCK_LOCKED : (s.lk.awaiting ? COMP_LOCK_LOCKING : COMP_LOCK_NONE);
+    comp_link_set_lock(s.lk.available, st);
+}
+
+/* Locked or not: the cover, and the keyboard and the pointer taken from (or
+ * given back to) Family mruby and the windows. */
+static void lock_set(bool on)
+{
+    if (on == s.lk.locked) return;
+    s.lk.locked = on;
+    wlr_scene_node_set_enabled(&s.lock_tree->node, on);
+    if (on) {
+        lock_cover_size();
+        wlr_seat_keyboard_notify_clear_focus(s.seat);
+        wlr_seat_pointer_clear_focus(s.seat);
+        wl_ime_focus(NULL, false);
+        s.buttons_held = 0;
+        s.pointer_target = COMP_FMRB;
+        s.grab.mode = GRAB_NONE;
+        s.motion_pending = false;
+        wlr_cursor_set_xcursor(s.cursor, s.xcursor, "default");
+        fmrb_cursor(false);
+    } else {
+        s.lk.focus = NULL;
+        apply_focus();
+        process_motion((uint32_t)now_ms());
+    }
+    lock_publish();
+}
+
+static void lock_focus(struct wlr_surface *surf)
+{
+    s.lk.focus = surf;
+    if (surf == NULL) {
+        wlr_seat_keyboard_notify_clear_focus(s.seat);
+        return;
+    }
+    struct wlr_keyboard *kb = wlr_seat_get_keyboard(s.seat);
+    if (kb != NULL) {
+        wlr_seat_keyboard_notify_enter(s.seat, surf, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+    } else {
+        wlr_seat_keyboard_notify_enter(s.seat, surf, NULL, 0, NULL);
+    }
+}
+
+/* Whether the first word of a command is a program found on PATH. */
+static bool program_found(const char *cmd)
+{
+    char first[256];
+    if (sscanf(cmd, "%255s", first) != 1) return false;
+    if (strchr(first, '/') != NULL) return access(first, X_OK) == 0;
+    const char *path = getenv("PATH");
+    if (path == NULL) path = "/usr/local/bin:/usr/bin:/bin";
+    while (*path) {
+        size_t n = strcspn(path, ":");
+        if (n > 0 && n < 512) {
+            char full[800];
+            snprintf(full, sizeof(full), "%.*s/%s", (int)n, path, first);
+            if (access(full, X_OK) == 0) return true;
+        }
+        path += n;
+        if (*path == ':') path++;
+    }
+    return false;
+}
+
+/* Start the lock program (compositor.locker), unless it runs. */
+static void lock_start(const char *why)
+{
+    if (!s.lk.available) {
+        fprintf(stderr, "native: compositor: lock asked (%s), but there is no lock program (%s)\n", why,
+                s.lk.program[0] ? s.lk.program : "compositor.locker is empty");
+        return;
+    }
+    if (s.lk.pid > 0) return;
+    if (s.lk.locked && s.lk.lock != NULL) return;
+    pid_t pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "native: compositor: lock program: fork: %s\n", strerror(errno));
+        return;
+    }
+    if (pid == 0) {
+        /* Async-signal-safe calls only: signals as new, a session of its
+         * own, none of the program's descriptors (the control socket's
+         * client would wait for this child to close it). */
+        sigset_t none;
+        sigemptyset(&none);
+        sigprocmask(SIG_SETMASK, &none, NULL);
+        for (int sig = 1; sig < NSIG; sig++) signal(sig, SIG_DFL);
+        setsid();
+        prctl(PR_SET_PDEATHSIG, SIGTERM);
+        for (int fd = 3; fd < 4096; fd++) close(fd);
+        execl("/bin/sh", "sh", "-c", s.lk.program, (char *)NULL);
+        _exit(127);
+    }
+    s.lk.pid = pid;
+    s.lk.awaiting = true;
+    s.lk.started_ms = now_ms();
+    s.lk.starts++;
+    fprintf(stderr, "native: compositor: started the lock program \"%s\" (pid %d; %s)\n", s.lk.program, (int)pid, why);
+    lock_publish();
+}
+
+static void lock_reap(void)
+{
+    if (s.lk.pid <= 0) return;
+    int st = 0;
+    if (waitpid(s.lk.pid, &st, WNOHANG) != s.lk.pid) return;
+    fprintf(stderr, "native: compositor: the lock program ended (%d)%s\n",
+            WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st),
+            s.lk.locked && s.lk.lock == NULL ? "; the screen stays locked" : "");
+    s.lk.pid = 0;
+    s.lk.awaiting = false;
+    lock_publish();
+}
+
+/* A key while locked: the lock surface's, or (the program gone) a new start. */
+static void lock_key(keyboard_t *k, struct wlr_keyboard_key_event *ev)
+{
+    bool down = ev->state == WL_KEYBOARD_KEY_STATE_PRESSED;
+    if (s.lk.focus != NULL) {
+        wlr_seat_set_keyboard(s.seat, k->wlr);
+        wlr_seat_keyboard_notify_key(s.seat, ev->time_msec, ev->keycode, ev->state);
+        return;
+    }
+    s.lk.keys_held_back++;
+    if (down && s.lk.lock == NULL && s.lk.pid <= 0 && now_ms() - s.lk.started_ms >= 2000) {
+        lock_start("a key, the lock program being gone");
+    }
+}
+
+/* The pointer while locked: the first output's lock surface only (it lies
+ * at the output's origin, the layout's). */
+static void lock_motion(uint32_t time_msec)
+{
+    lock_surface_t *ls;
+    wl_list_for_each(ls, &s.lk.surfaces, link) {
+        if (!lock_primary(ls) || !ls->wlr->surface->mapped) continue;
+        wlr_seat_pointer_notify_enter(s.seat, ls->wlr->surface, s.cursor->x, s.cursor->y);
+        wlr_seat_pointer_notify_motion(s.seat, time_msec, s.cursor->x, s.cursor->y);
+        return;
+    }
+    wlr_seat_pointer_clear_focus(s.seat);
+}
+
+static void lock_surface_map(struct wl_listener *l, void *data)
+{
+    (void)data;
+    lock_surface_t *ls = wl_container_of(l, ls, map);
+    if (!lock_primary(ls)) return;
+    lock_focus(ls->wlr->surface);
+    lock_motion((uint32_t)now_ms());
+    if (s.lk.lock != NULL && !s.lk.sent_locked) {
+        wlr_session_lock_v1_send_locked(s.lk.lock);
+        s.lk.sent_locked = true;
+        fprintf(stderr, "native: compositor: the screen is locked (the lock program's surface is up)\n");
+    }
+}
+
+static void lock_surface_destroy(struct wl_listener *l, void *data)
+{
+    (void)data;
+    lock_surface_t *ls = wl_container_of(l, ls, destroy);
+    if (s.lk.focus == ls->wlr->surface) lock_focus(NULL);
+    wl_list_remove(&ls->map.link);
+    wl_list_remove(&ls->destroy.link);
+    wl_list_remove(&ls->link);
+    free(ls);
+}
+
+static void lock_new_surface(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_session_lock_surface_v1 *wls = data;
+    lock_surface_t *ls = calloc(1, sizeof(*ls));
+    if (ls == NULL) return;
+    ls->wlr = wls;
+    ls->tree = wlr_scene_subsurface_tree_create(s.lock_tree, wls->surface);
+    int ox = 0, oy = 0;
+    if (wls->output != NULL) {
+        struct wlr_box b;
+        wlr_output_layout_get_box(s.layout, wls->output, &b);
+        ox = b.x;
+        oy = b.y;
+    }
+    wlr_scene_node_set_position(&ls->tree->node, ox, oy);
+    wlr_scene_node_set_enabled(&ls->tree->node, lock_primary(ls));
+    ls->map.notify = lock_surface_map;
+    wl_signal_add(&wls->surface->events.map, &ls->map);
+    ls->destroy.notify = lock_surface_destroy;
+    wl_signal_add(&wls->events.destroy, &ls->destroy);
+    wl_list_insert(&s.lk.surfaces, &ls->link);
+    int ew = 0, eh = 0;
+    if (wls->output != NULL) wlr_output_effective_resolution(wls->output, &ew, &eh);
+    wlr_session_lock_surface_v1_configure(wls, (uint32_t)(ew > 0 ? ew : 1), (uint32_t)(eh > 0 ? eh : 1));
+}
+
+static void lock_forget(void)
+{
+    wl_list_remove(&s.lk.lock_unlock.link);
+    wl_list_remove(&s.lk.lock_destroy.link);
+    wl_list_remove(&s.lk.lock_new_surface.link);
+    s.lk.lock = NULL;
+}
+
+static void lock_unlock(struct wl_listener *l, void *data)
+{
+    (void)l;
+    (void)data;
+    s.lk.unlocks++;
+    fprintf(stderr, "native: compositor: the lock program unlocked the screen\n");
+    lock_forget();
+    lock_set(false);
+}
+
+static void lock_destroy(struct wl_listener *l, void *data)
+{
+    (void)l;
+    (void)data;
+    lock_forget();
+    if (s.lk.locked) {
+        s.lk.died++;
+        s.lk.focus = NULL;
+        wlr_seat_keyboard_notify_clear_focus(s.seat);
+        wlr_seat_pointer_clear_focus(s.seat);
+        fprintf(stderr, "native: compositor: the lock went away without unlocking: the screen stays locked "
+                        "(a key, or logind's Lock, starts the lock program again)\n");
+    }
+    lock_publish();
+}
+
+static void new_lock(struct wl_listener *l, void *data)
+{
+    (void)l;
+    struct wlr_session_lock_v1 *lock = data;
+    if (s.lk.lock != NULL) {
+        fprintf(stderr, "native: compositor: a second lock refused (one is there)\n");
+        wlr_session_lock_v1_destroy(lock);
+        return;
+    }
+    s.lk.lock = lock;
+    s.lk.awaiting = false;
+    s.lk.sent_locked = false;
+    s.lk.locks++;
+    s.lk.lock_unlock.notify = lock_unlock;
+    wl_signal_add(&lock->events.unlock, &s.lk.lock_unlock);
+    s.lk.lock_destroy.notify = lock_destroy;
+    wl_signal_add(&lock->events.destroy, &s.lk.lock_destroy);
+    s.lk.lock_new_surface.notify = lock_new_surface;
+    wl_signal_add(&lock->events.new_surface, &s.lk.lock_new_surface);
+    fprintf(stderr, "native: compositor: locking the screen (a lock program asked)\n");
+    lock_set(true);
+}
+
+static void lock_init(const native_machine_t *m)
+{
+    wl_list_init(&s.lk.surfaces);
+    snprintf(s.lk.program, sizeof(s.lk.program), "%s", m->compositor.locker);
+    s.lk.available = s.lk.program[0] != '\0' && program_found(s.lk.program);
+    s.lock_tree = wlr_scene_tree_create(&s.scene->tree);
+    static const float cover[4] = { 0.10f, 0.11f, 0.14f, 1.0f };
+    s.lk.cover = wlr_scene_rect_create(s.lock_tree, 0, 0, cover);
+    wlr_scene_node_set_enabled(&s.lock_tree->node, false);
+    s.lk.mgr = wlr_session_lock_manager_v1_create(s.display);
+    s.lk.new_lock.notify = new_lock;
+    wl_signal_add(&s.lk.mgr->events.new_lock, &s.lk.new_lock);
+    if (s.lk.available) {
+        fprintf(stderr, "native: compositor: the screen lock: \"%s\" (ext-session-lock)\n", s.lk.program);
+    } else if (s.lk.program[0] != '\0') {
+        fprintf(stderr, "native: compositor: the screen lock: %s is not installed (no Lock entry; "
+                        "ext-session-lock is served for any lock program)\n", s.lk.program);
+    }
+    lock_publish();
 }
 
 /* ---------------------------------------------------- the tools' devices */
@@ -2278,8 +2789,23 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
         if (s.xwayland != NULL) xw = s.xwayland_up ? "up" : "lazy";
 #endif
         if (n > 0 && (size_t)n < cap) {
-            snprintf(out + n, cap - (size_t)n, "%s xwayland=%s rotate=%d\n", k ? "" : "-", xw, s.rotate);
+            n += snprintf(out + n, cap - (size_t)n, "%s xwayland=%s rotate=%d", k ? "" : "-", xw, s.rotate);
         }
+        /* L13: how each window is laid out (m maximized, l / r a half, f
+         * - as placed), the lock. */
+        if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, " states=");
+        for (int i = 0; i < r->n && n > 0 && (size_t)n < cap; i++) {
+            const comp_window_t *cw = &r->win[i];
+            const char *st = cw->state == COMP_STATE_MAX ? "m" : cw->state == COMP_STATE_LEFT ? "l"
+                           : cw->state == COMP_STATE_RIGHT ? "r" : "-";
+            n += snprintf(out + n, cap - (size_t)n, "%s%d:%s", i ? "," : "", cw->id, st);
+        }
+        if (n > 0 && (size_t)n < cap && r->n == 0) n += snprintf(out + n, cap - (size_t)n, "-");
+        const char *lk = s.lk.locked ? (s.lk.lock != NULL ? "locked" : "dead") : (s.lk.awaiting ? "locking" : "none");
+        if (n > 0 && (size_t)n < cap) {
+            n += snprintf(out + n, cap - (size_t)n, " lock=%s locker=%s", lk, s.lk.available ? "yes" : "no");
+        }
+        if (n > 0 && (size_t)n < cap) snprintf(out + n, cap - (size_t)n, "\n");
         return true;
     }
     if (strncmp(a, "stats", 5) == 0) {
@@ -2289,13 +2815,15 @@ static bool wlr_ctl(const char *req, char *out, size_t cap)
         snprintf(out, cap,
                  "OK span_s=%.1f pictures=%u gap_mean_ms=%.1f gap_max_ms=%llu commits=%u keys=%u "
                  "key_commit_n=%u key_commit_mean_ms=%.1f key_commit_max_ms=%llu view_changes=%u pointer_rechecks=%u "
-                 "x11_menu_presses=%u\n",
+                 "x11_menu_presses=%u to_fmrb=%u winops=%u locks=%u unlocks=%u lock_died=%u "
+                 "lock_keys_held=%u lock_starts=%u\n",
                  span, s.stats.pictures,
                  gaps ? (double)s.stats.picture_gap_sum_ms / gaps : 0.0,
                  (unsigned long long)s.stats.picture_gap_max_ms, s.stats.commits, s.stats.keys,
                  s.stats.key_lat_n, s.stats.key_lat_n ? (double)s.stats.key_lat_sum_ms / s.stats.key_lat_n : 0.0,
                  (unsigned long long)s.stats.key_lat_max_ms, s.stats.view_changes, s.stats.pointer_rechecks,
-                 s.stats.x11_menu_presses);
+                 s.stats.x11_menu_presses, s.stats.to_fmrb, s.stats.winops, s.lk.locks,
+                 s.lk.unlocks, s.lk.died, s.lk.keys_held_back, s.lk.starts);
         if (strcmp(a, "stats reset") == 0) {
             memset(&s.stats, 0, sizeof(s.stats));
             s.stats.since_ms = t;
@@ -2503,7 +3031,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     s.new_output.notify = new_output;
     wl_signal_add(&s.backend->events.new_output, &s.new_output);
     /* Version 5: the window is told which window-manager features there
-     * are (none of maximize, fullscreen, minimize, window menu: L9a). */
+     * are (maximize, L13; no fullscreen, minimize or window menu). */
     s.xdg_shell = wlr_xdg_shell_create(s.display, 5);
     s.new_toplevel.notify = new_toplevel;
     wl_signal_add(&s.xdg_shell->events.new_toplevel, &s.new_toplevel);
@@ -2540,6 +3068,8 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         wl_ime_init(s.display, s.seat, s.ime_tree, &s.route, &ime_host);
     }
 
+    /* The screen lock over everything (L13). */
+    lock_init(m);
     wlr_screencopy_manager_v1_create(s.display);
     wlr_xdg_output_manager_v1_create(s.display, s.layout);
 
@@ -2581,6 +3111,8 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         fprintf(stderr, "native: compositor: no place for the Linux icons (%s); no Linux apps\n", LINUX_ICON_DIR);
     }
     start_child();
+    /* logind's Lock and PrepareForSleep lock the screen (L13). */
+    if (s.lk.available) linux_logind_watch_start();
     return true;
 }
 
@@ -2616,6 +3148,7 @@ static bool wlr_pump(int wait_ms)
     wl_display_flush_clients(s.display);
     flush_motion(false);
     reap_child();
+    lock_reap();
     return s.quit;
 }
 
@@ -2839,6 +3372,7 @@ static void end_clients(void)
 static void wlr_close(void)
 {
     if (s.display == NULL) return;
+    linux_logind_watch_stop();
     linger();
     wl_clip_fini();
     wl_ime_fini();

@@ -78,6 +78,14 @@ extern "C" {
 /* Who something goes to: Family mruby, or a window by its id (> 0). */
 #define COMP_FMRB 0
 
+/* How Family mruby has laid a window out (L13): as it was, over the whole
+ * work area, or over its left or right half. The window is told (xdg's
+ * maximized and tiled states, X11's _NET_WM_STATE). */
+#define COMP_STATE_NONE 0
+#define COMP_STATE_MAX 1
+#define COMP_STATE_LEFT 2
+#define COMP_STATE_RIGHT 3
+
 typedef struct {
     int id;             /* > 0, the compositor's own numbering */
     int x, y;           /* top-left on the output (placed windows) */
@@ -86,6 +94,7 @@ typedef struct {
     bool shown;         /* Family mruby shows it (its window is not suspended) */
     bool visible;       /* placed, shown, and the frame is the base size */
     int fx, fy, fw, fh; /* the content rectangle, frame coordinates */
+    int state;          /* COMP_STATE_* (L13) */
 } comp_window_t;
 
 /* One window's place as Family mruby gives it: the content rectangle of the
@@ -94,6 +103,7 @@ typedef struct {
     int id;
     int x, y, w, h;
     bool shown;
+    int state;          /* COMP_STATE_*: maximized, a half, or neither */
 } comp_place_t;
 
 typedef struct {
@@ -115,6 +125,7 @@ typedef enum {
     COMP_NOTICE_FIT,            /* it settled on a size of its own (w, h, output pixels) other than the
                                  * one asked: its stand-in is to fit it (L9b) */
     COMP_NOTICE_PARENT,         /* its parent changed (x: the parent's id, 0 none; L9c) */
+    COMP_NOTICE_MAXIMIZE,       /* it asked to be maximized (x 1) or no longer (x 0; L13) */
 } comp_notice_kind_t;
 
 typedef struct {

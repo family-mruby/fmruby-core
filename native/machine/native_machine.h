@@ -54,6 +54,11 @@
  *                             "none" (the internal volume) or a name (L6)
  *   [desktop]  variant        mouse (the Modern desktop) | keys (the
  *                             keyboard-only desktop, system_desktop_keys)
+ *              window_ops     true: the PC's window operations (L13,
+ *                             native_winops.h): a double-click on a title
+ *                             maximizes, Super+arrows lay the window in
+ *                             front out; false (the Cardputer, the keys
+ *                             desktop) none
  *   [system]   services       none | linux: the OS services the desktop
  *                             shows and uses (L6, native/sys/); none keeps
  *                             the simulation's answers
@@ -82,6 +87,11 @@
  *                             once the compositor is up ("fcitx5"; "" none),
  *                             through /bin/sh -c, without DISPLAY. Not
  *                             installed: one line, and the kana input stays
+ *              locker         wlroots only (L13): the screen lock program
+ *                             (ext-session-lock: "swaylock"; "" none),
+ *                             started through /bin/sh -c by the power menu's
+ *                             Lock and logind's Lock / PrepareForSleep. Not
+ *                             installed: no Lock entry
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this
@@ -136,6 +146,7 @@ typedef struct {
 
     struct {
         char variant[16];
+        bool window_ops;                 /* the PC's window operations (L13) */
     } desktop;
 
     struct {
@@ -153,6 +164,7 @@ typedef struct {
     struct {
         char autostart[NATIVE_MACHINE_STR];
         char ime[NATIVE_MACHINE_STR];    /* the IME program, "" none */
+        char locker[NATIVE_MACHINE_STR]; /* the screen lock program, "" none (L13) */
     } compositor;
 } native_machine_t;
 

@@ -29,6 +29,7 @@ mixer = "auto"               # the volume the desktop moves (Master, PCM, Speake
 
 [desktop]
 variant = "keys"
+window_ops = false           # no PC window operations (L13)
 
 [system]
 services = "linux"

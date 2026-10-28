@@ -240,7 +240,8 @@ begin
     result("IME suggested", suggests.to_s.strip == "fcitx5, fcitx5-mozc" && !depends.to_s.include?("fcitx") &&
            !recommends.to_s.include?("fcitx"), "Suggests: #{suggests.to_s.strip}")
     script, = dexec("cat /usr/bin/family-mruby-session", ok: false)
-    result("session runs the compositor", recommends.strip == "xwayland" && !depends.to_s.include?("cage") &&
+    # The screen lock (L13): swaylock recommended beside Xwayland.
+    result("session runs the compositor", recommends.strip == "xwayland, swaylock" && !depends.to_s.include?("cage") &&
            script.include?("--machine linux_pc_wl") && !script.include?("cage"),
            "Recommends: #{recommends.strip}; the starter runs #{script[/exec "\$prog" [^\n]*/]}")
   else

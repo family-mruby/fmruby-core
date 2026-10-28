@@ -23,6 +23,7 @@
 #include "host_task.h"
 #include "native_ime.h"
 #include "native_input.h"
+#include "native_winops.h"
 
 static const char *TAG = "input_native";
 
@@ -56,14 +57,20 @@ static void dispatch(const native_event_t *ev)
 {
     switch (ev->type) {
     case NATIVE_INPUT_KEY_DOWN:
+        if (native_winops_key((uint8_t)ev->a, true)) break;
         fmrb_host_send_key_down((uint8_t)ev->a, (uint8_t)ev->a, (uint8_t)ev->b);
         break;
     case NATIVE_INPUT_KEY_UP:
+        if (native_winops_key((uint8_t)ev->a, false)) break;
         fmrb_host_send_key_up((uint8_t)ev->a, (uint8_t)ev->a, (uint8_t)ev->b);
         break;
     case NATIVE_INPUT_MOUSE_BUTTON:
+        if (native_winops_button((int)ev->a, (int)ev->b, (int)ev->c, ev->d != 0)) break;
         fmrb_host_send_mouse_click((uint16_t)ev->a, (uint16_t)ev->b,
                                    (uint8_t)ev->c, (uint8_t)ev->d);
+        break;
+    case NATIVE_INPUT_WINOP:
+        native_winops_front((winops_do_t)ev->a, "Super and an arrow");
         break;
     case NATIVE_INPUT_MOUSE_MOVE:
         fmrb_host_send_mouse_move((uint16_t)ev->a, (uint16_t)ev->b);
@@ -147,6 +154,7 @@ static void inject_packet(uint8_t type, const uint8_t *data, uint16_t len)
         if (len >= sizeof(hid_keyboard_event_t)) {
             const hid_keyboard_event_t *k = (const hid_keyboard_event_t *)data;
             uint8_t mod = sdl_mod_to_fmrb(k->modifier);
+            if (native_winops_key(k->scancode, type == HID_EVENT_KEY_DOWN)) break;
             /* The scancode is the HID usage; the key code the sender put
              * next to it is SDL's keysym, which this build does not use. */
             if (type == HID_EVENT_KEY_DOWN) {
@@ -159,6 +167,7 @@ static void inject_packet(uint8_t type, const uint8_t *data, uint16_t len)
     case HID_EVENT_MOUSE_BUTTON:
         if (len >= sizeof(hid_mouse_button_event_t)) {
             const hid_mouse_button_event_t *m = (const hid_mouse_button_event_t *)data;
+            if (native_winops_button(m->x, m->y, m->button, m->state != 0)) break;
             fmrb_host_send_mouse_click(m->x, m->y, m->button, m->state);
         }
         break;

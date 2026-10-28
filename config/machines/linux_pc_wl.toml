@@ -40,6 +40,7 @@ backend = "sdl"
 
 [desktop]
 variant = "mouse"
+window_ops = true            # title double-click maximizes, Super+arrows lay windows out (L13)
 
 [system]
 services = "linux"
@@ -53,3 +54,4 @@ root = "auto"
 [compositor]
 autostart = ""               # e.g. "foot": started with WAYLAND_DISPLAY set to this compositor
 ime = "fcitx5"               # the IME started with it (L12b); not installed: the kana input stays
+locker = "swaylock"          # the screen lock program (L13, ext-session-lock); not installed: no Lock entry

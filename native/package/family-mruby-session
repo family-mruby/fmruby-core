@@ -11,6 +11,12 @@
 # display manager shows the login screen again. The power entries (power
 # off, restart, suspend) go to logind from inside Family mruby.
 #
+# The screen lock (L13): with swaylock installed (a Recommends), the power
+# menu has Lock, and logind's Lock (loginctl lock-session, a lid closed)
+# and a suspend lock the screen too. swaylock asks for the password;
+# Family mruby never sees it. If swaylock ends without unlocking, the
+# screen stays locked: a key starts it again.
+#
 # Japanese input (L12b): when fcitx5 is installed (with fcitx5-mozc for
 # kana-kanji conversion), the compositor starts it and it types both into
 # Linux programs and into Family mruby's apps; Ctrl+Space (or the

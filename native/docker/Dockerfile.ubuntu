@@ -16,7 +16,9 @@
 # librsvg (opened at run time) and the Breeze icon theme, for the launcher's
 # SVG icons and the icon theme lookup (L9e). For the IME (L12b): fcitx5 with
 # mozc, a D-Bus session for it (dbus-run-session), and a Japanese font for
-# its candidate window.
+# its candidate window. For the screen lock (L13): swaylock, and sd-bus's
+# headers for the checks' own logind stand-in (the program opens
+# libsystemd at run time and links nothing of it).
 #
 # The base is pinned to a dated tag, never a moving one (the same rule as
 # the trixie image). Built and used by rake native:image ARCH=amd64,
@@ -39,6 +41,7 @@ RUN apt-get update \
       libgl1-mesa-dri libegl-mesa0 \
       librsvg2-2 breeze-icon-theme \
       fcitx5 fcitx5-mozc dbus-daemon fonts-ipafont-gothic \
+      swaylock libsystemd-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # rake and the picoruby build write their caches under $HOME; the calling

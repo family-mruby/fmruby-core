@@ -91,6 +91,7 @@
 #include "native_frame.h"
 #include "native_input.h"
 #include "native_machine.h"
+#include "native_winops.h"
 
 void app_main(void);
 
@@ -588,6 +589,8 @@ int main(int argc, char **argv)
         return refuse("input", why);
     }
     if (be.output != &native_output_sdl) install_quit_signals();
+    /* The PC's window operations (L13): the mouse desktop's windows only. */
+    native_winops_setup(m->desktop.window_ops && strcmp(m->desktop.variant, "mouse") == 0);
 
     /* The OS services (L6): the Linux table when the machine says so, with
      * the ALSA mixer behind the volume when the sound goes out through ALSA.

@@ -67,7 +67,10 @@
 #                          (L12a, test/native/wl/wl_clip_check.rb), then the
 #                          IME (fcitx5 and mozc) with foot, the editor and an
 #                          SDL window, and the kana input without it (L12b,
-#                          test/native/wl/wl_ime_check.rb). Headless on a
+#                          test/native/wl/wl_ime_check.rb), then maximize,
+#                          Super+arrows and the screen lock, with a
+#                          logind stand-in on a bus of its own (L13,
+#                          test/native/wl/wl_winops_check.rb). Headless on a
 #                          1280x800 output (a 640x400 screen; the dialogs'
 #                          turned one keeps 426x240). No baseline: the
 #                          composited screen is checked against the picture
@@ -203,7 +206,7 @@ namespace :regress do
     end
   end
 
-  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check and wl_ime_check (headless, pixman), standard and all-mruby. About 21 minutes"
+  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check, wl_ime_check and wl_winops_check (headless, pixman), standard and all-mruby. About 25 minutes"
   task :wl do
     failed = []
     %w[standard mruby].each do |engine|
@@ -235,6 +238,9 @@ namespace :regress do
       ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_ime_check.rb"), "--engine", engine,
                   "--renderer", "pixman")
       failed << "#{engine} ime" unless ok
+      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_winops_check.rb"), "--engine", engine,
+                  "--renderer", "pixman")
+      failed << "#{engine} winops" unless ok
     end
     abort "regress:wl: failed: #{failed.join(', ')}" unless failed.empty?
     puts "regress:wl: ok (tmp/wl_check/)"

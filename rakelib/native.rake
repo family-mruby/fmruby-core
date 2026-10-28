@@ -201,7 +201,7 @@ namespace :native do
     # another with an eventfd (native/backend/native_frame.c).
     cincs = %w[native/wlr native/present native/backend]
     csrcs = %w[native/wlr/comp_route.c native/wlr/comp_link.c native/present/fmrb_present.c
-               native/backend/native_frame.c]
+               native/backend/native_frame.c native/backend/winops_geom.c]
               .push("#{NATIVE_TEST_DIR}/comp.c")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{cincs.map { |i| "-I #{i}" }.join(' ')} " \
        "#{csrcs.join(' ')} -lpthread -o #{NATIVE_TEST_BUILD}/native_comp_test"
@@ -291,7 +291,8 @@ NATIVE_DEB_LAYOUT = {
     # machine linux_pc_wl). Xwayland is recommended, not required: without
     # it X11 programs do not run and the log says so; Wayland ones do.
     session: true,
-    recommends: "xwayland",
+    # The screen lock program (L13, ext-session-lock): the power menu's Lock.
+    recommends: "xwayland, swaylock",
     # The IME for Japanese (L12b): started by the compositor when installed
     # (machine linux_pc_wl, compositor.ime); without it Family mruby's own
     # kana input stays. Suggested only: an IME is the user's choice, and on

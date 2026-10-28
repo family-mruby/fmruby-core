@@ -36,6 +36,12 @@
  *     content is that size over the scale, rounded up -- the window fills
  *     it but for under a frame pixel, which the compositor paints in the
  *     frame's colour.
+ *   - a window asks to be maximized, or no longer (notice MAXIMIZE, L13):
+ *     the stand-in's window is maximized or put back by the PC's window
+ *     operations (native_winops.h), as a double-click on its title does;
+ *     the places carry how each window is laid out, and the compositor
+ *     tells the window (maximized, tiled). A window so laid out keeps the
+ *     stand-in's size: a size of its own (FIT) does not shrink it.
  *   - a window goes away: the stand-in sees it (FmrbApp.wl_window) and ends.
  *   - the stand-in's close button: FmrbApp.wl_close asks the window to close
  *     (xdg close), so the program can ask about unsaved work first.
@@ -64,6 +70,7 @@
 #include "fmrb_theme.h"
 #include "input_source.h"
 #include "native_frame.h"
+#include "native_winops.h"
 #include "wl_bridge.h"
 
 static const char *TAG = "wl_bridge";
@@ -95,6 +102,7 @@ typedef struct {
     uint32_t spawn_at_ms;       /* when to spawn a stand-in (pid -1) */
     int parent;                 /* the parent's compositor id (a dialog), 0 none */
     uint32_t mapped_ms;         /* when the window appeared */
+    int want_max;               /* asked to be maximized (1) or not (0), -1 nothing pending (L13) */
 } bw_t;
 
 static struct {
@@ -295,6 +303,10 @@ static void take_notices(action_t *act, int *n_act)
             b->parent = nt.x;
             b->mapped_ms = ms_now();
             b->spawn_at_ms = b->mapped_ms;
+            b->want_max = -1;
+            break;
+        case COMP_NOTICE_MAXIMIZE:
+            if (b != NULL) b->want_max = nt.x ? 1 : 0;
             break;
         case COMP_NOTICE_PARENT:
             if (b != NULL) b->parent = nt.x;
@@ -321,6 +333,10 @@ static void take_notices(action_t *act, int *n_act)
             break;
         case COMP_NOTICE_FIT:
             if (b != NULL && *n_act < COMP_MAX_WINDOWS) {
+                /* Laid out by the window operations, the
+                 * stand-in keeps its size; the scale's remainder shows the
+                 * frame's colour. */
+                if (b->pid >= 0 && native_winops_layout(b->pid) != WINOPS_NONE) break;
                 if (b->pid >= 0) {
                     act[(*n_act)++] = (action_t){ 3, b->pid, 0, 0, nt.w, nt.h };
                 } else {
@@ -393,6 +409,7 @@ static void build_places(comp_places_t *pl)
             p.y = s_list[j].y + FRAME_TOP;
             p.w = s_list[j].width - FRAME_W;
             p.h = s_list[j].height - FRAME_H;
+            p.state = (int)native_winops_layout(b->pid);
             p.shown = ctx != NULL && ctx->state == PROC_STATE_RUNNING;
             /* Insert by z (bottom to top). */
             int k = pl->n;
@@ -489,6 +506,27 @@ static void keep_dialogs_above(void)
     }
 }
 
+/* A maximize (or back) a Linux window asked for (L13), done once its
+ * stand-in runs. */
+static void match_requests(void)
+{
+    int max_pid[COMP_MAX_WINDOWS], max_on[COMP_MAX_WINDOWS], n_max = 0;
+    fmrb_semaphore_take(s_br.lock, FMRB_TICK_MAX);
+    for (int i = 0; i < COMP_MAX_WINDOWS; i++) {
+        bw_t *b = &s_br.w[i];
+        if (b->id == 0 || !b->alive || b->pid < 0 || b->want_max < 0) continue;
+        fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(b->pid);
+        if (ctx == NULL || ctx->state != PROC_STATE_RUNNING) continue;
+        max_pid[n_max] = b->pid;
+        max_on[n_max++] = b->want_max;
+        b->want_max = -1;
+    }
+    fmrb_semaphore_give(s_br.lock);
+    for (int i = 0; i < n_max; i++) {
+        native_winops_apply(max_pid[i], max_on[i] ? WINOPS_DO_MAX : WINOPS_DO_RESTORE, "the Linux window asked");
+    }
+}
+
 static void bridge_task(void *arg)
 {
     (void)arg;
@@ -567,6 +605,7 @@ static void bridge_task(void *arg)
             fmrb_semaphore_give(s_br.lock);
         }
 
+        match_requests();
         keep_dialogs_above();
 
         comp_places_t pl;

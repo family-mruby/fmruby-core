@@ -90,8 +90,8 @@ class SystemDesktopApp < FmrbApp
   # Restart and Suspend, as its machine definition says. They are not in this
   # menu: they open from the power button at the right end of the menu bar
   # (POWER_ITEMS, doc/linux_native L7b), which is not drawn where there are
-  # none.
-  POWER_KEYS = { reset: :reset, exit: :power_exit, power_off: :power_off,
+  # none. Lock (the PC's lock program, L13) is there only where one is.
+  POWER_KEYS = { reset: :reset, lock: :power_lock, exit: :power_exit, power_off: :power_off,
                  restart: :power_restart, suspend: :power_suspend }
   POWER_ITEMS = FmrbApp.power_actions.map { |a| { key: POWER_KEYS[a], power: a } }
   DROPDOWN_ITEMS = [
@@ -2333,6 +2333,10 @@ class SystemDesktopApp < FmrbApp
       toggle_ble_setup
     when :reset
       open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
+    when :power_lock
+      # Nothing to lose, so no question: the lock program takes the screen.
+      Log.info("Desktop: lock the screen")
+      FmrbApp.power(:lock)
     when :power_exit, :power_off, :power_restart, :power_suspend
       # Confirmed, then the kernel hands it back as do_power (forward_power).
       open_confirm_dialog(FmrbI18n.t(:"#{item[:key]}_confirm"), "power",

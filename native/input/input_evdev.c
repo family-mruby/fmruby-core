@@ -27,6 +27,7 @@
 #include "fmrb_rtos.h"
 #include "host_task.h"
 #include "keymap_extra.h"
+#include "native_winops.h"
 
 static const char *TAG = "input_evdev";
 
@@ -181,6 +182,7 @@ bool native_evdev_open(const native_machine_t *m, char *why, size_t why_len)
 static void sink_key(void *ud, bool down, uint8_t usage, uint8_t mods, bool force_us)
 {
     (void)ud;
+    if (native_winops_key(usage, down)) return;   /* Super and an arrow (L13) */
     if (force_us) {
         if (down) fmrb_host_send_key_down_us(usage, usage, mods);
         else fmrb_host_send_key_up_us(usage, usage, mods);
@@ -199,6 +201,7 @@ static void sink_move(void *ud, int x, int y)
 static void sink_button(void *ud, int x, int y, int button, bool down)
 {
     (void)ud;
+    if (native_winops_button(x, y, button, down)) return;   /* a title's double-click (L13) */
     fmrb_host_send_mouse_click(x, y, button, down ? 1 : 0);
 }
 

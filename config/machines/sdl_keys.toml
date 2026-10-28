@@ -24,6 +24,7 @@ backend = "sdl"
 
 [desktop]
 variant = "keys"
+window_ops = false           # no PC window operations (L13)
 
 [system]
 services = "linux"           # the OS services from Linux (L6): network, battery

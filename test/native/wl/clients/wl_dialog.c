@@ -20,6 +20,7 @@
  *                       "none": none; default slide); a grab with the last
  *                       button press's serial when there is one
  *   unpopup             the popup destroyed
+ *   max / unmax         the parent asks to be maximized / no longer (L13)
  *   quit                end
  *
  * The log, one line each: "configure parent|dialog W H", "popup configure
@@ -27,7 +28,9 @@
  * parent|dialog CODE 1|0", "enter parent|dialog|popup X Y" (pointer),
  * "button parent|dialog|popup B 1|0 X Y", "kbd parent|dialog|popup"
  * (keyboard focus), "dialog closed by its button", "close parent|dialog"
- * (the compositor asked).
+ * (the compositor asked), "states parent|dialog [max] [tl] [tr] [act]"
+ * after each toplevel configure (the states it carries: maximized, tiled
+ * left, tiled right, activated).
  *
  * A test program, not part of the product: plain libc and libwayland.
  */
@@ -159,13 +162,23 @@ static const struct xdg_surface_listener xdg_listener = { .configure = xdg_confi
 static void top_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *states)
 {
     (void)t;
-    (void)states;
     surf_t *s = data;
     if (w > 0 && h > 0) {
         s->w = w;
         s->h = h;
     }
     say("configure %s %d %d", s->name, s->w, s->h);
+    char line[128];
+    int n = snprintf(line, sizeof(line), "states %s", s->name);
+    uint32_t *st;
+    wl_array_for_each(st, states) {
+        const char *name = *st == XDG_TOPLEVEL_STATE_MAXIMIZED ? " max"
+                         : *st == XDG_TOPLEVEL_STATE_TILED_LEFT ? " tl"
+                         : *st == XDG_TOPLEVEL_STATE_TILED_RIGHT ? " tr"
+                         : *st == XDG_TOPLEVEL_STATE_ACTIVATED ? " act" : "";
+        if (n > 0 && (size_t)n < sizeof(line)) n += snprintf(line + n, sizeof(line) - (size_t)n, "%s", name);
+    }
+    say("%s", line);
 }
 
 static void destroy_surf(surf_t *s)
@@ -485,6 +498,10 @@ static void command(char *line)
         make_popup(x, y, w, h, strcmp(adj, "none") != 0);
     } else if (strcmp(line, "unpopup") == 0) {
         if (c.popup.surface != NULL) destroy_surf(&c.popup);
+    } else if (strcmp(line, "max") == 0) {
+        xdg_toplevel_set_maximized(c.parent.top);
+    } else if (strcmp(line, "unmax") == 0) {
+        xdg_toplevel_unset_maximized(c.parent.top);
     } else if (strcmp(line, "quit") == 0) {
         c.quit = true;
     } else {

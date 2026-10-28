@@ -25,6 +25,7 @@ mixer = "auto"               # the volume the desktop moves (Master, PCM, Speake
 
 [desktop]
 variant = "mouse"
+window_ops = true            # title double-click maximizes, Super+arrows lay windows out (L13)
 
 [system]
 services = "linux"
