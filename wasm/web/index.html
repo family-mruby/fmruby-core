@@ -38,6 +38,9 @@
     pointer-events: none;
     image-rendering: auto;
   }
+  /* The canvas rule above sets display, which beats the hidden attribute:
+     without this the empty overlay stays on screen, black, over #screen. */
+  #crt-view[hidden] { display: none; }
   #start {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;

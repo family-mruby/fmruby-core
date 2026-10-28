@@ -24,7 +24,7 @@
 
   // The strengths a fresh page gets, 0..100 each. Provisional (C2 settles
   // them with the user).
-  const DEFAULTS = Object.freeze({ scan: 55, mask: 30, glow: 30, curve: 40, vignette: 40 });
+  const DEFAULTS = Object.freeze({ scan: 55, mask: 30, glow: 30, curve: 15, vignette: 40 });
   const KEYS = Object.freeze(['scan', 'mask', 'glow', 'curve', 'vignette']);
 
   function curveCoef(curve) {
