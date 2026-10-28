@@ -330,6 +330,22 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   定義は残す)。Xwayland は X11 のアプリが来たときに起こす。
 - X11 のアプリは Xwayland で動かす。ポップアップ・メニュー・クリップボードは
   段階的に広げる。
+- **注意: 画面の取り込みと打鍵の送り込みは、どのアプリにも開いている**
+  (2026-10-28 ユーザ判断で現状維持、sway など wlroots 系の既定と同じ)。
+  写しの口 (wlr-screencopy、ext-image-copy-capture、L14) と、仮想キーボード・
+  入力メソッド (input-method-v2、L12b) を、global の出し分け
+  (`wl_display_set_global_filter`) なしで全クライアントに出している。
+  - どの Wayland のアプリも、確認なしで画面全体を写せる。
+  - どのアプリも、フォーカスのある窓へキーを打ち込める。
+  - 入力メソッドの席は 1 つで、先に fcitx5 が取っていれば後の者は断られるが、
+    fcitx5 が動いていなければ空いている (取った者は他の窓の打鍵を受け取れる)。
+  - 他の窓の一覧・操作 (foreign-toplevel) とクリップボードの横読み
+    (data-control) の口は出していない。
+  - まとめると、画面と打鍵の送り込みは X11 と同じ水準、盗み見と他の窓の操作は
+    Wayland の守りが効いている。外向けに「Wayland だから安全」とは言わない。
+  - 締めるときは、コンポジタが自分で起動した相手 (portal、fcitx5、swaylock) に
+    だけ出す。Family mruby の中の権限 (doc/window_arranger の窓を並べる
+    アプリ、打鍵の自動操作) を作るときは、この出し分けと考え方をそろえる。
 
 ### Linux のプログラムとの連携
 
@@ -604,6 +620,14 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   スクロールバーが描かれる)。ユーザ指示で今は直さない。日本語入力 (fcitx5 +
   Mozc) は VM で打てた。Firefox (snap) からの画面の共有も VM で確認済 (https の
   ページで。http では Firefox が共有を許さず何も起きない)。
+- NET1 (2026-10-28 検収済、3417cc12): PicoRuby から Chrome の DevTools Protocol を
+  動かす確認で見つけた gem の欠点を直した (Net::HTTP は届いた分を読む、WebSocket は
+  どの 101 も受ける・Host にポート、受信の見直しは 100 ms から 30 ms)。1 往復は
+  約 100 ms から約 30 ms。残件: 30 ms の見直しは実機 (S3・Tab5) で未確認 (受信待ちの
+  アプリが 1 秒に約 33 回起きる負担。30 ms より短くするのは実機の確認の後、ユーザ
+  決定)、`close` の待ち (100 ms 刻み、最大 1 秒) はそのまま、client.rb は丸ごとの
+  写しなので submodule を進めたら写し直す。上流への提案は台帳
+  (reference/picoruby_upstream_pr_candidates.md の 2026-10-28 追加)。
 - L14 の残件: VM での確認 (本物の NetworkManager・BlueZ と polkit、Plasma の
   portal との並び、ブラウザからの共有)、通知のボタン・markup・アイコン、全画面の
   アプリの上には知らせが出ない、Wi-Fi の無線の入り切りは表示だけ、arm64 の .deb は

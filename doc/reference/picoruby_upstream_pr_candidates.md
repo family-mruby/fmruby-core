@@ -228,6 +228,38 @@ Regexp を持っていることは別**で、Family mruby のブラウザ版は 
 - fmrb 側: `lib/patch/picoruby-json/mrblib/json.rb` に適用済み
 - 上流 PR: そのまま出せる
 
+## 2026-10-28 追加: 接続を切らないサーバで本文の前に止まる [picoruby-net-http mrblib/http_client.rb]
+
+`read_response` がヘッダを読むループとチャンクを読むループで
+`@socket.read(8192)` を使っている。`BasicSocket#read(n)` は **n バイトそろうか
+EOF まで返らない** (`readpartial` を n に達するまで繰り返す) ので、応答が
+8192 バイト未満で、しかもサーバが接続を切らないと、届いている応答を抱えたまま
+読み出しの時間切れになる。
+
+- 見つけた経緯: Linux 版から Chrome の DevTools の `http://127.0.0.1:9333/json/list`
+  を `Net::HTTP.get_response` で取ると `SocketError read timeout`。Chrome は
+  `Connection: close` を頼まれても切らず、`Content-Length:508` の応答を返したまま
+  待つ。curl は Content-Length で読み終えるので取れる。
+- 普通の Web サーバは `Connection: close` で切るので、これまで表に出なかった。
+- 修正: その 2 か所を `readpartial(8192)` にする (TCPSocket・SSLSocket の両方に
+  ある)。本文の長さが分かっている `read(remaining)` はそのままでよい。接続が
+  切れるまで読む枝も、切れるのを待つのが正しいのでそのまま。
+- 上流 PR: #3・#4・#8・#9 と同じファイルなので、net-http の 1 本にまとめてよい。
+
+## 2026-10-28 追加: WebSocket の握手が 101 の文言を決め打ちしている [picoruby-net-websocket mrblib/client.rb]
+
+`perform_handshake` が応答に `"101"` と `"Switching Protocols"` の両方を
+含むことを求める。規格 (RFC 6455) が求めるのは状態コード 101 だけで、後ろの
+文言はサーバの自由。Chrome の DevTools は `HTTP/1.1 101 WebSocket Protocol
+Handshake` と返すので `HandshakeError: Invalid handshake response` になる。
+
+- 修正: 1 行目が `HTTP/1.1 101` で始まるかを見る。
+- 同じ所の小さなずれ: `Host` ヘッダにポートを付けていない (80・443 以外では
+  付けるのが規格)。Chrome は受けたが、直すなら一緒に。
+- `Sec-WebSocket-Accept` の検証は省かれたまま (コメントでそう断っている)。
+  上流に出すなら別の話として扱う。
+- 上流 PR: そのまま出せる。
+
 ## fmrb固有でPRに含めないもの
 
 - `fmrb_sys_malloc/free` (候補1) → 上流では malloc 等に読み替え
