@@ -12,6 +12,16 @@
 # #receive polls a socket with nothing to read every 30 ms instead of 100 ms,
 # which cut a request/response round trip (one send_text + receive) from
 # about 100 ms to about 30 ms.
+#
+# On the Linux builds (the native program and the simulation,
+# FmrbConst::PLATFORM == "linux") the poll interval also steps: 5 ms, then
+# 10 ms, then 30 ms, and 100 ms once a wait has gone 1 s with nothing
+# received. A wait starts at each #receive call and again after each frame
+# that does not end it (ping/pong), and starts over at 5 ms. An answer that is
+# already on its way is then seen within a few ms, while a long idle wait
+# wakes up less often than the constant 30 ms did. The devices (ESP32) keep
+# the constant 30 ms until the cost of shorter polls has been measured on
+# them.
 require 'socket'
 require 'base64'
 require 'rng'
@@ -93,6 +103,9 @@ module Net
         raise WebSocketError.new("Not connected") unless connected?
 
         deadline = timeout ? Time.now.to_f + timeout : nil
+        stepped = (::FmrbConst::PLATFORM == "linux")
+        polls = 0
+        wait_start = Time.now.to_f
 
         while true
           if deadline && Time.now.to_f > deadline
@@ -120,8 +133,15 @@ module Net
             when OPCODE_PONG
               # Ignore pong (could store for latency measurement)
             end
+            # A frame came in: the next wait starts at the short interval.
+            polls = 0
+            wait_start = Time.now.to_f
           else
-            sleep_ms 30 unless deadline && Time.now.to_f >= deadline
+            now = Time.now.to_f
+            unless deadline && now >= deadline
+              sleep_ms poll_interval_ms(stepped, polls, now - wait_start)
+              polls += 1
+            end
           end
         end
         return nil
@@ -160,6 +180,17 @@ module Net
       end
 
       private
+
+      # The sleep before the next look at the socket in #receive. Constant
+      # 30 ms unless +stepped+ (Linux builds): 5, 10, then 30 ms, and 100 ms
+      # after +waited+ seconds reach 1 with nothing received.
+      def poll_interval_ms(stepped, polls, waited)
+        return 30 unless stepped
+        return 5 if polls == 0
+        return 10 if polls == 1
+        return 100 if waited >= 1.0
+        30
+      end
 
       def parse_url(url)
         # Simple URL parser for ws://host:port/path or wss://host:port/path
