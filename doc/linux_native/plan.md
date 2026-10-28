@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-28 | L13 (PC の最大化・Super + 矢印・画面ロック。全画面・鏡・明るさはユーザ判断でやめた) 完了 (8558f302)。L12b (PC は Family mruby のアプリにも Linux の IME、コンポジタは input-method-v2・text-input-v3、sdl は SDL の IME、無ければ今のかな入力) 完了 (7b60baa7)。L12a (全端末に共通のクリップボード、PC は Wayland の選択と SDL、ブラウザ版はブラウザのクリップボードとつなぐ) 完了 (326ab3b4)。L11 (知らない種類は Linux の既定のアプリ、右クリックの「Linux のアプリで開く」、関連付けの表に `linux`・`linux:<id>`) 完了 (b3e0d804)。L7d (File Manager と /mnt の小さな直し) 完了 (9713c082)。L9e (PC の全画面: エディタは画面の大きさ、`fullscreen_hires = true` のアプリは 640x360 を整数倍で真ん中に、コンポジタの小さな直し) 完了 (4842976f)。 L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 でユーザ確認済 (2026-10-27: ログイン画面の入口から起動、Linux の区分、Konsole、重なり、xeyes、Exit でログイン画面へ。VMSVGA では GLES で画面が黒く、設定ファイルに pixman と矢印のソフト描画を書いて動いた。親の窓に付いたダイアログが枠なしで一番上に出て絵の外へはみ出す不具合あり)。L9c (親を持つダイアログを枠つきで親の上の真ん中に、メニューを絵の矩形の中に収める、VM と分かれば session が自分で pixman と矢印のソフト描画に切り替える) も完了: VM で見た枠なしの窓はダイアログでなくメニューで、制約の箱が無かったのが原因。L9d (コンポジタでは Family mruby の画面を「出力 ÷ 2」にして出力を埋める (1280x800 なら 640x400、縦長と小さい出力は 426x240)、全画面のアプリは 426x240 を最大の整数倍で真ん中に、Linux の窓の四隅を透かす、「Linux」の区分はペンギン・共通の印は窓の絵、keyboard_layout = "auto" で Linux の配列に合わせる) も完了: 高解像度の全画面 (640x360) を広い画面で 2 倍で出すかはユーザの判断待ち (今は 426x240 で出る)。続けて L9e (PC の高解像度の全画面はデスクトップと同じ解像度の全画面に、コンポジタの小さな直し)・L7d (File Manager と /mnt の小さな直し、特殊なファイルは出すが開かない)・L11・L12a・L12b を順に進める (2026-10-28 ユーザ決定、実装中)。その後 L11 (Linux のファイルを Linux のアプリで開く)。その先に、毎日使える環境 (Omarchy と並ぶ所) を目標に L12 (日本語入力とコピーと貼り付け、ESP32 の端末との共存を相談してから着手)・L13 (窓と画面)・L14 (設定と丈夫さ) を置く (2026-10-27 ユーザ)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-28 | L14 (PC の Wi-Fi・Bluetooth・音量・通知・画面の共有・落ちたときの起こし直し) 完了 (1999c103)。L13 (PC の最大化・Super + 矢印・画面ロック。全画面・鏡・明るさはユーザ判断でやめた) 完了 (8558f302)。L12b (PC は Family mruby のアプリにも Linux の IME、コンポジタは input-method-v2・text-input-v3、sdl は SDL の IME、無ければ今のかな入力) 完了 (7b60baa7)。L12a (全端末に共通のクリップボード、PC は Wayland の選択と SDL、ブラウザ版はブラウザのクリップボードとつなぐ) 完了 (326ab3b4)。L11 (知らない種類は Linux の既定のアプリ、右クリックの「Linux のアプリで開く」、関連付けの表に `linux`・`linux:<id>`) 完了 (b3e0d804)。L7d (File Manager と /mnt の小さな直し) 完了 (9713c082)。L9e (PC の全画面: エディタは画面の大きさ、`fullscreen_hires = true` のアプリは 640x360 を整数倍で真ん中に、コンポジタの小さな直し) 完了 (4842976f)。 L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 でユーザ確認済 (2026-10-27: ログイン画面の入口から起動、Linux の区分、Konsole、重なり、xeyes、Exit でログイン画面へ。VMSVGA では GLES で画面が黒く、設定ファイルに pixman と矢印のソフト描画を書いて動いた。親の窓に付いたダイアログが枠なしで一番上に出て絵の外へはみ出す不具合あり)。L9c (親を持つダイアログを枠つきで親の上の真ん中に、メニューを絵の矩形の中に収める、VM と分かれば session が自分で pixman と矢印のソフト描画に切り替える) も完了: VM で見た枠なしの窓はダイアログでなくメニューで、制約の箱が無かったのが原因。L9d (コンポジタでは Family mruby の画面を「出力 ÷ 2」にして出力を埋める (1280x800 なら 640x400、縦長と小さい出力は 426x240)、全画面のアプリは 426x240 を最大の整数倍で真ん中に、Linux の窓の四隅を透かす、「Linux」の区分はペンギン・共通の印は窓の絵、keyboard_layout = "auto" で Linux の配列に合わせる) も完了: 高解像度の全画面 (640x360) を広い画面で 2 倍で出すかはユーザの判断待ち (今は 426x240 で出る)。続けて L9e (PC の高解像度の全画面はデスクトップと同じ解像度の全画面に、コンポジタの小さな直し)・L7d (File Manager と /mnt の小さな直し、特殊なファイルは出すが開かない)・L11・L12a・L12b を順に進める (2026-10-28 ユーザ決定、実装中)。その後 L11 (Linux のファイルを Linux のアプリで開く)。その先に、毎日使える環境 (Omarchy と並ぶ所) を目標に L12 (日本語入力とコピーと貼り付け、ESP32 の端末との共存を相談してから着手)・L13 (窓と画面)・L14 (設定と丈夫さ) を置く (2026-10-27 ユーザ)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -502,7 +502,7 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 | L11 | 決定 (2026-10-28 ユーザ): Family mruby が開ける種類は今どおり、それ以外は Linux の既定のアプリ、右クリックに「Linux のアプリで開く」。**Linux のファイルを Linux のアプリで開く**: L7 のファイルを見せる仕組みと L9 の起動の口を使い、`associations.toml` に Linux のアプリの行き先を足す。完了 (b3e0d804、報告 report/l11.md) | (3) |
 | L12 | 決定 (2026-10-28 ユーザ): L12a はクリップボード (kernel に全端末共通の文字のクリップボード、端末は PSRAM で内蔵 RAM +0、エディタと Shell が使う、PC は Linux の、ブラウザ版はブラウザのクリップボードとつなぐ)。L12b は日本語入力 (PC はコンポジタの形と SDL の窓の形で Family mruby のアプリにも Linux の IME を使い漢字を打てる、IME が無ければ今のかな入力、cage の形・Cardputer・端末は今のかな入力)。**毎日使う環境 (1) 日本語入力とコピーと貼り付け**: Linux の窓へのかな漢字の入力 (text-input・input-method の口、または fcitx などとつなぐ)、Family mruby と Linux のアプリの間・Linux のアプリ同士のクリップボード。今の端末 (ESP32) の Family mruby のかな入力とクリップボードとの共存の仕方を、着手の前にユーザと相談して決める | (3) |
 | L13 | **毎日使う環境 (2) 窓と画面**: 最大化、キーで窓を並べる操作、画面ロック (2026-10-28 ユーザ: 全画面・複数のモニタ・明るさはやらない)。完了 (8558f302、報告 report/l13.md) | (3) |
-| L14 | **毎日使う環境 (3) 設定と丈夫さ**: Wi-Fi・Bluetooth・音量の操作、通知、画面の共有と録画 (portal)、コンポジタが落ちたときの復帰 | (3) |
+| L14 | **毎日使う環境 (3) 設定と丈夫さ**: Wi-Fi・Bluetooth・音量の操作、通知、画面の共有と録画 (portal)、コンポジタが落ちたときの復帰。完了 (1999c103、報告 report/l14.md) | (3) |
 
 ## 受け入れ条件
 
@@ -581,6 +581,15 @@ Shell から Linux のコマンド (全部の形):
   代役を縮めない、「ロック」は電源のメニューの一番下で確認を出さない、
   ロックのプログラムが落ちたらキーで起こし直す、機種の欄 `desktop.window_ops`
   (Cardputer と sdl_keys は false)。
+- L14 (サブが選んだもの): Wi-Fi・Bluetooth はダイアログでなくネイティブ版だけの
+  「設定」の窓 (280x200) で、ネットワークのダイアログに「Wi-Fi の設定...」、
+  メニューに「Bluetooth」(機種の欄 `system.settings`、Cardputer と sdl_keys は
+  false)、nmcli は使わず D-Bus だけ、試みの間は秘密の代理人を受け持つ (KWallet の
+  パスワードを聞き直す)、失敗した新しい接続は消す、802.1X・WEP は扱わない、
+  音量のキーはネイティブ版の全部の機種で効き知らせは PC だけ、知らせは 4 つまで
+  押しても消えない、portal は ScreenCast と Screenshot を wlr・ほかは kde、出力は
+  聞かずに 1 つ渡す (`chooser_type=none`)、pixman でも共有できるよう
+  ext-image-copy-capture を足した、0 以外の終了も落ちたとして数える。
 
 ## 後で直すもの (2026-10-27 ユーザ指示で記録)
 
@@ -589,6 +598,10 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   閉じる (同じ扱いにするかは仕様の判断)、受け取りのファイル転送
   (`host_file_local.c`) は名前で開くので判定と書き込みの間の隙が残る、知らせの
   文は英語のまま、ブラウザ版の画面の比較は未実施。
+- L14 の残件: VM での確認 (本物の NetworkManager・BlueZ と polkit、Plasma の
+  portal との並び、ブラウザからの共有)、通知のボタン・markup・アイコン、全画面の
+  アプリの上には知らせが出ない、Wi-Fi の無線の入り切りは表示だけ、arm64 の .deb は
+  作り直していない。
 - L13 の残件: VM での確認 (本物の swaylock をパスワードで外す所を含む)、X11 の
   アプリの最大化の頼みは自動の確認が無い、arm64 の .deb は作り直していない。
 - L12b の残件: VM での確認 (Plasma の fcitx5、Konsole・Kate・Firefox)、X11 の
