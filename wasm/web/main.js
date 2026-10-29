@@ -565,7 +565,9 @@ function wantedFrame() {
 // the page itself (the CSS is the one place its sizes are written). The
 // canvas is given a stand-in size and the box no width cap meanwhile, so a
 // narrow window does not squeeze the answer; everything is put back before
-// the browser paints.
+// the browser paints. The third number is the stand's height, part of the
+// second: the zoom does not make room for it (a stand may hang below the
+// window; the screen and the bezel do not).
 function frameExtra(kind) {
   const was = frameEl.dataset.kind;
   const cw = canvas.style.width, ch = canvas.style.height;
@@ -575,11 +577,25 @@ function frameExtra(kind) {
   canvas.style.height = '180px';
   const f = frameEl.getBoundingClientRect();
   const c = canvas.getBoundingClientRect();
+  const st = frameEl.querySelector('.stand').getBoundingClientRect();
   canvas.style.width = cw;
   canvas.style.height = ch;
   frameEl.style.maxWidth = '';
   if (was) frameEl.dataset.kind = was; else delete frameEl.dataset.kind;
-  return [Math.ceil(f.width - c.width), Math.ceil(f.height - c.height)];
+  return [Math.ceil(f.width - c.width), Math.ceil(f.height - c.height), Math.floor(st.height)];
+}
+
+// The default zoom follows the frame for someone who has not chosen one: on
+// a change of the look or of the frame it is chosen again, so the new frame
+// fits. A zoom chosen here (or stored from an earlier visit) stays, and the
+// frame steps aside if the two do not fit. On a ?res= visit nothing is
+// stored, so only a choice made during the visit counts.
+let zoomChosen = false;
+
+function rechooseZoom() {
+  if (zoomChosen) return;
+  if (!sessionRes && readSetting('fmrb_web_zoom', null)) return;
+  zoomSelect.value = defaultZoom();
 }
 
 function chooseFrame(choice) {
@@ -587,6 +603,7 @@ function chooseFrame(choice) {
   frameChoice = choice;
   frameSelect.value = choice;
   if (!sessionFrame) writeSetting(FRAME_STORE, choice);
+  rechooseZoom();
   applyZoom();
 }
 
@@ -604,9 +621,9 @@ const zoomSelect = document.getElementById('zoom-select');
 // read nor stored.
 const sessionRes = sessionResolution() !== null;
 
-// The frame counts: the multiple is the largest that fits with it. Where not
-// even 1x fits with the frame, the frame will not be shown (applyZoom), so
-// the multiple is chosen without it, as before.
+// The frame counts (but not its stand): the multiple is the largest that
+// fits with it. Where not even 1x fits with the frame, the frame will not be
+// shown (applyZoom), so the multiple is chosen without it, as before.
 function defaultZoom() {
   const [baseW, baseH] = baseSize();
   const top = frameEl.getBoundingClientRect().top;
@@ -614,7 +631,8 @@ function defaultZoom() {
   const availH = document.documentElement.clientHeight - top - 24;
   const kind = wantedFrame();
   if (kind) {
-    const [ew, eh] = frameExtra(kind);
+    const [ew, eh0, stand] = frameExtra(kind);
+    const eh = eh0 - stand;
     const zf = Math.floor(Math.min((availW - ew) / baseW, (availH - eh) / baseH));
     if (zf >= 1) return String(Math.min(zf, 3));
   }
@@ -623,6 +641,7 @@ function defaultZoom() {
 }
 
 zoomSelect.addEventListener('change', () => {
+  zoomChosen = true;
   if (!sessionRes) writeSetting('fmrb_web_zoom', zoomSelect.value);
   applyZoom();
 });
@@ -652,7 +671,8 @@ function applyZoom() {
   let kind = full ? null : wantedFrame();
   let extra = [0, 0];
   if (kind) {
-    extra = frameExtra(kind);
+    const [ew, eh, stand] = frameExtra(kind);
+    extra = [ew, eh - stand];   // the stand may hang below the window
     const fits = zoom === 'fit'
       ? pageW >= baseW + extra[0] && pageH >= baseH + extra[1]
       : pageW >= (parseFloat(zoom) || 1) * baseW + extra[0];
@@ -811,6 +831,7 @@ function setLook(look) {
   }
   lookSelect.value = crt ? 'crt' : 'flat';
   crtControls.hidden = !crt;
+  rechooseZoom();
   // The frame follows the look (a flat panel or a CRT cabinet), and its size
   // the zoom; this also puts the view over #screen.
   applyZoom();
@@ -2779,7 +2800,10 @@ async function runDriveCommand(cmd) {
         zoomSelect.value = cmd.value;
         zoomSelect.dispatchEvent(new Event('change'));
       }
-      if (cmd.forget) { try { localStorage.removeItem('fmrb_web_zoom'); } catch (e) {} }
+      if (cmd.forget) {
+        try { localStorage.removeItem('fmrb_web_zoom'); } catch (e) {}
+        zoomChosen = false;
+      }
       return { zoom: zoomSelect.value, stored: readSetting('fmrb_web_zoom', null) };
     }
     case 'dom': {
