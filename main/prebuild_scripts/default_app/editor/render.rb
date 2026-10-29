@@ -167,12 +167,16 @@ module EditorRender
   # diagnostic summaries, the doc of the selected candidate, "file too big",
   # "Saved") or, when none is pending, the usual file / line / column. Every
   # message goes through flash_status; this is the only method that draws here.
+  #
+  # A resizable window keeps the bottom-right corner free (resize_corner): the
+  # line stops short of it, so the frame's resize mark stays visible and the
+  # kana badge does not sit under the kernel's resize grab.
   def draw_status_line
     y = @status_y
-    @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, STATUS_BG)
+    right = @user_area_x0 + @user_area_width - resize_corner
+    @gfx.fill_rect(@user_area_x0, y, right - @user_area_x0, CHAR_H, STATUS_BG)
 
     # ---- right zone: measure the badges, right to left ----
-    right = @user_area_x0 + @user_area_width
     # Mode 3: the PC's IME types instead (its own state is not known), so no
     # badge.
     if @kana_mode < 3
@@ -664,6 +668,13 @@ module EditorRender
     draw_palette_dialog if @palette_open
     draw_quit_dialog if @quit_dialog_open
     draw_keys_list if @keys_open
+    # The status line leaves the corner to the resize mark, which the frame
+    # draws next; the rest of that corner is the page.
+    corner = resize_corner
+    if corner > 0
+      @gfx.fill_rect(@user_area_x0 + @user_area_width - corner, @status_y,
+                     corner, CHAR_H, BG_COLOR)
+    end
     # Re-issue the title-bar / border GfxBlock with current window size so the
     # frame survives canvas resize (the block is bound to @window_width / @window_height kwargs).
     draw_window_frame

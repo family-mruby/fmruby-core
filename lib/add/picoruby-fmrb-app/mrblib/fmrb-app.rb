@@ -45,6 +45,16 @@ class FmrbApp
   # Whether the kernel resizes this window from its bottom-right corner (the
   # app's .app.toml resizable, or a built-in's); the frame shows the mark.
   def resizable?; @_resizable; end
+  # Pixels an app keeps free at the right and bottom of its user area when it
+  # draws into the bottom-right corner (a status line, a scrollbar): the
+  # resize mark and the rest of the kernel's resize grab (the window's last
+  # 10x10, 9x9 inside the border), so the mark shows and no control sits under
+  # the grab. 0 for a fullscreen window or one that cannot be resized.
+  def resize_corner
+    return 0 unless @_resizable
+    return 0 if @_fullscreen
+    RESIZE_MARK + 1
+  end
   # User area (inside the window frame, below the title bar). Exposed so
   # helper libraries such as FmrbUI can place widgets in window-local
   # coordinates without reaching into the app's instance variables.

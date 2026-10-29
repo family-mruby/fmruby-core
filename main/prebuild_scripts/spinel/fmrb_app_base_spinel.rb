@@ -1103,6 +1103,14 @@ class FmrbApp
   # Whether the kernel resizes this window from its bottom-right corner; the
   # frame shows the mark. Same as the mruby base.
   def resizable?; @_resizable; end
+  # What an app keeps free in the bottom-right corner of its user area so the
+  # resize mark shows and no control sits under the kernel's resize grab.
+  # Same as the mruby base.
+  def resize_corner
+    return 0 unless @_resizable
+    return 0 if @_fullscreen
+    RESIZE_MARK + 1
+  end
   # User area readers, same as the mruby base (FmrbUI needs them).
   attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
   # Whether a click on the close-button area may stop the app. System apps

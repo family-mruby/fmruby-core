@@ -384,7 +384,14 @@ class AppStoreApp < FmrbApp
     # Leave the corner alone: the selected app's picture lives there.
     w -= (THUMB_W + 4) if pictures?
     cols = w / 6
-    @gfx.fill_rect(x, y, w, 40, theme_bg)
+    # The last rows reach the bottom-right corner of the window, which belongs
+    # to the resize mark and the kernel's resize grab (resize_corner). With a
+    # picture the corner is already left alone; without one (Retro) those rows
+    # stop short of it, and so does the note's second line, which runs there.
+    corner = pictures? ? 0 : resize_corner
+    top = 40 - corner
+    @gfx.fill_rect(x, y, w, top, theme_bg)
+    @gfx.fill_rect(x, y + top, w - corner, corner, theme_bg) if corner > 0
     a = current
     if a
       ver = a["version"].to_s
@@ -399,7 +406,8 @@ class AppStoreApp < FmrbApp
     # explains itself in more characters than a 280 px window holds.
     note = @note.to_s
     @gfx.draw_text(x + 2, y + 20, note[0, cols].to_s, theme_fg, theme_bg)
-    rest = note.length > cols ? note[cols, cols].to_s : ""
+    last_cols = (w - corner - 2) / 6
+    rest = note.length > cols ? note[cols, last_cols].to_s : ""
     @gfx.draw_text(x + 2, y + 30, rest, theme_fg, theme_bg)
   end
 

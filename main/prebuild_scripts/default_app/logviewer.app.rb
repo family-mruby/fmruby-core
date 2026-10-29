@@ -56,8 +56,7 @@ class LogViewerApp < FmrbApp
     Log.info("LogViewer started")
     # The bar is the only widget here; the toolbar is still drawn by hand.
     @ui = FmrbUI.new(self, bg: LOG_BG)
-    @ui.scrollbar(:sb, @user_area_width - SB_W, TOOLBAR_H, SB_W,
-                  @user_area_height - TOOLBAR_H, 0, 1)
+    build_scrollbar
     # Initial read of existing logs
     fetch_logs
     draw_view
@@ -377,13 +376,21 @@ class LogViewerApp < FmrbApp
   def on_resize(new_width, new_height)
     detach_ui(@ui) if @ui
     @ui = FmrbUI.new(self, bg: LOG_BG)
-    @ui.scrollbar(:sb, @user_area_width - SB_W, TOOLBAR_H, SB_W,
-                  @user_area_height - TOOLBAR_H, 0, 1)
+    build_scrollbar
     max_scroll = visible_max_scroll
     @scroll = max_scroll if @auto_scroll || @scroll > max_scroll
     draw_view
     Log.info("LogViewer resize: #{new_width}x#{new_height}")
     nil
+  end
+
+  # The bar runs down the right edge and stops above the bottom-right corner
+  # (resize_corner) of a window: there the frame draws the resize mark and the
+  # kernel takes a press as the start of a resize, so a down button in the
+  # corner was drawn over the mark and could not be pressed.
+  def build_scrollbar
+    @ui.scrollbar(:sb, @user_area_width - SB_W, TOOLBAR_H, SB_W,
+                  @user_area_height - TOOLBAR_H - resize_corner, 0, 1)
   end
 
   def scroll_up
