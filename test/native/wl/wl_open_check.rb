@@ -288,10 +288,15 @@ class OpenRun
   end
 
   # Open the File Manager and go to /mnt/host ("/" then "mnt" then "host").
+  # It remembers the folder it was closed in for the rest of the run
+  # (doc/app_state), and this check never leaves /mnt/host, so only the
+  # first opening has to walk there.
   def to_host
     open_fmgr
+    return if @fmgr_at_host
     enter_row(@root.index("mnt"))
     enter_row(1)
+    @fmgr_at_host = true
   end
 
   # The row of a file in /mnt/host ("..", then the names).

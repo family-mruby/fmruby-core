@@ -233,6 +233,60 @@ class FmrbApp
     "/home/" + app_handle_name + ".toml"
   end
 
+  # ---- This app's remembered state ----
+  #
+  # Small values an app remembers between openings (the File Manager's last
+  # folder): /tmp/<name>.state.toml, a flat table of strings, integers and
+  # true/false. /tmp is flat (no subdirectories, fmrb_tmpfs.h) and lasts until
+  # the machine restarts: the power on a device, the program on the PC, the
+  # page in the browser. Not the user's settings -- those are app_settings in
+  # /home. Methods only, no instance variables (same reason as above).
+  #
+  #   st = app_state                       #=> {} when nothing is remembered
+  #   save_app_state({"dir" => "/home"})   # writes only when a value changed
+  #
+  # who defaults to app_handle_name; a part of a program that has its own
+  # state (the desktop's File Manager) passes a fixed one. A file that is
+  # missing or is not TOML reads as {} and is replaced on the next save. The
+  # Spinel base has the same three methods (fmrb_app_base_spinel.rb).
+  def app_state(who = app_handle_name)
+    h = FmrbToml.load(app_state_path(who))
+    out = {}
+    return out unless h.is_a?(Hash)
+    h.each do |k, v|
+      out[k] = v if v.is_a?(String) || v.is_a?(Integer) || v == true || v == false
+    end
+    out
+  end
+
+  # Merges values into the remembered table. true when the file holds them
+  # (written now, or already the same), false when it could not be written.
+  def save_app_state(values, who = app_handle_name)
+    cur = app_state(who)
+    changed = false
+    values.each do |k, v|
+      next unless v.is_a?(String) || v.is_a?(Integer) || v == true || v == false
+      key = k.to_s
+      next if cur[key] == v
+      cur[key] = v
+      changed = true
+    end
+    return true unless changed
+    text = "# remembered by #{who}; delete this file to forget\n".dup
+    cur.each { |k, v| text << FmrbToml.dump_key(k) << " = " << FmrbToml.dump_value(v) << "\n" }
+    begin
+      File.open(app_state_path(who), "w") { |f| f.write(text) }
+    rescue => e
+      Log.warn("app_state: #{app_state_path(who)}: #{e.message}")
+      return false
+    end
+    true
+  end
+
+  def app_state_path(who = app_handle_name)
+    "/tmp/" + who + ".state.toml"
+  end
+
   # app_handle_name from the app's .app.toml, else the file name without
   # .app.rb (/app/test/step_sensor.app.rb -> "step_sensor"), else the name.
   def app_handle_name

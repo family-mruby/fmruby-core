@@ -1242,6 +1242,167 @@ class FmrbApp
   def theme_border; FmrbConst::THEME_BORDER; end      # rules, boxes, muted text
   def theme_fg_light; FmrbConst::THEME_TEXT_LIGHT; end # ink on accent / button
 
+  # ---- This app's remembered state ----
+  #
+  # Same three methods as the mruby base (fmrb-app.rb): a flat table of
+  # strings, integers and true/false in /tmp/<who>.state.toml, {} when the
+  # file is missing or does not read, written only when a value changed.
+  # There is no FmrbToml binding here (an mrbgem C method), so this reads and
+  # writes the one shape the mruby side writes -- `key = value` lines, a
+  # string quoted -- by hand, as FmrbColors does for /home/colors.toml.
+  # Methods only, and no new constants or modules: an ivar on the base shifts
+  # every subclass's layout, and each non-integer constant or module costs
+  # internal RAM in the generated C (ruby_writing_constraints.md).
+  def app_handle_name
+    @_name
+  end
+
+  def app_state(who = app_handle_name)
+    out = {}
+    text = nil
+    begin
+      f = File.open(app_state_path(who), "r")
+      text = f.read
+      f.close
+    rescue => e
+      return out
+    end
+    return out if text.nil?
+    lines = text.split("\n")
+    i = 0
+    while i < lines.size
+      line = lines[i].strip
+      i += 1
+      next if line.length == 0
+      next if line.start_with?("#")
+      eq = line.index("=")
+      next if eq.nil?
+      next if eq == 0
+      key = line[0, eq].strip
+      raw = line[eq + 1, line.length - eq - 1].strip
+      if raw.start_with?("\"")
+        s = _state_unquote(raw)
+        out[key] = s unless s.nil?
+      elsif raw == "true"
+        out[key] = true
+      elsif raw == "false"
+        out[key] = false
+      elsif _state_int?(raw)
+        out[key] = raw.to_i
+      end
+    end
+    out
+  end
+
+  def save_app_state(values, who = app_handle_name)
+    cur = app_state(who)
+    changed = false
+    keys = values.keys
+    i = 0
+    while i < keys.size
+      k = keys[i]
+      i += 1
+      v = values[k]
+      next if cur[k] == v
+      cur[k] = v
+      changed = true
+    end
+    return true unless changed
+    body = "# remembered by " + who + "; delete this file to forget\n"
+    names = cur.keys
+    i = 0
+    while i < names.size
+      k = names[i]
+      i += 1
+      v = cur[k]
+      if v.is_a?(String)
+        body = body + k + " = " + _state_quote(v) + "\n"
+      elsif v == true
+        body = body + k + " = true\n"
+      elsif v == false
+        body = body + k + " = false\n"
+      elsif v.is_a?(Integer)
+        body = body + k + " = " + v.to_s + "\n"
+      end
+    end
+    begin
+      f = File.open(app_state_path(who), "w")
+      f.write(body)
+      f.close
+    rescue => e
+      Log.warn("app_state: cannot write " + app_state_path(who))
+      return false
+    end
+    true
+  end
+
+  def app_state_path(who = app_handle_name)
+    "/tmp/" + who + ".state.toml"
+  end
+
+  # "-12" / "34": an integer as the mruby side writes it.
+  def _state_int?(raw)
+    n = raw.length
+    return false if n == 0
+    j = 0
+    j = 1 if raw.getbyte(0) == 45
+    return false if j >= n
+    while j < n
+      b = raw.getbyte(j)
+      return false if b < 48 || b > 57
+      j += 1
+    end
+    true
+  end
+
+  # The text inside a "..." with its escapes undone; nil when it never closes.
+  def _state_unquote(raw)
+    out = ""
+    j = 1
+    n = raw.bytesize
+    while j < n
+      b = raw.getbyte(j)
+      return out if b == 34
+      if b == 92 && j + 1 < n
+        c = raw.getbyte(j + 1)
+        if c == 110
+          out = out + "\n"
+        elsif c == 116
+          out = out + "\t"
+        else
+          out = out + raw.byteslice(j + 1, 1)
+        end
+        j += 2
+      else
+        out = out + raw.byteslice(j, 1)
+        j += 1
+      end
+    end
+    nil
+  end
+
+  def _state_quote(s)
+    out = "\""
+    j = 0
+    n = s.bytesize
+    while j < n
+      b = s.getbyte(j)
+      if b == 34
+        out = out + "\\\""
+      elsif b == 92
+        out = out + "\\\\"
+      elsif b == 10
+        out = out + "\\n"
+      elsif b == 9
+        out = out + "\\t"
+      else
+        out = out + s.byteslice(j, 1)
+      end
+      j += 1
+    end
+    out + "\""
+  end
+
   # Same default as the mruby base: the theme's window background.
   # Same as the mruby base: wiping the user area includes putting the frame
   # and the attached widgets back. The wipe reaches the rounded corners'

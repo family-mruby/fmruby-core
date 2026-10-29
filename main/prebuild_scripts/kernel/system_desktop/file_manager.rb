@@ -54,7 +54,7 @@ module FileManagerMixin
   def fmgr_h; FMGR_H; end
   def open_file_manager
     @file_manager_open = true
-    @file_manager_dir = "/"
+    @file_manager_dir = fmgr_remembered_dir
     @file_manager_entries = []
     @file_manager_scroll = 0
     @file_manager_selected = -1
@@ -84,11 +84,31 @@ module FileManagerMixin
     @file_manager_open = false
     @fmgr_ctx_open = false
     @fmgr_lx_open = false
+    save_app_state({ "dir" => @file_manager_dir }, "file_manager")
     @ui.set_visible(:fmgr_sb, false)
     @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
+  end
+
+  # The folder the File Manager was showing when it was last closed
+  # (app_state, /tmp/file_manager.state.toml: shared by the mouse and the
+  # keys desktop, forgotten when the machine restarts), or "/" when nothing
+  # is remembered or the folder can no longer be opened.
+  def fmgr_remembered_dir
+    st = app_state("file_manager")
+    dir = st["dir"]
+    return "/" unless dir.is_a?(String)
+    path = dir.to_s
+    return "/" unless path.start_with?("/")
+    begin
+      d = Dir.open(path)
+      d.close
+    rescue => e
+      return "/"
+    end
+    path
   end
 
   def scan_file_manager_dir
