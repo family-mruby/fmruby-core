@@ -37,7 +37,9 @@
 #      gives a ScreenCast stream of the output
 #   6. robustness: SIGSEGV -> the session starts it again and the new one
 #      says so; the Exit (the control socket's quit, the same call as the
-#      power menu's Exit) is not started again; the 4th abnormal end within
+#      power menu's Exit) is not started again; the session's own log
+#      (~/.local/state/family-mruby/session.log, L15) keeps its lines and
+#      the program's last lines of each run; the 4th abnormal end within
 #      a minute ends the session
 #
 # Shots, logs and a summary go to tmp/wl_check/settings-<engine>-<renderer>/.
@@ -557,7 +559,7 @@ class SettingsRun
     pid0 = program_pid
     booted = log_text.scan("Boot complete").size
     dexec("kill", "-SEGV", pid0.to_s)
-    again = try_wait(20) { log_text.include?("Family mruby ended by SIGSEGV; starting it again (1 of 3 within 60s)") }
+    again = try_wait(20) { log_text.match?(/Family mruby ended by SIGSEGV after \d+s \(run 1\); starting it again \(1 of 3 within 60s\)/) }
     boot(booted)
     told = log_text.include?("the session started Family mruby again (the last run ended abnormally: SIGSEGV)")
     shown = try_wait(10) { log_text.scan(/Desktop: 1 notice\(s\) on screen/).size.positive? && log_text.rindex("Desktop: 1 notice") > log_text.rindex("starting it again") }
@@ -569,8 +571,20 @@ class SettingsRun
     ctl("quit")
     ended = try_wait(30) { log_text.include?("session exit=0") }
     result("the Exit ends the session (no new start)",
-           ended && log_text.include?("Family mruby ended (its Exit entry)") && log_text.scan("Boot complete").size == booted + 1,
-           "#{log_text[/Family mruby ended \(its Exit entry\)/] || 'no line'}; #{log_text[/session exit=\d+/]}")
+           ended && log_text.include?("Family mruby ended (its Exit entry; run 2 ran ") &&
+           log_text.scan("Boot complete").size == booted + 1,
+           "#{log_text[/Family mruby ended \(its Exit entry[^)]*\)/] || 'no line'}; #{log_text[/session exit=\d+/]}")
+    # The log the next login keeps (L15): the script's lines with the time,
+    # and Family mruby's last lines of each run.
+    kept, = dexec("sh", "-c", "cat \"$HOME/.local/state/family-mruby/session.log\"", ok: false)
+    kept = kept.force_encoding("UTF-8").scrub
+    tails = kept.scan(/^---- the last lines of Family mruby \(run (\d), pid \d+\)$/).flatten
+    result("the session's own log outlives the login",
+           kept.match?(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d Family mruby ended by SIGSEGV after \d+s \(run 1\)/) &&
+           kept.include?("Family mruby ended (its Exit entry; run 2 ran ") && tails == %w[1 2] &&
+           kept.include?("Boot complete"),
+           "#{kept.lines.size} lines in ~/.local/state/family-mruby/session.log; the program's last lines of runs " \
+           "#{tails.inspect}; #{kept[/^\S+ \S+ Family mruby ended by SIGSEGV[^\n]*/]}")
 
     # The 4th abnormal end within a minute ends the session.
     session_start
