@@ -532,6 +532,66 @@ resSelect.addEventListener('change', () => {
   location.replace(location.pathname + location.hash);
 });
 
+// ---- the frame around the screen (doc/web_crt, C3) -----------------------
+//
+// A cabinet drawn by CSS around #screen-box (index.html): a flat-panel
+// monitor with Sharp pixels, a TV set or a tube monitor with CRT. Only the
+// look of the page: nothing is drawn on the canvases, so the screenshots,
+// the regression, the pointer's arithmetic and the shader are what they were.
+// On by default. It steps aside in full screen and where not even 1x with
+// the frame fits the window; the zoom (Fit and the first visit's default)
+// leaves room for it. ?frame= chooses for one visit, like ?look=, and stores
+// nothing.
+const FRAME_STORE = 'fmrb_web_frame';
+const FRAME_CHOICES = ['tv', 'monitor', 'off'];
+const frameEl = document.getElementById('frame');
+const frameSelect = document.getElementById('frame-select');
+const sessionFrame = (() => {
+  const f = new URLSearchParams(location.search).get('frame');
+  return FRAME_CHOICES.includes(f) ? f : null;
+})();
+let frameChoice = sessionFrame || readSetting(FRAME_STORE, 'tv');
+if (!FRAME_CHOICES.includes(frameChoice)) frameChoice = 'tv';
+frameSelect.value = frameChoice;
+
+// The frame the page would like now: the choice says whether, and which of
+// the two CRT cabinets; Sharp pixels always get the flat panel.
+function wantedFrame() {
+  if (frameChoice === 'off') return null;
+  return crt ? frameChoice : 'lcd';
+}
+
+// What a kind of frame adds around the canvas, in CSS pixels, measured on
+// the page itself (the CSS is the one place its sizes are written). The
+// canvas is given a stand-in size and the box no width cap meanwhile, so a
+// narrow window does not squeeze the answer; everything is put back before
+// the browser paints.
+function frameExtra(kind) {
+  const was = frameEl.dataset.kind;
+  const cw = canvas.style.width, ch = canvas.style.height;
+  frameEl.dataset.kind = kind;
+  frameEl.style.maxWidth = 'none';
+  canvas.style.width = '320px';
+  canvas.style.height = '180px';
+  const f = frameEl.getBoundingClientRect();
+  const c = canvas.getBoundingClientRect();
+  canvas.style.width = cw;
+  canvas.style.height = ch;
+  frameEl.style.maxWidth = '';
+  if (was) frameEl.dataset.kind = was; else delete frameEl.dataset.kind;
+  return [Math.ceil(f.width - c.width), Math.ceil(f.height - c.height)];
+}
+
+function chooseFrame(choice) {
+  if (!FRAME_CHOICES.includes(choice)) return;
+  frameChoice = choice;
+  frameSelect.value = choice;
+  if (!sessionFrame) writeSetting(FRAME_STORE, choice);
+  applyZoom();
+}
+
+frameSelect.addEventListener('change', () => chooseFrame(frameSelect.value));
+
 // The resolution is the framebuffer; the zoom is only how large that
 // framebuffer is drawn, so it takes effect without a reload.
 const zoomSelect = document.getElementById('zoom-select');
@@ -544,16 +604,24 @@ const zoomSelect = document.getElementById('zoom-select');
 // read nor stored.
 const sessionRes = sessionResolution() !== null;
 
+// The frame counts: the multiple is the largest that fits with it. Where not
+// even 1x fits with the frame, the frame will not be shown (applyZoom), so
+// the multiple is chosen without it, as before.
 function defaultZoom() {
   const [baseW, baseH] = baseSize();
-  const top = screenBox.getBoundingClientRect().top;
+  const top = frameEl.getBoundingClientRect().top;
   const availW = document.documentElement.clientWidth - 24;
   const availH = document.documentElement.clientHeight - top - 24;
+  const kind = wantedFrame();
+  if (kind) {
+    const [ew, eh] = frameExtra(kind);
+    const zf = Math.floor(Math.min((availW - ew) / baseW, (availH - eh) / baseH));
+    if (zf >= 1) return String(Math.min(zf, 3));
+  }
   const z = Math.floor(Math.min(availW / baseW, availH / baseH));
   return z >= 1 ? String(Math.min(z, 3)) : 'fit';
 }
 
-zoomSelect.value = (sessionRes ? null : readSetting('fmrb_web_zoom', null)) || defaultZoom();
 zoomSelect.addEventListener('change', () => {
   if (!sessionRes) writeSetting('fmrb_web_zoom', zoomSelect.value);
   applyZoom();
@@ -574,18 +642,35 @@ function applyZoom() {
   const full = document.fullscreenElement === screenBox;
   const [baseW, baseH] = baseSize();
   const zoom = full ? 'fit' : zoomSelect.value;   // full screen means fill it
+  // The frame, if it fits: with Fit, 1x and the frame within the window;
+  // with a chosen multiple, that multiple and the frame within its width
+  // (a page that has to scroll sideways loses the frame, not the pixels).
+  // The page's top does not move with the frame (it starts at #frame).
+  const top = frameEl.getBoundingClientRect().top;
+  const pageW = document.documentElement.clientWidth - 24;
+  const pageH = document.documentElement.clientHeight - top - 24;
+  let kind = full ? null : wantedFrame();
+  let extra = [0, 0];
+  if (kind) {
+    extra = frameExtra(kind);
+    const fits = zoom === 'fit'
+      ? pageW >= baseW + extra[0] && pageH >= baseH + extra[1]
+      : pageW >= (parseFloat(zoom) || 1) * baseW + extra[0];
+    if (!fits) { kind = null; extra = [0, 0]; }
+  }
+  if (kind) frameEl.dataset.kind = kind; else delete frameEl.dataset.kind;
   let scale;
   if (zoom === 'fit') {
-    // Contain: the whole screen visible, aspect kept, page chrome left room
-    // for. Fractional scales stay crisp because the canvas is pixelated.
+    // Contain: the whole screen visible, aspect kept, page chrome (and the
+    // frame) left room for. Fractional scales stay crisp because the canvas
+    // is pixelated.
     let availW, availH;
     if (full) {
       availW = window.innerWidth;
       availH = window.innerHeight;
     } else {
-      const box = screenBox.getBoundingClientRect();
-      availW = Math.max(document.documentElement.clientWidth - 24, 160);
-      availH = Math.max(document.documentElement.clientHeight - box.top - 24, 120);
+      availW = Math.max(pageW - extra[0], 160);
+      availH = Math.max(pageH - extra[1], 120);
     }
     scale = Math.max(Math.min(availW / baseW, availH / baseH), 0.5);
   } else {
@@ -720,13 +805,15 @@ function setLook(look) {
     crtCanvas.hidden = false;
     crt.setSettings(crtSettings);
     if (imageData) crt.setImage(imageData);
-    placeCrtView();
   } else if (look !== 'crt' && crt) {
     crt = null;
     crtCanvas.hidden = true;
   }
   lookSelect.value = crt ? 'crt' : 'flat';
   crtControls.hidden = !crt;
+  // The frame follows the look (a flat panel or a CRT cabinet), and its size
+  // the zoom; this also puts the view over #screen.
+  applyZoom();
   return !!crt;
 }
 
@@ -762,6 +849,11 @@ document.getElementById('crt-defaults').addEventListener('click',
 crtSettings = sessionLook === 'crt' ? Object.assign({}, FmrbCrt.DEFAULTS) : storedCrtSettings();
 showCrtSliders();
 setLook(sessionLook || readSetting(LOOK_STORE, 'flat'));
+
+// The zoom of this visit, chosen once the look (and with it the frame) is
+// known. Until here the page was laid out at the selector's first option.
+zoomSelect.value = (sessionRes ? null : readSetting('fmrb_web_zoom', null)) || defaultZoom();
+applyZoom();
 
 // The machine does not power on until the click -- that is the "start"
 // the overlay promises, and it puts the AudioContext (which needs the
@@ -1420,6 +1512,7 @@ function settingsSnapshot() {
     zoom: readSetting('fmrb_web_zoom', ''),
     look: readSetting('fmrb_web_look', ''),
     crt: readSetting('fmrb_web_crt', ''),
+    frame: readSetting(FRAME_STORE, ''),
   });
 }
 
@@ -1434,6 +1527,7 @@ function applySettingsSnapshot(text) {
   if (o.zoom) writeSetting('fmrb_web_zoom', o.zoom);
   if (o.look) writeSetting('fmrb_web_look', o.look);
   if (o.crt) writeSetting('fmrb_web_crt', o.crt);
+  if (o.frame) writeSetting(FRAME_STORE, o.frame);
   return true;
 }
 
@@ -2225,7 +2319,8 @@ if (importBtn && importInput) {
 // language behind is a promise the word does not make.
 // The node ID (NODE_STORE) is not among them: it is who this browser is on
 // the network, not a setting, and a board keeps its name through a reset too.
-const PAGE_SETTING_KEYS = ['fmrb_web_res', 'fmrb_web_zoom', 'fmrb_web_look', 'fmrb_web_crt'];
+const PAGE_SETTING_KEYS = ['fmrb_web_res', 'fmrb_web_zoom', 'fmrb_web_look', 'fmrb_web_crt',
+                           FRAME_STORE];
 
 // Separate from the button so the driver can call it as well: headless
 // Chrome answers window.confirm with "no", so a test that went through the

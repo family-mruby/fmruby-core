@@ -41,6 +41,138 @@
   /* The canvas rule above sets display, which beats the hidden attribute:
      without this the empty overlay stays on screen, black, over #screen. */
   #crt-view[hidden] { display: none; }
+  /* The frame around the screen (doc/web_crt, C3): a cabinet drawn with CSS
+     around #screen-box, never on the canvases. Without data-kind (frame off,
+     full screen, a narrow window) the wrappers are bare blocks and the page
+     is laid out as it was without them. main.js picks the kind and measures
+     what it adds, for the zoom. Nothing in it reacts to the pointer. */
+  #frame { max-width: 100%; }
+  #frame .side, #frame .chin, #frame .stand { display: none; }
+  #frame .side, #frame .chin, #frame .stand {
+    pointer-events: none; user-select: none; -webkit-user-select: none;
+  }
+  #frame[data-kind] .bezel {
+    display: grid; grid-template-columns: auto auto; position: relative;
+  }
+  #frame[data-kind] .glass { grid-column: 1; grid-row: 1; }
+  #frame[data-kind] .chin {
+    grid-column: 1; grid-row: 2;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    position: relative; line-height: 1;
+  }
+  #frame .badge { font: 9px/1 sans-serif; letter-spacing: 0.14em; white-space: nowrap; }
+  #frame .lamp { width: 5px; height: 5px; border-radius: 50%; }
+  #frame .button, #frame[data-kind="tv"] .lamp { display: none; }
+  #frame[data-kind="monitor"] .button { display: block; }
+  #frame[data-kind] .stand {
+    display: flex; flex-direction: column; align-items: center;
+  }
+  /* The light of the screen on the inner edge of the frame: a soft glow
+     around the box, on the frame and not over the picture. */
+  #frame[data-kind] #screen-box {
+    box-shadow: 0 0 0 1px #000, 0 0 10px 2px var(--spill, rgba(160,180,255,0.14));
+  }
+
+  /* Sharp: a flat-panel monitor. Thin dark bezel, a power lamp, a stand. */
+  #frame[data-kind="lcd"] .bezel {
+    padding: 10px 10px 0;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #2c2c32, #1d1d22);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 0 1px #34343c,
+                0 8px 18px rgba(0,0,0,0.45);
+  }
+  #frame[data-kind="lcd"] .chin { height: 18px; }
+  #frame[data-kind="lcd"] .badge { color: #7d7d8a; }
+  #frame[data-kind="lcd"] .lamp {
+    position: absolute; right: 12px; top: 7px;
+    background: #57d46f; box-shadow: 0 0 4px #57d46f;
+  }
+  #frame[data-kind="lcd"] .neck {
+    width: 64px; height: 16px;
+    background: linear-gradient(90deg, #232329, #3d3d45 50%, #232329);
+  }
+  #frame[data-kind="lcd"] .base {
+    width: 190px; height: 6px; border-radius: 4px 4px 1px 1px;
+    background: linear-gradient(180deg, #44444c, #2a2a30);
+  }
+
+  /* CRT, a television: a thick wooden cabinet, the tube behind a black
+     mask, two knobs and the speaker on the right. */
+  #frame[data-kind="tv"] .bezel {
+    padding: 22px 16px 0 22px;
+    border-radius: 20px;
+    background:
+      repeating-linear-gradient(88deg, rgba(0,0,0,0.10) 0 2px, rgba(255,255,255,0.035) 2px 6px,
+                                rgba(0,0,0,0.05) 6px 11px, rgba(255,255,255,0.02) 11px 13px),
+      linear-gradient(180deg, #80502b, #5b3519 70%, #4c2c14);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.16), inset 0 -4px 8px rgba(0,0,0,0.45),
+                0 12px 26px rgba(0,0,0,0.6);
+  }
+  #frame[data-kind="tv"] .glass {
+    padding: 10px; border-radius: 18px;
+    background: #0b0b0d;
+    box-shadow: 0 0 0 3px #3b2311, 0 0 0 4px rgba(255,255,255,0.12), inset 0 0 12px #000;
+    --spill: rgba(150,205,255,0.20);
+  }
+  #frame[data-kind="tv"] .side {
+    grid-column: 2; grid-row: 1 / span 2;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    width: 64px; margin-left: 16px; padding: 6px 0 22px;
+  }
+  #frame[data-kind="tv"] .knob {
+    position: relative; width: 34px; height: 34px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 32%, #d8d2c6, #8d867a 55%, #3c3832 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.6), inset 0 -2px 3px rgba(0,0,0,0.35);
+  }
+  #frame[data-kind="tv"] .knob::after {
+    content: ''; position: absolute; left: 16px; top: 3px; width: 2px; height: 11px;
+    background: #2a2622; border-radius: 1px;
+  }
+  #frame[data-kind="tv"] .knob + .knob::after { transform: rotate(50deg); transform-origin: 1px 14px; }
+  #frame[data-kind="tv"] .grille {
+    flex: 1 1 auto; width: 50px; min-height: 40px; margin-top: 6px; border-radius: 6px;
+    background: repeating-linear-gradient(180deg, #24150a 0 3px, #6a4424 3px 6px);
+    box-shadow: inset 0 0 4px rgba(0,0,0,0.7);
+  }
+  #frame[data-kind="tv"] .chin { height: 22px; }
+  #frame[data-kind="tv"] .badge { color: #e6cfa4; text-shadow: 0 1px 0 rgba(0,0,0,0.5); }
+  #frame[data-kind="tv"] .neck { display: none; }
+  #frame[data-kind="tv"] .base {
+    width: 72%; height: 8px; border-radius: 0 0 6px 6px;
+    background: linear-gradient(180deg, #2a1a0d, #120b05);
+  }
+
+  /* CRT, a computer monitor: a thick beige case, the tube in a recess, a
+     power button and its lamp under it. */
+  #frame[data-kind="monitor"] .bezel {
+    padding: 24px 24px 0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ddd6c3, #c6bea8);
+    box-shadow: inset 0 2px 0 #f1ecdf, inset 0 -4px 8px rgba(0,0,0,0.18),
+                0 12px 24px rgba(0,0,0,0.55);
+  }
+  #frame[data-kind="monitor"] .glass {
+    padding: 12px; border-radius: 12px;
+    background: #121212;
+    box-shadow: 0 0 0 3px #aaa28c, 0 0 0 5px #ebe5d6, inset 0 0 12px #000;
+    --spill: rgba(150,255,190,0.16);
+  }
+  #frame[data-kind="monitor"] .chin { height: 30px; justify-content: flex-start; padding: 0 4px; }
+  #frame[data-kind="monitor"] .badge { color: #6f6858; }
+  #frame[data-kind="monitor"] .button {
+    margin-left: auto; width: 20px; height: 10px; border-radius: 2px;
+    background: linear-gradient(180deg, #e9e3d4, #b2aa94);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+  }
+  #frame[data-kind="monitor"] .lamp { background: #e8a33a; box-shadow: 0 0 4px #e8a33a; }
+  #frame[data-kind="monitor"] .neck {
+    width: 110px; height: 10px;
+    background: linear-gradient(180deg, #b4ac96, #a49c86);
+  }
+  #frame[data-kind="monitor"] .base {
+    width: 230px; height: 8px; border-radius: 4px 4px 2px 2px;
+    background: linear-gradient(180deg, #cfc7b1, #a9a18b);
+  }
   #start {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -132,10 +264,19 @@
 </head>
 <body>
 <h1>Family mruby Web Studio</h1>
-<div id="screen-box">
-  <canvas id="screen" width="426" height="240" tabindex="0"></canvas>
-  <canvas id="crt-view" hidden></canvas>
-  <div id="start">Click to start</div>
+<div id="frame">
+  <div class="bezel">
+    <div class="glass">
+      <div id="screen-box">
+        <canvas id="screen" width="426" height="240" tabindex="0"></canvas>
+        <canvas id="crt-view" hidden></canvas>
+        <div id="start">Click to start</div>
+      </div>
+    </div>
+    <div class="side" aria-hidden="true"><span class="knob"></span><span class="knob"></span><span class="grille"></span></div>
+    <div class="chin" aria-hidden="true"><span class="badge">Family mruby</span><span class="button"></span><span class="lamp"></span></div>
+  </div>
+  <div class="stand" aria-hidden="true"><span class="neck"></span><span class="base"></span></div>
 </div>
 <div id="status">loading...</div>
 <div id="panels">
@@ -164,6 +305,14 @@
       <select id="look-select">
         <option value="flat">Sharp pixels</option>
         <option value="crt">CRT</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="frame-select">Frame</label>
+      <select id="frame-select">
+        <option value="tv">On (CRT: a TV set)</option>
+        <option value="monitor">On (CRT: a monitor)</option>
+        <option value="off">Off</option>
       </select>
     </div>
     <div class="group" id="crt-controls" hidden>
@@ -257,6 +406,11 @@
       (scanlines, the grille, glow, a curved glass); each effect has its
       own strength, and 0 turns it off. <code>?look=crt</code> in the
       address opens a visit with it, without changing what you chose.</li>
+    <li><b>Frame:</b> a monitor around the screen with Sharp pixels, a TV set
+      or a monitor of the tube days with CRT. Only for the look: nothing on
+      it can be pressed. It steps aside in full screen and where the window
+      is too narrow for it. <code>?frame=off</code> (or <code>tv</code>,
+      <code>monitor</code>) chooses for one visit.</li>
     <li><b>Resolution</b> reloads the page when changed. <b>Colours</b> are
       the machine's own: pick a theme in Config, inside it.</li>
     <li><b>Full screen:</b> where the browser allows it the machine keeps
