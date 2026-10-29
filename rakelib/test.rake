@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + Asterism link and table client + WAV + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test", "native:test",
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + desktop icons + Asterism link and table client + WAV + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test", "native:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -82,6 +82,17 @@ namespace :assoc do
   task :test do
     sh "ruby test/assoc/run.rb mruby"
     sh "ruby test/assoc/run.rb spinel"
+  end
+end
+
+namespace :desktop_icons do
+  # The desktop's icon list: /home/desktop.toml (apps and hidden) merged with
+  # the default set (doc/linux_native L15b). The shipped mixin runs under host
+  # Ruby with its two paths in a scratch directory. Run it after touching
+  # system_desktop/desktop_icons.rb.
+  desc "Desktop icon list tests (host Ruby, no docker)"
+  task :test do
+    sh "ruby test/desktop_icons/run.rb"
   end
 end
 

@@ -9,12 +9,20 @@
 # Which apps: /home/desktop.toml when the user has one, otherwise the default
 # set shipped in /usr/share/desktop/desktop.toml (/home ships empty). The
 # launcher's icon menu (right click, or the D key) adds and removes apps and
-# writes /home/desktop.toml.
+# writes /home/desktop.toml; nothing else creates it, so a user who never
+# touched the menu keeps following the default set.
 # A file that cannot be read or parsed counts as absent, so a broken user
 # file falls back to the default set instead of an empty desktop.
 #
-# Both files hold one key, an array of the app paths the launcher uses:
+# Both files hold an array of the app paths the launcher uses, top to bottom:
 #   apps = ["default/editor", "/app/tool/nsf_player.app.rb"]
+# The user's file also says which entries the user took off (doc/linux_native
+# L15b), so a default added later can be told from one the user removed:
+#   hidden = ["/app/game/flappy.app.rb"]
+# At boot, a default entry that is in neither list is new since the file was
+# written: it goes to the end of apps and the file is written back. Removing
+# an icon moves it to hidden, adding one takes it out of hidden. A user file
+# without hidden (the form before L15b) is replaced by the default set.
 # An entry whose app is not on this machine is skipped (the default set names
 # apps that one board ships and another does not, such as the mahjong table).
 # Two entries are not apps: "desktop/launcher" opens the launcher (the menu's
@@ -47,6 +55,7 @@ module DesktopIconsMixin
   DICON_DEFAULT_PATH = "/usr/share/desktop/desktop.toml"
   DICON_MAX_BYTES    = 4096
   DICON_KEY          = "apps"
+  DICON_HIDDEN_KEY   = "hidden"
   DICON_LAUNCHER     = "desktop/launcher"
   DICON_FILE_MANAGER = "desktop/file_manager"
   DICON_LAUNCHER_ICON = "usr/share/icon/launcher.icon"
@@ -87,7 +96,7 @@ module DesktopIconsMixin
   # list exists.
   def build_desktop_icons
     mark = ::FmrbApp.pool_used
-    @dicon_paths = load_desktop_icon_paths
+    load_desktop_icon_paths
     resolve_desktop_icons
     grew = (::FmrbApp.pool_used - mark) / 1024
     Log.info("Desktop icons: #{@dicon_items.size}/#{@dicon_paths.size} shown, pool +#{grew}KB (#{::FmrbApp.pool_usage}%)")
@@ -135,12 +144,16 @@ module DesktopIconsMixin
   # to give the wallpaper under it back, and that is only had by redrawing it.
   def toggle_desktop_icon(path)
     @dicon_paths ||= []
+    @dicon_hidden ||= []
     idx = @dicon_paths.index(path)
     if idx
       @dicon_paths.delete_at(idx)
+      @dicon_hidden << path unless @dicon_hidden.index(path)
       Log.info("Desktop icons: removed #{path}")
     else
       @dicon_paths << path
+      hid = @dicon_hidden.index(path)
+      @dicon_hidden.delete_at(hid) if hid
       Log.info("Desktop icons: added #{path}")
     end
     save_desktop_icon_paths
@@ -159,30 +172,79 @@ module DesktopIconsMixin
     nil
   end
 
+  # Sets @dicon_paths (shown, in order) and @dicon_hidden (taken off by the
+  # user) from the user's file merged with the default set; see the top of
+  # this file. Writes the user's file back only when the merge changed it.
   def load_desktop_icon_paths
-    list = read_desktop_icon_file(DICON_USER_PATH)
-    return list if list
-    read_desktop_icon_file(DICON_DEFAULT_PATH) || []
+    defaults = desktop_icon_file_list(DICON_DEFAULT_PATH, DICON_KEY)
+    text = read_desktop_icon_text(DICON_USER_PATH)
+    apps = text ? parse_desktop_icon_list(text, DICON_KEY) : nil
+    if apps.nil?
+      Log.warn("Desktop icons: #{DICON_USER_PATH} is not readable, ignored") if text
+      @dicon_paths = defaults || []
+      @dicon_hidden = []
+      return nil
+    end
+    hidden = parse_desktop_icon_list(text, DICON_HIDDEN_KEY)
+    if hidden.nil?
+      # The form before hidden: it cannot tell a removed default from a new
+      # one, so the default set replaces it (nothing is published yet).
+      if defaults
+        @dicon_paths = defaults
+        @dicon_hidden = []
+        Log.info("Desktop icons: #{DICON_USER_PATH} has no hidden list, replaced by the default set")
+        save_desktop_icon_paths
+      else
+        @dicon_paths = apps
+        @dicon_hidden = []
+      end
+      return nil
+    end
+    @dicon_paths = apps
+    @dicon_hidden = hidden
+    return nil unless defaults
+    added = 0
+    i = 0
+    n = defaults.size
+    while i < n
+      d = defaults[i]
+      i += 1
+      next if apps.index(d) || hidden.index(d)
+      apps << d
+      added += 1
+    end
+    if added > 0
+      Log.info("Desktop icons: #{added} new default(s) added to #{DICON_USER_PATH}")
+      save_desktop_icon_paths
+    end
+    nil
   end
 
-  # The list in one file, or nil when the file is absent or broken.
-  def read_desktop_icon_file(path)
+  # The list under key in one file, or nil when the file is absent or broken.
+  def desktop_icon_file_list(path, key)
+    text = read_desktop_icon_text(path)
+    return nil unless text
+    list = parse_desktop_icon_list(text, key)
+    Log.warn("Desktop icons: #{path} is not readable, ignored") unless list
+    list
+  end
+
+  # A file's text, or nil when it is absent or cannot be read.
+  def read_desktop_icon_text(path)
     return nil unless File.exist?(path)
     f = File.open(path, "r")
     text = f.read(DICON_MAX_BYTES)
     f.close
-    list = parse_desktop_icon_list(text)
-    Log.warn("Desktop icons: #{path} is not readable, ignored") unless list
-    list
+    text
   rescue => e
     Log.warn("Desktop icons: cannot read #{path}: #{e.message}")
     nil
   end
 
-  # `apps = [ "a", "b", ... ]`, on one line or spread over several, with
+  # `key = [ "a", "b", ... ]`, on one line or spread over several, with
   # comments. No Regexp on this machine, so this walks the lines. nil when
   # the key is missing, the bracket never closes or a string is unterminated.
-  def parse_desktop_icon_list(text)
+  def parse_desktop_icon_list(text, key)
     return nil unless text
     lines = text.split(DI_NL)
     out = nil
@@ -194,7 +256,7 @@ module DesktopIconsMixin
       if out.nil?
         eq = line.index(DI_EQ)
         next unless eq
-        next unless line[0, eq].strip == DICON_KEY
+        next unless line[0, eq].strip == key
         rest = line[eq + 1, line.length - eq - 1].to_s.strip
         return nil unless rest.start_with?(DI_OPEN)
         out = []
@@ -233,8 +295,12 @@ module DesktopIconsMixin
   def save_desktop_icon_paths
     buf = "# Apps shown as icons on the desktop, top to bottom. The launcher's\n"
     buf << "# icon menu (right click) writes this file; delete it to get the default set back.\n"
+    buf << "# hidden: the ones taken off, which a new default set does not bring back.\n"
     buf << "apps = [\n"
     @dicon_paths.each { |p| buf << "  \"#{p}\",\n" }
+    buf << "]\n"
+    buf << "hidden = [\n"
+    (@dicon_hidden || []).each { |p| buf << "  \"#{p}\",\n" }
     buf << "]\n"
     f = File.open(DICON_USER_PATH, "w")
     f.write(buf)

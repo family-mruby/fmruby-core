@@ -1,7 +1,9 @@
 # The default set of desktop icons, top to bottom (doc/desktop_icons/).
 #
 # Used while /home/desktop.toml does not exist. The launcher's icon menu
-# writes that file, and from then on it decides; delete it to come back here.
+# writes that file (apps, and hidden for the icons taken off), and from then
+# on it decides; an entry added here later is appended to its apps at boot
+# unless it is in its hidden. Delete it to come back here.
 # An entry whose app is not on the machine is skipped, so one list serves
 # every board (a board whose storage leaves an app out just shows one less).
 # "desktop/launcher" and "desktop/file_manager" are not apps: they open the
