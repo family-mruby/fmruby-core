@@ -68,7 +68,15 @@
 # FMRB_SESSION_CONF names another settings file (for trying settings out).
 #
 # Its output (and Family mruby's log) goes where the display manager puts a
-# session's: the journal, or ~/.local/share/sddm/wayland-session.log.
+# session's: the journal, or ~/.local/share/sddm/wayland-session.log (which
+# the next login overwrites). So that a failure can still be read after the
+# login screen came back (L15), this script's own lines (the start, how
+# each run ended and after how many seconds, starting again, giving up)
+# also go, with the time, to a file the next login keeps:
+# $XDG_STATE_HOME/family-mruby/session.log (~/.local/state/... by default),
+# followed after each run by the last lines Family mruby printed. When it
+# passes 256 KB it is moved to session.log.1 (the one before is dropped)
+# at the next start.
 
 set -u
 
@@ -82,7 +90,27 @@ set -a
 [ -r "$CONF" ] && . "$CONF"
 set +a
 
-say() { echo "family-mruby-session: $*" >&2; }
+# The log that outlives the login (see above); "" when it cannot be written.
+state_dir="${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/family-mruby"
+slog="$state_dir/session.log"
+SLOG_MAX=262144     # bytes; past this the next start moves it to session.log.1
+TAIL_LINES=40       # Family mruby's last lines kept per run
+if mkdir -p "$state_dir" 2> /dev/null && touch "$slog" 2> /dev/null; then
+    size=$(wc -c < "$slog" 2> /dev/null) || size=0
+    if [ "$size" -gt "$SLOG_MAX" ]; then
+        mv -f "$slog" "$slog.1" 2> /dev/null
+        : > "$slog"
+    fi
+else
+    slog=""
+fi
+
+say() {
+    echo "family-mruby-session: $*" >&2
+    [ -n "$slog" ] && echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$slog"
+}
+
+[ -n "$slog" ] && echo "==== $(date '+%Y-%m-%d %H:%M:%S') session $$ starts" >> "$slog"
 
 here=$(dirname "$(readlink -f "$0")")
 prog="$here/family-mruby"
@@ -160,10 +188,55 @@ trap 'on_signal TERM' TERM
 trap 'on_signal HUP' HUP
 trap 'on_signal INT' INT
 
+# Family mruby's output goes on to the display manager's log as before, and
+# through tee (a FIFO keeps $! the program's) into run.out, whose last lines
+# are copied to the log that outlives the login when the run ends.
+run_out="$state_dir/run.out"
+fifo="$state_dir/run.fifo"
+tee_pid=""
+start_tee() {
+    tee_pid=""
+    [ -n "$slog" ] || return 1
+    rm -f "$fifo"
+    mkfifo -m 600 "$fifo" 2> /dev/null || return 1
+    tee "$run_out" < "$fifo" >&2 &
+    tee_pid=$!
+    return 0
+}
+# After the run: tee ends once no one writes; a Linux program that kept the
+# output open must not hold the session, so it is ended after a moment.
+end_tee() {
+    [ -n "$tee_pid" ] || return 0
+    n=0
+    while kill -0 "$tee_pid" 2> /dev/null && [ "$n" -lt 10 ]; do
+        sleep 0.1
+        n=$((n + 1))
+    done
+    kill "$tee_pid" 2> /dev/null
+    wait "$tee_pid" 2> /dev/null
+    tee_pid=""
+    rm -f "$fifo"
+    if [ -s "$run_out" ]; then
+        {
+            echo "---- the last lines of Family mruby (run $runs, pid $1)"
+            tail -n "$TAIL_LINES" "$run_out"
+            echo "----"
+        } >> "$slog"
+    fi
+}
+
+runs=0
 while :; do
-    say "starting $prog --machine linux_pc_wl (rotate $ROTATE) $FMRB_ARGS${restarted:+ (again: the last run ended abnormally, $restarted)}"
-    # shellcheck disable=SC2086
-    FMRB_SESSION_RESTARTED="$restarted" "$prog" --machine linux_pc_wl --set display.rotate="$ROTATE" $FMRB_ARGS "$@" &
+    runs=$((runs + 1))
+    say "starting $prog --machine linux_pc_wl (rotate $ROTATE) $FMRB_ARGS${restarted:+ (again: the last run ended abnormally, $restarted)} (run $runs)"
+    started=$(date +%s)
+    if start_tee; then
+        # shellcheck disable=SC2086
+        FMRB_SESSION_RESTARTED="$restarted" "$prog" --machine linux_pc_wl --set display.rotate="$ROTATE" $FMRB_ARGS "$@" > "$fifo" 2>&1 &
+    else
+        # shellcheck disable=SC2086
+        FMRB_SESSION_RESTARTED="$restarted" "$prog" --machine linux_pc_wl --set display.rotate="$ROTATE" $FMRB_ARGS "$@" &
+    fi
     child=$!
     # wait returns early when a trapped signal comes; wait again for the end.
     while :; do
@@ -171,19 +244,21 @@ while :; do
         rc=$?
         kill -0 "$child" 2> /dev/null || break
     done
+    ran=$(($(date +%s) - started))
+    end_tee "$child"
     child=""
     if [ -n "$stopping" ]; then
-        say "the session ends (SIG$stopping)"
+        say "the session ends (SIG$stopping; run $runs ran ${ran}s)"
         exit "$rc"
     fi
     if [ "$rc" -eq 0 ]; then
-        say "Family mruby ended (its Exit entry)"
+        say "Family mruby ended (its Exit entry; run $runs ran ${ran}s)"
         exit 0
     fi
     if [ "$rc" -gt 128 ]; then
         sig=$(kill -l "$((rc - 128))" 2> /dev/null) || sig=$((rc - 128))
         why="SIG$sig"
-        how="ended by SIG$sig"
+        how="ended by SIG$sig after ${ran}s (run $runs)"
         case "$sig" in
             TERM|HUP|INT)
                 say "Family mruby $how: not a crash, the session ends"
@@ -192,7 +267,7 @@ while :; do
         esac
     else
         why="status $rc"
-        how="exited with status $rc"
+        how="exited with status $rc after ${ran}s (run $runs)"
     fi
     now=$(date +%s)
     kept=""

@@ -26,6 +26,11 @@
 # the 4th abnormal end within a minute ends the session (status 1); a
 # normal end (the Exit entry) and SIGTERM are never followed by a run;
 # SIGTERM to the session itself goes to the program and ends the session.
+#
+# And (L15) the log that outlives the login ($XDG_STATE_HOME/family-mruby/
+# session.log): the script's lines with the time and how long each run
+# lasted, the program's last lines after each run, and the move to
+# session.log.1 past 256 KB.
 
 require "fileutils"
 require "open3"
@@ -126,6 +131,8 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
     n=$((n + 1))
     echo "$n" > "#{plan}.n"
     echo "run $n [$FMRB_SESSION_RESTARTED]" >> "#{plan}.log"
+    echo "run $n output"
+    echo "run $n to stderr" >&2
     act=$(sed -n "${n}p" "#{plan}")
     case "$act" in
       kill) kill -KILL $$ ;;
@@ -139,12 +146,15 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
   File.chmod(0o755, File.join(bin, "family-mruby"), File.join(bin, "family-mruby-session"))
   tools = File.join(dir, "tools")
   FileUtils.mkdir_p(tools)
-  %w[dirname readlink cat sed date sleep].each do |t|
+  %w[dirname readlink cat sed date sleep mkdir touch wc mv rm mkfifo tee tail].each do |t|
     path = %w[/usr/bin /bin].map { |d| File.join(d, t) }.find { |f| File.executable?(f) }
     abort "#{t} not found" unless path
     File.symlink(path, File.join(tools, t))
   end
-  env = { "PATH" => tools, "FMRB_SESSION_CONF" => File.join(dir, "none.conf"), "WLR_BACKENDS" => "headless" }
+  state = File.join(dir, "state")
+  env = { "PATH" => tools, "FMRB_SESSION_CONF" => File.join(dir, "none.conf"), "WLR_BACKENDS" => "headless",
+          "XDG_STATE_HOME" => state }
+  slog = File.join(state, "family-mruby/session.log")
   restart = lambda do |*acts|
     File.write(plan, acts.join("\n") + "\n")
     FileUtils.rm_f(["#{plan}.n", "#{plan}.log"])
@@ -156,8 +166,25 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
   runs, err, st = restart.call("kill", "exit")
   check(st.exitstatus == 0 && runs == ["run 1 []", "run 2 [SIGKILL]"],
         "a crash, then the Exit: #{runs.inspect} (#{st.exitstatus})")
-  check(err.include?("Family mruby ended by SIGKILL; starting it again (1 of 3 within 60s)") &&
-        err.include?("Family mruby ended (its Exit entry)"), "a crash, then the Exit: the lines (#{err.lines.last(3).join.strip})")
+  check(err =~ /Family mruby ended by SIGKILL after \d+s \(run 1\); starting it again \(1 of 3 within 60s\)/ &&
+        err.include?("Family mruby ended (its Exit entry; run 2 ran "), "a crash, then the Exit: the lines (#{err.lines.last(3).join.strip})")
+
+  # The log that outlives the login (L15): the script's lines with the time,
+  # how long each run lasted, and the program's last lines after each run.
+  log = File.exist?(slog) ? File.read(slog) : ""
+  check(log =~ /^==== \d{4}-\d\d-\d\d \d\d:\d\d:\d\d session \d+ starts$/ &&
+        log =~ /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d starting .* \(run 1\)$/ &&
+        log.include?("Family mruby ended by SIGKILL after 0s (run 1); starting it again") &&
+        log.include?("(again: the last run ended abnormally, SIGKILL) (run 2)") &&
+        log.include?("Family mruby ended (its Exit entry; run 2 ran 0s)"),
+        "the kept log has the script's lines:\n#{log}")
+  check(log.scan(/^---- the last lines of Family mruby \(run (\d), pid \d+\)$/).map(&:first) == %w[1 2] &&
+        log.include?("run 1 output\n") && log.include?("run 2 output\n"),
+        "the kept log has the program's last lines of each run:\n#{log}")
+  File.write(File.join(state, "family-mruby/session.log"), "x" * 300_000)
+  restart.call("exit")
+  check(File.size(slog + ".1") == 300_000 && File.read(slog).start_with?("==== "),
+        "past 256 KB the log moves to session.log.1 at the next start (#{File.size(slog)})")
 
   runs, err, st = restart.call("kill", "usr1", "exit3", "kill", "exit")
   check(st.exitstatus == 1 && runs.size == 4 && runs[1] == "run 2 [SIGKILL]" &&
@@ -170,7 +197,7 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
   check(st.exitstatus == 0 && runs == ["run 1 []"], "the Exit alone: #{runs.inspect} (#{st.exitstatus})")
 
   runs, err, st = restart.call("term", "exit")
-  check(st.exitstatus == 143 && runs == ["run 1 []"] && err.include?("ended by SIGTERM: not a crash"),
+  check(st.exitstatus == 143 && runs == ["run 1 []"] && err.include?("ended by SIGTERM after 0s (run 1): not a crash"),
         "SIGTERM to the program: #{runs.inspect} (#{st.exitstatus}, #{err.lines.last.to_s.strip})")
 
   # SIGTERM to the session (a logout): the program gets it, no new run.
@@ -187,7 +214,7 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
   _, st = Process.wait2(pid)
   err = r.read
   runs = File.readlines("#{plan}.log", chomp: true)
-  check(runs == ["run 1 []", "got TERM"] && err.include?("the session ends (SIGTERM)"),
+  check(runs == ["run 1 []", "got TERM"] && err.include?("the session ends (SIGTERM; run 1 ran "),
         "SIGTERM to the session: #{runs.inspect} (#{st.exitstatus}, #{err.lines.last.to_s.strip})")
 end
 
