@@ -62,6 +62,7 @@ int fmrb_mp_bridge_app_init(fmrb_mp_app_info_t *out) {
     out->pos_y = ctx->window_pos_y;
     out->fullscreen = ctx->fullscreen;
     out->rounded_corners = !ctx->fullscreen && ctx->rounded_corners;
+    out->resizable = ctx->resizable;
     out->headless = ctx->headless;
 #ifdef CONFIG_IDF_TARGET_LINUX
     out->is_esp32 = false;

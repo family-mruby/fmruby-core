@@ -283,10 +283,10 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
 
 | 種別 | 提供しているもの |
 |---|---|
-| 属性 | `name` `platform` `window_width` `window_height` `pos_x` `pos_y` `fullscreen` `rounded_corners` `headless` `canvas` `bg_canvas` `gfx` `bg_gfx` `running` `user_area_x0/y0/x1/y1` `user_area_width/height` |
+| 属性 | `name` `platform` `window_width` `window_height` `pos_x` `pos_y` `fullscreen` `rounded_corners` `resizable` `headless` `canvas` `bg_canvas` `gfx` `bg_gfx` `running` `user_area_x0/y0/x1/y1` `user_area_width/height` |
 | ライフサイクル | `start` `stop` `main_loop` `destroy` / `on_create` `on_update` `on_event` `on_destroy` |
 | ライフサイクル (続き) | `on_suspend` `on_resume` `on_resize` `on_quit_request` |
-| 描画 | `draw_window_frame` `clear_user_area` |
+| 描画 | `draw_window_frame` `draw_resize_mark` `resize_corner` `clear_user_area` |
 | 入力補助 | `ev_ctrl` `ev_shift` `ev_alt` |
 | タイマ | `set_timer` `clear_time` |
 | 連携 | `subscribe` `unsubscribe` `publish` `request_run` `request_fullscreen` `toggle_fullscreen` `request_file_select` `request_reload` |

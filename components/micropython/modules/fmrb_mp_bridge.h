@@ -42,6 +42,7 @@ typedef struct {
     uint16_t pos_y;
     bool fullscreen;
     bool rounded_corners;
+    bool resizable;          // the kernel resizes it from its bottom-right corner
     bool headless;
     bool is_esp32;           // false = linux simulation
 } fmrb_mp_app_info_t;

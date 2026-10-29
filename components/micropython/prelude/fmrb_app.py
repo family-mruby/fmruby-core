@@ -137,6 +137,9 @@ class FmrbApp:
     TITLE_BAR_H = 11
     CORNER_R = 4
     TRANSPARENT_COLOR = 0x01
+    # The resize mark: a right triangle in the bottom-right corner of a window
+    # the kernel resizes from there, legs this long (same as the Ruby frame).
+    RESIZE_MARK = 8
 
     # Close-button geometry, used by both the frame drawing and the hit test.
     CLOSE_BTN_CX_OFFSET = 6
@@ -172,6 +175,9 @@ class FmrbApp:
         self.pos_y = info["pos_y"]
         self.fullscreen = info["fullscreen"]
         self.rounded_corners = info["rounded_corners"]
+        # Whether the kernel resizes this window from its bottom-right corner
+        # (.app.toml resizable); the frame then shows the resize mark.
+        self.resizable = info["resizable"]
         self.headless = info["headless"]
         self.platform = info["platform"]
 
@@ -218,12 +224,33 @@ class FmrbApp:
         # Close button.
         g.fill_circle(w - self.CLOSE_BTN_CX_OFFSET, self.CLOSE_BTN_CY,
                       self.CLOSE_BTN_R, self.CLOSE_BTN_NORMAL_COLOR)
+        # The resize mark goes under the border, which is drawn next.
+        if self.resizable:
+            self.draw_resize_mark(w, h)
         # Rounded border.
         g.draw_round_rect(0, 0, w, h, self.CORNER_R, self.BORDER_COLOR)
         self._clear_corners()
 
         if saved_font[0] != FmrbGfx.FONT_DEFAULT:
             g.set_font(saved_font[0], saved_font[1])
+
+    def draw_resize_mark(self, w, h):
+        # The resize mark of a w x h window: a right triangle filling the
+        # bottom-right corner inside the border, in the title bar's colour.
+        # Same picture as the Ruby frame (fmrb-app.rb draw_resize_mark).
+        x = w - 2
+        y = h - 2
+        m = self.RESIZE_MARK - 1
+        self.gfx.fill_triangle(x, y - m, x, y, x - m, y, self.TITLE_BAR_COLOR)
+
+    def resize_corner(self):
+        # Pixels to keep free at the right and bottom of the user area when
+        # drawing into the bottom-right corner: the mark and the rest of the
+        # kernel's resize grab (the window's last 10x10). 0 for a fullscreen
+        # window or one that cannot be resized. Same as the Ruby frame.
+        if self.fullscreen or not self.resizable:
+            return 0
+        return self.RESIZE_MARK + 1
 
     def _clear_corners(self):
         # Repaint the three pixels outside each corner arc with the canvas

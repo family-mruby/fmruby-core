@@ -361,7 +361,7 @@ static mp_obj_t fmrb_init(void) {
         mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("app init failed"));
     }
 
-    mp_obj_t d = mp_obj_new_dict(11);
+    mp_obj_t d = mp_obj_new_dict(12);
     dict_store_str(d, MP_QSTR_name, mp_obj_new_str(info.name, strlen(info.name)));
     dict_store_str(d, MP_QSTR_canvas,
                    info.canvas_id < 0 ? mp_const_none : mp_obj_new_int(info.canvas_id));
@@ -373,6 +373,7 @@ static mp_obj_t fmrb_init(void) {
     dict_store_str(d, MP_QSTR_pos_y, MP_OBJ_NEW_SMALL_INT(info.pos_y));
     dict_store_str(d, MP_QSTR_fullscreen, mp_obj_new_bool(info.fullscreen));
     dict_store_str(d, MP_QSTR_rounded_corners, mp_obj_new_bool(info.rounded_corners));
+    dict_store_str(d, MP_QSTR_resizable, mp_obj_new_bool(info.resizable));
     dict_store_str(d, MP_QSTR_headless, mp_obj_new_bool(info.headless));
     dict_store_str(d, MP_QSTR_platform,
                    MP_OBJ_NEW_QSTR(info.is_esp32 ? MP_QSTR_esp32 : MP_QSTR_linux));
