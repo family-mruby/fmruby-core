@@ -51,20 +51,20 @@ draw_line 0 198 0 199 #01
 draw_line 1 199 1 199 #01
 draw_line 299 198 299 199 #01
 draw_line 298 199 298 199 #01
-draw_line 289 25 289 198 #60
+draw_line 289 25 289 189 #60
 fill_rect 289 25 10 10 #FF
 draw_rect 289 25 10 10 #60
 draw_line 294 27 291 32 #60
 draw_line 294 27 297 32 #60
 draw_line 291 32 297 32 #60
-fill_rect 289 189 10 10 #FF
-draw_rect 289 189 10 10 #60
-draw_line 294 196 291 191 #60
-draw_line 294 196 297 191 #60
-draw_line 291 191 297 191 #60
-fill_rect 290 35 9 154 #FF
-fill_rect 291 112 6 77 #60
-draw_rect 291 112 6 77 #60
+fill_rect 289 180 10 10 #FF
+draw_rect 289 180 10 10 #60
+draw_line 294 187 291 182 #60
+draw_line 294 187 297 182 #60
+draw_line 291 182 297 182 #60
+fill_rect 290 35 9 145 #FF
+fill_rect 291 108 6 72 #60
+draw_rect 291 108 6 72 #60
 present
 == key "w"
 fill_rect 1 11 298 188 #FF
@@ -98,20 +98,20 @@ text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
 fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
-draw_line 289 25 289 198 #60
+draw_line 289 25 289 189 #60
 fill_rect 289 25 10 10 #FF
 draw_rect 289 25 10 10 #60
 draw_line 294 27 291 32 #60
 draw_line 294 27 297 32 #60
 draw_line 291 32 297 32 #60
-fill_rect 289 189 10 10 #FF
-draw_rect 289 189 10 10 #60
-draw_line 294 196 291 191 #60
-draw_line 294 196 297 191 #60
-draw_line 291 191 297 191 #60
-fill_rect 290 35 9 154 #FF
-fill_rect 291 109 6 80 #60
-draw_rect 291 109 6 80 #60
+fill_rect 289 180 10 10 #FF
+draw_rect 289 180 10 10 #60
+draw_line 294 187 291 182 #60
+draw_line 294 187 297 182 #60
+draw_line 291 182 297 182 #60
+fill_rect 290 35 9 145 #FF
+fill_rect 291 104 6 76 #60
+draw_rect 291 104 6 76 #60
 present
 == click 7,15
 fill_rect 1 11 298 188 #FF
@@ -145,20 +145,20 @@ text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
 fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
-draw_line 289 25 289 198 #60
+draw_line 289 25 289 189 #60
 fill_rect 289 25 10 10 #FF
 draw_rect 289 25 10 10 #60
 draw_line 294 27 291 32 #60
 draw_line 294 27 297 32 #60
 draw_line 291 32 297 32 #60
-fill_rect 289 189 10 10 #FF
-draw_rect 289 189 10 10 #60
-draw_line 294 196 291 191 #60
-draw_line 294 196 297 191 #60
-draw_line 291 191 297 191 #60
-fill_rect 290 35 9 154 #FF
-fill_rect 291 109 6 80 #60
-draw_rect 291 109 6 80 #60
+fill_rect 289 180 10 10 #FF
+draw_rect 289 180 10 10 #60
+draw_line 294 187 291 182 #60
+draw_line 294 187 297 182 #60
+draw_line 291 182 297 182 #60
+fill_rect 290 35 9 145 #FF
+fill_rect 291 104 6 76 #60
+draw_rect 291 104 6 76 #60
 present
 == update
 fill_rect 1 11 298 188 #FF
@@ -192,20 +192,20 @@ text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
 fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
-draw_line 289 25 289 198 #60
+draw_line 289 25 289 189 #60
 fill_rect 289 25 10 10 #FF
 draw_rect 289 25 10 10 #60
 draw_line 294 27 291 32 #60
 draw_line 294 27 297 32 #60
 draw_line 291 32 297 32 #60
-fill_rect 289 189 10 10 #FF
-draw_rect 289 189 10 10 #60
-draw_line 294 196 291 191 #60
-draw_line 294 196 297 191 #60
-draw_line 291 191 297 191 #60
-fill_rect 290 35 9 154 #FF
-fill_rect 291 109 6 80 #60
-draw_rect 291 109 6 80 #60
+fill_rect 289 180 10 10 #FF
+draw_rect 289 180 10 10 #60
+draw_line 294 187 291 182 #60
+draw_line 294 187 297 182 #60
+draw_line 291 182 297 182 #60
+fill_rect 290 35 9 145 #FF
+fill_rect 291 104 6 76 #60
+draw_rect 291 104 6 76 #60
 present
 == wheel 1
 fill_rect 1 11 298 188 #FF
@@ -239,19 +239,19 @@ text 3 186 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
 fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
-draw_line 289 25 289 198 #60
+draw_line 289 25 289 189 #60
 fill_rect 289 25 10 10 #FF
 draw_rect 289 25 10 10 #60
 draw_line 294 27 291 32 #60
 draw_line 294 27 297 32 #60
 draw_line 291 32 297 32 #60
-fill_rect 289 189 10 10 #FF
-draw_rect 289 189 10 10 #60
-draw_line 294 196 291 191 #60
-draw_line 294 196 297 191 #60
-draw_line 291 191 297 191 #60
-fill_rect 290 35 9 154 #FF
-fill_rect 291 97 6 80 #60
-draw_rect 291 97 6 80 #60
+fill_rect 289 180 10 10 #FF
+draw_rect 289 180 10 10 #60
+draw_line 294 187 291 182 #60
+draw_line 294 187 297 182 #60
+draw_line 291 182 297 182 #60
+fill_rect 290 35 9 145 #FF
+fill_rect 291 93 6 76 #60
+draw_rect 291 93 6 76 #60
 present
 == update

@@ -44,7 +44,8 @@ fill_rect 1 56 278 87 #FF
 text 3 58 "(nothing yet)" #00 defaultx1
 draw_line 1 51 278 51 #60
 draw_line 1 145 278 145 #60
-fill_rect 1 148 278 40 #FF
+fill_rect 1 148 278 31 #FF
+fill_rect 1 179 269 9 #FF
 text 3 168 "fetching the list..." #00 bg=#FF defaultx1
 fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
@@ -86,7 +87,8 @@ text 11 79 " " #00 bg=#FF defaultx1
 text 21 79 "Blocks v0.9.1" #00 bg=#FF defaultx1
 draw_line 1 51 278 51 #60
 draw_line 1 145 278 145 #60
-fill_rect 1 148 278 40 #FF
+fill_rect 1 148 278 31 #FF
+fill_rect 1 179 269 9 #FF
 text 3 148 "v1.2.0 tool" #00 bg=#FF defaultx1
 text 3 158 "A clock with an alarm" #00 bg=#FF defaultx1
 text 3 168 "3 apps - retro" #00 bg=#FF defaultx1

@@ -44,7 +44,8 @@ fill_rect 1 56 278 87 #FF
 text 3 58 "(nothing yet)" #00 defaultx1
 draw_line 1 51 278 51 #60
 draw_line 1 145 278 145 #60
-fill_rect 1 148 278 40 #FF
+fill_rect 1 148 278 31 #FF
+fill_rect 1 179 269 9 #FF
 text 3 168 "fetching the list..." #00 bg=#FF defaultx1
 fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
@@ -75,7 +76,8 @@ fill_rect 1 56 278 87 #FF
 text 3 58 "(nothing yet)" #00 defaultx1
 draw_line 1 51 278 51 #60
 draw_line 1 145 278 145 #60
-fill_rect 1 148 278 40 #FF
+fill_rect 1 148 278 31 #FF
+fill_rect 1 179 269 9 #FF
 text 3 168 "list: status 404" #00 bg=#FF defaultx1
 fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
@@ -106,7 +108,8 @@ fill_rect 1 56 278 87 #FF
 text 3 58 "(none installed)" #00 defaultx1
 draw_line 1 51 278 51 #60
 draw_line 1 145 278 145 #60
-fill_rect 1 148 278 40 #FF
+fill_rect 1 148 278 31 #FF
+fill_rect 1 179 269 9 #FF
 text 3 168 "list: status 404" #00 bg=#FF defaultx1
 fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
