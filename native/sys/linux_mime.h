@@ -15,8 +15,10 @@
  *                  text/..., text/plain.
  *   the lists      mimeapps.list in the spec's order: $XDG_CONFIG_HOME,
  *                  $XDG_CONFIG_DIRS, $XDG_DATA_HOME/applications,
- *                  $XDG_DATA_DIRS/applications, in each the desktop's own
- *                  <desktop>-mimeapps.list before mimeapps.list; then the old
+ *                  $XDG_DATA_DIRS/applications, in each the desktops' own
+ *                  <desktop>-mimeapps.list (ours, then the machine's own
+ *                  desktop's: kde-mimeapps.list on Kubuntu) before
+ *                  mimeapps.list; then the old
  *                  defaults.list of the data directories (its defaults only).
  *                  [Default Applications], [Added Associations] and
  *                  [Removed Associations] are kept per file.
@@ -57,10 +59,11 @@ typedef struct linux_mime_lists linux_mime_lists_t;
 #define LINUX_MIME_ADDED 1
 #define LINUX_MIME_REMOVED 2
 
-/* desktop: our desktop name ("family-mruby"); the files called
- * <desktop>-mimeapps.list are read before mimeapps.list. NULL only when out
- * of memory. */
-linux_mime_lists_t *linux_mime_lists_load(const char *desktop);
+/* desktops: the desktop names, colon-separated like XDG_CURRENT_DESKTOP
+ * ("family-mruby:kde": ours, then the machine's own desktop's, L15); in each
+ * directory the files called <name>-mimeapps.list are read in that order,
+ * before mimeapps.list. NULL only when out of memory. */
+linux_mime_lists_t *linux_mime_lists_load(const char *desktops);
 void linux_mime_lists_free(linux_mime_lists_t *l);
 int linux_mime_lists_count(const linux_mime_lists_t *l);
 /* The file's path (for the logs and the tests). */

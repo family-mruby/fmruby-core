@@ -9,6 +9,7 @@
 
 #include "native_machine.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -90,6 +91,7 @@ void native_machine_defaults(native_machine_t *m)
     m->compositor.autostart[0] = '\0';
     m->compositor.ime[0] = '\0';
     m->compositor.locker[0] = '\0';
+    m->compositor.mime_desktops[0] = '\0';
 }
 
 /* system.power: "exit", "logind", or both, comma-separated (a TOML list
@@ -306,6 +308,15 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
     if (strcmp(key, "compositor.locker") == 0) {
         return copy_str(m->compositor.locker, sizeof(m->compositor.locker), value, key, err, n);
     }
+    if (strcmp(key, "compositor.mime_desktops") == 0) {
+        /* Names only: they become file names (<name>-mimeapps.list). */
+        for (const char *p = value; *p; p++) {
+            if (!isalnum((unsigned char)*p) && *p != '-' && *p != '_' && *p != ',') {
+                return fail(err, n, "compositor.mime_desktops: \"%s\" is not a list of desktop names", value);
+            }
+        }
+        return copy_str(m->compositor.mime_desktops, sizeof(m->compositor.mime_desktops), value, key, err, n);
+    }
 
     return fail(err, n, "unknown key \"%s\"", key);
 }
@@ -496,7 +507,7 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
              "input %s%s%s%s%s, audio %s%s%s, desktop %s%s, services %s%s, power %s%s, "
-             "files host=%s root=%s%s%s%s%s%s%s",
+             "files host=%s root=%s%s%s%s%s%s%s%s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
              m->display.fullscreen ? " fullscreen" : "",
@@ -508,5 +519,6 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
              m->system.power_log_only ? " (log only)" : "", m->files.host, m->files.root,
              m->compositor.autostart[0] ? ", autostart " : "", m->compositor.autostart,
              m->compositor.ime[0] ? ", IME program " : "", m->compositor.ime,
-             m->compositor.locker[0] ? ", lock program " : "", m->compositor.locker);
+             m->compositor.locker[0] ? ", lock program " : "", m->compositor.locker,
+             m->compositor.mime_desktops[0] ? ", defaults of " : "", m->compositor.mime_desktops);
 }

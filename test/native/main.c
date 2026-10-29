@@ -625,6 +625,18 @@ static void test_machine(void)
     // The PC's window operations and lock program (L13): the
     // PC's machines have them, the Cardputer and the keys desktop not.
     CHECK(m.desktop.window_ops && strcmp(m.compositor.locker, "swaylock") == 0, "linux_pc_wl window ops, locker");
+    // The machine's own desktop's default applications (L15): KDE's list.
+    CHECK(strcmp(m.compositor.mime_desktops, "kde") == 0, "linux_pc_wl mime_desktops %s", m.compositor.mime_desktops);
+    {
+        native_machine_t t;
+        native_machine_defaults(&t);
+        CHECK(t.compositor.mime_desktops[0] == '\0', "no other desktop's lists by default");
+        CHECK(native_machine_set(&t, "compositor.mime_desktops", "gnome,kde", err, sizeof(err)) == 0 &&
+                  strcmp(t.compositor.mime_desktops, "gnome,kde") == 0,
+              "mime_desktops as a list: %s", err);
+        CHECK(native_machine_set(&t, "compositor.mime_desktops", "../x", err, sizeof(err)) != 0,
+              "mime_desktops takes names only");
+    }
     {
         native_machine_t t;
         const char *pcs[] = { "sdl", "linux_pc", "linux_pc_drm" };

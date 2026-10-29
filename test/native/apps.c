@@ -309,7 +309,9 @@ static void test_tree(void)
 
     char icons[600];
     snprintf(icons, sizeof(icons), "%s/cache/var/cache/linux", g_root);
-    linux_apps_config_t cfg = { .icon_dir = icons, .icon_fm_dir = "/var/cache/linux", .desktop_name = "family-mruby" };
+    linux_apps_config_t cfg = {
+        .icon_dir = icons, .icon_fm_dir = "/var/cache/linux", .desktop_name = "family-mruby", .mime_desktops = "kde"
+    };
     list(LINUX_APPS_HEADER, "ja");   // still not started: nothing
     linux_apps_start(&cfg);
     CHECK(linux_apps_available(), "available after the start");
@@ -701,6 +703,79 @@ static void test_open(void)
     linux_apps_end_all(500);
 }
 
+// The machine's own desktop's defaults (L15, the VM's Kubuntu): our session
+// is XDG_CURRENT_DESKTOP=family-mruby, and KDE writes its defaults to
+// /usr/share/applications/kde-mimeapps.list; compositor.mime_desktops =
+// ["kde"] reads it after ours and before mimeapps.list. A default that is not
+// installed (okularApplication_pdf.desktop) is passed over to the next.
+static void test_desktop_defaults(void)
+{
+    char path[600], cfg[600], saved[600];
+    snprintf(saved, sizeof(saved), "%s", getenv("XDG_CONFIG_HOME"));
+    snprintf(cfg, sizeof(cfg), "%s/config-kde", g_root);
+    mkdir(cfg, 0700);
+    setenv("XDG_CONFIG_HOME", cfg, 1);   // no user lists: the system's decide
+    write_file("sys2/mime/globs2", "50:image/png:*.png\n", 0644);
+    write_file("sys1/applications/kde-mimeapps.list",
+               "[Default Applications]\nimage/png=org.kde.gwenview.desktop\n"
+               "application/pdf=okularApplication_pdf.desktop\n",
+               0644);
+    write_file("sys1/applications/mimeapps.list",
+               "[Default Applications]\nimage/png=browser.desktop\n", 0644);
+    write_file("sys2/applications/gnome-mimeapps.list",
+               "[Default Applications]\nimage/png=eog.desktop\n", 0644);
+    write_file("home/applications/browser.desktop",
+               "[Desktop Entry]\nType=Application\nName=A Browser\nExec=fakeopen --browser %u\n"
+               "MimeType=application/pdf;image/png;\n",
+               0644);
+    write_file("home/applications/org.kde.gwenview.desktop",
+               "[Desktop Entry]\nType=Application\nName=Gwenview\nExec=fakeopen --gwenview %u\n"
+               "MimeType=image/png;\n",
+               0644);
+    write_file("home/applications/eog.desktop",
+               "[Desktop Entry]\nType=Application\nName=Eye\nExec=fakeopen --eog %u\nMimeType=image/png;\n",
+               0644);
+    write_file("docs/pic.png", "png", 0644);
+
+    linux_mime_lists_t *l = linux_mime_lists_load("family-mruby:kde");
+    int n = linux_mime_lists_count(l);
+    CHECK(n >= 2 && strstr(linux_mime_lists_path(l, 0), "/sys1/applications/kde-mimeapps.list") != NULL &&
+              strstr(linux_mime_lists_path(l, 1), "/sys1/applications/mimeapps.list") != NULL,
+          "kde-mimeapps.list before mimeapps.list in its directory (%d files)", n);
+    linux_mime_lists_free(l);
+    l = linux_mime_lists_load("family-mruby");
+    n = linux_mime_lists_count(l);
+    bool kde = false;
+    for (int i = 0; i < n; i++) kde |= strstr(linux_mime_lists_path(l, i), "kde-mimeapps") != NULL;
+    CHECK(!kde, "without the machine's desktop, kde-mimeapps.list is not read (the VM's symptom)");
+    linux_mime_lists_free(l);
+    l = linux_mime_lists_load("family-mruby:gnome");
+    n = linux_mime_lists_count(l);
+    CHECK(n >= 1 && strstr(linux_mime_lists_path(l, n - 1), "gnome-mimeapps.list") != NULL,
+          "GNOME's list by the setting alone (%d files)", n);
+    linux_mime_lists_free(l);
+
+    list(LINUX_APPS_RESCAN, "en");
+    CHECK(linux_apps_wait_scan(5000), "the entries read again");
+    CHECK(handlers("docs/pic.png") > 0 && strncmp(g_handlers, "type\timage/png\nGwenview\torg.kde.gwenview.desktop\n",
+                                                  strlen("type\timage/png\nGwenview\torg.kde.gwenview.desktop\n")) == 0,
+          "pic.png: KDE's default, Gwenview, before mimeapps.list's browser:\n%s", g_handlers);
+    CHECK(handlers("docs/a.pdf") > 0 && strstr(g_handlers, "okular") == NULL &&
+              strncmp(g_handlers, "type\tapplication/pdf\nA Browser\tbrowser.desktop\n",
+                      strlen("type\tapplication/pdf\nA Browser\tbrowser.desktop\n")) == 0,
+          "a.pdf: KDE's default is not installed, the next candidate opens it:\n%s", g_handlers);
+    char name[64], why[256];
+    snprintf(path, sizeof(path), "%s/docs/pic.png", g_root);
+    CHECK(linux_apps_open("", path, name, sizeof(name), why, sizeof(why)) == 0 && strcmp(name, "Gwenview") == 0,
+          "pic.png by default: %s (%s)", name, why);
+    char want[700];
+    snprintf(want, sizeof(want), "--gwenview %s\n", path);
+    const char *got = opened();
+    CHECK(strcmp(got, want) == 0, "Gwenview got the path: %s", got);
+    linux_apps_end_all(500);
+    setenv("XDG_CONFIG_HOME", saved, 1);
+}
+
 int main(void)
 {
     snprintf(g_root, sizeof(g_root), "/tmp/fmrb-apps-test-%d", (int)getpid());
@@ -718,6 +793,7 @@ int main(void)
     test_themes();
     test_plasma_qt();
     test_open();
+    test_desktop_defaults();
 
     char cmd[160];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", g_root);

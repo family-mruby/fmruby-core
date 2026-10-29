@@ -56,3 +56,4 @@ root = "auto"
 autostart = ""               # e.g. "foot": started with WAYLAND_DISPLAY set to this compositor
 ime = "fcitx5"               # the IME started with it (L12b); not installed: the kana input stays
 locker = "swaylock"          # the screen lock program (L13, ext-session-lock); not installed: no Lock entry
+mime_desktops = ["kde"]      # whose <name>-mimeapps.list give the default applications after ours (L15); GNOME: ["gnome"]

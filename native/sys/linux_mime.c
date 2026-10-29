@@ -359,28 +359,40 @@ static bool add_list_file(linux_mime_lists_t *l, const char *path, bool defaults
     return true;
 }
 
-linux_mime_lists_t *linux_mime_lists_load(const char *desktop)
+#define LIST_DESKTOPS_MAX 4
+
+linux_mime_lists_t *linux_mime_lists_load(const char *desktops)
 {
     linux_mime_lists_t *l = calloc(1, sizeof(*l));
     if (l == NULL) return NULL;
-    char own[96] = "";
-    if (desktop != NULL && desktop[0] != '\0') {
-        snprintf(own, sizeof(own), "%s-mimeapps.list", desktop);
-        for (char *p = own; *p; p++) *p = (char)tolower((unsigned char)*p);
+    /* <name>-mimeapps.list for each name, in order, lower case (the spec). */
+    char own[LIST_DESKTOPS_MAX][96];
+    int no = 0;
+    const char *d = desktops;
+    while (d != NULL && *d && no < LIST_DESKTOPS_MAX) {
+        const char *end = strchr(d, ':');
+        size_t len = end ? (size_t)(end - d) : strlen(d);
+        if (len > 0 && len < 64) {
+            snprintf(own[no], sizeof(own[no]), "%.*s-mimeapps.list", (int)len, d);
+            for (char *p = own[no]; *p; p++) *p = (char)tolower((unsigned char)*p);
+            no++;
+        }
+        if (end == NULL) break;
+        d = end + 1;
     }
     char cfg[DIRS_MAX][512], data[DIRS_MAX][512];
     int nc = config_dirs(cfg, DIRS_MAX);
     int nd = linux_xdg_data_dirs(data, DIRS_MAX);
     char p[700];
     for (int i = 0; i < nc; i++) {
-        if (own[0]) {
-            if (pathf(p, sizeof(p), "%s/%s", cfg[i], own)) add_list_file(l, p, false);
+        for (int k = 0; k < no; k++) {
+            if (pathf(p, sizeof(p), "%s/%s", cfg[i], own[k])) add_list_file(l, p, false);
         }
         if (pathf(p, sizeof(p), "%s/mimeapps.list", cfg[i])) add_list_file(l, p, false);
     }
     for (int i = 0; i < nd; i++) {
-        if (own[0]) {
-            if (pathf(p, sizeof(p), "%s/applications/%s", data[i], own)) add_list_file(l, p, false);
+        for (int k = 0; k < no; k++) {
+            if (pathf(p, sizeof(p), "%s/applications/%s", data[i], own[k])) add_list_file(l, p, false);
         }
         if (pathf(p, sizeof(p), "%s/applications/mimeapps.list", data[i])) add_list_file(l, p, false);
     }

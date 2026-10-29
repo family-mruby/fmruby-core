@@ -98,6 +98,14 @@
  *                             started through /bin/sh -c by the power menu's
  *                             Lock and logind's Lock / PrepareForSleep. Not
  *                             installed: no Lock entry
+ *              mime_desktops  wlroots only (L15): the desktops whose
+ *                             <name>-mimeapps.list are read after our own
+ *                             (family-mruby-mimeapps.list) and before
+ *                             mimeapps.list in each directory, to open a
+ *                             file in its default Linux application: the
+ *                             machine's own desktop's defaults (["kde"]:
+ *                             Kubuntu's kde-mimeapps.list; ["gnome"] for
+ *                             GNOME). XDG_CURRENT_DESKTOP stays ours. [] none
  *
  * Pure code over a struct (tomlc99 and libc only), so the host tests load
  * the shipped definitions (test/native/). Which of the named backends this
@@ -172,6 +180,7 @@ typedef struct {
         char autostart[NATIVE_MACHINE_STR];
         char ime[NATIVE_MACHINE_STR];    /* the IME program, "" none */
         char locker[NATIVE_MACHINE_STR]; /* the screen lock program, "" none (L13) */
+        char mime_desktops[NATIVE_MACHINE_STR]; /* "kde,gnome": more <name>-mimeapps.list (L15) */
     } compositor;
 } native_machine_t;
 

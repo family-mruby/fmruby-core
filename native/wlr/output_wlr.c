@@ -3180,7 +3180,10 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
      * file namespace shows at LINUX_ICON_DIR. */
     char icon_dir[512];
     if (fmrb_hal_file_resolve_path(LINUX_ICON_DIR, icon_dir, sizeof(icon_dir)) == FMRB_OK) {
-        linux_apps_config_t ac = { .icon_dir = icon_dir, .icon_fm_dir = LINUX_ICON_DIR, .desktop_name = DESKTOP_NAME };
+        linux_apps_config_t ac = { .icon_dir = icon_dir,
+                                   .icon_fm_dir = LINUX_ICON_DIR,
+                                   .desktop_name = DESKTOP_NAME,
+                                   .mime_desktops = m->compositor.mime_desktops };
         linux_apps_start(&ac);
     } else {
         fprintf(stderr, "native: compositor: no place for the Linux icons (%s); no Linux apps\n", LINUX_ICON_DIR);

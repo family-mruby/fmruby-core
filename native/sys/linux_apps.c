@@ -97,6 +97,7 @@ static struct {
     char icon_dir[512];
     char icon_fm_dir[256];
     char desktop[64];
+    char lists[256];    /* the desktops of the mimeapps.list files, "ours:kde" */
     launch_t q[QUEUE_MAX];
     int qn;
     char term[512];     /* the terminal for Terminal=true ("" none), as last read */
@@ -1482,6 +1483,13 @@ void linux_apps_start(const linux_apps_config_t *cfg)
     snprintf(s.icon_dir, sizeof(s.icon_dir), "%s", cfg->icon_dir);
     snprintf(s.icon_fm_dir, sizeof(s.icon_fm_dir), "%s", cfg->icon_fm_dir);
     snprintf(s.desktop, sizeof(s.desktop), "%s", cfg->desktop_name ? cfg->desktop_name : "");
+    /* Ours first, then the machine's own desktop's (comma- or colon-separated
+     * in the config, colon-separated like XDG_CURRENT_DESKTOP here). */
+    snprintf(s.lists, sizeof(s.lists), "%s%s%s", s.desktop,
+             (cfg->mime_desktops && cfg->mime_desktops[0]) ? ":" : "", cfg->mime_desktops ? cfg->mime_desktops : "");
+    for (char *p = s.lists; *p; p++) {
+        if (*p == ',') *p = ':';
+    }
     if (s.want_lang[0] == '\0') snprintf(s.want_lang, sizeof(s.want_lang), "en");
     pthread_mutex_unlock(&s.lock);
 
@@ -1709,9 +1717,9 @@ static int candidates_locked(const open_query_t *q, int *out, int max)
 int32_t linux_apps_handlers(const char *path, char *buf, size_t cap)
 {
     if (!linux_apps_available() || path == NULL) return -1;
-    char desktop[64];
+    char desktop[sizeof(s.lists)];
     pthread_mutex_lock(&s.lock);
-    snprintf(desktop, sizeof(desktop), "%s", s.desktop);
+    snprintf(desktop, sizeof(desktop), "%s", s.lists);
     pthread_mutex_unlock(&s.lock);
     open_query_t q;
     query_load(&q, path, desktop);
@@ -1809,9 +1817,9 @@ int linux_apps_open(const char *id, const char *path, char *name, size_t name_ca
         snprintf(why, why_cap, "%s is not a file", path ? path : "(none)");
         return -1;
     }
-    char desktop[64];
+    char desktop[sizeof(s.lists)];
     pthread_mutex_lock(&s.lock);
-    snprintf(desktop, sizeof(desktop), "%s", s.desktop);
+    snprintf(desktop, sizeof(desktop), "%s", s.lists);
     pthread_mutex_unlock(&s.lock);
     bool by_default = id == NULL || id[0] == '\0';
     open_query_t q;

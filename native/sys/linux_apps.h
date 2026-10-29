@@ -60,6 +60,8 @@ typedef struct {
     const char *icon_dir;       /* host directory for the BMPs (made if missing) */
     const char *icon_fm_dir;    /* the same directory as a Family mruby path */
     const char *desktop_name;   /* our name for OnlyShowIn / NotShowIn */
+    const char *mime_desktops;  /* more desktops whose <name>-mimeapps.list are
+                                 * read after ours ("kde,gnome"), NULL none (L15) */
 } linux_apps_config_t;
 
 /* list() modes. */
