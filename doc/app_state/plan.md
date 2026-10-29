@@ -1,6 +1,6 @@
 # アプリの状態を覚える共通の口
 
-> 状態: 計画済 | 更新: 2026-10-29 | アプリが小さな状態 (最後に開いたフォルダなど) を覚える共通の API。最初の利用者は File Manager。置き場所はどの端末でも /tmp/<アプリ>.state.toml
+> 状態: 完了 | 更新: 2026-10-29 | S1 検収済 (20c8bae6)。 アプリが小さな状態 (最後に開いたフォルダなど) を覚える共通の API。最初の利用者は File Manager。置き場所はどの端末でも /tmp/<アプリ>.state.toml
 
 ## 目的
 
@@ -41,3 +41,18 @@
 | 段 | 中身 |
 |---|---|
 | S1 | 共通の API (mruby と Spinel)、置き場所の切り分け、File Manager の最後のフォルダ |
+
+## 結果 (S1、2026-10-29 検収済)
+
+- mruby と Spinel の基底に `app_state(who)`・`save_app_state(values, who)`・
+  `app_state_path(who)` (= `/tmp/<who>.state.toml`)。値は文字列・整数・真偽の平らな
+  表。基底にはメソッドだけ (ivar・定数なし)。閉じるときの保存はアプリが呼ぶ。
+- ファイルはアプリが `save_app_state` を呼び、値が変わったときだけできる。
+- File Manager は固定の名前 `file_manager` で、マウスと keys の両方のデスクトップ。
+  覚えたものが無い・開けないときは "/"。
+- 残る期間: 実機は電源・再起動まで、sim は core の再起動まで、ネイティブ版は
+  プログラムを終えるまで、ブラウザ版は再読み込みまで。
+- 回帰の場面 `fmgr_remember` (retro・modern・native) と `keys_fmgr_remember` を足した。
+- 残件: Spinel のデスクトップ (`FMRB_APP_ENGINE_DESKTOP=spinel`) はこの変更の前から
+  `spinel:gen` が 9 件の NoMethodError で通らない (battery_level・power・
+  linux_settings ほか)。他のアプリをこの API へ移すかは別に決める。
