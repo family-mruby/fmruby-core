@@ -110,6 +110,7 @@ const char *fmrb_spx_app_init(void)
     buf[34] = 1;  /* platform: esp32 */
 #endif
     buf[35] = ctx->headless ? 1 : 0;
+    buf[50] = ctx->resizable ? 1 : 0;
     put_u16(buf + 36, ctx->window_width);
     put_u16(buf + 38, ctx->window_height);
     put_u16(buf + 40, ctx->window_pos_x);

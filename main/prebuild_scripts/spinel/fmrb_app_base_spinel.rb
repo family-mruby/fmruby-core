@@ -1084,6 +1084,8 @@ class FmrbApp
   TRANSPARENT_COLOR = 0x01
   SCROLLBAR_W = 10
   SCROLLBAR_BTN_H = 10
+  # The resize mark's legs (same as the mruby base, fmrb-app.rb).
+  RESIZE_MARK = 8
 
   # :gfx matches the mruby base: apps may write gfx.draw_text as well as
   # @gfx.draw_text, and the method form is what sig/ describes.
@@ -1098,6 +1100,9 @@ class FmrbApp
   def fullscreen?; @_fullscreen; end
   def rounded_corners?; @_rounded_corners; end
   def closable?; @_closable; end
+  # Whether the kernel resizes this window from its bottom-right corner; the
+  # frame shows the mark. Same as the mruby base.
+  def resizable?; @_resizable; end
   # User area readers, same as the mruby base (FmrbUI needs them).
   attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
   # Whether a click on the close-button area may stop the app. System apps
@@ -1122,10 +1127,11 @@ class FmrbApp
     @_timers = []
     @_attached_uis = []
 
-    buf = FmrbSpxApp.fmrb_spx_app_init   # 50-byte snapshot; creates canvas(es)
+    buf = FmrbSpxApp.fmrb_spx_app_init   # 52-byte snapshot; creates canvas(es)
     @_name = SpxBytes.read_name(buf, 0, 32)
     @_fullscreen = buf.getbyte(32) != 0
     @_rounded_corners = buf.getbyte(33) != 0
+    @_resizable = buf.getbyte(50) != 0
     @platform = buf.getbyte(34) == 1 ? :esp32 : :linux
     @window_width = SpxBytes.u16(buf, 36)
     @window_height = SpxBytes.u16(buf, 38)
@@ -1292,6 +1298,16 @@ class FmrbApp
   # cached GfxBlock program here, but Spinel cannot store a proc that captures
   # outer locals ("later slice"), so the base class draws frame/scrollbar
   # inline instead. Functionally identical; re-issues all ops each redraw.
+  # The resize mark of a w x h window: a right triangle filling the
+  # bottom-right corner inside the border, in the title bar's colour. Same as
+  # the mruby base.
+  def draw_resize_mark(w, h)
+    x = w - 2
+    y = h - 2
+    m = RESIZE_MARK - 1
+    @gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
+  end
+
   def _paint_frame
     return unless @gfx
     g = @gfx
@@ -1313,6 +1329,8 @@ class FmrbApp
     g.draw_text(15, 2, @_name, on_bar)
     # Close button + rounded border.
     g.fill_circle(w - 6, 5, 3, on_bar)
+    # The resize mark, under the border.
+    draw_resize_mark(w, h) if @_resizable
     g.draw_round_rect(0, 0, w, h, CORNER_R, FmrbConst::THEME_BORDER)
     # Re-stamp the outer corner pixels with the canvas color key so the rounded
     # corners composite as transparent again after clears/resizes.

@@ -99,7 +99,7 @@ end
 
 module FmrbSpxApp
   # --- instance lifecycle ---
-  ffi_func :fmrb_spx_app_init, [], :binstr           # 50B ctx snapshot (creates canvas)
+  ffi_func :fmrb_spx_app_init, [], :binstr           # 52B ctx snapshot (creates canvas)
   # poll one message; payload as :binstr, type/src via out-params
   ffi_func :fmrb_spx_app_recv_message, [:int, :ptr, :ptr], :binstr
   ffi_func :fmrb_spx_app_cleanup, [], :int

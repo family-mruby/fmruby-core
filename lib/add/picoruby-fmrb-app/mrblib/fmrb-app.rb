@@ -17,6 +17,9 @@ class FmrbApp
   TRANSPARENT_COLOR = 0x01
   SCROLLBAR_W = 10
   SCROLLBAR_BTN_H = 10
+  # The resize mark: a right triangle in the bottom-right corner of a window
+  # the kernel resizes from there (its 10x10 corner), legs this long.
+  RESIZE_MARK = 8
 
   # :gfx is here so apps can write gfx.draw_text as well as @gfx.draw_text --
   # the editor's completion answers both spellings, and the method form is the
@@ -39,6 +42,9 @@ class FmrbApp
   def fullscreen?; @_fullscreen; end
   def rounded_corners?; @_rounded_corners; end
   def closable?; @_closable; end
+  # Whether the kernel resizes this window from its bottom-right corner (the
+  # app's .app.toml resizable, or a built-in's); the frame shows the mark.
+  def resizable?; @_resizable; end
   # User area (inside the window frame, below the title bar). Exposed so
   # helper libraries such as FmrbUI can place widgets in window-local
   # coordinates without reaching into the app's instance variables.
@@ -129,6 +135,8 @@ class FmrbApp
       @gfx.set_font(:default)
       @gfx.set_text_size(1)
     end
+    # The resize mark goes under the frame's border, which is drawn next.
+    draw_resize_mark(@window_width, @window_height) if @_resizable && @gfx
     if @_frame_block
       @_frame_block.draw(w: @window_width, h: @window_height)
     end
@@ -148,6 +156,18 @@ class FmrbApp
     _apply_rounded_corner_regions
   end
 
+
+  # The resize mark of a w x h window: a right triangle filling the
+  # bottom-right corner inside the border, in the title bar's colour (the
+  # theme's, never the key 0x01). draw_window_frame draws it for a resizable
+  # window; a window that draws its own frame (the Linux window's stand-in)
+  # calls it before the border.
+  def draw_resize_mark(w, h)
+    x = w - 2
+    y = h - 2
+    m = RESIZE_MARK - 1
+    @gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
+  end
 
   # Rows one wheel event asks for, signed: positive scrolls towards the start
   # of a list, which is the wheel pushed away from the user. nil when the

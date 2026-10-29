@@ -6,7 +6,8 @@
 # window, and the compositor puts the Linux window where its content is.
 #
 # It draws only the Family mruby frame -- title bar (with the Linux window's
-# title), border, close button, resize grip -- and fills the content with
+# title), border, close button, the resize mark every resizable window has
+# (FmrbApp#draw_resize_mark) -- and fills the content with
 # RGB332 0x01, the colour nothing else shows (it is the transparent key of
 # every colour-keyed canvas). The compositor draws the Linux window under the
 # picture and lets it through wherever those pixels are still on screen, so a
@@ -24,7 +25,6 @@
 
 class LinuxWindowApp < FmrbApp
   HOLE = 0x01
-  GRIP = 9          # the resize grip, inside the content's bottom-right corner
   POLL_MS = 100
   WAIT_POLLS = 50   # 5 s for the bridge to know this stand-in
 
@@ -100,14 +100,12 @@ class LinuxWindowApp < FmrbApp
     t = FmrbI18n.truncate_to(t, room) if @gfx.text_width(t) > room
     @gfx.draw_text(15, 2, t, on_bar)
     @gfx.fill_circle(w - CLOSE_BTN_CX_OFFSET, CLOSE_BTN_CY, CLOSE_BTN_R, on_bar)
+    # The resize mark, as on every resizable window. The window manager's
+    # corner (the bottom-right 10x10) stays Family mruby's for the pointer
+    # even where the hole beside the mark shows the Linux window
+    # (native/wlr/comp_route.c).
+    draw_resize_mark(w, h)
     @gfx.draw_round_rect(0, 0, w, h, CORNER_R, border)
-    # The resize grip: the window manager's corner (the bottom-right 10x10)
-    # stays Family mruby's, so it is drawn rather than left a hole.
-    gx = w - 1 - GRIP
-    gy = h - 1 - GRIP
-    @gfx.fill_rect(gx, gy, GRIP, GRIP, bar)
-    @gfx.draw_line(gx + 2, gy + GRIP - 2, gx + GRIP - 2, gy + 2, on_bar)
-    @gfx.draw_line(gx + 5, gy + GRIP - 2, gx + GRIP - 2, gy + 5, on_bar)
     clear_corners(w, h)
     @gfx.present
   end

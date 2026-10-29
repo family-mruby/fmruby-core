@@ -133,8 +133,16 @@ static void test_hits(void)
     h = comp_route_at(&r, 301, 150);
     CHECK(h.target == 1 && h.x == 0 && h.y == 0 && h.fx == 100 && h.fy == 50, "content corner -> 1 at %d,%d",
           h.x, h.y);
+    // The bottom-right 9x9 of the content is the window manager's resize
+    // corner (L15): a hole there (beside the resize mark) is Family mruby's.
     h = comp_route_at(&r, 900, 449);
-    CHECK(h.target == 1 && h.x == 599 && h.y == 299, "far corner -> 1 at %d,%d", h.x, h.y);
+    CHECK(h.target == COMP_FMRB && h.in_picture && h.x == 299 && h.y == 149, "far corner (the resize corner) -> Family mruby at %d,%d", h.x, h.y);
+    h = comp_route_at(&r, 873, 449);
+    CHECK(h.target == 1 && h.x == 572 && h.y == 299, "the bottom row left of the corner -> 1 at %d,%d", h.x, h.y);
+    h = comp_route_at(&r, 900, 422);
+    CHECK(h.target == 1 && h.x == 599 && h.y == 272, "the right column above the corner -> 1 at %d,%d", h.x, h.y);
+    h = comp_route_at(&r, 874, 425);
+    CHECK(h.target == COMP_FMRB, "the corner's top-left pixel -> Family mruby (%d)", h.target);
     h = comp_route_at(&r, 901, 449);
     CHECK(h.target == COMP_FMRB && h.in_picture, "just right of it -> the picture");
     // Output pixels inside one frame pixel stay distinct for the window.

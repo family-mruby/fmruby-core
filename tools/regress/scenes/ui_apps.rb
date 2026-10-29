@@ -53,7 +53,7 @@ module UiScenes
 end
 
 Regress.app "logviewer", "main/prebuild_scripts/default_app/logviewer.app.rb" do
-  window w: 300, h: 200, name: "LogViewer"
+  window w: 300, h: 200, name: "LogViewer", resizable: true   # fmrb_app_spawner.c
 
   scene "tail" do |s|
     s.env.extra[:log] = UiScenes.log_lines
@@ -106,7 +106,7 @@ Regress.app "monitor", "main/prebuild_scripts/default_app/monitor.app.rb" do
 end
 
 Regress.app "appstore", "main/prebuild_scripts/default_app/appstore.app.rb" do
-  window w: 280, h: 190, name: "App Store"
+  window w: 280, h: 190, name: "App Store", resizable: true   # fmrb_app_spawner.c
 
   def self.web(s)
     base = "https://raw.githubusercontent.com/family-mruby/family-mruby-apps/main/"

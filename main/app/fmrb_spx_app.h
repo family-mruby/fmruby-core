@@ -35,7 +35,7 @@ extern "C" {
  *
  * Reproduces FmrbApp#_init: creates the main window canvas (and, for the
  * desktop, the background canvas) and stores their ids in the task context.
- * Returns a fixed 50-byte :binstr record the Ruby base class reads to set its
+ * Returns a fixed 52-byte :binstr record the Ruby base class reads to set its
  * instance variables:
  *
  *   off  size  field
@@ -52,8 +52,10 @@ extern "C" {
  *   45   1     has_bg        (1 if a background canvas was created)
  *   46   2     canvas_id     (u16 LE; valid only if has_canvas)
  *   48   2     bg_canvas_id  (u16 LE; valid only if has_bg)
+ *   50   1     resizable   (bool: the kernel resizes it from its corner)
+ *   51   1     (reserved, 0)
  */
-#define FMRB_SPX_APP_INIT_RECORD_SIZE 50
+#define FMRB_SPX_APP_INIT_RECORD_SIZE 52
 const char *fmrb_spx_app_init(void);
 
 /**

@@ -207,6 +207,7 @@ class FmrbApp
     @_name = w[:name]
     @_fullscreen = w[:fullscreen]
     @_rounded_corners = w[:rounded]
+    @_resizable = w[:resizable]
     @platform = FmrbConst::PLATFORM
     @window_width = w[:w]
     @window_height = w[:h]

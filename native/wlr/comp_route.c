@@ -269,6 +269,18 @@ void comp_route_set_cursor(comp_route_t *r, bool on, int fx, int fy)
     r->cur_fy = fy;
 }
 
+/* The window manager's corner: the stand-in's bottom-right 10x10 (the
+ * kernel's resize corner, input_router.rb) is the last 9 columns and rows of
+ * the content (the border is the 10th). The resize mark covers half of it;
+ * the hole beside the mark shows the Linux window, but the pointer there is
+ * Family mruby's, as on every resizable window (L15). */
+#define GRIP_PX 9
+
+static bool in_grip(const comp_window_t *w, int fx, int fy)
+{
+    return fx >= w->fx + w->fw - GRIP_PX && fy >= w->fy + w->fh - GRIP_PX;
+}
+
 static comp_hit_t window_hit(const comp_window_t *w, int x, int y, int fx, int fy)
 {
     comp_hit_t hit = { .target = w->id };
@@ -291,7 +303,7 @@ comp_hit_t comp_route_at(const comp_route_t *r, int x, int y)
     if (!hit.in_picture) return hit;
     for (int i = r->n - 1; i >= 0; i--) {
         const comp_window_t *w = &r->win[i];
-        if (comp_route_hole(r, w->id, fx, fy)) return window_hit(w, x, y, fx, fy);
+        if (comp_route_hole(r, w->id, fx, fy)) return in_grip(w, fx, fy) ? hit : window_hit(w, x, y, fx, fy);
     }
     /* The arrow's tip: the pixel is the arrow's own, not the frame's. The
      * arrow reaches right and down from its tip, so the pixels just left of

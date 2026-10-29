@@ -182,6 +182,12 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_rounded_corners"),
                (!ctx->fullscreen && ctx->rounded_corners) ? mrb_true_value() : mrb_false_value());
 
+    // Set @_resizable: the kernel resizes this window from its bottom-right
+    // corner (the same flag its window list carries); the frame draws the
+    // resize mark there while the app is windowed.
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_resizable"),
+               ctx->resizable ? mrb_true_value() : mrb_false_value());
+
     // Set @platform symbol (:linux or :esp32)
 #ifdef CONFIG_IDF_TARGET_LINUX
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),

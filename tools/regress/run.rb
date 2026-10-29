@@ -143,10 +143,11 @@ module Regress
               headless: mode == "background", hires: c["fullscreen_hires"] == true || c["fullscreen_hires"].to_i != 0,
               w: c["default_window_width"] || 100, h: c["default_window_height"] || 100,
               x: c["default_window_pos_x"] || 50, y: c["default_window_pos_y"] || 50,
-              rounded: c.fetch("rounded_corners", 1).to_i != 0 }
+              rounded: c.fetch("rounded_corners", 1).to_i != 0,
+              resizable: c["resizable"] == true || c["resizable"].to_i != 0 }
       end
       w ||= { name: File.basename(a.file.to_s).split(".")[0], w: t.app[0], h: t.app[1] }
-      w = { fullscreen: false, headless: false, hires: false, x: 50, y: 50, rounded: true }.merge(w)
+      w = { fullscreen: false, headless: false, hires: false, x: 50, y: 50, rounded: true, resizable: false }.merge(w)
       w[:win_w] = w[:w]
       w[:win_h] = w[:h]
       if w[:fullscreen]
