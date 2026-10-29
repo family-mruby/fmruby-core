@@ -6,6 +6,9 @@
 # every board (a board whose storage leaves an app out just shows one less).
 # "desktop/launcher" and "desktop/file_manager" are not apps: they open the
 # launcher (the menu's Launcher) and the File Manager.
+# "linux:<id>" is a Linux PC's application by its desktop file id, shown
+# only where it is installed (the Linux PC session; nothing elsewhere);
+# "linux:a|b" shows the first of a and b installed (a .deb and a snap).
 apps = [
   "desktop/launcher",
   "default/editor",
@@ -15,4 +18,7 @@ apps = [
   "/app/basic/basic.app.bas",
   "/app/game/breakout/breakout.app.py",
   "/app/tool/nsf_player.app.rb",
+  "linux:org.kde.konsole",
+  "linux:firefox|firefox_firefox|org.mozilla.firefox",
+  "linux:google-chrome|com.google.Chrome",
 ]

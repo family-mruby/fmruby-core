@@ -25,6 +25,17 @@
 # opens (or D with nothing selected); the File Manager's only by editing the
 # file.
 #
+# Linux applications (doc/linux_native L15): an entry "linux:<id>" is the
+# PC's application with that desktop file id, started as the launcher's
+# "Linux" group starts it, with the icon the group shows (Breeze's, made by
+# native/sys/linux_apps.c). "linux:a|b" names alternatives (the same program
+# packaged twice: firefox, or the snap's firefox_firefox): the first one
+# installed is shown. One that is not installed is left out; on every other
+# machine (the devices, the simulation, the browser) "linux:" entries are
+# left out silently. The PC's list is read on a thread of its own, so the
+# entries wait for it: on_update asks again until it is ready, then the
+# icons are resolved once more and the wallpaper repainted.
+#
 # Drawing: the icons are stamped onto the background canvas with draw_tile
 # from the launcher's icon SpriteImages (the same bitmaps, shared by icon
 # file, so no extra graphics-side memory). They are drawn in draw_background,
@@ -66,6 +77,9 @@ module DesktopIconsMixin
   DI_NL    = "\n"
   DI_SLASH = "/"
   DI_DOT   = "."
+  DI_ALT   = "|"
+  DI_TAB   = "\t"
+  DI_DESKTOP = ".desktop"
 
   # ---- Which apps ----
 
@@ -86,7 +100,17 @@ module DesktopIconsMixin
     @dicon_selected = -1
     @dicon_last_idx = -1
     @dicon_last_time = 0
+    @dicon_linux_lines = nil
+    @dicon_linux_wait = false
     @dicon_paths.each do |path|
+      if path.start_with?(LauncherMixin::LNX_PREFIX)
+        entry = desktop_linux_entry(path)
+        if entry
+          @dicon_items << { app: path, label: entry[:label], icon_file: entry[:icon_file],
+                            icon_char: "L", lnx: entry[:lnx] }
+        end
+        next
+      end
       entry = desktop_icon_entry(path)
       if entry
         @dicon_items << { app: path, label: entry[:label],
@@ -95,6 +119,7 @@ module DesktopIconsMixin
         @dicon_missing = true
       end
     end
+    @dicon_linux_lines = nil
     layout_desktop_icons
     ensure_desktop_icon_images
     nil
@@ -248,6 +273,60 @@ module DesktopIconsMixin
     parse_app_toml(toml, dir, [name])
   end
 
+  # The PC's application a "linux:" entry names (the first of its
+  # alternatives installed), or nil: none installed, not a PC (the list
+  # answers ""), or the list still being read (@dicon_linux_wait, see
+  # tick_desktop_icons_linux).
+  def desktop_linux_entry(path)
+    lines = @dicon_linux_lines
+    if lines.nil?
+      text = FmrbApp.linux_apps(LauncherMixin::LNX_MODE_LIST, FmrbI18n.lang)
+      lines = text.empty? ? [] : text.split(DI_NL)
+      @dicon_linux_lines = lines
+    end
+    return nil if lines.empty?
+    if lines[0].to_s != LauncherMixin::LNX_READY
+      @dicon_linux_wait = true
+      return nil
+    end
+    pre = LauncherMixin::LNX_PREFIX.length
+    alts = path[pre, path.length - pre].to_s.split(DI_ALT)
+    a = 0
+    while a < alts.size
+      want = alts[a].strip
+      a += 1
+      next if want.empty?
+      with = want.end_with?(DI_DESKTOP) ? want : "#{want}#{DI_DESKTOP}"
+      i = 1
+      n = lines.size
+      while i < n
+        line = lines[i]
+        i += 1
+        next unless line.index(want)
+        f = line.split(DI_TAB)
+        next unless f[0] && f[1]
+        next unless f[1] == want || f[1] == with
+        icon = f[2]
+        icon = LauncherMixin::LNX_APP_ICON if icon.nil? || icon.empty?
+        return { label: f[0], icon_file: icon, lnx: f[1] }
+      end
+    end
+    nil
+  end
+
+  # From on_update: the PC's list was still being read when the icons were
+  # resolved; once it is ready, resolve them again and repaint.
+  def tick_desktop_icons_linux
+    return nil unless @dicon_linux_wait
+    head = FmrbApp.linux_apps(LauncherMixin::LNX_MODE_HEADER, FmrbI18n.lang)
+    return nil unless head.start_with?(LauncherMixin::LNX_READY)
+    resolve_desktop_icons
+    return nil if @dicon_linux_wait
+    Log.info("Desktop icons: the Linux applications resolved, #{@dicon_items.size}/#{@dicon_paths.size} shown")
+    draw_background
+    nil
+  end
+
   # Column by column from the top left; a column holds as many cells as the
   # screen is tall. Cells that would run off the right half are dropped.
   def layout_desktop_icons
@@ -380,10 +459,18 @@ module DesktopIconsMixin
       @dicon_last_idx = -1
       select_desktop_icon(-1)
       app = @dicon_items[idx][:app]
+      lnx = @dicon_items[idx][:lnx]
       if app == DICON_LAUNCHER
         open_launcher
       elsif app == DICON_FILE_MANAGER
         open_file_manager
+      elsif lnx
+        # As the launcher's "Linux" group starts it.
+        if FmrbApp.linux_launch(lnx) == 0
+          Log.info("Desktop icons: Linux app #{lnx} asked to start")
+        else
+          Log.warn("Desktop icons: Linux app #{lnx} could not start")
+        end
       else
         spawn_app(app)
       end

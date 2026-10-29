@@ -1682,6 +1682,8 @@ class SystemDesktopApp < FmrbApp
     @counter += 1
     # The PC's notices (L14): nothing on the devices (setup_notices).
     tick_notices
+    # The PC's applications as desktop icons, once its list is read (L15).
+    tick_desktop_icons_linux
 
     # Update clock and taskbar every ~1 second (500ms * 2 = 1s). The spin
     # timeout below is also the idle window idle_gc steps in; it must clear

@@ -20,6 +20,12 @@
 #   1. the list: the launcher offers the Linux group; NoDisplay=true is not
 #      listed, Name[ja] is used, foot is listed with an icon (comp app); an
 #      entry whose icon only Breeze has, as an SVG, gets it (L9e)
+#   1c. the desktop's shortcuts to Linux applications (L15): the shipped
+#      desktop.toml names Konsole, Firefox (the .deb's or the snap's id) and
+#      Chrome; the run has stand-ins of the first two (the snap's Firefox
+#      id), no Chrome: their icons are on the desktop with the list's names
+#      and icons, Chrome's is not, and a double click starts the
+#      application as the launcher's group does
 #   2. from the launcher (keys: the group, then the entry): foot starts, its
 #      stand-in carries the list's name ("Foot", where foot's app id is
 #      "foot"), and what the scale leaves between foot and its frame is the
@@ -130,6 +136,9 @@ class AppsRun
     desktop("fmrb-eyes.desktop", "Name=Eyes\nName[ja]=\u76EE\u7389\nExec=xeyes\nIcon=xterm\nStartupWMClass=XEyes\n")
     desktop("fmrb-xtyper.desktop", "Name=X Typer\nExec=xterm -xrm XTerm*allowWindowOps:true -e /run/fmrb/xterm.sh\n")
     desktop("fmrb-sleeper.desktop", "Name=Sleeper\nExec=sleep 1000\n")
+    # Stand-ins for the desktop's shortcuts (L15): they start and end at once.
+    desktop("org.kde.konsole.desktop", "Name=Konsole\nExec=true\nIcon=utilities-terminal\n")
+    desktop("firefox_firefox.desktop", "Name=Firefox\nExec=true\nIcon=firefox\n")
     # An icon only the Breeze theme has, and only as SVG (L9e).
     desktop("fmrb-calc.desktop", "Name=Calc Icon\nExec=foot\nIcon=accessories-calculator\n")
     # The xterm resizes itself after a moment (12 rows, 50 columns: the
@@ -403,6 +412,40 @@ class AppsRun
            themes =~ /[1-9]\d* SVGs? converted/,
            "Icon=accessories-calculator (an SVG of Breeze's alone): #{calc[:icon]}, #{drawn} of 576 pixels drawn; " \
            "icon themes #{themes}")
+
+    # 1c. the desktop's shortcuts to Linux applications. The default set
+    #     (8 Family mruby entries, then Konsole, Firefox and Chrome) lays a
+    #     column of 8 at 640x400, so the two shown open the second column.
+    wait_for("the Linux shortcuts", 20) do
+      log_text.include?("Desktop icons: the Linux applications resolved") ||
+        log_text.match?(%r{Desktop icons: \d+/11 shown})
+    end
+    shown = log_text.scan(%r{Desktop icons: (?:the Linux applications resolved, )?(\d+)/(\d+) shown}).last
+    konsole = app("org.kde.konsole.desktop")
+    pic = shot(File.join(@out, "desktop_linux.png"))
+    cx = 4 + 68 + 4
+    # The name plates: the colour most common on the first icon's name row
+    # (the Launcher's), counted on the name rows of the second column's
+    # first two cells (Konsole, Firefox) and its third (no Chrome: the
+    # wallpaper).
+    row = ->(x0, y) { (x0...(x0 + 68)).map { |x| pic.pixel(x, y) } }
+    plate = row.call(4, 13 + 4 + 28 + 4).tally.max_by { |_, v| v }[0]
+    plates = [0, 1, 2].map { |k| row.call(cx, 13 + 4 + 44 * k + 28 + 4).count(plate) }
+    click(cx + 34, 13 + 4 + 14)
+    sleep 0.2
+    click(cx + 34, 13 + 4 + 14)
+    started = begin
+      wait_for("Konsole started", 10) { log_text.include?('linux apps: started "Konsole"') }
+    rescue StandardError
+      false
+    end
+    asked = log_text.include?("Desktop icons: Linux app org.kde.konsole.desktop asked to start")
+    result("the desktop's Linux shortcuts", shown == %w[10 11] && konsole[:icon].start_with?("/var/cache/linux/") &&
+           plates[0] > 20 && plates[1] > 20 && plates[2] < 5 && started && asked,
+           "#{shown&.join('/')} desktop icons shown (Konsole and Firefox, no Chrome); Konsole's icon #{konsole[:icon]}; " \
+           "name plate pixels in the second column #{plates.inspect}; a double click: asked #{asked}, started " \
+           "#{started ? true : false} (#{log_text[/linux apps: started "Konsole"[^\n]*/]})")
+    sleep 0.6
 
     # 2. foot from the launcher
     t_open = 3.times.map { |i| time_open_launcher("open#{i}") }.sort[1]
