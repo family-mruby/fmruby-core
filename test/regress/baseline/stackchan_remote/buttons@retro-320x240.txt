@@ -5,6 +5,7 @@
 sprite_clip 1 11 208 138
 composite_regions [0,0,0,0,4,4,1,206,0,206,0,4,4,1,0,146,0,146,4,4,1,206,146,206,146,4,4,1,4,0,4,0,202,4,0,4,146,4,146,202,4,0,0,4,0,4,210,142,0]
 fill_rect 1 11 208 138 #FF
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 {w:210,h:150}
 fill_round_rect 0 0 210 11 4 #C5
 fill_rect 0 4 210 7 #C5
@@ -64,11 +65,13 @@ text 20 139 "Dizzy" #FF bg=#03 defaultx1
 fill_rect 69 133 60 20 #03
 draw_rect 69 133 60 20 #60
 text 84 139 "Clear" #FF bg=#03 defaultx1
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 present
 == click 8,16
 fill_rect 1 11 208 138 #FF
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 text 5 37 "Emotion:" #60 defaultx1
@@ -112,6 +115,7 @@ text 20 139 "Dizzy" #FF bg=#03 defaultx1
 fill_rect 69 133 60 20 #03
 draw_rect 69 133 60 20 #60
 text 84 139 "Clear" #FF bg=#03 defaultx1
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -120,6 +124,7 @@ msg 1 {cmd:"publish",topic:"stackchan",data:{type:"talk",on:true}}
 == update 2/2
 == click 104,16
 fill_rect 1 11 208 138 #FF
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 text 5 37 "Emotion:" #60 defaultx1
@@ -163,6 +168,7 @@ text 20 139 "Dizzy" #FF bg=#03 defaultx1
 fill_rect 69 133 60 20 #03
 draw_rect 69 133 60 20 #60
 text 84 139 "Clear" #FF bg=#03 defaultx1
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -172,6 +178,7 @@ msg 1 {cmd:"publish",topic:"stackchan",data:{type:"mouth",level:71}}
 msg 1 {cmd:"publish",topic:"stackchan",data:{type:"mouth",level:87}}
 == click 72,50
 fill_rect 1 11 208 138 #FF
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 text 5 37 "Emotion:" #60 defaultx1
@@ -215,6 +222,7 @@ text 20 139 "Dizzy" #FF bg=#03 defaultx1
 fill_rect 69 133 60 20 #03
 draw_rect 69 133 60 20 #60
 text 84 139 "Clear" #FF bg=#03 defaultx1
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -225,6 +233,7 @@ msg 1 {cmd:"publish",topic:"stackchan",data:{type:"mouth",level:94}}
 msg 1 {cmd:"publish",topic:"stackchan",data:{type:"mouth",level:90}}
 == click 72,112
 fill_rect 1 11 208 138 #FF
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 text 5 37 "Emotion:" #60 defaultx1
@@ -268,6 +277,7 @@ text 20 139 "Dizzy" #FF bg=#03 defaultx1
 fill_rect 69 133 60 20 #03
 draw_rect 69 133 60 20 #60
 text 84 139 "Clear" #FF bg=#03 defaultx1
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -278,6 +288,7 @@ msg 1 {cmd:"publish",topic:"stackchan",data:{type:"mouth",level:76}}
 msg 1 {cmd:"publish",topic:"stackchan",data:{type:"mouth",level:56}}
 == click 72,136
 fill_rect 1 11 208 138 #FF
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 text 5 37 "Emotion:" #60 defaultx1
@@ -321,6 +332,7 @@ text 20 139 "Dizzy" #FF bg=#03 defaultx1
 fill_rect 69 133 60 20 #03
 draw_rect 69 133 60 20 #60
 text 84 139 "Clear" #FF bg=#03 defaultx1
+fill_triangle 208 141 208 148 201 148 #C5
 gfxblock 1 again
 gfxblock 2 again
 present

@@ -5,6 +5,7 @@
 sprite_clip 1 11 278 178
 composite_regions [0,0,0,0,4,4,1,276,0,276,0,4,4,1,0,186,0,186,4,4,1,276,186,276,186,4,4,1,4,0,4,0,272,4,0,4,186,4,186,272,4,0,0,4,0,4,280,182,0]
 fill_rect 1 11 278 178 #FF
+fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 {w:280,h:190}
 fill_round_rect 0 0 280 11 4 #C5
 fill_rect 0 4 280 7 #C5
@@ -45,11 +46,13 @@ draw_line 1 51 278 51 #60
 draw_line 1 145 278 145 #60
 fill_rect 1 148 278 40 #FF
 text 3 168 "fetching the list..." #00 bg=#FF defaultx1
+fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
 gfxblock 2 again
 present
 == update 1/3
 fill_rect 1 11 278 178 #FF
+fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
 gfxblock 2 again
 fill_rect 1 13 66 14 #EE
@@ -87,6 +90,7 @@ fill_rect 1 148 278 40 #FF
 text 3 148 "v1.2.0 tool" #00 bg=#FF defaultx1
 text 3 158 "A clock with an alarm" #00 bg=#FF defaultx1
 text 3 168 "3 apps - retro" #00 bg=#FF defaultx1
+fill_triangle 278 181 278 188 271 188 #C5
 gfxblock 1 again
 gfxblock 2 again
 present

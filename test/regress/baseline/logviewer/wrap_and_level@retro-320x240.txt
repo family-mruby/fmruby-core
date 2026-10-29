@@ -32,6 +32,7 @@ text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
 text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
 text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
 text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 {w:300,h:200}
 fill_round_rect 0 0 300 11 4 #C5
 fill_rect 0 4 300 7 #C5
@@ -94,6 +95,7 @@ text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
 text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
 text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
 text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
 draw_line 289 25 289 198 #60
@@ -140,6 +142,7 @@ text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
 text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
 text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
 text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
 draw_line 289 25 289 198 #60
@@ -186,6 +189,7 @@ text 3 162 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
 text 3 170 "[D] gfx: frame 37 took 2 ms" #60 bg=#FF defaultx1
 text 3 178 "[W] wifi: rssi -98 dBm" #E8 bg=#FF defaultx1
 text 3 186 "[E] app: something failed at step 39" #E0 bg=#FF defaultx1
+fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
 draw_line 289 25 289 198 #60
@@ -232,6 +236,7 @@ text 3 162 "[D] gfx: frame 33 took 5 ms" #60 bg=#FF defaultx1
 text 3 170 "[W] wifi: rssi -94 dBm" #E8 bg=#FF defaultx1
 text 3 178 "[E] app: something failed at step 35" #E0 bg=#FF defaultx1
 text 3 186 "[I] kernel: app 36 spawned (pid 39)" #00 bg=#FF defaultx1
+fill_triangle 298 191 298 198 291 198 #C5
 gfxblock 1 again
 gfxblock 2 again
 draw_line 289 25 289 198 #60
