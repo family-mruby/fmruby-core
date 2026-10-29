@@ -378,6 +378,19 @@ static void do_action(const action_t *a)
                 FMRB_LOGI(TAG, "stand-in pid %d: %dx%d -> %dx%d to fit its window (%dx%d)", a->pid,
                           s_list[i].width, s_list[i].height, ww, wh, a->w, a->h);
                 fmrb_app_update_window_size((uint8_t)a->pid, (uint16_t)ww, (uint16_t)wh);
+                /* Grown past the screen's edge: moved back the least, so its
+                 * title bar and close button stay on the screen (L15). */
+                int scale = 0, base_w = 0, base_h = 0;
+                if (comp_link_geometry(&scale, &base_w, &base_h)) {
+                    int x = s_list[i].x, y = s_list[i].y;
+                    if (x + ww > base_w) x = base_w - ww;
+                    if (y + wh > base_h) y = base_h - wh;
+                    if (x < 0) x = 0;
+                    if (y < MENU_BAR_H) y = MENU_BAR_H;
+                    if (x != s_list[i].x || y != s_list[i].y) {
+                        fmrb_app_update_window_position((uint8_t)a->pid, (uint16_t)x, (uint16_t)y);
+                    }
+                }
             }
             break;
         }

@@ -21,6 +21,15 @@
  *                       button press's serial when there is one
  *   unpopup             the popup destroyed
  *   max / unmax         the parent asks to be maximized / no longer (L13)
+ *   sub W H             the parent gets a subsurface of W x H at its top-left
+ *                       (L15: a browser draws its page into one), magenta,
+ *                       made after the parent is shown (desynchronized)
+ *   remap               the parent unmapped (a null buffer) and mapped again
+ *                       (its initial configure, then its buffer)
+ *   own W H [noack]     the parent keeps a size of its own (L15, a browser
+ *                       restoring its session): from now on it draws W x H
+ *                       in magenta whatever a configure asks; it acks each
+ *                       configure, or with noack acks none of them any more
  *   quit                end
  *
  * The log, one line each: "configure parent|dialog W H", "popup configure
@@ -65,11 +74,17 @@ typedef struct {
     int w, h;
     uint32_t colour;
     bool configured;
+    int own_w, own_h;   /* a size of its own (own), 0 none */
+    bool no_ack;
 } surf_t;
 
 static struct {
     struct wl_display *display;
     struct wl_compositor *compositor;
+    struct wl_subcompositor *subcompositor;
+    struct wl_surface *sub_surface;     /* the parent's subsurface (sub) */
+    struct wl_subsurface *sub;
+    struct wl_buffer *sub_buffer;
     struct wl_shm *shm;
     struct xdg_wm_base *wm;
     struct wl_seat *seat;
@@ -136,6 +151,9 @@ static void draw(surf_t *s)
     close(fd);
     wl_surface_attach(s->surface, s->buffer, 0, 0);
     wl_surface_damage_buffer(s->surface, 0, 0, w, h);
+    /* The window's own extent, as toolkits say it (a subsurface beyond it
+     * is not the window's size). */
+    if (s->top != NULL) xdg_surface_set_window_geometry(s->xdg, 0, 0, w, h);
     wl_surface_commit(s->surface);
 }
 
@@ -152,7 +170,7 @@ static const struct xdg_wm_base_listener wm_listener = { .ping = wm_ping };
 static void xdg_configure(void *data, struct xdg_surface *xdg, uint32_t serial)
 {
     surf_t *s = data;
-    xdg_surface_ack_configure(xdg, serial);
+    if (!s->no_ack) xdg_surface_ack_configure(xdg, serial);
     s->configured = true;
     draw(s);
 }
@@ -168,6 +186,10 @@ static void top_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t
         s->h = h;
     }
     say("configure %s %d %d", s->name, s->w, s->h);
+    if (s->own_w > 0) {
+        s->w = s->own_w;
+        s->h = s->own_h;
+    }
     char line[128];
     int n = snprintf(line, sizeof(line), "states %s", s->name);
     uint32_t *st;
@@ -465,6 +487,8 @@ static void reg_global(void *data, struct wl_registry *r, uint32_t name, const c
     (void)data;
     if (strcmp(iface, wl_compositor_interface.name) == 0) {
         c.compositor = wl_registry_bind(r, name, &wl_compositor_interface, 4);
+    } else if (strcmp(iface, wl_subcompositor_interface.name) == 0) {
+        c.subcompositor = wl_registry_bind(r, name, &wl_subcompositor_interface, 1);
     } else if (strcmp(iface, wl_shm_interface.name) == 0) {
         c.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
     } else if (strcmp(iface, xdg_wm_base_interface.name) == 0) {
@@ -485,6 +509,51 @@ static void reg_remove(void *data, struct wl_registry *r, uint32_t name)
 
 static const struct wl_registry_listener reg_listener = { .global = reg_global, .global_remove = reg_remove };
 
+/* A W x H buffer of one colour (an shm file of its own), or NULL. */
+static struct wl_buffer *solid_buffer(int w, int h, uint32_t colour)
+{
+    int stride = w * 4;
+    size_t size = (size_t)stride * (size_t)h;
+    int fd = memfd_create("wl_dialog_sub", MFD_CLOEXEC);
+    if (fd < 0 || ftruncate(fd, (off_t)size) != 0) {
+        if (fd >= 0) close(fd);
+        return NULL;
+    }
+    uint32_t *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (px == MAP_FAILED) {
+        close(fd);
+        return NULL;
+    }
+    for (size_t i = 0; i < size / 4; i++) px[i] = colour;
+    munmap(px, size);
+    struct wl_shm_pool *pool = wl_shm_create_pool(c.shm, fd, (int32_t)size);
+    struct wl_buffer *b = wl_shm_pool_create_buffer(pool, 0, w, h, stride, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+    return b;
+}
+
+static void make_sub(int w, int h)
+{
+    if (c.subcompositor == NULL || c.parent.surface == NULL) {
+        say("error: no subcompositor");
+        return;
+    }
+    if (c.sub == NULL) {
+        c.sub_surface = wl_compositor_create_surface(c.compositor);
+        c.sub = wl_subcompositor_get_subsurface(c.subcompositor, c.sub_surface, c.parent.surface);
+        wl_subsurface_set_position(c.sub, 0, 0);
+        wl_subsurface_set_desync(c.sub);
+    }
+    if (c.sub_buffer != NULL) wl_buffer_destroy(c.sub_buffer);
+    c.sub_buffer = solid_buffer(w, h, 0xFFFF00FFu);
+    wl_surface_attach(c.sub_surface, c.sub_buffer, 0, 0);
+    wl_surface_damage_buffer(c.sub_surface, 0, 0, w, h);
+    wl_surface_commit(c.sub_surface);
+    wl_surface_commit(c.parent.surface);    /* the position takes effect */
+    say("sub %d %d", w, h);
+}
+
 /* ----------------------------------------------------------- commands */
 
 static void command(char *line)
@@ -502,6 +571,20 @@ static void command(char *line)
         xdg_toplevel_set_maximized(c.parent.top);
     } else if (strcmp(line, "unmax") == 0) {
         xdg_toplevel_unset_maximized(c.parent.top);
+    } else if (strcmp(line, "remap") == 0) {
+        wl_surface_attach(c.parent.surface, NULL, 0, 0);
+        wl_surface_commit(c.parent.surface);
+        wl_surface_commit(c.parent.surface);   /* the initial commit again: a configure, then drawn */
+        say("remap");
+    } else if (sscanf(line, "sub %d %d", &w, &h) == 2 && w > 0 && h > 0) {
+        make_sub(w, h);
+    } else if (sscanf(line, "own %d %d %15s", &w, &h, adj) >= 2 && w > 0 && h > 0) {
+        c.parent.own_w = c.parent.w = w;
+        c.parent.own_h = c.parent.h = h;
+        c.parent.no_ack = strncmp(line + strlen(line) - 5, "noack", 5) == 0;
+        c.parent.colour = 0xFFFF00FFu;
+        say("own %d %d%s", w, h, c.parent.no_ack ? " noack" : "");
+        draw(&c.parent);
     } else if (strcmp(line, "quit") == 0) {
         c.quit = true;
     } else {

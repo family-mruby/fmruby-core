@@ -242,6 +242,7 @@ typedef struct window {
     uint32_t asked_serial;                  /* xdg: that configure's serial */
     int fit_w, fit_h;                       /* the last size of its own told to Family mruby */
     int hold_w, hold_h;                     /* X11: the size its stand-in will ask once fitted */
+    struct wlr_box clip;                    /* the cut last set on its content (surface coordinates) */
     uint64_t hold_until_ms;                 /* X11: its own size stands until then (0: none) */
     struct wl_listener map, unmap, commit, destroy;
     struct wl_listener set_title, request_move, request_resize, request_maximize, request_fullscreen;
@@ -653,6 +654,20 @@ static void tell_state(window_t *w, const comp_window_t *cw)
     fprintf(stderr, "native: compositor: window %d told: %s\n", w->id, what);
 }
 
+/* Cut the window's content to the stand-in's content (L15): set when the
+ * box differs from the last set, so it is cheap to ask on every commit. A
+ * window drawing beyond the size asked (a browser restoring its session, a
+ * page in a subsurface) never shows outside its stand-in, also not through
+ * another window's hole. */
+static void set_clip(window_t *w, struct wlr_scene_node *node, struct wlr_box box)
+{
+    if (box.x == w->clip.x && box.y == w->clip.y && box.width == w->clip.width && box.height == w->clip.height) {
+        return;
+    }
+    w->clip = box;
+    wlr_scene_subsurface_tree_set_clip(node, &box);
+}
+
 static void apply_window(window_t *w)
 {
     const comp_window_t *cw = comp_route_window(&s.route, w->id);
@@ -675,10 +690,7 @@ static void apply_window(window_t *w)
     wlr_scene_node_place_below(&w->backdrop->node, &w->tree->node);
 #if WLR_HAS_XWAYLAND
     if (w->kind == WIN_X11) {
-        if (w->content != NULL) {
-            struct wlr_box clip = { .x = 0, .y = 0, .width = ww, .height = wh };
-            wlr_scene_subsurface_tree_set_clip(&w->content->node, &clip);
-        }
+        if (w->content != NULL) set_clip(w, &w->content->node, (struct wlr_box){ 0, 0, ww, wh });
         if (!w->mapped || ww <= 0 || wh <= 0) return;
         /* After the program asked for a size of its own, it keeps it until
          * the stand-in has fitted it (or FIT_HOLD_MS). */
@@ -701,8 +713,7 @@ static void apply_window(window_t *w)
     }
 #endif
     struct wlr_box g = w->toplevel->base->geometry;
-    struct wlr_box clip = { .x = g.x, .y = g.y, .width = ww, .height = wh };
-    wlr_scene_subsurface_tree_set_clip(&w->tree->node, &clip);
+    set_clip(w, &w->tree->node, (struct wlr_box){ g.x, g.y, ww, wh });
     if (w->mapped && (ww != w->asked_w || wh != w->asked_h) && ww > 0 && wh > 0) {
         w->asked_w = ww;
         w->asked_h = wh;
@@ -983,6 +994,13 @@ static void window_commit(struct wl_listener *l, void *data)
     if (cw != NULL && (cw->w != g.width || cw->h != g.height)) {
         comp_route_window_resize(&s.route, w->id, g.width, g.height);
         apply_window(w);
+    } else if (cw != NULL && cw->placed) {
+        /* Every commit: the cut follows the geometry's offset (a toolkit's
+         * shadow comes and goes) (L15). */
+        int ww = 0, wh = 0;
+        if (comp_route_wanted_size(&s.route, w->id, &ww, &wh)) {
+            set_clip(w, &w->tree->node, (struct wlr_box){ g.x, g.y, ww, wh });
+        }
     }
     /* Its answer to the size last asked is a size of its own (foot keeps to
      * its cell grid): the stand-in is to fit it, once per size. */
@@ -1334,6 +1352,7 @@ static void x11_unmap(struct wl_listener *l, void *data)
         wlr_scene_node_destroy(&w->content->node);
         w->content = NULL;
     }
+    w->clip = (struct wlr_box){ 0 };     /* the next content is cut afresh */
     int id = w->id;
     w->id = 0;
     if (w->or_win) {

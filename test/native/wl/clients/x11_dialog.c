@@ -19,6 +19,8 @@
  *                       pointer (a grab) once it shows, and closed by a press
  *                       outside it
  *   unmenu              the menu destroyed
+ *   own W H             the parent asks to be W x H (a size of its own,
+ *                       L15) and turns magenta
  *   quit                end
  *
  * The log: "configure parent|dialog|menu X Y W H" (each ConfigureNotify),
@@ -131,6 +133,11 @@ static void command(char *line)
         menu_h = h;
         menu_wants_grab = true;
         XMapRaised(d, menu);
+    } else if (sscanf(line, "own %d %d", &w, &h) == 2 && w > 0 && h > 0) {
+        XSetWindowBackground(d, parent, colour(255, 0, 255));
+        XResizeWindow(d, parent, (unsigned)w, (unsigned)h);
+        XClearWindow(d, parent);
+        say("own %d %d", w, h);
     } else if (strcmp(line, "unmenu") == 0) {
         if (menu != 0) XDestroyWindow(d, menu);
         menu = 0;
@@ -157,6 +164,7 @@ static void event(XEvent *e)
         break;
     case Expose:
         if (w == dialog) draw_dialog();
+        if (w == parent) XClearWindow(d, parent);
         break;
     case ConfigureNotify:
         if (w == dialog) {

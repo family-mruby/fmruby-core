@@ -250,6 +250,9 @@ namespace :regress do
       ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_settings_check.rb"), "--engine", engine,
                   "--renderer", "pixman")
       failed << "#{engine} settings" unless ok
+      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_size_check.rb"), "--engine", engine,
+                  "--renderer", "pixman")
+      failed << "#{engine} size" unless ok
     end
     abort "regress:wl: failed: #{failed.join(', ')}" unless failed.empty?
     puts "regress:wl: ok (tmp/wl_check/)"
