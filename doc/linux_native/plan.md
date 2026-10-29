@@ -658,19 +658,28 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   の共有・終了で起こし直さない)。
   - **NOK: PDF と PNG が Okular・Gwenview でなくブラウザ (Firefox) で開く**。見立て:
     セッションが `XDG_CURRENT_DESKTOP=family-mruby` を名乗るので、Kubuntu が KDE の
-    既定を書く `kde-mimeapps.list` を linux_mime.c が読まない。VM の値で裏を取る
-    (共有フォルダの fm_check.sh)。
+    既定を書く `kde-mimeapps.list` を linux_mime.c が読まない。**VM で裏が取れた**
+    (2026-10-29): `XDG_CURRENT_DESKTOP=family-mruby`、`kde-mimeapps.list` に
+    `image/png=org.kde.gwenview.desktop`・`application/pdf=okularApplication_pdf.desktop`、
+    汎用の mimeinfo.cache は Chrome・Firefox が先。ただし VM の Okular は PDF の
+    .desktop も実行ファイルも無い (djvu・epub など一部だけ) ので、KDE の一覧を読んでも
+    PDF は Okular にならない (無い先は飛ばして次に落ちる必要がある)。
   - **NOK: PDF を開いた Firefox の窓が崩れた** (Firefox の中身が代役の枠より大きく、
     後ろの Konsole の穴から見える。代役の題の帯は古い幅のまま)。原因は未調査。
   - **NOK: `pkill -SEGV` で起こし直さずログイン画面に戻った**。台本の筋は正しい。
     見立て: 起こし直した 2 回目以降がすぐ失敗して 4 回で諦めた (DRM・席の解放待ち
-    など)。ログで裏を取る (fm_check.sh)。
+    など)。2026-10-29 の fm_check では、落ちたときのセッションのログは次のログインで
+    上書きされて残っておらず、coredump も無く、決められなかった。もう一度落として、
+    文字の端末から fm_crashlog.sh で読む。セッションの台本の記録が次のログインで
+    消える作りも直す候補 (残るログに書く)。
   - 部分的: Kate の Ctrl+O のダイアログの親を押すと、親が一瞬前に出てダイアログの
     下に戻るが、キーはダイアログに戻らない (入力欄を押せば入る)。
   - 未確認 (手順の説明が要った): X11 の Kate のメニューを開いて壁紙を押す、矢印を
     止めたまま窓を出してクリック、hello.rb (Family mruby の中で動き `puts` はログに
-    出るだけ)、Konsole への貼り付け (ユーザの記入が途中)、ログの行 (IME・音量・
-    知らせ・activation environment)、`!` で動くプログラムへの貼り付け。
+    出るだけ)、Konsole への貼り付け (ユーザの記入が途中)、`!` で動くプログラムへの
+    貼り付け。ログの行 (IME: started "fcitx5"・volume: PipeWire (wpctl)・serving
+    org.freedesktop.Notifications・activation environment) は fm_check で 4 行とも
+    出ていた (通った)。
   - その他のユーザの指摘: リサイズの印は四角より右下に寄せた直角三角形がよい
     (Linux の窓だけでなく大きさを変えられる窓すべてに出せるか)、Linux の
     Konsole・Firefox・Chrome があればデスクトップのショートカットにしたい、
