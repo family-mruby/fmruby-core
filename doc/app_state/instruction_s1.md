@@ -14,8 +14,8 @@
      合う形にする。値は文字列・整数・真偽に限ってよい。
    - TOML の読み書きは既存の道具 (他のアプリが /home/*.toml を読み書きしている
      やり方) を使う。
-2. **置き場所**: どの端末でも `/tmp/.state/<app_handle_name>.toml` (ユーザ決定、
-   2026-10-29。端末ごとの切り分けはしない)。ディレクトリが無ければ作る。各端末で
+2. **置き場所**: どの端末でも `/tmp/<app_handle_name>.state.toml` (ユーザ決定、
+   2026-10-29。端末ごとの切り分けはしない)。/tmp はディレクトリを作れない (fmrb_tmpfs.h の不変条件) ので平らな名前にする (2026-10-29 ユーザ決定)。File Manager の名前は固定の `file_manager` (keys のデスクトップと共有、ユーザ決定)。各端末で
    どれだけ残るか (ブラウザの再読み込み・ネイティブ版の再起動で消えるか) を
    report に書く。
 3. **File Manager** (main/prebuild_scripts/kernel/system_desktop/file_manager.rb ほか):
