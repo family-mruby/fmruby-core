@@ -210,12 +210,13 @@ namespace :native do
        "-o #{NATIVE_TEST_BUILD}/native_settings_test"
     sh "#{NATIVE_TEST_BUILD}/native_settings_test"
 
-    # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps.c,
+    # The Linux PC's applications for the launcher (L9b): native/sys/linux_apps*.c,
     # and opening files in them (L11: native/sys/linux_mime.c), plain POSIX, with libpng for the icons when the host has it (and
     # librsvg, opened at run time, for the SVG ones: L9e).
     png = system("pkg-config --exists libpng")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DNATIVE_HAVE_PNG=#{png ? 1 : 0} -I native/sys " \
-       "native/sys/linux_apps.c native/sys/linux_mime.c #{NATIVE_TEST_DIR}/apps.c -lpthread -ldl " \
+       "native/sys/linux_apps.c native/sys/linux_apps_util.c native/sys/linux_apps_exec.c " \
+       "native/sys/linux_apps_icons.c native/sys/linux_mime.c #{NATIVE_TEST_DIR}/apps.c -lpthread -ldl " \
        "#{png ? '-lpng' : ''} " \
        "-o #{NATIVE_TEST_BUILD}/native_apps_test"
     sh "#{NATIVE_TEST_BUILD}/native_apps_test"
@@ -544,7 +545,7 @@ namespace :native do
     # libsystemd0 is opened at run time (dlopen, native/sys/platform_sys_linux.c:
     # logind's power entries), so dpkg-shlibdeps cannot see it.
     depends = "#{depends.strip}, libsystemd0"
-    # librsvg is opened at run time too (native/sys/linux_apps.c: the SVG
+    # librsvg is opened at run time too (native/sys/linux_apps_icons.c: the SVG
     # icons of the launcher's Linux group, L9e), and only the compositor
     # (amd64) has that group.
     depends = "#{depends}, librsvg2-2" if arch == "amd64"

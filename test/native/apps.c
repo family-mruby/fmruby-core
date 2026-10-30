@@ -1,5 +1,5 @@
 // Host test of the Linux PC's applications for the launcher (doc/linux_native
-// L9b): native/sys/linux_apps.c itself, which is plain POSIX (and libpng for
+// L9b): native/sys/linux_apps*.c themselves, which are plain POSIX (and libpng for
 // the icons, when the host has it: NATIVE_HAVE_PNG).
 //
 // Checked: the Exec field split by the Desktop Entry rules (quoting, field
