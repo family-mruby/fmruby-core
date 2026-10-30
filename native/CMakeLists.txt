@@ -192,7 +192,11 @@ if(NATIVE_HAVE_WLROOTS)
     COMMAND ${WAYLAND_SCANNER} server-header ${NATIVE_WLR_CAPTURE_XML}
             ${NATIVE_WLR_GEN}/ext-image-copy-capture-v1-protocol.h
     DEPENDS ${NATIVE_WLR_CAPTURE_XML})
-  list(APPEND NATIVE_BACKEND_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+  # The compositor itself (L8), in the files of its parts (L16; output_wlr.c
+  # has the overview).
+  set(NATIVE_WLR_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_window.c ${N}/wlr/wl_picture.c
+      ${N}/wlr/wl_xwayland.c ${N}/wlr/wl_input.c ${N}/wlr/wl_screen_lock.c ${N}/wlr/wl_tools.c)
+  list(APPEND NATIVE_BACKEND_SRCS ${NATIVE_WLR_SRCS} ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
        ${NATIVE_WLR_GEN}/ext-image-copy-capture-v1-protocol.h
        # The launcher's Linux applications (L9b): started by the compositor;
        # files opened in them (L11).
@@ -250,7 +254,7 @@ endif()
 
 if(NATIVE_HAVE_WLROOTS)
   set(NATIVE_WLR_CFLAGS ${WLROOTS_CFLAGS} -I${NATIVE_WLR_GEN})
-  set_source_files_properties(${N}/wlr/output_wlr.c ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c PROPERTIES COMPILE_OPTIONS "${NATIVE_WLR_CFLAGS}")
+  set_source_files_properties(${NATIVE_WLR_SRCS} ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c PROPERTIES COMPILE_OPTIONS "${NATIVE_WLR_CFLAGS}")
   set_source_files_properties(${N}/sys/linux_apps.c PROPERTIES COMPILE_OPTIONS
     "-DNATIVE_HAVE_PNG=${NATIVE_HAVE_PNG};${LIBPNG_CFLAGS}")
 endif()

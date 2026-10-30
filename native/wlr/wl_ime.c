@@ -26,7 +26,7 @@
  * game) gets its keys straight, without the IME.
  *
  * Keys: while the IME serves the focused text input and holds the keyboard
- * grab, the keyboards' keys go to it (output_wlr.c asks wl_ime_takes_keys),
+ * grab, the keyboards' keys go to it (wl_input.c asks wl_ime_takes_keys),
  * the switching hotkeys excepted. The keys it does not use come back on its
  * virtual keyboard and go where the focus is, as any key. A key goes up
  * where it went down.
