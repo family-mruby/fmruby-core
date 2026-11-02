@@ -2,6 +2,11 @@ MRuby::GemBox.new do |conf|
   # Compiler must be included for runtime compilation (sandbox, eval)
   conf.gem core: 'mruby-compiler'
 
+  # Do not add mruby-fiber or mruby-enumerator (its external iteration,
+  # Enumerator#next, runs on a Fiber). Every app runs as a Task, and
+  # mruby-task does not support Tasks and Fibers in the same program
+  # (doc/reference/mruby_task_fiber.md).
+
   # loading order is important
   conf.gem core: 'picoruby-fmrb-io'
   conf.gem core: "picoruby-fmrb-filesystem"

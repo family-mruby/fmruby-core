@@ -44,6 +44,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [ESP-IDF v6.0 移行メモ（IDF6対応で判明した課題と回避策）](reference/idf6_migration_notes.md)
 - [内蔵 RAM 削減計画](reference/internal_ram_budget.md)
 - [ランチャーの再走査でデスクトップが落ちる (NARYA v4, 2026-09-02)](reference/launcher_rescan_desktop_stop.md)
+- [mruby-task と Fiber を混ぜない](reference/mruby_task_fiber.md) — **確定** (2026-11-03) Family mruby の gembox に mruby-fiber と mruby-enumerator を入れない。アプリは全部 Task で動くので、Fiber を使えば必ず Task と混ざり、mruby-task はその組み合わせを保証していない
 - [高速な PicoRuby アプリを書くための知見](reference/picoruby_performance_notes.md)
 - [picoruby 上流PR候補メモ (ネットワークAPI検証で発見したバグ)](reference/picoruby_upstream_pr_candidates.md)
 - [ESP32-P4 PPA と LovyanGFX の RGB565 描画パイプライン知見](reference/ppa_lgfx_notes.md)
