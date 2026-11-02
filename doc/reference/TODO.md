@@ -40,3 +40,22 @@ CI (GitHub Actions) で以下を実行:
 
 - 監査手順の原型: [../../tmp/picoruby_customization_summary.md](../../tmp/picoruby_customization_summary.md) §6.3
 - ランチャー再走査で system_desktop が落ちる (NARYA v4、断続、未解決): [launcher_rescan_desktop_stop.md](launcher_rescan_desktop_stop.md)
+
+## VM の命令の境目の判定を整理して速くする (2026-11-03 記録、今は深追いしない)
+
+mruby の `vm.c` の `RETURN_IF_TASK_STOPPED` (命令の境目ごとのタスク切り替えの判定) を
+「2 回の読み込みと 1 回の分岐」に縮め、遅い側を 1 か所の関数に追い出すと、x86-64 で
+実行した命令の数が 1.3〜4.7% 減った (valgrind で数えた値。別の実験の副産物。測り方と
+数字は `vm_speed_measurement.md`)。`mrb_vm_exec` の中のレジスタの割り当てが楽になり、
+`mrb` の読み直しと `regs` の退避が消えたため。
+
+Family mruby の `lib/patch/picoruby-mruby/lib/mruby/src/vm.c` は同じマクロに自前の
+時分割 (`TASK_SELF_TICK`、境目ごとに数を 1 つ減らす) を足しているので、ESP32 では
+上流より効く可能性がある。ただし Xtensa・RISC-V で同じだけ減るかは未確認。
+
+着手するときの順:
+
+1. ホストで、Family mruby の `vm.c` (自前の patch 込み) に同じ整理を当てた版と元の版の
+   命令数を valgrind で比べる (端末不要)。
+2. 端末 (S3・P4) で時間を測る (実機を繋いだとき。数回測る)。
+3. 効果があれば、上流の mruby への PR の候補にする (判定は上流の `d2a1c43a5` の所)。

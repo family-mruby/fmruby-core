@@ -55,6 +55,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [Tab5 内部 I2C バスの制約と設計ルール](reference/tab5_i2c_bus_notes.md)
 - [Tab5: SPI 液晶へのミラー映像出力 (計画)](reference/tab5_spi_mirror_plan.md) — **凍結** (2026-08-29) 机上設計済み・実装未着手・被参照なし
 - [タスク優先度の全体設計](reference/task_priority.md)
+- [VM の速さの測り方 (ホストの時間は信用しない)](reference/vm_speed_measurement.md) — **計測済** (2026-11-02) mruby の `vm.c` を変えたときの速さは、ホスト (PC) では実行時間でなく命令数で比べる。ホストの時間は、命令が 1 つも変わらなくても、コードの番地だけで +30% まで動く。時間は本番の端末 (ESP32) で測る
 - [VOICEVOX の声を使うときの決まり (調べた記録)](reference/voicevox_terms.md) — **調査済** (2026-10-20) 無料の日本語の音声合成 VOICEVOX の声を、Family mruby や asterism-games で使うときの決まりと、配り方の考え方。麻雀の実況 (doc/commentary/) のために調べたが、ほかの読み上げにも使える。規約は変わりうるので、使う前にそのキャラクターの最新の規約を確認する
 
 ## テーマ別
