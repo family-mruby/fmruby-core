@@ -123,9 +123,9 @@ vm_apply_ticks(mrb_vm_entry_t *vm, uint32_t ticks)
  * execute_task() (task.c) clears it every time it gives a task the CPU. The
  * top-half meets that condition by writing from another thread while the task
  * runs; the self-supplied path meets it by writing from inside the dispatch
- * loop. Writing it from the scheduler instead looks like it works and does
- * nothing at all -- which cost a woken task a whole extra turn of the ready
- * queue (doc/wasm/report/p2.md).
+ * loop. A request raised while no task runs is not kept for the next task
+ * (mrb_hal_task_account_ticks drops it): the slice it ends is not that task's
+ * (doc/checkpoint/report/hang_task_sleep.md).
  *
  * Caller holds g_tick_manager.mutex.
  */
@@ -190,7 +190,7 @@ mruby_tick_task(void *arg)
  * Nothing is notified: the only task that would be woken is this one.
  */
 static void
-self_tick(mrb_state *mrb, int deliver)
+self_tick(mrb_state *mrb, int on_task)
 {
   const uint64_t period_us = (uint64_t)MRB_TICK_UNIT * 1000ULL;
   uint64_t now;
@@ -209,7 +209,17 @@ self_tick(mrb_state *mrb, int deliver)
           vm->last_self_us += (uint64_t)ticks * period_us;
           vm_apply_ticks(vm, ticks);
         }
-        if (deliver) vm_deliver_switch(vm);
+        if (on_task) {
+          vm_deliver_switch(vm);
+        } else {
+          /* The scheduler is between tasks: a slice that ran out up to now
+           * was the slice of the task that has just left the CPU (or of
+           * none). execute_task() clears switching for the same reason;
+           * this is the same request one step before it is raised. Kept,
+           * it was delivered at the next task's first bytecode, and a task
+           * that always came after a turn longer than a slice never ran. */
+          vm->switch_pending = 0;
+        }
         break;
       }
     }
@@ -227,13 +237,14 @@ mrb_hal_task_self_tick(mrb_state *mrb)
   self_tick(mrb, 1);
 }
 
-/* Called from the scheduler itself (task.c task_run_body's loop head, and the
- * idle wait below), where no task is running.
+/* Called from the scheduler itself (task.c task_run_body, after each task's
+ * turn and at its loop head, and the idle wait below), where no task is
+ * running.
  *
  * Keeps the clock and the timeslice countdown moving -- which is what the app
  * main loop needs, since it spends nearly all its time blocked inside _spin and
  * executes too few bytecodes for the dispatch-loop hook to reach its interval --
- * but leaves any raised request for the VM side to deliver. */
+ * and drops a request raised here: no task is running to be preempted. */
 void
 mrb_hal_task_account_ticks(mrb_state *mrb)
 {

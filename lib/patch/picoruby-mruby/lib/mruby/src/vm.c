@@ -1750,14 +1750,18 @@ task_stop_requested(mrb_state *mrb)
    file's include path in the rake mruby build. */
 void mrb_hal_task_self_tick(mrb_state *mrb);
 
-/* The countdown starts at 1, not at the interval: the first bytecode after this
-   exec begins is where a preemption raised while the task was NOT running gets
-   delivered. The scheduler cannot deliver it itself -- execute_task() clears
-   mrb->task.switching every time it hands a task the CPU -- so this is the
-   moment that stands in for the top-half's asynchronous write. Once it has
-   fired, it re-arms with the full interval. */
-#define TASK_SELF_TICK_DECL uint32_t task_self_tick_countdown = 1;
-#define TASK_SELF_TICK_RESET() (task_self_tick_countdown = 1)
+/* The countdown starts at the full interval: a timeslice is charged to the
+   task that is running when it runs out, never to the next one. It used to
+   start at 1, so that a preemption raised while no task ran (the scheduler
+   accounts the ticks between tasks) was delivered at the first bytecode of
+   the next exec. That handed the next task the slice the previous one had
+   used up: a ready Task that followed a main loop whose turns are longer
+   than a slice was sent back before its first instruction, every turn, and
+   never ran (doc/checkpoint/report/hang_task_sleep.md). What that delivery
+   was for -- a task woken during another's turn goes ahead of it -- the
+   scheduler now does itself (task.c, task_run_body). */
+#define TASK_SELF_TICK_DECL uint32_t task_self_tick_countdown = MRB_TASK_SELF_TICK_INTERVAL;
+#define TASK_SELF_TICK_RESET() (task_self_tick_countdown = MRB_TASK_SELF_TICK_INTERVAL)
 #define TASK_SELF_TICK(mrb) do { \
   if (--task_self_tick_countdown == 0) { \
     task_self_tick_countdown = MRB_TASK_SELF_TICK_INTERVAL; \

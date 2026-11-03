@@ -29,6 +29,12 @@
 #             movable: told why (on_checkpoint_refused), goes on.
 #   shell     the shell's `checkpoint -r PID`, typed into a shell window: the
 #             counter moves as in restart, and the shell is answered.
+#   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
+#             passes after every step gets its steps while the main loop
+#             waits longer than a timeslice per turn. The native program
+#             supplies its own tick (FMRB_TASK_SELF_TICK), where a slice used
+#             up by the main loop was handed to the next task, which then
+#             never ran (doc/checkpoint/report/hang_task_sleep.md).
 #
 # For restart, wait, self and shell the log must show every counter going on
 # from the step after the last one written (a, b, main), on_checkpoint and
@@ -54,6 +60,7 @@ module Regress
     APP = "/app/test/ckpt_counter.app.rb"
     IMAGE = "/tmp/ckpt_counter.ckpt"
     NOT_MOVABLE = "/app/test/task_sleep.app.rb"
+    TURNS = "/app/test/task_turns.app.rb"
     WINDOWED = "/app/test/ckpt_window.app.rb"
     SELF = "/app/test/ckpt_self.app.rb"
     SELF_REFUSED = "/app/test/ckpt_self_refused.app.rb"
@@ -160,6 +167,7 @@ module Regress
         native("up", "--engine", config, "--machine", "sdl", "--user-dir", File.join(home, "user"),
                "--cache-dir", File.join(home, "cache"), "--timeout", "90", timeout: 120)
         notes = []
+        notes << round_turns
         notes << round_restart
         notes << round_wait
         notes << round_refuse
@@ -220,6 +228,15 @@ module Regress
         c = continuity(mark, "wait")
         kill_counter
         "wait #{WAIT_S}s: t step #{c[:t_step]} ms"
+      end
+
+      # Not a move: the scheduler of a native program hands out its turns.
+      def round_turns
+        from = log_lines.size
+        pid = app("spawn", TURNS).fetch("pid")
+        done = wait_line(/task_turns: done /, from, "the passing Task's last step (task_turns)", timeout: 10)
+        app("kill", pid.to_s)
+        "turns: #{log_lines[done][/done .*/]}"
       end
 
       def round_refuse

@@ -583,6 +583,30 @@ mrb_tick(mrb_state *mrb)
   }
 }
 
+/* family-mruby case-D bottom-half: on fmrb the tick source is a FreeRTOS
+ * task on a *different* thread than this VM, so it cannot call mrb_tick()
+ * directly (mrb_tick mutates the task queues -> ci->proc corruption). The
+ * HAL top-half instead sets mrb->task.switching and accumulates a per-VM
+ * pending-tick count; apply those ticks here, on the VM's own thread, where
+ * queue access is single-threaded. mrb_tick takes no scheduler exclusion (it
+ * is the "IRQ side"), so calling it outside mrb_task_excl_* is correct. */
+static void
+task_apply_pending_ticks(mrb_state *mrb)
+{
+#ifdef MRB_TASK_TICK_SELF_SUPPLY
+  /* No top-half in this mode: nothing produces ticks unless this VM asks
+   * for them. Asking from the scheduler is what covers the ordinary case --
+   * a task that yields or blocks often (an app's main loop spends most of its
+   * time inside _spin, executing almost no bytecode, so the every-N-bytecodes
+   * hook in vm.c would take seconds to fire). That hook covers the opposite
+   * case, a task that never comes back here at all. Both go through the same
+   * wall-clock accounting, so ticks are neither lost nor double-counted. */
+  mrb_hal_task_account_ticks(mrb);
+#endif
+  uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
+  while (pending--) mrb_tick(mrb);
+}
+
 /* Body of the main scheduler loop. Wrapped by mrb_task_run() under
    mrb_protect_error so an exception raised from a task body unwinds
    cleanly without leaving `loop_running` set. */
@@ -593,31 +617,10 @@ task_run_body(mrb_state *mrb, void *ud)
   (void)ud;
 
   while (1) {
-    /* family-mruby case-D bottom-half: on fmrb the tick source is a FreeRTOS
-     * task on a *different* thread than this VM, so it cannot call mrb_tick()
-     * directly (mrb_tick mutates the task queues -> ci->proc corruption). The
-     * HAL top-half instead sets mrb->task.switching and accumulates a per-VM
-     * pending-tick count; apply those ticks here, on the VM's own thread, where
-     * queue access is single-threaded. This runs at the loop head (before the
-     * ready-queue read) so a CPU-bound task that returned via `switching` gets
-     * ticked and any task woken by the tick is picked up on the same pass.
-     * mrb_tick takes no scheduler exclusion (it is the "IRQ side"), so calling
-     * it here, outside mrb_task_excl_*, is correct. */
-    {
-#ifdef MRB_TASK_TICK_SELF_SUPPLY
-      /* No top-half in this mode: nothing produces ticks unless this VM asks
-       * for them. Asking here, at the loop head, is what covers the ordinary
-       * case -- a task that yields or blocks often (an app's main loop spends
-       * most of its time inside _spin, executing almost no bytecode, so the
-       * every-N-bytecodes hook in vm.c would take seconds to fire). That hook
-       * covers the opposite case, a task that never comes back here at all.
-       * Both go through the same wall-clock accounting, so ticks are neither
-       * lost nor double-counted. */
-      mrb_hal_task_account_ticks(mrb);
-#endif
-      uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
-      while (pending--) mrb_tick(mrb);
-    }
+    /* At the loop head (before the ready-queue read) so a CPU-bound task that
+     * returned via `switching` gets ticked and any task woken by the tick is
+     * picked up on the same pass. */
+    task_apply_pending_ticks(mrb);
 
     t = q_ready_;
 
@@ -661,6 +664,17 @@ task_run_body(mrb_state *mrb, void *ud)
 
     /* Execute task using core logic */
     execute_task(mrb, t);
+
+#ifdef MRB_TASK_TICK_SELF_SUPPLY
+    /* The ticks of the turn that has just ended are counted before the task
+     * goes to the end of the ready queue: a task they wake is queued ahead of
+     * it, as it is when a timer on another thread wakes the task during the
+     * turn (the top-half). Counted only at the loop head, after the move, a
+     * task woken while the main loop waited in _spin waited for the main
+     * loop's next turn as well (doc/wasm/report/p2.md, hole B;
+     * doc/checkpoint/report/hang_task_sleep.md). */
+    task_apply_pending_ticks(mrb);
+#endif
 
     /* Move to end of ready queue if still running (round-robin) */
     if (t->status == MRB_TASK_STATUS_READY) {
