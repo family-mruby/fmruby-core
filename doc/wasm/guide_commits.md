@@ -39,6 +39,8 @@ VM の自己申告に置き換えた。読みどころは 3 つ:
   「走っていない間に溜まった切替要求」を配達する瞬間を作る
   (スケジューラは execute_task のたびに switching を消すので、
   そこからは配達できない)。未定義時は 1 バイトも変わらない。
+  (2026-11-04: この 1 命令目の配達は実行待ちの Task を永久に走らせない
+  ことがあり、やめた。doc/checkpoint/report/hang_task_sleep.md)
 - **task_hal.c** — 時計換算の本体。要求を立てる (switch_pending) のと
   mrb->task.switching へ書く (配達) のを分離した。tick の供給は
   vm.c の hook / スケジューラのループ先頭 / アイドル待ちの後の 3 箇所

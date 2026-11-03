@@ -328,7 +328,9 @@ rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ�
 - `rake regress:full` に入っている (最後に流す)。`rake regress` (安い方) には入らない。ネイティブ版だけを使い、sim・ブラウザ版・実機は使わない。build/ には触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。
 - ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (窓なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
-- 場面は 7 つ。止める頼み方は 3 通りあり、どれもカーネル → アプリの `_spin` → セーフポイントの同じ道を通る (F1b)。
+- 最初に、運ぶのではない場面を 1 つ流す。
+  - turns: `/app/test/task_turns.app.rb` の Task (1 歩ごとに `Task.pass`) が、メインループの番がタイムスライスより長くても 10 歩を進める (10 秒以内)。ネイティブ版は tick を自給するので、ここで見張る (doc/checkpoint/report/hang_task_sleep.md)。
+- 運ぶ場面は 7 つ。止める頼み方は 3 通りあり、どれもカーネル → アプリの `_spin` → セーフポイントの同じ道を通る (F1b)。
   - restart: 数えさせてから、デバッグサーバの `checkpoint` (`ruby tools/fmrb_native.rb app checkpoint <pid> --restart`。答えは `{status: written, path}`・`{status: refused, reason}`・`{status: timeout}`) で止める。アプリが `/tmp/ckpt_counter.ckpt` を書いて閉じ、カーネルがそれを起動し直す。
   - wait: `--restart` なしで止め、アプリが閉じてから 2 秒待ち、`app restore` で `.ckpt` を起動する。
   - refuse: `movable` の無いアプリ (`task_sleep`) は断られ、動き続ける。
@@ -340,7 +342,7 @@ rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ�
 - 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log`、作ったときのログは `build.log`。
 
 ```
-standard: ok (restart: a 5->6, b 3->4, main 5->6, t step 450 ms, image 23039 B; wait 2.0s: t step 448 ms; refused: ...; window refused at the safe point: ...; self: a 4->5, b 2->3, main 4->5, t step 252 ms; self refused: told why; shell: a 17->18, b 9->10, main 17->18; 28s)
+standard: ok (turns: done 10 steps in 1201ms; restart: a 5->6, b 3->4, main 5->6, t step 450 ms, image 23039 B; wait 2.0s: t step 448 ms; refused: ...; window refused at the safe point: ...; self: a 4->5, b 2->3, main 4->5, t step 252 ms; self refused: told why; shell: a 17->18, b 9->10, main 17->18; 28s)
 mruby: ok (...)
 checkpoint: ok (1.9 min)
 ```

@@ -135,7 +135,9 @@ rake には `wasm:poc` / `wasm:build` を追加する (rakelib/wasm.rake)。emsd
   (`execute_task` が渡すたびに消す)。要求を立てる (`switch_pending`) のと
   配達する (`vm_deliver_switch`) のを分け、配達は VM のスレッドからのみ行う。
   vm.c の間引き計数は mrb_vm_exec に入った 1 命令目で必ず発火させ、そこが
-  top-half の非同期書き込みと等価な瞬間になる。
+  top-half の非同期書き込みと等価な瞬間になる。(2026-11-04 に改めた:
+  1 命令目では配らず、スケジューラは番の終わりのティックをそのタスクを列の
+  後ろへ回す前に適用する。doc/checkpoint/report/hang_task_sleep.md)
 - **コストは間引き計数ではなく HAL 呼び出しの頻度で決まる** (Linux sim で
   1 回約 10 マイクロ秒、中身は FreeRTOS mutex)。既定値 65536 で VM 速度は
   既定ビルド比 +4%。ESP32 で自給に一本化するなら、先に HAL 呼び出しから
