@@ -16,10 +16,18 @@ Regress::Screens.helpers do
   def menu_bar_h = 13
   def menu_item_h = 12
 
+  # The native program's standard desktop (machine sdl) has a power entry,
+  # so its menu bar draws the power button right of the clock and the
+  # status cells sit 14 px further left. The keys desktop (native-keys) has
+  # its own bar with the clock at the right end.
+  def power_button_w = (native? && name == "native") ? 14 : 0
+
   # Every scene, before its block: the menu bar's clock (the date and the
-  # seconds, at window_width - 90) is left out of every comparison.
+  # seconds, at window_width - 90, left of the power button if there is
+  # one) is left out of every comparison. The power button itself is still
+  # compared.
   def before_scene
-    mask(w - 90, 0, 90, menu_bar_h)
+    mask(w - 90 - power_button_w, 0, 90, menu_bar_h)
     # The pointer, parked (below): the page does not always draw it after
     # a reload, and it is not what any scene looks at.
     mask(w - 6, 60, 6, 16)
