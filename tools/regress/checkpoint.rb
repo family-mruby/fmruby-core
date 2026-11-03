@@ -39,7 +39,8 @@
 #             digest of the baseline) and the image's task tick goes on.
 #   move refused  the same with --damage (the image is cut short on the way):
 #             the second program cannot restore it and says why, the first
-#             goes on from where it was held.
+#             goes on from where it was held. The second program's desktop
+#             shows no error dialog (the requester has the reason).
 #   move no answer  "app checkpoint PID --hold 1500" and nobody answers: the
 #             first program's kernel lets the app go on once the hold runs out.
 #   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
@@ -402,12 +403,22 @@ module Regress
       def round_move_refused
         pid = start_counter
         mark = log_lines.size
+        mark_b = log_lines(RUN_DIR_B).size
         r = move(pid, "--damage")
         unless r["status"] == "stayed" && r["here"] == "continued" && r["reason"].to_s.include?("restore")
           raise Failure, "move refused: answered #{r.inspect}"
         end
         c = goes_on(mark, "move refused")
         raise Failure, "move refused: the second program runs the counter" if app_b("ps").fetch("apps").any? { |x| x["name"] == "Ckpt Counter" }
+        # The refusal went back to the requester: the second program logs it
+        # but its desktop shows no error dialog (the kernel logs "App '<name>':"
+        # exactly when it forwards show_error to the desktop).
+        b = log_lines(RUN_DIR_B)[mark_b..]
+        unless b.any? { |l| l =~ /\[Ckpt Counter\] cannot restore .*told the requester; no error dialog/ }
+          raise Failure, "move refused: the second program did not log the refusal"
+        end
+        shown = b.grep(/App 'Ckpt Counter': /)
+        raise Failure, "move refused: the second program's desktop was told to show an error (#{shown.first})" unless shown.empty?
         kill_counter
         "move refused: #{r['reason'][0, 60]}...; went on here: a #{c[:a]}, main #{c[:main]}"
       end

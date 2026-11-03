@@ -834,7 +834,16 @@ static int execute_mruby_checkpoint(fmrb_app_task_context_t* ctx)
 {
     char err[192];
     mrb_value task = mrb_nil_value();
-    if (fmrb_app_checkpoint_resume(ctx, &task, err, sizeof(err)) != 0) {
+    bool answered = false;
+    if (fmrb_app_checkpoint_resume(ctx, &task, err, sizeof(err), &answered) != 0) {
+        if (answered) {
+            // A requested restore (a move): the requester has the reason and
+            // the source app goes on, so this is not the user's failure to see
+            // (no error dialog). A restart from an image in this program
+            // (restart: true) has nobody to answer and is reported below.
+            FMRB_LOGE(TAG, "[%s] %s (told the requester; no error dialog)", ctx->app_name, err);
+            return -1;
+        }
         set_last_error(ctx, err, NULL);
         FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
         notify_error_to_kernel(ctx);

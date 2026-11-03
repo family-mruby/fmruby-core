@@ -30,8 +30,11 @@ void fmrb_app_checkpoint_host_task(fmrb_app_task_context_t *ctx, mrb_value task)
 // Restore the image at ctx->filepath and run it to the end (the app task of a
 // FMRB_LOAD_MODE_CHECKPOINT spawn). Returns 0 with *task the program's Task
 // (its value says how it ended, as after mrb_task_run), or -1 with the reason
-// in err when the image cannot be restored.
-int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, char *err, size_t errlen);
+// in err when the image cannot be restored. *answered says whether the reason
+// went back to whoever asked for the image (fmrb_app_checkpoint_restore_ask,
+// a move): that refusal is the requester's to handle, not the user's.
+int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, char *err, size_t errlen,
+                               bool *answered);
 
 // _spin got APP_CONTROL "checkpoint" (picoruby-fmrb-app). Returns true when
 // the request is taken (the image is written at the next safe point, once

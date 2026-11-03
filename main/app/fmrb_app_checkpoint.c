@@ -115,7 +115,7 @@ typedef struct {
 static ckpt_restore_t s_restore;
 
 static void put_u32(uint8_t *p, uint32_t v);
-static void restore_answer(const char *path, int status, int32_t pid, const char *what);
+static bool restore_answer(const char *path, int status, int32_t pid, const char *what);
 
 static ckpt_app_t *entry_of(const fmrb_app_task_context_t *ctx)
 {
@@ -704,14 +704,16 @@ static mrb_value continue_body(mrb_state *mrb, void *ud)
     return mrb_checkpoint_continue(mrb);
 }
 
-int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, char *err, size_t errlen)
+int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, char *err, size_t errlen,
+                               bool *answered)
 {
     mrb_state *mrb = ctx->mrb;
     ckpt_app_t *e = entry_of(ctx);
     *task = mrb_nil_value();
+    *answered = false;
     if (!e || e->mrb != mrb) {
         snprintf(err, errlen, "the VM is not set up for checkpoints");
-        restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
+        *answered = restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
         return -1;
     }
 
@@ -719,7 +721,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
     uint8_t *buf = read_image(ctx->filepath, &len);
     if (!buf) {
         snprintf(err, errlen, "cannot read the image %s", ctx->filepath);
-        restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
+        *answered = restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
         return -1;
     }
     uint64_t t0 = fmrb_hal_time_get_us();
@@ -731,7 +733,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
         mrb_value msg = mrb_funcall(mrb, r, "message", 0);
         snprintf(err, errlen, "cannot restore %s: %s", ctx->filepath,
                  mrb_string_p(msg) ? RSTRING_PTR(msg) : "?");
-        restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
+        *answered = restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
         return -1;
     }
     FMRB_LOGI(TAG, "[%s] restored %s (%u bytes) in %u us, task tick %u", ctx->app_name, ctx->filepath,
@@ -838,12 +840,15 @@ fmrb_err_t fmrb_app_checkpoint_finish(int32_t pid, bool close, const char *reaso
 
 // ---- starting an image (the receiving side of a move) -------------------------
 
-static void restore_answer(const char *path, int status, int32_t pid, const char *what)
+// Returns true when someone asked for this image (fmrb_app_checkpoint_restore_ask)
+// and now has the answer.
+static bool restore_answer(const char *path, int status, int32_t pid, const char *what)
 {
-    if (s_restore.status != FMRB_APP_RESTORE_PENDING || strcmp(s_restore.path, path) != 0) return;
+    if (s_restore.status != FMRB_APP_RESTORE_PENDING || strcmp(s_restore.path, path) != 0) return false;
     s_restore.pid = pid;
     snprintf(s_restore.what, sizeof(s_restore.what), "%s", what ? what : "");
     s_restore.status = status;
+    return true;
 }
 
 fmrb_err_t fmrb_app_checkpoint_restore_ask(const char *path)
