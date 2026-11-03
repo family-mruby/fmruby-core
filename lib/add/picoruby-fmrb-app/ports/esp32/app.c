@@ -519,6 +519,15 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 
         fmrb_tick_t remaining_ticks = target_tick - current_tick;
 
+        // A full collection asked for from outside (the debug server's "gc").
+        // Here, between messages, is where GC.start would run too.
+        uint32_t gc_seq;
+        if (fmrb_app_gc_take(ctx, &gc_seq)) {
+            mrb_full_gc(mrb);
+            fmrb_app_gc_finish(ctx, gc_seq);
+            continue;
+        }
+
         // Collect while there is nothing else to do (no-op unless the app
         // turned on FmrbApp#idle_gc). Re-enter the loop afterwards: the clock
         // has moved and a message may have arrived.

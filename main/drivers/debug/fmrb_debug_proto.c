@@ -26,6 +26,7 @@ static const struct { const char *name; fmrb_dbg_cmd_t cmd; } k_cmd_table[] = {
     { "resume",      DBG_CMD_RESUME },
     { "spawn",       DBG_CMD_SPAWN },
     { "audio",       DBG_CMD_AUDIO },
+    { "gc",          DBG_CMD_GC },
 };
 
 static fmrb_dbg_cmd_t cmd_from_str(const char *s, size_t len) {

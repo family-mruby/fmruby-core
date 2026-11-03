@@ -39,6 +39,12 @@ void fmrb_spinel_instance_end(void *est);
  * call from another task: it reads two ints the instance task only grows. */
 int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw);
 
+/* A full collection (both generations, both heaps) of the calling task's
+ * instance. Call only where the program may collect: between its statements,
+ * e.g. from inside an FFI call it makes (the message wait). No-op without an
+ * instance. */
+void fmrb_spinel_gc_full(void);
+
 /* ---- A Spinel gem's single instance and the task that owns it ----
  *
  * A Spinel gem (raycast, fft, spinel_hello) keeps ONE instance of its program

@@ -21,6 +21,7 @@
 #include "fmrb_msg_payload.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_mem.h"
+#include "fmrb_spinel_host.h"
 #include "fmrb_rtos.h"
 #include "fmrb_hal.h"
 /* estalloc stats, as declared in main/app/fmrb_app.c. */
@@ -146,6 +147,14 @@ const char *fmrb_spx_app_recv_message(int timeout_ms, int *type, int *src_pid)
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
         return "";
+    }
+    /* A full collection asked for from outside (the debug server's "gc"). The
+       program is between statements here: the call is the first one of the
+       base's _poll_message, with nothing but its frame's rooted locals live. */
+    uint32_t gc_seq;
+    if (fmrb_app_gc_take(ctx, &gc_seq)) {
+        fmrb_spinel_gc_full();
+        fmrb_app_gc_finish(ctx, gc_seq);
     }
     fmrb_msg_t msg;
     fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg,

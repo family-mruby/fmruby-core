@@ -174,6 +174,27 @@ int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw) {
     return -1;
 }
 
+/* A full collection of the calling task's instance, for a caller outside the
+ * program (the debug server's "gc" request, answered from the program's
+ * message wait). sp_gc_collect alone runs whatever the generational schedule
+ * says is due, mostly a minor cycle that leaves the old generation's garbage
+ * in place; moving the cycle counter onto the next full-cycle boundary makes
+ * this one full (both heaps, old strings too), and the schedule carries on
+ * from there as if that full had come when it was due. With threads, a
+ * concurrent sweep the cycle started is finished before returning, as
+ * GC.start does. */
+void fmrb_spinel_gc_full(void) {
+    if (!sp_ctx_current()) return;
+    int iv = sp_gc_full_interval;
+    if (iv < 1) iv = 1;
+    int r = sp_gc_cycle % iv;
+    if (r != 0) sp_gc_cycle += iv - r;
+    sp_gc_collect();
+#ifdef SP_THREADS
+    if (sp_gc_conc_wait_hook) sp_gc_conc_wait_hook();
+#endif
+}
+
 #else  /* !SP_MULTI_CTX: single-context build has no per-instance API. */
 
 void *fmrb_spinel_instance_begin(void *pool, size_t pool_size,
@@ -188,6 +209,7 @@ int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw) {
     if (catch_hw) *catch_hw = 0;
     return -1;
 }
+void fmrb_spinel_gc_full(void) {}
 
 #endif /* SP_MULTI_CTX */
 

@@ -113,6 +113,7 @@ payload は msgpack map (キーは文字列)。`-` は payload 無し (nil)。
 | `suspend` | `{pid:int}` | `{ok:bool}` | 同上 |
 | `resume` | `{pid:int}` | `{ok:bool}` | 同上 |
 | `spawn` | `{path:str}` | `{pid:int}` | |
+| `gc` | `{pid?:int, max?:int}` | `{apps:[{pid, name, status},...]}` | 各アプリ (pid 指定ならその 1 つ) の task が次のメッセージ待ちで完全な GC をかける。max ms (既定 3000) まで待って答える。status は done / timeout / skipped (動作中でない・mruby と Spinel 以外・attach 中) / gone |
 
 ### 複合型
 
@@ -154,3 +155,4 @@ var   : {name:str, type:str, value:str, truncated:bool}
 
 - 2026-07-16: 初版 (Phase 1 実装開始時)。
 - 2026-07-21: BLE GATT トランスポートのフレーミング / UUID を追記 (Phase 3b)。
+- 2026-11-03: `gc` を追加 (rake regress:run が VM プールを読む前に使う)。

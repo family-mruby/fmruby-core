@@ -20,7 +20,9 @@
 #   -> spawn SCENARIO_APPS one by one -> snapshot (running)
 #   -> kill them -> snapshot (closed)
 #
-# A snapshot is the debug server's `ps` (what sim_app ps shows): each app's
+# A snapshot is a full collection in every app (the debug server's `gc`,
+# each app's own task collecting at its next message wait), then the debug
+# server's `ps` (what sim_app ps shows): each app's
 # VM pool in use and its task stack's free high-water mark, the kernel, the
 # desktop and (Modern) the service host included. From the core's log comes
 # each mruby app's VM pool right after compiling (used and peak).
@@ -30,9 +32,10 @@
 # tell apart) and the periodic dump's "IRAM free" (the 10 s dump is not
 # printed by the sim; see doc/regression/report/rg3b.md).
 #
-# The numbers move a little from run to run (how far the GC got when the
-# snapshot is taken), so each one is compared with a tolerance (TOLERANCE
-# below, why in doc/regression/report/rg3b.md): growth beyond it fails,
+# The numbers move a little from run to run (what the kernel happens to hold
+# at the snapshot; with the collection before it, no longer how far each GC
+# had got), so each one is compared with a tolerance (TOLERANCE below, why in
+# doc/regression/report/rg3b.md and rg_gc.md): growth beyond it fails,
 # anything else is shown only when it moved past it. A running stack
 # (someone's sim) is never touched: the run refuses to start. The
 # developer's build tree is moved aside and put back (build_tree.rb).
@@ -79,7 +82,9 @@ module Regress
     # Measured spread over 3 runs x 2 families (report rg3b.md): the apps the
     # scenario starts, their compile numbers and the desktop moved by 0-88 B,
     # the kernel and the service host (collected on their own schedule) by up
-    # to 1.9 KB, stack high-water marks by up to 276 B.
+    # to 1.9 KB, stack high-water marks by up to 276 B. With a full collection
+    # before each snapshot (report rg_gc.md) the kernel still moves by under
+    # 1 KB (what it holds at that moment), everything else by 0-40 B.
     TOLERANCE = {
       "app_used" => [0.0, 512],
       "gc_used" => [0.03, 4096],
@@ -97,12 +102,14 @@ module Regress
       "stack_free" => { factor: 2, unit: 256, floor: 512 },
       "compile" => { factor: 2, unit: 256, floor: 256 }
     }.freeze
-    # VMs whose pool follows their own GC rather than the scenario.
+    # VMs whose pool follows their own work rather than the scenario (the
+    # kernel, the service host): the relative part of the tolerance.
     GC_TIMED = %w[fmrb_kernel Services].freeze
-    # Not compared, only kept: right after the apps close, the kernel still
-    # holds their garbage or has already collected it (161 KB vs 200 KB on
-    # the same build).
-    UNCOMPARED = ["closed fmrb_kernel used"].freeze
+    # Not compared, only kept. Empty since the collection before each
+    # snapshot: the closed kernel, which held the closed apps' garbage or not
+    # (161 KB vs 200 KB on one build), now moves by under 1 KB like the
+    # others (report rg_gc.md).
+    UNCOMPARED = [].freeze
 
     module_function
 
@@ -187,6 +194,19 @@ module Regress
 
     # --- one family ---------------------------------------------------------
 
+    # How long the debug server waits for every app to collect (ms).
+    GC_WAIT_MS = 5000
+
+    # A full collection in every app first, each by its own task at its next
+    # message wait (the debug server's gc), so that a snapshot counts what is
+    # live, not how far each GC had got. An app that did not collect in time
+    # fails the run: its number would be the GC timing again.
+    def snapshot
+      late = dbg("gc", "max=#{GC_WAIT_MS}").fetch("apps").reject { |a| %w[done skipped].include?(a["status"]) }
+      raise "gc: #{late.map { |a| "#{a['name']} #{a['status']}" }.join(', ')} (no collection before the snapshot)" unless late.empty?
+      ps
+    end
+
     def ps
       dbg("ps").fetch("apps").to_h do |a|
         [a["name"], { "used" => a["mem_used"], "total" => a["mem_total"], "stack_free" => a["stack_hw"] }]
@@ -230,16 +250,16 @@ module Regress
       raise "the sim came up at #{size&.join('x') || '?'}, #{SIZES[family].join('x')} expected" unless size == SIZES[family]
       wait_for(60, "the desktop's boot to finish") { core_log.include?(BOOT_DONE) }
       sleep SETTLE
-      points = { "idle" => ps }
+      points = { "idle" => snapshot }
       pids = SCENARIO_APPS.map do |path|
         pid = dbg("spawn", "path=#{path}")["pid"]
         sleep SETTLE
         pid
       end
-      points["running"] = ps
+      points["running"] = snapshot
       pids.each { |pid| dbg("kill", "pid=#{pid}") }
       sleep SETTLE
-      points["closed"] = ps
+      points["closed"] = snapshot
       log = core_log
       File.write(File.join(OUT, log_name), log)
       res = { "points" => points, "compile" => compile_lines(log) }

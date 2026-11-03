@@ -299,6 +299,13 @@ class FmrbDebugClient:
     def spawn(self, path):
         return self.request("spawn", {"path": path})["pid"]
 
+    def gc(self, pid=None, max_ms=3000):
+        """Full collection in each app (or pid) by its own task; waits for it."""
+        payload = {"max": max_ms}
+        if pid is not None:
+            payload["pid"] = pid
+        return self.request("gc", payload, timeout=max(self.timeout, max_ms / 1000 + 2))["apps"]
+
 
 # --- CLI ------------------------------------------------------------------
 def _coerce(v):
@@ -314,8 +321,12 @@ def _print_event(name, payload):
 
 def cmd_oneshot(client, cmd, kv, as_json=False):
     payload = {k: _coerce(v) for k, v in (a.split("=", 1) for a in kv)} or None
+    # gc waits on the board for up to max ms (3000 by default) before answering
+    timeout = None
+    if cmd == "gc":
+        timeout = max(client.timeout, (payload or {}).get("max", 3000) / 1000 + 2)
     try:
-        resp = client.request(cmd, payload)
+        resp = client.request(cmd, payload, timeout=timeout)
         if as_json:
             print(json.dumps(resp))
         else:

@@ -177,7 +177,36 @@ typedef struct fmrb_app_task_context_s {
     // and compiling its script. fmrb_app_notify_started reports that to the
     // kernel, and this keeps it to one report per app.
     bool                  started_notified;
+
+    // A full collection asked for from outside the app (the debug server's
+    // "gc", doc/regression/usage.md): the asker bumps gc_req, the app's own
+    // task collects at its next message wait -- a safe point of its engine --
+    // and copies gc_req to gc_done. Only the asker writes gc_req and only the
+    // app's task writes gc_done. Nothing raises gc_req unless asked, so the
+    // wait pays one compare.
+    volatile uint32_t     gc_req;
+    volatile uint32_t     gc_done;
 } fmrb_app_task_context_t;
+
+/**
+ * @brief Whether a full collection was asked of this app (see gc_req)
+ *
+ * Called by a runtime at a point where its own collector may run. When it
+ * returns true the runtime collects and then calls fmrb_app_gc_finish() with
+ * the sequence number written to *seq.
+ */
+static inline bool fmrb_app_gc_take(const fmrb_app_task_context_t* ctx, uint32_t* seq) {
+    if (!ctx || ctx->gc_req == ctx->gc_done) return false;
+    *seq = ctx->gc_req;
+    return true;
+}
+
+/**
+ * @brief Report a collection asked with gc_req as done
+ */
+static inline void fmrb_app_gc_finish(fmrb_app_task_context_t* ctx, uint32_t seq) {
+    __atomic_store_n(&ctx->gc_done, seq, __ATOMIC_RELEASE);
+}
 
 /**
  * @brief Tell the kernel the app is up (main canvas created)
@@ -306,6 +335,29 @@ bool fmrb_app_was_expected_stop(int32_t id);
 bool fmrb_app_suspend(int32_t id);
 bool fmrb_app_resume(int32_t id);
 int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);
+
+// fmrb_app_gc_request / fmrb_app_gc_poll results
+#define FMRB_APP_GC_DONE      0   // collected
+#define FMRB_APP_GC_PENDING   1   // asked, not collected yet
+#define FMRB_APP_GC_SKIPPED   2   // not RUNNING, or an engine that does not answer
+#define FMRB_APP_GC_GONE      3   // the app ended (or its slot was reused)
+
+/**
+ * @brief Ask an app for a full collection in its own task (debug server)
+ *
+ * Only mruby and Spinel (NATIVE) apps answer, at their next message wait.
+ * Nothing waits here: poll with fmrb_app_gc_poll() using *gen and *seq.
+ *
+ * @return FMRB_APP_GC_PENDING when asked, FMRB_APP_GC_SKIPPED otherwise
+ */
+int fmrb_app_gc_request(int32_t id, uint32_t* gen, uint32_t* seq);
+
+/**
+ * @brief Whether the collection fmrb_app_gc_request asked for has run
+ *
+ * @return FMRB_APP_GC_DONE, FMRB_APP_GC_PENDING or FMRB_APP_GC_GONE
+ */
+int fmrb_app_gc_poll(int32_t id, uint32_t gen, uint32_t seq);
 
 /**
  * @brief Process-set generation counter, bumped on every state transition.

@@ -2611,6 +2611,45 @@ bool fmrb_app_resume(int32_t id) {
 }
 
 /**
+ * Ask an app for a full collection (the debug server's "gc"). Only the
+ * engines whose message wait looks at gc_req answer: mruby (_spin, the mruby
+ * kernel's receive) and Spinel (the app and kernel receive shims).
+ */
+int fmrb_app_gc_request(int32_t id, uint32_t* gen, uint32_t* seq) {
+    if (id < 0 || id >= FMRB_MAX_APPS || !gen || !seq) return FMRB_APP_GC_SKIPPED;
+    int r = FMRB_APP_GC_SKIPPED;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
+    if (ctx->state == PROC_STATE_RUNNING &&
+        (ctx->vm_type == FMRB_VM_TYPE_MRUBY || ctx->vm_type == FMRB_VM_TYPE_NATIVE)) {
+        uint32_t next = ctx->gc_req + 1;
+        __atomic_store_n(&ctx->gc_req, next, __ATOMIC_RELEASE);
+        *gen = ctx->gen;
+        *seq = next;
+        r = FMRB_APP_GC_PENDING;
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+    return r;
+}
+
+int fmrb_app_gc_poll(int32_t id, uint32_t gen, uint32_t seq) {
+    if (id < 0 || id >= FMRB_MAX_APPS) return FMRB_APP_GC_GONE;
+    int r;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
+    if (ctx->gen != gen || (ctx->state != PROC_STATE_RUNNING &&
+                            ctx->state != PROC_STATE_SUSPENDED)) {
+        r = FMRB_APP_GC_GONE;
+    } else if (__atomic_load_n(&ctx->gc_done, __ATOMIC_ACQUIRE) == seq) {
+        r = FMRB_APP_GC_DONE;
+    } else {
+        r = FMRB_APP_GC_PENDING;
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+    return r;
+}
+
+/**
  * Get app list (ps-style)
  */
 int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {

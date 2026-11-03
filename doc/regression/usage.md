@@ -104,11 +104,12 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 
 ### 7.2 動かした時点の表 (rake regress:run)
 
-- Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → アプリ 4 つ (kamon・MML・StackChan Remote・Spinel Hello) を順に起動 → 控え (running) → 閉じる → 控え (closed)。控えは debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
+- Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → アプリ 4 つ (kamon・MML・StackChan Remote・Spinel Hello) を順に起動 → 控え (running) → 閉じる → 控え (closed)。控えは、まず debug server の gc で全アプリに完全な GC をかけ (各アプリの task が次のメッセージ待ちで自分のエンジンの GC を回す。全部が終わるまで最大 5 秒待ち、間に合わないアプリがあれば落ちる)、そのあと debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
 - 結果は `tmp/regress/sim/<種類>.json` とコアのログ (`<種類>.log`)。基準は `test/regress/sim_baseline.json`。
-- 比べ方 (幅): 起動したアプリ・デスクトップの使用量は 512 B、カーネルとサービスホスト (自分の GC の都合で動く) は 4 KB か 3% の大きい方、スタックの空きは 512 B、コンパイル直後は 256 B まで動いてよい。悪い向き (使用量が増える・空きが減る) に幅を超えたら落ちる。閉じた直後のカーネルの使用量は比べない (ごみを集めたかどうかで 40 KB 動く)。幅の根拠は `report/rg3b.md`。
+- 比べ方 (幅): 起動したアプリ・デスクトップの使用量は 512 B、カーネルとサービスホストは 4 KB か 3% の大きい方、スタックの空きは 512 B、コンパイル直後は 256 B まで動いてよい。悪い向き (使用量が増える・空きが減る) に幅を超えたら落ちる。閉じた直後のカーネルの使用量も比べる。幅の根拠は `report/rg3b.md` と `report/rg_gc.md`。
+- 控えの前の GC (2026-11-03 から): それまでは GC がどこまで進んでいたかで数が動き、Modern のカーネルは 5 回で 68 KB 動いた (幅を 137 KB にしていた)。閉じた直後のカーネルは 40 KB 動くので比べていなかった。GC をかけてからは、カーネルの揺れは 1 KB 未満、ほかは 0〜56 B。数は「生きているもの」の量になり、前より 25〜60 KB 小さい。
 - 幅は種類ごとに基準の json の `tolerance` が既定で、種類 (retro・modern) ごとの `families.<種類>.tolerance` があればそれが勝つ (calibrate の APPLY=1 が書く)。
-- **台本や構成を変えて揺れ方が変わったとき**: `rake regress:run:calibrate ONLY=<種類>` → 要約を読む → `APPLY=1`。要約の読み方は 8.1 と同じ。sim では幅の案は絶対値の部分だけで、割合の部分 (カーネル・サービスホストの 3%) は今の値のまま。比べない数 (閉じた直後のカーネル) の揺れも `not compared:` の行に出る。結果は `tmp/regress/sim/<種類>.calibrate.json`、各回のコアのログは `<種類>.calibrate.<n>.log`。
+- **台本や構成を変えて揺れ方が変わったとき**: `rake regress:run:calibrate ONLY=<種類>` → 要約を読む → `APPLY=1`。要約の読み方は 8.1 と同じ。sim では幅の案は絶対値の部分だけで、割合の部分 (カーネル・サービスホストの 3%) は今の値のまま。比べない数があればその揺れも `not compared:` の行に出る (今は無い)。結果は `tmp/regress/sim/<種類>.calibrate.json`、各回のコアのログは `<種類>.calibrate.<n>.log`。
 - sim で取れないもの: 起動ログの M1| (Linux のビルドは出さない) と周期ダンプの IRAM free (sim では周期ダンプが出ない)。これらは実機の起動の確認 (RG4) で見る。
 
 ### 7.3 落ちたとき

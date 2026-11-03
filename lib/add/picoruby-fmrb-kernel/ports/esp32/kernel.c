@@ -65,6 +65,15 @@ static mrb_value mrb_kernel_handler_poll_message(mrb_state *mrb, mrb_value self)
     mrb_int timeout_ms;
     mrb_get_args(mrb, "i", &timeout_ms);
 
+    // A full collection asked for from outside (the debug server's "gc"),
+    // before the wait, where GC.start could run as well.
+    fmrb_app_task_context_t *gc_ctx = fmrb_current();
+    uint32_t gc_seq;
+    if (fmrb_app_gc_take(gc_ctx, &gc_seq)) {
+        mrb_full_gc(mrb);
+        fmrb_app_gc_finish(gc_ctx, gc_seq);
+    }
+
     // fmrb_msg_receive takes milliseconds (applies MS_TO_TICKS internally).
     fmrb_msg_t msg;
     fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg,

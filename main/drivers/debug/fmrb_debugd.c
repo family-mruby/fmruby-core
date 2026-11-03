@@ -3,8 +3,8 @@
 //
 // Phase 1 scope in THIS file: the task loop, the transport wiring, and the
 // non-hook commands (version / ps / log_read / kill / stop / suspend / resume /
-// spawn). The hook-based commands (attach / detach / breakpoints / pause /
-// step / stack_trace / frame_vars) are dispatched to fmrb_debug_ctx once that
+// spawn / audio / gc). The hook-based commands (attach / detach / breakpoints /
+// pause / step / stack_trace / frame_vars) are dispatched to fmrb_debug_ctx once that
 // module lands; until then they return FMRB_ERR_NOT_SUPPORTED.
 #include "fmrb_debugd.h"
 #include "fmrb_attr.h"
@@ -21,6 +21,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
 #include "host_task.h"
+#include "fmrb_hal_time.h"
 #ifdef CONFIG_IDF_TARGET_LINUX
 #include "fmrb_mem.h"
 #include "fmrb_toml.h"
@@ -330,11 +331,80 @@ static void handle_audio(const fmrb_dbg_req_t *req) {
     fmrb_dbg_writer_destroy(&w);
 }
 
+// gc {pid?, max?}: a full collection in each app (or in pid alone), run by
+// the app's own task at its next message wait -- never from here, which would
+// touch a VM another task is running -- with the engine's own collector
+// (fmrb_app_gc_request). Waits until every app asked has collected or max ms
+// (default 3000) have passed, then answers {apps: [{pid, name, status}]} with
+// status "done", "timeout", "skipped" (not running, an engine that does not
+// answer, or parked by the debugger) or "gone" (ended meanwhile). For tools
+// that read the VM pools (rake regress:run) and want them free of garbage.
+#define DEBUGD_GC_WAIT_MS_DEFAULT 3000
+#define DEBUGD_GC_POLL_MS         10
+
+static const char *gc_status_str(int st) {
+    switch (st) {
+        case FMRB_APP_GC_DONE:    return "done";
+        case FMRB_APP_GC_PENDING: return "timeout";
+        case FMRB_APP_GC_GONE:    return "gone";
+        default:                  return "skipped";
+    }
+}
+
+static void handle_gc(const fmrb_dbg_req_t *req) {
+    fmrb_app_info_t list[FMRB_MAX_APPS];
+    int32_t n = fmrb_app_ps(list, FMRB_MAX_APPS);
+    if (n < 0) n = 0;
+    int st[FMRB_MAX_APPS];
+    uint32_t gen[FMRB_MAX_APPS];
+    uint32_t seq[FMRB_MAX_APPS];
+    int32_t m = 0;
+    for (int32_t i = 0; i < n; i++) {
+        if (req->have_pid && list[i].app_id != req->pid) continue;
+        list[m] = list[i];
+        if (fmrb_debug_ctx_is_attached(list[m].app_id)) {
+            st[m] = FMRB_APP_GC_SKIPPED;
+        } else {
+            st[m] = fmrb_app_gc_request(list[m].app_id, &gen[m], &seq[m]);
+        }
+        m++;
+    }
+    if (req->have_pid && m == 0) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+
+    int wait_ms = req->max > 0 ? req->max : DEBUGD_GC_WAIT_MS_DEFAULT;
+    fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
+    for (;;) {
+        bool pending = false;
+        for (int32_t i = 0; i < m; i++) {
+            if (st[i] != FMRB_APP_GC_PENDING) continue;
+            st[i] = fmrb_app_gc_poll(list[i].app_id, gen[i], seq[i]);
+            if (st[i] == FMRB_APP_GC_PENDING) pending = true;
+        }
+        if (!pending || fmrb_hal_time_get_us() >= deadline) break;
+        fmrb_task_delay_ms(DEBUGD_GC_POLL_MS);
+    }
+
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    msgpack_pack_map(&w.pk, 1);
+    fmrb_dbg_pack_key(&w.pk, "apps");
+    msgpack_pack_array(&w.pk, m);
+    for (int32_t i = 0; i < m; i++) {
+        msgpack_pack_map(&w.pk, 3);
+        fmrb_dbg_pack_kv_int(&w.pk, "pid", list[i].app_id);
+        fmrb_dbg_pack_kv_str(&w.pk, "name", list[i].app_name);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", gc_status_str(st[i]));
+    }
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
 // --- dispatch --------------------------------------------------------------
 
 // Hook-based commands drive the shared debug core (attach/park/inspect). They
 // are refused while the on-device gem owns the session; the non-hook commands
-// (version/ps/log_read/spawn/app-ctl/audio) stay available to remote
+// (version/ps/log_read/spawn/app-ctl/audio/gc) stay available to remote
 // clients.
 static bool is_hook_cmd(int cmd) {
     switch (cmd) {
@@ -371,6 +441,7 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_RESUME:   handle_app_ctl(req);  break;
         case DBG_CMD_SPAWN:    handle_spawn(req);    break;
         case DBG_CMD_AUDIO:    handle_audio(req);    break;
+        case DBG_CMD_GC:       handle_gc(req);       break;
 
         case DBG_CMD_ATTACH:   handle_attach(req);   break;
         case DBG_CMD_DETACH:   handle_detach(req);   break;

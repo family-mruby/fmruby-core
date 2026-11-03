@@ -23,6 +23,7 @@
 #include "fmrb_link_protocol.h"
 #include "status_led.h"
 #include "boot.h"
+#include "fmrb_spinel_host.h"
 
 static const char *TAG = "spx";
 
@@ -40,6 +41,15 @@ const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid)
     if (type) *type = -1;
     if (src_pid) *src_pid = -1;
     *sp_ctx_ffi_bin_len() = 0;
+
+    /* A full collection asked for from outside (the debug server's "gc"),
+       at the head of the kernel base's _poll_message, between statements. */
+    fmrb_app_task_context_t *gc_ctx = fmrb_current();
+    uint32_t gc_seq;
+    if (fmrb_app_gc_take(gc_ctx, &gc_seq)) {
+        fmrb_spinel_gc_full();
+        fmrb_app_gc_finish(gc_ctx, gc_seq);
+    }
 
     fmrb_msg_t msg;
     /* fmrb_msg_receive takes milliseconds (it applies FMRB_MS_TO_TICKS

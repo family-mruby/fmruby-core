@@ -58,6 +58,7 @@ typedef enum {
     DBG_CMD_RESUME,
     DBG_CMD_SPAWN,
     DBG_CMD_AUDIO,
+    DBG_CMD_GC,
 } fmrb_dbg_cmd_t;
 
 // Decoded request. Numeric fields default to 0 / their "unset" sentinel; use
@@ -75,7 +76,7 @@ typedef struct {
     int             bp_id;
     int             frame;
     int             handle;     // expand: value handle (variablesReference)
-    int             max;        // stack_trace max frames
+    int             max;        // stack_trace max frames; gc: wait bound in ms
     int             max_lines;  // log_read
     uint32_t        pos;        // log_read read position
     char            file[FMRB_DEBUG_MAX_FILE];
