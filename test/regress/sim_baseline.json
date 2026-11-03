@@ -4,56 +4,56 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 168584,
+            "used": 165312,
             "total": 1048576,
             "stack_free": 14673
           },
           "system_desktop": {
-            "used": 799040,
+            "used": 780536,
             "total": 1572864,
             "stack_free": 14809
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 216200,
+            "used": 203320,
             "total": 1048576,
             "stack_free": 14673
           },
           "system_desktop": {
-            "used": 807480,
+            "used": 781336,
             "total": 1572864,
             "stack_free": 14751
           },
           "Kamon": {
-            "used": 482464,
+            "used": 456584,
             "total": 1572864,
             "stack_free": 14514
           },
           "MML": {
-            "used": 451248,
+            "used": 443624,
             "total": 1572864,
             "stack_free": 14704
           },
           "StackChan Remote": {
-            "used": 446312,
+            "used": 427120,
             "total": 1572864,
             "stack_free": 14534
           },
           "Spinel Hello": {
-            "used": 432856,
+            "used": 413936,
             "total": 1572864,
             "stack_free": 15003
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 202104,
+            "used": 173208,
             "total": 1048576,
             "stack_free": 14673
           },
           "system_desktop": {
-            "used": 815560,
+            "used": 780536,
             "total": 1572864,
             "stack_free": 14751
           }
@@ -79,7 +79,7 @@
       },
       "family": "retro",
       "board": "NARYAv3",
-      "commit": "5bdb105e",
+      "commit": "367a44c7",
       "tolerance": {
         "app_used": [
           0.0,
@@ -100,11 +100,11 @@
       },
       "calibration": {
         "runs": 5,
-        "at": "2026-11-03T15:38:30+0900",
+        "at": "2026-11-03T17:12:08+0900",
         "spread": {
-          "app_used": 80,
-          "gc_used": 40,
-          "stack_free": 39,
+          "app_used": 0,
+          "gc_used": 648,
+          "stack_free": 0,
           "compile": 0
         }
       }
@@ -113,71 +113,71 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 175960,
+            "used": 175216,
             "total": 1048576,
             "stack_free": 14673
           },
           "system_desktop": {
-            "used": 780632,
+            "used": 780688,
             "total": 1572864,
             "stack_free": 14809
           },
           "Services": {
-            "used": 572328,
+            "used": 515104,
             "total": 1572864,
             "stack_free": 17731
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 230280,
+            "used": 167728,
             "total": 1048576,
             "stack_free": 14673
           },
           "system_desktop": {
-            "used": 813224,
+            "used": 781416,
             "total": 1572864,
             "stack_free": 14751
           },
           "Services": {
-            "used": 572328,
+            "used": 515104,
             "total": 1572864,
             "stack_free": 17731
           },
           "Kamon": {
-            "used": 482464,
+            "used": 456584,
             "total": 1572864,
             "stack_free": 14514
           },
           "MML": {
-            "used": 451248,
+            "used": 443624,
             "total": 1572864,
             "stack_free": 14704
           },
           "StackChan Remote": {
-            "used": 446312,
+            "used": 427120,
             "total": 1572864,
             "stack_free": 14534
           },
           "Spinel Hello": {
-            "used": 432856,
+            "used": 413936,
             "total": 1572864,
             "stack_free": 15003
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 199728,
+            "used": 182520,
             "total": 1048576,
             "stack_free": 14673
           },
           "system_desktop": {
-            "used": 787792,
+            "used": 780576,
             "total": 1572864,
             "stack_free": 14751
           },
           "Services": {
-            "used": 572328,
+            "used": 515104,
             "total": 1572864,
             "stack_free": 17731
           }
@@ -203,7 +203,7 @@
       },
       "family": "modern",
       "board": "TAB5",
-      "commit": "5bdb105e",
+      "commit": "367a44c7",
       "tolerance": {
         "app_used": [
           0.0,
@@ -211,7 +211,7 @@
         ],
         "gc_used": [
           0.03,
-          137216
+          4096
         ],
         "stack_free": [
           0.0,
@@ -224,11 +224,11 @@
       },
       "calibration": {
         "runs": 5,
-        "at": "2026-11-03T15:43:23+0900",
+        "at": "2026-11-03T17:17:52+0900",
         "spread": {
-          "app_used": 0,
-          "gc_used": 68504,
-          "stack_free": 32,
+          "app_used": 56,
+          "gc_used": 632,
+          "stack_free": 24,
           "compile": 0
         }
       }
