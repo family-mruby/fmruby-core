@@ -364,11 +364,13 @@ wake_up_join_waiters(mrb_state *mrb, mrb_task *completed_task)
       curr->wait.join = NULL;
       mrb_task_q_insert(mrb, curr);
       /* If a higher-priority waiter is resumed from task context,
-       * request a context switch after leaving the critical section. */
-      if (mrb->c != mrb->root_c && !switching_) {
+       * request a context switch after leaving the critical section.
+       * (Asked even when switching is set already, so that the request
+       * is counted.) */
+      if (mrb->c != mrb->root_c) {
         mrb_task *running = MRB2TASK(mrb);
         if (curr->priority < running->priority) {
-          switching_ = TRUE;
+          task_request_switch(mrb);  /* fmrb: checkpoint */
         }
       }
     }
@@ -524,7 +526,7 @@ mrb_tick(mrb_state *mrb)
   if (t && t->status == MRB_TASK_STATUS_RUNNING && t->timeslice > 0) {
     t->timeslice--;
     if (t->timeslice == 0) {
-      switching_ = TRUE;  /* Trigger context switch */
+      task_request_switch(mrb);  /* fmrb: checkpoint; trigger context switch */
     }
   }
 
@@ -566,7 +568,7 @@ mrb_tick(mrb_state *mrb)
           }
           curr->reason = MRB_TASK_REASON_NONE;
           mrb_task_q_insert(mrb, curr);
-          switching_ = TRUE;
+          task_request_switch(mrb);  /* fmrb: checkpoint */
         }
         else if (next_wakeup == UINT32_MAX ||
                  (int32_t)(curr_wakeup - next_wakeup) < 0) {
@@ -807,7 +809,7 @@ sleep_us_impl(mrb_state *mrb, uint32_t usec)
   mrb_task_excl_exit(mrb);
 
   /* Trigger context switch */
-  switching_ = TRUE;
+  task_request_switch(mrb);  /* fmrb: checkpoint */
 }
 
 static void
@@ -840,7 +842,7 @@ mrb_f_sleep(mrb_state *mrb, mrb_value self)
     t->status = MRB_TASK_STATUS_SUSPENDED;
     mrb_task_q_insert(mrb, t);
     mrb_task_excl_exit(mrb);
-    switching_ = TRUE;
+    task_request_switch(mrb);  /* fmrb: checkpoint */
     return mrb_nil_value();
   }
 
@@ -909,7 +911,7 @@ task_create_common(mrb_state *mrb, const struct RProc *proc,
 
   if (q_ready_ && q_ready_->status == MRB_TASK_STATUS_RUNNING) {
     if (t->priority < q_ready_->priority) {
-      switching_ = TRUE;
+      task_request_switch(mrb);  /* fmrb: checkpoint */
     }
   }
 
@@ -1052,7 +1054,7 @@ mrb_task_s_pass(mrb_state *mrb, mrb_value self)
     }
 
     /* In task context - trigger context switch */
-    switching_ = TRUE;
+    task_request_switch(mrb);  /* fmrb: checkpoint */
   }
 
   return mrb_nil_value();
@@ -1346,7 +1348,7 @@ mrb_task_join(mrb_state *mrb, mrb_value self)
   mrb_task_excl_exit(mrb);
 
   /* Trigger context switch */
-  switching_ = TRUE;
+  task_request_switch(mrb);  /* fmrb: checkpoint */
 
   return t->result;
 }
@@ -1518,7 +1520,7 @@ suspend_task_internal(mrb_state *mrb, mrb_task *t)
   task_change_state(mrb, t, MRB_TASK_STATUS_SUSPENDED);
 
   if (need_switch) {
-    switching_ = TRUE;
+    task_request_switch(mrb);  /* fmrb: checkpoint */
   }
 }
 
@@ -1554,7 +1556,7 @@ resume_task_internal(mrb_state *mrb, mrb_task *t)
   if (target_status == MRB_TASK_STATUS_READY && q_ready_ &&
       q_ready_->status == MRB_TASK_STATUS_RUNNING) {
     if (t->priority < q_ready_->priority) {
-      switching_ = TRUE;
+      task_request_switch(mrb);  /* fmrb: checkpoint */
     }
   }
 
@@ -1616,7 +1618,7 @@ terminate_task_internal(mrb_state *mrb, mrb_task *t)
 
   /* If terminating self, trigger context switch */
   if (was_running) {
-    switching_ = TRUE;
+    task_request_switch(mrb);  /* fmrb: checkpoint */
   }
 }
 

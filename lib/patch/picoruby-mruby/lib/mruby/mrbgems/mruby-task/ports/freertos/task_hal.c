@@ -20,7 +20,8 @@
 **       mrb_tick there, where queue access is single-threaded.
 **
 ** The only cross-thread shared state is mrb->task.switching (a one-way volatile
-** word) and the per-VM pending counter. The pending counter is a genuine
+** word), mrb->task.switch_requests_async (moved only here, before the flag,
+** see vm_deliver_switch) and the per-VM pending counter. The pending counter is a genuine
 ** read-modify-write shared between the timer task (increment) and the VM thread
 ** (read+zero), so BOTH sides take g_tick_manager.mutex around it. This mutex IS
 ** the atomicity required by the review; do not remove it. (On the single-thread
@@ -133,6 +134,16 @@ vm_deliver_switch(mrb_vm_entry_t *vm)
 {
   if (vm->switch_pending) {
     vm->switch_pending = 0;
+    /* fmrb: checkpoint -- the end of a timeslice is a request of the
+     * scheduler, so it moves the scheduler's switch count like
+     * task_request_switch() (mruby-task/include/task.h) does. Its own half
+     * of the count (switch_requests_async): the top-half runs on another
+     * thread than the VM, and with one writer per word neither side needs
+     * an atomic read-modify-write (which is a library call, and a lock in
+     * internal RAM, on the ESP32-S3). Counted before the flag is raised,
+     * so that whoever sees the flag also sees the count moved. */
+    vm->mrb->task.switch_requests_async++;
+    __atomic_thread_fence(__ATOMIC_RELEASE);
     vm->mrb->task.switching = TRUE;
   }
 }

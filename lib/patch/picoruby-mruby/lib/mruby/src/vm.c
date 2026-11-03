@@ -1622,6 +1622,55 @@ task_across_c_boundary(mrb_state *mrb)
   return FALSE;
 }
 
+/* fmrb: checkpoint -- BEGIN (the safe point hook of mruby-checkpoint, its
+   patches/0001-vm-safepoint-hook.patch; doc/checkpoint/plan.md)
+
+   Safe point hook (mruby-checkpoint). Called from the task-switch check, only
+   while task.switching is pending and only where a task switch would be
+   allowed apart from the root-context rule: no exception in flight, no
+   ObjectSpace walk, no C call boundary on the call-info stack. At that
+   point every frame's pc and registers are in memory (ci->pc, ci->stack).
+   The hook may return (nothing to do), raise, or never return. It may call
+   methods (mrb_funcall), which may move the call-info stack: the VM takes
+   its frame from mrb->c->ci again after the check. NULL by default.
+
+   The hook pointer exists only with MRB_VM_SAFEPOINT_HOOK, defined by the
+   builds that carry the gem (lib/add/family_mruby_linux.rb and
+   family_mruby_native.rb). Without it the slow half below is the upstream
+   test, and nothing is added to the data segment (internal RAM on ESP32). */
+#ifdef MRB_VM_SAFEPOINT_HOOK
+void (*mrb_vm_safepoint_hook)(mrb_state *mrb) = NULL;
+#endif
+
+/* The slow half of RETURN_IF_TASK_STOPPED, kept out of line so that the
+   check expanded at every instruction boundary is two loads and a branch.
+   Returns TRUE when mrb_vm_exec should return to the scheduler. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static mrb_bool
+task_stop_requested(mrb_state *mrb)
+{
+  if (mrb->task.switching && !mrb->exc && !mrb->gc.iterating &&
+      !task_across_c_boundary(mrb)) {
+#ifdef MRB_VM_SAFEPOINT_HOOK
+    if (mrb_vm_safepoint_hook) {
+      mrb_vm_safepoint_hook(mrb);
+      if (!mrb->task.switching) return mrb->c->status == MRB_TASK_STOPPED;
+    }
+#endif
+    if (mrb->c != mrb->root_c) return TRUE;
+    /* The root context has no task to leave: the scheduler would clear the
+       flag before it runs a task (execute_task) anyway. Cleared here, so that
+       a flag raised while the root context runs (Family mruby's tick raises
+       it on the timeslice cadence, running task or not) does not send every
+       following instruction down this slow path. */
+    mrb->task.switching = FALSE;
+  }
+  return mrb->c->status == MRB_TASK_STOPPED;
+}
+/* fmrb: checkpoint -- END */
+
 /* Defer task switches while a C-level ObjectSpace walk holds gc.iterating
    true. The walk runs callbacks (which may call back into mrb_vm_exec via
    mrb_yield); returning early from an inner exec while the outer C
@@ -1725,16 +1774,28 @@ void mrb_hal_task_self_tick(mrb_state *mrb);
 #endif
 /* fmrb: self-supplied timeslice -- END */
 
+/* fmrb: checkpoint -- the per-instruction check is two loads and a branch;
+   the slow half is task_stop_requested() (above), reached through one shared
+   label (L_TASK_CHECK in mrb_vm_exec) with computed goto. The frame is taken
+   again from mrb->c->ci afterwards: the safe point hook may move it. */
+#ifdef MRB_USE_VM_SWITCH_DISPATCH
 #define RETURN_IF_TASK_STOPPED(mrb) do { \
   TASK_SELF_TICK(mrb); \
-  if (((mrb)->task.switching && (mrb)->c != (mrb)->root_c && \
-       !(mrb)->exc && \
-       !(mrb)->gc.iterating && !task_across_c_boundary(mrb)) || \
-      (mrb)->c->status == MRB_TASK_STOPPED) { \
-    (mrb)->jmp = prev_jmp; \
-    return mrb_nil_value(); \
+  if (mrb_unlikely((mrb)->task.switching || (mrb)->c->status == MRB_TASK_STOPPED)) { \
+    if (task_stop_requested(mrb)) { \
+      (mrb)->jmp = prev_jmp; \
+      return mrb_nil_value(); \
+    } \
+    ci = (mrb)->c->ci;   /* the safe point hook may have moved it */ \
   } \
 } while (0)
+#else
+#define RETURN_IF_TASK_STOPPED(mrb) do { \
+  TASK_SELF_TICK(mrb); \
+  if (mrb_unlikely((mrb)->task.switching || (mrb)->c->status == MRB_TASK_STOPPED)) \
+    goto L_TASK_CHECK; \
+} while (0)
+#endif
 #define TASK_STOP(mrb) do { \
   if (mrb->c->status != MRB_TASK_STOPPED) \
     mrb->c->status = MRB_TASK_STOPPED; \
@@ -3991,6 +4052,17 @@ RETRY_TRY_BLOCK:
       return regs[irep->nlocals];
     }
   }
+#if defined(MRB_USE_TASK_SCHEDULER) && !defined(MRB_USE_VM_SWITCH_DISPATCH)
+  /* fmrb: checkpoint -- the slow half of RETURN_IF_TASK_STOPPED */
+L_TASK_CHECK:
+  if (task_stop_requested(mrb)) {
+    mrb->jmp = prev_jmp;
+    return mrb_nil_value();
+  }
+  ci = mrb->c->ci;   /* the safe point hook may have moved it (mrb_funcall) */
+  CALL_CODE_HOOKS();
+  goto *optable[insn];
+#endif
   END_DISPATCH;
 #undef regs
   }
