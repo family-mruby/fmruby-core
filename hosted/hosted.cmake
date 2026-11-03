@@ -312,6 +312,8 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/boot/boot.c
   ${FMRB_ROOT}/main/app/fmrb_app.c
   ${FMRB_ROOT}/main/app/fmrb_app_spawner.c
+  # empty unless FMRB_HAVE_CHECKPOINT (the native build defines it)
+  ${FMRB_ROOT}/main/app/fmrb_app_checkpoint.c
   ${FMRB_ROOT}/main/kernel/fmrb_kernel.c
   ${FMRB_ROOT}/main/kernel/fmrb_secret_path.c
   ${FMRB_ROOT}/main/kernel/fmrb_rtc.c

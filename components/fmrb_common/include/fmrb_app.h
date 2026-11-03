@@ -19,6 +19,8 @@ typedef struct basic_state basic_state_t;
 typedef enum {
     FMRB_LOAD_MODE_BYTECODE = 0,  // Load from precompiled bytecode
     FMRB_LOAD_MODE_FILE = 1,       // Load from source file
+    FMRB_LOAD_MODE_CHECKPOINT = 2, // Restore an mruby checkpoint image (.ckpt, doc/checkpoint;
+                                   // only the builds with FMRB_HAVE_CHECKPOINT spawn it)
 } fmrb_load_mode_t;
 
 // State machine for app lifecycle (strict transitions enforced)
@@ -93,6 +95,10 @@ typedef struct fmrb_app_task_context_s {
     char                  exclusive_group[FMRB_EXCLUSIVE_GROUP_MAX]; // "" = none
     bool                  single_instance;
     bool                  launch_claimed;
+    // .app.toml movable: the app declared it may be written to a checkpoint
+    // image and go on elsewhere (doc/checkpoint, D6). Only the builds that
+    // carry mruby-checkpoint act on it (FMRB_HAVE_CHECKPOINT).
+    bool                  movable;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
@@ -253,6 +259,7 @@ typedef struct {
     bool                  resizable;        // Allow window resize (default: false)
     bool                  large_memory;     // Use the LARGE pool (one exclusive block, 2x the ordinary pool)
     bool                  single_instance;  // Refuse a second copy of this app (same file)
+    bool                  movable;          // May be written to a checkpoint image (.app.toml movable)
     const char*           exclusive_group;  // Refuse while another app of this group runs (NULL = none)
     uint16_t              window_width;     // Window Width (if headless, =0)
     uint16_t              window_height;    // Window Height (if headless, =0)
@@ -375,6 +382,38 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
 fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid);
+
+#ifdef FMRB_HAVE_CHECKPOINT
+/*
+ * Moving an mruby app with mruby-checkpoint (doc/checkpoint). Only the builds
+ * whose libmruby carries the gem (the Linux simulation and the native
+ * program) have these; main/app/fmrb_app_checkpoint.c is empty elsewhere.
+ */
+
+/** Result of the last checkpoint asked of an app (fmrb_app_checkpoint_poll). */
+typedef enum {
+    FMRB_APP_CKPT_NONE = 0,     // nothing asked
+    FMRB_APP_CKPT_PENDING,      // asked, the app has not answered yet
+    FMRB_APP_CKPT_WRITTEN,      // the image is written; the app closes
+    FMRB_APP_CKPT_REFUSED,      // the app could not be written (reason given)
+} fmrb_app_ckpt_status_t;
+
+/**
+ * @brief Ask the kernel to have app `pid` write its checkpoint image.
+ *
+ * The kernel sends the app APP_CONTROL "checkpoint"; with `restart` it starts
+ * the image again once the app has closed. For tools (the debug server).
+ * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM when there is no such app.
+ */
+fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart);
+
+/**
+ * @brief What became of the last checkpoint asked of `pid`.
+ *
+ * `what` receives the image path (WRITTEN) or the reason (REFUSED).
+ */
+fmrb_app_ckpt_status_t fmrb_app_checkpoint_poll(int32_t pid, char *what, size_t what_len);
+#endif
 
 /**
  * @brief Mark the calling task as being inside a synchronous round trip.

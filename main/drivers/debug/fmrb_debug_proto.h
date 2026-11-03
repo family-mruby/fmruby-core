@@ -59,6 +59,7 @@ typedef enum {
     DBG_CMD_SPAWN,
     DBG_CMD_AUDIO,
     DBG_CMD_GC,
+    DBG_CMD_CHECKPOINT,   // only with FMRB_HAVE_CHECKPOINT (doc/checkpoint)
 } fmrb_dbg_cmd_t;
 
 // Decoded request. Numeric fields default to 0 / their "unset" sentinel; use
@@ -81,6 +82,9 @@ typedef struct {
     uint32_t        pos;        // log_read read position
     char            file[FMRB_DEBUG_MAX_FILE];
     char            path[FMRB_DEBUG_MAX_SPAWN_PATH];
+#ifdef FMRB_HAVE_CHECKPOINT
+    bool            restart;    // checkpoint: start the image again afterwards
+#endif
 } fmrb_dbg_req_t;
 
 // Decode one request frame body (bare msgpack). Returns FMRB_OK if it is a

@@ -383,3 +383,15 @@ namespace :regress do
     end
   end
 end
+
+REGRESS_CHECKPOINT = File.join(ROOT_DIR, "tools", "regress", "checkpoint.rb")
+
+namespace :regress do
+  desc "Move an app inside one native program (doc/checkpoint F1): write, close, start the image again, standard and all-mruby (ONLY=standard|mruby, NO_BUILD=1)"
+  task :checkpoint do
+    args = []
+    args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+    args << "--no-build" if ENV["NO_BUILD"] == "1"
+    abort "regress:checkpoint: failed" unless system(Gem.ruby, REGRESS_CHECKPOINT, *args)
+  end
+end

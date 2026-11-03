@@ -27,6 +27,9 @@ static const struct { const char *name; fmrb_dbg_cmd_t cmd; } k_cmd_table[] = {
     { "spawn",       DBG_CMD_SPAWN },
     { "audio",       DBG_CMD_AUDIO },
     { "gc",          DBG_CMD_GC },
+#ifdef FMRB_HAVE_CHECKPOINT
+    { "checkpoint",  DBG_CMD_CHECKPOINT },
+#endif
 };
 
 static fmrb_dbg_cmd_t cmd_from_str(const char *s, size_t len) {
@@ -95,6 +98,10 @@ static void decode_payload(const msgpack_object *map, fmrb_dbg_req_t *out) {
             obj_copy_str(v, out->file, sizeof(out->file));
         } else if (key_is(k, "path")) {
             obj_copy_str(v, out->path, sizeof(out->path));
+#ifdef FMRB_HAVE_CHECKPOINT
+        } else if (key_is(k, "restart") && (obj_is_int(v) || v->type == MSGPACK_OBJECT_BOOLEAN)) {
+            out->restart = obj_as_int(v) != 0;
+#endif
         }
     }
 }

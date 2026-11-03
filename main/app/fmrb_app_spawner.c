@@ -687,6 +687,17 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             FMRB_LOGI(TAG, "Detected Python script: %s", app_name);
         }
     }
+#ifdef FMRB_HAVE_CHECKPOINT
+    // A checkpoint image of an mruby app (doc/checkpoint): restored, not
+    // compiled. Its attributes come from the .toml written beside it
+    // (fmrb_app_checkpoint.c), read below like any app's.
+    fmrb_load_mode_t load_mode = FMRB_LOAD_MODE_FILE;
+    if (ext && strcmp(ext, ".ckpt") == 0) {
+        vm_type = FMRB_VM_TYPE_MRUBY;
+        load_mode = FMRB_LOAD_MODE_CHECKPOINT;
+        FMRB_LOGI(TAG, "Detected mruby checkpoint image: %s", app_name);
+    }
+#endif
 
     FMRB_LOGI(TAG, "[spawn] 5 toml_path");
     // Build TOML configuration file path
@@ -726,6 +737,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     bool resizable = false;
     bool large_memory = false;
     bool single_instance = false;
+    bool movable = false;
     const char* exclusive_group = NULL;
     int min_window_width = 0;
     int min_window_height = 0;
@@ -827,6 +839,14 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // fullscreen_hires: `true` or 1.
         single_instance = fmrb_toml_get_bool(config, "single_instance", false) ||
                           fmrb_toml_get_int(config, "single_instance", 0) != 0;
+#ifdef FMRB_HAVE_CHECKPOINT
+        // movable: the app may be written to a checkpoint image and go on
+        // elsewhere (doc/checkpoint, D6). Only an mruby app can be; the
+        // builds without mruby-checkpoint do not read it.
+        movable = (fmrb_toml_get_bool(config, "movable", false) ||
+                   fmrb_toml_get_int(config, "movable", 0) != 0) &&
+                  vm_type == FMRB_VM_TYPE_MRUBY;
+#endif
         exclusive_group = fmrb_toml_get_string(config, "exclusive_group", NULL);
         if (exclusive_group && exclusive_group[0] == '\0') {
             fmrb_sys_free((void*)exclusive_group);
@@ -902,7 +922,11 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .type = APP_TYPE_USER_APP,
         .name = app_screen_name,
         .vm_type = vm_type,
+#ifdef FMRB_HAVE_CHECKPOINT
+        .load_mode = load_mode,
+#else
         .load_mode = FMRB_LOAD_MODE_FILE,
+#endif
         .filepath = app_name,
         .stack_words = stack_size,
         .priority = FMRB_USER_APP_PRIORITY,
@@ -915,6 +939,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .resizable = resizable,
         .large_memory = large_memory,
         .single_instance = single_instance,
+        .movable = movable,
         .exclusive_group = exclusive_group,
         .window_width = window_width,
         .window_height = window_height,

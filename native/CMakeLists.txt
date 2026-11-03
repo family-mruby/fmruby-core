@@ -223,9 +223,14 @@ target_include_directories(core_objs PRIVATE
   ${N}/etc
   ${N}/sys
   ${N}/wlr
-  ${FMRB_ROOT}/hosted/gate)
+  ${FMRB_ROOT}/hosted/gate
+  ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
 target_compile_definitions(core_objs PRIVATE
   FMRB_PLATFORM_NATIVE=1
+  # libmruby carries mruby-checkpoint here (lib/add/family_mruby_native.rb):
+  # the glue that moves an app (main/app/fmrb_app_checkpoint.c, doc/checkpoint)
+  # and the HAL's tick state it carries. Not an ABI define.
+  FMRB_HAVE_CHECKPOINT
   NATIVE_HAVE_DRM=${NATIVE_HAVE_DRM}
   NATIVE_HAVE_ALSA=${NATIVE_HAVE_ALSA}
   NATIVE_HAVE_WLROOTS=${NATIVE_HAVE_WLROOTS}

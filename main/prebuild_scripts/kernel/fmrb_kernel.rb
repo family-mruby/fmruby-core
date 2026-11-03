@@ -132,6 +132,13 @@ class FmrbKernelImpl < FmrbKernel
     # PUB/SUB topic subscriptions: {"topic" => [pid1, pid2, ...]}
     @subscriptions = {}
 
+    # The app being written to a checkpoint image (doc/checkpoint): its pid
+    # (-1 = none), whether to start the image again once it has closed, and
+    # the image's path once the app has written it.
+    @ckpt_pid = -1
+    @ckpt_restart = false
+    @ckpt_path = ""
+
     # Periodic cleanup tracking
     @tick_count = 0
     @last_cleanup_tick = 0
@@ -330,6 +337,15 @@ class FmrbKernelImpl < FmrbKernel
       # The app says whether it was asked to end. Carried in the message
       # because a kill can free the slot before this is handled.
       cleanup_terminated_app(pid, data["expected"] ? true : false)
+      restart_from_checkpoint(pid)
+    when "checkpoint"
+      # A tool asks for an app's checkpoint image (the debug server's
+      # "checkpoint"): see request_checkpoint.
+      request_checkpoint(data["pid"], data["restart"] ? true : false)
+    when "checkpoint_done"
+      note_checkpoint_done(pid, data["path"].to_s)
+    when "checkpoint_refused"
+      note_checkpoint_refused(pid, data["reason"].to_s)
     when "file_select"
       # Forward file select request to desktop
       if @desktop_pid
@@ -561,6 +577,66 @@ class FmrbKernelImpl < FmrbKernel
       handled = keys_control(cmd, pid, data)
       Log.warn("Unknown app control command: #{cmd}") unless handled
     end
+  end
+
+  # ---- moving an app (doc/checkpoint) ----
+  #
+  # The kernel holds the steps: it asks the app for its image, and starts the
+  # image again once the app has closed. The app writes the image itself, in
+  # its own task, at the first safe point after its message wait (the C side,
+  # main/app/fmrb_app_checkpoint.c), then closes as asked. One app at a time.
+  def request_checkpoint(target, restart)
+    tpid = (target || -1).to_i
+    info = _get_app_info(tpid)
+    if info.nil?
+      Log.warn("Checkpoint: no app with PID #{tpid}")
+      return nil
+    end
+    if @ckpt_pid >= 0
+      Log.warn("Checkpoint: PID #{@ckpt_pid} is still being written; PID #{tpid} asked again")
+    end
+    Log.info("Checkpoint: asking PID #{tpid} (#{info[:name]}) for its image")
+    @ckpt_pid = tpid
+    @ckpt_restart = restart
+    @ckpt_path = ""
+    req = MessagePack.pack({ "cmd" => "checkpoint" })
+    _send_raw_message(tpid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    nil
+  end
+
+  def note_checkpoint_done(pid, path)
+    Log.info("Checkpoint: PID #{pid} wrote #{path}")
+    @ckpt_path = path if pid == @ckpt_pid
+    nil
+  end
+
+  def note_checkpoint_refused(pid, reason)
+    Log.warn("Checkpoint: PID #{pid} refused: #{reason}")
+    if pid == @ckpt_pid
+      @ckpt_pid = -1
+      @ckpt_path = ""
+    end
+    nil
+  end
+
+  # The app that wrote its image has closed: start the image (a .ckpt spawn
+  # restores it and goes on where it stopped), when that was asked for.
+  def restart_from_checkpoint(pid)
+    return nil if pid != @ckpt_pid
+    path = @ckpt_path
+    again = @ckpt_restart
+    @ckpt_pid = -1
+    @ckpt_path = ""
+    return nil if path.empty?
+    return nil unless again
+    new_pid = _spawn_app_req(path)
+    if new_pid
+      Log.info("Checkpoint: started #{path} again as PID #{new_pid}")
+      after_spawn(new_pid)
+    else
+      Log.error("Checkpoint: could not start #{path}: #{spawn_error_reason}")
+    end
+    nil
   end
 
   # A power entry the user confirmed (the desktop's confirm dialog sends it

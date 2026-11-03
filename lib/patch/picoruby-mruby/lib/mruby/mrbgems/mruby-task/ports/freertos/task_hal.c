@@ -340,6 +340,76 @@ mrb_hal_task_take_pending_ticks(mrb_state *mrb)
   return n;
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+/* ---- fmrb: checkpoint -- the tick state of one VM ----------------------------
+ * mruby-checkpoint carries a running program to another VM (doc/checkpoint,
+ * D10). What is left of the running timeslice is decided here, not by
+ * mruby-task: the countdown to the next preemption request, a request raised
+ * but not yet handed to the VM, the ticks counted but not yet applied, and
+ * (self-supplied tick) the part of a tick period already gone by. The
+ * embedder reads them when it writes an image and writes them into the new
+ * VM before the image goes on, so that the slice ends where it would have.
+ * Only the builds that carry the gem have these (FMRB_HAVE_CHECKPOINT).
+ *
+ * Both return 0, or -1 when the VM is not registered.
+ */
+int
+mrb_hal_task_slice_get(mrb_state *mrb, uint32_t *countdown, uint32_t *pending,
+                       uint8_t *switch_pending, uint32_t *sub_tick_us)
+{
+  int found = -1;
+  if (g_tick_manager.mutex == NULL) return -1;
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MRB_TASK_MAX_VMS; i++) {
+      mrb_vm_entry_t *vm = &g_tick_manager.vms[i];
+      if (vm->active && vm->mrb == mrb) {
+        *countdown = vm->tick_countdown;
+        *pending = vm->pending_ticks;
+        *switch_pending = vm->switch_pending ? 1 : 0;
+#ifdef MRB_TASK_TICK_SELF_SUPPLY
+        *sub_tick_us = (uint32_t)(fmrb_hal_time_get_us() - vm->last_self_us);
+#else
+        *sub_tick_us = 0;
+#endif
+        found = 0;
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+  return found;
+}
+
+int
+mrb_hal_task_slice_set(mrb_state *mrb, uint32_t countdown, uint32_t pending,
+                       uint8_t switch_pending, uint32_t sub_tick_us)
+{
+  int found = -1;
+  if (g_tick_manager.mutex == NULL) return -1;
+  if (countdown == 0 || countdown > MRB_TIMESLICE_TICK_COUNT) countdown = MRB_TIMESLICE_TICK_COUNT;
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MRB_TASK_MAX_VMS; i++) {
+      mrb_vm_entry_t *vm = &g_tick_manager.vms[i];
+      if (vm->active && vm->mrb == mrb) {
+        vm->tick_countdown = countdown;
+        vm->pending_ticks = pending;
+        vm->switch_pending = switch_pending ? 1 : 0;
+#ifdef MRB_TASK_TICK_SELF_SUPPLY
+        if (sub_tick_us >= (uint32_t)MRB_TICK_UNIT * 1000U) sub_tick_us = (uint32_t)MRB_TICK_UNIT * 1000U - 1;
+        vm->last_self_us = fmrb_hal_time_get_us() - sub_tick_us;
+#else
+        (void)sub_tick_us;
+#endif
+        found = 0;
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+  return found;
+}
+#endif /* FMRB_HAVE_CHECKPOINT */
+
 /* ---- mruby-task HAL contract ----------------------------------------------- */
 
 void

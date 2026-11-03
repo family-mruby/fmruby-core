@@ -183,10 +183,22 @@ mrb_s_uptime_us(mrb_state *mrb, mrb_value self)
   return mrb_int_value(mrb, (mrb_int)Machine_uptime_us());
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+/* fmrb: checkpoint -- a program carried from another VM (doc/checkpoint, D9)
+   goes on from the board_millis it had there: each VM may run at an offset
+   from this board's clock (main/app/fmrb_app_checkpoint.c). */
+extern int64_t fmrb_app_checkpoint_millis_offset(mrb_state *mrb);
+#endif
+
 static mrb_value
 mrb_s_board_millis(mrb_state *mrb, mrb_value self)
 {
+#ifdef FMRB_HAVE_CHECKPOINT
+  return mrb_int_value(mrb, (mrb_int)((int64_t)(Machine_uptime_us() / 1000) +
+                                      fmrb_app_checkpoint_millis_offset(mrb)));
+#else
   return mrb_int_value(mrb, (mrb_int)(Machine_uptime_us() / 1000));
+#endif
 }
 
 static mrb_value

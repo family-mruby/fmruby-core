@@ -482,6 +482,12 @@ static bool spin_idle_gc(mrb_state *mrb, fmrb_app_task_context_t* ctx,
     return stepped;
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+// main/app/fmrb_app_checkpoint.c (doc/checkpoint): only the builds that carry
+// mruby-checkpoint have it.
+extern bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app);
+#endif
+
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 {
 
@@ -621,6 +627,18 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                     mrb_funcall(mrb, self, "on_resize", 2, width_val, height_val);
                                 }
                             }
+#ifdef FMRB_HAVE_CHECKPOINT
+                        } else if (strcmp(cmd, "checkpoint") == 0) {
+                            // The kernel asks for this app's image (doc/checkpoint,
+                            // D5). No image can be taken here, inside _spin; the
+                            // request is raised and the wait ends, and the image
+                            // is written at the first safe point after _spin has
+                            // returned to main_loop. A refusal is told to the
+                            // kernel and the app goes on.
+                            if (fmrb_app_checkpoint_request(mrb, self)) {
+                                mrb_iv_set(mrb, self, spin_break_sym, mrb_true_value());
+                            }
+#endif
                         } else if (strcmp(cmd, "suspend") == 0 || strcmp(cmd, "resume") == 0 ||
                                    strcmp(cmd, "stop") == 0 || strcmp(cmd, "clear_and_stop") == 0 ||
                                    strcmp(cmd, "quit_request") == 0) {

@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-10-28 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章
+> 状態: 進行中 | 更新: 2026-11-03 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版の 1 プロセスの中でアプリを止めて続ける (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 1. 流し方
 
@@ -315,3 +315,30 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓
 - wl_check.rb で確認する中身は頭の説明 (起動、画面の大きさ、枠、移動と大きさの変更、foot へのキーとポインタ、Family mruby へのキー、エディタの全画面が画面の大きさで出ること (L9e)、前後、Ctrl+Tab、全画面のアプリが最大の整数倍で真ん中に出ること (shooter は 426x240、640x360 で並べた hires_test と麻雀は 640x360。見せ方がフレームと一緒に変わる回数も)、時間、代役の四隅、閉じるボタン、終わり方、終える前の待ちの間も制御の口が答えること (L9e))。結果と画面は `tmp/wl_check/<形>-<出し方>-<レンダラ>/`、作りのログは `tmp/wl_check/build-<形>.log`。
 - SDL の窓の機種 (`sdl`) のクリップボード (L12a) は別に `rake native:sdl_clip` (`test/native/sdl/sdl_clip_check.rb`)。`rake native:core` で作ったものを自前の Xvfb の上で動かし、もう 1 つの SDL のプログラム (`test/native/sdl/clip_peer.c`) をデスクトップのアプリの代わりにして、アプリの `set_clipboard` が向こうで読めること、向こうのコピーをアプリが読めることを見る (1 分ほど)。`regress:wl` には入らない。
 - 分からないこと: GLES での描画 (WSL2 の GPU では動かない)、人の手のキーボードとマウスでの操作、ポップアップの多いアプリ (GTK・Qt のメニュー)、VM や実機の DRM での session。L14 では本物の NetworkManager・BlueZ (polkit の許可、実際の電波)、本物の音の出口、ブラウザの会議からの画面の共有 (portal の問いの窓は KDE・GNOME の portal が出す)、systemd の利用者の session での portal の起こされ方。
+
+## 12. アプリを運ぶ (rake regress:checkpoint)
+
+```
+rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (5 分ほど。作り終えていれば 1 分)
+rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
+rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ版で流す
+```
+
+- 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
+- `rake regress:full` には入っていない。ネイティブ版だけを使い、sim・ブラウザ版・実機は使わない。build/ には触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。
+- ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
+- 試験のアプリは `/app/test/ckpt_counter.app.rb` (窓なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
+- 場面は 4 つ。止める合図はデバッグサーバの `checkpoint` (`python3 tool/debug/fmrb_dbg_client.py --json localhost:<port> checkpoint pid=<pid> restart=1`。答えは `{status: written, path}`・`{status: refused, reason}`・`{status: timeout}`)。
+  - restart: 数えさせてから `restart=1` で止める。アプリが `/tmp/ckpt_counter.ckpt` を書いて閉じ、カーネルがそれを起動し直す。
+  - wait: `restart=0` で止め、アプリが閉じてから 2 秒待ち、`.ckpt` を手で起動する。
+  - refuse: `movable` の無いアプリ (`task_sleep`) は断られ、動き続ける。
+  - refuse window: `movable` でも窓のあるアプリ (`ckpt_window`) は、セーフポイントで gem が断り (窓の `FmrbGfx` は F3 まで運べない)、動き続ける。
+- restart と wait で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
+- 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log`、作ったときのログは `build.log`。
+
+```
+standard: ok (restart: a 5->6, b 3->4, main 5->6, t step 401 ms, image 23039 B; wait 2.0s: t step 402 ms; refused: ...; window refused at the safe point: ...; 16s)
+mruby: ok (...)
+checkpoint: ok (0.6 min)
+```
+

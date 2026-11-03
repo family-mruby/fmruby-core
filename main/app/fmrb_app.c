@@ -42,6 +42,9 @@
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
 #include "host_task.h"
+#ifdef FMRB_HAVE_CHECKPOINT
+#include "fmrb_app_checkpoint.h"
+#endif
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "hw_proxy.h"
 #endif
@@ -521,6 +524,12 @@ static int create_vm_mruby(fmrb_app_task_context_t* ctx) {
     //  to mruby-task's freertos HAL port as part of the case-D consolidation.)
     mrb_hal_task_register_vm(ctx->mrb);
 
+#ifdef FMRB_HAVE_CHECKPOINT
+    // A movable app (and an image to restore) gets mruby-checkpoint set up
+    // before any program code runs (doc/checkpoint); other VMs are untouched.
+    fmrb_app_checkpoint_vm_opened(ctx);
+#endif
+
     FMRB_LOGI(TAG, "[%s] mruby VM created successfully", ctx->app_name);
     return 0;
 }
@@ -783,6 +792,61 @@ static int create_vm_micropython(fmrb_app_task_context_t* ctx) {
 }
 
 /**
+ * How the program's Task ended, told the way every mruby app's end is told:
+ * an uncaught exception goes to the log, the error dialog and the kernel.
+ */
+static void report_mruby_result(fmrb_app_task_context_t* ctx, mrb_value task)
+{
+    // The scheduler files a task's uncaught exception away in the task's
+    // result and clears mrb->exc (mruby-task task.c), so checking mrb->exc
+    // alone reported "No exception detected" for a script that died on its
+    // first line -- the app just vanished. Pull the filed exception back out
+    // so it goes through the same reporting as any other.
+    if (!ctx->mrb->exc && !mrb_nil_p(task)) {
+        mrb_value task_result = mrb_task_value(ctx->mrb, task);
+        if (mrb_obj_is_kind_of(ctx->mrb, task_result,
+                               ctx->mrb->eException_class)) {
+            ctx->mrb->exc = mrb_obj_ptr(task_result);
+        }
+    }
+
+    if (ctx->mrb->exc) {
+        if (ctx->mrb->exc == (struct RObject *)ctx->mrb->nomem_err) {
+            log_pool_usage(ctx, "at NoMemoryError", true);
+        }
+        mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
+        set_last_error(ctx, RSTRING_PTR(exc_str), ctx->mrb);
+        FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
+        notify_error_to_kernel(ctx);
+        mrb_print_error(ctx->mrb);
+    } else {
+        FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
+    }
+}
+
+#ifdef FMRB_HAVE_CHECKPOINT
+/**
+ * Restore an mruby checkpoint image (a .ckpt spawn) and run it on from where
+ * it was written (doc/checkpoint; fmrb_app_checkpoint.c).
+ * @return 0 on success, -1 on error
+ */
+static int execute_mruby_checkpoint(fmrb_app_task_context_t* ctx)
+{
+    char err[192];
+    mrb_value task = mrb_nil_value();
+    if (fmrb_app_checkpoint_resume(ctx, &task, err, sizeof(err)) != 0) {
+        set_last_error(ctx, err, NULL);
+        FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
+        notify_error_to_kernel(ctx);
+        return -1;
+    }
+    report_mruby_result(ctx, task);
+    mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
+    return 0;
+}
+#endif
+
+/**
  * Execute mruby script
  * @param ctx Task context
  * @param load_mode Load mode (bytecode or file)
@@ -841,6 +905,9 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
             return -1;
         }
         need_free_script = true;
+#ifdef FMRB_HAVE_CHECKPOINT
+        fmrb_app_checkpoint_add_source(ctx, script_buffer, script_size);
+#endif
 
         const uint8_t *script_ptr = (const uint8_t *)script_buffer;
         FMRB_LOGI(TAG, "[%s] Script size: %zu bytes", ctx->app_name, script_size);
@@ -930,35 +997,16 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         return -1;
     }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+    // A restored image finds the program's Task again by this (doc/checkpoint).
+    fmrb_app_checkpoint_host_task(ctx, task);
+#endif
+
     FMRB_LOGD(TAG, "[%s] mrb_task_run - BEFORE execution", ctx->app_name);
     mrb_task_run(ctx->mrb);
     FMRB_LOGD(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
-    // The scheduler files a task's uncaught exception away in the task's
-    // result and clears mrb->exc (mruby-task task.c), so checking mrb->exc
-    // alone reported "No exception detected" for a script that died on its
-    // first line -- the app just vanished. Pull the filed exception back out
-    // so it goes through the same reporting as any other.
-    if (!ctx->mrb->exc) {
-        mrb_value task_result = mrb_task_value(ctx->mrb, task);
-        if (mrb_obj_is_kind_of(ctx->mrb, task_result,
-                               ctx->mrb->eException_class)) {
-            ctx->mrb->exc = mrb_obj_ptr(task_result);
-        }
-    }
-
-    if (ctx->mrb->exc) {
-        if (ctx->mrb->exc == (struct RObject *)ctx->mrb->nomem_err) {
-            log_pool_usage(ctx, "at NoMemoryError", true);
-        }
-        mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
-        set_last_error(ctx, RSTRING_PTR(exc_str), ctx->mrb);
-        FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
-        notify_error_to_kernel(ctx);
-        mrb_print_error(ctx->mrb);
-    } else {
-        FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
-    }
+    report_mruby_result(ctx, task);
 
     mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
     // irep_obj is not freed here. mrc_create_task handed it to the VM
@@ -1233,6 +1281,9 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
         case FMRB_VM_TYPE_MRUBY:
             if (ctx->mrb) {
                 FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
+#ifdef FMRB_HAVE_CHECKPOINT
+                fmrb_app_checkpoint_vm_closing(ctx);
+#endif
                 // Cleanup VM resources (unregister from HAL tick manager)
                 fmrb_app_vm_cleanup(ctx->mrb);
                 if (forced) {
@@ -1516,6 +1567,12 @@ static void app_task_main(void* arg) {
     // Execute based on VM type
     switch (ctx->vm_type) {
         case FMRB_VM_TYPE_MRUBY:
+#ifdef FMRB_HAVE_CHECKPOINT
+            if (load_mode == FMRB_LOAD_MODE_CHECKPOINT) {
+                (void)execute_mruby_checkpoint(ctx);  // errors are reported inside
+                break;
+            }
+#endif
             if (execute_mruby_script(ctx, load_mode, load_data, &script_buffer, &need_free_script) != 0) {
                 // Error already logged in execute_mruby_script
             }
@@ -1781,6 +1838,13 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                 FMRB_LOGE(TAG, "filepath is NULL for FILE mode");
                 return FMRB_ERR_INVALID_PARAM;
             }
+#ifdef FMRB_HAVE_CHECKPOINT
+        } else if (attr->load_mode == FMRB_LOAD_MODE_CHECKPOINT) {
+            if (!attr->filepath || attr->vm_type != FMRB_VM_TYPE_MRUBY) {
+                FMRB_LOGE(TAG, "a checkpoint image needs a path and the mruby VM");
+                return FMRB_ERR_INVALID_PARAM;
+            }
+#endif
         } else {
             FMRB_LOGE(TAG, "Invalid load_mode: %d", attr->load_mode);
             return FMRB_ERR_INVALID_PARAM;
@@ -1894,8 +1958,9 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
 
-    // Copy filepath if provided (for FILE load mode)
-    if (attr->load_mode == FMRB_LOAD_MODE_FILE && attr->filepath) {
+    // Copy filepath if provided (for FILE load mode, and a checkpoint image)
+    if ((attr->load_mode == FMRB_LOAD_MODE_FILE ||
+         attr->load_mode == FMRB_LOAD_MODE_CHECKPOINT) && attr->filepath) {
         strncpy(ctx->filepath, attr->filepath, sizeof(ctx->filepath) - 1);
         ctx->filepath[sizeof(ctx->filepath) - 1] = '\0';
     } else {
@@ -1910,12 +1975,22 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     } else if (attr->load_mode == FMRB_LOAD_MODE_BYTECODE) {
         ctx->load_mode = FMRB_LOAD_MODE_BYTECODE;
         ctx->load_data = (void*)attr->bytecode;
+#ifdef FMRB_HAVE_CHECKPOINT
+    } else if (attr->load_mode == FMRB_LOAD_MODE_CHECKPOINT) {
+        // A checkpoint image (.ckpt): restored instead of compiled
+        // (fmrb_app_checkpoint.c)
+        ctx->load_mode = FMRB_LOAD_MODE_CHECKPOINT;
+        ctx->load_data = (void*)ctx->filepath;
+#endif
     } else {
         // For FILE mode, use ctx->filepath (copied above)
         ctx->load_mode = FMRB_LOAD_MODE_FILE;
         ctx->load_data = (void*)ctx->filepath;
     }
     ctx->single_instance = attr->single_instance;
+#ifdef FMRB_HAVE_CHECKPOINT
+    ctx->movable = attr->movable;
+#endif
     ctx->exclusive_group[0] = '\0';
     if (attr->exclusive_group) {
         strncpy(ctx->exclusive_group, attr->exclusive_group, sizeof(ctx->exclusive_group) - 1);

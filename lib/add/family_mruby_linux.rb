@@ -35,6 +35,11 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # of mrb_state, so it is not ABI-relevant and the CMake side need not see it.
   # Build-wide, so that it reaches the mruby core.
   conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
+  # The builds that carry mruby-checkpoint have the glue that moves an app
+  # (main/app/fmrb_app_checkpoint.c, doc/checkpoint F1). Not ABI-relevant (no
+  # struct changes with it); the CMake side defines it too, for main/.
+  # Here it reaches picoruby-machine (board_millis runs at the VM's offset).
+  conf.cc.defines << 'FMRB_HAVE_CHECKPOINT'
   # Measurement build only (FMRB_GC_PROFILE=1 rake build:linux): GC pause
   # histograms in GC.stat. Also ABI-relevant (it grows mrb_gc), so the CMake
   # side reads the same environment variable -- see mruby_abi_defines.cmake and

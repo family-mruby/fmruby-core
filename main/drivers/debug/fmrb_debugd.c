@@ -400,6 +400,48 @@ static void handle_gc(const fmrb_dbg_req_t *req) {
     fmrb_dbg_writer_destroy(&w);
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+// checkpoint {pid, restart?, max?}: ask the kernel to have the app write its
+// checkpoint image (doc/checkpoint). The kernel holds the steps (it sends the
+// app the request, and with restart starts the image again once the app has
+// closed); the app writes the image in its own task at a safe point. Waits
+// until the app has answered or max ms (default 5000) have passed, then
+// answers {status, path | reason}: status "written" (path: the image),
+// "refused" (reason), or "timeout" (the app did not answer: it may be busy
+// in a long on_update, or suspended).
+#define DEBUGD_CKPT_WAIT_MS_DEFAULT 5000
+
+static void handle_checkpoint(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    fmrb_err_t err = fmrb_app_checkpoint_ask(req->pid, req->restart);
+    if (err != FMRB_OK) { reply_ok(req, err); return; }
+
+    char what[128];
+    int wait_ms = req->max > 0 ? req->max : DEBUGD_CKPT_WAIT_MS_DEFAULT;
+    fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
+    fmrb_app_ckpt_status_t st;
+    for (;;) {
+        st = fmrb_app_checkpoint_poll(req->pid, what, sizeof(what));
+        if (st != FMRB_APP_CKPT_PENDING || fmrb_hal_time_get_us() >= deadline) break;
+        fmrb_task_delay_ms(DEBUGD_GC_POLL_MS);
+    }
+
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    if (st == FMRB_APP_CKPT_WRITTEN || st == FMRB_APP_CKPT_REFUSED) {
+        msgpack_pack_map(&w.pk, 2);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", st == FMRB_APP_CKPT_WRITTEN ? "written" : "refused");
+        fmrb_dbg_pack_kv_str(&w.pk, st == FMRB_APP_CKPT_WRITTEN ? "path" : "reason", what);
+    } else {
+        msgpack_pack_map(&w.pk, 1);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", "timeout");
+    }
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+#endif
+
 // --- dispatch --------------------------------------------------------------
 
 // Hook-based commands drive the shared debug core (attach/park/inspect). They
@@ -442,6 +484,9 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_SPAWN:    handle_spawn(req);    break;
         case DBG_CMD_AUDIO:    handle_audio(req);    break;
         case DBG_CMD_GC:       handle_gc(req);       break;
+#ifdef FMRB_HAVE_CHECKPOINT
+        case DBG_CMD_CHECKPOINT: handle_checkpoint(req); break;
+#endif
 
         case DBG_CMD_ATTACH:   handle_attach(req);   break;
         case DBG_CMD_DETACH:   handle_detach(req);   break;

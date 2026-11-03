@@ -11,6 +11,7 @@ set(COMPONENT_SRCS
     "boot/boot.c"
     "app/fmrb_app.c"
     "app/fmrb_app_spawner.c"
+    "app/fmrb_app_checkpoint.c"
     "kernel/fmrb_kernel.c"
     # Which files the BLE console and devctl may read and write (the WiFi
     # password, the Asterism keys), and the setup mode's decision the kernel
@@ -409,6 +410,13 @@ idf_component_register(
 # commands like add_compile_definitions do not exist.
 include(${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/mruby_abi_defines.cmake)
 fmrb_add_mruby_abi_defines()
+
+# mruby-checkpoint's header, for the glue that moves an app (Linux only, where
+# libmruby carries the gem; app/fmrb_app_checkpoint.c is empty elsewhere).
+if(IDF_TARGET STREQUAL "linux")
+    target_include_directories(${COMPONENT_LIB} PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
+endif()
 
 # Linux sim: route every caller of the log locks through the guards above.
 if(IDF_TARGET STREQUAL "linux")

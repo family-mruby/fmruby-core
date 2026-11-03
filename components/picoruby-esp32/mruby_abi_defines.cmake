@@ -40,6 +40,12 @@ macro(fmrb_add_mruby_abi_defines)
   endif()
   if(IDF_TARGET STREQUAL "linux")
     add_compile_definitions(MRB_BASELINE_PROFILE=1)
+    # Not an ABI define, but it has to reach the same two components: the
+    # Linux build's libmruby carries mruby-checkpoint (family_mruby_linux.rb),
+    # main/ has the glue that moves an app (app/fmrb_app_checkpoint.c) and
+    # picoruby-esp32 the HAL's tick state it carries (task_hal.c). The ESP32
+    # builds have neither (doc/checkpoint, D4).
+    add_compile_definitions(FMRB_HAVE_CHECKPOINT)
   else()
     add_compile_definitions(
       MRB_32BIT
