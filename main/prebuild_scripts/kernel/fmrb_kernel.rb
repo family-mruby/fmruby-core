@@ -342,10 +342,10 @@ class FmrbKernelImpl < FmrbKernel
       restart_from_checkpoint(pid)
     when "checkpoint"
       # Someone asks for an app's checkpoint image: a tool (the debug server's
-      # "checkpoint") or an app (FmrbApp.request_checkpoint: the shell, or the
+      # "checkpoint") or an app (FmrbApp.checkpoint: the shell, or the
       # app itself), always through the C side (fmrb_app_checkpoint.c), which
-      # names the app to answer in "from". See request_checkpoint.
-      request_checkpoint(data["pid"], data["restart"] ? true : false, (data["from"] || -1).to_i)
+      # names the app to answer in "from". See start_checkpoint.
+      start_checkpoint(data["pid"], data["restart"] ? true : false, (data["from"] || -1).to_i)
     when "checkpoint_done"
       note_checkpoint_done(pid, data["path"].to_s)
     when "checkpoint_refused"
@@ -589,7 +589,7 @@ class FmrbKernelImpl < FmrbKernel
   # image again once the app has closed. The app writes the image itself, in
   # its own task, at the first safe point after its message wait (the C side,
   # main/app/fmrb_app_checkpoint.c), then closes as asked. One app at a time.
-  def request_checkpoint(target, restart, reply_to)
+  def start_checkpoint(target, restart, reply_to)
     tpid = (target || -1).to_i
     info = _get_app_info(tpid)
     if info.nil?

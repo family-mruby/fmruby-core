@@ -333,7 +333,7 @@ rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ�
   - wait: `--restart` なしで止め、アプリが閉じてから 2 秒待ち、`app restore` で `.ckpt` を起動する。
   - refuse: `movable` の無いアプリ (`task_sleep`) は断られ、動き続ける。
   - refuse window: `movable` でも窓のあるアプリ (`ckpt_window`) は、セーフポイントで gem が断り (窓の `FmrbGfx` は F3 まで運べない)、動き続ける。
-  - self: `/app/test/ckpt_self.app.rb` が `on_update` の中から自分のイメージを頼む (`FmrbApp#request_checkpoint(true)`)。書かれて起動し直し、頼むのは 1 回だけ (戻ったアプリは頼んだ印を持っている)。
+  - self: `/app/test/ckpt_self.app.rb` が `on_update` の中から自分のイメージを頼む (`FmrbApp#checkpoint(restart: true)`)。書かれて起動し直し、頼むのは 1 回だけ (戻ったアプリは頼んだ印を持っている)。
   - self refused: `movable` の無い `ckpt_self_refused` が同じことを頼み、`on_checkpoint_refused` で理由を受けて動き続ける。
   - shell: Shell の窓を開いて `checkpoint -r <pid>` を打つ。カウンタが restart と同じように運ばれ、Shell に答え (`checkpoint: PID n: wrote ...`) が来る。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。

@@ -1,5 +1,5 @@
 # A windowless app that asks for its own checkpoint image (doc/checkpoint,
-# F1b: FmrbApp#request_checkpoint). Like ckpt_counter, two Tasks and the main
+# F1b: FmrbApp#checkpoint). Like ckpt_counter, two Tasks and the main
 # loop count and log every step; at the fourth step of the main loop the app
 # asks, from on_update, to be written and started again. The checkpoint check
 # (tools/regress/checkpoint.rb) reads from the log that every counter goes on
@@ -38,7 +38,7 @@ class CkptSelfApp < FmrbApp
     Log.info("ckpt_self: main=#{@main}")
     if @main == ASK_AT && !@asked
       @asked = true
-      why = request_checkpoint(true)
+      why = checkpoint(restart: true)
       Log.info("ckpt_self: asked for its own image (#{why ? why : 'ok'})")
     end
     250

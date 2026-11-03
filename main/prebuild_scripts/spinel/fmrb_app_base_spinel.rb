@@ -1915,7 +1915,7 @@ class FmrbApp
   # An app's checkpoint image (doc/checkpoint) is for apps on the mruby VM
   # only (D16): here the answer is always why not, as the mruby side answers
   # when it cannot ask.
-  def request_checkpoint(restart = false)
+  def checkpoint(restart: false)
     "only an app on the mruby VM can be written"
   end
 

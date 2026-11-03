@@ -263,11 +263,11 @@ class FmrbApp
 
   # 自分のイメージを断られたとき <<en>> Called when its own image is refused
   #
-  # `request_checkpoint` で頼んだイメージが書けなかったときに、理由を持って
+  # `checkpoint` で頼んだイメージが書けなかったときに、理由を持って
   # 呼ばれます。アプリはそのまま動き続けます。
   # <<en>>
   # Called with the reason when the image asked for with
-  # `request_checkpoint` could not be written. The app goes on.
+  # `checkpoint` could not be written. The app goes on.
   def on_checkpoint_refused: (String reason) -> void
 
   # キーやマウスの入力が来たとき <<en>> called on key and mouse input
@@ -789,26 +789,26 @@ class FmrbApp
   #
   # 自分を止めてイメージ (`/tmp/<名前>.ckpt`) に書き、閉じるよう頼みます。
   # 書くのはメッセージ待ちの後の区切りなので、**`on_event` や `on_update`
-  # の中から頼んでよい**です。書けたら `on_checkpoint` の後に閉じ、`true` を
-  # 渡すとすぐにイメージから起動し直します (`on_restore`)。断られたら
+  # の中から頼んでよい**です。書けたら `on_checkpoint` の後に閉じ、
+  # `restart: true` を渡すとすぐにイメージから起動し直します (`on_restore`)。断られたら
   # `on_checkpoint_refused` が来ます。頼めたら nil、頼めないときは理由の
   # 文字列を返します。
   # ```ruby
-  # why = request_checkpoint(true)
+  # why = checkpoint(restart: true)
   # Log.warn(why) if why
   # ```
   # <<en>>
   # Asks for this app to be stopped, written to an image
   # (`/tmp/<name>.ckpt`) and closed. The image is written at the break after
   # the message wait, so **asking from `on_event` or `on_update` is fine**.
-  # Once written the app closes after `on_checkpoint`; given `true` the image
-  # is started again at once (`on_restore`). A refusal arrives as
+  # Once written the app closes after `on_checkpoint`; given `restart: true`
+  # the image is started again at once (`on_restore`). A refusal arrives as
   # `on_checkpoint_refused`. nil when asked, else a String saying why not.
   # ```ruby
-  # why = request_checkpoint(true)
+  # why = checkpoint(restart: true)
   # Log.warn(why) if why
   # ```
-  def request_checkpoint: (bool restart) -> String?
+  def checkpoint: () -> String?
 
   # ---- 後片づけの調子 ----
 
@@ -921,24 +921,25 @@ class FmrbApp
   # 別のアプリをイメージに書いて閉じる <<en>> Write another app to an image
   #
   # pid のアプリを止めてイメージに書き、閉じるよう頼みます (Shell の
-  # `checkpoint`)。`true` ならすぐに起動し直します。頼めたら nil、
+  # `checkpoint`)。`restart: true` ならすぐに起動し直します。頼めたら nil、
   # 頼めないときは理由の文字列。答えは後から `on_control` に
   # `{"cmd" => "checkpoint_result", "pid", "ok", "path" か "reason"}`
   # で届きます。
   # ```ruby
-  # FmrbApp.request_checkpoint(5,
-  #                            false)
+  # FmrbApp.checkpoint(5,
+  #                    restart: true)
   # ```
   # <<en>>
   # Asks for app pid to be stopped, written to an image and closed (the
-  # shell's `checkpoint`); `true` starts it again at once. nil when asked,
-  # else a String saying why not. The answer arrives later at `on_control`
-  # as `{"cmd" => "checkpoint_result", "pid", "ok", "path" or "reason"}`.
+  # shell's `checkpoint`); `restart: true` starts it again at once. nil when
+  # asked, else a String saying why not. The answer arrives later at
+  # `on_control` as
+  # `{"cmd" => "checkpoint_result", "pid", "ok", "path" or "reason"}`.
   # ```ruby
-  # FmrbApp.request_checkpoint(5,
-  #                            false)
+  # FmrbApp.checkpoint(5,
+  #                    restart: true)
   # ```
-  def self.request_checkpoint: (Integer pid, bool restart) -> String?
+  def self.checkpoint: (Integer pid) -> String?
 
   # 空きメモリの様子 <<en>> How much memory is free
   #

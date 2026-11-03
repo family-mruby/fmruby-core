@@ -2,7 +2,7 @@
 //
 // The way through:
 //   1. A tool asks the debug server ("checkpoint"), or an app asks
-//      (FmrbApp.request_checkpoint: the shell's `checkpoint`, an app asking
+//      (FmrbApp.checkpoint: the shell's `checkpoint`, an app asking
 //      for its own image); either asks the kernel the same way (ask_kernel ->
 //      APP_CONTROL "checkpoint" to the kernel). An app is answered with
 //      "checkpoint_result" by the kernel.
@@ -556,7 +556,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
 // ---- asking for an image (the debug server, the apps) ------------------------
 
 // Every way of asking for an image comes here: the debug server
-// (fmrb_app_checkpoint_ask) and the apps (FmrbApp.request_checkpoint: the
+// (fmrb_app_checkpoint_ask) and the apps (FmrbApp.checkpoint: the
 // shell's `checkpoint`, an app asking for its own image). The kernel is told
 // {"cmd" => "checkpoint", "pid", "restart"} and, when an app asked,
 // "from" => its pid: the kernel answers it with "checkpoint_result". Returns

@@ -236,3 +236,5 @@ standard: ok (restart: a 5->6, b 3->4, main 5->6, t step 450 ms, image 23039 B; 
 1. flash に置く形 (Ff、`flash_table.md`) で、`keep` と `iv` (32 bit でも 90 KB) を番号の形にするところまで
    やるか。名前などを flash に出すだけなら VM ごとに約 150 KB、そこまでやれば数十 KB の見込み (§5.1)。
 2. Shell のコマンドの名前 (`checkpoint` / `restore`) と、アプリの API の既定 (`restart` なし) でよいか。
+
+> 追記 (2026-11-04、ユーザの決定): アプリの API は `checkpoint` に改名した。`FmrbApp#request_checkpoint(restart = false)` は `FmrbApp#checkpoint(restart: false)`、`FmrbApp.request_checkpoint(pid, restart = false)` は `FmrbApp.checkpoint(pid, restart: false)` (キーワード引数)。カーネルの内部の `request_checkpoint` は `start_checkpoint` になった。本文は当時の名前のまま。

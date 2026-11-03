@@ -1084,7 +1084,7 @@ module ShellCommandsMixin
 
   # Write a running app to a checkpoint image and close it (doc/checkpoint);
   # with -r the kernel starts the image again at once. Asked the same way as
-  # the debug server asks (FmrbApp.request_checkpoint): the kernel asks the
+  # the debug server asks (FmrbApp.checkpoint): the kernel asks the
   # app, which writes the image at a safe point. Only an app on the mruby VM
   # whose .app.toml says movable = true can be written; any other is refused
   # and goes on. The answer arrives as a "checkpoint_result" control message
@@ -1110,7 +1110,7 @@ module ShellCommandsMixin
       @history << "checkpoint: this is the shell itself"
       return
     end
-    why = FmrbApp.request_checkpoint(pid, restart)
+    why = FmrbApp.checkpoint(pid, restart: restart)
     if why
       @history << "checkpoint: PID #{pid}: #{why}"
       return

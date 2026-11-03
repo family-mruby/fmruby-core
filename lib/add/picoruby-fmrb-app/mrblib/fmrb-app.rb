@@ -570,7 +570,7 @@ class FmrbApp
   end
 
   def on_checkpoint_refused(reason)
-    # Called when the app asked for its own image (request_checkpoint) and it
+    # Called when the app asked for its own image (checkpoint) and it
     # could not be written; the app goes on.
     Log.warn("App #{@_name}: checkpoint refused: #{reason}")
   end
@@ -820,8 +820,8 @@ class FmrbApp
   # (on_restore). A refusal arrives as on_checkpoint_refused. Returns nil when
   # asked, or a String saying why it cannot be asked (this build cannot write
   # images, ...).
-  def request_checkpoint(restart = false)
-    FmrbApp.request_checkpoint(FmrbApp.pid, restart)
+  def checkpoint(restart: false)
+    FmrbApp.checkpoint(FmrbApp.pid, restart: restart)
   end
 
   # Ask the kernel to switch this app between windowed and fullscreen. The VM

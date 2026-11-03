@@ -1,4 +1,4 @@
-# The same request as ckpt_self (FmrbApp#request_checkpoint, doc/checkpoint
+# The same request as ckpt_self (FmrbApp#checkpoint, doc/checkpoint
 # F1b) from an app that does not declare movable: the image is refused, the
 # app is told why (on_checkpoint_refused) and goes on counting.
 
@@ -12,7 +12,7 @@ class CkptSelfRefusedApp < FmrbApp
     @main += 1
     Log.info("ckpt_self_refused: main=#{@main}")
     if @main == 2
-      why = request_checkpoint(true)
+      why = checkpoint(restart: true)
       Log.info("ckpt_self_refused: asked for its own image (#{why ? why : 'ok'})")
     end
     250

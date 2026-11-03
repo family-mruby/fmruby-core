@@ -640,7 +640,7 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 mrb_iv_set(mrb, self, spin_break_sym, mrb_true_value());
                             }
                         } else if (strcmp(cmd, "checkpoint_result") == 0) {
-                            // The kernel's answer to FmrbApp.request_checkpoint. An
+                            // The kernel's answer to FmrbApp.checkpoint. An
                             // app that asked for its own image only hears of a
                             // refusal (once written, it closes): it goes on and is
                             // told why. An answer about another app goes to
@@ -1465,26 +1465,30 @@ static mrb_value mrb_fmrb_app_s_battery_charging_p(mrb_state *mrb, mrb_value kla
 // the app ends. None of these waits.
 #define LINUX_READ_CHUNK 4096
 
-// FmrbApp.request_checkpoint(pid, restart = false) -> nil | String
+// FmrbApp.checkpoint(pid, restart: false) -> nil | String
 // Ask for app pid's checkpoint image (doc/checkpoint) the way the debug server
 // does: the kernel asks the app, the app writes the image at a safe point and
 // closes (with restart, the kernel starts the image again). nil when asked:
 // the answer comes later as APP_CONTROL "checkpoint_result" {pid, ok, path |
 // reason} (FmrbApp#on_checkpoint_refused when the app asked for itself, else
 // on_control). A String when it cannot be asked: why.
-static mrb_value mrb_fmrb_app_s_request_checkpoint(mrb_state *mrb, mrb_value klass)
+static mrb_value mrb_fmrb_app_s_checkpoint(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
     mrb_int pid;
-    mrb_bool restart = FALSE;
-    mrb_get_args(mrb, "i|b", &pid, &restart);
+    const mrb_sym kw_names[] = { mrb_intern_lit(mrb, "restart") };
+    mrb_value kw_values[1];
+    mrb_kwargs kwargs = { 1, 0, kw_names, kw_values, NULL };
+    mrb_get_args(mrb, "i:", &pid, &kwargs);
+    bool restart = !mrb_undef_p(kw_values[0]) && mrb_test(kw_values[0]);
 #ifdef FMRB_HAVE_CHECKPOINT
     fmrb_app_task_context_t *ctx = fmrb_current();
-    const char *why = fmrb_app_checkpoint_ask_from_app((int32_t)pid, restart ? true : false,
+    const char *why = fmrb_app_checkpoint_ask_from_app((int32_t)pid, restart,
                                                        ctx ? (int32_t)ctx->app_id : -1);
     return why ? mrb_str_new_cstr(mrb, why) : mrb_nil_value();
 #else
     (void)pid;
+    (void)restart;
     return mrb_str_new_lit(mrb, "this build cannot write checkpoint images");
 #endif
 }
@@ -2450,7 +2454,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "request_checkpoint", mrb_fmrb_app_s_request_checkpoint, MRB_ARGS_ARG(1, 1));
+    mrb_define_class_method(mrb, app_class, "checkpoint", mrb_fmrb_app_s_checkpoint, MRB_ARGS_REQ(1) | MRB_ARGS_KEY(1, 0));
     mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, app_class, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));

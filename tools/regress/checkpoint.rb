@@ -24,7 +24,7 @@
 #             so is a movable app with a window (its FmrbGfx cannot be carried
 #             until F3), refused at the safe point by the gem.
 #   self      /app/test/ckpt_self.app.rb asks for its own image from on_update
-#             (FmrbApp#request_checkpoint, restart): written, started again,
+#             (FmrbApp#checkpoint, restart): written, started again,
 #             and asked only once. ckpt_self_refused does the same without
 #             movable: told why (on_checkpoint_refused), goes on.
 #   shell     the shell's `checkpoint -r PID`, typed into a shell window: the
@@ -250,7 +250,7 @@ module Regress
         "window refused at the safe point: #{r['reason'][0, 80]}"
       end
 
-      # The app asks for its own image from on_update (FmrbApp#request_checkpoint).
+      # The app asks for its own image from on_update (FmrbApp#checkpoint).
       def round_self
         from = log_lines.size
         app("spawn", SELF)

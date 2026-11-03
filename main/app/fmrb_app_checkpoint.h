@@ -38,7 +38,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
 // _spin has returned), false when it is refused (the kernel is told why).
 bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app);
 
-// An app asks for the image of app pid (FmrbApp.request_checkpoint, the
+// An app asks for the image of app pid (FmrbApp.checkpoint, the
 // shell's `checkpoint`, an app asking for its own): the same way as the debug
 // server (fmrb_app_checkpoint_ask), and the kernel answers reply_to with
 // APP_CONTROL "checkpoint_result" {pid, ok, path | reason}. Returns NULL when
