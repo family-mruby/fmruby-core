@@ -39,8 +39,9 @@ mruby の VM で動いているアプリを、アプリの協力なしに途中�
 
 | 段 | 内容 | 状態 |
 |---|---|---|
-| F0 | patch と gem を Family mruby に入れる (ネイティブ版と sim) | 実装済・検収待ち (report/f0.md) |
-| F1 | ネイティブ版の 1 プロセスの中で、窓のないアプリを止めて同じ所で続ける | 実装済・検収待ち (report/f1.md) |
+| F0 | patch と gem を Family mruby に入れる (ネイティブ版と sim) | 検収済 (2026-11-03、report/f0.md) |
+| F1 | ネイティブ版の 1 プロセスの中で、窓のないアプリを止めて同じ所で続ける | 検収済 (2026-11-03、report/f1.md) |
+| F1b | F1 の残り: 基準の表を小さくする、`regress:checkpoint` を `regress:full` に、止める入口を増やす (開発の道具・Shell・アプリ自身の API) | 指示済 (`instruction_f1b.md`) |
 | F2 | ネイティブ版の 2 プロセスの間で受け渡す | 未着手 |
 | F3 | 窓のあるアプリ | 未着手 |
 | F4 | ビルドの違う端末の間 | 未着手 |
@@ -61,13 +62,19 @@ mruby の VM で動いているアプリを、アプリの協力なしに途中�
 
 ## 未確定事項
 
-- タイムスライスの残りを HAL の数ごと運ぶ (D10) 入口の形。F1 で仮に、HAL の `mrb_hal_task_slice_get/set` と gem の
-  埋め込む側のセクション (`mrb_checkpoint_set_embedder`、`EMB0`) にした (report/f1.md、検収待ち)。
-- 書き出しのバッファと表を VM のプールの外 (PSRAM) から取る (D11) 口の形。F1 で仮に、gem の
-  `mrb_checkpoint_set_allocator` (作業の領域だけ。基準はプールのまま) にした (report/f1.md、検収待ち)。
-- 基準の常駐の費用 (D12)。F1 の計測で、ネイティブ版 (64 bit) の 1 VM あたり約 1 MB (1.5 MB のプールの 2/3)。
-  減らし方は report/f1.md の決めてほしいこと。
-- hook の関数ポインタを端末に入れるとき (F6) の置き場所 (今の形だと 4 バイトの .bss)。
+- (なし。下の決まったことを参照)
+
+## 決まったこと (2026-11-03、F1 の検収。ユーザが選択肢から選んだ)
+
+- D10 の入口は F1 の形 (HAL の `mrb_hal_task_slice_get/set` と gem の埋め込む側のセクション `EMB0`)、
+  D11 は gem の `mrb_checkpoint_set_allocator` (作業の領域だけ) で確定。
+- 基準の常駐の費用 (F1 の計測で 64 bit の 1 VM あたり約 1 MB) は**両方やる**: まず F1b で gem の表を
+  小さくし (内訳を測ってから)、実機 (F6) の前に名前の表をファームごとに flash に置く形 (D12 の (c)) も作る。
+- `rake regress:checkpoint` を `rake regress:full` に入れる。
+- 止める入口を増やす: 開発の道具 (`tools/fmrb_native.rb` と MCP の `native_app`)、Shell のコマンド、
+  アプリが自分で頼む API (`on_event` の外で)。
+- hook の関数ポインタと切り替えの要求の数は、実機では `mrb_state` の中に置く (mruby-checkpoint の plan、
+  2026-11-03)。F6 で入れる。
 
 ## ほかの計画とのつながり
 
