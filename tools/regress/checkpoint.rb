@@ -12,20 +12,29 @@
 # kernel; mruby: everything on mruby), since the kernel holds the steps of a
 # move (D14). Each is started headless (tools/fmrb_native.rb) in a run
 # directory, debug port and user directory of its own, so a developer's copy
-# can stay up beside it. Then, from the debug server:
+# can stay up beside it. Then, through each way of asking (F1b: all of them
+# reach the app the same way, kernel -> the app's _spin -> a safe point):
 #
 #   restart   start /app/test/ckpt_counter.app.rb (two Tasks and the main loop
-#             count and log), let it count, "checkpoint pid restart=1": the app
-#             writes its image and closes, the kernel starts the image again.
-#   wait      "checkpoint" without restart, wait 2 s, spawn the .ckpt by hand.
+#             count and log), let it count, "app checkpoint PID --restart"
+#             (the debug server): the app writes its image and closes, the
+#             kernel starts the image again.
+#   wait      the same without --restart, wait 2 s, "app restore" the .ckpt.
 #   refuse    an app that does not declare movable is refused, and goes on;
 #             so is a movable app with a window (its FmrbGfx cannot be carried
 #             until F3), refused at the safe point by the gem.
+#   self      /app/test/ckpt_self.app.rb asks for its own image from on_update
+#             (FmrbApp#request_checkpoint, restart): written, started again,
+#             and asked only once. ckpt_self_refused does the same without
+#             movable: told why (on_checkpoint_refused), goes on.
+#   shell     the shell's `checkpoint -r PID`, typed into a shell window: the
+#             counter moves as in restart, and the shell is answered.
 #
-# For the first two, the log must show every counter going on from the step
-# after the last one written (a, b, main), on_checkpoint and on_restore with
-# the same main, and Machine.board_millis ("t=") going on from where it was:
-# the step across the move is short, also across the 2 s wait (D9).
+# For restart, wait, self and shell the log must show every counter going on
+# from the step after the last one written (a, b, main), on_checkpoint and
+# on_restore with the same main, and Machine.board_millis ("t=") going on
+# from where it was: the step across the move is short, also across the 2 s
+# wait (D9).
 #
 # The summary is one line per configuration; the program's log is kept in
 # tmp/regress/checkpoint/<configuration>.log.
@@ -39,7 +48,6 @@ module Regress
     CORE = File.expand_path("../..", __dir__)
     ROOT = File.expand_path("..", CORE)
     NATIVE_TOOL = File.join(ROOT, "tools", "fmrb_native.rb")
-    DBG_CLIENT = File.join(CORE, "tool", "debug", "fmrb_dbg_client.py")
     OUT = File.join(CORE, "tmp", "regress", "checkpoint")
     RUN_DIR = "/tmp/fmrb-native-ckpt-#{Process.uid}"
     PORT = 5585
@@ -47,6 +55,9 @@ module Regress
     IMAGE = "/tmp/ckpt_counter.ckpt"
     NOT_MOVABLE = "/app/test/task_sleep.app.rb"
     WINDOWED = "/app/test/ckpt_window.app.rb"
+    SELF = "/app/test/ckpt_self.app.rb"
+    SELF_REFUSED = "/app/test/ckpt_self_refused.app.rb"
+    SHELL = "default/shell"
     # one step of the counter Task "a" is its sleep (200 ms) behind the main
     # loop's wait (250 ms); a move may add a little to it, a lost or doubled
     # clock adds seconds
@@ -113,11 +124,11 @@ module Regress
         JSON.parse(native("app", *args).lines.last.to_s)
       end
 
+      # the tool's way of asking (the debug server's checkpoint)
       def checkpoint(pid, restart:)
-        kv = ["pid=#{pid}", "restart=#{restart ? 1 : 0}", "max=8000"]
-        out, st = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{PORT}", "checkpoint", *kv)
-        raise Failure, "checkpoint pid=#{pid}: #{out.strip}" unless st.success?
-        JSON.parse(out.lines.last.to_s)
+        args = ["checkpoint", pid.to_s, "--max", "8000"]
+        args << "--restart" if restart
+        app(*args)
       end
 
       def log_path = File.join(RUN_DIR, "core.log")
@@ -153,6 +164,9 @@ module Regress
         notes << round_wait
         notes << round_refuse
         notes << round_refuse_window
+        notes << round_self
+        notes << round_self_refused
+        notes << round_shell
         "#{config}: ok (#{notes.join('; ')}; #{(now - t0).round}s)"
       rescue Failure => e
         "#{config}: FAILED #{e.message}"
@@ -199,7 +213,7 @@ module Regress
         sleep 0.2 while ps.any? { |a| a["pid"] == pid && a["name"] == "Ckpt Counter" } && now < deadline
         raise Failure, "wait: the app did not close after writing its image" if ps.any? { |a| a["name"] == "Ckpt Counter" }
         sleep WAIT_S
-        app("spawn", IMAGE)
+        app("restore", IMAGE)
         restored = wait_line(/ckpt_counter: on_restore /, mark, "on_restore of the image started by hand")
         wait_line(/ckpt_counter: b=\d+ /, restored + 1, "a step of b after the restore")
         wait_line(/ckpt_counter: a=\d+ /, restored + 1, "a step of a after the restore")
@@ -236,25 +250,71 @@ module Regress
         "window refused at the safe point: #{r['reason'][0, 80]}"
       end
 
-      def kill_counter
-        ps.each { |a| app("kill", a["pid"].to_s) if a["name"] == "Ckpt Counter" }
+      # The app asks for its own image from on_update (FmrbApp#request_checkpoint).
+      def round_self
+        from = log_lines.size
+        app("spawn", SELF)
+        restored = wait_line(/ckpt_self: on_restore /, from, "on_restore of the app that asked for itself")
+        wait_line(/ckpt_self: b=\d+ /, restored + 1, "a step of b after the restore")
+        wait_line(/ckpt_self: a=\d+ /, restored + 1, "a step of a after the restore")
+        c = continuity(from, "self", "ckpt_self")
+        asked = log_lines[from..].grep(/ckpt_self: asked for its own image/)
+        raise Failure, "self: asked #{asked.size} times (#{asked.first})" unless asked.size == 1 && asked[0].include?("(ok)")
+        kill_named("Ckpt Self")
+        "self: a #{c[:a]}, b #{c[:b]}, main #{c[:main]}, t step #{c[:t_step]} ms"
+      end
+
+      # The same request from an app without movable: told why, goes on.
+      def round_self_refused
+        from = log_lines.size
+        pid = app("spawn", SELF_REFUSED).fetch("pid")
+        i = wait_line(/ckpt_self_refused: refused: /, from, "on_checkpoint_refused")
+        reason = log_lines[i][/refused: (.*)\z/, 1].to_s
+        raise Failure, "self refused: the reason was #{reason.inspect}" unless reason.include?("movable")
+        wait_line(/ckpt_self_refused: main=\d+/, i + 1, "ckpt_self_refused going on after the refusal")
+        raise Failure, "self refused: the app is gone" unless ps.any? { |a| a["pid"] == pid }
+        app("kill", pid.to_s)
+        "self refused: told why"
+      end
+
+      # The shell's command, typed into a shell window.
+      def round_shell
+        pid = start_counter
+        app("spawn", SHELL)
+        sleep 1.5
+        mark = log_lines.size
+        native("input", "text", "checkpoint -r #{pid}", "key", "enter")
+        wait_line(/checkpoint: PID #{pid}: wrote #{Regexp.escape(IMAGE)}/, mark, "the shell's answer")
+        restored = wait_line(/ckpt_counter: on_restore /, mark, "on_restore after the shell's checkpoint")
+        wait_line(/ckpt_counter: b=\d+ /, restored + 1, "a step of b after the restore")
+        wait_line(/ckpt_counter: a=\d+ /, restored + 1, "a step of a after the restore")
+        c = continuity(mark, "shell")
+        kill_counter
+        kill_named("FM-Shell")
+        "shell: a #{c[:a]}, b #{c[:b]}, main #{c[:main]}"
+      end
+
+      def kill_counter = kill_named("Ckpt Counter")
+
+      def kill_named(name)
+        ps.each { |a| app("kill", a["pid"].to_s) if a["name"] == name }
         sleep 0.3
       end
 
       # Read the log around the move: every counter goes on from the next step.
-      def continuity(mark, round)
+      def continuity(mark, round, tag = "ckpt_counter")
         lines = log_lines
         w = (mark...lines.size).find { |k| lines[k] =~ /checkpoint written: (\S+) \((\d+) bytes/ } or
           raise Failure, "#{round}: no 'checkpoint written' line"
         bytes = lines[w][/\((\d+) bytes/, 1].to_i
-        r = (w...lines.size).find { |k| lines[k] =~ /ckpt_counter: on_restore / } or
+        r = (w...lines.size).find { |k| lines[k] =~ /#{tag}: on_restore / } or
           raise Failure, "#{round}: no on_restore"
         before = lines[0...w]
         after = lines[(r + 1)..]
         res = { bytes: bytes }
         %w[a b].each do |k|
-          last = before.reverse.find { |l| l =~ /ckpt_counter: #{k}=\d+ t=/ } or raise Failure, "#{round}: no #{k} before"
-          first = after.find { |l| l =~ /ckpt_counter: #{k}=\d+ t=/ } or raise Failure, "#{round}: no #{k} after"
+          last = before.reverse.find { |l| l =~ /#{tag}: #{k}=\d+ t=/ } or raise Failure, "#{round}: no #{k} before"
+          first = after.find { |l| l =~ /#{tag}: #{k}=\d+ t=/ } or raise Failure, "#{round}: no #{k} after"
           n0 = last[/#{k}=(\d+)/, 1].to_i
           n1 = first[/#{k}=(\d+)/, 1].to_i
           raise Failure, "#{round}: #{k} went from #{n0} to #{n1} across the move" unless n1 == n0 + 1
@@ -267,11 +327,11 @@ module Regress
             res[:t_step] = step
           end
         end
-        cp = lines[w..r].find { |l| l =~ /ckpt_counter: on_checkpoint main=(\d+)/ } or raise Failure, "#{round}: no on_checkpoint"
+        cp = lines[w..r].find { |l| l =~ /#{tag}: on_checkpoint main=(\d+)/ } or raise Failure, "#{round}: no on_checkpoint"
         m0 = cp[/main=(\d+)/, 1].to_i
         m_restore = lines[r][/main=(\d+)/, 1].to_i
         raise Failure, "#{round}: on_restore has main=#{m_restore}, on_checkpoint had #{m0}" unless m_restore == m0
-        nxt = after.find { |l| l =~ /ckpt_counter: main=\d+/ } or raise Failure, "#{round}: no main after"
+        nxt = after.find { |l| l =~ /#{tag}: main=\d+/ } or raise Failure, "#{round}: no main after"
         m1 = nxt[/main=(\d+)/, 1].to_i
         raise Failure, "#{round}: main went from #{m0} to #{m1}" unless m1 == m0 + 1
         res[:main] = "#{m0}->#{m1}"

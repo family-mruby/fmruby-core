@@ -1,0 +1,7 @@
+app_handle_name = "ckpt_self"
+app_screen_name = "Ckpt Self"
+app_screen_name_ja = "チェックポイント試験 (自分で)"
+default_window_mode = "background"
+launcher_visible = false
+# May be written to a checkpoint image and go on elsewhere (doc/checkpoint)
+movable = true

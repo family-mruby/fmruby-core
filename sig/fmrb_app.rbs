@@ -237,6 +237,39 @@ class FmrbApp
   # redraw here.
   def on_resume: () -> void
 
+  # イメージに書かれた直後 <<en>> Called once the app is written to an image
+  #
+  # アプリがイメージに書かれ、閉じる直前に呼ばれます。アプリは**終わったの
+  # ではなく移った**ので `on_destroy` は来ません。ここでしたことは
+  # イメージに入りません。運べるのは `.app.toml` に `movable = true` と
+  # 書いた、mruby で動くアプリだけです。
+  # <<en>>
+  # Called once the image is written, just before the app closes. The app
+  # moved rather than ended, so `on_destroy` does not come. What is done here
+  # is not in the image. Only an app on mruby whose `.app.toml` says
+  # `movable = true` can be written.
+  def on_checkpoint: () -> void
+
+  # イメージから起動したとき <<en>> Called when started from an image
+  #
+  # イメージから起動したアプリで、**書かれた所から続ける直前**に呼ばれます。
+  # インスタンス変数も Task もそのまま戻っています。VM の外にあったもの
+  # (開いていたファイルなど) はここで開き直します。
+  # <<en>>
+  # Called in an app started from an image, just before it goes on from where
+  # it was written. Its instance variables and Tasks are back as they were;
+  # open again here what lived outside the VM (files that were open).
+  def on_restore: () -> void
+
+  # 自分のイメージを断られたとき <<en>> Called when its own image is refused
+  #
+  # `request_checkpoint` で頼んだイメージが書けなかったときに、理由を持って
+  # 呼ばれます。アプリはそのまま動き続けます。
+  # <<en>>
+  # Called with the reason when the image asked for with
+  # `request_checkpoint` could not be written. The app goes on.
+  def on_checkpoint_refused: (String reason) -> void
+
   # キーやマウスの入力が来たとき <<en>> called on key and mouse input
   #
   # ev は入力の中身が入った Hash です。よく使うのは次の 4 つ:
@@ -752,6 +785,31 @@ class FmrbApp
   # ```
   def request_run: (String path) -> void
 
+  # 自分をイメージに書いて閉じる <<en>> Write this app to an image and close
+  #
+  # 自分を止めてイメージ (`/tmp/<名前>.ckpt`) に書き、閉じるよう頼みます。
+  # 書くのはメッセージ待ちの後の区切りなので、**`on_event` や `on_update`
+  # の中から頼んでよい**です。書けたら `on_checkpoint` の後に閉じ、`true` を
+  # 渡すとすぐにイメージから起動し直します (`on_restore`)。断られたら
+  # `on_checkpoint_refused` が来ます。頼めたら nil、頼めないときは理由の
+  # 文字列を返します。
+  # ```ruby
+  # why = request_checkpoint(true)
+  # Log.warn(why) if why
+  # ```
+  # <<en>>
+  # Asks for this app to be stopped, written to an image
+  # (`/tmp/<name>.ckpt`) and closed. The image is written at the break after
+  # the message wait, so **asking from `on_event` or `on_update` is fine**.
+  # Once written the app closes after `on_checkpoint`; given `true` the image
+  # is started again at once (`on_restore`). A refusal arrives as
+  # `on_checkpoint_refused`. nil when asked, else a String saying why not.
+  # ```ruby
+  # why = request_checkpoint(true)
+  # Log.warn(why) if why
+  # ```
+  def request_checkpoint: (bool restart) -> String?
+
   # ---- 後片づけの調子 ----
 
   # ひまな時に片づけをするか <<en>> Whether to tidy up when idle
@@ -859,6 +917,28 @@ class FmrbApp
   # A number that changes whenever the list does. **Call `ps` only when it
   # moves** and the list is not rebuilt every frame.
   def self.ps_gen: () -> Integer
+
+  # 別のアプリをイメージに書いて閉じる <<en>> Write another app to an image
+  #
+  # pid のアプリを止めてイメージに書き、閉じるよう頼みます (Shell の
+  # `checkpoint`)。`true` ならすぐに起動し直します。頼めたら nil、
+  # 頼めないときは理由の文字列。答えは後から `on_control` に
+  # `{"cmd" => "checkpoint_result", "pid", "ok", "path" か "reason"}`
+  # で届きます。
+  # ```ruby
+  # FmrbApp.request_checkpoint(5,
+  #                            false)
+  # ```
+  # <<en>>
+  # Asks for app pid to be stopped, written to an image and closed (the
+  # shell's `checkpoint`); `true` starts it again at once. nil when asked,
+  # else a String saying why not. The answer arrives later at `on_control`
+  # as `{"cmd" => "checkpoint_result", "pid", "ok", "path" or "reason"}`.
+  # ```ruby
+  # FmrbApp.request_checkpoint(5,
+  #                            false)
+  # ```
+  def self.request_checkpoint: (Integer pid, bool restart) -> String?
 
   # 空きメモリの様子 <<en>> How much memory is free
   #

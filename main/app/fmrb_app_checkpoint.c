@@ -1,8 +1,11 @@
 // Moving an mruby app with mruby-checkpoint (doc/checkpoint, F1).
 //
 // The way through:
-//   1. A tool asks the debug server ("checkpoint"), which asks the kernel
-//      (fmrb_app_checkpoint_ask -> APP_CONTROL "checkpoint" to the kernel).
+//   1. A tool asks the debug server ("checkpoint"), or an app asks
+//      (FmrbApp.request_checkpoint: the shell's `checkpoint`, an app asking
+//      for its own image); either asks the kernel the same way (ask_kernel ->
+//      APP_CONTROL "checkpoint" to the kernel). An app is answered with
+//      "checkpoint_result" by the kernel.
 //   2. The kernel (Ruby, both engines) sends the app APP_CONTROL "checkpoint".
 //   3. The app's _spin (picoruby-fmrb-app) takes it in its own task:
 //      fmrb_app_checkpoint_request raises the gem's request and ends the wait.
@@ -550,41 +553,71 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
     return 0;
 }
 
-// ---- tools (the debug server) ------------------------------------------------
+// ---- asking for an image (the debug server, the apps) ------------------------
 
-fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart)
+// Every way of asking for an image comes here: the debug server
+// (fmrb_app_checkpoint_ask) and the apps (FmrbApp.request_checkpoint: the
+// shell's `checkpoint`, an app asking for its own image). The kernel is told
+// {"cmd" => "checkpoint", "pid", "restart"} and, when an app asked,
+// "from" => its pid: the kernel answers it with "checkpoint_result". Returns
+// FMRB_OK with *why NULL when the kernel was asked; FMRB_OK with *why when the
+// app cannot be written (D16: the answer is in the table as well, as the
+// app's own refusals are); an error with *why when nothing was asked.
+static fmrb_err_t ask_kernel(int32_t pid, bool restart, int32_t reply_to, const char **why)
 {
+    *why = NULL;
     fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(pid);
     ckpt_app_t *e = entry_of(ctx);
-    if (!ctx || !e || ctx->state != PROC_STATE_RUNNING) return FMRB_ERR_INVALID_PARAM;
+    if (!ctx || !e || ctx->state != PROC_STATE_RUNNING) {
+        *why = "no running app with that PID";
+        return FMRB_ERR_INVALID_PARAM;
+    }
     if (ctx->vm_type != FMRB_VM_TYPE_MRUBY) {
         // D16: a Spinel program (and the other engines) cannot be carried
         snprintf(e->what, sizeof(e->what), "only an app on the mruby VM can be written");
         e->status = FMRB_APP_CKPT_REFUSED;
+        *why = e->what;
         return FMRB_OK;
     }
     e->what[0] = '\0';
     e->status = FMRB_APP_CKPT_PENDING;
 
-    // {"cmd" => "checkpoint", "pid" => pid, "restart" => bool} to the kernel
     fmrb_msg_t msg = {
         .type = FMRB_MSG_TYPE_APP_CONTROL,
         .src_pid = PROC_ID_KERNEL,
     };
     size_t pos = 0, room = sizeof(msg.data);
-    msg.data[pos++] = 0x83;
+    msg.data[pos++] = reply_to >= 0 ? 0x84 : 0x83;
     pos += pack_str(msg.data + pos, room - pos, "cmd");
     pos += pack_str(msg.data + pos, room - pos, "checkpoint");
     pos += pack_str(msg.data + pos, room - pos, "pid");
     msg.data[pos++] = (uint8_t)(pid & 0x7F);
     pos += pack_str(msg.data + pos, room - pos, "restart");
     msg.data[pos++] = restart ? 0xC3 : 0xC2;
+    if (reply_to >= 0) {
+        pos += pack_str(msg.data + pos, room - pos, "from");
+        msg.data[pos++] = (uint8_t)(reply_to & 0x7F);
+    }
     msg.size = (uint32_t)pos;
     if (fmrb_msg_send(PROC_ID_KERNEL, &msg, 100) != FMRB_OK) {
         e->status = FMRB_APP_CKPT_NONE;
+        *why = "could not reach the kernel";
         return FMRB_ERR_FAILED;
     }
     return FMRB_OK;
+}
+
+fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart)
+{
+    const char *why;
+    return ask_kernel(pid, restart, -1, &why);   // a refusal is the answer the table holds
+}
+
+const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to)
+{
+    const char *why;
+    ask_kernel(pid, restart, reply_to, &why);
+    return why;
 }
 
 fmrb_app_ckpt_status_t fmrb_app_checkpoint_poll(int32_t pid, char *what, size_t what_len)

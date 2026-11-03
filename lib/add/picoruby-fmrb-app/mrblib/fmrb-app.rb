@@ -554,6 +554,27 @@ class FmrbApp
     Log.debug("on_resume")
   end
 
+  # Moving the app (doc/checkpoint). Only an app whose .app.toml says
+  # movable = true can be written to an image, and only on the builds that
+  # carry mruby-checkpoint.
+
+  def on_checkpoint
+    # Called once the image is written, just before the app closes (it does
+    # not get on_destroy: it moved, it did not end). What is done here is not
+    # in the image.
+  end
+
+  def on_restore
+    # Called in the app started from an image, before it goes on from where
+    # it was written: open again what lived outside the VM.
+  end
+
+  def on_checkpoint_refused(reason)
+    # Called when the app asked for its own image (request_checkpoint) and it
+    # could not be written; the app goes on.
+    Log.warn("App #{@_name}: checkpoint refused: #{reason}")
+  end
+
   # The frame's own event handling: the close button and the title-bar
   # right-click reload. Called on every event ahead of the app's hook (see
   # _dispatch_event), so overriding on_event without super can no longer
@@ -789,6 +810,18 @@ class FmrbApp
   def request_run(path, prev_pid = nil)
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
+  end
+
+  # Ask for this app's own checkpoint image (doc/checkpoint): the kernel asks
+  # the app back, the way a tool or the shell would, and the image is written
+  # at the first safe point after the message wait -- never inside on_event
+  # or on_update, so asking from there is fine. Once written the app closes
+  # (on_checkpoint); with restart the kernel starts the image again
+  # (on_restore). A refusal arrives as on_checkpoint_refused. Returns nil when
+  # asked, or a String saying why it cannot be asked (this build cannot write
+  # images, ...).
+  def request_checkpoint(restart = false)
+    FmrbApp.request_checkpoint(FmrbApp.pid, restart)
   end
 
   # Ask the kernel to switch this app between windowed and fullscreen. The VM

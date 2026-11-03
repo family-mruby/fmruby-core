@@ -97,6 +97,10 @@ module ShellCommandsMixin
       cmd_kill(args)
     when "kill_job"
       cmd_kill_job(args)
+    when "checkpoint"
+      cmd_checkpoint(args)
+    when "restore"
+      cmd_restore(args)
     when "svc"
       cmd_svc(args)
     when "edit"
@@ -127,6 +131,8 @@ module ShellCommandsMixin
       @history << "  ps - List tasks and jobs"
       @history << "  kill <pid|service> - End a user task (PID from ps), or stop a service by name"
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
+      @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
+      @history << "  restore <image> - Start an app from its image (.ckpt)"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1074,6 +1080,87 @@ module ShellCommandsMixin
     data = { "cmd" => "kill", "pid" => pid }
     sent = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
     @history << "kill: could not reach the kernel" unless sent
+  end
+
+  # Write a running app to a checkpoint image and close it (doc/checkpoint);
+  # with -r the kernel starts the image again at once. Asked the same way as
+  # the debug server asks (FmrbApp.request_checkpoint): the kernel asks the
+  # app, which writes the image at a safe point. Only an app on the mruby VM
+  # whose .app.toml says movable = true can be written; any other is refused
+  # and goes on. The answer arrives as a "checkpoint_result" control message
+  # (on_control in shell.app.rb).
+  def cmd_checkpoint(args)
+    restart = false
+    pid_arg = nil
+    i = 0
+    while i < args.size
+      if args[i] == "-r"
+        restart = true
+      else
+        pid_arg = args[i]
+      end
+      i += 1
+    end
+    unless numeric?(pid_arg)
+      @history << "Usage: checkpoint [-r] <pid>   (PID from ps; -r: start it again)"
+      return
+    end
+    pid = pid_arg.to_i
+    if pid == FmrbApp.pid
+      @history << "checkpoint: this is the shell itself"
+      return
+    end
+    why = FmrbApp.request_checkpoint(pid, restart)
+    if why
+      @history << "checkpoint: PID #{pid}: #{why}"
+      return
+    end
+    @ckpt_restart[pid] = restart
+    @history << "checkpoint: asked PID #{pid} for its image"
+  end
+
+  # The kernel's answer to cmd_checkpoint: the image's path, or why the app
+  # would not be written (it goes on then).
+  def handle_checkpoint_result(msg)
+    pid = msg["pid"]
+    restart = @ckpt_restart.delete(pid)
+    Log.info("checkpoint: PID #{pid}: #{msg["ok"] ? "wrote #{msg["path"]}" : "refused (#{msg["reason"]})"}")
+    if msg["ok"]
+      path = msg["path"]
+      if restart
+        append_output("checkpoint: PID #{pid} wrote #{path}; starting it again")
+      else
+        append_output("checkpoint: PID #{pid} wrote #{path} and closed (restore #{path})")
+      end
+    else
+      append_output("checkpoint: PID #{pid} refused (#{msg["reason"]})")
+    end
+  end
+
+  # Start an app from a checkpoint image: the kernel spawns the .ckpt, and the
+  # app goes on from where it was written.
+  def cmd_restore(args)
+    if args.empty?
+      @history << "Usage: restore <image.ckpt>   (checkpoint writes /tmp/<name>.ckpt)"
+      return
+    end
+    arg = args[0]
+    path = if arg.start_with?("/")
+             arg
+           elsif @current_dir == "/"
+             "/#{arg}"
+           else
+             "#{@current_dir}/#{arg}"
+           end
+    unless path.end_with?(".ckpt")
+      @history << "restore: not a checkpoint image (.ckpt): #{arg}"
+      return
+    end
+    unless File.exist?(path)
+      @history << "restore: no such file: #{arg}"
+      return
+    end
+    spawn_app(path)
   end
 
   def numeric?(str)

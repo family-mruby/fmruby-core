@@ -63,6 +63,7 @@ class ShellApp < FmrbApp
     @script_input_line = nil  # Current script input text (shown during fg execution)
     @ctrl_pressed = false  # Track Ctrl key state for Ctrl-C detection
     @jobs = []          # Background job list
+    @ckpt_restart = {}  # pid => restart, for the checkpoints asked from here
 
     @cmd_history = []       # Command history
     @cmd_history_index = -1 # Current position in history (-1 = not browsing)
@@ -865,12 +866,13 @@ class ShellApp < FmrbApp
     draw_less_view
   end
 
-  # Control messages the app base does not handle itself: the kernel's answer
-  # to `kill`, and the service host's answers to ps / kill <name> / svc, which
+  # Control messages the app base does not handle itself: the kernel's answers
+  # to `kill` and `checkpoint`, and the service host's answers to ps / kill <name> / svc, which
   # arrive as Pub/Sub deliveries on this shell's own reply topic (see
   # shell/shell_commands.rb).
   def on_control(msg)
     handle_kill_result(msg) if msg["cmd"] == "kill_result"
+    handle_checkpoint_result(msg) if msg["cmd"] == "checkpoint_result"
     if msg["cmd"] == "topic_data" && msg["topic"] == svc_reply_topic
       handle_svc_reply(msg["data"] || {})
     end

@@ -134,10 +134,12 @@ class FmrbKernelImpl < FmrbKernel
 
     # The app being written to a checkpoint image (doc/checkpoint): its pid
     # (-1 = none), whether to start the image again once it has closed, and
-    # the image's path once the app has written it.
+    # the image's path once the app has written it, and the app that asked
+    # (-1: a tool through the debug server, which reads the answer in C).
     @ckpt_pid = -1
     @ckpt_restart = false
     @ckpt_path = ""
+    @ckpt_reply = -1
 
     # Periodic cleanup tracking
     @tick_count = 0
@@ -339,9 +341,11 @@ class FmrbKernelImpl < FmrbKernel
       cleanup_terminated_app(pid, data["expected"] ? true : false)
       restart_from_checkpoint(pid)
     when "checkpoint"
-      # A tool asks for an app's checkpoint image (the debug server's
-      # "checkpoint"): see request_checkpoint.
-      request_checkpoint(data["pid"], data["restart"] ? true : false)
+      # Someone asks for an app's checkpoint image: a tool (the debug server's
+      # "checkpoint") or an app (FmrbApp.request_checkpoint: the shell, or the
+      # app itself), always through the C side (fmrb_app_checkpoint.c), which
+      # names the app to answer in "from". See request_checkpoint.
+      request_checkpoint(data["pid"], data["restart"] ? true : false, (data["from"] || -1).to_i)
     when "checkpoint_done"
       note_checkpoint_done(pid, data["path"].to_s)
     when "checkpoint_refused"
@@ -585,11 +589,12 @@ class FmrbKernelImpl < FmrbKernel
   # image again once the app has closed. The app writes the image itself, in
   # its own task, at the first safe point after its message wait (the C side,
   # main/app/fmrb_app_checkpoint.c), then closes as asked. One app at a time.
-  def request_checkpoint(target, restart)
+  def request_checkpoint(target, restart, reply_to)
     tpid = (target || -1).to_i
     info = _get_app_info(tpid)
     if info.nil?
       Log.warn("Checkpoint: no app with PID #{tpid}")
+      reply_checkpoint(reply_to, tpid, false, "no app with PID #{tpid}")
       return nil
     end
     if @ckpt_pid >= 0
@@ -599,6 +604,7 @@ class FmrbKernelImpl < FmrbKernel
     @ckpt_pid = tpid
     @ckpt_restart = restart
     @ckpt_path = ""
+    @ckpt_reply = reply_to
     req = MessagePack.pack({ "cmd" => "checkpoint" })
     _send_raw_message(tpid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
     nil
@@ -606,16 +612,35 @@ class FmrbKernelImpl < FmrbKernel
 
   def note_checkpoint_done(pid, path)
     Log.info("Checkpoint: PID #{pid} wrote #{path}")
-    @ckpt_path = path if pid == @ckpt_pid
+    if pid == @ckpt_pid
+      @ckpt_path = path
+      # (an app that asked for its own image is closing: nobody to tell)
+      reply_checkpoint(@ckpt_reply, pid, true, path) if @ckpt_reply != pid
+    end
     nil
   end
 
   def note_checkpoint_refused(pid, reason)
     Log.warn("Checkpoint: PID #{pid} refused: #{reason}")
     if pid == @ckpt_pid
+      reply_checkpoint(@ckpt_reply, pid, false, reason)
       @ckpt_pid = -1
       @ckpt_path = ""
+      @ckpt_reply = -1
     end
+    nil
+  end
+
+  # Answer the app that asked (-1: a tool, which reads the answer in C).
+  # "ok" with the image's path, or the reason it was refused.
+  def reply_checkpoint(to, pid, ok, what)
+    return nil if to < 0
+    reply = if ok
+              { "cmd" => "checkpoint_result", "pid" => pid, "ok" => true, "path" => what }
+            else
+              { "cmd" => "checkpoint_result", "pid" => pid, "ok" => false, "reason" => what }
+            end
+    _send_raw_message(to, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
     nil
   end
 
@@ -627,6 +652,7 @@ class FmrbKernelImpl < FmrbKernel
     again = @ckpt_restart
     @ckpt_pid = -1
     @ckpt_path = ""
+    @ckpt_reply = -1
     return nil if path.empty?
     return nil unless again
     new_pid = _spawn_app_req(path)

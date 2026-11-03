@@ -1912,6 +1912,13 @@ class FmrbApp
       { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
   end
 
+  # An app's checkpoint image (doc/checkpoint) is for apps on the mruby VM
+  # only (D16): here the answer is always why not, as the mruby side answers
+  # when it cannot ask.
+  def request_checkpoint(restart = false)
+    "only an app on the mruby VM can be written"
+  end
+
   # Ask the kernel to switch this app between windowed and fullscreen (P2). The
   # VM keeps running; the answer arrives as on_resize with @_fullscreen and the
   # user area already updated.

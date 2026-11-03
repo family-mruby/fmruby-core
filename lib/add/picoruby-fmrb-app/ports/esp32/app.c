@@ -486,6 +486,7 @@ static bool spin_idle_gc(mrb_state *mrb, fmrb_app_task_context_t* ctx,
 // main/app/fmrb_app_checkpoint.c (doc/checkpoint): only the builds that carry
 // mruby-checkpoint have it.
 extern bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app);
+extern const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to);
 #endif
 
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
@@ -637,6 +638,23 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                             // kernel and the app goes on.
                             if (fmrb_app_checkpoint_request(mrb, self)) {
                                 mrb_iv_set(mrb, self, spin_break_sym, mrb_true_value());
+                            }
+                        } else if (strcmp(cmd, "checkpoint_result") == 0) {
+                            // The kernel's answer to FmrbApp.request_checkpoint. An
+                            // app that asked for its own image only hears of a
+                            // refusal (once written, it closes): it goes on and is
+                            // told why. An answer about another app goes to
+                            // on_control like any other.
+                            mrb_value about = mrb_hash_get(mrb, data_hash, mrb_str_new_cstr(mrb, "pid"));
+                            bool own = mrb_fixnum_p(about) && mrb_fixnum(about) == ctx->app_id;
+                            const char *hook = own ? "on_checkpoint_refused" : "on_control";
+                            mrb_value arg = data_hash;
+                            if (own) {
+                                arg = mrb_hash_get(mrb, data_hash, mrb_str_new_cstr(mrb, "reason"));
+                                if (!mrb_string_p(arg)) arg = mrb_str_new_lit(mrb, "");
+                            }
+                            if (mrb_respond_to(mrb, self, mrb_intern_cstr(mrb, hook))) {
+                                mrb_funcall(mrb, self, hook, 1, arg);
                             }
 #endif
                         } else if (strcmp(cmd, "suspend") == 0 || strcmp(cmd, "resume") == 0 ||
@@ -1446,6 +1464,30 @@ static mrb_value mrb_fmrb_app_s_battery_charging_p(mrb_state *mrb, mrb_value kla
 // Each program belongs to the calling app's task and ends with it, however
 // the app ends. None of these waits.
 #define LINUX_READ_CHUNK 4096
+
+// FmrbApp.request_checkpoint(pid, restart = false) -> nil | String
+// Ask for app pid's checkpoint image (doc/checkpoint) the way the debug server
+// does: the kernel asks the app, the app writes the image at a safe point and
+// closes (with restart, the kernel starts the image again). nil when asked:
+// the answer comes later as APP_CONTROL "checkpoint_result" {pid, ok, path |
+// reason} (FmrbApp#on_checkpoint_refused when the app asked for itself, else
+// on_control). A String when it cannot be asked: why.
+static mrb_value mrb_fmrb_app_s_request_checkpoint(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int pid;
+    mrb_bool restart = FALSE;
+    mrb_get_args(mrb, "i|b", &pid, &restart);
+#ifdef FMRB_HAVE_CHECKPOINT
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    const char *why = fmrb_app_checkpoint_ask_from_app((int32_t)pid, restart ? true : false,
+                                                       ctx ? (int32_t)ctx->app_id : -1);
+    return why ? mrb_str_new_cstr(mrb, why) : mrb_nil_value();
+#else
+    (void)pid;
+    return mrb_str_new_lit(mrb, "this build cannot write checkpoint images");
+#endif
+}
 
 static mrb_value mrb_fmrb_app_s_linux_available_p(mrb_state *mrb, mrb_value klass)
 {
@@ -2408,6 +2450,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "request_checkpoint", mrb_fmrb_app_s_request_checkpoint, MRB_ARGS_ARG(1, 1));
     mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, app_class, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));

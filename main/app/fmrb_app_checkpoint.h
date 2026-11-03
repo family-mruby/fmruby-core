@@ -38,6 +38,14 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
 // _spin has returned), false when it is refused (the kernel is told why).
 bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app);
 
+// An app asks for the image of app pid (FmrbApp.request_checkpoint, the
+// shell's `checkpoint`, an app asking for its own): the same way as the debug
+// server (fmrb_app_checkpoint_ask), and the kernel answers reply_to with
+// APP_CONTROL "checkpoint_result" {pid, ok, path | reason}. Returns NULL when
+// the kernel was asked, or why the image cannot be asked for (that answer is
+// not sent again).
+const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to);
+
 // Machine.board_millis's offset for this VM (D9): non-zero in a restored app,
 // which goes on from the value it had where it was written.
 int64_t fmrb_app_checkpoint_millis_offset(mrb_state *mrb);
