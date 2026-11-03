@@ -192,6 +192,20 @@ task :setup do
   rm_rf ASTERISM_MSGS_DIR
   mkdir_p File.dirname(ASTERISM_MSGS_DIR)
   cp_r "#{ast_dir}/data/msgs", ASTERISM_MSGS_DIR
+  # mruby-checkpoint (doc/checkpoint): from the pinned checkout (rake
+  # checkpoint:setup, MRUBY_CHECKPOINT_DIR overrides), only what an mruby
+  # build reads -- no tools/ (the repository's own driver, whose absence also
+  # keeps the gem from declaring an executable), tests or vendored mruby.
+  # Linked by the Linux and native builds only (their build configs list it).
+  ck_dir = mruby_checkpoint_dir!
+  sh "rm -rf #{mrbgem_path}/mruby-checkpoint"
+  mkdir_p "#{mrbgem_path}/mruby-checkpoint"
+  %w[mrbgem.rake include src].each do |entry|
+    sh "cp -rf #{ck_dir}/mrbgems/mruby-checkpoint/#{entry} #{mrbgem_path}/mruby-checkpoint/"
+  end
+  %w[README.md LICENSE].each do |entry|
+    sh "cp -f #{ck_dir}/#{entry} #{mrbgem_path}/mruby-checkpoint/"
+  end
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
@@ -207,8 +221,11 @@ task :setup do
   # picoruby-mruby: alloc.c (estalloc multi-VM), hal.h, mrbgem.rake, and
   # lib/mruby/src/vm.c (the self-supplied timeslice hook, four additive hunks
   # marked "fmrb: self-supplied timeslice" -- see doc/wasm/report/p2.md; it
-  # compiles to nothing unless MRB_TASK_TICK_SELF_SUPPLY is defined). vm.c is a
-  # whole-file copy, so it has to be refreshed when the mruby submodule moves.
+  # compiles to nothing unless MRB_TASK_TICK_SELF_SUPPLY is defined). vm.c,
+  # include/mruby.h and mruby-task's task.h, task.c and task_queue.c also carry
+  # mruby-checkpoint's safe point hook and switch-request count, marked
+  # "fmrb: checkpoint" (doc/checkpoint/plan.md). These are whole-file copies,
+  # so they have to be refreshed when the mruby submodule moves.
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
 
   # mruby-io file_constants.rb

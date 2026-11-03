@@ -1,0 +1,14 @@
+# Pinned family-mruby/mruby-checkpoint: the mrbgem mruby-checkpoint (doc/checkpoint),
+# which writes a running mruby VM's state to an image and resumes it in
+# another VM. Same scheme as ASTERISM_PIN:
+# - `rake checkpoint:setup` clones this exact commit into
+#   vendor/mruby-checkpoint (gitignored); `rake setup` copies the gem
+#   (mrbgem.rake, include/, src/) into the picoruby submodule.
+# - Public: https clone, CI can fetch it.
+# - MRUBY_CHECKPOINT_DIR=<checkout> builds from a working checkout instead
+#   (nothing is fetched; rake says when it is not the pinned commit).
+# - To update: commit and push its main, put the commit here, run
+#   `rake setup` (or any build).
+repo: https://github.com/family-mruby/mruby-checkpoint.git
+branch: main
+commit: 49fb411054edb961845f9e6166445f05cb7f90e0

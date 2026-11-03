@@ -30,6 +30,11 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # components/picoruby-esp32/mruby_abi_defines.cmake (common part) or the
   # boot-time ABI guard aborts. Enabled on every target since Phase 3a.
   conf.cc.defines << 'MRB_USE_DEBUG_HOOK'
+  # The safe point hook of mruby-checkpoint (vm.c in lib/patch, "fmrb:
+  # checkpoint"; the gem is listed at the end). A global variable, not a field
+  # of mrb_state, so it is not ABI-relevant and the CMake side need not see it.
+  # Build-wide, so that it reaches the mruby core.
+  conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
   # Measurement build only (FMRB_GC_PROFILE=1 rake build:linux): GC pause
   # histograms in GC.stat. Also ABI-relevant (it grows mrb_gc), so the CMake
   # side reads the same environment variable -- see mruby_abi_defines.cmake and
@@ -112,4 +117,11 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.gem core: "picoruby-asterism"
   # Family mruby's default node profile (kind family_mruby, host "sim"; V2.5)
   conf.gem core: "picoruby-fmrb-asterism"
+
+  # mruby-checkpoint (doc/checkpoint, F0): writes a running VM's state to an
+  # image and resumes it elsewhere. The Linux simulation and the native program
+  # only, so far (the devices come after their internal RAM and flash are
+  # measured, doc/checkpoint/plan.md). Its safe point hook is defined above
+  # (MRB_VM_SAFEPOINT_HOOK).
+  conf.gem core: "mruby-checkpoint"
 end

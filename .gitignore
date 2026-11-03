@@ -64,6 +64,8 @@ vendor/zenoh-pico/
 # Pinned ruby-asterism checkouts (rake asterism:setup; lib/add/*_PIN)
 vendor/asterism/
 vendor/picoruby-asterism-zenoh/
+# Pinned mruby-checkpoint checkout (rake checkpoint:setup; lib/add/MRUBY_CHECKPOINT_PIN)
+vendor/mruby-checkpoint/
 # The bundled ROS 2 message types, copied from the asterism checkout by
 # rake setup. The source is the asterism repository, like flash/help's is sig/.
 flash/usr/share/asterism/msgs/
