@@ -721,6 +721,27 @@ static mrb_value mrb_fmrb_app_mark_expected_stop(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// The app has ended (destroy): end the Tasks it started as well. The VM's
+// scheduler (mrb_task_run) returns only once every Task is done, so a Task
+// that loops for ever (a counter, a poller) kept the app task in the VM after
+// main_loop had returned: no exit, its queue already gone, and a kill waited
+// out its grace and dropped the VM by force. The running Task (the program,
+// which called destroy) is left to finish the script.
+static void end_other_tasks(mrb_state *mrb)
+{
+    mrb_value tasks[32];
+    int n = 0;
+    for (int q = 0; q < MRB_NUM_TASK_QUEUE; q++) {
+        for (mrb_task *t = mrb->task.queues[q]; t && n < (int)(sizeof(tasks) / sizeof(tasks[0])); t = t->next) {
+            if (t->status != MRB_TASK_STATUS_DORMANT && t->status != MRB_TASK_STATUS_RUNNING) {
+                tasks[n++] = t->self;
+            }
+        }
+    }
+    for (int i = 0; i < n; i++) mrb_terminate_task(mrb, tasks[i]);
+    if (n > 0) FMRB_LOGI(TAG, "_cleanup: ended %d Task(s) the app had started", n);
+}
+
 // FmrbApp#_cleanup() - Cleanup app resources (canvas, message queue)
 // Called from Ruby destroy() method when app terminates
 static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
@@ -747,6 +768,8 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
     // Release HW resources owned by this task (I2C buses, RMT channels, etc.)
     hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
 #endif
+
+    end_other_tasks(mrb);
 
     return mrb_nil_value();
 }
