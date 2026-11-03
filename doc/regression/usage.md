@@ -72,7 +72,7 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl (全部で 27 分ほど)
+rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint (全部で 32 分ほど)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -319,26 +319,29 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓
 ## 12. アプリを運ぶ (rake regress:checkpoint)
 
 ```
-rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (5 分ほど。作り終えていれば 1 分)
+rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (5 分ほど。作り終えていれば 1 分ほど)
 rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ版で流す
 ```
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
-- `rake regress:full` には入っていない。ネイティブ版だけを使い、sim・ブラウザ版・実機は使わない。build/ には触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。
+- `rake regress:full` に入っている (最後に流す)。`rake regress` (安い方) には入らない。ネイティブ版だけを使い、sim・ブラウザ版・実機は使わない。build/ には触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。
 - ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (窓なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
-- 場面は 4 つ。止める合図はデバッグサーバの `checkpoint` (`python3 tool/debug/fmrb_dbg_client.py --json localhost:<port> checkpoint pid=<pid> restart=1`。答えは `{status: written, path}`・`{status: refused, reason}`・`{status: timeout}`)。
-  - restart: 数えさせてから `restart=1` で止める。アプリが `/tmp/ckpt_counter.ckpt` を書いて閉じ、カーネルがそれを起動し直す。
-  - wait: `restart=0` で止め、アプリが閉じてから 2 秒待ち、`.ckpt` を手で起動する。
+- 場面は 7 つ。止める頼み方は 3 通りあり、どれもカーネル → アプリの `_spin` → セーフポイントの同じ道を通る (F1b)。
+  - restart: 数えさせてから、デバッグサーバの `checkpoint` (`ruby tools/fmrb_native.rb app checkpoint <pid> --restart`。答えは `{status: written, path}`・`{status: refused, reason}`・`{status: timeout}`) で止める。アプリが `/tmp/ckpt_counter.ckpt` を書いて閉じ、カーネルがそれを起動し直す。
+  - wait: `--restart` なしで止め、アプリが閉じてから 2 秒待ち、`app restore` で `.ckpt` を起動する。
   - refuse: `movable` の無いアプリ (`task_sleep`) は断られ、動き続ける。
   - refuse window: `movable` でも窓のあるアプリ (`ckpt_window`) は、セーフポイントで gem が断り (窓の `FmrbGfx` は F3 まで運べない)、動き続ける。
-- restart と wait で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
+  - self: `/app/test/ckpt_self.app.rb` が `on_update` の中から自分のイメージを頼む (`FmrbApp#request_checkpoint(true)`)。書かれて起動し直し、頼むのは 1 回だけ (戻ったアプリは頼んだ印を持っている)。
+  - self refused: `movable` の無い `ckpt_self_refused` が同じことを頼み、`on_checkpoint_refused` で理由を受けて動き続ける。
+  - shell: Shell の窓を開いて `checkpoint -r <pid>` を打つ。カウンタが restart と同じように運ばれ、Shell に答え (`checkpoint: PID n: wrote ...`) が来る。
+- restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
 - 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log`、作ったときのログは `build.log`。
 
 ```
-standard: ok (restart: a 5->6, b 3->4, main 5->6, t step 401 ms, image 23039 B; wait 2.0s: t step 402 ms; refused: ...; window refused at the safe point: ...; 16s)
+standard: ok (restart: a 5->6, b 3->4, main 5->6, t step 450 ms, image 23039 B; wait 2.0s: t step 448 ms; refused: ...; window refused at the safe point: ...; self: a 4->5, b 2->3, main 4->5, t step 252 ms; self refused: told why; shell: a 17->18, b 9->10, main 17->18; 28s)
 mruby: ok (...)
-checkpoint: ok (0.6 min)
+checkpoint: ok (1.9 min)
 ```
 
