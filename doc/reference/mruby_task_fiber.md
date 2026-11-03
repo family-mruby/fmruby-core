@@ -79,8 +79,8 @@ mruby-task の README (Limitations and Compatibility) は、Task と Fiber は�
   - mruby-task がタイムスライスのあいだ `vmexec` を立てない: C から resume した Fiber の側は
     直らない。`vmexec` は Task の未処理の例外の抜け方 (`L_RAISE`) も決めている。
 - `1.instance_eval { def m; end }` は今までどおり TypeError になる。
-- 状態: 上流向けの修正は mruby のブランチ `fix-task-instance-exec-immediate` (未 push、PR は
-  未作成。Task と、C から resume した Fiber のテストを足した)。Family mruby は
+- 状態: 上流に PR を出した (mruby/mruby#7731、2026-11-03。Task と、C から resume した Fiber の
+  テストを足した)。Family mruby は
   `lib/patch/.../src/vm.c` に同じ変更を入れた。mruby-checkpoint も patch で入れた
   (`patches/0003-vm-return-target-class.patch`)。
 
