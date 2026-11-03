@@ -340,7 +340,7 @@ rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ�
   - shell: Shell の窓を開いて `checkpoint -r <pid>` を打つ。カウンタが restart と同じように運ばれ、Shell に答え (`checkpoint: PID n: wrote ...`) が来る。
 - 2 つのプログラムの間で移す場面が 3 つ (F2)。最初のプログラム (A) の横に B を起こしてから流す。
   - move: `ruby tools/fmrb_native.rb app move <pid> --to <B の run dir>`。A でアプリを書いて止めたままにし、イメージと `.toml` を分けて B へ運び、B のカーネルが起動して「起動できた」と答えてから、A のカーネルがアプリを閉じる (D15)。答えは `{status: moved, pid}`。カウンタが B で続き、A はイメージの後に 1 歩も数えず普段どおり閉じる。A の書いたときの task tick と B の復元した task tick が同じ、基準の名前の数と digest が A と B で同じ。
-  - move refused: 同じことを `--damage` (イメージを短く切って運ぶ、試験用の印) で。B が復元を断り、A は止めた所から続く (`{status: stayed, reason, here: continued}`)。
+  - move refused: 同じことを `--damage` (イメージを短く切って運ぶ、試験用の印) で。B が復元を断り、A は止めた所から続く (`{status: stayed, reason, here: continued}`)。B のデスクトップには失敗の窓を出さない (理由は頼んだ側が受け取る。B のログには残る。カーネルの `App '<名前>':` の行が無いことで見る)。
   - move no answer: `app checkpoint <pid> --hold 1500` で止めたまま誰も答えない。A のカーネルが 1.5 秒で続けさせる。
 - 最後に、A と B のログに強制終了 (`No response in ...ms, forcing termination`) が 1 件も無いことを確かめる。どのアプリも頼んで閉じ、アプリの Task はアプリと一緒に終わる (doc/checkpoint/report/f2.md の 3)。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
