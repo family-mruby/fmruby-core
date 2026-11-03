@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-03 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版の 1 プロセスの中でアプリを止めて続ける (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-04 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 1. 流し方
 
@@ -319,14 +319,14 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓
 ## 12. アプリを運ぶ (rake regress:checkpoint)
 
 ```
-rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (5 分ほど。作り終えていれば 1 分ほど)
+rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (5 分ほど。作り終えていれば 1.5 分ほど)
 rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ版で流す
 ```
 
-- 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
+- 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
 - `rake regress:full` に入っている (最後に流す)。`rake regress` (安い方) には入らない。ネイティブ版だけを使い、sim・ブラウザ版・実機は使わない。build/ には触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。
-- ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
+- ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (窓なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
 - 最初に、運ぶのではない場面を 1 つ流す。
   - turns: `/app/test/task_turns.app.rb` の Task (1 歩ごとに `Task.pass`) が、メインループの番がタイムスライスより長くても 10 歩を進める (10 秒以内)。ネイティブ版は tick を自給するので、ここで見張る (doc/checkpoint/report/hang_task_sleep.md)。
@@ -338,12 +338,17 @@ rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ�
   - self: `/app/test/ckpt_self.app.rb` が `on_update` の中から自分のイメージを頼む (`FmrbApp#checkpoint(restart: true)`)。書かれて起動し直し、頼むのは 1 回だけ (戻ったアプリは頼んだ印を持っている)。
   - self refused: `movable` の無い `ckpt_self_refused` が同じことを頼み、`on_checkpoint_refused` で理由を受けて動き続ける。
   - shell: Shell の窓を開いて `checkpoint -r <pid>` を打つ。カウンタが restart と同じように運ばれ、Shell に答え (`checkpoint: PID n: wrote ...`) が来る。
+- 2 つのプログラムの間で移す場面が 3 つ (F2)。最初のプログラム (A) の横に B を起こしてから流す。
+  - move: `ruby tools/fmrb_native.rb app move <pid> --to <B の run dir>`。A でアプリを書いて止めたままにし、イメージと `.toml` を分けて B へ運び、B のカーネルが起動して「起動できた」と答えてから、A のカーネルがアプリを閉じる (D15)。答えは `{status: moved, pid}`。カウンタが B で続き、A はイメージの後に 1 歩も数えず普段どおり閉じる。A の書いたときの task tick と B の復元した task tick が同じ、基準の名前の数と digest が A と B で同じ。
+  - move refused: 同じことを `--damage` (イメージを短く切って運ぶ、試験用の印) で。B が復元を断り、A は止めた所から続く (`{status: stayed, reason, here: continued}`)。
+  - move no answer: `app checkpoint <pid> --hold 1500` で止めたまま誰も答えない。A のカーネルが 1.5 秒で続けさせる。
+- 最後に、A と B のログに強制終了 (`No response in ...ms, forcing termination`) が 1 件も無いことを確かめる。どのアプリも頼んで閉じ、アプリの Task はアプリと一緒に終わる (doc/checkpoint/report/f2.md の 3)。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
-- 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log`、作ったときのログは `build.log`。
+- 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log` (B は `<構成>_b.log`)、作ったときのログは `build.log`。
 
 ```
-standard: ok (turns: done 10 steps in 1201ms; restart: a 5->6, b 3->4, main 5->6, t step 450 ms, image 23039 B; wait 2.0s: t step 448 ms; refused: ...; window refused at the safe point: ...; self: a 4->5, b 2->3, main 4->5, t step 252 ms; self refused: told why; shell: a 17->18, b 9->10, main 17->18; 28s)
+standard: ok (turns: done 10 steps in 1201ms; restart: a 5->6, b 3->4, main 5->6, t step 450 ms, image 23039 B; wait 2.0s: t step 448 ms; refused: ...; window refused at the safe point: ...; self: a 4->5, b 2->3, main 4->5, t step 252 ms; self refused: told why; shell: a 17->18, b 9->10, main 17->18; move: a 5->6, b 3->4, main 5->6, t step 403 ms, tick 200, 4046 names alike, carried in 1180 ms, held 1381 ms; move refused: ...; went on here: a 5->6, main 5->6; move no answer: held 1517 ms, went on: a 5->6, main 5->6; 41s)
 mruby: ok (...)
-checkpoint: ok (1.9 min)
+checkpoint: ok (1.4 min)
 ```
 
