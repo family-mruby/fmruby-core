@@ -22,6 +22,16 @@
 //      same way, restores the image, calls on_restore and continues it
 //      (fmrb_app_checkpoint_resume).
 //
+// A move to another program (F2, D15) asks with a hold: in 4 the app does not
+// close but stops where the image was taken (in ckpt_written, so neither the
+// program nor its Tasks run a step beyond the image) and tells the kernel
+// "checkpoint_held". The image is carried to the other program and started
+// there (fmrb_app_checkpoint_restore_ask); the kernel then tells the app
+// "checkpoint_finish" {close}: it closes as in 4 when the image goes on
+// elsewhere, and goes on from where it stopped when it does not. The kernel
+// lets it go on when nobody has told it within the hold; the app itself does
+// so a little later still, should the kernel not answer at all.
+//
 // What goes on with the program beside the VM is in the embedder's section of
 // the image (EMB0, written by emb_dump): Machine.board_millis (D9: each VM
 // runs at an offset from the board's clock) and the HAL's tick state of the
@@ -43,6 +53,7 @@
 #include <mruby/throw.h>
 #include <mruby/checkpoint.h>
 #include <task.h>
+#include <msgpack.h>
 
 #include "fmrb_app_checkpoint.h"
 #include "fmrb_app.h"
@@ -73,15 +84,38 @@ extern uint64_t Machine_uptime_us(void);
 // The embedder's section (EMB0): its own version byte first.
 #define EMB_VERSION 1
 
+// A held app goes on by itself this long after the hold the kernel was given,
+// should the kernel never tell it (the kernel's own bound comes first).
+#define HOLD_GRACE_MS 2000
+// Messages that arrive while the app is held are given back to it when it goes
+// on; this many at most (a headless app gets few).
+#define HOLD_STASH_MAX 16
+#define HOLD_POLL_MS 50
+
 typedef struct {
     mrb_state *mrb;                 // the VM this entry is for (NULL: none)
     int64_t millis_offset;          // board_millis = board clock + this (D9)
     char origin[FMRB_MAX_PATH_LEN]; // the .rb the program was first compiled from
     volatile int status;            // fmrb_app_ckpt_status_t
     char what[CKPT_WHAT_MAX];       // the image's path, or why it was refused
+    int32_t hold_ms;                // the request's hold (0: close once written)
 } ckpt_app_t;
 
 static ckpt_app_t s_ckpt[FMRB_MAX_APPS];
+
+// The last image asked to be started (fmrb_app_checkpoint_restore_ask): one
+// at a time, as the kernel moves one app at a time.
+typedef struct {
+    volatile int status;            // fmrb_app_restore_status_t
+    int32_t pid;
+    char path[FMRB_MAX_PATH_LEN];
+    char what[CKPT_WHAT_MAX];
+} ckpt_restore_t;
+
+static ckpt_restore_t s_restore;
+
+static void put_u32(uint8_t *p, uint32_t v);
+static void restore_answer(const char *path, int status, int32_t pid, const char *what);
 
 static ckpt_app_t *entry_of(const fmrb_app_task_context_t *ctx)
 {
@@ -114,23 +148,57 @@ static size_t pack_str(uint8_t *buf, size_t room, const char *s)
     return head + n;
 }
 
+// A small msgpack map built in an APP_CONTROL message.
+typedef struct {
+    fmrb_msg_t msg;
+    size_t pos;
+} ctl_msg_t;
+
+static void ctl_begin(ctl_msg_t *m, fmrb_proc_id_t src, unsigned pairs)
+{
+    memset(&m->msg, 0, sizeof(m->msg));
+    m->msg.type = FMRB_MSG_TYPE_APP_CONTROL;
+    m->msg.src_pid = src;
+    m->msg.data[0] = (uint8_t)(0x80 | pairs);
+    m->pos = 1;
+}
+
+static void ctl_str(ctl_msg_t *m, const char *s)
+{
+    m->pos += pack_str(m->msg.data + m->pos, sizeof(m->msg.data) - m->pos, s);
+}
+
+static void ctl_int(ctl_msg_t *m, uint32_t v)
+{
+    if (m->pos + 5 > sizeof(m->msg.data)) return;
+    m->msg.data[m->pos++] = 0xCE;
+    put_u32(m->msg.data + m->pos, v);
+    m->pos += 4;
+}
+
+static void ctl_bool(ctl_msg_t *m, bool v)
+{
+    if (m->pos < sizeof(m->msg.data)) m->msg.data[m->pos++] = v ? 0xC3 : 0xC2;
+}
+
+static fmrb_err_t ctl_send(ctl_msg_t *m, fmrb_proc_id_t dest)
+{
+    m->msg.size = (uint32_t)m->pos;
+    return fmrb_msg_send(dest, &m->msg, 100);
+}
+
 // {"cmd" => cmd, key => value} (key NULL: {"cmd" => cmd} alone)
 static void send_kernel(fmrb_proc_id_t src, const char *cmd, const char *key, const char *value)
 {
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_CONTROL,
-        .src_pid = src,
-    };
-    size_t pos = 0, room = sizeof(msg.data);
-    msg.data[pos++] = key ? 0x82 : 0x81;
-    pos += pack_str(msg.data + pos, room - pos, "cmd");
-    pos += pack_str(msg.data + pos, room - pos, cmd);
+    ctl_msg_t m;
+    ctl_begin(&m, src, key ? 2 : 1);
+    ctl_str(&m, "cmd");
+    ctl_str(&m, cmd);
     if (key) {
-        pos += pack_str(msg.data + pos, room - pos, key);
-        pos += pack_str(msg.data + pos, room - pos, value);
+        ctl_str(&m, key);
+        ctl_str(&m, value);
     }
-    msg.size = (uint32_t)pos;
-    if (fmrb_msg_send(PROC_ID_KERNEL, &msg, 100) != FMRB_OK) {
+    if (ctl_send(&m, PROC_ID_KERNEL) != FMRB_OK) {
         FMRB_LOGW(TAG, "could not tell the kernel %s", cmd);
     }
 }
@@ -329,6 +397,94 @@ static void end_all_tasks(mrb_state *mrb)
     for (int i = 0; i < n; i++) mrb_terminate_task(mrb, tasks[i]);
 }
 
+// The value of a str key of a msgpack map (NULL when absent or not a str).
+static const msgpack_object *map_get(const msgpack_object *map, const char *key)
+{
+    if (map->type != MSGPACK_OBJECT_MAP) return NULL;
+    size_t klen = strlen(key);
+    for (uint32_t i = 0; i < map->via.map.size; i++) {
+        const msgpack_object *k = &map->via.map.ptr[i].key;
+        if (k->type == MSGPACK_OBJECT_STR && k->via.str.size == klen &&
+            memcmp(k->via.str.ptr, key, klen) == 0) {
+            return &map->via.map.ptr[i].val;
+        }
+    }
+    return NULL;
+}
+
+// Is msg the kernel's "checkpoint_finish" {close, reason}? Fills *close and
+// why (the reason, when it goes on).
+static bool finish_message(const fmrb_msg_t *msg, bool *close, char *why, size_t whylen)
+{
+    if (msg->type != FMRB_MSG_TYPE_APP_CONTROL) return false;
+    msgpack_unpacked up;
+    msgpack_unpacked_init(&up);
+    size_t off = 0;
+    bool found = false;
+    if (msgpack_unpack_next(&up, (const char *)msg->data, msg->size, &off) == MSGPACK_UNPACK_SUCCESS) {
+        const msgpack_object *cmd = map_get(&up.data, "cmd");
+        if (cmd && cmd->type == MSGPACK_OBJECT_STR && cmd->via.str.size == 17 &&
+            memcmp(cmd->via.str.ptr, "checkpoint_finish", 17) == 0) {
+            const msgpack_object *c = map_get(&up.data, "close");
+            const msgpack_object *r = map_get(&up.data, "reason");
+            *close = c && c->type == MSGPACK_OBJECT_BOOLEAN && c->via.boolean;
+            if (r && r->type == MSGPACK_OBJECT_STR && whylen) {
+                size_t n = r->via.str.size < whylen - 1 ? r->via.str.size : whylen - 1;
+                memcpy(why, r->via.str.ptr, n);
+                why[n] = '\0';
+            }
+            found = true;
+        }
+    }
+    msgpack_unpacked_destroy(&up);
+    return found;
+}
+
+// A move (D15): the image is written and the app stops right here, at the safe
+// point, until the kernel tells it to close or to go on. Nothing of the VM
+// runs meanwhile (its Tasks included), so what goes on elsewhere and what
+// would go on here start from the same state. Messages that arrive meanwhile
+// are kept and given back when it goes on. Returns true to close; why says
+// why it goes on.
+static bool hold_until_told(fmrb_app_task_context_t *ctx, ckpt_app_t *e, char *why, size_t whylen)
+{
+    fmrb_msg_t *stash = (fmrb_msg_t *)fmrb_sys_malloc(sizeof(fmrb_msg_t) * HOLD_STASH_MAX);
+    int kept = 0, dropped = 0;
+    bool close = false;
+    uint64_t t0 = fmrb_hal_time_get_us();
+    uint64_t deadline = t0 + (uint64_t)(e->hold_ms + HOLD_GRACE_MS) * 1000;
+    why[0] = '\0';
+    for (;;) {
+        if (ctx->should_exit) {
+            // A kill: the app was asked to end; the image has gone wherever
+            // it goes, and this copy ends as it would have anyway.
+            close = true;
+            break;
+        }
+        if (fmrb_hal_time_get_us() >= deadline) {
+            snprintf(why, whylen, "the kernel did not answer in %d ms", (int)(e->hold_ms + HOLD_GRACE_MS));
+            break;
+        }
+        fmrb_msg_t msg;
+        if (fmrb_msg_receive(ctx->app_id, &msg, HOLD_POLL_MS) != FMRB_OK) continue;
+        if (finish_message(&msg, &close, why, whylen)) break;
+        if (stash && kept < HOLD_STASH_MAX) {
+            stash[kept++] = msg;
+        } else {
+            dropped++;
+        }
+    }
+    FMRB_LOGI(TAG, "[%s] held %u ms after its image; %s", ctx->app_name,
+              (unsigned)((fmrb_hal_time_get_us() - t0) / 1000), close ? "closes" : "goes on");
+    if (!close) {
+        for (int i = 0; i < kept; i++) fmrb_msg_send(ctx->app_id, &stash[i], 0);
+    }
+    if (dropped) FMRB_LOGW(TAG, "[%s] %d message(s) dropped while held", ctx->app_name, dropped);
+    if (stash) fmrb_sys_free(stash);
+    if (!close && !why[0]) snprintf(why, whylen, "told to go on");
+    return close;
+}
+
 // The gem's handler: an image of this app was taken at a safe point.
 static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const char *unused,
                          enum mrb_checkpoint_kind kind, void *ud)
@@ -358,14 +514,39 @@ static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const c
               ctx->app_name, path, (unsigned)len, (unsigned)(fmrb_hal_time_get_us() - t0));
 
     call_hook(mrb, mrb_gv_get(mrb, mrb_intern_lit(mrb, APP_GV)), "on_checkpoint");
+    // The scheduler's clock the image carries (mruby-task's tick; the restored
+    // side logs the one it goes on from).
+    FMRB_LOGI(TAG, "[%s] image at task tick %u", ctx->app_name, (unsigned)mrb->task.tick);
+
+    bool held = e->hold_ms > 0;
+    if (held) {
+        snprintf(e->what, sizeof(e->what), "%s", path);
+        e->status = FMRB_APP_CKPT_HELD;
+        send_kernel(ctx->app_id, "checkpoint_held", "path", path);
+        char why[CKPT_WHAT_MAX];
+        bool close = hold_until_told(ctx, e, why, sizeof(why));
+        e->hold_ms = 0;
+        if (!close) {
+            FMRB_LOGI(TAG, "[%s] goes on from its image: %s", ctx->app_name, why);
+            mrb_gv_remove(mrb, mrb_intern_lit(mrb, APP_GV));
+            snprintf(e->what, sizeof(e->what), "%s", why);
+            e->status = FMRB_APP_CKPT_CONTINUED;
+            send_kernel(ctx->app_id, "checkpoint_continued", "reason", why);
+            return;   // the program goes on here
+        }
+    }
 
     // It ends because it was asked to: the kernel does not report a crash.
     ctx->expected_stop = true;
     end_all_tasks(mrb);
 
     snprintf(e->what, sizeof(e->what), "%s", path);
-    e->status = FMRB_APP_CKPT_WRITTEN;
-    send_kernel(ctx->app_id, "checkpoint_done", "path", path);
+    if (held) {
+        e->status = FMRB_APP_CKPT_CLOSED;   // the kernel told it (or a kill did)
+    } else {
+        e->status = FMRB_APP_CKPT_WRITTEN;
+        send_kernel(ctx->app_id, "checkpoint_done", "path", path);
+    }
 }
 
 // The gem's refusal handler: the request was taken but no image could be
@@ -378,7 +559,7 @@ static void ckpt_refused(mrb_state *mrb, const char *reason, void *ud)
     if (ctx) refuse(ctx, reason);
 }
 
-bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app)
+bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app, int32_t hold_ms)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();
     ckpt_app_t *e = entry_of(ctx);
@@ -387,6 +568,7 @@ bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app)
         refuse(ctx, "the app does not declare movable = true in its .app.toml");
         return false;
     }
+    e->hold_ms = hold_ms > 0 ? hold_ms : 0;
     mrb_gv_set(mrb, mrb_intern_lit(mrb, APP_GV), app);
     enum mrb_checkpoint_req r = mrb_checkpoint_request(mrb);
     if (r == MRB_CHECKPOINT_REQ_OK || r == MRB_CHECKPOINT_REQ_PENDING) {
@@ -414,10 +596,22 @@ static size_t pool_used(const fmrb_app_task_context_t *ctx)
     return used;
 }
 
+// The permanent names, counted and hashed (FNV-1a over each name and its kind):
+// two programs of the same build must find the same ones (F2), and the log
+// shows it.
+typedef struct {
+    size_t n;
+    uint32_t digest;
+} name_sum_t;
+
 static void count_name(const char *name, int is_func, void *ud)
 {
-    (void)name; (void)is_func;
-    (*(size_t *)ud)++;
+    name_sum_t *sum = (name_sum_t *)ud;
+    uint32_t h = sum->digest;
+    for (const char *p = name; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+    h = (h ^ (is_func ? 1u : 0u)) * 16777619u;
+    sum->digest = h;
+    sum->n++;
 }
 
 void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
@@ -432,6 +626,7 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     // can reuse the slot before it has read it.
     e->mrb = mrb;
     e->millis_offset = 0;
+    e->hold_ms = 0;
     e->origin[0] = '\0';
     if (!restoring) snprintf(e->origin, sizeof(e->origin), "%s", ctx->filepath);
 
@@ -442,11 +637,11 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     mrb_checkpoint_set_handler(mrb, ckpt_written, NULL);
     mrb_checkpoint_set_refusal_handler(mrb, ckpt_refused, NULL);
     mrb_checkpoint_baseline(mrb);
-    size_t names = 0;
+    name_sum_t names = { 0, 2166136261u };
     mrb_checkpoint_each_name(mrb, count_name, &names);
-    FMRB_LOGI(TAG, "[%s] VM set up for checkpoints%s: the baseline (%u names) took %u bytes of the pool",
-              ctx->app_name, restoring ? " (restoring an image)" : "", (unsigned)names,
-              (unsigned)(pool_used(ctx) - before));
+    FMRB_LOGI(TAG, "[%s] VM set up for checkpoints%s: the baseline (%u names, digest %08x) took %u bytes of the pool",
+              ctx->app_name, restoring ? " (restoring an image)" : "", (unsigned)names.n,
+              (unsigned)names.digest, (unsigned)(pool_used(ctx) - before));
 }
 
 void fmrb_app_checkpoint_vm_closing(fmrb_app_task_context_t *ctx)
@@ -516,6 +711,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
     *task = mrb_nil_value();
     if (!e || e->mrb != mrb) {
         snprintf(err, errlen, "the VM is not set up for checkpoints");
+        restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
         return -1;
     }
 
@@ -523,6 +719,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
     uint8_t *buf = read_image(ctx->filepath, &len);
     if (!buf) {
         snprintf(err, errlen, "cannot read the image %s", ctx->filepath);
+        restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
         return -1;
     }
     uint64_t t0 = fmrb_hal_time_get_us();
@@ -534,10 +731,14 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
         mrb_value msg = mrb_funcall(mrb, r, "message", 0);
         snprintf(err, errlen, "cannot restore %s: %s", ctx->filepath,
                  mrb_string_p(msg) ? RSTRING_PTR(msg) : "?");
+        restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
         return -1;
     }
-    FMRB_LOGI(TAG, "[%s] restored %s (%u bytes) in %u us", ctx->app_name, ctx->filepath,
-              (unsigned)len, (unsigned)(fmrb_hal_time_get_us() - t0));
+    FMRB_LOGI(TAG, "[%s] restored %s (%u bytes) in %u us, task tick %u", ctx->app_name, ctx->filepath,
+              (unsigned)len, (unsigned)(fmrb_hal_time_get_us() - t0), (unsigned)mrb->task.tick);
+    // The image is up here: whoever asked for it (a move) hears it now, before
+    // the program goes on.
+    restore_answer(ctx->filepath, FMRB_APP_RESTORE_DONE, ctx->app_id, "");
 
     *task = mrb_checkpoint_host_task(mrb);
     mrb_value app = mrb_gv_get(mrb, mrb_intern_lit(mrb, APP_GV));
@@ -563,7 +764,7 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
 // FMRB_OK with *why NULL when the kernel was asked; FMRB_OK with *why when the
 // app cannot be written (D16: the answer is in the table as well, as the
 // app's own refusals are); an error with *why when nothing was asked.
-static fmrb_err_t ask_kernel(int32_t pid, bool restart, int32_t reply_to, const char **why)
+static fmrb_err_t ask_kernel(int32_t pid, bool restart, int32_t hold_ms, int32_t reply_to, const char **why)
 {
     *why = NULL;
     fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(pid);
@@ -582,24 +783,23 @@ static fmrb_err_t ask_kernel(int32_t pid, bool restart, int32_t reply_to, const 
     e->what[0] = '\0';
     e->status = FMRB_APP_CKPT_PENDING;
 
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_CONTROL,
-        .src_pid = PROC_ID_KERNEL,
-    };
-    size_t pos = 0, room = sizeof(msg.data);
-    msg.data[pos++] = reply_to >= 0 ? 0x84 : 0x83;
-    pos += pack_str(msg.data + pos, room - pos, "cmd");
-    pos += pack_str(msg.data + pos, room - pos, "checkpoint");
-    pos += pack_str(msg.data + pos, room - pos, "pid");
-    msg.data[pos++] = (uint8_t)(pid & 0x7F);
-    pos += pack_str(msg.data + pos, room - pos, "restart");
-    msg.data[pos++] = restart ? 0xC3 : 0xC2;
+    ctl_msg_t m;
+    ctl_begin(&m, PROC_ID_KERNEL, 3 + (reply_to >= 0 ? 1 : 0) + (hold_ms > 0 ? 1 : 0));
+    ctl_str(&m, "cmd");
+    ctl_str(&m, "checkpoint");
+    ctl_str(&m, "pid");
+    ctl_int(&m, (uint32_t)pid);
+    ctl_str(&m, "restart");
+    ctl_bool(&m, restart);
     if (reply_to >= 0) {
-        pos += pack_str(msg.data + pos, room - pos, "from");
-        msg.data[pos++] = (uint8_t)(reply_to & 0x7F);
+        ctl_str(&m, "from");
+        ctl_int(&m, (uint32_t)reply_to);
     }
-    msg.size = (uint32_t)pos;
-    if (fmrb_msg_send(PROC_ID_KERNEL, &msg, 100) != FMRB_OK) {
+    if (hold_ms > 0) {
+        ctl_str(&m, "hold");
+        ctl_int(&m, (uint32_t)hold_ms);
+    }
+    if (ctl_send(&m, PROC_ID_KERNEL) != FMRB_OK) {
         e->status = FMRB_APP_CKPT_NONE;
         *why = "could not reach the kernel";
         return FMRB_ERR_FAILED;
@@ -607,17 +807,81 @@ static fmrb_err_t ask_kernel(int32_t pid, bool restart, int32_t reply_to, const 
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart)
+fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart, int32_t hold_ms)
 {
     const char *why;
-    return ask_kernel(pid, restart, -1, &why);   // a refusal is the answer the table holds
+    return ask_kernel(pid, restart, hold_ms, -1, &why);   // a refusal is the answer the table holds
 }
 
 const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to)
 {
     const char *why;
-    ask_kernel(pid, restart, reply_to, &why);
+    ask_kernel(pid, restart, 0, reply_to, &why);
     return why;
+}
+
+fmrb_err_t fmrb_app_checkpoint_finish(int32_t pid, bool close, const char *reason)
+{
+    if (pid < 0 || pid >= FMRB_MAX_APPS) return FMRB_ERR_INVALID_PARAM;
+    ctl_msg_t m;
+    ctl_begin(&m, PROC_ID_KERNEL, 4);
+    ctl_str(&m, "cmd");
+    ctl_str(&m, "checkpoint_finish");
+    ctl_str(&m, "pid");
+    ctl_int(&m, (uint32_t)pid);
+    ctl_str(&m, "close");
+    ctl_bool(&m, close);
+    ctl_str(&m, "reason");
+    ctl_str(&m, reason ? reason : "");
+    return ctl_send(&m, PROC_ID_KERNEL) == FMRB_OK ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// ---- starting an image (the receiving side of a move) -------------------------
+
+static void restore_answer(const char *path, int status, int32_t pid, const char *what)
+{
+    if (s_restore.status != FMRB_APP_RESTORE_PENDING || strcmp(s_restore.path, path) != 0) return;
+    s_restore.pid = pid;
+    snprintf(s_restore.what, sizeof(s_restore.what), "%s", what ? what : "");
+    s_restore.status = status;
+}
+
+fmrb_err_t fmrb_app_checkpoint_restore_ask(const char *path)
+{
+    size_t n = path ? strlen(path) : 0;
+    if (n < 6 || n >= sizeof(s_restore.path) || strcmp(path + n - 5, ".ckpt") != 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    snprintf(s_restore.path, sizeof(s_restore.path), "%s", path);
+    s_restore.what[0] = '\0';
+    s_restore.pid = -1;
+    s_restore.status = FMRB_APP_RESTORE_PENDING;
+    ctl_msg_t m;
+    ctl_begin(&m, PROC_ID_KERNEL, 2);
+    ctl_str(&m, "cmd");
+    ctl_str(&m, "restore");
+    ctl_str(&m, "path");
+    ctl_str(&m, path);
+    if (ctl_send(&m, PROC_ID_KERNEL) != FMRB_OK) {
+        s_restore.status = FMRB_APP_RESTORE_NONE;
+        return FMRB_ERR_FAILED;
+    }
+    return FMRB_OK;
+}
+
+fmrb_app_restore_status_t fmrb_app_checkpoint_restore_poll(int32_t *pid, char *what, size_t what_len)
+{
+    int st = s_restore.status;
+    if (pid) *pid = s_restore.pid;
+    if (what && what_len) snprintf(what, what_len, "%s", s_restore.what);
+    return (fmrb_app_restore_status_t)st;
+}
+
+void fmrb_app_checkpoint_spawn_failed(const char *path, fmrb_err_t err)
+{
+    char why[64];
+    snprintf(why, sizeof(why), "could not start the image (error %d)", (int)err);
+    restore_answer(path, FMRB_APP_RESTORE_REFUSED, -1, why);
 }
 
 fmrb_app_ckpt_status_t fmrb_app_checkpoint_poll(int32_t pid, char *what, size_t what_len)

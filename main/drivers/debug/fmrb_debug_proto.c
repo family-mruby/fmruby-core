@@ -29,6 +29,12 @@ static const struct { const char *name; fmrb_dbg_cmd_t cmd; } k_cmd_table[] = {
     { "gc",          DBG_CMD_GC },
 #ifdef FMRB_HAVE_CHECKPOINT
     { "checkpoint",  DBG_CMD_CHECKPOINT },
+    { "checkpoint_finish", DBG_CMD_CHECKPOINT_FINISH },
+    { "restore",     DBG_CMD_RESTORE },
+    { "file_get",    DBG_CMD_FILE_GET },
+    { "file_begin",  DBG_CMD_FILE_BEGIN },
+    { "file_chunk",  DBG_CMD_FILE_CHUNK },
+    { "file_commit", DBG_CMD_FILE_COMMIT },
 #endif
 };
 
@@ -101,6 +107,21 @@ static void decode_payload(const msgpack_object *map, fmrb_dbg_req_t *out) {
 #ifdef FMRB_HAVE_CHECKPOINT
         } else if (key_is(k, "restart") && (obj_is_int(v) || v->type == MSGPACK_OBJECT_BOOLEAN)) {
             out->restart = obj_as_int(v) != 0;
+        } else if (key_is(k, "hold") && obj_is_int(v)) {
+            out->hold = (int)obj_as_int(v);
+        } else if (key_is(k, "close") && (obj_is_int(v) || v->type == MSGPACK_OBJECT_BOOLEAN)) {
+            out->close = obj_as_int(v) != 0;
+        } else if (key_is(k, "size") && obj_is_int(v)) {
+            out->size = (uint32_t)obj_as_int(v);
+        } else if (key_is(k, "id") && obj_is_int(v)) {
+            out->id = (uint32_t)obj_as_int(v);
+        } else if (key_is(k, "reason")) {
+            obj_copy_str(v, out->reason, sizeof(out->reason));
+        } else if (key_is(k, "data") && (v->type == MSGPACK_OBJECT_BIN || v->type == MSGPACK_OBJECT_STR)) {
+            // msgpack-c points into the request body (the frame buffer the
+            // request is handled from), so no copy is needed.
+            out->data = (const uint8_t *)(v->type == MSGPACK_OBJECT_BIN ? v->via.bin.ptr : v->via.str.ptr);
+            out->data_len = v->type == MSGPACK_OBJECT_BIN ? v->via.bin.size : v->via.str.size;
 #endif
         }
     }

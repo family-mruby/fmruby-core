@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 #
-# checkpoint.rb - moving an app inside one native program (rake
-# regress:checkpoint, doc/checkpoint F1, doc/regression/usage.md chapter 12).
+# checkpoint.rb - moving an app inside one native program and between two (rake
+# regress:checkpoint, doc/checkpoint F1 and F2, doc/regression/usage.md chapter 12).
 #
 #   ruby tools/regress/checkpoint.rb                  # build, then standard and mruby
 #   ruby tools/regress/checkpoint.rb --only mruby     # one engine configuration
@@ -29,6 +29,19 @@
 #             movable: told why (on_checkpoint_refused), goes on.
 #   shell     the shell's `checkpoint -r PID`, typed into a shell window: the
 #             counter moves as in restart, and the shell is answered.
+#   move      (F2) a second native program of the same build beside the first
+#             (a run directory, debug port and user directory of its own):
+#             "app move PID --to <its run dir>" writes the counter's image and
+#             holds it, carries the image to the second program in pieces,
+#             starts it there and closes it in the first once it is up there
+#             (D15). The counters go on in the second program; the first
+#             closes the normal way; both find the same permanent names (the
+#             digest of the baseline) and the image's task tick goes on.
+#   move refused  the same with --damage (the image is cut short on the way):
+#             the second program cannot restore it and says why, the first
+#             goes on from where it was held.
+#   move no answer  "app checkpoint PID --hold 1500" and nobody answers: the
+#             first program's kernel lets the app go on once the hold runs out.
 #   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
 #             passes after every step gets its steps while the main loop
 #             waits longer than a timeslice per turn. The native program
@@ -42,8 +55,12 @@
 # from where it was: the step across the move is short, also across the 2 s
 # wait (D9).
 #
+# No app may end in a forced kill ("No response in ...ms"): every app here is
+# closed by asking it, and an app's Tasks end with it.
+#
 # The summary is one line per configuration; the program's log is kept in
-# tmp/regress/checkpoint/<configuration>.log.
+# tmp/regress/checkpoint/<configuration>.log (the second program's in
+# <configuration>_b.log).
 require "fileutils"
 require "json"
 require "open3"
@@ -57,6 +74,10 @@ module Regress
     OUT = File.join(CORE, "tmp", "regress", "checkpoint")
     RUN_DIR = "/tmp/fmrb-native-ckpt-#{Process.uid}"
     PORT = 5585
+    # the second program, for the moves between two programs (F2)
+    RUN_DIR_B = "/tmp/fmrb-native-ckpt-b-#{Process.uid}"
+    PORT_B = 5586
+    HOLD_NO_ANSWER_MS = 1500
     APP = "/app/test/ckpt_counter.app.rb"
     IMAGE = "/tmp/ckpt_counter.ckpt"
     NOT_MOVABLE = "/app/test/task_sleep.app.rb"
@@ -109,9 +130,9 @@ module Regress
 
       # ---- the program ----
 
-      def native(*args, timeout: 60)
-        env = { "FMRB_DEBUG_TCP_PORT" => PORT.to_s }
-        cmd = [Gem.ruby, NATIVE_TOOL, "--run-dir", RUN_DIR, *args]
+      def native(*args, timeout: 60, run_dir: RUN_DIR, port: PORT)
+        env = { "FMRB_DEBUG_TCP_PORT" => port.to_s }
+        cmd = [Gem.ruby, NATIVE_TOOL, "--run-dir", run_dir, *args]
         out = +""
         st = nil
         Open3.popen2e(env, *cmd, chdir: ROOT) do |_in, io, wait|
@@ -127,9 +148,11 @@ module Regress
         out
       end
 
-      def app(*args)
-        JSON.parse(native("app", *args).lines.last.to_s)
+      def app(*args, **kw)
+        JSON.parse(native("app", *args, **kw).lines.last.to_s)
       end
+
+      def app_b(*args) = app(*args, run_dir: RUN_DIR_B, port: PORT_B)
 
       # the tool's way of asking (the debug server's checkpoint)
       def checkpoint(pid, restart:)
@@ -138,17 +161,17 @@ module Regress
         app(*args)
       end
 
-      def log_path = File.join(RUN_DIR, "core.log")
+      def log_path(run_dir = RUN_DIR) = File.join(run_dir, "core.log")
 
-      def log_lines
-        File.exist?(log_path) ? File.readlines(log_path, chomp: true) : []
+      def log_lines(run_dir = RUN_DIR)
+        File.exist?(log_path(run_dir)) ? File.readlines(log_path(run_dir), chomp: true) : []
       end
 
       # the first line at or after `from` that matches, waiting for it
-      def wait_line(re, from, what, timeout: 15)
+      def wait_line(re, from, what, timeout: 15, run_dir: RUN_DIR)
         deadline = now + timeout
         loop do
-          lines = log_lines
+          lines = log_lines(run_dir)
           i = (from...lines.size).find { |k| lines[k] =~ re }
           return i if i
           raise Failure, "no #{what} in the log within #{timeout}s" if now > deadline
@@ -175,18 +198,44 @@ module Regress
         notes << round_self
         notes << round_self_refused
         notes << round_shell
+        up_b(config)
+        notes << round_move
+        notes << round_move_refused
+        notes << round_move_no_answer
+        no_forced_kill
         "#{config}: ok (#{notes.join('; ')}; #{(now - t0).round}s)"
       rescue Failure => e
         "#{config}: FAILED #{e.message}"
       ensure
         FileUtils.cp(log_path, File.join(OUT, "#{config}.log")) if File.exist?(log_path)
+        FileUtils.cp(log_path(RUN_DIR_B), File.join(OUT, "#{config}_b.log")) if File.exist?(log_path(RUN_DIR_B))
         down_if_running
       end
 
       def down_if_running
-        native("down", timeout: 30) if File.exist?(File.join(RUN_DIR, "pid"))
-      rescue Failure
-        nil
+        [[RUN_DIR, PORT], [RUN_DIR_B, PORT_B]].each do |dir, port|
+          native("down", timeout: 30, run_dir: dir, port: port) if File.exist?(File.join(dir, "pid"))
+        rescue Failure
+          nil
+        end
+      end
+
+      # The second program: the same build, a run dir, port and home of its own.
+      def up_b(config)
+        home = File.join(OUT, "#{config}_home_b")
+        FileUtils.rm_rf(home)
+        FileUtils.mkdir_p(%w[user cache].map { |d| File.join(home, d) })
+        native("up", "--engine", config, "--machine", "sdl", "--debug-port", PORT_B.to_s,
+               "--user-dir", File.join(home, "user"), "--cache-dir", File.join(home, "cache"),
+               "--timeout", "90", timeout: 120, run_dir: RUN_DIR_B, port: PORT_B)
+      end
+
+      # Every app was closed by asking it: none was dropped by force.
+      def no_forced_kill
+        [RUN_DIR, RUN_DIR_B].each do |dir|
+          forced = log_lines(dir).grep(/No response in \d+ms, forcing termination/)
+          raise Failure, "forced kill in #{dir == RUN_DIR ? 'the first' : 'the second'} program: #{forced.first}" unless forced.empty?
+        end
       end
 
       def start_counter
@@ -311,6 +360,93 @@ module Regress
         "shell: a #{c[:a]}, b #{c[:b]}, main #{c[:main]}"
       end
 
+      def move(pid, *opts)
+        JSON.parse(native("app", "move", pid.to_s, "--to", RUN_DIR_B, *opts, timeout: 60).lines.last.to_s)
+      end
+
+      # A move into the second program (F2, D15): held, carried, started there,
+      # then closed here.
+      def round_move
+        pid = start_counter
+        mark = log_lines.size
+        mark_b = log_lines(RUN_DIR_B).size
+        r = move(pid)
+        raise Failure, "move: answered #{r.inspect}" unless r["status"] == "moved" && r["pid"]
+        restored = wait_line(/ckpt_counter: on_restore /, mark_b, "on_restore in the second program", run_dir: RUN_DIR_B)
+        wait_line(/ckpt_counter: b=\d+ /, restored + 1, "a step of b in the second program", run_dir: RUN_DIR_B)
+        wait_line(/ckpt_counter: a=\d+ /, restored + 1, "a step of a in the second program", run_dir: RUN_DIR_B)
+        wait_line(/\[Ckpt Counter gen=\d+\] Task exiting normally/, mark, "the first program's copy closing")
+        sleep 0.5
+        a = log_lines
+        b = log_lines(RUN_DIR_B)
+        raise Failure, "move: the first program still runs the counter" if ps.any? { |x| x["name"] == "Ckpt Counter" }
+        w = (mark...a.size).find { |k| a[k] =~ /checkpoint written: / } or raise Failure, "move: no 'checkpoint written'"
+        stray = a[(w + 1)..].grep(/ckpt_counter: (a|b|main)=/)
+        raise Failure, "move: the first program counted on after its image (#{stray.first})" unless stray.empty?
+        r_i = (mark_b...b.size).find { |k| b[k] =~ /ckpt_counter: on_restore / }
+        c = continuity_of(a[0...w], b[(r_i + 1)..], a[w..], b[r_i], "move")
+        tick_a = a[w..].find { |l| l =~ /image at task tick (\d+)/ }.to_s[/tick (\d+)/, 1]
+        tick_b = b[mark_b..].find { |l| l =~ /restored \S+ .* task tick (\d+)/ }.to_s[/task tick (\d+)/, 1]
+        raise Failure, "move: task tick #{tick_a.inspect} written, #{tick_b.inspect} restored" unless tick_a && tick_a == tick_b
+        dig_a = a.reverse.find { |l| l =~ /\[Ckpt Counter\] VM set up for checkpoints: .*digest (\h+)/ }.to_s[/digest (\h+)/, 1]
+        dig_b = b[mark_b..].find { |l| l =~ /restoring an image\).*digest (\h+)/ }.to_s[/digest (\h+)/, 1]
+        names = b[mark_b..].find { |l| l =~ /restoring an image\).*\((\d+) names/ }.to_s[/\((\d+) names/, 1]
+        raise Failure, "move: the names' digest #{dig_a.inspect} here, #{dig_b.inspect} there" unless dig_a && dig_a == dig_b
+        app_b("kill", r["pid"].to_s)
+        sleep 0.3
+        "move: a #{c[:a]}, b #{c[:b]}, main #{c[:main]}, t step #{c[:t_step]} ms, tick #{tick_a}, " \
+          "#{names} names alike, carried in #{r['carried_ms'] - r['held_ms']} ms, held #{r['done_ms']} ms"
+      end
+
+      # The second program cannot restore a damaged image: the first goes on.
+      def round_move_refused
+        pid = start_counter
+        mark = log_lines.size
+        r = move(pid, "--damage")
+        unless r["status"] == "stayed" && r["here"] == "continued" && r["reason"].to_s.include?("restore")
+          raise Failure, "move refused: answered #{r.inspect}"
+        end
+        c = goes_on(mark, "move refused")
+        raise Failure, "move refused: the second program runs the counter" if app_b("ps").fetch("apps").any? { |x| x["name"] == "Ckpt Counter" }
+        kill_counter
+        "move refused: #{r['reason'][0, 60]}...; went on here: a #{c[:a]}, main #{c[:main]}"
+      end
+
+      # Held, and nobody answers: the kernel lets the app go on after the hold.
+      def round_move_no_answer
+        pid = start_counter
+        mark = log_lines.size
+        r = app("checkpoint", pid.to_s, "--hold", HOLD_NO_ANSWER_MS.to_s, "--max", "8000")
+        raise Failure, "move no answer: answered #{r.inspect}" unless r["status"] == "held"
+        i = wait_line(/ckpt: \[Ckpt Counter\] held (\d+) ms after its image; goes on/, mark, "the held app going on", timeout: 10)
+        held = log_lines[i][/held (\d+) ms/, 1].to_i
+        raise Failure, "move no answer: held #{held} ms for a hold of #{HOLD_NO_ANSWER_MS}" unless held.between?(HOLD_NO_ANSWER_MS, HOLD_NO_ANSWER_MS + 1000)
+        c = goes_on(mark, "move no answer")
+        kill_counter
+        "move no answer: held #{held} ms, went on: a #{c[:a]}, main #{c[:main]}"
+      end
+
+      # Held, then let go on: every counter goes on from the step after the
+      # image, in the same program, and nothing ran while it was held.
+      def goes_on(mark, round)
+        on = wait_line(/ckpt: \[Ckpt Counter\] goes on from its image/, mark, "#{round}: the app going on")
+        wait_line(/ckpt_counter: a=\d+ /, on + 1, "#{round}: a step of a after going on")
+        wait_line(/ckpt_counter: main=\d+/, on + 1, "#{round}: a step of main after going on")
+        lines = log_lines
+        w = (mark...lines.size).find { |k| lines[k] =~ /checkpoint written: / } or raise Failure, "#{round}: no 'checkpoint written'"
+        held = lines[(w + 1)...on].grep(/ckpt_counter: (a|b|main)=/)
+        raise Failure, "#{round}: counted while held (#{held.first})" unless held.empty?
+        res = {}
+        %w[a main].each do |k|
+          re = /ckpt_counter: #{k}=(\d+)/
+          n0 = lines[0...w].reverse.find { |l| l =~ re }.to_s[re, 1].to_i
+          n1 = lines[(on + 1)..].find { |l| l =~ re }.to_s[re, 1].to_i
+          raise Failure, "#{round}: #{k} went from #{n0} to #{n1}" unless n1 == n0 + 1
+          res[k.to_sym] = "#{n0}->#{n1}"
+        end
+        res
+      end
+
       def kill_counter = kill_named("Ckpt Counter")
 
       def kill_named(name)
@@ -323,11 +459,16 @@ module Regress
         lines = log_lines
         w = (mark...lines.size).find { |k| lines[k] =~ /checkpoint written: (\S+) \((\d+) bytes/ } or
           raise Failure, "#{round}: no 'checkpoint written' line"
-        bytes = lines[w][/\((\d+) bytes/, 1].to_i
         r = (w...lines.size).find { |k| lines[k] =~ /#{tag}: on_restore / } or
           raise Failure, "#{round}: no on_restore"
-        before = lines[0...w]
-        after = lines[(r + 1)..]
+        continuity_of(lines[0...w], lines[(r + 1)..], lines[w..r], lines[r], round, tag)
+      end
+
+      # before: the lines up to the image; after: those after on_restore;
+      # written: from the image on (its size, on_checkpoint); restore: the
+      # on_restore line. The two halves may come from two programs.
+      def continuity_of(before, after, written, restore, round, tag = "ckpt_counter")
+        bytes = written.first[/\((\d+) bytes/, 1].to_i
         res = { bytes: bytes }
         %w[a b].each do |k|
           last = before.reverse.find { |l| l =~ /#{tag}: #{k}=\d+ t=/ } or raise Failure, "#{round}: no #{k} before"
@@ -344,9 +485,9 @@ module Regress
             res[:t_step] = step
           end
         end
-        cp = lines[w..r].find { |l| l =~ /#{tag}: on_checkpoint main=(\d+)/ } or raise Failure, "#{round}: no on_checkpoint"
+        cp = written.find { |l| l =~ /#{tag}: on_checkpoint main=(\d+)/ } or raise Failure, "#{round}: no on_checkpoint"
         m0 = cp[/main=(\d+)/, 1].to_i
-        m_restore = lines[r][/main=(\d+)/, 1].to_i
+        m_restore = restore[/main=(\d+)/, 1].to_i
         raise Failure, "#{round}: on_restore has main=#{m_restore}, on_checkpoint had #{m0}" unless m_restore == m0
         nxt = after.find { |l| l =~ /#{tag}: main=\d+/ } or raise Failure, "#{round}: no main after"
         m1 = nxt[/main=(\d+)/, 1].to_i

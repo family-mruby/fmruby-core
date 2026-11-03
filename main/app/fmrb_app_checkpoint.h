@@ -36,7 +36,9 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
 // _spin got APP_CONTROL "checkpoint" (picoruby-fmrb-app). Returns true when
 // the request is taken (the image is written at the next safe point, once
 // _spin has returned), false when it is refused (the kernel is told why).
-bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app);
+// hold_ms > 0 (a move): once written, the app is held until the kernel tells
+// it to close or to go on (fmrb_app_checkpoint.c, hold_until_told).
+bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app, int32_t hold_ms);
 
 // An app asks for the image of app pid (FmrbApp.checkpoint, the
 // shell's `checkpoint`, an app asking for its own): the same way as the debug

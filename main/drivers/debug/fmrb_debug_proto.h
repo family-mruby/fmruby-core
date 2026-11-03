@@ -60,6 +60,12 @@ typedef enum {
     DBG_CMD_AUDIO,
     DBG_CMD_GC,
     DBG_CMD_CHECKPOINT,   // only with FMRB_HAVE_CHECKPOINT (doc/checkpoint)
+    DBG_CMD_CHECKPOINT_FINISH,  // the same: close or let go on a held app (F2)
+    DBG_CMD_RESTORE,      // the same: start an image and answer once restored
+    DBG_CMD_FILE_GET,     // the same: a piece of a file under /tmp/
+    DBG_CMD_FILE_BEGIN,   // the same: a file under /tmp/ coming in pieces
+    DBG_CMD_FILE_CHUNK,
+    DBG_CMD_FILE_COMMIT,
 } fmrb_dbg_cmd_t;
 
 // Decoded request. Numeric fields default to 0 / their "unset" sentinel; use
@@ -84,6 +90,13 @@ typedef struct {
     char            path[FMRB_DEBUG_MAX_SPAWN_PATH];
 #ifdef FMRB_HAVE_CHECKPOINT
     bool            restart;    // checkpoint: start the image again afterwards
+    int             hold;       // checkpoint: hold the app this long (ms) once written
+    bool            close;      // checkpoint_finish: close (else go on)
+    uint32_t        size;       // file_begin: the file's size
+    uint32_t        id;         // file_chunk / file_commit: the transfer
+    const uint8_t  *data;       // file_chunk: the bytes (into the request body)
+    uint32_t        data_len;
+    char            reason[96]; // checkpoint_finish: why it goes on (logged)
 #endif
 } fmrb_dbg_req_t;
 

@@ -1007,5 +1007,10 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
     }
 
     // User App from filesystem
-    return spawn_user_app(app_name, out_pid);
+    fmrb_err_t ret = spawn_user_app(app_name, out_pid);
+#ifdef FMRB_HAVE_CHECKPOINT
+    // An image asked to be started (a move) hears it could not be.
+    if (ret != FMRB_OK) fmrb_app_checkpoint_spawn_failed(app_name, ret);
+#endif
+    return ret;
 }

@@ -140,6 +140,11 @@ class FmrbKernelImpl < FmrbKernel
     @ckpt_restart = false
     @ckpt_path = ""
     @ckpt_reply = -1
+    # A move (F2, D15): the app is held once written for up to @ckpt_hold ms,
+    # until it is told to close or to go on; @ckpt_held_until is when the
+    # kernel lets it go on by itself (0: not held).
+    @ckpt_hold = 0
+    @ckpt_held_until = 0
 
     # Periodic cleanup tracking
     @tick_count = 0
@@ -345,11 +350,24 @@ class FmrbKernelImpl < FmrbKernel
       # "checkpoint") or an app (FmrbApp.checkpoint: the shell, or the
       # app itself), always through the C side (fmrb_app_checkpoint.c), which
       # names the app to answer in "from". See start_checkpoint.
-      start_checkpoint(data["pid"], data["restart"] ? true : false, (data["from"] || -1).to_i)
+      start_checkpoint(data["pid"], data["restart"] ? true : false, (data["from"] || -1).to_i,
+                       (data["hold"] || 0).to_i)
     when "checkpoint_done"
       note_checkpoint_done(pid, data["path"].to_s)
     when "checkpoint_refused"
       note_checkpoint_refused(pid, data["reason"].to_s)
+    when "checkpoint_held"
+      note_checkpoint_held(pid, data["path"].to_s)
+    when "checkpoint_finish"
+      # A tool says where a held app's image went (the debug server's
+      # checkpoint_finish): the app closes, or goes on. See finish_checkpoint.
+      finish_checkpoint((data["pid"] || -1).to_i, data["close"] ? true : false, data["reason"].to_s)
+    when "checkpoint_continued"
+      note_checkpoint_continued(pid, data["reason"].to_s)
+    when "restore"
+      # Start an image (the debug server's restore: the receiving side of a
+      # move). The C side answers the asker once it is restored.
+      restore_checkpoint(data["path"].to_s)
     when "file_select"
       # Forward file select request to desktop
       if @desktop_pid
@@ -589,7 +607,14 @@ class FmrbKernelImpl < FmrbKernel
   # image again once the app has closed. The app writes the image itself, in
   # its own task, at the first safe point after its message wait (the C side,
   # main/app/fmrb_app_checkpoint.c), then closes as asked. One app at a time.
-  def start_checkpoint(target, restart, reply_to)
+  #
+  # A move to another program (F2, D15) asks with a hold: once written the app
+  # stays where the image was taken ("checkpoint_held"); the image is started
+  # elsewhere, and a tool tells the kernel whether it is up there
+  # ("checkpoint_finish"). The app then closes, or goes on when the other side
+  # refused it. Nobody telling the kernel within the hold lets it go on too
+  # (tick_checkpoint_hold).
+  def start_checkpoint(target, restart, reply_to, hold)
     tpid = (target || -1).to_i
     info = _get_app_info(tpid)
     if info.nil?
@@ -605,8 +630,76 @@ class FmrbKernelImpl < FmrbKernel
     @ckpt_restart = restart
     @ckpt_path = ""
     @ckpt_reply = reply_to
-    req = MessagePack.pack({ "cmd" => "checkpoint" })
-    _send_raw_message(tpid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    @ckpt_hold = hold
+    @ckpt_held_until = 0
+    if hold > 0
+      req = MessagePack.pack({ "cmd" => "checkpoint", "hold" => hold })
+      _send_raw_message(tpid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    else
+      req = MessagePack.pack({ "cmd" => "checkpoint" })
+      _send_raw_message(tpid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    end
+    nil
+  end
+
+  def note_checkpoint_held(pid, path)
+    return nil if pid != @ckpt_pid
+    Log.info("Checkpoint: PID #{pid} wrote #{path} and is held for up to #{@ckpt_hold} ms")
+    @ckpt_path = path
+    @ckpt_restart = false
+    @ckpt_held_until = Machine.board_millis + @ckpt_hold
+    nil
+  end
+
+  # A held app closes (its image is up elsewhere) or goes on (it was refused
+  # there, or could not be carried).
+  def finish_checkpoint(tpid, close, reason)
+    if tpid != @ckpt_pid || @ckpt_held_until == 0
+      Log.warn("Checkpoint: PID #{tpid} is not held; nothing to finish")
+      return nil
+    end
+    tell_held_app(close, reason)
+  end
+
+  def tell_held_app(close, reason)
+    if close
+      Log.info("Checkpoint: PID #{@ckpt_pid} closes; its image went on elsewhere")
+    else
+      Log.info("Checkpoint: PID #{@ckpt_pid} goes on (#{reason})")
+    end
+    @ckpt_held_until = 0
+    msg = MessagePack.pack({ "cmd" => "checkpoint_finish", "close" => close, "reason" => reason })
+    _send_raw_message(@ckpt_pid, FmrbConst::MSG_TYPE_APP_CONTROL, msg)
+    nil
+  end
+
+  # Nobody said where the image went within the hold: the app goes on.
+  def tick_checkpoint_hold
+    return nil if @ckpt_held_until == 0
+    return nil if Machine.board_millis < @ckpt_held_until
+    tell_held_app(false, "no answer in #{@ckpt_hold} ms")
+  end
+
+  # The held app went on (told to, or by itself): the move is over.
+  def note_checkpoint_continued(pid, reason)
+    return nil if pid != @ckpt_pid
+    Log.info("Checkpoint: PID #{pid} went on (#{reason})")
+    @ckpt_pid = -1
+    @ckpt_path = ""
+    @ckpt_reply = -1
+    @ckpt_hold = 0
+    @ckpt_held_until = 0
+    nil
+  end
+
+  def restore_checkpoint(path)
+    new_pid = _spawn_app_req(path)
+    if new_pid
+      Log.info("Checkpoint: started #{path} as PID #{new_pid}")
+      after_spawn(new_pid)
+    else
+      Log.error("Checkpoint: could not start #{path}: #{spawn_error_reason}")
+    end
     nil
   end
 
@@ -653,6 +746,8 @@ class FmrbKernelImpl < FmrbKernel
     @ckpt_pid = -1
     @ckpt_path = ""
     @ckpt_reply = -1
+    @ckpt_hold = 0
+    @ckpt_held_until = 0
     return nil if path.empty?
     return nil unless again
     new_pid = _spawn_app_req(path)

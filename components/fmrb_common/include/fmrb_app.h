@@ -396,23 +396,96 @@ typedef enum {
     FMRB_APP_CKPT_PENDING,      // asked, the app has not answered yet
     FMRB_APP_CKPT_WRITTEN,      // the image is written; the app closes
     FMRB_APP_CKPT_REFUSED,      // the app could not be written (reason given)
+    FMRB_APP_CKPT_HELD,         // written and held: waits to be closed or let go on
+    FMRB_APP_CKPT_CLOSED,       // was held, and closes (the image went on elsewhere)
+    FMRB_APP_CKPT_CONTINUED,    // was held, and goes on (reason given)
 } fmrb_app_ckpt_status_t;
 
 /**
  * @brief Ask the kernel to have app `pid` write its checkpoint image.
  *
  * The kernel sends the app APP_CONTROL "checkpoint"; with `restart` it starts
- * the image again once the app has closed. For tools (the debug server).
+ * the image again once the app has closed. With `hold_ms` > 0 (a move, D15)
+ * the app does not close: it stops where the image was taken until it is
+ * told to close or to go on (fmrb_app_checkpoint_finish), and goes on by
+ * itself when the kernel has not told it within hold_ms. For tools (the debug
+ * server).
  * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM when there is no such app.
  */
-fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart);
+fmrb_err_t fmrb_app_checkpoint_ask(int32_t pid, bool restart, int32_t hold_ms);
 
 /**
  * @brief What became of the last checkpoint asked of `pid`.
  *
- * `what` receives the image path (WRITTEN) or the reason (REFUSED).
+ * `what` receives the image path (WRITTEN, HELD, CLOSED) or the reason
+ * (REFUSED, CONTINUED).
  */
 fmrb_app_ckpt_status_t fmrb_app_checkpoint_poll(int32_t pid, char *what, size_t what_len);
+
+/**
+ * @brief Tell a held app (FMRB_APP_CKPT_HELD) to close or to go on.
+ *
+ * Asked through the kernel, which holds the steps of a move; `reason` is
+ * logged (why it goes on). Poll the answer with fmrb_app_checkpoint_poll
+ * (CLOSED or CONTINUED).
+ * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM when there is no such app.
+ */
+fmrb_err_t fmrb_app_checkpoint_finish(int32_t pid, bool close, const char *reason);
+
+/** Result of the last image asked to be started (fmrb_app_checkpoint_restore_poll). */
+typedef enum {
+    FMRB_APP_RESTORE_NONE = 0,  // nothing asked
+    FMRB_APP_RESTORE_PENDING,   // asked; the image is not restored yet
+    FMRB_APP_RESTORE_DONE,      // restored: the app goes on (pid given)
+    FMRB_APP_RESTORE_REFUSED,   // could not be started or restored (reason given)
+} fmrb_app_restore_status_t;
+
+/**
+ * @brief Ask the kernel to start the checkpoint image at `path` (a .ckpt).
+ *
+ * The answer is in fmrb_app_checkpoint_restore_poll: DONE once the image has
+ * been restored (before it goes on), REFUSED with the reason otherwise.
+ */
+fmrb_err_t fmrb_app_checkpoint_restore_ask(const char *path);
+
+/** @brief What became of the image asked with fmrb_app_checkpoint_restore_ask. */
+fmrb_app_restore_status_t fmrb_app_checkpoint_restore_poll(int32_t *pid, char *what, size_t what_len);
+
+/** @brief The spawner could not start the image at `path` (fmrb_app_spawn_app). */
+void fmrb_app_checkpoint_spawn_failed(const char *path, fmrb_err_t err);
+
+/*
+ * Files handed to and from a program in pieces (main/app/fmrb_app_transfer.c,
+ * doc/checkpoint F2): a checkpoint image goes out of one program and into
+ * another this way. A file comes in as begin / chunk ... / commit and only
+ * appears under its name at the commit, so a half-sent file is never started;
+ * F5 puts the same three steps behind an Asterism service, shared with the
+ * wasm apps' install (doc/wasm_apps/plan.md, 4). Paths are under /tmp/ only.
+ */
+
+/**
+ * @brief Start receiving a file of `size` bytes for `path` (under /tmp/).
+ *
+ * One file at a time: a begin drops a file that was not committed.
+ * @param id receives the transfer's id, named by the chunks and the commit.
+ */
+fmrb_err_t fmrb_app_transfer_begin(const char *path, uint32_t size, uint32_t *id);
+
+/** @brief The bytes at `pos` (the chunks come in order: pos is what has come). */
+fmrb_err_t fmrb_app_transfer_chunk(uint32_t id, uint32_t pos, const uint8_t *data, size_t len);
+
+/**
+ * @brief All `size` bytes have come: the file appears at its path.
+ * @return FMRB_ERR_INVALID_STATE when bytes are missing (the file is dropped).
+ */
+fmrb_err_t fmrb_app_transfer_commit(uint32_t id);
+
+/**
+ * @brief Read up to `max` bytes at `pos` of `path` (under /tmp/), handing a
+ * file out in pieces. `size` receives the file's size.
+ */
+fmrb_err_t fmrb_app_transfer_read(const char *path, uint32_t pos, uint8_t *buf, size_t max,
+                                  size_t *got, uint32_t *size);
 #endif
 
 /**

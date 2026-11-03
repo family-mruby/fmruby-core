@@ -401,44 +401,184 @@ static void handle_gc(const fmrb_dbg_req_t *req) {
 }
 
 #ifdef FMRB_HAVE_CHECKPOINT
-// checkpoint {pid, restart?, max?}: ask the kernel to have the app write its
-// checkpoint image (doc/checkpoint). The kernel holds the steps (it sends the
-// app the request, and with restart starts the image again once the app has
-// closed); the app writes the image in its own task at a safe point. Waits
-// until the app has answered or max ms (default 5000) have passed, then
+// checkpoint {pid, restart?, max?, hold?}: ask the kernel to have the app write
+// its checkpoint image (doc/checkpoint). The kernel holds the steps (it sends
+// the app the request, and with restart starts the image again once the app
+// has closed); the app writes the image in its own task at a safe point.
+// Waits until the app has answered or max ms (default 5000) have passed, then
 // answers {status, path | reason}: status "written" (path: the image),
 // "refused" (reason), or "timeout" (the app did not answer: it may be busy
 // in a long on_update, or suspended).
+//
+// With hold (ms, a move: F2, D15) the app does not close once written: it is
+// held where the image was taken, and the answer is "held" {path, size}. Then
+// checkpoint_finish {pid, close, reason?} closes it (the image went on
+// elsewhere) or lets it go on; nobody telling it within hold lets it go on.
 #define DEBUGD_CKPT_WAIT_MS_DEFAULT 5000
+#define DEBUGD_FILE_PIECE 3072   // file_get: bytes per answer (a frame is 4 KB)
 
-static void handle_checkpoint(const fmrb_dbg_req_t *req) {
-    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
-    fmrb_err_t err = fmrb_app_checkpoint_ask(req->pid, req->restart);
-    if (err != FMRB_OK) { reply_ok(req, err); return; }
-
-    char what[128];
-    int wait_ms = req->max > 0 ? req->max : DEBUGD_CKPT_WAIT_MS_DEFAULT;
+static fmrb_app_ckpt_status_t wait_ckpt(int pid, int max, char *what, size_t what_len,
+                                        bool (*settled)(fmrb_app_ckpt_status_t))
+{
+    int wait_ms = max > 0 ? max : DEBUGD_CKPT_WAIT_MS_DEFAULT;
     fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
     fmrb_app_ckpt_status_t st;
     for (;;) {
-        st = fmrb_app_checkpoint_poll(req->pid, what, sizeof(what));
-        if (st != FMRB_APP_CKPT_PENDING || fmrb_hal_time_get_us() >= deadline) break;
+        st = fmrb_app_checkpoint_poll(pid, what, what_len);
+        if (settled(st) || fmrb_hal_time_get_us() >= deadline) break;
         fmrb_task_delay_ms(DEBUGD_GC_POLL_MS);
     }
+    return st;
+}
 
+static bool ckpt_answered(fmrb_app_ckpt_status_t st) { return st != FMRB_APP_CKPT_PENDING; }
+
+static bool ckpt_finished(fmrb_app_ckpt_status_t st)
+{
+    return st != FMRB_APP_CKPT_PENDING && st != FMRB_APP_CKPT_HELD;
+}
+
+static const char *ckpt_status_str(fmrb_app_ckpt_status_t st)
+{
+    switch (st) {
+        case FMRB_APP_CKPT_WRITTEN:   return "written";
+        case FMRB_APP_CKPT_REFUSED:   return "refused";
+        case FMRB_APP_CKPT_HELD:      return "held";
+        case FMRB_APP_CKPT_CLOSED:    return "closed";
+        case FMRB_APP_CKPT_CONTINUED: return "continued";
+        case FMRB_APP_CKPT_NONE:      return "none";
+        default:                      return "timeout";
+    }
+}
+
+// The size of a file under /tmp/ (0 when it cannot be read).
+static uint32_t file_size_of(const char *path)
+{
+    uint8_t b;
+    size_t got = 0;
+    uint32_t size = 0;
+    fmrb_app_transfer_read(path, 0, &b, 0, &got, &size);
+    return size;
+}
+
+static void reply_ckpt(const fmrb_dbg_req_t *req, fmrb_app_ckpt_status_t st, const char *what)
+{
+    bool has_path = st == FMRB_APP_CKPT_WRITTEN || st == FMRB_APP_CKPT_HELD || st == FMRB_APP_CKPT_CLOSED;
+    bool has_reason = st == FMRB_APP_CKPT_REFUSED || st == FMRB_APP_CKPT_CONTINUED;
     fmrb_dbg_writer_t w;
     fmrb_dbg_writer_init(&w);
     fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
-    if (st == FMRB_APP_CKPT_WRITTEN || st == FMRB_APP_CKPT_REFUSED) {
+    msgpack_pack_map(&w.pk, 1 + (has_path || has_reason ? 1 : 0) + (st == FMRB_APP_CKPT_HELD ? 1 : 0));
+    fmrb_dbg_pack_kv_str(&w.pk, "status", ckpt_status_str(st));
+    if (has_path) fmrb_dbg_pack_kv_str(&w.pk, "path", what);
+    if (has_reason) fmrb_dbg_pack_kv_str(&w.pk, "reason", what);
+    if (st == FMRB_APP_CKPT_HELD) fmrb_dbg_pack_kv_int(&w.pk, "size", file_size_of(what));
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
+static void handle_checkpoint(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    fmrb_err_t err = fmrb_app_checkpoint_ask(req->pid, req->restart, req->hold);
+    if (err != FMRB_OK) { reply_ok(req, err); return; }
+    char what[128];
+    fmrb_app_ckpt_status_t st = wait_ckpt(req->pid, req->max, what, sizeof(what), ckpt_answered);
+    reply_ckpt(req, st, what);
+}
+
+// checkpoint_finish {pid, close, reason?, max?}: a held app closes (close) or
+// goes on, through the kernel. Answers {status: "closed" | "continued" (with
+// the reason it went on: also when the hold had run out before) | "timeout"}.
+static void handle_checkpoint_finish(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    char what[128];
+    fmrb_app_ckpt_status_t st = fmrb_app_checkpoint_poll(req->pid, what, sizeof(what));
+    if (st == FMRB_APP_CKPT_HELD) {
+        fmrb_err_t err = fmrb_app_checkpoint_finish(req->pid, req->close, req->reason);
+        if (err != FMRB_OK) { reply_ok(req, err); return; }
+        st = wait_ckpt(req->pid, req->max, what, sizeof(what), ckpt_finished);
+    }
+    reply_ckpt(req, st, what);
+}
+
+// restore {path, max?}: the kernel starts the image (a .ckpt under /tmp/);
+// answers once it is restored, before it goes on: {status: "restored", pid},
+// {status: "refused", reason} (it could not be started or restored: a damaged
+// image, one of another build, no room) or {status: "timeout"}.
+static void handle_restore(const fmrb_dbg_req_t *req) {
+    fmrb_err_t err = fmrb_app_checkpoint_restore_ask(req->path);
+    if (err != FMRB_OK) { reply_ok(req, err); return; }
+    int wait_ms = req->max > 0 ? req->max : DEBUGD_CKPT_WAIT_MS_DEFAULT;
+    fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
+    char what[128];
+    int32_t pid = -1;
+    fmrb_app_restore_status_t st;
+    for (;;) {
+        st = fmrb_app_checkpoint_restore_poll(&pid, what, sizeof(what));
+        if (st != FMRB_APP_RESTORE_PENDING || fmrb_hal_time_get_us() >= deadline) break;
+        fmrb_task_delay_ms(DEBUGD_GC_POLL_MS);
+    }
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    if (st == FMRB_APP_RESTORE_DONE) {
         msgpack_pack_map(&w.pk, 2);
-        fmrb_dbg_pack_kv_str(&w.pk, "status", st == FMRB_APP_CKPT_WRITTEN ? "written" : "refused");
-        fmrb_dbg_pack_kv_str(&w.pk, st == FMRB_APP_CKPT_WRITTEN ? "path" : "reason", what);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", "restored");
+        fmrb_dbg_pack_kv_int(&w.pk, "pid", pid);
+    } else if (st == FMRB_APP_RESTORE_REFUSED) {
+        msgpack_pack_map(&w.pk, 2);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", "refused");
+        fmrb_dbg_pack_kv_str(&w.pk, "reason", what);
     } else {
         msgpack_pack_map(&w.pk, 1);
         fmrb_dbg_pack_kv_str(&w.pk, "status", "timeout");
     }
     send_writer(&w);
     fmrb_dbg_writer_destroy(&w);
+}
+
+// file_get {path, pos}: up to 3 KB of a file under /tmp/ at pos, as
+// {data (bin), size (the file's)}. The pieces of an image going out.
+static void handle_file_get(const fmrb_dbg_req_t *req) {
+    static uint8_t piece[DEBUGD_FILE_PIECE];   // the debugd task only
+    size_t got = 0;
+    uint32_t size = 0;
+    fmrb_err_t err = fmrb_app_transfer_read(req->path, req->pos, piece, sizeof(piece), &got, &size);
+    if (err != FMRB_OK) { reply_ok(req, err); return; }
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    msgpack_pack_map(&w.pk, 2);
+    fmrb_dbg_pack_key(&w.pk, "data");
+    msgpack_pack_bin(&w.pk, got);
+    msgpack_pack_bin_body(&w.pk, piece, got);
+    fmrb_dbg_pack_kv_int(&w.pk, "size", size);
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
+// file_begin {path, size} -> {id}; file_chunk {id, pos, data}; file_commit
+// {id}: a file under /tmp/ coming in pieces, which appears at its path only
+// at the commit (fmrb_app_transfer.h).
+static void handle_file_begin(const fmrb_dbg_req_t *req) {
+    uint32_t id = 0;
+    fmrb_err_t err = fmrb_app_transfer_begin(req->path, req->size, &id);
+    if (err != FMRB_OK) { reply_ok(req, err); return; }
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    msgpack_pack_map(&w.pk, 1);
+    fmrb_dbg_pack_kv_int(&w.pk, "id", id);
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
+static void handle_file_chunk(const fmrb_dbg_req_t *req) {
+    reply_ok(req, fmrb_app_transfer_chunk(req->id, req->pos, req->data, req->data_len));
+}
+
+static void handle_file_commit(const fmrb_dbg_req_t *req) {
+    reply_ok(req, fmrb_app_transfer_commit(req->id));
 }
 #endif
 
@@ -486,6 +626,12 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_GC:       handle_gc(req);       break;
 #ifdef FMRB_HAVE_CHECKPOINT
         case DBG_CMD_CHECKPOINT: handle_checkpoint(req); break;
+        case DBG_CMD_CHECKPOINT_FINISH: handle_checkpoint_finish(req); break;
+        case DBG_CMD_RESTORE:     handle_restore(req);     break;
+        case DBG_CMD_FILE_GET:    handle_file_get(req);    break;
+        case DBG_CMD_FILE_BEGIN:  handle_file_begin(req);  break;
+        case DBG_CMD_FILE_CHUNK:  handle_file_chunk(req);  break;
+        case DBG_CMD_FILE_COMMIT: handle_file_commit(req); break;
 #endif
 
         case DBG_CMD_ATTACH:   handle_attach(req);   break;

@@ -12,6 +12,7 @@ set(COMPONENT_SRCS
     "app/fmrb_app.c"
     "app/fmrb_app_spawner.c"
     "app/fmrb_app_checkpoint.c"
+    "app/fmrb_app_transfer.c"
     "kernel/fmrb_kernel.c"
     # Which files the BLE console and devctl may read and write (the WiFi
     # password, the Asterism keys), and the setup mode's decision the kernel

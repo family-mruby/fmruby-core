@@ -1155,6 +1155,9 @@ module AppLifecycleMixin
     # Single-app boot: start the app again after it died.
     tick_single_app_respawn
 
+    # A held app (a move, doc/checkpoint) that nobody told goes on.
+    tick_checkpoint_hold
+
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval
       check_terminated_apps
