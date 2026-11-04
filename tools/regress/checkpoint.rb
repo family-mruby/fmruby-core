@@ -88,6 +88,7 @@ require "open3"
 require "optparse"
 require_relative "screens/image"
 require_relative "checkpoint_sim"
+require_relative "checkpoint_asterism"
 
 module Regress
   module Checkpoint
@@ -126,6 +127,7 @@ module Regress
 
     class Runner
       include SimRounds
+      include AsterismRounds
 
       def initialize(opts)
         @opts = opts
@@ -138,7 +140,15 @@ module Regress
         configs = @opts[:only] ? [@opts[:only]] : %w[standard mruby]
         sim_check!
         build(configs) unless @opts[:no_build]
-        results = @opts[:no_native] ? [] : configs.map { |c| run_config(c) }
+        results = []
+        unless @opts[:no_native]
+          begin
+            router_up
+            results = configs.map { |c| run_config(c) }
+          ensure
+            router_down
+          end
+        end
         # F4a: the simulation and the native program, after the native rounds
         # (the native programs are built by then; build/ is borrowed)
         results += run_sims(configs)
@@ -223,6 +233,7 @@ module Regress
         home = File.join(OUT, "#{config}_home")
         FileUtils.rm_rf(home)
         FileUtils.mkdir_p(%w[user cache].map { |d| File.join(home, d) })
+        asterism_home(File.join(home, "user"), NODE_A, NODE_B)
         native("up", "--engine", config, "--machine", "sdl", "--user-dir", File.join(home, "user"),
                "--cache-dir", File.join(home, "cache"), "--timeout", "90", timeout: 120)
         notes = []
@@ -241,6 +252,7 @@ module Regress
         notes << round_move_no_answer
         notes << round_window_move
         notes << round_requires_move
+        notes.concat(asterism_rounds)
         no_forced_kill
         "#{config}: ok (#{notes.join('; ')}; #{(now - t0).round}s)"
       rescue Failure => e
@@ -264,6 +276,7 @@ module Regress
         home = File.join(OUT, "#{config}_home_b")
         FileUtils.rm_rf(home)
         FileUtils.mkdir_p(%w[user cache].map { |d| File.join(home, d) })
+        asterism_home(File.join(home, "user"), NODE_B, NODE_A)
         native("up", "--engine", config, "--machine", "sdl", "--debug-port", PORT_B.to_s,
                "--user-dir", File.join(home, "user"), "--cache-dir", File.join(home, "cache"),
                "--timeout", "90", timeout: 120, run_dir: RUN_DIR_B, port: PORT_B)

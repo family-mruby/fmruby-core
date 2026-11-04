@@ -106,6 +106,7 @@ module Regress
         end
         lines = []
         begin
+          sim_asterism_setup
           # family by family, the one the sim is at first: graphics-audio
           # needs a second start for each switch (SimRun.current_first)
           SimRun.current_first(sim_families) { |f| f }.each do |f|
@@ -113,6 +114,7 @@ module Regress
           end
         ensure
           SimRun.down if SimRun.core_running?
+          sim_asterism_teardown
           lines << "build/: #{tree.restore!}"
         end
         lines
@@ -136,6 +138,8 @@ module Regress
         home = File.join(OUT, "#{config}_home")
         FileUtils.rm_rf(home)
         FileUtils.mkdir_p(%w[user cache].map { |d| File.join(home, d) })
+        asterism_home(File.join(home, "user"), AsterismRounds::NODE_A, AsterismRounds::NODE_SIM,
+                      router: AsterismRounds::SIM_ROUTER_HERE)
         native("up", "--engine", config, "--machine", "sdl", "--user-dir", File.join(home, "user"),
                "--cache-dir", File.join(home, "cache"), "--timeout", "90", timeout: 120)
         @sim = Endpoint.new("the simulation", :sim, SIM_RUN_DIR, SIM_PORT)
@@ -152,6 +156,8 @@ module Regress
         notes << sim_round_full
         notes << sim_round_calls
         notes << sim_round_requires
+        # F5: the same two over Asterism
+        notes.concat(sim_asterism_rounds)
         sim_no_forced_kill
         "#{name}: ok (#{notes.join('; ')}; build #{cached ? 'cached' : "#{bsecs.round}s"}, #{(now - t0 - bsecs).round}s)"
       rescue Failure, RuntimeError => e
