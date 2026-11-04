@@ -34,7 +34,16 @@ endif()
 # which the native Linux build (native/) includes too.
 
 set(FMRB_HOSTED_PLATFORM wasm)
-set(FMRB_HOSTED_MRUBY_BUILD family-mruby-wasm)
+# -DFMRB_WASM_CHECKPOINT=ON (rake wasm:* with FMRB_WASM_CHECKPOINT=1): the
+# build that carries mruby-checkpoint, for measuring and trying it
+# (doc/checkpoint F4b). Its libmruby has a name of its own; the published
+# build is the OFF one.
+option(FMRB_WASM_CHECKPOINT "carry mruby-checkpoint (not the published build)" OFF)
+if(FMRB_WASM_CHECKPOINT)
+  set(FMRB_HOSTED_MRUBY_BUILD family-mruby-wasm-ckpt)
+else()
+  set(FMRB_HOSTED_MRUBY_BUILD family-mruby-wasm)
+endif()
 set(FMRB_HOSTED_NATIVE_ISA OFF)
 set(FMRB_HOSTED_PTR32 ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../hosted/hosted.cmake)
@@ -100,7 +109,7 @@ set(ZENOH_PICO ${ZENOH_GEM}/vendor/zenoh-pico)
 set(ZENOH_WASM_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/zenoh
   ${ZENOH_GEM}/include
-  ${PICORUBY_DIR}/build/family-mruby-wasm/mrbgems/picoruby-asterism-zenoh/zp_include
+  ${PICORUBY_DIR}/build/${FMRB_HOSTED_MRUBY_BUILD}/mrbgems/picoruby-asterism-zenoh/zp_include
   ${ZENOH_PICO}/include)
 set(ZENOH_WASM_DEFINES
   ZENOH_GENERIC ZENOH_EMSCRIPTEN ZENOH_C_STANDARD=11 ZENOH_COMPILER_GCC
@@ -142,6 +151,13 @@ fmrb_hosted_core_objs(core_objs)
 target_sources(core_objs PRIVATE ${WASM_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/backend)
 target_compile_definitions(core_objs PRIVATE FMRB_PLATFORM_WASM=1)
+if(FMRB_WASM_CHECKPOINT)
+  # The glue that moves an app and the HAL's tick state it carries, as on the
+  # native program (native/CMakeLists.txt). Not an ABI define.
+  target_compile_definitions(core_objs PRIVATE FMRB_HAVE_CHECKPOINT)
+  target_include_directories(core_objs PRIVATE
+    ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
+endif()
 
 add_executable(core $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(core PRIVATE freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)

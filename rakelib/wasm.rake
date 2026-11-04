@@ -8,7 +8,18 @@
 require "set"
 
 WASM_DIR = File.expand_path("wasm", ROOT_DIR)
-WASM_BUILD_DIR = File.join(WASM_DIR, "build")
+# FMRB_WASM_CHECKPOINT=1: a browser build that carries mruby-checkpoint
+# (doc/checkpoint F4b), for measuring and trying it. Not the published build:
+# its libmruby is built under another name (family-mruby-wasm-ckpt) and the
+# firmware into wasm/build-ckpt, so wasm/build, the page a developer has open
+# and the bundle wasm:dist publishes stay as they are.
+WASM_CHECKPOINT = ENV["FMRB_WASM_CHECKPOINT"] == "1"
+WASM_MRUBY_BUILD = WASM_CHECKPOINT ? "family-mruby-wasm-ckpt" : "family-mruby-wasm"
+# FMRB_WASM_BUILD_DIR moves the firmware's build elsewhere (a build of the
+# same commit beside the one a page has open, to compare the two).
+WASM_BUILD_DIR = ENV["FMRB_WASM_BUILD_DIR"].to_s.empty? ? File.join(WASM_DIR, WASM_CHECKPOINT ? "build-ckpt" : "build")
+                                                         : File.expand_path(ENV["FMRB_WASM_BUILD_DIR"], ROOT_DIR)
+WASM_CMAKE_ARGS = "-DCMAKE_BUILD_TYPE=Release -DFMRB_WASM_CHECKPOINT=#{WASM_CHECKPOINT ? 'ON' : 'OFF'}"
 
 # Pinned so the numbers in doc/wasm/report/p1.md stay reproducible. Newer
 # toolchains are likely fine; when one is adopted, re-run rake wasm:poc five
@@ -38,7 +49,7 @@ namespace :wasm do
   desc "Build the wasm FreeRTOS port and its proof of concept (emscripten)"
   task :build do
     emcmake = wasm_emcmake!
-    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
+    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target poc freertos_hosted"
   end
 
@@ -64,7 +75,7 @@ namespace :wasm do
     # defines it). GNU ld happens to lazy-load only alloc.o; wasm-ld loads
     # both and refuses the duplicate. Drop the stock object -- estalloc is
     # the allocator on every fmrb target.
-    sh "emar d #{picoruby}/build/family-mruby-wasm/lib/libmruby.a allocf.o"
+    sh "emar d #{picoruby}/build/#{WASM_MRUBY_BUILD}/lib/libmruby.a allocf.o"
   end
 
   # The browser build compiles the mruby apps from their PRE-GENERATED
@@ -77,13 +88,13 @@ namespace :wasm do
   # check before it (rakelib/hosted.rake says why both bit).
   desc "Regenerate stale mruby app/kernel bytecode (the wasm build cannot)"
   task :mrb do
-    hosted_regen_mrb!("wasm:mrb", "family-mruby-wasm", "wasm:mruby")
+    hosted_regen_mrb!("wasm:mrb", WASM_MRUBY_BUILD, "wasm:mruby")
   end
 
   desc "Build the core firmware for wasm (doc/wasm/ P4a; needs wasm:mruby once)"
   task :core => ["^setup", :setup, :mrb] do
     emcmake = wasm_emcmake!
-    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
+    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core"
   end
 
@@ -94,7 +105,7 @@ namespace :wasm do
   desc "Build the Zenoh probe page (zenoh-pico over WebSocket, needs wasm:mruby)"
   task :zenoh_probe do
     emcmake = wasm_emcmake!
-    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
+    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target zenoh_probe"
   end
 
@@ -181,7 +192,7 @@ namespace :wasm do
   desc "Build the browser bundle (core_web.js/.wasm/.data + wasm/web page)"
   task :web => [:webflash, :mrb] do
     emcmake = wasm_emcmake!
-    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
+    sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     # The packed .data is produced at link time; the staging just changed, so
     # force the link step to run again.
     rm_f Dir[File.join(WASM_BUILD_DIR, "core_web.{js,wasm,data}")]
@@ -348,6 +359,7 @@ namespace :wasm do
   # them would double what the site repository carries forever.
   desc "Stage the bundle into the docs site for GitHub Pages (FMRB_SITE_DIR=path to family-mruby.github.io)"
   task :site => :dist do
+    abort "wasm: FMRB_WASM_CHECKPOINT=1 is a build for measuring, not for publishing" if WASM_CHECKPOINT
     # Where the site is checked out. tmp/ first: that is the working clone
     # inside this tree, and it is the one being published from; the sibling of
     # family-mruby is the other place it turns up. FMRB_SITE_DIR beats both.
@@ -372,6 +384,7 @@ namespace :wasm do
 
   desc "Copy the built bundle to a host that serves it (FMRB_WEB_DEST=user@host:/path)"
   task :deploy => :dist do
+    abort "wasm: FMRB_WASM_CHECKPOINT=1 is a build for measuring, not for publishing" if WASM_CHECKPOINT
     dest = ENV["FMRB_WEB_DEST"] or
       abort "set FMRB_WEB_DEST, e.g. FMRB_WEB_DEST=host:/var/www/fmrb-web/ rake wasm:deploy"
     dist = File.join(WASM_BUILD_DIR, "dist")

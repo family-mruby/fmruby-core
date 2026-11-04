@@ -107,6 +107,7 @@ tool/web/test/shots/
 
 # The wasm target (rake wasm:build) configures its own CMake tree in place.
 wasm/build/
+wasm/build-*/
 # The native program (rake native:core) builds in place too, one tree per
 # engine configuration.
 native/build/
