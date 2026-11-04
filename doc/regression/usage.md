@@ -343,7 +343,7 @@ rake regress:checkpoint NO_BUILD=1    # 作らずに、今あるネイティブ�
   - move: `ruby tools/fmrb_native.rb app move <pid> --to <B の run dir>`。A でアプリを書いて止めたままにし、イメージと `.toml` を分けて B へ運び、B のカーネルが起動して「起動できた」と答えてから、A のカーネルがアプリを閉じる (D15)。答えは `{status: moved, pid}`。カウンタが B で続き、A はイメージの後に 1 歩も数えず普段どおり閉じる。A の書いたときの task tick と B の復元した task tick が同じ、基準の名前の数と digest が A と B で同じ。
   - move refused: 同じことを `--damage` (イメージを短く切って運ぶ、試験用の印) で。B が復元を断り、A は止めた所から続く (`{status: stayed, reason, here: continued}`)。B のデスクトップには失敗の窓を出さない (理由は頼んだ側が受け取る。B のログには残る。カーネルの `App '<名前>':` の行が無いことで見る)。
   - move no answer: `app checkpoint <pid> --hold 1500` で止めたまま誰も答えない。A のカーネルが 1.5 秒で続けさせる。
-  - window move (F3): window と同じ窓のアプリを B へ移す。B の窓が A で書く前の窓と画素で同じ、B で Task が続き知らせを `subscribe` し直す、B でクリックとキーが届く、A の窓は閉じて、A はイメージの後に 1 歩も数えない。
+  - window move (F3): まず window と同じ窓のアプリを `app checkpoint <pid> --hold 5000` で止め、タイトルバーに「移動中」の印 (`moving...`) が出ている (窓の範囲の違いがタイトルバーの中だけ) ことを撮って確かめ、`app finish <pid> continue` の後は窓が止める前と画素で同じ (印の画面は `tmp/regress/checkpoint/window_mark.png` に残す)。次に B へ移す。A のログに印を出して消した行が 1 回ずつ、B の窓が A で書く前の窓と画素で同じ、B で Task が続き知らせを `subscribe` し直す、B でクリックとキーが届く、A の窓は閉じて、A はイメージの後に 1 歩も数えない。
 - 最後に、A と B のログに強制終了 (`No response in ...ms, forcing termination`) が 1 件も無いことを確かめる。どのアプリも頼んで閉じ、アプリの Task はアプリと一緒に終わる (doc/checkpoint/report/f2.md の 3)。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
 - 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log` (B は `<構成>_b.log`)、作ったときのログは `build.log`。
