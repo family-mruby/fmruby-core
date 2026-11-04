@@ -101,6 +101,8 @@ module ShellCommandsMixin
       cmd_checkpoint(args)
     when "restore"
       cmd_restore(args)
+    when "move"
+      cmd_move(args)
     when "svc"
       cmd_svc(args)
     when "edit"
@@ -133,6 +135,7 @@ module ShellCommandsMixin
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
       @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
       @history << "  restore <image> - Start an app from its image (.ckpt)"
+      @history << "  move <pid> <node> - Move an app to another machine (its Asterism node ID)"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1119,10 +1122,48 @@ module ShellCommandsMixin
     @history << "checkpoint: asked PID #{pid} for its image"
   end
 
+  # Move a running app to another machine over Asterism (doc/checkpoint F5),
+  # named by its Asterism node ID. The kernel asks that machine first whether
+  # its build has what the app calls, has the app write its image and hold,
+  # carries it there and closes it here once it is up there; otherwise the
+  # app goes on here. The answer arrives as "checkpoint_result" with "to".
+  def cmd_move(args)
+    unless args.size == 2 && numeric?(args[0])
+      @history << "Usage: move <pid> <node>   (PID from ps; node: the other machine's Asterism node ID)"
+      return
+    end
+    pid = args[0].to_i
+    if pid == FmrbApp.pid
+      @history << "move: this is the shell itself"
+      return
+    end
+    why = FmrbApp.move(pid, args[1])
+    if why
+      @history << "move: PID #{pid}: #{why}"
+      return
+    end
+    @history << "move: asked to move PID #{pid} to #{args[1]}"
+  end
+
   # The kernel's answer to cmd_checkpoint: the image's path, or why the app
-  # would not be written (it goes on then).
+  # would not be written (it goes on then). With "to", the answer to cmd_move:
+  # where it went on (its PID there, the methods that build lacks), or why it
+  # stayed.
   def handle_checkpoint_result(msg)
     pid = msg["pid"]
+    if msg["to"]
+      to = msg["to"]
+      line = if msg["ok"]
+               lacks = msg["missing"].to_s
+               "move: PID #{pid} moved to #{to} (PID #{msg["there"]} there)" +
+                 (lacks.empty? ? "" : "; it lacks: #{lacks}")
+             else
+               "move: PID #{pid} stayed (#{msg["reason"]})"
+             end
+      Log.info(line)
+      append_output(line)
+      return
+    end
     restart = @ckpt_restart.delete(pid)
     Log.info("checkpoint: PID #{pid}: #{msg["ok"] ? "wrote #{msg["path"]}" : "refused (#{msg["reason"]})"}")
     if msg["ok"]

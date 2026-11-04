@@ -1158,6 +1158,9 @@ module AppLifecycleMixin
     # A held app (a move, doc/checkpoint) that nobody told goes on.
     tick_checkpoint_hold
 
+    # A move over Asterism whose step ran out of time (doc/checkpoint F5).
+    tick_move
+
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval
       check_terminated_apps

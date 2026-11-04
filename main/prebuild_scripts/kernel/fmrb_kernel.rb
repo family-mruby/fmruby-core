@@ -33,6 +33,27 @@ class FmrbKernelImpl < FmrbKernel
   SERVICES_SYS_TOML = "/etc/services.toml"
   SERVICES_USR_TOML = "/home/services.toml"
 
+  # Moving an app over Asterism (doc/checkpoint F5). The transfer app holds
+  # this machine's Asterism session for it: it carries images out, and takes
+  # them in when this machine accepts them (RECEIVE_CONF names who may send).
+  # It is started at boot when that file exists, and when a move is asked.
+  TRANSFER_APP = "/usr/share/transfer/transfer.app.rb"
+  RECEIVE_CONF = "/home/asterism/receive.toml"
+  # A move's steps (@mv_stage) and how long each may take (ms). The hold is
+  # the image's (MOVE_HOLD_MS unless the asker gave one); the transfer app
+  # may need a while to connect (a TLS handshake takes 10-20 s).
+  MV_NONE = 0
+  MV_TRANSFER = 1   # waiting for the transfer app to connect
+  MV_CALLS = 2      # the app lists the methods it calls
+  MV_CHECK = 3      # the destination looks them up
+  MV_WRITE = 4      # the app writes its image and holds
+  MV_SEND = 5       # the image is carried and started there
+  MOVE_HOLD_MS = 10000
+  MV_TRANSFER_MS = 30000
+  MV_CALLS_MS = 5000
+  MV_CHECK_MS = 15000
+  MV_WRITE_MS = 8000
+
   def initialize()
     Log.info("initialize")
     @app_list = []
@@ -145,6 +166,25 @@ class FmrbKernelImpl < FmrbKernel
     # kernel lets it go on by itself (0: not held).
     @ckpt_hold = 0
     @ckpt_held_until = 0
+    # A move over Asterism (F5, start_move): the app (-1 = none), the
+    # destination's node ID, the app that asked (-1: a tool through the debug
+    # server, which reads the answer in C), the hold, the step and when it
+    # runs out, and when the move began (for the log).
+    @mv_pid = -1
+    @mv_to = ""
+    @mv_reply = -1
+    @mv_hold = 0
+    @mv_stage = MV_NONE
+    @mv_until = 0
+    @mv_t0 = 0
+    # A move given up here (the app went on) whose image may still come up
+    # there: that copy is stopped when the transfer app says it did.
+    @mv_late_to = ""
+    # The transfer app: its pid (-1 = not running), whether it is connected,
+    # and why not (its last word).
+    @xfer_pid = -1
+    @xfer_ready = false
+    @xfer_reason = ""
 
     # Periodic cleanup tracking
     @tick_count = 0
@@ -345,6 +385,7 @@ class FmrbKernelImpl < FmrbKernel
       # because a kill can free the slot before this is handled.
       cleanup_terminated_app(pid, data["expected"] ? true : false)
       restart_from_checkpoint(pid)
+      note_move_exit(pid)
     when "checkpoint"
       # Someone asks for an app's checkpoint image: a tool (the debug server's
       # "checkpoint") or an app (FmrbApp.checkpoint: the shell, or the
@@ -365,9 +406,27 @@ class FmrbKernelImpl < FmrbKernel
     when "checkpoint_continued"
       note_checkpoint_continued(pid, data["reason"].to_s)
     when "restore"
-      # Start an image (the debug server's restore: the receiving side of a
-      # move). The C side answers the asker once it is restored.
+      # Start an image (the debug server's restore, the transfer app: the
+      # receiving side of a move). The C side answers the asker once it is
+      # restored.
       restore_checkpoint(data["path"].to_s)
+    when "move"
+      # Move an app to another machine over Asterism (F5): a tool (the debug
+      # server's "move") or an app (FmrbApp.move), through the C side. See
+      # start_move.
+      start_move((data["pid"] || -1).to_i, data["to"].to_s, (data["from"] || -1).to_i,
+                 (data["hold"] || 0).to_i)
+    when "checkpoint_calls"
+      note_checkpoint_calls(pid, data["path"].to_s)
+    when "transfer_ready"
+      note_transfer_ready(pid, data["node"].to_s)
+    when "transfer_down"
+      note_transfer_down(pid, data["reason"].to_s)
+    when "move_checked"
+      note_move_checked(pid, data["ok"] ? true : false, data["reason"].to_s, data["missing"].to_s)
+    when "move_sent"
+      note_move_sent(pid, data["ok"] ? true : false, (data["pid"] || -1).to_i, data["reason"].to_s,
+                     data["missing"].to_s)
     when "file_select"
       # Forward file select request to desktop
       if @desktop_pid
@@ -648,6 +707,7 @@ class FmrbKernelImpl < FmrbKernel
     @ckpt_path = path
     @ckpt_restart = false
     @ckpt_held_until = Machine.board_millis + @ckpt_hold
+    move_send(path) if pid == @mv_pid && @mv_stage == MV_WRITE
     nil
   end
 
@@ -684,6 +744,12 @@ class FmrbKernelImpl < FmrbKernel
   def note_checkpoint_continued(pid, reason)
     return nil if pid != @ckpt_pid
     Log.info("Checkpoint: PID #{pid} went on (#{reason})")
+    if pid == @mv_pid
+      # A move that was not answered within the hold: the image may still come
+      # up there, and that copy is stopped then (note_move_sent).
+      @mv_late_to = @mv_to if @mv_stage == MV_SEND
+      move_over(false, reason, -1, "")
+    end
     @ckpt_pid = -1
     @ckpt_path = ""
     @ckpt_reply = -1
@@ -715,6 +781,9 @@ class FmrbKernelImpl < FmrbKernel
 
   def note_checkpoint_refused(pid, reason)
     Log.warn("Checkpoint: PID #{pid} refused: #{reason}")
+    # A move's app refused to list its calls or to be written: it goes on
+    # (it was not stopped), and the asker hears why.
+    move_over(false, reason, -1, "") if pid == @mv_pid
     if pid == @ckpt_pid
       reply_checkpoint(@ckpt_reply, pid, false, reason)
       @ckpt_pid = -1
@@ -757,6 +826,270 @@ class FmrbKernelImpl < FmrbKernel
     else
       Log.error("Checkpoint: could not start #{path}: #{spawn_error_reason}")
     end
+    nil
+  end
+
+  # ---- moving an app over Asterism (doc/checkpoint F5) ----
+  #
+  # The kernel holds the steps (D14); the transfer app (TRANSFER_APP, an
+  # ordinary mruby app: the kernel cannot hold an Asterism session) does the
+  # talking to the other machine:
+  #
+  #   1. the transfer app is started and connected, when it is not yet
+  #   2. the app lists the methods its program calls ("checkpoint_calls")
+  #   3. the transfer app asks the destination whether its build has them
+  #      ("move_check"): it refuses before anything is stopped when a name the
+  #      app's .app.toml requires is missing, and names the others it lacks
+  #   4. the app writes its image and holds where it was taken (F2's hold)
+  #   5. the transfer app carries the image there and has it started
+  #      ("move_send"); once it is up there the app closes here (D15),
+  #      otherwise it goes on from where it was held
+  #
+  # One move at a time (it shares @ckpt_* with the moves of F2). Each step has
+  # a time limit; the hold bounds the last one, as in F2.
+  def start_move(target, to, reply_to, hold)
+    busy = @mv_pid >= 0 ? @mv_pid : @ckpt_pid
+    if busy >= 0
+      tell_untaken(target, reply_to, to, "another move is under way (PID #{busy})")
+      return nil
+    end
+    info = _get_app_info(target)
+    if info.nil?
+      tell_untaken(target, reply_to, to, "no app with PID #{target}")
+      return nil
+    end
+    @mv_pid = target
+    @mv_to = to
+    @mv_reply = reply_to
+    @mv_hold = hold > 0 ? hold : MOVE_HOLD_MS
+    @mv_t0 = Machine.board_millis
+    @mv_late_to = ""
+    Log.info("Move: PID #{target} (#{info[:name]}) to #{to}")
+    if @xfer_ready
+      move_ask_calls
+    elsif start_transfer
+      move_stage(MV_TRANSFER, MV_TRANSFER_MS)
+    else
+      move_over(false, "the transfer app could not be started: #{spawn_error_reason}", -1, "")
+    end
+    nil
+  end
+
+  # The transfer app, started when it is not running (at boot when this
+  # machine takes images in, and for a move). Returns whether it runs.
+  def start_transfer
+    return true if @xfer_pid >= 0
+    xpid = _spawn_app_req(TRANSFER_APP)
+    if xpid
+      @xfer_pid = xpid
+      @xfer_ready = false
+      @xfer_reason = "connecting"
+      Log.info("Transfer app started (pid=#{xpid})")
+      return true
+    end
+    Log.error("Failed to spawn the transfer app: #{spawn_error_reason}")
+    false
+  end
+
+  # At boot: a machine that takes images in (RECEIVE_CONF) keeps the
+  # transfer app up so that others can reach it.
+  def spawn_transfer_if_receiving
+    return nil unless File.exist?(RECEIVE_CONF)
+    start_transfer
+    nil
+  end
+
+  def move_stage(stage, ms)
+    @mv_stage = stage
+    @mv_until = Machine.board_millis + ms
+    nil
+  end
+
+  def move_ask_calls
+    move_stage(MV_CALLS, MV_CALLS_MS)
+    req = MessagePack.pack({ "cmd" => "checkpoint_calls" })
+    _send_raw_message(@mv_pid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    nil
+  end
+
+  def note_transfer_ready(pid, node)
+    return nil if pid != @xfer_pid
+    @xfer_ready = true
+    @xfer_reason = ""
+    Log.info("Transfer app connected as #{node}")
+    move_ask_calls if @mv_pid >= 0 && @mv_stage == MV_TRANSFER
+    nil
+  end
+
+  def note_transfer_down(pid, reason)
+    return nil if pid != @xfer_pid
+    @xfer_ready = false
+    @xfer_reason = reason
+    Log.warn("Transfer app not connected: #{reason}")
+    nil
+  end
+
+  # The app's list is written: the transfer app asks the destination.
+  def note_checkpoint_calls(pid, path)
+    return nil if pid != @mv_pid || @mv_stage != MV_CALLS
+    move_stage(MV_CHECK, MV_CHECK_MS)
+    req = MessagePack.pack({ "cmd" => "move_check", "to" => @mv_to, "calls" => path })
+    _send_raw_message(@xfer_pid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    nil
+  end
+
+  # The destination's answer, before anything is stopped. missing: the names
+  # its build lacks that the app does not require (one space between them):
+  # a warning, the app is moved all the same.
+  def note_move_checked(pid, ok, reason, missing)
+    return nil if pid != @xfer_pid || @mv_stage != MV_CHECK
+    unless ok
+      move_over(false, reason, -1, "")
+      return nil
+    end
+    unless missing.empty?
+      Log.warn("Move: #{@mv_to} lacks methods PID #{@mv_pid} calls: #{missing} (it is moved all the same)")
+    end
+    move_stage(MV_WRITE, MV_WRITE_MS)
+    start_checkpoint(@mv_pid, false, -1, @mv_hold)
+    nil
+  end
+
+  # Written and held: the transfer app carries the image there. The hold is
+  # the limit from here on (tick_checkpoint_hold lets it go on).
+  def move_send(path)
+    move_stage(MV_SEND, @mv_hold + 2000)
+    req = MessagePack.pack({ "cmd" => "move_send", "to" => @mv_to, "path" => path })
+    _send_raw_message(@xfer_pid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    nil
+  end
+
+  # The image is up there (there: its PID there) or was not taken.
+  def note_move_sent(pid, ok, there, reason, missing)
+    return nil if pid != @xfer_pid
+    if @mv_stage != MV_SEND
+      # Too late: the app went on here, so the copy there is stopped.
+      if ok && !@mv_late_to.empty?
+        Log.warn("Move: up on #{@mv_late_to} as PID #{there} after the app went on here; stopping it there")
+        req = MessagePack.pack({ "cmd" => "move_cancel", "to" => @mv_late_to, "pid" => there })
+        _send_raw_message(@xfer_pid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+        @mv_late_to = ""
+      end
+      return nil
+    end
+    if ok
+      detail = "moved to #{@mv_to} as PID #{there}"
+      detail = "#{detail}; it lacks: #{missing}" unless missing.empty?
+      tell_held_app(true, clip(detail, 120))
+      move_over(true, detail, there, missing)
+    else
+      tell_held_app(false, clip("not taken there: #{reason}", 120))
+      move_over(false, "not taken there: #{reason}", -1, "")
+    end
+    nil
+  end
+
+  # A step ran out of time.
+  def tick_move
+    return nil if @mv_pid < 0 || @mv_stage == MV_NONE
+    return nil if Machine.board_millis < @mv_until
+    st = @mv_stage
+    if st == MV_TRANSFER
+      why = @xfer_reason.empty? ? "it did not connect" : @xfer_reason
+      move_over(false, "no Asterism connection in #{MV_TRANSFER_MS} ms (#{why})", -1, "")
+    elsif st == MV_CALLS
+      move_over(false, "the app did not list the methods it calls", -1, "")
+    elsif st == MV_CHECK
+      move_over(false, "the transfer app did not answer about #{@mv_to}", -1, "")
+    elsif st == MV_WRITE
+      # Should it still be held later, the hold lets it go on.
+      move_over(false, "the app was not written in #{MV_WRITE_MS} ms", -1, "")
+    elsif st == MV_SEND
+      # The hold ran out first and the app went on (note_checkpoint_continued
+      # is how a move in this step normally ends without an answer).
+      @mv_late_to = @mv_to
+      move_over(false, "no answer from #{@mv_to}", -1, "")
+    end
+    nil
+  end
+
+  # The moving app or the transfer app has ended.
+  def note_move_exit(pid)
+    if pid == @xfer_pid
+      @xfer_pid = -1
+      @xfer_ready = false
+      @xfer_reason = "the transfer app ended"
+      st = @mv_stage
+      if @mv_pid >= 0 && st != MV_NONE && st != MV_WRITE && st != MV_SEND
+        move_over(false, "the transfer app ended", -1, "")
+      end
+    end
+    if pid == @mv_pid && @mv_stage != MV_SEND
+      move_over(false, "the app ended", -1, "")
+    end
+    nil
+  end
+
+  # The move is over: the asker hears it (an app: "checkpoint_result"; a tool
+  # reads the app's answer in C, which a move given up before the app was
+  # stopped writes through "checkpoint_untaken").
+  def move_over(ok, what, there, missing)
+    return nil if @mv_pid < 0
+    took = Machine.board_millis - @mv_t0
+    if ok
+      Log.info("Move: PID #{@mv_pid} #{what} (#{took} ms)")
+    else
+      Log.warn("Move: PID #{@mv_pid} not moved to #{@mv_to}: #{what} (#{took} ms)")
+    end
+    st = @mv_stage
+    if !ok && st != MV_SEND && st != MV_WRITE
+      req = MessagePack.pack({ "cmd" => "checkpoint_untaken", "reason" => clip(what, 130) })
+      _send_raw_message(@mv_pid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    end
+    reply_move(ok, what, there, missing)
+    @mv_pid = -1
+    @mv_to = ""
+    @mv_reply = -1
+    @mv_hold = 0
+    @mv_stage = MV_NONE
+    @mv_until = 0
+    nil
+  end
+
+  def reply_move(ok, what, there, missing)
+    to = @mv_reply
+    return nil if to < 0
+    # An app that moved itself has closed: nobody to tell.
+    return nil if ok && to == @mv_pid
+    reply = if ok
+              { "cmd" => "checkpoint_result", "pid" => @mv_pid, "ok" => true, "to" => @mv_to,
+                "there" => there, "missing" => clip(missing, 100 - @mv_to.size) }
+            else
+              { "cmd" => "checkpoint_result", "pid" => @mv_pid, "ok" => false, "to" => @mv_to,
+                "reason" => clip(what, 110 - @mv_to.size) }
+            end
+    _send_raw_message(to, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
+    nil
+  end
+
+  # s cut to at most n bytes: a message to an app carries 176 bytes in all
+  # (FMRB_MAX_MSG_PAYLOAD_SIZE), and a longer one is not sent.
+  def clip(s, n)
+    return s if s.bytesize <= n
+    s.byteslice(0, n).to_s
+  end
+
+  # A move refused before it began (another under way, no such app).
+  def tell_untaken(target, reply_to, to, why)
+    Log.warn("Move: PID #{target} not moved to #{to}: #{why}")
+    if _get_app_info(target)
+      req = MessagePack.pack({ "cmd" => "checkpoint_untaken", "reason" => clip(why, 130) })
+      _send_raw_message(target, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    end
+    return nil if reply_to < 0
+    reply = { "cmd" => "checkpoint_result", "pid" => target, "ok" => false, "to" => clip(to, 64),
+              "reason" => clip(why, 110 - clip(to, 64).size) }
+    _send_raw_message(reply_to, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
     nil
   end
 
@@ -914,6 +1247,7 @@ class FmrbKernelImpl < FmrbKernel
     end
 
     spawn_service_host unless setup
+    spawn_transfer_if_receiving unless setup
     nil
   end
 

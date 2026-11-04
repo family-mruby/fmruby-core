@@ -921,6 +921,18 @@ class FmrbApp
     FmrbApp.checkpoint(FmrbApp.pid, restart: restart)
   end
 
+  # Ask to move this app to another machine over Asterism (doc/checkpoint
+  # F5), named by its Asterism node ID: the kernel asks that machine first,
+  # has the app written and held at the next safe point after the message
+  # wait, carries the image there and closes the app here once it is up
+  # there (on_checkpoint is the last hook here, on_restore the first there).
+  # When it stays (refused there, or no answer), on_checkpoint_refused tells
+  # why and the app goes on. Returns nil when asked, or a String saying why
+  # it cannot be asked.
+  def move_to(to, hold: 0)
+    FmrbApp.move(FmrbApp.pid, to, hold: hold)
+  end
+
   # Ask the kernel to switch this app between windowed and fullscreen. The VM
   # keeps running, so app state survives; the answer arrives as on_resize with
   # @_fullscreen and the user area already updated.

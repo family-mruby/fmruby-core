@@ -432,6 +432,22 @@ fmrb_app_ckpt_status_t fmrb_app_checkpoint_poll(int32_t pid, char *what, size_t 
  */
 fmrb_err_t fmrb_app_checkpoint_finish(int32_t pid, bool close, const char *reason);
 
+/** The longest destination a move names (an Asterism node ID). */
+#define FMRB_APP_MOVE_TO_MAX 64
+
+/**
+ * @brief Move app `pid` to another machine over Asterism (doc/checkpoint F5).
+ *
+ * The kernel holds the steps: it asks the destination (`to`, its Asterism
+ * node ID) whether its build has the methods the app calls, has the app
+ * write its image and hold, has the transfer app carry the image, and
+ * closes the app once it is up there; otherwise the app goes on. For tools
+ * (the debug server): poll fmrb_app_checkpoint_poll for the outcome, CLOSED
+ * (`what`: where it went on) or REFUSED / CONTINUED (`what`: why not).
+ * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM (no such app, no destination).
+ */
+fmrb_err_t fmrb_app_checkpoint_move(int32_t pid, const char *to, int32_t hold_ms);
+
 /** Result of the last image asked to be started (fmrb_app_checkpoint_restore_poll). */
 typedef enum {
     FMRB_APP_RESTORE_NONE = 0,  // nothing asked

@@ -1,0 +1,10 @@
+app_handle_name = "ckpt_requires_absent"
+app_screen_name = "Ckpt Requires Absent"
+app_screen_name_ja = "チェックポイント試験 (無い名前を要る)"
+default_window_mode = "background"
+launcher_visible = false
+# May be written to a checkpoint image and go on elsewhere (doc/checkpoint)
+movable = true
+# A method no build has: every destination refuses it before it is stopped
+# (doc/checkpoint F5)
+requires = ["fmrb_no_such_method"]

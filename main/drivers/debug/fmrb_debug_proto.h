@@ -66,6 +66,7 @@ typedef enum {
     DBG_CMD_FILE_BEGIN,   // the same: a file under /tmp/ coming in pieces
     DBG_CMD_FILE_CHUNK,
     DBG_CMD_FILE_COMMIT,
+    DBG_CMD_MOVE,         // the same: move an app over Asterism (F5)
 } fmrb_dbg_cmd_t;
 
 // Decoded request. Numeric fields default to 0 / their "unset" sentinel; use
@@ -97,6 +98,7 @@ typedef struct {
     const uint8_t  *data;       // file_chunk: the bytes (into the request body)
     uint32_t        data_len;
     char            reason[96]; // checkpoint_finish: why it goes on (logged)
+    char            to[65];     // move: the destination's Asterism node ID
 #endif
 } fmrb_dbg_req_t;
 

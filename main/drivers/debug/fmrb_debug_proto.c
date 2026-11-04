@@ -35,6 +35,7 @@ static const struct { const char *name; fmrb_dbg_cmd_t cmd; } k_cmd_table[] = {
     { "file_begin",  DBG_CMD_FILE_BEGIN },
     { "file_chunk",  DBG_CMD_FILE_CHUNK },
     { "file_commit", DBG_CMD_FILE_COMMIT },
+    { "move",        DBG_CMD_MOVE },
 #endif
 };
 
@@ -117,6 +118,8 @@ static void decode_payload(const msgpack_object *map, fmrb_dbg_req_t *out) {
             out->id = (uint32_t)obj_as_int(v);
         } else if (key_is(k, "reason")) {
             obj_copy_str(v, out->reason, sizeof(out->reason));
+        } else if (key_is(k, "to")) {
+            obj_copy_str(v, out->to, sizeof(out->to));
         } else if (key_is(k, "data") && (v->type == MSGPACK_OBJECT_BIN || v->type == MSGPACK_OBJECT_STR)) {
             // msgpack-c points into the request body (the frame buffer the
             // request is handled from), so no copy is needed.

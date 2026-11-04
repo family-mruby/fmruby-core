@@ -51,6 +51,20 @@ bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app, int32_t hold_ms)
 // not sent again).
 const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to);
 
+// The same for a move over Asterism to node `to` (F5, FmrbApp.move): the
+// kernel answers reply_to with "checkpoint_result" {pid, ok, to, ...}.
+const char *fmrb_app_checkpoint_move_from_app(int32_t pid, const char *to, int32_t hold_ms, int32_t reply_to);
+
+// _spin got APP_CONTROL "checkpoint_calls" (F5): the method names the program
+// calls and the names its .app.toml requires go to /tmp/<name>.calls, and the
+// kernel is told "checkpoint_calls" {path} (or "checkpoint_refused").
+void fmrb_app_checkpoint_calls(mrb_state *mrb);
+
+// _spin got APP_CONTROL "checkpoint_untaken" (F5): a move was given up before
+// the app was stopped (the destination refused, could not be reached). The
+// answer the debug server reads says why; the app goes on.
+void fmrb_app_checkpoint_untaken(mrb_state *mrb, const char *reason);
+
 // Machine.board_millis's offset for this VM (D9): non-zero in a restored app,
 // which goes on from the value it had where it was written.
 int64_t fmrb_app_checkpoint_millis_offset(mrb_state *mrb);

@@ -56,6 +56,8 @@
 #include <mruby.h>
 #include <mruby/variable.h>
 #include <mruby/string.h>
+#include <mruby/array.h>
+#include <mruby/class.h>
 #include <mruby/error.h>
 #include <mruby/throw.h>
 #include <mruby/checkpoint.h>
@@ -650,6 +652,8 @@ static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const c
     FMRB_LOGI(TAG, "[%s] image at task tick %u", ctx->app_name, (unsigned)mrb->task.tick);
 
     bool held = e->hold_ms > 0;
+    char why_closed[CKPT_WHAT_MAX];
+    why_closed[0] = '\0';
     if (held) {
         snprintf(e->what, sizeof(e->what), "%s", path);
         e->status = FMRB_APP_CKPT_HELD;
@@ -657,6 +661,7 @@ static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const c
         char why[CKPT_WHAT_MAX];
         fmrb_canvas_handle_t mark = mark_show(ctx);
         bool close = hold_until_told(ctx, e, why, sizeof(why));
+        if (close) snprintf(why_closed, sizeof(why_closed), "%s", why);
         mark_hide(ctx, mark);
         e->hold_ms = 0;
         if (!close) {
@@ -674,6 +679,11 @@ static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const c
     end_all_tasks(mrb);
 
     snprintf(e->what, sizeof(e->what), "%s", path);
+    if (held && why_closed[0]) {
+        // A move over Asterism (F5): where it went on ("moved to <node> as
+        // PID n"), for whoever asked
+        snprintf(e->what, sizeof(e->what), "%s", why_closed);
+    }
     if (held) {
         e->status = FMRB_APP_CKPT_CLOSED;   // the kernel told it (or a kill did)
     } else {
@@ -713,6 +723,139 @@ bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app, int32_t hold_ms)
                     ? "the app waits inside a block called from C (a C frame cannot be carried)"
                     : "the VM is not set up for checkpoints");
     return false;
+}
+
+// ---- asking the destination first (F5) -----------------------------------------
+//
+// A move over Asterism asks the other machine before anything is stopped: the
+// method names the program calls (the same list as the image's SND0) and the
+// names its .app.toml requires go there, and the other machine answers which
+// of them its build lacks. The list is written to /tmp/<name>.calls for the
+// transfer app to read: "requires" and the declared names on the first line,
+// then one name per line.
+
+typedef struct {
+    fmrb_file_t f;
+    bool ok;
+} calls_out_t;
+
+static void write_call(mrb_state *mrb, const char *name, size_t len, void *ud)
+{
+    (void)mrb;
+    calls_out_t *c = (calls_out_t *)ud;
+    size_t done = 0;
+    if (fmrb_hal_file_write(c->f, name, len, &done) != FMRB_OK || done != len) c->ok = false;
+    if (fmrb_hal_file_write(c->f, "\n", 1, &done) != FMRB_OK || done != 1) c->ok = false;
+}
+
+void fmrb_app_checkpoint_calls(mrb_state *mrb)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    ckpt_app_t *e = entry_of(ctx);
+    if (!ctx || !e) return;
+    if (!ctx->movable || e->mrb != mrb) {
+        refuse(ctx, "the app does not declare movable = true in its .app.toml");
+        return;
+    }
+    char stem[48];
+    char path[FMRB_MAX_PATH_LEN];
+    stem_of(e->origin[0] ? e->origin : ctx->filepath, stem, sizeof(stem));
+    snprintf(path, sizeof(path), CKPT_DIR "%s.calls", stem);
+    calls_out_t c = { NULL, true };
+    if (fmrb_hal_file_open(path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &c.f) != FMRB_OK) {
+        char why[FMRB_MAX_PATH_LEN + 16];
+        snprintf(why, sizeof(why), "cannot write %s", path);
+        refuse(ctx, why);
+        return;
+    }
+    size_t done = 0;
+    char head[CKPT_REQUIRES_MAX + 16];
+    int hn = snprintf(head, sizeof(head), "requires %s\n", e->requires);
+    if (fmrb_hal_file_write(c.f, head, (size_t)hn, &done) != FMRB_OK) c.ok = false;
+    int n = mrb_checkpoint_sent_names(mrb, write_call, &c);
+    fmrb_hal_file_close(c.f);
+    if (n < 0 || !c.ok) {
+        fmrb_hal_file_remove(path);
+        refuse(ctx, n < 0 ? "the VM has no baseline to name the methods it calls" : "cannot write the method names");
+        return;
+    }
+    FMRB_LOGI(TAG, "[%s] the %d method names the program calls are in %s%s%s", ctx->app_name, n, path,
+              e->requires[0] ? "; it requires " : "", e->requires);
+    send_kernel(ctx->app_id, "checkpoint_calls", "path", path);
+}
+
+void fmrb_app_checkpoint_untaken(mrb_state *mrb, const char *reason)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    ckpt_app_t *e = entry_of(ctx);
+    if (!ctx || !e || e->mrb != mrb) return;
+    FMRB_LOGW(TAG, "[%s] not moved (it goes on): %s", ctx->app_name, reason);
+    snprintf(e->what, sizeof(e->what), "%s", reason);
+    e->status = FMRB_APP_CKPT_REFUSED;
+}
+
+// ---- the receiving side's methods (F5) ------------------------------------------
+//
+// The transfer app (/usr/share/transfer/transfer.app.rb) answers the other
+// machines from these. They are defined only in a VM set up for checkpoints
+// (a movable app, an image being restored), before its baseline is taken, so
+// that the other apps' VMs do not carry them.
+
+// FmrbApp._checkpoint_has_method(name) -> true | false | nil
+// Whether a class or module of this VM's baseline defines a method of that
+// name (nil: no baseline): the answer to the sender's list before anything is
+// stopped.
+static mrb_value app_s_checkpoint_has_method(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *name;
+    mrb_int len;
+    mrb_get_args(mrb, "s", &name, &len);
+    int r = mrb_checkpoint_has_method(mrb, name, (size_t)len);
+    return r < 0 ? mrb_nil_value() : mrb_bool_value(r > 0);
+}
+
+// FmrbApp._checkpoint_restore(path) -> nil | String
+// Ask the kernel to start the image at path (a .ckpt under /tmp/), as the
+// debug server's restore does. nil when asked; _checkpoint_restore_poll has
+// the answer.
+static mrb_value app_s_checkpoint_restore(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *path;
+    mrb_get_args(mrb, "z", &path);
+    if (fmrb_app_checkpoint_restore_ask(path) != FMRB_OK) {
+        return mrb_str_new_lit(mrb, "the image cannot be asked to start (not a .ckpt, or no kernel)");
+    }
+    return mrb_nil_value();
+}
+
+// FmrbApp._checkpoint_restore_poll -> [status, pid, what]
+// status: "none", "pending", "restored" (what: the names this build lacks,
+// one space between them) or "refused" (what: why).
+static mrb_value app_s_checkpoint_restore_poll(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    int32_t pid = -1;
+    char what[CKPT_WHAT_MAX];
+    fmrb_app_restore_status_t st = fmrb_app_checkpoint_restore_poll(&pid, what, sizeof(what));
+    const char *name = st == FMRB_APP_RESTORE_PENDING ? "pending"
+                     : st == FMRB_APP_RESTORE_DONE ? "restored"
+                     : st == FMRB_APP_RESTORE_REFUSED ? "refused" : "none";
+    mrb_value out = mrb_ary_new_capa(mrb, 3);
+    mrb_ary_push(mrb, out, mrb_str_new_cstr(mrb, name));
+    mrb_ary_push(mrb, out, mrb_fixnum_value(pid));
+    mrb_ary_push(mrb, out, mrb_str_new_cstr(mrb, what));
+    return out;
+}
+
+static void define_receiving_methods(mrb_state *mrb)
+{
+    if (!mrb_class_defined(mrb, "FmrbApp")) return;
+    struct RClass *app = mrb_class_get(mrb, "FmrbApp");
+    mrb_define_class_method(mrb, app, "_checkpoint_has_method", app_s_checkpoint_has_method, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app, "_checkpoint_restore", app_s_checkpoint_restore, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app, "_checkpoint_restore_poll", app_s_checkpoint_restore_poll, MRB_ARGS_NONE());
 }
 
 // ---- setting a VM up ------------------------------------------------------------
@@ -802,6 +945,7 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     mrb_checkpoint_set_handler(mrb, ckpt_written, NULL);
     mrb_checkpoint_set_refusal_handler(mrb, ckpt_refused, NULL);
     fmrb_gfx_checkpoint_register(mrb);
+    define_receiving_methods(mrb);
     mrb_checkpoint_baseline(mrb);
     name_sum_t names = { 0, 2166136261u };
     mrb_checkpoint_each_name(mrb, count_name, &names);
@@ -1044,6 +1188,69 @@ const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t 
 {
     const char *why;
     ask_kernel(pid, restart, 0, reply_to, &why);
+    return why;
+}
+
+// A move over Asterism (F5): the kernel asks the destination first, then has
+// the app write its image and hold, has the transfer app carry it, and closes
+// the app once it is up there (fmrb_kernel.rb, start_move). Checked here as
+// far as C can: a running app on mruby that declares movable.
+static fmrb_err_t ask_move(int32_t pid, const char *to, int32_t hold_ms, int32_t reply_to, const char **why)
+{
+    *why = NULL;
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(pid);
+    ckpt_app_t *e = entry_of(ctx);
+    if (!ctx || !e || ctx->state != PROC_STATE_RUNNING) {
+        *why = "no running app with that PID";
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    size_t tl = to ? strlen(to) : 0;
+    if (tl == 0 || tl > FMRB_APP_MOVE_TO_MAX) {
+        *why = "no destination (the Asterism node ID of the other machine)";
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (ctx->vm_type != FMRB_VM_TYPE_MRUBY || !ctx->movable) {
+        snprintf(e->what, sizeof(e->what), "%s", ctx->vm_type != FMRB_VM_TYPE_MRUBY
+                 ? "only an app on the mruby VM can be written"
+                 : "the app does not declare movable = true in its .app.toml");
+        e->status = FMRB_APP_CKPT_REFUSED;
+        *why = e->what;
+        return FMRB_OK;
+    }
+    e->what[0] = '\0';
+    e->status = FMRB_APP_CKPT_PENDING;
+    ctl_msg_t m;
+    ctl_begin(&m, PROC_ID_KERNEL, 4 + (reply_to >= 0 ? 1 : 0));
+    ctl_str(&m, "cmd");
+    ctl_str(&m, "move");
+    ctl_str(&m, "pid");
+    ctl_int(&m, (uint32_t)pid);
+    ctl_str(&m, "to");
+    ctl_str(&m, to);
+    ctl_str(&m, "hold");
+    ctl_int(&m, (uint32_t)(hold_ms > 0 ? hold_ms : 0));
+    if (reply_to >= 0) {
+        ctl_str(&m, "from");
+        ctl_int(&m, (uint32_t)reply_to);
+    }
+    if (ctl_send(&m, PROC_ID_KERNEL) != FMRB_OK) {
+        e->status = FMRB_APP_CKPT_NONE;
+        *why = "could not reach the kernel";
+        return FMRB_ERR_FAILED;
+    }
+    return FMRB_OK;
+}
+
+fmrb_err_t fmrb_app_checkpoint_move(int32_t pid, const char *to, int32_t hold_ms)
+{
+    const char *why;
+    return ask_move(pid, to, hold_ms, -1, &why);   // a refusal is the answer the table holds
+}
+
+const char *fmrb_app_checkpoint_move_from_app(int32_t pid, const char *to, int32_t hold_ms, int32_t reply_to)
+{
+    const char *why;
+    ask_move(pid, to, hold_ms, reply_to, &why);
     return why;
 }
 

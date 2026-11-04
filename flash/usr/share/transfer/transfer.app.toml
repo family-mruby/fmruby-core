@@ -1,0 +1,10 @@
+app_handle_name = "transfer"
+app_screen_name = "Transfer"
+app_screen_name_ja = "転送"
+default_window_mode = "background"
+launcher_visible = false
+single_instance = true
+# Not to be moved (its Asterism session cannot be carried): movable keeps the
+# table of this build's method names in its VM, which the destination's side
+# of a move answers from (doc/checkpoint F5).
+movable = true

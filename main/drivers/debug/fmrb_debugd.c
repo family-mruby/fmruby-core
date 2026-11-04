@@ -481,7 +481,7 @@ static void handle_checkpoint(const fmrb_dbg_req_t *req) {
     if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
     fmrb_err_t err = fmrb_app_checkpoint_ask(req->pid, req->restart, req->hold);
     if (err != FMRB_OK) { reply_ok(req, err); return; }
-    char what[128];
+    char what[256];
     fmrb_app_ckpt_status_t st = wait_ckpt(req->pid, req->max, what, sizeof(what), ckpt_answered);
     reply_ckpt(req, st, what);
 }
@@ -491,7 +491,7 @@ static void handle_checkpoint(const fmrb_dbg_req_t *req) {
 // the reason it went on: also when the hold had run out before) | "timeout"}.
 static void handle_checkpoint_finish(const fmrb_dbg_req_t *req) {
     if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
-    char what[128];
+    char what[256];
     fmrb_app_ckpt_status_t st = fmrb_app_checkpoint_poll(req->pid, what, sizeof(what));
     if (st == FMRB_APP_CKPT_HELD) {
         fmrb_err_t err = fmrb_app_checkpoint_finish(req->pid, req->close, req->reason);
@@ -499,6 +499,44 @@ static void handle_checkpoint_finish(const fmrb_dbg_req_t *req) {
         st = wait_ckpt(req->pid, req->max, what, sizeof(what), ckpt_finished);
     }
     reply_ckpt(req, st, what);
+}
+
+// move {pid, to, hold?, max?}: move the app to the machine whose Asterism node
+// ID is `to` (doc/checkpoint F5). The kernel holds the steps (it asks that
+// machine first, has the app write its image and hold, has the transfer app
+// carry it, and closes it here once it is up there). Waits until it is over or
+// max ms (default 40000: the transfer app may have to connect first) and
+// answers {status: "moved", detail} (where it went on: "moved to <node> as PID
+// n[; it lacks: names]"), {status: "stayed", reason} (refused or not
+// answered, before or after it was held: the app goes on here) or {status:
+// "timeout"}.
+#define DEBUGD_MOVE_WAIT_MS_DEFAULT 40000
+
+static void handle_move(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    fmrb_err_t err = fmrb_app_checkpoint_move(req->pid, req->to, req->hold);
+    if (err != FMRB_OK) { reply_ok(req, err); return; }
+    char what[256];
+    fmrb_app_ckpt_status_t st = wait_ckpt(req->pid, req->max > 0 ? req->max : DEBUGD_MOVE_WAIT_MS_DEFAULT,
+                                          what, sizeof(what), ckpt_finished);
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    if (st == FMRB_APP_CKPT_CLOSED) {
+        msgpack_pack_map(&w.pk, 2);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", "moved");
+        fmrb_dbg_pack_kv_str(&w.pk, "detail", what);
+    } else if (st == FMRB_APP_CKPT_REFUSED || st == FMRB_APP_CKPT_CONTINUED) {
+        msgpack_pack_map(&w.pk, 3);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", "stayed");
+        fmrb_dbg_pack_kv_str(&w.pk, "reason", what);
+        fmrb_dbg_pack_kv_str(&w.pk, "here", st == FMRB_APP_CKPT_REFUSED ? "not stopped" : "went on");
+    } else {
+        msgpack_pack_map(&w.pk, 1);
+        fmrb_dbg_pack_kv_str(&w.pk, "status", "timeout");
+    }
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
 }
 
 // restore {path, max?}: the kernel starts the image (a .ckpt under /tmp/);
@@ -654,6 +692,7 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_FILE_BEGIN:  handle_file_begin(req);  break;
         case DBG_CMD_FILE_CHUNK:  handle_file_chunk(req);  break;
         case DBG_CMD_FILE_COMMIT: handle_file_commit(req); break;
+        case DBG_CMD_MOVE:        handle_move(req);        break;
 #endif
 
         case DBG_CMD_ATTACH:   handle_attach(req);   break;

@@ -487,6 +487,9 @@ static bool spin_idle_gc(mrb_state *mrb, fmrb_app_task_context_t* ctx,
 // mruby-checkpoint have it.
 extern bool fmrb_app_checkpoint_request(mrb_state *mrb, mrb_value app, int32_t hold_ms);
 extern const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to);
+extern const char *fmrb_app_checkpoint_move_from_app(int32_t pid, const char *to, int32_t hold_ms, int32_t reply_to);
+extern void fmrb_app_checkpoint_calls(mrb_state *mrb);
+extern void fmrb_app_checkpoint_untaken(mrb_state *mrb, const char *reason);
 #endif
 
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
@@ -643,6 +646,16 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                             if (fmrb_app_checkpoint_request(mrb, self, hold_ms)) {
                                 mrb_iv_set(mrb, self, spin_break_sym, mrb_true_value());
                             }
+                        } else if (strcmp(cmd, "checkpoint_calls") == 0) {
+                            // A move over Asterism asks the destination first
+                            // (F5): the method names the program calls, for the
+                            // kernel to send there before anything is stopped.
+                            fmrb_app_checkpoint_calls(mrb);
+                        } else if (strcmp(cmd, "checkpoint_untaken") == 0) {
+                            // That move was given up before the app was
+                            // stopped: the reason, for whoever asked.
+                            mrb_value r = mrb_hash_get(mrb, data_hash, mrb_str_new_cstr(mrb, "reason"));
+                            fmrb_app_checkpoint_untaken(mrb, mrb_string_p(r) ? mrb_str_to_cstr(mrb, r) : "");
                         } else if (strcmp(cmd, "checkpoint_result") == 0) {
                             // The kernel's answer to FmrbApp.checkpoint. An
                             // app that asked for its own image only hears of a
@@ -1516,6 +1529,37 @@ static mrb_value mrb_fmrb_app_s_checkpoint(mrb_state *mrb, mrb_value klass)
 #else
     (void)pid;
     (void)restart;
+    return mrb_str_new_lit(mrb, "this build cannot write checkpoint images");
+#endif
+}
+
+// FmrbApp.move(pid, to, hold: 0) -> nil | String
+// Move app pid to the machine whose Asterism node ID is `to` (doc/checkpoint
+// F5): the kernel asks that machine first (the methods the program calls),
+// has the app write its image and hold (hold ms, 0: the kernel's default),
+// has the transfer app carry it, and closes it here once it is up there. nil
+// when asked: the answer comes later as APP_CONTROL "checkpoint_result" {pid,
+// ok, to, there (its PID there), missing | reason} (on_checkpoint_refused
+// when the app asked for itself). A String when it cannot be asked: why.
+static mrb_value mrb_fmrb_app_s_move(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int pid;
+    const char *to;
+    const mrb_sym kw_names[] = { mrb_intern_lit(mrb, "hold") };
+    mrb_value kw_values[1];
+    mrb_kwargs kwargs = { 1, 0, kw_names, kw_values, NULL };
+    mrb_get_args(mrb, "iz:", &pid, &to, &kwargs);
+    mrb_int hold = mrb_fixnum_p(kw_values[0]) ? mrb_fixnum(kw_values[0]) : 0;
+#ifdef FMRB_HAVE_CHECKPOINT
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    const char *why = fmrb_app_checkpoint_move_from_app((int32_t)pid, to, (int32_t)hold,
+                                                        ctx ? (int32_t)ctx->app_id : -1);
+    return why ? mrb_str_new_cstr(mrb, why) : mrb_nil_value();
+#else
+    (void)pid;
+    (void)to;
+    (void)hold;
     return mrb_str_new_lit(mrb, "this build cannot write checkpoint images");
 #endif
 }
@@ -2527,6 +2571,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "checkpoint", mrb_fmrb_app_s_checkpoint, MRB_ARGS_REQ(1) | MRB_ARGS_KEY(1, 0));
+    mrb_define_class_method(mrb, app_class, "move", mrb_fmrb_app_s_move, MRB_ARGS_REQ(2) | MRB_ARGS_KEY(1, 0));
     mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, app_class, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));

@@ -844,6 +844,30 @@ class FmrbApp
   # ```
   def checkpoint: () -> String?
 
+  # 自分を別の端末へ移す <<en>> Move this app to another machine
+  #
+  # 自分を Asterism の端末 `to` (その端末のノード ID) へ移すよう頼みます。
+  # カーネルは先に相手に呼ぶメソッドがあるかを聞き、止めてイメージを書き、
+  # 運んで、相手で起動できたらこちらを閉じます (`on_checkpoint` が最後、
+  # 相手では `on_restore`)。断られた・返事が無いときは `on_checkpoint_refused`
+  # が来て、止めた所から続けます。頼めたら nil、頼めないときは理由の文字列。
+  # ```ruby
+  # why = move_to("fmruby-abcdef")
+  # Log.warn(why) if why
+  # ```
+  # <<en>>
+  # Asks for this app to be moved to the Asterism machine `to` (its node
+  # ID). The kernel asks that machine first whether it has the methods the
+  # app calls, writes the image, carries it and closes the app here once it
+  # is up there (`on_checkpoint` last here, `on_restore` there). When it
+  # stays (refused, no answer), `on_checkpoint_refused` says why and the app
+  # goes on. nil when asked, else a String saying why not.
+  # ```ruby
+  # why = move_to("fmruby-abcdef")
+  # Log.warn(why) if why
+  # ```
+  def move_to: (String to) -> String?
+
   # ---- 後片づけの調子 ----
 
   # ひまな時に片づけをするか <<en>> Whether to tidy up when idle
@@ -974,6 +998,26 @@ class FmrbApp
   #                    restart: true)
   # ```
   def self.checkpoint: (Integer pid) -> String?
+
+  # 別のアプリを別の端末へ移す <<en>> Move another app to another machine
+  #
+  # pid のアプリを Asterism の端末 `to` (ノード ID) へ移すよう頼みます
+  # (Shell の `move`)。頼めたら nil、頼めないときは理由の文字列。答えは後から
+  # `on_control` に `{"cmd" => "checkpoint_result", "pid", "ok", "to",
+  # "there" と "missing" か "reason"}` で届きます。
+  # ```ruby
+  # FmrbApp.move(5, "fmruby-abcdef")
+  # ```
+  # <<en>>
+  # Asks for app pid to be moved to the Asterism machine `to` (its node ID;
+  # the shell's `move`). nil when asked, else a String saying why not. The
+  # answer arrives later at `on_control` as `{"cmd" =>
+  # "checkpoint_result", "pid", "ok", "to", "there" and "missing" or
+  # "reason"}`.
+  # ```ruby
+  # FmrbApp.move(5, "fmruby-abcdef")
+  # ```
+  def self.move: (Integer pid, String to) -> String?
 
   # 空きメモリの様子 <<en>> How much memory is free
   #
