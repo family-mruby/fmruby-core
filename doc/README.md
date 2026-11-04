@@ -118,7 +118,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔18 files〕
-- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **完了** (2026-09-26) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。音の可聴確認とスマホでの実操作も確認済み 〔27 files〕
+- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **完了** (2026-09-26) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。音の可聴確認とスマホでの実操作も確認済み 〔28 files〕
 - `wasm_apps/` [wasm のアプリ (WAMR で TinyGo・Rust・Zig) 計画](wasm_apps/plan.md) — **計画済** (2026-11-03) WAMR (インタプリタ) を本体に入れ、TinyGo・Rust・Zig などで作った wasm のアプリを P4・sim・ブラウザ版で動かす。API の bindings は `sig/*.rbs` から各言語へ自動で生成する。着手は VM の checkpoint (doc/checkpoint) が落ち着いてから 〔1 files〕
 - `window_arranger/` [窓を並べるアプリ (Ruby で書くタイル型の窓管理)](window_arranger/plan.md) — **計画済** (2026-10-28) 他のアプリの窓を動かす API を、宣言したアプリ 1 つにだけ開く。利用者が .app.rb 1 本でタイル型の窓管理を書ける。主な対象は Linux 版 (コンポジタ) とブラウザ版 〔1 files〕
 

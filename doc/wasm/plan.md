@@ -89,8 +89,10 @@ SharedArrayBuffer) で書く。
 - 各タスク = pthread。非実行タスクは自分の条件変数で待つ。この骨格は既存 port の
   `utils/wait_for_event.c` がシグナル無しで実現しており流用できる。
 - クリティカルセクション = グローバル mutex (現行の pthread_sigmask の置き換え)。
-- tick は setitimer を使わず、待ちからの復帰時に実時間 (`emscripten_get_now`)
-  から `xTickCount` を進める。
+- tick は setitimer を使わず、待ちからの復帰時に実時間から `xTickCount` を
+  進める。実時間は当初 `emscripten_get_now` だったが、Worker ごとに時刻が
+  ずれて (Linux の Chromium、WSL2) 待ちが何十倍にも伸びたので、全 Worker で
+  1 つの `Date.now()` に替えた (2026-11-04、report/worker_clock.md)。
 - **プリエンプションは捨てる** (pthread_kill が無いので原理的に不可)。
 - 自前の API shim 23 個で置き換える案も検討したが、タイムアウト付きキューや
   所有者付き mutex の再実装はバグの温床なので採らない。
