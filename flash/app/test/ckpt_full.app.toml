@@ -1,0 +1,7 @@
+app_handle_name = "ckpt_full"
+app_screen_name = "Ckpt Full"
+app_screen_name_ja = "チェックポイント試験 (全画面)"
+default_window_mode = "fullscreen"
+launcher_visible = false
+# Fullscreen, moved between Retro and Modern (doc/checkpoint F4)
+movable = true

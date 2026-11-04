@@ -79,6 +79,7 @@ require "json"
 require "open3"
 require "optparse"
 require_relative "screens/image"
+require_relative "checkpoint_sim"
 
 module Regress
   module Checkpoint
@@ -115,6 +116,8 @@ module Regress
     class Failure < StandardError; end
 
     class Runner
+      include SimRounds
+
       def initialize(opts)
         @opts = opts
         @lines = []
@@ -124,10 +127,14 @@ module Regress
         t0 = now
         FileUtils.mkdir_p(OUT)
         configs = @opts[:only] ? [@opts[:only]] : %w[standard mruby]
+        sim_check!
         build(configs) unless @opts[:no_build]
-        results = configs.map { |c| run_config(c) }
+        results = @opts[:no_native] ? [] : configs.map { |c| run_config(c) }
+        # F4a: the simulation and the native program, after the native rounds
+        # (the native programs are built by then; build/ is borrowed)
+        results += run_sims(configs)
         results.each { |r| puts r }
-        ok = results.all? { |r| r.include?(": ok") }
+        ok = results.all? { |r| r.include?(": ok") || r.start_with?("build/:") }
         puts format("checkpoint: %s (%.1f min)", ok ? "ok" : "FAILED", (now - t0) / 60.0)
         ok
       end
@@ -677,9 +684,11 @@ module Regress
     def self.main(argv)
       opts = {}
       OptionParser.new do |o|
-        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build]"
+        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none]"
         o.on("--only NAME", %w[standard mruby]) { |v| opts[:only] = v }
         o.on("--no-build") { opts[:no_build] = true }
+        o.on("--sim LIST") { |v| opts[:sim] = v }
+        o.on("--no-native") { opts[:no_native] = true }
       end.parse!(argv)
       Runner.new(opts).run
     rescue Failure => e

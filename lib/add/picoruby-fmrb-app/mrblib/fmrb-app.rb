@@ -90,21 +90,7 @@ class FmrbApp
     if @_canvas
       @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
       Log.debug("FmrbGfx initialized: canvas_id=#{@_canvas}")
-      if @_fullscreen
-        @user_area_x0 = 0
-        @user_area_y0 = 0
-        @user_area_x1 = @window_width
-        @user_area_y1 = @window_height
-        @user_area_width = @window_width
-        @user_area_height = @window_height
-      else
-        @user_area_x0 = 1
-        @user_area_y0 = TITLE_BAR_H
-        @user_area_x1 = @window_width - 1
-        @user_area_y1 = @window_height - 1
-        @user_area_width = @window_width - 2
-        @user_area_height = @window_height - TITLE_BAR_H - 1
-      end
+      _layout_user_area
 
       # Background canvas (desktop only)
       if @_bg_canvas
@@ -579,20 +565,32 @@ class FmrbApp
   # the canvas it drew on, every GfxBlock defined again, the frame, the
   # rounded corners and the sprite clip, the fonts, the topics; the sprites
   # are forgotten. Then the app's on_restore, which draws what the window
-  # showed (nothing drawn is in the image) and makes its sprites again. The keyboard focus and the window's place are the kernel's, as
-  # for any app it starts.
+  # showed (nothing drawn is in the image) and makes its sprites again. The
+  # keyboard focus and the window's place are the kernel's, as for any app it
+  # starts. On another machine (F4) the window may have another size (a
+  # smaller screen, a fullscreen app on a screen of another size): the user
+  # area is laid out again and the app gets on_resize before on_restore, as
+  # after a resize; a font this machine lacks becomes the nearest one.
   def _checkpoint_restored
     @_suspended = false
     @_close_btn_pressed = false
     @_spin_break = false
+    resized = false
     if @_canvas
+      old_w = @window_width
+      old_h = @window_height
       _checkpoint_canvases
+      resized = @window_width != old_w || @window_height != old_h
+      _layout_user_area if resized
       gfxs = []
       ObjectSpace.each_object(FmrbGfx) { |g| gfxs << g }
       i = 0
       while i < gfxs.size
         g = gfxs[i]
-        if g._checkpoint_rebind
+        if (id = g._checkpoint_rebind)
+          g._canvas_size(@window_width, @window_height) if resized && (id == @_canvas || id == @_bg_canvas)
+          # set_font picks again from this machine's fonts, and keeps what
+          # it picked as current_font
           font = g.current_font
           g.set_font(*font) if font && font != [:default]
           size = g.current_text_size
@@ -635,9 +633,31 @@ class FmrbApp
         i += 1
       end
     end
+    on_resize(@window_width, @window_height) if resized
     on_restore
     @gfx.present if @gfx
     nil
+  end
+
+  # The user area of a window of @window_width x @window_height (the split
+  # initialize and app.c's resize make): a fullscreen window owns it all, a
+  # framed one loses the border and the title bar.
+  def _layout_user_area
+    if @_fullscreen
+      @user_area_x0 = 0
+      @user_area_y0 = 0
+      @user_area_x1 = @window_width
+      @user_area_y1 = @window_height
+      @user_area_width = @window_width
+      @user_area_height = @window_height
+    else
+      @user_area_x0 = 1
+      @user_area_y0 = TITLE_BAR_H
+      @user_area_x1 = @window_width - 1
+      @user_area_y1 = @window_height - 1
+      @user_area_width = @window_width - 2
+      @user_area_height = @window_height - TITLE_BAR_H - 1
+    end
   end
 
   def on_checkpoint_refused(reason)

@@ -260,6 +260,9 @@ class FmrbApp
   # 直します (`on_update` で毎回全部描くアプリは何もしなくてよい)。
   # スプライトや画像など、アプリが自分で外に作ったものもここで作り直します。
   # ファイルを開いたままのアプリはイメージに書けません。
+  # 画面の大きさが違う端末 (Retro と Modern) へ移ると、窓が画面に収まるよう
+  # 縮められたり、全画面の大きさが変わったりします。そのときは
+  # `on_restore` の前に `on_resize` が来ます (大きさを変えたときと同じ)。
   # <<en>>
   # Called in an app started from an image, just before it goes on from where
   # it was written. Its instance variables, Tasks and timers are back as they
@@ -270,6 +273,9 @@ class FmrbApp
   # draws here (one that draws everything in `on_update` need not). Make
   # again here what the app itself made outside the VM (sprites, images). An
   # app holding a file open cannot be written to an image.
+  # Moved to a machine with another screen (Retro and Modern), the window may
+  # be made smaller to fit it, or a fullscreen app gets that screen's size:
+  # `on_resize` then comes before `on_restore`, as after a resize.
   def on_restore: () -> void
 
   # 自分のイメージを断られたとき <<en>> Called when its own image is refused

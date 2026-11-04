@@ -1,0 +1,12 @@
+app_handle_name = "ckpt_wide"
+app_screen_name = "Ckpt Wide"
+app_screen_name_ja = "チェックポイント試験 (幅広の窓)"
+default_window_mode = "window"
+default_window_width = 380
+default_window_height = 100
+default_window_pos_x = 30
+default_window_pos_y = 60
+launcher_visible = false
+# A window wider than Retro's screen, moved between Retro and Modern
+# (doc/checkpoint F4)
+movable = true

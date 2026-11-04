@@ -681,6 +681,37 @@ static void count_name(const char *name, int is_func, void *ud)
     sum->n++;
 }
 
+// The permanent names in full, for comparing two builds (doc/checkpoint F4):
+// when /tmp/ckpt_names exists, a VM set up for checkpoints writes its names to
+// /tmp/<app>.names, one per line ("F " a C function, "O " anything else).
+// Nothing is written otherwise; the check is one failed open per movable app.
+#define NAMES_MARK CKPT_DIR "ckpt_names"
+
+static void write_name(const char *name, int is_func, void *ud)
+{
+    fmrb_file_t f = (fmrb_file_t)ud;
+    size_t done = 0;
+    fmrb_hal_file_write(f, is_func ? "F " : "O ", 2, &done);
+    fmrb_hal_file_write(f, name, strlen(name), &done);
+    fmrb_hal_file_write(f, "\n", 1, &done);
+}
+
+static void dump_names(fmrb_app_task_context_t *ctx)
+{
+    fmrb_file_t mark = NULL;
+    if (fmrb_hal_file_open(NAMES_MARK, FMRB_O_RDONLY, &mark) != FMRB_OK) return;
+    fmrb_hal_file_close(mark);
+    char stem[48];
+    char path[FMRB_MAX_PATH_LEN];
+    stem_of(ctx->filepath, stem, sizeof(stem));
+    snprintf(path, sizeof(path), CKPT_DIR "%s.names", stem);
+    fmrb_file_t f = NULL;
+    if (fmrb_hal_file_open(path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &f) != FMRB_OK) return;
+    mrb_checkpoint_each_name(ctx->mrb, write_name, f);
+    fmrb_hal_file_close(f);
+    FMRB_LOGI(TAG, "[%s] permanent names written to %s", ctx->app_name, path);
+}
+
 void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
 {
     ckpt_app_t *e = entry_of(ctx);
@@ -710,6 +741,7 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     FMRB_LOGI(TAG, "[%s] VM set up for checkpoints%s: the baseline (%u names, digest %08x) took %u bytes of the pool",
               ctx->app_name, restoring ? " (restoring an image)" : "", (unsigned)names.n,
               (unsigned)names.digest, (unsigned)(pool_used(ctx) - before));
+    dump_names(ctx);
 }
 
 void fmrb_app_checkpoint_vm_closing(fmrb_app_task_context_t *ctx)

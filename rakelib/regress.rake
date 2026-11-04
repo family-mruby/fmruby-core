@@ -259,7 +259,7 @@ namespace :regress do
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint (moving an app). About 32 minutes"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint (moving an app, with the simulation). About 42 minutes"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
@@ -388,11 +388,12 @@ end
 REGRESS_CHECKPOINT = File.join(ROOT_DIR, "tools", "regress", "checkpoint.rb")
 
 namespace :regress do
-  desc "Move an app inside one native program (doc/checkpoint F1): write, close, start the image again, standard and all-mruby (ONLY=standard|mruby, NO_BUILD=1)"
+  desc "Move an app (doc/checkpoint): inside one native program, between two, and between the Linux simulation and the native program, standard and all-mruby (ONLY=standard|mruby, NO_BUILD=1: the native builds there are, SIM=retro,modern|none)"
   task :checkpoint do
     args = []
     args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
     args << "--no-build" if ENV["NO_BUILD"] == "1"
+    args += ["--sim", ENV["SIM"]] if ENV["SIM"]
     abort "regress:checkpoint: failed" unless system(Gem.ruby, REGRESS_CHECKPOINT, *args)
   end
 end

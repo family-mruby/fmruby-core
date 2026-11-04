@@ -120,6 +120,14 @@ class FmrbGfx
     @current_text_size = 1
   end
 
+  # The canvas this object draws on has another size now (a restored app's
+  # window on another screen, doc/checkpoint F4): what :center measures.
+  def _canvas_size(width, height)
+    @canvas_width = width
+    @canvas_height = height
+    nil
+  end
+
   # An extra canvas of the app (FmrbApp#create_canvas_gfx): how it was made,
   # which a checkpoint image carries to make it again (doc/checkpoint F3).
   def _extra_canvas(z_offset, transparent, key)

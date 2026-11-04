@@ -1538,6 +1538,12 @@ static mrb_value mrb_fmrb_app_checkpoint_canvases(mrb_state *mrb, mrb_value self
     }
     mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@pos_x"), mrb_fixnum_value(ctx->window_pos_x));
     mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@pos_y"), mrb_fixnum_value(ctx->window_pos_y));
+    // The size this machine gave the window (F4: another screen may have made
+    // it smaller, or a fullscreen app has this screen's size). The caller
+    // compares it with the image's and lays the app out again.
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_width"), mrb_fixnum_value(ctx->window_width));
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_height"), mrb_fixnum_value(ctx->window_height));
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@_fullscreen"), mrb_bool_value(ctx->fullscreen));
     mrb_iv_remove(mrb, self, mrb_intern_lit(mrb, "@_canvas"));
     mrb_iv_remove(mrb, self, mrb_intern_lit(mrb, "@_bg_canvas"));
     fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;

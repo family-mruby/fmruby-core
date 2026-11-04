@@ -915,6 +915,35 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         FMRB_LOGI(TAG, "No %s: using '%s' as the app name", toml_path, app_screen_name);
     }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+    // An image written on another machine carries the window as it was there
+    // (doc/checkpoint F4): Retro's screen is narrower than Modern's. A window
+    // that does not fit this screen is made to: as large as the screen at
+    // most, then moved in. The app sees the new size as a resize
+    // (FmrbApp#_checkpoint_restored calls on_resize). A fullscreen app takes
+    // this screen's fullscreen size above, like any app.
+    if (load_mode == FMRB_LOAD_MODE_CHECKPOINT && !fullscreen && !headless) {
+        uint16_t sw = 0, sh = 0;
+        fmrb_app_fullscreen_size_for(0, &sw, &sh);
+        if (sw > 0 && sh > 0) {
+            int w0 = window_width, h0 = window_height, x0 = window_pos_x, y0 = window_pos_y;
+            if (window_width > sw) window_width = sw;
+            if (window_height > sh) window_height = sh;
+            if (window_pos_x + window_width > sw) window_pos_x = sw - window_width;
+            if (window_pos_y + window_height > sh) window_pos_y = sh - window_height;
+            if (window_pos_x < 0) window_pos_x = 0;
+            if (window_pos_y < 0) window_pos_y = 0;
+            if (min_window_width > window_width) min_window_width = window_width;
+            if (min_window_height > window_height) min_window_height = window_height;
+            if (w0 != window_width || h0 != window_height || x0 != window_pos_x || y0 != window_pos_y) {
+                FMRB_LOGI(TAG, "The image's window %dx%d at %d,%d is made to fit this screen (%ux%u): "
+                          "%dx%d at %d,%d", w0, h0, x0, y0, (unsigned)sw, (unsigned)sh,
+                          window_width, window_height, window_pos_x, window_pos_y);
+            }
+        }
+    }
+#endif
+
     FMRB_LOGI(TAG, "[spawn] 7 fmrb_app_spawn vm=%d", vm_type);
     // Set spawn attributes
     fmrb_spawn_attr_t attr = {
