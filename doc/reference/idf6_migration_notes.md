@@ -1,5 +1,7 @@
 # ESP-IDF v6.0 移行メモ（IDF6対応で判明した課題と回避策）
 
+> 2026-11-04: 移行の新しい方針は `doc/idf6_migration/plan.md` (sim をやめてネイティブ版を sim の代わりにし、ESP-IDF を使うのを実機のビルドだけにする)。このメモはその S5 で使う。
+
 ## 背景
 
 ESP32-P4(Modern/Tab5) 対応の初期に Modern を **ESP-IDF v6.0.1** でビルドする方針で進めたが、
