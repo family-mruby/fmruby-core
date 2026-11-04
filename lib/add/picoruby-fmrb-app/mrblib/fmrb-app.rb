@@ -566,7 +566,78 @@ class FmrbApp
 
   def on_restore
     # Called in the app started from an image, before it goes on from where
-    # it was written: open again what lived outside the VM.
+    # it was written. The base has made the window again (an empty user area
+    # in its frame) and subscribed to the topics again; draw what the window
+    # showed (an app that draws all of it in on_update need not) and open
+    # again what else the app kept outside the VM (sprites, files, sockets).
+  end
+
+  # Called from C in an app started from a checkpoint image, before it goes
+  # on (doc/checkpoint F3, D8). What lived outside the VM for the app and the
+  # base can make again from the image is made again here: the window's
+  # canvases (from the context, as for a fresh app), every FmrbGfx bound to
+  # the canvas it drew on, every GfxBlock defined again, the frame, the
+  # rounded corners and the sprite clip, the fonts, the topics; the sprites
+  # are forgotten. Then the app's on_restore, which draws what the window
+  # showed (nothing drawn is in the image) and makes its sprites again. The keyboard focus and the window's place are the kernel's, as
+  # for any app it starts.
+  def _checkpoint_restored
+    @_suspended = false
+    @_close_btn_pressed = false
+    @_spin_break = false
+    if @_canvas
+      _checkpoint_canvases
+      gfxs = []
+      ObjectSpace.each_object(FmrbGfx) { |g| gfxs << g }
+      i = 0
+      while i < gfxs.size
+        g = gfxs[i]
+        if g._checkpoint_rebind
+          font = g.current_font
+          g.set_font(*font) if font && font != [:default]
+          size = g.current_text_size
+          g.set_text_size(size) if size && size != 1
+        end
+        i += 1
+      end
+      blocks = []
+      ObjectSpace.each_object(GfxBlock) { |b| blocks << b }
+      i = 0
+      while i < blocks.size
+        blocks[i]._checkpoint_redefine
+        i += 1
+      end
+      # Sprites live on the display side under ids of the writing program,
+      # which may name another app's here: forget them (destroy does nothing,
+      # a move raises) for on_restore to make them again.
+      sprites = []
+      ObjectSpace.each_object(SpriteImage) { |o| sprites << o }
+      ObjectSpace.each_object(SpriteInstance) { |o| sprites << o }
+      i = 0
+      while i < sprites.size
+        sprites[i]._checkpoint_forget
+        i += 1
+      end
+      if @gfx
+        @_composite_region_w = nil
+        @_composite_region_h = nil
+        _apply_user_area_sprite_clip
+        _apply_rounded_corner_regions
+        clear_user_area
+      end
+    end
+    topics = @_topics
+    if topics
+      i = 0
+      while i < topics.size
+        send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+          {"cmd" => "subscribe", "topic" => topics[i]})
+        i += 1
+      end
+    end
+    on_restore
+    @gfx.present if @gfx
+    nil
   end
 
   def on_checkpoint_refused(reason)
@@ -780,12 +851,18 @@ class FmrbApp
     end
   end
 
+  # The topics are also kept here (@_topics), so that an app started from a
+  # checkpoint image subscribes to them again (_checkpoint_restored): the
+  # kernel's table names the writing side's process.
   def subscribe(topic)
+    topics = (@_topics ||= [])
+    topics << topic unless topics.include?(topic)
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       {"cmd" => "subscribe", "topic" => topic})
   end
 
   def unsubscribe(topic)
+    @_topics.delete(topic) if @_topics
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       {"cmd" => "unsubscribe", "topic" => topic})
   end
@@ -925,7 +1002,10 @@ class FmrbApp
   # with gfx.set_viewport for hardware-scrolled layers (Modern/P4 only).
   def create_canvas_gfx(width:, height:, z_offset: 1, transparent: false, transparent_color: 0)
     id = _create_canvas(width, height, z_offset, transparent ? 1 : 0, transparent_color)
-    FmrbGfx.new(id, width: width, height: height)
+    gfx = FmrbGfx.new(id, width: width, height: height)
+    # how it was made, for a checkpoint image to make it again (gfx.c)
+    gfx._extra_canvas(z_offset, transparent ? 1 : 0, transparent_color)
+    gfx
   end
 
   def delete_canvas_gfx(gfx)

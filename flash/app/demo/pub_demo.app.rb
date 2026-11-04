@@ -44,6 +44,12 @@ class PubDemoApp < FmrbApp
   def on_update
     100
   end
+
+  # Started from a checkpoint image (movable, doc/checkpoint): the window is
+  # new and empty, and this app draws only when something happens.
+  def on_restore
+    draw_screen
+  end
 end
 
 app = PubDemoApp.new

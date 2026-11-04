@@ -27,6 +27,10 @@
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 #include "fmrb_kernel.h"
+#include "fmrb_app_canvas.h"
+#ifdef FMRB_HAVE_CHECKPOINT
+#include <mruby/checkpoint.h>
+#endif
 
 static const char* TAG = "gfx";
 
@@ -34,6 +38,17 @@ static const char* TAG = "gfx";
 typedef struct {
     fmrb_gfx_context_t ctx;
     fmrb_canvas_handle_t canvas_id;  // Canvas ID for this instance
+#ifdef FMRB_HAVE_CHECKPOINT
+    // An FmrbGfx restored from a checkpoint image (doc/checkpoint F3) draws on
+    // nothing until _checkpoint_rebind binds it to the canvas of the same role
+    // in this program: which one it was, and how an extra canvas was made.
+    uint8_t ckpt_role;               // GFX_CKPT_ROLE_*; 0 for one made here
+    uint8_t ckpt_transparent;
+    uint8_t ckpt_key;
+    int16_t ckpt_z_offset;
+    uint16_t ckpt_width;
+    uint16_t ckpt_height;
+#endif
 } mrb_gfx_data;
 
 static void mrb_gfx_data_free(mrb_state *mrb, void *ptr)
@@ -1719,6 +1734,151 @@ static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+// ============================================================
+// Carrying an FmrbGfx in a checkpoint image (doc/checkpoint F3, D7, D8)
+// ============================================================
+//
+// The C data of an FmrbGfx is a handle on the program's graphics context and
+// a canvas id, both of this program only. The image records which of the
+// app's canvases the object drew on (its role: the window, the wallpaper, an
+// extra canvas and how that was made, or none) instead. The restored object
+// draws on nothing until FmrbApp's restore (fmrb-app.rb, _checkpoint_restored)
+// has made the app's canvases again from its context and asks each FmrbGfx to
+// bind itself (_checkpoint_rebind). What was drawn is not carried: the app
+// draws it again (on_restore, report/f3.md).
+//
+// Registered only by the VMs that open a checkpoint (D7, report/f0.md 5):
+// fmrb_app_checkpoint_vm_opened calls fmrb_gfx_checkpoint_register.
+
+#define GFX_CKPT_VERSION 1
+enum {
+    GFX_CKPT_ROLE_NONE = 0,      // made in this program (not restored)
+    GFX_CKPT_ROLE_WINDOW = 1,
+    GFX_CKPT_ROLE_WALLPAPER = 2,
+    GFX_CKPT_ROLE_EXTRA = 3,
+    GFX_CKPT_ROLE_DEAD = 4,      // destroyed, or on no canvas of the app
+};
+
+static mrb_int gfx_iv_int(mrb_state *mrb, mrb_value obj, const char *name, mrb_int dflt)
+{
+    mrb_value v = mrb_iv_get(mrb, obj, mrb_intern_cstr(mrb, name));
+    return mrb_fixnum_p(v) ? mrb_fixnum(v) : dflt;
+}
+
+// version u8, role u8, then for an extra canvas: width u16, height u16,
+// z offset i16, transparent u8, colour key u8 (big-endian)
+static int gfx_ckpt_dump(mrb_state *mrb, mrb_value obj, mrb_checkpoint_buf *out)
+{
+    mrb_gfx_data *d = (mrb_gfx_data *)DATA_PTR(obj);
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    uint8_t b[10];
+    size_t n = 0;
+    uint8_t role = GFX_CKPT_ROLE_DEAD;
+    b[n++] = GFX_CKPT_VERSION;
+    if (d && d->ctx && ctx && d->canvas_id != FMRB_CANVAS_SCREEN) {
+        if (d->canvas_id == ctx->canvas_id) {
+            role = GFX_CKPT_ROLE_WINDOW;
+        } else if (d->canvas_id == ctx->bg_canvas_id) {
+            role = GFX_CKPT_ROLE_WALLPAPER;
+        } else {
+            for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+                if (ctx->extra_canvas_ids[i] == d->canvas_id) role = GFX_CKPT_ROLE_EXTRA;
+            }
+        }
+    }
+    b[n++] = role;
+    if (role == GFX_CKPT_ROLE_EXTRA) {
+        // How FmrbApp#create_canvas_gfx made it (@_extra = [z, transparent, key]).
+        mrb_value spec = mrb_iv_get(mrb, obj, mrb_intern_lit(mrb, "@_extra"));
+        mrb_int w = gfx_iv_int(mrb, obj, "@canvas_width", 0);
+        mrb_int h = gfx_iv_int(mrb, obj, "@canvas_height", 0);
+        if (!mrb_array_p(spec) || RARRAY_LEN(spec) != 3 || w <= 0 || h <= 0) {
+            FMRB_LOGW(TAG, "an extra canvas not made by create_canvas_gfx cannot be carried");
+            return -1;
+        }
+        mrb_int z = mrb_fixnum_p(RARRAY_PTR(spec)[0]) ? mrb_fixnum(RARRAY_PTR(spec)[0]) : 1;
+        mrb_int t = mrb_fixnum_p(RARRAY_PTR(spec)[1]) ? mrb_fixnum(RARRAY_PTR(spec)[1]) : 0;
+        mrb_int k = mrb_fixnum_p(RARRAY_PTR(spec)[2]) ? mrb_fixnum(RARRAY_PTR(spec)[2]) : 0;
+        b[n++] = (uint8_t)(w >> 8); b[n++] = (uint8_t)w;
+        b[n++] = (uint8_t)(h >> 8); b[n++] = (uint8_t)h;
+        b[n++] = (uint8_t)((uint16_t)z >> 8); b[n++] = (uint8_t)z;
+        b[n++] = (uint8_t)(t ? 1 : 0);
+        b[n++] = (uint8_t)k;
+    }
+    mrb_checkpoint_buf_bytes(mrb, out, b, n);
+    return 0;
+}
+
+static void *gfx_ckpt_restore(mrb_state *mrb, const uint8_t *p, size_t len)
+{
+    if (len < 2 || p[0] != GFX_CKPT_VERSION) {
+        FMRB_LOGW(TAG, "an FmrbGfx of an image this build does not read (%u bytes)", (unsigned)len);
+        return NULL;   // an FmrbGfx on nothing: drawing raises, as on a destroyed one
+    }
+    mrb_gfx_data *d = (mrb_gfx_data *)mrb_malloc(mrb, sizeof(mrb_gfx_data));
+    memset(d, 0, sizeof(*d));
+    d->ckpt_role = p[1];
+    if (d->ckpt_role == GFX_CKPT_ROLE_EXTRA) {
+        if (len < 10) {
+            d->ckpt_role = GFX_CKPT_ROLE_DEAD;
+        } else {
+            d->ckpt_width = (uint16_t)((p[2] << 8) | p[3]);
+            d->ckpt_height = (uint16_t)((p[4] << 8) | p[5]);
+            d->ckpt_z_offset = (int16_t)((p[6] << 8) | p[7]);
+            d->ckpt_transparent = p[8];
+            d->ckpt_key = p[9];
+        }
+    }
+    return d;
+}
+
+void fmrb_gfx_checkpoint_register(mrb_state *mrb)
+{
+    mrb_checkpoint_register_data(mrb, &mrb_gfx_data_type, "FmrbGfx", gfx_ckpt_dump, gfx_ckpt_restore);
+}
+
+// FmrbGfx#_checkpoint_rebind -> Integer (the canvas id) or nil
+// Binds a restored FmrbGfx to the canvas of its role in this program: the
+// window and the wallpaper are the context's (FmrbApp#_checkpoint_canvases
+// made them), an extra canvas is made again as it was. One made here, or one
+// on nothing, is left as it is.
+static mrb_value mrb_gfx_checkpoint_rebind(mrb_state *mrb, mrb_value self)
+{
+    mrb_gfx_data *d = (mrb_gfx_data *)DATA_PTR(self);
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!d || !ctx || d->ctx || d->ckpt_role == GFX_CKPT_ROLE_NONE) return mrb_nil_value();
+    fmrb_canvas_handle_t id = FMRB_CANVAS_SCREEN;
+    switch (d->ckpt_role) {
+        case GFX_CKPT_ROLE_WINDOW:    id = ctx->canvas_id; break;
+        case GFX_CKPT_ROLE_WALLPAPER: id = ctx->bg_canvas_id; break;
+        case GFX_CKPT_ROLE_EXTRA:
+            if (fmrb_app_canvas_create_extra(ctx, d->ckpt_width, d->ckpt_height, d->ckpt_z_offset,
+                                             d->ckpt_transparent != 0, d->ckpt_key, &id) != FMRB_OK) {
+                id = FMRB_CANVAS_SCREEN;
+            }
+            break;
+        default: break;
+    }
+    d->ckpt_role = GFX_CKPT_ROLE_NONE;
+    if (id == FMRB_CANVAS_SCREEN) return mrb_nil_value();   // stays on nothing
+    d->ctx = fmrb_gfx_get_global_context();
+    if (!d->ctx) return mrb_nil_value();
+    d->canvas_id = id;
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@canvas_id"), mrb_fixnum_value(id));
+    return mrb_fixnum_value(id);
+}
+// FmrbGfx#_checkpoint_keep? -> bool
+// Whether this app can be written to an image (movable, or started from one):
+// only then does a GfxBlock keep its program to define it again (gfx_block.rb).
+static mrb_value mrb_gfx_checkpoint_keep_p(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    return mrb_bool_value(ctx && (ctx->movable || ctx->load_mode == FMRB_LOAD_MODE_CHECKPOINT));
+}
+#endif /* FMRB_HAVE_CHECKPOINT */
+
 void mrb_fmrb_gfx_init(mrb_state *mrb)
 {
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
@@ -1755,6 +1915,10 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_draw_text_hybrid", mrb_gfx_draw_text_hybrid, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_OPT(2));
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
+#ifdef FMRB_HAVE_CHECKPOINT
+    mrb_define_method(mrb, gfx_class, "_checkpoint_rebind", mrb_gfx_checkpoint_rebind, MRB_ARGS_NONE());
+    mrb_define_method(mrb, gfx_class, "_checkpoint_keep?", mrb_gfx_checkpoint_keep_p, MRB_ARGS_NONE());
+#endif
 
     // File transfer API
     mrb_define_method(mrb, gfx_class, "_sync_file", mrb_gfx_sync_file, MRB_ARGS_REQ(2));

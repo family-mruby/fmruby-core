@@ -253,12 +253,23 @@ class FmrbApp
   # イメージから起動したとき <<en>> Called when started from an image
   #
   # イメージから起動したアプリで、**書かれた所から続ける直前**に呼ばれます。
-  # インスタンス変数も Task もそのまま戻っています。VM の外にあったもの
-  # (開いていたファイルなど) はここで開き直します。
+  # インスタンス変数も Task もタイマもそのまま戻っています。窓 (同じ場所・
+  # 大きさ・枠、フォント、`GfxBlock`) と `subscribe` した知らせは基底クラスが
+  # 戻してあり、キーボードはこのアプリに来ます。**描いた絵は戻りません**:
+  # 窓は枠だけの空の状態なので、何かあったときだけ描くアプリはここで描き
+  # 直します (`on_update` で毎回全部描くアプリは何もしなくてよい)。
+  # スプライトや画像など、アプリが自分で外に作ったものもここで作り直します。
+  # ファイルを開いたままのアプリはイメージに書けません。
   # <<en>>
   # Called in an app started from an image, just before it goes on from where
-  # it was written. Its instance variables and Tasks are back as they were;
-  # open again here what lived outside the VM (files that were open).
+  # it was written. Its instance variables, Tasks and timers are back as they
+  # were. The base has made its window again (the same place, size and frame,
+  # its fonts and `GfxBlock`s) and subscribed to its topics again, and the
+  # keyboard comes to it. **What was drawn does not come back**: the window
+  # is an empty frame, so an app that draws only when something happens
+  # draws here (one that draws everything in `on_update` need not). Make
+  # again here what the app itself made outside the VM (sprites, images). An
+  # app holding a file open cannot be written to an image.
   def on_restore: () -> void
 
   # 自分のイメージを断られたとき <<en>> Called when its own image is refused

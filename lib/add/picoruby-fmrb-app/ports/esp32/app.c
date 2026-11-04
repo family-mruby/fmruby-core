@@ -1520,6 +1520,42 @@ static mrb_value mrb_fmrb_app_s_checkpoint(mrb_state *mrb, mrb_value klass)
 #endif
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+// FmrbApp#_checkpoint_canvases -> self (doc/checkpoint F3, D8)
+// In an app started from a checkpoint image: make its window (and wallpaper)
+// canvases again from its context, as _init does for a fresh app, and set the
+// ivars that name them and the window's place. The image's numbers were the
+// writing program's. FmrbApp#_checkpoint_restored calls it before it binds
+// the restored FmrbGfx objects to the new canvases.
+static mrb_value mrb_fmrb_app_checkpoint_canvases(mrb_state *mrb, mrb_value self)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+    if (ctx->canvas_id != 0) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "the app has its canvases already");
+    }
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@pos_x"), mrb_fixnum_value(ctx->window_pos_x));
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@pos_y"), mrb_fixnum_value(ctx->window_pos_y));
+    mrb_iv_remove(mrb, self, mrb_intern_lit(mrb, "@_canvas"));
+    mrb_iv_remove(mrb, self, mrb_intern_lit(mrb, "@_bg_canvas"));
+    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_canvas_handle_t bg_canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_err_t ret = fmrb_app_canvas_init(ctx, &canvas_id, &bg_canvas_id);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to create canvas: %d", ret);
+    }
+    if (canvas_id != FMRB_CANVAS_SCREEN) {
+        mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@_canvas"), mrb_fixnum_value(canvas_id));
+    }
+    if (bg_canvas_id != FMRB_CANVAS_SCREEN) {
+        mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@_bg_canvas"), mrb_fixnum_value(bg_canvas_id));
+    }
+    return self;
+}
+#endif
+
 static mrb_value mrb_fmrb_app_s_linux_available_p(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
@@ -2448,6 +2484,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
+#ifdef FMRB_HAVE_CHECKPOINT
+    mrb_define_method(mrb, app_class, "_checkpoint_canvases", mrb_fmrb_app_checkpoint_canvases, MRB_ARGS_NONE());
+#endif
     mrb_define_method(mrb, app_class, "_mark_expected_stop", mrb_fmrb_app_mark_expected_stop, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, app_class, "_sync_file", mrb_fmrb_app_sync_file, MRB_ARGS_REQ(2));

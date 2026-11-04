@@ -65,6 +65,10 @@
 
 static const char *TAG = "ckpt";
 
+// The C data of picoruby-fmrb-app the image carries (gfx.c: FmrbGfx, F3).
+// Registered here, in a VM that opens a checkpoint only (D7).
+extern void fmrb_gfx_checkpoint_register(mrb_state *mrb);
+
 // The HAL's tick state of one VM (task_hal.c, FMRB_HAVE_CHECKPOINT).
 extern int mrb_hal_task_slice_get(mrb_state *mrb, uint32_t *countdown, uint32_t *pending,
                                   uint8_t *switch_pending, uint32_t *sub_tick_us);
@@ -337,26 +341,36 @@ static fmrb_err_t write_file(const char *path, const void *buf, size_t len)
 // what the app was started with, from its context.
 static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const char *path)
 {
-    char *t = (char *)fmrb_sys_malloc(512);
+    const int cap = 768;
+    char *t = (char *)fmrb_sys_malloc(cap);
     if (!t) return FMRB_ERR_NO_MEMORY;
-    int n = snprintf(t, 512,
+    int n = snprintf(t, cap,
                      "# Written with the checkpoint image beside it (doc/checkpoint).\n"
                      "app_screen_name = \"%s\"\n"
                      "movable = true\n"
                      "large_memory = %d\n",
                      ctx->app_name, ctx->mempool_id == POOL_ID_USER_APP_LARGE ? 1 : 0);
     if (ctx->headless) {
-        n += snprintf(t + n, 512 - n, "default_window_mode = \"background\"\n");
-    } else if (ctx->fullscreen) {
-        n += snprintf(t + n, 512 - n, "default_window_mode = \"fullscreen\"\n");
+        n += snprintf(t + n, cap - n, "default_window_mode = \"background\"\n");
     } else {
-        n += snprintf(t + n, 512 - n,
-                      "default_window_mode = \"window\"\n"
-                      "default_window_width = %u\ndefault_window_height = %u\n"
-                      "default_window_pos_x = %u\ndefault_window_pos_y = %u\n"
-                      "resizable = %d\n",
-                      ctx->window_width, ctx->window_height, ctx->window_pos_x,
-                      ctx->window_pos_y, ctx->resizable ? 1 : 0);
+        // The window as it is now (moved, resized, switched to fullscreen):
+        // the image goes on in a window of the same place, size and kind.
+        if (ctx->fullscreen) {
+            n += snprintf(t + n, cap - n, "default_window_mode = \"fullscreen\"\n");
+        } else {
+            n += snprintf(t + n, cap - n,
+                          "default_window_mode = \"window\"\n"
+                          "default_window_width = %u\ndefault_window_height = %u\n"
+                          "default_window_pos_x = %u\ndefault_window_pos_y = %u\n",
+                          ctx->window_width, ctx->window_height, ctx->window_pos_x,
+                          ctx->window_pos_y);
+        }
+        n += snprintf(t + n, cap - n,
+                      "resizable = %d\nrounded_corners = %d\nfullscreen_switchable = %d\n"
+                      "fullscreen_hires = %d\nmin_window_width = %u\nmin_window_height = %u\n",
+                      ctx->resizable ? 1 : 0, ctx->rounded_corners ? 1 : 0,
+                      ctx->fullscreen_switchable ? 1 : 0, ctx->fullscreen_hires ? 1 : 0,
+                      ctx->min_window_width, ctx->min_window_height);
     }
     fmrb_err_t ret = write_file(path, t, (size_t)n);
     fmrb_sys_free(t);
@@ -636,6 +650,7 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     mrb_checkpoint_set_embedder(mrb, emb_dump, emb_restore, NULL);
     mrb_checkpoint_set_handler(mrb, ckpt_written, NULL);
     mrb_checkpoint_set_refusal_handler(mrb, ckpt_refused, NULL);
+    fmrb_gfx_checkpoint_register(mrb);
     mrb_checkpoint_baseline(mrb);
     name_sum_t names = { 0, 2166136261u };
     mrb_checkpoint_each_name(mrb, count_name, &names);
@@ -746,9 +761,17 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
     mrb_value app = mrb_gv_get(mrb, mrb_intern_lit(mrb, APP_GV));
     mrb_gv_remove(mrb, mrb_intern_lit(mrb, APP_GV));
 
-    // The app is up (what FmrbApp#_init's canvas does for a fresh one).
+    // FmrbApp makes again what it kept outside the VM (its window, F3) and
+    // calls the app's on_restore (_checkpoint_restored); anything else that is
+    // not an FmrbApp gets on_restore alone.
+    if (mrb->c == mrb->root_c) {
+        bool base = !mrb_nil_p(app) &&
+                    mrb_respond_to(mrb, app, mrb_intern_lit(mrb, "_checkpoint_restored"));
+        call_hook(mrb, app, base ? "_checkpoint_restored" : "on_restore");
+    }
+    // The app is up (its window's canvas has told the kernel already; a
+    // headless one is told here, as FmrbApp#_init's canvas would).
     fmrb_app_notify_started(ctx);
-    if (mrb->c == mrb->root_c) call_hook(mrb, app, "on_restore");
 
     mrb_bool cfailed = FALSE;
     mrb_value cr = mrb_protect_error(mrb, continue_body, NULL, &cfailed);

@@ -120,6 +120,13 @@ class FmrbGfx
     @current_text_size = 1
   end
 
+  # An extra canvas of the app (FmrbApp#create_canvas_gfx): how it was made,
+  # which a checkpoint image carries to make it again (doc/checkpoint F3).
+  def _extra_canvas(z_offset, transparent, key)
+    @_extra = [z_offset, transparent, key]
+    nil
+  end
+
   # Select the font family for subsequent draw_text calls on this canvas.
   #
   # The font asked for may not be on this machine (see FONT_AVAILABLE), in

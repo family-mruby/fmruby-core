@@ -345,6 +345,14 @@ target_include_directories(
     ${MRBGEMS_DIR}
 )
 
+# mruby-checkpoint's header, for picoruby-fmrb-app's FmrbGfx dump and restore
+# (gfx.c, doc/checkpoint F3). Linux only, where libmruby carries the gem
+# (FMRB_HAVE_CHECKPOINT, mruby_abi_defines.cmake).
+if(IDF_TARGET STREQUAL "linux")
+    target_include_directories(${COMPONENT_LIB} PRIVATE
+        ${COMPONENT_DIR}/picoruby/mrbgems/mruby-checkpoint/include)
+endif()
+
 add_custom_target(
   picoruby DEPENDS ${LIBMRUBY_FILE}
   DEPENDS ${LIBMRUBY_FILE}

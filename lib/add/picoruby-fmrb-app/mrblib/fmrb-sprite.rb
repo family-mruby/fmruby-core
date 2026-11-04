@@ -47,6 +47,12 @@ class SpriteImage
     @gfx._delete_sprite_image(@id)
     @id = nil
   end
+
+  # In an app started from a checkpoint image (FmrbApp#_checkpoint_restored):
+  # the id was the writing program's.
+  def _checkpoint_forget
+    @id = nil
+  end
 end
 
 # SpriteInstance - Sprite placement (position, animation, visibility)
@@ -85,6 +91,12 @@ class SpriteInstance
   def destroy
     return unless @id
     @gfx._delete_sprite_instance(@id)
+    @id = nil
+  end
+
+  # In an app started from a checkpoint image (FmrbApp#_checkpoint_restored):
+  # the id was the writing program's.
+  def _checkpoint_forget
     @id = nil
   end
 end

@@ -2,10 +2,11 @@ app_handle_name = "ckpt_window"
 app_screen_name = "Ckpt Window"
 app_screen_name_ja = "チェックポイント試験 (窓)"
 default_window_mode = "window"
-default_window_width = 120
-default_window_height = 40
+default_window_width = 160
+default_window_height = 90
 default_window_pos_x = 60
-default_window_pos_y = 60
+default_window_pos_y = 50
 launcher_visible = false
-# Declared movable, but its window cannot be carried yet (doc/checkpoint F3)
+# May be written to a checkpoint image and go on elsewhere, window and all
+# (doc/checkpoint F3)
 movable = true

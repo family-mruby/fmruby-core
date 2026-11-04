@@ -21,8 +21,15 @@
 #             kernel starts the image again.
 #   wait      the same without --restart, wait 2 s, "app restore" the .ckpt.
 #   refuse    an app that does not declare movable is refused, and goes on;
-#             so is a movable app with a window (its FmrbGfx cannot be carried
-#             until F3), refused at the safe point by the gem.
+#             so is a movable app that keeps a file open (an open File is C
+#             data no gem carries), refused at the safe point by the gem.
+#   window    (F3) /app/test/ckpt_window.app.rb: a window that draws when it
+#             is clicked or typed into, in a Japanese font and with a GfxBlock
+#             of its own, a Task counting in the log and a topic. Clicked and
+#             typed into, written and started again ("--restart"): the window
+#             is the same pixel for pixel (the app draws it again in
+#             on_restore, report/f3.md), the Task goes on from its next step,
+#             the topic is subscribed again, and a click and a key reach it.
 #   self      /app/test/ckpt_self.app.rb asks for its own image from on_update
 #             (FmrbApp#checkpoint, restart): written, started again,
 #             and asked only once. ckpt_self_refused does the same without
@@ -43,6 +50,9 @@
 #             shows no error dialog (the requester has the reason).
 #   move no answer  "app checkpoint PID --hold 1500" and nobody answers: the
 #             first program's kernel lets the app go on once the hold runs out.
+#   window move  (F3) the window app moved into the second program: the
+#             window there is the same as it was here, a click and a key reach
+#             it there, and it is gone here.
 #   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
 #             passes after every step gets its steps while the main loop
 #             waits longer than a timeslice per turn. The native program
@@ -66,6 +76,7 @@ require "fileutils"
 require "json"
 require "open3"
 require "optparse"
+require_relative "screens/image"
 
 module Regress
   module Checkpoint
@@ -84,6 +95,12 @@ module Regress
     NOT_MOVABLE = "/app/test/task_sleep.app.rb"
     TURNS = "/app/test/task_turns.app.rb"
     WINDOWED = "/app/test/ckpt_window.app.rb"
+    WINDOWED_IMAGE = "/tmp/ckpt_window.ckpt"
+    # where ckpt_window.app.toml puts the window (x, y, w, h), and a place for
+    # the mouse pointer away from it while the screen is compared
+    WINDOW_RECT = [60, 50, 160, 90].freeze
+    POINTER_AWAY = [400, 200].freeze
+    OPEN_FILE = "/app/test/ckpt_file.app.rb"
     SELF = "/app/test/ckpt_self.app.rb"
     SELF_REFUSED = "/app/test/ckpt_self_refused.app.rb"
     SHELL = "default/shell"
@@ -195,7 +212,8 @@ module Regress
         notes << round_restart
         notes << round_wait
         notes << round_refuse
-        notes << round_refuse_window
+        notes << round_refuse_file
+        notes << round_window_restart
         notes << round_self
         notes << round_self_refused
         notes << round_shell
@@ -203,6 +221,7 @@ module Regress
         notes << round_move
         notes << round_move_refused
         notes << round_move_no_answer
+        notes << round_window_move
         no_forced_kill
         "#{config}: ok (#{notes.join('; ')}; #{(now - t0).round}s)"
       rescue Failure => e
@@ -302,19 +321,137 @@ module Regress
         "refused: #{r['reason']}"
       end
 
-      # Declared movable, refused at the safe point (the gem cannot carry its
-      # window): the app is told nothing and goes on.
-      def round_refuse_window
+      # Declared movable, refused at the safe point (the gem cannot carry the
+      # file it keeps open): the app is told nothing and goes on.
+      def round_refuse_file
+        from = log_lines.size
+        pid = app("spawn", OPEN_FILE).fetch("pid")
+        wait_line(/ckpt_file: n=2\b/, from, "ckpt_file counting")
+        r = checkpoint(pid, restart: true)
+        unless r["status"] == "refused" && r["reason"].to_s.include?("File")
+          raise Failure, "refuse file: answered #{r.inspect}"
+        end
+        mark = log_lines.size
+        wait_line(/ckpt_file: n=\d+/, mark, "ckpt_file going on after the refusal")
+        raise Failure, "refuse file: the app is gone" unless ps.any? { |a| a["pid"] == pid }
+        app("kill", pid.to_s)
+        "file refused at the safe point: #{r['reason'][0, 80]}"
+      end
+
+      # ---- a window (F3) ----
+
+      def shot(run_dir = RUN_DIR, port = PORT)
+        out = File.join(OUT, "shot.png")
+        native("shot", out, run_dir: run_dir, port: port)
+        Regress::Screens::Image.load(out)
+      end
+
+      # The pointer away from the window, then the screen once it stays the
+      # same (a frame drawn a moment ago may still be on its way).
+      def window_shot(run_dir = RUN_DIR, port = PORT)
+        native("input", "move", *POINTER_AWAY.map(&:to_s), run_dir: run_dir, port: port)
+        prev = nil
+        deadline = now + 5
+        loop do
+          sleep 0.3
+          img = shot(run_dir, port)
+          return img if prev && img.same?(prev, [], rect: WINDOW_RECT)
+          raise Failure, "the window did not settle in 5 s" if now > deadline
+          prev = img
+        end
+      end
+
+      # A click in the window's drawing area and a key, at (x, y) inside the
+      # window; the app logs both.
+      def poke_window(x, y, key, run_dir: RUN_DIR, port: PORT)
+        wx, wy = WINDOW_RECT
+        from = log_lines(run_dir).size
+        native("input", "click", (wx + x).to_s, (wy + y).to_s, "sleep", "200", "text", key,
+               run_dir: run_dir, port: port)
+        wait_line(/ckpt_window: click #{x},#{y} dots=\d+/, from, "the click at #{x},#{y}", run_dir: run_dir)
+        wait_line(/ckpt_window: key #{key} text=/, from, "the key #{key}", run_dir: run_dir)
+      end
+
+      def start_window
         from = log_lines.size
         pid = app("spawn", WINDOWED).fetch("pid")
-        wait_line(/ckpt_window: n=2\b/, from, "ckpt_window counting")
-        r = checkpoint(pid, restart: true)
-        raise Failure, "refuse window: answered #{r.inspect}" unless r["status"] == "refused" && !r["reason"].to_s.empty?
+        wait_line(/ckpt_window: task=2 /, from, "ckpt_window's Task")
+        poke_window(40, 50, "a")
+        poke_window(90, 66, "b")
+        pid
+      end
+
+      def compare_window(before, after, round)
+        count, box = before.diff(after, [], rect: WINDOW_RECT)
+        return if count.zero?
+        out = File.join(OUT, "#{round.tr(' ', '_')}.png")
+        after.write(out)
+        before.diff_picture(after, []).write(out.sub(".png", ".diff.png"))
+        raise Failure, "#{round}: the window differs in #{count} px (#{box.inspect}; #{out.sub("#{CORE}/", '')})"
+      end
+
+      # The Task's count across the move, and the topic subscribed again
+      # (subs: the restored side's lines from the image on).
+      def window_goes_on(before, after, subs, round, pid_after)
+        last = before.reverse.find { |l| l =~ /ckpt_window: task=\d+ / } or raise Failure, "#{round}: no task step before"
+        first = after.find { |l| l =~ /ckpt_window: task=\d+ / } or raise Failure, "#{round}: no task step after"
+        n0 = last[/task=(\d+)/, 1].to_i
+        n1 = first[/task=(\d+)/, 1].to_i
+        raise Failure, "#{round}: the Task went from #{n0} to #{n1}" unless n1 == n0 + 1
+        unless subs.any? { |l| l =~ /PID #{pid_after} subscribed to 'ckpt_window'/ }
+          raise Failure, "#{round}: the topic was not subscribed again"
+        end
+        "#{n0}->#{n1}"
+      end
+
+      # Written and started again in the same program (F1's way, F3's app).
+      def round_window_restart
+        pid = start_window
+        before = window_shot
         mark = log_lines.size
-        wait_line(/ckpt_window: n=\d+/, mark, "ckpt_window going on after the refusal")
-        raise Failure, "refuse window: the app is gone" unless ps.any? { |a| a["pid"] == pid }
-        app("kill", pid.to_s)
-        "window refused at the safe point: #{r['reason'][0, 80]}"
+        r = checkpoint(pid, restart: true)
+        raise Failure, "window: answered #{r.inspect}" unless r["status"] == "written" && r["path"] == WINDOWED_IMAGE
+        restored = wait_line(/ckpt_window: on_restore dots=2 text=ab/, mark, "the window's on_restore")
+        wait_line(/ckpt_window: task=\d+ /, restored + 1, "a Task step after the restore")
+        after = window_shot
+        compare_window(before, after, "window")
+        lines = log_lines
+        w = (mark...lines.size).find { |k| lines[k] =~ /checkpoint written: \S+ \((\d+) bytes/ } or
+          raise Failure, "window: no 'checkpoint written'"
+        bytes = lines[w][/\((\d+) bytes/, 1]
+        new_pid = ps.find { |a| a["name"] == "Ckpt Window" }&.fetch("pid") or raise Failure, "window: not running again"
+        task = window_goes_on(lines[0...w], lines[restored..], lines[w..], "window", new_pid)
+        poke_window(60, 60, "c")
+        app("kill", new_pid.to_s)
+        sleep 0.3
+        "window: same #{WINDOW_RECT[2]}x#{WINDOW_RECT[3]} px, task #{task}, image #{bytes} B, click and key after"
+      end
+
+      # Moved into the second program (F2's way, F3's app).
+      def round_window_move
+        pid = start_window
+        before = window_shot
+        mark = log_lines.size
+        mark_b = log_lines(RUN_DIR_B).size
+        r = move(pid)
+        raise Failure, "window move: answered #{r.inspect}" unless r["status"] == "moved" && r["pid"]
+        restored = wait_line(/ckpt_window: on_restore dots=2 text=ab/, mark_b, "on_restore in the second program",
+                             run_dir: RUN_DIR_B)
+        wait_line(/ckpt_window: task=\d+ /, restored + 1, "a Task step in the second program", run_dir: RUN_DIR_B)
+        wait_line(/\[Ckpt Window gen=\d+\] Task exiting normally/, mark, "the first program's copy closing")
+        after = window_shot(RUN_DIR_B, PORT_B)
+        compare_window(before, after, "window move")
+        raise Failure, "window move: the first program still has the window" if ps.any? { |x| x["name"] == "Ckpt Window" }
+        a = log_lines
+        w = (mark...a.size).find { |k| a[k] =~ /checkpoint written: / } or raise Failure, "window move: no 'checkpoint written'"
+        stray = a[(w + 1)..].grep(/ckpt_window: task=/)
+        raise Failure, "window move: the first program counted on after its image (#{stray.first})" unless stray.empty?
+        b = log_lines(RUN_DIR_B)
+        task = window_goes_on(a[0...w], b[restored..], b[mark_b..], "window move", r["pid"])
+        poke_window(60, 60, "c", run_dir: RUN_DIR_B, port: PORT_B)
+        app_b("kill", r["pid"].to_s)
+        sleep 0.3
+        "window move: same there, task #{task}, click and key there, carried in #{r['carried_ms'] - r['held_ms']} ms"
       end
 
       # The app asks for its own image from on_update (FmrbApp#checkpoint).

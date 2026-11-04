@@ -187,6 +187,14 @@ class GfxBlock
     # Register program on WROVER (sync; returns prog_id).
     @prog_id = @gfx._gfx_define_prog(bc_str, st_str)
     @canvas_gfx = gfx
+    # An app that can be carried in a checkpoint image keeps the program, to
+    # define it again in the program it goes on in (doc/checkpoint F3: the id
+    # was the writing side's). Others, and the builds without the gem, keep
+    # nothing.
+    if gfx.respond_to?(:_checkpoint_keep?) && gfx._checkpoint_keep?
+      @_bc = bc_str
+      @_st = st_str
+    end
 
     # Initial EXEC sends every register.
     @prev_regs = extract_regs(rec1.cmds)
@@ -217,9 +225,10 @@ class GfxBlock
     changed = []
     i = 0
     while i < new_regs.length
-      changed << [i, new_regs[i]] if new_regs[i] != @prev_regs[i]
+      changed << [i, new_regs[i]] if @_resend || new_regs[i] != @prev_regs[i]
       i += 1
     end
+    @_resend = false
     # Always issue EXEC_PROG so the WROVER re-runs the program and restores
     # any pixels the app may have overwritten (e.g. by @gfx.clear). The
     # payload still includes only changed registers, so the extra cost vs a
@@ -236,6 +245,25 @@ class GfxBlock
 
   def destroyed?
     @destroyed
+  end
+
+  # In an app started from a checkpoint image (FmrbApp#_checkpoint_restored,
+  # once its FmrbGfx is bound to the new canvas): define the program again
+  # there. The next draw sends every register, as the first one did.
+  def _checkpoint_redefine
+    return if @destroyed
+    unless @_bc
+      @destroyed = true
+      return
+    end
+    begin
+      @prog_id = @canvas_gfx._gfx_define_prog(@_bc, @_st)
+      @_resend = true
+    rescue => e
+      Log.warn("GfxBlock: cannot define the program again: #{e.message}")
+      @prog_id = nil
+      @destroyed = true
+    end
   end
 
   private
