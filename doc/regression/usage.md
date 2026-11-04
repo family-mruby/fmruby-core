@@ -332,7 +332,7 @@ rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今あるもので流す (sim は毎回作る)
 ```
 
-- 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、窓のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
+- 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、窓のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a)、Asterism で移すこと (F5) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
 - `rake regress:full` に入っている (最後に、`SIM=1` で流す)。`rake regress` (安い方) には入らない。ブラウザ版・実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
 - ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (窓なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
@@ -362,6 +362,14 @@ rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今�
   - calls: `/app/test/ckpt_calls.app.rb` (ネイティブ版だけの `FmrbApp.linux_settings` を `respond_to?` で備えて呼ぶ。申告なし) をネイティブ版から sim へ。移り、答えの `missing` が `["linux_settings"]`、sim のログに足りない名前の行、sim で数え続ける (doc/checkpoint/movable_apps.md の 5.2)。
   - requires: `ckpt_requires` (同じ名前を `requires` に書いたもの) をネイティブ版から sim へ。sim が断り (`requires the method 'linux_settings'`)、ネイティブ版で止めた所から続く (5.3)。
   - sim のログは `tmp/regress/checkpoint/sim_<構成>_<系列>.log`、そのときのネイティブ版のログは `..._native.log`、作ったときのログは `..._build.log`。出力は構成と系列ごとに 1 行。
+- Asterism で移す場面 (F5、`tools/regress/checkpoint_asterism.rb`)。流すあいだだけ、自前の Zenoh のルータ (sim の zenohd と同じ `eclipse/zenoh` のイメージ、コンテナ名 `fmrb_regress_ckpt_zenohd`、127.0.0.1 の 17457 (tcp)・17459 (ws)) を起こす (docker が要る)。A と B には端末の設定を書いてから起こす: `/home/asterism/config.toml` (そのルータとノード ID `rg-ckpt-a`・`rg-ckpt-b`) と `/home/asterism/receive.toml` (相手のノードだけから受け取る)。カーネルが起動のときに転送のアプリを動かす。頼み方は `ruby tools/fmrb_native.rb app move <pid> --node <ノード ID>` (デバッグサーバの `move`)。
+  - asterism move: カウンタを `rg-ckpt-b` へ。相手に聞き (呼ぶメソッドの名前)、書いて止め、Asterism で分けて運び、B で起動できてから A で閉じる。B で次の 1 歩から続き、A はイメージの後に数えない。運ぶ時間・止めていた時間・移す全体の時間を出す。
+  - asterism shell: Shell で `move <pid> rg-ckpt-b` を打つ。移り、Shell に `move: PID n moved to rg-ckpt-b (PID m there)` が来る。
+  - asterism requires: `/app/test/ckpt_requires_absent.app.rb` (`requires` にどのビルドにも無い名前) を B へ。B が聞かれた所で断り、イメージは書かれず (止まらない)、A で数え続ける。B には何も送られない。
+  - asterism not allowed: カウンタを A 自身のノードへ。A の `receive.toml` は自分を許していないので、止める前に断られる。
+  - asterism no answer: カウンタを誰もいないノード (`rg-ckpt-nobody`) へ。止める前に断られる。
+  - asterism late: `--hold 1` で移す。運んでいる間に止めておく時間が切れて A で続き、後から B で起動した写しは B で止められる (2 つにならない)。
+  - 警告つきで移す形 (相手のビルドに無い名前を呼ぶ) は、ビルドの違う相手が要るので sim の場面 (`SIM=1`) で見る: ネイティブ版から sim へ Asterism で、asterism calls (`ckpt_calls`。移り、`missing` が `["linux_settings"]`、sim に警告の行) と asterism requires (`ckpt_requires`。sim が聞かれた所で断り、止まらない)。sim の `/home/asterism` は作業の木の `flash/home/asterism` なので、流すあいだだけ設定を書き、終わったら元に戻す (あったものは書き戻し、無かったものは消す)。ルータは sim の zenohd (127.0.0.1:7447)。
 - 最後に、A と B のログに強制終了 (`No response in ...ms, forcing termination`) が 1 件も無いことを確かめる。どのアプリも頼んで閉じ、アプリの Task はアプリと一緒に終わる (doc/checkpoint/report/f2.md の 3)。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
 - 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log` (B は `<構成>_b.log`)、作ったときのログは `build.log`。

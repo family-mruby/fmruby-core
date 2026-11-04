@@ -1,6 +1,6 @@
 # 運べるアプリの書き方 (movable なアプリの前提・制約・作法)
 
-> 状態: 進行中 | 更新: 2026-11-04 | 動いているアプリを止めてイメージに書き、別の VM・別のプロセス・別の端末で続ける (doc/checkpoint) ときに、アプリを書く人が知っておくこと。前提 (mruby の VM のアプリだけ、`.app.toml` に `movable = true`、運べるビルド)、制約 (断られるもの、戻らないもの、Task のブロックの self、時計)、作法 (hook でしてよいこと、端末ごとに違うメソッドへの備え、`requires` の申告、移す頼み方)
+> 状態: 進行中 | 更新: 2026-11-04 (F5) | 動いているアプリを止めてイメージに書き、別の VM・別のプロセス・別の端末で続ける (doc/checkpoint) ときに、アプリを書く人が知っておくこと。前提 (mruby の VM のアプリだけ、`.app.toml` に `movable = true`、運べるビルド)、制約 (断られるもの、戻らないもの、Task のブロックの self、時計)、作法 (hook でしてよいこと、端末ごとに違うメソッドへの備え、`requires` の申告、移す頼み方)
 
 計画と決まったことの正は `doc/checkpoint/plan.md`。この文書はそこで決まったことを、アプリを書く側から見てまとめ直したもの。
 API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`・`on_restore`・`on_checkpoint_refused`・`checkpoint`) にもある。
@@ -100,7 +100,11 @@ requires = ["pack", "linux_settings"]
 
 ### 5.4 止める前の確認 (F5)
 
-F5 (Asterism で送る) では、止める前に、移動元が同じ名前の一覧 (`mrb_checkpoint_sent_names`、イメージを書かずに取れる) を相手に送り、相手が自分の表で引いて「全部ある」か「足りない: ...」と答える。`requires` の名前が足りなければ、止める前に断る。着いた側の確認 (5.2・5.3) は最後の守りとして残る。
+Asterism で移すときは、止める前に、移動元が同じ名前の一覧 (`mrb_checkpoint_sent_names`、イメージを書かずに取れる) と `requires` を相手に送り、相手が自分の表で引いて「全部ある」か「足りない: ...」と答える。
+
+- `requires` の名前が相手に無ければ、**止める前に断る** (イメージも書かない)。アプリは何も気づかずに動き続け、頼んだ側に理由が返る (`on_checkpoint_refused`、Shell の `move` の答え、道具の `{status: stayed, here: "not stopped"}`)。
+- ほかの足りない名前は警告として頼んだ側に返り (`missing`)、移す。
+- 着いた側の確認 (5.2・5.3) は最後の守りとして残る。
 
 ## 6. 移す・書く頼み方
 
@@ -111,6 +115,20 @@ F5 (Asterism で送る) では、止める前に、移動元が同じ名前の�
 | 開発の道具 | `ruby tools/fmrb_native.rb app checkpoint PID [--restart] [--hold MS]`、`app restore PATH`、`app move PID --to <run dir か port>` (sim は port 5555)。MCP の `native_app` も同じ |
 
 イメージは `/tmp/<名前>.ckpt`、横に起動の属性の `/tmp/<名前>.toml` (`movable`・窓の形・`requires`) が書かれる。
+
+### 6.1 別の端末へ移す (Asterism、F5)
+
+移す先は **Asterism の端末の名前** (ノード ID。`asterism_nodes` や `/home/asterism/config.toml` の `node` に出るもの) で指す。
+
+| 入口 | 使い方 |
+|---|---|
+| アプリ自身 | `move_to("ノード ID")`。相手で起動できたら `on_checkpoint` の後に閉じ (相手では `on_restore`)、移らなかったら `on_checkpoint_refused` で理由を受けて続ける。ほかのアプリは `FmrbApp.move(pid, "ノード ID")` (答えは `on_control` に `checkpoint_result` で、`to`・`there` (相手での PID)・`missing` か `reason`) |
+| Shell | `move <pid> <ノード ID>` |
+| 開発の道具 | `ruby tools/fmrb_native.rb app move PID --node ノードID [--hold MS]`。MCP の `native_app` の `move` に `node` |
+
+- 段取りは、相手に聞く (5.4) → 止めてイメージを書く (移動中の印) → 運ぶ → 相手で起動 → 起動できたと返ってきたら閉じる。断られた・返事が無い (既定の `hold` 10 秒) ときは止めた所から続ける。返事が遅れて相手で起動したときは、相手の側を止める (2 つにならない)。
+- 相手の端末は、受け取ってよい相手を `/home/asterism/receive.toml` に書く (`from = ["ノード ID", ...]`。`"*"` は網に入れる全員)。この file が無い端末は何も受け取らない。この file がある端末は、起動のときに受け口 (転送のアプリ `/usr/share/transfer/transfer.app.rb`) を動かす。
+- 移す側の端末は、Asterism につながる設定 (`/home/asterism/config.toml`) があればよい。転送のアプリは移す頼みのときに起動する。
 
 ## 7. 試験のアプリ (手本)
 

@@ -74,6 +74,10 @@
 - 店は「使う人が自分で選んで入れる」、Asterism は「管理する側 (Console・別の端末) が配る・移す」と
   向きで分ける。
 - 受け口を最初に作るのは、W (この計画) と checkpoint の F5 のうち先に必要になった方。
+  (2026-11-04) F5 で作った (実装済・検収待ち、doc/checkpoint/report/f5.md の 2 と 11): 転送のアプリ
+  `/usr/share/transfer/transfer.app.rb` が `<ノード>/transfer/inbox` に `check` / `begin` / `chunk` /
+  `commit` / `status` / `cancel` を出す。W5 は種類の表に `.app.wasm` の種類を足し、`commit` で置き場所へ
+  移してランチャーの一覧に足す処理を書く形になる。
 
 ### 5. 将来: wasm のアプリを checkpoint で運ぶ
 
