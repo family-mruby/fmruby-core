@@ -6,7 +6,7 @@
  * not: Emscripten has its own calls for both (a Worker must sleep on a futex,
  * not in nanosleep), so each build links one implementation of this header:
  *
- *   port_clock_wasm.c   emscripten_get_now / emscripten_thread_sleep
+ *   port_clock_wasm.c   Date.now (held monotonic) / emscripten_thread_sleep
  *   port_clock_posix.c  clock_gettime(CLOCK_MONOTONIC) / nanosleep
  */
 #pragma once
@@ -15,8 +15,9 @@
 extern "C" {
 #endif
 
-/* Milliseconds on a monotonic clock, with sub-millisecond resolution. Only
- * differences are meaningful. */
+/* Milliseconds on a monotonic clock that reads the same on every thread (the
+ * tick is derived from whichever task calls it), with a resolution of a
+ * millisecond or better. Only differences are meaningful. */
 double dPortClockNowMs( void );
 
 /* Put the calling thread to sleep for about ms milliseconds. */
