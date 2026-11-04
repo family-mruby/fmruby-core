@@ -40,8 +40,9 @@ class SubDemoApp < FmrbApp
     100
   end
 
-  # Started from a checkpoint image (movable, doc/checkpoint): the window is
-  # new and empty, and this app draws only when something happens.
+  # Started from a checkpoint image (doc/checkpoint; this app is not declared
+  # movable yet): the window is new and empty, and this app draws only when
+  # something happens.
   def on_restore
     draw_screen
   end

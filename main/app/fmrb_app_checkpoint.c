@@ -62,6 +62,9 @@
 #include "fmrb_mem.h"
 #include "fmrb_msg.h"
 #include "fmrb_task_config.h"
+#include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
+#include "fmrb_theme.h"
 
 static const char *TAG = "ckpt";
 
@@ -499,6 +502,54 @@ static bool hold_until_told(fmrb_app_task_context_t *ctx, ckpt_app_t *e, char *w
     return close;
 }
 
+// ---- the moving mark (the user's decision on F3) -----------------------------
+//
+// While a move holds the app (its image is on its way, D15), a small themed
+// badge saying so stands over its window's title bar. It is a canvas of its
+// own just above the window, so taking it down shows the window exactly as it
+// was: the app draws nothing (it is stopped at the safe point and cannot).
+// A restart in the same program (F1) is not held and shows none.
+
+#define MARK_TEXT "moving..."
+#define MARK_W 58
+#define MARK_H 9
+
+static fmrb_canvas_handle_t mark_show(fmrb_app_task_context_t *ctx)
+{
+    fmrb_gfx_context_t gfx = fmrb_gfx_get_global_context();
+    if (!gfx || ctx->headless || ctx->canvas_id == 0) return FMRB_CANVAS_SCREEN;
+    fmrb_canvas_handle_t id = FMRB_CANVAS_SCREEN;
+    if (fmrb_gfx_create_canvas(gfx, MARK_W, MARK_H, (int16_t)(ctx->z_order + 1), false, 0, &id) != FMRB_GFX_OK) {
+        FMRB_LOGW(TAG, "[%s] no canvas for the moving mark", ctx->app_name);
+        return FMRB_CANVAS_SCREEN;
+    }
+    const fmrb_theme_t *t = fmrb_theme_get();
+    // In the title bar, left of the close button; at the top left of a
+    // fullscreen app (it has no title bar) or of a narrow window.
+    int x = ctx->window_pos_x + 1;
+    int y = ctx->window_pos_y + 1;
+    if (!ctx->fullscreen && ctx->window_width >= MARK_W + 30) {
+        x = ctx->window_pos_x + ctx->window_width - MARK_W - 12;
+    }
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, id, 0, 0, MARK_W, MARK_H, t->highlight, true);
+    fmrb_gfx_submit(&cmd);
+    fmrb_gfx_cmd_text(&cmd, id, 2, 1, MARK_TEXT, t->text_light, t->highlight, true, FMRB_FONT_SIZE_MEDIUM, 0);
+    fmrb_gfx_submit(&cmd);
+    fmrb_gfx_cmd_present(&cmd, id, (int16_t)x, (int16_t)y, 0xFF);
+    fmrb_gfx_submit(&cmd);
+    FMRB_LOGI(TAG, "[%s] moving mark shown (canvas %u)", ctx->app_name, (unsigned)id);
+    return id;
+}
+
+static void mark_hide(fmrb_app_task_context_t *ctx, fmrb_canvas_handle_t id)
+{
+    if (id == FMRB_CANVAS_SCREEN) return;
+    fmrb_gfx_context_t gfx = fmrb_gfx_get_global_context();
+    if (gfx) fmrb_gfx_delete_canvas(gfx, id);
+    FMRB_LOGI(TAG, "[%s] moving mark taken down", ctx->app_name);
+}
+
 // The gem's handler: an image of this app was taken at a safe point.
 static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const char *unused,
                          enum mrb_checkpoint_kind kind, void *ud)
@@ -538,7 +589,9 @@ static void ckpt_written(mrb_state *mrb, const uint8_t *buf, size_t len, const c
         e->status = FMRB_APP_CKPT_HELD;
         send_kernel(ctx->app_id, "checkpoint_held", "path", path);
         char why[CKPT_WHAT_MAX];
+        fmrb_canvas_handle_t mark = mark_show(ctx);
         bool close = hold_until_told(ctx, e, why, sizeof(why));
+        mark_hide(ctx, mark);
         e->hold_ms = 0;
         if (!close) {
             FMRB_LOGI(TAG, "[%s] goes on from its image: %s", ctx->app_name, why);

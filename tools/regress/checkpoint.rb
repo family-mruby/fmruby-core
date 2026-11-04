@@ -50,9 +50,11 @@
 #             shows no error dialog (the requester has the reason).
 #   move no answer  "app checkpoint PID --hold 1500" and nobody answers: the
 #             first program's kernel lets the app go on once the hold runs out.
-#   window move  (F3) the window app moved into the second program: the
-#             window there is the same as it was here, a click and a key reach
-#             it there, and it is gone here.
+#   window move  (F3) first held and let go on: while held, the moving mark
+#             stands in the window's title bar, and once it goes on the window
+#             is as it was. Then moved into the second program: the mark shown
+#             and taken down once here, the window there the same as it was
+#             here, a click and a key reach it there, and it is gone here.
 #   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
 #             passes after every step gets its steps while the main loop
 #             waits longer than a timeslice per turn. The native program
@@ -427,10 +429,32 @@ module Regress
         "window: same #{WINDOW_RECT[2]}x#{WINDOW_RECT[3]} px, task #{task}, image #{bytes} B, click and key after"
       end
 
+      # Held and let go on (the moving mark): while held, a badge stands in
+      # the window's title bar; once it goes on, the window is as it was.
+      def window_mark(pid, before)
+        mark = log_lines.size
+        r = app("checkpoint", pid.to_s, "--hold", "5000", "--max", "8000")
+        raise Failure, "window mark: answered #{r.inspect}" unless r["status"] == "held"
+        wait_line(/ckpt: \[Ckpt Window\] moving mark shown/, mark, "the moving mark")
+        held = window_shot
+        held.write(File.join(OUT, "window_mark.png"))   # for a person to look at
+        count, box = before.diff(held, [], rect: WINDOW_RECT)
+        title_bar = box && box[1] >= WINDOW_RECT[1] && box[3] < WINDOW_RECT[1] + 11
+        unless count.positive? && title_bar
+          raise Failure, "window mark: no mark in the title bar while held (#{count} px, #{box.inspect})"
+        end
+        app("finish", pid.to_s, "continue", "regress")
+        wait_line(/ckpt: \[Ckpt Window\] moving mark taken down/, mark, "the mark taken down")
+        wait_line(/ckpt: \[Ckpt Window\] goes on from its image/, mark, "the window app going on")
+        compare_window(before, window_shot, "window mark gone")
+        "#{count} px in the title bar"
+      end
+
       # Moved into the second program (F2's way, F3's app).
       def round_window_move
         pid = start_window
         before = window_shot
+        mark_note = window_mark(pid, before)
         mark = log_lines.size
         mark_b = log_lines(RUN_DIR_B).size
         r = move(pid)
@@ -442,6 +466,10 @@ module Regress
         after = window_shot(RUN_DIR_B, PORT_B)
         compare_window(before, after, "window move")
         raise Failure, "window move: the first program still has the window" if ps.any? { |x| x["name"] == "Ckpt Window" }
+        a_mark = log_lines[mark..]
+        unless a_mark.grep(/\[Ckpt Window\] moving mark shown/).size == 1 && a_mark.grep(/\[Ckpt Window\] moving mark taken down/).size == 1
+          raise Failure, "window move: the moving mark was not shown and taken down once while held"
+        end
         a = log_lines
         w = (mark...a.size).find { |k| a[k] =~ /checkpoint written: / } or raise Failure, "window move: no 'checkpoint written'"
         stray = a[(w + 1)..].grep(/ckpt_window: task=/)
@@ -451,7 +479,8 @@ module Regress
         poke_window(60, 60, "c", run_dir: RUN_DIR_B, port: PORT_B)
         app_b("kill", r["pid"].to_s)
         sleep 0.3
-        "window move: same there, task #{task}, click and key there, carried in #{r['carried_ms'] - r['held_ms']} ms"
+        "window move: mark while held (#{mark_note}) and gone after, same there, task #{task}, click and key there, " \
+          "carried in #{r['carried_ms'] - r['held_ms']} ms"
       end
 
       # The app asks for its own image from on_update (FmrbApp#checkpoint).
