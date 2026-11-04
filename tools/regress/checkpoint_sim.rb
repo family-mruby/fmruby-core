@@ -106,8 +106,10 @@ module Regress
         end
         lines = []
         begin
-          configs.each do |c|
-            sim_families.each { |f| lines << run_sim(c, f, tree) }
+          # family by family, the one the sim is at first: graphics-audio
+          # needs a second start for each switch (SimRun.current_first)
+          SimRun.current_first(sim_families) { |f| f }.each do |f|
+            configs.each { |c| lines << run_sim(c, f, tree) }
           end
         ensure
           SimRun.down if SimRun.core_running?
@@ -125,9 +127,8 @@ module Regress
       def run_sim(config, family, tree)
         t0 = now
         name = "#{config} sim #{family}"
-        tree.clean_all!
         blog = File.join(OUT, "sim_#{config}_#{family}.build.log")
-        ok, bsecs = SimRun.run_logged(sim_env(config, family), [ENV["RAKE"] || "rake", "build:linux"], blog)
+        ok, bsecs, cached = tree.sim_build!(sim_env(config, family), blog)
         raise Failure, "build:linux failed (#{blog.sub("#{CORE}/", '')})" unless ok
         raise Failure, "build/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
         sim_up(family)
@@ -152,7 +153,7 @@ module Regress
         notes << sim_round_calls
         notes << sim_round_requires
         sim_no_forced_kill
-        "#{name}: ok (#{notes.join('; ')}; build #{bsecs.round}s, #{(now - t0 - bsecs).round}s)"
+        "#{name}: ok (#{notes.join('; ')}; build #{cached ? 'cached' : "#{bsecs.round}s"}, #{(now - t0 - bsecs).round}s)"
       rescue Failure, RuntimeError => e
         "#{name}: FAILED #{e.message}"
       ensure
@@ -160,6 +161,7 @@ module Regress
         FileUtils.cp(log_path, File.join(OUT, "sim_#{config}_#{family}_native.log")) if File.exist?(log_path)
         down_if_running
         SimRun.down if SimRun.core_running?
+        tree.keep_for_later!
       end
 
       # graphics-audio applies a new frame-buffer size on the next boot: one

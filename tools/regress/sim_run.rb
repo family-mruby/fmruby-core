@@ -175,6 +175,23 @@ module Regress
       [head[16, 4].unpack1("N"), head[20, 4].unpack1("N")]
     end
 
+    # The family graphics-audio came up at last (its frame-buffer size): it
+    # keeps that size for the next boot, and a boot at the other family's
+    # needs a second start (boot_and_run). The parts start with this family
+    # (current_first) so that a run switches as few times as it can.
+    LAST_FAMILY = File.join(CORE, "tmp", "regress", "sim_family")
+
+    def last_family
+      File.exist?(LAST_FAMILY) ? File.read(LAST_FAMILY).strip : nil
+    end
+
+    # items (each with a family, given by the block) with the family the
+    # sim is at now first; the order is otherwise kept
+    def current_first(items)
+      now = last_family
+      items.each_with_index.sort_by { |x, i| [yield(x) == now ? 0 : 1, i] }.map(&:first)
+    end
+
     def up(family)
       ok, out = sh(*COMPOSE, "up", "-d")
       raise "docker compose up failed: #{out.strip[-500..]}" unless ok
@@ -185,7 +202,13 @@ module Regress
         log.include?(BOOT_MARKER)
       end
       sleep 3
-      screen_size
+      size = screen_size
+      came = SIZES.key(size)
+      if came
+        FileUtils.mkdir_p(File.dirname(LAST_FAMILY))
+        File.write(LAST_FAMILY, came)
+      end
+      size
     end
 
     def down
@@ -218,13 +241,16 @@ module Regress
       res = boot_and_run(family, t)
       res["build_seconds"] = bsecs.round
       res
+    ensure
+      tree.keep_for_later!
     end
 
+    # clean_all and build:linux (or, inside rake regress:full, the same
+    # build an earlier part made: BuildTree#sim_build!)
     def build(family, t, tree)
       FileUtils.mkdir_p(OUT)
-      tree.clean_all!
       blog = File.join(OUT, "#{family}.build.log")
-      ok, bsecs = run_logged(t.firmware_env, [ENV["RAKE"] || "rake", "build:linux"], blog)
+      ok, bsecs, = tree.sim_build!(t.firmware_env, blog)
       raise "build:linux for #{t.firmware} failed (#{blog.sub("#{CORE}/", '')})" unless ok
       raise "build/fmruby-core.elf is not an x86-64 build after build:linux" unless elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
       bsecs
@@ -396,7 +422,7 @@ module Regress
         tree.stash!
         @ours = true
         begin
-          fams.each do |f, t|
+          current_first(fams, &:first).each do |f, t|
             begin
               res = scenario(f, t, tree)
               File.write(File.join(OUT, "#{f}.json"), JSON.pretty_generate(res))

@@ -41,7 +41,9 @@ require_relative "../../../tools/regress/screens/image"
 
 CORE = File.expand_path("../../..", __dir__)
 TOOLS = File.expand_path("../tools", CORE)
-DEBUG_PORT = 15_566
+# The all-mruby configuration's checks publish theirs 100 above, so that
+# rake regress:wl can run the two configurations side by side.
+DEBUG_PORT = 15_566 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0)
 MENU_BAR_H = 13
 MENU_ITEM_H = 12
 # Linux key codes (input-event-codes.h).

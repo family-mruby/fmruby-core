@@ -213,66 +213,81 @@ namespace :regress do
     end
   end
 
-  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check, wl_ime_check, wl_winops_check and wl_settings_check (headless, pixman), standard and all-mruby. About 30 minutes"
+  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check, wl_ime_check, wl_winops_check, wl_settings_check and wl_size_check (headless, pixman), standard and all-mruby (built one after the other, checked side by side; WL_SERIAL=1 one after the other). About 18 minutes"
   task :wl do
+    checks = %w[wl_check wl_apps_check wl_dialog_check wl_keys_check wl_open_check wl_clip_check wl_ime_check
+                wl_winops_check wl_settings_check wl_size_check]
+    label = ->(c) { c == "wl_check" ? "" : " #{c[/wl_(\w+)_check/, 1].sub('dialog', 'dialogs')}" }
     failed = []
-    %w[standard mruby].each do |engine|
+    out_dir = File.join(ROOT_DIR, "tmp/wl_check")
+    FileUtils.mkdir_p(out_dir)
+    # The two builds share the image's libmruby (native/build-wl/mruby): one
+    # after the other
+    built = %w[standard mruby].select do |engine|
+      log = File.join(out_dir, "build-#{engine}.log")
+      ok = system({ "NATIVE_ENGINE" => engine }, "rake", "-f", File.join(ROOT_DIR, "Rakefile"), "native:wl",
+                  out: log, err: [:child, :out])
+      failed << "#{engine} build (#{log})" unless ok
+      ok
+    end
+    # Each configuration's checks in a row; the two configurations side by
+    # side (containers, run directories and debug ports are the engine's own:
+    # the mruby checks publish theirs 100 above). Each stream's output goes
+    # to tmp/wl_check/checks-<engine>.log and is printed when both are done.
+    run_checks = lambda do |engine, io|
       env = { "NATIVE_ENGINE" => engine }
-      log = File.join(ROOT_DIR, "tmp/wl_check/build-#{engine}.log")
-      FileUtils.mkdir_p(File.dirname(log))
-      unless system(env, "rake", "-f", File.join(ROOT_DIR, "Rakefile"), "native:wl", out: log, err: [:child, :out])
-        failed << "#{engine} build (#{log})"
-        next
+      checks.each do |c|
+        ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/#{c}.rb"), "--engine", engine,
+                    "--renderer", "pixman", out: io, err: io)
+        failed << "#{engine}#{label.call(c)}" unless ok
       end
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << engine unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_apps_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} apps" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_dialog_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} dialogs" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_keys_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} keys" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_open_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} open" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_clip_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} clip" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_ime_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} ime" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_winops_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} winops" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_settings_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} settings" unless ok
-      ok = system(env, Gem.ruby, File.join(ROOT_DIR, "test/native/wl/wl_size_check.rb"), "--engine", engine,
-                  "--renderer", "pixman")
-      failed << "#{engine} size" unless ok
+    end
+    if ENV["WL_SERIAL"] == "1"
+      built.each { |e| run_checks.call(e, $stdout) }
+    else
+      logs = built.to_h { |e| [e, File.join(out_dir, "checks-#{e}.log")] }
+      built.map { |e| Thread.new { File.open(logs[e], "w") { |f| run_checks.call(e, f) } } }.each(&:join)
+      built.each { |e| $stdout.write(File.read(logs[e])) }
     end
     abort "regress:wl: failed: #{failed.join(', ')}" unless failed.empty?
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation). About 42 minutes"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation). Each sim build is made once and shared between the parts"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
+    # A sim build is wanted by several parts (the standard Retro one by run,
+    # screens and checkpoint; the standard Modern one by those and live):
+    # made once in this run and handed from part to part (build_tree.rb).
+    cache = File.join(ROOT_DIR, "tmp", "regress", "build_cache")
+    FileUtils.rm_rf(cache)
+    FileUtils.mkdir_p(cache)
+    ENV["REGRESS_BUILD_CACHE"] = cache
+    # A browser or a development server someone keeps open on the page's port
+    # is left alone: screens skips the browser build and says so
+    ENV["REGRESS_SCREENS_SKIP_BUSY_WEB"] = "1"
     # the checkpoint rounds with the simulation too (SIM=1)
     ENV["SIM"] = "1"
     failed = []
-    %w[regress regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint].each do |t|
-      begin
-        Rake::Task[t].invoke
-      rescue SystemExit
-        failed << t
+    took = []
+    t_all = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    begin
+      %w[regress regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint].each do |t|
+        t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        begin
+          Rake::Task[t].invoke
+        rescue SystemExit
+          failed << t
+        end
+        took << format("%s %.1f", t.sub("regress:", ""), (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) / 60.0)
       end
+    ensure
+      FileUtils.rm_rf(cache)
+      ENV.delete("REGRESS_BUILD_CACHE")
     end
+    total = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_all) / 60.0
+    puts format("regress:full: %.1f min (%s)", total, took.join(", "))
     abort "regress:full: failed: #{failed.join(', ')}" unless failed.empty?
     puts "regress:full: ok"
   end
@@ -286,6 +301,7 @@ def regress_screens_args
   args += ["--scene", ENV["SCENE"]] if ENV["SCENE"]
   args << "--full" if ENV["FULL"] == "1"
   args += ["--port", ENV["WEB_PORT"]] if ENV["WEB_PORT"]
+  args << "--skip-busy-web" if ENV["REGRESS_SCREENS_SKIP_BUSY_WEB"] == "1"
   args
 end
 

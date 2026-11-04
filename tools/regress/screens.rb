@@ -153,13 +153,19 @@ module Regress
         web = configs.find { |c| c.kind == :web }
         natives = configs.select { |c| c.kind == :native }
         raise "a sim stack is already running (someone's?); leave it or take it down first" if SimRun.core_running?
+        if web && @opts[:skip_busy_web] && (why = web_busy)
+          puts "web: SKIPPED (#{why}; the browser build is not built or run)"
+          @skipped_web = why
+          web = nil
+          configs.delete_if { |c| c.kind == :web }
+        end
         check_web_free! if web
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
         raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" if !sims.empty? && !SimRun.elf_x86?(ga)
         tree = BuildTree.new(CORE)
         tree.stash!
         begin
-          sims.each { |c| run_sim_config(c, tree) }
+          SimRun.current_first(sims, &:family).each { |c| run_sim_config(c, tree) }
           build_web(tree) if web
           build_native(tree, gen: !@web_built) unless natives.empty?
         ensure
@@ -208,9 +214,8 @@ module Regress
 
       def run_sim_config(config, tree)
         FileUtils.mkdir_p(out_dir)
-        tree.clean_all!
         blog = File.join(out_dir, "#{config.name}.build.log")
-        ok, bsecs = SimRun.run_logged(config.env, [ENV["RAKE"] || "rake", "build:linux"], blog)
+        ok, bsecs, cached = tree.sim_build!(config.env, blog)
         raise "build:linux for #{config.name} failed (#{rel(blog)})" unless ok
         raise "build/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
         t0 = now
@@ -219,7 +224,7 @@ module Regress
         driver.settle_baseline!
         run_scenes(config, driver)
         File.write(File.join(out_dir, "#{config.name}.log"), SimRun.core_log)
-        @timings << "#{config.name} build #{bsecs.round}s + run #{(now - t0).round}s"
+        @timings << "#{config.name} build #{cached ? 'cached' : "#{bsecs.round}s"} + run #{(now - t0).round}s"
       rescue RuntimeError, DriverError => e
         @errors << "#{config.name}: #{e.message}"
         if SimRun.core_running?
@@ -227,7 +232,9 @@ module Regress
           File.write(File.join(out_dir, "#{config.name}.fail.ga.log"), SimRun.sh("docker", "logs", "fmruby_graphics_audio")[1])
         end
       ensure
-        SimRun.down if SimRun.core_running? && !(@opts[:keep] && config == selected_configs.select { |c| c.kind == :sim }.last)
+        kept = @opts[:keep] && config == selected_configs.select { |c| c.kind == :sim }.last
+        SimRun.down if SimRun.core_running? && !kept
+        tree.keep_for_later! unless kept
       end
 
       # The first boot after a family switch comes up at the old frame size
@@ -332,8 +339,15 @@ module Regress
       # --- the browser build ----------------------------------------------------
 
       def check_web_free!
-        raise "a browser started by tools/fmrb_web.rb is open (#{rel(WEB_STATE)}); leave it or close it first" if File.exist?(WEB_STATE)
-        raise "port #{@opts[:port]} is in use (someone's development server?); pick another with --port" if port_open?(@opts[:port])
+        why = web_busy
+        raise "#{why}; leave it or close it first, or pick another port with --port" if why
+      end
+
+      # Why the browser build cannot be run now (nil: it can).
+      def web_busy
+        return "a browser started by tools/fmrb_web.rb is open (#{rel(WEB_STATE)})" if File.exist?(WEB_STATE)
+        return "port #{@opts[:port]} is in use (someone's development server?)" if port_open?(@opts[:port])
+        nil
       end
 
       def port_open?(port)
@@ -483,7 +497,7 @@ module Regress
         n_bad = failed.size + broken.size
         took = now - t0
         puts "#{label}: #{n_ok} passed / #{n_bad} failed (#{per.join(', ')}; #{(took / 60).round(1)} min" \
-             "#{@timings.empty? ? '' : ": #{@timings.join(', ')}"})"
+             "#{@timings.empty? ? '' : ": #{@timings.join(', ')}"}#{@skipped_web ? '; web SKIPPED' : ''})"
         n_bad.zero? && @errors.empty? ? 0 : 1
       end
 
@@ -543,6 +557,10 @@ module Regress
         o.on("--attach CONFIG") { |v| opts[:attach] = v }
         o.on("--keep") { opts[:keep] = true }
         o.on("--port N", Integer) { |v| opts[:port] = v }
+        # rake regress:full: a browser or server someone keeps open on the
+        # page's port is left alone, and the browser build is skipped (said
+        # in the summary) instead of failing the whole run
+        o.on("--skip-busy-web") { opts[:skip_busy_web] = true }
       end.parse!(argv)
       load_scenes
       return list if opts[:list]

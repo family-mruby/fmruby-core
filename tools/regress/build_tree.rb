@@ -19,8 +19,20 @@
 #
 # A run that is killed leaves the stash in place; the next run refuses to
 # start until `ruby tools/regress/size.rb --restore` puts it back.
+#
+# Inside one rake regress:full, the same sim build is wanted by several parts
+# (the standard Retro sim by run, screens and checkpoint; the standard Modern
+# one by those and live). regress:full names a directory in
+# REGRESS_BUILD_CACHE; then sim_build! takes a build made earlier in the run
+# for the same options from the source tree as it is now (the key: the build
+# options, HEAD, the tracked changes, the untracked files, .env and the
+# mruby-checkpoint checkout), and keep_for_later! puts it back there once the
+# part is done with it. Both move directories (no copy). A part run alone has
+# no cache and builds as before.
+require "digest"
 require "fileutils"
 require "json"
+require "open3"
 
 module Regress
   class BuildTree
@@ -105,6 +117,69 @@ module Regress
       FileUtils.mv(from, to)
     end
 
+    CACHE_ENV = "REGRESS_BUILD_CACHE"
+
+    def self.cache_dir
+      d = ENV[CACHE_ENV].to_s
+      d.empty? ? nil : d
+    end
+
+    # What a build of the sim depends on, besides its options: the source
+    # tree as it is (the gem checkout too, when one is given).
+    def source_fingerprint
+      parts = [git("rev-parse", "HEAD"), git("diff", "HEAD", "--binary")]
+      git("ls-files", "-o", "--exclude-standard", "-z").split("\0").sort.each do |f|
+        st = File.stat(path(f)) rescue next # rubocop:disable Style/RescueModifier
+        parts << "#{f} #{st.size} #{st.mtime.to_f}"
+      end
+      parts << (File.exist?(path(".env")) ? File.read(path(".env")) : "")
+      ck = ENV["MRUBY_CHECKPOINT_DIR"].to_s
+      unless ck.empty?
+        parts << ck << git_in(ck, "rev-parse", "HEAD") << git_in(ck, "diff", "HEAD", "--binary")
+      end
+      Digest::SHA256.hexdigest(parts.join("\n"))
+    end
+
+    def build_key(env) = Digest::SHA256.hexdigest(JSON.generate([env.sort, source_fingerprint]))[0, 16]
+
+    # clean_all, then the sim build for env: taken from the cache when this
+    # run made it already, else `rake build:linux` (its output to log).
+    # Returns [ok, seconds, cached].
+    def sim_build!(env, log, rake: ENV["RAKE"] || "rake")
+      clean_all!
+      dir = BuildTree.cache_dir
+      key = dir && build_key(env)
+      if key && take_cached(File.join(dir, key))
+        File.write(log, "build:linux: the build made earlier in this run (#{key}), from #{dir}\n")
+        @cached_key = key
+        return [true, 0.0, true]
+      end
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      ok = File.open(log, "w") { |f| system(env, rake, "build:linux", chdir: @core, out: f, err: f) }
+      @cached_key = ok ? key : nil
+      [ok, Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0, false]
+    end
+
+    # The part is done with the sim build in build/ (its containers are
+    # down): into the cache for the next part, when there is one.
+    def keep_for_later!
+      key = @cached_key
+      @cached_key = nil
+      dir = BuildTree.cache_dir
+      return unless key && dir && File.exist?(path("build"))
+      to = File.join(dir, key)
+      return if File.exist?(to)
+      FileUtils.mkdir_p(to)
+      FileUtils.mv(path("build"), File.join(to, "build"))
+      FileUtils.mv(path("sdkconfig"), File.join(to, "sdkconfig")) if File.exist?(path("sdkconfig"))
+      move_children(path(PICORUBY_BUILD), File.join(to, "picoruby_build"))
+      GENERATED_ETC.each do |f|
+        next unless File.exist?(path(f))
+        FileUtils.mkdir_p(File.join(to, "etc"))
+        FileUtils.mv(path(f), File.join(to, "etc", File.basename(f)))
+      end
+    end
+
     # rake clean_all, without starting rake (the same three removals).
     def clean_all!
       FileUtils.rm_f(path("sdkconfig"))
@@ -113,6 +188,24 @@ module Regress
     end
 
     private
+
+    def git(*args) = git_in(@core, *args)
+
+    def git_in(dir, *args)
+      out, = Open3.capture2("git", "-C", dir, *args)
+      out
+    end
+
+    # A cached build back in place (build/ is empty: clean_all ran).
+    def take_cached(from)
+      return false unless File.directory?(File.join(from, "build"))
+      FileUtils.mv(File.join(from, "build"), path("build"))
+      FileUtils.mv(File.join(from, "sdkconfig"), path("sdkconfig")) if File.exist?(File.join(from, "sdkconfig"))
+      move_children(File.join(from, "picoruby_build"), path(PICORUBY_BUILD))
+      Dir[File.join(from, "etc", "*")].each { |f| FileUtils.mv(f, path("flash/etc/#{File.basename(f)}")) }
+      FileUtils.rm_rf(from)
+      true
+    end
 
     def move_children(from, to)
       return unless File.directory?(from)

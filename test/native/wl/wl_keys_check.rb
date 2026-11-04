@@ -33,7 +33,9 @@ require "socket"
 
 CORE = File.expand_path("../../..", __dir__)
 TOOLS = File.expand_path("../tools", CORE)
-DEBUG_PORT = 15_565
+# The all-mruby configuration's checks publish theirs 100 above, so that
+# rake regress:wl can run the two configurations side by side.
+DEBUG_PORT = 15_565 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0)
 # Linux key codes (input-event-codes.h).
 KEY = { "1" => 2, "e" => 18, "c" => 46, "h" => 35, "o" => 24, " " => 57, "." => 52, "/" => 53, "r" => 19,
         "u" => 22, "n" => 49, "f" => 33, "m" => 50, "b" => 48, "t" => 20, "y" => 21, "p" => 25, "d" => 32,

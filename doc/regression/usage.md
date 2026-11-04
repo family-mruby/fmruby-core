@@ -72,7 +72,7 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint (全部で 42 分ほど)
+rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 (全部で 34 分ほど。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -91,6 +91,10 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 - `rake regress` (安い方) には入らない。docker でファームを作り、sim を起こす。sim がすでに動いている (誰かが使っている) と `rake regress:run` は始めない。
 - **build/ は元に戻る**: 始める前の build/・sdkconfig・端末ごとの libmruby・Spinel の生成物・flash/etc の生成物を `build.regress.saved/` と `build.regress-aside.saved/` に退避し、終わったら (落ちても) 戻す。最後に `build/: TAB5 (esp32p4)` のように何が入っているかを出す。殺したときは次の実行が止まって `--restore` を案内する。
 - `rake regress:full` に ONLY= は効かない (部分ごとに意味が違う)。絞るときは部分を 1 つずつ流す。
+- `rake regress:full` の中では、**sim の同じ構成を 1 回だけ作る** (`tools/regress/build_tree.rb` の `sim_build!`・`keep_for_later!`)。標準の Retro は run・screens・checkpoint が、標準の Modern は run・screens・live・checkpoint が使う。部分が使い終えた build/ (と sdkconfig、libmruby、flash/etc の生成物) を `tmp/regress/build_cache/<鍵>/` へ移し、次の部分が同じ鍵なら作らずに戻す (移すだけで写さない)。鍵は作る設定と、そのときのソース (HEAD、追跡しているファイルの変更、追跡していないファイルの名前・大きさ・時刻、`.env`、`MRUBY_CHECKPOINT_DIR` の中身) なので、途中でソースを変えれば作り直す。置き場は `regress:full` の始めと終わりに消す。部分を 1 つずつ流すときは今までどおり毎回作る。作ったか使い回したかは各部分の要約に出る (`build cached`)。
+- sim は種類 (Retro・Modern) を切り替えると graphics-audio を起こし直す (1 回 17 秒ほど) ので、各部分は sim が今いる種類から流す (`tmp/regress/sim_family`)。regress:checkpoint の sim の場面は種類ごとにまとめて流す (標準・全部 mruby の順)。
+- ブラウザ版のページを人が開いている (`tools/fmrb_web.rb` のブラウザか、port 8016 の開発サーバ) ときは、`regress:screens` のブラウザ版だけを外して流す (要約に `web SKIPPED`。9 章)。
+- 最後に部分ごとの時間が 1 行出る (`regress:full: 33.3 min (regress 0.4, size 4.1, run 4.3, screens 4.1, live 1.1, wl 9.8, checkpoint 9.4)`)。測り方と内訳は `report/rg_full_time.md`。
 
 ### 7.1 ビルドの時点の表 (rake regress:size)
 
@@ -192,7 +196,7 @@ ruby tools/regress/screens.rb --attach modern   # もう動いている sim (web
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
 - 構成は 6 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)、`native` (Linux のネイティブ版、標準構成、機種の定義 `sdl`。doc/linux_native/)。
 - 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016、`WEB_PORT=` で変える)** とヘッドレスのブラウザを起こし、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。
-- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
+- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザ版の port (8016) を誰かの開発サーバが使っているときも同じ。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
 - 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
 
 ### 9.1 台本の書き方
@@ -303,12 +307,14 @@ end
 ## 11. コンポジタ (rake regress:wl)
 
 ```
-rake regress:wl                       # 標準と全部 mruby の 2 つで、作って (rake native:wl) 確認する (30 分ほど)
+rake regress:wl                       # 標準と全部 mruby の 2 つを作り (rake native:wl、1 つずつ)、2 つの確認を並べて流す (11 分ほど)
+WL_SERIAL=1 rake regress:wl           # 確認も 1 つずつ (20 分ほど。並べたときに落ちたものを見分けるとき)
 rake native:wl_check                  # 1 つの形だけを、自動と pixman の 2 つのレンダラで (NATIVE_ENGINE=mruby で全部 mruby)
 rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓が出る。マウスを窓の上に置かない)
 ```
 
 - ネイティブ版をコンポジタとして動かし (doc/linux_native の L8・L9a、`--machine linux_pc_wl`)、Linux の窓 (foot) を Family mruby の窓として扱えるかを確認する。Ubuntu 26.04 のイメージ (約 1 GB) の中で作って動かす。手元の Ubuntu 22.04 には wlroots 0.19 が無いため。
+- 2 つの構成の確認は並べて流す (入れ物の名前・実行の場所・結果の場所は構成ごと、全部 mruby の確認は debug の port を 100 上に出す)。出力は構成ごとに `tmp/wl_check/checks-<構成>.log` に取り、両方が終わってから続けて出す。
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。headless (出力は 1280x800 の仮のもの。Family mruby の画面はその半分の 640x400 で、2 倍で出力を埋める。`wl_check.rb --output 1920x1080` などで出力を変えられる)、レンダラは pixman (WSL2 では自動で選んでも pixman になる)。
 - 基準の絵を持たない。grim で撮った合成後の画面を、同じ時に撮った Family mruby の絵 (`shot`) を倍率どおりに置いたものと比べ、Linux の窓が見えるべき所 (穴) 以外は 1 画素も違わないこと、穴には foot が出ていることを見る。foot の版や字体が変わっても揺れない。エディタの 1 打鍵だけはネイティブ版の基準 `editor_type.png` (426x240) とエディタの窓の範囲で比べる (窓の四隅は後ろの壁紙が透けるので除く)。全部 mruby のエディタはメニューに Debug が 1 つ多いので、その行は除く。
 - 確認の台本は 9 つ。`test/native/wl/wl_check.rb` (L9a: 窓の扱い)、`test/native/wl/wl_dialog_check.rb` (L9c: 親を持つダイアログが親の上の真ん中に枠つきで出て前後が正しいこと、メニューが絵の矩形の外に出ないこと。出力を 90 度回して黒い帯を広く取って数える。L9e: 親を押すとキーボードもダイアログに移ること、止まった矢印の下に窓が来るとその窓に矢印が行くこと、ポインタを握る X11 のメニューが Family mruby を押すと閉じること)、`test/native/wl/wl_apps_check.rb` (L9b: ランチャーの「Linux」の区分、一覧から起こす、Xwayland の遅延起動と X11 の窓、自分で大きさを決める窓に代役が合うこと、.desktop を 300 個足したときの開く時間、Exit で起こしたもの全部と Xwayland が終わること。L9e: Breeze の SVG しか無いアイコンが一覧に出ること)、`test/native/wl/wl_keys_check.rb` (L9d: 偽の `/etc/default/keyboard` を入れ物の中にかぶせ、配列を選んでいない (`auto`) ときに foot と Family mruby の Shell の両方が Linux の配列に合うこと、Config で選んだ配列が勝つこと)、`test/native/wl/wl_open_check.rb` (L11: File Manager から Linux のアプリでファイルを開く。HOME・XDG_DATA_HOME・XDG_CONFIG_HOME を実行の場所に置き、自前の `.desktop` (受け取った引数を書き出す台本)・globs2・mimeapps.list・associations.toml で、関連付けに無い種類が Linux の既定で開くこと、右クリックの「Linux のアプリで開く」と候補の 2 番目、8 個の候補の「その他...」の次の頁、表の `linux:<id>` と `linux`、.txt・.rb・種類の分からないファイルが今どおりであることを見る)。`test/native/wl/wl_clip_check.rb` (L12a: クリップボード。foot に自前の台本 (日本語の 1 行を出してから受けたものをファイルへ) を走らせ、Shell の `edit` で開いたエディタの Ctrl+A・Ctrl+C を foot の Ctrl+Shift+V で貼れること、foot の行をドラッグで選んで Ctrl+Shift+C したものをエディタの Ctrl+V で貼って保存できること、Shell のプロンプトの Ctrl+V と `!` で動く Linux のプログラムへの Ctrl+Shift+V、Xwayland の X11 のプログラム (`clients/x11_clip.c`) の CLIPBOARD との行き来、持ち主の foot が終わっても選択が残ること (コンポジタが持ち直す) を見る。数は `comp clip`)。`test/native/wl/wl_ime_check.rb` (L12b: PC の IME。全体を `dbus-run-session` の中で動かし、HOME と fcitx5 の設定 (英字の配列と mozc の 2 つ) を実行の場所に置く。コンポジタが fcitx5 を起こすこと、foot で Ctrl+Space・`nihongo`・Space 2 回 (候補の窓が foot の入力の位置の近く、絵の矩形の中に出る)・上・Enter で「日本語」が入ること、Shell の `edit` が IME の仮想キーボード経由で届くこと、エディタで変換中の文字がカーソルの位置に描かれ候補がその下に出て「日本語」が保存されること、もう 1 つのネイティブ版を `--machine sdl` で Wayland の客として起こし、その中のエディタに SDL の口で「日本語」が入ること、fcitx5 を止めるとかな入力に戻ること、IME のプログラムが無い 2 回目の起動でかな入力が働くことを見る。数は `comp ime`)。`test/native/wl/wl_winops_check.rb` (L13: PC の窓と画面ロック。確認だけの D-Bus を system bus として立てて、その上に logind の代わり (`clients/fake_logind.c`: Lock・PrepareForSleep・休止の遅らせ) を置き、ロックのプログラムも確認だけのもの (`clients/wl_lock.c`) にする。題の帯のダブルクリックでエディタと foot が作業領域いっぱいになって戻ること、wl_dialog の最大化の頼み、Super + 矢印で半分・最大化・戻すことと矢印が窓に届かないこと、logind の Lock でロックの絵が画面を覆い入力が Family mruby にも窓にも届かないこと、ロックのプログラムが落ちても開かずキーで起こし直せること、PrepareForSleep でロックしてから休止を進めること、電源のメニューのロック、本物の swaylock が覆い、落ちても開かないことを見る。数は `comp info` の `states=`・`lock=` と `comp stats` の `to_fmrb`)。`test/native/wl/wl_settings_check.rb` (L14: PC の設定と丈夫さ。確認だけの D-Bus を 2 つ立て、system bus には NetworkManager の代わり (`clients/fake_nm.c`: 6 つのネットワーク、保存済み 2 つ、秘密を代理人に聞く 1 つ) と BlueZ の代わり (`clients/fake_bluez.c`: 対になった機器 3 つと対になっていない 1 つ) を置き、session bus は通知と portal に使う。PipeWire と WirePlumber を起こし、確認だけの出力 (null sink) を 1 つ作る。プログラムはログイン画面のセッションの台本 (`native/package/family-mruby-session`) から起こす。ネットワークのダイアログの「Wi-Fi の設定...」で設定の窓が開くこと、一覧 (同じ名前は 1 つ、隠れたものは出ない)、開いたネットワークのつなぐ・切る、新しい鍵つきのネットワークに違うパスワードで失敗し (その時に作った接続を消す)、正しいものでつながること、パスワードを NetworkManager が持たない保存済みのネットワークで代理人が「無い」と答えて問い、入れたパスワードを代理人が渡してつながること、パスワードを持つ保存済みのネットワークがそのままつながること、ログにパスワードが出ないこと、探す。メニューの Bluetooth で頁が変わること、対になった機器だけが出ること、入り切り、つなぐ・切る、失敗の理由。音量のキーで PipeWire の音量とミュートが動き知らせが出ること (Linux の窓がキーボードを持っていても窓に届かない)、デスクトップのミュート。`notify-send` の知らせが右上に出て数秒で消えること、`--wait` が NotificationClosed を受けること。portal の ScreenCast が出力の流れを返すこと (`clients/portal_cast.c`、包みの family-mruby-portals.conf と xdg-desktop-portal-wlr の設定を使う)。SIGSEGV で台本が起こし直し、新しい方が知らせを出すこと、Exit (制御の口の quit、電源のメニューの Exit と同じ道) では起こし直さないこと、1 分に 4 回目の異常な終わりでセッションが終わること。数は設定の窓のログの行 (`settings: wifi ...`)、代わりのサービスのログ、`wpctl get-volume`)。wl_dialog_check.rb は出力を回すので画面は 426x240 のまま。
@@ -320,7 +326,7 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓
 
 ```
 rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (ネイティブ版の場面だけ。作るところから 3 分ほど)
-rake regress:checkpoint SIM=1         # 続けて sim (Retro・Modern) とネイティブ版の間も (作るところから 12 分ほど。regress:full はこれ)
+rake regress:checkpoint SIM=1         # 続けて sim (Retro・Modern) とネイティブ版の間も (作るところから 11 分ほど。regress:full はこれ)
 rake regress:checkpoint SIM=retro     # sim は Retro だけ (modern も同じ)
 rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今あるもので流す (sim は毎回作る)
@@ -347,7 +353,7 @@ rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今�
   - move no answer: `app checkpoint <pid> --hold 1500` で止めたまま誰も答えない。A のカーネルが 1.5 秒で続けさせる。
   - requires (F4): `/app/test/ckpt_requires.app.rb` (`.app.toml` に `requires = ["linux_settings"]`、ネイティブ版だけのメソッド) を B へ移す。同じビルドなので移り、答えに `missing` が無く、B の `/tmp/ckpt_requires.toml` に `requires` が写っている。断る形と知らせる形は、ビルドの違う sim の場面 (calls・requires) で見る。
   - window move (F3): まず window と同じ窓のアプリを `app checkpoint <pid> --hold 5000` で止め、タイトルバーに「移動中」の印 (`moving...`) が出ている (窓の範囲の違いがタイトルバーの中だけ) ことを撮って確かめ、`app finish <pid> continue` の後は窓が止める前と画素で同じ (印の画面は `tmp/regress/checkpoint/window_mark.png` に残す)。次に B へ移す。A のログに印を出して消した行が 1 回ずつ、B の窓が A で書く前の窓と画素で同じ、B で Task が続き知らせを `subscribe` し直す、B でクリックとキーが届く、A の窓は閉じて、A はイメージの後に 1 歩も数えない。
-- sim とネイティブ版の間 (F4a)。ネイティブ版の場面の後に、構成ごと・sim の系列 (Retro・Modern) ごとに、sim をその構成で作り (`rake build:linux`、`regress:screens` と同じ端末の固定の設定)、3 つのコンテナをヘッドレスで起こし、ネイティブ版 (同じ構成、`sdl` = Modern の 426x240) を横に起こして流す。sim の debug サーバは 5555 で、道具は `FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app ...` (sim から移す) と `app move PID --to 5555` (sim へ移す) を使う。場面は 10 個 (`tools/regress/checkpoint_sim.rb`)。`SIM=1` (か `SIM=retro` など) のときだけ流す。
+- sim とネイティブ版の間 (F4a)。ネイティブ版の場面の後に、構成ごと・sim の系列 (Retro・Modern) ごとに、sim をその構成で作り (`rake build:linux`、`regress:screens` と同じ端末の固定の設定)、3 つのコンテナをヘッドレスで起こし、ネイティブ版 (同じ構成、`sdl` = Modern の 426x240) を横に起こして流す。sim の debug サーバは 5555 で、道具は `FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app ...` (sim から移す) と `app move PID --to 5555` (sim へ移す) を使う。場面は 10 個 (`tools/regress/checkpoint_sim.rb`)。`SIM=1` (か `SIM=retro` など) のときだけ流す。種類ごとにまとめ、sim が今いる種類から流す (Modern なら 標準 Modern・全部 mruby Modern・標準 Retro・全部 mruby Retro の順)。
   - sim restart・sim hold・sim window: sim の中で F1 (起動し直し)、F2 の止めたまま誰も答えない形、F3 の窓の起動し直し (窓の範囲が画素で同じ)。sim の時分割 (tick を進める別のタスク) の上でも止める・続けるが正しいこと。
   - to native・to sim: カウンタを sim からネイティブ版へ、ネイティブ版から sim へ。数が次の 1 歩から続き、task tick が書いたときと同じ。名前の数は両方を出す (ビルドが違うので同じではない。doc/checkpoint/report/f4.md の 1)。
   - window: `ckpt_window` を sim でクリックとキーで描かせてネイティブ版へ移し、窓の範囲が RGB332 で同じ (sim とネイティブ版の画面の取り方で RGB332 から 24 bit への広げ方が違うので、RGB332 に戻して比べる。窓の角の 4 画素は角丸の外の壁紙が見えるので除く)。移った後にクリックとキーが届く。
