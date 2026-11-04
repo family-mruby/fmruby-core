@@ -504,13 +504,15 @@ static void handle_checkpoint_finish(const fmrb_dbg_req_t *req) {
 // restore {path, max?}: the kernel starts the image (a .ckpt under /tmp/);
 // answers once it is restored, before it goes on: {status: "restored", pid},
 // {status: "refused", reason} (it could not be started or restored: a damaged
-// image, one of another build, no room) or {status: "timeout"}.
+// image, one of another build, no room, a method its .app.toml requires that
+// this build lacks) or {status: "timeout"}. A restored image whose program
+// calls methods this build has none of adds {missing: [names]} (it goes on).
 static void handle_restore(const fmrb_dbg_req_t *req) {
     fmrb_err_t err = fmrb_app_checkpoint_restore_ask(req->path);
     if (err != FMRB_OK) { reply_ok(req, err); return; }
     int wait_ms = req->max > 0 ? req->max : DEBUGD_CKPT_WAIT_MS_DEFAULT;
     fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
-    char what[128];
+    char what[256];
     int32_t pid = -1;
     fmrb_app_restore_status_t st;
     for (;;) {
@@ -522,9 +524,29 @@ static void handle_restore(const fmrb_dbg_req_t *req) {
     fmrb_dbg_writer_init(&w);
     fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
     if (st == FMRB_APP_RESTORE_DONE) {
-        msgpack_pack_map(&w.pk, 2);
+        // what: the names it lacks, one space between them
+        int nmiss = 0;
+        for (const char *p = what; *p; ) {
+            while (*p == ' ') p++;
+            if (!*p) break;
+            nmiss++;
+            p += strcspn(p, " ");
+        }
+        msgpack_pack_map(&w.pk, nmiss > 0 ? 3 : 2);
         fmrb_dbg_pack_kv_str(&w.pk, "status", "restored");
         fmrb_dbg_pack_kv_int(&w.pk, "pid", pid);
+        if (nmiss > 0) {
+            fmrb_dbg_pack_key(&w.pk, "missing");
+            msgpack_pack_array(&w.pk, nmiss);
+            for (const char *p = what; *p; ) {
+                while (*p == ' ') p++;
+                if (!*p) break;
+                size_t n = strcspn(p, " ");
+                msgpack_pack_str(&w.pk, n);
+                msgpack_pack_str_body(&w.pk, p, n);
+                p += n;
+            }
+        }
     } else if (st == FMRB_APP_RESTORE_REFUSED) {
         msgpack_pack_map(&w.pk, 2);
         fmrb_dbg_pack_kv_str(&w.pk, "status", "refused");

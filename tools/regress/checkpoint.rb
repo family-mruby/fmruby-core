@@ -7,6 +7,7 @@
 #   ruby tools/regress/checkpoint.rb                  # build, then standard and mruby
 #   ruby tools/regress/checkpoint.rb --only mruby     # one engine configuration
 #   ruby tools/regress/checkpoint.rb --no-build       # use the native builds there are
+#   ruby tools/regress/checkpoint.rb --sim retro,modern   # also the simulation's rounds (F4a)
 #
 # The native program is built in both configurations (standard: the Spinel
 # kernel; mruby: everything on mruby), since the kernel holds the steps of a
@@ -55,6 +56,13 @@
 #             is as it was. Then moved into the second program: the mark shown
 #             and taken down once here, the window there the same as it was
 #             here, a click and a key reach it there, and it is gone here.
+#   requires  (F4) /app/test/ckpt_requires.app.rb declares in its .app.toml a
+#             method it cannot go on without (requires = ["linux_settings"],
+#             the native program's own): moved into the second program (the
+#             same build has it), its answer names nothing missing, and the
+#             image's .toml there carries the declaration on. The refusal (a
+#             build without it) and the warning (a call not declared) need a
+#             build that differs: the simulation's rounds (checkpoint_sim.rb).
 #   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
 #             passes after every step gets its steps while the main loop
 #             waits longer than a timeslice per turn. The native program
@@ -107,6 +115,7 @@ module Regress
     SELF = "/app/test/ckpt_self.app.rb"
     SELF_REFUSED = "/app/test/ckpt_self_refused.app.rb"
     SHELL = "default/shell"
+    REQUIRES = "/app/test/ckpt_requires.app.rb"
     # one step of the counter Task "a" is its sleep (200 ms) behind the main
     # loop's wait (250 ms); a move may add a little to it, a lost or doubled
     # clock adds seconds
@@ -231,6 +240,7 @@ module Regress
         notes << round_move_refused
         notes << round_move_no_answer
         notes << round_window_move
+        notes << round_requires_move
         no_forced_kill
         "#{config}: ok (#{notes.join('; ')}; #{(now - t0).round}s)"
       rescue Failure => e
@@ -488,6 +498,30 @@ module Regress
         sleep 0.3
         "window move: mark while held (#{mark_note}) and gone after, same there, task #{task}, click and key there, " \
           "carried in #{r['carried_ms'] - r['held_ms']} ms"
+      end
+
+      # An app that declares a method it requires, moved into the same build
+      # (F4): nothing missing there, the declaration carried with the image.
+      def round_requires_move
+        from = log_lines.size
+        pid = app("spawn", REQUIRES).fetch("pid")
+        wait_line(/ckpt_requires: main=3 /, from, "ckpt_requires counting")
+        mark_b = log_lines(RUN_DIR_B).size
+        r = move(pid)
+        raise Failure, "requires: answered #{r.inspect}" unless r["status"] == "moved" && r["pid"]
+        raise Failure, "requires: the same build named #{r['missing'].inspect} missing" if r["missing"]
+        i = wait_line(/ckpt_requires: on_restore main=(\d+)/, mark_b, "on_restore in the second program", run_dir: RUN_DIR_B)
+        m0 = log_lines(RUN_DIR_B)[i][/main=(\d+)/, 1].to_i
+        j = wait_line(/ckpt_requires: main=\d+ /, i + 1, "a step in the second program", run_dir: RUN_DIR_B)
+        m1 = log_lines(RUN_DIR_B)[j][/main=(\d+)/, 1].to_i
+        raise Failure, "requires: main went from #{m0} to #{m1}" unless m1 == m0 + 1
+        toml = File.join(OUT, "ckpt_requires.toml")
+        native("file", "get", "/tmp/ckpt_requires.toml", toml, run_dir: RUN_DIR_B, port: PORT_B)
+        line = File.read(toml)[/^requires = .*$/]
+        raise Failure, "requires: the image's .toml there says #{line.inspect}" unless line == 'requires = ["linux_settings"]'
+        app_b("kill", r["pid"].to_s)
+        sleep 0.3
+        "requires: moved, nothing missing, #{line} carried"
       end
 
       # The app asks for its own image from on_update (FmrbApp#checkpoint).

@@ -88,6 +88,14 @@ MRuby::CrossBuild.new(FMRB_WASM_CHECKPOINT ? 'family-mruby-wasm-ckpt' : 'family-
 
   # No networking gems: the browser has no BSD sockets to give them
   # (picoruby-socket / net-http / net-websocket are linux/esp32 only).
+  # What those pull in on the other builds that is plain computation is here
+  # all the same, so that an app has the same methods (and an app moved from
+  # the native program finds them, doc/checkpoint F4): Array#pack and
+  # String#unpack (mruby-pack, the gem net-websocket takes there) and Base64.
+  # URI is net-http's own Ruby and EOFError the socket gem's: they stay out
+  # with them.
+  conf.gem gemdir: "#{dir}/mruby-pack"
+  conf.gem core: "picoruby-base64"
 
   # Zenoh and Asterism (doc/ruby_asterism, B1): the same two gems as the
   # Linux and P4 builds. A page cannot open TCP, so zenoh-pico is built for

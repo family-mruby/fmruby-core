@@ -39,6 +39,13 @@
 // written, its tables) come from fmrb_sys_malloc, not from the app's pool
 // (D11).
 //
+// Between builds (F4), the image names the methods the program calls (the
+// gem's SND0). The arriving side restores it all the same and tells the names
+// its build lacks (the log, the restore answer's "missing"): a movable app
+// guards the calls that are not common to every build. It refuses only the
+// names the app declares in its .app.toml as requires = [...], carried in the
+// image's .toml (doc/checkpoint/movable_apps.md).
+//
 // Per-app state is a small table indexed by app id, in this file only, so the
 // builds without the gem carry none of it.
 
@@ -65,6 +72,7 @@
 #include "fmrb_gfx.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_theme.h"
+#include "fmrb_toml.h"
 
 static const char *TAG = "ckpt";
 
@@ -82,7 +90,10 @@ extern uint64_t Machine_uptime_us(void);
 
 // Where the image of an app goes (D11: /tmp).
 #define CKPT_DIR "/tmp/"
-#define CKPT_WHAT_MAX 128
+#define CKPT_WHAT_MAX 256
+// The method names an app declares it cannot go on without (requires = [...]
+// in its .app.toml), one space between them.
+#define CKPT_REQUIRES_MAX 256
 
 // The app object, kept in the VM under a name Ruby cannot spell while a
 // request waits, so that the image carries it and both sides find it.
@@ -106,6 +117,7 @@ typedef struct {
     volatile int status;            // fmrb_app_ckpt_status_t
     char what[CKPT_WHAT_MAX];       // the image's path, or why it was refused
     int32_t hold_ms;                // the request's hold (0: close once written)
+    char requires[CKPT_REQUIRES_MAX]; // requires = [...] of its .app.toml (or the image's .toml)
 } ckpt_app_t;
 
 static ckpt_app_t s_ckpt[FMRB_MAX_APPS];
@@ -116,7 +128,7 @@ typedef struct {
     volatile int status;            // fmrb_app_restore_status_t
     int32_t pid;
     char path[FMRB_MAX_PATH_LEN];
-    char what[CKPT_WHAT_MAX];
+    char what[CKPT_WHAT_MAX];       // why it was refused, or (restored) the names it lacks
 } ckpt_restore_t;
 
 static ckpt_restore_t s_restore;
@@ -375,9 +387,56 @@ static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const cha
                       ctx->fullscreen_switchable ? 1 : 0, ctx->fullscreen_hires ? 1 : 0,
                       ctx->min_window_width, ctx->min_window_height);
     }
+    const ckpt_app_t *e = entry_of(ctx);
+    if (e && e->requires[0]) {
+        // requires = ["a", "b"]: the names, one space between them, quoted
+        n += snprintf(t + n, cap - n, "requires = [");
+        const char *p = e->requires;
+        bool first = true;
+        while (*p && n < cap - 8) {
+            size_t len = strcspn(p, " ");
+            n += snprintf(t + n, cap - n, "%s\"%.*s\"", first ? "" : ", ", (int)len, p);
+            first = false;
+            p += len;
+            while (*p == ' ') p++;
+        }
+        n += snprintf(t + n, cap - n, "]\n");
+    }
+    if (n >= cap) n = cap - 1;
     fmrb_err_t ret = write_file(path, t, (size_t)n);
     fmrb_sys_free(t);
     return ret;
+}
+
+// requires = ["pack", ...] of the attributes beside path (an .app.rb's
+// .app.toml, an image's .toml): the methods the app declares it cannot go on
+// without, one space between them in out ("" when it declares none).
+static void read_requires(const char *path, char *out, size_t n)
+{
+    out[0] = '\0';
+    char toml[FMRB_MAX_PATH_LEN];
+    snprintf(toml, sizeof(toml), "%s", path);
+    char *dot = strrchr(toml, '.');
+    if (!dot || (size_t)(dot - toml) + 6 > sizeof(toml)) return;
+    strcpy(dot, ".toml");
+    char errbuf[64];
+    toml_table_t *conf = fmrb_toml_load_file(toml, errbuf, sizeof(errbuf));
+    if (!conf) return;
+    toml_array_t *arr = toml_array_in(conf, "requires");
+    size_t used = 0;
+    for (int i = 0; arr && i < toml_array_nelem(arr); i++) {
+        toml_datum_t d = toml_string_at(arr, i);
+        if (!d.ok) continue;
+        size_t len = strlen(d.u.s);
+        if (len > 0 && strchr(d.u.s, ' ') == NULL && used + len + 2 <= n) {
+            if (used) out[used++] = ' ';
+            memcpy(out + used, d.u.s, len);
+            used += len;
+            out[used] = '\0';
+        }
+        fmrb_toml_xfree(d.u.s);
+    }
+    toml_free(conf);
 }
 
 // Call an app hook if the app defines it; an exception it raises is logged
@@ -546,7 +605,14 @@ static void mark_hide(fmrb_app_task_context_t *ctx, fmrb_canvas_handle_t id)
 {
     if (id == FMRB_CANVAS_SCREEN) return;
     fmrb_gfx_context_t gfx = fmrb_gfx_get_global_context();
-    if (gfx) fmrb_gfx_delete_canvas(gfx, id);
+    if (!gfx) return;
+    fmrb_gfx_delete_canvas(gfx, id);
+    // Deleting a canvas does not make the screen compose again by itself: an
+    // app that draws only when something happens left the mark on screen
+    // until it presented (as fmrb_kernel_clear_halt says)
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, 0, 0, 0, 0);
+    fmrb_gfx_submit(&cmd);
     FMRB_LOGI(TAG, "[%s] moving mark taken down", ctx->app_name);
 }
 
@@ -727,6 +793,7 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     e->hold_ms = 0;
     e->origin[0] = '\0';
     if (!restoring) snprintf(e->origin, sizeof(e->origin), "%s", ctx->filepath);
+    read_requires(ctx->filepath, e->requires, sizeof(e->requires));
 
     size_t before = pool_used(ctx);
     mrb_checkpoint_open(mrb);
@@ -791,6 +858,26 @@ typedef struct {
     size_t len;
 } image_t;
 
+// The names mrb_checkpoint_missing_names gives, one space between them, as
+// many as fit.
+typedef struct {
+    char *out;
+    size_t room;
+    size_t used;
+    int cut;
+} missing_t;
+
+static void add_missing(mrb_state *mrb, const char *name, size_t len, void *ud)
+{
+    (void)mrb;
+    missing_t *m = (missing_t *)ud;
+    if (m->used + len + 2 > m->room) { m->cut = 1; return; }
+    if (m->used) m->out[m->used++] = ' ';
+    memcpy(m->out + m->used, name, len);
+    m->used += len;
+    m->out[m->used] = '\0';
+}
+
 static mrb_value restore_body(mrb_state *mrb, void *ud)
 {
     image_t *im = (image_t *)ud;
@@ -817,6 +904,23 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
         return -1;
     }
 
+    // What the app declares it cannot go on without (requires in its .app.toml,
+    // carried in the image's .toml): refused here, before anything is restored,
+    // when this build has no method of that name. Other names the program calls
+    // and this build lacks are only told (below).
+    const char *p = e->requires;
+    while (*p) {
+        size_t n = strcspn(p, " ");
+        if (mrb_checkpoint_has_method(mrb, p, n) == 0) {
+            snprintf(err, errlen, "the app requires the method '%.*s' (requires in its .app.toml), "
+                     "which this build does not have", (int)n, p);
+            *answered = restore_answer(ctx->filepath, FMRB_APP_RESTORE_REFUSED, ctx->app_id, err);
+            return -1;
+        }
+        p += n;
+        while (*p == ' ') p++;
+    }
+
     size_t len = 0;
     uint8_t *buf = read_image(ctx->filepath, &len);
     if (!buf) {
@@ -838,9 +942,22 @@ int fmrb_app_checkpoint_resume(fmrb_app_task_context_t *ctx, mrb_value *task, ch
     }
     FMRB_LOGI(TAG, "[%s] restored %s (%u bytes) in %u us, task tick %u", ctx->app_name, ctx->filepath,
               (unsigned)len, (unsigned)(fmrb_hal_time_get_us() - t0), (unsigned)mrb->task.tick);
+    // Methods the program calls that this build has none of (the image's
+    // SND0): not refused, as a movable app guards the calls that are not
+    // common to every build (respond_to?, rescue NoMethodError). Logged here,
+    // and told to whoever asked for the image.
+    char missing[CKPT_WHAT_MAX];
+    missing_t m = { missing, sizeof(missing), 0, 0 };
+    missing[0] = '\0';
+    int nmissing = mrb_checkpoint_missing_names(mrb, add_missing, &m);
+    if (nmissing > 0) {
+        FMRB_LOGW(TAG, "[%s] the program calls %d method(s) this build does not have: %s%s "
+                  "(it goes on; a call that is not guarded raises NoMethodError)",
+                  ctx->app_name, nmissing, missing, m.cut ? " ..." : "");
+    }
     // The image is up here: whoever asked for it (a move) hears it now, before
     // the program goes on.
-    restore_answer(ctx->filepath, FMRB_APP_RESTORE_DONE, ctx->app_id, "");
+    restore_answer(ctx->filepath, FMRB_APP_RESTORE_DONE, ctx->app_id, missing);
 
     *task = mrb_checkpoint_host_task(mrb);
     mrb_value app = mrb_gv_get(mrb, mrb_intern_lit(mrb, APP_GV));

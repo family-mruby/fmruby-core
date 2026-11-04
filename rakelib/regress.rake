@@ -83,7 +83,7 @@
 #                          taken at the same moment
 #   rake regress:full      regress + regress:size + regress:run +
 #                          regress:screens + regress:live + regress:wl +
-#                          regress:checkpoint (ONLY=
+#                          regress:checkpoint SIM=1 (ONLY=
 #                          goes to none of them: run the parts by hand to
 #                          narrow them)
 
@@ -259,10 +259,12 @@ namespace :regress do
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint (moving an app, with the simulation). About 42 minutes"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation). About 42 minutes"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
+    # the checkpoint rounds with the simulation too (SIM=1)
+    ENV["SIM"] = "1"
     failed = []
     %w[regress regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint].each do |t|
       begin
@@ -388,12 +390,13 @@ end
 REGRESS_CHECKPOINT = File.join(ROOT_DIR, "tools", "regress", "checkpoint.rb")
 
 namespace :regress do
-  desc "Move an app (doc/checkpoint): inside one native program, between two, and between the Linux simulation and the native program, standard and all-mruby (ONLY=standard|mruby, NO_BUILD=1: the native builds there are, SIM=retro,modern|none)"
+  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program (ONLY=standard|mruby, NO_BUILD=1: the native builds there are, SIM=1|retro|modern)"
   task :checkpoint do
     args = []
     args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
     args << "--no-build" if ENV["NO_BUILD"] == "1"
-    args += ["--sim", ENV["SIM"]] if ENV["SIM"]
+    sim = ENV["SIM"].to_s
+    args += ["--sim", sim == "1" ? "retro,modern" : sim] unless sim.empty? || sim == "0" || sim == "none"
     abort "regress:checkpoint: failed" unless system(Gem.ruby, REGRESS_CHECKPOINT, *args)
   end
 end

@@ -242,12 +242,12 @@ class FmrbApp
   # アプリがイメージに書かれ、閉じる直前に呼ばれます。アプリは**終わったの
   # ではなく移った**ので `on_destroy` は来ません。ここでしたことは
   # イメージに入りません。運べるのは `.app.toml` に `movable = true` と
-  # 書いた、mruby で動くアプリだけです。
+  # 書いた、mruby で動くアプリだけです (doc/checkpoint/movable_apps.md)。
   # <<en>>
   # Called once the image is written, just before the app closes. The app
   # moved rather than ended, so `on_destroy` does not come. What is done here
   # is not in the image. Only an app on mruby whose `.app.toml` says
-  # `movable = true` can be written.
+  # `movable = true` can be written (doc/checkpoint/movable_apps.md).
   def on_checkpoint: () -> void
 
   # イメージから起動したとき <<en>> Called when started from an image
@@ -263,6 +263,14 @@ class FmrbApp
   # 画面の大きさが違う端末 (Retro と Modern) へ移ると、窓が画面に収まるよう
   # 縮められたり、全画面の大きさが変わったりします。そのときは
   # `on_restore` の前に `on_resize` が来ます (大きさを変えたときと同じ)。
+  # 移った先のビルドには、すべての端末に共通でないメソッドが無いことが
+  # あります。`respond_to?` で確認するか `rescue NoMethodError` で受けて
+  # ください (端末の違いはアプリの小さな窓口のオブジェクトに集め、そこで
+  # `respond_to?` か `method_missing` で吸収するのがおすすめ。`Array` など
+  # 組み込みのクラスに `method_missing` を足すのはおすすめしません)。
+  # 着いた側は足りない名前をログと答えで教えますが、断りません。無いと
+  # 続けられないメソッドは `.app.toml` に `requires = ["名前"]` と書くと、
+  # それが無いビルドへは移りません。詳しくは doc/checkpoint/movable_apps.md。
   # <<en>>
   # Called in an app started from an image, just before it goes on from where
   # it was written. Its instance variables, Tasks and timers are back as they
@@ -276,6 +284,15 @@ class FmrbApp
   # Moved to a machine with another screen (Retro and Modern), the window may
   # be made smaller to fit it, or a fullscreen app gets that screen's size:
   # `on_resize` then comes before `on_restore`, as after a resize.
+  # The build it moved to may lack a method not common to every machine:
+  # check with `respond_to?` or rescue NoMethodError (gather the differences
+  # in a small object of the app's own and absorb them there with
+  # `respond_to?` or `method_missing`; adding `method_missing` to a built-in
+  # class such as `Array` is not recommended). The arriving side tells the
+  # names it lacks in its log and its answer, and does not refuse. A method
+  # the app cannot go on without goes in its `.app.toml` as
+  # `requires = ["name"]`: it is not moved to a build without it.
+  # See doc/checkpoint/movable_apps.md.
   def on_restore: () -> void
 
   # 自分のイメージを断られたとき <<en>> Called when its own image is refused

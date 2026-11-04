@@ -9,10 +9,12 @@
 # (its tick advanced by a task of its own, the display of a family: Retro
 # 320x240 or Modern 426x240), the native program the hosted one (the VM
 # supplies its own tick; machine "sdl", Modern's 426x240). For each family
-# (SIM=retro,modern by default) the simulation is built in the configuration's
+# (--sim retro,modern) the simulation is built in the configuration's
 # engines (rake build:linux with the board's pinned options, as
 # regress:screens does), its three containers come up headless, and a native
-# program of the same configuration beside it. Then:
+# program of the same configuration beside it. Only when asked (--sim
+# retro,modern; rake regress:checkpoint SIM=1, which regress:full does).
+# Then:
 #
 #   sim restart   the counter written and started again inside the
 #                 simulation (F1 on the simulation's tick).
@@ -38,6 +40,15 @@
 #   full          ckpt_full (fullscreen) moved from the simulation to the
 #                 native program: from Retro's 320x240 to 426x240 (on_resize),
 #                 from Modern's at the same size (none).
+#   calls         ckpt_calls, whose code calls FmrbApp.linux_settings (the
+#                 native program's; the simulation has no such method; the
+#                 call is guarded and never made), moved from the native
+#                 program to the simulation: it moves, the answer names
+#                 linux_settings as missing, the simulation logs the warning
+#                 and the app counts on there (doc/checkpoint/movable_apps.md).
+#   requires      ckpt_requires, the same app declaring the name as required
+#                 in its .app.toml: the simulation refuses it, and it goes on
+#                 in the native program from where it was held.
 #
 # A sim stack that is already running (someone's) is never touched: the run
 # refuses. build/ is moved aside and put back (build_tree.rb), as
@@ -54,6 +65,7 @@ module Regress
     SIM_RUN_DIR = "/tmp/fmrb-native-ckpt-sim-#{Process.uid}"
     WIDE = "/app/test/ckpt_wide.app.rb"
     FULL = "/app/test/ckpt_full.app.rb"
+    CALLS = "/app/test/ckpt_calls.app.rb"
     # where ckpt_wide.app.toml puts the window: [x, y, w, h]
     WIDE_RECT = [30, 60, 380, 100].freeze
     NATIVE_SCREEN = [426, 240].freeze
@@ -68,9 +80,11 @@ module Regress
     Endpoint = Struct.new(:name, :kind, :run_dir, :port)
 
     module SimRounds
+      # Native rounds only unless asked (--sim retro,modern; rake SIM=1)
       def sim_families
-        v = (@opts[:sim] || "retro,modern").split(",").map(&:strip)
-        v == ["none"] ? [] : v
+        v = (@opts[:sim] || "none").split(",").map(&:strip)
+        v = %w[retro modern] if v == ["1"]
+        v == ["none"] || v == ["0"] ? [] : v
       end
 
       # Checked before anything is built: the stack must be free.
@@ -135,6 +149,8 @@ module Regress
         notes << sim_round_window
         notes << sim_round_wide
         notes << sim_round_full
+        notes << sim_round_calls
+        notes << sim_round_requires
         sim_no_forced_kill
         "#{name}: ok (#{notes.join('; ')}; build #{bsecs.round}s, #{(now - t0 - bsecs).round}s)"
       rescue Failure, RuntimeError => e
@@ -433,6 +449,45 @@ module Regress
 
       def sim_round_wide = sized_move(@nat, @sim, WIDE, "ckpt_wide", "Ckpt Wide", WIDE_RECT, "wide")
       def sim_round_full = sized_move(@sim, @nat, FULL, "ckpt_full", "Ckpt Full", nil, "full")
+
+      def ep_start_calls(ep, path, tag)
+        from = ep_lines(ep).size
+        pid = ep_app(ep, "spawn", path).fetch("pid")
+        ep_wait(ep, /#{tag}: main=3 /, from, "#{tag} counting")
+        pid
+      end
+
+      # A call this build lacks, not declared: it moves with a warning.
+      def sim_round_calls
+        pid = ep_start_calls(@nat, CALLS, "ckpt_calls")
+        mark_to = ep_lines(@sim).size
+        r = move_between(@nat, @sim, pid)
+        unless r["status"] == "moved" && r["pid"] && r["missing"] == ["linux_settings"]
+          raise Failure, "calls: answered #{r.inspect}"
+        end
+        i = ep_wait(@sim, /ckpt_calls: on_restore main=\d+/, mark_to, "on_restore")
+        ep_wait(@sim, /ckpt_calls: main=\d+ pack=A linux_settings=false/, i + 1, "a step there, without linux_settings")
+        ep_wait(@sim, /\[Ckpt Calls\] the program calls 1 method\(s\) this build does not have: linux_settings /, mark_to,
+                "the warning")
+        ep_kill_named(@sim, "Ckpt Calls")
+        "calls: moved, missing #{r['missing'].join(',')}"
+      end
+
+      # A method its .app.toml requires and this build lacks: refused there,
+      # it goes on here.
+      def sim_round_requires
+        pid = ep_start_calls(@nat, REQUIRES, "ckpt_requires")
+        mark = ep_lines(@nat).size
+        r = move_between(@nat, @sim, pid)
+        unless r["status"] == "stayed" && r["here"] == "continued" && r["reason"].to_s.include?("requires the method 'linux_settings'")
+          raise Failure, "requires: answered #{r.inspect}"
+        end
+        on = ep_wait(@nat, /ckpt: \[Ckpt Requires\] goes on from its image/, mark, "the app going on")
+        ep_wait(@nat, /ckpt_requires: main=\d+ /, on + 1, "a step after going on")
+        raise Failure, "requires: the simulation runs it" if ep_ps(@sim).any? { |a| a["name"] == "Ckpt Requires" }
+        ep_kill_named(@nat, "Ckpt Requires")
+        "requires: refused there (#{r['reason'][0, 50]}...), went on here"
+      end
 
       def sim_no_forced_kill
         [@sim, @nat].each do |ep|

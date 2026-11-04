@@ -319,15 +319,15 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ窓
 ## 12. アプリを運ぶ (rake regress:checkpoint)
 
 ```
-rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す。続けて sim (Retro・Modern) とネイティブ版の間 (作るところから 12 分ほど)
+rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (ネイティブ版の場面だけ。作るところから 3 分ほど)
+rake regress:checkpoint SIM=1         # 続けて sim (Retro・Modern) とネイティブ版の間も (作るところから 12 分ほど。regress:full はこれ)
+rake regress:checkpoint SIM=retro     # sim は Retro だけ (modern も同じ)
 rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今あるもので流す (sim は毎回作る)
-rake regress:checkpoint SIM=none      # sim との間は流さない (ネイティブ版だけ。5 分ほど、作り終えていれば 2 分ほど)
-rake regress:checkpoint SIM=retro     # sim は Retro だけ
 ```
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、窓のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
-- `rake regress:full` に入っている (最後に流す)。`rake regress` (安い方) には入らない。ブラウザ版・実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
+- `rake regress:full` に入っている (最後に、`SIM=1` で流す)。`rake regress` (安い方) には入らない。ブラウザ版・実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
 - ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (窓なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
 - 最初に、運ぶのではない場面を 1 つ流す。
@@ -341,17 +341,20 @@ rake regress:checkpoint SIM=retro     # sim は Retro だけ
   - self: `/app/test/ckpt_self.app.rb` が `on_update` の中から自分のイメージを頼む (`FmrbApp#checkpoint(restart: true)`)。書かれて起動し直し、頼むのは 1 回だけ (戻ったアプリは頼んだ印を持っている)。
   - self refused: `movable` の無い `ckpt_self_refused` が同じことを頼み、`on_checkpoint_refused` で理由を受けて動き続ける。
   - shell: Shell の窓を開いて `checkpoint -r <pid>` を打つ。カウンタが restart と同じように運ばれ、Shell に答え (`checkpoint: PID n: wrote ...`) が来る。
-- 2 つのプログラムの間で移す場面が 3 つ (F2)。最初のプログラム (A) の横に B を起こしてから流す。
+- 2 つのプログラムの間で移す場面が 5 つ (F2・F3・F4)。最初のプログラム (A) の横に B を起こしてから流す。
   - move: `ruby tools/fmrb_native.rb app move <pid> --to <B の run dir>`。A でアプリを書いて止めたままにし、イメージと `.toml` を分けて B へ運び、B のカーネルが起動して「起動できた」と答えてから、A のカーネルがアプリを閉じる (D15)。答えは `{status: moved, pid}`。カウンタが B で続き、A はイメージの後に 1 歩も数えず普段どおり閉じる。A の書いたときの task tick と B の復元した task tick が同じ、基準の名前の数と digest が A と B で同じ。
   - move refused: 同じことを `--damage` (イメージを短く切って運ぶ、試験用の印) で。B が復元を断り、A は止めた所から続く (`{status: stayed, reason, here: continued}`)。B のデスクトップには失敗の窓を出さない (理由は頼んだ側が受け取る。B のログには残る。カーネルの `App '<名前>':` の行が無いことで見る)。
   - move no answer: `app checkpoint <pid> --hold 1500` で止めたまま誰も答えない。A のカーネルが 1.5 秒で続けさせる。
+  - requires (F4): `/app/test/ckpt_requires.app.rb` (`.app.toml` に `requires = ["linux_settings"]`、ネイティブ版だけのメソッド) を B へ移す。同じビルドなので移り、答えに `missing` が無く、B の `/tmp/ckpt_requires.toml` に `requires` が写っている。断る形と知らせる形は、ビルドの違う sim の場面 (calls・requires) で見る。
   - window move (F3): まず window と同じ窓のアプリを `app checkpoint <pid> --hold 5000` で止め、タイトルバーに「移動中」の印 (`moving...`) が出ている (窓の範囲の違いがタイトルバーの中だけ) ことを撮って確かめ、`app finish <pid> continue` の後は窓が止める前と画素で同じ (印の画面は `tmp/regress/checkpoint/window_mark.png` に残す)。次に B へ移す。A のログに印を出して消した行が 1 回ずつ、B の窓が A で書く前の窓と画素で同じ、B で Task が続き知らせを `subscribe` し直す、B でクリックとキーが届く、A の窓は閉じて、A はイメージの後に 1 歩も数えない。
-- sim とネイティブ版の間 (F4a)。ネイティブ版の場面の後に、構成ごと・sim の系列 (Retro・Modern) ごとに、sim をその構成で作り (`rake build:linux`、`regress:screens` と同じ端末の固定の設定)、3 つのコンテナをヘッドレスで起こし、ネイティブ版 (同じ構成、`sdl` = Modern の 426x240) を横に起こして流す。sim の debug サーバは 5555 で、道具は `FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app ...` (sim から移す) と `app move PID --to 5555` (sim へ移す) を使う。場面は 8 つ (`tools/regress/checkpoint_sim.rb`)。
+- sim とネイティブ版の間 (F4a)。ネイティブ版の場面の後に、構成ごと・sim の系列 (Retro・Modern) ごとに、sim をその構成で作り (`rake build:linux`、`regress:screens` と同じ端末の固定の設定)、3 つのコンテナをヘッドレスで起こし、ネイティブ版 (同じ構成、`sdl` = Modern の 426x240) を横に起こして流す。sim の debug サーバは 5555 で、道具は `FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app ...` (sim から移す) と `app move PID --to 5555` (sim へ移す) を使う。場面は 10 個 (`tools/regress/checkpoint_sim.rb`)。`SIM=1` (か `SIM=retro` など) のときだけ流す。
   - sim restart・sim hold・sim window: sim の中で F1 (起動し直し)、F2 の止めたまま誰も答えない形、F3 の窓の起動し直し (窓の範囲が画素で同じ)。sim の時分割 (tick を進める別のタスク) の上でも止める・続けるが正しいこと。
   - to native・to sim: カウンタを sim からネイティブ版へ、ネイティブ版から sim へ。数が次の 1 歩から続き、task tick が書いたときと同じ。名前の数は両方を出す (ビルドが違うので同じではない。doc/checkpoint/report/f4.md の 1)。
   - window: `ckpt_window` を sim でクリックとキーで描かせてネイティブ版へ移し、窓の範囲が RGB332 で同じ (sim とネイティブ版の画面の取り方で RGB332 から 24 bit への広げ方が違うので、RGB332 に戻して比べる。窓の角の 4 画素は角丸の外の壁紙が見えるので除く)。移った後にクリックとキーが届く。
   - wide: `/app/test/ckpt_wide.app.rb` (窓 380x100) をネイティブ版から sim へ。Retro では窓が画面 (320 幅) に収まるように縮められ、アプリが `on_restore` の前に `on_resize` を 1 回受け、利用の範囲の四隅に描く赤い四角が新しい大きさの位置にある。Modern では大きさが変わらず `on_resize` は来ない。
   - full: `/app/test/ckpt_full.app.rb` (全画面) を sim からネイティブ版へ。Retro の 320x240 から 426x240 になり `on_resize` を受ける (Modern からなら同じ大きさで来ない)。
+  - calls: `/app/test/ckpt_calls.app.rb` (ネイティブ版だけの `FmrbApp.linux_settings` を `respond_to?` で備えて呼ぶ。申告なし) をネイティブ版から sim へ。移り、答えの `missing` が `["linux_settings"]`、sim のログに足りない名前の行、sim で数え続ける (doc/checkpoint/movable_apps.md の 5.2)。
+  - requires: `ckpt_requires` (同じ名前を `requires` に書いたもの) をネイティブ版から sim へ。sim が断り (`requires the method 'linux_settings'`)、ネイティブ版で止めた所から続く (5.3)。
   - sim のログは `tmp/regress/checkpoint/sim_<構成>_<系列>.log`、そのときのネイティブ版のログは `..._native.log`、作ったときのログは `..._build.log`。出力は構成と系列ごとに 1 行。
 - 最後に、A と B のログに強制終了 (`No response in ...ms, forcing termination`) が 1 件も無いことを確かめる。どのアプリも頼んで閉じ、アプリの Task はアプリと一緒に終わる (doc/checkpoint/report/f2.md の 3)。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
