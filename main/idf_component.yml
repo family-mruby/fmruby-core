@@ -31,8 +31,11 @@ dependencies:
   # mDNS so other machines can reach the device as <hostname>.local without
   # knowing the DHCP address. P4 (remote desktop) and S3 (native WiFi STA);
   # unused on ATOM (WiFi disabled in its sdkconfig) and dropped by the linker.
+  # Held at 1.8.x: 1.15.0 (what ^1.8.0 resolves to when the lock is made again
+  # for another target) fails to build with -Werror=stringop-truncation
+  # (2026-11-04). Moving on is its own task.
   espressif/mdns:
-    version: "^1.8.0"
+    version: "~1.8.0"
     rules:
       - if: "target in [esp32p4, esp32s3]"
   # LT8912B MIPI-DSI -> HDMI bridge. NARYA v4 puts its picture on an HDMI
