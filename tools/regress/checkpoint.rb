@@ -8,6 +8,7 @@
 #   ruby tools/regress/checkpoint.rb --only mruby     # one engine configuration
 #   ruby tools/regress/checkpoint.rb --no-build       # use the native builds there are
 #   ruby tools/regress/checkpoint.rb --sim retro,modern   # also the simulation's rounds (F4a)
+#   ruby tools/regress/checkpoint.rb --web            # also the browser build's rounds (F5)
 #
 # The native program is built in both configurations (standard: the Spinel
 # kernel; mruby: everything on mruby), since the kernel holds the steps of a
@@ -89,6 +90,7 @@ require "optparse"
 require_relative "screens/image"
 require_relative "checkpoint_sim"
 require_relative "checkpoint_asterism"
+require_relative "checkpoint_web"
 
 module Regress
   module Checkpoint
@@ -128,6 +130,7 @@ module Regress
     class Runner
       include SimRounds
       include AsterismRounds
+      include WebRounds
 
       def initialize(opts)
         @opts = opts
@@ -139,12 +142,17 @@ module Regress
         FileUtils.mkdir_p(OUT)
         configs = @opts[:only] ? [@opts[:only]] : %w[standard mruby]
         sim_check!
+        web_check! if @opts[:web]
         build(configs) unless @opts[:no_build]
+        web_build if @opts[:web] && !@opts[:no_build]
         results = []
         unless @opts[:no_native]
           begin
             router_up
             results = configs.map { |c| run_config(c) }
+            # doc/checkpoint F5: the browser build, once, with the first
+            # configuration's native program (checkpoint_web.rb)
+            results << run_web(configs.first) if @opts[:web]
           ensure
             router_down
           end
@@ -731,11 +739,12 @@ module Regress
     def self.main(argv)
       opts = {}
       OptionParser.new do |o|
-        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none]"
+        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none] [--web]"
         o.on("--only NAME", %w[standard mruby]) { |v| opts[:only] = v }
         o.on("--no-build") { opts[:no_build] = true }
         o.on("--sim LIST") { |v| opts[:sim] = v }
         o.on("--no-native") { opts[:no_native] = true }
+        o.on("--web") { opts[:web] = true }
       end.parse!(argv)
       Runner.new(opts).run
     rescue Failure => e
