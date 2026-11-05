@@ -9,7 +9,7 @@ API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`
 
 - **mruby の VM で動くアプリだけ**が運べる。Spinel で動くもの (標準構成のカーネル・エディタ・Shell など) は対象外 (D16)。頼むと「only an app on the mruby VM can be written」で断られる。
 - **`.app.toml` に `movable = true`** と書いたアプリだけ (D6)。書いていないアプリは、頼まれても断って動き続ける。
-- 運べるビルド (gem mruby-checkpoint を持つもの) は、今は **sim (Linux のシミュレーション) とネイティブ版**。ブラウザ版の公開のビルドには、F5 (Asterism の受け口) ができてから入れる (それまでは測るための別のビルド `FMRB_WASM_CHECKPOINT=1`)。実機 (Tab5、その後 S3) は F6。
+- 運べるビルド (gem mruby-checkpoint を持つもの) は、今は **sim (Linux のシミュレーション)・ネイティブ版・P4 の実機 (P4-Nano・Tab5、F6)**。ブラウザ版の公開のビルドに入れるかは未決 (測るための別のビルド `FMRB_WASM_CHECKPOINT=1` にはある)。S3 はまだ持たない。
 - `movable = true` のアプリは、起動したときに「基準」(VM を開いた直後の組み込みのクラス・メソッドの名前の表) を取る。名前・メソッドの一覧・クラスの写しはビルドが作ってリンクした表 (Ff、`flash_table.md`) にあり、VM ごとの費用は 32 bit で約 90 KB、64 bit で約 111 KB (`doc/checkpoint/report/ff.md`。前は約 322 KB・356 KB)。作る間だけ一時的に 32 bit で約 173 KB 多く要る。標準のアプリに `movable = true` を付けるかはユーザが決める (候補は report/ff.md の 12 章)。
 - 移す先は、同じビルドどうし (ネイティブ版 2 つ) のほか、ビルドの違う sim とネイティブ版の間 (画面の大きさも違ってよい)。
 

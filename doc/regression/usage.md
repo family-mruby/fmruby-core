@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-04 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-05 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 1. 流し方
 
@@ -331,6 +331,7 @@ rake regress:checkpoint SIM=retro     # sim は Retro だけ (modern も同じ)
 rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今あるもので流す (sim は毎回作る)
 rake regress:checkpoint WEB=1         # 続けてブラウザ版 (gem 入りの別のビルド) とネイティブ版の間を Asterism で (作るところから 5 分ほど。regress:full には入れていない)
+rake regress:checkpoint BOARD=naryav4 # 続けてつないだ実機 (P4) の中と、実機とネイティブ版の間を Asterism で (つないだときだけ。regress:full には入れていない)
 ```
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、窓のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a)、Asterism で移すこと (F5) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
@@ -377,6 +378,13 @@ rake regress:checkpoint WEB=1         # 続けてブラウザ版 (gem 入りの�
   - web requires: `ckpt_requires` をブラウザ版へ。聞かれた所で断られ、A で止まらずに数え続ける。
   - web late: `--hold 1` で移す。A で続き、ブラウザ版で起動した写しは止められる。
   - ログは `tmp/regress/checkpoint/web.chrome.log` (ページ) と `web_native.log` (A)。
+- 実機との場面 (F6、`BOARD=<端末>` のときだけ、`tools/regress/checkpoint_board.rb`)。`regress:boot` と同じく opt-in で、既定にも `regress:full` にも入らない。実機にはこの木のファーム (P4 の構成は gem を持つ) を焼いておき、fmrb の MCP の `serial_start` でシリアルを開いておく (ログは MCP の capture の file から読み、ポートは開かない。別の file は `BOARD_LOG=`)。実機は開発の遠隔操作 (`FMRB_DEV_REMOTE_CTL`、HTTP) で動かす: アプリの起動・一覧・停止、ファイル、止める頼み (`POST /app/checkpoint`・`POST /app/move`、結果は `GET /app/checkpoint?pid=`。実機のデバッグサーバは BLE なので)。実機の IP はログの `Connected, ip=` (なければ `BOARD_IP=`)、この PC の側の IP は実機への経路の送り元 (`HOST_IP=`)。自前の Zenoh のルータ (`fmrb_regress_ckpt_zenohd_board`、全部のインターフェースの 17461) を起こし、実機の `/home/asterism` の `config.toml`・`receive.toml` を流すあいだだけ書き換えて、終わったら元に戻す。最初の構成のネイティブ版 (A、ノード `rg-ckpt-a`) と実機 (ノード `rg-ckpt-board`) の間で流す。
+  - board self: 実機の中で `ckpt_self` が自分のイメージを頼み (`restart: true`)、書かれて起動し直し、数が次の 1 歩から続く。
+  - board in・out: カウンタを A から実機へ、実機の `/app/move` で A へ戻す。どちらも次の 1 歩から続く。
+  - board window: `ckpt_window` を実機へ移して戻す (`on_restore` と Task が続くことだけ。実機の画面は HDMI なので画素は比べない)。
+  - board calls・requires: `ckpt_calls` は `linux_settings` が `missing` に出て移る。`ckpt_requires` は聞かれた所で断られ、A で止まらない。
+  - board no answer: 実機のカウンタを誰もいないノードへ。止める前に断られ、実機で数え続ける。
+  - ログは `tmp/regress/checkpoint/board.log` (実機) と `board_native.log` (A)。
 - 最後に、A と B のログに強制終了 (`No response in ...ms, forcing termination`) が 1 件も無いことを確かめる。どのアプリも頼んで閉じ、アプリの Task はアプリと一緒に終わる (doc/checkpoint/report/f2.md の 3)。
 - restart・wait・self・shell で確かめること (ログから): a・b・main が、書いた時の次の 1 歩から続く。`on_checkpoint` と `on_restore` の main が同じ。`t=` の書く前と後の差が 0〜800 ms (1 歩は 250 ms ほど。2 秒待っても時計が飛ばないこと = D9)。
 - 出力は構成ごとに 1 行と最後の 1 行。落ちたら理由がその行に出る。ネイティブ版のログは `tmp/regress/checkpoint/<構成>.log` (B は `<構成>_b.log`)、作ったときのログは `build.log`。
