@@ -417,6 +417,10 @@ fmrb_add_mruby_abi_defines()
 if(IDF_TARGET STREQUAL "linux")
     target_include_directories(${COMPONENT_LIB} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
+    # The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff):
+    # made from the same libmruby and gem ports, linked in as constant data.
+    include(${CMAKE_CURRENT_LIST_DIR}/../tools/ckpt_table/ckpt_table.cmake)
+    fmrb_ckpt_table_idf(${COMPONENT_LIB})
 endif()
 
 # Linux sim: route every caller of the log locks through the guards above.

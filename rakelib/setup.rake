@@ -223,7 +223,8 @@ task :setup do
   # marked "fmrb: self-supplied timeslice" -- see doc/wasm/report/p2.md; it
   # compiles to nothing unless MRB_TASK_TICK_SELF_SUPPLY is defined). vm.c,
   # include/mruby.h and mruby-task's task.h, task.c and task_queue.c also carry
-  # mruby-checkpoint's safe point hook and switch-request count, marked
+  # mruby-checkpoint's safe point hook and switch-request count, and gc.c its
+  # GC root hook (only with MRB_VM_SAFEPOINT_HOOK, doc/checkpoint Ff), marked
   # "fmrb: checkpoint" (doc/checkpoint/plan.md). These are whole-file copies,
   # so they have to be refreshed when the mruby submodule moves.
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"

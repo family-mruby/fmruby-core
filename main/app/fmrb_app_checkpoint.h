@@ -16,6 +16,12 @@
 // the tick state), the handlers. Other VMs are left alone (they pay nothing).
 void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx);
 
+// What a VM set up for checkpoints has before its baseline, beyond mrb_open:
+// the gem opened, the C data types registered, the receiving side's methods.
+// Also called by the table maker (tools/ckpt_table/), whose baseline must be
+// the firmware's.
+void fmrb_app_checkpoint_prepare_vm(mrb_state *mrb);
+
 // The VM is about to close (destroy_vm, both exit paths).
 void fmrb_app_checkpoint_vm_closing(fmrb_app_task_context_t *ctx);
 

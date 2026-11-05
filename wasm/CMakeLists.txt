@@ -166,6 +166,23 @@ add_executable(core_web $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(core_web PRIVATE freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
 set_target_properties(core_web PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
+if(FMRB_WASM_CHECKPOINT)
+  # The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff),
+  # made from the same 32-bit libmruby and gem ports: the maker is compiled
+  # with emcc and run on node (the toolchain's emulator), real files through
+  # NODERAWFS. The browser bundle links the table it writes; the node build
+  # (core) goes without one (the weak reference in fmrb_app_checkpoint.c).
+  include(${FMRB_ROOT}/tools/ckpt_table/ckpt_table.cmake)
+  if(CMAKE_CROSSCOMPILING_EMULATOR)
+    string(REPLACE ";" " " _ckpt_runner "${CMAKE_CROSSCOMPILING_EMULATOR}")
+  else()
+    set(_ckpt_runner node)
+  endif()
+  fmrb_ckpt_table(core_web core_objs RUN "${_ckpt_runner}"
+    LDFLAGS -pthread -sENVIRONMENT=node -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH --profiling-funcs
+            -sINITIAL_MEMORY=134217728 -sSTACK_SIZE=1048576 -sEXIT_RUNTIME=1)
+endif()
+
 set(WASM_CORE_LINK_OPTS
   -pthread
   -sPROXY_TO_PTHREAD

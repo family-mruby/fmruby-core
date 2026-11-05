@@ -299,6 +299,12 @@ if(NATIVE_HAVE_PNG)
 endif()
 target_link_options(fmruby-native PRIVATE -pthread -Wl,--gc-sections)
 
+# The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff): made
+# from the same libmruby and gem ports, linked in as constant data, so that a
+# movable app's VM keeps only the addresses of the baseline's names.
+include(${FMRB_ROOT}/tools/ckpt_table/ckpt_table.cmake)
+fmrb_ckpt_table(fmruby-native core_objs)
+
 # The per-machine launchers of a package (APPLaunch's .desktop has a bare
 # Exec, so each entry points at an executable that adds the arguments).
 if(NATIVE_PACKAGE)

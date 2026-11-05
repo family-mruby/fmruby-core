@@ -288,6 +288,9 @@ foreach(gem fmrb-app fmrb-kernel fmrb-const fmrb-log fmrb-io fmrb-filesystem
         fmrb-debug fmrb-editor-core fmrb-midi)
   file(GLOB GEM_PORT_SRCS ${MRBGEMS}/picoruby-${gem}/ports/esp32/*.c)
   list(APPEND FMRB_HOSTED_CORE_SRCS ${GEM_PORT_SRCS})
+  # (also on their own: the checkpoint table maker compiles them again,
+  # tools/ckpt_table/ckpt_table.cmake)
+  list(APPEND FMRB_HOSTED_GEM_PORT_SRCS ${GEM_PORT_SRCS})
 endforeach()
 list(APPEND FMRB_HOSTED_CORE_SRCS
   ${MRBGEMS}/picoruby-fmrb-bmp332/src/fmrb_bmp332.c

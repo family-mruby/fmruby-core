@@ -872,6 +872,18 @@ static size_t pool_used(const fmrb_app_task_context_t *ctx)
     return used;
 }
 
+// The pool's high-water mark so far (estalloc), to log what the baseline asks
+// for while it is made.
+extern int mrb_get_estalloc_usage(void* est_ptr, size_t* peak, size_t* largest_free, size_t* last_fail,
+                                  size_t* fails);
+
+static size_t pool_peak(const fmrb_app_task_context_t *ctx)
+{
+    size_t peak = 0, largest = 0, last_fail = 0, fails = 0;
+    if (ctx->est) mrb_get_estalloc_usage(ctx->est, &peak, &largest, &last_fail, &fails);
+    return peak;
+}
+
 // The permanent names, counted and hashed (FNV-1a over each name and its kind):
 // two programs of the same build must find the same ones (F2), and the log
 // shows it.
@@ -921,6 +933,41 @@ static void dump_names(fmrb_app_task_context_t *ctx)
     FMRB_LOGI(TAG, "[%s] permanent names written to %s", ctx->app_name, path);
 }
 
+// The fixed table of this build's baseline (doc/checkpoint/flash_table.md, Ff):
+// C source the build makes from a host build of the same gems
+// (tools/ckpt_table/), linked in as constant data. Weak: a build without it
+// (the first pass of the Linux simulation's build, a device build before F6)
+// takes the baseline as before.
+extern const mrb_checkpoint_table fmrb_checkpoint_table __attribute__((weak));
+
+// What a VM set up for checkpoints has before its baseline, beyond what
+// mrb_open made: the gem's Checkpoint module, the C data types it carries and
+// the receiving side's methods. The table maker (tools/ckpt_table/) calls
+// this too, so that its baseline is the one the firmware's VMs take.
+void fmrb_app_checkpoint_prepare_vm(mrb_state *mrb)
+{
+    mrb_checkpoint_open(mrb);
+    fmrb_gfx_checkpoint_register(mrb);
+    define_receiving_methods(mrb);
+}
+
+// What the baseline keeps in the pool, by part, on one line (for measuring,
+// doc/checkpoint/report/ff.md).
+typedef struct {
+    char text[320];
+    size_t len;
+} size_line_t;
+
+static void add_size_part(const char *part, size_t count, size_t bytes, void *ud)
+{
+    size_line_t *l = (size_line_t *)ud;
+    (void)count;
+    if (l->len >= sizeof(l->text)) return;
+    int n = snprintf(l->text + l->len, sizeof(l->text) - l->len, "%s%s %u", l->len ? ", " : "", part,
+                     (unsigned)bytes);
+    if (n > 0) l->len += (size_t)n;
+}
+
 void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
 {
     ckpt_app_t *e = entry_of(ctx);
@@ -939,19 +986,26 @@ void fmrb_app_checkpoint_vm_opened(fmrb_app_task_context_t *ctx)
     read_requires(ctx->filepath, e->requires, sizeof(e->requires));
 
     size_t before = pool_used(ctx);
-    mrb_checkpoint_open(mrb);
+    fmrb_app_checkpoint_prepare_vm(mrb);
     mrb_checkpoint_set_allocator(mrb, work_realloc, NULL);
     mrb_checkpoint_set_embedder(mrb, emb_dump, emb_restore, NULL);
     mrb_checkpoint_set_handler(mrb, ckpt_written, NULL);
     mrb_checkpoint_set_refusal_handler(mrb, ckpt_refused, NULL);
-    fmrb_gfx_checkpoint_register(mrb);
-    define_receiving_methods(mrb);
+    if (&fmrb_checkpoint_table != NULL) mrb_checkpoint_set_table(mrb, &fmrb_checkpoint_table);
+    size_t peak_before = pool_peak(ctx);
     mrb_checkpoint_baseline(mrb);
     name_sum_t names = { 0, 2166136261u };
     mrb_checkpoint_each_name(mrb, count_name, &names);
-    FMRB_LOGI(TAG, "[%s] VM set up for checkpoints%s: the baseline (%u names, digest %08x) took %u bytes of the pool",
+    const char *why = mrb_checkpoint_table_status(mrb);
+    FMRB_LOGI(TAG, "[%s] VM set up for checkpoints%s: the baseline (%u names, digest %08x) took %u bytes of the pool "
+              "(%u more while it was made); table: %s",
               ctx->app_name, restoring ? " (restoring an image)" : "", (unsigned)names.n,
-              (unsigned)names.digest, (unsigned)(pool_used(ctx) - before));
+              (unsigned)names.digest, (unsigned)(pool_used(ctx) - before),
+              (unsigned)(pool_peak(ctx) > peak_before ? pool_peak(ctx) - pool_used(ctx) : 0),
+              why ? why : "used");
+    size_line_t parts = { "", 0 };
+    mrb_checkpoint_baseline_size(mrb, add_size_part, &parts);
+    FMRB_LOGI(TAG, "[%s] baseline by part (bytes): %s", ctx->app_name, parts.text);
     dump_names(ctx);
 }
 
