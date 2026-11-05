@@ -9,6 +9,7 @@
 #   ruby tools/regress/checkpoint.rb --no-build       # use the native builds there are
 #   ruby tools/regress/checkpoint.rb --sim retro,modern   # also the simulation's rounds (F4a)
 #   ruby tools/regress/checkpoint.rb --web            # also the browser build's rounds (F5)
+#   ruby tools/regress/checkpoint.rb --board naryav4  # also a connected board's rounds (F6, opt-in)
 #
 # The native program is built in both configurations (standard: the Spinel
 # kernel; mruby: everything on mruby), since the kernel holds the steps of a
@@ -91,6 +92,7 @@ require_relative "screens/image"
 require_relative "checkpoint_sim"
 require_relative "checkpoint_asterism"
 require_relative "checkpoint_web"
+require_relative "checkpoint_board"
 
 module Regress
   module Checkpoint
@@ -131,6 +133,7 @@ module Regress
       include SimRounds
       include AsterismRounds
       include WebRounds
+      include BoardRounds
 
       def initialize(opts)
         @opts = opts
@@ -143,6 +146,7 @@ module Regress
         configs = @opts[:only] ? [@opts[:only]] : %w[standard mruby]
         sim_check!
         web_check! if @opts[:web]
+        board_check! if @opts[:board]
         build(configs) unless @opts[:no_build]
         web_build if @opts[:web] && !@opts[:no_build]
         results = []
@@ -153,6 +157,8 @@ module Regress
             # doc/checkpoint F5: the browser build, once, with the first
             # configuration's native program (checkpoint_web.rb)
             results << run_web(configs.first) if @opts[:web]
+            # doc/checkpoint F6: a connected board (checkpoint_board.rb)
+            results << run_board(configs.first) if @opts[:board]
           ensure
             router_down
           end
@@ -421,6 +427,16 @@ module Regress
         pid
       end
 
+      # The window once it looks like `want`, or as it is after 2 s.
+      def settled_window_shot(want, timeout: 2.0)
+        deadline = now + timeout
+        loop do
+          shot = window_shot
+          return shot if want.diff(shot, [], rect: WINDOW_RECT)[0].zero? || now > deadline
+          sleep 0.2
+        end
+      end
+
       def compare_window(before, after, round)
         count, box = before.diff(after, [], rect: WINDOW_RECT)
         return if count.zero?
@@ -484,7 +500,9 @@ module Regress
         app("finish", pid.to_s, "continue", "regress")
         wait_line(/ckpt: \[Ckpt Window\] moving mark taken down/, mark, "the mark taken down")
         wait_line(/ckpt: \[Ckpt Window\] goes on from its image/, mark, "the window app going on")
-        compare_window(before, window_shot, "window mark gone")
+        # The line is logged when the screen is asked to compose again, not
+        # when it has: under load the first shot can still show the mark.
+        compare_window(before, settled_window_shot(before), "window mark gone")
         "#{count} px in the title bar"
       end
 
@@ -739,12 +757,14 @@ module Regress
     def self.main(argv)
       opts = {}
       OptionParser.new do |o|
-        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none] [--web]"
+        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none] [--web] " \
+                   "[--board NAME]"
         o.on("--only NAME", %w[standard mruby]) { |v| opts[:only] = v }
         o.on("--no-build") { opts[:no_build] = true }
         o.on("--sim LIST") { |v| opts[:sim] = v }
         o.on("--no-native") { opts[:no_native] = true }
         o.on("--web") { opts[:web] = true }
+        o.on("--board NAME") { |v| opts[:board] = v }
       end.parse!(argv)
       Runner.new(opts).run
     rescue Failure => e

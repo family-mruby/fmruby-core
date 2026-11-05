@@ -42,10 +42,10 @@ MRuby::CrossBuild.new('family-mruby-native') do |conf|
   conf.cc.defines << 'MRB_NO_BOXING'
   conf.cc.defines << 'MRB_BASELINE_PROFILE=1'
   conf.cc.defines << 'MRB_USE_DEBUG_HOOK'
-  # The safe point hook of mruby-checkpoint (vm.c in lib/patch, "fmrb:
-  # checkpoint"; the gem is listed at the end). A global variable, not a field
-  # of mrb_state, so it is not ABI-relevant and the CMake side need not see it.
-  # Build-wide, so that it reaches the mruby core.
+  # The safe point and GC root hooks of mruby-checkpoint (lib/patch, "fmrb:
+  # checkpoint"; the gem is listed at the end). Fields of mrb_state, so
+  # ABI-relevant: mirrored in hosted/hosted.cmake. Build-wide, so that it
+  # reaches the mruby core.
   conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
   # The builds that carry mruby-checkpoint have the glue that moves an app
   # (main/app/fmrb_app_checkpoint.c, doc/checkpoint F1). Not ABI-relevant (no
@@ -121,9 +121,8 @@ MRuby::CrossBuild.new('family-mruby-native') do |conf|
   conf.gem core: "picoruby-fmrb-asterism"
 
   # mruby-checkpoint (doc/checkpoint, F0): writes a running VM's state to an
-  # image and resumes it elsewhere. The Linux simulation and the native program
-  # only, so far (the devices come after their internal RAM and flash are
-  # measured, doc/checkpoint/plan.md). Its safe point hook is defined above
-  # (MRB_VM_SAFEPOINT_HOOK).
+  # image and resumes it elsewhere. The Linux simulation, the native program
+  # and the P4 (F6); not the S3 yet (doc/checkpoint/plan.md). Its hooks are
+  # defined above (MRB_VM_SAFEPOINT_HOOK).
   conf.gem core: "mruby-checkpoint"
 end

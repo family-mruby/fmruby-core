@@ -264,6 +264,12 @@ task :setup do
 
   # mrbgem.rake patches
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
+  # The list of prebuilt gems as `const char *const` (the template and its
+  # reader): read-only data, in flash on ESP32, instead of a writable array of
+  # pointers in internal RAM that grew by 4 bytes with every gem (doc/checkpoint
+  # F6). Whole-file copies: refresh them when the picoruby submodule moves.
+  sh "cp -f lib/patch/picoruby-require/templates/mruby/picogem_init.c.erb #{mrbgem_path}/picoruby-require/templates/mruby/"
+  sh "cp -f lib/patch/picoruby-require/src/mruby/require.c #{mrbgem_path}/picoruby-require/src/mruby/"
   sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
   sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
   # (sandbox.c patch dropped: upstream fixed the uninitialized name in Sandbox.new)

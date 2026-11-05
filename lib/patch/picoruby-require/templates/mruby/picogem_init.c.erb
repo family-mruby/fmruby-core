@@ -1,0 +1,14 @@
+#include <mruby.h>
+
+/* fmrb: const pointers, so the table is read-only data (flash on ESP32)
+   instead of a writable array in internal RAM (4 bytes a gem). */
+const char *const prebuilt_gems[] = {
+<%- picogems.each do |require_name, v| -%>
+  "<%= require_name %>",
+<%- end -%>
+  // mgems
+<%- mgems.each do |require_name| -%>
+  "<%= require_name %>",
+<%- end -%>
+  NULL
+};

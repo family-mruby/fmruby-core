@@ -1216,12 +1216,10 @@ obj_free(mrb_state *mrb, struct RBasic *obj, mrb_bool end)
    32-bit machine). It must only call mrb_gc_mark and must not allocate.
    NULL by default.
 
-   Like the safe point hook in vm.c, the pointer exists only with
-   MRB_VM_SAFEPOINT_HOOK, defined by the builds that carry the gem: nothing
-   is added to the data segment (internal RAM on ESP32) elsewhere. */
-#ifdef MRB_VM_SAFEPOINT_HOOK
-void (*mrb_gc_root_hook)(mrb_state *mrb) = NULL;
-#endif
+   Like the safe point hook in vm.c, the pointer is a field of the state
+   (mrb->gc_root_hook, include/mruby.h) and exists only with
+   MRB_VM_SAFEPOINT_HOOK, defined by the builds that carry the gem. The gem
+   sets it in the states it opens. */
 /* fmrb: checkpoint -- END */
 
 static void
@@ -1279,7 +1277,7 @@ root_scan_phase(mrb_state *mrb, mrb_gc *gc)
   mrb_task_mark_all(mrb);
 #endif
 #ifdef MRB_VM_SAFEPOINT_HOOK
-  if (mrb_gc_root_hook) mrb_gc_root_hook(mrb);   /* fmrb: checkpoint */
+  if (mrb->gc_root_hook) mrb->gc_root_hook(mrb);   /* fmrb: checkpoint */
 #endif
 }
 

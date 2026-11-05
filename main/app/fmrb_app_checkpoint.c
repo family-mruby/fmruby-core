@@ -66,6 +66,7 @@
 
 #include "fmrb_app_checkpoint.h"
 #include "fmrb_app.h"
+#include "fmrb_attr.h"
 #include "fmrb_hal.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
@@ -122,7 +123,8 @@ typedef struct {
     char requires[CKPT_REQUIRES_MAX]; // requires = [...] of its .app.toml (or the image's .toml)
 } ckpt_app_t;
 
-static ckpt_app_t s_ckpt[FMRB_MAX_APPS];
+// External RAM on a device: kilobytes, and only the app tasks touch them.
+FMRB_EXT_RAM_BSS_ATTR static ckpt_app_t s_ckpt[FMRB_MAX_APPS];
 
 // The last image asked to be started (fmrb_app_checkpoint_restore_ask): one
 // at a time, as the kernel moves one app at a time.
@@ -133,7 +135,7 @@ typedef struct {
     char what[CKPT_WHAT_MAX];       // why it was refused, or (restored) the names it lacks
 } ckpt_restore_t;
 
-static ckpt_restore_t s_restore;
+FMRB_EXT_RAM_BSS_ATTR static ckpt_restore_t s_restore;
 
 static void put_u32(uint8_t *p, uint32_t v);
 static bool restore_answer(const char *path, int status, int32_t pid, const char *what);

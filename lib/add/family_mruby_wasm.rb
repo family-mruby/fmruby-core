@@ -28,9 +28,10 @@ MRuby::CrossBuild.new(FMRB_WASM_CHECKPOINT ? 'family-mruby-wasm-ckpt' : 'family-
   conf.cc.defines << 'MRB_TIMESLICE_TICK_COUNT=10'
   # wasm32: ILP32 like the ESP32 targets, unlike the 64-bit linux sim.
   conf.cc.defines << 'MRB_32BIT'
-  # With mruby-checkpoint (listed at the end): its safe point hook in the
-  # mruby core, and the glue's define for the gems (picoruby-machine's
-  # board_millis offset). Build-wide, before any gem copies the compiler.
+  # With mruby-checkpoint (listed at the end): its hooks in the mruby core
+  # (fields of mrb_state, so ABI-relevant: hosted/hosted.cmake has it too),
+  # and the glue's define for the gems (picoruby-machine's board_millis
+  # offset). Build-wide, before any gem copies the compiler.
   if FMRB_WASM_CHECKPOINT
     conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
     conf.cc.defines << 'FMRB_HAVE_CHECKPOINT'

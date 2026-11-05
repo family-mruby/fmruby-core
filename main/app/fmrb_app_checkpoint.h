@@ -1,7 +1,7 @@
 // Moving an mruby app with mruby-checkpoint (doc/checkpoint): the glue between
 // the app runtime (fmrb_app.c, the FmrbApp binding) and the gem. Only the
 // builds whose libmruby carries the gem define FMRB_HAVE_CHECKPOINT (the Linux
-// simulation and the native program); nothing here exists elsewhere.
+// simulation, the native program and the P4); nothing here exists elsewhere.
 #pragma once
 
 #ifdef FMRB_HAVE_CHECKPOINT

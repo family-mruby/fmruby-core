@@ -200,6 +200,12 @@ namespace :build do
     # COMPONENT_SRCS. ENGINE_ENV_OPTS puts the selection on the container itself,
     # which covers this build and every other idf.py call (flash re-configures).
 
+    # The P4 carries mruby-checkpoint (doc/checkpoint F6): its baseline's
+    # table is made here on the host from the same gems (tmp/ckpt_table/
+    # <board>/) and main/CMakeLists.txt links it. Made again only when the
+    # host libmruby or the gem ports changed.
+    Rake::Task['checkpoint:table'].invoke if ESP_CHIP == 'esp32p4'
+
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
     # correctly (it runs the first cmake configure).
     unless Dir.exist?('build')

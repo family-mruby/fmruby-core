@@ -374,6 +374,19 @@ struct mrb_state {
   mrb_code (*bytecode_decoder)(mrb_state* mrb, mrb_code code);
 #endif
 
+  /* fmrb: checkpoint (mruby-checkpoint patches/0001 and 0004). The safe
+     point hook (task_stop_requested in vm.c) and the GC's root hook
+     (root_scan_phase in gc.c), NULL by default. Fields of each state, not
+     globals: a state's hooks cost the others nothing, and on a device they
+     live where the state does (the VM's pool, PSRAM), not in internal RAM.
+     Only the builds that carry the gem have them (MRB_VM_SAFEPOINT_HOOK);
+     they change sizeof(mrb_state), so the define is part of the ABI
+     (components/picoruby-esp32/mruby_abi_defines.cmake, hosted/hosted.cmake). */
+#ifdef MRB_VM_SAFEPOINT_HOOK
+  void (*safepoint_hook)(mrb_state *mrb);
+  void (*gc_root_hook)(mrb_state *mrb);
+#endif
+
   struct RClass *eException_class;
   struct RClass *eStandardError_class;
   struct RObject *nomem_err;              /* pre-allocated NoMemoryError */

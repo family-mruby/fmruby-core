@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "fmrb_app.h"
+#include "fmrb_attr.h"
 #include "fmrb_hal.h"
 #include "fmrb_log.h"
 
@@ -26,8 +27,9 @@ typedef struct {
     char part[FMRB_MAX_PATH_LEN + sizeof(PART_SUFFIX)];
 } transfer_t;
 
-static transfer_t s_in;
-static uint32_t s_next_id = 1;
+// External RAM on a device (two paths' worth; internal RAM does not grow).
+FMRB_EXT_RAM_BSS_ATTR static transfer_t s_in;
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_last_id;   // ids start at 1
 
 // Only plain names under /tmp/: no way up and out of it.
 static bool path_ok(const char *path)
@@ -65,7 +67,7 @@ fmrb_err_t fmrb_app_transfer_begin(const char *path, uint32_t size, uint32_t *id
     s_in.active = true;
     s_in.size = size;
     s_in.got = 0;
-    s_in.id = s_next_id++;
+    s_in.id = ++s_last_id;
     *id = s_in.id;
     FMRB_LOGI(TAG, "receiving %s (%u bytes)", path, (unsigned)size);
     return FMRB_OK;

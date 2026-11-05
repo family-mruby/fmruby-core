@@ -7,6 +7,9 @@
 //   DELETE /fs/del?path=     POST /fs/mkdir?path=
 //   GET  /audio/mute         POST /audio/mute?on=0|1
 //   GET  /audio/volume       POST /audio/volume?level=0-10
+//   POST /app/checkpoint?pid=[&restart=1][&hold=ms]   (builds with the
+//   POST /app/move?pid=&node=[&hold=ms]                 checkpoint gem,
+//   GET  /app/checkpoint?pid=                           doc/checkpoint F6)
 //
 // It lived inside the remote desktop's server (rd_http.c) and moved here so
 // Retro can have it too: none of it touches the screen, the encoder or the
@@ -496,6 +499,94 @@ static esp_err_t audio_volume_post_handler(httpd_req_t *req)
     return audio_state_reply(req);
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+// ---------------------------------------------------------------
+// Moving an app (doc/checkpoint F6): the debug server's checkpoint and move,
+// for a board whose debug server is BLE only. They ask and answer at once;
+// GET /app/checkpoint?pid= tells how it went (fmrb_app_checkpoint_poll), so
+// the httpd task never waits for an app or for another machine.
+// ---------------------------------------------------------------
+
+static int32_t ctl_query_int(httpd_req_t *req, const char *key, int32_t dflt)
+{
+    char v[16];
+    if (!ctl_query_value(req, key, v, sizeof(v)) || v[0] == '\0') return dflt;
+    return (int32_t)atol(v);
+}
+
+static esp_err_t ctl_ckpt_answer(httpd_req_t *req, fmrb_err_t err, const char *what)
+{
+    char body[96];
+    if (err != FMRB_OK) {
+        snprintf(body, sizeof(body), "{\"ok\":false,\"err\":%d}", (int)err);
+        FMRB_LOGW(TAG, "dev ctl: %s failed (%d)", what, (int)err);
+        return ctl_json(req, "500 Internal Server Error", body);
+    }
+    FMRB_LOGI(TAG, "dev ctl: %s", what);
+    return ctl_json(req, "200 OK", "{\"ok\":true}");
+}
+
+static esp_err_t checkpoint_post_handler(httpd_req_t *req)
+{
+    int32_t pid = ctl_query_int(req, "pid", -1);
+    if (pid < 0) return ctl_json(req, "400 Bad Request", "{\"ok\":false,\"err\":\"pid required\"}");
+    bool restart = ctl_query_int(req, "restart", 0) != 0;
+    int32_t hold = ctl_query_int(req, "hold", 0);
+    char what[64];
+    snprintf(what, sizeof(what), "checkpoint pid %d%s", (int)pid, restart ? " (restart)" : "");
+    return ctl_ckpt_answer(req, fmrb_app_checkpoint_ask(pid, restart, hold), what);
+}
+
+static esp_err_t move_handler(httpd_req_t *req)
+{
+    int32_t pid = ctl_query_int(req, "pid", -1);
+    char node[64];
+    if (pid < 0 || !ctl_query_value(req, "node", node, sizeof(node)) || node[0] == '\0') {
+        return ctl_json(req, "400 Bad Request", "{\"ok\":false,\"err\":\"pid and node required\"}");
+    }
+    int32_t hold = ctl_query_int(req, "hold", 0);
+    char what[112];
+    snprintf(what, sizeof(what), "move pid %d to %s", (int)pid, node);
+    return ctl_ckpt_answer(req, fmrb_app_checkpoint_move(pid, node, hold), what);
+}
+
+static const char *ctl_ckpt_status_name(fmrb_app_ckpt_status_t st)
+{
+    switch (st) {
+    case FMRB_APP_CKPT_NONE:      return "none";
+    case FMRB_APP_CKPT_PENDING:   return "pending";
+    case FMRB_APP_CKPT_WRITTEN:   return "written";
+    case FMRB_APP_CKPT_REFUSED:   return "refused";
+    case FMRB_APP_CKPT_HELD:      return "held";
+    case FMRB_APP_CKPT_CLOSED:    return "closed";
+    case FMRB_APP_CKPT_CONTINUED: return "continued";
+    default:                      return "unknown";
+    }
+}
+
+static esp_err_t checkpoint_get_handler(httpd_req_t *req)
+{
+    int32_t pid = ctl_query_int(req, "pid", -1);
+    if (pid < 0) return ctl_json(req, "400 Bad Request", "{\"ok\":false,\"err\":\"pid required\"}");
+    char what[256];
+    what[0] = '\0';
+    fmrb_app_ckpt_status_t st = fmrb_app_checkpoint_poll(pid, what, sizeof(what));
+    // what is a path or a reason: plain text, escaped for JSON here
+    char esc[sizeof(what) * 2];
+    size_t o = 0;
+    for (const char *c = what; *c && o + 2 < sizeof(esc); c++) {
+        unsigned char ch = (unsigned char)*c;
+        if (ch == '"' || ch == '\\') { esc[o++] = '\\'; esc[o++] = (char)ch; }
+        else if (ch >= 0x20) esc[o++] = (char)ch;
+    }
+    esc[o] = '\0';
+    char body[sizeof(esc) + 64];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"status\":\"%s\",\"what\":\"%s\"}",
+             ctl_ckpt_status_name(st), esc);
+    return ctl_json(req, "200 OK", body);
+}
+#endif /* FMRB_HAVE_CHECKPOINT */
+
 // Register and say so when it does not take. httpd_register_uri_handler
 // returns ESP_ERR_HTTPD_HANDLERS_FULL rather than asserting, so ignoring it
 // leaves a server that starts cleanly and 404s the route just added.
@@ -547,6 +638,17 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_audio_mute_post);
     devctl_register_uri(server, &uri_audio_volume_get);
     devctl_register_uri(server, &uri_audio_volume_post);
+#ifdef FMRB_HAVE_CHECKPOINT
+    static const httpd_uri_t uri_ckpt_post = {
+        .uri = "/app/checkpoint", .method = HTTP_POST, .handler = checkpoint_post_handler };
+    static const httpd_uri_t uri_ckpt_get = {
+        .uri = "/app/checkpoint", .method = HTTP_GET, .handler = checkpoint_get_handler };
+    static const httpd_uri_t uri_move = {
+        .uri = "/app/move", .method = HTTP_POST, .handler = move_handler };
+    devctl_register_uri(server, &uri_ckpt_post);
+    devctl_register_uri(server, &uri_ckpt_get);
+    devctl_register_uri(server, &uri_move);
+#endif
     FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*)");
     return FMRB_OK;
 }

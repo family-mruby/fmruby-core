@@ -406,7 +406,7 @@ end
 REGRESS_CHECKPOINT = File.join(ROOT_DIR, "tools", "regress", "checkpoint.rb")
 
 namespace :regress do
-  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program, WEB=1 the browser build that carries the gem (own server and headless Chromium) (ONLY=standard|mruby, NO_BUILD=1: the builds there are, SIM=1|retro|modern)"
+  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program, WEB=1 the browser build that carries the gem (own server and headless Chromium), BOARD=<name> a connected board (opt-in: the fmrb MCP serial capture running, BOARD_IP=/HOST_IP= when they cannot be found) (ONLY=standard|mruby, NO_BUILD=1: the builds there are, SIM=1|retro|modern)"
   task :checkpoint do
     args = []
     args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
@@ -414,6 +414,9 @@ namespace :regress do
     sim = ENV["SIM"].to_s
     args += ["--sim", sim == "1" ? "retro,modern" : sim] unless sim.empty? || sim == "0" || sim == "none"
     args << "--web" if ENV["WEB"] == "1"
+    # a connected board (doc/checkpoint F6): opt-in like regress:boot, never
+    # from regress:full
+    args += ["--board", ENV["BOARD"]] if ENV["BOARD"] && !ENV["REGRESS_BUILD_CACHE"]
     abort "regress:checkpoint: failed" unless system(Gem.ruby, REGRESS_CHECKPOINT, *args)
   end
 end

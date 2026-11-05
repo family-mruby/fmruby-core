@@ -412,15 +412,40 @@ idf_component_register(
 include(${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/mruby_abi_defines.cmake)
 fmrb_add_mruby_abi_defines()
 
-# mruby-checkpoint's header, for the glue that moves an app (Linux only, where
-# libmruby carries the gem; app/fmrb_app_checkpoint.c is empty elsewhere).
-if(IDF_TARGET STREQUAL "linux")
+# mruby-checkpoint's header, for the glue that moves an app (Linux and the P4,
+# where libmruby carries the gem; app/fmrb_app_checkpoint.c is empty
+# elsewhere).
+if(IDF_TARGET STREQUAL "linux" OR IDF_TARGET STREQUAL "esp32p4")
     target_include_directories(${COMPONENT_LIB} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
+endif()
+if(IDF_TARGET STREQUAL "linux")
     # The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff):
     # made from the same libmruby and gem ports, linked in as constant data.
     include(${CMAKE_CURRENT_LIST_DIR}/../tools/ckpt_table/ckpt_table.cmake)
     fmrb_ckpt_table_idf(${COMPONENT_LIB})
+elseif(IDF_TARGET STREQUAL "esp32p4")
+    # The P4's table is made on the host before the firmware is built
+    # (rake checkpoint:table, which rake build:esp32 runs for a P4 board):
+    # a host build of the same gems, tmp/ckpt_table/<board>/. Constant data,
+    # so the linker puts it in flash (rodata). main is an archive: -u keeps
+    # the table's member, which only a weak reference names
+    # (app/fmrb_app_checkpoint.c).
+    # The first configure (idf.py set-target) is given no board (the default
+    # stands in for it); the build's own configure is (-DFMRB_HW_TARGET), and
+    # there the table must be.
+    if(FMRB_HW_TARGET STREQUAL "TAB5" OR FMRB_HW_TARGET STREQUAL "NARYAv4")
+        set(FMRB_CKPT_TABLE_SRC
+            ${CMAKE_CURRENT_LIST_DIR}/../tmp/ckpt_table/${FMRB_HW_TARGET}/fmrb_checkpoint_table.c)
+        if(NOT EXISTS ${FMRB_CKPT_TABLE_SRC})
+            message(FATAL_ERROR "No checkpoint table for ${FMRB_HW_TARGET} (${FMRB_CKPT_TABLE_SRC}): "
+                                "run `FMRB_HW_TARGET=${FMRB_HW_TARGET} rake checkpoint:table` "
+                                "(rake build:esp32 does it for a P4 board)")
+        endif()
+        target_sources(${COMPONENT_LIB} PRIVATE ${FMRB_CKPT_TABLE_SRC})
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${FMRB_CKPT_TABLE_SRC})
+        target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,-u,fmrb_checkpoint_table")
+    endif()
 endif()
 
 # Linux sim: route every caller of the log locks through the guards above.

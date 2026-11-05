@@ -600,7 +600,8 @@ static void handle_restore(const fmrb_dbg_req_t *req) {
 // file_get {path, pos}: up to 3 KB of a file under /tmp/ at pos, as
 // {data (bin), size (the file's)}. The pieces of an image going out.
 static void handle_file_get(const fmrb_dbg_req_t *req) {
-    static uint8_t piece[DEBUGD_FILE_PIECE];   // the debugd task only
+    // the debugd task only; external RAM on a device (internal RAM is the scarce one)
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t piece[DEBUGD_FILE_PIECE];
     size_t got = 0;
     uint32_t size = 0;
     fmrb_err_t err = fmrb_app_transfer_read(req->path, req->pos, piece, sizeof(piece), &got, &size);

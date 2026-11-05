@@ -1634,13 +1634,11 @@ task_across_c_boundary(mrb_state *mrb)
    methods (mrb_funcall), which may move the call-info stack: the VM takes
    its frame from mrb->c->ci again after the check. NULL by default.
 
-   The hook pointer exists only with MRB_VM_SAFEPOINT_HOOK, defined by the
-   builds that carry the gem (lib/add/family_mruby_linux.rb and
-   family_mruby_native.rb). Without it the slow half below is the upstream
-   test, and nothing is added to the data segment (internal RAM on ESP32). */
-#ifdef MRB_VM_SAFEPOINT_HOOK
-void (*mrb_vm_safepoint_hook)(mrb_state *mrb) = NULL;
-#endif
+   The hook pointer is a field of the state (mrb->safepoint_hook,
+   include/mruby.h) and exists only with MRB_VM_SAFEPOINT_HOOK, defined by
+   the builds that carry the gem (lib/add/family_mruby_*.rb). Without it the
+   slow half below is the upstream test. The gem sets it only while that
+   state has a request pending. */
 
 /* The slow half of RETURN_IF_TASK_STOPPED, kept out of line so that the
    check expanded at every instruction boundary is two loads and a branch.
@@ -1654,8 +1652,8 @@ task_stop_requested(mrb_state *mrb)
   if (mrb->task.switching && !mrb->exc && !mrb->gc.iterating &&
       !task_across_c_boundary(mrb)) {
 #ifdef MRB_VM_SAFEPOINT_HOOK
-    if (mrb_vm_safepoint_hook) {
-      mrb_vm_safepoint_hook(mrb);
+    if (mrb->safepoint_hook) {
+      mrb->safepoint_hook(mrb);
       if (!mrb->task.switching) return mrb->c->status == MRB_TASK_STOPPED;
     }
 #endif
