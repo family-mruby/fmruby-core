@@ -120,7 +120,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔18 files〕
 - `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **完了** (2026-09-26) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。音の可聴確認とスマホでの実操作も確認済み 〔28 files〕
 - `wasm_apps/` [wasm のアプリ (WAMR で TinyGo・Rust・Zig) 計画](wasm_apps/plan.md) — **計画済** (2026-11-03) WAMR (インタプリタ) を本体に入れ、TinyGo・Rust・Zig などで作った wasm のアプリを P4・sim・ブラウザ版で動かす。API の bindings は `sig/*.rbs` から各言語へ自動で生成する。着手は VM の checkpoint (doc/checkpoint) が落ち着いてから 〔1 files〕
-- `web_crt/` [ブラウザ版の CRT 風の表示](web_crt/plan.md) — **進行中** (2026-10-29) C1 検収済 (b37e8e2b)、C3 (額縁) 検収済 (a3360e27・bd2baae7)。ブラウザ版の画面を WebGL のシェーダーでブラウン管風に描く選び口を足す。元の絵と画面写しはそのまま 〔5 files〕
+- `web_crt/` [ブラウザ版の CRT 風の表示](web_crt/plan.md) — **進行中** (2026-11-05) C1 検収済 (b37e8e2b)、C3 (額縁) 検収済 (a3360e27・bd2baae7)、作業の枝へ合流して公開済 (2026-11-05、report/publish.md)。ブラウザ版の画面を WebGL のシェーダーでブラウン管風に描く選び口を足す。元の絵と画面写しはそのまま 〔6 files〕
 - `window_arranger/` [窓を並べるアプリ (Ruby で書くタイル型の窓管理)](window_arranger/plan.md) — **計画済** (2026-10-28) 他のアプリの窓を動かす API を、宣言したアプリ 1 つにだけ開く。利用者が .app.rb 1 本でタイル型の窓管理を書ける。主な対象は Linux 版 (コンポジタ) とブラウザ版 〔1 files〕
 
 ## アーカイブ (完結したテーマ)
