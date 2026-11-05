@@ -3,6 +3,22 @@ cmake_minimum_required(VERSION 3.16)
 # Set component directories for Family mruby modules
 set(EXTRA_COMPONENT_DIRS "components")
 
+# No "new versions available" check in the component manager. That check
+# solves the dependencies afresh against the registry on every configure, and
+# the solver reads the manifest of every version a range admits, not only the
+# one it picks: esp_wifi_remote 0.8.5 asks for esp_hosted >=0.0.6, so the
+# solver reads esp_hosted 3.1.0 (2026-11-05), whose optional USB dependencies
+# name Kconfig options that the esp_hosted we hold (1.4.0, main/
+# idf_component.yml) does not define. The manager then asks CMake to configure
+# again for the missing options, and the second pass fails with "Missing
+# required kconfig option after retry" -- every P4 build, at any commit, while
+# the registry has that release. Holding a version does not help (the pin is
+# already exact; the range that pulls 3.1.0 in is esp_wifi_remote's). A real
+# solve (no dependencies.lock, or one made for the other chip) still reads
+# 3.1.0, but it writes the lock before asking for the second pass, and the
+# second pass uses the lock, so it goes through.
+set(ENV{IDF_COMPONENT_CHECK_NEW_VERSION} 0)
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(fmruby-core)
 
