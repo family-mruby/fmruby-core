@@ -169,6 +169,8 @@ module Regress
 
     def screen_size
       png = File.join(OUT, "screen.png")
+      # a fresh tree has no tmp/regress/sim yet, and the shot cannot be written
+      FileUtils.mkdir_p(OUT)
       ok, = sh("python3", File.join(ROOT, "tools", "fmrb_screenshot.py"), "--wait", "10", png)
       return nil unless ok && File.exist?(png)
       head = File.binread(png, 24)

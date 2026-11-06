@@ -35,7 +35,7 @@ class CkptWindowApp < FmrbApp
     @ui_chosen.label(:chosen_bg, 40, 24, 30, 10, "bg")
     make_sprite
     draw_all
-    Log.info("ckpt_window: drawn #{ui_colours}")
+    Log.info("ckpt_window: drawn #{ui_colours} #{font_note}")
   end
 
   # A sprite (an image and an instance of it on the display side): the base
@@ -76,6 +76,14 @@ class CkptWindowApp < FmrbApp
     "ui_bg=#{@ui.widgets[0].bg} chosen_bg=#{@ui_chosen.widgets[0].bg} window_bg=#{FmrbConst::THEME_WINDOW_BG}"
   end
 
+  # The font this machine picked for the [:ja, 12] asked for in on_create:
+  # misaki 8 on a build without the efontJA fonts, 12 again on one with them
+  # (the base picks it again from what was asked, report/font_pct.md).
+  def font_note
+    f = @gfx.current_font
+    "font=#{f[0]},#{f[1]}"
+  end
+
   def on_event(ev)
     case ev[:type]
     when :key_down
@@ -105,7 +113,7 @@ class CkptWindowApp < FmrbApp
   def on_restore
     make_sprite
     draw_all
-    Log.info("ckpt_window: on_restore dots=#{@dots.size} text=#{@text} #{ui_colours}")
+    Log.info("ckpt_window: on_restore dots=#{@dots.size} text=#{@text} #{ui_colours} #{font_note}")
   end
 end
 

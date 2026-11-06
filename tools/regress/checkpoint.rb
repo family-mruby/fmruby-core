@@ -8,6 +8,7 @@
 #   ruby tools/regress/checkpoint.rb --only mruby     # one engine configuration
 #   ruby tools/regress/checkpoint.rb --no-build       # use the native builds there are
 #   ruby tools/regress/checkpoint.rb --sim retro,modern   # also the simulation's rounds (F4a)
+#   ruby tools/regress/checkpoint.rb --sim noja       # a Modern simulation without the efontJA fonts
 #   ruby tools/regress/checkpoint.rb --web            # also the browser build's rounds (F5)
 #   ruby tools/regress/checkpoint.rb --board naryav4  # also a connected board's rounds (F6, opt-in)
 #
@@ -577,6 +578,8 @@ module Regress
         raise Failure, "window move: the first program counted on after its image (#{stray.first})" unless stray.empty?
         b = log_lines(RUN_DIR_B)
         task = window_goes_on(a[0...w], b[restored..], b[mark_b..], "window move", r["pid"])
+        # the font picked there from what the app asked for (report/font_pct.md)
+        font_on(b[restored], "ja,12", "window move")
         poke_window(60, 60, "c", run_dir: RUN_DIR_B, port: PORT_B)
         app_b("kill", r["pid"].to_s)
         sleep 0.3
@@ -999,7 +1002,7 @@ module Regress
     def self.main(argv)
       opts = {}
       OptionParser.new do |o|
-        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none] [--web] " \
+        o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern,noja|none] [--web] " \
                    "[--board NAME [--board-only]]"
         o.on("--only NAME", %w[standard mruby]) { |v| opts[:only] = v }
         o.on("--no-build") { opts[:no_build] = true }

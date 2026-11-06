@@ -222,5 +222,49 @@ check("the first target wins", b.id_at(5, 5), :row)
 b.clear
 check("cleared", b.id_at(5, 5), nil)
 
+
+# ---------------------------------------------------------------- the font asked for (checkpoint)
+# A moved app's font is picked again on the machine it lands on from what it
+# asked for (doc/checkpoint/report/font_pct.md): through a machine without the
+# efontJA fonts (FONT_JA false: misaki 8 alone) and back, [:ja, 12] again.
+
+def font_ja(v)
+  FmrbConst.send(:remove_const, :FONT_JA)
+  FmrbConst.const_set(:FONT_JA, v)
+end
+
+# what FmrbApp#draw_window_frame does around the frame
+def frame(g)
+  saved = g._asked_font
+  g.set_font(:default)
+  g.set_font(*saved) unless saved == [:default]
+end
+
+g = FmrbGfx.new(1)
+check("fresh: asked", g._asked_font, [:default])
+check("asked 12 here", g.set_font(:ja, 12), [:ja, 12])
+frame(g)
+check("the frame keeps 12", g.current_font, [:ja, 12])
+font_ja(false)
+g._checkpoint_font
+check("no efontJA: misaki 8", g.current_font, [:ja, 8])
+check("no efontJA: still asked 12", g._asked_font, [:ja, 12])
+frame(g)
+check("no efontJA: the frame keeps the ask", g._asked_font, [:ja, 12])
+font_ja(true)
+g._checkpoint_font
+check("back: 12 again", g.current_font, [:ja, 12])
+g.set_font(:ja_bold, 16)
+check("bold 16 picked as plain 16", g.current_font, [:ja, 16])
+check("bold 16 asked", g._asked_font, [:ja_bold, 16])
+g.set_font(:default)
+g._checkpoint_font
+check("default stays", g.current_font, [:default])
+# an image written before the ask was kept
+old = FmrbGfx.new(1)
+old.set_font(:ja, 16)
+old.instance_variable_set(:@asked_font, nil)
+check("no ask in the image: current_font", old._asked_font, [:ja, 16])
+
 puts($failed.zero? ? "fmrb_text: all #{$n} checks passed" : "fmrb_text: #{$failed} of #{$n} FAILED")
 exit($failed.zero? ? 0 : 1)

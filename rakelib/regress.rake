@@ -406,13 +406,13 @@ end
 REGRESS_CHECKPOINT = File.join(ROOT_DIR, "tools", "regress", "checkpoint.rb")
 
 namespace :regress do
-  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program, WEB=1 the browser build that carries the gem (own server and headless Chromium), BOARD=<name> a connected board (opt-in: the fmrb MCP serial capture running, BOARD_IP=/HOST_IP= when they cannot be found, BOARD_ONLY=1 its rounds alone) (ONLY=standard|mruby, NO_BUILD=1: the builds there are, SIM=1|retro|modern)"
+  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program, WEB=1 the browser build that carries the gem (own server and headless Chromium), BOARD=<name> a connected board (opt-in: the fmrb MCP serial capture running, BOARD_IP=/HOST_IP= when they cannot be found, BOARD_ONLY=1 its rounds alone) (ONLY=standard|mruby, NO_BUILD=1: the builds there are, SIM=1|retro|modern|noja: noja is a Modern sim built with FMRB_FONT_JA=0, one round)"
   task :checkpoint do
     args = []
     args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
     args << "--no-build" if ENV["NO_BUILD"] == "1"
     sim = ENV["SIM"].to_s
-    args += ["--sim", sim == "1" ? "retro,modern" : sim] unless sim.empty? || sim == "0" || sim == "none"
+    args += ["--sim", sim == "1" ? "retro,modern,noja" : sim] unless sim.empty? || sim == "0" || sim == "none"
     args << "--web" if ENV["WEB"] == "1"
     # a connected board (doc/checkpoint F6): opt-in like regress:boot, never
     # from regress:full

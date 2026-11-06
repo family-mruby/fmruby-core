@@ -456,7 +456,7 @@ class P5
     elsif @text_align_v == :bottom
       ty -= font_height
     end
-    saved_font = @gfx.current_font
+    saved_font = @gfx._asked_font
     saved_size = @gfx.current_text_size
     if @font_size
       @gfx.set_font(@font_family, @font_size)

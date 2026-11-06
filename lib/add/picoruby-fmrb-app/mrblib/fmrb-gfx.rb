@@ -117,6 +117,7 @@ class FmrbGfx
     @canvas_height = height
     # LovyanGFX boots a fresh target with Font0 and text size 1.
     @current_font = [:default]
+    @asked_font = [:default]
     @current_text_size = 1
   end
 
@@ -147,11 +148,33 @@ class FmrbGfx
   # @param size [Integer, nil] Pixel height. :ja has 8 (misaki), 12 and 16
   #   (efontJA); :ja_bold has 12. Ignored for :default.
   def set_font(family, size = nil)
-    key = FmrbGfx.resolve_font(family == :default ? [:default]
-                                                  : [family, (size || 8)])
+    asked = family == :default ? [:default] : [family, (size || 8)]
+    key = FmrbGfx.resolve_font(asked)
+    @asked_font = asked
     @current_font = key
     key.length > 1 ? _set_font(key[0], key[1]) : _set_font(key[0])
     key
+  end
+
+  # The font last asked for with set_font, before this machine picked the
+  # nearest it has (current_font). What the base saves and puts back around
+  # the window frame, and what a moved app's font is picked from again on the
+  # machine it lands on (doc/checkpoint/report/font_pct.md): passing through
+  # a machine without the efontJA fonts must not leave [:ja, 8] behind. An
+  # image written before this was kept has no @asked_font: current_font then.
+  def _asked_font
+    @asked_font || @current_font
+  end
+
+  # A moved app's canvas, bound again on this machine (FmrbApp's
+  # _checkpoint_restored): its font picked again from what was asked for and
+  # its text scale sent again (the display side starts this canvas afresh).
+  def _checkpoint_font
+    font = _asked_font
+    set_font(*font) if font && font != [:default]
+    size = @current_text_size
+    set_text_size(size) if size && size != 1
+    nil
   end
 
   # Set the text scale multiplier (1..4). Applies on top of the active font.

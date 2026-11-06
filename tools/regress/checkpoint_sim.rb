@@ -50,6 +50,17 @@
 #                 in its .app.toml: the simulation refuses it, and it goes on
 #                 in the native program from where it was held.
 #
+# And once, in the first configuration, a Modern simulation built without the
+# efontJA fonts (FMRB_FONT_JA=0, as the AtomS3R and StickS3 are; "noja" in
+# --sim, which SIM=1 includes):
+#
+#   font          ckpt_window, which asks for [:ja, 12], moved from the native
+#                 program into it and back: misaki 8 there, 12 again back
+#                 here (the base picks the font from what was asked for, not
+#                 from what the machine it passed through picked;
+#                 doc/checkpoint/report/font_pct.md), and the window back here
+#                 the same as before it left.
+#
 # A sim stack that is already running (someone's) is never touched: the run
 # refuses. build/ is moved aside and put back (build_tree.rb), as
 # regress:run and regress:screens do; do not run those at the same time.
@@ -69,6 +80,8 @@ module Regress
     # where ckpt_wide.app.toml puts the window: [x, y, w, h]
     WIDE_RECT = [30, 60, 380, 100].freeze
     NATIVE_SCREEN = [426, 240].freeze
+    # the simulation without the efontJA fonts (Modern's screen)
+    NOJA = "noja"
     TITLE_BAR_H = 11
     MRUBY_ENV = {
       "FMRB_KERNEL_ENGINE" => "mruby",
@@ -83,7 +96,7 @@ module Regress
       # Native rounds only unless asked (--sim retro,modern; rake SIM=1)
       def sim_families
         v = (@opts[:sim] || "none").split(",").map(&:strip)
-        v = %w[retro modern] if v == ["1"]
+        v = ["retro", "modern", NOJA] if v == ["1"]
         v == ["none"] || v == ["0"] ? [] : v
       end
 
@@ -109,9 +122,10 @@ module Regress
           sim_asterism_setup
           # family by family, the one the sim is at first: graphics-audio
           # needs a second start for each switch (SimRun.current_first)
-          SimRun.current_first(sim_families) { |f| f }.each do |f|
+          SimRun.current_first(sim_families - [NOJA]) { |f| f }.each do |f|
             configs.each { |c| lines << run_sim(c, f, tree) }
           end
+          lines << run_sim(configs.first, NOJA, tree) if sim_families.include?(NOJA)
         ensure
           SimRun.down if SimRun.core_running?
           sim_asterism_teardown
@@ -121,6 +135,9 @@ module Regress
       end
 
       def sim_env(config, family)
+        if family == NOJA
+          return sim_env(config, "modern").merge("FMRB_FONT_JA" => "0")
+        end
         t = TARGETS.find { |x| x.family == family && x.firmware } or raise Failure, "no board of family #{family}"
         e = t.firmware_env
         config == "mruby" ? e.merge(MRUBY_ENV) : e
@@ -133,7 +150,8 @@ module Regress
         ok, bsecs, cached = tree.sim_build!(sim_env(config, family), blog)
         raise Failure, "build:linux failed (#{blog.sub("#{CORE}/", '')})" unless ok
         raise Failure, "build/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
-        sim_up(family)
+        screen = family == NOJA ? "modern" : family
+        sim_up(screen)
         down_if_running
         home = File.join(OUT, "#{config}_home")
         FileUtils.rm_rf(home)
@@ -144,8 +162,13 @@ module Regress
                "--cache-dir", File.join(home, "cache"), "--timeout", "90", timeout: 120)
         @sim = Endpoint.new("the simulation", :sim, SIM_RUN_DIR, SIM_PORT)
         @nat = Endpoint.new("the native program", :native, RUN_DIR, PORT)
-        @family = family
+        @family = screen
         notes = []
+        if family == NOJA
+          notes << sim_round_font
+          sim_no_forced_kill
+          return "#{name}: ok (#{notes.join('; ')}; build #{cached ? 'cached' : "#{bsecs.round}s"}, #{(now - t0 - bsecs).round}s)"
+        end
         notes << sim_round_restart
         notes << sim_round_hold
         notes << sim_round_window_restart
@@ -496,6 +519,38 @@ module Regress
         raise Failure, "requires: the simulation runs it" if ep_ps(@sim).any? { |a| a["name"] == "Ckpt Requires" }
         ep_kill_named(@nat, "Ckpt Requires")
         "requires: refused there (#{r['reason'][0, 50]}...), went on here"
+      end
+
+      # The font ckpt_window's log line says the machine picked ("ja,12").
+      def font_on(line, want, round)
+        got = line.to_s[/ font=(\S+)/, 1]
+        raise Failure, "#{round}: font #{got.inspect} where #{want} was expected (#{line})" unless got == want
+        got
+      end
+
+      # Through a machine without the efontJA fonts and back (report/font_pct.md).
+      def sim_round_font
+        from = ep_lines(@nat).size
+        pid = ep_app(@nat, "spawn", WINDOWED).fetch("pid")
+        drawn = ep_wait(@nat, /ckpt_window: drawn /, from, "ckpt_window drawn")
+        ep_wait(@nat, /ckpt_window: task=2 /, from, "ckpt_window's Task")
+        font_on(ep_lines(@nat)[drawn], "ja,12", "font here")
+        before = ep_settled_shot(@nat, WINDOW_RECT)
+        mark_sim = ep_lines(@sim).size
+        r = move_between(@nat, @sim, pid)
+        raise Failure, "font: answered #{r.inspect} moving there" unless r["status"] == "moved" && r["pid"]
+        there = ep_wait(@sim, /ckpt_window: on_restore /, mark_sim, "on_restore there")
+        ep_wait(@sim, /ckpt_window: task=\d+ /, there + 1, "a Task step there")
+        font_on(ep_lines(@sim)[there], "ja,8", "font there")
+        mark_nat = ep_lines(@nat).size
+        r2 = move_between(@sim, @nat, r["pid"])
+        raise Failure, "font: answered #{r2.inspect} moving back" unless r2["status"] == "moved" && r2["pid"]
+        back = ep_wait(@nat, /ckpt_window: on_restore /, mark_nat, "on_restore back here")
+        ep_wait(@nat, /ckpt_window: task=\d+ /, back + 1, "a Task step back here")
+        font_on(ep_lines(@nat)[back], "ja,12", "font back")
+        window_same!(before, ep_settled_shot(@nat, WINDOW_RECT), "font back")
+        ep_kill_named(@nat, "Ckpt Window")
+        "font: ja,12 here, ja,8 there, ja,12 back, the window the same"
       end
 
       def sim_no_forced_kill

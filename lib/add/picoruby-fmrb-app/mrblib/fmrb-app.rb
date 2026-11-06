@@ -135,7 +135,9 @@ class FmrbApp
     # no border and no close button.
     _build_frame_block if @gfx && !@_frame_block
     if @gfx
-      saved_font = @gfx.current_font
+      # what the app asked for, not what was picked, so that the frame
+      # does not turn the ask into this machine's choice
+      saved_font = @gfx._asked_font
       saved_size = @gfx.current_text_size
       @gfx.set_font(:default)
       @gfx.set_text_size(1)
@@ -605,12 +607,9 @@ class FmrbApp
         g = gfxs[i]
         if (id = g._checkpoint_rebind)
           g._canvas_size(@window_width, @window_height) if resized && (id == @_canvas || id == @_bg_canvas)
-          # set_font picks again from this machine's fonts, and keeps what
-          # it picked as current_font
-          font = g.current_font
-          g.set_font(*font) if font && font != [:default]
-          size = g.current_text_size
-          g.set_text_size(size) if size && size != 1
+          # the font picked again from this machine's fonts, from what the
+          # app asked for (not what the writing side picked)
+          g._checkpoint_font
         end
         i += 1
       end
