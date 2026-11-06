@@ -41,7 +41,8 @@
 #                    each side and its Task going on. The pixels are not
 #                    compared (the board's picture is on HDMI).
 #   board calls      ckpt_calls to the board: linux_settings is named missing
-#                    and it moves all the same.
+#                    and it moves all the same; there platform is :esp32
+#                    (report/platform_restore.md).
 #   board requires   ckpt_requires to the board: refused when asked, before it
 #                    stops.
 #   board no answer  the counter on the board to a node nobody is: refused
@@ -405,10 +406,13 @@ module Regress
         unless r["status"] == "moved" && Array(r["missing"]).include?("linux_settings")
           raise Failure, "board calls: answered #{r.inspect}"
         end
+        i = board_wait(/ckpt_calls: on_restore main=\d+/, bmark, "ckpt_calls's on_restore on the board", timeout: 30)
+        # the board is the one machine here where platform differs (:esp32)
+        machine = machine_values!(board_lines[i], "board calls", want: "esp32")
         board_wait(/ckpt_calls: main=\d+ .*linux_settings=false/, bmark, "ckpt_calls on the board without linux_settings",
                    timeout: 30)
         board_kill_named("Ckpt Calls")
-        "calls: moved, missing #{r['missing'].join(',')}"
+        "calls: moved, missing #{r['missing'].join(',')}, #{machine}"
       end
 
       def board_round_requires

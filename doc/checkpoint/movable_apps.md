@@ -1,6 +1,6 @@
 # 運べるアプリの書き方 (movable なアプリの前提・制約・作法)
 
-> 状態: 進行中 | 更新: 2026-11-06 (テーマの色) | 動いているアプリを止めてイメージに書き、別の VM・別のプロセス・別の端末で続ける (doc/checkpoint) ときに、アプリを書く人が知っておくこと。前提 (mruby の VM のアプリだけ、`.app.toml` に `movable = true`、運べるビルド)、制約 (断られるもの、戻らないもの、Task のブロックの self、時計)、作法 (hook でしてよいこと、端末ごとに違うメソッドへの備え、`requires` の申告、移す頼み方)
+> 状態: 進行中 | 更新: 2026-11-06 (テーマの色、platform) | 動いているアプリを止めてイメージに書き、別の VM・別のプロセス・別の端末で続ける (doc/checkpoint) ときに、アプリを書く人が知っておくこと。前提 (mruby の VM のアプリだけ、`.app.toml` に `movable = true`、運べるビルド)、制約 (断られるもの、戻らないもの、Task のブロックの self、時計)、作法 (hook でしてよいこと、端末ごとに違うメソッドへの備え、`requires` の申告、移す頼み方)
 
 計画と決まったことの正は `doc/checkpoint/plan.md`。この文書はそこで決まったことを、アプリを書く側から見てまとめ直したもの。
 API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`・`on_restore`・`on_checkpoint_refused`・`checkpoint`) にもある。
@@ -22,6 +22,8 @@ API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`
 | タイムスライスの残り・Task の tick | 運ばれる (D10) |
 | Window (位置・大きさ・枠・角丸・題)、`FmrbGfx` (どの画面に描いていたか)、フォント、`GfxBlock`、`subscribe` した知らせ | 基底クラス (`FmrbApp`) が作り直す |
 | テーマの色 (`FmrbConst::THEME_*`、`theme_bg` などの `theme_*`) | 着いた側の値になる (基底クラスの枠も着いた側のテーマで作り直す)。アプリがインスタンス変数や自分の `GfxBlock` の手順に控えた色は、書いた側の色のまま運ばれる。描くときに読むか、`on_restore` で作り直す |
+| 端末で決まる値 (`platform`、`FmrbConst::PLATFORM`・`BOARD`・`LANGUAGE` などの定数、`FmrbApp.language`、ファイルの関連付けの表 `FmrbAssoc`) | 着いた側の値になる (`platform` は読むたびに求め、関連付けの表は復元のときに読み直す)。アプリがインスタンス変数に控えた値 (`@esp = platform == :esp32` など) は書いた側の値のまま運ばれる。描く・決めるときに読むか、`on_restore` で求め直す |
+| `FmrbI18n.t` の言語、`FmrbUI` の部品の地の色 (`bg:` を省いたときのテーマの色) | 今は書いた側の値のまま運ばれる (`FmrbI18n` は最初に引いた言語を控え、部品は作ったときのテーマの色を控える) |
 | **描いた絵** | **戻らない**。Window は枠だけの空の状態で着く。アプリが `on_restore` で描き直す (3 章) |
 | スプライト、画像 (`create_image`)・マスク・動画 | 戻らない。アプリが `on_restore` で作り直す (スプライトの古い ID は基底クラスが忘れる。`move` すると例外になる) |
 | 鳴っている音、MIDI の予定、マイク | 戻らない。鳴らし直す・開き直すのはアプリ |

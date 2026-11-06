@@ -474,11 +474,12 @@ module Regress
           raise Failure, "calls: answered #{r.inspect}"
         end
         i = ep_wait(@sim, /ckpt_calls: on_restore main=\d+/, mark_to, "on_restore")
+        machine = machine_values!(ep_lines(@sim)[i], "calls")
         ep_wait(@sim, /ckpt_calls: main=\d+ pack=A linux_settings=false/, i + 1, "a step there, without linux_settings")
         ep_wait(@sim, /\[Ckpt Calls\] the program calls 1 method\(s\) this build does not have: linux_settings /, mark_to,
                 "the warning")
         ep_kill_named(@sim, "Ckpt Calls")
-        "calls: moved, missing #{r['missing'].join(',')}"
+        "calls: moved, missing #{r['missing'].join(',')}, #{machine}"
       end
 
       # A method its .app.toml requires and this build lacks: refused there,

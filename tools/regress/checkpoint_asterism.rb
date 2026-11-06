@@ -150,6 +150,7 @@ module Regress
           raise Failure, "asterism calls: answered #{r.inspect}"
         end
         i = ep_wait(@sim, /ckpt_calls: on_restore main=\d+/, mark_to, "on_restore")
+        machine_values!(ep_lines(@sim)[i], "asterism calls")
         ep_wait(@sim, /ckpt_calls: main=\d+ pack=A linux_settings=false/, i + 1, "a step there, without linux_settings")
         ep_wait(@sim, /\[Ckpt Calls\] the program calls 1 method\(s\) this build does not have: linux_settings /, mark_to,
                 "the warning")

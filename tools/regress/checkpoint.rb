@@ -71,6 +71,16 @@
 #             image's .toml there carries the declaration on. The refusal (a
 #             build without it) and the warning (a call not declared) need a
 #             build that differs: the simulation's rounds (checkpoint_sim.rb).
+#   machine   /app/test/ckpt_calls.app.rb moved into the second program: what
+#             the base answers from the machine is the machine's where it
+#             arrived (report/platform_restore.md). platform is the one
+#             FmrbConst::PLATFORM there says, the app keeps no @platform
+#             (the image would carry it), and FmrbAssoc's table, read before
+#             the move, is no longer cached. Every build here says :linux;
+#             the value itself differs only on a board (checkpoint_board.rb),
+#             so this round holds the form that keeps it right. The rounds
+#             with the simulation, the browser build over Asterism and the
+#             board check the same on their on_restore line.
 #   turns     (first, not a move) /app/test/task_turns.app.rb: a Task that
 #             passes after every step gets its steps while the main loop
 #             waits longer than a timeslice per turn. The native program
@@ -139,6 +149,7 @@ module Regress
     SELF_REFUSED = "/app/test/ckpt_self_refused.app.rb"
     SHELL = "default/shell"
     REQUIRES = "/app/test/ckpt_requires.app.rb"
+    MACHINE = "/app/test/ckpt_calls.app.rb"
     # one step of the counter Task "a" is its sleep (200 ms) behind the main
     # loop's wait (250 ms); a move may add a little to it, a lost or doubled
     # clock adds seconds
@@ -287,6 +298,7 @@ module Regress
         notes << round_window_move
         notes << round_window_theme(config)
         notes << round_requires_move
+        notes << round_machine_move
         notes.concat(asterism_rounds)
         no_forced_kill
         "#{config}: ok (#{notes.join('; ')}; #{(now - t0).round}s)"
@@ -669,6 +681,39 @@ module Regress
         app_b("kill", r["pid"].to_s)
         sleep 0.3
         "requires: moved, nothing missing, #{line} carried"
+      end
+
+      # ckpt_calls moved into the second program: the base answers from the
+      # machine there (report/platform_restore.md).
+      def round_machine_move
+        from = log_lines.size
+        pid = app("spawn", MACHINE).fetch("pid")
+        i = wait_line(/ckpt_calls: main=3 /, from, "ckpt_calls counting")
+        here = log_lines[i]
+        raise Failure, "machine: FmrbAssoc's table not cached before the move (#{here})" unless here.include?("assoc_cached=true")
+        mark_b = log_lines(RUN_DIR_B).size
+        r = move(pid)
+        raise Failure, "machine: answered #{r.inspect}" unless r["status"] == "moved" && r["pid"]
+        j = wait_line(/ckpt_calls: on_restore main=\d+/, mark_b, "on_restore in the second program", run_dir: RUN_DIR_B)
+        note = machine_values!(log_lines(RUN_DIR_B)[j], "machine")
+        app_b("kill", r["pid"].to_s)
+        sleep 0.3
+        "machine: #{note}"
+      end
+
+      # ckpt_calls's on_restore line: what the base answered from the machine
+      # where the app arrived. platform must be that machine's (the symbol of
+      # its FmrbConst::PLATFORM, and `want` when the caller knows it), the app
+      # must keep no @platform, and FmrbAssoc's table must have been forgotten.
+      def machine_values!(line, round, want: nil)
+        got = line.to_s[/ platform=(\w+)/, 1]
+        const = line.to_s[/ const=(\w+)/, 1]
+        raise Failure, "#{round}: no machine values in #{line.inspect}" unless got && const
+        raise Failure, "#{round}: platform #{got} where FmrbConst::PLATFORM is #{const}" unless got == const
+        raise Failure, "#{round}: platform #{got}, not #{want}" if want && got != want
+        raise Failure, "#{round}: the app keeps @platform (#{line})" unless line.include?("platform_ivar=false")
+        raise Failure, "#{round}: FmrbAssoc's table still cached (#{line})" unless line.include?("assoc_cached=false")
+        "platform #{got} there, no @platform, associations read again"
       end
 
       # The app asks for its own image from on_update (FmrbApp#checkpoint).

@@ -24,7 +24,16 @@ class FmrbApp
   # :gfx is here so apps can write gfx.draw_text as well as @gfx.draw_text --
   # the editor's completion answers both spellings, and the method form is the
   # one the type signatures in sig/ describe.
-  attr_reader :window_width, :window_height, :pos_x, :pos_y, :platform, :gfx
+  attr_reader :window_width, :window_height, :pos_x, :pos_y, :gfx
+
+  # Which machine this is: :esp32 or :linux (the browser build says :linux
+  # too; FmrbConst::BOARD tells it apart). Asked of FmrbConst each time
+  # rather than kept in an instance variable: an app moved to another machine
+  # (doc/checkpoint) carries its instance variables with it, while FmrbConst
+  # is the VM's own, defined by the machine it runs on.
+  def platform
+    FmrbConst::PLATFORM == "esp32" ? :esp32 : :linux
+  end
 
   # @_running and @_name are prefixed even though 6 files read them, because
   # they are the two whose collision hurts most: an app that innocently sets
@@ -572,6 +581,10 @@ class FmrbApp
   # area is laid out again and the app gets on_resize before on_restore, as
   # after a resize; a font this machine lacks becomes the nearest one.
   def _checkpoint_restored
+    # The file associations are this machine's (/etc and /home tables), read
+    # once per VM and cached on the module, which the image carries: forget
+    # them, so the next lookup reads this machine's.
+    FmrbAssoc.forget
     @_suspended = false
     @_close_btn_pressed = false
     @_spin_break = false

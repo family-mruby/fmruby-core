@@ -188,14 +188,8 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_resizable"),
                ctx->resizable ? mrb_true_value() : mrb_false_value());
 
-    // Set @platform symbol (:linux or :esp32)
-#ifdef CONFIG_IDF_TARGET_LINUX
-    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),
-               mrb_symbol_value(mrb_intern_cstr(mrb, "linux")));
-#else
-    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),
-               mrb_symbol_value(mrb_intern_cstr(mrb, "esp32")));
-#endif
+    // No @platform here: FmrbApp#platform asks FmrbConst::PLATFORM each time,
+    // so an app moved to another machine (doc/checkpoint) gets that machine's.
 
     // Set @window_width and @window_height instance variables
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_width"),
