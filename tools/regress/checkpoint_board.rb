@@ -175,9 +175,10 @@ module Regress
         raise Failure, "board: #{path} did not answer (#{e.class.name.split('::').last}); is the board up on #{@board_ip}?"
       end
 
-      # A query with "/" left as it is: /app/launch takes its path without
-      # decoding it (the /fs/ routes decode theirs), so a path of plain
-      # characters goes the same to both.
+      # A query, every value encoded but "/". The firmware decodes every
+      # value (%XX, "+" a space) on every route; a board flashed before it did
+      # (2026-11-06) decoded only on /fs/, so "/" left as it is keeps a path
+      # of plain characters going the same to both (report/font_pct.md).
       def board_query(query)
         query.map { |k, v| "#{k}=#{v.to_s.gsub(%r{[^A-Za-z0-9_.~/-]}) { |c| c.bytes.map { |b| format('%%%02X', b) }.join }}" }
              .join("&")

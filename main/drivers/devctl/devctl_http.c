@@ -24,6 +24,11 @@
 // This is unauthenticated, like the remote desktop, and compiled in only when
 // FMRB_DEV_REMOTE_CTL is defined -- a release build does not carry it.
 // Plan and history: doc/dev_remote_ctl/plan.md.
+//
+// Every query value is decoded the same way before a handler sees it
+// (ctl_query_value): %XX and "+" (a space), as a query string is written. A
+// client may send "/" as it is or as %2F; a path with a space, "%" or a
+// non-ASCII name has to be encoded (doc/checkpoint/report/font_pct.md).
 
 #include "devctl_http.h"
 
@@ -69,7 +74,9 @@ static const char *TAG = "devctl";
 // from here is no tighter than spawning from there.
 // ---------------------------------------------------------------
 
-#define RD_CTL_QUERY_MAX 192
+// The query as it comes (a name encoded as %XX takes three times its bytes;
+// the httpd's URI limit is 512) and a path once decoded.
+#define RD_CTL_QUERY_MAX 512
 #define RD_CTL_PATH_MAX  128
 
 static esp_err_t ctl_json(httpd_req_t *req, const char *status, const char *body)
@@ -79,16 +86,62 @@ static esp_err_t ctl_json(httpd_req_t *req, const char *status, const char *body
     return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
 }
 
-// One key out of the request's query string. Bad input answers with JSON
-// rather than dropping the connection: a development tool should be told what
-// it got wrong.
+static int ctl_hex(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// Undo the query string's encoding in place: %XX and "+" for a space.
+// httpd_query_key_value hands the value back still encoded. A "%" not
+// followed by two hex digits is kept as it is. False for %00, which would cut
+// the value short where the client did not mean it to end.
+static bool ctl_url_decode(char *s)
+{
+    char *w = s;
+    for (char *r = s; *r; r++) {
+        int hi, lo;
+        if (*r == '%' && (hi = ctl_hex(r[1])) >= 0 && (lo = ctl_hex(r[2])) >= 0) {
+            char c = (char)((hi << 4) | lo);
+            if (c == '\0') return false;
+            *w++ = c;
+            r += 2;
+        } else if (*r == '+') {
+            *w++ = ' ';
+        } else {
+            *w++ = *r;
+        }
+    }
+    *w = '\0';
+    return true;
+}
+
+// One key out of the request's query string, decoded (ctl_url_decode), so
+// every route takes the same spelling of a path or a name. False when the key
+// is missing or does not fit out decoded. Bad input answers with JSON rather
+// than dropping the connection: a development tool should be told what it got
+// wrong.
 static bool ctl_query_value(httpd_req_t *req, const char *key, char *out, size_t out_len)
 {
     char q[RD_CTL_QUERY_MAX];
+    char v[RD_CTL_QUERY_MAX];
     if (httpd_req_get_url_query_str(req, q, sizeof(q)) != ESP_OK) {
         return false;
     }
-    return httpd_query_key_value(q, key, out, out_len) == ESP_OK;
+    if (httpd_query_key_value(q, key, v, sizeof(v)) != ESP_OK) {
+        return false;
+    }
+    if (!ctl_url_decode(v)) {
+        return false;
+    }
+    size_t n = strlen(v);
+    if (n >= out_len) {
+        return false;
+    }
+    memcpy(out, v, n + 1);
+    return true;
 }
 
 static esp_err_t launch_handler(httpd_req_t *req)
@@ -239,24 +292,6 @@ static bool fs_path_allowed(const char *vpath)
     return false;
 }
 
-// Undo %XX in place. httpd_query_key_value hands the value back still
-// percent-encoded, and any client that encodes properly sends "/" as %2F --
-// which would then fail the root check below.
-static void fs_url_decode(char *s)
-{
-    char *w = s;
-    for (char *r = s; *r; r++) {
-        if (*r == '%' && isxdigit((unsigned char)r[1]) && isxdigit((unsigned char)r[2])) {
-            char hex[3] = { r[1], r[2], 0 };
-            *w++ = (char)strtol(hex, NULL, 16);
-            r += 2;
-        } else {
-            *w++ = *r;
-        }
-    }
-    *w = '\0';
-}
-
 // Query "path" -> checked virtual path and resolved real path. Answers the
 // request itself on failure so the handlers can just return.
 static bool fs_req_path(httpd_req_t *req, char *vpath, size_t vlen,
@@ -266,7 +301,6 @@ static bool fs_req_path(httpd_req_t *req, char *vpath, size_t vlen,
         ctl_json(req, "400 Bad Request", "{\"ok\":false,\"err\":\"path required\"}");
         return false;
     }
-    fs_url_decode(vpath);
     if (!fs_path_allowed(vpath)) {
         ctl_json(req, "400 Bad Request",
                  "{\"ok\":false,\"err\":\"path outside /mnt/sd, /home, /app, /usr/share\"}");
