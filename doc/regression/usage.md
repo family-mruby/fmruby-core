@@ -332,6 +332,7 @@ rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今あるもので流す (sim は毎回作る)
 rake regress:checkpoint WEB=1         # 続けてブラウザ版 (gem 入りの別のビルド) とネイティブ版の間を Asterism で (作るところから 5 分ほど。regress:full には入れていない)
 rake regress:checkpoint BOARD=naryav4 # 続けてつないだ実機 (P4) の中と、実機とネイティブ版の間を Asterism で (つないだときだけ。regress:full には入れていない)
+rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # 実機の場面だけ (相手のネイティブ版は今あるもの。1 分ほど)
 ```
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、窓のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a)、Asterism で移すこと (F5) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
@@ -378,7 +379,7 @@ rake regress:checkpoint BOARD=naryav4 # 続けてつないだ実機 (P4) の中�
   - web requires: `ckpt_requires` をブラウザ版へ。聞かれた所で断られ、A で止まらずに数え続ける。
   - web late: `--hold 1` で移す。A で続き、ブラウザ版で起動した写しは止められる。
   - ログは `tmp/regress/checkpoint/web.chrome.log` (ページ) と `web_native.log` (A)。
-- 実機との場面 (F6、`BOARD=<端末>` のときだけ、`tools/regress/checkpoint_board.rb`)。`regress:boot` と同じく opt-in で、既定にも `regress:full` にも入らない。実機にはこの木のファーム (P4 の構成は gem を持つ) を焼いておき、fmrb の MCP の `serial_start` でシリアルを開いておく (ログは MCP の capture の file から読み、ポートは開かない。別の file は `BOARD_LOG=`)。実機は開発の遠隔操作 (`FMRB_DEV_REMOTE_CTL`、HTTP) で動かす: アプリの起動・一覧・停止、ファイル、止める頼み (`POST /app/checkpoint`・`POST /app/move`、結果は `GET /app/checkpoint?pid=`。実機のデバッグサーバは BLE なので)。実機の IP はログの `Connected, ip=` (なければ `BOARD_IP=`)、この PC の側の IP は実機への経路の送り元 (`HOST_IP=`)。自前の Zenoh のルータ (`fmrb_regress_ckpt_zenohd_board`、全部のインターフェースの 17461) を起こし、実機の `/home/asterism` の `config.toml`・`receive.toml` を流すあいだだけ書き換えて、終わったら元に戻す。最初の構成のネイティブ版 (A、ノード `rg-ckpt-a`) と実機 (ノード `rg-ckpt-board`) の間で流す。
+- 実機との場面 (F6、`BOARD=<端末>` のときだけ、`tools/regress/checkpoint_board.rb`)。`regress:boot` と同じく opt-in で、既定にも `regress:full` にも入らない。実機にはこの木のファーム (P4 の構成は gem を持つ) を焼いておき、fmrb の MCP の `serial_start` でシリアルを開いておく (ログは MCP の capture の file から読み、ポートは開かない。別の file は `BOARD_LOG=`)。実機は開発の遠隔操作 (`FMRB_DEV_REMOTE_CTL`、HTTP) で動かす: アプリの起動・一覧・停止、ファイル、止める頼み (`POST /app/checkpoint`・`POST /app/move`、結果は `GET /app/checkpoint?pid=`。実機のデバッグサーバは BLE なので)。実機の IP はログの `Connected, ip=` (なければ `BOARD_IP=`)、この PC の側の IP は実機への経路の送り元 (`HOST_IP=`)。自前の Zenoh のルータ (`fmrb_regress_ckpt_zenohd_board`、全部のインターフェースの 7447。Zenoh の決まりの port で、端末のためにルータを置く PC はもう通してある。WSL2 の mirrored は Hyper-V のファイアウォールが port ごとに通すので、ほかの port は実機から届かない。別の port は `BOARD_ROUTER_PORT=`。sim の zenohd と同じ port なので、sim が動いているときは断って止まる) を起こし、実機の `/home/asterism` の `config.toml`・`receive.toml` を流すあいだだけ書き換えて、終わったら元に戻す。場面が実機で起こすアプリ (`ckpt_*` と転送のアプリ) は、実機のものが無いか違うときだけこの木の `flash/` から置き、終わったら元に戻す (app だけ焼いた実機は storage が古いままなので)。転送のアプリは開発の遠隔操作で起こし、カーネルがそれを自分の転送のアプリとして引き取る (`Transfer app adopted`)。最初の構成のネイティブ版 (A、ノード `rg-ckpt-a`) と実機 (ノード `rg-ckpt-board`) の間で流す。`BOARD_ONLY=1` なら実機の場面だけ (ネイティブ版の場面は飛ばす)。fmruby-core の worktree で流すときは、`tools/fmrb_native.rb` などの直下の道具を置いたディレクトリ (その `fmruby-core` がこの木) を `FMRB_ROOT=` で渡す。
   - board self: 実機の中で `ckpt_self` が自分のイメージを頼み (`restart: true`)、書かれて起動し直し、数が次の 1 歩から続く。
   - board in・out: カウンタを A から実機へ、実機の `/app/move` で A へ戻す。どちらも次の 1 歩から続く。
   - board window: `ckpt_window` を実機へ移して戻す (`on_restore` と Task が続くことだけ。実機の画面は HDMI なので画素は比べない)。

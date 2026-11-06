@@ -25,7 +25,10 @@
 # (ROUTER_PORT_BOARD, all interfaces), so that the board reaches it; the
 # native program reaches it on loopback. The board's /home/asterism
 # (config.toml, receive.toml) is put back as it was after the run, and the
-# transfer app this run started there is stopped.
+# transfer app this run started there is stopped (the kernel takes it as its
+# own when it connects: "Transfer app adopted"). The apps the rounds start on
+# the board (BOARD_FILES) are put there from this tree when the board's copy
+# is missing or differs, and put back after the run.
 #
 #   board self       /app/test/ckpt_self.app.rb asks for its own image
 #                    (restart): written and started again on the board (F1's
@@ -55,8 +58,16 @@ module Regress
   module Checkpoint
     module BoardRounds
       ROUTER_NAME_BOARD = "fmrb_regress_ckpt_zenohd_board"
-      ROUTER_PORT_BOARD = 17_461
+      # The port the board reaches the router on, on all interfaces: 7447,
+      # Zenoh's own, which a machine that runs a router for its boards lets in
+      # already (WSL2 mirrored: a Hyper-V firewall rule per port; any other
+      # port is dropped before it gets here). BOARD_ROUTER_PORT= another.
+      # The simulation's zenohd takes the same port: not with a sim running.
+      ROUTER_PORT_BOARD = (ENV["BOARD_ROUTER_PORT"].to_s.empty? ? 7447 : Integer(ENV["BOARD_ROUTER_PORT"]))
       NODE_BOARD = "rg-ckpt-board"
+      # the native program's node (a module's methods see only its own and
+      # the enclosing constants, not those of the modules the Runner includes)
+      NODE_A = AsterismRounds::NODE_A
       BOARD_ASTERISM = "/home/asterism"
       BOARD_ASTERISM_FILES = %w[config.toml receive.toml].freeze
       TRANSFER = "/usr/share/transfer/transfer.app.rb"
@@ -65,6 +76,11 @@ module Regress
       WINDOW_APP = "/app/test/ckpt_window.app.rb"
       CALLS_APP_B = "/app/test/ckpt_calls.app.rb"
       REQUIRES_APP_B = "/app/test/ckpt_requires.app.rb"
+      # The files the rounds start on the board, from this tree's flash/: put
+      # there for the run when the board's copy is missing or differs (an app
+      # only flash leaves the storage as it was), and put back after it
+      BOARD_FILES = [SELF_APP, COUNTER_APP, WINDOW_APP, CALLS_APP_B, REQUIRES_APP_B, TRANSFER]
+                    .flat_map { |p| [p, p.sub(/\.rb\z/, ".toml")] }.freeze
       MCP_LOG = File.expand_path(File.join(ENV["FMRB_MCP_STATE_DIR"] || "~/.fmrb_mcp", "current.log"))
 
       def board_check!
@@ -90,17 +106,20 @@ module Regress
         asterism_home(File.join(home, "user"), NODE_A, NODE_BOARD, router: "tcp/127.0.0.1:#{ROUTER_PORT_BOARD}")
         native("up", "--engine", config, "--machine", "sdl", "--user-dir", File.join(home, "user"),
                "--cache-dir", File.join(home, "cache"), "--timeout", "90", timeout: 120)
+        put = board_files_setup
         board_asterism_setup
         wait_line(/Transfer app connected as #{NODE_A}/, 0, "the native program's transfer app connected", timeout: 30)
         notes = [board_round_self, board_round_in_out, board_round_window, board_round_calls,
                  board_round_requires, board_round_no_answer]
-        "board #{@board.name} (#{config}): ok (#{notes.join('; ')}; #{(now - t0).round}s)"
+        put_note = put.empty? ? "" : "#{put.size} file(s) put there for the run; "
+        "board #{@board.name} (#{config}): ok (#{put_note}#{notes.join('; ')}; #{(now - t0).round}s)"
       rescue Failure => e
         "board #{@board&.name} (#{config}): FAILED #{e.message}"
       ensure
         FileUtils.cp(log_path, File.join(OUT, "board_native.log")) if File.exist?(log_path)
         board_save_log
         board_asterism_teardown
+        board_files_teardown
         down_if_running
         board_router_down
       end
@@ -145,7 +164,7 @@ module Regress
       # The development remote control: JSON answers; raises unless ok.
       def board_http(method, path, query = {}, body: nil, timeout: 15)
         uri = URI("http://#{@board_ip}#{path}")
-        uri.query = URI.encode_www_form(query) unless query.empty?
+        uri.query = board_query(query) unless query.empty?
         req = { get: Net::HTTP::Get, post: Net::HTTP::Post, put: Net::HTTP::Put, delete: Net::HTTP::Delete }
               .fetch(method).new(uri)
         req.body = body if body
@@ -153,6 +172,14 @@ module Regress
         [res.code.to_i, res.body.to_s]
       rescue StandardError => e
         raise Failure, "board: #{path} did not answer (#{e.class.name.split('::').last}); is the board up on #{@board_ip}?"
+      end
+
+      # A query with "/" left as it is: /app/launch takes its path without
+      # decoding it (the /fs/ routes decode theirs), so a path of plain
+      # characters goes the same to both.
+      def board_query(query)
+        query.map { |k, v| "#{k}=#{v.to_s.gsub(%r{[^A-Za-z0-9_.~/-]}) { |c| c.bytes.map { |b| format('%%%02X', b) }.join }}" }
+             .join("&")
       end
 
       def board_json(method, path, query = {})
@@ -179,7 +206,7 @@ module Regress
       end
 
       def board_file_get(path)
-        code, body = board_http(:get, "/fs/get", path: path)
+        code, body = board_http(:get, "/fs/get", { path: path })
         code == 200 ? body : nil
       end
 
@@ -204,6 +231,9 @@ module Regress
 
       def board_router_up
         board_router_down
+        if router_listening?(ROUTER_PORT_BOARD)
+          raise Failure, "board: port #{ROUTER_PORT_BOARD} is taken (the simulation's zenohd?); stop it or give BOARD_ROUTER_PORT="
+        end
         cmd = ["docker", "run", "-d", "--rm", "--name", ROUTER_NAME_BOARD, "-p", "#{ROUTER_PORT_BOARD}:7447",
                AsterismRounds::ROUTER_IMAGE, "--no-multicast-scouting", "--listen", "tcp/0.0.0.0:7447"]
         out, st = Open3.capture2e(*cmd)
@@ -222,18 +252,62 @@ module Regress
 
       # The board's /home/asterism for the run (what was there is kept), and
       # its transfer app started again on it.
+      # This tree's copies of BOARD_FILES on the board for the run; what was
+      # there (nil: nothing) is kept, with the directories made for them.
+      def board_files_setup
+        @board_files_kept = {}
+        @board_dirs_made = []
+        BOARD_FILES.each do |path|
+          data = File.binread(File.join(CORE, "flash", path))
+          there = board_file_get(path)
+          next if there&.b == data
+          dir = File.dirname(path)
+          unless board_dir?(dir)
+            board_json(:post, "/fs/mkdir", path: dir)
+            @board_dirs_made << dir
+          end
+          @board_files_kept[path] = there
+          board_file_put(path, data)
+        end
+        @board_files_kept.keys
+      end
+
+      def board_files_teardown
+        return unless @board_files_kept
+        @board_files_kept.each do |path, data|
+          if data
+            board_file_put(path, data)
+          else
+            board_http(:delete, "/fs/del", { path: path })
+          end
+        rescue Failure
+          nil
+        end
+        @board_dirs_made.reverse_each { |d| board_http(:delete, "/fs/del", { path: d }) rescue nil } # rubocop:disable Style/RescueModifier
+        @board_files_kept = nil
+      end
+
+      def board_dir?(dir)
+        code, body = board_http(:get, "/fs/list", { path: dir })
+        code == 200 && (JSON.parse(body)["ok"] rescue false) # rubocop:disable Style/RescueModifier
+      end
+
       def board_asterism_setup
         @board_mark0 = board_lines.size
         @board_kept = {}
         BOARD_ASTERISM_FILES.each { |f| @board_kept[f] = board_file_get("#{BOARD_ASTERISM}/#{f}") }
-        board_http(:post, "/fs/mkdir", path: BOARD_ASTERISM)
+        board_http(:post, "/fs/mkdir", { path: BOARD_ASTERISM })
         board_file_put("#{BOARD_ASTERISM}/config.toml",
                        "router = \"tcp/#{@host_ip}:#{ROUTER_PORT_BOARD}\"\nnode = \"#{NODE_BOARD}\"\n")
         board_file_put("#{BOARD_ASTERISM}/receive.toml", "from = [\"#{NODE_A}\"]\n")
         board_kill_named("Transfer")
         mark = board_lines.size
         board_spawn(TRANSFER)
-        board_wait(/Transfer app connected as #{NODE_BOARD}/, mark, "the board's transfer app connected", timeout: 60)
+        board_wait(/Transfer app connected as #{NODE_BOARD}|transfer: connect: cannot open a session/, mark,
+                   "the board's transfer app connected", timeout: 60)
+        return if board_lines[mark..].any? { |l| l =~ /Transfer app connected as #{NODE_BOARD}/ }
+        raise Failure, "board: the board cannot reach the router at tcp/#{@host_ip}:#{ROUTER_PORT_BOARD} " \
+                       "(a firewall in between? WSL2 lets in only the ports it is told; BOARD_ROUTER_PORT=, HOST_IP=)"
       end
 
       def board_asterism_teardown
@@ -244,7 +318,7 @@ module Regress
           if data
             board_file_put(path, data)
           else
-            board_http(:delete, "/fs/del", path: path)
+            board_http(:delete, "/fs/del", { path: path })
           end
         rescue Failure
           nil

@@ -8,7 +8,10 @@
 # channel off by one is a difference. What moves on its own (the clock, the
 # free memory) is masked by the scene instead of being compared loosely.
 require "zlib"
-require_relative "../../../../tools/fmrb_png"
+# the root tools (family-mruby; FMRB_ROOT= for a worktree of fmruby-core,
+# tools/regress/checkpoint.rb)
+require File.join(ENV["FMRB_ROOT"].to_s.empty? ? File.expand_path("../../../..", __dir__) : File.expand_path(ENV["FMRB_ROOT"]),
+                  "tools", "fmrb_png")
 
 module Regress
   module Screens

@@ -97,7 +97,10 @@ require_relative "checkpoint_board"
 module Regress
   module Checkpoint
     CORE = File.expand_path("../..", __dir__)
-    ROOT = File.expand_path("..", CORE)
+    # family-mruby (tools/fmrb_native.rb and the other tools); FMRB_ROOT= when
+    # this tree is not inside one (a worktree of fmruby-core: a directory with
+    # those tools whose fmruby-core is this tree)
+    ROOT = ENV["FMRB_ROOT"].to_s.empty? ? File.expand_path("..", CORE) : File.expand_path(ENV["FMRB_ROOT"])
     NATIVE_TOOL = File.join(ROOT, "tools", "fmrb_native.rb")
     OUT = File.join(CORE, "tmp", "regress", "checkpoint")
     RUN_DIR = "/tmp/fmrb-native-ckpt-#{Process.uid}"
@@ -153,7 +156,9 @@ module Regress
         unless @opts[:no_native]
           begin
             router_up
-            results = configs.map { |c| run_config(c) }
+            # --board-only: the board's rounds alone (the native program
+            # is still their other end)
+            results = @opts[:board_only] ? [] : configs.map { |c| run_config(c) }
             # doc/checkpoint F5: the browser build, once, with the first
             # configuration's native program (checkpoint_web.rb)
             results << run_web(configs.first) if @opts[:web]
@@ -758,13 +763,14 @@ module Regress
       opts = {}
       OptionParser.new do |o|
         o.banner = "usage: checkpoint.rb [--only standard|mruby] [--no-build] [--sim retro,modern|none] [--web] " \
-                   "[--board NAME]"
+                   "[--board NAME [--board-only]]"
         o.on("--only NAME", %w[standard mruby]) { |v| opts[:only] = v }
         o.on("--no-build") { opts[:no_build] = true }
         o.on("--sim LIST") { |v| opts[:sim] = v }
         o.on("--no-native") { opts[:no_native] = true }
         o.on("--web") { opts[:web] = true }
         o.on("--board NAME") { |v| opts[:board] = v }
+        o.on("--board-only") { opts[:board_only] = true }
       end.parse!(argv)
       Runner.new(opts).run
     rescue Failure => e
