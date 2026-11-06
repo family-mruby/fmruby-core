@@ -65,6 +65,15 @@ mruby の VM で動いているアプリを、アプリの協力なしに途中�
   (本体 checkout に取り込んでから親が流す)。
 
 
+## 決まったこと (2026-11-06、F6 の検収とデモの撮影の後。ユーザが選択肢から選んだ)
+
+- 移した先で古い値が残る件 (Window の枠の色、`platform`、表示の言語、`FmrbUI` の地の色) は、着いた側の値にそろえる (report/f3_frame_theme.md・platform_restore.md・lang_bg_restore.md)。
+- VM を開いた時点からあるものの中の、名前の無いもの (定数の Hash の中の Hash やその鍵) への変更を gem が黙って落とす件は、gem で正しく運ぶ (mruby-checkpoint の側で直す)。
+- Spinel で作った拡張 (`Fft`・`Raycast`・`SpinelHello`) は、運べるアプリでは使わない (movable_apps.md の 3.1 に書いた)。
+- `PicoRabbit::Theme.default` も作ったときにテーマの色を写す (FmrbUI の地の色と同じ形)。PicoRabbit を運べるようにするときに、FmrbUI と同じ形 (既定の色だけ着いた側に合わせる) に直す。
+- 標準のアプリ (kamon など) には今は `movable = true` を付けない。pub/sub の見本 2 つは付けたまま。
+- 時間の区切りの「窓」(「5 秒の窓」など) は Window の意味でないので残す。アプリの Window は文書でも「Window」と書く。
+
 ## 決まったこと (2026-11-05、Ff。ユーザが選択肢から選んだ)
 
 - 1 VM の基準の常駐の費用 (32 bit で 90 KB) は、今はこのまま受け入れる。C の関数の番地を表に入れてさらに減らす形 (mruby のソースに手が入る) は、S3 に入れるときに改めて考える。
