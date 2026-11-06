@@ -71,18 +71,20 @@ class FmrbApp
 
   # 動いている機械の種類 <<en>> Which machine this is
   #
-  # `"esp32"` か `"linux"` を返す。ブラウザ版も `"linux"` なので、
-  # ブラウザを見分けるなら `FmrbConst::BOARD == "wasm"`。
+  # `:esp32` か `:linux` (Symbol) を返す。ブラウザ版も `:linux` なので、
+  # ブラウザを見分けるなら `FmrbConst::BOARD == "wasm"`。別の端末へ移った
+  # アプリでは、移った先の値になる。
   # ```ruby
-  # if platform == "esp32"
+  # if platform == :esp32
   # ```
   # <<en>>
-  # Either `"esp32"` or `"linux"`. The browser build says `"linux"` too;
-  # tell it apart with `FmrbConst::BOARD == "wasm"`.
+  # Either `:esp32` or `:linux` (a Symbol). The browser build says `:linux`
+  # too; tell it apart with `FmrbConst::BOARD == "wasm"`. In an app moved to
+  # another machine it is the machine where it now runs.
   # ```ruby
-  # if platform == "esp32"
+  # if platform == :esp32
   # ```
-  def platform: () -> String
+  def platform: () -> Symbol
 
   # 全画面かどうか <<en>> Whether it fills the screen
   #
