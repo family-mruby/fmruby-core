@@ -49,7 +49,7 @@ end
 # builds what fits the AtomS3R and
 #   FMRB_HW_TARGET=ATOMS3R FMRB_FONT_JA=1 rake build:esp32
 # still overrides one of them.
-#   ATOMS3R: its factory partition is 5M (doc/headless_s3/), so the editor is
+#   ATOMS3R: its factory partition is 5.5M (doc/headless_s3/), so the editor is
 #   the mruby one, the Spinel FFT is left out and so are the Japanese fonts.
 #   It is a node of an Asterism network, so Asterism is in.
 #   STICKS3: the same chip, partitions and role as the AtomS3R, so the same

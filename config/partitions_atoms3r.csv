@@ -1,14 +1,25 @@
-# M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8) - 8MB flash
+# M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8) - 8MB flash, shared with the StickS3
 #
-# Plan A of doc/headless_s3/report/h0.md (decided 2026-10-12): factory 5M for
-# a firmware that will grow with zenoh and Asterism, and the rest (3008K) for
-# storage. The full Retro storage tree does not fit there; what this board
-# leaves out of its image is listed in config/storage_exclude_atoms3r.txt.
+# Plan A of doc/headless_s3/report/h0.md (decided 2026-10-12) had factory 5M
+# for a firmware that would grow with zenoh and Asterism, and the rest (3008K)
+# for storage.
+#
+# mruby-checkpoint (doc/checkpoint F6) left that 5M image with 4% spare (the
+# baseline table is part of it). Plan B of doc/checkpoint/report/s3_next.md
+# (decided 2026-11-07) moves 512K from storage to factory: factory 5.5M
+# (0x10000 to 0x590000, about 13% spare), storage 2496K (0x590000 to the end
+# of the 8MB flash, 0x800000). The storage image still fits, with about
+# 790 KB left for /home. The full Retro storage tree does not fit there; what
+# this board leaves out of its image is listed in
+# config/storage_exclude_atoms3r.txt (storage_exclude_sticks3.txt).
 #
 # A partition-table change cannot ship as an app-only update: it needs a full
-# flash (bootloader + table + app + storage), which erases /home.
+# flash (bootloader + table + app + storage), which erases /home. `rake
+# flash:app` onto a board still carrying an older table writes an image that
+# runs into the old storage partition. Moving a board over:
+# doc/headless_s3/plan.md, "区画表を変えた端末の移し方".
 # Name,   Type, SubType,  Offset,  Size, Flags
 nvs,      data, nvs,      0x9000,  24K,
 phy_init, data, phy,             ,  4K,
-factory,  app,  factory,  0x10000, 5M,
-storage,  data, littlefs, 0x510000, 3008K,
+factory,  app,  factory,  0x10000, 0x580000,
+storage,  data, littlefs, 0x590000, 2496K,

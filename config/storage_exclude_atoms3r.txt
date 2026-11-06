@@ -2,7 +2,7 @@
 # this). Paths are relative to the storage root; the files stay in git.
 #
 # The board runs one app on a 128x128 screen with no speaker, no keyboard and
-# no desktop, and its storage partition is 3008K (config/partitions_atoms3r.csv),
+# no desktop, and its storage partition is 2496K (config/partitions_atoms3r.csv),
 # which the whole tree does not fit. What goes is what only the desktop, the
 # editor or a sound output would ever open.
 
