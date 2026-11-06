@@ -38,6 +38,14 @@ MRuby::CrossBuild.new("esp32") do |conf|
   # Remote debugger VM hook (doc/vm_remote_debug_*). ABI-relevant: adds two
   # function pointers to mrb_state.
   conf.cc.defines << "MRB_USE_DEBUG_HOOK"
+  # mruby-checkpoint (doc/checkpoint F6, S3: report/f6_s3.md; the gem is
+  # listed at the end): its safe point and GC root hooks, fields of
+  # mrb_state (in the VM's pool, so PSRAM, not internal RAM). ABI-relevant:
+  # mirrored in components/picoruby-esp32/mruby_abi_defines.cmake.
+  # FMRB_HAVE_CHECKPOINT is the glue's (main/app/fmrb_app_checkpoint.c) and
+  # reaches picoruby-machine (board_millis runs at the VM's offset).
+  conf.cc.defines << "MRB_VM_SAFEPOINT_HOOK"
+  conf.cc.defines << "FMRB_HAVE_CHECKPOINT"
   # Measurement build only (FMRB_GC_PROFILE=1 rake build:esp32): GC pause
   # histograms in GC.stat. ABI-relevant (grows mrb_gc), so the CMake side reads
   # the same environment variable -- see mruby_abi_defines.cmake.
@@ -123,6 +131,10 @@ MRuby::CrossBuild.new("esp32") do |conf|
     # Family mruby's default node profile (kind, host; V2.5)
     conf.gem core: "picoruby-fmrb-asterism"
   end
+  # mruby-checkpoint (doc/checkpoint F6): writes a declared app's VM to an
+  # image and resumes it elsewhere. The baseline's table is made on the host
+  # (rake checkpoint:table) and linked into main as constant data (flash).
+  conf.gem core: "mruby-checkpoint"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

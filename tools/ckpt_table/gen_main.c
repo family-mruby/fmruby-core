@@ -10,9 +10,12 @@
 // only defines classes, so nothing of the platform runs here.
 //
 //   ckpt_table_gen OUT.c
+//   ckpt_table_gen --measure     (linked with the table: what a VM's baseline
+//                                 costs with it, as the firmware logs it)
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <mruby.h>
 #include <mruby/checkpoint.h>
 #include "fmrb_err.h"
@@ -81,10 +84,71 @@ static void write_text(const char *text, size_t len, void *ud)
     fwrite(text, 1, len, (FILE *)ud);
 }
 
+// --measure: the program linked once more with the table it wrote (the
+// firmware's weak reference, app/fmrb_app_checkpoint.c), so the baseline
+// is taken the way a movable app's VM takes it, and its cost in the pool is
+// printed as the firmware logs it. The host's pointers are 64-bit: the
+// device's parts are smaller (doc/checkpoint/report/f6_s3.md).
+extern const mrb_checkpoint_table fmrb_checkpoint_table __attribute__((weak));
+int mrb_get_estalloc_stats(void *est, size_t *total, size_t *used, size_t *free_out, int32_t *frag);
+int mrb_get_estalloc_usage(void *est, size_t *peak, size_t *largest, size_t *last_fail, size_t *fails);
+
+static size_t est_used(void)
+{
+    size_t total = 0, used = 0, free_bytes = 0;
+    int32_t frag = 0;
+    mrb_get_estalloc_stats(current_est, &total, &used, &free_bytes, &frag);
+    return used;
+}
+
+static size_t est_peak(void)
+{
+    size_t peak = 0, largest = 0, last_fail = 0, fails = 0;
+    mrb_get_estalloc_usage(current_est, &peak, &largest, &last_fail, &fails);
+    return peak;
+}
+
+static void print_part(const char *part, size_t count, size_t bytes, void *ud)
+{
+    (void)ud;
+    printf("  %-20s %6zu entries %8zu bytes\n", part, count, bytes);
+}
+
+static void count_name(const char *name, int is_func, void *ud)
+{
+    (void)name; (void)is_func;
+    (*(unsigned *)ud)++;
+}
+
+static int measure(mrb_state *mrb)
+{
+    if (&fmrb_checkpoint_table == NULL) {
+        fprintf(stderr, "ckpt_table_gen: --measure needs the table linked in\n");
+        return 1;
+    }
+    size_t before = est_used();
+    fmrb_app_checkpoint_prepare_vm(mrb);
+    mrb_checkpoint_set_table(mrb, &fmrb_checkpoint_table);
+    size_t peak_before = est_peak();
+    size_t at_baseline = est_used();
+    mrb_checkpoint_baseline(mrb);
+    size_t after = est_used(), peak = est_peak();
+    unsigned names = 0;
+    mrb_checkpoint_each_name(mrb, count_name, &names);
+    const char *why = mrb_checkpoint_table_status(mrb);
+    printf("the baseline (%u names) took %zu bytes of the pool (%zu more while it was made); "
+           "of them the gem's setting up %zu; table: %s\n",
+           names, after - before, peak > peak_before ? peak - after : 0, at_baseline - before,
+           why ? why : "used");
+    size_t total = mrb_checkpoint_baseline_size(mrb, print_part, NULL);
+    printf("  %-20s %6s         %8zu bytes\n", "(parts)", "", total);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        fprintf(stderr, "usage: ckpt_table_gen OUT.c\n");
+        fprintf(stderr, "usage: ckpt_table_gen OUT.c | --measure\n");
         return 2;
     }
     // Larger than any app pool (the baseline for a table keeps the names
@@ -103,6 +167,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "ckpt_table_gen: opening the VM raised\n");
         return 1;
     }
+    if (strcmp(argv[1], "--measure") == 0) return measure(mrb);
     fmrb_app_checkpoint_prepare_vm(mrb);
     mrb_checkpoint_prepare_table(mrb);
     mrb_checkpoint_baseline(mrb);

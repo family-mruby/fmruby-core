@@ -52,13 +52,18 @@ set(COMPONENT_LIB ckpt_table_objs)
 fmrb_add_hw_defines()
 
 find_program(FMRB_RUBY ruby REQUIRED)
+# (--measure: what a VM's baseline costs with the table, on the host's
+# 64-bit pointers, next to the table as measure.txt)
+get_filename_component(ckpt_out_dir ${FMRB_CKPT_OUT} DIRECTORY)
+set(table_cflags "-DMRB_INT64 -DMRB_NO_BOXING -DMRB_UTF8_STRING -I${MRBGEMS}/picoruby-mruby/lib/mruby/include -I${FMRB_HOSTED_MRUBY_DIR}/include -I${MRBGEMS}/mruby-checkpoint/include")
 add_custom_command(OUTPUT ${FMRB_CKPT_OUT}
   COMMAND ${FMRB_RUBY} ${CMAKE_CURRENT_LIST_DIR}/ckpt_table.rb
           --cc ${CMAKE_C_COMPILER} --work ${CMAKE_BINARY_DIR}/work --out ${FMRB_CKPT_OUT}
+          --measure ${ckpt_out_dir}/measure.txt --table-cflags "${table_cflags}"
           -- $<TARGET_OBJECTS:ckpt_table_objs> ${FMRB_HOSTED_LIBMRUBY} -lm -pthread
   DEPENDS ckpt_table_objs $<TARGET_OBJECTS:ckpt_table_objs> ${FMRB_HOSTED_LIBMRUBY}
-          ${CMAKE_CURRENT_LIST_DIR}/ckpt_table.rb
-  COMMAND_EXPAND_LISTS
+          ${CMAKE_CURRENT_LIST_DIR}/ckpt_table.rb ${CMAKE_CURRENT_LIST_DIR}/gen_main.c
+  COMMAND_EXPAND_LISTS VERBATIM
   COMMENT "Making the checkpoint table of ${FMRB_CKPT_OF}")
 
 # the table as the device compiles it: 32-bit, the device's mruby definitions

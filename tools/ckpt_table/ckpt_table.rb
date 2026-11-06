@@ -2,7 +2,8 @@
 # (doc/checkpoint/flash_table.md, Ff).
 #
 #   ruby ckpt_table.rb --cc CC --work DIR --out TABLE.c [--run RUNNER]
-#                      [--ldflag FLAG]... -- OBJECT... ARCHIVE... [-lX]...
+#                      [--ldflag FLAG]... [--measure FILE --table-cflags FLAGS]
+#                      -- OBJECT... ARCHIVE... [-lX]...
 #
 # The maker (gen_main.c) is the gem ports and the checkpoint glue of one
 # configuration, compiled as the firmware compiles them, with that
@@ -15,6 +16,10 @@
 #
 # The table is written to TABLE.c only when it changes, so that a build that
 # changes nothing the VM sees compiles nothing again.
+#
+# --measure FILE: the maker is linked once more with the table (compiled for
+# the host with --table-cflags) and run with --measure: what a VM's baseline
+# costs with the table, written to FILE (doc/checkpoint/report/f6_s3.md).
 
 require 'optparse'
 require 'fileutils'
@@ -27,6 +32,8 @@ parser = OptionParser.new do |o|
   o.on('--out FILE') { |v| opt[:out] = v }
   o.on('--run RUNNER') { |v| opt[:run] = v }
   o.on('--ldflag FLAG') { |v| opt[:ldflags] << v }
+  o.on('--measure FILE') { |v| opt[:measure] = v }
+  o.on('--table-cflags FLAGS') { |v| opt[:table_cflags] = v }
 end
 inputs = parser.parse(ARGV)
 abort parser.to_s unless opt[:cc] && opt[:work] && opt[:out] && !inputs.empty?
@@ -164,3 +171,14 @@ else
 end
 # the build's output is touched either way, so that make/ninja see it as done
 FileUtils.touch(opt[:out])
+
+# 5. what the baseline costs with the table (--measure)
+if opt[:measure]
+  obj = File.join(work, 'table_host.o')
+  run!(cc + (opt[:table_cflags] || '').split + ['-c', opt[:out], '-o', obj])
+  mexe = File.join(work, 'ckpt_table_measure')
+  run!(cc + ['-o', mexe] + inputs + ["#{standins}.o", obj] + opt[:ldflags])
+  text = run!(runner + [mexe, '--measure'])
+  File.write(opt[:measure], text)
+  puts "ckpt_table: #{text.lines.first}"
+end

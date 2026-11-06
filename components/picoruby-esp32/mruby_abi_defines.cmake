@@ -39,13 +39,14 @@ macro(fmrb_add_mruby_abi_defines)
     add_compile_definitions(MRB_GC_PROFILE MRB_GC_STATS)
   endif()
   # The builds whose libmruby carries mruby-checkpoint: the Linux simulation
-  # (family_mruby_linux.rb) and the P4 (family_mruby_esp32p4.rb, F6). Not the
-  # S3 yet (doc/checkpoint). MRB_VM_SAFEPOINT_HOOK is an ABI define (the
+  # (family_mruby_linux.rb), the P4 (family_mruby_esp32p4.rb, F6) and the S3
+  # (family_mruby_esp32.rb, F6: doc/checkpoint/report/f6_s3.md), that is,
+  # every build. MRB_VM_SAFEPOINT_HOOK is an ABI define (the
   # gem's hooks are fields of mrb_state). FMRB_HAVE_CHECKPOINT is not, but
   # it has to reach the same two components: main/ has the glue that moves an
   # app (app/fmrb_app_checkpoint.c) and picoruby-esp32 the HAL's tick state it
   # carries (task_hal.c).
-  if(IDF_TARGET STREQUAL "linux" OR IDF_TARGET STREQUAL "esp32p4")
+  if(IDF_TARGET STREQUAL "linux" OR IDF_TARGET STREQUAL "esp32p4" OR IDF_TARGET STREQUAL "esp32s3")
     add_compile_definitions(MRB_VM_SAFEPOINT_HOOK FMRB_HAVE_CHECKPOINT)
   endif()
   if(IDF_TARGET STREQUAL "linux")

@@ -45,5 +45,8 @@ namespace :checkpoint do
     head = File.foreach(out).first(3).join
     puts "checkpoint:table: #{out}"
     puts head[/\d+ names, \d+ snapshots, \d+ mrblib ireps/].to_s
+    # what a VM's baseline costs with it, on the host (64-bit pointers)
+    measure = File.join(dir, "measure.txt")
+    puts File.read(measure) if File.exist?(measure)
   end
 end

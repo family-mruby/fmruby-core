@@ -9,8 +9,9 @@
 # (FMRB_ASTERISM, FMRB_IMU, FMRB_HW_TARGET ...) cannot drift from it. Then:
 # the host compiler instead of the cross one; 64-bit (the table holds names
 # and numbers, the same at every pointer width, so MRB_32BIT is left out);
-# and mruby-checkpoint with its safe point hook, which the P4 configuration
-# carries itself (F6) and the S3 one does not yet. The gems' posix ports in place of their esp32 ones (which
+# and mruby-checkpoint with its safe point hook, which both configurations
+# carry themselves since F6 (a configuration without it gets it here). The
+# gems' posix ports in place of their esp32 ones (which
 # need ESP-IDF; the IDF component compiles them on the device), as the Linux
 # builds have them: they give the platform's data (the environment, the
 # board's name) and define no classes or methods. What the gems call that has
@@ -33,7 +34,8 @@ conf.cc.flags = conf.cc.flags.flatten.reject { |f| f.to_s =~ /\A-m(longcalls|arc
 conf.cc.defines.delete('MRB_32BIT')
 conf.ports :posix
 conf.cc.defines << 'PICORB_PLATFORM_POSIX'   # what the posix ports are compiled with
-# The P4 configuration carries the gem itself (F6); the S3 one does not yet.
+# The device configurations carry the gem themselves (F6); one that does not
+# gets it here.
 unless conf.cc.defines.include?('FMRB_HAVE_CHECKPOINT')
   conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
   conf.cc.defines << 'FMRB_HAVE_CHECKPOINT'

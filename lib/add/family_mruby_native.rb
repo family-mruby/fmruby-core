@@ -122,7 +122,7 @@ MRuby::CrossBuild.new('family-mruby-native') do |conf|
 
   # mruby-checkpoint (doc/checkpoint, F0): writes a running VM's state to an
   # image and resumes it elsewhere. The Linux simulation, the native program
-  # and the P4 (F6); not the S3 yet (doc/checkpoint/plan.md). Its hooks are
+  # and the devices (F6: the P4, and the S3 in report/f6_s3.md). Its hooks are
   # defined above (MRB_VM_SAFEPOINT_HOOK).
   conf.gem core: "mruby-checkpoint"
 end
