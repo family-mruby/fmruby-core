@@ -29,7 +29,7 @@ nginx なら COOP/COEP を直接返せる**ので、最初の読み込みから�
 
 ## 置き方
 
-`https://silentworlds.info/fmrb/`。既存ホストのパスに足しただけで、DNS も
+`https://example.com/fmrb/`。既存ホストのパスに足しただけで、DNS も
 証明書も足していない。`location /fmrb/` は `location /` より長い接頭辞なので
 先に当たり、下の WordPress には触れない。
 

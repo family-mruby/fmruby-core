@@ -91,9 +91,9 @@
 
 ### 5.4 P4-Nano (192.0.2.10、NARYAv4、app だけの焼き直し)
 
-焼き直す前の `/home`: `zenoh_echo.txt` (`tls/silentworlds.info:19296`)・`asterism_profile.toml` (`name = "nano4"`)・`asterism/fmruby-aaaaaa.tar`。`asterism_node.txt` は無い。音は消したまま。
+焼き直す前の `/home`: `zenoh_echo.txt` (`tls/<ルータのホスト>:<port>`)・`asterism_profile.toml` (`name = "nano4"`)・`asterism/fmruby-aaaaaa.tar`。`asterism_node.txt` は無い。音は消したまま。
 
-1. 新しいファーム (消さない作り) を焼き、`config.toml` を一度消し、新しいアプリを送って othello を起動: `asterism: copied /home/zenoh_echo.txt, /home/asterism_profile.toml into /home/asterism/config.toml`、続いて `othello: fmruby-aaaaaa up (tls/silentworlds.info:19296, 778 ms)`。画面は名前「nano4」、ID `fmruby-aaaaaa (tls/silentworlds.info:19296)`。`/home/asterism/` は `config.toml` (109 B) と tar (消していない)。古いファイルも残っている。
+1. 新しいファーム (消さない作り) を焼き、`config.toml` を一度消し、新しいアプリを送って othello を起動: `asterism: copied /home/zenoh_echo.txt, /home/asterism_profile.toml into /home/asterism/config.toml`、続いて `othello: fmruby-aaaaaa up (tls/<ルータのホスト>:<port>, 778 ms)`。画面は名前「nano4」、ID `fmruby-aaaaaa (tls/<ルータのホスト>:<port>)`。`/home/asterism/` は `config.toml` (109 B) と tar (消していない)。古いファイルも残っている。
 2. WiFi は `wifi: Settings from /etc/wifi.toml` で今までどおり繋がった (`/home/wifi.toml` は置いていない)。
 3. 最後は othello を閉じ、デスクトップとサービスだけの状態に戻した。
 

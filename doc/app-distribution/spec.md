@@ -254,7 +254,7 @@ CI が弾く。
 
 ## 6. 取得元 (実測済み)
 
-公開ページは `https://silentworlds.info/fmrb/` で、SharedArrayBuffer のために
+公開ページは `https://example.com/fmrb/` で、SharedArrayBuffer のために
 `COOP: same-origin` と `COEP: require-corp` を返している。この下では外部から
 取ってくるものに制限がかかるので、実際にヘッダを確認した (2026-09-02)。
 
