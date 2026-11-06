@@ -465,7 +465,7 @@
     "narya_v3": {
       "board": "narya_v3",
       "firmware": "NARYAv3",
-      "commit": "2e13ff74",
+      "commit": "4e7e7e61",
       "env": {
         "FMRB_KERNEL_ENGINE": "spinel",
         "FMRB_APP_ENGINE_DESKTOP": "mruby",
@@ -480,9 +480,9 @@
         "FMRB_HW_TARGET": "NARYAv3"
       },
       "memory": {
-        "Flash Data": 8767356,
+        "Flash Data": 8768292,
         "Flash Code": 3204400,
-        "DIRAM": 126395,
+        "DIRAM": 125459,
         "IRAM": 16384,
         "RTC FAST": 72,
         "RTC SLOW": 32
@@ -838,14 +838,13 @@
         },
         "esp-idf/mbedtls/mbedtls/library/libmbedcrypto.a": {
           "Flash Code": 85990,
-          "Flash Data": 6809,
-          "DIRAM": 1096,
+          "Flash Data": 7501,
+          "DIRAM": 404,
           "IRAM": 16
         },
         "esp-idf/mbedtls/mbedtls/library/libmbedtls.a": {
           "Flash Code": 25473,
-          "Flash Data": 1930,
-          "DIRAM": 240
+          "Flash Data": 2170
         },
         "esp-idf/mbedtls/mbedtls/library/libmbedx509.a": {
           "Flash Code": 8262,
