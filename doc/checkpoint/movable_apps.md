@@ -1,6 +1,6 @@
 # 運べるアプリの書き方 (movable なアプリの前提・制約・作法)
 
-> 状態: 進行中 | 更新: 2026-11-06 (テーマの色、platform、言語と部品の地の色) | 動いているアプリを止めてイメージに書き、別の VM・別のプロセス・別の端末で続ける (doc/checkpoint) ときに、アプリを書く人が知っておくこと。前提 (mruby の VM のアプリだけ、`.app.toml` に `movable = true`、運べるビルド)、制約 (断られるもの、戻らないもの、Task のブロックの self、時計)、作法 (hook でしてよいこと、端末ごとに違うメソッドへの備え、`requires` の申告、移す頼み方)
+> 状態: 進行中 | 更新: 2026-11-06 (テーマの色、platform、言語と部品の地の色、公開のブラウザ版) | 動いているアプリを止めてイメージに書き、別の VM・別のプロセス・別の端末で続ける (doc/checkpoint) ときに、アプリを書く人が知っておくこと。前提 (mruby の VM のアプリだけ、`.app.toml` に `movable = true`、運べるビルド)、制約 (断られるもの、戻らないもの、Task のブロックの self、時計)、作法 (hook でしてよいこと、端末ごとに違うメソッドへの備え、`requires` の申告、移す頼み方)
 
 計画と決まったことの正は `doc/checkpoint/plan.md`。この文書はそこで決まったことを、アプリを書く側から見てまとめ直したもの。
 API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`・`on_restore`・`on_checkpoint_refused`・`checkpoint`) にもある。
@@ -9,9 +9,9 @@ API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`
 
 - **mruby の VM で動くアプリだけ**が運べる。Spinel で動くもの (標準構成のカーネル・エディタ・Shell など) は対象外 (D16)。頼むと「only an app on the mruby VM can be written」で断られる。
 - **`.app.toml` に `movable = true`** と書いたアプリだけ (D6)。書いていないアプリは、頼まれても断って動き続ける。
-- 運べるビルド (gem mruby-checkpoint を持つもの) は、今は **sim (Linux のシミュレーション)・ネイティブ版・P4 の実機 (P4-Nano・Tab5、F6)**。ブラウザ版の公開のビルドに入れるかは未決 (測るための別のビルド `FMRB_WASM_CHECKPOINT=1` にはある)。S3 はまだ持たない。
+- 運べるビルド (gem mruby-checkpoint を持つもの) は、今は **sim (Linux のシミュレーション)・ネイティブ版・ブラウザ版 (公開のビルド、2026-11-06 から。report/web_public.md)・P4 の実機 (P4-Nano・Tab5、F6)**。S3 はまだ持たない。
 - `movable = true` のアプリは、起動したときに「基準」(VM を開いた直後の組み込みのクラス・メソッドの名前の表) を取る。名前・メソッドの一覧・クラスの写しはビルドが作ってリンクした表 (Ff、`flash_table.md`) にあり、VM ごとの費用は 32 bit で約 90 KB、64 bit で約 111 KB (`doc/checkpoint/report/ff.md`。前は約 322 KB・356 KB)。作る間だけ一時的に 32 bit で約 173 KB 多く要る。標準のアプリに `movable = true` を付けるかはユーザが決める (候補は report/ff.md の 12 章)。
-- 移す先は、同じビルドどうし (ネイティブ版 2 つ) のほか、ビルドの違う sim とネイティブ版の間 (画面の大きさも違ってよい)。
+- 移す先は、同じビルドどうし (ネイティブ版 2 つ) のほか、ビルドの違う sim とネイティブ版の間 (画面の大きさも違ってよい)、ブラウザ版とほかの端末の間 (Asterism で)。
 
 ## 2. 何がイメージに入り、何が入らないか
 

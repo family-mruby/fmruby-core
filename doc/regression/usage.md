@@ -72,7 +72,7 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 (全部で 34 分ほど。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
+rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 (全部で 34 分ほどだった。2026-11-06 から checkpoint にブラウザ版の場面が入り、2 分ほど増える見込み。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -325,19 +325,19 @@ rake native:wl_check NESTED=1         # WSLg に入れ子 (確認の間だけ Wi
 ## 12. アプリを運ぶ (rake regress:checkpoint)
 
 ```
-rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流す (ネイティブ版の場面だけ。作るところから 3 分ほど)
-rake regress:checkpoint SIM=1         # 続けて sim (Retro・Modern) とネイティブ版の間も (作るところから 11 分ほど。regress:full はこれ)
+rake regress:checkpoint               # ネイティブ版を標準と全部 mruby の 2 つで作り、両方で流し、続けてブラウザ版とネイティブ版の間も (作り直しが少ないときで 6 分ほど。emsdk と Linux の Chromium が要る)
+rake regress:checkpoint SIM=1         # 続けて sim (Retro・Modern) とネイティブ版の間も (作るところから 11 分ほどと、ブラウザ版の場面の 2 分ほど。regress:full はこれ)
 rake regress:checkpoint SIM=retro     # sim は Retro だけ (modern も同じ)
 rake regress:checkpoint SIM=noja      # 日本語のフォント (efontJA) を持たない Modern の sim (FMRB_FONT_JA=0) との間の font の場面だけ
 rake regress:checkpoint ONLY=mruby    # 1 つだけ (standard・mruby)
 rake regress:checkpoint NO_BUILD=1    # ネイティブ版は作らずに、今あるもので流す (sim は毎回作る)
-rake regress:checkpoint WEB=1         # 続けてブラウザ版 (gem 入りの別のビルド) とネイティブ版の間を Asterism で (作るところから 5 分ほど。regress:full には入れていない)
+rake regress:checkpoint WEB=0         # ブラウザ版の場面を飛ばす (ネイティブ版の場面だけ。作るところから 4 分ほど)
 rake regress:checkpoint BOARD=naryav4 # 続けてつないだ実機 (P4) の中と、実機とネイティブ版の間を Asterism で (つないだときだけ。regress:full には入れていない)
 rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # 実機の場面だけ (相手のネイティブ版は今あるもの。1 分ほど)
 ```
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、Window のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a)、Asterism で移すこと (F5) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
-- `rake regress:full` に入っている (最後に、`SIM=1` で流す)。`rake regress` (安い方) には入らない。ブラウザ版は `WEB=1` のときだけ使う (`regress:full` には入れていない)。実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
+- `rake regress:full` に入っている (最後に、`SIM=1` で流す。ブラウザ版の場面も入る)。`rake regress` (安い方) には入らない。ブラウザ版の場面は既定で流す (2026-11-06 から。公開のブラウザ版が gem を持つようになったため、doc/checkpoint/report/web_public.md)。`WEB=0` で飛ばす。`BOARD_ONLY=1` のときも流さない。実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
 - ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (Window なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
 - 最初に、運ぶのではない場面を 1 つ流す。
@@ -377,7 +377,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
   - asterism no answer: カウンタを誰もいないノード (`rg-ckpt-nobody`) へ。止める前に断られる。
   - asterism late: `--hold 1` で移す。運んでいる間に止めておく時間が切れて A で続き、後から B で起動した写しは B で止められる (2 つにならない)。
   - 警告つきで移す形 (相手のビルドに無い名前を呼ぶ) は、ビルドの違う相手が要るので sim の場面 (`SIM=1`) で見る: ネイティブ版から sim へ Asterism で、asterism calls (`ckpt_calls`。移り、`missing` が `["linux_settings"]`、sim に警告の行) と asterism requires (`ckpt_requires`。sim が聞かれた所で断り、止まらない)。sim の `/home/asterism` は作業の木の `flash/home/asterism` なので、流すあいだだけ設定を書き、終わったら元に戻す (あったものは書き戻し、無かったものは消す)。ルータは sim の zenohd (127.0.0.1:7447)。
-- ブラウザ版との場面 (F5、`WEB=1` のときだけ、`tools/regress/checkpoint_web.rb`)。ネイティブ版の場面の後に 1 回、最初の構成のネイティブ版 (A) と、gem 入りのブラウザ版 (`FMRB_WASM_CHECKPOINT=1`、`wasm/build-ckpt/dist`。公開のビルドには gem が無い) の間で流す。作るのは `spinel:gen`・`FMRB_WASM_CHECKPOINT=1 rake wasm:mruby wasm:dist` (emsdk が要る。`NO_BUILD=1` なら今ある dist)。ブラウザ版は**自分の開発サーバ** (`rake wasm:serve DIST=1`、port 8067) と**自分のヘッドレスの Chromium** (Linux のもの: `FMRB_CHROME`、`/usr/bin` のもの、なければ Playwright の `~/.cache/ms-playwright` のもの。プロファイルは `tmp/regress/checkpoint/web_profile`、ページのログは Chromium の `--enable-logging` で `web.chrome.log` へ) で開く。`tools/fmrb_web.rb` の `up` は使わない (状態の file が人の開いているページと共用なので) ので、人がブラウザ版を開いたままでも流せる。ページは `fmrb_web.rb --port 8067` の `put`・`reload`・`text`・`key` で動かす。ページの `/flash/home/asterism` (端末の `/home/asterism`) に設定 (ルータは自前のルータの ws/ の port、ノード ID `rg-ckpt-web`、`rg-ckpt-a` からだけ受け取る) を置いて読み直し、`?app=default/shell` で Shell を開いておく。
+- ブラウザ版との場面 (F5、`WEB=0` でなければ、`tools/regress/checkpoint_web.rb`)。ネイティブ版の場面の後に 1 回、最初の構成のネイティブ版 (A) と、公開のブラウザ版 (gem を持つ。`wasm/build/dist`) の間で流す。作るのは `spinel:gen`・`rake wasm:mruby wasm:dist` (emsdk が要る。`NO_BUILD=1` なら今ある dist)。`wasm/build` は人の開発サーバ (`rake wasm:serve`) が読むものと同じなので、流した後にページを読み直すとこの木の今のビルドになる (`regress:screens` の web と同じ)。ブラウザ版は**自分の開発サーバ** (`rake wasm:serve DIST=1`、port 8067) と**自分のヘッドレスの Chromium** (Linux のもの: `FMRB_CHROME`、`/usr/bin` のもの、なければ Playwright の `~/.cache/ms-playwright` のもの。プロファイルは `tmp/regress/checkpoint/web_profile`、ページのログは Chromium の `--enable-logging` で `web.chrome.log` へ) で開く。`tools/fmrb_web.rb` の `up` は使わない (状態の file が人の開いているページと共用なので) ので、人がブラウザ版を開いたままでも流せる。ページは `fmrb_web.rb --port 8067` の `put`・`reload`・`text`・`key` で動かす。ページの `/flash/home/asterism` (端末の `/home/asterism`) に設定 (ルータは自前のルータの ws/ の port、ノード ID `rg-ckpt-web`、`rg-ckpt-a` からだけ受け取る) を置いて読み直し、`?app=default/shell` で Shell を開いておく。
   - web move: カウンタを A からブラウザ版へ (`app move <pid> --node rg-ckpt-web`)、2 秒後にブラウザ版の Shell の `move <pid> rg-ckpt-a` で A へ戻す。どちらの向きも次の 1 歩から続き、運ぶ時間・止めていた時間・イメージの大きさを出す。
   - web calls: `ckpt_calls` をブラウザ版へ。ブラウザ版に `linux_settings` が無いので `missing` に出て、移り、ブラウザ版に警告の行。
   - web requires: `ckpt_requires` をブラウザ版へ。聞かれた所で断られ、A で止まらずに数え続ける。
