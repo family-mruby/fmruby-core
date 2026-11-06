@@ -34,9 +34,9 @@ class FmrbApp
   # ```
   def running: () -> bool
 
-  # 窓の横幅 (ドット) <<en>> Window width in pixels
+  # Window の横幅 (ドット) <<en>> Window width in pixels
   #
-  # 窓の外枠まで含めた幅。中に描ける範囲は `@user_area_width` の方。
+  # Window の外枠まで含めた幅。中に描ける範囲は `@user_area_width` の方。
   # ```ruby
   # w = window_width
   # ```
@@ -48,21 +48,21 @@ class FmrbApp
   # ```
   def window_width: () -> Integer
 
-  # 窓の高さ (ドット) <<en>> Window height in pixels
+  # Window の高さ (ドット) <<en>> Window height in pixels
   #
   # ```ruby
   # h = window_height
   # ```
   def window_height: () -> Integer
 
-  # 窓の左上の位置 <<en>> Left edge of the window
+  # Window の左上の位置 <<en>> Left edge of the window
   #
   # ```ruby
   # x = pos_x
   # ```
   def pos_x: () -> Integer
 
-  # 窓の左上の位置 <<en>> Top edge of the window
+  # Window の左上の位置 <<en>> Top edge of the window
   #
   # ```ruby
   # y = pos_y
@@ -91,7 +91,7 @@ class FmrbApp
   # ```
   def fullscreen: () -> bool
 
-  # 窓の角が丸いかどうか <<en>> Whether the corners are rounded
+  # Window の角が丸いかどうか <<en>> Whether the corners are rounded
   #
   # ```ruby
   # r = rounded_corners ? 6 : 0
@@ -109,7 +109,7 @@ class FmrbApp
 
   # 始まるときに一度だけ呼ばれる <<en>> Called once as it starts
   #
-  # 画面も窓もここで使える状態になっています。最初の絵と、あとで使う変数を
+  # 画面も Window もここで使える状態になっています。最初の絵と、あとで使う変数を
   # ここで用意します。
   #
   # ファイルに書いたアプリは、**末尾に起動の 4 行が要ります**。これが無いと
@@ -253,14 +253,14 @@ class FmrbApp
   # イメージから起動したとき <<en>> Called when started from an image
   #
   # イメージから起動したアプリで、**書かれた所から続ける直前**に呼ばれます。
-  # インスタンス変数も Task もタイマもそのまま戻っています。窓 (同じ場所・
+  # インスタンス変数も Task もタイマもそのまま戻っています。Window (同じ場所・
   # 大きさ・枠、フォント、`GfxBlock`) と `subscribe` した知らせは基底クラスが
   # 戻してあり、キーボードはこのアプリに来ます。**描いた絵は戻りません**:
-  # 窓は枠だけの空の状態なので、何かあったときだけ描くアプリはここで描き
+  # Window は枠だけの空の状態なので、何かあったときだけ描くアプリはここで描き
   # 直します (`on_update` で毎回全部描くアプリは何もしなくてよい)。
   # スプライトや画像など、アプリが自分で外に作ったものもここで作り直します。
   # ファイルを開いたままのアプリはイメージに書けません。
-  # 画面の大きさが違う端末 (Retro と Modern) へ移ると、窓が画面に収まるよう
+  # 画面の大きさが違う端末 (Retro と Modern) へ移ると、Window が画面に収まるよう
   # 縮められたり、全画面の大きさが変わったりします。そのときは
   # `on_restore` の前に `on_resize` が来ます (大きさを変えたときと同じ)。
   # 移った先のビルドには、すべての端末に共通でないメソッドが無いことが
@@ -351,9 +351,9 @@ class FmrbApp
   # ```
   def on_event: (Hash ev) -> void
 
-  # 窓の大きさが変わったとき <<en>> Called when the window is resized
+  # Window の大きさが変わったとき <<en>> Called when the window is resized
   #
-  # 窓の大きさが変わったときに呼ばれます。全画面への切り替えでも呼ばれます。
+  # Window の大きさが変わったときに呼ばれます。全画面への切り替えでも呼ばれます。
   #
   # **FmrbUI の部品は作った場所に貼り付いたまま**なので、大きさが変わったら
   # 作り直しが要ります。枠も描き直します。
@@ -460,14 +460,14 @@ class FmrbApp
   # What `start` runs. There is rarely a reason to call it directly.
   def main_loop: () -> void
 
-  # ---- 窓と絵 ----
+  # ---- Window と絵 ----
 
-  # 窓のふちと題名を描き直す <<en>> Redraw the frame and the title
+  # Window のふちと題名を描き直す <<en>> Redraw the frame and the title
   #
   # タイトルバーとわく、閉じるボタンを描きます。全画面のときは何もしません。
   #
   # **大きさの変わるアプリは、描き直すたびに呼ぶこと。** 一度描いたきりに
-  # すると、窓を広げたときにわくが壊れます。
+  # すると、Window を広げたときにわくが壊れます。
   #
   # タイトルバーは既定のフォントで描かれますが、**呼ぶ前のフォント設定は
   # 戻されます**。`set_font(:ja)` を毎フレーム掛け直す必要はありません。
@@ -485,8 +485,8 @@ class FmrbApp
 
   # 中身の場所をぬりつぶす。色を省くとテーマの紙の色 <<en>> theme page colour by default
   #
-  # 窓の中だけを塗りつぶします。**わくも描き直し**、その場所にあった
-  # FmrbUI の部品にも描き直しの印を付けます。窓のアプリで画面を消すときは
+  # Window の中だけを塗りつぶします。**わくも描き直し**、その場所にあった
+  # FmrbUI の部品にも描き直しの印を付けます。Window のアプリで画面を消すときは
   # `gfx.clear` ではなくこちらを使います。
   #
   # `gfx.clear` は canvas 全体を塗るので、自分で描いたタイトルバーもわくも
@@ -544,7 +544,7 @@ class FmrbApp
 
   # 右はしに巻物のつまみを描く <<en>> Draw a scrollbar down the right edge
   #
-  # 窓の右端にスクロールバーを描く。**位置は自分で持つ** — この呼び出しは
+  # Window の右端にスクロールバーを描く。**位置は自分で持つ** — この呼び出しは
   # 絵を描くだけで、値は覚えない。
   # ```ruby
   # draw_scrollbar(@scroll,
@@ -580,7 +580,7 @@ class FmrbApp
   # ```
   def scrollbar_hit: (Integer click_x, Integer click_y) -> Symbol?
 
-  # 窓を動かす <<en>> Move the window
+  # Window を動かす <<en>> Move the window
   #
   # ```ruby
   # set_window_position(20, 40)
@@ -589,9 +589,9 @@ class FmrbApp
 
   # 全画面にするか元に戻すか頼む <<en>> Ask to go full screen or come back
   #
-  # 全画面と窓を切り替えるよう頼みます。**すぐには変わりません** — VM は
+  # 全画面と Window を切り替えるよう頼みます。**すぐには変わりません** — VM は
   # 動いたまま、答えは `on_resize` として返ってきます。そのときには
-  # `fullscreen` も窓の中の大きさも新しい値になっています。
+  # `fullscreen` も Window の中の大きさも新しい値になっています。
   #
   # 描き直しは `on_resize` に書きます。ここでは書きません。
   # <<en>>
@@ -603,9 +603,9 @@ class FmrbApp
   # Redraw in `on_resize`, not here.
   def request_fullscreen: (bool on) -> void
 
-  # 全画面と窓を切りかえる <<en>> Switch between full screen and window
+  # 全画面と Window を切りかえる <<en>> Switch between full screen and window
   #
-  # 全画面と窓を切り替える。**答えは `on_resize` で返る** (`request_fullscreen`
+  # 全画面と Window を切り替える。**答えは `on_resize` で返る** (`request_fullscreen`
   # と同じ)。
   # <<en>>
   # Switches between full screen and a window. **The answer arrives as
@@ -626,8 +626,8 @@ class FmrbApp
   # g.present(20, 40)
   # ```
   #
-  # **全画面のアプリ向け**です。窓のアプリで使うと、フォーカスが移ったとき
-  # に窓の管理側が追いかけてくれません。
+  # **全画面のアプリ向け**です。Window のアプリで使うと、フォーカスが移ったとき
+  # に Window の管理側が追いかけてくれません。
   # <<en>>
   # Makes another canvas owned by this app and returns an FmrbGfx bound to
   # it. It is deleted when the app ends, a crash included.
@@ -797,9 +797,9 @@ class FmrbApp
 
   # ---- ファイル ----
 
-  # ファイルを選ぶ窓を出してもらう <<en>> Ask for a file chooser
+  # ファイルを選ぶ Window を出してもらう <<en>> Ask for a file chooser
   #
-  # ファイル選択の窓を開くよう頼む。選ばれた道は `on_control` に届く。
+  # ファイル選択の Window を開くよう頼む。選ばれた道は `on_control` に届く。
   # "open" か "save" を渡す。
   # ```ruby
   # request_file_select("open")

@@ -31,7 +31,7 @@ module UiScenes
       ["clock", "1.2.0", "Clock", "時計", "A clock with an alarm", "目覚まし付きの時計", "tool"],
       ["a_rather_long_app_identifier", "10.20.30", "An application with a very long name indeed",
        "とても長い名前のアプリケーションです本当に", "A description that goes on and on past the edge of the window",
-       "窓の端を越えてずっと続く説明文がここに入ります", "game"],
+       "Window の端を越えてずっと続く説明文がここに入ります", "game"],
       ["tetris", "0.9.1", "Blocks", "ブロック", "Falling blocks", "落ちものパズル", "game"]
     ]
     apps.each do |a|

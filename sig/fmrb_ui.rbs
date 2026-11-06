@@ -27,7 +27,7 @@
 # end
 # ```
 #
-# 座標は user area (窓の枠とタイトルバーの内側) の左上が原点です。
+# 座標は user area (Window の枠とタイトルバーの内側) の左上が原点です。
 # <<en>>
 # Widget box for apps that draw their own window. Implemented in
 # lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb.
@@ -46,7 +46,7 @@ class FmrbUI
   # そこから読みます。
   #
   # `bg:` は**部品が自分の中を塗る色**です (Label の箱、Stepper の値の欄、
-  # Scrollbar の溝)。既定は窓の背景色で、暗い色で塗ったアプリはその色を
+  # Scrollbar の溝)。既定は Window の背景色で、暗い色で塗ったアプリはその色を
   # 渡します。
   #
   # `bg_painter:` は**部品を消したあとの地を描く相手**です。渡さなければ
@@ -57,7 +57,7 @@ class FmrbUI
   # フォントを変えたら戻す。名前は固定です。
   #
   # ```ruby
-  # @ui = FmrbUI.new(self)                    # 窓の背景色
+  # @ui = FmrbUI.new(self)                    # Window の背景色
   # @ui = FmrbUI.new(self, bg: COLOR_BG)      # 自前の背景色
   # @ui = FmrbUI.new(self, bg_painter: self)  # 地は自分で描く
   #
@@ -411,7 +411,7 @@ class FmrbUI::Widget
 
   # 置き直す (画面の座標) <<en>> Move and resize (canvas coordinates)
   #
-  # **作ったあとに動かす**ときに使う。大きさを変えた窓に部品を
+  # **作ったあとに動かす**ときに使う。大きさを変えた Window に部品を
   # 並べ直すのはこれ。
   # ```ruby
   # w.place(10, 40, 80, 20)

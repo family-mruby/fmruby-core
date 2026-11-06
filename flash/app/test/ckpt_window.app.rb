@@ -46,7 +46,7 @@ class CkptWindowApp < FmrbApp
     x0 = @user_area_x0
     y0 = @user_area_y0
     @gfx.fill_rect(x0 + 2, y0 + 2, @user_area_width - 4, 6, FmrbGfx::BLUE)
-    @gfx.draw_text(x0 + 4, y0 + 12, "窓 #{@text}", theme_fg)
+    @gfx.draw_text(x0 + 4, y0 + 12, "Window #{@text}", theme_fg)
     i = 0
     while i < @dots.size
       d = @dots[i]

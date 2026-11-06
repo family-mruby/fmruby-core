@@ -58,7 +58,7 @@ KEY_LEFTCTRL = 29
 # The texts (UTF-8, Japanese in each).
 SRC_TEXT = "editor: 日本語のコピー"
 FOOT_TEXT = "foot: かなと漢字をコピー"
-X11_TEXT = "x11: エックス窓の文字"
+X11_TEXT = "x11: X Window の文字"
 APP_TEXT = "app: アプリから X11 へ"
 
 opts = { engine: "standard", renderer: "pixman", keep: false }

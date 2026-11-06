@@ -1,6 +1,6 @@
 app_handle_name = "ckpt_window"
 app_screen_name = "Ckpt Window"
-app_screen_name_ja = "チェックポイント試験 (窓)"
+app_screen_name_ja = "チェックポイント試験 (Window)"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 90

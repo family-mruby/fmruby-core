@@ -1,6 +1,6 @@
 app_handle_name = "ckpt_wide"
 app_screen_name = "Ckpt Wide"
-app_screen_name_ja = "チェックポイント試験 (幅広の窓)"
+app_screen_name_ja = "チェックポイント試験 (幅広の Window)"
 default_window_mode = "window"
 default_window_width = 380
 default_window_height = 100

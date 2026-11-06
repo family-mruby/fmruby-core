@@ -154,7 +154,7 @@ class FmrbGfx
 
   # 画面の横幅 (ドット) <<en>> Canvas width in pixels
   #
-  # canvas 全体の幅。窓のアプリが描いてよいのは、その内側の
+  # canvas 全体の幅。Window のアプリが描いてよいのは、その内側の
   # @user_area_x0 / @user_area_width の範囲で、canvas_width とは違う。
   # 全画面のアプリでは一致する。
   # <<en>>
@@ -190,8 +190,8 @@ class FmrbGfx
 
   # 画面ぜんぶを一色でぬる <<en>> Paint the whole canvas one colour
   #
-  # canvas 全体を塗る。窓のアプリで呼ぶと、自分で描いたタイトルバーもわくも
-  # 消える。窓の中だけを消すなら FmrbApp#clear_user_area を使う。あちらは
+  # canvas 全体を塗る。Window のアプリで呼ぶと、自分で描いたタイトルバーもわくも
+  # 消える。Window の中だけを消すなら FmrbApp#clear_user_area を使う。あちらは
   # わくを描き直し、付いている FmrbUI の部品にも描き直しの印を付ける。
   #
   # 全画面のアプリなら clear でよく、fill_rect で同じ範囲を塗るより速い。
@@ -803,11 +803,11 @@ class FmrbGfx
 
   # 重ねて見せる場所を決める <<en>> Set the regions that are composited
   #
-  # canvas のどの矩形をどう合成するかを指定する。角の丸い窓のように、隅だけ
+  # canvas のどの矩形をどう合成するかを指定する。角の丸い Window のように、隅だけ
   # 透過が要るときの最適化で、中央は速い経路で送れる。最大 8 個。nil か [] で
   # 既定 (canvas 全体) に戻る。
   #
-  # 窓のアプリでは .app.toml の rounded_corners から系が設定するので、ふつうは
+  # Window のアプリでは .app.toml の rounded_corners から系が設定するので、ふつうは
   # 自分で呼ぶ必要はない。
   # <<en>>
   # Says which rectangles of the canvas are composited and how. It is the
@@ -822,10 +822,10 @@ class FmrbGfx
   # スプライトが出られる範囲を決める <<en>> limit where sprites may appear
   #
   # スプライトは canvas に描いた絵の上に重ねて合成されるので、何も
-  # しないと窓のわくやタイトルバーの上にもはみ出す。この四角の中だけに
+  # しないと Window のわくやタイトルバーの上にもはみ出す。この四角の中だけに
   # 出るようにする。x, y, w, h は SpriteInstance#move と同じ座標。
   #
-  # 窓のアプリは起動時に窓の中身の範囲が入っているので、ふつうは呼ぶ
+  # Window のアプリは起動時に Window の中身の範囲が入っているので、ふつうは呼ぶ
   # 必要はない。点数を出す帯など、さらに狭い範囲に閉じ込めたいときに使う。
   # ```ruby
   # # 上 10px を点数の帯にして、スプライトはその下だけに出す
@@ -932,7 +932,7 @@ class FmrbGfx
   # 近い色は同じ値になる。細かい階調は出ない。
   #
   # 結果が 0x01 になる組み合わせは避ける。デスクトップは 0x01 を透明の目印に
-  # 使っているので、窓が透けて見える。
+  # 使っているので、Window が透けて見える。
   # <<en>>
   # Packs three 0-255 values into one byte: three bits of red, three of green,
   # two of blue, so nearby colours collapse onto the same value and fine
