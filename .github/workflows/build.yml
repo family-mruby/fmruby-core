@@ -18,6 +18,7 @@ jobs:
     # no Spinel FFT, no Japanese fonts, and Asterism fetched and built in.
     # STICKS3 is the same shape on another board (its own pins and panel
     # driver), built so the second mini board does not rot.
+    # NARYAv3 also builds Asterism in by default (BOARD_BUILD_DEFAULTS).
     name: build-esp32 (${{ matrix.hw_target }})
     runs-on: ubuntu-latest
     strategy:
