@@ -11,4 +11,4 @@
 #   `rake setup` (or any build).
 repo: https://github.com/family-mruby/mruby-checkpoint.git
 branch: main
-commit: cc664d4339cc1373b02d15eb1e9d3ecdce588a68
+commit: 48aa39eaadbaeafff57aafaabfd85607c175c9f3
