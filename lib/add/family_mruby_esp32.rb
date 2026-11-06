@@ -121,8 +121,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   end
   # Asterism (doc/ruby_asterism): the Zenoh binding over zenoh-pico (built
   # single-threaded, polled from Ruby, allocating from PSRAM only) and the
-  # pure Ruby layers on top. Only with FMRB_ASTERISM=1 (the AtomS3R's default,
-  # off for Retro; see the Rakefile). The gem selects zenoh-pico's ESP-IDF
+  # pure Ruby layers on top. Only with FMRB_ASTERISM=1 (the default of
+  # NARYAv3, the AtomS3R and the StickS3; see the Rakefile). The gem selects zenoh-pico's ESP-IDF
   # platform from the build name; its ports/esp32 sources are compiled by
   # components/picoruby-esp32/CMakeLists.txt under the same variable.
   if ENV['FMRB_ASTERISM'] == '1'

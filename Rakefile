@@ -54,6 +54,9 @@ end
 #   It is a node of an Asterism network, so Asterism is in.
 #   STICKS3: the same chip, partitions and role as the AtomS3R, so the same
 #   defaults, plus its six-axis sensor (the BMI270 driver, FMRB_IMU).
+#   NARYAv3: Asterism is in, so a Retro board can send and receive a movable
+#   app (doc/checkpoint/report/f6_s3.md). It costs 696 B of internal RAM
+#   (zenoh-pico and the Asterism gems) and about 259 KB of flash.
 MINI_BUILD_DEFAULTS = {
   "FMRB_APP_ENGINE_EDITOR" => "mruby",
   "FMRB_FFT_SPINEL" => "0",
@@ -63,6 +66,7 @@ MINI_BUILD_DEFAULTS = {
 BOARD_BUILD_DEFAULTS = {
   "ATOMS3R" => MINI_BUILD_DEFAULTS,
   "STICKS3" => MINI_BUILD_DEFAULTS.merge("FMRB_IMU" => "1").freeze,
+  "NARYAv3" => { "FMRB_ASTERISM" => "1" }.freeze,
 }
 (BOARD_BUILD_DEFAULTS[ENV.fetch("FMRB_HW_TARGET", "").strip] || {}).each do |key, value|
   next if ENV.key?(key) && !DOTENV_KEYS.include?(key)
@@ -334,8 +338,9 @@ FMRB_FONT_JA = (ENV["FMRB_FONT_JA"] || "1") != "0"
 # Asterism (doc/ruby_asterism) on an S3 board: the Zenoh binding
 # (picoruby-asterism-zenoh, zenoh-pico) and the pure Ruby layers
 # (picoruby-asterism). The Modern (P4) build always has them; on the S3 they
-# are in only with FMRB_ASTERISM=1, so Retro's flash and RAM stay as they are
-# by default. The AtomS3R defaults to 1 (BOARD_BUILD_DEFAULTS above). Read
+# are in only with FMRB_ASTERISM=1. NARYAv3, the AtomS3R and the StickS3
+# default to 1 (BOARD_BUILD_DEFAULTS above); an S3 configuration that names no
+# board (and ATOM_DISPLAY) stays at 0. Read
 # inside the container by lib/add/family_mruby_esp32.rb (the gems) and
 # components/picoruby-esp32/CMakeLists.txt (their ESP-IDF port sources), so
 # the two cannot disagree. Changing it means `rake clean` (libmruby).

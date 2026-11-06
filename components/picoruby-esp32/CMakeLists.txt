@@ -181,7 +181,8 @@ else()
     endif()
 
     # Zenoh client (picoruby-asterism-zenoh, doc/ruby_asterism): every P4, and
-    # an S3 built with FMRB_ASTERISM=1 (the AtomS3R; see the Rakefile), like
+    # an S3 built with FMRB_ASTERISM=1 (NARYAv3, AtomS3R, StickS3 by default;
+    # see the Rakefile), like
     # the gem in lib/add/family_mruby_esp32p4.rb / family_mruby_esp32.rb, which
     # read the same variable inside the container. The rake build compiles the
     # zenoh-pico core and the gem; the platform files that need ESP-IDF

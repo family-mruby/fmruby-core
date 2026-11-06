@@ -106,7 +106,7 @@ module Regress
   TARGETS = [
     Target.new(name: "narya_v3", family: "retro", screen: [320, 240], hires: nil, margin: [2, 16], app: [280, 180],
                font_ja: true, conf: "system_conf_n16r8.toml", exclude: "storage_exclude_naryav3.txt",
-               firmware: "NARYAv3", size_default: true,
+               firmware: "NARYAv3", build: { "FMRB_ASTERISM" => "1" }, size_default: true,
                serial: { usb: "1a86:7523", reset: "rts", baud: 115_200, flash_baud: 115_200 }),
     Target.new(name: "tab5", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
                font_ja: true, conf: "system_conf_p4.toml", exclude: "storage_exclude_tab5.txt",
