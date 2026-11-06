@@ -2,16 +2,20 @@
 #
 # factory was 6M until the Spinel runtime was moved to the latest upstream
 # (doc/spinel_upstream_ext/): the image grew past it by about 110 KB, from a
-# point where it already had only 5% spare. It is 7M now. storage keeps its 8M,
-# so it moves from 0x610000 to 0x710000 and the layout ends at 0xF10000,
-# inside the 16MB flash.
+# point where it already had only 5% spare. It went to 7M then, with storage
+# moved from 0x610000 to 0x710000 and the last 960K of the flash left unused.
+#
+# mruby-checkpoint (doc/checkpoint F6) took the 7M image to 2% spare (the
+# baseline table alone is about 264 KB). factory now takes the unused 960K as
+# well: 0x10000 + 0x7F0000 ends at 0x800000, and storage keeps its 8M from
+# 0x800000 to the end of the 16MB flash (0x1000000).
 #
 # A partition-table change cannot ship as an app-only update: it needs a full
 # flash (bootloader + table + app + storage), which erases /home. `rake
-# flash:app` onto a board still carrying the 6M table writes an image the old
-# table cannot hold.
+# flash:app` onto a board still carrying an older table writes an image that
+# table cannot hold, or runs with storage at the old offset.
 # Name,   Type, SubType,  Offset,  Size, Flags
 nvs,      data, nvs,      0x9000,  24K,
 phy_init, data, phy,             ,  4K,
-factory,  app,  factory,         ,  7M,
+factory,  app,  factory,         ,  0x7F0000,
 storage,  data, littlefs,        ,  8M,
