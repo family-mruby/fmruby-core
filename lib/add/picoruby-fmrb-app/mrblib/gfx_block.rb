@@ -266,6 +266,16 @@ class GfxBlock
     end
   end
 
+  # In an app started from a checkpoint image: forget the program without
+  # deleting it (its id was the writing side's and may name another app's
+  # program here) and without defining it again. For a block whose owner
+  # builds a fresh one instead (the window frame, which bakes this
+  # machine's theme into its program).
+  def _checkpoint_drop
+    @prog_id = nil
+    @destroyed = true
+  end
+
   private
 
   def extract_regs(cmds)

@@ -58,6 +58,12 @@
 #             is as it was. Then moved into the second program: the mark shown
 #             and taken down once here, the window there the same as it was
 #             here, a click and a key reach it there, and it is gone here.
+#   window theme  a third program of the same build under another theme
+#             (cyberpunk, in its user's /etc/system_conf.toml): the window
+#             moved there takes that machine's title bar and border (the base
+#             builds its frame again there, not the writing side's program),
+#             pixel for pixel the window a fresh start there shows after the
+#             same clicks and keys.
 #   requires  (F4) /app/test/ckpt_requires.app.rb declares in its .app.toml a
 #             method it cannot go on without (requires = ["linux_settings"],
 #             the native program's own): moved into the second program (the
@@ -108,6 +114,15 @@ module Regress
     # the second program, for the moves between two programs (F2)
     RUN_DIR_B = "/tmp/fmrb-native-ckpt-b-#{Process.uid}"
     PORT_B = 5586
+    # the third program, under another theme (round_window_theme)
+    RUN_DIR_C = "/tmp/fmrb-native-ckpt-c-#{Process.uid}"
+    PORT_C = 5587
+    # its [theme]: the cyberpunk preset (config_dialog.rb's CFG_THEME_PRESETS)
+    THEME_C = { "desktop_bg" => 0x00, "menu_bg" => 0x22, "window_bg" => 0x00, "text" => 0x1C,
+                "text_light" => 0xFF, "highlight" => 0xE3, "border" => 0x0E, "button" => 0x46,
+                "dir_color" => 0xFC }.freeze
+    # the light theme every config/system_conf_* ships (the first program's)
+    THEME_A = { "menu_bg" => 0xC5, "border" => 0x60 }.freeze
     HOLD_NO_ANSWER_MS = 1500
     APP = "/app/test/ckpt_counter.app.rb"
     IMAGE = "/tmp/ckpt_counter.ckpt"
@@ -270,6 +285,7 @@ module Regress
         notes << round_move_refused
         notes << round_move_no_answer
         notes << round_window_move
+        notes << round_window_theme(config)
         notes << round_requires_move
         notes.concat(asterism_rounds)
         no_forced_kill
@@ -283,7 +299,7 @@ module Regress
       end
 
       def down_if_running
-        [[RUN_DIR, PORT], [RUN_DIR_B, PORT_B]].each do |dir, port|
+        [[RUN_DIR, PORT], [RUN_DIR_B, PORT_B], [RUN_DIR_C, PORT_C]].each do |dir, port|
           native("down", timeout: 30, run_dir: dir, port: port) if File.exist?(File.join(dir, "pid"))
         rescue Failure
           nil
@@ -544,6 +560,93 @@ module Regress
           "carried in #{r['carried_ms'] - r['held_ms']} ms"
       end
 
+      # The third program: the same build under THEME_C. Its user's
+      # /etc/system_conf.toml is the build's first-start one with the [theme]
+      # section written over (the program fills in only what a user's file
+      # lacks, so the colours here are the ones it runs with).
+      def up_c(config)
+        home = File.join(OUT, "#{config}_home_c")
+        FileUtils.rm_rf(home)
+        FileUtils.mkdir_p(%w[user/etc cache].map { |d| File.join(home, d) })
+        seed = File.join(CORE, "native", "build", "root", "etc", "system_conf.toml")
+        seed = File.join(CORE, "config", "system_conf_native.toml") unless File.exist?(seed)
+        theme = "[theme]\n" + THEME_C.map { |k, v| format("%s = 0x%02X\n", k, v) }.join
+        conf = File.read(seed).sub(/^\[theme\]\n(?:[a-z_]+ *=.*\n)+/, theme)
+        raise Failure, "window theme: no [theme] section in #{seed}" unless conf.include?(theme)
+        File.write(File.join(home, "user", "etc", "system_conf.toml"), conf)
+        native("up", "--engine", config, "--machine", "sdl", "--debug-port", PORT_C.to_s,
+               "--user-dir", File.join(home, "user"), "--cache-dir", File.join(home, "cache"),
+               "--timeout", "90", timeout: 120, run_dir: RUN_DIR_C, port: PORT_C)
+      end
+
+      # An RGB332 theme colour as the native program's shot shows it (through
+      # its RGB565 frame), within a step either way.
+      def theme_colour?(rgb, c332)
+        want = [(c332 >> 5) * 255 / 7, ((c332 >> 2) & 7) * 255 / 7, (c332 & 3) * 255 / 3]
+        rgb.zip(want).all? { |a, b| (a - b).abs <= 8 }
+      end
+
+      # A title bar pixel clear of the hamburger, the title and the close
+      # button, and one of the left border below the title bar.
+      def frame_pixels(img)
+        wx, wy, ww, = WINDOW_RECT
+        [img.pixel(wx + ww - 30, wy + 5), img.pixel(wx, wy + 50)]
+      end
+
+      # Moved into a program under another theme: the window there wears that
+      # theme's frame, and is the window a fresh start there draws.
+      def round_window_theme(config)
+        up_c(config)
+        # the window as a fresh start draws it there, after the same clicks
+        # and keys start_window gives it here
+        from_c = log_lines(RUN_DIR_C).size
+        fresh_pid = app("spawn", WINDOWED, run_dir: RUN_DIR_C, port: PORT_C).fetch("pid")
+        wait_line(/ckpt_window: task=2 /, from_c, "ckpt_window's Task in the third program", run_dir: RUN_DIR_C)
+        poke_window(40, 50, "a", run_dir: RUN_DIR_C, port: PORT_C)
+        poke_window(90, 66, "b", run_dir: RUN_DIR_C, port: PORT_C)
+        fresh = window_shot(RUN_DIR_C, PORT_C)
+        app("kill", fresh_pid.to_s, run_dir: RUN_DIR_C, port: PORT_C)
+        sleep 0.5
+        bar, border = frame_pixels(fresh)
+        unless theme_colour?(bar, THEME_C["menu_bg"]) && theme_colour?(border, THEME_C["border"])
+          raise Failure, "window theme: a fresh window there is not in its theme (bar #{bar.inspect}, border #{border.inspect})"
+        end
+        pid = start_window
+        before = window_shot
+        bar, border = frame_pixels(before)
+        unless theme_colour?(bar, THEME_A["menu_bg"]) && theme_colour?(border, THEME_A["border"])
+          raise Failure, "window theme: the first program's window is not in the light theme " \
+                         "(bar #{bar.inspect}, border #{border.inspect})"
+        end
+        mark_c = log_lines(RUN_DIR_C).size
+        r = move(pid, to: RUN_DIR_C)
+        raise Failure, "window theme: answered #{r.inspect}" unless r["status"] == "moved" && r["pid"]
+        restored = wait_line(/ckpt_window: on_restore dots=2 text=ab/, mark_c, "on_restore in the third program",
+                             run_dir: RUN_DIR_C)
+        wait_line(/ckpt_window: task=\d+ /, restored + 1, "a Task step in the third program", run_dir: RUN_DIR_C)
+        after = window_shot(RUN_DIR_C, PORT_C)
+        bar, border = frame_pixels(after)
+        unless theme_colour?(bar, THEME_C["menu_bg"]) && theme_colour?(border, THEME_C["border"])
+          after.write(File.join(OUT, "window_theme.png"))
+          raise Failure, format("window theme: the frame kept the writing side's theme (title bar %s for 0x%02X, " \
+                                "border %s for 0x%02X; window_theme.png)",
+                                bar.inspect, THEME_C["menu_bg"], border.inspect, THEME_C["border"])
+        end
+        compare_window(fresh, after, "window theme")
+        app("kill", r["pid"].to_s, run_dir: RUN_DIR_C, port: PORT_C)
+        sleep 0.3
+        forced = log_lines(RUN_DIR_C).grep(/No response in \d+ms, forcing termination/)
+        raise Failure, "forced kill in the third program: #{forced.first}" unless forced.empty?
+        "window theme: title bar #{bar.inspect} and border #{border.inspect} there, the window a fresh start draws there"
+      ensure
+        FileUtils.cp(log_path(RUN_DIR_C), File.join(OUT, "#{config}_c.log")) if File.exist?(log_path(RUN_DIR_C))
+        begin
+          native("down", timeout: 30, run_dir: RUN_DIR_C, port: PORT_C) if File.exist?(File.join(RUN_DIR_C, "pid"))
+        rescue Failure
+          nil
+        end
+      end
+
       # An app that declares a method it requires, moved into the same build
       # (F4): nothing missing there, the declaration carried with the image.
       def round_requires_move
@@ -612,8 +715,8 @@ module Regress
         "shell: a #{c[:a]}, b #{c[:b]}, main #{c[:main]}"
       end
 
-      def move(pid, *opts)
-        JSON.parse(native("app", "move", pid.to_s, "--to", RUN_DIR_B, *opts, timeout: 60).lines.last.to_s)
+      def move(pid, *opts, to: RUN_DIR_B)
+        JSON.parse(native("app", "move", pid.to_s, "--to", to, *opts, timeout: 60).lines.last.to_s)
       end
 
       # A move into the second program (F2, D15): held, carried, started there,

@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-05 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-06 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の窓とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 1. 流し方
 
@@ -356,6 +356,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
   - move no answer: `app checkpoint <pid> --hold 1500` で止めたまま誰も答えない。A のカーネルが 1.5 秒で続けさせる。
   - requires (F4): `/app/test/ckpt_requires.app.rb` (`.app.toml` に `requires = ["linux_settings"]`、ネイティブ版だけのメソッド) を B へ移す。同じビルドなので移り、答えに `missing` が無く、B の `/tmp/ckpt_requires.toml` に `requires` が写っている。断る形と知らせる形は、ビルドの違う sim の場面 (calls・requires) で見る。
   - window move (F3): まず window と同じ窓のアプリを `app checkpoint <pid> --hold 5000` で止め、タイトルバーに「移動中」の印 (`moving...`) が出ている (窓の範囲の違いがタイトルバーの中だけ) ことを撮って確かめ、`app finish <pid> continue` の後は窓が止める前と画素で同じ (印の画面は `tmp/regress/checkpoint/window_mark.png` に残す)。次に B へ移す。A のログに印を出して消した行が 1 回ずつ、B の窓が A で書く前の窓と画素で同じ、B で Task が続き知らせを `subscribe` し直す、B でクリックとキーが届く、A の窓は閉じて、A はイメージの後に 1 歩も数えない。
+  - window theme: 3 つ目のネイティブ版 C (同じビルド、debug port 5587、利用者の場所の `/etc/system_conf.toml` はビルドの最初の起動用の etc の写しの `[theme]` を cyberpunk に書き換えたもの) を起こす。C で `ckpt_window` を新しく起動して window と同じ操作をした窓を見本に撮り、閉じる。A の同じ窓 (明るいテーマ) を C へ移し、タイトルバーと左の縁の画素が C の `menu_bg`・`border` であること、窓の範囲が見本と画素で同じことを確認する (基底クラスの枠を着いた側のテーマで作り直すこと、doc/checkpoint/report/f3_frame_theme.md)。違ったときは `tmp/regress/checkpoint/window_theme.png` を残す。C のログは `<構成>_c.log`。終わったら C は止める。
 - sim とネイティブ版の間 (F4a)。ネイティブ版の場面の後に、構成ごと・sim の系列 (Retro・Modern) ごとに、sim をその構成で作り (`rake build:linux`、`regress:screens` と同じ端末の固定の設定)、3 つのコンテナをヘッドレスで起こし、ネイティブ版 (同じ構成、`sdl` = Modern の 426x240) を横に起こして流す。sim の debug サーバは 5555 で、道具は `FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app ...` (sim から移す) と `app move PID --to 5555` (sim へ移す) を使う。場面は 10 個 (`tools/regress/checkpoint_sim.rb`)。`SIM=1` (か `SIM=retro` など) のときだけ流す。種類ごとにまとめ、sim が今いる種類から流す (Modern なら 標準 Modern・全部 mruby Modern・標準 Retro・全部 mruby Retro の順)。
   - sim restart・sim hold・sim window: sim の中で F1 (起動し直し)、F2 の止めたまま誰も答えない形、F3 の窓の起動し直し (窓の範囲が画素で同じ)。sim の時分割 (tick を進める別のタスク) の上でも止める・続けるが正しいこと。
   - to native・to sim: カウンタを sim からネイティブ版へ、ネイティブ版から sim へ。数が次の 1 歩から続き、task tick が書いたときと同じ。名前の数は両方を出す (ビルドが違うので同じではない。doc/checkpoint/report/f4.md の 1)。

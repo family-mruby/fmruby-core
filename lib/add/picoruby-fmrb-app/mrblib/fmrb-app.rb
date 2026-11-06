@@ -562,8 +562,8 @@ class FmrbApp
   # on (doc/checkpoint F3, D8). What lived outside the VM for the app and the
   # base can make again from the image is made again here: the window's
   # canvases (from the context, as for a fresh app), every FmrbGfx bound to
-  # the canvas it drew on, every GfxBlock defined again, the frame, the
-  # rounded corners and the sprite clip, the fonts, the topics; the sprites
+  # the canvas it drew on, every GfxBlock of the app defined again, the
+  # frame built again from this machine's theme, the rounded corners and the sprite clip, the fonts, the topics; the sprites
   # are forgotten. Then the app's on_restore, which draws what the window
   # showed (nothing drawn is in the image) and makes its sprites again. The
   # keyboard focus and the window's place are the kernel's, as for any app it
@@ -598,6 +598,14 @@ class FmrbApp
         end
         i += 1
       end
+      # The frame's blocks bake the system's [theme] colours and the corner
+      # key into their programs. They are the base's, not the app's, so they
+      # are built again from this machine's theme (as a fresh window builds
+      # them) instead of defined again with the writing side's colours.
+      @_frame_block._checkpoint_drop if @_frame_block
+      @_corner_clear_block._checkpoint_drop if @_corner_clear_block
+      @_frame_block = nil
+      @_corner_clear_block = nil
       blocks = []
       ObjectSpace.each_object(GfxBlock) { |b| blocks << b }
       i = 0
@@ -617,6 +625,7 @@ class FmrbApp
         i += 1
       end
       if @gfx
+        _build_frame_block unless @_fullscreen
         @_composite_region_w = nil
         @_composite_region_h = nil
         _apply_user_area_sprite_clip
