@@ -4,12 +4,17 @@ dependencies:
     rules:
       - if: "idf_version >= 5.0"
       - if: "target != linux"
+  # Held at the versions the boards were built with until 2026-11-06: 0.3.0
+  # (what "*" resolves to when the lock is made afresh, e.g. in a new
+  # worktree) fails to build on the S3 (detect_io_default.inl includes
+  # esp_psram.h, and m5gfx does not require esp_psram). Moving on is its own
+  # task.
   m5stack/m5gfx:
-    version: "*"
+    version: "0.2.36"
     rules:
       - if: "target != linux"
   m5stack/m5unified:
-    version: "*"
+    version: "0.2.29"
     rules:
       - if: "target != linux"
   # ES8388 codec control for Tab5 speaker output (Modern/P4 only)
