@@ -465,14 +465,14 @@
     "narya_v3": {
       "board": "narya_v3",
       "firmware": "NARYAv3",
-      "commit": "6f7b5848",
+      "commit": "2e13ff74",
       "env": {
         "FMRB_KERNEL_ENGINE": "spinel",
         "FMRB_APP_ENGINE_DESKTOP": "mruby",
         "FMRB_APP_ENGINE_EDITOR": "spinel",
         "FMRB_FFT_SPINEL": "1",
         "FMRB_FONT_JA": "1",
-        "FMRB_ASTERISM": "0",
+        "FMRB_ASTERISM": "1",
         "FMRB_IMU": "0",
         "FMRB_GC_PROFILE": "",
         "FMRB_TASK_SELF_TICK": "",
@@ -480,14 +480,14 @@
         "FMRB_HW_TARGET": "NARYAv3"
       },
       "memory": {
-        "Flash Data": 8214556,
-        "Flash Code": 2980008,
-        "DIRAM": 126035,
+        "Flash Data": 8767356,
+        "Flash Code": 3204400,
+        "DIRAM": 126395,
         "IRAM": 16384,
         "RTC FAST": 72,
         "RTC SLOW": 32
       },
-      "app_bin": 4512624,
+      "app_bin": 5213872,
       "app_partition": 6291456,
       "archives": {
         "/opt/esp/idf/components/bt/controller/lib_esp32c3_family/esp32s3/libbtdm_app.a": {
@@ -501,7 +501,7 @@
           "DIRAM": 289
         },
         "/opt/esp/idf/components/esp_phy/lib/esp32s3/libphy.a": {
-          "Flash Code": 27890,
+          "Flash Code": 27886,
           "DIRAM": 8407
         },
         "/opt/esp/idf/components/esp_wifi/lib/esp32s3/libcore.a": {
@@ -513,12 +513,12 @@
           "DIRAM": 3
         },
         "/opt/esp/idf/components/esp_wifi/lib/esp32s3/libnet80211.a": {
-          "Flash Code": 120887,
+          "Flash Code": 120851,
           "Flash Data": 31165,
           "DIRAM": 936
         },
         "/opt/esp/idf/components/esp_wifi/lib/esp32s3/libpp.a": {
-          "Flash Code": 55766,
+          "Flash Code": 55778,
           "Flash Data": 5352,
           "DIRAM": 3470
         },
@@ -544,16 +544,16 @@
           "Flash Code": 98
         },
         "/project/components/picoruby-esp32/picoruby/build/esp32/lib/libmruby.a": {
-          "Flash Data": 557985,
-          "Flash Code": 460977,
-          "DIRAM": 2925
+          "Flash Data": 696301,
+          "Flash Code": 599120,
+          "DIRAM": 2713
         },
         "esp-idf/app_update/libapp_update.a": {
-          "Flash Code": 131,
+          "Flash Code": 101,
           "DIRAM": 4
         },
         "esp-idf/basic/libbasic.a": {
-          "Flash Code": 40286,
+          "Flash Code": 40390,
           "Flash Data": 7823,
           "DIRAM": 8
         },
@@ -563,7 +563,7 @@
           "Flash Code": 34
         },
         "esp-idf/bt/libbt.a": {
-          "Flash Code": 82925,
+          "Flash Code": 82993,
           "Flash Data": 3555,
           "IRAM": 736,
           "DIRAM": 270
@@ -577,7 +577,7 @@
           "DIRAM": 40
         },
         "esp-idf/esp_app_format/libesp_app_format.a": {
-          "Flash Data": 287243,
+          "Flash Data": 297843,
           "Flash Code": 370,
           "DIRAM": 10
         },
@@ -590,23 +590,23 @@
           "Flash Code": 47
         },
         "esp-idf/esp_driver_gpio/libesp_driver_gpio.a": {
-          "Flash Code": 6441,
+          "Flash Code": 6437,
           "Flash Data": 708,
           "DIRAM": 36
         },
         "esp-idf/esp_driver_i2c/libesp_driver_i2c.a": {
-          "Flash Code": 9493,
+          "Flash Code": 9497,
           "DIRAM": 762,
           "Flash Data": 332,
           "IRAM": 16
         },
         "esp-idf/esp_driver_rmt/libesp_driver_rmt.a": {
-          "Flash Code": 9409,
+          "Flash Code": 9485,
           "Flash Data": 345,
           "DIRAM": 89
         },
         "esp-idf/esp_driver_sdspi/libesp_driver_sdspi.a": {
-          "Flash Code": 5296,
+          "Flash Code": 5328,
           "Flash Data": 405,
           "DIRAM": 17
         },
@@ -636,11 +636,11 @@
           "DIRAM": 4
         },
         "esp-idf/esp_http_server/libesp_http_server.a": {
-          "Flash Code": 12163,
+          "Flash Code": 12187,
           "Flash Data": 628
         },
         "esp-idf/esp_hw_support/libesp_hw_support.a": {
-          "Flash Code": 28261,
+          "Flash Code": 28233,
           "DIRAM": 10469,
           "IRAM": 3487,
           "Flash Data": 1117,
@@ -648,7 +648,7 @@
           "RTC SLOW": 32
         },
         "esp-idf/esp_littlefs/libesp_littlefs.a": {
-          "Flash Code": 26619,
+          "Flash Code": 26359,
           "DIRAM": 144,
           "Flash Data": 93
         },
@@ -659,16 +659,16 @@
           "IRAM": 76
         },
         "esp-idf/esp_netif/libesp_netif.a": {
-          "Flash Code": 9404,
+          "Flash Code": 9408,
           "Flash Data": 506,
           "DIRAM": 33
         },
         "esp-idf/esp_partition/libesp_partition.a": {
-          "Flash Code": 1441,
+          "Flash Code": 1429,
           "DIRAM": 8
         },
         "esp-idf/esp_phy/libesp_phy.a": {
-          "Flash Code": 2718,
+          "Flash Code": 2686,
           "Flash Data": 248,
           "DIRAM": 201,
           "IRAM": 93
@@ -689,7 +689,7 @@
         },
         "esp-idf/esp_rom/libesp_rom.a": {
           "DIRAM": 839,
-          "Flash Code": 197,
+          "Flash Code": 193,
           "IRAM": 96
         },
         "esp-idf/esp_security/libesp_security.a": {
@@ -698,13 +698,13 @@
           "Flash Data": 8
         },
         "esp-idf/esp_system/libesp_system.a": {
-          "Flash Code": 10690,
+          "Flash Code": 10686,
           "IRAM": 2708,
           "DIRAM": 1956,
           "Flash Data": 588
         },
         "esp-idf/esp_timer/libesp_timer.a": {
-          "Flash Code": 1560,
+          "Flash Code": 1520,
           "DIRAM": 875,
           "IRAM": 189,
           "Flash Data": 24
@@ -715,7 +715,7 @@
           "DIRAM": 16
         },
         "esp-idf/esp_wifi/libesp_wifi.a": {
-          "Flash Code": 3372,
+          "Flash Code": 3412,
           "DIRAM": 820,
           "Flash Data": 767,
           "IRAM": 4
@@ -726,17 +726,17 @@
           "DIRAM": 50
         },
         "esp-idf/espressif__mdns/libespressif__mdns.a": {
-          "Flash Code": 36137,
-          "DIRAM": 2419,
-          "Flash Data": 1114
+          "Flash Code": 31088,
+          "DIRAM": 2310,
+          "Flash Data": 127
         },
         "esp-idf/espressif__usb_host_hid/libespressif__usb_host_hid.a": {
-          "Flash Code": 7131,
+          "Flash Code": 7143,
           "Flash Data": 692,
           "DIRAM": 96
         },
         "esp-idf/fatfs/libfatfs.a": {
-          "Flash Code": 23775,
+          "Flash Code": 23779,
           "Flash Data": 1578,
           "DIRAM": 64
         },
@@ -755,11 +755,11 @@
           "DIRAM": 12
         },
         "esp-idf/fmrb_gfx/libfmrb_gfx.a": {
-          "Flash Code": 5408,
+          "Flash Code": 5416,
           "DIRAM": 36
         },
         "esp-idf/fmrb_hal/libfmrb_hal.a": {
-          "Flash Code": 12736,
+          "Flash Code": 12751,
           "DIRAM": 4660,
           "Flash Data": 4276
         },
@@ -769,21 +769,21 @@
         },
         "esp-idf/fmrb_mem/libfmrb_mem.a": {
           "Flash Data": 6643712,
-          "Flash Code": 4165,
+          "Flash Code": 4256,
           "DIRAM": 64
         },
         "esp-idf/fmrb_msg/libfmrb_msg.a": {
-          "Flash Code": 1948,
+          "Flash Code": 1940,
           "DIRAM": 337,
           "Flash Data": 8
         },
         "esp-idf/fmrb_spinel_rt/libfmrb_spinel_rt.a": {
-          "Flash Code": 125334,
+          "Flash Code": 125692,
           "Flash Data": 31142,
           "DIRAM": 204
         },
         "esp-idf/fmrb_toml/libfmrb_toml.a": {
-          "Flash Code": 1464,
+          "Flash Code": 1460,
           "Flash Data": 8,
           "DIRAM": 1
         },
@@ -798,7 +798,7 @@
           "Flash Data": 32
         },
         "esp-idf/hal/libhal.a": {
-          "Flash Code": 10623,
+          "Flash Code": 10591,
           "DIRAM": 10320,
           "IRAM": 463
         },
@@ -809,7 +809,7 @@
           "Flash Data": 592
         },
         "esp-idf/http_parser/libhttp_parser.a": {
-          "Flash Code": 12261,
+          "Flash Code": 12257,
           "Flash Data": 676
         },
         "esp-idf/log/liblog.a": {
@@ -818,58 +818,58 @@
           "IRAM": 72
         },
         "esp-idf/lua/liblua.a": {
-          "Flash Code": 116995,
+          "Flash Code": 116575,
           "Flash Data": 3323
         },
         "esp-idf/lwip/liblwip.a": {
-          "Flash Code": 83890,
+          "Flash Code": 83682,
           "Flash Data": 4129,
           "DIRAM": 12
         },
         "esp-idf/main/libmain.a": {
-          "Flash Code": 912495,
-          "Flash Data": 452220,
+          "Flash Code": 983655,
+          "Flash Data": 854487,
           "DIRAM": 5498
         },
         "esp-idf/mbedtls/libmbedtls.a": {
           "Flash Data": 69158,
-          "Flash Code": 964,
+          "Flash Code": 960,
           "DIRAM": 4
         },
         "esp-idf/mbedtls/mbedtls/library/libmbedcrypto.a": {
-          "Flash Code": 83948,
+          "Flash Code": 85990,
           "Flash Data": 6809,
-          "DIRAM": 404,
+          "DIRAM": 1096,
           "IRAM": 16
         },
         "esp-idf/mbedtls/mbedtls/library/libmbedtls.a": {
-          "Flash Code": 25418,
+          "Flash Code": 25473,
           "Flash Data": 1930,
           "DIRAM": 240
         },
         "esp-idf/mbedtls/mbedtls/library/libmbedx509.a": {
-          "Flash Code": 8294,
+          "Flash Code": 8262,
           "Flash Data": 45
         },
         "esp-idf/mem_allocator/libmem_allocator.a": {
-          "Flash Code": 1465
+          "Flash Code": 1461
         },
         "esp-idf/micropython/libmicropython.a": {
-          "Flash Code": 106903,
-          "Flash Data": 42206,
+          "Flash Code": 107004,
+          "Flash Data": 43567,
           "DIRAM": 459
         },
         "esp-idf/msgpack-esp32/libmsgpack-esp32.a": {
           "Flash Code": 4107
         },
         "esp-idf/newlib/libnewlib.a": {
-          "Flash Code": 2153,
+          "Flash Code": 2145,
           "DIRAM": 1908,
           "IRAM": 765,
           "Flash Data": 16
         },
         "esp-idf/nvs_flash/libnvs_flash.a": {
-          "Flash Code": 15217,
+          "Flash Code": 15201,
           "Flash Data": 132,
           "DIRAM": 24
         },
@@ -877,8 +877,8 @@
           "Flash Code": 5
         },
         "esp-idf/picoruby-esp32/libpicoruby-esp32.a": {
-          "Flash Code": 95078,
-          "Flash Data": 5466,
+          "Flash Code": 111234,
+          "Flash Data": 5597,
           "DIRAM": 434
         },
         "esp-idf/pthread/libpthread.a": {
@@ -886,7 +886,7 @@
           "DIRAM": 12
         },
         "esp-idf/sdmmc/libsdmmc.a": {
-          "Flash Code": 15720,
+          "Flash Code": 15883,
           "Flash Data": 1398
         },
         "esp-idf/soc/libsoc.a": {
@@ -895,16 +895,16 @@
         },
         "esp-idf/spi_flash/libspi_flash.a": {
           "DIRAM": 12522,
-          "Flash Code": 1079,
+          "Flash Code": 1075,
           "Flash Data": 913,
           "IRAM": 364
         },
         "esp-idf/toml_parser/libtoml_parser.a": {
-          "Flash Code": 9531,
+          "Flash Code": 9623,
           "DIRAM": 8
         },
         "esp-idf/usb/libusb.a": {
-          "Flash Code": 37292,
+          "Flash Code": 37296,
           "DIRAM": 1258,
           "Flash Data": 468,
           "IRAM": 44
@@ -915,7 +915,7 @@
           "Flash Data": 128
         },
         "esp-idf/wpa_supplicant/libwpa_supplicant.a": {
-          "Flash Code": 60327,
+          "Flash Code": 60343,
           "Flash Data": 2881,
           "DIRAM": 8
         },
@@ -928,23 +928,23 @@
       },
       "spinel": {
         "editor": {
-          "flash": 449339,
+          "flash": 453264,
           "internal": 92
         },
         "fft": {
-          "flash": 41604,
+          "flash": 41176,
           "internal": 76
         },
         "hello": {
-          "flash": 27018,
+          "flash": 26834,
           "internal": 76
         },
         "kernel": {
-          "flash": 301376,
+          "flash": 353233,
           "internal": 128
         },
         "raycast": {
-          "flash": 31607,
+          "flash": 31587,
           "internal": 76
         }
       }
@@ -2225,5 +2225,5 @@
       }
     }
   },
-  "commit": "6f7b5848"
+  "commit": "2e13ff74"
 }
