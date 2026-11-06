@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 #
 # checkpoint_web.rb - moving an app between the native program and the
-# browser build over Asterism (rake regress:checkpoint WEB=1, doc/checkpoint
+# browser build over Asterism (rake regress:checkpoint unless WEB=0, doc/checkpoint
 # F5, doc/regression/usage.md chapter 12). Part of checkpoint.rb's run: its
 # Runner includes this, and the rounds run once, after the native rounds,
 # with the first configuration's native program and the run's own router
 # (its ws/ port, which the page reaches as zenoh-pico's WebSocket link).
 #
-# The browser build is the one that carries the gem (FMRB_WASM_CHECKPOINT=1,
-# built into wasm/build-ckpt; the published build has no gem), served by a
+# The browser build is the published one (it carries the gem; its bundle is
+# wasm/build/dist, what rake wasm:dist makes), served by a
 # development server of the run's own (rake wasm:serve DIST=1 on WEB_PORT)
 # and opened by a headless Chromium of the run's own: a Linux one
 # (FMRB_CHROME, /usr/bin's, or Playwright's in ~/.cache/ms-playwright), a
@@ -44,7 +44,7 @@ module Regress
       NODE_WEB = "rg-ckpt-web"
       NODE_A = AsterismRounds::NODE_A
       ROUTER_WS_PORT = AsterismRounds::ROUTER_WS_PORT
-      WEB_DIST = File.join(CORE, "wasm", "build-ckpt", "dist")
+      WEB_DIST = File.join(CORE, "wasm", "build", "dist")
       CALLS_APP = "/app/test/ckpt_calls.app.rb"
       EMSDK_ENV = File.expand_path("~/emsdk/emsdk_env.sh")
 
@@ -61,7 +61,7 @@ module Regress
       def web_build
         log = File.join(OUT, "web.build.log")
         cmd = "source #{EMSDK_ENV} >/dev/null 2>&1; rake spinel:gen && " \
-              "FMRB_WASM_CHECKPOINT=1 rake wasm:mruby && FMRB_WASM_CHECKPOINT=1 rake wasm:dist"
+              "rake wasm:mruby && rake wasm:dist"
         out, st = Open3.capture2e("bash", "-c", cmd, chdir: CORE)
         File.write(log, out)
         raise Failure, "web: the browser build failed (#{log.sub("#{CORE}/", '')})" unless st.success?
@@ -69,7 +69,7 @@ module Regress
 
       def run_web(config)
         t0 = now
-        raise Failure, "web: no browser build with the gem (#{WEB_DIST.sub("#{CORE}/", '')}); run without NO_BUILD" unless
+        raise Failure, "web: no browser bundle (#{WEB_DIST.sub("#{CORE}/", '')}); run without NO_BUILD" unless
           File.exist?(File.join(WEB_DIST, "index.html"))
         down_if_running
         home = File.join(OUT, "web_native_home")
@@ -108,7 +108,7 @@ module Regress
 
       def web_up
         serve_log = File.join(OUT, "web.serve.log")
-        @web_serve = Process.spawn({ "FMRB_WASM_CHECKPOINT" => "1", "DIST" => "1", "PORT" => WEB_PORT.to_s },
+        @web_serve = Process.spawn({ "DIST" => "1", "PORT" => WEB_PORT.to_s },
                                    ENV["RAKE"] || "rake", "wasm:serve", chdir: CORE,
                                    in: File::NULL, out: serve_log, err: serve_log, pgroup: true)
         deadline = now + 30

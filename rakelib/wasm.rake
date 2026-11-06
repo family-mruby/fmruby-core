@@ -8,18 +8,12 @@
 require "set"
 
 WASM_DIR = File.expand_path("wasm", ROOT_DIR)
-# FMRB_WASM_CHECKPOINT=1: a browser build that carries mruby-checkpoint
-# (doc/checkpoint F4b), for measuring and trying it. Not the published build:
-# its libmruby is built under another name (family-mruby-wasm-ckpt) and the
-# firmware into wasm/build-ckpt, so wasm/build, the page a developer has open
-# and the bundle wasm:dist publishes stay as they are.
-WASM_CHECKPOINT = ENV["FMRB_WASM_CHECKPOINT"] == "1"
-WASM_MRUBY_BUILD = WASM_CHECKPOINT ? "family-mruby-wasm-ckpt" : "family-mruby-wasm"
+WASM_MRUBY_BUILD = "family-mruby-wasm"
 # FMRB_WASM_BUILD_DIR moves the firmware's build elsewhere (a build of the
 # same commit beside the one a page has open, to compare the two).
-WASM_BUILD_DIR = ENV["FMRB_WASM_BUILD_DIR"].to_s.empty? ? File.join(WASM_DIR, WASM_CHECKPOINT ? "build-ckpt" : "build")
+WASM_BUILD_DIR = ENV["FMRB_WASM_BUILD_DIR"].to_s.empty? ? File.join(WASM_DIR, "build")
                                                          : File.expand_path(ENV["FMRB_WASM_BUILD_DIR"], ROOT_DIR)
-WASM_CMAKE_ARGS = "-DCMAKE_BUILD_TYPE=Release -DFMRB_WASM_CHECKPOINT=#{WASM_CHECKPOINT ? 'ON' : 'OFF'}"
+WASM_CMAKE_ARGS = "-DCMAKE_BUILD_TYPE=Release"
 
 # Pinned so the numbers in doc/wasm/report/p1.md stay reproducible. Newer
 # toolchains are likely fine; when one is adopted, re-run rake wasm:poc five
@@ -360,7 +354,6 @@ namespace :wasm do
   # them would double what the site repository carries forever.
   desc "Stage the bundle into the docs site for GitHub Pages (FMRB_SITE_DIR=path to family-mruby.github.io)"
   task :site => :dist do
-    abort "wasm: FMRB_WASM_CHECKPOINT=1 is a build for measuring, not for publishing" if WASM_CHECKPOINT
     # Where the site is checked out. tmp/ first: that is the working clone
     # inside this tree, and it is the one being published from; the sibling of
     # family-mruby is the other place it turns up. FMRB_SITE_DIR beats both.
@@ -385,7 +378,6 @@ namespace :wasm do
 
   desc "Copy the built bundle to a host that serves it (FMRB_WEB_DEST=user@host:/path)"
   task :deploy => :dist do
-    abort "wasm: FMRB_WASM_CHECKPOINT=1 is a build for measuring, not for publishing" if WASM_CHECKPOINT
     dest = ENV["FMRB_WEB_DEST"] or
       abort "set FMRB_WEB_DEST, e.g. FMRB_WEB_DEST=host:/var/www/fmrb-web/ rake wasm:deploy"
     dist = File.join(WASM_BUILD_DIR, "dist")

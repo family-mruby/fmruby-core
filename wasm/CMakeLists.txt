@@ -34,16 +34,9 @@ endif()
 # which the native Linux build (native/) includes too.
 
 set(FMRB_HOSTED_PLATFORM wasm)
-# -DFMRB_WASM_CHECKPOINT=ON (rake wasm:* with FMRB_WASM_CHECKPOINT=1): the
-# build that carries mruby-checkpoint, for measuring and trying it
-# (doc/checkpoint F4b). Its libmruby has a name of its own; the published
-# build is the OFF one.
-option(FMRB_WASM_CHECKPOINT "carry mruby-checkpoint (not the published build)" OFF)
-if(FMRB_WASM_CHECKPOINT)
-  set(FMRB_HOSTED_MRUBY_BUILD family-mruby-wasm-ckpt)
-else()
-  set(FMRB_HOSTED_MRUBY_BUILD family-mruby-wasm)
-endif()
+# The browser build carries mruby-checkpoint (doc/checkpoint,
+# report/web_public.md), as the native program does.
+set(FMRB_HOSTED_MRUBY_BUILD family-mruby-wasm)
 set(FMRB_HOSTED_NATIVE_ISA OFF)
 set(FMRB_HOSTED_PTR32 ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../hosted/hosted.cmake)
@@ -151,13 +144,11 @@ fmrb_hosted_core_objs(core_objs)
 target_sources(core_objs PRIVATE ${WASM_BACKEND_SRCS})
 target_include_directories(core_objs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/backend)
 target_compile_definitions(core_objs PRIVATE FMRB_PLATFORM_WASM=1)
-if(FMRB_WASM_CHECKPOINT)
-  # The glue that moves an app and the HAL's tick state it carries, as on the
-  # native program (native/CMakeLists.txt). Not an ABI define.
-  target_compile_definitions(core_objs PRIVATE FMRB_HAVE_CHECKPOINT)
-  target_include_directories(core_objs PRIVATE
-    ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
-endif()
+# The glue that moves an app and the HAL's tick state it carries, as on the
+# native program (native/CMakeLists.txt). Not an ABI define.
+target_compile_definitions(core_objs PRIVATE FMRB_HAVE_CHECKPOINT)
+target_include_directories(core_objs PRIVATE
+  ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
 
 add_executable(core $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(core PRIVATE freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
@@ -166,22 +157,20 @@ add_executable(core_web $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(core_web PRIVATE freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
 set_target_properties(core_web PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
-if(FMRB_WASM_CHECKPOINT)
-  # The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff),
-  # made from the same 32-bit libmruby and gem ports: the maker is compiled
-  # with emcc and run on node (the toolchain's emulator), real files through
-  # NODERAWFS. The browser bundle links the table it writes; the node build
-  # (core) goes without one (the weak reference in fmrb_app_checkpoint.c).
-  include(${FMRB_ROOT}/tools/ckpt_table/ckpt_table.cmake)
-  if(CMAKE_CROSSCOMPILING_EMULATOR)
-    string(REPLACE ";" " " _ckpt_runner "${CMAKE_CROSSCOMPILING_EMULATOR}")
-  else()
-    set(_ckpt_runner node)
-  endif()
-  fmrb_ckpt_table(core_web core_objs RUN "${_ckpt_runner}"
-    LDFLAGS -pthread -sENVIRONMENT=node -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH --profiling-funcs
-            -sINITIAL_MEMORY=134217728 -sSTACK_SIZE=1048576 -sEXIT_RUNTIME=1)
+# The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff),
+# made from the same 32-bit libmruby and gem ports: the maker is compiled
+# with emcc and run on node (the toolchain's emulator), real files through
+# NODERAWFS. The browser bundle links the table it writes; the node build
+# (core) goes without one (the weak reference in fmrb_app_checkpoint.c).
+include(${FMRB_ROOT}/tools/ckpt_table/ckpt_table.cmake)
+if(CMAKE_CROSSCOMPILING_EMULATOR)
+  string(REPLACE ";" " " _ckpt_runner "${CMAKE_CROSSCOMPILING_EMULATOR}")
+else()
+  set(_ckpt_runner node)
 endif()
+fmrb_ckpt_table(core_web core_objs RUN "${_ckpt_runner}"
+  LDFLAGS -pthread -sENVIRONMENT=node -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH --profiling-funcs
+          -sINITIAL_MEMORY=134217728 -sSTACK_SIZE=1048576 -sEXIT_RUNTIME=1)
 
 set(WASM_CORE_LINK_OPTS
   -pthread

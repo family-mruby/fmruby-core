@@ -253,7 +253,7 @@ namespace :regress do
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation). Each sim build is made once and shared between the parts"
+  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build). Each sim build is made once and shared between the parts"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
@@ -406,14 +406,17 @@ end
 REGRESS_CHECKPOINT = File.join(ROOT_DIR, "tools", "regress", "checkpoint.rb")
 
 namespace :regress do
-  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program, WEB=1 the browser build that carries the gem (own server and headless Chromium), BOARD=<name> a connected board (opt-in: the fmrb MCP serial capture running, BOARD_IP=/HOST_IP= when they cannot be found, BOARD_ONLY=1 its rounds alone) (ONLY=standard|mruby, NO_BUILD=1: the builds there are, SIM=1|retro|modern|noja: noja is a Modern sim built with FMRB_FONT_JA=0, one round)"
+  desc "Move an app (doc/checkpoint): inside one native program and between two, standard and all-mruby; SIM=1 adds the Linux simulation and the native program; the browser build and the native program over Asterism too (own server and headless Chromium; WEB=0 leaves them out), BOARD=<name> a connected board (opt-in: the fmrb MCP serial capture running, BOARD_IP=/HOST_IP= when they cannot be found, BOARD_ONLY=1 its rounds alone) (ONLY=standard|mruby, NO_BUILD=1: the builds there are, SIM=1|retro|modern|noja: noja is a Modern sim built with FMRB_FONT_JA=0, one round)"
   task :checkpoint do
     args = []
     args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
     args << "--no-build" if ENV["NO_BUILD"] == "1"
     sim = ENV["SIM"].to_s
     args += ["--sim", sim == "1" ? "retro,modern,noja" : sim] unless sim.empty? || sim == "0" || sim == "none"
-    args << "--web" if ENV["WEB"] == "1"
+    # the browser build's rounds (doc/checkpoint F5): on by default since the
+    # published browser build carries the gem (report/web_public.md); WEB=0
+    # leaves them out (no emsdk or Chromium at hand, or in a hurry)
+    args << "--web" unless ENV["WEB"] == "0" || ENV["BOARD_ONLY"] == "1"
     # a connected board (doc/checkpoint F6): opt-in like regress:boot, never
     # from regress:full
     if ENV["BOARD"] && !ENV["REGRESS_BUILD_CACHE"]

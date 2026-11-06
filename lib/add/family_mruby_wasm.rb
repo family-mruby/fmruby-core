@@ -7,11 +7,10 @@
 # ABI: every layout-affecting MRB_* define here must match what
 # wasm/CMakeLists.txt passes to the sources that include mruby headers
 # (the same rule as mruby_abi_defines.cmake on the IDF side).
-# FMRB_WASM_CHECKPOINT=1 (rake wasm:mruby): with mruby-checkpoint, under its
-# own build name (doc/checkpoint F4b; rakelib/wasm.rake says why).
-FMRB_WASM_CHECKPOINT = ENV['FMRB_WASM_CHECKPOINT'] == '1'
+# Carries mruby-checkpoint (doc/checkpoint, report/web_public.md): an app
+# moves into and out of the published browser build.
 
-MRuby::CrossBuild.new(FMRB_WASM_CHECKPOINT ? 'family-mruby-wasm-ckpt' : 'family-mruby-wasm') do |conf|
+MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
   conf.toolchain('clang')
 
   conf.cc.command = 'emcc'
@@ -32,10 +31,8 @@ MRuby::CrossBuild.new(FMRB_WASM_CHECKPOINT ? 'family-mruby-wasm-ckpt' : 'family-
   # (fields of mrb_state, so ABI-relevant: hosted/hosted.cmake has it too),
   # and the glue's define for the gems (picoruby-machine's board_millis
   # offset). Build-wide, before any gem copies the compiler.
-  if FMRB_WASM_CHECKPOINT
-    conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
-    conf.cc.defines << 'FMRB_HAVE_CHECKPOINT'
-  end
+  conf.cc.defines << 'MRB_VM_SAFEPOINT_HOOK'
+  conf.cc.defines << 'FMRB_HAVE_CHECKPOINT'
   conf.cc.defines << 'MRB_INT64'
   conf.cc.defines << 'MRB_UTF8_STRING'
   conf.cc.defines << 'MRB_NO_BOXING'
@@ -126,8 +123,7 @@ MRuby::CrossBuild.new(FMRB_WASM_CHECKPOINT ? 'family-mruby-wasm-ckpt' : 'family-
   conf.gem core: "picoruby-asterism"
   # Family mruby's default node profile (kind family_mruby, host "browser"; V2.5)
   conf.gem core: "picoruby-fmrb-asterism"
-  # mruby-checkpoint (doc/checkpoint F4b): only in the build FMRB_WASM_CHECKPOINT
-  # asks for, as on the native program (family_mruby_native.rb says what the
-  # two defines are for). The published browser build does not carry it.
-  conf.gem core: "mruby-checkpoint" if FMRB_WASM_CHECKPOINT
+  # mruby-checkpoint (doc/checkpoint), as on the native program
+  # (family_mruby_native.rb says what the two defines are for).
+  conf.gem core: "mruby-checkpoint"
 end

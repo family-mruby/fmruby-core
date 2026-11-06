@@ -542,11 +542,10 @@ if(FMRB_HOSTED_PTR32)
 endif()
 # mruby-checkpoint's hooks are fields of mrb_state (lib/patch, "fmrb:
 # checkpoint"), so the define is part of the ABI: every build whose libmruby
-# carries the gem has it on both sides (the native program, the browser's
-# measuring build; the table maker of tools/ckpt_table is a native one).
-if(FMRB_HOSTED_PLATFORM STREQUAL "native" OR FMRB_WASM_CHECKPOINT)
-  list(APPEND FMRB_HOSTED_CORE_DEFINES MRB_VM_SAFEPOINT_HOOK)
-endif()
+# carries the gem has it on both sides. Both hosted builds carry it (the
+# native program and the browser build; the table maker of tools/ckpt_table
+# is a native one).
+list(APPEND FMRB_HOSTED_CORE_DEFINES MRB_VM_SAFEPOINT_HOOK)
 # The GC mark work list counts pointers; the IDF build halves it on 64-bit so
 # the block stays 32 KB (components/fmrb_spinel_rt/CMakeLists.txt).
 if(FMRB_HOSTED_PTR32)
