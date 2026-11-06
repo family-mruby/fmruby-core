@@ -66,7 +66,10 @@ require "socket"
 require_relative "../../../tools/regress/screens/image"
 
 CORE = File.expand_path("../../..", __dir__)
-TOOLS = File.expand_path("../tools", CORE)
+# the root tools: family-mruby, or FMRB_ROOT= from a worktree (tools/regress/tree.rb)
+require_relative "../../../tools/regress/tree"
+Regress::Tree.need_root!
+TOOLS = Regress::Tree::TOOLS
 BASE_IMAGES = { "arm64" => "debian:trixie-20261020", "amd64" => "ubuntu:resolute-20261024.1" }.freeze
 BASELINE = File.join(CORE, "test/regress/screens/baseline/native")
 TITLE_RGB = [222, 36, 82]    # a focused window's title bar (test/regress/screens/helpers.rb)

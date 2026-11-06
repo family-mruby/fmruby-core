@@ -53,7 +53,10 @@ require "webrick/https"
 
 HERE = File.dirname(File.expand_path(__FILE__))
 CORE = File.expand_path("../../..", HERE)
-ROOT = File.expand_path("..", CORE)
+# the root tools: family-mruby, or FMRB_ROOT= from a worktree (tools/regress/tree.rb)
+require_relative "../../../tools/regress/tree"
+Regress::Tree.need_root!
+ROOT = Regress::Tree::ROOT
 NATIVE_TOOL = File.join(ROOT, "tools", "fmrb_native.rb")
 ZENOH_TOOL = File.join(ROOT, "tools", "fmrb_zenoh.rb")
 require File.join(ROOT, "tools", "fmrb_png.rb")

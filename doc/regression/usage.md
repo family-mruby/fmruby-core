@@ -195,8 +195,8 @@ ruby tools/regress/screens.rb --attach modern   # もう動いている sim (web
 
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
 - 構成は 6 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)、`native` (Linux のネイティブ版、標準構成、機種の定義 `sdl`。doc/linux_native/)。
-- 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016、`WEB_PORT=` で変える)** とヘッドレスのブラウザを起こし、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。
-- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザ版の port (8016) を誰かの開発サーバが使っているときも同じ。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
+- 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016、`WEB_PORT=` で変える)** とヘッドレスのブラウザを起こし、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
+- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザは `wasm/build/drive_browser.pid` の印で見る。印の pid がもう無い (Windows の Chrome のときは、プロファイル `fmrb_drive` の chrome.exe も無い) なら古い印として消して進む (`web: removed a stale ...` と出る)。ブラウザ版の port (8016) を誰かの開発サーバが使っているときも同じ。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
 - 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
 
 ### 9.1 台本の書き方
@@ -338,7 +338,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、Window のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a)、Asterism で移すこと (F5) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
 - `rake regress:full` に入っている (最後に、`SIM=1` で流す。ブラウザ版の場面も入る)。`rake regress` (安い方) には入らない。ブラウザ版の場面は既定で流す (2026-11-06 から。公開のブラウザ版が gem を持つようになったため、doc/checkpoint/report/web_public.md)。`WEB=0` で飛ばす。`BOARD_ONLY=1` のときも流さない。実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
-- ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。
+- ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。ここに書いた run dir・port・ルータのコンテナ名と port は共有 checkout のもの。worktree から流すと木ごとの名前になり、別の木の `regress:checkpoint` と同時に流せる (13 章)。起こしたネイティブ版とルータは、通っても落ちても Ctrl+C でも止める。始めるときは同じ木の前の回の残りを止めてから起こし、port がふさがっていれば理由を言って止まる。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (Window なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
 - 最初に、運ぶのではない場面を 1 つ流す。
   - turns: `/app/test/task_turns.app.rb` の Task (1 歩ごとに `Task.pass`) が、メインループの番がタイムスライスより長くても 10 歩を進める (10 秒以内)。ネイティブ版は tick を自給するので、ここで見張る (doc/checkpoint/report/hang_task_sleep.md)。
@@ -399,4 +399,24 @@ standard: ok (turns: done 10 steps in 1201ms; restart: a 5->6, b 3->4, main 5->6
 mruby: ok (...)
 checkpoint: ok (2.9 min)
 ```
+
+## 13. 作業の木ごとに流す (worktree・並行)
+
+共有 checkout (family-mruby の中の fmruby-core) と worktree、または worktree 同士で、同じ道具を同時に流せる。ネイティブ版の置き場・port・ルータの名前を、木ごとに決まる値にしてあるため (`tools/regress/tree.rb`)。
+
+- **共有 checkout** (`.git` がディレクトリ) は今までと同じ名前: `regress:checkpoint` の run dir `/tmp/fmrb-native-ckpt-<uid>` (`-b-`・`-c-`・`-sim-` も)、debug の port 5585・5586・5587、ルータ `fmrb_regress_ckpt_zenohd` (17457・ws 17459)、実機のルータ `fmrb_regress_ckpt_zenohd_board`、ブラウザ版の開発サーバ 8067。`regress:screens` のネイティブ版 `/tmp/fmrb-native-regress-<uid>`・5575、ブラウザ版 8016。
+- **ほかの木** (`.git` がファイルの worktree) は、木の実のパスの SHA-1 の先頭 6 桁 (ID) を名前に足す: `/tmp/fmrb-native-ckpt-<uid>-<ID>`、`fmrb_regress_ckpt_zenohd_<ID>` など。port は木ごとの 8 個の組 `20000 + 8 × slot` から (slot は ID から決まる 1〜400): +0〜+2 がネイティブ版 A・B・C、+3・+4 がルータ (tcp・ws)、+5 が checkpoint のブラウザ版、+6 が画面の比較のネイティブ版、+7 がそのブラウザ版。人のネイティブ版 (5565)、sim (5555)、コンポジタの確認 (15565〜15679)、共有 checkout の port とは重ならない。実機のルータの port (7447) は実機から届く port なので木によらない (同時に 2 つの木で実機の場面は流せない)。
+- **使う前に port の空きを確認する**。答えるものがいるか bind できなければ、port と持ち主 (`ss` で分かれば) と理由を言って止まる (ID の slot が別の木と重なったときや、前の回の残り)。
+- **止め損ねを残さない**: `regress:checkpoint` は起こしたネイティブ版とルータを、通っても落ちても Ctrl+C でも止める (ensure と、それが届かなかったときの at_exit)。始めるときは同じ木の前の回の残り (run dir の pid の file が指す生きた fmruby-native、同じ名前のルータ) を止めてから起こす。ほかの木のものには触らない。
+- **直下の道具** (`tools/fmrb_native.rb`・`fmrb_png.rb` など、family-mruby の tools/) は、木の 1 つ上か、`FMRB_ROOT=<ディレクトリ>` で渡した所で探す。worktree の上には無いので、worktree から流すときは、直下の tools/ を写し、その `fmruby-core` をこの木への symlink にしたディレクトリを `FMRB_ROOT=` で渡す。無ければ「worktree なら FMRB_ROOT を渡す」と言って止まる。`regress:checkpoint`・`regress:screens`・`regress:live`・`test/native/` の確認 (wl・sdl・deb・net) が見る。`rake regress` (安い方) は直下の道具を使わないので要らない。
+
+```
+mkdir -p /path/root && cp -r ../family-mruby/tools /path/root/ && ln -s "$PWD" /path/root/fmruby-core
+FMRB_ROOT=/path/root rake regress:checkpoint ONLY=standard WEB=0
+FMRB_ROOT=/path/root rake regress:screens ONLY=native
+```
+
+- **sim は共有 checkout からだけ**。sim の docker compose は `<FMRB_ROOT>/fmruby-core` をマウントするので、それがこの木でなければ (worktree から共有の family-mruby を指したときなど) 理由を言って止まる (`regress:run`・`regress:screens` の sim・`regress:live`・`regress:checkpoint SIM=`)。sim のコンテナ名は 1 組なので、木が違っても sim は同時に 1 つ。
+- 名前を木ごとに分けたのは `regress:checkpoint` と `regress:screens` (と、それを使う `regress:live`) のネイティブ版・ルータ・開発サーバ。`regress:wl` などの `test/native/` の確認は今も固定の名前と port (15565 から) なので、2 つの木で同時に流さない。
+- 経緯は report/rg_tree_iso.md。
 

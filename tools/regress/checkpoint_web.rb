@@ -36,11 +36,13 @@ require "fileutils"
 require "json"
 require "net/http"
 require "open3"
+require_relative "tree"
 
 module Regress
   module Checkpoint
     module WebRounds
-      WEB_PORT = 8067
+      # the page's server: 8067 from the shared checkout, else the tree's own (tree.rb)
+      WEB_PORT = Tree.port(8067, :ckpt_web)
       NODE_WEB = "rg-ckpt-web"
       NODE_A = AsterismRounds::NODE_A
       ROUTER_WS_PORT = AsterismRounds::ROUTER_WS_PORT

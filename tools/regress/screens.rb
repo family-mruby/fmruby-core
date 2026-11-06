@@ -36,7 +36,9 @@ require "fileutils"
 require "json"
 require "optparse"
 require "net/http"
+require "open3"
 require_relative "targets"
+require_relative "tree"
 require_relative "build_tree"
 require_relative "sim_run"
 require_relative "screens/image"
@@ -50,7 +52,8 @@ module Regress
     BASELINE = File.join(SCRIPTS, "baseline")
     OUT = File.join(CORE, "tmp", "regress", "screens")
     RESULTS = File.join(OUT, "results.json")
-    WEB_PORT = 8016
+    # the page's server: 8016 from the shared checkout, else the tree's own (tree.rb)
+    WEB_PORT = Tree.port(8016, :screens_web)
     WEB_STATE = File.join(CORE, "wasm", "build", "drive_browser.pid")
     EMSDK_ENV = File.expand_path("~/emsdk/emsdk_env.sh")
 
@@ -152,7 +155,12 @@ module Regress
         sims = configs.select { |c| c.kind == :sim }
         web = configs.find { |c| c.kind == :web }
         natives = configs.select { |c| c.kind == :native }
+        unless sims.empty?
+          why = Tree.sim_problem
+          raise "the sim cannot run from here: #{why}" if why
+        end
         raise "a sim stack is already running (someone's?); leave it or take it down first" if SimRun.core_running?
+        FileUtils.mkdir_p(out_dir)
         if web && @opts[:skip_busy_web] && (why = web_busy)
           puts "web: SKIPPED (#{why}; the browser build is not built or run)"
           @skipped_web = why
@@ -345,9 +353,37 @@ module Regress
 
       # Why the browser build cannot be run now (nil: it can).
       def web_busy
-        return "a browser started by tools/fmrb_web.rb is open (#{rel(WEB_STATE)})" if File.exist?(WEB_STATE)
+        return "a browser started by tools/fmrb_web.rb is open (#{rel(WEB_STATE)})" if browser_mark_alive?
         return "port #{@opts[:port]} is in use (someone's development server?)" if port_open?(@opts[:port])
         nil
+      end
+
+      # tools/fmrb_web.rb's mark of the browser it started ("PID\nlinux" or
+      # "PID\nwindows"): true while that browser is there. A mark whose
+      # browser is gone (closed by hand, the PC restarted) is removed.
+      def browser_mark_alive?
+        return false unless File.exist?(WEB_STATE)
+        pid, kind = File.read(WEB_STATE).split("\n")
+        return true if Tree.alive?(pid)
+        return true if kind == "windows" && windows_drive_browser?
+        File.delete(WEB_STATE)
+        puts "web: removed a stale #{rel(WEB_STATE)} (pid #{pid} is gone)"
+        false
+      rescue SystemCallError
+        true
+      end
+
+      # The Windows Chrome fmrb_web.rb starts (the WSL side's pid may be gone
+      # while it runs): found by its profile directory, as browser_down does.
+      # When Windows cannot be asked, it counts as there.
+      def windows_drive_browser?
+        out, st = Open3.capture2e("powershell.exe", "-NoProfile", "-Command",
+                                  "@(Get-CimInstance Win32_Process -Filter \"name='chrome.exe'\" | " \
+                                  "Where-Object { $_.CommandLine -like '*fmrb_drive*' }).Count")
+        return true unless st.success?
+        out.strip.to_i.positive?
+      rescue SystemCallError
+        true
       end
 
       def port_open?(port)
@@ -437,7 +473,17 @@ module Regress
       def run_native_config(config)
         t0 = now
         driver = NativeDriver.new(tmp_dir)
-        raise "a native program is already running in #{NativeDriver::RUN_DIR} (an earlier run's?)" if driver.running?
+        # The run directory is this tree's own (tree.rb): what runs there is
+        # an earlier run's, left behind
+        if driver.running?
+          puts "#{config.name}: stopping the native program an earlier run left in #{NativeDriver::RUN_DIR}"
+          driver.down
+        end
+        begin
+          Tree.need_free_port!(NativeDriver::DEBUG_PORT, "#{config.name}: the native program's debug port")
+        rescue Tree::Busy => e
+          raise e.message
+        end
         home = File.join(out_dir, "#{config.name}_home")
         FileUtils.rm_rf(home)
         user = File.join(home, "user")

@@ -18,11 +18,13 @@ require "fileutils"
 require "json"
 require "open3"
 require_relative "image"
+require_relative "../tree"
 
 module Regress
   module Screens
-    ROOT = File.expand_path("../../../..", __dir__) # family-mruby
-    TOOLS = File.join(ROOT, "tools")
+    # family-mruby, or FMRB_ROOT= (tree.rb)
+    ROOT = Tree::ROOT
+    TOOLS = Tree::TOOLS
 
     class DriverError < StandardError; end
 
@@ -133,9 +135,10 @@ module Regress
     class NativeDriver
       attr_reader :width, :height
 
-      # Beside a developer's native program (/tmp/fmrb-native-<uid>, 5565).
-      RUN_DIR = "/tmp/fmrb-native-regress-#{Process.uid}".freeze
-      DEBUG_PORT = 5575
+      # Beside a developer's native program (/tmp/fmrb-native-<uid>, 5565),
+      # and this tree's own (tree.rb): another tree's run goes on beside it.
+      RUN_DIR = Tree.run_dir("fmrb-native-regress")
+      DEBUG_PORT = Tree.port(5575, :screens_native)
 
       def initialize(tmp, run_dir: RUN_DIR, port: DEBUG_PORT)
         @tmp = tmp

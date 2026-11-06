@@ -179,7 +179,9 @@ namespace :test do
   # fmruby-graphics-audio). Run it by hand when a change could move the boot
   # path or the first screen. Deeper scripted E2E (input injection, per-app
   # screenshots) builds on the same tools/ harness; add cases here as they land.
-  SIM_HARNESS = File.expand_path("../tools/dev_run_check.sh", ROOT_DIR)
+  # the root tools: family-mruby, or FMRB_ROOT= from a worktree
+  require_relative "../tools/regress/tree"
+  SIM_HARNESS = File.join(Regress::Tree::TOOLS, "dev_run_check.sh")
 
   desc "Headless sim boot smoke (opt-in; needs docker + both repos built for Linux)"
   task :sim do

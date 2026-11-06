@@ -53,7 +53,10 @@ require "socket"
 require_relative "../../../tools/regress/screens/image"
 
 CORE = File.expand_path("../../..", __dir__)
-TOOLS = File.expand_path("../tools", CORE)
+# the root tools: family-mruby, or FMRB_ROOT= from a worktree (tools/regress/tree.rb)
+require_relative "../../../tools/regress/tree"
+Regress::Tree.need_root!
+TOOLS = Regress::Tree::TOOLS
 MENU_BAR_H = 13
 MENU_ITEM_H = 12
 OUTPUT = "1280x800"

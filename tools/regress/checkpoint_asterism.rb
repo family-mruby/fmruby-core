@@ -50,15 +50,19 @@ require "fileutils"
 require "json"
 require "open3"
 require "socket"
+require_relative "tree"
 
 module Regress
   module Checkpoint
     # The router and the settings of the two programs.
     module AsterismRounds
       ROUTER_IMAGE = "eclipse/zenoh:1.10.1"
-      ROUTER_NAME = "fmrb_regress_ckpt_zenohd"
-      ROUTER_PORT = 17_457
-      ROUTER_WS_PORT = 17_459
+      # this tree's own (tree.rb): the shared checkout's are
+      # fmrb_regress_ckpt_zenohd on 17457 (ws 17459), another tree's carry its
+      # ID and take ports from its block
+      ROUTER_NAME = Tree.name("fmrb_regress_ckpt_zenohd")
+      ROUTER_PORT = Tree.port(17_457, :ckpt_router)
+      ROUTER_WS_PORT = Tree.port(17_459, :ckpt_router_ws)
       NODE_A = "rg-ckpt-a"
       NODE_B = "rg-ckpt-b"
       NODE_NOBODY = "rg-ckpt-nobody"
@@ -66,6 +70,11 @@ module Regress
 
       def router_up
         router_down
+        [ROUTER_PORT, ROUTER_WS_PORT].each do |p|
+          Tree.need_free_port!(p, "the Zenoh router #{ROUTER_NAME}")
+        rescue Tree::Busy => e
+          raise Failure, e.message
+        end
         cmd = ["docker", "run", "-d", "--rm", "--name", ROUTER_NAME,
                "-p", "127.0.0.1:#{ROUTER_PORT}:7447", "-p", "127.0.0.1:#{ROUTER_WS_PORT}:7449",
                ROUTER_IMAGE, "--no-multicast-scouting", "--listen", "tcp/0.0.0.0:7447", "--listen", "ws/0.0.0.0:7449"]

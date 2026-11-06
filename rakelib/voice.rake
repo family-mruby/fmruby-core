@@ -22,7 +22,8 @@ namespace :voice do
     # the last directory, so /home/voice comes first (a board fresh from a
     # full flash has an empty /home; an existing one is not an error).
     # --force: a voice made again may keep its size.
-    rd_fs = File.expand_path("../tools/fmrb_rd_fs.rb", ROOT_DIR)
+    require_relative "../tools/regress/tree"
+    rd_fs = File.join(Regress::Tree::TOOLS, "fmrb_rd_fs.rb") # family-mruby, or FMRB_ROOT=
     system("ruby", rd_fs, ip, "mkdir", "/home/voice", out: File::NULL, err: File::NULL)
     sh "ruby", rd_fs, ip, "push", src, "/home/voice/mahjong", "--force"
   end

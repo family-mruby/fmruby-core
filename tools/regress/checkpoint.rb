@@ -113,6 +113,7 @@ require "fileutils"
 require "json"
 require "open3"
 require "optparse"
+require_relative "tree"
 require_relative "screens/image"
 require_relative "checkpoint_sim"
 require_relative "checkpoint_asterism"
@@ -124,18 +125,22 @@ module Regress
     CORE = File.expand_path("../..", __dir__)
     # family-mruby (tools/fmrb_native.rb and the other tools); FMRB_ROOT= when
     # this tree is not inside one (a worktree of fmruby-core: a directory with
-    # those tools whose fmruby-core is this tree)
-    ROOT = ENV["FMRB_ROOT"].to_s.empty? ? File.expand_path("..", CORE) : File.expand_path(ENV["FMRB_ROOT"])
+    # those tools whose fmruby-core is this tree; tree.rb)
+    ROOT = Tree::ROOT
     NATIVE_TOOL = File.join(ROOT, "tools", "fmrb_native.rb")
     OUT = File.join(CORE, "tmp", "regress", "checkpoint")
-    RUN_DIR = "/tmp/fmrb-native-ckpt-#{Process.uid}"
-    PORT = 5585
+    # The run directories and debug ports are this tree's own (tree.rb): the
+    # shared checkout's are /tmp/fmrb-native-ckpt-<uid> and 5585 (5586, 5587
+    # for the second and third program), another tree's carry its ID and take
+    # ports from its block, so two trees run side by side.
+    RUN_DIR = Tree.run_dir("fmrb-native-ckpt")
+    PORT = Tree.port(5585, :ckpt_a)
     # the second program, for the moves between two programs (F2)
-    RUN_DIR_B = "/tmp/fmrb-native-ckpt-b-#{Process.uid}"
-    PORT_B = 5586
+    RUN_DIR_B = Tree.run_dir("fmrb-native-ckpt-b")
+    PORT_B = Tree.port(5586, :ckpt_b)
     # the third program, under another theme (round_window_theme)
-    RUN_DIR_C = "/tmp/fmrb-native-ckpt-c-#{Process.uid}"
-    PORT_C = 5587
+    RUN_DIR_C = Tree.run_dir("fmrb-native-ckpt-c")
+    PORT_C = Tree.port(5587, :ckpt_c)
     # its [theme]: the cyberpunk preset (config_dialog.rb's CFG_THEME_PRESETS)
     THEME_C = { "desktop_bg" => 0x00, "menu_bg" => 0x22, "window_bg" => 0x00, "text" => 0x1C,
                 "text_light" => 0xFF, "highlight" => 0xE3, "border" => 0x0E, "button" => 0x46,
@@ -235,6 +240,13 @@ module Regress
       # ---- the program ----
 
       def native(*args, timeout: 60, run_dir: RUN_DIR, port: PORT)
+        if args.first == "up"
+          begin
+            Tree.need_free_port!(port, "the native program of #{run_dir}")
+          rescue Tree::Busy => e
+            raise Failure, e.message
+          end
+        end
         env = { "FMRB_DEBUG_TCP_PORT" => port.to_s }
         cmd = [Gem.ruby, NATIVE_TOOL, "--run-dir", run_dir, *args]
         out = +""
@@ -999,6 +1011,22 @@ module Regress
       end
     end
 
+    # Stop this tree's native programs and routers that are still up.
+    def self.reap
+      [RUN_DIR, RUN_DIR_B, RUN_DIR_C, SIM_RUN_DIR].each do |dir|
+        pid = Tree.native_pid(dir) or next
+        warn "checkpoint: stopping the native program left in #{dir} (pid #{pid})"
+        Tree.stop_pid(pid)
+      end
+      names = [AsterismRounds::ROUTER_NAME, BoardRounds::ROUTER_NAME_BOARD]
+      out, = Open3.capture2e("docker", "ps", "-q", "--filter", "name=^(#{names.join('|')})$")
+      return if out.strip.empty?
+      warn "checkpoint: removing the Zenoh router(s) left running (#{names.join(', ')})"
+      Open3.capture2e("docker", "rm", "-f", *names)
+    rescue SystemCallError
+      nil
+    end
+
     def self.main(argv)
       opts = {}
       OptionParser.new do |o|
@@ -1012,6 +1040,11 @@ module Regress
         o.on("--board NAME") { |v| opts[:board] = v }
         o.on("--board-only") { opts[:board_only] = true }
       end.parse!(argv)
+      # What this run starts is stopped when it ends however it ends (the
+      # ensures do it; this is for an end they did not reach, e.g. a second
+      # Ctrl+C while they run). Only this tree's own run directories and
+      # routers (tree.rb): another tree's run is never touched.
+      at_exit { Checkpoint.reap }
       Runner.new(opts).run
     rescue Failure => e
       puts "checkpoint: FAILED #{e.message}"

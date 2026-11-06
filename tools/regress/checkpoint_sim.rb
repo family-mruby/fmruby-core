@@ -67,13 +67,14 @@
 require_relative "build_tree"
 require_relative "targets"
 require_relative "sim_run"
+require_relative "tree"
 
 module Regress
   module Checkpoint
     SIM_PORT = 5555
     # fmrb_native.rb wants a run directory for its own files; nothing is kept
     # in this one (the simulation's log is docker's)
-    SIM_RUN_DIR = "/tmp/fmrb-native-ckpt-sim-#{Process.uid}"
+    SIM_RUN_DIR = Tree.run_dir("fmrb-native-ckpt-sim")
     WIDE = "/app/test/ckpt_wide.app.rb"
     FULL = "/app/test/ckpt_full.app.rb"
     CALLS = "/app/test/ckpt_calls.app.rb"
@@ -103,6 +104,8 @@ module Regress
       # Checked before anything is built: the stack must be free.
       def sim_check!
         return if sim_families.empty?
+        why = Tree.sim_problem
+        raise Failure, "the sim cannot run from here: #{why}" if why
         raise Failure, "a sim stack is already running (someone's?); leave it or take it down first" if SimRun.core_running?
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
         raise Failure, "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless SimRun.elf_x86?(ga)

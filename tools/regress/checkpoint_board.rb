@@ -54,11 +54,13 @@ require "open3"
 require "socket"
 require "uri"
 require_relative "targets"
+require_relative "tree"
 
 module Regress
   module Checkpoint
     module BoardRounds
-      ROUTER_NAME_BOARD = "fmrb_regress_ckpt_zenohd_board"
+      # this tree's own name (tree.rb); the port is the one below for every tree
+      ROUTER_NAME_BOARD = Tree.name("fmrb_regress_ckpt_zenohd_board")
       # The port the board reaches the router on, on all interfaces: 7447,
       # Zenoh's own, which a machine that runs a router for its boards lets in
       # already (WSL2 mirrored: a Hyper-V firewall rule per port; any other

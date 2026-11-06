@@ -22,11 +22,13 @@
 # tool/imu/step_send.rb as they are.
 require "fileutils"
 require "socket"
+require_relative "tree"
 
 module Regress
   module Counterparts
-    ROOT = File.expand_path("../../..", __dir__) # family-mruby
-    CORE = File.join(ROOT, "fmruby-core")
+    # family-mruby (the root tools, asterism-games), or FMRB_ROOT= (tree.rb)
+    ROOT = Tree::ROOT
+    CORE = Tree::CORE
     ROUTER = "tcp/127.0.0.1:7447"
 
     class Error < StandardError; end

@@ -44,7 +44,10 @@ require "socket"
 require_relative "../../../tools/regress/screens/image"
 
 CORE = File.expand_path("../../..", __dir__)
-TOOLS = File.expand_path("../tools", CORE)
+# the root tools: family-mruby, or FMRB_ROOT= from a worktree (tools/regress/tree.rb)
+require_relative "../../../tools/regress/tree"
+Regress::Tree.need_root!
+TOOLS = Regress::Tree::TOOLS
 # The all-mruby configuration's checks publish theirs 100 above, so that
 # rake regress:wl can run the two configurations side by side.
 DEBUG_PORT = 15_569 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0)

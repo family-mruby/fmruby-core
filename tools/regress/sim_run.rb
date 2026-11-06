@@ -54,6 +54,7 @@ require "optparse"
 require_relative "targets"
 require_relative "build_tree"
 require_relative "calibrate"
+require_relative "tree"
 
 module Regress
   CORE = File.expand_path("../..", __dir__) unless const_defined?(:CORE)
@@ -61,7 +62,8 @@ module Regress
   module SimRun
     OUT = File.join(CORE, "tmp", "regress", "sim")
     BASELINE = File.join(CORE, "test", "regress", "sim_baseline.json")
-    ROOT = File.expand_path("..", CORE) # family-mruby: docker-compose.yml
+    # family-mruby: docker-compose.yml, or FMRB_ROOT= (tree.rb)
+    ROOT = Tree::ROOT
     COMPOSE = %w[docker compose -f docker-compose.yml -f docker-compose.headless.yml].freeze
     DBG = File.join(CORE, "tool", "debug", "fmrb_dbg_client.py")
     BOOT_MARKER = "main_loop started"
@@ -136,6 +138,13 @@ module Regress
       [ok, Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0]
     end
 
+    # The sim's compose mounts ROOT/fmruby-core: refused, with the reason,
+    # when that is not this tree (a worktree, tree.rb).
+    def need_sim!
+      why = Tree.sim_problem
+      raise "the sim cannot run from here: #{why}" if why
+    end
+
     def core_running?
       ok, out = sh("docker", "inspect", "-f", "{{.State.Running}}", "fmruby_core")
       ok && out.strip == "true"
@@ -195,6 +204,7 @@ module Regress
     end
 
     def up(family)
+      need_sim!
       ok, out = sh(*COMPOSE, "up", "-d")
       raise "docker compose up failed: #{out.strip[-500..]}" unless ok
       wait_for(90, "the boot marker") do
@@ -417,6 +427,7 @@ module Regress
       errors = []
       timings = []
       unless opts[:table]
+        need_sim!
         raise "a sim stack is already running (someone's?); leave it or take it down first" if core_running?
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
         raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless elf_x86?(ga)
@@ -479,6 +490,7 @@ module Regress
 
     def calibrate(fams, runs)
       raise "--calibrate needs at least 2 runs" if runs < 2
+      need_sim!
       raise "a sim stack is already running (someone's?); leave it or take it down first" if core_running?
       ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
       raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless elf_x86?(ga)

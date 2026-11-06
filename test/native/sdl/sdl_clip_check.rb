@@ -26,7 +26,10 @@ require "optparse"
 require "socket"
 
 CORE = File.expand_path("../../..", __dir__)
-TOOLS = File.expand_path("../tools", CORE)
+# the root tools: family-mruby, or FMRB_ROOT= from a worktree (tools/regress/tree.rb)
+require_relative "../../../tools/regress/tree"
+Regress::Tree.need_root!
+TOOLS = Regress::Tree::TOOLS
 DEBUG_PORT = 15_568
 FM_TEXT = "fm: アプリからデスクトップへ"
 PEER_TEXT = "peer: デスクトップから日本語"

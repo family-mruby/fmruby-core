@@ -81,7 +81,10 @@ require "socket"
 require_relative "../../../tools/regress/screens/image"
 
 CORE = File.expand_path("../../..", __dir__)
-TOOLS = File.expand_path("../tools", CORE)
+# the root tools: family-mruby, or FMRB_ROOT= from a worktree (tools/regress/tree.rb)
+require_relative "../../../tools/regress/tree"
+Regress::Tree.need_root!
+TOOLS = Regress::Tree::TOOLS
 BASELINE = File.join(CORE, "test/regress/screens/baseline/native")
 WSLG = "/mnt/wslg/runtime-dir/wayland-0"
 # The debugger's port in the container (5565) as the host sees it, apart
