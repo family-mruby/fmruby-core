@@ -8,6 +8,8 @@
 # and after the move and reads the counts and the events from the log.
 
 class CkptWindowApp < FmrbApp
+  CHOSEN_BG = 0x92
+
   def on_create
     @dots = []
     @text = ""
@@ -27,9 +29,13 @@ class CkptWindowApp < FmrbApp
     @mark = GfxBlock.new(@gfx, x: @user_area_x0 + 2, y: @user_area_y0 + 2) do |r, x:, y:|
       r.draw_rect x, y, 7, 7, FmrbGfx::RED
     end
+    @ui = FmrbUI.new(self)
+    @ui.label(:theme_bg, 4, 24, 30, 10, "ui")
+    @ui_chosen = FmrbUI.new(self, bg: CHOSEN_BG)
+    @ui_chosen.label(:chosen_bg, 40, 24, 30, 10, "bg")
     make_sprite
     draw_all
-    Log.info("ckpt_window: drawn")
+    Log.info("ckpt_window: drawn #{ui_colours}")
   end
 
   # A sprite (an image and an instance of it on the display side): the base
@@ -59,7 +65,15 @@ class CkptWindowApp < FmrbApp
     else
       @mark.draw(x: x0 + 2, y: y0 + 2)
     end
+    @ui.flush
+    @ui_chosen.flush
     @gfx.present
+  end
+
+  # The labels' ground: the default one, the chosen one, and the theme's
+  # window background of this machine (decimal RGB332).
+  def ui_colours
+    "ui_bg=#{@ui.widgets[0].bg} chosen_bg=#{@ui_chosen.widgets[0].bg} window_bg=#{FmrbConst::THEME_WINDOW_BG}"
   end
 
   def on_event(ev)
@@ -91,7 +105,7 @@ class CkptWindowApp < FmrbApp
   def on_restore
     make_sprite
     draw_all
-    Log.info("ckpt_window: on_restore dots=#{@dots.size} text=#{@text}")
+    Log.info("ckpt_window: on_restore dots=#{@dots.size} text=#{@text} #{ui_colours}")
   end
 end
 

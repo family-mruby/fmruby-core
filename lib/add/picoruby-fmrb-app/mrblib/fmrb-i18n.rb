@@ -9,15 +9,35 @@
 #
 # Active language is read from FmrbConst::LANGUAGE (populated by const.c from
 # system_conf.toml `language = "ja"|"en"`) the first time `lang` is called and
-# then cached. Restart picks up any change.
+# then cached. Restart picks up any change. An app restored from a checkpoint
+# image forgets it (forget), so it speaks the language of the machine where
+# it arrived, not of the one that wrote the image.
 
 module FmrbI18n
   DEFAULT_LANG = "en"
-  STRINGS = { "en" => {}, "ja" => {} }
+
+  # The words of this VM, by language: { "en" => {key => text}, "ja" => ... }.
+  # Made the first time they are asked for, not when the VM opens, and kept in
+  # the module's instance variable. A checkpoint image carries what was made
+  # after the VM opened, and a change to an object that was there before only
+  # when that object has a name of its own: a table made at the start (the
+  # constant this used to be, whose inner tables and keys have no name) lost
+  # the words an app added when the app was moved, or could not be written
+  # once a new inner table was put in (doc/checkpoint,
+  # report/lang_bg_restore.md).
+  def self.strings
+    s = @strings
+    if s.nil?
+      s = { "en" => {}, "ja" => {} }
+      @strings = s
+    end
+    s
+  end
 
   def self.add(table)
+    all = strings
     table.each do |lang, kv|
-      bucket = STRINGS[lang] ||= {}
+      bucket = all[lang] ||= {}
       kv.each { |k, v| bucket[k] = v }
     end
   end
@@ -28,15 +48,25 @@ module FmrbI18n
   def self.lang
     @lang ||= begin
       l = FmrbApp.language.to_s
-      STRINGS.key?(l) ? l : DEFAULT_LANG
+      strings.key?(l) ? l : DEFAULT_LANG
     rescue
       DEFAULT_LANG
     end
   end
 
+  # Forget the language resolved so far; the next lang reads it again. The
+  # cache lives on the module, which a checkpoint image carries, so a restored
+  # app calls this (FmrbApp#_checkpoint_restored, doc/checkpoint): the words
+  # come from the machine where the app arrived, not the one that wrote it.
+  def self.forget
+    @lang = nil
+    nil
+  end
+
   def self.t(key)
-    tbl = STRINGS[lang] || STRINGS[DEFAULT_LANG]
-    tbl[key] || STRINGS[DEFAULT_LANG][key] || key.to_s
+    all = strings
+    tbl = all[lang] || all[DEFAULT_LANG]
+    tbl[key] || all[DEFAULT_LANG][key] || key.to_s
   end
 
   # Pixel width of a UTF-8 string when rendered with draw_text(..., mixed: true).

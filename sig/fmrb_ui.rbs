@@ -47,7 +47,8 @@ class FmrbUI
   #
   # `bg:` は**部品が自分の中を塗る色**です (Label の箱、Stepper の値の欄、
   # Scrollbar の溝)。既定は Window の背景色で、暗い色で塗ったアプリはその色を
-  # 渡します。
+  # 渡します。省いたときは、アプリをテーマの違う端末へ移すと、着いた側の
+  # Window の背景色に変わります (渡した色はそのまま)。
   #
   # `bg_painter:` は**部品を消したあとの地を描く相手**です。渡さなければ
   # 跡は `bg:` の色で塗られます (地が一色ならこれで正しい)。地が絵の場合
@@ -72,7 +73,8 @@ class FmrbUI
   # bg: is the colour a widget paints inside itself - a Label's box, a
   # Stepper's value field, a Scrollbar's track. It defaults to the window
   # background; an app that clears its user area to something darker passes
-  # that colour instead.
+  # that colour instead. Left out, it becomes the window background of the
+  # machine an app is moved to (a colour passed is kept).
   #
   # bg_painter: is who repaints the ground where a widget used to be. Left
   # out, the hole is filled with bg:, which is right while the ground is one

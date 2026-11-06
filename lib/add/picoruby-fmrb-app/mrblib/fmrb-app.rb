@@ -583,8 +583,11 @@ class FmrbApp
   def _checkpoint_restored
     # The file associations are this machine's (/etc and /home tables), read
     # once per VM and cached on the module, which the image carries: forget
-    # them, so the next lookup reads this machine's.
+    # them, so the next lookup reads this machine's. FmrbI18n's language is
+    # the same: cached on the module the first time it was asked, so the
+    # words looked up from here on are in this machine's language.
     FmrbAssoc.forget
+    FmrbI18n.forget
     @_suspended = false
     @_close_btn_pressed = false
     @_spin_break = false
@@ -638,6 +641,16 @@ class FmrbApp
         i += 1
       end
       if @gfx
+        # FmrbUI widgets left on the theme's window background take this
+        # machine's (the ones the app gave a colour keep it); clear_user_area
+        # below marks them for on_restore to draw.
+        uis = []
+        ObjectSpace.each_object(FmrbUI) { |u| uis << u }
+        i = 0
+        while i < uis.size
+          uis[i]._checkpoint_ground
+          i += 1
+        end
         _build_frame_block unless @_fullscreen
         @_composite_region_w = nil
         @_composite_region_h = nil

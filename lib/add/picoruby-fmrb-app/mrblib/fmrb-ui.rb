@@ -95,7 +95,36 @@ class FmrbUI
     # It is not "the colour of what is behind me". Filling the hole left by a
     # hidden widget is the container's job and goes through bg_painter when
     # the app gave one (see FmrbUI#flush).
-    attr_accessor :bg
+    #
+    # @bg_theme is true while bg is the theme's window background the widget
+    # got by default (nobody chose a colour): an app restored from a
+    # checkpoint image on a machine under another theme takes that machine's
+    # window background there (follow_theme_ground), while a colour the app
+    # chose is carried as it is. A boolean, so Spinel keeps its type.
+    attr_reader :bg
+
+    def bg=(c)
+      @bg = c
+      @bg_theme = false
+    end
+
+    # FmrbUI#add: the colour the container gives, and whether it is the
+    # theme's default. Named apart from bg= because it is called on a
+    # base-typed receiver (see draw_widget).
+    def take_ground(c, theme)
+      @bg = c
+      @bg_theme = theme
+      nil
+    end
+
+    # Back to this machine's window background, if the widget's is the
+    # theme's default (a restored app, FmrbUI#_checkpoint_ground).
+    def follow_theme_ground
+      return nil unless @bg_theme
+      @bg = C_BG
+      @dirty = true
+      nil
+    end
     # Text scale this widget draws at, fixed when it was created. FmrbUI does
     # not follow whatever size the app happens to be in: a widget measured at
     # one size and drawn at another comes out wrong, and the app changes the
@@ -118,6 +147,7 @@ class FmrbUI
       @visible = true
       @shown = false
       @bg = C_BG
+      @bg_theme = true
     end
 
     # Glyph height at this widget's size.
@@ -909,16 +939,31 @@ class FmrbUI
   # text_size is the default scale for widgets made from here on; a single
   # widget can override it. It is 1 unless said otherwise, and it is never
   # taken from whatever size the app is in at the time - see Widget#text_size.
+  #
+  # Left out (a negative bg: says the same), bg is the theme's window
+  # background, and @bg_theme remembers that nobody chose it: an app restored
+  # from a checkpoint image takes the window background of the machine where
+  # it arrived (_checkpoint_ground). A colour passed here is the app's own and
+  # is carried as it is. The sentinel is an Integer, not nil, so Spinel keeps
+  # the keyword's type.
+  #
   # The colour behind the widgets. Settable because an app whose palette can
   # change at runtime (the shell's `color` command) has to move its widgets
-  # with it; invalidate_all afterwards to repaint them.
-  attr_accessor :bg
+  # with it; invalidate_all afterwards to repaint them. A colour set here is
+  # the app's own, as one passed as bg: is.
+  attr_reader :bg
 
-  def initialize(app, bg: C_BG, text_size: 1, bg_painter: nil)
+  def bg=(c)
+    @bg = c
+    @bg_theme = false
+  end
+
+  def initialize(app, bg: -1, text_size: 1, bg_painter: nil)
     @gfx = app.gfx
     @ox = app.user_area_x0
     @oy = app.user_area_y0
-    @bg = bg
+    @bg_theme = bg < 0
+    @bg = @bg_theme ? C_BG : bg
     @ts = text_size
     @bg_painter = bg_painter
     # Kept for the bounds check in #add. A widget placed outside the window
@@ -1104,6 +1149,21 @@ class FmrbUI
     true
   end
 
+  # A restored app (doc/checkpoint, FmrbApp#_checkpoint_restored): the theme
+  # colours are this machine's, but a ground copied when the widgets were made
+  # is the writing side's. The default ones take this machine's window
+  # background; a colour the app chose stays. The app's on_restore draws them.
+  def _checkpoint_ground
+    @bg = C_BG if @bg_theme
+    n = @widgets.size
+    i = 0
+    while i < n
+      @widgets[i].follow_theme_ground
+      i += 1
+    end
+    nil
+  end
+
   # Mark everything on screen for redraw (after clear_user_area or a resize).
   #
   # Hidden widgets are deliberately left alone. A hidden one is repainted
@@ -1281,7 +1341,7 @@ class FmrbUI
   end
 
   def add(w)
-    w.bg = @bg
+    w.take_ground(@bg, @bg_theme)
     # Creation only, and creation happens in on_create, so the interpolated
     # string here is not in anybody's steady state. #move deliberately does
     # not check: the monitor calls it while running, and a check there would

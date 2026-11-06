@@ -24,6 +24,14 @@ module FmrbI18n
 
   # 今の言葉 ("ja" か "en") <<en>> The language now, "ja" or "en"
   #
+  # アプリを別の端末へ移すと、着いた側の言葉になります。
+  # ```ruby
+  # if FmrbI18n.lang == "ja"
+  #   draw_ja
+  # end
+  # ```
+  # <<en>>
+  # An app moved to another machine speaks the language of that machine.
   # ```ruby
   # if FmrbI18n.lang == "ja"
   #   draw_ja

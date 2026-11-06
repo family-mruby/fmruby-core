@@ -12,13 +12,17 @@
 # platform_restore.md): platform beside FmrbConst::PLATFORM, whether the app
 # keeps @platform (it must not: the image would carry it), and whether
 # FmrbAssoc's table is still cached (read here in on_create, forgotten when
-# the image is restored).
+# the image is restored). And the display language (report/lang_bg_restore.md):
+# FmrbI18n's language, asked here before the move, a word looked up in it,
+# and FmrbApp.language; after a move all three are the arriving machine's.
 
 class CkptCallsApp < FmrbApp
   def on_create
     @main = 0
     @open_settings = false
     FmrbAssoc.load_table
+    FmrbI18n.add("en" => { ckpt_word: "word-en" }, "ja" => { ckpt_word: "word-ja" })
+    FmrbI18n.lang
     Log.info("ckpt_calls: start #{machine}")
   end
 
@@ -37,7 +41,8 @@ class CkptCallsApp < FmrbApp
   def machine
     ivar = instance_variables.include?(:@platform)
     assoc = FmrbAssoc.instance_variable_get(:@table) ? true : false
-    "platform=#{platform} const=#{FmrbConst::PLATFORM} platform_ivar=#{ivar} assoc_cached=#{assoc}"
+    "platform=#{platform} const=#{FmrbConst::PLATFORM} platform_ivar=#{ivar} assoc_cached=#{assoc} " \
+      "lang=#{FmrbI18n.lang} word=#{FmrbI18n.t(:ckpt_word)} language=#{FmrbApp.language}"
   end
 end
 

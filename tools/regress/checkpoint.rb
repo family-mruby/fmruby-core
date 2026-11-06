@@ -63,7 +63,15 @@
 #             moved there takes that machine's title bar and border (the base
 #             builds its frame again there, not the writing side's program),
 #             pixel for pixel the window a fresh start there shows after the
-#             same clicks and keys.
+#             same clicks and keys. The window's two FmrbUI labels, checked
+#             apart from the frame: the one made without bg: takes the window
+#             background of the theme there, the one made with bg: keeps the
+#             app's colour (report/lang_bg_restore.md).
+#   language  the same third program also runs in another language ("ja" in
+#             its system_conf.toml; the first is "en"): ckpt_calls moved there
+#             answers that language from FmrbI18n (which it asked before the
+#             move, and which kept the writing side's language) as from
+#             FmrbApp.language, and looks its word up in it.
 #   requires  (F4) /app/test/ckpt_requires.app.rb declares in its .app.toml a
 #             method it cannot go on without (requires = ["linux_settings"],
 #             the native program's own): moved into the second program (the
@@ -131,8 +139,12 @@ module Regress
     THEME_C = { "desktop_bg" => 0x00, "menu_bg" => 0x22, "window_bg" => 0x00, "text" => 0x1C,
                 "text_light" => 0xFF, "highlight" => 0xE3, "border" => 0x0E, "button" => 0x46,
                 "dir_color" => 0xFC }.freeze
+    # its language (the first program's is "en", as every config ships)
+    LANGUAGE_C = "ja"
     # the light theme every config/system_conf_* ships (the first program's)
-    THEME_A = { "menu_bg" => 0xC5, "border" => 0x60 }.freeze
+    THEME_A = { "menu_bg" => 0xC5, "border" => 0x60, "window_bg" => 0xFF }.freeze
+    # the colour ckpt_window gives its second FmrbUI label with bg:
+    CHOSEN_BG = 0x92
     HOLD_NO_ANSWER_MS = 1500
     APP = "/app/test/ckpt_counter.app.rb"
     IMAGE = "/tmp/ckpt_counter.ckpt"
@@ -296,7 +308,7 @@ module Regress
         notes << round_move_refused
         notes << round_move_no_answer
         notes << round_window_move
-        notes << round_window_theme(config)
+        notes.concat(third_program_rounds(config))
         notes << round_requires_move
         notes << round_machine_move
         notes.concat(asterism_rounds)
@@ -572,10 +584,11 @@ module Regress
           "carried in #{r['carried_ms'] - r['held_ms']} ms"
       end
 
-      # The third program: the same build under THEME_C. Its user's
-      # /etc/system_conf.toml is the build's first-start one with the [theme]
-      # section written over (the program fills in only what a user's file
-      # lacks, so the colours here are the ones it runs with).
+      # The third program: the same build under THEME_C and in LANGUAGE_C.
+      # Its user's /etc/system_conf.toml is the build's first-start one with
+      # the [theme] section and the language written over (the program fills
+      # in only what a user's file lacks, so the colours and the language here
+      # are the ones it runs with).
       def up_c(config)
         home = File.join(OUT, "#{config}_home_c")
         FileUtils.rm_rf(home)
@@ -585,6 +598,9 @@ module Regress
         theme = "[theme]\n" + THEME_C.map { |k, v| format("%s = 0x%02X\n", k, v) }.join
         conf = File.read(seed).sub(/^\[theme\]\n(?:[a-z_]+ *=.*\n)+/, theme)
         raise Failure, "window theme: no [theme] section in #{seed}" unless conf.include?(theme)
+        language = "language = \"#{LANGUAGE_C}\""
+        conf = conf.sub(/^language *=.*$/, language)
+        raise Failure, "language: no language line in #{seed}" unless conf.include?(language)
         File.write(File.join(home, "user", "etc", "system_conf.toml"), conf)
         native("up", "--engine", config, "--machine", "sdl", "--debug-port", PORT_C.to_s,
                "--user-dir", File.join(home, "user"), "--cache-dir", File.join(home, "cache"),
@@ -605,10 +621,42 @@ module Regress
         [img.pixel(wx + ww - 30, wy + 5), img.pixel(wx, wy + 50)]
       end
 
-      # Moved into a program under another theme: the window there wears that
-      # theme's frame, and is the window a fresh start there draws.
-      def round_window_theme(config)
+      # The rounds with the third program (another theme, another language).
+      def third_program_rounds(config)
         up_c(config)
+        notes = round_window_theme
+        notes << round_language_move
+        forced = log_lines(RUN_DIR_C).grep(/No response in \d+ms, forcing termination/)
+        raise Failure, "forced kill in the third program: #{forced.first}" unless forced.empty?
+        notes
+      ensure
+        FileUtils.cp(log_path(RUN_DIR_C), File.join(OUT, "#{config}_c.log")) if File.exist?(log_path(RUN_DIR_C))
+        begin
+          native("down", timeout: 30, run_dir: RUN_DIR_C, port: PORT_C) if File.exist?(File.join(RUN_DIR_C, "pid"))
+        rescue Failure
+          nil
+        end
+      end
+
+      # A pixel of each of ckpt_window's two FmrbUI labels clear of its text:
+      # the one made without bg:, the one made with bg: CHOSEN_BG.
+      def label_pixels(img)
+        wx, wy, = WINDOW_RECT
+        [img.pixel(wx + 31, wy + 35), img.pixel(wx + 67, wy + 35)]
+      end
+
+      # The labels' ground in a shot: the default one in want_default, the
+      # chosen one in CHOSEN_BG.
+      def labels_in?(img, want_default)
+        dflt, chosen = label_pixels(img)
+        theme_colour?(dflt, want_default) && theme_colour?(chosen, CHOSEN_BG)
+      end
+
+      # Moved into a program under another theme: the window there wears that
+      # theme's frame, and is the window a fresh start there draws. Its
+      # widgets are checked apart from the frame: the default ground follows
+      # the theme there, the chosen one is carried.
+      def round_window_theme
         # the window as a fresh start draws it there, after the same clicks
         # and keys start_window gives it here
         from_c = log_lines(RUN_DIR_C).size
@@ -623,12 +671,18 @@ module Regress
         unless theme_colour?(bar, THEME_C["menu_bg"]) && theme_colour?(border, THEME_C["border"])
           raise Failure, "window theme: a fresh window there is not in its theme (bar #{bar.inspect}, border #{border.inspect})"
         end
+        unless labels_in?(fresh, THEME_C["window_bg"])
+          raise Failure, "widget ground: a fresh window there has its labels on #{label_pixels(fresh).inspect}"
+        end
         pid = start_window
         before = window_shot
         bar, border = frame_pixels(before)
         unless theme_colour?(bar, THEME_A["menu_bg"]) && theme_colour?(border, THEME_A["border"])
           raise Failure, "window theme: the first program's window is not in the light theme " \
                          "(bar #{bar.inspect}, border #{border.inspect})"
+        end
+        unless labels_in?(before, THEME_A["window_bg"])
+          raise Failure, "widget ground: the first program's labels are on #{label_pixels(before).inspect}"
         end
         mark_c = log_lines(RUN_DIR_C).size
         r = move(pid, to: RUN_DIR_C)
@@ -644,19 +698,54 @@ module Regress
                                 "border %s for 0x%02X; window_theme.png)",
                                 bar.inspect, THEME_C["menu_bg"], border.inspect, THEME_C["border"])
         end
+        frame_note = "window theme: title bar #{bar.inspect} and border #{border.inspect} there"
+        # the labels, apart from the frame: what the app holds (its log line)
+        # and what it drew
+        line = log_lines(RUN_DIR_C)[restored]
+        held = [line[/ ui_bg=(\d+)/, 1], line[/ chosen_bg=(\d+)/, 1], line[/ window_bg=(\d+)/, 1]]
+        raise Failure, "widget ground: no colours in #{line.inspect}" if held.include?(nil)
+        ui_bg, chosen_bg, window_bg = held.map(&:to_i)
+        unless window_bg == THEME_C["window_bg"] && ui_bg == window_bg && chosen_bg == CHOSEN_BG
+          raise Failure, format("widget ground: the labels hold 0x%02X (default) and 0x%02X (chosen) where the window " \
+                                "background there is 0x%02X (%s)", ui_bg, chosen_bg, window_bg, line)
+        end
+        unless labels_in?(after, THEME_C["window_bg"])
+          after.write(File.join(OUT, "widget_ground.png"))
+          raise Failure, "widget ground: the labels are drawn on #{label_pixels(after).inspect} (widget_ground.png)"
+        end
         compare_window(fresh, after, "window theme")
         app("kill", r["pid"].to_s, run_dir: RUN_DIR_C, port: PORT_C)
         sleep 0.3
-        forced = log_lines(RUN_DIR_C).grep(/No response in \d+ms, forcing termination/)
-        raise Failure, "forced kill in the third program: #{forced.first}" unless forced.empty?
-        "window theme: title bar #{bar.inspect} and border #{border.inspect} there, the window a fresh start draws there"
-      ensure
-        FileUtils.cp(log_path(RUN_DIR_C), File.join(OUT, "#{config}_c.log")) if File.exist?(log_path(RUN_DIR_C))
-        begin
-          native("down", timeout: 30, run_dir: RUN_DIR_C, port: PORT_C) if File.exist?(File.join(RUN_DIR_C, "pid"))
-        rescue Failure
-          nil
+        [frame_note + ", the window a fresh start draws there",
+         format("widget ground: default 0x%02X there, chosen 0x%02X carried", ui_bg, chosen_bg)]
+      end
+
+      # ckpt_calls moved into the third program, which runs in LANGUAGE_C:
+      # FmrbI18n answers that language there, as FmrbApp.language does, and
+      # looks its words up in it (report/lang_bg_restore.md).
+      def round_language_move
+        from = log_lines.size
+        pid = app("spawn", MACHINE).fetch("pid")
+        i = wait_line(/ckpt_calls: main=3 /, from, "ckpt_calls counting")
+        here = log_lines[i]
+        unless here.include?(" lang=en word=word-en language=en")
+          raise Failure, "language: the first program is not in English (#{here})"
         end
+        mark_c = log_lines(RUN_DIR_C).size
+        r = move(pid, to: RUN_DIR_C)
+        raise Failure, "language: answered #{r.inspect}" unless r["status"] == "moved" && r["pid"]
+        j = wait_line(/ckpt_calls: on_restore main=\d+/, mark_c, "on_restore in the third program", run_dir: RUN_DIR_C)
+        line = log_lines(RUN_DIR_C)[j]
+        lang = line[/ lang=(\w+)/, 1]
+        word = line[/ word=(\S+)/, 1]
+        language = line[/ language=(\w+)/, 1]
+        raise Failure, "language: no language in #{line.inspect}" unless lang && word && language
+        raise Failure, "language: FmrbApp.language there is #{language}, not #{LANGUAGE_C}" unless language == LANGUAGE_C
+        raise Failure, "language: FmrbI18n says #{lang} where FmrbApp.language is #{language} (#{line})" unless lang == language
+        raise Failure, "language: the word there is #{word}, not word-#{language}" unless word == "word-#{language}"
+        app("kill", r["pid"].to_s, run_dir: RUN_DIR_C, port: PORT_C)
+        sleep 0.3
+        "language: #{lang} there (#{word}), as FmrbApp.language"
       end
 
       # An app that declares a method it requires, moved into the same build
