@@ -55,8 +55,11 @@ end
 #   STICKS3: the same chip, partitions and role as the AtomS3R, so the same
 #   defaults, plus its six-axis sensor (the BMI270 driver, FMRB_IMU).
 #   NARYAv3: Asterism is in, so a Retro board can send and receive a movable
-#   app (doc/checkpoint/report/f6_s3.md). It costs 696 B of internal RAM
-#   (zenoh-pico and the Asterism gems) and about 259 KB of flash.
+#   app (doc/checkpoint/report/f6_s3.md). It costs about 259 KB of flash.
+#   Its TLS path links mbedTLS's PSA core (692 B of .bss), which
+#   main/mbedtls_psram.lf puts in PSRAM along with the cipher-suite list, so
+#   static internal RAM ends 240 B below a build without Asterism
+#   (doc/checkpoint/report/s3_next.md).
 MINI_BUILD_DEFAULTS = {
   "FMRB_APP_ENGINE_EDITOR" => "mruby",
   "FMRB_FFT_SPINEL" => "0",

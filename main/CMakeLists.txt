@@ -390,9 +390,12 @@ if(IDF_TARGET STREQUAL "esp32p4")
         "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/keymap.js")
 endif()
 
-# mbedTLS's PSA state to PSRAM when TLS 1.3 brings it in (main/mbedtls_psram.lf).
+# mbedTLS's PSA state and cipher-suite list to PSRAM (main/mbedtls_psram.lf)
+# whenever .bss may live there. Not tied to TLS 1.3: zenoh-pico's TLS path
+# links the PSA core on a board without it too (NARYAv3 with Asterism,
+# doc/checkpoint/report/s3_next.md).
 set(FMRB_LDFRAGMENTS "")
-if(CONFIG_MBEDTLS_SSL_PROTO_TLS1_3 AND CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY)
+if(CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY)
     list(APPEND FMRB_LDFRAGMENTS "mbedtls_psram.lf")
 endif()
 

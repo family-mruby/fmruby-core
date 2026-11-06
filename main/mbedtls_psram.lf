@@ -1,12 +1,15 @@
 # mbedTLS's static state in PSRAM (doc/ruby_asterism/report/g2a.md). TLS 1.3
-# links the PSA core (psa_crypto.c's global_data, 508 bytes of .bss, and
+# (or, without it, zenoh-pico's TLS path: NARYAv3 with Asterism) links the PSA
+# core (psa_crypto.c's global_data, 508 bytes of .bss, and
 # psa_crypto_slot_management.c's, 184: the key slots and the random
 # generator's state) and lengthens the list of cipher suites
 # (ssl_ciphersuites.c, 252 bytes), all of which would otherwise land in
 # internal RAM. Only tasks touch it (no interrupt handler), and everything else
-# mbedTLS keeps is in PSRAM already (CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC).
-# Listed by main/CMakeLists.txt when TLS 1.3 is built in and .bss may live
-# in PSRAM (CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY).
+# mbedTLS keeps is in PSRAM already where CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC is
+# set (on a board without it, its run-time buffers still come from the
+# internal heap). Listed by main/CMakeLists.txt whenever .bss may live in
+# PSRAM (CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY); an object that is not
+# linked costs nothing.
 # The scheme is our own: esp_wifi's extram_bss is not there on boards whose
 # WiFi is a coprocessor (esp_hosted).
 [scheme:fmrb_extram_bss]
