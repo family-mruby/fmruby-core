@@ -891,6 +891,18 @@ class FmrbKernelImpl < FmrbKernel
     false
   end
 
+  # The transfer app started by something else (the development remote
+  # control, the debug server, a shell): taken as the one the kernel runs.
+  # It is single_instance, so start_transfer could not start a second one
+  # and every move from here would fail while this one runs unknown.
+  def adopt_transfer(pid)
+    info = _get_app_info(pid)
+    return nil unless info && info[:path].to_s == TRANSFER_APP
+    @xfer_pid = pid
+    Log.info("Transfer app adopted (pid=#{pid}, started outside the kernel)")
+    nil
+  end
+
   # At boot: a machine that takes images in (RECEIVE_CONF) keeps the
   # transfer app up so that others can reach it.
   def spawn_transfer_if_receiving
@@ -913,6 +925,7 @@ class FmrbKernelImpl < FmrbKernel
   end
 
   def note_transfer_ready(pid, node)
+    adopt_transfer(pid) if @xfer_pid < 0
     return nil if pid != @xfer_pid
     @xfer_ready = true
     @xfer_reason = ""
