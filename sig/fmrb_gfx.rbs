@@ -776,7 +776,7 @@ class FmrbGfx
 
   # 画面の見せる場所をずらす <<en>> Shift what part of the canvas is shown
   #
-  # canvas より小さい表示窓を、canvas の上で動かす。canvas は輪として扱われ、
+  # canvas より小さい表示範囲を、canvas の上で動かす。canvas は輪として扱われ、
   # 元の四角は端で回り込む。表示範囲より少し大きい canvas を用意し、動いた分だけ
   # 新しく見えるところにタイルを描き足せば、大きな地図を描き直さずに流せる。
   #
