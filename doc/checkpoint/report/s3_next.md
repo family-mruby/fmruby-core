@@ -1,6 +1,6 @@
 # S3 の続き: NARYAv3 の Asterism と、StickS3・AtomS3R の区画表
 
-> 状態: 1 は実装済・検収待ち (実機は未確認)、2 は案 (ユーザが選ぶ) | 更新: 2026-11-07 | NARYAv3 の既定を `FMRB_ASTERISM=1` にした。DIRAM は 125,699 → 126,395 (+696、全部 mbedTLS の PSA の状態)、ファーム +258,976 B。+696 B は linker の fragment の条件を 1 つ変えれば PSRAM へ移せ、そのときは Asterism なしより −240 B になる (測った、入れていない)。StickS3・AtomS3R の区画表は factory 5.5M・storage 2496K を推奨 (app の空き 4% → 13%、/home に使える量 約 1.29 MB → 約 0.78 MB)。推奨案で組み立てと storage のイメージが通ることを確認した
+> 状態: 1 は実装済・検収待ち (実機は未確認)、2 は B 案に決まり実装済 (5 章、実機は未確認) | 更新: 2026-11-07 | 5 章: ユーザの決定で区画表を B 案にし、mbedTLS の fragment の条件を緩めた (NARYAv3 の DIRAM 125,459)。以下は 1〜4 章の時点の要約: NARYAv3 の既定を `FMRB_ASTERISM=1` にした。DIRAM は 125,699 → 126,395 (+696、全部 mbedTLS の PSA の状態)、ファーム +258,976 B。+696 B は linker の fragment の条件を 1 つ変えれば PSRAM へ移せ、そのときは Asterism なしより −240 B になる (測った、入れていない)。StickS3・AtomS3R の区画表は factory 5.5M・storage 2496K を推奨 (app の空き 4% → 13%、/home に使える量 約 1.29 MB → 約 0.78 MB)。推奨案で組み立てと storage のイメージが通ることを確認した
 
 前の段は `report/f6_s3.md`、決定は `plan.md` の「S3 の決定 (2026-11-07 …)」。
 
@@ -140,3 +140,48 @@ NARYAv3 は区画表を変えなくてよい。広げるときも末尾に 4.9 M
 2. +696 B を PSRAM へ移す fragment の条件の変更は入れていない (1.3)。入れるなら `main/CMakeLists.txt` の 1 行で、NARYAv3 の DIRAM は 125,459。
 3. NARYAv3 の sdkconfig (TLS 1.3、mbedTLS の PSRAM) は変えていない (1.4)。
 4. 区画表は変えていない。推奨は B (2.4)。
+
+## 5. ユーザの決定の後 (2026-11-07)
+
+ユーザが 2 つを決めた: StickS3・AtomS3R の区画表は B 案、mbedTLS の fragment の条件は `CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY` だけにする。
+
+### 5.1 変えたもの
+
+| コミット | 中身 |
+|---|---|
+| 88cc6709 | `config/partitions_atoms3r.csv` を factory `0x580000` (0x10000〜0x590000)・storage `0x590000`・`2496K` に。頭のコメントに理由 (基準の表で空き 4%、storage との配分、フル flash が要り /home が消える、古い表の端末に `flash:app` を使わない) と移し方の文書の場所。`config/storage_exclude_{atoms3r,sticks3}.txt` と `Rakefile` (ATOMS3R) のコメントの大きさ |
+| 4e7e7e61 | `main/CMakeLists.txt` の条件から `CONFIG_MBEDTLS_SSL_PROTO_TLS1_3` を外した。`main/mbedtls_psram.lf` の説明と、`Rakefile` の NARYAv3 のコメント (「zenoh-pico と Asterism の gem の 696 B」は誤りで、中身は PSA の核の `.bss`) を直した |
+| 18b2eb48 | StickS3・AtomS3R の size の基準 |
+| cfe10414 | NARYAv3 の size の基準 |
+
+- 区画の大きさを決め打ちしている所は、rakelib・tools・main・cmake には無かった。storage のイメージの大きさは ESP-IDF の `littlefs_create_partition_image` が区画表から取る (組み立ての記録で `--fs-size=0x270000`)。書き込みの行も `0x590000 build/storage.bin` になった。古い値は report の中 (h0.md・h1.md・cf3.md など、その時点の記録) にだけ残り、直していない。
+- fragment の条件が変わって置き場所が変わり得るのは、sdkconfig の defaults で `.bss` を PSRAM に置けて TLS 1.3 が無いもの: `sdkconfig.defaults.n16r8` (NARYAv3 と板を名指さない S3) と `sdkconfig.defaults.n8r8` (ATOM_DISPLAY)。P4 (TAB5・NARYAv4) と StickS3・AtomS3R は前から付いていた。ATOM_DISPLAY は size の表に無く測っていない (変わるとしても `.bss` が PSRAM へ移る向きだけで、内蔵 RAM は増えない)。
+
+### 5.2 大きさ (`rake regress:size ALL=1`)
+
+基準は前のもの (NARYAv3 は 2e13ff74、ほかは 6f7b5848)。TAB5・NARYAv4・StickS3・AtomS3R の差は、基準の後に入ったもの (F6 の mruby-checkpoint とその pin、P4 の区画表) を含む。この変更の分は部品ごとの差で見た: mbedTLS の部品が動いたのは NARYAv3 だけ。
+
+| 端末 | DIRAM | IRAM | ほかの内蔵 RAM | ファーム | app の領域の空き |
+|---|---|---|---|---|---|
+| NARYAv3 | 126,395 → **125,459 (−936)** | 16,384 (+0) | 104 (+0) | 5,213,872 (+0) | 1,077,584 (17%) |
+| TAB5 | 129,698 → 129,330 (−368) | — | 948 (+0) | 7,213,888 | 1,109,184 (13%) |
+| NARYAv4 | 125,196 → 124,820 (−376) | — | 3,052 (+0) | 7,191,056 | 1,132,016 (14%) |
+| StickS3 | 114,863 → 114,527 (−336) | 16,384 (+0) | 104 (+0) | 5,023,408 | 219,472 → **743,760 (13%)** |
+| AtomS3R | 114,499 → 114,163 (−336) | 16,384 (+0) | 104 (+0) | 5,008,640 | 234,240 → **758,528 (13%)** |
+
+- NARYAv3 の −936 は `libmbedcrypto.a` −692 (PSA の核) と `libmbedtls.a` −240 (`ssl_ciphersuites.c`) と詰め物。Asterism なし (125,699) より 240 B 少ない (1.3 で測った値と同じ)。
+- 内蔵 RAM が増えた端末は無い。
+- StickS3・AtomS3R の storage のイメージ (git の木だけ) は 2496K に収まった (`littlefs-python create ... --fs-size=0x270000`)。`flash_local/` を重ねた場合は 2.5 で確認済み。
+- 基準は StickS3・AtomS3R・NARYAv3 だけ更新した。TAB5・NARYAv4 の基準は 6f7b5848 のまま (ファームと app の空きの差は失敗にならない)。
+
+### 5.3 移し方の文書
+
+既存の端末を新しい表に移す手順は `doc/headless_s3/plan.md` の「区画表を変えた端末の移し方」に書いた。2.3 の手順から 1 つ直した: 秘密のファイル (`/home/wifi.toml`、`/home/asterism/` の `config.toml` 以外: 証明書の tar と `receive.toml`) は devctl の `/fs/get` で読み出せず、`/home/asterism/` の中は受け付ける時間の外では書けない (`main/kernel/fmrb_secret_path.h`)。そのため、退避は普通のファイルと `config.toml` だけで、秘密のファイルは手元の元から、設定のモード (BLE) の間に Family mruby Console の Settings と Files で書く。`rake regress:boot` も app だけを焼くので、古い表の端末には `FLASH=0` で使う。
+
+### 5.4 確認
+
+| 何を | 結果 |
+|---|---|
+| `rake regress` | 通る (ホスト 21 suites、描画の記録 205) |
+| `rake regress:size ALL=1` | 5 端末とも通る (内蔵 RAM の増え無し)。基準の更新の後、`TABLE=1` で通る |
+| 実機 | 行っていない。移す手順も実機では通していない |

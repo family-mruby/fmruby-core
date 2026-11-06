@@ -1,6 +1,6 @@
 # ヘッドレス Family mruby (ESP32-S3、AtomS3R)
 
-> 状態: 進行中 (H3・M3s・S1 まで完了) | 更新: 2026-10-24 | 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト
+> 状態: 進行中 (H3・M3s・S1 まで完了) | 更新: 2026-11-07 | 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト
 
 ## 目的
 
@@ -102,7 +102,7 @@
 
 ## 決定事項 (2026-10-12 ユーザ、H0 の後。report/h0.md 8 章のおすすめを全部採用)
 
-1. 区画は A 案: factory 5M + storage 3008K。
+1. 区画は A 案: factory 5M + storage 3008K (2026-11-07 に B 案の factory 5.5M + storage 2496K へ変えた。下の 2026-11-07 の項)。
 2. 保存領域 (storage) に入れないファイルの一覧を、端末ごとに持てる一般の仕組みを足す。何を外すかは H1a で大きさを測ってから。
 3. BLE は外す。外すためのビルドの条件は全端末で使える一般の形にする (今は ble_task が常にコンパイルされる)。
 4. Lua・BASIC・MicroPython などを外す一般のビルドの選択肢 (`FMRB_LANG_*` など) は、H1a の大きさを見てから決める。
@@ -118,6 +118,17 @@
 - 2026-10-12 ユーザ (H2 の後): 遠隔で起動したアプリが落ちたら、止まったときの画面に理由を出し、次の起動で消す (起動し直しはしない)。S3 の遠隔操作に画面の取り込み口を、無理せず可能なら足す。AtomS3R の画面の表示はユーザが目で確かめた。
 
 - 2026-10-12 ユーザ (H3 の後): H2b でカーネルの共通の部分に入れた「落ちたアプリの画面」で Retro・Tab5 のファームが約 3 KB 増えたことを承認 (内蔵 RAM は増えていない)。幅 320 未満の画面では、止まったときの画面にエラーの最初の 1 行だけを出す (バックトレースで案内の行が見切れるため)。
+
+- 2026-11-07 ユーザ (doc/checkpoint/report/s3_next.md の 2 章の B 案): StickS3・AtomS3R の区画表 (`config/partitions_atoms3r.csv`、2 つで共用) を factory 5.5M (0x10000〜0x590000)・storage 2496K (0x590000〜0x800000) に変えた。mruby-checkpoint の基準の表で app の空きが 4% になったため。app の空きは約 13%、storage は配る木で約 790 KB が /home に残る。既存の端末は次の節の手順で移す。
+
+## 区画表を変えた端末の移し方 (StickS3・AtomS3R、2026-11-07)
+
+2026-11-07 より前に焼いた StickS3・AtomS3R は古い区画表 (factory 5M・storage 0x510000 から 3008K) のままで、新しいファームは古い factory に収まらない。区画表はフル flash でしか変わらず、そのとき `/home` が消える。nvs は同じ場所なので残る。
+
+1. **`/home` を退避する**。普段のモード (WiFi) で上げ、devctl の `/fs/get` (`ruby tools/fmrb_rd_fs.rb <IP>` の `pull`、MCP の `tab5_fs` に ip を渡す) で利用者のファイルと `/home/asterism/config.toml` を PC へ写す。秘密のファイル (`/home/wifi.toml`、`/home/secrets.toml`、`/home/asterism/` の中で `config.toml` 以外: 証明書の tar と `receive.toml`) は端末から読み出せない (`main/kernel/fmrb_secret_path.h`)。手元の元 (WiFi の SSID とパスワード、Asterism のコンソールで出した tar、`receive.toml` の `from = [...]`) を用意する。tar を無くしたときはコンソールで出し直す。
+2. **フル flash する**: `FMRB_HW_TARGET=STICKS3` (か `ATOMS3R`) で `rake build:esp32` の後に `rake flash` (MCP の `flash`)。bootloader・区画表・app・storage を書く。**古い表の端末に `rake flash:app` を使わない** (新しいイメージが古い storage の頭に重なる)。`rake regress:boot` も app だけを焼くので、移す前の端末では `FLASH=0` で使うか、先に移す。
+3. **設定のモードで WiFi を書く**。`/home/wifi.toml` が無いので、端末は BLE だけの設定のモードで起動する (CF3)。Family mruby Console (`tool/web/`、README の「接続の設定」) の Settings で WiFi を書き、同じ時間の間に Asterism の繋ぎ先・証明書の tar も書ける。`receive.toml` も秘密の扱いなので、この間に Files から PUT する。書いたら Reboot で普段のモードへ。ビルドのときに `config/wifi.toml` を置いていれば `/etc/wifi.toml` に入り、設定のモードを通らずに WiFi で上がる。そのときに tar などを書くには、ボタンを押しながら起動して設定のモードに入る。
+4. **残りを戻す**。普段のモードで上がったら、1 で退避した普通のファイルを devctl の `/fs/put` (`push`) で戻す。`config.toml` は受け付ける時間の外では書けないので、3 の Settings で書く (退避した中身を欄に写す)。
 
 ## 段階
 
