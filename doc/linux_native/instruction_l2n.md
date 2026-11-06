@@ -84,7 +84,7 @@ posix port と OpenSSL の呼び方を読んで判断してよい。いずれに
    Asterism の Zenoh が入る。
 2. TCP: 手元で待ち受けた相手 (例: `ruby -rsocket` の echo) と TCPSocket で
    やり取りできる。**相手が返事をしない間も、デスクトップの時計とポインタが
-   動き続ける** (画面を 2 回取って時計が進むこと、入力の注入で窓が動くこと)。
+   動き続ける** (画面を 2 回取って時計が進むこと、入力の注入で Window が動くこと)。
 3. HTTP: 手元の HTTP サーバ (例: `ruby -run -e httpd`) への Net::HTTP の GET、
    と HTTPS の GET (届くなら外の https のサイト、届かなければ手元の自己署名
    で、証明書の検証の失敗が正しく例外になること) が通る。名前解決 (localhost

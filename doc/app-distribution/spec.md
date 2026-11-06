@@ -30,7 +30,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 
 | もの | 実体 | 何ができるか |
 |---|---|---|
-| アプリ記述 | `<名前>.app.toml` | 窓の大きさ、記憶域、スタック、表示名 (日本語別名つき) |
+| アプリ記述 | `<名前>.app.toml` | Window の大きさ、記憶域、スタック、表示名 (日本語別名つき) |
 | 記述の埋め込み | `.rb` 冒頭の `#---fmrb` 囲み | 自分で起動する補助スクリプト用。**配布には使えない** (3.3 節) |
 | 束 (複数ファイル) | `/app/<分類>/<名前>/` | ランチャーが 3 階層目まで歩き、素材を同居させた束を 1 アプリとして拾う (`launcher.rb:378`) |
 | ユーザ用の置き場 | `/app/usr/` | 出荷ツリーに空で存在する。ブラウザ版では IndexedDB に残る (`wasm/web/main.js:469,475`) |
@@ -59,8 +59,8 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `icon` | 拡張子で決まる既定 | アイコンのパス |
 | `launcher_visible` | true | 一覧に出すか |
 | `default_window_mode` | — | `window` / `fullscreen` / `background` |
-| `default_window_width` / `_height` | 100 | 窓の大きさ。**既定は 100x100 = 1 行 15 文字ほど**。狭い |
-| `default_window_pos_x` / `_y` | 50 | 窓の位置 |
+| `default_window_width` / `_height` | 100 | Window の大きさ。**既定は 100x100 = 1 行 15 文字ほど**。狭い |
+| `default_window_pos_x` / `_y` | 50 | Window の位置 |
 | `min_window_width` / `_height` | 0 | 縮小の下限 |
 | `resizable` | 0 | 大きさを変えられるか |
 | `rounded_corners` | 1 | 角の丸め |
@@ -68,9 +68,9 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `fullscreen_hires` | false | 全画面の間だけ 640x360 にしてよい (P4 系とブラウザ版。`true` か `1`。reference/fullscreen_hires.md) |
 | `large_memory` | 0 | 大きい方のプール (通常の 2 倍: Retro 1 MB、Modern 2 MB、sim とブラウザ版 3 MB) を専有する。同時に 1 アプリ。本体の `.app.rb` が大きいアプリ (コンパイルの山はソースの十数倍から二十数倍) にも要る (reference/app_memory.md) |
 | `task_stack_kb` | 16 | タスクの C スタック。`[16, 64]` KB に丸められる |
-| `single_instance` | false | 同じファイルのアプリの 2 つ目の起動を断る (`true` か `1`)。断るときはエラーの窓「This app is already running.」 |
-| `exclusive_group` | なし | 同じ名前 (15 バイトまで) を書いたアプリが動いている間は起動を断る。自分の 2 つ目も断る。例: FFT を使うアプリの `"fft"`。窓は「<動いているアプリ> is already running. / Only one "<名前>" app can run at a time.」 |
-| `screens` | なし | 描ける画面の形の並び。`["426x240", "320x170"]` のように書く。今読むのはキーボード専用のデスクトップ (Linux 版の 320x170、doc/linux_native) だけで、`"320x170"` を含むアプリだけをメニューに出す。320x170 ではアプリは帯の下の 320x160 の全画面で動くので、その大きさで読める (窓の大きさを固定で描かない) アプリにだけ書く。この 2 つは最初の `[表]` より前 (一番上の階層) に書く |
+| `single_instance` | false | 同じファイルのアプリの 2 つ目の起動を断る (`true` か `1`)。断るときはエラーの Window「This app is already running.」 |
+| `exclusive_group` | なし | 同じ名前 (15 バイトまで) を書いたアプリが動いている間は起動を断る。自分の 2 つ目も断る。例: FFT を使うアプリの `"fft"`。Window は「<動いているアプリ> is already running. / Only one "<名前>" app can run at a time.」 |
+| `screens` | なし | 描ける画面の形の並び。`["426x240", "320x170"]` のように書く。今読むのはキーボード専用のデスクトップ (Linux 版の 320x170、doc/linux_native) だけで、`"320x170"` を含むアプリだけをメニューに出す。320x170 ではアプリは帯の下の 320x160 の全画面で動くので、その大きさで読める (Window の大きさを固定で描かない) アプリにだけ書く。この 2 つは最初の `[表]` より前 (一番上の階層) に書く |
 | `needs_pointer` | なし | マウス・タッチが要るか (`true` / `false`)。キーボード専用のデスクトップは `false` と**明記した**アプリだけを出す (書いていないアプリは要るものとみなす)。キーだけで全部の操作ができるアプリにだけ `false` を書く |
 
 `app_handle_name` は 67 個の `.app.toml` に書かれているが、**どのコードも読んで
@@ -295,7 +295,7 @@ Linux sim (`BOARD == "linux"`) は開発用なので判定に使わない。何�
 
 ### 7.2 画面
 
-| 環境 | 画面 (論理) | 既定の窓 |
+| 環境 | 画面 (論理) | 既定の Window |
 |---|---|---|
 | `retro` | 320x240 (固定。NTSC) | 280x180 |
 | `modern` | 426x240 | 386x210 |
@@ -498,7 +498,7 @@ Breakout<TAB>/app/usr/breakout/breakout.app.rb<TAB>R<TAB>usr/share/icon/ruby.ico
 (`FmrbPng.read_rgb` → `[w, h, 1 画素 3 バイトの行]`、zlib だけ)、書く側は
 `tool/gen_icon_bmp.rb` の BMP 書き出しがそのまま使える。
 
-**BMP ではなく PNG。** アプリが自分の窓に絵を描く経路
+**BMP ではなく PNG。** アプリが自分の Window に絵を描く経路
 (`sync_file` → `create_image` → `draw_image`) が**解くのは PNG だけ**で、
 BMP はスプライト (ランチャーのアイコン) のものである。実機もブラウザも同じ
 表示コードを積んでいるので、1 つのファイルが 3 環境で描ける。
@@ -521,7 +521,7 @@ Modern は 16:9)。
 
 #### 行が高くなる分だけ一覧は短くなる
 
-| 行の形 | 見える行数 (窓の中 約 110px) |
+| 行の形 | 見える行数 (Window の中 約 110px) |
 |---|---|
 | 文字だけ (11 px) | 8 行 |
 | **32x24 の絵つき (26 px)** | **3-4 行** |
@@ -632,7 +632,7 @@ Ruby がそのまま動くものであり、**入れる操作は「そのコー�
 ### 13.2 店アプリの 2 つの面
 
 1 本のアプリが 2 つの面を持つ (別々のアプリにはしない。320x240 に 2 本の
-一覧を置くと窓が足りない)。
+一覧を置くと Window が足りない)。
 
 | 面 | 中身 |
 |---|---|

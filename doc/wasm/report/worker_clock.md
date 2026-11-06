@@ -28,10 +28,10 @@ Chromium (Linux 版) で開いて、Shell から `task_sleep`・`task_turns` と
 | 起動から 4.5 分後に Shell から | - | - | 325 ms と 0 ms が交互 |
 | 起動から 3 分待ってから Shell から (ヘッドレス) | 3,866〜4,402 ms | - | 平均 335 ms |
 | 同上、タイマーの間引きを止める引数を全部付けて | 3,775〜3,795 ms | 3,773 ms | 平均 243 ms |
-| 起動から 2 分待ってから Shell から (窓あり、Xvfb) | 2,733〜3,278 ms | 3,266 ms | 平均 232 ms |
+| 起動から 2 分待ってから Shell から (Window あり、Xvfb) | 2,733〜3,278 ms | 3,266 ms | 平均 232 ms |
 
 - 起動から時間が経ってから起動したアプリほど遅い。最初のアプリは遅くない。
-- ヘッドレスか窓ありか、`--disable-background-timer-throttling`・
+- ヘッドレスか Window ありか、`--disable-background-timer-throttling`・
   `--disable-renderer-backgrounding`・`--disable-backgrounding-occluded-windows`・
   `--disable-features=IntensiveWakeUpThrottling` の有無では変わらない
   (Playwright は最初の 1 つを自分で付けている)。
@@ -69,7 +69,7 @@ performance.now()` を主スレッドの値と比べる (往復の真ん中と�
 | ブラウザ | 10 秒後に作った Worker | 40 秒後に作った Worker |
 |---|---|---|
 | Linux の Chromium、ヘッドレス | +34.9 ms | +70.9 ms |
-| Linux の Chromium、窓あり (Xvfb) | +55.6 ms | - |
+| Linux の Chromium、Window あり (Xvfb) | +55.6 ms | - |
 | Windows の Chrome、ヘッドレス | +1.7 ms (作った直後だけ、すぐ 0) | 0 |
 
 ずれが決まるのは Worker を作ったときではなく、**その Worker が初めて
@@ -142,7 +142,7 @@ Shell で起動。`task_turns` の期待値は 1,200 ms)。
 |---|---|---|
 | ヘッドレス、3 分後 | `task_sleep` 3,866〜4,402 ms、`_spin(50)` 平均 335 ms | 1,001〜1,050 ms、平均 50.1 ms |
 | ヘッドレス、間引きを止める引数つき、3 分後 | 3,775〜3,795 ms、`task_turns` 3,773 ms、平均 243 ms | 1,001〜1,054 ms、1,142 ms、平均 50.0 ms |
-| 窓あり (Xvfb)、2 分後 | 2,733〜3,278 ms、3,266 ms、平均 232 ms | 1,000〜1,026 ms、1,200 ms、平均 50.1 ms |
+| Window あり (Xvfb)、2 分後 | 2,733〜3,278 ms、3,266 ms、平均 232 ms | 1,000〜1,026 ms、1,200 ms、平均 50.1 ms |
 
 - `rake regress`: ok (ホストの試験 20/20、描画の記録 205/205)。
 - 変わったのはブラウザ版だけのファイルなので、`regress:screens`・
@@ -151,7 +151,7 @@ Shell で起動。`task_turns` の期待値は 1,200 ms)。
 
 ## 5. ブラウザでの確認のしかた
 
-- 直した後は、ヘッドレスか窓ありか、タイマーの間引きを止める引数の有無に
+- 直した後は、ヘッドレスか Window ありか、タイマーの間引きを止める引数の有無に
   関係なく、Linux の Chromium で時間の待ちを測ってよい。道具の起動のしかたは
   変えていない。
 - 直す前のビルド (公開中の版を含む) を Linux の Chromium で測ると、起動から

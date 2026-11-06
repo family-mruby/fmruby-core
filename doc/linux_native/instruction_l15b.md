@@ -7,7 +7,7 @@ report/l15.md。
 
 ## 作るもの
 
-### 1. 右下の角を空ける (三角の印が隠れる窓)
+### 1. 右下の角を空ける (三角の印が隠れる Window)
 
 - エディタ (ステータス行) と LogViewer (スクロールバー) が、枠を描いた後で右下の
   角に自分の絵を描き、三角の印を隠す。各アプリの側で、印の分 (L15 の
@@ -20,7 +20,7 @@ report/l15.md。
 
 ### 2. MicroPython のアプリにも三角の印
 
-- MicroPython のアプリの窓の枠の描き方を、Ruby の基底と同じ印を出すように直す
+- MicroPython のアプリの Window の枠の描き方を、Ruby の基底と同じ印を出すように直す
   (`components/micropython/` の Family mruby 側の部分と、必要な再生成。submodule の
   本体は直接編集しない — 規約は fmruby-core/CLAUDE.md)。
 - 再生成の手順・`rake micropython:smoke` を report に書く。
@@ -48,7 +48,7 @@ report/l15.md。
 - 描画の記録・画面の基準が変わるなら、基準の更新は別のコミットにし、変化を
   report に書く (親が検収する)。
 - 撮って report に置くもの: エディタと LogViewer の右下の角 (印が見えること)、
-  MicroPython のアプリの窓の印。
+  MicroPython のアプリの Window の印。
 - 3 の確かめ: 試験 (既定に項目を足す・`hidden` にある項目は戻らない・`hidden` の
   無い古い形は上書きされる・ファイルが無いときは作らない)。
 

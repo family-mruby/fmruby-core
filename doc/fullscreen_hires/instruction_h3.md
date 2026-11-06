@@ -6,7 +6,7 @@ report/h0.md 5 章 (フォント) と 8.6、report/h2.md。report は `report/h3
 ## ゴール
 
 エディタのフォントを **ja12 (既定) / ja16 / misaki 8** から選べ、選んだものが
-`/home/editor.toml` に残り、再起動後も効く。窓と全画面 (640x360) で共通。
+`/home/editor.toml` に残り、再起動後も効く。Window と全画面 (640x360) で共通。
 
 ## やること
 
@@ -52,7 +52,7 @@ report/h0.md 5 章 (フォント) と 8.6、report/h2.md。report は `report/h3
 
 ## 受け入れ条件
 
-- 3 つのフォントを選べ、窓と全画面の両方で崩れずに編集できる
+- 3 つのフォントを選べ、Window と全画面の両方で崩れずに編集できる
 - 選んだフォントが /home/editor.toml に残り、再起動後も効く
 - mruby 版と Spinel 版の両方で動く
 - ユーザの目視で合格

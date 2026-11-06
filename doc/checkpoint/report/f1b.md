@@ -153,9 +153,9 @@ checkpoint: PID 0: only an app on the mruby VM can be written
 
 | 場面 | 中身 |
 |---|---|
-| self | `/app/test/ckpt_self.app.rb` (窓なし、`movable = true`) が main の 4 歩目に `on_update` の中から `request_checkpoint(true)`。書かれて起動し直し、a・b・main が続き、頼んだのは 1 回だけ |
+| self | `/app/test/ckpt_self.app.rb` (Window なし、`movable = true`) が main の 4 歩目に `on_update` の中から `request_checkpoint(true)`。書かれて起動し直し、a・b・main が続き、頼んだのは 1 回だけ |
 | self refused | `/app/test/ckpt_self_refused.app.rb` (`movable` なし) が同じことを頼み、`on_checkpoint_refused` に理由 (movable) が来て、動き続ける |
-| shell | Shell の窓を開き、`checkpoint -r <pid>` を打つ (`fmrb_native.rb input`)。カウンタが restart と同じに続き、Shell が答えを受ける |
+| shell | Shell の Window を開き、`checkpoint -r <pid>` を打つ (`fmrb_native.rb input`)。カウンタが restart と同じに続き、Shell が答えを受ける |
 
 ## 4. 確認
 

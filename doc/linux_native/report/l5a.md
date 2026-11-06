@@ -12,7 +12,7 @@
   キーボードの行き先が無い (デスクトップがまだ無い・消えた) ときだけ、今までどおり
   host が自分で終える。
 - デスクトップ (system_desktop_keys.app.rb の `esc_held`) は、開いているものを閉じて
-  メニューへ戻す: エラーの窓 → 閉じる、切り替えの一覧 → 閉じてメニュー (`keys_menu`)、
+  メニューへ戻す: エラーの Window → 閉じる、切り替えの一覧 → 閉じてメニュー (`keys_menu`)、
   ファイル選択 → 「選ばなかった」で閉じる (短押しの Esc と同じ。頼んだアプリに戻る)、
   File Manager → 閉じてメニュー。何も開いていないのにキーボードがある (前にアプリがいる)
   ときはそのアプリへ戻す。メニューにいて `quit` が true のときだけ、host に
@@ -21,7 +21,7 @@
   host へ来る APP_CONTROL は今まで無かったので、native だけの分岐を
   `host_task_process_message` に足した (それ以外の型は今までどおり)。
 - **選んだ理由**: どの画面が出ているかはデスクトップの変数 (@switcher_open・
-  @file_manager_open・@file_selector_open・エラーの窓) にしか無い。デスクトップが kernel
+  @file_manager_open・@file_selector_open・エラーの Window) にしか無い。デスクトップが kernel
   や host に今の画面を知らせる形は、開く・閉じるのたびに知らせる所が 4 つの部品に散り、
   知らせ損ないがあると長押しで終わってしまう (取り返しが付かない向きに壊れる)。
   長押しを渡す形なら、決めるのは押した瞬間のデスクトップ自身で、状態の写しを持たない。
@@ -106,8 +106,8 @@ native の `--machine sdl_keys` で、各アプリをパスで起動し (帯の�
 | nsf_player・smf_player | 一覧は読める、下の操作の行が切れる | 一部 | 要確認 (操作の行) |
 | mml | 7 項目の一覧の下が切れる | はい (1-7 のキー) | 要確認 |
 | othello (卓) | 文字の画面は読める | はい | 要確認 (網が要る) |
-| lua・python・picoruby (デモ) | 窓の大きさのまま (枠つき) で、右が空く | 一部 (python はクリック) | 手直しが要る |
-| robo_pilot・net_probe | 窓の大きさのまま | はい | 手直しが要る |
+| lua・python・picoruby (デモ) | Window の大きさのまま (枠つき) で、右が空く | 一部 (python はクリック) | 手直しが要る |
+| robo_pilot・net_probe | Window の大きさのまま | はい | 手直しが要る |
 | rpg_demo・blockgame・breakout | (下の不具合で起動直後に native が落ちて見られない) | はい | 不具合を直してから |
 
 - **見つけた不具合 (範囲外なので直していない)**: FMSQ の曲を読むアプリ (rpg_demo・

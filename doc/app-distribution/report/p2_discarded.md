@@ -47,7 +47,7 @@
 
 `?install=hello_store` で開く → `/flash/app/usr/hello_store/` に 2 ファイル →
 再読み込み → **ランチャーに「こんにちは」** (日本語名は `app_screen_name_ja`
-から) → 起動すると窓の題は「Hello Store」(こちらは `app_screen_name`)。
+から) → 起動すると Window の題は「Hello Store」(こちらは `app_screen_name`)。
 
 もう一度 `?install=` で開き直しても、ファイルは 2 つのまま増えない。
 入れ直しの前に消す経路 (`storeRemoveFiles` → `unlink` → `rmdir`) が

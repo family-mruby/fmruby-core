@@ -6,11 +6,11 @@
 
 | ファイル | 役目 |
 |---|---|
-| `targets.rb` | 端末の一覧 (1 行 1 端末): 名前・種類・画面・高解像度の全画面・余白・窓の既定・日本語フォントの有無・system_conf・storage_exclude |
+| `targets.rb` | 端末の一覧 (1 行 1 端末): 名前・種類・画面・高解像度の全画面・余白・Window の既定・日本語フォントの有無・system_conf・storage_exclude |
 | `run.rb` | 入口。場面 × 端末の組を 1 本ずつ fork した子で流し、記録を `tmp/regress/out/` に書いて基準と比べる。`--update`・`--only`・`--list`・`--debug`・`-j` |
-| `scene.rb` | 台本の書き方 (`Regress.app` / `scene`) と、1 本の実行 (`Session`: start・update・run・key・click・tap・control ほか、窓の大きさの変更 (全画面の要求) を app.c と同じ手順で返す) |
-| `recorder.rb` | FmrbGfx の C の側 (gfx.c が定義する口) を記録係にしたもの。Ruby の側 (`fmrb-gfx.rb` の draw_text・set_font・text_width と FONT_METRICS) は本物を読む。GfxBlock (窓の枠) は最初の 1 回だけ中身を記録し、同じ値の描き直しは 1 行 |
-| `stand_ins.rb` | FmrbConst (端末ごと、テーマは端末の system_conf から)、Machine・Time (偽の時計)、Log (ログの行は場面が与える)、FmrbApp の C の口 (_init は .app.toml の窓、タスクの表、heap_info)、MessagePack、FmrbNet (HTTP の答えは場面が与える)、`require "/app/..."` |
+| `scene.rb` | 台本の書き方 (`Regress.app` / `scene`) と、1 本の実行 (`Session`: start・update・run・key・click・tap・control ほか、Window の大きさの変更 (全画面の要求) を app.c と同じ手順で返す) |
+| `recorder.rb` | FmrbGfx の C の側 (gfx.c が定義する口) を記録係にしたもの。Ruby の側 (`fmrb-gfx.rb` の draw_text・set_font・text_width と FONT_METRICS) は本物を読む。GfxBlock (Window の枠) は最初の 1 回だけ中身を記録し、同じ値の描き直しは 1 行 |
+| `stand_ins.rb` | FmrbConst (端末ごと、テーマは端末の system_conf から)、Machine・Time (偽の時計)、Log (ログの行は場面が与える)、FmrbApp の C の口 (_init は .app.toml の Window、タスクの表、heap_info)、MessagePack、FmrbNet (HTTP の答えは場面が与える)、`require "/app/..."` |
 | `fake_fs.rb` | 端末のファイル: git に入っている `flash/` (読むだけ) + 1 本ごとの上書き層 (書き込みと場面が置いたもの)。`/etc/system_conf.toml` は端末の config を写す |
 | `fake_asterism.rb` | Asterism の芯 (connect・poll・session の subscribe/put・each・proxy・on_join/on_leave・expose・current_call・ROS 2 の Node) の偽物と、場面が操るゲームホスト。FmrbAsterism の Link・TableClient・設定 (fmrb-asterism.rb) は本物を読む |
 | `mini_toml.rb` | FmrbToml の C の側 (tomlc99) の代わり。`fmrb-toml.rb` は本物を読む |
@@ -33,7 +33,7 @@
 
 | アプリ | 場面 (端末の組) |
 |---|---|
-| オセロの卓 | 一覧・探している・席に着いた (長い名前の「…」、案内 2 行、Jev[A])・観戦・対局中 (カーソル、置けないマスのクリック、残り秒)・投了の確認・終局・AI が考え中 (ja)。Modern は窓、Retro は全画面 (8 場面 × 2) |
+| オセロの卓 | 一覧・探している・席に着いた (長い名前の「…」、案内 2 行、Jev[A])・観戦・対局中 (カーソル、置けないマスのクリック、残り秒)・投了の確認・終局・AI が考え中 (ja)。Modern は Window、Retro は全画面 (8 場面 × 2) |
 | ボード | 一覧・卓 (絵を 2 ページで読む)・線を描く (色と太さを選んでマウスで 1 本)・人の線と取り消しが届く・消す確認 (5 × 2) |
 | walk_scroller | 始め・歩いている (歩数が届く)・最後の文字 (花火)・調整の画面 (T、センサの答えと生の値)・状態行を消す (5 × Modern) |
 | step_sensor | WiFi ok/-- × AST ok/../-- の 6 通り・IMU が無い (7 × 4 組。小さい端末は全画面) |
@@ -79,7 +79,7 @@
 ## 7. 記録を取って気づいたこと (直していない)
 
 - step_sensor の下の行 (`128 steps/min`) は 128x128 で x = -14 から描く (画面の左にはみ出す)。
-- 窓の幅を超える文字: 動画の再生の状態行 (長いファイル名)、MML の状態行、NSF・SMF プレイヤの長い曲名、PicoRabbit+ のデッキのパス (小さい画面)、midi_apu の状態行。FmrbUI の部品の長い文字も部品からはみ出す (R6 で詰めるところ)。
+- Window の幅を超える文字: 動画の再生の状態行 (長いファイル名)、MML の状態行、NSF・SMF プレイヤの長い曲名、PicoRabbit+ のデッキのパス (小さい画面)、midi_apu の状態行。FmrbUI の部品の長い文字も部品からはみ出す (R6 で詰めるところ)。
 
 ## 8. R6 で `rake regress` が受け持てる確認、受け持てない確認
 

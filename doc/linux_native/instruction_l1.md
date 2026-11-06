@@ -63,7 +63,7 @@ L2 以降 (fbdev・DRM・evdev・ALSA の受け口、機種の定義の本実装
 ### 3. 受け口の SDL 実装
 
 - 画面: `display_backend_t` の SDL 実装。合成は既存の CPU 合成
-  (display_blend_cpu.c / display_backend_cpu.cpp) を使う。窓は整数倍に拡大
+  (display_blend_cpu.c / display_backend_cpu.cpp) を使う。Window は整数倍に拡大
   (倍率は起動の引数か設定で、既定は 3)。全画面の高解像度モード
   (426x240 ⇔ 640x360) の切り替えに追従し、余白は黒で塗る。拡大・黒帯の処理は
   L2 で fbdev・DRM と共有するので、SDL 固有の所と分けて書く。
@@ -167,7 +167,7 @@ plan.md「ファイルの置き場所」の表を実装する (この段は開�
 6. ファイル: エディタで `/home` に保存したファイルと、設定の変更 (`/etc`) が
    利用者の側に書かれ、再起動後も残る。`/usr` の下への書き込みがエラーになる。
    起動・操作の前後で **`git -C fmruby-core status --short flash/` が変わらない**。
-7. GUI (WSLg) でも窓が出て操作できる (画面の目視はユーザが行うので、起動の
+7. GUI (WSLg) でも Window が出て操作できる (画面の目視はユーザが行うので、起動の
    コマンドを report に書く)。
 8. 既存を壊さない: `rake regress` が通る。wasm と sim を触った分、
    **`rake regress:screens` (sim の Retro・Modern とブラウザ版) が通る**。

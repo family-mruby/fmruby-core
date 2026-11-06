@@ -1,6 +1,6 @@
 # L8 指示書: コンポジタの試作
 
-> 計画: doc/linux_native/plan.md (「コンポジタと外の窓」、段取りの L8)。
+> 計画: doc/linux_native/plan.md (「コンポジタと外の Window」、段取りの L8)。
 > 前段の結果: report/l2n.md (協調の作りと補助スレッド)、report/l7.md (cage の
 > 入れ子を WSLg で動かした手順と罠)、report/l10.md
 
@@ -15,7 +15,7 @@
 
 Family mruby のプロセスそのものを Wayland のコンポジタにする試作。tinywl
 (wlroots 付属の最小の例) を出発点に、Family mruby の画面を 1 枚の絵として
-敷き、その上に Linux の端末の窓を 1 つ、液晶の本来の解像度で重ねる。
+敷き、その上に Linux の端末の Window を 1 つ、液晶の本来の解像度で重ねる。
 二つの動作の流れ (wlroots の `wl_event_loop` と FreeRTOS の協調のスレッド群)
 の受け渡しが成り立つことを確かめる。kernel の window manager への組み込みは
 L9 (ここではしない)。
@@ -42,17 +42,17 @@ L9 (ここではしない)。
   作りに合わせ、上の層に `#ifdef` を入れない。
 - 動作の流れ: wlroots は自分のスレッドで `wl_event_loop` を回す。受け渡しは
   2 つだけ: (a) Family mruby の合成済みの絵 (426x240) → コンポジタ、
-  (b) コンポジタ → Family mruby の入力 (と、L9 で使う窓の通知の入れ物)。
+  (b) コンポジタ → Family mruby の入力 (と、L9 で使う Window の通知の入れ物)。
   ロックの持ち方と起こし方 (eventfd など) を決め、report に書く。
 - 描画: Family mruby の絵を出力の大きさに整数倍で拡大して敷き、余りは黒
-  (L2 の共通の部品の決まりと同じ)。外の窓はその上に本来の解像度で重ねる。
+  (L2 の共通の部品の決まりと同じ)。外の Window はその上に本来の解像度で重ねる。
   置き場所は試作なので固定でよい (例: 画面の中央)。描画は wlroots の
   レンダラに任せ、`WLR_RENDERER=pixman` でも動くこと (VM のため)。
-- 入力: 既定では Family mruby が受ける。外の窓を押すとその窓にキーボードの
+- 入力: 既定では Family mruby が受ける。外の Window を押すとその Window にキーボードの
   フォーカスが移り、Family mruby の絵の上を押すと Family mruby に戻る。
   ポインタは押した所の物へ。キーボードは wlroots の xkb を通して Linux の
   キーコードで受け、L2 のキーの表で Family mruby に渡す。
-- 外の窓を起こす口: 試作なので、起動時の設定 (例 `--set compositor.autostart=foot`)
+- 外の Window を起こす口: 試作なので、起動時の設定 (例 `--set compositor.autostart=foot`)
   で 1 つ起こせればよい。子の環境の `WAYLAND_DISPLAY` は自分の口にする。
   L10 の Shell の `!` からも起こせる (`WAYLAND_DISPLAY` を引き継ぐ) と良い。
 - 確かめのために wlr-screencopy を出し、grim で合成後の画面を撮れるようにする。
@@ -85,7 +85,7 @@ L9 (ここではしない)。
 - `build/` は今 NARYAv4 (ESP32-P4) のビルド。自分で `rake clean_all` はしない。
 - sudo は使わない。コンテナのイメージは手元で作るだけで、どこにも push しない。
 - 試験で利用者のホームに書かない (HOME は一時ディレクトリ)。確かめのために
-  利用者の WSLg の画面に窓が出るのは構わないが、出しっぱなしにしない。
+  利用者の WSLg の画面に Window が出るのは構わないが、出しっぱなしにしない。
 
 ## 受け入れ条件
 
@@ -93,7 +93,7 @@ L9 (ここではしない)。
    が通る (コンテナの Ubuntu 26.04 に入れて起動する確認を含む)。arm64 の
    deb_check も今どおり通る。
 2. コンテナの中で `--machine linux_pc_wl` を WSLg に入れ子で起こすと、Family
-   mruby のデスクトップが整数倍で出て、foot の窓がその上に本来の解像度で出る
+   mruby のデスクトップが整数倍で出て、foot の Window がその上に本来の解像度で出る
    (grim の画面で示す)。
 3. foot を押してから打った文字が foot に入り、Family mruby の絵を押してから
    打った文字が Family mruby (例: エディタ) に入る。
@@ -117,5 +117,5 @@ L9 (ここではしない)。
 - 受け口と機種の定義、動作の流れの受け渡し (ロック・起こし方)
 - 入力の行き先の決め方、合成後の画面の撮り方
 - 受け入れ条件ごとの結果と、確かめたコマンド・数値
-- L9 に向けた見立て (窓の通知を kernel に入れるときの形、Xwayland)、撤回した
+- L9 に向けた見立て (Window の通知を kernel に入れるときの形、Xwayland)、撤回した
   仮説、踏んだ罠、残件

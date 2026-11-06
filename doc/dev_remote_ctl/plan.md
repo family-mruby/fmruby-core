@@ -90,7 +90,7 @@ Claude(および開発者)が実機(Tab5 / ESP32-P4)の検証を、速く・確�
 
 - Linux sim には remote desktop が無いので、**実機(Tab5)で確認**する。
 - 手順: `curl -X POST "http://<IP>/app/launch?path=/app/demo/spinel_hello.app.rb"` →
-  `fmrb_rd_snap.rb` で窓が出ることを確認 → `/app/list` で pid 確認 → `/app/kill?pid=<pid>` →
+  `fmrb_rd_snap.rb` で Window が出ることを確認 → `/app/list` で pid 確認 → `/app/kill?pid=<pid>` →
   スナップでデスクトップに戻ることを確認。
 - クラッシュ観測が要る検証は、**開始時に張った常設シリアル**を tail する(本機能では取らない)。
 

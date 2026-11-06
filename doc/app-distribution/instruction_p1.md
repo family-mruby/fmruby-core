@@ -53,7 +53,7 @@ app_min_height = 240
 app_source = "https://github.com/family-mruby/family-mruby-apps"
 ```
 
-`paint_pad.app.rb` は窓に線を引くだけの短いもので足りる。末尾の起動行
+`paint_pad.app.rb` は Window に線を引くだけの短いもので足りる。末尾の起動行
 (`begin / PaintPad.new / .start / rescue`) を忘れない。
 
 確認:
@@ -67,7 +67,7 @@ sim_up → sim_app /app/usr/paint_pad/paint_pad.app.rb → sim_screenshot
 docker logs fmruby_core | grep -i "toml\|unknown\|warn"
 ```
 
-**見るもの**: 窓が toml の大きさで開くこと、表示名が出ること、そして
+**見るもの**: Window が toml の大きさで開くこと、表示名が出ること、そして
 **ログに未知の鍵の警告が無いこと**。警告が出たらこの段の前提が崩れているので、
 道具を作る前に plan.md へ持ち帰る。
 

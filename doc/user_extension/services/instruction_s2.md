@@ -2,7 +2,7 @@
 
 対象: 実装担当セッション。作業リポジトリ: fmruby-core のみ。
 先に読むもの: plan.md、instruction_s1.md (進め方の約束はそのまま)、
-report/s1.md (実装の現状)。**S1 追補 (taskbar の窓一覧化 / focusable? /
+report/s1.md (実装の現状)。**S1 追補 (taskbar の Window 一覧化 / focusable? /
 ps 表記統一) が先に入っている前提** — 未了ならそちらを先に。
 報告は report/s2.md。
 

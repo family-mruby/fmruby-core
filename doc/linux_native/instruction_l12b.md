@@ -7,11 +7,11 @@
 
 ## ユーザの決定 (2026-10-28、変えない)
 
-- **PC では、Linux の窓にも Family mruby のアプリにも Linux の IME を使う**
+- **PC では、Linux の Window にも Family mruby のアプリにも Linux の IME を使う**
   (fcitx5 + mozc などの、漢字変換のある IME)。Family mruby のアプリでも漢字が
   打てる。ESP32 の端末は今のかな入力のまま。
 - **対象の形**: コンポジタの形 (`linux_pc_wl`) は Wayland の IME の口で、GNOME/KDE
-  の上の窓の形 (`sdl`) は SDL の IME の口で。cage の形 (`linux_pc`) と Cardputer Zero
+  の上の Window の形 (`sdl`) は SDL の IME の口で。cage の形 (`linux_pc`) と Cardputer Zero
   は今のかな入力のまま。
 - **IME が入っていない PC では、今のかな入力に戻る**。
 
@@ -21,15 +21,15 @@
 
 - コンポジタに input-method (IME が使う口) と text-input (アプリが使う口) を
   持たせる (wlroots 0.19 の input-method-v2・text-input-v3)。Linux のアプリは
-  これで IME を使う。IME の候補の窓 (input-popup) は、絵の上の層に、入力中の
+  これで IME を使う。IME の候補の Window (input-popup) は、絵の上の層に、入力中の
   場所の近くに出す (絵の矩形の中に収める)。
 - Family mruby のアプリ: フォーカスが Family mruby にあるとき、コンポジタ自身が
   text-input の側に立って IME にキーを渡し、確定した文字 (commit) を Family mruby
   に UTF-8 のキーとして送る (今のかな入力が確定したかなを送る形と同じ)。
   入力中の文字 (preedit) と候補の出し方を決める:
-  - 候補の窓は IME の窓をそのまま絵の上に出す。置く場所を決めるため、アプリが
+  - 候補の Window は IME の Window をそのまま絵の上に出す。置く場所を決めるため、アプリが
     今の入力の位置を kernel に知らせる口を足す (エディタと Shell が使う)。
-  - preedit は IME の窓の中に出す設定で足りるか、アプリの中に出すべきかを
+  - preedit は IME の Window の中に出す設定で足りるか、アプリの中に出すべきかを
     調べ、決めて report に書く。
 - 切り替えのキー (半角/全角・Ctrl+Space) は IME に渡す。メニューバーの
   かなの表示は、IME の状態が分かる範囲で合わせ、分からなければ PC では出さない
@@ -38,7 +38,7 @@
 - IME の起こし方: セッション (ログイン画面の入口) で fcitx5 があれば起こす、
   など。入っていないときは今のかな入力に戻ることをログに 1 行出す。
 
-### 2. SDL の窓の形
+### 2. SDL の Window の形
 
 - SDL の IME の口 (SDL_StartTextInput・SDL_TEXTEDITING・SDL_TEXTINPUT、
   入力の位置は SDL_SetTextInputRect) で、ibus・fcitx からの確定した文字を
@@ -65,7 +65,7 @@
   develop へのマージと push はしない。
 - `build/` は今 NARYAv4 (ESP32-P4) のビルド。自分で `rake clean_all` はしない。
 - sudo は使わない (コンテナの像に fcitx5・mozc を入れるのはよい。手元の WSL に
-  入れない)。HOME・XDG の場所は一時ディレクトリ。WSLg に窓を出しっぱなしに
+  入れない)。HOME・XDG の場所は一時ディレクトリ。WSLg に Window を出しっぱなしに
   しない。
 - kernel・エディタ・Shell の Ruby を変えたら、標準 (Spinel) と全部 mruby の両方で
   確かめる。
@@ -74,7 +74,7 @@
 
 1. コンテナのコンポジタで fcitx5 + mozc を起こし、foot に「にほんご」を打って
    変換して「日本語」が入る (`rake regress:wl` に足す)。
-2. 同じく Family mruby のエディタに「日本語」が入り、候補の窓が入力の位置の
+2. 同じく Family mruby のエディタに「日本語」が入り、候補の Window が入力の位置の
    近くの絵の中に出る (grim の画面)。
 3. IME が無いとき、エディタで今のかな入力 (ローマ字 → かな) が働く。
 4. `sdl` の機種の IME の口が、確定した文字をエディタに渡す (試せる範囲で。
@@ -97,7 +97,7 @@
 ## report (doc/linux_native/report/l12b.md) に書くこと
 
 - input-method・text-input のつなぎ方、Family mruby のアプリへの渡し方、
-  候補の窓と preedit の扱い、入力の位置の口
+  候補の Window と preedit の扱い、入力の位置の口
 - 切り替えのキーと表示、IME の起こし方と無いときの戻り方
 - SDL の形のつなぎ方
 - 受け入れ条件ごとの結果と数値、VM で人が確かめる手順 (fcitx5・mozc の入れ方)、残件

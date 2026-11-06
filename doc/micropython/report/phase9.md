@@ -17,7 +17,7 @@
 | ファイル | 中身 |
 |---|---|
 | `flash/app/game/breakout/breakout.app.py` | ゲーム本体 (600 行) |
-| `flash/app/game/breakout/breakout.app.toml` | 250x210 の窓。Retro の 320x240 に収まる |
+| `flash/app/game/breakout/breakout.app.toml` | 250x210 の Window。Retro の 320x240 に収まる |
 | `generate_sprites.rb` | バー・玉・道具の BMP を作る |
 | `generate_bgm.rb` | bgm.fmsq (4.3 秒の繰り返し) を作る |
 | `*.bmp` / `bgm.fmsq` | 生成物 |
@@ -84,9 +84,9 @@ phase5 の結論どおりの形になった。
 ので、同じアプリでも起動のたびに違う目が出る。`random.seed(n)` で
 繰り返せる形にも戻せる。**この道は json や binascii にもそのまま使える**。
 
-### 2. 窓の題字は共通層が別のフォントで描く必要がある (直した不具合)
+### 2. Window の題字は共通層が別のフォントで描く必要がある (直した不具合)
 
-アプリが `set_font(FONT_JA, 12)` を選んだ状態で窓の枠を描くと、**題字が
+アプリが `set_font(FONT_JA, 12)` を選んだ状態で Window の枠を描くと、**題字が
 11 画素の題字帯からはみ出して描画領域に食い込む**。日本語フォントの背が
 帯より高いため。Ruby 版の枠描画は現在のフォントを覚えておいて既定に戻し、
 描いてから元に戻していたが、Python 版に写すときにそこが落ちていた。

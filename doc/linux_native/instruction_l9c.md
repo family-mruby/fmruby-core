@@ -1,4 +1,4 @@
-# L9c 指示書: 親の窓に付いたダイアログ、VM での描画の自動の切り替え
+# L9c 指示書: 親の Window に付いたダイアログ、VM での描画の自動の切り替え
 
 > 計画: doc/linux_native/plan.md (「後で直すもの」の「VM で見つけたもの」)。
 > 前段の結果: report/l9a.md、report/l9b.md (7 章: VirtualBox の手順)
@@ -8,8 +8,8 @@
 - ログイン画面の入口から Family mruby が立ち、Linux の区分・Konsole・重なり・
   xeyes・Exit でログイン画面に戻る、は動いた。
 - **不具合**: KDE のアプリが出した「Saved Sessions / New Session /
-  Manage Sessions...」の窓 (親の窓に付いたダイアログと見られる) が、代役の枠
-  なしで、全部の窓 (Family mruby の Shell の窓を含む) の上に出て、Family mruby の
+  Manage Sessions...」の Window (親の Window に付いたダイアログと見られる) が、代役の枠
+  なしで、全部の Window (Family mruby の Shell の Window を含む) の上に出て、Family mruby の
   絵の外 (整数倍の余りの黒い帯) まではみ出した。
 - **VMSVGA (3D なし) では画面が黒いまま**だった。`/etc/default/family-mruby-session`
   に `WLR_RENDERER=pixman` と `WLR_NO_HARDWARE_CURSORS=1` を書くと動いた
@@ -20,19 +20,19 @@
 - GPU で描けないとき・VM の上と分かったときは、session が**自分で pixman と
   矢印のソフト描画に切り替える**。設定ファイルに書いた値はそれより勝つ
   (例: VM で 3D を入れて GLES を試したい人は `WLR_RENDERER=gles2` と書ける)。
-- 親の窓に付いたダイアログは、**親の窓の上に、Family mruby の枠つきで**出す。
+- 親の Window に付いたダイアログは、**親の Window の上に、Family mruby の枠つきで**出す。
 
 ## 作業の内容
 
-### 1. ダイアログ (親を持つ窓)
+### 1. ダイアログ (親を持つ Window)
 
-- まず再現する: コンテナの中で、親を持つ xdg の窓を出すアプリ (Qt・GTK の
+- まず再現する: コンテナの中で、親を持つ xdg の Window を出すアプリ (Qt・GTK の
   ファイルを開く画面、`kdialog`・`zenity`、または試験用の小さなクライアント) で、
   今の扱い (どの層に入るか、代役が付くか、どこに置かれるか) を確かめ、report に
   原因を書く。xdg_popup と取り違えているのか、親つきの toplevel を代役の対象から
   外しているのか、置き場所が渡らないのか。
 - 親を持つ toplevel (`xdg_toplevel.set_parent`、X11 の `WM_TRANSIENT_FOR`) にも
-  代役を付け、普通の Linux の窓と同じく絵の下に描き、穴で見せる。
+  代役を付け、普通の Linux の Window と同じく絵の下に描き、穴で見せる。
   - 置き場所: 親の代役の中身の真ん中 (Family mruby の画面に収まるようずらす)。
   - 前後: 出たとき前に出し、フォーカスを渡す。親を押して前に出したときに
     ダイアログが親の後ろに隠れない形にする (代役の並べ方で済むなら kernel は
@@ -73,17 +73,17 @@
   (規約は fmruby-core/CLAUDE.md、Co-Authored-By、`git add` は明示)。
   develop へのマージと push はしない。
 - `build/` は今 NARYAv4 (ESP32-P4) のビルド。自分で `rake clean_all` はしない。
-- sudo は使わない。HOME・XDG_DATA_HOME は一時ディレクトリ。WSLg に窓を出し
+- sudo は使わない。HOME・XDG_DATA_HOME は一時ディレクトリ。WSLg に Window を出し
   っぱなしにしない。開いたままのブラウザ (wasm の道具) は閉じない。
 
 ## 受け入れ条件 (`rake regress:wl` の一式を広げて自動で確かめる)
 
-1. 親を持つ xdg の窓 (と、入れられれば X11 の transient の窓) が、代役の枠つきで
+1. 親を持つ xdg の Window (と、入れられれば X11 の transient の Window) が、代役の枠つきで
    親の上の真ん中に出て、キーとポインタが届き、ボタンで閉じられる。合成後の
    画面で、絵の矩形の外にはみ出していない。
-2. ダイアログが出ている間に Family mruby の窓を前に出すと、ダイアログはその
+2. ダイアログが出ている間に Family mruby の Window を前に出すと、ダイアログはその
    後ろに隠れる (一番上に残らない)。親を押して前に出すとダイアログも見える。
-3. メニュー (xdg_popup) を窓の端・画面の端で開いても、絵の矩形の外に出ない。
+3. メニュー (xdg_popup) を Window の端・画面の端で開いても、絵の矩形の外に出ない。
 4. VM の判定が「VM」を返すと session が pixman と矢印のソフト描画で起き、
    理由がログに出る。設定ファイルに `WLR_RENDERER=gles2` があればそれが勝つ。
    判定が「VM でない」なら今と同じ。

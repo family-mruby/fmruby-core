@@ -52,8 +52,8 @@ mrblib のコメントは、なぜそう書いたかが書いてあるところ�
 52 メソッド中 27 に足して、既存と合わせて 32。足したのは次の系統。
 
 - 出ない・消える: `present` (描画は present まで出ない、スプライトの合成も
-  ここ)、`clear` (窓のアプリでは枠まで消える。`clear_user_area` を使う)
-- 座標と大きさ: `canvas_width` (窓のアプリが描いてよいのは `@user_area_*`)
+  ここ)、`clear` (Window のアプリでは枠まで消える。`clear_user_area` を使う)
+- 座標と大きさ: `canvas_width` (Window のアプリが描いてよいのは `@user_area_*`)
 - 測る: `text_width` `font_height` `set_text_size` (いまの字で測る)
 - 画像: `create_image` `load_image` `draw_image` `delete_image` `draw_tile`
   (PNG と BMP の入口の違い、先に `sync_file`、位置はキーワード)
@@ -103,5 +103,5 @@ F1 のヘルプは文章を折り返して出す。散文はどこで折れて�
 
 ## 残り
 
-指示書の順番でいうと次は FmrbApp (73 中 2)。ライフサイクルと窓まわり。
+指示書の順番でいうと次は FmrbApp (73 中 2)。ライフサイクルと Window まわり。
 FmrbAudio / スプライト / タイルはその次。

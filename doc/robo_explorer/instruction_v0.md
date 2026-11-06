@@ -129,7 +129,7 @@ default_window_pos_y = 40
 launcher_visible = true
 ```
 
-窓サイズ・位置は Modern (426x240) で 2 窓が重ならない値から出発。
+Window サイズ・位置は Modern (426x240) で 2 つの Window が重ならない値から出発。
 Retro (320x240) では重なってよい (決定済み)。
 
 ## 5. 世界側の実装メモ
@@ -162,7 +162,7 @@ ruby tools/fmrb_input.rb click 20 5 sleep 500 click 15 17      # メニュー→
 python3 tools/fmrb_screenshot.py s1.png                        # アイコン位置確認
 ruby tools/fmrb_input.rb dclick <x> <y>                        # 起動
 
-# 操縦: pilot の窓をクリックしてフォーカス → 矢印キー注入
+# 操縦: pilot の Window をクリックしてフォーカス → 矢印キー注入
 ruby tools/fmrb_input.rb click <pilot_x> <pilot_y> sleep 300 key up
 python3 tools/fmrb_screenshot.py s2.png
 
@@ -174,7 +174,7 @@ docker compose down
 
 1. 両アプリが起動し、pilot に「待機中」ではなく state の中身 (座標・向き・
    前方) が日本語で出る (= state の周期 publish が効いている)。
-2. ↑ で 1 マス進み、両窓の表示が一致して更新される。
+2. ↑ で 1 マス進み、両方の Window の表示が一致して更新される。
 3. 壁に向かって ↑ → pilot に「前は壁」等の失敗表示 (= result 経路)。
 4. 鍵を拾う → 所持数が増える。鍵なしで扉 → locked。鍵ありで扉 → 開く。
 5. ゴール到達で done + 手数表示。以後の cmd は done で断られる。R で再開。

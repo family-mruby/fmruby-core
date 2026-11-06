@@ -74,7 +74,7 @@
   `/home/asterism_node.txt`。接続先は `/home/zenoh_echo.txt` と同じものを読んでよい。
 - **公開するもの**:
   - `apu`: MML を鳴らす `play(mml)` と `stop`。
-  - `screen`: 窓に文字を出す `say(text)`。
+  - `screen`: Window に文字を出す `say(text)`。
   - `info`: 名前・空きメモリを返す `status`。
 - **画面**: 生きているノードの一覧を出す。キーを押すと、相手の `screen.say` と `apu.play` を呼び、戻り値・例外・時間を表示する。
   - 自動で試す用に、一定間隔で相手の `info.status` を呼ぶ。

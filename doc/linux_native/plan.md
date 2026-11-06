@@ -1,6 +1,6 @@
 # Linux 機で動く Family mruby (Cardputer Zero・HDMI・小型 PC のコンポジタ)
 
-> 状態: 進行中 | 更新: 2026-10-30 | L16 (行数の多い Linux のファイルを節ごとに分ける、動きは変えない) 検収済 (46310f17)。L15b (L15 の残件: 角を空ける・MicroPython の印・アイコンの一覧の hidden) 検収済 (2d38a5f5)。L15 (VM の確認で見つけたものの直し: 既定のアプリ・窓の切り抜きの補強・残る記録・リサイズの三角・Flappy・Linux のショートカット) 検収済 (b63175b0)。L14 (PC の Wi-Fi・Bluetooth・音量・通知・画面の共有・落ちたときの起こし直し) 完了 (1999c103)。L13 (PC の最大化・Super + 矢印・画面ロック。全画面・鏡・明るさはユーザ判断でやめた) 完了 (8558f302)。L12b (PC は Family mruby のアプリにも Linux の IME、コンポジタは input-method-v2・text-input-v3、sdl は SDL の IME、無ければ今のかな入力) 完了 (7b60baa7)。L12a (全端末に共通のクリップボード、PC は Wayland の選択と SDL、ブラウザ版はブラウザのクリップボードとつなぐ) 完了 (326ab3b4)。L11 (知らない種類は Linux の既定のアプリ、右クリックの「Linux のアプリで開く」、関連付けの表に `linux`・`linux:<id>`) 完了 (b3e0d804)。L7d (File Manager と /mnt の小さな直し) 完了 (9713c082)。L9e (PC の全画面: エディタは画面の大きさ、`fullscreen_hires = true` のアプリは 640x360 を整数倍で真ん中に、コンポジタの小さな直し) 完了 (4842976f)。 L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 でユーザ確認済 (2026-10-27: ログイン画面の入口から起動、Linux の区分、Konsole、重なり、xeyes、Exit でログイン画面へ。VMSVGA では GLES で画面が黒く、設定ファイルに pixman と矢印のソフト描画を書いて動いた。親の窓に付いたダイアログが枠なしで一番上に出て絵の外へはみ出す不具合あり)。L9c (親を持つダイアログを枠つきで親の上の真ん中に、メニューを絵の矩形の中に収める、VM と分かれば session が自分で pixman と矢印のソフト描画に切り替える) も完了: VM で見た枠なしの窓はダイアログでなくメニューで、制約の箱が無かったのが原因。L9d (コンポジタでは Family mruby の画面を「出力 ÷ 2」にして出力を埋める (1280x800 なら 640x400、縦長と小さい出力は 426x240)、全画面のアプリは 426x240 を最大の整数倍で真ん中に、Linux の窓の四隅を透かす、「Linux」の区分はペンギン・共通の印は窓の絵、keyboard_layout = "auto" で Linux の配列に合わせる) も完了: 高解像度の全画面 (640x360) を広い画面で 2 倍で出すかはユーザの判断待ち (今は 426x240 で出る)。続けて L9e (PC の高解像度の全画面はデスクトップと同じ解像度の全画面に、コンポジタの小さな直し)・L7d (File Manager と /mnt の小さな直し、特殊なファイルは出すが開かない)・L11・L12a・L12b を順に進める (2026-10-28 ユーザ決定、実装中)。その後 L11 (Linux のファイルを Linux のアプリで開く)。その先に、毎日使える環境 (Omarchy と並ぶ所) を目標に L12 (日本語入力とコピーと貼り付け、ESP32 の端末との共存を相談してから着手)・L13 (窓と画面)・L14 (設定と丈夫さ) を置く (2026-10-27 ユーザ)。L9a (Linux の窓を代役のアプリで Family mruby の窓として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
+> 状態: 進行中 | 更新: 2026-10-30 | L16 (行数の多い Linux のファイルを節ごとに分ける、動きは変えない) 検収済 (46310f17)。L15b (L15 の残件: 角を空ける・MicroPython の印・アイコンの一覧の hidden) 検収済 (2d38a5f5)。L15 (VM の確認で見つけたものの直し: 既定のアプリ・Window の切り抜きの補強・残る記録・リサイズの三角・Flappy・Linux のショートカット) 検収済 (b63175b0)。L14 (PC の Wi-Fi・Bluetooth・音量・通知・画面の共有・落ちたときの起こし直し) 完了 (1999c103)。L13 (PC の最大化・Super + 矢印・画面ロック。全画面・鏡・明るさはユーザ判断でやめた) 完了 (8558f302)。L12b (PC は Family mruby のアプリにも Linux の IME、コンポジタは input-method-v2・text-input-v3、sdl は SDL の IME、無ければ今のかな入力) 完了 (7b60baa7)。L12a (全端末に共通のクリップボード、PC は Wayland の選択と SDL、ブラウザ版はブラウザのクリップボードとつなぐ) 完了 (326ab3b4)。L11 (知らない種類は Linux の既定のアプリ、右クリックの「Linux のアプリで開く」、関連付けの表に `linux`・`linux:<id>`) 完了 (b3e0d804)。L7d (File Manager と /mnt の小さな直し) 完了 (9713c082)。L9e (PC の全画面: エディタは画面の大きさ、`fullscreen_hires = true` のアプリは 640x360 を整数倍で真ん中に、コンポジタの小さな直し) 完了 (4842976f)。 L1・L2・L2n・L3a・L3c・L4・L5a・L6・L7・L7b・L7c・L10・L8 完了 (x86_64・SDL で起動、hosted/ に wasm と共有の土台、ファイルの振り分け、機種の定義と fbdev・DRM・evdev・ALSA、MCP の native_* と回帰の道具、ネットワークと Zenoh、.deb とパッケージ版の決まり、320x170 のキーボード専用のデスクトップ、OS のサービス、PC のログイン画面の入口 (cage) と /mnt の Linux のファイル)。L7 の VM (Kubuntu) での確認はユーザ。次は実機が来たら L0・L3b・L5b、L9b (ランチャーの「Linux」の区分、一覧からの起動、Xwayland の遅延起動、ログイン画面の入口をコンポジタに) も完了: VirtualBox の Kubuntu 26.04 でユーザ確認済 (2026-10-27: ログイン画面の入口から起動、Linux の区分、Konsole、重なり、xeyes、Exit でログイン画面へ。VMSVGA では GLES で画面が黒く、設定ファイルに pixman と矢印のソフト描画を書いて動いた。親の Window に付いたダイアログが枠なしで一番上に出て絵の外へはみ出す不具合あり)。L9c (親を持つダイアログを枠つきで親の上の真ん中に、メニューを絵の矩形の中に収める、VM と分かれば session が自分で pixman と矢印のソフト描画に切り替える) も完了: VM で見た枠なしの Window はダイアログでなくメニューで、制約の箱が無かったのが原因。L9d (コンポジタでは Family mruby の画面を「出力 ÷ 2」にして出力を埋める (1280x800 なら 640x400、縦長と小さい出力は 426x240)、全画面のアプリは 426x240 を最大の整数倍で真ん中に、Linux の Window の四隅を透かす、「Linux」の区分はペンギン・共通の印は Window の絵、keyboard_layout = "auto" で Linux の配列に合わせる) も完了: 高解像度の全画面 (640x360) を広い画面で 2 倍で出すかはユーザの判断待ち (今は 426x240 で出る)。続けて L9e (PC の高解像度の全画面はデスクトップと同じ解像度の全画面に、コンポジタの小さな直し)・L7d (File Manager と /mnt の小さな直し、特殊なファイルは出すが開かない)・L11・L12a・L12b を順に進める (2026-10-28 ユーザ決定、実装中)。その後 L11 (Linux のファイルを Linux のアプリで開く)。その先に、毎日使える環境 (Omarchy と並ぶ所) を目標に L12 (日本語入力とコピーと貼り付け、ESP32 の端末との共存を相談してから着手)・L13 (Window と画面)・L14 (設定と丈夫さ) を置く (2026-10-27 ユーザ)。L9a (Linux の Window を代役のアプリで Family mruby の Window として扱う、自由に前後、終えるときは閉じるよう頼んでから止める、`rake regress:wl` を regress:full に) も完了。L8 (コンポジタの試作、linux_pc_wl) も完了: GPU の描画 (GLES) は WSL2 で試せず、GPU のある Linux 機で確認が要る。L10 (Shell の `!` で Linux のコマンド、pty の口は fmrb_platform_sys に) も完了。L7b (右上の電源ボタン、確認のダイアログは Enter・Esc で答える) は NARYA v4 の実機でも確認済 (HDMI の印の見た目もユーザ確認済、Retro の NTSC は未確認)。L7c (File Manager の削除の前に確認、mouse はダイアログ、keys は下の 1 行) も完了。Linux の上で動く Family mruby を 3 つの形で作る: (1) Cardputer Zero 単体 (320x170・キーボードだけ)、(2) Cardputer Zero の HDMI 出力 (USB のマウス・キーボード)、(3) Linux PC のコンポジタ (GPD の UMPC)。(1)(2) は公式の App Store で配る。1 つの土台と受け口の組み合わせで作り分け、形ごとの独自開発をしない
 
 ## 目的
 
@@ -9,7 +9,7 @@
 - 自作のキーボードやケースから始めなくても、市販の Linux の小型ノート PC
   (GPD の UMPC) を Family mruby の Cyberdeck にできるようにする。
   ログイン画面で GNOME と並べて選べ、Linux のアプリ (ブラウザ・端末) も
-  Family mruby の窓として抱える。
+  Family mruby の Window として抱える。
 - 3 つの形を別々に作らない。**土台は 1 つにし、違いは受け口の実装の
   選び方と「機種の定義」で表す**。
 
@@ -22,7 +22,7 @@
 | 画面の形 | **320x170 (新設)** | Modern 426x240 ×3 (全画面の高解像度は 640x360 ×2) | Modern。液晶に合わせて整数倍 |
 | 入力 | 本体のキーボード (evdev) | USB のマウス・キーボード (evdev) + 本体のキーボード | 内蔵のキーボード・タッチパッド (wlroots の libinput) |
 | 音 | ALSA (ES8389) | ALSA (ES8389 または HDMI) | PipeWire / PulseAudio |
-| デスクトップ | **キーボード専用 (新設)** | Modern (今のデスクトップ) | Modern + 外の窓 (Linux のアプリ) |
+| デスクトップ | **キーボード専用 (新設)** | Modern (今のデスクトップ) | Modern + 外の Window (Linux のアプリ) |
 | 起動の入口 | APPLaunch の `.desktop` | APPLaunch の `.desktop` (別項目) | ログイン画面の項目 (`wayland-sessions`) |
 | 配布 | App Store (arm64 `.deb`) | (1) と同じパッケージ | 自分で入れる (amd64 `.deb`) |
 
@@ -61,7 +61,7 @@
 | キーの変換 | 既存 (fmrb_keymap.c、HID の Usage ID が基準) | **Linux のキーコード → HID** の表を 1 枚。evdev も wlroots も Linux のキーコードを渡すので共通。Cardputer の Sym・Fn の層は追加の表 |
 | 画面の形 | 既存の経路 (全画面の高解像度モードの実行時の大きさの切り替え) | **320x170** を足す。基本の画面の大きさを機種の定義から決める |
 | OS のサービス | **新設** `fmrb_platform_sys` | 電源 (終了・電源断・休止)・電池・Wi-Fi・音量・画面の明るさ。実装は none (sim・wasm・既存の端末)、**linux** (sysfs と logind・NetworkManager) |
-| 外の窓 | **新設** | (3) だけ。コンポジタが Linux のアプリの窓を kernel に知らせる (後述) |
+| 外の Window | **新設** | (3) だけ。コンポジタが Linux のアプリの Window を kernel に知らせる (後述) |
 | デスクトップ | 既存 (system_desktop、Ruby) | **mouse (今の Modern)** と **keys (キーボード専用)** の 2 種類に作り分ける |
 
 ### 置き場所 (L1 で確定)
@@ -131,7 +131,7 @@
 - 画面の大きさ: 426x240 / 640x360 を前提にした箇所 (拡大の倍率の決め方など) を、
   機種の定義から来る値で決める形に直す。
 - デスクトップ: system_desktop を、共通部分と作り分ける部分 (画面の枠・
-  アプリの選び方・窓の方針) に分ける。今の Modern・Retro のデスクトップも
+  アプリの選び方・Window の方針) に分ける。今の Modern・Retro のデスクトップも
   新しい形の上で動かす。
 - OS のサービス: 今デスクトップが端末の機能 (Wi-Fi・BLE・音量) を直接呼んでいる
   所を、`fmrb_platform_sys` 経由に揃える。
@@ -201,8 +201,8 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   画面の枠に依存しない部分を共通にする: i18n、設定とダイアログ類、
   ファイル選択、ショートカット、テーマ、起動時のアプリ情報の読み取り。
 - 作り分けるのは 3 つ: 画面の枠 (メニューバー・アイコン・タスクバーと、
-  keys の最小限の帯)、アプリを選ぶ画面 (mouse はランチャーの窓、keys は
-  全画面のメニュー)、窓の扱いの方針 (mouse は窓、keys は常に全画面)。
+  keys の最小限の帯)、アプリを選ぶ画面 (mouse はランチャーの Window、keys は
+  全画面のメニュー)、Window の扱いの方針 (mouse は Window、keys は常に全画面)。
 - keys では、アプリは常に全画面で起動する。マウスは使わない (使えても前提にしない)。
 - 画面の形 (2026-10-26 ユーザ決定): **上端に細い帯 (約 10px) を常に出し**、
   今のアプリの名前・かなの状態・時計・電池を表示する。残りの 320x160 を
@@ -234,7 +234,7 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   アプリがデスクトップも止める」形で、帯を出し続ける keys とは前提が違うため。
 - keys では別の小さな状態 (`fmrb_kernel/keys_desktop.rb`) を持つ。デスクトップが
   起動時に `desktop_keys` (アプリを置く四角) を知らせて初めて有効になり、
-  窓を持ったアプリを帯の下の全画面に置いて前に出し、前にいたアプリを
+  Window を持ったアプリを帯の下の全画面に置いて前に出し、前にいたアプリを
   suspend する。切り替えの一覧は動いているアプリとメニューを並べ、
   前に出す・終えるを kernel に頼む。mouse で全画面のアプリの一覧を使う形は
   今は作らない。
@@ -283,7 +283,7 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   デスクトップはメニューの最後のまま (L7b)。
   キーでは F10 で左上のメニューを開き、左右の矢印で電源のメニューへ移る。
 
-### コンポジタと外の窓 ((3) だけ)
+### コンポジタと外の Window ((3) だけ)
 
 - wlroots を土台にする。出発点は付属の最小の例 (tinywl)。
 - 版 (2026-10-27 ユーザ決定): Kubuntu 26.04 の wlroots 0.19 に合わせる。amd64 の
@@ -291,37 +291,37 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   使わない) は trixie のまま。
 - L8 で確定した作り: wlroots は native の主スレッド (FreeRTOS の外) で回す。
   受け渡しは絵 (今の native_frame に eventfd の起こしを足す) と入力 (SDL と同じ
-  錠の無い環) の 2 つ。窓の通知の入れ物と入力の行き先の決め方は
+  錠の無い環) の 2 つ。Window の通知の入れ物と入力の行き先の決め方は
   `native/wlr/comp_route` (wlroots 無しで試験できる)。手元の Ubuntu 22.04 の
   ビルドは wlroots 無しのまま、コンポジタは Ubuntu 26.04 のコンテナで作り WSLg
   に入れ子で動かす (`rake native:wl` / `native:wl_run` / `native:wl_check`)。
 - **解像度を混ぜて描く**: Family mruby の画面 (426x240 の合成済みの絵) を
-  整数倍に拡大して敷き、Linux のアプリの窓は液晶の本来の解像度のまま重ねる。
-  窓の位置と大きさは、Family mruby の座標を倍率で写した場所に合わせる。
-  窓枠・メニューバーは Family mruby の粗い画素、中身は精細になる。
-- **外の窓は代役のアプリで表す (L9a)**: コンポジタは Linux のアプリの窓が
+  整数倍に拡大して敷き、Linux のアプリの Window は液晶の本来の解像度のまま重ねる。
+  Window の位置と大きさは、Family mruby の座標を倍率で写した場所に合わせる。
+  Window の枠・メニューバーは Family mruby の粗い画素、中身は精細になる。
+- **外の Window は代役のアプリで表す (L9a)**: コンポジタは Linux のアプリの Window が
   できた・消えた・大きさ・題を、ネイティブ版だけにあるブリッジのタスクへ送る。
-  ブリッジは Linux の窓 1 つに、代役の小さなアプリ (linux_window.app.rb) を
+  ブリッジは Linux の Window 1 つに、代役の小さなアプリ (linux_window.app.rb) を
   1 つ起動する。代役は Family mruby の題の帯・枠・閉じるボタン・つまみを描き、
   中身を透過の色 0x01 で塗る。window manager と input_router は代役を普通の
-  窓として動かし、前後とフォーカスを決める (kernel の Ruby は変えない)。
+  Window として動かし、前後とフォーカスを決める (kernel の Ruby は変えない)。
   ブリッジは代役の中身の矩形・前後・キーボードの持ち主をコンポジタへ渡す。
-- 合成: コンポジタは Linux の窓を絵の下に描き、代役の中身の矩形の中で 0x01 の
-  まま残った画素だけを透明にする。Family mruby の窓・メニュー・ダイアログが
+- 合成: コンポジタは Linux の Window を絵の下に描き、代役の中身の矩形の中で 0x01 の
+  まま残った画素だけを透明にする。Family mruby の Window・メニュー・ダイアログが
   重なればそこは透けないので、前後関係は絵が決める。ポップアップは絵の上。
-- 入力: 前にある窓が代役なら、キーはコンポジタから Linux の窓へ直接送る
+- 入力: 前にある Window が代役なら、キーはコンポジタから Linux の Window へ直接送る
   (Ctrl+Tab と Ctrl+, はいつも Family mruby)。ポインタは穴の上なら出力の
-  画素の細かさで Linux の窓へ。キーの配列は keyboard_layout に追従する。
-  題の帯の操作・閉じるボタン (xdg の close を頼む) は Family mruby の窓と同じ。
+  画素の細かさで Linux の Window へ。キーの配列は keyboard_layout に追従する。
+  題の帯の操作・閉じるボタン (xdg の close を頼む) は Family mruby の Window と同じ。
   最大化・全画面は今は断る。
 - 動作の流れ: wlroots の処理の流れ (`wl_event_loop`) と FreeRTOS の協調の
-  スレッド群は別々に走らせ、受け渡しの口を 2 つ (画面の絵・窓の通知と入力)
+  スレッド群は別々に走らせ、受け渡しの口を 2 つ (画面の絵・Window の通知と入力)
   だけにする。
-- 決定 (2026-10-27 ユーザ): Family mruby の窓と Linux の窓は自由に前後する
-  (Linux の窓を下に描き、Family mruby が見えるべき所を透過で空ける)。Family
+- 決定 (2026-10-27 ユーザ): Family mruby の Window と Linux の Window は自由に前後する
+  (Linux の Window を下に描き、Family mruby が見えるべき所を透過で空ける)。Family
   mruby を終えるときは、起動した Linux のアプリも閉じるよう頼み、数秒で
   終わらなければ止める。コンポジタの確認の一式は `rake regress:full` に載せる。
-- L9 は L9a (窓の組み込み) と L9b (Linux のアプリの起動の口、Xwayland、
+- L9 は L9a (Window の組み込み) と L9b (Linux のアプリの起動の口、Xwayland、
   ログイン画面の入口の切り替え) に分ける。
 - 決定 (2026-10-27 ユーザ、L9b): Linux のアプリはランチャーの「Linux」の
   区分にまとめて並べる (Family mruby のアプリと混ぜない。区分を押すと一覧が
@@ -336,15 +336,15 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   入力メソッド (input-method-v2、L12b) を、global の出し分け
   (`wl_display_set_global_filter`) なしで全クライアントに出している。
   - どの Wayland のアプリも、確認なしで画面全体を写せる。
-  - どのアプリも、フォーカスのある窓へキーを打ち込める。
+  - どのアプリも、フォーカスのある Window へキーを打ち込める。
   - 入力メソッドの席は 1 つで、先に fcitx5 が取っていれば後の者は断られるが、
-    fcitx5 が動いていなければ空いている (取った者は他の窓の打鍵を受け取れる)。
-  - 他の窓の一覧・操作 (foreign-toplevel) とクリップボードの横読み
+    fcitx5 が動いていなければ空いている (取った者は他の Window の打鍵を受け取れる)。
+  - 他の Window の一覧・操作 (foreign-toplevel) とクリップボードの横読み
     (data-control) の口は出していない。
-  - まとめると、画面と打鍵の送り込みは X11 と同じ水準、盗み見と他の窓の操作は
+  - まとめると、画面と打鍵の送り込みは X11 と同じ水準、盗み見と他の Window の操作は
     Wayland の守りが効いている。外向けに「Wayland だから安全」とは言わない。
   - 締めるときは、コンポジタが自分で起動した相手 (portal、fcitx5、swaylock) に
-    だけ出す。Family mruby の中の権限 (doc/window_arranger の窓を並べる
+    だけ出す。Family mruby の中の権限 (doc/window_arranger の Window を並べる
     アプリ、打鍵の自動操作) を作るときは、この出し分けと考え方をそろえる。
 
 ### Linux のプログラムとの連携
@@ -354,22 +354,22 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
 
 **1. Linux のアプリを起動する ((3)、L9)**
 - kernel に「Linux のプログラムを起動する」口を足す。起動時の環境変数
-  `WAYLAND_DISPLAY` をコンポジタ自身の口にするので、起動したアプリの窓は
-  Family mruby の中に外の窓として出る。kernel は起動したプロセスを覚え、
-  窓とプロセスを結び付ける。
+  `WAYLAND_DISPLAY` をコンポジタ自身の口にするので、起動したアプリの Window は
+  Family mruby の中に外の Window として出る。kernel は起動したプロセスを覚え、
+  Window とプロセスを結び付ける。
 - Linux のインストール済みのアプリの一覧 (XDG の `.desktop`、
   `/usr/share/applications/` と利用者の側) を読み、Family mruby のランチャーと
   メニューに「Linux のアプリ」として並べる。デスクトップのアイコンにも置ける。
-- 窓の閉じるボタンは、Wayland の決まった手順でアプリに閉じるよう頼む。
-  Family mruby を終えるときは、全部の窓に閉じるよう頼み、5 秒待ち、
+- Window の閉じるボタンは、Wayland の決まった手順でアプリに閉じるよう頼む。
+  Family mruby を終えるときは、全部の Window に閉じるよう頼み、5 秒待ち、
   残ったものを止める (L9a)。
-- GNOME の上の SDL の窓で動かす途中段階でも、起動の口は使える (窓は
-  Family mruby の外、GNOME の普通の窓として出る)。cage の全画面の段階では
+- GNOME の上の SDL の Window で動かす途中段階でも、起動の口は使える (Window は
+  Family mruby の外、GNOME の普通の Window として出る)。cage の全画面の段階では
   見えないので使わない。
 
 **2. Shell から Linux のコマンドを使う (全部の形、L10)**
 - Family mruby の Shell に、Linux の端末 (pty) につないだ実行の口を足す。
-  `ls` や `git` の出力を Shell の中に出し、キー入力を渡す。窓を抱える必要が
+  `ls` や `git` の出力を Shell の中に出し、キー入力を渡す。Window を抱える必要が
   ないので、コンポジタより前にできる。Cardputer も Linux 機なので (1)(2) でも
   使える。
 - 決定 (2026-10-27 ユーザ): 頭に `!` を付けた行を Linux で実行し (`!git status`)、
@@ -446,7 +446,7 @@ Linux の上では**一番上の階層の名前ごとに**実体を振り分け�
   `/usr/share/family-mruby/root/` に入れ、利用者のファイルは上の振り分けで
   利用者の側に置く (パッケージの更新で消さない)。
 - (3): amd64 の `.deb`。`/usr/share/wayland-sessions/` にログイン画面の項目を置く。
-  開発中は SDL の窓で起動する形も残す。
+  開発中は SDL の Window で起動する形も残す。
 - (3) の入口 (L7 で確定): ログイン画面の項目は `family-mruby-session` を起動し、
   それが cage の中で `--machine linux_pc` (SDL の全画面、整数倍で余りは黒、
   電源は logind の 3 つと終了) を動かす。`cage` は Recommends。縦向きの液晶は
@@ -462,22 +462,22 @@ Linux の上では**一番上の階層の名前ごとに**実体を振り分け�
 - 機種の定義、320x170 の画面の形、キーボード専用のデスクトップ、全画面アプリの切り替え
 - OS のサービスの linux 実装
 - (1)(2) の `.deb` と App Store への登録の準備 (登録そのものはユーザの許可で行う)
-- (3) のログイン画面の項目とコンポジタ (外の窓)
+- (3) のログイン画面の項目とコンポジタ (外の Window)
 - Linux のプログラムとの連携: Linux のアプリの起動、Shell から Linux のコマンド、
   Linux のファイルを Linux のアプリで開く
 
 対象外 (今回はやらない):
 - Retro (2 チップ構成) の Linux ネイティブ版。sim はそのまま残す
-- (1)(2) で Linux のアプリを窓として抱えること
+- (1)(2) で Linux のアプリを Window として抱えること
 - 端数の倍率での拡大 (整数倍と黒帯だけ)
-- X11 の窓の管理役として動くこと (Wayland のコンポジタだけ)
+- X11 の Window の管理役として動くこと (Wayland のコンポジタだけ)
 - 320x170 に未対応のアプリを縮小・スクロールで出すこと
 - Family mruby 自身の描画を GPU で行うこと (合成は CPU、GPU はコンポジタの最終段だけ)
 
 ## 開発環境
 
 - **WSL2 で大半を進める**。L1・L2・L4 (320x170 とキーボード専用のデスクトップは
-  SDL の窓を 320x170 にして作る)、aarch64 のクロスビルドと qemu-user での起動の確認、
+  SDL の Window を 320x170 にして作る)、aarch64 のクロスビルドと qemu-user での起動の確認、
   L8・L9 (wlroots を WSLg の中で入れ子に動かす `WLR_BACKENDS=wayland`) は実機なしでできる。
 - WSL2 でできないこと: DRM/KMS で画面を握る、libinput で実際の入力を読む、
   ログイン画面・logind・電源・電池・明るさ・NetworkManager。これらは実機で確かめる。
@@ -513,11 +513,11 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 | L7b | **電源ボタン**: mouse のデスクトップのメニューバーの右上に電源ボタンを置き、電源の項目をそのサブメニューに移す (全端末) | 全部 |
 | L7c | **削除の確認**: File Manager の削除の前に確認を出す (mouse・keys とも、Enter = はい、Esc = いいえ) | 全部 |
 | L8 | **コンポジタの試作**: tinywl に Family mruby の画面を 1 枚の絵として敷き、その上に端末を 1 つ出す。二つの動作の流れの受け渡しを確かめる | (3) |
-| L9 | **コンポジタの本実装**: L9a (完了) は外の窓を代役のアプリで window manager と input router に扱わせ、解像度を混ぜて合成する。L9b (完了) は Xwayland、Linux のアプリの起動 (起動の口、XDG の `.desktop` の一覧をランチャーに並べる)、ログイン画面の入口を cage からこのコンポジタへ。L9e (完了) は PC の全画面 (エディタは画面の大きさ、`.app.toml` の `fullscreen_hires = true` のアプリは 640x360 を最大の整数倍で真ん中に) と、ダイアログへのキー・X11 のメニューを閉じる・止まった矢印の下の穴・切り替えの 1 枚・終える前の制御の口・Breeze の SVG のアイコン・Qt の Plasma の見た目 | (3) |
+| L9 | **コンポジタの本実装**: L9a (完了) は外の Window を代役のアプリで window manager と input router に扱わせ、解像度を混ぜて合成する。L9b (完了) は Xwayland、Linux のアプリの起動 (起動の口、XDG の `.desktop` の一覧をランチャーに並べる)、ログイン画面の入口を cage からこのコンポジタへ。L9e (完了) は PC の全画面 (エディタは画面の大きさ、`.app.toml` の `fullscreen_hires = true` のアプリは 640x360 を最大の整数倍で真ん中に) と、ダイアログへのキー・X11 のメニューを閉じる・止まった矢印の下の穴・切り替えの 1 枚・終える前の制御の口・Breeze の SVG のアイコン・Qt の Plasma の見た目 | (3) |
 | L10 | **Shell から Linux のコマンド**: pty につないだ実行の口、出力と入力の受け渡し、色の基本。L1 の後ならいつでもでき、L9 を待たない (L6 の後を目安) | 全部 |
 | L11 | 決定 (2026-10-28 ユーザ): Family mruby が開ける種類は今どおり、それ以外は Linux の既定のアプリ、右クリックに「Linux のアプリで開く」。**Linux のファイルを Linux のアプリで開く**: L7 のファイルを見せる仕組みと L9 の起動の口を使い、`associations.toml` に Linux のアプリの行き先を足す。完了 (b3e0d804、報告 report/l11.md) | (3) |
-| L12 | 決定 (2026-10-28 ユーザ): L12a はクリップボード (kernel に全端末共通の文字のクリップボード、端末は PSRAM で内蔵 RAM +0、エディタと Shell が使う、PC は Linux の、ブラウザ版はブラウザのクリップボードとつなぐ)。L12b は日本語入力 (PC はコンポジタの形と SDL の窓の形で Family mruby のアプリにも Linux の IME を使い漢字を打てる、IME が無ければ今のかな入力、cage の形・Cardputer・端末は今のかな入力)。**毎日使う環境 (1) 日本語入力とコピーと貼り付け**: Linux の窓へのかな漢字の入力 (text-input・input-method の口、または fcitx などとつなぐ)、Family mruby と Linux のアプリの間・Linux のアプリ同士のクリップボード。今の端末 (ESP32) の Family mruby のかな入力とクリップボードとの共存の仕方を、着手の前にユーザと相談して決める | (3) |
-| L13 | **毎日使う環境 (2) 窓と画面**: 最大化、キーで窓を並べる操作、画面ロック (2026-10-28 ユーザ: 全画面・複数のモニタ・明るさはやらない)。完了 (8558f302、報告 report/l13.md) | (3) |
+| L12 | 決定 (2026-10-28 ユーザ): L12a はクリップボード (kernel に全端末共通の文字のクリップボード、端末は PSRAM で内蔵 RAM +0、エディタと Shell が使う、PC は Linux の、ブラウザ版はブラウザのクリップボードとつなぐ)。L12b は日本語入力 (PC はコンポジタの形と SDL の Window の形で Family mruby のアプリにも Linux の IME を使い漢字を打てる、IME が無ければ今のかな入力、cage の形・Cardputer・端末は今のかな入力)。**毎日使う環境 (1) 日本語入力とコピーと貼り付け**: Linux の Window へのかな漢字の入力 (text-input・input-method の口、または fcitx などとつなぐ)、Family mruby と Linux のアプリの間・Linux のアプリ同士のクリップボード。今の端末 (ESP32) の Family mruby のかな入力とクリップボードとの共存の仕方を、着手の前にユーザと相談して決める | (3) |
+| L13 | **毎日使う環境 (2) Window と画面**: 最大化、キーで Window を並べる操作、画面ロック (2026-10-28 ユーザ: 全画面・複数のモニタ・明るさはやらない)。完了 (8558f302、報告 report/l13.md) | (3) |
 | L14 | **毎日使う環境 (3) 設定と丈夫さ**: Wi-Fi・Bluetooth・音量の操作、通知、画面の共有と録画 (portal)、コンポジタが落ちたときの復帰。完了 (1999c103、報告 report/l14.md) | (3) |
 
 ## 受け入れ条件
@@ -544,10 +544,10 @@ L1・L2 は Cardputer Zero の到着を待たずに進められる。
 
 (3) Linux PC のコンポジタ:
 - GPD のログイン画面で Family mruby を選んで入れ、デスクトップから電源を切れる。
-- Family mruby の中から Linux の端末とブラウザを起動でき、Family mruby の窓として
-  動かせ、キーとマウス (タッチパッド) がフォーカスのある窓に届く。
+- Family mruby の中から Linux の端末とブラウザを起動でき、Family mruby の Window として
+  動かせ、キーとマウス (タッチパッド) がフォーカスのある Window に届く。
 - Linux のインストール済みのアプリがランチャーに並び、そこから起動できる。
-  窓の閉じるボタンでアプリが終わる。
+  Window の閉じるボタンでアプリが終わる。
 - Family mruby のファイル管理から Linux のファイルを選び、関連付けた Linux の
   アプリで開ける。
 - 許していない Family mruby のアプリからは、Linux のプログラムを起動できない。
@@ -591,14 +591,14 @@ Shell から Linux のコマンド (全部の形):
   だけでゲームのキーは通さない、IME がいる間はかなの表示を PC では出さない、
   fcitx5 はコンポジタが起こす、.deb は fcitx5・mozc を Suggests (Recommends に
   するとかな入力が止まる人が出る)、Linux のアプリの IM の環境変数は触らない。
-- L13 (サブが選んだもの): 窓の操作は kernel の Ruby でなくネイティブ版の入力の口
+- L13 (サブが選んだもの): Window の操作は kernel の Ruby でなくネイティブ版の入力の口
   (C) に置く、作業領域はメニューバーより下の全部、ダブルクリックの 2 回目は
-  Family mruby に渡さない、最大化した Linux の窓はアプリが小さく落ち着いても
+  Family mruby に渡さない、最大化した Linux の Window はアプリが小さく落ち着いても
   代役を縮めない、「ロック」は電源のメニューの一番下で確認を出さない、
   ロックのプログラムが落ちたらキーで起こし直す、機種の欄 `desktop.window_ops`
   (Cardputer と sdl_keys は false)。
 - L14 (サブが選んだもの): Wi-Fi・Bluetooth はダイアログでなくネイティブ版だけの
-  「設定」の窓 (280x200) で、ネットワークのダイアログに「Wi-Fi の設定...」、
+  「設定」の Window (280x200) で、ネットワークのダイアログに「Wi-Fi の設定...」、
   メニューに「Bluetooth」(機種の欄 `system.settings`、Cardputer と sdl_keys は
   false)、nmcli は使わず D-Bus だけ、試みの間は秘密の代理人を受け持つ (KWallet の
   パスワードを聞き直す)、失敗した新しい接続は消す、802.1X・WEP は扱わない、
@@ -638,7 +638,7 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
 - L13 の残件: VM での確認 (本物の swaylock をパスワードで外す所を含む)、X11 の
   アプリの最大化の頼みは自動の確認が無い、arm64 の .deb は作り直していない。
 - L12b の残件: VM での確認 (Plasma の fcitx5、Konsole・Kate・Firefox)、X11 の
-  プログラムで fcitx5 の XIM は使えない、SDL の窓では IME がいなくなっても
+  プログラムで fcitx5 の XIM は使えない、SDL の Window では IME がいなくなっても
   かな入力に戻らない、SDL の X11 の D-Bus の経路は未確認。
 - L12a の残件: ブラウザ版を実際のブラウザで確認 (開いたままのブラウザで道具が
   止まり未実施)、標準の形はエディタを同時に 1 つしか開けない (今の決まり)、
@@ -648,10 +648,10 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
 - L9d の残件: 出力の大きさは起動時に 1 回だけ決める、既に jp を選んだ人は auto にならない、auto は起動時に 1 回だけ読む。
 - 決定 (2026-10-28 ユーザ): Firefox などの二重の飾りは今はそのまま、出力の大きさの追従は今の仕様 (起動時に 1 回) のまま、以前に jp を選んだ人は auto に変えない。
 - VM で見つけたもの (2026-10-28): Firefox などの自分で飾りを描くアプリは、
-  サーバ側で描く頼みに従わず、Family mruby の題の帯と自分のタブの帯・窓の
+  サーバ側で描く頼みに従わず、Family mruby の題の帯と自分のタブの帯・Window の
   ボタンが二重になる (X11 の二重の帯と同じ扱いを決める、L13 の候補)。ログイン
   した後で出力の大きさを変えても画面は作り直さない (追従させるかは未定)。
-  Linux の窓の日本語入力 (ibus が無いと Firefox が言う) は L12。
+  Linux の Window の日本語入力 (ibus が無いと Firefox が言う) は L12。
 - VM の確認 (2026-10-29、L14 までの .deb git972、ユーザ): 下以外は全部通った
   (L9e の全画面・麻雀・Breeze、L7d の全項目、L11 の右クリックの候補、L12a の貼り
   付け、L12b の日本語入力、L13 の全項目、L14 の設定・Bluetooth・Mute・知らせ・画面
@@ -664,7 +664,7 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
     汎用の mimeinfo.cache は Chrome・Firefox が先。ただし VM の Okular は PDF の
     .desktop も実行ファイルも無い (djvu・epub など一部だけ) ので、KDE の一覧を読んでも
     PDF は Okular にならない (無い先は飛ばして次に落ちる必要がある)。
-  - **NOK: PDF を開いた Firefox の窓が崩れた** (Firefox の中身が代役の枠より大きく、
+  - **NOK: PDF を開いた Firefox の Window が崩れた** (Firefox の中身が代役の枠より大きく、
     後ろの Konsole の穴から見える。代役の題の帯は古い幅のまま)。原因は未調査。
   - **NOK: `pkill -SEGV` で起こし直さずログイン画面に戻った**。台本の筋は正しい。
     見立て: 起こし直した 2 回目以降がすぐ失敗して 4 回で諦めた (DRM・席の解放待ち
@@ -677,13 +677,13 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   - 部分的: Kate の Ctrl+O のダイアログの親を押すと、親が一瞬前に出てダイアログの
     下に戻るが、キーはダイアログに戻らない (入力欄を押せば入る)。
   - 未確認 (手順の説明が要った): X11 の Kate のメニューを開いて壁紙を押す、矢印を
-    止めたまま窓を出してクリック、hello.rb (Family mruby の中で動き `puts` はログに
+    止めたまま Window を出してクリック、hello.rb (Family mruby の中で動き `puts` はログに
     出るだけ)、Konsole への貼り付け (ユーザの記入が途中)、`!` で動くプログラムへの
     貼り付け。ログの行 (IME: started "fcitx5"・volume: PipeWire (wpctl)・serving
     org.freedesktop.Notifications・activation environment) は fm_check で 4 行とも
     出ていた (通った)。
   - その他のユーザの指摘: リサイズの印は四角より右下に寄せた直角三角形がよい
-    (Linux の窓だけでなく大きさを変えられる窓すべてに出せるか)、Linux の
+    (Linux の Window だけでなく大きさを変えられる Window すべてに出せるか)、Linux の
     Konsole・Firefox・Chrome があればデスクトップのショートカットにしたい、
     FlappyDemo の鳥の輪郭が透ける (原因: 鳥の BMP の輪郭が 0x01 = 透明色。Linux 版に
     限らない)、行数の多い Linux のファイルの分割をどうするか。
@@ -691,20 +691,20 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   定義の `[compositor] mime_desktops` (linux_pc_wl は `["kde"]`) の一覧も読む。
   Firefox の崩れは手元で再現できず、切り抜きの補強と試験 (wl_size_check) を足した。
   残る記録は `~/.local/state/family-mruby/session.log`。リサイズの印は大きさを変え
-  られる窓すべてに直角三角形 (描画の記録の基準 24 場面を更新、9ae28058)。鳥の輪郭は
+  られる Window すべてに直角三角形 (描画の記録の基準 24 場面を更新、9ae28058)。鳥の輪郭は
   0x20。デスクトップの `"linux:<id>"` で Linux のアプリのショートカット (既定は
-  Konsole・Firefox・Chrome)。残件 (ユーザ判断待ち): Wayland の窓が頼んだ configure の
+  Konsole・Firefox・Chrome)。残件 (ユーザ判断待ち): Wayland の Window が頼んだ configure の
   後の別の configure に答えて自分の大きさで描くと代役が合わせない (VM の題の帯の
   古い幅の原因と見る。合わせると代役が広がる)、印がエディタのステータス行・LogViewer の
   スクロールバーに隠れる、MicroPython のアプリには印が無い、`flash/usr/share/basic/tile_a.bmp`
   にも 0x01 がある、既に `/home/desktop.toml` を持つ人にはショートカットが出ない。
-  VM の確認 (2026-10-29、git992、ユーザ): PNG が Gwenview で開く、Firefox の窓が
+  VM の確認 (2026-10-29、git992、ユーザ): PNG が Gwenview で開く、Firefox の Window が
   崩れない、ショートカットと三角の印の見え方、の 3 つとも問題なし。
   L15 の残件の決定 (2026-10-29 ユーザ):
-  - **課題**: Wayland の窓が頼んだ configure の後の別の configure に答えて自分の
-    大きさで描くとき、将来は代役を窓に合わせて広げる (L15 の案 b) べき。いったん
+  - **課題**: Wayland の Window が頼んだ configure の後の別の configure に答えて自分の
+    大きさで描くとき、将来は代役を Window に合わせて広げる (L15 の案 b) べき。いったん
     今のまま (代役の大きさで切る)。
-  - 印が隠れる窓は、各アプリが右下の角を空ける (案 c。エディタのステータス行、
+  - 印が隠れる Window は、各アプリが右下の角を空ける (案 c。エディタのステータス行、
     LogViewer のスクロールバー。LogViewer の下ボタンが角と重なって押せない件も一緒)。
   - MicroPython のアプリにも三角の印を出す。
   - BASIC の `tile_a.bmp` の 0x01 は色でなく色番号 (0 透明・1 輪郭・2 本体・3 明るい所、
@@ -716,17 +716,17 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
     アプリは `apps` にあっても出さない。`hidden` の無い今の形のファイルは、最新の
     既定で無条件に上書きする (まだ一般公開していないため)。
   - L15b (2026-10-29 検収済、bcf2ebb8〜2d38a5f5、.deb git1008): 上の決定を実装した。
-    大きさを変えられる窓のアプリは右下の 9 px (カーネルの大きさの変更の掴み 10x10 の
+    大きさを変えられる Window のアプリは右下の 9 px (カーネルの大きさの変更の掴み 10x10 の
     枠の内側。印は 8 px) を空ける (`resize_corner`)。エディタのステータス行、LogViewer の
-    スクロールバー (下ボタンが押せる)、Retro の App Store の詳しい欄。MicroPython の窓
+    スクロールバー (下ボタンが押せる)、Retro の App Store の詳しい欄。MicroPython の Window
     にも印。`/home/desktop.toml` は apps + hidden (試験 test/desktop_icons)。描画の記録
     11 場面と editor_type の画面 3 枚の基準を更新 (c0cd675f)。残件: アイコンのメニューから
     `linux:` の項目を足す手段が無い、Shell の履歴のスクロールバーの下ボタンの最後の
-    1 行が窓の大きさによって掴みに入る、doc/desktop_icons/ の文書が apps だけの形のまま。
+    1 行が Window の大きさによって掴みに入る、doc/desktop_icons/ の文書が apps だけの形のまま。
   - VM で見つけたもの (2026-10-29、git992、ユーザの画面写し): Konsole を起動すると、
     代役の題の帯だけが幅 655 px ほどで描かれ (閉じるボタン・枠の右と下の線が無い)、
     Konsole の中身も幅 655・高さ 315 px ほどで切れ、残りにデスクトップが見える。時々
-    起きる。L15 の Firefox の件 (代役の大きさと Linux の窓の大きさの食い違い) の仲間と
+    起きる。L15 の Firefox の件 (代役の大きさと Linux の Window の大きさの食い違い) の仲間と
     見る。git1008 で起きるかは未確認。起きたら共有フォルダの fm_comp.sh で comp info を
     取る。
     題の帯のダブルクリック (最大化の解除) で元に戻る (ユーザ)。見立て: Konsole は前回の
@@ -735,7 +735,7 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
     再現するかもしれない。代役の大きさの扱いを見直す段 (L15 の課題の案 b) で一緒に直す。
     2026-10-30: 最大化したまま閉じて開き直しても再現しなかった (ユーザ)。原因は未確定。
   - L16 (2026-10-30 検収済、6deee503・46310f17、.deb git1016): 行数の多い 2 つを節ごとに
-    分けた (中身は移すだけ、動きは変えない)。`output_wlr.c` は 874 行に、窓・絵・X11・
+    分けた (中身は移すだけ、動きは変えない)。`output_wlr.c` は 874 行に、Window・絵・X11・
     入力・画面ロック・道具の装置を `wl_*.c` 6 つへ、共有は `output_wlr_internal.h`。
     `linux_apps.c` は 1119 行に、helpers・Exec・アイコンを `linux_apps_*.c` 3 つへ、共有は
     `linux_apps_internal.h`。`linux_apps.c` が 1000 行を超えるのは、状態 `s` を外に出すと
@@ -747,10 +747,10 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
   アイコン (デスクトップの Ruby の変更が要る)、`.app.toml` で「画面の大きさの
   全画面」を頼む書き方 (仕様を増やすのでユーザの判断)、ダイアログへのキーは
   モーダルかを見ずに移す、種類を付けない古い X11 のメニュー (xterm) は閉じない、
-  矢印の先が窓の内容の左上の角の 1 画素にあると穴にならない。
+  矢印の先が Window の内容の左上の角の 1 画素にあると穴にならない。
 - L9a・L9b の残件: xdg と X11 の move・resize の頼みの自動の確認、最大化・
-  全画面 (X11 の前に出す頼みも無視している)、クリップボード、Linux の窓への
-  かな入力、自分で題の帯を描く X11 の窓は帯が二重になる (枠だけの代役を足す
+  全画面 (X11 の前に出す頼みも無視している)、クリップボード、Linux の Window への
+  かな入力、自分で題の帯を描く X11 の Window は帯が二重になる (枠だけの代役を足す
   かは仕様の判断)、GLES と人の手での操作の確認
   (SVG・Breeze のアイコン、Qt の見た目、終える前の制御の口は L9e で直した)。
 

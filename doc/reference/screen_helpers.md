@@ -1,6 +1,6 @@
 # 画面の小物の使い分け (FmrbGfx・FmrbText・FmrbUI)
 
-> 状態: 完了 | 更新: 2026-10-25 | アプリが窓の中を描くときの 3 つの道具の分け方。FmrbGfx = 描く (文字の詰め FmrbText とボタンの絵 draw_button を含む)、FmrbUI = 操作 (作ったら残る部品と、毎回描く画面の押せる範囲 HitAreas)。経緯は app_refactor の R5・R6
+> 状態: 完了 | 更新: 2026-10-25 | アプリが Window の中を描くときの 3 つの道具の分け方。FmrbGfx = 描く (文字の詰め FmrbText とボタンの絵 draw_button を含む)、FmrbUI = 操作 (作ったら残る部品と、毎回描く画面の押せる範囲 HitAreas)。経緯は app_refactor の R5・R6
 
 置き場はどれも `lib/add/picoruby-fmrb-app/mrblib/` (`fmrb-gfx.rb`・`fmrb-text.rb`・`fmrb-ui.rb`)。3 つのファイルの冒頭にも同じ分け方を書いてある。
 

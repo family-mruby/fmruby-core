@@ -24,7 +24,7 @@ VM の確認 (2026-10-29) の結果と見立ては plan.md の「後で直すも
 - 確かめ: 一覧の組み合わせを再現する試験 (既存の linux_mime の試験の形に合わせる)。
   PNG が Gwenview、PDF は Okular の .desktop が無ければ次の候補になること。
 
-### B. Firefox の窓が崩れる (native/wlr/)
+### B. Firefox の Window が崩れる (native/wlr/)
 
 - 症状 (ユーザの画面写し、手元の Windows の `Downloads` にある
   `VirtualBox_kubuntu_29_10_2026_15_03_11.png`。WSL からは
@@ -35,10 +35,10 @@ VM の確認 (2026-10-29) の結果と見立ては plan.md の「後で直すも
 - 調べること: Firefox が頼んだ大きさに従わない (セッションの復元などで自分の
   大きさで commit する) ときの、代役の大きさ・切り抜き (`wlr_scene_subsurface_tree_set_clip`
   の当て方と、いつ当て直すか)・題の帯の描き直し。手元のコンポジタ
-  (`rake native:wl_run` などの入れ子) で、大きさに従わない窓を作って再現する
+  (`rake native:wl_run` などの入れ子) で、大きさに従わない Window を作って再現する
   (Firefox が無ければ、同じ振る舞いの小さな試しのクライアントでよい)。
-- 直したあと: 窓の中身が代役の枠の外に出ないこと (切り抜き)、代役の大きさと
-  題の帯が窓の実際の大きさに追従すること (どちらに合わせるかは見て決め、report に
+- 直したあと: Window の中身が代役の枠の外に出ないこと (切り抜き)、代役の大きさと
+  題の帯が Window の実際の大きさに追従すること (どちらに合わせるかは見て決め、report に
   理由)。wl の確認の一式に 1 つ足す。
 
 ### C. 起こし直しの記録を残す (native/package/family-mruby-session)
@@ -56,10 +56,10 @@ VM の確認 (2026-10-29) の結果と見立ては plan.md の「後で直すも
 ### D. リサイズの印を三角に (共有のコード、全端末)
 
 - ユーザの要望: 右下の印は四角だと目立つので、右下に寄せた直角三角形にする。
-  Linux の窓の代役 (linux_window.app.rb の GRIP) だけでなく、**大きさを変え
-  られる窓すべて**に出す。
-- 窓の枠を描く共通の所 (picoruby-fmrb-app の `draw_window_frame` など) で、
-  大きさを変えられる窓 (カーネルが右下の角で大きさの変更を受ける窓。その判定の
+  Linux の Window の代役 (linux_window.app.rb の GRIP) だけでなく、**大きさを変え
+  られる Window すべて**に出す。
+- Window の枠を描く共通の所 (picoruby-fmrb-app の `draw_window_frame` など) で、
+  大きさを変えられる Window (カーネルが右下の角で大きさの変更を受ける Window。その判定の
   正はカーネルの input_router の側) に描く。代役は自分の四角をやめて共通の印に
   寄せる。大きさ・色はテーマの色から (0x01 を使わない)。
 - 全端末の見た目が変わるので、`rake regress` の描画の記録と `regress:screens` の
@@ -92,7 +92,7 @@ VM の確認 (2026-10-29) の結果と見立ては plan.md の「後で直すも
 - `rake regress` (D の基準の変化は別コミットで)、`regress:size`、
   `regress:screens ONLY=retro,modern,native`、wl の確認の一式 (既存の全部と足した分、
   両エンジン)。
-- 画面を撮るもの: D の三角 (Family mruby の窓と Linux の窓の代役)、F のアイコン。
+- 画面を撮るもの: D の三角 (Family mruby の Window と Linux の Window の代役)、F のアイコン。
   doc/linux_native/report/ に置いてよい (個人のパスが写らないもの)。
 - 終わったら amd64 の .deb を作る (今までの段と同じやり方。共有フォルダへの写しは
   親がする)。
@@ -106,10 +106,10 @@ VM の確認 (2026-10-29) の結果と見立ては plan.md の「後で直すも
 ## 止まる条件
 
 - A で `XDG_CURRENT_DESKTOP` を変えないと直せないと分かったとき。
-- B の直し方が「Linux の窓の大きさを Family mruby が決める」今の仕様を変える
-  (例: 代役を Linux の窓に合わせて勝手に広げる) とき — 候補と振る舞いを書いて返す。
-- D で、大きさを変えられる窓の判定が端末やアプリで食い違い、印の出る窓と出ない
-  窓の決め方に仕様の判断が要るとき。
+- B の直し方が「Linux の Window の大きさを Family mruby が決める」今の仕様を変える
+  (例: 代役を Linux の Window に合わせて勝手に広げる) とき — 候補と振る舞いを書いて返す。
+- D で、大きさを変えられる Window の判定が端末やアプリで食い違い、印の出る Window と出ない
+  Window の決め方に仕様の判断が要るとき。
 - 内蔵 RAM が増えるとき。見立てと違う事実が出たとき。
 
 ## 守ること

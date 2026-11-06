@@ -52,7 +52,7 @@
   エディタ側のコード変更ゼロで全画面になる。
 - LARGE プール (1MB) は排他 1 本の点に注意 (多重 VM 計画
   doc/multivm_app/plan.md と競合し得る)。
-- 実行時の「窓 ⇔ 本気モード」切替をやる場合は、P4 の canvas 確保を
+- 実行時の「Window ⇔ 本気モード」切替をやる場合は、P4 の canvas 確保を
   Retro と同じ「画面サイズで確保」方針に合わせる改修が前提
   (spawn 時サイズ固定のままでは拡大できない)。v1 は起動時選択で良い。
 
@@ -120,7 +120,7 @@ editor=spinel) と**互換構成** (全部 mruby)。混成は「動くはずだ�
 道筋と残作業 (指示書は段階ごとに逐次発行する):
 
 ```
-P3 (窓フレーム + HL 既定)          発行済み
+P3 (Window フレーム + HL 既定)          発行済み
  -> P4: editor-gem 分割            依存なし。切り出し線は selective_offload.md
                                    に設計済み。50KB / NoMemoryError の解決先
  -> B-3: sp_io VFS フック          段階 6 の前提 (esp32_host_deps_sweep.md に
@@ -212,7 +212,7 @@ NATIVE 経路) は desktop 用が拡張前提で整備済み、gfx FFI はエデ
   全面再描画自体は 2.0-2.7ms)。差分描画だけでは届かないため、
   キーを on_event で直接処理する形に入力経路を変更した。
   7 章の GC 懸念は現状のファイルサイズでは顕在化していない。
-- 全画面時の窓サイズを display から入れる分岐は SYSTEM_APP 限定で、
+- 全画面時の Window サイズを display から入れる分岐は SYSTEM_APP 限定で、
   USER_APP は default_user_app_* に落ちる → spawn_builtin_app 側で対応。
 
 付随修正: 全画面アプリの上端 13px にクリックが届かない問題
@@ -241,16 +241,16 @@ fmrb_app_set_fullscreen を mruby/Spinel 両バインディング) / 2c06acd
   形に (既定 stop、エディタは未保存確認)。
 - **全画面状態は @fs_stack が正** (@fullscreen_pid はミラー)。park は
   単一スロットで、park 済みの Ctrl+Tab は cycle に落として詰みを回避。
-- 既存バグ 2 件も修正: spawn 直後 (INIT) の HID target が窓リスト判定で
+- 既存バグ 2 件も修正: spawn 直後 (INIT) の HID target が Window リスト判定で
   剥奪される競合 / 終了処理中アプリの suspend でシステム停止
   (unpark はスロット解放まで tick で待つ)。
 - Spinel / mruby 両カーネルで検証済み。**P4 canvas 変更は Tab5 実機で確認済み
   (2026-08-13、確認点 3 つ = report/p2.md)**: F11 全画面が 426x240 いっぱい、
-  エディタ窓 canvas は要求 240x200 でも buffer 426x240、往復で崩れ無し。
+  エディタの Window の canvas は要求 240x200 でも buffer 426x240、往復で崩れ無し。
   P2 のその他シナリオ (フォーカス剥奪/終了処理中 suspend の競合) は引き続き
   実機確認の余地あり。
 - 段階 4 の宿題が積み増し: 50KB ファイルに加え
-  「全画面エディタ + 14KB 窓アプリ同時で NoMemoryError」も同根。
+  「全画面エディタ + 14KB Window アプリ同時で NoMemoryError」も同根。
 
 **ハイライト方針 (ユーザ決定 2026-08-10、instruction_p3.md)**:
 サイズによる自動オフは撤廃のまま。ON/OFF 機能は維持し、**既定を
@@ -259,11 +259,11 @@ Ruby 専用のため)。
 
 **P3 完了 (2026-08-10、コミット 93f0ddd、report/p3.md)**:
 
-- 窓フレーム欠けの原因は見立て 2 候補のどちらでもなく **frame GfxBlock の
+- Window フレーム欠けの原因は見立て 2 候補のどちらでもなく **frame GfxBlock の
   未生成** (全画面 spawn は initialize で _build_frame_block を通らない)。
   draw_window_frame での遅延生成を基底クラスに入れ、全画面 spawn する
   アプリ全般で解決。editor_fs に resizable / min_window_* も追加
-  (無いと窓化後の角ドラッグが弾かれていた)。
+  (無いと Window 化後の角ドラッグが弾かれていた)。
 - ハイライト既定のファイル種別化は仕様どおり実装・検証済み。副次効果:
   Ruby 以外を開いている間は tokenize 負荷 (全面再描画時 12-16ms) を
   踏まなくなった。行単位トークンキャッシュは実機で効く見込みの改善案
@@ -299,7 +299,7 @@ Ruby 専用のため)。
 - arena は文書サイズの約 3.8 倍消費 (行ごとの確保が主因)。1MB プールで
   200KB 要件は満足。詰めるなら「単一テキスト arena + 行オフセット表」
   だが現状不要。
-- **「全画面 + 14KB 窓アプリで NoMemoryError」は p2.md の見立てが誤り**:
+- **「全画面 + 14KB Window アプリで NoMemoryError」は p2.md の見立てが誤り**:
   blockgame 単体でも落ちる。実体は「14KB スクリプトの実行時コンパイルに
   500KB アプリプールが足りない (64bit sim で顕著)」という editor-core と
   無関係の別問題。実機 (32bit) では通る可能性が高い。対処候補は

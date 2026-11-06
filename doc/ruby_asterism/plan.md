@@ -423,8 +423,8 @@ mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0
 
 - **動作の確認 (2026-10-09)**:
   - docker の中で `pip install mujoco` (3.15.0) し、画面なしで物理の計算が回ることを確かめた (落とした球が床で止まる)。
-  - この PC の WSL には WSLg と GPU (RTX 4070) があるので、viewer の窓も出せる見込み。目で見る確かめはユーザ。
-  - カメラの画像は EGL (GPU) か OSMesa (CPU) で窓なしに描く。EGL が WSL で動くかは試す。
+  - この PC の WSL には WSLg と GPU (RTX 4070) があるので、viewer の Window も出せる見込み。目で見る確かめはユーザ。
+  - カメラの画像は EGL (GPU) か OSMesa (CPU) で Window なしに描く。EGL が WSL で動くかは試す。
 
 | 段階 | 内容 |
 |---|---|

@@ -16,7 +16,7 @@ report は report/p4.md へ。タスクごとにコミット。
 
 1. **50KB 級ファイルでエディタ VM が死ぬ問題の解決** (p1.md。20.7KB 正常 /
    53.4KB で例外ログ無くタスク消滅)。
-2. **全画面エディタ + 14KB 窓アプリ同時で NoMemoryError の解決** (p2.md)。
+2. **全画面エディタ + 14KB Window アプリ同時で NoMemoryError の解決** (p2.md)。
 3. 文書データを mruby GC ヒープから追い出し、編集時のゴミ発生を減らす。
 
 ## 最重要の設計要件: 確保元は専用プール新設
@@ -144,7 +144,7 @@ mem_used()                                -> Integer   # arena 使用バイト
 2. **pool_usage: 20KB ファイルを開いた状態で従来より大幅に低い**こと
    (T1 比。従来値と新値を report に併記)。目安: 文書サイズに比例する
    消費が mruby プール側からほぼ消える。
-3. **全画面エディタから 14KB 窓アプリ (blockgame) を F5 → NoMemoryError に
+3. **全画面エディタから 14KB Window アプリ (blockgame) を F5 → NoMemoryError に
    ならない** (p2.md の再現手順)。
 4. **edit_lat: が T1/T4 基準から退行しない** (p99 < 33ms、25ms 超ゼロを維持。
    小ファイル HL on / 10.9KB HL on の 2 条件で比較表を report に)。

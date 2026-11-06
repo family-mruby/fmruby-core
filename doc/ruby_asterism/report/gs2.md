@@ -91,7 +91,7 @@ push・タグはしていない。VERSION は 0.7.0 (呼び方が変わったた
 ### 5.1 卓のアプリ (fmruby-core `flash/app/game/othello/othello.app.rb`、822 行)
 
 - 名前は「Othello (table)」/「オセロ (卓)」、今のものは「Othello (direct)」/「オセロ (直接)」(.app.toml の画面の名前だけ変えた。中身は触っていない)。
-- 窓のアプリ (372x222、今のオセロと同じ大きさ)。盤の描き方は今のオセロから写した (共通の部品には分けていない)。卓の一覧 (`*/games/othello*` と状態の購読) → Enter で join → 座る (S)・CPU (C)・始める (Enter、卓の主)・クリックか矢印 + Enter で打つ・Esc で投了 (確かめる) か卓を出る。
+- Window のアプリ (372x222、今のオセロと同じ大きさ)。盤の描き方は今のオセロから写した (共通の部品には分けていない)。卓の一覧 (`*/games/othello*` と状態の購読) → Enter で join → 座る (S)・CPU (C)・始める (Enter、卓の主)・クリックか矢印 + Enter で打つ・Esc で投了 (確かめる) か卓を出る。
 - 網のつなぎ方は麻雀の卓と同じ (`FmrbAsterism.settings`、APP `game`)。view は put の版が新しいときと 3 秒ごと (いることの印)。
 - メモリ: 普通のプールで足りた (`large_memory` なし)。sim で VM プールの使用 479-492 KB / 1536 KB (31-32 %、30 秒ごとのログ。卓の一覧から 4 局を通して)。
 
@@ -154,7 +154,7 @@ games/games/othello1  over: linux (white) wins, 19-45
 | 640x360 (ブラウザ版) | `table_web_640x360_play.png` | ブラウザ版対 CPU の対局中 (自分の番、合法手の点) |
 | 426x240 (sim) | `table_sim_426x240_over.png` | 1 の終局 (白の側: 「あなたの勝ち」) |
 
-どの大きさでも窓は崩れていない (窓の大きさは同じで、1280x720 では画面の左上に小さく出る)。
+どの大きさでも Window は崩れていない (Window の大きさは同じで、1280x720 では画面の左上に小さく出る)。
 
 ### 6.4 部屋 (条件 4) と常設の卓 (条件 5)
 
@@ -178,7 +178,7 @@ console を使う前に、6.6 の image の確かめの中で、自分で立て�
 
 ### 6.5 今の端末どうしのオセロ (条件 6)
 
-sim の「Othello (direct)」とブラウザ版の「Othello (direct)」(ブラウザ版はランチャーに `/app/test` が出ないので Shell の `run /app/test/othello.app.rb`。前から同じ) が網で互いを見つけ、ブラウザ版が誘い、sim が Y で受け、3 手まで打った (応答 65-103 ms、置けない升目は「そこには置けない」)。窓の題が「Othello (direct)」、卓の方は「Othello (table)」で区別できる (`direct_web_640x360.png`・`direct_sim_426x240.png`)。合格。
+sim の「Othello (direct)」とブラウザ版の「Othello (direct)」(ブラウザ版はランチャーに `/app/test` が出ないので Shell の `run /app/test/othello.app.rb`。前から同じ) が網で互いを見つけ、ブラウザ版が誘い、sim が Y で受け、3 手まで打った (応答 65-103 ms、置けない升目は「そこには置けない」)。Window の題が「Othello (direct)」、卓の方は「Othello (table)」で区別できる (`direct_web_640x360.png`・`direct_sim_426x240.png`)。合格。
 
 ### 6.6 VPS 用の一式 (条件 8)
 

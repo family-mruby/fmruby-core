@@ -21,10 +21,10 @@ report は `report/g1.md` に「G2」の節を足す。作業ブランチは G1 
 ## 作り方の指針
 
 - 3 と 4 の「同時に起動できない」は、既存の断り方 (Python の 1 つだけ、Spinel のプログラムの 1 つだけ、large_memory) と
-  同じ窓の出し方にそろえる。アプリごとに C に名前を書くのではなく、`.app.toml` で宣言できる形にするのが望ましい
+  同じ Window の出し方にそろえる。アプリごとに C に名前を書くのではなく、`.app.toml` で宣言できる形にするのが望ましい
   (例: `exclusive = "fft"` を持つアプリは同じ値のアプリと同時に動かない、`single_instance = true` は同じアプリの 2 つ目を断る)。
   キーの名前と意味は既存の `.app.toml` のキーの付け方に合わせ、`doc/` の `.app.toml` の説明 (どこにあるか探す) と
-  fmrb-app-new の手順 (`.claude/skills/fmrb-app-new/`、親のリポジトリ) に足す。断る窓の文言は既存に合わせ、英語と日本語。
+  fmrb-app-new の手順 (`.claude/skills/fmrb-app-new/`、親のリポジトリ) に足す。断る Window の文言は既存に合わせ、英語と日本語。
 - 宣言の無いアプリの動きは変えない。
 
 ## 検証

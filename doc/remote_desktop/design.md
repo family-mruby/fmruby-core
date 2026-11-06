@@ -359,7 +359,7 @@ IDR には SPS/PPS を前置 (エンコーダ出力に含まれなければサ�
 
 ## ビューア (tool/web/remote/)
 
-- index.html: `<img src="/stream">` (P1) / `<canvas>` (P2) を窓表示 852x480
+- index.html: `<img src="/stream">` (P1) / `<canvas>` (P2) を Window 表示 852x480
   (2x, image-rendering: pixelated) + ステータスバー。全画面切替あり (下記)
 - remote.js: WS 接続/再接続、mousemove(~30msスロットル)/mousedown/up/keydown/up、
   座標変換、カーソルオーバレイ。
@@ -370,7 +370,7 @@ IDR には SPS/PPS を前置 (エンコーダ出力に含まれなければサ�
 
 - DOM は外枠 `#wrap` (全画面時は画面全体・黒の余白担当) と内枠 `#view`
   (見せる 426x240 の領域そのもの) の二段。表示倍率 `scale` から view/映像/
-  カーソルの大きさを全て導出するので、窓表示 (2 倍固定) と全画面は同じ
+  カーソルの大きさを全て導出するので、Window 表示 (2 倍固定) と全画面は同じ
   コードを通る
 - 全画面の倍率は `min(innerW/426, innerH/240)`。**縦横比を保ったまま最大化**
   する。426x240 = 1.775 は 16:9 (1.778) とほぼ同じなので 1920x1080 では

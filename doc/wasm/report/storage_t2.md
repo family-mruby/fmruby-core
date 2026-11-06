@@ -17,7 +17,7 @@
     起動する。
   - `visibilitychange` (hidden) と `pagehide` で `FS.syncfs(false)`。
     `beforeunload` は使わない (非同期の書き戻しが間に合わない)。
-  - 失敗したら警告を出して**揮発のまま起動を続ける** (プライベート窓や
+  - 失敗したら警告を出して**揮発のまま起動を続ける** (プライベート Window や
     記憶域を拒否された環境で、起動そのものを止めない)。
 - `wasm/CMakeLists.txt`: `-lidbfs.js` (IDBFS は既定で入らない) と
   `EXPORTED_RUNTIME_METHODS` の `FS` (T0 で追加済)。node の `core` は

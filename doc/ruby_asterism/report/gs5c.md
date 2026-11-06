@@ -68,7 +68,7 @@ asterism-games `MJ_GAMES=8 bundle exec rake test`: **198 runs、41,930 assertion
 | CPU・AI の席に座ると入れ替わる | 合格。ほかの人が Claude の席2 に座り、席2 は人間 (ボタンなし) になった | `sim426_owner_after_swap.png` |
 | 「CPU で埋める」のクリック (426x240) | 合格 | `sim426_fill.png` |
 
-- sim の 426x240: この sim は高解像度の全画面に対応したので、麻雀は 640x360 で起きる。小さい画面の配置を写すため、sim の起動のときだけ作業コピーの `mahjong.app.toml` の `fullscreen_hires` を false にして起こし、起きたあとすぐ戻した (コミットには入っていない)。窓が 426x240 になり、小さい卓の待ち合わせ (ルールが 1 行) で描かれる。
+- sim の 426x240: この sim は高解像度の全画面に対応したので、麻雀は 640x360 で起きる。小さい画面の配置を写すため、sim の起動のときだけ作業コピーの `mahjong.app.toml` の `fullscreen_hires` を false にして起こし、起きたあとすぐ戻した (コミットには入っていない)。Window が 426x240 になり、小さい卓の待ち合わせ (ルールが 1 行) で描かれる。
 - sim の画面は呼び出しのあとの view が届くまで前の絵のことがある (ボタンを続けて押した 2 回目が、次の写しで見えた)。打鍵が捨てられたのではなかった。
 - VM (sim、LARGE 3 MB): 待ち合わせの間 817-833 KB (26 %)。GS5 の 856 KB (対局中) と同程度。`mahjong.app.rb` は 61,364 B (64 KB の上限の内、GS5 の 61,586 B より小さい)。巡回の処理は `mahjong_panels.rb` に置いた (26,672 B)。
 - core のエラー行 0 (`[Mahjong] No exception detected`)。

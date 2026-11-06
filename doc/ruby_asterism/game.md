@@ -62,7 +62,7 @@ ruby tools/fmrb_rd_fs.rb <端末の住所> put fmruby-core/flash/app/test/othell
 ruby tools/fmrb_rd_launch.rb <端末の住所> /app/test/othello.app.rb
 ```
 
-- アイコン (`othello.icon` と `othello.bmp`) も送ればランチャーに出る (ランチャーの窓で右クリックで読み直し)。
+- アイコン (`othello.icon` と `othello.bmp`) も送ればランチャーに出る (ランチャーの Window で右クリックで読み直し)。
 - ノードの ID は mDNS の名前 (`fmruby-<16 進 6 桁>`)。`/home/asterism/config.toml` の `node` で変えられる。
 - AtomS3R (128x128) は遊べない。開くと、網の上の対局の盤を 1 つ映す (観戦)。`.app.toml` の `large_memory = 1` は
   このため (AtomS3R の普通のプールではプログラムを読み込めない)。

@@ -37,7 +37,7 @@
     (受け渡しの口を使い、主スレッドを止めない)。
   - primary selection (中ボタンの貼り付け) は扱わなくてよい (report に書く)。
   - Xwayland の X11 のアプリとの間は wlroots の仕組みで渡るかを確かめる。
-- PC (SDL の窓、`sdl` の機種): SDL のクリップボードの口でつなぐ。
+- PC (SDL の Window、`sdl` の機種): SDL のクリップボードの口でつなぐ。
 - ブラウザ版: ブラウザのクリップボードの口でつなぐ (ページの決まりで読めない
   ときの扱いを決める)。
 - sim (Linux の docker): つながなくてよい (Family mruby の中だけ)。
@@ -57,7 +57,7 @@
   (規約は fmruby-core/CLAUDE.md、Co-Authored-By、`git add` は明示)。
   develop へのマージと push はしない。
 - `build/` は今 NARYAv4 (ESP32-P4) のビルド。自分で `rake clean_all` はしない。
-- HOME・XDG の場所は一時ディレクトリ。WSLg に窓を出しっぱなしにしない。開いた
+- HOME・XDG の場所は一時ディレクトリ。WSLg に Window を出しっぱなしにしない。開いた
   ままのブラウザ (wasm の道具) は閉じない (ブラウザ版の確認ができないときは
   その旨を report に書く)。
 - kernel・エディタ・Shell の Ruby を変えたら、標準 (Spinel) と全部 mruby の

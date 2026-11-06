@@ -65,7 +65,7 @@
 - sudo は使わない (コンテナの像に NetworkManager・BlueZ・PipeWire・portal などを
   入れて試すのはよい)。手元の WSL や利用者の PC のネットワーク・Bluetooth・
   音の設定を変えない (試験は偽の D-Bus のサービスかコンテナの中で)。HOME・XDG の
-  場所は一時ディレクトリ。WSLg に窓を出しっぱなしにしない。
+  場所は一時ディレクトリ。WSLg に Window を出しっぱなしにしない。
 - kernel・デスクトップの Ruby を変えたら、標準 (Spinel) と全部 mruby の両方で
   確かめる。
 

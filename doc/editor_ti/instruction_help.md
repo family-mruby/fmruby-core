@@ -46,7 +46,7 @@ FmrbAudio 1 / SpriteInstance 1。**FmrbUI だけが厚く、他は薄い**。
 
 1. **FmrbGfx** (52 メソッド中 5 つだけ)。最優先。
 2. **FmrbApp** (73 中 2 つ)。ライフサイクル (`on_create` / `on_update` /
-   `on_event`) と窓まわり。
+   `on_event`) と Window まわり。
 3. **FmrbAudio** / **FmrbSprite** / **FmrbTile**。
 4. 組み込み (String / Array / Hash) は**後回し**。要約で足りることが多い。
 
@@ -81,7 +81,7 @@ FmrbGfx で実際につまずくのは、たとえばこういうところ (書�
 
 - **描いたものが出ない** — `present` を呼ぶまで画面に出ない。
   ([[feedback-sprite-needs-present]] の話は sprite だけでなく描画全般)
-- **座標の意味** — 窓の中の座標なのか画面全体なのか。
+- **座標の意味** — Window の中の座標なのか画面全体なのか。
   `@user_area_x0` との関係。
 - **前の絵の消し方** — `clear_user_area` と `fill_rect` の使い分け。
 - **色** — RGB332 の 1 バイト。`FmrbGfx::WHITE` などの定数と、

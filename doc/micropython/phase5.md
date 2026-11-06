@@ -148,7 +148,7 @@ firmware のファイル層に通せる。
 - `read_file` の上限は **64KB** (`FMRB_MP_READ_FILE_MAX`)。import する
   module にも同じ上限が効く。超えたら例外で、切り詰めない。
 - `on_resize` の既定は**何もしない**。枠と中身の描き直しはアプリが決める
-  (Ruby 版と同じ。窓の大きさが変わるアプリは毎描画で枠を描く決まり)。
+  (Ruby 版と同じ。Window の大きさが変わるアプリは毎描画で枠を描く決まり)。
 - import には移植側の関数が **3 つ**要った。`mp_import_stat` と
   `mp_reader_new_file` に加えて `mp_lexer_new_from_file`。理由は
   report/phase5.md。

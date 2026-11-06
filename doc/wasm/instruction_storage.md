@@ -76,7 +76,7 @@ report/p5.md の付記は「ページの MEMFS と機械の MEMFS は別物」�
 2. リンクに `-lidbfs.js` を足す (IDBFS は既定では入らない)。
 3. 取りこぼしの回収: `visibilitychange` (hidden) と `pagehide` で
    `FS.syncfs(false, ...)`。`beforeunload` は当てにしない。
-4. 失敗時の振る舞い: IndexedDB が使えない (プライベート窓など) ときは
+4. 失敗時の振る舞い: IndexedDB が使えない (プライベート Window など) ときは
    **黙って揮発で動く**。起動を止めない。ページに状態は出す (T3)。
 
 ### 受け入れ
@@ -84,7 +84,7 @@ report/p5.md の付記は「ページの MEMFS と機械の MEMFS は別物」�
 - エディタで `/home/x.rb` を書いて保存 → リロード → 中身が残っている。
 - 保存 → タブを閉じる → 開き直す → 残っている。
 - IndexedDB を消す → 出荷状態 (空の /home) で起動する。
-- プライベート窓で起動でき、書けて、消えることが説明できる。
+- プライベート Window で起動でき、書けて、消えることが説明できる。
 - `rake wasm:scan` が通り、node ビルド (`rake wasm:run`) が従来どおり動く
   (IDBFS はブラウザ経路だけの話で、node には影響しない)。
 

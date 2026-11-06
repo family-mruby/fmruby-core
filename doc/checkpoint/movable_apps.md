@@ -20,9 +20,9 @@ API の説明はエディタの型支援 (`sig/fmrb_app.rbs` の `on_checkpoint`
 | インスタンス変数、局所変数、Task (数えている途中も)、タイマ、Fiber、アプリが作ったクラス・メソッド | **そのまま運ばれる** |
 | `Machine.board_millis` | 書いたときの値から続く (D9)。止めていた時間・運んだ時間は数えない |
 | タイムスライスの残り・Task の tick | 運ばれる (D10) |
-| 窓 (位置・大きさ・枠・角丸・題)、`FmrbGfx` (どの画面に描いていたか)、フォント、`GfxBlock`、`subscribe` した知らせ | 基底クラス (`FmrbApp`) が作り直す |
+| Window (位置・大きさ・枠・角丸・題)、`FmrbGfx` (どの画面に描いていたか)、フォント、`GfxBlock`、`subscribe` した知らせ | 基底クラス (`FmrbApp`) が作り直す |
 | テーマの色 (`FmrbConst::THEME_*`、`theme_bg` などの `theme_*`) | 着いた側の値になる (基底クラスの枠も着いた側のテーマで作り直す)。アプリがインスタンス変数や自分の `GfxBlock` の手順に控えた色は、書いた側の色のまま運ばれる。描くときに読むか、`on_restore` で作り直す |
-| **描いた絵** | **戻らない**。窓は枠だけの空の状態で着く。アプリが `on_restore` で描き直す (3 章) |
+| **描いた絵** | **戻らない**。Window は枠だけの空の状態で着く。アプリが `on_restore` で描き直す (3 章) |
 | スプライト、画像 (`create_image`)・マスク・動画 | 戻らない。アプリが `on_restore` で作り直す (スプライトの古い ID は基底クラスが忘れる。`move` すると例外になる) |
 | 鳴っている音、MIDI の予定、マイク | 戻らない。鳴らし直す・開き直すのはアプリ |
 | 届いて未処理のメッセージ | 捨てる (止めている間に来たものは、続けるときだけ 16 個まで戻す) |
@@ -41,21 +41,21 @@ mruby-task の Task は、作った所の self ではなくトップレベルの
 
 ### 3.3 移った側での画面
 
-- 窓は同じ位置・大きさで作り直される。着いた側の画面に収まらない窓は、画面に収まるように縮められ、左上へ寄せられる。全画面のアプリは着いた側の全画面の大きさになる (Retro 320x240 ⇔ Modern 426x240)。大きさが変わったときは `on_resize(w, h)` が先に来て、その後に `on_restore`。
+- Window は同じ位置・大きさで作り直される。着いた側の画面に収まらない Window は、画面に収まるように縮められ、左上へ寄せられる。全画面のアプリは着いた側の全画面の大きさになる (Retro 320x240 ⇔ Modern 426x240)。大きさが変わったときは `on_resize(w, h)` が先に来て、その後に `on_restore`。
 - フォントは着いた側にあるものから選び直す (日本語のフォントの無い端末では小さいものになり、戻しても元の大きさには戻らない)。
 
 ### 3.4 移した側
 
 - 移した側 (移動元) のアプリには `on_destroy` が来ない。アプリは終わったのでなく移った。`on_checkpoint` が最後。
-- 移すために止めている間 (着いた側が起動できたと返すまで)、移動元の窓のタイトルバーに「移動中」の札 (`moving...`) が出る。アプリは何もしない。着いた側が断ったとき・返事が無いときは、札が消えて止めた所から続く。
+- 移すために止めている間 (着いた側が起動できたと返すまで)、移動元の Window のタイトルバーに「移動中」の札 (`moving...`) が出る。アプリは何もしない。着いた側が断ったとき・返事が無いときは、札が消えて止めた所から続く。
 
 ## 4. hook でしてよいこと
 
 | hook | いつ | すること |
 |---|---|---|
 | `on_checkpoint` | イメージが書けた直後、閉じる前 (移すときは止める前) | ログ、後片付けの準備。**ここでしたことはイメージに入らない** |
-| `on_restore` | イメージから起動した側で、続ける直前 | 窓に描き直す (`on_update` で毎回全部描くアプリは何もしなくてよい。何かあったときだけ描くアプリはここで描く)、スプライト・画像を作り直す、音・マイク・つなぎ直し |
-| `on_resize(w, h)` | 着いた側で窓の大きさが変わったとき、`on_restore` の前 | 配置を計算し直す (描くのは `on_restore`) |
+| `on_restore` | イメージから起動した側で、続ける直前 | Window に描き直す (`on_update` で毎回全部描くアプリは何もしなくてよい。何かあったときだけ描くアプリはここで描く)、スプライト・画像を作り直す、音・マイク・つなぎ直し |
+| `on_resize(w, h)` | 着いた側で Window の大きさが変わったとき、`on_restore` の前 | 配置を計算し直す (描くのは `on_restore`) |
 | `on_checkpoint_refused(reason)` | 自分で頼んだイメージが断られたとき | 理由を見て、続ける (アプリは止まらない) |
 
 ## 5. 端末ごとに違うメソッド
@@ -115,7 +115,7 @@ Asterism で移すときは、止める前に、移動元が同じ名前の一�
 | Shell | `checkpoint [-r] <pid>`、`restore <image>` |
 | 開発の道具 | `ruby tools/fmrb_native.rb app checkpoint PID [--restart] [--hold MS]`、`app restore PATH`、`app move PID --to <run dir か port>` (sim は port 5555)。MCP の `native_app` も同じ |
 
-イメージは `/tmp/<名前>.ckpt`、横に起動の属性の `/tmp/<名前>.toml` (`movable`・窓の形・`requires`) が書かれる。
+イメージは `/tmp/<名前>.ckpt`、横に起動の属性の `/tmp/<名前>.toml` (`movable`・Window の形・`requires`) が書かれる。
 
 ### 6.1 別の端末へ移す (Asterism、F5)
 
@@ -133,4 +133,4 @@ Asterism で移すときは、止める前に、移動元が同じ名前の一�
 
 ## 7. 試験のアプリ (手本)
 
-`flash/app/test/` の `ckpt_counter` (窓なし、Task 2 つ)、`ckpt_window` (窓あり、何かあったときだけ描き、`on_restore` で描き直す)、`ckpt_wide`・`ckpt_full` (画面の大きさが変わる)、`ckpt_calls` (共通でないメソッドを `respond_to?` で備えて呼ぶ)、`ckpt_requires` (それを `requires` に書く)。動きの確認は `rake regress:checkpoint` (doc/regression/usage.md 12 章)。
+`flash/app/test/` の `ckpt_counter` (Window なし、Task 2 つ)、`ckpt_window` (Window あり、何かあったときだけ描き、`on_restore` で描き直す)、`ckpt_wide`・`ckpt_full` (画面の大きさが変わる)、`ckpt_calls` (共通でないメソッドを `respond_to?` で備えて呼ぶ)、`ckpt_requires` (それを `requires` に書く)。動きの確認は `rake regress:checkpoint` (doc/regression/usage.md 12 章)。

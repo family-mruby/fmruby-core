@@ -119,7 +119,7 @@ Ruby ラッパ (mrblib/debug.rb): `stack_trace`/`frame_vars`/`expand` が
 - **Debug メニュー**: メニューバーに追加。非アタッチ時 = Attach.../Toggle BP、
   アタッチ時 = Continue/Step.../Pause/Toggle BP/Detach。Attach は ps から一般
   mruby アプリ (type==USER, vm==mruby, running, self 除く) を列挙するモーダル
-  ピッカーで選択。ドロップダウンは画面右端に right-anchor (240px 窓に収める)。
+  ピッカーで選択。ドロップダウンは画面右端に right-anchor (240px Window に収める)。
 - **停止表示**: stopped イベント (on_update で非ブロッキング poll) 受信時、該当
   ファイルを自動オープンし停止行へカーソル移動 + ハイライト、Stack/Vars を取得。
 - **アタッチ時にソース自動オープン**: attach 成功時、対象の script パスを

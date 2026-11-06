@@ -92,7 +92,7 @@
 | W0 | 調べて設計する (文書だけ): `sig/*.rbs` の覆う範囲、rbs の使える範囲と ABI の決まり・注釈・版、イベントとアプリの一生の渡し方、WAMR の載せ方 (sim・P4・ブラウザ版) と費用の見積もり、店・Console・Asterism での入れ方、WAMR の checkpoint の可否 | 未着手 |
 | W1 | sim に WAMR (インタプリタ) を載せ、手で書いた import 関数 2〜3 個 (ログ・点を打つ・待つ) で、TinyGo・Rust・Zig の「点を打つ」アプリを動かす | 未着手 |
 | W2 | ブラウザ版 (WAMR を emscripten で) と P4 に載せ、内蔵 RAM・flash・速さを測る | 未着手 |
-| W3 | rbs から生成する道具: C の側のつなぎと 3 言語の bindings を、まず窓・描画・入力・アプリの一生の範囲で | 未着手 |
+| W3 | rbs から生成する道具: C の側のつなぎと 3 言語の bindings を、まず Window・描画・入力・アプリの一生の範囲で | 未着手 |
 | W4 | アプリの包み (`.app.wasm`・ABI の版の確認)、店での配布、デモのアプリ | 未着手 |
 | W5 | Asterism の受け口でのインストール (checkpoint の F5 と共用) | 未着手 |
 

@@ -44,7 +44,7 @@
 - main/app/fmrb_app_spawner.c の spawn_user_app: サイドカー `.toml` が
   無い場合の後段として、`.rb` 先頭を読んでフェンスを抽出 → 行頭 `# ` を
   剥いだバッファを fmrb_toml に渡す → 既存の属性反映コードを共用する
-  (窓モード / large_memory / task_stack_kb / resizable / fullscreen 等、
+  (Window モード / large_memory / task_stack_kb / resizable / fullscreen 等、
   .toml と同じキーが同じに効くこと)。
 - 事前に現状確認: `.toml` 無しの `.app.rb` がランチャーに出て既定属性で
   起動できること (出ないなら報告。仕様上は出るはず)。

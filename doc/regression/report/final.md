@@ -225,8 +225,8 @@ plan.md 6 章の未確定事項の行き先: (1) 記録の代役は麻雀の che
 **道具の外で気づいたこと (直していない)**
 
 - P4-Nano でも起動ログに `Running on ESP32-P4 (M5Stack Tab5)` と出る (main/boot/boot.c)。
-- Retro のエディタの窓の位置が、標準構成 (x=5) と全 mruby (x=107) で違う。原因も、不具合かどうかも見ていない。
-- 128x128 で step_sensor の下の行が画面の左にはみ出す。動画の再生・MML・NSF/SMF プレイヤ・PicoRabbit+・midi_apu の状態行が窓の幅を超える (RG1 の記録で気づいた。FmrbUI の部品の分は R6 で詰めた)。
+- Retro のエディタの Window の位置が、標準構成 (x=5) と全 mruby (x=107) で違う。原因も、不具合かどうかも見ていない。
+- 128x128 で step_sensor の下の行が画面の左にはみ出す。動画の再生・MML・NSF/SMF プレイヤ・PicoRabbit+・midi_apu の状態行が Window の幅を超える (RG1 の記録で気づいた。FmrbUI の部品の分は R6 で詰めた)。
 - MCP の sim_up でも、種類を切り替えた直後に sim が「上がらない」ことがありうる (道具の側は起こし直しで受けている)。MCP の flash は端末とポートを選べない。
 
 ## 8. 参照した記録

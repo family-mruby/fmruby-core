@@ -1,4 +1,4 @@
-# 実装指示書 F1: ネイティブ版の 1 プロセスの中で、窓のないアプリを止めて同じ所で続ける
+# 実装指示書 F1: ネイティブ版の 1 プロセスの中で、Window のないアプリを止めて同じ所で続ける
 
 `doc/checkpoint/plan.md`、`doc/checkpoint/report/f0.md` (特に §5「F1 が要るもの」)、
 mruby-checkpoint の `doc/plan.md` (D1〜D16 と親の仮決め)・`doc/survey_family_mruby.md`・
@@ -6,9 +6,9 @@ mruby-checkpoint の `doc/plan.md` (D1〜D16 と親の仮決め)・`doc/survey_f
 
 ## 目的
 
-Family mruby のネイティブ版 (1 プロセス) で、窓を持たない mruby のアプリを、動いている途中で
+Family mruby のネイティブ版 (1 プロセス) で、Window を持たない mruby のアプリを、動いている途中で
 イメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続ける。F2 (2 プロセスの間)
-と F3 (窓のあるアプリ) の土台になる仕組みを、ユーザの決定どおりに作る。
+と F3 (Window のあるアプリ) の土台になる仕組みを、ユーザの決定どおりに作る。
 
 ## 決まっていること (ユーザ、2026-11-03)
 
@@ -42,7 +42,7 @@ Family mruby のネイティブ版 (1 プロセス) で、窓を持たない mru
    `mrb_checkpoint_open`、復元、アプリの Task (`mrc_create_task` の形と `mrb_checkpoint_set_host_task`
    / `mrb_checkpoint_host_task`)、`on_restore` (あれば)、続きから動く。
 4. 時間: D9 と D10。
-5. 試験のアプリ: 窓を持たない申告済みのアプリ (例: Task 2 つでカウントし、ログに出す)。
+5. 試験のアプリ: Window を持たない申告済みのアプリ (例: Task 2 つでカウントし、ログに出す)。
 6. 自動の確認: ネイティブ版で「起動 → 数える → 止める → 起動し直す → 続きから数える」を道具で流し、
    ログで続きを確かめる試験を、回帰の道具 (`doc/regression/usage.md`) に組み込む (ネイティブ版の
    場面か、新しい小さな道具。どちらがよいかは判断してよい)。カーネルが Spinel の構成と mruby の構成の

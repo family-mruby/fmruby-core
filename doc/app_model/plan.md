@@ -106,7 +106,7 @@ end
 | ivar | 衝突したとき | 名前の一般性 |
 |---|---|---|
 | **`@running`** | **アプリが黙って終了する** (`main_loop` の `return if !@running`) | 極めて高い。ゲームもサービスも `@running = true` と書く |
-| **`@name`** | 窓のタイトルが変わる (見えるので気づく) | 極めて高い |
+| **`@name`** | Window のタイトルが変わる (見えるので気づく) | 極めて高い |
 | `@gfx` ほか | 描画が壊れる。すぐ気づく | 低い。枠組みの語彙で、自分で作る理由がない |
 
 **`@running` が突出している。** 失敗が静かで、しかも「なぜかアプリが終わる」
@@ -170,9 +170,9 @@ ivar を共有する。34 本を調べ、**該当は `editor/menu.rb` の `@full
 
 | | 内容 | 結果 |
 |---|---|---|
-| **M1** | A の実装 (基底 2 つ + C 1 行) と `!@fullscreen` の追加 | **完了 `54cabe03`**。sim で受け入れ済 (閉じるボタン / picorabbit 上端右クリック無反応 / 窓アプリの reload は維持) |
+| **M1** | A の実装 (基底 2 つ + C 1 行) と `!@fullscreen` の追加 | **完了 `54cabe03`**。sim で受け入れ済 (閉じるボタン / picorabbit 上端右クリック無反応 / Window アプリの reload は維持) |
 | **M2** | B の改名 + アクセサの手書き化 + `editor/menu.rb` | **完了 `ce10f295`**。対象は 13 個 (`@param` は現物に無かった)。**app.c も 5 ivar を書いており改名は 3 か所 1 セット** |
-| **M2b** | `@running` `@name` を `@_` へ。直接読んでいる **6 ファイル**を `running?` / `name` に置換 | **完了 `eaf2ce14`**。受け入れ済 (shell 継続 / kamon・stackchan 動作 / 窓タイトル) |
+| **M2b** | `@running` `@name` を `@_` へ。直接読んでいる **6 ファイル**を `running?` / `name` に置換 | **完了 `eaf2ce14`**。受け入れ済 (shell 継続 / kamon・stackchan 動作 / Window タイトル) |
 | **M3** (任意) | アプリ 41 本から不要になった `super(ev)` を消す | **完了 `c14e6936`**。41 本すべて除去、super だけの override 3 本は丸ごと削除 |
 
 実装中に**互換構成のエディタが既存バグで即死していた**ことを検証手順が
@@ -190,7 +190,7 @@ M1 と M2 は独立で、順序はどちらでもよい。M2b は M2 の続き�
 - 標準構成 (Spinel カーネル + Spinel エディタ) と全 mruby の 2 点。
 - **エディタを起動して 1 打鍵まで**含める (基底の ivar を触るため。
   `doc/spinel_aot/reports/editor_ivar_layout_bug.md`)。
-- 窓アプリ (shell) の閉じるボタン、全画面アプリ (picorabbit) の上端右クリック、
+- Window アプリ (shell) の閉じるボタン、全画面アプリ (picorabbit) の上端右クリック、
   全画面の出入り (Ctrl+Tab / Ctrl+,)。
 
 ## やらないこと

@@ -1,8 +1,8 @@
-# 窓枠とアプリ配色をテーマに繋ぐ
+# Window の枠とアプリ配色をテーマに繋ぐ
 
-> 状態: 完了 | 更新: 2026-09-02 | A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md)
+> 状態: 完了 | 更新: 2026-09-02 | A・B・C + D 実装済。Window の枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md)
 
-デスクトップの配色を変えても、**アプリの窓枠と中身が付いてこない**。
+デスクトップの配色を変えても、**アプリの Window の枠と中身が付いてこない**。
 ユーザ報告 (2026-08-31)。Spinel アプリでも同じ。
 
 ## 何が起きているか (調査結果)
@@ -13,7 +13,7 @@
   (main/kernel/fmrb_kernel.c:243)。mruby VM には生成時に
   `FmrbConst::THEME_*` として入り、Spinel には
   `FmrbSpx.fmrb_spx_theme_color(i)` の FFI で入る (起動時に一度評価)。
-- **窓枠だけ誰もテーマを見ていない**。描いているのはアプリ基底クラスの
+- **Window の枠だけ誰もテーマを見ていない**。描いているのはアプリ基底クラスの
   1 か所で、色が直値で書いてある:
   - mruby: `lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb` の `_build_frame_block`
   - Spinel: `main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb` の `_paint_frame`
@@ -35,14 +35,14 @@
 
 ## 方針
 
-### A. 窓枠をテーマへ (全アプリに一度に効く)
+### A. Window の枠をテーマへ (全アプリに一度に効く)
 
 | 部品 | 今 | これから |
 |---|---|---|
 | タイトルバー | `0xC5` | `THEME_MENU_BG` |
 | タイトル文字・ハンバーガー | `WHITE` / `0xFB` | `THEME_TEXT_LIGHT` |
 | 閉じるボタン | `0xFF` | `THEME_TEXT_LIGHT` |
-| 窓の縁 | `0x60` | `THEME_BORDER` |
+| Window の縁 | `0x60` | `THEME_BORDER` |
 
 classic では見た目が変わらない (値が一致する) ことが、移し替えが正しいこと
 の確認になる。**mruby と Spinel の 2 か所を必ず同時に**直す。
@@ -90,7 +90,7 @@ text = 0x1C
 A と B、そして C の**土台 (`/home/colors.toml` を読む所)** まで入れた。
 残っているのは C の変更 UI だけ。
 
-- 窓枠: 両エンジンの 1 か所ずつをテーマ参照に。
+- Window の枠: 両エンジンの 1 か所ずつをテーマ参照に。
 - editor: 紙・文字・メニュー・ステータス・選択・カーソル・ドロップダウン・
   終了確認をテーマ由来に。**構文強調は 2 系統にした** — 意味の色なので
   テーマからは採らないが、暗い紙の上では従来の配色 (黒や濃紺) が見えないため、
@@ -105,8 +105,8 @@ A と B、そして C の**土台 (`/home/colors.toml` を読む所)** まで入
 
 | 見たもの | cyberpunk | classic |
 |---|---|---|
-| 窓枠 (Spinel = editor) | 濃紺のバー・青緑の縁 | 従来どおり暗赤のバー |
-| 窓枠 (mruby = monitor / shell) | 同上 | 同上 |
+| Window の枠 (Spinel = editor) | 濃紺のバー・青緑の縁 | 従来どおり暗赤のバー |
+| Window の枠 (mruby = monitor / shell) | 同上 | 同上 |
 | editor の紙 | 黒に緑の文字、暗い紙用の構文色 | 白に黒、明るい紙用の構文色 |
 | `/home/colors.toml` の上書き | editor だけ深緑の紙・黄の文字に変わり、デスクトップと枠はテーマのまま | 同左 |
 | shell の上書き | 黒地に緑 (mruby 側の経路も通った) | 同左 |
@@ -169,7 +169,7 @@ system_conf.toml に対してやっているのと同じ規則)。値は名前�
 
 ### エディタのメニューがタイトルバーと同じ色で見分けられない
 
-窓枠が `THEME_MENU_BG` になったこと (A) で、その真下にあるエディタの
+Window の枠が `THEME_MENU_BG` になったこと (A) で、その真下にあるエディタの
 メニュー行と**同じ色の帯**になってしまった。**新しいテーマ項目は足さず、
 `FmrbColors.shade` で一段ずらす**ことにした — 項目を増やすと 7 つの
 system_conf と 3 つのプリセットと Spinel の生成器と wasm のページ設定に
@@ -231,12 +231,12 @@ system_conf と 3 つのプリセットと Spinel の生成器と wasm のペー
 
 ## 受け入れ条件
 
-- classic (実機の既定) で**窓枠**の見た目が変わらない (値が一致するため)。
+- classic (実機の既定) で**Window の枠**の見た目が変わらない (値が一致するため)。
   editor は B の狙いどおり紙と menu が少し変わる — 元に戻したければ
   `/home/colors.toml`。
-- cyberpunk (web) と dark で、窓枠・editor・shell がテーマに従う。
+- cyberpunk (web) と dark で、Window の枠・editor・shell がテーマに従う。
 - **標準構成 (Spinel カーネル + Spinel エディタ) と全 mruby の両方**で確認する
-  (窓枠の実装が 2 か所にあるため。doc/engine_policy 相当の決まり)。
+  (Window の枠の実装が 2 か所にあるため。doc/engine_policy 相当の決まり)。
 - `/home/colors.toml` を置くと editor と shell だけがその色になり、消すと
   テーマに戻る。リロード・再起動を挟んでも残る。
 

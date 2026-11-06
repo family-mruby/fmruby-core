@@ -33,7 +33,7 @@
   子のプロセスの後始末 (waitpid) も待たずに行い、ゾンビを残さない。
   アプリ (Shell) が終わったり kill されたりしたときは、子のプロセスの組
   (プロセスグループ) を終わらせる。
-- 環境: `TERM=dumb`、`COLUMNS`・`LINES` は Shell の窓の桁数・行数 (pty の
+- 環境: `TERM=dumb`、`COLUMNS`・`LINES` は Shell の Window の桁数・行数 (pty の
   大きさも合わせる)、`HOME` などは Family mruby の起動時の環境を受け継ぐ。
 - 作業ディレクトリは、Shell から渡す仮想の場所を file HAL の振り分けで実体に
   直して使う (表の外の場所なら断る)。

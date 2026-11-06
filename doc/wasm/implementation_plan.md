@@ -306,7 +306,7 @@ Chrome で実測済み。経過・実測値・見つけた穴は report/p5.md。
 - **壁紙だけが 426x240 のまま**残る (広い解像度では周りがデスクトップ色)。
   `DRAW_IMAGE` が Modern/wasm では scale を見ないので、Ruby から
   `draw_image(scale_x:)` を渡しても効かない。直すのは P5 の外。
-- **表示側の天井が先に効く**: 窓 1 つ = canvas 1 枚で
+- **表示側の天井が先に効く**: Window 1 つ = canvas 1 枚で
   `DISPLAY_LOCAL_MAX_CANVAS=8` のため、FMRB_MAX_APPS を上げただけでは
   11 本目から死ぬ。wasm だけ 34 (+ `DISPLAY_LOCAL_VM_MAX_PROGS=64`) に上げて
   12 本同時起動を確認した。
@@ -336,7 +336,7 @@ Chrome で実測済み。経過・実測値・見つけた穴は report/p5.md。
   ページの設定 (localStorage) で Classic (実機配色 + 西部劇壁紙) に戻せる。
   設定の適用は当初 preRun の MEMFS 編集だったが、実ブラウザで別 FS 問題が発覚し argv + C 側適用に作り替えた (report/p5.md 追補)。
   **教訓: テーマ色に 0x01 を使ってはならない** (デスクトップ前景の
-  カラーキー。window_bg=0x01 で窓が透けた)。既知の軽微差: Spinel エディタの
+  カラーキー。window_bg=0x01 で Window が透けた)。既知の軽微差: Spinel エディタの
   タイトル帯は別経路の配色で旧色のまま。
 
 - **内部解像度の選択 — 済み (2026-08-29)**。「モニタに合わせる」は入れず、

@@ -105,12 +105,12 @@ stackchan_remote 各 1 行、taskbar.rb と debug_pane.rb の自分比較 2 件)
 | エディタ 1 打鍵 (必須手順) | OK | OK (修正後) |
 | shell の閉じるボタン | OK | OK |
 | **全画面 picorabbit の上端右クリックで reload しない** | OK (ログに reload_confirm なし) | - |
-| 窓アプリのタイトルバー右クリック reload は生きている | OK (kamon で Confirm 表示) | - |
+| Window アプリのタイトルバー右クリック reload は生きている | OK (kamon で Confirm 表示) | - |
 | F11 全画面の出入り (バッファ保持) | OK | OK |
 | View メニューの Full チェック (fullscreen?) | OK | - |
 | Ctrl+Tab 巡回 | OK | - |
 | kamon / stackchan が止まらない (`running?`) | OK (kamon は操作反応まで) | - |
-| 窓タイトル (`@_name` + C 書き込み) | OK (FM-Shell / Kamon / StackChan / FM-Editor) | OK |
+| Window タイトル (`@_name` + C 書き込み) | OK (FM-Shell / Kamon / StackChan / FM-Editor) | OK |
 | ビルド | Linux / S3 (残 34%) / P4 (残 5%) | Linux |
 
 S3/P4 の残量は本テーマ前後の比較ではない (このツリーはパーティション構成
@@ -134,7 +134,7 @@ kamon 描画・**shell の閉じるボタン (かつて super が守っていた
 
 - **閉じるボタン**: kamon (M3 で super を外したアプリ) を閉じるボタンで
   終了できた。
-- **F11 全画面の出入り**: バッファ保持のまま 426x240 全画面 ⇔ 窓。
+- **F11 全画面の出入り**: バッファ保持のまま 426x240 全画面 ⇔ Window。
 - **終了確認ダイアログ**: かなモード on のまま `n` で終了 (scancode 判定)。
 
 残り: S3 実機、Tab5 の**実タッチ** (遠隔クリックはマウス経路なので、

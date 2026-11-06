@@ -1,6 +1,6 @@
 # 報告: テーマが Python と Lua に届いていなかった
 
-> 状態: 完了 | 更新: 2026-09-02 | 窓枠の実装は 2 か所ではなく 4 か所だった。
+> 状態: 完了 | 更新: 2026-09-02 | Window の枠の実装は 2 か所ではなく 4 か所だった。
 > MicroPython と Lua にもテーマを渡した
 
 ユーザ報告 (2026-09-02):「システムカラーテーマが Python アプリへ継承されて
@@ -8,9 +8,9 @@
 
 ## 何が起きていたか
 
-A・B・C で窓枠をテーマに繋いだとき、直したのは Ruby の 2 つ
+A・B・C で Window の枠をテーマに繋いだとき、直したのは Ruby の 2 つ
 (`picoruby-fmrb-app/mrblib/fmrb-app.rb` と Spinel 用の
-`fmrb_app_base_spinel.rb`)。plan.md も「窓枠の実装が 2 か所にある」と書いて
+`fmrb_app_base_spinel.rb`)。plan.md も「Window の枠の実装が 2 か所にある」と書いて
 いる。**実際は 4 か所**あった。
 
 | 場所 | 何を持っていたか |

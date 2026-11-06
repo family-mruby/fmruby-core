@@ -72,7 +72,7 @@ P4 の editor-core は文書スロットを **mrb_state キー**で持ってい�
 
 - **fmrb_app_base_spinel.rb の API 追随**: P1-P3 で mruby 側 FmrbApp に
   増えた分を揃える — on_quit_request (既定 stop)、request_fullscreen /
-  toggle_fullscreen、resize 制御の窓ジオメトリ復元、draw_window_frame の
+  toggle_fullscreen、resize 制御の Window ジオメトリ復元、draw_window_frame の
   frame block 遅延生成 (P3)、edit_lat 計測が使う時刻取得。desktop が
   使っていない API が漏れている前提で、editor.app.rb が呼ぶ FmrbApp API を
   総当たりで突き合わせること。
@@ -89,9 +89,9 @@ P4 の editor-core は文書スロットを **mrb_state キー**で持ってい�
 すべて Linux sim。実機はユーザ確認待ちに積む (実機無しの前提)。
 
 1. **標準構成** (kernel=spinel, editor=spinel): P1-P4 の受け入れシナリオを
-   一通り — 窓/全画面起動、F11 トグル、編集・選択・複数行ペースト・検索、
+   一通り — Window/全画面起動、F11 トグル、編集・選択・複数行ペースト・検索、
    HL 既定 (P3)、53KB/200KB ファイル (P4)、保存ダイアログ (park 経由)、
-   Ctrl+Q (quit_request、未保存確認)、F5 で窓/全画面アプリ、Ctrl+Tab。
+   Ctrl+Q (quit_request、未保存確認)、F5 で Window/全画面アプリ、Ctrl+Tab。
    デバッガペインは**出ないこと** (省いた確認)。
 2. **互換構成** (全 mruby): 同シナリオ + デバッガペインが従来どおり
    動くこと (T1 の分離が退行していない再確認)。

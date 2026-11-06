@@ -68,7 +68,7 @@ token = "..."            # 遠隔画面と dev_remote_ctl の共通鍵
 - `wifi_mode = "ap"` のとき `[remote].token` が無ければ遠隔画面と
   dev_remote_ctl を起動しない。`sta` / `apsta` でも token があれば要求する
   (家の LAN でも有効にしてよい。無効化は「token を書かない」で明示)。
-- 切替はファイルを書いて再起動。書く手段は遠隔画面のネットワーク窓
+- 切替はファイルを書いて再起動。書く手段は遠隔画面のネットワークの Window
   (network_dialog.rb)、tab5_fs put、ヘッドレスの初期設定は USB シリアル。
 
 ## スコープ
@@ -81,7 +81,7 @@ token = "..."            # 遠隔画面と dev_remote_ctl の共通鍵
    WPA2-PSK 以上。C6 が AP で WPA3-SAE を張れるなら WPA3)。DHCP サーバは
    esp_netif の AP 既定。DNS は張らない。
 3. mDNS を AP の netif でも広告する (`http://fmruby.local/`)。
-4. `wifi_get_ip_str` 等の既存 API が AP の IP も返す (ネットワーク窓の表示、
+4. `wifi_get_ip_str` 等の既存 API が AP の IP も返す (ネットワークの Window の表示、
    tab5_ip の解決に効く)。
 5. APSTA のチャネル制約 (STA が繋いだチャネルに AP が追従する) を把握して
    `channel` の扱いを決める。
@@ -138,7 +138,7 @@ token = "..."            # 遠隔画面と dev_remote_ctl の共通鍵
    接続し、Safari で `http://fmruby.local/` (だめなら IP) を開くと遠隔
    画面が MJPEG で出る (機体無改修の事前実験で Safari の multipart 対応を
    先に確かめる: 家の WiFi の Tab5 に iPhone から `http://<IP>/`)。
-2. タップでメニューが開き、ランチャーからアプリが起動し、ドラッグで窓が
+2. タップでメニューが開き、ランチャーからアプリが起動し、ドラッグで Window が
    動く。長押しで右クリック (ランチャー再スキャン) が効く。
 3. ソフトキーボードでエディタに ASCII が打て、キー帯の Ctrl+S で保存、
    F5 で実行、Esc で戻れる。BT キーボードでは現行どおり全キーが効く。
