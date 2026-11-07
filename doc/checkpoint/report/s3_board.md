@@ -246,3 +246,9 @@ board narya_v3 (standard): ok (self on the board: a 4->5, b 2->3, main 4->5, t s
 - 1.7 の `expected_stop` (親の判断)。
 - `test/regress/boot_baseline.json` に作業の前からの未コミットの差分
   (narya_v3 の起動ログの基準) があり、触っていない。
+
+## 追記 (2026-11-07): StickS3・AtomS3R の実機
+
+- 両方ともフル flash (区画表 B 案)。/home は read_flash で丸ごと退避し、新しい storage のイメージに足して焼いた (StickS3 の Wi-Fi はテザリングの SSID だったので、ユーザが家の Wi-Fi に書き換えた)。AtomS3R の鍵の束は手元に写しが無かったので ~/asterism_keys/ に写した。
+- 単一アプリ起動で Boot complete が出ていなかった (doc/headless_s3/report/boot_complete.md、2f5688a9)。直したあと StickS3・AtomS3R の起動の基準を calibrate で取った。
+- `regress:checkpoint BOARD=sticks3` は全場面 ok。`BOARD=atoms3r` は board out で受け手 (ネイティブ版) が error -6 で断った。AtomS3R は起動のアプリが通常のプールを持つので、カウンタが大きい方に入り、cae98733 がイメージに `large_memory = 1` と書いていた。受け手の大きい方は転送のアプリが使っている。アプリが求めたとき、または大きい方で通常のプールを超えて使ったときだけ large と書くように直した (b91c463e、文脈に `large_memory` を持つ。movable の後の詰め物に入り、内蔵 RAM は増えない)。直したあと `BOARD=atoms3r` は全場面 ok、ホストの `regress:checkpoint` も ok、`regress:size ALL=1` も ok。
