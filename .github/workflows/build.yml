@@ -76,6 +76,13 @@ jobs:
           test "$(grep -c '^FMRB_HW_TARGET=' .env)" = 1
           grep '^FMRB_HW_TARGET=${{ matrix.hw_target }}$' .env
 
+      - name: Install 32-bit host headers
+        # rake build:esp32 makes the mruby-checkpoint table on the host
+        # (rake checkpoint:table, tools/ckpt_table) and compiles it once more
+        # with -m32, the devices' pointer width. The runner image's gcc has
+        # no 32-bit libc headers (bits/libc-header-start.h) without multilib.
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+
       - name: Build ESP32
         run: rake build:esp32
 
