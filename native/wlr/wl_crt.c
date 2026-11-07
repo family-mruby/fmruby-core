@@ -17,8 +17,11 @@
  *
  * Only when the scene needs a frame (or a setting changed), and with the
  * time effects (flicker, noise; C6) also CRT_TIME_FPS times a second: a
- * timer asks for a frame and, the scene having nothing new, the last scene
- * buffer (held for it) goes through the shader again. Direct scan-out
+ * timer puts the scene's last buffer (held for it) through the shader
+ * again and commits it, when the scene has nothing new (then the scene's
+ * own frame comes anyway). Not wlr_output_schedule_frame: that marks the
+ * output as needing a frame, and the scene would draw again for it.
+ * Direct scan-out
  * is held off while the look is on (it would hand the output a client's
  * buffer). The hardware cursor stays flat on its own plane.
  *
@@ -66,7 +69,6 @@ static struct {
     struct wlr_swapchain *chain;            /* the scene draws here */
     struct wlr_buffer *last;                /* the scene's last buffer (locked), for the time effects */
     struct wl_event_source *tick;           /* the time effects' timer */
-    bool tick_due;                          /* it fired: draw even without scene damage */
     unsigned time_frames;                   /* frames drawn only for the time effects */
     GLuint prog;
     GLint a_pos;
@@ -213,11 +215,22 @@ static void crt_drop_last(void)
     }
 }
 
+static bool crt_draw_frame(bool from_last);
+static void crt_arm_tick(void);
+
+/* The time effects' tick: the last scene buffer through the shader again,
+ * unless the scene has something new (its frame is on the way and arms
+ * the next tick) or a page flip is still pending (try again shortly). */
 static int crt_tick(void *data)
 {
     (void)data;
-    crt.tick_due = true;
-    if (s.output != NULL) wlr_output_schedule_frame(s.output);
+    if (s.output == NULL || s.scene_output == NULL || !crt.on || crt.last == NULL) return 0;
+    if (wlr_scene_output_needs_frame(s.scene_output)) return 0;
+    if (s.output->frame_pending) {
+        wl_event_source_timer_update(crt.tick, 2);
+        return 0;
+    }
+    crt_draw_frame(true);
     return 0;
 }
 
@@ -228,7 +241,6 @@ static void crt_arm_tick(void)
 {
     if (!crt_timed() || !crt.want || crt.unusable) {
         if (crt.tick != NULL) wl_event_source_timer_update(crt.tick, 0);
-        crt.tick_due = false;
         crt_drop_last();
         return;
     }
@@ -242,7 +254,6 @@ static void crt_stop(void)
 {
     crt_drop_last();
     if (crt.tick != NULL) wl_event_source_timer_update(crt.tick, 0);
-    crt.tick_due = false;
     if (crt.on) {
         if (s.output != NULL) wlr_output_lock_attach_render(s.output, false);
         crt.on = false;
@@ -614,16 +625,16 @@ bool crt_frame(void)
         if (crt.on || crt.chain != NULL) crt_stop();
         return false;
     }
+    if (!wlr_scene_output_needs_frame(s.scene_output)) return true;
+    return crt_draw_frame(false);
+}
+
+/* One frame: the scene drawn into our swapchain (or, from_last, the buffer
+ * kept from the last one), through the shader, committed. False when the
+ * look gave up in it. */
+static bool crt_draw_frame(bool from_last)
+{
     struct wlr_output *o = s.output;
-    bool tick = crt.tick_due;
-    crt.tick_due = false;
-    bool scene_new = wlr_scene_output_needs_frame(s.scene_output);
-    /* Nothing new in the scene: only the time effects' tick draws, from
-     * the buffer kept from the last frame. */
-    if (!scene_new && !(tick && crt_timed() && crt.last != NULL)) {
-        if (tick) crt_arm_tick();
-        return true;
-    }
     double t0 = mono_ms();
 
     if (!crt.on) {
@@ -636,7 +647,7 @@ bool crt_frame(void)
     if (!wlr_output_configure_primary_swapchain(o, &out, &o->swapchain) || !crt_chain()) goto done;
 
     struct wlr_buffer *src = NULL;
-    if (scene_new) {
+    if (!from_last) {
         struct wlr_output_state scene;
         wlr_output_state_init(&scene);
         const struct wlr_scene_output_state_options opts = { .swapchain = crt.chain };
@@ -693,7 +704,6 @@ void crt_output_gone(void)
         wl_event_source_remove(crt.tick);
         crt.tick = NULL;
     }
-    crt.tick_due = false;
     if (crt.chain != NULL) {
         wlr_swapchain_destroy(crt.chain);
         crt.chain = NULL;
