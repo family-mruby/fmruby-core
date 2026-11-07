@@ -185,8 +185,10 @@ void lock_motion(uint32_t time_msec)
     lock_surface_t *ls;
     wl_list_for_each(ls, &s.lk.surfaces, link) {
         if (!lock_primary(ls) || !ls->wlr->surface->mapped) continue;
-        wlr_seat_pointer_notify_enter(s.seat, ls->wlr->surface, s.cursor->x, s.cursor->y);
-        wlr_seat_pointer_notify_motion(s.seat, time_msec, s.cursor->x, s.cursor->y);
+        double x, y;
+        crt_pointer(&x, &y, NULL);
+        wlr_seat_pointer_notify_enter(s.seat, ls->wlr->surface, x, y);
+        wlr_seat_pointer_notify_motion(s.seat, time_msec, x, y);
         return;
     }
     wlr_seat_pointer_clear_focus(s.seat);

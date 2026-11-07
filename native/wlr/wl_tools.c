@@ -229,6 +229,53 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
         }
         return true;
     }
+    if (strncmp(a, "crt", 3) == 0 && (a[3] == '\0' || a[3] == ' ')) {
+        /* The CRT look (doc/web_crt, C4): "comp crt" its state and timings;
+         * "comp crt look=crt|sharp scanline=N mask=N glow=N curve=N
+         * vignette=N" (any of them) switches it while running. */
+        static const char *const names[5] = { "scanline", "mask", "glow", "curve", "vignette" };
+        int str[5] = { -1, -1, -1, -1, -1 };
+        char look[16] = "";
+        bool any = false, bad = false;
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s", a + 3);
+        for (char *save = NULL, *tok = strtok_r(buf, " ", &save); tok != NULL; tok = strtok_r(NULL, " ", &save)) {
+            char *eq = strchr(tok, '=');
+            if (eq == NULL) {
+                bad = true;
+                break;
+            }
+            *eq = '\0';
+            bool known = false;
+            if (strcmp(tok, "look") == 0) {
+                snprintf(look, sizeof(look), "%s", eq + 1);
+                known = true;
+            }
+            for (int i = 0; i < 5 && !known; i++) {
+                if (strcmp(tok, names[i]) != 0) continue;
+                char *end = NULL;
+                long v = strtol(eq + 1, &end, 10);
+                if (end == eq + 1 || *end != '\0' || v < 0 || v > 100) bad = true;
+                else str[i] = (int)v;
+                known = true;
+            }
+            if (!known) bad = true;
+            any = true;
+        }
+        if (bad) {
+            snprintf(out, cap, "ERR comp crt [look=crt|sharp] [scanline|mask|glow|curve|vignette=0-100]\n");
+            return true;
+        }
+        if (any) {
+            char why[128];
+            if (!crt_set(look[0] ? look : NULL, str, why, sizeof(why))) {
+                snprintf(out, cap, "ERR comp crt: %s\n", why);
+                return true;
+            }
+        }
+        crt_describe(out, cap);
+        return true;
+    }
     if (strcmp(a, "ime") == 0) {
         /* The IME (L12b): whom it serves, the composing text, the popups. */
         wl_ime_describe(out, cap);
@@ -266,7 +313,7 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
     } else if (sscanf(a, "wheel %d", &n) == 1) {
         tool_wheel(n);
     } else {
-        snprintf(out, cap, "ERR comp: info, stats [reset], clip, key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N\n");
+        snprintf(out, cap, "ERR comp: info, stats [reset], clip, crt [k=v ...], key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N\n");
         return true;
     }
     wl_display_flush_clients(s.display);

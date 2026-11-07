@@ -31,15 +31,16 @@ uniform float u_unit;    // output pixels per picture pixel
 out vec4 o_color;
 
 #ifdef FMRB_CRT_OUTPUT
-// The output pixel lp (logical) as wlroots composited it.
-vec3 px(ivec2 lp) {
-  lp = clamp(lp, ivec2(0), ivec2(u_out) - 1);
-  vec2 t = (u_texel * vec3(vec2(lp) + 0.5, 1.0)).xy;
-  ivec2 ts = textureSize(u_tex, 0);
-  return texelFetch(u_tex, clamp(ivec2(floor(t)), ivec2(0), ts - 1), 0).rgb;
+// The output pixel under the fragment as wlroots composited it, in texels
+// of u_tex, and a picture pixel's step right and down (set in main).
+vec2 t_base, t_dx, t_dy;
+ivec2 t_max;
+// A neighbour o picture pixels away (clamped at the output's edge).
+vec3 px(ivec2 o) {
+  ivec2 t = ivec2(floor(t_base + float(o.x) * t_dx + float(o.y) * t_dy));
+  return texelFetch(u_tex, clamp(t, ivec2(0), t_max), 0).rgb;
 }
-// A neighbour o picture pixels away.
-#define AT(o) px(ip + (o) * int(u_unit))
+#define AT(o) px(o)
 #else
 vec3 px(ivec2 p) {
   p = clamp(p, ivec2(0), ivec2(u_src) - 1);
@@ -67,7 +68,11 @@ void main() {
   vec2 p = st * u_src;
 #ifdef FMRB_CRT_OUTPUT
   // The output pixel under this one; the neighbours are a picture pixel away.
-  ivec2 ip = ivec2(floor(st * u_out));
+  vec2 lp = floor(st * u_out) + 0.5;
+  t_base = (u_texel * vec3(lp, 1.0)).xy;
+  t_dx = mat2(u_texel)[0] * u_unit;
+  t_dy = mat2(u_texel)[1] * u_unit;
+  t_max = textureSize(u_tex, 0) - 1;
 #else
   ivec2 ip = ivec2(floor(p));
 #endif

@@ -357,6 +357,23 @@ void lock_motion(uint32_t time_msec);
 void lock_reap(void);
 void lock_init(const native_machine_t *m);
 
+/* wl_crt.c: the CRT look over the whole output (doc/web_crt, C4) */
+void crt_init(const native_machine_t *m);
+/* The output's frame with the look: true when it took the frame (drawn, or
+ * nothing to draw); false for the plain wlr_scene_output_commit. */
+bool crt_frame(void);
+void crt_output_gone(void);
+/* Switch while running (C5 calls it from the desktop's settings): look
+ * "sharp" / "crt" or NULL to keep it; strengths scanline, mask, glow,
+ * curve, vignette (0..100, -1 keeps one) or NULL. False with why. */
+bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len);
+/* Where the pointer points: wlr_cursor's place sent back through the
+ * curve while the look bends the output; inside is false where the curve
+ * leaves the picture (a press there is dropped). */
+void crt_pointer(double *x, double *y, bool *inside);
+void crt_dropped_press(void);
+void crt_describe(char *out, size_t cap);
+
 /* wl_tools.c */
 void tool_devices_init(void);
 bool wlr_ctl(const char *req, char *out, size_t cap);

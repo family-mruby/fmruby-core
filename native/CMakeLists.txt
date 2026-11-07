@@ -55,7 +55,8 @@ if(NATIVE_WITH_ALSA)
   endif()
 endif()
 if(NATIVE_WITH_WLROOTS)
-  pkg_check_modules(WLROOTS IMPORTED_TARGET wlroots-0.19 wayland-server xkbcommon)
+  # glesv2, egl: the CRT look's shader (doc/web_crt, C4) in wlroots' GLES context.
+  pkg_check_modules(WLROOTS IMPORTED_TARGET wlroots-0.19 wayland-server xkbcommon glesv2 egl)
   if(WLROOTS_FOUND)
     pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
     pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)
@@ -199,8 +200,17 @@ if(NATIVE_HAVE_WLROOTS)
   # The compositor itself (L8), in the files of its parts (L16; output_wlr.c
   # has the overview).
   set(NATIVE_WLR_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_window.c ${N}/wlr/wl_picture.c
-      ${N}/wlr/wl_xwayland.c ${N}/wlr/wl_input.c ${N}/wlr/wl_screen_lock.c ${N}/wlr/wl_tools.c)
+      ${N}/wlr/wl_xwayland.c ${N}/wlr/wl_input.c ${N}/wlr/wl_screen_lock.c ${N}/wlr/wl_tools.c
+      ${N}/wlr/wl_crt.c)
+  # The CRT look (doc/web_crt, C4): the browser build's shaders
+  # (hosted/crt/) as C strings, and its curve in C for the pointer.
+  add_custom_command(
+    OUTPUT ${NATIVE_WLR_GEN}/crt_shaders.h
+    COMMAND ${CMAKE_COMMAND} -DVERT=${FMRB_ROOT}/hosted/crt/crt.vert -DFRAG=${FMRB_ROOT}/hosted/crt/crt.frag
+            -DOUT=${NATIVE_WLR_GEN}/crt_shaders.h -P ${N}/wlr/crt_shaders.cmake
+    DEPENDS ${FMRB_ROOT}/hosted/crt/crt.vert ${FMRB_ROOT}/hosted/crt/crt.frag ${N}/wlr/crt_shaders.cmake)
   list(APPEND NATIVE_BACKEND_SRCS ${NATIVE_WLR_SRCS} ${N}/wlr/wl_clip.c ${N}/wlr/wl_ime.c ${NATIVE_WLR_GEN}/xdg-shell-protocol.h
+       ${NATIVE_WLR_GEN}/crt_shaders.h ${FMRB_ROOT}/hosted/crt/crt_warp.c
        ${NATIVE_WLR_GEN}/ext-image-copy-capture-v1-protocol.h
        # The launcher's Linux applications (L9b): started by the compositor;
        # files opened in them (L11).
@@ -223,6 +233,7 @@ target_include_directories(core_objs PRIVATE
   ${N}/etc
   ${N}/sys
   ${N}/wlr
+  ${FMRB_ROOT}/hosted/crt
   ${FMRB_ROOT}/hosted/gate
   ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
 target_compile_definitions(core_objs PRIVATE

@@ -281,8 +281,7 @@ void begin_grab(window_t *w, grab_mode_t mode, uint32_t edges)
     s.grab.mode = mode;
     s.grab.id = w->id;
     s.grab.edges = edges;
-    s.grab.cx = s.cursor->x;
-    s.grab.cy = s.cursor->y;
+    crt_pointer(&s.grab.cx, &s.grab.cy, NULL);
     s.grab.fx = s.grab.nx = cw->fx;
     s.grab.fy = s.grab.ny = cw->fy;
     s.grab.fw = s.grab.nw = cw->fw;

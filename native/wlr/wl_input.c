@@ -277,7 +277,9 @@ static struct wlr_surface *surface_at(int id, double *sx, double *sy)
 {
     window_t *w = window_by_id(id);
     if (w == NULL) return NULL;
-    struct wlr_scene_node *node = wlr_scene_node_at(&w->tree->node, s.cursor->x, s.cursor->y, sx, sy);
+    double cx, cy;
+    crt_pointer(&cx, &cy, NULL);
+    struct wlr_scene_node *node = wlr_scene_node_at(&w->tree->node, cx, cy, sx, sy);
     if (node != NULL && node->type == WLR_SCENE_NODE_BUFFER) {
         struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
         if (ss != NULL) return ss->surface;
@@ -285,8 +287,8 @@ static struct wlr_surface *surface_at(int id, double *sx, double *sy)
     const comp_window_t *cw = comp_route_window(&s.route, id);
     if (cw == NULL) return NULL;
     struct wlr_box g = win_geometry(w);
-    *sx = s.cursor->x - cw->x + g.x;
-    *sy = s.cursor->y - cw->y + g.y;
+    *sx = cx - cw->x + g.x;
+    *sy = cy - cw->y + g.y;
     return win_surface(w);
 }
 
@@ -302,7 +304,8 @@ typedef struct {
 static ptr_hit_t pointer_hit(void)
 {
     ptr_hit_t p = { 0 };
-    double x = s.cursor->x, y = s.cursor->y;
+    double x, y;
+    crt_pointer(&x, &y, NULL);
     int pid = popup_at(x, y, &p.surf, &p.sx, &p.sy);
     if (pid != COMP_FMRB) {
         p.hit.target = pid;
@@ -326,14 +329,18 @@ static ptr_hit_t pointer_hit(void)
 /* Where the pointer is in frame coordinates, clamped. */
 static void pointer_frame(int *fx, int *fy)
 {
-    comp_route_to_frame(&s.route, (int)s.cursor->x, (int)s.cursor->y, fx, fy);
+    double x, y;
+    crt_pointer(&x, &y, NULL);
+    comp_route_to_frame(&s.route, (int)x, (int)y, fx, fy);
 }
 
 static void grab_motion(void)
 {
     int sc = s.route.place.scale > 0 ? s.route.place.scale : 1;
-    int dx = (int)floor((s.cursor->x - s.grab.cx) / sc);
-    int dy = (int)floor((s.cursor->y - s.grab.cy) / sc);
+    double cx, cy;
+    crt_pointer(&cx, &cy, NULL);
+    int dx = (int)floor((cx - s.grab.cx) / sc);
+    int dy = (int)floor((cy - s.grab.cy) / sc);
     if (s.grab.mode == GRAB_MOVE) {
         int nx = s.grab.fx + dx, ny = s.grab.fy + dy;
         if (nx != s.grab.nx || ny != s.grab.ny) {
@@ -484,7 +491,9 @@ static void press_x11_menus(int target, uint32_t time_msec, uint32_t button)
         if (!is_or(w) || !w->mapped || w->id <= 0 || w->xs->surface == NULL || !x11_is_menu(w->xs)) continue;
         int nx = 0, ny = 0;
         wlr_scene_node_coords(&w->tree->node, &nx, &ny);
-        double sx = s.cursor->x - nx, sy = s.cursor->y - ny;
+        double cx, cy;
+        crt_pointer(&cx, &cy, NULL);
+        double sx = cx - nx, sy = cy - ny;
         wlr_seat_pointer_notify_enter(s.seat, w->xs->surface, sx, sy);
         wlr_seat_pointer_notify_motion(s.seat, time_msec, sx, sy);
         wlr_seat_pointer_notify_button(s.seat, time_msec, button, WL_POINTER_BUTTON_STATE_PRESSED);
@@ -514,6 +523,9 @@ static void end_grab(void)
     s.grab.mode = GRAB_NONE;
 }
 
+/* Buttons pressed outside the curved picture (bit: button - BTN_MOUSE). */
+static uint32_t dropped_buttons;
+
 void cursor_button(struct wl_listener *l, void *data)
 {
     (void)l;
@@ -527,6 +539,21 @@ void cursor_button(struct wl_listener *l, void *data)
         }
         return;
     }
+    /* Where the CRT look's curve leaves the picture (doc/web_crt, C4)
+     * nothing is under the arrow: the press is dropped, and its release. */
+    double cx, cy;
+    bool inside = true;
+    crt_pointer(&cx, &cy, &inside);
+    uint32_t bit = 1u << ((ev->button - BTN_MOUSE) & 31);
+    if (down && !inside) {
+        dropped_buttons |= bit;
+        crt_dropped_press();
+        return;
+    }
+    if (!down && (dropped_buttons & bit)) {
+        dropped_buttons &= ~bit;
+        return;
+    }
     ptr_hit_t p;
     if (down && s.buttons_held == 0) {
         p = pointer_hit();
@@ -537,11 +564,10 @@ void cursor_button(struct wl_listener *l, void *data)
         } else {
             /* Menus close on a press outside them (but on their own window,
              * which closes them itself as it sees fit). */
-            close_popups(comp_route_at(&s.route, (int)s.cursor->x, (int)s.cursor->y).target);
-            press_x11_menus(comp_route_at(&s.route, (int)s.cursor->x, (int)s.cursor->y).target, ev->time_msec,
-                            ev->button);
+            close_popups(comp_route_at(&s.route, (int)cx, (int)cy).target);
+            press_x11_menus(comp_route_at(&s.route, (int)cx, (int)cy).target, ev->time_msec, ev->button);
             bool changed = false;
-            comp_hit_t h = comp_route_press(&s.route, (int)s.cursor->x, (int)s.cursor->y, &changed);
+            comp_hit_t h = comp_route_press(&s.route, (int)cx, (int)cy, &changed);
             s.pointer_target = h.target;
             if (changed) {
                 apply_focus();

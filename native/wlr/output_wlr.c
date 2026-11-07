@@ -30,6 +30,11 @@
  * A Family mruby window or menu over a stand-in covers the Linux window
  * there, so the two kinds of windows stack freely.
  *
+ * The CRT look (doc/web_crt, C4; wl_crt.c): with display.look "crt" each
+ * frame the scene draws off screen and the browser build's CRT shader puts
+ * it on the output; the pointer goes through the same curve backwards
+ * (crt_pointer). The default "sharp" leaves all of this out.
+ *
  * The screen (L9d): with screen.form "output" the frame is the output over
  * display.scale (main_native.c asks wlr_size once the output is up), so it
  * fills the output at that scale. A fullscreen app smaller than the frame
@@ -186,7 +191,7 @@ static void output_frame(struct wl_listener *l, void *data)
     (void)l;
     (void)data;
     if (s.scene_output == NULL) return;
-    if (wlr_scene_output_commit(s.scene_output, NULL)) s.stats.commits++;
+    if (!crt_frame() && wlr_scene_output_commit(s.scene_output, NULL)) s.stats.commits++;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     wlr_scene_output_send_frame_done(s.scene_output, &ts);
@@ -207,6 +212,7 @@ static void output_destroy(struct wl_listener *l, void *data)
     wl_list_remove(&s.output_frame.link);
     wl_list_remove(&s.output_request_state.link);
     wl_list_remove(&s.output_destroy.link);
+    crt_output_gone();
     s.output = NULL;
     s.scene_output = NULL;
     /* The nested window closed (or the display went): the session ends. */
@@ -456,6 +462,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
         return false;
     }
     wlr_renderer_init_wl_display(s.renderer, s.display);
+    crt_init(m);
     s.allocator = wlr_allocator_autocreate(s.backend, s.renderer);
     if (s.allocator == NULL) {
         snprintf(why, why_len, "no wlroots allocator");
