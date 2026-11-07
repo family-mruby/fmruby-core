@@ -588,7 +588,8 @@ static void test_machine(void)
     CHECK(native_machine_set(&m, "display.mode", "big", err, sizeof(err)) != 0, "bad mode refused");
     // The CRT look (doc/web_crt, C4): sharp by default, the browser's strengths.
     CHECK(strcmp(m.display.look, "sharp") == 0 && m.display.crt_scanline == 55 && m.display.crt_mask == 30 &&
-          m.display.crt_glow == 30 && m.display.crt_curve == 15 && m.display.crt_vignette == 40,
+          m.display.crt_glow == 30 && m.display.crt_curve == 15 && m.display.crt_vignette == 40 &&
+              m.display.crt_ntsc == 0 && m.display.crt_flicker == 0 && m.display.crt_noise == 0,
           "look sharp by default, the browser's strengths");
     CHECK(native_machine_set(&m, "display.look", "crt", err, sizeof(err)) == 0 && strcmp(m.display.look, "crt") == 0,
           "look crt");
@@ -598,10 +599,16 @@ static void test_machine(void)
           m.display.crt_vignette == 100 && m.display.crt_scanline == 55, "crt strengths");
     CHECK(native_machine_set(&m, "display.crt_glow", "101", err, sizeof(err)) != 0 &&
           native_machine_set(&m, "display.crt_mask", "-1", err, sizeof(err)) != 0, "crt strength out of range refused");
+    // C6: NTSC's colour bleed and the time effects.
+    CHECK(native_machine_set(&m, "display.crt_ntsc", "60", err, sizeof(err)) == 0 && m.display.crt_ntsc == 60 &&
+          native_machine_set(&m, "display.crt_flicker", "20", err, sizeof(err)) == 0 &&
+          m.display.crt_flicker == 20 && native_machine_set(&m, "display.crt_noise", "100", err, sizeof(err)) == 0 &&
+          m.display.crt_noise == 100 && native_machine_set(&m, "display.crt_noise", "101", err, sizeof(err)) != 0,
+          "crt ntsc, flicker, noise");
     {
         char line[1024];
         native_machine_describe(&m, line, sizeof(line));
-        CHECK(strstr(line, "look=crt(55,30,30,0,100)") != NULL, "the look in the summary (%s)", line);
+        CHECK(strstr(line, "look=crt(55,30,30,0,100,60,20,100)") != NULL, "the look in the summary (%s)", line);
     }
     // The settings' choice (C5): [crt] of the user's system_conf.toml over
     // the definition and --set.
@@ -610,13 +617,14 @@ static void test_machine(void)
         int fd = mkstemp(path);
         CHECK(fd >= 0, "a temporary file");
         FILE *f = fdopen(fd, "w");
-        fputs("language = \"ja\"\n[theme]\ntext = 0x00\n\n[crt]\nlook = \"sharp\"\ncurve = 25\nglow = 0\n", f);
+        fputs("language = \"ja\"\n[theme]\ntext = 0x00\n\n[crt]\nlook = \"sharp\"\ncurve = 25\nglow = 0\nntsc = 45\n", f);
         fclose(f);
         native_machine_t u;
         native_machine_defaults(&u);
         native_machine_set(&u, "display.look", "crt", err, sizeof(err));
         CHECK(native_machine_load_crt(&u, path, err, sizeof(err)) == 1 && strcmp(u.display.look, "sharp") == 0 &&
-              u.display.crt_curve == 25 && u.display.crt_glow == 0 && u.display.crt_scanline == 55,
+              u.display.crt_curve == 25 && u.display.crt_glow == 0 && u.display.crt_scanline == 55 &&
+                  u.display.crt_ntsc == 45 && u.display.crt_noise == 0,
               "the user's [crt] wins over --set, the rest kept (%s)", err);
         f = fopen(path, "w");
         fputs("language = \"ja\"\n", f);

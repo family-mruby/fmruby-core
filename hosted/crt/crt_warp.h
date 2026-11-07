@@ -21,6 +21,11 @@ extern "C" {
 #define CRT_DEFAULT_GLOW 30
 #define CRT_DEFAULT_CURVE 15
 #define CRT_DEFAULT_VIGNETTE 40
+#define CRT_DEFAULT_NTSC 0
+#define CRT_DEFAULT_FLICKER 0
+#define CRT_DEFAULT_NOISE 0
+/* The time effects (flicker, noise) draw this many frames a second. */
+#define CRT_TIME_FPS 30
 
 /* Slider value (0..100) -> the curve's coefficient (0..0.25). */
 double crt_curve_coef(int curve);

@@ -253,9 +253,11 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
     if (strncmp(a, "crt", 3) == 0 && (a[3] == '\0' || a[3] == ' ')) {
         /* The CRT look (doc/web_crt, C4): "comp crt" its state and timings;
          * "comp crt look=crt|sharp scanline=N mask=N glow=N curve=N
-         * vignette=N" (any of them) switches it while running. */
-        static const char *const names[5] = { "scanline", "mask", "glow", "curve", "vignette" };
-        int str[5] = { -1, -1, -1, -1, -1 };
+         * vignette=N ntsc=N flicker=N noise=N" (any of them) switches it
+         * while running. */
+        static const char *const names[COMP_CRT_N] = { "scanline", "mask", "glow", "curve",
+                                                       "vignette", "ntsc", "flicker", "noise" };
+        int str[COMP_CRT_N] = { -1, -1, -1, -1, -1, -1, -1, -1 };
         char look[16] = "";
         bool any = false, bad = false;
         char buf[256];
@@ -272,7 +274,7 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
                 snprintf(look, sizeof(look), "%s", eq + 1);
                 known = true;
             }
-            for (int i = 0; i < 5 && !known; i++) {
+            for (int i = 0; i < COMP_CRT_N && !known; i++) {
                 if (strcmp(tok, names[i]) != 0) continue;
                 char *end = NULL;
                 long v = strtol(eq + 1, &end, 10);
@@ -284,7 +286,7 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
             any = true;
         }
         if (bad) {
-            snprintf(out, cap, "ERR comp crt [look=crt|sharp] [scanline|mask|glow|curve|vignette=0-100]\n");
+            snprintf(out, cap, "ERR comp crt [look=crt|sharp] [scanline|mask|glow|curve|vignette|ntsc|flicker|noise=0-100]\n");
             return true;
         }
         if (any) {

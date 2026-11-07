@@ -705,15 +705,16 @@ void native_crt_state(char *out, size_t cap)
     if (cap == 0) return;
     out[0] = '\0';
     if (!comp_link_crt(&c)) return;
-    snprintf(out, cap, "%s,%d,%d,%d,%d,%d", c.crt ? "crt" : "sharp", c.s[0], c.s[1], c.s[2], c.s[3], c.s[4]);
+    snprintf(out, cap, "%s,%d,%d,%d,%d,%d,%d,%d,%d", c.crt ? "crt" : "sharp", c.s[0], c.s[1], c.s[2], c.s[3],
+             c.s[4], c.s[5], c.s[6], c.s[7]);
 }
 
-bool native_crt_ask(bool crt, const int strengths[5])
+bool native_crt_ask(bool crt, const int strengths[COMP_CRT_N])
 {
     comp_crt_t now;
     if (!comp_link_crt(&now)) return false;
     comp_crt_t c = { .crt = crt };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < COMP_CRT_N; i++) {
         int v = strengths[i];
         c.s[i] = v < 0 ? 0 : (v > 100 ? 100 : v);
     }

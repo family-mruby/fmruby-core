@@ -77,6 +77,9 @@ void native_machine_defaults(native_machine_t *m)
     m->display.crt_glow = 30;
     m->display.crt_curve = 15;
     m->display.crt_vignette = 40;
+    m->display.crt_ntsc = 0;
+    m->display.crt_flicker = 0;
+    m->display.crt_noise = 0;
     snprintf(m->input.backend, sizeof(m->input.backend), "sdl");
     snprintf(m->input.devices[0], sizeof(m->input.devices[0]), "auto");
     m->input.n_devices = 1;
@@ -254,6 +257,9 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
             { "display.crt_glow", offsetof(native_machine_t, display.crt_glow) },
             { "display.crt_curve", offsetof(native_machine_t, display.crt_curve) },
             { "display.crt_vignette", offsetof(native_machine_t, display.crt_vignette) },
+            { "display.crt_ntsc", offsetof(native_machine_t, display.crt_ntsc) },
+            { "display.crt_flicker", offsetof(native_machine_t, display.crt_flicker) },
+            { "display.crt_noise", offsetof(native_machine_t, display.crt_noise) },
         };
         for (size_t i = 0; i < sizeof(strengths) / sizeof(strengths[0]); i++) {
             if (strcmp(key, strengths[i].key) != 0) continue;
@@ -465,6 +471,8 @@ int native_machine_load_crt(native_machine_t *m, const char *path, char *err, si
         { "look", "display.look" },         { "scanline", "display.crt_scanline" },
         { "mask", "display.crt_mask" },     { "glow", "display.crt_glow" },
         { "curve", "display.crt_curve" },   { "vignette", "display.crt_vignette" },
+        { "ntsc", "display.crt_ntsc" },     { "flicker", "display.crt_flicker" },
+        { "noise", "display.crt_noise" },
     };
     int rc = 1;
     for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]) && rc == 1; i++) {
@@ -574,8 +582,9 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
     char look[64] = "";
     if (strcmp(m->display.look, "crt") == 0) {
-        snprintf(look, sizeof(look), " look=crt(%d,%d,%d,%d,%d)", m->display.crt_scanline, m->display.crt_mask,
-                 m->display.crt_glow, m->display.crt_curve, m->display.crt_vignette);
+        snprintf(look, sizeof(look), " look=crt(%d,%d,%d,%d,%d,%d,%d,%d)", m->display.crt_scanline,
+                 m->display.crt_mask, m->display.crt_glow, m->display.crt_curve, m->display.crt_vignette,
+                 m->display.crt_ntsc, m->display.crt_flicker, m->display.crt_noise);
     }
     snprintf(out, out_len,
              "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s%s, "

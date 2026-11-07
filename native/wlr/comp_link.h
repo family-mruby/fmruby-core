@@ -53,11 +53,13 @@ typedef enum {
     COMP_LOCK_LOCKED,                   /* covered: nothing reaches Family mruby or a window */
 } comp_lock_state_t;
 
-/* The CRT look's setting: on or off and the five strengths (0..100):
- * scanline, mask, glow, curve, vignette. */
+/* The CRT look's setting: on or off and the strengths (0..100), in this
+ * order: scanline, mask, glow, curve, vignette, ntsc (the colour bleed),
+ * flicker, noise (the last two move with time; doc/web_crt, C6). */
+#define COMP_CRT_N 8
 typedef struct {
     bool crt;
-    int s[5];
+    int s[COMP_CRT_N];
 } comp_crt_t;
 
 /* The compositor's side: attach its route (the notices) and the descriptor

@@ -19,8 +19,9 @@
 # devices paired before, Connect and Disconnect. A new device is paired in
 # Linux's own tool (one line says which).
 #
-# Display (the compositor's CRT look, doc/web_crt C5): Sharp or CRT and the
-# five strengths (0-100), applied at once (FmrbApp.crt_set asks the
+# Display (the compositor's CRT look, doc/web_crt C5 and C6): Sharp or CRT
+# and the eight strengths (0-100; NTSC's colour bleed and the two time
+# effects, flicker and noise, in a second column), applied at once (FmrbApp.crt_set asks the
 # compositor), and kept in the [crt] table of /etc/system_conf.toml, which
 # the next session starts from (it wins over the session file's --set).
 # Defaults puts the strengths back (not the on/off), as the browser's does.
@@ -37,10 +38,16 @@ class LinuxSettingsApp < FmrbApp
   POLL_MS = 1000
   CONF_PATH = "/etc/system_conf.toml"
   # The CRT look's strengths: the [crt] keys, in crt_set's order.
-  CRT_KEYS = ["scanline", "mask", "glow", "curve", "vignette"]
-  CRT_DEFAULTS = [55, 30, 30, 15, 40]
+  CRT_KEYS = ["scanline", "mask", "glow", "curve", "vignette", "ntsc", "flicker", "noise"]
+  CRT_IDS = [:crt_scanline, :crt_mask, :crt_glow, :crt_curve, :crt_vignette, :crt_ntsc, :crt_flicker, :crt_noise]
+  CRT_DEFAULTS = [55, 30, 30, 15, 40, 0, 0, 0]
   CRT_ROW_Y = 40
   CRT_ROW_H = 18
+  # Two columns: the first CRT_COL_ROWS strengths on the left, the rest on
+  # the right. Label x and stepper x of each.
+  CRT_COL_ROWS = 5
+  CRT_COLS = [[4, 66], [140, 204]]
+  CRT_STEP_W = 66
 
   STRINGS = {
     "en" => {
@@ -67,6 +74,7 @@ class LinuxSettingsApp < FmrbApp
       st_saved: "saved",
       st_display: "Display", st_look: "Look", st_sharp: "Sharp", st_crt: "CRT",
       st_scanline: "Scanlines", st_mask: "Grille", st_glow: "Glow", st_curve: "Curve", st_vignette: "Corners",
+      st_ntsc: "NTSC", st_flicker: "Flicker", st_noise: "Noise",
       st_defaults: "Defaults", st_crt_gone: "The CRT look is not available here",
       st_crt_kept: "Kept for the next session"
     },
@@ -94,6 +102,7 @@ class LinuxSettingsApp < FmrbApp
       st_saved: "保存",
       st_display: "画面", st_look: "見た目", st_sharp: "くっきり", st_crt: "ブラウン管",
       st_scanline: "走査線", st_mask: "格子", st_glow: "にじみ", st_curve: "曲がり", st_vignette: "四隅の暗さ",
+      st_ntsc: "色のにじみ", st_flicker: "ちらつき", st_noise: "ノイズ",
       st_defaults: "既定に戻す", st_crt_gone: "ここでは CRT の見た目を出せません",
       st_crt_kept: "次のセッションでも使います"
     }
@@ -191,10 +200,11 @@ class LinuxSettingsApp < FmrbApp
       @ui.toggle(:look_crt, lx + 78, 20, 72, 14, FmrbI18n.t(:st_crt), group: :look, on: @crt_on)
       i = 0
       while i < CRT_KEYS.size
-        @ui.stepper(crt_id(i), lx, CRT_ROW_Y + i * CRT_ROW_H, 90, 14, @crt_s[i], 0, 100, 5)
+        @ui.stepper(crt_id(i), CRT_COLS[crt_col(i)][1], crt_row_y(i), CRT_STEP_W, 14, @crt_s[i], 0, 100, 5)
         i += 1
       end
-      @ui.button(:crt_defaults, lx, CRT_ROW_Y + CRT_KEYS.size * CRT_ROW_H + 2, 90, 16, FmrbI18n.t(:st_defaults))
+      @ui.button(:crt_defaults, CRT_COLS[1][1], crt_row_y(CRT_COL_ROWS - 1), CRT_STEP_W, 16,
+                 FmrbI18n.t(:st_defaults))
     end
     by = @h - 34
     bw = 72
@@ -224,7 +234,15 @@ class LinuxSettingsApp < FmrbApp
   end
 
   def crt_id(i)
-    [:crt_scanline, :crt_mask, :crt_glow, :crt_curve, :crt_vignette][i]
+    CRT_IDS[i]
+  end
+
+  def crt_col(i)
+    i < CRT_COL_ROWS ? 0 : 1
+  end
+
+  def crt_row_y(i)
+    CRT_ROW_Y + (i < CRT_COL_ROWS ? i : i - CRT_COL_ROWS) * CRT_ROW_H
   end
 
   def switch_page(page)
@@ -250,7 +268,7 @@ class LinuxSettingsApp < FmrbApp
     when :look_sharp then crt_change(false, nil)
     when :look_crt then crt_change(true, nil)
     when :crt_defaults then crt_change(@crt_on, CRT_DEFAULTS)
-    when :crt_scanline, :crt_mask, :crt_glow, :crt_curve, :crt_vignette
+    when :crt_scanline, :crt_mask, :crt_glow, :crt_curve, :crt_vignette, :crt_ntsc, :crt_flicker, :crt_noise
       st = []
       i = 0
       while i < CRT_KEYS.size
@@ -297,8 +315,8 @@ class LinuxSettingsApp < FmrbApp
     true
   end
 
-  # "crt,55,30,30,15,40" (FmrbApp.crt_state) -> @crt_on, @crt_s; "" (the
-  # look cannot be drawn) keeps the defaults.
+  # "crt,55,30,30,15,40,0,0,0" (FmrbApp.crt_state) -> @crt_on, @crt_s; ""
+  # (the look cannot be drawn) keeps the defaults.
   def parse_crt
     f = @crt_text.split(",")
     @crt_on = f[0] == "crt"
@@ -328,7 +346,8 @@ class LinuxSettingsApp < FmrbApp
     @crt_on = on
     @crt_s = strengths.dup if strengths
     sync_crt_widgets
-    ok = FmrbApp.crt_set(@crt_on, @crt_s[0], @crt_s[1], @crt_s[2], @crt_s[3], @crt_s[4])
+    ok = FmrbApp.crt_set(@crt_on, @crt_s[0], @crt_s[1], @crt_s[2], @crt_s[3], @crt_s[4],
+                         @crt_s[5], @crt_s[6], @crt_s[7])
     @msg = ok ? FmrbI18n.t(:st_crt_kept) : FmrbI18n.t(:st_crt_gone)
     @crt_dirty = ok
     Log.info("settings: display asked #{@crt_on ? 'crt' : 'sharp'} #{@crt_s.join(',')}#{ok ? '' : ' (not available)'}")
@@ -767,7 +786,7 @@ class LinuxSettingsApp < FmrbApp
     text(4, 23, FmrbI18n.t(:st_look))
     i = 0
     while i < CRT_KEYS.size
-      text(4, CRT_ROW_Y + i * CRT_ROW_H + 3, FmrbI18n.t(("st_" + CRT_KEYS[i]).to_sym))
+      text(CRT_COLS[crt_col(i)][0], crt_row_y(i) + 3, FmrbI18n.t(("st_" + CRT_KEYS[i]).to_sym))
       i += 1
     end
     draw_message(@msg)

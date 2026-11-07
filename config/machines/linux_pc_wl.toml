@@ -32,6 +32,8 @@ scale = 2                    # the output's pixels to one Family mruby pixel
 mode = "auto"                # or "WxH": the output's mode (any size on headless and nested)
 look = "sharp"               # or "crt": the whole output as a CRT (GLES only; doc/web_crt), with
                              # crt_scanline 55, crt_mask 30, crt_glow 30, crt_curve 15, crt_vignette 40 (0-100)
+                             # and crt_ntsc 0, crt_flicker 0, crt_noise 0 (flicker or noise above 0 draws
+                             # 30 frames a second)
 
 [input]
 backend = "wlroots"          # the compositor's seat: keyboard, touchpad, mouse

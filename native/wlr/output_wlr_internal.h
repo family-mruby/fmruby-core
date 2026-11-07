@@ -425,9 +425,9 @@ void crt_init(const native_machine_t *m);
 bool crt_frame(void);
 void crt_output_gone(void);
 /* Switch while running (C5 calls it from the desktop's settings): look
- * "sharp" / "crt" or NULL to keep it; strengths scanline, mask, glow,
- * curve, vignette (0..100, -1 keeps one) or NULL. False with why. */
-bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len);
+ * "sharp" / "crt" or NULL to keep it; strengths in comp_crt_t's order
+ * (COMP_CRT_N of them, 0..100, -1 keeps one) or NULL. False with why. */
+bool crt_set(const char *look, const int strengths[COMP_CRT_N], char *why, size_t why_len);
 /* Where the pointer points: wlr_cursor's place sent back through the
  * curve while the look bends the output; inside is false where the curve
  * leaves the picture (a press there is dropped). */

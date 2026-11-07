@@ -1988,7 +1988,8 @@ static mrb_value mrb_fmrb_app_s_notify(mrb_state *mrb, mrb_value klass)
 // FmrbApp.crt_state -> String: the native compositor's CRT look for the
 //   settings window (doc/web_crt, C5): "" where it cannot be drawn (every
 //   build but the native program as a GLES compositor), else "crt" or
-//   "sharp" and the five strengths, "crt,55,30,30,15,40".
+//   "sharp" and the eight strengths, "crt,55,30,30,15,40,0,0,0" (scanline,
+//   mask, glow, curve, vignette, ntsc, flicker, noise; doc/web_crt C6).
 #if defined(FMRB_PLATFORM_NATIVE)
 extern void native_crt_state(char *out, size_t cap);
 #endif
@@ -2073,18 +2074,19 @@ static mrb_value mrb_fmrb_app_s_settings_page(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value(native_settings_page());
 }
 
-// FmrbApp.crt_set(crt, scanline, mask, glow, curve, vignette) -> bool: ask
-//   the compositor for the CRT look (doc/web_crt, C5; native/wlr/wl_bridge.h),
-//   applied at once; false where it cannot be drawn. Native only.
-extern bool native_crt_ask(bool crt, const int strengths[5]);
+// FmrbApp.crt_set(crt, scanline, mask, glow, curve, vignette, ntsc,
+//   flicker, noise) -> bool: ask the compositor for the CRT look
+//   (doc/web_crt, C5 and C6; native/wlr/wl_bridge.h), applied at once;
+//   false where it cannot be drawn. Native only.
+extern bool native_crt_ask(bool crt, const int strengths[8]);
 
 static mrb_value mrb_fmrb_app_s_crt_set(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
     mrb_bool crt;
-    mrb_int a, b, c, d, e;
-    mrb_get_args(mrb, "biiiii", &crt, &a, &b, &c, &d, &e);
-    const int st[5] = { (int)a, (int)b, (int)c, (int)d, (int)e };
+    mrb_int a, b, c, d, e, f, g, h;
+    mrb_get_args(mrb, "biiiiiiii", &crt, &a, &b, &c, &d, &e, &f, &g, &h);
+    const int st[8] = { (int)a, (int)b, (int)c, (int)d, (int)e, (int)f, (int)g, (int)h };
     return mrb_bool_value(native_crt_ask(crt, st));
 }
 
@@ -2632,7 +2634,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "linux_keyboard", mrb_fmrb_app_s_linux_keyboard, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_settings", mrb_fmrb_app_s_linux_settings, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "settings_page", mrb_fmrb_app_s_settings_page, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "crt_set", mrb_fmrb_app_s_crt_set, MRB_ARGS_REQ(6));
+    mrb_define_class_method(mrb, app_class, "crt_set", mrb_fmrb_app_s_crt_set, MRB_ARGS_REQ(9));
 #endif
     mrb_define_class_method(mrb, app_class, "crt_state", mrb_fmrb_app_s_crt_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());

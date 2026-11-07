@@ -43,7 +43,10 @@
  *              crt_mask       the effect): scanlines, the phosphor grille,
  *              crt_glow       glow, the tube's curve, the dark corners; the
  *              crt_curve      browser build's defaults (55, 30, 30, 15, 40).
- *              crt_vignette   A picture pixel is display.scale output pixels
+ *              crt_vignette   A picture pixel is display.scale output pixels.
+ *              crt_ntsc       C6: NTSC's colour bleed, flicker and noise
+ *              crt_flicker    (0-100, default 0; flicker or noise above 0
+ *              crt_noise      draws 30 frames a second, not only on change)
  *   [input]    backend        sdl | evdev | wlroots (the inject socket is
  *                             always on)
  *              devices        evdev: ["auto"] or paths (/dev/input/by-path/..)
@@ -156,6 +159,7 @@ typedef struct {
         bool fullscreen;                 /* sdl only */
         char look[8];                    /* "sharp" or "crt" (wlroots) */
         int crt_scanline, crt_mask, crt_glow, crt_curve, crt_vignette; /* 0..100 */
+        int crt_ntsc, crt_flicker, crt_noise;                           /* 0..100 (C6) */
     } display;
 
     struct {
@@ -218,7 +222,8 @@ int native_machine_load_file(native_machine_t *m, const char *path,
 
 /* The CRT look the user chose in the settings window (doc/web_crt, C5): the
  * [crt] table of the user's system_conf.toml (look = "crt" | "sharp",
- * scanline, mask, glow, curve, vignette: 0-100, each optional) over
+ * scanline, mask, glow, curve, vignette, ntsc, flicker, noise: 0-100, each
+ * optional) over
  * display.look and display.crt_*, after the definition and --set (the
  * user's choice wins). Returns 1 when the table was there and applied, 0
  * when the file or the table is not, -1 with the reason in err (the keys

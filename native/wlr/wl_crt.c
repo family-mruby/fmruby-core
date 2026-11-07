@@ -15,7 +15,10 @@
  *      wlr_gles2_texture_get_attribs) through the shader; submit;
  *   3. that buffer committed to the output, whole.
  *
- * Only when the scene needs a frame (or a setting changed). Direct scan-out
+ * Only when the scene needs a frame (or a setting changed), and with the
+ * time effects (flicker, noise; C6) also CRT_TIME_FPS times a second: a
+ * timer asks for a frame and, the scene having nothing new, the last scene
+ * buffer (held for it) goes through the shader again. Direct scan-out
  * is held off while the look is on (it would hand the output a client's
  * buffer). The hardware cursor stays flat on its own plane.
  *
@@ -54,15 +57,21 @@
 static struct {
     bool want;                              /* display.look = "crt" */
     int scan, mask, glow, curve, vig;       /* 0..100 */
+    int ntsc, flicker, noise;               /* 0..100 (C6) */
     int unit_conf;                          /* display.scale (0 auto) */
     bool unusable;                          /* cannot draw it here; stays sharp */
     char why[200];                          /* ...because */
     bool on;                                /* drawing (direct scan-out held off) */
     unsigned dropped;                       /* presses outside the curved picture */
     struct wlr_swapchain *chain;            /* the scene draws here */
+    struct wlr_buffer *last;                /* the scene's last buffer (locked), for the time effects */
+    struct wl_event_source *tick;           /* the time effects' timer */
+    bool tick_due;                          /* it fired: draw even without scene damage */
+    unsigned time_frames;                   /* frames drawn only for the time effects */
     GLuint prog;
     GLint a_pos;
     GLint u_tex, u_src, u_curve, u_scan, u_mask, u_glow, u_vig, u_frag, u_texel, u_out, u_unit;
+    GLint u_ntsc, u_flicker, u_noise, u_frame;
     /* Timings. done: wlroots' timer, from the pass's start to the GPU
      * having finished it (the scene's drawing queued before it included);
      * pass: the CRT draw alone on the GPU (GL_EXT_disjoint_timer_query,
@@ -105,7 +114,8 @@ static double mono_ms(void)
  * here and what is set. */
 static void crt_publish(void)
 {
-    comp_crt_t c = { .crt = crt.want, .s = { crt.scan, crt.mask, crt.glow, crt.curve, crt.vig } };
+    comp_crt_t c = { .crt = crt.want,
+                     .s = { crt.scan, crt.mask, crt.glow, crt.curve, crt.vig, crt.ntsc, crt.flicker, crt.noise } };
     comp_link_set_crt(!crt.unusable, &c);
 }
 
@@ -132,6 +142,9 @@ void crt_init(const native_machine_t *m)
     crt.glow = m->display.crt_glow;
     crt.curve = m->display.crt_curve;
     crt.vig = m->display.crt_vignette;
+    crt.ntsc = m->display.crt_ntsc;
+    crt.flicker = m->display.crt_flicker;
+    crt.noise = m->display.crt_noise;
     crt.unit_conf = m->display.scale;
     if (!wlr_renderer_is_gles2(s.renderer)) give_up("the renderer is %s (it needs GLES)", renderer_name());
     crt_publish();
@@ -186,10 +199,50 @@ static void crt_redraw_all(void)
     wlr_output_update_needs_frame(s.output);
 }
 
+/* The time effects are on: the picture changes with time. */
+static bool crt_timed(void)
+{
+    return crt.flicker > 0 || crt.noise > 0;
+}
+
+static void crt_drop_last(void)
+{
+    if (crt.last != NULL) {
+        wlr_buffer_unlock(crt.last);
+        crt.last = NULL;
+    }
+}
+
+static int crt_tick(void *data)
+{
+    (void)data;
+    crt.tick_due = true;
+    if (s.output != NULL) wlr_output_schedule_frame(s.output);
+    return 0;
+}
+
+/* After a frame: with the time effects on, the next one in a 30th of a
+ * second (the timer is one-shot, so it never piles up behind slow frames);
+ * off, the timer stays idle and the last buffer is let go. */
+static void crt_arm_tick(void)
+{
+    if (!crt_timed() || !crt.want || crt.unusable) {
+        if (crt.tick != NULL) wl_event_source_timer_update(crt.tick, 0);
+        crt.tick_due = false;
+        crt_drop_last();
+        return;
+    }
+    if (crt.tick == NULL) crt.tick = wl_event_loop_add_timer(s.loop, crt_tick, NULL);
+    if (crt.tick != NULL) wl_event_source_timer_update(crt.tick, 1000 / CRT_TIME_FPS);
+}
+
 /* Back to the plain output: the output's own buffers hold the CRT picture,
  * which the scene's damage ring knows nothing of. */
 static void crt_stop(void)
 {
+    crt_drop_last();
+    if (crt.tick != NULL) wl_event_source_timer_update(crt.tick, 0);
+    crt.tick_due = false;
     if (crt.on) {
         if (s.output != NULL) wlr_output_lock_attach_render(s.output, false);
         crt.on = false;
@@ -201,7 +254,7 @@ static void crt_stop(void)
     }
 }
 
-bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len)
+bool crt_set(const char *look, const int strengths[COMP_CRT_N], char *why, size_t why_len)
 {
     if (look != NULL) {
         if (strcmp(look, "crt") != 0 && strcmp(look, "sharp") != 0) {
@@ -211,14 +264,15 @@ bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len
         crt.want = strcmp(look, "crt") == 0;
     }
     if (strengths != NULL) {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < COMP_CRT_N; i++) {
             if (strengths[i] < -1 || strengths[i] > 100) {
                 snprintf(why, why_len, "a strength is not 0-100");
                 return false;
             }
         }
-        int *f[5] = { &crt.scan, &crt.mask, &crt.glow, &crt.curve, &crt.vig };
-        for (int i = 0; i < 5; i++) {
+        int *f[COMP_CRT_N] = { &crt.scan, &crt.mask, &crt.glow, &crt.curve, &crt.vig,
+                               &crt.ntsc, &crt.flicker, &crt.noise };
+        for (int i = 0; i < COMP_CRT_N; i++) {
             if (strengths[i] >= 0) *f[i] = strengths[i];
         }
     }
@@ -228,8 +282,11 @@ bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len
     else crt_redraw_all();
     /* What the pointer is over may have moved with the curve. */
     recheck_pointer();
-    fprintf(stderr, "native: compositor: look %s (scanline %d, mask %d, glow %d, curve %d, vignette %d)%s\n",
-            crt.want ? "crt" : "sharp", crt.scan, crt.mask, crt.glow, crt.curve, crt.vig,
+    fprintf(stderr,
+            "native: compositor: look %s (scanline %d, mask %d, glow %d, curve %d, vignette %d, ntsc %d, flicker %d, "
+            "noise %d)%s\n",
+            crt.want ? "crt" : "sharp", crt.scan, crt.mask, crt.glow, crt.curve, crt.vig, crt.ntsc, crt.flicker,
+            crt.noise,
             crt.want && crt.unusable ? ", unavailable here" : "");
     return true;
 }
@@ -243,11 +300,12 @@ void crt_describe(char *out, size_t cap)
 {
     double span = crt.st.since_ms ? (double)(now_ms() - crt.st.since_ms) / 1000.0 : 0.0;
     snprintf(out, cap,
-             "OK look=%s drawing=%d unusable=%d scanline=%d mask=%d glow=%d curve=%d vignette=%d unit=%d "
-             "frames=%u span_s=%.1f last_pass_ms=%.3f last_done_ms=%.3f last_cpu_ms=%.3f dropped=%u\n",
+             "OK look=%s drawing=%d unusable=%d scanline=%d mask=%d glow=%d curve=%d vignette=%d ntsc=%d "
+             "flicker=%d noise=%d unit=%d frames=%u time_frames=%u span_s=%.1f last_pass_ms=%.3f "
+             "last_done_ms=%.3f last_cpu_ms=%.3f dropped=%u\n",
              crt.want ? "crt" : "sharp", crt.on ? 1 : 0, crt.unusable ? 1 : 0, crt.scan, crt.mask, crt.glow,
-             crt.curve, crt.vig, crt_unit(), crt.st.total_frames, span, crt.st.last_pass_ms, crt.st.last_done_ms,
-             crt.st.last_cpu_ms, crt.dropped);
+             crt.curve, crt.vig, crt.ntsc, crt.flicker, crt.noise, crt_unit(), crt.st.total_frames,
+             crt.time_frames, span, crt.st.last_pass_ms, crt.st.last_done_ms, crt.st.last_cpu_ms, crt.dropped);
 }
 
 static GLuint compile(GLenum type, const char *const *parts, int n)
@@ -317,6 +375,10 @@ static bool crt_program(void)
     crt.u_texel = glGetUniformLocation(p, "u_texel");
     crt.u_out = glGetUniformLocation(p, "u_out");
     crt.u_unit = glGetUniformLocation(p, "u_unit");
+    crt.u_ntsc = glGetUniformLocation(p, "u_ntsc");
+    crt.u_flicker = glGetUniformLocation(p, "u_flicker");
+    crt.u_noise = glGetUniformLocation(p, "u_noise");
+    crt.u_frame = glGetUniformLocation(p, "u_frame");
     const char *ext = (const char *)glGetString(GL_EXTENSIONS);
     if (ext != NULL && strstr(ext, "GL_EXT_disjoint_timer_query") != NULL) {
         crt.gen_queries = (void (*)(GLsizei, GLuint *))eglGetProcAddress("glGenQueries");
@@ -454,6 +516,12 @@ static bool crt_draw(struct wlr_buffer *src, struct wlr_buffer *dst)
     glUniform1f(crt.u_mask, (float)(crt.mask / 100.0 * crt_fine_weight(scale, 2.0, 3.0)));
     glUniform1f(crt.u_glow, (float)(crt.glow / 100.0));
     glUniform1f(crt.u_vig, (float)(crt.vig / 100.0));
+    glUniform1f(crt.u_ntsc, (float)(crt.ntsc / 100.0));
+    glUniform1f(crt.u_flicker, (float)(crt.flicker / 100.0));
+    glUniform1f(crt.u_noise, (float)(crt.noise / 100.0));
+    /* The time effects' frame: from the clock, CRT_TIME_FPS a second
+     * whatever the drawing rate (crt.js's timeFrame). */
+    glUniform1f(crt.u_frame, (float)((now_ms() * CRT_TIME_FPS / 1000) % 1048576));
     static const GLfloat tri[] = { -1, -1, 3, -1, -1, 3 };
     glEnableVertexAttribArray((GLuint)crt.a_pos);
     glVertexAttribPointer((GLuint)crt.a_pos, 2, GL_FLOAT, GL_FALSE, 0, tri);
@@ -483,6 +551,7 @@ static bool crt_chain(void)
         o->swapchain != NULL && crt.chain->format.format == o->swapchain->format.format) {
         return true;
     }
+    crt_drop_last();
     if (crt.chain != NULL) {
         wlr_swapchain_destroy(crt.chain);
         crt.chain = NULL;
@@ -546,7 +615,15 @@ bool crt_frame(void)
         return false;
     }
     struct wlr_output *o = s.output;
-    if (!wlr_scene_output_needs_frame(s.scene_output)) return true;
+    bool tick = crt.tick_due;
+    crt.tick_due = false;
+    bool scene_new = wlr_scene_output_needs_frame(s.scene_output);
+    /* Nothing new in the scene: only the time effects' tick draws, from
+     * the buffer kept from the last frame. */
+    if (!scene_new && !(tick && crt_timed() && crt.last != NULL)) {
+        if (tick) crt_arm_tick();
+        return true;
+    }
     double t0 = mono_ms();
 
     if (!crt.on) {
@@ -558,18 +635,28 @@ bool crt_frame(void)
     bool ok = false;
     if (!wlr_output_configure_primary_swapchain(o, &out, &o->swapchain) || !crt_chain()) goto done;
 
-    struct wlr_output_state scene;
-    wlr_output_state_init(&scene);
-    const struct wlr_scene_output_state_options opts = { .swapchain = crt.chain };
     struct wlr_buffer *src = NULL;
-    if (wlr_scene_output_build_state(s.scene_output, &scene, &opts) &&
-        (scene.committed & WLR_OUTPUT_STATE_BUFFER) && scene.buffer != NULL) {
-        src = wlr_buffer_lock(scene.buffer);
+    if (scene_new) {
+        struct wlr_output_state scene;
+        wlr_output_state_init(&scene);
+        const struct wlr_scene_output_state_options opts = { .swapchain = crt.chain };
+        if (wlr_scene_output_build_state(s.scene_output, &scene, &opts) &&
+            (scene.committed & WLR_OUTPUT_STATE_BUFFER) && scene.buffer != NULL) {
+            src = wlr_buffer_lock(scene.buffer);
+        }
+        /* Only its buffer: the wait point it names is the scene's pass,
+         * which ours follows in the same context anyway. */
+        wlr_output_state_finish(&scene);
+    } else {
+        src = wlr_buffer_lock(crt.last);
+        crt.time_frames++;
     }
-    /* Only its buffer: the wait point it names is the scene's pass, which
-     * ours follows in the same context anyway. */
-    wlr_output_state_finish(&scene);
     if (src == NULL) goto done;
+    /* Kept for the time effects' next tick (only while they are on). */
+    if (crt_timed() && src != crt.last) {
+        crt_drop_last();
+        crt.last = wlr_buffer_lock(src);
+    }
 
     struct wlr_buffer *dst = wlr_swapchain_acquire(o->swapchain);
     if (dst == NULL) {
@@ -595,11 +682,18 @@ done:
         return false;
     }
     if (ok) crt_stats(mono_ms() - t0);
+    crt_arm_tick();
     return true;
 }
 
 void crt_output_gone(void)
 {
+    crt_drop_last();
+    if (crt.tick != NULL) {
+        wl_event_source_remove(crt.tick);
+        crt.tick = NULL;
+    }
+    crt.tick_due = false;
     if (crt.chain != NULL) {
         wlr_swapchain_destroy(crt.chain);
         crt.chain = NULL;

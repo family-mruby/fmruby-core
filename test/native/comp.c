@@ -523,11 +523,11 @@ static void test_link(void)
     comp_link_set_crt(true, &cur);
     CHECK(comp_link_crt(&c2) && !c2.crt && c2.s[3] == 15, "drawable, sharp, curve 15");
     CHECK(!comp_link_take_crt(&c2), "nothing asked yet");
-    comp_crt_t want = { .crt = true, .s = { 10, 20, 30, 40, 50 } };
+    comp_crt_t want = { .crt = true, .s = { 10, 20, 30, 40, 50, 60, 70, 80 } };
     comp_link_ask_crt(&want);
     want.s[0] = 11;
     comp_link_ask_crt(&want);
-    CHECK(poll(&p, 1, 0) == 1 && comp_link_take_crt(&c2) && c2.crt && c2.s[0] == 11 && c2.s[4] == 50,
+    CHECK(poll(&p, 1, 0) == 1 && comp_link_take_crt(&c2) && c2.crt && c2.s[0] == 11 && c2.s[4] == 50 && c2.s[7] == 80,
           "two asks: woken, the newest taken");
     CHECK(!comp_link_take_crt(&c2), "taken once");
     comp_link_detach();
