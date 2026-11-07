@@ -1,0 +1,33 @@
+# scene welcome/off
+# profile mini-240x135
+# window 240x135 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+fill_rect 0 0 240 135 #FF
+fill_rect 0 0 240 22 #60
+text 4 3 "Family mruby" #FF defaultx2
+text 4 25 "v9.9.9  M5Stack StickS3" #00 defaultx1
+fill_rect 0 38 240 85 #FF
+text 4 38 "Wi-Fi: off" #60 defaultx2
+text 4 60 "Power on holding the front button," #60 defaultx1
+text 4 70 "then open Family mruby Console in a" #60 defaultx1
+text 4 80 "browser to set Wi-Fi over BLE." #60 defaultx1
+fill_rect 223 4 6 6 #FF
+fill_rect 230 4 6 6 #60
+draw_rect 230 4 6 6 #FF
+fill_rect 230 11 6 6 #60
+draw_rect 230 11 6 6 #FF
+fill_rect 223 11 6 6 #60
+draw_rect 223 11 6 6 #FF
+fill_rect 0 124 240 11 #FF
+text 194 125 "up 0:00" #60 defaultx1
+present
+== run 500 ms
+fill_rect 223 4 6 6 #60
+draw_rect 223 4 6 6 #FF
+fill_rect 230 4 6 6 #FF
+present
+fill_rect 230 4 6 6 #60
+draw_rect 230 4 6 6 #FF
+fill_rect 230 11 6 6 #FF
+present

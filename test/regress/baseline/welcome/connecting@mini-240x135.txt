@@ -1,0 +1,75 @@
+# scene welcome/connecting
+# profile mini-240x135
+# window 240x135 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+fill_rect 0 0 240 135 #FF
+fill_rect 0 0 240 22 #60
+text 4 3 "Family mruby" #FF defaultx2
+text 4 25 "v9.9.9  M5Stack StickS3" #00 defaultx1
+fill_rect 0 38 240 85 #FF
+text 4 38 "Wi-Fi: connecting" #E8 defaultx2
+text 4 56 "to fmrb-net" #00 defaultx1
+text 4 70 "Not joining? Power on holding the" #60 defaultx1
+text 4 80 "front button, then open Family mruby" #60 defaultx1
+text 4 90 "Console in a browser to set Wi-Fi over" #60 defaultx1
+text 4 100 "BLE." #60 defaultx1
+fill_rect 223 4 6 6 #FF
+fill_rect 230 4 6 6 #60
+draw_rect 230 4 6 6 #FF
+fill_rect 230 11 6 6 #60
+draw_rect 230 11 6 6 #FF
+fill_rect 223 11 6 6 #60
+draw_rect 223 11 6 6 #FF
+fill_rect 0 124 240 11 #FF
+text 194 125 "up 0:00" #60 defaultx1
+present
+== run 1000 ms
+fill_rect 223 4 6 6 #60
+draw_rect 223 4 6 6 #FF
+fill_rect 230 4 6 6 #FF
+present
+fill_rect 230 4 6 6 #60
+draw_rect 230 4 6 6 #FF
+fill_rect 230 11 6 6 #FF
+present
+fill_rect 230 11 6 6 #60
+draw_rect 230 11 6 6 #FF
+fill_rect 223 11 6 6 #FF
+present
+fill_rect 223 4 6 6 #FF
+fill_rect 223 11 6 6 #60
+draw_rect 223 11 6 6 #FF
+present
+== run 1200 ms
+fill_rect 0 38 240 85 #FF
+text 4 38 "Wi-Fi: connected" #14 defaultx2
+text 4 56 "192.0.2.10" #00 defaultx2
+text 4 74 "fmruby-a1b2c3.local" #00 defaultx1
+text 4 88 "To change Wi-Fi: power on holding the" #60 defaultx1
+text 4 98 "front button, then use Family mruby" #60 defaultx1
+text 4 108 "Console (BLE)." #60 defaultx1
+fill_rect 223 4 6 6 #60
+draw_rect 223 4 6 6 #FF
+fill_rect 230 4 6 6 #FF
+fill_rect 0 124 240 11 #FF
+text 194 125 "up 0:01" #60 defaultx1
+present
+fill_rect 230 4 6 6 #60
+draw_rect 230 4 6 6 #FF
+fill_rect 230 11 6 6 #FF
+present
+fill_rect 230 11 6 6 #60
+draw_rect 230 11 6 6 #FF
+fill_rect 223 11 6 6 #FF
+present
+fill_rect 223 4 6 6 #FF
+fill_rect 223 11 6 6 #60
+draw_rect 223 11 6 6 #FF
+present
+fill_rect 223 4 6 6 #60
+draw_rect 223 4 6 6 #FF
+fill_rect 230 4 6 6 #FF
+fill_rect 0 124 240 11 #FF
+text 194 125 "up 0:02" #60 defaultx1
+present
