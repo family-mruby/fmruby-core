@@ -470,8 +470,12 @@ static void test_themes(void)
     th = linux_apps_icon_themes("not-installed");
     linux_apps_icon_theme_names(th, out, sizeof(out));
     CHECK(strcmp(out, "hicolor") == 0, "a theme not installed: %s", out);
+#if NATIVE_HAVE_PNG
+    // hicolor's PNG is written only where libpng is (make_tree); without it
+    // the search goes on to pixmaps/ (the CI runner has no libpng-dev).
     CHECK(linux_apps_find_icon(th, "fakeicon", out, sizeof(out)) && strstr(out, "hicolor/48x48") != NULL,
           "hicolor's: %s", out);
+#endif
     linux_apps_icon_themes_free(th);
 
 #if NATIVE_HAVE_PNG
