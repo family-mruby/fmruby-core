@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-06 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-07 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 1. 流し方
 
@@ -72,7 +72,8 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 (全部で 34 分ほどだった。2026-11-06 から checkpoint にブラウザ版の場面が入り、2 分ほど増える見込み。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
+rake regress:full                # rake regress + regress:spinel + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 (全部で 34 分ほどだった。2026-11-06 から checkpoint にブラウザ版の場面が入り、2 分ほど増える見込み。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
+rake regress:spinel              # カーネル・エディタ・デスクトップを全部 Spinel にした構成の Spinel の C を、CI の spinel-gen と同じく作る (C のコンパイルはしない。20 秒ほど、7.4)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
 rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、カンマで複数)
@@ -120,6 +121,15 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 
 - 内蔵 RAM が増えた: 表の行と「差のあった部品」で、どのアーカイブが増えたかが分かる。シンボルまで見るなら、その端末を `ONLY=<端末> NO_RESTORE=1` で作り直して build/ に残し、`idf.py size-files` / `size-symbols` を当てる (済んだら `ruby tools/regress/size.rb --restore`)。
 - 増えるのが意図したもの (機能を足した) なら、人が確認してから `rake regress:size:update` し、コミットの本文に増えた量と理由を書く。内蔵 RAM は増やさない方針 (doc/reference/internal_ram_budget.md) なので、増やす前に PSRAM へ置けないかを先に考える。
+
+### 7.4 全部 Spinel の構成の生成 (rake regress:spinel)
+
+- 手元の .env も回帰の道具も、デスクトップを mruby で作る。デスクトップを Spinel で作るのは CI の spinel-gen・build-linux (spinel) だけなので、デスクトップが呼ぶ FmrbApp のメソッドが mruby の binding にだけあると、何週間も CI でしか分からなかった (report/ci_develop_20261107.md)。これを手元で拾う。
+- `FMRB_KERNEL_ENGINE=spinel FMRB_APP_ENGINE_DESKTOP=spinel FMRB_APP_ENGINE_EDITOR=spinel rake spinel:gen` と同じ生成 (カーネル・エディタ・デスクトップと gem 3 つ、platform は linux) を、`rake spinel:gen` と同じ手順 (`spinel_gen_programs`、rakelib/spinel.rake) で流す。C のコンパイルはしない。
+- 書く先は `tmp/regress/spinel/` (毎回空から)。ビルドが使う `main/prebuild_scripts/spinel/gen` と、gem の写しを置く `main/prebuild_scripts/spinel/` には**触らない** (中身も時刻も変わらないので、次のビルドが作り直しにならない)。木の中に書くので、worktree からも並べて流せる。
+- 要約は `spinel: 6 programs, 6 generated, 0 failed (17.9 s)` の 1 行。落ちたら、プログラムごとに `FAIL spinel system_desktop_combined (tmp/regress/spinel/system_desktop_combined.log)` と、コンパイラが拒否した行 (`undefined method 'battery_level' for a Class: ...`) を 20 行まで出す。全部はその log にある。
+- 拒否されたら、そのメソッドを Spinel の FmrbApp (`main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`) に足すか、呼び出しを `#:spinel-strip-begin/end` で Spinel 版から外す (直し方の例は e3ab8127)。
+- `rake regress:full` に入っている。`rake regress` (安い方) には入らない。経緯と測定は report/spinel_gen_check.md。
 
 ## 8. 実機の起動ログ (rake regress:boot)
 
