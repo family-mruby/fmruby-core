@@ -22,15 +22,6 @@ desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + s
 task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test", "native:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "ti:test", "basic:test", "micropython:smoke"]
 
-namespace :webcrt do
-  # The browser build's CRT look (doc/web_crt/): the curve that the shader
-  # draws and that clicks are sent back through, and its inverse, under node.
-  desc "CRT look curve and its inverse round trip (node, no browser)"
-  task :test do
-    sh "node test/web_crt/warp_test.js"
-  end
-end
-
 namespace :imu do
   # The BMI270 driver against a fake device, and the step sensor app's step
   # detector against synthetic walking and still data (host Ruby, no docker).

@@ -184,7 +184,7 @@ namespace :wasm do
   end
 
   desc "Build the browser bundle (core_web.js/.wasm/.data + wasm/web page)"
-  task :web => [:webflash, :mrb] do
+  task :web => [:webflash, :mrb, "webcrt:gen"] do
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     # The packed .data is produced at link time; the staging just changed, so
