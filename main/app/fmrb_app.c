@@ -281,9 +281,17 @@ static void tls_destructor(int idx, void* pv) {
    slot is zeroed when it is freed, but not every exit path gets there, so a
    run has to start from a known state as well: started_notified surviving a
    reuse silently suppressed the "app started" report for the second and every
-   later app in that slot. */
+   later app in that slot.
+
+   parked is the same kind of leftover and a dangerous one: the reapers free a
+   slot without zeroing it, so the previous occupant's parked=true was still
+   there when the next app in the slot was killed. fmrb_app_kill took STOPPING
+   plus that stale flag for "parked" and deleted the task in the middle of its
+   last log line, which kept the log lock for good and froze every task that
+   logs (NARYAv3, doc/checkpoint/report/s3_board.md). */
 static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     ctx->started_notified = false;
+    ctx->parked = false;
 }
 
 /* Is there internal RAM to start this app with?
