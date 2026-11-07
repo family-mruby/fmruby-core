@@ -2318,6 +2318,72 @@ class FmrbApp
     nil
   end
 
+  # The OS services' power menu and battery (doc/linux_native L6), as the
+  # mruby FmrbApp's (lib/add/picoruby-fmrb-app): power_actions lists what
+  # this machine offers ([:reset] on a device, [] in the simulation and the
+  # browser), power(action) does one of them (false when not offered), and
+  # battery_level is the charge in percent or nil without a value.
+  POWER_ACTION_NAMES = [:reset, :exit, :power_off, :restart, :suspend, :lock]
+
+  def self.power_actions
+    bits = FmrbSpxApp.fmrb_spx_app_power_actions
+    out = []
+    i = 0
+    while i < POWER_ACTION_NAMES.size
+      out << POWER_ACTION_NAMES[i] if (bits & (1 << i)) != 0
+      i += 1
+    end
+    out
+  end
+
+  def self.power(action)
+    i = 0
+    while i < POWER_ACTION_NAMES.size
+      return FmrbSpxApp.fmrb_spx_app_power(1 << i) == 1 if POWER_ACTION_NAMES[i] == action
+      i += 1
+    end
+    false
+  end
+
+  def self.battery_level
+    b = FmrbSpxApp.fmrb_spx_app_battery
+    return nil if b < 0
+    b & 0xFF
+  end
+
+  def self.battery_charging?
+    b = FmrbSpxApp.fmrb_spx_app_battery
+    b >= 0 && (b & 0x100) != 0
+  end
+
+  # The PC's settings and notices (doc/linux_native L14): only the native
+  # program has them, and its desktop is the mruby one. A Spinel desktop
+  # answers as every machine without them does: "" for the texts, -1 for
+  # notices_gen, false for opening the PC's settings window.
+  def self.wifi_networks(scan = false)
+    ""
+  end
+
+  def self.bt_devices
+    ""
+  end
+
+  def self.notices_gen
+    -1
+  end
+
+  def self.notices
+    ""
+  end
+
+  def self.notice_dismiss(id)
+    nil
+  end
+
+  def self.linux_settings(page)
+    false
+  end
+
   def self.ble_start
     FmrbSpxApp.fmrb_spx_app_ble_start != 0
   end

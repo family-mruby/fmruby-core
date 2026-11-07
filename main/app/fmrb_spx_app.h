@@ -197,6 +197,11 @@ const char *fmrb_spx_app_set_wallclock(int year, int month, int day,
 int fmrb_spx_app_enable_cursor(void);            /**< returns 0 */
 int fmrb_spx_app_set_cursor_visible(int visible);/**< returns 0 */
 int fmrb_spx_app_reboot(void);                   /**< does not return */
+int fmrb_spx_app_power_actions(void);            /**< FmrbApp.power_actions as fmrb_sys_power_t bits */
+int fmrb_spx_app_power(int action);              /**< FmrbApp.power: one bit; 1 done, 0 not offered/failed */
+/** FmrbApp.battery_level / battery_charging?: -1 without a battery value,
+ *  else the percent (0-100) with 0x100 set while charging. */
+int fmrb_spx_app_battery(void);
 int fmrb_spx_app_ble_start(void);                /**< manual BLE start; 1 on success */
 int fmrb_spx_app_ble_state(void);                /**< FmrbApp.ble_state (0 = off) */
 int fmrb_spx_app_ble_settings_window(int seconds); /**< open/close the BLE settings window; seconds left */

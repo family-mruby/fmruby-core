@@ -711,6 +711,32 @@ int fmrb_spx_app_reboot(void)
     return 0;
 }
 
+int fmrb_spx_app_power_actions(void)
+{
+    return (int)fmrb_platform_sys_power_actions();
+}
+
+int fmrb_spx_app_power(int action)
+{
+    /* The same checks as the mruby FmrbApp.power (lib/add/picoruby-fmrb-app):
+     * one action, and only one this machine offers. */
+    uint32_t bit = (uint32_t)action;
+    if (bit == 0 || (bit & (bit - 1)) != 0 || !(fmrb_platform_sys_power_actions() & bit)) {
+        FMRB_LOGW(TAG, "power: action 0x%x is not offered here", (unsigned)bit);
+        return 0;
+    }
+    FMRB_LOGI(TAG, "power: action 0x%x requested", (unsigned)bit);
+    fmrb_host_audio_flush_save();
+    return fmrb_platform_sys_power((fmrb_sys_power_t)bit) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_battery(void)
+{
+    fmrb_sys_battery_t b;
+    if (!fmrb_platform_sys_battery(&b)) return -1;
+    return (int)b.percent | (b.charging ? 0x100 : 0);
+}
+
 int fmrb_spx_app_ble_start(void)
 {
     /* Manual BLE start (ble_auto_start=false). Retro built-in radio only:

@@ -476,7 +476,7 @@ module ConfigDialogMixin
       elsif s[:key] == :wallpaper
         cfg_wallpaper_text(v.to_s)
       elsif s[:key] == :keyboard_layout && v.to_s == "auto" && CFG_KBD_AUTO
-        "auto (#{FmrbApp.linux_keyboard})"
+        "auto (#{cfg_linux_keyboard})"
       else
         v.to_s
       end
@@ -486,6 +486,17 @@ module ConfigDialogMixin
 
   # A path is too long for the value column, so only the file's own name is
   # shown; the two special values get words instead.
+  # The layout Linux is set to, for "auto" (CFG_KBD_AUTO: the native program,
+  # whose desktop is the mruby one). The Spinel desktop has no
+  # FmrbApp.linux_keyboard, and its compiler refuses the call even behind the
+  # respond_to? guard, so the call is stripped from that build.
+  def cfg_linux_keyboard
+    #:spinel-strip-begin
+    return FmrbApp.linux_keyboard
+    #:spinel-strip-end
+    ""
+  end
+
   def cfg_wallpaper_text(v)
     return FmrbI18n.t(:wallpaper_theme) if v.length == 0
     return FmrbI18n.t(:wallpaper_none) if v == "none"
