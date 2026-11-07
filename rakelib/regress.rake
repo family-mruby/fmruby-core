@@ -81,7 +81,13 @@
 #                          turned one keeps 426x240). No baseline: the
 #                          composited screen is checked against the picture
 #                          taken at the same moment
-#   rake regress:full      regress + regress:size + regress:run +
+#   rake regress:spinel    the Spinel C for the all-Spinel configuration (kernel,
+#                          editor and desktop), as CI's spinel-gen job makes
+#                          it: generation only, into tmp/regress/spinel/ (the
+#                          build's main/prebuild_scripts/spinel/gen is left
+#                          alone); the compiler's refused lines on failure.
+#                          About 20 s
+#   rake regress:full      regress + regress:spinel + regress:size + regress:run +
 #                          regress:screens + regress:live + regress:wl +
 #                          regress:checkpoint SIM=1 (ONLY=
 #                          goes to none of them: run the parts by hand to
@@ -128,6 +134,57 @@ namespace :regress do
   task :update do
     ok = system(Gem.ruby, REGRESS_RUN, "--update", *regress_draw_args)
     abort "regress:update: some runs failed" unless ok
+  end
+end
+
+namespace :regress do
+  # The Spinel C for the all-Spinel configuration (kernel, editor and desktop
+  # all Spinel), as CI's spinel-gen job makes it. Locally the desktop is built
+  # with mruby, so a method the desktop calls that only the mruby binding of
+  # FmrbApp has goes unnoticed until CI (doc/regression/report/
+  # ci_develop_20261107.md). Generation only, no C compile; written into
+  # tmp/regress/spinel/, so the build's main/prebuild_scripts/spinel/gen and
+  # the staged gem sources are not touched.
+  desc "Spinel C for the all-Spinel configuration (as CI's spinel-gen), into tmp/regress/spinel/; the refused lines on failure"
+  task :spinel do
+    require "open3"
+    bin = File.join(spinel_compiler_dir, "bin/spinel")
+    # relative to ROOT_DIR, where the commands run (as SPINEL_GEN_DIR is)
+    out_dir = "tmp/regress/spinel"
+    rm_rf File.join(ROOT_DIR, out_dir), verbose: false
+    mkdir_p File.join(ROOT_DIR, out_dir), verbose: false
+    programs = spinel_gen_programs(bin, gen_dir: out_dir, stage_dir: out_dir,
+                                   kernel: true, editor: true, desktop: true, fft: true,
+                                   platform: "linux")
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    # The combining steps (quick) one after another, as they share
+    # fmrb_const_generated.rb; then the compiler on every program at once.
+    run = lambda do |c, log|
+      out, st = Open3.capture2e(c, chdir: ROOT_DIR)
+      log << "$ #{c}\n" << out
+      st.success?
+    end
+    logs = programs.to_h { |name, _| [name, +""] }
+    combined = programs.to_h { |name, cmds| [name, cmds[0..-2].all? { |c| run.call(c, logs[name]) }] }
+    results = programs.map do |name, cmds|
+      Thread.new do
+        ok = combined[name] && run.call(cmds.last, logs[name])
+        File.write(File.join(ROOT_DIR, out_dir, "#{name}.log"), logs[name])
+        [name, ok, logs[name]]
+      end
+    end.map(&:value)
+    took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+    failed = results.reject { |_, ok, _| ok }
+    failed.each do |name, _, log|
+      puts "FAIL spinel #{name} (tmp/regress/spinel/#{name}.log)"
+      lines = log.lines.reject { |l| l.start_with?("$ ") }
+      refused = lines.select { |l| l =~ /error|warning|refus|unsupported|unresolved|cannot/i }
+      (refused.empty? ? lines.last(6) : refused.first(20)).each { |l| puts "     #{l.rstrip}" }
+      puts "     ... (#{refused.size - 20} more)" if refused.size > 20
+    end
+    puts format("spinel: %d programs, %d generated, %d failed (%.1f s)",
+                results.size, results.size - failed.size, failed.size, took)
+    abort "regress:spinel: failed" unless failed.empty?
   end
 end
 
@@ -253,7 +310,7 @@ namespace :regress do
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build). Each sim build is made once and shared between the parts"
+  desc "Everything: regress + regress:spinel (the all-Spinel generation, as CI) + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build). Each sim build is made once and shared between the parts"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
@@ -273,7 +330,7 @@ namespace :regress do
     took = []
     t_all = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     begin
-      %w[regress regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint].each do |t|
+      %w[regress regress:spinel regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint].each do |t|
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         begin
           Rake::Task[t].invoke

@@ -4,6 +4,92 @@
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 
+# The Spinel compiler binary, fetching and building the pinned one on a fresh
+# clone (no usable compiler anywhere).
+def spinel_compiler_dir
+  dir = SPINEL_DIR
+  unless File.executable?(File.join(dir, "bin/spinel"))
+    Rake::Task['spinel:setup'].invoke
+    dir = SPINEL_VENDOR_DIR
+  end
+  bin = File.join(dir, "bin/spinel")
+  abort "spinel not found at #{bin}. Run `rake spinel:setup` or set SPINEL_DIR." unless File.executable?(bin)
+  dir
+end
+
+# The commands that generate the Spinel C, one group per program:
+# [[name, [command, ...]], ...]. The gems' sources are staged into stage_dir
+# here. rake spinel:gen runs them for the build (gen_dir = SPINEL_GEN_DIR,
+# stage_dir = SPINEL_SRC_DIR); rake regress:spinel runs them for the
+# all-Spinel configuration into a directory of its own, so the build's
+# generated files and their timestamps stay as they are.
+def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, fft:, platform:)
+  # Flags every generated program gets. --no-inline-hot: the compiler forces
+  # small leaf methods inline by default, and a large dispatcher that calls
+  # many of them absorbs them all into one C frame. The kernel's
+  # handle_app_control grew from 4,192 to 12,448 bytes that way and
+  # overflowed the kernel task's 16 KB stack at boot (Stack protection fault
+  # on the P4, doc/spinel_upstream_ext/report/p2b2.md). The sim does not
+  # notice: its pthread stacks are far larger than the device's task stacks.
+  # Must match main/prebuild_scripts/compile_ruby_to_spinel.cmake.
+  gen_flags = "--no-inline-hot"
+  # Every program is compiled as a Spinel ext program (`--ext-init`): the C
+  # gets `void <init>(void)`, which runs the program's top level, plus a
+  # contract header next to it. Built SP_MULTI_CTX, several of them share the
+  # image, each instance reaching its own program (doc/spinel_upstream_ext/).
+  #
+  # The VMs (kernel / editor / desktop) are ext programs with no entries: the
+  # task makes an instance and calls the init once, and the Ruby top level
+  # runs the VM's main loop inside it. Their Ruby is concatenated into one
+  # combined program first (the compiler needs a single translation unit;
+  # require_relative is stripped). Host-generated into gen/ (gitignored).
+  # Must match main/CMakeLists.txt's generate_ruby_spinel_command calls.
+  programs = []
+  vm = lambda do |name, combine, init|
+    rb = "#{gen_dir}/#{name}.rb"
+    programs << [name, ["#{RbConfig.ruby} #{combine} #{rb} #{platform}",
+                        "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{rb} --ext-init #{init} -o #{gen_dir}/#{name}.c"]]
+  end
+  vm.call("fmrb_kernel_combined", "tool/spinel/gen_kernel_combined.rb", "Init_fmrb_kernel") if kernel
+  vm.call("editor_combined", "tool/spinel/gen_app_combined.rb editor", "Init_editor") if editor
+  vm.call("system_desktop_combined", "tool/spinel/gen_app_combined.rb system_desktop", "Init_system_desktop") if desktop
+  # The gems (FFT, SpinelHello, Raycast): libraries an mruby task calls. Each
+  # gem's spinel/<name>_kernel.rb names its init and its entries in two
+  # comment lines (`# spinel-ext-init:` / `# spinel-ext-entry:`), read here
+  # and by main/CMakeLists.txt, so the names live in one place. The entries
+  # become typed C functions in the generated header, which the gem's
+  # native/ receiver includes. The kernel and the core it requires are staged
+  # into stage_dir so require_relative resolves in one dir (the staged
+  # copies are gitignored; the gem holds the originals, so the :ruby and
+  # :spinel backends can never run different code).
+  gem = lambda do |kernel_rb, *cores|
+    name = File.basename(kernel_rb, ".rb")
+    [kernel_rb, *cores].each do |src|
+      abort "#{src} is missing" unless File.exist?(src)
+      cp src, "#{stage_dir}/#{File.basename(src)}", verbose: false
+    end
+    spec = File.read(kernel_rb)
+    init = spec[/^# spinel-ext-init: *(\S+)/, 1] or abort "#{kernel_rb}: no `# spinel-ext-init:` line"
+    entries = spec[/^# spinel-ext-entry: *(\S+)/, 1] or abort "#{kernel_rb}: no `# spinel-ext-entry:` line"
+    programs << [name, ["#{bin} #{gen_flags} -I #{stage_dir} -c #{stage_dir}/#{name}.rb " \
+                        "--ext-init #{init} --ext-entry #{entries} -o #{gen_dir}/#{name}.c"]]
+  end
+  # FFT: not built with FMRB_FFT_SPINEL=0 (doc/mic_spectrum).
+  if fft
+    gem.call("lib/add/picoruby-fmrb-fft/spinel/fft_kernel.rb",
+             "lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb",
+             "lib/add/picoruby-fmrb-fft/mrblib/fft_core_q15.rb")
+  end
+  # SpinelHello: the minimal sample gem. Always built (no flag).
+  gem.call("lib/add/picoruby-fmrb-spinel-hello/spinel/spinel_hello_kernel.rb",
+           "lib/add/picoruby-fmrb-spinel-hello/mrblib/spinel_hello_core.rb")
+  # Raycast: the raycaster's ray loop as a gem (doc/raycast_spinel). Always
+  # built. Its core is shared with the :ruby backend.
+  gem.call("lib/add/picoruby-fmrb-raycast/spinel/raycast_kernel.rb",
+           "lib/add/picoruby-fmrb-raycast/mrblib/raycast_core.rb")
+  programs
+end
+
 namespace :spinel do
   desc "Fetch + build the pinned Spinel compiler into vendor/spinel"
   task :setup do
@@ -33,24 +119,8 @@ namespace :spinel do
 
   desc "Generate Spinel C from PreBuild Ruby on the host (before docker build)"
   task :gen do
-    dir = SPINEL_DIR
-    # Self-provision on a fresh clone: no usable compiler anywhere -> fetch and
-    # build the pinned vendor copy.
-    unless File.executable?(File.join(dir, "bin/spinel"))
-      Rake::Task['spinel:setup'].invoke
-      dir = SPINEL_VENDOR_DIR
-    end
+    dir = spinel_compiler_dir
     bin = File.join(dir, "bin/spinel")
-    abort "spinel not found at #{bin}. Run `rake spinel:setup` or set SPINEL_DIR." unless File.executable?(bin)
-    # Flags every generated program gets. --no-inline-hot: the compiler forces
-    # small leaf methods inline by default, and a large dispatcher that calls
-    # many of them absorbs them all into one C frame. The kernel's
-    # handle_app_control grew from 4,192 to 12,448 bytes that way and
-    # overflowed the kernel task's 16 KB stack at boot (Stack protection fault
-    # on the P4, doc/spinel_upstream_ext/report/p2b2.md). The sim does not
-    # notice: its pthread stacks are far larger than the device's task stacks.
-    # Must match main/prebuild_scripts/compile_ruby_to_spinel.cmake.
-    gen_flags = "--no-inline-hot"
     # Guard against compiler/runtime-snapshot divergence: the generated C and
     # components/fmrb_spinel_rt/spinel_rt must come from the same fork commit.
     import_info = File.expand_path("components/fmrb_spinel_rt/spinel_rt/IMPORT_INFO", ROOT_DIR)
@@ -70,73 +140,15 @@ namespace :spinel do
     # SPINEL_GEN_PLATFORM=esp32. Getting this wrong silently compiles the wrong
     # PLATFORM branch (esp32 build with linux gen = RTC/HW code dropped).
     platform = ENV['SPINEL_GEN_PLATFORM'] || 'linux'
-    # Every program is compiled as a Spinel ext program (`--ext-init`): the C
-    # gets `void <init>(void)`, which runs the program's top level, plus a
-    # contract header next to it. Built SP_MULTI_CTX, several of them share the
-    # image, each instance reaching its own program (doc/spinel_upstream_ext/).
-    #
-    # The VMs (kernel / editor / desktop) are ext programs with no entries: the
-    # task makes an instance and calls the init once, and the Ruby top level
-    # runs the VM's main loop inside it. Their Ruby is concatenated into one
-    # combined program first (the compiler needs a single translation unit;
-    # require_relative is stripped). Host-generated into gen/ (gitignored).
-    # Must match main/CMakeLists.txt's generate_ruby_spinel_command calls.
-    vm = lambda do |rb, init|
-      c = rb.sub(/\.rb\z/, ".c")
-      sh "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{rb} --ext-init #{init} -o #{c}"
-      puts "Spinel generated #{c}"
+    programs = spinel_gen_programs(bin, gen_dir: SPINEL_GEN_DIR, stage_dir: SPINEL_SRC_DIR,
+                                   kernel: FMRB_KERNEL_ENGINE == "spinel",
+                                   editor: FMRB_APP_ENGINE_EDITOR == "spinel",
+                                   desktop: FMRB_APP_ENGINE_DESKTOP == "spinel",
+                                   fft: FMRB_FFT_SPINEL, platform: platform)
+    programs.each do |name, cmds|
+      cmds.each { |c| sh c }
+      puts "Spinel generated #{SPINEL_GEN_DIR}/#{name}.c"
     end
-    if FMRB_KERNEL_ENGINE == "spinel"
-      combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
-      sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} #{platform}"
-      vm.call(combined_rb, "Init_fmrb_kernel")
-    end
-    if FMRB_APP_ENGINE_EDITOR == "spinel"
-      e_rb = "#{SPINEL_GEN_DIR}/editor_combined.rb"
-      sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb editor #{e_rb} #{platform}"
-      vm.call(e_rb, "Init_editor")
-    end
-    if FMRB_APP_ENGINE_DESKTOP == "spinel"
-      d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"
-      sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb system_desktop #{d_rb} #{platform}"
-      vm.call(d_rb, "Init_system_desktop")
-    end
-    # The gems (FFT, SpinelHello, Raycast): libraries an mruby task calls. Each
-    # gem's spinel/<name>_kernel.rb names its init and its entries in two
-    # comment lines (`# spinel-ext-init:` / `# spinel-ext-entry:`), read here
-    # and by main/CMakeLists.txt, so the names live in one place. The entries
-    # become typed C functions in the generated header, which the gem's
-    # native/ receiver includes. The kernel and the core it requires are staged
-    # into SPINEL_SRC_DIR so require_relative resolves in one dir (the staged
-    # copies are gitignored; the gem holds the originals, so the :ruby and
-    # :spinel backends can never run different code).
-    gem = lambda do |kernel, *cores|
-      name = File.basename(kernel, ".rb")
-      [kernel, *cores].each do |src|
-        abort "#{src} is missing" unless File.exist?(src)
-        cp src, "#{SPINEL_SRC_DIR}/#{File.basename(src)}"
-      end
-      spec = File.read(kernel)
-      init = spec[/^# spinel-ext-init: *(\S+)/, 1] or abort "#{kernel}: no `# spinel-ext-init:` line"
-      entries = spec[/^# spinel-ext-entry: *(\S+)/, 1] or abort "#{kernel}: no `# spinel-ext-entry:` line"
-      c = "#{SPINEL_GEN_DIR}/#{name}.c"
-      sh "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{SPINEL_SRC_DIR}/#{name}.rb " \
-         "--ext-init #{init} --ext-entry #{entries} -o #{c}"
-      puts "Spinel generated #{c}"
-    end
-    # FFT: not built with FMRB_FFT_SPINEL=0 (doc/mic_spectrum).
-    if FMRB_FFT_SPINEL
-      gem.call("lib/add/picoruby-fmrb-fft/spinel/fft_kernel.rb",
-               "lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb",
-               "lib/add/picoruby-fmrb-fft/mrblib/fft_core_q15.rb")
-    end
-    # SpinelHello: the minimal sample gem. Always built (no flag).
-    gem.call("lib/add/picoruby-fmrb-spinel-hello/spinel/spinel_hello_kernel.rb",
-             "lib/add/picoruby-fmrb-spinel-hello/mrblib/spinel_hello_core.rb")
-    # Raycast: the raycaster's ray loop as a gem (doc/raycast_spinel). Always
-    # built. Its core is shared with the :ruby backend.
-    gem.call("lib/add/picoruby-fmrb-raycast/spinel/raycast_kernel.rb",
-             "lib/add/picoruby-fmrb-raycast/mrblib/raycast_core.rb")
   end
 
   desc "Lint Spinel-targeted Ruby with spinel-doctor (source-level: unsupported/unresolved/inference)"

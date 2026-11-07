@@ -25,7 +25,10 @@ platform = ARGV[2] || "linux"
 SPINEL_DIR = File.join(ROOT, "main/prebuild_scripts/spinel")
 KERNEL_DIR = File.join(ROOT, "main/prebuild_scripts/kernel")
 MRBLIB_DIR = File.join(ROOT, "lib/add/picoruby-fmrb-app/mrblib")
-GEN_DIR = File.join(SPINEL_DIR, "gen")
+# The generated constants go next to the output (normally
+# main/prebuild_scripts/spinel/gen; rake regress:spinel writes elsewhere so
+# the build's generated files are left alone).
+GEN_DIR = File.dirname(File.expand_path(out_path))
 FileUtils.mkdir_p(GEN_DIR)
 
 # 1. Generate FmrbConst (superset incl. the desktop THEME_/KEY_/PROC_STATE_ set).
