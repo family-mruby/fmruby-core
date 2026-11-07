@@ -1,0 +1,6 @@
+app_handle_name = "welcome"
+app_screen_name = "Welcome"
+app_screen_name_ja = "ようこそ"
+default_window_mode = "fullscreen"
+launcher_visible = false
+single_instance = true
