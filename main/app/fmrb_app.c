@@ -287,10 +287,15 @@ static void tls_destructor(int idx, void* pv) {
    there when the next app in the slot was killed. fmrb_app_kill took STOPPING
    plus that stale flag for "parked" and deleted the task in the middle of its
    last log line, which kept the log lock for good and froze every task that
-   logs (NARYAv3, doc/checkpoint/report/s3_board.md). */
+   logs (NARYAv3, doc/checkpoint/report/s3_board.md).
+
+   expected_stop too: an app that was asked to end left it set, and the next
+   app in the slot then crashed without a crash report, taken for one more
+   requested stop. */
 static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     ctx->started_notified = false;
     ctx->parked = false;
+    ctx->expected_stop = false;
 }
 
 /* Is a user app pool held? (must hold g_ctx_lock)
