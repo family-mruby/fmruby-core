@@ -15,7 +15,8 @@
 extern "C" {
 #endif
 
-/* The strengths a fresh look gets, 0..100 each (crt.js's DEFAULTS). */
+/* The strengths a fresh look gets, 0..100 each (crt.js's DEFAULTS; chosen
+ * by the user on the GPD, doc/web_crt C6). */
 #define CRT_DEFAULT_SCAN 55
 #define CRT_DEFAULT_MASK 30
 #define CRT_DEFAULT_GLOW 30

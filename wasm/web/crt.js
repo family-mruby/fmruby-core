@@ -24,9 +24,10 @@
   // bent tube; the default is a gentle one.
   const CURVE_MAX = 0.25;
 
-  // The strengths a fresh page gets, 0..100 each. Provisional (C2 settles
-  // them with the user). The time effects (flicker, noise) stay 0: with
-  // either on the view draws TIME_FPS times a second, not only on change.
+  // The strengths a fresh page gets, 0..100 each (chosen by the user on
+  // the GPD, doc/web_crt C6). NTSC's colour bleed, flicker and noise are
+  // 0: the look is the clean one unless asked, and with flicker or noise
+  // on the view draws TIME_FPS times a second, not only on change.
   const DEFAULTS = Object.freeze({ scan: 55, mask: 30, glow: 30, curve: 15, vignette: 40,
                                    ntsc: 0, flicker: 0, noise: 0 });
   const KEYS = Object.freeze(['scan', 'mask', 'glow', 'curve', 'vignette', 'ntsc', 'flicker', 'noise']);
@@ -206,15 +207,30 @@ void main() {
 #endif
   vec3 c = AT(ivec2(0, 0));
   if (u_ntsc > 0.0) {
-    // A composite signal carries the colour in a narrower band than the
-    // brightness: keep this pixel's luma, take the colour (I and Q) from a
-    // gaussian (sigma 1.6 picture pixels, three each way) along the row.
-    vec2 iq = (TO_YIQ * c).yz * 0.2560;
-    iq += (TO_YIQ * (AT(ivec2(-1, 0)) + AT(ivec2(1, 0)))).yz * 0.2106;
-    iq += (TO_YIQ * (AT(ivec2(-2, 0)) + AT(ivec2(2, 0)))).yz * 0.1172;
-    iq += (TO_YIQ * (AT(ivec2(-3, 0)) + AT(ivec2(3, 0)))).yz * 0.0441;
+    // A composite signal carries the colour in about a third of the
+    // brightness's band: keep this pixel's luma, take the colour (I and Q)
+    // from a gaussian along the row (sigma 3 picture pixels, out to 7 each
+    // way; the far taps stand for their neighbours too), so colour spills
+    // 2-4 pixels past its edges. Where the brightness steps, the colour
+    // decoder also sees the step as colour: a fringe whose hue turns with
+    // the subcarrier's phase (about 0.6 of a cycle a pixel, half a cycle a
+    // line).
+    // The decoder's filter also lags, so the colour trails to the right:
+    // a pixel takes more from its left (up to 60% more) and less from its
+    // right.
+    vec3 l1 = AT(ivec2(-1, 0)), r1 = AT(ivec2(1, 0));
+    vec3 lw = l1 * 0.1259 + AT(ivec2(-2, 0)) * 0.1067 + AT(ivec2(-3, 0)) * 0.0810
+            + AT(ivec2(-5, 0)) * 0.0994 + AT(ivec2(-7, 0)) * 0.0205;
+    vec3 rw = r1 * 0.1259 + AT(ivec2(2, 0)) * 0.1067 + AT(ivec2(3, 0)) * 0.0810
+            + AT(ivec2(5, 0)) * 0.0994 + AT(ivec2(7, 0)) * 0.0205;
+    float lag = 0.6 * u_ntsc;
+    vec2 iq = (TO_YIQ * (c * 0.1330 + lw * (1.0 + lag) + rw * (1.0 - lag))).yz;
     vec3 yiq = TO_YIQ * c;
-    c = clamp(TO_RGB * vec3(yiq.x, mix(yiq.yz, iq, u_ntsc)), 0.0, 1.0);
+    vec2 pp = floor(p);
+    float phase = 6.2832 * (0.6 * pp.x + 0.5 * pp.y);
+    float ystep = dot(r1 - l1, vec3(0.299, 0.587, 0.114));
+    iq += 0.8 * sqrt(u_ntsc) * ystep * vec2(cos(phase), sin(phase));
+    c = clamp(TO_RGB * vec3(yiq.x, mix(yiq.yz, iq, sqrt(u_ntsc))), 0.0, 1.0);
   }
   vec3 halo = vec3(0.0);
   if (u_glow > 0.0) {
@@ -250,17 +266,19 @@ void main() {
   }
   c += halo * u_glow * 0.9;
   if (u_flicker > 0.0) {
-    // The whole picture a little brighter or darker each frame, and a soft
-    // darker band rolling down the screen (mains hum), once in 4 seconds.
+    // The whole picture brighter or darker each frame (+-12% at 100), and
+    // a broad darker band rolling down the screen (mains hum, up to 30%
+    // darker at 100), once in 4 seconds.
     uint f = uint(u_frame);
     float w = hash(uvec3(f, 7u, 11u)) * 2.0 - 1.0;
     float band = 0.5 + 0.5 * sin(6.2832 * (st.y - u_frame / 120.0));
-    c *= 1.0 + u_flicker * (0.05 * w - 0.06 * band * band * band * band);
+    c *= 1.0 + u_flicker * (0.12 * w - 0.30 * band * band);
   }
   if (u_noise > 0.0) {
-    // Grain: each picture pixel brighter or darker, new every frame.
+    // Grain: each picture pixel brighter or darker (+-25% at 100), new
+    // every frame.
     float n = hash(uvec3(uvec2(ivec2(floor(p)) + 4096), uint(u_frame))) - 0.5;
-    c += vec3(n * u_noise * 0.16);
+    c += vec3(n * u_noise * 0.5);
   }
   if (u_vig > 0.0) {
     float v = 16.0 * st.x * st.y * (1.0 - st.x) * (1.0 - st.y);
