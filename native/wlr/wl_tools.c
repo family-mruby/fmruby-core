@@ -59,6 +59,23 @@ static void tool_button(int b, bool down)
     wl_signal_emit_mutable(&s.tool_ptr.events.frame, &s.tool_ptr);
 }
 
+/* A finger's scroll (a touchpad's two fingers, L17c): one continuous
+ * delta, + towards the user; 0 is the scroll's stop. */
+static void tool_scroll(int delta)
+{
+    struct wlr_pointer_axis_event ev = {
+        .pointer = &s.tool_ptr,
+        .time_msec = (uint32_t)now_ms(),
+        .source = WL_POINTER_AXIS_SOURCE_FINGER,
+        .orientation = WL_POINTER_AXIS_VERTICAL_SCROLL,
+        .relative_direction = WL_POINTER_AXIS_RELATIVE_DIRECTION_IDENTICAL,
+        .delta = delta,
+        .delta_discrete = 0,
+    };
+    wl_signal_emit_mutable(&s.tool_ptr.events.axis, &ev);
+    wl_signal_emit_mutable(&s.tool_ptr.events.frame, &s.tool_ptr);
+}
+
 static void tool_wheel(int notches)
 {
     struct wlr_pointer_axis_event ev = {
@@ -97,6 +114,7 @@ static void tool_wheel(int notches)
  *   comp button B 1|0    1 left, 2 middle, 3 right
  *   comp click X Y       move, then left down and up
  *   comp wheel N         notches, + away from the user
+ *   comp scroll D        a finger's scroll delta, + towards the user, 0 the stop
  *   comp touch ...       the tools' touch screen (wl_touch.c, L17)
  *   comp apps LANG       the launcher's Linux list (linux_apps.h) as LANG
  *                        names it: "OK ready=0|1 count=N"
@@ -216,7 +234,8 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
                  "OK span_s=%.1f pictures=%u gap_mean_ms=%.1f gap_max_ms=%llu commits=%u keys=%u "
                  "key_commit_n=%u key_commit_mean_ms=%.1f key_commit_max_ms=%llu view_changes=%u pointer_rechecks=%u "
                  "x11_menu_presses=%u to_fmrb=%u winops=%u locks=%u unlocks=%u lock_died=%u "
-                 "lock_keys_held=%u lock_starts=%u touch_native=%u touch_emulated=%u touch_ignored=%u\n",
+                 "lock_keys_held=%u lock_starts=%u touch_native=%u touch_emulated=%u touch_ignored=%u "
+                 "wheel_notches=%u\n",
                  span, s.stats.pictures,
                  gaps ? (double)s.stats.picture_gap_sum_ms / gaps : 0.0,
                  (unsigned long long)s.stats.picture_gap_max_ms, s.stats.commits, s.stats.keys,
@@ -224,7 +243,7 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
                  (unsigned long long)s.stats.key_lat_max_ms, s.stats.view_changes, s.stats.pointer_rechecks,
                  s.stats.x11_menu_presses, s.stats.to_fmrb, s.stats.winops, s.lk.locks,
                  s.lk.unlocks, s.lk.died, s.lk.keys_held_back, s.lk.starts, s.stats.touch_native,
-                 s.stats.touch_emulated, s.stats.touch_ignored);
+                 s.stats.touch_emulated, s.stats.touch_ignored, s.stats.wheel_notches);
         if (strcmp(a, "stats reset") == 0) {
             memset(&s.stats, 0, sizeof(s.stats));
             s.stats.since_ms = t;
@@ -315,9 +334,10 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
         tool_button(1, false);
     } else if (sscanf(a, "wheel %d", &n) == 1) {
         tool_wheel(n);
-
+    } else if (sscanf(a, "scroll %d", &n) == 1) {
+        tool_scroll(n);
     } else {
-        snprintf(out, cap, "ERR comp: info, stats [reset], clip, crt [k=v ...], key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N, touch ...\n");
+        snprintf(out, cap, "ERR comp: info, stats [reset], clip, crt [k=v ...], key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N, scroll D, touch ...\n");
         return true;
     }
     wl_display_flush_clients(s.display);

@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 #
-# wl_touch_check.rb - the touch screen (doc/linux_native/, L17), in the
+# wl_touch_check.rb - the touch screen and the finger scroll (doc/
+# linux_native/, L17), in the
 # Ubuntu 26.04 image with the program built by rake native:wl, headless,
 # --machine linux_pc_wl, no autostart.
 #
@@ -30,6 +31,9 @@
 #      lifted: the window is dragged (pointer emulation on Family mruby's
 #      own picture)
 #   6. a second finger while the first is emulating is ignored
+#   7. a finger's scroll (the touchpad's two fingers, L17c) on Family
+#      mruby: one wheel notch per 15 units with the rest kept, the scroll's
+#      stop starting afresh; a mouse wheel click still one notch
 #
 # Not here: the CRT look's curve (the headless container has no GLES); it
 # is checked on the GPD (doc/linux_native/report/l17.md).
@@ -313,6 +317,25 @@ class TouchRun
            "the window moved #{moved_x},#{moved_y} output pixels (wanted #{30 * s},#{12 * s})")
     result("a second finger while dragging", ign2 == ign + 1, "ignored #{ign} -> #{ign2}")
 
+    # 7. a finger's scroll on Family mruby (L17c): one notch per 15 units,
+    # the rest kept, the stop starting afresh; a wheel click stays one.
+    comp("move", *to_out(320, 5))
+    sleep 0.3
+    comp("stats", "reset")
+    notches = ->(r = comp("stats")) { kv(r)["wheel_notches"].to_i }
+    7.times { comp("scroll", 3) }
+    a = notches.call
+    comp("scroll", 0)
+    3.times { comp("scroll", 3) }
+    b = notches.call
+    comp("scroll", 0)
+    comp("wheel", 1)
+    c = notches.call
+    5.times { comp("scroll", -6) }
+    comp("scroll", 0)
+    d = notches.call
+    result("finger scroll on Family mruby", [a, b, c, d] == [1, 1, 2, 4],
+           "notches after 7x3: #{a} (1), then a stop and 3x3: #{b} (1), a wheel click: #{c} (2), 5x-6: #{d} (4)")
     st = touch_stats
     File.write(File.join(@out, "touch_stats.txt"), comp("touch"))
     puts "  touch: #{st}"

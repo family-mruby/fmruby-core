@@ -339,6 +339,7 @@ struct output_wlr_state {
         unsigned touch_native;              /* touches sent as wl_touch (L17) */
         unsigned touch_emulated;            /* touches sent as the pointer's left button (L17) */
         unsigned touch_ignored;             /* touches outside the curved picture or not taken (L17) */
+        unsigned wheel_notches;             /* wheel notches sent to Family mruby (L17c) */
     } stats;
 };
 

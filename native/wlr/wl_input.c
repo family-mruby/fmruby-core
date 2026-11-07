@@ -206,17 +206,24 @@ void add_ime_keyboard(struct wlr_keyboard *wkb)
     add_keyboard_as(wkb, true);
 }
 
-/* A touchpad's tap to click (L17): libinput leaves it off by default, so
+/* A touchpad (L17): its two-finger scroll made sure of, and its tap to
+ * click. libinput leaves the tap off by default, so
  * a tap did nothing and only a press of the pad clicked. On (input.tap):
  * one finger the left button, two the right, three the middle (libinput's
  * LRM map), and a tap then a touch held drags. Only libinput's devices
  * (on a console); nested and headless have no such setting. */
-static void touchpad_tap(struct wlr_input_device *dev)
+static void touchpad_setup(struct wlr_input_device *dev)
 {
 #if WLR_HAS_LIBINPUT_BACKEND
-    if (!s.tap || !wlr_input_device_is_libinput(dev)) return;
+    if (!wlr_input_device_is_libinput(dev)) return;
     struct libinput_device *ld = wlr_libinput_get_device_handle(dev);
     if (ld == NULL || libinput_device_config_tap_get_finger_count(ld) <= 0) return;
+    /* Two fingers scroll (L17c; libinput's default where the pad has two
+     * fingers, made sure of). Natural scrolling stays libinput's default. */
+    if (libinput_device_config_scroll_get_methods(ld) & LIBINPUT_CONFIG_SCROLL_2FG) {
+        libinput_device_config_scroll_set_method(ld, LIBINPUT_CONFIG_SCROLL_2FG);
+    }
+    if (!s.tap) return;
     bool ok = libinput_device_config_tap_set_enabled(ld, LIBINPUT_CONFIG_TAP_ENABLED) == LIBINPUT_CONFIG_STATUS_SUCCESS;
     ok &= libinput_device_config_tap_set_button_map(ld, LIBINPUT_CONFIG_TAP_MAP_LRM) == LIBINPUT_CONFIG_STATUS_SUCCESS;
     ok &= libinput_device_config_tap_set_drag_enabled(ld, LIBINPUT_CONFIG_DRAG_ENABLED) ==
@@ -235,7 +242,7 @@ void new_input(struct wl_listener *l, void *data)
     if (dev->type == WLR_INPUT_DEVICE_KEYBOARD) {
         add_keyboard(wlr_keyboard_from_input_device(dev));
     } else if (dev->type == WLR_INPUT_DEVICE_POINTER) {
-        touchpad_tap(dev);
+        touchpad_setup(dev);
         wlr_cursor_attach_input_device(s.cursor, dev);
     } else if (dev->type == WLR_INPUT_DEVICE_TOUCH) {
         add_touch(dev);
@@ -642,6 +649,29 @@ void cursor_button(struct wl_listener *l, void *data)
     wlr_seat_pointer_notify_button(s.seat, ev->time_msec, ev->button, ev->state);
 }
 
+/* A finger's scroll (the touchpad's two fingers, L17c) comes as many small
+ * continuous deltas: one notch for Family mruby per a wheel click's worth
+ * of them (libinput's wheel click is 15 degrees, in the same units), the
+ * rest kept for the next; the scroll's stop (a delta of 0) starts the next
+ * gesture afresh. Only the vertical one (Family mruby has no other). */
+#define SCROLL_NOTCH 15.0
+static double scroll_acc;
+
+static int scroll_notches(double delta)
+{
+    if (delta == 0) {
+        scroll_acc = 0;
+        return 0;
+    }
+    /* Turned back: the rest of the other way is dropped. */
+    if ((scroll_acc > 0 && delta < 0) || (scroll_acc < 0 && delta > 0)) scroll_acc = 0;
+    scroll_acc += delta;
+    int n = (int)(scroll_acc / SCROLL_NOTCH);
+    scroll_acc -= n * SCROLL_NOTCH;
+    /* Wayland's positive is towards the user; the system's is away. */
+    return -n;
+}
+
 void cursor_axis(struct wl_listener *l, void *data)
 {
     (void)l;
@@ -656,10 +686,17 @@ void cursor_axis(struct wl_listener *l, void *data)
     ptr_hit_t p = pointer_hit();
     if (p.hit.target == COMP_FMRB) {
         if (ev->orientation != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
-        /* Wayland's positive is towards the user; the system's is away. */
-        int notches = ev->delta_discrete != 0 ? -ev->delta_discrete / WLR_POINTER_AXIS_DISCRETE_STEP
+        int notches = 0;
+        if (ev->source == WL_POINTER_AXIS_SOURCE_FINGER || ev->source == WL_POINTER_AXIS_SOURCE_CONTINUOUS) {
+            notches = scroll_notches(ev->delta);
+        } else {
+            /* A wheel: its clicks. Wayland's positive is towards the user;
+             * the system's is away. */
+            notches = ev->delta_discrete != 0 ? -ev->delta_discrete / WLR_POINTER_AXIS_DISCRETE_STEP
                                               : (ev->delta > 0 ? -1 : (ev->delta < 0 ? 1 : 0));
+        }
         if (notches == 0) return;
+        s.stats.wheel_notches += (unsigned)abs(notches);
         flush_motion(true);
         push_fmrb(NATIVE_INPUT_MOUSE_WHEEL, (uint32_t)p.hit.x, (uint32_t)p.hit.y,
                           (uint32_t)(int32_t)notches, 0);
