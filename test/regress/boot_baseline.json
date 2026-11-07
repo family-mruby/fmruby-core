@@ -626,7 +626,7 @@
       "firmware": "STICKS3",
       "flashed": false,
       "commit": null,
-      "version": "2.1.0-1141-gb4148c6a-dirty",
+      "version": "2.1.0-1158-gb6df7f28-dirty",
       "running_on": "ESP32-S3 (M5Stack StickS3)",
       "reset": "USB_UART_CHIP_RESET",
       "m1": {
@@ -710,75 +710,80 @@
           "largest": 196608,
           "psram": 1363376
         },
+        "spawn:Welcome": {
+          "internal": 222300,
+          "largest": 180224,
+          "psram": 1363376
+        },
         "wifi_ready": {
-          "internal": 153012,
+          "internal": 153072,
           "largest": 112640,
-          "psram": 1298328
+          "psram": 1298312
         },
         "devctl": {
-          "internal": 141436,
+          "internal": 141404,
           "largest": 100352,
-          "psram": 1296856
+          "psram": 1296848
         },
         "debugd": {
-          "internal": 133968,
+          "internal": 133936,
           "largest": 92160,
-          "psram": 1296856
+          "psram": 1296848
         }
       },
-      "iram_free": 132604,
-      "psram_free": 1091064,
+      "iram_free": 132748,
+      "psram_free": 1155016,
       "tasks": {
         "hw_proxy": {
           "stack": 6144,
-          "free": 4108,
+          "free": 4220,
           "active": true
         },
         "status_led": {
           "stack": 4096,
-          "free": 1380,
+          "free": 1316,
           "active": true
         },
         "fmrb_host": {
           "stack": 24576,
-          "free": 11472,
+          "free": 10384,
           "active": true
         },
         "fmrb_kernel": {
           "stack": 16384,
-          "free": 4860,
+          "free": 4892,
           "active": true
         },
-        "Step Sensor": {
+        "Welcome": {
           "stack": 16384,
-          "free": 6268,
+          "free": 6412,
           "active": true
         },
         "debugd": {
           "stack": 6144,
-          "free": 2704,
+          "free": 2708,
           "active": true
         }
       },
       "pools": {
         "fmrb_kernel": {
           "vm": "spx",
-          "used": 99368,
-          "free": 412240,
+          "used": 98920,
+          "free": 412688,
           "total": 512000,
-          "peak": 112696,
-          "largest": 398904,
+          "peak": 111192,
+          "largest": 400408,
           "frag": 3,
           "exchw": "3/0"
         },
-        "Step Sensor": {
+        "Welcome": {
           "vm": "mrb",
-          "used": 386208,
-          "free": 661976,
-          "total": 1048576,
-          "peak": 488432,
-          "largest": 542232,
-          "frag": 101,
+          "used": 320128,
+          "free": 191480,
+          "total": 512000,
+          "peak": 396568,
+          "largest": 116544,
+          "frag": 45,
           "exchw": "-"
         }
       },
@@ -1053,5 +1058,5 @@
     "iram_free": 1024,
     "stack_free": 384
   },
-  "commit": "2.1.0-1144-g0857213d-dirty,2.1.0-1133-gcf96814d-dirty,2.1.0-1096-g805113de-dirty,2.1.0-1141-gb4148c6a-dirty,2.1.0-1150-gad20bb6e-dirty"
+  "commit": "2.1.0-1144-g0857213d-dirty,2.1.0-1133-gcf96814d-dirty,2.1.0-1096-g805113de-dirty,2.1.0-1158-gb6df7f28-dirty,2.1.0-1150-gad20bb6e-dirty"
 }
