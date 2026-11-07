@@ -3,8 +3,9 @@
 // The machine's picture stays where it is: main.js keeps painting the 2D
 // canvas (#screen), and that canvas is what screenshots and the regression
 // read. This file draws a second canvas over it with WebGL2 -- scanlines, a
-// phosphor grille, glow, the tube's curve and its dark corners -- and only
-// when the picture, the size or a setting has changed.
+// phosphor grille, glow, the tube's curve and its dark corners, NTSC's
+// colour bleed -- and only when the picture, the size or a setting has
+// changed; with the time effects (flicker, noise) on, TIME_FPS times a second.
 //
 // The curve is one formula, written three times: warpToSource below
 // (JavaScript, which main.js uses to send a click to the pixel under the
@@ -24,9 +25,23 @@
   const CURVE_MAX = 0.25;
 
   // The strengths a fresh page gets, 0..100 each. Provisional (C2 settles
-  // them with the user).
-  const DEFAULTS = Object.freeze({ scan: 55, mask: 30, glow: 30, curve: 15, vignette: 40 });
-  const KEYS = Object.freeze(['scan', 'mask', 'glow', 'curve', 'vignette']);
+  // them with the user). The time effects (flicker, noise) stay 0: with
+  // either on the view draws TIME_FPS times a second, not only on change.
+  const DEFAULTS = Object.freeze({ scan: 55, mask: 30, glow: 30, curve: 15, vignette: 40,
+                                   ntsc: 0, flicker: 0, noise: 0 });
+  const KEYS = Object.freeze(['scan', 'mask', 'glow', 'curve', 'vignette', 'ntsc', 'flicker', 'noise']);
+  const TIME_FPS = 30;
+
+  // Flicker or noise asked for: the picture changes with time.
+  function timed(s) {
+    return (s.flicker || 0) > 0 || (s.noise || 0) > 0;
+  }
+
+  // The time effects' frame number at a moment (ms): TIME_FPS a second,
+  // wrapped well inside a float's exact integers.
+  function timeFrame(ms) {
+    return Math.floor(ms * TIME_FPS / 1000) % 1048576;
+  }
 
   function curveCoef(curve) {
     return Math.max(0, Math.min(100, curve || 0)) / 100 * CURVE_MAX;
@@ -114,6 +129,10 @@ uniform float u_scan;    // scanline strength, already weighted by magnification
 uniform float u_mask;    // grille strength, likewise
 uniform float u_glow;    // glow strength
 uniform float u_vig;     // dark corners
+uniform float u_ntsc;    // NTSC colour bleed (the colour's resolution across)
+uniform float u_flicker; // brightness that wavers from frame to frame
+uniform float u_noise;   // grain, new every frame
+uniform float u_frame;   // the time effects' frame number (30 a second)
 #ifdef FMRB_CRT_OUTPUT
 uniform mat3 u_frag;     // gl_FragCoord -> display position (0..1, y down)
 uniform mat3 u_texel;    // output pixel (logical, its centre) -> texel of u_tex
@@ -140,6 +159,23 @@ vec3 px(ivec2 p) {
 }
 #define AT(o) px(ip + (o))
 #endif
+
+// RGB <-> YIQ (NTSC's luma and two colour-difference signals).
+const mat3 TO_YIQ = mat3(0.299, 0.596, 0.211,
+                         0.587, -0.274, -0.523,
+                         0.114, -0.322, 0.312);
+const mat3 TO_RGB = mat3(1.0, 1.0, 1.0,
+                         0.956, -0.272, -1.106,
+                         0.621, -0.647, 1.703);
+
+// A hash of a picture pixel and a frame, 0..1 (pcg3d).
+float hash(uvec3 v) {
+  v = v * 1664525u + 1013904223u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  v ^= v >> 16u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  return float(v.x >> 8u) / 16777215.0;
+}
 
 void main() {
 #ifdef FMRB_CRT_OUTPUT
@@ -169,6 +205,17 @@ void main() {
   ivec2 ip = ivec2(floor(p));
 #endif
   vec3 c = AT(ivec2(0, 0));
+  if (u_ntsc > 0.0) {
+    // A composite signal carries the colour in a narrower band than the
+    // brightness: keep this pixel's luma, take the colour (I and Q) from a
+    // gaussian (sigma 1.6 picture pixels, three each way) along the row.
+    vec2 iq = (TO_YIQ * c).yz * 0.2560;
+    iq += (TO_YIQ * (AT(ivec2(-1, 0)) + AT(ivec2(1, 0)))).yz * 0.2106;
+    iq += (TO_YIQ * (AT(ivec2(-2, 0)) + AT(ivec2(2, 0)))).yz * 0.1172;
+    iq += (TO_YIQ * (AT(ivec2(-3, 0)) + AT(ivec2(3, 0)))).yz * 0.0441;
+    vec3 yiq = TO_YIQ * c;
+    c = clamp(TO_RGB * vec3(yiq.x, mix(yiq.yz, iq, u_ntsc)), 0.0, 1.0);
+  }
   vec3 halo = vec3(0.0);
   if (u_glow > 0.0) {
     // A beam spreads sideways: mix in the neighbours on the row ...
@@ -202,6 +249,19 @@ void main() {
     c *= mix(vec3(1.0), m, u_mask) / mix(1.0, 0.7, u_mask);
   }
   c += halo * u_glow * 0.9;
+  if (u_flicker > 0.0) {
+    // The whole picture a little brighter or darker each frame, and a soft
+    // darker band rolling down the screen (mains hum), once in 4 seconds.
+    uint f = uint(u_frame);
+    float w = hash(uvec3(f, 7u, 11u)) * 2.0 - 1.0;
+    float band = 0.5 + 0.5 * sin(6.2832 * (st.y - u_frame / 120.0));
+    c *= 1.0 + u_flicker * (0.05 * w - 0.06 * band * band * band * band);
+  }
+  if (u_noise > 0.0) {
+    // Grain: each picture pixel brighter or darker, new every frame.
+    float n = hash(uvec3(uvec2(ivec2(floor(p)) + 4096), uint(u_frame))) - 0.5;
+    c += vec3(n * u_noise * 0.16);
+  }
   if (u_vig > 0.0) {
     float v = 16.0 * st.x * st.y * (1.0 - st.x) * (1.0 - st.y);
     c *= pow(clamp(v, 0.0, 1.0), 0.45 * u_vig);
@@ -255,7 +315,8 @@ void main() {
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
     const U = {};
-    for (const n of ['u_tex', 'u_src', 'u_dst', 'u_curve', 'u_scan', 'u_mask', 'u_glow', 'u_vig']) {
+    for (const n of ['u_tex', 'u_src', 'u_dst', 'u_curve', 'u_scan', 'u_mask', 'u_glow', 'u_vig',
+                     'u_ntsc', 'u_flicker', 'u_noise', 'u_frame']) {
       U[n] = gl.getUniformLocation(prog, n);
     }
     const tex = gl.createTexture();
@@ -273,6 +334,7 @@ void main() {
     let dirty = false;       // draw on the next flush
     let lost = false;
     let settings = Object.assign({}, DEFAULTS);
+    let shownFrame = -1;     // the time effects' frame last drawn
     const stats = { uploads: 0, draws: 0 };
 
     glCanvas.addEventListener('webglcontextlost', (ev) => {
@@ -293,6 +355,11 @@ void main() {
       gl.uniform1f(U.u_mask, settings.mask / 100 * fineWeight(scale, 2.0, 3.0));
       gl.uniform1f(U.u_glow, settings.glow / 100);
       gl.uniform1f(U.u_vig, settings.vignette / 100);
+      gl.uniform1f(U.u_ntsc, (settings.ntsc || 0) / 100);
+      gl.uniform1f(U.u_flicker, (settings.flicker || 0) / 100);
+      gl.uniform1f(U.u_noise, (settings.noise || 0) / 100);
+      shownFrame = timed(settings) ? timeFrame(performance.now()) : -1;
+      gl.uniform1f(U.u_frame, Math.max(shownFrame, 0));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       stats.draws++;
       return true;
@@ -314,7 +381,8 @@ void main() {
           dirty = true;
         }
       },
-      // Called once per animation frame; does nothing unless something changed.
+      // Called once per animation frame; does nothing unless something
+      // changed, or (flicker, noise) the time effects' frame moved on.
       flush() {
         if (lost) return false;
         if (pending) {
@@ -329,6 +397,7 @@ void main() {
           }
           stats.uploads++;
         }
+        if (!dirty && timed(settings) && timeFrame(performance.now()) !== shownFrame) dirty = true;
         if (!dirty) return false;
         dirty = false;
         return draw();
@@ -358,7 +427,7 @@ void main() {
     };
   }
 
-  const api = { DEFAULTS, KEYS, CURVE_MAX, warpToSource, warpToDisplay, inside, fineWeight, create };
+  const api = { DEFAULTS, KEYS, CURVE_MAX, TIME_FPS, timed, timeFrame, warpToSource, warpToDisplay, inside, fineWeight, create };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FmrbCrt = api;
 })(typeof window !== 'undefined' ? window : globalThis);

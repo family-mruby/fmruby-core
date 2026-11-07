@@ -22,6 +22,10 @@ uniform float u_scan;    // scanline strength, already weighted by magnification
 uniform float u_mask;    // grille strength, likewise
 uniform float u_glow;    // glow strength
 uniform float u_vig;     // dark corners
+uniform float u_ntsc;    // NTSC colour bleed (the colour's resolution across)
+uniform float u_flicker; // brightness that wavers from frame to frame
+uniform float u_noise;   // grain, new every frame
+uniform float u_frame;   // the time effects' frame number (30 a second)
 #ifdef FMRB_CRT_OUTPUT
 uniform mat3 u_frag;     // gl_FragCoord -> display position (0..1, y down)
 uniform mat3 u_texel;    // output pixel (logical, its centre) -> texel of u_tex
@@ -48,6 +52,23 @@ vec3 px(ivec2 p) {
 }
 #define AT(o) px(ip + (o))
 #endif
+
+// RGB <-> YIQ (NTSC's luma and two colour-difference signals).
+const mat3 TO_YIQ = mat3(0.299, 0.596, 0.211,
+                         0.587, -0.274, -0.523,
+                         0.114, -0.322, 0.312);
+const mat3 TO_RGB = mat3(1.0, 1.0, 1.0,
+                         0.956, -0.272, -1.106,
+                         0.621, -0.647, 1.703);
+
+// A hash of a picture pixel and a frame, 0..1 (pcg3d).
+float hash(uvec3 v) {
+  v = v * 1664525u + 1013904223u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  v ^= v >> 16u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  return float(v.x >> 8u) / 16777215.0;
+}
 
 void main() {
 #ifdef FMRB_CRT_OUTPUT
@@ -77,6 +98,17 @@ void main() {
   ivec2 ip = ivec2(floor(p));
 #endif
   vec3 c = AT(ivec2(0, 0));
+  if (u_ntsc > 0.0) {
+    // A composite signal carries the colour in a narrower band than the
+    // brightness: keep this pixel's luma, take the colour (I and Q) from a
+    // gaussian (sigma 1.6 picture pixels, three each way) along the row.
+    vec2 iq = (TO_YIQ * c).yz * 0.2560;
+    iq += (TO_YIQ * (AT(ivec2(-1, 0)) + AT(ivec2(1, 0)))).yz * 0.2106;
+    iq += (TO_YIQ * (AT(ivec2(-2, 0)) + AT(ivec2(2, 0)))).yz * 0.1172;
+    iq += (TO_YIQ * (AT(ivec2(-3, 0)) + AT(ivec2(3, 0)))).yz * 0.0441;
+    vec3 yiq = TO_YIQ * c;
+    c = clamp(TO_RGB * vec3(yiq.x, mix(yiq.yz, iq, u_ntsc)), 0.0, 1.0);
+  }
   vec3 halo = vec3(0.0);
   if (u_glow > 0.0) {
     // A beam spreads sideways: mix in the neighbours on the row ...
@@ -110,6 +142,19 @@ void main() {
     c *= mix(vec3(1.0), m, u_mask) / mix(1.0, 0.7, u_mask);
   }
   c += halo * u_glow * 0.9;
+  if (u_flicker > 0.0) {
+    // The whole picture a little brighter or darker each frame, and a soft
+    // darker band rolling down the screen (mains hum), once in 4 seconds.
+    uint f = uint(u_frame);
+    float w = hash(uvec3(f, 7u, 11u)) * 2.0 - 1.0;
+    float band = 0.5 + 0.5 * sin(6.2832 * (st.y - u_frame / 120.0));
+    c *= 1.0 + u_flicker * (0.05 * w - 0.06 * band * band * band * band);
+  }
+  if (u_noise > 0.0) {
+    // Grain: each picture pixel brighter or darker, new every frame.
+    float n = hash(uvec3(uvec2(ivec2(floor(p)) + 4096), uint(u_frame))) - 0.5;
+    c += vec3(n * u_noise * 0.16);
+  }
   if (u_vig > 0.0) {
     float v = 16.0 * st.x * st.y * (1.0 - st.x) * (1.0 - st.y);
     c *= pow(clamp(v, 0.0, 1.0), 0.45 * u_vig);

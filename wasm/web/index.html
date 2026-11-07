@@ -321,6 +321,9 @@
       <div class="field"><label for="crt-glow">Glow</label><input id="crt-glow" type="range" min="0" max="100"></div>
       <div class="field"><label for="crt-curve">Curve</label><input id="crt-curve" type="range" min="0" max="100"></div>
       <div class="field"><label for="crt-vignette">Corners</label><input id="crt-vignette" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-ntsc">NTSC colour</label><input id="crt-ntsc" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-flicker">Flicker</label><input id="crt-flicker" type="range" min="0" max="100"></div>
+      <div class="field"><label for="crt-noise">Noise</label><input id="crt-noise" type="range" min="0" max="100"></div>
       <div class="row"><span class="lead"></span><button id="crt-defaults" type="button">Defaults</button></div>
     </div>
     <p class="note" id="look-note" hidden></p>
@@ -403,8 +406,10 @@
       the node shown in the panel; a second tab joins under a name of its
       own that is not kept.</li>
     <li><b>Look:</b> <b>CRT</b> draws the screen like a picture tube
-      (scanlines, the grille, glow, a curved glass); each effect has its
-      own strength, and 0 turns it off. <code>?look=crt</code> in the
+      (scanlines, the grille, glow, a curved glass, the colour bleed of a
+      composite signal, flicker and noise); each effect has its own
+      strength, and 0 turns it off. Flicker and noise redraw the screen 30
+      times a second. <code>?look=crt</code> in the
       address opens a visit with it, without changing what you chose.</li>
     <li><b>Frame:</b> a monitor around the screen with Sharp pixels, a TV set
       or a monitor of the tube days with CRT. Only for the look: nothing on
