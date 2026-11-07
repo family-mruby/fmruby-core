@@ -632,6 +632,18 @@ class Run
     result("frame", ok && title_ok && nholes > full * 9 / 10,
            "#{detail}; the stand-in's title bar over foot: #{title_ok}; holes #{nholes} of the content's #{full}")
 
+    # The CRT look (doc/web_crt, C4) switched on where there is no GLES
+    # (pixman): one line says why, the output stays the picture as it was,
+    # and the pointer is not bent. With GLES it would draw (the GPD).
+    if used != "gles2"
+      r = comp("crt", "look=crt", "curve=40")
+      ok_c, detail_c, = composite_check("crt_without_gles", @info)
+      comp("crt", "look=sharp")
+      said = log_text.include?("CRT look unavailable: the renderer is #{used}")
+      result("the CRT look without GLES stays sharp", r.include?("unusable=1") && r.include?("drawing=0") && ok_c && said,
+             "#{r.strip}; #{detail_c}; the log says why: #{said}")
+    end
+
     # 3. move and resize. The grip (the window's bottom-right corner) first:
     #    content 232x165 -> 168x128, foot takes its cell grid's size of that
     #    and the stand-in fits it (the content: foot's size over the scale,
