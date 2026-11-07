@@ -134,7 +134,8 @@ class WelcomeApp < FmrbApp
     vb = "v#{FmrbConst::OS_VERSION}  #{board_name(false)}"
     vb = "v#{FmrbConst::OS_VERSION} #{board_name(true)}" if vb.length > @cols
     @gfx.draw_text(@x0 + @pad, @y0 + @band_h + 3, vb[0, @cols], theme_fg)
-    @wifi_key = nil
+    # The block is drawn whether or not Wi-Fi changed (the screen was just
+    # cleared); the poll logs only a change, so a resize does not log again.
     @wifi_at = Machine.board_millis
     poll_wifi
     draw_status
