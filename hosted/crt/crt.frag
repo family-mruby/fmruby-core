@@ -108,21 +108,33 @@ void main() {
     // the subcarrier's phase (about 0.6 of a cycle a pixel, half a cycle a
     // line).
     // The decoder's filter also lags, so the colour trails to the right:
-    // a pixel takes more from its left (up to 60% more) and less from its
-    // right.
+    // a pixel takes more from its left and less from its right.
+    //
+    // Strength: e = 2 * u_ntsc. The blur is all in by e = 1 (the strength
+    // 50); above it the lag and the fringe keep growing (the strength 100
+    // all from the left, the fringe twice as strong).
     vec3 l1 = AT(ivec2(-1, 0)), r1 = AT(ivec2(1, 0));
     vec3 lw = l1 * 0.1259 + AT(ivec2(-2, 0)) * 0.1067 + AT(ivec2(-3, 0)) * 0.0810
             + AT(ivec2(-5, 0)) * 0.0994 + AT(ivec2(-7, 0)) * 0.0205;
     vec3 rw = r1 * 0.1259 + AT(ivec2(2, 0)) * 0.1067 + AT(ivec2(3, 0)) * 0.0810
             + AT(ivec2(5, 0)) * 0.0994 + AT(ivec2(7, 0)) * 0.0205;
-    float lag = 0.6 * u_ntsc;
+    float e = 2.0 * u_ntsc;
+    float lag = min(0.6 * e, 1.0);
     vec2 iq = (TO_YIQ * (c * 0.1330 + lw * (1.0 + lag) + rw * (1.0 - lag))).yz;
     vec3 yiq = TO_YIQ * c;
     vec2 pp = floor(p);
     float phase = 6.2832 * (0.6 * pp.x + 0.5 * pp.y);
     float ystep = dot(r1 - l1, vec3(0.299, 0.587, 0.114));
-    iq += 0.8 * sqrt(u_ntsc) * ystep * vec2(cos(phase), sin(phase));
-    c = clamp(TO_RGB * vec3(yiq.x, mix(yiq.yz, iq, sqrt(u_ntsc))), 0.0, 1.0);
+    float blend = sqrt(min(e, 1.0));
+    iq += 0.8 * e / blend * ystep * vec2(cos(phase), sin(phase));
+    c = clamp(TO_RGB * vec3(yiq.x, mix(yiq.yz, iq, blend)), 0.0, 1.0);
+  }
+  if (u_noise > 0.0) {
+    // Grain in the signal: each picture pixel brighter or darker (+-14% at
+    // 100), new every frame. Before the scanlines and the grille, so a
+    // grain is shaped like the picture's pixel it falls on.
+    float n = hash(uvec3(uvec2(ivec2(floor(p)) + 4096), uint(u_frame))) - 0.5;
+    c = clamp(c + vec3(n * u_noise * 0.28), 0.0, 1.0);
   }
   vec3 halo = vec3(0.0);
   if (u_glow > 0.0) {
@@ -159,18 +171,13 @@ void main() {
   c += halo * u_glow * 0.9;
   if (u_flicker > 0.0) {
     // The whole picture brighter or darker each frame (+-12% at 100), and
-    // a broad darker band rolling down the screen (mains hum, up to 30%
-    // darker at 100), once in 4 seconds.
+    // a dark bar rolling down the screen once in 4 seconds (mains hum):
+    // about a sixth of the height, 60% darker at its middle at 100.
     uint f = uint(u_frame);
     float w = hash(uvec3(f, 7u, 11u)) * 2.0 - 1.0;
-    float band = 0.5 + 0.5 * sin(6.2832 * (st.y - u_frame / 120.0));
-    c *= 1.0 + u_flicker * (0.12 * w - 0.30 * band * band);
-  }
-  if (u_noise > 0.0) {
-    // Grain: each picture pixel brighter or darker (+-25% at 100), new
-    // every frame.
-    float n = hash(uvec3(uvec2(ivec2(floor(p)) + 4096), uint(u_frame))) - 0.5;
-    c += vec3(n * u_noise * 0.5);
+    float dy = fract(st.y - u_frame / 120.0 + 0.5) - 0.5;
+    float bar = exp(-dy * dy / (2.0 * 0.06 * 0.06));
+    c *= 1.0 + u_flicker * (0.12 * w - 0.6 * bar);
   }
   if (u_vig > 0.0) {
     float v = 16.0 * st.x * st.y * (1.0 - st.x) * (1.0 - st.y);
