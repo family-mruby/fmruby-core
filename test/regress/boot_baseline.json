@@ -438,6 +438,188 @@
           "stack_free": 48
         }
       }
+    },
+    "sticks3": {
+      "board": "sticks3",
+      "firmware": "STICKS3",
+      "flashed": false,
+      "commit": null,
+      "version": "2.1.0-1141-gb4148c6a-dirty",
+      "running_on": "ESP32-S3 (M5Stack StickS3)",
+      "reset": "USB_UART_CHIP_RESET",
+      "m1": {
+        "boot_start": {
+          "internal": 326684,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "mem_init": {
+          "internal": 326420,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "hw_init_start": {
+          "internal": 326420,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "gpio_led_proxy": {
+          "internal": 315284,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "littlefs_mount": {
+          "internal": 312888,
+          "largest": 262144,
+          "psram": 1465376
+        },
+        "fs_bench": {
+          "internal": 312888,
+          "largest": 262144,
+          "psram": 1465376
+        },
+        "system_config": {
+          "internal": 295428,
+          "largest": 245760,
+          "psram": 1464284
+        },
+        "hal": {
+          "internal": 282956,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "file_sync": {
+          "internal": 282780,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "app_init": {
+          "internal": 282692,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "mp_init": {
+          "internal": 282604,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "host_task_entry": {
+          "internal": 257404,
+          "largest": 212992,
+          "psram": 1440216
+        },
+        "gfx_audio_init": {
+          "internal": 254784,
+          "largest": 212992,
+          "psram": 1375412
+        },
+        "host_ready": {
+          "internal": 254784,
+          "largest": 212992,
+          "psram": 1375412
+        },
+        "spawn:fmrb_kernel": {
+          "internal": 237952,
+          "largest": 196608,
+          "psram": 1375412
+        },
+        "ble_released": {
+          "internal": 239136,
+          "largest": 196608,
+          "psram": 1363376
+        },
+        "wifi_ready": {
+          "internal": 153012,
+          "largest": 112640,
+          "psram": 1298328
+        },
+        "devctl": {
+          "internal": 141436,
+          "largest": 100352,
+          "psram": 1296856
+        },
+        "debugd": {
+          "internal": 133968,
+          "largest": 92160,
+          "psram": 1296856
+        }
+      },
+      "iram_free": 132604,
+      "psram_free": 1091064,
+      "tasks": {
+        "hw_proxy": {
+          "stack": 6144,
+          "free": 4108,
+          "active": true
+        },
+        "status_led": {
+          "stack": 4096,
+          "free": 1380,
+          "active": true
+        },
+        "fmrb_host": {
+          "stack": 24576,
+          "free": 11472,
+          "active": true
+        },
+        "fmrb_kernel": {
+          "stack": 16384,
+          "free": 4860,
+          "active": true
+        },
+        "Step Sensor": {
+          "stack": 16384,
+          "free": 6268,
+          "active": true
+        },
+        "debugd": {
+          "stack": 6144,
+          "free": 2704,
+          "active": true
+        }
+      },
+      "pools": {
+        "fmrb_kernel": {
+          "vm": "spx",
+          "used": 99368,
+          "free": 412240,
+          "total": 512000,
+          "peak": 112696,
+          "largest": 398904,
+          "frag": 3,
+          "exchw": "3/0"
+        },
+        "Step Sensor": {
+          "vm": "mrb",
+          "used": 386208,
+          "free": 661976,
+          "total": 1048576,
+          "peak": 488432,
+          "largest": 542232,
+          "frag": 101,
+          "exchw": "-"
+        }
+      },
+      "boot_seconds": 1.4,
+      "dumps": 3,
+      "tolerance": {
+        "m1_internal": 512,
+        "m1_largest": 8192,
+        "m1_psram": 16384,
+        "iram_free": 512,
+        "stack_free": 2048
+      },
+      "calibration": {
+        "runs": 3,
+        "at": "2026-11-07T12:54:20+09:00",
+        "spread": {
+          "m1_internal": 68,
+          "m1_largest": 0,
+          "m1_psram": 16,
+          "iram_free": 200,
+          "stack_free": 992
+        }
+      }
     }
   },
   "tolerance": {
@@ -447,5 +629,5 @@
     "iram_free": 1024,
     "stack_free": 384
   },
-  "commit": "2.1.0-1133-gcf96814d-dirty,2.1.0-1096-g805113de-dirty"
+  "commit": "2.1.0-1133-gcf96814d-dirty,2.1.0-1096-g805113de-dirty,2.1.0-1141-gb4148c6a-dirty"
 }
