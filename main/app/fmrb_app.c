@@ -2067,6 +2067,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->exclusive_group[sizeof(ctx->exclusive_group) - 1] = '\0';
     }
     ctx->headless = attr->headless;
+    ctx->large_memory = attr->large_memory;
     ctx->window_pos_x = attr->window_pos_x;
     ctx->window_pos_y = attr->window_pos_y;
 

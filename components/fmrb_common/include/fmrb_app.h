@@ -99,6 +99,9 @@ typedef struct fmrb_app_task_context_s {
     // image and go on elsewhere (doc/checkpoint, D6). Only the builds that
     // carry mruby-checkpoint act on it (FMRB_HAVE_CHECKPOINT).
     bool                  movable;
+    // The app asked for a large pool (large_memory = 1). On the S3 an ordinary
+    // app may run in a large pool too, so mempool_id alone does not say it.
+    bool                  large_memory;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
