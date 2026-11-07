@@ -485,6 +485,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     /* The IME's candidates and Family mruby's composing text over all. */
     s.ime_tree = wlr_scene_tree_create(&s.scene->tree);
     s.ime = strcmp(m->input.ime, "wayland") == 0;
+    s.tap = m->input.tap;
 
     s.new_output.notify = new_output;
     wl_signal_add(&s.backend->events.new_output, &s.new_output);

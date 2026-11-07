@@ -56,6 +56,10 @@
  *                             or "wayland" (the compositor serves the IME
  *                             protocols; display wlroots). Without an IME
  *                             present the kana input stays
+ *              tap            wlroots only (L17): true (default) turns on
+ *                             libinput's tap on touchpads (1 finger left,
+ *                             2 right, tap and drag); false leaves
+ *                             libinput's own default (usually off)
  *   [audio]    backend        sdl | alsa | none
  *              device         alsa: the PCM name ("default")
  *              latency_ms     alsa: the device buffer (100)
@@ -161,6 +165,7 @@ typedef struct {
         char keymap[32];
         char keymap_device[64];
         char ime[16];                    /* "none", "sdl" or "wayland" */
+        bool tap;                        /* wlroots: touchpads click on a tap (L17) */
     } input;
 
     struct {

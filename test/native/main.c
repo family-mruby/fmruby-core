@@ -669,6 +669,16 @@ static void test_machine(void)
     // The PC's window operations and lock program (L13): the
     // PC's machines have them, the Cardputer and the keys desktop not.
     CHECK(m.desktop.window_ops && strcmp(m.compositor.locker, "swaylock") == 0, "linux_pc_wl window ops, locker");
+    // The touchpads' tap to click (L17): on by default; true or false only.
+    CHECK(m.input.tap, "linux_pc_wl input.tap");
+    {
+        native_machine_t t;
+        native_machine_defaults(&t);
+        CHECK(t.input.tap, "input.tap on by default");
+        CHECK(native_machine_set(&t, "input.tap", "false", err, sizeof(err)) == 0 && !t.input.tap,
+              "input.tap false: %s", err);
+        CHECK(native_machine_set(&t, "input.tap", "yes", err, sizeof(err)) != 0, "input.tap yes refused");
+    }
     // The machine's own desktop's default applications (L15): KDE's list.
     CHECK(strcmp(m.compositor.mime_desktops, "kde") == 0, "linux_pc_wl mime_desktops %s", m.compositor.mime_desktops);
     {

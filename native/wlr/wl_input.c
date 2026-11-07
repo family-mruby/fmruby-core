@@ -206,6 +206,28 @@ void add_ime_keyboard(struct wlr_keyboard *wkb)
     add_keyboard_as(wkb, true);
 }
 
+/* A touchpad's tap to click (L17): libinput leaves it off by default, so
+ * a tap did nothing and only a press of the pad clicked. On (input.tap):
+ * one finger the left button, two the right, three the middle (libinput's
+ * LRM map), and a tap then a touch held drags. Only libinput's devices
+ * (on a console); nested and headless have no such setting. */
+static void touchpad_tap(struct wlr_input_device *dev)
+{
+#if WLR_HAS_LIBINPUT_BACKEND
+    if (!s.tap || !wlr_input_device_is_libinput(dev)) return;
+    struct libinput_device *ld = wlr_libinput_get_device_handle(dev);
+    if (ld == NULL || libinput_device_config_tap_get_finger_count(ld) <= 0) return;
+    bool ok = libinput_device_config_tap_set_enabled(ld, LIBINPUT_CONFIG_TAP_ENABLED) == LIBINPUT_CONFIG_STATUS_SUCCESS;
+    ok &= libinput_device_config_tap_set_button_map(ld, LIBINPUT_CONFIG_TAP_MAP_LRM) == LIBINPUT_CONFIG_STATUS_SUCCESS;
+    ok &= libinput_device_config_tap_set_drag_enabled(ld, LIBINPUT_CONFIG_DRAG_ENABLED) ==
+          LIBINPUT_CONFIG_STATUS_SUCCESS;
+    fprintf(stderr, "native: compositor: %s: tap to click%s (%d fingers)\n", dev->name ? dev->name : "touchpad",
+            ok ? " on" : ": refused in part", libinput_device_config_tap_get_finger_count(ld));
+#else
+    (void)dev;
+#endif
+}
+
 void new_input(struct wl_listener *l, void *data)
 {
     (void)l;
@@ -213,6 +235,7 @@ void new_input(struct wl_listener *l, void *data)
     if (dev->type == WLR_INPUT_DEVICE_KEYBOARD) {
         add_keyboard(wlr_keyboard_from_input_device(dev));
     } else if (dev->type == WLR_INPUT_DEVICE_POINTER) {
+        touchpad_tap(dev);
         wlr_cursor_attach_input_device(s.cursor, dev);
     }
     uint32_t caps = WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_KEYBOARD;

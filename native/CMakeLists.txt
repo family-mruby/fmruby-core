@@ -56,7 +56,8 @@ if(NATIVE_WITH_ALSA)
 endif()
 if(NATIVE_WITH_WLROOTS)
   # glesv2, egl: the CRT look's shader (doc/web_crt, C4) in wlroots' GLES context.
-  pkg_check_modules(WLROOTS IMPORTED_TARGET wlroots-0.19 wayland-server xkbcommon glesv2 egl)
+  # libinput: the touchpads' tap to click (L17), on wlroots' libinput devices.
+  pkg_check_modules(WLROOTS IMPORTED_TARGET wlroots-0.19 wayland-server xkbcommon glesv2 egl libinput)
   if(WLROOTS_FOUND)
     pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
     pkg_get_variable(WAYLAND_SCANNER wayland-scanner wayland_scanner)

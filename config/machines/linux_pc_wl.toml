@@ -36,6 +36,7 @@ look = "sharp"               # or "crt": the whole output as a CRT (GLES only; d
 [input]
 backend = "wlroots"          # the compositor's seat: keyboard, touchpad, mouse
 ime = "wayland"              # IMEs over input-method-v2 for Linux windows and Family mruby apps (L12b)
+tap = true                   # touchpads: a tap clicks (1 finger left, 2 right), tap and drag (L17)
 
 [audio]
 backend = "sdl"

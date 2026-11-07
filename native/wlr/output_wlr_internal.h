@@ -63,6 +63,9 @@
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 #include <wlr/version.h>
+#if WLR_HAS_LIBINPUT_BACKEND
+#include <wlr/backend/libinput.h>
+#endif
 #if WLR_HAS_XWAYLAND
 #include <wlr/xwayland.h>
 #include <wlr/xwayland/server.h>
@@ -187,6 +190,7 @@ struct output_wlr_state {
     struct wlr_scene_tree *ime_tree;        /* the IME's candidates and composing text (L12b) */
     struct wlr_scene_tree *lock_tree;       /* the screen lock, over everything (L13) */
     bool ime;                               /* input.ime = "wayland" */
+    bool tap;                               /* input.tap: touchpads click on a tap (L17) */
     struct wlr_xdg_shell *xdg_shell;
     struct wlr_xdg_decoration_manager_v1 *deco_mgr;
     struct wlr_compositor *compositor;

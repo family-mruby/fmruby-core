@@ -81,6 +81,7 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->input.devices[0], sizeof(m->input.devices[0]), "auto");
     m->input.n_devices = 1;
     snprintf(m->input.ime, sizeof(m->input.ime), "none");
+    m->input.tap = true;
     snprintf(m->audio.backend, sizeof(m->audio.backend), "sdl");
     snprintf(m->audio.device, sizeof(m->audio.device), "default");
     m->audio.latency_ms = 100;
@@ -267,6 +268,12 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
     if (strcmp(key, "input.devices") == 0) return set_devices(m, value, err, n);
     if (strcmp(key, "input.keymap") == 0) return copy_str(m->input.keymap, sizeof(m->input.keymap), value, key, err, n);
     if (strcmp(key, "input.keymap_device") == 0) return copy_str(m->input.keymap_device, sizeof(m->input.keymap_device), value, key, err, n);
+    if (strcmp(key, "input.tap") == 0) {
+        if (strcmp(value, "true") == 0) m->input.tap = true;
+        else if (strcmp(value, "false") == 0) m->input.tap = false;
+        else return fail(err, n, "input.tap: \"%s\" is not true or false", value);
+        return 0;
+    }
     if (strcmp(key, "input.ime") == 0) {
         if (strcmp(value, "none") != 0 && strcmp(value, "sdl") != 0 && strcmp(value, "wayland") != 0) {
             return fail(err, n, "input.ime: \"%s\" is not none, sdl or wayland", value);
