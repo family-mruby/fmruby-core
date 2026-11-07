@@ -275,6 +275,13 @@ class FmrbKernel
     nil
   end
 
+  # Same name as the mruby binding (a class method there, callable from any
+  # VM), so the kernel source says FmrbKernel.boot_complete! on both engines.
+  def self.boot_complete!
+    FmrbSpx.fmrb_spx_boot_complete
+    nil
+  end
+
   # ---- host handshake ----
   def check_protocol_version(timeout_ms = 5000)
     FmrbSpx.fmrb_spx_check_protocol_version(timeout_ms) == 1

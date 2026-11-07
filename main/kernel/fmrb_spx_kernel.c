@@ -393,6 +393,15 @@ int fmrb_spx_set_error_led(int level)
     return 0;
 }
 
+/* Boot is over and the machine is usable: the status LED leaves its boot
+   fast-blink for the heartbeat. The desktop does this itself when its boot
+   animation ends; the kernel does it for the boots without a desktop. */
+int fmrb_spx_boot_complete(void)
+{
+    status_led_set_boot_complete();
+    return 0;
+}
+
 int fmrb_spx_set_ready(void)
 {
     fmrb_kernel_set_ready();

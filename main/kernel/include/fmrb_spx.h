@@ -168,6 +168,9 @@ const char *fmrb_spx_last_error(void);
 /** @brief Set the status-LED error pattern (FmrbConst::LED_ERR_*). Returns 0. */
 int fmrb_spx_set_error_led(int level);
 
+/** @brief Mark boot complete (status LED: boot blink -> heartbeat). Returns 0. */
+int fmrb_spx_boot_complete(void);
+
 /** @brief Signal the kernel is ready (boot handshake). Returns 0. */
 int fmrb_spx_set_ready(void);
 

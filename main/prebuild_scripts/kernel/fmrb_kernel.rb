@@ -1243,6 +1243,8 @@ class FmrbKernelImpl < FmrbKernel
       # WiFi to use, and the internal RAM goes to BLE.
       Log.info("Setup mode: no app started; waiting for settings over BLE")
       _show_setup
+      # Nothing more to start: the board now waits for the user.
+      FmrbKernel.boot_complete!
     elsif _boot_mode == BOOT_MODE_APP
       # One app and nothing else: no desktop, no launcher.
       @boot_app_mode = true
@@ -1351,6 +1353,10 @@ class FmrbKernelImpl < FmrbKernel
     @single_app_error = ""
     remember_spawn_fullscreen(pid)
     after_spawn(pid)
+    # The app is up, so the boot is over: this boot has no desktop to say it
+    # (the desktop does when its boot animation ends). Respawns repeat it
+    # harmlessly; a boot whose app never starts stays in the boot pattern.
+    FmrbKernel.boot_complete!
     nil
   end
 

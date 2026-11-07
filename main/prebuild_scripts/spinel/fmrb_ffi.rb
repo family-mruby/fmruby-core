@@ -70,6 +70,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_screen_height, [], :int
   ffi_func :fmrb_spx_display_width, [], :int         # the whole panel (the halt screen's width)
   ffi_func :fmrb_spx_set_error_led, [:int], :int
+  ffi_func :fmrb_spx_boot_complete, [], :int        # status LED: boot blink -> heartbeat
   ffi_func :fmrb_spx_set_ready, [], :int
   ffi_func :fmrb_spx_check_protocol_version, [:int], :int  # 1 ok / 0 fail / neg err
   ffi_func :fmrb_spx_check_ga_version, [:int], :int
