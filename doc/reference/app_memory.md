@@ -1,6 +1,6 @@
 # アプリのメモリ (VM プール)
 
-> 状態: 完了 | 更新: 2026-10-16 | mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
+> 状態: 完了 | 更新: 2026-11-07 | mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
 
 この文書は mruby で動くユーザアプリの VM プールを扱う。GC の観測と調整は
 [gc_monitoring.md](gc_monitoring.md)、内蔵 RAM (タスクのスタックなど) は
@@ -21,12 +21,25 @@ mruby のヒープ、コンパイラ、`require` したファイルの中身は�
 | ブラウザ版 (wasm、32 ビット) | 1.5 MB | 3 MB | ホストのメモリ |
 
 - 定義は `components/fmrb_common/include/fmrb_mem_config.h`。
-- 通常のプールはアプリの枠ごとに 1 つ (先頭 3 つは静的、残りは初めて使うときに
-  PSRAM から取って、そのあと持ち続ける)。
-- `large_memory = 1` のプールは**1 つだけで、同時に 1 アプリしか使えない**。
-  2 本目は「LARGE memory pool already in use」で起動を断られる。いま使って
-  いるアプリ: shooter, raycaster, rpg_demo, othello, picoruby, picorabbit,
-  smf_player, json_probe, midi_bench, mahjong。
+- プールは起動のときに空いているものを渡し、アプリの枠が空くまで持たせる
+  (枠の番号とは結び付けない。`main/app/fmrb_app.c` の `pick_user_pool`)。
+- **S3 の端末 (NARYAv3・StickS3・AtomS3R)**: 通常 1 つと `large_memory` 用
+  2 つ、すべて静的 (PSRAM 2.5 MB)。`large_memory = 1` のアプリは空いている
+  大きい方を取る。それ以外は通常のプールを取り、ふさがっていれば空いている
+  大きい方を取る。**同時に動くユーザアプリは 3 つまで**。3 つとも使われて
+  いると「No free app slot」で断られる (ログは `No free app memory pool`)。
+  通常のプールが空いていても大きい方が 2 つともふさがっていれば、
+  `large_memory = 1` のアプリは断られる (ログは `No free LARGE memory pool`)。
+  Asterism を使う間は転送のアプリ (`large_memory = 1`) が大きい方を 1 つ持つ
+  (2026-11-07、doc/checkpoint/report/s3_board.md)。
+- **それ以外 (Modern・sim・ブラウザ版・ネイティブ版)**: 通常のプールはアプリの
+  枠ごとに 1 つ (先頭 3 つは静的、残りは初めて使うときに PSRAM から取って、
+  そのあと持ち続ける)。`large_memory = 1` のプールは**1 つだけで、同時に
+  1 アプリしか使えない**。2 本目はログに `No free LARGE memory pool` を出して
+  起動を断られる。
+- `large_memory = 1` を使っているアプリ: shooter, raycaster, rpg_demo,
+  othello, picoruby, picorabbit, smf_player, json_probe, midi_bench, mahjong、
+  転送のアプリ (transfer)。
 - Linux sim は 64 ビットなので、同じスクリプトがおよそ 1.5 倍の場所を取る
   (オブジェクトの頭とポインタが倍)。プールも 1.5 倍なので、**sim は Modern
   実機とほぼ同じ厳しさになる**。ブラウザ版は 32 ビットのままプールが 1.5 倍
@@ -129,7 +142,8 @@ fmrb_app: [Mahjong] VM pool at NoMemoryError: total=1572864 used=626856 free=945
 
 - 起動で NoMemoryError になったら、まず 4 章の 2 行を見る。
 - 本体が大きいアプリ (目安: 32 ビットで山が通常プールの 7 割を超える。
-  Modern なら本体 40 KB 前後から) は `large_memory = 1`。ただし同時に 1 本。
+  Modern なら本体 40 KB 前後から) は `large_memory = 1`。ただし同時に 1 本
+  (S3 は 2 本)。
 - 本体を増やすより、`require` するファイルに分ける方が山が低い
   (ファイルごとにコンパイルし、終わった分の一時領域は返る)。
 - ブラウザ版だけで確かめない (1 章)。sim か実機でも起動する。

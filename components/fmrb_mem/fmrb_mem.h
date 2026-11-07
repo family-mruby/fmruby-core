@@ -34,6 +34,12 @@ void* fmrb_get_mempool_app_ptr(int32_t no);
  */
 bool fmrb_mempool_reserve(int32_t id);
 
+/**
+ * @brief Whether a pool id is one of this build's large user app pools
+ *        (the ones an app with large_memory = 1 runs in).
+ */
+bool fmrb_mempool_is_user_large(int32_t id);
+
 // Memory pool debugging functions
 void fmrb_mempool_print_ranges(void);
 void fmrb_mempool_check_pointer(const void* ptr);

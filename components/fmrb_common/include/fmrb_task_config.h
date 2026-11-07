@@ -386,8 +386,9 @@ typedef enum FMRB_PROC_ID{
     PROC_ID_HOST,
     PROC_ID_SYSTEM_APP,
     PROC_ID_SYSTEM_OVERLAY,
-    // User app slots. There is one memory pool per slot (POOL_ID_USER_APP0 and
-    // up) and one context slot per id (FMRB_MAX_APPS); naming ids beyond that
+    // User app slots. There is one context slot per id (FMRB_MAX_APPS); the
+    // memory pools are handed out separately (fmrb_mem_config.h, one per slot
+    // except on the S3, where three pools are the ceiling); naming ids beyond that
     // is what let a spawn hand out a slot index past the end of the context
     // pool, so the assert in main/app/fmrb_app.c has to stay true.
     //

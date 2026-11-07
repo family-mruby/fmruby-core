@@ -357,7 +357,10 @@ static fmrb_err_t write_file(const char *path, const void *buf, size_t len)
 }
 
 // The attributes a spawn of the image reads (the same names as an .app.toml):
-// what the app was started with, from its context.
+// what the app was started with, from its context. large_memory follows the
+// pool the VM ran in rather than the .app.toml: on the S3 an ordinary app can
+// land in a large pool when the ordinary one is busy, and its heap may then
+// have grown past what an ordinary pool holds.
 static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const char *path)
 {
     const int cap = 768;
@@ -368,7 +371,7 @@ static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const cha
                      "app_screen_name = \"%s\"\n"
                      "movable = true\n"
                      "large_memory = %d\n",
-                     ctx->app_name, ctx->mempool_id == POOL_ID_USER_APP_LARGE ? 1 : 0);
+                     ctx->app_name, fmrb_mempool_is_user_large(ctx->mempool_id) ? 1 : 0);
     if (ctx->headless) {
         n += snprintf(t + n, cap - n, "default_window_mode = \"background\"\n");
     } else {

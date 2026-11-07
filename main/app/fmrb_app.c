@@ -124,7 +124,6 @@ static fmrb_semaphore_t g_ctx_lock = NULL;
 // Bumped on every process state transition. UI polls (taskbar) read it via
 // FmrbApp.ps_gen to skip the allocating FmrbApp.ps call while nothing changed.
 static volatile uint32_t g_proc_generation = 0;
-static bool g_large_pool_in_use = false;
 
 // State transition strings for debugging
 static const char* state_names[] = {
@@ -292,6 +291,51 @@ static void tls_destructor(int idx, void* pv) {
 static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     ctx->started_notified = false;
     ctx->parked = false;
+}
+
+/* Is a user app pool held? (must hold g_ctx_lock)
+
+   A pool belongs to the slot it was handed to until that slot is FREE again,
+   which is after the app's task is gone: its VM heap is in the pool until the
+   very end, and a forced kill releases it from another task. So there is no
+   flag to keep in step with the exit paths -- the slots are the record. */
+static bool user_pool_busy(int32_t id) {
+    for (int32_t i = PROC_ID_USER_APP0; i < PROC_ID_USER_APP_END; i++) {
+        const fmrb_app_task_context_t* c = &g_ctx_pool[i];
+        if (c->state != PROC_STATE_FREE && (int32_t)c->mempool_id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool all_user_pools_busy(void) {
+    for (int32_t id = POOL_ID_USER_APP0; id < POOL_ID_USER_APP0 + FMRB_USER_APP_POOL_COUNT; id++) {
+        if (!user_pool_busy(id)) return false;
+    }
+    for (int32_t id = POOL_ID_USER_APP_LARGE; id < POOL_ID_USER_APP_LARGE + FMRB_USER_APP_LARGE_POOL_COUNT; id++) {
+        if (!user_pool_busy(id)) return false;
+    }
+    return true;
+}
+
+/* The pool for a user app being spawned, or -1 (must hold g_ctx_lock).
+
+   large_memory takes a free large pool. Anything else takes a free ordinary
+   pool and, when they are all busy, a free large one: on the S3 there is one
+   ordinary pool and two large ones (fmrb_mem_config.h), and three small apps
+   should still run side by side. Elsewhere there is an ordinary pool per slot,
+   so a slot that is free always finds one. */
+static int32_t pick_user_pool(bool large_memory) {
+    if (!large_memory) {
+        for (int32_t id = POOL_ID_USER_APP0; id < POOL_ID_USER_APP0 + FMRB_USER_APP_POOL_COUNT; id++) {
+            if (!user_pool_busy(id)) return id;
+        }
+    }
+    for (int32_t id = POOL_ID_USER_APP_LARGE; id < POOL_ID_USER_APP_LARGE + FMRB_USER_APP_LARGE_POOL_COUNT; id++) {
+        if (!user_pool_busy(id)) return id;
+    }
+    return -1;
 }
 
 /* Is there internal RAM to start this app with?
@@ -1678,12 +1722,6 @@ cleanup:
         ctx->semaphore = NULL;
     }
 
-    // Release LARGE pool if this app was using it
-    if (ctx->mempool_id == POOL_ID_USER_APP_LARGE) {
-        g_large_pool_in_use = false;
-        FMRB_LOGI(TAG, "[%s] Released LARGE memory pool", ctx->app_name);
-    }
-
     // Slot stays in STOPPING; the kernel reaper transitions to FREE after
     // deleting this task externally (see fmrb_app_reap).
     fmrb_semaphore_give(g_ctx_lock);
@@ -1889,6 +1927,25 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     }
 
     ctx = &g_ctx_pool[idx];
+    // A user app's pool is chosen under the same lock as its slot, and stored
+    // before the slot leaves FREE: pick_user_pool reads the other slots'
+    // mempool_id, so two launches at once cannot be handed the same pool.
+    if (attr->type == APP_TYPE_USER_APP) {
+        const int32_t pool = pick_user_pool(attr->large_memory);
+        if (pool < 0) {
+            fmrb_semaphore_give(g_ctx_lock);
+            if (attr->large_memory && !all_user_pools_busy()) {
+                // Room for an ordinary app, but not for this one: the same
+                // answer a busy LARGE pool always got.
+                FMRB_LOGE(TAG, "[%s] No free LARGE memory pool", attr->name);
+                return FMRB_ERR_FAILED;
+            }
+            FMRB_LOGE(TAG, "[%s] No free app memory pool (all %d in use)",
+                      attr->name, FMRB_USER_APP_POOL_COUNT + FMRB_USER_APP_LARGE_POOL_COUNT);
+            return FMRB_ERR_NO_RESOURCE;
+        }
+        ctx->mempool_id = (enum FMRB_MEM_POOL_ID)pool;
+    }
     transition_state(ctx, PROC_STATE_INIT);
     // Cleared under the lock that fmrb_app_launch_claim reads it with, before
     // the slot can be seen as anything but FREE by a launch on another task.
@@ -1916,30 +1973,21 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             break;
         case APP_TYPE_USER_APP:
             if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_USER_APP_END) {
-                if (attr->large_memory) {
-                    if (g_large_pool_in_use) {
-                        FMRB_LOGE(TAG, "[%s] LARGE memory pool already in use", attr->name);
-                        goto unwind;
-                    }
-                    ctx->mempool_id = POOL_ID_USER_APP_LARGE;
-                    g_large_pool_in_use = true;
-                    FMRB_LOGI(TAG, "USER_APP using LARGE pool (%zu KB): idx=%d",
-                              fmrb_get_mempool_size(POOL_ID_USER_APP_LARGE) / 1024, idx);
-                } else {
-                    ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
-                }
-                // The later slots take their pool from PSRAM on first use, so
-                // this is where a machine without the PSRAM to spare says no.
+                // The pool was picked with the slot, above. The later ordinary
+                // pools come from PSRAM on first use, so this is where a
+                // machine without the PSRAM to spare says no; unwinding frees
+                // the slot and with it the claim on the pool.
                 if (!fmrb_mempool_reserve(ctx->mempool_id)) {
                     FMRB_LOGE(TAG, "[%s] No PSRAM for pool %d", attr->name, ctx->mempool_id);
-                    if (ctx->mempool_id == POOL_ID_USER_APP_LARGE) {
-                        g_large_pool_in_use = false;
-                    }
                     unwind_err = FMRB_ERR_NO_MEMORY;
                     goto unwind;
                 }
-                FMRB_LOGI(TAG, "USER_APP mempool_id: idx=%d, PROC_ID_USER_APP0=%d, POOL_ID_USER_APP0=%d, calculated mempool_id=%d",
-                          idx, PROC_ID_USER_APP0, POOL_ID_USER_APP0, ctx->mempool_id);
+                FMRB_LOGI(TAG, "USER_APP pool: idx=%d mempool_id=%d (%s, %zu KB%s)",
+                          idx, ctx->mempool_id,
+                          fmrb_mempool_is_user_large(ctx->mempool_id) ? "large" : "ordinary",
+                          fmrb_get_mempool_size(ctx->mempool_id) / 1024,
+                          (fmrb_mempool_is_user_large(ctx->mempool_id) && !attr->large_memory)
+                              ? ", the ordinary ones are busy" : "");
             } else {
                 FMRB_LOGE(TAG, "Invalid USER_APP proc_id: %d", idx);
                 goto unwind;
@@ -2271,9 +2319,6 @@ static void force_release_resources(fmrb_app_task_context_t* ctx,
     if (ctx->semaphore) {
         fmrb_semaphore_delete(ctx->semaphore);
         ctx->semaphore = NULL;
-    }
-    if (ctx->mempool_id == POOL_ID_USER_APP_LARGE) {
-        g_large_pool_in_use = false;
     }
 }
 

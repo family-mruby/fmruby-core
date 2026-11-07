@@ -12,12 +12,20 @@ enum FMRB_MEM_POOL_ID{
     POOL_ID_KERNEL,
     POOL_ID_SYSTEM_APP,
     POOL_ID_SYSTEM_OVERLAY,
-    // One pool per user app slot. The first FMRB_USER_APP_STATIC_POOL_COUNT are
-    // reserved statically; the rest are taken from PSRAM the first time an app
-    // lands in them (see fmrb_mempool_reserve). Reserving all of them
-    // statically would put 7.3 MB of the Retro machine's 8 MB PSRAM into .bss
-    // whether or not anyone ever runs five apps, which is most of what is left
-    // after the editor document and /tmp arenas.
+    // The ordinary user app pools, one id per user app slot. How many of them a
+    // build actually uses is FMRB_USER_APP_POOL_COUNT below (all of them, or
+    // one on the S3); the first FMRB_USER_APP_STATIC_POOL_COUNT are reserved
+    // statically and the rest are taken from PSRAM the first time an app lands
+    // in them (see fmrb_mempool_reserve). Reserving all of them statically
+    // would put 7.3 MB of the Retro machine's 8 MB PSRAM into .bss whether or
+    // not anyone ever runs five apps, which is most of what is left after the
+    // editor document and /tmp arenas.
+    //
+    // The ids are the same on every build (only FMRB_MAX_APPS moves them, and
+    // the builds that raise it pass it everywhere); which ones have memory
+    // behind them is up to fmrb_mempool.c. The mrbgem ports include this
+    // header without the machine defines, so the layout must not depend on
+    // them.
     POOL_ID_USER_APP0,
     POOL_ID_USER_APP1,
     POOL_ID_USER_APP2,
@@ -28,6 +36,10 @@ enum FMRB_MEM_POOL_ID{
     // only the end of the run has a name. fmrb_mempool.c asserts that the five
     // named ones still fit inside it.
     POOL_ID_USER_APP_LARGE = POOL_ID_USER_APP0 + FMRB_USER_APP_COUNT,
+    // The large pools (large_memory = 1), FMRB_USER_APP_LARGE_POOL_COUNT of
+    // them: one, or two on the S3. Matched as the range [POOL_ID_USER_APP_LARGE,
+    // POOL_ID_USER_APP_LARGE_END).
+    POOL_ID_USER_APP_LARGE1,
     // Editor document arena (picoruby-fmrb-editor-core). Deliberately its own
     // pool: the document must not sit in the app's 500KB mruby pool (it would
     // cap the file size and feed the GC's malloc accounting) nor in the shared
@@ -42,6 +54,10 @@ enum FMRB_MEM_POOL_ID{
     POOL_ID_LOG_BUFFER,
     POOL_ID_MAX
 };
+
+// One past the last large pool id. The ids exist on every build; a build
+// with fewer large pools leaves the rest without memory (fmrb_mempool.c).
+#define POOL_ID_USER_APP_LARGE_END (POOL_ID_USER_APP_LARGE1 + 1)
 
 typedef int8_t fmrb_mem_handle_t;
 
@@ -129,7 +145,31 @@ typedef int8_t fmrb_mem_handle_t;
 
 #define FMRB_MEM_POOL_SIZE_LOG_BUFFER (128*1024)
 
-// How many of those pools exist before anyone asks. The rest are allocated on
-// first use and then kept (see fmrb_mempool_reserve): allocating and freeing
-// 500 KB blocks over a long session is how a PSRAM heap gets fragmented.
+// Which user app pools a build uses, and how many of them exist before anyone
+// asks. A pool is handed to an app at spawn and given back when its slot is
+// freed; it is not tied to the slot number (main/app/fmrb_app.c,
+// pick_user_pool).
+//
+// The S3 boards (Retro and the headless ones) have one ordinary pool and two
+// large ones, all static: 2.5 MB of PSRAM, as before, but laid out for the
+// apps they run now. Asterism's gems leave a VM about 300 KB used before it
+// loads anything, so the transfer app (large_memory = 1) needs a large pool
+// for as long as Asterism is in use; with two of them a second big app still
+// fits. An app without large_memory takes the ordinary pool and, when that is
+// busy, a free large one, so three apps run at once when nothing needs a large
+// pool. Three is also the ceiling: nothing is allocated on demand.
+//
+// Everywhere else (Modern, the simulation, the hosted builds) there is one
+// ordinary pool per user app slot -- the first three static, the rest
+// allocated on first use and then kept (see fmrb_mempool_reserve): allocating
+// and freeing 500 KB blocks over a long session is how a PSRAM heap gets
+// fragmented -- and one large pool.
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_HW_FAMILY_MODERN)
+#define FMRB_USER_APP_POOL_COUNT 1
+#define FMRB_USER_APP_STATIC_POOL_COUNT 1
+#define FMRB_USER_APP_LARGE_POOL_COUNT 2
+#else
+#define FMRB_USER_APP_POOL_COUNT FMRB_USER_APP_COUNT
 #define FMRB_USER_APP_STATIC_POOL_COUNT 3
+#define FMRB_USER_APP_LARGE_POOL_COUNT 1
+#endif
