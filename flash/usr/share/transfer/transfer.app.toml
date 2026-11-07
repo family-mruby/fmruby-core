@@ -8,3 +8,7 @@ single_instance = true
 # table of this build's method names in its VM, which the destination's side
 # of a move answers from (doc/checkpoint F5).
 movable = true
+# The large pool (1 MB on the S3). With Asterism's gems in every mruby VM, a
+# VM on the S3 holds about 300 KB before it loads anything, and compiling
+# this 20 KB script ran the 500 KB pool dry (NARYAv3, 2026-11-07).
+large_memory = 1
