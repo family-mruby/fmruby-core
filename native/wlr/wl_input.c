@@ -237,9 +237,10 @@ void new_input(struct wl_listener *l, void *data)
     } else if (dev->type == WLR_INPUT_DEVICE_POINTER) {
         touchpad_tap(dev);
         wlr_cursor_attach_input_device(s.cursor, dev);
+    } else if (dev->type == WLR_INPUT_DEVICE_TOUCH) {
+        add_touch(dev);
     }
-    uint32_t caps = WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_KEYBOARD;
-    wlr_seat_set_capabilities(s.seat, caps);
+    wlr_seat_set_capabilities(s.seat, seat_caps());
 }
 
 /* ------------------------------------------------------------ pointer */
@@ -293,15 +294,13 @@ static int popup_at(double x, double y, struct wlr_surface **surf, double *sx, d
     return COMP_FMRB;
 }
 
-/* The surface of window id under the point (its subsurfaces included), with
- * surface-local coordinates; its main surface when the point is in its
- * rectangle but on no surface of it. */
-static struct wlr_surface *surface_at(int id, double *sx, double *sy)
+/* The surface of window id under the point (cx, cy) (its subsurfaces
+ * included), with surface-local coordinates; its main surface when the
+ * point is in its rectangle but on no surface of it. */
+static struct wlr_surface *surface_at(int id, double cx, double cy, double *sx, double *sy)
 {
     window_t *w = window_by_id(id);
     if (w == NULL) return NULL;
-    double cx, cy;
-    crt_pointer(&cx, &cy, NULL);
     struct wlr_scene_node *node = wlr_scene_node_at(&w->tree->node, cx, cy, sx, sy);
     if (node != NULL && node->type == WLR_SCENE_NODE_BUFFER) {
         struct wlr_scene_surface *ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
@@ -315,20 +314,11 @@ static struct wlr_surface *surface_at(int id, double *sx, double *sy)
     return win_surface(w);
 }
 
-typedef struct {
-    comp_hit_t hit;
-    struct wlr_surface *surf;               /* a window: the surface */
-    double sx, sy;
-    bool popup;                             /* over one of its popups */
-} ptr_hit_t;
-
-/* What the pointer is over: a popup, a hole, or Family mruby. While a
- * button is held, the press's target keeps it. */
-static ptr_hit_t pointer_hit(void)
+/* What the point (x, y) of the layout is over: a popup, a hole (with the
+ * window's surface there), or Family mruby. */
+ptr_hit_t point_hit(double x, double y)
 {
     ptr_hit_t p = { 0 };
-    double x, y;
-    crt_pointer(&x, &y, NULL);
     int pid = popup_at(x, y, &p.surf, &p.sx, &p.sy);
     if (pid != COMP_FMRB) {
         p.hit.target = pid;
@@ -336,6 +326,17 @@ static ptr_hit_t pointer_hit(void)
     } else {
         p.hit = comp_route_at(&s.route, (int)x, (int)y);
     }
+    if (p.hit.target != COMP_FMRB && p.surf == NULL) p.surf = surface_at(p.hit.target, x, y, &p.sx, &p.sy);
+    return p;
+}
+
+/* What the pointer is over. While a button is held, the press's target
+ * keeps it. */
+static ptr_hit_t pointer_hit(void)
+{
+    double x, y;
+    crt_pointer(&x, &y, NULL);
+    ptr_hit_t p = point_hit(x, y);
     if (s.buttons_held > 0 && p.hit.target != s.pointer_target) {
         p.hit.target = s.pointer_target;
         p.popup = false;
@@ -345,7 +346,7 @@ static ptr_hit_t pointer_hit(void)
             comp_route_to_frame(&s.route, (int)x, (int)y, &p.hit.x, &p.hit.y);
         }
     }
-    if (p.hit.target != COMP_FMRB && p.surf == NULL) p.surf = surface_at(p.hit.target, &p.sx, &p.sy);
+    if (p.hit.target != COMP_FMRB && p.surf == NULL) p.surf = surface_at(p.hit.target, x, y, &p.sx, &p.sy);
     return p;
 }
 
@@ -474,7 +475,7 @@ static int fmrb_button(uint32_t linux_button)
     }
 }
 
-static void fmrb_press(int fx, int fy, int b, bool down)
+void fmrb_press(int fx, int fy, int b, bool down)
 {
     s.motion_x = fx;
     s.motion_y = fy;
@@ -502,7 +503,7 @@ static bool x11_is_menu(struct wlr_xwayland_surface *xs)
  * (their window type): a tooltip holds no grab, and a press passed through
  * it would land on whatever X11 window is at that place. Not for a press on
  * an X11 window, which Xwayland sees itself. */
-static void press_x11_menus(int target, uint32_t time_msec, uint32_t button)
+static void press_x11_menus(int target, double cx, double cy, uint32_t time_msec, uint32_t button)
 {
 #if WLR_HAS_XWAYLAND
     if (target != COMP_FMRB) {
@@ -514,8 +515,6 @@ static void press_x11_menus(int target, uint32_t time_msec, uint32_t button)
         if (!is_or(w) || !w->mapped || w->id <= 0 || w->xs->surface == NULL || !x11_is_menu(w->xs)) continue;
         int nx = 0, ny = 0;
         wlr_scene_node_coords(&w->tree->node, &nx, &ny);
-        double cx, cy;
-        crt_pointer(&cx, &cy, NULL);
         double sx = cx - nx, sy = cy - ny;
         wlr_seat_pointer_notify_enter(s.seat, w->xs->surface, sx, sy);
         wlr_seat_pointer_notify_motion(s.seat, time_msec, sx, sy);
@@ -531,6 +530,8 @@ static void press_x11_menus(int target, uint32_t time_msec, uint32_t button)
     }
 #else
     (void)target;
+    (void)cx;
+    (void)cy;
     (void)time_msec;
     (void)button;
 #endif
@@ -544,6 +545,27 @@ static void end_grab(void)
                           NULL);
     }
     s.grab.mode = GRAB_NONE;
+}
+
+/* A press (or a touch, L17) at (cx, cy) that is not on a popup: menus
+ * close, the keyboard goes where it landed, a window comes in front. The
+ * place it landed in frame coordinates is in the hit. */
+comp_hit_t press_focus(double cx, double cy, uint32_t time_msec, uint32_t button)
+{
+    /* Menus close on a press outside them (but on their own window,
+     * which closes them itself as it sees fit). */
+    int under = comp_route_at(&s.route, (int)cx, (int)cy).target;
+    close_popups(under);
+    press_x11_menus(under, cx, cy, time_msec, button);
+    bool changed = false;
+    comp_hit_t h = comp_route_press(&s.route, (int)cx, (int)cy, &changed);
+    if (changed) {
+        apply_focus();
+        fprintf(stderr, "native: compositor: keyboard to %s%d\n", h.target == COMP_FMRB ? "Family mruby " : "window ",
+                h.target);
+    }
+    if (h.target != COMP_FMRB) apply_layout();
+    return h;
 }
 
 /* Buttons pressed outside the curved picture (bit: button - BTN_MOUSE). */
@@ -585,20 +607,9 @@ void cursor_button(struct wl_listener *l, void *data)
             /* A popup is the window's own business: no focus change. */
             s.pointer_target = p.hit.target;
         } else {
-            /* Menus close on a press outside them (but on their own window,
-             * which closes them itself as it sees fit). */
-            close_popups(comp_route_at(&s.route, (int)cx, (int)cy).target);
-            press_x11_menus(comp_route_at(&s.route, (int)cx, (int)cy).target, ev->time_msec, ev->button);
-            bool changed = false;
-            comp_hit_t h = comp_route_press(&s.route, (int)cx, (int)cy, &changed);
+            comp_hit_t h = press_focus(cx, cy, ev->time_msec, ev->button);
             s.pointer_target = h.target;
-            if (changed) {
-                apply_focus();
-                fprintf(stderr, "native: compositor: keyboard to %s%d\n",
-                        h.target == COMP_FMRB ? "Family mruby " : "window ", h.target);
-            }
             if (h.target != COMP_FMRB) {
-                apply_layout();
                 /* Family mruby gets the press too, at the frame pixel: its
                  * window manager raises and focuses the stand-in. */
                 if (b != 0) {

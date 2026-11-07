@@ -3,7 +3,8 @@
  * state, its types, and the functions one of them calls in another.
  * output_wlr.c holds the state and the "wlroots" output (native_backends.h,
  * the only way in for other parts); wl_window.c, wl_picture.c,
- * wl_xwayland.c, wl_input.c, wl_screen_lock.c and wl_tools.c the rest.
+ * wl_xwayland.c, wl_input.c, wl_touch.c, wl_screen_lock.c and wl_tools.c
+ * the rest.
  * Not for other parts. Include it first (it defines _GNU_SOURCE).
  */
 
@@ -56,6 +57,8 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_touch.h>
+#include <wlr/interfaces/wlr_touch.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
@@ -172,6 +175,39 @@ typedef struct keyboard {
 
 typedef enum { GRAB_NONE = 0, GRAB_MOVE, GRAB_RESIZE } grab_mode_t;
 
+/* The touch points held at once (L17); more are ignored. */
+#define TOUCH_MAX 10
+
+/* How a touch point is delivered (L17). */
+typedef enum {
+    TOUCH_FREE = 0,                         /* the slot is unused */
+    TOUCH_NATIVE,                           /* wl_touch to the surface it went down on */
+    TOUCH_EMULATED,                         /* the pointer's left button (Family mruby, no wl_touch) */
+    TOUCH_IGNORED,                          /* outside the curved picture, or not taken */
+} touch_mode_t;
+
+typedef struct touch_point {
+    int32_t id;
+    touch_mode_t mode;
+    double ox, oy;                          /* native: the surface's origin on the layout */
+    bool fmrb_too;                          /* native on a window: Family mruby got the press too */
+    int fx, fy;                             /* ...at this frame pixel */
+} touch_point_t;
+
+/* A touch screen (L17). */
+typedef struct touch_dev {
+    struct wl_list link;
+    struct wlr_input_device *dev;
+    struct wl_listener destroy;
+} touch_dev_t;
+
+typedef struct {
+    comp_hit_t hit;
+    struct wlr_surface *surf;               /* a window: the surface */
+    double sx, sy;
+    bool popup;                             /* over one of its popups */
+} ptr_hit_t;
+
 struct output_wlr_state {
     struct wl_display *display;
     struct wl_event_loop *loop;
@@ -253,6 +289,13 @@ struct output_wlr_state {
         int nx, ny, nw, nh;                 /* where it is now */
     } grab;
 
+    /* The touch screens and their points (L17). */
+    struct wl_list touch_devs;              /* touch_dev_t */
+    touch_point_t touch[TOUCH_MAX];
+    struct wlr_touch tool_touch;            /* the tools' (comp touch), made at its first use */
+    bool tool_touch_made;
+    struct wl_listener touch_down, touch_up, touch_motion, touch_cancel, touch_frame;
+
     /* The last pointer position sent to a window (comp info). */
     int ptr_id;
     double ptr_sx, ptr_sy;
@@ -293,6 +336,9 @@ struct output_wlr_state {
         unsigned x11_menu_presses;          /* presses passed to an X11 menu (L9e) */
         unsigned to_fmrb;                   /* input events pushed to Family mruby (L13) */
         unsigned winops;                    /* Super+arrows taken (L13) */
+        unsigned touch_native;              /* touches sent as wl_touch (L17) */
+        unsigned touch_emulated;            /* touches sent as the pointer's left button (L17) */
+        unsigned touch_ignored;             /* touches outside the curved picture or not taken (L17) */
     } stats;
 };
 
@@ -352,6 +398,16 @@ void cursor_axis(struct wl_listener *l, void *data);
 void cursor_frame(struct wl_listener *l, void *data);
 void request_cursor(struct wl_listener *l, void *data);
 void request_set_selection(struct wl_listener *l, void *data);
+ptr_hit_t point_hit(double x, double y);
+comp_hit_t press_focus(double cx, double cy, uint32_t time_msec, uint32_t button);
+void fmrb_press(int fx, int fy, int b, bool down);
+uint32_t seat_caps(void);
+
+/* wl_touch.c: the touch screen (L17) */
+void touch_init(void);
+void add_touch(struct wlr_input_device *dev);
+void touch_map_output(void);
+bool touch_tool(const char *a, char *out, size_t cap);
 
 /* wl_screen_lock.c */
 void lock_relayout(void);
@@ -375,6 +431,8 @@ bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len
  * curve while the look bends the output; inside is false where the curve
  * leaves the picture (a press there is dropped). */
 void crt_pointer(double *x, double *y, bool *inside);
+/* The same for any point of the layout (a touch, L17). */
+void crt_point(double *x, double *y, bool *inside);
 void crt_dropped_press(void);
 void crt_describe(char *out, size_t cap);
 

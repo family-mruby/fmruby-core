@@ -201,7 +201,7 @@ if(NATIVE_HAVE_WLROOTS)
   # The compositor itself (L8), in the files of its parts (L16; output_wlr.c
   # has the overview).
   set(NATIVE_WLR_SRCS ${N}/wlr/output_wlr.c ${N}/wlr/wl_window.c ${N}/wlr/wl_picture.c
-      ${N}/wlr/wl_xwayland.c ${N}/wlr/wl_input.c ${N}/wlr/wl_screen_lock.c ${N}/wlr/wl_tools.c
+      ${N}/wlr/wl_xwayland.c ${N}/wlr/wl_input.c ${N}/wlr/wl_touch.c ${N}/wlr/wl_screen_lock.c ${N}/wlr/wl_tools.c
       ${N}/wlr/wl_crt.c)
   # The CRT look (doc/web_crt, C4): the browser build's shaders
   # (hosted/crt/) as C strings, and its curve in C for the pointer.

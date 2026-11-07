@@ -76,7 +76,9 @@
 #                          volume and its keys, notify-send's notices, the
 #                          portal's screen share, the session starting it
 #                          again after SIGSEGV (L14,
-#                          test/native/wl/wl_settings_check.rb). Headless on a
+#                          test/native/wl/wl_settings_check.rb), then the
+#                          touch screen through the tools' own (L17,
+#                          test/native/wl/wl_touch_check.rb). Headless on a
 #                          1280x800 output (a 640x400 screen; the dialogs'
 #                          turned one keeps 426x240). No baseline: the
 #                          composited screen is checked against the picture
@@ -270,10 +272,10 @@ namespace :regress do
     end
   end
 
-  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check, wl_ime_check, wl_winops_check, wl_settings_check and wl_size_check (headless, pixman), standard and all-mruby (built one after the other, checked side by side; WL_SERIAL=1 one after the other). About 18 minutes"
+  desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check, wl_ime_check, wl_winops_check, wl_settings_check, wl_size_check and wl_touch_check (headless, pixman), standard and all-mruby (built one after the other, checked side by side; WL_SERIAL=1 one after the other). About 18 minutes"
   task :wl do
     checks = %w[wl_check wl_apps_check wl_dialog_check wl_keys_check wl_open_check wl_clip_check wl_ime_check
-                wl_winops_check wl_settings_check wl_size_check]
+                wl_winops_check wl_settings_check wl_size_check wl_touch_check]
     label = ->(c) { c == "wl_check" ? "" : " #{c[/wl_(\w+)_check/, 1].sub('dialog', 'dialogs')}" }
     failed = []
     out_dir = File.join(ROOT_DIR, "tmp/wl_check")

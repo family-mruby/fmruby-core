@@ -28,7 +28,7 @@
  *
  * The pointer: crt_pointer gives wlr_cursor's place sent back through the
  * curve (crt_warp.c, the shader's formula), so a press lands on what is
- * drawn under the arrow.
+ * drawn under the arrow; crt_point does the same for a touch (L17).
  *
  * Without GLES (pixman, Vulkan), with an old GL or a shader the driver
  * refuses, one line says why and the output stays as it is.
@@ -157,6 +157,11 @@ void crt_pointer(double *x, double *y, bool *inside)
 {
     *x = s.cursor->x;
     *y = s.cursor->y;
+    crt_point(x, y, inside);
+}
+
+void crt_point(double *x, double *y, bool *inside)
+{
     if (inside != NULL) *inside = true;
     if (!crt_active() || crt_curve_coef(crt.curve) == 0) return;
     struct wlr_box b;

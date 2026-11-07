@@ -4,7 +4,12 @@
  * a dialog (an xdg toplevel whose parent is set) and menus (xdg popups),
  * driven by lines on a FIFO, telling what it gets on a log.
  *
- *   wl_dialog FIFO LOG
+ *   wl_dialog FIFO LOG [touch]
+ *
+ * With touch it binds wl_touch when the seat has it (L17) and logs "touch
+ * down parent|dialog|popup ID X Y", "touch motion ID X Y", "touch up ID",
+ * "touch cancel"; without, it takes no touch (the compositor emulates the
+ * pointer for it).
  *
  * Starts one toplevel, "Parent" (app id fmrb-parent, 300x150, green). The
  * lines it takes:
@@ -90,6 +95,8 @@ static struct {
     struct wl_seat *seat;
     struct wl_pointer *pointer;
     struct wl_keyboard *keyboard;
+    struct wl_touch *touch;
+    bool want_touch;
     surf_t parent, dialog, popup;
     surf_t *ptr_on;
     double px, py;
@@ -460,9 +467,63 @@ static const struct wl_keyboard_listener kb_listener = {
     .repeat_info = kb_repeat,
 };
 
+static void touch_down(void *data, struct wl_touch *t, uint32_t serial, uint32_t time, struct wl_surface *surf,
+                       int32_t id, wl_fixed_t x, wl_fixed_t y)
+{
+    (void)data;
+    (void)t;
+    (void)serial;
+    (void)time;
+    surf_t *s = by_surface(surf);
+    say("touch down %s %d %.1f %.1f", s ? s->name : "?", id, wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+
+static void touch_up(void *data, struct wl_touch *t, uint32_t serial, uint32_t time, int32_t id)
+{
+    (void)data;
+    (void)t;
+    (void)serial;
+    (void)time;
+    say("touch up %d", id);
+}
+
+static void touch_motion(void *data, struct wl_touch *t, uint32_t time, int32_t id, wl_fixed_t x, wl_fixed_t y)
+{
+    (void)data;
+    (void)t;
+    (void)time;
+    say("touch motion %d %.1f %.1f", id, wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+
+static void touch_frame(void *data, struct wl_touch *t)
+{
+    (void)data;
+    (void)t;
+}
+
+static void touch_cancel(void *data, struct wl_touch *t)
+{
+    (void)data;
+    (void)t;
+    say("touch cancel");
+}
+
+static const struct wl_touch_listener touch_listener = {
+    .down = touch_down,
+    .up = touch_up,
+    .motion = touch_motion,
+    .frame = touch_frame,
+    .cancel = touch_cancel,
+};
+
 static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps)
 {
     (void)data;
+    if ((caps & WL_SEAT_CAPABILITY_TOUCH) && c.want_touch && c.touch == NULL) {
+        c.touch = wl_seat_get_touch(seat);
+        wl_touch_add_listener(c.touch, &touch_listener, NULL);
+        say("touch bound");
+    }
     if ((caps & WL_SEAT_CAPABILITY_POINTER) && c.pointer == NULL) {
         c.pointer = wl_seat_get_pointer(seat);
         wl_pointer_add_listener(c.pointer, &ptr_listener, NULL);
@@ -594,10 +655,11 @@ static void command(char *line)
 
 int main(int argc, char **argv)
 {
-    if (argc != 3) {
-        fprintf(stderr, "usage: wl_dialog FIFO LOG\n");
+    if (argc != 3 && !(argc == 4 && strcmp(argv[3], "touch") == 0)) {
+        fprintf(stderr, "usage: wl_dialog FIFO LOG [touch]\n");
         return 2;
     }
+    c.want_touch = argc == 4;
     c.log = fopen(argv[2], "a");
     if (c.log == NULL) return 1;
     int fifo = open(argv[1], O_RDWR | O_NONBLOCK);

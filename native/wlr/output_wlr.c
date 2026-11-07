@@ -92,8 +92,8 @@
  * desktop portal's wlroots backend shares the screen (L14, a browser's
  * meeting, a recorder), the portal told where the screen is
  * (activation_env); and requests on the control socket ("comp ...", see
- * wlr_ctl in wl_tools.c) that drive a keyboard and a pointer of the tools'
- * own through the same handlers as real devices, and report sizes and
+ * wlr_ctl in wl_tools.c) that drive a keyboard, a pointer and a touch
+ * screen of the tools' own through the same handlers as real devices, and report sizes and
  * timings.
  *
  * X11 programs (L9b): Xwayland, started by wlroots when the first X11
@@ -137,8 +137,9 @@
  * The files (L16): this one has the state, the output, the autostart and
  * the output interface; wl_window.c the windows and the focus, wl_picture.c
  * the picture and the layout, wl_xwayland.c the X11 windows, wl_input.c the
- * keyboard and the pointer, wl_screen_lock.c the screen lock, wl_tools.c the
- * tools' devices and wlr_ctl. What they share: output_wlr_internal.h.
+ * keyboard and the pointer, wl_touch.c the touch screen (L17),
+ * wl_screen_lock.c the screen lock, wl_tools.c the tools' devices and
+ * wlr_ctl. What they share: output_wlr_internal.h.
  */
 
 #include "output_wlr_internal.h"
@@ -269,6 +270,7 @@ static void new_output(struct wl_listener *l, void *data)
     struct wlr_output_layout_output *lo = wlr_output_layout_add_auto(s.layout, out);
     s.scene_output = wlr_scene_output_create(s.scene, out);
     wlr_scene_output_layout_add_output(s.scene_layout, lo, s.scene_output);
+    touch_map_output();
     fprintf(stderr, "native: compositor: output %s %dx%d, rotate %d\n", out->name, out->width, out->height,
             s.rotate);
     relayout();
@@ -513,6 +515,7 @@ static bool wlr_open(const native_machine_t *m, char *why, size_t why_len)
     wl_signal_add(&s.cursor->events.axis, &s.cursor_axis);
     s.cursor_frame.notify = cursor_frame;
     wl_signal_add(&s.cursor->events.frame, &s.cursor_frame);
+    touch_init();
 
     s.new_input.notify = new_input;
     wl_signal_add(&s.backend->events.new_input, &s.new_input);

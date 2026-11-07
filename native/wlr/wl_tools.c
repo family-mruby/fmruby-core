@@ -18,7 +18,7 @@ void tool_devices_init(void)
     add_keyboard(&s.tool_kb);
     wlr_pointer_init(&s.tool_ptr, &s_tool_ptr_impl, "fmrb-tools-pointer");
     wlr_cursor_attach_input_device(s.cursor, &s.tool_ptr.base);
-    wlr_seat_set_capabilities(s.seat, WL_SEAT_CAPABILITY_POINTER | WL_SEAT_CAPABILITY_KEYBOARD);
+    wlr_seat_set_capabilities(s.seat, seat_caps());
 }
 
 static void tool_key(unsigned code, bool down)
@@ -97,6 +97,7 @@ static void tool_wheel(int notches)
  *   comp button B 1|0    1 left, 2 middle, 3 right
  *   comp click X Y       move, then left down and up
  *   comp wheel N         notches, + away from the user
+ *   comp touch ...       the tools' touch screen (wl_touch.c, L17)
  *   comp apps LANG       the launcher's Linux list (linux_apps.h) as LANG
  *                        names it: "OK ready=0|1 count=N"
  *   comp app ID LANG     one entry of it: "OK index=K name=NAME icon=PATH"
@@ -215,14 +216,15 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
                  "OK span_s=%.1f pictures=%u gap_mean_ms=%.1f gap_max_ms=%llu commits=%u keys=%u "
                  "key_commit_n=%u key_commit_mean_ms=%.1f key_commit_max_ms=%llu view_changes=%u pointer_rechecks=%u "
                  "x11_menu_presses=%u to_fmrb=%u winops=%u locks=%u unlocks=%u lock_died=%u "
-                 "lock_keys_held=%u lock_starts=%u\n",
+                 "lock_keys_held=%u lock_starts=%u touch_native=%u touch_emulated=%u touch_ignored=%u\n",
                  span, s.stats.pictures,
                  gaps ? (double)s.stats.picture_gap_sum_ms / gaps : 0.0,
                  (unsigned long long)s.stats.picture_gap_max_ms, s.stats.commits, s.stats.keys,
                  s.stats.key_lat_n, s.stats.key_lat_n ? (double)s.stats.key_lat_sum_ms / s.stats.key_lat_n : 0.0,
                  (unsigned long long)s.stats.key_lat_max_ms, s.stats.view_changes, s.stats.pointer_rechecks,
                  s.stats.x11_menu_presses, s.stats.to_fmrb, s.stats.winops, s.lk.locks,
-                 s.lk.unlocks, s.lk.died, s.lk.keys_held_back, s.lk.starts);
+                 s.lk.unlocks, s.lk.died, s.lk.keys_held_back, s.lk.starts, s.stats.touch_native,
+                 s.stats.touch_emulated, s.stats.touch_ignored);
         if (strcmp(a, "stats reset") == 0) {
             memset(&s.stats, 0, sizeof(s.stats));
             s.stats.since_ms = t;
@@ -295,6 +297,7 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
                  c.kept, k.out, k.taken);
         return true;
     }
+    if (touch_tool(a, out, cap)) return true;
     if (strncmp(a, "apps", 4) == 0 || strncmp(a, "app ", 4) == 0) {
         apps_ctl(a, out, cap);
         return true;
@@ -312,8 +315,9 @@ bool wlr_ctl(const char *req, char *out, size_t cap)
         tool_button(1, false);
     } else if (sscanf(a, "wheel %d", &n) == 1) {
         tool_wheel(n);
+
     } else {
-        snprintf(out, cap, "ERR comp: info, stats [reset], clip, crt [k=v ...], key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N\n");
+        snprintf(out, cap, "ERR comp: info, stats [reset], clip, crt [k=v ...], key CODE 1|0, move X Y, button B 1|0, click X Y, wheel N, touch ...\n");
         return true;
     }
     wl_display_flush_clients(s.display);
