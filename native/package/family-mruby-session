@@ -30,7 +30,10 @@
 #   ROTATE=0|90|180|270  turn the output clockwise, for a panel mounted
 #                        sideways. The compositor turns it, so the pointer
 #                        (touchpad, mouse) turns with the picture.
-#   FMRB_ARGS="..."      more arguments for family-mruby (--set key=value)
+#   FMRB_ARGS="..."      more arguments for family-mruby (--set key=value);
+#                        "--set display.look=crt" shows the whole screen
+#                        as a CRT (with the GPU), --set display.crt_curve=0
+#                        and the like set each effect's strength (0-100)
 #   WLR_RENDERER=pixman  draw without the GPU (a virtual machine whose
 #                        graphics wlroots cannot use)
 #   WLR_NO_HARDWARE_CURSORS=1

@@ -34,6 +34,16 @@
  *              fullscreen     sdl: true opens the window full screen on its
  *                             output (the frame at the largest whole scale,
  *                             black around it); false a window (L7)
+ *              look           wlroots: "sharp" (the default: the output as
+ *                             it is) or "crt" (doc/web_crt, C4: the whole
+ *                             output through the browser build's CRT
+ *                             shader, with GLES; other renderers and
+ *                             backends say why on one line and stay sharp)
+ *              crt_scanline   the CRT look's strengths, 0-100 each (0 skips
+ *              crt_mask       the effect): scanlines, the phosphor grille,
+ *              crt_glow       glow, the tube's curve, the dark corners; the
+ *              crt_curve      browser build's defaults (55, 30, 30, 15, 40).
+ *              crt_vignette   A picture pixel is display.scale output pixels
  *   [input]    backend        sdl | evdev | wlroots (the inject socket is
  *                             always on)
  *              devices        evdev: ["auto"] or paths (/dev/input/by-path/..)
@@ -140,6 +150,8 @@ typedef struct {
         int rotate;
         int scale;                       /* 0 = auto */
         bool fullscreen;                 /* sdl only */
+        char look[8];                    /* "sharp" or "crt" (wlroots) */
+        int crt_scanline, crt_mask, crt_glow, crt_curve, crt_vignette; /* 0..100 */
     } display;
 
     struct {

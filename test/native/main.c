@@ -586,6 +586,23 @@ static void test_machine(void)
     CHECK(native_machine_set(&m, "display.scale", "2", err, sizeof(err)) == 0 && m.display.scale == 2, "scale 2");
     CHECK(native_machine_set(&m, "display.mode", "1920x1080@60", err, sizeof(err)) == 0, "mode with rate");
     CHECK(native_machine_set(&m, "display.mode", "big", err, sizeof(err)) != 0, "bad mode refused");
+    // The CRT look (doc/web_crt, C4): sharp by default, the browser's strengths.
+    CHECK(strcmp(m.display.look, "sharp") == 0 && m.display.crt_scanline == 55 && m.display.crt_mask == 30 &&
+          m.display.crt_glow == 30 && m.display.crt_curve == 15 && m.display.crt_vignette == 40,
+          "look sharp by default, the browser's strengths");
+    CHECK(native_machine_set(&m, "display.look", "crt", err, sizeof(err)) == 0 && strcmp(m.display.look, "crt") == 0,
+          "look crt");
+    CHECK(native_machine_set(&m, "display.look", "soft", err, sizeof(err)) != 0, "look soft refused");
+    CHECK(native_machine_set(&m, "display.crt_curve", "0", err, sizeof(err)) == 0 && m.display.crt_curve == 0 &&
+          native_machine_set(&m, "display.crt_vignette", "100", err, sizeof(err)) == 0 &&
+          m.display.crt_vignette == 100 && m.display.crt_scanline == 55, "crt strengths");
+    CHECK(native_machine_set(&m, "display.crt_glow", "101", err, sizeof(err)) != 0 &&
+          native_machine_set(&m, "display.crt_mask", "-1", err, sizeof(err)) != 0, "crt strength out of range refused");
+    {
+        char line[1024];
+        native_machine_describe(&m, line, sizeof(line));
+        CHECK(strstr(line, "look=crt(55,30,30,0,100)") != NULL, "the look in the summary (%s)", line);
+    }
     CHECK(native_machine_set(&m, "input.devices", "/dev/input/event3, /dev/input/by-path/x-event-kbd",
                              err, sizeof(err)) == 0 &&
           m.input.n_devices == 2 && strcmp(m.input.devices[1], "/dev/input/by-path/x-event-kbd") == 0, "devices");

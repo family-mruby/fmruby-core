@@ -71,6 +71,12 @@ void native_machine_defaults(native_machine_t *m)
     snprintf(m->display.mode, sizeof(m->display.mode), "auto");
     m->display.rotate = 0;
     m->display.scale = 0;
+    snprintf(m->display.look, sizeof(m->display.look), "sharp");
+    m->display.crt_scanline = 55;
+    m->display.crt_mask = 30;
+    m->display.crt_glow = 30;
+    m->display.crt_curve = 15;
+    m->display.crt_vignette = 40;
     snprintf(m->input.backend, sizeof(m->input.backend), "sdl");
     snprintf(m->input.devices[0], sizeof(m->input.devices[0]), "auto");
     m->input.n_devices = 1;
@@ -232,6 +238,29 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
         else if (strcmp(value, "false") == 0) m->display.fullscreen = false;
         else return fail(err, n, "display.fullscreen: \"%s\" is not true or false", value);
         return 0;
+    }
+
+    if (strcmp(key, "display.look") == 0) {
+        if (strcmp(value, "sharp") != 0 && strcmp(value, "crt") != 0) {
+            return fail(err, n, "display.look: \"%s\" is not sharp or crt", value);
+        }
+        return copy_str(m->display.look, sizeof(m->display.look), value, key, err, n);
+    }
+    {
+        static const struct { const char *key; size_t off; } strengths[] = {
+            { "display.crt_scanline", offsetof(native_machine_t, display.crt_scanline) },
+            { "display.crt_mask", offsetof(native_machine_t, display.crt_mask) },
+            { "display.crt_glow", offsetof(native_machine_t, display.crt_glow) },
+            { "display.crt_curve", offsetof(native_machine_t, display.crt_curve) },
+            { "display.crt_vignette", offsetof(native_machine_t, display.crt_vignette) },
+        };
+        for (size_t i = 0; i < sizeof(strengths) / sizeof(strengths[0]); i++) {
+            if (strcmp(key, strengths[i].key) != 0) continue;
+            int v = 0;
+            if (parse_int(value, 0, 100, &v) != 0) return fail(err, n, "%s: \"%s\" is not 0-100", key, value);
+            *(int *)((char *)m + strengths[i].off) = v;
+            return 0;
+        }
     }
 
     if (strcmp(key, "input.backend") == 0) return copy_str(m->input.backend, sizeof(m->input.backend), value, key, err, n);
@@ -504,13 +533,18 @@ void native_machine_describe(const native_machine_t *m, char *out, size_t out_le
     if (m->display.scale > 0) snprintf(scale, sizeof(scale), "%d", m->display.scale);
     else snprintf(scale, sizeof(scale), "auto");
     bool alsa = strcmp(m->audio.backend, "alsa") == 0;
+    char look[64] = "";
+    if (strcmp(m->display.look, "crt") == 0) {
+        snprintf(look, sizeof(look), " look=crt(%d,%d,%d,%d,%d)", m->display.crt_scanline, m->display.crt_mask,
+                 m->display.crt_glow, m->display.crt_curve, m->display.crt_vignette);
+    }
     snprintf(out, out_len,
-             "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s, "
+             "machine %s (%s): screen %s, display %s device=%s mode=%s rotate=%d scale=%s%s%s, "
              "input %s%s%s%s%s, audio %s%s%s, desktop %s%s, services %s%s, power %s%s, "
              "files host=%s root=%s%s%s%s%s%s%s%s%s",
              m->name, m->source[0] ? m->source : "built-in", m->screen.form,
              m->display.backend, m->display.device, m->display.mode, m->display.rotate, scale,
-             m->display.fullscreen ? " fullscreen" : "",
+             m->display.fullscreen ? " fullscreen" : "", look,
              m->input.backend, m->input.keymap[0] ? " keymap=" : "", m->input.keymap,
              strcmp(m->input.ime, "none") != 0 ? " ime=" : "", strcmp(m->input.ime, "none") != 0 ? m->input.ime : "",
              m->audio.backend, alsa ? " device=" : "", alsa ? m->audio.device : "",
