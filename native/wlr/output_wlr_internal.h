@@ -330,6 +330,7 @@ void relayout(void);
 
 /* wl_xwayland.c */
 void xwayland_init(void);
+void xwayland_end(void);
 
 /* wl_input.c */
 void recheck_pointer(void);

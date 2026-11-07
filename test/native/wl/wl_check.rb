@@ -435,10 +435,32 @@ class Run
   # A fullscreen app's view (L9d): the output against the picture's view
   # rectangle at vscale from vat, black around it. The app may animate, so a
   # shot is taken on each side of the output's and the closer one counted;
-  # around the view every pixel is black.
+  # around the view every pixel is black. The output can be a frame of the
+  # app behind the shot before it (it is composed after the frame is out),
+  # and while shooter's enemies fly in, one frame apart is about 2 % of the
+  # view (the game runs frame for frame alike: 98.2 % on an idle machine,
+  # 97.95 % on a busy one). So up to VIEW_TRIES rounds, a moment apart; the
+  # placement, the black around it and the 98 % are each round's as before.
+  VIEW_TRIES = 3
+
   def view_check(label, inf)
-    a = shot(File.join(@out, "#{label}_picture.png"))
+    detail = nil
+    VIEW_TRIES.times do |i|
+      sleep 0.3 if i.positive?
+      ok, detail = view_round(label, inf)
+      return [ok, i.zero? ? detail : "#{detail}, round #{i + 1}"] if ok
+    end
+    [false, "#{detail}, #{VIEW_TRIES} rounds"]
+  end
+
+  def view_round(label, inf)
+    t0 = now
+    before = shot(File.join(@out, "#{label}_picture.png"))
+    t1 = now
     g = grim(File.join(@out, "#{label}_composite.png"))
+    t2 = now
+    after = shot(File.join(@out, "#{label}_picture_after.png"))
+    t3 = now
     ow, oh = inf["out"].split("x").map(&:to_i)
     vx, vy, vwh = inf["view"].split(",")
     vx = vx.to_i
@@ -448,7 +470,8 @@ class Run
     x0, y0 = inf["vat"].split(",").map(&:to_i)
     band = 0
     inside = 0
-    same = 0
+    same = [0, 0]
+    pics = [before, after]
     oh.times do |y|
       grow = g.rows[y]
       fy = y >= y0 ? (y - y0) / s : -1
@@ -461,16 +484,22 @@ class Run
         end
         inside += 1
         po = (vx + fx) * 3
-        prow = a.rows[vy + fy]
-        same += 1 if grow.getbyte(o) == prow.getbyte(po) && grow.getbyte(o + 1) == prow.getbyte(po + 1) &&
-                     grow.getbyte(o + 2) == prow.getbyte(po + 2)
+        pics.each_with_index do |a, i|
+          prow = a.rows[vy + fy]
+          same[i] += 1 if grow.getbyte(o) == prow.getbyte(po) && grow.getbyte(o + 1) == prow.getbyte(po + 1) &&
+                          grow.getbyte(o + 2) == prow.getbyte(po + 2)
+        end
       end
     end
+    best = same.max
     want_s = [ow / vw, oh / vh].min
     placed = s == want_s && x0 == (ow - vw * s) / 2 && y0 == (oh - vh * s) / 2
-    ok = placed && band.zero? && same >= inside * 98 / 100
+    ok = placed && band.zero? && best >= inside * 98 / 100
+    ms = ->(a, b) { ((b - a) * 1000).round }
     [ok, "view #{inf['view']} of the frame #{inf['frame']} at #{s}x at (#{x0},#{y0}) (#{want_s}x centred wanted); " \
-         "#{band} pixels around it not black; #{same} of #{inside} inside as the picture"]
+         "#{band} pixels around it not black; #{best} of #{inside} inside as the picture " \
+         "(the shot before #{same[0]}, after #{same[1]}; shot #{ms.call(t0, t1)} ms, grim #{ms.call(t1, t2)} ms, " \
+         "shot #{ms.call(t2, t3)} ms)"]
   end
 
   def wait_for(what, timeout)

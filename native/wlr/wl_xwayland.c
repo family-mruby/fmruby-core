@@ -6,6 +6,9 @@
 
 #include "output_wlr_internal.h"
 
+#include <dirent.h>
+#include <sys/stat.h>
+
 /* ------------------------------------------------------- X11 windows */
 
 #if WLR_HAS_XWAYLAND
@@ -313,11 +316,107 @@ void xwayland_init(void)
     fprintf(stderr, "native: compositor: X11 programs on DISPLAY=%s (Xwayland starts when the first connects)\n",
             s.xwayland->display_name);
 }
+
+/* Xwayland's process. wlroots starts it through a fork of its own that
+ * exits at once, so Xwayland's parent is init and not this program, and
+ * its connection's credentials are this program's (a socketpair made before
+ * the fork). It is found among the processes by its display, which has one
+ * X server only (the display's lock file). 0: none. */
+static pid_t xwayland_find_pid(void)
+{
+    if (s.xwayland == NULL || !s.xwayland_up || s.xwayland->display_name[0] == '\0') return 0;
+    DIR *d = opendir("/proc");
+    if (d == NULL) return 0;
+    pid_t found = 0;
+    struct dirent *e;
+    while (found == 0 && (e = readdir(d)) != NULL) {
+        char *end = NULL;
+        long pid = strtol(e->d_name, &end, 10);
+        if (pid <= 0 || *end != '\0' || pid == getpid()) continue;
+        char path[64];
+        snprintf(path, sizeof(path), "/proc/%ld/cmdline", pid);
+        struct stat st;
+        if (stat(path, &st) != 0 || st.st_uid != getuid()) continue;
+        FILE *f = fopen(path, "r");
+        if (f == NULL) continue;
+        char buf[256];
+        size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+        fclose(f);
+        buf[n] = '\0';
+        /* argv[0] then argv[1], NUL-separated: ".../Xwayland" ":N" */
+        size_t a0 = strlen(buf);
+        if (a0 + 1 >= n) continue;
+        const char *base = strrchr(buf, '/');
+        base = base != NULL ? base + 1 : buf;
+        if (strcmp(base, "Xwayland") == 0 && strcmp(buf + a0 + 1, s.xwayland->display_name) == 0) {
+            found = (pid_t)pid;
+        }
+    }
+    closedir(d);
+    return found;
+}
+
+/* 0: running, 1: a zombie (it holds nothing any more; its parent, init,
+ * reaps it), 2: gone. */
+static int process_state(pid_t pid)
+{
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%ld/stat", (long)pid);
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return 2;
+    char buf[512];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    const char *p = strrchr(buf, ')');
+    if (p == NULL || p[1] == '\0') return 2;
+    return p[2] == 'Z' || p[2] == 'X' ? 1 : 0;
+}
+
+/* Until pid is gone or limit_ms has passed; its state then. */
+static int wait_gone(pid_t pid, int limit_ms)
+{
+    const struct timespec step = {0, 5 * 1000 * 1000};
+    uint64_t t0 = now_ms();
+    int st;
+    while ((st = process_state(pid)) != 2 && now_ms() - t0 < (uint64_t)limit_ms) nanosleep(&step, NULL);
+    return st;
+}
+
+/* The end: Xwayland ends on its own once its connection is closed
+ * (wlr_xwayland_destroy), but it is not this program's child, so without a
+ * wait it may outlive the program by a moment -- a session that starts
+ * something next, or a check listing the processes, would still see it.
+ * Waited for up to TERM_GRACE_MS, then SIGKILL. */
+void xwayland_end(void)
+{
+    if (s.xwayland == NULL) return;
+    pid_t pid = xwayland_find_pid();
+    /* wlroots wants its signals free of listeners by then. */
+    wl_list_remove(&s.xw_new_surface.link);
+    wl_list_remove(&s.xw_ready.link);
+    wlr_xwayland_destroy(s.xwayland);
+    s.xwayland = NULL;
+    if (pid <= 0) return;
+    uint64_t t0 = now_ms();
+    int st = wait_gone(pid, TERM_GRACE_MS);
+    if (st != 0) {
+        fprintf(stderr, "native: compositor: Xwayland (pid %ld) ended in %llu ms%s\n", (long)pid,
+                (unsigned long long)(now_ms() - t0), st == 1 ? " (not reaped yet)" : "");
+        return;
+    }
+    kill(pid, SIGKILL);
+    st = wait_gone(pid, TERM_GRACE_MS);
+    fprintf(stderr, "native: compositor: Xwayland (pid %ld) still there after %d ms: SIGKILL (%s)\n", (long)pid,
+            TERM_GRACE_MS, st == 0 ? "still there" : "ended");
+}
 #else
 void xwayland_init(void)
 {
     unsetenv("DISPLAY");
     fprintf(stderr, "native: compositor: X11 programs cannot run here: this wlroots has no Xwayland\n");
 }
+
+void xwayland_end(void) {}
 #endif
 

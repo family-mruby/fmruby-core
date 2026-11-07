@@ -126,7 +126,8 @@
  * LINGER_MS has passed, so a program can ask about unsaved work. Then the
  * clients still connected (and the X11 programs) get SIGTERM, and SIGKILL
  * half a second later; then whatever the launcher started that is still
- * there, windowless or not; the autostart's session last.
+ * there, windowless or not; then Xwayland, waited for until it has ended;
+ * the autostart's session last.
  *
  * The files (L16): this one has the state, the output, the autostart and
  * the output interface; wl_window.c the windows and the focus, wl_picture.c
@@ -843,15 +844,7 @@ static void wlr_close(void)
         fprintf(stderr, "native: compositor: ended %d process%s started from the launcher\n", left,
                 left == 1 ? "" : "es");
     }
-#if WLR_HAS_XWAYLAND
-    if (s.xwayland != NULL) {
-        /* wlroots wants its signals free of listeners by then. */
-        wl_list_remove(&s.xw_new_surface.link);
-        wl_list_remove(&s.xw_ready.link);
-        wlr_xwayland_destroy(s.xwayland);
-        s.xwayland = NULL;
-    }
-#endif
+    xwayland_end();
     comp_link_detach();
     native_frame_set_wake_fd(-1);
     stop_child();
