@@ -55,7 +55,8 @@ static struct {
     bool want;                              /* display.look = "crt" */
     int scan, mask, glow, curve, vig;       /* 0..100 */
     int unit_conf;                          /* display.scale (0 auto) */
-    bool unusable;                          /* said why; stays sharp */
+    bool unusable;                          /* cannot draw it here; stays sharp */
+    char why[200];                          /* ...because */
     bool on;                                /* drawing (direct scan-out held off) */
     unsigned dropped;                       /* presses outside the curved picture */
     struct wlr_swapchain *chain;            /* the scene draws here */
@@ -100,12 +101,26 @@ static double mono_ms(void)
     return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
 }
 
+/* What the settings see (doc/web_crt, C5): whether the look can be drawn
+ * here and what is set. */
+static void crt_publish(void)
+{
+    comp_crt_t c = { .crt = crt.want, .s = { crt.scan, crt.mask, crt.glow, crt.curve, crt.vig } };
+    comp_link_set_crt(!crt.unusable, &c);
+}
+
+static void say_unavailable(void)
+{
+    fprintf(stderr, "native: compositor: CRT look unavailable: %s; the output stays sharp\n", crt.why);
+}
+
+/* The look cannot be drawn here (said when it is wanted). */
 static void give_up(const char *fmt, const char *detail)
 {
-    char why[256];
-    snprintf(why, sizeof(why), fmt, detail ? detail : "");
-    fprintf(stderr, "native: compositor: CRT look unavailable: %s; the output stays sharp\n", why);
+    snprintf(crt.why, sizeof(crt.why), fmt, detail ? detail : "");
     crt.unusable = true;
+    if (crt.want) say_unavailable();
+    crt_publish();
 }
 
 void crt_init(const native_machine_t *m)
@@ -118,9 +133,8 @@ void crt_init(const native_machine_t *m)
     crt.curve = m->display.crt_curve;
     crt.vig = m->display.crt_vignette;
     crt.unit_conf = m->display.scale;
-    if (crt.want && !wlr_renderer_is_gles2(s.renderer)) {
-        give_up("the renderer is %s (it needs GLES)", renderer_name());
-    }
+    if (!wlr_renderer_is_gles2(s.renderer)) give_up("the renderer is %s (it needs GLES)", renderer_name());
+    crt_publish();
 }
 
 /* Drawing, or about to: the pointer goes through the curve. */
@@ -203,9 +217,8 @@ bool crt_set(const char *look, const int strengths[5], char *why, size_t why_len
             if (strengths[i] >= 0) *f[i] = strengths[i];
         }
     }
-    if (crt.want && !crt.unusable && !wlr_renderer_is_gles2(s.renderer)) {
-        give_up("the renderer is %s (it needs GLES)", renderer_name());
-    }
+    if (crt.want && crt.unusable) say_unavailable();
+    crt_publish();
     if (!crt.want) crt_stop();
     else crt_redraw_all();
     /* What the pointer is over may have moved with the curve. */

@@ -18,6 +18,9 @@
  *             frame's base size, to size a new stand-in.
  *   lock      compositor -> anyone: whether there is a lock program to
  *             start (the power menu's Lock) and the lock's state (L13).
+ *   crt       the CRT look (doc/web_crt, C5): the compositor tells whether
+ *             it can draw it and what is set; Family mruby's settings ask
+ *             for a setting (the newest wins; the compositor is woken).
  *
  * Nothing is attached (comp_link_attached() is false) unless the program
  * runs as the compositor.
@@ -50,6 +53,13 @@ typedef enum {
     COMP_LOCK_LOCKED,                   /* covered: nothing reaches Family mruby or a window */
 } comp_lock_state_t;
 
+/* The CRT look's setting: on or off and the five strengths (0..100):
+ * scanline, mask, glow, curve, vignette. */
+typedef struct {
+    bool crt;
+    int s[5];
+} comp_crt_t;
+
 /* The compositor's side: attach its route (the notices) and the descriptor
  * a write wakes its loop with; detach at the end. */
 void comp_link_attach(comp_route_t *r, int wake_fd);
@@ -71,6 +81,17 @@ bool comp_link_take_places(comp_places_t *out);
 void comp_link_set_lock(bool available, comp_lock_state_t state);
 bool comp_link_lock_available(void);
 comp_lock_state_t comp_link_lock_state(void);
+
+/* The compositor's side: whether the look can be drawn here, and the
+ * setting in force. */
+void comp_link_set_crt(bool available, const comp_crt_t *cur);
+/* Anyone: false when the look cannot be drawn (or no compositor); else the
+ * setting in force in *cur. */
+bool comp_link_crt(comp_crt_t *cur);
+/* Family mruby's side: ask for a setting; the compositor's: take the newest
+ * asked since the last take. */
+void comp_link_ask_crt(const comp_crt_t *want);
+bool comp_link_take_crt(comp_crt_t *out);
 
 void comp_link_command(comp_cmd_kind_t kind, int id);
 bool comp_link_take_command(comp_cmd_kind_t *kind, int *id);

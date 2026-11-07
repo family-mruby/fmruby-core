@@ -25,6 +25,9 @@ static struct {
     unsigned cmd_wr, cmd_rd;
     bool lock_available;
     comp_lock_state_t lock_state;
+    bool crt_available;
+    comp_crt_t crt_cur, crt_want;
+    unsigned crt_seq, crt_taken;
 } s_link = { .lock = PTHREAD_MUTEX_INITIALIZER, .wake_fd = -1 };
 
 static void wake(int fd)
@@ -138,6 +141,45 @@ comp_lock_state_t comp_link_lock_state(void)
     comp_lock_state_t st = s_link.lock_state;
     pthread_mutex_unlock(&s_link.lock);
     return st;
+}
+
+void comp_link_set_crt(bool available, const comp_crt_t *cur)
+{
+    pthread_mutex_lock(&s_link.lock);
+    s_link.crt_available = available;
+    if (cur != NULL) s_link.crt_cur = *cur;
+    pthread_mutex_unlock(&s_link.lock);
+}
+
+bool comp_link_crt(comp_crt_t *cur)
+{
+    pthread_mutex_lock(&s_link.lock);
+    bool a = s_link.crt_available && s_link.route != NULL;
+    if (cur != NULL) *cur = s_link.crt_cur;
+    pthread_mutex_unlock(&s_link.lock);
+    return a;
+}
+
+void comp_link_ask_crt(const comp_crt_t *want)
+{
+    pthread_mutex_lock(&s_link.lock);
+    s_link.crt_want = *want;
+    s_link.crt_seq++;
+    int fd = s_link.wake_fd;
+    pthread_mutex_unlock(&s_link.lock);
+    wake(fd);
+}
+
+bool comp_link_take_crt(comp_crt_t *out)
+{
+    pthread_mutex_lock(&s_link.lock);
+    bool got = s_link.crt_seq != s_link.crt_taken;
+    if (got) {
+        *out = s_link.crt_want;
+        s_link.crt_taken = s_link.crt_seq;
+    }
+    pthread_mutex_unlock(&s_link.lock);
+    return got;
 }
 
 void comp_link_command(comp_cmd_kind_t kind, int id)

@@ -603,6 +603,33 @@ static void test_machine(void)
         native_machine_describe(&m, line, sizeof(line));
         CHECK(strstr(line, "look=crt(55,30,30,0,100)") != NULL, "the look in the summary (%s)", line);
     }
+    // The settings' choice (C5): [crt] of the user's system_conf.toml over
+    // the definition and --set.
+    {
+        char path[] = "/tmp/fmrb_crt_testXXXXXX";
+        int fd = mkstemp(path);
+        CHECK(fd >= 0, "a temporary file");
+        FILE *f = fdopen(fd, "w");
+        fputs("language = \"ja\"\n[theme]\ntext = 0x00\n\n[crt]\nlook = \"sharp\"\ncurve = 25\nglow = 0\n", f);
+        fclose(f);
+        native_machine_t u;
+        native_machine_defaults(&u);
+        native_machine_set(&u, "display.look", "crt", err, sizeof(err));
+        CHECK(native_machine_load_crt(&u, path, err, sizeof(err)) == 1 && strcmp(u.display.look, "sharp") == 0 &&
+              u.display.crt_curve == 25 && u.display.crt_glow == 0 && u.display.crt_scanline == 55,
+              "the user's [crt] wins over --set, the rest kept (%s)", err);
+        f = fopen(path, "w");
+        fputs("language = \"ja\"\n", f);
+        fclose(f);
+        CHECK(native_machine_load_crt(&u, path, err, sizeof(err)) == 0, "no [crt]: nothing applied");
+        f = fopen(path, "w");
+        fputs("[crt]\nmask = 300\n", f);
+        fclose(f);
+        CHECK(native_machine_load_crt(&u, path, err, sizeof(err)) == -1 && u.display.crt_mask == 30,
+              "a bad strength refused (%s)", err);
+        unlink(path);
+        CHECK(native_machine_load_crt(&u, path, err, sizeof(err)) == 0, "no file: nothing applied");
+    }
     CHECK(native_machine_set(&m, "input.devices", "/dev/input/event3, /dev/input/by-path/x-event-kbd",
                              err, sizeof(err)) == 0 &&
           m.input.n_devices == 2 && strcmp(m.input.devices[1], "/dev/input/by-path/x-event-kbd") == 0, "devices");

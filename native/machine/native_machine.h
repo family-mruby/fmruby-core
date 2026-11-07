@@ -211,6 +211,16 @@ int native_machine_set(native_machine_t *m, const char *key, const char *value,
 int native_machine_load_file(native_machine_t *m, const char *path,
                              char *err, size_t err_len);
 
+/* The CRT look the user chose in the settings window (doc/web_crt, C5): the
+ * [crt] table of the user's system_conf.toml (look = "crt" | "sharp",
+ * scanline, mask, glow, curve, vignette: 0-100, each optional) over
+ * display.look and display.crt_*, after the definition and --set (the
+ * user's choice wins). Returns 1 when the table was there and applied, 0
+ * when the file or the table is not, -1 with the reason in err (the keys
+ * before the bad one are applied). */
+int native_machine_load_crt(native_machine_t *m, const char *path,
+                            char *err, size_t err_len);
+
 /* The file a --machine argument names: a value with a '/' or ending in
  * ".toml" is a path, anything else <machines_dir>/<name>.toml. */
 void native_machine_resolve(const char *arg, const char *machines_dir,

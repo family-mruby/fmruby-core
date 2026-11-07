@@ -515,7 +515,24 @@ static void test_link(void)
     CHECK(!comp_link_lock_available() && comp_link_lock_state() == COMP_LOCK_NONE, "no lock program yet");
     comp_link_set_lock(true, COMP_LOCK_LOCKED);
     CHECK(comp_link_lock_available() && comp_link_lock_state() == COMP_LOCK_LOCKED, "a lock program, locked");
+    // The CRT look (doc/web_crt, C5): published by the compositor, asked by
+    // the settings (the newest wins, the compositor woken).
+    CHECK(read(fd, &v, sizeof(v)) == sizeof(v), "drained");
+    comp_crt_t cur = { .crt = false, .s = { 55, 30, 30, 15, 40 } }, c2;
+    CHECK(!comp_link_crt(&c2), "the look not drawable until told");
+    comp_link_set_crt(true, &cur);
+    CHECK(comp_link_crt(&c2) && !c2.crt && c2.s[3] == 15, "drawable, sharp, curve 15");
+    CHECK(!comp_link_take_crt(&c2), "nothing asked yet");
+    comp_crt_t want = { .crt = true, .s = { 10, 20, 30, 40, 50 } };
+    comp_link_ask_crt(&want);
+    want.s[0] = 11;
+    comp_link_ask_crt(&want);
+    CHECK(poll(&p, 1, 0) == 1 && comp_link_take_crt(&c2) && c2.crt && c2.s[0] == 11 && c2.s[4] == 50,
+          "two asks: woken, the newest taken");
+    CHECK(!comp_link_take_crt(&c2), "taken once");
     comp_link_detach();
+    CHECK(!comp_link_crt(&c2), "detached: not drawable");
+    comp_link_set_crt(false, NULL);
     CHECK(!comp_link_attached(), "detached");
     CHECK(!comp_link_lock_available(), "detached: no lock to ask for");
     comp_link_set_lock(false, COMP_LOCK_NONE);

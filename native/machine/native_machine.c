@@ -441,6 +441,38 @@ int native_machine_load_file(native_machine_t *m, const char *path, char *err, s
     return 0;
 }
 
+int native_machine_load_crt(native_machine_t *m, const char *path, char *err, size_t n)
+{
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return 0;
+    char perr[200];
+    toml_table_t *root = toml_parse_file(f, perr, sizeof(perr));
+    fclose(f);
+    if (root == NULL) return fail(err, n, "%s: %s", path, perr);
+    toml_table_t *t = toml_table_in(root, "crt");
+    if (t == NULL) {
+        toml_free(root);
+        return 0;
+    }
+    static const char *const keys[][2] = {
+        { "look", "display.look" },         { "scanline", "display.crt_scanline" },
+        { "mask", "display.crt_mask" },     { "glow", "display.crt_glow" },
+        { "curve", "display.crt_curve" },   { "vignette", "display.crt_vignette" },
+    };
+    int rc = 1;
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]) && rc == 1; i++) {
+        if (toml_raw_in(t, keys[i][0]) == NULL) continue;
+        char where[64], text[64], inner[200];
+        snprintf(where, sizeof(where), "[crt] %s", keys[i][0]);
+        if (value_text(t, keys[i][0], text, sizeof(text), inner, sizeof(inner), where) != 0 ||
+            native_machine_set(m, keys[i][1], text, inner, sizeof(inner)) != 0) {
+            rc = fail(err, n, "%s: %s", path, inner);
+        }
+    }
+    toml_free(root);
+    return rc;
+}
+
 void native_machine_resolve(const char *arg, const char *machines_dir, char *out, size_t out_len)
 {
     size_t len = strlen(arg);

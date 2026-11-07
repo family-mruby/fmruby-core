@@ -146,6 +146,14 @@ void take_from_fmrb(void)
                     pl.focus == COMP_FMRB ? "Family mruby " : "window ", comp_route_focus(&s.route));
         }
     }
+    /* The CRT look asked for by the settings window (doc/web_crt, C5). */
+    comp_crt_t crt_want;
+    if (comp_link_take_crt(&crt_want)) {
+        char why[128];
+        if (!crt_set(crt_want.crt ? "crt" : "sharp", crt_want.s, why, sizeof(why))) {
+            fprintf(stderr, "native: compositor: the settings' look refused: %s\n", why);
+        }
+    }
     comp_cmd_kind_t kind;
     int id;
     while (comp_link_take_command(&kind, &id)) {

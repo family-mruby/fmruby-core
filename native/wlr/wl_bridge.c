@@ -696,3 +696,27 @@ bool native_wl_window_close(int pid)
     comp_link_command(COMP_CMD_CLOSE, id);
     return true;
 }
+
+/* ------------------------------------------------------------ the CRT look */
+
+void native_crt_state(char *out, size_t cap)
+{
+    comp_crt_t c;
+    if (cap == 0) return;
+    out[0] = '\0';
+    if (!comp_link_crt(&c)) return;
+    snprintf(out, cap, "%s,%d,%d,%d,%d,%d", c.crt ? "crt" : "sharp", c.s[0], c.s[1], c.s[2], c.s[3], c.s[4]);
+}
+
+bool native_crt_ask(bool crt, const int strengths[5])
+{
+    comp_crt_t now;
+    if (!comp_link_crt(&now)) return false;
+    comp_crt_t c = { .crt = crt };
+    for (int i = 0; i < 5; i++) {
+        int v = strengths[i];
+        c.s[i] = v < 0 ? 0 : (v > 100 ? 100 : v);
+    }
+    comp_link_ask_crt(&c);
+    return true;
+}

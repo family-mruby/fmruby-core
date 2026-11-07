@@ -505,6 +505,17 @@ int main(int argc, char **argv)
     const native_config_t *c = &g_native_config;
     const native_machine_t *m = &c->machine;
 
+    /* The CRT look the user chose in the settings window (doc/web_crt, C5),
+     * from the user's /etc: it wins over the definition and --set (the
+     * session file's look is the default until the user chooses). */
+    {
+        char crt_path[NATIVE_PATH_MAX + 32], crt_why[300];
+        snprintf(crt_path, sizeof(crt_path), "%s/etc/system_conf.toml", c->user_dir);
+        int crc = native_machine_load_crt(&g_native_config.machine, crt_path, crt_why, sizeof(crt_why));
+        if (crc == 1) fprintf(stderr, "native: the CRT look as chosen in the settings (%s [crt])\n", crt_path);
+        else if (crc < 0) fprintf(stderr, "native: the settings' CRT look not used: %s\n", crt_why);
+    }
+
     char line[600];
     native_machine_describe(m, line, sizeof(line));
     fprintf(stderr, "native: %s\n", line);
