@@ -1985,6 +1985,24 @@ static mrb_value mrb_fmrb_app_s_notify(mrb_state *mrb, mrb_value klass)
     return mrb_bool_value(fmrb_platform_sys_notice_post(app, summary, body, -1) == FMRB_OK);
 }
 
+// FmrbApp.crt_state -> String: the native compositor's CRT look for the
+//   settings window (doc/web_crt, C5): "" where it cannot be drawn (every
+//   build but the native program as a GLES compositor), else "crt" or
+//   "sharp" and the five strengths, "crt,55,30,30,15,40".
+#if defined(FMRB_PLATFORM_NATIVE)
+extern void native_crt_state(char *out, size_t cap);
+#endif
+
+static mrb_value mrb_fmrb_app_s_crt_state(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    char buf[64] = "";
+#if defined(FMRB_PLATFORM_NATIVE)
+    native_crt_state(buf, sizeof(buf));
+#endif
+    return mrb_str_new_cstr(mrb, buf);
+}
+
 #if defined(FMRB_PLATFORM_NATIVE)
 // ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
 //
@@ -2033,10 +2051,11 @@ static mrb_value mrb_fmrb_app_s_linux_keyboard(mrb_state *mrb, mrb_value klass)
 }
 
 // FmrbApp.linux_settings(page) -> bool: open the PC's settings window (L14,
-//   native/backend/native_settings.c) on the "wifi" or "bluetooth" page, or
-//   bring it in front there. FmrbApp.settings_page -> Integer: the page
-//   asked for last in the low bit (0 Wi-Fi, 1 Bluetooth), the count of the
-//   asks above it (the window turns to it when it changes). Native only.
+//   native/backend/native_settings.c) on the "wifi", "bluetooth" or
+//   "display" page, or bring it in front there. FmrbApp.settings_page ->
+//   Integer: the page asked for last in the low two bits (0 Wi-Fi, 1
+//   Bluetooth, 2 Display), the count of the asks above them (the window
+//   turns to it when it changes). Native only.
 extern bool native_settings_open(const char *page);
 extern int native_settings_page(void);
 
@@ -2052,6 +2071,21 @@ static mrb_value mrb_fmrb_app_s_settings_page(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
     return mrb_fixnum_value(native_settings_page());
+}
+
+// FmrbApp.crt_set(crt, scanline, mask, glow, curve, vignette) -> bool: ask
+//   the compositor for the CRT look (doc/web_crt, C5; native/wlr/wl_bridge.h),
+//   applied at once; false where it cannot be drawn. Native only.
+extern bool native_crt_ask(bool crt, const int strengths[5]);
+
+static mrb_value mrb_fmrb_app_s_crt_set(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_bool crt;
+    mrb_int a, b, c, d, e;
+    mrb_get_args(mrb, "biiiii", &crt, &a, &b, &c, &d, &e);
+    const int st[5] = { (int)a, (int)b, (int)c, (int)d, (int)e };
+    return mrb_bool_value(native_crt_ask(crt, st));
 }
 
 static mrb_value mrb_fmrb_app_s_wl_key(mrb_state *mrb, mrb_value klass)
@@ -2598,7 +2632,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "linux_keyboard", mrb_fmrb_app_s_linux_keyboard, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "linux_settings", mrb_fmrb_app_s_linux_settings, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "settings_page", mrb_fmrb_app_s_settings_page, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "crt_set", mrb_fmrb_app_s_crt_set, MRB_ARGS_REQ(6));
 #endif
+    mrb_define_class_method(mrb, app_class, "crt_state", mrb_fmrb_app_s_crt_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));

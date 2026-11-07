@@ -1,10 +1,11 @@
 /*
  * native_settings.c - the PC's settings window (doc/linux_native, L14):
- * Wi-Fi and Bluetooth, an app built into the native program
+ * Wi-Fi, Bluetooth and the display (the CRT look, doc/web_crt C5), an app
+ * built into the native program
  * (native/apps/linux_settings.app.rb, its bytecode compiled by
  * rake native:mrb), opened from the desktop's network dialog ("Wi-Fi...")
- * and its menu ("Bluetooth"). No device, simulation or browser build has
- * it.
+ * and its menu ("Bluetooth", "Display..."). No device, simulation or
+ * browser build has it.
  *
  * One window at most: asking again brings it in front on the page asked
  * for (the app reads the page and a count of the asks, FmrbApp.settings_page).
@@ -31,7 +32,7 @@ extern const uint8_t linux_settings_irep[];
 #define WIN_H 200
 #define MENU_BAR_H 13
 
-static atomic_int s_asks;      /* page in the low bit, the count above */
+static atomic_int s_asks;      /* page in the low two bits, the count above */
 static int s_pid = -1;
 static uint32_t s_gen;
 
@@ -69,11 +70,14 @@ static bool still_open(void)
 
 bool native_settings_open(const char *page)
 {
-    int p = (page != NULL && strcmp(page, "bluetooth") == 0) ? 1 : 0;
+    static const char *const names[3] = { "Wi-Fi", "Bluetooth", "Display" };
+    int p = 0;
+    if (page != NULL && strcmp(page, "bluetooth") == 0) p = 1;
+    if (page != NULL && strcmp(page, "display") == 0) p = 2;
     int prev = atomic_load(&s_asks);
-    atomic_store(&s_asks, ((prev >> 1) + 1) << 1 | p);
+    atomic_store(&s_asks, ((prev >> 2) + 1) << 2 | p);
     if (still_open()) {
-        FMRB_LOGI(TAG, "the settings window (pid %d) to the %s page", s_pid, p ? "Bluetooth" : "Wi-Fi");
+        FMRB_LOGI(TAG, "the settings window (pid %d) to the %s page", s_pid, names[p]);
         tell_kernel("focus_app", s_pid);
         return true;
     }
@@ -120,7 +124,7 @@ bool native_settings_open(const char *page)
     s_pid = pid;
     s_gen = ctx ? ctx->gen : 0;
     FMRB_LOGI(TAG, "the settings window: pid %d, %dx%d at (%d,%d), the %s page", (int)pid, ww, wh, x, y,
-              p ? "Bluetooth" : "Wi-Fi");
+              names[p]);
     tell_kernel("spawned", pid);
     return true;
 }

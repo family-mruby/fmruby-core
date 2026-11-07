@@ -2384,6 +2384,11 @@ class FmrbApp
     false
   end
 
+  # The native compositor's CRT look (doc/web_crt, C5): not here.
+  def self.crt_state
+    ""
+  end
+
   def self.ble_start
     FmrbSpxApp.fmrb_spx_app_ble_start != 0
   end

@@ -1,4 +1,5 @@
-# The PC's settings window (doc/linux_native, L14): Wi-Fi and Bluetooth.
+# The PC's settings window (doc/linux_native, L14): Wi-Fi, Bluetooth and
+# the display (the CRT look, doc/web_crt C5).
 #
 # Built into the native program only (native/backend/native_settings.c
 # spawns it from its bytecode; no device, simulation or browser build has
@@ -18,6 +19,14 @@
 # devices paired before, Connect and Disconnect. A new device is paired in
 # Linux's own tool (one line says which).
 #
+# Display (the compositor's CRT look, doc/web_crt C5): Sharp or CRT and the
+# five strengths (0-100), applied at once (FmrbApp.crt_set asks the
+# compositor), and kept in the [crt] table of /etc/system_conf.toml, which
+# the next session starts from (it wins over the session file's --set).
+# Defaults puts the strengths back (not the on/off), as the browser's does.
+# The page (and the desktop's "Display..." entry) is only there where the
+# compositor can draw the look (FmrbApp.crt_state is "" elsewhere).
+#
 # Everything here only asks: the C side does the work on threads of its
 # own and this window reads the outcome about once a second.
 
@@ -26,6 +35,12 @@ class LinuxSettingsApp < FmrbApp
   ROWS = 7
   LIST_Y = 32
   POLL_MS = 1000
+  CONF_PATH = "/etc/system_conf.toml"
+  # The CRT look's strengths: the [crt] keys, in crt_set's order.
+  CRT_KEYS = ["scanline", "mask", "glow", "curve", "vignette"]
+  CRT_DEFAULTS = [55, 30, 30, 15, 40]
+  CRT_ROW_Y = 40
+  CRT_ROW_H = 18
 
   STRINGS = {
     "en" => {
@@ -49,7 +64,11 @@ class LinuxSettingsApp < FmrbApp
       st_bt_busy: "Working on %s...", st_bt_connected: "Connected: %s", st_bt_disconnected: "Disconnected: %s",
       st_bt_failed: "Failed: %s", st_bt_power_failed: "Could not switch: %s",
       st_bt_powered_on: "Bluetooth turned on", st_bt_powered_off: "Bluetooth turned off",
-      st_saved: "saved"
+      st_saved: "saved",
+      st_display: "Display", st_look: "Look", st_sharp: "Sharp", st_crt: "CRT",
+      st_scanline: "Scanlines", st_mask: "Grille", st_glow: "Glow", st_curve: "Curve", st_vignette: "Corners",
+      st_defaults: "Defaults", st_crt_gone: "The CRT look is not available here",
+      st_crt_kept: "Kept for the next session"
     },
     "ja" => {
       st_wifi: "Wi-Fi", st_bt: "Bluetooth",
@@ -72,7 +91,11 @@ class LinuxSettingsApp < FmrbApp
       st_bt_busy: "%s を操作しています...", st_bt_connected: "つなぎました: %s", st_bt_disconnected: "切りました: %s",
       st_bt_failed: "できませんでした: %s", st_bt_power_failed: "切り替えられませんでした: %s",
       st_bt_powered_on: "Bluetooth を入れました", st_bt_powered_off: "Bluetooth を切りました",
-      st_saved: "保存"
+      st_saved: "保存",
+      st_display: "画面", st_look: "見た目", st_sharp: "くっきり", st_crt: "ブラウン管",
+      st_scanline: "走査線", st_mask: "格子", st_glow: "にじみ", st_curve: "曲がり", st_vignette: "四隅の暗さ",
+      st_defaults: "既定に戻す", st_crt_gone: "ここでは CRT の見た目を出せません",
+      st_crt_kept: "次のセッションでも使います"
     }
   }
 
@@ -82,8 +105,12 @@ class LinuxSettingsApp < FmrbApp
     @gfx.set_text_size(1)
     @w = @user_area_width
     @h = @user_area_height
+    @crt_text = FmrbApp.crt_state
+    @crt_here = @crt_text != ""
+    parse_crt
+    @crt_dirty = false
     @ask = FmrbApp.settings_page
-    @page = (@ask & 1) == 1 ? :bt : :wifi
+    @page = ask_page(@ask)
     @wifi_text = nil
     @bt_text = nil
     @aps = []
@@ -94,7 +121,7 @@ class LinuxSettingsApp < FmrbApp
     @pw = ""
     @msg = ""
     build_widgets
-    Log.info("settings: the #{@page == :wifi ? 'Wi-Fi' : 'Bluetooth'} page, user area #{@w}x#{@h} at (#{@user_area_x0},#{@user_area_y0})")
+    Log.info("settings: the #{page_name(@page)} page, user area #{@w}x#{@h} at (#{@user_area_x0},#{@user_area_y0})")
     read_state(true)
     draw_page
   end
@@ -103,8 +130,9 @@ class LinuxSettingsApp < FmrbApp
     ask = FmrbApp.settings_page
     if ask != @ask
       @ask = ask
-      switch_page((ask & 1) == 1 ? :bt : :wifi)
+      switch_page(ask_page(ask))
     end
+    save_crt if @crt_dirty
     draw_page if read_state(false)
     POLL_MS
   end
@@ -128,9 +156,25 @@ class LinuxSettingsApp < FmrbApp
 
   def on_destroy
     @pw = ""
+    save_crt if @crt_dirty
   end
 
   private
+
+  # The page asked for (FmrbApp.settings_page's low two bits); Display
+  # only where the look can be drawn.
+  def ask_page(ask)
+    p = ask & 3
+    return :bt if p == 1
+    return :display if p == 2 && @crt_here
+    :wifi
+  end
+
+  def page_name(page)
+    return "Wi-Fi" if page == :wifi
+    return "Bluetooth" if page == :bt
+    "Display"
+  end
 
   # ---- widgets
 
@@ -139,6 +183,19 @@ class LinuxSettingsApp < FmrbApp
     tw = 56
     @ui.toggle(:tab_wifi, 2, 2, tw, 14, FmrbI18n.t(:st_wifi), group: :page, on: @page == :wifi)
     @ui.toggle(:tab_bt, 2 + tw + 4, 2, tw + 10, 14, FmrbI18n.t(:st_bt), group: :page, on: @page == :bt)
+    if @crt_here
+      @ui.toggle(:tab_disp, 2 + tw * 2 + 18, 2, tw + 10, 14, FmrbI18n.t(:st_display), group: :page,
+                 on: @page == :display)
+      lx = 92
+      @ui.toggle(:look_sharp, lx, 20, 72, 14, FmrbI18n.t(:st_sharp), group: :look, on: !@crt_on)
+      @ui.toggle(:look_crt, lx + 78, 20, 72, 14, FmrbI18n.t(:st_crt), group: :look, on: @crt_on)
+      i = 0
+      while i < CRT_KEYS.size
+        @ui.stepper(crt_id(i), lx, CRT_ROW_Y + i * CRT_ROW_H, 90, 14, @crt_s[i], 0, 100, 5)
+        i += 1
+      end
+      @ui.button(:crt_defaults, lx, CRT_ROW_Y + CRT_KEYS.size * CRT_ROW_H + 2, 90, 16, FmrbI18n.t(:st_defaults))
+    end
     by = @h - 34
     bw = 72
     @ui.button(:connect, 4, by, bw, 16, FmrbI18n.t(:st_connect))
@@ -150,8 +207,24 @@ class LinuxSettingsApp < FmrbApp
 
   def show_widgets
     wifi = @page == :wifi
+    disp = @page == :display
     @ui.set_visible(:scan, wifi)
-    @ui.set_visible(:power, !wifi)
+    @ui.set_visible(:power, @page == :bt)
+    @ui.set_visible(:connect, !disp)
+    @ui.set_visible(:disconnect, !disp)
+    return unless @crt_here
+    @ui.set_visible(:look_sharp, disp)
+    @ui.set_visible(:look_crt, disp)
+    i = 0
+    while i < CRT_KEYS.size
+      @ui.set_visible(crt_id(i), disp)
+      i += 1
+    end
+    @ui.set_visible(:crt_defaults, disp)
+  end
+
+  def crt_id(i)
+    [:crt_scanline, :crt_mask, :crt_glow, :crt_curve, :crt_vignette][i]
   end
 
   def switch_page(page)
@@ -163,6 +236,7 @@ class LinuxSettingsApp < FmrbApp
     @msg = ""
     @ui.set_on(:tab_wifi, page == :wifi)
     @ui.set_on(:tab_bt, page == :bt)
+    @ui.set_on(:tab_disp, page == :display) if @crt_here
     show_widgets
     read_state(true)
     draw_page
@@ -172,6 +246,18 @@ class LinuxSettingsApp < FmrbApp
     case id
     when :tab_wifi then switch_page(:wifi)
     when :tab_bt then switch_page(:bt)
+    when :tab_disp then switch_page(:display)
+    when :look_sharp then crt_change(false, nil)
+    when :look_crt then crt_change(true, nil)
+    when :crt_defaults then crt_change(@crt_on, CRT_DEFAULTS)
+    when :crt_scanline, :crt_mask, :crt_glow, :crt_curve, :crt_vignette
+      st = []
+      i = 0
+      while i < CRT_KEYS.size
+        st << @ui.value(crt_id(i))
+        i += 1
+      end
+      crt_change(@crt_on, st)
     when :scan
       @wifi_text = FmrbApp.wifi_networks(true)
       parse_wifi
@@ -188,7 +274,14 @@ class LinuxSettingsApp < FmrbApp
 
   # Reads the page's state; true when it changed.
   def read_state(force)
-    if @page == :wifi
+    if @page == :display
+      t = FmrbApp.crt_state
+      return false if !force && t == @crt_text
+      @crt_text = t
+      parse_crt
+      sync_crt_widgets
+      Log.info("settings: display #{t == '' ? 'unavailable' : t}")
+    elsif @page == :wifi
       t = FmrbApp.wifi_networks(false)
       return false if !force && t == @wifi_text
       @wifi_text = t
@@ -202,6 +295,93 @@ class LinuxSettingsApp < FmrbApp
       log_state("bt", @bt_head, @devs)
     end
     true
+  end
+
+  # "crt,55,30,30,15,40" (FmrbApp.crt_state) -> @crt_on, @crt_s; "" (the
+  # look cannot be drawn) keeps the defaults.
+  def parse_crt
+    f = @crt_text.split(",")
+    @crt_on = f[0] == "crt"
+    @crt_s = []
+    i = 0
+    while i < CRT_KEYS.size
+      v = f[i + 1]
+      @crt_s << (v.nil? || v.empty? ? CRT_DEFAULTS[i] : v.to_i)
+      i += 1
+    end
+  end
+
+  def sync_crt_widgets
+    return unless @crt_here
+    @ui.set_on(:look_sharp, !@crt_on)
+    @ui.set_on(:look_crt, @crt_on)
+    i = 0
+    while i < CRT_KEYS.size
+      @ui.set_value(crt_id(i), @crt_s[i])
+      i += 1
+    end
+  end
+
+  # A change on the Display page: to the compositor now, to the file on the
+  # next tick (a run of steps writes once).
+  def crt_change(on, strengths)
+    @crt_on = on
+    @crt_s = strengths.dup if strengths
+    sync_crt_widgets
+    ok = FmrbApp.crt_set(@crt_on, @crt_s[0], @crt_s[1], @crt_s[2], @crt_s[3], @crt_s[4])
+    @msg = ok ? FmrbI18n.t(:st_crt_kept) : FmrbI18n.t(:st_crt_gone)
+    @crt_dirty = ok
+    Log.info("settings: display asked #{@crt_on ? 'crt' : 'sharp'} #{@crt_s.join(',')}#{ok ? '' : ' (not available)'}")
+    draw_page
+  end
+
+  # The [crt] table of /etc/system_conf.toml: the old one (header to the
+  # next header) taken out, the new one put at the end. The other lines stay
+  # as they are; written beside the file and renamed over it, as the
+  # desktop's Config does.
+  def save_crt
+    @crt_dirty = false
+    lines = []
+    begin
+      f = File.open(CONF_PATH, "r")
+      content = f.read
+      f.close
+      lines = content.split("\n", -1)
+    rescue => e
+      Log.warn("settings: cannot read #{CONF_PATH}: #{e.message}")
+      return
+    end
+    out = []
+    in_crt = false
+    lines.each do |raw|
+      st = raw.strip
+      if st.start_with?("[")
+        in_crt = st == "[crt]"
+        next if in_crt
+      end
+      out << raw unless in_crt
+    end
+    out.pop while out.size > 0 && out[out.size - 1].strip.empty?
+    out << ""
+    out << "[crt]"
+    out << "# the CRT look chosen in the settings window (doc/web_crt); beats the session file's --set"
+    out << "look = \"#{@crt_on ? 'crt' : 'sharp'}\""
+    i = 0
+    while i < CRT_KEYS.size
+      out << "#{CRT_KEYS[i]} = #{@crt_s[i]}"
+      i += 1
+    end
+    out << ""
+    tmp = CONF_PATH + ".tmp"
+    begin
+      f = File.open(tmp, "w")
+      f.write(out.join("\n"))
+      f.close
+      File.rename(tmp, CONF_PATH)
+      Log.info("settings: display kept in #{CONF_PATH} [crt]")
+    rescue => e
+      Log.error("settings: cannot write #{CONF_PATH}: #{e.message}")
+    end
   end
 
   # One line per change, for the log (and the checks): the state fields and
@@ -354,6 +534,7 @@ class LinuxSettingsApp < FmrbApp
   end
 
   def click_list(x, y)
+    return if @page == :display
     return if y < LIST_Y || y >= LIST_Y + ROWS * ROW_H
     i = @top + (y - LIST_Y) / ROW_H
     n = @page == :wifi ? @aps.size : @devs.size
@@ -374,6 +555,7 @@ class LinuxSettingsApp < FmrbApp
   end
 
   def scroll(d)
+    return if @page == :display
     n = @page == :wifi ? @aps.size : @devs.size
     t = @top + d
     t = n - ROWS if t > n - ROWS
@@ -384,6 +566,7 @@ class LinuxSettingsApp < FmrbApp
   end
 
   def key(sc, ch)
+    return if @page == :display
     n = @page == :wifi ? @aps.size : @devs.size
     if sc == FmrbConst::KEY_UP
       select(@sel - 1) if @sel > 0
@@ -416,8 +599,10 @@ class LinuxSettingsApp < FmrbApp
     clear_user_area
     if @page == :wifi
       draw_wifi
-    else
+    elsif @page == :bt
       draw_bt
+    else
+      draw_display
     end
     @ui.invalidate_all
     @ui.flush
@@ -572,6 +757,20 @@ class LinuxSettingsApp < FmrbApp
     draw_scroll_mark(@devs.size)
     text(4, LIST_Y + ROWS * ROW_H + 4, fit(FmrbI18n.t(:st_bt_pair), @w - 8), theme_border)
     draw_message(bt_outcome)
+  end
+
+  def draw_display
+    if @crt_text == ""
+      status_line(20, FmrbI18n.t(:st_crt_gone))
+      return
+    end
+    text(4, 23, FmrbI18n.t(:st_look))
+    i = 0
+    while i < CRT_KEYS.size
+      text(4, CRT_ROW_Y + i * CRT_ROW_H + 3, FmrbI18n.t(("st_" + CRT_KEYS[i]).to_sym))
+      i += 1
+    end
+    draw_message(@msg)
   end
 
   def bt_outcome

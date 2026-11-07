@@ -124,6 +124,10 @@ class SystemDesktopApp < FmrbApp
     # The PC's Bluetooth (L14): its settings window. Only where the OS has
     # them (bt_devices is "" on every device, the simulation and the page).
     (FmrbApp.bt_devices != "" ? [{ key: :bluetooth }] : []) +
+    # The CRT look of the PC's screen (doc/web_crt, C5): the same window's
+    # Display page. Only where the compositor can draw it (crt_state is ""
+    # on every device, the simulation, the page, and a PC without GLES).
+    (FmrbApp.crt_state != "" ? [{ key: :display_look }] : []) +
     # Retro only: manual BLE start for the ble_auto_start=false configuration
     # (on Modern the C6 radio path manages itself). Harmless when BLE is
     # already up -- the C side is idempotent.
@@ -2339,6 +2343,8 @@ class SystemDesktopApp < FmrbApp
       open_network_dialog
     when :bluetooth
       FmrbApp.linux_settings("bluetooth")
+    when :display_look
+      FmrbApp.linux_settings("display")
     when :audio_mute
       toggle_audio_mute
     when :ble_start

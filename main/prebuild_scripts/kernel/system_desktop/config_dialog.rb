@@ -619,6 +619,18 @@ module ConfigDialogMixin
   # appended at the end.
   def cfg_write
     path = CFG_PATH
+    # The lines as they are now, not as they were when the dialog opened:
+    # others write the file meanwhile (the PC's settings window keeps the
+    # CRT look in [crt], doc/web_crt C5), and only the rows here are ours.
+    begin
+      f = File.open(path, "r")
+      content = f.read
+      f.close
+      now = content.split("\n", -1)
+      @cfg_file_lines = now unless now.empty? || (now.size == 1 && now[0].to_s.strip.empty?)
+    rescue => e
+      Log.warn("Config: cannot read #{CFG_PATH} again: #{e.message}")
+    end
 
     top_updates = {}
     CFG_SETTINGS.each do |s|

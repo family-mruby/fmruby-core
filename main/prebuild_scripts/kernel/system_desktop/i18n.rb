@@ -98,6 +98,7 @@ FmrbI18n.add(
     # The PC's settings and notices (L14)
     wifi_settings:   "Wi-Fi...",
     bluetooth:       "Bluetooth",
+    display_look:    "Display...",
     notice_volume:   "Volume %d%%",
     notice_muted:    "Volume %d%% (muted)",
     notice_restarted:"Family mruby started again",
@@ -199,6 +200,7 @@ FmrbI18n.add(
     refresh:         "更新",
     wifi_settings:   "Wi-Fi の設定...",
     bluetooth:       "Bluetooth",
+    display_look:    "画面...",
     notice_volume:   "音量 %d%%",
     notice_muted:    "音量 %d%% (消音)",
     notice_restarted:"Family mruby を起こし直しました",
