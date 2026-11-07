@@ -61,9 +61,9 @@ echo "recorded /out/$OUT"
 2. **実況アプリ**を、ブラウザを開かずに別の番号で起動する (AI のひとことを入れるならキーを渡す)。
    ```
    cd ~/fmrb/family-mruby/asterism-games
-   ANTHROPIC_API_KEY=$(cat ~/asterism_keys/anthropic_api_key) \
+   ANTHROPIC_API_KEY=$(cat ~/asterism_keys/api/anthropic_api_key) \
      bundle exec bin/asterism-games commentate mahjong \
-     --credentials ~/asterism_keys/ai-viewer.tar --table games/games/mahjong1 --no-open --port 7471
+     --credentials ~/asterism_keys/pc/ai-viewer.tar --table games/games/mahjong1 --no-open --port 7471
    ```
 3. **対局を始める**: 卓の主がブラウザ版か `play mahjong` で「観戦で始める」(W)。
 4. **録る** (例: 75 秒):
