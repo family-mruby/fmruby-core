@@ -1,5 +1,187 @@
 {
   "boards": {
+    "atoms3r": {
+      "board": "atoms3r",
+      "firmware": "ATOMS3R",
+      "flashed": false,
+      "commit": null,
+      "version": "2.1.0-1144-g0857213d-dirty",
+      "running_on": "ESP32-S3 (M5Stack AtomS3R)",
+      "reset": "USB_UART_CHIP_RESET",
+      "m1": {
+        "boot_start": {
+          "internal": 327212,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "mem_init": {
+          "internal": 326948,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "hw_init_start": {
+          "internal": 326948,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "gpio_led_proxy": {
+          "internal": 315812,
+          "largest": 262144,
+          "psram": 1465568
+        },
+        "littlefs_mount": {
+          "internal": 313416,
+          "largest": 262144,
+          "psram": 1465376
+        },
+        "fs_bench": {
+          "internal": 313416,
+          "largest": 262144,
+          "psram": 1465376
+        },
+        "system_config": {
+          "internal": 293152,
+          "largest": 245760,
+          "psram": 1464284
+        },
+        "hal": {
+          "internal": 281904,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "file_sync": {
+          "internal": 281728,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "app_init": {
+          "internal": 281640,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "mp_init": {
+          "internal": 281552,
+          "largest": 237568,
+          "psram": 1464284
+        },
+        "host_task_entry": {
+          "internal": 256352,
+          "largest": 212992,
+          "psram": 1440216
+        },
+        "gfx_audio_init": {
+          "internal": 255916,
+          "largest": 212992,
+          "psram": 1407444
+        },
+        "host_ready": {
+          "internal": 255916,
+          "largest": 212992,
+          "psram": 1407444
+        },
+        "spawn:fmrb_kernel": {
+          "internal": 239084,
+          "largest": 196608,
+          "psram": 1407444
+        },
+        "ble_released": {
+          "internal": 240268,
+          "largest": 196608,
+          "psram": 1395408
+        },
+        "wifi_ready": {
+          "internal": 154316,
+          "largest": 112640,
+          "psram": 1330360
+        },
+        "devctl": {
+          "internal": 142524,
+          "largest": 102400,
+          "psram": 1328880
+        },
+        "debugd": {
+          "internal": 135056,
+          "largest": 94208,
+          "psram": 1328880
+        }
+      },
+      "iram_free": 133864,
+      "psram_free": 1251188,
+      "tasks": {
+        "hw_proxy": {
+          "stack": 6144,
+          "free": 4220,
+          "active": true
+        },
+        "status_led": {
+          "stack": 4096,
+          "free": 1380,
+          "active": true
+        },
+        "fmrb_host": {
+          "stack": 24576,
+          "free": 10512,
+          "active": true
+        },
+        "fmrb_kernel": {
+          "stack": 16384,
+          "free": 4848,
+          "active": true
+        },
+        "Small Screen Te": {
+          "stack": 16384,
+          "free": 6256,
+          "active": true
+        },
+        "debugd": {
+          "stack": 6144,
+          "free": 2704,
+          "active": true
+        }
+      },
+      "pools": {
+        "fmrb_kernel": {
+          "vm": "spx",
+          "used": 98640,
+          "free": 412968,
+          "total": 512000,
+          "peak": 111112,
+          "largest": 400488,
+          "frag": 3,
+          "exchw": "3/0"
+        },
+        "Small Screen Test": {
+          "vm": "mrb",
+          "used": 300888,
+          "free": 210720,
+          "total": 512000,
+          "peak": 329848,
+          "largest": 183304,
+          "frag": 45,
+          "exchw": "-"
+        }
+      },
+      "boot_seconds": 1.4,
+      "dumps": 3,
+      "tolerance": {
+        "m1_internal": 512,
+        "m1_largest": 8192,
+        "m1_psram": 16384,
+        "iram_free": 512,
+        "stack_free": 512
+      },
+      "calibration": {
+        "runs": 3,
+        "at": "2026-11-07T13:02:44+09:00",
+        "spread": {
+          "m1_internal": 248,
+          "m1_largest": 0,
+          "m1_psram": 616,
+          "iram_free": 28,
+          "stack_free": 240
+        }
+      }
+    },
     "narya_v3": {
       "board": "narya_v3",
       "firmware": "NARYAv3",
@@ -629,5 +811,5 @@
     "iram_free": 1024,
     "stack_free": 384
   },
-  "commit": "2.1.0-1133-gcf96814d-dirty,2.1.0-1096-g805113de-dirty,2.1.0-1141-gb4148c6a-dirty"
+  "commit": "2.1.0-1144-g0857213d-dirty,2.1.0-1133-gcf96814d-dirty,2.1.0-1096-g805113de-dirty,2.1.0-1141-gb4148c6a-dirty"
 }
