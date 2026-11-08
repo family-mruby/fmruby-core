@@ -103,7 +103,7 @@ module ShellCommandsMixin
       cmd_restore(args)
     when "move"
       cmd_move(args)
-    when "send"
+    when "asend"
       cmd_send(args)
     when "svc"
       cmd_svc(args)
@@ -138,8 +138,8 @@ module ShellCommandsMixin
       @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
       @history << "  restore <image> - Start an app from its image (.ckpt)"
       @history << "  move <pid> <node> - Move an app to another machine (its Asterism node ID)"
-      @history << "  send <node> <file> [-o] - Send a file to another machine's /home/inbox (-o: overwrite)"
-      @history << "  send -c - Stop the file being sent"
+      @history << "  asend <node> <file> [-o] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite)"
+      @history << "  asend -c - Stop the file being sent"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1155,13 +1155,13 @@ module ShellCommandsMixin
   # from). A file of the same name there stays and this one gets a name of
   # its own, unless -o (overwrite). The transfer app does the sending
   # (FmrbTransfer); its progress and end come back as messages, shown by
-  # tick_send. One at a time from here; send -c stops it.
+  # tick_send. One at a time from here; asend -c stops it.
   def cmd_send(args)
     if args == ["-c"]
       if @send_rq && @xfer && @xfer.cancel(@send_rq)
-        @history << "send: stopping #{@send_path}"
+        @history << "asend: stopping #{@send_path}"
       else
-        @history << "send: nothing is being sent"
+        @history << "asend: nothing is being sent"
       end
       return
     end
@@ -1177,16 +1177,16 @@ module ShellCommandsMixin
       i += 1
     end
     unless rest.size == 2
-      @history << "Usage: send <node> <file> [-o]   (node: the other machine's Asterism node ID; -o: overwrite)"
+      @history << "Usage: asend <node> <file> [-o]   (node: the other machine's Asterism node ID; -o: overwrite)"
       return
     end
     if @send_rq && @xfer && !@xfer.done?(@send_rq)
-      @history << "send: #{@send_path} is still being sent (send -c stops it)"
+      @history << "asend: #{@send_path} is still being sent (asend -c stops it)"
       return
     end
     path = resolve_virtual_path(rest[1])
     unless File.exist?(path) && !File.directory?(path)
-      @history << "send: no such file: #{rest[1]}"
+      @history << "asend: no such file: #{rest[1]}"
       return
     end
     begin
@@ -1196,13 +1196,13 @@ module ShellCommandsMixin
       end
       @send_rq = @xfer.send_file(rest[0], path, overwrite: over)
     rescue => e
-      @history << "send: #{e.message}"
+      @history << "asend: #{e.message}"
       return
     end
     @send_path = path
     @send_to = rest[0]
     @send_shown = 0
-    @history << "send: #{path} to #{rest[0]}#{over ? ' (overwrite)' : ''}"
+    @history << "asend: #{path} to #{rest[0]}#{over ? ' (overwrite)' : ''}"
   end
 
   # Called once per on_update from shell.app.rb: the progress of the file
@@ -1214,13 +1214,13 @@ module ShellCommandsMixin
     return unless st
     state = st["state"]
     if state == "done"
-      append_output("send: #{@send_path} is in #{@send_to}'s /home/inbox as #{st["name"]}")
+      append_output("asend: #{@send_path} is in #{@send_to}'s /home/inbox as #{st["name"]}")
       @xfer.forget(@send_rq)
       @send_rq = nil
       return
     end
     if state == "failed"
-      append_output("send: #{@send_path} not sent (#{st["reason"]})")
+      append_output("asend: #{@send_path} not sent (#{st["reason"]})")
       @xfer.forget(@send_rq)
       @send_rq = nil
       return
@@ -1230,7 +1230,7 @@ module ShellCommandsMixin
       q = st["sent"].to_i * 4 / size
       if q > @send_shown && q < 4
         @send_shown = q
-        append_output("send: #{st["sent"]} of #{size} bytes")
+        append_output("asend: #{st["sent"]} of #{size} bytes")
       end
     end
   end
