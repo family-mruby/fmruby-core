@@ -1,6 +1,6 @@
 # Asterism でファイルを運ぶ汎用の仕組み (再送つき)
 
-> 状態: 進行中 | 更新: 2026-11-08 | T0〜T3b 済 (report/t0〜t3.md)。ESP32 の実機の確認待ち。T4 (CRuby・console) に着手 (instruction_t4.md)。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
+> 状態: 進行中 | 更新: 2026-11-08 | T0〜T3b 済 (report/t0〜t3.md)。ESP32 の実機の確認待ち。T4 済 (console 0.3.13・gem 0.12.0 公開、VPS 反映待ち)、T5 に着手 (instruction_t5.md)。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
 
 ## 目的
 
