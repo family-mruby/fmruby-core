@@ -69,6 +69,8 @@ vendor/mruby-checkpoint/
 # The bundled ROS 2 message types, copied from the asterism checkout by
 # rake setup. The source is the asterism repository, like flash/help's is sig/.
 flash/usr/share/asterism/msgs/
+# Asterism::Transfer (plain Ruby the transfer app loads), from the same checkout.
+flash/usr/share/asterism/transfer/
 
 # Local reference material for comparing the character sheets (never committed)
 tool/basic/ref/

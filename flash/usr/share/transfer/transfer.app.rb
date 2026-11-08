@@ -1,4 +1,5 @@
-# Transfer app: files between machines over Asterism (doc/checkpoint F5).
+# Transfer app: files between machines over Asterism (doc/checkpoint F5,
+# doc/asterism_file_transfer).
 #
 # The kernel cannot hold an Asterism session (on the standard configuration
 # it is a Spinel program), so this headless app holds the machine's for
@@ -8,7 +9,9 @@
 #
 # Receiving: the object <node>/transfer/inbox (D13), its calls named by the
 # calling node (caller: :from) and taken only from the nodes this machine
-# allows (/home/asterism/receive.toml, below). A file comes in pieces:
+# allows (/home/asterism/receive.toml, below). A file comes in pieces, by
+# Asterism::Transfer (the asterism gem's data/transfer/transfer.rb, at
+# /usr/share/asterism/transfer/ on the machine; its head says the calls):
 #
 #   check(kind, meta)        before anything is sent or stopped. For
 #                            "checkpoint": meta {"names" => [...], "requires"
@@ -17,24 +20,29 @@
 #                            => true, "missing" => [names this build lacks]},
 #                            or {"ok" => false, "reason"} when a required one
 #                            is missing. A long list comes in several calls.
-#   begin(kind, meta)        meta {"name", "size", "toml" (the attributes
-#                            beside an image)} -> {"id", "piece"}
-#   chunk(id, pos, bytes)    the bytes at pos, in order -> the next pos
-#   commit(id)               all bytes are there: handed to the kind. A
-#                            "checkpoint" image goes to /tmp/<name>.ckpt with
-#                            its /tmp/<name>.toml and the kernel starts it
-#                            -> {"status" => "pending"}
+#   begin(kind, meta)        meta {"name", "size", "sha256", "toml" (the
+#                            attributes beside an image)} -> {"id", "piece",
+#                            "pos" (where it goes on from)}
+#   chunk(id, pos, bytes)    -> the position held here (a piece before it is
+#                            read past, one after it is not taken)
+#   commit(id)               all bytes are there and their sha256 matches:
+#                            handed to the kind. A "checkpoint" image goes
+#                            to /tmp/<name>.ckpt with its /tmp/<name>.toml
+#                            and the kernel starts it -> {"status" =>
+#                            "pending"}; {"status" => "refused", "reason"}
+#                            when the sha256 does not match
 #   status(id)               -> {"status" => "pending"} | {"status" =>
 #                            "restored", "pid", "missing"} | {"status" =>
 #                            "refused", "reason"}
 #   cancel(id)               drop it; an image that came up is stopped
 #
 # One file at a time: a begin from another node while one is coming in is
-# refused (busy), a begin from the same node drops the one before. A file
-# with no piece for STALE_MS is dropped. Files are written beside their name
-# (.part) and appear only at the commit. Up to MAX_SIZE bytes. The kinds are
-# a table (KINDS) so that more can be added (the wasm apps' install,
-# doc/wasm_apps/plan.md 4).
+# refused (busy) until no piece came for 10 s. Files are written beside
+# their name (.part, with a note .xfer of who sends what) and appear only
+# at the commit; a file that stopped coming is kept 60 s for its sender to
+# go on (also across this app ending and starting again), then deleted.
+# The kinds are a table (KINDS) so that more can be added (the wasm apps'
+# install, doc/wasm_apps/plan.md 4).
 #
 # Who may send (/home/asterism/receive.toml; without it nobody may):
 #
@@ -51,9 +59,12 @@
 #                            first line, then a method name per line) to
 #                            <to>/transfer/inbox check -> "move_checked"
 #                            {ok, reason | missing}
-#   move_send {to, path}     the image and its .toml, begin / chunk / commit,
-#                            then status until it is up there -> "move_sent"
-#                            {ok, pid (there), missing | reason}
+#   move_send {to, path}     the image and its .toml by
+#                            Asterism::Transfer::Sender (a lost piece or
+#                            answer, a dropped connection: on from where the
+#                            receiver stands), then status until it is up
+#                            there -> "move_sent" {ok, pid (there), missing |
+#                            reason}
 #   move_cancel {to, pid}    the copy there is stopped (it came up too late)
 #
 # The connection is FmrbAsterism::Link's (the machine's settings); the
@@ -64,34 +75,35 @@
 # be carried, so a request is refused), but so that its VM keeps the table
 # of this build's method names (the baseline) that check answers from.
 
-class TransferInbox
+require "/usr/share/asterism/transfer/transfer"
+
+# The receiving side: Asterism::Transfer::Inbox (begin / chunk / commit /
+# cancel, resending from the receiver's position, the sha256 of the whole,
+# the piece file kept in /tmp to go on after a lost connection or this app
+# started again), with what this machine takes: the kinds, the senders
+# (receive.toml), the checkpoint's check and status.
+class TransferInbox < ::Asterism::Transfer::Inbox
   KINDS = ["checkpoint"]
   RECEIVE_CONF = "/home/asterism/receive.toml"
-  MAX_SIZE = 1048576
-  PIECE = 3072
-  STALE_MS = 10000
   RESTORE_MS = 8000
   TMP = "/tmp/"
+  BUSY_FOR_MS = 2000
 
   def initialize
-    @t = nil          # the file coming in (a Hash), nil when none
-    @next_id = 1
-    @done = nil       # the last committed checkpoint {id, from, path, at, result}
-    @last_call = -BUSY_FOR_MS
+    super(TMP)
+    @ckpt = nil       # the last committed checkpoint {id, from, path, at, result}
   end
 
   # A call came in a moment ago: the app polls often for the next one.
-  BUSY_FOR_MS = 2000
-
   def busy?
-    now_ms - @last_call < BUSY_FOR_MS
+    super(BUSY_FOR_MS)
   end
 
-  # ---- exposed (caller: :from) ----
+  # ---- exposed (caller: :from), besides begin / chunk / commit / cancel ----
 
   def check(kind, meta, from: nil)
     @last_call = now_ms
-    deny = refused(kind, from)
+    deny = refused(kind.to_s, from, meta)
     return { "ok" => false, "reason" => deny } if deny
     m = meta.is_a?(Hash) ? meta : {}
     req = list_of(m["requires"])
@@ -113,67 +125,16 @@ class TransferInbox
     { "ok" => true, "missing" => missing }
   end
 
-  def begin(kind, meta, from: nil)
-    @last_call = now_ms
-    deny = refused(kind, from)
-    raise ArgumentError, deny if deny
-    m = meta.is_a?(Hash) ? meta : {}
-    name = m["name"].to_s
-    size = m["size"].to_i
-    raise ArgumentError, "not a name for a file: #{name}" unless plain_name?(name)
-    raise ArgumentError, "size #{size} is not between 1 and #{MAX_SIZE}" if size <= 0 || size > MAX_SIZE
-    if @t
-      if @t["from"] != from && !stale?(@t)
-        raise ArgumentError, "busy: a file from #{@t['from']} is coming in"
-      end
-      drop("another begin from #{from}")
-    end
-    part = "#{TMP}#{name}.#{kind}.part"
-    f = File.open(part, "w")
-    id = @next_id
-    @next_id += 1
-    @t = { "id" => id, "from" => from, "kind" => kind, "name" => name, "size" => size, "got" => 0,
-           "part" => part, "file" => f, "toml" => m["toml"].to_s, "at" => now_ms }
-    Log.info("transfer: #{from} sends #{kind} #{name} (#{size} bytes)")
-    { "id" => id, "piece" => PIECE }
-  end
-
-  def chunk(id, pos, data, from: nil)
-    t = current(id, from)
-    bytes = data.to_s
-    raise ArgumentError, "the piece is at #{pos}, expected #{t['got']}" if pos != t["got"]
-    raise ArgumentError, "the piece goes past #{t['size']} bytes" if t["got"] + bytes.bytesize > t["size"]
-    t["file"].write(bytes)
-    t["got"] += bytes.bytesize
-    t["at"] = now_ms
-    t["got"]
-  end
-
-  def commit(id, from: nil)
-    t = current(id, from)
-    if t["got"] != t["size"]
-      got = t["got"]
-      drop("only #{got} of #{t['size']} bytes came")
-      raise ArgumentError, "only #{got} of #{t['size']} bytes came"
-    end
-    t["file"].close
-    @t = nil
-    commit_checkpoint(t)
-  end
-
   def status(id, from: nil)
     @last_call = now_ms
-    d = @done
+    d = @ckpt
     raise ArgumentError, "no file #{id} from #{from}" unless d && d["id"] == id && d["from"] == from
     restore_result(d)
   end
 
   def cancel(id, from: nil)
-    if @t && @t["id"] == id && @t["from"] == from
-      drop("cancelled by #{from}")
-      return true
-    end
-    d = @done
+    return true if super(id, from: from)
+    d = @ckpt
     return false unless d && d["id"] == id && d["from"] == from
     r = restore_result(d)
     pid = r["pid"]
@@ -182,65 +143,16 @@ class TransferInbox
       @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
                         { "cmd" => "kill", "pid" => pid })
     end
-    @done = nil
+    @ckpt = nil
     true
   end
 
-  # ---- the app's side ----
+  # ---- the hooks of Asterism::Transfer::Inbox ----
 
   attr_writer :app
 
-  # Called once per on_update: a file that stopped coming is dropped.
-  def tick
-    drop("no piece for #{STALE_MS} ms") if @t && stale?(@t)
-    nil
-  end
-
-  def close
-    drop("the transfer app ends") if @t
-  end
-
-  # ---- inside ----
-
-  def now_ms
-    Machine.board_millis
-  end
-
-  def node_name
-    @app ? @app.node_name : "this machine"
-  end
-
-  def stale?(t)
-    now_ms - t["at"] > STALE_MS
-  end
-
-  def drop(why)
-    t = @t
-    return nil unless t
-    @t = nil
-    Log.warn("transfer: #{t['kind']} #{t['name']} from #{t['from']} dropped: #{why}")
-    begin
-      t["file"].close
-    rescue => e
-      Log.warn("transfer: close: #{e.message}")
-    end
-    begin
-      File.delete(t["part"]) if File.exist?(t["part"])
-    rescue => e
-      Log.warn("transfer: delete: #{e.message}")
-    end
-    nil
-  end
-
-  def current(id, from)
-    @last_call = now_ms
-    t = @t
-    raise ArgumentError, "no file #{id} is coming in from #{from}" unless t && t["id"] == id && t["from"] == from
-    t
-  end
-
   # Why this call is not taken (nil: taken).
-  def refused(kind, from)
+  def refused(kind, from, meta)
     k = kind.to_s
     return "#{node_name} takes no #{k}" unless KINDS.include?(k)
     if k == "checkpoint" && !FmrbApp.respond_to?(:_checkpoint_restore)
@@ -249,6 +161,30 @@ class TransferInbox
     allowed = list_of(allowed_senders)
     return nil if allowed.include?("*") || allowed.include?(from.to_s)
     "#{node_name} takes nothing from #{from} (from in #{RECEIVE_CONF})"
+  end
+
+  # The image is whole (its sha256 matches): it goes beside its attributes
+  # under its name, and the kernel starts it (the answer is read by status).
+  def received(t)
+    path = "#{TMP}#{t['name']}.ckpt"
+    toml = "#{TMP}#{t['name']}.toml"
+    File.open(toml, "w") { |f| f.write(t["meta"]["toml"].to_s) }
+    File.delete(path) if File.exist?(path)
+    File.rename(t["part"], path)
+    why = FmrbApp._checkpoint_restore(path)
+    @ckpt = { "id" => t["id"], "from" => t["from"], "path" => path, "at" => now_ms, "result" => nil }
+    if why
+      @ckpt["result"] = { "status" => "refused", "reason" => why }
+      return @ckpt["result"]
+    end
+    Log.info("transfer: #{path} from #{t['from']} (#{t['size']} bytes); starting it")
+    { "status" => "pending" }
+  end
+
+  # ---- inside ----
+
+  def node_name
+    @app ? @app.node_name : "this machine"
   end
 
   def allowed_senders
@@ -271,39 +207,8 @@ class TransferInbox
     out
   end
 
-  # A name with no way out of /tmp: letters, digits, _ and -.
-  def plain_name?(name)
-    return false if name.empty? || name.bytesize > 40
-    i = 0
-    while i < name.bytesize
-      c = name.getbyte(i)
-      ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95 || c == 45
-      return false unless ok
-      i += 1
-    end
-    true
-  end
-
   def lacks?(name)
     FmrbApp._checkpoint_has_method(name) == false
-  end
-
-  # The image is whole: it goes beside its attributes under its name, and
-  # the kernel starts it (the answer is read by status).
-  def commit_checkpoint(t)
-    path = "#{TMP}#{t['name']}.ckpt"
-    toml = "#{TMP}#{t['name']}.toml"
-    File.open(toml, "w") { |f| f.write(t["toml"]) }
-    File.delete(path) if File.exist?(path)
-    File.rename(t["part"], path)
-    why = FmrbApp._checkpoint_restore(path)
-    @done = { "id" => t["id"], "from" => t["from"], "path" => path, "at" => now_ms, "result" => nil }
-    if why
-      @done["result"] = { "status" => "refused", "reason" => why }
-      return @done["result"]
-    end
-    Log.info("transfer: #{path} from #{t['from']} (#{t['size']} bytes); starting it")
-    { "status" => "pending" }
   end
 
   def restore_result(d)
@@ -332,7 +237,6 @@ end
 class TransferApp < FmrbApp
   APP = "transfer"
   OBJECT = "inbox"
-  PIECE = TransferInbox::PIECE
   # The names sent in one check call (a call carries 4 KB in all).
   CHECK_BYTES = 2048
   # A call waits this long for its answer: a slow machine on the other side
@@ -350,12 +254,14 @@ class TransferApp < FmrbApp
   def on_create
     @inbox = TransferInbox.new
     @inbox.app = self
+    # a file that was coming in when this app last ended goes on
+    @inbox.resume_held
     @jobs = []
     @job = nil        # the kernel's request under way (a Hash)
     @fut = nil        # its call on its way
     @last_sent = {}   # node => the id of the last file sent there
     @link = FmrbAsterism::Link.new(self, APP, tag: "transfer")
-    Log.info("transfer: start")
+    Log.info("transfer: start (#{FmrbApp.pool_used} bytes of its pool used)")
   end
 
   def node_name
@@ -366,7 +272,7 @@ class TransferApp < FmrbApp
     ::Asterism.expose(OBJECT, @inbox,
                       methods: { "check" => 2, "begin" => 2, "chunk" => 3, "commit" => 1, "status" => 1,
                                  "cancel" => 1 },
-                      caller: :from, doc: "files from other machines (doc/checkpoint F5)")
+                      caller: :from, doc: "files from other machines (doc/asterism_file_transfer)")
     tell_kernel({ "cmd" => "transfer_ready", "node" => link.node })
   end
 
@@ -387,7 +293,7 @@ class TransferApp < FmrbApp
       start_job if @job.nil? && !@jobs.empty?
       step if @job
     end
-    @job || @inbox.busy? ? BUSY_MS : IDLE_MS
+    (@job || @inbox.busy?) ? BUSY_MS : IDLE_MS
   end
 
   def on_destroy
@@ -418,6 +324,13 @@ class TransferApp < FmrbApp
   # One step of the request: its call has an answer.
   def step
     job = @job
+    if job["sender"]
+      sender = job["sender"]
+      sender.step
+      @last_sent[job["to"].to_s] = sender.id if sender.id
+      sent(job, sender) if sender.done?
+      return
+    end
     if job["wait_until"]
       return if Machine.board_millis < job["wait_until"]
       job.delete("wait_until")
@@ -436,9 +349,7 @@ class TransferApp < FmrbApp
     @fut = nil
     s = job["step"]
     if s == "check" then checked(job, v)
-    elsif s == "begin" then begun(job, v)
-    elsif s == "chunk" then chunked(job, v)
-    elsif s == "commit" || s == "status" then started(job, v)
+    elsif s == "status" then started(job, v)
     elsif s == "cancel"
       Log.info("transfer: asked #{job['to']} to stop what it started")
       finish(nil)
@@ -493,7 +404,9 @@ class TransferApp < FmrbApp
     finish({ "cmd" => "move_checked", "ok" => true, "missing" => cut(job["missing"].join(" ")) })
   end
 
-  # ---- move_send: begin, the pieces, commit, then status until it is up ----
+  # ---- move_send: the image (Asterism::Transfer::Sender: begin, the
+  # pieces from where the receiver stands, commit), then status until it is
+  # up there ----
 
   def start_send(job)
     path = job["path"].to_s
@@ -502,38 +415,30 @@ class TransferApp < FmrbApp
     return failed("cannot read the image's .toml") if toml.nil?
     return failed("cannot read #{path}") unless File.exist?(path)
     job["size"] = File.size(path)
-    job["pos"] = 0
-    job["file"] = File.open(path, "r")
-    job["step"] = "begin"
-    call("begin", ["checkpoint", { "name" => stem[TransferInbox::TMP.size, stem.size].to_s, "size" => job["size"],
-                                   "toml" => toml }])
+    name = stem[TransferInbox::TMP.size, stem.size].to_s
+    job["sender"] = ::Asterism::Transfer::Sender.new("#{job['to']}/#{APP}/#{OBJECT}", "checkpoint", path,
+                                                     name: name, meta: { "toml" => toml },
+                                                     timeout_ms: CALL_TIMEOUT_MS)
+    job["step"] = "send"
+    job["sender"].step
+  rescue => e
+    failed("cannot send #{path}: #{e.message}")
   end
 
-  def begun(job, v)
-    r = v.is_a?(Hash) ? v : {}
-    job["id"] = r["id"]
-    @last_sent[job["to"].to_s] = r["id"]
-    piece = r["piece"].to_i
-    job["piece"] = piece <= 0 || piece > PIECE ? PIECE : piece
-    job["step"] = "chunk"
-    send_piece(job)
-  end
-
-  def send_piece(job)
-    data = job["file"].read(job["piece"])
-    return failed("cannot read the image at #{job['pos']}") if data.nil? || data.empty?
-    data = data.b if data.respond_to?(:b)
-    call("chunk", [job["id"], job["pos"], data])
-  end
-
-  def chunked(job, v)
-    job["pos"] = v.to_i
-    return send_piece(job) if job["pos"] < job["size"]
-    close_file(job)
+  # The sender is done: committed there (the kind's answer), or not.
+  def sent(job, sender)
+    job.delete("sender")
+    job["id"] = sender.id
+    st = sender.stats
+    job["n_calls"] += st["calls"]
     job["carried"] = Machine.board_millis - job["t0"]
-    job["committed"] = Machine.board_millis
-    job["step"] = "commit"
-    call("commit", [job["id"]])
+    job["committed"] = Machine.board_millis if sender.committing?
+    if st["again"] > 0 || st["retries"] > 0 || st["begins"] > 1
+      Log.info("transfer: #{job['path']} to #{job['to']}: #{st['again']} piece(s) again, #{st['retries']} retr(ies), " \
+               "went on from #{st['resumed_at'].join(', ')}")
+    end
+    return failed("#{job['to']}: #{sender.reason}") unless sender.ok?
+    started(job, sender.answer)
   end
 
   def started(job, v)
@@ -576,20 +481,11 @@ class TransferApp < FmrbApp
   end
 
   def finish(answer)
-    close_file(@job) if @job
+    @job["sender"].close if @job && @job["sender"]
     @job = nil
     @fut = nil
     tell_kernel(answer) if answer
     nil
-  end
-
-  def close_file(job)
-    f = job["file"]
-    return unless f
-    job.delete("file")
-    f.close
-  rescue => e
-    Log.warn("transfer: close: #{e.message}")
   end
 
   # ---- helpers ----

@@ -410,6 +410,20 @@ mruby: ok (...)
 checkpoint: ok (2.9 min)
 ```
 
+## 12.5 ファイルを運ぶ (rake regress:transfer)
+
+```
+rake regress:transfer                 # 今あるネイティブ版 (標準) の 2 つの間で、壊し方 8 つ (1 分ほど。作らない)
+rake regress:transfer ENGINE=mruby    # 全部 mruby の構成で
+rake regress:transfer ONLY=cut        # 1 つだけ (名前の一部)
+rake regress:transfer BENCH=1         # 壊さずに T0 の数字 (1 回の呼び出しの上限・片の大きさと同時に送る片の数ごとの速さ・SHA-256 と CRC32)
+```
+
+- Asterism::Transfer (asterism gem の data/transfer、転送のアプリが使うもの) を、試験のアプリ `/app/test/xfer_probe.app.rb` で動かす (doc/asterism_file_transfer/report/t1.md)。A が 1 MiB のでたらめなバイト列を送り、B が種類 `probe` として受ける。
+- ルータは自前 (regress:checkpoint と同じ形)。B はこの道具の中の中継を通ってつなぐので、道具が B の接続を切れる。
+- 場面: straight・drop (10 片に 1 つ落とす)・twice (5 片に 1 つを 2 回)・swap (7 片に 1 つを次の片と入れ替える)・cut (B の接続を 256 KB と 640 KB で切る)・restart (B の試験のアプリを途中で止めて起動し直す)・mismatch (違う SHA-256 を宣言する)・kept (A を途中で止め、B が 3 秒で片のファイルを消す)。届いたものは B から取り出して SHA-256 を比べ、続きから送ったことは A と B のログの位置で確かめる。
+- ログは `tmp/regress/transfer/<構成>_a.log`・`_b.log`。`regress:full` にはまだ入れていない。
+
 ## 13. 作業の木ごとに流す (worktree・並行)
 
 共有 checkout (family-mruby の中の fmruby-core) と worktree、または worktree 同士で、同じ道具を同時に流せる。ネイティブ版の置き場・port・ルータの名前を、木ごとに決まる値にしてあるため (`tools/regress/tree.rb`)。

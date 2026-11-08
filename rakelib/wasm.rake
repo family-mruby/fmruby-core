@@ -138,6 +138,10 @@ namespace :wasm do
     abort "wasm:webflash: #{ASTERISM_MSGS_DIR} is missing (rake setup makes it)" unless Dir.exist?(msgs)
     mkdir_p File.join(staging, "usr/share/asterism")
     cp_r msgs, File.join(staging, "usr/share/asterism/msgs")
+    # Asterism::Transfer, which the transfer app loads: the same source.
+    xfer = File.join(ROOT_DIR, ASTERISM_TRANSFER_DIR)
+    abort "wasm:webflash: #{ASTERISM_TRANSFER_DIR} is missing (rake setup makes it)" unless Dir.exist?(xfer)
+    cp_r xfer, File.join(staging, "usr/share/asterism/transfer")
     # The node profile's icon (V2.5): the browser build shows its own, at the
     # place every build reads (/usr/share/asterism/icon.png), as the
     # wallpaper below does with /data.
@@ -254,6 +258,7 @@ namespace :wasm do
       next if f.start_with?("/flash/help/")
       # Asterism's message types, copied from the pinned asterism checkout.
       next if f.start_with?("/flash/usr/share/asterism/msgs/")
+      next if f.start_with?("/flash/usr/share/asterism/transfer/")
       problems << "packed file is neither tracked nor a known generated one: #{f}"
     end
     # The secrets file by name, whatever else let it in: it holds keys and the

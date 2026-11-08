@@ -1,0 +1,5 @@
+app_handle_name = "xfer_probe"
+app_screen_name = "Transfer Probe"
+app_screen_name_ja = "転送の試験"
+default_window_mode = "background"
+launcher_visible = false

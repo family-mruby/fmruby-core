@@ -192,6 +192,10 @@ task :setup do
   rm_rf ASTERISM_MSGS_DIR
   mkdir_p File.dirname(ASTERISM_MSGS_DIR)
   cp_r "#{ast_dir}/data/msgs", ASTERISM_MSGS_DIR
+  # Asterism::Transfer, loaded at run time by the transfer app
+  # (/usr/share/asterism/transfer/transfer.rb), from the same checkout.
+  rm_rf ASTERISM_TRANSFER_DIR
+  cp_r "#{ast_dir}/data/transfer", ASTERISM_TRANSFER_DIR
   # mruby-checkpoint (doc/checkpoint): from the pinned checkout (rake
   # checkpoint:setup, MRUBY_CHECKPOINT_DIR overrides), only what an mruby
   # build reads -- no tools/ (the repository's own driver, whose absence also

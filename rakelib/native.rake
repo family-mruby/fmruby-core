@@ -457,6 +457,9 @@ namespace :native do
     abort "native:root: #{ASTERISM_MSGS_DIR} is missing (rake setup makes it)" unless Dir.exist?(msgs)
     mkdir_p File.join(root, "usr/share/asterism")
     cp_r msgs, File.join(root, "usr/share/asterism/msgs")
+    xfer = File.join(ROOT_DIR, ASTERISM_TRANSFER_DIR)
+    abort "native:root: #{ASTERISM_TRANSFER_DIR} is missing (rake setup makes it)" unless Dir.exist?(xfer)
+    cp_r xfer, File.join(root, "usr/share/asterism/transfer")
     help_src = File.join(ROOT_DIR, "flash/help")
     Dir.glob(File.join(help_src, "**/*")).select { |f| File.file?(f) }.each do |f|
       dest = File.join(root, "help", f.sub(help_src + "/", ""))
@@ -599,9 +602,10 @@ namespace :native do
         t = r.sub("#{NATIVE_DEB_ROOT}/", "")
         next if tracked.include?("flash/#{t}")
         next if generated.include?(t)
-        # The editor's help (ti:help from sig/) and Asterism's message types
-        # (rake setup from the pinned asterism checkout).
-        next if t.start_with?("help/") || t.start_with?("usr/share/asterism/msgs/")
+        # The editor's help (ti:help from sig/), Asterism's message types and
+        # Asterism::Transfer (rake setup from the pinned asterism checkout).
+        next if t.start_with?("help/") || t.start_with?("usr/share/asterism/msgs/") ||
+                t.start_with?("usr/share/asterism/transfer/")
         problems << "neither tracked in flash/ nor a known generated file: #{r}"
       else
         layout = NATIVE_DEB_LAYOUT[arch]

@@ -485,3 +485,17 @@ namespace :regress do
     abort "regress:checkpoint: failed" unless system(Gem.ruby, REGRESS_CHECKPOINT, *args)
   end
 end
+
+REGRESS_TRANSFER = File.join(ROOT_DIR, "tools", "regress", "transfer.rb")
+
+namespace :regress do
+  desc "Carry a file between two native programs over Asterism with faults put in (doc/asterism_file_transfer T1): pieces lost, sent twice, swapped, the connection cut twice, the receiver started again, a wrong sha256, a piece file kept too long (the native build there is; ENGINE=standard|mruby, ONLY=<case>, BENCH=1: T0's numbers instead, with WEB=1 the browser build as the receiver)"
+  task :transfer do
+    args = []
+    args += ["--engine", ENV["ENGINE"]] if ENV["ENGINE"]
+    args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+    args << "--bench" if ENV["BENCH"] == "1"
+    args << "--web" if ENV["BENCH"] == "1" && ENV["WEB"] == "1"
+    abort "regress:transfer: failed" unless system(Gem.ruby, REGRESS_TRANSFER, *args)
+  end
+end
