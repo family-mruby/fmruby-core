@@ -123,6 +123,9 @@
 - **console から送る権限は Call permissions と同じ表**に「このノードへファイルを送ってよい」を
   足す。端末の側も `receive.toml` の `[file]` に console を書く (二重の鍵)。
 - **公開の console (VPS) への配置は T4 が終わったら行う** (検収の後、親が手順書どおりに)。
+- **T5 は checkpoint の載せ替えだけ**: アプリの移動を新しい受け口の作り (受け手が片の大きさと
+  同時に送る数を決める等) に揃え、`regress:checkpoint` が全部通ること。ブラウザ版のアプリ
+  (`.app.wasm`) のインストールは、wasm のアプリの対応 (doc/wasm_apps/plan.md) のときに行う。
 
 ## 未確定事項
 
