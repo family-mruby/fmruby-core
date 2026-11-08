@@ -239,6 +239,14 @@ static void apply_output(const fmrb_audio_output_cmd_t *cmd) {
               cmd->muted ? ", muted" : "");
 }
 
+size_t audio_p4_nsf_status(uint8_t *out, size_t out_size) {
+    fmrb_audio_nsf_status_t st;
+    if (!out || out_size < sizeof(st)) return 0;
+    audio_p4_engine_nsf_status(&st);
+    memcpy(out, &st, sizeof(st));
+    return sizeof(st);
+}
+
 int audio_p4_process_command(const uint8_t *data, size_t size) {
     if (!data || size == 0) {
         return -1;

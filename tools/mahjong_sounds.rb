@@ -123,7 +123,8 @@ end
 def build_renderer(dir)
   exe = File.join(dir, "apu_render")
   a = File.join(ROOT, APU)
-  run!("gcc", "-O2", "-w", "-I#{File.join(__dir__, 'mahjong_sounds', 'stub')}", "-I#{a}/include", "-I#{a}/src",
+  run!("gcc", "-O2", "-w", "-DFMRB_PLATFORM_HOSTED", "-I#{File.join(__dir__, 'mahjong_sounds', 'stub')}",
+       "-I#{File.join(ROOT, 'components/fmrb_common/include')}", "-I#{a}/include", "-I#{a}/src",
        "-I#{a}/src/nofrendo", "-Wl,--wrap=apuif_write_reg", File.join(__dir__, "mahjong_sounds", "apu_render.c"),
        "#{a}/src/apu_if_p4.c", "#{a}/src/apu_helper.c", "#{a}/src/nofrendo/nes_apu.c", "#{a}/src/nes_cpu.c",
        "#{a}/src/nsf_player.c", "-lm", "-o", exe)

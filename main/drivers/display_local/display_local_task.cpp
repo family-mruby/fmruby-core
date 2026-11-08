@@ -20,6 +20,7 @@
 #include "board_display.h"
 #include "fonts/misaki/lgfx_misaki_fonts.hpp"
 #include "../audio_p4/audio_p4.h"
+#include "audio_commands.h"
 
 #include "fmrb_log.h"
 #include "fmrb_hal_link.h"
@@ -1375,7 +1376,8 @@ static int ack_buf_write(void *data, const char *b, size_t l) {
 }
 
 /* array(4) + three small ints + a bin header, then the payload. The largest
-   response struct in fmrb_link_protocol.h is 6 bytes, so this has ample slack. */
+   response is the NSF status (audio_commands.h), 12 bytes, so this has ample
+   slack. */
 #define DISPLAY_LOCAL_ACK_BUF_SIZE 64
 
 static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t *data, size_t data_len) {
@@ -2867,6 +2869,14 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
     case FMRB_LINK_TYPE_AUDIO:
         // Packed audio command bytes (see audio_commands.h); on Modern
         // the local APU backend consumes them instead of the WROVER.
+        if (payload && payload_len > 0 && payload[0] == FMRB_AUDIO_CMD_NSF_STATUS) {
+            // The one audio command with an answer: where the NSF is, sent
+            // back in the ACK (doc/nsf_player_v2).
+            uint8_t st[sizeof(fmrb_audio_nsf_status_t)];
+            size_t n = audio_p4_nsf_status(st, sizeof(st));
+            if (ack_required) send_ack(type, seq, n ? st : nullptr, (uint16_t)n);
+            break;
+        }
         if (payload && payload_len > 0) {
             audio_p4_process_command(payload, payload_len);
         }

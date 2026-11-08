@@ -49,8 +49,40 @@ typedef enum {
      * and SET_OUTPUT are untouched. Not saved: the kernel puts it back to
      * 100 when the app that lowered it ends. A backend older than this
      * command logs it as unknown and plays MAIN at full level. */
-    FMRB_AUDIO_CMD_SET_MAIN_VOLUME = 0x10
+    FMRB_AUDIO_CMD_SET_MAIN_VOLUME = 0x10,
+    /* Where the NSF on MAIN is: playing, fading out, or over (the end of a
+     * song, fmruby-core doc/nsf_player_v2). Sent with ACK_REQUIRED; the ACK
+     * carries an fmrb_audio_nsf_status_t. The NSF player app asks about once
+     * a second while it plays and moves on when the song is over. A backend
+     * older than this command does not answer, and the app keeps playing as
+     * before. */
+    FMRB_AUDIO_CMD_NSF_STATUS = 0x11
 } fmrb_audio_cmd_type_t;
+
+/* fmrb_audio_nsf_status_t.state */
+#define FMRB_AUDIO_NSF_IDLE     0   /* nothing loaded, or stopped by a command */
+#define FMRB_AUDIO_NSF_PLAYING  1
+#define FMRB_AUDIO_NSF_FADING   2   /* the end was found; fading out */
+#define FMRB_AUDIO_NSF_ENDED    3   /* over by itself; silent now */
+
+/* fmrb_audio_nsf_status_t.reason (nsf_end_reason_t in nsf_player.h) */
+#define FMRB_AUDIO_NSF_END_NONE     0
+#define FMRB_AUDIO_NSF_END_SILENCE  1
+#define FMRB_AUDIO_NSF_END_LOOP     2
+#define FMRB_AUDIO_NSF_END_LIMIT    3
+
+/* The answer to FMRB_AUDIO_CMD_NSF_STATUS. gen counts the NSF play commands
+ * this backend has taken (wrapping), so the app can tell its new song from the
+ * one before it: the status query does not queue behind the play. */
+typedef struct {
+    uint8_t  state;     /* FMRB_AUDIO_NSF_* */
+    uint8_t  reason;    /* FMRB_AUDIO_NSF_END_* */
+    uint8_t  track;     /* 0-based */
+    uint8_t  laps;      /* loop laps heard so far (0: no loop found) */
+    uint16_t gen;
+    uint16_t period_frames;  /* the loop's period, 60 Hz frames (0: none) */
+    uint32_t frames;    /* frames played since the start of the song */
+} __attribute__((packed)) fmrb_audio_nsf_status_t;
 
 // Audio status
 typedef enum {

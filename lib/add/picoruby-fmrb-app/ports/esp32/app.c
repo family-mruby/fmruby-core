@@ -982,6 +982,27 @@ static mrb_value mrb_fmrb_app_send_audio_note(mrb_state *mrb, mrb_value self)
     return mrb_true_value();
 }
 
+// FmrbApp#_audio_nsf_status -> Hash or nil
+// Where the NSF is (FmrbAudio#nsf_status, doc/nsf_player_v2): {state:,
+// reason:, track:, laps:, gen:, period:, frames:}, nil when the audio side did
+// not answer.
+static mrb_value mrb_fmrb_app_audio_nsf_status(mrb_state *mrb, mrb_value self)
+{
+    fmrb_app_nsf_status_t st;
+    if (fmrb_app_audio_nsf_status(&st, 500) != FMRB_OK) {
+        return mrb_nil_value();
+    }
+    mrb_value h = mrb_hash_new_capa(mrb, 7);
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "state")), mrb_fixnum_value(st.state));
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "reason")), mrb_fixnum_value(st.reason));
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "track")), mrb_fixnum_value(st.track));
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "laps")), mrb_fixnum_value(st.laps));
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "gen")), mrb_fixnum_value(st.gen));
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "period")), mrb_fixnum_value(st.period_frames));
+    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "frames")), mrb_fixnum_value((mrb_int)st.frames));
+    return h;
+}
+
 // FmrbApp#_audio_note_bytes(on, ch, freq, vol, duty, sweep) -> String
 // The same message as a String, so a test can compare it against
 // MessagePack.pack of the equivalent Hash. Not used in normal operation.
@@ -2603,6 +2624,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, app_class, "_sync_file", mrb_fmrb_app_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, app_class, "_send_audio_note", mrb_fmrb_app_send_audio_note, MRB_ARGS_REQ(6));
+    mrb_define_method(mrb, app_class, "_audio_nsf_status", mrb_fmrb_app_audio_nsf_status, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_audio_note_bytes", mrb_fmrb_app_audio_note_bytes, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
 

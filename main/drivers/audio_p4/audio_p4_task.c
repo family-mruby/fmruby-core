@@ -104,6 +104,68 @@ void audio_p4_main_volume_set(uint8_t percent) {
     s_main_cut_q16 = 65536u - ((uint32_t)percent * 65536u) / 100u;
 }
 
+// ---- End of an NSF song (doc/nsf_player_v2) --------------------------
+//
+// The player decides when a song is over (nsf_player_end_frame: silence, a
+// loop heard NSF_END_LAPS times, or the time limit) and fades it out through
+// the MAIN volume; this task stops it once it is over and answers
+// FMRB_AUDIO_CMD_NSF_STATUS, which is how the app learns it should move on.
+// s_nsf_gen counts play commands so the app can tell its song from the last.
+// PSRAM, like the settings above. The detector's own buffers are inside the
+// player (apuemu_malloc, PSRAM).
+FMRB_EXT_RAM_BSS_ATTR static volatile uint16_t s_nsf_gen;
+
+// The MAIN volume for this frame: the app's, times the song's fade. Called
+// with the engine lock held.
+static uint32_t main_gain_now(void) {
+    uint32_t g = 65536u - s_main_cut_q16;
+    if (g_nsf_player && g_nsf_player->playing) {
+        g = (uint32_t)(((uint64_t)g * nsf_player_end_gain_q16(g_nsf_player)) >> 16);
+    }
+    return g;
+}
+
+// After each frame's mix, engine lock held: feed the end detector, and stop
+// the song once it is over (faded out, or fell silent by itself).
+static void nsf_end_after_mix(void) {
+    nsf_player_t *p = g_nsf_player;
+    if (!p || !p->playing) return;
+    nsf_player_end_frame(p, apuif_main_level());
+    if (!p->end.done) return;
+    p->playing = 0;
+    apuif_select(APUIF_INSTANCE_MAIN);
+    apuif_write_reg(0x4015, 0x00);
+    static const char *const names[] = { "?", "silence", "loop", "time limit" };
+    FMRB_LOGI(TAG, "NSF ended: %s after %lu frames (loop %lu frames)",
+              names[p->end.reason & 3], (unsigned long)p->end.frames,
+              (unsigned long)p->end.period);
+}
+
+void audio_p4_engine_nsf_status(fmrb_audio_nsf_status_t *st) {
+    memset(st, 0, sizeof(*st));
+    st->gen = s_nsf_gen;
+    if (!g_engine_ready) return;
+    engine_lock();
+    nsf_player_t *p = g_nsf_player;
+    if (p) {
+        const nsf_end_t *e = &p->end;
+        if (e->done) {
+            st->state = FMRB_AUDIO_NSF_ENDED;
+        } else if (p->playing) {
+            st->state = e->fade_left ? FMRB_AUDIO_NSF_FADING : FMRB_AUDIO_NSF_PLAYING;
+        }
+        st->reason = e->reason;
+        st->track = (uint8_t)p->current_song;
+        st->frames = e->frames;
+        if (e->period) {
+            st->period_frames = e->period > 0xFFFF ? 0xFFFF : (uint16_t)e->period;
+            uint32_t laps = 1 + e->run / e->period;
+            st->laps = laps > 255 ? 255 : (uint8_t)laps;
+        }
+    }
+    engine_unlock();
+}
+
 // The settings as saved: this task makes its first sound (the boot beep)
 // before the kernel has read the config and the host task has sent them.
 // Only the output stage here; the codec's level follows with the host's
@@ -279,6 +341,7 @@ int audio_p4_engine_nsf_play(const char *path, int track) {
 
     apuif_select(APUIF_INSTANCE_MAIN);
     nsf_player_start(g_nsf_player, track);
+    s_nsf_gen++;
 
     engine_unlock();
     return 0;
@@ -579,7 +642,8 @@ static void audio_p4_task(void *arg) {
         int16_t buffer[(NTSC_SAMPLE + 1) * 2];
         memset(buffer, 0, sizeof(buffer));
         int count = apuif_process_mix(buffer, sizeof(buffer) / sizeof(buffer[0]),
-                                      65536u - s_main_cut_q16);
+                                      main_gain_now());
+        nsf_end_after_mix();
         // PCM rides on top of the APU's own mix, at the same mono rate, so
         // there is nothing to resample here -- play_wav already matched the
         // clip to it. Once the clip ends the mixer adds nothing and the

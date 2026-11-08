@@ -49,6 +49,8 @@ int audio_p4_get_track(uint32_t music_id, const uint8_t **out_data, uint32_t *ou
 // --- audio_p4_task.c (APU engine operations) ---
 // All take the internal engine lock; callable from the command path.
 int  audio_p4_engine_nsf_play(const char *path, int track);
+// Where the NSF on MAIN is (FMRB_AUDIO_CMD_NSF_STATUS, doc/nsf_player_v2).
+void audio_p4_engine_nsf_status(fmrb_audio_nsf_status_t *st);
 // Stops every player (NSF and both FMSQ instances) and silences the APU.
 void audio_p4_engine_stop_all(void);
 // instance picks the APU instance the FMSQ plays on: 0 = MAIN (shared with

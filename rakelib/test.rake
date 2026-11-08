@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + desktop icons + Asterism link and table client + WAV + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "tts:test", "native:test",
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -128,6 +128,36 @@ namespace :wav do
   desc "Remove the host WAV test build"
   task :clean do
     rm_rf WAV_TEST_BUILD
+  end
+end
+
+namespace :nsf do
+  # The NSF player's end of a song (components/apu_emu/src/nsf_player.c,
+  # doc/nsf_player_v2): silence, the loop finder and the time limit against
+  # synthetic frame streams. The file is the same in fmruby-graphics-audio,
+  # so this covers both backends. To see what it does with real songs, run
+  # tools/nsf_end_probe.rb over NSF files.
+  NSF_TEST_DIR   = "test/nsf_end"
+  NSF_TEST_BUILD = "#{NSF_TEST_DIR}/build"
+  NSF_RUNNER_BIN = "#{NSF_TEST_BUILD}/nsf_end_test"
+  NSF_CFLAGS     = "-std=c11 -O1 -g -Wall -Wextra -Werror"
+
+  desc "Build the host NSF end-of-song test runner (cc, no docker)"
+  task :runner do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p NSF_TEST_BUILD
+    sh "#{cc} #{NSF_CFLAGS} -I components/apu_emu/include #{NSF_TEST_DIR}/main.c -o #{NSF_RUNNER_BIN}"
+  end
+
+  desc "NSF end-of-song tests: silence, loops, the time limit (host cc, no docker)"
+  task :test => :runner do
+    sh NSF_RUNNER_BIN
+  end
+
+  desc "Remove the host NSF test build"
+  task :clean do
+    rm_rf NSF_TEST_BUILD
   end
 end
 

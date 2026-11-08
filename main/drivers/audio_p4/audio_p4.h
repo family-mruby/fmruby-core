@@ -35,6 +35,12 @@ fmrb_err_t audio_p4_task_init(void);
 // Returns 0 on success, -1 on error.
 int audio_p4_process_command(const uint8_t *data, size_t size);
 
+// The answer to FMRB_AUDIO_CMD_NSF_STATUS (an fmrb_audio_nsf_status_t, see
+// audio_commands.h): where the NSF is, for the player app to move on at the
+// end of a song. The display task sends it back in the command's ACK. Fills
+// out and returns its size; 0 where there is no audio.
+size_t audio_p4_nsf_status(uint8_t *out, size_t out_size);
+
 // ---- Microphone (ES7210, doc/mic_spectrum) -------------------------------
 //
 // Public because Ruby reaches it directly: the samples are in this firmware,

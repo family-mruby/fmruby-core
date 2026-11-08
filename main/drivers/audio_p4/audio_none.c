@@ -50,6 +50,13 @@ int audio_p4_process_command(const uint8_t *data, size_t size)
     return 0;
 }
 
+size_t audio_p4_nsf_status(uint8_t *out, size_t out_size)
+{
+    (void)out;
+    (void)out_size;
+    return 0;
+}
+
 bool audio_p4_mic_available(void)
 {
     return false;

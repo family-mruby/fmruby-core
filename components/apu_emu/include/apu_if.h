@@ -57,6 +57,11 @@ void apuif_select(int instance);
  * scaled. Returns number of samples written. */
 int apuif_process_mix(int16_t* buff, int len, uint32_t main_gain_q16);
 
+/* The MAIN instance's last frame from apuif_process_mix, as the peak-to-peak
+ * of its samples before the MAIN volume (16-bit scale). The NSF player's end
+ * detector reads it to tell a song that has gone silent. */
+uint32_t apuif_main_level(void);
+
 /*
  * Memory allocation proxy for apu_emu component.
  * Both map to heap_caps_malloc (PSRAM) / heap_caps_free, implemented in
