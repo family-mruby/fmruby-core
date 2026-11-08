@@ -100,6 +100,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `mouse_wheel/` [マウスホイール対応 検討と計画](mouse_wheel/plan.md) — **進行中** (2026-09-01) **W1 完了** (ブラウザ・sim で実測)、**W2 完了・NARYA v4 実機で確認済** (report/w2.md)。残りは W3 (実機 USB マウス・白名簿) / W4 (nsf/smf と修飾キー) 〔4 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-27) P0-P4 完了。**P6 完了: 青ちらつき (DSI アンダーラン) は DSI フレームバッファの先頭を 4KB 境界に揃えて解消** (report/p6.md、ユーザ目視で確認)。帯域ではなく揃いが原因だった。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔11 files〕
+- `nsf_player_v2/` [NSF プレーヤの改修 (フォルダ・切り替え・曲の終わりで次へ)](nsf_player_v2/plan.md) — **計画済** (2026-11-08) 開くフォルダを選んで覚える、演奏中の別の曲は止めて鳴らす、曲の終わり (無音・ループを数周・時間の上限) で次へ。ループの検出は音源の側 (graphics-audio) 〔1 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔6 files〕
 - `p4_transfer_crash/` [P4 でファイル転送の直後に core 0 が落ちる件](p4_transfer_crash/plan.md) — **完了** (2026-10-07) 原因は P4 での CONFIG_SPI_FLASH_AUTO_SUSPEND の既定の方式 (中断の完了を固定の時間で待つ)。消去・書き込み中のキャッシュの取り込みがときどきバスのエラーになり、どちらのコアでも access fault になる。**CONFIG_SPI_FLASH_AUTO_CHECK_SUSPEND_STATUS=y を NARYAv4 の defaults に採用 (ユーザ承認、6fe8f050)**。計装なしで 64 KB の put 15 回・352 KB 3 回とも 0 回。保存のちらつきが戻っていないことをユーザが目視で確認 (2026-10-07) 〔3 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
