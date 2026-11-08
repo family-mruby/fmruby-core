@@ -19,7 +19,10 @@
 2. デスクトップの電源のメニュー (`system_desktop.app.rb`) と、キーボードだけの形
    (`system_desktop_keys.app.rb`) の両方。文字は `i18n.rb` に `power_logout`・
    `power_logout_confirm` を足す (英語・日本語)。
-3. 試験 (`test/native/wl/` の power_exit を押す場面など) と回帰の基準が変わるなら、
+3. ついでの整理 (見た目は変わらない): 機種の定義の CRT の強さの既定
+   (`native/machine/native_machine.c` の 55・30・…) を、C6b で作った値の表
+   `hosted/crt/crt_presets.h` の `CRT_PRESET_STANDARD` を読む形に揃える。
+4. 試験 (`test/native/wl/` の power_exit を押す場面など) と回帰の基準が変わるなら、
    変化を report に書き、基準の更新は別のコミットにする。
 
 ## 確認
@@ -33,7 +36,7 @@
 ## 触ってよい範囲
 
 fmruby-core の `main/prebuild_scripts/kernel/` のデスクトップと i18n、`native/` の機種の
-定義と電源まわり、`test/native/`、回帰の基準、`doc/linux_native/`。ほかが要るなら止まって返す。
+定義と電源まわり (`native_machine.c` の CRT の既定を含む)、`test/native/`、回帰の基準、`doc/linux_native/`。ほかが要るなら止まって返す。
 
 ## 止まる条件
 
