@@ -939,8 +939,12 @@ lookSelect.addEventListener('change', () => chooseLook(lookSelect.value));
 for (const k of FmrbCrt.KEYS) {
   crtSliders[k].addEventListener('input', () => chooseCrtSettings({ [k]: crtSliders[k].value }));
 }
-document.getElementById('crt-defaults').addEventListener('click',
-  () => chooseCrtSettings(FmrbCrt.DEFAULTS));
+// The sets (hosted/crt/crt_presets.h): all the strengths at once, the on/off
+// as it is.
+document.getElementById('crt-standard').addEventListener('click',
+  () => chooseCrtSettings(FmrbCrt.PRESETS.standard));
+document.getElementById('crt-strong').addEventListener('click',
+  () => chooseCrtSettings(FmrbCrt.PRESETS.strong));
 
 crtSettings = sessionLook === 'crt' ? Object.assign({}, FmrbCrt.DEFAULTS) : storedCrtSettings();
 showCrtSliders();

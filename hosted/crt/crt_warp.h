@@ -15,16 +15,9 @@
 extern "C" {
 #endif
 
-/* The strengths a fresh look gets, 0..100 each (crt.js's DEFAULTS; chosen
- * by the user on the GPD, doc/web_crt C6). */
-#define CRT_DEFAULT_SCAN 55
-#define CRT_DEFAULT_MASK 30
-#define CRT_DEFAULT_GLOW 30
-#define CRT_DEFAULT_CURVE 15
-#define CRT_DEFAULT_VIGNETTE 40
-#define CRT_DEFAULT_NTSC 0
-#define CRT_DEFAULT_FLICKER 0
-#define CRT_DEFAULT_NOISE 0
+/* The strengths a fresh look gets, 0..100 each: the Standard set
+ * (crt_presets.h, also crt.js's DEFAULTS). */
+#include "crt_presets.h"
 /* The time effects (flicker, noise) draw this many frames a second. */
 #define CRT_TIME_FPS 30
 
