@@ -50,6 +50,11 @@
 - 最初の目視・耳での確認は GPD (ネイティブ版の .deb) で (2026-11-08 ユーザ)。検収と取り込みの後、親が .deb を作って GPD に入れる。
 - どの段も `rake regress` が通る (graphics-audio 側も、その回帰の道具)。
 
+## 決定事項 (2026-11-08 ユーザ)
+
+- graphics-audio の版 (`FMRB_GA_VERSION`・`FMRB_GA_FW_VERSION`) は次のリリースで上げる
+  (`NSF_STATUS` は足しただけで、古い graphics-audio とも壊れない。今は上げない)。
+
 ## 未確定事項
 
 - なし (既定値は N2 で決めて report に)。
