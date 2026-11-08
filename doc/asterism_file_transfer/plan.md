@@ -43,7 +43,7 @@
 | T1 | 受け口の再送: 何度届いても同じ結果になる片、位置を聞いて続きから送る送り手、`.part` と控えを残す切断からの再開、全体の照合、期限と回数の上限。試験: 片を落とす・重ねる・順を入れ替える・接続を切る・受け手を止めて戻す、を道具で起こし、全部が続きから完了すること | 実装済・検収待ち (report/t1.md。ネイティブ版 ⇔ ESP32 は未) |
 | T2 | 汎用の種類と送り手の口: 種類 `file` (受け手が許した場所へ置く)、種類ごとの許可 (`receive.toml` を広げる)、同じ名前のファイルの扱い、進み具合と取りやめ。送り手の口: アプリの API・Shell のコマンド・道具 (`fmrb_native.rb` などの PC の道具) | 実装済・検収待ち (report/t2.md。`FmrbApp.free_bytes`、`/home/inbox/`、`[file] from`、FmrbTransfer・Shell の `send`・`tools/fmrb_send.rb`、ブラウザ版の SHA-256 は C。ESP32 は手順だけ) |
 | T3 | 速さと大きなファイル: 片の大きさと同時に送る片の数を受け手が決める形、1 MiB を超えるファイル (上限は受け手の空き)、ESP32 で数 MB を運ぶ確認 | 実装済・検収待ち (report/t3.md。begin の答えに `window`、片は呼び出しの鍵の長さから、同時に送る数は転送のアプリのプールの空きから。種類 file の片は `/home/inbox/` の隠しファイルに直接書き、commit は名前の付け替えだけ。4 MiB の切断からの再開を `regress:transfer` の big と quick の big で。ESP32 は手順だけ) |
-| T4 | CRuby (asterism gem・console) とブラウザ版からの送受: 同じ決まりを gem の側にも置き、console の許可の表と記録に乗せる | 未着手 |
+| T4 | CRuby (asterism gem・console) とブラウザ版からの送受: 同じ決まりを gem の側にも置き、console の許可の表と記録に乗せる | 済 (T4b まで、gem 0.12.0・console 0.3.14) |
 | T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | checkpoint は実装済・検収待ち (report/t5.md。ESP32 は手順だけ)。`.app.wasm` は wasm のアプリの対応のとき |
 
 ## 受け入れ条件
