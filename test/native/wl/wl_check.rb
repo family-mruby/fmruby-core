@@ -283,7 +283,9 @@ class Run
   # are on it (laid out from the right edge, and centred).
   def frame_size(inf = @info) = inf["frame"].split("x").map(&:to_i)
   def power_button = [frame_size[0] - 11, 5]
-  def power_exit = [frame_size[0] - 71, 19]
+  # Exit / Log Out is the third entry (Lock, Suspend, Log Out, Restart,
+  # Power off), entries 12 pixels apart (DROPDOWN_ITEM_H).
+  def power_exit = [frame_size[0] - 71, 19 + 2 * 12]
 
   def question(button)
     w, h = frame_size

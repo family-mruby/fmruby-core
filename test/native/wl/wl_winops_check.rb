@@ -509,13 +509,13 @@ class WinopsRun
            "locked and let go #{slept ? true : false} (#{released_after ? 'once locked' : 'not after the lock'}); " \
            "the inhibitor taken again on waking #{retaken ? true : false}")
 
-    # The power menu's Lock (the last entry).
+    # The power menu's Lock (the first entry).
     tell("locker", "quit") rescue nil
     sleep 1.0
     starts0 = stats["lock_starts"]
     click(fw - 11, 5)
     sleep 1.0
-    click(fw - 71, MENU_BAR_H + 1 + 4 * MENU_ITEM_H + MENU_ITEM_H / 2)
+    click(fw - 71, MENU_BAR_H + 1 + MENU_ITEM_H / 2)
     via_menu = try_wait(15) { info["lock"] == "locked" && stats["lock_starts"] > starts0 }
     result("the power menu's Lock", via_menu && log_text.include?("Desktop: lock the screen"),
            "locked #{via_menu ? true : false}; #{log_text[/started the lock program[^\n]*the power menu[^\n]*/] || 'not from the menu'}")
