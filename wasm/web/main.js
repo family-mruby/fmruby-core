@@ -2855,6 +2855,7 @@ async function runDriveCommand(cmd) {
       // The Look selector and the sliders, through the panel's own doors
       // (stored like a hand's choice). Answers the state and the counters:
       // uploads and draws of the view, frames of the picture.
+      if (cmd.preset) chooseCrtSettings(FmrbCrt.PRESETS[cmd.preset]);
       if (cmd.defaults) chooseCrtSettings(FmrbCrt.DEFAULTS);
       if (cmd.values) chooseCrtSettings(cmd.values);
       if (cmd.look) chooseLook(cmd.look);
