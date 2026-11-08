@@ -571,8 +571,11 @@ class AppsRun
     sh!("docker", "exec", @name, "kill", "-STOP", eyes_pid) if eyes_pid
     click(*power_button)
     sleep 1.0
+    # The session's Exit, in Japanese (L18): "ログアウト" and its question.
+    grim(File.join(@out, "power_menu_ja.png"))
     click(*power_exit)
     sleep 1.2
+    grim(File.join(@out, "logout_question_ja.png"))
     t_exit = now
     click(*question(:yes))
     gone = begin

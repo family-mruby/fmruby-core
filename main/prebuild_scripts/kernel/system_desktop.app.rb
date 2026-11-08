@@ -92,7 +92,22 @@ class SystemDesktopApp < FmrbApp
   # menu: they open from the power button at the right end of the menu bar
   # (POWER_ITEMS, doc/linux_native L7b), which is not drawn where there are
   # none. Lock (the PC's lock program, L13) is there only where one is.
-  POWER_KEYS = { reset: :reset, lock: :power_lock, exit: :power_exit, power_off: :power_off,
+  #
+  # Where Family mruby is the login session (L18: the machine definition's
+  # power has logind, so Power off is offered -- linux_pc, linux_pc_wl), Exit
+  # ends the session and goes back to the login screen: it is shown as
+  # Log Out and asked as "Log out?". Elsewhere (the sdl Window, the
+  # Cardputer) it stays Exit. Only the words differ; it does the same.
+  def self.login_session?(actions)
+    i = 0
+    while i < actions.size
+      return true if actions[i] == :power_off
+      i += 1
+    end
+    false
+  end
+  POWER_EXIT_KEY = login_session?(FmrbApp.power_actions) ? :power_logout : :power_exit
+  POWER_KEYS = { reset: :reset, lock: :power_lock, exit: POWER_EXIT_KEY, power_off: :power_off,
                  restart: :power_restart, suspend: :power_suspend }
   POWER_ITEMS = FmrbApp.power_actions.map { |a| { key: POWER_KEYS[a], power: a } }
   DROPDOWN_ITEMS = [
@@ -2358,7 +2373,7 @@ class SystemDesktopApp < FmrbApp
       # Nothing to lose, so no question: the lock program takes the screen.
       Log.info("Desktop: lock the screen")
       FmrbApp.power(:lock)
-    when :power_exit, :power_off, :power_restart, :power_suspend
+    when :power_exit, :power_logout, :power_off, :power_restart, :power_suspend
       # Confirmed, then the kernel hands it back as do_power (forward_power).
       open_confirm_dialog(FmrbI18n.t(:"#{item[:key]}_confirm"), "power",
                           { "action" => item[:power].to_s })

@@ -211,7 +211,19 @@ class KeysDesktopApp < FmrbApp
   # The machine's power entries, last (FmrbApp.power_actions). Exit alone
   # where ending the program is all there is (the Cardputer: back to
   # APPLaunch).
-  POWER_LABELS = { exit: :power_exit, power_off: :power_off,
+  # Where Family mruby is the login session (L18: Power off is offered, so
+  # the machine definition's power has logind), Exit is shown as Log Out; it
+  # does the same (ends the program, and with it the session).
+  def self.login_session?(actions)
+    i = 0
+    while i < actions.size
+      return true if actions[i] == :power_off
+      i += 1
+    end
+    false
+  end
+  POWER_EXIT_KEY = login_session?(FmrbApp.power_actions) ? :power_logout : :power_exit
+  POWER_LABELS = { exit: POWER_EXIT_KEY, power_off: :power_off,
                    restart: :power_restart, suspend: :power_suspend }
 
   def add_power_items(items)
