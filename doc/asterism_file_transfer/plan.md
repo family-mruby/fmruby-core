@@ -127,6 +127,11 @@
   端末の行ごとに「console へファイルを送ってよい」を付ける。付けた端末から console が受け、
   ルータの ask の行 (`asterism/console/transfer/inbox/call/<その端末>`) も台帳から作る
   (Apply で反映。Roles を手で直さない)。`.env` の `ASTERISM_TRANSFER_FROM` は消す (画面だけ)。
+- **(T4b) console から送る相手も Members の行ごと** (2026-11-08 ユーザ): 端末の行に「console から
+  ファイルを受ける」を付けると、ページからその端末へ送れ、ルータの rw の行
+  (`asterism/<その端末>/transfer`・`.../transfer/**`) も台帳から作る (Apply)。Call permissions の
+  「Allow sending files」(kind=file) は消す (0.3.13 の行は移行で Members の印に写す)。
+  端末の `receive.toml` の `[file] from = ["console"]` は今どおり要る (二重の鍵)。
 - **T5 は checkpoint の載せ替えだけ**: アプリの移動を新しい受け口の作り (受け手が片の大きさと
   同時に送る数を決める等) に揃え、`regress:checkpoint` が全部通ること。ブラウザ版のアプリ
   (`.app.wasm`) のインストールは、wasm のアプリの対応 (doc/wasm_apps/plan.md) のときに行う。
