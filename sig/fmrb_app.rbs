@@ -1209,6 +1209,21 @@ class FmrbApp
   # ```
   def self.path_read_only?: (String path) -> bool
 
+  # その場所にあと何バイト書けるか <<en>> How many more bytes can be written where the path lives
+  #
+  # /tmp は RAM のファイルシステムの空き、ほかはその下のファイルシステムの空き。
+  # 分からないとき (ブラウザ版の /home など) は nil。
+  # ```ruby
+  # FmrbApp.free_bytes("/tmp")
+  # ```
+  # <<en>>
+  # /tmp: what is left of the RAM filesystem; elsewhere: the free space of
+  # the filesystem under it. nil when it cannot be known (the browser's /home).
+  # ```ruby
+  # FmrbApp.free_bytes("/tmp")
+  # ```
+  def self.free_bytes: (String path) -> Integer?
+
   # 本体の音量を変える (0-10) <<en>> Set the machine's volume (0-10)
   #
   # 0 は無音、10 が最大。ミュートとは別で、ミュートを外すとこの音量に戻る。

@@ -35,6 +35,10 @@
 #              is placed, and the sender is told why
 #   kept       the sender stopped on the way: the receiver deletes the piece
 #              file once its time (3 s here) has gone by
+#   file       the kind "file" through the transfer apps (T2): the first
+#              program's probe asks its transfer app to send (FmrbTransfer)
+#              to the second's, three times: placed in /home/inbox/, then
+#              beside it under name(1), then over the first (overwrite)
 #
 # --bench (doc/asterism_file_transfer/report/t0.md): instead of the cases,
 # one call of each size (the largest that goes through), the file at each
@@ -202,7 +206,7 @@ module Regress
           return bench if @opts[:bench]
           cases.each do |name|
             next if @opts[:only] && !name.include?(@opts[:only])
-            next if peer? && %w[restart kept].include?(name)
+            next if peer? && %w[restart kept file].include?(name)
             notes << "#{name}: #{send("case_#{name}")}"
           rescue Failure => e
             ok = false
@@ -224,7 +228,7 @@ module Regress
         ok
       end
 
-      def cases = %w[straight drop twice swap cut restart mismatch kept]
+      def cases = %w[straight drop twice swap cut restart mismatch kept file]
 
       BENCH_SIZES = [1024, 2048, 3072, 3584, 3840, 3968, 4000, 4032, 4064, 4096, 4608, 8192, 16_384, 65_536].freeze
       BENCH_PIECES = [512, 1024, 2048, 3072, 3840].freeze
@@ -463,6 +467,33 @@ module Regress
         raise Failure, "the piece file is still there" unless gone
         kill_probes
         "the piece file (#{at} bytes) deleted #{took} ms after the sender stopped"
+      end
+
+      def case_file
+        kill_probes
+        home_a = File.join(OUT, "#{File.basename(RUN_DIR_A)}_home", "user", "home")
+        home_b = File.join(OUT, "#{File.basename(RUN_DIR_B)}_home", "user", "home")
+        File.write(File.join(home_b, "asterism", "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+        FileUtils.cp(@src, File.join(home_a, "xfer_file.bin"))
+        FileUtils.rm_rf(File.join(home_b, "inbox"))
+        placed = [false, false, true].map do |over|
+          put_job(RUN_DIR_A, PORT_A, { "api" => { "to" => NODE_B, "path" => "/home/xfer_file.bin", "overwrite" => over } })
+          from = log_lines(RUN_DIR_A).size
+          spawn_probe(RUN_DIR_A, PORT_A, NODE_A)
+          i = wait_line(RUN_DIR_A, /xfer_probe: api done/, from, "the probe's api end", timeout: 60)
+          line = log_lines(RUN_DIR_A)[i]
+          raise Failure, line[/xfer_probe: .*/] unless line =~ /api done ok (\S+)/
+          kill_probes
+          ::Regexp.last_match(1)
+        end
+        raise Failure, "placed as #{placed.inspect}" unless placed == ["xfer_file.bin", "xfer_file(1).bin", "xfer_file.bin"]
+        got = Dir.children(File.join(home_b, "inbox")).sort
+        raise Failure, "the inbox has #{got.inspect}" unless got == ["xfer_file(1).bin", "xfer_file.bin"]
+        got.each do |n|
+          sha = Digest::SHA256.file(File.join(home_b, "inbox", n)).hexdigest
+          raise Failure, "#{n} has sha256 #{sha[0, 16]}" unless sha == @sha
+        end
+        "#{placed.join(', ')} in the second program's /home/inbox (the third overwrote the first)"
       end
 
       # ---- sending one file ----

@@ -94,6 +94,10 @@ MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
   # with them.
   conf.gem gemdir: "#{dir}/mruby-pack"
   conf.gem core: "picoruby-base64"
+  # SHA-256 in C (Digest::SHA256): the other builds have mbedTLS's through
+  # picoruby-mbedtls, which comes with the socket gems; Asterism::Transfer
+  # checks every file it carries with it (doc/asterism_file_transfer T2).
+  conf.gem core: "picoruby-fmrb-sha256"
 
   # Zenoh and Asterism (doc/ruby_asterism, B1): the same two gems as the
   # Linux and P4 builds. A page cannot open TCP, so zenoh-pico is built for

@@ -312,7 +312,7 @@ namespace :regress do
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:spinel (the all-Spinel generation, as CI) + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build). Each sim build is made once and shared between the parts"
+  desc "Everything: regress + regress:spinel (the all-Spinel generation, as CI) + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build) + regress:transfer:quick (the file transfer's gist, a minute). Each sim build is made once and shared between the parts"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
@@ -332,7 +332,8 @@ namespace :regress do
     took = []
     t_all = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     begin
-      %w[regress regress:spinel regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint].each do |t|
+      %w[regress regress:spinel regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint
+         regress:transfer:quick].each do |t|
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         begin
           Rake::Task[t].invoke
@@ -497,5 +498,15 @@ namespace :regress do
     args << "--bench" if ENV["BENCH"] == "1"
     args << "--web" if ENV["BENCH"] == "1" && ENV["WEB"] == "1"
     abort "regress:transfer: failed" unless system(Gem.ruby, REGRESS_TRANSFER, *args)
+  end
+
+  namespace :transfer do
+    desc "The gist of the file transfer in about a minute (doc/asterism_file_transfer T2; in regress:full): one native program's transfer app and this process over Asterism -- pieces lost, sent twice and swapped, the connection cut once, a wrong sha256, the kind file in /home/inbox (the same name again, overwrite), refusals before a byte is sent, an app's sending with its progress and a cancel (WEB=1: the browser build as the machine, ONLY=<case>)"
+    task :quick do
+      args = []
+      args << "--web" if ENV["WEB"] == "1"
+      args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+      abort "regress:transfer:quick: failed" unless system(Gem.ruby, File.join(ROOT_DIR, "tools", "regress", "transfer_quick.rb"), *args)
+    end
   end
 end

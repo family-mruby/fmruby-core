@@ -24,7 +24,7 @@
 #                      rg-ckpt-b refuses it when asked, before it is stopped
 #                      (no image is written), and it counts on here.
 #   asterism not allowed  the counter to this program's own node: its
-#                      receive.toml takes nothing from itself, refused before
+#                      receive.toml takes no checkpoint from itself, refused before
 #                      it is stopped.
 #   asterism no answer the counter to a node nobody is: refused before it is
 #                      stopped.
@@ -279,7 +279,7 @@ module Regress
         pid = start_counter
         mark = log_lines.size
         r = asterism_move(pid, NODE_A)
-        unless r["status"] == "stayed" && r["here"] == "not stopped" && r["reason"].to_s.include?("takes nothing from #{NODE_A}")
+        unless r["status"] == "stayed" && r["here"] == "not stopped" && r["reason"].to_s.include?("takes no checkpoint from #{NODE_A}")
           raise Failure, "asterism not allowed: answered #{r.inspect}"
         end
         not_stopped(pid, mark, "asterism not allowed", "ckpt_counter")

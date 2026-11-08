@@ -27,6 +27,13 @@
 #   {"bench": "speed", "to": ..., "path": ..., "pieces": [...],
 #    "windows": [...]}                     the file at each piece size and
 #                                          number of pieces on their way
+#   {"api": {"to": "node-b", "path": "/home/x.txt", "overwrite": true,
+#    "name": "y.txt", "cancel_at": 65536}}
+#                                          send a file through the
+#                                          transfer app as an app does
+#                                          (FmrbTransfer, the kind "file";
+#                                          cancel_at: cancel it once that
+#                                          much is there)
 #   {"bench": "hash", "path": ..., "make": 262144}
 #                                          SHA-256 (each engine there is)
 #                                          and CRC32 of the file (make: write
@@ -38,10 +45,13 @@
 # 5th piece two times, swap sends every 7th piece after the one that
 # follows it.
 #
+# Who may send probes: receive.toml's [probe] from, or its top-level from.
+#
 # The log (what the tool reads): "xfer_probe: ready as <node>",
 # "xfer_probe: held N" (every 64 KB the receiver holds), "xfer_probe: done
 # ok ..." / "xfer_probe: done failed: ...", "xfer_probe: received ...",
-# "xfer_probe: bench ...".
+# "xfer_probe: bench ...", "xfer_probe: api now <state> <sent>/<size>" and
+# "xfer_probe: api done ok <name>" / "xfer_probe: api done failed: ...".
 require "/usr/share/asterism/transfer/transfer"
 
 class ProbeInbox < ::Asterism::Transfer::Inbox
@@ -51,7 +61,11 @@ class ProbeInbox < ::Asterism::Transfer::Inbox
     return "xfer_probe takes no #{kind}" unless kind == "probe"
     return nil unless File.exist?(RECEIVE_CONF)
     conf = FmrbToml.load(RECEIVE_CONF)
-    allowed = conf ? conf["from"].to_a : []
+    allowed = []
+    if conf.is_a?(Hash)
+      allowed = conf["from"].to_a
+      allowed += conf["probe"]["from"].to_a if conf["probe"].is_a?(Hash)
+    end
     return nil if allowed.include?("*") || allowed.include?(from.to_s)
     "xfer_probe takes nothing from #{from}"
   end
@@ -118,7 +132,12 @@ class XferProbeApp < FmrbApp
     @inbox.tick
     step_sender if @sender
     step_bench if @bench && up
+    step_api if @api
     (@sender || @bench || @inbox.busy?) ? 1 : 50
+  end
+
+  def on_control(msg)
+    @api.on_control(msg) if @api
   end
 
   def on_destroy
@@ -166,6 +185,8 @@ class XferProbeApp < FmrbApp
           pi += 1
         end
       end
+    elsif j["api"].is_a?(Hash)
+      start_api(j["api"])
     elsif j["to"]
       @sender = new_sender(j["path"].to_s, j["name"].to_s, (j["piece"] || ::Asterism::Transfer::PIECE).to_i,
                            (j["window"] || 1).to_i, j["sha256"])
@@ -203,6 +224,43 @@ class XferProbeApp < FmrbApp
     else
       Log.warn("xfer_probe: done failed: #{s.reason}; #{summary}")
     end
+  end
+
+  # ---- an app's way (FmrbTransfer) ----
+
+  def start_api(a)
+    require "/usr/share/transfer/fmrb_transfer"
+    @api = FmrbTransfer.new(self)
+    @api_said = ""
+    @api_rq = @api.send_file(a["to"].to_s, a["path"].to_s, overwrite: a["overwrite"] == true, name: a["name"])
+    @api_cancel_at = a["cancel_at"]
+    Log.info("xfer_probe: api asked to send #{a['path']} to #{a['to']}")
+  rescue => e
+    @api = nil
+    Log.warn("xfer_probe: api done failed: #{e.message}")
+  end
+
+  def step_api
+    @api.update
+    st = @api.status(@api_rq)
+    said = "#{st['state']} #{st['sent']}/#{st['size']}"
+    if said != @api_said
+      @api_said = said
+      Log.info("xfer_probe: api now #{said}")
+    end
+    c = @api_cancel_at
+    if c.is_a?(Integer) && st["state"] == "sending" && st["sent"] >= c
+      @api_cancel_at = nil
+      Log.info("xfer_probe: api cancelling at #{st['sent']}")
+      @api.cancel(@api_rq)
+    end
+    return unless @api.done?(@api_rq)
+    if @api.ok?(@api_rq)
+      Log.info("xfer_probe: api done ok #{st['name']}")
+    else
+      Log.warn("xfer_probe: api done failed: #{st['reason']}")
+    end
+    @api = nil
   end
 
   # ---- T0's numbers ----

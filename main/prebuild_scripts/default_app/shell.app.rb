@@ -428,6 +428,7 @@ class ShellApp < FmrbApp
   def on_update()
     tick_pending_edit
     tick_svc_wait
+    tick_send
 
     # Continuous scroll while holding scrollbar
     if @scroll_hold != 0
@@ -873,6 +874,7 @@ class ShellApp < FmrbApp
   def on_control(msg)
     handle_kill_result(msg) if msg["cmd"] == "kill_result"
     handle_checkpoint_result(msg) if msg["cmd"] == "checkpoint_result"
+    return if @xfer && @xfer.on_control(msg)
     if msg["cmd"] == "topic_data" && msg["topic"] == svc_reply_topic
       handle_svc_reply(msg["data"] || {})
     end

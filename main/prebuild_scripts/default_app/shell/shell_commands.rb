@@ -103,6 +103,8 @@ module ShellCommandsMixin
       cmd_restore(args)
     when "move"
       cmd_move(args)
+    when "send"
+      cmd_send(args)
     when "svc"
       cmd_svc(args)
     when "edit"
@@ -136,6 +138,8 @@ module ShellCommandsMixin
       @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
       @history << "  restore <image> - Start an app from its image (.ckpt)"
       @history << "  move <pid> <node> - Move an app to another machine (its Asterism node ID)"
+      @history << "  send <node> <file> [-o] - Send a file to another machine's /home/inbox (-o: overwrite)"
+      @history << "  send -c - Stop the file being sent"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1143,6 +1147,92 @@ module ShellCommandsMixin
       return
     end
     @history << "move: asked to move PID #{pid} to #{args[1]}"
+  end
+
+  # Send a file to another machine over Asterism (doc/asterism_file_transfer
+  # T2), named by its Asterism node ID: it is placed under that machine's
+  # /home/inbox/ when its receive.toml takes files from this one ([file]
+  # from). A file of the same name there stays and this one gets a name of
+  # its own, unless -o (overwrite). The transfer app does the sending
+  # (FmrbTransfer); its progress and end come back as messages, shown by
+  # tick_send. One at a time from here; send -c stops it.
+  def cmd_send(args)
+    if args == ["-c"]
+      if @send_rq && @xfer && @xfer.cancel(@send_rq)
+        @history << "send: stopping #{@send_path}"
+      else
+        @history << "send: nothing is being sent"
+      end
+      return
+    end
+    over = false
+    rest = []
+    i = 0
+    while i < args.size
+      if args[i] == "-o"
+        over = true
+      else
+        rest << args[i]
+      end
+      i += 1
+    end
+    unless rest.size == 2
+      @history << "Usage: send <node> <file> [-o]   (node: the other machine's Asterism node ID; -o: overwrite)"
+      return
+    end
+    if @send_rq && @xfer && !@xfer.done?(@send_rq)
+      @history << "send: #{@send_path} is still being sent (send -c stops it)"
+      return
+    end
+    path = resolve_virtual_path(rest[1])
+    unless File.exist?(path) && !File.directory?(path)
+      @history << "send: no such file: #{rest[1]}"
+      return
+    end
+    begin
+      unless @xfer
+        require "/usr/share/transfer/fmrb_transfer"
+        @xfer = FmrbTransfer.new(self)
+      end
+      @send_rq = @xfer.send_file(rest[0], path, overwrite: over)
+    rescue => e
+      @history << "send: #{e.message}"
+      return
+    end
+    @send_path = path
+    @send_to = rest[0]
+    @send_shown = 0
+    @history << "send: #{path} to #{rest[0]}#{over ? ' (overwrite)' : ''}"
+  end
+
+  # Called once per on_update from shell.app.rb: the progress of the file
+  # being sent, a line each quarter, and its end.
+  def tick_send
+    return unless @send_rq && @xfer
+    @xfer.update
+    st = @xfer.status(@send_rq)
+    return unless st
+    state = st["state"]
+    if state == "done"
+      append_output("send: #{@send_path} is in #{@send_to}'s /home/inbox as #{st["name"]}")
+      @xfer.forget(@send_rq)
+      @send_rq = nil
+      return
+    end
+    if state == "failed"
+      append_output("send: #{@send_path} not sent (#{st["reason"]})")
+      @xfer.forget(@send_rq)
+      @send_rq = nil
+      return
+    end
+    size = st["size"].to_i
+    if state == "sending" && size > 0
+      q = st["sent"].to_i * 4 / size
+      if q > @send_shown && q < 4
+        @send_shown = q
+        append_output("send: #{st["sent"]} of #{size} bytes")
+      end
+    end
   end
 
   # The kernel's answer to cmd_checkpoint: the image's path, or why the app

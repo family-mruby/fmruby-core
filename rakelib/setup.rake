@@ -123,6 +123,10 @@ task :setup do
   # compiles too, staged by rake spinel:gen -- one file, both engines.
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-raycast"
   sh "cp -rf lib/add/picoruby-fmrb-raycast #{mrbgem_path}/"
+  # sha256 (Digest::SHA256 in C for the browser build, which has no mbedTLS:
+  # doc/asterism_file_transfer T2)
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-sha256"
+  sh "cp -rf lib/add/picoruby-fmrb-sha256 #{mrbgem_path}/"
   # midi (imported from Midori; Ruby protocol layer only, see the gem's
   # FAMILY_MRUBY_PORT.md)
   sh "rm -rf #{mrbgem_path}/picoruby-midi"

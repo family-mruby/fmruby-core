@@ -14,6 +14,7 @@
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
+#include "fmrb_tmpfs.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
@@ -2205,6 +2206,37 @@ static mrb_value mrb_fmrb_app_s_path_read_only_p(mrb_state *mrb, mrb_value klass
     return mrb_bool_value(fmrb_hal_file_entry_is_read_only(path));
 }
 
+// FmrbApp.free_bytes(path) -> Integer, or nil when not known. The bytes that
+// can still be written where path lives: /tmp from the RAM filesystem's own
+// count (its capacity less what it holds; statfs there would answer for the
+// flash or the host's disk), anything else from the filesystem under it
+// (LittleFS or the SD card on the devices, the host directory on Linux).
+// The browser's storage gives no real figure (Emscripten's statvfs is a
+// constant), so it is nil there: the caller writes and finds out.
+// Allocation-free. The transfer app asks before it takes a file
+// (doc/asterism_file_transfer T2).
+static mrb_value mrb_fmrb_app_s_free_bytes(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *path;
+    mrb_get_args(mrb, "z", &path);
+    size_t mlen = strlen(FMRB_TMPFS_MOUNT);
+    if (strncmp(path, FMRB_TMPFS_MOUNT, mlen) == 0 && (path[mlen] == '\0' || path[mlen] == '/')) {
+        size_t used = 0, cap = 0;
+        fmrb_tmpfs_usage(&used, &cap);
+        return mrb_fixnum_value((mrb_int)(cap > used ? cap - used : 0));
+    }
+#if defined(FMRB_PLATFORM_WASM)
+    return mrb_nil_value();
+#else
+    uint64_t total = 0, free_bytes = 0;
+    if (fmrb_hal_file_statfs(path, &total, &free_bytes) != FMRB_OK || total == 0) {
+        return mrb_nil_value();
+    }
+    return mrb_fixnum_value((mrb_int)free_bytes);
+#endif
+}
+
 // FmrbApp.set_audio_mute(on) -> nil. Mutes or unmutes the whole machine at
 // the output stage and saves it to system_conf; see fmrb_host_set_audio_mute.
 static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
@@ -2645,6 +2677,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "set_text_cursor", mrb_fmrb_app_s_set_text_cursor, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "path_read_only?", mrb_fmrb_app_s_path_read_only_p, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "free_bytes", mrb_fmrb_app_s_free_bytes, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "audio_volume", mrb_fmrb_app_s_audio_volume, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));
