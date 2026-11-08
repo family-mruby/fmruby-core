@@ -1,6 +1,6 @@
 # Asterism でファイルを運ぶ汎用の仕組み (再送つき)
 
-> 状態: 進行中 | 更新: 2026-11-08 | T0〜T3b 済 (report/t0〜t3.md)。ESP32 の実機の確認待ち。T4 済 (console 0.3.13・gem 0.12.0 公開、VPS 反映待ち)、T5 に着手 (instruction_t5.md)。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
+> 状態: 進行中 | 更新: 2026-11-08 | T0〜T3b 済 (report/t0〜t3.md)。ESP32 の実機の確認待ち。T4 済 (console 0.3.13・gem 0.12.0 公開、VPS 反映待ち)、T5 実装済・検収待ち (report/t5.md。移動は既に新しい受け口の上にあり、hold が切れた後の取りやめ `move_stop` を揃えた)。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
 
 ## 目的
 
@@ -44,7 +44,7 @@
 | T2 | 汎用の種類と送り手の口: 種類 `file` (受け手が許した場所へ置く)、種類ごとの許可 (`receive.toml` を広げる)、同じ名前のファイルの扱い、進み具合と取りやめ。送り手の口: アプリの API・Shell のコマンド・道具 (`fmrb_native.rb` などの PC の道具) | 実装済・検収待ち (report/t2.md。`FmrbApp.free_bytes`、`/home/inbox/`、`[file] from`、FmrbTransfer・Shell の `send`・`tools/fmrb_send.rb`、ブラウザ版の SHA-256 は C。ESP32 は手順だけ) |
 | T3 | 速さと大きなファイル: 片の大きさと同時に送る片の数を受け手が決める形、1 MiB を超えるファイル (上限は受け手の空き)、ESP32 で数 MB を運ぶ確認 | 実装済・検収待ち (report/t3.md。begin の答えに `window`、片は呼び出しの鍵の長さから、同時に送る数は転送のアプリのプールの空きから。種類 file の片は `/home/inbox/` の隠しファイルに直接書き、commit は名前の付け替えだけ。4 MiB の切断からの再開を `regress:transfer` の big と quick の big で。ESP32 は手順だけ) |
 | T4 | CRuby (asterism gem・console) とブラウザ版からの送受: 同じ決まりを gem の側にも置き、console の許可の表と記録に乗せる | 未着手 |
-| T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | 未着手 |
+| T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | checkpoint は実装済・検収待ち (report/t5.md。ESP32 は手順だけ)。`.app.wasm` は wasm のアプリの対応のとき |
 
 ## 受け入れ条件
 

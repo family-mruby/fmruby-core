@@ -1,6 +1,6 @@
 # T5 指示書: アプリの移動 (checkpoint) を新しい受け口の作りに揃える
 
-> 状態: 実装中 | 更新: 2026-11-08 | 正は plan.md の決定 (T5 は checkpoint の載せ替えだけ。.app.wasm は wasm のアプリの対応のとき)
+> 状態: 実装済・検収待ち | 更新: 2026-11-08 | report/t5.md。 正は plan.md の決定 (T5 は checkpoint の載せ替えだけ。.app.wasm は wasm のアプリの対応のとき)
 
 ## 範囲
 
