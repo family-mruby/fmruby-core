@@ -912,28 +912,15 @@ class FmrbKernelImpl < FmrbKernel
     nil
   end
 
-  # At boot: a machine that takes files in (RECEIVE_CONF), or one with the
-  # console's credentials (a .tar in ASTERISM_DIR: a member of the console,
-  # which sends it the list of who may send to it, doc/asterism_file_transfer
-  # T6), keeps the transfer app up so that others can reach it.
+  # At boot: a machine that takes files in (RECEIVE_CONF) keeps the transfer
+  # app up so that others can reach it. Only then (2026-11-09 user): an
+  # ESP32 would otherwise hold one more TLS connection for every machine with
+  # credentials. A machine that wants the console's list of senders
+  # (doc/asterism_file_transfer T6) puts a receive.toml, empty is enough.
   def spawn_transfer_if_receiving
-    return nil unless File.exist?(RECEIVE_CONF) || asterism_credentials?
+    return nil unless File.exist?(RECEIVE_CONF)
     start_transfer
     nil
-  end
-
-  def asterism_credentials?
-    found = false
-    begin
-      dir = Dir.open(ASTERISM_DIR)
-      while (name = dir.read)
-        found = true if name.end_with?(".tar")
-      end
-      dir.close
-    rescue
-      found = false
-    end
-    found
   end
 
   def move_stage(stage, ms)

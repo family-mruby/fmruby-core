@@ -151,6 +151,12 @@
     端末の持ち主が手で書いた分はそのまま残し、両方の和で受ける。
   - **console の Members にいる端末は自動で受け入れる** (端末側で opt-in を書かない)。
   - **console に届かないとき (P2P・console が止まっている) は最後に配られた写しで動く** (期限なし)。
+  - (T6 の後) 一覧を受け入れるのは証明書つきの接続 (`tls/`) のときだけ。ネイティブ版・sim・ブラウザ版は
+    TLS の接続が無いので、**ネイティブ版に TLS を足す別の計画**を立てる (doc/linux_native)。
+  - (T6 の後) 転送のアプリを起動時に起こすのは **receive.toml があるときだけ** (今まで通り。ESP32 の
+    TLS の接続を増やさない)。console の一覧を受けたい端末は空の receive.toml を置く。
+  - (T6 の後) 一覧に console を自動で入れない (console から受けるのは、一覧で console を選び、
+    T4b の「Receives files from the console」の印も付けた端末)。
 
 ## 未確定事項
 
