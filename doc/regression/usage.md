@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-07 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-08 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 1. 流し方
 
@@ -72,7 +72,7 @@ end
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
 ```
-rake regress:full                # rake regress + regress:spinel + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 (全部で 34 分ほどだった。2026-11-06 から checkpoint にブラウザ版の場面が入り、2 分ほど増える見込み。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
+rake regress:full                # rake regress + regress:spinel + regress:size + regress:run + regress:screens + regress:live + regress:wl + regress:checkpoint SIM=1 + regress:transfer:quick (全部で 34 分ほどだった。2026-11-06 から checkpoint にブラウザ版の場面が入り、2 分ほど増える見込み。sim は同じ構成を 1 回だけ作り、部分の間で使い回す)
 rake regress:spinel              # カーネル・エディタ・デスクトップを全部 Spinel にした構成の Spinel の C を、CI の spinel-gen と同じく作る (C のコンパイルはしない。20 秒ほど、7.4)
 rake regress:size                # S3・P4 の 1 台ずつ (NARYAv3・TAB5) のファームを作り、idf.py size の数字を基準と比べる (4 分ほど)
 rake regress:size ALL=1          # firmware のある全端末 (10 分ほど)。regress:size:all も同じ
@@ -413,16 +413,19 @@ checkpoint: ok (2.9 min)
 ## 12.5 ファイルを運ぶ (rake regress:transfer)
 
 ```
-rake regress:transfer                 # 今あるネイティブ版 (標準) の 2 つの間で、壊し方 8 つ (1 分ほど。作らない)
+rake regress:transfer                 # 今あるネイティブ版 (標準) の 2 つの間で、壊し方 8 つと種類 file (3 分ほど。作らない)
 rake regress:transfer ENGINE=mruby    # 全部 mruby の構成で
 rake regress:transfer ONLY=cut        # 1 つだけ (名前の一部)
 rake regress:transfer BENCH=1         # 壊さずに T0 の数字 (1 回の呼び出しの上限・片の大きさと同時に送る片の数ごとの速さ・SHA-256 と CRC32)
+rake regress:transfer:quick           # 要点だけ 1 分以内 (ネイティブ版 1 つとこの道具。regress:full に入っている)
+rake regress:transfer:quick WEB=1     # 相手をブラウザ版にして (resend・mismatch・names・refused と、ブラウザ版の SHA-256 の時間)
 ```
 
 - Asterism::Transfer (asterism gem の data/transfer、転送のアプリが使うもの) を、試験のアプリ `/app/test/xfer_probe.app.rb` で動かす (doc/asterism_file_transfer/report/t1.md)。A が 1 MiB のでたらめなバイト列を送り、B が種類 `probe` として受ける。
 - ルータは自前 (regress:checkpoint と同じ形)。B はこの道具の中の中継を通ってつなぐので、道具が B の接続を切れる。
-- 場面: straight・drop (10 片に 1 つ落とす)・twice (5 片に 1 つを 2 回)・swap (7 片に 1 つを次の片と入れ替える)・cut (B の接続を 256 KB と 640 KB で切る)・restart (B の試験のアプリを途中で止めて起動し直す)・mismatch (違う SHA-256 を宣言する)・kept (A を途中で止め、B が 3 秒で片のファイルを消す)。届いたものは B から取り出して SHA-256 を比べ、続きから送ったことは A と B のログの位置で確かめる。
-- ログは `tmp/regress/transfer/<構成>_a.log`・`_b.log`。`regress:full` にはまだ入れていない。
+- 場面: straight・drop (10 片に 1 つ落とす)・twice (5 片に 1 つを 2 回)・swap (7 片に 1 つを次の片と入れ替える)・cut (B の接続を 256 KB と 640 KB で切る)・restart (B の試験のアプリを途中で止めて起動し直す)・mismatch (違う SHA-256 を宣言する)・kept (A を途中で止め、B が 3 秒で片のファイルを消す)・file (A の試験のアプリが転送のアプリに頼んで B の転送のアプリへ種類 `file` で 3 回: `/home/inbox/` に置く、同じ名前で `name(1)`、上書き)。届いたものは B から取り出して SHA-256 を比べ、続きから送ったことは A と B のログの位置で確かめる。
+- ログは `tmp/regress/transfer/<構成>_a.log`・`_b.log`。`regress:full` には入れず、代わりに下の quick を入れた。
+- `regress:transfer:quick` (`tools/regress/transfer_quick.rb`、T2): ネイティブ版 (標準) を 1 つだけ起こし、この道具 (CRuby の Asterism、ノード `rg-xfer-pc`、アプリ名 `transfer`) を相手にする。場面は resend (抜け・重なり・入れ替えを混ぜて 256 KB)・cut (512 KB の途中で 1 回切る)・mismatch・names (`/home/inbox/` にだけ置く、同じ名前で `same(1).txt`、上書き)・refused (受けない種類・相手・名前・古い書き方の receive.toml・空きより大きいもの。どれも 1 回の呼び出しで断られる)・api (端末の試験のアプリが FmrbTransfer で送る。進み具合と取りやめ)。15 秒ほど。`WEB=1` はブラウザ版 (`wasm/build/dist`) が相手で、始めにブラウザ版の SHA-256 (C と plain Ruby) の時間を出す。ログは `tmp/regress/transfer/quick_b.log`・`quick_web.log`。
 
 ## 13. 作業の木ごとに流す (worktree・並行)
 
