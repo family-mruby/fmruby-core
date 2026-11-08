@@ -13,20 +13,33 @@
 # there), else /home/xfer_probe.job (a board, where the remote file tools
 # reach /home), read once at the start. Every key may be left out:
 #
-#   {"keep_ms": 3000, "piece": 3072}       the receiver: how long a file
+#   {"keep_ms": 3000, "recv_piece": 3072, "recv_window": 4,
+#    "recv_dir": "/home/xp/"}              the receiver: how long a file
 #                                          that stopped coming is kept, the
-#                                          largest piece taken
+#                                          largest piece and the pieces at
+#                                          once it names to a sender, where
+#                                          it writes (default /tmp/; a
+#                                          file larger than /tmp's room
+#                                          goes to /home)
 #   {"to": "node-b", "path": "/tmp/x.bin", "name": "x",
 #    "faults": "drop" | "twice" | "swap", "window": 1, "piece": 3072,
-#    "sha256": "<64 hex>", "pace_ms": 10} send a file (sha256: declare a
-#                                          wrong one, for the refusal;
-#                                          pace_ms: a step of the sender at
-#                                          most that often, so that a fault
-#                                          can be put in on the way)
+#    "sha256": "<64 hex>", "pace_ms": 10, "app": "transfer", "kind": "file",
+#    "make": 4194304, "overwrite": true}   send a file (piece, window: the
+#                                          most this sender goes to, else
+#                                          what the receiver names; sha256:
+#                                          declare a wrong one, for the
+#                                          refusal; pace_ms: a step of the
+#                                          sender at most that often, so
+#                                          that a fault can be put in on the
+#                                          way; app, kind: another receiver
+#                                          than a probe, e.g. the transfer
+#                                          app's kind "file"; make: write
+#                                          that many bytes at path first)
 #   {"bench": "sizes", "to": ..., "sizes": [...]}   one call of each size
 #   {"bench": "speed", "to": ..., "path": ..., "pieces": [...],
-#    "windows": [...]}                     the file at each piece size and
+#    "windows": [...], "make": n}          the file at each piece size and
 #                                          number of pieces on their way
+#                                          (the receiver names the most)
 #   {"api": {"to": "node-b", "path": "/home/x.txt", "overwrite": true,
 #    "name": "y.txt", "cancel_at": 65536}}
 #                                          send a file through the
@@ -71,7 +84,7 @@ class ProbeInbox < ::Asterism::Transfer::Inbox
   end
 
   def received(t)
-    dest = "/tmp/#{t['name']}.probe"
+    dest = "#{dir}#{t['name']}.probe"
     File.delete(dest) if File.exist?(dest)
     File.rename(t["part"], dest)
     Log.info("xfer_probe: received #{dest} (#{t['size']} bytes, sha256 #{t['sha256'][0, 16]}) from #{t['from']}")
@@ -107,7 +120,10 @@ class XferProbeApp < FmrbApp
 
   def on_create
     @job = read_job
-    @inbox = ProbeInbox.new("/tmp/", piece: (@job["recv_piece"] || ::Asterism::Transfer::PIECE).to_i,
+    dir = (@job["recv_dir"] || "/tmp/").to_s
+    Dir.mkdir(dir.byteslice(0, dir.bytesize - 1)) unless Dir.exist?(dir.byteslice(0, dir.bytesize - 1))
+    @inbox = ProbeInbox.new(dir, piece: (@job["recv_piece"] || ::Asterism::Transfer::PIECE_MAX).to_i,
+                            window: (@job["recv_window"] || ::Asterism::Transfer::WINDOW).to_i,
                             keep_ms: (@job["keep_ms"] || ::Asterism::Transfer::Inbox::KEEP_MS).to_i)
     @inbox.resume_held
     @sender = nil
@@ -118,6 +134,7 @@ class XferProbeApp < FmrbApp
   end
 
   def link_up(link)
+    @inbox.path = "#{link.node}/#{APP}/inbox"
     methods = {}
     ::Asterism::Transfer::Inbox::METHODS.each { |k, v| methods[k] = v }
     methods["size"] = 1
@@ -167,8 +184,8 @@ class XferProbeApp < FmrbApp
   def start_job
     j = @job
     b = j["bench"].to_s
+    make_file(j["path"].to_s, j["make"]) if j["make"].is_a?(Integer)
     if b == "hash"
-      make_file(j["path"].to_s, j["make"]) if j["make"].is_a?(Integer)
       bench_hash(j["path"].to_s)
     elsif b == "sizes" || b == "speed"
       @bench = { "kind" => b, "i" => 0, "fut" => nil, "runs" => [] }
@@ -188,8 +205,8 @@ class XferProbeApp < FmrbApp
     elsif j["api"].is_a?(Hash)
       start_api(j["api"])
     elsif j["to"]
-      @sender = new_sender(j["path"].to_s, j["name"].to_s, (j["piece"] || ::Asterism::Transfer::PIECE).to_i,
-                           (j["window"] || 1).to_i, j["sha256"])
+      @sender = new_sender(j["path"].to_s, j["name"].to_s, (j["piece"] || ::Asterism::Transfer::PIECE_MAX).to_i,
+                           (j["window"] || ::Asterism::Transfer::WINDOW_MAX).to_i, j["sha256"])
       @sender.faults = j["faults"].to_s
       Log.info("xfer_probe: sending #{j['path']} (#{@sender.size} bytes, sha256 #{@sender.sha256[0, 16]}) to " \
                "#{j['to']}, faults #{j['faults'] || 'none'}")
@@ -197,8 +214,11 @@ class XferProbeApp < FmrbApp
   end
 
   def new_sender(path, name, piece, window, sha = nil)
-    ProbeSender.new("#{@job['to']}/#{APP}/inbox", "probe", path, name: name, piece: piece, window: window,
-                    sha256: sha)
+    app = (@job["app"] || APP).to_s
+    kind = (@job["kind"] || "probe").to_s
+    meta = @job["overwrite"] == true ? { "overwrite" => true } : {}
+    ProbeSender.new("#{@job['to']}/#{app}/inbox", kind, path, name: name, piece: piece, window: window,
+                    sha256: sha, meta: meta)
   end
 
   def step_sender
@@ -217,7 +237,8 @@ class XferProbeApp < FmrbApp
     return unless s.done?
     @sender = nil
     st = s.stats
-    summary = "#{s.took_ms} ms, #{st['calls']} calls, #{st['pieces']} pieces, #{st['again']} again, " \
+    summary = "#{s.took_ms} ms, #{st['calls']} calls, #{st['pieces']} pieces of #{s.piece}, #{s.window} at a time, " \
+              "#{st['again']} again, " \
               "#{st['retries']} retries, #{st['begins']} begins, went on from [#{st['resumed_at'].join(',')}]"
     if s.ok?
       Log.info("xfer_probe: done ok #{s.answer['status']} #{s.answer['reason'] || s.answer['path']}; #{summary}")

@@ -99,7 +99,8 @@ module FmrbSend
       trap("INT", old || "DEFAULT")
     end
     st = s.stats
-    note = "#{s.took_ms} ms, #{st['calls']} calls, #{st['again']} again, #{st['retries']} retries"
+    note = "#{s.took_ms} ms, #{st['calls']} calls, pieces of #{s.piece}, #{s.window} at a time (the receiver's), " \
+           "#{st['again']} again, #{st['retries']} retries"
     if s.ok? && s.answer["status"] == "placed"
       out.puts "fmrb_send: placed as #{s.answer['name']} in #{to}'s /home/inbox (#{note})"
       true

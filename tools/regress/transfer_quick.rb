@@ -23,6 +23,10 @@
 #             app (FmrbTransfer: progress, the name placed under) to this
 #             process; then one it cancels on the way: this side drops the
 #             piece file
+#   big       a 4 MiB file, the connection cut once on the way (T3): its
+#             pieces go straight to a hidden file in /home/inbox/ (none in
+#             /tmp), it goes on from where the receiver stood, and the
+#             piece size and window are the ones the machine named
 #
 #   ruby tools/regress/transfer_quick.rb            # the native build there is
 #   ruby tools/regress/transfer_quick.rb --web      # the browser build as the
@@ -138,7 +142,7 @@ module Regress
         ok
       end
 
-      def cases = @web ? %w[resend mismatch names refused] : %w[resend cut mismatch names refused api]
+      def cases = @web ? %w[resend mismatch names refused] : %w[resend cut mismatch names refused api big]
 
       # ---- the machine ----
 
@@ -316,7 +320,7 @@ module Regress
         raise T::Failure, "placed as #{[n1, n2, n3].inspect}" unless [n1, n2, n3] == ["same.txt", "same(1).txt", "same.txt"]
         must_have("/home/inbox/same.txt", c)
         must_have("/home/inbox/same(1).txt", b)
-        %w[/tmp/same.txt /home/same.txt /tmp/same.txt.file.part].each do |p|
+        %w[/tmp/same.txt /home/same.txt /tmp/same.txt.file.part /home/inbox/.same.txt.file.part].each do |p|
           raise T::Failure, "#{p} is there" if get_machine(p)
         end
         "same.txt, then same(1).txt beside it, then same.txt overwritten (same(1).txt kept); only in /home/inbox"
@@ -344,13 +348,24 @@ module Regress
         File.write(old, RECEIVE)
         put_machine(old, "/home/asterism/receive.toml")
         out << "no [file] with the older form"
-        big = File.join(@pc_dir, "big.bin")
-        File.open(big, "w") { |f| f.truncate(64 * 1024 * 1024) }
-        s = pc_send("big.bin", nil, path: big, sha256: "1" * 64)
-        raise T::Failure, "64 MiB: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("do not fit")
-        raise T::Failure, "64 MiB: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
-        raise T::Failure, "a piece file is there" if get_machine("/tmp/big.bin.file.part")
-        out << s.reason[/\(.*\)/]
+        # larger than the storage's room (a "file" goes to /home/inbox/ now;
+        # 8 TiB, sparse here). The browser build's /home tells no room
+        # (FmrbApp.free_bytes nil): there it is refused where it stops
+        # being written, so not tried
+        if @web
+          out << "(the browser's /home tells no room: not tried)"
+        else
+          big = File.join(@pc_dir, "big.bin")
+          File.open(big, "w") { |f| f.truncate(1 << 43) }
+          s = pc_send("big.bin", nil, path: big, sha256: "1" * 64)
+          raise T::Failure, "8 TiB: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("do not fit")
+          raise T::Failure, "8 TiB: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
+          if get_machine("/tmp/big.bin.file.part") || get_machine("/home/inbox/.big.bin.file.part")
+            raise T::Failure, "a piece file is there"
+          end
+          FileUtils.rm_f(big)
+          out << s.reason[/\(.*\)/]
+        end
         "refused at begin, one call each: #{out.join('; ')}"
       end
 
@@ -376,6 +391,27 @@ module Regress
         sending = r2[:lines].grep(/xfer_probe: api now sending/).size
         "sent through the transfer app (placed as same.txt there); " \
           "1 MiB cancelled at #{r2[:lines].grep(/cancelling at/).first.to_s[/at (\d+)/, 1]} after #{sending} progress report(s): the piece file dropped here"
+      end
+
+      def q_big
+        bytes = random(4_194_304, 5)
+        cut = nil
+        s = pc_send("q-big.bin", bytes, pace: PACE_S) do |x|
+          next if cut || x.pos < 1_048_576
+          cut = [get_machine("/tmp/q-big.bin.file.part").nil?,
+                 File.exist?(File.join(host_home, "home", "inbox", ".q-big.bin.file.part"))]
+          @relay.cut!(T::CUT_DOWN_S)
+        end
+        must_place(s, "big")
+        must_have("/home/inbox/q-big.bin", bytes)
+        raise T::Failure, "a piece file in /tmp on the way" unless cut && cut[0]
+        raise T::Failure, "no hidden piece file in /home/inbox on the way" unless cut[1]
+        left = Dir.children(File.join(host_home, "home", "inbox")).select { |n| n.start_with?(".") }
+        raise T::Failure, "#{left.inspect} left in /home/inbox" unless left.empty?
+        on = s.stats["resumed_at"]
+        raise T::Failure, "went on from #{on.inspect}" unless on.size == 1 && on[0] >= 1_048_576
+        "4 MiB whole, cut once, went on from #{on[0]}; pieces in /home/inbox (hidden), none in /tmp; " \
+          "#{s.piece} x #{s.window} as the machine named (#{s.took_ms} ms)"
       end
 
       # The probe of the machine with the job {"api" => api}, until it ends.

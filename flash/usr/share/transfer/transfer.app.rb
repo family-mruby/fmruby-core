@@ -22,7 +22,11 @@
 #                            is missing. A long list comes in several calls.
 #   begin(kind, meta)        meta {"name", "size", "sha256", "toml" (the
 #                            attributes beside an image)} -> {"id", "piece",
-#                            "pos" (where it goes on from)}
+#                            "window", "pos" (where it goes on from)}: the
+#                            piece is the largest a call from that node
+#                            carries here, the window (pieces on their way
+#                            at once) what this app's pool has room for
+#                            (TransferInbox#window)
 #   chunk(id, pos, bytes)    -> the position held here (a piece before it is
 #                            read past, one after it is not taken)
 #   commit(id)               all bytes are there and their sha256 matches:
@@ -39,17 +43,22 @@
 #   cancel(id)               drop it; an image that came up is stopped
 #
 # One file at a time: a begin from another node while one is coming in is
-# refused (busy) until no piece came for 10 s. Files are written beside
-# their name (.part, with a note .xfer of who sends what) and appear only
-# at the commit; a file that stopped coming is kept 60 s for its sender to
-# go on (also across this app ending and starting again), then deleted.
+# refused (busy) until no piece came for 10 s. A file is written to a piece
+# file (.part) and appears under its name only at the commit; a note of who
+# sends what (.xfer) is in /tmp. An image's piece file is in /tmp too; a
+# "file"'s is a hidden file in /home/inbox/ (".<name>.file.part"), so that
+# the commit only renames it, and a file may be as large as the storage
+# has room for. A file that stopped coming is kept 60 s for its sender to
+# go on (also across this app ending and starting again), then deleted;
+# after a restart of the machine the note is gone, and the hidden piece
+# files left in /home/inbox/ are deleted when this app starts.
 # The kinds are a table (KINDS) so that more can be added (the wasm apps'
 # install, doc/wasm_apps/plan.md 4). Before a byte is sent, begin refuses
 # (with the reason) a kind this machine does not take, a sender it does not
 # take that kind from, a name the kind does not take, and a file that does
-# not fit where it goes (FmrbApp.free_bytes of /tmp, and of /home for a
-# "file"; where that is not known, it is refused where it stops being
-# written).
+# not fit where it goes (FmrbApp.free_bytes of /tmp for an image, of
+# /home/inbox/ for a "file"; where that is not known, it is refused where
+# it stops being written).
 #
 #   checkpoint   an app's image (doc/checkpoint F5): started here
 #   file         any file: placed under /home/inbox/ (made when missing)
@@ -120,9 +129,10 @@ require "/usr/share/asterism/transfer/transfer"
 
 # The receiving side: Asterism::Transfer::Inbox (begin / chunk / commit /
 # cancel, resending from the receiver's position, the sha256 of the whole,
-# the piece file kept in /tmp to go on after a lost connection or this app
-# started again), with what this machine takes: the kinds, the senders
-# (receive.toml), the checkpoint's check and status.
+# the piece file and its note kept to go on after a lost connection or this
+# app started again), with what this machine takes: the kinds, the senders
+# (receive.toml), where the pieces are written, how many may come at once,
+# the checkpoint's check and status.
 class TransferInbox < ::Asterism::Transfer::Inbox
   KINDS = ["checkpoint", "file"]
   INBOX = "/home/inbox/"
@@ -130,6 +140,13 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   RESTORE_MS = 8000
   TMP = "/tmp/"
   BUSY_FOR_MS = 2000
+  # The pieces on their way at once: what the pool has room for (a piece
+  # is held about PIECE_COST times over while it is taken in: the call's
+  # payload, its String, the answer, garbage until the next GC), at most
+  # WINDOW_MOST; an image is tens of KB, a few pieces in all.
+  PIECE_COST = 4
+  WINDOW_MOST = 8
+  WINDOW_IMAGE = 4
 
   def initialize
     super(TMP)
@@ -203,8 +220,10 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     allowed = allowed_senders(k)
     return "#{node_name} takes no #{k} (no [#{k}] in #{RECEIVE_CONF})" if allowed.nil?
     allowed = list_of(allowed)
-    return nil if allowed.include?("*") || allowed.include?(from.to_s)
-    "#{node_name} takes no #{k} from #{from} (#{k} from in #{RECEIVE_CONF})"
+    unless allowed.include?("*") || allowed.include?(from.to_s)
+      return "#{node_name} takes no #{k} from #{from} (#{k} from in #{RECEIVE_CONF})"
+    end
+    k == "file" ? inbox_dir : nil
   end
 
   # A file's name may be any name that stays in /home/inbox/; an image's is
@@ -214,17 +233,34 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     ::Asterism::Transfer.plain_name?(name)
   end
 
-  # What can still be written where the file goes: the piece file in /tmp,
-  # and a "file" in /home as well. nil when not known (this build has no
-  # FmrbApp.free_bytes, or the place cannot tell).
+  # What can still be written where the file is written: /tmp for an
+  # image, /home/inbox/ for a "file" (its pieces go there straight). nil
+  # when not known (this build has no FmrbApp.free_bytes, or the place
+  # cannot tell).
   def room(kind, meta)
     return nil unless FmrbApp.respond_to?(:free_bytes)
-    left = FmrbApp.free_bytes(TMP)
-    if kind == "file"
-      home = FmrbApp.free_bytes(INBOX)
-      left = home if home && (left.nil? || home < left)
-    end
-    left
+    FmrbApp.free_bytes(kind == "file" ? INBOX : TMP)
+  end
+
+  # A "file"'s pieces go beside where it goes, hidden (a file sent here
+  # never starts with "."): the commit renames it, nothing is copied.
+  def part_path(kind, name)
+    return super unless kind == "file"
+    "#{INBOX}.#{name}.#{kind}.part"
+  end
+
+  # How many pieces may be on their way at once: as many as the free part
+  # of this app's pool holds PIECE_COST times over, 1 to WINDOW_MOST (an
+  # image: WINDOW_IMAGE).
+  def window(kind, meta)
+    most = kind == "file" ? WINDOW_MOST : WINDOW_IMAGE
+    used = FmrbApp.pool_used
+    pct = FmrbApp.pool_usage
+    return 1 unless used.is_a?(Integer) && pct.is_a?(Integer) && used > 0 && pct > 0
+    free = used * 100 / pct - used
+    w = free / (::Asterism::Transfer::PIECE_MAX * PIECE_COST)
+    w = most if w > most
+    w < 1 ? 1 : w
   end
 
   def received(t)
@@ -232,55 +268,61 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     place_image(t)
   end
 
-  # A "file" is whole (its sha256 matches): copied from /tmp to a hidden
-  # file beside where it goes, then put in place under its name, or under a
-  # name of its own when that one is taken and overwrite was not asked. An
-  # overwritten file is replaced only now.
+  # A "file" is whole (its sha256 matches): its hidden piece file beside
+  # where it goes is renamed to its name, or to a name of its own when that
+  # one is taken and overwrite was not asked. An overwritten file is
+  # replaced only now.
   def place_file(t)
     over = t["meta"]["overwrite"] == true
     part = t["part"]
-    begin
-      Dir.mkdir(INBOX.byteslice(0, INBOX.bytesize - 1)) unless Dir.exist?(INBOX.byteslice(0, INBOX.bytesize - 1))
-    rescue => e
-      remove(part)
-      return { "status" => "refused", "reason" => "cannot make #{INBOX} (#{e.message})" }
-    end
     name = over ? t["name"] : ::Asterism::Transfer.free_name(INBOX, t["name"])
     if name.nil?
       remove(part)
       return { "status" => "refused", "reason" => "no free name for #{t['name']} in #{INBOX}" }
     end
     dest = "#{INBOX}#{name}"
-    tmp = "#{INBOX}.#{name}.part"
     begin
-      copy_file(part, tmp)
+      File.delete(dest) if over && File.exist?(dest)
+      File.rename(part, dest)
     rescue => e
-      remove(tmp)
       remove(part)
       Log.warn("transfer: #{dest} from #{t['from']}: #{e.message}")
-      return { "status" => "refused", "reason" => "cannot write #{dest} (#{e.message})" }
+      return { "status" => "refused", "reason" => "cannot place #{dest} (#{e.message})" }
     end
-    remove(part)
-    File.delete(dest) if File.exist?(dest)
-    File.rename(tmp, dest)
     Log.info("transfer: placed #{dest} (#{t['size']} bytes) from #{t['from']}#{over ? ' (overwrite)' : ''}")
     { "status" => "placed", "name" => name, "path" => dest }
   end
 
-  # Hidden pieces of a placing that did not finish (the app ended in it).
+  # Hidden piece files in /home/inbox/ that no note speaks for (the machine
+  # started again, and /tmp with the notes is new): deleted when this app
+  # starts, after resume_held took up the one it goes on with.
   def sweep_inbox
     dir = INBOX.byteslice(0, INBOX.bytesize - 1)
     return unless Dir.exist?(dir)
+    t = current_file
+    keep = t ? t["part"] : nil
     names = Dir.entries(dir)
     i = 0
     while i < names.size
       n = names[i].to_s
       i += 1
       next unless n.bytesize > 6 && n.getbyte(0) == 46 && n.end_with?(".part")
-      remove("#{INBOX}#{n}")
+      path = "#{INBOX}#{n}"
+      next if path == keep
+      Log.info("transfer: #{path} left from before; deleted")
+      remove(path)
     end
   rescue => e
     Log.warn("transfer: #{INBOX}: #{e.message}")
+  end
+
+  # /home/inbox/ made when missing -> nil, or why it cannot be.
+  def inbox_dir
+    dir = INBOX.byteslice(0, INBOX.bytesize - 1)
+    Dir.mkdir(dir) unless Dir.exist?(dir)
+    nil
+  rescue => e
+    "cannot make #{INBOX} (#{e.message})"
   end
 
   # The image is whole (its sha256 matches): it goes beside its attributes
@@ -324,17 +366,6 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   rescue => e
     Log.warn("transfer: #{RECEIVE_CONF}: #{e.message}")
     nil
-  end
-
-  def copy_file(from, to)
-    File.open(from, "r") do |src|
-      File.open(to, "w") do |dst|
-        while (b = src.read(4096))
-          break if b.empty?
-          dst.write(b)
-        end
-      end
-    end
   end
 
   def list_of(v)
@@ -419,6 +450,7 @@ class TransferApp < FmrbApp
   end
 
   def link_up(link)
+    @inbox.path = "#{link.node}/#{APP}/#{OBJECT}"
     ::Asterism.expose(OBJECT, @inbox,
                       methods: { "check" => 2, "begin" => 2, "chunk" => 3, "commit" => 1, "status" => 1,
                                  "cancel" => 1 },

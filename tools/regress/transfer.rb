@@ -39,11 +39,21 @@
 #              program's probe asks its transfer app to send (FmrbTransfer)
 #              to the second's, three times: placed in /home/inbox/, then
 #              beside it under name(1), then over the first (overwrite)
+#   big        a 4 MiB "file" from the first program's probe to the second's
+#              transfer app (T3), the second's connection cut twice on the
+#              way (at 1 and 3 MiB): the pieces are written straight to a
+#              hidden file in /home/inbox/ (not to /tmp, looked at while it
+#              comes), it goes on from where the receiver stood, the sha256
+#              matches, and the piece size and window are the receiver's
 #
 # --bench (doc/asterism_file_transfer/report/t0.md): instead of the cases,
 # one call of each size (the largest that goes through), the file at each
 # piece size and number of pieces on their way, and SHA-256 / CRC32 of it,
-# printed as the probe logs them.
+# printed as the probe logs them. --size N (bytes; the file is in /home
+# and the receiver writes to /home past 1 MiB, /tmp being smaller),
+# --pieces LIST and --windows LIST change the speed runs; --speed only
+# those; --file adds one run of the kind "file" to the transfer app there,
+# with the piece and window it names (report/t3.md).
 #
 # --bench --web: the browser build (wasm/build/dist, rake wasm:dist; emsdk is
 # not needed to serve it) on a development server and a headless Linux
@@ -58,8 +68,11 @@
 # rg-xfer-a), on the board's router; only the first program is started
 # here, and it is the one connected through the relay (cut cuts it). The
 # cases are judged from the sender's side (commit there checked the
-# sha256): straight, drop, twice, swap, cut, mismatch; --bench too. restart
-# and kept need the board's app stopped by hand (the report's steps).
+# sha256): straight, drop, twice, swap, cut, mismatch, big (the board's
+# transfer app: its receive.toml's [file] takes rg-xfer-a, and /home has
+# 4 MiB free; the piece file's place is not looked at); --bench too.
+# restart and kept need the board's app stopped by hand (the report's
+# steps).
 #
 # Every case that arrives checks the file there byte for byte (its sha256),
 # and the positions the sending went on from are read from both logs. The
@@ -99,6 +112,13 @@ module Regress
     JOB = "/tmp/xfer_probe.job"
     SRC = "/tmp/xfer_src.bin"
     SIZE = 1_048_576
+    # the big case's file, and where the sending is cut
+    BIG = 4_194_304
+    BIG_CUTS = [1_048_576, 3_145_728].freeze
+    BIG_PACE_MS = 40
+    # what the cases of T1 send: 3 KB pieces, one at a time (their counts
+    # are of that)
+    T1_SENDER = { "piece" => 3072, "window" => 1 }.freeze
     KEEP_MS = 3000
     # the sender's pace in the cases that break things on the way (a step at
     # most every 10 ms: about 4 s for the file, so that the break lands in
@@ -228,36 +248,75 @@ module Regress
         ok
       end
 
-      def cases = %w[straight drop twice swap cut restart mismatch kept file]
+      def cases = %w[straight drop twice swap cut restart mismatch kept file big]
 
       BENCH_SIZES = [1024, 2048, 3072, 3584, 3840, 3968, 4000, 4032, 4064, 4096, 4608, 8192, 16_384, 65_536].freeze
       BENCH_PIECES = [512, 1024, 2048, 3072, 3840].freeze
       BENCH_WINDOWS = [1, 2, 4, 8].freeze
 
+      # The receiver's job of the bench: it names the largest piece and 16 at
+      # once, so that the sender's own most (each run's) is what counts.
+      def bench_recv
+        h = { "recv_piece" => 65_536, "recv_window" => 16 }
+        h["recv_dir"] = "/home/xp/" if bench_size > SIZE
+        h
+      end
+
+      def bench_size = @opts[:size] || SIZE
+
+      # The bench's file in the first program: /tmp up to 1 MiB, else /home.
+      def bench_src
+        return SRC if bench_size <= SIZE
+        home_a = File.join(OUT, "#{File.basename(RUN_DIR_A)}_home", "user", "home")
+        File.binwrite(File.join(home_a, "xfer_src.bin"), Random.new(20_261_108).bytes(bench_size))
+        "/home/xfer_src.bin"
+      end
+
       def bench
         lines = []
         kill_probes
         unless peer?
-          put_job(RUN_DIR_B, PORT_B, { "recv_piece" => 65_536 })
+          put_job(RUN_DIR_B, PORT_B, bench_recv)
           spawn_probe(RUN_DIR_B, PORT_B, NODE_B)
         end
         sizes = @opts[:sizes] || BENCH_SIZES
+        src = bench_src
         [{ "bench" => "sizes", "to" => @to, "sizes" => sizes },
-         { "bench" => "speed", "to" => @to, "path" => SRC, "pieces" => BENCH_PIECES, "windows" => BENCH_WINDOWS },
-         { "bench" => "hash", "path" => SRC }].each do |job|
+         { "bench" => "speed", "to" => @to, "path" => src, "pieces" => @opts[:pieces] || BENCH_PIECES,
+           "windows" => @opts[:windows] || BENCH_WINDOWS },
+         { "bench" => "hash", "path" => src }].each do |job|
           next if @opts[:sizes] && job["bench"] != "sizes"
+          next if @opts[:speed] && job["bench"] != "speed"
           put_job(RUN_DIR_A, PORT_A, job)
           from = log_lines(RUN_DIR_A).size
           spawn_probe(RUN_DIR_A, PORT_A, NODE_A)
-          wait_line(RUN_DIR_A, /xfer_probe: bench done/, from, "the bench's end", timeout: 600)
+          wait_line(RUN_DIR_A, /xfer_probe: bench done/, from, "the bench's end", timeout: 1800)
           lines.concat(log_lines(RUN_DIR_A)[from..].grep(/xfer_probe: (bench|done)/).map { |l| l[/xfer_probe: .*/] })
           pid = probe_pid(RUN_DIR_A, PORT_A)
           app(RUN_DIR_A, PORT_A, "kill", pid.to_s) if pid
           sleep 0.5
         end
         kill_probes
+        lines.concat(file_bench(@to, RUN_DIR_B, PORT_B, src)) if @opts[:file] && !peer?
         lines.each { |l| puts l }
         true
+      end
+
+      # One file of the kind "file" from the first program's probe to the
+      # transfer app of to, at the piece and window it names.
+      def file_bench(to, dir, port, src)
+        kill_probes
+        if dir
+          home = File.join(OUT, "#{File.basename(dir)}_home", "user", "home")
+          File.write(File.join(home, "asterism", "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+        end
+        put_job(RUN_DIR_A, PORT_A, { "to" => to, "app" => "transfer", "kind" => "file", "path" => src,
+                                     "name" => "bench.bin", "overwrite" => true })
+        from = log_lines(RUN_DIR_A).size
+        spawn_probe(RUN_DIR_A, PORT_A, NODE_A)
+        i = wait_line(RUN_DIR_A, /xfer_probe: done /, from, "the file's end", timeout: 600)
+        kill_probes
+        ["file to #{to}'s transfer app: #{log_lines(RUN_DIR_A)[i][/xfer_probe: .*/]}"]
       end
 
       # ---- the browser build (--web) ----
@@ -270,36 +329,60 @@ module Regress
         dir = File.join(OUT, "web_home")
         FileUtils.mkdir_p(dir)
         File.write(File.join(dir, "config.toml"), "router = \"ws/127.0.0.1:#{ROUTER_WS_PORT}\"\nnode = \"#{NODE_WEB}\"\n")
-        File.write(File.join(dir, "receive.toml"), "from = [\"#{NODE_A}\"]\n")
+        File.write(File.join(dir, "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
         File.write(File.join(dir, "hash.json"), JSON.generate({ "bench" => "hash", "path" => "/tmp/xfer_hash.bin",
                                                                 "make" => SIZE }))
-        File.write(File.join(dir, "recv.json"), JSON.generate({ "recv_piece" => 65_536 }))
+        File.write(File.join(dir, "recv.json"), JSON.generate(bench_recv))
         web_tool("put", File.join(dir, "config.toml"), "/flash/home/asterism/config.toml")
         web_tool("put", File.join(dir, "receive.toml"), "/flash/home/asterism/receive.toml")
-        web_tool("put", File.join(dir, "hash.json"), "/flash/home/xfer_probe.job")
-        mark = web_lines.size
-        web_tool("reload", timeout: 90)
-        web_wait(/xfer_probe: bench done/, mark, "the browser's hash bench", timeout: 300)
-        lines.concat(web_lines[mark..].grep(/xfer_probe: (bench|made)/).map { |l| "web: #{l[/xfer_probe: .*/]}" })
+        unless @opts[:speed]
+          web_tool("put", File.join(dir, "hash.json"), "/flash/home/xfer_probe.job")
+          mark = web_lines.size
+          web_tool("reload", timeout: 90)
+          web_wait(/xfer_probe: bench done/, mark, "the browser's hash bench", timeout: 300)
+          lines.concat(web_lines[mark..].grep(/xfer_probe: (bench|made)/).map { |l| "web: #{l[/xfer_probe: .*/]}" })
+        end
+        src = bench_src
         web_tool("put", File.join(dir, "recv.json"), "/flash/home/xfer_probe.job")
         mark = web_lines.size
         web_tool("reload", timeout: 90)
         web_wait(/xfer_probe: ready as #{NODE_WEB}/, mark, "the browser's probe ready", timeout: 90)
         [{ "bench" => "sizes", "to" => NODE_WEB, "sizes" => @opts[:sizes] || BENCH_SIZES },
-         { "bench" => "speed", "to" => NODE_WEB, "path" => SRC, "pieces" => BENCH_PIECES,
-           "windows" => BENCH_WINDOWS }].each do |job|
+         { "bench" => "speed", "to" => NODE_WEB, "path" => src, "pieces" => @opts[:pieces] || BENCH_PIECES,
+           "windows" => @opts[:windows] || BENCH_WINDOWS }].each do |job|
+          next if @opts[:speed] && job["bench"] != "speed"
           put_job(RUN_DIR_A, PORT_A, job)
           from = log_lines(RUN_DIR_A).size
           spawn_probe(RUN_DIR_A, PORT_A, NODE_A)
-          wait_line(RUN_DIR_A, /xfer_probe: bench done/, from, "the bench's end", timeout: 900)
+          wait_line(RUN_DIR_A, /xfer_probe: bench done/, from, "the bench's end", timeout: 1800)
           lines.concat(log_lines(RUN_DIR_A)[from..].grep(/xfer_probe: (bench|done)/).map { |l| l[/xfer_probe: .*/] })
           pid = probe_pid(RUN_DIR_A, PORT_A)
           app(RUN_DIR_A, PORT_A, "kill", pid.to_s) if pid
           sleep 0.5
         end
         lines.concat(web_lines.grep(/transfer: .* is whole/).map { |l| "web: #{l[/transfer: .*/]}" })
+        lines.concat(file_bench(NODE_WEB, nil, nil, src)) if @opts[:file]
+        lines.concat(web_send_bench(dir)) if @opts[:web_send]
         lines.each { |l| puts l }
         true
+      end
+
+      # The other way: the browser's probe sends (its file made there) to
+      # the first program's probe.
+      def web_send_bench(dir)
+        kill_probes
+        put_job(RUN_DIR_A, PORT_A, bench_recv)
+        spawn_probe(RUN_DIR_A, PORT_A, NODE_A)
+        path = bench_size > SIZE ? "/home/xfer_src.bin" : "/tmp/xfer_src.bin"
+        File.write(File.join(dir, "send.json"), JSON.generate({ "bench" => "speed", "to" => NODE_A, "path" => path,
+                                                                "make" => bench_size,
+                                                                "pieces" => @opts[:pieces] || BENCH_PIECES,
+                                                                "windows" => @opts[:windows] || BENCH_WINDOWS }))
+        web_tool("put", File.join(dir, "send.json"), "/flash/home/xfer_probe.job")
+        mark = web_lines.size
+        web_tool("reload", timeout: 90)
+        web_wait(/xfer_probe: bench done/, mark, "the browser's sending bench", timeout: 1800)
+        web_lines[mark..].grep(/xfer_probe: (bench|done)/).map { |l| "web sends: #{l[/xfer_probe: .*/]}" }
       end
 
       def web_chrome
@@ -496,6 +579,76 @@ module Regress
         "#{placed.join(', ')} in the second program's /home/inbox (the third overwrote the first)"
       end
 
+      # A 4 MiB "file" from the first program's probe to the second's
+      # transfer app, cut twice on the way; the piece file is looked at in
+      # the second program's /home/inbox/ (hidden) and /tmp while it comes.
+      def case_big
+        kill_probes
+        home_a = File.join(OUT, "#{File.basename(RUN_DIR_A)}_home", "user", "home")
+        home_b = File.join(OUT, "#{File.basename(RUN_DIR_B)}_home", "user", "home")
+        inbox = File.join(home_b, "inbox")
+        bytes = Random.new(20_261_109).bytes(BIG)
+        sha = Digest::SHA256.hexdigest(bytes)
+        File.binwrite(File.join(home_a, "xfer_big.bin"), bytes)
+        unless peer?
+          File.write(File.join(home_b, "asterism", "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+          FileUtils.rm_rf(inbox)
+        end
+        put_job(RUN_DIR_A, PORT_A, { "to" => @to, "app" => "transfer", "kind" => "file", "path" => "/home/xfer_big.bin",
+                                     "name" => "big.bin", "pace_ms" => BIG_PACE_MS, "overwrite" => true })
+        a_from = log_lines(RUN_DIR_A).size
+        b_from = log_lines(RUN_DIR_B).size
+        seen = []
+        spawn_probe(RUN_DIR_A, PORT_A, NODE_A)
+        BIG_CUTS.each do |at|
+          wait_line(RUN_DIR_A, /xfer_probe: held #{at}\b/, a_from, "held #{at}", timeout: 120)
+          next @relay.cut!(CUT_DOWN_S) if peer?
+          part = File.join(inbox, ".big.bin.file.part")
+          seen << [File.exist?(part) ? File.size(part) : nil, file_there?(RUN_DIR_B, PORT_B, "/tmp/big.bin.file.part"),
+                   file_there?(RUN_DIR_B, PORT_B, "/tmp/big.bin.file.xfer")]
+          @relay.cut!(CUT_DOWN_S)
+        end
+        i = wait_line(RUN_DIR_A, /xfer_probe: done /, a_from, "the sender's end", timeout: peer? ? 900 : 120)
+        done = log_lines(RUN_DIR_A)[i]
+        b_lines = log_lines(RUN_DIR_B)[b_from..]
+        kill_probes
+        raise Failure, "the sender's end: #{done[/xfer_probe: .*/]}" unless done.include?("done ok placed")
+        if peer?
+          r = numbers(done)
+          raise Failure, "went on from #{r[:resumed].inspect}" unless r[:resumed].size == 2 && r[:resumed].all?(&:positive?)
+          return "#{BIG} bytes placed there (its sha256 checked there), cut twice, went on from " \
+                 "#{r[:resumed].join(' and ')}; #{done[/pieces of \d+, \d+ at a time/]} (#{r[:ms]} ms)"
+        end
+        seen.each_with_index do |(size, tmp_part, note), k|
+          raise Failure, "no hidden piece file in /home/inbox at the #{k + 1}. cut" unless size&.positive?
+          raise Failure, "a piece file in /tmp at the #{k + 1}. cut" if tmp_part
+          raise Failure, "no note in /tmp at the #{k + 1}. cut" unless note
+        end
+        r = numbers(done)
+        resumed = r[:resumed]
+        raise Failure, "went on #{resumed.size} times (#{resumed.inspect}), 2 expected" unless resumed.size == 2
+        raise Failure, "went on from 0 (#{resumed.inspect})" unless resumed.all?(&:positive?)
+        b_on = b_lines.grep(/goes on with file big\.bin at (\d+)/).map { |l| l[/ at (\d+) of/, 1].to_i }
+        raise Failure, "the receiver went on at #{b_on.inspect}, the sender from #{resumed.inspect}" unless b_on == resumed
+        began = b_lines.grep(/sends file big\.bin \(#{BIG} bytes\) to (\S+), pieces of (\d+) bytes, (\d+) at a time/).first
+        raise Failure, "no 'sends file big.bin' in the receiver's log" unless began
+        part, piece, win = began[/ to (\S+), pieces/, 1], began[/pieces of (\d+)/, 1].to_i, began[/(\d+) at a time/, 1].to_i
+        raise Failure, "the pieces went to #{part}" unless part == "/home/inbox/.big.bin.file.part"
+        unless done.include?("pieces of #{piece}, #{win} at a time")
+          raise Failure, "the receiver named #{piece} x #{win}; the sender: #{done[/pieces of \d+, \d+ at a time/]}"
+        end
+        got = File.join(inbox, "big.bin")
+        raise Failure, "no big.bin in /home/inbox" unless File.exist?(got)
+        raise Failure, "big.bin has sha256 #{Digest::SHA256.file(got).hexdigest[0, 16]}" unless Digest::SHA256.file(got).hexdigest == sha
+        left = Dir.children(inbox) - ["big.bin"]
+        raise Failure, "#{left.inspect} left in /home/inbox" unless left.empty?
+        tmp = %w[/tmp/big.bin.file.part /tmp/big.bin.file.xfer].select { |p| file_there?(RUN_DIR_B, PORT_B, p) }
+        raise Failure, "#{tmp.inspect} left in /tmp" unless tmp.empty?
+        "#{BIG} bytes, cut twice, went on from #{resumed.join(' and ')}; pieces in /home/inbox/.big.bin.file.part " \
+          "(#{seen.map(&:first).join(', ')} bytes at the cuts), none in /tmp; #{piece} x #{win} named by the receiver " \
+          "(#{r[:ms]} ms, #{r[:retries]} retries)"
+      end
+
       # ---- sending one file ----
 
       # The receiver's probe up, then the sender's with its job; the block
@@ -550,7 +703,7 @@ module Regress
       # probe started.
       def prepare(name, extra)
         kill_probes
-        put_job(RUN_DIR_A, PORT_A, { "to" => @to, "path" => SRC, "name" => name }.merge(extra))
+        put_job(RUN_DIR_A, PORT_A, { "to" => @to, "path" => SRC, "name" => name }.merge(T1_SENDER).merge(extra))
         return if peer?
         # the kept case's short keep; the others the receiver's own (60 s),
         # which a connection down for seconds must not run out
@@ -576,7 +729,7 @@ module Regress
 
       def kill_probes
         progs = [[RUN_DIR_A, PORT_A]]
-        progs << [RUN_DIR_B, PORT_B] unless peer?
+        progs << [RUN_DIR_B, PORT_B] unless peer? || @opts[:web]
         progs.each do |d, p|
           pid = probe_pid(d, p)
           next unless pid
@@ -717,6 +870,12 @@ module Regress
         o.on("--peer NODE", "the receiver is the probe on this node (a board)") { |v| opts[:peer] = v }
         o.on("--router LOCATOR", "with --peer: the board's router (tcp/HOST:PORT)") { |v| opts[:router] = v }
         o.on("--sizes LIST", "with --bench: only calls of these sizes") { |v| opts[:sizes] = v.split(",").map(&:to_i) }
+        o.on("--size BYTES", Integer, "with --bench: the file's size") { |v| opts[:size] = v }
+        o.on("--pieces LIST", "with --bench: the speed runs' pieces") { |v| opts[:pieces] = v.split(",").map(&:to_i) }
+        o.on("--windows LIST", "with --bench: the speed runs' windows") { |v| opts[:windows] = v.split(",").map(&:to_i) }
+        o.on("--speed", "with --bench: the speed runs only") { opts[:speed] = true }
+        o.on("--file", "with --bench: a run of the kind file to the transfer app there") { opts[:file] = true }
+        o.on("--web-send", "with --bench --web: the browser sends too") { opts[:web_send] = true }
       end.parse!(argv)
       abort "transfer: --peer needs --router tcp/HOST:PORT" if opts[:peer] && opts[:router].to_s !~ %r{\Atcp/[^:]+:\d+\z}
       Tree.need_root!

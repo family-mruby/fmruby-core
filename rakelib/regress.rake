@@ -490,7 +490,7 @@ end
 REGRESS_TRANSFER = File.join(ROOT_DIR, "tools", "regress", "transfer.rb")
 
 namespace :regress do
-  desc "Carry a file between two native programs over Asterism with faults put in (doc/asterism_file_transfer T1): pieces lost, sent twice, swapped, the connection cut twice, the receiver started again, a wrong sha256, a piece file kept too long (the native build there is; ENGINE=standard|mruby, ONLY=<case>, BENCH=1: T0's numbers instead, with WEB=1 the browser build as the receiver)"
+  desc "Carry a file between two native programs over Asterism with faults put in (doc/asterism_file_transfer T1): pieces lost, sent twice, swapped, the connection cut twice, the receiver started again, a wrong sha256, a piece file kept too long, the kind file, a 4 MiB file cut twice (the native build there is; ENGINE=standard|mruby, ONLY=<case>, BENCH=1: T0's numbers instead, with WEB=1 the browser build as the receiver)"
   task :transfer do
     args = []
     args += ["--engine", ENV["ENGINE"]] if ENV["ENGINE"]
@@ -501,7 +501,7 @@ namespace :regress do
   end
 
   namespace :transfer do
-    desc "The gist of the file transfer in about a minute (doc/asterism_file_transfer T2; in regress:full): one native program's transfer app and this process over Asterism -- pieces lost, sent twice and swapped, the connection cut once, a wrong sha256, the kind file in /home/inbox (the same name again, overwrite), refusals before a byte is sent, an app's sending with its progress and a cancel (WEB=1: the browser build as the machine, ONLY=<case>)"
+    desc "The gist of the file transfer in about a minute (doc/asterism_file_transfer T2; in regress:full): one native program's transfer app and this process over Asterism -- pieces lost, sent twice and swapped, the connection cut once, a wrong sha256, the kind file in /home/inbox (the same name again, overwrite), refusals before a byte is sent, an app's sending with its progress and a cancel, a 4 MiB file cut once (WEB=1: the browser build as the machine, ONLY=<case>)"
     task :quick do
       args = []
       args << "--web" if ENV["WEB"] == "1"
