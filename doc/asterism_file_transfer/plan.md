@@ -123,6 +123,10 @@
 - **console から送る権限は Call permissions と同じ表**に「このノードへファイルを送ってよい」を
   足す。端末の側も `receive.toml` の `[file]` に console を書く (二重の鍵)。
 - **公開の console (VPS) への配置は T4 が終わったら行う** (検収の後、親が手順書どおりに)。
+- **(T4b) 端末から console へ受ける相手は画面で選ぶ** (2026-11-08 ユーザ): Admin > Members の
+  端末の行ごとに「console へファイルを送ってよい」を付ける。付けた端末から console が受け、
+  ルータの ask の行 (`asterism/console/transfer/inbox/call/<その端末>`) も台帳から作る
+  (Apply で反映。Roles を手で直さない)。`.env` の `ASTERISM_TRANSFER_FROM` は消す (画面だけ)。
 - **T5 は checkpoint の載せ替えだけ**: アプリの移動を新しい受け口の作り (受け手が片の大きさと
   同時に送る数を決める等) に揃え、`regress:checkpoint` が全部通ること。ブラウザ版のアプリ
   (`.app.wasm`) のインストールは、wasm のアプリの対応 (doc/wasm_apps/plan.md) のときに行う。
