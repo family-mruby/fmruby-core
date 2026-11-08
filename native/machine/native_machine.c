@@ -18,6 +18,11 @@
 
 #include "toml.h"
 
+/* The CRT look's sets of strengths (doc/web_crt C6b), by its path from here:
+ * the host tests (rake native:test) build this file without hosted/crt on
+ * the include path. */
+#include "../../hosted/crt/crt_presets.h"
+
 static int fail(char *err, size_t n, const char *fmt, ...)
 {
     if (err != NULL && n > 0) {
@@ -72,14 +77,17 @@ void native_machine_defaults(native_machine_t *m)
     m->display.rotate = 0;
     m->display.scale = 0;
     snprintf(m->display.look, sizeof(m->display.look), "sharp");
-    m->display.crt_scanline = 55;
-    m->display.crt_mask = 30;
-    m->display.crt_glow = 30;
-    m->display.crt_curve = 15;
-    m->display.crt_vignette = 40;
-    m->display.crt_ntsc = 0;
-    m->display.crt_flicker = 0;
-    m->display.crt_noise = 0;
+    /* The CRT look's strengths start as its Standard set (doc/web_crt C6b),
+     * in crt_set's order. */
+    static const int crt_standard[8] = { CRT_PRESET_STANDARD };
+    m->display.crt_scanline = crt_standard[0];
+    m->display.crt_mask = crt_standard[1];
+    m->display.crt_glow = crt_standard[2];
+    m->display.crt_curve = crt_standard[3];
+    m->display.crt_vignette = crt_standard[4];
+    m->display.crt_ntsc = crt_standard[5];
+    m->display.crt_flicker = crt_standard[6];
+    m->display.crt_noise = crt_standard[7];
     snprintf(m->input.backend, sizeof(m->input.backend), "sdl");
     snprintf(m->input.devices[0], sizeof(m->input.devices[0]), "auto");
     m->input.n_devices = 1;
