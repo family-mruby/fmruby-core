@@ -39,6 +39,7 @@ class FmrbKernelImpl < FmrbKernel
   # It is started at boot when that file exists, and when a move is asked.
   TRANSFER_APP = "/usr/share/transfer/transfer.app.rb"
   RECEIVE_CONF = "/home/asterism/receive.toml"
+  ASTERISM_DIR = "/home/asterism"
   # A move's steps (@mv_stage) and how long each may take (ms). The hold is
   # the image's (MOVE_HOLD_MS unless the asker gave one); the transfer app
   # may need a while to connect (a TLS handshake takes 10-20 s).
@@ -911,12 +912,28 @@ class FmrbKernelImpl < FmrbKernel
     nil
   end
 
-  # At boot: a machine that takes images in (RECEIVE_CONF) keeps the
-  # transfer app up so that others can reach it.
+  # At boot: a machine that takes files in (RECEIVE_CONF), or one with the
+  # console's credentials (a .tar in ASTERISM_DIR: a member of the console,
+  # which sends it the list of who may send to it, doc/asterism_file_transfer
+  # T6), keeps the transfer app up so that others can reach it.
   def spawn_transfer_if_receiving
-    return nil unless File.exist?(RECEIVE_CONF)
+    return nil unless File.exist?(RECEIVE_CONF) || asterism_credentials?
     start_transfer
     nil
+  end
+
+  def asterism_credentials?
+    found = false
+    begin
+      dir = Dir.open(ASTERISM_DIR)
+      while (name = dir.read)
+        found = true if name.end_with?(".tar")
+      end
+      dir.close
+    rescue
+      found = false
+    end
+    found
   end
 
   def move_stage(stage, ms)

@@ -1,6 +1,6 @@
 # Asterism でファイルを運ぶ汎用の仕組み (再送つき)
 
-> 状態: 進行中 | 更新: 2026-11-09 | T0〜T5 済 (report/t0〜t5.md、gem 0.12.0・console 0.3.14)、T6 (受け相手を console で管理) に着手 (instruction_t6.md)。残りは ESP32 の実機の確認。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
+> 状態: 進行中 | 更新: 2026-11-09 | T0〜T5 済 (report/t0〜t5.md、gem 0.12.0・console 0.3.14)、T6 (受け相手を console で管理) は実装済・検収待ち (report/t6.md、console 0.3.16 の Unreleased。console からの写しは今は ESP32 の端末だけに届く: ネイティブ版と sim に TLS が無い)。残りは ESP32 の実機の確認。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
 
 ## 目的
 
@@ -45,6 +45,7 @@
 | T3 | 速さと大きなファイル: 片の大きさと同時に送る片の数を受け手が決める形、1 MiB を超えるファイル (上限は受け手の空き)、ESP32 で数 MB を運ぶ確認 | 実装済・検収待ち (report/t3.md。begin の答えに `window`、片は呼び出しの鍵の長さから、同時に送る数は転送のアプリのプールの空きから。種類 file の片は `/home/inbox/` の隠しファイルに直接書き、commit は名前の付け替えだけ。4 MiB の切断からの再開を `regress:transfer` の big と quick の big で。ESP32 は手順だけ) |
 | T4 | CRuby (asterism gem・console) とブラウザ版からの送受: 同じ決まりを gem の側にも置き、console の許可の表と記録に乗せる | 済 (T4b まで、gem 0.12.0・console 0.3.14) |
 | T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | checkpoint は実装済・検収待ち (report/t5.md。ESP32 は手順だけ)。`.app.wasm` は wasm のアプリの対応のとき |
+| T6 | 受け相手を console で管理: Members の行で種類ごとに選び、ACL の行を作り、bridge が端末へ配り (`policy_set`)、端末は receive.toml の印の下に書いて手書きとの和で判断。証明書つきの接続のときだけ受ける | 実装済・検収待ち (report/t6.md。写しが届くのは ESP32 の端末だけ、親に決めてほしいこと) |
 
 ## 受け入れ条件
 

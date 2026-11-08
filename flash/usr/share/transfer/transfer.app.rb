@@ -87,7 +87,20 @@
 #   from = ["fmruby-abcdef"]                  # = [checkpoint] from
 #
 # (with both, either list lets a node move apps here). "*" allows every
-# node the router lets in. The caller's node ID is the one Asterism takes
+# node the router lets in, "fmruby-*" every node whose ID starts so.
+#
+# Below a mark, the file has a part the console writes (T6,
+# /usr/share/transfer/receive_conf.rb): the senders chosen for this machine
+# in Admin > Members, sent by the console's bridge (policy_set, below) and
+# written only when they changed. A kind is taken from the senders of both
+# parts; the console's part stays as last written while the console cannot
+# be reached. The shell's asend -l shows both.
+#
+#   policy_set({"file" => [...], "checkpoint" => [...], "at"})
+#                            from the console's node only (console in
+#                            config.toml, "console" by default) and over a
+#                            tls/ router only (the caller's ID is bound to
+#                            its certificate there); refused otherwise The caller's node ID is the one Asterism takes
 # from the call; with a tls/ router and the console's certificates, the
 # router's access control binds it to the certificate.
 #
@@ -134,6 +147,7 @@
 # of this build's method names (the baseline) that check answers from.
 
 require "/usr/share/asterism/transfer/transfer"
+require "/usr/share/transfer/receive_conf"
 
 # The receiving side: Asterism::Transfer::Inbox (begin / chunk / commit /
 # cancel, resending from the receiver's position, the sha256 of the whole,
@@ -148,6 +162,9 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   SD = "/sd"
   SD_INBOX = "/sd/inbox/"
   RECEIVE_CONF = "/home/asterism/receive.toml"
+  # the node whose senders' list is taken (policy_set), unless config.toml
+  # names another (console = "...")
+  DEFAULT_CONSOLE = "console"
   RESTORE_MS = 8000
   TMP = "/tmp/"
   BUSY_FOR_MS = 2000
@@ -217,6 +234,41 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     true
   end
 
+  # The console's list of who may send here (T6): {"file" => [...],
+  # "checkpoint" => [...], "at" => when it was changed there}, written to
+  # the managed part of receive.toml (FmrbReceiveConf) when it is not the
+  # one there. Taken only from the console (CONSOLE_KEY in config.toml,
+  # "console" by default), and only over a connection with certificates
+  # (a tls/ router): there the router's access control binds the caller's
+  # node ID to its certificate. Over any other connection (a home router
+  # without certificates, peer to peer) anybody could call as "console",
+  # so the list is refused there.
+  def policy_set(h, from: nil)
+    @last_call = now_ms
+    console = @app ? @app.console_node : DEFAULT_CONSOLE
+    raise ArgumentError, "#{node_name} takes the senders' list from #{console} only, not #{from}" if from.to_s != console
+    unless @app && @app.certified?
+      raise ArgumentError, "#{node_name} takes no list from #{console} over a connection without certificates " \
+                           "(its router is not tls/)"
+    end
+    raise ArgumentError, "not a table" unless h.is_a?(Hash)
+    at = h["at"].to_s
+    raise ArgumentError, "at: not a time" unless ::FmrbReceiveConf.at_ok?(at)
+    lists = {}
+    kinds = ::FmrbReceiveConf::KINDS
+    i = 0
+    while i < kinds.size
+      lists[kinds[i]] = ::FmrbReceiveConf.checked_list(h[kinds[i]], kinds[i])
+      i += 1
+    end
+    written = ::FmrbReceiveConf.write_managed(from.to_s, at, lists)
+    if written
+      Log.info("transfer: the senders from #{from} (#{at}) written: file #{lists['file'].join(' ')}; " \
+               "checkpoint #{lists['checkpoint'].join(' ')}")
+    end
+    { "ok" => true, "written" => written, "at" => at }
+  end
+
   # ---- the hooks of Asterism::Transfer::Inbox ----
 
   attr_writer :app
@@ -228,11 +280,16 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     if k == "checkpoint" && !FmrbApp.respond_to?(:_checkpoint_restore)
       return "#{node_name} cannot start checkpoint images (this build has no mruby-checkpoint)"
     end
-    allowed = allowed_senders(k)
-    return "#{node_name} takes no #{k} (no [#{k}] in #{RECEIVE_CONF})" if allowed.nil?
-    allowed = list_of(allowed)
-    unless allowed.include?("*") || allowed.include?(from.to_s)
-      return "#{node_name} takes no #{k} from #{from} (#{k} from in #{RECEIVE_CONF})"
+    s = ::FmrbReceiveConf.senders(k)
+    hand = s["hand"]
+    managed = s["managed"]
+    if hand.nil? && managed.nil?
+      return "#{node_name} takes no #{k} (no [#{k}] in #{RECEIVE_CONF}, nor from the console)"
+    end
+    unless ::FmrbReceiveConf.allows?(hand, from) || ::FmrbReceiveConf.allows?(managed, from)
+      # (short: the sender's shell shows about 110 bytes of it)
+      return "#{node_name} takes no #{k} from #{from} (#{k} from in #{RECEIVE_CONF})" if managed.nil?
+      return "#{node_name} takes no #{k} from #{from} (not in receive.toml, by hand or from #{s['by']})"
     end
     k == "file" ? inbox_dir(meta) : nil
   end
@@ -396,25 +453,6 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     @app ? @app.node_name : "this machine"
   end
 
-  # The nodes that may send the kind (an Array), nil when receive.toml has
-  # no table for it. The top-level from (the older form) is the
-  # checkpoint's.
-  def allowed_senders(kind)
-    return nil unless File.exist?(RECEIVE_CONF)
-    conf = FmrbToml.load(RECEIVE_CONF)
-    return nil unless conf.is_a?(Hash)
-    t = conf[kind]
-    out = nil
-    out = list_of(t["from"]) if t.is_a?(Hash)
-    if kind == "checkpoint" && conf["from"].is_a?(Array)
-      out = (out || []) + list_of(conf["from"])
-    end
-    out
-  rescue => e
-    Log.warn("transfer: #{RECEIVE_CONF}: #{e.message}")
-    nil
-  end
-
   def list_of(v)
     out = []
     return out unless v.is_a?(Array)
@@ -496,11 +534,25 @@ class TransferApp < FmrbApp
     @link.node
   end
 
+  # The console's node ID (config.toml's console, else "console"), read on
+  # every list it sends.
+  def console_node
+    c = FmrbToml.load(FmrbAsterism::CONFIG_FILE)
+    v = c.is_a?(Hash) ? c["console"].to_s : ""
+    v.empty? ? TransferInbox::DEFAULT_CONSOLE : v
+  end
+
+  # Connected over a tls/ router, with this machine's certificate (the
+  # settings take no tls/ router without one).
+  def certified?
+    @link.connected? && @link.router.to_s.start_with?("tls/")
+  end
+
   def link_up(link)
     @inbox.path = "#{link.node}/#{APP}/#{OBJECT}"
     ::Asterism.expose(OBJECT, @inbox,
                       methods: { "check" => 2, "begin" => 2, "chunk" => 3, "commit" => 1, "status" => 1,
-                                 "cancel" => 1 },
+                                 "cancel" => 1, "policy_set" => 1 },
                       caller: :from, doc: "files from other machines (doc/asterism_file_transfer)")
     tell_kernel({ "cmd" => "transfer_ready", "node" => link.node })
   end

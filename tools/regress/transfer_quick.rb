@@ -26,6 +26,12 @@
 #             app (FmrbTransfer: progress, the name placed under) to this
 #             process; then one it cancels on the way: this side drops the
 #             piece file
+#   managed   the console's part of receive.toml (T6): a list sent by a
+#             node other than the console is refused, and so is one sent
+#             as the console over a connection without certificates (the
+#             router here is plain tcp); the senders written in the managed
+#             part (a pattern) are taken, the others refused, also when
+#             the part by hand has no [file]
 #   big       a 4 MiB file, the connection cut once on the way (T3): its
 #             pieces go straight to a hidden file in /home/inbox/ (none in
 #             /tmp), it goes on from where the receiver stood, and the
@@ -35,7 +41,7 @@
 #   ruby tools/regress/transfer_quick.rb --web      # the browser build as the
 #                                                   # machine (wasm/build/dist;
 #                                                   # resend, mismatch, names,
-#                                                   # refused)
+#                                                   # refused, managed)
 #   ruby tools/regress/transfer_quick.rb --only names
 #
 # The machine's receive.toml (the form of T2, a table per kind):
@@ -146,7 +152,7 @@ module Regress
         ok
       end
 
-      def cases = @web ? %w[resend mismatch names refused] : %w[resend cut mismatch names refused api big]
+      def cases = @web ? %w[resend mismatch names refused managed] : %w[resend cut mismatch names refused managed api big]
 
       # ---- the machine ----
 
@@ -376,6 +382,71 @@ module Regress
         FileUtils.rm_f(big)
         out << s.reason[/\(.*\)/]
         "refused at begin, one call each: #{out.join('; ')}"
+      end
+
+      def q_managed
+        out = []
+        list = { "file" => [NODE_PC], "checkpoint" => [], "at" => "2026-11-09T00:00:00Z" }
+        # from a node that is not the console
+        why = policy_refusal(list)
+        raise T::Failure, "managed: a list from #{NODE_PC}: #{why}" unless why.include?("from console only")
+        out << "a list from #{NODE_PC} refused"
+        # as the console (config.toml's console names this process), over a
+        # connection without certificates
+        conf = get_machine("/home/asterism/config.toml") or raise T::Failure, "managed: no config.toml there"
+        tmp = File.join(@pc_dir, "config.toml")
+        begin
+          File.write(tmp, "#{conf}console = \"#{NODE_PC}\"\n")
+          put_machine(tmp, "/home/asterism/config.toml")
+          why = policy_refusal(list)
+          raise T::Failure, "managed: a list as the console over tcp: #{why}" unless why.include?("without certificates")
+        ensure
+          File.write(tmp, conf)
+          put_machine(tmp, "/home/asterism/config.toml")
+        end
+        out << "as the console over a connection without certificates refused"
+        # the managed part written as the transfer app writes it: taken from
+        # its senders (a pattern) with no [file] by hand
+        recv = File.join(@pc_dir, "receive_managed.toml")
+        begin
+          File.write(recv, managed_receive(["rg-xfer-*"]))
+          put_machine(recv, "/home/asterism/receive.toml")
+          bytes = random(20_000, 6)
+          name = must_place(pc_send("q-managed.bin", bytes), "managed")
+          must_have("/home/inbox/#{name}", bytes)
+          out << "taken from the managed part (rg-xfer-*)"
+          File.write(recv, managed_receive(["fmruby-*"]))
+          put_machine(recv, "/home/asterism/receive.toml")
+          s = pc_send("q-managed2.bin", "x" * 100)
+          unless !s.ok? && s.reason.include?("not in receive.toml, by hand or from console")
+            raise T::Failure, "managed: not in the list: #{s.ok? ? 'taken' : s.reason}"
+          end
+          raise T::Failure, "managed: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
+          out << "refused when not in it"
+        ensure
+          File.write(recv, RECEIVE)
+          put_machine(recv, "/home/asterism/receive.toml")
+        end
+        out.join("; ")
+      end
+
+      # The reason the machine gives for a list sent to its policy_set
+      # (a Failure when it takes it).
+      def policy_refusal(list)
+        Asterism["#{@to}/transfer/inbox", timeout: 10].policy_set(list)
+        raise T::Failure, "managed: the list was taken"
+      rescue Asterism::Error => e
+        e.message
+      end
+
+      # receive.toml with a part by hand that has no [file] and the console's
+      # part with these senders of files.
+      def managed_receive(file_from)
+        "[checkpoint]\nfrom = [\"#{T::NODE_A}\"]\n\n" \
+          "# ---- managed by the console (below this line; edit above it) ----\n" \
+          "[managed]\nby = \"console\"\nat = \"2026-11-09T00:00:00Z\"\n\n" \
+          "[managed.file]\nfrom = [#{file_from.map { "\"#{_1}\"" }.join(', ')}]\n\n" \
+          "[managed.checkpoint]\nfrom = []\n"
       end
 
       def q_api

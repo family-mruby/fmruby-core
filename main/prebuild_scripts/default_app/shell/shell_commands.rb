@@ -140,6 +140,7 @@ module ShellCommandsMixin
       @history << "  move <pid> <node> - Move an app to another machine (its Asterism node ID)"
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
+      @history << "  asend -l - Who may send files here (by hand, and from the console)"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1158,6 +1159,10 @@ module ShellCommandsMixin
   # (FmrbTransfer); its progress and end come back as messages, shown by
   # tick_send. One at a time from here; asend -c stops it.
   def cmd_send(args)
+    if args == ["-l"]
+      list_receivers
+      return
+    end
     if args == ["-c"]
       if @send_rq && @xfer && @xfer.cancel(@send_rq)
         @history << "asend: stopping #{@send_path}"
@@ -1208,6 +1213,18 @@ module ShellCommandsMixin
     @send_shown = 0
     @send_inbox = sd ? "/sd/inbox" : "/home/inbox"
     @history << "asend: #{path} to #{rest[0]}#{sd ? ' (SD card)' : ''}#{over ? ' (overwrite)' : ''}"
+  end
+
+  # asend -l: who may send files (and apps) to this machine, from its
+  # receive.toml: the senders written by hand and the ones the console sent
+  # (doc/asterism_file_transfer T6).
+  def list_receivers
+    begin
+      require "/usr/share/transfer/receive_conf"
+      FmrbReceiveConf.lines.each { |l| @history << "asend: #{l}" }
+    rescue => e
+      @history << "asend: #{e.message}"
+    end
   end
 
   # Called once per on_update from shell.app.rb: the progress of the file
