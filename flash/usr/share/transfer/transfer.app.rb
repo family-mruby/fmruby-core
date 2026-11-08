@@ -61,8 +61,10 @@
 # it stops being written).
 #
 #   checkpoint   an app's image (doc/checkpoint F5): started here
-#   file         any file: placed under /home/inbox/ (made when missing)
-#                under the name it is sent with (letters of any kind, no
+#   file         any file: placed under /home/inbox/ (made when missing),
+#                or under /sd/inbox/ when the sender chooses the SD card
+#                (meta "inbox" => "sd"; a machine with no card to write to
+#                refuses it at begin), under the name it is sent with (letters of any kind, no
 #                "/", "\\" or "..", not starting with ".", up to 48
 #                bytes). A file of that name there stays, and the new one
 #                gets a name of its own ("foo(1).txt"), unless the sender
@@ -107,7 +109,8 @@
 # /usr/share/transfer/fmrb_transfer.rb, which the shell's send uses):
 #
 #   topic "transfer/ctl" {"cmd" => "send", "rq", "to", "path", "ow"
-#   (overwrite), "name"}     the file as the kind "file" to <to>; the asking
+#   (overwrite), "sd" (to the SD card's inbox there), "name"}
+#                            the file as the kind "file" to <to>; the asking
 #                            app hears "transfer_queued" {rq}, then
 #                            "transfer_progress" {rq, sent, size} as it goes
 #                            and "transfer_done" {rq, ok, name | reason}
@@ -136,6 +139,9 @@ require "/usr/share/asterism/transfer/transfer"
 class TransferInbox < ::Asterism::Transfer::Inbox
   KINDS = ["checkpoint", "file"]
   INBOX = "/home/inbox/"
+  # The SD card's inbox, which the sender chooses (meta "inbox" => "sd")
+  SD = "/sd"
+  SD_INBOX = "/sd/inbox/"
   RECEIVE_CONF = "/home/asterism/receive.toml"
   RESTORE_MS = 8000
   TMP = "/tmp/"
@@ -223,7 +229,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     unless allowed.include?("*") || allowed.include?(from.to_s)
       return "#{node_name} takes no #{k} from #{from} (#{k} from in #{RECEIVE_CONF})"
     end
-    k == "file" ? inbox_dir : nil
+    k == "file" ? inbox_dir(meta) : nil
   end
 
   # A file's name may be any name that stays in /home/inbox/; an image's is
@@ -234,19 +240,25 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   end
 
   # What can still be written where the file is written: /tmp for an
-  # image, /home/inbox/ for a "file" (its pieces go there straight). nil
-  # when not known (this build has no FmrbApp.free_bytes, or the place
-  # cannot tell).
+  # image, the inbox the sender chose for a "file" (its pieces go there
+  # straight). nil when not known (this build has no FmrbApp.free_bytes,
+  # or the place cannot tell).
   def room(kind, meta)
     return nil unless FmrbApp.respond_to?(:free_bytes)
-    FmrbApp.free_bytes(kind == "file" ? INBOX : TMP)
+    FmrbApp.free_bytes(kind == "file" ? inbox_of(meta) : TMP)
   end
 
   # A "file"'s pieces go beside where it goes, hidden (a file sent here
   # never starts with "."): the commit renames it, nothing is copied.
-  def part_path(kind, name)
+  def part_path(kind, name, meta)
     return super unless kind == "file"
-    "#{INBOX}.#{name}.#{kind}.part"
+    "#{inbox_of(meta)}.#{name}.#{kind}.part"
+  end
+
+  # The inbox a "file" goes to: /sd/inbox/ when the sender chose the SD
+  # card (meta "inbox" => "sd"), else /home/inbox/.
+  def inbox_of(meta)
+    meta.is_a?(Hash) && meta["inbox"] == "sd" ? SD_INBOX : INBOX
   end
 
   # How many pieces may be on their way at once: as many as the free part
@@ -275,12 +287,13 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   def place_file(t)
     over = t["meta"]["overwrite"] == true
     part = t["part"]
-    name = over ? t["name"] : ::Asterism::Transfer.free_name(INBOX, t["name"])
+    inbox = inbox_of(t["meta"])
+    name = over ? t["name"] : ::Asterism::Transfer.free_name(inbox, t["name"])
     if name.nil?
       remove(part)
-      return { "status" => "refused", "reason" => "no free name for #{t['name']} in #{INBOX}" }
+      return { "status" => "refused", "reason" => "no free name for #{t['name']} in #{inbox}" }
     end
-    dest = "#{INBOX}#{name}"
+    dest = "#{inbox}#{name}"
     begin
       File.delete(dest) if over && File.exist?(dest)
       File.rename(part, dest)
@@ -293,11 +306,17 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     { "status" => "placed", "name" => name, "path" => dest }
   end
 
-  # Hidden piece files in /home/inbox/ that no note speaks for (the machine
-  # started again, and /tmp with the notes is new): deleted when this app
-  # starts, after resume_held took up the one it goes on with.
+  # Hidden piece files in /home/inbox/ and /sd/inbox/ that no note speaks
+  # for (the machine started again, and /tmp with the notes is new):
+  # deleted when this app starts, after resume_held took up the one it goes
+  # on with.
   def sweep_inbox
-    dir = INBOX.byteslice(0, INBOX.bytesize - 1)
+    sweep_dir(INBOX)
+    sweep_dir(SD_INBOX)
+  end
+
+  def sweep_dir(inbox)
+    dir = inbox.byteslice(0, inbox.bytesize - 1)
     return unless Dir.exist?(dir)
     t = current_file
     keep = t ? t["part"] : nil
@@ -307,22 +326,45 @@ class TransferInbox < ::Asterism::Transfer::Inbox
       n = names[i].to_s
       i += 1
       next unless n.bytesize > 6 && n.getbyte(0) == 46 && n.end_with?(".part")
-      path = "#{INBOX}#{n}"
+      path = "#{inbox}#{n}"
       next if path == keep
       Log.info("transfer: #{path} left from before; deleted")
       remove(path)
     end
   rescue => e
-    Log.warn("transfer: #{INBOX}: #{e.message}")
+    Log.warn("transfer: #{inbox}: #{e.message}")
   end
 
-  # /home/inbox/ made when missing -> nil, or why it cannot be.
-  def inbox_dir
-    dir = INBOX.byteslice(0, INBOX.bytesize - 1)
+  # The inbox the sender chose, made when missing -> nil, or why it cannot
+  # be. The SD card's is there only on a machine with a card that can be
+  # written: its free space is known (a device without a card cannot tell
+  # it, the browser build has no card), /sd is not read-only (the native
+  # program shows no card: /sd falls in its read-only distribution tree),
+  # and /sd/inbox/ is there or can be made (the simulation's /sd is a
+  # directory of its flash/ when there is one).
+  def inbox_dir(meta)
+    m = meta.is_a?(Hash) ? meta : {}
+    place = m["inbox"]
+    unless place.nil? || place == "home" || place == "sd"
+      return "#{node_name} has no inbox #{place} (home or sd)"
+    end
+    inbox = inbox_of(m)
+    dir = inbox.byteslice(0, inbox.bytesize - 1)
+    if inbox == SD_INBOX
+      no_card = "#{node_name} has no SD card to write to"
+      return no_card unless FmrbApp.respond_to?(:free_bytes) && FmrbApp.free_bytes(SD)
+      return no_card if FmrbApp.respond_to?(:path_read_only?) && FmrbApp.path_read_only?(SD)
+      begin
+        Dir.mkdir(dir) unless Dir.exist?(dir)
+      rescue => e
+        return "#{no_card} (#{SD_INBOX}: #{e.message})"
+      end
+      return nil
+    end
     Dir.mkdir(dir) unless Dir.exist?(dir)
     nil
   rescue => e
-    "cannot make #{INBOX} (#{e.message})"
+    "cannot make #{inbox} (#{e.message})"
   end
 
   # The image is whole (its sha256 matches): it goes beside its attributes
@@ -503,7 +545,8 @@ class TransferApp < FmrbApp
       if seen.nil? || rq > seen
         @asked[pid] = rq
         @jobs << { "cmd" => "file_send", "to" => req["to"].to_s, "path" => req["path"].to_s,
-                   "name" => req["name"], "overwrite" => req["ow"] == true, "pid" => pid, "rq" => rq }
+                   "name" => req["name"], "overwrite" => req["ow"] == true, "sd" => req["sd"] == true,
+                   "pid" => pid, "rq" => rq }
         Log.info("transfer: PID #{pid} asks to send #{req['path']} to #{req['to']}")
       end
       tell_app(pid, { "cmd" => "transfer_queued", "rq" => rq })
@@ -736,6 +779,7 @@ class TransferApp < FmrbApp
     name = job["name"] ? job["name"].to_s : path.split("/").last.to_s
     meta = {}
     meta["overwrite"] = true if job["overwrite"]
+    meta["inbox"] = "sd" if job["sd"]
     job["size"] = File.size(path)
     job["told"] = -1
     job["told_at"] = 0

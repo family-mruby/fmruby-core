@@ -1,6 +1,7 @@
 # FmrbTransfer: an app sends a file to another machine over Asterism
 # (doc/asterism_file_transfer T2). The file goes as the kind "file": the
-# other machine places it under its /home/inbox/ when its
+# other machine places it under its /home/inbox/ (or its SD card's
+# /sd/inbox/, sd: true; a machine with no card refuses it) when its
 # /home/asterism/receive.toml takes files from this machine ([file] from).
 #
 #   require "/usr/share/transfer/fmrb_transfer"
@@ -8,6 +9,7 @@
 #   @xfer = FmrbTransfer.new(self)                 # self: the FmrbApp
 #   id = @xfer.send_file("fmruby-abcdef", "/home/notes.txt")
 #   id = @xfer.send_file(node, path, overwrite: true, name: "other.txt")
+#   id = @xfer.send_file(node, path, sd: true)     # to its /sd/inbox/
 #
 #   def on_control(msg)
 #     return if @xfer.on_control(msg)               # true: it was one of ours
@@ -57,7 +59,8 @@ class FmrbTransfer
   # -> the request's id (an Integer). overwrite: a file of that name there is
   # replaced (once the new one is whole); otherwise the new one is placed
   # under a name of its own. name: the name there (default: path's last part).
-  def send_file(to, path, overwrite: false, name: nil)
+  # sd: to the SD card's inbox there (/sd/inbox/) instead of /home/inbox/.
+  def send_file(to, path, overwrite: false, name: nil, sd: false)
     to = to.to_s
     path = path.to_s
     raise ArgumentError, "no node to send to" if to.empty?
@@ -66,6 +69,7 @@ class FmrbTransfer
     rq = new_rq
     req = { "cmd" => "send", "rq" => rq, "to" => to, "path" => path }
     req["ow"] = true if overwrite
+    req["sd"] = true if sd
     req["name"] = name.to_s if name
     fwd = { "cmd" => "topic_data", "topic" => TOPIC, "data" => req, "src_pid" => 255 }
     if MessagePack.pack(fwd).bytesize > MSG_MAX

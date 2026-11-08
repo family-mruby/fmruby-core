@@ -41,7 +41,7 @@
 #                                          number of pieces on their way
 #                                          (the receiver names the most)
 #   {"api": {"to": "node-b", "path": "/home/x.txt", "overwrite": true,
-#    "name": "y.txt", "cancel_at": 65536}}
+#    "name": "y.txt", "sd": true, "cancel_at": 65536}}
 #                                          send a file through the
 #                                          transfer app as an app does
 #                                          (FmrbTransfer, the kind "file";
@@ -253,7 +253,8 @@ class XferProbeApp < FmrbApp
     require "/usr/share/transfer/fmrb_transfer"
     @api = FmrbTransfer.new(self)
     @api_said = ""
-    @api_rq = @api.send_file(a["to"].to_s, a["path"].to_s, overwrite: a["overwrite"] == true, name: a["name"])
+    @api_rq = @api.send_file(a["to"].to_s, a["path"].to_s, overwrite: a["overwrite"] == true, name: a["name"],
+                             sd: a["sd"] == true)
     @api_cancel_at = a["cancel_at"]
     Log.info("xfer_probe: api asked to send #{a['path']} to #{a['to']}")
   rescue => e

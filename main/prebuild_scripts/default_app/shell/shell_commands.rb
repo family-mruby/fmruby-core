@@ -138,7 +138,7 @@ module ShellCommandsMixin
       @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
       @history << "  restore <image> - Start an app from its image (.ckpt)"
       @history << "  move <pid> <node> - Move an app to another machine (its Asterism node ID)"
-      @history << "  asend <node> <file> [-o] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite)"
+      @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
@@ -1152,8 +1152,9 @@ module ShellCommandsMixin
   # Send a file to another machine over Asterism (doc/asterism_file_transfer
   # T2), named by its Asterism node ID: it is placed under that machine's
   # /home/inbox/ when its receive.toml takes files from this one ([file]
-  # from). A file of the same name there stays and this one gets a name of
-  # its own, unless -o (overwrite). The transfer app does the sending
+  # from), or under its SD card's /sd/inbox/ with -s (--sd; a machine with
+  # no card refuses it). A file of the same name there stays and this one
+  # gets a name of its own, unless -o (overwrite). The transfer app does the sending
   # (FmrbTransfer); its progress and end come back as messages, shown by
   # tick_send. One at a time from here; asend -c stops it.
   def cmd_send(args)
@@ -1166,18 +1167,21 @@ module ShellCommandsMixin
       return
     end
     over = false
+    sd = false
     rest = []
     i = 0
     while i < args.size
       if args[i] == "-o"
         over = true
+      elsif args[i] == "-s" || args[i] == "--sd"
+        sd = true
       else
         rest << args[i]
       end
       i += 1
     end
     unless rest.size == 2
-      @history << "Usage: asend <node> <file> [-o]   (node: the other machine's Asterism node ID; -o: overwrite)"
+      @history << "Usage: asend <node> <file> [-o] [-s]   (node: the other machine's Asterism node ID; -o: overwrite; -s: to its SD card)"
       return
     end
     if @send_rq && @xfer && !@xfer.done?(@send_rq)
@@ -1194,7 +1198,7 @@ module ShellCommandsMixin
         require "/usr/share/transfer/fmrb_transfer"
         @xfer = FmrbTransfer.new(self)
       end
-      @send_rq = @xfer.send_file(rest[0], path, overwrite: over)
+      @send_rq = @xfer.send_file(rest[0], path, overwrite: over, sd: sd)
     rescue => e
       @history << "asend: #{e.message}"
       return
@@ -1202,7 +1206,8 @@ module ShellCommandsMixin
     @send_path = path
     @send_to = rest[0]
     @send_shown = 0
-    @history << "asend: #{path} to #{rest[0]}#{over ? ' (overwrite)' : ''}"
+    @send_inbox = sd ? "/sd/inbox" : "/home/inbox"
+    @history << "asend: #{path} to #{rest[0]}#{sd ? ' (SD card)' : ''}#{over ? ' (overwrite)' : ''}"
   end
 
   # Called once per on_update from shell.app.rb: the progress of the file
@@ -1214,7 +1219,7 @@ module ShellCommandsMixin
     return unless st
     state = st["state"]
     if state == "done"
-      append_output("asend: #{@send_path} is in #{@send_to}'s /home/inbox as #{st["name"]}")
+      append_output("asend: #{@send_path} is in #{@send_to}'s #{@send_inbox} as #{st["name"]}")
       @xfer.forget(@send_rq)
       @send_rq = nil
       return

@@ -5,7 +5,8 @@
 # Asterism (doc/asterism_file_transfer T2): the native program, the
 # simulation, the browser build or a board, whichever node is named. The
 # file goes as the kind "file" to <node>/transfer/inbox and is placed under
-# that machine's /home/inbox/; it must take files from this PC's node
+# that machine's /home/inbox/ (--sd: its SD card's /sd/inbox/; a machine
+# with no card refuses it); it must take files from this PC's node
 # ([file] from in its /home/asterism/receive.toml).
 #
 #   ruby tools/fmrb_send.rb <node> <file>
@@ -16,6 +17,7 @@
 #                                        (default: it stays, and this one
 #                                        gets a name of its own, foo(1).txt)
 #        [--name NAME]                   the name there (default: the file's)
+#        [--sd]                          to the SD card's /sd/inbox/ there
 #
 # It prints the progress and the name the file was placed under; the exit
 # status is 0 when placed. Ctrl+C stops it, and the machine drops what it
@@ -47,13 +49,14 @@ module FmrbSend
   end
 
   def self.main(argv)
-    opt = { router: DEFAULT_ROUTER, node: DEFAULT_NODE, overwrite: false, name: nil }
+    opt = { router: DEFAULT_ROUTER, node: DEFAULT_NODE, overwrite: false, name: nil, sd: false }
     parser = OptionParser.new do |o|
-      o.banner = "usage: fmrb_send.rb <node> <file> [--router LOC] [--node ID] [--overwrite] [--name NAME]"
+      o.banner = "usage: fmrb_send.rb <node> <file> [--router LOC] [--node ID] [--overwrite] [--name NAME] [--sd]"
       o.on("--router LOC") { |v| opt[:router] = v }
       o.on("--node ID") { |v| opt[:node] = v }
       o.on("--overwrite") { opt[:overwrite] = true }
       o.on("--name NAME") { |v| opt[:name] = v }
+      o.on("--sd") { opt[:sd] = true }
     end
     parser.parse!(argv)
     abort parser.banner unless argv.size == 2
@@ -62,7 +65,7 @@ module FmrbSend
     load_asterism
     Asterism.connect(opt[:router], node: opt[:node], app: APP)
     begin
-      ok = send_file(to, path, overwrite: opt[:overwrite], name: opt[:name])
+      ok = send_file(to, path, overwrite: opt[:overwrite], name: opt[:name], sd: opt[:sd])
     ensure
       Asterism.close
     end
@@ -70,8 +73,9 @@ module FmrbSend
   end
 
   # One file to <to>/transfer/inbox, connected already. -> true when placed.
-  def self.send_file(to, path, overwrite: false, name: nil, out: $stdout)
+  def self.send_file(to, path, overwrite: false, name: nil, sd: false, out: $stdout)
     meta = overwrite ? { "overwrite" => true } : {}
+    meta["inbox"] = "sd" if sd
     s = Asterism::Transfer::Sender.new("#{to}/transfer/inbox", "file", path, name: name || File.basename(path),
                                                                               meta: meta)
     s.logger = nil
@@ -102,7 +106,7 @@ module FmrbSend
     note = "#{s.took_ms} ms, #{st['calls']} calls, pieces of #{s.piece}, #{s.window} at a time (the receiver's), " \
            "#{st['again']} again, #{st['retries']} retries"
     if s.ok? && s.answer["status"] == "placed"
-      out.puts "fmrb_send: placed as #{s.answer['name']} in #{to}'s /home/inbox (#{note})"
+      out.puts "fmrb_send: placed as #{s.answer['name']} in #{to}'s #{sd ? '/sd/inbox' : '/home/inbox'} (#{note})"
       true
     else
       why = s.ok? ? s.answer["reason"] : s.reason

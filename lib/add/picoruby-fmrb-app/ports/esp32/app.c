@@ -57,6 +57,11 @@
 #include "audio_p4.h"
 #endif
 
+#if defined(FMRB_PLATFORM_WASM)
+// The browser's storage room as the page last saw it (wasm/backend/storage_wasm.c).
+int64_t fmrb_wasm_storage_free(void);
+#endif
+
 static const char* TAG = "app";
 
 // What one GC step has been costing this app. Biased upward: it jumps to any
@@ -2211,8 +2216,10 @@ static mrb_value mrb_fmrb_app_s_path_read_only_p(mrb_state *mrb, mrb_value klass
 // count (its capacity less what it holds; statfs there would answer for the
 // flash or the host's disk), anything else from the filesystem under it
 // (LittleFS or the SD card on the devices, the host directory on Linux).
-// The browser's storage gives no real figure (Emscripten's statvfs is a
-// constant), so it is nil there: the caller writes and finds out.
+// The browser's statvfs is a constant: there /home answers the estimate the
+// page last took of the browser's storage (navigator.storage.estimate,
+// quota less usage, a tenth kept back; wasm/backend/storage_wasm.c), and
+// anything else (no SD card there) is nil.
 // Allocation-free. The transfer app asks before it takes a file
 // (doc/asterism_file_transfer T2).
 static mrb_value mrb_fmrb_app_s_free_bytes(mrb_state *mrb, mrb_value klass)
@@ -2227,6 +2234,10 @@ static mrb_value mrb_fmrb_app_s_free_bytes(mrb_state *mrb, mrb_value klass)
         return mrb_fixnum_value((mrb_int)(cap > used ? cap - used : 0));
     }
 #if defined(FMRB_PLATFORM_WASM)
+    if (strncmp(path, "/home", 5) == 0 && (path[5] == '\0' || path[5] == '/')) {
+        int64_t room = fmrb_wasm_storage_free();
+        return room < 0 ? mrb_nil_value() : mrb_fixnum_value((mrb_int)room);
+    }
     return mrb_nil_value();
 #else
     uint64_t total = 0, free_bytes = 0;

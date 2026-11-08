@@ -1530,6 +1530,30 @@ async function measureStorage() {
   showStorageState();
 }
 
+// The browser's storage room, for the machine (FmrbApp.free_bytes of /home,
+// which the transfer app asks before it takes a file, doc/asterism_file_transfer
+// T3b): navigator.storage.estimate() answers only through a promise here, so
+// the page asks at the start and every STORAGE_ROOM_MS, and writes quota less
+// usage, a tenth kept back (it is an estimate), in KiB to a cell the machine
+// reads at once (wasm/backend/storage_wasm.c). No estimate: the cell keeps
+// "unknown" and the machine finds out by writing.
+const STORAGE_ROOM_MS = 10000;
+const STORAGE_ROOM_KEEP = 0.9;
+
+async function shareStorageRoom() {
+  if (!M || !M._fmrb_wasm_storage_free_kib_ptr) return;
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return;
+    const est = await navigator.storage.estimate();
+    if (!est || est.quota == null || est.usage == null) return;
+    const room = Math.max(0, est.quota - est.usage) * STORAGE_ROOM_KEEP;
+    const kib = Math.min(0xFFFFFFFE, Math.floor(room / 1024));
+    Atomics.store(M.HEAPU32, M._fmrb_wasm_storage_free_kib_ptr() >> 2, kib);
+  } catch (e) {
+    console.warn('fmrb: storage estimate unavailable:', e);
+  }
+}
+
 // ---- taking /home with you ---------------------------------------------
 //
 // Browser storage is not a safe place to keep the only copy: a private
@@ -2733,6 +2757,8 @@ startOverlay.addEventListener('click', async () => {
   if (FSPROBE) setTimeout(() => fsprobeReport(mod), 3000);
   if (FSPROBE) setTimeout(fsprobeSecondTab, 6000);
   measureStorage();
+  shareStorageRoom();
+  setInterval(shareStorageRoom, STORAGE_ROOM_MS);
   enableStorageButtons();
   hookInput();
   requestAnimationFrame(paint);

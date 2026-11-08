@@ -18,7 +18,10 @@
 #             (the one under the other name stays as it was)
 #   refused   before a byte is sent: a kind the machine does not take, a
 #             kind it does not take from this node, a name that leads out
-#             of /home/inbox/, a file larger than its free space
+#             of /home/inbox/, the SD card's inbox on a machine with no
+#             card (and an inbox there is no such), a file larger than its
+#             free space (the browser build: the page's estimate of the
+#             browser's storage)
 #   api       an app of the machine (the probe) sends through the transfer
 #             app (FmrbTransfer: progress, the name placed under) to this
 #             process; then one it cancels on the way: this side drops the
@@ -69,7 +72,7 @@ module Regress
     # way).
     def self.pc_inbox_class
       Class.new(Asterism::Transfer::Inbox) do
-        attr_accessor :slow, :placed
+        attr_accessor :slow, :placed, :inbox
 
         def refused(kind, _from, _meta)
           kind == "file" ? nil : "takes no #{kind}"
@@ -89,6 +92,7 @@ module Regress
           FileUtils.mkdir_p("#{dir}in")
           File.rename(t["part"], "#{dir}in/#{name}")
           @placed = name
+          @inbox = t["meta"]["inbox"]
           { "status" => "placed", "name" => name }
         end
       end
@@ -348,24 +352,29 @@ module Regress
         File.write(old, RECEIVE)
         put_machine(old, "/home/asterism/receive.toml")
         out << "no [file] with the older form"
+        # the SD card's inbox on a machine with none (the native program and
+        # the browser build show no card): refused at begin, nothing written
+        s = pc_send("sd.txt", "x" * 100, meta: { "inbox" => "sd" })
+        raise T::Failure, "sd: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("has no SD card")
+        raise T::Failure, "sd: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
+        raise T::Failure, "an inbox of the SD card there" if get_machine("/sd/inbox/.sd.txt.file.part")
+        out << "no SD card"
+        s = pc_send("where.txt", "x" * 100, meta: { "inbox" => "usb" })
+        raise T::Failure, "usb: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("has no inbox usb")
+        out << "no inbox usb"
         # larger than the storage's room (a "file" goes to /home/inbox/ now;
-        # 8 TiB, sparse here). The browser build's /home tells no room
-        # (FmrbApp.free_bytes nil): there it is refused where it stops
-        # being written, so not tried
-        if @web
-          out << "(the browser's /home tells no room: not tried)"
-        else
-          big = File.join(@pc_dir, "big.bin")
-          File.open(big, "w") { |f| f.truncate(1 << 43) }
-          s = pc_send("big.bin", nil, path: big, sha256: "1" * 64)
-          raise T::Failure, "8 TiB: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("do not fit")
-          raise T::Failure, "8 TiB: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
-          if get_machine("/tmp/big.bin.file.part") || get_machine("/home/inbox/.big.bin.file.part")
-            raise T::Failure, "a piece file is there"
-          end
-          FileUtils.rm_f(big)
-          out << s.reason[/\(.*\)/]
+        # 8 TiB, sparse here). The browser build's room is the page's
+        # estimate of the browser's storage (navigator.storage.estimate)
+        big = File.join(@pc_dir, "big.bin")
+        File.open(big, "w") { |f| f.truncate(1 << 43) }
+        s = pc_send("big.bin", nil, path: big, sha256: "1" * 64)
+        raise T::Failure, "8 TiB: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("do not fit")
+        raise T::Failure, "8 TiB: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
+        if get_machine("/tmp/big.bin.file.part") || get_machine("/home/inbox/.big.bin.file.part")
+          raise T::Failure, "a piece file is there"
         end
+        FileUtils.rm_f(big)
+        out << s.reason[/\(.*\)/]
         "refused at begin, one call each: #{out.join('; ')}"
       end
 
@@ -378,6 +387,11 @@ module Regress
         raise T::Failure, "api: #{r[:end]}" unless r[:end] =~ /api done ok same\.txt/
         got = File.binread(File.join(@pc_dir, "in", "same.txt"))
         raise T::Failure, "api: the file here is #{got.inspect}" unless got == "third, over the first\n"
+        raise T::Failure, "api: asked for the inbox #{@pc_inbox.inbox.inspect}" unless @pc_inbox.inbox.nil?
+        # the SD card chosen (sd: true): the choice reaches the receiver
+        r = api_job({ "to" => NODE_PC, "path" => "/home/inbox/same.txt", "name" => "sd.txt", "sd" => true })
+        raise T::Failure, "api sd: #{r[:end]}" unless r[:end] =~ /api done ok sd\.txt/
+        raise T::Failure, "api sd: asked for the inbox #{@pc_inbox.inbox.inspect}" unless @pc_inbox.inbox == "sd"
         # one cancelled on the way
         @pc_inbox.slow = 0.003
         r2 = api_job({ "to" => NODE_PC, "path" => "/home/api_big.bin", "cancel_at" => 65_536 })
@@ -389,7 +403,7 @@ module Regress
         left = Dir.glob(File.join(@pc_dir, "*.{part,xfer}"))
         raise T::Failure, "api cancel: #{left.map { |x| File.basename(x) }} left" unless left.empty?
         sending = r2[:lines].grep(/xfer_probe: api now sending/).size
-        "sent through the transfer app (placed as same.txt there); " \
+        "sent through the transfer app (placed as same.txt there; with sd: true the receiver was asked for its SD card); " \
           "1 MiB cancelled at #{r2[:lines].grep(/cancelling at/).first.to_s[/at (\d+)/, 1]} after #{sending} progress report(s): the piece file dropped here"
       end
 

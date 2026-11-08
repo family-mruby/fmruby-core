@@ -85,6 +85,7 @@ set(WASM_BACKEND_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/audio_backend_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/input_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/clip_wasm.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/backend/storage_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/libc_shim_wasm.c)
 
 # ---------------------------------------------------------------------------
