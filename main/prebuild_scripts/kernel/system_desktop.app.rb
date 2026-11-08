@@ -109,7 +109,30 @@ class SystemDesktopApp < FmrbApp
   POWER_EXIT_KEY = login_session?(FmrbApp.power_actions) ? :power_logout : :power_exit
   POWER_KEYS = { reset: :reset, lock: :power_lock, exit: POWER_EXIT_KEY, power_off: :power_off,
                  restart: :power_restart, suspend: :power_suspend }
-  POWER_ITEMS = FmrbApp.power_actions.map { |a| { key: POWER_KEYS[a], power: a } }
+  # Menu order (2026-11-08 user): from the lightest to the heaviest --
+  # Lock, Suspend, Exit / Log Out, Restart, Power off (Reset, a device's,
+  # last). FmrbApp.power_actions lists them in its bit order, not this one.
+  POWER_MENU_ORDER = [:lock, :suspend, :exit, :restart, :power_off, :reset]
+  def self.action_offered?(actions, a)
+    j = 0
+    while j < actions.size
+      return true if actions[j] == a
+      j += 1
+    end
+    false
+  end
+
+  def self.power_items(actions)
+    items = []
+    i = 0
+    while i < POWER_MENU_ORDER.size
+      a = POWER_MENU_ORDER[i]
+      items << { key: POWER_KEYS[a], power: a } if action_offered?(actions, a)
+      i += 1
+    end
+    items
+  end
+  POWER_ITEMS = power_items(FmrbApp.power_actions)
   DROPDOWN_ITEMS = [
     { key: :launcher },
     # The editor is a built-in, so it never appears in the launcher (that list is

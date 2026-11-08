@@ -226,10 +226,27 @@ class KeysDesktopApp < FmrbApp
   POWER_LABELS = { exit: POWER_EXIT_KEY, power_off: :power_off,
                    restart: :power_restart, suspend: :power_suspend }
 
+  # Same order as the mouse desktop's power menu (2026-11-08 user): Suspend,
+  # Exit / Log Out, Restart, Power off. FmrbApp.power_actions lists them in
+  # its bit order, not this one.
+  POWER_MENU_ORDER = [:suspend, :exit, :restart, :power_off]
+
+  def self.action_offered?(actions, a)
+    j = 0
+    while j < actions.size
+      return true if actions[j] == a
+      j += 1
+    end
+    false
+  end
+
   def add_power_items(items)
-    FmrbApp.power_actions.each do |a|
-      key = POWER_LABELS[a]
-      items << { label: FmrbI18n.t(key), power: a } if key
+    actions = FmrbApp.power_actions
+    i = 0
+    while i < POWER_MENU_ORDER.size
+      a = POWER_MENU_ORDER[i]
+      items << { label: FmrbI18n.t(POWER_LABELS[a]), power: a } if KeysDesktopApp.action_offered?(actions, a)
+      i += 1
     end
   end
 
