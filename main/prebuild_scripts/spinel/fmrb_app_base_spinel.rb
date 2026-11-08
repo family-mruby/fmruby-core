@@ -2004,6 +2004,13 @@ class FmrbApp
                                             duty.to_i, sweep.to_i) == 1
   end
 
+  # FmrbAudio#nsf_status goes through this (the mruby binding asks the audio
+  # side, doc/nsf_player_v2). No Spinel program plays NSF files, so it answers
+  # nil -- "the audio side did not answer" -- rather than carry the binding.
+  def _audio_nsf_status
+    nil
+  end
+
   def _set_window_param(param, value)
     which = param == :pos_y ? 1 : 0
     FmrbSpxApp.fmrb_spx_app_set_window_param(which, value)

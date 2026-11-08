@@ -225,6 +225,9 @@ class FmrbApp
   def _mark_expected_stop = nil
   def _sync_file(*) = true
   def _send_audio_note(*) = nil
+  # The audio side's answer about the NSF (FmrbAudio#nsf_status): what a scene
+  # put in env.extra[:nsf_status], nil (no answer) when it put nothing.
+  def _audio_nsf_status = Regress::Env.extra[:nsf_status]
   def _audio_note_bytes(*) = nil
 
   def _send_message(dest, type, data)

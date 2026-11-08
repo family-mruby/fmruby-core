@@ -156,6 +156,51 @@ Regress.app "nsf_player", "flash/app/tool/nsf_player.app.rb" do
     s.tap(:track, at: :right)
     s.update
   end
+
+  # doc/nsf_player_v2. The audio side's answers (FmrbAudio#nsf_status) are put
+  # in env.extra[:nsf_status]: it has taken no play yet when the app opens.
+
+  # A song ends by itself and the player moves on through the folder (the
+  # default range): after_the_rain.nsf has one track, so encounter.nsf is next.
+  scene "advance" do |s|
+    s.env.extra[:nsf_status] = { state: 0, reason: 0, track: 0, laps: 0, gen: 0, period: 0, frames: 0 }
+    s.start
+    s.key :enter
+    s.env.extra[:nsf_status] = { state: 1, reason: 0, track: 0, laps: 0, gen: 1, period: 0, frames: 60 }
+    s.run(1000)
+    s.env.extra[:nsf_status] = { state: 3, reason: 2, track: 0, laps: 2, gen: 1, period: 3600, frames: 7500 }
+    s.run(1000)
+  end
+
+  # Playing one file, select another and press Play: the old song is stopped
+  # and the new one plays (the ">" mark and Stop follow it).
+  scene "switch" do |s|
+    s.start
+    s.key :enter
+    s.key :down
+    s.update
+    s.tap(:play)
+    s.update
+  end
+
+  # The folder comes from the file dialog (any file in it), and the folder and
+  # the repeat range are remembered in /home/nsf_player.toml.
+  scene "folder" do |s|
+    UiScenes.copy_as(s, "usr/share/sounds/nsf/test.nsf", "/home/music/b.nsf")
+    UiScenes.copy_as(s, "usr/share/sounds/nsf/encounter.nsf", "/home/music/a.nsf")
+    s.start
+    s.tap(:repeat)
+    s.tap(:folder)
+    s.control({ "cmd" => "file_selected", "path" => "/home/music/b.nsf", "mode" => "open" })
+    s.update
+  end
+
+  scene "remembered" do |s|
+    UiScenes.copy_as(s, "usr/share/sounds/nsf/test.nsf", "/home/music/b.nsf")
+    s.seed("/home/nsf_player.toml", "dir = \"/home/music\"\nrepeat = \"one\"\n")
+    s.start
+    s.update
+  end
 end
 
 Regress.app "smf_player", "flash/app/tool/smf_player.app.rb" do

@@ -42,6 +42,12 @@ textm 7 185 "<" #FF x1
 fill_rect 55 184 14 11 #60
 draw_rect 55 184 14 11 #60
 textm 59 185 ">" #FF x1
+fill_rect 73 184 44 11 #60
+draw_rect 73 184 44 11 #60
+textm 77 185 "Folder" #FF x1
+fill_rect 121 184 40 11 #60
+draw_rect 121 184 40 11 #60
+textm 129 185 "Open" #FF x1
 fill_rect 199 184 35 11 #60
 draw_rect 199 184 35 11 #60
 textm 204 185 "Play" #FF x1

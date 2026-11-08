@@ -64,6 +64,33 @@ class FmrbAudio
       {"cmd" => "stop"})
   end
 
+  # Where the NSF started with play is, asked of the audio side
+  # (doc/nsf_player_v2). An NSF has no length, so the audio side decides when
+  # a song is over -- it fell silent, its loop has been heard twice, or it ran
+  # into the time limit -- fades it out and stops it. Ask about once a second
+  # while a song plays and move on when it is over:
+  #
+  #   st = @audio.nsf_status
+  #   next_song if st && st[:gen] == @play_gen && st[:state] == FmrbAudio::NSF_ENDED
+  #
+  # A Hash {state:, reason:, track:, laps:, gen:, period:, frames:} or nil when
+  # the audio side does not answer (an older graphics-audio firmware). gen
+  # counts the play commands the audio side has taken: the question does not
+  # wait behind a play just sent, so the first answers after one can still be
+  # about the song before it. period and frames are 60 Hz frames.
+  NSF_IDLE = 0
+  NSF_PLAYING = 1
+  NSF_FADING = 2
+  NSF_ENDED = 3
+
+  NSF_END_SILENCE = 1
+  NSF_END_LOOP = 2
+  NSF_END_LIMIT = 3
+
+  def nsf_status
+    @app._audio_nsf_status
+  end
+
   def pause
     @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
       {"cmd" => "pause"})

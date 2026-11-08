@@ -12,6 +12,7 @@
 #include "noftypes.h"
 #include "nes_apu.h"
 #include "esp_heap_caps.h"
+#include "fmrb_attr.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,6 +143,14 @@ void apuif_select(int instance)
     }
 }
 
+/* The MAIN instance's last frame, peak-to-peak (apuif_main_level) */
+FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t _main_level;
+
+uint32_t apuif_main_level(void)
+{
+    return _main_level;
+}
+
 int apuif_process_mix(int16_t* buff, int len, uint32_t main_gain_q16)
 {
     /* Process main APU */
@@ -155,9 +164,14 @@ int apuif_process_mix(int16_t* buff, int len, uint32_t main_gain_q16)
     int16_t main_buf[528];
     apu_process(main_buf, n);
     uint8_t* b8 = (uint8_t*)main_buf;
+    int lo = 127, hi = -128;
     for (int i = n - 1; i >= 0; i--) {
+        int v = (int8_t)(b8[i] ^ 0x80);
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
         main_buf[i] = (b8[i] ^ 0x80) << 8;
     }
+    _main_level = (n > 0) ? (uint32_t)(hi - lo) << 8 : 0;
     apu_getcontext(_apu);
 
     /* The MAIN volume (the BGM's own level). A gain of at most unity cannot

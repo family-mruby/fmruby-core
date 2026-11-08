@@ -36,6 +36,7 @@
 #include "fmrb_basic_gfx.h"
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
+#include "audio_commands.h"
 #include "fmrb_gfx.h"
 #include "fmrb_app_canvas.h"
 #include "fmrb_gfx_cmd.h"
@@ -3766,6 +3767,31 @@ size_t fmrb_app_build_audio_note_msg(uint8_t *buf, bool on, int32_t ch,
         n += audio_pack_int(buf + n, sweep);
     }
     return n;
+}
+
+// Ask the audio side where the NSF is (FMRB_AUDIO_CMD_NSF_STATUS,
+// doc/nsf_player_v2). Declared in include/picoruby_fmrb_app.h. A direct sync
+// round trip on the link, like the image queries in ports/esp32/gfx.c: it
+// does not queue behind the kernel, so the answer can still be about the song
+// before a play the app has just sent; status->gen tells them apart.
+int fmrb_app_audio_nsf_status(fmrb_app_nsf_status_t *status, unsigned int timeout_ms)
+{
+    uint8_t cmd = FMRB_AUDIO_CMD_NSF_STATUS;
+    fmrb_audio_nsf_status_t st;
+    uint32_t len = sizeof(st);
+    memset(&st, 0, sizeof(st));
+    fmrb_err_t ret = fmrb_transport_send_sync(FMRB_LINK_TYPE_AUDIO, 0, &cmd, 1,
+                                              (uint8_t *)&st, &len, timeout_ms);
+    if (ret != FMRB_OK) return (int)ret;
+    if (len < sizeof(st)) return (int)FMRB_ERR_FAILED;  // an older backend
+    status->state = st.state;
+    status->reason = st.reason;
+    status->track = st.track;
+    status->laps = st.laps;
+    status->gen = st.gen;
+    status->period_frames = st.period_frames;
+    status->frames = st.frames;
+    return FMRB_OK;
 }
 
 // Build and send one note message on behalf of src_pid. Declared in

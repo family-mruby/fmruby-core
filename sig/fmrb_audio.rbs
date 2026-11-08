@@ -32,6 +32,33 @@ class FmrbAudio
   # ```
   def stop: () -> void
 
+  # 曲がどこまで進んだかを聞く <<en>> Ask where the song is
+  #
+  # NSF には長さが無いので、音の側が曲の終わりを決める (無音・ループを
+  # 2 周・時間の上限)。終わった曲は音の側で止まる。1 秒に 1 回ほど聞いて、
+  # 終わっていたら次の曲へ進む。答えが無いときは nil。
+  # ```ruby
+  # st = @audio.nsf_status
+  # next_song if st && st[:state] == FmrbAudio::NSF_ENDED
+  # ```
+  # <<en>>
+  # An NSF has no length, so the audio side decides when a song is over
+  # (silence, its loop heard twice, or a time limit) and stops it. Ask about
+  # once a second and move on when it is over. nil when there is no answer.
+  # ```ruby
+  # st = @audio.nsf_status
+  # next_song if st && st[:state] == FmrbAudio::NSF_ENDED
+  # ```
+  def nsf_status: () -> Hash[Symbol, Integer]?
+
+  NSF_IDLE: Integer
+  NSF_PLAYING: Integer
+  NSF_FADING: Integer
+  NSF_ENDED: Integer
+  NSF_END_SILENCE: Integer
+  NSF_END_LOOP: Integer
+  NSF_END_LIMIT: Integer
+
   # 曲をいったん止める <<en>> Pause the song
   #
   # ```ruby
