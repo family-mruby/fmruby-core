@@ -30,8 +30,9 @@
 #                  linux_settings, it is named missing and moves all the same.
 #   web requires   ckpt_requires (requires linux_settings): the browser
 #                  refuses it when asked, before it stops.
-#   web late       the counter with a hold of 1 ms: it goes on here, the copy
-#                  that comes up in the browser is stopped there.
+#   web late       the counter with a hold of 1 ms: it goes on here, and the
+#                  browser has no copy (the image dropped on its way, or the
+#                  copy that comes up stopped there).
 require "fileutils"
 require "json"
 require "net/http"
@@ -260,11 +261,19 @@ module Regress
         r = asterism_move(pid, NODE_WEB, "--hold", "1")
         raise Failure, "web late: answered #{r.inspect}" unless r["status"] == "stayed" && r["here"] == "went on"
         c = goes_on(mark, "web late")
-        web_wait(/transfer: #{NODE_A} cancels \S+; stopping PID \d+/, wmark, "the copy in the browser stopped")
-        web_wait(/\[Ckpt Counter gen=\d+\] Task exiting normally/, wmark, "the browser's copy closing")
+        i = web_wait(AsterismRounds::LATE_THERE, wmark, "the image dropped or the copy stopped in the browser")
+        if web_lines[i].include?("dropped at")
+          how = "the image dropped on its way"
+          sleep 1.0
+          started = web_lines[wmark..].grep(/ckpt_counter: on_restore /)
+          raise Failure, "web late: the browser started the copy (#{started.first})" unless started.empty?
+        else
+          how = "the copy in the browser stopped"
+          web_wait(/\[Ckpt Counter gen=\d+\] Task exiting normally/, wmark, "the browser's copy closing")
+        end
         raise Failure, "web late: the native program's counter is gone" unless ps.any? { |x| x["pid"] == pid }
         kill_counter
-        "web late: went on here (a #{c[:a]}, main #{c[:main]}), the copy in the browser stopped"
+        "web late: went on here (a #{c[:a]}, main #{c[:main]}), #{how}"
       end
     end
   end

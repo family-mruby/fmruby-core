@@ -745,9 +745,13 @@ class FmrbKernelImpl < FmrbKernel
     return nil if pid != @ckpt_pid
     Log.info("Checkpoint: PID #{pid} went on (#{reason})")
     if pid == @mv_pid
-      # A move that was not answered within the hold: the image may still come
-      # up there, and that copy is stopped then (note_move_sent).
-      @mv_late_to = @mv_to if @mv_stage == MV_SEND
+      # A move that was not answered within the hold: the transfer app stops
+      # sending it (move_stop_send); an image already committed there may
+      # still come up, and that copy is stopped then (note_move_sent).
+      if @mv_stage == MV_SEND
+        @mv_late_to = @mv_to
+        move_stop_send
+      end
       move_over(false, reason, -1, "")
     end
     @ckpt_pid = -1
@@ -842,8 +846,12 @@ class FmrbKernelImpl < FmrbKernel
   #      app's .app.toml requires is missing, and names the others it lacks
   #   4. the app writes its image and holds where it was taken (F2's hold)
   #   5. the transfer app carries the image there and has it started
-  #      ("move_send"); once it is up there the app closes here (D15),
-  #      otherwise it goes on from where it was held
+  #      ("move_send", Asterism::Transfer::Sender: the destination names the
+  #      piece and how many go at once, the sha256 of the whole is checked
+  #      there); once it is up there the app closes here (D15), otherwise it
+  #      goes on from where it was held. When the hold runs out first, the
+  #      transfer app gives the image up ("move_stop"), and a copy that was
+  #      committed there already is stopped once it is up ("move_cancel")
   #
   # One move at a time (it shares @ckpt_* with the moves of F2). Each step has
   # a time limit; the hold bounds the last one, as in F2.
@@ -977,6 +985,16 @@ class FmrbKernelImpl < FmrbKernel
     nil
   end
 
+  # The hold ran out while the image was on its way: the transfer app gives
+  # it up (the destination drops what it holds) unless it is committed there
+  # already; a copy that comes up after all is stopped (note_move_sent).
+  def move_stop_send
+    return nil if @xfer_pid < 0
+    req = MessagePack.pack({ "cmd" => "move_stop", "to" => @mv_to })
+    _send_raw_message(@xfer_pid, FmrbConst::MSG_TYPE_APP_CONTROL, req)
+    nil
+  end
+
   # The image is up there (there: its PID there) or was not taken.
   def note_move_sent(pid, ok, there, reason, missing)
     return nil if pid != @xfer_pid
@@ -1021,6 +1039,7 @@ class FmrbKernelImpl < FmrbKernel
       # The hold ran out first and the app went on (note_checkpoint_continued
       # is how a move in this step normally ends without an answer).
       @mv_late_to = @mv_to
+      move_stop_send
       move_over(false, "no answer from #{@mv_to}", -1, "")
     end
     nil

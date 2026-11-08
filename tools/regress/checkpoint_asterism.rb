@@ -30,8 +30,19 @@
 #                      stopped.
 #   asterism late      the counter with a hold of 1 ms: the hold runs out
 #                      while the image is on its way, the app goes on here
-#                      from where it was held, and the copy that comes up
-#                      there afterwards is stopped there (D15: one copy).
+#                      from where it was held, and there is no copy there
+#                      (D15: one copy): either the image is given up on its
+#                      way (the second program drops what it holds), or,
+#                      committed there already, the copy that comes up is
+#                      stopped there.
+#   asterism given up  the same, made to happen on the way: this process
+#                      (CRuby Asterism, node rg-ckpt-pc) begins a file at
+#                      rg-ckpt-b and sends no piece, so rg-ckpt-b answers the
+#                      image's begin busy for 10 s (STALE_MS); the hold
+#                      (1.5 s) runs out meanwhile, the app goes on here, and
+#                      once rg-ckpt-b takes the image's begin the transfer
+#                      app cancels it (move_stop): rg-ckpt-b drops it at 0
+#                      bytes and never starts a copy.
 #
 # The warning (a method the program calls that the build there lacks) needs
 # a build that differs: with the simulation's rounds (--sim, rake SIM=1) the
@@ -46,6 +57,7 @@
 #                      the warning.
 #   asterism requires  ckpt_requires (the same name in requires): the
 #                      simulation refuses it when asked, before it stops.
+require "digest"
 require "fileutils"
 require "json"
 require "open3"
@@ -66,6 +78,8 @@ module Regress
       NODE_A = "rg-ckpt-a"
       NODE_B = "rg-ckpt-b"
       NODE_NOBODY = "rg-ckpt-nobody"
+      # this process, when it keeps rg-ckpt-b's inbox busy (asterism given up)
+      NODE_PC = "rg-ckpt-pc"
       REQUIRES_ABSENT = "/app/test/ckpt_requires_absent.app.rb"
 
       def router_up
@@ -88,6 +102,10 @@ module Regress
       end
 
       def router_down
+        if @pc_on
+          Asterism.close if Asterism.connected?
+          @pc_on = false
+        end
         Open3.capture2e("docker", "rm", "-f", ROUTER_NAME)
         nil
       end
@@ -109,6 +127,16 @@ module Regress
         FileUtils.mkdir_p(dir)
         File.write(File.join(dir, "config.toml"), "router = \"#{router}\"\nnode = \"#{node}\"\n")
         File.write(File.join(dir, "receive.toml"), "from = [\"#{from}\"]\n")
+      end
+
+      # This process on the run's router (CRuby Asterism, the gem of this
+      # tree: ASTERISM_DIR, else vendor/asterism), once for the run.
+      def pc_up
+        return if @pc_on
+        require_relative "../fmrb_send"
+        FmrbSend.load_asterism
+        Asterism.connect("tcp/127.0.0.1:#{ROUTER_PORT}", node: NODE_PC, app: "probe")
+        @pc_on = true
       end
 
       # ---- with the simulation (--sim) ----
@@ -191,7 +219,7 @@ module Regress
         wait_line(/Transfer app connected as #{NODE_B}/, 0, "the second program's transfer app connected",
                   timeout: 30, run_dir: RUN_DIR_B)
         [round_asterism_move, round_asterism_shell, round_asterism_requires, round_asterism_not_allowed,
-         round_asterism_no_answer, round_asterism_late]
+         round_asterism_no_answer, round_asterism_late, round_asterism_given_up]
       end
 
       def round_asterism_move
@@ -310,15 +338,57 @@ module Regress
           raise Failure, "asterism late: answered #{r.inspect}"
         end
         c = goes_on(mark, "asterism late")
-        wait_line(/transfer: #{NODE_A} cancels \S+; stopping PID \d+/, mark_b, "the copy there stopped",
-                  run_dir: RUN_DIR_B, timeout: 15)
+        i = wait_line(LATE_THERE, mark_b, "the image dropped there or the copy there stopped",
+                      run_dir: RUN_DIR_B, timeout: 15)
+        how = log_lines(RUN_DIR_B)[i].include?("dropped at") ? "the image dropped on its way" : "the copy there stopped"
         deadline = now + 5
         sleep 0.2 while app_b("ps").fetch("apps").any? { |x| x["name"] == "Ckpt Counter" } && now < deadline
         raise Failure, "asterism late: the second program still runs the copy" if app_b("ps").fetch("apps").any? { |x| x["name"] == "Ckpt Counter" }
         raise Failure, "asterism late: the first program's counter is gone" unless ps.any? { |x| x["pid"] == pid }
         kill_counter
-        "late: went on here (a #{c[:a]}, main #{c[:main]}), the copy there stopped"
+        "late: went on here (a #{c[:a]}, main #{c[:main]}), #{how}"
       end
+
+      # The hold runs out while the image waits for the receiver (busy with
+      # another node's file): the transfer app gives it up once the receiver
+      # takes its begin, the receiver drops it, no copy comes up there.
+      def round_asterism_given_up
+        pc_up
+        # the second program's receive.toml (up_b), read on every call there
+        recv = File.join(@home_b, "user", "home", "asterism", "receive.toml")
+        kept = File.read(recv)
+        File.write(recv, "#{kept}\n[file]\nfrom = [\"#{NODE_PC}\"]\n")
+        pid = start_counter
+        mark = log_lines.size
+        mark_b = log_lines(RUN_DIR_B).size
+        # a file begun and never sent: rg-ckpt-b is busy with it for 10 s
+        sha = Digest::SHA256.hexdigest("x" * 1024)
+        Asterism["#{NODE_B}/transfer/inbox", timeout_ms: 5000]
+          .asterism_call("begin", "file", { "name" => "occupy.bin", "size" => 1024, "sha256" => sha })
+        r = asterism_move(pid, NODE_B, "--hold", "1500")
+        unless r["status"] == "stayed" && r["here"] == "went on"
+          raise Failure, "asterism given up: answered #{r.inspect}"
+        end
+        c = goes_on(mark, "asterism given up")
+        i = wait_line(/transfer: \S+ to #{NODE_B}: given up at (\d+) of (\d+) bytes \(the hold ran out\)/, mark,
+                      "the transfer app giving the image up", timeout: 25)
+        at = log_lines[i][/given up at (\d+)/, 1]
+        wait_line(/transfer: checkpoint \S+ from #{NODE_A} dropped at \d+ of \d+ bytes: cancelled by #{NODE_A}/, mark_b,
+                  "the image dropped there", run_dir: RUN_DIR_B, timeout: 10)
+        sleep 0.5
+        started = log_lines(RUN_DIR_B)[mark_b..].grep(/ckpt_counter: on_restore /)
+        raise Failure, "asterism given up: the second program started a copy (#{started.first})" unless started.empty?
+        raise Failure, "asterism given up: the first program's counter is gone" unless ps.any? { |x| x["pid"] == pid }
+        kill_counter
+        "given up: went on here (a #{c[:a]}, main #{c[:main]}), the image given up at #{at} bytes and dropped there"
+      ensure
+        File.write(recv, kept) if recv && kept
+      end
+
+      # What the receiving side logs when a move's hold ran out on the way:
+      # the image given up before it was whole (the inbox drops it), or a
+      # copy committed already and stopped once it came up.
+      LATE_THERE = /transfer: (checkpoint \S+ from #{NODE_A} dropped at \d+ of \d+ bytes: cancelled by|#{NODE_A} cancels \S+; stopping PID \d+)/
     end
   end
 end

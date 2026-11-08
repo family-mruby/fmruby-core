@@ -103,6 +103,11 @@
 #                            receiver stands), then status until it is up
 #                            there -> "move_sent" {ok, pid (there), missing |
 #                            reason}
+#   move_stop {to}           the hold ran out while the image is on its way:
+#                            given up (Sender#cancel, the receiver drops what
+#                            it holds) unless it is committed there already
+#                            (then it may still come up, and move_cancel
+#                            stops it). Taken at once, not queued
 #   move_cancel {to, pid}    the copy there is stopped (it came up too late)
 #
 # Sending a file (asked by an app over Pub/Sub, FmrbTransfer in
@@ -507,6 +512,7 @@ class TransferApp < FmrbApp
   def on_control(data)
     cmd = data["cmd"].to_s
     @jobs << data if cmd == "move_check" || cmd == "move_send" || cmd == "move_cancel"
+    stop_move(data["to"].to_s) if cmd == "move_stop"
     if cmd == "topic_data" && data["topic"] == CTL_TOPIC
       app_request(data["data"], data["src_pid"])
     end
@@ -635,6 +641,7 @@ class TransferApp < FmrbApp
       sender = job["sender"]
       sender.step
       return file_step(job, sender) if job["cmd"] == "file_send"
+      return give_up_send(job) if job["stop"] && !sender.done? && !sender.committing?
       @last_sent[job["to"].to_s] = sender.id if sender.id
       sent(job, sender) if sender.done?
       return
@@ -731,6 +738,40 @@ class TransferApp < FmrbApp
     job["sender"].step
   rescue => e
     failed("cannot send #{path}: #{e.message}")
+  end
+
+  # The kernel gave the move up (the hold ran out, the app goes on here): an
+  # image still on its way is not sent on, and the receiver drops what it
+  # holds of it. One committed there already (or waiting for status) is left
+  # to come up; the kernel has it stopped then (move_cancel).
+  def stop_move(to)
+    i = 0
+    while i < @jobs.size
+      j = @jobs[i]
+      if j["cmd"] == "move_send" && j["to"].to_s == to
+        @jobs.delete_at(i)
+        Log.info("transfer: #{j['path']} to #{to}: not sent (the hold ran out)")
+        tell_kernel({ "cmd" => "move_sent", "ok" => false, "pid" => -1, "reason" => "the hold ran out" })
+        return
+      end
+      i += 1
+    end
+    job = @job
+    return unless job && job["cmd"] == "move_send" && job["to"].to_s == to
+    job["stop"] = true
+    give_up_send(job)
+  end
+
+  # A move_send the kernel gave up: once its begin is answered (so that the
+  # receiver knows the id it drops), the sender cancels.
+  def give_up_send(job)
+    sender = job["sender"]
+    return if sender.nil? || sender.committing? || sender.id.nil?
+    Log.info("transfer: #{job['path']} to #{job['to']}: given up at #{sender.pos} of #{job['size']} bytes " \
+             "(the hold ran out); dropped there")
+    sender.cancel
+    job.delete("sender")
+    failed("the hold ran out")
   end
 
   # The sender is done: committed there (the kind's answer), or not.

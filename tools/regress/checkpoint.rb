@@ -346,6 +346,7 @@ module Regress
       # The second program: the same build, a run dir, port and home of its own.
       def up_b(config)
         home = File.join(OUT, "#{config}_home_b")
+        @home_b = home
         FileUtils.rm_rf(home)
         FileUtils.mkdir_p(%w[user cache].map { |d| File.join(home, d) })
         asterism_home(File.join(home, "user"), NODE_B, NODE_A)
