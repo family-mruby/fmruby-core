@@ -1,6 +1,6 @@
 # Asterism でファイルを運ぶ汎用の仕組み (再送つき)
 
-> 状態: 進行中 | 更新: 2026-11-09 | T0〜T5 済 (report/t0〜t5.md、gem 0.12.0・console 0.3.14)、T6 (受け相手を console で管理) は実装済・検収待ち (report/t6.md、console 0.3.16 の Unreleased。console からの写しは今は ESP32 の端末だけに届く: ネイティブ版と sim に TLS が無い)。残りは ESP32 の実機の確認。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
+> 状態: 進行中 | 更新: 2026-11-10 | T7 (receive.toml の enabled、アプリ「受け取り」、Shell の areceive) 済 (report/t7.md、console は Unreleased)。 T0〜T5 済 (report/t0〜t5.md、gem 0.12.0・console 0.3.14)、T6 (受け相手を console で管理) は実装済・検収待ち (report/t6.md、console 0.3.16 の Unreleased。console からの写しは今は ESP32 の端末だけに届く: ネイティブ版と sim に TLS が無い)。残りは ESP32 の実機の確認。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
 
 ## 目的
 
@@ -46,6 +46,7 @@
 | T4 | CRuby (asterism gem・console) とブラウザ版からの送受: 同じ決まりを gem の側にも置き、console の許可の表と記録に乗せる | 済 (T4b まで、gem 0.12.0・console 0.3.14) |
 | T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | checkpoint は実装済・検収待ち (report/t5.md。ESP32 は手順だけ)。`.app.wasm` は wasm のアプリの対応のとき |
 | T6 | 受け相手を console で管理: Members の行で種類ごとに選び、ACL の行を作り、bridge が端末へ配り (`policy_set`)、端末は receive.toml の印の下に書いて手書きとの和で判断。証明書つきの接続のときだけ受ける | 実装済・検収待ち (report/t6.md。写しが届くのは ESP32 の端末だけ、親に決めてほしいこと) |
+| T7 | 受け取りの有効・無効と、端末の画面での編集: 配布の既定 `/etc/asterism/receive.toml` (`enabled = false`) と利用者の `/home/asterism/receive.toml`、`enabled` で転送のアプリを起こすかを決める、受け取りを編集するアプリと Shell の `areceive` | 実装済・検収済 (report/t7.md。アプリ `/app/tool/receiving.app.rb`、無効にしたら途中の 1 本は置いてから終わる。ESP32 は未) |
 
 ## 受け入れ条件
 
@@ -157,6 +158,28 @@
     TLS の接続を増やさない)。console の一覧を受けたい端末は空の receive.toml を置く。
   - (T6 の後) 一覧に console を自動で入れない (console から受けるのは、一覧で console を選び、
     T4b の「Receives files from the console」の印も付けた端末)。
+
+## 決定事項 (2026-11-10 ユーザ、T7)
+
+- **受けるかどうかは receive.toml の有無でなく `enabled` で決める**。転送のアプリをブートで起こすのは
+  `enabled = true` のときだけ (T6 の後の「receive.toml があるときだけ」を置き換える)。
+- **置き場所は WiFi の設定と同じ形**: 配布物に `/etc/asterism/receive.toml` (`enabled = false`、相手の
+  一覧は空) を入れ、利用者の設定は `/home/asterism/receive.toml`。`/home` にあればそれを、無ければ
+  `/etc` を読む。画面からの保存は `/home` に書き、初めてのときは `/etc` の写しから作る。console の
+  `[managed]` も今どおり `/home` に入る。
+- **`enabled` の行が無いファイルは無効と読む** (今ある手書きのもの・console が配ったものも、
+  `enabled = true` を足すまで受けない。次のリリースの案内に書く)。
+- **console が一覧を配っても `enabled` は変えない** (端末の持ち主のスイッチが優先、二重の鍵のまま)。
+  console の画面では、その端末が受け取りを無効にしていることが分かるようにする。
+- **端末の画面での編集は新しいアプリ 1 つ** (`flash/app/tool/`、ESP32・ブラウザ版・ネイティブ版で同じもの)。
+  受け取りの有効・無効、種類 (file・checkpoint) ごとの許す相手。相手は今ネットワークに見えている
+  ノードから選べ、見えていない相手は名前を打って足せる。console が配った `[managed]` の行は
+  読むだけで見せる。
+- **Shell のコマンド `areceive` も足す**: `areceive` (状態)、`areceive on|off`、
+  `areceive allow|deny <種類> <ノード>`。画面と同じ保存の仕組みを使う。
+- **「誰でも」(`*`) を画面の項目として出す**。選ぶときに確認を挟む (同じネットワークのだれからでも受ける)。
+  checkpoint でも許すが強い警告を出し (だれでもこの端末でアプリを動かせる)、アプリと `areceive` の
+  状態表示で目立たせる。Shell の `areceive allow <種類> '*'` は確認なしで、注意を 1 行出す。
 
 ## 未確定事項
 
