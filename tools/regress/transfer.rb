@@ -308,7 +308,7 @@ module Regress
         kill_probes
         if dir
           home = File.join(OUT, "#{File.basename(dir)}_home", "user", "home")
-          File.write(File.join(home, "asterism", "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+          File.write(File.join(home, "asterism", "receive.toml"), "enabled = true\nfrom = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
         end
         put_job(RUN_DIR_A, PORT_A, { "to" => to, "app" => "transfer", "kind" => "file", "path" => src,
                                      "name" => "bench.bin", "overwrite" => true })
@@ -329,7 +329,7 @@ module Regress
         dir = File.join(OUT, "web_home")
         FileUtils.mkdir_p(dir)
         File.write(File.join(dir, "config.toml"), "router = \"ws/127.0.0.1:#{ROUTER_WS_PORT}\"\nnode = \"#{NODE_WEB}\"\n")
-        File.write(File.join(dir, "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+        File.write(File.join(dir, "receive.toml"), "enabled = true\nfrom = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
         File.write(File.join(dir, "hash.json"), JSON.generate({ "bench" => "hash", "path" => "/tmp/xfer_hash.bin",
                                                                 "make" => SIZE }))
         File.write(File.join(dir, "recv.json"), JSON.generate(bench_recv))
@@ -556,7 +556,7 @@ module Regress
         kill_probes
         home_a = File.join(OUT, "#{File.basename(RUN_DIR_A)}_home", "user", "home")
         home_b = File.join(OUT, "#{File.basename(RUN_DIR_B)}_home", "user", "home")
-        File.write(File.join(home_b, "asterism", "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+        File.write(File.join(home_b, "asterism", "receive.toml"), "enabled = true\nfrom = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
         FileUtils.cp(@src, File.join(home_a, "xfer_file.bin"))
         FileUtils.rm_rf(File.join(home_b, "inbox"))
         placed = [false, false, true].map do |over|
@@ -591,7 +591,7 @@ module Regress
         sha = Digest::SHA256.hexdigest(bytes)
         File.binwrite(File.join(home_a, "xfer_big.bin"), bytes)
         unless peer?
-          File.write(File.join(home_b, "asterism", "receive.toml"), "from = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
+          File.write(File.join(home_b, "asterism", "receive.toml"), "enabled = true\nfrom = [\"#{NODE_A}\"]\n\n[file]\nfrom = [\"#{NODE_A}\"]\n")
           FileUtils.rm_rf(inbox)
         end
         put_job(RUN_DIR_A, PORT_A, { "to" => @to, "app" => "transfer", "kind" => "file", "path" => "/home/xfer_big.bin",
@@ -750,14 +750,16 @@ module Regress
 
       # ---- the programs and the router ----
 
-      def up(dir, port, node, from, router)
+      # receive: false leaves /home/asterism/receive.toml out (the system's
+      # copy in /etc is read then: receiving off).
+      def up(dir, port, node, from, router, receive: true)
         down(dir, port)
         home = File.join(OUT, "#{File.basename(dir)}_home")
         FileUtils.rm_rf(home)
         ast = File.join(home, "user", "home", "asterism")
         FileUtils.mkdir_p([ast, File.join(home, "cache")])
         File.write(File.join(ast, "config.toml"), "router = \"#{router}\"\nnode = \"#{node}\"\n")
-        File.write(File.join(ast, "receive.toml"), "from = [\"#{from}\"]\n")
+        File.write(File.join(ast, "receive.toml"), "enabled = true\nfrom = [\"#{from}\"]\n") if receive
         begin
           Tree.need_free_port!(port, "the native program of #{dir}")
         rescue Tree::Busy => e

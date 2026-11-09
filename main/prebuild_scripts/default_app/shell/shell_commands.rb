@@ -105,6 +105,8 @@ module ShellCommandsMixin
       cmd_move(args)
     when "asend"
       cmd_send(args)
+    when "areceive"
+      cmd_areceive(args)
     when "svc"
       cmd_svc(args)
     when "edit"
@@ -141,6 +143,9 @@ module ShellCommandsMixin
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
+      @history << "  areceive - Whether this machine receives files and apps, and from whom"
+      @history << "  areceive on|off - Receive (and start the transfer app), or stop receiving"
+      @history << "  areceive allow|deny <file|checkpoint> <node> - Who may send files / move apps here ('*': anyone)"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1225,6 +1230,74 @@ module ShellCommandsMixin
     rescue => e
       @history << "asend: #{e.message}"
     end
+  end
+
+  # areceive (doc/asterism_file_transfer T7): whether this machine receives
+  # files and apps over Asterism, and from whom -- the same receive.toml and
+  # the same way of changing it as the Receiving app (FmrbReceiveConf).
+  #
+  #   areceive                          the switch, the file read, the lists
+  #   areceive on | off                 the switch (on starts the transfer
+  #                                     app; off lets it end once idle)
+  #   areceive allow|deny KIND NODE     KIND file or checkpoint; NODE a node
+  #                                     ID or pattern, '*' anyone
+  #
+  # Changes go to /home/asterism/receive.toml (made from the system's copy
+  # the first time), only when the text changes; the console's part of the
+  # file is never changed here.
+  def cmd_areceive(args)
+    begin
+      require "/usr/share/transfer/receive_conf"
+    rescue => e
+      @history << "areceive: #{e.message}"
+      return
+    end
+    if args.empty?
+      FmrbReceiveConf.lines.each { |l| @history << "areceive: #{l}" }
+      return
+    end
+    op = args[0]
+    begin
+      if (op == "on" || op == "off") && args.size == 1
+        on = op == "on"
+        written = FmrbReceiveConf.set_enabled(on)
+        said = FmrbReceiveConf.tell_transfer(self, on)
+        @history << "areceive: receiving is #{op}#{written ? " (written to #{FmrbReceiveConf::PATH})" : ' (it was already)'}"
+        @history << "areceive: the transfer app is started" if said == :started
+        @history << "areceive: the transfer app ends once what is coming in is in" if said == :stopping
+      elsif (op == "allow" || op == "deny") && args.size == 3
+        kind = args[1]
+        node = unquoted(args[2])
+        if op == "allow"
+          written = FmrbReceiveConf.allow(kind, node)
+          @history << (written ? "areceive: #{kind} from #{node} allowed" : "areceive: #{node} is in the #{kind} list already")
+          if node == FmrbReceiveConf::ANYONE
+            if kind == "checkpoint"
+              @history << "areceive: ! anyone on the network can now run apps on this machine"
+            else
+              @history << "areceive: note: files are taken from anyone on the same network"
+            end
+          end
+        else
+          FmrbReceiveConf.deny(kind, node)
+          @history << "areceive: #{kind} from #{node} no longer allowed"
+        end
+        @history << "areceive: receiving is off; areceive on to take anything" unless FmrbReceiveConf.enabled?
+      else
+        @history << "Usage: areceive [on|off] | areceive allow|deny <file|checkpoint> <node>   (node: an Asterism node ID or pattern, '*' anyone)"
+      end
+    rescue ArgumentError => e
+      @history << "areceive: #{e.message}"
+    end
+  end
+
+  # A word with the quotes around it taken off ('*' as typed for a shell).
+  def unquoted(w)
+    s = w.to_s
+    if s.length >= 2 && ((s.start_with?("'") && s.end_with?("'")) || (s.start_with?("\"") && s.end_with?("\"")))
+      return s[1, s.length - 2].to_s
+    end
+    s
   end
 
   # Called once per on_update from shell.app.rb: the progress of the file

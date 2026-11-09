@@ -35,10 +35,12 @@ class FmrbKernelImpl < FmrbKernel
 
   # Moving an app over Asterism (doc/checkpoint F5). The transfer app holds
   # this machine's Asterism session for it: it carries images out, and takes
-  # them in when this machine accepts them (RECEIVE_CONF names who may send).
-  # It is started at boot when that file exists, and when a move is asked.
+  # them in when this machine accepts them (RECEIVE_CONF names who may send:
+  # the user's, else the system's RECEIVE_CONF_SYS). It is started at boot
+  # when receiving is on there (enabled = true), and when a move is asked.
   TRANSFER_APP = "/usr/share/transfer/transfer.app.rb"
   RECEIVE_CONF = "/home/asterism/receive.toml"
+  RECEIVE_CONF_SYS = "/etc/asterism/receive.toml"
   ASTERISM_DIR = "/home/asterism"
   # A move's steps (@mv_stage) and how long each may take (ms). The hold is
   # the image's (MOVE_HOLD_MS unless the asker gave one); the transfer app
@@ -912,15 +914,55 @@ class FmrbKernelImpl < FmrbKernel
     nil
   end
 
-  # At boot: a machine that takes files in (RECEIVE_CONF) keeps the transfer
-  # app up so that others can reach it. Only then (2026-11-09 user): an
-  # ESP32 would otherwise hold one more TLS connection for every machine with
-  # credentials. A machine that wants the console's list of senders
-  # (doc/asterism_file_transfer T6) puts a receive.toml, empty is enough.
+  # At boot: a machine that takes files in keeps the transfer app up so that
+  # others can reach it. Only then (2026-11-09 user): an ESP32 would
+  # otherwise hold one more TLS connection for every machine with
+  # credentials. Taking files in is the switch in receive.toml, not the
+  # file being there (doc/asterism_file_transfer T7): enabled = true.
   def spawn_transfer_if_receiving
-    return nil unless File.exist?(RECEIVE_CONF)
+    return nil unless receiving_enabled?
     start_transfer
     nil
+  end
+
+  # enabled = true among the top-level keys of RECEIVE_CONF, else of
+  # RECEIVE_CONF_SYS (the system's copy, off). The rules of FmrbReceiveConf
+  # (/usr/share/transfer/receive_conf.rb, which the apps and the shell read
+  # it with) on the one line the kernel needs, read here because this is a
+  # Spinel program: before the first table, the key enabled, its value up
+  # to a comment. No line, another value or no file: off.
+  def receiving_enabled?
+    path = File.exist?(RECEIVE_CONF) ? RECEIVE_CONF : RECEIVE_CONF_SYS
+    return false unless File.exist?(path)
+    text = nil
+    begin
+      f = File.open(path, "r")
+      text = f.read
+      f.close
+    rescue => e
+      Log.warn("Transfer: cannot read #{path}: #{e.message}")
+      return false
+    end
+    return false if text.nil?
+    on = false
+    lines = text.split("\n")
+    i = 0
+    while i < lines.size
+      line = lines[i].strip
+      i += 1
+      break if line.start_with?("[")       # top-level keys only
+      next unless line.start_with?("enabled")
+      idx = line.index("=")
+      next unless idx
+      key = line[0, idx].to_s.strip
+      next unless key == "enabled"
+      v = line[idx + 1, line.length - idx - 1].to_s
+      hash_idx = v.index("#")
+      v = v[0, hash_idx].to_s if hash_idx
+      on = v.strip == "true"
+    end
+    Log.info("Transfer: receiving is #{on ? 'on' : 'off'} (#{path})")
+    on
   end
 
   def move_stage(stage, ms)

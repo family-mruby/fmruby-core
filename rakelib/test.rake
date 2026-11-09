@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "text:test", "toml:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -60,6 +60,18 @@ namespace :toml do
   desc "FmrbToml read/update tests (host Ruby + cc, no docker)"
   task :test do
     sh "ruby test/toml/run.rb"
+  end
+end
+
+namespace :receive_conf do
+  # receive.toml (doc/asterism_file_transfer T7): where it is read from, the
+  # switch, the changes the Receiving app and areceive make, and the
+  # kernel's own reader of the switch agreeing with FmrbReceiveConf. Run it
+  # after touching flash/usr/share/transfer/receive_conf.rb or the kernel's
+  # receiving_enabled?.
+  desc "receive.toml tests: FmrbReceiveConf and the kernel's switch (host Ruby + cc, no docker)"
+  task :test do
+    sh "ruby test/receive_conf/run.rb"
   end
 end
 

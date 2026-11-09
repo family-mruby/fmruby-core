@@ -303,7 +303,7 @@ module Regress
         board_http(:post, "/fs/mkdir", { path: BOARD_ASTERISM })
         board_file_put("#{BOARD_ASTERISM}/config.toml",
                        "router = \"tcp/#{@host_ip}:#{ROUTER_PORT_BOARD}\"\nnode = \"#{NODE_BOARD}\"\n")
-        board_file_put("#{BOARD_ASTERISM}/receive.toml", "from = [\"#{NODE_A}\"]\n")
+        board_file_put("#{BOARD_ASTERISM}/receive.toml", "enabled = true\nfrom = [\"#{NODE_A}\"]\n")
         board_kill_named("Transfer")
         mark = board_lines.size
         board_spawn(TRANSFER)

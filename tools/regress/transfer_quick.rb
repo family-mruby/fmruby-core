@@ -36,6 +36,15 @@
 #             pieces go straight to a hidden file in /home/inbox/ (none in
 #             /tmp), it goes on from where the receiver stood, and the
 #             piece size and window are the ones the machine named
+#   switch    receiving on and off (T7; native only, last: the machine is
+#             started again): with no receive.toml of its own (the system's
+#             copy in /etc, off) the transfer app is not started at boot;
+#             the shell's areceive on starts it and writes /home's copy,
+#             areceive allow file lets this process in, and a file is
+#             placed; a /home file with no enabled line refuses at begin
+#             and the transfer app ends; on again, then areceive off while
+#             a file is coming in: that file is placed, a new one refused,
+#             and the transfer app ends
 #
 #   ruby tools/regress/transfer_quick.rb            # the native build there is
 #   ruby tools/regress/transfer_quick.rb --web      # the browser build as the
@@ -62,6 +71,8 @@ module Regress
     NODE_PC = "rg-xfer-pc"
     RECEIVE = <<~TOML
       # transfer_quick.rb: a table per kind
+      enabled = true
+
       [file]
       from = ["#{NODE_PC}"]
 
@@ -152,7 +163,7 @@ module Regress
         ok
       end
 
-      def cases = @web ? %w[resend mismatch names refused managed] : %w[resend cut mismatch names refused managed api big]
+      def cases = @web ? %w[resend mismatch names refused managed] : %w[resend cut mismatch names refused managed api big switch]
 
       # ---- the machine ----
 
@@ -351,7 +362,7 @@ module Regress
         # the older receive.toml (a from at the top, no tables): the
         # checkpoint's only, so no file
         old = File.join(@pc_dir, "receive_old.toml")
-        File.write(old, "from = [\"#{NODE_PC}\"]\n")
+        File.write(old, "enabled = true\nfrom = [\"#{NODE_PC}\"]\n")
         put_machine(old, "/home/asterism/receive.toml")
         s = pc_send("old.txt", "x")
         raise T::Failure, "old form: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("no [file]")
@@ -442,7 +453,7 @@ module Regress
       # receive.toml with a part by hand that has no [file] and the console's
       # part with these senders of files.
       def managed_receive(file_from)
-        "[checkpoint]\nfrom = [\"#{T::NODE_A}\"]\n\n" \
+        "enabled = true\n[checkpoint]\nfrom = [\"#{T::NODE_A}\"]\n\n" \
           "# ---- managed by the console (below this line; edit above it) ----\n" \
           "[managed]\nby = \"console\"\nat = \"2026-11-09T00:00:00Z\"\n\n" \
           "[managed.file]\nfrom = [#{file_from.map { "\"#{_1}\"" }.join(', ')}]\n\n" \
@@ -497,6 +508,89 @@ module Regress
         raise T::Failure, "went on from #{on.inspect}" unless on.size == 1 && on[0] >= 1_048_576
         "4 MiB whole, cut once, went on from #{on[0]}; pieces in /home/inbox (hidden), none in /tmp; " \
           "#{s.piece} x #{s.window} as the machine named (#{s.took_ms} ms)"
+      end
+
+      def q_switch
+        out = []
+        mark = 0
+        up(T::RUN_DIR_B, T::PORT_B, T::NODE_B, NODE_PC, "tcp/127.0.0.1:#{T::RELAY_PORT}", receive: false)
+        wait_line(T::RUN_DIR_B, %r{Transfer: receiving is off \(/etc/asterism/receive\.toml\)}, mark,
+                  "the kernel reading the system's copy", timeout: 10)
+        sleep 2
+        raise T::Failure, "switch: the transfer app started at boot with receiving off" if transfer_app?
+        raise T::Failure, "switch: /home has a receive.toml" if File.exist?(user_receive)
+        out << "/etc only: not started at boot"
+        @shell = app(T::RUN_DIR_B, T::PORT_B, "spawn", SHELL).fetch("pid")
+        sleep 1.5
+        mark = machine_mark
+        shell_line("areceive on")
+        wait_line(T::RUN_DIR_B, /Transfer app connected as #{T::NODE_B}/, mark, "the transfer app after areceive on",
+                  timeout: 30)
+        text = File.exist?(user_receive) ? File.read(user_receive) : ""
+        unless text.include?("enabled = true") && text.include?("# Who may send files and apps")
+          raise T::Failure, "switch: /home's receive.toml after areceive on: #{text[0, 80].inspect}"
+        end
+        s = pc_send("q-switch0.txt", "x" * 100)
+        raise T::Failure, "switch: nobody listed yet: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("takes no file from")
+        shell_line("areceive allow file #{NODE_PC}")
+        deadline = now + 10
+        sleep 0.1 until File.read(user_receive).include?("\"#{NODE_PC}\"") || now > deadline
+        bytes = random(30_000, 7)
+        name = must_place(pc_send("q-switch.bin", bytes), "switch")
+        must_have("/home/inbox/#{name}", bytes)
+        out << "areceive on: started, /home's copy made from /etc; allow file: placed"
+        # a /home file with no enabled line: off
+        File.write(user_receive, "[file]\nfrom = [\"#{NODE_PC}\"]\n")
+        mark = machine_mark
+        s = pc_send("q-switch2.txt", "x" * 100)
+        unless !s.ok? && s.reason.include?("receiving is off")
+          raise T::Failure, "switch: no enabled line: #{s.ok? ? 'taken' : s.reason}"
+        end
+        raise T::Failure, "switch: no enabled line: #{s.stats['calls']} calls" unless s.stats["calls"] == 1
+        wait_line(T::RUN_DIR_B, /transfer: receiving is off; the transfer app ends/, mark,
+                  "the transfer app ending (no enabled line)", timeout: 25)
+        wait_gone
+        out << "no enabled line: refused at begin, the transfer app ended"
+        # on again; off while a file is coming in
+        mark = machine_mark
+        shell_line("areceive on")
+        wait_line(T::RUN_DIR_B, /Transfer app connected as #{T::NODE_B}/, mark, "the transfer app after areceive on",
+                  timeout: 30)
+        bytes = random(524_288, 8)
+        said = nil
+        s = pc_send("q-switch3.bin", bytes, pace: PACE_S) do |x|
+          next if said || x.pos < 65_536
+          said = x.pos
+          shell_line("areceive off")
+        end
+        name = must_place(s, "switch (off on the way)")
+        must_have("/home/inbox/#{name}", bytes)
+        s = pc_send("q-switch4.txt", "x" * 100)
+        raise T::Failure, "switch: after off: #{s.ok? ? 'taken' : s.reason}" unless !s.ok? && s.reason.include?("receiving is off")
+        wait_line(T::RUN_DIR_B, /transfer: receiving is off; the transfer app ends/, mark,
+                  "the transfer app ending (areceive off)", timeout: 25)
+        wait_gone
+        raise T::Failure, "switch: areceive off left #{File.read(user_receive)[/enabled.*/]}" unless File.read(user_receive).include?("enabled = false")
+        out << "areceive off at #{said}: that file placed, a new one refused, then the transfer app ended"
+        out.join("; ")
+      end
+
+      SHELL = "default/shell"
+
+      def user_receive = File.join(host_home, "home", "asterism", "receive.toml")
+
+      def shell_line(text)
+        native(T::RUN_DIR_B, T::PORT_B, "input", "text", text, "key", "enter")
+      end
+
+      def transfer_app?
+        app(T::RUN_DIR_B, T::PORT_B, "ps").fetch("apps").any? { |x| x["name"] == "Transfer" }
+      end
+
+      def wait_gone
+        deadline = now + 10
+        sleep 0.2 while transfer_app? && now < deadline
+        raise T::Failure, "switch: the transfer app is still there" if transfer_app?
       end
 
       # The probe of the machine with the job {"api" => api}, until it ends.

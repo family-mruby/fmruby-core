@@ -72,8 +72,14 @@
 #                replaced once the new one is whole and its sha256 matches.
 #                The name it was placed under goes back to the sender.
 #
-# Who may send what (/home/asterism/receive.toml; without it nobody may),
-# a table per kind; a kind with no table is not taken:
+# Whether this machine receives at all, and who may send what
+# (/home/asterism/receive.toml, else the system's /etc/asterism/receive.toml,
+# which is off; FmrbReceiveConf in /usr/share/transfer/receive_conf.rb).
+# Nothing is taken unless the switch is on (T7; no line is off):
+#
+#   enabled = true
+#
+# then a table per kind; a kind with no table is not taken:
 #
 #   [checkpoint]
 #   from = ["fmruby-abcdef", "wasm-123456"]   # may move apps here
@@ -100,7 +106,9 @@
 #                            from the console's node only (console in
 #                            config.toml, "console" by default) and over a
 #                            tls/ router only (the caller's ID is bound to
-#                            its certificate there); refused otherwise The caller's node ID is the one Asterism takes
+#                            its certificate there); refused otherwise ->
+#                            {"ok", "written", "at", "receiving" (whether
+#                            receiving is on here, T7)} The caller's node ID is the one Asterism takes
 # from the call; with a tls/ router and the console's certificates, the
 # router's access control binds it to the certificate.
 #
@@ -135,6 +143,18 @@
 #   {"cmd" => "cancel", "rq"}  stops it (the other machine drops its piece
 #                            file); "transfer_done" {ok: false, reason
 #                            "cancelled"}
+#   {"cmd" => "receive_conf"}  receive.toml was changed (FmrbReceiveConf
+#                            tell_transfer): read the switch again
+#
+# Receiving turned off while this app runs (T7; that message, or the file
+# looked at every RECHECK_MS): new begins are refused at once (every call
+# reads the file), and the app ends when it is idle: no request of its own
+# under way or waiting, nothing coming in (a file whose pieces stopped for
+# the inbox's STALE_MS counts as stopped; its piece file is kept as when
+# the app ends any other way), and no call for QUIET_MS. A file already
+# coming in is taken to its end. Started while receiving is off (to send a
+# file or move an app), it stays as before: only a change from on to off
+# ends it.
 #
 # One request at a time, with the kernel's, in the order they come.
 #
@@ -182,8 +202,8 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   end
 
   # A call came in a moment ago: the app polls often for the next one.
-  def busy?
-    super(BUSY_FOR_MS)
+  def busy?(ms = BUSY_FOR_MS)
+    super(ms)
   end
 
   # ---- exposed (caller: :from), besides begin / chunk / commit / cancel ----
@@ -266,7 +286,9 @@ class TransferInbox < ::Asterism::Transfer::Inbox
       Log.info("transfer: the senders from #{from} (#{at}) written: file #{lists['file'].join(' ')}; " \
                "checkpoint #{lists['checkpoint'].join(' ')}")
     end
-    { "ok" => true, "written" => written, "at" => at }
+    # receiving (T7): whether this machine takes anything at all; the list
+    # is kept either way, and the console's row says when it is off
+    { "ok" => true, "written" => written, "at" => at, "receiving" => ::FmrbReceiveConf.enabled? }
   end
 
   # ---- the hooks of Asterism::Transfer::Inbox ----
@@ -281,6 +303,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
       return "#{node_name} cannot start checkpoint images (this build has no mruby-checkpoint)"
     end
     s = ::FmrbReceiveConf.senders(k)
+    return "#{node_name} does not receive (receiving is off there: areceive on)" unless s["enabled"]
     hand = s["hand"]
     managed = s["managed"]
     if hand.nil? && managed.nil?
@@ -513,6 +536,10 @@ class TransferApp < FmrbApp
   PROGRESS_MS = 250
   # a file asked for while this machine is not connected waits this long
   UNLINKED_MS = 30000
+  # receiving off: receive.toml looked at this often, and the app ends after
+  # this long without a call (T7)
+  RECHECK_MS = 10000
+  QUIET_MS = 3000
 
   def on_create
     @inbox = TransferInbox.new
@@ -526,6 +553,10 @@ class TransferApp < FmrbApp
     @fut = nil        # its call on its way
     @last_sent = {}   # node => the id of the last file sent there
     @link = FmrbAsterism::Link.new(self, APP, tag: "transfer")
+    @receiving = ::FmrbReceiveConf.enabled?
+    @closing = false
+    @checked_at = Machine.board_millis
+    @job_end = 0
     subscribe(CTL_TOPIC)
     Log.info("transfer: start (#{FmrbApp.pool_used} bytes of its pool used)")
   end
@@ -574,6 +605,16 @@ class TransferApp < FmrbApp
   def on_update
     up = @link.update
     @inbox.tick
+    now = Machine.board_millis
+    if now - @checked_at >= RECHECK_MS
+      @checked_at = now
+      check_receiving
+    end
+    if @closing && idle?
+      Log.info("transfer: receiving is off; the transfer app ends")
+      stop
+      return IDLE_MS
+    end
     if up
       @unlinked_at = nil
       start_job if @job.nil? && !@jobs.empty?
@@ -593,7 +634,12 @@ class TransferApp < FmrbApp
   # ---- the apps' requests (FmrbTransfer) ----
 
   def app_request(req, pid)
-    return unless req.is_a?(Hash) && pid.is_a?(Integer)
+    return unless req.is_a?(Hash)
+    if req["cmd"].to_s == "receive_conf"
+      check_receiving
+      return
+    end
+    return unless pid.is_a?(Integer)
     rq = req["rq"]
     return unless rq.is_a?(Integer)
     c = req["cmd"].to_s
@@ -634,6 +680,33 @@ class TransferApp < FmrbApp
       end
       i += 1
     end
+  end
+
+  # ---- receiving turned off (T7) ----
+
+  # Reads the switch again: from on to off the app ends once idle; on again
+  # before that, it stays.
+  def check_receiving
+    on = ::FmrbReceiveConf.enabled?
+    if @receiving && !on && !@closing
+      Log.info("transfer: receiving is off; new files are refused, and the app ends when what is coming in is in")
+      @closing = true
+    elsif on && @closing
+      Log.info("transfer: receiving is on again")
+      @closing = false
+    end
+    @receiving = on
+  end
+
+  # Nothing under way: no request of its own, nothing coming in (or a file
+  # whose pieces stopped), no call for a moment.
+  def idle?
+    return false if @job || !@jobs.empty?
+    now = Machine.board_millis
+    return false if now - @job_end < QUIET_MS
+    return false if @inbox.busy?(QUIET_MS)
+    t = @inbox.current_file
+    t.nil? || now - t["at"].to_i > ::Asterism::Transfer::Inbox::STALE_MS
   end
 
   # Files asked for while this machine is not connected are not kept
@@ -933,6 +1006,7 @@ class TransferApp < FmrbApp
   def finish(answer)
     @job["sender"].close if @job && @job["sender"]
     @job = nil
+    @job_end = Machine.board_millis
     @fut = nil
     tell_kernel(answer) if answer
     nil

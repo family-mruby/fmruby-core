@@ -1,0 +1,19 @@
+# Who may send files and apps to this machine over Asterism
+# (doc/asterism_file_transfer). This is the copy the system ships; the
+# machine's own is /home/asterism/receive.toml, made from this one the first
+# time it is changed (the Receiving app, or the shell's areceive), and read
+# instead of this one from then on.
+#
+# enabled: receive at all. Off (or no line), nothing is taken, whatever the
+# lists say, and the transfer app is not started at boot.
+enabled = false
+
+# Who may put files in /home/inbox: node IDs and patterns ("fmruby-*";
+# "*" is anyone on the same network).
+[file]
+from = []
+
+# Who may move apps here (checkpoint). "*" lets anyone run apps on this
+# machine.
+[checkpoint]
+from = []

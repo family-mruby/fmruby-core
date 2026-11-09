@@ -1,0 +1,10 @@
+app_handle_name = "receiving"
+app_screen_name = "Receiving"
+app_screen_name_ja = "受け取り"
+default_window_mode = "window"
+default_window_width = 300
+default_window_height = 204
+default_window_pos_x = 10
+default_window_pos_y = 18
+launcher_visible = true
+single_instance = true

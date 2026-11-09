@@ -126,7 +126,7 @@ module Regress
       def write_asterism(dir, node, from, router)
         FileUtils.mkdir_p(dir)
         File.write(File.join(dir, "config.toml"), "router = \"#{router}\"\nnode = \"#{node}\"\n")
-        File.write(File.join(dir, "receive.toml"), "from = [\"#{from}\"]\n")
+        File.write(File.join(dir, "receive.toml"), "enabled = true\nfrom = [\"#{from}\"]\n")
       end
 
       # This process on the run's router (CRuby Asterism, the gem of this

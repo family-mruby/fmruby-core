@@ -1,8 +1,9 @@
 # FmrbTransfer: an app sends a file to another machine over Asterism
 # (doc/asterism_file_transfer T2). The file goes as the kind "file": the
 # other machine places it under its /home/inbox/ (or its SD card's
-# /sd/inbox/, sd: true; a machine with no card refuses it) when its
-# /home/asterism/receive.toml takes files from this machine ([file] from).
+# /sd/inbox/, sd: true; a machine with no card refuses it) when receiving
+# is on there and its receive.toml takes files from this machine
+# (enabled = true and [file] from; doc/asterism_file_transfer T7).
 #
 #   require "/usr/share/transfer/fmrb_transfer"
 #

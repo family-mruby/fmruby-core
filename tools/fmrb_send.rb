@@ -6,7 +6,8 @@
 # simulation, the browser build or a board, whichever node is named. The
 # file goes as the kind "file" to <node>/transfer/inbox and is placed under
 # that machine's /home/inbox/ (--sd: its SD card's /sd/inbox/; a machine
-# with no card refuses it); it must take files from this PC's node
+# with no card refuses it); it must receive (enabled = true in its
+# receive.toml, or areceive on there) and take files from this PC's node
 # ([file] from in its /home/asterism/receive.toml).
 #
 #   ruby tools/fmrb_send.rb <node> <file>
