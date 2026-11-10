@@ -279,15 +279,19 @@
 #define FMRB_DEBUGD_TASK_FLAGS          FMRB_TASK_FLAG_NONE
 
 // Kanji dictionary lookups (main/kernel/host/kanji_lookup.c, doc/kanji_input
-// K2b). Exists only while a dictionary is open; a machine without one creates
-// no task. Internal RAM stack on purpose: it reads the SD card, and the SD
-// drivers hand stack-local structures to DMA, which a PSRAM stack breaks on
-// the S3 (doc/reference/internal_ram_budget.md). Its tables and buffers are
-// in PSRAM. Above the apps (2) so a busy game does not stall a conversion,
-// in the control tier with the debugger; one lookup reads one 4 KB block.
+// K2b, K3b). Exists only while a dictionary is open; a machine without one
+// creates no task. PSRAM stack, so a machine with a dictionary adds only the
+// TCB to internal RAM: the SD drivers hand stack-local structures to DMA, but
+// every file call this task makes (open, read, seek, size, close) goes to
+// hw_proxy's internal-RAM stack (fmrb_hal_file_esp32.c, hw_proxy_needs_proxy),
+// and the rest is the dictionary search, a task notification, a queue send
+// and log lines -- nothing that touches flash or DMA from this stack. Its
+// tables and buffers are in PSRAM too. Above the apps (2) so a busy game does
+// not stall a conversion, in the control tier with the debugger; one lookup
+// reads one 4 KB block.
 #define FMRB_KANJI_TASK_STACK_SIZE      (6 * 1024)
 #define FMRB_KANJI_TASK_PRIORITY        (3)
-#define FMRB_KANJI_TASK_FLAGS           FMRB_TASK_FLAG_NONE
+#define FMRB_KANJI_TASK_FLAGS           FMRB_TASK_FLAG_PSRAM
 
 // M5GFX receiver task (GFX commands via local Message Buffer)
 #define FMRB_M5GFX_TASK_STACK_SIZE      (8 * 1024)

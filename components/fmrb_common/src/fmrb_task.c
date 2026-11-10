@@ -88,7 +88,26 @@ fmrb_base_type_t fmrb_task_create_ex(
 
 void fmrb_task_delete_ex(TaskHandle_t handle)
 {
-    unregister_task(handle ? handle : xTaskGetCurrentTaskHandle());
+    TaskHandle_t target = handle ? handle : xTaskGetCurrentTaskHandle();
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // A PSRAM-stack task was created WithCaps (its TCB and stack are static
+    // buffers), and only vTaskDeleteWithCaps frees them; a plain vTaskDelete
+    // would leak the TCB in internal RAM. It handles a task deleting itself.
+    bool with_caps = false;
+    for (int i = 0; i < s_task_count; i++) {
+        if (s_tasks[i].active && s_tasks[i].handle == target) {
+            with_caps = (s_tasks[i].flags & FMRB_TASK_FLAG_PSRAM) != 0;
+            break;
+        }
+    }
+    unregister_task(target);
+    if (with_caps) {
+        vTaskDeleteWithCaps(handle);
+        return;
+    }
+#else
+    unregister_task(target);
+#endif
     vTaskDelete(handle);
 }
 

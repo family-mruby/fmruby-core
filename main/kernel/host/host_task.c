@@ -33,6 +33,9 @@
 #include "fmrb_app.h"
 #include "fmrb_debug.h"
 #include "fmrb_attr.h"
+#if defined(FMRB_PLATFORM_WASM)
+#include "input_wasm.h"
+#endif
 
 static const char *TAG = "host";
 
@@ -95,7 +98,14 @@ void fmrb_host_set_cursor_visible(bool visible)
     host_send_cursor_visible(visible);
 }
 
-#if defined(FMRB_PLATFORM_NATIVE)
+// Text committed by an IME outside Family mruby: the PC's on the native
+// program (doc/linux_native L12b), the browser's on the browser build
+// (doc/kanji_input K4). The apps' text cursors are kept for it too.
+#if defined(FMRB_PLATFORM_NATIVE) || defined(FMRB_PLATFORM_WASM)
+#define HOST_TEXT_IN 1
+#endif
+
+#if defined(HOST_TEXT_IN)
 // Bytes of committed text per host message (a longer text takes several,
 // in order on the same queue).
 #define HOST_TEXT_CHUNK 16
@@ -112,8 +122,8 @@ typedef enum {
     HOST_MSG_HID_GAMEPAD_BUTTON = 7,
     HOST_MSG_HID_GAMEPAD_AXIS = 8,
     HOST_MSG_HID_MOUSE_WHEEL = 9,
-#if defined(FMRB_PLATFORM_NATIVE)
-    HOST_MSG_HID_TEXT = 10,      // text committed by the PC's IME (L12b)
+#if defined(HOST_TEXT_IN)
+    HOST_MSG_HID_TEXT = 10,      // text committed by the PC's / browser's IME
 #endif
     HOST_MSG_KANJI_RESULT = 11,  // the kanji lookup task answered (doc/kanji_input)
 } host_msg_type_t;
@@ -157,7 +167,7 @@ typedef struct {
             int axis_num;    // 0-5
             int value;       // -128 to 127 (sticks) or 0 to 255 (triggers)
         } gamepad_axis;
-#if defined(FMRB_PLATFORM_NATIVE)
+#if defined(HOST_TEXT_IN)
         struct {
             int len;
             char bytes[HOST_TEXT_CHUNK];
@@ -1637,8 +1647,19 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 // candidates and the text being composed there.
 //
 // Native only: the devices, the simulation and the browser keep their kana
-// input as it is, and none of this is in their builds.
+// input as it is. (The browser build shares the text and the cursors below,
+// doc/kanji_input K4, but never sets s_ime_on.)
 
+static bool s_ime_on;               // the host task's view of the IME
+// Per app slot, the context generation told FMRB_KANA_MODE_IME (0 none).
+static uint32_t s_ime_told_gen[FMRB_MAX_APPS];
+#endif
+
+#if defined(HOST_TEXT_IN)
+// The apps' text cursors, for an IME outside Family mruby (the PC's, the
+// browser's): the focused app's goes out in frame coordinates every
+// IME_CURSOR_POLL_MS, and the IME puts its candidates (and, on the PC, the
+// text being composed) there.
 #define IME_CURSOR_POLL_MS 20
 
 typedef struct {
@@ -1648,9 +1669,6 @@ typedef struct {
 } host_text_cursor_t;
 
 static host_text_cursor_t s_text_cursor[FMRB_MAX_APPS];
-static bool s_ime_on;               // the host task's view of the IME
-// Per app slot, the context generation told FMRB_KANA_MODE_IME (0 none).
-static uint32_t s_ime_told_gen[FMRB_MAX_APPS];
 static uint32_t s_ime_cursor_ms;
 #endif
 
@@ -1866,18 +1884,20 @@ void fmrb_host_set_kana_mode(uint8_t mode)
 
 void fmrb_host_set_text_cursor(int x, int y, int h)
 {
-#if defined(FMRB_PLATFORM_NATIVE)
+#if defined(HOST_TEXT_IN)
     // From the app's own task: its slot only. The host task reads it with
     // the generation, so a slot taken over by a new app is not believed.
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (ctx == NULL || ctx->app_id >= FMRB_MAX_APPS) return;
     host_text_cursor_t *c = &s_text_cursor[ctx->app_id];
+#if defined(FMRB_PLATFORM_NATIVE)
     if (c->gen != ctx->gen) {
         // Its first cursor: the app is set up by now, so it is told the
         // IME's mode again (a word sent while it started may have been
         // overwritten by its own start).
         s_ime_told_gen[ctx->app_id] = 0;
     }
+#endif
     c->gen = ctx->gen;
     c->x = (int16_t)x;
     c->y = (int16_t)y;
@@ -1890,7 +1910,7 @@ void fmrb_host_set_text_cursor(int x, int y, int h)
 #endif
 }
 
-#if defined(FMRB_PLATFORM_NATIVE)
+#if defined(HOST_TEXT_IN)
 // The focused app's text cursor in frame coordinates, false when it has
 // none (it never said, said off, or is not running).
 static bool ime_focused_cursor(uint8_t pid, int *fx, int *fy, int *h)
@@ -1912,6 +1932,39 @@ static bool ime_focused_cursor(uint8_t pid, int *fx, int *fy, int *h)
     return false;
 }
 
+// The focused app's text cursor, or that it has none, every
+// IME_CURSOR_POLL_MS (the IME's candidates go there).
+static void ime_publish_focused_cursor(int target)
+{
+    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    if (now - s_ime_cursor_ms < IME_CURSOR_POLL_MS) return;
+    s_ime_cursor_ms = now;
+    int fx = 0, fy = 0, h = 0;
+    bool has = target >= 0 && ime_focused_cursor((uint8_t)target, &fx, &fy, &h);
+#if defined(FMRB_PLATFORM_NATIVE)
+    fmrb_native_ime_publish_cursor(has, fx, fy, h);
+#else
+    fmrb_wasm_ime_publish_cursor(has, fx, fy, h);
+#endif
+}
+#endif
+
+#if defined(FMRB_PLATFORM_WASM)
+// The browser's IME (doc/kanji_input K4): the page puts a text area at the
+// focused app's cursor while it has one, and what the browser's IME commits
+// there comes in as HOST_MSG_HID_TEXT. Family mruby's own kana input is left
+// as it is -- the page cannot tell whether the browser's IME is on, and with
+// it off every key arrives as today.
+static void ime_tick(void)
+{
+    fmrb_hid_routing_t routing;
+    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return;
+    int target = (routing.routing_enabled && routing.target_pid != 0xFF) ? routing.target_pid : -1;
+    ime_publish_focused_cursor(target);
+}
+#endif
+
+#if defined(FMRB_PLATFORM_NATIVE)
 // From the host loop: the IME coming and going, the focused app told, the
 // focused app's cursor handed to the main thread.
 static void ime_tick(void)
@@ -1951,12 +2004,7 @@ static void ime_tick(void)
             }
         }
     }
-    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
-    if (now - s_ime_cursor_ms < IME_CURSOR_POLL_MS) return;
-    s_ime_cursor_ms = now;
-    int fx = 0, fy = 0, h = 0;
-    bool has = target >= 0 && ime_focused_cursor((uint8_t)target, &fx, &fy, &h);
-    fmrb_native_ime_publish_cursor(has, fx, fy, h);
+    ime_publish_focused_cursor(target);
 }
 #endif
 
@@ -2414,9 +2462,9 @@ static void host_task_process_host_message(const host_message_t *msg)
             break;
         }
 
-#if defined(FMRB_PLATFORM_NATIVE)
+#if defined(HOST_TEXT_IN)
         case HOST_MSG_HID_TEXT: {
-            // Text the PC's IME committed: to the focused app as one-byte key
+            // Text the PC's (the browser's) IME committed: to the focused app as one-byte key
             // events, like a composed kana. Control characters are not text.
             fmrb_hid_routing_t routing;
             if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK ||
@@ -2671,6 +2719,8 @@ static void fmrb_host_task(void *pvParameters)
 
 #if defined(FMRB_PLATFORM_NATIVE)
         keys_tick();
+#endif
+#if defined(HOST_TEXT_IN)
         ime_tick();
 #endif
 
@@ -2873,7 +2923,7 @@ int fmrb_host_send_key_up_us(int key_code, int scancode, int modifier)
     return host_send_key(HOST_MSG_HID_KEY_UP, key_code, scancode, modifier, 1);
 }
 
-#if defined(FMRB_PLATFORM_NATIVE)
+#if defined(HOST_TEXT_IN)
 int fmrb_host_send_text(const char *utf8, int len)
 {
     int sent = 0;

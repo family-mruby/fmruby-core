@@ -18,6 +18,7 @@
 #include "fmrb_rtos.h"
 #include "input_source.h"
 #include "host_task.h"
+#include "input_wasm.h"
 
 #include <emscripten/emscripten.h>
 
@@ -39,7 +40,13 @@ enum {
     INPUT_WASM_MOUSE_BUTTON,   /* a=x, b=y, c=button(1=L 2=M 3=R), d=state */
     INPUT_WASM_MOUSE_MOVE,     /* a=x, b=y */
     INPUT_WASM_MOUSE_WHEEL,    /* a=x, b=y, c=notches (signed, cast from i32) */
+    INPUT_WASM_TEXT,           /* a=bytes (1-12), b..d the UTF-8 bytes, little
+                                  end first: text the browser's IME committed
+                                  (doc/kanji_input K4). A longer text is
+                                  several records in order. */
 };
+
+#define INPUT_WASM_TEXT_MAX 12
 
 static input_wasm_event_t s_ring[INPUT_WASM_RING_EVENTS];
 static volatile uint32_t s_wr = 0;   /* JS bumps with Atomics.add after writing */
@@ -50,6 +57,34 @@ static uint32_t s_rd = 0;
 EMSCRIPTEN_KEEPALIVE const void *fmrb_wasm_input_ring(void) { return s_ring; }
 EMSCRIPTEN_KEEPALIVE uint32_t fmrb_wasm_input_ring_events(void) { return INPUT_WASM_RING_EVENTS; }
 EMSCRIPTEN_KEEPALIVE volatile uint32_t *fmrb_wasm_input_wr_ptr(void) { return &s_wr; }
+
+/* The focused app's text cursor for the page (doc/kanji_input K4): seq is odd
+ * while it is being written and moves on only when something changed; on is
+ * 0 when the app takes no text now (the page then gives the keys to the
+ * screen itself, as before). Frame coordinates. */
+typedef struct {
+    volatile uint32_t seq;
+    int32_t on, x, y, h;
+} input_wasm_text_cursor_t;
+
+static input_wasm_text_cursor_t s_text_cursor;
+
+EMSCRIPTEN_KEEPALIVE const void *fmrb_wasm_text_cursor(void) { return &s_text_cursor; }
+
+void fmrb_wasm_ime_publish_cursor(bool on, int fx, int fy, int h)
+{
+    if (!on) fx = fy = h = 0;
+    if (s_text_cursor.on == (int32_t)on && s_text_cursor.x == fx &&
+        s_text_cursor.y == fy && s_text_cursor.h == h) {
+        return;
+    }
+    __atomic_add_fetch(&s_text_cursor.seq, 1, __ATOMIC_SEQ_CST);   /* odd */
+    s_text_cursor.on = on ? 1 : 0;
+    s_text_cursor.x = fx;
+    s_text_cursor.y = fy;
+    s_text_cursor.h = h;
+    __atomic_add_fetch(&s_text_cursor.seq, 1, __ATOMIC_SEQ_CST);   /* even */
+}
 
 /* ------------------------------------------------------------------------ */
 
@@ -74,6 +109,18 @@ static void dispatch(const input_wasm_event_t *ev)
         fmrb_host_send_mouse_wheel((uint16_t)ev->a, (uint16_t)ev->b,
                                    (int)(int32_t)ev->c);
         break;
+    case INPUT_WASM_TEXT: {
+        uint32_t n = ev->a > INPUT_WASM_TEXT_MAX ? INPUT_WASM_TEXT_MAX : ev->a;
+        const uint32_t words[3] = { ev->b, ev->c, ev->d };
+        char bytes[INPUT_WASM_TEXT_MAX];
+        for (uint32_t i = 0; i < n; i++) {
+            bytes[i] = (char)((words[i / 4] >> (8 * (i % 4))) & 0xFF);
+        }
+        if (n > 0 && fmrb_host_send_text(bytes, (int)n) < 0) {
+            FMRB_LOGW(TAG, "host queue full: %u bytes of IME text dropped", (unsigned)n);
+        }
+        break;
+    }
     default:
         FMRB_LOGW(TAG, "unknown input event type %u", (unsigned)ev->type);
         break;

@@ -4,6 +4,9 @@
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_memory_utils.h"
+#endif
 
 static const char *TAG = "hw_proxy";
 
@@ -60,10 +63,10 @@ void hw_proxy_init(void)
 bool hw_proxy_needs_proxy(void)
 {
 #ifndef CONFIG_IDF_TARGET_LINUX
-    // Check if current stack is in PSRAM address range (ESP32-S3: 0x3C000000-0x3DFFFFFF)
-    volatile uint8_t local;
-    uintptr_t addr = (uintptr_t)&local;
-    return (addr >= 0x3C000000 && addr < 0x3E000000);
+    // Is the current stack in PSRAM? esp_ptr_external_ram knows each chip's
+    // range (S3 0x3C000000-0x3DFFFFFF, P4 0x48000000-...); the S3 range alone
+    // let a PSRAM-stack task on the P4 reach the SD card directly.
+    return esp_ptr_external_ram(__builtin_frame_address(0));
 #else
     return false;
 #endif

@@ -188,7 +188,7 @@ set(WASM_CORE_LINK_OPTS
   -sEXIT_RUNTIME=1
   # The JS-facing surface (frame, audio ring, input ring); emscripten 6
   # exports nothing to the Module by default.
-  "-sEXPORTED_FUNCTIONS=_main,_fmrb_wasm_frame_seq,_fmrb_wasm_frame_rgba,_fmrb_wasm_frame_width,_fmrb_wasm_frame_height,_fmrb_wasm_audio_ring,_fmrb_wasm_audio_ring_size,_fmrb_wasm_audio_wr,_fmrb_wasm_audio_rate,_fmrb_wasm_input_ring,_fmrb_wasm_input_ring_events,_fmrb_wasm_input_wr_ptr,_fmrb_wasm_clip_out_buf,_fmrb_wasm_clip_out_len_ptr,_fmrb_wasm_clip_out_seq_ptr,_fmrb_wasm_clip_in_buf,_fmrb_wasm_clip_in_cap,_fmrb_wasm_clip_in_len_ptr,_fmrb_wasm_clip_in_seq_ptr"
+  "-sEXPORTED_FUNCTIONS=_main,_fmrb_wasm_frame_seq,_fmrb_wasm_frame_rgba,_fmrb_wasm_frame_width,_fmrb_wasm_frame_height,_fmrb_wasm_audio_ring,_fmrb_wasm_audio_ring_size,_fmrb_wasm_audio_wr,_fmrb_wasm_audio_rate,_fmrb_wasm_input_ring,_fmrb_wasm_input_ring_events,_fmrb_wasm_input_wr_ptr,_fmrb_wasm_text_cursor,_fmrb_wasm_clip_out_buf,_fmrb_wasm_clip_out_len_ptr,_fmrb_wasm_clip_out_seq_ptr,_fmrb_wasm_clip_in_buf,_fmrb_wasm_clip_in_cap,_fmrb_wasm_clip_in_len_ptr,_fmrb_wasm_clip_in_seq_ptr"
   # FS is exported for the storage work (doc/wasm/instruction_storage.md):
   # the page has to create and mount /flash/home before the machine boots.
   # Settings still travel as argv and are applied by page_settings_wasm.c on

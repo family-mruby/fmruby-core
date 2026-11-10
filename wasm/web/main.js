@@ -133,6 +133,7 @@ function paint() {
   requestAnimationFrame(paint);
   if (!M) return;
   if (M._fmrb_wasm_clip_out_seq_ptr) clipPollOut();
+  if (M._fmrb_wasm_text_cursor) imePollCursor();
   const seq = M._fmrb_wasm_frame_seq();
   if (seq === lastSeq) {
     if (crt) crt.flush();   // a resize or a setting; nothing when neither
@@ -195,7 +196,7 @@ function hookInput() {
   });
   canvas.addEventListener('mousedown', (ev) => {
     ev.preventDefault();
-    canvas.focus();
+    focusMachine();
     const pos = canvasPos(ev);
     if (!pos) return;
     lastPointer = pos;
@@ -236,7 +237,7 @@ function hookInput() {
   canvas.addEventListener('touchstart', (ev) => {
     if (ev.touches.length !== 1) return;
     ev.preventDefault();
-    canvas.focus();
+    focusMachine();
     const t = ev.changedTouches[0];
     const pos = touchPos(t);
     if (!pos) return;
@@ -295,7 +296,15 @@ function hookInput() {
     pushInput(5, x, y, notches, 0);
   }, { passive: false });
 
-  canvas.addEventListener('keydown', (ev) => {
+  const onKeyDown = (ev) => {
+    // A key the browser's IME takes (it is composing, or the key starts a
+    // composition: keyCode 229) is the IME's, not the machine's; its release
+    // stays with it too. The screen itself never composes, so there this
+    // never happens and every key goes as it always did.
+    if (ev.isComposing || ev.keyCode === 229) {
+      imeTakenKeys.add(ev.code);
+      return;
+    }
     const sc = RD_HID_KEYMAP[ev.code];
     if (!sc) return;
     // The paste key: let the browser fire its paste event (the browser's
@@ -306,20 +315,156 @@ function hookInput() {
     }
     ev.preventDefault();
     pushInput(1, sc, rdModMask(ev), 0, 0);
-  });
-  canvas.addEventListener('keyup', (ev) => {
+  };
+  const onKeyUp = (ev) => {
+    if (imeTakenKeys.delete(ev.code)) return;
     const sc = RD_HID_KEYMAP[ev.code];
     if (!sc) return;
     ev.preventDefault();
     if (heldPaste && heldPaste.sc === sc) releasePasteKey();
     pushInput(2, sc, rdModMask(ev), 0, 0);
-  });
+  };
+  canvas.addEventListener('keydown', onKeyDown);
+  canvas.addEventListener('keyup', onKeyUp);
+  imeBox.addEventListener('keydown', onKeyDown);
+  imeBox.addEventListener('keyup', onKeyUp);
+  hookIme();
   document.addEventListener('paste', (ev) => {
     if (!M || !heldPaste) return;   // only the machine's paste key
     ev.preventDefault();
     const text = ev.clipboardData ? ev.clipboardData.getData('text/plain') : '';
     if (text) clipWriteIn(text);
     releasePasteKey();
+  });
+}
+
+// ---- the browser's IME (doc/kanji_input K4, wasm/backend/input_wasm.c) -----
+//
+// An app that takes text (the editor, the Shell) says where its cursor is
+// (FmrbApp.set_text_cursor); the machine publishes the focused app's, in
+// frame coordinates, and while there is one the keys go to a text area put
+// at that place instead of to the screen. Keys the browser's IME does not
+// take go on exactly as from the screen. What the IME commits
+// (compositionend) goes to the machine as text records, which reach the app
+// as the same one-byte key events a composed kana does. While composing, the
+// text area shows what is being composed (the browser draws it there, and
+// puts its candidate window beside it). A game, or any app without a text
+// cursor, keeps the screen's own focus, so the IME never sees its keys.
+// Family mruby's own kana input is untouched: the page cannot tell whether
+// the browser's IME is on.
+
+const imeBox = document.createElement('textarea');
+imeBox.id = 'ime-box';
+imeBox.setAttribute('autocomplete', 'off');
+imeBox.setAttribute('autocorrect', 'off');
+imeBox.setAttribute('autocapitalize', 'off');
+imeBox.setAttribute('spellcheck', 'false');
+imeBox.setAttribute('aria-label', 'text input');
+// No on-screen keyboard: a touch device has none today, and focusing this
+// must not bring one up.
+imeBox.setAttribute('inputmode', 'none');
+imeBox.tabIndex = -1;
+Object.assign(imeBox.style, {
+  position: 'absolute', left: '0px', top: '0px', width: '1px', height: '1px',
+  margin: '0', padding: '0', border: '0', outline: 'none', resize: 'none',
+  overflow: 'hidden', whiteSpace: 'pre', lineHeight: '1', zIndex: '5',
+  opacity: '0', caretColor: 'transparent', pointerEvents: 'none',
+  background: '#fff', color: '#000', fontFamily: 'sans-serif',
+});
+screenBox.appendChild(imeBox);
+
+const imeTakenKeys = new Set();   // codes whose press the IME took
+let imeCursor = { on: 0, x: 0, y: 0, h: 0 };
+let imeCursorSeq = -1;
+let imeComposing = false;
+
+// The element the keys should go to: the text area while the focused app
+// has a text cursor, the screen otherwise.
+function machineFocusTarget() {
+  return imeCursor.on ? imeBox : canvas;
+}
+
+function focusMachine() {
+  machineFocusTarget().focus({ preventScroll: true });
+}
+
+function imePollCursor() {
+  const base = M._fmrb_wasm_text_cursor() >> 2;
+  const heap = M.HEAP32;
+  const s0 = Atomics.load(heap, base);
+  if (s0 !== imeCursorSeq && !(s0 & 1)) {
+    const c = { on: heap[base + 1], x: heap[base + 2], y: heap[base + 3], h: heap[base + 4] };
+    if (Atomics.load(heap, base) === s0) {
+      imeCursorSeq = s0;
+      imeCursor = c;
+    }
+  }
+  imePlace();
+  // The machine has the keys (the screen or the text area): hand them to
+  // the one that should have them now. Not while composing -- the text
+  // being composed would be lost.
+  const active = document.activeElement;
+  if (!imeComposing && (active === canvas || active === imeBox) &&
+      active !== machineFocusTarget()) {
+    focusMachine();
+  }
+}
+
+// The text area over the cursor, in the screen box's CSS pixels.
+function imePlace() {
+  const r = canvas.getBoundingClientRect();
+  const b = screenBox.getBoundingClientRect();
+  if (!r.width || !canvas.width) return;
+  const k = r.width / canvas.width;
+  const h = Math.max(imeCursor.h, 8) * k;
+  const left = r.left - b.left + imeCursor.x * k;
+  const top = r.top - b.top + imeCursor.y * k;
+  const st = imeBox.style;
+  st.left = Math.round(left) + 'px';
+  st.top = Math.round(top) + 'px';
+  st.height = Math.round(h) + 'px';
+  st.fontSize = Math.max(Math.round(h * 0.85), 8) + 'px';
+  if (imeComposing) {
+    // As wide as what is being composed, within the screen.
+    const room = Math.max(r.right - b.left - left, 16);
+    st.width = Math.min(room, Math.max(16, imeBox.scrollWidth + 2)) + 'px';
+  }
+}
+
+// Text the IME committed, to the machine: 12 bytes of UTF-8 per record.
+function sendImeText(text) {
+  const bytes = new TextEncoder().encode(text);
+  for (let i = 0; i < bytes.length; i += 12) {
+    const n = Math.min(12, bytes.length - i);
+    const w = [0, 0, 0];
+    for (let j = 0; j < n; j++) w[j >> 2] |= bytes[i + j] << (8 * (j & 3));
+    pushInput(6, n, w[0], w[1], w[2]);
+  }
+}
+
+function hookIme() {
+  imeBox.addEventListener('compositionstart', () => {
+    imeComposing = true;
+    Object.assign(imeBox.style, { opacity: '1', caretColor: 'auto' });
+    imePlace();
+  });
+  imeBox.addEventListener('compositionupdate', () => {
+    imePlace();
+  });
+  imeBox.addEventListener('compositionend', (ev) => {
+    imeComposing = false;
+    if (ev.data && M) sendImeText(ev.data);
+    imeBox.value = '';
+    Object.assign(imeBox.style, { opacity: '0', caretColor: 'transparent', width: '1px' });
+  });
+  // Nothing but the IME's composition is meant to stay in the text area
+  // (a key with no machine key, a paste the machine did not ask for).
+  imeBox.addEventListener('input', (ev) => {
+    if (imeComposing || ev.isComposing) {
+      imePlace();
+      return;
+    }
+    imeBox.value = '';
   });
 }
 
@@ -813,7 +958,7 @@ document.addEventListener('fullscreenchange', () => {
   if (!full && navigator.keyboard && navigator.keyboard.unlock) {
     navigator.keyboard.unlock();
   }
-  if (full) canvas.focus();   // keys go to the machine, not the page
+  if (full) focusMachine();   // keys go to the machine, not the page
   applyZoom();
 });
 
@@ -2789,7 +2934,7 @@ startOverlay.addEventListener('click', async () => {
   if (LINK_REFUSED || starting) return;
   starting = true;
   startOverlay.style.display = 'none';
-  canvas.focus();
+  focusMachine();
   statusLine.textContent = 'booting the firmware...';
 
   let ac = null;
@@ -3013,6 +3158,39 @@ async function runDriveCommand(cmd) {
         if (type !== 'mouseup') await driveSleep(cmd.gap_ms || 60);
       }
       return { types, machine: mapped };
+    }
+    case 'ime': {
+      // The browser's IME as far as the page sees it (doc/kanji_input K4):
+      // a composition on the text area -- a press the IME takes, the start,
+      // each update, the commit, the release -- dispatched as the browser
+      // would. Real IME windows cannot be driven from here.
+      const st = () => ({
+        focused: document.activeElement === imeBox ? 'ime' :
+                 document.activeElement === canvas ? 'screen' :
+                 (document.activeElement ? document.activeElement.tagName : null),
+        cursor: imeCursor,
+        box: { left: imeBox.style.left, top: imeBox.style.top, height: imeBox.style.height },
+      });
+      if (cmd.text === undefined) return st();
+      if (document.activeElement !== imeBox) return Object.assign({ sent: false }, st());
+      const code = cmd.code || 'Space';
+      // keyCode cannot be given to a synthetic event: isComposing stands in.
+      imeBox.dispatchEvent(new KeyboardEvent('keydown',
+        { bubbles: true, cancelable: true, key: 'Process', code, isComposing: true }));
+      imeBox.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+      for (const part of cmd.updates || [cmd.text]) {
+        imeBox.value = part;
+        imeBox.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: part }));
+        imeBox.dispatchEvent(new InputEvent('input',
+          { bubbles: true, data: part, inputType: 'insertCompositionText', isComposing: true }));
+        await driveSleep(cmd.gap_ms || 60);
+      }
+      const during = st();
+      during.opacity = imeBox.style.opacity;
+      imeBox.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: cmd.text }));
+      imeBox.dispatchEvent(new KeyboardEvent('keyup',
+        { bubbles: true, cancelable: true, key: 'Enter', code, isComposing: false }));
+      return Object.assign({ sent: true, during }, st());
     }
     case 'status':
       return {
