@@ -1776,10 +1776,21 @@ class FmrbApp
   end
 
   # A right click on a frameless window, or a left press held still on it for
-  # a second (ev[:type] == :long_press). Same as the mruby base: asks the way
-  # Ctrl+Q does; an app using the right button overrides it.
+  # a second (ev[:type] == :long_press). Same as the mruby base: a right
+  # click goes to on_quit_request, a long press asks "Close <name>?" first;
+  # an app using the right button overrides it.
   def on_frameless_right_click(ev)
-    on_quit_request
+    if ev[:type] == :long_press
+      request_close_confirm
+    else
+      on_quit_request
+    end
+  end
+
+  # Ask the desktop to put up "Close <this app>?" (Yes -> on_quit_request).
+  def request_close_confirm
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "close_confirm" })
   end
 
   # ---- hit shape (frameless windows, doc/frameless_window/ W3b) ----

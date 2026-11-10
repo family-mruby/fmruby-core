@@ -150,3 +150,41 @@ Spinel の ivar の並び: 生成 C で `sp_EditorApp` は `sp_FmrbApp` の 37 �
 ## 6. 後片付け
 
 ネイティブ版 3 つ (run dir `/tmp/fmrb-w3b-a`・`-b`・`-m`) は止めた。利用者の場所は scratchpad の `w3b/homeA`・`homeB`。~/.local/share/family-mruby-dev には触れていない。sim は止め、`flash/home/w3b/` を消した。ブラウザ版は止め、置いた 2 つを消した。ネイティブ版の run dir は消した。build/ は Retro (NARYAv3) の Linux ビルド (x86-64、regress:size が元に戻したもの)。native/build・native/build-mruby・ブラウザ版のバンドルは今のソースで作ったもの。
+
+## 7. 追補 W3c: 長押しは問いを出してから閉じる (2026-11-11)
+
+ユーザの判断: タッチだけの端末で枠なしの Window を 1 秒押し続けたら「<名前> を閉じますか?」と聞き、はいのときだけ閉じる。4 章の読み (長押しは問わずにそのまま閉じる) と 5 章の残件「確認の画面を出す既定」をこれで片付けた。右クリックの既定は変えていない (そのまま `on_quit_request`)。
+
+### 7.1 変えたもの
+
+| 所 | 内容 |
+|---|---|
+| 基底 (mruby `fmrb-app.rb`・Spinel `fmrb_app_base_spinel.rb`) | `on_frameless_right_click` の既定が `ev[:type] == :long_press` なら新しい `request_close_confirm`、ほか (右クリック) は今までどおり `on_quit_request`。`request_close_confirm` はカーネルへ APP_CONTROL `{"cmd" => "close_confirm"}` を送るだけ |
+| カーネル `fmrb_kernel.rb` | `"close_confirm"`: 送り手の名前 (`info[:name]`) と pid を付けてデスクトップへ `{"cmd" => "close_confirm", "pid", "name"}`。`"close_confirmed"`: デスクトップから来たときだけ、その slot に同じ名前のアプリがまだいれば `{"cmd" => "quit_request"}` を送る (Ctrl+Q が組み込みのアプリに送るのと同じもの) |
+| デスクトップ `system_desktop.app.rb` | `"close_confirm"` を受けて、今ある確認の画面 (`open_confirm_dialog`) を `close_app_question(name)` の文で開く。はいの答えは `"close_confirmed"` と `close_pid`・`close_name` (電源の項目・reload と同じ形でカーネルへ戻る)。いいえ・Esc・外のクリックは何もしない |
+| `system_desktop/i18n.rb` | `close_app_confirm`: "Close %s?" / "%s を閉じますか?" (`%s` は `fmgr_delete_question` と同じく手で差し込む) |
+| `sig/fmrb_app.rbs`・`doc/app-distribution/spec.md` 3.4 | 長押しの既定の説明、`request_close_confirm` |
+
+はいの後の終わり方は前と同じで、アプリの `on_quit_request` が呼ばれる (上書きしていなければ閉じる)。アプリが `on_frameless_right_click` を上書きすれば長押しも今までどおりアプリのもの。アプリが自分で `request_close_confirm` を呼んでもよい。
+
+### 7.2 確かめたこと
+
+ネイティブ版 (標準構成、run dir `/tmp/fmrb-w3c`、利用者の場所は scratchpad の `w3c_home`) でアバター (`/app/demo/avatar.app.rb`)。画面は `/tmp/claude-1000/-home-kishima-fmrb-family-mruby/d865add5-d638-40f7-89da-40dce8f29b87/scratchpad/w3c/`。
+
+| 確かめたこと | 結果 | 画面 |
+|---|---|---|
+| 胴を長押し | `Long press: PID 4` の後、デスクトップに「Close Avatar?」 | 2_long_press_question.png |
+| いいえ | 閉じない (ps に Avatar が残る) | 3_no_keeps.png |
+| アバターを確認の画面の真下へ動かして長押し | 確認の画面が Window の上に出る (重なりの順は問題なし) | 4_question_over_window.png |
+| はい | `Close confirmed: quit request to pid=4` → `App Avatar quit request` → 閉じた | 5_yes_closed.png |
+| 長押しの後、確認の画面の外をクリック | 閉じない | 6_outside_click_keeps.png |
+| 右クリック | 問わずにそのまま閉じた (`quit request` だけ、`Close confirmed` は出ない) | 7_right_click_closed.png |
+| language = "ja" | 「Avatar を閉じますか?」 | 8_question_ja.png |
+
+回帰の道具: `rake regress` (host 25/25、描画 229/229、`rake clean` の後)、`rake regress:screens` 33/33 (エディタの 1 打鍵を含む)、`rake regress:spinel` 6/6。Spinel の生成 C で、基底の既定は `ev[:type]` を記号で比べる分岐になっていた (黙って 0 になる形ではない)。全部 Spinel の構成のデスクトップも `close_app_question` を含めて生成できた。
+
+### 7.3 残り
+
+- mruby のカーネル (`--engine mruby`) とブラウザ版・sim では動かしていない (カーネル・デスクトップの Ruby は同じソース)。
+- keys のデスクトップ (`system_desktop_keys.app.rb`) は確認の画面を持たないので、そこでの長押しは何も起きない。ポインタの無い構成なので長押しも来ない見込み。
+- ネイティブ版は止め、run dir は消した。~/.local/share/family-mruby-dev には触れていない。

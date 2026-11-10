@@ -811,13 +811,26 @@ class FmrbApp
 
   # A right click (its release) on a frameless window, or a left press held
   # still on it for a second (ev[:type] == :long_press, the touch-only way):
-  # how to close a window that has no close button. The default asks the way
-  # Ctrl+Q does (on_quit_request, which closes unless the app overrides it).
+  # how to close a window that has no close button. A right click goes
+  # straight to on_quit_request (as Ctrl+Q does; it closes unless the app
+  # overrides it). A long press first asks "Close <name>?" on the desktop
+  # (request_close_confirm) and reaches on_quit_request only on Yes.
   # An app that uses the right button itself overrides this (an empty method
   # keeps the window open); a right click still reaches on_event either way,
   # a long press does not (the kernel held it back).
   def on_frameless_right_click(ev)
-    on_quit_request
+    if ev[:type] == :long_press
+      request_close_confirm
+    else
+      on_quit_request
+    end
+  end
+
+  # Ask the desktop to put up "Close <this app>?". Yes comes back as the
+  # quit request (on_quit_request); No or a click outside does nothing.
+  def request_close_confirm
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "close_confirm"})
   end
 
   # ---- hit shape (frameless windows, doc/frameless_window/ W3b) ----

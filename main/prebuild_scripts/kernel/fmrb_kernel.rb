@@ -558,6 +558,33 @@ class FmrbKernelImpl < FmrbKernel
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
         end
       end
+    when "close_confirm"
+      # A frameless window was held still for a second (doc/frameless_window/
+      # W3b): the app's base asks for "Close <name>?" before it closes. The
+      # desktop words it in the user's language and, on Yes, answers with
+      # "close_confirmed".
+      info = _get_app_info(pid)
+      if info && @desktop_pid
+        fwd = { "cmd" => "close_confirm", "pid" => pid,
+                "name" => (info[:name] || "App").to_s }
+        _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL,
+                          MessagePack.pack(fwd))
+      end
+    when "close_confirmed"
+      # Yes on that question. The app gets the same quit request a long press
+      # gave it directly before (on_quit_request, which closes unless the app
+      # overrides it). Only the desktop answers, and only for the app still
+      # in that slot under the same name.
+      close_pid = data["close_pid"]
+      close_name = data["close_name"]
+      if pid == @desktop_pid && close_pid
+        info = _get_app_info(close_pid)
+        if info && (info[:name] || "App").to_s == close_name.to_s
+          Log.info("Close confirmed: quit request to pid=#{close_pid}")
+          quit_data = MessagePack.pack({ "cmd" => "quit_request" })
+          _send_raw_message(close_pid, FmrbConst::MSG_TYPE_APP_CONTROL, quit_data)
+        end
+      end
     when "reload"
       # Confirmed reload: stop app and re-spawn
       reload_pid = data["reload_pid"]

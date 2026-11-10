@@ -427,7 +427,8 @@ class FmrbApp
   #
   # 枠なしの Window を閉じる口。右クリック (離したとき) と、動かさずに
   # 1 秒押し続けたとき (ev[:type] が :long_press) に呼ばれる。
-  # 既定は on_quit_request (そのまま閉じる)。
+  # 既定は、右クリックなら on_quit_request (そのまま閉じる)、長押しなら
+  # request_close_confirm (「閉じますか」と聞き、はいのときだけ on_quit_request)。
   # 右ボタンを自分で使うアプリは空で書き換える。右クリックは on_event にも届く。
   # ```ruby
   # def on_frameless_right_click(ev)
@@ -436,8 +437,10 @@ class FmrbApp
   # <<en>>
   # The pointer's way to close a frameless window: a right click (on its
   # release), or a left press held still for a second (ev[:type] is
-  # :long_press, the way on a touch screen). The default calls
-  # on_quit_request (which closes). An app that uses the right button
+  # :long_press, the way on a touch screen). The default: a right click
+  # calls on_quit_request (which closes); a long press calls
+  # request_close_confirm (asks first, on_quit_request only on Yes). An app
+  # that uses the right button
   # overrides it with an empty method; a right click reaches on_event
   # either way.
   # ```ruby
@@ -574,6 +577,16 @@ class FmrbApp
   # Asks for a file-based app to be started again from the rewritten file.
   # Right-clicking the title bar does this.
   def request_reload: () -> void
+
+  # 「<アプリ> を閉じますか?」と聞く <<en>> Ask "Close <app>?" on the desktop
+  #
+  # デスクトップに確認の画面を出してもらう。はいなら on_quit_request が
+  # 呼ばれ、いいえ・外のクリックでは何も起きない。長押しの既定がこれを呼ぶ。
+  # <<en>>
+  # Asks the desktop to show "Close <app>?". Yes calls on_quit_request; No
+  # or a click outside does nothing. A long press on a frameless window
+  # calls this by default.
+  def request_close_confirm: () -> void
 
   # 呼ばれ続ける本体の繰り返し <<en>> The body that is called over and over
   #

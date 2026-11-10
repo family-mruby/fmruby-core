@@ -1881,6 +1881,17 @@ class SystemDesktopApp < FmrbApp
         cb_data[k] = v
       end
       open_confirm_dialog(msg["message"], msg["on_yes_cmd"], cb_data)
+    elsif msg["cmd"] == "close_confirm"
+      # A long press on a frameless window (doc/frameless_window/ W3b): ask
+      # "Close <name>?"; Yes sends "close_confirmed" back to the kernel, which
+      # gives the app its quit request. No and a click outside do nothing.
+      # The answer's data is filled from the message's own values, the way
+      # the confirm_dialog branch above builds it (one hash type for Spinel).
+      cb_data = {}
+      cb_data["close_pid"] = msg["pid"]
+      cb_data["close_name"] = msg["name"]
+      open_confirm_dialog(close_app_question(msg["name"].to_s), "close_confirmed",
+                          cb_data)
     elsif msg["cmd"] == "do_reboot"
       Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
       FmrbApp.reboot
@@ -1906,6 +1917,15 @@ class SystemDesktopApp < FmrbApp
     end
     nil  # keep a concrete return: a branch (FmrbApp.reboot) is noreturn, which
          # would otherwise make the if/elsif value void (Spinel)
+  end
+
+  # "Close <name>?" in the user's language, "%s" replaced by hand the way
+  # fmgr_delete_question does it.
+  def close_app_question(name)
+    t = FmrbI18n.t(:close_app_confirm)
+    at = t.index("%s")
+    return "#{t} #{name}" unless at
+    t[0, at] + name + t[at + 2, t.length - at - 2]
   end
 
   # ---- Questions answered inside the desktop (ConfirmDialogMixin) ----
