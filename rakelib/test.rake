@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
                "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -72,6 +72,18 @@ namespace :receive_conf do
   desc "receive.toml tests: FmrbReceiveConf and the kernel's switch (host Ruby + cc, no docker)"
   task :test do
     sh "ruby test/receive_conf/run.rb"
+  end
+end
+
+namespace :msgpack do
+  # The kernel's msgpack (main/prebuild_scripts/spinel/msgpack_pure.rb) at
+  # every integer width and boundary: on CRuby as a 64-bit and a 32-bit
+  # machine, and compiled by Spinel as a 64-bit and a cc -m32 program when the
+  # compiler is there (doc/asterism_file_transfer/report/t8d.md). Run it
+  # after touching msgpack_pure.rb.
+  desc "Kernel msgpack integer widths, CRuby and Spinel 64/32-bit (host, no docker)"
+  task :test do
+    sh "ruby test/msgpack/run.rb"
   end
 end
 

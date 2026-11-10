@@ -535,6 +535,9 @@ class TransferApp < FmrbApp
   IDLE_MS = 50
   # The apps' requests to send a file (FmrbTransfer)
   CTL_TOPIC = "transfer/ctl"
+  # the kernel's notice that an app ended: its pid may go to a new app, whose
+  # request ids start again from 1 (FmrbTransfer counts them per app)
+  DIED_TOPIC = "app/died"
   # an app hears how far its file has got at most this often
   PROGRESS_MS = 250
   # a file asked for while this machine is not connected waits this long
@@ -561,6 +564,7 @@ class TransferApp < FmrbApp
     @checked_at = Machine.board_millis
     @job_end = 0
     subscribe(CTL_TOPIC)
+    subscribe(DIED_TOPIC)
     Log.info("transfer: start (#{FmrbApp.pool_used} bytes of its pool used)")
   end
 
@@ -618,6 +622,8 @@ class TransferApp < FmrbApp
     stop_move(data["to"].to_s) if cmd == "move_stop"
     if cmd == "topic_data" && data["topic"] == CTL_TOPIC
       app_request(data["data"], data["src_pid"])
+    elsif cmd == "topic_data" && data["topic"] == DIED_TOPIC
+      app_ended(data["data"])
     end
     request_early_update
   end
@@ -649,6 +655,7 @@ class TransferApp < FmrbApp
     @inbox.close
     @link.close
     unsubscribe(CTL_TOPIC)
+    unsubscribe(DIED_TOPIC)
   end
 
   # ---- the apps' requests (FmrbTransfer) ----
@@ -664,7 +671,9 @@ class TransferApp < FmrbApp
     return unless rq.is_a?(Integer)
     c = req["cmd"].to_s
     if c == "send"
-      # asked again (the answer had not come yet): taken once
+      # asked again (the answer had not come yet): taken once. The ids count
+      # up from 1 in each app (FmrbTransfer), and @asked forgets a pid when
+      # its app ends (app_ended), so a larger id is a new request.
       seen = @asked[pid]
       if seen.nil? || rq > seen
         @asked[pid] = rq
@@ -677,6 +686,14 @@ class TransferApp < FmrbApp
     elsif c == "cancel"
       cancel_request(pid, rq)
     end
+  end
+
+  # An app ended: forget the last id taken from its pid, so the next app
+  # given that pid is heard from its first request on. Its jobs go on (a
+  # file asked for is still sent; there is just no one to tell).
+  def app_ended(d)
+    return unless d.is_a?(Hash)
+    @asked.delete(d["pid"])
   end
 
   def cancel_request(pid, rq)

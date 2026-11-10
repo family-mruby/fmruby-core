@@ -200,7 +200,77 @@ module MessagePack
     unpack_value(bin, pos)
   end
 
-  # read n bytes as an unsigned big-endian integer
+  # The bytes of this machine's Integer: 8 on CRuby and a 64-bit Spinel
+  # build, 4 on a 32-bit one (ESP32, wasm32), where Spinel's sp_int is
+  # intptr_t. Spinel folds Integer#size to sizeof(sp_int).
+  def self.int_bytes
+    0.size
+  end
+
+  # Reads an n-byte big-endian integer, two's complement when signed (kind
+  # names the msgpack type for the error). Every value the machine's Integer
+  # holds decodes, and no step on the way is larger than the result: a
+  # negative value is built from its complement (-1 - v), so int32 down to
+  # -2^31 + 1 reads on a 32-bit machine without overflowing `<<`. A value
+  # the Integer cannot hold raises with its type and bytes instead of
+  # overflowing part-way. Its most negative value (-2^31 on 32-bit, -2^63 on
+  # 64-bit) is one of these: in Spinel it is the Integer's nil marker
+  # (SP_INT_NIL), which no arithmetic accepts.
+  def self.read_int(bin, pos, n, signed, kind)
+    p0 = pos[0]
+    pos[0] = p0 + n
+    neg = signed && bin.getbyte(p0) >= 0x80
+    ib = int_bytes
+    skip = 0
+    if n >= ib
+      skip = n - ib
+      ext = neg ? 0xFF : 0
+      fits = true
+      i = 0
+      while i < skip
+        fits = false if bin.getbyte(p0 + i) != ext
+        i += 1
+      end
+      top = bin.getbyte(p0 + skip)
+      fits = false if (top >= 0x80) != neg
+      if fits && neg && top == 0x80
+        low = 0
+        i = skip + 1
+        while i < n
+          low = low | bin.getbyte(p0 + i)
+          i += 1
+        end
+        fits = false if low == 0
+      end
+      raise int_too_wide(bin, p0, n, kind, ib) unless fits
+    end
+    v = 0
+    i = skip
+    while i < n
+      b = bin.getbyte(p0 + i)
+      b = b ^ 0xFF if neg
+      v = (v << 8) | b
+      i += 1
+    end
+    neg ? -1 - v : v
+  end
+
+  # The reason an integer is refused: its type, its bytes and the width it
+  # did not fit (the value itself cannot be shown -- it is not an Integer here).
+  def self.int_too_wide(bin, p0, n, kind, ib)
+    digits = "0123456789abcdef"
+    hex = ""
+    i = 0
+    while i < n
+      b = bin.getbyte(p0 + i)
+      # interpolation, not <<: a String literal is frozen in Spinel
+      hex = "#{hex}#{digits[b >> 4]}#{digits[b & 0xF]}"
+      i += 1
+    end
+    "MessagePack: #{kind} 0x#{hex} does not fit this machine's #{ib * 8}-bit Integer"
+  end
+
+  # read n bytes as an unsigned big-endian integer (lengths and float bits)
   def self.read_be(bin, pos, n)
     v = 0
     i = 0
@@ -246,14 +316,14 @@ module MessagePack
     when 0xc0 then nil
     when 0xc2 then false
     when 0xc3 then true
-    when 0xcc then read_be(bin, pos, 1)                    # uint8
-    when 0xcd then read_be(bin, pos, 2)                    # uint16
-    when 0xce then read_be(bin, pos, 4)                    # uint32
-    when 0xcf then read_be(bin, pos, 8)                    # uint64
-    when 0xd0 then to_signed(read_be(bin, pos, 1), 8)      # int8
-    when 0xd1 then to_signed(read_be(bin, pos, 2), 16)     # int16
-    when 0xd2 then to_signed(read_be(bin, pos, 4), 32)     # int32
-    when 0xd3 then to_signed(read_be(bin, pos, 8), 64)     # int64
+    when 0xcc then read_int(bin, pos, 1, false, "uint8")
+    when 0xcd then read_int(bin, pos, 2, false, "uint16")
+    when 0xce then read_int(bin, pos, 4, false, "uint32")
+    when 0xcf then read_int(bin, pos, 8, false, "uint64")
+    when 0xd0 then read_int(bin, pos, 1, true, "int8")
+    when 0xd1 then read_int(bin, pos, 2, true, "int16")
+    when 0xd2 then read_int(bin, pos, 4, true, "int32")
+    when 0xd3 then read_int(bin, pos, 8, true, "int64")
     when 0xca then unpack_float32(bin, pos)                # float32 (decode only)
     when 0xcb then unpack_float64(bin, pos)                # float64
     when 0xc4 then read_bytes(bin, pos, read_be(bin, pos, 1)) # bin8
@@ -269,11 +339,6 @@ module MessagePack
     else
       raise "MessagePackPure: unknown prefix 0x#{c.to_s(16)}"
     end
-  end
-
-  def self.to_signed(v, bits)
-    half = 1 << (bits - 1)
-    v >= half ? v - (1 << bits) : v
   end
 
   def self.unpack_array(bin, pos, n)

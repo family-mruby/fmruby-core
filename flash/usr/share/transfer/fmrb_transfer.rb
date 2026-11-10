@@ -50,10 +50,21 @@ class FmrbTransfer
   # what the kernel forwards to the transfer app must fit a message
   MSG_MAX = 176
 
+  # The last request id of this app: one count for every FmrbTransfer in it
+  # (the Shell makes one per asend), as the transfer app takes a request
+  # again only with a larger id from the same app. A count and not the clock:
+  # an id stays a small Integer that every machine's kernel reads (a 32-bit
+  # one holds up to 2^31 - 1; Machine.board_millis passes that after 24.8
+  # days, doc/asterism_file_transfer/report/t8d.md).
+  @last_rq = 0
+
+  def self.next_rq
+    @last_rq += 1
+  end
+
   def initialize(app)
     @app = app
     @reqs = {}
-    @last_rq = 0
   end
 
   # Asks for path to be sent to the machine named to (its Asterism node ID).
@@ -171,13 +182,9 @@ class FmrbTransfer
     Machine.board_millis
   end
 
-  # Unique among this machine's requests for long enough: the transfer app
-  # takes a request again only with a larger id from the same app.
+  # Larger than every id this app asked with before (FmrbTransfer.next_rq).
   def new_rq
-    rq = Machine.board_millis
-    rq = @last_rq + 1 if rq <= @last_rq
-    @last_rq = rq
-    rq
+    FmrbTransfer.next_rq
   end
 
   # The transfer app is started when it is not running (the kernel takes it

@@ -9,7 +9,7 @@ module AudioHandlerMixin
     begin
       data = MessagePack.unpack(data_binary)
     rescue => e
-      Log.error("Failed to unpack audio message: #{e}")
+      Log.error("Failed to unpack audio message from #{who_sent(pid)}; the message is dropped: #{e}")
       return
     end
 

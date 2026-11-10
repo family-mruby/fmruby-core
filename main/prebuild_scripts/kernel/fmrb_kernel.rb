@@ -253,6 +253,15 @@ class FmrbKernelImpl < FmrbKernel
     end
   end
 
+  # "PID n (its name)" for a log line about a message an app sent. A message
+  # the kernel cannot read is dropped whole (it has no "cmd" to answer), so
+  # the log is the only place the sender is named (report/t8d.md).
+  def who_sent(pid)
+    info = _get_app_info(pid)
+    name = info ? info[:name].to_s : ""
+    name.empty? ? "PID #{pid}" : "PID #{pid} (#{name})"
+  end
+
   def handle_app_control(msg)
     data_binary = msg[:data]
     pid = msg[:src_pid]
@@ -261,7 +270,7 @@ class FmrbKernelImpl < FmrbKernel
     begin
       data = MessagePack.unpack(data_binary)
     rescue => e
-      Log.error("Failed to unpack msgpack data: #{e}")
+      Log.error("Failed to unpack msgpack data from #{who_sent(pid)}; the message is dropped: #{e}")
       return
     end
 
