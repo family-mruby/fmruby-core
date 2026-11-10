@@ -87,6 +87,10 @@ int fmrb_spx_app_send_audio_note(int on, int ch, int freq, int vol, int duty,
 
 /** which: 0 = pos_x, 1 = pos_y. Updates the context and returns 0 / neg. */
 int fmrb_spx_app_set_window_param(int which, int value);
+/** @brief Declare this app's hit shape (fmrb_app_set_hit_shape); len 0 withdraws. 1 ok, 0 refused. */
+int fmrb_spx_app_set_hit_shape(const char *data, int len);
+/** @brief Move / show / hide a hit-marked sprite's entries (fmrb_app_hit_shape_place_sprite). */
+int fmrb_spx_app_hit_sprite_place(int sprite_id, int x, int y, int visible);
 
 /** 1 if this app was loaded from a file (FMRB_LOAD_MODE_FILE), else 0. */
 int fmrb_spx_app_is_file_app(void);

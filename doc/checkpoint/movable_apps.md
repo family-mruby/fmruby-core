@@ -45,7 +45,7 @@ mruby-task の Task は、作った所の self ではなくトップレベルの
 ### 3.3 移った側での画面
 
 - Window は同じ位置・大きさで作り直される。着いた側の画面に収まらない Window は、画面に収まるように縮められ、左上へ寄せられる。全画面のアプリは着いた側の全画面の大きさになる (Retro 320x240 ⇔ Modern 426x240)。大きさが変わったときは `on_resize(w, h)` が先に来て、その後に `on_restore`。
-- 枠なしの Window (`window_frame = "none"`、doc/frameless_window) は、着いた側でも枠なしになり、基底が地を透ける色にして Window 全体を透ける区画に掛け直す。`on_restore` は絵を描き直すだけでよい (透けを自分で掛け直さなくてよい)。`window_drag` も運ばれる。
+- 枠なしの Window (`window_frame = "none"`、doc/frameless_window) は、着いた側でも枠なしになり、基底が地を透ける色にして Window 全体を透ける区画に掛け直す。`on_restore` は絵を描き直すだけでよい (透けを自分で掛け直さなくてよい)。`window_drag` も運ばれる。当たりの形 (`set_hit_shape` の矩形と `set_hit_mask` のマスク) はアプリの状態として運ばれ、`on_restore` の前に基底がカーネルへ申告し直す。sprite の当たりの印 (`add_hit_sprite`) は sprite と一緒に忘れられるので、`on_restore` で sprite を作り直したときに付け直す (doc/frameless_window の W3b)。
 - フォントは着いた側にあるものから選び直す (日本語のフォントの無い端末では小さいものになり、戻しても元の大きさには戻らない)。
 
 ### 3.4 移した側

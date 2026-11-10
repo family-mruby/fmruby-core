@@ -152,10 +152,10 @@ class FmrbKernel
   def _update_window_position(pid, x, y); FmrbSpx.fmrb_spx_update_window_pos(pid, x, y) == 1; end
   # Changes whenever a window's place changes, an app's own move included.
   def _window_list_gen;               FmrbSpx.fmrb_spx_window_list_gen; end
-  # A press at window-relative (x, y) falls through this frameless window
-  # (its canvas shows the colour key there). One pixel read, blocking.
-  def _window_see_through?(pid, x, y)
-    FmrbSpx.fmrb_spx_window_see_through(pid, x, y) == 1
+  # A press at window-relative (x, y) hits this window: inside the hit shape
+  # a frameless window declared, or anywhere in its rectangle.
+  def _window_hit?(pid, x, y)
+    FmrbSpx.fmrb_spx_window_hit(pid, x, y) == 1
   end
   def _update_window_size(pid, w, h);     FmrbSpx.fmrb_spx_update_window_size(pid, w, h) == 1; end
   # Runtime window <-> fullscreen switch. Spinel has no bool FFI arg, so the flag

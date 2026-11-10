@@ -109,9 +109,9 @@ const char *fmrb_spx_windows_snapshot(void);
 /** @brief fmrb_app_window_list_gen, folded to a non-negative int. */
 int fmrb_spx_window_list_gen(void);
 
-/** @brief fmrb_app_window_see_through_at: 1 when a press at window-relative
- *  (x, y) falls through a frameless window, else 0. Blocks for one pixel read. */
-int fmrb_spx_window_see_through(int pid, int x, int y);
+/** @brief fmrb_app_window_hit_at: 1 when a press at window-relative (x, y)
+ *  hits the window (its declared hit shape, or its rectangle), else 0. */
+int fmrb_spx_window_hit(int pid, int x, int y);
 
 int fmrb_spx_set_hid_target(int pid);        /**< 0 ok, negative error */
 int fmrb_spx_set_focused_window(int win_id); /**< 0 ok, negative error */

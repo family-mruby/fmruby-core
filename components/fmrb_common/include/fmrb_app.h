@@ -645,22 +645,60 @@ uint32_t fmrb_app_window_list_gen(void);
  */
 void fmrb_app_window_moved(void);
 
-/**
- * @brief Whether a press at (x, y) inside a frameless window falls through it
+/*
+ * Hit shapes of frameless windows (doc/frameless_window/ W3b). An app with
+ * window_frame = "none" may declare which parts of its window take a press;
+ * the kernel's hit test lets a press elsewhere through to what is behind.
+ * Without a declaration the window is hit by its rectangle.
  *
- * True only for a frameless window (window_frame = "none") whose canvas holds
- * its colour key at that point, i.e. where the screen shows what is behind.
- * Reads one pixel from the drawing side (GET_PIXEL, one synchronous round
- * trip through the host task) and blocks the caller until it answers. Every
- * other case -- a framed window, a headless app, a point outside the canvas,
- * a failed read -- answers false, so the window keeps its rectangle.
- * For the kernel's hit test (doc/frameless_window/ W3).
- *
- * @param pid App whose window is under the press
- * @param x   Press position relative to the window's top-left corner
- * @param y   Press position relative to the window's top-left corner
+ * The declaration is a byte string of entries, little endian, each one
+ * FMRB_HIT_ENTRY_HDR bytes:
+ *   [0]     kind: FMRB_HIT_KIND_RECT or FMRB_HIT_KIND_MASK, OR'd with
+ *           FMRB_HIT_HIDDEN when the entry takes no press for now
+ *   [1]     scale: pixels per mask cell (1..255; 1 for a rectangle)
+ *   [2..5]  x, y (int16): top-left, window-relative pixels
+ *   [6..9]  w, h (uint16): pixels for a rectangle, cells for a mask
+ *   [10..11] sprite instance id (uint16), 0 when the entry is not a sprite's
+ * A mask entry is followed by h rows of (w + 7) / 8 bytes, the leftmost cell
+ * in the most significant bit; a set bit takes a press. The whole string is
+ * at most FMRB_HIT_SHAPE_MAX bytes. It is kept in PSRAM, one per app slot.
  */
-bool fmrb_app_window_see_through_at(uint8_t pid, int16_t x, int16_t y);
+#define FMRB_HIT_SHAPE_MAX   2048
+#define FMRB_HIT_ENTRY_HDR   12
+#define FMRB_HIT_KIND_RECT   1
+#define FMRB_HIT_KIND_MASK   2
+#define FMRB_HIT_HIDDEN      0x80
+
+/**
+ * @brief Declare (or with len 0 withdraw) the hit shape of an app's window
+ *
+ * @param pid  App slot
+ * @param data Entries as described above (copied)
+ * @param len  Byte length; 0 goes back to the window's rectangle
+ * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM for a malformed or too long string
+ */
+fmrb_err_t fmrb_app_set_hit_shape(uint8_t pid, const uint8_t *data, size_t len);
+
+/**
+ * @brief Move (and show or hide) the entries of a sprite in the hit shape
+ *
+ * Every entry whose sprite id is sprite_id is moved to (x, y) and marked
+ * hidden unless visible. Cheap: no round trip, one walk of the entries.
+ *
+ * @return true when an entry was found
+ */
+bool fmrb_app_hit_shape_place_sprite(uint8_t pid, uint16_t sprite_id,
+                                     int16_t x, int16_t y, bool visible);
+
+/**
+ * @brief Whether a press at window-relative (x, y) hits the app's window
+ *
+ * For the kernel's hit test. A framed window, or a frameless one that has
+ * declared nothing, is hit everywhere in its rectangle (true). A frameless
+ * window with a declaration is hit only inside the union of its visible
+ * entries. Reads the declaration only; nothing goes to the drawing side.
+ */
+bool fmrb_app_window_hit_at(uint8_t pid, int16_t x, int16_t y);
 
 fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
 fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);

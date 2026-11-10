@@ -155,6 +155,111 @@ class SpriteInstance
   # sp.destroy
   # ```
   def destroy: () -> void
+
+  # 見せるか隠すか <<en>> Show or hide it
+  #
+  # ```ruby
+  # sp.visible = false
+  # ```
+  def visible=: (bool v) -> void
+
+  # 見えているか <<en>> Whether it is shown
+  #
+  # ```ruby
+  # sp.visible = !sp.visible?
+  # ```
+  def visible?: () -> bool
+
+  # 今の x (Window の中) <<en>> Where it is now: x (window coordinates)
+  #
+  # ```ruby
+  # sp.move(sp.x + 4, sp.y)
+  # ```
+  def x: () -> Integer
+
+  # 今の y (Window の中) <<en>> Where it is now: y (window coordinates)
+  #
+  # ```ruby
+  # sp.move(sp.x, sp.y + 4)
+  # ```
+  def y: () -> Integer
+
+  # 幅 (1 枚目の絵) <<en>> Width (of the first image)
+  #
+  # ```ruby
+  # right = sp.x + sp.width
+  # ```
+  def width: () -> Integer
+
+  # 高さ (1 枚目の絵) <<en>> Height (of the first image)
+  #
+  # ```ruby
+  # bottom = sp.y + sp.height
+  # ```
+  def height: () -> Integer
+end
+
+# 枠なしの Window の当たりの形 (画素単位)。FmrbApp#hit_mask_from_art で作る。
+class FmrbHitMask
+  # マスクを作る (行ごとのビット列) <<en>> Make a mask (bits row by row)
+  #
+  # width x height マス。bits は 1 行 (width + 7) / 8 バイト、左のマスが
+  # 上位ビット。立っているマスが当たる。
+  # ```ruby
+  # m = FmrbHitMask.new(8, 1,
+  #       "\xF0", 2)
+  # ```
+  # <<en>>
+  # width x height cells. bits: (width + 7) / 8 bytes per row, the leftmost
+  # cell in the top bit. A set cell is hit.
+  # ```ruby
+  # m = FmrbHitMask.new(8, 1,
+  #       "\xF0", 2)
+  # ```
+  def self.new: (Integer width, Integer height, String bits, ?Integer scale) -> FmrbHitMask
+
+  # ドット絵の文字列から作る <<en>> Make one from dot-art strings
+  #
+  # ```ruby
+  # m = FmrbHitMask.from_art(ROWS,
+  #       transparent: ".", scale: 3)
+  # ```
+  def self.from_art: (Array rows, ?transparent: String, ?scale: Integer) -> FmrbHitMask
+
+  # マスが当たるか <<en>> Whether the cell is hit
+  #
+  # ```ruby
+  # m.set?(3, 0)
+  # ```
+  def set?: (Integer cx, Integer cy) -> bool
+
+  # 幅 (マス) <<en>> Width in cells
+  #
+  # ```ruby
+  # m.width
+  # ```
+  def width: () -> Integer
+
+  # 高さ (マス) <<en>> Height in cells
+  #
+  # ```ruby
+  # m.height
+  # ```
+  def height: () -> Integer
+
+  # 1 マスの画素数 <<en>> Pixels per cell
+  #
+  # ```ruby
+  # m.scale
+  # ```
+  def scale: () -> Integer
+
+  # ビット列 <<en>> The bits
+  #
+  # ```ruby
+  # same = m.bits == old.bits
+  # ```
+  def bits: () -> String
 end
 
 # 同じ形をくり返し描くときの下書き。数だけ差しかえて何度も描ける。

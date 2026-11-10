@@ -35,8 +35,8 @@ module FmrbSpx
   ffi_func :fmrb_spx_windows_snapshot, [], :binstr
   # changes whenever a window's place changes (the snapshot is out of date)
   ffi_func :fmrb_spx_window_list_gen, [], :int
-  # 1 when a press at window-relative (x, y) falls through a frameless window
-  ffi_func :fmrb_spx_window_see_through, [:int, :int, :int], :int
+  # 1 when a press at window-relative (x, y) hits the window (its hit shape)
+  ffi_func :fmrb_spx_window_hit, [:int, :int, :int], :int
   ffi_func :fmrb_spx_set_hid_target, [:int], :int
   ffi_func :fmrb_spx_set_focused_window, [:int], :int
   ffi_func :fmrb_spx_bring_to_front, [:int], :int

@@ -423,23 +423,114 @@ class FmrbApp
   # ```
   def on_quit_request: () -> void
 
-  # 枠なしの Window を右クリックしたとき <<en>> Right click on a frameless window
+  # 枠なしの Window の右クリック・長押し <<en>> Right click or long press, frameless
   #
-  # 枠なしの Window を閉じる口。既定は on_quit_request (そのまま閉じる)。
-  # 右ボタンを自分で使うアプリは空で書き換える。クリックは on_event にも届く。
+  # 枠なしの Window を閉じる口。右クリック (離したとき) と、動かさずに
+  # 1 秒押し続けたとき (ev[:type] が :long_press) に呼ばれる。
+  # 既定は on_quit_request (そのまま閉じる)。
+  # 右ボタンを自分で使うアプリは空で書き換える。右クリックは on_event にも届く。
   # ```ruby
   # def on_frameless_right_click(ev)
   # end
   # ```
   # <<en>>
-  # The pointer's way to close a frameless window. The default calls
+  # The pointer's way to close a frameless window: a right click (on its
+  # release), or a left press held still for a second (ev[:type] is
+  # :long_press, the way on a touch screen). The default calls
   # on_quit_request (which closes). An app that uses the right button
-  # overrides it with an empty method; the click reaches on_event either way.
+  # overrides it with an empty method; a right click reaches on_event
+  # either way.
   # ```ruby
   # def on_frameless_right_click(ev)
   # end
   # ```
   def on_frameless_right_click: (Hash ev) -> void
+
+  # 当たりを四角の一覧で決める (枠なし) <<en>> Hit shape: rectangles (frameless window)
+  #
+  # 押して当たるのは、四角・マスク・印を付けた sprite を合わせた所だけ。
+  # ほかを押すと後ろの Window へ抜ける。何も決めなければ Window の四角。
+  # 座標は Window の中。`[]` で四角を外す。移ったら基底が決め直す。
+  # ```ruby
+  # set_hit_shape([[0, 0, 40, 30],
+  #                [10, 30, 20, 8]])
+  # ```
+  # <<en>>
+  # A frameless window takes a press only inside the union of these
+  # rectangles, its mask and its marked sprites; elsewhere the press goes to
+  # what is behind. Nothing declared: the whole window. Window coordinates;
+  # `[]` drops the rectangles. A move carries them along.
+  # ```ruby
+  # set_hit_shape([[0, 0, 40, 30],
+  #                [10, 30, 20, 8]])
+  # ```
+  def set_hit_shape: (Array rects) -> bool
+
+  # 当たりをマスク (FmrbHitMask) で決める <<en>> Hit shape: a mask (FmrbHitMask)
+  #
+  # 左上を (x, y) に置く。nil で外す。
+  # ```ruby
+  # m = hit_mask_from_art(ROWS,
+  #       transparent: ".", scale: 3)
+  # set_hit_mask(m, 36, 38)
+  # ```
+  # <<en>>
+  # Its top-left at (x, y); nil drops it.
+  # ```ruby
+  # m = hit_mask_from_art(ROWS,
+  #       transparent: ".", scale: 3)
+  # set_hit_mask(m, 36, 38)
+  # ```
+  def set_hit_mask: (FmrbHitMask? mask, ?Integer x, ?Integer y) -> bool
+
+  # ドット絵の文字列から当たりのマスクを作る <<en>> A hit mask from dot-art strings
+  #
+  # 1 文字 1 マス (ASCII)。transparent に含まれない文字が当たる。
+  # 1 マスは scale x scale 画素。
+  # ```ruby
+  # m = hit_mask_from_art(
+  #       ["..XX..", ".XXXX."],
+  #       transparent: ".", scale: 2)
+  # ```
+  # <<en>>
+  # One ASCII character per cell; every character not in transparent is
+  # hit. A cell is scale x scale pixels.
+  # ```ruby
+  # m = hit_mask_from_art(
+  #       ["..XX..", ".XXXX."],
+  #       transparent: ".", scale: 2)
+  # ```
+  def hit_mask_from_art: (Array rows, ?transparent: String, ?scale: Integer) -> FmrbHitMask
+
+  # sprite に当たりの印を付ける <<en>> Mark a sprite as part of the hit shape
+  #
+  # sprite の四角 (mask を渡せばその形) が、sprite の位置と見え隠れに
+  # ついて当たりに入る。移った後は on_restore で付け直す。
+  # ```ruby
+  # add_hit_sprite(@player)
+  # ```
+  # <<en>>
+  # The sprite's rectangle (or the mask given, over its top-left) is hit
+  # wherever the sprite is, while it is visible. After a move, on_restore
+  # marks the sprites it makes again.
+  # ```ruby
+  # add_hit_sprite(@player)
+  # ```
+  def add_hit_sprite: (SpriteInstance sprite, ?FmrbHitMask? mask) -> bool
+
+  # sprite の当たりの印を外す <<en>> Unmark a sprite
+  #
+  # ```ruby
+  # remove_hit_sprite(@player)
+  # ```
+  def remove_hit_sprite: (SpriteInstance sprite) -> void
+
+  # 当たりを Window の四角に戻す <<en>> Back to the window rectangle
+  #
+  # ```ruby
+  # clear_hit_shape
+  # ```
+  def clear_hit_shape: () -> bool
 
   # ---- 動かす ----
 

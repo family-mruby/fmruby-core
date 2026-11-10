@@ -107,7 +107,7 @@ class FmrbKernelImpl < FmrbKernel
 
     # Mouse capture state (for drag and resize only)
     @capture_pid = nil     # Window that captured mouse
-    @capture_mode = nil    # :drag, :resize, :press, :grab, or nil
+    @capture_mode = nil    # :drag, :resize, :press, :grab, :long, or nil
 
     # Drag state (only valid when @capture_mode == :drag, or :press / :grab
     # for an anywhere-drag: the press held back, then the drag)
@@ -119,6 +119,10 @@ class FmrbKernelImpl < FmrbKernel
     @press_x = 0
     @press_y = 0
     @press_data = ""
+    # When it went down, and whether holding it still may make a long press
+    # (a frameless window with a Ruby base)
+    @press_ms = 0
+    @press_long_ok = false
 
     # Resize state (only valid when @capture_mode == :resize)
     @resize_start_width = 0

@@ -23,6 +23,12 @@ module InputRouterMixin
   # Compared as a squared distance.
   DRAG_HOLD_PX = 4
 
+  # A held press on a frameless window that neither moved past DRAG_HOLD_PX
+  # nor came up for this long is a long press (doc/frameless_window/ W3b):
+  # the app is told ("long_press", the same hook as a right click, its
+  # touch-only way to close) and the release that follows does nothing.
+  LONG_PRESS_MS = 1000
+
   # window_drag values in the window list (FMRB_WINDOW_DRAG_* in fmrb_app.h).
   WINDOW_DRAG_TITLE = 0
   WINDOW_DRAG_ANYWHERE = 1
@@ -186,6 +192,11 @@ module InputRouterMixin
           @drag_moved = false
           @press_x = x
           @press_y = y
+          @press_ms = Machine.board_millis
+          # Only a frameless window running a Ruby base gets a long press
+          # (the base turns it into on_frameless_right_click); elsewhere the
+          # hold stays a click or a drag however long it lasts.
+          @press_long_ok = frameless && long_press_runtime?(target_pid)
           hold_press = true
         end
 
@@ -214,6 +225,7 @@ module InputRouterMixin
 
       when 3  # Mouse move
         # A held press becomes a drag once the pointer has gone far enough.
+        # (:long, a long press already told, takes no drag.)
         if @capture_mode == :press && @capture_pid
           dx = x - @press_x
           dy = y - @press_y
@@ -280,7 +292,8 @@ module InputRouterMixin
         # - Anywhere-drag, held or dragging: not forwarded. The app has not
         #   been told of the press, so moves would read as hovering.
         # - Otherwise: forward to @hid_target_pid (focused window).
-        target_pid = if @capture_mode == :resize || @capture_mode == :press || @capture_mode == :grab
+        target_pid = if @capture_mode == :resize || @capture_mode == :press ||
+                        @capture_mode == :grab || @capture_mode == :long
                        nil
                      else
                        @capture_pid || @hid_target_pid
@@ -352,12 +365,15 @@ module InputRouterMixin
       when 5  # Mouse button up
         # Another button let go while an anywhere-drag holds the left one:
         # pass it on and keep the hold (the left release settles it).
-        held = @capture_mode == :press || @capture_mode == :grab
+        held = @capture_mode == :press || @capture_mode == :grab || @capture_mode == :long
         other_button = held && button != 1
         # Forward to captured window or mouse_down window
         target_pid = @capture_pid || @mouse_down_pid
-        # An anywhere-drag took the press from the app: nothing to tell it.
-        target_pid = nil if @capture_mode == :grab && !other_button
+        # An anywhere-drag took the press from the app, or a long press has
+        # been told already: nothing to tell it.
+        if (@capture_mode == :grab || @capture_mode == :long) && !other_button
+          target_pid = nil
+        end
         update_window_list(false) if target_pid
         if target_pid
           # Convert to window-relative coordinates
@@ -519,6 +535,32 @@ module InputRouterMixin
     return unless @pending_move_pid == pid
     _try_send_raw_message(@pending_move_pid, FmrbConst::MSG_TYPE_HID_EVENT, @pending_move_data)
     @pending_move_pid = nil
+  end
+
+  # From tick_process: a held press that stayed still for LONG_PRESS_MS on a
+  # frameless window becomes a long press. The app gets "long_press" with the
+  # window-relative point; the press it never got is dropped, and the
+  # release is not sent either (mouse_up, :long).
+  def tick_long_press
+    return unless @capture_mode == :press && @press_long_ok && @capture_pid
+    return if Machine.board_millis - @press_ms < LONG_PRESS_MS
+    @capture_mode = :long
+    pid = @capture_pid
+    Log.info("Long press: PID #{pid}")
+    data = MessagePack.pack({ "cmd" => "long_press",
+                              "x" => @drag_offset_x, "y" => @drag_offset_y })
+    _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+  rescue => e
+    Log.error("tick_long_press failed: #{e.class}: #{e.message}")
+  end
+
+  # Whether the app runs a Ruby base, the only one that knows "long_press"
+  # (and "moved"); the other runtimes are not sent them.
+  def long_press_runtime?(pid)
+    info = _get_app_info(pid)
+    return false unless info
+    vm = info[:vm_type]
+    vm == :mruby || vm == :native
   end
 
   # Tell an app the kernel has moved its window (end of a drag), so its

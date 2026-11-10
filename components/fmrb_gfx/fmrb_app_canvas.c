@@ -89,17 +89,6 @@ fmrb_err_t fmrb_app_canvas_create_main(fmrb_app_task_context_t *ctx,
     return FMRB_OK;
 }
 
-uint8_t fmrb_app_canvas_key(const fmrb_app_task_context_t *ctx)
-{
-    uint8_t key = APP_CANVAS_TRANSPARENT_KEY;
-#if defined(FMRB_PLATFORM_NATIVE)
-    key = native_wl_canvas_key(ctx, key);
-#else
-    (void)ctx;
-#endif
-    return key;
-}
-
 fmrb_err_t fmrb_app_canvas_init(fmrb_app_task_context_t *ctx,
                                 fmrb_canvas_handle_t *out_canvas,
                                 fmrb_canvas_handle_t *out_bg_canvas)
@@ -122,7 +111,10 @@ fmrb_err_t fmrb_app_canvas_init(fmrb_app_task_context_t *ctx,
     // Colour-key transparency only for a non-fullscreen window that kept its
     // rounded corners, or one without a frame (its ground is the key);
     // opting out skips the per-pixel compare in the compositor.
-    uint8_t key = fmrb_app_canvas_key(ctx);
+    uint8_t key = APP_CANVAS_TRANSPARENT_KEY;
+#if defined(FMRB_PLATFORM_NATIVE)
+    key = native_wl_canvas_key(ctx, key);
+#endif
     fmrb_err_t ret = fmrb_app_canvas_create_main(
         ctx, ctx->window_width, ctx->window_height, ctx->z_order,
         !ctx->fullscreen && (ctx->rounded_corners || ctx->frameless), key, out_canvas);

@@ -107,6 +107,9 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_send_message, [:int, :int, :str, :int], :int
   ffi_func :fmrb_spx_app_send_audio_note, [:int, :int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_app_set_window_param, [:int, :int], :int  # 0=pos_x 1=pos_y
+  # hit shape of a frameless window (fmrb_app.h layout): 1 ok / 0 refused
+  ffi_func :fmrb_spx_app_set_hit_shape, [:str, :int], :int
+  ffi_func :fmrb_spx_app_hit_sprite_place, [:int, :int, :int, :int], :int
   ffi_func :fmrb_spx_app_is_file_app, [], :int
   ffi_func :fmrb_spx_app_create_canvas, [:int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_app_delete_canvas, [:int], :int

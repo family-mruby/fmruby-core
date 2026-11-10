@@ -8,7 +8,8 @@ default_window_pos_x = 190
 default_window_pos_y = 120
 launcher_visible = true
 # No frame, title bar or close button; the ground is see-through and the
-# kernel moves it from anywhere (doc/frameless_window). Right click closes.
+# kernel moves it from anywhere (doc/frameless_window). Right click, or a
+# press held still for a second, closes it.
 window_frame = "none"
 # Can be moved, running, to another machine with `amove` (doc/checkpoint)
 movable = true

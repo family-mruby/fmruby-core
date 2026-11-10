@@ -1078,6 +1078,110 @@ end
 
 # Application framework: FFI reimplementation of app.c (C methods) + fmrb-app.rb
 # (Ruby framework). Subclasses override on_create / on_update / on_event / etc.
+# FmrbHitMask: a pixel-by-pixel hit shape for a frameless window
+# (doc/frameless_window/ W3b). A grid of cells, each one pixel or a square of
+# `scale` pixels; a set cell takes a press. Bits are kept row by row,
+# (width + 7) / 8 bytes per row, the leftmost cell in the most significant
+# bit -- the layout the kernel reads (fmrb_app.h, FMRB_HIT_*).
+#
+# Given to FmrbApp#set_hit_mask or FmrbApp#add_hit_sprite. Same as the mruby
+# class (picoruby-fmrb-app/mrblib/fmrb-hit-mask.rb).
+class FmrbHitMask
+  KIND_RECT = 1
+  KIND_MASK = 2
+  HIDDEN = 0x80
+  ENTRY_HDR = 12
+  SHAPE_MAX = 2048
+
+  attr_reader :width, :height, :scale, :bits
+
+  # width, height: cells. bits: height rows of (width + 7) / 8 bytes.
+  def initialize(width, height, bits, scale = 1)
+    @width = width
+    @height = height
+    @scale = scale < 1 ? 1 : scale
+    @bits = bits
+  end
+
+  # A mask from dot-art rows (one ASCII character per cell): every character
+  # not in `transparent` takes a press. Each cell is scale x scale pixels.
+  def self.from_art(rows, transparent: ".", scale: 1)
+    h = rows.size
+    w = 0
+    y = 0
+    while y < h
+      n = rows[y].bytesize
+      w = n if n > w
+      y += 1
+    end
+    stride = (w + 7) / 8
+    bits = "\x00" * (stride * h)
+    tn = transparent.bytesize
+    y = 0
+    while y < h
+      row = rows[y]
+      n = row.bytesize
+      x = 0
+      while x < n
+        c = row.getbyte(x)
+        see = false
+        k = 0
+        while k < tn
+          if transparent.getbyte(k) == c
+            see = true
+            break
+          end
+          k += 1
+        end
+        unless see
+          i = y * stride + (x >> 3)
+          bits.setbyte(i, bits.getbyte(i) | (0x80 >> (x & 7)))
+        end
+        x += 1
+      end
+      y += 1
+    end
+    FmrbHitMask.new(w, h, bits, scale)
+  end
+
+  # Whether the cell at (cx, cy) takes a press.
+  def set?(cx, cy)
+    return false if cx < 0 || cy < 0 || cx >= @width || cy >= @height
+    b = @bits.getbyte(cy * ((@width + 7) / 8) + (cx >> 3))
+    (b & (0x80 >> (cx & 7))) != 0
+  end
+
+  # One entry header of the kernel's layout, written at off.
+  def self._put_entry(buf, off, kind, scale, x, y, w, h, id)
+    buf.setbyte(off, kind)
+    buf.setbyte(off + 1, scale)
+    buf.setbyte(off + 2, x & 0xFF)
+    buf.setbyte(off + 3, (x >> 8) & 0xFF)
+    buf.setbyte(off + 4, y & 0xFF)
+    buf.setbyte(off + 5, (y >> 8) & 0xFF)
+    buf.setbyte(off + 6, w & 0xFF)
+    buf.setbyte(off + 7, (w >> 8) & 0xFF)
+    buf.setbyte(off + 8, h & 0xFF)
+    buf.setbyte(off + 9, (h >> 8) & 0xFF)
+    buf.setbyte(off + 10, id & 0xFF)
+    buf.setbyte(off + 11, (id >> 8) & 0xFF)
+    off + ENTRY_HDR
+  end
+
+  # A mask entry (header and rows) at off; returns the offset after it.
+  def _put(buf, off, x, y, id, hidden)
+    kind = hidden ? (KIND_MASK | HIDDEN) : KIND_MASK
+    off = FmrbHitMask._put_entry(buf, off, kind, @scale, x, y, @width, @height, id)
+    n = @bits.bytesize
+    i = 0
+    while i < n
+      buf.setbyte(off + i, @bits.getbyte(i))
+      i += 1
+    end
+    off + n
+  end
+end
+
 class FmrbApp
   TITLE_BAR_H = 11
   CORNER_R = 4
@@ -1137,6 +1241,12 @@ class FmrbApp
     @_spin_break = false
     @_timers = []
     @_attached_uis = []
+    # The hit shape of a frameless window (set_hit_shape and the rest).
+    @_hit_rects = nil
+    @_hit_mask = nil
+    @_hit_mask_x = 0
+    @_hit_mask_y = 0
+    @_hit_sprites = nil
 
     buf = FmrbSpxApp.fmrb_spx_app_init   # 52-byte snapshot; creates canvas(es)
     @_name = SpxBytes.read_name(buf, 0, 32)
@@ -1665,10 +1775,144 @@ class FmrbApp
     # App hook, overridden freely; super(ev) from existing apps is a no-op.
   end
 
-  # A right click on a frameless window. Same as the mruby base: asks the way
+  # A right click on a frameless window, or a left press held still on it for
+  # a second (ev[:type] == :long_press). Same as the mruby base: asks the way
   # Ctrl+Q does; an app using the right button overrides it.
   def on_frameless_right_click(ev)
     on_quit_request
+  end
+
+  # ---- hit shape (frameless windows, doc/frameless_window/ W3b) ----
+  # A frameless window takes a press only inside the shape it declares here;
+  # a press elsewhere goes to what is behind it. The shape is the union of a
+  # list of rectangles, one mask and the sprites marked for it, in window
+  # coordinates. With nothing declared the whole window rectangle is hit.
+  # The kernel reads the shape on its own (no round trip to the drawing
+  # side); a framed window ignores it. The lists are the app's state, so a
+  # move (doc/checkpoint) takes them along and the base declares them again
+  # on arrival -- except the sprite marks: on_restore makes the sprites again
+  # and marks them again.
+
+  # rects: [[x, y, w, h], ...]. Replaces the rectangles ([] drops them).
+  def set_hit_shape(rects)
+    list = []
+    i = 0
+    while i < rects.size
+      r = rects[i]
+      list << [r[0], r[1], r[2], r[3]]
+      i += 1
+    end
+    @_hit_rects = list
+    _send_hit_shape
+  end
+
+  # The mask (FmrbHitMask) with its top-left at (x, y); nil drops it.
+  def set_hit_mask(mask, x = 0, y = 0)
+    @_hit_mask = mask
+    @_hit_mask_x = x
+    @_hit_mask_y = y
+    _send_hit_shape
+  end
+
+  # A mask from dot-art rows: every character not in transparent is hit.
+  def hit_mask_from_art(rows, transparent: ".", scale: 1)
+    FmrbHitMask.from_art(rows, transparent: transparent, scale: scale)
+  end
+
+  # Called by SpriteInstance (fmrb-sprite.rb) for a sprite with a hit mark.
+  def self._hit_sprite_place(id, x, y, visible)
+    FmrbSpxApp.fmrb_spx_app_hit_sprite_place(id, x, y, visible)
+    nil
+  end
+
+  # Mark a sprite: its rectangle (or mask, an FmrbHitMask over the sprite's
+  # top-left) is hit wherever the sprite is, while it is visible.
+  def add_hit_sprite(sprite, mask = nil)
+    list = (@_hit_sprites ||= [])
+    list << sprite unless list.index(sprite)
+    sprite._hit_mark(true, mask)
+    _send_hit_shape
+  end
+
+  def remove_hit_sprite(sprite)
+    list = @_hit_sprites
+    return unless list
+    i = list.index(sprite)
+    return unless i
+    list.delete_at(i)
+    sprite._hit_mark(false, nil)
+    _send_hit_shape
+  end
+
+  # Back to the window rectangle.
+  def clear_hit_shape
+    list = @_hit_sprites
+    if list
+      i = 0
+      while i < list.size
+        list[i]._hit_mark(false, nil)
+        i += 1
+      end
+    end
+    @_hit_rects = nil
+    @_hit_mask = nil
+    @_hit_sprites = nil
+    _send_hit_shape
+  end
+
+  # Packs the lists into the kernel's layout (FmrbHitMask) and declares it.
+  def _send_hit_shape
+    hdr = FmrbHitMask::ENTRY_HDR
+    rects = @_hit_rects
+    mask = @_hit_mask
+    sprites = @_hit_sprites
+    total = 0
+    total += rects.size * hdr if rects
+    total += hdr + mask.bits.bytesize if mask
+    if sprites
+      i = 0
+      while i < sprites.size
+        sp = sprites[i]
+        if sp.id
+          m = sp._hit_mask
+          total += hdr + (m ? m.bits.bytesize : 0)
+        end
+        i += 1
+      end
+    end
+    if total > FmrbHitMask::SHAPE_MAX
+      Log.warn("App #{@_name}: hit shape of #{total} bytes is over #{FmrbHitMask::SHAPE_MAX}; not declared")
+      return false
+    end
+    buf = "\x00" * total
+    off = 0
+    if rects
+      i = 0
+      while i < rects.size
+        r = rects[i]
+        off = FmrbHitMask._put_entry(buf, off, FmrbHitMask::KIND_RECT, 1, r[0], r[1], r[2], r[3], 0)
+        i += 1
+      end
+    end
+    off = mask._put(buf, off, @_hit_mask_x, @_hit_mask_y, 0, false) if mask
+    if sprites
+      i = 0
+      while i < sprites.size
+        sp = sprites[i]
+        if sp.id
+          m = sp._hit_mask
+          if m
+            off = m._put(buf, off, sp.x, sp.y, sp.id, !sp.visible?)
+          else
+            kind = FmrbHitMask::KIND_RECT
+            kind |= FmrbHitMask::HIDDEN unless sp.visible?
+            off = FmrbHitMask._put_entry(buf, off, kind, 1, sp.x, sp.y, sp.width, sp.height, sp.id)
+          end
+        end
+        i += 1
+      end
+    end
+    FmrbSpxApp.fmrb_spx_app_set_hit_shape(buf, buf.bytesize) == 1
   end
 
   def request_reload
@@ -1831,7 +2075,7 @@ class FmrbApp
       my = h["y"]
       @pos_x = mx if mx.is_a?(Integer)
       @pos_y = my if my.is_a?(Integer)
-    elsif cmd == "quit_request"
+    elsif cmd == "quit_request" || cmd == "long_press"
       _handle_system_control(h)
     elsif cmd == "suspend" || cmd == "resume" || cmd == "stop" || cmd == "clear_and_stop"
       _handle_system_control(h)
@@ -1864,6 +2108,16 @@ class FmrbApp
       # Ctrl+Q on a built-in app: the kernel asks instead of stopping it, so an
       # app holding unsaved state can put a question to the user first (P2).
       on_quit_request
+    when "long_press"
+      # A left press held still for a second on this frameless window. Same
+      # as the mruby base.
+      if @_frameless && !@_fullscreen
+        lx = msg["x"]
+        ly = msg["y"]
+        on_frameless_right_click({ type: :long_press, button: 1,
+                                   x: lx.is_a?(Integer) ? lx : 0,
+                                   y: ly.is_a?(Integer) ? ly : 0 })
+      end
     end
   end
 

@@ -130,6 +130,12 @@ static volatile uint32_t g_proc_generation = 0;
 // PSRAM with the pool it describes: internal RAM does not grow for it.
 FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t g_window_gen;
 
+// The hit shapes of frameless windows, one per slot (fmrb_app_set_hit_shape,
+// doc/frameless_window/ W3b). PSRAM, under g_ctx_lock; a slot's is withdrawn
+// when the slot is handed out again.
+FMRB_EXT_RAM_BSS_ATTR static uint8_t g_hit_shape[FMRB_MAX_APPS][FMRB_HIT_SHAPE_MAX];
+FMRB_EXT_RAM_BSS_ATTR static uint16_t g_hit_shape_len[FMRB_MAX_APPS];
+
 // State transition strings for debugging
 static const char* state_names[] = {
     "FREE", "INIT", "RUNNING", "SUSPENDED", "STOPPING"
@@ -298,6 +304,7 @@ static void tls_destructor(int idx, void* pv) {
    app in the slot then crashed without a crash report, taken for one more
    requested stop. */
 static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
+    g_hit_shape_len[ctx - g_ctx_pool] = 0;
     ctx->started_notified = false;
     ctx->parked = false;
     ctx->expected_stop = false;
@@ -3295,61 +3302,99 @@ void fmrb_app_window_moved(void) {
     g_window_gen++;
 }
 
-bool fmrb_app_window_see_through_at(uint8_t pid, int16_t x, int16_t y) {
-    if (pid >= FMRB_MAX_APPS || x < 0 || y < 0) {
-        return false;
-    }
+// Size of one entry of a hit shape, header and mask rows, or 0 when it is
+// malformed or runs past the end (see fmrb_app.h).
+static size_t hit_entry_size(const uint8_t *p, size_t remain) {
+    if (remain < FMRB_HIT_ENTRY_HDR) return 0;
+    uint8_t kind = p[0] & (uint8_t)~FMRB_HIT_HIDDEN;
+    if (kind == FMRB_HIT_KIND_RECT) return FMRB_HIT_ENTRY_HDR;
+    if (kind != FMRB_HIT_KIND_MASK || p[1] == 0) return 0;
+    uint16_t w = (uint16_t)(p[6] | (p[7] << 8));
+    uint16_t h = (uint16_t)(p[8] | (p[9] << 8));
+    size_t size = FMRB_HIT_ENTRY_HDR + (size_t)h * (size_t)((w + 7) / 8);
+    return size <= remain ? size : 0;
+}
 
-    // Copy what the read needs and let go of the lock before the round trip:
-    // the app may draw (and the host task may need the lock) meanwhile.
+static bool hit_entry_contains(const uint8_t *p, int32_t x, int32_t y) {
+    if (p[0] & FMRB_HIT_HIDDEN) return false;
+    int32_t ex = (int16_t)(p[2] | (p[3] << 8));
+    int32_t ey = (int16_t)(p[4] | (p[5] << 8));
+    int32_t w = (uint16_t)(p[6] | (p[7] << 8));
+    int32_t h = (uint16_t)(p[8] | (p[9] << 8));
+    if (x < ex || y < ey) return false;
+    if ((p[0] & (uint8_t)~FMRB_HIT_HIDDEN) == FMRB_HIT_KIND_RECT) {
+        return x < ex + w && y < ey + h;
+    }
+    int32_t cx = (x - ex) / p[1];
+    int32_t cy = (y - ey) / p[1];
+    if (cx >= w || cy >= h) return false;
+    const uint8_t *row = p + FMRB_HIT_ENTRY_HDR + (size_t)cy * (size_t)((w + 7) / 8);
+    return (row[cx >> 3] & (0x80 >> (cx & 7))) != 0;
+}
+
+fmrb_err_t fmrb_app_set_hit_shape(uint8_t pid, const uint8_t *data, size_t len) {
+    if (pid >= FMRB_MAX_APPS || len > FMRB_HIT_SHAPE_MAX || (len > 0 && !data)) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    size_t off = 0;
+    while (off < len) {
+        size_t n = hit_entry_size(data + off, len - off);
+        if (n == 0) return FMRB_ERR_INVALID_PARAM;
+        off += n;
+    }
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
-    fmrb_app_task_context_t *ctx = &g_ctx_pool[pid];
-    bool candidate = (ctx->state == PROC_STATE_RUNNING) && ctx->frameless &&
-                     !ctx->headless && !ctx->fullscreen &&
-                     ctx->canvas_id != FMRB_CANVAS_SCREEN &&
-                     x < (int16_t)ctx->window_width &&
-                     y < (int16_t)ctx->window_height;
-    fmrb_canvas_handle_t canvas_id = ctx->canvas_id;
-    uint8_t key = fmrb_app_canvas_key(ctx);
+    if (len > 0) memcpy(g_hit_shape[pid], data, len);
+    g_hit_shape_len[pid] = (uint16_t)len;
     fmrb_semaphore_give(g_ctx_lock);
-    if (!candidate) {
-        return false;
-    }
+    return FMRB_OK;
+}
 
-    // The same synchronous read an app's get_pixel makes, queued behind the
-    // commands already on their way so it sees the canvas as drawn so far.
-    // Unmetered: the kernel takes no slot of the apps' share of the host
-    // queue. The reply context lives on this stack, so the wait has to
-    // outlast the transport's own 5 s timeout, after which the host task
-    // never touches it again.
-    fmrb_link_graphics_pixel_value_t resp = { .color = 0, .status = 0xFF };
-    gfx_cmd_sync_ctx_t sync = {
-        .done = fmrb_semaphore_create_binary(),
-        .response_buf = (uint8_t *)&resp,
-        .response_len = sizeof(resp),
-        .result = -1,
-    };
-    if (!sync.done) {
-        return false;
+bool fmrb_app_hit_shape_place_sprite(uint8_t pid, uint16_t sprite_id,
+                                     int16_t x, int16_t y, bool visible) {
+    if (pid >= FMRB_MAX_APPS || sprite_id == 0) return false;
+    bool found = false;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    uint8_t *base = g_hit_shape[pid];
+    size_t len = g_hit_shape_len[pid];
+    size_t off = 0;
+    while (off < len) {
+        uint8_t *p = base + off;
+        size_t n = hit_entry_size(p, len - off);
+        if (n == 0) break;  // validated when set; never happens
+        if ((uint16_t)(p[10] | (p[11] << 8)) == sprite_id) {
+            p[2] = (uint8_t)(x & 0xFF);
+            p[3] = (uint8_t)((x >> 8) & 0xFF);
+            p[4] = (uint8_t)(y & 0xFF);
+            p[5] = (uint8_t)((y >> 8) & 0xFF);
+            p[0] = visible ? (uint8_t)(p[0] & (uint8_t)~FMRB_HIT_HIDDEN)
+                           : (uint8_t)(p[0] | FMRB_HIT_HIDDEN);
+            found = true;
+        }
+        off += n;
     }
-    fmrb_time_t t0 = fmrb_hal_time_get_us();
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_get_pixel(&cmd, canvas_id, x, y, &sync);
-    if (fmrb_gfx_submit_unmetered(&cmd) != FMRB_OK) {
-        fmrb_semaphore_delete(sync.done);
-        return false;
+    fmrb_semaphore_give(g_ctx_lock);
+    return found;
+}
+
+bool fmrb_app_window_hit_at(uint8_t pid, int16_t x, int16_t y) {
+    if (pid >= FMRB_MAX_APPS) return true;
+    bool hit = true;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    const fmrb_app_task_context_t *ctx = &g_ctx_pool[pid];
+    size_t len = g_hit_shape_len[pid];
+    if (ctx->frameless && !ctx->fullscreen && len > 0) {
+        hit = false;
+        const uint8_t *base = g_hit_shape[pid];
+        size_t off = 0;
+        while (off < len && !hit) {
+            size_t n = hit_entry_size(base + off, len - off);
+            if (n == 0) break;
+            hit = hit_entry_contains(base + off, x, y);
+            off += n;
+        }
     }
-    fmrb_base_type_t took = fmrb_semaphore_take(sync.done, FMRB_MS_TO_TICKS(6000));
-    fmrb_semaphore_delete(sync.done);
-    if (took != FMRB_TRUE || sync.result != 0 ||
-        sync.response_len < sizeof(resp) || resp.status != 0) {
-        return false;
-    }
-    bool through = (resp.color == key);
-    FMRB_LOGD(TAG, "see-through pid=%u (%d,%d) color=0x%02x -> %s (%lu us)",
-              pid, x, y, resp.color, through ? "through" : "hit",
-              (unsigned long)(fmrb_hal_time_get_us() - t0));
-    return through;
+    fmrb_semaphore_give(g_ctx_lock);
+    return hit;
 }
 
 /**

@@ -689,6 +689,13 @@ class FmrbApp
         clear_user_area
       end
     end
+    # The hit shape came in the image; the kernel here has none for this
+    # slot. The sprites were forgotten above, so their marks go: on_restore
+    # makes the sprites again and marks them again.
+    if @_hit_rects || @_hit_mask || @_hit_sprites
+      @_hit_sprites = nil
+      _send_hit_shape
+    end
     topics = @_topics
     if topics
       i = 0
@@ -802,13 +809,142 @@ class FmrbApp
     # super(ev) calls existing apps still make are harmless no-ops.
   end
 
-  # A right click (its release) on a frameless window: the pointer's way to
-  # close a window that has no close button. The default asks the way Ctrl+Q
-  # does (on_quit_request, which closes unless the app overrides it). An app
-  # that uses the right button itself overrides this (an empty method keeps
-  # the window open); the click still reaches on_event either way.
+  # A right click (its release) on a frameless window, or a left press held
+  # still on it for a second (ev[:type] == :long_press, the touch-only way):
+  # how to close a window that has no close button. The default asks the way
+  # Ctrl+Q does (on_quit_request, which closes unless the app overrides it).
+  # An app that uses the right button itself overrides this (an empty method
+  # keeps the window open); a right click still reaches on_event either way,
+  # a long press does not (the kernel held it back).
   def on_frameless_right_click(ev)
     on_quit_request
+  end
+
+  # ---- hit shape (frameless windows, doc/frameless_window/ W3b) ----
+  # A frameless window takes a press only inside the shape it declares here;
+  # a press elsewhere goes to what is behind it. The shape is the union of a
+  # list of rectangles, one mask and the sprites marked for it, in window
+  # coordinates. With nothing declared the whole window rectangle is hit.
+  # The kernel reads the shape on its own (no round trip to the drawing
+  # side); a framed window ignores it. The lists are the app's state, so a
+  # move (doc/checkpoint) takes them along and the base declares them again
+  # on arrival -- except the sprite marks: on_restore makes the sprites again
+  # and marks them again.
+
+  # rects: [[x, y, w, h], ...]. Replaces the rectangles ([] drops them).
+  def set_hit_shape(rects)
+    list = []
+    i = 0
+    while i < rects.size
+      r = rects[i]
+      list << [r[0], r[1], r[2], r[3]]
+      i += 1
+    end
+    @_hit_rects = list
+    _send_hit_shape
+  end
+
+  # The mask (FmrbHitMask) with its top-left at (x, y); nil drops it.
+  def set_hit_mask(mask, x = 0, y = 0)
+    @_hit_mask = mask
+    @_hit_mask_x = x
+    @_hit_mask_y = y
+    _send_hit_shape
+  end
+
+  # A mask from dot-art rows: every character not in transparent is hit.
+  def hit_mask_from_art(rows, transparent: ".", scale: 1)
+    FmrbHitMask.from_art(rows, transparent: transparent, scale: scale)
+  end
+
+  # Mark a sprite: its rectangle (or mask, an FmrbHitMask over the sprite's
+  # top-left) is hit wherever the sprite is, while it is visible.
+  def add_hit_sprite(sprite, mask = nil)
+    list = (@_hit_sprites ||= [])
+    list << sprite unless list.index(sprite)
+    sprite._hit_mark(true, mask)
+    _send_hit_shape
+  end
+
+  def remove_hit_sprite(sprite)
+    list = @_hit_sprites
+    return unless list
+    i = list.index(sprite)
+    return unless i
+    list.delete_at(i)
+    sprite._hit_mark(false, nil)
+    _send_hit_shape
+  end
+
+  # Back to the window rectangle.
+  def clear_hit_shape
+    list = @_hit_sprites
+    if list
+      i = 0
+      while i < list.size
+        list[i]._hit_mark(false, nil)
+        i += 1
+      end
+    end
+    @_hit_rects = nil
+    @_hit_mask = nil
+    @_hit_sprites = nil
+    _send_hit_shape
+  end
+
+  # Packs the lists into the kernel's layout (FmrbHitMask) and declares it.
+  def _send_hit_shape
+    hdr = FmrbHitMask::ENTRY_HDR
+    rects = @_hit_rects
+    mask = @_hit_mask
+    sprites = @_hit_sprites
+    total = 0
+    total += rects.size * hdr if rects
+    total += hdr + mask.bits.bytesize if mask
+    if sprites
+      i = 0
+      while i < sprites.size
+        sp = sprites[i]
+        if sp.id
+          m = sp._hit_mask
+          total += hdr + (m ? m.bits.bytesize : 0)
+        end
+        i += 1
+      end
+    end
+    if total > FmrbHitMask::SHAPE_MAX
+      Log.warn("App #{@_name}: hit shape of #{total} bytes is over #{FmrbHitMask::SHAPE_MAX}; not declared")
+      return false
+    end
+    buf = "\x00" * total
+    off = 0
+    if rects
+      i = 0
+      while i < rects.size
+        r = rects[i]
+        off = FmrbHitMask._put_entry(buf, off, FmrbHitMask::KIND_RECT, 1, r[0], r[1], r[2], r[3], 0)
+        i += 1
+      end
+    end
+    off = mask._put(buf, off, @_hit_mask_x, @_hit_mask_y, 0, false) if mask
+    if sprites
+      i = 0
+      while i < sprites.size
+        sp = sprites[i]
+        if sp.id
+          m = sp._hit_mask
+          if m
+            off = m._put(buf, off, sp.x, sp.y, sp.id, !sp.visible?)
+          else
+            kind = FmrbHitMask::KIND_RECT
+            kind |= FmrbHitMask::HIDDEN unless sp.visible?
+            off = FmrbHitMask._put_entry(buf, off, kind, 1, sp.x, sp.y, sp.width, sp.height, sp.id)
+          end
+        end
+        i += 1
+      end
+    end
+    FmrbApp._set_hit_shape(buf)
   end
 
   def on_resize(new_width, new_height)
@@ -863,6 +999,17 @@ class FmrbApp
       # Ctrl+Q on a built-in app: the kernel asks instead of stopping it, so an
       # app holding unsaved state can put a question to the user first.
       on_quit_request
+    when "long_press"
+      # The kernel saw a left press held still for a second on this frameless
+      # window (doc/frameless_window/ W3b): the touch-only way to close, the
+      # same hook as a right click.
+      if @_frameless && !@_fullscreen
+        lx = msg["x"]
+        ly = msg["y"]
+        on_frameless_right_click({ type: :long_press, button: 1,
+                                   x: lx.is_a?(Integer) ? lx : 0,
+                                   y: ly.is_a?(Integer) ? ly : 0 })
+      end
     end
   end
 

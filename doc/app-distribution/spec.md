@@ -143,11 +143,17 @@ window_frame = "none"      # 枠・タイトルバー・閉じるボタンを描
 - 基底 (FmrbApp) は枠を描かず、user area を Window 全体 (`(0, 0)` から `window_width x window_height`) にし、地を透ける色 (`TRANSPARENT_COLOR`) で塗って Window 全体を透ける区画にする。アプリは絵を描いて `present` するだけでよい。`clear_user_area` の既定の色も透ける色になる (枠は描き直さない)。`frameless?` で枠なしかを聞ける。
 - チェックポイントで移った後も、基底が透けを掛け直す。`on_restore` では絵を描き直すだけでよい。
 - カーネルは上の 11 行をタイトルバーとして扱わない (ドラッグ・右クリックの読み直し・閉じるボタンの判定をしない)。
-- `window_drag = "anywhere"`: 左の押下をカーネルが預かり、4 px より動いたらカーネルが Window を動かす (アプリには押下も移動も離しも届かない。動いた後は `pos_x` / `pos_y` が新しい位置を言う)。動かずに離したら、押下と離しが続けてアプリへ届く (クリック)。そのため押下が届くのは離したときで、押している間の反応や長押しはアプリから見えない。長押しを使うアプリは `"none"` にして自分で扱う (`set_window_position` で自分を動かしてもよい)。右ボタンなどは預からずにそのまま届く。
-- 閉じ方: Ctrl+Q (焦点のあるとき)・Shell の `kill`、それに右クリック (離したとき) で `on_frameless_right_click(ev)` が呼ばれ、既定は `on_quit_request` (既定は閉じる)。右ボタンを自分で使うアプリは `on_frameless_right_click` を空で上書きする (右クリックは `on_event` にも届く)。
-- 透けている所 (canvas が透ける色のままの画素) を押すと、押下は後ろの Window (無ければデスクトップ) に届き、焦点と前面化もそちらへ移る。そこから始めたドラッグも後ろの Window のもの。カーネルは押した 1 画素を描画側に問う (押下 1 回につき 1 往復、Modern で約 10 ms。doc/frameless_window/report/w3.md)。判定は canvas の画素だけを見るので、`SpriteInstance` で描いた絵は当たりにならない (その下の canvas が透けていれば後ろへ抜ける)。絵を sprite で出すアプリは、当たってほしい所の canvas に透ける色以外を塗る。
+- `window_drag = "anywhere"`: 左の押下をカーネルが預かり、4 px より動いたらカーネルが Window を動かす (アプリには押下も移動も離しも届かない。動いた後は `pos_x` / `pos_y` が新しい位置を言う)。動かずに離したら、押下と離しが続けてアプリへ届く (クリック)。そのため押下が届くのは離したときで、押している間の反応はアプリから見えない。枠なしの Window で動かさずに 1 秒押し続けると長押し (下の閉じ方) になり、押下も離しもアプリへは届かない。長押しを自分で使うアプリは `"none"` にして自分で扱う (`set_window_position` で自分を動かしてもよい)。右ボタンなどは預からずにそのまま届く。
+- 閉じ方: Ctrl+Q (焦点のあるとき)・Shell の `kill`、それに右クリック (離したとき) と長押し (`window_drag = "anywhere"` で、4 px より動かさずに 1 秒。タッチだけの端末の閉じ方) で `on_frameless_right_click(ev)` が呼ばれ、既定は `on_quit_request` (既定は閉じる)。長押しの `ev` は `{type: :long_press, button: 1, x:, y:}` (Window の中の押した点)。右ボタンを自分で使うアプリは `on_frameless_right_click` を空で上書きする (右クリックは `on_event` にも届く。長押しは届かない)。長押しは Ruby の基底を持つアプリ (mruby・Spinel) だけで、ほかの VM では押し続けても離せばクリック。
+- 当たりの形 (doc/frameless_window/ W3b): 枠なしの Window は、基底の手伝いで当たる所を申告できる。当たるのは次の和で、それ以外を押すと押下は後ろの Window (無ければデスクトップ) に届き、焦点と前面化もそちらへ移る (そこから始めたドラッグも後ろの Window のもの)。何も申告しなければ Window の四角全体が当たる。
+  - 矩形の一覧: `set_hit_shape([[x, y, w, h], ...])` (Window の中の座標。`[]` で外す)。
+  - マスク: `set_hit_mask(mask, x, y)`。`mask` は `FmrbHitMask` (マス単位のビット列、1 マスは `scale` x `scale` 画素)。ドット絵の文字列からは `hit_mask_from_art(rows, transparent: ".", scale: 3)` (1 文字 1 マス、`transparent` に無い文字が当たる)。
+  - sprite の印: `add_hit_sprite(sprite, mask = nil)`。sprite の四角 (mask を渡せばその形) が、`move` と `visible=` に合わせて当たりに入る。`remove_hit_sprite` で外す。
+  - `clear_hit_shape` で全部外して四角に戻る。
+  - カーネルは押下のときに申告された形 (C の表、PSRAM に 1 アプリ 2 KB まで) だけを見る。描画側へは問わないので費用は比べる分だけ。見た目 (canvas の画素や sprite の絵) とは独立で、絵を変えたら形も申告し直す。枠つきの Window は申告しても四角のまま当たる。
+  - 形はアプリの状態として `amove` で運ばれ、着いた側で基底が申告し直す (sprite の印は除く。sprite は `on_restore` で作り直すので、そこで付け直す)。
 - 枠つきのアプリに `window_drag` を書くこともできる (`"anywhere"` ならタイトルバー以外でも掴める、`"none"` ならタイトルバーでも動かない)。
-- 見本: `flash/app/demo/avatar.app.rb` (枠なし・movable のアバター。絵は文字列でアプリの中に持ち、変わった行だけ描き直す。`on_restore` で訪れた端末を足して描き直す)。
+- 見本: `flash/app/demo/avatar.app.rb` (枠なし・movable のアバター。絵は文字列でアプリの中に持ち、変わった行だけ描き直す。`on_restore` で訪れた端末を足して描き直す。当たりは絵と同じ文字列から作ったマスクと、出ている間の吹き出しの矩形)。
 
 ## 4. 置き場所
 

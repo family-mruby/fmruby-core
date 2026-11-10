@@ -1137,6 +1137,9 @@ module AppLifecycleMixin
     # never lost even when every move during the jam was dropped.
     flush_pending_move
 
+    # A held press on a frameless window that stayed still turns long.
+    tick_long_press
+
     # Deliver a pending spawn open_path once the new app has its queue.
     flush_open_path
 

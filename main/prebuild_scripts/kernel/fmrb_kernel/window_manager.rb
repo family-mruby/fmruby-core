@@ -83,19 +83,18 @@ module WindowManagerMixin
     end
 
     # Search from front to back (highest z_order first). A frameless window
-    # (window_frame = "none") lets the press through where its canvas shows
-    # the colour key, i.e. where the screen shows what is behind it: the
-    # search goes on below it (doc/frameless_window/ W3). That costs one pixel
-    # read, and only for a frameless window actually under the press; a framed
-    # window is hit by its rectangle as before.
+    # (window_frame = "none") that declared a hit shape lets the press through
+    # outside it: the search goes on below it (doc/frameless_window/ W3b).
+    # The shape is read in C, with no round trip to the drawing side; a framed
+    # window, or a frameless one with no shape, is hit by its rectangle.
     z_ceiling = 0x7FFF
     while true
       target_window = window_at_below(x, y, z_ceiling)
       return nil if target_window.nil?
       return target_window unless target_window[:frameless] == true
-      return target_window unless _window_see_through?(target_window[:pid],
-                                                       x - target_window[:x],
-                                                       y - target_window[:y])
+      return target_window if _window_hit?(target_window[:pid],
+                                           x - target_window[:x],
+                                           y - target_window[:y])
       z_ceiling = target_window[:z_order]
     end
   end

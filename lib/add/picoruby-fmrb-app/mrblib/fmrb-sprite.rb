@@ -58,7 +58,8 @@ end
 # SpriteInstance - Sprite placement (position, animation, visibility)
 # References one or more SpriteImage frames for animation.
 class SpriteInstance
-  attr_reader :id
+  # x, y: window-local position. width, height: the first frame's size.
+  attr_reader :id, :x, :y, :width, :height
 
   # @param gfx [FmrbGfx] Parent graphics context
   # @param images [SpriteImage, Array<SpriteImage>] Single image or animation frames
@@ -70,16 +71,34 @@ class SpriteInstance
     image_list = images.is_a?(Array) ? images : [images]
     image_ids = image_list.map { |img| img.id }
     @id = gfx._create_sprite_instance(image_ids, x, y, z)
+    @x = x
+    @y = y
+    @width = image_list[0].width
+    @height = image_list[0].height
+    @visible = true
+    # Marked by FmrbApp#add_hit_sprite: part of a frameless window's hit
+    # shape, moved along with the sprite (doc/frameless_window/ W3b).
+    @_hit = false
+    @_hit_mask = nil
   end
 
   # Move sprite to new position
   def move(x, y)
+    @x = x
+    @y = y
     @gfx._sprite_move(@id, x, y)
+    FmrbApp._hit_sprite_place(@id, x, y, @visible ? 1 : 0) if @_hit && @id
   end
 
   # Set visibility
   def visible=(v)
+    @visible = v ? true : false
     @gfx._sprite_visible(@id, v)
+    FmrbApp._hit_sprite_place(@id, @x, @y, @visible ? 1 : 0) if @_hit && @id
+  end
+
+  def visible?
+    @visible
   end
 
   # Set animation frame index
@@ -90,8 +109,19 @@ class SpriteInstance
   # Destroy this sprite instance
   def destroy
     return unless @id
+    FmrbApp._hit_sprite_place(@id, @x, @y, 0) if @_hit
     @gfx._delete_sprite_instance(@id)
     @id = nil
+  end
+
+  # FmrbApp#add_hit_sprite / #remove_hit_sprite.
+  def _hit_mark(on, mask)
+    @_hit = on
+    @_hit_mask = mask
+  end
+
+  def _hit_mask
+    @_hit_mask
   end
 
   # In an app started from a checkpoint image (FmrbApp#_checkpoint_restored):

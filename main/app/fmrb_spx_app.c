@@ -226,6 +226,26 @@ int fmrb_spx_app_send_audio_note(int on, int ch, int freq, int vol, int duty,
     return 1;
 }
 
+/* FmrbApp._set_hit_shape: this app's hit shape (layout in fmrb_app.h), len 0
+ * withdraws it. 1 ok, 0 malformed or too long. doc/frameless_window/ W3b. */
+int fmrb_spx_app_set_hit_shape(const char *data, int len)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx || len < 0) return 0;
+    return fmrb_app_set_hit_shape((uint8_t)ctx->app_id, (const uint8_t *)data,
+                                  (size_t)len) == FMRB_OK ? 1 : 0;
+}
+
+/* FmrbApp._hit_sprite_place: a hit-marked sprite moved or was shown/hidden.
+ * 1 when the shape has an entry for it. */
+int fmrb_spx_app_hit_sprite_place(int sprite_id, int x, int y, int visible)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx || sprite_id <= 0 || sprite_id > 0xFFFF) return 0;
+    return fmrb_app_hit_shape_place_sprite((uint8_t)ctx->app_id, (uint16_t)sprite_id,
+                                           (int16_t)x, (int16_t)y, visible != 0) ? 1 : 0;
+}
+
 int fmrb_spx_app_set_window_param(int which, int value)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();

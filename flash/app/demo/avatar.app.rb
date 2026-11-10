@@ -1,8 +1,11 @@
 # Avatar: Moku, a small puff with a sprout who lives on the desktop
-# (doc/frameless_window W4). A frameless window (window_frame = "none"): the
-# base draws no frame and leaves the ground see-through, the kernel moves it
-# from anywhere and turns a press-and-release into a click, and clicks on the
-# see-through parts go to what is behind. The app only draws the picture.
+# (doc/frameless_window W4, W3b). A frameless window (window_frame = "none"):
+# the base draws no frame and leaves the ground see-through, the kernel moves
+# it from anywhere and turns a press-and-release into a click. The app draws
+# the picture and declares its hit shape: a mask made from the same art
+# strings (again when the sprout sways) and, while it shows, the speech
+# bubble's rectangle. A press anywhere else goes to what is behind. A right
+# click or a press held still for a second closes it (the base's default).
 #
 # Movable (doc/checkpoint): `amove` takes it to another machine with its
 # state -- its name, how many times it was patted and the places it has been.
@@ -93,6 +96,8 @@ class AvatarApp < FmrbApp
     @happy_until = 0
     @bubble_until = 0
     @shown = nil
+    @hit_bits = nil
+    @bubble_rect = nil
     paint_avatar
     if ja?
       say(["こんにちは", "#{@name} だよ"], now)
@@ -168,7 +173,18 @@ class AvatarApp < FmrbApp
       end
       r += 1
     end
+    declare_hit_mask if drawn
     drawn
+  end
+
+  # The hit shape follows the picture: a mask from the rows on screen, each
+  # letter but "." hit, at the picture's scale. Declared only when it
+  # changed (the sprout; a face never changes the outline).
+  def declare_hit_mask
+    mask = hit_mask_from_art(@shown, transparent: ".", scale: SCALE)
+    return if mask.bits == @hit_bits
+    @hit_bits = mask.bits
+    set_hit_mask(mask, AV_X, AV_Y)
   end
 
   # One row of the art: the band cleared to the see-through key, then a
@@ -199,6 +215,12 @@ class AvatarApp < FmrbApp
     paint_bubble
   end
 
+  # Takes the bubble down (its time ran out, or it was clicked).
+  def hide_bubble
+    @bubble = nil
+    clear_bubble
+  end
+
   def paint_bubble
     clear_bubble
     lines = @bubble
@@ -225,6 +247,9 @@ class AvatarApp < FmrbApp
     @gfx.fill_triangle(cx - 4, BUBBLE_H - 1, cx + 4, BUBBLE_H - 1, cx, TAIL_Y, PAPER)
     @gfx.draw_line(cx - 4, BUBBLE_H - 1, cx, TAIL_Y, INK)
     @gfx.draw_line(cx + 4, BUBBLE_H - 1, cx, TAIL_Y, INK)
+    # The bubble (with its tail) takes a press while it shows.
+    @bubble_rect = [bx, by, bw, TAIL_Y + 1 - by]
+    set_hit_shape([@bubble_rect])
     i = 0
     while i < texts.size
       @gfx.draw_text(bx + 5, by + 3 + i * lh, texts[i], EYE)
@@ -234,6 +259,10 @@ class AvatarApp < FmrbApp
 
   def clear_bubble
     @gfx.fill_rect(0, 0, WIN_W, AV_Y, TRANSPARENT_COLOR)
+    if @bubble_rect
+      @bubble_rect = nil
+      set_hit_shape([])
+    end
   end
 
   # The height of a line in the font this machine picked (efont 12, or
@@ -249,7 +278,19 @@ class AvatarApp < FmrbApp
     # The kernel holds a left press and sends it with the release when the
     # pointer did not move away (a click); a drag moves the window instead.
     return unless ev[:type] == :mouse_up && ev[:button] == 1
+    if in_bubble?(ev[:x], ev[:y])
+      # A click on the bubble is not a pat: it takes the bubble down.
+      hide_bubble
+      @gfx.present
+      return
+    end
     pat(Machine.board_millis)
+  end
+
+  def in_bubble?(x, y)
+    r = @bubble_rect
+    return false unless r
+    x >= r[0] && y >= r[1] && x < r[0] + r[2] && y < r[1] + r[3]
   end
 
   def pat(now)
@@ -285,8 +326,7 @@ class AvatarApp < FmrbApp
       @next_blink = now + BLINK_GAPS[@blink_i % BLINK_GAPS.size]
     end
     if @bubble && now >= @bubble_until
-      @bubble = nil
-      clear_bubble
+      hide_bubble
       drawn = true
     end
     drawn = true if paint_avatar
@@ -312,6 +352,7 @@ class AvatarApp < FmrbApp
     here = place_here
     @places << here
     @shown = nil
+    @hit_bits = nil
     paint_avatar
     if ja?
       say(["#{@places.size} か所目だよ", here], now)

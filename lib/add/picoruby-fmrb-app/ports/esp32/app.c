@@ -691,7 +691,8 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                        mrb_fixnum_value(ctx->window_pos_y));
                         } else if (strcmp(cmd, "suspend") == 0 || strcmp(cmd, "resume") == 0 ||
                                    strcmp(cmd, "stop") == 0 || strcmp(cmd, "clear_and_stop") == 0 ||
-                                   strcmp(cmd, "quit_request") == 0) {
+                                   strcmp(cmd, "quit_request") == 0 ||
+                                   strcmp(cmd, "long_press") == 0) {
                             // System suspend/resume: call _handle_system_control
                             mrb_sym sys_ctrl_sym = mrb_intern_lit(mrb, "_handle_system_control");
                             if (mrb_respond_to(mrb, self, sys_ctrl_sym)) {
@@ -852,6 +853,36 @@ static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)
     fmrb_app_window_moved();
 
     return self;
+}
+
+// FmrbApp._set_hit_shape(bytes) -> bool: declare this app's hit shape (the
+// byte string FmrbApp#_send_hit_shape builds, layout in fmrb_app.h); "" goes
+// back to the window's rectangle. False when the string is malformed or too
+// long (FMRB_HIT_SHAPE_MAX). doc/frameless_window/ W3b.
+static mrb_value mrb_fmrb_app_s_set_hit_shape(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_value str;
+    mrb_get_args(mrb, "S", &str);
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) return mrb_false_value();
+    fmrb_err_t ret = fmrb_app_set_hit_shape((uint8_t)ctx->app_id,
+        (const uint8_t *)RSTRING_PTR(str), (size_t)RSTRING_LEN(str));
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
+// FmrbApp._hit_sprite_place(sprite_id, x, y, visible) -> nil: a sprite with a
+// hit mark moved or was shown / hidden (SpriteInstance#move, #visible=).
+static mrb_value mrb_fmrb_app_s_hit_sprite_place(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_int id, x, y, visible;
+    mrb_get_args(mrb, "iiii", &id, &x, &y, &visible);
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx || id <= 0 || id > 0xFFFF) return mrb_nil_value();
+    fmrb_app_hit_shape_place_sprite((uint8_t)ctx->app_id, (uint16_t)id,
+                                    (int16_t)x, (int16_t)y, visible != 0);
+    return mrb_nil_value();
 }
 
 // FmrbApp#_create_canvas(w, h, z_offset, use_transparent, transparent_color) -> canvas_id
@@ -2665,6 +2696,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 
     // Class methods
     mrb_define_class_method(mrb, app_class, "pid", mrb_fmrb_app_s_pid, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "_set_hit_shape", mrb_fmrb_app_s_set_hit_shape, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "_hit_sprite_place", mrb_fmrb_app_s_hit_sprite_place, MRB_ARGS_REQ(4));
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ps_gen", mrb_fmrb_app_s_ps_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
