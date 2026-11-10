@@ -75,7 +75,7 @@
 | W2 | カーネルのドラッグ (`anywhere` ほか)、クリックとドラッグの見分け、閉じる口 | 済 (report/w1_w2.md、56204b92) |
 | W3 | 透けている所のクリックを後ろへ (調べた上で) | 済 (report/w3.md、38c3ef59。押した点の 1 画素を描画側に問う、約 10 ms、枠なしだけ) |
 | W3b | 当たり判定を専用の定義に置き換える (矩形・マスク・スプライトの印)、W4 の見本に申告を足す | 未着手 (W4 の後) |
-| W4 | 見本のアバターのアプリ (movable、doc/app_assets と合わせて `amove` で渡り歩く) | 実装中 (instruction_w4.md) |
+| W4 | 見本のアバターのアプリ (movable、doc/app_assets と合わせて `amove` で渡り歩く) | 済 (report/w4.md、105e56b7。flash/app/demo/avatar、Moku) |
 
 ## 受け入れ条件
 
