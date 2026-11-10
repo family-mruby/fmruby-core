@@ -130,3 +130,6 @@ flash/data/
 # image, never packed into the web (wasm) bundle. Personal music, decks,
 # anything undistributable goes here. See CLAUDE.md.
 flash_local/
+
+# Kanji dictionary sources and output (rake kanji:dict); never in the repository
+tools/kanji/work/
