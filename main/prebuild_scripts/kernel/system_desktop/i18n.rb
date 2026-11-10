@@ -96,6 +96,8 @@ FmrbI18n.add(
     wifi_unavailable:"WiFi unavailable",
     net_browser:     "The browser handles the network here.",
     net_browser2:    "This machine has none of its own.",
+    net_door_ok:     "Router checked",
+    net_door_none:   "Router check: none (no certificate)",
     refresh:         "Refresh",
     # The PC's settings and notices (L14)
     wifi_settings:   "Wi-Fi...",
@@ -201,6 +203,8 @@ FmrbI18n.add(
     wifi_unavailable:"WiFi利用不可",
     net_browser:     "通信はブラウザが受け持ちます。",
     net_browser2:    "この機械自身は網を持ちません。",
+    net_door_ok:     "ルータが確認",
+    net_door_none:   "ルータの確認: なし (証明書なし)",
     refresh:         "更新",
     wifi_settings:   "Wi-Fi の設定...",
     bluetooth:       "Bluetooth",

@@ -1443,17 +1443,24 @@ lockDecided.then(() => { if (!nodeId) decideNodeId(); });
 // goes when that stops being true. The router itself refuses every file key
 // to the shared connection, so the file only lets the app say yes where the
 // router has bound the callers to their certificates.
+//
+// A page opened later from the console takes the name over (T8c): the door
+// closes this page's WebSockets with the certificate, and they come back
+// through the shared connection with taken_over in the notice.
 const DOOR_FILE = '/flash/tmp/.asterism_door';
 const doorSlots = {};
-let doorState = null; // the last word: { verified, node, why }
+let doorState = null; // the last word: { verified, node, why, taken }
+let doorOpen = 0; // WebSockets open now that said which way they went
 
 function onDoorNotice(slot, notice) {
   if (notice) doorSlots[slot] = notice;
   else delete doorSlots[slot];
   const open = Object.values(doorSlots);
+  doorOpen = open.length;
   if (open.length) {
     const shared = open.find((n) => !n.verified || n.node !== nodeId);
-    doorState = shared ? { verified: false, other: shared.verified ? shared.node : '', why: shared.why || '' }
+    doorState = shared ? { verified: false, other: shared.verified ? shared.node : '', why: shared.why || '',
+                           taken: shared.taken_over === true }
                        : { verified: true, node: nodeId };
   }
   const fs = (M || moduleConfig).FS;
@@ -1468,15 +1475,28 @@ function onDoorNotice(slot, notice) {
   showNetworkState();
 }
 
-function doorText() {
-  if (!ZENOH_PASS || ROOM || PASS_WITHOUT_NODE) return '';
-  if (!doorState) return '';
-  if (doorState.verified) return '; the router checked this name (your certificate at the console\'s door): files can go';
+// The door's line under the Network panel's heading: [class, text], or
+// null where the door says nothing (no pass, a room, a link refused).
+// ok: the router checks this name (files can go); shared: it does not (no
+// files); wait: no WebSocket yet, or none open now.
+function doorLine() {
+  if (!ZENOH_PASS || ROOM || PASS_WITHOUT_NODE) return null;
+  const connect = ' (an Asterism app connects it, e.g. Receiving)';
+  if (!doorState) return ['wait', 'Router: not connected yet' + connect];
+  if (!doorOpen) return ['wait', 'Router: not connected now' + connect];
+  if (doorState.verified) {
+    return ['ok', 'Checked by the router: this page is ' + nodeId +
+      ' with your certificate (the console\'s door). Files can go.'];
+  }
   // The pass is someone else's (or this user's other name): the router binds
   // this page to that name, so it cannot act as the one it shows.
-  if (doorState.other) return '; the door connected this page as ' + doorState.other + ', not as this ID: no files';
-  return '; shared connection, the router does not check this name' + (doorState.why ? ' (' + doorState.why + ')' : '') +
-    ': no files';
+  if (doorState.other) return ['shared', 'The door connected this page as ' + doorState.other + ', not as this ID: no files.'];
+  if (doorState.taken) {
+    return ['shared', 'Another page opened later from the console has taken over ' + nodeId +
+      '. This page is on the shared connection now: no files. Open it again from the console to send from here.'];
+  }
+  return ['shared', 'Shared connection: the router does not check this name' +
+    (doorState.why ? ' (' + doorState.why + ')' : '') + '. No files.'];
 }
 
 // ---- the Network panel: the router, and the ID above -------------------
@@ -1503,7 +1523,16 @@ function showNetworkState() {
     else if (nodeId && LINK_NODE && !ROOM) text += ' (from the link, this visit)';
     else if (nodeId && !ROOM && homeWriter === false) text += ' (this tab only)';
     else if ((nodeId || ROOM) && !nodeKept) text += ' (not kept: storage refused)';
-    nodeStateEl.textContent = text + doorText();
+    nodeStateEl.textContent = text;
+  }
+  const doorEl = document.getElementById('door-state');
+  if (doorEl) {
+    const line = doorLine();
+    doorEl.hidden = !line;
+    if (line) {
+      doorEl.className = 'door-line ' + line[0];
+      doorEl.textContent = line[1];
+    }
   }
   showRoomState('');
 }

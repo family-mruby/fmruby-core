@@ -184,7 +184,9 @@
     cursor: default; padding: 16px; box-sizing: border-box;
     text-align: center; font-size: 16px; line-height: 1.4; background: rgba(0,0,0,0.85);
   }
-  #status { margin-top: 8px; font-size: 12px; color: #888; }
+  /* The panels below the screen (T8c): body text 14px, every note at least
+     4.5:1 against the page's #1a1a22 (#9a9aa8 is 6.2:1, #8a8a97 5.1:1). */
+  #status { margin-top: 8px; font-size: 13px; color: #9a9aa8; }
   /* Two panels rather than four rows of identical grey buttons. What each
      control belongs to is the thing the old layout did not say. */
   #panels {
@@ -197,50 +199,56 @@
     flex: 1 1 300px; min-width: 0; box-sizing: border-box;
     border: 1px solid #34343e; border-radius: 4px;
     padding: 8px 10px 10px;
-    font-size: 12px; color: #aaa;
+    font-size: 14px; line-height: 1.4; color: #bbb;
   }
   .panel h2 {
-    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: #7f7f8c; font-weight: normal;
+    font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #a0a0ad; font-weight: normal;
     margin: 0 0 8px; padding-bottom: 5px;
     border-bottom: 1px solid #2a2a33;
-    display: flex; justify-content: space-between; gap: 8px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px;
   }
   /* The measurement rides in the heading: it describes the panel rather than
      being one more thing in it. */
-  .panel h2 .meta { text-transform: none; letter-spacing: 0; color: #6f6f7c; }
+  .panel h2 .meta { text-transform: none; letter-spacing: 0; color: #9a9aa8; margin-left: auto; text-align: right; }
   .field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-  .field > label { flex: 0 0 82px; color: #8a8a97; }
+  .field > label { flex: 0 0 96px; color: #9a9aa8; }
   .field > select, .field > input { flex: 1 1 auto; min-width: 0; }
   .group { margin-bottom: 9px; }
   .group:last-of-type { margin-bottom: 0; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
   .row + .row { margin-top: 4px; }
-  .lead { flex: 0 0 82px; color: #8a8a97; }
+  .lead { flex: 0 0 96px; color: #9a9aa8; }
   .row .lead + * { min-width: 0; }
-  .note { margin: 3px 0 0 82px; color: #6f6f7c; }
+  .note { margin: 3px 0 0 102px; color: #9a9aa8; }
   .room-line { margin: 0 0 8px; color: #e0c060; }
+  /* Whether the router checks this page's name (main.js doorLine): green
+     when files can go, yellow on the shared connection, grey before. */
+  .door-line { margin: 0 0 8px; padding: 3px 8px; border-left: 3px solid #555; }
+  .door-line.ok { color: #8fdc8f; border-color: #4f9a4f; background: #1d2a1f; }
+  .door-line.shared { color: #e8c860; border-color: #a08a30; background: #2a271a; }
+  .door-line.wait { color: #b0b0bc; }
   .panel select, .panel button, .panel input {
     background: #111; color: #ddd; border: 1px solid #555;
-    font-family: monospace; font-size: 12px;
+    font-family: monospace; font-size: 14px;
   }
-  .panel button { cursor: pointer; padding: 1px 8px; }
-  .panel button:disabled { color: #666; border-color: #3a3a44; cursor: default; }
+  .panel button { cursor: pointer; padding: 2px 8px; }
+  .panel button:disabled { color: #808088; border-color: #3a3a44; cursor: default; }
   /* Erasing is the one thing here that cannot be undone. */
   .panel button.danger { border-color: #6b3a3a; color: #c99; }
   /* The whole page is the drop target, so the whole page says so. */
   body.dropping { outline: 2px dashed #6a6; outline-offset: -6px; }
   #status { max-width: 100%; box-sizing: border-box; }
   #about {
-    margin: 14px 0 24px; font-size: 12px;
-    line-height: 1.6; color: #9a9aa8;
+    margin: 14px 0 24px; font-size: 14px;
+    line-height: 1.6; color: #b0b0bc;
     width: 100%; max-width: 780px; box-sizing: border-box; padding: 0 12px;
   }
   #about > summary {
-    cursor: pointer; color: #8a8a97; font-size: 11px;
+    cursor: pointer; color: #9a9aa8; font-size: 13px;
     letter-spacing: 0.08em; text-transform: uppercase;
   }
-  #about h2 { font-size: 13px; color: #ccc; margin: 14px 0 4px; }
+  #about h2 { font-size: 15px; color: #ccc; margin: 14px 0 4px; }
   #about ul { margin: 4px 0; padding-left: 20px; }
   #about kbd {
     background: #26262e; border: 1px solid #454550; border-radius: 3px;
@@ -258,7 +266,7 @@
     .field > label, .lead { flex: 0 0 auto; }
     .panel select, .panel input { width: 100%; max-width: 100%; box-sizing: border-box; }
     .note { margin-left: 0; }
-    #about { font-size: 11px; overflow-wrap: anywhere; }
+    #about { font-size: 13px; overflow-wrap: anywhere; }
   }
 </style>
 </head>
@@ -373,6 +381,8 @@
     <h2>Network <span class="meta" id="node-state">node: checking...</span></h2>
     <!-- A room's link (main.js, G2): which room this visit is in. -->
     <p class="room-line" id="room-state" hidden></p>
+    <!-- A page with a pass (main.js, T8/T8c): whether the router checks its name. -->
+    <p class="door-line" id="door-state" hidden></p>
     <div class="field">
       <label for="router-input">Router</label>
       <input id="router-input" type="text" spellcheck="false"

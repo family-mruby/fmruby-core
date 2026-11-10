@@ -17,6 +17,12 @@
 # (FmrbApp.wifi_networks is not ""), a third button opens the settings
 # window's Wi-Fi page (the networks in reach, connecting, disconnecting).
 # Everywhere else the dialog is as it was.
+#
+# In the browser build a third line says whether the router checks this
+# page's name (asterism-console's door connected it with its user's
+# certificate, doc/asterism_file_transfer/report/t8.md): the page writes the
+# node ID to DOOR_FILE while that holds (web/main.js), the file the transfer
+# app reads too. Re-read with the rest every ~1s while the dialog is open.
 
 module NetworkDialogMixin
   NET_W       = 240
@@ -29,12 +35,14 @@ module NetworkDialogMixin
   NET_BORDER  = FmrbConst::THEME_BORDER
   NET_OK      = 0x1C  # green-ish: connected
   NET_WARN    = 0xE0  # red-ish: not connected
+  NET_DOOR_FILE = "/tmp/.asterism_door"
 
   # ---- Lifecycle ----
 
   def open_network_dialog
     @net_open = true
     @net_info = nil
+    @net_door = ""
     show_network_widgets(true)
     @net_x = (@window_width - NET_W) / 2
     @net_y = (@window_height - NET_H) / 2
@@ -65,10 +73,22 @@ module NetworkDialogMixin
   end
 
   def net_refresh
+    @net_door = net_read_door if self.class::ON_WEB
     @net_info = FmrbApp.wifi_info
   rescue => e
     Log.error("Network: wifi_info failed: #{e.message}")
     @net_info = nil
+  end
+
+  # The node the router checks for this page, or "" (web/main.js writes it).
+  def net_read_door
+    return "" unless File.exist?(NET_DOOR_FILE)
+    f = File.open(NET_DOOR_FILE, "r")
+    text = f.read.to_s
+    f.close
+    text.strip
+  rescue
+    ""
   end
 
   # ---- Drawing ----
@@ -90,6 +110,17 @@ module NetworkDialogMixin
       # (HTTP, WebSocket) will be described when they arrive.
       @gfx.draw_text(x + 8, body_y, FmrbI18n.t(:net_browser), NET_TEXT, NET_BG, mixed: true)
       @gfx.draw_text(x + 8, body_y + 14, FmrbI18n.t(:net_browser2), NET_TEXT, NET_BG, mixed: true)
+      door = @net_door
+      if door != ""
+        label = FmrbI18n.t(:net_door_ok)
+        sw = FmrbI18n.text_width(label) + 10
+        @gfx.fill_rect(x + 8, body_y + 31, sw, 12, NET_OK)
+        @gfx.draw_text(x + 13, body_y + 33, label, FmrbGfx::BLACK, NET_OK, mixed: true)
+        @gfx.draw_text(x + 8 + sw + 6, body_y + 33, FmrbI18n.truncate_to(door, NET_W - sw - 30), NET_TEXT, NET_BG,
+                       mixed: true)
+      else
+        @gfx.draw_text(x + 8, body_y + 33, FmrbI18n.t(:net_door_none), NET_TEXT, NET_BG, mixed: true)
+      end
     elsif @net_info.nil?
       @gfx.draw_text(x + 8, body_y, FmrbI18n.t(:wifi_unavailable), NET_TEXT, NET_BG, mixed: true)
     else
