@@ -20,6 +20,22 @@ namespace :kanji do
     ruby "tools/kanji/sources.rb", *args
   end
 
+  # DEST is the root of what becomes /sd on the machine (a mounted card, a
+  # directory to attach to a release from, a test directory): the files land
+  # in DEST/dict/. Checked before and after the copy.
+  desc "Copy the generated kanji dictionary and its LICENSE to DEST/dict/, checked (FROM=dir)"
+  task :place do
+    abort "usage: rake kanji:place DEST=<the card's root or a directory>" unless ENV["DEST"]
+    args = ENV["FROM"] ? ["--from", ENV["FROM"]] : []
+    ruby "tools/kanji/place.rb", *args, ENV["DEST"]
+  end
+
+  desc "Check a kanji dictionary file (FILE=path; header, size, crc32)"
+  task :check do
+    abort "usage: rake kanji:check FILE=<fmrb_kanji.dic>" unless ENV["FILE"]
+    ruby "tools/kanji/place.rb", "--check", ENV["FILE"]
+  end
+
   # Small made-up inputs in a temporary directory; nothing is fetched.
   desc "Kanji dictionary generator, reader and C lookup tests (host Ruby + cc, no fetch)"
   task :test do

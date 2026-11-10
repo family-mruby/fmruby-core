@@ -11,7 +11,8 @@ it wholesale:
 - /usr/share/samples/slides/     PicoRabbit slide decks
 - /usr/share/samples/services/   a service list and two service bodies to copy
 - /usr/share/services/           the bodies of the services the machine runs
-- /usr/share/doc/                this file
+- /usr/share/doc/                this file, and kanji.md (kanji conversion:
+                                 the dictionary on the SD card, the keys)
 - /app/                          the installed apps (tests under /app/test)
 
 To play with a sample, copy it into /home first and edit your copy. That way

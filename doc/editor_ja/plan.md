@@ -196,7 +196,7 @@ doc/spinel_aot/report/stale_statics.md)。調査で**定数より危険な
 
 ## 5. 範囲外
 
-- 漢字変換 (辞書 IME)。方針として持たない。 (2026-11-10 改める: doc/kanji_input/plan.md で、辞書を SD に置く単語ごとの変換を足す)
+- 漢字変換 (辞書 IME)。方針として持たない。 (2026-11-10 改める: doc/kanji_input/plan.md で、辞書を SD に置く単語ごとの変換を足す。使い方の案内は端末の /usr/share/doc/kanji_ja.md・kanji.md)
 - 単語境界の折り返し・禁則処理 (v1 は文字単位)。
 - Family BASIC の文字コード系 (独自キャラジェネ) との統合。
 - 言語のランタイム切替 (現行の再起動反映のまま)。

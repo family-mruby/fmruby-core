@@ -11,7 +11,8 @@
 - /usr/share/samples/slides/     PicoRabbit のスライド見本
 - /usr/share/samples/services/   写して使うサービス一覧と本体 2 つ
 - /usr/share/services/           この機械が動かしているサービスの本体
-- /usr/share/doc/                この文書
+- /usr/share/doc/                この文書と kanji_ja.md (漢字変換: SD に置く
+                                 辞書とキー)
 - /app/                          インストール済みアプリ (試験用は /app/test)
 
 サンプルで遊ぶときは、まず /home へ写してから自分の写しを編集してください。
