@@ -127,6 +127,7 @@ class TestKernel
 
   # No window ever moves behind the kernel's back here.
   def _window_list_gen; 0; end
+  def _window_see_through?(pid, x, y); false; end
 
   # Stubbed C bindings: print the call (event order), return a deterministic result.
   def _set_hid_target(pid);   puts "  > set_hid_target #{pid}" if $trace; true; end

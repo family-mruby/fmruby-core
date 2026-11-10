@@ -82,7 +82,26 @@ module WindowManagerMixin
       end
     end
 
-    # Search from front to back (highest z_order first)
+    # Search from front to back (highest z_order first). A frameless window
+    # (window_frame = "none") lets the press through where its canvas shows
+    # the colour key, i.e. where the screen shows what is behind it: the
+    # search goes on below it (doc/frameless_window/ W3). That costs one pixel
+    # read, and only for a frameless window actually under the press; a framed
+    # window is hit by its rectangle as before.
+    z_ceiling = 0x7FFF
+    while true
+      target_window = window_at_below(x, y, z_ceiling)
+      return nil if target_window.nil?
+      return target_window unless target_window[:frameless] == true
+      return target_window unless _window_see_through?(target_window[:pid],
+                                                       x - target_window[:x],
+                                                       y - target_window[:y])
+      z_ceiling = target_window[:z_order]
+    end
+  end
+
+  # The frontmost window under (x, y) whose z_order is below z_ceiling.
+  def window_at_below(x, y, z_ceiling)
     target_window = nil
     max_z_order = -1
 
@@ -99,11 +118,13 @@ module WindowManagerMixin
       # keeps the front z-order, and clicks routed there would queue up in
       # the suspended app and all fire at once on unpark.
       next if win[:pid] == @parked_fullscreen_pid
+      z = win[:z_order]
+      next if z >= z_ceiling
 
       if x >= win[:x] && x <= win[:x] + win[:width] - 1 &&
          y >= win[:y] && y <= win[:y] + win[:height] - 1
-        if win[:z_order] > max_z_order
-          max_z_order = win[:z_order]
+        if z > max_z_order
+          max_z_order = z
           target_window = win
         end
       end

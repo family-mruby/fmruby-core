@@ -49,6 +49,14 @@ extern "C" {
  * @return FMRB_OK, or FMRB_ERR_INVALID_STATE when there is no graphics
  *         context, or FMRB_ERR_FAILED when the window canvas cannot be made.
  */
+/**
+ * @brief The colour key of the app's window canvas (RGB332)
+ *
+ * The value fmrb_app_canvas_init() gives a transparent window canvas: 0x01,
+ * except for the native compositor's stand-ins for Linux windows.
+ */
+uint8_t fmrb_app_canvas_key(const fmrb_app_task_context_t *ctx);
+
 fmrb_err_t fmrb_app_canvas_init(fmrb_app_task_context_t *ctx,
                                 fmrb_canvas_handle_t *out_canvas,
                                 fmrb_canvas_handle_t *out_bg_canvas);

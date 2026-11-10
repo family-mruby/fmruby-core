@@ -272,6 +272,18 @@ static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
     return array;
 }
 
+// FmrbKernel#_window_see_through?(pid, x, y) -> bool: a press at
+// window-relative (x, y) falls through this frameless window (its canvas shows
+// the colour key there). One blocking pixel read (fmrb_app_window_see_through_at).
+static mrb_value mrb_kernel_window_see_through(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, x, y;
+    mrb_get_args(mrb, "iii", &pid, &x, &y);
+    if (pid < 0 || pid > 0xFF) return mrb_false_value();
+    return mrb_bool_value(
+        fmrb_app_window_see_through_at((uint8_t)pid, (int16_t)x, (int16_t)y));
+}
+
 // FmrbKernel#_window_list_gen() -> Integer: changes whenever a window's
 // place changes, an app's own move included (fmrb_app_window_list_gen).
 static mrb_value mrb_kernel_window_list_gen(mrb_state *mrb, mrb_value self)
@@ -694,6 +706,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_class_method(mrb, handler_class, "boot_complete!", mrb_kernel_boot_complete, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_window_list_gen", mrb_kernel_window_list_gen, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_window_see_through?", mrb_kernel_window_see_through, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));

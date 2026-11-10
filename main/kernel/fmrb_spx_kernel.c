@@ -141,6 +141,12 @@ int fmrb_spx_window_list_gen(void)
     return (int)(fmrb_app_window_list_gen() & 0x3FFFFFFFu);
 }
 
+int fmrb_spx_window_see_through(int pid, int x, int y)
+{
+    if (pid < 0 || pid > 0xFF) return 0;
+    return fmrb_app_window_see_through_at((uint8_t)pid, (int16_t)x, (int16_t)y) ? 1 : 0;
+}
+
 int fmrb_spx_set_hid_target(int pid)
 {
     if (pid < 0 || pid > 255) {

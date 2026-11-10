@@ -3295,6 +3295,63 @@ void fmrb_app_window_moved(void) {
     g_window_gen++;
 }
 
+bool fmrb_app_window_see_through_at(uint8_t pid, int16_t x, int16_t y) {
+    if (pid >= FMRB_MAX_APPS || x < 0 || y < 0) {
+        return false;
+    }
+
+    // Copy what the read needs and let go of the lock before the round trip:
+    // the app may draw (and the host task may need the lock) meanwhile.
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    fmrb_app_task_context_t *ctx = &g_ctx_pool[pid];
+    bool candidate = (ctx->state == PROC_STATE_RUNNING) && ctx->frameless &&
+                     !ctx->headless && !ctx->fullscreen &&
+                     ctx->canvas_id != FMRB_CANVAS_SCREEN &&
+                     x < (int16_t)ctx->window_width &&
+                     y < (int16_t)ctx->window_height;
+    fmrb_canvas_handle_t canvas_id = ctx->canvas_id;
+    uint8_t key = fmrb_app_canvas_key(ctx);
+    fmrb_semaphore_give(g_ctx_lock);
+    if (!candidate) {
+        return false;
+    }
+
+    // The same synchronous read an app's get_pixel makes, queued behind the
+    // commands already on their way so it sees the canvas as drawn so far.
+    // Unmetered: the kernel takes no slot of the apps' share of the host
+    // queue. The reply context lives on this stack, so the wait has to
+    // outlast the transport's own 5 s timeout, after which the host task
+    // never touches it again.
+    fmrb_link_graphics_pixel_value_t resp = { .color = 0, .status = 0xFF };
+    gfx_cmd_sync_ctx_t sync = {
+        .done = fmrb_semaphore_create_binary(),
+        .response_buf = (uint8_t *)&resp,
+        .response_len = sizeof(resp),
+        .result = -1,
+    };
+    if (!sync.done) {
+        return false;
+    }
+    fmrb_time_t t0 = fmrb_hal_time_get_us();
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_get_pixel(&cmd, canvas_id, x, y, &sync);
+    if (fmrb_gfx_submit_unmetered(&cmd) != FMRB_OK) {
+        fmrb_semaphore_delete(sync.done);
+        return false;
+    }
+    fmrb_base_type_t took = fmrb_semaphore_take(sync.done, FMRB_MS_TO_TICKS(6000));
+    fmrb_semaphore_delete(sync.done);
+    if (took != FMRB_TRUE || sync.result != 0 ||
+        sync.response_len < sizeof(resp) || resp.status != 0) {
+        return false;
+    }
+    bool through = (resp.color == key);
+    FMRB_LOGD(TAG, "see-through pid=%u (%d,%d) color=0x%02x -> %s (%lu us)",
+              pid, x, y, resp.color, through ? "through" : "hit",
+              (unsigned long)(fmrb_hal_time_get_us() - t0));
+    return through;
+}
+
 /**
  * Update window size for resize operation
  * System/gui_app cannot be resized

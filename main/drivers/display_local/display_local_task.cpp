@@ -112,7 +112,7 @@ FMRB_EXT_RAM_BSS_ATTR static uint8_t g_recv_buf[DISPLAY_LOCAL_RECV_BUF_SIZE];
 
 // ============================================================
 // Canvas management
-// Each canvas is an 8bpp (RGB332) LGFX_Sprite allocated in PSRAM.
+// Each canvas is an RGB565 (non-swapped) LGFX_Sprite allocated in PSRAM.
 // ============================================================
 
 // One canvas per windowed app plus the desktop, so this is the real ceiling on
@@ -2158,10 +2158,15 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         auto *s = get_sprite(cmd->canvas_id);
         if (s && cmd->x >= 0 && cmd->x < (int16_t)s->width() &&
                  cmd->y >= 0 && cmd->y < (int16_t)s->height()) {
-            // Read pixel as RGB888, then convert to RGB332 for kernel
-            lgfx::rgb888_t px888 = s->readPixel(cmd->x, cmd->y);
+            // Every canvas (and SpriteImage) here is RGB565 non-swapped: take
+            // the stored value and narrow it to the RGB332 the core speaks.
+            // readPixel() hands back RGB565 too, and storing that in an
+            // rgb888_t read it as the wrong channels (0xE0 came back as 0x1C,
+            // the colour key 0x01 as 0x00).
+            lgfx::rgb565_t px565;
+            px565.raw = (uint16_t)s->readPixelValue(cmd->x, cmd->y);
             lgfx::rgb332_t px332;
-            px332 = px888;
+            px332 = px565;
             resp.color = px332.raw;
             resp.status = 0;
         } else {

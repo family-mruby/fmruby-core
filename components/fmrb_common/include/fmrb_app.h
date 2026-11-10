@@ -645,6 +645,23 @@ uint32_t fmrb_app_window_list_gen(void);
  */
 void fmrb_app_window_moved(void);
 
+/**
+ * @brief Whether a press at (x, y) inside a frameless window falls through it
+ *
+ * True only for a frameless window (window_frame = "none") whose canvas holds
+ * its colour key at that point, i.e. where the screen shows what is behind.
+ * Reads one pixel from the drawing side (GET_PIXEL, one synchronous round
+ * trip through the host task) and blocks the caller until it answers. Every
+ * other case -- a framed window, a headless app, a point outside the canvas,
+ * a failed read -- answers false, so the window keeps its rectangle.
+ * For the kernel's hit test (doc/frameless_window/ W3).
+ *
+ * @param pid App whose window is under the press
+ * @param x   Press position relative to the window's top-left corner
+ * @param y   Press position relative to the window's top-left corner
+ */
+bool fmrb_app_window_see_through_at(uint8_t pid, int16_t x, int16_t y);
+
 fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
 fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);
 fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height);
