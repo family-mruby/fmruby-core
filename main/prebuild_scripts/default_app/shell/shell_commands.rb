@@ -101,7 +101,7 @@ module ShellCommandsMixin
       cmd_checkpoint(args)
     when "restore"
       cmd_restore(args)
-    when "move"
+    when "amove"
       cmd_move(args)
     when "asend"
       cmd_send(args)
@@ -139,7 +139,7 @@ module ShellCommandsMixin
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
       @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
       @history << "  restore <image> - Start an app from its image (.ckpt)"
-      @history << "  move <pid> <node> - Move an app to another machine (its Asterism node ID)"
+      @history << "  amove <pid> <node> - Move an app to another machine (its Asterism node ID)"
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
@@ -1139,20 +1139,20 @@ module ShellCommandsMixin
   # app goes on here. The answer arrives as "checkpoint_result" with "to".
   def cmd_move(args)
     unless args.size == 2 && numeric?(args[0])
-      @history << "Usage: move <pid> <node>   (PID from ps; node: the other machine's Asterism node ID)"
+      @history << "Usage: amove <pid> <node>   (PID from ps; node: the other machine's Asterism node ID)"
       return
     end
     pid = args[0].to_i
     if pid == FmrbApp.pid
-      @history << "move: this is the shell itself"
+      @history << "amove: this is the shell itself"
       return
     end
     why = FmrbApp.move(pid, args[1])
     if why
-      @history << "move: PID #{pid}: #{why}"
+      @history << "amove: PID #{pid}: #{why}"
       return
     end
-    @history << "move: asked to move PID #{pid} to #{args[1]}"
+    @history << "amove: asked to move PID #{pid} to #{args[1]}"
   end
 
   # Send a file to another machine over Asterism (doc/asterism_file_transfer
@@ -1340,10 +1340,10 @@ module ShellCommandsMixin
       to = msg["to"]
       line = if msg["ok"]
                lacks = msg["missing"].to_s
-               "move: PID #{pid} moved to #{to} (PID #{msg["there"]} there)" +
+               "amove: PID #{pid} moved to #{to} (PID #{msg["there"]} there)" +
                  (lacks.empty? ? "" : "; it lacks: #{lacks}")
              else
-               "move: PID #{pid} stayed (#{msg["reason"]})"
+               "amove: PID #{pid} stayed (#{msg["reason"]})"
              end
       Log.info(line)
       append_output(line)

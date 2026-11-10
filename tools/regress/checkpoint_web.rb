@@ -24,7 +24,7 @@
 #
 #   web move       the counter from the native program into the browser
 #                  (asked first, held, carried, started there, closed here),
-#                  then back with the browser shell's `move PID rg-ckpt-a`:
+#                  then back with the browser shell's `amove PID rg-ckpt-a`:
 #                  every counter goes on from the next step both ways.
 #   web calls      ckpt_calls into the browser: the browser build has no
 #                  linux_settings, it is named missing and moves all the same.
@@ -207,8 +207,8 @@ module Regress
         sleep 2
         mark = log_lines.size
         wmark = web_lines.size
-        web_tool("text", "move #{there} #{NODE_A}", "key", "enter")
-        web_wait(/move: PID #{there} moved to #{NODE_A} \(PID \d+ there\)/, wmark, "the browser shell's answer", timeout: 30)
+        web_tool("text", "amove #{there} #{NODE_A}", "key", "enter")
+        web_wait(/amove: PID #{there} moved to #{NODE_A} \(PID \d+ there\)/, wmark, "the browser shell's answer", timeout: 30)
         nr = wait_line(/ckpt_counter: on_restore /, mark, "on_restore in the native program")
         wait_line(/ckpt_counter: a=\d+ /, nr + 1, "a step of a in the native program")
         wait_line(/ckpt_counter: b=\d+ /, nr + 1, "a step of b in the native program")

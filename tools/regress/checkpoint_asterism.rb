@@ -253,7 +253,7 @@ module Regress
           "carried in #{carried} ms, held #{held} ms, the move #{took} ms"
       end
 
-      # The shell's `move PID NODE` (FmrbApp.move): the same move, and the
+      # The shell's `amove PID NODE` (FmrbApp.move): the same move, and the
       # shell is answered with the PID there.
       def round_asterism_shell
         pid = start_counter
@@ -261,8 +261,8 @@ module Regress
         sleep 1.5
         mark_b = log_lines(RUN_DIR_B).size
         mark = log_lines.size
-        native("input", "text", "move #{pid} #{NODE_B}", "key", "enter")
-        i = wait_line(/move: PID #{pid} moved to #{NODE_B} \(PID (\d+) there\)/, mark, "the shell's answer")
+        native("input", "text", "amove #{pid} #{NODE_B}", "key", "enter")
+        i = wait_line(/amove: PID #{pid} moved to #{NODE_B} \(PID (\d+) there\)/, mark, "the shell's answer")
         there = log_lines[i][/\(PID (\d+) there\)/, 1].to_i
         restored = wait_line(/ckpt_counter: on_restore /, mark_b, "on_restore in the second program", run_dir: RUN_DIR_B)
         wait_line(/ckpt_counter: a=\d+ /, restored + 1, "a step of a in the second program", run_dir: RUN_DIR_B)
