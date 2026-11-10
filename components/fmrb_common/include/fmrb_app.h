@@ -141,6 +141,15 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
     uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
     bool                  rounded_corners;   // Window has rounded corners; if false, canvas is opaque (skips transparent compositing)
+    // No frame, title bar or close button (.app.toml window_frame = "none",
+    // doc/frameless_window/): the base draws none of them, the whole canvas
+    // is a colour-keyed region, and the kernel does not treat the top rows
+    // as a title bar. The canvas is colour-keyed even without rounded corners.
+    bool                  frameless;
+    // How the kernel drags this window (.app.toml window_drag): one of
+    // FMRB_WINDOW_DRAG_*. Resolved at spawn: a framed window defaults to
+    // TITLE, a frameless one to ANYWHERE.
+    uint8_t               window_drag;
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -235,6 +244,15 @@ void fmrb_app_notify_started(fmrb_app_task_context_t* ctx);
 #define FMRB_FULLSCREEN_HIRES_FIXED 1
 #define FMRB_FULLSCREEN_HIRES_ANY   2
 
+// window_drag values (fmrb_app_task_context_t): where the kernel lets the
+// user drag the window. TITLE is the title bar (the top rows); ANYWHERE holds
+// a left press anywhere in the window and turns it into a drag once the
+// pointer has moved a few pixels (a press released before that reaches the
+// app as a click); NONE never drags (the app may move itself).
+#define FMRB_WINDOW_DRAG_TITLE    0
+#define FMRB_WINDOW_DRAG_ANYWHERE 1
+#define FMRB_WINDOW_DRAG_NONE     2
+
 // Spawn attributes for creating new app task
 typedef struct {
     fmrb_proc_id_t        app_id;           // Fixed slot ID
@@ -271,6 +289,8 @@ typedef struct {
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
     uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
     bool                  rounded_corners;   // Window has rounded corners (default: true). false = opaque canvas, no transparent compositing
+    bool                  frameless;         // No frame (see the context struct)
+    uint8_t               window_drag;       // FMRB_WINDOW_DRAG_* (see the context struct)
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing
@@ -304,6 +324,9 @@ typedef struct {
 // Window info for hit testing
 typedef struct {
     uint8_t               pid;              // Process ID
+    // Placed in what was padding (after pid, after resizable): the struct
+    // stays 50 bytes, and a static copy of the list stays the same size.
+    uint8_t               drag;             // FMRB_WINDOW_DRAG_*
     char                  app_name[FMRB_MAX_APP_NAME];  // Application name
     uint16_t              x;                // Window X position
     uint16_t              y;                // Window Y position
@@ -312,6 +335,7 @@ typedef struct {
     uint8_t               z_order;          // Z-order (0=back, higher=front)
     bool                  fullscreen;       // Fullscreen app flag
     bool                  resizable;        // Allow window resize
+    bool                  frameless;        // No frame: the top rows are not a title bar
     uint16_t              min_width;        // Per-app minimum width (0 = use global default)
     uint16_t              min_height;       // Per-app minimum height (0 = use global default)
 } fmrb_window_info_t;
@@ -603,6 +627,24 @@ void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);
 
 int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count);
+
+/**
+ * @brief A number that changes whenever a window's place changes
+ *
+ * Bumped by every path that moves a window: the kernel's (drag, window
+ * operations) and an app's own (FmrbApp#set_window_position, which writes
+ * its context without the kernel). The kernel keeps a copy of the window
+ * list and compares this to know that copy is out of date.
+ */
+uint32_t fmrb_app_window_list_gen(void);
+
+/**
+ * @brief Note that a window's place changed outside fmrb_app_update_window_position
+ *
+ * For the runtimes' set-position calls, which write the context directly.
+ */
+void fmrb_app_window_moved(void);
+
 fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
 fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);
 fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height);

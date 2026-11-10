@@ -126,6 +126,10 @@ static fmrb_semaphore_t g_ctx_lock = NULL;
 // FmrbApp.ps_gen to skip the allocating FmrbApp.ps call while nothing changed.
 static volatile uint32_t g_proc_generation = 0;
 
+// Bumped whenever a window's place changes (fmrb_app_window_list_gen). In
+// PSRAM with the pool it describes: internal RAM does not grow for it.
+FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t g_window_gen;
+
 // State transition strings for debugging
 static const char* state_names[] = {
     "FREE", "INIT", "RUNNING", "SUSPENDED", "STOPPING"
@@ -2098,6 +2102,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->min_window_width = attr->min_window_width;
     ctx->min_window_height = attr->min_window_height;
     ctx->rounded_corners = attr->rounded_corners;
+    ctx->frameless = attr->frameless;
+    ctx->window_drag = attr->window_drag;
     if (ctx->has_background_canvas) {
         ctx->z_order = 254;  // Main canvas is foreground (menu bar)
     } else if (strcmp(ctx->app_name, "system_overlay") == 0) {
@@ -3051,6 +3057,8 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
             list[count].resizable = ctx->resizable;
             list[count].min_width = ctx->min_window_width;
             list[count].min_height = ctx->min_window_height;
+            list[count].frameless = ctx->frameless;
+            list[count].drag = ctx->window_drag;
 
             count++;
         }
@@ -3252,6 +3260,7 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
     // Update position
     ctx->window_pos_x = x;
     ctx->window_pos_y = y;
+    g_window_gen++;
 
     // Send PRESENT command to Host to reflect new position immediately.
     // Not fmrb_gfx_submit(): this runs on the kernel task on behalf of another
@@ -3276,6 +3285,14 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
 
     fmrb_semaphore_give(g_ctx_lock);
     return FMRB_OK;
+}
+
+uint32_t fmrb_app_window_list_gen(void) {
+    return g_window_gen;
+}
+
+void fmrb_app_window_moved(void) {
+    g_window_gen++;
 }
 
 /**

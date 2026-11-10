@@ -33,6 +33,8 @@ module FmrbSpx
   # windows_snapshot returns the packed records as :binstr (a real String read
   # with getbyte); an ffi_buffer :ptr has no getbyte. Byte length = N * 48.
   ffi_func :fmrb_spx_windows_snapshot, [], :binstr
+  # changes whenever a window's place changes (the snapshot is out of date)
+  ffi_func :fmrb_spx_window_list_gen, [], :int
   ffi_func :fmrb_spx_set_hid_target, [:int], :int
   ffi_func :fmrb_spx_set_focused_window, [:int], :int
   ffi_func :fmrb_spx_bring_to_front, [:int], :int

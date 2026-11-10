@@ -109,15 +109,15 @@ fmrb_err_t fmrb_app_canvas_init(fmrb_app_task_context_t *ctx,
     }
 
     // Colour-key transparency only for a non-fullscreen window that kept its
-    // rounded corners; opting out skips the per-pixel compare in the
-    // compositor.
+    // rounded corners, or one without a frame (its ground is the key);
+    // opting out skips the per-pixel compare in the compositor.
     uint8_t key = APP_CANVAS_TRANSPARENT_KEY;
 #if defined(FMRB_PLATFORM_NATIVE)
     key = native_wl_canvas_key(ctx, key);
 #endif
     fmrb_err_t ret = fmrb_app_canvas_create_main(
         ctx, ctx->window_width, ctx->window_height, ctx->z_order,
-        !ctx->fullscreen && ctx->rounded_corners, key, out_canvas);
+        !ctx->fullscreen && (ctx->rounded_corners || ctx->frameless), key, out_canvas);
     if (ret != FMRB_OK) {
         return ret;
     }

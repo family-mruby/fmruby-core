@@ -261,11 +261,23 @@ static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
                      mrb_fixnum_value(windows[i].min_width));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_height")),
                      mrb_fixnum_value(windows[i].min_height));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "frameless")),
+                     mrb_bool_value(windows[i].frameless));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "drag")),
+                     mrb_fixnum_value(windows[i].drag));
 
         mrb_ary_push(mrb, array, hash);
     }
 
     return array;
+}
+
+// FmrbKernel#_window_list_gen() -> Integer: changes whenever a window's
+// place changes, an app's own move included (fmrb_app_window_list_gen).
+static mrb_value mrb_kernel_window_list_gen(mrb_state *mrb, mrb_value self)
+{
+    (void)mrb; (void)self;
+    return mrb_fixnum_value((mrb_int)(fmrb_app_window_list_gen() & 0x3FFFFFFFu));
 }
 
 // Internal helper shared by _send_raw_message / _try_send_raw_message.
@@ -681,6 +693,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_set_error_led", mrb_kernel_set_error_led, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, handler_class, "boot_complete!", mrb_kernel_boot_complete, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_window_list_gen", mrb_kernel_window_list_gen, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));

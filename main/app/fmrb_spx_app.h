@@ -53,7 +53,7 @@ extern "C" {
  *   46   2     canvas_id     (u16 LE; valid only if has_canvas)
  *   48   2     bg_canvas_id  (u16 LE; valid only if has_bg)
  *   50   1     resizable   (bool: the kernel resizes it from its corner)
- *   51   1     (reserved, 0)
+ *   51   1     frameless   (bool: window_frame = "none")
  */
 #define FMRB_SPX_APP_INIT_RECORD_SIZE 52
 const char *fmrb_spx_app_init(void);

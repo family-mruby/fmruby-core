@@ -404,6 +404,12 @@ static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const cha
                       ctx->resizable ? 1 : 0, ctx->rounded_corners ? 1 : 0,
                       ctx->fullscreen_switchable ? 1 : 0, ctx->fullscreen_hires ? 1 : 0,
                       ctx->min_window_width, ctx->min_window_height);
+        // The frame and the drag as the window had them, so a frameless
+        // window lands frameless (doc/frameless_window/).
+        static const char *const drag_names[] = { "title", "anywhere", "none" };
+        n += snprintf(t + n, cap - n, "window_frame = \"%s\"\nwindow_drag = \"%s\"\n",
+                      ctx->frameless ? "none" : "normal",
+                      ctx->window_drag < 3 ? drag_names[ctx->window_drag] : "title");
     }
     const ckpt_app_t *e = entry_of(ctx);
     if (e && e->requires[0]) {

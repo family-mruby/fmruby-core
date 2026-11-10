@@ -64,6 +64,8 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `min_window_width` / `_height` | 0 | 縮小の下限 |
 | `resizable` | 0 | 大きさを変えられるか |
 | `rounded_corners` | 1 | 角の丸め |
+| `window_frame` | `"normal"` | `"none"` で枠・タイトルバー・閉じるボタンの無い Window。地は透ける色で、アプリが描いた所だけが見える (3.4 節) |
+| `window_drag` | 枠つきは `"title"`、枠なしは `"anywhere"` | カーネルが Window をどこで掴んで動かすか。`"title"` はタイトルバー、`"anywhere"` はどこでも (4 px より動いたらドラッグ、動かずに離したらクリック)、`"none"` は動かさない (3.4 節) |
 | `fullscreen_switchable` | 0 | 実行中の全画面切替 |
 | `fullscreen_hires` | false | 全画面の間だけ 640x360 にしてよい (P4 系とブラウザ版。`true` か `1`。reference/fullscreen_hires.md) |
 | `large_memory` | 0 | 大きい方のプール (通常の 2 倍: Retro 1 MB、Modern 2 MB、sim とブラウザ版 3 MB) を専有する。同時に 1 アプリ (S3 の端末は 2 アプリ)。本体の `.app.rb` が大きいアプリ (コンパイルの山はソースの十数倍から二十数倍) にも要る (reference/app_memory.md) |
@@ -128,6 +130,23 @@ W: app_screen_name in the comment toml of hello_store.app.rb is ignored
 **埋め込みの形は、エディタや shell から自分で起動する補助スクリプトのもの**
 であって、配布の形ではない。`.rb` に囲みを残したまま `.app.toml` も置く形も
 禁じる (sidecar が勝つので、2 つの複製が黙ってずれる)。
+
+### 3.4 枠なしの Window (`window_frame = "none"`)
+
+アバターやマスコットのように、四角い Window に見えないアプリのための鍵 (doc/frameless_window)。
+
+```toml
+window_frame = "none"      # 枠・タイトルバー・閉じるボタンを描かない
+# window_drag = "anywhere" # 枠なしの既定。"none" で掴ませない
+```
+
+- 基底 (FmrbApp) は枠を描かず、user area を Window 全体 (`(0, 0)` から `window_width x window_height`) にし、地を透ける色 (`TRANSPARENT_COLOR`) で塗って Window 全体を透ける区画にする。アプリは絵を描いて `present` するだけでよい。`clear_user_area` の既定の色も透ける色になる (枠は描き直さない)。`frameless?` で枠なしかを聞ける。
+- チェックポイントで移った後も、基底が透けを掛け直す。`on_restore` では絵を描き直すだけでよい。
+- カーネルは上の 11 行をタイトルバーとして扱わない (ドラッグ・右クリックの読み直し・閉じるボタンの判定をしない)。
+- `window_drag = "anywhere"`: 左の押下をカーネルが預かり、4 px より動いたらカーネルが Window を動かす (アプリには押下も移動も離しも届かない。動いた後は `pos_x` / `pos_y` が新しい位置を言う)。動かずに離したら、押下と離しが続けてアプリへ届く (クリック)。そのため押下が届くのは離したときで、押している間の反応や長押しはアプリから見えない。長押しを使うアプリは `"none"` にして自分で扱う (`set_window_position` で自分を動かしてもよい)。右ボタンなどは預からずにそのまま届く。
+- 閉じ方: Ctrl+Q (焦点のあるとき)・Shell の `kill`、それに右クリック (離したとき) で `on_frameless_right_click(ev)` が呼ばれ、既定は `on_quit_request` (既定は閉じる)。右ボタンを自分で使うアプリは `on_frameless_right_click` を空で上書きする (右クリックは `on_event` にも届く)。
+- 当たり判定は Window の四角のまま。透けている所を押しても後ろの Window には届かない (W3 で調べる)。
+- 枠つきのアプリに `window_drag` を書くこともできる (`"anywhere"` ならタイトルバー以外でも掴める、`"none"` ならタイトルバーでも動かない)。
 
 ## 4. 置き場所
 

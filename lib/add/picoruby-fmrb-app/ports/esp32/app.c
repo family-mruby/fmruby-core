@@ -194,6 +194,11 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_resizable"),
                ctx->resizable ? mrb_true_value() : mrb_false_value());
 
+    // Set @_frameless: window_frame = "none" (doc/frameless_window/). The
+    // base draws no frame and the user area is the whole window.
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_frameless"),
+               mrb_bool_value(ctx->frameless));
+
     // No @platform here: FmrbApp#platform asks FmrbConst::PLATFORM each time,
     // so an app moved to another machine (doc/checkpoint) gets that machine's.
 
@@ -600,15 +605,17 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_height"), mrb_fixnum_value(new_height));
 
                                 // Update user area dimensions. Fullscreen has no
-                                // title bar and no border, so it owns the lot --
-                                // same split as FmrbApp#_init.
+                                // title bar and no border, so it owns the lot,
+                                // and so does a frameless window -- same split
+                                // as FmrbApp#_layout_user_area.
                                 // 11 = FmrbApp::TITLE_BAR_H
-                                mrb_int user_area_x0 = is_fullscreen ? 0 : 1;
-                                mrb_int user_area_y0 = is_fullscreen ? 0 : 11;
-                                mrb_int user_area_width  = is_fullscreen ? new_width  : new_width - 2;
-                                mrb_int user_area_height = is_fullscreen ? new_height : new_height - 12;
-                                mrb_int user_area_x1 = is_fullscreen ? new_width  : new_width - 1;
-                                mrb_int user_area_y1 = is_fullscreen ? new_height : new_height - 1;
+                                int whole = is_fullscreen || ctx->frameless;
+                                mrb_int user_area_x0 = whole ? 0 : 1;
+                                mrb_int user_area_y0 = whole ? 0 : 11;
+                                mrb_int user_area_width  = whole ? new_width  : new_width - 2;
+                                mrb_int user_area_height = whole ? new_height : new_height - 12;
+                                mrb_int user_area_x1 = whole ? new_width  : new_width - 1;
+                                mrb_int user_area_y1 = whole ? new_height : new_height - 1;
 
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x0"), mrb_fixnum_value(user_area_x0));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_y0"), mrb_fixnum_value(user_area_y0));
@@ -674,6 +681,14 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 mrb_funcall(mrb, self, hook, 1, arg);
                             }
 #endif
+                        } else if (strcmp(cmd, "moved") == 0) {
+                            // The kernel dragged the window: the place it
+                            // ended at is in the context. No hook; the
+                            // readers (pos_x / pos_y) say it from here on.
+                            mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@pos_x"),
+                                       mrb_fixnum_value(ctx->window_pos_x));
+                            mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@pos_y"),
+                                       mrb_fixnum_value(ctx->window_pos_y));
                         } else if (strcmp(cmd, "suspend") == 0 || strcmp(cmd, "resume") == 0 ||
                                    strcmp(cmd, "stop") == 0 || strcmp(cmd, "clear_and_stop") == 0 ||
                                    strcmp(cmd, "quit_request") == 0) {
@@ -833,6 +848,8 @@ static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)
     } else {
         mrb_raisef(mrb, E_ARGUMENT_ERROR, "Unknown window parameter: %s", param_name);
     }
+    // The kernel's copy of the window list no longer says where this is.
+    fmrb_app_window_moved();
 
     return self;
 }
@@ -1609,6 +1626,9 @@ static mrb_value mrb_fmrb_app_checkpoint_canvases(mrb_state *mrb, mrb_value self
     mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_width"), mrb_fixnum_value(ctx->window_width));
     mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_height"), mrb_fixnum_value(ctx->window_height));
     mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@_fullscreen"), mrb_bool_value(ctx->fullscreen));
+    // This machine's reading of the image's window_frame (the kernel treats
+    // the window by the same flag).
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@_frameless"), mrb_bool_value(ctx->frameless));
     mrb_iv_remove(mrb, self, mrb_intern_lit(mrb, "@_canvas"));
     mrb_iv_remove(mrb, self, mrb_intern_lit(mrb, "@_bg_canvas"));
     fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;

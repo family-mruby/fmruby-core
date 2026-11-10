@@ -112,6 +112,7 @@ const char *fmrb_spx_app_init(void)
 #endif
     buf[35] = ctx->headless ? 1 : 0;
     buf[50] = ctx->resizable ? 1 : 0;
+    buf[51] = ctx->frameless ? 1 : 0;
     put_u16(buf + 36, ctx->window_width);
     put_u16(buf + 38, ctx->window_height);
     put_u16(buf + 40, ctx->window_pos_x);
@@ -238,6 +239,7 @@ int fmrb_spx_app_set_window_param(int which, int value)
     } else {
         return FMRB_SPX_ERR_RANGE;
     }
+    fmrb_app_window_moved();
     return 0;
 }
 

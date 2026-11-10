@@ -107,6 +107,17 @@ class FmrbApp
   # ```
   def closable: () -> bool
 
+  # 枠なしの Window か (window_frame = "none") <<en>> Whether the window has no frame
+  #
+  # 枠・タイトルバー・閉じるボタンが無く、user area は Window 全体、地は透ける色。
+  # <<en>>
+  # No frame, title bar or close button: the user area is the whole window and
+  # its ground is the colour key (.app.toml window_frame = "none").
+  # ```ruby
+  # top = frameless? ? 0 : user_area_y0
+  # ```
+  def frameless?: () -> bool
+
   # ---- 呼ばれるところ (書きかえて使う) ----
 
   # 始まるときに一度だけ呼ばれる <<en>> Called once as it starts
@@ -411,6 +422,24 @@ class FmrbApp
   # end
   # ```
   def on_quit_request: () -> void
+
+  # 枠なしの Window を右クリックしたとき <<en>> Right click on a frameless window
+  #
+  # 枠なしの Window を閉じる口。既定は on_quit_request (そのまま閉じる)。
+  # 右ボタンを自分で使うアプリは空で書き換える。クリックは on_event にも届く。
+  # ```ruby
+  # def on_frameless_right_click(ev)
+  # end
+  # ```
+  # <<en>>
+  # The pointer's way to close a frameless window. The default calls
+  # on_quit_request (which closes). An app that uses the right button
+  # overrides it with an empty method; the click reaches on_event either way.
+  # ```ruby
+  # def on_frameless_right_click(ev)
+  # end
+  # ```
+  def on_frameless_right_click: (Hash ev) -> void
 
   # ---- 動かす ----
 

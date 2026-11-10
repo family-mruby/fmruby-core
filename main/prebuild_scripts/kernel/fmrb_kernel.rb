@@ -107,11 +107,18 @@ class FmrbKernelImpl < FmrbKernel
 
     # Mouse capture state (for drag and resize only)
     @capture_pid = nil     # Window that captured mouse
-    @capture_mode = nil    # :drag, :resize, or nil
+    @capture_mode = nil    # :drag, :resize, :press, :grab, or nil
 
-    # Drag state (only valid when @capture_mode == :drag)
+    # Drag state (only valid when @capture_mode == :drag, or :press / :grab
+    # for an anywhere-drag: the press held back, then the drag)
     @drag_offset_x = 0
     @drag_offset_y = 0
+    @drag_moved = false
+    # Anywhere-drag: where the held press went down, and the press itself
+    # (sent to the app at mouse_up if the press turns out to be a click)
+    @press_x = 0
+    @press_y = 0
+    @press_data = ""
 
     # Resize state (only valid when @capture_mode == :resize)
     @resize_start_width = 0
@@ -121,6 +128,8 @@ class FmrbKernelImpl < FmrbKernel
 
     # Window list optimization
     @window_list_dirty = true
+    # fmrb_app_window_list_gen when the list was read (-1: never)
+    @window_list_gen = -1
 
     # Desktop overlay state (dropdown menu)
     @desktop_overlay_active = false

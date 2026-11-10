@@ -54,6 +54,11 @@ class FmrbApp
   # Whether the kernel resizes this window from its bottom-right corner (the
   # app's .app.toml resizable, or a built-in's); the frame shows the mark.
   def resizable?; @_resizable; end
+  # Whether the window has no frame (the app's .app.toml window_frame =
+  # "none", doc/frameless_window/): no title bar, border or close button, the
+  # user area is the whole window and its ground is the colour key, so only
+  # what the app draws is seen.
+  def frameless?; @_frameless; end
   # Pixels an app keeps free at the right and bottom of its user area when it
   # draws into the bottom-right corner (a status line, a scrollbar): the
   # resize mark and the rest of the kernel's resize grab (the window's last
@@ -111,7 +116,13 @@ class FmrbApp
 
       _apply_user_area_sprite_clip
 
-      unless @_fullscreen
+      if @_fullscreen
+        # nothing to frame
+      elsif @_frameless
+        # The ground is the key: nothing shows until the app draws.
+        @gfx.clear(TRANSPARENT_COLOR)
+        _apply_rounded_corner_regions
+      else
         _build_frame_block
         _apply_rounded_corner_regions
       end
@@ -129,6 +140,12 @@ class FmrbApp
   # re-apply the font after every frame call.
   def draw_window_frame
     return if @_fullscreen
+    # A frameless window has nothing to draw; only its whole-window region is
+    # kept (cached, a no-op unless the size changed).
+    if @_frameless
+      _apply_rounded_corner_regions
+      return
+    end
     # An app spawned fullscreen never built the frame block (nothing to frame),
     # so build it on the first draw after it becomes a window at runtime -- F11
     # on an editor started with `edit -f` used to leave it with no title bar,
@@ -331,7 +348,8 @@ class FmrbApp
   # corners, so a wipe without a frame redraw squares them off (both players
   # did exactly that), and any widget standing in the wiped area is now gone
   # from the screen while FmrbUI still believes it is drawn.
-  def clear_user_area(color = FmrbConst::THEME_WINDOW_BG)
+  #   A frameless window's default is the colour key, its ground.
+  def clear_user_area(color = (@_frameless ? TRANSPARENT_COLOR : FmrbConst::THEME_WINDOW_BG))
     return unless @gfx
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
                    @user_area_width, @user_area_height, color)
@@ -445,7 +463,7 @@ class FmrbApp
   def _apply_rounded_corner_regions
     return if @_fullscreen
     return unless @gfx
-    return unless @_rounded_corners
+    return unless @_rounded_corners || @_frameless
     # Apps that own a bg_canvas (system_desktop) manage their own composite
     # regions and toggle them on/off around the boot animation, so don't
     # clobber them with the generic rounded-corner layout.
@@ -453,6 +471,16 @@ class FmrbApp
     w = @window_width
     h = @window_height
     return if @_composite_region_w == w && @_composite_region_h == h
+    if @_frameless
+      # No frame: the whole window is one colour-keyed region, so whatever
+      # the app leaves in the key shows what is behind it.
+      @gfx.set_composite_regions([
+        { dst_x: 0, dst_y: 0, w: w, h: h, transparent: true }
+      ])
+      @_composite_region_w = w
+      @_composite_region_h = h
+      return
+    end
     c = CORNER_R
     @gfx.set_composite_regions([
       # 4 corner squares: per-pixel transparent compare so the rounded
@@ -650,7 +678,10 @@ class FmrbApp
           uis[i]._checkpoint_ground
           i += 1
         end
-        _build_frame_block unless @_fullscreen
+        # A frameless window gets no frame here either: clear_user_area
+        # below grounds it in the key and the region is the whole window,
+        # so it arrives see-through without the app doing anything.
+        _build_frame_block unless @_fullscreen || @_frameless
         @_composite_region_w = nil
         @_composite_region_h = nil
         _apply_user_area_sprite_clip
@@ -674,10 +705,10 @@ class FmrbApp
   end
 
   # The user area of a window of @window_width x @window_height (the split
-  # initialize and app.c's resize make): a fullscreen window owns it all, a
-  # framed one loses the border and the title bar.
+  # initialize and app.c's resize make): a fullscreen or frameless window
+  # owns it all, a framed one loses the border and the title bar.
   def _layout_user_area
-    if @_fullscreen
+    if @_fullscreen || @_frameless
       @user_area_x0 = 0
       @user_area_y0 = 0
       @user_area_x1 = @window_width
@@ -705,6 +736,14 @@ class FmrbApp
   # _dispatch_event), so overriding on_event without super can no longer
   # lose the close button.
   def _frame_event(ev)
+    # A frameless window has no close button and no title bar. Its way to
+    # close by pointer is a right click anywhere (on_frameless_right_click).
+    if @_frameless
+      if ev[:type] == :mouse_up && ev[:button] == 3 && !@_fullscreen
+        on_frameless_right_click(ev)
+      end
+      return
+    end
     # Handle close button press feedback + click
     if @_closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
@@ -761,6 +800,15 @@ class FmrbApp
   def on_event(ev)
     # App hook, overridden freely. The base needs nothing here, so the
     # super(ev) calls existing apps still make are harmless no-ops.
+  end
+
+  # A right click (its release) on a frameless window: the pointer's way to
+  # close a window that has no close button. The default asks the way Ctrl+Q
+  # does (on_quit_request, which closes unless the app overrides it). An app
+  # that uses the right button itself overrides this (an empty method keeps
+  # the window open); the click still reaches on_event either way.
+  def on_frameless_right_click(ev)
+    on_quit_request
   end
 
   def on_resize(new_width, new_height)

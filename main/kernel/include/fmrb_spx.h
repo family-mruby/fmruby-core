@@ -44,8 +44,8 @@ extern "C" {
  *   off  size  field
  *   0    1     pid
  *   1    1     z_order
- *   2    1     flags   bit0=fullscreen, bit1=resizable
- *   3    1     (reserved, 0)
+ *   2    1     flags   bit0=fullscreen, bit1=resizable, bit2=frameless
+ *   3    1     drag    (FMRB_WINDOW_DRAG_*: 0 title, 1 anywhere, 2 none)
  *   4    2     x            (u16 LE)
  *   6    2     y            (u16 LE)
  *   8    2     width        (u16 LE)
@@ -57,6 +57,7 @@ extern "C" {
 #define FMRB_SPX_WIN_RECORD_SIZE 48
 #define FMRB_SPX_WIN_FLAG_FULLSCREEN 0x01
 #define FMRB_SPX_WIN_FLAG_RESIZABLE  0x02
+#define FMRB_SPX_WIN_FLAG_FRAMELESS  0x04
 
 /** @brief Monotonic milliseconds since boot (replaces Machine.board_millis). */
 uint32_t fmrb_spx_board_millis(void);
@@ -104,6 +105,9 @@ int fmrb_spx_try_send_raw(int dst_pid, int type, const uint8_t *data, int len);
  * @return pointer to N * FMRB_SPX_WIN_RECORD_SIZE bytes (length in sp_ffi_bin_len).
  */
 const char *fmrb_spx_windows_snapshot(void);
+
+/** @brief fmrb_app_window_list_gen, folded to a non-negative int. */
+int fmrb_spx_window_list_gen(void);
 
 int fmrb_spx_set_hid_target(int pid);        /**< 0 ok, negative error */
 int fmrb_spx_set_focused_window(int win_id); /**< 0 ok, negative error */

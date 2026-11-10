@@ -1103,6 +1103,9 @@ class FmrbApp
   # Whether the kernel resizes this window from its bottom-right corner; the
   # frame shows the mark. Same as the mruby base.
   def resizable?; @_resizable; end
+  # Whether the window has no frame (window_frame = "none"). Same as the
+  # mruby base.
+  def frameless?; @_frameless; end
   # What an app keeps free in the bottom-right corner of its user area so the
   # resize mark shows and no control sits under the kernel's resize grab.
   # Same as the mruby base.
@@ -1140,6 +1143,7 @@ class FmrbApp
     @_fullscreen = buf.getbyte(32) != 0
     @_rounded_corners = buf.getbyte(33) != 0
     @_resizable = buf.getbyte(50) != 0
+    @_frameless = buf.getbyte(51) != 0
     @platform = buf.getbyte(34) == 1 ? :esp32 : :linux
     @window_width = SpxBytes.u16(buf, 36)
     @window_height = SpxBytes.u16(buf, 38)
@@ -1151,7 +1155,8 @@ class FmrbApp
 
     if @_canvas
       @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
-      if @_fullscreen
+      # A frameless window owns the whole canvas, as a fullscreen one does.
+      if @_fullscreen || @_frameless
         @user_area_x0 = 0
         @user_area_y0 = 0
         @user_area_x1 = @window_width
@@ -1175,7 +1180,13 @@ class FmrbApp
 
       _apply_user_area_sprite_clip
 
-      unless @_fullscreen
+      if @_fullscreen
+        # nothing to frame
+      elsif @_frameless
+        # The ground is the key: nothing shows until the app draws.
+        @gfx.clear(TRANSPARENT_COLOR)
+        _apply_rounded_corner_regions
+      else
         draw_window_frame
       end
     else
@@ -1188,6 +1199,11 @@ class FmrbApp
   def draw_window_frame
     return if @_fullscreen
     return unless @gfx
+    # Nothing to draw without a frame; only the whole-window region is kept.
+    if @_frameless
+      _apply_rounded_corner_regions
+      return
+    end
     saved_font = @gfx.current_font
     saved_size = @gfx.current_text_size
     @gfx.set_font(:default)
@@ -1416,7 +1432,8 @@ class FmrbApp
   # and the attached widgets back. The wipe reaches the rounded corners'
   # outline and the transparent key pixels, and any widget in the wiped area
   # is gone from the screen while FmrbUI still believes it is drawn.
-  def clear_user_area(color = FmrbConst::THEME_WINDOW_BG)
+  # A frameless window's default is the colour key, its ground.
+  def clear_user_area(color = (@_frameless ? TRANSPARENT_COLOR : FmrbConst::THEME_WINDOW_BG))
     return unless @gfx
     @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, color)
     # @_bg_canvas is the desktop, which has no frame -- letting it through
@@ -1517,11 +1534,21 @@ class FmrbApp
   def _apply_rounded_corner_regions
     return if @_fullscreen
     return unless @gfx
-    return unless @_rounded_corners
+    return unless @_rounded_corners || @_frameless
     return if @_bg_canvas
     w = @window_width
     h = @window_height
     return if @_composite_region_w == w && @_composite_region_h == h
+    if @_frameless
+      # No frame: the whole window is one colour-keyed region (same as the
+      # mruby base).
+      @gfx.set_composite_regions([
+        { dst_x: 0, dst_y: 0, w: w, h: h, transparent: true }
+      ])
+      @_composite_region_w = w
+      @_composite_region_h = h
+      return
+    end
     c = CORNER_R
     @gfx.set_composite_regions([
       { dst_x: 0,     dst_y: 0,     w: c,         h: c,         transparent: true  },
@@ -1581,6 +1608,14 @@ class FmrbApp
   # The frame's own event handling; see the mruby base for the rationale.
   # This file is a separate implementation, so the same split exists twice.
   def _frame_event(ev)
+    # Frameless: no close button, no title bar; a right click is the
+    # pointer's way to close (same as the mruby base).
+    if @_frameless
+      if ev[:type] == :mouse_up && ev[:button] == 3 && !@_fullscreen
+        on_frameless_right_click(ev)
+      end
+      return
+    end
     if @_closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
@@ -1628,6 +1663,12 @@ class FmrbApp
 
   def on_event(ev)
     # App hook, overridden freely; super(ev) from existing apps is a no-op.
+  end
+
+  # A right click on a frameless window. Same as the mruby base: asks the way
+  # Ctrl+Q does; an app using the right button overrides it.
+  def on_frameless_right_click(ev)
+    on_quit_request
   end
 
   def request_reload
@@ -1763,7 +1804,7 @@ class FmrbApp
         @_fullscreen = (fs == true) unless fs.nil?
         @window_width = w
         @window_height = ht
-        if @_fullscreen
+        if @_fullscreen || @_frameless
           @user_area_x0 = 0
           @user_area_y0 = 0
           @user_area_width = w
@@ -1783,6 +1824,13 @@ class FmrbApp
         _apply_user_area_sprite_clip
         on_resize(w, ht)
       end
+    elsif cmd == "moved"
+      # The kernel dragged the window; where it ended (no hook). Same as the
+      # mruby base, which reads it from the context.
+      mx = h["x"]
+      my = h["y"]
+      @pos_x = mx if mx.is_a?(Integer)
+      @pos_y = my if my.is_a?(Integer)
     elsif cmd == "quit_request"
       _handle_system_control(h)
     elsif cmd == "suspend" || cmd == "resume" || cmd == "stop" || cmd == "clear_and_stop"
@@ -2014,6 +2062,12 @@ class FmrbApp
   def _set_window_param(param, value)
     which = param == :pos_y ? 1 : 0
     FmrbSpxApp.fmrb_spx_app_set_window_param(which, value)
+    # The readers follow, as the mruby binding sets them.
+    if which == 1
+      @pos_y = value
+    else
+      @pos_x = value
+    end
     self
   end
 

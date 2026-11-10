@@ -130,6 +130,8 @@ class FmrbKernel
         z_order: buf.getbyte(base + 1),
         fullscreen: (flags & 0x01) != 0,
         resizable: (flags & 0x02) != 0,
+        frameless: (flags & 0x04) != 0,
+        drag: buf.getbyte(base + 3),
         x: SpxBytes.u16(buf, base + 4),
         y: SpxBytes.u16(buf, base + 6),
         width: SpxBytes.u16(buf, base + 8),
@@ -148,6 +150,8 @@ class FmrbKernel
   def _set_focused_window(win_id);    FmrbSpx.fmrb_spx_set_focused_window(win_id) == 0; end
   def _bring_to_front(pid);           FmrbSpx.fmrb_spx_bring_to_front(pid) == 1; end
   def _update_window_position(pid, x, y); FmrbSpx.fmrb_spx_update_window_pos(pid, x, y) == 1; end
+  # Changes whenever a window's place changes, an app's own move included.
+  def _window_list_gen;               FmrbSpx.fmrb_spx_window_list_gen; end
   def _update_window_size(pid, w, h);     FmrbSpx.fmrb_spx_update_window_size(pid, w, h) == 1; end
   # Runtime window <-> fullscreen switch. Spinel has no bool FFI arg, so the flag
   # crosses as an int.

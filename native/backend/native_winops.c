@@ -177,8 +177,8 @@ winops_layout_t native_winops_layout(int pid)
 }
 
 /* The window whose title is at (x, y): the topmost running window there,
- * as the window manager finds it (the desktop and fullscreen apps have no
- * title). -1 when the point is on none. */
+ * as the window manager finds it (the desktop, fullscreen apps and frameless
+ * windows have no title). -1 when the point is on none. */
 static int title_at(int x, int y)
 {
     if (y < WINOPS_MENU_BAR_H) return -1;
@@ -192,7 +192,8 @@ static int title_at(int x, int y)
         if (x < w->x || y < w->y || x >= w->x + w->width || y >= w->y + w->height) continue;
         if (top == NULL || w->z_order > top->z_order) top = w;
     }
-    if (top == NULL || top->fullscreen || !top->resizable) return -1;
+    /* A frameless window (window_frame = "none") has no title. */
+    if (top == NULL || top->fullscreen || !top->resizable || top->frameless) return -1;
     return winops_on_title(x - top->x, y - top->y, top->width) ? top->pid : -1;
 }
 

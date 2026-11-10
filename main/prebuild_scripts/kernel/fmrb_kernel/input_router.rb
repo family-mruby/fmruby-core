@@ -16,6 +16,17 @@ module InputRouterMixin
   # outline and leaves plenty of headroom for the desktop.
   RESIZE_PREVIEW_MIN_INTERVAL_MS = 100
 
+  # window_drag = "anywhere" (doc/frameless_window/): a left press is held
+  # back from the app until the pointer has moved more than this many pixels
+  # from where it went down (then the kernel drags the window) or the button
+  # comes up first (then the press and the release reach the app: a click).
+  # Compared as a squared distance.
+  DRAG_HOLD_PX = 4
+
+  # window_drag values in the window list (FMRB_WINDOW_DRAG_* in fmrb_app.h).
+  WINDOW_DRAG_TITLE = 0
+  WINDOW_DRAG_ANYWHERE = 1
+
   def handle_hid_event(msg)
     data_binary = msg[:data]
     src_pid = msg[:src_pid]
@@ -118,6 +129,13 @@ module InputRouterMixin
         # screen. Both the resize handle and the title-bar test are skipped.
         in_fullscreen = (@fullscreen_pid == target_pid)
 
+        # How the window may be dragged (window_drag) and whether its top rows
+        # are a title bar at all (window_frame = "none" says they are not).
+        drag_mode = target_window[:drag] || WINDOW_DRAG_TITLE
+        frameless = target_window[:frameless] == true
+        # The press goes to the app now, unless an anywhere-drag holds it.
+        hold_press = false
+
         # Check for resize handle (bottom-right 10x10 area) first
         # Only for resizable windows
         if !in_fullscreen && target_window[:resizable] &&
@@ -146,13 +164,29 @@ module InputRouterMixin
                               win_x, win_y, win_width, win_height)
           Log.info("Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})")
         # Check if click is in menu bar region (not resizing and not close button)
-        elsif !in_fullscreen && target_name != "system_desktop" && target_name != "system_overlay" && relative_y < 11 && relative_x < win_width - 10
+        elsif !in_fullscreen && !frameless && drag_mode == WINDOW_DRAG_TITLE &&
+              target_name != "system_desktop" && target_name != "system_overlay" && relative_y < 11 && relative_x < win_width - 10
           # Start drag and capture mouse (excluding close button area on the right)
           @capture_mode = :drag
           @capture_pid = target_pid
           @drag_offset_x = x - win_x
           @drag_offset_y = y - win_y
+          @drag_moved = false
           Log.info("Start drag: PID #{target_pid}, offset=(#{@drag_offset_x},#{@drag_offset_y})")
+        elsif !in_fullscreen && drag_mode == WINDOW_DRAG_ANYWHERE && button == 1 &&
+              target_name != "system_desktop" && target_name != "system_overlay"
+          # Anywhere-drag: hold the press. The window is captured from here,
+          # so the moves and the release come back to this window whatever is
+          # under the pointer; mouse_move turns the hold into a drag, mouse_up
+          # into a click.
+          @capture_mode = :press
+          @capture_pid = target_pid
+          @drag_offset_x = x - win_x
+          @drag_offset_y = y - win_y
+          @drag_moved = false
+          @press_x = x
+          @press_y = y
+          hold_press = true
         end
 
         # Create new binary message with relative coordinates
@@ -168,11 +202,27 @@ module InputRouterMixin
         relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
         relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
 
-        # Forward event with relative coordinates to the clicked window
-        order_pending_move_before(target_pid)
-        _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+        if hold_press
+          # Kept for mouse_up, which sends it ahead of the release if the
+          # press turns out to be a click.
+          @press_data = relative_data
+        else
+          # Forward event with relative coordinates to the clicked window
+          order_pending_move_before(target_pid)
+          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+        end
 
       when 3  # Mouse move
+        # A held press becomes a drag once the pointer has gone far enough.
+        if @capture_mode == :press && @capture_pid
+          dx = x - @press_x
+          dy = y - @press_y
+          if dx * dx + dy * dy > DRAG_HOLD_PX * DRAG_HOLD_PX
+            @capture_mode = :grab
+            Log.info("Start drag (anywhere): PID #{@capture_pid}, offset=(#{@drag_offset_x},#{@drag_offset_y})")
+          end
+        end
+
         # Handle drag/resize operations based on @capture_mode
         if @capture_mode == :resize && @capture_pid
           # Calculate new window size with constraints
@@ -194,7 +244,7 @@ module InputRouterMixin
                               @resize_preview_win_x, @resize_preview_win_y,
                               new_width, new_height)
 
-        elsif @capture_mode == :drag && @capture_pid
+        elsif (@capture_mode == :drag || @capture_mode == :grab) && @capture_pid
           # Calculate new window position
           new_x = x - @drag_offset_x
           new_y = y - @drag_offset_y
@@ -211,6 +261,7 @@ module InputRouterMixin
           # Update window position
           if _update_window_position(@capture_pid, new_x, new_y)
             mark_window_list_dirty  # Position changed
+            @drag_moved = true
           else
             Log.info("Failed to update window position")
             # Release capture on error
@@ -226,13 +277,21 @@ module InputRouterMixin
         #   queue, blocking the router for 100 ms per send and making the
         #   outline visibly lag behind the cursor.
         # - Drag: forward to @capture_pid so the app sees the cursor leaving.
+        # - Anywhere-drag, held or dragging: not forwarded. The app has not
+        #   been told of the press, so moves would read as hovering.
         # - Otherwise: forward to @hid_target_pid (focused window).
-        target_pid = if @capture_mode == :resize
+        target_pid = if @capture_mode == :resize || @capture_mode == :press || @capture_mode == :grab
                        nil
                      else
                        @capture_pid || @hid_target_pid
                      end
         if target_pid
+          # The relative position is taken from the kernel's copy of the
+          # window list, which an app that moves itself (set_window_position)
+          # leaves out of date: refresh it when any window has moved. Not
+          # during a title drag, which moves the window itself on every move
+          # and has always used the copy as it stands.
+          update_window_list(false) unless @capture_mode == :drag
           # Convert to window-relative coordinates
           target_window = find_window_by_pid(target_pid)
           if target_window
@@ -291,8 +350,15 @@ module InputRouterMixin
         end
 
       when 5  # Mouse button up
+        # Another button let go while an anywhere-drag holds the left one:
+        # pass it on and keep the hold (the left release settles it).
+        held = @capture_mode == :press || @capture_mode == :grab
+        other_button = held && button != 1
         # Forward to captured window or mouse_down window
         target_pid = @capture_pid || @mouse_down_pid
+        # An anywhere-drag took the press from the app: nothing to tell it.
+        target_pid = nil if @capture_mode == :grab && !other_button
+        update_window_list(false) if target_pid
         if target_pid
           # Convert to window-relative coordinates
           target_window = find_window_by_pid(target_pid)
@@ -311,6 +377,12 @@ module InputRouterMixin
             relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
             relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
 
+            # A held press that never became a drag is a click: the app gets
+            # the press it was not given at mouse_down, then the release.
+            if @capture_mode == :press && !other_button
+              order_pending_move_before(target_pid)
+              _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, @press_data)
+            end
             order_pending_move_before(target_pid)
             _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
 
@@ -319,6 +391,7 @@ module InputRouterMixin
             # loop poll) and let the task wrapper run its cleanup. Ruby apps
             # still self-close via their own on_event handler.
             if button == 1 && relative_y < 11 && relative_x >= win_width - 10 &&
+               target_window[:frameless] != true &&
                target_name != "system_desktop" && target_name != "system_overlay"
               info = _get_app_info(target_pid)
               if info && info[:vm_type] != :mruby
@@ -329,6 +402,9 @@ module InputRouterMixin
             end
           end
         end
+
+        # A release of another button during an anywhere-drag leaves it held.
+        return if other_button
 
         # Release capture and reset state based on @capture_mode
         if @capture_mode == :resize
@@ -354,11 +430,14 @@ module InputRouterMixin
           @resize_preview_win_y = 0
           @resize_preview_w = 0
           @resize_preview_h = 0
-        elsif @capture_mode == :drag
+        elsif @capture_mode == :drag || @capture_mode == :grab
           Log.info("End drag: PID #{@capture_pid}")
+          notify_moved(@capture_pid) if @drag_moved && @capture_pid
           @drag_offset_x = 0
           @drag_offset_y = 0
         end
+        @press_data = ""
+        @drag_moved = false
 
         # Clear all mouse button state
         @capture_pid = nil
@@ -440,6 +519,23 @@ module InputRouterMixin
     return unless @pending_move_pid == pid
     _try_send_raw_message(@pending_move_pid, FmrbConst::MSG_TYPE_HID_EVENT, @pending_move_data)
     @pending_move_pid = nil
+  end
+
+  # Tell an app the kernel has moved its window (end of a drag), so its
+  # pos_x / pos_y say where it is. The base handles it without a hook; only
+  # the Ruby runtimes have that base, so the others are not sent it.
+  def notify_moved(pid)
+    info = _get_app_info(pid)
+    return unless info
+    vm = info[:vm_type]
+    return unless vm == :mruby || vm == :native
+    update_window_list(false)
+    win = find_window_by_pid(pid)
+    return unless win
+    data = MessagePack.pack({ "cmd" => "moved", "x" => win[:x], "y" => win[:y] })
+    _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+  rescue => e
+    Log.error("notify_moved failed: #{e.class}: #{e.message}")
   end
 
   def send_resize_preview(cmd, x, y, w, h)

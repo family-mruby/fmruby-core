@@ -120,8 +120,9 @@ const char *fmrb_spx_windows_snapshot(void)
         r[0] = w->pid;
         r[1] = w->z_order;
         r[2] = (uint8_t)((w->fullscreen ? FMRB_SPX_WIN_FLAG_FULLSCREEN : 0) |
-                         (w->resizable ? FMRB_SPX_WIN_FLAG_RESIZABLE : 0));
-        r[3] = 0;
+                         (w->resizable ? FMRB_SPX_WIN_FLAG_RESIZABLE : 0) |
+                         (w->frameless ? FMRB_SPX_WIN_FLAG_FRAMELESS : 0));
+        r[3] = w->drag;
         r[4] = (uint8_t)(w->x & 0xFF);          r[5] = (uint8_t)(w->x >> 8);
         r[6] = (uint8_t)(w->y & 0xFF);          r[7] = (uint8_t)(w->y >> 8);
         r[8] = (uint8_t)(w->width & 0xFF);      r[9] = (uint8_t)(w->width >> 8);
@@ -133,6 +134,11 @@ const char *fmrb_spx_windows_snapshot(void)
     }
     *sp_ctx_ffi_bin_len() = (int)(count * FMRB_SPX_WIN_RECORD_SIZE);
     return (const char *)buf;
+}
+
+int fmrb_spx_window_list_gen(void)
+{
+    return (int)(fmrb_app_window_list_gen() & 0x3FFFFFFFu);
 }
 
 int fmrb_spx_set_hid_target(int pid)

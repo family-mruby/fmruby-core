@@ -6,10 +6,14 @@ $menu_bar_height = 13
 module WindowManagerMixin
 
   def update_window_list(show_log = false)
-    # Only update if dirty flag is set
-    if @window_list_dirty
+    # Only update if dirty flag is set, or a window moved without the kernel
+    # (an app's set_window_position): the place changes bump a number in C.
+    # It is read before the list, so a move during the read shows next time.
+    gen = _window_list_gen
+    if @window_list_dirty || gen != @window_list_gen
       @window_list = _get_window_list
       @window_list_dirty = false
+      @window_list_gen = gen
     end
 
     if show_log

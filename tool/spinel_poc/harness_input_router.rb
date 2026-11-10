@@ -103,6 +103,11 @@ class TestKernel
     @resize_preview_w = 0
     @resize_preview_h = 0
     @resize_preview_last_send_ms = 0
+    @window_list_gen = -1
+    @drag_moved = false
+    @press_x = 0
+    @press_y = 0
+    @press_data = ""
   end
 
   # Window fixtures. Symbol keys, matching what the C _get_window_list returns.
@@ -119,6 +124,9 @@ class TestKernel
         resizable: false, min_width: 0, min_height: 0, vm_type: :basic },
     ]
   end
+
+  # No window ever moves behind the kernel's back here.
+  def _window_list_gen; 0; end
 
   # Stubbed C bindings: print the call (event order), return a deterministic result.
   def _set_hid_target(pid);   puts "  > set_hid_target #{pid}" if $trace; true; end

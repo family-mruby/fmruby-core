@@ -743,6 +743,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int min_window_width = 0;
     int min_window_height = 0;
     bool rounded_corners = true;
+    bool frameless = false;
+    int window_drag = -1;  // -1: the default for the frame (resolved below)
     bool fullscreen_switchable = false;
     uint8_t fullscreen_hires = 0;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
@@ -863,6 +865,37 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // which is faster but disables the rounded corner / shaped window look.
         rounded_corners = (bool)fmrb_toml_get_int(config, "rounded_corners", 1);
 
+        // Parse window_frame / window_drag (doc/frameless_window/).
+        // window_frame = "none" leaves the window without a frame, title bar
+        // or close button; anything else (default "normal") keeps them.
+        // window_drag = "title" | "anywhere" | "none"; the default follows
+        // the frame: a framed window is dragged by its title bar, a
+        // frameless one from anywhere.
+        const char* frame_str = fmrb_toml_get_string(config, "window_frame", NULL);
+        if (frame_str) {
+            if (strcmp(frame_str, "none") == 0) {
+                frameless = true;
+            } else if (strcmp(frame_str, "normal") != 0) {
+                FMRB_LOGW(TAG, "window_frame \"%s\" is not \"normal\" or \"none\"; using \"normal\"",
+                          frame_str);
+            }
+            fmrb_sys_free((void*)frame_str);
+        }
+        const char* drag_str = fmrb_toml_get_string(config, "window_drag", NULL);
+        if (drag_str) {
+            if (strcmp(drag_str, "title") == 0) {
+                window_drag = FMRB_WINDOW_DRAG_TITLE;
+            } else if (strcmp(drag_str, "anywhere") == 0) {
+                window_drag = FMRB_WINDOW_DRAG_ANYWHERE;
+            } else if (strcmp(drag_str, "none") == 0) {
+                window_drag = FMRB_WINDOW_DRAG_NONE;
+            } else {
+                FMRB_LOGW(TAG, "window_drag \"%s\" is not \"title\", \"anywhere\" or \"none\"; "
+                               "using the default", drag_str);
+            }
+            fmrb_sys_free((void*)drag_str);
+        }
+
         // Parse fullscreen_switchable: the app declares its on_suspend hides
         // the canvas and on_resume redraws, so the kernel may park it on
         // Ctrl+Tab and bring it back later instead of refusing to leave.
@@ -977,7 +1010,10 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .window_pos_y = window_pos_y,
         .min_window_width  = (uint16_t)min_window_width,
         .min_window_height = (uint16_t)min_window_height,
-        .rounded_corners = rounded_corners
+        .rounded_corners = rounded_corners,
+        .frameless = frameless,
+        .window_drag = (uint8_t)(window_drag >= 0 ? window_drag
+                                 : (frameless ? FMRB_WINDOW_DRAG_ANYWHERE : FMRB_WINDOW_DRAG_TITLE)),
     };
 
     // Spawn the app
