@@ -1,0 +1,14 @@
+app_handle_name = "avatar"
+app_screen_name = "Avatar"
+app_screen_name_ja = "アバター"
+default_window_mode = "window"
+default_window_width = 120
+default_window_height = 86
+default_window_pos_x = 190
+default_window_pos_y = 120
+launcher_visible = true
+# No frame, title bar or close button; the ground is see-through and the
+# kernel moves it from anywhere (doc/frameless_window). Right click closes.
+window_frame = "none"
+# Can be moved, running, to another machine with `amove` (doc/checkpoint)
+movable = true

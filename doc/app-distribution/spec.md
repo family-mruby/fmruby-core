@@ -147,6 +147,7 @@ window_frame = "none"      # 枠・タイトルバー・閉じるボタンを描
 - 閉じ方: Ctrl+Q (焦点のあるとき)・Shell の `kill`、それに右クリック (離したとき) で `on_frameless_right_click(ev)` が呼ばれ、既定は `on_quit_request` (既定は閉じる)。右ボタンを自分で使うアプリは `on_frameless_right_click` を空で上書きする (右クリックは `on_event` にも届く)。
 - 透けている所 (canvas が透ける色のままの画素) を押すと、押下は後ろの Window (無ければデスクトップ) に届き、焦点と前面化もそちらへ移る。そこから始めたドラッグも後ろの Window のもの。カーネルは押した 1 画素を描画側に問う (押下 1 回につき 1 往復、Modern で約 10 ms。doc/frameless_window/report/w3.md)。判定は canvas の画素だけを見るので、`SpriteInstance` で描いた絵は当たりにならない (その下の canvas が透けていれば後ろへ抜ける)。絵を sprite で出すアプリは、当たってほしい所の canvas に透ける色以外を塗る。
 - 枠つきのアプリに `window_drag` を書くこともできる (`"anywhere"` ならタイトルバー以外でも掴める、`"none"` ならタイトルバーでも動かない)。
+- 見本: `flash/app/demo/avatar.app.rb` (枠なし・movable のアバター。絵は文字列でアプリの中に持ち、変わった行だけ描き直す。`on_restore` で訪れた端末を足して描き直す)。
 
 ## 4. 置き場所
 
