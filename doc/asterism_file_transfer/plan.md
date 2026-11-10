@@ -1,6 +1,6 @@
 # Asterism でファイルを運ぶ汎用の仕組み (再送つき)
 
-> 状態: 進行中 | 更新: 2026-11-10 | T7 済、T8 (ブラウザの名乗りをルータで確かめる) 実装中。T7 (receive.toml の enabled、アプリ「受け取り」、Shell の areceive) (report/t7.md、console は Unreleased)。 T0〜T5 済 (report/t0〜t5.md、gem 0.12.0・console 0.3.14)、T6 (受け相手を console で管理) は実装済・検収待ち (report/t6.md、console 0.3.16 の Unreleased。console からの写しは今は ESP32 の端末だけに届く: ネイティブ版と sim に TLS が無い)。残りは ESP32 の実機の確認。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
+> 状態: 進行中 | 更新: 2026-11-10 | T7 済、T8 (ブラウザの名乗りをルータで確かめる) 済・未公開。T7 (receive.toml の enabled、アプリ「受け取り」、Shell の areceive) (report/t7.md、console は Unreleased)。 T0〜T5 済 (report/t0〜t5.md、gem 0.12.0・console 0.3.14)、T6 (受け相手を console で管理) は実装済・検収待ち (report/t6.md、console 0.3.16 の Unreleased。console からの写しは今は ESP32 の端末だけに届く: ネイティブ版と sim に TLS が無い)。残りは ESP32 の実機の確認。仕組みは asterism gem の data/transfer、ネイティブ版どうしの試験 `rake regress:transfer`、要点の試験 `rake regress:transfer:quick` (regress:full)、ESP32 は手順だけ)。 checkpoint の F5 で作った転送のアプリ (片に分けて運ぶ受け口) を、どんなファイルでも運べ、片の取りこぼし・重なり・接続の切れ目から続きを送り直せる汎用の仕組みに仕上げる。段は T0〜T5。仕組みは asterism gem の共通の部品に、再開は接続の切れ目まで、照合は全体の SHA-256、protocol 2 より先 (2026-11-06 決定)。未確定事項は 2026-11-08 に決定 (受け手の空き・相手 1 つ・/home/inbox/、同じ名前は送り手が上書きか名前を変えるかを選ぶ)
 
 ## 目的
 
@@ -47,7 +47,7 @@
 | T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | checkpoint は実装済・検収待ち (report/t5.md。ESP32 は手順だけ)。`.app.wasm` は wasm のアプリの対応のとき |
 | T6 | 受け相手を console で管理: Members の行で種類ごとに選び、ACL の行を作り、bridge が端末へ配り (`policy_set`)、端末は receive.toml の印の下に書いて手書きとの和で判断。証明書つきの接続のときだけ受ける | 実装済・検収待ち (report/t6.md。写しが届くのは ESP32 の端末だけ、親に決めてほしいこと) |
 | T7 | 受け取りの有効・無効と、端末の画面での編集: 配布の既定 `/etc/asterism/receive.toml` (`enabled = false`) と利用者の `/home/asterism/receive.toml`、`enabled` で転送のアプリを起こすかを決める、受け取りを編集するアプリと Shell の `areceive` | 実装済・検収済 (report/t7.md。アプリ `/app/tool/receiving.app.rb`、無効にしたら途中の 1 本は置いてから終わる。ESP32 は未) |
-| T8 | ブラウザの名乗りをルータで確かめ、クラウドでブラウザも転送に加える: door が利用者ごとの証明書で zenohd の `tls/` につなぐ (部屋の席と同じ形)、ACL で `wasm-<handle>` を 1 人の相手に、T6 の受け手の一覧にブラウザの利用者も | 実装中 (instruction_t8.md) |
+| T8 | ブラウザの名乗りをルータで確かめ、クラウドでブラウザも転送に加える: door が利用者ごとの証明書で zenohd の `tls/` につなぐ (部屋の席と同じ形)、ACL で `wasm-<handle>` を 1 人の相手に、T6 の受け手の一覧にブラウザの利用者も | 実装済・検収済 (report/t8.md、console 2e443e5 は Unreleased。ブラウザ版の FmrbTransfer の送りで msgpack の integer overflow が残件) |
 
 ## 受け入れ条件
 
