@@ -154,43 +154,64 @@ module MessagePack
     end
   end
 
-  # float64 (0xcb) assembled byte-by-byte to stay within a 63-bit int and
-  # avoid Array#pack. Handles zero and normal doubles (inf/nan/subnormal are
-  # out of scope -- the VM messages carry none).
+  # float64 (0xcb), every double: signed zeros, subnormals, infinities and
+  # NaN (written as the quiet NaN 7ff8000000000000) included. No Integer on
+  # the way is wider than 16 bits: the 52-bit mantissa stays a Float (an
+  # exact whole number below 2^52) and is cut into 16-bit pieces by dividing
+  # by powers of two, so the bytes are the same on a 64-bit and a 32-bit
+  # Integer (ESP32, wasm32, where Spinel's sp_int is 32-bit). Spinel's Float
+  # is a C double on every machine, so the kernel holds a float64 exactly.
   def self.pack_float64(v, out)
+    f = v.to_f
     out << 0xcb
-    if v == 0.0
-      append_be(out, 0, 8)
+    if f != f                                 # NaN
+      out << 0x7f; out << 0xf8
+      append_be(out, 0, 6)
       return
     end
     sign = 0
-    av = v
-    if v < 0.0
+    if f < 0.0 || (f == 0.0 && 1.0 / f < 0.0) # -0.0: 1.0 / -0.0 is -Infinity
       sign = 1
-      av = -v
+      f = -f
     end
-    # normalize: find e with 1.0 <= av / 2**e < 2.0
-    e = 0
-    while av >= 2.0
-      av = av / 2.0
-      e += 1
+    bexp = 0
+    m = 0.0                                   # the mantissa field, 0 .. 2^52 - 1
+    if f > 1.7976931348623157e308             # Infinity
+      bexp = 2047
+    elsif f >= 2.2250738585072014e-308        # normal: find e with 1.0 <= f / 2**e < 2.0
+      e = 0
+      while f >= 4294967296.0                 # 2^32 at a time, then 2 at a time
+        f = f / 4294967296.0
+        e += 32
+      end
+      while f < 2.3283064365386963e-10        # 2^-32
+        f = f * 4294967296.0
+        e -= 32
+      end
+      while f >= 2.0
+        f = f / 2.0
+        e += 1
+      end
+      while f < 1.0
+        f = f * 2.0
+        e -= 1
+      end
+      bexp = e + 1023
+      m = (f - 1.0) * 4503599627370496.0      # * 2^52, exact
+    elsif f > 0.0                             # subnormal: f / 2^-1074, in two exact steps
+      m = f * 4.49423283715579e+307 * 4503599627370496.0 # * 2^1022 * 2^52
     end
-    while av < 1.0
-      av = av * 2.0
-      e -= 1
-    end
-    frac = av - 1.0
-    mant = (frac * 4503599627370496.0).round   # * 2**52
-    if mant >= 4503599627370496              # rounding overflow -> bump exponent
-      mant = 0
-      e += 1
-    end
-    bexp = e + 1023
-    b0 = (sign << 7) | ((bexp >> 4) & 0x7F)
-    b1 = ((bexp & 0xF) << 4) | ((mant >> 48) & 0xF)
-    out << b0
-    out << b1
-    append_be(out, mant & 0xFFFFFFFFFFFF, 6)
+    p0 = (m / 281474976710656.0).floor        # bits 48..51
+    m -= p0 * 281474976710656.0
+    p1 = (m / 4294967296.0).floor             # bits 32..47
+    m -= p1 * 4294967296.0
+    p2 = (m / 65536.0).floor                  # bits 16..31
+    p3 = (m - p2 * 65536.0).floor             # bits 0..15
+    out << ((sign << 7) | (bexp >> 4))
+    out << (((bexp & 0xF) << 4) | p0)
+    append_be(out, p1, 2)
+    append_be(out, p2, 2)
+    append_be(out, p3, 2)
   end
 
   # ---- unpack -----------------------------------------------------------
@@ -363,25 +384,46 @@ module MessagePack
     h
   end
 
+  # float64 (0xcb) and float32 (0xca), every value: signed zeros,
+  # subnormals, infinities and NaN included. As in pack_float64 the mantissa
+  # is put together as a Float from 16-bit pieces, so no Integer on the way
+  # is wider than 16 bits (a 32-bit sp_int overflowed `<<` here before). A
+  # float32 converts to a double exactly.
   def self.unpack_float64(bin, pos)
-    b0 = bin.getbyte(pos[0]); b1 = bin.getbyte(pos[0] + 1)
-    pos[0] += 2
-    mant = read_be(bin, pos, 6)
-    sign = (b0 >> 7) & 1
-    bexp = ((b0 & 0x7F) << 4) | ((b1 >> 4) & 0xF)
-    mant = ((b1 & 0xF) << 48) | mant
-    return (sign == 1 ? -0.0 : 0.0) if bexp == 0 && mant == 0
-    val = (1.0 + mant.to_f / 4503599627370496.0) * (2.0 ** (bexp - 1023))
-    sign == 1 ? -val : val
+    p0 = pos[0]
+    pos[0] = p0 + 8
+    b0 = bin.getbyte(p0)
+    b1 = bin.getbyte(p0 + 1)
+    m = (b1 & 0xF) * 65536.0 + (bin.getbyte(p0 + 2) * 256 + bin.getbyte(p0 + 3))
+    m = m * 65536.0 + (bin.getbyte(p0 + 4) * 256 + bin.getbyte(p0 + 5))
+    m = m * 65536.0 + (bin.getbyte(p0 + 6) * 256 + bin.getbyte(p0 + 7))
+    bexp = ((b0 & 0x7F) << 4) | (b1 >> 4)
+    float_from_parts(b0 >> 7, bexp, m, 2047, 52, 4503599627370496.0)
   end
 
   def self.unpack_float32(bin, pos)
-    bits = read_be(bin, pos, 4)
-    sign = (bits >> 31) & 1
-    bexp = (bits >> 23) & 0xFF
-    mant = bits & 0x7FFFFF
-    return (sign == 1 ? -0.0 : 0.0) if bexp == 0 && mant == 0
-    val = (1.0 + mant.to_f / 8388608.0) * (2.0 ** (bexp - 127))
+    p0 = pos[0]
+    pos[0] = p0 + 4
+    b0 = bin.getbyte(p0)
+    b1 = bin.getbyte(p0 + 1)
+    m = (b1 & 0x7F) * 65536.0 + (bin.getbyte(p0 + 2) * 256 + bin.getbyte(p0 + 3))
+    bexp = ((b0 & 0x7F) << 1) | (b1 >> 7)
+    float_from_parts(b0 >> 7, bexp, m, 255, 23, 8388608.0)
+  end
+
+  # The value of an IEEE 754 binary float from its sign bit, its biased
+  # exponent field (all ones = Infinity or NaN), its mantissa field as a
+  # Float (m) and the mantissa's width (mbits, scale = 2^mbits).
+  def self.float_from_parts(sign, bexp, m, emax, mbits, scale)
+    bias = emax >> 1
+    if bexp == emax
+      return 0.0 / 0.0 if m != 0.0            # NaN
+      val = 1.0 / 0.0                         # Infinity
+    elsif bexp == 0                           # zero and subnormals: m * 2^(1 - bias - mbits)
+      val = (m / scale) * (2.0 ** (1 - bias))
+    else
+      val = (1.0 + m / scale) * (2.0 ** (bexp - bias))
+    end
     sign == 1 ? -val : val
   end
 end

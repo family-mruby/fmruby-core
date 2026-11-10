@@ -100,18 +100,47 @@ def want_pack(v)
   "d3" + format("%016x", v & 0xffffffffffffffff)
 end
 
+# The float64 bytes the kernel should pack a Float back as (NaN in its one
+# quiet form), worked out with CRuby's Array#pack.
+def want_f64(f)
+  return "cb7ff8000000000000" if f.nan?
+  "cb" + [f].pack("G").unpack1("H*")
+end
+
+# What a float (hex, 0xca or 0xcb first) should read as, by Array#unpack.
+def float_of(hex)
+  body = [hex[2..]].pack("H*")
+  hex.start_with?("ca") ? body.unpack1("g") : body.unpack1("G")
+end
+
+def float_label(label)
+  { "Infinity" => Float::INFINITY, "-Infinity" => -Float::INFINITY, "NaN" => Float::NAN }.fetch(label) { Float(label) }
+end
+
+def float_line?(hex)
+  hex.start_with?("ca", "cb") || hex.start_with?(MAP_HEAD + "ca", MAP_HEAD + "cb")
+end
+
+def want_float_line(hex)
+  return MAP_HEAD + want_f64(float_of(hex[MAP_HEAD.size..])) if hex.start_with?(MAP_HEAD)
+  "#{want_f64(float_of(hex))} eq"
+end
+
 def check_lines(text, ib, label)
   lines = text.lines.map(&:chomp)
   fail!("#{label}: int_bytes line is #{lines.first.inspect}") unless lines.first == "int_bytes #{ib}"
   ncase = 0
   lines.drop(1).each do |l|
-    if (m = l.match(/\Apack (-?\d+) => (.*)\z/))
+    if (m = l.match(/\Afpack (\S+) => (.*)\z/))
+      want = "#{want_f64(float_label(m[1]))} back"
+      fail!("#{label}: fpack #{m[1]}: got #{m[2].inspect}, want #{want.inspect}") unless m[2] == want
+    elsif (m = l.match(/\Apack (-?\d+) => (.*)\z/))
       v = m[1].to_i
       want = "#{want_pack(v)} => #{v}"
       fail!("#{label}: pack #{v}: got #{m[2].inspect}, want #{want.inspect}") unless m[2] == want
     else
       hex, got = l.split(" => ", 2)
-      want = want_line(hex, ib)
+      want = float_line?(hex) ? want_float_line(hex) : want_line(hex, ib)
       fail!("#{label}: #{hex}: got #{got.inspect}, want #{want.inspect}") unless got == want
     end
     ncase += 1
