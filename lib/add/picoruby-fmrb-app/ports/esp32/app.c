@@ -825,11 +825,11 @@ static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)
     if (strcmp(param_name, "pos_x") == 0) {
         ctx->window_pos_x = (uint16_t)value;
         mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_x"), mrb_fixnum_value(value));
-        FMRB_LOGI(TAG, "Set window pos_x=%d for app %s", (int)value, ctx->app_name);
+        FMRB_LOGD(TAG, "Set window pos_x=%d for app %s", (int)value, ctx->app_name);
     } else if (strcmp(param_name, "pos_y") == 0) {
         ctx->window_pos_y = (uint16_t)value;
         mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_y"), mrb_fixnum_value(value));
-        FMRB_LOGI(TAG, "Set window pos_y=%d for app %s", (int)value, ctx->app_name);
+        FMRB_LOGD(TAG, "Set window pos_y=%d for app %s", (int)value, ctx->app_name);
     } else {
         mrb_raisef(mrb, E_ARGUMENT_ERROR, "Unknown window parameter: %s", param_name);
     }
