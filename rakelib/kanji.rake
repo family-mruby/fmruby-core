@@ -21,8 +21,11 @@ namespace :kanji do
   end
 
   # Small made-up inputs in a temporary directory; nothing is fetched.
-  desc "Kanji dictionary generator and reader tests (host Ruby, no fetch)"
+  desc "Kanji dictionary generator, reader and C lookup tests (host Ruby + cc, no fetch)"
   task :test do
     ruby "tools/kanji/test/run.rb"
+    # The board's C lookup (components/fmrb_kanji, K2a) against the Ruby
+    # reader, host cc; the generated dictionary too when it is there.
+    ruby "tools/kanji/test/c_lookup.rb"
   end
 end
