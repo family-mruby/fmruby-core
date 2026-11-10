@@ -902,7 +902,11 @@ static void render_frame(void) {
         // High-resolution mode: the owner's canvas alone. Whatever else is
         // still visible (a desktop the kernel has not hidden yet) is not
         // composited -- it was laid out for the base framebuffer.
-        if (g_smode.hires && c->canvas_id != g_smode.owner) continue;
+        // The system's own overlay (the kanji conversion line) is the
+        // exception: it is laid out for whatever screen is current and has to
+        // show over a fullscreen editor as well.
+        if (g_smode.hires && c->canvas_id != g_smode.owner &&
+            c->z_order < FMRB_GFX_Z_SYSTEM_OVERLAY) continue;
         // Base mode: a canvas at the high-resolution size is a fullscreen
         // app's that is about to get (or has just left) the high-resolution
         // screen. Laid out for 640x360, it would show as its top-left corner

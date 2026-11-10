@@ -29,6 +29,10 @@ set(COMPONENT_SRCS
     # The machine's clipboard (L12a), one text every app shares.
     "kernel/fmrb_clipboard.c"
     "kernel/host/host_task.c"
+    # Kanji conversion (doc/kanji_input): the reading and the line at the
+    # bottom of the screen (host task), and the dictionary's own task.
+    "kernel/host/host_kanji.c"
+    "kernel/host/kanji_lookup.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/usb/fmrb_kana.c"
     "drivers/led_status/status_led.c"
@@ -201,7 +205,7 @@ endif()
 
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_mem
-    fmrb_gfx fmrb_audio lua basic micropython
+    fmrb_gfx fmrb_audio fmrb_kanji lua basic micropython
     picoruby-esp32 mem_allocator log tar_lib
     # Remote debugger wire protocol (all targets since Phase 3a).
     msgpack-esp32)

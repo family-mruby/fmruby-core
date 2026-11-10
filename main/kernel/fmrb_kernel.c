@@ -20,6 +20,7 @@
 #include "boot.h"
 #include "fmrb_transport.h"
 #include "host/host_task.h"
+#include "host/kanji_lookup.h"
 #include "fmrb_toml.h"
 #include "fmrb_audio.h"
 #include "fmrb_file_transfer_msg.h"
@@ -607,6 +608,16 @@ static bool read_system_config(void)
         fmrb_sys_free((void *)kbd_layout_str);
     } else {
         FMRB_LOGI(TAG, "Keyboard layout not configured, using default (JP)");
+    }
+
+    // Kanji conversion (doc/kanji_input): where the dictionary is, and
+    // whether to use it. On by default; it engages only when the file is
+    // there, so a machine without an SD card or a dictionary types kana as
+    // before. kanji_convert = false turns it off with the file in place.
+    {
+        const char *dict = fmrb_toml_get_string(conf, "kanji_dict", NULL);
+        fmrb_kanji_lookup_configure(dict, fmrb_toml_get_bool(conf, "kanji_convert", true));
+        if (dict) fmrb_sys_free((void *)dict);
     }
 
     // Log loaded configuration
@@ -1207,6 +1218,10 @@ fmrb_err_t fmrb_kernel_start(void)
         cnt++;
     }
     fmrb_mem_log_boot_snapshot("host_ready");
+
+    // The kanji dictionary's task, when there is a dictionary (it logs its
+    // own snapshot then).
+    fmrb_kanji_lookup_start();
 
     // Set the clock before anything can report a time, i.e. before the kernel
     // task exists, but only once the host has answered: on Modern the RTC sits

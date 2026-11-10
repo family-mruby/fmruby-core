@@ -59,6 +59,13 @@ typedef uint16_t fmrb_canvas_handle_t;
 #define FMRB_CANVAS_RENDER 0xFFF0 
 #define FMRB_CANVAS_INVALID 0xFFFF
 
+// Canvases at or above this z-order belong to the system rather than to an
+// app: the kanji conversion line at the bottom of the screen (doc/kanji_input
+// K3). Apps stay far below it (the desktop's foreground is 254). The local
+// display task composites these on the high-resolution screen too, where it
+// otherwise shows the fullscreen owner's canvas alone.
+#define FMRB_GFX_Z_SYSTEM_OVERLAY 30000
+
 // Graphics configuration
 typedef struct {
     uint16_t screen_width;

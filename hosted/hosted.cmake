@@ -324,6 +324,11 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/kernel/fmrb_platform_sys.c
   ${FMRB_ROOT}/main/kernel/fmrb_clipboard.c
   ${FMRB_ROOT}/main/kernel/host/host_task.c
+  # Kanji conversion (doc/kanji_input). The browser build keeps the two files
+  # (kanji_lookup.c is a stub there) but not the dictionary reader: it
+  # converts with the browser's own IME (K4).
+  ${FMRB_ROOT}/main/kernel/host/host_kanji.c
+  ${FMRB_ROOT}/main/kernel/host/kanji_lookup.c
   # Modern's "GA storage is our own filesystem" file receiver; the hosted
   # builds have the same one-process shape (host_task.c guards widened
   # accordingly).
@@ -357,6 +362,12 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
   ${FMRB_ROOT}/lib/add/picoruby-fmrb-raycast/native/raycast_native.c
   ${FMRB_ROOT}/main/kernel/fmrb_spx_common.c)
+
+# The kanji dictionary reader (doc/kanji_input). Native only: the browser
+# converts with its own IME, and kanji_lookup.c compiles to stubs there.
+if(FMRB_HOSTED_PLATFORM STREQUAL "native")
+  list(APPEND FMRB_HOSTED_CORE_SRCS ${FMRB_ROOT}/components/fmrb_kanji/fmrb_kanji.c)
+endif()
 
 # Engine shims, chosen the way main/CMakeLists.txt chooses them.
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
@@ -418,6 +429,7 @@ set(FMRB_HOSTED_CORE_INCLUDES
   ${FMRB_ROOT}/components/fmrb_transport
   ${FMRB_ROOT}/components/fmrb_gfx
   ${FMRB_ROOT}/components/fmrb_audio
+  ${FMRB_ROOT}/components/fmrb_kanji
   ${FMRB_ROOT}/components/mem_allocator/include
   ${FMRB_ROOT}/components/mem_allocator
   ${FMRB_ROOT}/components/tar_lib/microtar/src

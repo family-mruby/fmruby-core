@@ -67,6 +67,15 @@ startup_app_retries = 3
 # colour. Any .png in /home/backgrounds shows up in Config's list.
 wallpaper = ""
 
+# Kanji conversion in kana input (doc/kanji_input). With a dictionary at
+# kanji_dict, Space (or Henkan) after a reading shows candidates in a line at
+# the bottom of the screen; without the file, kana input is as it always was.
+# The simulation has no /sd: to try it, put the dictionary (rake kanji:dict)
+# under flash/home/ and point kanji_dict there, e.g. "/home/fmrb_kanji.dic".
+# kanji_convert = false turns conversion off with the file in place.
+# kanji_dict = "/sd/dict/fmrb_kanji.dic"
+# kanji_convert = true
+
 [theme]
 desktop_bg = 0xF6
 menu_bg = 0xC5

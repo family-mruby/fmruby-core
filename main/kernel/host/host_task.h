@@ -142,6 +142,14 @@ int fmrb_host_send_text(const char *utf8, int len);
 #endif
 
 /**
+ * @brief The kanji lookup task has answered request seq (doc/kanji_input).
+ *
+ * Called by that task (kanji_lookup.c), never by the host task; the answer
+ * itself waits in the lookup task's result buffer.
+ */
+void fmrb_host_kanji_result(uint32_t seq);
+
+/**
  * @brief Mute or unmute the whole machine, and remember it.
  *
  * Like a speaker's mute switch: every source keeps running as usual (apps,

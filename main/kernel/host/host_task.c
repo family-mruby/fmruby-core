@@ -20,6 +20,9 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_keymap.h"
 #include "fmrb_kana.h"
+#include "host_kanji.h"
+#include "host_internal.h"
+#include "kanji_lookup.h"
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
 #if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_HOSTED)
@@ -112,6 +115,7 @@ typedef enum {
 #if defined(FMRB_PLATFORM_NATIVE)
     HOST_MSG_HID_TEXT = 10,      // text committed by the PC's IME (L12b)
 #endif
+    HOST_MSG_KANJI_RESULT = 11,  // the kanji lookup task answered (doc/kanji_input)
 } host_msg_type_t;
 
 // Host message structure (now uses HAL message format)
@@ -159,6 +163,9 @@ typedef struct {
             char bytes[HOST_TEXT_CHUNK];
         } text;
 #endif
+        struct {
+            uint32_t seq;
+        } kanji;
         gfx_cmd_t gfx;
     } data;
 } host_message_t;
@@ -1492,6 +1499,113 @@ static void host_send_kana_byte(uint8_t target_pid, uint8_t byte)
     fmrb_msg_send(target_pid, &msg, 200);
 }
 
+void host_send_text_bytes(uint8_t pid, const char *bytes, size_t len)
+{
+    for (size_t i = 0; i < len; i++) {
+        host_send_kana_byte(pid, (uint8_t)bytes[i]);
+    }
+}
+
+void host_send_gfx_list(const gfx_cmd_t *cmds, int count)
+{
+    // The conversion line (host_kanji.c) is drawn by this task itself, so its
+    // commands skip the queue and go out the way a batch does.
+    fmrb_transport_batch_entry_t entries[GFX_BATCH_MAX];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t s_payload[GFX_BATCH_MAX][GFX_BATCH_PAYLOAD_BUF_SIZE];
+    int done = 0;
+    while (done < count) {
+        int n = 0;
+        int presents = 0;
+        while (done < count && n < GFX_BATCH_MAX) {
+            uint8_t sub_cmd;
+            int len = gfx_cmd_to_batch_entry(&cmds[done], &sub_cmd, s_payload[n]);
+            if (len >= 0) {
+                entries[n].link_type = FMRB_LINK_TYPE_GRAPHICS;
+                entries[n].sub_cmd = sub_cmd;
+                entries[n].payload = s_payload[n];
+                entries[n].payload_len = (uint32_t)len;
+                if (cmds[done].cmd_type == GFX_CMD_PRESENT) presents++;
+                n++;
+            }
+            done++;
+        }
+        if (n > 0) {
+            fmrb_err_t ret = fmrb_transport_send_batch(entries, (size_t)n,
+                                                       FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+            if (ret != FMRB_OK) {
+                FMRB_LOGE(TAG, "conversion line: batch send failed: %d", ret);
+            }
+            gfx_stats_update(n, presents);
+        }
+    }
+}
+
+fmrb_err_t host_send_gfx_async(const gfx_cmd_t *cmd,
+                               fmrb_transport_response_cb_t cb, void *user)
+{
+    uint8_t sub_cmd;
+    uint8_t payload[GFX_BATCH_PAYLOAD_BUF_SIZE];
+    int len = gfx_cmd_to_batch_entry(cmd, &sub_cmd, payload);
+    if (len < 0) return FMRB_ERR_INVALID_PARAM;
+    return fmrb_transport_send_async(FMRB_LINK_TYPE_GRAPHICS | FMRB_LINK_FLAG_ACK_REQUIRED,
+                                     sub_cmd, payload, (uint32_t)len, cb, user, 5000);
+}
+
+// ---- Keys held back while a kanji lookup is out (doc/kanji_input K3) --------
+//
+// A lookup takes the SD card a few milliseconds on another task. Keys typed
+// meanwhile wait here, in order, and run once the answer is in, so that a
+// fast "Space Enter" acts on the candidates and not on the bare reading.
+
+#define KANJI_DEFER_MAX 32
+
+typedef struct {
+    host_msg_type_t type;
+    int key_code;
+    int scancode;
+    int modifier;
+    int force_us;
+} host_deferred_key_t;
+
+FMRB_EXT_RAM_BSS_ATTR static host_deferred_key_t s_deferred[KANJI_DEFER_MAX];
+FMRB_EXT_RAM_BSS_ATTR static uint8_t s_deferred_head;
+FMRB_EXT_RAM_BSS_ATTR static uint8_t s_deferred_count;
+
+static void host_defer_key(const host_message_t *msg)
+{
+    if (s_deferred_count >= KANJI_DEFER_MAX) {
+        FMRB_LOGW(TAG, "key dropped while a kanji lookup is out (sc=0x%02x)",
+                  msg->data.key.scancode);
+        return;
+    }
+    host_deferred_key_t *d = &s_deferred[(s_deferred_head + s_deferred_count) % KANJI_DEFER_MAX];
+    d->type = msg->type;
+    d->key_code = msg->data.key.key_code;
+    d->scancode = msg->data.key.scancode;
+    d->modifier = msg->data.key.modifier;
+    d->force_us = msg->data.key.force_us;
+    s_deferred_count++;
+}
+
+static void host_task_process_host_message(const host_message_t *msg);
+
+static void host_replay_deferred_keys(void)
+{
+    while (s_deferred_count > 0 && !host_kanji_waiting()) {
+        host_deferred_key_t d = s_deferred[s_deferred_head];
+        s_deferred_head = (uint8_t)((s_deferred_head + 1) % KANJI_DEFER_MAX);
+        s_deferred_count--;
+        host_message_t m;
+        memset(&m, 0, sizeof(m));
+        m.type = d.type;
+        m.data.key.key_code = d.key_code;
+        m.data.key.scancode = d.scancode;
+        m.data.key.modifier = d.modifier;
+        m.data.key.force_us = d.force_us;
+        host_task_process_host_message(&m);
+    }
+}
+
 static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 {
     fmrb_msg_t msg = {
@@ -2094,6 +2208,10 @@ static void host_task_process_host_message(const host_message_t *msg)
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
         case HOST_MSG_HID_KEY_UP: {
+            if (host_kanji_waiting()) {
+                host_defer_key(msg);
+                break;
+            }
 #if defined(FMRB_PLATFORM_NATIVE)
             if (keys_intercept(msg)) break;
 #endif
@@ -2229,11 +2347,16 @@ static void host_task_process_host_message(const host_message_t *msg)
                     key_event->scancode, key_event->modifier,
                     key_event->character, &kana);
 
+                // With a kanji dictionary the kana become the reading being
+                // typed (host_kanji.c) instead of going out at once.
+                const bool kanji = host_kanji_engaged();
                 // Committed kana go out first: when a key both completes a
                 // pending "n" and means something itself (a space after
                 // "kanji"), the kana belongs before it.
-                for (uint8_t i = 0; i < kana.out_len; i++) {
-                    host_send_kana_byte(routing.target_pid, kana.out[i]);
+                if (!kanji) {
+                    for (uint8_t i = 0; i < kana.out_len; i++) {
+                        host_send_kana_byte(routing.target_pid, kana.out[i]);
+                    }
                 }
                 // Every event on the two mode keys, whether or not it
                 // changed anything. A key that "half works" is either not
@@ -2255,6 +2378,18 @@ static void host_task_process_host_message(const host_message_t *msg)
                               (int)fmrb_kana_get_mode(),
                               key_event->scancode, key_event->modifier);
                     host_broadcast_kana_mode();
+                    host_kanji_mode_changed(routing.target_pid);
+                }
+                if (kanji) {
+                    host_kanji_action_t ka = host_kanji_key(
+                        routing.target_pid, msg->type == HOST_MSG_HID_KEY_DOWN,
+                        key_event->scancode, key_event->modifier,
+                        key_event->character, action, &kana);
+                    if (ka == HOST_KANJI_CONSUME) {
+                        break;
+                    }
+                    action = (ka == HOST_KANJI_CLEAR_CHAR) ? FMRB_KANA_COMPOSE
+                                                           : FMRB_KANA_PASS;
                 }
                 if (action == FMRB_KANA_CONSUME) {
                     break;
@@ -2298,6 +2433,11 @@ static void host_task_process_host_message(const host_message_t *msg)
             break;
         }
 #endif
+
+        case HOST_MSG_KANJI_RESULT:
+            host_kanji_result(msg->data.kanji.seq);
+            host_replay_deferred_keys();
+            break;
 
         case HOST_MSG_HID_MOUSE_MOVE: {
             int x = msg->data.mouse_move.x;
@@ -2524,6 +2664,11 @@ static void fmrb_host_task(void *pvParameters)
         // Coalesced save of the mute and volume (doc/reference/audio_output.md).
         host_audio_save_tick();
 
+        // The kanji conversion line, and keys held for a lookup that ended
+        // without an answer (doc/kanji_input).
+        host_kanji_tick();
+        host_replay_deferred_keys();
+
 #if defined(FMRB_PLATFORM_NATIVE)
         keys_tick();
         ime_tick();
@@ -2745,6 +2890,18 @@ int fmrb_host_send_text(const char *utf8, int len)
     return sent;
 }
 #endif
+
+void fmrb_host_kanji_result(uint32_t seq)
+{
+    host_message_t msg = { .type = HOST_MSG_KANJI_RESULT };
+    msg.data.kanji.seq = seq;
+    // Not dropped quietly: a lost answer leaves the reading waiting until the
+    // host task gives up on it (host_kanji_tick), so retry a while first.
+    for (int i = 0; i < 20; i++) {
+        if (fmrb_host_send_message(&msg) == 0) return;
+        fmrb_task_delay_ms(10);
+    }
+}
 
 int fmrb_host_send_mouse_move(int x, int y)
 {
