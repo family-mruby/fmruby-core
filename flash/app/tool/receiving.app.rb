@@ -28,7 +28,9 @@ require "/usr/share/transfer/receive_conf"
 class ReceivingApp < FmrbApp
   ROW_H = 11
   TOP_H = 36          # the switch, the kinds
-  BOTTOM_H = 40       # the name, the buttons, two lines of notes
+  NOTES_H = 19        # two lines of notes (8 px text, 11 px apart)
+  MARGIN = 3          # kept free under the notes, above the window frame
+  BOTTOM_H = 3 + 17 + NOTES_H + MARGIN  # the name and the buttons, the notes
   SB_W = 10
   DEL_W = 12
   RELOAD_MS = 3000    # receive.toml looked at again (the console may write it)
@@ -41,7 +43,8 @@ class ReceivingApp < FmrbApp
       "en" => { rc_on: "Receiving: on", rc_off: "Receiving: off", rc_files: "Files",
                 rc_apps: "Apps (checkpoint)", rc_add: "Add", rc_near: "Nearby", rc_back: "Back",
                 rc_yes: "Yes", rc_no: "No", rc_anyone: "Anyone", rc_console: "from the console",
-                rc_none: "(nobody)", rc_reading: "Reading", rc_no_file: "no receive.toml",
+                rc_none: "(nobody)", rc_conf_home: "Settings: yours (/home)",
+                rc_conf_etc: "Settings: as shipped (/etc)", rc_no_file: "Settings: none (no file)",
                 rc_off_note: "Off: nothing is taken, whatever the lists say.",
                 rc_ask_any: "Take files from anyone on the same network?",
                 rc_ask_any_ckpt: "Anyone could then run apps on this machine. Allow anyone?",
@@ -54,7 +57,8 @@ class ReceivingApp < FmrbApp
       "ja" => { rc_on: "受け取り: 有効", rc_off: "受け取り: 無効", rc_files: "ファイル",
                 rc_apps: "アプリ (checkpoint)", rc_add: "追加", rc_near: "見える端末", rc_back: "戻る",
                 rc_yes: "はい", rc_no: "いいえ", rc_anyone: "誰でも", rc_console: "console から",
-                rc_none: "(なし)", rc_reading: "読む所", rc_no_file: "receive.toml が無い",
+                rc_none: "(なし)", rc_conf_home: "設定: 自分の (/home)",
+                rc_conf_etc: "設定: 出荷時 (/etc)", rc_no_file: "設定: 無し (ファイルが無い)",
                 rc_off_note: "無効: 一覧にかかわらず何も受け取らない。",
                 rc_ask_any: "同じネットワークのだれからでも受け取ります。よいですか?",
                 rc_ask_any_ckpt: "だれでもこの端末でアプリを動かせるようになります。よいですか?",
@@ -272,14 +276,19 @@ class ReceivingApp < FmrbApp
     @user_area_y0 + y
   end
 
+  # Which receive.toml is in force: the user's own copy in /home, or the
+  # one shipped in /etc (short, so it fits beside the switch).
   def draw_path
     x = ax(132)
     y = ay(5)
     w = @w - 134
     @gfx.fill_rect(x, y, w, 8, theme_bg)
     p = @view["path"]
-    s = p ? "#{tr(:rc_reading)}: #{p}" : tr(:rc_no_file)
-    @gfx.draw_text_mixed(x, y, @gfx.fit_text(s, w, "..", nil, :default), theme_border)
+    key = if p == ::FmrbReceiveConf::PATH then :rc_conf_home
+          elsif p then :rc_conf_etc
+          else :rc_no_file
+          end
+    @gfx.draw_text_mixed(x, y, @gfx.fit_text(tr(key), w, "..", nil, :default), theme_border)
   end
 
   def draw_list
@@ -354,7 +363,7 @@ class ReceivingApp < FmrbApp
   def draw_notes
     x = ax(0)
     y = ay(@note_y)
-    @gfx.fill_rect(x, y, @w, 21, theme_bg)
+    @gfx.fill_rect(x, y, @w, NOTES_H, theme_bg)
     first = ""
     color = theme_border
     if @view["enabled"] != true
