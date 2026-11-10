@@ -145,7 +145,7 @@ module ShellCommandsMixin
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
       @history << "  areceive - Whether this machine receives files and apps, and from whom"
       @history << "  areceive on|off - Receive (and start the transfer app), or stop receiving"
-      @history << "  areceive allow|deny <file|checkpoint> <node> - Who may send files / move apps here ('*': anyone)"
+      @history << "  areceive allow|deny <file|checkpoint> <node> - Who may send files / move apps here ('*': everyone on the network)"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1240,7 +1240,8 @@ module ShellCommandsMixin
   #   areceive on | off                 the switch (on starts the transfer
   #                                     app; off lets it end once idle)
   #   areceive allow|deny KIND NODE     KIND file or checkpoint; NODE a node
-  #                                     ID or pattern, '*' anyone
+  #                                     ID or pattern, '*' everyone on the
+  #                                     network (the owner's trusted members)
   #
   # Changes go to /home/asterism/receive.toml (made from the system's copy
   # the first time), only when the text changes; the console's part of the
@@ -1272,11 +1273,8 @@ module ShellCommandsMixin
           written = FmrbReceiveConf.allow(kind, node)
           @history << (written ? "areceive: #{kind} from #{node} allowed" : "areceive: #{node} is in the #{kind} list already")
           if node == FmrbReceiveConf::ANYONE
-            if kind == "checkpoint"
-              @history << "areceive: ! anyone on the network can now run apps on this machine"
-            else
-              @history << "areceive: note: files are taken from anyone on the same network"
-            end
+            what = kind == "checkpoint" ? "move apps" : "send files"
+            @history << "areceive: note: everyone on the network may now #{what} here"
           end
         else
           FmrbReceiveConf.deny(kind, node)
@@ -1284,7 +1282,7 @@ module ShellCommandsMixin
         end
         @history << "areceive: receiving is off; areceive on to take anything" unless FmrbReceiveConf.enabled?
       else
-        @history << "Usage: areceive [on|off] | areceive allow|deny <file|checkpoint> <node>   (node: an Asterism node ID or pattern, '*' anyone)"
+        @history << "Usage: areceive [on|off] | areceive allow|deny <file|checkpoint> <node>   (node: an Asterism node ID or pattern, '*' everyone on the network)"
       end
     rescue ArgumentError => e
       @history << "areceive: #{e.message}"

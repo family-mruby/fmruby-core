@@ -131,7 +131,7 @@ Asterism で移すときは、止める前に、移動元が同じ名前の一�
 | 開発の道具 | `ruby tools/fmrb_native.rb app move PID --node ノードID [--hold MS]`。MCP の `native_app` の `move` に `node` |
 
 - 段取りは、相手に聞く (5.4) → 止めてイメージを書く (移動中の印) → 運ぶ → 相手で起動 → 起動できたと返ってきたら閉じる。断られた・返事が無い (既定の `hold` 10 秒) ときは止めた所から続ける。返事が遅れて相手で起動したときは、相手の側を止める (2 つにならない)。
-- 相手の端末は、受け取りを有効にし、受け取ってよい相手を書く。どちらも `receive.toml` (端末のものは `/home/asterism/receive.toml`、無ければ配布物の `/etc/asterism/receive.toml` (無効) を読む) で、アプリ「受け取り」(`/app/tool/receiving.app.rb`) か Shell の `areceive on`・`areceive allow checkpoint <ノード ID>` で変えられる。手で書くなら `enabled = true` と `[checkpoint] from = ["ノード ID", ...]` (`"*"` は網に入れる全員で、だれでもこの端末でアプリを動かせることになる)。`enabled = true` の無い端末は何も受け取らない (T7。それより前に書いた receive.toml も、この行を足すまで受けない)。受け取りが有効な端末は、起動のときに受け口 (転送のアプリ `/usr/share/transfer/transfer.app.rb`) を動かす。
+- 相手の端末は、受け取りを有効にし、受け取ってよい相手を書く。どちらも `receive.toml` (端末のものは `/home/asterism/receive.toml`、無ければ配布物の `/etc/asterism/receive.toml` (無効) を読む) で、アプリ「受け取り」(`/app/tool/receiving.app.rb`) か Shell の `areceive on`・`areceive allow checkpoint <ノード ID>` で変えられる。手で書くなら `enabled = true` と `[checkpoint] from = ["ノード ID", ...]` (`"*"` はネットワークの全員で、その全員がこの端末にアプリを移せる。Asterism は持ち主と信頼するメンバーだけの網で、一般には開かない)。`enabled = true` の無い端末は何も受け取らない (T7。それより前に書いた receive.toml も、この行を足すまで受けない)。受け取りが有効な端末は、起動のときに受け口 (転送のアプリ `/usr/share/transfer/transfer.app.rb`) を動かす。
 - 移す側の端末は、Asterism につながる設定 (`/home/asterism/config.toml`) があればよい。転送のアプリは移す頼みのときに起動する。
 
 ## 7. 試験のアプリ (手本)

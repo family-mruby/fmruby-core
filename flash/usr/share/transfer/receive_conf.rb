@@ -41,8 +41,9 @@
 # limit. The two parts are read apart, so a line by hand that is not TOML
 # does not lose the managed list (nor the other way round).
 #
-# A list holds node IDs and patterns: "*" any node, "fmruby-*" (a * is any
-# run of letters).
+# A list holds node IDs and patterns: "*" everyone on the network (the
+# owner's trusted members; Asterism is never open to the public), "fmruby-*"
+# (a * is any run of letters).
 #
 # Changing it (T7: the Receiving app and the shell's areceive):
 # set_enabled, allow and deny change the part by hand only, line by line
@@ -312,8 +313,9 @@ module FmrbReceiveConf
     save_hand(p, head, "enabled", on)
   end
 
-  # Lets node send kind (a node ID or a pattern, "*" anyone). Returns
-  # whether the file was written (false: it was in the list by hand).
+  # Lets node send kind (a node ID or a pattern, "*" everyone on the
+  # network). Returns whether the file was written (false: it was in the
+  # list by hand).
   def self.allow(kind, node)
     k = kind_of(kind)
     n = node.to_s
@@ -387,8 +389,9 @@ module FmrbReceiveConf
   # ---- what asend -l and areceive show ----
 
   # The lines: on or off and the file read, who may send each kind, and
-  # where that comes from. A checkpoint list with "*" (anyone may start apps
-  # here) is marked with "!".
+  # where that comes from. "*" is shown as everyone on the network; a
+  # checkpoint list with it gets a plain note (everyone on the network may
+  # move apps here).
   def self.lines
     f = path
     return ["receiving: off (no #{SYS_PATH} nor #{PATH}): nobody may send files or apps here"] if f.nil?
@@ -408,10 +411,10 @@ module FmrbReceiveConf
         out << "#{k}: nobody (no [#{k}])"
       else
         wide = k == "checkpoint" && (allows_anyone?(by_hand) || allows_anyone?(by_console))
-        out << "#{wide ? '! ' : ''}#{k}:"
-        list_lines(out, by_hand, "by hand", k)
-        list_lines(out, by_console, "from #{m['by']}", k) if m
-        out << "! anyone on the network may run apps on this machine" if wide
+        out << "#{k}:"
+        list_lines(out, by_hand, "by hand")
+        list_lines(out, by_console, "from #{m['by']}") if m
+        out << "note: everyone on the network may move apps here" if wide
       end
       i += 1
     end
@@ -419,7 +422,7 @@ module FmrbReceiveConf
     out
   end
 
-  def self.list_lines(out, list, where, kind = "")
+  def self.list_lines(out, list, where)
     return if list.nil?
     if list.empty?
       out << "  (none)  #{where}"
@@ -428,8 +431,7 @@ module FmrbReceiveConf
     i = 0
     while i < list.size
       e = list[i]
-      mark = kind == "checkpoint" && e == ANYONE ? "! " : "  "
-      out << "#{mark}#{e}  #{where}#{e == ANYONE ? ' (anyone)' : ''}"
+      out << "  #{e}  #{where}#{e == ANYONE ? ' (everyone on the network)' : ''}"
       i += 1
     end
   end

@@ -178,13 +178,14 @@ puts "what areceive shows"
 reset(user: "enabled = true\n[file]\nfrom = [\"*\"]\n[checkpoint]\nfrom = [\"*\"]\n\n#{MANAGED}")
 l = C.lines
 check("on and the file", l[0], "receiving: on (#{USER})")
-check("anyone, files: no mark", l.include?("  *  by hand (anyone)"), true)
-check("anyone, checkpoint: marked", l.include?("! checkpoint:") && l.include?("! *  by hand (anyone)"), true)
-check("anyone, checkpoint: the warning",
-      l.include?("! anyone on the network may run apps on this machine"), true)
+check("everyone, files", l.include?("  *  by hand (everyone on the network)"), true)
+check("everyone, checkpoint: no mark", l.include?("checkpoint:") && l.count("  *  by hand (everyone on the network)") == 2, true)
+check("everyone, checkpoint: the note",
+      l.include?("note: everyone on the network may move apps here"), true)
+check("no ! anywhere", l.any? { _1.start_with?("!") }, false)
 check("the console's part", l.include?("  fmruby-*  from console"), true)
 reset(user: "enabled = true\n[file]\nfrom = [\"pc\"]\n")
-check("no mark without * on checkpoint", C.lines.any? { _1.start_with?("!") }, false)
+check("no note without * on checkpoint", C.lines.any? { _1.start_with?("note:") }, false)
 reset
 check("off and the file", C.lines[0].start_with?("receiving: off (#{SYS})"), true)
 

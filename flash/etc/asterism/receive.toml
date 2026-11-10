@@ -9,11 +9,11 @@
 enabled = false
 
 # Who may put files in /home/inbox: node IDs and patterns ("fmruby-*";
-# "*" is anyone on the same network).
+# "*" is everyone on the network: the owner's trusted members).
 [file]
 from = []
 
-# Who may move apps here (checkpoint). "*" lets anyone run apps on this
-# machine.
+# Who may move apps here (checkpoint). "*" lets everyone on the network
+# (the owner's trusted members) move apps to this machine.
 [checkpoint]
 from = []
