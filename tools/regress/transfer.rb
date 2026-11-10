@@ -394,7 +394,9 @@ module Regress
 
       def web_console = File.join(OUT, "web.chrome.log")
 
-      def web_up(chrome)
+      # The page with app (an app's path) opened at boot. fresh: false keeps
+      # the browser's profile, and with it the page's /home.
+      def web_up(chrome, app: PROBE, fresh: true)
         Tree.need_free_port!(WEB_PORT, "the development server")
         serve_log = File.join(OUT, "web.serve.log")
         @web_serve = Process.spawn({ "DIST" => "1", "PORT" => WEB_PORT.to_s }, "rake", "wasm:serve", chdir: CORE,
@@ -408,9 +410,9 @@ module Regress
           sleep 0.3
         end
         profile = File.join(OUT, "web_profile")
-        FileUtils.rm_rf(profile)
+        FileUtils.rm_rf(profile) if fresh
         FileUtils.rm_f(web_console)
-        url = "http://localhost:#{WEB_PORT}/?autostart=1&drive=1&app=#{PROBE}&zenoh=ws/127.0.0.1:#{ROUTER_WS_PORT}"
+        url = "http://localhost:#{WEB_PORT}/?autostart=1&drive=1&app=#{app}&zenoh=ws/127.0.0.1:#{ROUTER_WS_PORT}"
         @web_chrome = Process.spawn(chrome, "--headless=new", "--user-data-dir=#{profile}", "--no-first-run",
                                     "--no-default-browser-check", "--disable-gpu", "--mute-audio",
                                     "--enable-logging=stderr", "--v=0", url,

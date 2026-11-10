@@ -341,12 +341,38 @@ Machine_reboot(void)
   exit(MACHINE_EXIT_REBOOT);
 }
 
-uint64_t
-Machine_uptime_us(void)
+static uint64_t
+monotonic_us(void)
 {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (uint64_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
+}
+
+#ifdef __EMSCRIPTEN__
+/* family-mruby: in a browser with pthreads, Emscripten's CLOCK_MONOTONIC is
+   performance.timeOrigin + performance.now() (one origin for every worker),
+   that is the Unix time: board_millis would be about 1.8e12 instead of the
+   time since boot it is on a board, beyond the 32-bit Integer of a Spinel
+   program here (the kernel). Count from the start of the program instead.
+   The base is taken before main, so every thread sees the same one. */
+static uint64_t uptime_base_us;
+
+__attribute__((constructor)) static void
+uptime_base_init(void)
+{
+  uptime_base_us = monotonic_us();
+}
+#endif
+
+uint64_t
+Machine_uptime_us(void)
+{
+#ifdef __EMSCRIPTEN__
+  return monotonic_us() - uptime_base_us;
+#else
+  return monotonic_us();
+#endif
 }
 
 /* family-mruby: config query for boot diagnostics */

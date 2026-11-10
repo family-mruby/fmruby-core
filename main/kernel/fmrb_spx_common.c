@@ -25,14 +25,27 @@
 
 static const char *TAG = "spx";
 
+#ifdef __EMSCRIPTEN__
+/* The browser's CLOCK_MONOTONIC is the Unix time (Emscripten with pthreads:
+   performance.timeOrigin + performance.now()), so here both engines read
+   picoruby-machine's clock, which counts from the start of the program as a
+   board counts from boot (Machine.board_millis: the same value for an mruby
+   app and a Spinel one). */
+extern uint64_t Machine_uptime_us(void);
+#endif
+
 uint32_t fmrb_spx_board_millis(void)
 {
+#ifdef __EMSCRIPTEN__
+    return (uint32_t)(Machine_uptime_us() / 1000u);
+#else
     /* CLOCK_MONOTONIC milliseconds. Portable across the IDF Linux target and
        the ESP32 (esp-idf provides POSIX clock_gettime), avoiding an esp_timer
        component dependency. */
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)((uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u);
+#endif
 }
 
 uint32_t fmrb_spx_board_micros(void)
@@ -41,9 +54,13 @@ uint32_t fmrb_spx_board_micros(void)
        instrumentation measures single-digit milliseconds, which milliseconds
        cannot resolve; it wraps every ~71 minutes, and only differences are
        used. */
+#ifdef __EMSCRIPTEN__
+    return (uint32_t)Machine_uptime_us();
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)((uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u);
+#endif
 }
 
 void fmrb_spx_log_write(int level, const char *msg, int len)

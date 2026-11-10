@@ -26,6 +26,8 @@
 #             app (FmrbTransfer: progress, the name placed under) to this
 #             process; then one it cancels on the way: this side drops the
 #             piece file
+#             (the browser build: then its Shell's asend, the page opened
+#             again with the Shell; doc/asterism_file_transfer report/t8b.md)
 #   managed   the console's part of receive.toml (T6): a list sent by a
 #             node other than the console is refused, and so is one sent
 #             as the console over a connection without certificates (the
@@ -50,7 +52,7 @@
 #   ruby tools/regress/transfer_quick.rb --web      # the browser build as the
 #                                                   # machine (wasm/build/dist;
 #                                                   # resend, mismatch, names,
-#                                                   # refused, managed)
+#                                                   # refused, managed, api)
 #   ruby tools/regress/transfer_quick.rb --only names
 #
 # The machine's receive.toml (the form of T2, a table per kind):
@@ -163,7 +165,9 @@ module Regress
         ok
       end
 
-      def cases = @web ? %w[resend mismatch names refused managed] : %w[resend cut mismatch names refused managed api big switch]
+      # The browser build's api comes last: its probe is started by reloading
+      # the page with the job in /home.
+      def cases = @web ? %w[resend mismatch names refused managed api] : %w[resend cut mismatch names refused managed api big switch]
 
       # ---- the machine ----
 
@@ -485,8 +489,31 @@ module Regress
         left = Dir.glob(File.join(@pc_dir, "*.{part,xfer}"))
         raise T::Failure, "api cancel: #{left.map { |x| File.basename(x) }} left" unless left.empty?
         sending = r2[:lines].grep(/xfer_probe: api now sending/).size
-        "sent through the transfer app (placed as same.txt there; with sd: true the receiver was asked for its SD card); " \
-          "1 MiB cancelled at #{r2[:lines].grep(/cancelling at/).first.to_s[/at (\d+)/, 1]} after #{sending} progress report(s): the piece file dropped here"
+        out = "sent through the transfer app (placed as same.txt there; with sd: true the receiver was asked for its SD card); " \
+              "1 MiB cancelled at #{r2[:lines].grep(/cancelling at/).first.to_s[/at (\d+)/, 1]} after #{sending} progress report(s): the piece file dropped here"
+        out += "; #{web_shell_send}" if @web
+        out
+      end
+
+      # The browser build's Shell sends a file with asend (FmrbTransfer from
+      # an mruby app, as the probe's api; doc/asterism_file_transfer
+      # report/t8b.md): the page opened again with the Shell, its /home kept.
+      def web_shell_send
+        web_down
+        web_up(web_chrome, app: SHELL, fresh: false)
+        web_wait(/Transfer app connected as #{T::NODE_WEB}/, 0, "the browser's transfer app connected", timeout: 60)
+        sleep 2
+        @pc_inbox.placed = nil
+        web_tool("text", "asend #{NODE_PC} /home/inbox/same.txt", "key", "enter")
+        deadline = now + 30
+        pump until @pc_inbox.placed || now > deadline
+        bad = web_lines.grep(/Failed to unpack/)
+        raise T::Failure, "shell asend: the kernel could not read a message: #{bad.first}" unless bad.empty?
+        raise T::Failure, "shell asend: nothing placed here in 30 s" unless @pc_inbox.placed
+        got = File.binread(File.join(@pc_dir, "in", @pc_inbox.placed))
+        want = get_machine("/home/inbox/same.txt")
+        raise T::Failure, "shell asend: #{@pc_inbox.placed} differs from the page's file" unless got == want
+        "the Shell's asend placed same.txt here as #{@pc_inbox.placed} (#{got.bytesize} B)"
       end
 
       def q_big
@@ -594,23 +621,33 @@ module Regress
       end
 
       # The probe of the machine with the job {"api" => api}, until it ends.
+      # The browser build's probe is the page's own app (?app=), so there the
+      # job goes to /home and the page is loaded again.
       def api_job(api)
         f = File.join(T::OUT, "job.json")
         File.write(f, JSON.generate({ "api" => api }))
-        native(T::RUN_DIR_B, T::PORT_B, "file", "put", f, T::JOB)
-        mark = machine_mark
-        app(T::RUN_DIR_B, T::PORT_B, "spawn", T::PROBE)
-        deadline = now + 30
+        if @web
+          web_tool("put", f, "/flash/home/xfer_probe.job")
+          mark = machine_mark
+          web_tool("reload", timeout: 90)
+        else
+          native(T::RUN_DIR_B, T::PORT_B, "file", "put", f, T::JOB)
+          mark = machine_mark
+          app(T::RUN_DIR_B, T::PORT_B, "spawn", T::PROBE)
+        end
+        deadline = now + (@web ? 90 : 30)
         loop do
           pump
           lines = machine_lines(mark)
           done = lines.find { |l| l =~ /xfer_probe: api done/ }
           if done
-            pid = probe_pid(T::RUN_DIR_B, T::PORT_B)
-            app(T::RUN_DIR_B, T::PORT_B, "kill", pid.to_s) if pid
+            unless @web
+              pid = probe_pid(T::RUN_DIR_B, T::PORT_B)
+              app(T::RUN_DIR_B, T::PORT_B, "kill", pid.to_s) if pid
+            end
             return { end: done[/xfer_probe: .*/], lines: lines }
           end
-          raise T::Failure, "the probe's api job did not end in 30 s" if now > deadline
+          raise T::Failure, "the probe's api job did not end in #{@web ? 90 : 30} s" if now > deadline
           sleep 0.005
         end
       end

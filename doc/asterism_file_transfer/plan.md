@@ -47,7 +47,7 @@
 | T5 | 種類を足す: ブラウザ版のアプリのインストール (`.app.wasm`。doc/wasm_apps/plan.md の W5 と分担を決める)、checkpoint のイメージを新しい受け口に載せ替えて F5・F6 の試験が通ること | checkpoint は実装済・検収待ち (report/t5.md。ESP32 は手順だけ)。`.app.wasm` は wasm のアプリの対応のとき |
 | T6 | 受け相手を console で管理: Members の行で種類ごとに選び、ACL の行を作り、bridge が端末へ配り (`policy_set`)、端末は receive.toml の印の下に書いて手書きとの和で判断。証明書つきの接続のときだけ受ける | 実装済・検収待ち (report/t6.md。写しが届くのは ESP32 の端末だけ、親に決めてほしいこと) |
 | T7 | 受け取りの有効・無効と、端末の画面での編集: 配布の既定 `/etc/asterism/receive.toml` (`enabled = false`) と利用者の `/home/asterism/receive.toml`、`enabled` で転送のアプリを起こすかを決める、受け取りを編集するアプリと Shell の `areceive` | 実装済・検収済 (report/t7.md。アプリ `/app/tool/receiving.app.rb`、無効にしたら途中の 1 本は置いてから終わる。ESP32 は未) |
-| T8 | ブラウザの名乗りをルータで確かめ、クラウドでブラウザも転送に加える: door が利用者ごとの証明書で zenohd の `tls/` につなぐ (部屋の席と同じ形)、ACL で `wasm-<handle>` を 1 人の相手に、T6 の受け手の一覧にブラウザの利用者も | 実装済・検収済 (report/t8.md、console 2e443e5 は Unreleased。ブラウザ版の FmrbTransfer の送りで msgpack の integer overflow が残件) |
+| T8 | ブラウザの名乗りをルータで確かめ、クラウドでブラウザも転送に加える: door が利用者ごとの証明書で zenohd の `tls/` につなぐ (部屋の席と同じ形)、ACL で `wasm-<handle>` を 1 人の相手に、T6 の受け手の一覧にブラウザの利用者も | 実装済・検収済 (report/t8.md、console 2e443e5 は Unreleased。ブラウザ版の FmrbTransfer の送りの msgpack の integer overflow は report/t8b.md で修正済 (ブラウザ版の時計)) |
 
 ## 受け入れ条件
 
