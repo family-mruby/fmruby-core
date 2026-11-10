@@ -19,6 +19,12 @@
 #                                        gets a name of its own, foo(1).txt)
 #        [--name NAME]                   the name there (default: the file's)
 #        [--sd]                          to the SD card's /sd/inbox/ there
+#        [--credentials ROW.tar]         connect with a member row's
+#                                        certificate (the console's .tar):
+#                                        its router and its name, unless
+#                                        --router / --node say otherwise; a
+#                                        cloud router's ACL then lets it call
+#                                        the inboxes of whom chose it (T6, T8)
 #
 # It prints the progress and the name the file was placed under; the exit
 # status is 0 when placed. Ctrl+C stops it, and the machine drops what it
@@ -52,19 +58,28 @@ module FmrbSend
   def self.main(argv)
     opt = { router: DEFAULT_ROUTER, node: DEFAULT_NODE, overwrite: false, name: nil, sd: false }
     parser = OptionParser.new do |o|
-      o.banner = "usage: fmrb_send.rb <node> <file> [--router LOC] [--node ID] [--overwrite] [--name NAME] [--sd]"
+      o.banner = "usage: fmrb_send.rb <node> <file> [--router LOC] [--node ID] [--overwrite] [--name NAME] [--sd] " \
+                 "[--credentials ROW.tar]"
       o.on("--router LOC") { |v| opt[:router] = v }
       o.on("--node ID") { |v| opt[:node] = v }
       o.on("--overwrite") { opt[:overwrite] = true }
       o.on("--name NAME") { |v| opt[:name] = v }
       o.on("--sd") { opt[:sd] = true }
+      o.on("--credentials TAR") { |v| opt[:credentials] = v }
     end
+    given = argv.join(" ")
     parser.parse!(argv)
     abort parser.banner unless argv.size == 2
     to, path = argv
     abort "fmrb_send: no such file: #{path}" unless File.file?(path)
     load_asterism
-    Asterism.connect(opt[:router], node: opt[:node], app: APP)
+    if opt[:credentials]
+      args = given.include?("--router") ? [opt[:router]] : []
+      kw = given.include?("--node") ? { node: opt[:node] } : {}
+      Asterism.connect(*args, credentials: opt[:credentials], app: APP, **kw)
+    else
+      Asterism.connect(opt[:router], node: opt[:node], app: APP)
+    end
     begin
       ok = send_file(to, path, overwrite: opt[:overwrite], name: opt[:name], sd: opt[:sd])
     ensure

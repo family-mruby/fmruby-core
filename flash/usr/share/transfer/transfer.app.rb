@@ -106,7 +106,10 @@
 #                            from the console's node only (console in
 #                            config.toml, "console" by default) and over a
 #                            tls/ router only (the caller's ID is bound to
-#                            its certificate there); refused otherwise ->
+#                            its certificate there), or in the browser
+#                            build on a page the console's door connected
+#                            with its user's certificate (T8,
+#                            /tmp/.asterism_door); refused otherwise ->
 #                            {"ok", "written", "at", "receiving" (whether
 #                            receiving is on here, T7)} The caller's node ID is the one Asterism takes
 # from the call; with a tls/ router and the console's certificates, the
@@ -269,7 +272,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     raise ArgumentError, "#{node_name} takes the senders' list from #{console} only, not #{from}" if from.to_s != console
     unless @app && @app.certified?
       raise ArgumentError, "#{node_name} takes no list from #{console} over a connection without certificates " \
-                           "(its router is not tls/)"
+                           "(its router is not tls/, nor a page the door checked)"
     end
     raise ArgumentError, "not a table" unless h.is_a?(Hash)
     at = h["at"].to_s
@@ -574,9 +577,26 @@ class TransferApp < FmrbApp
   end
 
   # Connected over a tls/ router, with this machine's certificate (the
-  # settings take no tls/ router without one).
+  # settings take no tls/ router without one). In the browser build: the
+  # console's door connected this page with its user's certificate (T8,
+  # asterism-console docs/g1_5.md), which the page says by writing this
+  # node's ID to DOOR_FILE while every WebSocket it has says so
+  # (web/main.js); the router binds the callers to their certificates
+  # there, and refuses every transfer key to the shared connection.
+  DOOR_FILE = "/tmp/.asterism_door"
+
   def certified?
-    @link.connected? && @link.router.to_s.start_with?("tls/")
+    return false unless @link.connected?
+    router = @link.router.to_s
+    return true if router.start_with?("tls/")
+    ::FmrbConst::BOARD == "wasm" && router.start_with?("ws/") && door_checked?
+  end
+
+  def door_checked?
+    return false unless ::File.exist?(DOOR_FILE)
+    ::File.open(DOOR_FILE, "r") { |io| io.read }.to_s.strip == @link.node.to_s
+  rescue StandardError
+    false
   end
 
   def link_up(link)

@@ -1033,6 +1033,9 @@ moduleConfig.arguments = [];
   } else if (ZENOH_PASS && !PASS_WITHOUT_NODE) {
     moduleConfig.zenohPass = ZENOH_PASS;
     moduleConfig.zenohPage = ZENOH_PAGE;
+    // Which way the door took each WebSocket (asterism-console T8): with
+    // the user's certificate, or the shared connection.
+    moduleConfig.zenohDoor = onDoorNotice;
     // The link stopped trying (zp_ws_emscripten.c): with a pass, most likely
     // because the pass has closed.
     moduleConfig.zenohGaveUp = (fails) => {
@@ -1426,6 +1429,56 @@ function decideNodeId() {
 }
 lockDecided.then(() => { if (!nodeId) decideNodeId(); });
 
+// ---- the door's notice: the name the router checked (T8) ----------------
+//
+// A page that came with a pass from the console asks the door which way it
+// took each WebSocket (zp_ws_emscripten.c, door=1): to zenohd's mutual-TLS
+// port with the user's certificate, where the router checks the page's node
+// ID (asterism-console docs/g1_5.md, "Browsers the router tells apart"), or
+// through the shared connection of every browser, where it does not. The
+// page counts as checked while every open WebSocket says so, for this
+// page's node. Then it writes the node to DOOR_FILE (the machine's
+// /tmp/.asterism_door), where the transfer app looks before it takes the
+// console's list of senders (/usr/share/transfer/transfer.app.rb); the file
+// goes when that stops being true. The router itself refuses every file key
+// to the shared connection, so the file only lets the app say yes where the
+// router has bound the callers to their certificates.
+const DOOR_FILE = '/flash/tmp/.asterism_door';
+const doorSlots = {};
+let doorState = null; // the last word: { verified, node, why }
+
+function onDoorNotice(slot, notice) {
+  if (notice) doorSlots[slot] = notice;
+  else delete doorSlots[slot];
+  const open = Object.values(doorSlots);
+  if (open.length) {
+    const shared = open.find((n) => !n.verified || n.node !== nodeId);
+    doorState = shared ? { verified: false, other: shared.verified ? shared.node : '', why: shared.why || '' }
+                       : { verified: true, node: nodeId };
+  }
+  const fs = (M || moduleConfig).FS;
+  try {
+    if (open.length && doorState && doorState.verified) {
+      fs.mkdirTree('/flash/tmp');
+      fs.writeFile(DOOR_FILE, nodeId);
+    } else {
+      fs.unlink(DOOR_FILE);
+    }
+  } catch (e) { /* not there: nothing to remove */ }
+  showNetworkState();
+}
+
+function doorText() {
+  if (!ZENOH_PASS || ROOM || PASS_WITHOUT_NODE) return '';
+  if (!doorState) return '';
+  if (doorState.verified) return '; the router checked this name (your certificate at the console\'s door): files can go';
+  // The pass is someone else's (or this user's other name): the router binds
+  // this page to that name, so it cannot act as the one it shows.
+  if (doorState.other) return '; the door connected this page as ' + doorState.other + ', not as this ID: no files';
+  return '; shared connection, the router does not check this name' + (doorState.why ? ' (' + doorState.why + ')' : '') +
+    ': no files';
+}
+
 // ---- the Network panel: the router, and the ID above -------------------
 //
 // The router is the zenoh_router setting (CONF_KEYS), written into the store
@@ -1450,7 +1503,7 @@ function showNetworkState() {
     else if (nodeId && LINK_NODE && !ROOM) text += ' (from the link, this visit)';
     else if (nodeId && !ROOM && homeWriter === false) text += ' (this tab only)';
     else if ((nodeId || ROOM) && !nodeKept) text += ' (not kept: storage refused)';
-    nodeStateEl.textContent = text;
+    nodeStateEl.textContent = text + doorText();
   }
   showRoomState('');
 }

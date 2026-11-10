@@ -84,6 +84,16 @@
  * after 101, a WebSocket that closes before anything came back counts as a
  * failed try (zp_ws_close), so the spacing and the giving up hold.
  *
+ * The door's notice (asterism-console T8): a page with a pass asks for it
+ * (door=1 in the URL, next to the pass); the door then sends one Text message
+ * before anything of Zenoh, {"door": {"verified": true, "node": ...}} when it
+ * connected the page to zenohd's mutual-TLS port with the user's certificate
+ * (the router checks the page's node ID), {"door": {"verified": false, "why":
+ * ...}} when the page went on through the shared ws/. A Text never reaches
+ * the rx ring (it is not a batch): it goes to Module.zenohDoor(slot, notice),
+ * and a closed WebSocket to Module.zenohDoor(slot, null), so web/main.js can
+ * tell which sessions are checked (doc/asterism_file_transfer/report/t8.md).
+ *
  * The link is a datagram link to zenoh-pico: one WebSocket message carries
  * one batch, as zenohd's ws/ listener expects. The rest of the contract is
  * picoruby-asterism-zenoh's (include/picoruby_zenoh_link.h): the polled read
@@ -204,6 +214,9 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
                     // same pass while the pass is open.
                     const page = Module['zenohPage'];
                     if (pass && page) url += '&page=' + encodeURIComponent(page);
+                    // The door's notice (T8): which way the door took
+                    // this page, in a Text before Zenoh's first batch.
+                    if (pass) url += '&door=1';
                 }
             }
             let ws;
@@ -225,12 +238,25 @@ static int zp_ws_js_open(int slot, const char *url, zp_ws_ring_t *ring) {
                 Atomics.store(words(), 0, 2);
             };
             ws.onerror = () => Atomics.store(words(), 0, 3);
+            const door = (notice) => {
+                if (typeof Module['zenohDoor'] === 'function') {
+                    try { Module['zenohDoor'](slot, notice); } catch (e) {}
+                }
+            };
             ws.onclose = (ev) => {
                 // 4403: the door holds no seat for the secret any more.
                 if (roomed && ev.code === 4403 && typeof Module['zenohReseat'] === 'function') Module['zenohReseat']();
+                door(null);
                 Atomics.store(words(), 0, 3);
             };
             ws.onmessage = (ev) => {
+                // The door's notice (T8): a Text, never a batch.
+                if (typeof ev.data === 'string') {
+                    let notice = null;
+                    try { notice = JSON.parse(ev.data).door || null; } catch (e) {}
+                    if (notice) door(notice);
+                    return;
+                }
                 const h = words();
                 const data = new Uint8Array(ev.data);
                 const n = data.length;
@@ -306,6 +332,10 @@ static void zp_ws_js_close(int slot) {
             ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null;
             try { ws.close(); } catch (e) {}
             delete zp[$0];
+            // The session is gone: its notice (T8) no longer counts.
+            if (typeof Module['zenohDoor'] === 'function') {
+                try { Module['zenohDoor']($0, null); } catch (e) {}
+            }
         },
         slot);
 }
