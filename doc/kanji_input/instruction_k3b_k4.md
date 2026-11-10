@@ -1,6 +1,6 @@
 # K3b・K4 指示書: 残りの直しと、ブラウザ版のブラウザの IME
 
-> 状態: 実装中 | 更新: 2026-11-11 | 正は plan.md、report/k2b_k3.md、report/k0.md (K4 の見立て)
+> 状態: 完了 (report/k3b_k4.md) | 更新: 2026-11-11 | 正は plan.md、report/k2b_k3.md、report/k0.md (K4 の見立て)
 
 ## K3b: K3 の残り
 
