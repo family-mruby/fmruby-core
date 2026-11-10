@@ -23,7 +23,7 @@ Regress::Screens.scene "picoruby_fonts_ja", on: %w[modern retro] do |s|
 end
 
 Regress::Screens.scene "kamon", on: %w[modern retro web] do |s|
-  s.open_app "/app/demo/kamon.app.rb", web_index: 11
+  s.open_app "/app/demo/kamon.app.rb", web_index: 12
   s.shot
 end
 
