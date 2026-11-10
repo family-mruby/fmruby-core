@@ -276,6 +276,23 @@ static size_t pack_int(uint8_t *out, size_t cap, mp_int_t v) {
     return 5;
 }
 
+#if MICROPY_PY_BUILTINS_FLOAT
+// Always float64 (0xCB), the inverse of unpack_float: the port's float is
+// single precision, but widening is exact and the Ruby side reads a double.
+static size_t pack_float(uint8_t *out, size_t cap, mp_float_t f) {
+    if (cap < 9) {
+        return 0;
+    }
+    union { uint64_t u; double d; } v;
+    v.d = (double)f;
+    out[0] = 0xCB;
+    for (int i = 0; i < 8; i++) {
+        out[1 + i] = (uint8_t)(v.u >> (56 - 8 * i));
+    }
+    return 9;
+}
+#endif
+
 static size_t pack_value(uint8_t *out, size_t cap, mp_obj_t obj) {
     if (obj == mp_const_none) {
         if (cap < 1) {
@@ -299,6 +316,11 @@ static size_t pack_value(uint8_t *out, size_t cap, mp_obj_t obj) {
     if (mp_obj_is_int(obj)) {
         return pack_int(out, cap, mp_obj_get_int(obj));
     }
+    #if MICROPY_PY_BUILTINS_FLOAT
+    if (mp_obj_is_float(obj)) {
+        return pack_float(out, cap, mp_obj_get_float(obj));
+    }
+    #endif
     if (mp_obj_is_type(obj, &mp_type_bytes) || mp_obj_is_type(obj, &mp_type_bytearray)) {
         mp_buffer_info_t bufinfo;
         mp_get_buffer_raise(obj, &bufinfo, MP_BUFFER_READ);

@@ -207,6 +207,6 @@ Spinel の `sp_int` の最小値 (`INTPTR_MIN`) は Integer の nil の印 (`SP_
 
 ### 10.9 残件
 
-1. MicroPython のアプリは Float を msgpack に詰められない (`pack_value` に Float の枝が無い)。読む方は単精度に丸まる。今回の範囲の外。
+1. ~~MicroPython のアプリは Float を msgpack に詰められない (`pack_value` に Float の枝が無い)~~ (直した。ユーザの決定 2026-11-10「MicroPython のアプリから小数を送れるようにする」): `components/micropython/modules/fmrb_module.c` の `pack_value` に Float の枝を足した。`mp_obj_get_float` の単精度を double に広げて float64 (`0xcb`、ビッグエンディアン) で詰める (広げるのは正確)。`MICROPY_PY_BUILTINS_FLOAT` で囲む。`fmrb_send_message` などで小数が `ValueError: message payload not encodable` にならなくなる。読む方 (`0xca`・`0xcb`) は前から読めていた。単精度に丸まるのは変わらない。smoke は `_fmrb` を差し替えて動くので場面は足していない (ホストで構文の確認、`rake micropython:smoke`・`rake regress` は通った)。
 2. float32 (0xca) で詰める道は無い (カーネルは常に float64)。要るアプリが出たら決める。
 3. 9 章の 2〜4 はそのまま。
