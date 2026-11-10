@@ -44,6 +44,9 @@ enum {
                                   end first: text the browser's IME committed
                                   (doc/kanji_input K4). A longer text is
                                   several records in order. */
+    INPUT_WASM_IME_GUESS,      /* a=1 the browser's IME composes, 0 a key went
+                                  past it: the page's guess at whether it is
+                                  on (doc/kanji_input K4b) */
 };
 
 #define INPUT_WASM_TEXT_MAX 12
@@ -86,6 +89,23 @@ void fmrb_wasm_ime_publish_cursor(bool on, int fx, int fy, int h)
     __atomic_add_fetch(&s_text_cursor.seq, 1, __ATOMIC_SEQ_CST);   /* even */
 }
 
+/* The page's last guess at the browser's IME, for the host task: the
+ * sequence moves on with every guess, even a repeated one. */
+static volatile uint32_t s_ime_guess_seq;
+static volatile bool s_ime_guess_on;
+
+bool fmrb_wasm_ime_guess(uint32_t *seq)
+{
+    uint32_t s1;
+    bool on;
+    do {
+        s1 = s_ime_guess_seq;
+        on = s_ime_guess_on;
+    } while (s1 != s_ime_guess_seq);
+    *seq = s1;
+    return on;
+}
+
 /* ------------------------------------------------------------------------ */
 
 static void dispatch(const input_wasm_event_t *ev)
@@ -121,6 +141,10 @@ static void dispatch(const input_wasm_event_t *ev)
         }
         break;
     }
+    case INPUT_WASM_IME_GUESS:
+        s_ime_guess_on = ev->a != 0;
+        s_ime_guess_seq++;
+        break;
     default:
         FMRB_LOGW(TAG, "unknown input event type %u", (unsigned)ev->type);
         break;

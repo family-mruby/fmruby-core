@@ -1648,9 +1648,14 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 //
 // Native only: the devices, the simulation and the browser keep their kana
 // input as it is. (The browser build shares the text and the cursors below,
-// doc/kanji_input K4, but never sets s_ime_on.)
+// doc/kanji_input K4, and s_ime_on, but only for the indicators: see the
+// browser's ime_tick.)
+#endif
 
-static bool s_ime_on;               // the host task's view of the IME
+#if defined(HOST_TEXT_IN)
+// Native: an IME is there. Browser: the page saw the browser's IME compose
+// last (doc/kanji_input K4b) -- the indicators hide, kana input is untouched.
+static bool s_ime_on;
 // Per app slot, the context generation told FMRB_KANA_MODE_IME (0 none).
 static uint32_t s_ime_told_gen[FMRB_MAX_APPS];
 #endif
@@ -1677,7 +1682,7 @@ static uint32_t s_ime_cursor_ms;
 static void host_broadcast_kana_mode(void)
 {
     uint8_t mode = (uint8_t)fmrb_kana_get_mode();
-#if defined(FMRB_PLATFORM_NATIVE)
+#if defined(HOST_TEXT_IN)
     if (s_ime_on) mode = FMRB_KANA_MODE_IME;
 #endif
     fmrb_hid_routing_t routing;
@@ -1876,6 +1881,11 @@ void fmrb_host_set_kana_mode(uint8_t mode)
         host_broadcast_kana_mode();
         return;
     }
+#elif defined(FMRB_PLATFORM_WASM)
+    // Asking Family mruby's kana input for a mode says the user is using it
+    // now, not the browser's IME: the indicator shows the mode asked for
+    // until the browser's IME composes again (doc/kanji_input K4b).
+    s_ime_on = false;
 #endif
     fmrb_kana_set_mode((fmrb_kana_mode_t)mode);
     FMRB_LOGI(TAG, "kana mode=%d (set by app)", mode);
@@ -1947,19 +1957,62 @@ static void ime_publish_focused_cursor(int target)
     fmrb_wasm_ime_publish_cursor(has, fx, fy, h);
 #endif
 }
+
+// The focused app hears the mode as it is now: an app that came to the front
+// (or started) after the IME did has its indicator, and the desktop's, hidden
+// too; one told so before the IME went is told the kana mode again.
+static void ime_tell_focused(int target)
+{
+    if (target < 0 || target >= FMRB_MAX_APPS) return;
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((uint8_t)target);
+    if (ctx == NULL || ctx->state != PROC_STATE_RUNNING) return;
+    if (s_ime_on && s_ime_told_gen[target] != ctx->gen) {
+        s_ime_told_gen[target] = ctx->gen;
+        host_send_kana_mode((uint8_t)target, FMRB_KANA_MODE_IME);
+        host_send_kana_mode(0, FMRB_KANA_MODE_IME);
+        FMRB_LOGI(TAG, "PID %d told an IME types (its kana indicator hidden)", target);
+    } else if (!s_ime_on && s_ime_told_gen[target] != 0) {
+        s_ime_told_gen[target] = 0;
+        uint8_t mode = (uint8_t)fmrb_kana_get_mode();
+        host_send_kana_mode((uint8_t)target, mode);
+        host_send_kana_mode(0, mode);
+    }
+}
 #endif
 
 #if defined(FMRB_PLATFORM_WASM)
 // The browser's IME (doc/kanji_input K4): the page puts a text area at the
 // focused app's cursor while it has one, and what the browser's IME commits
 // there comes in as HOST_MSG_HID_TEXT. Family mruby's own kana input is left
-// as it is -- the page cannot tell whether the browser's IME is on, and with
-// it off every key arrives as today.
+// as it is.
+//
+// The page cannot read whether the browser's IME is on; it guesses (K4b): a
+// composition starting in the text area says it is, a printable key the IME
+// did not take says it is not. Each guess comes as a record with a new
+// sequence; while the last one says "on", the apps are told
+// FMRB_KANA_MODE_IME as on the native program (their indicators hide). Only
+// the indicators: the composer is fed and the indicators can be clicked as
+// before, and either of those (or the kana keys) puts the indicator back to
+// Family mruby's own mode until the next composition.
+static uint32_t s_ime_guess_seq;
+
 static void ime_tick(void)
 {
+    uint32_t seq;
+    bool on = fmrb_wasm_ime_guess(&seq);
+    if (seq != s_ime_guess_seq) {
+        s_ime_guess_seq = seq;
+        if (on != s_ime_on) {
+            s_ime_on = on;
+            FMRB_LOGI(TAG, "the browser's IME %s", on ? "composes: kana indicator hidden"
+                                                       : "lets keys through: kana indicator back");
+            host_broadcast_kana_mode();
+        }
+    }
     fmrb_hid_routing_t routing;
     if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return;
     int target = (routing.routing_enabled && routing.target_pid != 0xFF) ? routing.target_pid : -1;
+    ime_tell_focused(target);
     ime_publish_focused_cursor(target);
 }
 #endif
@@ -1984,26 +2037,7 @@ static void ime_tick(void)
     fmrb_hid_routing_t routing;
     if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) return;
     int target = (routing.routing_enabled && routing.target_pid != 0xFF) ? routing.target_pid : -1;
-    if (target >= 0 && target < FMRB_MAX_APPS) {
-        // The focused app hears the mode as it is now: an app that came to
-        // the front (or started) after the IME did has its indicator, and
-        // the desktop's, hidden too; one told so before the IME went is
-        // told the kana mode again.
-        fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((uint8_t)target);
-        if (ctx != NULL && ctx->state == PROC_STATE_RUNNING) {
-            if (s_ime_on && s_ime_told_gen[target] != ctx->gen) {
-                s_ime_told_gen[target] = ctx->gen;
-                host_send_kana_mode((uint8_t)target, FMRB_KANA_MODE_IME);
-                host_send_kana_mode(0, FMRB_KANA_MODE_IME);
-                FMRB_LOGI(TAG, "PID %d told the PC's IME types (its kana indicator hidden)", target);
-            } else if (!s_ime_on && s_ime_told_gen[target] != 0) {
-                s_ime_told_gen[target] = 0;
-                uint8_t mode = (uint8_t)fmrb_kana_get_mode();
-                host_send_kana_mode((uint8_t)target, mode);
-                host_send_kana_mode(0, mode);
-            }
-        }
-    }
+    ime_tell_focused(target);
     ime_publish_focused_cursor(target);
 }
 #endif
@@ -2425,6 +2459,12 @@ static void host_task_process_host_message(const host_message_t *msg)
                     FMRB_LOGI(TAG, "kana mode=%d (sc=0x%02x mod=0x%02x)",
                               (int)fmrb_kana_get_mode(),
                               key_event->scancode, key_event->modifier);
+#if defined(FMRB_PLATFORM_WASM)
+                    // The kana keys (Ctrl+Space ...) reached the machine:
+                    // Family mruby's kana input wins over what the page
+                    // guessed about the browser's IME (doc/kanji_input K4b).
+                    s_ime_on = false;
+#endif
                     host_broadcast_kana_mode();
                     host_kanji_mode_changed(routing.target_pid);
                 }
