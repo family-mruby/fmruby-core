@@ -158,7 +158,7 @@ static volatile bool g_input_report_overflow = false;  // Ring overflow flag
 #define USB_LOOP_SLOW_MS 300
 #define MOUSE_GAP_IGNORE_MS 10000
 EXT_RAM_BSS_ATTR static uint32_t s_mouse_motion_n, s_mouse_last_motion_ms, s_mouse_gap_max_ms;
-EXT_RAM_BSS_ATTR static uint32_t s_usb_loop_last_ms, s_usb_loop_max_ms;
+EXT_RAM_BSS_ATTR static uint32_t s_usb_loop_last_ms, s_usb_loop_max_ms, s_usb_loop_max_end_ms;
 EXT_RAM_BSS_ATTR static uint32_t s_usb_cb_drops, s_mouse_send_fails, s_input_health_ms;
 static fmrb_spinlock_t g_input_report_spinlock = FMRB_SPINLOCK_INITIALIZER;
 
@@ -832,13 +832,17 @@ static void input_health_tick(void)
     uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
     if (s_usb_loop_last_ms != 0 && now - s_usb_loop_last_ms > s_usb_loop_max_ms) {
         s_usb_loop_max_ms = now - s_usb_loop_last_ms;
+        s_usb_loop_max_end_ms = now;
     }
     s_usb_loop_last_ms = now;
     if (now - s_input_health_ms < 5000) return;
     if (s_usb_loop_max_ms >= USB_LOOP_SLOW_MS || s_usb_cb_drops || s_mouse_send_fails) {
-        FMRB_LOGI(TAG, "input health: loop max=%ums cb drops=%u mouse send fails=%u "
-                  "(motion=%u gap max=%ums)",
-                  (unsigned)s_usb_loop_max_ms, (unsigned)s_usb_cb_drops,
+        // "ended .. ago" dates the longest pass, so it can be matched with
+        // other lines by the log's time (hw_proxy's slow ops, for one).
+        FMRB_LOGI(TAG, "input health: loop max=%ums (ended %ums ago) cb drops=%u "
+                  "mouse send fails=%u (motion=%u gap max=%ums)",
+                  (unsigned)s_usb_loop_max_ms, (unsigned)(now - s_usb_loop_max_end_ms),
+                  (unsigned)s_usb_cb_drops,
                   (unsigned)s_mouse_send_fails, (unsigned)s_mouse_motion_n,
                   (unsigned)s_mouse_gap_max_ms);
     }

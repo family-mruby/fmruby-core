@@ -240,10 +240,15 @@
 
 // HW proxy task (internal RAM, handles file I/O for PSRAM tasks)
 // M-2 session (S3, 2026-08-02) peaked at 2.0KB with file traffic flowing;
-// 6KB keeps a 2x margin over that. Note the proxied-file-I/O role is dormant
-// while PSRAM task stacks stay banned -- re-measure if that ever returns.
+// 6KB keeps a 2x margin over that. Its file I/O serves the PSRAM-stack tasks
+// only (today the kanji lookup task); GPIO, I2C and RMT always come here.
+// Priority 4, below the input drivers (5) on the same core: a long file op
+// (flash write or erase) here must not hold off USB HID. Every caller runs at
+// 4 or below (kanji 3, apps 2-3, status LED 3, RTC 3, ble_fs 4, boot in main),
+// so none waits on a proxy below itself (doc/reference/task_priority.md,
+// doc/kanji_input/report/k3c_input_stall.md).
 #define FMRB_HW_PROXY_TASK_STACK_SIZE   (6 * 1024)
-#define FMRB_HW_PROXY_TASK_PRIORITY     (6)
+#define FMRB_HW_PROXY_TASK_PRIORITY     (4)
 #define FMRB_HW_PROXY_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_0
 
 // BLE task (managed by NimBLE, config referenced in sdkconfig)

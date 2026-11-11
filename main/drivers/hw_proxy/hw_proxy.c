@@ -4,6 +4,8 @@
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
+#include "fmrb_hal_time.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_memory_utils.h"
 #endif
@@ -31,14 +33,77 @@ static void execute_request(hw_proxy_request_t *req)
     }
 }
 
+// A request that holds the proxy this long is logged (op, path or handle,
+// size, time), so a stall elsewhere can be matched to it by the log's time.
+// At most one line a second; the ones in between are counted into the next.
+// The state is in PSRAM (no internal RAM for a diagnostic).
+#define HW_PROXY_SLOW_MS     50
+#define HW_PROXY_SLOW_GAP_MS 1000
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_slow_logged_ms;
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_slow_skipped, s_slow_skipped_max_ms;
+
+static void note_request_time(const hw_proxy_request_t *req, uint32_t ms)
+{
+    if (ms < HW_PROXY_SLOW_MS) return;
+    const uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    if (s_slow_logged_ms != 0 && now - s_slow_logged_ms < HW_PROXY_SLOW_GAP_MS) {
+        s_slow_skipped++;
+        if (ms > s_slow_skipped_max_ms) s_slow_skipped_max_ms = ms;
+        return;
+    }
+    const void *pr = req->params;
+    const char *path = NULL;
+    const void *handle = NULL;
+    size_t size = 0;
+    switch (req->op) {
+    case HW_PROXY_OP_FILE_OPEN:  path = ((const hw_proxy_file_open_params_t *)pr)->path; break;
+    case HW_PROXY_OP_FILE_STAT:  path = ((const hw_proxy_file_stat_params_t *)pr)->path; break;
+    case HW_PROXY_OP_DIR_OPEN:   path = ((const hw_proxy_dir_open_params_t *)pr)->path; break;
+    case HW_PROXY_OP_DIR_STAT:   path = ((const hw_proxy_dir_stat_params_t *)pr)->path; break;
+    case HW_PROXY_OP_FILE_CLOSE: handle = ((const hw_proxy_file_close_params_t *)pr)->handle; break;
+    case HW_PROXY_OP_FILE_SEEK:  handle = ((const hw_proxy_file_seek_params_t *)pr)->handle; break;
+    case HW_PROXY_OP_FILE_TELL:  handle = ((const hw_proxy_file_tell_params_t *)pr)->handle; break;
+    case HW_PROXY_OP_FILE_SIZE:  handle = ((const hw_proxy_file_size_params_t *)pr)->handle; break;
+    case HW_PROXY_OP_FILE_READ:
+        handle = ((const hw_proxy_file_read_params_t *)pr)->handle;
+        size = ((const hw_proxy_file_read_params_t *)pr)->size;
+        break;
+    case HW_PROXY_OP_FILE_WRITE:
+        handle = ((const hw_proxy_file_write_params_t *)pr)->handle;
+        size = ((const hw_proxy_file_write_params_t *)pr)->size;
+        break;
+    case HW_PROXY_OP_DIR_READ:   handle = ((const hw_proxy_dir_read_params_t *)pr)->dir; break;
+    case HW_PROXY_OP_DIR_CLOSE:  handle = ((const hw_proxy_dir_close_params_t *)pr)->dir; break;
+    default: break;
+    }
+    const char *caller = req->caller ? pcTaskGetName((TaskHandle_t)req->caller) : "?";
+    if (path) {
+        FMRB_LOGW(TAG, "slow op 0x%02x %s by %s: %ums (+%u more, max %ums)",
+                  (unsigned)req->op, path, caller, (unsigned)ms,
+                  (unsigned)s_slow_skipped, (unsigned)s_slow_skipped_max_ms);
+    } else {
+        FMRB_LOGW(TAG, "slow op 0x%02x handle=%p size=%u by %s: %ums (+%u more, max %ums)",
+                  (unsigned)req->op, handle, (unsigned)size, caller, (unsigned)ms,
+                  (unsigned)s_slow_skipped, (unsigned)s_slow_skipped_max_ms);
+    }
+    s_slow_logged_ms = now ? now : 1;
+    s_slow_skipped = 0;
+    s_slow_skipped_max_ms = 0;
+}
+
 static void hw_proxy_task(void *arg)
 {
     (void)arg;
     FMRB_LOGI(TAG, "HW proxy task started (internal RAM stack)");
     while (1) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (s_current_req) {
-            execute_request(s_current_req);
+        hw_proxy_request_t *req = s_current_req;
+        if (req) {
+            const uint64_t t0 = fmrb_hal_time_get_ms();
+            execute_request(req);
+            // Noted before the caller is let go: req and its params live on
+            // the caller's stack.
+            note_request_time(req, (uint32_t)(fmrb_hal_time_get_ms() - t0));
             xSemaphoreGive(s_done);
         }
     }
