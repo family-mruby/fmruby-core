@@ -193,8 +193,9 @@ class FmrbApp
   def self.audio_muted? = false
   def self.path_read_only?(_path) = false
   def self.wifi_info = Regress::Env.wifi
-  # The PC's settings and notices (L14): none, as on the devices.
+  # The PC's settings and notices (L14): none, as in the simulation.
   def self.wifi_networks(_scan = false) = ""
+  def self.wifi_forget(_ssid) = false
   def self.bt_devices = ""
   def self.notices_gen = -1
   def self.notices = ""

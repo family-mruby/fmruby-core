@@ -2702,6 +2702,10 @@ class FmrbApp
     ""
   end
 
+  def self.wifi_forget(ssid)
+    false
+  end
+
   def self.bt_devices
     ""
   end

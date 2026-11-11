@@ -1925,8 +1925,10 @@ static mrb_value mrb_fmrb_app_s_clipboard_gen(mrb_state *mrb, mrb_value klass)
 
 // ---- The PC's settings and notices (doc/linux_native L14, fmrb_platform_sys.h) ----
 //
-// Every device, the simulation and the browser answer "not available":
-// "" for the texts, false, -1 for notices_gen.
+// The simulation and the browser answer "not available": "" for the texts,
+// false, -1 for notices_gen. The devices with Wi-Fi answer the Wi-Fi ones
+// from their station (doc/wifi_settings, wifi_task.h); Bluetooth and the
+// notices are "not available" there too.
 //
 // FmrbApp.wifi_networks(scan = false) -> String. The Wi-Fi state and the
 //   networks in reach: "wifi\t<status>\t<active>\t<busy>\t<code>\t<arg>"
@@ -1935,6 +1937,9 @@ static mrb_value mrb_fmrb_app_s_clipboard_gen(mrb_state *mrb, mrb_value klass)
 // FmrbApp.wifi_connect(ssid, password = "") -> bool (queued). The password
 //   goes to the OS (NetworkManager) and is not kept here.
 // FmrbApp.wifi_disconnect -> bool.
+// FmrbApp.wifi_forget(ssid) -> bool (queued). Drops a saved network from the
+//   device's wifi.toml (doc/wifi_settings); false on the PC, whose networks
+//   NetworkManager keeps.
 // FmrbApp.bt_devices -> String. "bt\t<status>\t<powered>\t<busy>\t<code>\t<arg>"
 //   then "dev\t<address>\t<name>\t<connected>\t<icon>" per known device.
 // FmrbApp.bt_power(on) -> bool. FmrbApp.bt_connect(address, on) -> bool.
@@ -2006,6 +2011,14 @@ static mrb_value mrb_fmrb_app_s_wifi_disconnect(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
     return mrb_bool_value(fmrb_platform_sys_wifi_disconnect() == FMRB_OK);
+}
+
+static mrb_value mrb_fmrb_app_s_wifi_forget(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *ssid;
+    mrb_get_args(mrb, "z", &ssid);
+    return mrb_bool_value(fmrb_platform_sys_wifi_forget(ssid) == FMRB_OK);
 }
 
 static mrb_value mrb_fmrb_app_s_bt_devices(mrb_state *mrb, mrb_value klass)
@@ -2738,6 +2751,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "wifi_networks", mrb_fmrb_app_s_wifi_networks, MRB_ARGS_OPT(1));
     mrb_define_class_method(mrb, app_class, "wifi_connect", mrb_fmrb_app_s_wifi_connect, MRB_ARGS_ARG(1, 1));
     mrb_define_class_method(mrb, app_class, "wifi_disconnect", mrb_fmrb_app_s_wifi_disconnect, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "wifi_forget", mrb_fmrb_app_s_wifi_forget, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "bt_devices", mrb_fmrb_app_s_bt_devices, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "bt_power", mrb_fmrb_app_s_bt_power, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "bt_connect", mrb_fmrb_app_s_bt_connect, MRB_ARGS_REQ(2));

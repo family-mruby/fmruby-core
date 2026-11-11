@@ -146,15 +146,18 @@ typedef struct {
     fmrb_err_t (*apps_open)(const char *id, const char *path, char *name, size_t name_cap,
                             char *why, size_t why_cap);
 
-    /* Wi-Fi (L14, native/sys/linux_net.h): the state and the networks in
-     * reach as text into buf ("wifi\t<status>\t..." then "ap\t..." per
-     * network), its length (more than cap: nothing written), -1 when this
-     * machine has none. scan also asks for a scan. connect queues the
-     * connection (the password goes to the OS and is not kept here). None
-     * of them waits. */
+    /* Wi-Fi (L14, native/sys/linux_net.h; the devices: wifi_task.h,
+     * doc/wifi_settings): the state and the networks in reach as text into
+     * buf ("wifi\t<status>\t..." then "ap\t..." per network), its length
+     * (more than cap: nothing written), -1 when this machine has none. scan
+     * also asks for a scan. connect queues the connection (on the PC the
+     * password goes to the OS and is not kept here; a device keeps it in
+     * its wifi.toml). forget drops a saved network (the devices only; the
+     * PC's are NetworkManager's). None of them waits. */
     int32_t (*wifi_list)(bool scan, char *buf, size_t cap);
     fmrb_err_t (*wifi_connect)(const char *ssid, const char *password);
     fmrb_err_t (*wifi_disconnect)(void);
+    fmrb_err_t (*wifi_forget)(const char *ssid);
 
     /* Bluetooth (L14, native/sys/linux_bt.h): the adapter and the devices
      * paired before, as text ("bt\t..." then "dev\t..." per device); -1
@@ -215,6 +218,7 @@ fmrb_err_t fmrb_platform_sys_apps_open(const char *id, const char *path, char *n
 int32_t fmrb_platform_sys_wifi_list(bool scan, char *buf, size_t cap);
 fmrb_err_t fmrb_platform_sys_wifi_connect(const char *ssid, const char *password);
 fmrb_err_t fmrb_platform_sys_wifi_disconnect(void);
+fmrb_err_t fmrb_platform_sys_wifi_forget(const char *ssid);
 int32_t fmrb_platform_sys_bt_list(char *buf, size_t cap);
 fmrb_err_t fmrb_platform_sys_bt_power(bool on);
 fmrb_err_t fmrb_platform_sys_bt_connect(const char *address, bool on);

@@ -256,6 +256,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_local/fonts/misaki/lgfx_misaki.cpp"
             "kernel/host/host_file_local.c"
             "drivers/wifi/wifi_task.c"
+            "drivers/wifi/wifi_conf.c"
             "drivers/remote_desktop/rd_task.c"
             "drivers/remote_desktop/rd_http.c"
             "drivers/remote_desktop/rd_encoder_jpeg.c"
@@ -319,7 +320,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
             # Narya v3: native WiFi STA + mDNS (no remote desktop -- the S3
             # has no hardware video encoder). Mutually exclusive with BLE at
             # runtime; see wifi_task.c.
-            list(APPEND COMPONENT_SRCS "drivers/wifi/wifi_task.c")
+            list(APPEND COMPONENT_SRCS "drivers/wifi/wifi_task.c" "drivers/wifi/wifi_conf.c")
             list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event)
             # Development remote control: no viewer here to hang it off, so it
             # brings its own small server. esp_http_server comes with it, and

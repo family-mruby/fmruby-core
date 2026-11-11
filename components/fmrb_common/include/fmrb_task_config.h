@@ -298,6 +298,20 @@
 #define FMRB_KANJI_TASK_PRIORITY        (3)
 #define FMRB_KANJI_TASK_FLAGS           FMRB_TASK_FLAG_PSRAM
 
+// Wi-Fi manager (main/drivers/wifi/wifi_task.c, doc/wifi_settings): the
+// scans, choosing the saved network to join and the backoff, the Wi-Fi
+// page's connect/disconnect/forget, and writing /home/wifi.toml. Exists only
+// where the station started. PSRAM stack like the kanji task: its file calls
+// go to hw_proxy (fmrb_hal_file_esp32.c), the esp_wifi calls copy what they
+// are given (and the station keeps its settings in RAM, not NVS, so nothing
+// here writes flash from this stack). Its buffers are PSRAM statics. In the
+// control tier with the debugger and the kanji lookups, below the input
+// drivers and the display, so a scan or a connection never holds off input
+// or drawing; the radio work itself runs in the Wi-Fi driver (or on the C6).
+#define FMRB_WIFI_MGR_TASK_STACK_SIZE   (6 * 1024)
+#define FMRB_WIFI_MGR_TASK_PRIORITY     (3)
+#define FMRB_WIFI_MGR_TASK_FLAGS        FMRB_TASK_FLAG_PSRAM
+
 // M5GFX receiver task (GFX commands via local Message Buffer)
 #define FMRB_M5GFX_TASK_STACK_SIZE      (8 * 1024)
 #define FMRB_M5GFX_TASK_PRIORITY        (6)

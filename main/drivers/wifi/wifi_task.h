@@ -14,14 +14,17 @@ extern "C" {
 // same SDIO transport as BLE; call after the transport is up (i.e. after
 // ble_task_init, or wifi_task_init itself waits for it). On Retro (Narya
 // v3, ESP32-S3) the radio is native and mutually exclusive with BLE.
-// Credentials come from /home/wifi.toml, else /etc/wifi.toml.
+// Settings come from /home/wifi.toml, else /etc/wifi.toml: up to five saved
+// networks (wifi_conf.h). A manager task joins the strongest one in reach
+// and takes the Wi-Fi page's requests (doc/wifi_settings).
 
 /**
  * @brief Read /home/wifi.toml (else /etc/wifi.toml) and start the WiFi station.
  *
- * Returns FMRB_ERR_NOT_FOUND when WiFi is disabled or unconfigured
- * (missing file, enable=false, or empty ssid); callers treat that as a
- * non-error "feature off" state.
+ * Returns FMRB_ERR_NOT_FOUND when WiFi is disabled ([wifi] without
+ * enable = true); callers treat that as a non-error "feature off" state.
+ * A missing file or one with no network starts the station all the same,
+ * so the Wi-Fi page can add one.
  */
 fmrb_err_t wifi_task_init(void);
 
@@ -59,6 +62,28 @@ void wifi_get_ssid(char *buf, size_t buf_len);
  * @brief Copy the mDNS hostname (defaults to "fmruby").
  */
 void wifi_get_hostname(char *buf, size_t buf_len);
+
+/**
+ * @brief The Wi-Fi page's text (fmrb_platform_sys.h wifi_list): the state
+ *        line and one "ap" line per network in reach, then the saved ones
+ *        out of reach. Never a password.
+ *
+ * "wifi\t<status>\t<active>\t<busy>\t<code>\t<arg>\tforget" where status is
+ * ok, or disabled / ble / failed when the station did not start; then
+ * "ap\t<ssid>\t<strength 0-100>\t<secured>\t<active>\t<saved>\t<in reach>".
+ * @param scan also ask for a scan (answered later; the list then changes)
+ * @return the length (more than cap - 1: buf holds only the beginning)
+ */
+int32_t wifi_list_text(bool scan, char *buf, size_t cap);
+
+/** @brief Queue joining a network (password "" : the saved one, or open). */
+fmrb_err_t wifi_request_connect(const char *ssid, const char *password);
+
+/** @brief Queue leaving the network; no automatic joining until the next connect. */
+fmrb_err_t wifi_request_disconnect(void);
+
+/** @brief Queue forgetting a saved network (removed from /home/wifi.toml). */
+fmrb_err_t wifi_request_forget(const char *ssid);
 
 #ifdef __cplusplus
 }

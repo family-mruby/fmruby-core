@@ -3,7 +3,8 @@
  *
  * What every target answered before the table existed, moved here from the
  * FmrbApp bindings unchanged:
- *   - network: the device's WiFi STA (FMRB_HAS_WIFI); on the Linux builds
+ *   - network: the device's WiFi STA (FMRB_HAS_WIFI), and its Wi-Fi page's
+ *     networks (scan, connect, disconnect, forget; doc/wifi_settings); on the Linux builds
  *     (the simulation, the browser build, a native machine without
  *     system.services = "linux") the first non-loopback IPv4 of the host;
  *     elsewhere none;
@@ -112,6 +113,14 @@ static const fmrb_platform_sys_t s_default_sys = {
 #if defined(FMRB_HAS_WIFI) || defined(CONFIG_IDF_TARGET_LINUX)
     .net_info = default_net_info,
     .net_connected = default_net_connected,
+#endif
+#if defined(FMRB_HAS_WIFI)
+    /* The Wi-Fi page (doc/wifi_settings): the saved networks and the
+     * station's manager task, wifi_task.c. */
+    .wifi_list = wifi_list_text,
+    .wifi_connect = wifi_request_connect,
+    .wifi_disconnect = wifi_request_disconnect,
+    .wifi_forget = wifi_request_forget,
 #endif
     .power_actions = default_power_actions,
     .power = default_power,
@@ -286,6 +295,12 @@ fmrb_err_t fmrb_platform_sys_wifi_disconnect(void)
 {
     const fmrb_platform_sys_t *s = fmrb_platform_sys();
     return s->wifi_disconnect ? s->wifi_disconnect() : FMRB_ERR_NOT_SUPPORTED;
+}
+
+fmrb_err_t fmrb_platform_sys_wifi_forget(const char *ssid)
+{
+    const fmrb_platform_sys_t *s = fmrb_platform_sys();
+    return s->wifi_forget ? s->wifi_forget(ssid) : FMRB_ERR_NOT_SUPPORTED;
 }
 
 int32_t fmrb_platform_sys_bt_list(char *buf, size_t cap)

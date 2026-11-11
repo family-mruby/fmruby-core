@@ -18,9 +18,9 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
-               "secret:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
   # The BMI270 driver against a fake device, and the step sensor app's step
@@ -202,6 +202,28 @@ namespace :secret do
     sh "#{cc} -std=c11 -O1 -g -Wall -Wextra -Werror -I main/kernel " \
        "main/kernel/fmrb_secret_path.c #{SECRET_TEST_DIR}/main.c -o #{SECRET_RUNNER_BIN}"
     sh SECRET_RUNNER_BIN
+  end
+end
+
+namespace :wificonf do
+  # The saved Wi-Fi networks (main/drivers/wifi/wifi_conf.c, doc/wifi_settings):
+  # wifi.toml's old one-network form and the [[networks]] list, add and forget
+  # with the limit, and the written text read back. Pure C over tomlc99, so it
+  # builds with the host cc. Run it after touching wifi_conf.c.
+  WIFICONF_TEST_DIR   = "test/wifi_conf"
+  WIFICONF_TEST_BUILD = "#{WIFICONF_TEST_DIR}/build"
+  WIFICONF_RUNNER_BIN = "#{WIFICONF_TEST_BUILD}/wifi_conf_test"
+
+  desc "Saved Wi-Fi network tests (host cc, no docker)"
+  task :test do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p WIFICONF_TEST_BUILD
+    sh "#{cc} -std=c11 -O1 -g -Wall -Wextra -Werror -D_POSIX_C_SOURCE=200809L " \
+       "-I main/drivers/wifi -I components/toml_parser/tomlc99 " \
+       "main/drivers/wifi/wifi_conf.c components/toml_parser/tomlc99/toml.c " \
+       "#{WIFICONF_TEST_DIR}/main.c -o #{WIFICONF_RUNNER_BIN}"
+    sh WIFICONF_RUNNER_BIN
   end
 end
 
