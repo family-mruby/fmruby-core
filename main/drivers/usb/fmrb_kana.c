@@ -7,9 +7,17 @@
  * needs: precomposed dakuten, youon, sokuon, the long vowel mark and the two
  * Japanese punctuation marks. Output is Unicode, not the BASIC screen's own
  * character codes.
+ *
+ * On top of those, the spellings the common IMEs (MS-IME, Google Japanese
+ * Input) take for small kana and for the sounds of loanwords (k_rules,
+ * doc/kanji_input K6): "xa" / "la" for a small a, "xtu" for a small tsu,
+ * "thi" for "te" + small i, "fa" for "fu" + small a, "vu" for vu, and so on.
+ * Everything not in that table keeps the meaning it had before: an x, l, v or
+ * q that does not start one of them is typed as the letter.
  */
 
 #include "fmrb_kana.h"
+#include "fmrb_attr.h"
 #include "fmrb_keymap.h"
 
 #include <string.h>
@@ -64,9 +72,80 @@ static const kana_row_t k_rows[] = {
     {'p', true,  {0x3071, 0x3074, 0x3077, 0x307A, 0x307D}},
 };
 
+// The IME spellings (doc/kanji_input/report/k6.md has the table). Each one
+// is complete as written; none is the start of another. Where a spelling
+// also has a meaning in the rows above ("fa", "wi", "tsa"), this one wins.
+typedef struct {
+    char romaji[5];
+    uint16_t cp[2];    // the kana, 0 in the second slot for one
+} romaji_rule_t;
+
+// Small a i u e o, small ya yu yo.
+#define S_A 0x3041
+#define S_I 0x3043
+#define S_U 0x3045
+#define S_E 0x3047
+#define S_O 0x3049
+#define S_YA 0x3083
+#define S_YU 0x3085
+#define S_YO 0x3087
+
+static const romaji_rule_t k_rules[] = {
+    // Small kana on their own: x or l in front.
+    {"xa", {S_A}}, {"xi", {S_I}}, {"xu", {S_U}}, {"xe", {S_E}}, {"xo", {S_O}},
+    {"la", {S_A}}, {"li", {S_I}}, {"lu", {S_U}}, {"le", {S_E}}, {"lo", {S_O}},
+    {"xtu", {KANA_SOKU}}, {"xtsu", {KANA_SOKU}},
+    {"ltu", {KANA_SOKU}}, {"ltsu", {KANA_SOKU}},
+    {"xya", {S_YA}}, {"xyu", {S_YU}}, {"xyo", {S_YO}},
+    {"lya", {S_YA}}, {"lyu", {S_YU}}, {"lyo", {S_YO}},
+    {"xwa", {0x308E}}, {"lwa", {0x308E}},
+    // Small ka and ke are katakana in both modes, as in the IMEs.
+    {"xka", {0x30F5}}, {"xke", {0x30F6}}, {"lka", {0x30F5}}, {"lke", {0x30F6}},
+    // te / de + small ya i yu e yo
+    {"tha", {0x3066, S_YA}}, {"thi", {0x3066, S_I}}, {"thu", {0x3066, S_YU}},
+    {"the", {0x3066, S_E}}, {"tho", {0x3066, S_YO}},
+    {"dha", {0x3067, S_YA}}, {"dhi", {0x3067, S_I}}, {"dhu", {0x3067, S_YU}},
+    {"dhe", {0x3067, S_E}}, {"dho", {0x3067, S_YO}},
+    // to / do + small a i u e o
+    {"twa", {0x3068, S_A}}, {"twi", {0x3068, S_I}}, {"twu", {0x3068, S_U}},
+    {"twe", {0x3068, S_E}}, {"two", {0x3068, S_O}},
+    {"dwa", {0x3069, S_A}}, {"dwi", {0x3069, S_I}}, {"dwu", {0x3069, S_U}},
+    {"dwe", {0x3069, S_E}}, {"dwo", {0x3069, S_O}},
+    // tsu + small a i e o
+    {"tsa", {0x3064, S_A}}, {"tsi", {0x3064, S_I}}, {"tse", {0x3064, S_E}},
+    {"tso", {0x3064, S_O}},
+    // fu + small a i e o, small ya yu yo
+    {"fa", {0x3075, S_A}}, {"fi", {0x3075, S_I}}, {"fe", {0x3075, S_E}},
+    {"fo", {0x3075, S_O}},
+    {"fya", {0x3075, S_YA}}, {"fyi", {0x3075, S_I}}, {"fyu", {0x3075, S_YU}},
+    {"fye", {0x3075, S_E}}, {"fyo", {0x3075, S_YO}},
+    // vu, and vu + small a i e o, small ya yu yo
+    {"va", {0x3094, S_A}}, {"vi", {0x3094, S_I}}, {"vu", {0x3094}},
+    {"ve", {0x3094, S_E}}, {"vo", {0x3094, S_O}},
+    {"vya", {0x3094, S_YA}}, {"vyi", {0x3094, S_I}}, {"vyu", {0x3094, S_YU}},
+    {"vye", {0x3094, S_E}}, {"vyo", {0x3094, S_YO}},
+    // u + small a i e o
+    {"wi", {0x3046, S_I}}, {"we", {0x3046, S_E}},
+    {"wha", {0x3046, S_A}}, {"whi", {0x3046, S_I}}, {"whu", {0x3046}},
+    {"whe", {0x3046, S_E}}, {"who", {0x3046, S_O}},
+    // ku / gu + small a i u e o, and q for ku
+    {"kwa", {0x304F, S_A}}, {"kwi", {0x304F, S_I}}, {"kwu", {0x304F, S_U}},
+    {"kwe", {0x304F, S_E}}, {"kwo", {0x304F, S_O}},
+    {"gwa", {0x3050, S_A}}, {"gwi", {0x3050, S_I}}, {"gwu", {0x3050, S_U}},
+    {"gwe", {0x3050, S_E}}, {"gwo", {0x3050, S_O}},
+    {"qa", {0x304F, S_A}}, {"qi", {0x304F, S_I}}, {"qu", {0x304F}},
+    {"qe", {0x304F, S_E}}, {"qo", {0x304F, S_O}},
+};
+
+// Longest romaji a rule has ("xtsu"); the pending part is one shorter.
+#define ROMAJI_MAX 4
+
 static fmrb_kana_mode_t s_mode = FMRB_KANA_OFF;
-static char s_pending = 0;    // consonant waiting for its vowel
-static char s_pending2 = 0;   // second letter of "ky" / "sh" / "ch" / "ts"
+// Romaji typed but not yet a kana, as typed (case kept: an x that turns out
+// to be a letter is typed as it was). PSRAM: the internal RAM budget has no
+// room for new statics.
+FMRB_EXT_RAM_BSS_ATTR static char s_buf[ROMAJI_MAX - 1];
+FMRB_EXT_RAM_BSS_ATTR static uint8_t s_len;
 
 static char lower(char c)
 {
@@ -111,6 +190,13 @@ static bool is_consonant(char c)
     return c == 'c' || find_row(normalize_consonant(c)) != NULL;
 }
 
+// Letters that only start an IME spelling (k_rules). When what follows does
+// not make one, the letter is typed as itself, as it always was.
+static bool is_letter_start(char c)
+{
+    return c == 'x' || c == 'l' || c == 'v' || c == 'q';
+}
+
 static void emit_cp(fmrb_kana_result_t *r, uint16_t cp)
 {
     if (cp == 0) {
@@ -127,6 +213,13 @@ static void emit_cp(fmrb_kana_result_t *r, uint16_t cp)
     r->out[r->out_len++] = (uint8_t)(0x80 | (cp & 0x3F));
 }
 
+static void emit_letter(fmrb_kana_result_t *r, char c)
+{
+    if (r->out_len < (uint8_t)sizeof(r->out)) {
+        r->out[r->out_len++] = (uint8_t)c;
+    }
+}
+
 // Second letter of a two-letter consonant. Beyond the "y" of youon these are
 // the Hepburn spellings a keyboard user reaches for even after learning the
 // kunrei ones: shi, chi, tsu.
@@ -138,13 +231,13 @@ static bool extends_pending(char first, char second)
         return row && row->youon;
     }
     if (second == 'h') return first == 's' || first == 'c';
-    if (second == 's') return first == 't';   // only "tsu" resolves
+    if (second == 's') return first == 't';
     return false;
 }
 
 /**
- * Emit the kana for a finished romaji unit: first letter, optional second
- * letter, vowel index.
+ * Emit the kana for a finished romaji unit of the rows: first letter,
+ * optional second letter, vowel index.
  */
 static void resolve(char p1, char p2, int v, fmrb_kana_result_t *r)
 {
@@ -160,7 +253,7 @@ static void resolve(char p1, char p2, int v, fmrb_kana_result_t *r)
         youon = true;
         bare_i = true;
     } else if (p2 == 's') {
-        // "tsu" only; "tsa" and friends are not syllables.
+        // "tsu"; the rest of the ts row is in k_rules.
         if (v == 2) {
             const kana_row_t *row = find_row('t');
             emit_cp(r, row->cp[2]);
@@ -180,7 +273,7 @@ static void resolve(char p1, char p2, int v, fmrb_kana_result_t *r)
     const kana_row_t *row = find_row(row_c);
     if (!row) return;
     if (!youon) {
-        emit_cp(r, row->cp[v]);  // 0 for yi/ye/wi/wu/we: nothing comes out
+        emit_cp(r, row->cp[v]);  // 0 for yi/ye/wu: nothing comes out
         return;
     }
     if (!row->cp[1]) return;
@@ -190,26 +283,72 @@ static void resolve(char p1, char p2, int v, fmrb_kana_result_t *r)
     }
 }
 
-static void clear_pending(void)
+typedef enum {
+    MATCH_NONE = 0,   // not the start of anything
+    MATCH_PREFIX,     // more letters may make something
+    MATCH_RULE,       // a k_rules spelling, complete
+    MATCH_ROW,        // a spelling of the rows, complete (resolve)
+} match_t;
+
+/** What the lower-case romaji s[0..n) is. *rule is set for MATCH_RULE. */
+static match_t match(const char *s, size_t n, const romaji_rule_t **rule)
 {
-    s_pending = 0;
-    s_pending2 = 0;
+    bool prefix = false;
+    for (size_t i = 0; i < sizeof(k_rules) / sizeof(k_rules[0]); i++) {
+        const char *k = k_rules[i].romaji;
+        if (strncmp(k, s, n) == 0) {
+            if (k[n] == '\0') {
+                *rule = &k_rules[i];
+                return MATCH_RULE;
+            }
+            prefix = true;
+        }
+    }
+    if (n == 2 && is_consonant(s[0]) && vowel_index(s[1]) >= 0) {
+        return MATCH_ROW;
+    }
+    if (n == 3 && extends_pending(s[0], s[1]) && vowel_index(s[2]) >= 0) {
+        return MATCH_ROW;
+    }
+    if (n == 2 && extends_pending(s[0], s[1])) {
+        prefix = true;
+    }
+    return prefix ? MATCH_PREFIX : MATCH_NONE;
 }
 
+static void clear_pending(void)
+{
+    s_len = 0;
+}
+
+// An x / l / v / q that started the pending romaji, typed as the letter it
+// is (the rest is dropped). For Esc and the mode keys, which drop what is
+// pending: before the IME spellings the letter was already on the screen.
+static void flush_letter(fmrb_kana_result_t *r)
+{
+    if (s_len > 0 && is_letter_start(lower(s_buf[0]))) {
+        emit_letter(r, s_buf[0]);
+    }
+    clear_pending();
+}
+
+static fmrb_kana_action_t compose(char raw, fmrb_kana_result_t *r);
+
 /**
- * Handle a key with no pending consonant in front of it.
+ * Handle a key with no pending romaji in front of it.
  * Returns the action for the event itself.
  */
-static fmrb_kana_action_t compose_fresh(char c, fmrb_kana_result_t *r)
+static fmrb_kana_action_t compose_fresh(char raw, fmrb_kana_result_t *r)
 {
+    const char c = lower(raw);
     int v = vowel_index(c);
     if (v >= 0) {
         emit_cp(r, k_vowels[v]);
         return FMRB_KANA_COMPOSE;
     }
-    if (is_consonant(c)) {
-        s_pending = c;
-        s_pending2 = 0;
+    if (is_consonant(c) || is_letter_start(c)) {
+        s_buf[0] = raw;
+        s_len = 1;
         return FMRB_KANA_COMPOSE;
     }
     switch (c) {
@@ -220,59 +359,95 @@ static fmrb_kana_action_t compose_fresh(char c, fmrb_kana_result_t *r)
     }
 }
 
-static fmrb_kana_action_t compose(char c, fmrb_kana_result_t *r)
+// Drop the first `drop` pending letters and read the rest and this key again.
+static fmrb_kana_action_t reread(size_t drop, char raw, fmrb_kana_result_t *r)
 {
-    if (s_pending == 0) {
-        return compose_fresh(c, r);
+    char rest[ROMAJI_MAX];
+    size_t n = s_len - drop;
+    memcpy(rest, s_buf + drop, n);
+    clear_pending();
+    for (size_t i = 0; i < n; i++) {
+        (void)compose(rest[i], r);
+    }
+    return compose(raw, r);
+}
+
+static fmrb_kana_action_t compose(char raw, fmrb_kana_result_t *r)
+{
+    if (s_len == 0) {
+        return compose_fresh(raw, r);
     }
 
-    const char raw = s_pending;
-    const char raw2 = s_pending2;
-    const char cons = normalize_consonant(raw);
-    const int v = vowel_index(c);
+    char seq[ROMAJI_MAX];
+    for (size_t i = 0; i < s_len; i++) {
+        seq[i] = lower(s_buf[i]);
+    }
+    const char c = lower(raw);
+    seq[s_len] = c;
+    const size_t n = (size_t)s_len + 1;
+    const char first = seq[0];
 
-    if (raw2 != 0) {
-        if (v >= 0) {
+    if (n == 2 && first == 'n' && c == 'n') {
+        clear_pending();
+        emit_cp(r, KANA_N);
+        return FMRB_KANA_COMPOSE;
+    }
+
+    const romaji_rule_t *rule = NULL;
+    switch (match(seq, n, &rule)) {
+        case MATCH_RULE:
             clear_pending();
-            resolve(raw, raw2, v, r);
+            emit_cp(r, rule->cp[0]);
+            emit_cp(r, rule->cp[1]);
+            return FMRB_KANA_COMPOSE;
+        case MATCH_ROW:
+            clear_pending();
+            if (n == 3) {
+                resolve(seq[0], seq[1], vowel_index(seq[2]), r);
+            } else {
+                resolve(seq[0], 0, vowel_index(seq[1]), r);
+            }
+            return FMRB_KANA_COMPOSE;
+        case MATCH_PREFIX:
+            s_buf[s_len++] = raw;
+            return FMRB_KANA_COMPOSE;
+        case MATCH_NONE:
+        default:
+            break;
+    }
+
+    // Not going anywhere. What happens is what happened before the IME
+    // spellings existed.
+    if (is_letter_start(first)) {
+        // The letter is typed as itself; the rest is read again.
+        emit_letter(r, s_buf[0]);
+        return reread(1, raw, r);
+    }
+    if (s_len == 1) {
+        if (c == first && first != 'n') {
+            // Doubled consonant: commit the small tsu and keep waiting.
+            emit_cp(r, KANA_SOKU);
             return FMRB_KANA_COMPOSE;
         }
-        // Two letters and no vowel: the pair was not going anywhere. Drop it
-        // and let this key start over.
         clear_pending();
-        return compose(c, r);
+        if (first == 'n') {
+            // "n" followed by anything else is the syllabic n. BASIC dropped
+            // it; an editor has to keep it, or "kanji" loses its n.
+            emit_cp(r, KANA_N);
+        }
+        // Any other pair is not a syllable. Drop the consonant and reconsider
+        // the key, as BASIC does.
+        return compose_fresh(raw, r);
     }
-
-    if (cons == 'n' && c == 'n') {
+    if (extends_pending(seq[0], seq[1])) {
+        // Two letters of the rows ("ky", "sh", "ts") and no vowel: the pair
+        // was not going anywhere. Drop it and let this key start over.
         clear_pending();
-        emit_cp(r, KANA_N);
-        return FMRB_KANA_COMPOSE;
+        return compose_fresh(raw, r);
     }
-    if (v >= 0) {
-        clear_pending();
-        resolve(raw, 0, v, r);
-        return FMRB_KANA_COMPOSE;
-    }
-    if (extends_pending(raw, c)) {
-        s_pending2 = c;
-        return FMRB_KANA_COMPOSE;
-    }
-    if (c == raw && cons != 'n') {
-        // Doubled consonant: commit the small tsu and keep waiting.
-        emit_cp(r, KANA_SOKU);
-        return FMRB_KANA_COMPOSE;
-    }
-    if (cons == 'n') {
-        // "n" followed by anything else is the syllabic n. BASIC dropped it;
-        // an editor has to keep it, or "kanji" loses its n.
-        clear_pending();
-        emit_cp(r, KANA_N);
-        return compose_fresh(c, r);
-    }
-    // Any other pair is not a syllable. Drop the consonant and reconsider the
-    // key, as BASIC does.
-    clear_pending();
-    return compose_fresh(c, r);
+    // The start of an IME spelling that did not come ("th", "kw"): before,
+    // the first letter was dropped when the second came.
+    return reread(1, raw, r);
 }
 
 fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
@@ -291,9 +466,9 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
     // keeps Ctrl+letter shortcuts out of the composer.
     if (scancode == SC_SPACE && ctrl_alt) {
         if (key_down) {
+            flush_letter(result);
             s_mode = (s_mode == FMRB_KANA_OFF) ? FMRB_KANA_HIRAGANA
                                                : FMRB_KANA_OFF;
-            clear_pending();
             result->mode_changed = true;
         }
         return FMRB_KANA_CONSUME;
@@ -314,18 +489,18 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
     // that in every state, whatever else is pressed.
     if (scancode == SC_ZENKAKU && fmrb_keymap_get_layout() == FMRB_KEYMAP_LAYOUT_JP) {
         if (key_down) {
+            flush_letter(result);
             s_mode = (s_mode == FMRB_KANA_OFF) ? FMRB_KANA_HIRAGANA
                                                : FMRB_KANA_OFF;
-            clear_pending();
             result->mode_changed = true;
         }
         return FMRB_KANA_CONSUME;
     }
     if (scancode == SC_KANA && s_mode != FMRB_KANA_OFF) {
         if (key_down) {
+            flush_letter(result);
             s_mode = (s_mode == FMRB_KANA_KATAKANA) ? FMRB_KANA_HIRAGANA
                                                     : FMRB_KANA_KATAKANA;
-            clear_pending();
             result->mode_changed = true;
         }
         return FMRB_KANA_CONSUME;
@@ -336,18 +511,24 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
     }
 
     if (scancode == SC_ESCAPE) {
-        clear_pending();
+        if (key_down) {
+            flush_letter(result);
+        }
         return FMRB_KANA_PASS;
     }
     if (scancode == SC_BACKSPACE) {
-        if (s_pending != 0) {
+        if (s_len != 0) {
             if (key_down) {
                 // Erase what the user typed but has not seen yet, not the
-                // character before the cursor.
-                if (s_pending2 != 0) {
-                    s_pending2 = 0;
-                } else {
+                // character before the cursor. The start of an IME
+                // spelling of two consonants ("th") goes whole: before, its
+                // first letter was already gone when the second came.
+                const char a = lower(s_buf[0]);
+                const char b = (s_len > 1) ? lower(s_buf[1]) : 0;
+                if (s_len == 2 && !is_letter_start(a) && !extends_pending(a, b)) {
                     clear_pending();
+                } else {
+                    s_len--;
                 }
             }
             return FMRB_KANA_CONSUME;
@@ -357,6 +538,7 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
 
     const char c = lower(ascii);
     const bool composing = (vowel_index(c) >= 0) || is_consonant(c) ||
+                           is_letter_start(c) ||
                            c == ',' || c == '.' || c == '-';
 
     if (!key_down) {
@@ -365,10 +547,10 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
         return composing ? FMRB_KANA_COMPOSE : FMRB_KANA_PASS;
     }
 
-    if (!composing && s_pending == 0) {
+    if (!composing && s_len == 0) {
         return FMRB_KANA_PASS;
     }
-    return compose(c, result);
+    return compose(ascii, result);
 }
 
 fmrb_kana_mode_t fmrb_kana_get_mode(void)

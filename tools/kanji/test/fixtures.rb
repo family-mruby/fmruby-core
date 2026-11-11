@@ -24,20 +24,23 @@ def write_inputs(dir, extra_lines = [], extra_kanji = [])
     "いっ\t1\t1\t20\t行っ",
     "がっこう\t1\t1\t30\t学校",
     "にほんご\t1\t1\t60\t日本語",
-    "てぃっしゅ\t1\t1\t5\tティッシュ", # てぃ cannot be typed: dropped
-    "ゔぁ\t1\t1\t5\tヴァ",               # ゔ: dropped
+    "てぃっしゅ\t1\t1\t5\tティッシュ", # the reading in katakana: dropped
+    "ゔぁ\t1\t1\t5\tヴァ",               # the reading in katakana: dropped
+    "ふぁいる\t1\t1\t90\t語字",           # thi / fa / vu are typed now: kept
+    "ゐど\t1\t1\t5\t漢事",               # ゐ cannot be typed: dropped
     "かんじ\t1\t1\t5\tかんじ",           # same as the reading: dropped
     "かんじ\t1\t1\t5\t漢児",             # 児 not in the font: dropped
     "abc\t1\t1\t5\tエービーシー",        # reading not hiragana: dropped
     "せんせい\t1\t1\t70\t先生",
-    "せんせい\t1\t1\t80\tセンセイ"
+    "せんせい\t1\t1\t80\tセンセイ",     # the reading in katakana: dropped
+    "せんせい\t1\t1\t90\tセンセー"
   ] + extra_lines
   File.write(dic, lines.join("\n") + "\n")
   File.write(File.join(dir, "single_kanji.tsv"), [
     "かん\t漢感幹換還",
     "じ\t字事",
     "こう\t校行",
-    "ふぃーと\t呎", # untypeable: 呎 has to come from Unihan
+    "ゐーと\t呎", # untypeable: 呎 has to come from Unihan
     "いち\t一",
     "がく\t学",
     "ご\t語",

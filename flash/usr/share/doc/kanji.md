@@ -9,19 +9,25 @@ see "The browser and native builds" below.
 
 ## 1. Getting the dictionary
 
-- Two files attached to the Family mruby release (on its GitHub release
+- Files attached to the Family mruby release (on its GitHub release
   page):
-  - fmrb_kanji.dic            the dictionary (about 1 MB)
-  - fmrb_kanji_LICENSE.txt    the terms of the data it is made from
-- Developers can make it from the source: `rake kanji:dict` in fmruby-core
-  fetches the source data and writes the dictionary and its LICENSE to
-  tools/kanji/work/out/. The same source tree makes the same file as the
-  release's.
+  - fmrb_kanji.dic            the dictionary (1 MB, the standard one)
+  - fmrb_kanji_4m.dic         a larger dictionary (4 MB, about 340,000
+                              words), for an SD card
+  - fmrb_kanji_LICENSE.txt    the terms of the data they are made from
+- Developers can make them from the source: `rake kanji:dict_release` in
+  fmruby-core fetches the source data and writes both dictionaries and the
+  LICENSE to tools/kanji/work/out/ (`rake kanji:dict` makes the 1 MB one
+  only). The same source tree makes the same files as the release's.
 
 ## 2. Putting it on the SD card
 
 The machine reads /sd/dict/fmrb_kanji.dic (a folder named dict at the top
 of the card). Keep the LICENSE in the same folder.
+
+To use the larger dictionary, rename fmrb_kanji_4m.dic to fmrb_kanji.dic
+when you put it there, or keep its name and point kanji_dict at it (section
+4). The machine uses one dictionary.
 
 ### Copying on a PC
 
@@ -30,7 +36,8 @@ of the card). Keep the LICENSE in the same folder.
 3. Put the card back and restart the machine.
 
 Developers can use `rake kanji:place DEST=<the card's top>`, which makes
-the dict folder and checks that the copy is whole.
+the dict folder and checks that the copy is whole (it copies the 4 MB one
+too when it was made).
 
 ### Sending it over the network (Asterism)
 
@@ -73,14 +80,16 @@ screen (it does not reach the app yet).
 | more kana | add to the reading | commit the candidate, start the next reading |
 
 - Arrows, Tab, symbols, Ctrl+S and the like commit what is shown, then go
-  to the app. Turning kana mode off or moving to another app commits what
-  is shown too.
+  to the app. Turning kana mode off commits what is shown too. Moving to
+  another app (a click on another window) discards the reading.
 - The Enter that commits does not make a new line.
 - When the whole reading is not in the dictionary, the longest leading part
   that is gets converted, and the rest becomes the next reading
   (いった -> 行っ, then た).
 - A single kanji converts from its reading as well: every kanji the
   machine's font has can be typed.
+- The katakana form of what is converted is always among the candidates:
+  second, or first when the dictionary has nothing for it.
 
 ### The line at the bottom
 
@@ -115,7 +124,29 @@ Neither needs this dictionary.
   Japanese readings of Unicode's Unihan. The terms are in
   fmrb_kanji_LICENSE.txt.
 - Candidates are only words whose characters the machine's font draws. The
-  most common words go in up to 1 MB (about 80,000 words).
+  most common words go in up to 1 MB (about 79,000 words), or 4 MB (about
+  340,000) for the larger one.
 - It does not learn: candidates always come in the same order.
-- Words whose readings kana input cannot type (てぃ, ふぁ, ゔ ...) are not
-  in it.
+- Words that are just their reading in katakana (センセイ) are not in it:
+  the katakana form is added to the candidates instead.
+
+## 7. Small kana and sounds of loanwords
+
+Kana input takes the spellings the common input methods take:
+
+| Type | Get |
+|---|---|
+| xa xi xu xe xo (or la ...) | ぁ ぃ ぅ ぇ ぉ |
+| xtu xtsu (or ltu ltsu) | っ |
+| xya xyu xyo (or lya ...), xwa | ゃ ゅ ょ, ゎ |
+| xka xke | ヵ ヶ |
+| tha thi thu the tho, dha ... | てゃ てぃ てゅ てぇ てょ, でゃ ... |
+| twa ... two, dwa ... dwo | とぁ ... とぉ, どぁ ... どぉ |
+| fa fi fe fo, fya fyu fyo | ふぁ ふぃ ふぇ ふぉ, ふゃ ふゅ ふょ |
+| va vi vu ve vo, vya vyu vyo | ゔぁ ゔぃ ゔ ゔぇ ゔぉ, ゔゃ ゔゅ ゔょ |
+| tsa tsi tse tso | つぁ つぃ つぇ つぉ |
+| wi we, wha whi whe who | うぃ うぇ, うぁ うぃ うぇ うぉ |
+| kwa ... kwo, gwa ... gwo, qa qi qe qo | くぁ ... くぉ, ぐぁ ... ぐぉ, くぁ くぃ くぇ くぉ |
+
+In katakana mode they come out in katakana. An x, l, v or q that does not
+start one of these is typed as the letter, as before.

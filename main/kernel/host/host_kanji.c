@@ -170,6 +170,13 @@ static void drop_front(uint16_t n)
     s_kj.no_cand = false;
 }
 
+// The reading is not sent anywhere: it was typed for another app.
+static void drop_reading(const char *why)
+{
+    FMRB_LOGI(TAG, "reading of %u bytes dropped: %s", (unsigned)s_kj.len, why);
+    clear_preedit();
+}
+
 static void commit_kana(uint8_t pid)
 {
     if (s_kj.len) {
@@ -251,25 +258,41 @@ host_kanji_action_t host_kanji_key(uint8_t pid, bool key_down, uint8_t sc,
              : (action == FMRB_KANA_CONSUME) ? HOST_KANJI_CONSUME
              : HOST_KANJI_PASS;
     }
-    if (action == FMRB_KANA_CONSUME) {
-        // A mode key (host_kanji_mode_changed follows) or a backspace that
-        // erased the pending romaji.
-        return HOST_KANJI_CONSUME;
-    }
     if (s_kj.len && pid != s_kj.pid) {
         // The focus moved under an unfinished reading (tick normally catches
-        // this first): it belongs to the app it was typed into.
-        commit_all(s_kj.pid);
+        // this first).
+        drop_reading("the front app changed");
         redraw();
     }
 
     const bool ctrl_alt = (mod & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL |
                                   FMRB_KEYMAP_MOD_LALT | FMRB_KEYMAP_MOD_RALT)) != 0;
 
+    // An x, l, v or q the composer held for an IME spelling that did not
+    // come is typed as the letter, in front of any kana (fmrb_kana.c). A
+    // letter key has always committed what shows and then typed itself.
+    const uint8_t *out = kana->out;
+    uint8_t out_len = kana->out_len;
+    uint8_t letters = 0;
+    while (letters < out_len && out[letters] < 0x80) letters++;
+    if (letters) {
+        commit_all(pid);
+        host_send_text_bytes(pid, (const char *)out, letters);
+        out += letters;
+        out_len = (uint8_t)(out_len - letters);
+        redraw();
+    }
+
+    if (action == FMRB_KANA_CONSUME) {
+        // A mode key (host_kanji_mode_changed follows) or a backspace that
+        // erased the pending romaji.
+        return HOST_KANJI_CONSUME;
+    }
+
     if (action == FMRB_KANA_COMPOSE) {
         // Typing on accepts the candidate in front of it.
-        if (s_kj.state == KJ_CONVERTING) commit_candidate(pid);
-        append(pid, kana->out, kana->out_len);
+        if (out_len && s_kj.state == KJ_CONVERTING) commit_candidate(pid);
+        append(pid, out, out_len);
         if (s_kj.len) s_kj.pid = pid;
         redraw();
         return HOST_KANJI_CLEAR_CHAR;
@@ -277,9 +300,9 @@ host_kanji_action_t host_kanji_key(uint8_t pid, bool key_down, uint8_t sc,
 
     // The composer passed the key. It may still have finished a kana in front
     // of it (a pending "n" before a space).
-    if (kana->out_len) {
+    if (out_len) {
         if (s_kj.state == KJ_CONVERTING) commit_candidate(pid);
-        append(pid, kana->out, kana->out_len);
+        append(pid, out, out_len);
         s_kj.pid = pid;
     }
     if (s_kj.len == 0) {
@@ -607,16 +630,17 @@ void host_kanji_tick(void)
         s_kj.dirty = true;
     }
     if (s_kj.len && s_kj.state != KJ_WAITING) {
-        // Kana input turned off from elsewhere (the clickable indicators, the
-        // PC's IME), or the focus went to another app: the reading is
-        // committed where it was typed, as it shows.
-        bool focus_moved = false;
+        // The focus went to another app: the reading is dropped (the user's
+        // decision, doc/kanji_input K6; the app it was typed for no longer
+        // takes the keys, and the one in front did not ask for it). Kana
+        // input turned off from elsewhere (the clickable indicators, the PC's
+        // IME): the reading is committed where it was typed, as it shows.
         fmrb_hid_routing_t routing;
         if (fmrb_kernel_get_hid_routing(&routing) == FMRB_OK &&
             routing.routing_enabled && routing.target_pid != s_kj.pid) {
-            focus_moved = true;
-        }
-        if (!engaged_mode() || focus_moved) {
+            drop_reading("the front app changed");
+            s_kj.dirty = true;
+        } else if (!engaged_mode()) {
             fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(s_kj.pid);
             if (ctx && ctx->state == PROC_STATE_RUNNING) {
                 commit_all(s_kj.pid);

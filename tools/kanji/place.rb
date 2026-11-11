@@ -8,10 +8,12 @@
 # kanji_dict points at.
 #
 #   ruby tools/kanji/place.rb [--from DIR] DEST
-#       copies DIR/fmrb_kanji.dic and DIR/LICENSE (rake kanji:dict's output,
-#       tools/kanji/work/out by default) to DEST/dict/fmrb_kanji.dic and
-#       DEST/dict/fmrb_kanji_LICENSE.txt, checking the file before and the
-#       copy after (header, size, crc32)
+#       copies DIR/fmrb_kanji.dic, DIR/fmrb_kanji_4m.dic (when there; rake
+#       kanji:dict_release makes both) and DIR/LICENSE (tools/kanji/work/out
+#       by default) to DEST/dict/ (the LICENSE as fmrb_kanji_LICENSE.txt),
+#       checking each file before and the copy after (header, size, crc32).
+#       The machine reads fmrb_kanji.dic; the 4 MB one is used by renaming it
+#       to that or pointing kanji_dict at it.
 #   ruby tools/kanji/place.rb --check FILE...
 #       checks dictionary files only (one taken from a release, or the one on
 #       a card)
@@ -27,6 +29,7 @@ require_relative "dict_format"
 module KanjiPlace
   DEFAULT_FROM = File.expand_path("work/out", __dir__)
   DIC_NAME = "fmrb_kanji.dic"
+  LARGE_NAME = "fmrb_kanji_4m.dic"
   LICENSE_NAME = "fmrb_kanji_LICENSE.txt"
 
   module_function
@@ -54,14 +57,19 @@ module KanjiPlace
     raise "#{src}: not there (rake kanji:dict makes it)" unless File.file?(src)
     raise "#{lic}: not there (rake kanji:dict writes it next to the dictionary)" unless File.file?(lic)
 
-    check(src)
+    large = File.join(from, LARGE_NAME)
+    names = [DIC_NAME]
+    names << LARGE_NAME if File.file?(large)
+    names.each { |n| check(File.join(from, n)) }
     dir = File.join(dest, "dict")
     FileUtils.mkdir_p(dir)
-    out = File.join(dir, DIC_NAME)
-    FileUtils.cp(src, out)
+    names.each do |n|
+      out = File.join(dir, n)
+      FileUtils.cp(File.join(from, n), out)
+      puts describe(out, check(out))
+    end
+    puts "#{large}: not there, not copied (rake kanji:dict_release makes it)" unless names.include?(LARGE_NAME)
     FileUtils.cp(lic, File.join(dir, LICENSE_NAME))
-    h = check(out)
-    puts describe(out, h)
     puts "#{File.join(dir, LICENSE_NAME)}: copied"
   end
 end

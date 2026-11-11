@@ -4,7 +4,8 @@
 # Generate the kanji dictionary file (doc/kanji_input/ K1; the file format is
 # doc/kanji_input/dict_format.md).
 #
-#   ruby tools/kanji/make_dict.rb [--size BYTES] [--work DIR] [--out DIR]
+#   ruby tools/kanji/make_dict.rb [--size BYTES] [--name FILE] [--work DIR]
+#                                 [--out DIR]
 #                                 [--font FILE.c ARRAY | --font-list LIST]
 #                                 [--no-fetch]
 #
@@ -12,14 +13,16 @@
 # open dictionary, its single-kanji and symbol tables, and Unihan's Japanese
 # readings. The base font (misaki 8 by default) decides which words may go
 # in: every character of a candidate must have a glyph. Readings the kana
-# composer cannot type are left out, except a trailing small tsu (the stem
-# forms 言っ, 良かっ), which a longest-prefix lookup reaches.
+# composer cannot type are left out. A word spelled as its reading in
+# katakana is left out too: the converter offers that form for any reading
+# (doc/kanji_input K6).
 #
 # Words go in from the cheapest mozc cost up until the file would pass the
 # size budget. The single-kanji table (every kanji the font draws, at least
 # one reading each) and the character table always go in.
 #
-# Output: OUT/fmrb_kanji.dic and OUT/LICENSE.
+# Output: OUT/fmrb_kanji.dic (or --name) and OUT/LICENSE. The LICENSE does
+# not depend on the size, so the 1 MB and the 4 MB dictionary share one.
 #
 # Standard library only.
 
@@ -36,37 +39,21 @@ module KanjiMake
   DEFAULT_OUT = File.join(KanjiSources::DEFAULT_WORK, "out")
   DEFAULT_SIZE = 1024 * 1024
   DIC_NAME = "fmrb_kanji.dic"
+  # The two the release carries (doc/kanji_input K6): the standard one and
+  # the large one for an SD card.
+  RELEASE = [["fmrb_kanji.dic", 1024 * 1024], ["fmrb_kanji_4m.dic", 4 * 1024 * 1024]].freeze
 
   READING_RE = /\A[ぁ-ゖー]+\z/
-  # Kana the composer (main/drivers/usb/fmrb_kana.c) can put in front of a
-  # small ya/yu/yo/i/e: the i-column of every row that takes "y".
-  I_DAN = "きしちにひみりぎじぢびぴ"
-  NEVER = "ぁぅぉゎゔゐゑゕゖ"
-  # What can follow a small tsu: a kana whose romaji starts with a doubled
-  # consonant (not n, not a vowel).
-  AFTER_SOKUON = "かきくけこさしすせそたちつてとはひふへほまみむめもやゆよらりるれろわをがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽっ"
+  # Kana the composer (main/drivers/usb/fmrb_kana.c) has no spelling for.
+  # Every other one it types anywhere in a word: the small kana on their own
+  # with x or l in front (xa, xtu, xya, xwa), vu with v.
+  NEVER = "ゐゑゕゖ"
 
   module_function
 
-  # :ok, :sokuon_end (typeable but for the final small tsu), or :no.
+  # :ok or :no.
   def typeable(reading)
-    ch = reading.chars
-    ch.each_with_index do |c, i|
-      prev = i.positive? ? ch[i - 1] : nil
-      nxt = ch[i + 1]
-      return :no if NEVER.include?(c)
-
-      case c
-      when "ぃ", "ぇ", "ゃ", "ゅ", "ょ"
-        return :no unless prev && I_DAN.include?(prev)
-      when "っ"
-        if nxt.nil?
-          return :sokuon_end
-        elsif !AFTER_SOKUON.include?(nxt)
-          return :no
-        end
-      end
-    end
+    reading.each_char { |c| return :no if NEVER.include?(c) }
     :ok
   end
 
@@ -77,6 +64,10 @@ module KanjiMake
 
   def kata_to_hira(str)
     str.each_codepoint.map { |c| c >= 0x30A1 && c <= 0x30F6 ? c - 0x60 : c }.pack("U*")
+  end
+
+  def hira_to_kata(str)
+    str.each_codepoint.map { |c| c >= 0x3041 && c <= 0x3096 ? c + 0x60 : c }.pack("U*")
   end
 
   # efontJA sizes the configurations use (12, 12 bold, 16).
@@ -121,16 +112,18 @@ module KanjiMake
           stats[:same_as_reading] += 1
           next
         end
+        if surface == hira_to_kata(reading)
+          stats[:katakana_of_reading] += 1
+          next
+        end
         unless surface.each_codepoint.all? { |c| font.include?(c) && c <= 0xFFFF }
           stats[:undrawable] += 1
           next
         end
-        t = typeable(reading)
-        if t == :no
+        if typeable(reading) == :no
           stats[:untypeable] += 1
           next
         end
-        stats[:sokuon_end] += 1 if t == :sokuon_end
         cost = cost.to_i
         key = [reading, surface]
         best[key] = cost if !best[key] || best[key] > cost
@@ -390,15 +383,15 @@ module KanjiMake
     { readings: count, undrawable: undrawable, lost: lost }
   end
 
-  def license_text(paths, header, data)
+  def license_text(paths, data)
     mozc = File.read(paths[:mozc_license], encoding: "UTF-8")
     unicode = File.read(paths[:unicode_license], encoding: "UTF-8")
     <<~TEXT
-      #{DIC_NAME}: the kanji dictionary of Family mruby
-      ==================================================
+      The kanji dictionaries of Family mruby (#{RELEASE.map(&:first).join(", ")})
+      ======================================================================
 
-      This file is generated from the following data. The notices each of
-      them requires are reproduced below, unchanged.
+      These files are generated from the following data. The notices each
+      of them requires are reproduced below, unchanged.
 
       * mozc (commit #{KanjiSources::MOZC_COMMIT}):
         src/data/dictionary_oss/dictionary00.txt .. dictionary09.txt,
@@ -409,8 +402,6 @@ module KanjiMake
         (public domain): see "mozc LICENSE" below.
       * Unihan #{KanjiSources::UNIHAN_VERSION} (Unihan_Readings.txt, the kJapanese field),
         for the readings of #{data[:single_stats][:unihan]} kanji: see "Unicode License" below.
-
-      Words: #{header[:word_count]}, readings: #{header[:reading_count]}, file size: #{header[:file_size]} bytes.
 
       ----------------------------------------------------------------------
       mozc LICENSE
@@ -432,10 +423,10 @@ module KanjiMake
     t0 = Time.now
     data = collect(paths, font)
     n = fit(data, opts[:size])
-    out = File.join(opts[:out], DIC_NAME)
+    out = File.join(opts[:out], opts[:name] || DIC_NAME)
     header = write(out, data, n)
     v = verify(out, data, n, font)
-    File.write(File.join(opts[:out], "LICENSE"), license_text(paths, header, data))
+    File.write(File.join(opts[:out], "LICENSE"), license_text(paths, data))
     { header: header, data: data, verify: v, out: out, seconds: Time.now - t0 }
   end
 
@@ -450,7 +441,7 @@ module KanjiMake
     lines << "#{res[:out]}: #{h[:file_size]} B (budget #{budget} B), #{h[:block_count]} blocks of #{h[:block_size]} B"
     lines << "  words #{n} of #{words.size} (cost cutoff #{n.positive? ? words[n - 1][2] : '-'}), readings #{h[:reading_count]}, characters #{h[:char_count]}"
     lines << "  source lines #{st[:lines]}: reading not hiragana #{st[:bad_reading]}, same as reading #{st[:same_as_reading]}, " \
-             "not drawable #{st[:undrawable]}, not typeable #{st[:untypeable]} (kept with a final small tsu: #{st[:sokuon_end]})"
+             "katakana of the reading #{st[:katakana_of_reading]}, not drawable #{st[:undrawable]}, not typeable #{st[:untypeable]}"
     lines << "  single-kanji table: #{d[:font_kanji].size} font kanji, #{ss[:pairs]} reading pairs; " \
              "from single_kanji.tsv #{ss[:single_kanji_tsv]}, 1-char words #{ss[:dictionary_1char]}, Unihan #{ss[:unihan]}, symbols #{ss[:symbol]}"
     lines << "  font kanji with no reading: #{res[:verify][:lost].size}#{res[:verify][:lost].empty? ? '' : ' ' + res[:verify][:lost].map { |c| [c].pack('U') }.join}"
@@ -474,12 +465,13 @@ if $PROGRAM_NAME == __FILE__
     a = args.shift
     case a
     when "--size" then opts[:size] = parse_size(args.shift)
+    when "--name" then opts[:name] = args.shift
     when "--work" then opts[:work] = File.expand_path(args.shift)
     when "--out" then opts[:out] = File.expand_path(args.shift)
     when "--font" then opts[:font] = [args.shift, args.shift]
     when "--font-list" then opts[:font_list] = args.shift
     when "--no-fetch" then opts[:fetch] = false
-    else abort "usage: make_dict.rb [--size BYTES] [--work DIR] [--out DIR] [--font FILE.c ARRAY | --font-list LIST] [--no-fetch]"
+    else abort "usage: make_dict.rb [--size BYTES] [--name FILE] [--work DIR] [--out DIR] [--font FILE.c ARRAY | --font-list LIST] [--no-fetch]"
     end
   end
   res = KanjiMake.run(opts)

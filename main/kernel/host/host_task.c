@@ -1526,6 +1526,11 @@ handle_sync:
 FMRB_EXT_RAM_BSS_ATTR static uint8_t s_text_fifo[HOST_TEXT_FIFO];
 FMRB_EXT_RAM_BSS_ATTR static uint32_t s_text_head, s_text_count;
 FMRB_EXT_RAM_BSS_ATTR static uint32_t s_text_progress_ms;
+// The app the text in the buffer is for: the one in front when it came. If
+// another app comes to the front before it has all gone out, the rest is
+// dropped (the user's decision, doc/kanji_input K6): it was typed for the
+// app that is no longer in front, and the new one did not ask for it.
+FMRB_EXT_RAM_BSS_ATTR static uint8_t s_text_pid;
 // The key event that goes out after the text (s_text_tail_set).
 FMRB_EXT_RAM_BSS_ATTR static fmrb_hid_key_event_t s_text_tail;
 FMRB_EXT_RAM_BSS_ATTR static bool s_text_tail_set;
@@ -1566,11 +1571,26 @@ static void host_text_drop_all(const char *why)
     s_text_tail_set = false;
 }
 
-// Bytes already reserved (host_text_reserve). Control characters are left out
-// (an IME's text); a byte that does not fit is dropped with a log line, which
-// the deferral above keeps from happening.
+// The app in front (0xFF when none takes the keys).
+static uint8_t host_text_front(void)
+{
+    fmrb_hid_routing_t routing;
+    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK || !routing.routing_enabled) {
+        return 0xFF;
+    }
+    return routing.target_pid;
+}
+
+// Bytes already reserved (host_text_reserve), for the app in front now.
+// Control characters are left out (an IME's text); a byte that does not fit
+// is dropped with a log line, which the deferral above keeps from happening.
 static void host_text_append(const char *bytes, int len)
 {
+    uint8_t front = host_text_front();
+    if (host_text_pending() && front != s_text_pid) {
+        host_text_drop_all("the front app changed");
+    }
+    if (!host_text_pending()) s_text_pid = front;
     if (s_text_count == 0) s_text_progress_ms = (uint32_t)fmrb_hal_time_get_ms();
     uint32_t skipped = 0, full = 0;
     for (int i = 0; i < len; i++) {
@@ -1596,6 +1616,10 @@ static void host_text_pump(void)
     if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK ||
         !routing.routing_enabled || routing.target_pid == 0xFF) {
         host_text_drop_all("no app has the keyboard");
+        return;
+    }
+    if (routing.target_pid != s_text_pid) {
+        host_text_drop_all("the front app changed");
         return;
     }
     fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(routing.target_pid);
@@ -1652,6 +1676,7 @@ static void host_text_put(const char *bytes, size_t len)
 // The key event that must follow the text now in the buffer.
 static void host_text_hold_key(const fmrb_hid_key_event_t *e)
 {
+    if (s_text_count == 0) s_text_pid = host_text_front();
     if (s_text_count == 0) s_text_progress_ms = (uint32_t)fmrb_hal_time_get_ms();
     s_text_tail = *e;
     s_text_tail_set = true;

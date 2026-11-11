@@ -160,6 +160,71 @@ static void fold_katakana(char *s, size_t len)
     }
 }
 
+// Hiragana to katakana, from src into dst (same byte length: both are
+// three-byte UTF-8). Anything else (the long vowel mark, punctuation) is
+// copied as it is.
+static void to_katakana(const char *src, size_t len, char *dst)
+{
+    const uint8_t *p = (const uint8_t *)src;
+    uint8_t *q = (uint8_t *)dst;
+    memcpy(q, p, len);
+    for (size_t i = 0; i + 2 < len; ) {
+        if (p[i] == 0xE3 && (p[i + 1] == 0x81 || p[i + 1] == 0x82)) {
+            uint32_t cp = ((uint32_t)(p[i] & 0x0F) << 12) |
+                          ((uint32_t)(p[i + 1] & 0x3F) << 6) | (p[i + 2] & 0x3F);
+            if (cp >= 0x3041 && cp <= 0x3096) {
+                cp += 0x60;
+                q[i + 1] = (uint8_t)(0x80 | ((cp >> 6) & 0x3F));
+                q[i + 2] = (uint8_t)(0x80 | (cp & 0x3F));
+            }
+            i += 3;
+            continue;
+        }
+        i++;
+        while (i < len && (p[i] & 0xC0) == 0x80) i++;
+    }
+}
+
+static void reverse(char *s, size_t n)
+{
+    for (size_t i = 0; i < n / 2; i++) {
+        char t = s[i];
+        s[i] = s[n - 1 - i];
+        s[n - 1 - i] = t;
+    }
+}
+
+// The katakana form of the matched part always among the candidates
+// (doc/kanji_input K6): second, after the dictionary's first, or first when
+// the dictionary has none; not again when the dictionary already has it.
+// The dictionary carries no katakana spelled exactly as its reading, so any
+// reading can still be made katakana.
+static uint16_t add_katakana(const char *reading, uint16_t matched, uint16_t n, uint16_t pos)
+{
+    char *text = s_buf->text;
+    if (n >= KANJI_RESULT_MAX_CANDS || (size_t)pos + matched > sizeof(s_buf->text)) {
+        return n;
+    }
+    to_katakana(reading, matched, &text[pos]);
+    for (uint16_t i = 0; i < n; i++) {
+        if (s_buf->offset[i + 1] - s_buf->offset[i] == matched &&
+            memcmp(&text[s_buf->offset[i]], &text[pos], matched) == 0) {
+            return n;
+        }
+    }
+    uint16_t at = (n > 0) ? 1 : 0;
+    // Rotate it from the end into place: [offset[at], pos) then itself.
+    uint16_t start = s_buf->offset[at];
+    reverse(&text[start], (size_t)(pos - start));
+    reverse(&text[pos], matched);
+    reverse(&text[start], (size_t)(pos + matched - start));
+    for (uint16_t i = n + 1; i > at; i--) {
+        s_buf->offset[i] = (uint16_t)(s_buf->offset[i - 1] + matched);
+    }
+    s_buf->offset[at] = start;
+    return (uint16_t)(n + 1);
+}
+
 static void lookup_one(fmrb_kanji_dict_t *dict)
 {
     char reading[FMRB_KANJI_LOOKUP_READING_MAX];
@@ -173,15 +238,16 @@ static void lookup_one(fmrb_kanji_dict_t *dict)
     uint32_t reads0 = fmrb_kanji_block_reads(dict);
     fmrb_kanji_result_t kr;
     fmrb_err_t err = fmrb_kanji_longest_prefix(dict, reading, len, s_buf->block, &kr);
+    uint16_t pos = 0;
+    uint16_t n = 0;
+    uint16_t matched = (uint16_t)len;   // the whole reading when nothing matched
     if (err == FMRB_OK) {
-        res.found = true;
-        res.matched_bytes = kr.matched_bytes;
-        uint16_t pos = 0;
-        uint16_t n = 0;
+        matched = kr.matched_bytes;
         // Each candidate straight into the text area; FMRB_KANJI_CAND_UTF8_MAX
-        // of room left guarantees the next one fits.
-        while (n < kr.count && n < KANJI_RESULT_MAX_CANDS &&
-               (size_t)pos + FMRB_KANJI_CAND_UTF8_MAX <= sizeof(s_buf->text)) {
+        // of room left guarantees the next one fits, with room kept for the
+        // katakana form.
+        while (n < kr.count && n + 1 < KANJI_RESULT_MAX_CANDS &&
+               (size_t)pos + FMRB_KANJI_CAND_UTF8_MAX + matched <= sizeof(s_buf->text)) {
             size_t clen = 0;
             if (fmrb_kanji_candidate(&kr, n, &s_buf->text[pos],
                                      sizeof(s_buf->text) - pos, &clen) != FMRB_OK) {
@@ -191,12 +257,16 @@ static void lookup_one(fmrb_kanji_dict_t *dict)
             pos = (uint16_t)(pos + clen);
             n++;
         }
-        s_buf->offset[n] = pos;
-        res.count = n;
-        if (n == 0) res.found = false;
     } else if (err != FMRB_ERR_NOT_FOUND) {
         FMRB_LOGW(TAG, "lookup failed: %d", err);
     }
+    s_buf->offset[n] = pos;
+    if (err == FMRB_OK || err == FMRB_ERR_NOT_FOUND) {
+        n = add_katakana(reading, matched, n, pos);
+    }
+    res.found = n > 0;
+    res.matched_bytes = res.found ? matched : 0;
+    res.count = n;
     uint32_t us = (uint32_t)(fmrb_hal_time_get_us() - t0);
     FMRB_LOGI(TAG, "lookup %u bytes: %s %u cands, matched %u, %u block reads, %u us",
               (unsigned)len, res.found ? "found" : "none", (unsigned)res.count,
