@@ -29,9 +29,17 @@
 #      editor), and its log says the desktop's IME was seen
 #   4. the IME goes (fcitx5 killed): the kana input is back; Ctrl+Space,
 #      "nihongo", Ctrl+S in the editor: the file gets "にほんご"
+#   2b. the kana indicator follows fcitx5 (asked over D-Bus): A in the
+#      editor before mozc is on, the IME's mark while mozc is on; Ctrl+Space
+#      three times: mark -> A -> mark -> A (comp ime's ja, the host's lines)
 #   5. the IME program not installed (a second, short run with
 #      --set compositor.ime=no-such-ime): one line says so, and the kana
 #      input works in the editor
+#   6. fcitx5 not on the session bus (a third run, fcitx5 --disable=dbus;
+#      the question goes with NO_AUTO_START, so the bus does not start a
+#      second fcitx5): the indicator guesses from the keys. In the editor:
+#      mozc on, "ka" (composing: mark), Enter; mozc off, "a" (a key handed
+#      back: A); mozc on, "ka" (mark), Enter: the file holds "かaか"
 #
 # Shots, logs and a summary go to tmp/wl_check/ime-<engine>-<renderer>/.
 
@@ -111,13 +119,13 @@ INI
 class ImeRun
   attr_reader :results
 
-  def initialize(renderer, keep, label: "ime", ime: nil)
+  def initialize(renderer, keep, label: "ime", ime: nil, port_offset: 0)
     @renderer = renderer
     @keep = keep
     @label = label
     @ime = ime
     @name = "fmrb-wl-#{label}-#{ENGINE}-#{renderer}"
-    @port = DEBUG_PORT + (ime ? 1 : 0)
+    @port = DEBUG_PORT + port_offset
     @run = "/tmp/fmrb-wl-#{label}-#{ENGINE}-#{renderer}-#{Process.uid}"
     @out = File.join(CORE, "tmp/wl_check", "#{label}-#{ENGINE}-#{renderer}")
     @results = []
@@ -154,7 +162,7 @@ class ImeRun
          "-e", "WLR_BACKENDS=headless", "-e", "WLR_HEADLESS_OUTPUTS=1", "-e", "SDL_AUDIODRIVER=dummy"]
     a += ["-e", "WLR_RENDERER=#{@renderer}"] if @renderer != "auto"
     sets = "--set display.mode=1280x800 --set 'compositor.autostart=foot -e /run/fmrb/foot.sh'"
-    sets += " --set compositor.ime=#{@ime}" if @ime
+    sets += " --set 'compositor.ime=#{@ime}'" if @ime
     prog = "#{BIN} --machine linux_pc_wl #{sets}"
     inner = "mkdir -p -m 700 /run/fmrb/xdg; " \
             "dbus-run-session -- sh -c \"#{prog.gsub('"', '\"')} > /run/fmrb/core.log 2>&1\"; " \
@@ -367,8 +375,7 @@ class ImeRun
     hidden = log_text.scan(/kana mode=\d+ asked while/).size
     result("kana indicators", log_text.include?("kana input steps aside"),
            "#{log_text[/the PC's IME types for the apps[^\n]*/]} (indicator clicks refused: #{hidden})")
-    tap(KEYS[" "], ctrl: true)   # mozc off
-    sleep 0.5
+    indicator_step(h2a)   # ends with mozc off
 
     # 3. the SDL window's IME, nested
     sdl_step
@@ -394,6 +401,77 @@ class ImeRun
     finish
   end
 
+  # The editor in front with mozc on: the indicator follows fcitx5.
+  def wait_ja(want, timeout = 5)
+    wait_for("ja=#{want}", timeout) { h = ime; h["ja"] == want && h } rescue ime
+  end
+
+  def host_lines(what) = log_text.scan(/the PC's IME types #{what}: kana indicator shows/).size
+
+  def indicator_step(before)
+    seen = []
+    h = wait_ja("1")
+    seen << "#{h['ja']}/#{h['ja_from']}"
+    grim("indicator_mark.png")
+    3.times do |i|
+      tap(KEYS[" "], ctrl: true)
+      h = wait_ja(i.even? ? "0" : "1")
+      seen << "#{h['ja']}/#{h['ja_from']}"
+      grim("indicator_a.png") if i.zero?
+    end
+    ja_lines = host_lines("Japanese")
+    a_lines = host_lines("letters")
+    ok = before["ja"] == "0" && seen == %w[1/fcitx5 0/fcitx5 1/fcitx5 0/fcitx5] && ja_lines >= 2 && a_lines >= 2 &&
+         log_text.include?("fcitx5 answers on the session bus")
+    result("indicator follows fcitx5", ok,
+           "before mozc: ja=#{before['ja']}; mozc on, then Ctrl+Space x3: #{seen.join(' -> ')} (ja/from); " \
+           "host: #{ja_lines} to the IME's mark, #{a_lines} to A; #{log_text.scan(/native: IME: (?:Japanese|letters) input \([^)]*\)/).uniq.join('; ')}")
+  rescue StandardError => e
+    result("indicator follows fcitx5", false, e.message.lines.first(3).join.strip)
+  end
+
+  # 6. fcitx5 without its D-Bus module: the indicator guesses from the keys.
+  def go_fallback
+    boot
+    wait_for("the IME", 30) { ime["present"] == "1" }
+    open_editor("/home/guess.txt")
+    seen = []
+    tap(KEYS[" "], ctrl: true)   # mozc on
+    sleep 0.4
+    type("ka")
+    h = wait_ja("1")
+    seen << "#{h['ja']}/#{h['ja_from']}"
+    tap(KEYS["\n"])
+    sleep 0.4
+    tap(KEYS[" "], ctrl: true)   # mozc off
+    sleep 0.4
+    type("a")
+    h = wait_ja("0")
+    seen << "#{h['ja']}/#{h['ja_from']}"
+    tap(KEYS[" "], ctrl: true)   # mozc on
+    sleep 0.4
+    type("ka")
+    h = wait_ja("1")
+    seen << "#{h['ja']}/#{h['ja_from']}"
+    tap(KEYS["\n"])
+    sleep 0.4
+    tap(KEYS[" "], ctrl: true)
+    sleep 0.3
+    tap(KEYS["s"], ctrl: true)
+    want = "かaか"
+    got = wait_for("guess.txt", 10) { home_file("guess.txt").include?(want) && home_file("guess.txt") } rescue home_file("guess.txt")
+    fcitx = sh!("docker", "exec", @name, "pgrep", "-c", "-x", "fcitx5", ok: false)[0].strip
+    line = log_text[/fcitx5 is not on the session bus[^\n]*/]
+    result("no fcitx5 on the bus: guess", seen == %w[1/keys 0/keys 1/keys] && got.start_with?(want) && line &&
+           fcitx == "1",
+           "#{line}; mozc on, ka / off, a / on, ka: #{seen.join(' -> ')} (ja/from); guess.txt is #{got.inspect}; " \
+           "fcitx5 processes: #{fcitx}")
+  rescue StandardError => e
+    result("run", false, e.message.lines.first(3).join.strip)
+  ensure
+    finish
+  end
+
   def sdl_tool(*args, timeout: 30)
     cmd = ["timeout", timeout.to_s, "ruby", File.join(TOOLS, "fmrb_native.rb"), "--run-dir", File.join(@run, "sdl"),
            *args.map(&:to_s)]
@@ -413,7 +491,11 @@ class ImeRun
     env = ["-e", "XDG_RUNTIME_DIR=/run/fmrb/xdg", "-e", "WAYLAND_DISPLAY=#{@socket}", "-e", "SDL_VIDEODRIVER=wayland",
            "-e", "FMRB_NATIVE_RUN_DIR=/run/fmrb/sdl", "-e", "XDG_DATA_HOME=/run/fmrb/sdl/data",
            "-e", "FMRB_DEBUG_TCP_PORT=5575", "-e", "SDL_AUDIODRIVER=dummy", "-e", "LANG=C.UTF-8"]
-    sh!("docker", "exec", "-d", *env, @name, "sh", "-c", "#{BIN} --machine sdl > /run/fmrb/sdl/core.log 2>&1")
+    # fcitx5's session bus (dbus-run-session's, which docker exec does not
+    # inherit): the SDL program asks fcitx5 too.
+    bus = "export DBUS_SESSION_BUS_ADDRESS=\"$(tr '\\0' '\\n' < /proc/$(pgrep -o -x fcitx5)/environ | " \
+          "sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')\"; "
+    sh!("docker", "exec", "-d", *env, @name, "sh", "-c", "#{bus}#{BIN} --machine sdl > /run/fmrb/sdl/core.log 2>&1")
     wait_for("the SDL program's boot", 120) { sdl_log.include?("Boot complete") }
     sw = wait_for("its window", 30) { info["windows"].find { |w| !before.include?(w[:id]) && w[:vis] } }
     sleep 2.0
@@ -435,14 +517,20 @@ class ImeRun
     grim("sdl_converting.png")
     tap(KEYS["\n"])
     sleep 0.5
+    # (the first composing text may say so before fcitx5's answer does)
+    ja = wait_for("its indicator: Japanese", 5) { sdl_log[/native: IME: Japanese input \([^)]*\)/] } rescue nil
+    answered = wait_for("fcitx5 answers it", 5) { sdl_log.include?("fcitx5 answers on the session bus") } rescue false
     tap(KEYS[" "], ctrl: true)   # mozc off
-    sleep 0.3
+    letters = wait_for("its indicator: letters", 5) { sdl_log[/native: IME: letters input \(fcitx5[^)]*\)/] } rescue nil
     tap(KEYS["s"], ctrl: true)
     got = wait_for("its file", 10) { sdl_home("sdl.txt").include?(WORD) && sdl_home("sdl.txt") } rescue sdl_home("sdl.txt")
     seen = sdl_log[/native: IME: [^\n]*/]
     result("sdl window", got.start_with?(WORD) && served == "linux" && seen,
            "--machine sdl on this compositor (SDL's text-input-v3): the IME served #{served}; its editor, nihongo, " \
            "Space, Enter, Ctrl+S: sdl.txt is #{got.inspect}; #{seen}")
+    result("sdl indicator follows fcitx5", ja && answered && letters &&
+           sdl_log =~ /the PC's IME types letters: kana indicator shows A/,
+           "its log: #{ja.inspect}, fcitx5 answers: #{answered}, then Ctrl+Space: #{letters.inspect}")
     begin
       sock = UNIXSocket.new(File.join(@run, "sdl/ctl"))
       sock.write("quit\n")
@@ -506,9 +594,12 @@ results = []
 run = ImeRun.new(opts[:renderer], opts[:keep])
 run.go
 results.concat(run.results)
-run2 = ImeRun.new(opts[:renderer], opts[:keep], label: "ime-missing", ime: "no-such-ime")
+run2 = ImeRun.new(opts[:renderer], opts[:keep], label: "ime-missing", ime: "no-such-ime", port_offset: 1)
 run2.go_missing
 results.concat(run2.results)
+run3 = ImeRun.new(opts[:renderer], opts[:keep], label: "ime-guess", ime: "fcitx5 --disable=dbus", port_offset: 2)
+run3.go_fallback
+results.concat(run3.results)
 out = File.join(CORE, "tmp/wl_check")
 FileUtils.mkdir_p(out)
 File.write(File.join(out, "summary-ime-#{ENGINE}-#{opts[:renderer]}.json"), JSON.pretty_generate(results))
