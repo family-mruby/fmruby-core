@@ -63,6 +63,7 @@
  * machine was refused (the reason is on stderr, "native: refused: ...").
  */
 
+#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
 #include <pthread.h>
@@ -441,6 +442,50 @@ static void etc_log(void *ctx, const char *line)
     fprintf(stderr, "native: /etc: %s\n", line);
 }
 
+/* /home/asterism holds the Asterism credentials (the console's .tar, with
+ * the private key in it: fmrb_secret_path.h) on the user's own disk. Only
+ * the user may read them, as ssh asks of its keys: the directory is made
+ * 0700, and the files that hold a key (*.tar, *.key) 0600, when they are
+ * more open (a .tar copied with the default umask is 0644). The settings
+ * beside them (config.toml, receive.toml) are left as they are. Only ever
+ * tightened, and said on stderr; nothing is read. Not made when it does not
+ * exist. */
+static void tighten_secrets(const char *user_dir)
+{
+    char dir[NATIVE_PATH_MAX + 32];
+    snprintf(dir, sizeof(dir), "%s/home/asterism", user_dir);
+    struct stat st;
+    if (lstat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) return;
+    if ((st.st_mode & 077) != 0) {
+        if (chmod(dir, st.st_mode & 0700) == 0) {
+            fprintf(stderr, "native: /home/asterism was open to others (%04o); now %04o\n",
+                    (unsigned)(st.st_mode & 07777), (unsigned)(st.st_mode & 0700));
+        } else {
+            fprintf(stderr, "native: cannot restrict /home/asterism: %s\n", strerror(errno));
+        }
+    }
+    DIR *d = opendir(dir);
+    if (d == NULL) return;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (e->d_name[0] == '.' && (e->d_name[1] == '\0' || (e->d_name[1] == '.' && e->d_name[2] == '\0'))) continue;
+        size_t n = strlen(e->d_name);
+        bool key = (n > 4 && strcmp(e->d_name + n - 4, ".tar") == 0) ||
+                   (n > 4 && strcmp(e->d_name + n - 4, ".key") == 0);
+        if (!key) continue;
+        char path[NATIVE_PATH_MAX + 320];
+        snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
+        if (lstat(path, &st) != 0 || !S_ISREG(st.st_mode) || (st.st_mode & 077) == 0) continue;
+        if (chmod(path, st.st_mode & 0600) == 0) {
+            fprintf(stderr, "native: /home/asterism/%s holds a key and was open to others (%04o); now %04o\n",
+                    e->d_name, (unsigned)(st.st_mode & 07777), (unsigned)(st.st_mode & 0600));
+        } else {
+            fprintf(stderr, "native: cannot restrict /home/asterism/%s: %s\n", e->d_name, strerror(errno));
+        }
+    }
+    closedir(d);
+}
+
 /* A user's /etc from an earlier release gets what this one added
  * (native/etc/etc_update.h). Before the machine starts, so nothing reads the
  * files while they change; on the first start there is no user etc yet and
@@ -563,6 +608,7 @@ int main(int argc, char **argv)
         return 2;
     }
     update_user_etc(layout.etc_seed);
+    tighten_secrets(c->user_dir);
 
     char sock[NATIVE_PATH_MAX + 16];
     snprintf(sock, sizeof(sock), "%s/inject", c->run_dir);

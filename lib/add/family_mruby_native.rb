@@ -116,7 +116,24 @@ MRuby::CrossBuild.new('family-mruby-native') do |conf|
   # and polled from Ruby, its TCP link the gem's own (src/zp_tcp_posix.c).
   # The router is the machine's zenoh_router setting
   # (config/system_conf_native.toml: tcp/127.0.0.1:7447).
-  conf.gem core: "picoruby-asterism-zenoh"
+  #
+  # TLS links (tls/<host>:<port>, mutual TLS with the console's credentials
+  # in /home/asterism, as on ESP32: doc/linux_native/report/l19.md) on the
+  # Mbed TLS picoruby-mbedtls already compiles into this libmruby (it comes
+  # with picoruby-socket), so the package gains no library. The gem's stream
+  # (ports/posix/zp_tls_posix.c) reads that Mbed TLS's headers and
+  # configuration; native/net/mbedtls_tls13.h adds TLS 1.3 and PSA to the
+  # configuration (zenohd takes TLS 1.3 only with mutual TLS) for every
+  # object of this build, so the library and its users agree on the layout.
+  # Its select() waits go through the blocking-call gate like the TCP
+  # link's (native/net/net_wrap.c).
+  mbedtls_dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mbedtls"
+  conf.cc.defines << %Q(MBEDTLS_USER_CONFIG_FILE='"#{File.expand_path('../../native/net/mbedtls_tls13.h', __dir__)}"')
+  conf.gem core: "picoruby-asterism-zenoh" do |spec|
+    spec.cc.defines << 'Z_FEATURE_LINK_TLS=1'
+    spec.cc.defines << %Q(MBEDTLS_CONFIG_FILE='"#{mbedtls_dir}/include/mbedtls_config.h"')
+    spec.cc.include_paths << "#{mbedtls_dir}/lib/mbedtls/include"
+  end
   conf.gem core: "picoruby-asterism"
   conf.gem core: "picoruby-fmrb-asterism"
 
