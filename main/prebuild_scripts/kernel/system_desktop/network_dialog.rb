@@ -13,10 +13,11 @@
 # While open, on_update re-reads wifi_info every ~1s so the IP appears as
 # soon as DHCP completes without the user reopening the dialog.
 #
-# On the PC (L14), where the OS lets Family mruby choose the network
-# (FmrbApp.wifi_networks is not ""), a third button opens the settings
-# window's Wi-Fi page (the networks in reach, connecting, disconnecting).
-# Everywhere else the dialog is as it was.
+# Where Family mruby can choose the network (FmrbApp.wifi_networks is not
+# ""), a third button opens the Wi-Fi page (the networks in reach,
+# connecting, disconnecting): on the PC (L14) the settings window's, on a
+# device with Wi-Fi the built-in default/wifi window, the same page
+# (doc/wifi_settings). The simulation and the browser have no such button.
 #
 # In the browser build a third line says whether the router checks this
 # page's name (asterism-console's door connected it with its user's
@@ -203,7 +204,13 @@ module NetworkDialogMixin
     when :net_close then close_network_dialog
     when :net_wifi
       close_network_dialog
-      FmrbApp.linux_settings("wifi")
+      # FmrbApp.linux_settings exists on the PC only (a device must not have
+      # it: the checkpoint tests name it as missing there).
+      if FmrbConst::PLATFORM == "esp32"
+        spawn_app("default/wifi")
+      else
+        FmrbApp.linux_settings("wifi")
+      end
     end
     nil
   end

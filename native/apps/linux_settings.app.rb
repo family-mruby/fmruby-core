@@ -32,8 +32,15 @@
 #
 # Everything here only asks: the C side does the work on threads of its
 # own and this window reads the outcome about once a second.
+#
+# The Wi-Fi page itself (its strings, list, password field and drawing) is
+# the one the devices' Wi-Fi window shows too (doc/wifi_settings):
+# WifiPageMixin, taken in at build time (rake native:mrb) by the line below.
+# combine: ../../main/prebuild_scripts/default_app/wifi/wifi_page.rb
 
 class LinuxSettingsApp < FmrbApp
+  include WifiPageMixin
+
   ROW_H = 12
   ROWS = 7
   LIST_Y = 32
@@ -60,27 +67,14 @@ class LinuxSettingsApp < FmrbApp
 
   STRINGS = {
     "en" => {
-      st_wifi: "Wi-Fi", st_bt: "Bluetooth",
-      st_scan: "Scan", st_connect: "Connect", st_disconnect: "Disconnect",
+      st_bt: "Bluetooth",
       st_bt_on: "Turn on", st_bt_off: "Turn off",
-      st_password: "Password:",
-      st_wifi_using: "Connected to %s", st_wifi_none_used: "Not connected",
-      st_wifi_no_nm: "NetworkManager is not running",
-      st_wifi_no_dev: "No Wi-Fi device", st_wifi_off: "Wi-Fi is off (turn it on in Linux)",
-      st_wifi_starting: "Asking NetworkManager...", st_wifi_empty: "No networks in reach",
-      st_scanning: "Scanning...", st_connecting: "Connecting to %s...",
-      st_connected: "Connected to %s", st_disconnected: "Disconnected",
-      st_need_password: "%s needs its password", st_auth_failed: "%s: the password was not accepted",
-      st_no_network: "%s is not in reach", st_enterprise: "%s needs settings made in Linux",
-      st_failed: "Could not connect to %s", st_refused: "Refused: %s",
-      st_type_password: "Type the password, then Connect",
       st_bt_none: "No Bluetooth adapter (BlueZ)", st_bt_starting: "Asking BlueZ...",
       st_bt_is_on: "Bluetooth is on", st_bt_is_off: "Bluetooth is off",
       st_bt_empty: "No paired devices", st_bt_pair: "New devices: pair them in Linux (bluetoothctl)",
       st_bt_busy: "Working on %s...", st_bt_connected: "Connected: %s", st_bt_disconnected: "Disconnected: %s",
       st_bt_failed: "Failed: %s", st_bt_power_failed: "Could not switch: %s",
       st_bt_powered_on: "Bluetooth turned on", st_bt_powered_off: "Bluetooth turned off",
-      st_saved: "saved",
       st_display: "Display", st_look: "Look", st_sharp: "Sharp", st_crt: "CRT",
       st_scanline: "Scanlines", st_mask: "Grille", st_glow: "Glow", st_curve: "Curve", st_vignette: "Corners",
       st_ntsc: "NTSC", st_flicker: "Flicker", st_noise: "Noise",
@@ -88,27 +82,14 @@ class LinuxSettingsApp < FmrbApp
       st_crt_kept: "Kept for the next session"
     },
     "ja" => {
-      st_wifi: "Wi-Fi", st_bt: "Bluetooth",
-      st_scan: "探す", st_connect: "つなぐ", st_disconnect: "切る",
+      st_bt: "Bluetooth",
       st_bt_on: "入れる", st_bt_off: "切る",
-      st_password: "パスワード:",
-      st_wifi_using: "%s につながっています", st_wifi_none_used: "つながっていません",
-      st_wifi_no_nm: "NetworkManager が動いていません",
-      st_wifi_no_dev: "Wi-Fi の装置がありません", st_wifi_off: "Wi-Fi が切れています (Linux で入れる)",
-      st_wifi_starting: "NetworkManager に聞いています...", st_wifi_empty: "届くネットワークがありません",
-      st_scanning: "探しています...", st_connecting: "%s につないでいます...",
-      st_connected: "%s につながりました", st_disconnected: "切りました",
-      st_need_password: "%s のパスワードを入れてください", st_auth_failed: "%s: パスワードが違うようです",
-      st_no_network: "%s が見つかりません", st_enterprise: "%s は Linux で設定してください",
-      st_failed: "%s につなげませんでした", st_refused: "断られました: %s",
-      st_type_password: "パスワードを入れて「つなぐ」",
       st_bt_none: "Bluetooth の装置がありません (BlueZ)", st_bt_starting: "BlueZ に聞いています...",
       st_bt_is_on: "Bluetooth は入っています", st_bt_is_off: "Bluetooth は切れています",
       st_bt_empty: "ペアリング済みの機器がありません", st_bt_pair: "新しい機器は Linux の bluetoothctl でペアリング",
       st_bt_busy: "%s を操作しています...", st_bt_connected: "つなぎました: %s", st_bt_disconnected: "切りました: %s",
       st_bt_failed: "できませんでした: %s", st_bt_power_failed: "切り替えられませんでした: %s",
       st_bt_powered_on: "Bluetooth を入れました", st_bt_powered_off: "Bluetooth を切りました",
-      st_saved: "保存",
       st_display: "画面", st_look: "見た目", st_sharp: "くっきり", st_crt: "ブラウン管",
       st_scanline: "走査線", st_mask: "格子", st_glow: "にじみ", st_curve: "曲がり", st_vignette: "四隅の暗さ",
       st_ntsc: "色のにじみ", st_flicker: "ちらつき", st_noise: "ノイズ",
@@ -118,6 +99,7 @@ class LinuxSettingsApp < FmrbApp
   }
 
   def on_create
+    FmrbI18n.add(wifi_strings)
     FmrbI18n.add(STRINGS)
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
@@ -417,48 +399,6 @@ class LinuxSettingsApp < FmrbApp
     end
   end
 
-  # One line per change, for the log (and the checks): the state fields and
-  # the names in the list ("*" active or connected).
-  def log_state(what, head, rows)
-    names = []
-    i = 0
-    while i < rows.size
-      r = rows[i]
-      if what == "wifi"
-        names << "#{r[0]}#{r[3] ? '*' : ''}"
-      else
-        names << "#{r[1]}#{r[2] ? '*' : ''}"
-      end
-      i += 1
-    end
-    Log.info("settings: #{what} #{head[1]} [#{head[2]}] [#{head[3]}] [#{head[4]}] [#{head[5]}] #{names.join(',')}")
-  end
-
-  # The tab-separated fields; empty ones at the end are kept (as "").
-  def fields(line)
-    f = line.split("\t")
-    f << "" while f.size < 6
-    f
-  end
-
-  def parse_wifi
-    @aps = []
-    @wifi_head = ["wifi", "starting", "", "", "", ""]
-    return if @wifi_text.nil? || @wifi_text.empty?
-    lines = @wifi_text.split("\n")
-    i = 0
-    while i < lines.size
-      f = fields(lines[i])
-      if f[0] == "wifi"
-        @wifi_head = f
-      elsif f[0] == "ap" && f.size >= 6
-        @aps << [f[1], f[2].to_i, f[3] == "1", f[4] == "1", f[5] == "1"]
-      end
-      i += 1
-    end
-    keep_selection(@aps, 0)
-  end
-
   def parse_bt
     @devs = []
     @bt_head = ["bt", "starting", "0", "", "", ""]
@@ -479,72 +419,25 @@ class LinuxSettingsApp < FmrbApp
     keep_selection(@devs, 0)
   end
 
-  # The selection follows its network or device when the list reorders
-  # (the one connected moves to the top).
-  def keep_selection(rows, key)
-    if @sel_name
-      i = 0
-      while i < rows.size
-        if rows[i][key] == @sel_name
-          @sel = i
-          break
-        end
-        i += 1
-      end
-    end
-    fix_selection(rows.size)
-    r = rows[@sel]
-    @sel_name = r ? r[key] : nil
-  end
-
-  def fix_selection(n)
-    @sel = n - 1 if @sel >= n
-    @sel = 0 if @sel < 0
-    @top = @sel if @sel < @top
-    @top = @sel - ROWS + 1 if @sel >= @top + ROWS
-    @top = 0 if @top < 0
-  end
-
   def head(i)
     h = @page == :wifi ? @wifi_head : @bt_head
     (h && h[i]) || ""
   end
 
-  def fmt(key, arg)
-    FmrbI18n.t(key).sub("%s", arg.to_s)
-  end
-
   # ---- actions
 
-  def selected_ap
-    @aps[@sel]
-  end
-
-  # The password field shows for a secured network NetworkManager has not
-  # saved, and after an attempt said the password was wanted or wrong.
+  # The password field: the Wi-Fi page's (WifiPageMixin).
   def needs_password?
-    return false unless @page == :wifi
-    ap = selected_ap
-    return false if ap.nil?
-    code = head(4)
-    asked = (code == "need_password" || code == "auth_failed") && head(5) == ap[0]
-    (ap[2] && !ap[4]) || asked
+    @page == :wifi && wifi_needs_password?
   end
 
   def do_connect
     if @page == :wifi
-      ap = selected_ap
-      return if ap.nil?
-      if needs_password? && @pw.empty?
-        @msg = FmrbI18n.t(:st_type_password)
+      return if selected_ap.nil?
+      unless wifi_connect_selected
         draw_page
         return
       end
-      pw = @pw
-      @pw = ""
-      FmrbApp.wifi_connect(ap[0], pw)
-      pw = nil
-      @msg = ""
     else
       d = @devs[@sel]
       return if d.nil?
@@ -608,25 +501,11 @@ class LinuxSettingsApp < FmrbApp
     elsif ch == 13 || ch == 10
       do_connect
     elsif needs_password?
-      if ch == 8
-        @pw = @pw[0, @pw.length - 1] if @pw.length > 0
-        draw_page
-      elsif ch >= 32 && ch <= 126 && @pw.length < 63
-        @pw = @pw + ch.chr
-        draw_page
-      end
+      draw_page if wifi_password_key(ch)
     end
   end
 
   # ---- drawing
-
-  def ax(x)
-    @user_area_x0 + x
-  end
-
-  def ay(y)
-    @user_area_y0 + y
-  end
 
   def draw_page
     clear_user_area
@@ -639,124 +518,6 @@ class LinuxSettingsApp < FmrbApp
     end
     @ui.invalidate_all
     @ui.flush
-  end
-
-  def text(x, y, s, color = nil)
-    @gfx.draw_text(ax(x), ay(y), s, color || theme_fg, theme_bg, mixed: true)
-  end
-
-  def fit(s, px)
-    FmrbI18n.truncate_to(s.to_s, px)
-  end
-
-  def status_line(y, s)
-    text(4, y, fit(s, @w - 8))
-  end
-
-  def draw_wifi
-    st = head(1)
-    line = case st
-           when "none" then FmrbI18n.t(:st_wifi_no_nm)
-           when "nodevice" then FmrbI18n.t(:st_wifi_no_dev)
-           when "off" then FmrbI18n.t(:st_wifi_off)
-           when "starting" then FmrbI18n.t(:st_wifi_starting)
-           else
-             head(2).empty? ? FmrbI18n.t(:st_wifi_none_used) : fmt(:st_wifi_using, head(2))
-           end
-    status_line(20, line)
-    if st == "ok" && @aps.empty?
-      text(8, LIST_Y + 2, FmrbI18n.t(:st_wifi_empty), theme_border)
-    end
-    i = 0
-    while i < ROWS
-      k = @top + i
-      break if k >= @aps.size
-      draw_ap_row(LIST_Y + i * ROW_H, @aps[k], k == @sel)
-      i += 1
-    end
-    draw_scroll_mark(@aps.size)
-    py = LIST_Y + ROWS * ROW_H + 3
-    if needs_password?
-      text(4, py + 2, FmrbI18n.t(:st_password))
-      bx = 70
-      bw = @w - bx - 6
-      @gfx.fill_rect(ax(bx), ay(py), bw, 12, theme_fg_light)
-      @gfx.draw_rect(ax(bx), ay(py), bw, 12, theme_accent)
-      stars = "*" * @pw.length
-      stars = stars[stars.length - 30, 30] if stars.length > 30
-      @gfx.draw_text(ax(bx + 2), ay(py + 2), stars, theme_fg, theme_fg_light)
-    end
-    draw_message(wifi_outcome)
-  end
-
-  def wifi_outcome
-    return @msg unless @msg.empty?
-    busy = head(3)
-    return fmt(:st_connecting, head(5)) if busy == "connecting"
-    return FmrbI18n.t(:st_scanning) if busy == "scanning"
-    code = head(4)
-    arg = head(5)
-    case code
-    when "connected" then fmt(:st_connected, arg)
-    when "disconnected" then FmrbI18n.t(:st_disconnected)
-    when "need_password" then fmt(:st_need_password, arg)
-    when "auth_failed" then fmt(:st_auth_failed, arg)
-    when "no_network" then fmt(:st_no_network, arg)
-    when "enterprise" then fmt(:st_enterprise, arg)
-    when "failed" then fmt(:st_failed, arg)
-    when "refused" then fmt(:st_refused, arg)
-    else ""
-    end
-  end
-
-  def draw_ap_row(y, ap, selected)
-    bg = selected ? theme_accent : theme_bg
-    fg = selected ? theme_fg_light : theme_fg
-    @gfx.fill_rect(ax(2), ay(y), @w - 12, ROW_H, bg)
-    # the strength: four bars
-    bars = (ap[1] + 12) / 25
-    bars = 4 if bars > 4
-    j = 0
-    while j < 4
-      bh = 2 + j * 2
-      c = j < bars ? fg : (selected ? theme_fg_light : theme_border)
-      if j < bars
-        @gfx.fill_rect(ax(5 + j * 3), ay(y + 10 - bh), 2, bh, c)
-      else
-        @gfx.fill_rect(ax(5 + j * 3), ay(y + 9), 2, 1, c)
-      end
-      j += 1
-    end
-    name = ap[0]
-    name = "> " + name if ap[3]
-    right = ""
-    right = FmrbI18n.t(:st_saved) if ap[4]
-    rw = FmrbI18n.text_width(right)
-    @gfx.draw_text(ax(20), ay(y + 2), fit(name, @w - 50 - rw), fg, bg, mixed: true)
-    if ap[2]
-      # a lock: a small box with a loop
-      lx = @w - 20
-      @gfx.fill_rect(ax(lx), ay(y + 5), 6, 5, fg)
-      @gfx.draw_rect(ax(lx + 1), ay(y + 2), 4, 4, fg)
-    end
-    @gfx.draw_text(ax(@w - 24 - rw), ay(y + 2), right, fg, bg, mixed: true) unless right.empty?
-  end
-
-  def draw_scroll_mark(n)
-    return if n <= ROWS
-    x = @w - 8
-    top = LIST_Y
-    h = ROWS * ROW_H
-    @gfx.fill_rect(ax(x), ay(top), 3, h, theme_border)
-    th = h * ROWS / n
-    th = 6 if th < 6
-    ty = top + (h - th) * @top / (n - ROWS)
-    @gfx.fill_rect(ax(x), ay(ty), 3, th, theme_fg)
-  end
-
-  def draw_message(s)
-    return if s.nil? || s.empty?
-    text(4, @h - 14, fit(s, @w - 8), theme_accent)
   end
 
   def draw_bt

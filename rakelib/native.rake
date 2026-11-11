@@ -56,12 +56,26 @@ def native_regen_apps_mrb!
   mrbc = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/bin/mrbc")
   return puts("native:mrb: no #{mrbc} yet -- the native apps skipped") unless File.exist?(mrbc)
   dir = File.join(NATIVE_DIR, "apps")
+  gen = File.join(ROOT_DIR, "tool/debug/gen_combined_rb.py")
   Dir[File.join(dir, "*.app.rb")].sort.each do |rb|
     name = File.basename(rb).sub(/\..*\z/, "")
     out_c = File.join(dir, "mrb", "#{name}.c")
-    next if File.exist?(out_c) && File.mtime(out_c) >= File.mtime(rb)
+    # Mixins shared with the firmware's own programs: a "# combine: x.rb"
+    # line names them, relative to this directory (the Wi-Fi page,
+    # doc/wifi_settings), put in front of the app as hosted_regen_mrb! does.
+    combine = File.foreach(rb).first(80).find { |l| l.start_with?("# combine:") }
+    mixins = combine ? combine.sub("# combine:", "").split.map { |f| File.expand_path(f, dir) } : []
+    newest = ([rb] + mixins).map { |f| File.mtime(f) }.max
+    next if File.exist?(out_c) && File.mtime(out_c) >= newest
     mkdir_p File.dirname(out_c)
-    sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
+    if mixins.empty?
+      sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
+    else
+      combined = File.join(dir, "mrb", "#{name}_combined.rb")
+      map = File.join(dir, "mrb", "#{name}_combined.map.json")
+      sh "python3 #{gen} #{combined} #{map} #{mixins.join(' ')} #{rb}"
+      sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
+    end
     puts "native:mrb: #{name} rebuilt"
   end
 end

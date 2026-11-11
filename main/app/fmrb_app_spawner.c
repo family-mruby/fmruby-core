@@ -23,6 +23,7 @@ extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
 extern const uint8_t appstore_irep[];
+extern const uint8_t wifi_irep[];
 #if defined(FMRB_PLATFORM_NATIVE)
 // The keyboard-only desktop (doc/linux_native, L4). Built for the hosted
 // programs only (main/CMakeLists.txt leaves it out of the device and
@@ -393,6 +394,28 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .resizable = true,
         .min_window_width = 240,
         .min_window_height = 150,
+        .rounded_corners = true
+    }},
+    /* The Wi-Fi window (doc/wifi_settings): the PC settings window's Wi-Fi
+     * page, opened from the desktop's Network dialog on the devices. The
+     * PC's own window is the same size (native/backend/native_settings.c),
+     * and it fits a Retro screen under the menu bar. */
+    { "default/wifi", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "Wi-Fi",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = wifi_irep,
+        .stack_words = FMRB_TOOL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 280,
+        .window_height = 200,
+        .window_pos_x = 20,
+        .window_pos_y = 20,
         .rounded_corners = true
     }},
 };
