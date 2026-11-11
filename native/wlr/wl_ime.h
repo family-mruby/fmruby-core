@@ -49,6 +49,9 @@ bool wl_ime_takes_keys(struct wlr_keyboard *kb);
 bool wl_ime_key(struct wlr_keyboard *kb, uint32_t time_msec, uint32_t code, uint32_t state);
 /* The modifiers to the IME instead of the window, true when it took them. */
 bool wl_ime_modifiers(struct wlr_keyboard *kb);
+/* A key pressed on the IME's own keyboard (one it handed back): a plain
+ * printable one says it types letters (the indicator's guess). */
+void wl_ime_key_back(struct wlr_keyboard *kb, uint32_t code);
 /* A keyboard of the IME's own (its virtual keyboard). */
 bool wl_ime_own_keyboard(struct wlr_keyboard *kb);
 

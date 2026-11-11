@@ -13,6 +13,8 @@
 //                 outcome from the device's state reason
 //   Bluetooth     linux_bt.c: which devices are listed
 //   the volume    sys_linux_pw.c: wpctl's and pactl's output, the steps
+//   fcitx5        linux_fcitx.c: State and CurrentInputMethod made one answer
+//                 (Japanese or letters) for the kana indicator
 //
 // The bus parts (NetworkManager, BlueZ, the notification service) run in
 // the compositor's check against stand-ins (test/native/wl/wl_settings_check.rb).
@@ -25,6 +27,7 @@
 #include <string.h>
 
 #include "linux_bt.h"
+#include "linux_fcitx.h"
 #include "linux_net.h"
 #include "linux_notify.h"
 #include "sys_linux.h"
@@ -199,12 +202,24 @@ static void test_volume(void)
           sys_linux_pw_step(0.66, 10) == 7, "steps");
 }
 
+static void test_fcitx(void)
+{
+    CHECK(linux_fcitx_judge(2, "mozc") == LINUX_FCITX_JAPANESE, "mozc active");
+    CHECK(linux_fcitx_judge(1, "keyboard-us") == LINUX_FCITX_LETTERS, "keyboard-us inactive");
+    CHECK(linux_fcitx_judge(2, "keyboard-jp") == LINUX_FCITX_LETTERS, "a layout is letters whatever the state");
+    CHECK(linux_fcitx_judge(1, "anthy") == LINUX_FCITX_JAPANESE, "an engine as the only input method");
+    CHECK(linux_fcitx_judge(2, "") == LINUX_FCITX_JAPANESE, "no name: active");
+    CHECK(linux_fcitx_judge(1, NULL) == LINUX_FCITX_LETTERS, "no name: inactive");
+    CHECK(linux_fcitx_judge(0, "") == LINUX_FCITX_NO_CONTEXT, "no input context");
+}
+
 int main(void)
 {
     test_notices();
     test_wifi();
     test_bt();
     test_volume();
+    test_fcitx();
     printf("native settings: %d/%d checks passed\n", g_count - g_fail, g_count);
     return g_fail == 0 ? 0 : 1;
 }

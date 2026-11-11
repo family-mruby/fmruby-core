@@ -10,10 +10,19 @@
 
 #include "fmrb_kernel.h"
 #include "host_task.h"
+#include "linux_fcitx.h"
 #include "native_ime.h"
 #include "native_input.h"
 
 static atomic_bool s_present;
+
+/* What the IME types: Japanese (1) or letters (0), and a number moved on
+ * every change (the host task follows it). While fcitx5 answers on the
+ * bus (s_bus_says), its answers decide; else the keys are guessed from. */
+static atomic_int s_ja;
+static atomic_uint s_ja_seq;
+static atomic_bool s_bus_says;
+static atomic_bool s_bus_absent_said;
 
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct {
@@ -24,17 +33,73 @@ static struct {
 
 static atomic_uint s_commits, s_commit_bytes;
 
+static void set_japanese(bool ja, const char *why)
+{
+    if (atomic_exchange(&s_ja, ja ? 1 : 0) == (ja ? 1 : 0)) return;
+    atomic_fetch_add(&s_ja_seq, 1);
+    fprintf(stderr, "native: IME: %s input (%s)\n", ja ? "Japanese" : "letters", why);
+}
+
+/* The fcitx5 thread's answers. */
+static void on_fcitx(linux_fcitx_answer_t answer, const char *im)
+{
+    char why[96];
+    switch (answer) {
+    case LINUX_FCITX_ABSENT:
+        atomic_store(&s_bus_says, false);
+        if (!atomic_exchange(&s_bus_absent_said, true)) {
+            fprintf(stderr, "native: IME: fcitx5 is not on the session bus: the kana indicator guesses from the keys\n");
+        }
+        break;
+    case LINUX_FCITX_NO_CONTEXT:
+        break;
+    case LINUX_FCITX_LETTERS:
+    case LINUX_FCITX_JAPANESE:
+        if (!atomic_exchange(&s_bus_says, true)) {
+            fprintf(stderr, "native: IME: fcitx5 answers on the session bus: the kana indicator follows it\n");
+        }
+        atomic_store(&s_bus_absent_said, false);
+        snprintf(why, sizeof(why), "fcitx5: %s", im[0] ? im : "no input method name");
+        set_japanese(answer == LINUX_FCITX_JAPANESE, why);
+        break;
+    }
+}
+
 void native_ime_set_present(bool on, const char *what)
 {
     bool was = atomic_exchange(&s_present, on);
     if (was == on) return;
     if (on) {
+        linux_fcitx_start(on_fcitx);
+        linux_fcitx_watch(true);
+        linux_fcitx_ask();
         fprintf(stderr, "native: IME: %s types for the Family mruby apps; their own kana input steps aside\n",
                 what ? what : "an IME");
     } else {
+        linux_fcitx_watch(false);
+        /* A next IME starts afresh: letters, its answers to be learned. */
+        atomic_store(&s_bus_says, false);
+        set_japanese(false, "the IME went");
         fprintf(stderr, "native: IME: %s gone; the Family mruby apps' own kana input is back\n",
                 what ? what : "the IME");
     }
+}
+
+void native_ime_recheck(void)
+{
+    if (atomic_load(&s_present)) linux_fcitx_ask();
+}
+
+void native_ime_guess(bool japanese, const char *sign)
+{
+    if (!atomic_load(&s_present) || atomic_load(&s_bus_says)) return;
+    set_japanese(japanese, sign);
+}
+
+bool fmrb_native_ime_japanese(unsigned *seq)
+{
+    if (seq) *seq = atomic_load(&s_ja_seq);
+    return atomic_load(&s_ja) == 1;
 }
 
 bool fmrb_native_ime_present(void)
@@ -97,6 +162,8 @@ void native_ime_stats(native_ime_stats_t *out)
 {
     memset(out, 0, sizeof(*out));
     out->present = atomic_load(&s_present);
+    out->japanese = atomic_load(&s_ja) == 1;
+    out->from_fcitx = atomic_load(&s_bus_says);
     out->commits = atomic_load(&s_commits);
     out->commit_bytes = atomic_load(&s_commit_bytes);
     pthread_mutex_lock(&s_lock);

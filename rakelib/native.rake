@@ -206,7 +206,7 @@ namespace :native do
     sincs = %w[native/sys components/fmrb_common/include]
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{sincs.map { |i| "-I #{i}" }.join(' ')} " \
        "native/sys/linux_notify.c native/sys/linux_bus.c native/sys/linux_net.c native/sys/linux_bt.c " \
-       "native/sys/sys_linux_pw.c #{NATIVE_TEST_DIR}/settings.c -lpthread -ldl " \
+       "native/sys/sys_linux_pw.c native/sys/linux_fcitx.c #{NATIVE_TEST_DIR}/settings.c -lpthread -ldl " \
        "-o #{NATIVE_TEST_BUILD}/native_settings_test"
     sh "#{NATIVE_TEST_BUILD}/native_settings_test"
 

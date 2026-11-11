@@ -11,6 +11,12 @@
  *            being composed and the candidates are shown.
  *   commit   main thread -> host task: text the IME committed, through the
  *            input ring (native_input.h), in order with the keys.
+ *   japanese what the IME types now, Japanese or letters (host task: the
+ *            kana indicator shows the IME's mark or A). fcitx5 is asked
+ *            over D-Bus (linux_fcitx.h) when it is on the session bus;
+ *            else the keys are guessed from, as the browser build does:
+ *            text being composed or non-ASCII text committed says
+ *            Japanese, a plain key the IME let through says letters.
  *
  * Plus the drawing of the text being composed in Family mruby's own font
  * (native_preedit.cpp), for the outputs that put it over the picture.
@@ -30,6 +36,14 @@ extern "C" {
 /* Main thread: an IME is there (or no longer). Logged on a change. */
 void native_ime_set_present(bool on, const char *what);
 
+/* Any thread: what the IME types may have changed (a key went to it, the
+ * focus moved, it was activated): fcitx5 is asked again soon. Never waits. */
+void native_ime_recheck(void);
+
+/* Any thread: a sign from the keys (sign: for the log line). Ignored
+ * while fcitx5 answers on the bus. */
+void native_ime_guess(bool japanese, const char *sign);
+
 /* Main thread: the focused app's text cursor (frame coordinates; h is the
  * line's height). False when it takes no text now. seq moves on every
  * change. */
@@ -45,6 +59,8 @@ void native_ime_deliver(uint32_t a, uint32_t b, uint32_t c, uint32_t d);
 /* Counters (the control socket's "ime"). */
 typedef struct {
     bool present;
+    bool japanese;              /* the IME types Japanese now */
+    bool from_fcitx;            /* fcitx5's answers decide (else the keys' signs) */
     unsigned commits;           /* texts committed to Family mruby */
     unsigned commit_bytes;
     unsigned cursor_changes;

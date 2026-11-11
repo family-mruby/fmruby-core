@@ -91,6 +91,7 @@ static void keyboard_key(struct wl_listener *l, void *data)
      * machine's volume (native/backend/input_native.c). */
     else if (down && (code == KEY_MUTE || code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN)) target = COMP_FMRB;
     else if (down && wl_ime_takes_keys(k->wlr)) target = KEY_TO_IME;
+    else if (down && wl_ime_own_keyboard(k->wlr)) wl_ime_key_back(k->wlr, code);
     if (code <= KEY_MAX) {
         if (down) k->key_target[code] = target;
         else target = k->key_target[code];

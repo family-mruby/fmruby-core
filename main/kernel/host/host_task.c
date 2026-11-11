@@ -1809,8 +1809,10 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 // mruby apps too. The main thread says when one is there
 // (fmrb_native_ime_present). While it is, Family mruby's own kana input steps
 // aside: the composer is not fed, the clickable indicators cannot turn it
-// on, and the apps are told FMRB_KANA_MODE_IME, for which their indicators
-// show the IME's mark (the IME's own state is not known here). The IME's
+// on, and the apps' indicators follow what the IME types: FMRB_KANA_MODE_IME
+// (the IME's mark) while it types Japanese, FMRB_KANA_OFF (A) while it
+// types letters (fmrb_native_ime_japanese: fcitx5 asked over D-Bus, or the
+// keys' signs; doc/kanji_input). The IME's
 // committed text comes in as HOST_MSG_HID_TEXT and leaves as the same
 // one-byte key events a composed kana does (host_text_pump).
 //
@@ -1830,8 +1832,26 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 // last (doc/kanji_input K4b) -- the indicators show the IME's mark, kana
 // input is untouched.
 static bool s_ime_on;
-// Per app slot, the context generation told FMRB_KANA_MODE_IME (0 none).
+// Per app slot, the context generation told the IME's mode (0 none).
 static uint32_t s_ime_told_gen[FMRB_MAX_APPS];
+#endif
+
+#if defined(FMRB_PLATFORM_NATIVE)
+// While the PC's IME is there: it types Japanese (its mark) or letters (A).
+static bool s_ime_ja;
+static unsigned s_ime_ja_seq;
+#endif
+
+#if defined(HOST_TEXT_IN)
+// What the indicators show while s_ime_on.
+static uint8_t ime_shown_mode(void)
+{
+#if defined(FMRB_PLATFORM_NATIVE)
+    return s_ime_ja ? FMRB_KANA_MODE_IME : (uint8_t)FMRB_KANA_OFF;
+#else
+    return FMRB_KANA_MODE_IME;
+#endif
+}
 #endif
 
 #if defined(HOST_TEXT_IN)
@@ -1857,7 +1877,7 @@ static void host_broadcast_kana_mode(void)
 {
     uint8_t mode = (uint8_t)fmrb_kana_get_mode();
 #if defined(HOST_TEXT_IN)
-    if (s_ime_on) mode = FMRB_KANA_MODE_IME;
+    if (s_ime_on) mode = ime_shown_mode();
 #endif
     fmrb_hid_routing_t routing;
     if (fmrb_kernel_get_hid_routing(&routing) == FMRB_OK &&
@@ -2142,9 +2162,11 @@ static void ime_tell_focused(int target)
     if (ctx == NULL || ctx->state != PROC_STATE_RUNNING) return;
     if (s_ime_on && s_ime_told_gen[target] != ctx->gen) {
         s_ime_told_gen[target] = ctx->gen;
-        host_send_kana_mode((uint8_t)target, FMRB_KANA_MODE_IME);
-        host_send_kana_mode(0, FMRB_KANA_MODE_IME);
-        FMRB_LOGI(TAG, "PID %d told an IME types (its kana indicator shows the IME)", target);
+        uint8_t mode = ime_shown_mode();
+        host_send_kana_mode((uint8_t)target, mode);
+        host_send_kana_mode(0, mode);
+        FMRB_LOGI(TAG, "PID %d told an IME types (its kana indicator shows %s)", target,
+                  mode == FMRB_KANA_MODE_IME ? "the IME's mark" : "A");
     } else if (!s_ime_on && s_ime_told_gen[target] != 0) {
         s_ime_told_gen[target] = 0;
         uint8_t mode = (uint8_t)fmrb_kana_get_mode();
@@ -2193,10 +2215,25 @@ static void ime_tick(void)
 #endif
 
 #if defined(FMRB_PLATFORM_NATIVE)
-// From the host loop: the IME coming and going, the focused app told, the
-// focused app's cursor handed to the main thread.
+// From the host loop: the IME coming and going, what it types, the focused
+// app told, the focused app's cursor handed to the main thread.
 static void ime_tick(void)
 {
+    unsigned seq;
+    bool ja = fmrb_native_ime_japanese(&seq);
+    if (seq != s_ime_ja_seq) {
+        s_ime_ja_seq = seq;
+        if (ja != s_ime_ja) {
+            s_ime_ja = ja;
+            FMRB_LOGI(TAG, "the PC's IME types %s: kana indicator shows %s", ja ? "Japanese" : "letters",
+                      ja ? "the IME's mark" : "A");
+            if (s_ime_on) {
+                // Every app hears it again when it comes to the front.
+                memset(s_ime_told_gen, 0, sizeof(s_ime_told_gen));
+                host_broadcast_kana_mode();
+            }
+        }
+    }
     bool on = fmrb_native_ime_present();
     if (on != s_ime_on) {
         s_ime_on = on;

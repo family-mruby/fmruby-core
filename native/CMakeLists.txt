@@ -156,6 +156,8 @@ set(NATIVE_BACKEND_SRCS
   ${N}/sys/linux_net.c
   ${N}/sys/linux_bt.c
   ${N}/sys/linux_notify.c
+  # fcitx5's state for the kana indicator (doc/kanji_input)
+  ${N}/sys/linux_fcitx.c
   ${N}/sys/sys_linux_pw.c
   # The PC's settings window (L14): the spawner and the app's bytecode
   # (rake native:mrb compiles native/apps/*.app.rb)

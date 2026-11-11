@@ -37,6 +37,13 @@
  * IME from it). Not installed: one line, and Family mruby keeps its own kana
  * input. Whether an IME is there is told to the machine (native_ime.h) when
  * one binds input-method-v2 and when it goes.
+ *
+ * What the IME types (Japanese or letters, for the kana indicator):
+ * input-method-v2 does not say. fcitx5 is asked over D-Bus
+ * (native_ime_recheck) on every key that goes to the IME, on activation
+ * and on focus moves; the signs for the guess when it is not on the bus
+ * (native_ime_guess) are its text being composed and non-ASCII commits
+ * (Japanese) and a plain key handed back on its virtual keyboard (letters).
  */
 
 #define _GNU_SOURCE
@@ -58,6 +65,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
+#include <xkbcommon/xkbcommon.h>
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 
@@ -358,6 +366,7 @@ static void update(void)
     }
     m.active = t;
     m.fmrb_active = f;
+    native_ime_recheck();
     if (!f) clear_preedit();
     if (m.im == NULL) return;
     if (was) {
@@ -512,6 +521,23 @@ static void im_new_popup(struct wl_listener *l, void *data)
 
 /* --------------------------------------------------------- the IME */
 
+/* What the IME's commit says about what it types (the guess, native_ime.h). */
+static void ime_sign(const struct wlr_input_method_v2_state *st)
+{
+    if (st->preedit.text != NULL && st->preedit.text[0] != '\0') {
+        native_ime_guess(true, "the IME composes");
+        return;
+    }
+    if (st->commit_text != NULL) {
+        for (const char *c = st->commit_text; *c; c++) {
+            if ((unsigned char)*c >= 0x80) {
+                native_ime_guess(true, "the IME committed non-ASCII text");
+                return;
+            }
+        }
+    }
+}
+
 static void im_commit(struct wl_listener *l, void *data)
 {
     (void)l;
@@ -519,6 +545,7 @@ static void im_commit(struct wl_listener *l, void *data)
     struct wlr_input_method_v2 *im = m.im;
     if (im == NULL) return;
     const struct wlr_input_method_v2_state *st = &im->current;
+    ime_sign(st);
     if (m.active != NULL) {
         struct wlr_text_input_v3 *t = m.active->wlr;
         if (st->preedit.text != NULL) {
@@ -651,7 +678,19 @@ bool wl_ime_key(struct wlr_keyboard *kb, uint32_t time_msec, uint32_t code, uint
     wlr_input_method_keyboard_grab_v2_set_keyboard(m.grab, kb);
     wlr_input_method_keyboard_grab_v2_send_key(m.grab, time_msec, code, state);
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) m.stats.keys++;
+    /* Its switching keys among them: what it types may change. */
+    native_ime_recheck();
     return true;
+}
+
+void wl_ime_key_back(struct wlr_keyboard *kb, uint32_t code)
+{
+    if (m.active == NULL && !m.fmrb_active) return;
+    if (kb->xkb_state == NULL) return;
+    uint32_t mods = wlr_keyboard_get_modifiers(kb);
+    if (mods & (WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT | WLR_MODIFIER_LOGO)) return;
+    uint32_t ch = xkb_state_key_get_utf32(kb->xkb_state, code + 8);
+    if (ch > 0x20 && ch < 0x7F) native_ime_guess(false, "the IME let a letter through");
 }
 
 bool wl_ime_modifiers(struct wlr_keyboard *kb)
@@ -836,13 +875,15 @@ void wl_ime_describe(char *out, size_t cap)
     }
     struct wlr_box c = { 0, 0, 0, 0 };
     bool has_cur = fmrb_cursor_box(&c);
+    native_ime_stats_t st;
+    native_ime_stats(&st);
     snprintf(out, cap,
              "OK present=%d grab=%d serves=%s cursor=%s%d,%d,%d cursor_out=%d,%d,%dx%d preedit_bytes=%zu preedit=%dx%d+%d+%d "
              "popups=%d shown=%d popup=%s activations=%u fmrb_commits=%u linux_commits=%u keys=%u popups_seen=%u "
-             "preedits=%u pid=%d\n",
+             "preedits=%u pid=%d ja=%d ja_from=%s\n",
              m.im != NULL, m.grab != NULL, m.fmrb_active ? "fmrb" : m.active != NULL ? "linux" : "none",
              m.cur_on ? "" : "off:", m.cur_fx, m.cur_fy, m.cur_h, has_cur ? c.x : -1, has_cur ? c.y : -1, c.width,
              c.height, strlen(m.preedit), m.pre_w, m.pre_h, m.pre_x, m.pre_y, n_pop, shown, where,
              m.stats.activations, m.stats.fmrb_commits, m.stats.linux_commits, m.stats.keys, m.stats.popups,
-             m.stats.preedits, (int)m.pid);
+             m.stats.preedits, (int)m.pid, st.japanese, st.from_fcitx ? "fcitx5" : "keys");
 }

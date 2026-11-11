@@ -54,6 +54,7 @@ static void load(void)
     SYM(set_property, "sd_bus_set_property");
     SYM(emit_signal, "sd_bus_emit_signal");
     SYM(new_method_call, "sd_bus_message_new_method_call");
+    SYM(message_set_auto_start, "sd_bus_message_set_auto_start");
     SYM(new_method_return, "sd_bus_message_new_method_return");
     SYM(reply_method_return, "sd_bus_reply_method_return");
     SYM(reply_method_errorf, "sd_bus_reply_method_errorf");

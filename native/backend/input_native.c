@@ -237,6 +237,12 @@ static void inject_packet(uint8_t type, const uint8_t *data, uint16_t len)
          * task: the keys injected after it stay after it. A commit is the
          * sign of an IME, as SDL's text input takes it (output_sdl.c). */
         native_ime_set_present(true, "an injected IME commit");
+        for (uint16_t i = 0; i < len; i++) {
+            if (((const uint8_t *)data)[i] >= 0x80) {
+                native_ime_guess(true, "an injected non-ASCII commit");
+                break;
+            }
+        }
         if (len > 0 && fmrb_host_send_text((const char *)data, (int)len) < 0) {
             FMRB_LOGW(TAG, "inject: %u bytes of IME text dropped", (unsigned)len);
         }

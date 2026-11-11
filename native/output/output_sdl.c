@@ -41,6 +41,15 @@
  * SDL: the first composing text, or committed text no key carried, says so
  * (the machine's own kana input steps aside from then on). Other machines
  * on this output (cage's linux_pc) leave SDL's text events alone.
+ *
+ * What the IME types (Japanese or letters, for the kana indicator): fcitx5
+ * is asked over D-Bus when it is on the session bus (native_ime_recheck on
+ * each key release this window sees, as the release of Ctrl after
+ * Ctrl+Space, and on focus; fcitx5 is also asked every second while an IME
+ * is there, for the switching keys the IME takes whole). Else the signs
+ * (native_ime_guess): composing text and non-ASCII commits say Japanese, a
+ * key that typed its own text says letters. ibus has no such question: it
+ * is always the guess.
  */
 
 #include <SDL.h>
@@ -350,7 +359,10 @@ static int byte_of_char(const char *s, int n)
 static void set_preedit(const char *text, int start, int length)
 {
     snprintf(s_preedit, sizeof(s_preedit), "%s", text ? text : "");
-    if (s_preedit[0] != '\0') ime_seen();
+    if (s_preedit[0] != '\0') {
+        ime_seen();
+        native_ime_guess(true, "SDL's text input composes");
+    }
     s_pre_begin = byte_of_char(s_preedit, start);
     s_pre_end = length > 0 ? byte_of_char(s_preedit, start + length) : s_pre_begin;
     s_dirty = 1;
@@ -398,7 +410,10 @@ static int handle_event(const SDL_Event *e)
             e->window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
             s_dirty = 1;
         }
-        if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) clip_read();
+        if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+            clip_read();
+            if (s_ime) native_ime_recheck();
+        }
         break;
     case SDL_CLIPBOARDUPDATE:
         clip_read();
@@ -423,17 +438,26 @@ static int handle_event(const SDL_Event *e)
                                  sym >= 0x20 && sym != 0x7F && (sym & SDLK_SCANCODE_MASK) == 0;
         } else {
             s_key_text_pending = false;
+            if (s_ime) native_ime_recheck();
         }
         break;
     }
     case SDL_TEXTINPUT:
         if (!s_ime) break;
         if (s_key_text_pending) {
-            /* The key just passed on, typed: the machine has it already. */
+            /* The key just passed on, typed: the machine has it already.
+             * The IME let it through: letters. */
             s_key_text_pending = false;
+            if (e->text.text[0] != ' ') native_ime_guess(false, "a key typed its own text");
             break;
         }
         ime_seen();
+        for (const char *c = e->text.text; *c; c++) {
+            if ((unsigned char)*c >= 0x80) {
+                native_ime_guess(true, "SDL's text input committed non-ASCII text");
+                break;
+            }
+        }
         native_ime_commit(e->text.text);
         s_preedit[0] = '\0';
         s_dirty = 1;

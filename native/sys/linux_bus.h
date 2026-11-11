@@ -2,7 +2,8 @@
  * linux_bus.h - sd-bus (libsystemd's D-Bus), opened at run time, for the
  * PC's settings and notifications (doc/linux_native, L14): NetworkManager
  * (linux_net.c) and BlueZ (linux_bt.c) on the system bus, the
- * notifications we serve (linux_notify.c) on the session bus.
+ * notifications we serve (linux_notify.c) and fcitx5's state (linux_fcitx.c,
+ * the kana indicator) on the session bus.
  *
  * libsystemd0 is on every systemd machine (the package depends on it) and
  * nothing of it is needed to build: the calls are looked up once, here,
@@ -63,6 +64,7 @@ typedef struct {
                        const char *types, ...);
     int (*new_method_call)(void *bus, void **m, const char *destination, const char *path,
                            const char *interface, const char *member);
+    int (*message_set_auto_start)(void *m, int b);
     int (*new_method_return)(void *call, void **m);
     int (*reply_method_return)(void *call, const char *types, ...);
     int (*reply_method_errorf)(void *call, const char *name, const char *format, ...);

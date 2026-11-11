@@ -289,6 +289,10 @@ void fmrb_native_request_quit(void);
  *  says so, native/backend/native_ime.c). Any task. */
 bool fmrb_native_ime_present(void);
 
+/** While one is: true when it types Japanese now (its mark on the kana
+ *  indicator), false for letters (A). seq moves on every change. Any task. */
+bool fmrb_native_ime_japanese(unsigned *seq);
+
 /** The focused app's text cursor (frame coordinates, h the line height),
  *  or that it has none, for the main thread's IME. The host task. */
 void fmrb_native_ime_publish_cursor(bool on, int fx, int fy, int h);
