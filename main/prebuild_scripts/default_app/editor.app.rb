@@ -591,8 +591,11 @@ class EditorApp < FmrbApp
       character = ev[:character] || 0
 
       # Latency clock starts here, except for bare modifier presses (they draw
-      # nothing, so stamping them would charge their idle time to the next key).
-      lat_key_arrived unless keycode >= 224 && keycode <= 231
+      # nothing, so stamping them would charge their idle time to the next key),
+      # and for the keys kana input holds (lat_kana_held?).
+      unless (keycode >= 224 && keycode <= 231) || lat_kana_held?(ev, character)
+        lat_key_arrived
+      end
 
       # A message that has already survived one key gives the line back now.
       # Modifiers alone do not count: Ctrl arrives as its own event, and it

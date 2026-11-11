@@ -587,6 +587,20 @@ module EditorRender
     @lat_t0 = Machine.uptime_us if @lat_t0.nil?
   end
 
+  # A letter key the host keeps for kana input: a romaji consonant, or the
+  # reading while a kanji dictionary is there. It reaches the editor with its
+  # character cleared and draws nothing; the text it becomes arrives later as
+  # its own events (scancode 0, the character set), and those start the clock.
+  # Stamping the held key would charge the time a person spends typing the
+  # reading and converting to one sample (doc/kanji_input/report/k3c_input_stall.md).
+  def lat_kana_held?(ev, character)
+    return false if character != 0
+    return false unless @kana_mode == 1 || @kana_mode == 2
+    return false if ev_ctrl?(ev) || ev_alt?(ev)
+    sc = ev[:scancode] || 0
+    (sc >= 0x04 && sc <= 0x27) || (sc >= 0x2C && sc <= 0x38)
+  end
+
   # One sample, taken right after redraw_all. +t_start+ is the timestamp from
   # just before it, so the draw cost is measured with the same two clock reads.
   # A key that produces no redraw at all leaves its stamp armed and lands in the
