@@ -154,6 +154,7 @@ module ShellCommandsMixin
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
+      @history << "  asend on|off - Keep the machines to send to (the window menu's Send to), or stop; asend: whether it is on"
       @history << "  anodes [list] - The machines on Asterism now (this one marked), with their names"
       @history << "  anodes info <node> - One machine: its profile, apps and their status, whether it takes files and apps"
       @history << "  areceive - Whether this machine receives files and apps, and from whom"
@@ -1433,9 +1434,19 @@ module ShellCommandsMixin
   # gets a name of its own, unless -o (overwrite). The transfer app does the sending
   # (FmrbTransfer); its progress and end come back as messages, shown by
   # tick_send. One at a time from here; asend -c stops it.
+  #
+  # asend on|off (doc/window_menu M2): the send switch in receive.toml
+  # (send_enabled), beside areceive on|off. On keeps the transfer app on the
+  # network with the list of the machines there, which the window menu's
+  # Send to shows at once; off lets it end (unless receiving keeps it).
+  # asend alone says how it stands. Sending a file or amove does not need it.
   def cmd_send(args)
     if args == ["-l"]
       list_receivers
+      return
+    end
+    if args.empty? || args == ["on"] || args == ["off"]
+      send_switch(args.empty? ? nil : args[0] == "on")
       return
     end
     if args == ["-c"]
@@ -1490,6 +1501,31 @@ module ShellCommandsMixin
     @history << "asend: #{path} to #{rest[0]}#{sd ? ' (SD card)' : ''}#{over ? ' (overwrite)' : ''}"
   end
 
+  # asend on|off, or asend alone (on: nil): the send switch.
+  def send_switch(on)
+    begin
+      require "/usr/share/transfer/receive_conf"
+    rescue => e
+      @history << "asend: #{e.message}"
+      return
+    end
+    if on.nil?
+      st = FmrbReceiveConf.send_enabled? ? "on" : "off"
+      @history << "asend: sending is #{st} (#{FmrbReceiveConf.path || FmrbReceiveConf::SYS_PATH}): the window menu's Send to #{st == 'on' ? 'lists the machines' : 'is greyed'}"
+      @history << "Usage: asend <node> <file> [-o] [-s] | asend on|off | asend -l | asend -c"
+      return
+    end
+    begin
+      written = FmrbReceiveConf.set_send_enabled(on)
+      said = FmrbReceiveConf.tell_transfer(self, on || FmrbReceiveConf.enabled?)
+      @history << "asend: sending is #{on ? 'on' : 'off'}#{written ? " (written to #{FmrbReceiveConf::PATH})" : ' (it was already)'}"
+      @history << "asend: the transfer app is started" if said == :started
+      @history << "asend: the transfer app ends once what is coming in is in" if said == :stopping
+    rescue ArgumentError => e
+      @history << "asend: #{e.message}"
+    end
+  end
+
   # asend -l: who may send files (and apps) to this machine, from its
   # receive.toml: the senders written by hand and the ones the console sent
   # (doc/asterism_file_transfer T6).
@@ -1532,7 +1568,8 @@ module ShellCommandsMixin
       if (op == "on" || op == "off") && args.size == 1
         on = op == "on"
         written = FmrbReceiveConf.set_enabled(on)
-        said = FmrbReceiveConf.tell_transfer(self, on)
+        # sending on keeps the transfer app up as well (asend on|off)
+        said = FmrbReceiveConf.tell_transfer(self, on || FmrbReceiveConf.send_enabled?)
         @history << "areceive: receiving is #{op}#{written ? " (written to #{FmrbReceiveConf::PATH})" : ' (it was already)'}"
         @history << "areceive: the transfer app is started" if said == :started
         @history << "areceive: the transfer app ends once what is coming in is in" if said == :stopping

@@ -739,12 +739,12 @@ class FmrbApp
   end
 
   # The frame's own event handling: the close button and the title-bar
-  # right-click reload. Called on every event ahead of the app's hook (see
-  # _dispatch_event), so overriding on_event without super can no longer
-  # lose the close button.
+  # right click (the window menu). Called on every event ahead of the app's
+  # hook (see _dispatch_event), so overriding on_event without super can no
+  # longer lose the close button.
   def _frame_event(ev)
-    # A frameless window has no close button and no title bar. Its way to
-    # close by pointer is a right click anywhere (on_frameless_right_click).
+    # A frameless window has no close button and no title bar. A right click
+    # anywhere is its way to the window menu (on_frameless_right_click).
     if @_frameless
       if ev[:type] == :mouse_up && ev[:button] == 3 && !@_fullscreen
         on_frameless_right_click(ev)
@@ -788,11 +788,12 @@ class FmrbApp
         end
       end
     end
-    # Handle title bar right click (reload for file-based apps). A
-    # fullscreen app has no title bar -- y < 11 is just the top of its
-    # picture -- so the guard the close button always had applies here too.
+    # A right click on the title bar opens the window menu on the desktop
+    # (doc/window_menu: Send to, Reload for a file app, Close). A fullscreen
+    # app has no title bar -- y < 11 is just the top of its picture -- so the
+    # guard the close button always had applies here too.
     if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@_fullscreen
-      request_reload if _is_file_app
+      request_window_menu(ev[:x], ev[:y])
     end
   end
 
@@ -810,20 +811,32 @@ class FmrbApp
   end
 
   # A right click (its release) on a frameless window, or a left press held
-  # still on it for a second (ev[:type] == :long_press, the touch-only way):
-  # how to close a window that has no close button. A right click goes
-  # straight to on_quit_request (as Ctrl+Q does; it closes unless the app
-  # overrides it). A long press first asks "Close <name>?" on the desktop
-  # (request_close_confirm) and reaches on_quit_request only on Yes.
+  # still on it for a second (ev[:type] == :long_press, the touch-only way).
+  # The default opens the window menu (request_window_menu), as a right click
+  # on a framed window's title bar does: Send to, Reload, Close.
   # An app that uses the right button itself overrides this (an empty method
-  # keeps the window open); a right click still reaches on_event either way,
-  # a long press does not (the kernel held it back).
+  # keeps the menu away; call super(ev) to have the menu as well); a right
+  # click still reaches on_event either way, a long press does not (the
+  # kernel held it back).
   def on_frameless_right_click(ev)
-    if ev[:type] == :long_press
-      request_close_confirm
-    else
-      on_quit_request
-    end
+    request_window_menu(ev[:x], ev[:y])
+  end
+
+  # Ask the desktop for this window's menu at (x, y) of the window
+  # (doc/window_menu). The kernel adds what the desktop needs (the place on
+  # the screen, the name, whether it can be reloaded, whether sending is on)
+  # and the desktop draws it on its overlay. movable: the app can be written
+  # to an image (movable = true in .app.toml, or started from one), which is
+  # what Send to needs.
+  def request_window_menu(x, y)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "window_menu", "x" => x.to_i, "y" => y.to_i, "movable" => _window_movable?})
+  end
+
+  def _window_movable?
+    g = @gfx
+    return false unless g && g.respond_to?(:_checkpoint_keep?)
+    g._checkpoint_keep? ? true : false
   end
 
   # Ask the desktop to put up "Close <this app>?". Yes comes back as the
@@ -1014,8 +1027,8 @@ class FmrbApp
       on_quit_request
     when "long_press"
       # The kernel saw a left press held still for a second on this frameless
-      # window (doc/frameless_window/ W3b): the touch-only way to close, the
-      # same hook as a right click.
+      # window (doc/frameless_window/ W3b): the touch-only way to the window
+      # menu, the same hook as a right click.
       if @_frameless && !@_fullscreen
         lx = msg["x"]
         ly = msg["y"]

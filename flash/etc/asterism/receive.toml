@@ -8,6 +8,12 @@
 # lists say, and the transfer app is not started at boot.
 enabled = false
 
+# send_enabled: keep this machine on the network for sending, so that the
+# window menu's Send to lists the machines at once. Off (or no line), Send to
+# is greyed; the shell's amove and asend still send, connecting when asked.
+# Either switch on starts the transfer app at boot.
+send_enabled = false
+
 # Who may put files in /home/inbox: node IDs and patterns ("fmruby-*";
 # "*" is everyone on the network: the owner's trusted members).
 [file]

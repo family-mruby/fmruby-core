@@ -147,7 +147,7 @@
 #                            file); "transfer_done" {ok: false, reason
 #                            "cancelled"}
 #   {"cmd" => "receive_conf"}  receive.toml was changed (FmrbReceiveConf
-#                            tell_transfer): read the switch again
+#                            tell_transfer): read the switches again
 #
 # Receiving turned off while this app runs (T7; that message, or the file
 # looked at every RECHECK_MS): new begins are refused at once (every call
@@ -158,6 +158,24 @@
 # coming in is taken to its end. Started while receiving is off (to send a
 # file or move an app), it stays as before: only a change from on to off
 # ends it.
+#
+# Sending on (send_enabled = true, doc/window_menu M2): the app stays on the
+# network while either switch is on (it ends, as above, once both are off)
+# and keeps the list of the machines there (the peers: Asterism.nodes, the
+# same source as the shell's anodes), each with its profile's name and host
+# and whether it takes apps from here (its inbox's check, asked again every
+# PEER_CHECK_MS). The window menu's Send to reads it without waiting:
+#
+#   {"cmd" => "peers_to", "pid", "for"} (from the kernel, when a menu opens)
+#                            the list to the desktop at pid at once:
+#                            "wm_peers" {for, n, seen, verified} and then n
+#                            "wm_peer" {for, node, name, host, ok}. ok: 0 not
+#                            asked yet, 1 takes apps from here, 2 receives
+#                            nothing (no inbox, or receiving is off there), 3
+#                            not from here (not in its list), 4 cannot start
+#                            apps. verified: the router binds every node ID
+#                            to its certificate (a tls/ router), so the names
+#                            are checked ones
 #
 # One request at a time, with the kernel's, in the order they come.
 #
@@ -546,6 +564,18 @@ class TransferApp < FmrbApp
   # this long without a call (T7)
   RECHECK_MS = 10000
   QUIET_MS = 3000
+  # sending on (doc/window_menu M2): the machines on the network looked at
+  # this often, whether each takes apps from here asked again this often, at
+  # most this many kept (the window menu shows them all on the Retro), and
+  # how long a profile or a check may take
+  PEERS_MS = 2000
+  PEER_CHECK_MS = 30000
+  PEER_MAX = 8
+  PEER_ASK_MS = 4000
+  # what a peer's entry carries to the desktop (a message is 176 bytes)
+  PEER_NODE_MAX = 64
+  PEER_NAME_MAX = 32
+  PEER_HOST_MAX = 12
 
   def on_create
     @inbox = TransferInbox.new
@@ -559,8 +589,13 @@ class TransferApp < FmrbApp
     @fut = nil        # its call on its way
     @last_sent = {}   # node => the id of the last file sent there
     @link = FmrbAsterism::Link.new(self, APP, tag: "transfer")
-    @receiving = ::FmrbReceiveConf.enabled?
+    p = ::FmrbReceiveConf.parts
+    @receiving = ::FmrbReceiveConf.enabled?(p)
+    @sending = ::FmrbReceiveConf.send_enabled?(p)
     @closing = false
+    @close_why = ""
+    @peers = []       # the machines on the network while sending is on
+    @peers_at = 0     # when Asterism.nodes was last looked at (0: never)
     @checked_at = Machine.board_millis
     @job_end = 0
     subscribe(CTL_TOPIC)
@@ -620,7 +655,9 @@ class TransferApp < FmrbApp
     cmd = data["cmd"].to_s
     @jobs << data if cmd == "move_check" || cmd == "move_send" || cmd == "move_cancel"
     stop_move(data["to"].to_s) if cmd == "move_stop"
-    if cmd == "topic_data" && data["topic"] == CTL_TOPIC
+    if cmd == "peers_to"
+      peers_to(data["pid"], data["for"])
+    elsif cmd == "topic_data" && data["topic"] == CTL_TOPIC
       app_request(data["data"], data["src_pid"])
     elsif cmd == "topic_data" && data["topic"] == DIED_TOPIC
       app_ended(data["data"])
@@ -637,11 +674,12 @@ class TransferApp < FmrbApp
       check_receiving
     end
     if @closing && idle?
-      Log.info("transfer: receiving is off; the transfer app ends")
+      Log.info("transfer: #{@close_why}; the transfer app ends")
       stop
       return IDLE_MS
     end
     if up
+      tick_peers(now) if @sending
       @unlinked_at = nil
       start_job if @job.nil? && !@jobs.empty?
       step if @job
@@ -721,18 +759,164 @@ class TransferApp < FmrbApp
 
   # ---- receiving turned off (T7) ----
 
-  # Reads the switch again: from on to off the app ends once idle; on again
-  # before that, it stays.
+  # Reads the switches again: when the last of them goes off the app ends
+  # once idle; on again before that, it stays.
   def check_receiving
-    on = ::FmrbReceiveConf.enabled?
-    if @receiving && !on && !@closing
-      Log.info("transfer: receiving is off; new files are refused, and the app ends when what is coming in is in")
-      @closing = true
-    elsif on && @closing
-      Log.info("transfer: receiving is on again")
+    p = ::FmrbReceiveConf.parts
+    on = ::FmrbReceiveConf.enabled?(p)
+    snd = ::FmrbReceiveConf.send_enabled?(p)
+    if @receiving && !on
+      if snd
+        Log.info("transfer: receiving is off; new files are refused (sending keeps the app on the network)")
+      elsif !@closing
+        Log.info("transfer: receiving is off; new files are refused, and the app ends when what is coming in is in")
+        @closing = true
+        @close_why = "receiving is off"
+      end
+    end
+    if @sending && !snd
+      @peers = []
+      @peers_at = 0
+      if on
+        Log.info("transfer: sending is off (receiving keeps the app on the network)")
+      elsif !@closing
+        Log.info("transfer: sending is off; the app ends when what is coming in is in")
+        @closing = true
+        @close_why = "sending is off"
+      end
+    end
+    Log.info("transfer: sending is on; keeping the machines on the network") if snd && !@sending
+    if (on || snd) && @closing
+      Log.info("transfer: #{on ? 'receiving' : 'sending'} is on again")
       @closing = false
     end
     @receiving = on
+    @sending = snd
+  end
+
+  # ---- the machines to send to (doc/window_menu M2) ----
+
+  # While sending is on and connected: the peers follow Asterism.nodes, a
+  # new one is asked for its profile, and each is asked every PEER_CHECK_MS
+  # whether it takes apps from here. Every question is on its way while the
+  # app goes on (a Future, polled by the link's update); nothing waits here.
+  def tick_peers(now)
+    if @peers_at == 0 || now - @peers_at >= PEERS_MS
+      @peers_at = now
+      follow_nodes
+    end
+    i = 0
+    while i < @peers.size
+      peer_step(@peers[i], now)
+      i += 1
+    end
+  end
+
+  def follow_nodes
+    own = @link.node.to_s
+    all = ::Asterism.nodes
+    kept = []
+    i = 0
+    while i < @peers.size
+      kept << @peers[i] if all.include?(@peers[i]["node"])
+      i += 1
+    end
+    i = 0
+    while i < all.size && kept.size < PEER_MAX
+      n = all[i].to_s
+      i += 1
+      next if n == own || n.bytesize > PEER_NODE_MAX || peer_of(kept, n)
+      kept << { "node" => n, "name" => "", "host" => "", "ok" => 0, "pf" => nil, "cf" => nil,
+                "asked" => 0, "profiled" => false }
+    end
+    @peers = kept
+  end
+
+  def peer_of(list, n)
+    i = 0
+    while i < list.size
+      return list[i] if list[i]["node"] == n
+      i += 1
+    end
+    nil
+  end
+
+  def peer_step(pe, now)
+    n = pe["node"]
+    unless pe["profiled"] || pe["pf"]
+      begin
+        pe["pf"] = ::Asterism.profile_async(n, false, nil, PEER_ASK_MS)
+      rescue ::Asterism::Error
+        pe["profiled"] = true
+      end
+    end
+    f = pe["pf"]
+    if f && f.done?
+      pe["pf"] = nil
+      pe["profiled"] = true
+      pr = nil
+      begin
+        pr = ::Asterism::Profile.check(f.raw_value)
+      rescue ::Asterism::Error
+        pr = nil
+      end
+      if pr.is_a?(Hash)
+        pe["name"] = cut_to(pr["name"].to_s, PEER_NAME_MAX)
+        h = pr["host"].to_s
+        h = pr["kind"].to_s if h.empty?
+        pe["host"] = cut_to(h, PEER_HOST_MAX)
+      end
+    end
+    if pe["cf"].nil? && (pe["asked"] == 0 || now - pe["asked"] >= PEER_CHECK_MS)
+      pe["asked"] = now
+      begin
+        px = ::Asterism["#{n}/#{APP}/#{OBJECT}", timeout_ms: PEER_ASK_MS].async
+        pe["cf"] = px.asterism_call("check", "checkpoint", { "names" => [], "requires" => [] })
+      rescue ::Asterism::Error
+        pe["ok"] = 2
+      end
+    end
+    c = pe["cf"]
+    if c && c.done?
+      pe["cf"] = nil
+      pe["ok"] = peer_answer(c)
+    end
+  end
+
+  # What a check answered (see peers_to for the numbers).
+  def peer_answer(c)
+    v = c.value
+    return 1 if v.is_a?(Hash) && v["ok"]
+    why = v.is_a?(Hash) ? v["reason"].to_s : ""
+    return 2 if why.include?("does not receive")
+    return 4 if why.include?("cannot start")
+    3
+  rescue ::Asterism::RemoteError
+    3
+  rescue ::Asterism::Error
+    # nobody answers there (no transfer app: it receives nothing), or no
+    # answer in time
+    2
+  end
+
+  # The list to the desktop, at once (the kernel asks when a window menu
+  # with Send to opens).
+  def peers_to(pid, for_pid)
+    return unless pid.is_a?(Integer)
+    check_receiving unless @sending
+    tell_app(pid, { "cmd" => "wm_peers", "for" => for_pid, "n" => @peers.size,
+                    "seen" => @peers_at > 0, "verified" => certified? })
+    i = 0
+    while i < @peers.size
+      pe = @peers[i]
+      tell_app(pid, { "cmd" => "wm_peer", "for" => for_pid, "node" => pe["node"], "name" => pe["name"],
+                      "host" => pe["host"], "ok" => pe["ok"] })
+      i += 1
+    end
+  end
+
+  def cut_to(s, n)
+    s.bytesize > n ? s.byteslice(0, n).to_s : s
   end
 
   # Nothing under way: no request of its own, nothing coming in (or a file

@@ -542,22 +542,15 @@ class FmrbKernelImpl < FmrbKernel
       end
     when "reload_confirm"
       # App requests reload confirmation via desktop dialog
-      info = _get_app_info(pid)
-      if info && info[:load_mode] == 1 && info[:path]
-        app_name = info[:name] || "App"
-        # Ask desktop to show confirm dialog
-        if @desktop_pid
-          fwd = {
-            "cmd" => "confirm_dialog",
-            "message" => "Reload #{app_name}?",
-            "on_yes_cmd" => "reload",
-            "reload_pid" => pid,
-            "reload_path" => info[:path]
-          }
-          binary = MessagePack.pack(fwd)
-          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
-        end
-      end
+      ask_reload(pid)
+    when "window_menu"
+      # A right click on a window's title bar, or a right click or a long
+      # press on a frameless window (doc/window_menu): the app's base asks,
+      # the desktop draws the menu. See open_window_menu.
+      open_window_menu(pid, data)
+    when "window_reload"
+      # Reload chosen in the window menu: the same question as before.
+      ask_reload((data["target"] || -1).to_i) if pid == @desktop_pid
     when "close_confirm"
       # A frameless window was held still for a second (doc/frameless_window/
       # W3b): the app's base asks for "Close <name>?" before it closes. The
@@ -967,21 +960,45 @@ class FmrbKernelImpl < FmrbKernel
   # others can reach it. Only then (2026-11-09 user): an ESP32 would
   # otherwise hold one more TLS connection for every machine with
   # credentials. Taking files in is the switch in receive.toml, not the
-  # file being there (doc/asterism_file_transfer T7): enabled = true.
+  # file being there (doc/asterism_file_transfer T7): enabled = true. The
+  # other switch, send_enabled = true (doc/window_menu M2), keeps it up as
+  # well: then it holds the list of the machines on the network for the
+  # window menu's Send to.
   def spawn_transfer_if_receiving
-    return nil unless receiving_enabled?
+    recv = receiving_enabled?
+    snd = sending_enabled?
+    return nil unless recv || snd
     start_transfer
     nil
   end
 
-  # enabled = true among the top-level keys of RECEIVE_CONF, else of
-  # RECEIVE_CONF_SYS (the system's copy, off). The rules of FmrbReceiveConf
-  # (/usr/share/transfer/receive_conf.rb, which the apps and the shell read
-  # it with) on the one line the kernel needs, read here because this is a
-  # Spinel program: before the first table, the key enabled, its value up
-  # to a comment. No line, another value or no file: off.
+  # enabled = true in receive.toml (see transfer_conf_on?).
   def receiving_enabled?
-    path = File.exist?(RECEIVE_CONF) ? RECEIVE_CONF : RECEIVE_CONF_SYS
+    on = transfer_conf_on?("enabled")
+    Log.info("Transfer: receiving is #{on ? 'on' : 'off'} (#{transfer_conf_path})")
+    on
+  end
+
+  # send_enabled = true in receive.toml (doc/window_menu M2).
+  def sending_enabled?
+    on = transfer_conf_on?("send_enabled")
+    Log.info("Transfer: sending is #{on ? 'on' : 'off'} (#{transfer_conf_path})")
+    on
+  end
+
+  # The file the switches are read from: RECEIVE_CONF, else RECEIVE_CONF_SYS
+  # (the system's copy, both off).
+  def transfer_conf_path
+    File.exist?(RECEIVE_CONF) ? RECEIVE_CONF : RECEIVE_CONF_SYS
+  end
+
+  # key = true among the top-level keys of transfer_conf_path. The rules of
+  # FmrbReceiveConf (/usr/share/transfer/receive_conf.rb, which the apps and
+  # the shell read it with) on the one line the kernel needs, read here
+  # because this is a Spinel program: before the first table, the key, its
+  # value up to a comment. No line, another value or no file: off.
+  def transfer_conf_on?(key)
+    path = transfer_conf_path
     return false unless File.exist?(path)
     text = nil
     begin
@@ -1000,18 +1017,83 @@ class FmrbKernelImpl < FmrbKernel
       line = lines[i].strip
       i += 1
       break if line.start_with?("[")       # top-level keys only
-      next unless line.start_with?("enabled")
+      next unless line.start_with?(key)
       idx = line.index("=")
       next unless idx
-      key = line[0, idx].to_s.strip
-      next unless key == "enabled"
+      k = line[0, idx].to_s.strip
+      next unless k == key
       v = line[idx + 1, line.length - idx - 1].to_s
       hash_idx = v.index("#")
       v = v[0, hash_idx].to_s if hash_idx
       on = v.strip == "true"
     end
-    Log.info("Transfer: receiving is #{on ? 'on' : 'off'} (#{path})")
     on
+  end
+
+  # ---- the window menu (doc/window_menu) ----
+
+  # Reload <app>? on the desktop, for an app started from a file (the
+  # title bar's right click asked this before the window menu; now the
+  # menu's Reload does).
+  def ask_reload(pid)
+    info = _get_app_info(pid)
+    return nil unless info && info[:load_mode] == 1 && info[:path]
+    return nil unless @desktop_pid
+    app_name = info[:name] || "App"
+    fwd = {
+      "cmd" => "confirm_dialog",
+      "message" => "Reload #{app_name}?",
+      "on_yes_cmd" => "reload",
+      "reload_pid" => pid,
+      "reload_path" => info[:path]
+    }
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(fwd))
+    nil
+  end
+
+  # The app at pid asked for its window menu at (x, y) of its window. The
+  # desktop gets what it needs to draw it: where on the screen, the app's
+  # name, whether it can be reloaded (started from a file), whether it can
+  # be sent (movable, its own word) and how sending stands:
+  #   send 0  off (send_enabled is not true in receive.toml)
+  #   send 1  on, but the transfer app is not on the network yet (why)
+  #   send 2  on and connected: the transfer app sends its list of the
+  #           machines on the network to the desktop at once (peers_to)
+  # A message carries 176 bytes, so the name and the reason are cut.
+  def open_window_menu(pid, data)
+    return nil unless @desktop_pid
+    return nil if pid == @desktop_pid
+    info = _get_app_info(pid)
+    return nil unless info
+    update_window_list(false)
+    win = find_window_by_pid(pid)
+    return nil unless win
+    x = win[:x] + (data["x"] || 0).to_i
+    y = win[:y] + (data["y"] || 0).to_i
+    reload = info[:load_mode] == 1 && info[:path] ? true : false
+    movable = data["movable"] ? true : false
+    snd = 0
+    why = ""
+    if movable && transfer_conf_on?("send_enabled")
+      if @xfer_ready && @xfer_pid >= 0
+        snd = 2
+      else
+        snd = 1
+        # On, but not running (it ended, or the switch was written by hand):
+        # started here, the menu says it is connecting.
+        start_transfer
+        why = @xfer_reason
+      end
+    end
+    fwd = { "cmd" => "window_menu", "pid" => pid, "name" => clip((info[:name] || "App").to_s, 40),
+            "x" => x, "y" => y, "movable" => movable, "reload" => reload, "send" => snd,
+            "why" => clip(why, 60) }
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(fwd))
+    if snd == 2
+      req = { "cmd" => "peers_to", "pid" => @desktop_pid, "for" => pid }
+      _send_raw_message(@xfer_pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(req))
+    end
+    nil
   end
 
   def move_stage(stage, ms)

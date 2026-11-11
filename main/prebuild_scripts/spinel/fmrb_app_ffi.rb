@@ -149,6 +149,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_ble_settings_left, [], :int
   ffi_func :fmrb_spx_app_audio_muted, [], :int
   ffi_func :fmrb_spx_app_path_read_only, [:str, :int], :int
+  ffi_func :fmrb_spx_app_move, [:int, :str, :int], :binstr
   ffi_func :fmrb_spx_app_set_audio_mute, [:int], :int
   ffi_func :fmrb_spx_app_audio_volume, [], :int
   ffi_func :fmrb_spx_app_set_audio_volume, [:int], :int

@@ -1719,7 +1719,7 @@ class FmrbApp
   # This file is a separate implementation, so the same split exists twice.
   def _frame_event(ev)
     # Frameless: no close button, no title bar; a right click is the
-    # pointer's way to close (same as the mruby base).
+    # pointer's way to the window menu (same as the mruby base).
     if @_frameless
       if ev[:type] == :mouse_up && ev[:button] == 3 && !@_fullscreen
         on_frameless_right_click(ev)
@@ -1758,10 +1758,11 @@ class FmrbApp
         end
       end
     end
+    # A right click on the title bar opens the window menu (doc/window_menu).
     # A fullscreen app has no title bar -- y < 11 is just the top of its
-    # picture -- so the reload needs the guard the close button always had.
+    # picture -- so it needs the guard the close button always had.
     if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@_fullscreen
-      request_reload if _is_file_app
+      request_window_menu(ev[:x], ev[:y])
     end
   end
 
@@ -1776,15 +1777,17 @@ class FmrbApp
   end
 
   # A right click on a frameless window, or a left press held still on it for
-  # a second (ev[:type] == :long_press). Same as the mruby base: a right
-  # click goes to on_quit_request, a long press asks "Close <name>?" first;
-  # an app using the right button overrides it.
+  # a second (ev[:type] == :long_press). Same as the mruby base: the window
+  # menu; an app using the right button overrides it.
   def on_frameless_right_click(ev)
-    if ev[:type] == :long_press
-      request_close_confirm
-    else
-      on_quit_request
-    end
+    request_window_menu(ev[:x], ev[:y])
+  end
+
+  # The window menu on the desktop (see the mruby base). A Spinel program is
+  # never written to an image, so it is not movable (no Send to).
+  def request_window_menu(x, y)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "window_menu", "x" => x, "y" => y, "movable" => false })
   end
 
   # Ask the desktop to put up "Close <this app>?" (Yes -> on_quit_request).
@@ -2572,6 +2575,15 @@ class FmrbApp
   def self.path_read_only?(path)
     s = path.to_s
     FmrbSpxApp.fmrb_spx_app_path_read_only(s, s.bytesize) == 1
+  end
+
+  # Move app pid to another machine over Asterism (its node ID), as the
+  # mruby binding: nil when asked (the answer comes as "checkpoint_result"),
+  # else why not.
+  def self.move(pid, to)
+    s = to.to_s
+    why = FmrbSpxApp.fmrb_spx_app_move(pid, s, s.bytesize)
+    why.empty? ? nil : why
   end
 
   def self.set_audio_mute(on)

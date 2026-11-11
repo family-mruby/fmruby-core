@@ -425,24 +425,22 @@ class FmrbApp
 
   # 枠なしの Window の右クリック・長押し <<en>> Right click or long press, frameless
   #
-  # 枠なしの Window を閉じる口。右クリック (離したとき) と、動かさずに
-  # 1 秒押し続けたとき (ev[:type] が :long_press) に呼ばれる。
-  # 既定は、右クリックなら on_quit_request (そのまま閉じる)、長押しなら
-  # request_close_confirm (「閉じますか」と聞き、はいのときだけ on_quit_request)。
-  # 右ボタンを自分で使うアプリは空で書き換える。右クリックは on_event にも届く。
+  # 枠なしの Window の右クリック (離したとき) と、動かさずに 1 秒押し続けた
+  # とき (ev[:type] が :long_press) に呼ばれる。既定は Window のメニュー
+  # (request_window_menu: 送る・読み直し・閉じる) を出す。右ボタンを自分で
+  # 使うアプリは空で書き換える (メニューも出したいなら super(ev) を呼ぶ)。
+  # 右クリックは on_event にも届く。長押しは届かない。
   # ```ruby
   # def on_frameless_right_click(ev)
   # end
   # ```
   # <<en>>
-  # The pointer's way to close a frameless window: a right click (on its
-  # release), or a left press held still for a second (ev[:type] is
-  # :long_press, the way on a touch screen). The default: a right click
-  # calls on_quit_request (which closes); a long press calls
-  # request_close_confirm (asks first, on_quit_request only on Yes). An app
-  # that uses the right button
-  # overrides it with an empty method; a right click reaches on_event
-  # either way.
+  # Called on a right click on a frameless window (on its release), and on a
+  # left press held still for a second (ev[:type] is :long_press, the way on
+  # a touch screen). The default opens the window menu (request_window_menu:
+  # Send to, Reload, Close). An app that uses the right button overrides it
+  # with an empty method (or calls super(ev) to have the menu too); a right
+  # click reaches on_event either way, a long press does not.
   # ```ruby
   # def on_frameless_right_click(ev)
   # end
@@ -572,20 +570,32 @@ class FmrbApp
   # 自分をもう一度読み込み直す <<en>> Ask to be loaded again
   #
   # ファイルから起動したアプリを、書き直した内容で起動し直すよう頼む。
-  # タイトルバーの右クリックがこれを呼んでいる。
+  # Window のメニューの「読み直し」と同じ問いを出す。
   # <<en>>
   # Asks for a file-based app to be started again from the rewritten file.
-  # Right-clicking the title bar does this.
+  # The window menu's Reload asks the same.
   def request_reload: () -> void
+
+  # Window のメニューを出す <<en>> Open this window's menu
+  #
+  # デスクトップに Window のメニューを出してもらう (x, y は Window の中の
+  # 位置)。送る (運べるアプリで)・読み直し (ファイルのアプリで)・閉じる。
+  # タイトルバーの右クリックと、枠なしの右クリック・長押しの既定がこれを
+  # 呼ぶ。
+  # <<en>>
+  # Asks the desktop for this window's menu at (x, y) of the window: Send to
+  # (a movable app), Reload (an app started from a file), Close. A right
+  # click on the title bar, and on a frameless window the default right
+  # click and long press, call this.
+  def request_window_menu: (Integer x, Integer y) -> void
 
   # 「<アプリ> を閉じますか?」と聞く <<en>> Ask "Close <app>?" on the desktop
   #
   # デスクトップに確認の画面を出してもらう。はいなら on_quit_request が
-  # 呼ばれ、いいえ・外のクリックでは何も起きない。長押しの既定がこれを呼ぶ。
+  # 呼ばれ、いいえ・外のクリックでは何も起きない。
   # <<en>>
   # Asks the desktop to show "Close <app>?". Yes calls on_quit_request; No
-  # or a click outside does nothing. A long press on a frameless window
-  # calls this by default.
+  # or a click outside does nothing.
   def request_close_confirm: () -> void
 
   # 呼ばれ続ける本体の繰り返し <<en>> The body that is called over and over

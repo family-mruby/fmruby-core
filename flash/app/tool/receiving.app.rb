@@ -7,6 +7,9 @@
 #
 #   - the switch (on starts the transfer app; off lets it end once what is
 #     coming in is in)
+#   - the send switch (send_enabled, doc/window_menu M2): on keeps the
+#     transfer app on the network with the list of the machines to send to,
+#     which the window menu's Send to shows; either switch on keeps it up
 #   - per kind (files to /home/inbox, apps moved here) the senders allowed:
 #     the ones written on this machine, each with a delete box, and the
 #     console's (the [managed] part it sent, "from the console", shown and
@@ -28,7 +31,7 @@ require "/usr/share/transfer/receive_conf"
 
 class ReceivingApp < FmrbApp
   ROW_H = 11
-  TOP_H = 36          # the switch, the kinds
+  TOP_H = 53          # the two switches, the kinds
   NOTES_H = 19        # two lines of notes (8 px text, 11 px apart)
   MARGIN = 3          # kept free under the notes, above the window frame
   BOTTOM_H = 3 + 17 + NOTES_H + MARGIN  # the name and the buttons, the notes
@@ -41,6 +44,8 @@ class ReceivingApp < FmrbApp
   def on_create
     FmrbI18n.add(
       "en" => { rc_on: "Receiving: on", rc_off: "Receiving: off", rc_files: "Files",
+                rc_send_on: "Sending: on", rc_send_off: "Sending: off",
+                rc_send_note: "Send to in the window menu", 
                 rc_apps: "Apps (checkpoint)", rc_add: "Add", rc_near: "Nearby", rc_back: "Back",
                 rc_everyone: "Everyone on the network", rc_console: "from the console",
                 rc_none: "(nobody)", rc_conf_home: "Settings: yours (/home)",
@@ -53,6 +58,8 @@ class ReceivingApp < FmrbApp
                 rc_stopping: "Saved; the transfer app ends when done.", rc_bad_name: "Not a node name: ",
                 rc_hand_bad: "receive.toml is not TOML; not changed." },
       "ja" => { rc_on: "受け取り: 有効", rc_off: "受け取り: 無効", rc_files: "ファイル",
+                rc_send_on: "送信: 有効", rc_send_off: "送信: 無効",
+                rc_send_note: "Window のメニューの「送る」", 
                 rc_apps: "アプリ (checkpoint)", rc_add: "追加", rc_near: "見える端末", rc_back: "戻る",
                 rc_everyone: "ネットワークの全員", rc_console: "console から",
                 rc_none: "(なし)", rc_conf_home: "設定: 自分の (/home)",
@@ -98,8 +105,9 @@ class ReceivingApp < FmrbApp
   def build_ui
     @ui = FmrbUI.new(self)
     @ui.toggle(:on, 2, 2, 126, 14, tr(:rc_off), on_text: tr(:rc_on))
-    @ui.toggle(:k_file, 2, 19, 70, 14, tr(:rc_files), group: :kind, on: true)
-    @ui.toggle(:k_ckpt, 76, 19, 120, 14, tr(:rc_apps), group: :kind)
+    @ui.toggle(:send, 2, 19, 126, 14, tr(:rc_send_off), on_text: tr(:rc_send_on))
+    @ui.toggle(:k_file, 2, 36, 70, 14, tr(:rc_files), group: :kind, on: true)
+    @ui.toggle(:k_ckpt, 76, 36, 120, 14, tr(:rc_apps), group: :kind)
     @ui.scrollbar(:sb, @w - SB_W - 1, @list_y, SB_W, @list_h, 0, @rows_vis, 0)
     @ui.text_field(:name, 2, @ctl_y, 116, 14, "", max: ::FmrbReceiveConf::ENTRY_MAX)
     @ui.button(:add, 122, @ctl_y, 44, 14, tr(:rc_add))
@@ -116,6 +124,7 @@ class ReceivingApp < FmrbApp
     @view = ::FmrbReceiveConf.view
     @loaded_at = Machine.board_millis
     @ui.set_on(:on, @view["enabled"] == true)
+    @ui.set_on(:send, @view["send_enabled"] == true)
     rows_of_kind
   end
 
@@ -148,12 +157,16 @@ class ReceivingApp < FmrbApp
       written = case what
                 when :on then ::FmrbReceiveConf.set_enabled(true)
                 when :off then ::FmrbReceiveConf.set_enabled(false)
+                when :send_on then ::FmrbReceiveConf.set_send_enabled(true)
+                when :send_off then ::FmrbReceiveConf.set_send_enabled(false)
                 when :allow then ::FmrbReceiveConf.allow(@kind, node)
                 else ::FmrbReceiveConf.deny(@kind, node)
                 end
       @note = written ? tr(:rc_saved) : tr(:rc_same)
-      if what == :on || what == :off
-        said = ::FmrbReceiveConf.tell_transfer(self, what == :on)
+      if what == :on || what == :off || what == :send_on || what == :send_off
+        # either switch on keeps the transfer app up
+        either = ::FmrbReceiveConf.enabled? || ::FmrbReceiveConf.send_enabled?
+        said = ::FmrbReceiveConf.tell_transfer(self, either)
         @note = tr(:rc_started) if said == :started
         @note = tr(:rc_stopping) if said == :stopping && written
       end
@@ -230,6 +243,7 @@ class ReceivingApp < FmrbApp
 
   def draw_body
     draw_path
+    draw_send_note
     draw_list
     draw_notes
     @ui.flush
@@ -257,6 +271,15 @@ class ReceivingApp < FmrbApp
           else :rc_no_file
           end
     @gfx.draw_text_mixed(x, y, @gfx.fit_text(tr(key), w, "..", nil, :default), theme_border)
+  end
+
+  # What the send switch is for, beside it.
+  def draw_send_note
+    x = ax(132)
+    y = ay(22)
+    w = @w - 134
+    @gfx.fill_rect(x, y, w, 8, theme_bg)
+    @gfx.draw_text_mixed(x, y, @gfx.fit_text(tr(:rc_send_note), w, "..", nil, :default), theme_border)
   end
 
   def draw_list
@@ -348,6 +371,7 @@ class ReceivingApp < FmrbApp
     id = @ui.handle(ev)
     case id
     when :on then change(@ui.on?(:on) ? :on : :off)
+    when :send then change(@ui.on?(:send) ? :send_on : :send_off)
     when :k_file, :k_ckpt
       @kind = id == :k_file ? "file" : "checkpoint"
       @scroll = 0

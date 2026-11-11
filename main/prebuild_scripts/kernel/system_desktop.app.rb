@@ -25,6 +25,7 @@ class SystemDesktopApp < FmrbApp
   include ShortcutsDialogMixin
   include TbdDialogMixin
   include NoticesMixin
+  include WindowMenuMixin
 
   MENU_BAR_HEIGHT = 13
   # Max cursor travel (virtual px) between mouse_down and mouse_up for the
@@ -285,6 +286,9 @@ class SystemDesktopApp < FmrbApp
     @cdlg_on_yes_local = nil
     @cdlg_x = 0
     @cdlg_y = 0
+
+    # The window menu (window_menu.rb, doc/window_menu)
+    setup_window_menu
 
     # Clock setting state
     @clk_open = false
@@ -693,7 +697,7 @@ class SystemDesktopApp < FmrbApp
   def desktop_overlay_open?
     @dropdown_open || @launcher_open || @file_selector_open || @file_manager_open ||
       @cdlg_open || @error_dlg_open || @clk_open || @cfg_open || @str_open ||
-      @net_open || @about_open || @tbd_open || @skey_open
+      @net_open || @about_open || @tbd_open || @skey_open || @wm_open
   end
 
   def handle_shortcut(character)
@@ -934,6 +938,8 @@ class SystemDesktopApp < FmrbApp
     draw_shortcuts_dialog if @skey_open
     draw_starting if @starting_name
     draw_tbd_dialog if @tbd_open
+    draw_window_menu if @wm_open
+    draw_window_menu_note
     draw_resize_preview if @resize_preview_active
     draw_notices
     # flush presents when a widget was drawn; otherwise the present is ours.
@@ -1587,6 +1593,7 @@ class SystemDesktopApp < FmrbApp
                    w: TbdDialogMixin::TBD_W, h: TbdDialogMixin::TBD_H, transparent: false }
     end
 
+    window_menu_regions(regions)
     notice_regions(regions)
     @gfx.set_composite_regions(regions)
   end
@@ -1721,6 +1728,8 @@ class SystemDesktopApp < FmrbApp
     @counter += 1
     # The PC's notices (L14): nothing on the devices (setup_notices).
     tick_notices
+    # The plate that says what came of a Send to (window_menu.rb).
+    tick_window_menu
     # The PC's applications as desktop icons, once its list is read (L15).
     tick_desktop_icons_linux
 
@@ -1889,6 +1898,16 @@ class SystemDesktopApp < FmrbApp
       cb_data["close_name"] = msg["name"]
       open_confirm_dialog(close_app_question(msg["name"].to_s), "close_confirmed",
                           cb_data)
+    elsif msg["cmd"] == "window_menu"
+      # A window's menu (doc/window_menu): the kernel says where and what.
+      open_window_menu(msg)
+    elsif msg["cmd"] == "wm_peers"
+      window_menu_peers(msg)
+    elsif msg["cmd"] == "wm_peer"
+      window_menu_peer(msg)
+    elsif msg["cmd"] == "checkpoint_result"
+      # The answer to a Send to from the window menu (FmrbApp.move).
+      window_menu_moved(msg)
     elsif msg["cmd"] == "do_reboot"
       Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
       FmrbApp.reboot
@@ -2133,6 +2152,10 @@ class SystemDesktopApp < FmrbApp
         close_shortcuts_dialog
         return
       end
+      if @wm_open
+        handle_window_menu_key(scancode)
+        return
+      end
       if @about_open
         close_about_dialog
         return
@@ -2213,6 +2236,17 @@ class SystemDesktopApp < FmrbApp
   end
 
   def handle_click(x, y)
+    # The window menu is over everything: a click on it chooses, anywhere
+    # else closes it.
+    if @wm_open
+      if hit_window_menu?(x, y)
+        handle_window_menu_click(x, y)
+        return
+      end
+      close_window_menu
+      return
+    end
+
     # About dialog has highest priority — any click closes it
     if @about_open
       close_about_dialog

@@ -619,6 +619,39 @@ int fmrb_spx_app_path_read_only(const char *path, int len)
     return fmrb_hal_file_entry_is_read_only(vpath) ? 1 : 0;
 }
 
+#ifdef FMRB_HAVE_CHECKPOINT
+/* fmrb_app_checkpoint.h needs mruby.h; only this one is wanted here. */
+const char *fmrb_app_checkpoint_move_from_app(int32_t pid, const char *to, int32_t hold_ms, int32_t reply_to);
+#endif
+
+/* FmrbApp.move(pid, to): the same call as the mruby binding (the window
+ * menu's Send to, doc/window_menu M2). The kernel answers the caller with
+ * "checkpoint_result". "" when asked, else why not (a string that lives on:
+ * the app's checkpoint entry, or a constant). */
+const char *fmrb_spx_app_move(int pid, const char *to, int len)
+{
+    const char *why;
+#ifdef FMRB_HAVE_CHECKPOINT
+    char node[FMRB_APP_MOVE_TO_MAX + 1];
+    if (!to || len <= 0 || len > FMRB_APP_MOVE_TO_MAX) {
+        why = "no destination (the Asterism node ID of the other machine)";
+    } else {
+        memcpy(node, to, (size_t)len);
+        node[len] = '\0';
+        fmrb_app_task_context_t *ctx = fmrb_current();
+        why = fmrb_app_checkpoint_move_from_app((int32_t)pid, node, 0, ctx ? (int32_t)ctx->app_id : -1);
+        if (!why) why = "";
+    }
+#else
+    (void)pid;
+    (void)to;
+    (void)len;
+    why = "this build cannot write checkpoint images";
+#endif
+    *sp_ctx_ffi_bin_len() = (int)strlen(why);
+    return why;
+}
+
 /* The machine's mute and volume (doc/reference/audio_output.md): FmrbApp.audio_muted?,
  * set_audio_mute, audio_volume and set_audio_volume. Same calls as the mruby
  * binding. */

@@ -13,6 +13,8 @@
 # by hand (T2's tables, read as they always were) and the switch:
 #
 #   enabled = true                  # receive at all (T7; no line: off)
+#   send_enabled = true             # keep the list of the machines to send
+#                                   # to (doc/window_menu M2; no line: off)
 #
 #   [file]
 #   from = ["pc-desk"]
@@ -52,6 +54,13 @@
 # from the copy in /etc the first time, and only when its text changed.
 # tell_transfer then starts the transfer app (on) or asks it to end once
 # what is coming in is in (off).
+#
+# The second switch, send_enabled (doc/window_menu M2, set_send_enabled:
+# the Receiving app and the shell's asend on|off), keeps the transfer app
+# on the network for sending: it holds the list of the machines there, which
+# the window menu's Send to shows at once. Either switch on starts the
+# transfer app; it ends when both are off. Sending from the shell (amove,
+# asend <node> <file>) does not need it: the transfer app is started then.
 module FmrbReceiveConf
   PATH = "/home/asterism/receive.toml"
   SYS_PATH = "/etc/asterism/receive.toml"
@@ -117,6 +126,13 @@ module FmrbReceiveConf
     h.is_a?(Hash) && h["enabled"] == true
   end
 
+  # Sending is on: send_enabled = true in the part by hand (doc/window_menu
+  # M2; the same rules as enabled).
+  def self.send_enabled?(p = parts)
+    h = hand(p)
+    h.is_a?(Hash) && h["send_enabled"] == true
+  end
+
   # The managed part: {"by", "at", "file" => [...], "checkpoint" => [...]}
   # (a kind's list nil when not there), nil when there is none.
   def self.managed(p = parts)
@@ -163,14 +179,16 @@ module FmrbReceiveConf
       "by" => m ? m["by"] : "", "at" => m ? m["at"] : "" }
   end
 
-  # Everything the Receiving app shows (one read): {"enabled", "path" (nil:
+  # Everything the Receiving app shows (one read): {"enabled",
+  # "send_enabled", "path" (nil:
   # no file), "hand_ok" (the part by hand is TOML, or empty), "by", "at",
   # and per kind {"hand" => [...] | nil, "managed" => [...] | nil}}.
   def self.view
     p = parts
     h = hand(p)
     m = managed(p)
-    out = { "enabled" => h.is_a?(Hash) && h["enabled"] == true, "path" => path,
+    out = { "enabled" => h.is_a?(Hash) && h["enabled"] == true,
+            "send_enabled" => h.is_a?(Hash) && h["send_enabled"] == true, "path" => path,
             "hand_ok" => p.nil? || p[0].strip.empty? || h.is_a?(Hash),
             "by" => m ? m["by"] : "", "at" => m ? m["at"] : "" }
     i = 0
@@ -313,6 +331,16 @@ module FmrbReceiveConf
     save_hand(p, head, "enabled", on)
   end
 
+  # Turns sending on or off (send_enabled, doc/window_menu M2). The same
+  # answers as set_enabled.
+  def self.set_send_enabled(on)
+    p = parts || ["", ""]
+    h = hand_for_edit(p)
+    return false if (h["send_enabled"] == true) == on
+    head = set_key(p[0], "", "send_enabled", on ? "true" : "false")
+    save_hand(p, head, "send_enabled", on)
+  end
+
   # Lets node send kind (a node ID or a pattern, "*" everyone on the
   # network). Returns whether the file was written (false: it was in the
   # list by hand).
@@ -359,9 +387,10 @@ module FmrbReceiveConf
     save_hand(p, head, k, nil)
   end
 
-  # Starts the transfer app when receiving is on (and it is not running),
-  # and tells a running one to look at receive.toml again: off, it ends
-  # once what is coming in is in. app: the FmrbApp asking.
+  # Starts the transfer app when a switch is on (and it is not running),
+  # and tells a running one to look at receive.toml again: with both off,
+  # it ends once what is coming in is in. app: the FmrbApp asking; on:
+  # whether either switch is on now (enabled? || send_enabled?).
   def self.tell_transfer(app, on)
     running = transfer_running?
     if on && !running
@@ -401,6 +430,8 @@ module FmrbReceiveConf
     out = []
     on = h.is_a?(Hash) && h["enabled"] == true
     out << (on ? "receiving: on (#{f})" : "receiving: off (#{f}): nothing is taken; areceive on turns it on")
+    snd = h.is_a?(Hash) && h["send_enabled"] == true
+    out << (snd ? "sending: on (the transfer app keeps the machines to send to)" : "sending: off (asend on keeps the machines to send to)")
     out << "#{f} (by hand) is not TOML: #{FmrbToml.error}" if !p.nil? && !p[0].strip.empty? && h.nil?
     i = 0
     while i < KINDS.size
@@ -486,12 +517,13 @@ module FmrbReceiveConf
 
   # The new part by hand, read back (what was asked for must be what the
   # file now says), then written with the managed part as it is. what:
-  # "enabled" (want: true/false) or a kind (want: its list; nil: only
+  # "enabled" or "send_enabled" (want: true/false) or a kind (want: its list; nil: only
   # checked to be TOML).
   def self.save_hand(p, head, what, want)
     h = FmrbToml.parse(head)
     raise ArgumentError, "the change would not be TOML (#{FmrbToml.error}); not written" if h.nil?
-    got = what == "enabled" ? h["enabled"] == true : (want.nil? ? nil : table_list(h, what))
+    switch = what == "enabled" || what == "send_enabled"
+    got = switch ? h[what] == true : (want.nil? ? nil : table_list(h, what))
     if !want.nil? && got != want
       raise ArgumentError, "the change does not read back (#{what}); not written"
     end

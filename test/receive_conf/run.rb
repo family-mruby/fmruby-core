@@ -6,8 +6,10 @@
 # by line; the console's part and the mark as they were; written only when
 # the text changes; the first time from the copy in /etc), what areceive
 # shows ("!" on a checkpoint list with "*"), and that the kernel's own
-# reader of the switch (fmrb_kernel.rb receiving_enabled?, a Spinel program
-# that cannot load the module) answers as the module does.
+# reader of the switches (fmrb_kernel.rb receiving_enabled?,
+# sending_enabled? and transfer_conf_on?, a Spinel program that cannot load
+# the module) answers as the module does. The second switch, send_enabled
+# (doc/window_menu M2), is read and changed the same way.
 #
 # The shipped files run here with their paths moved into a temporary
 # directory; FmrbToml is the firmware's reader (test/toml/host_toml.rb).
@@ -55,12 +57,14 @@ eval(src, TOPLEVEL_BINDING, "receive_conf.rb")
 # The kernel's reader, its method as it ships, on a stand-in with its two
 # constants.
 kernel = File.read("#{ROOT}/main/prebuild_scripts/kernel/fmrb_kernel.rb")
-body = kernel[/^  def receiving_enabled\?\n.*?^  end\n/m] or abort "no receiving_enabled? in fmrb_kernel.rb"
 class KernelStandIn
   RECEIVE_CONF = "#{HOME}/receive.toml"
   RECEIVE_CONF_SYS = "#{ETC}/receive.toml"
 end
-KernelStandIn.class_eval(body)
+["receiving_enabled\\?", "sending_enabled\\?", "transfer_conf_path", "transfer_conf_on\\?\\(key\\)"].each do |name|
+  body = kernel[/^  def #{name}\n.*?^  end\n/m] or abort "no #{name} in fmrb_kernel.rb"
+  KernelStandIn.class_eval(body)
+end
 KERNEL = KernelStandIn.new
 
 C = FmrbReceiveConf
@@ -86,6 +90,11 @@ end
 def both(what, want)
   check("#{what}: FmrbReceiveConf", C.enabled?, want)
   check("#{what}: the kernel", KERNEL.receiving_enabled?, want)
+end
+
+def both_send(what, want)
+  check("#{what}: FmrbReceiveConf (send)", C.send_enabled?, want)
+  check("#{what}: the kernel (send)", KERNEL.sending_enabled?, want)
 end
 
 puts "where it is read, the switch"
@@ -139,6 +148,37 @@ check("on, a file with the console's part only", File.read(USER), "enabled = tru
 reset(user: "enabled = [\n")
 raises("a part by hand that is not TOML is not rewritten", /not TOML/) { C.set_enabled(true) }
 check("... and stays as it was", File.read(USER), "enabled = [\n")
+
+puts "the send switch (doc/window_menu M2)"
+reset
+both_send("the shipped copy (send_enabled = false)", false)
+check("the shipped copy has the line", SHIPPED.include?("\nsend_enabled = false\n"), true)
+check("sending off in the lines", C.lines[1].start_with?("sending: off"), true)
+check("send on from the shipped copy: written", C.set_send_enabled(true), true)
+check("only the send switch changed", File.read(USER), SHIPPED.sub("send_enabled = false", "send_enabled = true"))
+both_send("after send on", true)
+both("receiving stays off", false)
+check("view", [C.view["enabled"], C.view["send_enabled"]], [false, true])
+check("send on again: not written", C.set_send_enabled(true), false)
+check("sending on in the lines", C.lines[1].start_with?("sending: on"), true)
+check("receive on: written", C.set_enabled(true), true)
+both("both on: receiving", true)
+both_send("both on: sending", true)
+check("send off: written", C.set_send_enabled(false), true)
+both_send("after send off", false)
+both("receiving still on", true)
+reset(user: "# mine\n[file]\nfrom = [\"pc\"]\n")
+check("send on, a file with no switch lines", C.set_send_enabled(true), true)
+check("the line goes before the first table", File.read(USER).start_with?("# mine\nsend_enabled = true\n\n[file]\n"), true)
+both_send("send on, a file with no switch lines", true)
+both("no enabled line: receiving off", false)
+reset(user: "send_enabled = true # keep the list\nenabled = false\n")
+both_send("send_enabled = true with a comment", true)
+both("enabled = false beside it", false)
+reset(user: "enabled = true\n")
+both_send("no send_enabled line", false)
+reset(user: "[x]\nsend_enabled = true\n")
+both_send("send_enabled inside a table", false)
 
 puts "allow and deny"
 reset
