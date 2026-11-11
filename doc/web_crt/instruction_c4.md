@@ -38,7 +38,7 @@
   変わらないこと)、`rake webcrt:test`、C 側の曲がりの式の試験。
 - WSL2 では GLES が使えない (pixman になる) ので、CRT の見た目は GPD MicroPC2 の
   実機で確かめる:
-  - `rake native:deb ARCH=amd64` で作り、`scp` で `kishima@192.168.10.21:/tmp/fm.deb`
+  - `rake native:deb ARCH=amd64` で作り、`scp` で `<GPD>:/tmp/fm.deb`
     に送る (鍵で入れる)。**`sudo apt install` はユーザが打つ** (sudo にパスワードが
     要る)。ここで止まって親に返し、入れてもらう。
   - GPD の `/etc/default/family-mruby-session` は今 `ROTATE=270` と

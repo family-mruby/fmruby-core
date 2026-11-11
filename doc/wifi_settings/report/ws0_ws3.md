@@ -156,7 +156,7 @@ hidden = true           # 任意: 隠れた SSID。名前で試す
 | `rake regress:screens` | 33 件すべて一致 (modern 11・retro 9・web 6・native 3・native-keys 4)。基準は変わらない (sim・ブラウザ版はボタンを出さず、ネイティブ版の場面は設定の Window を開かない) |
 | `rake regress:size` (NARYAv3・TAB5) | 内蔵 RAM の増分なし: NARYAv3 DIRAM -56 B、TAB5 DIRAM -360 B (基準 4e7e7e61 との差。flash の増分は基準からの間の他の変更を含む)。1 回目は NARYAv3 DIRAM +192 B で FAIL (下記の FreeRTOS の口)、直して 2 回目で通過 |
 
-### NARYAv4 (P4-Nano、192.168.10.20) の実機
+### NARYAv4 (P4-Nano) の実機
 
 `.env` を NARYAv4 にして `rake clean_all` → `rake build:esp32`、MCP の flash (`app_only: true`) で 3 回焼いた (2 回目は
 探索の件数の直し、3 回目は起こし方を event group に替えた版。下の表は 1・2 回目、3 回目は起動と画面を見直した)。`.env` は NARYAv3 に戻した。storage の変更 (`/usr/share/doc/wifi*.md`・`home*.md`) は
