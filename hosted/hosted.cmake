@@ -366,7 +366,8 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
 # The kanji dictionary reader (doc/kanji_input). Native only: the browser
 # converts with its own IME, and kanji_lookup.c compiles to stubs there.
 if(FMRB_HOSTED_PLATFORM STREQUAL "native")
-  list(APPEND FMRB_HOSTED_CORE_SRCS ${FMRB_ROOT}/components/fmrb_kanji/fmrb_kanji.c)
+  list(APPEND FMRB_HOSTED_CORE_SRCS ${FMRB_ROOT}/components/fmrb_kanji/fmrb_kanji.c
+                                    ${FMRB_ROOT}/components/fmrb_kanji/fmrb_kanji_cands.c)
 endif()
 
 # Engine shims, chosen the way main/CMakeLists.txt chooses them.

@@ -65,6 +65,7 @@ typedef struct {
 
     // Conversion (valid in KJ_CONVERTING)
     uint16_t matched;        // bytes of the reading the candidates replace
+    uint16_t whole;          // the candidate that replaces all of it instead
     uint16_t count;
     uint16_t sel;
 
@@ -185,15 +186,22 @@ static void commit_kana(uint8_t pid)
     clear_preedit();
 }
 
-// The selected candidate replaces the matched part; the rest of the reading
-// stays as the next reading (dict_format.md "longest match").
+// Bytes of the reading the selected candidate replaces: the matched part, or
+// all of it for the katakana of the whole reading (doc/kanji_input K6).
+static uint16_t replaced_bytes(void)
+{
+    return (s_kj.sel == s_kj.whole) ? s_kj.len : s_kj.matched;
+}
+
+// The selected candidate replaces its part; the rest of the reading stays as
+// the next reading (dict_format.md "longest match").
 static void commit_candidate(uint8_t pid)
 {
     size_t clen = 0;
     const char *c = fmrb_kanji_lookup_candidate(s_kj.sel, &clen);
     if (c && clen) {
         host_send_text_bytes(pid, c, clen);
-        drop_front(s_kj.matched);
+        drop_front(replaced_bytes());
     } else {
         commit_kana(pid);
     }
@@ -385,6 +393,7 @@ void host_kanji_result(uint32_t seq)
         r->matched_bytes > 0 && r->matched_bytes <= s_kj.len) {
         s_kj.state = KJ_CONVERTING;
         s_kj.matched = r->matched_bytes;
+        s_kj.whole = r->whole_index;
         s_kj.count = r->count;
         s_kj.sel = 0;
         s_kj.no_cand = false;
@@ -549,14 +558,16 @@ static void draw_line(void)
     int x = 2;
 
     if (s_kj.state == KJ_CONVERTING) {
-        // The reading (the matched part, then the rest dimmed), the page of
-        // candidates, and where the selection is among all of them.
+        // The reading (the part the selection replaces, then the rest
+        // dimmed), the page of candidates, and where the selection is among
+        // all of them.
         int max_left = s_kj.canvas_w / 3;
         size_t start = tail_fitting(s_kj.preedit, s_kj.len, max_left);
+        uint16_t rep = replaced_bytes();
         int x0 = x;
-        if (start < s_kj.matched) {
-            x = put_text(x, s_kj.preedit + start, s_kj.matched - start, COLOR_TEXT, COLOR_BG);
-            x = put_text(x, s_kj.preedit + s_kj.matched, s_kj.len - s_kj.matched, COLOR_DIM, COLOR_BG);
+        if (start < rep) {
+            x = put_text(x, s_kj.preedit + start, rep - start, COLOR_TEXT, COLOR_BG);
+            x = put_text(x, s_kj.preedit + rep, s_kj.len - rep, COLOR_DIM, COLOR_BG);
         } else {
             x = put_text(x, s_kj.preedit + start, s_kj.len - start, COLOR_DIM, COLOR_BG);
         }

@@ -3,7 +3,7 @@
 # the native program (hosted/hosted.cmake lists it there). The browser build
 # leaves it out -- it converts with the browser's own IME (K4).
 idf_component_register(
-    SRCS "fmrb_kanji.c"
+    SRCS "fmrb_kanji.c" "fmrb_kanji_cands.c"
     INCLUDE_DIRS "."
     REQUIRES fmrb_common fmrb_hal fmrb_mem
 )

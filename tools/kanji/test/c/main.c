@@ -7,6 +7,8 @@
 //   P READING      -> P<TAB>rc[<TAB>matched<TAB>cand...]  longest leading part
 //   R READING      -> R<TAB>rc[<TAB>cand...]            exact, candidates read last to first
 //   S READING      -> S<TAB>rc                          first candidate into a 4-byte buffer
+//   C READING      -> C<TAB>rc<TAB>matched<TAB>whole[<TAB>cand...]  the conversion's list
+//                     (fmrb_kanji_cands.c; whole is -1 when no candidate replaces all)
 //   verify         -> verify<TAB>rc
 //   failreads N    -> (no answer) the file HAL fails reads after N more
 //   stats          -> stats<TAB>block_reads<TAB>microseconds since the last stats
@@ -18,6 +20,7 @@
 #include <time.h>
 
 #include "fmrb_kanji.h"
+#include "fmrb_kanji_cands.h"
 
 extern long kd_live_bytes;
 extern long kd_live_blocks;
@@ -26,6 +29,9 @@ extern long kd_fail_reads_after;
 static uint8_t s_block[FMRB_KANJI_BLOCK_SIZE];
 static char s_line[8192];
 static char s_cand[FMRB_KANJI_CAND_UTF8_MAX];
+// The kanji task's sizes (main/kernel/host/kanji_lookup.c).
+static char s_text[12 * 1024];
+static uint16_t s_offset[512 + 1];
 
 static double now_us(void)
 {
@@ -96,6 +102,16 @@ int main(void)
                 err = fmrb_kanji_candidate(&r, 0, small, sizeof(small), NULL);
             }
             printf("S\t%d\n", err);
+        } else if (strcmp(s_line, "C") == 0) {
+            fmrb_kanji_cand_buf_t buf = { s_text, sizeof(s_text), s_offset, 512 };
+            fmrb_kanji_cands_t made;
+            fmrb_err_t err = fmrb_kanji_make_candidates(dict, arg, strlen(arg), s_block, &buf, &made);
+            printf("C\t%d\t%u\t%d", err, made.matched_bytes,
+                   made.whole_index == FMRB_KANJI_NO_INDEX ? -1 : (int)made.whole_index);
+            for (uint16_t i = 0; i < made.count; i++) {
+                printf("\t%.*s", (int)(s_offset[i + 1] - s_offset[i]), &s_text[s_offset[i]]);
+            }
+            printf("\n");
         } else if (strcmp(s_line, "verify") == 0) {
             printf("verify\t%d\n", fmrb_kanji_verify(dict, s_block));
         } else if (strcmp(s_line, "failreads") == 0) {

@@ -10,7 +10,11 @@
 #   2. broken files made from them: refused at open, or (a damaged body)
 #      refused at lookup without reading outside the block; read errors;
 #      nothing left in the pool after close
-#   3. the generated dictionary (tools/kanji/work/out/fmrb_kanji.dic, from
+#   3. the conversion's candidate list (fmrb_kanji_cands.c, K6): the
+#      dictionary's first, the katakana of the whole reading when only a
+#      leading part matched (it replaces everything), the katakana of the
+#      matched part, the rest -- against the same order made from the reader
+#   4. the generated dictionary (tools/kanji/work/out/fmrb_kanji.dic, from
 #      `rake kanji:dict`) when it is there: every reading and thousands of
 #      longest-match queries. Skipped, with the reason, when it is not.
 #
@@ -30,6 +34,7 @@ ERR_NOT_SUPPORTED = -4
 ERR_FAILED = -6
 ERR_NOT_FOUND = -7
 ERR_INVALID_STATE = -8
+FMRB_READING_MAX = 127
 
 $failures = 0
 $checks = 0
@@ -46,7 +51,7 @@ end
 def build_program(dir)
   cc = ENV["CC"] || "cc"
   abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
-  srcs = %W[components/fmrb_kanji/fmrb_kanji.c tools/kanji/test/c/hal_stub.c tools/kanji/test/c/main.c]
+  srcs = %W[components/fmrb_kanji/fmrb_kanji.c components/fmrb_kanji/fmrb_kanji_cands.c tools/kanji/test/c/hal_stub.c tools/kanji/test/c/main.c]
   incs = %W[components/fmrb_kanji tools/kanji/test/c/stub components/fmrb_hal components/fmrb_common/include]
   out = File.join(dir, "kanji_c_test")
   base = "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror #{incs.map { |i| "-I #{i}" }.join(' ')} " \
@@ -132,6 +137,62 @@ def agree(prog, path, label, rng, prefix_samples: 1000)
   r.close
   { readings: readings.size, exact: exact.size, prefix: prefix.size, e_reads: e_reads, p_reads: p_reads,
     e_us: e_us, p_us: p_us }
+end
+
+def katakana(s)
+  s.tr("ぁ-ゖ", "ァ-ヶ")
+end
+
+# The candidate list a conversion shows, from the reader: C rc matched whole cands.
+def expect_conv(r, q)
+  hq = q.tr("ァ-ヶ", "ぁ-ゖ")
+  lp = r.longest_prefix(hq)
+  return ["C", ERR_NOT_FOUND, hq.bytesize, -1, katakana(hq)].join("\t") if lp.nil?
+
+  rd, cands = lp
+  partial = rd.bytesize < hq.bytesize
+  extra = []
+  extra << katakana(hq) if partial
+  extra << katakana(rd) unless cands.include?(katakana(rd))
+  at = cands.empty? ? 0 : 1
+  (["C", OK, rd.bytesize, partial ? at : -1] + cands.dup.insert(at, *extra)).join("\t")
+end
+
+def conversions(prog, path, label, rng, samples)
+  r = KanjiDict::Reader.new(path)
+  readings = []
+  r.each_entry { |rd, _, _, _| readings << rd }
+  kana = ("あ".."ん").to_a + ["ー"]
+  qs = readings.sample(samples, random: rng)
+  qs += qs.first(samples / 2).map { |q| q + kana.sample(random: rng) + kana.sample(random: rng) }
+  qs += qs.first(samples / 4).map { |q| katakana(q) }
+  qs += Array.new(samples / 2) { Array.new(rng.rand(1..6)) { kana.sample(random: rng) }.join }
+  qs = qs.select { |q| q.length <= FMRB_READING_MAX }
+  out = run_program(prog, ["open #{path}"] + qs.map { |q| "C #{q}" } + ["close"])
+  compare("#{label}: conversion lists", out[1, qs.size], qs.map { |q| expect_conv(r, q) })
+  check("#{label}: conversions leave nothing in the pool", out.last == "close\t0 0")
+  r.close
+end
+
+# The cases the K6 follow-up was for, on the generated dictionary.
+def k6_cases(prog, path)
+  qs = %w[ふぁいる ぱーてぃー ずずず かんじへんかん]
+  out = run_program(prog, ["open #{path}"] + qs.map { |q| "C #{q}" } + ["close"]).drop(1)
+  conv = qs.zip(out.map { |l| l.split("\t") }).to_h { |q, (_, rc, m, w, *c)| [q, { rc: rc.to_i, m: m.to_i, w: w.to_i, c: c }] }
+  f = conv["ふぁいる"]
+  check("fairu: only ふぁ matches (#{f[:m]} bytes)", f[:rc] == OK && f[:m] == 6)
+  check("fairu: ファイル is 2nd and replaces all of it (#{f[:c].first(3).inspect}, whole #{f[:w]})",
+        f[:c][1] == "ファイル" && f[:w] == 1)
+  check("fairu: the partial candidates are still there (ファ 3rd)", f[:c][2] == "ファ" && f[:c].size >= 3)
+  p = conv["ぱーてぃー"]
+  check("pa-thi-: the whole reading matches, nothing replaces more (#{p[:c].first(2).inspect}, whole #{p[:w]})",
+        p[:rc] == OK && p[:m] == "ぱーてぃー".bytesize && p[:w] == -1 && p[:c][1] == "パーティー")
+  z = conv["ずずず"]
+  check("zuzuzu: ズズズ 2nd, replacing all (#{z[:c].first(3).inspect}, whole #{z[:w]})",
+        z[:m] == 3 && z[:c][1] == "ズズズ" && z[:w] == 1 && z[:c][2] == "ズ")
+  k = conv["かんじへんかん"]
+  check("kanjihenkan: a partial match keeps the dictionary's candidates (#{k[:c].first(4).inspect})",
+        k[:m] == "かんじ".bytesize && k[:c].include?("漢字") && k[:c][1] == "カンジヘンカン" && k[:c].include?("カンジ"))
 end
 
 def patched(dir, src, name)
@@ -246,9 +307,15 @@ Dir.mktmpdir("kanji_c") do |dir|
   # 2. broken files
   broken_files(prog, dir, full[:out])
 
-  # 3. the generated dictionary
+  # 3. conversion lists
+  conversions(prog, small[:out], "small (1 block)", rng, 40)
+  conversions(prog, full[:out], "made-up", rng, 400)
+
+  # 4. the generated dictionary
   if File.exist?(DICT)
     s = agree(prog, DICT, "generated", rng)
+    conversions(prog, DICT, "generated", rng, 3000)
+    k6_cases(prog, DICT)
     info = run_program(prog, ["open #{DICT}", "info", "close"])[1].split("\t")[1].split.map(&:to_i)
     puts format("generated dictionary: %d readings; exact %d queries (%d block reads, %.1f us each on the host); " \
                 "longest prefix %d queries (%d block reads, %.2f per query, %.1f us each); held while open %d bytes",

@@ -90,6 +90,12 @@ screen (it does not reach the app yet).
   machine's font has can be typed.
 - The katakana form of what is converted is always among the candidates:
   second, or first when the dictionary has nothing for it.
+- When only a leading part matches, the katakana of the whole reading comes
+  second and that of the part third (ふぁいる -> 1 華 2 ファイル 3 ファ ...).
+  Picking the whole one replaces all of the reading; the other candidates
+  replace the matched part and leave the rest as the next reading. On the
+  line, the part of the reading the selected candidate replaces is bright
+  and the rest dimmed.
 
 ### The line at the bottom
 

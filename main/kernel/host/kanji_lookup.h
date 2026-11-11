@@ -25,12 +25,21 @@ extern "C" {
 /** Longest reading a request carries, in bytes (UTF-8 kana, 3 bytes each). */
 #define FMRB_KANJI_LOOKUP_READING_MAX 384
 
+/** whole_index when every candidate replaces matched_bytes. */
+#define FMRB_KANJI_LOOKUP_NO_WHOLE 0xFFFF
+
 /** What a lookup found. */
 typedef struct {
     uint32_t seq;            /**< the request it answers */
-    bool found;              /**< false: no leading part of the reading is in the dictionary */
-    uint16_t matched_bytes;  /**< bytes of the reading that matched (longest match) */
+    bool found;              /**< false: no candidate (the lookup failed) */
+    uint16_t matched_bytes;  /**< bytes of the reading the candidates replace (longest match) */
     uint16_t count;          /**< candidates kept (all of them unless the buffer filled) */
+    /**
+     * The candidate that replaces the whole reading instead (the katakana of
+     * all of it when only a leading part matched, doc/kanji_input K6), or
+     * FMRB_KANJI_LOOKUP_NO_WHOLE.
+     */
+    uint16_t whole_index;
 } fmrb_kanji_lookup_result_t;
 
 /**
