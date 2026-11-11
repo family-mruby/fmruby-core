@@ -172,6 +172,8 @@ const fmrb_input_source_t fmrb_input_source_sdl = {
 /* ---- inject: the simulation's packets on a socket of our own ----------- */
 
 static char s_inject_path[108];
+/* A datagram: a few packets, or one IME text of a long commit. */
+#define INJECT_BUF 4096
 static int s_inject_fd = -1;
 
 void native_input_set_inject_path(const char *path)
@@ -230,6 +232,15 @@ static void inject_packet(uint8_t type, const uint8_t *data, uint16_t len)
             fmrb_host_send_mouse_wheel(w->x, w->y, w->delta);
         }
         break;
+    case HID_EVENT_IME_TEXT:
+        /* One commit, handed over as native_ime_deliver does, from this
+         * task: the keys injected after it stay after it. A commit is the
+         * sign of an IME, as SDL's text input takes it (output_sdl.c). */
+        native_ime_set_present(true, "an injected IME commit");
+        if (len > 0 && fmrb_host_send_text((const char *)data, (int)len) < 0) {
+            FMRB_LOGW(TAG, "inject: %u bytes of IME text dropped", (unsigned)len);
+        }
+        break;
     default:
         FMRB_LOGW(TAG, "inject: unknown HID event type 0x%02x", type);
         break;
@@ -239,7 +250,7 @@ static void inject_packet(uint8_t type, const uint8_t *data, uint16_t len)
 static void inject_task(void *arg)
 {
     (void)arg;
-    uint8_t buf[512];
+    static uint8_t buf[INJECT_BUF];
     for (;;) {
         for (;;) {
             ssize_t n = recv(s_inject_fd, buf, sizeof(buf), MSG_DONTWAIT);

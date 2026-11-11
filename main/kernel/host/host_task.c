@@ -1516,6 +1516,118 @@ void host_send_text_bytes(uint8_t pid, const char *bytes, size_t len)
     }
 }
 
+#if defined(HOST_TEXT_IN)
+// ---- Committed text from an IME outside Family mruby (doc/kanji_input K4c) ----
+//
+// A commit leaves as one key event per byte, and the app's queue holds 64.
+// The host task must not wait on that queue: the app empties it only between
+// its frames, and a frame waits on this task (drawing, presenting). Waiting
+// here made the two wait on each other until the 200 ms send timed out and
+// a byte was lost -- a 162-byte commit lost a third of its bytes, and the
+// whole machine stood still meanwhile. So the bytes wait here instead and go
+// out as the app's queue takes them, a few each pass of the loop.
+//
+// The producer (the input task, fmrb_host_send_text) counts the bytes it has
+// handed over and waits while this buffer could not take a chunk more, so a
+// commit of any length arrives whole and in order. Keys typed after it wait
+// for it (host_text_pending defers them like a kanji lookup does).
+#define HOST_TEXT_FIFO 2048
+// No byte taken for this long: the app is wedged, the rest is dropped (so the
+// keys held behind it and the producer are not held forever).
+#define HOST_TEXT_STALL_MS 2000
+
+static uint8_t s_text_fifo[HOST_TEXT_FIFO];
+static uint32_t s_text_head, s_text_count;
+static uint32_t s_text_progress_ms;
+// Bytes handed to the host queue and not yet sent on or dropped (both tasks).
+static uint32_t s_text_inflight;
+
+static void host_text_settle(uint32_t n)
+{
+    __atomic_fetch_sub(&s_text_inflight, n, __ATOMIC_ACQ_REL);
+}
+
+static bool host_text_pending(void)
+{
+    return s_text_count > 0;
+}
+
+static void host_text_drop_all(const char *why)
+{
+    if (s_text_count == 0) return;
+    FMRB_LOGW(TAG, "%u bytes of IME text dropped: %s", (unsigned)s_text_count, why);
+    host_text_settle(s_text_count);
+    s_text_head = 0;
+    s_text_count = 0;
+}
+
+// A HOST_MSG_HID_TEXT chunk: kept, control characters left out. The
+// producer's count guarantees the room.
+static void host_text_append(const char *bytes, int len)
+{
+    if (s_text_count == 0) s_text_progress_ms = (uint32_t)fmrb_hal_time_get_ms();
+    uint32_t skipped = 0;
+    for (int i = 0; i < len; i++) {
+        uint8_t b = (uint8_t)bytes[i];
+        if (b < 0x20 || b == 0x7F || s_text_count >= HOST_TEXT_FIFO) {
+            skipped++;
+            continue;
+        }
+        s_text_fifo[(s_text_head + s_text_count) % HOST_TEXT_FIFO] = b;
+        s_text_count++;
+    }
+    if (skipped) host_text_settle(skipped);
+}
+
+// As many bytes as the focused app's queue takes now, without waiting.
+static void host_text_pump(void)
+{
+    if (s_text_count == 0) return;
+    fmrb_hid_routing_t routing;
+    if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK ||
+        !routing.routing_enabled || routing.target_pid == 0xFF) {
+        host_text_drop_all("no app has the keyboard");
+        return;
+    }
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id(routing.target_pid);
+    if (ctx == NULL || ctx->state != PROC_STATE_RUNNING) {
+        host_text_drop_all("the app with the keyboard is not running");
+        return;
+    }
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_HID_EVENT,
+        .src_pid = PROC_ID_HOST,
+        .size = sizeof(fmrb_hid_key_event_t)
+    };
+    fmrb_hid_key_event_t *e = (fmrb_hid_key_event_t *)msg.data;
+    e->subtype = HID_MSG_KEY_DOWN;
+    e->keycode = 0;
+    e->scancode = 0;
+    e->modifier = 0;
+    uint32_t sent = 0;
+    while (s_text_count > 0) {
+        e->character = (char)s_text_fifo[s_text_head];
+        if (fmrb_msg_send(routing.target_pid, &msg, 0) != FMRB_OK) break;
+        s_text_head = (s_text_head + 1) % HOST_TEXT_FIFO;
+        s_text_count--;
+        sent++;
+    }
+    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    if (sent) {
+        host_text_settle(sent);
+        s_text_progress_ms = now;
+    } else if (now - s_text_progress_ms > HOST_TEXT_STALL_MS) {
+        host_text_drop_all("the app took none for 2 s");
+    }
+    if (s_text_count == 0) s_text_head = 0;
+}
+#else
+static bool host_text_pending(void)
+{
+    return false;
+}
+#endif
+
 void host_send_gfx_list(const gfx_cmd_t *cmds, int count)
 {
     // The conversion line (host_kanji.c) is drawn by this task itself, so its
@@ -1601,7 +1713,7 @@ static void host_task_process_host_message(const host_message_t *msg);
 
 static void host_replay_deferred_keys(void)
 {
-    while (s_deferred_count > 0 && !host_kanji_waiting()) {
+    while (s_deferred_count > 0 && !host_kanji_waiting() && !host_text_pending()) {
         host_deferred_key_t d = s_deferred[s_deferred_head];
         s_deferred_head = (uint8_t)((s_deferred_head + 1) % KANJI_DEFER_MAX);
         s_deferred_count--;
@@ -1636,10 +1748,10 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 // mruby apps too. The main thread says when one is there
 // (fmrb_native_ime_present). While it is, Family mruby's own kana input steps
 // aside: the composer is not fed, the clickable indicators cannot turn it
-// on, and the apps are told FMRB_KANA_MODE_IME, which hides their indicators
-// (the IME's own state is not known here). The IME's committed text comes in
-// as HOST_MSG_HID_TEXT and leaves as the same one-byte key events a composed
-// kana does.
+// on, and the apps are told FMRB_KANA_MODE_IME, for which their indicators
+// show the IME's mark (the IME's own state is not known here). The IME's
+// committed text comes in as HOST_MSG_HID_TEXT and leaves as the same
+// one-byte key events a composed kana does (host_text_pump).
 //
 // The apps that take text say where their cursor is (FmrbApp.set_text_cursor,
 // canvas coordinates). The focused app's, in frame coordinates, goes to the
@@ -1654,7 +1766,8 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
 
 #if defined(HOST_TEXT_IN)
 // Native: an IME is there. Browser: the page saw the browser's IME compose
-// last (doc/kanji_input K4b) -- the indicators hide, kana input is untouched.
+// last (doc/kanji_input K4b) -- the indicators show the IME's mark, kana
+// input is untouched.
 static bool s_ime_on;
 // Per app slot, the context generation told FMRB_KANA_MODE_IME (0 none).
 static uint32_t s_ime_told_gen[FMRB_MAX_APPS];
@@ -1959,8 +2072,8 @@ static void ime_publish_focused_cursor(int target)
 }
 
 // The focused app hears the mode as it is now: an app that came to the front
-// (or started) after the IME did has its indicator, and the desktop's, hidden
-// too; one told so before the IME went is told the kana mode again.
+// (or started) after the IME did has its indicator, and the desktop's, show
+// the IME's mark too; one told so before the IME went is told the kana mode again.
 static void ime_tell_focused(int target)
 {
     if (target < 0 || target >= FMRB_MAX_APPS) return;
@@ -1970,7 +2083,7 @@ static void ime_tell_focused(int target)
         s_ime_told_gen[target] = ctx->gen;
         host_send_kana_mode((uint8_t)target, FMRB_KANA_MODE_IME);
         host_send_kana_mode(0, FMRB_KANA_MODE_IME);
-        FMRB_LOGI(TAG, "PID %d told an IME types (its kana indicator hidden)", target);
+        FMRB_LOGI(TAG, "PID %d told an IME types (its kana indicator shows the IME)", target);
     } else if (!s_ime_on && s_ime_told_gen[target] != 0) {
         s_ime_told_gen[target] = 0;
         uint8_t mode = (uint8_t)fmrb_kana_get_mode();
@@ -1990,7 +2103,8 @@ static void ime_tell_focused(int target)
 // composition starting in the text area says it is, a printable key the IME
 // did not take says it is not. Each guess comes as a record with a new
 // sequence; while the last one says "on", the apps are told
-// FMRB_KANA_MODE_IME as on the native program (their indicators hide). Only
+// FMRB_KANA_MODE_IME as on the native program (their indicators show the
+// IME's mark). Only
 // the indicators: the composer is fed and the indicators can be clicked as
 // before, and either of those (or the kana keys) puts the indicator back to
 // Family mruby's own mode until the next composition.
@@ -2004,7 +2118,7 @@ static void ime_tick(void)
         s_ime_guess_seq = seq;
         if (on != s_ime_on) {
             s_ime_on = on;
-            FMRB_LOGI(TAG, "the browser's IME %s", on ? "composes: kana indicator hidden"
+            FMRB_LOGI(TAG, "the browser's IME %s", on ? "composes: kana indicator shows the IME"
                                                        : "lets keys through: kana indicator back");
             host_broadcast_kana_mode();
         }
@@ -2290,7 +2404,9 @@ static void host_task_process_host_message(const host_message_t *msg)
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
         case HOST_MSG_HID_KEY_UP: {
-            if (host_kanji_waiting()) {
+            // Held while a kanji lookup is out, and while committed text is
+            // still going out (a key typed after it must not overtake it).
+            if (host_kanji_waiting() || host_text_pending()) {
                 host_defer_key(msg);
                 break;
             }
@@ -2504,20 +2620,13 @@ static void host_task_process_host_message(const host_message_t *msg)
 
 #if defined(HOST_TEXT_IN)
         case HOST_MSG_HID_TEXT: {
-            // Text the PC's (the browser's) IME committed: to the focused app as one-byte key
-            // events, like a composed kana. Control characters are not text.
-            fmrb_hid_routing_t routing;
-            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK ||
-                !routing.routing_enabled || routing.target_pid == 0xFF) {
-                break;
-            }
+            // Text the PC's (the browser's) IME committed: kept, and sent on to
+            // the focused app as one-byte key events, like a composed kana, as
+            // fast as its queue takes them (host_text_pump).
             int len = msg->data.text.len;
             if (len > HOST_TEXT_CHUNK) len = HOST_TEXT_CHUNK;
-            for (int i = 0; i < len; i++) {
-                uint8_t b = (uint8_t)msg->data.text.bytes[i];
-                if (b < 0x20 || b == 0x7F) continue;
-                host_send_kana_byte(routing.target_pid, b);
-            }
+            host_text_append(msg->data.text.bytes, len);
+            host_text_pump();
             break;
         }
 #endif
@@ -2755,6 +2864,9 @@ static void fmrb_host_task(void *pvParameters)
         // The kanji conversion line, and keys held for a lookup that ended
         // without an answer (doc/kanji_input).
         host_kanji_tick();
+#if defined(HOST_TEXT_IN)
+        host_text_pump();
+#endif
         host_replay_deferred_keys();
 
 #if defined(FMRB_PLATFORM_NATIVE)
@@ -2966,13 +3078,27 @@ int fmrb_host_send_key_up_us(int key_code, int scancode, int modifier)
 #if defined(HOST_TEXT_IN)
 int fmrb_host_send_text(const char *utf8, int len)
 {
+    // Back-pressure, not loss: the input task waits while the host task's
+    // text buffer could not take this chunk (doc/kanji_input K4c). The input
+    // events behind the text wait with it, which keeps their order.
     int sent = 0;
     while (len > 0) {
         host_message_t msg = { .type = HOST_MSG_HID_TEXT };
         int n = len > HOST_TEXT_CHUNK ? HOST_TEXT_CHUNK : len;
         msg.data.text.len = n;
         memcpy(msg.data.text.bytes, utf8, (size_t)n);
-        if (fmrb_host_send_message(&msg) != 0) return -1;
+        while (__atomic_load_n(&s_text_inflight, __ATOMIC_ACQUIRE) + (uint32_t)n > HOST_TEXT_FIFO) {
+            fmrb_task_delay_ms(5);
+        }
+        __atomic_fetch_add(&s_text_inflight, (uint32_t)n, __ATOMIC_ACQ_REL);
+        int tries = 0;
+        while (fmrb_host_send_message(&msg) != 0) {
+            if (++tries >= 100) {
+                host_text_settle((uint32_t)n);
+                return -1;
+            }
+            fmrb_task_delay_ms(5);
+        }
         utf8 += n;
         len -= n;
         sent += n;

@@ -18,6 +18,10 @@ extern "C" {
 #define HID_EVENT_MOUSE_BUTTON  0x10
 #define HID_EVENT_MOUSE_MOTION  0x11
 #define HID_EVENT_MOUSE_WHEEL   0x12
+// Text a PC's IME committed, UTF-8, the whole payload. Only the native
+// program's inject socket takes it (a test stand-in for the IME's commit,
+// doc/kanji_input K4c); the simulation drops it as unknown.
+#define HID_EVENT_IME_TEXT      0x20
 
 /**
  * @brief Keyboard event structure
