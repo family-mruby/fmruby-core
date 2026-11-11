@@ -23,6 +23,14 @@
 4. **送り途中に前のアプリが変わったら残りを捨てる** (K4c・K3d の確定の文字の待ち。ESP32・ブラウザ版・ネイティブ版):
    ユーザの決定。捨てた数をログに 1 行。
 
+5. **辞書を 2 つ配る** (ユーザの決定): 標準 1 MB と大きい辞書 4 MB。
+   - 名前: 標準は今どおり `fmrb_kanji.dic`、大きい辞書は `fmrb_kanji_4m.dic` (親の仮決め)。端末は今の既定の
+     `/sd/dict/fmrb_kanji.dic` を探す。大きい辞書を使う人は、名前を `fmrb_kanji.dic` に変えて置くか、`kanji_dict` で指す。
+     端末のコードは変えない。
+   - `rake kanji:dict` で両方作れるようにする (例: `rake kanji:dict_release` が 1 MB と 4 MB を作り、`kanji:place` が両方を写す)。
+   - 案内 (`flash/usr/share/doc/kanji_ja.md`・`kanji.md`) と、直下の `doc/release.md` の添付の手順を 2 つにする
+     (sha256 も 2 つ)。4 MB の辞書で、開く時間・PSRAM の量・日常の語の入り方を report に。
+
 ## 確認
 
 `rake regress`、`rake regress:screens`、`rake kanji:test`、`rake regress:size` (内蔵 RAM の増分 0)。sim とネイティブ版で
