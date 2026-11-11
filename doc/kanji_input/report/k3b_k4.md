@@ -1,6 +1,6 @@
 # K3b・K4 報告: K3 の残りと、ブラウザ版のブラウザの IME
 
-> 状態: 完了 (実機の確認と、本物のブラウザの IME での目視は残り) | 更新: 2026-11-11 (K4c: PC の IME を使っている間は指示器に `[漢]` を出す、長い確定の取りこぼしを直した) | sim の Modern の全画面 (640x360) でも変換の 1 行が出る (graphics-audio)。変換のタスクのスタックを PSRAM に移し、辞書があるときに内蔵 RAM に増えるのは TCB だけにした (sdkconfig は変えていない)。変換キーを入力の道具の名前 `henkan` に足して sim で試した。ブラウザ版は、文字を受けるアプリ (エディタ・Shell) が前にいる間だけ見えない入力欄にキーを渡し、ブラウザの IME の確定の文字をアプリへ流す。辞書が無い既定とブラウザ版の IME を使わない打鍵は今のまま (画面の基準は同じ)
+> 状態: 完了 (実機の確認と、本物のブラウザの IME での目視は残り) | 更新: 2026-11-12 (K4d: ネイティブ版の指示器は fcitx5 に D-Bus で聞いて、日本語のときだけ `漢`、英字は `A`) (2026-11-11 K4c: PC の IME を使っている間は指示器に `[漢]` を出す、長い確定の取りこぼしを直した) | sim の Modern の全画面 (640x360) でも変換の 1 行が出る (graphics-audio)。変換のタスクのスタックを PSRAM に移し、辞書があるときに内蔵 RAM に増えるのは TCB だけにした (sdkconfig は変えていない)。変換キーを入力の道具の名前 `henkan` に足して sim で試した。ブラウザ版は、文字を受けるアプリ (エディタ・Shell) が前にいる間だけ見えない入力欄にキーを渡し、ブラウザの IME の確定の文字をアプリへ流す。辞書が無い既定とブラウザ版の IME を使わない打鍵は今のまま (画面の基準は同じ)
 
 ## K3b
 
@@ -293,3 +293,91 @@ host task が 1 バイトずつキーの出来事としてアプリの待ち行�
 - 本物のブラウザの IME とネイティブ版の本物の IME (fcitx5・SDL) での目視: 印の `[漢]`・`漢` の見え方と、長い文の確定。
 - 端末自身のかな入力・漢字変換の確定 (`host_send_kana_byte`・`host_send_text_bytes`) は 1 バイトずつ 200 ms 待つ形のまま。
   1 回が数十バイトまでなので待ち合いにならない見込みだが、長い変換の確定を足すときはこの待ちに載せ替える。
+
+## K4d: ネイティブ版の指示器を fcitx5 の状態に合わせる
+
+ユーザの決定 (plan.md の「ネイティブ版の指示器」): PC の IME が日本語を打つときだけ `漢`、英字のときは `A`。
+今までは「PC の IME がいる」だけを見ていたので、fcitx5 + Mozc の GPD では最初から `漢` のまま、Ctrl+Space で変わらなかった。
+
+### 1. fcitx5 に D-Bus で聞く (`native/sys/linux_fcitx.{h,c}`)
+
+- 調べたこと (イメージの fcitx5 5.1.19 を `gdbus introspect`): `org.fcitx.Fcitx5` の `/controller`、
+  `org.fcitx.Fcitx.Controller1` に `State()` (i: 0 入力の文脈なし、1 無効、2 有効) と `CurrentInputMethod()` (s: `mozc`・
+  `keyboard-us` など、文脈が無いと空) がある。どちらも最後に焦点のあった入力の文脈についての答え。**状態が変わったことを知らせる
+  シグナルは無い** (`InputMethodGroupsChanged` だけ)。だから変わりうるときに聞き直す。
+- 答えの読み方 (`linux_fcitx_judge`): 入力メソッドの名前があればそれで決める (`keyboard-*` は配列 = 英字、ほかは変換の仕組み =
+  日本語)。名前が無ければ State (2 = 日本語、1 = 英字)。0 (文脈なし) は「分からない」で今の表示のまま。グループが Mozc だけの
+  人でも名前で正しく出る。
+- 聞く所は自分の線 (pthread) と自分のセッションバスの接続。sd-bus は L14 の `linux_bus` (libsystemd.so.0 を dlopen。
+  .deb の Depends の libsystemd0 で、組み立てに何も足さない) に `sd_bus_message_set_auto_start` を 1 つ足しただけ。
+  呼ぶ側 (コンポジタの主スレッド、SDL の Window、入力のタスク) は旗を立てて eventfd を書くだけで、バスを待たない。
+  host task も原子変数を読むだけ。
+- 問いは **NO_AUTO_START** で送る。fcitx5 のパッケージは D-Bus のサービスのファイル (`org.fcitx.Fcitx5.service`) を
+  入れるので、付けないと `compositor.ime=` で外した人の PC でもバスが fcitx5 を起こしてしまう。
+- 聞くとき: 聞き直しの合図 (`native_ime_recheck`) の 40 ms 後と 300 ms 後 (キーは Wayland の口、問いは D-Bus の口で
+  fcitx5 に別々に届くので、1 回目がキーより先に着くことがある)、それと IME がいる間は 1 秒ごと (誰も見ていない切り替え:
+  SDL の Window には IME が丸ごと取ったキーが来ない、トレイからの切り替えなど)。
+  - コンポジタ: IME へ渡したキーごと (押す・離す)、IME が受け持つ先が変わったとき (activate)、IME がつながったとき。
+  - SDL の Window: このウィンドウに来たキーを離したとき (Ctrl+Space の Ctrl の離しは IME が通す)、ウィンドウに焦点が来たとき。
+- fcitx5 が答えるとログに `native: IME: fcitx5 answers on the session bus: the kana indicator follows it`、変わるたびに
+  `native: IME: Japanese input (fcitx5: mozc)` / `letters input (fcitx5: keyboard-us)`。
+
+### 2. 聞けないときは打鍵から推し量る
+
+ブラウザ版 (K4b) と同じ考え方。fcitx5 がバスにいない (`ServiceUnknown` など)、セッションバスが無い、libsystemd が無いとき。
+fcitx5 が一度でも答えたら、その間は推測を使わない。
+
+| 印 | 推測 |
+|---|---|
+| IME の変換中の文字 (空でない preedit) | 日本語 |
+| IME が確定した文字に ASCII でないバイトがある | 日本語 |
+| コンポジタ: IME が仮想キーボードで返した、Ctrl・Alt・Super なしの印字できるキー (空白を除く) | 英字 |
+| SDL: キーが自分の文字を打った (今までどおり捨てる TEXTINPUT。空白を除く) | 英字 |
+| 注入の `ime` (`HID_EVENT_IME_TEXT`) に ASCII でないバイト | 日本語 |
+
+- 最初は英字 (`A`)。fcitx5 の既定も無効から始まる。IME がいなくなったら英字に戻し、次の IME の答えを学び直す。
+- **ibus**: ibus には同じ問いが無い (Mozc の中のかな・直接入力の状態は ibus の外に出ない) ので、SDL の形で ibus を使うときは
+  いつもこの推測。fcitx5 が動いていない PC で問いが ibus の代わりに fcitx5 を起こすことは無い (NO_AUTO_START)。
+
+### 3. host task の表示 (`main/kernel/host/host_task.c`、ネイティブ版だけ)
+
+- PC の IME がいる間の指示器の値は、日本語なら `FMRB_KANA_MODE_IME` (3、`漢`・`[漢]`)、英字なら `FMRB_KANA_OFF` (0、`A`・`[A]`)。
+  かな入力が止まっていること (L12b) は変えていない。英字の間に指示器を押しても今までどおり断る (`ignored`)。
+- 状態が変わると、前のアプリとデスクトップに知らせ直し、ほかのアプリも前に出たときに知らせ直す (`s_ime_told_gen` を空に)。
+  ログに `the PC's IME types Japanese: kana indicator shows the IME's mark` / `types letters: kana indicator shows A`。
+- ブラウザ版・ESP32・sim は変えていない (ブラウザ版の `ime_shown_mode` はいつも 3 で今までと同じ。ESP32 と sim には
+  このコードが入らない)。
+- `comp ime` (制御の口) の答えに `ja=0|1 ja_from=fcitx5|keys` を足した。
+
+### 確認
+
+`wl_ime_check.rb` に 3 つ足した (`rake regress:wl` の中)。コミットは 620ed84a (機能) と 4eb67f92 (確認の道具)。
+
+| 確認したこと | 結果 |
+|---|---|
+| エディタ、mozc を入れる前 | `ja=0` (`A`) |
+| mozc を入れて Ctrl+Space を 3 回 | `1/fcitx5 → 0/fcitx5 → 1/fcitx5 → 0/fcitx5` (ja/from)。host の行も `漢` へ 3 回・`A` へ 3 回 (foot の分を含む)。メニューバーのセルが `漢` → `A`、エディタの状態の行が `[漢]` → `[A]` (indicator_mark.png・indicator_a.png) |
+| SDL の Window の形 (`--machine sdl` をこのコンポジタの客として、fcitx5 のセッションバスを渡す) | 最初の変換中の文字で日本語 (推測)、続いて fcitx5 が答え、Ctrl+Space で `letters input (fcitx5: keyboard-us)`、host が `A` |
+| fcitx5 がバスにいない (`compositor.ime=fcitx5 --disable=dbus`) | `fcitx5 is not on the session bus: the kana indicator guesses from the keys`。mozc で `ka` → 日本語、切って `a` → 英字、mozc で `ka` → 日本語 (`1/keys → 0/keys → 1/keys`)、ファイルは `かaか`。fcitx5 は 1 つのまま (バスが 2 つ目を起こさない) |
+| IME が無い・入っていない (今までの 2 つ) | 今までどおり (かな入力が戻る) |
+
+回帰:
+
+| | 結果 |
+|---|---|
+| `rake regress:wl` | 標準・全部 mruby とも全部通る (wl_ime_check は 10/10。ほかは wl_check 27・apps 10・dialog 11・keys 3・open 5・clip 5・winops 11・settings 20・size 5・touch 7) |
+| `rake regress` | host 25/25、描画の記録 229/229 |
+| `rake native:test` | settings に fcitx5 の答えの読み方 7 つを足して 60/60、ほかも通る |
+| `rake wasm:web` | 通る (host_task.c のブラウザ版の組み立て) |
+| `rake native:deb ARCH=amd64` | `native/build-deb/family-mruby_3.0.0+git188.4eb67f92_amd64.deb` (3.7 MB、入れると 13.9 MB、Depends は今までどおり (libsystemd0 を含む)、native:scan は通る) |
+
+- `rake regress:size` (ESP32) は流していない。足したコードは ESP32 の組み立てに入らない (`HOST_TEXT_IN`・`FMRB_PLATFORM_NATIVE` の中、
+  native/ の下)。
+- 画面は `tmp/wl_check/ime-standard-pixman/` (indicator_mark.png・indicator_a.png)。
+
+### 残件
+
+- GPD (Kubuntu、ユーザの fcitx5 の設定) での目視: 起動直後の `A`、Ctrl+Space での `漢`・`A`、半角/全角での切り替え。
+- Mozc の中の「直接入力」(Mozc を選んだまま英字を打つ形) は fcitx5 から見ると Mozc のままなので `漢` になる。
+- SDL の Window で、IME が丸ごと取るキー (半角/全角など) で切り替えたときは、最大 1 秒遅れて変わる。
+- Plasma の中の SDL の Window (KWin の input-method-v1 の先の fcitx5) は試していない (問いは同じ fcitx5 に届く見込み)。
