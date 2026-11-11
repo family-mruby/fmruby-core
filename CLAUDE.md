@@ -17,6 +17,14 @@
   (doc / desktop / editor / spinel / services / tools / wasm など。
   履歴の実例に合わせる)。文書だけの変更は `doc:`、複数領域にまたがるときは
   `services, doc:` のようにカンマ区切り。
+- **件名は、一覧で見て何をしたかが一目で分かる書き方にする** (2026-11-11)。
+  機能を足したのか (add)、消したのか (remove)、不具合を直したのか (fix)、
+  文書を直したのか (doc) が件名の言葉から分かるようにし、何に対してかを
+  具体的に書く。例: `editor: add kanji conversion candidates in a bottom line`、
+  `wasm: fix the IME composition box growing past the screen`、
+  `doc: kanji input plan, decide where candidates are shown`。
+  - 段の略称 (K3b・T6・W1 など) を件名の先頭に置かない。一覧では意味が
+    分からないため。要るなら件名の末尾の括弧か本文に書く。
 - 本文は英文で記述する。要点が伝われば、変更の背景や理由をある程度詳しく
   書いてよい。
 - Co-Authored-By トレーラは、Claude が主な作業を行ったコミットに付ける
