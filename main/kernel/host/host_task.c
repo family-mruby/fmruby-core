@@ -1489,100 +1489,109 @@ handle_sync:
 /**
  * Process a host message
  */
-// Send one synthetic key press carrying a single byte of a composed kana.
-// Scancode and keycode are zero: a kana has no key of its own, and apps that
-// filter on 32..126 or on scancodes ignore these, which is what makes the
-// composition invisible to everything except text input.
-static void host_send_kana_byte(uint8_t target_pid, uint8_t byte)
-{
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_HID_EVENT,
-        .src_pid = PROC_ID_HOST,
-        .size = sizeof(fmrb_hid_key_event_t)
-    };
-    fmrb_hid_key_event_t *e = (fmrb_hid_key_event_t *)msg.data;
-    e->subtype = HID_MSG_KEY_DOWN;
-    e->keycode = 0;
-    e->scancode = 0;
-    e->modifier = 0;
-    e->character = (char)byte;
-    fmrb_msg_send(target_pid, &msg, 200);
-}
-
-void host_send_text_bytes(uint8_t pid, const char *bytes, size_t len)
-{
-    for (size_t i = 0; i < len; i++) {
-        host_send_kana_byte(pid, (uint8_t)bytes[i]);
-    }
-}
-
-#if defined(HOST_TEXT_IN)
-// ---- Committed text from an IME outside Family mruby (doc/kanji_input K4c) ----
+// ---- Committed text (doc/kanji_input K4c, and K3c for the devices) ----------
 //
-// A commit leaves as one key event per byte, and the app's queue holds 64.
-// The host task must not wait on that queue: the app empties it only between
-// its frames, and a frame waits on this task (drawing, presenting). Waiting
-// here made the two wait on each other until the 200 ms send timed out and
-// a byte was lost -- a 162-byte commit lost a third of its bytes, and the
-// whole machine stood still meanwhile. So the bytes wait here instead and go
-// out as the app's queue takes them, a few each pass of the loop.
+// Text goes to the focused app as one synthetic key press per byte: scancode
+// and keycode zero, so apps that filter on 32..126 or on scancodes ignore
+// these, which is what makes a composition invisible to everything except
+// text input. It comes from three places: kana composed here (the romaji
+// layer), a kanji commit (host_kanji.c), and, on the native and browser
+// builds, an IME outside Family mruby (HOST_MSG_HID_TEXT).
 //
-// The producer (the input task, fmrb_host_send_text) counts the bytes it has
-// handed over and waits while this buffer could not take a chunk more, so a
-// commit of any length arrives whole and in order. Keys typed after it wait
-// for it (host_text_pending defers them like a kanji lookup does).
+// The host task must not wait on the app's queue (64 deep): the app empties
+// it only between its frames, and a frame waits on this task (drawing,
+// presenting). Waiting here made the two wait on each other until the 200 ms
+// send timed out and a byte was lost -- a 162-byte commit lost a third of its
+// bytes, and the whole machine stood still meanwhile. So the bytes wait here
+// instead and go out as the app's queue takes them, a few each pass of the
+// loop (host_text_pump).
+//
+// Keys typed after the text wait for it (host_text_pending defers them like
+// a kanji lookup does), and the key that produced the text, if it still has
+// to reach the app itself (a vowel's own event, its character cleared), waits
+// behind the text in s_text_tail. So a key is only processed with the buffer
+// empty, and one key's text (a few bytes; a kanji commit, at most a reading)
+// always fits.
+//
+// On the native and browser builds the IME's producer (the input task,
+// fmrb_host_send_text) counts the bytes it has handed over and waits while
+// this buffer could not take a chunk more, so a commit of any length arrives
+// whole and in order.
 #define HOST_TEXT_FIFO 2048
 // No byte taken for this long: the app is wedged, the rest is dropped (so the
 // keys held behind it and the producer are not held forever).
 #define HOST_TEXT_STALL_MS 2000
 
-static uint8_t s_text_fifo[HOST_TEXT_FIFO];
-static uint32_t s_text_head, s_text_count;
-static uint32_t s_text_progress_ms;
-// Bytes handed to the host queue and not yet sent on or dropped (both tasks).
+// PSRAM: the internal RAM budget has no room for new statics.
+FMRB_EXT_RAM_BSS_ATTR static uint8_t s_text_fifo[HOST_TEXT_FIFO];
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_text_head, s_text_count;
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_text_progress_ms;
+// The key event that goes out after the text (s_text_tail_set).
+FMRB_EXT_RAM_BSS_ATTR static fmrb_hid_key_event_t s_text_tail;
+FMRB_EXT_RAM_BSS_ATTR static bool s_text_tail_set;
+#if defined(HOST_TEXT_IN)
+// Bytes in the buffer or on their way to it, not yet sent on or dropped:
+// the IME's producer (another task) waits on it.
 static uint32_t s_text_inflight;
+
+static void host_text_reserve(uint32_t n)
+{
+    __atomic_fetch_add(&s_text_inflight, n, __ATOMIC_ACQ_REL);
+}
 
 static void host_text_settle(uint32_t n)
 {
     __atomic_fetch_sub(&s_text_inflight, n, __ATOMIC_ACQ_REL);
 }
+#else
+// Only this task fills the buffer on the devices: nothing to count. (The
+// atomics would also link the IRAM-resident atomic helpers on the S3.)
+static inline void host_text_reserve(uint32_t n) { (void)n; }
+static inline void host_text_settle(uint32_t n) { (void)n; }
+#endif
 
 static bool host_text_pending(void)
 {
-    return s_text_count > 0;
+    return s_text_count > 0 || s_text_tail_set;
 }
 
 static void host_text_drop_all(const char *why)
 {
-    if (s_text_count == 0) return;
-    FMRB_LOGW(TAG, "%u bytes of IME text dropped: %s", (unsigned)s_text_count, why);
+    if (s_text_count == 0 && !s_text_tail_set) return;
+    FMRB_LOGW(TAG, "%u bytes of text%s dropped: %s", (unsigned)s_text_count,
+              s_text_tail_set ? " and a key" : "", why);
     host_text_settle(s_text_count);
     s_text_head = 0;
     s_text_count = 0;
+    s_text_tail_set = false;
 }
 
-// A HOST_MSG_HID_TEXT chunk: kept, control characters left out. The
-// producer's count guarantees the room.
+// Bytes already reserved (host_text_reserve). Control characters are left out
+// (an IME's text); a byte that does not fit is dropped with a log line, which
+// the deferral above keeps from happening.
 static void host_text_append(const char *bytes, int len)
 {
     if (s_text_count == 0) s_text_progress_ms = (uint32_t)fmrb_hal_time_get_ms();
-    uint32_t skipped = 0;
+    uint32_t skipped = 0, full = 0;
     for (int i = 0; i < len; i++) {
         uint8_t b = (uint8_t)bytes[i];
-        if (b < 0x20 || b == 0x7F || s_text_count >= HOST_TEXT_FIFO) {
+        if (b < 0x20 || b == 0x7F) {
             skipped++;
-            continue;
+        } else if (s_text_count >= HOST_TEXT_FIFO) {
+            full++;
+        } else {
+            s_text_fifo[(s_text_head + s_text_count) % HOST_TEXT_FIFO] = b;
+            s_text_count++;
         }
-        s_text_fifo[(s_text_head + s_text_count) % HOST_TEXT_FIFO] = b;
-        s_text_count++;
     }
-    if (skipped) host_text_settle(skipped);
+    if (full) FMRB_LOGW(TAG, "text buffer full: %u bytes dropped", (unsigned)full);
+    if (skipped + full) host_text_settle(skipped + full);
 }
 
-// As many bytes as the focused app's queue takes now, without waiting.
+// As much as the focused app's queue takes now, without waiting.
 static void host_text_pump(void)
 {
-    if (s_text_count == 0) return;
+    if (!host_text_pending()) return;
     fmrb_hid_routing_t routing;
     if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK ||
         !routing.routing_enabled || routing.target_pid == 0xFF) {
@@ -1605,6 +1614,7 @@ static void host_text_pump(void)
     e->scancode = 0;
     e->modifier = 0;
     uint32_t sent = 0;
+    bool moved = false;
     while (s_text_count > 0) {
         e->character = (char)s_text_fifo[s_text_head];
         if (fmrb_msg_send(routing.target_pid, &msg, 0) != FMRB_OK) break;
@@ -1612,21 +1622,47 @@ static void host_text_pump(void)
         s_text_count--;
         sent++;
     }
+    if (s_text_count == 0 && s_text_tail_set) {
+        *e = s_text_tail;
+        if (fmrb_msg_send(routing.target_pid, &msg, 0) == FMRB_OK) {
+            s_text_tail_set = false;
+            moved = true;
+        }
+    }
     uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
-    if (sent) {
-        host_text_settle(sent);
+    if (sent || moved) {
+        if (sent) host_text_settle(sent);
         s_text_progress_ms = now;
     } else if (now - s_text_progress_ms > HOST_TEXT_STALL_MS) {
         host_text_drop_all("the app took none for 2 s");
     }
     if (s_text_count == 0) s_text_head = 0;
 }
-#else
-static bool host_text_pending(void)
+
+// Text made in this task (composed kana, a kanji commit), sent on at once as
+// far as the app's queue takes it.
+static void host_text_put(const char *bytes, size_t len)
 {
-    return false;
+    if (len == 0) return;
+    host_text_reserve((uint32_t)len);
+    host_text_append(bytes, (int)len);
+    host_text_pump();
 }
-#endif
+
+// The key event that must follow the text now in the buffer.
+static void host_text_hold_key(const fmrb_hid_key_event_t *e)
+{
+    if (s_text_count == 0) s_text_progress_ms = (uint32_t)fmrb_hal_time_get_ms();
+    s_text_tail = *e;
+    s_text_tail_set = true;
+}
+
+void host_send_text_bytes(uint8_t pid, const char *bytes, size_t len)
+{
+    // The text follows the keyboard, as keys do: pid is the focused app.
+    (void)pid;
+    host_text_put(bytes, len);
+}
 
 void host_send_gfx_list(const gfx_cmd_t *cmds, int count)
 {
@@ -1679,7 +1715,7 @@ fmrb_err_t host_send_gfx_async(const gfx_cmd_t *cmd,
 // meanwhile wait here, in order, and run once the answer is in, so that a
 // fast "Space Enter" acts on the candidates and not on the bare reading.
 
-#define KANJI_DEFER_MAX 32
+#define KANJI_DEFER_MAX 128
 
 typedef struct {
     host_msg_type_t type;
@@ -2552,9 +2588,7 @@ static void host_task_process_host_message(const host_message_t *msg)
                 // pending "n" and means something itself (a space after
                 // "kanji"), the kana belongs before it.
                 if (!kanji) {
-                    for (uint8_t i = 0; i < kana.out_len; i++) {
-                        host_send_kana_byte(routing.target_pid, kana.out[i]);
-                    }
+                    host_text_put((const char *)kana.out, kana.out_len);
                 }
                 // Every event on the two mode keys, whether or not it
                 // changed anything. A key that "half works" is either not
@@ -2606,6 +2640,12 @@ static void host_task_process_host_message(const host_message_t *msg)
                 }
             }
 
+            // Behind text this key made that the app has not taken yet (a
+            // vowel's kana, a kanji commit): it goes out after the text.
+            if (host_text_pending()) {
+                host_text_hold_key(key_event);
+                break;
+            }
             // Send directly to focused window (current HID target).
             // Bounded wait only: this task is the single pump for input,
             // gfx and audio, and the target queue is 64 deep -- if it is
@@ -2825,6 +2865,40 @@ static void host_task_process_host_message(const host_message_t *msg)
     }
 }
 
+// ---- Slow loop passes (doc/kanji_input/report/k3c_input_stall.md) ---------
+//
+// This task is the single pump for input, drawing and audio: a pass that
+// takes long holds the mouse cursor and the keys with it. Passes over
+// HOST_SLOW_PASS_MS are counted and reported at most every 5 s, with the
+// longest one, so a freeze shows in the log with its time.
+#define HOST_SLOW_PASS_MS 100
+#define HOST_SLOW_REPORT_MS 5000
+
+// PSRAM: the internal RAM budget has no room for new statics.
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_slow_n, s_slow_max_ms, s_slow_max_msgs;
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_slow_report_ms;
+
+static void host_note_pass(uint32_t start_ms, uint32_t msgs)
+{
+    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    uint32_t took = now - start_ms;
+    if (took >= HOST_SLOW_PASS_MS) {
+        s_slow_n++;
+        if (took > s_slow_max_ms) {
+            s_slow_max_ms = took;
+            s_slow_max_msgs = msgs;
+        }
+    }
+    if (s_slow_n && now - s_slow_report_ms >= HOST_SLOW_REPORT_MS) {
+        FMRB_LOGI(TAG, "slow loop passes: n=%u max=%ums (msgs=%u)",
+                  (unsigned)s_slow_n, (unsigned)s_slow_max_ms,
+                  (unsigned)s_slow_max_msgs);
+        s_slow_n = 0;
+        s_slow_max_ms = 0;
+        s_slow_report_ms = now;
+    }
+}
+
 /**
  * Host task main loop
  */
@@ -2853,10 +2927,17 @@ static void fmrb_host_task(void *pvParameters)
     while (1) {
         // Drain message queue (first wait up to 10ms, then non-blocking)
         bool first = true;
+        uint32_t pass_msgs = 0;
+        uint32_t pass_start_ms = 0;
         while (fmrb_msg_receive(PROC_ID_HOST, &msg, first ? 10 : 0) == FMRB_OK) {
+            // The pass is timed from its first message: the idle wait above
+            // is not work.
+            if (first) pass_start_ms = (uint32_t)fmrb_hal_time_get_ms();
             host_task_process_message(&msg);
             first = false;
+            pass_msgs++;
         }
+        if (first) pass_start_ms = (uint32_t)fmrb_hal_time_get_ms();
 
         // Coalesced save of the mute and volume (doc/reference/audio_output.md).
         host_audio_save_tick();
@@ -2864,9 +2945,7 @@ static void fmrb_host_task(void *pvParameters)
         // The kanji conversion line, and keys held for a lookup that ended
         // without an answer (doc/kanji_input).
         host_kanji_tick();
-#if defined(HOST_TEXT_IN)
         host_text_pump();
-#endif
         host_replay_deferred_keys();
 
 #if defined(FMRB_PLATFORM_NATIVE)
@@ -2888,6 +2967,7 @@ static void fmrb_host_task(void *pvParameters)
         // exact stopped position (otherwise the last event in a burst is dropped
         // and never reaches WROVER).
         fmrb_host_flush_pending_mouse_move();
+        host_note_pass(pass_start_ms, pass_msgs);
 
         // Periodic update processing
         fmrb_tick_t now = fmrb_task_get_tick_count();
@@ -3090,7 +3170,7 @@ int fmrb_host_send_text(const char *utf8, int len)
         while (__atomic_load_n(&s_text_inflight, __ATOMIC_ACQUIRE) + (uint32_t)n > HOST_TEXT_FIFO) {
             fmrb_task_delay_ms(5);
         }
-        __atomic_fetch_add(&s_text_inflight, (uint32_t)n, __ATOMIC_ACQ_REL);
+        host_text_reserve((uint32_t)n);
         int tries = 0;
         while (fmrb_host_send_message(&msg) != 0) {
             if (++tries >= 100) {
