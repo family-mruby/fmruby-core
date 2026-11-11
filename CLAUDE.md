@@ -13,18 +13,31 @@
 ### コミット規約
 
 - コミット・push は求められたときだけ行う。
-- 件名は `<領域>: <要約>`。領域は変更した機能・サブシステム名
-  (doc / desktop / editor / spinel / services / tools / wasm など。
-  履歴の実例に合わせる)。文書だけの変更は `doc:`、複数領域にまたがるときは
-  `services, doc:` のようにカンマ区切り。
-- **件名は、一覧で見て何をしたかが一目で分かる書き方にする** (2026-11-11)。
-  機能を足したのか (add)、消したのか (remove)、不具合を直したのか (fix)、
-  文書を直したのか (doc) が件名の言葉から分かるようにし、何に対してかを
-  具体的に書く。例: `editor: add kanji conversion candidates in a bottom line`、
-  `wasm: fix the IME composition box growing past the screen`、
-  `doc: kanji input plan, decide where candidates are shown`。
-  - 段の略称 (K3b・T6・W1 など) を件名の先頭に置かない。一覧では意味が
-    分からないため。要るなら件名の末尾の括弧か本文に書く。
+- **件名は `<種類>(<場所>): <要約>`** (2026-11-11 決定。Conventional Commits の形)。
+  一覧で見て、何に何をしたかが一目で分かるようにする。
+  - **種類** (この 8 つから 1 つ):
+    | 種類 | 使うとき |
+    |---|---|
+    | `feat` | 機能の追加・変更・削除 (削除は要約を `remove ...` で始める) |
+    | `fix` | 不具合の直し (デバッグの結果の直しを含む) |
+    | `docs` | 文書だけの変更 (plan・report・instruction・README・コメントだけの変更) |
+    | `refactor` | 動きを変えない整理 |
+    | `perf` | 速さ・メモリ (内蔵 RAM の削減を含む) |
+    | `test` | 試験・回帰の道具と、その基準の更新 |
+    | `build` | 組み立て・リリース・CI・依存 |
+    | `chore` | 上のどれにも当たらない雑事 |
+  - **場所**: 変更した機能・サブシステム・文書のテーマの名前 (editor・desktop・kernel・
+    wasm・native・shell・transfer・spinel・tools・kanji_input など。doc/ の
+    テーマはそのディレクトリ名)。2 つまでならカンマ区切り (`feat(kernel,desktop): ...`)。
+    それより広いときは主なものを書き、残りは本文へ。
+  - **要約**: 英語で、何をしたかが具体的に分かる言葉にする。段の略称
+    (K3b・T6・W1 など) を件名に置かない。要るなら本文に書く。
+  - 例: `feat(editor): kanji candidates in a bottom line`、
+    `fix(wasm): IME composition box grew past the screen`、
+    `docs(kanji_input): decide where candidates are shown`、
+    `feat(shell): remove the move command (renamed to amove)`。
+  - 種類が 2 つにまたがるときはコミットを分ける (機能と、その文書の report は
+    分けてよい。機能に付く小さな文書の直しは同じコミットでよい)。
 - 本文は英文で記述する。要点が伝われば、変更の背景や理由をある程度詳しく
   書いてよい。
 - Co-Authored-By トレーラは、Claude が主な作業を行ったコミットに付ける
