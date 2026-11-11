@@ -143,6 +143,23 @@ EXT_RAM_BSS_ATTR static hid_input_report_t g_input_reports[INPUT_REPORT_QUEUE_SI
 static volatile int g_input_report_head = 0;  // Write index
 static volatile int g_input_report_tail = 0;  // Read index
 static volatile bool g_input_report_overflow = false;  // Ring overflow flag
+
+// ---- Input report health (doc/kanji_input/report/k3c_input_stall.md) -------
+//
+// A pointer that stops can stop before the host task: this task does not
+// run, or a report is dropped here without a word. These count it, all in
+// this task (the interface callback runs from hid_host_handle_events below),
+// and input_health_tick says so at most every 5 s when something is off: a
+// pass of this task's loop far over its 100 ms wait, reports dropped in the
+// callback (device lock not taken in 1 ms), and mouse moves the host queue
+// refused. The longest silence between two motion reports goes with it as
+// context only: a hand at rest makes the same silence as a receiver that
+// lost its mouse, so it is not a reason to log by itself.
+#define USB_LOOP_SLOW_MS 300
+#define MOUSE_GAP_IGNORE_MS 10000
+EXT_RAM_BSS_ATTR static uint32_t s_mouse_motion_n, s_mouse_last_motion_ms, s_mouse_gap_max_ms;
+EXT_RAM_BSS_ATTR static uint32_t s_usb_loop_last_ms, s_usb_loop_max_ms;
+EXT_RAM_BSS_ATTR static uint32_t s_usb_cb_drops, s_mouse_send_fails, s_input_health_ms;
 static fmrb_spinlock_t g_input_report_spinlock = FMRB_SPINLOCK_INITIALIZER;
 
 // Pending disconnect item with generation (to prevent slot reuse issues)
@@ -799,6 +816,42 @@ static void auto_detect_mouse_report_format(hid_device_info_t *device, const uin
 // Maximum number of raw reports to dump in dump mode
 #define DUMP_MODE_MAX_REPORTS 50
 
+static void mouse_note_motion(void)
+{
+    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    uint32_t gap = now - s_mouse_last_motion_ms;
+    if (s_mouse_motion_n > 0 && gap < MOUSE_GAP_IGNORE_MS && gap > s_mouse_gap_max_ms) {
+        s_mouse_gap_max_ms = gap;
+    }
+    s_mouse_last_motion_ms = now;
+    s_mouse_motion_n++;
+}
+
+static void input_health_tick(void)
+{
+    uint32_t now = (uint32_t)fmrb_hal_time_get_ms();
+    if (s_usb_loop_last_ms != 0 && now - s_usb_loop_last_ms > s_usb_loop_max_ms) {
+        s_usb_loop_max_ms = now - s_usb_loop_last_ms;
+    }
+    s_usb_loop_last_ms = now;
+    if (now - s_input_health_ms < 5000) return;
+    if (s_usb_loop_max_ms >= USB_LOOP_SLOW_MS || s_usb_cb_drops || s_mouse_send_fails) {
+        FMRB_LOGI(TAG, "input health: loop max=%ums cb drops=%u mouse send fails=%u "
+                  "(motion=%u gap max=%ums)",
+                  (unsigned)s_usb_loop_max_ms, (unsigned)s_usb_cb_drops,
+                  (unsigned)s_mouse_send_fails, (unsigned)s_mouse_motion_n,
+                  (unsigned)s_mouse_gap_max_ms);
+    }
+    // The count restarts with the window; the last motion time is kept so a
+    // silence across the window edge still counts once.
+    s_mouse_motion_n = s_mouse_motion_n ? 1 : 0;
+    s_mouse_gap_max_ms = 0;
+    s_usb_loop_max_ms = 0;
+    s_usb_cb_drops = 0;
+    s_mouse_send_fails = 0;
+    s_input_health_ms = now;
+}
+
 static void process_mouse_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
     // Dump mode: hex-dump raw reports for manual device configuration
@@ -870,6 +923,7 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         // Relative coordinate device
         int dx = (int)raw_x;
         int dy = (int)raw_y;
+        if (dx != 0 || dy != 0) mouse_note_motion();
 
         // Initialize cursor to center on first movement when screen size is known
         if (!device->mouse_state.initialized && g_screen_width > 0 && g_screen_height > 0) {
@@ -904,7 +958,10 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
             if (device->mouse_state.cursor_x >= g_screen_width) device->mouse_state.cursor_x = g_screen_width - 1;
             if (device->mouse_state.cursor_y >= g_screen_height) device->mouse_state.cursor_y = g_screen_height - 1;
 
-            fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+            if (fmrb_host_send_mouse_move(device->mouse_state.cursor_x,
+                                          device->mouse_state.cursor_y) != 0) {
+                s_mouse_send_fails++;
+            }
         }
     } else {
         // Absolute coordinate device: scale from [logical_min..logical_max] to screen
@@ -925,7 +982,8 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         if (new_x != device->mouse_state.cursor_x || new_y != device->mouse_state.cursor_y) {
             device->mouse_state.cursor_x = new_x;
             device->mouse_state.cursor_y = new_y;
-            fmrb_host_send_mouse_move(new_x, new_y);
+            mouse_note_motion();
+            if (fmrb_host_send_mouse_move(new_x, new_y) != 0) s_mouse_send_fails++;
         }
         device->mouse_state.initialized = true;
     }
@@ -1143,6 +1201,7 @@ static void hid_host_interface_callback(hid_host_device_handle_t hid_device_hand
 
             // If mutex failed or device not found, drop this report (no logging)
             if (slot_idx < 0 || copy_len == 0) {
+                s_usb_cb_drops++;
                 break;
             }
 
@@ -1636,6 +1695,8 @@ static void hid_host_task(void *arg)
                                               g_raw_pending_data[s], g_raw_pending_len[s]);
             }
         }
+
+        input_health_tick();
 
         // Flush pending mouse moves that were rate-limited
         // Check for input report overflow and perform recovery
