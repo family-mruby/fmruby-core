@@ -74,7 +74,7 @@ class KeysDesktopApp < FmrbApp
   CONFIRM_H = 32
   CLOCK_W = 84          # "MM/DD hh:mm:ss" in the 6-pixel font
   KANA_W = 10
-  KANA_LABELS = ["A", "あ", "ア"]
+  KANA_LABELS = ["A", "あ", "ア", "漢"]   # 漢: a PC's IME types (mode 3)
 
   # What a menu entry may say about the screens it can draw on and whether it
   # needs a pointer (the .app.toml keys `screens` and `needs_pointer`).

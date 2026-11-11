@@ -177,15 +177,9 @@ module EditorRender
     @gfx.fill_rect(@user_area_x0, y, right - @user_area_x0, CHAR_H, STATUS_BG)
 
     # ---- right zone: measure the badges, right to left ----
-    # Mode 3: the PC's IME types instead (its own state is not known), so no
-    # badge.
-    if @kana_mode < 3
-      @kana_badge_w = FmrbI18n.text_width(kana_badge) + 2
-      right -= @kana_badge_w
-      @kana_badge_x = right
-    else
-      @kana_badge_x = nil
-    end
+    @kana_badge_w = FmrbI18n.text_width(kana_badge) + 2
+    right -= @kana_badge_w
+    @kana_badge_x = right
     problems = problem_badge
     problems_x = nil
     if problems.length > 0
@@ -255,11 +249,13 @@ module EditorRender
     case @kana_mode
     when 1 then "[あ]"
     when 2 then "[ア]"
+    when 3 then "[漢]"   # a PC's or the browser's IME types (its state unknown)
     else "[A]"
     end
   end
 
-  # Clicking the badge steps off -> hiragana -> katakana -> off. The host owns
+  # Clicking the badge steps off -> hiragana -> katakana -> off ("[漢]", the
+  # IME's mark, steps to hiragana like off does). The host owns
   # the mode; this only asks, and the badge redraws when the answer arrives.
   def cycle_kana_mode
     FmrbApp.set_kana_mode(((@kana_mode || 0) + 1) % 3)

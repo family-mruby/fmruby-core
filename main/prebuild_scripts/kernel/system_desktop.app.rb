@@ -1165,8 +1165,11 @@ class SystemDesktopApp < FmrbApp
   # three icon cells (kana, BLE, wifi) sit together. Drawn like the BLE cell
   # so it reads as an indicator and not as a stray letter: gray box + white
   # "A" for ASCII, white box + inverted kana while kana input is on.
+  # Mode 3 (FMRB_KANA_MODE_IME): a PC's or the browser's IME types instead and
+  # its own state is not known here, so the cell says only that one is in use
+  # ("漢": one glyph, so it fits the cell like the kana do).
   KANA_CELL_W = 10
-  KANA_LABELS = ["A", "あ", "ア"]
+  KANA_LABELS = ["A", "あ", "ア", "漢"]
 
   def draw_kana_icon
     if @kana_mode.nil?
@@ -1174,23 +1177,17 @@ class SystemDesktopApp < FmrbApp
       return
     end
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
-    if @kana_mode >= 3
-      # Mode 3: a PC's IME types instead, and its state is not known here,
-      # so the cell is left out (painted over, in case it was drawn).
-      @kana_icon_x = nil
-      @gfx.fill_rect(x, 1, KANA_CELL_W, 10, MENU_BG)
-      return
-    end
     @kana_icon_x = x
     # One fixed style for every mode: white box, menu-colored glyph. The old
     # gray direct-input cell sat next to the BLE icon's disconnected gray and
     # read as "this feature is off/unavailable", when the indicator is a live
     # clickable control in either mode. The glyph alone carries the mode.
     @gfx.fill_rect(x, 1, KANA_CELL_W, 10, FmrbGfx::WHITE)
-    @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode], MENU_BG, FmrbGfx::WHITE, mixed: true)
+    @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode] || "A", MENU_BG, FmrbGfx::WHITE, mixed: true)
   end
 
-  # Click the indicator to step off -> hiragana -> katakana -> off. The host
+  # Click the indicator to step off -> hiragana -> katakana -> off ("漢", the
+  # IME's mark, steps to hiragana like off does). The host
   # owns the mode, so this only asks; the indicator redraws when the answer
   # comes back as a kana_mode event.
   def cycle_kana_mode

@@ -35,7 +35,9 @@ typedef enum {
 
 // Not a mode of the composer: what the apps are told (the KANA_MODE event)
 // while the PC's IME types for them instead (the native program on a PC,
-// doc/linux_native L12b). Their indicators hide; the devices never send it.
+// doc/linux_native L12b; the browser's, doc/kanji_input K4b). Their
+// indicators show the IME's mark ("漢", doc/kanji_input K4c); the devices
+// never send it.
 #define FMRB_KANA_MODE_IME 3
 
 typedef enum {

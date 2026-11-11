@@ -20,7 +20,7 @@
 #      keyboard (mozc off), then mozc on, "nihongo", Space Space: the text
 #      being composed is drawn at the editor's cursor and the candidates
 #      under it, inside the picture (grim); Up, Enter, Ctrl+S: the file holds
-#      "日本語"; the kana indicators are hidden (mode 3)
+#      "日本語"; the kana indicators show the IME's mark (mode 3)
 #   3. the "sdl" machine (L12b's SDL path): a second program, --machine
 #      sdl, as a Wayland client of this compositor (SDL_VIDEODRIVER=wayland:
 #      SDL's text input is text-input-v3, relayed to fcitx5 like any Linux
