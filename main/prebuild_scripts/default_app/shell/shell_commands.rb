@@ -139,7 +139,7 @@ module ShellCommandsMixin
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
       @history << "  checkpoint [-r] <pid> - Write an app to an image and close it (-r: start it again)"
       @history << "  restore <image> - Start an app from its image (.ckpt)"
-      @history << "  amove <pid> <node> - Move an app to another machine (its Asterism node ID)"
+      @history << "  amove <pid|name> <node> - Move an app to another machine (its Asterism node ID; name as ps shows it)"
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
@@ -1137,22 +1137,97 @@ module ShellCommandsMixin
   # its build has what the app calls, has the app write its image and hold,
   # carries it there and closes it here once it is up there; otherwise the
   # app goes on here. The answer arrives as "checkpoint_result" with "to".
+  #
+  # The app is a PID (all digits) or a name: the PID changes with every move,
+  # so a name is what one remembers. A name is matched, ignoring ASCII case,
+  # against the name ps shows (the .app.toml app_screen_name, which is also
+  # what an image keeps across a move). The .app.toml app_handle_name is not
+  # in the kernel's task list, so it is not matched. The node is the last
+  # word and a name may have spaces (amove Ckpt Counter <node>): the shell
+  # has no quoting.
   def cmd_move(args)
-    unless args.size == 2 && numeric?(args[0])
-      @history << "Usage: amove <pid> <node>   (PID from ps; node: the other machine's Asterism node ID)"
+    if args.size < 2 || (args.size > 2 && numeric?(args[0]))
+      @history << "Usage: amove <pid|name> <node>   (PID or name from ps; node: the other machine's Asterism node ID)"
       return
     end
-    pid = args[0].to_i
+    node = args[args.size - 1]
+    if numeric?(args[0])
+      pid = args[0].to_i
+    else
+      name = args[0]
+      i = 1
+      while i < args.size - 1
+        name = name + " " + args[i]
+        i += 1
+      end
+      pid = move_target_by_name(name)
+      return if pid < 0
+    end
     if pid == FmrbApp.pid
       @history << "amove: this is the shell itself"
       return
     end
-    why = FmrbApp.move(pid, args[1])
+    why = FmrbApp.move(pid, node)
     if why
       @history << "amove: PID #{pid}: #{why}"
       return
     end
-    @history << "amove: asked to move PID #{pid} to #{args[1]}"
+    @history << "amove: asked to move PID #{pid} to #{node}"
+  end
+
+  # The PID of the one user task ps shows under +name+, or -1 after saying
+  # why (an Integer either way, which keeps Spinel's types narrow): none, or several (listed with their PIDs, so one can be picked). A
+  # task on its way out (stopping, e.g. the one just moved away) is left out.
+  def move_target_by_name(name)
+    procs = FmrbApp.ps
+    found = []
+    i = 0
+    while i < procs.size
+      p = procs[i]
+      if p[:type] == PROC_TYPE_USER && p[:state] != FmrbConst::PROC_STATE_STOPPING &&
+         same_name_ci?(p[:name].to_s, name)
+        found << p
+      end
+      i += 1
+    end
+    if found.size == 1
+      return found[0][:id]
+    end
+    if found.empty?
+      line = "amove: no running app named #{name} (see ps)"
+      Log.info(line)
+      @history << line
+      return -1
+    end
+    @history << "amove: #{found.size} apps are named #{name}; give the PID:"
+    pids = ""
+    i = 0
+    while i < found.size
+      p = found[i]
+      mark = p[:id] == FmrbApp.pid ? " (this shell)" : ""
+      @history << "  #{p[:id]}  #{p[:name]}#{mark}"
+      pids = pids.empty? ? p[:id].to_s : pids + " " + p[:id].to_s
+      i += 1
+    end
+    # One line in the log as well, for the tools that read it.
+    Log.info("amove: #{found.size} apps are named #{name}, PIDs #{pids}; not moved")
+    -1
+  end
+
+  # Equal, ignoring the case of ASCII letters (other bytes, such as a
+  # Japanese name's, must be the same). Byte by byte, so nothing is built.
+  def same_name_ci?(a, b)
+    return false unless a.bytesize == b.bytesize
+    i = 0
+    while i < a.bytesize
+      x = a.getbyte(i)
+      y = b.getbyte(i)
+      x += 32 if x >= 65 && x <= 90
+      y += 32 if y >= 65 && y <= 90
+      return false unless x == y
+      i += 1
+    end
+    true
   end
 
   # Send a file to another machine over Asterism (doc/asterism_file_transfer

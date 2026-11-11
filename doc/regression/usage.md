@@ -381,7 +381,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
   - sim のログは `tmp/regress/checkpoint/sim_<構成>_<系列>.log`、そのときのネイティブ版のログは `..._native.log`、作ったときのログは `..._build.log`。出力は構成と系列ごとに 1 行。
 - Asterism で移す場面 (F5、`tools/regress/checkpoint_asterism.rb`)。流すあいだだけ、自前の Zenoh のルータ (sim の zenohd と同じ `eclipse/zenoh` のイメージ、コンテナ名 `fmrb_regress_ckpt_zenohd`、127.0.0.1 の 17457 (tcp)・17459 (ws)) を起こす (docker が要る)。A と B には端末の設定を書いてから起こす: `/home/asterism/config.toml` (そのルータとノード ID `rg-ckpt-a`・`rg-ckpt-b`) と `/home/asterism/receive.toml` (`enabled = true` で、相手のノードだけから受け取る)。カーネルが起動のときに転送のアプリを動かす。頼み方は `ruby tools/fmrb_native.rb app move <pid> --node <ノード ID>` (デバッグサーバの `move`)。
   - asterism move: カウンタを `rg-ckpt-b` へ。相手に聞き (呼ぶメソッドの名前)、書いて止め、Asterism で分けて運び、B で起動できてから A で閉じる。B で次の 1 歩から続き、A はイメージの後に数えない。運ぶ時間・止めていた時間・移す全体の時間を出す。
-  - asterism shell: Shell で `amove <pid> rg-ckpt-b` を打つ。移り、Shell に `amove: PID n moved to rg-ckpt-b (PID m there)` が来る。
+  - asterism shell: カウンタを 2 つ動かし、Shell で名前で `amove ckpt counter rg-ckpt-b` を打つ。同じ名前が 2 つなので移さず、ログに `amove: 2 apps are named ckpt counter, PIDs n m; not moved` が出る (2 つの PID を照らす)。1 つを止めてもう一度打つと移り、Shell に `amove: PID n moved to rg-ckpt-b (PID m there)` が来る。
   - asterism requires: `/app/test/ckpt_requires_absent.app.rb` (`requires` にどのビルドにも無い名前) を B へ。B が聞かれた所で断り、イメージは書かれず (止まらない)、A で数え続ける。B には何も送られない。
   - asterism not allowed: カウンタを A 自身のノードへ。A の `receive.toml` は自分を許していないので、止める前に断られる。
   - asterism no answer: カウンタを誰もいないノード (`rg-ckpt-nobody`) へ。止める前に断られる。

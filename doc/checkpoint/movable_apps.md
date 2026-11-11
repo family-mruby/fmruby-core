@@ -128,7 +128,7 @@ Asterism で移すときは、止める前に、移動元が同じ名前の一�
 | 入口 | 使い方 |
 |---|---|
 | アプリ自身 | `move_to("ノード ID")`。相手で起動できたら `on_checkpoint` の後に閉じ (相手では `on_restore`)、移らなかったら `on_checkpoint_refused` で理由を受けて続ける。ほかのアプリは `FmrbApp.move(pid, "ノード ID")` (答えは `on_control` に `checkpoint_result` で、`to`・`there` (相手での PID)・`missing` か `reason`) |
-| Shell | `amove <pid> <ノード ID>` |
+| Shell | `amove <pid か名前> <ノード ID>`。名前は `ps` に出る名前 (`.app.toml` の `app_screen_name`。移った後のイメージもこの名前を持つ) で、英字の大文字小文字は区別しない (`amove avatar a-node`)。ノード ID は最後の語で、名前は空白を含んでよい (`amove ckpt counter a-node`。Shell に引用符は無い)。PID は移るたびに変わるので、名前で指せる。当てはまるアプリが 1 つなら移し、複数なら移さずに PID つきで候補を並べ、無ければそう言う。`.app.toml` の `app_handle_name` はカーネルのタスクの一覧に無いので、名前には使わない |
 | 開発の道具 | `ruby tools/fmrb_native.rb app move PID --node ノードID [--hold MS]`。MCP の `native_app` の `move` に `node` |
 
 - 段取りは、相手に聞く (5.4) → 止めてイメージを書く (移動中の印) → 運ぶ → 相手で起動 → 起動できたと返ってきたら閉じる。断られた・返事が無い (既定の `hold` 10 秒) ときは止めた所から続ける。返事が遅れて相手で起動したときは、相手の側を止める (2 つにならない)。

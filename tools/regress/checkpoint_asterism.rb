@@ -253,15 +253,25 @@ module Regress
           "carried in #{carried} ms, held #{held} ms, the move #{took} ms"
       end
 
-      # The shell's `amove PID NODE` (FmrbApp.move): the same move, and the
-      # shell is answered with the PID there.
+      # The shell's `amove NAME NODE` (FmrbApp.move): the same move, named the
+      # way ps shows it (case and all spaces as typed), and the shell is
+      # answered with the PID there. With two counters up the name is
+      # refused first and both PIDs are listed.
       def round_asterism_shell
         pid = start_counter
         shell = app("spawn", SHELL).fetch("pid")
         sleep 1.5
+        second = start_counter
+        mark = log_lines.size
+        native("input", "text", "amove ckpt counter #{NODE_B}", "key", "enter")
+        i = wait_line(/amove: 2 apps are named ckpt counter, PIDs [\d ]+; not moved/, mark, "the shell refusing two of a name")
+        listed = log_lines[i][/PIDs ([\d ]+);/, 1].split.map(&:to_i).sort
+        raise Failure, "asterism shell: listed #{listed.inspect}, not #{[pid, second].sort.inspect}" unless listed == [pid, second].sort
+        app("kill", second.to_s)
+        sleep 0.5
         mark_b = log_lines(RUN_DIR_B).size
         mark = log_lines.size
-        native("input", "text", "amove #{pid} #{NODE_B}", "key", "enter")
+        native("input", "text", "amove ckpt counter #{NODE_B}", "key", "enter")
         i = wait_line(/amove: PID #{pid} moved to #{NODE_B} \(PID (\d+) there\)/, mark, "the shell's answer")
         there = log_lines[i][/\(PID (\d+) there\)/, 1].to_i
         restored = wait_line(/ckpt_counter: on_restore /, mark_b, "on_restore in the second program", run_dir: RUN_DIR_B)
@@ -270,7 +280,7 @@ module Regress
         app_b("kill", there.to_s)
         app("kill", shell.to_s)
         sleep 0.3
-        "shell: moved, PID #{there} there"
+        "shell: two of a name refused (PIDs #{listed.join(' ')}), moved by name, PID #{there} there"
       end
 
       # Refused when asked, before anything is stopped: no image, it counts on.
