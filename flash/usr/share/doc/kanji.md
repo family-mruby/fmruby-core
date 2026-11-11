@@ -34,7 +34,8 @@ the dict folder and checks that the copy is whole.
 
 ### Sending it over the network (Asterism)
 
-From the Shell of another Family mruby machine:
+From the Shell of another Family mruby machine (`anodes` lists the
+machines' node IDs):
 
     asend <node> fmrb_kanji.dic --sd
 

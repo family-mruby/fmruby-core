@@ -123,7 +123,7 @@ Asterism で移すときは、止める前に、移動元が同じ名前の一�
 
 ### 6.1 別の端末へ移す (Asterism、F5)
 
-移す先は **Asterism の端末の名前** (ノード ID。`asterism_nodes` や `/home/asterism/config.toml` の `node` に出るもの) で指す。
+移す先は **Asterism の端末の名前** (ノード ID。`asterism_nodes` や `/home/asterism/config.toml` の `node` に出るもの) で指す。端末の Shell では `anodes` が今見えている端末のノード ID (自分の端末に印) と名前・種類を並べ、`anodes info <ノード ID>` がその端末の profile、動いているアプリと status、公開しているオブジェクト、転送の受け口 (`transfer/inbox`) が見えるか (= ファイルやアプリを受け取る状態か。許す相手かどうかまでは分からない) を出す。見えるのは Asterism につながっているアプリがある端末だけ。
 
 | 入口 | 使い方 |
 |---|---|

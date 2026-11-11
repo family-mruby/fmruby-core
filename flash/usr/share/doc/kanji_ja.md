@@ -34,7 +34,8 @@
 
 ### ネットワークで送る (Asterism)
 
-別の Family mruby の端末の Shell から:
+別の Family mruby の端末の Shell から (端末のノード ID は `anodes` で
+分かります):
 
     asend <ノード> fmrb_kanji.dic --sd
 

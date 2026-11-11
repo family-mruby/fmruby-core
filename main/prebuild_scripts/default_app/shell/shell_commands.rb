@@ -13,6 +13,15 @@ module ShellCommandsMixin
   COMMENT_TOML_FENCE = "#---fmrb"
   COMMENT_TOML_SCAN_BYTES = 512
 
+  # anodes: how long a connect may take (a TLS handshake is 10-20 s on a
+  # board), the time the others' liveliness is given to come in after it,
+  # how long each machine is waited for when asked (its profile, a status),
+  # and how long the connection stays after the last anodes.
+  ANODES_CONNECT_MS = 30000
+  ANODES_SETTLE_MS = 1500
+  ANODES_ASK_MS = 1000
+  ANODES_KEEP_MS = 60000
+
   # Talking to the service host (doc/user_extension/services/plan.md).
   # Services live inside one app and have no pid of their own, so they are
   # addressed by name over Pub/Sub: requests go to one well-known topic and
@@ -103,6 +112,8 @@ module ShellCommandsMixin
       cmd_restore(args)
     when "amove"
       cmd_move(args)
+    when "anodes"
+      cmd_anodes(args)
     when "asend"
       cmd_send(args)
     when "areceive"
@@ -143,6 +154,8 @@ module ShellCommandsMixin
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
+      @history << "  anodes [list] - The machines on Asterism now (this one marked), with their names"
+      @history << "  anodes info <node> - One machine: its profile, apps and their status, whether it takes files and apps"
       @history << "  areceive - Whether this machine receives files and apps, and from whom"
       @history << "  areceive on|off - Receive (and start the transfer app), or stop receiving"
       @history << "  areceive allow|deny <file|checkpoint> <node> - Who may send files / move apps here ('*': everyone on the network)"
@@ -1228,6 +1241,188 @@ module ShellCommandsMixin
       i += 1
     end
     true
+  end
+
+  # anodes (doc/asterism_file_transfer): the machines on Asterism, the way
+  # the Receiving app's Nearby finds them -- this shell connects as itself
+  # through FmrbAsterism::Link (the machine's settings) and reads
+  # Asterism.nodes, which is filled from the liveliness of what is on the
+  # network. anodes info <node> adds what that machine tells about itself:
+  # its profile (@profile), its applications and their status (@status), the
+  # objects they expose, and whether its transfer app's inbox is up (the
+  # door files and moved apps come in by). Connecting takes a moment (a TLS
+  # handshake 10-20 s on a board), so the answer comes from tick_anodes;
+  # the connection is closed once it has not been asked for a while.
+  #
+  #   anodes [list]        this machine (marked) and the others seen now
+  #   anodes info <node>   one of them
+  def cmd_anodes(args)
+    sub = args.empty? ? "list" : args[0]
+    if sub == "list" && args.size <= 1
+      info = nil
+    elsif sub == "info" && args.size == 2
+      info = args[1]
+    else
+      @history << "Usage: anodes [list] | anodes info <node>   (node: an Asterism node ID from anodes)"
+      return
+    end
+    if @an_pending
+      @history << "anodes: still looking; wait for the answer"
+      return
+    end
+    unless Object.const_defined?(:FmrbAsterism) && Object.const_defined?(:Asterism)
+      @history << "anodes: this build has no Asterism"
+      return
+    end
+    st = FmrbAsterism.settings
+    if st.error
+      @history << "anodes: not on Asterism: #{st.error}"
+      @history << "  #{st.node} (this machine)"
+      return
+    end
+    link = @an_link
+    if link && (link.state == :failed || link.state == :lost || link.state == :closed)
+      link.close
+      link = nil
+    end
+    unless link
+      # One name per shell: two shells on a machine would otherwise refuse
+      # each other ("already on the network").
+      link = FmrbAsterism::Link.new(self, "shell-#{FmrbApp.pid}", tag: "anodes", retry_ms: nil)
+      @an_link = link
+    end
+    @an_info = info
+    @an_pending = true
+    @an_since = Machine.board_millis
+    if link.connected?
+      @an_ready_at = @an_since
+    else
+      @an_ready_at = nil
+      @history << "anodes: connecting to Asterism..."
+    end
+  end
+
+  # FmrbAsterism::Link calls it after a connect. The others' liveliness comes
+  # in over the next polls, so the list is read a moment later.
+  def link_up(link)
+    @an_ready_at = Machine.board_millis + ANODES_SETTLE_MS
+  end
+
+  # Once per on_update: keeps the connection polled, answers a pending
+  # anodes, and closes the connection when it has not been asked for a while.
+  def tick_anodes
+    link = @an_link
+    return unless link
+    now = Machine.board_millis
+    link.update
+    unless @an_pending
+      if now - @an_since > ANODES_KEEP_MS
+        link.close
+        @an_link = nil
+      end
+      return
+    end
+    if link.connected?
+      return if @an_ready_at.nil? || now < @an_ready_at
+      @an_pending = false
+      @an_since = now
+      unless link.up?
+        # The session is there but the router is not answering: Zenoh is
+        # opening it again, and the list would hold only this machine.
+        append_output("anodes: the router does not answer now (reconnecting)")
+        append_output("  #{link.node} (this machine)")
+        return
+      end
+      begin
+        @an_info ? anodes_info(link, @an_info) : anodes_list(link)
+      rescue => e
+        append_output("anodes: #{e.message}")
+      end
+      return
+    end
+    st = link.state
+    if st == :failed || st == :lost || st == :closed || now - @an_since > ANODES_CONNECT_MS
+      @an_pending = false
+      why = link.reason.to_s
+      append_output("anodes: could not connect to Asterism (#{why.empty? ? st.to_s : why})")
+      append_output("  #{link.node} (this machine)")
+    end
+  end
+
+  def anodes_list(link)
+    own = link.node.to_s
+    all = ::Asterism.nodes
+    append_output("anodes: #{all.size} machine(s) on Asterism")
+    i = 0
+    while i < all.size
+      n = all[i].to_s
+      words = anodes_profile_words(anodes_profile(n, own))
+      line = "  #{n}"
+      line += "  #{words}" unless words.empty?
+      line += " (this machine)" if n == own
+      append_output(line)
+      i += 1
+    end
+  end
+
+  def anodes_info(link, node)
+    own = link.node.to_s
+    all = ::Asterism.nodes
+    unless all.include?(node)
+      append_output("anodes: no node #{node} is visible (anodes lists them)")
+      return
+    end
+    append_output(node == own ? "#{node} (this machine)" : node)
+    pr = anodes_profile(node, own)
+    if pr
+      words = []
+      ["name", "kind", "host", "protocol"].each { |k| words << "#{k}=#{pr[k]}" if pr.key?(k) }
+      append_output("  profile: #{words.join(', ')}") unless words.empty?
+    end
+    apps = ::Asterism.apps("#{node}/*")
+    append_output("  apps: none") if apps.empty?
+    inbox = false
+    i = 0
+    while i < apps.size
+      app = apps[i].to_s.split("/")[1].to_s
+      i += 1
+      line = "  #{app}"
+      st = anodes_status(node, app)
+      line += "  status: #{st.map { |k, v| "#{k}=#{v}" }.join(', ')}" if st && !st.empty?
+      append_output(line)
+      objs = ::Asterism.each("#{node}/#{app}/*").map { |px| px.asterism_path.to_s.split("/")[2].to_s }
+      append_output("    objects: #{objs.join(', ')}") unless objs.empty?
+      inbox = true if app == "transfer" && objs.include?("inbox")
+    end
+    if inbox
+      append_output("  transfer: inbox up (takes files and apps from whom it allows)")
+    else
+      append_output("  transfer: no inbox (takes no files or apps now)")
+    end
+  end
+
+  # A node's profile without its icon (this machine's from here), or nil
+  # when it does not answer.
+  def anodes_profile(node, own)
+    return ::Asterism.profile if node == own
+    ::Asterism.profile_of(node, icon: false, timeout_ms: ANODES_ASK_MS)
+  rescue
+    nil
+  end
+
+  def anodes_status(node, app)
+    ::Asterism.status_of(node, app, timeout_ms: ANODES_ASK_MS)
+  rescue
+    nil
+  end
+
+  # "Moku, sdl, family_mruby": the profile's name, where it runs and what
+  # runs it, the ones it has.
+  def anodes_profile_words(pr)
+    return "" unless pr
+    words = []
+    ["name", "host", "kind"].each { |k| words << pr[k].to_s if pr[k] && !pr[k].to_s.empty? }
+    words.join(", ")
   end
 
   # Send a file to another machine over Asterism (doc/asterism_file_transfer

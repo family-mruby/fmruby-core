@@ -429,6 +429,7 @@ class ShellApp < FmrbApp
     tick_pending_edit
     tick_svc_wait
     tick_send
+    tick_anodes
 
     # Continuous scroll while holding scrollbar
     if @scroll_hold != 0
@@ -884,6 +885,7 @@ class ShellApp < FmrbApp
     # Pids are slot indices and get handed out again, so leaving the reply
     # topic subscribed would send the next shell in this slot these answers.
     unsubscribe(svc_reply_topic) if @svc_subscribed
+    @an_link.close if @an_link
     Log.info("Destroyed")
   end
 
