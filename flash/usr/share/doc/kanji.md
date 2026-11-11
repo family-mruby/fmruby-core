@@ -59,11 +59,13 @@ Shell, move it into dict:
 
 Skip the mkdir when /sd/dict/ is already there. If the inbox already has a
 file of that name, the new one gets a name like fmrb_kanji(1).dic (send
-with -o to overwrite instead). Restart the machine after moving it.
+with -o to overwrite instead).
 
-The machine looks for the dictionary **when it starts**, so restart after
-putting or replacing it. With no card, no dictionary or a broken one, kana
-input works as before, without conversion.
+The machine **uses the dictionary as soon as it is placed or replaced** (no
+restart). While it is being replaced, and after it is deleted, kana input
+goes on without conversion; so it does with no card, no dictionary or a
+broken one. Where there is no room for two dictionaries, delete the old one
+first, then put the new one.
 
 ## 3. Using it
 

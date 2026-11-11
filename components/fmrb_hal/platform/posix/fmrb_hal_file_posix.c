@@ -37,6 +37,9 @@ typedef struct fmrb_file_handle {
     // the mount; a write past that mark has to buy the difference.
     bool   in_tmp;
     size_t counted;
+    // Opened for writing on a path the change hook watches: the close
+    // reports the end of the change.
+    bool   watched;
 } fmrb_file_handle_t;
 
 // Internal directory handle structure
@@ -55,6 +58,9 @@ static fmrb_semaphore_t s_file_mutex = NULL;
 // Open handles, both lists guarded by s_file_mutex
 static fmrb_file_handle_t *s_open_files = NULL;
 static fmrb_dir_handle_t *s_open_dirs = NULL;
+
+// The change hook (fmrb_hal_file_set_change_hook): the kanji dictionary.
+static fmrb_hal_file_change_hook_t s_change_hook;
 
 #define HANDLE_LIST_ADD(head, h) do {           \
         (h)->prev = NULL;                       \
@@ -1004,10 +1010,7 @@ void fmrb_hal_file_deinit(void) {
 }
 
 // Open a file
-fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
-    if (path == NULL || out_handle == NULL) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
+static fmrb_err_t file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
 
     if (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC | FMRB_O_APPEND)) {
         REFUSE_CHANGE(path, true);
@@ -1085,6 +1088,36 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     return FMRB_OK;
 }
 
+// The change hook's side of an open for writing, a remove and a rename. Kept
+// out of the plain calls (and their stack frames) while no hook is set.
+__attribute__((noinline))
+static fmrb_err_t watched_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
+    char full_path[512];
+    build_path(path, full_path, sizeof(full_path));
+    // Outside the lock: the hook may wait for its owner to close the file.
+    const bool watched = fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_BEGIN);
+    fmrb_err_t err = file_open(path, flags, out_handle);
+    if (watched) {
+        if (err == FMRB_OK) {
+            ((fmrb_file_handle_t *)*out_handle)->watched = true;
+        } else {
+            fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_WRITTEN);
+        }
+    }
+    return err;
+}
+
+fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
+    if (path == NULL || out_handle == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (s_change_hook != NULL &&
+        (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC | FMRB_O_APPEND))) {
+        return watched_open(path, flags, out_handle);
+    }
+    return file_open(path, flags, out_handle);
+}
+
 // Close a file
 fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
     if (handle == NULL) {
@@ -1100,8 +1133,13 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
     fmrb_file_handle_t *fh = (fmrb_file_handle_t *)handle;
     HANDLE_LIST_REMOVE(s_open_files, fh);
     fclose(fh->fp);
+    const bool watched = fh->watched;
     fmrb_sys_free(fh);
     UNLOCK();
+    if (watched) {
+        // The handle keeps no name: the hook reads NULL as the path it watches.
+        fmrb_hal_file_change(NULL, FMRB_FILE_CHANGE_WRITTEN);
+    }
     return FMRB_OK;
 }
 
@@ -1226,10 +1264,7 @@ fmrb_err_t fmrb_hal_file_tell(fmrb_file_t handle, uint32_t *position) {
 }
 
 // Delete a file
-fmrb_err_t fmrb_hal_file_remove(const char *path) {
-    if (path == NULL) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
+static fmrb_err_t file_remove(const char *path) {
 
     REFUSE_CHANGE(path, false);
 
@@ -1261,11 +1296,27 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
 
-// Rename/move a file
-fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
-    if (old_path == NULL || new_path == NULL) {
+__attribute__((noinline))
+static fmrb_err_t watched_remove(const char *path) {
+    char full_path[512];
+    build_path(path, full_path, sizeof(full_path));
+    const bool watched = fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_BEGIN);
+    fmrb_err_t err = file_remove(path);
+    if (watched) {
+        fmrb_hal_file_change(full_path, err == FMRB_OK ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
+    }
+    return err;
+}
+
+fmrb_err_t fmrb_hal_file_remove(const char *path) {
+    if (path == NULL) {
         return FMRB_ERR_INVALID_PARAM;
     }
+    return s_change_hook ? watched_remove(path) : file_remove(path);
+}
+
+// Rename/move a file
+static fmrb_err_t file_rename(const char *old_path, const char *new_path) {
 
     REFUSE_CHANGE(old_path, false);
     REFUSE_CHANGE(new_path, false);
@@ -1336,6 +1387,31 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
     }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+__attribute__((noinline))
+static fmrb_err_t watched_rename(const char *old_path, const char *new_path) {
+    char old_full_path[512];
+    char new_full_path[512];
+    build_path(old_path, old_full_path, sizeof(old_full_path));
+    build_path(new_path, new_full_path, sizeof(new_full_path));
+    const bool old_watched = fmrb_hal_file_change(old_full_path, FMRB_FILE_CHANGE_BEGIN);
+    const bool new_watched = fmrb_hal_file_change(new_full_path, FMRB_FILE_CHANGE_BEGIN);
+    fmrb_err_t err = file_rename(old_path, new_path);
+    if (old_watched) {
+        fmrb_hal_file_change(old_full_path, err == FMRB_OK ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
+    }
+    if (new_watched) {
+        fmrb_hal_file_change(new_full_path, FMRB_FILE_CHANGE_WRITTEN);
+    }
+    return err;
+}
+
+fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
+    if (old_path == NULL || new_path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    return s_change_hook ? watched_rename(old_path, new_path) : file_rename(old_path, new_path);
 }
 
 // Get file information
@@ -1810,6 +1886,9 @@ size_t fmrb_hal_file_close_owned_locked(void *owner) {
         if (fh->owner == owner) {
             HANDLE_LIST_REMOVE(s_open_files, fh);
             fclose(fh->fp);
+            if (fh->watched) {
+                fmrb_hal_file_change(NULL, FMRB_FILE_CHANGE_WRITTEN);
+            }
             fmrb_sys_free(fh);
             closed++;
         }
@@ -1827,4 +1906,13 @@ size_t fmrb_hal_file_close_owned_locked(void *owner) {
         dh = next;
     }
     return closed;
+}
+
+void fmrb_hal_file_set_change_hook(fmrb_hal_file_change_hook_t hook) {
+    s_change_hook = hook;
+}
+
+bool fmrb_hal_file_change(const char *real_path, fmrb_file_change_t change) {
+    fmrb_hal_file_change_hook_t hook = s_change_hook;
+    return hook ? hook(real_path, change) : false;
 }

@@ -437,6 +437,48 @@ void fmrb_hal_file_unlock(void);
  */
 size_t fmrb_hal_file_close_owned_locked(void *owner);
 
+/** What is happening to a file a change hook is told about. */
+typedef enum {
+    FMRB_FILE_CHANGE_BEGIN = 0,  /**< about to be written, removed or replaced */
+    FMRB_FILE_CHANGE_WRITTEN,    /**< done: the file is there (closed after a write, renamed in) */
+    FMRB_FILE_CHANGE_REMOVED,    /**< done: the file is gone (removed, renamed away) */
+} fmrb_file_change_t;
+
+/**
+ * @brief Called around a change to a file.
+ *
+ * The one user is the kanji dictionary's task, which keeps its file open and
+ * must let go of it before the file can be removed or replaced (LittleFS
+ * refuses to remove an open file). BEGIN may wait a little for that (never
+ * under the file lock); WRITTEN and REMOVED never wait and may come with the
+ * file lock held.
+ *
+ * @param real_path The path as fmrb_hal_file_resolve_path gives it. NULL
+ *                  for the end of a write reported by a close (the HAL does
+ *                  not keep names): the path the hook answered true for.
+ * @param change    What is happening.
+ * @return true when the hook cares about this path (the HAL then reports the
+ *         end of the change too).
+ */
+typedef bool (*fmrb_hal_file_change_hook_t)(const char *real_path, fmrb_file_change_t change);
+
+/**
+ * @brief Install the change hook (one; NULL removes it).
+ *
+ * The file HAL calls it from fmrb_hal_file_open with a write flag (BEGIN
+ * before the open, WRITTEN at the close), fmrb_hal_file_remove and
+ * fmrb_hal_file_rename (both names). Code that writes with libc directly
+ * (the dev remote's /fs/put and /fs/del) calls fmrb_hal_file_change itself.
+ */
+void fmrb_hal_file_set_change_hook(fmrb_hal_file_change_hook_t hook);
+
+/**
+ * @brief Tell the change hook about a change (no-op without a hook).
+ * @param real_path The path as fmrb_hal_file_resolve_path gives it.
+ * @return The hook's answer; false without a hook.
+ */
+bool fmrb_hal_file_change(const char *real_path, fmrb_file_change_t change);
+
 #ifdef __cplusplus
 }
 #endif

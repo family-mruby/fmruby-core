@@ -44,6 +44,9 @@ typedef struct {
     // Task that opened it, so an app's leftovers can be closed when it ends
     // (fmrb_hal_file_close_owned_locked).
     void *owner;
+    // Opened for writing on a path the change hook watches: the close
+    // reports the end of the change.
+    bool watched;
 } fmrb_file_slot_t;
 
 // Internal directory handle structure
@@ -61,6 +64,9 @@ typedef struct {
 // Static file and directory handle pools
 EXT_RAM_BSS_ATTR static fmrb_file_slot_t s_file_slots[MAX_OPEN_FILES];
 EXT_RAM_BSS_ATTR static fmrb_dir_slot_t s_dir_slots[MAX_OPEN_DIRS];
+
+// The change hook (fmrb_hal_file_set_change_hook): the kanji dictionary.
+EXT_RAM_BSS_ATTR static fmrb_hal_file_change_hook_t s_change_hook;
 
 // Internal-RAM bounce buffer for writes whose source is outside internal RAM.
 // Only built on the S3. The source-address test below is the S3's external
@@ -582,11 +588,17 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
+    const bool writing = (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT |
+                                   FMRB_O_TRUNC | FMRB_O_APPEND)) != 0;
+    // Outside the lock: the hook may wait for its owner to close the file.
+    const bool watched = writing && fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_BEGIN);
+
     LOCK();
 
     fmrb_file_slot_t *slot = find_free_file_slot();
     if (slot == NULL) {
         UNLOCK();
+        if (watched) fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_WRITTEN);
         return FMRB_ERR_BUSY;
     }
 
@@ -596,8 +608,10 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     slot->fp = fopen(full_path, mode);
     if (slot->fp == NULL) {
         UNLOCK();
+        if (watched) fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_WRITTEN);
         return FMRB_ERR_FAILED;
     }
+    slot->watched = watched;
 
     // Disable libc stdio buffering, but only when the file can be written.
     // The newlib FILE buffer can be allocated in PSRAM by the default heap,
@@ -611,8 +625,7 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     // one VFS round trip per byte. Measured on LittleFS at 20.4 us/byte, i.e.
     // 290 ms to read a 14 KB app script. Read-only opens therefore keep
     // newlib's default buffering.
-    if (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT |
-                 FMRB_O_TRUNC | FMRB_O_APPEND)) {
+    if (writing) {
         setvbuf(slot->fp, NULL, _IONBF, 0);
     }
 
@@ -651,8 +664,15 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
     fclose(slot->fp);
     slot->fp = NULL;
     slot->in_use = false;
+    const bool watched = slot->watched;
+    slot->watched = false;
 
     UNLOCK();
+    if (watched) {
+        // The hook compares paths only; the close does not keep the name, so
+        // it is told through the one it watches.
+        fmrb_hal_file_change(NULL, FMRB_FILE_CHANGE_WRITTEN);
+    }
     return FMRB_OK;
 }
 
@@ -842,9 +862,13 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
     char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
+    const bool watched = fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_BEGIN);
     LOCK();
     int ret = unlink(full_path);
     UNLOCK();
+    if (watched) {
+        fmrb_hal_file_change(full_path, ret == 0 ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
+    }
 
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -860,9 +884,17 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
     build_path(old_path, old_full_path, sizeof(old_full_path));
     build_path(new_path, new_full_path, sizeof(new_full_path));
 
+    const bool old_watched = fmrb_hal_file_change(old_full_path, FMRB_FILE_CHANGE_BEGIN);
+    const bool new_watched = fmrb_hal_file_change(new_full_path, FMRB_FILE_CHANGE_BEGIN);
     LOCK();
     int ret = rename(old_full_path, new_full_path);
     UNLOCK();
+    if (old_watched) {
+        fmrb_hal_file_change(old_full_path, ret == 0 ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
+    }
+    if (new_watched) {
+        fmrb_hal_file_change(new_full_path, FMRB_FILE_CHANGE_WRITTEN);
+    }
 
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -1364,6 +1396,10 @@ size_t fmrb_hal_file_close_owned_locked(void *owner) {
             slot->fp = NULL;
             slot->in_use = false;
             slot->owner = NULL;
+            if (slot->watched) {
+                slot->watched = false;
+                fmrb_hal_file_change(NULL, FMRB_FILE_CHANGE_WRITTEN);
+            }
             closed++;
         }
     }
@@ -1380,4 +1416,13 @@ size_t fmrb_hal_file_close_owned_locked(void *owner) {
         }
     }
     return closed;
+}
+
+void fmrb_hal_file_set_change_hook(fmrb_hal_file_change_hook_t hook) {
+    s_change_hook = hook;
+}
+
+bool fmrb_hal_file_change(const char *real_path, fmrb_file_change_t change) {
+    fmrb_hal_file_change_hook_t hook = s_change_hook;
+    return hook ? hook(real_path, change) : false;
 }

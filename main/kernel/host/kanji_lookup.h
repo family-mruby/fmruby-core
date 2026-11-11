@@ -13,6 +13,12 @@
 // The task exists only when conversion is enabled and the dictionary file is
 // there; without one nothing is created and kana input stays as it was. The
 // browser build has no task at all (it converts with the browser's IME).
+//
+// The file can be replaced while the machine runs: a change hook on the file
+// HAL (and the dev remote's /fs/put, /fs/del) asks the task to close the file
+// before it is written, removed or renamed, and to open it again after. While
+// it is closed, lookups answer "none" and kana input goes on as kana. A
+// dictionary placed later at the configured path starts the task.
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -54,9 +60,9 @@ void fmrb_kanji_lookup_configure(const char *path, bool enabled);
 /**
  * @brief Start the task when conversion is enabled and the file exists.
  *
- * Called once at boot after the host task is up. The task opens the
- * dictionary; if that fails it frees what it took and ends, and conversion
- * stays off.
+ * Called once at boot after the host task is up. Installs the file change
+ * hook whenever conversion is enabled. The task opens the dictionary; if that
+ * fails conversion stays off until the file is written again.
  */
 void fmrb_kanji_lookup_start(void);
 

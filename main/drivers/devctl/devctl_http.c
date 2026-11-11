@@ -437,12 +437,19 @@ static esp_err_t fs_put_handler(httpd_req_t *req)
         total += (size_t)got;
     }
     fclose(f);
-    unlink(rpath);  // rename does not replace on every filesystem here
+    // A file someone keeps open (the kanji dictionary) is let go of first:
+    // LittleFS removes no open file. It is opened again after the rename.
+    const bool watched = fmrb_hal_file_change(rpath, FMRB_FILE_CHANGE_BEGIN);
+    const bool old_gone = unlink(rpath) == 0;  // rename does not replace on every filesystem here
     if (rename(tmp, rpath) != 0) {
         unlink(tmp);
+        if (watched) {
+            fmrb_hal_file_change(rpath, old_gone ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
+        }
         return ctl_json(req, "500 Internal Server Error",
                         "{\"ok\":false,\"err\":\"rename failed\"}");
     }
+    if (watched) fmrb_hal_file_change(rpath, FMRB_FILE_CHANGE_WRITTEN);
     char body[64];
     snprintf(body, sizeof(body), "{\"ok\":true,\"size\":%u}", (unsigned)total);
     FMRB_LOGI(TAG, "dev fs: put %s (%u bytes)", vpath, (unsigned)total);
@@ -459,7 +466,12 @@ static esp_err_t fs_del_handler(httpd_req_t *req)
     if (stat(rpath, &st) != 0) {
         return ctl_json(req, "404 Not Found", "{\"ok\":false,\"err\":\"no such file\"}");
     }
+    // As in put: whoever keeps the file open closes it first.
+    const bool watched = !S_ISDIR(st.st_mode) && fmrb_hal_file_change(rpath, FMRB_FILE_CHANGE_BEGIN);
     int rc = S_ISDIR(st.st_mode) ? rmdir(rpath) : unlink(rpath);
+    if (watched) {
+        fmrb_hal_file_change(rpath, rc == 0 ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
+    }
     if (rc != 0) {
         return ctl_json(req, "500 Internal Server Error",
                         "{\"ok\":false,\"err\":\"remove failed (directory not empty?)\"}");
