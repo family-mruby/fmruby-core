@@ -27,8 +27,8 @@ asterism (CRuby と端末で同じ `mrblib/`、CRuby だけの `lib/asterism/cru
      値が無いもの (状態を設定していない等) はキーごと省く。
    - `@status` の put は今どおり。
 3. 受ける側:
-   - `Asterism.subscribe(path) { |s| ... }` (path は `<node>/<app>/<name>`、ワイルドカード可)。包み `s` は `value` (encoding が無ければ
-     MessagePack を解いた値、あれば String)・`seq`・`time` (送り手の時刻、無ければ nil)・`encoding` (無ければ `"msgpack"`、design.md の 13)・
+   - `Asterism.subscribe(path) { |v, info| ... }` (path は `<node>/<app>/<name>`、ワイルドカード可。`|v|` だけでも書けること)。`v` は値 (encoding が無ければ
+     MessagePack を解いた値、あれば String)。補足 `info` は `seq`・`time` (送り手の時刻、無ければ nil)・`encoding` (無ければ `"msgpack"`、design.md の 13)・
      `key`・`node`・`app`・`name`、ルータの時刻 (部品が読めれば)、`lost` (前の値から欠けた数。折り返しとつなぎ直しを design.md 2 章の
      読み方で区別) を持つ。購読の取り消しもできるように。
    - 宣言の一覧を引く: `Asterism.pubs_of("<node>/<app>")` (今の `status_of`・`profile_of` の流儀に合わせる)、型の定義も同様に。
