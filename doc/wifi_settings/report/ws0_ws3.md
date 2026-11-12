@@ -129,7 +129,7 @@ hidden = true           # 任意: 隠れた SSID。名前で試す
   前提にしている)。
 - sim・ブラウザ版は `wifi_networks` が "" のままなので、ボタンは出ない (画面の基準は変わらない)。
 - Spinel のデスクトップ (`FMRB_APP_ENGINE_DESKTOP=spinel`、標準ではない) は `wifi_networks` を "" で答えるので、
-  ボタンは出ない。要るなら Spinel の基底にも FFI を通す (今回はしていない)。
+  ボタンは出なかった (8.2 で FFI を通した)。
 - 案内: `flash/usr/share/doc/wifi.md`・`wifi_ja.md` (画面の使い方、自分でつなぐ順、wifi.toml の書き方と隠れた SSID)。
   `home.md`・`home_ja.md` の一覧に足した。
 
@@ -208,12 +208,78 @@ hidden = true           # 任意: 隠れた SSID。名前で試す
 
 ## 7. 気づいたこと・残り
 
-- BLE の Web コンソールの Settings は wifi.toml を前の形 (1 組) で書き直すので、覚えた他のネットワークは消える
-  (`tool/web/js/settings.js` の `settingsWifiToml`)。案内には書いた。直すなら Web コンソールで既存の `[[networks]]` を
-  残して足す形にする (今回はしていない)。
-- 同じ Wi-Fi の Window を 2 つ開ける (Network の画面から 2 回押すと 2 つ)。ネイティブ版は 1 つに絞っている。
+- (8 章で直した) BLE の Web コンソールの Settings が wifi.toml を前の形 (1 組) で書き直し、覚えた他のネットワークが消えた。
+- (8 章で直した) 同じ Wi-Fi の Window を 2 つ開けた。
 - 「忘れる」の後、選択が隣のネットワークへ移り、それが鍵ありで覚えていないとパスワード欄が出る。
 - 起動時の接続は探索の分 (約 5 秒) 遅くなった。覚えているのが 1 つで隠れていなければ、探さずにつなぐ近道もありうる
   (今回は「強さで選ぶ」を全部の場合にそろえた)。
-- Spinel のデスクトップではボタンが出ない (上記)。
+- (8 章で直した) Spinel のデスクトップではボタンが出なかった。
 
+## 8. 追いの直し (2026-11-12): BLE の Web コンソール・Spinel のデスクトップ・Window を 1 つに
+
+### 8.1 BLE の Web コンソールの Wi-Fi は覚えたものに足す
+
+- 前は Web コンソールが `/home/wifi.toml` を PUT で丸ごと書き直していた (前の形の 1 組)。新しいコマンド `0x19`
+  (WIFI_ADD) を足し、コンソールはネットワーク 1 つを TOML の文字列 (今までと同じ `settingsWifiToml` の中身) で送る。
+  端末はそれを読み、Wi-Fi の画面と同じ書き手で `/home/wifi.toml` に書く。
+- 書き手: `wifi_conf_merge` (`wifi_conf.c`、純粋な C) が、送られたネットワークを `wifi_conf_add` で先頭に入れる
+  (同じ SSID はパスワードを書き換えて先頭へ、ほかは残し、5 つを超えると一番古いものを落とす)。`enable` は送られた
+  値 (true)、`hostname` は送られたときだけ。ファイルへは `wifi_save_networks` (`wifi_task.c`) が `conf_load` →
+  merge → `conf_save` (`.tmp` に書いて名前を変える) で書く。`/etc/wifi.toml` から読んでいたときは、その中身も
+  `/home` へ移る (画面と同じ)。
+- 書き手を 1 つにする: Wi-Fi の管理タスクが動いているときは、BLE のタスクは要求を置いて管理タスクを起こし
+  (`N_USER_MERGE`)、終わりの印 (`N_MERGE_DONE`。同じ event group の別のビットで、管理タスクは待たない) を 10 秒まで
+  待つ。管理タスクがまだ受け取っていなければ要求を取り下げてタイムアウト、受け取っていれば書き終わるまで待つ
+  (渡した領域を先に放さないため)。管理タスクが無い (S3 で BLE が動いている、Wi-Fi が無効) ときは BLE のタスクで
+  そのまま書く。つながらずに探し直しを待っている間に足されたら、すぐ探し直す。
+- 受け付ける時間の決まりは `/home/wifi.toml` の PUT と同じ (`fmrb_remote_fs_check`)。答えは
+  `{"ok":true,"saved":<数>,"path":"/home/wifi.toml"}`。
+- 新しい static は PSRAM の 2 つ (要求のポインタと結果) だけ。作業の領域 (`wifi_conf_t` 2 つ、約 1 KB) は呼ぶたびに
+  `fmrb_sys_malloc` で取り、消してから放す。
+- コンソール (`tool/web/js/settings.js`): `0x19` が「知らないコマンド」と返る古いファームには、今までどおり 1 組の
+  形を PUT で書く (古いファームは 1 つしか読まない)。パスワードを空のまま書けるのは、読めたパスワードと同じ
+  ネットワーク (覚えているものの先頭) の SSID のときだけにした (前は SSID を変えても前のパスワードを使った)。
+  画面の案内・`tool/web/README.md`・`doc/reference/ble_c6_web_console.md`・端末の案内 (`wifi.md`・`wifi_ja.md`)
+  を新しい動きに直した。
+
+### 8.2 Spinel のデスクトップにも「Wi-Fi...」
+
+- デスクトップの Network の画面は mruby と Spinel で同じ源 (`system_desktop/network_dialog.rb`) で、ボタンは
+  `FmrbApp.wifi_networks != ""` のときに出る。Spinel の基底 (`fmrb_app_base_spinel.rb`) が `""` を返していたので
+  出なかった。FFI `fmrb_spx_app_wifi_networks` (`fmrb_spx_app.c`) を足し、mruby の binding と同じ
+  `fmrb_platform_sys_wifi_list` の文字を返す。受け皿は PSRAM の 2 KB (`FMRB_SPX_APP_WIFI_LIST_MAX`。長ければ
+  最後の行の終わりで切る。デスクトップは空かどうかしか見ない)。sim・ブラウザ版は今までどおり空。
+
+### 8.3 Wi-Fi の Window は 1 つ
+
+- カーネルの `single_instance` は 2 つ目を断ってエラーの画面を出すだけで、前へ出す仕組みは無い。内蔵アプリには
+  .app.toml も無い。全部の `single_instance` のアプリの動きを変えるのは仕様の変更になるので、デスクトップの側で
+  した: 「Wi-Fi...」を押したとき、プロセスの一覧 (`FmrbApp.ps`) に名前 `Wi-Fi` (`fmrb_app_spawner.c` の内蔵アプリの
+  名前) の動いているものがあれば、タスクバーのアイコンと同じ `focus_app` でそれを前へ出し、無ければ起動する。
+
+### 8.4 確認したこと
+
+| 道具 | 結果 |
+|---|---|
+| `rake wificonf:test` | 67 件通過。足した merge の試験: 2 つ覚えた所へ足す・同じものは変えない・書いて読み戻す・同じ SSID の新しいパスワードで先頭へ (hidden は残る)・6 つ目で一番古いものが落ちる・`enable = false` から true・ファイル無し・hidden を送る |
+| `node tool/web/test/settings.mjs` | 全部通過。足した確認: `0x19` で送る中身・wifi.toml を PUT しない・ほかが残る・画面の文言・先頭のネットワークの読み取り・別の SSID では空のパスワードを断る・古いファーム (`Unknown command`) では 1 組の形を PUT |
+| `rake regress` | host 26 組・描画の記録 229 件すべて通過 |
+| `rake regress:spinel` | 6 プログラムすべて生成 (Spinel のデスクトップを含む) |
+| `rake regress:screens` | 33 件すべて一致 (エディタの 1 打鍵を含む) |
+| `rake regress:size` | 内蔵 RAM の増分なし: NARYAv3 DIRAM -56 B・TAB5 DIRAM -360 B (基準 4e7e7e61 との差。8 章の前と同じ値) |
+
+NARYAv4 (P4-Nano) の実機 (`.env` を一時 NARYAv4 + `FMRB_APP_ENGINE_DESKTOP=spinel` にして clean_all・build・app だけ
+焼く。1 回目の書き込みは 97% で USB が外れ、`rake attach` で付け直して焼き直した):
+
+| 確かめたこと | 結果 |
+|---|---|
+| Spinel のデスクトップの Network の画面 | 「Refresh・Wi-Fi...・Close」が並ぶ。押すと Wi-Fi の Window (使用中が先頭、強い順) |
+| 2 回目の「Wi-Fi...」 | 別のアプリの Window を上に出してから Network の画面を開いて押す → Wi-Fi の Window が前に出る。プロセスは 1 つのまま (ログ `Network: Wi-Fi window already open (pid=5), bringing it to the front`) |
+| BLE の `0x19` (PC の BLE から、Web コンソールと同じ枠で送る。受け付ける時間は試験用アプリで開いた) | `/home/wifi.toml` が無く `/etc/wifi.toml` の 1 つで動いている所へ試験用のネットワークを足す → `{"ok":true,"saved":2}`、ファイルは試験用が先頭・元のものが 2 番目 (どちらもパスワードの行あり)。同じ SSID を別のパスワードで送る → 2 つのまま、パスワードが新しくなる。2 つ目の試験用を足す → 3 つ、新しいものが先頭。管理タスクの経路で書かれ、Wi-Fi の画面の「saved」の一覧にもすぐ載った。元のネットワークにはつながったまま |
+
+- 5 つを超えたときの動きは実機では試していない (ホストの試験で確かめた)。
+- 片付け: 試験用アプリと置いたファイルを消し、端末には標準の構成 (mruby のデスクトップ) で今のコードを焼き直した。
+  `.env` は戻した。**試験で書いた端末の `/home/wifi.toml` (元のネットワーク + 試験用の 2 つ) は消せていない**
+  (作業の許可が下りなかった)。消せば前と同じく `/etc/wifi.toml` から動く。試験用のネットワークは近くに無い名前
+  なので、つなぎ先は元のまま。
+- 画面は遠隔の画面 (`/stream`) で見た。HDMI の出力そのものは見ていない。
