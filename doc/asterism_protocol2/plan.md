@@ -1,6 +1,6 @@
 # Asterism protocol 2 の実装
 
-> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1 はほぼ済 (Docker が戻ったら regress:size)、次は P2 (Asterism 本体)
+> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1 済、P2 は決定 14・15 の反映を残してほぼ済、次は P3 (使う側の入れ替え)
 
 ## 目的
 
@@ -33,8 +33,8 @@
 
 | 段 | 内容 | 状態 |
 |---|---|---|
-| P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | ほぼ済 (picoruby-asterism-zenoh c4d9e3a・829969e、report/p1.md。`regress:size`・`regress:live` と esp32・wasm のビルドは Docker が見えず未了) |
-| P2 | Asterism 本体: `Asterism.publish(name, type:, unit:, desc:, ts:, encoding:)` と `pub.put`、通し番号 (全トピック) と送り手の時刻 (ミリ秒、`ts` のときだけ) の attachment、アプリの `@profile` queryable (`?status`・`?pubs`・`?types`) で今の `@status` の queryable を置き換え、`@pubs` の put、独自の型の定義の登録、受け手の API (値と一緒に encoding・通し番号・時刻を受け取る、宣言の一覧を引く)、自己紹介の `protocol => 2`。`docs/protocol.md` に protocol 2 を書き (英語)、適合の試験を作り直す | 進行中 |
+| P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | 済 (picoruby-asterism-zenoh c4d9e3a・829969e・b0717f8。内蔵 RAM +0 は NARYAv3 の regress:size で確認、encoding の表を flash に。新しい部品のネイティブ版で regress:transfer:quick ok) |
+| P2 | Asterism 本体: `Asterism.publish(name, type:, unit:, desc:, ts:, encoding:)` と `pub.put`、通し番号 (全トピック) と送り手の時刻 (ミリ秒、`ts` のときだけ) の attachment、アプリの `@profile` queryable (`?status`・`?pubs`・`?types`) で今の `@status` の queryable を置き換え、`@pubs` の put、独自の型の定義の登録、受け手の API (値と一緒に encoding・通し番号・時刻を受け取る、宣言の一覧を引く)、自己紹介の `protocol => 2`。`docs/protocol.md` に protocol 2 を書き (英語)、適合の試験を作り直す | ほぼ済 (asterism eaff7b9・71a43ed、report/p2.md。決定 14・15 の反映が残り) |
 | P3 | 入れ替え: asterism-games、asterism-console、fmruby-core のアプリ・ブラウザ版・MCP、CLI (`asterism`)。ネイティブ版・sim・ブラウザ版・console の間で、宣言が見え、値が型つきで届き、通し番号の欠けが数えられることを通しで確かめる | 未着手 |
 | P4 | 公開: 各リポジトリの push、gem (asterism-zenoh・asterism・asterism-games) の版上げと公開、console の版上げと VPS 更新、fmruby-core のピン更新、ブラウザ版の配置。**どれもユーザの許可語を得てから** | 未着手 |
 
@@ -42,7 +42,7 @@
 
 - CRuby のアプリと端末 (ネイティブ版・sim・ブラウザ版) のアプリが、`Asterism.publish` で宣言したトピックを流し、
   相手が `@profile?pubs` で宣言を引け、値を encoding・通し番号 (と `ts` のときの時刻) つきで受け取れる。
-- MessagePack の値には encoding が付かない (値ごとの増分は attachment の通し番号の 1〜5 バイトだけ)。`image/jpeg` は bin に包まずに流せる。
+- MessagePack の値には encoding が付かない (値ごとの増分は attachment の通し番号の 2〜6 バイトだけ)。`image/jpeg` は bin に包まずに流せる。
 - アプリごとの queryable の数が今と同じ (`**` と `@profile`)。`@profile` が引数 (`?status`・`?pubs`・`?types`) で答え分ける。
 - 自己紹介の `protocol` が 2。asterism の適合の試験が CRuby と picoruby の両方で通る。
 - fmruby-core の `rake regress` が通り、`rake regress:size` で内蔵 RAM の増分が 0。

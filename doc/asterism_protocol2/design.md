@@ -45,7 +45,7 @@ protocol 1 のまま。変えるのは次だけ:
 | 形式が MessagePack | **encoding を付けない**。「Asterism のデータで encoding が無ければ MessagePack」と決める | 0 バイト (Zenoh は既定の encoding を送らない) |
 | 形式が MessagePack 以外 | Zenoh の決まった番号の encoding (`image/jpeg` 17、`image/png` 16、`text/plain` 4、`application/cdr` 7 など) | 1 バイト |
 | 型 | **値には載せない**。トピックの宣言 (3 章) に 1 回 | 0 バイト |
-| 通し番号 | attachment (下の形)。**全部のトピックに付ける** | 1〜5 バイト |
+| 通し番号 | attachment (下の形)。**全部のトピックに付ける** | 2〜6 バイト (配列の頭を含む) |
 | 送り手の時刻 | トピックが選んだときだけ attachment に足す (4 章) | 0 (使うときは数バイト) |
 
 - **MessagePack には Zenoh の決まった番号が無い** (Zenoh 1.10.1 の決まった番号は 0〜52、`zenoh/bytes` から動画まで)。`application/msgpack;...` を文字列で付けると値ごとに 20〜30 バイト太るので、付けない形にする。独自の番号 (Zenoh が使っていない範囲) を名乗る手もあるが、Zenoh の道具では「不明」に見えるので採らない。
@@ -138,6 +138,9 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 | 11 | 受け手の Ruby の API | ブロックに値と補足の 2 つを渡す: `Asterism.subscribe(path) { \|v, info\| ... }`。`v` は値 (MessagePack は解いた後、encoding があれば String)、`info` は通し番号・送り手の時刻・encoding・キー・欠けた数などを持つ。`\|v\|` だけでも書ける (値だけ使うとき)。2026-11-13 に「値の包み 1 つ」から変えた |
 | 12 | 通し番号の折り返し | 2^31 未満で 0 に戻す (どの端末の整数でも扱える)。受け手は「上限近くから 0」を折り返し、それ以外の戻りをつなぎ直しと読む |
 | 13 | 受け手の包みの encoding (encoding が無い値) | `"msgpack"` (記録の MCAP の message_encoding と同じ語)。部品 (Zenoh の層) は `"zenoh/bytes"` を返すままで、Asterism の包みが読み替える |
+| 14 | pose (組み込みの型 3) の並び | 平らな 7 要素 `[x, y, z, qx, qy, qz, qw]` (ROS 2 の Pose と同じ順) |
+| 15 | 独自の型のフィールドで組み込みの型の配列 | 名前で `"vector3[]"`。フィールドの型には組み込みの型の名前 (number・vector3・pose・image・state・log・text) も書ける。宣言の `t` は今どおり番号 |
+| 16 | 欠けの数え方 | 前への距離が 2^30 未満なら前進 (上限から 0 も折り返しとして前進)、それ以外はつなぎ直し (`info.restarted?`)。最初の値の `lost` は 0。解けない MessagePack はブロックに渡さず数えるだけ |
 
 退けた案 (1 の queryable): 既存のアプリの queryable (`**`) で答える案は予約名が要り、`@pubs` 専用の queryable を足す案は
 queryable が 1 つ増えるので採らなかった。
