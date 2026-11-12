@@ -1,6 +1,6 @@
 # Asterism protocol 2: データの決まり (設計案)
 
-> 状態: 構想 | 更新: 2026-11-12 | P0 の 8 点に仮決定 (実装しない、ユーザの改めての指示まで)。 protocol 1 で決まりの無かった「アプリが自分で流す値 (データ)」を決める。形式は Zenoh の encoding、通し番号は attachment、型は流す口の宣言に 1 回だけ。値ごとに送るものは最小にする。互換性は考えない (2026-10-21 ユーザ: 使っているのは作者だけ、あるべき姿を考える)。V6 (記録、doc/asterism_recording/) と V7 (形に合わせた表示) はこの上に乗せる
+> 状態: 構想 | 更新: 2026-11-13 | P0 の 8 点に仮決定 (実装しない、ユーザの改めての指示まで)。 protocol 1 で決まりの無かった「アプリが自分で流す値 (データ)」を決める。形式は Zenoh の encoding、通し番号は attachment、型はトピックの宣言に 1 回だけ。値ごとに送るものは最小にする。互換性は考えない (2026-10-21 ユーザ: 使っているのは作者だけ、あるべき姿を考える)。V6 (記録、doc/asterism_recording/) と V7 (形に合わせた表示) はこの上に乗せる
 
 ## 目的
 
@@ -39,18 +39,18 @@ protocol 1 のまま。変えるのは次だけ (案):
 |---|---|---|
 | 形式が MessagePack | **encoding を付けない**。「Asterism のデータで encoding が無ければ MessagePack」と決める | 0 バイト (Zenoh は既定の encoding を送らない) |
 | 形式が MessagePack 以外 | Zenoh の決まった番号の encoding (`image/jpeg` 17、`image/png` 16、`text/plain` 4、`application/cdr` 7 など) | 1 バイト |
-| 型 | **値には載せない**。流す口の宣言 (3 章) に 1 回 | 0 バイト |
+| 型 | **値には載せない**。トピックの宣言 (3 章) に 1 回 | 0 バイト |
 | 通し番号 | attachment (下の形) | 1〜5 バイト |
-| 送り手の時刻 | 流す口が選んだときだけ attachment に足す (4 章) | 0 (使うときは数バイト) |
+| 送り手の時刻 | トピックが選んだときだけ attachment に足す (4 章) | 0 (使うときは数バイト) |
 
 - **MessagePack には Zenoh の決まった番号が無い** (Zenoh 1.10.1 の決まった番号は 0〜52、`zenoh/bytes` から動画まで)。`application/msgpack;...` を文字列で付けると値ごとに 20〜30 バイト太るので、付けない形にする。独自の番号 (Zenoh が使っていない範囲) を名乗る手もあるが、Zenoh の道具では「不明」に見えるので採らない。
 - **生のバイト列で流せる**: `image/jpeg` を付ければ、JPEG を MessagePack の bin に包まずに流してよい (受け手は encoding で分かる)。
-- **attachment の形** (案): MessagePack の配列 `[通し番号]` か `[通し番号, 送り手の時刻]`。通し番号は流す口ごとに 0 から 1 ずつ増える整数 (つなぎ直しで 0 に戻ってよい、受け手は戻りを「つなぎ直し」と読む)。MessagePack の正の整数は 127 まで 1 バイト、65535 まで 3 バイト。ROS 2 (rmw_zenoh) の attachment (通し番号・送った時刻・送り手の ID の固定 32 バイト程度) と同じ役割で、もっと短い。
-- **キーも短くなる**: 流す口を Zenoh の publisher として宣言すると、Zenoh はキーを番号に置き換えて送る (zenoh-pico 1.10.1 も publisher の宣言でキーを宣言する、`_z_declared_keyexpr_declare`)。今の素の put より値ごとのキーの分が軽くなる。
+- **attachment の形** (案): MessagePack の配列 `[通し番号]` か `[通し番号, 送り手の時刻]`。通し番号はトピックごとに 0 から 1 ずつ増える整数 (つなぎ直しで 0 に戻ってよい、受け手は戻りを「つなぎ直し」と読む)。MessagePack の正の整数は 127 まで 1 バイト、65535 まで 3 バイト。ROS 2 (rmw_zenoh) の attachment (通し番号・送った時刻・送り手の ID の固定 32 バイト程度) と同じ役割で、もっと短い。
+- **キーも短くなる**: トピックを Zenoh の publisher として宣言すると、Zenoh はキーを番号に置き換えて送る (zenoh-pico 1.10.1 も publisher の宣言でキーを宣言する、`_z_declared_keyexpr_declare`)。今の素の put より値ごとのキーの分が軽くなる。
 
-## 3. 流す口の宣言 (1 回だけ送るもの)
+## 3. トピックの宣言 (1 回だけ送るもの)
 
-- アプリが流す口を宣言する: Ruby の形 (案) `pub = Asterism.publish("board1/strokes", type: "asterism-games/board.strokes")`、`pub.put(value)`。数値なら `Asterism.publish("imu", type: :vector3, unit: "m/s2")`。
+- アプリがトピックを宣言する: Ruby の形 (案) `pub = Asterism.publish("board1/strokes", type: "asterism-games/board.strokes")`、`pub.put(value)`。数値なら `Asterism.publish("imu", type: :vector3, unit: "m/s2")`。
 - 値のキーは `asterism/<node>/<app>/<宣言の名前>` (今と同じ場所)。
 - **宣言の一覧**は、アプリごとの `asterism/<node>/<app>/@pubs` (`@status` と同じ作り: queryable で答え、変わったら put、`@` で始まる区切りなので `asterism/**` に掛からず ACL の規則は別)。中身 (案):
 
@@ -68,7 +68,7 @@ protocol 1 のまま。変えるのは次だけ (案):
 | `d` | 説明 (人と道具が読む) | 省略可 |
 | `ts` | 送り手の時刻を attachment に付けるか (4 章) | 省略 = 付けない |
 
-- **生存の印は流す口ごとには立てない** (端末の資源を使うため)。アプリの生存の印 (今ある) と `@pubs` の put で足りる。宣言を見る人は `asterism/*/*/@pubs` を購読する。
+- **生存の印はトピックごとには立てない** (端末の資源を使うため)。アプリの生存の印 (今ある) と `@pubs` の put で足りる。宣言を見る人は `asterism/*/*/@pubs` を購読する。
 - **組み込みの型** (番号、案): 1 number、2 vector3 (`[x, y, z]`)、3 pose (位置と向き)、4 image (encoding で JPEG/PNG)、5 state (文字列か整数の場面・入/切)、6 log (`docs/v3.md` のログの形)、7 text。番号と形の対応は protocol 2 の文書に表で持つ。足すときは番号を足すだけ。
 - **アプリ独自の型の定義**: 名前 (`asterism-games/board.strokes`) で呼ぶ。定義 (フィールドとその型、説明) を網で引けるようにするか、文書だけにするかは未確定 (下)。ROS 2 の `.msg` にあたる。
 
@@ -78,11 +78,11 @@ protocol 1 のまま。変えるのは次だけ (案):
 
 | 時刻 | どこから | 意味 | 使い道 |
 |---|---|---|---|
-| 送り手の時刻 | attachment (宣言の `ts` を立てた口だけ) | 値が測られた時刻 | グラフの横軸 (センサが測ってから送るまでに間がある場合) |
+| 送り手の時刻 | attachment (宣言の `ts` を立てたトピックだけ) | 値が測られた時刻 | グラフの横軸 (センサが測ってから送るまでに間がある場合) |
 | ルータのタイムスタンプ | zenohd が付ける (1.10.1 の既定の設定は router: true、client: false。手元の Zenoh 1.10.1 の設定ファイルで確認) | ルータを通った時刻 (HLC) | 複数のノードの値の順番 |
 | 受け取った時刻 | 受け手 | 記録の時刻 | MCAP の log_time |
 
-端末の時計は合っていないことがある。送り手の時刻は「同じ口の中での間隔」としては正しく、ルータの時刻は「全体の順番」として正しい。普段は送り手の時刻を付けず、ルータの時刻で足りるかを先に確かめる (ルータを通らない peer の直結では付かない)。
+端末の時計は合っていないことがある。送り手の時刻は「同じトピックの中での間隔」としては正しく、ルータの時刻は「全体の順番」として正しい。普段は送り手の時刻を付けず、ルータの時刻で足りるかを先に確かめる (ルータを通らない peer の直結では付かない)。
 
 ## 5. 記録 (MCAP) との対応
 
@@ -101,9 +101,9 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 
 | | CRuby (asterism-zenoh、zenoh-c 1.10.1) | 端末・ブラウザ版 (picoruby-asterism-zenoh、zenoh-pico 1.10.1) |
 |---|---|---|
-| encoding を付ける・読む | 部品にある | **zenoh-pico にはある** (`z_put_options_t` の encoding、`z_sample_encoding`、決まった番号の定数。`Z_FEATURE_ENCODING_VALUES` は 1)。**部品の Ruby の口は無い**ので足す |
+| encoding を付ける・読む | 部品にある | **zenoh-pico にはある** (`z_put_options_t` の encoding、`z_sample_encoding`、決まった番号の定数。`Z_FEATURE_ENCODING_VALUES` は 1)。**部品の Ruby の API は無い**ので足す |
 | attachment | 部品にある | 部品にある (ROS 2 のために作った) |
-| publisher の宣言 | 要確認 (部品の口) | zenoh-pico にある (`z_declare_publisher`)。部品の口は要確認 |
+| publisher の宣言 | 要確認 (部品の Ruby の API) | zenoh-pico にある (`z_declare_publisher`)。部品の Ruby の API は要確認 |
 | タイムスタンプを読む | 部品にある | 要確認 |
 
 ## 7. 段 (案)
@@ -111,7 +111,7 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 | 段 | 中身 |
 |---|---|
 | P0 | この文書の未確定事項を決める。asterism の `docs/protocol.md` に protocol 2 の章を書く (英語) |
-| P1 | 部品: picoruby-asterism-zenoh に encoding と publisher の口を足す。asterism-zenoh も足りなければ足す。端末で内蔵 RAM の増分を測る (0 であること。増えるなら止まって返す) |
+| P1 | 部品: picoruby-asterism-zenoh に encoding と publisher の Ruby の API を足す。asterism-zenoh も足りなければ足す。端末で内蔵 RAM の増分を測る (0 であること。増えるなら止まって返す) |
 | P2 | asterism (CRuby と端末で同じ `mrblib/`): `Asterism.publish`・`@pubs`・通し番号・自己紹介の `protocol => 2`。適合の試験を protocol 2 に作り直す |
 | P3 | 一斉に入れ替える: asterism-games (卓の状態、観戦、お絵かき)、Family mruby のアプリ、console (`@pubs` を読む、図に「流しているもの」を出す、記録に encoding・通し番号・時刻を入れる)、ブラウザ版、MCP |
 | P4 | V7 の表示と V6 の記録をこの上に作る |
@@ -120,25 +120,25 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 
 ユーザ: 「この選択は仮決定であり、実装はしてはいけない」。下は P0 の 8 点への今の答え。P1 以降に着手するのは、ユーザが改めて指示したときだけ。
 
-1. `@pubs` の口: **`@status` と 1 つにまとめる** (口を `asterism/<node>/<app>/@app` のような 1 つにし、状態と宣言を答え分ける)。P1 で RAM を測って確かめる。
+1. `@pubs` の queryable: **`@status` と 1 つにまとめる** (queryable を `asterism/<node>/<app>/@app` のような 1 つにし、状態と宣言を答え分ける)。P1 で RAM を測って確かめる。
 2. 組み込みの型の形: **配列** (vector3 は `[x, y, z]`。pose なども同じ流儀)。
-3. アプリ独自の型の定義: **網で引けるようにする** (例 `asterism/<node>/<app>/@types`。口の数は 1 の口にまとめられるかを P1 で見る)。
-4. 通し番号: **全部の流す口に付ける**。
-5. 送り手の時刻の単位: **ミリ秒** (1970 年からの整数。宣言で `ts` を立てた口だけ)。
+3. アプリ独自の型の定義: **網で引けるようにする** (例 `asterism/<node>/<app>/@types`。queryable の数は 1 の queryable にまとめられるかを P1 で見る)。
+4. 通し番号: **全部のトピックに付ける**。
+5. 送り手の時刻の単位: **ミリ秒** (1970 年からの整数。宣言で `ts` を立てたトピックだけ)。
 6. 呼び出しの答えの通し番号・時刻: **付けない**。
 7. ROS 2 の側 (`Asterism::ROS`): **rmw_zenoh の決まりのまま**。
 8. 宣言の名前の `/`: **許す**。
 
 ## 未確定事項
 
-1. `@pubs` に答える queryable をどうするか。`@` で始まるキーは `asterism/<node>/<app>/**` に掛からないので、別に立てると口が 1 つ増える (put だけなら口は要らない。要るのは後から来た人の問い合わせに答えるため)。
-   - ① 既存のアプリの口 (`**`) で答える: `@` を付けない形 (各オブジェクトのメタの答えに `"pubs"`、または予約名)。口は増えない。オブジェクトに属さない値の置き場と、予約名の扱いが要る。ACL は `asterism/**` の規則に含まれる。
-   - ② `@status` の口と 1 つにまとめる: 口を `asterism/<node>/<app>/@app` のような 1 つにし、問い合わせのパラメータ (状態・宣言) で答え分ける。put は `@status`・`@pubs` の別のキーのまま。口の数は今と同じで、`@` の扱い (ワイルドカードに掛からない、ACL を別に書く) も保てる。見立てはこれ。
-   - ③ `@pubs` 専用の口を足す: 素直だが口が 1 つ増える。
-   - P1 で口 1 つあたりの端末の RAM を測ってから決める。
+1. `@pubs` に答える queryable をどうするか。`@` で始まるキーは `asterism/<node>/<app>/**` に掛からないので、別に立てると queryable が 1 つ増える (put だけなら queryableは要らない。要るのは後から来た人の問い合わせに答えるため)。
+   - ① 既存のアプリの queryable (`**`) で答える: `@` を付けない形 (各オブジェクトのメタの答えに `"pubs"`、または予約名)。queryable は増えない。オブジェクトに属さない値の置き場と、予約名の扱いが要る。ACL は `asterism/**` の規則に含まれる。
+   - ② `@status` の queryable と 1 つにまとめる: queryable を `asterism/<node>/<app>/@app` のような 1 つにし、問い合わせのパラメータ (状態・宣言) で答え分ける。put は `@status`・`@pubs` の別のキーのまま。queryable の数は今と同じで、`@` の扱い (ワイルドカードに掛からない、ACL を別に書く) も保てる。見立てはこれ。
+   - ③ `@pubs` 専用の queryable を足す: 素直だが queryable が 1 つ増える。
+   - P1 で queryable 1 つあたりの端末の RAM を測ってから決める。
 2. 組み込みの型の番号と形 (上の 1〜7 は案)。vector3 を配列にするか map にするか (配列の方が短い)。
 3. アプリ独自の型の定義を網で引けるようにするか (例 `asterism/<node>/<app>/@types`)、文書と道具 (console の描き手) だけで持つか。
-4. 通し番号を全部の口に付けるか、宣言で選ぶか (1〜5 バイトなので全部に付ける案が素直)。
+4. 通し番号を全部のトピックに付けるか、宣言で選ぶか (1〜5 バイトなので全部に付ける案が素直)。
 5. 送り手の時刻の単位 (1970 年からのナノ秒の整数は 9 バイト。ミリ秒なら 6 バイト程度)。ルータの時刻で足りるかを先に測る。
 6. 呼び出しの答えにも通し番号や時刻を付けるか (今は要らないと見ている)。
 7. ROS 2 の側 (`Asterism::ROS`) は rmw_zenoh の決まりのまま (変えない) でよいか。
