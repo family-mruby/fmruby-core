@@ -161,6 +161,7 @@ module FmrbSpxApp
 
   # --- class: network / usb ---
   ffi_func :fmrb_spx_app_wifi_info, [], :binstr
+  ffi_func :fmrb_spx_app_wifi_networks, [:int], :binstr
   ffi_func :fmrb_spx_app_clear_cache, [:str, :int], :binstr
   ffi_func :fmrb_spx_app_usb_devices, [], :binstr
   ffi_func :fmrb_spx_app_hid_raw_subscribe, [:int], :int

@@ -2694,13 +2694,19 @@ class FmrbApp
     b >= 0 && (b & 0x100) != 0
   end
 
+  # The Wi-Fi page's text (doc/wifi_settings): the same source as the mruby
+  # binding, so a Spinel desktop on a device with Wi-Fi offers the Wi-Fi
+  # window in its Network dialog too. "" where the network is not chosen
+  # here (the simulation, the browser).
+  def self.wifi_networks(scan = false)
+    FmrbSpxApp.fmrb_spx_app_wifi_networks(scan ? 1 : 0)
+  end
+
   # The PC's settings and notices (doc/linux_native L14): only the native
   # program has them, and its desktop is the mruby one. A Spinel desktop
   # answers as every machine without them does: "" for the texts, -1 for
-  # notices_gen, false for opening the PC's settings window.
-  def self.wifi_networks(scan = false)
-    ""
-  end
+  # notices_gen, false for opening the PC's settings window. Forgetting a
+  # network is the Wi-Fi window's, which is an mruby app.
 
   def self.wifi_forget(ssid)
     false

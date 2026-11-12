@@ -18,6 +18,8 @@
 # connecting, disconnecting): on the PC (L14) the settings window's, on a
 # device with Wi-Fi the built-in default/wifi window, the same page
 # (doc/wifi_settings). The simulation and the browser have no such button.
+# The device's Wi-Fi window is one: pressed again while it is open, the
+# button brings that window to the front instead of opening a second.
 #
 # In the browser build a third line says whether the router checks this
 # page's name (asterism-console's door connected it with its user's
@@ -37,6 +39,8 @@ module NetworkDialogMixin
   NET_OK      = 0x1C  # green-ish: connected
   NET_WARN    = 0xE0  # red-ish: not connected
   NET_DOOR_FILE = "/tmp/.asterism_door"
+  NET_WIFI_APP  = "default/wifi"
+  NET_WIFI_NAME = "Wi-Fi"   # its name in the process list (fmrb_app_spawner.c)
 
   # ---- Lifecycle ----
 
@@ -207,12 +211,42 @@ module NetworkDialogMixin
       # FmrbApp.linux_settings exists on the PC only (a device must not have
       # it: the checkpoint tests name it as missing there).
       if FmrbConst::PLATFORM == "esp32"
-        spawn_app("default/wifi")
+        net_open_wifi_window
       else
         FmrbApp.linux_settings("wifi")
       end
     end
     nil
+  end
+
+  # The Wi-Fi window to the front if it is open, else open it.
+  def net_open_wifi_window
+    pid = net_wifi_window_pid
+    if pid >= 0
+      Log.info("Network: Wi-Fi window already open (pid=#{pid}), bringing it to the front")
+      @taskbar_focused_pid = pid
+      send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+                   { "cmd" => "focus_app", "pid" => pid })
+    else
+      spawn_app(NET_WIFI_APP)
+    end
+    nil
+  end
+
+  # The pid of the open Wi-Fi window, -1 when there is none (starting,
+  # running or suspended count, as in the taskbar).
+  def net_wifi_window_pid
+    procs = FmrbApp.ps
+    i = 0
+    while i < procs.size
+      pr = procs[i]
+      st = pr[:state]
+      if st >= 1 && st <= 3 && pr[:name] == NET_WIFI_NAME
+        return pr[:id]
+      end
+      i += 1
+    end
+    -1
   end
 
   # Periodic tick from on_update: refresh so a late DHCP lease shows up while

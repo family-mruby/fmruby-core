@@ -886,6 +886,24 @@ const char *fmrb_spx_app_wifi_info(void)
     return (const char *)buf;
 }
 
+const char *fmrb_spx_app_wifi_networks(int scan)
+{
+    /* The desktop asks once, to know whether its Network dialog offers the
+       Wi-Fi window (doc/wifi_settings); the same text as the mruby binding. */
+    FMRB_SPX_BSS_ATTR static char buf[FMRB_SPX_APP_WIFI_LIST_MAX];
+    *sp_ctx_ffi_bin_len() = 0;
+    int32_t n = fmrb_platform_sys_wifi_list(scan != 0, buf, sizeof(buf));
+    if (n <= 0) {
+        return "";
+    }
+    if ((size_t)n >= sizeof(buf)) {
+        n = (int32_t)sizeof(buf) - 1;
+        while (n > 0 && buf[n - 1] != '\n') n--;
+    }
+    *sp_ctx_ffi_bin_len() = (int)n;
+    return buf;
+}
+
 const char *fmrb_spx_app_clear_cache(const char *path, int len)
 {
     FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE];

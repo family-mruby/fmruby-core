@@ -239,6 +239,15 @@ const char *fmrb_spx_app_bt_mac(void);
 const char *fmrb_spx_app_wifi_info(void);
 
 /**
+ * @brief The Wi-Fi page's text (FmrbApp.wifi_networks, fmrb_platform_sys.h
+ *        wifi_list) as a :binstr; empty where Family mruby does not choose
+ *        the network. A text longer than FMRB_SPX_APP_WIFI_LIST_MAX is cut
+ *        after its last whole line. scan != 0 also asks for a scan.
+ */
+#define FMRB_SPX_APP_WIFI_LIST_MAX 2048
+const char *fmrb_spx_app_wifi_networks(int scan);
+
+/**
  * @brief Clear a cache directory on the graphics board (FmrbApp._clear_cache).
  *        9-byte :binstr: ok (u8), deleted (u32 LE), status (i32 LE). Always
  *        returns a record (never nil).
