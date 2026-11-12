@@ -90,6 +90,7 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_CMD_RENAME 0x16
 #define BLE_FS_CMD_SETTINGS 0x17   // settings window state (doc/ruby_asterism/report/cf2.md)
 #define BLE_FS_CMD_REBOOT   0x18   // restart the board, setup mode only (report/cf3.md)
+#define BLE_FS_CMD_WIFI_ADD 0x19   // save a Wi-Fi network beside the others (doc/wifi_settings)
 #define BLE_FS_CMD_GET    0x21
 #define BLE_FS_CMD_PUT    0x22
 #define BLE_FS_CMD_LOG_SUBSCRIBE   0x31
@@ -361,6 +362,41 @@ static void ble_fs_cmd_settings(char *response, size_t response_size)
         response[o++] = '}';
         response[o] = '\0';
     }
+}
+
+// The console's Wi-Fi settings: the binary part is a wifi.toml text (the old
+// one-network form the console has always written), and the board saves its
+// network in /home/wifi.toml beside the ones saved there, with the same
+// writer as the Wi-Fi page (wifi_save_networks). Writing the file over it
+// with PUT, as the console used to, dropped the others. The same rule as a
+// PUT of the file: only while the settings window is open.
+static void ble_fs_cmd_wifi_add(const uint8_t *data, size_t len, char *response, size_t response_size)
+{
+    if (!ble_fs_allowed(FMRB_REMOTE_FS_PUT, "WIFI_ADD", FMRB_WIFI_TOML_HOME_PATH, NULL,
+                        response, response_size)) {
+        return;
+    }
+#ifdef FMRB_HAS_WIFI
+    if (len == 0 || len > BLE_WIFI_TOML_MAX) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"No Wi-Fi settings sent\"}");
+        return;
+    }
+    int saved = 0;
+    fmrb_err_t err = wifi_save_networks((const char *)data, len, &saved);
+    if (err == FMRB_OK) {
+        snprintf(response, response_size, "{\"ok\":true,\"saved\":%d,\"path\":\"%s\"}",
+                 saved, FMRB_WIFI_TOML_HOME_PATH);
+    } else if (err == FMRB_ERR_INVALID_PARAM) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"The Wi-Fi settings sent have no network\"}");
+    } else {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Could not save the Wi-Fi settings (%d)\"}",
+                 (int)err);
+    }
+#else
+    (void)data;
+    (void)len;
+    snprintf(response, response_size, "{\"ok\":false,\"err\":\"This board has no Wi-Fi\"}");
+#endif
 }
 
 // Restart on the console's word, only in the setup mode (anywhere else a
@@ -1549,6 +1585,11 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
 
     case BLE_FS_CMD_REBOOT:
         ble_fs_cmd_reboot(json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
+    case BLE_FS_CMD_WIFI_ADD:
+        ble_fs_cmd_wifi_add(binary_data, binary_size, json_response, sizeof(json_response));
         ble_fs_send_response(json_response, NULL, 0);
         break;
 

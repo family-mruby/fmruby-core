@@ -85,6 +85,18 @@ fmrb_err_t wifi_request_disconnect(void);
 /** @brief Queue forgetting a saved network (removed from /home/wifi.toml). */
 fmrb_err_t wifi_request_forget(const char *ssid);
 
+/**
+ * @brief Save the networks in a wifi.toml text in /home/wifi.toml, beside
+ *        the ones saved there (wifi_conf_merge: the first sent is the newest,
+ *        a saved SSID gets the new password, five at most).
+ *
+ * The BLE console's Wi-Fi settings (BLE command 0x19). Works whether the
+ * station runs or not; while it runs the manager task does the write and
+ * this waits for it. One caller at a time (the BLE file service).
+ * @param saved the networks in the file afterwards
+ */
+fmrb_err_t wifi_save_networks(const char *text, size_t len, int *saved);
+
 #ifdef __cplusplus
 }
 #endif

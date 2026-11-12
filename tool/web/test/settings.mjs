@@ -67,7 +67,8 @@ function fakeBoard() {
   // An obvious fake: no real key is ever written into a test.
   files.set("/etc/secrets.toml", enc.encode('# Written by rake\n[openai]\napi_key = "sk-test-etc-0000000000000000"\n'));
 
-  const board = { files, dirs, windowUntil: 0, setup: false, rebooted: false, commands: [], sent: [] };
+  const board = { files, dirs, windowUntil: 0, setup: false, rebooted: false, commands: [], sent: [],
+                  wifiAdds: [], oldFirmware: false };
   window.__board = board;
 
   // The setup mode holds the window open (reported as a long time left).
@@ -110,6 +111,33 @@ function fakeBoard() {
       if (board.setup) { meta.setup = true; meta.until_restart = true; }
       meta.wifi = { src, on: /enable\s*=\s*true/.test(text), ssid, conn: !board.setup, ip: board.setup ? "" : "192.0.2.7" };
       return [meta];
+    }
+    case 0x19: {  // WIFI_ADD: the network sent goes first, the saved ones stay (wifi_conf_merge)
+      board.wifiAdds.push(new TextDecoder().decode(bin));
+      if (board.oldFirmware) return [{ ok: false, err: "Unknown command 0x19" }];
+      if (left() === 0) return [denyClosed];
+      const nets = (text) => {
+        const out = [];
+        let cur = null;
+        for (const raw of text.split("\n")) {
+          const line = raw.trim();
+          if (line.startsWith("[")) { cur = { ssid: null, password: "" }; out.push(cur); continue; }
+          for (const k of ["ssid", "password"]) {
+            const v = cur && line.startsWith(k) ? settingsTomlValue(line, k) : null;
+            if (v !== null) cur[k] = v;
+          }
+        }
+        return out.filter(n => n.ssid !== null);
+      };
+      const src = files.has("/home/wifi.toml") ? "/home/wifi.toml" : "/etc/wifi.toml";
+      const sent = nets(new TextDecoder().decode(bin));
+      const kept = files.has(src) ? nets(new TextDecoder().decode(files.get(src))) : [];
+      const all = sent.concat(kept.filter(k => !sent.some(n => n.ssid === k.ssid))).slice(0, 5);
+      let out = "[wifi]\nenable = true\n";
+      for (const n of all) out += "\n[[networks]]\nssid = " + settingsTomlString(n.ssid) +
+                                  "\npassword = " + settingsTomlString(n.password) + "\n";
+      files.set("/home/wifi.toml", enc.encode(out));
+      return [{ ok: true, saved: all.length, path: "/home/wifi.toml" }];
     }
     case 0x18: {  // REBOOT, setup mode only
       if (!board.setup) return [{ ok: false, denied: true, err: "The board restarts from the console only in the setup mode" }];
@@ -343,28 +371,61 @@ check("secrets.toml writer and reader", await page.evaluate(() => {
          settingsCheckApiKey("") !== "" && settingsCheckApiKey("sk-\"x") !== "" && settingsCheckApiKey("sk-test-ok") === "";
 }));
 
-// An empty password keeps the one loaded from the board.
+// An empty password keeps the one loaded from the board (for its network).
+await page.fill("#setSsid", "old");
 await page.fill("#setPassword", "");
 await page.click("text=Write WiFi");
-await page.waitForFunction(() => document.getElementById("setWifiMsg").textContent.startsWith("WiFi written"));
+await page.waitForFunction(() => document.getElementById("setWifiMsg").textContent.startsWith("WiFi saved"));
 check("empty password keeps the loaded one", (await fileText("/home/wifi.toml")).includes('password = "secret-old"'),
       await fileText("/home/wifi.toml"));
 
-// WiFi
+// WiFi: the board is sent the network and saves it beside the others.
 await page.fill("#setSsid", "Home \"Net\"");
 await page.fill("#setPassword", "pa\\ss word1");
 await page.click("text=Write WiFi");
-await page.waitForFunction(() => document.getElementById("setWifiMsg").textContent.startsWith("WiFi written"));
-const wifi = await fileText("/home/wifi.toml");
-check("wifi.toml content", wifi ===
+await page.waitForFunction(() => document.getElementById("setWifiMsg").textContent.startsWith("WiFi saved"));
+const sentWifi = await page.evaluate(() => window.__board.wifiAdds[window.__board.wifiAdds.length - 1]);
+check("the network sent with WIFI_ADD", sentWifi ===
   "# This machine's WiFi, written by the Family mruby Console\n[wifi]\nenable = true\n" +
-  "ssid = \"Home \\\"Net\\\"\"\npassword = \"pa\\\\ss word1\"\n", JSON.stringify(wifi));
+  "ssid = \"Home \\\"Net\\\"\"\npassword = \"pa\\\\ss word1\"\n", JSON.stringify(sentWifi));
+check("no PUT of wifi.toml", await page.evaluate(() =>
+  !window.__board.commands.some(c => c.cmd === 0x22 && /wifi\.toml/.test(c.path || ""))));
+const wifi = await fileText("/home/wifi.toml");
+check("the others are kept", /ssid = "Home \\"Net\\""[\s\S]*ssid = "old"/.test(wifi), JSON.stringify(wifi));
+check("the message says so", (await text("setWifiMsg")).includes("2 network(s), this one first; the others are kept"),
+      await text("setWifiMsg"));
+check("first network reader", await page.evaluate(() => {
+  const a = settingsWifiFirst('[wifi]\nenable = true\n\n[[networks]]\nssid = "open"\n\n[[networks]]\nssid = "b"\npassword = "pw-b"\n');
+  const b = settingsWifiFirst('[wifi]\nenable = true\nssid = "one"\npassword = "pw1"\n[[networks]]\nssid = "two"\npassword = "pw2"\n');
+  return a.ssid === "open" && a.password === "" && b.ssid === "one" && b.password === "pw1" &&
+         settingsWifiFirst("[wifi]\nenable = true\n") === null;
+}));
 
 await page.waitForFunction(() => !window.settingsBusy, null, { timeout: 8000 }).catch(() => {});
 await page.waitForFunction(() => document.getElementById("setWifiNow").textContent.includes('SSID "Home "Net"" from /home/wifi.toml'),
                            null, { timeout: 8000 }).catch(() => {});
 check("now shows WiFi from /home", (await text("setWifiNow")).includes('SSID "Home "Net"" from /home/wifi.toml'), await text("setWifiNow"));
 check("short password refused in the page", await page.evaluate(() => settingsCheckWifi("a", "short") !== ""));
+
+// An empty password is not another network's: only the one it was read for.
+await page.fill("#setSsid", "elsewhere");
+await page.fill("#setPassword", "");
+await page.click("text=Write WiFi");
+check("empty password for another network refused", (await text("setWifiMsg")) === "enter the password",
+      await text("setWifiMsg"));
+
+// Firmware without WIFI_ADD: the file is written in the one-network form.
+await page.evaluate(() => { window.__board.oldFirmware = true; });
+await page.fill("#setSsid", "legacy");
+await page.fill("#setPassword", "legacy-pass");
+await page.click("text=Write WiFi");
+await page.waitForFunction(() => document.getElementById("setWifiMsg").textContent.startsWith("WiFi written"));
+check("old firmware: one-network file", (await fileText("/home/wifi.toml")) ===
+  "# This machine's WiFi, written by the Family mruby Console\n[wifi]\nenable = true\n" +
+  "ssid = \"legacy\"\npassword = \"legacy-pass\"\n", await fileText("/home/wifi.toml"));
+check("old firmware: says it keeps one", (await text("setWifiMsg")).includes("keeps one network"), await text("setWifiMsg"));
+await page.evaluate(() => { window.__board.oldFirmware = false; });
+await page.waitForFunction(() => !window.settingsBusy, null, { timeout: 8000 }).catch(() => {});
 check("toml value reader", await page.evaluate(() =>
   settingsTomlValue('password = "pa\\\\ss \\"x\\" \\u00e9"', "password") === 'pa\\ss "x" \u00e9' &&
   settingsTomlValue("password = 'lit'", "password") === "lit" && settingsTomlValue("x = 1", "password") === null));

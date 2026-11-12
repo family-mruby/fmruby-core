@@ -76,6 +76,19 @@ int wifi_conf_find(const wifi_conf_t *conf, const char *ssid);
  */
 bool wifi_conf_add(wifi_conf_t *conf, const char *ssid, const char *password);
 
+/**
+ * @brief Save the networks of another configuration into conf, keeping
+ *        conf's own: each one added as wifi_conf_add does (in's first ends
+ *        up the newest), its hidden flag carried over; conf takes in's
+ *        enable, and its hostname when in has one.
+ *
+ * What the BLE console's Wi-Fi settings do to the saved file: in is the
+ * text the console sends, read like a wifi.toml (the old one-network form
+ * or [[networks]]).
+ * @return true when the file would change.
+ */
+bool wifi_conf_merge(wifi_conf_t *conf, const wifi_conf_t *in);
+
 /** Forget a network. @return true when it was saved. */
 bool wifi_conf_forget(wifi_conf_t *conf, const char *ssid);
 

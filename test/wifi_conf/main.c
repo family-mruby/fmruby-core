@@ -113,6 +113,71 @@ static void test_add_forget(void)
     CHECK(c.nets[0].hidden, "hidden kept on add");
 }
 
+// The BLE console's Wi-Fi settings (tool/web/js/settings.js): it sends the
+// old one-network text, and the board saves that network beside the others.
+static void test_merge(void)
+{
+    const char *console = "# This machine's WiFi, written by the Family mruby Console\n"
+                          "[wifi]\nenable = true\nssid = \"cafe\"\npassword = \"pw-cafe\"\n";
+    wifi_conf_t c, in;
+    char buf[2048];
+
+    parse("[wifi]\nenable = true\nhostname = \"box\"\n"
+          "[[networks]]\nssid = \"home\"\npassword = \"pw-home\"\n"
+          "[[networks]]\nssid = \"office\"\npassword = \"pw-office\"\nhidden = true\n", &c);
+    parse(console, &in);
+    CHECK(wifi_conf_merge(&c, &in), "a new network changes the file");
+    CHECK(c.count == 3, "added beside the two, got %d", c.count);
+    CHECK(strcmp(c.nets[0].ssid, "cafe") == 0 && strcmp(c.nets[0].password, "pw-cafe") == 0,
+          "the new one first");
+    CHECK(strcmp(c.nets[1].ssid, "home") == 0 && strcmp(c.nets[1].password, "pw-home") == 0,
+          "the others kept with their passwords");
+    CHECK(strcmp(c.nets[2].ssid, "office") == 0 && c.nets[2].hidden, "hidden kept");
+    CHECK(strcmp(c.hostname, "box") == 0, "hostname kept (the console sends none)");
+    CHECK(!wifi_conf_merge(&c, &in), "the same again: no change");
+
+    // Written and read back: the file the board keeps.
+    wifi_conf_to_text(&c, buf, sizeof(buf));
+    wifi_conf_t d;
+    parse(buf, &d);
+    CHECK(d.count == 3 && strcmp(d.nets[0].ssid, "cafe") == 0 && strcmp(d.nets[2].ssid, "office") == 0,
+          "read back in the same order");
+
+    // A saved SSID with a new password: updated and moved first.
+    parse("[wifi]\nenable = true\nssid = \"office\"\npassword = \"pw-new\"\n", &in);
+    CHECK(wifi_conf_merge(&c, &in), "a new password changes the file");
+    CHECK(c.count == 3 && strcmp(c.nets[0].ssid, "office") == 0 &&
+          strcmp(c.nets[0].password, "pw-new") == 0, "updated and first");
+    CHECK(c.nets[0].hidden, "its hidden flag stays");
+    CHECK(wifi_conf_find(&c, "office") == 0 && strcmp(c.nets[1].ssid, "cafe") == 0 &&
+          strcmp(c.nets[2].ssid, "home") == 0, "no second entry, the rest in order");
+
+    // Over five: the oldest goes.
+    parse("[[networks]]\nssid = \"n1\"\n[[networks]]\nssid = \"n2\"\n[[networks]]\nssid = \"n3\"\n"
+          "[[networks]]\nssid = \"n4\"\n[[networks]]\nssid = \"n5\"\n", &c);
+    parse(console, &in);
+    CHECK(wifi_conf_merge(&c, &in), "a sixth network");
+    CHECK(c.count == 5, "still five, got %d", c.count);
+    CHECK(strcmp(c.nets[0].ssid, "cafe") == 0 && strcmp(c.nets[4].ssid, "n4") == 0 &&
+          wifi_conf_find(&c, "n5") < 0, "the oldest (last) dropped");
+
+    // A board whose Wi-Fi was off, or with no file: the console turns it on.
+    parse("[wifi]\nenable = false\nssid = \"home\"\npassword = \"pw-home\"\n", &c);
+    parse(console, &in);
+    CHECK(!c.enable && wifi_conf_merge(&c, &in) && c.enable, "enable = true from the console");
+    CHECK(c.count == 2 && strcmp(c.nets[1].ssid, "home") == 0, "the old one-network file kept as the second");
+    wifi_conf_from_toml(NULL, &c, free);
+    CHECK(wifi_conf_merge(&c, &in) && c.count == 1 && c.enable, "no file: just the one");
+
+    // A hidden network sent as such.
+    parse("[[networks]]\nssid = \"cafe\"\npassword = \"pw-cafe\"\n", &c);
+    parse("[[networks]]\nssid = \"cafe\"\npassword = \"pw-cafe\"\nhidden = true\n", &in);
+    CHECK(wifi_conf_merge(&c, &in) && c.count == 1 && c.nets[0].hidden, "hidden taken over");
+    wifi_conf_wipe(&c);
+    wifi_conf_wipe(&in);
+    wifi_conf_wipe(&d);
+}
+
 static void test_round_trip(void)
 {
     wifi_conf_t c, d;
@@ -150,6 +215,7 @@ int main(void)
     test_old_form();
     test_list();
     test_add_forget();
+    test_merge();
     test_round_trip();
     printf("wifi_conf: %d checks, %d failed\n", g_count, g_fail);
     return g_fail ? 1 : 0;

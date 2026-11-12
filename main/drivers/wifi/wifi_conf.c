@@ -122,6 +122,30 @@ bool wifi_conf_add(wifi_conf_t *conf, const char *ssid, const char *password)
     return true;
 }
 
+bool wifi_conf_merge(wifi_conf_t *conf, const wifi_conf_t *in)
+{
+    bool changed = false;
+    if (conf->enable != in->enable) {
+        conf->enable = in->enable;
+        changed = true;
+    }
+    if (in->hostname[0] != '\0' && strcmp(conf->hostname, in->hostname) != 0) {
+        memcpy(conf->hostname, in->hostname, sizeof(conf->hostname));
+        changed = true;
+    }
+    // The last first, so the first of in is the newest afterwards.
+    for (int i = in->count - 1; i >= 0; i--) {
+        const wifi_conf_net_t *n = &in->nets[i];
+        if (wifi_conf_add(conf, n->ssid, n->password)) changed = true;
+        if (n->hidden && conf->count > 0 && strcmp(conf->nets[0].ssid, n->ssid) == 0 &&
+            !conf->nets[0].hidden) {
+            conf->nets[0].hidden = true;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 bool wifi_conf_forget(wifi_conf_t *conf, const char *ssid)
 {
     int at = wifi_conf_find(conf, ssid);

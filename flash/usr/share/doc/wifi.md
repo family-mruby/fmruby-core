@@ -44,9 +44,10 @@ The settings are in /home/wifi.toml (without it, the /etc/wifi.toml a
 development build puts in is read; when /home/wifi.toml is there, it is
 the only one read). It holds passwords, so no remote service (HTTP, BLE)
 hands it out. Change it on the machine (the editor, the shell) or with the
-BLE web console's Settings while its window is open. The web console
-writes the file anew in the older one-network form (the other remembered
-networks are dropped).
+BLE web console's Settings while its window is open. The web console adds
+the network it writes to the remembered ones, as the screen does: first,
+or updated when its name is already there (the others are kept; with more
+than five, the oldest goes).
 
 ```toml
 [wifi]

@@ -21,7 +21,12 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
 (devctl) が無くても、BLE だけで端末を繋がる状態にできる
 (doc/ruby_asterism/report/cf2.md)。
 
-- 書く先: WiFi は `/home/wifi.toml` (`[wifi]` の `enable`・`ssid`・`password`)、
+- 書く先: WiFi は `/home/wifi.toml`。端末へは `0x19` (WIFI_ADD) でネットワーク 1 つ
+  (`[wifi]` の `enable`・`ssid`・`password` の形の TOML) を送り、端末が覚えている
+  ネットワーク (`[[networks]]`、5 つまで) に足す (先頭に入る。同じ SSID はパスワードを
+  書き換えて先頭へ。ほかは残し、5 つを超えると一番古いものが消える。Wi-Fi の画面と
+  同じ書き手、doc/wifi_settings)。`0x19` を知らない古いファームには、今までどおり
+  その形でファイルを PUT で書く (古いファームはネットワークを 1 つしか読まない)。
   API キーは `/home/secrets.toml` (`[openai]` の `api_key`。ファイルのほかの行は残す)、
   Asterism は `/home/asterism/config.toml` (`router`・`node`・`name`、
   `FmrbAsterism.config_text` と同じ形)、証明書は `/home/asterism/<名前>.tar`
@@ -41,8 +46,9 @@ python3 -m http.server 8080 --directory tool/web   # か好きな静的サーバ
   "ssid","conn","ip"}`。パスワードは入らない)。画面は SSID の欄を埋め、どのファイルか・
   今つながっているか・IP を出す。パスワードの欄は、閉じているときは空で
   「set (not shown)」、受け付ける時間が開くと端末から読んで埋める (閉じると消す)。
-  パスワードを空のまま書くのは、開いていて今のパスワードを読めたときだけ (それを
-  そのまま書く)。それ以外は「enter the password」で書かない。鍵の無い網には対応しない。
+  出すのは、覚えているネットワークの先頭 (いちばん新しいもの) の SSID とパスワード。
+  パスワードを空のまま書くのは、開いていて今のパスワードを読めたときで、SSID が
+  そのネットワークのままのときだけ (それをそのまま書く)。それ以外は「enter the password」で書かない。鍵の無い網には対応しない。
 - **API キーの表示**: パスワードと同じ扱い。閉じているときは欄が空で、どのファイルに
   あるか (`/home/secrets.toml` か、開発ビルドが入れた `/etc/secrets.toml`) と
   set / not set だけを出す (ファイルの有無は一覧で見る。中身は読まない)。開くと端末から

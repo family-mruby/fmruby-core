@@ -104,8 +104,12 @@ static const char *TAG = "wifi";
 #define N_USER_CONNECT (1u << 6)   /* s_req_ssid / s_req_pass */
 #define N_USER_OFF     (1u << 7)
 #define N_USER_FORGET  (1u << 8)   /* s_forget_ssid */
+#define N_USER_MERGE   (1u << 9)   /* s_merge_in: the BLE console's networks */
 #define N_ALL          (N_START | N_SCAN_DONE | N_GOT_IP | N_DISC | N_USER_SCAN | \
-                        N_USER_CONNECT | N_USER_OFF | N_USER_FORGET)
+                        N_USER_CONNECT | N_USER_OFF | N_USER_FORGET | N_USER_MERGE)
+// Not in N_ALL: wifi_save_networks waits for it, the manager never does.
+#define N_MERGE_DONE   (1u << 10)
+#define WIFI_MERGE_WAIT_MS 10000
 
 typedef enum {
     PH_IDLE = 0,     /* connected, switched off by the user, or nothing saved */
@@ -157,6 +161,8 @@ EXT_RAM_BSS_ATTR static char s_code_arg[WIFI_CONF_SSID_MAX + 1];
 EXT_RAM_BSS_ATTR static char s_req_ssid[WIFI_CONF_SSID_MAX + 1];
 EXT_RAM_BSS_ATTR static char s_req_pass[WIFI_CONF_PASS_MAX + 1];
 EXT_RAM_BSS_ATTR static char s_forget_ssid[WIFI_CONF_SSID_MAX + 1];
+EXT_RAM_BSS_ATTR static const wifi_conf_t *s_merge_in;  /* taken under the lock */
+EXT_RAM_BSS_ATTR static volatile int s_merge_count;      /* networks saved, -1: not written */
 /* The manager's own (its task only). */
 EXT_RAM_BSS_ATTR static wifi_conf_t s_conf;            /* a round of saved networks, wiped after */
 EXT_RAM_BSS_ATTR static wifi_conf_t s_edit;            /* the page's changes, wiped after */
@@ -809,6 +815,33 @@ static void on_user_forget(void)
     wifi_conf_wipe(&s_edit);
 }
 
+// The console's networks into the file (wifi_conf_merge), the others kept.
+// cur is a work area. Returns the networks saved, -1 when it was not written.
+static int merge_into_file(const wifi_conf_t *in, wifi_conf_t *cur)
+{
+    conf_load(cur, NULL);
+    bool ok = true;
+    if (wifi_conf_merge(cur, in)) ok = conf_save(cur);
+    int n = ok ? cur->count : -1;
+    wifi_conf_wipe(cur);
+    return n;
+}
+
+// wifi_save_networks while the manager runs: the file has one writer.
+static void on_user_merge(void)
+{
+    lock();
+    const wifi_conf_t *in = s_merge_in;
+    s_merge_in = NULL;
+    unlock();
+    if (!in) return;   /* the asker gave up before this was taken */
+    int n = merge_into_file(in, &s_edit);
+    s_merge_count = n;
+    xEventGroupSetBits(s_wifi_events, N_MERGE_DONE);
+    // Still looking for a network: look again now, the new one included.
+    if (n > 0 && s_phase == PH_WAITING && !s_user_off) s_user_scan_wanted = true;
+}
+
 static void wifi_mgr_task(void *arg)
 {
     (void)arg;
@@ -830,6 +863,7 @@ static void wifi_mgr_task(void *arg)
         if (bits & N_SCAN_DONE) on_scan_done(true);
         if (bits & N_USER_OFF) on_user_off();
         if (bits & N_USER_FORGET) on_user_forget();
+        if (bits & N_USER_MERGE) on_user_merge();
         if (bits & N_USER_CONNECT) on_user_connect();
         if (bits & N_USER_SCAN) s_user_scan_wanted = true;
         if (bits & N_START) start_auto();
@@ -1163,4 +1197,76 @@ fmrb_err_t wifi_request_forget(const char *ssid)
     unlock();
     mgr_notify(N_USER_FORGET);
     return FMRB_OK;
+}
+
+fmrb_err_t wifi_save_networks(const char *text, size_t len, int *saved)
+{
+    if (saved) *saved = 0;
+    if (!text || len == 0) return FMRB_ERR_INVALID_PARAM;
+    char *buf = fmrb_sys_malloc(len + 1);
+    wifi_conf_t *in = fmrb_sys_malloc(2 * sizeof(wifi_conf_t));
+    if (!buf || !in) {
+        fmrb_sys_free(buf);
+        fmrb_sys_free(in);
+        return FMRB_ERR_NO_MEMORY;
+    }
+    wifi_conf_t *cur = in + 1;
+    memcpy(buf, text, len);
+    buf[len] = '\0';
+    char err[64];
+    toml_table_t *root = toml_parse(buf, err, sizeof(err));
+    wipe(buf, len + 1);
+    fmrb_sys_free(buf);
+    if (!root) {
+        FMRB_LOGW(TAG, "the networks sent are not TOML (%s)", err);
+        fmrb_sys_free(in);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    wifi_conf_from_toml(root, in, fmrb_toml_xfree);
+    toml_free(root);
+    if (in->count == 0) {
+        FMRB_LOGW(TAG, "no network in the text sent");
+        wifi_conf_wipe(in);
+        fmrb_sys_free(in);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    int n = -1;
+    fmrb_err_t ret = FMRB_OK;
+    if (s_mgr && s_wifi_events) {
+        // The manager writes the file too (the page's choices): it does this
+        // one as well, between its own, and this waits for it.
+        xEventGroupClearBits(s_wifi_events, N_MERGE_DONE);
+        lock();
+        s_merge_count = -1;
+        s_merge_in = in;
+        unlock();
+        mgr_notify(N_USER_MERGE);
+        EventBits_t b = xEventGroupWaitBits(s_wifi_events, N_MERGE_DONE, pdTRUE, pdFALSE,
+                                            pdMS_TO_TICKS(WIFI_MERGE_WAIT_MS));
+        if (!(b & N_MERGE_DONE)) {
+            lock();
+            bool taken = s_merge_in != in;
+            s_merge_in = NULL;
+            unlock();
+            if (taken) {
+                // Being written now: in must outlive that.
+                xEventGroupWaitBits(s_wifi_events, N_MERGE_DONE, pdTRUE, pdFALSE, portMAX_DELAY);
+            } else {
+                FMRB_LOGW(TAG, "the Wi-Fi manager did not take the networks sent");
+                ret = FMRB_ERR_TIMEOUT;
+            }
+        }
+        if (ret == FMRB_OK) n = s_merge_count;
+    } else {
+        n = merge_into_file(in, cur);
+    }
+    if (ret == FMRB_OK && n < 0) ret = FMRB_ERR_FAILED;
+    if (ret == FMRB_OK) {
+        FMRB_LOGI(TAG, "\"%s\" saved from the BLE console (%d network(s))", in->nets[0].ssid, n);
+        if (saved) *saved = n;
+    }
+    wifi_conf_wipe(in);
+    fmrb_sys_free(in);
+    return ret;
 }

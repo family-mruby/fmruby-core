@@ -231,6 +231,16 @@ doc/ruby_asterism/report/cf2.md、画面の使い方は tool/web/README.md。
   WiFi の要約は wifi_task が読むのと同じファイル (`/home/wifi.toml`、無ければ `/etc/wifi.toml`) から
   `enable` と `ssid` だけを取り出したもの (`fmrb_wifi_summary_json`、パスワードの行は見ない)。
   受け付ける時間を開いたときは、同じ要約をログにも 1 行出す (`settings window: wifi {...}`)。
+- コマンド `0x19` (WIFI_ADD、2026-11-12、doc/wifi_settings): 端末が覚えている Wi-Fi の
+  ネットワークに 1 つ足す。中身 (フレームのバイナリの部分) は wifi.toml の形の TOML
+  (コンソールは `[wifi]` の `enable`・`ssid`・`password` の 1 組を送る)。端末は
+  Wi-Fi の画面と同じ書き手 (`wifi_save_networks` → `wifi_conf_merge`) で
+  `/home/wifi.toml` に書く: 送られたものが先頭、同じ SSID はパスワードを書き換えて先頭へ、
+  ほかは残し、5 つを超えると一番古いものを落とす。`enable` は送られた値 (true) になる。
+  `/home/wifi.toml` の PUT と同じく受け付ける時間の間だけ。答えは
+  `{"ok":true,"saved":<覚えている数>,"path":"/home/wifi.toml"}`。Wi-Fi の管理タスクが
+  動いていればそのタスクが書き (ファイルの書き手を 1 つにする)、BLE のタスクは待つ。
+  古いファームは知らないコマンドと答え、コンソールは前の 1 組の形を PUT で書く。
 - BLE には暗号化もペアリングも無い (Windows の Web Bluetooth の都合、上の
   ble_task.c の注釈)。受け付ける時間は「端末の前にいる人が許したときだけ」を
   作るためのもので、その間の電波の盗み聞きは防げない。秘密を読み出させないのは

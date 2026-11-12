@@ -22,6 +22,7 @@
 
 const CMD_SETTINGS = 0x17;
 const CMD_REBOOT   = 0x18;   // the board takes it only in its setup mode
+const CMD_WIFI_ADD = 0x19;   // save a network beside the saved ones (doc/wifi_settings)
 
 const WIFI_HOME_PATH   = '/home/wifi.toml';
 const WIFI_ETC_PATH    = '/etc/wifi.toml';
@@ -43,6 +44,7 @@ let settingsState = {
   wifi: null,        // '/home/wifi.toml' | '/etc/wifi.toml' | '' (none)
   wifiInfo: null,    // { src, on, ssid, conn, ip } from CMD_SETTINGS, null on old firmware
   password: null,    // the current password, read while the window is open
+  passwordSsid: null, // the network that password is for (the newest saved)
   keySrc: null,      // '/home/secrets.toml' | '/etc/secrets.toml' | '' (none)
   apiKey: null,      // the current API key, read while the window is open
   tars: [],          // [{ n, s }] in /home/asterism
@@ -120,7 +122,6 @@ function settingsTarName(fileName) {
   return clean + '.tar';
 }
 
-// Returns an error message, or '' when the WiFi fields can be written.
 // One key's string value from a TOML file (a basic or a literal string), or
 // null. Enough for wifi.toml, which wifi_task.c writes and reads.
 function settingsTomlValue(text, key) {
@@ -152,6 +153,31 @@ function settingsTomlValue(text, key) {
     return null;
   }
   return null;
+}
+
+// The first (newest) network of a wifi.toml as { ssid, password }, or null:
+// the [wifi] table of the old one-network form, else the first
+// [[networks]] (wifi_conf.c reads them in that order).
+function settingsWifiFirst(text) {
+  let cur = null;
+  const done = () => cur && cur.ssid !== null;
+  for (const raw of String(text).split('\n')) {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    if (line.startsWith('[')) {
+      if (done()) break;
+      cur = (line === '[wifi]' || line === '[[networks]]') ? { ssid: null, password: null } : null;
+      continue;
+    }
+    if (!cur) continue;
+    for (const k of ['ssid', 'password']) {
+      if (cur[k] === null && line.startsWith(k)) {
+        const v = settingsTomlValue(line, k);
+        if (v !== null) cur[k] = v;
+      }
+    }
+  }
+  return done() ? { ssid: cur.ssid, password: cur.password === null ? '' : cur.password } : null;
 }
 
 // Returns an error message, or '' when the WiFi fields can be written. An
@@ -304,8 +330,9 @@ async function settingsReadPassword() {
   if (!settingsState.open || !settingsState.wifi || settingsState.password !== null) return;
   try {
     const bytes = await deviceReadFile(settingsState.wifi);
-    const pw = settingsTomlValue(new TextDecoder().decode(bytes), 'password');
-    settingsState.password = pw === null ? '' : pw;
+    const first = settingsWifiFirst(new TextDecoder().decode(bytes));
+    settingsState.password = first ? first.password : '';
+    settingsState.passwordSsid = first ? first.ssid : null;
     const field = settingsEl('setPassword');
     if (field && field.value === '') field.value = settingsState.password;
   } catch (e) {
@@ -331,6 +358,7 @@ async function settingsReadApiKey() {
 function settingsForgetPassword() {
   if (settingsState.password !== null) {
     settingsState.password = null;
+    settingsState.passwordSsid = null;
     const field = settingsEl('setPassword');
     if (field) field.value = '';
   }
@@ -535,15 +563,32 @@ function settingsWriteWifi() {
   const ssid = settingsEl('setSsid').value;
   let password = settingsEl('setPassword').value;
   // Empty keeps the current password only when it was read from the board
-  // (window open); otherwise there is nothing to keep it from.
-  if (password === '' && settingsState.open && settingsState.password) password = settingsState.password;
+  // (window open) for this same network; otherwise there is nothing to keep
+  // it from.
+  if (password === '' && settingsState.open && settingsState.password &&
+      settingsState.passwordSsid === ssid) password = settingsState.password;
   const bad = settingsCheckWifi(ssid, password);
   if (bad) { settingsSetMsg('setWifiMsg', bad, 'err'); return; }
   return settingsWrite('setWifiMsg', async () => {
-    await deviceWriteFile(WIFI_HOME_PATH, new TextEncoder().encode(settingsWifiToml(ssid, password)));
+    const text = new TextEncoder().encode(settingsWifiToml(ssid, password));
+    const then = settingsState.setup ? 'click Reboot.' : 'restart the board (menu > Reset).';
+    // The board saves the network beside the ones it remembers (up to five,
+    // newest first), with the same writer as its Wi-Fi window.
+    const { meta } = await sendCommand(CMD_WIFI_ADD, {}, text);
+    if (meta.ok) {
+      settingsState.password = password;
+      settingsState.passwordSsid = ssid;
+      return 'WiFi saved in ' + (meta.path || WIFI_HOME_PATH) + ' (' + meta.saved +
+             ' network(s), this one first; the others are kept). It is used from the next start: ' + then;
+    }
+    if (meta.denied || !/^Unknown command/.test(meta.err || '')) throw new Error(meta.err || 'refused');
+    // Firmware from before the command reads one network only: write the
+    // file in that form, as the console always did.
+    await deviceWriteFile(WIFI_HOME_PATH, text);
     settingsState.password = password;
-    return 'WiFi written to ' + WIFI_HOME_PATH + '. It is used from the next start: ' +
-           (settingsState.setup ? 'click Reboot.' : 'restart the board (menu > Reset).');
+    settingsState.passwordSsid = ssid;
+    return 'WiFi written to ' + WIFI_HOME_PATH + ' (this firmware keeps one network). ' +
+           'It is used from the next start: ' + then;
   });
 }
 
@@ -645,7 +690,8 @@ async function settingsReboot() {
 function settingsOnConnection(connected) {
   if (!connected) {
     settingsState = { supported: null, open: false, left: 0, leftAt: 0, setup: false,
-                      wifi: null, wifiInfo: null, password: null, keySrc: null, apiKey: null,
+                      wifi: null, wifiInfo: null, password: null, passwordSsid: null,
+                      keySrc: null, apiKey: null,
                       tars: [], config: null };
     const pw = settingsEl('setPassword');
     if (pw) pw.value = '';
