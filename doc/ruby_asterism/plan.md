@@ -409,10 +409,10 @@ console は数値のフィールドを線グラフにでき (V3 の生の値、V
 
 **形を知る仕組み (網の決まりに足す、2026-10-21 ユーザ「プロトコルを更新しても追加すべき」)**: Asterism のキーは MessagePack で型を運ばず、Zenoh の encoding も使わない (protocol.md 3 章・9 章)。今は V3 が最初の値から推し量っている。アプリが自分の出すキーの形を宣言する口を足す。
 
-- **2026-10-21 の方針**: 互換性を考えず、protocol 2 としてデータの決まりを作る (protocol2_design.md)。形式は Zenoh の encoding (MessagePack は付けない、画像は決まった番号)、型は流す口の宣言 (`@pubs`) に 1 回だけ、通し番号は attachment。
+- **2026-10-21 の方針**: 互換性を考えず、protocol 2 としてデータの決まりを作る (doc/asterism_protocol2/)。形式は Zenoh の encoding (MessagePack は付けない、画像は決まった番号)、型は流す口の宣言 (`@pubs`) に 1 回だけ、通し番号は attachment。
 - 宣言の無いキーは今どおり推し量る。
 
-**段 (案)**: (1) 形の宣言を網の決まりに足す (protocol2_design.md の P0-P3)。(2) console の生の値の表示を形で選ぶ (軌跡・帯・画像)。(3) 記録 (V4) の時間の帯に同じ表示を載せる。(4) アプリ固有の描き手 (お絵かき)。記録の権限 (V6、doc/asterism_recording/) とは独立に進められる。
+**段 (案)**: (1) 形の宣言を網の決まりに足す (doc/asterism_protocol2/plan.md)。(2) console の生の値の表示を形で選ぶ (軌跡・帯・画像)。(3) 記録 (V4) の時間の帯に同じ表示を載せる。(4) アプリ固有の描き手 (お絵かき)。記録の権限 (V6、doc/asterism_recording/) とは独立に進められる。
 
 ## C8: コンパイラの case/in の直しと gem 0.4.0 (完了 2026-10-09)
 

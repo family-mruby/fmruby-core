@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asterism protocol 2</title>
+<style>
+/* Layout: one reading column; each idea is a numbered step from "what exists" to "what changes", with key/value examples set as wire-like code rows. */
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --fg:#1d2330; --muted:#5b6475; --line:#d9dee7;
+  --accent:#2f5bd3; --accent-soft:#e7edfc; --warn:#a15c00; --warn-soft:#fdf1e1; --ok:#1f7a4d; --ok-soft:#e3f4ea;
+  --code-bg:#eef1f6;
+  --font-display:"Zen Kaku Gothic New","BIZ UDPGothic",system-ui,sans-serif;
+  --font-body:"BIZ UDPGothic","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12151c; --surface:#1a1f29; --fg:#e6e9ef; --muted:#9aa3b4; --line:#2c3443;
+  --accent:#7ea2ff; --accent-soft:#1f2a45; --warn:#f0b35c; --warn-soft:#3a2c17; --ok:#6fd3a0; --ok-soft:#173326;
+  --code-bg:#222938; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12151c; --surface:#1a1f29; --fg:#e6e9ef; --muted:#9aa3b4; --line:#2c3443;
+  --accent:#7ea2ff; --accent-soft:#1f2a45; --warn:#f0b35c; --warn-soft:#3a2c17; --ok:#6fd3a0; --ok-soft:#173326;
+  --code-bg:#222938; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:16px;line-height:1.8}
+.wrap{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 64px}
+h1,h2,h3{font-family:var(--font-display);line-height:1.35;text-wrap:balance}
+h1{font-size:2.2rem;margin:.2em 0 .3em;font-weight:900}
+h2{font-size:1.45rem;margin:2.4em 0 .6em;padding-top:.6em;border-top:1px solid var(--line)}
+h3{font-size:1.1rem;margin:1.6em 0 .4em}
+p,li{max-width:68ch}
+.eyebrow{font-family:var(--font-mono);font-size:.78rem;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.lead{font-size:1.08rem;color:var(--muted)}
+.status{display:flex;flex-wrap:wrap;gap:8px;margin:1em 0 0}
+.pill{font-size:.82rem;padding:2px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface)}
+.pill.ok{background:var(--ok-soft);border-color:transparent;color:var(--ok);font-weight:700}
+.pill.warn{background:var(--warn-soft);border-color:transparent;color:var(--warn);font-weight:700}
+code,.k{font-family:var(--font-mono);font-size:.88em;background:var(--code-bg);padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+pre{font-family:var(--font-mono);font-size:.85rem;line-height:1.6;background:var(--code-bg);padding:14px 16px;border-radius:8px;overflow-x:auto;margin:.8em 0}
+.note{background:var(--accent-soft);padding:12px 16px;border-radius:8px;margin:1em 0}
+.note.warn{background:var(--warn-soft)}
+.note strong{color:var(--accent)}
+.note.warn strong{color:var(--warn)}
+.tablebox{overflow-x:auto;margin:.8em 0}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:.92rem}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-weight:700;color:var(--muted);font-size:.82rem}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:1em 0}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.box h3{margin-top:0}
+.box.now{border-top:3px solid var(--muted)}
+.box.next{border-top:3px solid var(--accent)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:0 8px;border-radius:4px;margin-right:6px;vertical-align:1px}
+.tag.keep{background:var(--ok-soft);color:var(--ok)}
+.tag.new{background:var(--accent-soft);color:var(--accent)}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:2.6em;margin:.7em 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:.15em;width:1.8em;height:1.8em;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;display:grid;place-items:center;font-size:.85rem}
+.wire{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;margin:.8em 0}
+.seg{font-family:var(--font-mono);font-size:.82rem;border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:var(--surface);min-width:0}
+.seg b{display:block;font-family:var(--font-body);font-size:.72rem;color:var(--muted);font-weight:700}
+.seg.hl{border-color:var(--accent);background:var(--accent-soft)}
+footer{margin-top:3em;color:var(--muted);font-size:.85rem}
+a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Family mruby / Asterism · 設計メモ</div>
+  <h1>Asterism protocol 2</h1>
+  <p class="lead">アプリが網に「流す値」の決まりを作る話です。今の決まり (protocol 1) で何が決まっていて何が決まっていないのか、protocol 2 で何をどう変えるのかを、順に説明します。</p>
+  <div class="status">
+    <span class="pill ok">決定 (2026-11-13)・実装に着手</span>
+    <span class="pill">設計の正: fmruby-core doc/asterism_protocol2/design.md</span>
+  </div>
+
+  <h2>まず、Asterism とは</h2>
+  <p>Asterism は、Family mruby の端末 (ESP32 の基板・ブラウザ版・Linux のネイティブ版) や PC の Ruby が、網の上でおたがいのオブジェクトを使い合うための仕組みです。下では Zenoh という通信の仕組みを使っています。</p>
+  <p>網の上の住所は、<strong>ノード (端末) &gt; アプリ &gt; オブジェクト</strong> の 3 段です。Zenoh では、これを「キー」と呼ぶ文字列で表します。</p>
+  <div class="wire" aria-label="キーの形">
+    <div class="seg"><b>決まった頭</b>asterism</div>
+    <div class="seg hl"><b>ノード</b>fmruby-abc123</div>
+    <div class="seg hl"><b>アプリ</b>mahjong</div>
+    <div class="seg hl"><b>オブジェクト</b>table</div>
+  </div>
+  <p>キーは <code>asterism/fmruby-abc123/mahjong/table</code> のようにつなげて書きます。ルータの許可 (ACL) は、このキーを見て「だれが、どこに書いてよいか」を決めます。</p>
+
+  <h2>今の決まり (protocol 1) で決まっていること</h2>
+  <div class="cols">
+    <div class="box now">
+      <h3>呼び出し</h3>
+      <p>あるオブジェクトのメソッドを呼ぶ決まりです。キーの最後に「呼んだ相手の名前」を入れます。ルータは呼んだ相手を、キーで確かめます。</p>
+      <pre>asterism/&lt;相手&gt;/&lt;アプリ&gt;/&lt;オブジェクト&gt;/call/&lt;自分&gt;</pre>
+      <p>答えは <code>{"value" =&gt; ...}</code> か <code>{"error" =&gt; ...}</code> です。</p>
+    </div>
+    <div class="box now">
+      <h3>自己紹介・状態・メタ</h3>
+      <ul>
+        <li><code>@profile</code>: 端末の自己紹介 (名前・種類)</li>
+        <li><code>@status</code>: アプリの今の状態</li>
+        <li><code>meta</code>: オブジェクトが持つメソッドの一覧</li>
+      </ul>
+      <p>console の図や <code>anodes</code> は、これを読んで出しています。</p>
+    </div>
+  </div>
+  <p>中身はどれも <strong>MessagePack の値 1 つ</strong>です。Zenoh が持っている「形式の印 (encoding)」「添え書き (attachment)」「時刻 (タイムスタンプ)」は、使っていません。</p>
+
+  <h2>今の決まりで、決まっていないこと</h2>
+  <p>アプリが自分から流す値 (麻雀の卓の状態、お絵かきの線、センサの値、ログなど) は、「<code>asterism/&lt;ノード&gt;/&lt;アプリ&gt;/...</code> の下に MessagePack で置く」としか決まっていません。そのため、次のことが起きます。</p>
+  <ol class="steps">
+    <li><strong>何が流れているか、値が来るまで分からない。</strong> 網の上で「このアプリはどんな値を流しているか」を見つける方法がありません。</li>
+    <li><strong>値の形が分からない。</strong> 受け手 (console の表示、記録、ほかのアプリ) は、届いた中身を見て、それが数なのか、座標なのか、画像なのかを推し量るしかありません。</li>
+    <li><strong>抜けや順番が分からない。</strong> 通し番号が無いので、記録したときに取りこぼしを数えられません。いつ測った値なのかも分かりません。</li>
+  </ol>
+
+  <h2>protocol 2 の考え方</h2>
+  <p>目的は上の 3 つを解くことです。ただし、端末 (メモリ・通信量が小さい ESP32) の負担は増やしません。そのための原則が 4 つあります。</p>
+  <div class="tablebox"><table>
+    <thead><tr><th>原則</th><th>どういうことか</th></tr></thead>
+    <tbody>
+      <tr><td>許可で縛るものはキーに置く</td><td>ノード・アプリ・呼んだ相手はキーに置いたまま変えない。ルータの許可はキーしか見られないため。</td></tr>
+      <tr><td>値の説明は Zenoh の仕組みに載せる</td><td>形式は encoding、通し番号と時刻は attachment に入れる。中身には値だけを入れる。</td></tr>
+      <tr><td>値ごとに送るものと、1 回だけ送るものを分ける</td><td>型・単位・説明は「トピックの宣言」で 1 回だけ。値ごとには、通し番号と (MessagePack 以外のときだけ) 形式。</td></tr>
+      <tr><td>短くできるものは短く</td><td>組み込みの型は番号。宣言のキーは 1〜2 文字。説明は省いてよい。</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>何を変えるか</h2>
+  <h3><span class="tag new">新</span>トピックを宣言する</h3>
+  <p>アプリは、値を流す前に「この名前で、この型の値を流します」と宣言します。Ruby では次のような形を考えています。</p>
+<pre>pub = Asterism.publish("imu", type: :vector3, unit: "m/s2")
+pub.put([0.1, 0.0, 9.8])</pre>
+  <p>宣言の一覧は、アプリごとに 1 か所で答えます。後から網に来た人も、それを聞けば「何が流れているか」が分かります。</p>
+<pre>{"imu"            =&gt; {"t" =&gt; 2, "u" =&gt; "m/s2", "d" =&gt; "加速度"},
+ "board1/strokes" =&gt; {"t" =&gt; "asterism-games/board.strokes"},
+ "camera"         =&gt; {"t" =&gt; 4, "e" =&gt; 17}}</pre>
+  <div class="tablebox"><table>
+    <thead><tr><th>キー</th><th>意味</th></tr></thead>
+    <tbody>
+      <tr><td><code>t</code></td><td>型。組み込みの型は番号、アプリ独自の型は名前空間つきの名前</td></tr>
+      <tr><td><code>e</code></td><td>形式 (MessagePack 以外のとき。例: 17 は JPEG)</td></tr>
+      <tr><td><code>u</code></td><td>単位</td></tr>
+      <tr><td><code>d</code></td><td>説明 (人と道具が読む)</td></tr>
+      <tr><td><code>ts</code></td><td>送り手の時刻を添えるか</td></tr>
+    </tbody>
+  </table></div>
+
+
+  <h3><span class="tag new">新</span>問い合わせの受付を増やさない</h3>
+  <p>Zenoh では、問い合わせ (get) に答える側が、キーごとに <strong>queryable</strong> (問い合わせの受付) を立てます。1 つ立てるごとに、ESP32 では少しずつメモリを使います。</p>
+  <p>今のアプリは、呼び出しとメタに答える <code>asterism/&lt;ノード&gt;/&lt;アプリ&gt;/**</code> と、状態に答える <code>@status</code> の 2 つの queryable を持ちます。<code>@</code> で始まるキーには <code>**</code> のようなワイルドカードが掛からないので、<code>@status</code> は別に立てる必要があります。</p>
+  <p>protocol 2 では、トピックの宣言 (<code>@pubs</code>) と独自の型の定義 (<code>@types</code>) にも答えます。別々に立てると 4 つになりますが、状態・宣言・型の定義に答える queryable を 1 つ (<code>@profile</code>) にまとめ、問い合わせの引数で答えを分けます。名前は端末の自己紹介 <code>asterism/&lt;ノード&gt;/@profile</code> と同じ語で、「アプリの自己紹介」と読めるようにしています。</p>
+<pre>asterism/&lt;ノード&gt;/&lt;アプリ&gt;/@profile?status
+asterism/&lt;ノード&gt;/&lt;アプリ&gt;/@profile?pubs
+asterism/&lt;ノード&gt;/&lt;アプリ&gt;/@profile?types</pre>
+  <p>変わったときの知らせ (put) は、今と同じく <code>@status</code>・<code>@pubs</code>・<code>@types</code> の別々のキーに出します。購読する側は、知りたいものだけを購読できます。これで、アプリごとの queryable は今と同じ 2 つのままです。</p>
+
+  <h3><span class="tag new">新</span>組み込みの型 (番号)</h3>
+  <div class="tablebox"><table>
+    <thead><tr><th>番号</th><th>型</th><th>値の形</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>number</td><td>数</td></tr>
+      <tr><td>2</td><td>vector3</td><td><code>[x, y, z]</code></td></tr>
+      <tr><td>3</td><td>pose</td><td>位置と向き (配列)</td></tr>
+      <tr><td>4</td><td>image</td><td>JPEG・PNG のバイト列 (形式は <code>e</code>)</td></tr>
+      <tr><td>5</td><td>state</td><td>場面・入/切などの文字列か整数</td></tr>
+      <tr><td>6</td><td>log</td><td>ログの行</td></tr>
+      <tr><td>7</td><td>text</td><td>文字列</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><span class="tag new">新</span>値ごとに付けるもの</h3>
+  <p>値そのものは今と同じ MessagePack です。添え書き (attachment) に、短い情報を足します。</p>
+  <div class="wire" aria-label="値ごとに送るもの">
+    <div class="seg"><b>キー</b>asterism/…/imu</div>
+    <div class="seg"><b>形式 (encoding)</b>無し = MessagePack</div>
+    <div class="seg hl"><b>attachment</b>[通し番号] か [通し番号, 時刻]</div>
+    <div class="seg"><b>中身</b>[0.1, 0.0, 9.8]</div>
+  </div>
+  <ul>
+    <li><strong>通し番号</strong>: トピックごとに 0 から 1 ずつ増えます。127 までは 1 バイトです。番号が飛べば取りこぼし、0 に戻ればつなぎ直しと分かります。</li>
+    <li><strong>送り手の時刻</strong>: 宣言で頼んだトピックだけ付けます。ふだんは付けず、ルータが付ける時刻で足りるかを先に確かめます。</li>
+    <li><strong>形式</strong>: MessagePack のときは何も付けません (0 バイト)。JPEG を MessagePack に包まず流すときは、Zenoh の決まった番号を付けます。</li>
+  </ul>
+
+  <h3>時刻は 3 つを使い分ける</h3>
+  <div class="tablebox"><table>
+    <thead><tr><th>時刻</th><th>だれが付けるか</th><th>使い道</th></tr></thead>
+    <tbody>
+      <tr><td>送り手の時刻</td><td>値を測った端末 (頼んだトピックだけ)</td><td>同じトピックの中での間隔。グラフの横軸</td></tr>
+      <tr><td>ルータの時刻</td><td>ルータ (zenohd) が通るときに</td><td>いくつもの端末の値の順番</td></tr>
+      <tr><td>受け取った時刻</td><td>受け手 (console)</td><td>記録の時刻</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><span class="tag keep">そのまま</span>変えないもの</h3>
+  <ul>
+    <li>呼び出し・自己紹介・状態・メタの決まり (自己紹介の <code>protocol</code> の番号だけ 2 にする)</li>
+    <li>キーの形と、ルータの許可の考え方</li>
+    <li>ROS 2 とやりとりする部分 (ROS 2 の決まりのまま)</li>
+  </ul>
+
+  <h2>これで何ができるようになるか</h2>
+  <ul>
+    <li>console が、流れている値を型に合った形で描けます (座標なら軌跡、画像ならコマ送り、状態なら色の帯)。</li>
+    <li>記録 (MCAP) に、型・通し番号・時刻がそのまま入ります。後から取りこぼしを数えられます。</li>
+    <li>新しく網に来たアプリや道具が、「だれが何を流しているか」をすぐに知れます。</li>
+  </ul>
+
+  <h2>決定 (2026-11-13)</h2>
+  <div class="note">2026-11-12 の仮決定を、2026-11-13 に決定としました。この決まりで実装を進めます。</div>
+  <div class="tablebox"><table>
+    <thead><tr><th>#</th><th>問い</th><th>答え</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>宣言の一覧の問い合わせに答える queryable</td><td>状態・宣言・型を 1 つの queryable <code>@profile</code> で答える (queryable の数は今と同じ)</td></tr>
+      <tr><td>2</td><td>vector3 などの形</td><td>配列 <code>[x, y, z]</code></td></tr>
+      <tr><td>3</td><td>アプリ独自の型の定義</td><td>網で引けるようにする (<code>@types</code>)</td></tr>
+      <tr><td>4</td><td>通し番号</td><td>全部のトピックに付ける</td></tr>
+      <tr><td>5</td><td>送り手の時刻の単位</td><td>ミリ秒</td></tr>
+      <tr><td>6</td><td>呼び出しの答えにも番号・時刻を付けるか</td><td>付けない</td></tr>
+      <tr><td>7</td><td>ROS 2 の側</td><td>ROS 2 (rmw_zenoh) の決まりのまま</td></tr>
+      <tr><td>8</td><td>宣言の名前に <code>/</code> を許すか</td><td>許す (<code>board1/strokes</code> のような階層)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>作るときの段取り</h2>
+  <div class="tablebox"><table>
+    <thead><tr><th>段</th><th>内容</th></tr></thead>
+    <tbody>
+            <tr><td>P1</td><td>部品に、形式の印 (encoding) とパブリッシャーの宣言を足す。端末の内蔵 RAM が増えないことを測る</td></tr>
+      <tr><td>P2</td><td>Ruby の Asterism (PC と端末で共通の部分) に、publish・宣言・通し番号・アプリの <code>@profile</code> を入れ、protocol 2 の文書と適合の試験を書く</td></tr>
+      <tr><td>P3</td><td>一斉に入れ替える (ゲーム、Family mruby のアプリ、console、ブラウザ版、MCP)</td></tr>
+      <tr><td>P4</td><td>公開する (gem・console・ブラウザ版・ファームウェア)。発火は許可を得てから</td></tr>
+    </tbody>
+  </table></div>
+  <p>型に合わせた表示と記録の改良は、この上に別の企画として乗せます。使っているのは作者だけなので、古い決まりとの互換は考えず、全部を一度に入れ替える方針です。</p>
+
+  <footer>この頁は設計メモの要約です。細部と経緯は設計の文書にあります。</footer>
+</div>
+
