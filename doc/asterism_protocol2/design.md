@@ -137,6 +137,7 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 | 10 | 独自の型の定義 (`?types`) の形 | 型の名前ごとに `{"f" => [[名前, 型], ...], "d" => 説明}`。フィールドの型は組み込みの番号、基本の型名 (`int`・`float`・`str`・`bin`・`bool`)、ほかの独自の型の名前のどれかで、末尾の `[]` で配列。`d` は省略可 |
 | 11 | 受け手の Ruby の API | 値の包み 1 つをブロックに渡す: `Asterism.subscribe(path) { \|s\| s.value; s.seq }`。包みは値 (MessagePack は解いた後)・通し番号・送り手の時刻・encoding・キーなどを持つ |
 | 12 | 通し番号の折り返し | 2^31 未満で 0 に戻す (どの端末の整数でも扱える)。受け手は「上限近くから 0」を折り返し、それ以外の戻りをつなぎ直しと読む |
+| 13 | 受け手の包みの encoding (encoding が無い値) | `"msgpack"` (記録の MCAP の message_encoding と同じ語)。部品 (Zenoh の層) は `"zenoh/bytes"` を返すままで、Asterism の包みが読み替える |
 
 退けた案 (1 の queryable): 既存のアプリの queryable (`**`) で答える案は予約名が要り、`@pubs` 専用の queryable を足す案は
 queryable が 1 つ増えるので採らなかった。
