@@ -139,7 +139,7 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
       usr1) kill -USR1 $$ ;;
       term) kill -TERM $$ ;;
       exit3) exit 3 ;;
-      hold) trap 'echo "got TERM" >> "#{plan}.log"; exit 0' TERM; sleep 30 & wait ;;
+      hold) trap 'kill $! 2> /dev/null; echo "got TERM" >> "#{plan}.log"; exit 0' TERM; : > "#{plan}.held"; sleep 30 & wait ;;
       *) exit 0 ;;
     esac
   SH
@@ -174,9 +174,9 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
   log = File.exist?(slog) ? File.read(slog) : ""
   check(log =~ /^==== \d{4}-\d\d-\d\d \d\d:\d\d:\d\d session \d+ starts$/ &&
         log =~ /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d starting .* \(run 1\)$/ &&
-        log.include?("Family mruby ended by SIGKILL after 0s (run 1); starting it again") &&
+        log =~ /Family mruby ended by SIGKILL after \d+s \(run 1\); starting it again/ &&
         log.include?("(again: the last run ended abnormally, SIGKILL) (run 2)") &&
-        log.include?("Family mruby ended (its Exit entry; run 2 ran 0s)"),
+        log =~ /Family mruby ended \(its Exit entry; run 2 ran \d+s\)/,
         "the kept log has the script's lines:\n#{log}")
   check(log.scan(/^---- the last lines of Family mruby \(run (\d), pid \d+\)$/).map(&:first) == %w[1 2] &&
         log.include?("run 1 output\n") && log.include?("run 2 output\n"),
@@ -197,19 +197,19 @@ Dir.mktmpdir("fmrb-session-restart") do |dir|
   check(st.exitstatus == 0 && runs == ["run 1 []"], "the Exit alone: #{runs.inspect} (#{st.exitstatus})")
 
   runs, err, st = restart.call("term", "exit")
-  check(st.exitstatus == 143 && runs == ["run 1 []"] && err.include?("ended by SIGTERM after 0s (run 1): not a crash"),
+  check(st.exitstatus == 143 && runs == ["run 1 []"] && err =~ /ended by SIGTERM after \d+s \(run 1\): not a crash/,
         "SIGTERM to the program: #{runs.inspect} (#{st.exitstatus}, #{err.lines.last.to_s.strip})")
 
   # SIGTERM to the session (a logout): the program gets it, no new run.
   File.write(plan, "hold\nexit\n")
-  FileUtils.rm_f(["#{plan}.n", "#{plan}.log"])
+  FileUtils.rm_f(["#{plan}.n", "#{plan}.log", "#{plan}.held"])
   r, w = IO.pipe
   pid = Process.spawn(env, "/bin/sh", File.join(bin, "family-mruby-session"), err: w, out: File::NULL,
                       unsetenv_others: true)
   w.close
   deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
-  sleep 0.1 until File.exist?("#{plan}.log") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-  sleep 0.3
+  # Not before the stand-in has set its trap (a fixed wait lost the race under load).
+  sleep 0.05 until File.exist?("#{plan}.held") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
   Process.kill("TERM", pid)
   _, st = Process.wait2(pid)
   err = r.read

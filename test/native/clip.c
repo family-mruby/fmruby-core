@@ -18,6 +18,7 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -147,6 +148,14 @@ static void test_threads(void)
 {
     pthread_t th;
     pthread_create(&th, NULL, offerer, NULL);
+    // Wait for the first offer (up to 10 s): on a loaded machine the loop
+    // below could otherwise finish before the offerer ever ran.
+    for (int w = 0; w < 10000; w++) {
+        size_t len = 0;
+        const char *t = read_all(&len);
+        if (len > 0 && (t[0] == 'A' || t[0] == 'B')) break;
+        usleep(1000);
+    }
     int torn = 0, reads = 0;
     for (int i = 0; i < 20000; i++) {
         size_t len = 0;
