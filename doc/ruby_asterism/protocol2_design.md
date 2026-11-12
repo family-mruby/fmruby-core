@@ -120,7 +120,7 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 
 ユーザ: 「この選択は仮決定であり、実装はしてはいけない」。下は P0 の 8 点への今の答え。P1 以降に着手するのは、ユーザが改めて指示したときだけ。
 
-1. `@pubs` の queryable: **`@status` と 1 つにまとめる** (queryable を `asterism/<node>/<app>/@app` のような 1 つにし、状態と宣言を答え分ける)。P1 で RAM を測って確かめる。
+1. `@pubs` の queryable: **`@status` と 1 つにまとめる** (queryable を `asterism/<node>/<app>/@profile` の 1 つにし、状態と宣言を答え分ける)。名前は端末の `@profile` と同じ語で「アプリの自己紹介」と読ませる (2026-11-13 仮決定)。P1 で RAM を測って確かめる。
 2. 組み込みの型の形: **配列** (vector3 は `[x, y, z]`。pose なども同じ流儀)。
 3. アプリ独自の型の定義: **網で引けるようにする** (例 `asterism/<node>/<app>/@types`。queryable の数は 1 の queryable にまとめられるかを P1 で見る)。
 4. 通し番号: **全部のトピックに付ける**。
@@ -133,7 +133,7 @@ V7 の「形に合わせた表示」は `t` で描き方を選ぶ (2 は軌跡�
 
 1. `@pubs` に答える queryable をどうするか。`@` で始まるキーは `asterism/<node>/<app>/**` に掛からないので、別に立てると queryable が 1 つ増える (put だけなら queryableは要らない。要るのは後から来た人の問い合わせに答えるため)。
    - ① 既存のアプリの queryable (`**`) で答える: `@` を付けない形 (各オブジェクトのメタの答えに `"pubs"`、または予約名)。queryable は増えない。オブジェクトに属さない値の置き場と、予約名の扱いが要る。ACL は `asterism/**` の規則に含まれる。
-   - ② `@status` の queryable と 1 つにまとめる: queryable を `asterism/<node>/<app>/@app` のような 1 つにし、問い合わせのパラメータ (状態・宣言) で答え分ける。put は `@status`・`@pubs` の別のキーのまま。queryable の数は今と同じで、`@` の扱い (ワイルドカードに掛からない、ACL を別に書く) も保てる。見立てはこれ。
+   - ② `@status` の queryable と 1 つにまとめる: queryable を `asterism/<node>/<app>/@profile` の 1 つにし、問い合わせのパラメータ (状態・宣言) で答え分ける。put は `@status`・`@pubs` の別のキーのまま。queryable の数は今と同じで、`@` の扱い (ワイルドカードに掛からない、ACL を別に書く) も保てる。見立てはこれ。
    - ③ `@pubs` 専用の queryable を足す: 素直だが queryable が 1 つ増える。
    - P1 で queryable 1 つあたりの端末の RAM を測ってから決める。
 2. 組み込みの型の番号と形 (上の 1〜7 は案)。vector3 を配列にするか map にするか (配列の方が短い)。
