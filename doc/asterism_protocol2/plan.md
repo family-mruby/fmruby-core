@@ -1,6 +1,6 @@
 # Asterism protocol 2 の実装
 
-> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。次は P1 (部品)
+> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1 はほぼ済 (Docker が戻ったら regress:size)、次は P2 (Asterism 本体)
 
 ## 目的
 
@@ -33,7 +33,7 @@
 
 | 段 | 内容 | 状態 |
 |---|---|---|
-| P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | 進行中 |
+| P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | ほぼ済 (picoruby-asterism-zenoh c4d9e3a・829969e、report/p1.md。`regress:size`・`regress:live` と esp32・wasm のビルドは Docker が見えず未了) |
 | P2 | Asterism 本体: `Asterism.publish(name, type:, unit:, desc:, ts:, encoding:)` と `pub.put`、通し番号 (全トピック) と送り手の時刻 (ミリ秒、`ts` のときだけ) の attachment、アプリの `@profile` queryable (`?status`・`?pubs`・`?types`) で今の `@status` の queryable を置き換え、`@pubs` の put、独自の型の定義の登録、受け手の API (値と一緒に encoding・通し番号・時刻を受け取る、宣言の一覧を引く)、自己紹介の `protocol => 2`。`docs/protocol.md` に protocol 2 を書き (英語)、適合の試験を作り直す | 未着手 |
 | P3 | 入れ替え: asterism-games、asterism-console、fmruby-core のアプリ・ブラウザ版・MCP、CLI (`asterism`)。ネイティブ版・sim・ブラウザ版・console の間で、宣言が見え、値が型つきで届き、通し番号の欠けが数えられることを通しで確かめる | 未着手 |
 | P4 | 公開: 各リポジトリの push、gem (asterism-zenoh・asterism・asterism-games) の版上げと公開、console の版上げと VPS 更新、fmruby-core のピン更新、ブラウザ版の配置。**どれもユーザの許可語を得てから** | 未着手 |
@@ -50,12 +50,10 @@
 
 ## 未確定事項
 
-P2 で案を作り、ユーザに選択肢で聞く。
+P2 の前の 4 点 (`@profile` の引数なし・`?types` の形・受け手の API・通し番号の折り返し) は 2026-11-13 に決定 (design.md の「細部の決定」)。
 
-- `@profile` に引数なしで問い合わせたときの答え (状態と宣言をまとめて返すか、状態だけか)。
-- 独自の型の定義 (`?types` の答え) の形: フィールドの並びと型の書き方 (ROS 2 の `.msg` のような名前と型の組の配列か)。
-- 受け手の Ruby の API の形 (ブロックに値と一緒に通し番号・時刻を渡すか、値の包みを渡すか)。
-- 通し番号の上限と折り返し (MessagePack の正の整数で 32 ビットを超えたとき)。
+- encoding を付けない値の受け手での見え方: CRuby の部品 (zenoh-c) は nil でなく `"zenoh/bytes"` を返す (P1 の実測)。P1 は端末も `"zenoh/bytes"` に合わせた。
+  Asterism の包みでどう見せるかをユーザに聞く。
 
 ## 関連
 
