@@ -33,7 +33,7 @@
 
 | 段 | 内容 | 状態 |
 |---|---|---|
-| P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | 未着手 |
+| P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | 進行中 |
 | P2 | Asterism 本体: `Asterism.publish(name, type:, unit:, desc:, ts:, encoding:)` と `pub.put`、通し番号 (全トピック) と送り手の時刻 (ミリ秒、`ts` のときだけ) の attachment、アプリの `@profile` queryable (`?status`・`?pubs`・`?types`) で今の `@status` の queryable を置き換え、`@pubs` の put、独自の型の定義の登録、受け手の API (値と一緒に encoding・通し番号・時刻を受け取る、宣言の一覧を引く)、自己紹介の `protocol => 2`。`docs/protocol.md` に protocol 2 を書き (英語)、適合の試験を作り直す | 未着手 |
 | P3 | 入れ替え: asterism-games、asterism-console、fmruby-core のアプリ・ブラウザ版・MCP、CLI (`asterism`)。ネイティブ版・sim・ブラウザ版・console の間で、宣言が見え、値が型つきで届き、通し番号の欠けが数えられることを通しで確かめる | 未着手 |
 | P4 | 公開: 各リポジトリの push、gem (asterism-zenoh・asterism・asterism-games) の版上げと公開、console の版上げと VPS 更新、fmruby-core のピン更新、ブラウザ版の配置。**どれもユーザの許可語を得てから** | 未着手 |
