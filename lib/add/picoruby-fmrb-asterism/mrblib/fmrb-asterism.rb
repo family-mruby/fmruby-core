@@ -43,8 +43,10 @@
 # started later read it here.
 module FmrbAsterism
   # FmrbConst::BOARD -> the profile's host. The sim and the browser build
-  # say what they are; NARYAv4 is the P4-Nano board.
+  # say what they are; NARYAv4 is the P4-Nano board. The native Linux
+  # program is BOARD "linux" too and says NATIVE_HOST (FmrbConst::NATIVE).
   HOSTS = { "linux" => "sim", "wasm" => "browser", "naryav4" => "p4nano" }
+  NATIVE_HOST = "native"
   DIR = "/home/asterism"
   CONFIG_FILE = "/home/asterism/config.toml"
   CONFIG_KEYS = ["router", "node", "name"]
@@ -59,6 +61,7 @@ module FmrbAsterism
   NO_ROUTER = "no Zenoh router is set (router in #{CONFIG_FILE}, or zenoh_router in #{SYSTEM_CONF})"
 
   def self.host
+    return NATIVE_HOST if FmrbConst.const_defined?(:NATIVE) && FmrbConst::NATIVE
     board = FmrbConst::BOARD
     HOSTS[board] || board
   end

@@ -380,6 +380,16 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "narya_v3"));
 #endif
 
+    // Whether this is the native Linux program (doc/linux_native): BOARD is
+    // "linux" there as in the sim (they share the Linux port and most of its
+    // behaviour), so this is what tells the two apart (e.g. the Asterism
+    // profile's host: "native" here, "sim" in the sim).
+#if defined(FMRB_PLATFORM_NATIVE)
+    mrb_define_const(mrb, const_module, "NATIVE", mrb_true_value());
+#else
+    mrb_define_const(mrb, const_module, "NATIVE", mrb_false_value());
+#endif
+
     // Which machine family this build is, or -- in the simulator -- stands
     // in for: "modern" (ESP32-P4) or "retro" (ESP32-S3 + WROVER). BOARD says
     // which board; this says which habits, for the things the two families

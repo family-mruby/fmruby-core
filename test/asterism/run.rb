@@ -194,6 +194,23 @@ check("a device keeps the fallback", s.router, "tcp/zenohd:7447")
 FmrbConst.send(:remove_const, :BOARD)
 FmrbConst.const_set(:BOARD, "linux")
 
+puts "the profile's host"
+host_of = lambda do |board, native|
+  FmrbConst.send(:remove_const, :BOARD)
+  FmrbConst.const_set(:BOARD, board)
+  FmrbConst.send(:remove_const, :NATIVE) if FmrbConst.const_defined?(:NATIVE)
+  FmrbConst.const_set(:NATIVE, native) unless native.nil?
+  FmrbAsterism.host
+end
+check("the sim says sim", host_of.call("linux", false), "sim")
+check("the native program says native", host_of.call("linux", true), "native")
+check("the browser build says browser", host_of.call("wasm", false), "browser")
+check("NARYAv4 says p4nano", host_of.call("naryav4", false), "p4nano")
+check("a board says its name", host_of.call("tab5", false), "tab5")
+check("a firmware without NATIVE: from the board", host_of.call("linux", nil), "sim")
+FmrbConst.send(:remove_const, :BOARD)
+FmrbConst.const_set(:BOARD, "linux")
+
 puts "the files before CF1"
 reset
 put(OLD_ROUTER, "tls/203.0.113.5:7447\n")
