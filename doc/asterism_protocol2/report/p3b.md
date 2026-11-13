@@ -219,11 +219,28 @@ asterism-console 3 コミット (7c95f36・783b8b3・b0844f1)。asterism には�
 ### 10.5 見立てと違った点・残る点
 
 1. 図にも台帳にも `spectate` のための変更は要らなかった (10.2・10.3)。指示書の「要るなら足す」はどちらも「要らない」。
-2. **止まって返す点 (仕様の選択)**: 文書の例のロール `spectator` は `asterism/*/spectate`・`spectate/**` の値だけを読み、`spectate` の
-   `@profile` (状態・宣言・型) には問い合わせられず `@pubs` も届かない。spectator の証明書で `asterism topic list` をしても観戦のトピックは
-   出ない (console・viewer・ホスト自身の証明書なら出る)。spectator に `asterism/*/spectate/@profile` (read と ask)・`asterism/*/spectate/@pubs`
-   (read) を足すか (例の文書と migration の両方) はユーザが決める。今は足していない。
+2. ~~止まって返す点~~ → 10.6 で入れた (ユーザが「例の文書と自動の直しの両方に足す」と決めた)。
 3. 自前の games-host で `*/@status` の行が無いもの (例と違う形) は、9 章と同じく自動では直らない。`spectate` も同じ。
 4. bridge の接続は 1 本のまま。ファイルの受け口を 2 本目の接続にする (10.1) かは、ルータの席が増えるので今は採らない。
 5. 版・CHANGELOG は上げていない。push していない。P4 の順序の注意 (8 章) は変わらない: console・ゲームホスト・asterism の protocol 2 の版を
    同時に入れる。
+
+### 10.6 追記: spectator が `spectate` の自己紹介とトピックを読む (2026-11-13)
+
+10.5 の 2 をユーザが「例のロールと更新の自動の直しの両方に足す」と決めた。asterism-console a54cf73。
+
+- **例のロール** (docs/rooms.md の spectator): Read に `asterism/*/spectate/@profile`・`asterism/*/spectate/@pubs`、Ask に
+  `asterism/*/spectate/@profile` を足した。答えと `@pubs` の put は Read の行から届く (4 章と同じ)。spectator の証明書の
+  `asterism topic list` に卓の状態のトピックが出る。
+- **更新の自動の直し**: 新しいデータの migration `db/migrate/20261113200000_relay_role_spectate_profiles.rb` (`RelayRoleSpectateProfiles`)。
+  9 章の migration は変えずに別にした (手元のデータベースで流し終えたものは二度流れないため)。`db/schema.rb` の版も合わせた。
+  - 規則は 1 つ: Read の行 `<base>/**` で base が `spectate` のアプリで終わるもの (`SPECTATE_READ = %r{\A(.+/spectate)/\*\*\z}`) に、
+    Read `<base>/@profile`・`<base>/@pubs` と Ask `<base>/@profile` を足す。**行の前置きはそのロール自身の行から取る**
+    (`asterism/games/spectate/**` なら `asterism/games/spectate/@profile`)。部屋の観戦の名前が変わったときに直すのはこの正規表現 1 つ。
+  - 足すだけ・2 回目は何も変えない・変えたロールごとに `relay role <名前> (spectate's profile): ...` を出す (9 章と同じ形)。
+    players・viewer (`asterism/**` は当たらない)・games-host (spectate の行は rw にある) は変わらない。
+- docs/install.md の protocol 2 への更新の節に 2 本目の migration と足す行を書いた。
+- 試験: `test/db/relay_role_spectate_profiles_test.rb` (新設、5 runs: spectator の例・前置きを引き継ぐ・該当しないロールは変えない・
+  2 回目は変化なし・データベースの行に流してルータの ACL で topic list と同じ操作 (`@profile` の問い合わせと答え、`@pubs` の購読と put) が
+  前は全部断られ、後は全部通り、`games` アプリの `@profile`・呼び出し・書き込みは断られたまま)。`spectate_roles_test` の例のロールを新しい行にし、
+  1 本足した。**`bin/rails test` は 624 runs、6633 assertions、0 failures、0 errors**、rubocop 314 files 違反 0。
