@@ -320,3 +320,96 @@ spectator   Read            asterism/*/@shared/spectate/**
 
 - 版・CHANGELOG は上げていない。push していない。`docs/install.md` の「Updating」に版ごとの手順 (ロールの直し) は書いていない (P4 で版と一緒に)。
 - ACL のあるルータでの通し。
+
+## 12. 追記: P2d-2 (asterism-games の今の値の取り直し、ms の時刻) (2026-11-13)
+
+design.md の決定 30〜33 と report/p2d.md の 10 章の引き継ぎに沿って、asterism-games の卓の状態・観戦の読み手が、欠け・つなぎ直しのときに
+ホストの呼び出しで今の値を取り直すようにした (asterism-games c5660f6 `feat(host,commentate): ...`)。asterism・asterism-console・fmruby-core の
+ソースは変えていない。
+
+### 今の値を答える呼び出しがあるか (決定 31)
+
+| 読み手 | 今の値を答える呼び出し | 結果 |
+|---|---|---|
+| 遊ぶ側 (`play othello`・`play mahjong`)、常設の卓・ルームの卓 | 卓のオブジェクトの `view(token)` (ルームの卓は名前空間の中で同じ) | **あった**。足していない |
+| 観戦の読み手 (実況 `commentate`) | 無かった。卓の `table` は手の無い景色で、観戦の値 (4 人の手・遅らせた景色) ではない。値はホストが遅らせて持つ (`@spec`) ので卓は知らない。spectator のロールは卓のオブジェクトに届かない | **足した** (下) |
+
+- **足したもの**: 観戦のキーを宣言するアプリ (常設はホストの `games`、ルームは `room<slot>`) が、オブジェクト `spectate` を公開する。
+  `state(table)` が `@shared/spectate/<table>/state` に**最後に put した値** (キーと同じだけ遅れた値、まだ put していなければ nil) を答える。
+  `table` はキーの名前の `spectate/` の下 (ルームは `room01-mahjong1`)。宛先は `games/games/spectate`・`games/room01/spectate`。
+  卓に `spectate` という名前があるときは公開しない (卓の名前を優先、ログに出す)。端末のロビー (`games/mahjong*`・`games/othello*`) と
+  `play` の卓探し (名前の頭で絞る) には出てこない。
+- 遅らせた値だけを答えるので、観戦の遅れ (麻雀の観戦者の遅れ) を呼び出しで追い越せない (ホストの再起動の直後は put するまで nil)。
+
+### 読み手の取り直し
+
+| 読み手 | いつ | 何を |
+|---|---|---|
+| 実況 (`Commentate::Refetch`) | 卓ごとに、送り手の**最初の値**、`info.lost > 0`、`info.restarted?`、送り手が網を去った後の次の値 | 送り手 (`info.from`) の `spectate` の `state(<卓>)` を呼び、答えを hub に渡す。呼んでいる間に新しい値が来ていたら新しい値を残す。卓ごとに 1 つずつ、受信のスレッドの外 (専用のスレッド)。失敗はログに出して次の値で続ける |
+| 遊ぶ側 (`Play.ask_again?`) | `info.lost > 0` か `info.restarted?` の状態の値 | 版 (`v`) が同じでもすぐ `view` を呼ぶ (最初・ホストが戻ったとき・5 秒ごとの `view` は前から) |
+
+- **最初の値と leave の扱いを足した理由**: 通しで、ルームを kill -9 してすぐ起こすと、実況は `restarted?` を一度も見なかった。kill で TCP が
+  切れてルータがすぐ生存の印を消すので、読み手は先に leave を受けて番号の記憶を捨て (決定 29)、新しい回の値は「最初の値」(`lost` 0・
+  `restarted?` false) として来る。design.md の「今の値」は「最初と、`lost > 0` か `restarted?` のとき」なので、最初の値でも取り直すことにし、
+  `on_app_leave` で送り手を忘れて、戻った後の値を最初の値として扱う。`restarted?` が立つのは、読み手が leave を見る前に送り手の新しい回の
+  値が届いたときだけ。
+- 観戦の値・卓の状態は毎回まるごとの状態なので、欠けの後に届いた値そのものが今の状態でもある。取り直しの答えは多くの場合それと同じで、
+  実況の hub の差分は何も出さない (害はない)。
+
+### 決定 30・32・33
+
+- **決定 30 (時刻)**: 記録簿の `rec["time"] = now.to_i` (秒) は、記録簿の JSON ファイル・SQLite の形 (統計の `days` の絞りにも秒で使う) で、
+  そのまま残した。ただし**網に出ていた**: 麻雀の卓の `record(id)` の答え (記録の頭) が `time` を入れていて、README に「Unix seconds」と
+  書いてあった。答えの側で **ms (1970 年から)** にし (`time * 1000`)、README を直した。端末の麻雀アプリ・console は `time` を読んでいない
+  (grep で 0 件、端末は `at` の文字列を出す)。ほかに網に出る時刻は無かった (状態の `dl` などは残りの ms、`@status` に時刻は無い。ホストの
+  `status_now` の `at` は supervisor が読むローカルのファイル)。
+- **決定 32**: 整数のフィールドの型は残っていなかった (`define_type` が整数を断るので、試験が全部通ったことで確かめた)。
+- **決定 33 / attachment**: games は attachment を直に読んでいなかった (直すところ無し)。試験の偽の接続 `FakeNet` の番号を新しい形
+  (`[seq, run_id]`・`[seq, run_id, nil, "<node>/<app>"]`) にし、公開したオブジェクトを記録するようにした。
+
+### 試験の直し (試験だけの不具合)
+
+`test_network` の揺れの 1 つは、試験の不具合だった。`test_spectate.rb` の `test_who_opens_a_rooms_application` (P2c-2 で足した) が
+Minitest の `stub` で `Asterism.connect` を差し替えると、`stub` の alias と戻しが、前に prepend されている `LockedModule#connect`
+(asterism の CRuby 部分) を super の輪にし、同じプロセスのその後の本物の `connect` が全部 `SystemStackError` になる。試験の順番で
+`test_network` が後に来ると落ちていた (1 回目の `rake test` で再現、最小の台本でも再現)。`stub` をやめ、試験の側で切り替えの
+モジュールを 1 回 prepend する形にした。asterism は変えていない。
+
+### 試験 (`ASTERISM_CREDENTIALS` を外して、手元の asterism)
+
+| 何を | 結果 |
+|---|---|
+| asterism-games `rake test` (`MJ_GAMES=4`、使い捨てのルータ) | 1 回目: 411 runs、1 failure (`test_the_delay`、既知の揺れ)・1 error (`test_network` の `SystemStackError`、上の試験の不具合)。`test_network` は単独で通った。直した後の 2 回: **411 runs、0 failures、0 errors、1 skip** (skip は既存) |
+| asterism-games `rake test:gem` | **168 runs、7109 assertions、0 failures** (10 skips は既存) |
+| 足した試験 | `test_spectate.rb` (ホストのアプリとルームのアプリの `spectate` の答え、遅れの間は nil、ほかの卓は nil、`spectate` という卓では公開しない)、`test_commentate.rb` (最初の値・欠け・つなぎ直し・leave の後で 1 回ずつ聞く、新しい値が勝つ、失敗、送り手なし)、`test_play.rb` (`Play.ask_again?`)、`test_mahjong_records.rb` (記録の頭の `time` が ms) |
+
+### 通し (CRuby どうし、ACL の無い使い捨てのルータ)
+
+ルームのホスト 1 つ (名前空間 `room/01`、ルームのアプリ `games/room01`、麻雀を CPU 4 人) と実況 (`commentate mahjong --json --ai off`) を立てた。
+
+- 実況の起動: `games/room01-mahjong1: the first value from games/room01; asking games/room01/spectate for the table now` →
+  `took the table now from games/room01`。
+- ルームのホストを kill -9、0.2 秒後に起こした (state 664 から再開、`games/room01 up outside room/01`)。実況は同じ 2 行
+  (最初の値 → 取り直し) を出し、そのまま実況を続けた (30 秒で 15 行増えた、次の局の始まり・テンパイなど)。
+- `asterism call games/room01/spectate state '"room01-mahjong1"'` は観戦の値 (4 人の手つき) を、無い卓は nil を返した。
+- 最初の版 (欠け・`restarted?` だけで取り直す) では、同じ kill と再起動で取り直しが起きなかった (上の「最初の値と leave」の理由)。
+- **欠け (`lost > 0`) と、leave より先に新しい回の値が届く場合 (`restarted?`) は通しで起こせていない** (単体の試験だけ)。
+- **ACL のあるルータでは確かめていない**。
+
+### 止まらずに決めたこと・確認してほしい点
+
+1. **新しい公開のオブジェクト `<node>/games/spectate`・`<node>/room<slot>/spectate` (`state(table)`)**。指示 (無ければ足す) どおりに
+   足した。名前と形は仮決め。卓の名前 `spectate` とぶつかったら卓を優先する。
+2. **spectator のロールに行が要る**: Read と Ask の `asterism/*/games/spectate/call/${node}` と `asterism/*/room$*/spectate/call/${node}`
+   (`docs/install.md`・README に書いた。`@profile` の行と同じく Read で答えが届く見立て、ACL で確かめていない)。console の
+   docs/rooms.md とロールの既定 (console のサブの側) にも同じ行が要る。行が無いと実況は呼び出しの失敗をログに出して、次の値で続ける
+   (今までと同じ見え方)。games-host の行 (`asterism/${node}/games/**`・`asterism/${node}/room$*/**`) は今のままで足りる。
+3. **実況は送り手の最初の値でも取り直す** (起動時に卓ごとに 1 回、送り手が戻ったときに 1 回)。design.md の「最初と」に合わせた。
+4. **`record(id)` の `time` を秒から ms に変えた** (README の答えの説明が変わる、利用者に見える)。指示 (網に出るなら ms) どおり。
+   記録簿のファイル・データベースは秒のまま。
+5. ブラウザ版 (fmruby-core) の観戦・卓の読み手の取り直しは P3c。
+
+### 残件
+
+- 版・CHANGELOG は上げていない。push していない。
+- ACL のあるルータでの通し (spectator のロールの新しい行を含む)。
