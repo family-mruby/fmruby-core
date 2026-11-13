@@ -4,16 +4,19 @@
 # with the machine's settings (FmrbAsterism.settings), poll, notice a lost
 # connection, close it and keep the reason, and connect again every
 # retry_ms -- also when the router still has the previous run of the same
-# application ("already on the network"). The application writes once what
-# it does on a connection (expose, subscribe, on_join / on_leave: Asterism
-# forgets all of them at close) and calls update once per on_update.
+# application ("already on the network"). The Link holds the connection
+# (an Asterism::Connection, link.conn): every connect is a new one, and
+# what the application puts on it (expose, publish, status, define_type,
+# subscribe, on_join / on_leave) ends with it, so link_up puts it again on
+# the new link.conn. The application calls update once per on_update.
 #
 #   def on_create
 #     @link = FmrbAsterism::Link.new(self, "step", tag: "step_sensor")
 #   end
 #
-#   def link_up(link)       # after every connect: expose, subscribe, on_join
-#     ::Asterism.expose("pedometer", ...)
+#   def link_up(link)       # after every connect: expose, publish, subscribe
+#     link.conn.expose("pedometer", ...)
+#     @steps = link.conn.publish("pedometer/step", type: "family-mruby/step.state")
 #   end
 #
 #   def link_down(link)     # optional: a connect failed or the connection
@@ -43,7 +46,7 @@
 #                    returns first and the application draws "connecting"
 #   :connected       connected
 #   :reconnecting    connected, but the session is lost and the Zenoh
-#                    binding opens it again by itself (Asterism.reconnecting?)
+#                    binding opens it again by itself (conn.reconnecting?)
 #   :retrying        a connect failed; again after retry_ms
 #   :still_there     a connect was refused because this node/app is still on
 #                    the network (the previous run); again after retry_ms
@@ -51,13 +54,17 @@
 #   :failed          a connect failed and retry_ms is nil (no more tries)
 #   :closed          close was called
 # reason: why it is not connected ("" while connected or before the first
-# try): the connect's error, or "asterism: <Asterism.lost_reason>".
+# try): the connect's error, or "asterism: <conn.lost_reason>".
 module FmrbAsterism
   class Link
     DEFAULT_RETRY_MS = 3000
     DEFAULT_WIFI_WAIT_MS = 20000
 
     attr_reader :state, :reason, :node, :router, :app, :connects, :took_ms
+    # The connection (an Asterism::Connection) while connected? (also
+    # while reconnecting); nil before the first connect and after a loss
+    # or close. A new one after every connect.
+    attr_reader :conn
 
     # owner: the application (link_up(link) is called on it after every
     # connect, link_down(link) after a failure or a loss when it has one).
@@ -85,6 +92,7 @@ module FmrbAsterism
       @reason = ""
       @connects = 0
       @took_ms = 0
+      @conn = nil
     end
 
     # The session is there (also while Zenoh opens it again by itself).
@@ -177,13 +185,13 @@ module FmrbAsterism
       begin
         raise ::Asterism::Error, @settings_error if @settings_error
         words = @router.to_s.split(" ")
-        if words[0] == "listen"
-          ::Asterism.connect(nil, node: @node, app: @app, mode: :peer, listen: words[1])
-        elsif words[0] == "peer"
-          ::Asterism.connect(words[1], node: @node, app: @app, mode: :peer)
-        else
-          ::Asterism.connect(@router, node: @node, app: @app, credentials: @credentials)
-        end
+        @conn = if words[0] == "listen"
+                  ::Asterism.connect(nil, node: @node, app: @app, mode: :peer, listen: words[1])
+                elsif words[0] == "peer"
+                  ::Asterism.connect(words[1], node: @node, app: @app, mode: :peer)
+                else
+                  ::Asterism.connect(@router, node: @node, app: @app, credentials: @credentials)
+                end
         @took_ms = now_ms - t0
         @state = :connected
         @reason = ""
@@ -207,18 +215,21 @@ module FmrbAsterism
     end
 
     def poll
+      c = @conn
       ok = false
       begin
-        ok = ::Asterism.poll
+        ok = c.poll
       rescue => e
         return lost("#{e.class}: #{e.message}")
       end
-      return lost("asterism: #{::Asterism.lost_reason}") unless ok && ::Asterism.connected?
-      @state = ::Asterism.reconnecting? ? :reconnecting : :connected
+      return lost("asterism: #{c.lost_reason}") unless ok && c.connected?
+      @state = c.reconnecting? ? :reconnecting : :connected
     end
 
     def close_session
-      ::Asterism.close
+      c = @conn
+      @conn = nil
+      c.close if c
     rescue => e
       ::Log.warn("#{@tag}: close: #{e.message}")
     end

@@ -3,8 +3,10 @@
 # connects (CF1).
 #
 # Profile: kind family_mruby, host from the board, and the machine's own
-# name. Runs when a VM starts, before the application, so an application's
-# own Asterism.profile(...) changes it further. The icon is the gem's
+# name. Runs when a VM starts, before the application connects: they are
+# the program's defaults (Asterism.profile_defaults), which every
+# connection's node starts with; a connection's own conn.profile(...)
+# changes its node's further. The icon is the gem's
 # default file, /usr/share/asterism/icon.png (flash/usr/share/asterism/;
 # the browser bundle stages its own icon there, see rakelib/wasm.rake); it
 # is read when the profile is first needed (connect), not here.
@@ -38,8 +40,8 @@
 # application that resolves its settings names them in one log line.
 #
 # The name is the same in every application of the machine.
-# FmrbAsterism.save_name writes it and sets it in this VM's profile at once
-# (a connected application puts the change on the network); applications
+# FmrbAsterism.save_name writes it and sets it in this VM's profile defaults
+# at once (a connected application puts the change on the network); applications
 # started later read it here.
 module FmrbAsterism
   # FmrbConst::BOARD -> the profile's host. The sim and the browser build
@@ -81,12 +83,12 @@ module FmrbAsterism
     ""
   end
 
-  # Saves the name (nil or "" removes it) and sets it in this VM's profile.
-  # Returns the profile. Raises ArgumentError for a name the profile does
-  # not take (longer than Asterism::Profile::NAME_MAX bytes).
+  # Saves the name (nil or "" removes it) and sets it in this VM's profile
+  # defaults. Returns the profile. Raises ArgumentError for a name the
+  # profile does not take (longer than Asterism::Profile::NAME_MAX bytes).
   def self.save_name(name)
     name = name.to_s.strip
-    Asterism.profile(name: name.empty? ? nil : name)
+    Asterism.profile_defaults(name: name.empty? ? nil : name)
     c = config
     if name.empty?
       c.delete("name")
@@ -94,7 +96,7 @@ module FmrbAsterism
       c["name"] = name
     end
     write_config(c)
-    Asterism.profile
+    Asterism.profile_defaults
   end
 
   # config.toml -> Hash: the top-level string values of CONFIG_KEYS, read
@@ -314,10 +316,10 @@ module FmrbAsterism
   end
 end
 
-Asterism.profile(kind: :family_mruby, host: FmrbAsterism.host)
+Asterism.profile_defaults(kind: :family_mruby, host: FmrbAsterism.host)
 begin
   n = FmrbAsterism.saved_name
-  Asterism.profile(name: n) unless n.empty?
+  Asterism.profile_defaults(name: n) unless n.empty?
 rescue ArgumentError
   # a name the profile does not take (edited by hand): left out
 end

@@ -61,6 +61,34 @@ module Asterism
   class Error < StandardError; end
   class Disconnected < Error; end
 
+  # The connection Asterism.connect returns (Asterism::Connection): what
+  # Link does with it is recorded in Asterism.calls.
+  class Conn
+    def initialize
+      @open = true
+    end
+
+    def close
+      Asterism.calls << [:close]
+      @open = false
+      Asterism.connected = false
+      nil
+    end
+
+    def poll
+      Asterism.calls << [:poll]
+      r = Asterism.poll_plan.shift
+      r = true if r.nil?
+      raise r if r.is_a?(Exception)
+      Asterism.connected = false unless r
+      r
+    end
+
+    def connected? = @open && Asterism.connected
+    def reconnecting? = Asterism.reconnecting_now
+    def lost_reason = Asterism.lost_now
+  end
+
   @calls = []
   @fail = []          # errors the next connects raise, in order
   @poll = []          # what the next polls do: true, false, or an exception
@@ -69,7 +97,7 @@ module Asterism
   @lost = nil
 
   class << self
-    attr_accessor :fail, :poll_plan, :reconnecting_now, :lost_now
+    attr_accessor :fail, :poll_plan, :reconnecting_now, :lost_now, :connected
     attr_reader :calls
 
     def reset
@@ -83,31 +111,13 @@ module Asterism
 
     def connect(locator = nil, node: nil, app:, mode: nil, listen: nil, credentials: nil)
       @calls << [:connect, locator, node, app, mode, listen, credentials]
-      raise Error, "already connected (Asterism.close first)" if @connected
+      raise Error, "#{node}/#{app} is already connected in this program" if @connected
       e = @fail.shift
       raise e if e
       @connected = true
-      self
+      Conn.new
     end
 
-    def close
-      @calls << [:close]
-      @connected = false
-      nil
-    end
-
-    def poll
-      @calls << [:poll]
-      r = @poll_plan.shift
-      r = true if r.nil?
-      raise r if r.is_a?(Exception)
-      @connected = false unless r
-      r
-    end
-
-    def connected? = @connected
-    def reconnecting? = @reconnecting_now
-    def lost_reason = @lost_now
     def count(kind) = @calls.count { |c| c[0] == kind }
   end
 end
@@ -168,6 +178,7 @@ check("connected", [link.state, link.connected?, link.up?, link.reason], [:conne
 check("connect got the settings", Asterism.calls.find { |c| c[0] == :connect },
       [:connect, "tcp/192.0.2.2:7447", "nodeA", "step", nil, nil, :creds])
 check("link_up ran once, seeing :connected", owner.ups, [[:connected, true]])
+check("link.conn is the connection connect returned", link.conn.class, Asterism::Conn)
 check("connects counted", link.connects, 1)
 check("logged", Log.lines.last, "I t: nodeA/step connected (tcp/192.0.2.2:7447, 0 ms)")
 check("node and router readable", [link.node, link.router], ["nodeA", "tcp/192.0.2.2:7447"])
@@ -212,7 +223,7 @@ Asterism.fail = [Asterism::Disconnected.new("no router")]
 link.update
 link.update
 check("retrying, with the reason", [link.state, link.reason, link.connected?], [:retrying, "no router", false])
-check("closed after the failure", Asterism.calls.last, [:close])
+check("no connection after the failure", [link.conn, Asterism.calls.last[0]], [nil, :connect])
 check("link_down told", owner.downs, [[:retrying, "no router"]])
 check("logged as a warning", Log.lines.last, "W t: connect: no router")
 check("link_up not run", owner.ups, [])
@@ -257,7 +268,7 @@ owner.raise_in_up = true
 link.update
 link.update
 check("counts as a failed connect", [link.state, link.reason], [:retrying, "expose failed"])
-check("the half-made connection is closed", Asterism.connected?, false)
+check("the half-made connection is closed", Asterism.connected, false)
 check("not counted", link.connects, 0)
 owner.raise_in_up = false
 Machine.advance(3000)
@@ -310,7 +321,7 @@ link.update
 link.update
 link.lost("RuntimeError: in each_pending")
 check("lost with the application's reason", [link.state, link.reason], [:lost, "RuntimeError: in each_pending"])
-check("closed", Asterism.connected?, false)
+check("closed", Asterism.connected, false)
 
 puts "no retries (retry_ms: nil)"
 link, owner = fresh(retry_ms: nil)
@@ -359,7 +370,7 @@ link, owner = fresh
 link.update
 link.update
 link.close
-check("closed", [link.state, Asterism.connected?, link.connected?], [:closed, false, false])
+check("closed", [link.state, Asterism.connected, link.connected?, link.conn], [:closed, false, false, nil])
 check("update does nothing more", [link.update, Asterism.count(:connect)], [false, 1])
 
 puts

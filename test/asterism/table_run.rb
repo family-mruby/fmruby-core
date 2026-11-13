@@ -143,52 +143,100 @@ class FakeProxy
   def async = FakeAsync.new(@host, @asterism_path)
 end
 
+# A subscription with its block: the puts wait here until the poll.
 class FakeSub
   attr_reader :key
 
-  def initialize(key)
+  def initialize(key, blk)
     @key = key
+    @blk = blk
     @queue = []
   end
 
-  def push(key, payload) = @queue << [key, payload]
+  def push(key, value, info) = @queue << [key, value, info]
 
-  def each_pending
+  def deliver
     q = @queue
     @queue = []
-    q.each { |k, p| yield k, p, nil }
+    q.each { |_k, v, info| @blk.call(v, info) }
   end
 end
 
-class FakeSession
-  attr_reader :subs
+# What the block is given with a value (Asterism::SampleInfo).
+class FakeInfo
+  attr_reader :path, :lost
 
-  def initialize = @subs = []
-
-  def subscribe(key, depth: 1)
-    s = FakeSub.new(key)
-    @subs << s
-    s
+  def initialize(path, lost, restarted)
+    @path = path
+    @lost = lost
+    @restarted = restarted
   end
+
+  def restarted? = @restarted
 end
 
 module Asterism
   class Error < StandardError; end
+  class Disconnected < Error; end
 
-  module Codec
-    def self.unpack(payload) = payload
+  # The connection Asterism.connect returns: its calls go to the module's
+  # state (one connection at a time here).
+  class Conn
+    attr_reader :subs
+
+    def initialize = @subs = []
+
+    def close
+      Asterism.calls << [:close]
+      Asterism.connected = false
+      Asterism.on_join_block = nil
+      Asterism.on_leave_block = nil
+      nil
+    end
+
+    def poll
+      Asterism.calls << [:poll]
+      r = Asterism.poll_plan.shift
+      r = true if r.nil?
+      unless r
+        Asterism.connected = false
+        return r
+      end
+      @subs.each(&:deliver)
+      r
+    end
+
+    def subscribe(key, depth: nil, &blk)
+      s = FakeSub.new(key, blk)
+      @subs << s
+      s
+    end
+
+    def on_join(&b) = Asterism.on_join_block = b
+    def on_leave(&b) = Asterism.on_leave_block = b
+    def connected? = Asterism.connected
+    def reconnecting? = Asterism.reconnecting_now
+    def lost_reason = "the connection was lost"
+
+    def each(pattern)
+      Asterism.calls << [:each, pattern]
+      h = Asterism.host
+      h.away ? [] : h.tables.map { |p| FakeProxy.new(h, p) }
+    end
+
+    def [](path, timeout: nil) = FakeProxy.new(Asterism.host, path)
   end
 
   class << self
-    attr_accessor :host, :poll_plan, :reconnecting_now, :on_join_block, :on_leave_block
-    attr_reader :calls, :session
+    attr_accessor :host, :poll_plan, :reconnecting_now, :on_join_block, :on_leave_block, :connected
+    attr_reader :calls, :conn
 
     def reset
       @calls = []
       @poll_plan = []
       @connected = false
       @reconnecting_now = false
-      @session = FakeSession.new
+      @conn = Conn.new
       @on_join_block = nil
       @on_leave_block = nil
       @host = FakeHost.new
@@ -197,43 +245,16 @@ module Asterism
     def connect(locator = nil, node: nil, app:, mode: nil, listen: nil, credentials: nil)
       @calls << [:connect, app]
       @connected = true
-      @session = FakeSession.new
-      self
+      @conn = Conn.new
     end
 
-    def close
-      @calls << [:close]
-      @connected = false
-      @on_join_block = nil
-      @on_leave_block = nil
-      nil
-    end
+    # The patterns subscribed on the connection now.
+    def subscribed = @conn.subs.map(&:key)
 
-    def poll
-      @calls << [:poll]
-      r = @poll_plan.shift
-      r = true if r.nil?
-      @connected = false unless r
-      r
-    end
-
-    def on_join(&b) = @on_join_block = b
-    def on_leave(&b) = @on_leave_block = b
-    def connected? = @connected
-    def reconnecting? = @reconnecting_now
-    def lost_reason = "the connection was lost"
-
-    def each(pattern)
-      @calls << [:each, pattern]
-      @host.away ? [] : @host.tables.map { |p| FakeProxy.new(@host, p) }
-    end
-
-    def [](path, timeout: nil) = FakeProxy.new(@host, path)
-
-    # A state put of a table, as the host makes it.
-    def put_state(path, value)
-      s = @session.subs.find { |x| x.key == "asterism/*/games/*/state" }
-      s&.push("asterism/#{path}/state", value)
+    # A state put of a table, as the host makes it (given at the next poll).
+    def put_state(path, value, lost: 0, restarted: false)
+      s = @conn.subs.find { |x| x.key == "*/games/*/state" }
+      s&.push("asterism/#{path}/state", value, FakeInfo.new("#{path}/state", lost, restarted))
     end
 
     def count(kind) = @calls.count { |c| c[0] == kind }
@@ -300,6 +321,9 @@ def seated(**opts)
   tc, owner = fresh(**opts)
   tc.update
   tc.update
+  # The table's first state came before the join (it is not asked again).
+  Asterism.put_state("h/games/othello1", { "st" => "wait", "v" => 0 })
+  tc.update
   tc.join("h/games/othello1", "me")
   tc.update
   tc.update_view
@@ -316,7 +340,7 @@ check("second update connects", tc.update, true)
 check("the app's name on the network", Asterism.calls.find { |c| c[0] == :connect }, [:connect, "game"])
 check("net up", tc.net, :up)
 check("on_join and on_leave given", [Asterism.on_join_block.nil?, Asterism.on_leave_block.nil?], [false, false])
-check("the states subscribed", Asterism.session.subs.map(&:key), ["asterism/*/games/*/state"])
+check("the states subscribed", Asterism.subscribed, ["*/games/*/state"])
 check("table_link_up, then the watch, in the update that connects", owner.kinds.first(2), [:up, :watch])
 check("only the game's tables on the list", tc.table_list, ["h/games/othello1", "h/games/othello2"])
 check("tables_changed(true) for each", owner.log.select { |e| e[0] == :changed }, [[:changed, true, 1], [:changed, true, 2]])
@@ -431,6 +455,47 @@ Machine.advance(1000)
 tc.update_view
 check("view_min_ms: asked once it has gone by", Asterism.host.count(:view), n + 1)
 
+puts "the current state asked again (lost, a new run, the first state, after the host left)"
+tc, owner = seated
+tc.update_view
+n = Asterism.host.count(:view)
+Asterism.put_state("h/games/othello1", { "st" => "wait", "v" => 0 })
+tc.update
+tc.update_view
+check("the same version, nothing lost: no view", Asterism.host.count(:view), n)
+Asterism.put_state("h/games/othello1", { "st" => "wait", "v" => 0 }, lost: 2)
+tc.update
+tc.update_view
+check("states lost before it: the view at once", Asterism.host.count(:view), n + 1)
+Asterism.put_state("h/games/othello1", { "st" => "wait", "v" => 0 }, restarted: true)
+tc.update
+tc.update_view
+check("a new run of the host: the view at once", Asterism.host.count(:view), n + 2)
+Asterism.put_state("h/games/othello2", { "st" => "wait", "v" => 0 }, lost: 3)
+tc.update
+tc.update_view
+check("another table's gap: no view", Asterism.host.count(:view), n + 2)
+Asterism.on_leave_block.call("h")
+Asterism.on_join_block.call("h")
+tc.update
+tc.update_view
+n = Asterism.host.count(:view)
+Asterism.put_state("h/games/othello1", { "st" => "wait", "v" => 0 })
+tc.update
+tc.update_view
+check("the first state after the host left: the view at once", Asterism.host.count(:view), n + 1)
+tc2, _owner2 = fresh
+tc2.update
+tc2.update
+tc2.join("h/games/othello1", "me")
+tc2.update
+tc2.update_view
+n = Asterism.host.count(:view)
+Asterism.put_state("h/games/othello1", { "st" => "wait", "v" => 0 })
+tc2.update
+tc2.update_view
+check("the first state of the table while seated: the view at once", Asterism.host.count(:view), n + 1)
+
 puts "refused and not answered"
 tc, owner = fresh
 tc.update
@@ -533,7 +598,7 @@ Machine.advance(3000)
 tc.update
 check("retry_ms later: Link connects", tc.update, true)
 check("table_link_up again", owner.count(:up), 2)
-check("subscribed again on the new session", Asterism.session.subs.map(&:key), ["asterism/*/games/*/state"])
+check("subscribed again on the new session", Asterism.subscribed, ["*/games/*/state"])
 check("on_join given again", Asterism.on_join_block.nil?, false)
 Asterism.host.hold = false
 Asterism.host.release

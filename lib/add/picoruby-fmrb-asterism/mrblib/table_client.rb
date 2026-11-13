@@ -57,6 +57,14 @@
 # while its join is not answered drops that answer, so the next join goes
 # out at once; and any answer of the view, an error too, says the host is
 # there (host gone is cleared before table_dropped runs).
+#
+# The tables' states are the host's topics <table>/state (protocol 2). A
+# member asks its view again at once (whatever the version says) when a
+# state of its table is the first one from the host on this connection,
+# comes after values that did not (info.lost > 0), starts a new run of the
+# host (info.restarted?), or is the first after the host left the network:
+# the current state is the host's to answer, the topic only says it
+# changed (doc/asterism_protocol2 design.md, "the current value").
 module FmrbAsterism
   class TableClient
     HOST_APP = "games"
@@ -99,6 +107,9 @@ module FmrbAsterism
       @scan_at = 0
       @rescan_until = 0
       @sub = nil
+      @states = []
+      @seen = {}
+      @refetch = false
       @table = nil
       @token = nil
       @join_f = nil
@@ -171,9 +182,17 @@ module FmrbAsterism
       @host_gone
     end
 
-    # The table (or another) as a proxy for the game's own calls.
+    # The connection (an Asterism::Connection) while connected, else nil.
+    def conn
+      @link.conn
+    end
+
+    # The table (or another) as a proxy for the game's own calls. Raises
+    # Asterism::Disconnected when not connected.
     def proxy(path = @table)
-      ::Asterism[path, timeout: @call_timeout]
+      c = @link.conn
+      raise ::Asterism::Disconnected, "not connected" unless c
+      c[path, timeout: @call_timeout]
     end
 
     def host_of(path)
@@ -218,10 +237,12 @@ module FmrbAsterism
       @view_f = nil
       @view_v = 0
       @host_gone = false
+      @refetch = false
     end
 
     def ask_view
       return if @view_f || @token.nil?
+      @refetch = false
       @view_at = ::Machine.board_millis
       px = proxy.async
       @view_f = @on_ask ? @owner.table_ask_view(px, @token) : px.view(@token)
@@ -237,6 +258,7 @@ module FmrbAsterism
 
     # A newer version, or the view that says this member is still there.
     def view_due?(now)
+      return true if @refetch
       return now - @view_at >= @host_gone_view_ms if @host_gone
       @want_v > @view_v && now - @view_at >= @view_min_ms || now - @view_at >= @view_every_ms
     end
@@ -244,9 +266,12 @@ module FmrbAsterism
     # ------------------------------------------------------------ Link's calls
 
     def link_up(link)
-      # Who is there (forgotten by Asterism.close, so given at each connect).
-      ::Asterism.on_join { |n| node_joined(n) }
-      ::Asterism.on_leave { |n| node_left(n) }
+      # Who is there (they end with the connection, so given at each one).
+      c = link.conn
+      c.on_join { |n| node_joined(n) }
+      c.on_leave { |n| node_left(n) }
+      @seen = {}
+      @states = []
       @scan_at = 0
       @rescan_until = ::Machine.board_millis + @rescan_ms
       subscribe_states
@@ -255,6 +280,7 @@ module FmrbAsterism
 
     def link_down(link)
       @sub = nil
+      @states = []
       @join_f = nil
       @view_f = nil
       @owner.table_link_down(link) if @on_down
@@ -262,27 +288,44 @@ module FmrbAsterism
 
     # ------------------------------------------------------------ inside
 
+    # The states come to the block in the connection's poll (Link#update);
+    # they are kept until watch_states reads them, after table_watch.
     def subscribe_states
-      @sub = ::Asterism.session.subscribe("asterism/*/#{@host_app}/*/state", depth: 8)
+      c = @link.conn
+      return unless c
+      @sub = c.subscribe("*/#{@host_app}/*/state", depth: 8) { |v, info| state_came(v, info) }
     rescue ::Asterism::Error => e
       ::Log.info("#{@tag}: subscribe: #{e.message}")
       @sub = nil
     end
 
+    def state_came(v, info)
+      p = info.path.to_s
+      return unless p.end_with?("/state") && v.is_a?(Hash)
+      p = p.byteslice(0, p.bytesize - 6)
+      return unless ours?(p)
+      first = !@seen.key?(p)
+      @seen[p] = true
+      again = first || info.lost > 0 || info.restarted?
+      @states << [p, v, again]
+    rescue => e
+      ::Log.info("#{@tag}: state: #{e.message}")
+    end
+
     def watch_states
-      return unless @sub
-      @sub.each_pending do |key, payload, att|
+      q = @states
+      return if q.empty?
+      @states = []
+      i = 0
+      while i < q.size
+        p, pv, again = q[i]
+        i += 1
         begin
-          k = key.to_s
-          next unless k.start_with?("asterism/") && k.end_with?("/state")
-          p = k.byteslice(9, k.bytesize - 15)
-          next unless ours?(p)
-          pv = ::Asterism::Codec.unpack(payload)
-          next unless pv.is_a?(Hash)
           add_table(p)
           if p == @table
             v = pv["v"].to_i
             @want_v = v if v > @want_v
+            @refetch = true if again && @token
           end
           @tables[p] = @owner.table_state(p, pv)
         rescue => e
@@ -298,7 +341,9 @@ module FmrbAsterism
       every = now < @rescan_until ? @rescan_step_ms : @list_every_ms
       return if now - @scan_at < every
       @scan_at = now
-      ::Asterism.each("*/#{@host_app}/*").each do |px|
+      c = @link.conn
+      return unless c
+      c.each("*/#{@host_app}/*").each do |px|
         p = px.asterism_path
         add_table(p) if ours?(p)
       end
@@ -315,7 +360,9 @@ module FmrbAsterism
     end
 
     # on_leave: a host's tables leave the list; at its table: the host gone.
+    # Its next states are first ones again (the view is asked on them).
     def node_left(n)
+      @seen.keys.each { |p| @seen.delete(p) if host_of(p) == n }
       gone = @table_list.select { |p| host_of(p) == n }
       unless gone.empty?
         gone.each { |p| @tables.delete(p) }
