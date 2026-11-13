@@ -1,6 +1,6 @@
 # Asterism protocol 2 の実装
 
-> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1・P2 済、P3 (使う側の入れ替え) を進行中
+> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1・P2 済、P3a・P3b 済、P2b (接続のオブジェクト) をはさんで P3c へ
 
 ## 目的
 
@@ -35,6 +35,7 @@
 |---|---|---|
 | P1 | 部品: picoruby-asterism-zenoh に encoding (put の指定と、受け取った値の encoding の読み出し) と publisher の宣言 (宣言・put・取り下げ) の Ruby の API を足す。zenoh-pico でタイムスタンプが読めるかを確かめ、読めるなら足す。asterism-zenoh は足りない分だけ。CRuby と端末で同じ書き方になるよう Ruby の形をそろえる。publisher 1 つ・queryable 1 つあたりの RAM を測る | 済 (picoruby-asterism-zenoh c4d9e3a・829969e・b0717f8。内蔵 RAM +0 は NARYAv3 の regress:size で確認、encoding の表を flash に。新しい部品のネイティブ版で regress:transfer:quick ok) |
 | P2 | Asterism 本体: `Asterism.publish(name, type:, unit:, desc:, ts:, encoding:)` と `pub.put`、通し番号 (全トピック) と送り手の時刻 (ミリ秒、`ts` のときだけ) の attachment、アプリの `@profile` queryable (`?status`・`?pubs`・`?types`) で今の `@status` の queryable を置き換え、`@pubs` の put、独自の型の定義の登録、受け手の API (値と一緒に encoding・通し番号・時刻を受け取る、宣言の一覧を引く)、自己紹介の `protocol => 2`。`docs/protocol.md` に protocol 2 を書き (英語)、適合の試験を作り直す | 済 (asterism eaff7b9・71a43ed・63eba2b・09f3fdf、report/p2.md。CRuby 143 runs・適合 241×2・cross ok) |
+| P2b | 接続のオブジェクト (design.md の決定 19・21): `Asterism.connect` が接続を返し、API を全部その接続のメソッドにする (モジュールの関数は無くす)。1 つのプログラムが複数の接続 (= 複数のアプリ) を持てる (CRuby・端末とも)。CRuby の `net`・CLI・MCP・適合の試験・protocol.md と README、asterism-games (観戦を `spectate` の 2 本目の接続に)、asterism-console を合わせる | 未着手 |
 | P3 | 入れ替え: asterism-games、asterism-console、fmruby-core のアプリ・ブラウザ版・MCP、CLI (`asterism`)。ネイティブ版・sim・ブラウザ版・console の間で、宣言が見え、値が型つきで届き、通し番号の欠けが数えられることを通しで確かめる | 進行中 (P3a・P3b を並べて、P3c はその後) |
 | P4 | 公開: 各リポジトリの push、gem (asterism-zenoh・asterism・asterism-games) の版上げと公開、console の版上げと VPS 更新、fmruby-core のピン更新、ブラウザ版の配置。**どれもユーザの許可語を得てから** | 未着手 |
 
