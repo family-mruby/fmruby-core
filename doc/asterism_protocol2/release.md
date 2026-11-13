@@ -1,6 +1,6 @@
 # P4 の手順書: protocol 2 の公開
 
-> 状態: 準備済 (発火はユーザの許可語の後) | 更新: 2026-11-13 | 各リポジトリの push、VPS の git 参照での更新、gem の公開、ピンの更新、ブラウザ版の配置を、この順に行う。手元のリハーサルで**止まる不具合が 1 つ見つかった** (8 章の 1、ワイルドカードの購読に値が来ない)。直し方をユーザが決めるまで 2 章以降に進まない
+> 状態: 準備済 (発火はユーザの許可語の後) | 更新: 2026-11-13 | 各リポジトリの push、VPS の git 参照での更新、gem の公開、ピンの更新、ブラウザ版の配置を、この順に行う。1 回目の手元のリハーサルで見つかった止まる不具合 (ワイルドカードの購読に値が来ない、8.1) と spectator の topic list (8.2) は、ユーザの決定 (design.md の決定 36・37) で直し、2 回目のリハーサルで通った (7.4)
 
 ## 0. この文書の決まり
 
@@ -36,7 +36,7 @@ git 参照で VPS のイメージを作る入口を足した (4 章で使う):
 
 | 順 | 段 | 許可 | 戻せるか |
 |---|---|---|---|
-| 0 | 8 章の 1 の不具合を直し、手元のリハーサル (7 章) を通し直す | 直し方はユーザが決める | - |
+| 0 | 8.1・8.2 を直し、手元のリハーサルを通し直す | **済** (決定 36・37、7.4) | - |
 | 1 | 手元の全部の回帰 (3 章) | | - |
 | 2 | push: picoruby-asterism-zenoh → asterism → asterism-games → asterism-console (4 章の 1) | **【許可】** | push は戻せる (revert)。タグはまだ打たない |
 | 3 | fmruby-core のピンを上げ、`ASTERISM_DIR` なしで回帰 (6 章の 1・2) | | ピンのコミットを戻す |
@@ -113,12 +113,12 @@ docker compose run --rm -T console bin/asterism setup --from-update
 docker compose up -d          # systemd の unit で動かしているなら、その unit を restart
 ```
 
-- setup の出力に `relay role <名前> (protocol 2): ...`・`(spectate's profile)`・`(shared places)`・`(spectate calls)`・`(application tokens with the protocol)` が、変わったロールごとに出る (5 つの migration)。`ROUTER_CONFIG=written` ならルータは新しい設定で再起動している。
+- setup の出力に `relay role <名前> (protocol 2): ...`・`(spectate's profile)`・`(shared places)`・`(spectate calls)`・`(application tokens with the protocol)`・`(spectate tokens)` が、変わったロールごとに出る (6 つの migration)。ルータの設定には共通の規則 `subscribers_out` が入る (migration ではなく生成)。`ROUTER_CONFIG=written` ならルータは新しい設定で再起動している。
 - 確認:
   - `docker compose ps` が全部 running、`docker compose exec console bin/asterism version` が 0.4.0。
   - Admin > Members > Roles: games-host に `asterism/${node}/*/@pubs`・`asterism/${node}/@shared/**`・`asterism/${node}/room$*`・`room$*/**`、Read に `asterism/*/game/protocol/*`。spectator は `asterism/*/@shared/spectate/**` ほか (docs/rooms.md と同じ)。
   - 手直ししてあるロール (例と違う名前で端末のアプリが状態やトピックを出すもの) は自動で直らない。docs/install.md の 20 章のとおり手で足して Apply。
-- console のイメージの作りを手元で確かめたもの: 7.4。
+- console のイメージの作りを手元で確かめたもの: 7.5。
 
 ### 4.4 VPS: games を git 参照のイメージで更新 【許可・ユーザ】
 
@@ -298,7 +298,7 @@ gem install asterism-games -v 0.23.0            # 実況を gem で使うなら
 
 | もの | どう作ったか |
 |---|---|
-| ロール | 0.3.21 の種 (`db/seeds.rb` の match) と文書の例 (docs/rooms.md の games-host・spectator、docs/g1_5.md の viewer、games の docs/install.md の games) に、console の 5 つの migration の関数 (`with_app_profiles` ほか) を順に当てたもの。リハーサルだけのロール `shared-writer` (網全体の置き場に書ける) を 1 つ足した |
+| ロール | 0.3.21 の種 (`db/seeds.rb` の match) と文書の例 (docs/rooms.md の games-host・spectator、docs/g1_5.md の viewer、games の docs/install.md の games) に、console の migration の関数 (1 回目は 5 つ、2 回目は 6 つ) (`with_app_profiles` ほか) を順に当てたもの。リハーサルだけのロール `shared-writer` (網全体の置き場に書ける) を 1 つ足した |
 | ルータの設定 | `Relay::CloudConfig` に上のロールと台帳の行 (console・games・spectator-a・admin-viewer・fmruby-aaaaaa・member-a・writer-a) と設定 (ws/ の入口、`room_hosts` games、ルーム 01 の席 2 つ) を渡して生成 |
 | 証明書 | console の `script/relay_certs --out <scratchpad>` で使い捨ての CA を作り、各名前を発行。`.tar` (鍵・証明書・ca.pem・asterism.json) は手で組んだ。本物の CA・`~/asterism_keys/` は使っていない |
 | ルータ | `eclipse/zenoh:1.10.1` (本番の compose と同じ) を相互 TLS (tls/ 7448) と ws/ 7449 で |
@@ -318,7 +318,7 @@ gem install asterism-games -v 0.23.0            # 実況を gem で使うなら
 | viewer の `topic list` | `games/games/mahjong1/state` (`asterism-games/mahjong.state`)、`games/games/othello1/state`、`games/@shared/spectate/mahjong1/state` (by games/games)、`games/@shared/spectate/room01-mahjong1/state` (by games/room01) |
 | spectator の `spectate.state` の呼び出し | games/games/spectate と games/room01/spectate の両方が答えた |
 | spectator が卓の値を読めない | `games/games/mahjong1/state` の購読に 0 件 (Read に無い) |
-| spectator の `topic list`・`topic info` | **何も出ない** (8 章の 2) |
+| spectator の `topic list`・`topic info` | **何も出ない** (8.2。2 回目は出た、7.4) |
 | 網全体の置き場 | writer-a の `@shared/lobby` を member-a・fmruby-aaaaaa・viewer が読めた (12 件前後 / 6 秒)。spectator は 0 件。member-a が自分で `@shared/lobby2` に put したものは誰にも届かない (ルータが断る) |
 | 版の印 | protocol 1 (gem 0.11.0) のアプリ `member-a/game` が来ると、ネイティブ版のログに `member-a/game speaks Asterism protocol 1, this program 2: calls between them are refused ...`。tree の `-o json` で protocol 2 のアプリに `"protocol": 2` |
 | protocol 1 の呼び手 | gem 0.11.0 の `asterism call games/games/othello1 view` は `protocol: Asterism::Error: games/games speaks Asterism protocol 2, the call says no protocol (protocol 1 or older)` |
@@ -335,10 +335,30 @@ gem install asterism-games -v 0.23.0            # 実況を gem で使うなら
 | asterism `rake` (版上げと 8 章の 3 の直しの後) | 全部 0 failures、適合 cruby 250 passed |
 | picoruby-asterism-zenoh `rake test` | 167 checks、0 failed |
 | asterism-games `rake test` (`MJ_GAMES=4`) | 411 runs、1 failure → gemspec の床の試験を直して通過。`rake test:gem` 168 runs 0 failures |
-| asterism-console `bin/rails test` | 665 runs、0 failures。8 章の 3 の後に transfers_test を通した。rubocop 323 files 違反なし |
+| asterism-console `bin/rails test` | 1 回目 665 runs、0 failures (8.3 の後に transfers_test も)。8.1・8.2 の直しの後 **672 runs、0 failures**、rubocop 326 files 違反なし。新しい live 試験 `subscribers_live_test` (zenoh-c のルータに生成した ACL と相互 TLS) は 3 回流して揺れなし |
 | fmruby-core の回帰 | 流していない (P2e の後に asterism のコードの変更は 8 章の 3 だけで、端末は使わない部分) |
 
-### 7.4 git 参照のイメージ (4.3・4.4 の作り方)
+### 7.4 2 回目のリハーサル (8.1・8.2 を直した後)
+
+1 回目と同じ組み立てで、ロールに 6 つ目の migration (spectate tokens) を当て、生成したルータの設定に `subscribers_out` が入ったもの (使い捨ての CA は作り直した)。
+
+| 何を | 結果 |
+|---|---|
+| ワイルドカードの購読、ほかに購読者なし (6 秒) | viewer `*/games/*/state` 16 件、viewer `*/@shared/spectate/**` 28 件、spectator `*/@shared/spectate/*/state` 26 件、member `*/games/*/state` 16 件、端末の証明書 `*/games/*/state` 13 件、名指し `games/games/mahjong1/state` 15 件 (1 回目はワイルドカードが全部 0 件) |
+| 実況 (`commentate mahjong`、spectator の証明書、25 秒) | 14 行 (games/mahjong1 8、games/room01-mahjong1 6)。送り手ごとに最初の値で `spectate` に聞き直した (1 回目は 0 行) |
+| console の証明書の `asterism/**` と `*/@shared/**` の購読 (bridge の Watch・記録と同じ購読) | 12 件・30 件 / 6 秒 |
+| console の bridge | つながり図を作った。`speaks Asterism protocol 1` は 0 行 (8.3 の直し) |
+| spectator の `topic list` | `games/@shared/spectate/mahjong1/state` (by games/games)、`.../room01-mahjong1/state` (by games/room01) と、games の宣言 (`games/games/mahjong1/state` などの名前と型。値は読めない) |
+| spectator の `topic info games/@shared/spectate/mahjong1/state` | 送り手 games/games と型 `asterism-games/mahjong.spectate` の定義 |
+| spectator の `app list` | `games/games`・`games/room01` だけ |
+| ネイティブ版 ↔ ブラウザ版 | オセロの卓で対局し、ネイティブ版の手 (d3) がブラウザ版に 2.5 秒以内に出た |
+| ブラウザ版の観戦 | 該当なし (ブラウザのロール `match`・`games` は観戦のキーを読まない。決まりどおり) |
+| protocol 1 の呼び手・版の印 | 1 回目と同じ (`protocol` のエラー、ネイティブ版のログに 1 行) |
+| 網全体の置き場 | 1 回目と同じ (member・端末・viewer が 12 件、spectator 0 件、member の put は届かない) |
+| つなぎ直し | 回の識別子 18517 → 49155、番号 0 から、`lost` 0。ワイルドカードの購読 (`*/games/mahjong1/state`) が新しい publisher からもそのまま受けた |
+| ルータのセッション | 8 (ホスト 3、ネイティブ版 1、ブラウザ版 1、試しの put 2、見た接続 1) |
+
+### 7.5 git 参照のイメージ (4.3・4.4 の作り方)
 
 手元の asterism の bare clone を git daemon のコンテナ (既定のブリッジの上) で配り、`ASTERISM_GIT=git://<そのコンテナ>/asterism.git`・`ASTERISM_REF=da1c382` で両方のイメージを作った。
 
@@ -355,7 +375,9 @@ gem install asterism-games -v 0.23.0            # 実況を gem で使うなら
 
 ## 8. 見つかったこと
 
-### 8.1 【止まる】ワイルドカードの購読に、宣言した publisher の値が来ない
+### 8.1 (直した、決定 36) ワイルドカードの購読に、宣言した publisher の値が来ない
+
+**直し (2026-11-13 ユーザ決定)**: console の `Relay::CloudConfig` が、台帳の行・ブラウザの証明書・ブラウザの ws/ の主体に共通の規則 `subscribers_out` (egress `declare_subscriber`、`asterism/**`・`asterism/*/@shared/**`・`asterism/@shared/**`) を付ける。ルータの設定の生成なので、今の台帳には更新の setup が書くときに入る (migration なし)。席とルームのホストは `room/<slot>/**` の中で前から持っている。試験は生成した ACL の規則の表と、zenoh-c のルータに生成した ACL を入れた live 試験 (規則があればワイルドカードだけの読み手が受け、外すと 0 件)。以下は 1 回目の記録。
 
 - 見え方: ACL のあるルータで、`*/games/*/state`・`*/@shared/spectate/**` のように**ノードをワイルドカードにした購読だけ**が、ほかに購読者がいないと値を 1 つも受けない。`games/games/mahjong1/state`・`games/@shared/**` のようにノードを名指しすると受ける。名指しの購読者が同時にいると、ワイルドカードの購読者にも届く。
 - 影響: 実況 (`commentate`、`*/@shared/spectate/*/state`) が 25 秒で 0 行 (卓は動いていた)。console の Watch・記録 (`asterism/**` とその置き場) も同じ見込み。ブラウザ版の観戦の購読も。卓の画面 (ネイティブ版・ブラウザ版) は `watch` の呼び出しで状態を取るので、見た目には動く。
@@ -365,9 +387,11 @@ gem install asterism-games -v 0.23.0            # 実況を gem で使うなら
   1. console の `Relay::CloudConfig` が、値を出す主体 (台帳の行・ブラウザ・席) に egress の `declare_subscriber` を `asterism/**` と置き場 2 つで共通に許す (推奨。購読の宣言のキー式が相手のノードに見えるだけで、値・呼び出しは今の規則のまま。信頼するメンバーの網の前提に合う)。console の版の変更 (0.4.0 に入れる) と試験。
   2. asterism が publisher を宣言せず put に戻す (encoding は put に付く)。design.md の「publisher の宣言」の決定を変える。端末の RAM・宣言の効き目にも関わる。
   3. 読み手がノードを名指して購読する (実況はホストを知っている)。console の記録・見張りは名指しできないので残る。
-- 直すまで P4 に進まない (4.5 の実況の確認が通らない)。
+- 選んだのは 1 (ユーザ決定)。
 
-### 8.2 spectator の `topic list`・`topic info` が空
+### 8.2 (直した、決定 37) spectator の `topic list`・`topic info` が空
+
+**直し**: spectator の Read に送り手の生存の印 `<prefix>/games/protocol/*`・`<prefix>/room$*/protocol/*` だけを足した (console の docs/rooms.md の例、6 つ目の migration `RelayRoleSpectateTokens`、asterism-games の docs/install.md・README の例)。CLI は印でアプリを見つけ、`@profile` を名指しで聞くので、`topic list` も `topic info` も通る (`topic info` のワイルドカードの問い合わせの心配は外れた。CLI はアプリの一覧から名指しで聞く)。以下は 1 回目の記録。
 
 - spectator にはアプリの生存の印 (`asterism/<node>/games/protocol/2`) を読む行が無いので、CLI がアプリを見つけられない。`topic info games/@shared/spectate/mahjong1/state` は `asterism/games/*/@profile` へのワイルドカードの問い合わせになり、spectator の Ask (`asterism/*/games/@profile` など、アプリを名指した行) に含まれず断られる。
 - 実況そのもの (値の購読と `type_of(info)`、`spectate.state`) は名指しの get なので影響しない。
@@ -390,8 +414,9 @@ gem install asterism-games -v 0.23.0            # 実況を gem で使うなら
 | asterism-console docs/install.md 20 章 | 版を 0.4.0 に、migration は 5 つ (`app_token_protocol` が数に入っていなかった)、protocol 1 の呼び出しは断られる、戻し方は写しで (`--restore`) |
 | asterism-console docs/install.md 18 章 | git 参照のイメージと、そこからの戻し方 |
 | asterism-console README「The Asterism gems」・Gemfile の注 | 0.14.0、`~> 0.14` |
+| asterism-console docs/rooms.md・install.md 20 章、asterism-games docs/install.md・README (2 回目の前) | spectator の例に送り手の印の 2 行、migration は 6 つ、ルータの共通の規則 `subscribers_out` |
 
-spectator の行 (`@shared/spectate/**`、`games|room$*` の `@profile|@pubs`、`spectate/call/${node}`) と games-host の `@shared/**`・`room$*` の行は、games と console の文書と migration の結果が一致していた (7.2)。8.2 の「topic list に出る」の文は、直し方が決まるまで残した。
+spectator の行 (`@shared/spectate/**`、`games|room$*` の `@profile|@pubs`、`spectate/call/${node}`) と games-host の `@shared/**`・`room$*` の行は、games と console の文書と migration の結果が一致していた (7.2)。8.2 の直しで、console と games の文書の「topic list に出る」は本当になった。
 
 ## 9. 古い版の利用者に見えること
 
@@ -407,8 +432,9 @@ spectator の行 (`@shared/spectate/**`、`games|room$*` の `@profile|@pubs`、
 ## 10. 片づけ (このリハーサル)
 
 - 止めたもの: ルータ 2 つ (`p4-rehearsal-zenohd`、比べるための `-b`)、ゲームホスト、bridge、ネイティブ版 (別の run dir)、ブラウザ版 (web_down、置いた `config.toml` は消した)、試しの購読・put の CRuby。
-- 7.4 のイメージの試しで使った git daemon のコンテナと試しのイメージ 2 つも消した (`docker builder prune` も)。
-- 使い捨ての CA・鍵・`.tar` は scratchpad から消した。生成の台本 (ロールに migration を当てて CloudConfig を作るもの、ホストの台本) は scratchpad に残る (コミットしていない)。
+- 7.5 のイメージの試しで使った git daemon のコンテナと試しのイメージ 2 つも消した (`docker builder prune` も)。
+- 2 回目のリハーサルも同じものを止めた (ルータ、ホスト、bridge、ネイティブ版、ブラウザ版と置いた `config.toml`、試しの CRuby)。
+- 使い捨ての CA・鍵・`.tar` は 2 回とも scratchpad から消した。生成の台本 (ロールに migration を当てて CloudConfig を作るもの、ホストの台本) は scratchpad に残る (コミットしていない)。
 
 ## 関連
 

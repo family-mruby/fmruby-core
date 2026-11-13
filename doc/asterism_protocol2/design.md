@@ -416,6 +416,9 @@ encoding を付けない値を部品は `"zenoh/bytes"` と返し、Asterism の
   `asterism/*/@shared/**` の subscription。
 - 網全体の共有の置き場: **既定ではだれも書けない**。管理者が `asterism/@shared/**` (かその一部、`asterism/@shared/lobby/**`) の put をロールで許す。
   読み手は `asterism/@shared/**` の subscription。
+- 購読の宣言: 値は宣言した publisher から出て、publisher は購読者を知っているときだけ出す。ルータは購読の宣言を publisher への egress の
+  `declare_subscriber` として調べるので、値を出す主体には `asterism/**` と置き場 2 つの egress の `declare_subscriber` を共通に許す
+  (ノードをワイルドカードにした読み手に届くため。見えるのは購読のキー式だけ、決定 36)。
 
 ### console の既定
 
@@ -423,6 +426,7 @@ encoding を付けない値を部品は `"zenoh/bytes"` と返し、Asterism の
   **読めるだけ**。観戦者など外向けのロールには網全体の置き場を読みも入れない。
 - 文書の例のロール: viewer は両方の置き場を読む。games-host は自分のノードの置き場とルームのアプリ (`room$*`) を読み書きする。spectator は
   `<ノード>/@shared/spectate/**` と、送り手 (`games`・`room$*`) の `@profile`・`@pubs` を読み、`@profile` に聞ける (型を送り手から読むため)。
+  送り手の生存の印 (`games/protocol/*`・`room$*/protocol/*`) だけも読む (`asterism topic list` が送り手を見つけるため、決定 37)。
   ロールの行には Zenoh の `$*` を書ける (`room$*` のため)。
 - 新しい console は最初からこの形のロールを作る。今の console は更新の migration で台帳を直す。
 
@@ -511,3 +515,5 @@ encoding を付けない値を部品は `"zenoh/bytes"` と返し、Asterism の
 | 33 | 接続を開くたびに 16 ビットの乱数の回の識別子 `id` を決め、全部の値の attachment に載せる (`[seq, id]`・`[seq, id, ms]`・共有 `[seq, id, ms または nil, "<node>/<app>"]`)。`id` が変われば新しい回 (`restarted?` true、`lost` は数えない)、同じなら 16 の距離で読む。29 の leave は掃除として残し、29 の「ワイヤは変えない」を置き換える | 2026-11-13 |
 | 34 | 1 つの答えの大きさ (2026-11-13、P3c の実測から) | zenoh-pico の分割の上限 (`Z_FRAG_MAX_SIZE`、今 4096) を上げ、`@profile` の答え (宣言と型) が 4 KB を超えても端末が受け取れるようにする。値は内蔵 RAM・PSRAM への影響を測って決める (内蔵 RAM の増分 0) |
 | 35 | プロトコルの版の確認 (2026-11-13) | 生存の印と呼び出しに版を載せる。網に現れた時点で版が分かり (console の図に印、端末・ブラウザ版はログ)、版が違う呼び出しは「protocol」の種類のエラーで断る。値の流れは止めない。次の版からも同じ仕組みを使う |
+| 36 | publisher に購読の宣言が届くよう、値を出す主体には egress の declare_subscriber を共通に許す (console の規則 `subscribers_out`、`asterism/**`・`asterism/*/@shared/**`・`asterism/@shared/**`) | 2026-11-13 |
+| 37 | spectator は観戦を出すアプリ (games・room) の生存の印だけを読める (`<prefix>/games/protocol/*`・`<prefix>/room$*/protocol/*`) | 2026-11-13 |
