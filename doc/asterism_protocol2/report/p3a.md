@@ -151,3 +151,62 @@
 | asterism `rake test:mruby` | 54 + 15 + 26 checks、0 failed |
 | asterism-games `rake test` (`MJ_GAMES=4`、手元のルータ) | 406 runs、37363 assertions、2 failures、1 skip。落ちたのは `test_the_delay` (観戦の遅れの時間の比べ、556 > 556) と `test_network` (`stale` のはずが `not offered`)。どちらも型とは関係しない時間の揺れで、単独で 2 回ずつ流して全部通った (spectate 8 runs、network 1 run) |
 | asterism-games `rake test:gem` | 165 runs、7074 assertions、0 failures |
+
+## 10. 追記: P2b-2 (asterism-games を接続のオブジェクトに、観戦を 2 本目の接続に) (2026-11-13)
+
+asterism の P2b-1 (接続のオブジェクト、report/p2b.md) の上で、asterism-games を新しい書き方に入れ替え、観戦を本物のアプリ
+`spectate` にした (asterism-games b1bdeb6 `feat(host): spectate as a second application with typed topics`)。
+
+### 変えた所
+
+| ファイル | 何を |
+|---|---|
+| `lib/asterism_games/host.rb` | `::Asterism.reconnecting?` (4 か所) を `@net.reconnecting?` に。観戦: ルームの外 (常設の卓・単独のホスト) では、観戦の景色を出す卓があるとき (麻雀) に 2 本目の接続 `Asterism.connect(locator, node: <ホストのノード>, app: "spectate", credentials:)` を開き、`spectate_up` で型 (`SPECTATE_TYPES`) をその接続に `define_type` し直し、卓ごとに `<table>/state` を `publish(type: SPECTATE_TYPE)` で宣言する。開くのはホストの loop (ロックの外)、失敗・切れたら 30 秒ごとにやり直し、ホストの接続と一緒に閉じる。値は待ちの列のバイト列を解いて `topic.put` する (Asterism に MessagePack の済んだバイト列を渡す口は無いため) |
+| `lib/asterism_games/game.rb`・`app/asterism_games/mahjong/table.rb` | `Game::SPECTATE_TYPE` (既定 nil)・`SPECTATE_TYPES` ({})。麻雀は `asterism-games/mahjong.spectate` (table・status・sv・seats・round・dora_indicators・last_discard・result・final `int[][]`・final_reason・rules・delay_s。round・last_discard・result・rules は `any`) と `asterism-games/mahjong.seat` (seat・name・kind・score・wind・riichi・river・riichi_index・called_indexes・melds `any[]`・hand_count・hand・drawn) |
+| `lib/asterism_games/rooms.rb` | ルームのホストに `spectate_token` を渡す: 常設の卓のホストが観戦のアプリを開く (常設の卓に観戦の景色を出すゲームがある) ときは false |
+| `bin/mahjong-bots`・`test/test_network.rb`・`test/test_app_presence.rb` | `Asterism.connect` の戻り値の接続で `net[...]`・`net.each`・`net.poll`・`net.close` (P3a の時点ではモジュールの関数のままで、P2b-1 の後は動かなかった) |
+| `README.md`・`docs/install.md` | 「Topics and types」に `spectate` の表、「Spectate」に「The application」の項とルームの扱い、「One process per room」の理由 (同じ `<node>/games` は 1 つのプログラムで 1 回しか開けない)、`games-host` の役割の説明 |
+| `test/` | 偽の網に `connected?`、`host_spectating` (2 本目の偽の接続)。観戦の値が `games/spectate` の宣言・型を持ち、ゲームの接続には型が無いこと、景色のキーがすべて型のフィールドにあること、型が Asterism の検査を通ること、ルームの観戦の番号、ルームのホストの `spectate_token` |
+
+### ルームの観戦は入れなかった (P3a 9 章の穴は半分だけ埋まる)
+
+- ルームのホストは、ルームごとに別のプロセスで、**常設の卓のホストと同じノード** (`rooms.credentials` の既定は常設の卓の証明書) で
+  動く。観戦のキーはどれも `asterism/<node>/spectate/...` なので、本物のアプリにすると全部が同じ `<node>/spectate` になり、
+  重複の確認 (protocol.md 6.3) で 2 つ目からは開けない。よって**ルームの観戦は今までどおり素の Zenoh の接続**で、宣言なし・番号つき。
+- 新しく見つかった衝突: ルームのホストが今までどおり `asterism/<node>/spectate` の生存の印を立てると、後から開く常設の卓のホストの
+  `spectate` の接続が「already on the network」で断られる (コンテナの再起動で順番が入れ替わると起きる)。常設の卓のホストが観戦の
+  アプリを開くときは、ルームのホストは生存の印を立てないようにした。常設の卓が無い (または観戦の景色を出さない) ときは今までどおり立てる。
+- 埋めるには、ルームの観戦を別のアプリ名 (`spectate-room01` など) に分けるか、常設の卓のホストがルームの値も受け持つか、になる。
+  前者はキーと console の役割の行・実況の購読の形が変わる (利用者に見える仕様の変更) ので、決めていない (下の確認点 1)。
+
+### 試験 (`ASTERISM_CREDENTIALS` を外して、手元の asterism)
+
+| 何を | 結果 |
+|---|---|
+| asterism-games `rake test` (`MJ_GAMES=4`、使い捨てのルータ: CRuby の zenoh-c を router モードで開く台本) | **407 runs、44117 assertions、0 failures、1 skip** (skip は既存)。1 回目は `test_rooms` の偽の接続に `reconnecting?` が無くて 1 error、足して 2 回目で全部通った。`test_the_delay`・`test_network` の揺れは今回は出なかった |
+| asterism-games `rake test:gem` | **165 runs、7081 assertions、0 failures** (10 skips は既存) |
+| うち `test/test_spectate.rb` 単独 | 9 runs、1130 assertions、0 failures |
+
+### 通し (CRuby どうし、手元のルータ)
+
+ホスト (othello1・mahjong1・board1) を立て、asterism の CLI で見てから `asterism-games play othello --commands sit,cpu,start,auto
+--until-over` で 1 局。
+
+- `asterism app list`: `games/games` と **`games/spectate`** の 2 つ。
+- `asterism topic list 'games/*'`: ゲームの 4 つに加えて **`games/spectate/mahjong1/state  asterism-games/mahjong.spectate`**。
+  `topic info`・`app info games/spectate` で `mahjong.spectate` と `mahjong.seat` の定義が引けた。
+- `object get games/spectate/mahjong1 state`: `format msgpack`、`seq` つきで値が来た。
+- オセロ: CPU 41-23 で最後まで、exit 0。ホストのログに `games: spectate: games/spectate up (mahjong1/state)`。
+
+### 確認してほしい点 (自分では決めていない)
+
+1. **ルームの観戦**: 上の理由で宣言なしのまま。分けるならアプリ名・キーの形 (利用者に見える) を決める必要がある。
+2. **ルームのホストの生存の印を止めたこと** (`spectate_token`)。常設の卓のホストがいない間 (落ちて再起動を待つ間) は、
+   ルームの観戦の値に生きているアプリが無く見える。
+3. **新しい型の名前** `asterism-games/mahjong.spectate`・`asterism-games/mahjong.seat` (今の名前の流儀に合わせた)。指示書の
+   「卓の型を使う」は、観戦の景色が卓の状態 (`mahjong.state`) と形が違うので、観戦用の型を足してその接続に置く形に読んだ。
+4. `docs/install.md` の `games-host` の役割は、今の行 (`*/@pubs`・`*/@profile`・`spectate`・`spectate/**`) で 2 本目も足りるので
+   行は足さず、説明だけ直した。console 側で `spectate` の queryable の宣言 (`asterism/<node>/spectate/**`) が「Read and write」で
+   通るかは console の規則の言葉の側 (P3b) で確かめる。
+5. 2 本目を開くときの `Asterism.connect` は CRuby で全体のロックを持ったまま重複の確認 (最長 1.5 秒) をするので、ホストの起動直後に
+   1 回だけ、その間ゲームの呼び出しの答えが止まる (report/p2b.md 8 章と同じ性質)。
