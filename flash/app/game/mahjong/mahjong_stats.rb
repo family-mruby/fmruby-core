@@ -60,7 +60,7 @@ class MahjongApp < FmrbApp
 
   def st_call(from)
     return if @st_f
-    px = ::Asterism[@rp, timeout: CALL_TIMEOUT]
+    px = @tc.proxy(@rp)
     @st_f = px.async.stats(ST_DAYS[@st_days], "", @st_scope == 0 ? "all" : "table", from)
   rescue ::Asterism::Error => e
     @st_f = nil

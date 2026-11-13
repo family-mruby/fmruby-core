@@ -84,7 +84,7 @@ class MahjongApp < FmrbApp
   # (record(id, round, part)).
   def rp_call(kind, a, b = 0, c = 0)
     return if @rp_f
-    px = ::Asterism[@rp, timeout: CALL_TIMEOUT]
+    px = @tc.proxy(@rp)
     @rp_kind = kind
     @rp_f = if kind == :page then px.async.records(a)
             elsif kind == :head then px.async.record(a)

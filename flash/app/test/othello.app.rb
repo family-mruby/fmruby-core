@@ -10,9 +10,9 @@
 #   the asterism_node setting (the browser's wasm-XXXXXX) or the board name.
 #   A tls/ router connects straight to a cloud router with mutual TLS
 #   (G2a): the .tar gives the certificate, and its name is the ID.
-# - One connection (G1b): Asterism (app "game", object "othello"), and
-#   Asterism.session, its Zenoh session, puts the state on
-#   asterism/<ID>/game/othello/state after every move (and every
+# - One connection (G1b): Asterism (app "game", object "othello"), whose
+#   topic othello/state (asterism/<ID>/game/othello/state) gets the state
+#   after every move (and every
 #   STATE_EVERY_MS during a game), for asterism-console and for spectators.
 #   All keys stay under asterism/<ID>/game/** (the G0 ACL). One session also
 #   gets through a router door whose pass lets one connection in.
@@ -21,7 +21,7 @@
 #   the name button in the lobby changes it (Japanese through kana input),
 #   Enter saves, Esc leaves it. Without one, the node ID stands for it.
 # - The object's methods (who called comes from the call itself,
-#   Asterism.current_call.from: protocol 1 has the caller's ID in the key):
+#   conn.current_call.from: the protocol has the caller's ID in the key):
 #     info                              -> {"name", "status", "opponent"}
 #     invite(name, gid)                 -> "asked" | "busy"
 #     answer(gid, accept, your_color, name) -> true | false
@@ -42,7 +42,7 @@
 #   compared as above and the game goes on. A restarted app has lost its
 #   game: the game ends. A router that restarts (an apply on the console, a
 #   line that drops) cuts both players for a few seconds: the Zenoh binding
-#   connects again by itself (Asterism.reconnecting? meanwhile; a page
+#   connects again by itself (conn.reconnecting? meanwhile; a page
 #   gives up after a few minutes of tries) and the opponent comes back, so
 #   the screen says "the line dropped, waiting" rather than "left". 60 s
 #   covers a router restart (about 1-10 s, report/g1_5b.md) with room for a
@@ -267,7 +267,7 @@ class OthelloApp < FmrbApp
   C_HINT = 0x6D
   C_LAST = 0xFC
 
-  # The exposed object. Its methods run from Asterism.poll (the update loop)
+  # The exposed object. Its methods run from the connection's poll (the update loop)
   # and never wait.
   class Remote
     def initialize(app)
@@ -300,7 +300,8 @@ class OthelloApp < FmrbApp
 
     # The calling node's ID, from the call being answered.
     def caller_id
-      c = ::Asterism.current_call
+      n = @app.conn
+      c = n ? n.current_call : nil
       c ? c.from.to_s : ""
     end
 
@@ -332,9 +333,10 @@ class OthelloApp < FmrbApp
     @net_note = ""
     @retry_at = 0
     @was_reconnecting = false
-    @zs = nil
+    @conn = nil       # the connection (Asterism::Connection)
+    @state_topic = nil
     @watch = nil
-    @state_key = "asterism/#{@id}/#{APP}/#{OBJ}/state"
+    @watched = nil    # [path, state] of the last state watched, from the poll
     @scan = true
     @scan_at = 0
     @peers = []             # other nodes with game/othello alive
@@ -394,7 +396,7 @@ class OthelloApp < FmrbApp
   end
 
   def my_name
-    pr = ::Asterism.profile
+    pr = ::Asterism.profile_defaults
     n = pr ? pr["name"] : nil
     n ? n.to_s : @id
   rescue
@@ -415,15 +417,16 @@ class OthelloApp < FmrbApp
   def connect
     t0 = Machine.board_millis
     begin
-      ::Asterism.close
+      close_conn
       raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      ::Asterism.expose(OBJ, OthelloApp::Remote.new(self),
-                        methods: { info: 0, invite: 2, answer: 4, cancel: 1, move: 4, resign: 1, state: 0 }) unless @small
-      ::Asterism.on_join { |n| @scan = true }
-      ::Asterism.on_leave { |n| @scan = true }
-      @zs = ::Asterism.session # Asterism's: closed with Asterism.close
-      @watch = @small ? @zs.subscribe("asterism/*/#{APP}/#{OBJ}/state", depth: 4) : nil
+      c = ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      @conn = c
+      c.expose(OBJ, OthelloApp::Remote.new(self),
+               methods: { info: 0, invite: 2, answer: 4, cancel: 1, move: 4, resign: 1, state: 0 }) unless @small
+      c.on_join { |n| @scan = true }
+      c.on_leave { |n| @scan = true }
+      @state_topic = c.publish("#{OBJ}/state")
+      @watch = @small ? c.subscribe("*/#{APP}/#{OBJ}/state", depth: 4) { |st, info| @watched = [info.path, st] } : nil
       @net = :up
       @net_note = ""
       @scan = true
@@ -451,19 +454,30 @@ class OthelloApp < FmrbApp
     @move_f = nil
     @sync_f = nil
     @misc_f = []
-    @zs = nil # Asterism.close closes it, with @watch
-    @watch = nil
-    begin
-      ::Asterism.close
-    rescue
-    end
+    close_conn
     @lost_at ||= Machine.board_millis if @g && !@g.over
     @dirty = true
   end
 
+  # The connection while connected, else nil.
+  def conn
+    @conn
+  end
+
+  # Closes the connection (its topic and subscription with it).
+  def close_conn
+    c = @conn
+    @conn = nil
+    @state_topic = nil
+    @watch = nil
+    c.close if c
+  rescue
+    nil
+  end
+
   def exchange
-    unless ::Asterism.poll
-      lost("asterism: #{::Asterism.lost_reason}")
+    unless @conn.poll
+      lost("asterism: #{@conn.lost_reason}")
       return
     end
     r = reconnecting?
@@ -477,7 +491,8 @@ class OthelloApp < FmrbApp
   end
 
   def othello(node)
-    ::Asterism["#{node}/#{APP}/#{OBJ}", timeout: CALL_TIMEOUT].async
+    raise ::Asterism::Disconnected, "not connected" unless @conn
+    @conn["#{node}/#{APP}/#{OBJ}", timeout: CALL_TIMEOUT].async
   end
 
   # Fire and forget (cancel, resign): looked at only to drop it.
@@ -488,8 +503,8 @@ class OthelloApp < FmrbApp
   end
 
   def put_state
-    return unless @zs
-    @zs.put(@state_key, ::Asterism::Codec.pack(state_hash))
+    return unless @state_topic
+    @state_topic.put(state_hash)
     @puts += 1
     @put_at = Machine.board_millis
   rescue => e
@@ -810,7 +825,8 @@ class OthelloApp < FmrbApp
     @scan = false
     @scan_at = now
     list = []
-    ::Asterism.each("*/#{APP}/#{OBJ}").each do |px|
+    return unless @conn
+    @conn.each("*/#{APP}/#{OBJ}").each do |px|
       n = px.asterism_path.split("/")[0]
       list << n unless n == @id
     end
@@ -1097,7 +1113,7 @@ class OthelloApp < FmrbApp
   # ------------------------------------------------------------ the name
 
   def start_edit
-    pr = ::Asterism.profile
+    pr = ::Asterism.profile_defaults
     @edit = (pr && pr["name"] ? pr["name"].to_s : "").dup
     @u8_need = 0
     @dirty = true
@@ -1209,7 +1225,7 @@ class OthelloApp < FmrbApp
   # The binding is opening our lost connection again (asterism with
   # reconnection; an older one has no reconnecting?).
   def reconnecting?
-    @net == :up && ::Asterism.respond_to?(:reconnecting?) && ::Asterism.reconnecting?
+    @net == :up && @conn && @conn.reconnecting?
   rescue
     false
   end
@@ -1422,18 +1438,14 @@ class OthelloApp < FmrbApp
   end
 
   def watch_states
-    return unless @watch
-    @watch.each_pending do |key, payload, att|
-      begin
-        st = ::Asterism::Codec.unpack(payload)
-        if st.is_a?(Hash) && st["board"]
-          @spec = st
-          @spec_from = key
-          @dirty = true
-        end
-      rescue => e
-        Log.info("othello: watch: #{e.message}")
-      end
+    w = @watched
+    return unless w
+    @watched = nil
+    st = w[1]
+    if st.is_a?(Hash) && st["board"]
+      @spec = st
+      @spec_from = "asterism/#{w[0]}"
+      @dirty = true
     end
   end
 
@@ -1491,7 +1503,7 @@ class OthelloApp < FmrbApp
   end
 
   def on_destroy
-    ::Asterism.close
+    close_conn
     Log.info("othello: closed")
   rescue => e
     Log.info("othello: close: #{e.message}")

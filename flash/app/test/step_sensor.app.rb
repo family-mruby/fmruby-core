@@ -5,9 +5,10 @@
 #   found here from the magnitude of the acceleration (StepDetector), not
 #   with the sensor's own step counter.
 # - Network: FmrbAsterism::Link connects as <ID>/step and reconnects.
-#   asterism/<ID>/step/pedometer/step gets state_hash on each step, every
-#   REPEAT_MS and on a reset; .../pedometer/accel the raw values (AccelTrace)
-#   at 20 Hz while raw is on.
+#   The topic pedometer/step (asterism/<ID>/step/pedometer/step, type
+#   STEP_TYPE) gets state_hash on each step, every REPEAT_MS and on a
+#   reset; pedometer/accel (ACCEL_TYPE) the raw values (AccelTrace) at
+#   20 Hz while raw is on.
 # - Object <ID>/step/pedometer: reset, state, clock, tune(rise_mg,
 #   min_gap_ms), save (to /home/step_sensor.toml), raw(on). The tuning panel
 #   of walk_scroller (T) uses state, tune and save.
@@ -196,6 +197,14 @@ class StepSensorApp < FmrbApp
   SCREEN_WAIT_MS = 2000 # connect anyway if the fullscreen answer never comes
   KEY1_PIN = 11         # front button, Low when pressed
   RAW_DEFAULT = true    # raw values on from the start
+  # The topics' types (defined on every connection, field types by name).
+  STEP_TYPE = "family-mruby/step.state"
+  STEP_FIELDS = [["steps", "int"], ["t_ms", "any"], ["interval_ms", "int"], ["cadence", "int"],
+                 ["ago_ms", "any"], ["sent_ms", "int"], ["event", "str"], ["sensor", "str"],
+                 ["raw", "bool"], ["rise_mg", "int"], ["min_gap_ms", "int"], ["saved", "bool"]]
+  ACCEL_TYPE = "family-mruby/step.accel"
+  ACCEL_FIELDS = [["x", "int"], ["y", "int"], ["z", "int"], ["m", "int"], ["m_peak", "int"],
+                  ["dyn", "int"], ["dyn_peak", "int"], ["rise", "int"], ["steps", "int"]]
 
   class Pedometer
     def initialize(app)
@@ -274,8 +283,8 @@ class StepSensorApp < FmrbApp
     # On a small screen the first connect (a TLS handshake that blocks for
     # 10-20 s) waits for the fullscreen canvas, or the canvas stays black.
     @link = ::FmrbAsterism::Link.new(self, APP, tag: "step_sensor", screen_wait_ms: SCREEN_WAIT_MS)
-    @key = "asterism/#{@link.node}/#{APP}/#{OBJECT}/step"
-    @raw_key = "asterism/#{@link.node}/#{APP}/#{OBJECT}/accel"
+    @step_topic = nil
+    @raw_topic = nil
     @next_repeat = 0
     @stats = Stats.new
     @detector = StepDetector.new
@@ -426,9 +435,9 @@ class StepSensorApp < FmrbApp
 
   def put_raw
     v = @trace.take(rise_mg, @detector.count)
-    return unless @link.up?
+    return unless @link.up? && @raw_topic
     begin
-      ::Asterism.session.put(@raw_key, ::MessagePack.pack(v))
+      @raw_topic.put(v)
       @stats.raw_put
     rescue => e
       Log.warn("step_sensor: raw put: #{e.class}: #{e.message}")
@@ -460,9 +469,9 @@ class StepSensorApp < FmrbApp
 
   def publish(event)
     @next_repeat = Machine.board_millis + REPEAT_MS
-    return unless @link.connected?
+    return unless @link.connected? && @step_topic
     begin
-      ::Asterism.session.put(@key, ::MessagePack.pack(state_hash(event)))
+      @step_topic.put(state_hash(event))
       @stats.put
     rescue ::Asterism::Error => e
       Log.warn("step_sensor: put: #{e.message}")
@@ -471,11 +480,16 @@ class StepSensorApp < FmrbApp
     end
   end
 
-  # After every connect (FmrbAsterism::Link): Asterism.close forgot the
-  # exposed object.
+  # After every connect (FmrbAsterism::Link): the object, the types and the
+  # topics are the connection's, so each new one gets them again.
   def link_up(link)
-    ::Asterism.expose(OBJECT, StepSensorApp::Pedometer.new(self),
-                      methods: { reset: 0, state: 0, clock: 0, tune: 2, save: 0, raw: 1 })
+    c = link.conn
+    c.expose(OBJECT, StepSensorApp::Pedometer.new(self),
+             methods: { reset: 0, state: 0, clock: 0, tune: 2, save: 0, raw: 1 })
+    c.define_type(STEP_TYPE, STEP_FIELDS, desc: "the step count and the walk")
+    c.define_type(ACCEL_TYPE, ACCEL_FIELDS, desc: "the acceleration in mg, 20 Hz")
+    @step_topic = c.publish("#{OBJECT}/step", type: STEP_TYPE)
+    @raw_topic = c.publish("#{OBJECT}/accel", type: ACCEL_TYPE)
     publish("state")
   end
 

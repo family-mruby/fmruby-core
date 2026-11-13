@@ -1247,9 +1247,9 @@ module ShellCommandsMixin
   # anodes (doc/asterism_file_transfer): the machines on Asterism, the way
   # the Receiving app's Nearby finds them -- this shell connects as itself
   # through FmrbAsterism::Link (the machine's settings) and reads
-  # Asterism.nodes, which is filled from the liveliness of what is on the
+  # link.conn.nodes, which is filled from the liveliness of what is on the
   # network. anodes info <node> adds what that machine tells about itself:
-  # its profile (@profile), its applications and their status (@status), the
+  # its profile (@profile), its applications and their status (@profile?status), the
   # objects they expose, and whether its transfer app's inbox is up (the
   # door files and moved apps come in by). Connecting takes a moment (a TLS
   # handshake 10-20 s on a board), so the answer comes from tick_anodes;
@@ -1352,12 +1352,12 @@ module ShellCommandsMixin
 
   def anodes_list(link)
     own = link.node.to_s
-    all = ::Asterism.nodes
+    all = link.conn.nodes
     append_output("anodes: #{all.size} machine(s) on Asterism")
     i = 0
     while i < all.size
       n = all[i].to_s
-      words = anodes_profile_words(anodes_profile(n, own))
+      words = anodes_profile_words(anodes_profile(link, n, own))
       line = "  #{n}"
       line += "  #{words}" unless words.empty?
       line += " (this machine)" if n == own
@@ -1368,19 +1368,20 @@ module ShellCommandsMixin
 
   def anodes_info(link, node)
     own = link.node.to_s
-    all = ::Asterism.nodes
+    net = link.conn
+    all = net.nodes
     unless all.include?(node)
       append_output("anodes: no node #{node} is visible (anodes lists them)")
       return
     end
     append_output(node == own ? "#{node} (this machine)" : node)
-    pr = anodes_profile(node, own)
+    pr = anodes_profile(link, node, own)
     if pr
       words = []
       ["name", "kind", "host", "protocol"].each { |k| words << "#{k}=#{pr[k]}" if pr.key?(k) }
       append_output("  profile: #{words.join(', ')}") unless words.empty?
     end
-    apps = ::Asterism.apps("#{node}/*")
+    apps = net.apps("#{node}/*")
     append_output("  apps: none") if apps.empty?
     inbox = false
     i = 0
@@ -1388,10 +1389,10 @@ module ShellCommandsMixin
       app = apps[i].to_s.split("/")[1].to_s
       i += 1
       line = "  #{app}"
-      st = anodes_status(node, app)
+      st = anodes_status(link, node, app)
       line += "  status: #{st.map { |k, v| "#{k}=#{v}" }.join(', ')}" if st && !st.empty?
       append_output(line)
-      objs = ::Asterism.each("#{node}/#{app}/*").map { |px| px.asterism_path.to_s.split("/")[2].to_s }
+      objs = net.each("#{node}/#{app}/*").map { |px| px.asterism_path.to_s.split("/")[2].to_s }
       append_output("    objects: #{objs.join(', ')}") unless objs.empty?
       inbox = true if app == "transfer" && objs.include?("inbox")
     end
@@ -1404,15 +1405,15 @@ module ShellCommandsMixin
 
   # A node's profile without its icon (this machine's from here), or nil
   # when it does not answer.
-  def anodes_profile(node, own)
-    return ::Asterism.profile if node == own
-    ::Asterism.profile_of(node, icon: false, timeout_ms: ANODES_ASK_MS)
+  def anodes_profile(link, node, own)
+    return link.conn.profile if node == own
+    link.conn.profile_of(node, icon: false, timeout_ms: ANODES_ASK_MS)
   rescue
     nil
   end
 
-  def anodes_status(node, app)
-    ::Asterism.status_of(node, app, timeout_ms: ANODES_ASK_MS)
+  def anodes_status(link, node, app)
+    link.conn.status_of(node, app, timeout_ms: ANODES_ASK_MS)
   rescue
     nil
   end

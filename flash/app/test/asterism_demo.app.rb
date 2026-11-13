@@ -20,7 +20,7 @@
 #     screen  say(text) -> text length (shown in this window)
 #     info    status -> Hash (name, board, free memory, uptime),
 #             relay(n) -> calls the caller's info.status back (the caller
-#             from Asterism.current_call) and returns [n, its name] (for
+#             from conn.current_call) and returns [n, its name] (for
 #             calls in both directions at once),
 #             boom -> raises (to see RemoteError),
 #             echo(value, tag: nil) -> [value, tag] (values and keywords),
@@ -30,7 +30,7 @@
 #             default; returns the profile without the icon bytes
 #     info has a public method `secret` that is NOT exposed.
 # - Lists the nodes alive, and shows the nodes that join and leave
-#   (Asterism.on_join / on_leave, called from Asterism.poll in on_update).
+#   (conn.on_join / on_leave, called from the connection's poll in on_update).
 #   The peer is the first other node that exposes screen. Every 3 s asks
 #   the peer's info.status without waiting (async).
 #
@@ -108,8 +108,9 @@ class AsterismDemoApp < FmrbApp
     end
 
     def relay(n)
-      from = ::Asterism.current_call.from
-      st = ::Asterism["#{from}/demo/info"].status
+      c = @app.conn
+      from = c.current_call.from
+      st = c["#{from}/demo/info"].status
       Log.info("asterism_demo: relay from #{from} ##{n}")
       [n, st["name"]]
     end
@@ -182,13 +183,14 @@ class AsterismDemoApp < FmrbApp
 
   # After the connect (FmrbAsterism::Link).
   def link_up(link)
-    ::Asterism.expose("apu", @apu, methods: { play: 1, stop: 0 })
-    ::Asterism.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
-    ::Asterism.expose("info", AsterismDemoApp::Info.new(self),
-                      methods: { status: 0, relay: 1, boom: 0, echo: 1, profile: 2 })
-    # Called from Asterism.poll (on_update), not from a waiting call.
-    ::Asterism.on_join { |n| joined(n) }
-    ::Asterism.on_leave { |n| left(n) }
+    c = link.conn
+    c.expose("apu", @apu, methods: { play: 1, stop: 0 })
+    c.expose("screen", AsterismDemoApp::Screen.new(self), methods: [:say])
+    c.expose("info", AsterismDemoApp::Info.new(self),
+             methods: { status: 0, relay: 1, boom: 0, echo: 1, profile: 2 })
+    # Called from the connection's poll (on_update), not from a waiting call.
+    c.on_join { |n| joined(n) }
+    c.on_leave { |n| left(n) }
     @state = "connected"
     note("#{@node} #{@state} (#{link.router}, #{link.took_ms} ms)")
   end
@@ -196,7 +198,7 @@ class AsterismDemoApp < FmrbApp
   # The connect failed, or the connection went away (no retries).
   def link_down(link)
     if link.state == :lost
-      @state = "disconnected: #{::Asterism.lost_reason}"
+      @state = "disconnected: #{link.reason}"
       note(@state)
     else
       @state = "failed: #{link.reason}"
@@ -210,12 +212,15 @@ class AsterismDemoApp < FmrbApp
     nil
   end
 
-  # Asterism.profile with a name and one of the two icons (key p, and
-  # info.profile from another machine). The change is put on the profile's
-  # key, so a console redraws the node.
+  # The node's profile with a name and one of the two icons (key p, and
+  # info.profile from another machine): on the connection (conn.profile),
+  # else the program's defaults. The change is put on the profile's key, so
+  # a console redraws the node.
   def set_profile(name, own_icon)
     icon = read_file(own_icon ? OWN_ICON : DEFAULT_ICON)
-    pr = ::Asterism.profile(name: name.empty? ? nil : name, icon: icon)
+    n = name.empty? ? nil : name
+    c = conn
+    pr = c ? c.profile(name: n, icon: icon) : ::Asterism.profile_defaults(name: n, icon: icon)
     @own_profile = own_icon
     note("profile: #{pr["name"] || "-"} icon #{pr["icon_hash"] || "-"}")
     out = {}
@@ -233,11 +238,18 @@ class AsterismDemoApp < FmrbApp
     note("left: #{node}")
   end
 
-  # The peer is followed through liveliness (Asterism.each). When it goes
+  # The connection while connected (an Asterism::Connection), else nil.
+  def conn
+    @link.conn
+  end
+
+  # The peer is followed through liveliness (conn.each). When it goes
   # away, the keys keep calling the last one, to see the time-out.
   def find_peer
     found = nil
-    ::Asterism.each("*/#{APP}/screen") do |px|
+    c = conn
+    return unless c
+    c.each("*/#{APP}/screen") do |px|
       n = px.asterism_path.split("/")[0]
       found = n if found.nil? && n != @node
     end
@@ -263,7 +275,9 @@ class AsterismDemoApp < FmrbApp
   end
 
   def peer(obj)
-    ::Asterism["#{@peer || @last_peer}/#{APP}/#{obj}"]
+    c = conn
+    raise ::Asterism::Disconnected, "not connected" unless c
+    c["#{@peer || @last_peer}/#{APP}/#{obj}"]
   end
 
   def ask_status
@@ -350,7 +364,7 @@ class AsterismDemoApp < FmrbApp
     cols = (@user_area_width - 2) / 6
     cols = 1 if cols < 1
     rows = (@user_area_height - 2) / 9
-    nodes = ::Asterism.connected? ? ::Asterism.nodes : []
+    nodes = conn ? conn.nodes : []
     head = [@node, @state, "nodes #{nodes.size} +#{@joins} -#{@leaves}",
             "peer #{@peer || '-'}", "said #{@said}"]
     tail = []
@@ -378,7 +392,7 @@ class AsterismDemoApp < FmrbApp
     x = @user_area_x0 + 4
     y = @user_area_y0 + 4
     @gfx.draw_text(x, y, "#{@node} #{@state}"[0, 52], theme_fg)
-    nodes = ::Asterism.connected? ? ::Asterism.nodes : []
+    nodes = conn ? conn.nodes : []
     @gfx.draw_text(x, y + 11, "nodes: #{nodes.join(' ')} (+#{@joins} -#{@leaves})"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 22, "peer: #{@peer || '-'} #{@peer_status}"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 33, "said: #{@said}"[0, 52], theme_fg)

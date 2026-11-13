@@ -9,13 +9,13 @@
 #   the mDNS name, the asterism_node setting (the browser's wasm-XXXXXX) or
 #   the board name ("linux", "wasm").
 # - One connection (G1b): Asterism (app "pilot", nothing exposed) and, on
-#   Asterism.session, the ROS 2 node fmruby_pilot_<ID> (subscribes
+#   its session (conn.session), the ROS 2 node fmruby_pilot_<ID> (subscribes
 #   /camera/image/compressed, and /odom only to measure the camera's delay;
 #   it publishes nothing). One session also gets through a router door whose
 #   pass lets one connection in.
 # - Finding the brain: the objects alive that match */brain/rover (Asterism
 #   liveliness), looked at again whenever a node joins or leaves
-#   (Asterism.on_join / on_leave). The first one is kept while it lives.
+#   (conn.on_join / on_leave). The first one is kept while it lives.
 #   Until there is one the screen says so.
 # - Keys (the same steps as rover_cam):
 #     Up / Down    speed +- 0.05 m/s (+-0.5)    Left / Right  turn +- 0.3 rad/s (+-1.5)
@@ -96,6 +96,7 @@ class RoverPilotApp < FmrbApp
             FmrbConst::BOARD == "wasm"
     @state = "connecting"
     @rs = nil
+    @net = nil        # the connection (Asterism::Connection)
     @node = nil
     # the brain
     @brain = nil       # its node ID
@@ -148,10 +149,10 @@ class RoverPilotApp < FmrbApp
     t0 = Machine.board_millis
     begin
       raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      ::Asterism.on_join { |n| @scan = true }
-      ::Asterism.on_leave { |n| @scan = true }
-      @rs = ::Asterism.session # Asterism's: Asterism.close closes it
+      @net = ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      @net.on_join { |n| @scan = true }
+      @net.on_leave { |n| @scan = true }
+      @rs = @net.session # the connection's: closed with it
       @node = Asterism::ROS::Node.new(@rs, "fmruby_pilot_#{ros_name(@id)}")
       @node.subscribe("/camera/image/compressed", RoverPilotImage, depth: 2) { |msg, info| camera(msg, info) }
       @node.subscribe("/odom", RoverPilotOdom, depth: 2) { |msg, info| odom(info) }
@@ -172,7 +173,7 @@ class RoverPilotApp < FmrbApp
     @scan_at = now
     found = nil
     keep = false
-    list = ::Asterism.each(BRAIN)
+    list = @net.each(BRAIN)
     i = 0
     while i < list.size
       n = list[i].asterism_path.split("/")[0]
@@ -185,7 +186,7 @@ class RoverPilotApp < FmrbApp
       Log.info("rover_pilot: brain #{found ? found : 'gone'}")
       @note = found ? "brain found: #{found}" : "brain gone: #{@brain}"
       @brain = found
-      @rover = found ? ::Asterism["#{found}/brain/rover", timeout: CALL_TIMEOUT].async : nil
+      @rover = found ? @net["#{found}/brain/rover", timeout: CALL_TIMEOUT].async : nil
       @st = nil
       @state_f = nil
       @v = 0.0
@@ -471,8 +472,8 @@ class RoverPilotApp < FmrbApp
   end
 
   def exchange
-    unless ::Asterism.poll
-      lost("asterism: #{::Asterism.lost_reason}")
+    unless @net.poll
+      lost("asterism: #{@net.lost_reason}")
       return
     end
     lost("ros: disconnected") unless @node.poll
@@ -485,8 +486,10 @@ class RoverPilotApp < FmrbApp
     @brain = nil
     @rover = nil
     @node = nil
-    @rs = nil # Asterism.close closes it, with the node
-    ::Asterism.close
+    @rs = nil # closed with the connection, with the node
+    n = @net
+    @net = nil
+    n.close if n
     Log.info("rover_pilot: #{state}")
     @dirty = true
   rescue => e
@@ -519,7 +522,7 @@ class RoverPilotApp < FmrbApp
 
   def on_destroy
     @node.close if @node
-    ::Asterism.close
+    @net.close if @net
     File.unlink(FRAME_FILE) if @jpeg && File.exist?(FRAME_FILE)
     Log.info("rover_pilot: closed")
   rescue => e

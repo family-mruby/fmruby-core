@@ -23,6 +23,8 @@
 #
 # Every 3 s without a step it repeats the last value (event "repeat"), as
 # the app does. Needs the asterism gem.
+# ASTERISM_DIR=<a checkout of asterism> takes it from that checkout.
+$LOAD_PATH.unshift(File.join(ENV["ASTERISM_DIR"], "lib")) unless ENV["ASTERISM_DIR"].to_s.empty?
 require "asterism"
 require "msgpack"
 
@@ -119,24 +121,24 @@ lock = Mutex.new
 
 Asterism.connect(router, node: node, app: "step") do |net|
   if measure
-    net.session.subscribe("asterism/*/walk/scroller/progress") do |sm|
+    net.subscribe("*/walk/scroller/progress") do |v, info|
       here = now_ms
-      v = MessagePack.unpack(sm.payload)
-      next unless v["src"] == node
+      next unless v.is_a?(Hash) && v["src"] == node
       t = lock.synchronize { puts_at.delete(v["src_steps"]) }
       next unless t
       d = here - t
       lock.synchronize { lat << d }
-      who = sm.key.to_s.split("/")[1]
+      who = info.node
       puts format("  shown on %s: steps %d -> count %d, mark %d, %.0f ms after the put",
                   who, v["src_steps"], v["count"], v["mark"], d)
     end
   end
   net.start
   w = Walker.new(start)
+  topic = net.publish("pedometer/step")
   put = lambda do |v|
     lock.synchronize { puts_at[v["steps"]] = now_ms } if v["event"] == "step"
-    net.session.put(key, MessagePack.pack(v))
+    topic.put(v)
   end
   last_put = now_ms
   put.call(w.value("state"))

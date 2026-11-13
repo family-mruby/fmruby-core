@@ -161,7 +161,7 @@
 #
 # Sending on (send_enabled = true, doc/window_menu M2): the app stays on the
 # network while either switch is on (it ends, as above, once both are off)
-# and keeps the list of the machines there (the peers: Asterism.nodes, the
+# and keeps the list of the machines there (the peers: conn.nodes, the
 # same source as the shell's anodes), each with its profile's name and host
 # and whether it takes apps from here (its inbox's check, asked again every
 # PEER_CHECK_MS). The window menu's Send to reads it without waiting:
@@ -531,7 +531,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
 end
 
 # The app. Sending is done a call at a time from on_update, each call left
-# on its way (Asterism.call_async) while the app returns to its message
+# on its way (conn.call_async) while the app returns to its message
 # wait: the native program schedules its tasks in turn, and a send that
 # waited for its answers in one go would keep every other task (the
 # kernel's clock for the hold among them) waiting until it was over.
@@ -595,7 +595,7 @@ class TransferApp < FmrbApp
     @closing = false
     @close_why = ""
     @peers = []       # the machines on the network while sending is on
-    @peers_at = 0     # when Asterism.nodes was last looked at (0: never)
+    @peers_at = 0     # when conn.nodes was last looked at (0: never)
     @checked_at = Machine.board_millis
     @job_end = 0
     subscribe(CTL_TOPIC)
@@ -640,10 +640,10 @@ class TransferApp < FmrbApp
 
   def link_up(link)
     @inbox.path = "#{link.node}/#{APP}/#{OBJECT}"
-    ::Asterism.expose(OBJECT, @inbox,
-                      methods: { "check" => 2, "begin" => 2, "chunk" => 3, "commit" => 1, "status" => 1,
+    link.conn.expose(OBJECT, @inbox,
+                     methods: { "check" => 2, "begin" => 2, "chunk" => 3, "commit" => 1, "status" => 1,
                                  "cancel" => 1, "policy_set" => 1 },
-                      caller: :from, doc: "files from other machines (doc/asterism_file_transfer)")
+                     caller: :from, doc: "files from other machines (doc/asterism_file_transfer)")
     tell_kernel({ "cmd" => "transfer_ready", "node" => link.node })
   end
 
@@ -796,7 +796,7 @@ class TransferApp < FmrbApp
 
   # ---- the machines to send to (doc/window_menu M2) ----
 
-  # While sending is on and connected: the peers follow Asterism.nodes, a
+  # While sending is on and connected: the peers follow conn.nodes, a
   # new one is asked for its profile, and each is asked every PEER_CHECK_MS
   # whether it takes apps from here. Every question is on its way while the
   # app goes on (a Future, polled by the link's update); nothing waits here.
@@ -813,8 +813,10 @@ class TransferApp < FmrbApp
   end
 
   def follow_nodes
+    c = @link.conn
+    return unless c
     own = @link.node.to_s
-    all = ::Asterism.nodes
+    all = c.nodes
     kept = []
     i = 0
     while i < @peers.size
@@ -845,7 +847,7 @@ class TransferApp < FmrbApp
     n = pe["node"]
     unless pe["profiled"] || pe["pf"]
       begin
-        pe["pf"] = ::Asterism.profile_async(n, false, nil, PEER_ASK_MS)
+        pe["pf"] = net.profile_async(n, false, nil, PEER_ASK_MS)
       rescue ::Asterism::Error
         pe["profiled"] = true
       end
@@ -870,7 +872,7 @@ class TransferApp < FmrbApp
     if pe["cf"].nil? && (pe["asked"] == 0 || now - pe["asked"] >= PEER_CHECK_MS)
       pe["asked"] = now
       begin
-        px = ::Asterism["#{n}/#{APP}/#{OBJECT}", timeout_ms: PEER_ASK_MS].async
+        px = net["#{n}/#{APP}/#{OBJECT}", timeout_ms: PEER_ASK_MS].async
         pe["cf"] = px.asterism_call("check", "checkpoint", { "names" => [], "requires" => [] })
       rescue ::Asterism::Error
         pe["ok"] = 2
@@ -1019,7 +1021,7 @@ class TransferApp < FmrbApp
 
   def call(method, args)
     @job["n_calls"] += 1
-    p = ::Asterism["#{@job['to']}/#{APP}/#{OBJECT}", timeout_ms: CALL_TIMEOUT_MS].async
+    p = net["#{@job['to']}/#{APP}/#{OBJECT}", timeout_ms: CALL_TIMEOUT_MS].async
     @fut = p.asterism_call(method, *args)
   rescue ::Asterism::Error => e
     @fut = nil
@@ -1078,7 +1080,7 @@ class TransferApp < FmrbApp
     job["size"] = File.size(path)
     name = stem[TransferInbox::TMP.size, stem.size].to_s
     job["sender"] = ::Asterism::Transfer::Sender.new("#{job['to']}/#{APP}/#{OBJECT}", "checkpoint", path,
-                                                     name: name, meta: { "toml" => toml },
+                                                     net: net, name: name, meta: { "toml" => toml },
                                                      timeout_ms: CALL_TIMEOUT_MS)
     job["step"] = "send"
     job["sender"].step
@@ -1171,7 +1173,7 @@ class TransferApp < FmrbApp
     job["told"] = -1
     job["told_at"] = 0
     job["sender"] = ::Asterism::Transfer::Sender.new("#{job['to']}/#{APP}/#{OBJECT}", "file", path,
-                                                     name: name, meta: meta, timeout_ms: CALL_TIMEOUT_MS)
+                                                     net: net, name: name, meta: meta, timeout_ms: CALL_TIMEOUT_MS)
     job["step"] = "send"
     Log.info("transfer: sending #{path} (#{job['size']} bytes) to #{job['to']} as #{name}")
     job["sender"].step
@@ -1244,6 +1246,14 @@ class TransferApp < FmrbApp
 
   def tell_kernel(h)
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, h)
+  end
+
+  # The connection (Asterism::Connection) the calls go out on; raises
+  # Asterism::Disconnected while there is none.
+  def net
+    c = @link.conn
+    raise ::Asterism::Disconnected, "not connected" unless c
+    c
   end
 
   def cut(s)

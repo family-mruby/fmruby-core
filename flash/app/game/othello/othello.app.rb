@@ -114,7 +114,7 @@ class OthelloTableApp < FmrbApp
   end
 
   def my_name
-    pr = ::Asterism.profile
+    pr = ::Asterism.profile_defaults
     n = pr ? pr["name"] : nil
     n && !n.to_s.empty? ? n.to_s : @id
   rescue

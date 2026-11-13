@@ -88,6 +88,7 @@ class DrawingBoardApp < FmrbApp
     @tc.view_min_ms = 1000
     @id = @tc.link.node
     @sub = nil            # the strokes of every board
+    @strokes = []         # strokes come in the poll: [message, gap before it]
     @list_sel = 0
     @cmd_f = nil
     @pic_f = nil
@@ -137,7 +138,7 @@ class DrawingBoardApp < FmrbApp
   end
 
   def my_name
-    pr = ::Asterism.profile
+    pr = ::Asterism.profile_defaults
     n = pr ? pr["name"] : nil
     n && !n.to_s.empty? ? n.to_s : @id
   rescue
@@ -200,31 +201,51 @@ class DrawingBoardApp < FmrbApp
     watch_strokes if @tc.table
   end
 
+  # The host's topics <board>/strokes. They come to the block in the
+  # connection's poll and wait in @strokes for watch_strokes.
   def subscribe_strokes
-    @sub = ::Asterism.session.subscribe("asterism/*/games/*/strokes", depth: 32)
+    c = @tc.conn
+    return unless c
+    @strokes = []
+    @sub = c.subscribe("*/games/*/strokes", depth: 32) { |m, info| strokes_came(m, info) }
   rescue ::Asterism::Error => e
     Log.info("board: subscribe: #{e.message}")
     @sub = nil
   end
 
-  # "asterism/<host>/games/<board>/<last>" -> "<host>/games/<board>", or nil.
+  # A strokes message of this board, kept with whether some before it did
+  # not come (info.lost) or the host started a new run: then the picture
+  # is read again instead (the host answers the current one).
+  def strokes_came(m, info)
+    return unless @tc.token && m.is_a?(Hash) && path_of(info.path.to_s, "/strokes") == @tc.table
+    @strokes << [m, info.lost > 0 || info.restarted?] if @strokes.size < QUEUE_MAX
+  rescue => e
+    Log.info("board: strokes: #{e.message}")
+  end
+
+  # "<host>/games/<board>/<last>" -> "<host>/games/<board>", or nil.
   def path_of(k, last)
-    return nil unless k.start_with?("asterism/") && k.end_with?(last)
-    k.byteslice(9, k.bytesize - 9 - last.bytesize)
+    return nil unless k.end_with?(last)
+    k.byteslice(0, k.bytesize - last.bytesize)
   end
 
   # The strokes of this board as they come: drawn now (or kept while the
   # picture is read). The time from taking them to the screen is measured.
   def watch_strokes
     return unless @sub
+    q = @strokes
+    return if q.empty?
+    @strokes = []
     t0 = Machine.board_millis
     drew = false
-    table = @tc.table
-    @sub.each_pending do |key, payload, att|
+    gap = false
+    k = 0
+    while k < q.size
+      m = q[k][0]
+      gap = true if q[k][1]
+      k += 1
       begin
-        next unless table && @tc.token && path_of(key.to_s, "/strokes") == table
-        m = ::Asterism::Codec.unpack(payload)
-        next unless m.is_a?(Hash)
+        next unless @tc.token
         if @loading
           @pic_q << m if @pic_q.size < QUEUE_MAX
           next
@@ -238,6 +259,11 @@ class DrawingBoardApp < FmrbApp
       rescue => e
         Log.info("board: strokes: #{e.message}")
       end
+    end
+    if gap && !@loading
+      Log.info("board: strokes did not all come: reading the picture again")
+      start_picture
+      return
     end
     return unless drew
     @gfx.present

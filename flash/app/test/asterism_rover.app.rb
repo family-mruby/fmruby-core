@@ -37,6 +37,7 @@ class AsterismRoverApp < FmrbApp
     @creds = st.credentials
     @creds_error = st.error
     @state = "connecting"
+    @net = nil          # the connection (Asterism::Connection)
     @v = 0.0
     @w = 0.0
     @keys = []
@@ -61,10 +62,10 @@ class AsterismRoverApp < FmrbApp
     t0 = Machine.board_millis
     begin
       raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      @drive = ::Asterism["#{ROVER}/drive", timeout: CALL_TIMEOUT]
-      @status = ::Asterism["#{ROVER}/state", timeout: CALL_TIMEOUT]
-      @world = ::Asterism["#{ROVER}/world", timeout: CALL_TIMEOUT]
+      @net = ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      @drive = @net["#{ROVER}/drive", timeout: CALL_TIMEOUT]
+      @status = @net["#{ROVER}/state", timeout: CALL_TIMEOUT]
+      @world = @net["#{ROVER}/world", timeout: CALL_TIMEOUT]
       @state = "connected"
     rescue ::Asterism::Error => e
       @state = "failed: #{e.message}"
@@ -203,14 +204,14 @@ class AsterismRoverApp < FmrbApp
 
   def on_update
     connect if @state == "connecting"
-    if ::Asterism.connected?
-      ::Asterism.poll
+    if @net && @net.connected?
+      @net.poll
       run_key(@keys.shift) until @keys.empty?
       now = Machine.board_millis
       send_cmd(now)
       ask_state(now)
     elsif @state == "connected"
-      @state = "disconnected: #{::Asterism.lost_reason}"
+      @state = "disconnected: #{@net ? @net.lost_reason : '-'}"
       Log.info("asterism_rover: #{@state}")
       @dirty = true
     end
@@ -222,11 +223,13 @@ class AsterismRoverApp < FmrbApp
   end
 
   def on_destroy
-    if ::Asterism.connected? && (@v != 0.0 || @w != 0.0)
+    n = @net
+    return unless n
+    if n.connected? && (@v != 0.0 || @w != 0.0)
       @drive.async.stop(by: @id)
-      ::Asterism.poll
+      n.poll
     end
-    ::Asterism.close
+    n.close
     Log.info("asterism_rover: closed")
   rescue => e
     Log.info("asterism_rover: close: #{e.message}")

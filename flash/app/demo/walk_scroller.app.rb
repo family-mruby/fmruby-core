@@ -35,7 +35,7 @@
 #   answers, not the ones asked for. S calls pedometer.save (the sensor
 #   writes /home/step_sensor.toml and keeps the values across a restart),
 #   0 asks for the defaults (150 mg / 250 ms; S to keep them). Below, the
-#   last few seconds of the sensor's raw values (asterism/<node>/step/
+#   last few seconds of the sensor's raw values (the topic <node>/step/
 #   pedometer/accel, subscribed only while the panel is open): dyn_peak
 #   (the largest dyn of the sensor's samples since its previous put; dyn,
 #   the value at the put, from a sender without it) as a line with the
@@ -46,10 +46,12 @@
 # - Network: FmrbAsterism::Link, node ID and router from
 #   FmrbAsterism.settings (as asterism_demo; the browser build reaches
 #   zenohd over ws/). Tries again every 3 s while it cannot connect or
-#   after the connection is lost; link_up subscribes after every connect.
-#   After the frame that shows a step it puts its progress on
-#   asterism/<ID>/walk/scroller/progress (count, mark, src, src_steps), so
-#   a sender can time a step from its put to the screen.
+#   after the connection is lost; link_up subscribes to the sensors' topic
+#   <node>/step/pedometer/step after every connect. After the frame that
+#   shows a step it puts its progress on its topic scroller/progress
+#   (asterism/<ID>/walk/scroller/progress, type PROGRESS_TYPE: count, mark,
+#   src, src_steps, ms), so a sender can time a step from its put to the
+#   screen.
 # - Drawing: a frame is the sky (four bands and the sun or moon, drawn in
 #   code), three scenery layers each drawn with draw_tile at its own offset
 #   (two calls when the layer is as wide as the screen), and the sprites
@@ -119,6 +121,9 @@ class WalkScrollerApp < FmrbApp
   TUNE_CALL_MS = 2000   # time limit of one call to the sensor
   TUNE_DEFAULT = [150, 250]
   TUNE_STEP = 10        # mg / ms per key press
+  # The progress topic's type (field types by name).
+  PROGRESS_TYPE = "family-mruby/walk.progress"
+  PROGRESS_FIELDS = [["count", "int"], ["mark", "int"], ["src", "str"], ["src_steps", "int"], ["ms", "int"]]
   PANEL_W = 240
   PANEL_H = 120
   PANEL_CHARS = 38     # 6x8 characters on a line of the panel
@@ -208,6 +213,7 @@ class WalkScrollerApp < FmrbApp
     @accel_new = false
 
     @sub = nil
+    @progress = nil       # the topic scroller/progress (each connection's)
     # No wait for WiFi: the first update already tries (a failure retries).
     @link = ::FmrbAsterism::Link.new(self, APP, tag: "walk_scroller", wifi_wait_ms: 0)
 
@@ -937,17 +943,21 @@ class WalkScrollerApp < FmrbApp
 
   # ---- network ----
 
-  # After every connect (FmrbAsterism::Link): Asterism.close forgot the
-  # subscription.
+  # After every connect (FmrbAsterism::Link): the subscription, the type and
+  # the topic are the connection's, so each new one gets them again. The
+  # steps come to the block in the connection's poll (Link#update).
   def link_up(link)
+    c = link.conn
     who = @follow.empty? ? "*" : @follow
-    @sub = ::Asterism.session.subscribe("asterism/#{who}/step/pedometer/step", depth: 16)
-    @progress_key = "asterism/#{link.node}/#{APP}/scroller/progress"
+    @sub = c.subscribe("#{who}/step/pedometer/step", depth: 16) { |v, info| step_value(info.node, v) }
+    c.define_type(PROGRESS_TYPE, PROGRESS_FIELDS, desc: "the walk shown for a sender's steps")
+    @progress = c.publish("scroller/progress", type: PROGRESS_TYPE)
   end
 
   # A connect failed or the connection went away (closed by the Link).
   def link_down(link)
     @sub = nil
+    @progress = nil
     @accel_sub = nil
     @accel_node = ""
     @tune_call = nil
@@ -956,19 +966,17 @@ class WalkScrollerApp < FmrbApp
   def network(now)
     return unless @link.update
     begin
-      @sub.each_pending { |key, payload, att| step_value(key, payload, now) } if @sub
       tune_network(now) if @panel_on
     rescue => e
       @link.lost("#{e.class}: #{e.message}")
     end
   end
 
-  def step_value(key, payload, now)
-    k = key.to_s
-    parts = k.split("/")
-    src = parts.size > 1 ? parts[1] : "?"
+  # A value of a sensor's step topic (src: its node).
+  def step_value(src, v)
+    now = Machine.board_millis
+    src = src.to_s
     return if !@follow.empty? && src != @follow
-    v = ::Asterism::Codec.unpack(payload)
     return unless v.is_a?(Hash)
     steps = v["steps"]
     return unless steps.is_a?(Integer)
@@ -995,9 +1003,8 @@ class WalkScrollerApp < FmrbApp
   def put_progress(now)
     a = @ack
     @ack = nil
-    return unless a && @link.connected?
-    v = { "count" => @count, "mark" => @shown_mark, "src" => a[0], "src_steps" => a[1], "ms" => now }
-    ::Asterism.session.put(@progress_key, ::Asterism::Codec.pack(v))
+    return unless a && @link.connected? && @progress
+    @progress.put({ "count" => @count, "mark" => @shown_mark, "src" => a[0], "src_steps" => a[1], "ms" => now })
   rescue => e
     Log.warn("walk_scroller: progress put: #{e.message}")
   end
@@ -1083,7 +1090,7 @@ class WalkScrollerApp < FmrbApp
       close_accel
       unless node.empty?
         begin
-          @accel_sub = ::Asterism.session.subscribe("asterism/#{node}/step/pedometer/accel", depth: 32)
+          @accel_sub = @link.conn.subscribe("#{node}/step/pedometer/accel", depth: 32) { |v, _info| accel_value(v) }
           @accel_node = node
           @accel = []
         rescue => e
@@ -1091,7 +1098,6 @@ class WalkScrollerApp < FmrbApp
         end
       end
     end
-    @accel_sub.each_pending { |key, payload, att| accel_value(payload) } if @accel_sub
     c = @tune_call
     if c && c[0].done?
       @tune_call = nil
@@ -1111,7 +1117,7 @@ class WalkScrollerApp < FmrbApp
     @tune_poll_at = now + TUNE_POLL_MS
     method = kind == :tune ? "tune" : (kind == :save ? "save" : "state")
     begin
-      f = ::Asterism.call_async("#{node}/step/pedometer", method, args, nil, TUNE_CALL_MS)
+      f = @link.conn.call_async("#{node}/step/pedometer", method, args, nil, TUNE_CALL_MS)
       @tune_call = [f, kind]
     rescue => e
       tune_failed(e, kind)
@@ -1158,8 +1164,8 @@ class WalkScrollerApp < FmrbApp
     @panel_dirty = true
   end
 
-  def accel_value(payload)
-    v = ::Asterism::Codec.unpack(payload)
+  # A value of the tuned sensor's accel topic (in the connection's poll).
+  def accel_value(v)
     return unless v.is_a?(Hash)
     # dyn_peak catches the impacts dyn at 20 Hz misses; older senders lack it.
     d = v["dyn_peak"]

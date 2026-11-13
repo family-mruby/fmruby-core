@@ -6,10 +6,9 @@
 #   the zenoh_router setting, tcp/zenohd:7447; the ID from the same file, the
 #   mDNS name, the asterism_node setting, the board name). Asterism app "game", object "rt"
 #   (stats -> the last second's numbers), so the probe shows in the console's
-#   graph. One connection (G1b): the stream goes over Asterism.session, and
-#   Asterism.poll (every update; asterism 0.6.0 makes it cheap when nothing
-#   changed) polls both.
-# - Puts asterism/<ID>/game/rt/pos: MessagePack [seq, x, y, ack, hold_ms]
+#   graph. One connection (G1b): the stream is the connection's topics, and
+#   its poll (every update; cheap when nothing changed) delivers them.
+# - Puts the topic rt/pos (asterism/<ID>/game/rt/pos): [seq, x, y, ack, hold_ms]
 #   at RATE per second (+ / - change it: 10, 20, 25, 30, 50). ack is the
 #   newest seq received from the peer, hold_ms how long ago it was taken
 #   off the queue. The peer is the first other node whose pos arrives (it is
@@ -20,7 +19,7 @@
 #   half of it.
 # - Loss / reordering from the peer's seqs (a gap counts as lost until the
 #   missing seq arrives late, then it counts as reordered). Bytes per second
-#   sent (payload + key). The update loop's period and the work in it. The
+#   sent (the value packed). The update loop's period and the work in it. The
 #   internal RAM free (FmrbApp.heap_info[:iram_free]) and its lowest.
 # - Puts asterism/<ID>/game/rt/stats once a second: a Hash with the
 #   second's counts, every rtt sample of that second and the totals (for the
@@ -75,10 +74,11 @@ class RtProbeApp < FmrbApp
     request_fullscreen(true) if @small
     @net = :connecting
     @retry_at = 0
-    @zs = nil
+    @conn = nil       # the connection (Asterism::Connection)
     @sub = nil
-    @pos_key = "asterism/#{@id}/#{APP}/rt/pos"
-    @stats_key = "asterism/#{@id}/#{APP}/rt/stats"
+    @inq = []         # [node, value] of the peers' pos, from the poll
+    @pos_topic = nil
+    @stats_topic = nil
     @rate_i = 2
     @interp = false
     @last_stats = {}
@@ -169,12 +169,15 @@ class RtProbeApp < FmrbApp
 
   def connect
     begin
-      ::Asterism.close
+      close_conn
       raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      ::Asterism.expose("rt", RtProbeApp::Probe.new(self), methods: { stats: 0 })
-      @zs = ::Asterism.session # Asterism's: closed with Asterism.close
-      @sub = @zs.subscribe("asterism/*/#{APP}/rt/pos", depth: 64)
+      c = ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      @conn = c
+      c.expose("rt", RtProbeApp::Probe.new(self), methods: { stats: 0 })
+      @pos_topic = c.publish("rt/pos")
+      @stats_topic = c.publish("rt/stats")
+      @inq = []
+      @sub = c.subscribe("*/#{APP}/rt/pos", depth: 64) { |v, info| @inq << [info.node, v] if @inq.size < 64 }
       @net = :up
     rescue ::Asterism::Error => e
       @net = :down
@@ -188,12 +191,19 @@ class RtProbeApp < FmrbApp
     Log.info("rt_probe: lost: #{why}")
     @net = :down
     @retry_at = Machine.board_millis + 3000
-    @zs = nil # Asterism.close closes it, with @sub
+    close_conn
+  end
+
+  # Closes the connection (its subscription and topics with it).
+  def close_conn
+    c = @conn
+    @conn = nil
     @sub = nil
-    begin
-      ::Asterism.close
-    rescue
-    end
+    @pos_topic = nil
+    @stats_topic = nil
+    c.close if c
+  rescue
+    nil
   end
 
   # ------------------------------------------------------------ the stream
@@ -214,21 +224,23 @@ class RtProbeApp < FmrbApp
     @me_x = xy[0]
     @me_y = xy[1]
     hold = @peer_last >= 0 ? now - @peer_last_at : 0
-    payload = ::Asterism::Codec.pack([@seq, @me_x, @me_y, @peer_last, hold])
-    @zs.put(@pos_key, payload)
+    v = [@seq, @me_x, @me_y, @peer_last, hold]
+    @pos_topic.put(v)
     i = @seq % RING
     @sent_seq[i] = @seq
     @sent_at[i] = now
     @seq += 1
     @t_sent += 1
     @w_sent += 1
-    @w_bytes += payload.bytesize + @pos_key.bytesize
+    @w_bytes += ::Asterism::Codec.pack(v).bytesize
   end
 
   def take(now)
-    @sub.each_pending do |key, payload, att|
-      next if key == @pos_key
-      node = key.split("/")[1]
+    q = @inq
+    return if q.empty?
+    @inq = []
+    q.each do |node, m|
+      next if node == @id
       if @peer && node != @peer
         next if now - @peer_seen < PEER_SILENT_MS
       end
@@ -240,13 +252,8 @@ class RtProbeApp < FmrbApp
         Log.info("rt_probe: peer #{node}")
       end
       @peer_seen = now
-      begin
-        m = ::Asterism::Codec.unpack(payload)
-      rescue
-        next
-      end
       next unless m.is_a?(Array) && m.size >= 5
-      got(now, m, payload.bytesize + key.bytesize)
+      got(now, m, ::Asterism::Codec.pack(m).bytesize)
     end
   end
 
@@ -356,7 +363,7 @@ class RtProbeApp < FmrbApp
       "t_sent" => @t_sent, "t_recv" => @t_recv, "t_lost" => @t_lost, "t_reorder" => @t_reorder,
       "t_dup" => @t_dup, "t_rtt" => @t_rtt_n }
     begin
-      @zs.put(@stats_key, ::Asterism::Codec.pack(@last_stats)) if @zs
+      @stats_topic.put(@last_stats) if @stats_topic
     rescue => e
       Log.info("rt_probe: stats: #{e.message}")
     end
@@ -458,11 +465,11 @@ class RtProbeApp < FmrbApp
     if @net == :up
       t0 = Machine.board_millis
       begin
-        ok = ::Asterism.poll # the session (the stream too), calls, liveliness
+        ok = @conn.poll # the session (the stream too), calls, liveliness
         t1 = Machine.board_millis
         @w_ast_sum += t1 - t0
         if !ok
-          lost("asterism: #{::Asterism.lost_reason}")
+          lost("asterism: #{@conn.lost_reason}")
         else
           now = Machine.board_millis
           @w_zs_sum += now - t1
@@ -496,7 +503,7 @@ class RtProbeApp < FmrbApp
   end
 
   def on_destroy
-    ::Asterism.close
+    close_conn
     Log.info("rt_probe: closed")
   rescue => e
     Log.info("rt_probe: close: #{e.message}")

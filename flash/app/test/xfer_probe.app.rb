@@ -138,7 +138,7 @@ class XferProbeApp < FmrbApp
     methods = {}
     ::Asterism::Transfer::Inbox::METHODS.each { |k, v| methods[k] = v }
     methods["size"] = 1
-    ::Asterism.expose("inbox", @inbox, methods: methods, caller: :from, doc: "transfer probe")
+    link.conn.expose("inbox", @inbox, methods: methods, caller: :from, doc: "transfer probe")
     Log.info("xfer_probe: ready as #{link.node}")
     start_job unless @started
     @started = true
@@ -217,8 +217,8 @@ class XferProbeApp < FmrbApp
     app = (@job["app"] || APP).to_s
     kind = (@job["kind"] || "probe").to_s
     meta = @job["overwrite"] == true ? { "overwrite" => true } : {}
-    ProbeSender.new("#{@job['to']}/#{app}/inbox", kind, path, name: name, piece: piece, window: window,
-                    sha256: sha, meta: meta)
+    ProbeSender.new("#{@job['to']}/#{app}/inbox", kind, path, net: @link.conn, name: name, piece: piece,
+                    window: window, sha256: sha, meta: meta)
   end
 
   def step_sender
@@ -348,7 +348,7 @@ class XferProbeApp < FmrbApp
         return bench_done if b["i"] >= sizes.size
         n = sizes[b["i"]].to_i
         b["t"] = Machine.board_millis
-        b["fut"] = ::Asterism["#{@job['to']}/#{APP}/inbox", timeout_ms: 5000].async.asterism_call("size", "x" * n)
+        b["fut"] = @link.conn["#{@job['to']}/#{APP}/inbox", timeout_ms: 5000].async.asterism_call("size", "x" * n)
         return
       end
       return unless b["fut"].done?

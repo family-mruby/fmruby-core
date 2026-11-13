@@ -209,9 +209,10 @@ class ReceivingApp < FmrbApp
     have = @view[@kind]["hand"] || []
     list = []
     list << ::FmrbReceiveConf::ANYONE unless have.include?(::FmrbReceiveConf::ANYONE)
-    if @link && @link.connected?
+    c = @link ? @link.conn : nil
+    if c
       own = @link.node.to_s
-      all = ::Asterism.nodes
+      all = c.nodes
       i = 0
       while i < all.size
         n = all[i].to_s

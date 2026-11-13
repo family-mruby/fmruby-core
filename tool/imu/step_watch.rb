@@ -18,6 +18,8 @@
 # Each step's delay is the time it arrived here minus t_ms on this
 # machine's clock: detection, the put and the network, from the sample that
 # crossed the threshold to here.
+# ASTERISM_DIR=<a checkout of asterism> takes it from that checkout.
+$LOAD_PATH.unshift(File.join(ENV["ASTERISM_DIR"], "lib")) unless ENV["ASTERISM_DIR"].to_s.empty?
 require "asterism"
 require "msgpack"
 
@@ -148,10 +150,10 @@ Asterism.connect(router, node: "pc-stepwatch-#{Process.pid}", app: "stepwatch") 
   delays = []
   put_delays = []
   last_steps = nil
-  key = "asterism/#{node}/step/pedometer/step"
-  net.session.subscribe(key) do |sm|
+  key = "#{node}/step/pedometer/step"
+  net.subscribe(key) do |v, _info|
     here = now_ms
-    v = MessagePack.unpack(sm.payload)
+    next unless v.is_a?(Hash)
     if v["event"] == "step" && v["t_ms"]
       d = here - sync.here_of(v["t_ms"])
       put = here - sync.here_of(v["sent_ms"])
@@ -170,8 +172,8 @@ Asterism.connect(router, node: "pc-stepwatch-#{Process.pid}", app: "stepwatch") 
     last_steps = v["steps"]
   end
   if accel
-    net.session.subscribe("asterism/#{node}/step/pedometer/accel") do |sm|
-      v = MessagePack.unpack(sm.payload)
+    net.subscribe("#{node}/step/pedometer/accel") do |v, _info|
+      next unless v.is_a?(Hash)
       puts format("accel x %6d y %6d z %6d  m %5d peak %5d dyn %5d (rise %d) mg", v["x"], v["y"], v["z"],
                   v["m"], v["m_peak"], v["dyn"], v["rise"])
     end

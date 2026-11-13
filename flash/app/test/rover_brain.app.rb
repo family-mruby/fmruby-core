@@ -7,9 +7,10 @@
 #   else tcp/zenohd:7447. The ID comes from the same settings, the mDNS
 #   name, the asterism_node setting (the browser's wasm-XXXXXX) or the board
 #   name ("linux" in the simulator, "wasm" in the browser).
-# - One connection (G1b): Asterism (the object) and, on Asterism.session,
-#   the ROS 2 node fmruby_brain_<ID> (publishes /cmd_vel, subscribes /odom)
-#   and the call log put on asterism/<ID>/brain/log for asterism-console's
+# - One connection (G1b): Asterism (the object) and, on its session
+#   (conn.session), the ROS 2 node fmruby_brain_<ID> (publishes /cmd_vel,
+#   subscribes /odom), and the call log on the topic log (type log,
+#   asterism/<ID>/brain/log, time in ms since 1970) for asterism-console's
 #   log page. The node has the board's Zenoh ID, so the console draws it
 #   inside the board. The brain is the only one that sends /cmd_vel.
 # - The object (exposed with caller: :from: Asterism gives every method the
@@ -140,6 +141,8 @@ class RoverBrainApp < FmrbApp
     @creds_error = st.error
     @state = "connecting"
     @rs = nil         # the ROS 2 session
+    @net = nil        # the connection (Asterism::Connection)
+    @log_topic = nil
     @node = nil
     @cmd = nil
     # odometry
@@ -195,15 +198,15 @@ class RoverBrainApp < FmrbApp
     t0 = Machine.board_millis
     begin
       raise ::Asterism::Error, @creds_error if @creds_error
-      ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
-      ::Asterism.expose("rover", RoverBrainApp::Rover.new(self),
-                        methods: { drive: 2, go: 1, turn: 1, stop: 0, state: 0 }, caller: :from)
-      @rs = ::Asterism.session # Asterism's: Asterism.close closes it
+      @net = ::Asterism.connect(@locator, node: @id, app: APP, credentials: @creds)
+      @net.expose("rover", RoverBrainApp::Rover.new(self),
+                  methods: { drive: 2, go: 1, turn: 1, stop: 0, state: 0 }, caller: :from)
+      @rs = @net.session # the connection's: closed with it
       @node = Asterism::ROS::Node.new(@rs, "fmruby_brain_#{ros_name(@id)}")
       @cmd = @node.publisher("/cmd_vel", "geometry_msgs/msg/Twist")
       odom_type = ::Asterism::CDR::PACK ? RoverBrainOdom : "nav_msgs/msg/Odometry"
       @node.subscribe("/odom", odom_type, depth: 2) { |msg, info| odom(msg) }
-      @log_key = "asterism/#{@id}/#{APP}/log"
+      @log_topic = @net.publish("log", type: :log)
       @state = "connected"
     rescue ::Asterism::Error => e
       @state = "failed: #{e.message}"
@@ -215,9 +218,8 @@ class RoverBrainApp < FmrbApp
   # One line for asterism-console's log page (and the board's log).
   def log(level, text)
     Log.info("rover_brain: #{text}")
-    return unless @rs
-    @rs.put(@log_key, ::Asterism::Codec.pack({ "level" => level, "msg" => text,
-                                               "time" => Asterism::ROS.now_ns / 1.0e9 }))
+    return unless @log_topic
+    @log_topic.put({ "level" => level, "msg" => text, "time" => Asterism::ROS.now_ns / 1_000_000 })
     @log_n += 1
   rescue => e
     Log.info("rover_brain: log: #{e.message}")
@@ -452,8 +454,8 @@ class RoverBrainApp < FmrbApp
   end
 
   def exchange
-    unless ::Asterism.poll
-      lost("asterism: #{::Asterism.lost_reason}")
+    unless @net.poll
+      lost("asterism: #{@net.lost_reason}")
       return
     end
     lost("ros: disconnected") unless @node.poll
@@ -466,8 +468,11 @@ class RoverBrainApp < FmrbApp
     @mode = :idle
     @node = nil
     @cmd = nil
-    @rs = nil # Asterism.close closes it, with the node
-    ::Asterism.close
+    @rs = nil # closed with the connection, with the node
+    @log_topic = nil
+    n = @net
+    @net = nil
+    n.close if n
     Log.info("rover_brain: #{state}")
   rescue => e
     Log.info("rover_brain: lost: #{e.message}")
@@ -560,7 +565,7 @@ class RoverBrainApp < FmrbApp
     halt if @cmd
     log("info", "#{@id}/#{APP}/rover is going away") if @rs
     @node.close if @node
-    ::Asterism.close
+    @net.close if @net
     Log.info("rover_brain: closed")
   rescue => e
     Log.info("rover_brain: close: #{e.message}")

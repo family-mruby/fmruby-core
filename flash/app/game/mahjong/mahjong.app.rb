@@ -80,7 +80,6 @@ require "/app/game/mahjong/mahjong_panels"
 # first shown (watch_load): a seated player never needs it.
 
 class MahjongApp < FmrbApp
-  CALL_TIMEOUT = 3.0      # the recent games' calls (the table's are @tc's)
   PROBE_EVERY_MS = 15000
   MEM_EVERY_MS = 30000
   APP_DIR = "/app/game/mahjong"
