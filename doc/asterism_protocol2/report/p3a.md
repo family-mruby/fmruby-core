@@ -210,3 +210,113 @@ asterism の P2b-1 (接続のオブジェクト、report/p2b.md) の上で、ast
    通るかは console の規則の言葉の側 (P3b) で確かめる。
 5. 2 本目を開くときの `Asterism.connect` は CRuby で全体のロックを持ったまま重複の確認 (最長 1.5 秒) をするので、ホストの起動直後に
    1 回だけ、その間ゲームの呼び出しの答えが止まる (report/p2b.md 8 章と同じ性質)。
+
+## 11. 追記: P2c-2 (観戦を共有の置き場へ、ルームを Asterism のアプリに、CLI・MCP が共有の値を読む) (2026-11-13)
+
+決定 23〜28 (design.md) と report/p2c.md の 9 章の引き継ぎに沿って、asterism-games の観戦をノードの共有の置き場へ移し、asterism の CLI・MCP が
+共有の置き場の値を送り手つきで読むようにした (asterism 93668d1、asterism-games f009eaa)。asterism-console は別のサブ (23dd4ea・4e2bc1f) で、
+ロールの行はそちらに合わせた。
+
+### asterism-games (f009eaa `feat(host,commentate): ...`)
+
+| ファイル | 何を |
+|---|---|
+| `lib/asterism_games/host.rb` | 観戦のキーを `asterism/<node>/@shared/spectate/<卓>/state` に (`spectate_name`・`spectate_key`)。ルームの外のホストは自分のアプリ (`games`) の接続で、つないだとき (`declare_topics`) に観戦の型を `define_type` し、卓ごとに `publish("spectate/<卓>/state", shared: :node, type:)`。**2 本目の接続 `spectate` と生存の印の仕組み (`spectate_token`・`SpectatePub`・`spectate_session`) は消した**。ルームのホストは、ルームの外に Asterism の接続 `<node>/room<slot>` (`open_room_app`・`room_up`) を開き、同じ型と `spectate/room<slot>-<卓>/state` を `shared: :node` で宣言する。開く・切れたら 30 秒ごとにやり直す・ホストの接続と一緒に閉じるのは前と同じ |
+| `lib/asterism_games/rooms.rb` | `child_config` から `spectate_token` と `permanent_spectates?` を消した。`spectate_label` (`room<slot>`) はルームのアプリ名と卓の名前の頭を兼ねる |
+| `lib/asterism_games/commentate/mahjong.rb`・`commentate.rb` | 購読を `*/@shared/spectate/*/state` に。ホストは送り手 (`info.from`) のノード、卓は `@shared/` の下の名前 (`spectate/<卓>/state`) から (`spectate_source`)。`--table` は `<host>/@shared/spectate/<卓>` も受ける |
+| `lib/asterism_games/game.rb` | 説明の直し (`SPECTATE_TYPE` は共有の置き場のトピックの型) |
+| `README.md`・`docs/install.md` | 「Topics and types」「Spectate」「Rooms」「Commentary」「Tests」、7 章のロール (下) |
+| `test/` | 偽の網 `FakeNet` に `shared: :node` (キー `asterism/<node>/@shared/...`、宣言の項目 `<node>/@shared/...`、attachment `[seq, nil, "<node>/<app>"]`)。観戦の値がホストのアプリの宣言・型を持ち送り手つきで番号が付くこと、ルームのアプリ `games/room01` が宣言・型・値を持つこと、ルームのアプリを開くのは自分の証明書・観戦の景色のある卓・ルームの中だけで 1 回だけ (`Asterism.connect` を stub)、実況の `spectate_source` |
+
+- **ルームのプロセスが素の Zenoh でしていたこと**: 観戦の値の put (と `spectate` の生存の印) だけだった。全部 Asterism のアプリ `room<slot>` に
+  置き換えた。ほかに素の Zenoh は `follow_players` の 0.7.1 向けの代わり (`net.session.liveliness_watch`) だけで、protocol 2 の asterism
+  (`publish(shared:)` を使う今のコード) では必ず `on_app_join` があるので消した。**素の Zenoh の部分は残っていない**。
+- ルームのアプリは証明書のファイルが無くても開くようにした (`spectate_outside` だけを見る)。`spectate_outside` は Rooms が自分の証明書の
+  ときだけ立てるので、配置での振る舞いは変わらない。素のルータでの通しのため。
+- ルームのアプリは `@status` を置かない (状態は無い)。ノードの自己紹介 (`asterism/<node>/@profile`) は Asterism の接続がどれも答える
+  (前からの作り)。
+
+### asterism の CLI・MCP (93668d1 `feat(cli): ...`)
+
+| ファイル | 何を |
+|---|---|
+| `lib/asterism/cli/values.rb` | パターンに `node/@shared/...`・`@shared/...` を許す (`@shared` は 1 つ目か 2 つ目の区切りだけ)。照合を Zenoh と同じく「`*`・`**` は `@` で始まる区切りに掛からない」に (`glob_parts?`。前は `Asterism.glob?`)。`shared?`・`sender` (attachment の 3 つ目、共有のキーだけ読む)・`lane` (キーと送り手)。`entry` に `from`、欠けは送り手ごと。`Store` は共有のキーを送り手ごとに 1 件持ち、`app` (alive・gone・restarted) は送り手のもの (送り手が無い共有の値は `app` を出さない)、`left` は送り手の値にも印を付ける |
+| `lib/asterism/cli/nouns.rb` | `object get / echo` の PATH に `node/@shared/name...`・`@shared/name...`。文字の出力は `<キー> from <node>/<app> <値>`、`-o json` は `from`。echo の差分は送り手ごと |
+| `lib/asterism/cli/mcp.rb` | 購読に `asterism/*/@shared/**` と `asterism/@shared/**` を足した (`VALUE_KEYS`)。`asterism_values` の説明・入力の説明・サーバの instructions に共有の置き場と `from` |
+| `README.md`・`test/test_cli.rb` | 説明と試験 (`test_values_shared`、`test_topics` に共有の値の echo・get、`test_mcp` に共有の値) |
+
+- `asterism_values` の既定 (`**`) は今までどおり**アプリのキーだけ** (Zenoh と同じく `@shared` に掛からない)。共有の値はパターンで
+  `*/@shared/**` や `@shared/**` と名指しする。
+- mrblib (Asterism の本体) は変えていない (`Asterism::Subscription.sender` を使っただけ)。
+
+### ロールの行 (console と同じ形)
+
+console のサブ (23dd4ea) の行に合わせた。ルームのアプリ名は `room<2 桁>` なので `room$*` に合う。
+
+```
+games-host  Read and write  asterism/${node}
+                            asterism/${node}/games/**
+                            asterism/${node}/@profile
+                            asterism/${node}/*/@profile
+                            asterism/${node}/*/@status
+                            asterism/${node}/*/@pubs
+                            asterism/${node}/@shared/**
+                            asterism/${node}/room$*
+                            asterism/${node}/room$*/**
+            Read            asterism/*/game
+            Watch           asterism/**
+
+spectator   Read            asterism/*/@shared/spectate/**
+                            asterism/*/games/@profile
+                            asterism/*/games/@pubs
+                            asterism/*/room$*/@profile
+                            asterism/*/room$*/@pubs
+            Ask             asterism/*/games/@profile
+                            asterism/*/room$*/@profile
+            Watch           asterism/**
+```
+
+- ルームのアプリの `@profile`・`@status`・`@pubs` は `asterism/${node}/*/@...` の行で足りる (ルームはホストと同じ証明書・同じノード)。
+  足りないのは生存の印と queryable (`asterism/<node>/room01`・`asterism/<node>/room01/**`) で、それが `room$*` の 2 行。
+- 実況が要るのは値の行 `asterism/*/@shared/spectate/**` だけ (型は引かない)。`@profile`・`@pubs` の行は `asterism topic info` や
+  `type_of` で送り手の型を読むため。spectator に網全体の `@shared` は入れない。
+- 一度は `asterism/${node}/**` と `asterism/*/*/@profile` の広い形を書いたが、親の指示で console と同じ狭い形に直した (コミットは狭い形のみ)。
+
+### 試験 (`ASTERISM_CREDENTIALS` を外して)
+
+| 何を | 結果 |
+|---|---|
+| asterism `rake test` | 0 failures (test_cli **30 runs、654 assertions**、前は 29 runs)、適合 `cruby: 243 passed, 0 failed` |
+| asterism-games `rake test` (`MJ_GAMES=4`、使い捨てのルータ) | **408 runs、48120 assertions、0 failures、1 skip** (skip は既存)。1 回目は `test_rooms` の偽の網に `connected?` が無くて 1 error (足した)、`test_the_delay` (既知の揺れ) と `test_mahjong_watch` の 1 つが落ち、どちらも単独で通った |
+| asterism-games `rake test:gem` | **166 runs、7081 assertions、0 failures** (10 skips は既存) |
+| `test_the_delay` の揺れ | 変更後に単独 6 回で 1 回、変更前 (stash) で 6 回 0 回。表の景色の版が最後まで同じになる (局が止まる) ときの比べ (`>`) で、観戦の置き場とは関係しない見立て |
+
+### 通し (CRuby どうし、ACL の無い使い捨てのルータ)
+
+常設の卓のホスト (`games/games`、mahjong1 を CPU 4 人) とルームのホスト (名前空間 `room/01`、`spectate_outside`、ルームのアプリ
+`games/room01`) を 1 つの台本 (scratchpad) で立てた。
+
+- ホストのログ: `room01: games: games/room01 up outside room/01 (@shared/spectate/room01-mahjong1/state)`。
+- `asterism app list`: `games/games` と **`games/room01`** (ルームの `games` は名前空間の中なので出ない)。
+- `asterism topic list 'games/*'`: `games/@shared/spectate/mahjong1/state  asterism-games/mahjong.spectate  (node, by games/games)` と
+  `games/@shared/spectate/room01-mahjong1/state  ...  (node, by games/room01)`。`topic info` でルームのアプリの型の定義が引けた。
+- `object get games/@shared/spectate/mahjong1/state -o json`: `from` `games/games`、`format` msgpack。ルームの卓は `from` `games/room01`。
+  `object echo '*/@shared/spectate' '*/state'` の文字の出力は `... room01-mahjong1/state from games/room01` の行。6 秒の `-o json` で
+  2 つの送り手がそれぞれの番号の列 (14 件・19 件、欠け 0)。
+- 実況 (`commentate mahjong --json --ai off`、25 秒): `games/mahjong1` 9 行・`games/room01-mahjong1` 11 行、両方の卓を追った。
+- **ACL のあるルータ (zenohd + console のロール) では確かめていない**。上のロールの行で通るかは、console の側の試験とデプロイで見る。
+
+### 止まらずに決めたこと・確認してほしい点
+
+1. ルームのアプリを証明書のファイルなしでも開くようにした (`spectate_outside` だけを見る)。配置では Rooms が自分の証明書のときだけ立てる。
+2. `follow_players` の 0.7.1 向けの代わり (素の Zenoh の liveliness watch) を消した。
+3. CLI・MCP の照合を「`*`・`**` は `@` の区切りに掛からない」にした。`asterism_values` の既定 `**` に共有の値は入らない (名指しが要る)。
+4. 共有の値で送り手の無いもの (形の悪い attachment) は、MCP で `app` を出さない。
+5. console の `viewer` (Read `asterism/**`) は `@shared` に届かない。`object get` や MCP で観戦を見るには、viewer のロールに
+   `asterism/*/@shared/**` (網全体なら `asterism/@shared/**`) が要る (console の側の判断)。
+6. ブラウザ版 (fmruby-core) の観戦の購読はまだ `spectate` の下 (P3c)。
+
+### 残件
+
+- 版・CHANGELOG は上げていない。push していない。`docs/install.md` の「Updating」に版ごとの手順 (ロールの直し) は書いていない (P4 で版と一緒に)。
+- ACL のあるルータでの通し。
