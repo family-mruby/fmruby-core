@@ -150,3 +150,80 @@ console の証明書の規則 (console 以外は誰も持たない):
 - 戻すとき: 足した行は残る (protocol 1 が使わないものを通すだけ)。ask の `asterism/*/*/@status` は手で戻して Apply (install.md に書いた)。
 - 残る注意: 自前のロールで `@status` の行が無いもの (例と違う名前で、端末のアプリが状態やトピックを出すもの) は自動では足されない。
   install.md に手で足す行を書いた。
+
+## 10. P2b-2: 接続のオブジェクトへの入れ替え (asterism-console、2026-11-13)
+
+asterism の P2b-1 (2152661・81b3707、`Asterism.connect` が `Asterism::Connection` を返し、モジュールの関数は無い) に console を合わせた。
+asterism-console 3 コミット (7c95f36・783b8b3・b0844f1)。asterism には触っていない (足りない API は無かった)。
+
+### 10.1 入れ替えた所
+
+| 場所 | 前 | 後 |
+|---|---|---|
+| `lib/bridge/runner.rb` の接続 | `Asterism.connect(...)` の後に `@net = Asterism.net` | `@net = Asterism.connect(...)` |
+| 同 見張り | `Asterism.connected?`・`Asterism.lost_reason` | `@net.connected?`・`@net.lost_reason` |
+| 同 ノードの自己紹介を聞く | `Asterism.profile_of` | `@net.profile_of` (worker は `@net` が無ければ `Disconnected`) |
+| 同 console 自身の自己紹介 | 接続の前に `Asterism.profile(kind: :console, icon:)` | 接続の前に `Asterism.profile_defaults(kind: :console, icon:)` (接続の時の put が 1 回のまま) |
+| 同 片付け | `Asterism.close` | `@net&.close` |
+| `lib/bridge/objects.rb` (ページの meta・呼び出し) | `Asterism[path, timeout:]` | `Objects.new(net)` の `net[path, timeout:]`。`net` は接続か、接続を返す Proc (bridge はルータを失うと接続を作り直すので Proc を渡す) |
+| `lib/bridge/terminal.rb` (Terminal の CLI) | `::Asterism.net` | `Terminal.new(net: -> { @net })` の接続を `CLI.new(net:)` に |
+| `lib/bridge/transfers.rb` (ファイルの送り手) | `Transfer::Sender.new(to, ...)` | `Sender.new(to, ..., net: @net)` (P2b-1 で必須になった) |
+| `deploy/vps/check_node.rb` | `Asterism.current_call` | 接続の `current_call` |
+
+- **受け口 (`Transfer::Endpoint`) は読み取り用の Zenoh の接続のまま**にした。2 本目の Asterism の接続 (`console/transfer`) で
+  `expose` しても同じことができるが、セッションとルータの席が 1 つずつ増え、console の証明書の ACL は今のままで足りるので変える理由が無い。
+  docs/files.md に一言書いた。
+- 記録・再生・見張りは前から読み取り用の Zenoh の接続 (1 章の「Zenoh を直接使い続けるところ」) で、モジュールの関数を使っていなかった。変更なし。
+- console に MCP は無い (CLI の mcp は Terminal では「プログラムとしてだけ動く」と断る、前から)。
+- 文書は今の API の箇所だけ直した (README の Terminal の節、docs/terminal.md、docs/files.md、コードのコメント)。古い段の記録
+  (docs/g1b.md・v2_5.md・x1.md など) の `Asterism.session` などは当時の記録として触っていない。
+
+### 10.2 観戦 (`spectate`) がアプリとして図に出ること
+
+- 図はアプリを生存の印 `asterism/<node>/<app>` から作る (`Graph#add_asterism`)。`spectate` が 2 本目の接続になれば自分の印を持つので、
+  **図のコードは変えずに** `games` ノードの中のアプリとして出る。ノードを運ぶセッションは 2 つになり、`Connections` はノードごとに
+  複数のセッションを前から扱える (ROS 2 と同じ)。アプリの自己紹介も `asterism_apps` が印から拾うので、`spectate` の status・pubs・types を
+  ほかのアプリと同じに聞く。
+- live 試験 (`app_profiles_live_test`) を、子のプロセスが自分でルータ (zenoh-c の router モード) を開き、同じノードの 2 本
+  (`livenode/demo` と `livenode/spectate`) をクライアントでつなぐ形にした (前は peer の直結。同じプロセスの 2 本を外から見るにはルータが要る)。
+  足した試験: 印が 2 つ、`spectate` の `@profile` から status・宣言・型 (型は接続ごとで `demo` の型は混ざらない)、記録が引く宣言と型、
+  図で `a_app:livenode/spectate` が `a_node:livenode` の子で Topics の行を持つこと。ノードの自己紹介を bridge の接続で聞く試験も足した。
+
+### 10.3 台帳の自動の直し (9 章) と `spectate`
+
+**`spectate` のための行は足していない。9 章の migration で足りている**ことを試験で確かめた。
+
+- 2 本目の接続がルータに対してすること (`test/test_helpers/spectate_connection.rb` に一覧): アプリの印、呼び出しの queryable
+  (`asterism/<host>/spectate/**`)、生存の印の見張り、重複の確認 (liveliness の get)、ノードの `@profile` の queryable と put と答え、
+  アプリの `@profile` の queryable と答え、`@status`・`@pubs` の put、卓の値の put。
+- 文書の games-host (protocol 2 の行あり) はこれを全部通す。**protocol 1 の games-host** (`*/@status` と `spectate`・`spectate/**` の行) は、
+  migration の前はアプリの `@profile` と `@pubs` だけが通らず、migration の後は全部通る (`*/@profile`・`*/@pubs` は `*` が `spectate` にも
+  当たるため)。console と viewer はその `@profile` に問い合わせ、答えと `@pubs` を受け取れる。
+- 試験: `test/lib/relay/spectate_roles_test.rb` に 1 本、`test/db/relay_role_app_profiles_test.rb` に 1 本 (どちらも上の一覧で)。
+  migration は変えていないので、足すだけ・2 回目は何も変えない、は 9 章の試験のまま。
+- docs/rooms.md の「Watching the tables from outside」に、protocol 2 では `spectate` が自分のアプリになること、games-host は今の行で足りること、
+  spectator のロールは値だけを読むことを書いた。
+
+### 10.4 試験
+
+| 何を | 結果 |
+|---|---|
+| 変更前 (asterism が P2b-1 の後) の `bin/rails test` | 612 runs、5 failures・7 errors (objects・terminal_live・app_profiles_live・transfers。どれもモジュールの関数と `Sender` の `net:`) |
+| 変更後の `bin/rails test` (`env -u ASTERISM_CREDENTIALS`) | **618 runs、6593 assertions、0 failures、0 errors、0 skips** |
+| `app_profiles_live_test` | **4 runs、38 assertions**、3 回流して揺れなし |
+| `bin/rubocop` | 312 files、no offenses |
+| console 自身の自己紹介 (`own_profile` → 接続) | 手で一度確かめた (kind console、アイコンの hash が付く)。試験のデータベースに残ったアイコンの行は消した |
+
+- `bin/signer` の `TypeError` の出力は前からのもの (5 章)。Docker・VPS には触っていない。
+
+### 10.5 見立てと違った点・残る点
+
+1. 図にも台帳にも `spectate` のための変更は要らなかった (10.2・10.3)。指示書の「要るなら足す」はどちらも「要らない」。
+2. **止まって返す点 (仕様の選択)**: 文書の例のロール `spectator` は `asterism/*/spectate`・`spectate/**` の値だけを読み、`spectate` の
+   `@profile` (状態・宣言・型) には問い合わせられず `@pubs` も届かない。spectator の証明書で `asterism topic list` をしても観戦のトピックは
+   出ない (console・viewer・ホスト自身の証明書なら出る)。spectator に `asterism/*/spectate/@profile` (read と ask)・`asterism/*/spectate/@pubs`
+   (read) を足すか (例の文書と migration の両方) はユーザが決める。今は足していない。
+3. 自前の games-host で `*/@status` の行が無いもの (例と違う形) は、9 章と同じく自動では直らない。`spectate` も同じ。
+4. bridge の接続は 1 本のまま。ファイルの受け口を 2 本目の接続にする (10.1) かは、ルータの席が増えるので今は採らない。
+5. 版・CHANGELOG は上げていない。push していない。P4 の順序の注意 (8 章) は変わらない: console・ゲームホスト・asterism の protocol 2 の版を
+   同時に入れる。
