@@ -73,20 +73,23 @@ module Regress
 
       def connect
         return if @up
+        # ASTERISM_DIR=<a checkout of asterism> takes it from that checkout.
+        $LOAD_PATH.unshift(File.join(ENV["ASTERISM_DIR"], "lib")) unless ENV["ASTERISM_DIR"].to_s.empty?
         require "asterism"
         Counterparts.wait_for("zenohd on 127.0.0.1:7447", 30) { Counterparts.listening?(7447) }
-        Asterism.connect(ROUTER, node: NODE, app: "regress")
+        @net = Asterism.connect(ROUTER, node: NODE, app: "regress")
         @up = true
       end
 
       def call(path, method, *args, timeout: 3.0)
         connect
-        Asterism[path, timeout: timeout].public_send(method, *args)
+        @net[path, timeout: timeout].public_send(method, *args)
       end
 
       def close
         return unless @up
-        Asterism.close
+        @net.close
+        @net = nil
         @up = false
       rescue StandardError
         @up = false

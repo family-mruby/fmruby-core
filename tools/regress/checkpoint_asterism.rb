@@ -103,7 +103,8 @@ module Regress
 
       def router_down
         if @pc_on
-          Asterism.close if Asterism.connected?
+          @pc_net.close if @pc_net
+          @pc_net = nil
           @pc_on = false
         end
         Open3.capture2e("docker", "rm", "-f", ROUTER_NAME)
@@ -135,7 +136,7 @@ module Regress
         return if @pc_on
         require_relative "../fmrb_send"
         FmrbSend.load_asterism
-        Asterism.connect("tcp/127.0.0.1:#{ROUTER_PORT}", node: NODE_PC, app: "probe")
+        @pc_net = Asterism.connect("tcp/127.0.0.1:#{ROUTER_PORT}", node: NODE_PC, app: "probe")
         @pc_on = true
       end
 
@@ -373,7 +374,7 @@ module Regress
         mark_b = log_lines(RUN_DIR_B).size
         # a file begun and never sent: rg-ckpt-b is busy with it for 10 s
         sha = Digest::SHA256.hexdigest("x" * 1024)
-        Asterism["#{NODE_B}/transfer/inbox", timeout_ms: 5000]
+        @pc_net["#{NODE_B}/transfer/inbox", timeout_ms: 5000]
           .asterism_call("begin", "file", { "name" => "occupy.bin", "size" => 1024, "sha256" => sha })
         r = asterism_move(pid, NODE_B, "--hold", "1500")
         unless r["status"] == "stayed" && r["here"] == "went on"

@@ -80,20 +80,21 @@ end
 METHODS = { join: -1, mine: -1, sit: 2, stand: 1, cpu: 3, start: 1, rule: 3, view: -1, act: 4, table: 0, leave: 1 }.freeze
 
 t = FixtureTable.new(case_file)
-Asterism.connect(router, node: "fixtures", app: "games")
-Asterism.expose("mahjongfx", t, methods: METHODS)
+net = Asterism.connect(router, node: "fixtures", app: "games")
+net.expose("mahjongfx", t, methods: METHODS)
+state = net.publish("mahjongfx/state")
 warn "fixture host: fixtures/games/mahjongfx via #{router}; cases: #{CASES.keys.join(' ')}"
 stop = false
 trap("TERM") { stop = true }
 trap("INT") { stop = true }
 put_at = 0
 until stop
-  break unless Asterism.poll
+  break unless net.poll
   now = Process.clock_gettime(Process::CLOCK_MONOTONIC, :millisecond)
   if now - put_at >= 1000
     put_at = now
-    Asterism.session.put("asterism/fixtures/games/mahjongfx/state", Asterism::Codec.pack(t.table))
+    state.put(t.table)
   end
   sleep 0.02
 end
-Asterism.close
+net.close

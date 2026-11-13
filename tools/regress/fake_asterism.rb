@@ -4,9 +4,11 @@
 #
 # The apps' own connection code (FmrbAsterism::Link, ::TableClient,
 # fmrb-asterism.rb's settings) is loaded as it ships; what is faked is the
-# Asterism core under it: connect / poll / close, the session's
-# subscriptions and puts, Asterism.each / Asterism[path] proxies whose
-# calls a game host answers (Regress::Net.host), on_join / on_leave.
+# Asterism core under it: Asterism.connect and the connection it returns
+# (poll / close, subscriptions whose blocks get the scene's puts in the
+# poll, topics whose puts are kept in Net.published, conn.each /
+# conn[path] proxies whose calls a game host answers (Regress::Net.host),
+# on_join / on_leave), and Asterism.profile_defaults.
 #
 # A scene drives it through Regress::Net:
 #   net.host.tables["games-host-a1b2c3/games/othello1"] = {"st" => "wait", ...}   # put as its state
@@ -111,80 +113,174 @@ module Regress
     def respond_to_missing?(*) = true
   end
 
-  class FakeSub
-    attr_reader :key
+  # What a subscription's block is given with a value (Asterism::SampleInfo):
+  # the scene's values come in order, nothing lost.
+  class FakeInfo
+    attr_reader :key, :path, :node, :app, :name, :seq, :run_id, :time, :encoding, :timestamp, :lost, :shared, :from
 
     def initialize(key)
       @key = key
-      @queue = []
+      @path = key.delete_prefix("asterism/")
+      parts = @path.split("/")
+      @node = parts[0]
+      @app = parts[1]
+      @name = parts[2..].to_a.join("/")
+      @from = "#{@node}/#{@app}"
+      @seq = nil
+      @run_id = nil
+      @time = nil
+      @encoding = "msgpack"
+      @timestamp = nil
+      @lost = 0
+      @shared = nil
     end
 
-    def push(key, payload) = @queue << [key, payload]
-
-    def each_pending
-      q = @queue
-      @queue = []
-      q.each { |k, p| yield k, p, nil }
-      nil
-    end
-
-    def undeclare = nil
-    alias close undeclare
+    def restarted? = false
   end
 
-  class FakeSession
-    attr_reader :subs, :puts, :queryables
+  # A subscription (Asterism::Subscription): the values put on keys that
+  # match its pattern wait here until the connection's poll gives them to
+  # the block, as the real one does.
+  class FakeSub
+    attr_reader :pattern
 
-    def initialize
-      @subs = []
-      @puts = []
-      @queryables = []
+    def initialize(pattern, blk)
+      @pattern = pattern
+      @blk = blk
+      @queue = []
+      @closed = false
     end
 
-    def subscribe(key, depth: 1, **)
-      s = FakeSub.new(key)
-      @subs << s
-      s
-    end
+    def push(key, value) = @queue << [key, value]
 
-    def put(key, value, **)
-      @puts << [key, value]
+    def deliver
+      q = @queue
+      @queue = []
+      q.each { |k, v| @blk.call(v, FakeInfo.new(k)) unless @closed }
       nil
     end
 
-    def declare_publisher(key, **) = FakePublisher.new(self, key)
-    def declare_queryable(key, **) = (@queryables << key; FakeSub.new(key))
-    def get(*, **) = []
-    def delete(*, **) = nil
-    def liveliness(*, **) = nil
+    def received = 0
+    def malformed = 0
+    def dropped = 0
+    def closed? = @closed
+    def close = (@closed = true; nil)
+  end
+
+  # The connection's Zenoh session (conn.session): what the ROS 2 node
+  # is built on.
+  class FakeSession
     def close = nil
     def zid = "0123456789abcdef"
     def method_missing(n, *, **) = Env.note_unstubbed("session.#{n}")
     def respond_to_missing?(*) = true
   end
 
-  class FakePublisher
-    def initialize(session, key)
-      @session = session
+  # A topic (Asterism::Topic): its values are kept in Net.published.
+  class FakeTopic
+    attr_reader :name, :key
+
+    def initialize(name, key)
+      @name = name
       @key = key
+      @seq = 0
     end
 
-    def put(value, **) = @session.put(@key, value)
-    def undeclare = nil
+    def put(value)
+      Net.published << [@key, value]
+      @seq += 1
+      nil
+    end
+
+    def seq = @seq
+    def close = nil
+  end
+
+  # A connection (Asterism::Connection), the one the app opened.
+  class FakeConn
+    attr_reader :node_id, :app, :subs, :topics
+
+    def initialize(node, app)
+      @node_id = node
+      @app = app
+      @subs = []
+      @topics = {}
+      @open = true
+      @session = FakeSession.new
+    end
+
+    def net = Net
+    def path = "#{@node_id}/#{@app}"
+    def connected? = @open && net.connected
+    def reconnecting? = net.reconnecting
+    def lost_reason = "the connection was lost"
+
+    def poll
+      r = net.poll_plan.shift
+      r = true if r.nil?
+      unless r
+        net.connected = false
+        return false
+      end
+      @subs.dup.each(&:deliver)
+      true
+    end
+
+    def close
+      @open = false
+      return nil unless net.conn.equal?(self)
+      net.connected = false
+      net.on_join_block = nil
+      net.on_leave_block = nil
+      nil
+    end
+
+    def session
+      raise ::Asterism::Disconnected, "not connected" unless connected?
+      @session
+    end
+
+    def subscribe(pattern, depth: nil, &blk)
+      s = FakeSub.new(pattern, blk)
+      @subs << s
+      s
+    end
+
+    def publish(name, type: nil, unit: nil, desc: nil, ts: false, encoding: nil, shared: nil)
+      @topics[name] = FakeTopic.new(name, "asterism/#{@node_id}/#{@app}/#{name}")
+    end
+
+    def define_type(name, fields, desc: nil) = (net.types[name] = fields; nil)
+    def status(h = nil, **) = nil
+    def on_join(&b) = (net.on_join_block = b)
+    def on_leave(&b) = (net.on_leave_block = b)
+    # The objects on the network whose paths match (the host's tables).
+    def each(pattern = "**", &blk)
+      list = net.host.away ? [] : net.host.tables.keys.select { |p| net.match?(pattern, p) }.map { |p| FakeProxy.new(net.host, p) }
+      blk ? list.each(&blk) : list
+    end
+    def [](path, timeout: nil, timeout_ms: nil) = FakeProxy.new(net.host, path)
+    def call_async(path, name, args, _kw = nil, _ms = nil) = net.host.call(path, name, args.to_a)
+    def expose(name, obj = nil, **) = (net.exposed[name.to_s] = obj; nil)
+    def current_call = net.caller ? Struct.new(:from).new(net.caller) : nil
+    def nodes = net.nodes
+    def profile(**kw) = ::Asterism.profile_defaults(**kw)
+    def method_missing(n, *, **) = Env.note_unstubbed("conn.#{n}")
+    def respond_to_missing?(*) = true
   end
 
   # The scene's handle on the network.
   module Net
     class << self
-      attr_accessor :host, :connected, :reconnecting, :refuse, :session, :poll_plan, :on_join_block, :on_leave_block,
-                    :exposed, :nodes, :profile_h, :calls, :caller, :ros, :ros_out
+      attr_accessor :host, :connected, :reconnecting, :refuse, :conn, :poll_plan, :on_join_block, :on_leave_block,
+                    :exposed, :nodes, :profile_h, :calls, :caller, :ros, :ros_out, :published, :types
 
       def reset
         @host = FakeHost.new
         @connected = false
         @reconnecting = false
         @refuse = nil
-        @session = FakeSession.new
+        @conn = nil
         @poll_plan = []
         @on_join_block = nil
         @on_leave_block = nil
@@ -195,6 +291,8 @@ module Regress
         @caller = nil
         @ros = {}
         @ros_out = []
+        @published = []
+        @types = {}
       end
 
       # Calls a method of an object the app exposed, as node `from` would.
@@ -216,9 +314,11 @@ module Regress
         @host.tables.each { |p, st| put("asterism/#{p}/state", st) }
       end
 
-      # A put on key, delivered to every subscription whose pattern matches.
+      # A put on key, given to every subscription whose pattern matches at
+      # the connection's next poll.
       def put(key, value)
-        @session.subs.each { |s| s.push(key, value) if match?(s.key, key) }
+        return unless @conn
+        @conn.subs.each { |s| s.push(key, value) if match?("asterism/#{s.pattern}", key) }
       end
 
       def match?(pattern, key)
@@ -302,7 +402,7 @@ module Asterism
   class << self
     def net = Regress::Net
 
-    def profile(**kw)
+    def profile_defaults(**kw)
       return net.profile_h.dup if kw.empty?
       kw.each do |k, v|
         raise ArgumentError, "name too long" if k == :name && v.to_s.bytesize > Profile::NAME_MAX
@@ -315,46 +415,10 @@ module Asterism
       net.calls << [:connect, app]
       raise Asterism::Error, net.refuse if net.refuse
       net.connected = true
-      net.session = Regress::FakeSession.new
-      self
+      net.conn = Regress::FakeConn.new(node, app)
     end
 
-    def close
-      net.connected = false
-      net.on_join_block = nil
-      net.on_leave_block = nil
-      nil
-    end
-
-    def poll
-      r = net.poll_plan.shift
-      r = true if r.nil?
-      net.connected = false unless r
-      r
-    end
-
-    def session
-      raise Asterism::Error, "not connected" unless net.connected
-      net.session
-    end
-
-    def connected? = net.connected
-    def reconnecting? = net.reconnecting
-    def reconnecting = net.reconnecting
-    def lost_reason = "the connection was lost"
-    def on_join(&b) = (net.on_join_block = b)
-    def on_leave(&b) = (net.on_leave_block = b)
-    # The objects on the network whose paths match (the host's tables).
-    def each(pattern)
-      return [] if net.host.away
-      net.host.tables.keys.select { |p| net.match?(pattern, p) }.map { |p| Regress::FakeProxy.new(net.host, p) }
-    end
-    def [](path, timeout: nil) = Regress::FakeProxy.new(net.host, path)
-    def call_async(path, name, *args) = net.host.call(path, name, args)
-    def expose(name, obj = nil, **) = (net.exposed[name.to_s] = obj; nil)
-    def respond_to(*) = nil
-    def current_call = net.caller ? Struct.new(:from).new(net.caller) : nil
-    def nodes = net.nodes
+    def now_ms = Regress::Env.ms
     def method_missing(n, *, **) = Regress::Env.note_unstubbed("Asterism.#{n}")
     def respond_to_missing?(*) = true
   end

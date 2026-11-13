@@ -151,7 +151,8 @@ module Regress
           ok = false
           notes << "FAILED #{e.message}"
         ensure
-          Asterism.close if defined?(Asterism) && Asterism.connected?
+          @pc_net&.close
+          @pc_net = nil
           keep_logs
           down(T::RUN_DIR_B, T::PORT_B)
           @relay&.close
@@ -237,20 +238,20 @@ module Regress
         @pc_dir = File.join(T::OUT, "pc")
         FileUtils.rm_rf(@pc_dir)
         FileUtils.mkdir_p(@pc_dir)
-        Asterism.connect("tcp/127.0.0.1:#{T::ROUTER_PORT}", node: NODE_PC, app: "transfer")
+        @pc_net = Asterism.connect("tcp/127.0.0.1:#{T::ROUTER_PORT}", node: NODE_PC, app: "transfer")
         @pc_inbox = TransferQuick.pc_inbox_class.new("#{@pc_dir}/")
         @pc_inbox.logger = nil
-        Asterism.expose("inbox", @pc_inbox, methods: Asterism::Transfer::Inbox::METHODS, caller: :from)
+        @pc_net.expose("inbox", @pc_inbox, methods: Asterism::Transfer::Inbox::METHODS, caller: :from)
         deadline = now + 20
-        until Asterism.nodes.include?(@to)
-          Asterism.poll
+        until @pc_net.nodes.include?(@to)
+          @pc_net.poll
           raise T::Failure, "#{@to} is not on the network" if now > deadline
           sleep 0.02
         end
       end
 
       def pump
-        Asterism.poll
+        @pc_net.poll
         @pc_inbox.tick
       end
 
@@ -270,7 +271,7 @@ module Regress
             @seen[pos] = true
             @faults.call(pos / @piece)
           end
-        end.new("#{@to}/transfer/inbox", kind, path, name: name, meta: meta, sha256: sha256)
+        end.new("#{@to}/transfer/inbox", kind, path, net: @pc_net, name: name, meta: meta, sha256: sha256)
         s.logger = nil
         s.faults = faults
         deadline = now + 60
@@ -448,7 +449,7 @@ module Regress
       # The reason the machine gives for a list sent to its policy_set
       # (a Failure when it takes it).
       def policy_refusal(list)
-        Asterism["#{@to}/transfer/inbox", timeout: 10].policy_set(list)
+        @pc_net["#{@to}/transfer/inbox", timeout: 10].policy_set(list)
         raise T::Failure, "managed: the list was taken"
       rescue Asterism::Error => e
         e.message

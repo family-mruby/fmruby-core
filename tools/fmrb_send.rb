@@ -76,23 +76,25 @@ module FmrbSend
     if opt[:credentials]
       args = given.include?("--router") ? [opt[:router]] : []
       kw = given.include?("--node") ? { node: opt[:node] } : {}
-      Asterism.connect(*args, credentials: opt[:credentials], app: APP, **kw)
+      net = Asterism.connect(*args, credentials: opt[:credentials], app: APP, **kw)
     else
-      Asterism.connect(opt[:router], node: opt[:node], app: APP)
+      net = Asterism.connect(opt[:router], node: opt[:node], app: APP)
     end
     begin
-      ok = send_file(to, path, overwrite: opt[:overwrite], name: opt[:name], sd: opt[:sd])
+      ok = send_file(net, to, path, overwrite: opt[:overwrite], name: opt[:name], sd: opt[:sd])
     ensure
-      Asterism.close
+      net.close
     end
     ok
   end
 
-  # One file to <to>/transfer/inbox, connected already. -> true when placed.
-  def self.send_file(to, path, overwrite: false, name: nil, sd: false, out: $stdout)
+  # One file to <to>/transfer/inbox over net (an Asterism::Connection).
+  # -> true when placed.
+  def self.send_file(net, to, path, overwrite: false, name: nil, sd: false, out: $stdout)
     meta = overwrite ? { "overwrite" => true } : {}
     meta["inbox"] = "sd" if sd
-    s = Asterism::Transfer::Sender.new("#{to}/transfer/inbox", "file", path, name: name || File.basename(path),
+    s = Asterism::Transfer::Sender.new("#{to}/transfer/inbox", "file", path, net: net,
+                                                                              name: name || File.basename(path),
                                                                               meta: meta)
     s.logger = nil
     out.puts "fmrb_send: #{path} (#{s.size} bytes) to #{to}"
@@ -103,10 +105,10 @@ module FmrbSend
       until s.done?
         if stop
           s.cancel
-          Asterism.poll
+          net.poll
           break
         end
-        Asterism.poll
+        net.poll
         s.step
         q = s.size.zero? ? 4 : s.pos * 4 / s.size
         if q > shown
