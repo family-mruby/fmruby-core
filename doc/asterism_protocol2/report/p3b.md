@@ -124,3 +124,29 @@ console の証明書の規則 (console 以外は誰も持たない):
 6. ルータのタイムスタンプを publish_time にする経路は、live 試験が peer の直結 (タイムスタンプなし) なので偽の Sample の試験だけで確かめた。
    ルータ越しの通しは P3c (手元のルータ) で見る。
 7. 版・CHANGELOG は上げていない。push していない。
+
+## 9. 追記: ロールの既定と、今の台帳の自動の直し (2026-11-13)
+
+8 章の 3 (例のロールの既定) をユーザが「既定に足し、今の台帳も自動で直す」と決めた。asterism-console b705f7d・642ff61 で入れた。
+
+- **新しい console**: setup が作る例のロール `match` の「Read and write」に `asterism/${node}/*/@profile`・`asterism/${node}/*/@status`・
+  `asterism/${node}/*/@pubs` を最初から入れた (db/seeds.rb)。rw はすべての message を両方向に通すので、queryable・答え・put が入る。
+  console のコードが作る既定のロールは `match` だけで、端末向けの既定のロールは無かった (games-host・viewer・spectator は文書の例を管理者が作る)。
+- **今の console (更新)**: データの migration `db/migrate/20261113100000_relay_role_app_profiles.rb` (`RelayRoleAppProfiles`)。
+  管理者の手直しと例を見分けられないので、すべてのロールに同じ規則を当て、**足すだけ** (消すのは ask の `@status` の行の置き換えだけ)。
+  - 名前が `match`: rw に上の 3 行。
+  - rw の `<prefix>/*/@status` (games-host): 隣に `<prefix>/*/@profile`・`<prefix>/*/@pubs`。
+  - read の `<prefix>/*/@status` (viewer): 隣に `<prefix>/*/@pubs`。
+  - ask の `<prefix>/*/@status`: `<prefix>/*/@profile` に置き換え、read にも `<prefix>/*/@profile` を足す (答えは read の行から届く、4 章)。
+  - 変えたロールごとに `relay role <名前> (protocol 2): ...` を出す。もう一度流しても何も変わらない (試験で確認)。前からある RelayRoleAdvKeys と同じ形。
+- **いつ効くか**: 更新の setup は db:prepare (migration) の後にルータの設定を台帳から書き、ルータを再起動する (`write_router_config(update: true)`)。
+  よって**別の Apply は要らない** (再起動できなかったと setup が言ったときだけ Apply)。docs/install.md の更新の節に書いた。
+- 試験: `test/db/relay_role_app_profiles_test.rb` (新設、6 runs: match・games-host・viewer・該当しないロールは変えない・2 回目は変化なし・
+  データベースの行に流してログとルータの ACL で host の `@profile` の queryable・`@pubs` の put と viewer の問い合わせ・答えが通ること)。
+  `relay_role_seed_test.rb` は「新しい console の種」と「古い console に migration を順に当てたもの」が同じになることを確かめる (protocol 2 の段を足した)。
+  `bin/rails test` は **612 runs, 6558 assertions, 0 failures**、rubocop 違反 0。
+- 文書: docs/install.md に「0.3.21 から次のリリースへ」の節 (全部の端末も protocol 2 に、migration が足す行、setup がルータを再起動、確認、戻し方)、
+  docs/rooms.md と docs/g1_5.md に「前のロールは更新で行が足される」。版の番号は書いていない (P4 で決める)。
+- 戻すとき: 足した行は残る (protocol 1 が使わないものを通すだけ)。ask の `asterism/*/*/@status` は手で戻して Apply (install.md に書いた)。
+- 残る注意: 自前のロールで `@status` の行が無いもの (例と違う名前で、端末のアプリが状態やトピックを出すもの) は自動では足されない。
+  install.md に手で足す行を書いた。
