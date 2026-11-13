@@ -1,6 +1,6 @@
 # Asterism protocol 2 の実装
 
-> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1〜P3・P2e 済、次は P4 の準備 (発火はユーザの許可語の後)
+> 状態: 進行中 | 更新: 2026-11-13 | design.md の決まり (2026-11-13 決定) を部品・Asterism 本体・使う側の順に入れ、最後に一斉に入れ替えて公開する。P1〜P3・P2e 済、P4 は準備済 (release.md)。リハーサルで見つかった ACL の不具合の直し方をユーザが決めてから発火
 
 ## 目的
 
@@ -40,7 +40,7 @@
 | P2d | レビュー (report/review.md) の直し: 決定 29〜33 (leave で記憶を捨てる・番号は接続ごと・時刻は ms・今の値は呼び出しで取り直す・フィールドの型は名前だけ・接続ごとの id を attachment に) と、review 3 章 (記憶の掃除・型の覚え・送り手のノードの照合・接続のときのロック・console の記録の欠け・文書)。asterism → games・console | 済 (asterism 4b96b57・35eafab、games c5660f6、console f1a96be〜3f24b83・bd40b84・6fedfe8) |
 | P3 | 入れ替え: asterism-games、asterism-console、fmruby-core のアプリ・ブラウザ版・MCP、CLI (`asterism`)。ネイティブ版・sim・ブラウザ版・console の間で、宣言が見え、値が型つきで届き、通し番号の欠けが数えられることを通しで確かめる | 済 (P3c: fmruby-core ac43faf5・1b3832ed・8620c1af、report/p3c.md。regress・live・transfer・checkpoint・screens web 通過、内蔵 RAM 増分なし) |
 | P2e | 決定 34・35: zenoh-pico の分割の上限を上げる (RAM を測って値を決める)、生存の印と呼び出しに版 (asterism → console の図・ACL、fmruby-core)。S3 の画面つきの構成 (n16r8・n8r8) にも AtomS3R と同じ TLS 1.3 と mbedTLS の PSRAM 確保を入れる (2026-11-13 ユーザ承認)。ヘッドレスの S3 (AtomS3R・StickS3) は前から対象。実機での VPS への接続は、つないだときに確かめる | 済 (asterism 63f5129・7bc438d、picoruby-asterism-zenoh 70c94a0、console daceadc・649b210、直下 83785d9、fmruby-core 8c961c1f、report/p2e.md。印 `asterism/<node>/<app>/protocol/2`・頼みの `"protocol" => 2`、`Z_FRAG_MAX_SIZE` 16384、内蔵 RAM の増分 0、12 KB・16 KB の答えをネイティブ版・ブラウザ版で確認) |
-| P4 | 公開: 各リポジトリの push、gem (asterism-zenoh・asterism・asterism-games) の版上げと公開、console の版上げと VPS 更新、fmruby-core のピン更新、ブラウザ版の配置。**どれもユーザの許可語を得てから** | 未着手 |
+| P4 | 公開: 各リポジトリの push、gem (asterism・asterism-games。asterism-zenoh は変更なしで出さない) の版上げと公開、console の版上げと VPS 更新、fmruby-core のピン更新、ブラウザ版の配置。**どれもユーザの許可語を得てから** | 準備済 (release.md。版: asterism 0.14.0・picoruby-asterism-zenoh 0.4.2・asterism-games 0.23.0・console 0.4.0、ローカルにコミット。手元のリハーサルで**止まる不具合** (ワイルドカードの購読に宣言した publisher の値が来ない、release.md 8 章の 1) が見つかり、直し方をユーザが決めるまで発火しない) |
 
 ## 受け入れ条件
 
@@ -60,6 +60,7 @@ encoding を付けない値の受け手での見え方も 2026-11-13 に決定 (
 
 ## 関連
 
+- release.md: P4 の手順書とリハーサルの結果。
 - design.md: 決まりの正。explainer.html: 初心者向けの説明 (2026-11-13 の決定を反映した版)。
 - doc/ruby_asterism/plan.md: Asterism 全体の計画。V6 は doc/asterism_recording/。
 - asterism の `docs/protocol.md`: protocol 1 の正。P2 で protocol 2 に書き換える。
