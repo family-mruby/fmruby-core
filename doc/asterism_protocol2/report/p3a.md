@@ -115,3 +115,39 @@
 - 観戦を読む側 (console の観戦の行、ブラウザ版) が `asterism/*/spectate/*/state` を購読しているなら、値は今までどおり MessagePack で
   attachment が増えただけなので、protocol 1 の読み手でも読める。
 - 手元の作業物: `asterism-games/Gemfile.asterism_dir.lock` (無視される) と `vendor/bundle` に入った anthropic 1.82.0 (別ロックを作り直したとき。今のロックは 1.80.0 にそろえた)。
+
+## 9. 追記: 決定 20 の反映、決定 19 の取り下げ (2026-11-13)
+
+7 章の 2 点について、ユーザが決定 19・20 を出した (design.md、fmruby-core 712f0493)。
+
+### 決定 19 は取り下げ
+
+- 一度「同じ接続で別のアプリ名 (`spectate`) でもトピックを宣言できる API (`publish(..., app:)`)」を入れて試験まで通したが
+  (asterism 79e0db6、asterism-games 6d6b0f0)、ユーザが**アプリの境目をきれいに保つ方**を選んで取り下げた: 1 プロセスが
+  本物の Asterism の接続を複数持ち、それぞれが丸ごと 1 つのアプリ (接続・生存の印・オブジェクト・`@profile`・`@pubs`) になる形にし、
+  ゲームホストは `spectate` という 2 本目の接続を開く。その API は未決定。
+- 取り下げは `git revert` の新しいコミットで戻した (asterism f8b44ff、asterism-games b9f6b0a、この report の追記も f81d9fd2 で戻した)。
+  観戦のキーは 59cc130 の形 (Zenoh の素の put に `[seq]`、宣言なし) のまま。
+- 試した中で分かったこと (次の API を決めるときの材料): 別名には生存の印が無いので `Asterism.apps` や重複の確かめに出ず、
+  `*/*` の `@profile` の問い合わせには別名も答える (適合の見本が 1 つ変わった)。ルームのホストは観戦をルームの外の別の接続
+  (Asterism の接続ではない) で流すので、別名の API ではルームの観戦を宣言できなかった。複数の本物の接続ならこの穴も埋まる。
+
+### 決定 20 を入れた
+
+- **asterism a071aa0** (`feat(protocol): any and repeated [] in the fields of application types`): フィールドの型の `[]` を
+  重ねられる (`"int[][]"`)、基本の型に `any` (`"any[]"` など)。`"[][]"` だけは断る。protocol.md 11.2、README、試験 (CRuby の
+  test_topic、mruby の host_test、適合の見本: 被試験側の型に `int[][]` と `any` のフィールド)。
+- **asterism-games ad4cc3e** (`feat(host): the members, final ranks and pao back in the state types`): `mb` は `any[]`
+  (オセロ・お絵かき・麻雀)、麻雀の `fin` は `int[][]`、和了の `pa` は `any[][]` (`[払う席, 役満の名前]` で混ざる)。型の説明から
+  「載せていない」を消し、試験は「ビューのキーがすべてフィールドにある」を確かめる形に締めた。
+
+### 試験 (`ASTERISM_CREDENTIALS` を外して)
+
+| 何を | 結果 |
+|---|---|
+| asterism `rake test` | 145 runs、2594 assertions、0 failures (適合 cruby 241 passed、0 failed) |
+| asterism `rake test:protocol_mruby` | 241 passed、0 failed |
+| asterism `rake test:cross` | 1 run、24 assertions、0 failures |
+| asterism `rake test:mruby` | 54 + 15 + 26 checks、0 failed |
+| asterism-games `rake test` (`MJ_GAMES=4`、手元のルータ) | 406 runs、37363 assertions、2 failures、1 skip。落ちたのは `test_the_delay` (観戦の遅れの時間の比べ、556 > 556) と `test_network` (`stale` のはずが `not offered`)。どちらも型とは関係しない時間の揺れで、単独で 2 回ずつ流して全部通った (spectate 8 runs、network 1 run) |
+| asterism-games `rake test:gem` | 165 runs、7074 assertions、0 failures |
