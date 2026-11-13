@@ -115,3 +115,52 @@
 - 観戦を読む側 (console の観戦の行、ブラウザ版) が `asterism/*/spectate/*/state` を購読しているなら、値は今までどおり MessagePack で
   attachment が増えただけなので、protocol 1 の読み手でも読める。
 - 手元の作業物: `asterism-games/Gemfile.asterism_dir.lock` (無視される) と `vendor/bundle` に入った anthropic 1.82.0 (別ロックを作り直したとき。今のロックは 1.80.0 にそろえた)。
+
+## 9. 追記: 決定 19・20 の反映 (2026-11-13)
+
+7 章の 2 点がユーザに決められた (design.md の 19・20、fmruby-core 712f0493)。
+
+### 変えた所
+
+- **asterism 79e0db6** (`feat(protocol): topics under another app name, and any and nested arrays in types`)
+  - 19: `Asterism.publish(..., app:)`・`define_type(..., app:)` (と `unpublish`・`published` の `app:`、`Topic#app`、CRuby の
+    `net.publish` ほか)。別の名前のトピックは `asterism/<node>/<app:>/<name>`。その名前に `@profile` の queryable (最初のトピックか型が
+    できたときに立てる。`pubs`・`types` に答え、状態は答えない: `?status` は空の map) と `@pubs` の put。オブジェクト・`**` の
+    queryable・生存の印は無い (`Asterism.apps` に出ず、重複の確かめも掛からない)。protocol.md に 10.4 を足した。自分の別名への
+    `pubs_of` / `types_of` は網を使わない。
+  - 20: `[]` を重ねられる (`"int[][]"`)、基本の型に `any`。`"[][]"` だけは断る。protocol.md 11.2。
+  - 試験: test_topic (CRuby の 2 プロセス間で別名の `@profile`・値・`@pubs`、自分の別名)、host_test (mruby で別名の `pubs_of`・
+    `types_of`・値、新しい型)、適合の見本 (被試験側が `watch` の名前で型を定義し、`int[][]`・`any` を使う。別名の `@profile` の
+    問い合わせ 3 つ、`*/*` が別名にも届く)。
+- **asterism-games 6d6b0f0** (`feat(host): spectate keys as topics of the name spectate, full state types`)
+  - ルームの外 (LAN・permanent tables) では観戦のキーを `publish(..., app: "spectate")` で宣言する (型なし、説明つき)。
+  - **ルームのホストは今までどおり**: 観戦はルームの外に開いた 2 本目の接続 (Asterism の接続ではない、Asterism は 1 プロセス 1 接続)
+    で流すので、宣言は付かず番号だけ。ここは決定 19 の API では覆えない (止まるほどの不整合ではないので報告に留める)。
+  - 型: `mb` は `any[]` (オセロ・お絵かき・麻雀)、麻雀の `fin` は `int[][]`、和了の `pa` は `any[][]` (`[席, 役満の名前]` で混ざる)。
+    型の説明から「載せていない」の文を消した。
+  - docs/install.md の `games-host` の役割は前に足した `asterism/${node}/*/@pubs`・`asterism/${node}/*/@profile` の `*` が
+    `spectate` にも掛かるので、行は足していない。観戦を読む役割 (spectator など) が `@profile` に問い合わせるには、console の
+    規則に `asterism/*/spectate/@profile` の query と `@pubs` の購読が要る (P3b)。
+
+### 試験 (`ASTERISM_CREDENTIALS` を外して)
+
+| 何を | 結果 |
+|---|---|
+| asterism `rake test` | 145 runs、2618 assertions、0 failures (適合 cruby 244 passed、0 failed) |
+| asterism `rake test:mruby` | 59 + 15 + 26 checks、0 failed |
+| asterism `rake test:protocol_mruby` | 244 passed、0 failed |
+| asterism `rake test:cross` | 1 run、24 assertions、0 failures |
+| asterism-games `rake test` (`MJ_GAMES=4`、手元のルータ) | 406 runs、36326 assertions、0 failures、1 skip |
+| asterism-games `rake test:gem` | 165 runs、7078 assertions、0 failures |
+
+### 通し
+
+ホスト (othello1・mahjong1・board1) を手元のルータで上げ、`asterism topic list 'games/*'` に
+`games/spectate/mahjong1/state` が出た (`topic info` で説明、`object get` で `seq` つきの値)。`play othello` の 1 局が終局まで
+(CPU 41-23)、exit 0。
+
+### 残件
+
+- ルームの観戦のキーは宣言されない (上)。宣言したいなら、ルームの外の接続を Asterism の接続にする手段 (1 プロセス 2 接続) が要る。
+- 別名には生存の印が無いので、`asterism tree` などは別名をアプリとして出さない (ホストは観戦のために手で `asterism/<node>/spectate`
+  の印を立てているので、ゲームホストの場合は出る)。
