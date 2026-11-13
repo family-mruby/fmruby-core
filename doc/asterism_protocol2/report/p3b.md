@@ -244,3 +244,102 @@ asterism-console 3 コミット (7c95f36・783b8b3・b0844f1)。asterism には�
   2 回目は変化なし・データベースの行に流してルータの ACL で topic list と同じ操作 (`@profile` の問い合わせと答え、`@pubs` の購読と put) が
   前は全部断られ、後は全部通り、`games` アプリの `@profile`・呼び出し・書き込みは断られたまま)。`spectate_roles_test` の例のロールを新しい行にし、
   1 本足した。**`bin/rails test` は 624 runs、6633 assertions、0 failures、0 errors**、rubocop 314 files 違反 0。
+
+## 11. P2c-2: 共有の置き場 `@shared` (asterism-console、2026-11-13)
+
+決定 23〜28 と P2c の 9 章の引き継ぎに合わせた。asterism-console 5 コミット (809b971・dac89ed・a9e1b37・23dd4ea・4e2bc1f)。
+asterism・asterism-games・VPS には触っていない。`env -u ASTERISM_CREDENTIALS` で流した。
+
+### 11.1 図
+
+- 共有の置き場は**アプリでなく置き場**として描く。種類 `a_shared` を 1 つ足し、ノードの置き場は `a_shared:<node>` (そのノードの箱の中、
+  ラベル `@shared`)、網全体は `a_shared:@shared` (箱の外、ラベル `@shared (network)`)。置き場ごとに 1 つ (キーごとではない)。
+- 宣言しているアプリから置き場へ破線 `shares` を引き、線のラベルは置き場の下の名前 (ROS 2 のトピックの線が名前を並べるのと同じ流儀)。
+  置き場の詳細は Place・Keys (キーごとに送り手とその宣言・型) と、既存の「Watch its values」(置き場の `**`)。凡例は既存の並びに 1 行ずつ。
+  新しい画面・操作は足していない。
+- 材料は各アプリの `@pubs` の共有の項目 (`<node>/@shared/<name>`・`@shared/<name>`)。読み分けは `Bridge::Shared` (Puma でも使うので
+  gem に頼らない素の Ruby)。アプリの詳細の Topics には共有の項目も今どおり出る (名前は完全な項目名)。
+- **送り手が去ったら宣言を落とす** (途中の追加指示): `AppProfiles` が生存の印で今いるアプリを覚え (`due` のたび)、去ったアプリの宣言を消す
+  (前から)。加えて、いないアプリの `@status`・`@pubs` の put、問い合わせの答え、問い合わせ直しを**受け付けない**ようにした
+  (遅れて届いた put や、去る間際の答えで死んだ送り手の宣言が戻るのを防ぐ。印が見えてからの get で同じものが来る)。図は `a_app` がある
+  アプリからしか線を引かないので、印が消えた時点で線も消える。試験: `app_profiles_test` (去ったら `topic` が nil・図に線なし・遅れた
+  put と答えは捨てる・戻れば聞き直す)、live 試験 (子のプロセスで `room01` を閉じ、印が消えたら宣言・図の線・置き場の送り手から消える)。
+- spectate をアプリと仮定していたものはコードには無かった (10.2 のとおり)。試験の `spectate` アプリ (`test_helpers/spectate_connection.rb`、
+  live 試験の 2 本目) は消して、`room01` に置き換えた。
+
+撮影 (見本モード、scratchpad に写した repo と新しい見本のデータベース、終わったら消した):
+`/tmp/claude-1000/-home-kishima-fmrb-family-mruby/d865add5-d638-40f7-89da-40dce8f29b87/scratchpad/shots/` の
+`p2c2_graph.png` (games の箱の中の `@shared` に games と room01 から線、pc/chat から網全体の置き場へ線)、`p2c2_place_details.png`
+(ノードの置き場の詳細)、`p2c2_global_details.png` (網全体の置き場の詳細)。
+
+### 11.2 購読
+
+- `Bridge::Shared.companions`: `asterism/**` には `asterism/*/@shared/**` と `asterism/@shared/**`、`asterism/<node>/**` には
+  `asterism/<node>/@shared/**` を**横に足して**購読する。記録 (Recording の key 式) と見張り (Watch) に入れた。それ以外の式 (置き場を
+  名指す式、`asterism/*/*/log` など) は足さない。
+- console の証明書のルータの規則に `<id>__shared_in` (declare_subscriber と put、置き場 2 つ) と `<id>__shared_out` (put) を足した。
+  ingress の put は再生が置き場へ置き直すため (console は前から `asterism/**` を rw で持つので、その延長)。
+
+### 11.3 記録 (MCAP) の共有のキー
+
+| MCAP | 共有の置き場のキー |
+|---|---|
+| channel | **キー + 送り手**ごとに 1 つ (topic は同じキー) |
+| channel の metadata | `asterism_from` = 送り手 `"<node>/<app>"` (attachment の 3 つ目)。`asterism_declaration` はその送り手の宣言 |
+| schema | その送り手の `t` と、送り手の `?types` の定義 (同じ型の名前でも送り手ごとに別の schema になりうる) |
+| message の sequence | その送り手の通し番号 (送り手ごとに続く) |
+| message の publish_time | 送り手の時刻 (送り手の宣言に `ts`)、無ければルータの時刻 |
+| 送り手が無い値 | キーだけのチャンネル (`asterism_from` なし、型なし) |
+
+- アプリの下のキーでは attachment の 3 つ目を読まない (決まりどおり)。
+- 再生は `asterism_from` のある共有のキーのチャンネルを `[seq, ms または nil, 送り手]` で置き直す (live 試験で受け手の `info.from` と番号を確認)。
+- 記録中の「チャンネルごとの数」は topic で合計するようにした (同じ topic のチャンネルが複数になるため。前は上書きで数が欠けた)。
+  タイムラインは行と詳細に「from <送り手>」を出す。
+
+### 11.4 ロール
+
+| ロール | 足す・置き換える行 |
+|---|---|
+| `match` (既定、メンバー) | Read `asterism/@shared/**` (読むだけ。書くのは管理者がロールで許す) |
+| `viewer` (Read `asterism/**` を持つもの) | Read `asterism/*/@shared/**`、`asterism/@shared/**` |
+| `games-host` (rw `<p>/spectate/**` を持つもの) | rw `<p>/@shared/**`、`<p>/room$*`、`<p>/room$*/**` (ルームのアプリの印・queryable。`@profile`・`@status`・`@pubs` は前からの `*/@profile` などの行で足りる) |
+| `spectator` (Read `<p>/spectate/**` を持つもの) | spectate の行 (Read `<p>/spectate`・`/spectate/**`・`/spectate/@profile`・`/spectate/@pubs`、Ask `/spectate/@profile`) を消して、Read `<p>/@shared/spectate/**`、`<p>/games/@profile`、`<p>/games/@pubs`、`<p>/room$*/@profile`、`<p>/room$*/@pubs`、Ask `<p>/games/@profile`、`<p>/room$*/@profile` |
+
+- 新しい console の種 (`db/seeds.rb`) の `match` に `asterism/@shared/**` を入れた。文書の例 (docs/rooms.md・docs/g1_5.md) も同じ行に。
+- 今の console: データの migration `db/migrate/20261113300000_relay_role_shared_places.rb` (`RelayRoleSharedPlaces`)。足すだけで、
+  消すのは spectator の古い spectate の行だけ (古い形があるときだけ)。2 回目は何も変えない。`relay role <名前> (shared places): ...` を出す。
+  `db/schema.rb` の版を合わせた。spectator の判定で、新しい行 `<p>/@shared/spectate/**` を古い形と取り違えないようにした (試験で見つけた)。
+- **ロールの行に Zenoh の `$*` を許した** (`RelayRole` の検査。`${...}` と単独の `$` は今どおり断る)。`room$*` のため。ルータの ACL は
+  そのまま渡す (zenohd 1.10.1 は chunk の中の `$*` を扱う。試験の評価器も前から扱う)。
+- spectator の型の読み方: 送り手 (`games`・`room<slot>`) の `@profile` への Ask と、答えが届くための Read の `@profile`、宣言の `@pubs`。
+  `type_of(info)` は送り手を名指す get なので、名前を絞った行で足りる。**網全体の `publishers_of` のような `asterism/*/*/@profile` への
+  ワイルドカードの問い合わせは通らない** (spectator には要らない前提)。網全体の置き場は spectator に入れていない (決定 28)。
+- 試験: `test/db/relay_role_shared_places_test.rb` (8 runs: 各ロール、前置きを引き継ぐ、該当しないロールは変えない、2 回目は変化なし、
+  データベースの行に流して本物のルータの規則生成 `Relay::CloudConfig` で、host の `games`・`room01` の全動作 (`GameHostConnections`)、
+  spectator の値と送り手の宣言と型、古い行が消えたこと、メンバーが網全体を読めて書けないこと、viewer が両方を読めること)、
+  `spectate_roles_test` を新しい形に書き直し、`relay_role_app_profiles_test` は 2 つの migration を順に当てて host の全動作が通ること、
+  `relay_role_seed_test` は種と「古い console に migration を順に当てたもの」が同じこと、`relay_role_templates_test` (`$*`)。
+
+### 11.5 試験
+
+| 何を | 結果 |
+|---|---|
+| `bin/rails test` (全部) | **647 runs、6876 assertions、0 failures、0 errors、0 skips** (前は 624 runs) |
+| `app_profiles_live_test` (CRuby の子プロセスがルータを開き、`livenode/demo` と `livenode/room01` が同じ共有のキーに別の型の定義で put) | **6 runs、60 assertions**、3 回流して揺れなし |
+| `bin/rubocop` | 319 files、no offenses |
+| 目視 | 11.1 の 3 枚 |
+
+`bin/signer` の `TypeError` の出力は前からのもの。Docker は撮影 (Playwright) だけに使い、`fmruby_*` には触っていない。
+
+### 11.6 未決・確認してほしい点
+
+1. **games-host の行が asterism-games の文書 (作業中、未コミットのものを読んだ) と違う**: games 側は `asterism/${node}/**` と
+   `asterism/${node}/@shared/**`、console は `asterism/${node}/room$*`・`asterism/${node}/room$*/**` と `asterism/${node}/@shared/**`
+   (ノードの全部ではなくルームのアプリだけに絞った)。どちらでも host は動く。揃える側を親が決める。spectator の行は games 側の
+   (Read `@pubs`、Ask `@profile`) に、答えが届くための Read `@profile` を足した形で、games 側にもこの 2 行が要る。
+2. 観戦のアプリ名を `games` と `room$*` に決め打ちした (games の作業中の文書と同じ)。名前が変われば migration の `SENDERS` と文書を直す。
+3. console の証明書に共有の置き場への put (ingress) を許した (再生のため)。網全体の置き場も含む。
+4. メンバーのロールとして網全体の読みを足したのは `match` (名前で) と `asterism/**` を読むもの (viewer) だけ。players の `games` など
+   ほかの例のロールには足していない。
+5. CLI の `object get/echo`・MCP の `asterism_values` が共有の置き場の値を拾わない件 (P2c の 7 章) は asterism 側で、console は触っていない。
+6. 版・CHANGELOG は上げていない。push していない。P4 の順序の注意 (8 章) に、この migration とゲームホストの更新を同時に、が加わる。
