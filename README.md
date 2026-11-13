@@ -128,9 +128,13 @@ development on a trusted local network.
   `CMAKE_OPTS="-DFMRB_DEV_REMOTE_CTL=OFF"`). It starts and stops apps by path,
   which the remote desktop above already allows through the launcher — this is
   the scriptable form of it. See `doc/dev_remote_ctl/plan.md`.
-- **BLE debug service** — no pairing, bonding or encryption (deliberately disabled
-  for Web Bluetooth compatibility). Any client in radio range can connect, inspect
-  running applications and their variables, and spawn or kill them.
+- **BLE debug service** — starts at boot by default on the Retro board (NARYA v3),
+  Tab5 and NARYA v4 (`ble_auto_start` in the system configuration, the "BLE Auto
+  Start" setting); AtomS3R and StickS3 run it only in setup mode. While it runs it has
+  no pairing, bonding or encryption (deliberately disabled for Web Bluetooth
+  compatibility): any client in radio range can connect, inspect running applications
+  and their variables, spawn or kill them, and read and write ordinary files through
+  the file service. It cannot be stopped without a reboot.
 - **WiFi credentials** are stored in plain text on the device (`config/wifi.toml`,
   deployed into the filesystem image).
 
