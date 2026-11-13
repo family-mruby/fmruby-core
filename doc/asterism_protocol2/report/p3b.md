@@ -438,3 +438,32 @@ asterism・asterism-games・fmruby-core のソース・VPS には触っていな
 3. 回が分かれたチャンネルの数の上限は置いていない (12.2)。
 4. 記録の重なる key 式で同じ値が 2 回書かれるのは前からのまま (欠けの数え方だけを購読ごとにした)。
 5. 版・CHANGELOG は上げていない。push していない。
+
+### 12.9 追加: 観戦者が `spectate` オブジェクトを呼ぶ (2026-11-13)
+
+ユーザの決定: games は観戦の値を宣言するアプリ (`<node>/games`・`<node>/room<slot>`) に公開のオブジェクト `spectate` を足し、
+`state(table)` が最後の (遅らせた) 観戦の値を返す (決定 31 の取り直し)。観戦者のロールはそのオブジェクト**だけ**を呼べる。
+asterism-console 2 コミット (bd40b84・6fedfe8)。
+
+- 呼び出しのキーは protocol.md 4.1 の `asterism/<node>/<app>/<object>/call/<caller>` (呼んだ相手は自分のノード名)。console のロールの
+  書き方 (`asterism/*/<app>/*/call/${node}`、docs/g1_5.md) に合わせ、Read と Ask に `asterism/*/games/spectate/call/${node}` と
+  `asterism/*/room$*/spectate/call/${node}` を足す (答えは Read の行で届く。`@profile` と同じ形)。メソッド名は payload の中なので、
+  ルータでは `state` に絞れない (オブジェクトまで)。
+- データの migration `db/migrate/20261113400000_relay_role_spectate_calls.rb` (`RelayRoleSpectateCalls`): Read に
+  `<prefix>/@shared/spectate/**` を持つロールに、その前置きで上の 2 行を Read と Ask に足す。足すだけで、2 回目は何も変えない。
+  `relay role <名前> (spectate calls): ...` を出す。`db/schema.rb` の版を合わせた。種 (`db/seeds.rb`) には spectator が無いので変えていない。
+- 文書: docs/rooms.md の spectator の例と説明 (meta は読まない、ほかのオブジェクトは呼ばない)、docs/install.md の更新の migration (4 つ目)。
+- **console の呼べるメソッドの許可表 (`CallPermission`) は関係しない**: あれは console の画面 (グラフのページ) が console の
+  接続で呼ぶものの表で、観戦者の証明書の呼び出しはルータの ACL だけが見る。行は足していない。console の画面から `spectate.state` を
+  呼びたいなら、管理者が表に行を足す (今は要らない)。
+- 試験 (`Relay::CloudConfig` を通す):
+  - `test/db/relay_role_spectate_calls_test.rb` (5 runs): 足す行、前置きを引き継ぐ、該当しないロールは変えない、2 回目は変化なし、
+    データベースの行に流して、観戦者が games と room01 の `spectate` を自分の名前で呼べて答えが届く、別の名前・ワイルドカードの呼び手・
+    ほかのノードのアプリは不可、卓のオブジェクト (`mahjong1`)・`lobby`・`spectate/meta` は不可、queryable は立てられない、ホストが
+    受けて答えられる。
+  - `spectate_roles_test` に観戦者の呼び出しの試験を 1 つ足し、ロールの例を新しい行に。座席の証明書は呼べない。`GameHostConnections` に
+    ホストの `spectate` の呼び出しを受けて答える 4 動作を足した。
+  - `bin/rails test` (全部) **657 runs、6973 assertions、0 failures、0 errors、0 skips**、`bin/rubocop` 321 files、no offenses。
+- 気づいたこと: プレイヤーのロール `games` (`asterism/*/games/*/call/${node}`) は前から games アプリの全部のオブジェクトを呼べるので、
+  `games/spectate` も呼べる (room の `spectate` は呼べない)。ゲーム中のプレイヤーが遅らせた観戦の値を読めるだけで、卓の値より
+  知ることは増えない見込みだが、気になるなら games 側の公開の範囲と合わせて決める。
