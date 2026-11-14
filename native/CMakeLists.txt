@@ -9,7 +9,7 @@
 #   fmruby-native   the program. Run it with rake native:run, or headless and
 #                   driven with tools/fmrb_native.rb in the parent repository.
 #
-# libmruby comes from lib/add/family_mruby_native.rb (rake native:mruby --
+# libmruby comes from lib/upstream/family_mruby_native.rb (rake native:mruby --
 # run it first); the Ruby bytecode and the Spinel programs from the existing
 # generation steps (rake hosted:mrb via native:mrb, rake spinel:gen).
 
@@ -170,7 +170,7 @@ set(NATIVE_BACKEND_SRCS
   ${N}/wlr/wl_bridge.c
   # mruby-dir's HAL over the file HAL's resolver (the ESP32 targets' file;
   # the name-only gem hal-dir-fmrb dropped the flat posix one from libmruby)
-  ${FMRB_ROOT}/lib/add/hal-esp32-dir/dir_hal.c
+  ${FMRB_ROOT}/lib/upstream/hal-esp32-dir/dir_hal.c
 )
 if(NATIVE_HAVE_DRM)
   list(APPEND NATIVE_BACKEND_SRCS ${N}/output/output_drm.c)
@@ -241,7 +241,7 @@ target_include_directories(core_objs PRIVATE
   ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
 target_compile_definitions(core_objs PRIVATE
   FMRB_PLATFORM_NATIVE=1
-  # libmruby carries mruby-checkpoint here (lib/add/family_mruby_native.rb):
+  # libmruby carries mruby-checkpoint here (lib/upstream/family_mruby_native.rb):
   # the glue that moves an app (main/app/fmrb_app_checkpoint.c, doc/checkpoint)
   # and the HAL's tick state it carries. Not an ABI define.
   FMRB_HAVE_CHECKPOINT

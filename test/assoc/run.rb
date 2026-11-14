@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbAssoc (lib/add/picoruby-fmrb-app/mrblib/fmrb-assoc.rb).
+# Host tests for FmrbAssoc (lib/gems/picoruby-fmrb-app/mrblib/fmrb-assoc.rb).
 #
 # The table that says which app opens which file. It is plain Ruby over
 # Strings and two file reads, so the shipped file runs here with only those
@@ -9,7 +9,7 @@
 #
 # The table file has two readers: the mruby one (mrblib/fmrb-assoc-file.rb,
 # through FmrbToml, played here by test/toml/host_toml.rb) and the Spinel
-# desktop's line reader (main/prebuild_scripts/spinel/fmrb_assoc_spinel.rb).
+# desktop's line reader (main/ruby/spinel/fmrb_assoc_spinel.rb).
 # Everything runs against both, except what a broken file does, where they
 # differ on purpose (doc/archive/app_refactor/report/r2.md).
 #
@@ -35,7 +35,7 @@ end
 
 # --- file associations (A1) -----------------------------------------------
 #
-# FmrbAssoc is a gem file (lib/add/picoruby-fmrb-app/mrblib), so the real one
+# FmrbAssoc is a gem file (lib/gems/picoruby-fmrb-app/mrblib), so the real one
 # runs here with the two table paths pointed at a scratch directory -- the
 # reading, the two layers and the resolution are the shipped code.
 
@@ -44,12 +44,12 @@ require "fileutils"
 READER = (ARGV[0] || "mruby")
 ROOT = File.expand_path("../..", __dir__)
 if READER == "spinel"
-  load File.join(ROOT, "main/prebuild_scripts/spinel/fmrb_assoc_spinel.rb")
+  load File.join(ROOT, "main/ruby/spinel/fmrb_assoc_spinel.rb")
 else
   require_relative "../toml/host_toml"
-  load File.join(ROOT, "lib/add/picoruby-fmrb-app/mrblib/fmrb-assoc-file.rb")
+  load File.join(ROOT, "lib/gems/picoruby-fmrb-app/mrblib/fmrb-assoc-file.rb")
 end
-load File.join(ROOT, "lib/add/picoruby-fmrb-app/mrblib/fmrb-assoc.rb")
+load File.join(ROOT, "lib/gems/picoruby-fmrb-app/mrblib/fmrb-assoc.rb")
 puts "reader: #{READER}"
 
 TMP = Dir.mktmpdir("assoc")

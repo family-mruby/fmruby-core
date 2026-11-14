@@ -32,7 +32,7 @@ require_relative "fixtures"
 
 CORE = File.expand_path("../..", __dir__)
 APP_DIR = File.join(CORE, "flash", "app", "game", "mahjong")
-GEM_DIR = File.join(CORE, "lib", "add", "picoruby-fmrb-app", "mrblib")
+GEM_DIR = File.join(CORE, "lib", "gems", "picoruby-fmrb-app", "mrblib")
 
 # ---------------------------------------------------------------- stand-ins
 

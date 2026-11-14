@@ -27,7 +27,7 @@ wheel_lines = 3
 timezone = "JST-9"
 keyboard_layout = "us" # "jp" or "us"
 # Internal RAM (KB) a spawn must leave for the rest of the machine (see
-# config/system_conf_n16r8.toml for the caveats).
+# config/system_conf_naryav3.toml for the caveats).
 app_spawn_margin_kb = 30
 language = "en" # "ja" or "en"
 

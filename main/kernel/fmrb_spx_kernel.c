@@ -3,7 +3,7 @@
  * @brief Implementation of the Spinel FFI shim (fmrb_spx.h).
  *
  * These functions wrap the same fmrb_* operations the mruby kernel binding
- * (lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c) uses, but with a plain C
+ * (lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c) uses, but with a plain C
  * ABI callable from Spinel-generated code. See fmrb_spx.h for the contract.
  */
 #include "fmrb_spx.h"

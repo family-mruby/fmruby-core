@@ -33,7 +33,7 @@ class MidiApuApp < FmrbApp
   DRUM_STEP_MS = 180
 
   # First existing file wins, so dropping a song in as song.mid takes over
-  # without touching this list. The SMF player app (tool/smf_player) shows
+  # without touching this list. The SMF player app (/app/tool/smf_player) shows
   # everything in the directory instead.
   SONGS = ["/usr/share/sounds/midi/song.mid", "/usr/share/sounds/midi/joplin_entertainer.mid",
            "/usr/share/sounds/midi/scale.mid"]

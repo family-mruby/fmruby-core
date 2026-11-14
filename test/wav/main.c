@@ -300,7 +300,7 @@ static void test_stop_is_safe(void) {
 
 // ---- the shipped files ----------------------------------------------------
 
-// tool/gen_sine_wav.rb writes these; if what it produces stops being what
+// tools/gen_sine_wav.rb writes these; if what it produces stops being what
 // play_wav accepts, that is a break the device check would find much later.
 static void test_shipped_tones(const char *dir) {
     const char *names[] = {"sine440_16k.wav", "sine440_8k.wav"};

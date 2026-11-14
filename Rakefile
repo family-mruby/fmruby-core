@@ -104,7 +104,7 @@ SPINEL_DIR =
   else
     File.expand_path("../tmp/spinel", __dir__)
   end
-SPINEL_SRC_DIR = "main/prebuild_scripts/spinel"
+SPINEL_SRC_DIR = "main/ruby/spinel"
 SPINEL_GEN_DIR = "#{SPINEL_SRC_DIR}/gen"
 
 # picoruby-ti: the on-device type inference engine behind the editor's
@@ -118,7 +118,7 @@ SPINEL_GEN_DIR = "#{SPINEL_SRC_DIR}/gen"
 #   1. PICORUBY_TI_DIR env override (developer working checkout)
 #   2. vendor/picoruby-ti -- version-pinned clone from `rake ti:setup`
 #   3. ../tmp/picoruby-ti -- dev location in the family-mruby workspace
-PICORUBY_TI_PIN_FILE = File.expand_path("lib/add/PICORUBY_TI_PIN", __dir__)
+PICORUBY_TI_PIN_FILE = File.expand_path("lib/upstream/PICORUBY_TI_PIN", __dir__)
 PICORUBY_TI_VENDOR_DIR = File.expand_path("vendor/picoruby-ti", __dir__)
 PICORUBY_TI_DIR =
   if ENV["PICORUBY_TI_DIR"] && !ENV["PICORUBY_TI_DIR"].empty?
@@ -140,9 +140,9 @@ PICORUBY_TI_SIG_DIR = File.expand_path("sig", __dir__)
 # Asterism (doc/ruby_asterism): its two mrbgems live in their own repositories
 # of the ruby-asterism organization, pinned like picoruby-ti above (a commit
 # in a PIN file, cloned into vendor/ by `rake asterism:setup`):
-#   - asterism (lib/add/ASTERISM_PIN): the pure Ruby layers (mrbgem
+#   - asterism (lib/upstream/ASTERISM_PIN): the pure Ruby layers (mrbgem
 #     picoruby-asterism) and the bundled ROS 2 message types (data/msgs)
-#   - picoruby-asterism-zenoh (lib/add/PICORUBY_ASTERISM_ZENOH_PIN): the
+#   - picoruby-asterism-zenoh (lib/upstream/PICORUBY_ASTERISM_ZENOH_PIN): the
 #     Zenoh binding over zenoh-pico; it carries the zenoh-pico pin itself
 #     (ZENOH_PICO_PIN in that repository)
 # `rake setup` copies the mrbgems into the picoruby submodule and the types
@@ -153,7 +153,7 @@ PICORUBY_TI_SIG_DIR = File.expand_path("sig", __dir__)
 #   1. ASTERISM_DIR / PICORUBY_ASTERISM_ZENOH_DIR env override (a working
 #      checkout, e.g. ../asterism next to fmruby-core; used as it is)
 #   2. vendor/asterism, vendor/picoruby-asterism-zenoh -- the pinned clones
-ASTERISM_PIN_FILE = File.expand_path("lib/add/ASTERISM_PIN", __dir__)
+ASTERISM_PIN_FILE = File.expand_path("lib/upstream/ASTERISM_PIN", __dir__)
 ASTERISM_VENDOR_DIR = File.expand_path("vendor/asterism", __dir__)
 ASTERISM_DIR =
   if ENV["ASTERISM_DIR"] && !ENV["ASTERISM_DIR"].empty?
@@ -161,7 +161,7 @@ ASTERISM_DIR =
   else
     ASTERISM_VENDOR_DIR
   end
-PICORUBY_ASTERISM_ZENOH_PIN_FILE = File.expand_path("lib/add/PICORUBY_ASTERISM_ZENOH_PIN", __dir__)
+PICORUBY_ASTERISM_ZENOH_PIN_FILE = File.expand_path("lib/upstream/PICORUBY_ASTERISM_ZENOH_PIN", __dir__)
 PICORUBY_ASTERISM_ZENOH_VENDOR_DIR = File.expand_path("vendor/picoruby-asterism-zenoh", __dir__)
 PICORUBY_ASTERISM_ZENOH_DIR =
   if ENV["PICORUBY_ASTERISM_ZENOH_DIR"] && !ENV["PICORUBY_ASTERISM_ZENOH_DIR"].empty?
@@ -172,17 +172,17 @@ PICORUBY_ASTERISM_ZENOH_DIR =
 # mruby-checkpoint (doc/checkpoint): writes a running mruby VM's state to an
 # image and resumes it in another VM. Its mrbgem lives in its own repository
 # (family-mruby/mruby-checkpoint), pinned like Asterism above (a commit in
-# lib/add/MRUBY_CHECKPOINT_PIN, cloned into vendor/ by `rake checkpoint:setup`);
+# lib/upstream/MRUBY_CHECKPOINT_PIN, cloned into vendor/ by `rake checkpoint:setup`);
 # `rake setup` copies the gem (mrbgem.rake, include/, src/) into the picoruby
 # submodule. Only the Linux simulation and the native program link it
-# (lib/add/family_mruby_linux.rb, family_mruby_native.rb); the gem needs the
-# VM changes marked "fmrb: checkpoint" in lib/patch/picoruby-mruby, which every
+# (lib/upstream/family_mruby_linux.rb, family_mruby_native.rb); the gem needs the
+# VM changes marked "fmrb: checkpoint" in lib/upstream/patch/picoruby-mruby, which every
 # build has.
 #
 # Checkout resolution:
 #   1. MRUBY_CHECKPOINT_DIR env override (a working checkout; used as it is)
 #   2. vendor/mruby-checkpoint -- the pinned clone
-MRUBY_CHECKPOINT_PIN_FILE = File.expand_path("lib/add/MRUBY_CHECKPOINT_PIN", __dir__)
+MRUBY_CHECKPOINT_PIN_FILE = File.expand_path("lib/upstream/MRUBY_CHECKPOINT_PIN", __dir__)
 MRUBY_CHECKPOINT_VENDOR_DIR = File.expand_path("vendor/mruby-checkpoint", __dir__)
 MRUBY_CHECKPOINT_DIR =
   if ENV["MRUBY_CHECKPOINT_DIR"] && !ENV["MRUBY_CHECKPOINT_DIR"].empty?
@@ -205,7 +205,7 @@ ASTERISM_TRANSFER_DIR = "flash/usr/share/asterism/transfer"
 # own ZENOH_PICO_PIN and cloned into vendor/ by `rake zenoh:setup`. `rake
 # setup` copies its src/ and include/ into the gem's copy inside the picoruby
 # submodule (the gem links into the Linux and P4 builds: it is listed in
-# lib/add/family_mruby_linux.rb and family_mruby_esp32p4.rb).
+# lib/upstream/family_mruby_linux.rb and family_mruby_esp32p4.rb).
 #
 # Checkout resolution:
 #   1. ZENOH_PICO_DIR env override (developer working checkout)
@@ -349,7 +349,7 @@ FMRB_FONT_JA = (ENV["FMRB_FONT_JA"] || "1") != "0"
 # are in only with FMRB_ASTERISM=1. NARYAv3, the AtomS3R and the StickS3
 # default to 1 (BOARD_BUILD_DEFAULTS above); an S3 configuration that names no
 # board (and ATOM_DISPLAY) stays at 0. Read
-# inside the container by lib/add/family_mruby_esp32.rb (the gems) and
+# inside the container by lib/upstream/family_mruby_esp32.rb (the gems) and
 # components/picoruby-esp32/CMakeLists.txt (their ESP-IDF port sources), so
 # the two cannot disagree. Changing it means `rake clean` (libmruby).
 FMRB_ASTERISM = ENV["FMRB_ASTERISM"] == "1"
@@ -357,7 +357,7 @@ FMRB_ASTERISM = ENV["FMRB_ASTERISM"] == "1"
 # board that has the sensor. The Modern (P4) build always has it; on the S3
 # it is in only with FMRB_IMU=1 (the StickS3's default, BOARD_BUILD_DEFAULTS
 # above), so the other S3 boards' flash and RAM stay as they are. Read inside
-# the container by lib/add/family_mruby_esp32.rb. Changing it means
+# the container by lib/upstream/family_mruby_esp32.rb. Changing it means
 # `rake clean` (libmruby).
 FMRB_IMU = ENV["FMRB_IMU"] == "1"
 
@@ -402,7 +402,7 @@ ENGINE_ENV_OPTS = [
   "-e FMRB_IMU=#{FMRB_IMU ? 1 : 0}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
-  # (lib/add/family_mruby_*.rb) and the CMake side
+  # (lib/upstream/family_mruby_*.rb) and the CMake side
   # (components/picoruby-esp32/mruby_abi_defines.cmake) must agree or the
   # boot-time ABI guard aborts. Both read this one variable inside the
   # container, so they cannot disagree. Off by default; build with
@@ -411,7 +411,7 @@ ENGINE_ENV_OPTS = [
   # Self-supplied mruby timeslice (doc/wasm/, P2). The VM ticks itself from its
   # own dispatch loop instead of relying on the mruby_tick task. Needed by the
   # cooperative wasm port; off by default everywhere else. Read on both sides of
-  # the rake/CMake boundary (lib/add/family_mruby_*.rb and
+  # the rake/CMake boundary (lib/upstream/family_mruby_*.rb and
   # components/picoruby-esp32/CMakeLists.txt), so they cannot disagree.
   # Touching vm.c means `rake clean` before rebuilding.
   "-e FMRB_TASK_SELF_TICK=#{ENV['FMRB_TASK_SELF_TICK']}",
@@ -491,9 +491,9 @@ def picoruby_ti_gen_db(engine_dir, out_dir, sig_dir: PICORUBY_TI_SIG_DIR)
 end
 
 # The signature directory the host tests generate from: the firmware API sig
-# plus the test-only fixtures in tool/ti/test_sig (GPIO, which is not an FMRB
+# plus the test-only fixtures in tools/ti/test_sig (GPIO, which is not an FMRB
 # API). Composed into a scratch dir so neither source is mutated.
-PICORUBY_TI_TEST_SIG_OVERLAY = File.expand_path("tool/ti/test_sig", __dir__)
+PICORUBY_TI_TEST_SIG_OVERLAY = File.expand_path("tools/ti/test_sig", __dir__)
 def picoruby_ti_test_sig_dir!
   work = File.expand_path("vendor/ti_test_sig", __dir__)
   rm_rf work
@@ -535,14 +535,14 @@ def picoruby_ti_gen_help
   unless Dir.exist?(PICORUBY_TI_SIG_DIR)
     abort "signature directory #{PICORUBY_TI_SIG_DIR} is missing"
   end
-  sh "#{RbConfig.ruby} tool/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --out flash/help"
+  sh "#{RbConfig.ruby} tools/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --out flash/help"
 end
 
 # Where the WebConsole's browser build lands (doc/editor_ti/instruction_p7.md).
 # The wrapper and the export list live here in git; ti.js / ti.wasm / help.json
 # are generated, so they are gitignored -- the source is sig/ plus the engine,
 # exactly as it is for the firmware.
-PICORUBY_TI_WASM_DIR = File.expand_path("tool/web/wasm", __dir__)
+PICORUBY_TI_WASM_DIR = File.expand_path("tools/web/wasm", __dir__)
 
 # The prism the firmware parses with. The browser build compiles it straight,
 # with no PRISM_XALLOCATOR defined, so prism/defines.h falls back to malloc and

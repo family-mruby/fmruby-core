@@ -1,5 +1,5 @@
-# MIDI。実装は lib/add/picoruby-fmrb-midi/mrblib/ と
-# lib/add/picoruby-midi/mrblib/midi_device.rb。
+# MIDI。実装は lib/gems/picoruby-fmrb-midi/mrblib/ と
+# lib/gems/picoruby-midi/mrblib/midi_device.rb。
 #
 # FmrbMidi.device(self) で音を出す口 (MIDI::Device) をもらい、
 # そこへ音符を送る。曲のファイルは SmfPlayer、MML は MmlPlayer が鳴らす。

@@ -3,7 +3,7 @@
  * L9a): Family mruby's side of the compositor (comp_link.h).
  *
  * Every Linux window gets a stand-in: a small mruby app
- * (main/prebuild_scripts/kernel/linux_window.app.rb) whose window has the
+ * (main/ruby/kernel/linux_window.app.rb) whose window has the
  * Family mruby title bar, frame and close button and whose content is the
  * hole colour (comp_route.h). Being an ordinary app window, the stand-in is
  * moved, resized, raised, focused and stacked by the window manager and the

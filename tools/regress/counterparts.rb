@@ -19,7 +19,7 @@
 # game host from the asterism-games checkout next to fmruby-core with a
 # configuration of our own (no credentials, no router but the local one),
 # and the root tools (fmrb_midi_monitor.rb, fmrb_audio_probe.rb) and
-# tool/imu/step_send.rb as they are.
+# tools/imu/step_send.rb as they are.
 require "fileutils"
 require "socket"
 require_relative "tree"
@@ -65,7 +65,7 @@ module Regress
 
     # One CRuby Asterism connection for the whole run, made when a
     # counterpart first needs to call an object (the asterism gem: what
-    # tool/imu/step_send.rb needs too).
+    # tools/imu/step_send.rb needs too).
     module Probe
       NODE = "rgprobe"
 

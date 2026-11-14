@@ -1,6 +1,6 @@
 // Remote-desktop HTTP/WebSocket server (Phase 1: MJPEG + input).
 //
-// - "/"           embedded viewer page (tool/web/remote/)
+// - "/"           embedded viewer page (tools/web/remote/)
 // - "/stream"     MJPEG via multipart/x-mixed-replace; one client at a
 //                 time (a second request gets 503). The URI handler
 //                 detaches the request (httpd_req_async_handler_begin)

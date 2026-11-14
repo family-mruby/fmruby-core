@@ -85,15 +85,29 @@ if(NOT IDF_TARGET STREQUAL "linux")
             COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/usr/share/sounds/voice/mahjong
             COMMENT "Retro image: leaving the service host's files and the voices out")
     endif()
+    # The test apps (flash/app/test) are for development and the regression
+    # tools: a release image (FMRB_RELEASE=1 rake build:esp32, which the
+    # release workflow sets) goes without them. Every board, so it is here
+    # rather than in a board's list below. Development builds keep them.
+    if(FMRB_RELEASE)
+        add_custom_command(TARGET storage_staging POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/app/test
+            COMMENT "Release image: leaving the test apps out")
+    endif()
     # What a board leaves out of its image: config/storage_exclude_<target>.txt
-    # (target lower-cased, e.g. storage_exclude_atoms3r.txt), one path per
-    # line relative to the storage root, # starts a comment. Any board can
-    # have one; a board without the file keeps the whole tree. The files stay
-    # in git and in the simulator -- only this board's image goes without.
-    string(TOLOWER "${FMRB_HW_TARGET}" FMRB_STORAGE_EXCLUDE_TARGET)
+    # (target lower-cased, e.g. storage_exclude_atoms3r.txt; no target is the
+    # NARYA v3, naryav3), one path per line relative to the storage root, #
+    # starts a comment. Any board can have one; a board without the file keeps
+    # the whole tree. The files stay in git and in the simulator -- only this
+    # board's image goes without.
+    if(FMRB_HW_TARGET)
+        string(TOLOWER "${FMRB_HW_TARGET}" FMRB_STORAGE_EXCLUDE_TARGET)
+    else()
+        set(FMRB_STORAGE_EXCLUDE_TARGET "naryav3")
+    endif()
     set(FMRB_STORAGE_EXCLUDE_FILE
         ${CMAKE_SOURCE_DIR}/config/storage_exclude_${FMRB_STORAGE_EXCLUDE_TARGET}.txt)
-    if(FMRB_HW_TARGET AND EXISTS ${FMRB_STORAGE_EXCLUDE_FILE})
+    if(EXISTS ${FMRB_STORAGE_EXCLUDE_FILE})
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
                      ${FMRB_STORAGE_EXCLUDE_FILE})
         file(STRINGS ${FMRB_STORAGE_EXCLUDE_FILE} FMRB_STORAGE_EXCLUDE_LINES)
@@ -114,7 +128,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
         if(FMRB_STORAGE_EXCLUDE_CMDS)
             add_custom_command(TARGET storage_staging POST_BUILD
                 ${FMRB_STORAGE_EXCLUDE_CMDS}
-                COMMENT "${FMRB_HW_TARGET} image: leaving out what ${FMRB_STORAGE_EXCLUDE_FILE} lists")
+                COMMENT "${FMRB_STORAGE_EXCLUDE_TARGET} image: leaving out what ${FMRB_STORAGE_EXCLUDE_FILE} lists")
         endif()
     endif()
     littlefs_create_partition_image(storage ${STORAGE_STAGING} FLASH_IN_PROJECT

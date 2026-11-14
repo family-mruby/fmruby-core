@@ -31,7 +31,7 @@ def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, f
   # overflowed the kernel task's 16 KB stack at boot (Stack protection fault
   # on the P4, doc/spinel_upstream_ext/report/p2b2.md). The sim does not
   # notice: its pthread stacks are far larger than the device's task stacks.
-  # Must match main/prebuild_scripts/compile_ruby_to_spinel.cmake.
+  # Must match main/ruby/compile_ruby_to_spinel.cmake.
   gen_flags = "--no-inline-hot"
   # Every program is compiled as a Spinel ext program (`--ext-init`): the C
   # gets `void <init>(void)`, which runs the program's top level, plus a
@@ -50,9 +50,9 @@ def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, f
     programs << [name, ["#{RbConfig.ruby} #{combine} #{rb} #{platform}",
                         "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{rb} --ext-init #{init} -o #{gen_dir}/#{name}.c"]]
   end
-  vm.call("fmrb_kernel_combined", "tool/spinel/gen_kernel_combined.rb", "Init_fmrb_kernel") if kernel
-  vm.call("editor_combined", "tool/spinel/gen_app_combined.rb editor", "Init_editor") if editor
-  vm.call("system_desktop_combined", "tool/spinel/gen_app_combined.rb system_desktop", "Init_system_desktop") if desktop
+  vm.call("fmrb_kernel_combined", "tools/spinel/gen_kernel_combined.rb", "Init_fmrb_kernel") if kernel
+  vm.call("editor_combined", "tools/spinel/gen_app_combined.rb editor", "Init_editor") if editor
+  vm.call("system_desktop_combined", "tools/spinel/gen_app_combined.rb system_desktop", "Init_system_desktop") if desktop
   # The gems (FFT, SpinelHello, Raycast): libraries an mruby task calls. Each
   # gem's spinel/<name>_kernel.rb names its init and its entries in two
   # comment lines (`# spinel-ext-init:` / `# spinel-ext-entry:`), read here
@@ -76,17 +76,17 @@ def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, f
   end
   # FFT: not built with FMRB_FFT_SPINEL=0 (doc/mic_spectrum).
   if fft
-    gem.call("lib/add/picoruby-fmrb-fft/spinel/fft_kernel.rb",
-             "lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb",
-             "lib/add/picoruby-fmrb-fft/mrblib/fft_core_q15.rb")
+    gem.call("lib/gems/picoruby-fmrb-fft/spinel/fft_kernel.rb",
+             "lib/gems/picoruby-fmrb-fft/mrblib/fft_core.rb",
+             "lib/gems/picoruby-fmrb-fft/mrblib/fft_core_q15.rb")
   end
   # SpinelHello: the minimal sample gem. Always built (no flag).
-  gem.call("lib/add/picoruby-fmrb-spinel-hello/spinel/spinel_hello_kernel.rb",
-           "lib/add/picoruby-fmrb-spinel-hello/mrblib/spinel_hello_core.rb")
+  gem.call("lib/gems/picoruby-fmrb-spinel-hello/spinel/spinel_hello_kernel.rb",
+           "lib/gems/picoruby-fmrb-spinel-hello/mrblib/spinel_hello_core.rb")
   # Raycast: the raycaster's ray loop as a gem (doc/raycast_spinel). Always
   # built. Its core is shared with the :ruby backend.
-  gem.call("lib/add/picoruby-fmrb-raycast/spinel/raycast_kernel.rb",
-           "lib/add/picoruby-fmrb-raycast/mrblib/raycast_core.rb")
+  gem.call("lib/gems/picoruby-fmrb-raycast/spinel/raycast_kernel.rb",
+           "lib/gems/picoruby-fmrb-raycast/mrblib/raycast_core.rb")
   programs
 end
 
@@ -169,9 +169,9 @@ namespace :spinel do
     # The gate keys on unsupported/unresolved (error severity); inference notes
     # ("widened to untyped") are informational poly-widen hints.
     targets = [
-      ["fmrb_kernel",    "tool/spinel/gen_kernel_combined.rb", nil],
-      ["system_desktop", "tool/spinel/gen_app_combined.rb", "system_desktop"],
-      ["editor",         "tool/spinel/gen_app_combined.rb", "editor"],
+      ["fmrb_kernel",    "tools/spinel/gen_kernel_combined.rb", nil],
+      ["system_desktop", "tools/spinel/gen_app_combined.rb", "system_desktop"],
+      ["editor",         "tools/spinel/gen_app_combined.rb", "editor"],
     ]
     # Known-accepted findings: ESP32-only RTC hardware code that is dead on Linux
     # (PLATFORM guard) but still statically analyzed. Its driver classes
@@ -196,7 +196,7 @@ namespace :spinel do
     gem_allow_legs = %w[behavior]
     gems.each do |gem, kernel, cores|
       [["spinel", kernel], *cores.map { |c| ["mrblib", c] }].each do |sub, f|
-        cp "lib/add/#{gem}/#{sub}/#{f}.rb", "#{SPINEL_GEN_DIR}/#{f}.rb"
+        cp "lib/gems/#{gem}/#{sub}/#{f}.rb", "#{SPINEL_GEN_DIR}/#{f}.rb"
       end
       puts "== spinel-doctor: #{kernel} =="
       out = `cd #{SPINEL_GEN_DIR} && SPINEL_DIR=#{dir} #{doctor} #{kernel}.rb 2>&1`

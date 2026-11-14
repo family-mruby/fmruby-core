@@ -20,7 +20,7 @@
 #                            (SP_NO_MMAN) like the ESP32 targets.
 #   FMRB_HOSTED_PTR32        ON when pointers are 32-bit (wasm32): MRB_32BIT,
 #                            as on the devices. The rake side
-#                            (lib/add/family_mruby_<platform>.rb) MUST agree.
+#                            (lib/upstream/family_mruby_<platform>.rb) MUST agree.
 #
 # and gets:
 #
@@ -358,10 +358,10 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   # the Modern audio pipeline over the platform's ring backend
   ${FMRB_ROOT}/main/drivers/audio_p4/audio_p4_task.c
   ${FMRB_ROOT}/main/drivers/audio_p4/audio_p4_handler.c
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-fft/native/fmrb_fft_bench.c
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-raycast/native/raycast_native.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-fft/native/fmrb_fft_bench.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-raycast/native/raycast_native.c
   ${FMRB_ROOT}/main/kernel/fmrb_spx_common.c)
 
 # The kanji dictionary reader (doc/kanji_input). Native only: the browser
@@ -395,10 +395,10 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
 # Spinel programs. Both are produced by the existing generation steps (rake
 # hosted:mrb, which runs what the IDF build's CMake step runs, and rake
 # spinel:gen) and reused as-is; regenerating them is not this build's job.
-file(GLOB KERNEL_MRB_SRCS ${FMRB_ROOT}/main/prebuild_scripts/kernel/mrb/*.c)
-file(GLOB APP_MRB_SRCS ${FMRB_ROOT}/main/prebuild_scripts/default_app/mrb/*.c)
+file(GLOB KERNEL_MRB_SRCS ${FMRB_ROOT}/main/ruby/kernel/mrb/*.c)
+file(GLOB APP_MRB_SRCS ${FMRB_ROOT}/main/ruby/default_app/mrb/*.c)
 list(APPEND FMRB_HOSTED_CORE_SRCS ${KERNEL_MRB_SRCS} ${APP_MRB_SRCS})
-set(SPINEL_GEN ${FMRB_ROOT}/main/prebuild_scripts/spinel/gen)
+set(SPINEL_GEN ${FMRB_ROOT}/main/ruby/spinel/gen)
 set(SPINEL_GEN_SRCS
   ${SPINEL_GEN}/fft_kernel.c
   ${SPINEL_GEN}/spinel_hello_kernel.c
@@ -480,9 +480,9 @@ set(FMRB_HOSTED_CORE_INCLUDES
   ${FMRB_ROOT}/main/kernel
   ${FMRB_ROOT}/main/kernel/include
   ${FMRB_ROOT}/main/kernel/host
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-fft/native
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-spinel-hello/native
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-raycast/native
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-fft/native
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-spinel-hello/native
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-raycast/native
   ${FMRB_ROOT}/main/drivers/led_status
   ${FMRB_ROOT}/main/drivers/usb
   ${FMRB_ROOT}/main/drivers/debug
@@ -517,7 +517,7 @@ set(FMRB_HOSTED_CORE_DEFINES
   # because every per-app array is sized by it and their RAM is finite; a
   # browser's or a PC's is not, and a demo people poke at wants to be able to
   # open more than five things at once. MUST match the rake side
-  # (lib/add/family_mruby_wasm.rb / family_mruby_native.rb): the mrbgem ports
+  # (lib/upstream/family_mruby_wasm.rb / family_mruby_native.rb): the mrbgem ports
   # (picoruby-fmrb-app/kernel) size arrays by this too, and a mismatch is the
   # same class of bug as a mismatched MRB_* layout define.
   FMRB_MAX_APPS=32
@@ -530,7 +530,7 @@ set(FMRB_HOSTED_CORE_DEFINES
   DISPLAY_LOCAL_VM_MAX_PROGS=64
   PICORB_PLATFORM_POSIX
   PICORB_VM_MRUBY=1
-  # mruby ABI -- keep in step with lib/add/family_mruby_<platform>.rb (the
+  # mruby ABI -- keep in step with lib/upstream/family_mruby_<platform>.rb (the
   # role mruby_abi_defines.cmake plays for the IDF builds; the boot-time
   # guard in fmrb_app_init compares sizeof(mrb_state) across the boundary).
   MRB_INT64=1
@@ -552,7 +552,7 @@ set(FMRB_HOSTED_CORE_DEFINES
 if(FMRB_HOSTED_PTR32)
   list(APPEND FMRB_HOSTED_CORE_DEFINES MRB_32BIT)
 endif()
-# mruby-checkpoint's hooks are fields of mrb_state (lib/patch, "fmrb:
+# mruby-checkpoint's hooks are fields of mrb_state (lib/upstream/patch, "fmrb:
 # checkpoint"), so the define is part of the ABI: every build whose libmruby
 # carries the gem has it on both sides. Both hosted builds carry it (the
 # native program and the browser build; the table maker of tools/ckpt_table
@@ -592,9 +592,9 @@ set_source_files_properties(${SPINEL_RT_SRCS}
 # The gems' receivers include their program's generated header, so they share
 # the program's flags (SP_MULTI_CTX is an ABI flag) and see gen/.
 set_source_files_properties(
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
-  ${FMRB_ROOT}/lib/add/picoruby-fmrb-raycast/native/raycast_native.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
+  ${FMRB_ROOT}/lib/gems/picoruby-fmrb-raycast/native/raycast_native.c
   PROPERTIES COMPILE_OPTIONS "${FMRB_HOSTED_SPINEL_TU_FLAGS};-I${SPINEL_GEN}")
 
 # The shared OBJECT library. The platform adds its own backends with

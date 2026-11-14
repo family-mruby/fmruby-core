@@ -58,12 +58,12 @@ namespace :ti do
     srcs = Dir["#{dir}/src/**/*.c"].sort
     incs = picoruby_ti_include_flags(dir)
     sh "#{ENV['CC'] || 'gcc'} -O2 -std=gnu11 #{incs.join(' ')} " \
-       "-I#{prism_work}/include tool/ti/ti_probe.c #{srcs.join(' ')} " \
+       "-I#{prism_work}/include tools/ti/ti_probe.c #{srcs.join(' ')} " \
        "#{prism_work}/build/libprism.a -o #{out}"
     sh "#{out} #{ENV['REPS'] || 5} #{ENV['SIZES']}".strip
   end
 
-  desc "Build the WebConsole's browser type engine (emscripten -> tool/web/wasm)"
+  desc "Build the WebConsole's browser type engine (emscripten -> tools/web/wasm)"
   task :wasm do
     emcc = ENV["EMCC"] || "emcc"
     unless system("which #{emcc} > /dev/null 2>&1")
@@ -97,7 +97,7 @@ namespace :ti do
        "#{incs.join(' ')} #{PICORUBY_TI_WASM_DIR}/ti_wasm.c #{srcs.join(' ')} -o #{out}"
 
     # The long half of the doc comments, as one file the page fetches for F1.
-    sh "#{RbConfig.ruby} tool/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} " \
+    sh "#{RbConfig.ruby} tools/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} " \
        "--json #{PICORUBY_TI_WASM_DIR}/help.json"
     puts "picoruby-ti (browser): #{out}"
   end

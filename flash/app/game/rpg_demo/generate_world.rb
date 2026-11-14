@@ -177,7 +177,7 @@ File.write(out_path, JSON.generate(out))
 
 # The app loads the packed copy, so regenerate it in the same breath -- a JSON
 # left ahead of its .bin would look like a generator that changed nothing.
-bin_tool = File.expand_path("../../../../tool/map_json2bin.rb", __dir__)
+bin_tool = File.expand_path("../../../../tools/map_json2bin.rb", __dir__)
 system(RbConfig.ruby, bin_tool, out_path) or abort("map_json2bin failed")
 
 counts = Hash.new(0)

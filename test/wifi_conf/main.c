@@ -113,7 +113,7 @@ static void test_add_forget(void)
     CHECK(c.nets[0].hidden, "hidden kept on add");
 }
 
-// The BLE console's Wi-Fi settings (tool/web/js/settings.js): it sends the
+// The BLE console's Wi-Fi settings (tools/web/js/settings.js): it sends the
 // old one-network text, and the board saves that network beside the others.
 static void test_merge(void)
 {

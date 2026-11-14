@@ -17,7 +17,7 @@ module HostToml
   BUILD = File.join(ROOT, "test/toml/build")
   BIN = File.join(BUILD, "toml_dump")
   TOMLC99 = File.join(ROOT, "components/toml_parser/tomlc99")
-  GEM_PORT = File.join(ROOT, "lib/add/picoruby-fmrb-app/ports/esp32")
+  GEM_PORT = File.join(ROOT, "lib/gems/picoruby-fmrb-app/ports/esp32")
   SRCS = [File.join(ROOT, "test/toml/dump.c"), File.join(GEM_PORT, "toml_walk.c"),
           File.join(TOMLC99, "toml.c")]
 
@@ -54,4 +54,4 @@ module FmrbToml
   end
 end
 
-load File.join(HostToml::ROOT, "lib/add/picoruby-fmrb-app/mrblib/fmrb-toml.rb")
+load File.join(HostToml::ROOT, "lib/gems/picoruby-fmrb-app/mrblib/fmrb-toml.rb")

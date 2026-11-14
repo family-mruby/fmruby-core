@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbUI (lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb).
+# Host tests for FmrbUI (lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb).
 #
 # The widget set is pure Ruby over a handful of FmrbGfx calls, so the real
 # file runs here against a recording stand-in. That buys a regression net for
@@ -13,7 +13,7 @@
 #   ruby test/fmrb_ui/run.rb        (or: rake ui:test)
 
 require_relative "fake_gfx"
-load File.expand_path("../../lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb", __dir__)
+load File.expand_path("../../lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb", __dir__)
 
 # --- geometry and the text size ------------------------------------------
 

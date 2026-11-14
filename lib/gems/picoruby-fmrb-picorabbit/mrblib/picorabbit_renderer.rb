@@ -1,0 +1,1915 @@
+# PicoRabbit renderer for FmrbGfx
+# Full-featured rendering with themes, inline formatting, syntax highlight, timer
+
+module PicoRabbit
+  # Theme definition
+  class Theme
+    attr_reader :name
+    attr_accessor :bg, :text, :title, :title_bg, :bullet, :code_bg, :code_text,
+                  :quote_bar, :quote_text, :footer_text, :footer_bg,
+                  :inline_code_bg, :inline_code_text, :shadow
+
+    def initialize(name)
+      @name = name
+    end
+
+    # The default theme follows the system theme for every colour that is
+    # defined against the background: the ground itself, the body text, and
+    # the quiet text that sits on it (footer, blockquote). The rest are
+    # presentation accents and are fixed. A deck that wants the old black
+    # ground asks for `theme: dark` in its frontmatter.
+    def self.default
+      t = Theme.new("default")
+      t.bg = ::FmrbConst::THEME_WINDOW_BG
+      t.text = ::FmrbConst::THEME_TEXT
+      t.title = 0xFC           # Yellow
+      t.title_bg = 0x03        # Dark blue
+      t.bullet = 0x1C          # Green
+      t.code_bg = 0x24         # Dark gray
+      t.code_text = 0xFF       # White
+      t.quote_bar = 0x60       # Gray
+      t.quote_text = ::FmrbConst::THEME_BORDER
+      t.footer_text = ::FmrbConst::THEME_BORDER
+      t.footer_bg = ::FmrbConst::THEME_WINDOW_BG
+      t.inline_code_bg = 0x24  # Dark gray
+      t.inline_code_text = 0xFC # Yellow
+      t.shadow = 0x00          # Black
+      t
+    end
+
+    # The palette PicoRabbit shipped with before the default followed the
+    # system theme. Kept so a talk on a projector can go back to a black
+    # ground with one frontmatter line.
+    def self.dark
+      t = Theme.new("dark")
+      t.bg = 0x00              # Black
+      t.text = 0xFF            # White
+      t.title = 0xFC           # Yellow
+      t.title_bg = 0x03        # Dark blue
+      t.bullet = 0x1C          # Green
+      t.code_bg = 0x24         # Dark gray
+      t.code_text = 0xFF       # White
+      t.quote_bar = 0x60       # Gray
+      t.quote_text = 0xDB      # Light gray
+      t.footer_text = 0x6D     # Gray
+      t.footer_bg = 0x00       # Black
+      t.inline_code_bg = 0x24  # Dark gray
+      t.inline_code_text = 0xFC # Yellow
+      t.shadow = 0x24          # Dark gray: black would vanish on this ground
+      t
+    end
+
+    def self.light
+      t = Theme.new("light")
+      t.bg = 0xFF
+      t.text = 0x00
+      t.title = 0x00
+      t.title_bg = 0xDB
+      t.bullet = 0x1C
+      t.code_bg = 0xDB
+      t.code_text = 0x00
+      t.quote_bar = 0x6D
+      t.quote_text = 0x49
+      t.footer_text = 0x6D
+      t.footer_bg = 0xFF
+      t.inline_code_bg = 0xDB
+      t.inline_code_text = 0xE0
+      t.shadow = 0x00          # Black
+      t
+    end
+
+    def self.for_name(name)
+      case name
+      when "light" then light
+      when "dark" then dark
+      else default
+      end
+    end
+  end
+
+  # Syntax highlight colors (same as Editor)
+  HL_COLORS = [
+    0xFF,  # 0: default    - white
+    0xE0,  # 1: keyword    - red
+    0x1C,  # 2: string     - green
+    0x92,  # 3: comment    - gray
+    0xFC,  # 4: number     - yellow
+    0xE3,  # 5: symbol     - magenta
+    0x1F,  # 6: constant   - cyan
+    0xFE,  # 7: variable   - light pink
+    0x9F,  # 8: method     - light blue
+  ]
+
+  class FmrbRenderer
+    # Metrics of the size 1 cell. Everything the body draws is a multiple of
+    # these, scaled by the deck's text_size; the footer and the runners stay
+    # at size 1 whatever the body does.
+    CHAR_W = 6     # Font size 1 character width
+    CHAR_H = 8     # Font size 1 character height
+    LINE_H = 10    # Line height with spacing
+    MARGIN_X = 4
+    # The bottom strip: one sprite tall. The runners stand in it with the
+    # start and goal flags, and the page number and clock sit at its right
+    # end. No rule above it and no track line under the runners -- the strip
+    # is told apart from the body by the runners alone.
+    FOOTER_H = 16
+    FLAG_H = 12        # pole height; the cloth hangs from its top
+    FLAG_W = 6
+    FLAG_START = 0xE0  # red, as upstream's start flag
+    FLAG_GOAL = 0x03   # blue, as upstream's goal flag
+    RUBY_H = 8     # a ruby line is one size 1 cell above its base
+    MAX_TEXT_SIZE = 3
+    CLOCK_CHARS = 7    # "||-MM:SS" at its longest, right-aligned in its box
+    INDEX_ROWS = 20    # rows per column in the index; past that it goes to two
+
+    SPRITE_SIZE = 16
+    SPRITE_DIR = "/usr/share/picorabbit"
+    SPRITE_CACHE = "/cache/app/picorabbit"
+    # Pictures are copied here for the display side to read, named after the
+    # deck they came from.
+    IMAGE_CACHE = "/cache/app/picorabbit"
+
+    # Frame order inside each SpriteInstance's image list.
+    USAGI_FILES = ["usagi_run1.bmp", "usagi_run2.bmp", "usagi_jump.bmp",
+                   "usagi_sleep.bmp", "usagi_hurry.bmp"]
+    KAME_FILES = ["kame_walk1.bmp", "kame_walk2.bmp", "kame_banzai.bmp"]
+    U_RUN1 = 0
+    U_RUN2 = 1
+    U_JUMP = 2
+    U_SLEEP = 3
+    U_HURRY = 4
+    K_WALK1 = 0
+    K_WALK2 = 1
+    K_BANZAI = 2
+
+    RUN_MS = 3000     # the rabbit keeps running this long after a page turn
+    LEAD = 0.10       # how far ahead/behind before it dozes or hurries
+
+    def initialize(gfx, width, height, metadata = {})
+      @gfx = gfx
+      @w = width
+      @h = height
+      @theme = Theme.for_name(metadata["theme"])
+      @allotted_ms = parse_allotted_ms(metadata["allotted_time"])
+      # Which pair of fonts this deck is drawn with. `font: misaki` keeps
+      # what P2 did -- the 8px pair (Font0 for ASCII, misaki for the rest)
+      # blown up by a whole number -- and `text_size` still means something
+      # there. Everything else gets efont, cut at the size it is drawn at.
+      #
+      # efont is the default because of Modern: its panel draws each of our
+      # pixels as a 3x3 block, so an 8px font doubled shows every step of
+      # its own staircase. A font cut for 12px has no staircase to show.
+      @font_kind = (metadata["font"] == "misaki") ? :misaki : :efont
+      @cur_ts = nil
+      @cur_font = nil
+      @cur_font_got = nil
+      if @font_kind == :efont
+        px = metadata["font_size"] ? metadata["font_size"].to_i : 12
+        unless px == 12 || px == 16
+          Log.info("PicoRabbit: font_size #{px} is not cut; using 12")
+          px = 12
+        end
+        if metadata["text_size"]
+          Log.info("PicoRabbit: text_size is ignored with font: efont")
+        end
+        # What this machine actually has. Retro carries the 12px cut only, so
+        # a deck asking for 16 gets 12 here and the same .md still opens.
+        body = @gfx.set_font(:ja, px)
+        @body_px = body[1]
+        # The heading is the next cut up, and stays at the body size when the
+        # body is already there -- its band and its place carry it.
+        head = @gfx.set_font(:ja, @body_px < 16 ? 16 : @body_px)
+        @head_px = head[1]
+        bold = @gfx.set_font(:ja_bold, @body_px)
+        @has_bold = bold[0] == :ja_bold
+        @ts = 1
+        @hs = 1
+        @ascii_w = @body_px / 2   # efont draws ASCII in a half cell
+        @char_w = @body_px
+        @char_h = @body_px
+        # The 8:10 of the misaki path, kept: a line is a quarter taller than
+        # the glyphs on it.
+        @line_h = @body_px + @body_px / 4
+        @head_h = @head_px
+        @cur_font = nil           # the probing above left its own font set
+      else
+        # Body size from the frontmatter (1 or 2; anything else is 1).
+        # Headings go one step above the body, capped, so a size 2 body still
+        # has a heading that stands out.
+        @ts = metadata["text_size"] == "2" ? 2 : 1
+        @hs = @ts + 1
+        @hs = MAX_TEXT_SIZE if @hs > MAX_TEXT_SIZE
+        @has_bold = false
+        @ascii_w = CHAR_W * @ts
+        @char_w = CHAR_W * @ts
+        @char_h = CHAR_H * @ts
+        @line_h = LINE_H * @ts
+        @head_h = CHAR_H * @hs
+      end
+      @title_bar_h = @head_h + 4
+      @start_ms = Machine.board_millis
+      @usagi_jump_y = 0
+      @usagi_vy = 0
+      @last_turn_ms = @start_ms
+      # The runners' strip. A sprite's own ground row is 14
+      # (tools/gen_picorabbit_sprites.rb), so drawn at @sprite_y = @h - 16 its
+      # feet land one row above the bottom edge, level with the flag poles.
+      # The track runs pole to pole: from the start flag at the left margin
+      # to the goal flag just short of the clock and page number, whose
+      # x is fixed in render_footer from the widest the number can get.
+      @sprite_y = @h - FOOTER_H
+      @track_left = MARGIN_X + 2
+      widest = CHAR_W * 2  # placeholder until render_footer measures
+      @clock_x = @w - MARGIN_X - widest - 4 - CLOCK_CHARS * CHAR_W
+      @track_w = @clock_x - 6 - @track_left
+      @usagi = nil
+      @kame = nil
+      @usagi_x = nil
+      @usagi_y = nil
+      @usagi_frame = nil
+      @kame_x = nil
+      @kame_frame = nil
+      @paused_ms = nil
+      @clock_shown = false
+      @clock_hidden = false
+      @clock_text = nil
+      @clock_negative = false
+      @clock_x = @w
+      @time_up_fired = false
+      @goal_idx = nil
+      @deck_dir = nil
+      @deck_tag = "deck"
+      @video = nil
+      @deck_bg = nil
+      @bg_drawn = false
+      @images = {}
+      # `shadow: true` in the frontmatter puts the shadow under every line;
+      # {:.shadow} does it for one.
+      @deck_shadow = metadata["shadow"] == "true"
+      @shadow_on = false
+      # `valign: center` in the frontmatter centres every page's body;
+      # {::valign top/} on a page opts out.
+      @deck_valign = metadata["valign"] == "center"
+      # `heading: band | underline | plain` for every content slide's
+      # heading; band is what PicoRabbit always drew.
+      @deck_heading = ::PicoRabbit::Parser.heading_style(metadata["heading"] || "band") || :band
+      # Images created while measuring a page (for centring), kept until the
+      # draw that follows takes them, so a picture is not decoded twice.
+      @img_hold = {}
+      use_size(nil)
+    end
+
+    # The deck's background picture (frontmatter `background:`), a path
+    # relative to the deck. A slide's own {::background/} wins over it.
+    def background=(path)
+      @deck_bg = (path && path.length > 0) ? path : nil
+    end
+
+    # Let go of the background pictures on the display side. The deck is
+    # being replaced or the app is closing; the system would reclaim them at
+    # exit, but a new deck should not have to wait for that.
+    def release_images
+      keys = @images.keys
+      i = 0
+      while i < keys.length
+        @gfx.delete_image(@images[keys[i]][0])
+        i += 1
+      end
+      @images = {}
+    end
+
+    # Which slide is the finish line. nil means the last one.
+    def goal_index=(idx)
+      @goal_idx = idx
+    end
+
+    # Where the deck was read from. An image path in a deck is relative to
+    # the .md that names it, and the copies handed to the display side are
+    # named after the deck, so both need this.
+    def deck_path=(path)
+      @deck_dir = nil
+      @deck_tag = "deck"
+      return unless path
+      i = path.length - 1
+      while i >= 0 && path[i] != "/"
+        i -= 1
+      end
+      @deck_dir = i >= 0 ? path[0, i] : ""
+      base = path[i + 1, path.length - i - 1]
+      base = base[0, base.length - 3] if base.end_with?(".md")
+      @deck_tag = base if base.length > 0
+    end
+
+    # ---- the clock -------------------------------------------------------
+
+    def timer_paused?
+      @paused_ms != nil
+    end
+
+    def pause_timer
+      @paused_ms = Machine.board_millis unless @paused_ms
+    end
+
+    # Give back the time that stood still, so the turtle carries on from
+    # where it stopped rather than jumping forward.
+    def resume_timer
+      return unless @paused_ms
+      @start_ms += Machine.board_millis - @paused_ms
+      @paused_ms = nil
+    end
+
+    def clock_visible=(flag)
+      @clock_shown = flag
+    end
+
+    # Keep the clock off the slide whatever the presenter set, for the one
+    # case where the slide is not being presented but photographed: an
+    # exported picture should not carry the time left in somebody's talk.
+    def clock_hidden=(flag)
+      @clock_hidden = flag
+    end
+
+    # A paused clock always shows itself: a presenter has to be able to see
+    # that it is stopped.
+    def clock_visible?
+      return false if @clock_hidden
+      @clock_shown || timer_paused?
+    end
+
+    # True exactly once each time the clock runs out. reset_timer re-arms it.
+    def take_time_up
+      return false unless @allotted_ms
+      unless turtle_progress >= 1.0
+        @time_up_fired = false
+        return false
+      end
+      return false if @time_up_fired
+      @time_up_fired = true
+      true
+    end
+
+    # ---- index ----------------------------------------------------------
+
+    # The whole deck as a list of headings, one line each, at size 1. The
+    # selected row is a bar; the slide the talk is actually on is marked with
+    # a caret, so the two are told apart while the selection moves.
+    def render_index(slides, current, selected)
+      stop_video
+      @bg_drawn = false
+      @gfx.clear(@theme.bg)
+      @gfx.fill_rect(0, 0, @w, CHAR_H + 4, @theme.title_bg)
+      use_ui
+      @gfx.draw_text(MARGIN_X, 2, "Index", @theme.title, @theme.title_bg)
+
+      # Where the talk is and how much time is left, in the header: the index
+      # is opened to decide where to jump given the time remaining, and that
+      # decision should not need a second screen. Same reading as the footer
+      # clock, red once it is over.
+      pos = "#{current + 1}/#{slides.length}"
+      px = @w - MARGIN_X - pos.length * CHAR_W
+      @gfx.draw_text(px, 2, pos, @theme.title, @theme.title_bg)
+      if has_timer?
+        left = clock_text
+        colour = @clock_negative ? 0xE0 : @theme.title
+        @gfx.draw_text(px - 4 - left.length * CHAR_W, 2, left, colour,
+                       @theme.title_bg)
+      end
+
+      n = slides.length
+      n = INDEX_ROWS * 2 if n > INDEX_ROWS * 2
+      cols = n > INDEX_ROWS ? 2 : 1
+      col_w = (@w - MARGIN_X * 2) / cols
+      i = 0
+      while i < n
+        x = MARGIN_X + (i / INDEX_ROWS) * col_w
+        y = index_row_y(i)
+        if i == selected
+          @gfx.fill_rect(x - 1, y - 1, col_w - 2, CHAR_H + 2, @theme.title_bg)
+        end
+        fg = i == selected ? @theme.title : @theme.text
+        bg = i == selected ? @theme.title_bg : @theme.bg
+        mark = i == current ? ">" : " "
+        @gfx.draw_text_mixed(x, y, mark + index_label(i, slides[i], col_w - 14),
+                             fg, bg)
+        i += 1
+      end
+      @gfx.present
+    end
+
+    # Top of row i, so a tap can be turned back into a row.
+    def index_row_y(i)
+      CHAR_H + 8 + (i % INDEX_ROWS) * LINE_H
+    end
+
+    # Which row a tap at (x, y) landed on, or nil.
+    def index_hit(x, y, count)
+      n = count > INDEX_ROWS * 2 ? INDEX_ROWS * 2 : count
+      cols = n > INDEX_ROWS ? 2 : 1
+      col_w = (@w - MARGIN_X * 2) / cols
+      col = (x - MARGIN_X) / col_w
+      col = 0 if col < 0
+      return nil if col >= cols
+      row = (y - (CHAR_H + 8) + 1) / LINE_H
+      return nil if row < 0 || row >= INDEX_ROWS
+      i = col * INDEX_ROWS + row
+      i < n ? i : nil
+    end
+
+    # Repaint just the box the remaining time sits in, and only when the text
+    # changed. Returns true when it drew, so the caller can fold it into the
+    # present the runners already asked for.
+    def draw_clock
+      text = clock_visible? ? clock_text : ""
+      return false if text == @clock_text
+      @clock_text = text
+      ty = @h - FOOTER_H + 4
+      @gfx.fill_rect(@clock_x, ty, CLOCK_CHARS * CHAR_W, CHAR_H,
+                     @theme.footer_bg)
+      return true if text.length == 0
+      use_ui
+      colour = @clock_negative ? 0xE0 : @theme.footer_text
+      x = @clock_x + (CLOCK_CHARS - text.length) * CHAR_W
+      @gfx.draw_text(x, ty, text, colour, @theme.footer_bg)
+      true
+    end
+
+    def has_timer?
+      @allotted_ms != nil
+    end
+
+    def rabbit_jumping?
+      @usagi_jump_y != 0 || @usagi_vy != 0
+    end
+
+    def render_slide(slide, step, slide_idx, total_slides)
+      @current_slide_idx = slide_idx
+      @last_slide = slide
+      @last_turn_ms = Machine.board_millis
+      # The player writes into this canvas on its own clock; it has to be
+      # off before the canvas is cleared, or its next frame lands on the new
+      # slide. The slide opens one again if it carries a video.
+      stop_video
+      @gfx.clear(@theme.bg)
+      @bg_drawn = draw_background(slide)
+
+      if slide.title_slide
+        render_title_slide(slide)
+      else
+        render_content_slide(slide, step)
+      end
+
+      # Footer: page number, clock box, and the two flags. The runners are
+      # sprites composited on top, so the flags are the only part of the
+      # race the canvas carries.
+      render_footer(slide, slide_idx, total_slides)
+      render_track
+
+      # Place the runners before presenting: the page turn keeps its single
+      # present rather than growing a second one for the sprites.
+      update_sprites(slide_idx, total_slides)
+
+      # The app draws its own screens (the menu, the export count) with the
+      # 6x8 pair and never asks for a font, so leave that selected.
+      use_ui
+      @gfx.present
+      # Only now: a frame arriving before the present would be copied into
+      # the committed page along with the half-drawn slide.
+      start_video
+      release_held_images
+    end
+
+    # Images measured for centring but never drawn (the page overflowed
+    # before reaching them) would otherwise sit on the display side until
+    # the deck is swapped.
+    def release_held_images
+      keys = @img_hold.keys
+      i = 0
+      while i < keys.length
+        @gfx.delete_image(@img_hold[keys[i]][:id])
+        i += 1
+      end
+      @img_hold = {}
+    end
+
+    # Load the eight frames and put the two runners on the start line. Called
+    # once, after the presentation is parsed. A deck with no allotted time has
+    # no race, so it loads nothing.
+    def load_sprites
+      return false unless has_timer?
+      @usagi_imgs = load_sprite_images(USAGI_FILES)
+      @kame_imgs = load_sprite_images(KAME_FILES)
+      @kame = ::SpriteInstance.new(@gfx, @kame_imgs,
+                                   x: sprite_x(0.0), y: @sprite_y, z: 2)
+      @usagi = ::SpriteInstance.new(@gfx, @usagi_imgs,
+                                    x: sprite_x(0.0), y: @sprite_y, z: 3)
+      ::Log.info("PicoRabbit: #{USAGI_FILES.length + KAME_FILES.length} sprite frames loaded")
+      true
+    end
+
+    # Stop the video player and forget it. The last frame stays on the
+    # canvas, which every caller paints over. Public, above the private
+    # line: the app calls it wherever it paints the canvas itself (a blank
+    # screen, the menu, Ctrl+Tab) -- the rest of the video code sits with
+    # the images below.
+    def stop_video
+      return unless @video
+      @video.stop
+      @video = nil
+    end
+
+    def destroy_sprites
+      @usagi.destroy if @usagi
+      @kame.destroy if @kame
+      @usagi = nil
+      @kame = nil
+      destroy_sprite_images(@usagi_imgs)
+      destroy_sprite_images(@kame_imgs)
+      @usagi_imgs = nil
+      @kame_imgs = nil
+    end
+
+    # Ctrl+Tab parks the presentation. The canvas is hidden by the suspend,
+    # but a sprite is composited in its own layer, so it has to be told.
+    def sprites_visible=(flag)
+      @usagi.visible = flag if @usagi
+      @kame.visible = flag if @kame
+    end
+
+    # Move the runners to where the page and the clock say they are, and pick
+    # the frame each of them should be showing. Returns true only when
+    # something actually changed, which is the only time the caller presents.
+    def update_sprites(slide_idx, total_slides)
+      return false unless @usagi && @kame
+      now = Machine.board_millis
+
+      turtle_p = turtle_progress
+      kame_x = sprite_x(turtle_p)
+      kame_frame = turtle_frame(turtle_p)
+
+      rabbit_p = rabbit_progress(slide_idx, total_slides)
+      usagi_x = sprite_x(rabbit_p)
+      usagi_y = @sprite_y + @usagi_jump_y
+      usagi_frame = rabbit_frame(now, rabbit_p, turtle_p)
+
+      changed = false
+      if kame_x != @kame_x
+        @kame.move(kame_x, @sprite_y)
+        @kame_x = kame_x
+        changed = true
+      end
+      if kame_frame != @kame_frame
+        @kame.frame = kame_frame
+        @kame_frame = kame_frame
+        changed = true
+      end
+      if usagi_x != @usagi_x || usagi_y != @usagi_y
+        @usagi.move(usagi_x, usagi_y)
+        @usagi_x = usagi_x
+        @usagi_y = usagi_y
+        changed = true
+      end
+      if usagi_frame != @usagi_frame
+        @usagi.frame = usagi_frame
+        @usagi_frame = usagi_frame
+        changed = true
+      end
+      changed
+    end
+
+    def jump_rabbit
+      @usagi_vy = -5 if @usagi_jump_y == 0
+    end
+
+    # Put the turtle back on the start line (Alt+t upstream, plain "t" here).
+    # A stopped clock starts again: the presenter asked for a fresh run.
+    def reset_timer
+      @start_ms = Machine.board_millis
+      @paused_ms = nil
+      @time_up_fired = false
+    end
+
+    def update_rabbit
+      if @usagi_jump_y != 0 || @usagi_vy != 0
+        @usagi_jump_y += @usagi_vy
+        @usagi_vy += 1  # Gravity
+        if @usagi_jump_y >= 0
+          @usagi_jump_y = 0
+          @usagi_vy = 0
+        end
+      end
+    end
+
+    # Compile every fmrb_code block up front. Call this right after loading a
+    # presentation: eval runs the mruby compiler (deep C recursion) on the app
+    # task's stack, and the call depth here is far shallower than in the
+    # middle of a render. A block that fails to compile is left nil; the
+    # render path retries it and draws the error on the slide.
+    def precompile(slides)
+      slides.each do |slide|
+        slide.elements.each do |e|
+          next unless e.type == :fmrb_code && e.text.is_a?(Array)
+          next if e.compiled_proc
+          begin
+            e.compiled_proc = compile_fmrb_code(e)
+          rescue => err
+            ::Log.warn("fmrb_code precompile failed: #{err.message}")
+          end
+        end
+      end
+    end
+
+    private
+
+    # Compile one fmrb_code block into a Proc. The code addresses the canvas
+    # through the $fmrb_* globals, so wrapping it in a Proc changes nothing
+    # about how it runs -- only when it is compiled.
+    def compile_fmrb_code(elem)
+      eval("::Proc.new do\n" + elem.text.join("\n") + "\nend")
+    end
+
+    def render_title_slide(slide)
+      lines = slide.title ? slide.title.split("\n") : [""]
+      subs = []
+      slide.elements.each do |e|
+        subs << e if e.type == :text && e.text
+      end
+
+      # Each subtitle line at its own size ({:.large} and friends apply
+      # here too), so the block is measured line by line.
+      sub_h = 0
+      i = 0
+      while i < subs.length
+        use_size(subs[i].size, subs[i].shadow)
+        sub_h += @line_h
+        i += 1
+      end
+      use_size(nil)
+      total_h = lines.length * (@head_h + 4) + sub_h + 8
+
+      y = (@h - total_h) / 2
+
+      # The title slide's own {::heading/} or nothing: plain by default,
+      # since a title slide usually brings a picture to sit on. With a band
+      # the title colour is the band's (the default theme's yellow is meant
+      # for the band and unreadable on the page); otherwise the text colour.
+      style = slide.heading || :plain
+      band_h = lines.length * (@head_h + 4)
+      if style == :band
+        @gfx.fill_rect(0, y - 2, @w, band_h + 4, @theme.title_bg)
+      end
+      colour = style == :band ? @theme.title : @theme.text
+      bg = style == :band ? @theme.title_bg : @theme.bg
+
+      i = 0
+      while i < lines.length
+        line = lines[i]
+        x = (@w - wh(line)) / 2
+        use_head
+        draw_str(x, y, line, colour, bg)
+        y += @head_h + 4
+        i += 1
+      end
+      draw_heading_rule(y - 4) if style == :underline
+
+      y += 8
+      i = 0
+      while i < subs.length
+        line = subs[i].text
+        use_size(subs[i].size, subs[i].shadow)
+        x = (@w - wb(line)) / 2
+        use_body
+        draw_str(x, y, line, @theme.text, @theme.bg)
+        y += @line_h
+        i += 1
+      end
+      use_size(nil)
+    end
+
+    def render_content_slide(slide, step)
+      # The heading, dressed the slide's way or the deck's. Every style
+      # takes the same height (title_bar_h), so the body starts at the same
+      # line whichever is used and a deck can mix them.
+      style = slide.heading || @deck_heading
+      title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2, :head)
+      use_head
+      if style == :band
+        @gfx.fill_rect(0, 0, @w, @title_bar_h, @theme.title_bg)
+        draw_str(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
+      else
+        # On the page itself (or its picture): the text colour, no box, and
+        # the shadow if the deck asks for one.
+        draw_str(MARGIN_X, 2, title, @theme.text, @theme.bg)
+        draw_heading_rule(2 + @head_h) if style == :underline
+      end
+
+      y = @title_bar_h + 4
+      content_x = MARGIN_X
+      content_w = @w - MARGIN_X * 2
+      max_y = @h - FOOTER_H - 4
+      wait_seen = 0
+
+      # Centred pages are measured first: the same walk as below, adding up
+      # heights instead of drawing, and the body starts lower by half of
+      # what is left over. The measure takes every wait step as open, so the
+      # block stays put while the steps come in rather than sliding up with
+      # each one. A page that overflows starts at the top as usual.
+      if slide.valign == :center || (@deck_valign && slide.valign != :top)
+        used = measure_content(slide, nil, content_w, max_y - y)
+        y += (max_y - y - used) / 2 if used < max_y - y
+      end
+
+      slide.elements.each do |elem|
+        if elem.type == :wait
+          wait_seen += 1
+          break if step && wait_seen > step
+          next
+        end
+
+        # A {:.large} line draws, measures and spaces at its own size; the
+        # body's metrics come back at the end of the element.
+        use_size(elem.size, elem.shadow)
+        if y + @line_h > max_y
+          use_size(nil)
+          break
+        end
+
+        case elem.type
+        when :text
+          y = draw_rich_text(content_x, y, elem.text, content_w, elem.align)
+
+        when :bullet
+          indent = content_x + elem.level * @ascii_w * 2
+          marker = elem.level == 0 ? "- " : "  - "
+          y = draw_list_item(indent, y, marker, elem.text,
+                             content_x + content_w)
+
+        when :numbered
+          indent = content_x + elem.level * @ascii_w * 2
+          # The author's own number, so a list that restarts or repeats one
+          # reads as written.
+          marker = "#{elem.number || 1}. "
+          y = draw_list_item(indent, y, marker, elem.text,
+                             content_x + content_w)
+
+        when :code_block
+          if elem.text.is_a?(Array)
+            code_str = elem.text.join("\n")
+            block_h = elem.text.length * @line_h + 4
+            @gfx.fill_rect(content_x, y, content_w, block_h, @theme.code_bg)
+            use_body
+
+            # Try syntax highlighting
+            begin
+              hl_map = SyntaxHighlight.tokenize(code_str)
+              cy = y + 2
+              offset = 0
+              elem.text.each do |line|
+                draw_highlighted_line(content_x + 2, cy, line, hl_map, offset)
+                offset += line.length + 1  # +1 for newline
+                cy += @line_h
+              end
+            rescue
+              # Fallback: plain text
+              cy = y + 2
+              elem.text.each do |line|
+                max_c = (content_w - 4) / @ascii_w
+                code_line = line.length > max_c ? line[0, max_c] : line
+                draw_str(content_x + 2, cy, code_line, @theme.code_text, @theme.code_bg)
+                cy += @line_h
+              end
+            end
+            y += block_h
+          end
+
+        when :fmrb_code
+          if elem.text.is_a?(Array)
+            begin
+              $fmrb_gfx = @gfx
+              $fmrb_x = content_x
+              $fmrb_y = y
+              $fmrb_w = content_w
+              $fmrb_theme = @theme
+              elem.compiled_proc ||= compile_fmrb_code(elem)
+              # Blocks are written against the size 1 cell (they place text
+              # by multiplying out 6px columns), so they get the 6x8 pair at
+              # size 1 whatever the deck is drawn with.
+              use_ui
+              elem.compiled_proc.call
+              y = $fmrb_y if $fmrb_y > y
+            rescue => e
+              @gfx.draw_text(content_x, y, "[fmrb_code error: #{e.message}]", 0xE0, @theme.bg)
+              y += @line_h
+            end
+            # The block draws with the raw canvas and may have changed the
+            # font or the text size behind our back.
+            @cur_ts = nil
+            @cur_font = nil
+          end
+
+        when :blockquote
+          qy = y
+          y = draw_rich_text(content_x + 6, y, elem.text || "",
+                             content_w - 6, nil, @theme.quote_text)
+          @gfx.fill_rect(content_x, qy, 2, y - qy - (@line_h - @char_h), @theme.quote_bar)
+
+        when :image
+          if video_path?(elem.text)
+            y = draw_video_element(elem, content_x, content_w, y, max_y)
+          else
+            y = draw_image_element(elem, content_x, content_w, y, max_y)
+          end
+
+        when :blank
+          y += @line_h / 2
+        end
+        use_size(nil)
+      end
+    end
+
+    # The underline of a heading: a rule in the band colour, starting a
+    # little in from the left margin and running to the right one, two
+    # pixels thick (three under a doubled heading). It sits in the two rows
+    # under the glyphs, inside title_bar_h.
+    def draw_heading_rule(y)
+      th = @head_h >= 24 ? 3 : 2
+      x0 = MARGIN_X + 2
+      @gfx.fill_rect(x0, y, @w - MARGIN_X - x0, th, @theme.title_bg)
+    end
+
+    # ---- measuring (for {::valign center/}) ------------------------------
+    #
+    # The height the body will take, by the rules render_content_slide draws
+    # with: the same wait steps, the same sizes, the same overflow cut. An
+    # fmrb block draws itself and only then knows its height, so it counts
+    # as nothing; a page built around one is better left at the top.
+    def measure_content(slide, step, content_w, room)
+      y = 0
+      wait_seen = 0
+      elems = slide.elements
+      i = 0
+      while i < elems.length
+        elem = elems[i]
+        i += 1
+        if elem.type == :wait
+          wait_seen += 1
+          break if step && wait_seen > step
+          next
+        end
+        use_size(elem.size, elem.shadow)
+        if y + @line_h > room
+          use_size(nil)
+          break
+        end
+        case elem.type
+        when :text
+          y += rich_height(elem.text, content_w)
+        when :bullet, :numbered
+          indent = elem.level * @ascii_w * 2
+          marker = if elem.type == :bullet
+                     elem.level == 0 ? "- " : "  - "
+                   else
+                     "#{elem.number || 1}. "
+                   end
+          y += rich_height(elem.text, content_w - indent - wb(marker))
+        when :blockquote
+          y += rich_height(elem.text, content_w - 6)
+        when :code_block
+          y += elem.text.length * @line_h + 4 if elem.text.is_a?(Array)
+        when :image
+          y += media_height(elem, content_w, room - y)
+        when :blank
+          y += @line_h / 2
+        end
+        use_size(nil)
+      end
+      y
+    end
+
+    # Height of a run of rich text at the current size, ruby headroom
+    # included -- what draw_rich_lines will advance by.
+    def rich_height(text, max_w)
+      return @line_h unless text
+      lines = layout_rich_text(parse_inline(text), max_w)
+      return @line_h if lines.length == 0
+      h = 0
+      i = 0
+      while i < lines.length
+        h += @line_h + (lines[i][2] ? RUBY_H : 0)
+        i += 1
+      end
+      h
+    end
+
+    # Height an :image element will take: the picture (created now and
+    # held for the draw) or the video (opened to read its size, then
+    # closed), or the one line its fallback text takes.
+    def media_height(elem, content_w, room)
+      if video_path?(elem.text)
+        src = image_source(elem.text)
+        return @line_h unless src
+        v = open_video(src, 0, 0, VIDEO_DEFAULT_FPS, false)
+        return @line_h unless v
+        w = v.width
+        h = v.height
+        v.stop
+        return @line_h if w < 1 || h < 1 || w > content_w || h > room
+        return h + @line_h / 2
+      end
+      img = hold_image(elem)
+      return @line_h unless img
+      scale = image_scale(elem, img[:width], img[:height], content_w, room)
+      return @line_h if scale <= 0.0
+      (img[:height] * scale).to_i + @line_h / 2
+    end
+
+    # Fetch and create a slide picture ahead of its draw, and remember it
+    # under its source path so draw_image_element takes it instead of
+    # creating it again. nil when it cannot be had (the draw falls back).
+    def hold_image(elem)
+      src = image_source(elem.text)
+      return nil unless src && src.end_with?(".png")
+      held = @img_hold[src]
+      return held if held
+      img = nil
+      begin
+        dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+        return nil unless @gfx.sync_file(src, dest: dest)
+        img = @gfx.create_image(dest)
+      rescue => e
+        ::Log.info("PicoRabbit: image #{src}: #{e.message}")
+        return nil
+      end
+      return nil unless img && img[:width] > 0 && img[:height] > 0
+      @img_hold[src] = img
+      img
+    end
+
+    # One list item: its marker, then its text wrapped to what is left of the
+    # line. The text is laid out before the marker is drawn because the marker
+    # follows the base line, which ruby on the first line moves.
+    # ---- images ---------------------------------------------------------
+    #
+    # A picture has to reach the display side before it can be drawn: Retro
+    # keeps its own storage behind a UART, and in the simulator the two sides
+    # are separate processes with separate trees. Only Tab5 shares one. So
+    # every draw goes sync_file -> create_image -> draw_image -> delete_image,
+    # and sync_file is what makes that cheap the second time -- it compares
+    # what is already there and transfers nothing when it matches.
+    #
+    # Only PNG. The display decodes those (drawPng); BMP belongs to sprites
+    # and JPEG is not decoded anywhere.
+    def draw_image_element(elem, content_x, content_w, y, max_y)
+      src = image_source(elem.text)
+      return image_fallback(elem, content_x, y) unless src && src.end_with?(".png")
+
+      t0 = Machine.board_millis
+      t1 = t0
+      # Measured for centring a moment ago: already on the display side.
+      img = @img_hold.delete(src)
+      unless img
+        dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+        begin
+          # See background_image: a missing file is not sent on to the display.
+          return image_fallback(elem, content_x, y) unless @gfx.sync_file(src, dest: dest)
+          t1 = Machine.board_millis
+          img = @gfx.create_image(dest)
+        rescue => e
+          ::Log.info("PicoRabbit: image #{src}: #{e.message}")
+          return image_fallback(elem, content_x, y)
+        end
+      end
+      return image_fallback(elem, content_x, y) unless img
+
+      w = img[:width]
+      h = img[:height]
+      return image_fallback(elem, content_x, y) if w < 1 || h < 1
+
+      scale = image_scale(elem, w, h, content_w, max_y - y)
+      if scale <= 0.0
+        @gfx.delete_image(img[:id])
+        return image_fallback(elem, content_x, y)
+      end
+      dw = (w * scale).to_i
+      dh = (h * scale).to_i
+      ix = calc_align_x_px(elem, dw, content_x, content_w)
+      @gfx.draw_image(img[:id], x: ix, y: y, scale_x: scale, scale_y: 0.0)
+      @gfx.delete_image(img[:id])
+
+      t2 = Machine.board_millis
+      ::Log.info("PicoRabbit: image #{image_basename(src)} #{w}x#{h} -> #{dw}x#{dh}, sync #{t1 - t0}ms, draw #{t2 - t1}ms")
+      y + dh + @line_h / 2
+    end
+
+    # How much to shrink (or, when the deck asks for a width, stretch) the
+    # picture. Left alone it comes out at its own size, or the body width if
+    # it is wider than that -- never blown up. Either way it is cut down again
+    # if it would not fit in the room left on the slide.
+    def image_scale(elem, w, h, content_w, room)
+      target = w < content_w ? w : content_w
+      if elem.img_w
+        target = elem.img_w
+      elsif elem.img_pct
+        target = content_w * elem.img_pct / 100
+      end
+      target = content_w if target > content_w
+      return 0.0 if target < 1 || room < 1
+      scale = target.to_f / w.to_f
+      fit = room.to_f / h.to_f
+      scale = fit if h * scale > room
+      scale
+    end
+
+    # A path in a deck is relative to the deck, the way a reader would expect;
+    # one that starts at the root is taken as written (a card, say).
+    def image_source(path)
+      return nil unless path && path.length > 0
+      return path if path[0] == "/"
+      return path unless @deck_dir
+      "#{@deck_dir}/#{path}"
+    end
+
+    def image_basename(path)
+      i = path.length - 1
+      while i >= 0 && path[i] != "/"
+        i -= 1
+      end
+      path[i + 1, path.length - i - 1]
+    end
+
+    # Nothing to draw: say which file, in the quiet colour, and take one line.
+    # A deck with a missing picture still presents.
+    def image_fallback(elem, content_x, y)
+      use_body
+      draw_str(content_x, y, "[img: #{elem.text}]", @theme.footer_text, @theme.bg)
+      y + @line_h
+    end
+
+    # ---- background -----------------------------------------------------
+    #
+    # A PNG behind the slide, stretched to the screen: a picture made at the
+    # screen's size draws 1:1, anything else is pulled to fit. The slide's
+    # own {::background/} wins over the deck's frontmatter, and "none" turns
+    # the deck's off for that page. The picture reaches the display side the
+    # way slide images do (sync_file, then create_image), but is created once
+    # per deck and kept: it is drawn on every page turn and every wait step.
+    BG_CACHE_MAX = 3
+
+    def draw_background(slide)
+      path = slide.background || @deck_bg
+      return false if path.nil? || path == "none" || path.length == 0
+      src = image_source(path)
+      return false unless src && src.end_with?(".png")
+      t0 = Machine.board_millis
+      img = background_image(src)
+      return false unless img
+      @gfx.draw_image(img[0], x: 0, y: 0,
+                      scale_x: @w.to_f / img[1], scale_y: @h.to_f / img[2])
+      ::Log.info("PicoRabbit: background #{image_basename(src)} #{img[1]}x#{img[2]} -> #{@w}x#{@h}, #{Machine.board_millis - t0}ms")
+      true
+    end
+
+    # [id, w, h] for the picture, fetched and created on first use. The
+    # table holds a few, and the oldest goes when it is full.
+    def background_image(src)
+      cached = @images[src]
+      return cached if cached
+      img = nil
+      begin
+        dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+        # A file that could not be copied is not asked for: in the simulator
+        # the display side answers a failed create with no ACK at all, which
+        # is a ten-second wait for nothing.
+        return nil unless @gfx.sync_file(src, dest: dest)
+        img = @gfx.create_image(dest)
+      rescue => e
+        ::Log.info("PicoRabbit: background #{src}: #{e.message}")
+        return nil
+      end
+      return nil unless img && img[:width] > 0 && img[:height] > 0
+      if @images.length >= BG_CACHE_MAX
+        oldest = @images.keys[0]
+        @gfx.delete_image(@images[oldest][0])
+        @images.delete(oldest)
+      end
+      @images[src] = [img[:id], img[:width], img[:height]]
+    end
+
+    # ---- video ----------------------------------------------------------
+    #
+    # A .mjpg (JPEG frames back to back) is not drawn by the renderer at all:
+    # the display side plays it into a rectangle of this canvas on its own
+    # clock (FmrbGfx#video_open, doc/archive/video). The renderer's part is
+    # to open it where the picture would go, start it once the slide has
+    # been presented, and stop it before anything else is drawn over the
+    # canvas. The runners are sprites composited above, so they do not
+    # touch the rectangle.
+    #
+    # The player does not scale, so the file shows at its own size and has
+    # to fit in what is left of the slide. It plays on Modern and in the
+    # browser; elsewhere video_open answers nil and the slide names the
+    # file instead, the way a missing picture is named.
+    VIDEO_DEFAULT_FPS = 15
+    VIDEO_MAX_FPS = 30
+
+    def video_path?(path)
+      path && path.end_with?(".mjpg")
+    end
+
+    def draw_video_element(elem, content_x, content_w, y, max_y)
+      src = image_source(elem.text)
+      return video_fallback(elem, content_x, y, nil) unless src
+      # One player: a second file would close the first.
+      return video_fallback(elem, content_x, y, "one video a slide") if @video
+
+      fps = elem.video_fps || VIDEO_DEFAULT_FPS
+      fps = VIDEO_MAX_FPS if fps > VIDEO_MAX_FPS
+      loop = elem.video_loop.nil? ? true : elem.video_loop
+
+      # The size is only known once the file is open, and the player draws
+      # nothing until told to play, so open it at the left edge first and
+      # move it once the alignment is known.
+      t0 = Machine.board_millis
+      video = open_video(src, content_x, y, fps, loop)
+      return video_fallback(elem, content_x, y, nil) unless video
+      w = video.width
+      h = video.height
+      if w < 1 || h < 1 || w > content_w || h > max_y - y
+        video.stop
+        return video_fallback(elem, content_x, y, "#{w}x#{h} does not fit")
+      end
+      ix = calc_align_x_px(elem, w, content_x, content_w)
+      if ix != content_x
+        video.stop
+        video = open_video(src, ix, y, fps, loop)
+        return video_fallback(elem, content_x, y, nil) unless video
+      end
+      @video = video
+      t1 = Machine.board_millis
+      ::Log.info("PicoRabbit: video #{image_basename(src)} #{w}x#{h} @#{fps}fps at (#{ix},#{y}), open #{t1 - t0}ms")
+      y + h + @line_h / 2
+    end
+
+    def open_video(src, x, y, fps, loop)
+      begin
+        @gfx.video_open(src, x: x, y: y, fps: fps, loop: loop)
+      rescue => e
+        ::Log.info("PicoRabbit: video #{src}: #{e.message}")
+        nil
+      end
+    end
+
+    # Opened during the draw, started after the present (render_slide).
+    def start_video
+      @video.play if @video
+    end
+
+    def video_fallback(elem, content_x, y, why)
+      use_body
+      note = why ? "[video: #{elem.text} - #{why}]" : "[video: #{elem.text}]"
+      draw_str(content_x, y, note, @theme.footer_text, @theme.bg)
+      y + @line_h
+    end
+
+    def draw_list_item(indent, y, marker, text, right_x)
+      # The marker is drawn at the text's size, so its width is measured
+      # rather than counted in body cells.
+      tx = indent + wb(marker)
+      # Laying out measures at size 1 (and with its own font), so the body
+      # font goes on after it and not before, or the marker comes out in
+      # whatever the measuring left selected.
+      lines = layout_rich_text(parse_inline(text || ""), right_x - tx)
+      use_body
+      draw_str(indent, base_line_y(y, lines), marker,
+               @theme.bullet, @theme.bg)
+      draw_rich_lines(tx, y, lines, right_x - tx, nil, @theme.text)
+    end
+
+    # Draw text with inline formatting (**bold** and `code`), wrapping to
+    # max_w. The fit is measured in pixels with text_width, not in character
+    # cells, so a line of CJK (8px per glyph, drawn with misaki_8) breaks
+    # where it actually runs off the slide.
+    #
+    # ASCII breaks between words. CJK has no spaces to break at, so it breaks
+    # between glyphs; no kinsoku (see plan.md P2).
+    #
+    # Returns the y of the line after the last one drawn.
+    def draw_rich_text(x, y, text, max_w, align, color = nil)
+      return y + @line_h unless text
+      draw_rich_lines(x, y, layout_rich_text(parse_inline(text), max_w),
+                      max_w, align, color)
+    end
+
+    # Draw lines that are already laid out. Split from draw_rich_text for the
+    # callers that have to know about the first line before they draw beside
+    # it -- a list marker sits on the base line, and ruby on that line pushes
+    # the base down -- so they can lay the text out once and still draw here.
+    def draw_rich_lines(x, y, lines, max_w, align, color = nil)
+      color = @theme.text unless color
+      n = lines.length
+      return y + @line_h if n == 0
+      i = 0
+      while i < n
+        line = lines[i]
+        lx = x
+        if align == :center
+          lx = x + (max_w - line[1]) / 2
+        elsif align == :right
+          lx = x + max_w - line[1]
+        end
+        # A line carrying ruby takes one size 1 cell of headroom above it.
+        extra = line[2] ? RUBY_H : 0
+        draw_rich_line(lx, y, line[0], color, line[2])
+        y += @line_h + extra
+        i += 1
+      end
+      y
+    end
+
+    # Where the base of the first line sits. A line carrying ruby draws its
+    # body one size 1 cell lower to leave room for the reading, and anything
+    # drawn alongside it (a bullet, a list number) has to drop with it.
+    def base_line_y(y, lines)
+      first = lines[0]
+      (first && first[2]) ? y + RUBY_H : y
+    end
+
+    # Flow inline segments into lines that fit max_w.
+    # A line is [pieces, width]; a piece is [type, str, width].
+    def layout_rich_text(segments, max_w)
+      lines = []
+      pieces = []
+      line_w = 0
+      si = 0
+      ns = segments.length
+      while si < ns
+        type = segments[si][0]
+        str = segments[si][1]
+
+        # A ruby run never breaks: it is one word as wide as the wider of the
+        # base and the reading. The base draws at the body size, the reading
+        # always at size 1.
+        if type == :ruby
+          rb = segments[si][2]
+          base_w = wb(str)
+          ruby_w = wr(rb)
+          piece_w = base_w > ruby_w ? base_w : ruby_w
+          if line_w > 0 && line_w + piece_w > max_w
+            push_line(lines, pieces, line_w)
+            pieces = []
+            line_w = 0
+          end
+          pieces << [:ruby, str, piece_w, rb, base_w, ruby_w]
+          line_w += piece_w
+          si += 1
+          next
+        end
+
+        pad = (type == :code) ? 2 : 0
+        i = 0
+        len = str.length
+        while i < len
+          j = token_end(str, i)
+          token = str[i, j - i]
+          tw = wb(token)
+          if tw > max_w && j - i > 1
+            # A word wider than the whole line (a URL, an identifier): break
+            # it hard rather than run off the edge, taking as much as still
+            # fits on the line in hand.
+            avail = max_w - line_w
+            k = 1
+            while i + k < j
+              break if wb(str[i, k + 1]) > avail
+              k += 1
+            end
+            j = i + k
+            token = str[i, k]
+            tw = wb(token)
+          end
+          i = j
+          if line_w > 0 && line_w + tw > max_w
+            push_line(lines, pieces, line_w)
+            pieces = []
+            line_w = 0
+            # A space that only exists to separate words is dropped at the
+            # break; a CJK glyph or a word is carried to the new line.
+            next if token[0] == " "
+          end
+          last = pieces.length > 0 ? pieces[pieces.length - 1] : nil
+          if last && last[0] == type
+            last[1] = last[1] + token
+            last[2] = last[2] + tw
+            line_w += tw
+          else
+            pieces << [type, token, tw + pad]
+            line_w += tw + pad
+          end
+        end
+        si += 1
+      end
+      push_line(lines, pieces, line_w) if pieces.length > 0
+      lines
+    end
+
+    # Push one finished line, dropping the trailing spaces so a centred or
+    # right-aligned line measures the same width as it draws. A line is
+    # [pieces, width, has_ruby]; the flag decides the line's headroom.
+    def push_line(lines, pieces, line_w)
+      last = pieces[pieces.length - 1]
+      if last[0] != :ruby
+        str = last[1]
+        n = str.length
+        while n > 0 && str[n - 1] == " "
+          n -= 1
+        end
+        if n < str.length
+          cut = wb(str[n, str.length - n])
+          last[1] = str[0, n]
+          last[2] = last[2] - cut
+          line_w -= cut
+        end
+      end
+      has_ruby = false
+      i = 0
+      while i < pieces.length
+        has_ruby = true if pieces[i][0] == :ruby
+        i += 1
+      end
+      lines << [pieces, line_w, has_ruby]
+    end
+
+    # End index of the wrap token that starts at i: a run of spaces, a single
+    # multi-byte glyph, or an ASCII word.
+    def token_end(str, i)
+      len = str.length
+      c = str[i]
+      return i + 1 if c.bytesize > 1
+      j = i + 1
+      if c == " "
+        while j < len && str[j] == " "
+          j += 1
+        end
+        return j
+      end
+      while j < len
+        cj = str[j]
+        break if cj == " " || cj.bytesize > 1
+        j += 1
+      end
+      j
+    end
+
+    # Two passes over the line: the base at the body size, then the readings
+    # at size 1 in the headroom above. Two passes rather than two size
+    # switches per piece.
+    def draw_rich_line(x, y, pieces, color, has_ruby)
+      base_y = has_ruby ? y + RUBY_H : y
+      use_body
+      bx = x
+      i = 0
+      n = pieces.length
+      while i < n
+        piece = pieces[i]
+        type = piece[0]
+        str = piece[1]
+        w = piece[2]
+        if type == :ruby
+          # The narrower of base and reading is centred under the wider.
+          draw_str(bx + (w - piece[4]) / 2, base_y, str, color, @theme.bg)
+        elsif type == :bold
+          # A machine with a bold cut draws it once; one without draws the
+          # regular cut twice, a pixel apart, which is what P2 did.
+          if use_bold
+            draw_str(bx, base_y, str, color, @theme.bg)
+            use_body
+          else
+            draw_str(bx, base_y, str, color, @theme.bg)
+            draw_str(bx + 1, base_y, str, color)
+          end
+        elsif type == :code
+          # Inline code sits on its own background. With efont it is the body
+          # font; on the misaki path it is Font0, which is ASCII-only -- and
+          # inline code is ASCII by then anyway.
+          @gfx.fill_rect(bx, base_y, w, @char_h, @theme.inline_code_bg)
+          draw_str(bx + 1, base_y, str, @theme.inline_code_text, @theme.inline_code_bg)
+        else
+          draw_str(bx, base_y, str, color, @theme.bg)
+        end
+        bx += w
+        i += 1
+      end
+      return unless has_ruby
+
+      use_ruby
+      bx = x
+      i = 0
+      while i < n
+        piece = pieces[i]
+        if piece[0] == :ruby
+          draw_str(bx + (piece[2] - piece[5]) / 2, y, piece[3],
+                   color, @theme.bg)
+        end
+        bx += piece[2]
+        i += 1
+      end
+    end
+
+    # Pixel width of str in a size 1 cell. text_width multiplies by whatever
+    # the canvas is scaled to, so the canvas is held at 1 while measuring and
+    # the caller scales by hand -- a line can carry two sizes at once.
+    def w1(str)
+      set_ts(1)
+      @gfx.text_width(str, :default)
+    end
+
+    def set_ts(size)
+      return if @cur_ts == size
+      @gfx.set_text_size(size)
+      @cur_ts = size
+    end
+
+    # ---- fonts ----------------------------------------------------------
+    #
+    # Every draw picks a role rather than a font: body, heading, ruby, bold,
+    # or the 6x8 pair the strip and the index are drawn with. What each role
+    # resolves to depends on the deck (efont or misaki) and on the machine --
+    # Retro's display carries fewer cuts than Modern's, and set_font answers
+    # with the one it actually selected.
+
+    def use_font(family, size = nil)
+      key = size ? [family, size] : [family]
+      return @cur_font_got if @cur_font == key
+      @cur_font = key
+      @cur_font_got = @gfx.set_font(family, size)
+    end
+
+    # The pixel steps a line can be drawn at. 12 and 16 are cuts of efont;
+    # 24 and 32 are those doubled by the canvas (the machine has no larger
+    # cut, and the app partition has no room for one), and 8 is misaki.
+    SIZE_STEPS = [8, 12, 16, 24, 32]
+
+    # Select the size an element is drawn at: nil for the body, or :small /
+    # :large / :xlarge for one step down, one up, two up from it, held at the
+    # ends of the ladder. Sets the current font size and multiplier and the
+    # line and glyph heights that go with them; use_body / wb / use_bold read
+    # these, so everything drawn until the next use_size follows.
+    def use_size(size, shadow = false)
+      @size = size
+      @shadow_on = @deck_shadow || shadow
+      steps = size == :small ? -1 : size == :large ? 1 : size == :xlarge ? 2 : 0
+      if @font_kind == :efont
+        idx = SIZE_STEPS.index(@body_px) || 1
+        idx += steps
+        idx = 0 if idx < 0
+        idx = SIZE_STEPS.length - 1 if idx >= SIZE_STEPS.length
+        px = SIZE_STEPS[idx]
+        if px > 16
+          @cur_px = px / 2
+          @cur_mul = 2
+        else
+          @cur_px = px
+          @cur_mul = 1
+        end
+        @char_h = px
+        @line_h = px + px / 4
+      else
+        mul = @ts + steps
+        mul = 1 if mul < 1
+        mul = MAX_TEXT_SIZE if mul > MAX_TEXT_SIZE
+        @cur_px = CHAR_H
+        @cur_mul = mul
+        @char_h = CHAR_H * mul
+        @line_h = LINE_H * mul
+      end
+    end
+
+    def use_body
+      if @font_kind == :efont
+        use_font(:ja, @cur_px)
+        set_ts(@cur_mul)
+      else
+        use_font(:default)
+        set_ts(@cur_mul)
+      end
+    end
+
+    def use_head
+      if @font_kind == :efont
+        use_font(:ja, @head_px)
+      else
+        use_font(:default)
+        set_ts(@hs)
+      end
+    end
+
+    # Ruby readings are misaki 8 whichever body font is in use: they have to
+    # be small, and efont's smallest cut is 10.
+    def use_ruby
+      if @font_kind == :efont
+        use_font(:ja, 8)
+      else
+        use_font(:default)
+        set_ts(1)
+      end
+    end
+
+    # Bold for the run that follows. False means this machine has no bold cut
+    # and the caller draws its own -- twice, a pixel apart -- as P2 did.
+    def use_bold
+      # The bold cut exists at 12 only; 24 is that cut doubled.
+      if @font_kind == :efont && @has_bold && @cur_px == 12
+        use_font(:ja_bold, 12)
+        set_ts(@cur_mul)
+        return true
+      end
+      use_body
+      false
+    end
+
+    # The 6x8 pair. The strip, the clock and the index are drawn with it, and
+    # a finished slide leaves it selected so the app's own screens (the menu,
+    # the export count) are not drawn in the deck's font.
+    def use_ui
+      use_font(:default)
+      set_ts(1)
+    end
+
+    # Widths in the pixels the string will really take, by role.
+    def wb(str)
+      if @font_kind == :efont
+        set_ts(1)
+        @gfx.text_width(str, :ja, @cur_px) * @cur_mul
+      else
+        w1(str) * @cur_mul
+      end
+    end
+
+    def wh(str)
+      if @font_kind == :efont
+        set_ts(1)
+        @gfx.text_width(str, :ja, @head_px)
+      else
+        w1(str) * @hs
+      end
+    end
+
+    def wr(str)
+      if @font_kind == :efont
+        set_ts(1)
+        @gfx.text_width(str, :ja, 8)
+      else
+        w1(str)
+      end
+    end
+
+    def text_w(str, role)
+      return wh(str) if role == :head
+      return wb(str) if role == :body
+      w1(str)
+    end
+
+    # Draw one run with the selected font. The hybrid draw (Font0 and misaki
+    # per glyph) belongs to the misaki path alone: efont has ASCII of its own.
+    def draw_str(x, y, str, color, bg = nil)
+      # Over a background picture the page colour is not painted behind the
+      # text, or every run would sit in its own box. Bands and code frames
+      # ask for their own colours and keep them. A shadowed line is drawn the
+      # same way: the box would wipe the shadow out.
+      bg = nil if (@bg_drawn || @shadow_on) && bg == @theme.bg
+      # The shadow: the same run in the theme's shadow colour, one cell
+      # step down and right (two at the doubled sizes), under the text.
+      # Runs on a band or in a code frame bring their own bg and get none.
+      if @shadow_on && bg.nil?
+        d = @cur_mul
+        draw_run(x + d, y + d, str, @theme.shadow, nil)
+      end
+      draw_run(x, y, str, color, bg)
+    end
+
+    def draw_run(x, y, str, color, bg)
+      if @font_kind == :efont
+        if bg
+          @gfx.draw_text(x, y, str, color, bg)
+        else
+          @gfx.draw_text(x, y, str, color)
+        end
+      else
+        if bg
+          @gfx.draw_text_mixed(x, y, str, color, bg)
+        else
+          @gfx.draw_text_mixed(x, y, str, color)
+        end
+      end
+    end
+
+    # Drop trailing characters until the string fits w at the current text
+    # size. Titles are short, so the repeated measuring costs nothing.
+    # "N. heading", cut to fit. A title slide's heading can carry a <br>, so
+    # only its first line goes in the list.
+    def index_label(i, slide, max_w)
+      title = slide.title || ""
+      nl = title.index("\n")
+      title = title[0, nl] if nl
+      truncate_to_width("#{i + 1}. #{title}", max_w, :ui)
+    end
+
+    def truncate_to_width(str, w, role = :ui)
+      return str if text_w(str, role) <= w
+      n = str.length
+      while n > 0
+        cut = str[0, n]
+        return cut if text_w(cut, role) <= w
+        n -= 1
+      end
+      ""
+    end
+
+    # Parse inline formatting: **bold**, `code` and {base|reading} ruby.
+    def parse_inline(text)
+      result = []
+      buf = ""
+      i = 0
+      len = text.length
+
+      while i < len
+        # Check for {base|reading}. A brace followed by a colon belongs to a
+        # block directive ({::wait/}, {:.center}), which the parser has
+        # already taken out of the line; anything else that does not close
+        # with both a bar and a brace is ordinary text.
+        if text[i] == '{' && !(i + 1 < len && text[i + 1] == ':')
+          bar = nil
+          close = nil
+          j = i + 1
+          while j < len
+            c = text[j]
+            if c == '|' && bar.nil?
+              bar = j
+            elsif c == '}'
+              close = j
+              break
+            end
+            j += 1
+          end
+          if bar && close && bar > i + 1 && close > bar + 1
+            result << [:normal, buf] if buf.length > 0
+            buf = ""
+            result << [:ruby, text[i + 1, bar - i - 1],
+                       text[bar + 1, close - bar - 1]]
+            i = close + 1
+            next
+          end
+        end
+
+        # Check for **bold**
+        if i + 1 < len && text[i] == '*' && text[i + 1] == '*'
+          result << [:normal, buf] if buf.length > 0
+          buf = ""
+          i += 2
+          while i < len
+            if i + 1 < len && text[i] == '*' && text[i + 1] == '*'
+              i += 2
+              break
+            end
+            buf += text[i]
+            i += 1
+          end
+          result << [:bold, buf] if buf.length > 0
+          buf = ""
+          next
+        end
+
+        # Check for `code`
+        if text[i] == '`'
+          result << [:normal, buf] if buf.length > 0
+          buf = ""
+          i += 1
+          while i < len
+            if text[i] == '`'
+              i += 1
+              break
+            end
+            buf += text[i]
+            i += 1
+          end
+          result << [:code, buf] if buf.length > 0
+          buf = ""
+          next
+        end
+
+        buf += text[i]
+        i += 1
+      end
+
+      result << [:normal, buf] if buf.length > 0
+      result
+    end
+
+    # Draw syntax-highlighted code line
+    def draw_highlighted_line(x, y, text, hl_map, offset)
+      max_c = (@w - MARGIN_X * 2 - 4) / @ascii_w
+      visible_len = text.length > max_c ? max_c : text.length
+      i = 0
+      while i < visible_len
+        cat = hl_map.getbyte(offset + i) || 0
+        color = HL_COLORS[cat] || @theme.code_text
+
+        j = i + 1
+        while j < visible_len
+          next_cat = hl_map.getbyte(offset + j) || 0
+          break if next_cat != cat
+          j += 1
+        end
+
+        chunk = text[i, j - i]
+        draw_str(x + i * @ascii_w, y, chunk, color, @theme.code_bg)
+        i = j
+      end
+    end
+
+    # The strip carries no slide title: the heading is already at the top of
+    # the same slide, and upstream's footer shows the number alone.
+    def render_footer(slide, slide_idx, total_slides)
+      fy = @h - FOOTER_H
+      @gfx.fill_rect(0, fy, @w, FOOTER_H, @theme.footer_bg)
+
+      # Page number at the right, centred in the strip. The clock's box is
+      # measured against the widest the number can get, so neither it nor
+      # the goal flag moves as the pages go by.
+      num = "#{slide_idx + 1}/#{total_slides}"
+      nx = @w - num.length * CHAR_W - MARGIN_X
+      use_ui
+      @gfx.draw_text(nx, fy + 4, num, @theme.footer_text, @theme.footer_bg)
+
+      widest = "#{total_slides}/#{total_slides}".length * CHAR_W
+      @clock_x = @w - MARGIN_X - widest - 4 - CLOCK_CHARS * CHAR_W
+      @track_w = @clock_x - 6 - @track_left
+      @clock_text = nil
+      draw_clock
+    end
+
+    # The start and goal flags, one at each end of the track. A runner at
+    # progress 0 or 1 stands on the pole.
+    def render_track
+      return unless @allotted_ms
+      draw_flag(@track_left, FLAG_START)
+      draw_flag(@track_left + @track_w, FLAG_GOAL)
+    end
+
+    # A pole with the cloth to its right, feet on the same row as the runners.
+    def draw_flag(x, colour)
+      top = @h - 2 - FLAG_H
+      @gfx.fill_rect(x, top, 1, FLAG_H, @theme.footer_text)
+      @gfx.fill_rect(x + 1, top, FLAG_W, 4, colour)
+    end
+
+    def load_sprite_images(files)
+      list = []
+      i = 0
+      while i < files.length
+        name = files[i]
+        @gfx.sync_file("#{SPRITE_DIR}/#{name}", dest: "#{SPRITE_CACHE}/#{name}")
+        img = ::SpriteImage.new(@gfx, width: SPRITE_SIZE, height: SPRITE_SIZE,
+                                transparent_color: 0, use_transparent: true)
+        img.load_bmp("#{SPRITE_CACHE}/#{name}")
+        list << img
+        i += 1
+      end
+      list
+    end
+
+    def destroy_sprite_images(list)
+      return unless list
+      i = 0
+      while i < list.length
+        list[i].destroy
+        i += 1
+      end
+      nil
+    end
+
+    # Left edge of a 16px sprite whose middle sits at the given point on the
+    # track, kept inside the canvas at both ends.
+    def sprite_x(progress)
+      x = @track_left + (progress * @track_w).to_i - SPRITE_SIZE / 2
+      return 0 if x < 0
+      limit = @w - SPRITE_SIZE
+      x > limit ? limit : x
+    end
+
+    # The turtle walks while there is time left and cheers when there is not.
+    # Its stride is counted off the clock it carries, not off the wall, so a
+    # paused clock stops its legs as well as its position.
+    def turtle_frame(turtle_p)
+      return K_BANZAI if turtle_p >= 1.0
+      ((elapsed_ms / 1000) % 2) == 0 ? K_WALK1 : K_WALK2
+    end
+
+    # The rabbit runs for a few seconds after a page turn. After that its pose
+    # says how the talk is doing against the clock: dozing when it is well
+    # ahead, hurrying when it is well behind.
+    def rabbit_frame(now, rabbit_p, turtle_p)
+      return U_JUMP if rabbit_jumping?
+      since = now - @last_turn_ms
+      if since < RUN_MS
+        return ((since / 500) % 2) == 0 ? U_RUN1 : U_RUN2
+      end
+      lead = rabbit_p - turtle_p
+      return U_SLEEP if lead >= LEAD
+      return U_HURRY if lead <= -LEAD
+      U_RUN1
+    end
+
+    # How far the talk has come, 0..1. The title slide is not part of the
+    # race: the first content slide is the start line, and the finish line is
+    # the last slide unless a {::goal/} named an earlier one -- anything past
+    # it (questions, an appendix) leaves the rabbit sitting at the goal.
+    # A deck with fewer than three slides is always at the goal.
+    def rabbit_progress(slide_idx, total_slides)
+      goal = @goal_idx ? @goal_idx : total_slides - 1
+      return 1.0 if goal < 2
+      p = (slide_idx - 1).to_f / (goal - 1)
+      return 0.0 if p < 0.0
+      return 1.0 if p > 1.0
+      p
+    end
+
+    # How much of the allotted time is gone, 0..1. Upstream keeps walking
+    # past the goal; we stop there, because P1 has the turtle cheer instead.
+    def turtle_progress
+      p = elapsed_ms.to_f / @allotted_ms
+      p > 1.0 ? 1.0 : p
+    end
+
+    # Time the talk has taken. A paused clock reads the moment it stopped.
+    def elapsed_ms
+      (@paused_ms || Machine.board_millis) - @start_ms
+    end
+
+    # "MM:SS" left, "-MM:SS" once it is over, "||" in front while stopped.
+    def clock_text
+      return "" unless @allotted_ms
+      left = @allotted_ms - elapsed_ms
+      @clock_negative = left < 0
+      left = -left if @clock_negative
+      secs = left / 1000
+      mm = secs / 60
+      ss = secs % 60
+      out = +""
+      out << "||" if timer_paused?
+      out << "-" if @clock_negative
+      out << "0" if mm < 10
+      out << mm.to_s
+      out << ":"
+      out << "0" if ss < 10
+      out << ss.to_s
+      out
+    end
+
+    # Read the allotted time out of the frontmatter.
+    #
+    # A bare integer is minutes (the Harucom form, as in demo.md). A value
+    # with units follows Rabbit upstream: "90s", "5m", "1h30m". Anything that
+    # does not add up to a time at all means "no timer".
+    def parse_allotted_ms(str)
+      return nil unless str
+      s = str.strip
+      total = 0
+      num = 0
+      digits = 0
+      units = 0
+      i = 0
+      len = s.length
+      while i < len
+        c = s[i]
+        if c >= "0" && c <= "9"
+          num = num * 10 + (c.ord - 48)
+          digits += 1
+        elsif c == "h" || c == "m" || c == "s"
+          return nil if digits == 0
+          total += num * (c == "h" ? 3600 : (c == "m" ? 60 : 1))
+          num = 0
+          digits = 0
+          units += 1
+        else
+          return nil
+        end
+        i += 1
+      end
+      if units == 0
+        return nil if digits == 0
+        total = num * 60
+      elsif digits > 0
+        return nil
+      end
+      total > 0 ? total * 1000 : nil
+    end
+
+    def calc_align_x_px(elem, px_w, content_x, content_w)
+      return content_x unless elem.align
+      case elem.align
+      when :center then content_x + (content_w - px_w) / 2
+      when :right then content_x + content_w - px_w
+      else content_x
+      end
+    end
+  end
+end

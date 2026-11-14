@@ -28,8 +28,8 @@ module Regress
   BASELINE = File.join(CORE, "test", "regress", "baseline")
   OUT = File.join(CORE, "tmp", "regress")
   SCENE_DIR = File.join(__dir__, "scenes")
-  GEM_APP = File.join(CORE, "lib", "add", "picoruby-fmrb-app", "mrblib")
-  GEM_AST = File.join(CORE, "lib", "add", "picoruby-fmrb-asterism", "mrblib")
+  GEM_APP = File.join(CORE, "lib", "gems", "picoruby-fmrb-app", "mrblib")
+  GEM_AST = File.join(CORE, "lib", "gems", "picoruby-fmrb-asterism", "mrblib")
 
   Profile = Struct.new(:name, :target, :boards) do
     def targets = boards.map(&:name)
@@ -94,7 +94,7 @@ module Regress
         raise "targets.rb: #{t.name} says #{t.screen.join('x')}, config/#{t.conf} says " \
               "#{conf['display_width']}x#{conf['display_height']}"
       end
-      device = a.file.to_s.sub(%r{\Aflash/}, "/").sub(%r{\Amain/prebuild_scripts/default_app/}, "/app/system/")
+      device = a.file.to_s.sub(%r{\Aflash/}, "/").sub(%r{\Amain/ruby/default_app/}, "/app/system/")
       Env.reset(t, s.lang, device)
       Net.reset
       define_const(t, s.lang, conf["theme"] || {})
@@ -107,7 +107,7 @@ module Regress
       # The C half first, then the Ruby over it, as the firmware defines them.
       load File.join(__dir__, "recorder.rb")
       gem_files(GEM_APP).each { |f| load_file(f) unless File.basename(f) == "gfx_block.rb" }
-      a.gems.each { |g| gem_files(File.join(CORE, "lib", "add", g, "mrblib")).each { |f| load_file(f) } }
+      a.gems.each { |g| gem_files(File.join(CORE, "lib", "gems", g, "mrblib")).each { |f| load_file(f) } }
       gem_files(GEM_AST).sort_by { |f| File.basename(f) == "fmrb-asterism.rb" ? 0 : 1 }.each { |f| load_file(f) }
       session = Session.new(s, t)
       a.setups.each { |b| b.call(session) }

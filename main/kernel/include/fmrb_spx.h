@@ -7,7 +7,7 @@
  * through its FFI. This layer exposes the kernel's lower-level operations as
  * plain C functions that Spinel's `ffi_func` can call, sharing the same
  * underlying fmrb_* implementation as the mruby binding
- * (lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c).
+ * (lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c).
  *
  * Design (see doc/spinel_aot/phase1.md T1-5):
  * - Return convention: `int` where negative is an error (fmrb_err_t negated or

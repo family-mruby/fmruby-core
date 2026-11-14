@@ -2,7 +2,7 @@
 #
 # recorder.rb - FmrbGfx's C half, as a recorder.
 #
-# The Ruby half (lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb: draw_text,
+# The Ruby half (lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb: draw_text,
 # set_font, text_width with FONT_METRICS, ...) is loaded as it ships; the
 # methods gfx.c defines are defined here and write one line per call into
 # the record, in the order called. A text line carries the font and the

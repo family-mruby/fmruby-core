@@ -56,7 +56,7 @@ def native_regen_apps_mrb!
   mrbc = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/bin/mrbc")
   return puts("native:mrb: no #{mrbc} yet -- the native apps skipped") unless File.exist?(mrbc)
   dir = File.join(NATIVE_DIR, "apps")
-  gen = File.join(ROOT_DIR, "tool/debug/gen_combined_rb.py")
+  gen = File.join(ROOT_DIR, "tools/debug/gen_combined_rb.py")
   Dir[File.join(dir, "*.app.rb")].sort.each do |rb|
     name = File.basename(rb).sub(/\..*\z/, "")
     out_c = File.join(dir, "mrb", "#{name}.c")
@@ -80,12 +80,12 @@ end
 namespace :native do
   # "^setup" is the ROOT setup task: the gem sources libmruby is built from
   # are the COPIES under components/picoruby-esp32/picoruby, and root setup
-  # refreshes them from lib/add (wasm:mruby has the same dependency, for the
+  # refreshes them from lib/gems (wasm:mruby has the same dependency, for the
   # same reason).
   desc "Build libmruby for the native program (host gcc; run before native:core)"
   task :mruby => ["^setup", "hosted:m5gfx"] do
     picoruby = File.expand_path("components/picoruby-esp32/picoruby", ROOT_DIR)
-    config = File.expand_path("lib/add/family_mruby_native.rb", ROOT_DIR)
+    config = File.expand_path("lib/upstream/family_mruby_native.rb", ROOT_DIR)
     sh "cd #{picoruby} && MRUBY_CONFIG=#{config} rake"
   end
 
@@ -130,7 +130,7 @@ namespace :native do
 
   desc "Build the native program (NATIVE_ENGINE=standard|mruby; needs native:mruby once)"
   task :core => ["^setup", "hosted:m5gfx", :mrb, :etc] do
-    gen = File.join(ROOT_DIR, "main/prebuild_scripts/spinel/gen")
+    gen = File.join(ROOT_DIR, "main/ruby/spinel/gen")
     needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c]
     needed += %w[fmrb_kernel_combined.c editor_combined.c] if native_engine == "standard"
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
@@ -399,7 +399,7 @@ namespace :native do
   task :cross => ["^setup", "hosted:m5gfx", :mrb, :image] do
     arch = native_deb_arch
     lay = NATIVE_DEB_LAYOUT[arch]
-    gen = File.join(ROOT_DIR, "main/prebuild_scripts/spinel/gen")
+    gen = File.join(ROOT_DIR, "main/ruby/spinel/gen")
     needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c fmrb_kernel_combined.c editor_combined.c]
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
     abort "native:cross: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
@@ -411,7 +411,7 @@ namespace :native do
     native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",
                   { "FMRB_NATIVE_ARCH" => arch,
                     "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
-                    "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb" })
+                    "MRUBY_CONFIG" => "/src/lib/upstream/family_mruby_native.rb" })
     toolchain = arch == "arm64" ? "-DCMAKE_TOOLCHAIN_FILE=/src/native/docker/aarch64-linux-gnu.cmake" : ""
     launchers = lay[:launchers].map { |suffix, (machine, _)| "#{suffix}=#{machine}" }.join(";")
     targets = ["fmruby-native"] + lay[:launchers].keys.map { |s| "family-mruby-#{s}" }
@@ -459,6 +459,9 @@ namespace :native do
     user_tops = %r{\Aflash/(etc|home|app/usr|var|cache|data|tmp)/}
     files = files.reject { |f| f.end_with?(".nsf") && !f.start_with?("flash/usr/share/sounds/nsf/") }
     files = files.reject { |f| f =~ user_tops }
+    # The test apps (flash/app/test) are for development and the regression
+    # tools, which run the development build, not the package.
+    files = files.reject { |f| f.start_with?("flash/app/test/") }
     files.each do |f|
       dest = File.join(root, f.sub(%r{\Aflash/}, ""))
       mkdir_p File.dirname(dest)
@@ -677,7 +680,7 @@ namespace :native do
   desc "Build the program with the wlroots compositor in the Ubuntu 26.04 image (native/build-wl)"
   task :wl => ["^setup", "hosted:m5gfx", :mrb, :etc] do
     native_image_build("amd64")
-    gen = File.join(ROOT_DIR, "main/prebuild_scripts/spinel/gen")
+    gen = File.join(ROOT_DIR, "main/ruby/spinel/gen")
     needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c]
     needed += %w[fmrb_kernel_combined.c editor_combined.c] if native_engine == "standard"
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
@@ -686,7 +689,7 @@ namespace :native do
     crel = native_wl_cmake_dir.sub("#{ROOT_DIR}/", "")
     native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",
                   { "FMRB_NATIVE_ARCH" => "amd64", "MRUBY_BUILD_DIR" => "/src/#{rel}/mruby",
-                    "MRUBY_CONFIG" => "/src/lib/add/family_mruby_native.rb" }, arch: "amd64")
+                    "MRUBY_CONFIG" => "/src/lib/upstream/family_mruby_native.rb" }, arch: "amd64")
     native_docker(<<~SH, {}, arch: "amd64")
       cmake -S native -B #{crel} -DCMAKE_BUILD_TYPE=RelWithDebInfo #{native_engine_defines} \
         -DFMRB_HOSTED_MRUBY_DIR=/src/#{rel}/mruby/family-mruby-native

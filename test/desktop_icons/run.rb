@@ -3,7 +3,7 @@
 #
 # Which icons the desktop shows is read from /home/desktop.toml (apps and
 # hidden) merged with the default set in /usr/share/desktop/desktop.toml. That
-# part of main/prebuild_scripts/kernel/system_desktop/desktop_icons.rb is
+# part of main/ruby/kernel/system_desktop/desktop_icons.rb is
 # plain Ruby over two files, so the shipped mixin runs here with its two paths
 # pointed at a scratch directory and the drawing side stubbed out. What this
 # cannot see is the icons on the screen; the simulator shows those.
@@ -41,7 +41,7 @@ module FmrbConst
 end
 
 ROOT = File.expand_path("../..", __dir__)
-load File.join(ROOT, "main/prebuild_scripts/kernel/system_desktop/desktop_icons.rb")
+load File.join(ROOT, "main/ruby/kernel/system_desktop/desktop_icons.rb")
 
 DIR = Dir.mktmpdir("desktop_icons")
 at_exit { FileUtils.rm_rf(DIR) }

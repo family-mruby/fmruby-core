@@ -97,7 +97,7 @@ class Ros2TalkerApp < FmrbApp
 
   # node.subscribe("/cmd_vel_in"). The compiler binds pattern variables
   # from inside a block and matches classes as hash values since C8
-  # (lib/patch/compiler/mruby-compiler-codegen.c); a method of its own
+  # (lib/upstream/patch/compiler/mruby-compiler-codegen.c); a method of its own
   # still reads better.
   def twist(msg)
     case msg

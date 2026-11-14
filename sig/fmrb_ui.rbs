@@ -1,5 +1,5 @@
 # 画面のある道具のための部品箱。実装は
-# lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb。
+# lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb。
 #
 # ボタンや切替の当たり判定・押した見た目・描き直しをまとめて持ちます。
 # 部品は on_create で作り、あとは handle にイベントを渡して、返ってきた
@@ -29,7 +29,7 @@
 # 座標は user area (Window の枠とタイトルバーの内側) の左上が原点です。
 # <<en>>
 # Widget box for apps that draw their own window. Implemented in
-# lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb.
+# lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb.
 #
 # It owns the hit test, the pressed look and the redraw. Create the widgets
 # in on_create, feed events to handle, and dispatch on the id it returns.

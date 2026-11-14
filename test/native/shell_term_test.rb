@@ -1,10 +1,10 @@
-# Host test of ShellTerm (main/prebuild_scripts/default_app/shell/shell_term.rb,
+# Host test of ShellTerm (main/ruby/default_app/shell/shell_term.rb,
 # doc/linux_native L10): a Linux program's bytes -> the Shell's lines and
 # colour spans. CRuby runs the same file the Shell's mruby does.
 #
 # Usage: ruby test/native/shell_term_test.rb
 
-require_relative "../../main/prebuild_scripts/default_app/shell/shell_term"
+require_relative "../../main/ruby/default_app/shell/shell_term"
 
 $fail = 0
 $count = 0

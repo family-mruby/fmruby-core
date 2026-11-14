@@ -6,8 +6,8 @@ sdkconfig.1
 dependencies.lock
 .vscode/*
 .claude/*
-main/prebuild_scripts/kernel/mrb/*
-main/prebuild_scripts/default_app/mrb/*
+main/ruby/kernel/mrb/*
+main/ruby/default_app/mrb/*
 log/
 *.log
 .rake_tasks~
@@ -61,10 +61,10 @@ vendor/ti_test_sig/
 
 # Pinned zenoh-pico checkout (rake zenoh:setup), used by picoruby-asterism-zenoh
 vendor/zenoh-pico/
-# Pinned ruby-asterism checkouts (rake asterism:setup; lib/add/*_PIN)
+# Pinned ruby-asterism checkouts (rake asterism:setup; lib/upstream/*_PIN)
 vendor/asterism/
 vendor/picoruby-asterism-zenoh/
-# Pinned mruby-checkpoint checkout (rake checkpoint:setup; lib/add/MRUBY_CHECKPOINT_PIN)
+# Pinned mruby-checkpoint checkout (rake checkpoint:setup; lib/upstream/MRUBY_CHECKPOINT_PIN)
 vendor/mruby-checkpoint/
 # The bundled ROS 2 message types, copied from the asterism checkout by
 # rake setup. The source is the asterism repository, like flash/help's is sig/.
@@ -73,7 +73,7 @@ flash/usr/share/asterism/msgs/
 flash/usr/share/asterism/transfer/
 
 # Local reference material for comparing the character sheets (never committed)
-tool/basic/ref/
+tools/basic/ref/
 
 # Stashed build trees when switching targets by hand (see doc/midi/report/p1.md).
 # rake clean_all is the normal way; these exist so a Linux sim build survives
@@ -97,13 +97,13 @@ flash/help/
 # The WebConsole's browser type engine (rake ti:wasm) and its help bundle.
 # Same rule as the firmware database: the source is sig/ plus the engine, so
 # only the wrapper and the export list are committed here.
-tool/web/wasm/ti.js
-tool/web/wasm/ti.wasm
-tool/web/wasm/help.json
+tools/web/wasm/ti.js
+tools/web/wasm/ti.wasm
+tools/web/wasm/help.json
 node_modules/
-tool/web/test/shots/
+tools/web/test/shots/
 
-# Spinel gem sources staged into main/prebuild_scripts/spinel/ by rake spinel:gen
+# Spinel gem sources staged into main/ruby/spinel/ by rake spinel:gen
 # are ignored by that directory's own .gitignore (ignore-all + whitelist the real
 # sources), so a new gem needs no entry here.
 

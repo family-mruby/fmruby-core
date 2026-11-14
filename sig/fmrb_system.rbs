@@ -1,8 +1,8 @@
 # 端末の設定とサービス (Wi-Fi・BLE・電源・時計・音の設定・PC の設定)。
 # デスクトップ・カーネルのアプリ・設定のアプリが使う。状態を読むだけのもの
 # (wifi_info・ps・battery_level・audio_volume など) は FmrbApp にある。
-# 実装は lib/add/picoruby-fmrb-app/ports/esp32/app.c、Spinel 版は
-# main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb。
+# 実装は lib/gems/picoruby-fmrb-app/ports/esp32/app.c、Spinel 版は
+# main/ruby/spinel/fmrb_app_base_spinel.rb。
 # 「ネイティブ版だけ」と書いたものは、ほかのビルドには無い (respond_to? で確かめる)。
 
 # 端末の設定とサービス <<en>> The machine's settings and services

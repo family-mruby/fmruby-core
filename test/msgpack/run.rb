@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for the kernel's msgpack (main/prebuild_scripts/spinel/
+# Host tests for the kernel's msgpack (main/ruby/spinel/
 # msgpack_pure.rb, doc/asterism_file_transfer report/t8d.md): every integer
 # width and its boundaries decode to the value when this machine's Integer
 # holds it, and are refused with the type and bytes when it does not; what
@@ -27,7 +27,7 @@ require "fileutils"
 require "open3"
 
 ROOT = File.expand_path("../..", __dir__)
-SRC = File.join(ROOT, "main/prebuild_scripts/spinel/msgpack_pure.rb")
+SRC = File.join(ROOT, "main/ruby/spinel/msgpack_pure.rb")
 CASES = File.join(__dir__, "cases.rb")
 BUILD = File.join(__dir__, "build")
 RT_DIR = File.join(ROOT, "components/fmrb_spinel_rt/spinel_rt")

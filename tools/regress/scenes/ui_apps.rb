@@ -52,7 +52,7 @@ module UiScenes
   end
 end
 
-Regress.app "logviewer", "main/prebuild_scripts/default_app/logviewer.app.rb" do
+Regress.app "logviewer", "main/ruby/default_app/logviewer.app.rb" do
   window w: 300, h: 200, name: "LogViewer", resizable: true   # fmrb_app_spawner.c
 
   scene "tail" do |s|
@@ -74,7 +74,7 @@ Regress.app "logviewer", "main/prebuild_scripts/default_app/logviewer.app.rb" do
   end
 end
 
-Regress.app "monitor", "main/prebuild_scripts/default_app/monitor.app.rb" do
+Regress.app "monitor", "main/ruby/default_app/monitor.app.rb" do
   window w: 240, h: 200, name: "Monitor"
 
   def self.nav(s, right)
@@ -105,7 +105,7 @@ Regress.app "monitor", "main/prebuild_scripts/default_app/monitor.app.rb" do
   end
 end
 
-Regress.app "appstore", "main/prebuild_scripts/default_app/appstore.app.rb" do
+Regress.app "appstore", "main/ruby/default_app/appstore.app.rb" do
   window w: 280, h: 190, name: "App Store", resizable: true   # fmrb_app_spawner.c
 
   def self.web(s)

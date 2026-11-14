@@ -12,10 +12,10 @@
 
 #include "fmrb_attr.h"
 
-/* The gem's canonical header (lib/add is the source of truth; the copy under
+/* The gem's canonical header (lib/gems is the source of truth; the copy under
    components/picoruby-esp32/... is made by `rake setup`). Included by path so
    the main component needs no extra include dir for one file. */
-#include "../../lib/add/picoruby-fmrb-editor-core/include/editor_core_api.h"
+#include "../../lib/gems/picoruby-fmrb-editor-core/include/editor_core_api.h"
 
 /* The current instance's :binstr length (runtime sp_ctx.c; the host C
    cannot include sp_ctx.h, so it is declared here). */

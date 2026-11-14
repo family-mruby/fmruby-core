@@ -15,14 +15,14 @@
 # - Screen: WiFi and AST on the top line, the count, the cadence at the
 #   bottom. KEY1 (the front button) resets the count.
 #
-# From the PC: ruby tool/imu/step_watch.rb <ID> --router tcp/127.0.0.1:7447
+# From the PC: ruby tools/imu/step_watch.rb <ID> --router tcp/127.0.0.1:7447
 
-# --- StepDetector (tool/imu/test/step_detector_test.rb loads this part) ---
+# --- StepDetector (tools/imu/test/step_detector_test.rb loads this part) ---
 # One step = the magnitude of the acceleration rising RISE above its slow
 # average (gravity), reported on the sample that crosses. Another step needs
 # the magnitude to fall back under the average first (arming) and MIN_GAP_MS
 # since the last step; a rise inside the gap uses up the arming.
-# The average has three speeds (tool/imu/test shows each one is needed):
+# The average has three speeds (tools/imu/test shows each one is needed):
 # - BASE_SLOW_TAU_MS above average + rise, so a walk's impacts hardly pull
 #   it up (with one speed the steps are seen later),
 # - BASE_TAU_MS otherwise, so it never stops following,

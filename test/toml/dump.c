@@ -1,4 +1,4 @@
-// Host stand-in for FmrbToml._parse (lib/add/picoruby-fmrb-app/ports/esp32/
+// Host stand-in for FmrbToml._parse (lib/gems/picoruby-fmrb-app/ports/esp32/
 // toml.c): TOML text on stdin, a Ruby literal of the same Hash on stdout --
 // or "ERR:" and tomlc99's reason. The walk is the firmware's own
 // (toml_walk.c), so the host tests see what the board's Ruby sees; only the

@@ -12,9 +12,9 @@
 # the machine's, not the music's.
 #
 #   ruby tools/fmrb_midi_monitor.rb --log /tmp/p76.jsonl --duration 40
-#   python3 tool/debug/fmrb_dbg_client.py localhost:5555 spawn \
+#   python3 tools/debug/fmrb_dbg_client.py localhost:5555 spawn \
 #       path=/app/debug/midi_time.app.rb
-#   ruby tool/midi/midi_interval.rb /tmp/p76.jsonl
+#   ruby tools/midi/midi_interval.rb /tmp/p76.jsonl
 #
 # The log lines here mark which run is which.
 

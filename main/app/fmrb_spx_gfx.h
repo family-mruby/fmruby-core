@@ -2,7 +2,7 @@
  * @file fmrb_spx_gfx.h
  * @brief Spinel FFI shim for FmrbGfx: an mrb-free C ABI wrapping the same
  *        graphics operations the mruby FmrbGfx binding uses
- *        (lib/add/picoruby-fmrb-app/ports/esp32/gfx.c).
+ *        (lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c).
  *
  * Spinel-generated C cannot take an mrb_state and cannot receive C structs
  * through its FFI, so every drawing primitive is exposed as a plain C function

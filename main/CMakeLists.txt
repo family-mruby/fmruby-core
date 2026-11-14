@@ -51,13 +51,13 @@ set(COMPONENT_SRCS
     # gem-local firmware C (picoruby-fmrb-fft/native): kept with the rest of the
     # gem, compiled into main by path. NOT under src/ or ports/ of the gem, so
     # the mrbgem build does not also compile it (no duplicate symbols).
-    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_bench.c"
-    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-fft/native/fmrb_fft_bench.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-fft/native/fmrb_fft_spinel.c"
     # SpinelHello sample gem (minimal "Spinel as a gem"): always built.
-    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c"
     # Raycast gem (doc/raycast_spinel): the receiver that lets the raycaster app
     # run its ray loop on either engine. Always built, like SpinelHello.
-    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-raycast/native/raycast_native.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-raycast/native/raycast_native.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
@@ -81,13 +81,13 @@ set(COMPONENT_ESP32_SRCS
 )
 
 # Include Ruby to bytecode compilation script
-include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_bytecode.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/ruby/compile_ruby_to_bytecode.cmake)
 
-# Find all Ruby files in prebuild_scripts/kernel/
-file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/*.rb)
+# Find all Ruby files in ruby/kernel/
+file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/*.rb)
 
-# Find all Ruby files in prebuild_scripts/default_app/
-file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/*.rb)
+# Find all Ruby files in ruby/default_app/
+file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/*.rb)
 
 # The service host is Modern-only (doc/user_extension/services/plan.md): Retro
 # is the machine with 6% of its flash left and no internal RAM to spare, so its
@@ -99,22 +99,22 @@ include(${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_common/fmrb_hw_defines.cmak
 fmrb_hw_family_is_modern(FMRB_BUILD_IS_MODERN)
 if(NOT FMRB_BUILD_IS_MODERN)
     list(REMOVE_ITEM DEFAULT_APP_RUBY_FILES
-         ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/services.app.rb)
+         ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/services.app.rb)
 endif()
 
 # The keyboard-only desktop (doc/linux_native, L4) runs on the native
 # program only, which builds its bytecode itself (rakelib/hosted.rake): no
 # device or simulation firmware carries it.
 list(REMOVE_ITEM KERNEL_RUBY_FILES
-     ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/system_desktop_keys.app.rb)
+     ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/system_desktop_keys.app.rb)
 # Likewise the stand-in for a Linux window (doc/linux_native, L9a): only the
 # native program as a compositor starts it.
 list(REMOVE_ITEM KERNEL_RUBY_FILES
-     ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/linux_window.app.rb)
+     ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/linux_window.app.rb)
 
 # Step 1: Prepare Ruby bytecode sources (add C files to COMPONENT_SRCS)
-prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)
-prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb COMPONENT_SRCS)
+prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/mrb COMPONENT_SRCS)
+prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/mrb COMPONENT_SRCS)
 
 # Kernel engine selection (Phase 1 T1-6, Phase 2 T2-5). Default mruby; `spinel`
 # swaps the kernel task for the Spinel-compiled combined kernel VM.
@@ -134,7 +134,7 @@ set(FMRB_APP_ENGINE_EDITOR "$ENV{FMRB_APP_ENGINE_EDITOR}")
 if(NOT FMRB_APP_ENGINE_EDITOR)
     set(FMRB_APP_ENGINE_EDITOR "mruby")
 endif()
-set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/gen)
+set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/ruby/spinel/gen)
 
 # The Spinel FFT backend (doc/mic_spectrum): a Spinel program that is not a VM
 # for anything -- an mruby task calls it as a library. On by default; set
@@ -151,7 +151,7 @@ endif()
 # built and always calls a Spinel library, so the runtime is always compiled.
 # Individual VMs (kernel/desktop/editor) and the FFT backend can still be mruby.
 set(FMRB_ANY_SPINEL TRUE)
-include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/ruby/compile_ruby_to_spinel.cmake)
 # Shared FFI helpers (millis, logging) -- referenced by whichever shim(s) below
 # compile. Built here (not in a per-engine shim) so a mixed
 # mruby-kernel + Spinel-desktop build still resolves them.
@@ -184,10 +184,10 @@ if(FMRB_FFT_SPINEL STREQUAL "1")
 endif()
 
 # SpinelHello sample gem: a Spinel ext program, always built (no opt-out flag,
-# unlike FFT). Its receiver is in lib/add/picoruby-fmrb-spinel-hello/native/.
+# unlike FFT). Its receiver is in lib/gems/picoruby-fmrb-spinel-hello/native/.
 prepare_ruby_spinel_source(spinel_hello_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
 
-# Raycast gem: same shape, receiver in lib/add/picoruby-fmrb-raycast/native/.
+# Raycast gem: same shape, receiver in lib/gems/picoruby-fmrb-raycast/native/.
 prepare_ruby_spinel_source(raycast_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
 
 if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
@@ -386,13 +386,13 @@ if(FMRB_BOARD_DISPLAY)
 endif()
 
 # Remote desktop viewer page (Modern only): embedded into the binary and
-# served by the on-device HTTP server. Sources live in tool/web/remote/.
+# served by the on-device HTTP server. Sources live in tools/web/remote/.
 set(RD_EMBED_FILES "")
 if(IDF_TARGET STREQUAL "esp32p4")
     set(RD_EMBED_FILES
-        "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/index.html"
-        "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/remote.js"
-        "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/keymap.js")
+        "${CMAKE_CURRENT_LIST_DIR}/../tools/web/remote/index.html"
+        "${CMAKE_CURRENT_LIST_DIR}/../tools/web/remote/remote.js"
+        "${CMAKE_CURRENT_LIST_DIR}/../tools/web/remote/keymap.js")
 endif()
 
 # mbedTLS's PSA state and cipher-suite list to PSRAM (main/mbedtls_psram.lf)
@@ -406,7 +406,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_local" ${BOARD_DISPLAY_INCLUDE_DIRS} "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "boot" "kernel" "kernel/include" "kernel/host" "../lib/gems/picoruby-fmrb-fft/native" "../lib/gems/picoruby-fmrb-spinel-hello/native" "../lib/gems/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_local" ${BOARD_DISPLAY_INCLUDE_DIRS} "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
     LDFRAGMENTS ${FMRB_LDFRAGMENTS}
@@ -575,8 +575,8 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 )
 
 # Step 2: Generate Ruby bytecode compilation commands (must be after idf_component_register)
-generate_ruby_bytecode_commands(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb)
-generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb)
+generate_ruby_bytecode_commands(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/mrb)
+generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/mrb)
 
 # Spinel engine: define the switch macro (fmrb_kernel.c) and, when a host
 # SPINEL_BIN is available, wire the .rb -> .c regeneration. The docker linux
@@ -661,7 +661,7 @@ endif()
 # the spinel_rt.h types behind them). The receiver is therefore compiled with
 # the generated program's flags -- SP_MULTI_CTX is an ABI flag both sides must
 # share -- plus the gen/ dir for the header. The kernel .rb is the staged copy
-# in prebuild_scripts/spinel/ (rake spinel:gen copies it there with the core
+# in ruby/spinel/ (rake spinel:gen copies it there with the core
 # it requires); GEM makes the generation read its init and entries from the
 # file's own `# spinel-ext-init:` / `# spinel-ext-entry:` lines.
 set(SPINEL_GEM_RECEIVER_FLAGS "${SPINEL_GEN_TU_FLAGS};-I${FMRB_SPINEL_GEN_DIR}")
@@ -669,7 +669,7 @@ set(SPINEL_GEM_RECEIVER_FLAGS "${SPINEL_GEN_TU_FLAGS};-I${FMRB_SPINEL_GEN_DIR}")
 if(FMRB_FFT_SPINEL STREQUAL "1")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_FFT_SPINEL)
     generate_ruby_spinel_command(
-        ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/fft_kernel.rb
+        ${CMAKE_CURRENT_LIST_DIR}/ruby/spinel/fft_kernel.rb
         GEM ${FMRB_SPINEL_GEN_DIR})
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fft_kernel.c
         PROPERTIES COMPILE_OPTIONS
@@ -677,32 +677,32 @@ if(FMRB_FFT_SPINEL STREQUAL "1")
     # Only when the backend is in: without FMRB_FFT_SPINEL the receiver is
     # stubs and does not include the generated header.
     set_source_files_properties(
-        ${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
+        ${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
         PROPERTIES COMPILE_OPTIONS
         "${SPINEL_GEM_RECEIVER_FLAGS}")
 endif()
 
 # SpinelHello sample gem (always built).
 generate_ruby_spinel_command(
-    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/spinel_hello_kernel.rb
+    ${CMAKE_CURRENT_LIST_DIR}/ruby/spinel/spinel_hello_kernel.rb
     GEM ${FMRB_SPINEL_GEN_DIR})
 set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/spinel_hello_kernel.c
     PROPERTIES COMPILE_OPTIONS
     "${SPINEL_GEN_TU_FLAGS}")
 set_source_files_properties(
-    ${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
+    ${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
     PROPERTIES COMPILE_OPTIONS
     "${SPINEL_GEM_RECEIVER_FLAGS}")
 
 # Raycast gem (always built).
 generate_ruby_spinel_command(
-    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/raycast_kernel.rb
+    ${CMAKE_CURRENT_LIST_DIR}/ruby/spinel/raycast_kernel.rb
     GEM ${FMRB_SPINEL_GEN_DIR})
 set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/raycast_kernel.c
     PROPERTIES COMPILE_OPTIONS
     "${SPINEL_GEN_TU_FLAGS}")
 set_source_files_properties(
-    ${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-raycast/native/raycast_native.c
+    ${CMAKE_CURRENT_LIST_DIR}/../lib/gems/picoruby-fmrb-raycast/native/raycast_native.c
     PROPERTIES COMPILE_OPTIONS
     "${SPINEL_GEM_RECEIVER_FLAGS}")
 

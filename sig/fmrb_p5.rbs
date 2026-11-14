@@ -1,5 +1,5 @@
 # P5 — p5.js に似た書き方で絵を描く層。実装は
-# lib/add/picoruby-fmrb-app/mrblib/p5.rb。
+# lib/gems/picoruby-fmrb-app/mrblib/p5.rb。
 #
 # P5.new(gfx) で作り、fill や stroke で色を決めてから形を描く。
 # private のメソッドは書いていない。

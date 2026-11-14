@@ -2,7 +2,7 @@
  * @file fmrb_spx_app.h
  * @brief Spinel FFI shim for FmrbApp: an mrb-free C ABI wrapping the same
  *        app-lifecycle / system-info operations the mruby FmrbApp binding uses
- *        (lib/add/picoruby-fmrb-app/ports/esp32/app.c).
+ *        (lib/gems/picoruby-fmrb-app/ports/esp32/app.c).
  *
  * See fmrb_spx_gfx.h for the shared return convention. Structured results cross
  * the boundary as fixed-layout little-endian byte buffers returned via :binstr

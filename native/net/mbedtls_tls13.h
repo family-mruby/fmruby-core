@@ -7,7 +7,7 @@
  * mutual TLS accepts TLS 1.3 only (zenoh-link-tls fixes the version), so the
  * Zenoh TLS link (picoruby-asterism-zenoh's ports/posix/zp_tls_posix.c)
  * needs TLS 1.3, which in Mbed TLS 3.6 runs on PSA. Included after that file
- * through MBEDTLS_USER_CONFIG_FILE, which lib/add/family_mruby_native.rb
+ * through MBEDTLS_USER_CONFIG_FILE, which lib/upstream/family_mruby_native.rb
  * defines for the whole native libmruby (every object that reads an Mbed
  * TLS header sees the same configuration). The simulation and the browser
  * build do not read this file.

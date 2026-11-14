@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbToml (lib/add/picoruby-fmrb-app/mrblib/fmrb-toml.rb and
+# Host tests for FmrbToml (lib/gems/picoruby-fmrb-app/mrblib/fmrb-toml.rb and
 # the walk in ports/esp32/toml_walk.c): reading through tomlc99, and update,
 # which rewrites only the lines of the keys it is given.
 #

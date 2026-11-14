@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Host tests for FmrbAsterism::TableClient (doc/archive/app_refactor, R4:
-# lib/add/picoruby-fmrb-asterism/mrblib/table_client.rb), the device side
+# lib/gems/picoruby-fmrb-asterism/mrblib/table_client.rb), the device side
 # of a game host's table, on top of FmrbAsterism::Link (link.rb).
 #
 # The shipped files run here against stand-ins: a fake Asterism with a
@@ -30,7 +30,7 @@ def check(what, got, want)
 end
 
 ROOT = File.expand_path("../..", __dir__)
-DIR = "#{ROOT}/lib/add/picoruby-fmrb-asterism/mrblib"
+DIR = "#{ROOT}/lib/gems/picoruby-fmrb-asterism/mrblib"
 
 module FmrbConst
   PLATFORM = "linux"

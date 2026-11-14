@@ -18,7 +18,7 @@
 // Every per-app array in the firmware is sized by it, so raising it costs
 // memory whether or not the slots are ever filled -- which is why the device
 // targets stay at 9 and only the web build raises it (wasm/CMakeLists.txt and
-// lib/add/family_mruby_wasm.rb have to pass the SAME value, the rule the MRB_*
+// lib/upstream/family_mruby_wasm.rb have to pass the SAME value, the rule the MRB_*
 // layout defines already follow: the mrbgem ports size arrays by it too).
 //
 // This is the ceiling, not the policy. How many apps a running system will

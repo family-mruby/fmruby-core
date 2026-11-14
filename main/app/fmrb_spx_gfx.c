@@ -3,7 +3,7 @@
  * @brief Implementation of the Spinel FmrbGfx FFI shim (fmrb_spx_gfx.h).
  *
  * Each function reproduces the body of the matching mruby FmrbGfx method
- * (lib/add/picoruby-fmrb-app/ports/esp32/gfx.c) minus the mrb_get_args /
+ * (lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c) minus the mrb_get_args /
  * mrb_raise plumbing: it packs a gfx_cmd_t and hands it to the same host_task
  * GFX queue, or calls the same fmrb_gfx_* / fmrb_transport_* primitives. The
  * canvas id arrives as a plain int (the Spinel FmrbGfx object stores it as an

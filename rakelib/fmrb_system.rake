@@ -5,12 +5,12 @@
 # nobody opens in a test. `rake system:check` (part of `rake test`, so of
 # `rake regress`) finds such calls before that:
 #   - the names are the ones the mruby binding registers on FmrbSystem
-#     (lib/add/picoruby-fmrb-app/ports/esp32/app.c), so a method moved later is
+#     (lib/gems/picoruby-fmrb-app/ports/esp32/app.c), so a method moved later is
 #     covered without editing this file;
 #   - no `FmrbApp.<name>` (nor `FmrbApp.respond_to?(:<name>)`) for one of them
-#     in the tracked sources under flash/, main/, lib/, tools/, tool/,
+#     in the tracked sources under flash/, main/, lib/, tools/,
 #     native/, test/ and sig/;
-#   - the Spinel FmrbSystem (main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb)
+#   - the Spinel FmrbSystem (main/ruby/spinel/fmrb_app_base_spinel.rb)
 #     and sig/fmrb_system.rbs name the same methods as the mruby binding (the
 #     native program's own ones excepted where the mruby binding has them
 #     only there).
@@ -18,10 +18,10 @@
 require "open3"
 
 namespace :system do
-  SYSTEM_C = "lib/add/picoruby-fmrb-app/ports/esp32/app.c"
-  SYSTEM_SPINEL = "main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb"
+  SYSTEM_C = "lib/gems/picoruby-fmrb-app/ports/esp32/app.c"
+  SYSTEM_SPINEL = "main/ruby/spinel/fmrb_app_base_spinel.rb"
   SYSTEM_SIG = "sig/fmrb_system.rbs"
-  SYSTEM_DIRS = %w[flash main lib tools tool native test sig].freeze
+  SYSTEM_DIRS = %w[flash main lib tools native test sig].freeze
 
   desc "Check that no source calls a FmrbSystem method on FmrbApp, and that the engines and sig agree"
   task :check do

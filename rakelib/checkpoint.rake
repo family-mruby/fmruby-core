@@ -21,7 +21,7 @@ end
 # their own build (tools/ckpt_table/ckpt_table.cmake), again whenever libmruby
 # or the gem ports change. The devices (P4, S3) carry the gem from F6; their
 # tables are made here, on the host, from a host build of the same gems
-# (lib/add/family_mruby_ckpt_table.rb) and the gem ports compiled as the Linux
+# (lib/upstream/family_mruby_ckpt_table.rb) and the gem ports compiled as the Linux
 # targets compile them (tools/ckpt_table/CMakeLists.txt).
 namespace :checkpoint do
   CKPT_TABLE_TMP = File.join(ROOT_DIR, "tmp", "ckpt_table")
@@ -31,7 +31,7 @@ namespace :checkpoint do
     board = HW_TARGET.empty? ? "NARYAv3" : HW_TARGET
     of = ESP_CHIP == "esp32p4" ? "esp32p4" : "esp32"
     picoruby = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby")
-    config = File.join(ROOT_DIR, "lib/add/family_mruby_ckpt_table.rb")
+    config = File.join(ROOT_DIR, "lib/upstream/family_mruby_ckpt_table.rb")
     # the board's build defaults are in ENV already (the Rakefile); the
     # device's config file reads them as it does in the container
     env = { "MRUBY_CONFIG" => config, "FMRB_CKPT_TABLE_OF" => of, "FMRB_HW_TARGET" => board }

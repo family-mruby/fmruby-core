@@ -76,7 +76,7 @@ the family-mruby root CLAUDE.md):
 cp components/basic/test/samples/sample_04_screen_kana.bas flash/app/demo/_try.app.bas
 printf 'app_handle_name = "_try"\napp_screen_name = "try"\n' > flash/app/demo/_try.app.toml
 python3 - <<'EOF'
-import sys; sys.path.insert(0, "tool/debug")
+import sys; sys.path.insert(0, "tools/debug")
 from fmrb_dbg_client import FmrbDebugClient, TcpTransport
 c = FmrbDebugClient(TcpTransport("127.0.0.1", 5555)); c.connect()
 print(c.spawn("/app/demo/_try.app.bas")); c.close()

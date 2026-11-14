@@ -3,7 +3,7 @@
 # The NARYA v4 board is still being designed; its bring-up target is the
 # Waveshare ESP32-P4-Nano + Olimex MIPI-HDMI (LT8912B) combination, which the
 # final board uses as its reference design. This file is a copy of
-# sdkconfig.defaults.p4 (Tab5) that differs only where the two boards do:
+# sdkconfig.defaults.tab5 (Tab5) that differs only where the two boards do:
 # the chip revision and the SDIO wiring to the ESP32-C6.
 #
 # ESP32-P4 has NO built-in radio. Wireless is provided by an ESP32-C6
@@ -35,8 +35,8 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=360
 
 # Partition
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="config/partitions_p4.csv"
-CONFIG_PARTITION_TABLE_FILENAME="config/partitions_p4.csv"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="config/partitions_p4_common.csv"
+CONFIG_PARTITION_TABLE_FILENAME="config/partitions_p4_common.csv"
 
 # for task info
 CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2

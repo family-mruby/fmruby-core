@@ -36,7 +36,7 @@
 # The Wi-Fi page itself (its strings, list, password field and drawing) is
 # the one the devices' Wi-Fi window shows too (doc/wifi_settings):
 # WifiPageMixin, taken in at build time (rake native:mrb) by the line below.
-# combine: ../../main/prebuild_scripts/default_app/wifi/wifi_page.rb
+# combine: ../../main/ruby/default_app/wifi/wifi_page.rb
 
 class LinuxSettingsApp < FmrbApp
   include WifiPageMixin

@@ -1,5 +1,5 @@
 # M5Stack AtomS3R (ESP32-S3-PICO-1-N8R8: 8MB quad flash, 8MB octal PSRAM).
-# Derived from sdkconfig.defaults.n16r8 (Retro); the differences are the
+# Derived from sdkconfig.defaults.naryav3 (Retro); the differences are the
 # partition table, the flash size, the console on the S3's own
 # USB-Serial-JTAG and no USB host (doc/headless_s3/report/h0.md section 5,
 # approved 2026-10-12). BLE is in for the setup mode only (approved

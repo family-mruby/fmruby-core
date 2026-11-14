@@ -1742,7 +1742,7 @@ fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr) {
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
 
-// Dir.mkdir / Dir.rmdir under /mnt/host (the directory HAL, lib/add's
+// Dir.mkdir / Dir.rmdir under /mnt/host (the directory HAL, lib/upstream's
 // dir_hal.c): one directory, by the walk from the home.
 bool fmrb_hal_file_host_dir_change(const char *virtual_path, bool remove, int mode, int *out_ret) {
     char norm[512];

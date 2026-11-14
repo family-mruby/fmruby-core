@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Host tests for FmrbAsterism's settings (CF1:
-# lib/add/picoruby-fmrb-asterism/mrblib/fmrb-asterism.rb).
+# lib/gems/picoruby-fmrb-asterism/mrblib/fmrb-asterism.rb).
 #
 # Where a machine's router, node ID, name and credentials come from, and the
 # one-time move of the files before CF1 into /home/asterism/config.toml. The
@@ -40,7 +40,7 @@ def check(what, got, want)
 end
 
 ROOT = File.expand_path("../..", __dir__)
-GEM_FILE = "#{ROOT}/lib/add/picoruby-fmrb-asterism/mrblib/fmrb-asterism.rb"
+GEM_FILE = "#{ROOT}/lib/gems/picoruby-fmrb-asterism/mrblib/fmrb-asterism.rb"
 CREDS_FILE = ENV["ASTERISM_CREDENTIALS_RB"] ||
              "#{ROOT}/components/picoruby-esp32/picoruby/mrbgems/picoruby-asterism/mrblib/credentials.rb"
 TMP = Dir.mktmpdir("fmrb_asterism_test")

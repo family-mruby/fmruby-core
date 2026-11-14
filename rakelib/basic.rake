@@ -80,7 +80,7 @@ namespace :basic do
         puts "keeping #{bmp} (hand edits are the source now; FORCE=1 to overwrite)"
         next
       end
-      sh "ruby tool/basic/#{gen} --bmp #{bmp}"
+      sh "ruby tools/basic/#{gen} --bmp #{bmp}"
     end
   end
 
@@ -88,7 +88,7 @@ namespace :basic do
   task :sheet_convert do
     src = ENV["IN"] or abort "usage: rake basic:sheet_convert IN=sheet.png OUT=sheet.bmp"
     dst = ENV["OUT"] or abort "usage: rake basic:sheet_convert IN=sheet.png OUT=sheet.bmp"
-    sh "python3 tool/basic/basic_sheet_convert.py #{src} #{dst}"
+    sh "python3 tools/basic/basic_sheet_convert.py #{src} #{dst}"
   end
 
   desc "Copy the BASIC samples into flash/app/basic so the launcher lists them"

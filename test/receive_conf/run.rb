@@ -56,7 +56,7 @@ eval(src, TOPLEVEL_BINDING, "receive_conf.rb")
 
 # The kernel's reader, its method as it ships, on a stand-in with its two
 # constants.
-kernel = File.read("#{ROOT}/main/prebuild_scripts/kernel/fmrb_kernel.rb")
+kernel = File.read("#{ROOT}/main/ruby/kernel/fmrb_kernel.rb")
 class KernelStandIn
   RECEIVE_CONF = "#{HOME}/receive.toml"
   RECEIVE_CONF_SYS = "#{ETC}/receive.toml"

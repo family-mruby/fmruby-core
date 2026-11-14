@@ -1,4 +1,4 @@
-# 地図とタイル。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-tilemap.rb。
+# 地図とタイル。実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-tilemap.rb。
 #
 # TileSheet がタイルの絵の束、TileMap が地図のデータ、
 # TileRing は広い地図をなめらかに動かすための仕組み。

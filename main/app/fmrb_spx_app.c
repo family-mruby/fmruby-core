@@ -3,7 +3,7 @@
  * @brief Implementation of the Spinel FmrbApp FFI shim (fmrb_spx_app.h).
  *
  * Each function reproduces the body of the matching mruby FmrbApp method
- * (lib/add/picoruby-fmrb-app/ports/esp32/app.c) minus the mruby plumbing,
+ * (lib/gems/picoruby-fmrb-app/ports/esp32/app.c) minus the mruby plumbing,
  * packing structured results into fixed little-endian :binstr records.
  */
 #include "fmrb_spx_app.h"
@@ -822,7 +822,7 @@ int fmrb_spx_app_power_actions(void)
 
 int fmrb_spx_app_power(int action)
 {
-    /* The same checks as the mruby FmrbSystem.power (lib/add/picoruby-fmrb-app):
+    /* The same checks as the mruby FmrbSystem.power (lib/gems/picoruby-fmrb-app):
      * one action, and only one this machine offers. */
     uint32_t bit = (uint32_t)action;
     if (bit == 0 || (bit & (bit - 1)) != 0 || !(fmrb_platform_sys_power_actions() & bit)) {
@@ -1061,7 +1061,7 @@ int fmrb_spx_app_gc(void)
 }
 
 /* ---- Calls the mruby binding has and the Spinel side lacked (doc/codebase_tidy
- * T5): the same bodies as lib/add/picoruby-fmrb-app/ports/esp32/app.c. ---- */
+ * T5): the same bodies as lib/gems/picoruby-fmrb-app/ports/esp32/app.c. ---- */
 
 /* Copy a (str, len) argument into a NUL-terminated buffer; false when it does
    not fit. */
@@ -1141,7 +1141,7 @@ int fmrb_spx_app_notify(const char *summary, int slen, const char *body, int ble
 /* FmrbApp.linux_* : Linux commands in a terminal (fmrb_platform_sys.h). */
 #define SPX_LINUX_READ_CHUNK 4096
 FMRB_SPX_BSS_ATTR static char s_linux_why[160];
-static int s_linux_read_ended;
+FMRB_SPX_BSS_ATTR static int s_linux_read_ended;
 
 int fmrb_spx_app_linux_available(void)
 {

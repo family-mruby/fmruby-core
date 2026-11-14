@@ -13,7 +13,7 @@
  *   WebSocket itself instead of going through Emscripten's socket emulation.
  *   The socket is a slot number in that file's table.
  *
- * Single-threaded, WebSocket only (the configuration lib/add/
+ * Single-threaded, WebSocket only (the configuration lib/upstream/
  * family_mruby_wasm.rb builds); anything else is refused here so the types
  * cannot silently disagree with the build.
  */

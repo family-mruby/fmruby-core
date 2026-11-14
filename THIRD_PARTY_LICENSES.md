@@ -479,12 +479,12 @@ Repository: https://github.com/kirikak2/picoruby-midi
 License: MIT License (declared in each gem's mrbgem.rake; the upstream
 repositories ship no separate license text file)
 
-Note: The MIDI protocol layer (lib/add/picoruby-midi: midi_constants.rb,
-midi_device.rb) and the MML parser (lib/add/picoruby-midi-mml: midi_mml.rb)
+Note: The MIDI protocol layer (lib/gems/picoruby-midi: midi_constants.rb,
+midi_device.rb) and the MML parser (lib/gems/picoruby-midi-mml: midi_mml.rb)
 are partial, byte-identical imports from the Midori project by Toshio Maki
 (kirikak2). What was imported and what was deliberately left behind is
 documented in each gem's FAMILY_MRUBY_PORT.md. Family mruby's own transports,
-players and scheduler (lib/add/picoruby-fmrb-midi) are built on top of this
+players and scheduler (lib/gems/picoruby-fmrb-midi) are built on top of this
 protocol layer.
 --------------------------------------------------------------------------------
 
@@ -594,7 +594,7 @@ Family mruby uses a fork of it to give the editor completion, hover and
 diagnostics. It reaches this project in three forms:
 
 - vendor/picoruby-ti: the engine itself, not committed to this repository but
-  cloned at a pinned commit by `rake ti:setup` (see lib/add/PICORUBY_TI_PIN).
+  cloned at a pinned commit by `rake ti:setup` (see lib/upstream/PICORUBY_TI_PIN).
   The build copies it into the PicoRuby tree, so its C sources are compiled
   into the firmware and are present in the distributed binary. Only the engine
   is taken: the LSP/MCP server it also ships (written in Go) and that server's
@@ -903,8 +903,8 @@ see below and the zenoh-pico entry)
 
 Note: the Asterism mrbgems (remote Ruby objects, a ROS 2 node over rmw_zenoh,
 and the Zenoh binding Asterism::Zenoh) are not committed to this repository
-but cloned at pinned commits by `rake asterism:setup` (lib/add/ASTERISM_PIN,
-lib/add/PICORUBY_ASTERISM_ZENOH_PIN) and copied into the PicoRuby tree, so
+but cloned at pinned commits by `rake asterism:setup` (lib/upstream/ASTERISM_PIN,
+lib/upstream/PICORUBY_ASTERISM_ZENOH_PIN) and copied into the PicoRuby tree, so
 they are compiled into the Linux and ESP32-P4 firmware. The bundled ROS 2
 message types come from the asterism repository too (see the ROS 2 entry).
 Four files of picoruby-asterism-zenoh are derived from zenoh-pico and are

@@ -129,7 +129,7 @@ jobs:
 
       - name: Run host test suites
         # rake ti:test auto-clones the pinned engine into vendor/picoruby-ti
-        # (public HTTPS, see lib/add/PICORUBY_TI_PIN) on first use.
+        # (public HTTPS, see lib/upstream/PICORUBY_TI_PIN) on first use.
         run: rake test
 
       - name: Compare draw records

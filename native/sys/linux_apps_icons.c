@@ -22,7 +22,7 @@ static uint8_t rgb332(unsigned r, unsigned g, unsigned b)
 }
 
 /* An 8-bit BMP whose pixel bytes are RGB332 (the sprite loader reads them as
- * colours; the palette is there for image viewers), as tool/gen_icon_bmp.rb
+ * colours; the palette is there for image viewers), as tools/gen_icon_bmp.rb
  * writes them. Written to a temporary name and renamed into place. */
 static bool write_bmp(const char *path, const uint8_t *px, int w, int h)
 {

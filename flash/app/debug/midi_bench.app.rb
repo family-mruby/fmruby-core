@@ -16,7 +16,7 @@
 #
 # Run it with the debugger client rather than from the launcher:
 #
-#   python3 tool/debug/fmrb_dbg_client.py localhost:5555 spawn \
+#   python3 tools/debug/fmrb_dbg_client.py localhost:5555 spawn \
 #       path=/app/debug/midi_bench.app.rb
 #
 # Results go to the log (docker compose logs fmruby-core).

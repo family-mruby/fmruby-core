@@ -56,13 +56,13 @@ namespace :wasm do
   # wasm:setup, which is the M5GFX fetch). Both are wanted, and the root one
   # for the same reason the docker builds depend on it: the gem sources the
   # wasm build compiles are the COPIES under components/picoruby-esp32/picoruby,
-  # and root setup is what refreshes them from lib/add. Without it an edit under
-  # lib/add builds green and changes nothing.
+  # and root setup is what refreshes them from lib/gems. Without it an edit under
+  # lib/gems builds green and changes nothing.
   desc "Cross-build libmruby with emcc (host emsdk; run before wasm:core)"
   task :mruby => ["^setup", :setup] do
     wasm_emcmake! # same env check: emcc has to be on PATH
     picoruby = File.expand_path("components/picoruby-esp32/picoruby", ROOT_DIR)
-    config = File.expand_path("lib/add/family_mruby_wasm.rb", ROOT_DIR)
+    config = File.expand_path("lib/upstream/family_mruby_wasm.rb", ROOT_DIR)
     sh "cd #{picoruby} && MRUBY_CONFIG=#{config} rake"
     # libmruby carries both the stock allocator object (allocf.o, only
     # mrb_basic_alloc_func) and the estalloc replacement (alloc.o, which also
@@ -73,7 +73,7 @@ namespace :wasm do
   end
 
   # The browser build compiles the mruby apps from their PRE-GENERATED
-  # bytecode (main/prebuild_scripts/**/mrb/*.c), and only the ESP-IDF / Linux
+  # bytecode (main/ruby/**/mrb/*.c), and only the ESP-IDF / Linux
   # CMake build produces those. Editing an app's Ruby and building for wasm
   # alone therefore linked yesterday's bytecode without a word -- an hour went
   # into a shell command that "did not exist" because of it. This runs the two
@@ -124,6 +124,10 @@ namespace :wasm do
     # the bundle must put nothing there -- the placeholder that keeps the
     # directory in git would otherwise be unpacked over the mount.
     files = files.reject { |f| f.start_with?("flash/app/usr/") }
+    # The test apps (flash/app/test) stay in the development bundle, which the
+    # regression tools drive, and are left out of a published one (wasm:site,
+    # wasm:deploy set FMRB_RELEASE=1 before the bundle is made).
+    files = files.reject { |f| f.start_with?("flash/app/test/") } if ENV["FMRB_RELEASE"] == "1"
     files.each do |f|
       dest = File.join(staging, f.sub(%r{\Aflash/}, ""))
       mkdir_p File.dirname(dest)
@@ -307,7 +311,7 @@ namespace :wasm do
 
     payload = %w[core_web.js core_web.wasm core_web.data].map { |f| File.join(WASM_BUILD_DIR, f) }
     page    = [File.join(web, "main.js"), File.join(web, "crt.js"), File.join(web, "audio-worklet.js"),
-               File.join(ROOT_DIR, "tool/web/remote/keymap.js"),
+               File.join(ROOT_DIR, "tools/web/remote/keymap.js"),
                File.join(web, "vendor/coi-serviceworker.js")]
     version = wasm_dist_version(payload + page)
 
@@ -320,7 +324,7 @@ namespace :wasm do
     html = File.read(File.join(web, "index.html"))
     {
       %q{src="vendor/coi-serviceworker.js"}     => %Q{src="coi-serviceworker.js?v=#{version}"},
-      %q{src="../../tool/web/remote/keymap.js"} => %Q{src="keymap.js?v=#{version}"},
+      %q{src="../../tools/web/remote/keymap.js"} => %Q{src="keymap.js?v=#{version}"},
       %q{src="../build/core_web.js"}            => %Q{src="core_web.js?v=#{version}"},
       %q{src="crt.js"}                          => %Q{src="crt.js?v=#{version}"},
       %q{src="main.js"}                         => %Q{src="main.js?v=#{version}"},
@@ -357,8 +361,15 @@ namespace :wasm do
   # The .gz copies wasm:deploy makes are deliberately not carried over. They
   # exist for nginx's gzip_static; Pages compresses on its own, and shipping
   # them would double what the site repository carries forever.
+  # A published bundle goes without the test apps (wasm:webflash). Set before
+  # :dist makes the bundle; wasm/build/dist is then the release one until the
+  # next plain wasm:dist (the regression tools want that one).
+  task :release_bundle do
+    ENV["FMRB_RELEASE"] = "1"
+  end
+
   desc "Stage the bundle into the docs site for GitHub Pages (FMRB_SITE_DIR=path to family-mruby.github.io)"
-  task :site => :dist do
+  task :site => [:release_bundle, :dist] do
     # Where the site is checked out. tmp/ first: that is the working clone
     # inside this tree, and it is the one being published from; the sibling of
     # family-mruby is the other place it turns up. FMRB_SITE_DIR beats both.
@@ -382,7 +393,7 @@ namespace :wasm do
   end
 
   desc "Copy the built bundle to a host that serves it (FMRB_WEB_DEST=user@host:/path)"
-  task :deploy => :dist do
+  task :deploy => [:release_bundle, :dist] do
     dest = ENV["FMRB_WEB_DEST"] or
       abort "set FMRB_WEB_DEST, e.g. FMRB_WEB_DEST=host:/var/www/fmrb-web/ rake wasm:deploy"
     dist = File.join(WASM_BUILD_DIR, "dist")

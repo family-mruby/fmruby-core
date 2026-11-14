@@ -27,8 +27,8 @@ namespace :imu do
   # detector against synthetic walking and still data (host Ruby, no docker).
   desc "BMI270 driver and step detector tests (host Ruby, no docker)"
   task :test do
-    sh "ruby tool/imu/test/verify.rb"
-    sh "ruby tool/imu/test/step_detector_test.rb"
+    sh "ruby tools/imu/test/verify.rb"
+    sh "ruby tools/imu/test/step_detector_test.rb"
   end
 end
 
@@ -76,7 +76,7 @@ namespace :receive_conf do
 end
 
 namespace :msgpack do
-  # The kernel's msgpack (main/prebuild_scripts/spinel/msgpack_pure.rb) at
+  # The kernel's msgpack (main/ruby/spinel/msgpack_pure.rb) at
   # every integer width and boundary: on CRuby as a 64-bit and a 32-bit
   # machine, and compiled by Spinel as a 64-bit and a cc -m32 program when the
   # compiler is there (doc/asterism_file_transfer/report/t8d.md). Run it
@@ -91,7 +91,7 @@ namespace :services do
   # The service host's rules -- the toml subset, the system/user merge, the
   # error budget, the sleep calculation -- are plain Ruby with no files,
   # messages or clock in them, so registry.rb runs here as it ships. Run it
-  # after touching main/prebuild_scripts/default_app/services/.
+  # after touching main/ruby/default_app/services/.
   desc "Service host rule tests (host Ruby, no docker)"
   task :test do
     sh "ruby test/services/run.rb"
@@ -126,7 +126,7 @@ namespace :wav do
   # run without docker or a device -- which is what makes "the pitch survives
   # the rate conversion" checkable before anything is flashed. The file is
   # duplicated in fmruby-graphics-audio byte for byte, so this covers both
-  # backends. Run it after touching fmrb_wav.c or tool/gen_sine_wav.rb.
+  # backends. Run it after touching fmrb_wav.c or tools/gen_sine_wav.rb.
   WAV_TEST_DIR   = "test/wav"
   WAV_TEST_BUILD = "#{WAV_TEST_DIR}/build"
   WAV_RUNNER_BIN = "#{WAV_TEST_BUILD}/wav_test"

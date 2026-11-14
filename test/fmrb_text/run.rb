@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Host tests for FmrbText (fitting a text into a width), FmrbGfx#draw_button
-# and FmrbUI::HitAreas (click targets): lib/add/picoruby-fmrb-app/mrblib/
+# and FmrbUI::HitAreas (click targets): lib/gems/picoruby-fmrb-app/mrblib/
 # fmrb-text.rb, fmrb-gfx.rb and fmrb-ui.rb.
 #
 # All are plain Ruby over FmrbGfx#text_width, so the real gem files run
@@ -23,7 +23,7 @@ module FmrbConst
   THEME_BUTTON = 0x6D
 end
 
-GEM = File.expand_path("../../lib/add/picoruby-fmrb-app/mrblib", __dir__)
+GEM = File.expand_path("../../lib/gems/picoruby-fmrb-app/mrblib", __dir__)
 
 # The C half of FmrbGfx (gfx.c): record what is drawn.
 class FmrbGfx

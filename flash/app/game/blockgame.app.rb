@@ -61,7 +61,7 @@ class BlockGameApp < FmrbApp
   # ---- Sound ----
   # BGM is Korobeiniki (Russian folk song, public domain; our own
   # transcription and accompaniment). The score is
-  # flash/usr/share/music/korobeiniki.mml and tool/mml2fmsq.rb turns it into
+  # flash/usr/share/music/korobeiniki.mml and tools/mml2fmsq.rb turns it into
   # the .fmsq below, which the audio task loops on its own -- the game starts
   # it and never touches it again.
   BGM_SRC   = "/usr/share/music/korobeiniki.fmsq"

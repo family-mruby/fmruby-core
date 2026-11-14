@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 #
-# steps.rb - a step sensor on Asterism, played by tool/imu/step_send.rb (the
+# steps.rb - a step sensor on Asterism, played by tools/imu/step_send.rb (the
 # CRuby sender the step sensor app's readers are tried with), with
 # --measure: it also listens to the progress walk_scroller puts after the
 # frame that shows a step, so the counterpart sees what the screen shows.
@@ -14,7 +14,7 @@ module Regress
   module Counterparts
     class Steps < Base
       NODE = "rgsteps"
-      SENDER = File.join(CORE, "tool", "imu", "step_send.rb")
+      SENDER = File.join(CORE, "tools", "imu", "step_send.rb")
 
       def start
         Counterparts.wait_for("zenohd on 127.0.0.1:7447", 30) { Counterparts.listening?(7447) }

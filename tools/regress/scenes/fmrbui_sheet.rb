@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 #
-# A page of every FmrbUI widget (lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb),
+# A page of every FmrbUI widget (lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb),
 # written here rather than taken from an app: no shipped mruby app has a
 # text field, and the long-text cases (what app_refactor R6 makes FmrbUI
 # fit with FmrbText) need texts that are longer than their widgets on

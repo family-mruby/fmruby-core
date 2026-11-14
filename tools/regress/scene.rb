@@ -58,7 +58,7 @@ module Regress
     # Which profiles (Target) the app applies to.
     def on(&blk) = @d.filter = blk
     def setup(&blk) = @d.setups << blk
-    # More gem directories under lib/add/ whose mrblib/*.rb the app needs.
+    # More gem directories under lib/gems/ whose mrblib/*.rb the app needs.
     def gems(*names) = @d.gems.concat(names)
     # The window when the app has no .app.toml (a built-in app): w:, h:, name:, fullscreen:, hires:.
     def window(**kw) = @d.window = kw

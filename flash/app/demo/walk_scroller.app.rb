@@ -89,7 +89,7 @@
 #   brought to the graphics side at start (the first start after a change
 #   copies them, which takes long in the Linux simulator).
 #
-# From the PC (fmruby-core): ruby tool/imu/step_send.rb --help
+# From the PC (fmruby-core): ruby tools/imu/step_send.rb --help
 
 class WalkScrollerApp < FmrbApp
   APP = "walk"

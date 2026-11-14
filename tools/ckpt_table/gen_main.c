@@ -73,7 +73,7 @@ fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size)
     return FMRB_ERR_FAILED;
 }
 
-// The per-task pool accessors of the estalloc build (lib/patch alloc.c): one
+// The per-task pool accessors of the estalloc build (lib/upstream/patch alloc.c): one
 // VM, one pool.
 static void *current_est;
 void *fmrb_get_current_est(void) { return current_est; }

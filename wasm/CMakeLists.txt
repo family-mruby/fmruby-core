@@ -71,7 +71,7 @@ target_link_options(poc PRIVATE
 #
 # The firmware: hosted/hosted.cmake's shared set plus the browser's own
 # backends and entry point. The mruby ABI defines there MUST match
-# lib/add/family_mruby_wasm.rb the same way mruby_abi_defines.cmake matches
+# lib/upstream/family_mruby_wasm.rb the same way mruby_abi_defines.cmake matches
 # the other build_configs.
 
 set(LIBMRUBY_WASM ${FMRB_HOSTED_LIBMRUBY})
@@ -93,7 +93,7 @@ set(WASM_BACKEND_SRCS
 # --- zenoh-pico's platform layer (doc/ruby_asterism, B1) ---------------------
 #
 # The picoruby-asterism-zenoh gem compiles the zenoh-pico core into libmruby
-# for the Emscripten platform (lib/add/family_mruby_wasm.rb); the platform
+# for the Emscripten platform (lib/upstream/family_mruby_wasm.rb); the platform
 # files are ours (wasm/zenoh/: system layer and WebSocket link, without
 # ASYNCIFY) plus zenoh-pico's socket stubs. Same defines and include paths as
 # the gem's build, including the config.h the gem generates into the picoruby

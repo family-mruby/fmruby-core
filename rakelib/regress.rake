@@ -86,7 +86,7 @@
 #   rake regress:spinel    the Spinel C for the all-Spinel configuration (kernel,
 #                          editor and desktop), as CI's spinel-gen job makes
 #                          it: generation only, into tmp/regress/spinel/ (the
-#                          build's main/prebuild_scripts/spinel/gen is left
+#                          build's main/ruby/spinel/gen is left
 #                          alone); the compiler's refused lines on failure.
 #                          About 20 s
 #   rake regress:full      regress + regress:spinel + regress:size + regress:run +
@@ -145,7 +145,7 @@ namespace :regress do
   # with mruby, so a method the desktop calls that only the mruby binding of
   # FmrbApp has goes unnoticed until CI (doc/regression/report/
   # ci_develop_20261107.md). Generation only, no C compile; written into
-  # tmp/regress/spinel/, so the build's main/prebuild_scripts/spinel/gen and
+  # tmp/regress/spinel/, so the build's main/ruby/spinel/gen and
   # the staged gem sources are not touched.
   desc "Spinel C for the all-Spinel configuration (as CI's spinel-gen), into tmp/regress/spinel/; the refused lines on failure"
   task :spinel do

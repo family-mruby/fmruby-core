@@ -1,4 +1,4 @@
-# 絵を描くための道具。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb と
+# 絵を描くための道具。実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb と
 # ports/esp32/gfx.c。`_` で始まる内部用のメソッドは書いていない。
 #
 # 描くメソッドは自分自身を返すので、続けて書ける。
@@ -8,7 +8,7 @@
 #
 # FmrbGfx に混ぜてあるので、`@gfx.fit_text` のように呼ぶ。幅は呼んだ
 # 時点のフォントと文字の大きさで測る (text_width と同じ数字)。何も
-# 覚えない。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb。
+# 覚えない。実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-text.rb。
 #
 # ```ruby
 # s = @gfx.fit_text(name, 80)
@@ -18,7 +18,7 @@
 # Mixed into FmrbGfx, so call it on @gfx. Widths are measured with the
 # font and text size selected at the time of the call (the same numbers as
 # text_width). It remembers nothing. Implemented in
-# lib/add/picoruby-fmrb-app/mrblib/fmrb-text.rb.
+# lib/gems/picoruby-fmrb-app/mrblib/fmrb-text.rb.
 #
 # ```ruby
 # s = @gfx.fit_text(name, 80)

@@ -1,4 +1,4 @@
-# The kernel's msgpack reader (main/prebuild_scripts/spinel/msgpack_pure.rb)
+# The kernel's msgpack reader (main/ruby/spinel/msgpack_pure.rb)
 # at every integer width and its boundaries. Prints one line per case; run.rb
 # runs it on CRuby (with the Integer width set to 8 and to 4 bytes) and, when
 # the Spinel compiler is there, compiled by Spinel for 64-bit and 32-bit

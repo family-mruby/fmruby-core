@@ -2,7 +2,7 @@
 # headers (picoruby-esp32, main).
 #
 # MUST stay in sync with the rake side. The rake-side single source of truth is
-# the build_config files (lib/add/family_mruby_linux.rb / family_mruby_esp32.rb /
+# the build_config files (lib/upstream/family_mruby_linux.rb / family_mruby_esp32.rb /
 # family_mruby_esp32p4.rb): ABI defines live there, BEFORE the gembox loads,
 # because a define added from a gem's mrbgem.rake does not reach that gem's own
 # sources (its compiler is cloned before the mrbgem.rake body runs) and would
@@ -33,7 +33,7 @@ macro(fmrb_add_mruby_abi_defines)
   # Measurement build only, opt in with FMRB_GC_PROFILE=1 rake build:<target>.
   # Adds the GC pause histograms to GC.stat (doc/midi/report/p6.md). It grows
   # mrb_gc and therefore mrb_state, so it must be set on both sides of the
-  # boundary; the rake side (lib/add/family_mruby_*.rb) reads the same
+  # boundary; the rake side (lib/upstream/family_mruby_*.rb) reads the same
   # environment variable, which the Rakefile passes into the container.
   if("$ENV{FMRB_GC_PROFILE}" STREQUAL "1")
     add_compile_definitions(MRB_GC_PROFILE MRB_GC_STATS)

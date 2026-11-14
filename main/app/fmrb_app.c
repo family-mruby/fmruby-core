@@ -904,7 +904,7 @@ static bool report_mruby_result(fmrb_app_task_context_t* ctx, mrb_value task)
  * The app the file defines is started by the code in AUTOSTART_CALL after
  * the file's own code (doc/codebase_tidy, T3): appended to the source for a
  * file (load_script_file leaves room), and by the bytecode build
- * (main/prebuild_scripts/autostart.rb) for a built-in app. It runs in the
+ * (main/ruby/autostart.rb) for a built-in app. It runs in the
  * program's own Task at the depth the start code at the foot of every app
  * file used to run, so nothing is left over -- no second Task, no deeper VM
  * stack, and the checkpoint's host task is still the program's.
@@ -3059,7 +3059,7 @@ void fmrb_app_spinel_release(fmrb_app_task_context_t* ctx)
 /*
  * The mruby VM of the calling task, or NULL when this task runs none.
  *
- * Called from the compiler's prism allocator (lib/patch/compiler/
+ * Called from the compiler's prism allocator (lib/upstream/patch/compiler/
  * mruby-compiler2-ccontext.c), which used to allocate through one
  * process-wide mrb_state -- whichever VM compiled last. One VM per app on its
  * own task makes that the wrong VM as often as the right one, and a Spinel app

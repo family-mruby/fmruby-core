@@ -65,7 +65,7 @@ module Regress
     # family-mruby: docker-compose.yml, or FMRB_ROOT= (tree.rb)
     ROOT = Tree::ROOT
     COMPOSE = %w[docker compose -f docker-compose.yml -f docker-compose.headless.yml].freeze
-    DBG = File.join(CORE, "tool", "debug", "fmrb_dbg_client.py")
+    DBG = File.join(CORE, "tools", "debug", "fmrb_dbg_client.py")
     BOOT_MARKER = "main_loop started"
     BOOT_DONE = "Boot complete: switching to heartbeat"
     HOST_TIMEOUT = "waiting host timeout"

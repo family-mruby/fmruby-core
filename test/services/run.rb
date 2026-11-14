@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Host tests for the service host's rules
-# (main/prebuild_scripts/default_app/services/registry.rb).
+# (main/ruby/default_app/services/registry.rb).
 #
 # The host itself talks to files, Pub/Sub and the clock and can only be
 # checked in the simulator. What decides its *behaviour* does not: the toml
@@ -16,7 +16,7 @@
 #   ruby test/services/run.rb        (or: rake services:test)
 
 require_relative "../toml/host_toml"
-load File.expand_path("../../main/prebuild_scripts/default_app/services/registry.rb", __dir__)
+load File.expand_path("../../main/ruby/default_app/services/registry.rb", __dir__)
 
 # What the host does with a list: FmrbToml reads it, SvcConf takes the entries.
 def svc(text) = SvcConf.from_toml(text.nil? ? nil : FmrbToml.parse(text))

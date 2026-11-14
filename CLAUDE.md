@@ -53,7 +53,7 @@
   更新で入れ替わってよいもの (手本・サンプル・案内) は /usr/share/ 配下
   (samples/ services/ doc/) に置く。/home 自体は起動時に file HAL が作る。
 - .gitsubmoduleに含まれるディレクトリは直接編集禁止
-- .gitsubmoduleに含まれるディレクトリ以下を編集する際は、lib/add lib/patch lib/replace 以下にファイルを配置して、 Rakefile で、対象のファイルやディレクトリを追加、上書き、削除する。
+- .gitsubmoduleに含まれるディレクトリ以下を編集する際は、lib/gems (自作の gem) か lib/upstream (上流への差し込み・patch・replace) 以下にファイルを配置して、 Rakefile で、対象のファイルやディレクトリを追加、上書き、削除する。
 - sdkconfigおよびsdkconfig.defaults は編集禁止
   - sdkconfig に関する変更が必要なときは、編集せずに、提案すること
 - mrbgem で ESP32やFreeRTOSのヘッダを利用するものは、`components/picoruby-esp32/CMakeLists.txt` の `set(PICORUBY_SRCS` でビルド管理する。
@@ -160,7 +160,7 @@ fmruby-coreは、WSL2で動くコンテナで実行する
 - ATOM のビルドが通らないことを不具合として追わない。再開する時にまとめて
   直す。
 - 一方で**ATOM を意図的に除外している箇所は壊さないこと**。WiFi 関連
-  (`lib/add/family_mruby_esp32.rb` の networking gem、`components/
+  (`lib/upstream/family_mruby_esp32.rb` の networking gem、`components/
   picoruby-esp32/CMakeLists.txt` の socket ポート、`FMRB_HAS_WIFI`) は
   ATOM を除外する条件で書いてある。ATOM は WiFi を無効にしたままなので、
   再開時もこの区別は必要。

@@ -1,7 +1,7 @@
 # Settings for the WebAssembly (browser) build -- doc/wasm/.
 #
 # The web bundle stages ONLY git-tracked flash/ content plus this file, so
-# nothing personal or secret can reach it. Based on system_conf_p4.toml: the
+# nothing personal or secret can reach it. Based on system_conf_tab5.toml: the
 # wasm build reuses the Modern in-process display path (display_mode is not
 # consulted on wasm; the value stays for the shared parser). No radios, no
 # remote desktop.

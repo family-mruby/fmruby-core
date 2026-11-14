@@ -2,7 +2,7 @@ set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
 
 # Set platform-specific build configuration and dependencies
 if(IDF_TARGET STREQUAL "linux")
-    set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_linux.rb")
+    set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/upstream/family_mruby_linux.rb")
     set(MRUBY_BUILD_DIR "family-mruby-linux")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/family-mruby-linux/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/family-mruby-linux/mrbgems)
@@ -24,10 +24,10 @@ else()
     # esp32* targets, RISC-V for the Modern esp32p4 target. Separate build dir
     # per ISA so objects never get mixed.
     if(IDF_TARGET STREQUAL "esp32p4")
-        set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_esp32p4.rb")
+        set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/upstream/family_mruby_esp32p4.rb")
         set(MRUBY_BUILD_DIR "esp32p4")
     else()
-        set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_esp32.rb")  # ESP32ビルド用
+        set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/upstream/family_mruby_esp32.rb")  # ESP32ビルド用
         set(MRUBY_BUILD_DIR "esp32")
     endif()
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/${MRUBY_BUILD_DIR}/lib/libmruby.a)
@@ -143,12 +143,12 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-gpio-proxy/gpio.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/upstream/picoruby-gpio-proxy/gpio.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-adc/ports/esp32/adc.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-spi/ports/esp32/spi.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/esp32/rng.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-pwm/ports/esp32/pwm.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-rmt-proxy/rmt.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/upstream/picoruby-rmt-proxy/rmt.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-watchdog/ports/esp32/watchdog.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
@@ -157,18 +157,18 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/hmac.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/md.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/pkey.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-i2c-proxy/i2c.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/upstream/picoruby-i2c-proxy/i2c.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-require/ports/esp32/platform.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/hal-esp32-dir/dir_hal.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/upstream/hal-esp32-dir/dir_hal.c
     )
 
     # Ruby networking (picoruby-socket) ESP-IDF port: every WiFi-capable
     # target -- P4 (radio on the C6) and Narya S3 (native radio). ATOM keeps
     # WiFi off, so its build config omits the gems and these sources too.
-    # The gems are enabled in lib/add/family_mruby_esp32{,p4}.rb; these
+    # The gems are enabled in lib/upstream/family_mruby_esp32{,p4}.rb; these
     # sources use ESP-IDF LwIP (BSD sockets) and mbedTLS. tcp_socket.c is
-    # patched via lib/patch/picoruby-socket (default timeouts).
+    # patched via lib/upstream/patch/picoruby-socket (default timeouts).
     if(IDF_TARGET STREQUAL "esp32p4" OR
        (IDF_TARGET STREQUAL "esp32s3" AND NOT FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY"))
         list(APPEND PICORUBY_SRCS
@@ -183,7 +183,7 @@ else()
     # Zenoh client (picoruby-asterism-zenoh, doc/ruby_asterism): every P4, and
     # an S3 built with FMRB_ASTERISM=1 (NARYAv3, AtomS3R, StickS3 by default;
     # see the Rakefile), like
-    # the gem in lib/add/family_mruby_esp32p4.rb / family_mruby_esp32.rb, which
+    # the gem in lib/upstream/family_mruby_esp32p4.rb / family_mruby_esp32.rb, which
     # read the same variable inside the container. The rake build compiles the
     # zenoh-pico core and the gem; the platform files that need ESP-IDF
     # headers are compiled here: the gem's system layer (zenoh-pico's ESP-IDF
@@ -231,7 +231,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
     # picoruby-ti: only the public API headers. The engine's own sources are
     # compiled by the rake mruby build (it is an ordinary mrbgem, see
-    # lib/add/family_mruby.gembox), NOT here -- listing them in PICORUBY_SRCS
+    # lib/upstream/family_mruby.gembox), NOT here -- listing them in PICORUBY_SRCS
     # too builds all 22 of them a second time into this component's archive.
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-ti/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
@@ -283,7 +283,7 @@ fmrb_add_mruby_abi_defines()
 #
 # NOT an ABI define (no struct changes), but it still has to match the rake side:
 # vm.c is compiled by the rake mruby build and task_hal.c here. Both read this
-# one environment variable inside the container (see lib/add/family_mruby_*.rb),
+# one environment variable inside the container (see lib/upstream/family_mruby_*.rb),
 # so they cannot disagree. Getting it onto only one side is not silent: without
 # vm.c nothing ticks, and without task_hal.c the link fails on
 # mrb_hal_task_self_tick.

@@ -122,16 +122,16 @@ namespace :build do
     # Select sdkconfig.defaults based on HW target
     # All configs are under config/ directory
     hw_config = {
-      'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8',
-                          system_conf: 'config/system_conf_n8r8.toml' },
+      'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.atom_display',
+                          system_conf: 'config/system_conf_atom_display.toml' },
       # Family mruby Modern (ESP32-P4). TAB5 = M5Stack Tab5 (current dev
       # board); NARYAv4 = the dedicated P4 board being designed, brought up on
       # a Waveshare ESP32-P4-Nano + Olimex MIPI-HDMI. The two share the
       # partition table (both 16MB) but not the chip revision or the C6 wiring,
       # so they get their own sdkconfig/system_conf pair each.
       # cmake/check_storage_inputs.cmake mirrors this table -- change both.
-      'TAB5'         => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.p4',
-                          system_conf: 'config/system_conf_p4.toml' },
+      'TAB5'         => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.tab5',
+                          system_conf: 'config/system_conf_tab5.toml' },
       'NARYAv4'      => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.naryav4',
                           system_conf: 'config/system_conf_naryav4.toml' },
       # M5Stack AtomS3R (ESP32-S3, 8MB flash): draws on its own 128x128 LCD
@@ -144,8 +144,8 @@ namespace :build do
       'STICKS3'      => { chip: 'esp32s3', sdkconfig: 'config/sdkconfig.defaults.atoms3r',
                           system_conf: 'config/system_conf_sticks3.toml' },
     }
-    default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
-    default_system_conf = 'config/system_conf_n16r8.toml'
+    default_sdkconfig = 'config/sdkconfig.defaults.naryav3'
+    default_system_conf = 'config/system_conf_naryav3.toml'
 
     sdkconfig_path = default_sdkconfig
     system_conf_path = default_system_conf
@@ -216,6 +216,10 @@ namespace :build do
     #   CMAKE_OPTS="-DFMRB_LINK_TRANSPORT=SPI" rake build:esp32
     cmake_opts = "-DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\""
     cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}" unless hw_target.empty?
+    # A release image leaves the test apps (flash/app/test) out of storage
+    # (top-level CMakeLists.txt). Passed both ways, as CMake keeps a -D value
+    # in its cache: FMRB_RELEASE=1 is set by the release workflow.
+    cmake_opts += " -DFMRB_RELEASE=#{ENV['FMRB_RELEASE'] == '1' ? 'ON' : 'OFF'}"
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end

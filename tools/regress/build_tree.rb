@@ -12,7 +12,7 @@
 #   build/                                  -> build.regress.saved/
 #   sdkconfig                               -> sdkconfig.regress.saved
 #   components/picoruby-esp32/picoruby/build/*  (the libmruby per chip)
-#   main/prebuild_scripts/spinel/gen/*      (generated for one platform)
+#   main/ruby/spinel/gen/*      (generated for one platform)
 #   flash/etc/<generated>                   (system_conf, services, ...: the
 #                                            sim reads flash/ directly)
 #                                           -> build.regress-aside.saved/
@@ -40,7 +40,7 @@ module Regress
     STASH_SDK = "sdkconfig.regress.saved"
     STASH_ASIDE = "build.regress-aside.saved"
     PICORUBY_BUILD = "components/picoruby-esp32/picoruby/build"
-    SPINEL_GEN = "main/prebuild_scripts/spinel/gen"
+    SPINEL_GEN = "main/ruby/spinel/gen"
     GENERATED_ETC = %w[system_conf.toml system_conf.factory.toml services.toml associations.toml
                        secrets.toml wifi.toml].map { |f| "flash/etc/#{f}" }.freeze
 

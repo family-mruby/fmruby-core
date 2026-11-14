@@ -1,5 +1,5 @@
-# アプリの土台。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb と
-# ports/esp32/app.c、Spinel 版は main/prebuild_scripts/spinel/
+# アプリの土台。実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb と
+# ports/esp32/app.c、Spinel 版は main/ruby/spinel/
 # fmrb_app_base_spinel.rb。
 #
 # 省略可能引数とキーワード引数は型推論エンジンが扱えないので、よく使う

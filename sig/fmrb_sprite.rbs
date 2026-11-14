@@ -1,5 +1,5 @@
 # うごく絵 (スプライト) と、まとめ描き。実装は
-# lib/add/picoruby-fmrb-app/mrblib/fmrb-sprite.rb と gfx_block.rb。
+# lib/gems/picoruby-fmrb-app/mrblib/fmrb-sprite.rb と gfx_block.rb。
 #
 # SpriteImage が絵そのもの、SpriteInstance が画面のどこに置くか。
 # 一枚の絵を何個も置ける。

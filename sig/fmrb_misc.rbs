@@ -1,5 +1,5 @@
 # その他。言葉の切りかえと、ファイルの読み書き。
-# 実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-i18n.rb と picoruby の File。
+# 実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-i18n.rb と picoruby の File。
 
 # 日本語と英語で表示を切りかえる。
 module FmrbI18n

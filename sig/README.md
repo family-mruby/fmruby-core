@@ -37,7 +37,7 @@
 ## 要約 (1 行目) は 112 バイトまで
 
 エディタは要約を **112 バイトの箱にコピーして持つ** (`ET_DOC_MAX`、
-lib/add/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
+lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
 はみ出した分は**黙って切られる**。
 
 **二か国語を 1 行に載せると届く**ので、`日本語 <<en>> English` の全体で

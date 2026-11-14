@@ -1,4 +1,4 @@
-# 音を鳴らす。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb と
+# 音を鳴らす。実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb と
 # nsf-header.rb。
 #
 # FmrbAudio はアプリが持っている音の係。曲を鳴らすのと、

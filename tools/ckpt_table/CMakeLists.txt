@@ -3,7 +3,7 @@
 # `rake checkpoint:table` configures and builds this).
 #
 #   -DFMRB_CKPT_OF=esp32 | esp32p4   the libmruby: picoruby build ckpt-table-<of>
-#                                    (lib/add/family_mruby_ckpt_table.rb)
+#                                    (lib/upstream/family_mruby_ckpt_table.rb)
 #   -DIDF_TARGET=esp32s3 | esp32p4   the chip and
 #   -DFMRB_HW_TARGET=TAB5 | ...      the board: their definitions are fmrb_hw_defines.cmake's
 #   -DFMRB_CKPT_OUT=file.c           the table

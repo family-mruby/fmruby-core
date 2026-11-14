@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Host tests for FmrbAsterism::Link (doc/archive/app_refactor, R1:
-# lib/add/picoruby-fmrb-asterism/mrblib/link.rb), the part that keeps an
+# lib/gems/picoruby-fmrb-asterism/mrblib/link.rb), the part that keeps an
 # application connected.
 #
 # The shipped file runs here against stand-ins: a fake Asterism (connect
@@ -31,7 +31,7 @@ def check(what, got, want)
 end
 
 ROOT = File.expand_path("../..", __dir__)
-LINK_FILE = "#{ROOT}/lib/add/picoruby-fmrb-asterism/mrblib/link.rb"
+LINK_FILE = "#{ROOT}/lib/gems/picoruby-fmrb-asterism/mrblib/link.rb"
 
 module Machine
   @ms = 0
