@@ -149,7 +149,16 @@ class OpenRun
     write("home/pick.fmdef", "def\n")
     write("home/note.txt", "note\n")
     write("home/odd.fmnone", "odd\n")
-    write("home/hello.rb", "Log.info(\"wl_open_check: hello.rb ran\")\n")
+    # An app class that ends itself: a file without one now ends in the
+    # "No app class" error dialog, which would take the next clicks.
+    write("home/hello.rb", <<~RUBY)
+      class HelloApp < FmrbApp
+        def on_create
+          Log.info("wl_open_check: hello.rb ran")
+          stop
+        end
+      end
+    RUBY
     # Lists two directories the way the File Manager does, to find rows.
     write("home/lister.app.rb", <<~RUBY)
       class ListerApp < FmrbApp
