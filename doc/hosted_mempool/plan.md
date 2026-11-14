@@ -15,7 +15,7 @@ ESP-Hosted は転送用のバッファ (1 個 1,664 B、DMA で読み書きで�
 
 ## 方針 (2026-10-06 ユーザ決定)
 
-- 案 1 を採る: `CONFIG_ESP_HOSTED_USE_MEMPOOL=n` を `config/sdkconfig.defaults.p4` と
+- 案 1 を採る: `CONFIG_ESP_HOSTED_USE_MEMPOOL=n` を `config/sdkconfig.defaults.tab5` と
   `config/sdkconfig.defaults.naryav4` に入れる。使い終わったバッファは毎回ヒープに返る。
 - 採用は測ってから決める。心配は 2 つ: 通信ごとの確保と解放による速さの低下と、内蔵 RAM の細切れ
   (一番大きく取れる空きが小さくなること。アプリ 1 本の起動に 24 KB の連続した領域が要る)。

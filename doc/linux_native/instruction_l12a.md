@@ -2,7 +2,7 @@
 
 > 計画: doc/linux_native/plan.md (段取りの L12)。
 > 前段の結果: report/l9a.md 〜 l9e.md (コンポジタ)、エディタのクリップボードは
-> `main/prebuild_scripts/default_app/editor/clipboard.rb` (今はエディタの中だけ)
+> `main/ruby/default_app/editor/clipboard.rb` (今はエディタの中だけ)
 
 ## ユーザの決定 (2026-10-28、変えない)
 
@@ -45,7 +45,7 @@
 ## 触ってよい範囲
 
 - fmruby-core: `main/kernel/`、`components/`、`lib/add/` (ガード付き)、
-  `main/prebuild_scripts/` (kernel・エディタ・Shell)、`native/`、`hosted/`、
+  `main/ruby/` (kernel・エディタ・Shell)、`native/`、`hosted/`、
   `wasm/` (ブラウザのクリップボード)、`test/`、`rakelib/`、`tools/regress/`、
   `doc/linux_native/report/`、`doc/regression/usage.md`、`sig/` (Ruby の口の型。
   直したら `rake clean` の注意は sig/README.md)。

@@ -43,7 +43,7 @@ end                             while i < n
 
 - **`arr.size` はループ外に持ち上げる** (毎周のメソッド呼び出しを消す)。
 - 実例: launcher / taskbar / desktop の熱経路は全部この形で書いてある
-  (`main/prebuild_scripts/kernel/system_desktop/launcher.rb` ほか)。
+  (`main/ruby/kernel/system_desktop/launcher.rb` ほか)。
 - 例外: 1 度しか回らない・数要素だけ・コールドパス、なら `each` で良い。
   読みやすさを捨てるのは熱いところだけ。
 

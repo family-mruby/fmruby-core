@@ -2,7 +2,7 @@
 
 > 状態: 指示 | 更新: 2026-10-19 | 麻雀の BGM (NSF を APU の MAIN で鳴らす) が効果音 (SUB) と同じ大きさで混ざり、大きすぎる。アプリから変えられるのは端末全体の音量だけ。BGM (MAIN 側) だけを下げる口を作り、麻雀の BGM ボタンを 切/小/中/大 にする
 
-前提: fmruby-core の音声処理 (`main/drivers/audio_p4/audio_p4_task.c`: NSF・FMSQ を MAIN、note_on を SUB で鳴らし、`apuif_process_mix` で 2 つを混ぜ、WAV を足し、出力段で端末全体の音量 `s_out_gain_q16`)、`apuif_process_mix` の実体 (どのコンポーネントか読んで確かめる)、アプリの口 `FmrbAudio` (`lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb`、`sig/fmrb_audio.rbs`、`flash/help/FmrbAudio.*.md`、kernel への `MSG_TYPE_APP_AUDIO` の命令 → 音声のタスク)、ブラウザ版 (wasm) は同じ C を使う、Retro (S3 + WROVER) は fmruby-graphics-audio の音声のタスク (`main/tasks/audio_task.c` など) で同じ 2 つの APU を混ぜる。`doc/reference/audio_output.md`。麻雀アプリの音 `flash/app/game/mahjong/mahjong_sound.rb` (MJ11: BGM の入り切り `bgm = true|false` を `/home/mahjong.toml` に保存、ボタン「BGM 入/切[B]」)。
+前提: fmruby-core の音声処理 (`main/drivers/audio_p4/audio_p4_task.c`: NSF・FMSQ を MAIN、note_on を SUB で鳴らし、`apuif_process_mix` で 2 つを混ぜ、WAV を足し、出力段で端末全体の音量 `s_out_gain_q16`)、`apuif_process_mix` の実体 (どのコンポーネントか読んで確かめる)、アプリの口 `FmrbAudio` (`lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb`、`sig/fmrb_audio.rbs`、`flash/help/FmrbAudio.*.md`、kernel への `MSG_TYPE_APP_AUDIO` の命令 → 音声のタスク)、ブラウザ版 (wasm) は同じ C を使う、Retro (S3 + WROVER) は fmruby-graphics-audio の音声のタスク (`main/tasks/audio_task.c` など) で同じ 2 つの APU を混ぜる。`doc/reference/audio_output.md`。麻雀アプリの音 `flash/app/game/mahjong/mahjong_sound.rb` (MJ11: BGM の入り切り `bgm = true|false` を `/home/mahjong.toml` に保存、ボタン「BGM 入/切[B]」)。
 
 言葉: 文書は常体、「確かめ」ではなく「確認」。コードのコメントは英語。画面の言葉は日本語。
 
@@ -35,7 +35,7 @@
 
 ## 5. 範囲・決まり
 
-- **触ってよいもの**: fmruby-core (音声処理の C、`lib/add/picoruby-fmrb-app`、sig、help、`flash/app/game/mahjong/`、`tools/mahjong_overflow/`、doc)、fmruby-graphics-audio (音声のタスクの命令と MAIN の音量)。develop に直接コミットしてよい (fmruby-graphics-audio は develop か main か、履歴に合わせる)。
+- **触ってよいもの**: fmruby-core (音声処理の C、`lib/gems/picoruby-fmrb-app`、sig、help、`flash/app/game/mahjong/`、`tools/mahjong_overflow/`、doc)、fmruby-graphics-audio (音声のタスクの命令と MAIN の音量)。develop に直接コミットしてよい (fmruby-graphics-audio は develop か main か、履歴に合わせる)。
 - **触らないもの**: 牌のシート `tiles_hand.bmp` / `tiles_river.bmp` (ユーザの手書き)、asterism-*、VPS、GitHub の設定、Tab5 (シリアル・WiFi)。
 - push・タグはしない。`git commit -a` は使わない。コミットの末尾は `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。件名は履歴に合わせる (`audio, game: ...` など)。
 - 起こしたもの (sim、ブラウザ) は片付ける (sim_down)。docker の prune はしない。

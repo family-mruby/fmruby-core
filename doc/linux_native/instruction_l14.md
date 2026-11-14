@@ -50,7 +50,7 @@
 ## 触ってよい範囲
 
 - fmruby-core: `native/`、`hosted/`、`config/machines/`、`main/kernel/` の
-  `fmrb_platform_sys` の口、`main/prebuild_scripts/kernel/` (デスクトップの
+  `fmrb_platform_sys` の口、`main/ruby/kernel/` (デスクトップの
   ダイアログ・メニューバー、PC だけの部分は機種で切り替える)、`lib/add/` の
   該当箇所、`native/package/`、`test/`、`rakelib/`、`tools/regress/`、`sig/`、
   `doc/linux_native/report/`、`doc/regression/usage.md`。

@@ -72,7 +72,7 @@ spinel_q15 の所要の 88% が前処理)。→ [[project_fft_engine_bench]]、
 
 ## 実例(最小形) — 繰り返し呼ぶ entry の書き方
 
-実装は `lib/add/picoruby-fmrb-fft/spinel/fft_spinel.rb`。核はこれだけ:
+実装は `lib/gems/picoruby-fmrb-fft/spinel/fft_spinel.rb`。核はこれだけ:
 
 ```ruby
 # entry の top-level = fmrb_fft_spinel_run() 1 回で 1 度実行される本体。

@@ -9,7 +9,7 @@ zenoh-pico の調査結果は zenoh_idea.md の 5 章 (ポーリング) と 8 �
 
 ### 1.1 zenoh-pico の取り込み
 
-- `lib/add/ZENOH_PICO_PIN` を作る。書式は `lib/add/PICORUBY_TI_PIN` と同じ (`repo:` / `branch:` または tag /
+- `lib/add/ZENOH_PICO_PIN` を作る。書式は `lib/upstream/PICORUBY_TI_PIN` と同じ (`repo:` / `branch:` または tag /
   `commit:`、先頭に # の説明)。版は **1.10.0 以上の最新のリリースのタグ**の commit に固定する。
 - Rakefile の既存の `read_pin_file` を使い、`rake zenoh:setup` で `vendor/zenoh-pico` (gitignore) に取得する
   (`rakelib/ti.rake` の流儀にそろえる)。`rake build:linux` の前に未取得なら取得されるようにする
@@ -38,7 +38,7 @@ zenoh-pico の調査結果は zenoh_idea.md の 5 章 (ポーリング) と 8 �
   溢れたら古いものを捨て、捨てた数を数えて取れるようにする。
 - 後始末: `close` を呼ばずにアプリが終わっても漏れないこと (mruby のオブジェクトの解放でセッションと
   購読を閉じる)。Z1 のゴール 3 (開き直し) はこれの確認。
-- **Linux だけでリンクする**: `lib/add/family_mruby_linux.rb` に足す。ESP32 / wasm のビルド構成
+- **Linux だけでリンクする**: `lib/upstream/family_mruby_linux.rb` に足す。ESP32 / wasm のビルド構成
   (`family_mruby_esp32*.rb` / `family_mruby_wasm.rb`、`components/picoruby-esp32/CMakeLists.txt`) には
   入れない。
 
@@ -82,7 +82,7 @@ zenoh-pico の調査結果は zenoh_idea.md の 5 章 (ポーリング) と 8 �
 
 ## 3. 触ってよい範囲
 
-- fmruby-core: `lib/add/ZENOH_PICO_PIN`、`lib/add/picoruby-zenoh/`、`lib/add/family_mruby_linux.rb`、
+- fmruby-core: `lib/add/ZENOH_PICO_PIN`、`lib/add/picoruby-zenoh/`、`lib/upstream/family_mruby_linux.rb`、
   Rakefile / `rakelib/` (zenoh の取得とビルドの追加だけ)、`.gitignore` (vendor/zenoh-pico)、
   `flash/app/test/` の試しのアプリ、`doc/ruby_asterism/report/z1.md`。
 - 親リポジトリ: `docker-compose*.yml` (zenohd の追加)、`tools/fmrb_zenoh.rb`、必要なら `tools/mcp/` の最小の修正。

@@ -226,9 +226,9 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   report/p5.md)。Modern 限定ゲートは根拠が無いので未作成。
 - P6 (任意): PC 側 LSP/MCP。同じ sig から picoruby-ti-lsp を建てて
   VSCode/Vim/Claude から FMRB アプリの型支援を使えるようにする。
-- P7 (任意): WebConsole (tool/web) のブラウザ内型支援。**完了
+- P7 (任意): WebConsole (tools/web) のブラウザ内型支援。**完了
   (2026-08-12, report/p7.md)**。WASM 経路一本で補完/ホバー/診断/F1/言語
-  トグルがブラウザ内完結 (`rake ti:wasm` -> tool/web/wasm/ti.js + ti.wasm
+  トグルがブラウザ内完結 (`rake ti:wasm` -> tools/web/wasm/ti.js + ti.wasm
   415KB + help.json)。**実機も BLE も不要**。前提どおり mruby は入らず
   (PRISM_XALLOCATOR 未定義 = prism が malloc)、**fork 無改修**で通った。
   速さは 22.7KB = 11.4 ms (Tab5 実機の 417 ms の約 1/37) なので、実機の

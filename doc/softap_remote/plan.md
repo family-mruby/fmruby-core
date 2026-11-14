@@ -23,7 +23,7 @@
   SoftAP の `http://192.168.4.1/` も平文なので、iPhone では最初から MJPEG
   一本。H.264 は対象外。https (自己署名) も本計画では扱わない。
 - **機体側の追加は AP モードと共通鍵の 2 つだけ**。作業の本体はビューア
-  (tool/web/remote/、EMBED_FILES で機体に埋込) の携帯端末対応。
+  (tools/web/remote/、EMBED_FILES で機体に埋込) の携帯端末対応。
 - 入力の規約 (/ws のバイナリ: 絶対座標のマウス、HID scancode のキー) は
   変えない。機体はどの経路でも「USB キーボードが打った」のと同じものを
   受けるので、アプリは無改修。
@@ -36,7 +36,7 @@
 モード (秘密でない) は system_conf、鍵 (秘密) は wifi.toml。
 
 ```toml
-# config/system_conf_p4.toml (naryav4 / ヘッドレスも同じ)
+# config/system_conf_tab5.toml (naryav4 / ヘッドレスも同じ)
 [network]
 wifi_mode = "sta"        # "sta" | "ap" | "apsta"
 ```
@@ -99,7 +99,7 @@ token = "..."            # 遠隔画面と dev_remote_ctl の共通鍵
    (環境変数か設定ファイル)。token を要求する機体に対して従来の道具が
    黙って失敗しないこと。
 
-### 段階 C: 携帯端末向けビューア (tool/web/remote/)
+### 段階 C: 携帯端末向けビューア (tools/web/remote/)
 
 1. **触る操作**: touchstart / touchmove / touchend を mouse_button /
    mouse_move に写す。タップ = 左クリック、長押し = 右クリック、動かす =
@@ -177,4 +177,4 @@ token = "..."            # 遠隔画面と dev_remote_ctl の共通鍵
   LAN 内」前提だった。段階 B で改める)。
 - doc/ruby_asterism/node_variants.md 3.6: 発端の検討。
 - main/drivers/wifi/wifi_task.c、main/drivers/remote_desktop/rd_http.c、
-  tool/web/remote/、tools/fmrb_input.rb (逆引き表の元)。
+  tools/web/remote/、tools/fmrb_input.rb (逆引き表の元)。

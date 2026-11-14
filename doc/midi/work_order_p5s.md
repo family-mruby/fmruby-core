@@ -160,7 +160,7 @@ sim では pin manager が動かない (ESP32 のみ) ので**動作確認はで
    `ApuTransport` と serial transport の両方へ流し、
    **音高 (MIDI ノート番号) と発音間隔が一致する**ことを確認する。
    P4 でプレーヤが出力先を知らない設計にした狙いが、ここで効くはず。
-5. ホストで走る単体テスト (`tool/midi/test/`) を優先する。
+5. ホストで走る単体テスト (`tools/midi/test/`) を優先する。
    CIN ごとのバイト長やランニングステータスの判断は、**UART を通さずに
    テストできる**はず。
 
@@ -180,7 +180,7 @@ sim では pin manager が動かない (ESP32 のみ) ので**動作確認はで
 
 - 報告は `doc/midi/report/p5s.md`。
 - **`doc/midi/README.md` は書き換えない**。前提が覆ったら報告書に書く。
-- `lib/add/picoruby-midi/` は**無改変を保つ** (md5 一致を維持)。
+- `lib/gems/picoruby-midi/` は**無改変を保つ** (md5 一致を維持)。
   追加は `picoruby-fmrb-midi` 側へ。
 - **sdl2-display を変更した場合は `docker compose build sdl2-display` が要る**
   (ルート `CLAUDE.md`)。

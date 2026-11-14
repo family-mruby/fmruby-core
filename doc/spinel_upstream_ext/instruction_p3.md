@@ -48,7 +48,7 @@ report は `report/p3.md` へ。
 
 - fmruby-core の作業ブランチ: develop から `feature/spinel-ext` を切る
   (P2b-2 のマージ後の develop。親が指示するまで着手しない)。
-- P1 の `tool/spinel_ext_poc/` の形を本番に移す: 各 gem の `spinel/` に
+- P1 の `tools/spinel_ext_poc/` の形を本番に移す: 各 gem の `spinel/` に
   `*_kernel.rb` (型付きエントリ + 型推論用の `if __FILE__ == $0` ブロック)、
   native の C は `Init_<name>()` とエントリを呼び、**raise しうる呼び出しは
   全部 `_try` で包む**、String 引数は `sp_str_from_bytes` で作る。

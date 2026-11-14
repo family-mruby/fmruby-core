@@ -9,14 +9,14 @@ doc/reference/picoruby_upstream_pr_candidates.md の「2026-10-28 追加」の 2
 ## 直すもの
 
 1. **Net::HTTP が、接続を切らないサーバで止まる**
-   (`lib/patch/picoruby-net-http/mrblib/http_client.rb`、既にある patch に足す)
+   (`lib/upstream/patch/picoruby-net-http/mrblib/http_client.rb`、既にある patch に足す)
    - `read_response` のヘッダのループとチャンクのループの `@socket.read(8192)` を
      `readpartial(8192)` にする。
    - 本文の長さが分かっている `read(remaining)` と、接続が切れるまで読む枝は
      変えない。
    - 先頭の "Family mruby patch" のコメントに理由を 1 段落足す (英語)。
 2. **WebSocket の握手が 101 の文言を決め打ちしている**
-   (`lib/patch/picoruby-net-websocket/mrblib/client.rb` を新しく置き、Rakefile の
+   (`lib/upstream/patch/picoruby-net-websocket/mrblib/client.rb` を新しく置き、Rakefile の
    patch の仕組みで上書きされることを確かめる)
    - 応答の 1 行目が `HTTP/1.1 101` で始まるかで判定する。
    - `Host` ヘッダに、既定 (ws 80 / wss 443) 以外のときはポートを付ける。
@@ -47,7 +47,7 @@ doc/reference/picoruby_upstream_pr_candidates.md の「2026-10-28 追加」の 2
 
 ## 触ってよい範囲
 
-- `lib/patch/picoruby-net-http/`、`lib/patch/picoruby-net-websocket/`、必要なら
+- `lib/upstream/patch/picoruby-net-http/`、`lib/upstream/patch/picoruby-net-websocket/`、必要なら
   Rakefile の patch の対象の列挙。
 - submodule (components/picoruby-esp32/picoruby) は直接編集しない。
 

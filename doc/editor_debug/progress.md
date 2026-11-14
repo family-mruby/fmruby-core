@@ -20,9 +20,9 @@
   `rake clean_all` 後 `rake build:esp32` (NARYAv3/S3) OK。バイナリ 0x1f9b20
   (~2.07MB)、app パーティション 3MB 中 **0x1064e0 (34%) free**。gem+テスト追加の
   増分は小さくフラッシュに余裕あり。P4 は未実施 (任意)。
-- **5.2 リモート回帰**: `tool/debug/test_phase1.sh` RESULT: PASS、
-  `tool/debug/test_phase2.sh` (DAP) RESULT: PASS。E0 で remote 経路の挙動は不変。
-- **5.3 ローカル一巡 + 排他**: `tool/debug/test_e1.sh` exit 0。
+- **5.2 リモート回帰**: `tools/debug/test_phase1.sh` RESULT: PASS、
+  `tools/debug/test_phase2.sh` (DAP) RESULT: PASS。E0 で remote 経路の挙動は不変。
+- **5.3 ローカル一巡 + 排他**: `tools/debug/test_e1.sh` exit 0。
   - ログ: `E1 TEST: PASS frames=7 vars=11` (compute() 停止で 7 フレーム、
     ローカル 11 個、`doubled`/`label` を確認)。
   - 画面: dbg_e1_test ウィンドウに緑 "PASS" 描画を確認 (320x240 キャプチャ)。
@@ -61,7 +61,7 @@
 構成 (モデル: picoruby-fmrb-app):
 
 ```
-lib/add/picoruby-fmrb-debug/
+lib/gems/picoruby-fmrb-debug/
   mrbgem.rake              # 依存: picoruby-fmrb-msgpack
   include/picoruby_fmrb_debug.h
   src/picoruby_fmrb_debug.c   # gem_init/final -> _impl (rake ビルド)
@@ -71,7 +71,7 @@ lib/add/picoruby-fmrb-debug/
 
 組み込み (計画 4.1 の 3 箇所):
 1. `Rakefile`: app コピー直後に picoruby-fmrb-debug を submodule mrbgems へ cp。
-2. `lib/add/family_mruby.gembox`: `conf.gem core: "picoruby-fmrb-debug"` (app と
+2. `lib/upstream/family_mruby.gembox`: `conf.gem core: "picoruby-fmrb-debug"` (app と
    picorabbit の間、msgpack より後)。
 3. `components/picoruby-esp32/CMakeLists.txt`: linux/esp32 両ブロックに
    `FMRB_DEBUG_PORTS_SRCS` glob + PICORUBY_SRCS 追加、INCLUDE_DIRS に include/。
@@ -98,13 +98,13 @@ Ruby ラッパ (mrblib/debug.rb): `stack_trace`/`frame_vars`/`expand` が
   (既知ローカル `doubled`/`label` を確認) -> step_over -> stopped(step) ->
   continue -> resumed -> detach。結果を Canvas 描画 + `Log.info("E1 TEST: PASS
   ...")`。PASS 後も owner=LOCAL を保持 (排他確認用)、on_destroy で release。
-- `tool/debug/test_e1.sh`: headless ハーネス。dbg_sample と dbg_e1_test を
+- `tools/debug/test_e1.sh`: headless ハーネス。dbg_sample と dbg_e1_test を
   debugd の spawn (TCP、非 hook) で起動し、ログの "E1 TEST: PASS" と、保持中の
   リモート attach が BUSY 拒否されること (E0) を確認。
 
 ## E2: エディタ内蔵デバッガ (Retro 下部分割 UI, 設計 doc sec 4.5)
 
-対象: `main/prebuild_scripts/default_app/editor.app.rb` (ビルド時に bytecode 化)。
+対象: `main/ruby/default_app/editor.app.rb` (ビルド時に bytecode 化)。
 `::FMRB::Debug` (E1) を UI に接続。実装内容:
 
 - **下部デバッグペイン (分割方式)**: デバッグセッション中のみ、ステータス行の上に

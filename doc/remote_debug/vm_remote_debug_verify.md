@@ -43,7 +43,7 @@ VM リモートデバッグ機能 (Phase 1/2) の動作検証手順をまとめ�
 ### Phase 1: デバッグコア + プロトコル
 
 ```
-fmruby-core/tool/debug/test_phase1.sh
+fmruby-core/tools/debug/test_phase1.sh
 ```
 
 `fmrb_dbg_client.py` で Kamon の pid を取得し、`test_phase1.py` が
@@ -56,7 +56,7 @@ step/continue が通り、detach で復帰する。
 ### Phase 2: DAP アダプタ + 行マップ
 
 ```
-fmruby-core/tool/debug/test_phase2.sh
+fmruby-core/tools/debug/test_phase2.sh
 ```
 
 `test_phase2.py` が 2 部構成で検証する:
@@ -77,7 +77,7 @@ fmruby-core/tool/debug/test_phase2.sh
 tools/dev_run_check.sh --keep
 
 # 別ターミナルで生プロトコルを叩く
-fmruby-core/tool/debug/fmrb_dbg_client.py localhost:5555 ps
+fmruby-core/tools/debug/fmrb_dbg_client.py localhost:5555 ps
 
 # 片付け
 docker compose down
@@ -163,7 +163,7 @@ combined 行へ変換され、デバイス側でヒットすることを確認�
 | B2 | system_desktop に attach し、その行を実行 | 原本 `clock_setting.rb:5` で停止 (内部的に combined:103 に変換されている) |
 | B3 | 停止時の source.path | エディタ上は原本 `clock_setting.rb` が指される |
 
-`combinedMaps` の既定 (`${workspaceFolder}/fmruby-core/main/prebuild_scripts/*/mrb`)
+`combinedMaps` の既定 (`${workspaceFolder}/fmruby-core/main/ruby/*/mrb`)
 にビルドで生成された map.json が存在すること (`gen_combined_rb.py` が生成)。
 
 ### つまずきポイント

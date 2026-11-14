@@ -64,7 +64,7 @@ Linux の sim の中で動く mruby のアプリと、PC で動く zenoh のル�
 ### 作るもの
 
 - **zenoh-pico の取り込み**: PIN ファイル (`lib/add/ZENOH_PICO_PIN`) に版を固定し、rake で vendor/ (gitignore)
-  に取得する。既存の `lib/add/PICORUBY_TI_PIN`、Spinel の `SPINEL_PIN` と同じ流儀。Linux の sim では
+  に取得する。既存の `lib/upstream/PICORUBY_TI_PIN`、Spinel の `SPINEL_PIN` と同じ流儀。Linux の sim では
   zenoh-pico の Unix のポートを使う。
 - **picoruby-zenoh gem** (`lib/add/picoruby-zenoh/`): 最小の API。
   - セッション: 開く (mode: client、接続先: `tcp/<PC>:7447`) と閉じる。
@@ -249,7 +249,7 @@ Asterism.each("*/*/apu") { |a| a.stop }  # 生きている機体を回る
 
 - 3 つのリポジトリ (asterism / asterism-zenoh / picoruby-asterism-zenoh) を作り、ライセンスの表示を整えて (report/c3.md)
   2026-10-08 に**公開**した。zenoh-pico・zenoh-c は Apache-2.0 の側を選んで使う (fmruby-core の GPL-3.0 と組み合わせるため)。
-  fmruby-core は `lib/add/ASTERISM_PIN`・`PICORUBY_ASTERISM_ZENOH_PIN` で https から取り込む (CI も取れる)。
+  fmruby-core は `lib/upstream/ASTERISM_PIN`・`PICORUBY_ASTERISM_ZENOH_PIN` で https から取り込む (CI も取れる)。
 - 以下は分割のときの決定:
 
 - GitHub のオーガナイゼーション `ruby-asterism` を作成済み。リポジトリは非公開で、役割ごとに分ける
@@ -416,7 +416,7 @@ console は数値のフィールドを線グラフにでき (V3 の生の値、V
 
 ## C8: コンパイラの case/in の直しと gem 0.4.0 (完了 2026-10-09)
 
-結果は report/c8.md。上流 mruby の 2 コミットを `lib/patch/compiler/mruby-compiler-codegen.c` で当てた (submodule が
+結果は report/c8.md。上流 mruby の 2 コミットを `lib/upstream/patch/compiler/mruby-compiler-codegen.c` で当てた (submodule が
 mruby-compiler2 `a2c72afb` 以降に進んだら外す)。3 つの gem を 0.4.0 にした (API の見直しの推奨案の第 1 段: 秒の `timeout:`、
 `connection_count`、`Asterism::Error` の下のエラーの系統、非推奨の警告、文書の「Which API?」)。CI は全部緑、P4-Nano で確認、
 起動時の内蔵 RAM の増分 0。1.0 に残すものは report の最後。
@@ -731,7 +731,7 @@ Asterism の網の決まりは、今は Ruby の実装の中にしかない。�
 | 段階 | 内容 |
 |---|---|
 | CF1 (完了 2026-10-14、report/cf1.md。AtomS3R の焼き直しだけ未了) | 結果: `FmrbAsterism.settings` の 1 か所で決める。`/home/asterism/config.toml` (`router`・`node`・`name`) と tar、順はルータ config.toml → 設定 `zenoh_router` (ブラウザ版のページ) → tar → `tcp/zenohd:7447`、TLS ではノード ID は証明書の名前。古い 3 つのファイルは 1 回だけ書き写して残す (app だけの焼き直しでは storage の古いアプリがまだ読むため)。WiFi は `/home/wifi.toml` を先に読む (読む側だけ、書くのは CF2)、`/fs/get` は WiFi のファイルも渡さない。P4-Nano は書き写して VPS に TLS で繋がった。flash +4.5 KB、静的な内蔵 RAM 0。計画: **設定のファイルの整理**: Asterism の設定を `/home/asterism/` の下にまとめる。`/home/asterism/config.toml` (`router`・`node` (任意)・`name` (表示名)) と、今のままの `/home/asterism/<名前>.tar`。tar があれば繋ぎ先と名前は tar の中 (`asterism.json`) から取り、`config.toml` に書けばそちらが勝つ (tar だけ置けば VPS に直接繋がる)。古いファイル (`zenoh_echo.txt`・`asterism_node.txt`・`asterism_profile.toml`) は、新しいファイルが無いときに読み、1 回だけ新しい形に書き写す。名前の `zenoh_echo` は最初の試し (Z2) の名残で、中身と合っていないので無くす。WiFi の置き場 (`/etc/wifi.toml` を書き換えられるようにするか、`/home` の下へ移すか) もここで決める |
-| CF2 (完了 2026-10-14、report/cf2.md。Web Bluetooth でつなぐ確認はユーザ待ち) | 結果: コンソールに Settings のタブ (WiFi → `/home/wifi.toml`、Asterism → `/home/asterism/config.toml`、証明書の tar)。端末のメニューの「BLE Setup」で 300 秒開く受け付ける時間の間だけ、設定と秘密を書ける。証明書の tar など (`/home/asterism/` の config.toml 以外) は読めない。WiFi のファイルは受け付ける時間の間だけ BLE で読め (devctl では読めない)、それ以外のときは `0x17` が SSID・接続・IP だけの要約を返す。読める名前への RENAME は断る。判定は `main/kernel/fmrb_secret_path.c` の 1 か所 (`rake secret:test` 97 項目)。P4-Nano でコンソールの関数が作った設定で WiFi・TLS の Asterism が繋がった (devctl で置いて確認)。内蔵 RAM 増分 0、flash +4.3 KB。計画: **BLE のコンソールの設定の画面**: 今ある Web Bluetooth の「Family mruby Console」(`tool/web/`) と端末の BLE のファイルの仕組み (`ble_task.c`、S3 と P4・Tab5 で動作済み) に、接続の設定の画面を足す: WiFi・繋ぎ先・証明書の tar (ブラウザで選ぶ)。鍵や WiFi のパスワードを書けるので、端末の操作で「設定を受け付ける時間」を開いたときだけ書ける |
+| CF2 (完了 2026-10-14、report/cf2.md。Web Bluetooth でつなぐ確認はユーザ待ち) | 結果: コンソールに Settings のタブ (WiFi → `/home/wifi.toml`、Asterism → `/home/asterism/config.toml`、証明書の tar)。端末のメニューの「BLE Setup」で 300 秒開く受け付ける時間の間だけ、設定と秘密を書ける。証明書の tar など (`/home/asterism/` の config.toml 以外) は読めない。WiFi のファイルは受け付ける時間の間だけ BLE で読め (devctl では読めない)、それ以外のときは `0x17` が SSID・接続・IP だけの要約を返す。読める名前への RENAME は断る。判定は `main/kernel/fmrb_secret_path.c` の 1 か所 (`rake secret:test` 97 項目)。P4-Nano でコンソールの関数が作った設定で WiFi・TLS の Asterism が繋がった (devctl で置いて確認)。内蔵 RAM 増分 0、flash +4.3 KB。計画: **BLE のコンソールの設定の画面**: 今ある Web Bluetooth の「Family mruby Console」(`tools/web/`) と端末の BLE のファイルの仕組み (`ble_task.c`、S3 と P4・Tab5 で動作済み) に、接続の設定の画面を足す: WiFi・繋ぎ先・証明書の tar (ブラウザで選ぶ)。鍵や WiFi のパスワードを書けるので、端末の操作で「設定を受け付ける時間」を開いたときだけ書ける |
 | CF3 | **AtomS3R の設定のモード**: S3 は WiFi と BLE を同時に動かさない (coexistence は NimBLE が不安定になるので sdkconfig で切ってあり、BLE は内蔵 RAM を約 75 KB 使う。AtomS3R は WiFi と TLS の Asterism で空きが約 118 KB)。そこで交互に使う: WiFi の設定が無いとき、またはボタンを押しながら起動したときは BLE だけの設定のモードで起動し (画面に「設定待ち」)、書き終えたら起動し直して普段のモード (WiFi と Asterism) に入る。P4・Tab5 は無線が C6 なので今どおり両方同時に動く。**Step 1・2 済み (端末の側)** (2026-10-15): 案 B の sdkconfig、設定のモード (WiFi の設定が無いかボタン G41 で BLE だけ、受け付ける時間は起動し直すまで、Reboot は `0x18` かボタン)、普段のモードは BLE の領域を heap に返す。AtomS3R の普段のモードの内蔵 RAM -2,016 B は設定のモードの代価として受け入れた (この変更に限る例外。P4・Retro の静的な DIRAM は増えない)。設定のモードの空き 159,860 B。ボタン・自動の切り替え・WiFi の書き込みと Reboot・大きなファイルの書き込みはユーザが確認済み (2026-10-15、report/cf3.md 13 章)。**CF3 完了** |
 
 - 順はこのとおり (2026-10-14 ユーザ)。

@@ -9,14 +9,14 @@
   - `make deps && make` 成功。`bin/spinel` 生成済み。
   - 動作確認: `./bin/spinel -E -e 'puts 42; puts "hello".upcase'` -> `42` / `HELLO` OK。
   - 実行方法: `-E` でコンパイル+即実行。`-c` で C 生成のみ。デフォルトはバイナリ生成。
-- PoC 成果物ディレクトリ: `fmruby-core/tool/spinel_poc/` (+ `coverage/`)。
+- PoC 成果物ディレクトリ: `fmruby-core/tools/spinel_poc/` (+ `coverage/`)。
 - レポート: `fmruby-core/doc/spinel_aot/reports/`。
 
 ## 確認済みの実コード事実
 
 - 対象ファイル (無改変で取り込む):
-  - `main/prebuild_scripts/kernel/fmrb_kernel/input_router.rb` (`InputRouterMixin`, 345行)
-  - `main/prebuild_scripts/kernel/fmrb_kernel/window_manager.rb` (`WindowManagerMixin`, 90行、`$menu_bar_height=13`)
+  - `main/ruby/kernel/fmrb_kernel/input_router.rb` (`InputRouterMixin`, 345行)
+  - `main/ruby/kernel/fmrb_kernel/window_manager.rb` (`WindowManagerMixin`, 90行、`$menu_bar_height=13`)
 - 定数値 (実コードより):
   - `FmrbConst::MSG_TYPE_APP_CONTROL = 0`
   - `FmrbConst::MSG_TYPE_HID_EVENT  = 3`
@@ -42,14 +42,14 @@
       (fork でテスト増、基準指示の 1,744 から乖離)。唯一の fail は
       `nilclass_bool_ops_conversions` (Complex 虚部表示 cosmetic、本件無関係・既存)。
 - [x] T0-2: input_router + window_manager 検証ハーネス **CRuby==Spinel byte 一致 (2089行)** 達成。
-      - ハーネス: `tool/spinel_poc/harness_input_router.rb` (実コード無改変で取り込み)
+      - ハーネス: `tools/spinel_poc/harness_input_router.rb` (実コード無改変で取り込み)
       - trace モード: 700 イベント、byte 単位一致。bench モードは scale=480 (33.6万イベント)。
       - **達成に Spinel フォークへ 3 修正が必要だった** (詳細 phase0_findings.md):
         - FIX-1 `String#setbyte` poly 引数受理 (codegen_call_recv.c、1行)
         - FIX-2 include された mixin メソッドの `rescue => e` poly 化 (analyze.c、関数化+再実行)
         - FIX-3 `sp_poly_length` の strlen 停止 (sp_runtime.h、1行)
       - 3 修正後の make test: **1,991 pass / 1 fail (回帰ゼロ)**。
-      - 最小再現: `tool/spinel_poc/repro/`。
+      - 最小再現: `tools/spinel_poc/repro/`。
       - **残**: bench モード (33.6万件) の実行完走確認 (T0-3 と統合)。
 - [x] T0-3: 性能計測完了。フル harness (336k件): Spinel 0.52s ≈ CRuby 0.51s (allocation律速)。
       compute micro (2M反復): Spinel 0.06s vs CRuby 0.21s = **3.5x**。mruby はホスト実行系

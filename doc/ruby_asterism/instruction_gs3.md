@@ -2,7 +2,7 @@
 
 > 状態: 指示 | 更新: 2026-10-17 | games_showcase.md の GS3。ゲームホストの「途切れ」を呼び出しの間隔で数えるのをやめて Asterism の on_join / on_leave で知り、卓のアプリは数秒ごとの一覧の取り直しをやめて on_join を合図に探し直す。端末の見え方の場合分けを case/in で書く
 
-前提: games_showcase.md (2.3 Asterism らしい書き方)、report/gs1.md・gs2.md・gs2b.md (枠組みの形、オセロの卓、席の管理を基底に上げるかの判断を GS3 に残したこと)、asterism の README (`Asterism.poll`、`Asterism.on_join` / `on_leave`、CRuby の `net.on_join` / `net.on_leave`、liveliness の鍵 `asterism/<node>/<app>[/<object>]`)、asterism-games の lib/asterism_games/game.rb (`seen`・`away_ms`・`member_away?`・忘れる処理・`seat_reuse_ms`)、host.rb、rooms.rb、卓のアプリ (fmruby-core flash/app/game/mahjong/、flash/app/game/othello/)、bin/othello-tty、report/mje.md (case/in のコンパイラの直し lib/patch/compiler/mruby-compiler-codegen.c)。
+前提: games_showcase.md (2.3 Asterism らしい書き方)、report/gs1.md・gs2.md・gs2b.md (枠組みの形、オセロの卓、席の管理を基底に上げるかの判断を GS3 に残したこと)、asterism の README (`Asterism.poll`、`Asterism.on_join` / `on_leave`、CRuby の `net.on_join` / `net.on_leave`、liveliness の鍵 `asterism/<node>/<app>[/<object>]`)、asterism-games の lib/asterism_games/game.rb (`seen`・`away_ms`・`member_away?`・忘れる処理・`seat_reuse_ms`)、host.rb、rooms.rb、卓のアプリ (fmruby-core flash/app/game/mahjong/、flash/app/game/othello/)、bin/othello-tty、report/mje.md (case/in のコンパイラの直し lib/upstream/patch/compiler/mruby-compiler-codegen.c)。
 
 言葉: 文書は常体。asterism-games の文書とコードのコメント、fmruby-core のコードのコメントは英語。
 

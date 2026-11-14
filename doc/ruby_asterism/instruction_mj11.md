@@ -2,7 +2,7 @@
 
 > 状態: 指示 | 更新: 2026-10-18 | 麻雀アプリは今、音を一切鳴らさない。内蔵の音源 (APU) で効果音と声の代わりのジングルを鳴らし、BGM を流す口と、BGM・効果音の入り切りを作る。BGM の曲そのものは別に探している (決まったら差し込む)
 
-前提: fmruby-core の麻雀アプリ (`flash/app/game/mahjong/`、640x360・1280x720・426x240)、`FmrbAudio` (`lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb`、`sig/fmrb_audio.rbs`、`flash/help/FmrbAudio.*.md`: `note_on(ch, freq, volume, duty, sweep)` / `note_off` は APU の SUB、`play(path)` (NSF) と `play_slot(slot, instance: 0)` (FMSQ) は MAIN、`play_wav` は WAV 1 つ)、`tool/mml2fmsq.rb`、`FmrbMidi::MmlPlayer` は SUB を使う (BGM には使わない)、`/home/mahjong.toml` (アシストと名前を保存している)、ブラウザ版の音 (最初の操作まで無音)、`doc/reference/audio_output.md`。MJ9 (局の始まりの表示、結果の役を 1 秒ずつ、OK) が入った後の develop。
+前提: fmruby-core の麻雀アプリ (`flash/app/game/mahjong/`、640x360・1280x720・426x240)、`FmrbAudio` (`lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb`、`sig/fmrb_audio.rbs`、`flash/help/FmrbAudio.*.md`: `note_on(ch, freq, volume, duty, sweep)` / `note_off` は APU の SUB、`play(path)` (NSF) と `play_slot(slot, instance: 0)` (FMSQ) は MAIN、`play_wav` は WAV 1 つ)、`tools/mml2fmsq.rb`、`FmrbMidi::MmlPlayer` は SUB を使う (BGM には使わない)、`/home/mahjong.toml` (アシストと名前を保存している)、ブラウザ版の音 (最初の操作まで無音)、`doc/reference/audio_output.md`。MJ9 (局の始まりの表示、結果の役を 1 秒ずつ、OK) が入った後の develop。
 
 言葉: 文書は常体、「確かめ」ではなく「確認」。コードのコメントは英語。画面の言葉は日本語。
 
@@ -20,7 +20,7 @@
 3. 待ち合わせの画面に入り切りの 2 つのボタン (キーの表記は `[ ]`、MJ8 以降の決まり)。はみ出し検査 (`rake mahjong:overflow`) に場面を足し、失敗 0。
 4. ブラウザ版では最初の操作まで音が出ない (ページの決まり)。アプリ側で特別なことはしなくてよいが、最初の操作の前に鳴らそうとしても落ちないこと。
 5. アプリを閉じたとき (`stop`・Ctrl+Q・閉じるボタン) に BGM と鳴っている音を止める。
-6. 曲が無いときの BGM の口の試し: 手元の短い MML (`tool/mml2fmsq.rb` で FMSQ にした仮の曲。配布物には入れない、または入れるなら自作でライセンスの問題が無いこと) で、場面の切替と停止が動くことを確認する。
+6. 曲が無いときの BGM の口の試し: 手元の短い MML (`tools/mml2fmsq.rb` で FMSQ にした仮の曲。配布物には入れない、または入れるなら自作でライセンスの問題が無いこと) で、場面の切替と停止が動くことを確認する。
 
 ## 3. 受け入れ条件
 

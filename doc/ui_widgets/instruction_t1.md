@@ -102,6 +102,6 @@
 - 標準 / 全 mruby の 2 構成でビルドと sim 起動が通る。
 - 契約の収支が文書に反映されている: fmrb-ui.rb 冒頭コメント、
   issues_s3.md 補足の契約表、skill。
-- `grep -n "\.each\|\.times\|&blk\|yield\|defined?" lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb`
+- `grep -n "\.each\|\.times\|&blk\|yield\|defined?" lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb`
   が空のまま。
 - `.env` の FMRB_HW_TARGET が作業前の値に戻っている。

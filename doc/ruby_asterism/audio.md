@@ -28,7 +28,7 @@ Family mruby 単体で、クラウドの TTS は実機で動いている (doc/us
 | 鍵の置き場 | 端末の `/etc/services.toml` (ビルドで注入) か `/home/services.toml` (平文)。開発のビルドだけ | ノードの環境だけ。端末とファームに鍵が無いので、リリースのビルドでも使える |
 | 端末の内蔵 RAM | 合成のたびに TLS 1 接続 約 6 KB | 網の接続を開いていれば足しは無い (網そのものの費用は report/z2.md の 4 章) |
 | 動く端末 | Modern でサービスホストを持つもの (Tab5・P4-Nano)。sim も可 | 網に入れるものすべて。ただし鳴らすのは Modern と (未確認の) ブラウザ版だけ (調べ 2) |
-| ブラウザ版 | 不可 (wasm にはソケットも TLS も無い。lib/add/family_mruby_wasm.rb:76-77。fetch の橋は設計だけで見送り: doc/wasm/instruction_p5.md:52-66) | 可 (wasm は ws で網に入れる) |
+| ブラウザ版 | 不可 (wasm にはソケットも TLS も無い。lib/upstream/family_mruby_wasm.rb:76-77。fetch の橋は設計だけで見送り: doc/wasm/instruction_p5.md:52-66) | 可 (wasm は ws で網に入れる) |
 | AtomS3R | 不可 (音の出口が無く、サービスホストも動かない) | 鳴らす口が無いので同じく不可。網の中継や表示だけなら参加はできる |
 | 遅れ | 合成の時間 (実機 約 5 秒) + ファイルを読む時間 | 合成の時間 (PC の CRuby) + 網での転送。流しながら鳴らす口 (Step 3) ができれば最初の塊で鳴り始められる |
 | 記録 | 無い | 配信 (put) で運べば console の MCAP に残る。呼び出しの答えは残らない (調べ 6) |
@@ -63,7 +63,7 @@ Family mruby 単体で、クラウドの TTS は実機で動いている (doc/us
 
 - **端末とブラウザ版 (zenoh-pico 1.10.1) が受け取れる 1 通は 4096 B まで**。
   - 版: picoruby-asterism-zenoh の `ZENOH_PICO_PIN` (1.10.1、e1ab223)。
-  - 設定: `Z_FRAG_MAX_SIZE` 4096、`Z_BATCH_UNICAST_SIZE` 2048、`Z_FEATURE_FRAGMENTATION` 1 (picoruby-asterism-zenoh の include/zenoh_generic_config.h:44-53、:156-157)。ESP32・Linux の sim・wasm のどのビルドもこの値を上書きしていない (components/picoruby-esp32/CMakeLists.txt:252-257、lib/add/family_mruby_wasm.rb:92-96)。
+  - 設定: `Z_FRAG_MAX_SIZE` 4096、`Z_BATCH_UNICAST_SIZE` 2048、`Z_FEATURE_FRAGMENTATION` 1 (picoruby-asterism-zenoh の include/zenoh_generic_config.h:44-53、:156-157)。ESP32・Linux の sim・wasm のどのビルドもこの値を上書きしていない (components/picoruby-esp32/CMakeLists.txt:252-257、lib/upstream/family_mruby_wasm.rb:92-96)。
   - 受ける側は 1 つの batch (2048 B) を超える通を分割 (fragment) で受け、4096 B の領域で組み立てる。合わせて 4096 B を超えると、最後の分割が来たところで**捨てる** (vendor/zenoh-pico/src/transport/unicast/rx.c:206-232)。知らせは `_Z_INFO` の 1 行だけで、ビルドは `ZENOH_LOG_ERROR` なので出ない。gem の `dropped` にも数えられない (呼び返しまで届かないため)。
   - 4096 B には、MessagePack の外側、キー、Zenoh の見出しも入る。呼び出しの答えがこれを超えると、呼んだ側は答えが来ないまま時間切れになる (asterism の mrblib/future.rb:72-76)。
   - 組み立ての領域は zenoh-pico の `z_malloc` から取り、端末では PSRAM だけから取る (picoruby-asterism-zenoh の ports/esp32/zp_system_esp32.c:42-44、report/z2.md:13)。上限を上げても内蔵 RAM は増えないが、分割された通が来るたびにその大きさを PSRAM に取る。
@@ -72,7 +72,7 @@ Family mruby 単体で、クラウドの TTS は実機で動いている (doc/us
 - **CRuby (asterism-zenoh、zenoh-c 1.10.1)** には gem の側の大きさの上限が無い。中継の zenohd は、cloud の設定で `transport.link.rx.max_message_size` 4 MiB (asterism-console の lib/relay/cloud_config.rb:99、:149-150)。家の compose の zenohd は大きさの設定を書いていない (docker-compose.yml:88-95)。
 - **door** (asterism-console の bin/ws_door): 登録済みの側の口 (G1) はバイトを流すだけで、1 通の上限も書き換えも無い (:115-117)。部屋の口 (G2) は WebSocket の 1 通を 65535 B までにし (`WS_DOOR_ROOM_MAX_MESSAGE`、bin/ws_door:138、lib/relay/room_door.rb:403、:462-464)、zenohd からの最初の InitAck の batch_size を 2 小さく書き換える (room_door.rb:431-449。TLS の長さの 2 B のため)。ブラウザ版は zenoh-pico なので、受け取りの上限は端末と同じ 4096 B で、door の 65535 B より先にこちらに当たる。
 - **ブラウザ版の ws の口**: 1 つの WebSocket の通が 1 つの batch。受信の輪 256 KB・送信の輪 64 KB (wasm/zenoh/zp_ws_emscripten.c:105-109)。
-- **符号化 (protocol 1)**: 呼び出しも答えも MessagePack の値 1 つ (asterism の docs/protocol.md:65-67)。**バイナリの文字列は bin で運ばれ、そのまま通る**。CRuby では ASCII-8BIT の文字列 (`File.binread`・`.b`) が bin になる。端末では mruby の binary の印のある文字列が bin になり、bin を受けると印つきの文字列になる (lib/add/picoruby-fmrb-msgpack/ports/esp32/msgpack.c:17-36)。適合の見本にも bin の往復がある (asterism の test/protocol/gen_samples.rb:98-103、:273-275)。
+- **符号化 (protocol 1)**: 呼び出しも答えも MessagePack の値 1 つ (asterism の docs/protocol.md:65-67)。**バイナリの文字列は bin で運ばれ、そのまま通る**。CRuby では ASCII-8BIT の文字列 (`File.binread`・`.b`) が bin になる。端末では mruby の binary の印のある文字列が bin になり、bin を受けると印つきの文字列になる (lib/gems/picoruby-fmrb-msgpack/ports/esp32/msgpack.c:17-36)。適合の見本にも bin の往復がある (asterism の test/protocol/gen_samples.rb:98-103、:273-275)。
   - 端末の生の put を受けた文字列には印が無い。それをそのまま送り直すと str になるので、`.b` を付ける (protocol.md:571)。
   - 試し (CRuby、msgpack 1.8.5): 3200 B の PCM を `{"value"=>bin}` で包むと 3210 B、`{"seq","t","last","data"}` で包むと 3235 B。往復して同じバイト列、ASCII-8BIT で戻る。
 - **受け取りの列**: 購読の既定の深さは CRuby・端末とも 16。1024 は CRuby の get・生存の問い合わせ・生存の見張りの既定 (asterism-zenoh の ext/asterism_zenoh/zenoh.c:65-72、picoruby-asterism-zenoh の src/zenoh.c:91-99)。端末の深さの上限は 1024、CRuby は 65536。列があふれると古いものから捨てて `dropped` を 1 増やす (src/zenoh.c:372-379)。
@@ -99,14 +99,14 @@ Family mruby 単体で、クラウドの TTS は実機で動いている (doc/us
   - Tab5: ES8388 (DAC)、I2S_NUM_1、47160 Hz (= 15720 x 3) の 16 bit ステレオ。APU の 1 標本を 3 回くり返して左右に出す (audio_p4_hw.c:17-19、:356-381)。
   - P4-Nano (NARYAv4): ES8311 1 つで出入りとも。I2S は 47160 Hz (audio_p4_hw.c:113-122、:313-336)。
   - Retro (S3 + WROVER): 音は WROVER の APU で、`play_wav` は方針として断る。
-  - **AtomS3R: 音の出口が無い**。APU の代わりに `audio_none.c` を組み込み (main/CMakeLists.txt:270-287)、`HW_FAMILY` は `"mini"` なので `play_wav` は false (lib/add/picoruby-fmrb-const/ports/esp32/const.c:388-391)。サービスホストも Modern だけ (main/app/fmrb_app_spawner.c:315-320)。音の出る S3 の小型機 (M5StickS3・StopWatch、ES8311) は doc/headless_s3/plan.md:159-160 の候補にあるだけ。
+  - **AtomS3R: 音の出口が無い**。APU の代わりに `audio_none.c` を組み込み (main/CMakeLists.txt:270-287)、`HW_FAMILY` は `"mini"` なので `play_wav` は false (lib/gems/picoruby-fmrb-const/ports/esp32/const.c:388-391)。サービスホストも Modern だけ (main/app/fmrb_app_spawner.c:315-320)。音の出る S3 の小型機 (M5StickS3・StopWatch、ES8311) は doc/headless_s3/plan.md:159-160 の候補にあるだけ。
   - **ブラウザ版**: audio_p4_task.c・fmrb_wav.c を同じく組み込み (wasm/CMakeLists.txt:165、:300-302)、15720 Hz の 16384 標本の輪に書き、AudioWorklet が SharedArrayBuffer から読む (wasm/backend/audio_backend_wasm.c:21-60、wasm/web/audio-worklet.js:29-58、遅れ 約 100 ms)。`HW_FAMILY` は modern なので `play_wav` の道は通っているはずだが、鳴らした記録は無い。
-  - sim: graphics-audio の audio_task.c が別のプロセスで鳴らす。`play_wav` は `sync_file` でファイルを写してから (lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb:146-148)。
+  - sim: graphics-audio の audio_task.c が別のプロセスで鳴らす。`play_wav` は `sync_file` でファイルを写してから (lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb:146-148)。
 
 **足すもの (流しながら鳴らすとき)**
 
 - audio_p4_task.c の `g_wav_stream` (:77-78) の隣に PSRAM の輪を置き、混ぜる側が輪から読む形。読み切ったら無音を出して待つ (今の `fmrb_wav_stream_t` は固定のバッファで、終わりに来ると止まる作り)。
-- Ruby の口は `FmrbMic` と同じく C を直接呼ぶ形 (lib/add/picoruby-fmrb-app/ports/esp32/app.c:1741-1750)。カーネルのメッセージを通すと 1 通 約 150 B (components/fmrb_audio/audio_commands.h:27-33) に当たる。例: `pcm_open(rate)`・`pcm_write(str)` (受けた B 数を返す)・`pcm_buffered`・`pcm_close`。
+- Ruby の口は `FmrbMic` と同じく C を直接呼ぶ形 (lib/gems/picoruby-fmrb-app/ports/esp32/app.c:1741-1750)。カーネルのメッセージを通すと 1 通 約 150 B (components/fmrb_audio/audio_commands.h:27-33) に当たる。例: `pcm_open(rate)`・`pcm_write(str)` (受けた B 数を返す)・`pcm_buffered`・`pcm_close`。
 - ブラウザ版は同じ audio_p4_task.c なので同じ輪で動く見込み。sim は graphics-audio へリンクで送ることになり、1 通 4096 B (components/fmrb_wire/include/fmrb_link_protocol.h:806)。
 - 速さ 15720 Hz で受ければ端末は変換しないで済む (調べ 4 の終わり)。
 
@@ -120,7 +120,7 @@ Family mruby 単体で、クラウドの TTS は実機で動いている (doc/us
 
 **分かったこと**
 
-- Ruby の口: `FmrbAudio#mic_available?`・`mic_rate`・`mic_enable(on)`・`mic_read(count, timeout_ms = 200)` (lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb:38-55)。`mic_read` は 16 bit・リトルエンディアン・モノラルの文字列を返し、`count` は 1-4096 (app.c:1791-1818)。ESP32-P4 のビルドだけにある (app.c:55-61)。S3・ブラウザ版・sim では使えない。
+- Ruby の口: `FmrbAudio#mic_available?`・`mic_rate`・`mic_enable(on)`・`mic_read(count, timeout_ms = 200)` (lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb:38-55)。`mic_read` は 16 bit・リトルエンディアン・モノラルの文字列を返し、`count` は 1-4096 (app.c:1791-1818)。ESP32-P4 のビルドだけにある (app.c:55-61)。S3・ブラウザ版・sim では使えない。
 - Tab5: ES7210、I2S_NUM_1 の受ける側 (DIN は GPIO28)、2 つのマイクの平均でモノラル (audio_p4_hw.c:553-564)。P4-Nano は ES8311 のマイク (利得 30 dB、audio_p4_hw.c:126)。
 - **標本化は 47160 Hz で固定**。スピーカーと 1 本のクロックを共にするので選べない (audio_p4_hw.c:493-495、doc/mic_spectrum/report/track_b.md:33-40)。16 kHz で取るには、クロックを別のコントローラへ引くか、変換するかになる。
 - **変換の道具は無い** (入力の変換のコードはどこにも無い。fmrb_wav.c は出力の変換だけ)。

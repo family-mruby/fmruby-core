@@ -117,7 +117,7 @@ silence_notes_for) と整合させること (キューに残った音の note_of
 ## 5. 守ること
 
 - 報告は `doc/midi/report/p7_6.md`。README は書き換えない。
-- C 追加は `lib/add/picoruby-fmrb-midi/` (ports/src) に。
+- C 追加は `lib/gems/picoruby-fmrb-midi/` (ports/src) に。
   ESP32/FreeRTOS ヘッダを使うものは `components/picoruby-esp32/
   CMakeLists.txt` の PICORUBY_SRCS 管理 (fmruby-core CLAUDE.md)。
 - linux と esp32 の両方でビルド・動作すること (sim で先に検証)。

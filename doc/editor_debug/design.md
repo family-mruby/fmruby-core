@@ -123,7 +123,7 @@ FMRB::Debug.detach(pid); FMRB::Debug.release
 
 ### 4.3 エディタ UI 方針
 
-対象: main/prebuild_scripts/default_app/editor.app.rb (現状約 1300 行)。
+対象: main/ruby/default_app/editor.app.rb (現状約 1300 行)。
 
 最小構成 (Phase E2 で成立させる範囲):
 
@@ -243,8 +243,8 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 | main/drivers/debug/fmrb_debugd.c/.h | debugd タスク (オーナー排他を追加する場所) |
 | main/drivers/debug/fmrb_debug_proto.c/.h | msgpack プロトコル処理 (案A の場合のみ関係) |
 | main/drivers/debug/fmrb_debug_transport.h | transport 抽象 (案A の場合 3 本目を追加) |
-| main/prebuild_scripts/default_app/editor.app.rb | FM-EDITOR 本体 (UI 拡張対象) |
-| tool/debug/fmrb_dbg_client.py / test_phase2.py | 動作検証の参考 (コマンド一巡の手順) |
+| main/ruby/default_app/editor.app.rb | FM-EDITOR 本体 (UI 拡張対象) |
+| tools/debug/fmrb_dbg_client.py / test_phase2.py | 動作検証の参考 (コマンド一巡の手順) |
 | doc/reference/support_esp32p4.md | Modern (ESP32-P4) 対応の設計 |
 | tools/ (リポジトリルート) + ルート CLAUDE.md | headless 自律検証ハーネス |
 

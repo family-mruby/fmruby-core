@@ -16,13 +16,13 @@ system_desktop_combined.rb: undefined method '_send_audio_note'
   for an instance of SystemDesktopApp (NoMethodError)
 ```
 
-`lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb` が
+`lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb` が
 `@app._send_audio_note(on, ch, freq, vol, duty, sweep)` を呼ぶが、
-`main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb` の FmrbApp に無い。
+`main/ruby/spinel/fmrb_app_base_spinel.rb` の FmrbApp に無い。
 `respond_to?` の分岐は Spinel では静的に解決され、呼び出しが残る。
 
 - Spinel 基底の FmrbApp に `_send_audio_note` を足す。mruby 側
-  (`lib/add/picoruby-fmrb-app/ports/esp32/app.c` の
+  (`lib/gems/picoruby-fmrb-app/ports/esp32/app.c` の
   `mrb_fmrb_app_send_audio_note` → `fmrb_app_build_audio_note_msg`) と同じ
   バイト列をカーネルへ送る。FFI の追加が要れば `fmrb_app_ffi.rb` と
   `main/app/fmrb_spx_app.c` に対で足す (既存の `fmrb_spx_*` の流儀に従う)。
@@ -49,7 +49,7 @@ system_desktop_combined.rb: undefined method '_send_audio_note'
 
 ### T3: Spinel でコンパイルを通す
 
-- `tool/spinel/gen_app_combined.rb` の `system_desktop` と `editor` の
+- `tools/spinel/gen_app_combined.rb` の `system_desktop` と `editor` の
   `libs` に `fmrb-ui.rb` を足す。使っていなくても取り込まれるので、
   構文・型推論の穴がここで出る。
 - `FMRB_KERNEL_ENGINE=spinel FMRB_APP_ENGINE_DESKTOP=spinel
@@ -71,7 +71,7 @@ system_desktop_combined.rb: undefined method '_send_audio_note'
 
 ### T1: monitor の Tasks ページ
 
-`main/prebuild_scripts/default_app/monitor.app.rb` の 3 ページ目 (`[X]` と
+`main/ruby/default_app/monitor.app.rb` の 3 ページ目 (`[X]` と
 二段クリック) を FmrbUI に乗せる。
 
 - 行数は可変だが**部品は作り直さない**。`FMRB_MAX_APPS` 分の Button を

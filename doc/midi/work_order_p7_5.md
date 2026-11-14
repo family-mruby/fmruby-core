@@ -3,8 +3,8 @@
 対象: 実装セッション (Opus)
 ブランチ: `feature/midi`
 前提: [report/p7.md](report/p7.md)、[report/p6.md](report/p6.md)。
-対象コードは `lib/add/picoruby-fmrb-midi/mrblib/fmrb-midi.rb` の
-`ApuTransport` と `tool/midi/gen_apu_note_table.rb`。
+対象コードは `lib/gems/picoruby-fmrb-midi/mrblib/fmrb-midi.rb` の
+`ApuTransport` と `tools/midi/gen_apu_note_table.rb`。
 
 ## 0. 症状と原因 (特定済み)
 
@@ -27,7 +27,7 @@ Unit MIDI (16ch/64 音ポリ) では同じ曲が正しく聞こえることは�
 
 ## 1. タスク A: 低音のオクターブ折り返し (簡単な方)
 
-`tool/midi/gen_apu_note_table.rb` を直して再生成する。
+`tools/midi/gen_apu_note_table.rb` を直して再生成する。
 
 - 範囲外の低音は**クランプではなく +12 (1 オクターブ) ずつ上げて範囲に
   入れる** (チップチューンの定石。音名が保たれるので和声が壊れない)。
@@ -38,7 +38,7 @@ Unit MIDI (16ch/64 音ポリ) では同じ曲が正しく聞こえることは�
   でも同じ音高になる」は P5-sim の検証項目である。`smf2fmsq.rb` 側の
   変換と折り返し規則を一致させ、既存の横断テストが通ることを確認する。
 - テスト: 折り返し境界 (ノート 33/34 前後、三角波の床前後) のケースを
-  `tool/midi/test/` に足す。
+  `tools/midi/test/` に足す。
 
 ## 2. タスク B: tick 単位の声の整理 (主犯の方)
 
@@ -56,7 +56,7 @@ Unit MIDI (16ch/64 音ポリ) では同じ曲が正しく聞こえることは�
 - transport に「ためて、tick の終わりで確定する」段を足す。確定の
   呼び出し点は `FmrbMidi.tick` / `SmfPlayer#tick` が既に境界を持っている
   (`NoteScheduler` と同じ場所に住める)。
-- **`MIDI::Device` の見た目は変えない**。`lib/add/picoruby-midi/` は
+- **`MIDI::Device` の見た目は変えない**。`lib/gems/picoruby-midi/` は
   無改変 (md5 一致) のまま。
 - **割り当てゼロを維持する** (P6/P7 の成果)。held は packed Integer の
   まま、確定処理で新しいオブジェクトを作らないこと。tick ごとの

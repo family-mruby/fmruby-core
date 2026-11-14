@@ -9,7 +9,7 @@
 
 ### 1.1 ESP32-P4 のビルドに gem を入れる
 
-- `lib/add/family_mruby_esp32p4.rb` に picoruby-zenoh を足す。**S3 (family_mruby_esp32.rb) と wasm には
+- `lib/upstream/family_mruby_esp32p4.rb` に picoruby-zenoh を足す。**S3 (family_mruby_esp32.rb) と wasm には
   入れない** (S3 は Z4)。
 - zenoh-pico の ESP-IDF のポート (`src/system/espidf/`) を使う。ESP32 / FreeRTOS のヘッダを使う C は
   `components/picoruby-esp32/CMakeLists.txt` の `PICORUBY_SRCS` で管理する決まり (fmruby-core/CLAUDE.md)。
@@ -64,7 +64,7 @@
 
 ## 3. 触ってよい範囲
 
-- fmruby-core: `lib/add/picoruby-zenoh/`、`lib/add/family_mruby_esp32p4.rb`、
+- fmruby-core: `lib/add/picoruby-zenoh/`、`lib/upstream/family_mruby_esp32p4.rb`、
   `components/picoruby-esp32/CMakeLists.txt` (P4 の分岐に zenoh を足すことだけ)、Rakefile / `rakelib/`
   (zenoh の部分)、`flash/app/test/zenoh_echo.*`、`doc/ruby_asterism/report/z2.md`。
 - 親リポジトリ: zenohd を LAN に開くための重ね合わせの compose ファイル、`tools/fmrb_zenoh.rb`。

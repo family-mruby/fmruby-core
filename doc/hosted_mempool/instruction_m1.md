@@ -7,7 +7,7 @@
 
 ## 1. やること
 
-1. **変更**: `config/sdkconfig.defaults.p4` と `config/sdkconfig.defaults.naryav4` に
+1. **変更**: `config/sdkconfig.defaults.tab5` と `config/sdkconfig.defaults.naryav4` に
    `CONFIG_ESP_HOSTED_USE_MEMPOOL=n` を入れる (理由を英語のコメント 1-2 行で)。これはユーザの承認済みの変更。
    ほかの sdkconfig の項目は変えない。defaults を変えたら `rake clean_all` してから作る (sdkconfig を
    作り直すため)。生成された sdkconfig にその値が入っていることを確かめる。
@@ -32,7 +32,7 @@ plan.md の 1-4。数字は表にして並べる (mempool あり / なし)。採
 
 ## 3. 触ってよい範囲
 
-- fmruby-core: `config/sdkconfig.defaults.p4`、`config/sdkconfig.defaults.naryav4` の上の 1 項目だけ。
+- fmruby-core: `config/sdkconfig.defaults.tab5`、`config/sdkconfig.defaults.naryav4` の上の 1 項目だけ。
   `doc/hosted_mempool/report/m1.md`。調査用の計装 (一時的、コミットしない)。
 - 触らないもの: `.env`、そのほかの sdkconfig の項目、managed_components の中、パーティションの表、
   fmruby-graphics-audio、S3 の構成。

@@ -28,7 +28,7 @@ B4.5 で入れた 2bpp 化と実キャラクタの絵柄を含んだ状態。P4 
 - ベンチは `components/basic/test/samples/bench_0*.bas` の 5 本。
   開始・終了マーカーを PRINT し、**ログのタイムスタンプ**から所要時間を取る。
   背景アプリ (画面なし) として起動するので PRINT がログに出る。
-- ハーネスは `tool/basic/basic_bench.rb`。シミュレーションに対しては
+- ハーネスは `tools/basic/basic_bench.rb`。シミュレーションに対しては
   debugd 経由で起動し `docker logs` を読む。**実機では
   `--log <シリアルログ>` で同じ集計ができる**ので、ユーザが取った
   ログをそのまま渡せる。
@@ -86,7 +86,7 @@ B4.5 で入れた 2bpp 化と実キャラクタの絵柄を含んだ状態。P4 
 2. `rake build:esp32` して書き込み、リセット
 3. シリアルログを取りながら、エディタで `/home/bench/bench_01_loop.bas` を
    開いて **F5**。5 本繰り返す
-4. ログをファイルに保存して `ruby tool/basic/basic_bench.rb --log そのファイル`
+4. ログをファイルに保存して `ruby tools/basic/basic_bench.rb --log そのファイル`
 
 `.toml` は **背景アプリ (画面なし)** として起動するよう書かれている。
 画面を持つアプリの PRINT はログに出さない仕様なので (B5 のログ整理)、
@@ -162,7 +162,7 @@ spec の資料待ち項目は `known_differences.md` の区分 3 に集約済み
 | 項目 | 結果 |
 |---|---|
 | `rake basic:test` | **103 passed, 0 failed** |
-| `tool/basic/basic_screen_check.py` (linux sim) | **15 passed, 0 failed** |
+| `tools/basic/basic_screen_check.py` (linux sim) | **15 passed, 0 failed** |
 | `rake build:esp32` (NARYAv3) | 成功 |
 | `FMRB_HW_TARGET=TAB5 rake build:esp32` | 成功 |
 | `rake build:linux` | 成功 |
@@ -230,15 +230,15 @@ spec の資料待ち項目は `known_differences.md` の区分 3 に集約済み
 
 1. **コアを触ったら `rake basic:test`**。ホスト g++ だけで走り、docker も
    実機も要らない。数秒で終わる。
-2. **画面・スプライト・入力を触ったら `tool/basic/basic_screen_check.py`**。
+2. **画面・スプライト・入力を触ったら `tools/basic/basic_screen_check.py`**。
    シミュレーションを立てて (`tools/dev_run_check.sh --keep`) 実際の描画経路を
    通す。ホストランナーでは通らない経路の回帰はここで捕まる。
-3. **速度に関わる変更は `tool/basic/basic_bench.rb`** で before / after を取る。
+3. **速度に関わる変更は `tools/basic/basic_bench.rb`** で before / after を取る。
    **同一コミット同士で比較する** (別日の記録と突き合わせない)。
 4. 仕様の疑義が出たら spec を直す前に report に疑義として記録し、
    決着したら `known_differences.md` の区分へ移す。区分の無い疑義を
    残さないことが、この文書群の価値を保つ条件。
 5. 絵柄を変えるときは `flash/usr/share/basic/*.bmp` を差し替える。
-   生成器 (`tool/basic/gen_basic_*.rb`) は初期値を作るためのもので、
+   生成器 (`tools/basic/gen_basic_*.rb`) は初期値を作るためのもので、
    手で描いたシートを上書きしないよう `rake basic:sheets` は既存ファイルを
    守る (`FORCE=1` が要る)。

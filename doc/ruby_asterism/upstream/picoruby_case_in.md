@@ -1,6 +1,6 @@
 # Upstream issue draft: case/in in PicoRuby's compiler
 
-> Status: draft, **not filed** (2026-10-09). Both problems are already fixed upstream, so it is not filed. Family mruby carries the two upstream fixes as a whole-file copy of the compiler's `src/codegen.c` (`lib/patch/compiler/mruby-compiler-codegen.c`, installed by `rake setup`) since C8 (report/c8.md); moving the vendored PicoRuby forward remains the real fix. Kept as the record of what was checked, and as the text to use if a filing is still wanted.
+> Status: draft, **not filed** (2026-10-09). Both problems are already fixed upstream, so it is not filed. Family mruby carries the two upstream fixes as a whole-file copy of the compiler's `src/codegen.c` (`lib/upstream/patch/compiler/mruby-compiler-codegen.c`, installed by `rake setup`) since C8 (report/c8.md); moving the vendored PicoRuby forward remains the real fix. Kept as the record of what was checked, and as the text to use if a filing is still wanted.
 
 Files next to this one:
 
@@ -107,6 +107,6 @@ NG x => [a] inside a block: got nil, want 1
 
 ## What Family mruby should do
 
-- Done in C8: `picoruby_case_in.patch` applied through `lib/patch/compiler/mruby-compiler-codegen.c` (the vendored `10408c3` file plus the two upstream commits). Both problems are gone in the simulation's standard and compatibility builds (report/c8.md).
+- Done in C8: `picoruby_case_in.patch` applied through `lib/upstream/patch/compiler/mruby-compiler-codegen.c` (the vendored `10408c3` file plus the two upstream commits). Both problems are gone in the simulation's standard and compatibility builds (report/c8.md).
 - Still to do: move `components/picoruby-esp32/picoruby` to a PicoRuby that pins `mruby-compiler2` `a2c72afb` or later (PicoRuby master `a90afd12` does). That brings in every fix above, plus two found by the K1 profile that are also fixed on PicoRuby master: `protected` methods called from an instance of the same class, and `$!` in a rescue modifier.
 - The forms listed in note 3 above stay wrong until then: no `^x` of an outer local inside a block, no `^(expr)`, no `Const[...]`, and no `**rest` next to another key in a hash pattern on the boards.

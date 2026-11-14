@@ -122,7 +122,7 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
   確かめるときは同じ採取に APU の既知の音を一緒に鳴らすこと
   (理由と実測は report に)。
 - V2 の検収: **済 (V2a)** — キャッシュ命中は偽サーバを止めた状態で確認、
-  VOICEVOX 経路は `tool/fake_voicevox.rb` で確認、50ms 警告は
+  VOICEVOX 経路は `tools/fake_voicevox.rb` で確認、50ms 警告は
   `svc[tts] took 3010 ms` の形で出る (サービス名つき)。クラウド 1 社は
   V2b として調査のみ。数字は `report/v2.md`。
 - V3 の検収: 実カレンダーの ICS で今日の予定が読まれる、RRULE の予定が

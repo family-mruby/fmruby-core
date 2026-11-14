@@ -40,7 +40,7 @@
 
 ## 触ってよい範囲
 
-fmruby-core の基底 (lib/add/picoruby-fmrb-app の mrblib と ports、Spinel の基底)、カーネル (input_router・window_manager ほか)、
+fmruby-core の基底 (lib/gems/picoruby-fmrb-app の mrblib と ports、Spinel の基底)、カーネル (input_router・window_manager ほか)、
 spawner・checkpoint の toml、文書 (movable_apps.md、アプリの書き方の文書に枠なしの節)。lib/ を触ったら `rake clean`。
 コミットまで (develop)。push しない。
 

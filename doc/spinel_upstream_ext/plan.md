@@ -123,7 +123,7 @@ raycast を例にすると、今の境界は FFI 関数 10 本 (map / w / h / ge
 micros / output / log) で、エントリは引数無し。上流 ext では次の形になる。
 
 ```ruby
-# lib/add/picoruby-fmrb-raycast/spinel/raycast_kernel.rb
+# lib/gems/picoruby-fmrb-raycast/spinel/raycast_kernel.rb
 require_relative "raycast_core"
 module RaycastKernel
   def self.load_map(map, w, h)   # 型は下の driver ブロックから推論される
@@ -238,7 +238,7 @@ SPINEL_PIN が指す**ことを意味する。差分は小さく保ち、PR で�
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | P0 | 最新上流で前提を取り直す (対応表・ext 仕様・多重リンク・32bit・newlib ヘッダ・試し rebase の衝突量)。コードは変えない | **完了** (report/p0.md) |
-| P1 | 上流バイナリで gem 型を試作 (旧 段階 1)。fmrb のランタイムはフォーク版で上流と同居できないため、**sim ではなく fmrb のビルド外の試験用ホスト (tool/spinel_ext_poc/) で CRuby と一致を確かめる** | **完了** (report/p1.md) |
+| P1 | 上流バイナリで gem 型を試作 (旧 段階 1)。fmrb のランタイムはフォーク版で上流と同居できないため、**sim ではなく fmrb のビルド外の試験用ホスト (tools/spinel_ext_poc/) で CRuby と一致を確かめる** | **完了** (report/p1.md) |
 | PR1 | 上流 PR の下準備 第 1 陣 (U-6 U-10 U-11 U-12 P-9 P-3)。専用 clone でブランチと回帰テストまで、提出はユーザ判断 | **完了** (report/pr1.md)。6 件とも 1 コミットのブランチで make test / bench 通過、提出待ち |
 | P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1 完了** (report/p2b1.md、作業ブランチ feature/spinel-upstream) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
 | PR3 | 提出前の最終準備 (最新上流 `9fb2cf02` へ載せ替え、`make gate`、U-6 は修正と検査の 2 コミット 1 PR)。**提出済み**: #5064 U-11 / #5065 P-9 / #5066 U-10 / #5067 P-3 / #5068 U-6 / #5069 U-12 | **完了** (report/pr3.md) |
@@ -268,7 +268,7 @@ P0 で確定したこと (上流 `01521b1e`、詳細と再現手順は report/p0
   import_from_fork.rb は `sp_*.c` を glob するので、上流の新しいファイル
   (`sp_slab.c` `sp_iobuffer.c` `sp_process.c` ほか) の除外表の見直しが要る。
 
-P1 で確定したこと (report/p1.md、試作は tool/spinel_ext_poc/):
+P1 で確定したこと (report/p1.md、試作は tools/spinel_ext_poc/):
 
 - raycast と fft は **core を 1 文字も変えずに ext 版にでき**、CRuby と
   バイト単位で一致した (64bit / 32bit、GC を強く回した場合と slab 無しでも。

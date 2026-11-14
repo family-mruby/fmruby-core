@@ -63,7 +63,7 @@ payload (packed): { u16 canvas_id, u16 src_x, u16 src_y, u16 view_w, u16 view_h 
    (async 経路 = host_task バッチキュー。描画/present との順序保証のため)
 4. main/kernel/host/host_task.c gfx_cmd_to_batch_entry(): 変換 case
 5. main/drivers/display_local/display_local_task.cpp: ハンドラ + render_frame
-6. Ruby: lib/add/picoruby-fmrb-app/ports/esp32/gfx.c `_set_canvas_viewport`
+6. Ruby: lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c `_set_canvas_viewport`
    + mrblib/fmrb-gfx.rb `set_viewport` / `clear_viewport`
 
 ## アプリの追加 canvas API
@@ -135,7 +135,7 @@ end
 @gfx.present
 ```
 
-- `TileRing` (lib/add/picoruby-fmrb-app/mrblib/fmrb-tilemap.rb) が
+- `TileRing` (lib/gems/picoruby-fmrb-app/mrblib/fmrb-tilemap.rb) が
   「world タイル -> トーラススロット (tile % buf_tiles)」の対応と
   スタンプ済み管理を行う。タイル境界を跨いだフレームだけ約12タイルを
   draw_tile し、それ以外のフレームは描き足しゼロ

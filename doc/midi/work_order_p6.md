@@ -60,7 +60,7 @@ events=936 avg_late=10ms max_late=176ms stalls=4
 
 `GC.stat` は実装済みで、**`MRB_GC_PROFILE` を有効にすると GC の停止時間の
 ヒストグラムまで返る** (`mrbgems/picoruby-mruby/lib/mruby/src/gc.c`)。
-現在 `lib/add/family_mruby_esp32.rb` / `family_mruby_linux.rb` の
+現在 `lib/upstream/family_mruby_esp32.rb` / `family_mruby_linux.rb` の
 どちらでも**有効になっていない**。
 
 返るキー (プロファイル有効時):
@@ -101,7 +101,7 @@ events=936 avg_late=10ms max_late=176ms stalls=4
 
 - **host で走る負荷計測**: プレーヤの 1 イベントあたりのコストを
   ホストで測り、**実機との比 (実測で約 250 倍)** を掛けて見積もる。
-  `tool/midi/test/` に既にホストテストの前例がある。
+  `tools/midi/test/` に既にホストテストの前例がある。
 - **sim で意図的に遅くする**: 難しければ無理をしなくてよい。
 
 ## 2. やらないこと
@@ -115,7 +115,7 @@ events=936 avg_late=10ms max_late=176ms stalls=4
 
 - 報告は `doc/midi/report/p6.md`。
 - **`doc/midi/README.md` は書き換えない**。前提が覆ったら報告書に書く。
-- `lib/add/picoruby-midi/` は**無改変を保つ** (md5 一致を維持)。
+- `lib/gems/picoruby-midi/` は**無改変を保つ** (md5 一致を維持)。
   追加は `picoruby-fmrb-midi` 側へ。
 - **sdkconfig 系は編集禁止**。`MRB_GC_PROFILE` は mruby のビルド定義
   (`lib/add/family_mruby_*.rb` の `conf.cc.defines`) なので、そちらで足す。

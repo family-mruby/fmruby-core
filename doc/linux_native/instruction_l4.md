@@ -86,8 +86,8 @@ Cardputer Zero の本体の画面 (320x170) で、キーボードだけで使え
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/` (kernel・system_desktop)、
-  `main/prebuild_scripts/default_app/` (エディタ・Shell)、宣言のための
+- fmruby-core: `main/ruby/kernel/` (kernel・system_desktop)、
+  `main/ruby/default_app/` (エディタ・Shell)、宣言のための
   `main/` の該当箇所、`native/`、`hosted/`、`config/` (機種の定義・system_conf)、
   `rakelib/`、`test/` (回帰の場面の追加を含む)、`doc/linux_native/report/`。
 - family-mruby (ルート): `tools/` (確認の道具に要るもの)。

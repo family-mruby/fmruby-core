@@ -120,10 +120,10 @@ BGM と実時間演奏の同居は設計から外す必要がある。
 
 ### 3.1 何を作るか
 
-`tool/midi/smf2fmsq.rb` (Ruby、標準ライブラリのみ)。
+`tools/midi/smf2fmsq.rb` (Ruby、標準ライブラリのみ)。
 
 ```
-ruby tool/midi/smf2fmsq.rb input.mid [-o out.fmsq] [--track N] [--map ...]
+ruby tools/midi/smf2fmsq.rb input.mid [-o out.fmsq] [--track N] [--map ...]
 ```
 
 - SMF format 0 / 1 を読む (format 2 は対象外でよい。その旨をエラーで出す)。
@@ -162,7 +162,7 @@ ruby tool/midi/smf2fmsq.rb input.mid [-o out.fmsq] [--track N] [--map ...]
 - 実機/sim で `FmrbAudio#load_fmsq_file` + `play_slot` から再生できることを、
   少なくとも sim で確認する (sim で音を出すには **通常の `docker compose up`**
   が要る。`dev_run_check.sh` は SDL dummy なので無音)。
-- テスト用の .mid と期待値をどこかに残す (`tool/midi/test/` など)。
+- テスト用の .mid と期待値をどこかに残す (`tools/midi/test/` など)。
 
 ## 4. 守ること
 

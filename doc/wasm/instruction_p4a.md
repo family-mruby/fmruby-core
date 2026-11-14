@@ -103,7 +103,7 @@ P3 はパネル起動 / I2C service / ヘッドホン検出を display_p4_task.c
 ### T2: 言語処理系のクロスビルド
 
 - mruby/picoruby: build_config/picoruby-wasm.rb を土台に
-  **lib/add/family_mruby_wasm.rb** を作る。mrbc はネイティブのまま。
+  **lib/upstream/family_mruby_wasm.rb** を作る。mrbc はネイティブのまま。
   - **MRB_* レイアウト定義は wasm CMake 側と完全一致させる** (二重ビルド
     ABI 罠。mruby_abi_defines.cmake の linux 節を写す)。
   - **FMRB_TASK_SELF_TICK=1 を焼き込む** (rake 側 = family_mruby_wasm.rb、

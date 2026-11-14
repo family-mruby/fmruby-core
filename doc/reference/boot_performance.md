@@ -188,10 +188,10 @@ GC を切っても速くならない。
 - ホットパスの文字列リテラルをすべて定数に括り出した (パースループ、スキャン
   ループ、アイコン展開の per-pixel ループ)。ロジックは変えていない純粋な置換で、
   等価性は実ツリー 43 ファイルで再確認済み。**parse フェーズ 5.0 → 3.0 秒**。
-- `FmrbApp.uptime_us` を追加 (`lib/add/picoruby-fmrb-app/ports/esp32/app.c`)。
+- `FmrbApp.uptime_us` を追加 (`lib/gems/picoruby-fmrb-app/ports/esp32/app.c`)。
   Ruby から us 単位で計測するための API。Spinel 側には対応する FFI が無いので、
   共有 Ruby から使うときは注意。
-- **アイコンを BMP 化して `SpriteImage#load_bmp` に** (`tool/gen_icon_bmp.rb`,
+- **アイコンを BMP 化して `SpriteImage#load_bmp` に** (`tools/gen_icon_bmp.rb`,
   `rake icons`)。`.icon` の per-pixel GFX コマンド送信をやめ、graphics-audio に
   デコードさせる。BMP は GA 側に 1 度転送してキャッシュ。**4.0 秒 → 1.33 秒**。
   `load_icon` / `@icon_cache` / `_force_gc` は役目を終えたので削除

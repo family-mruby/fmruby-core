@@ -26,14 +26,14 @@ plan.md の **S1 + S1.5**: ホスト、契約、二層 (システム/ユーザ)�
 
 | こと | 場所 |
 |---|---|
-| Pub/Sub の API | lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb の `subscribe` / `unsubscribe` / `publish` (515 行付近)。配信は `on_control` に `"cmd"=>"topic_data"` で届く (flash/app/demo/sub_demo.app.rb が実例) |
+| Pub/Sub の API | lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb の `subscribe` / `unsubscribe` / `publish` (515 行付近)。配信は `on_control` に `"cmd"=>"topic_data"` で届く (flash/app/demo/sub_demo.app.rb が実例) |
 | アプリからの spawn 要求 | fmrb-app.rb 537 行付近 (「アプリはアプリを spawn できないので kernel への要求」の既存 API)。launcher (system_desktop/launcher.rb 780 行付近) が `{"cmd"=>"spawn"}` を送る実例。kernel 側の受けは fmrb_kernel.rb 172 行付近 |
 | spawn 時の fullscreen | spawn 属性に `fullscreen` フラグが既にある (main/app/fmrb_app_spawner.c が app.toml の `default_window_mode` から立てている、630 行付近)。**要求メッセージに上書きを載せられるか先に読む**。載らなければ spawn 後に `fmrb_app_set_fullscreen(pid, true, w, h)` (main/app/fmrb_app.c 2820 行) |
 | kernel のブート spawn | fmrb_kernel.rb 606 行付近 (desktop の spawn)。この後ろに足す |
 | 優先度 | components/fmrb_common/include/fmrb_task_config.h に `FMRB_SERVICE_APP_PRIORITY (1)` を新設。spawn 経路でこのアプリだけ 1 を使う方法は spawner を読んで決める (app.toml に priority 項目を足すのが素直なら、それでもよい。**一般アプリが 2 より上を指定できない**ようには縛る) |
 | /etc/services.toml の生成 | rakelib/build.rake 16 行付近 (system_conf を config/ から flash/etc/ へ cp している)。`config/services.toml` を足して同じ形で cp |
-| shell | main/prebuild_scripts/default_app/shell/shell_commands.rb (`cmd_ps` 841 行、`cmd_kill` 878 行)。**kill が kernel の `kill_result` を非同期に受けて印字する形が、svc の応答表示のそのまま手本** |
-| ホストの置き場所 | main/prebuild_scripts/default_app/services.app.rb (新規、headless、launcher_visible = false) |
+| shell | main/ruby/default_app/shell/shell_commands.rb (`cmd_ps` 841 行、`cmd_kill` 878 行)。**kill が kernel の `kill_result` を非同期に受けて印字する形が、svc の応答表示のそのまま手本** |
+| ホストの置き場所 | main/ruby/default_app/services.app.rb (新規、headless、launcher_visible = false) |
 | ファイルの同梱 | システム: flash/usr/share/services/clock.rb と config/services.toml。ユーザ既定: flash/home/services.toml と flash/home/services/ (heartbeat / hourly_chime / broken) |
 
 ## 進め方

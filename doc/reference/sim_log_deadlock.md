@@ -76,7 +76,7 @@ sim は debug_mode=true で DEBUG が実際に出力されるため、毎メッ�
 
 - components/fmrb_hal/platform/posix/fmrb_hal_link_posix.c: 送受信の
   毎メッセージログ 8 箇所
-- lib/add/picoruby-fmrb-app/ports/esp32/gfx.c: clear/fill_rect/
+- lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c: clear/fill_rect/
   fill_circle/draw_text の毎呼び出しログ 6 箇所
 - main/kernel/host/host_task.c: GFX バッチ・マウス移動・描画コマンドの
   毎イベントログ 3 箇所

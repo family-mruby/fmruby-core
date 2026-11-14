@@ -43,7 +43,7 @@ report は doc/editor_ti/report/p1.md へ。タスクごとにコミット。
 
 Rakefile の Spinel 節 (SPINEL_PIN_FILE / spinel_pin / spinel:setup) を手本に:
 
-- PIN ファイル: `lib/add/PICORUBY_TI_PIN`。書式は SPINEL_PIN と同じ
+- PIN ファイル: `lib/upstream/PICORUBY_TI_PIN`。書式は SPINEL_PIN と同じ
   (`repo:` と `commit:` の行。parser は spinel_pin を流用して共通化してよい)。
   repo は https://github.com/kishima/picoruby-ti.git (https にする。
   ti:setup だけで clone できることが目的なので ssh 鍵前提にしない)。
@@ -75,7 +75,7 @@ components/picoruby-esp32/CMakeLists.txt の editor-core 該当行) を grep し
    生成先はコピー先のみ。vendor/ と sig/ は汚さない。
    esp32 ビルドは docker 内で走るが、この生成は spinel:gen と同じく
    **docker の外 (host) で先に**行う。
-3. lib/add/family_mruby.gembox に `conf.gem core: "picoruby-ti"` を追加。
+3. lib/upstream/family_mruby.gembox に `conf.gem core: "picoruby-ti"` を追加。
    位置は editor-core の近く (framework の後) で良い。依存の
    mruby-compiler は gembox 先頭で読まれている。
 4. components/picoruby-esp32/CMakeLists.txt: editor-core の例に倣い、
@@ -101,7 +101,7 @@ components/picoruby-esp32/CMakeLists.txt の editor-core 該当行) を grep し
    前提にしている。tmp/picoruby-ti/sig/ に評価時に書いた最小定義があるので
    流用可)。GPIO は picoruby の実 API に合わせて書き直して良い。
 3. `fmrb.rbs` (新規): FmrbAppBase (gfx / on_update / on_event / app_name あたり
-   から。実際のメソッド一覧は main/prebuild_scripts/rb/lib/ のアプリ基底を
+   から。実際のメソッド一覧は main/ruby/rb/lib/ のアプリ基底を
    読んで、**存在するものだけ**書く) と Canvas (draw_text / draw_rect /
    draw_line / present 等、picoruby-fmrb-app の GFX バインディングから
    シグネチャを拾う)。全網羅は P4 でやる。ここでは「P2 の補完デモが

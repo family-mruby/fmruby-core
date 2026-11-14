@@ -71,7 +71,7 @@
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/default_app/` (Shell)、
+- fmruby-core: `main/ruby/default_app/` (Shell)、
   受け口のための `main/` と `components/` の該当箇所 (L6 の受け口の隣)、
   `native/`、`hosted/`、`test/`、`rakelib/`、`doc/linux_native/report/`、
   Shell の手引きがあればそれ。

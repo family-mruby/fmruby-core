@@ -108,7 +108,7 @@
 - fmruby-core:
   - `lib/add/picoruby-zenoh/` を `lib/add/picoruby-asterism-zenoh/` へ移す。
   - `lib/add/picoruby-asterism/`。
-  - Rakefile / rakelib の zenoh の部分、`lib/add/family_mruby_linux.rb` / `family_mruby_esp32p4.rb`。
+  - Rakefile / rakelib の zenoh の部分、`lib/upstream/family_mruby_linux.rb` / `family_mruby_esp32p4.rb`。
   - `components/picoruby-esp32/CMakeLists.txt` の zenoh の部分。
   - `flash/app/test/zenoh_*`・`asterism_*`。
   - `doc/ruby_asterism/report/a1.md`、gem の README、既存の report の中の例 (名前の追従だけ)。

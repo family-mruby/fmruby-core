@@ -59,11 +59,11 @@ report は doc/editor_ti/report/p4_5.md へ。タスクごとにコミット。
      define_arg_name_ids から名前のみ)
    を返す。host_test に最低 3 ケース (第 1 引数 / カンマ直後の第 2 引数 /
    入れ子呼び出しの内側) を追加。
-3. push して lib/add/PICORUBY_TI_PIN を更新。rake ti:test green。
+3. push して lib/upstream/PICORUBY_TI_PIN を更新。rake ti:test green。
 
 ## T2: ヘルプ生成 (fmruby-core、fork 非依存)
 
-- tool/ti/ に Ruby スクリプトを新設: sig/*.rbs を rbs gem でパースし、
+- tools/ti/ に Ruby スクリプトを新設: sig/*.rbs を rbs gem でパースし、
   doc コメントが 2 行以上あるメソッドについて
   `flash/help/<クラス名>/<メソッド名>.md` を生成する。
   - 1 行目: シグネチャ (RBS から整形)、以降: コメントの 2 行目以降。

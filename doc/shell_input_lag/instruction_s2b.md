@@ -16,11 +16,11 @@ report は `report/s2b.md` へ。
   埋め (0xaa / 0xff)、ほか。それぞれの費用と、誰が使っているかを表にする。
 - 統計だけを残す形にする。案: 重い検査と埋めを別のマクロ (例 `ESTALLOC_DEBUG_CHECKS`、既定は無効) に分け、
   `ESTALLOC_DEBUG` は統計だけにする。埋めを残すかは費用を測って決め、理由を書く (ユーザの方針: 統計だけでよい)。
-- 当て方は lib/patch (submodule は直接編集しない)。既存の lib/patch/picoruby-mruby の当て方 (rakelib/setup.rake) に
+- 当て方は lib/upstream/patch (submodule は直接編集しない)。既存の lib/upstream/patch/picoruby-mruby の当て方 (rakelib/setup.rake) に
   ならう。差分は最小にし、上流 (estalloc) に出せる形 (統計と重い検査を分けられる) を意識する。
 - **estalloc を使うのは mruby の VM だけとは限らない**。Spinel の実行時 (est pool)、MicroPython などが同じ
   estalloc を使っているか、どの定義でビルドされているかを確かめ、全部に同じく効くようにする。
-  `ESTALLOC_DEBUG` を入れている所は lib/patch/picoruby-mruby/mrbgem.rake と lib/add/family_mruby_*.rb
+  `ESTALLOC_DEBUG` を入れている所は lib/upstream/patch/picoruby-mruby/mrbgem.rake と lib/add/family_mruby_*.rb
   (esp32 / esp32p4 / linux / wasm) にある。rake の libmruby と CMake の両経路の定義がそろっていること
   (memory の dual build の罠)。
 

@@ -16,7 +16,7 @@
 最小の実物 `picoruby-fmrb-spinel-hello` を手本にします(`Fmrb::SpinelHello.new.greet("world")`
 が Spinel-AOT した Ruby で "Hello world!" を返す gem)。名前(入力)は entry の引数、
 挨拶文(出力)は戻り値として境界を渡るので、入出力のつなぎ方が一度に分かります。
-- `<gem>` … gem 名です。例: `spinel-hello`(dir は `lib/add/picoruby-fmrb-spinel-hello/`、
+- `<gem>` … gem 名です。例: `spinel-hello`(dir は `lib/gems/picoruby-fmrb-spinel-hello/`、
   gembox 名は `picoruby-fmrb-spinel-hello`、init は `src/picoruby_fmrb_spinel_hello.c`)。
 - `<core>` … アルゴリズム本体のファイル/クラス名です。例: `spinel_hello_core.rb` /
   `SpinelHelloCore`。
@@ -57,7 +57,7 @@ picoruby-fmrb-spinel-hello がこの構成の最小の手本です。
   init で 1 回だけ走ります。
 
 配線を足す既存ファイルは次のとおりです。
-- `lib/add/family_mruby.gembox` … gem を登録します。
+- `lib/upstream/family_mruby.gembox` … gem を登録します。
 - `rakelib/setup.rake` … gem を submodule へ丸ごとコピーします。
 - `components/picoruby-esp32/CMakeLists.txt` … binding を PICORUBY_SRCS に加えます。
 - `main/CMakeLists.txt` … `native/*.c` と生成 C を COMPONENT_SRCS へパス参照で加え、
@@ -172,7 +172,7 @@ picoruby-fmrb-spinel-hello がこの構成の最小の手本です。
 
 ## 手本
 - **最小の手本 = picoruby-fmrb-spinel-hello**。全ソースが
-  `lib/add/picoruby-fmrb-spinel-hello/` 配下(`mrblib/` `ports/esp32/` `src/` `native/`
+  `lib/gems/picoruby-fmrb-spinel-hello/` 配下(`mrblib/` `ports/esp32/` `src/` `native/`
   `spinel/`)に集約され、このドキュメントの各手順とそのまま対応します。まずはこれを
   真似てください。
 - **応用の手本 = picoruby-fmrb-fft / picoruby-fmrb-raycast**。モジュール変数による

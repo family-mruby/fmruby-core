@@ -106,7 +106,7 @@ setup → import) をやり直してから T4-3 へ進む。
 
 ### T4-1: FmrbApp / FmrbGfx の FFI シム (2-3 日)
 
-1. 調査: `lib/add/picoruby-fmrb-app/ports/esp32/app.c` (FmrbApp ~24
+1. 調査: `lib/gems/picoruby-fmrb-app/ports/esp32/app.c` (FmrbApp ~24
    メソッド) と `gfx.c` (FmrbGfx ~47 メソッド) の全メソッドと、
    その下位 C 関数を一覧化する (レポートに表として残す)。
 2. `main/app/fmrb_spx_app.c` / `fmrb_spx_gfx.c` + ヘッダを新設し、
@@ -128,7 +128,7 @@ setup → import) をやり直してから T4-3 へ進む。
 
 ### T4-2: Spinel 用 FmrbApp / FmrbGfx ベースクラス (1-2 日)
 
-1. `main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`:
+1. `main/ruby/spinel/fmrb_app_base_spinel.rb`:
    `class FmrbApp` / `class FmrbGfx` を FFI 実装で再現。
    `system_desktop.app.rb` が使うメソッドを網羅 (実コードを grep して
    確定。T4-4 を実施する場合は shell 使用分も追加)。

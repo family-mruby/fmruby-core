@@ -16,11 +16,11 @@ lib/ を触ったら `rake clean`、ターゲットの切り替えは `rake clea
 
 ## やること
 
-1. **Link が接続を持つ** (決定 22): `lib/add/picoruby-fmrb-asterism/mrblib/link.rb` が `Asterism.connect` の返す接続を持ち、
+1. **Link が接続を持つ** (決定 22): `lib/gems/picoruby-fmrb-asterism/mrblib/link.rb` が `Asterism.connect` の返す接続を持ち、
    `link.conn` で渡す。つなぎ直すたびに `link_up(link)` が呼ばれ、アプリはそこで `link.conn` に expose・publish・状態・型を置き直す。
    端末の自己紹介は `Asterism.profile_defaults` (fmrb-asterism.rb)。
 2. **モジュールの関数を使っている所を全部入れ替える**: 少なくとも次のファイル (grep で漏れを探す)。
-   `lib/add/picoruby-fmrb-asterism/mrblib/` (fmrb-asterism.rb・link.rb・table_client.rb)、Shell のコマンド (`shell_commands.rb` の `Asterism.profile` など)、
+   `lib/gems/picoruby-fmrb-asterism/mrblib/` (fmrb-asterism.rb・link.rb・table_client.rb)、Shell のコマンド (`shell_commands.rb` の `Asterism.profile` など)、
    `flash/usr/share/asterism/transfer/transfer.rb`・`flash/usr/share/transfer/transfer.app.rb` (`Sender.new(..., net:)`)、
    `flash/app/tool/receiving.app.rb`、`flash/app/game/{board,othello}`、`flash/app/demo/walk_scroller.app.rb`、`flash/app/test/` の Asterism を使うアプリ、
    checkpoint の Asterism での移動 (`amove`)、`tools/regress/` (fake_asterism.rb・checkpoint_asterism.rb・counterparts.rb・transfer_quick.rb)、

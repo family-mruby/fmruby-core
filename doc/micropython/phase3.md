@@ -21,7 +21,7 @@ Python アプリから見た API は **Ruby 版アプリ基盤 (picoruby-fmrb-ap
 
 | 層 | Ruby 版の現物 | 対応する Python 版 |
 |---|---|---|
-| アプリ基盤クラス | lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb (FmrbApp) | prelude の FmrbApp (Python) |
+| アプリ基盤クラス | lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb (FmrbApp) | prelude の FmrbApp (Python) |
 | 描画クラス | 同 mrblib/fmrb-gfx.rb (FmrbGfx) | prelude の FmrbGfx (Python) |
 | C 実体 (app) | 同 ports/esp32/app.c — _init / _spin / _cleanup / _send_message。_spin が fmrb_msg_receive で HID / APP_CONTROL を受けて on_event / _handle_system_control に配送する | _fmrb C モジュールの app 系関数 |
 | C 実体 (gfx) | 同 ports/esp32/gfx.c — 描画プリミティブ | _fmrb C モジュールの gfx 系関数 |
@@ -121,7 +121,7 @@ Ruby 版 C 実体と同じものを使う。
    図形と文字、クリックでページ切替) が良い手本。phase2 の pytest.app.py はテスト用と分かる場所へ
    整理するか削除する。
 4. **デスクトップ側の拡張子対応**: 分割ソース
-   main/prebuild_scripts/kernel/system_desktop/ の launcher.rb (SCRIPT_EXTS に
+   main/ruby/kernel/system_desktop/ の launcher.rb (SCRIPT_EXTS に
    "py"、拡張子->表示文字に "P") と file_manager.rb に .py を追加。
    結合ファイル system_desktop_combined.rb はビルド時に自動生成される
    (report/phase2.md 気づき 6) ので分割ソースだけ編集すればよい。

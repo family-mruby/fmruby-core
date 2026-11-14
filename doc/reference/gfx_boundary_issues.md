@@ -112,7 +112,7 @@ create を送らない (PicoRabbit P7/P9)。これは NACK が入っても残し
 
 ## 課題 4: 持ち物の表 (`FONT_AVAILABLE`) が Ruby 側の写し
 
-**現象**: `lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb:74` の `FONT_AVAILABLE`
+**現象**: `lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb:74` の `FONT_AVAILABLE`
 は描画側の firmware が持つフォントの写しで、描画側を変えると食い違いうる。
 `set_font` が「実際に選ばれた [family, size]」を返す仕組みはあるので、
 renderer は辻褄を合わせられるが、表そのものは手で保つ必要がある。

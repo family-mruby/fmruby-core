@@ -1,12 +1,12 @@
 # Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応
 
-2026-07-05 着手。Web Bluetooth ベースの「Family mruby Console」(tool/web/) を
+2026-07-05 着手。Web Bluetooth ベースの「Family mruby Console」(tools/web/) を
 Tab5 (Modern) でも使えるようにするための、ESP32-C6 コプロセッサ経由 BLE の
 設計・実装記録。
 
 ## 背景
 
-- 既存資産: tool/web/ (Web Bluetooth クライアント、ファイル管理+ログ閲覧) と
+- 既存資産: tools/web/ (Web Bluetooth クライアント、ファイル管理+ログ閲覧) と
   main/drivers/ble/ble_task.c (NimBLE GATT サーバ、FMRB File Service、
   COBS フレーミング)。Retro (ESP32-S3) では動作済み
 - ESP32-P4 は無線非搭載のため、P4 ビルドでは bt / ble_task.c を除外していた
@@ -46,7 +46,7 @@ slave ビルド) のままで BT HCI が通るかをまず検証し、通らな�
 1. main/idf_component.yml: espressif/esp_hosted 1.4.0 +
    espressif/esp_wifi_remote 0.8.5 を target==esp32p4 限定で追加
    (UserDemo と同版に固定。C6 ストック fw V1.4.1 とのプロトコル互換を優先)
-2. config/sdkconfig.defaults.p4: host-only NimBLE + esp_hosted SDIO/vHCI の
+2. config/sdkconfig.defaults.tab5: host-only NimBLE + esp_hosted SDIO/vHCI の
    設定ブロックを追加 (詳細は同ファイル参照)
 3. main/drivers/ble/ble_task.c: CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE ガードで
    nimble_port_init の前に esp_hosted_connect_to_slave +
@@ -55,7 +55,7 @@ slave ビルド) のままで BT HCI が通るかをまず検証し、通らな�
 5. main/boot/boot.c: FMRB_HW_MODERN ブランチで display_local_is_ready() を
    待ってから ble_task_init() を呼ぶ (C6 電源が display task で入るため)
 
-GATT サービス定義・COBS プロトコル・Web クライアント (tool/web/) は無変更。
+GATT サービス定義・COBS プロトコル・Web クライアント (tools/web/) は無変更。
 
 ## 検証手順
 
@@ -64,7 +64,7 @@ GATT サービス定義・COBS プロトコル・Web クライアント (tool/we
 2. ストック C6 ハンドシェイク: ブートログで esp_hosted の INIT event /
    coprocessor fw version / capabilities、esp_hosted_bt_controller_init の
    成否、NimBLE host sync 到達を確認
-3. Web コンソール接続: Chrome で tool/web/ を開き "FamilyMruby" に接続、
+3. Web コンソール接続: Chrome で tools/web/ を開き "FamilyMruby" に接続、
    Files タブ (ls/get/put) と Logs タブ (subscribe) を確認
 4. 判定: HCI が通らなければストック fw は BT 非対応 → フォールバックへ
 
@@ -99,7 +99,7 @@ esp_hosted 1.4.0 の実装確認済み (2026-07-05):
   heap ログで確認する
 - nimble_host タスク (優先度ブースト済み) と display/audio タスクの競合。
   症状が出たらコア割り当て/優先度を調整
-- Retro への回帰: 変更はすべて P4 ガード内。sdkconfig.defaults.n16r8 無変更
+- Retro への回帰: 変更はすべて P4 ガード内。sdkconfig.defaults.naryav3 無変更
 
 ## 実装時に判明した事項 (2026-07-05)
 
@@ -113,7 +113,7 @@ esp_hosted 1.4.0 の実装確認済み (2026-07-05):
   呼んでいる
 - Kconfig 実名の注意:
   - ESP_HOSTED_ENABLE_BT_NIMBLE は BT_NIMBLE_TRANSPORT_UART=n が前提条件。
-    IDF デフォルトが y のため、sdkconfig.defaults.p4 に明示的に n を設定
+    IDF デフォルトが y のため、sdkconfig.defaults.tab5 に明示的に n を設定
   - SDIO D1 ピンの設定シンボルは ESP_HOSTED_SDIO_PRIV_PIN_D1_4BIT_BUS。
     ESP_HOSTED_SDIO_PIN_D1 は派生シンボルで直接設定しても無視される
     (放置すると P4 デフォルトの 15 になり、リセット線 GPIO15 と衝突する)
@@ -165,7 +165,7 @@ python + bleak + usbipd の道具立てなしに ps / kill / spawn ができる�
   `COBS([u16 BE 本文長][msgpack 本文][CRC32 BE]) + 0x00`。CRC は長さ接頭辞を
   含む。ファイルサービスは長さ接頭辞を持たないので、フレーム組み立ては
   `js/debug.js` に別に置いてある (COBS と CRC32 は app.js のものを流用)。
-- メッセージ層は `tool/debug/fmrb_dbg_client.py` と同じ msgpack:
+- メッセージ層は `tools/debug/fmrb_dbg_client.py` と同じ msgpack:
   要求 `[0, seq, cmd, payload]` / 応答 `[1, seq, err, payload]`
   (`err != 0` は失敗) / イベント `[2, _, name, payload]`。
 - msgpack は必要範囲だけの自前実装 (`js/msgpack.js`)。同じ要求について
@@ -202,7 +202,7 @@ python + bleak + usbipd の道具立てなしに ps / kill / spawn ができる�
 Web コンソールの **Settings** タブから、端末に WiFi (`/home/wifi.toml`)・
 Asterism の設定 (`/home/asterism/config.toml`)・証明書の tar
 (`/home/asterism/<名前>.tar`) を書ける。経緯と確認は
-doc/ruby_asterism/report/cf2.md、画面の使い方は tool/web/README.md。
+doc/ruby_asterism/report/cf2.md、画面の使い方は tools/web/README.md。
 
 ### 端末の側の決まり
 

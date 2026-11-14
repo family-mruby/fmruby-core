@@ -53,7 +53,7 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 
 ## 2. 仕組み
 
-- アプリの .app.rb (末尾に起動の行が残っていればそれを除いたもの。起動するクラスはランタイムと同じ決め方で選ぶ) と gem の Ruby (`lib/add/picoruby-fmrb-app/mrblib/` ほか) を CRuby に読み込み、FmrbGfx の C の側だけを記録係に差し替えて (`tools/regress/recorder.rb`)、場面の台本どおりに on_create・on_update・キー・クリックを流す。描いたものを 1 行ずつ、呼ばれた順にテキストで書き出す (座標・大きさ・色・文字と、そのときのフォントと文字の大きさ)。present で 1 枚の絵の区切り。
+- アプリの .app.rb (末尾に起動の行が残っていればそれを除いたもの。起動するクラスはランタイムと同じ決め方で選ぶ) と gem の Ruby (`lib/gems/picoruby-fmrb-app/mrblib/` ほか) を CRuby に読み込み、FmrbGfx の C の側だけを記録係に差し替えて (`tools/regress/recorder.rb`)、場面の台本どおりに on_create・on_update・キー・クリックを流す。描いたものを 1 行ずつ、呼ばれた順にテキストで書き出す (座標・大きさ・色・文字と、そのときのフォントと文字の大きさ)。present で 1 枚の絵の区切り。
 - 揺れるものは固定する: 時計 (`Machine.board_millis`・`Time.now`) は台本が進めたときだけ進む、乱数は場面ごとに決まった種、ファイルは git に入っている `flash/` と場面が置いたものだけ (`tools/regress/fake_fs.rb`)、網は偽物 (`tools/regress/fake_asterism.rb`。Link・TableClient・fmrb-asterism.rb の設定は本物を読み、その下の Asterism を偽物にする)。
 - 1 つの場面 × 1 つの端末ごとに fork した別のプロセスで流す (前の場面の状態が残らない)。
 - 基準は `test/regress/baseline/<アプリ>/<場面>@<端末の組>.txt`。
@@ -161,9 +161,9 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 
 - 手元の .env も回帰の道具も、デスクトップを mruby で作る。デスクトップを Spinel で作るのは CI の spinel-gen・build-linux (spinel) だけなので、デスクトップが呼ぶ FmrbApp のメソッドが mruby の binding にだけあると、何週間も CI でしか分からなかった (report/ci_develop_20261107.md)。これを手元で拾う。
 - `FMRB_KERNEL_ENGINE=spinel FMRB_APP_ENGINE_DESKTOP=spinel FMRB_APP_ENGINE_EDITOR=spinel rake spinel:gen` と同じ生成 (カーネル・エディタ・デスクトップと gem 3 つ、platform は linux) を、`rake spinel:gen` と同じ手順 (`spinel_gen_programs`、rakelib/spinel.rake) で流す。C のコンパイルはしない。
-- 書く先は `tmp/regress/spinel/` (毎回空から)。ビルドが使う `main/prebuild_scripts/spinel/gen` と、gem の写しを置く `main/prebuild_scripts/spinel/` には**触らない** (中身も時刻も変わらないので、次のビルドが作り直しにならない)。木の中に書くので、worktree からも並べて流せる。
+- 書く先は `tmp/regress/spinel/` (毎回空から)。ビルドが使う `main/ruby/spinel/gen` と、gem の写しを置く `main/ruby/spinel/` には**触らない** (中身も時刻も変わらないので、次のビルドが作り直しにならない)。木の中に書くので、worktree からも並べて流せる。
 - 要約は `spinel: 6 programs, 6 generated, 0 failed (17.9 s)` の 1 行。落ちたら、プログラムごとに `FAIL spinel system_desktop_combined (tmp/regress/spinel/system_desktop_combined.log)` と、コンパイラが拒否した行 (`undefined method 'battery_level' for a Class: ...`) を 20 行まで出す。全部はその log にある。
-- 拒否されたら、そのメソッドを Spinel の FmrbApp (`main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`) に足すか、呼び出しを `#:spinel-strip-begin/end` で Spinel 版から外す (直し方の例は e3ab8127)。
+- 拒否されたら、そのメソッドを Spinel の FmrbApp (`main/ruby/spinel/fmrb_app_base_spinel.rb`) に足すか、呼び出しを `#:spinel-strip-begin/end` で Spinel 版から外す (直し方の例は e3ab8127)。
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。経緯と測定は report/spinel_gen_check.md。
 
 ## 8. 実機の起動ログ (rake regress:boot)
@@ -289,7 +289,7 @@ ruby tools/regress/live.rb --attach modern --scene board   # もう動いてい�
 ```
 
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
-- アプリが外の相手とやり取りする場面を、**相手を道具が立てて**流し、相手の側の状態 (卓の様子・受けたバイト列・音の数値) を基準と比べる。実機・VPS は使わない。相手はすべてこの PC の上: sim の zenohd (tcp 127.0.0.1:7447)、asterism-games の作業コピー (fmruby-core の隣、`ASTERISM_GAMES_DIR` で変える) から起こすゲームホスト、ルートの `tools/fmrb_midi_monitor.rb`・`tools/fmrb_audio_probe.rb`、`tool/imu/step_send.rb`。
+- アプリが外の相手とやり取りする場面を、**相手を道具が立てて**流し、相手の側の状態 (卓の様子・受けたバイト列・音の数値) を基準と比べる。実機・VPS は使わない。相手はすべてこの PC の上: sim の zenohd (tcp 127.0.0.1:7447)、asterism-games の作業コピー (fmruby-core の隣、`ASTERISM_GAMES_DIR` で変える) から起こすゲームホスト、ルートの `tools/fmrb_midi_monitor.rb`・`tools/fmrb_audio_probe.rb`、`tools/imu/step_send.rb`。
 - 流れは 9 章と同じ (build/ を退避 → clean_all → `rake build:linux` (TAB5) → sim を headless で起こす → 場面ごとにデスクトップから始めて、終わったらアプリを閉じてデスクトップが元どおりか見る → 片付け)。構成は `modern` だけ (Asterism・卓のアプリ・walk_scroller がそろう。麻雀は 640x360)。
 - 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `live: N passed / 0 failed (...)`)。落ちたときは `FAIL modern <場面>.<名前>: <違う所>` が 6 つまで。
 
@@ -298,7 +298,7 @@ ruby tools/regress/live.rb --attach modern --scene board   # もう動いてい�
 | 相手 | 台本での立て方 | 中身 |
 |---|---|---|
 | ゲームホスト | `g = s.counterpart :games, table: :othello` (`:board`・`:mahjong`) | asterism-games を `bundle exec bin/asterism-games` で、卓 1 つの設定と空の状態のディレクトリ (`tmp/regress/live/counterparts/<場面>/games/`) で起こす。node は `rghost`。AI の鍵・資格情報・外のルータは環境から外す。`g.table` (卓の view)、`g.call(:look, g.token)` (卓の任意のメソッド)、`g.member`・`g.token` (保存された状態の端末の札)、`g.stop` (SIGTERM: ホストは保存して網から去る)・`g.resume` (同じ状態で起こし直す) |
-| 歩数の送り手 | `st = s.counterpart :steps` | `tool/imu/step_send.rb --measure` を node `rgsteps` で。`st.walk(10, cadence: 120)`、`st.state` は送った数と、walk_scroller が描いた後に置く progress (歩数・count・印) の列 |
+| 歩数の送り手 | `st = s.counterpart :steps` | `tools/imu/step_send.rb --measure` を node `rgsteps` で。`st.walk(10, cadence: 120)`、`st.state` は送った数と、walk_scroller が描いた後に置く progress (歩数・count・印) の列 |
 | MIDI のモニタ | `m = s.counterpart :midi` | ルートの `fmrb_midi_monitor.rb` を起こし、出力を記録。`m.messages` (時刻・バイト列・種類)、`m.notes` (音名・鳴り始め・止め・チャンネル) |
 | 音の探り | `a = s.counterpart :audio` | ルートの `fmrb_audio_probe.rb`。`a.listen(秒) { 鳴らす操作 }` が窓の数・鳴った窓の数・ピークを返す |
 

@@ -17,7 +17,7 @@ report は doc/editor_ti/report/p5.md へ。タスクごとにコミット。
 ## 前提の整理 (P5 で確定済み)
 
 - **flash は S3 のボトルネックではない**。S3 は factory 4M / storage 5M
-  (config/partitions_n16r8.csv)、ti 込みイメージは ~3.6MB で 14% 余裕。
+  (config/partitions_naryav3.csv)、ti 込みイメージは ~3.6MB で 14% 余裕。
   flash/help は 20KB で storage の 5M に対し誤差。
 - **残る S3 の懸念は内蔵 RAM の 16KB arena だけ** (エンジンの
   `static uint8_t arena_bytes[16KB]`、src/base/picoruby_ti_arena.c)。

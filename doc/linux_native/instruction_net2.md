@@ -13,11 +13,11 @@ NET1 (report/net1.md) で `Net::WebSocket::Client#receive` の見直しの間隔
   追加決定。
 - **Linux 版 (ネイティブ版と sim) だけに入れる**。実機 (ESP32-S3・P4) は
   30 ms より短い見直しの負担を実機で確認するまで、今の一定の 30 ms のまま。
-- ブラウザ版はこの gem を持たない (lib/add/family_mruby_wasm.rb) ので対象外。
+- ブラウザ版はこの gem を持たない (lib/upstream/family_mruby_wasm.rb) ので対象外。
 
 ## 直すもの
 
-- `lib/patch/picoruby-net-websocket/mrblib/client.rb` の `receive`。
+- `lib/upstream/patch/picoruby-net-websocket/mrblib/client.rb` の `receive`。
   - 待ちが始まるたびに (receive の呼び出しごと、またはフレームを 1 つ受けた後)
     刻みを最初の 5 ms に戻す。
   - Linux 版かどうかの見分け方は、既にある仕組み (定数・ビルド時の定義・
@@ -43,7 +43,7 @@ NET1 (report/net1.md) で `Net::WebSocket::Client#receive` の見直しの間隔
 
 ## 触ってよい範囲
 
-- `lib/patch/picoruby-net-websocket/`、必要なら `rakelib/setup.rake`。
+- `lib/upstream/patch/picoruby-net-websocket/`、必要なら `rakelib/setup.rake`。
 - submodule は直接編集しない。
 
 ## 止まる条件

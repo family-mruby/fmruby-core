@@ -104,7 +104,7 @@ docker run --rm -v $PWD:/w -w /w mruby-valgrind \
 
 ## 5. Family mruby での使いどころ
 
-- `lib/patch/picoruby-mruby/lib/mruby/src/vm.c` (自前の時分割など) や mruby の上流
+- `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` (自前の時分割など) や mruby の上流
   追従で VM を変えたら、ホストでは命令数を前後で比べる。時間がホストで 10% 延びても、
   それだけで差し戻さない。
 - 逆に、ホストの時間で速くなったという報告も、命令数か端末の時間で裏を取るまで

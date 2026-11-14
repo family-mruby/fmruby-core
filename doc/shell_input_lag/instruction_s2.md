@@ -17,8 +17,8 @@ P4 では `MRB_HEAP_PAGE_SIZE` が 256 なので、余白の判定は 128 スロ
   読み、意図を壊さずに「回収しても少ししか空かない」ときは回収しない条件を決める。案: 回収で戻る見込みの空き
   (`capacity - live_after_mark`) が容量の一定割合 (例 1/4) 以上か、ページ数枚分以上のときだけ回収する。
   複数の案を比べ、選んだ理由を report に書く。
-- 当て方は lib/patch (submodule は直接編集しない)。mruby の src/gc.c をまだ lib/patch で上書きしていないので、
-  既存の lib/patch/picoruby-mruby/lib/mruby/src/vm.c の当て方 (rakelib/setup.rake) にならう。差分は最小にし、
+- 当て方は lib/upstream/patch (submodule は直接編集しない)。mruby の src/gc.c をまだ lib/upstream/patch で上書きしていないので、
+  既存の lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c の当て方 (rakelib/setup.rake) にならう。差分は最小にし、
   上流に出せる形 (この条件の部分だけ) を意識する。ESP32 (rake の libmruby と CMake の両経路)、Linux、wasm の
   どれにも同じ gc.c が使われることを確かめる (lib/ を変えたら `rake clean`。memory の dual build の罠に注意)。
 
@@ -51,7 +51,7 @@ P4 では `MRB_HEAP_PAGE_SIZE` が 256 なので、余白の判定は 128 スロ
 - 作業ブランチ `feature/shell-gc` (親が develop から切る)。本体の checkout で作業する。自分が変えたファイルだけを
   パスで指定してコミット。push とマージはしない。
 - `.env` は書き換えずコミットしない。最後に `git diff .env` が scratchpad の env_before_shell_gc.diff と一致する。
-- sdkconfig、graphics-audio は変えない。submodule は直接編集しない (lib/patch 経由)。
+- sdkconfig、graphics-audio は変えない。submodule は直接編集しない (lib/upstream/patch 経由)。
 - 実機の書き込みはよい。ファイルを flash に繰り返し書く試験はしない。端末に置いた試験ファイルは消す。
 - 親から「実機の操作を止めて」と伝えられたら (通話中など。アプリの起動や再起動で音が出る)、書き込み・再起動・
   アプリの起動と停止・遠隔の入力をすぐ止め、ビルドとコードの作業だけを続ける。

@@ -31,7 +31,7 @@
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/` (デスクトップ・File Manager・確認の
+- fmruby-core: `main/ruby/kernel/` (デスクトップ・File Manager・確認の
   ダイアログ・keys のデスクトップ)、`components/fmrb_hal/` と `hosted/` の file HAL、
   `native/`、`lib/add/` の該当箇所、`test/`、`doc/linux_native/report/`。
 - 触らないもの: fmruby-graphics-audio、sdkconfig、submodule の中、`flash/`、plan.md。

@@ -63,7 +63,7 @@ File Manager・ファイル選択) どれでも終了になる。**終了はメ�
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/` (kernel・system_desktop・
+- fmruby-core: `main/ruby/kernel/` (kernel・system_desktop・
   system_desktop_keys)、`main/kernel/host/host_task.c` の keys の部分、
   Asterism の Zenoh の接続先を決めている所 (native だけに効く形で)、`native/`、
   `config/`、`rakelib/`、`test/`、`doc/` の手引き、`doc/linux_native/report/`。

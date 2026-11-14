@@ -91,7 +91,7 @@ poly 値は `puts` / 算術 / 比較 / `case/when` / メソッドレシーバで
 | ベンチ | 内容 | CRuby | Spinel | Spinel/CRuby |
 |---|---|---|---|---|
 | フル harness | 336,000 HID イベント (allocation 多: window list 再生成 + 文字列生成) | 0.51 s / 54 MB | 0.52 s / 128 MB | ~1.0x (同等) |
-| compute micro | 2,000,000 反復の poly hash アクセス + 算術 (`tool/spinel_poc` 外, /tmp/microbench.rb) | 0.21 s | 0.06 s | **~3.5x** |
+| compute micro | 2,000,000 反復の poly hash アクセス + 算術 (`tools/spinel_poc` 外, /tmp/microbench.rb) | 0.21 s | 0.06 s | **~3.5x** |
 
 - **Spinel の計算自体は CRuby より速い (micro で 3.5x)。** poly 値 (symbol-hash) でも
   速い。フル harness が同等なのは **allocation/GC 律速** (button-down ごとに window list

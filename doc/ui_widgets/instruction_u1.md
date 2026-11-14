@@ -50,7 +50,7 @@
 
 ### 置き場所
 
-`lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb`。gem の mrblib は全ファイルが
+`lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb`。gem の mrblib は全ファイルが
 取り込まれるので mrbgem.rake の変更は不要。Spinel 側の `libs` への追加は U2。
 
 ### 描画の下準備: `FmrbGfx#draw_text_mixed`
@@ -59,8 +59,8 @@
 `draw_text_mixed(x, y, str, color, bg_color = nil)` を **両方の FmrbGfx** に
 足す:
 
-- `lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb` — `_draw_text_hybrid` を呼ぶ。
-- `main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb` — flags に 2 を
+- `lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb` — `_draw_text_hybrid` を呼ぶ。
+- `main/ruby/spinel/fmrb_app_base_spinel.rb` — flags に 2 を
   立てて `fmrb_spx_gfx_draw_text` を呼ぶ。
 
 理由: mruby のキーワード引数は呼び出しごとに Hash を作るので、flush の

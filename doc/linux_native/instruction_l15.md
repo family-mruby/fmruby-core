@@ -99,8 +99,8 @@ VM の確認 (2026-10-29) の結果と見立ては plan.md の「後で直すも
 
 ## 触ってよい範囲
 
-- native/、main/prebuild_scripts/kernel/ (代役・デスクトップ・カーネル)、
-  lib/add/picoruby-fmrb-app/、config/machines/、flash/usr/share/sprites/flappy/、
+- native/、main/ruby/kernel/ (代役・デスクトップ・カーネル)、
+  lib/gems/picoruby-fmrb-app/、config/machines/、flash/usr/share/sprites/flappy/、
   flash/usr/share/desktop/、試験と回帰の道具の基準、doc/linux_native/。
 
 ## 止まる条件

@@ -19,10 +19,10 @@
 
 ## 作業場所と触ってよい範囲
 
-- 新規ディレクトリ `fmruby-core/tool/spinel_ext_poc/` を作り、試作はすべて
+- 新規ディレクトリ `fmruby-core/tools/spinel_ext_poc/` を作り、試作はすべて
   そこに置く (Ruby の entry、ホストの C、実行スクリプト、README)。
   **ビルドに配線しない** (Rakefile・CMake・components・main・lib は触らない)。
-- `lib/add/picoruby-fmrb-raycast/mrblib/raycast_core.rb` は**読むだけ**。
+- `lib/gems/picoruby-fmrb-raycast/mrblib/raycast_core.rb` は**読むだけ**。
   試作からは相対パスで読む (コピーすると 2 つの版がずれる)。
 - 生成物・バイナリは scratchpad (`/tmp/claude-1000/-home-kishima-fmrb-family-mruby/a0ea00a0-6754-4693-ae2d-f05782a9784d/scratchpad/spinel_p1/`) に出す。
   tool/ に生成物を置かない。
@@ -75,7 +75,7 @@ report に次を表で残す。
 
 ## T4 (余力があれば): fft でも同じことをする
 
-`lib/add/picoruby-fmrb-fft/spinel/fft_spinel.rb` を同じ形にして、CRuby 版と
+`lib/gems/picoruby-fmrb-fft/spinel/fft_spinel.rb` を同じ形にして、CRuby 版と
 数値一致 (Float は許容誤差を決めて書く) を確かめる。Float が境界を越える
 ときの型 (ヘッダ上の C 型) を記録する。時間が足りなければ T4 は省いて
 report に「未着手」と書く。
@@ -105,4 +105,4 @@ report に「未着手」と書く。
 - raycast の ext 版が、64bit と 32bit の両方で CRuby とバイト単位で一致する
   (1,000 通り以上、map 差し替えを含む)
 - 境界の比較表と `.data` を含む大きさの表がある
-- `tool/spinel_ext_poc/` の README の手順だけで、別の人が再実行できる
+- `tools/spinel_ext_poc/` の README の手順だけで、別の人が再実行できる

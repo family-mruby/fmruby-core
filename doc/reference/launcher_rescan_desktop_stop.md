@@ -237,7 +237,7 @@ label/path/icon を持っている。ディレクトリを列挙して、**キ�
 
 デスクトップは `idle_gc = true` で動く。これは `GC.scheduler_driven = true`
 = **mruby の自動 GC (auto_step) を切る**設定で、回収はアプリが `_spin` や
-`on_update` で自分で回す約束になる (`lib/add/picoruby-fmrb-app/mrblib/
+`on_update` で自分で回す約束になる (`lib/gems/picoruby-fmrb-app/mrblib/
 fmrb-app.rb` の `idle_gc=`)。
 
 そして `on_update` は `return 50 if tick_rescan` で**早期に戻る**ため、

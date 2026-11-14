@@ -25,7 +25,7 @@ IDF6 は esp32p4 で **picolibc** をリンクする（v5.5 は newlib）。こ�
 - **`_ctype_` 未定義**: 別ビルドの libmruby(picoruby の rake クロスビルド)が newlib 形式の
   `<ctype.h>`（`_ctype_` 配列参照）でコンパイルされ、picolibc にその実体が無くリンク失敗。
   - 回避: mruby クロスビルド設定にも **`-specs=picolibc.specs`** を付け、picolibc の `<ctype.h>` を使わせる
-    (`lib/add/family_mruby_esp32p4.rb`)。toolchain 同梱の `picolibc.specs` が `-specs=` 名前解決で見つかる。
+    (`lib/upstream/family_mruby_esp32p4.rb`)。toolchain 同梱の `picolibc.specs` が `-specs=` 名前解決で見つかる。
 - **C11 `timespec_get` 欠落**: picolibc が同関数を提供せず、mruby-time(`TIME_UTC` 定義で C11 分岐選択)が
   リンク失敗。
   - 回避: `clock_gettime` ベースのシムを追加 (`main/compat/fmrb_libc_compat.c`、esp32p4 限定)。

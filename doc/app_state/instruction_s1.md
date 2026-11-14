@@ -18,7 +18,7 @@
    2026-10-29。端末ごとの切り分けはしない)。/tmp はディレクトリを作れない (fmrb_tmpfs.h の不変条件) ので平らな名前にする (2026-10-29 ユーザ決定)。File Manager の名前は固定の `file_manager` (keys のデスクトップと共有、ユーザ決定)。各端末で
    どれだけ残るか (ブラウザの再読み込み・ネイティブ版の再起動で消えるか) を
    report に書く。
-3. **File Manager** (main/prebuild_scripts/kernel/system_desktop/file_manager.rb ほか):
+3. **File Manager** (main/ruby/kernel/system_desktop/file_manager.rb ほか):
    - 閉じるときに今のフォルダを覚え、次に開くときそこから始める。
    - 覚えたフォルダが無い・読めないときは今の初期フォルダ。
    - keys のデスクトップ (system_desktop_keys) の File Manager も同じ扱いにできる
@@ -36,7 +36,7 @@
 
 ## 触ってよい範囲
 
-- lib/add/picoruby-fmrb-app/、main/prebuild_scripts/ (spinel の基底・カーネルの
+- lib/gems/picoruby-fmrb-app/、main/ruby/ (spinel の基底・カーネルの
   デスクトップ)、sig/ (型を足すなら。直したら `rake clean`)、試験・回帰の道具、
   doc/app_state/。
 

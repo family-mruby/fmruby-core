@@ -4,7 +4,7 @@
 
 言葉: 文書は常体、「確かめ」ではなく「確認」。端末と呼ぶ。コードのコメントは英語。
 
-前提: doc/headless_s3/report/m3s.md (ピン、I2C の石 0x68 = BMI270、ボタン KEY1 G11・KEY2 G12、WiFi・devctl・Asterism の繋ぎ方)、report/h3.md (`asterism_demo` の作り、WiFi を待つ)、doc/imu/report/p1.md とブランチ `feature/imu-bmi270` (584e1264・59bc3181: Tab5 向けの BMI270 の Ruby の gem と設定データ 8192 バイトの流し込み、試験 tool/imu/test/verify.rb)、.claude/skills/fmrb-app-new、ルートの CLAUDE.md (MCP)。
+前提: doc/headless_s3/report/m3s.md (ピン、I2C の石 0x68 = BMI270、ボタン KEY1 G11・KEY2 G12、WiFi・devctl・Asterism の繋ぎ方)、report/h3.md (`asterism_demo` の作り、WiFi を待つ)、doc/imu/report/p1.md とブランチ `feature/imu-bmi270` (584e1264・59bc3181: Tab5 向けの BMI270 の Ruby の gem と設定データ 8192 バイトの流し込み、試験 tools/imu/test/verify.rb)、.claude/skills/fmrb-app-new、ルートの CLAUDE.md (MCP)。
 
 ## 1. 作るもの
 

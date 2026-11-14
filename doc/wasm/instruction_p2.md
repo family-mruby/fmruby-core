@@ -17,9 +17,9 @@ wasm (協調 port) では top-half を起動せず自給のみで成立させる
 ## 編集対象と罠
 
 - HAL の原本は
-  `lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c`
+  `lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c`
   (228 行)。components/picoruby-esp32/picoruby/ 以下のコピーは rake が
-  `cp -rf lib/patch/picoruby-mruby` (rakelib/setup.rake:151) で上書きするので
+  `cp -rf lib/upstream/patch/picoruby-mruby` (rakelib/setup.rake:151) で上書きするので
   触らない。lib/ を触ったら `rake clean`。
 - 現行構造 (task_hal.c 冒頭のコメントに詳細):
   - top-half `mruby_tick_task` (task_hal.c:70): 4ms (MRB_TICK_UNIT) ごとに
@@ -43,10 +43,10 @@ wasm (協調 port) では top-half を起動せず自給のみで成立させる
   通る**。ここが唯一の周期 hook 地点。
 - マクロ内の task_across_c_boundary は switching が真のときしか呼ばれない
   (短絡評価) ので、既存の呼び出しには相乗りできない。
-- vm.c は lib/patch に無い (以前の tick 修正は上流にマージ済みで、submodule の
+- vm.c は lib/upstream/patch に無い (以前の tick 修正は上流にマージ済みで、submodule の
   vm.c がそれを含む)。ただし patch 機構は
-  `cp -rf lib/patch/picoruby-mruby` の一括コピーなので、
-  `lib/patch/picoruby-mruby/lib/mruby/src/vm.c` を置けば rake 変更なしで
+  `cp -rf lib/upstream/patch/picoruby-mruby` の一括コピーなので、
+  `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` を置けば rake 変更なしで
   差し替わる (mruby-task の task.c が同じ方式の前例)。
 
 推奨する形:

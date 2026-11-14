@@ -2,7 +2,7 @@
 
 先に `00_common.md` を読むこと。ここでの作業は Linux (WSL2) のみで完結する。
 fmruby-core のビルドや firmware への組み込みは一切行わない。
-成果物はすべて `tool/spinel_poc/` (新規ディレクトリ) と
+成果物はすべて `tools/spinel_poc/` (新規ディレクトリ) と
 `doc/spinel_aot/reports/phase0_report.md` に置く。
 
 ## 目的
@@ -22,14 +22,14 @@ fmruby-core のビルドや firmware への組み込みは一切行わない。
   `-E app.rb` (コンパイルして即実行)。テストは CRuby を oracle とした
   出力比較方式。
 - 検証対象の Ruby ソース:
-  - `main/prebuild_scripts/kernel/fmrb_kernel/input_router.rb` (~345 行、
+  - `main/ruby/kernel/fmrb_kernel/input_router.rb` (~345 行、
     最重要ホットパス。HID バイナリイベントのデコード、ウィンドウ座標
     変換、ドラッグ/リサイズ状態機械)
-  - `main/prebuild_scripts/kernel/fmrb_kernel/window_manager.rb` (~90 行、
+  - `main/ruby/kernel/fmrb_kernel/window_manager.rb` (~90 行、
     ウィンドウヒットテスト、z-order)
-  - `main/prebuild_scripts/kernel/system_desktop/launcher.rb` (ソート・
+  - `main/ruby/kernel/system_desktop/launcher.rb` (ソート・
     レイアウト処理の代表)
-  - `main/prebuild_scripts/default_app/shell/shell_commands.rb` (文字列
+  - `main/ruby/default_app/shell/shell_commands.rb` (文字列
     処理の代表)、`shell_io.rb` (`def puts(*args)` の splat、`$stdout`)
 - これらは C バインディング (`FmrbKernel` のメソッド群、`Machine.board_millis`、
   `Log`、`FmrbConst`、`MessagePack`) を呼ぶ。PoC ではこれらを Ruby の
@@ -46,7 +46,7 @@ fmruby-core のビルドや firmware への組み込みは一切行わない。
 
 ### T0-2: input_router 検証ハーネス (1-1.5 日)
 
-`tool/spinel_poc/harness_input_router.rb` を作る。
+`tools/spinel_poc/harness_input_router.rb` を作る。
 
 1. **スタブ層**: 実コードが参照する外部 API を Ruby で偽装する。
    - `FmrbKernel` 相当: `_get_window_list` はウィンドウ矩形のフィクスチャ
@@ -56,7 +56,7 @@ fmruby-core のビルドや firmware への組み込みは一切行わない。
    - `Machine.board_millis`: 単調増加カウンタ (イベントごとに +1ms など、
      **決定的に**進める。実時刻は使わない)。
    - `Log.info` 等: 標準出力へ `[I] ...` 形式で出す。
-   - `FmrbConst`: 実物 (`lib/add/picoruby-fmrb-const/` の C ソース) から
+   - `FmrbConst`: 実物 (`lib/gems/picoruby-fmrb-const/` の C ソース) から
      必要な定数値を読み取り、Ruby の定数定義に書き起こす。
 2. **実コードの取り込み**: `input_router.rb` と `window_manager.rb` を
    できるだけ**無改変で** `require_relative` またはファイル連結で取り込む
@@ -98,7 +98,7 @@ fmruby-core のビルドや firmware への組み込みは一切行わない。
 
 ### T0-4: desktop / shell 代表コードのコンパイル可否 (1 日)
 
-`tool/spinel_poc/coverage/` に小さな検証スクリプト群を作る。それぞれ
+`tools/spinel_poc/coverage/` に小さな検証スクリプト群を作る。それぞれ
 実コードから該当ロジックを抜粋し (スタブ付き)、`./spinel -c` が通るか、
 `-E` での実行結果が CRuby と一致するかを確認する。
 
@@ -119,12 +119,12 @@ fmruby-core のビルドや firmware への組み込みは一切行わない。
    ある「mixin 内の裸定数はその mixin のスコープでしか解決されない」
    パターンを再現し、Spinel の定数解決が mruby と同じ結果になるか確認)。
 8. 通らなかった構文は `tools/spinel-reduce` (Spinel 同梱) で最小再現に
-   切り詰め、`tool/spinel_poc/coverage/UNSUPPORTED.md` に「最小再現 /
+   切り詰め、`tools/spinel_poc/coverage/UNSUPPORTED.md` に「最小再現 /
    エラー内容 / 回避書き換え案」を列挙する。
 
 ### T0-5: pure-Ruby MessagePack サブセット (1 日)
 
-`tool/spinel_poc/msgpack_pure.rb` に `MessagePackPure` モジュールを実装。
+`tools/spinel_poc/msgpack_pure.rb` に `MessagePackPure` モジュールを実装。
 将来カーネルの `MessagePack.pack/unpack` を置き換えるもの。
 
 1. 対応型 (fmruby の VM 間メッセージで使う範囲):
@@ -137,7 +137,7 @@ fmruby-core のビルドや firmware への組み込みは一切行わない。
    msgpack 仕様どおり big-endian。浮動小数は
    `[v].pack("G")` 相当が Spinel で使えるか確認し、不可なら
    ビット操作で実装 (Spinel の pack 対応は要確認)。
-3. テスト `tool/spinel_poc/test_msgpack.rb`:
+3. テスト `tools/spinel_poc/test_msgpack.rb`:
    - 固定テストベクタ (msgpack 仕様書の例 + 手計算のバイト列) との一致。
    - roundtrip (pack → unpack == 元データ) を代表 30 ケース以上。
    - CRuby に `msgpack` gem があれば相互検証 (pack 結果のバイト一致)。
@@ -172,7 +172,7 @@ shell の Spinel 化は**オプション** (ユーザ決定: 難しければ対�
 mruby のまま残す)。このタスクの目的は「やるかどうか」の判断材料作りで
 あり、実装コミットではない。
 
-1. `main/prebuild_scripts/default_app/shell.app.rb`、`shell/shell_irb.rb`、
+1. `main/ruby/default_app/shell.app.rb`、`shell/shell_irb.rb`、
    Sandbox の C 実装 (`main/app/fmrb_app.c` の FMRB_LOAD_MODE 周辺と
    picoruby の Sandbox クラス) を読む。
 2. 「Spinel 化する部分 (UI・行編集・スクロール・組み込みコマンド)」と
@@ -219,7 +219,7 @@ mruby のまま残す)。このタスクの目的は「やるかどうか」の�
   レポートに全件列挙する。設計変更級 (ライブラリモード等) は Phase 1 で行い、
   ここでは必要性の記録に留める。
 - fmruby-core 側の既存ファイルも変更しない (読むだけ)。新規ファイルは
-  `tool/spinel_poc/` と `doc/spinel_aot/reports/` のみに置く。
+  `tools/spinel_poc/` と `doc/spinel_aot/reports/` のみに置く。
 
 ## 完了レポートに含める事項
 

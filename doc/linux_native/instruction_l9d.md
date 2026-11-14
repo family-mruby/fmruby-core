@@ -87,7 +87,7 @@
 ## 触ってよい範囲
 
 - fmruby-core: `native/`、`hosted/`、`config/machines/`、`main/` の表示・kernel・
-  デスクトップのうち画面の大きさの決め打ちの所、`main/prebuild_scripts/kernel/`
+  デスクトップのうち画面の大きさの決め打ちの所、`main/ruby/kernel/`
   (代役・ランチャー・デスクトップ)、`lib/add/` の native だけの部分、`flash/` の
   印の置き場所 (新しい印の BMP だけ)、`rakelib/`、`tools/regress/`、`test/`、
   `doc/linux_native/report/`。

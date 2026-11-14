@@ -138,7 +138,7 @@ Tab5 (ESP32-P4) のデスクトップ画面をPCブラウザへ配信し、マ�
   Phase 2 = H.264 HWエンコーダ + WebSocket + WebCodecs (低帯域・低遅延)。
   MJPEG は非Chromeブラウザ向けフォールバックとして残す
 - **ビューアはデバイス内蔵配信**: P4 の esp_http_server が HTML/JS を配信。
-  `http://<デバイスIP>/` を開くだけで使える。ソースは tool/web/remote/、
+  `http://<デバイスIP>/` を開くだけで使える。ソースは tools/web/remote/、
   ビルド時に EMBED_FILES で埋め込み
 - **WiFi資格情報は TOML**: 機密は /etc/wifi.toml に分離し git に入れない
 - esp_hosted 1.4.0 + ストックC6ファーム 1.4.1 の組は**維持**
@@ -229,7 +229,7 @@ main/drivers/remote_desktop/
 main/drivers/display_local/     # capture API 追加 (下記)
 main/boot/boot.c             # modern_ble_init_task → modern_radio_init_task
                              # (BLE init → WiFi init を逐次実行)
-tool/web/remote/
+tools/web/remote/
   index.html / remote.js / keymap.js   # ビューア (EMBED_FILES 埋込)
 config/wifi.toml.example  # テンプレート (実物 config/wifi.toml は
                              # .gitignore + Rakefile 条件付きコピー)
@@ -294,7 +294,7 @@ password = "mypassword"
 hostname = "fmruby"        # mDNS: http://fmruby.local/
 ```
 
-system_conf.toml (config/system_conf_p4.toml) に追加:
+system_conf.toml (config/system_conf_tab5.toml) に追加:
 
 ```toml
 [remote_desktop]
@@ -357,7 +357,7 @@ X-Seq: <seq>\r\n
 IDR には SPS/PPS を前置 (エンコーダ出力に含まれなければサーバ側でキャッシュ
 して前置)。クライアント join / keyframe_req 受信で IDR を要求。
 
-## ビューア (tool/web/remote/)
+## ビューア (tools/web/remote/)
 
 - index.html: `<img src="/stream">` (P1) / `<canvas>` (P2) を Window 表示 852x480
   (2x, image-rendering: pixelated) + ステータスバー。全画面切替あり (下記)
@@ -391,7 +391,7 @@ IDR には SPS/PPS を前置 (エンコーダ出力に含まれなければサ�
 - 配信解像度は 426x240 のままなので全画面は拡大表示。粗が気になる場合は
   `h264_bitrate_kbps` を上げる (既定 1000)
 
-## sdkconfig.defaults.p4 追記 (計画承認済みブロック、既存行は不変更)
+## sdkconfig.defaults.tab5 追記 (計画承認済みブロック、既存行は不変更)
 
 ```
 # --- WiFi STA via esp_wifi_remote (radio on ESP32-C6 over esp_hosted SDIO) ---

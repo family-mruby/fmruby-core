@@ -711,7 +711,7 @@ L7c の検収で見つけたもの (L7d で直した: 削除の失敗の表示�
     LogViewer のスクロールバー。LogViewer の下ボタンが角と重なって押せない件も一緒)。
   - MicroPython のアプリにも三角の印を出す。
   - BASIC の `tile_a.bmp` の 0x01 は色でなく色番号 (0 透明・1 輪郭・2 本体・3 明るい所、
-    tool/basic/gen_basic_tiles.rb) で、意図どおり。直さない。
+    tools/basic/gen_basic_tiles.rb) で、意図どおり。直さない。
   - デスクトップのアイコンの一覧 (`/home/desktop.toml`): `apps` (表示する、順に) と
     `hidden` (知っているが出さない) を持つ形にする。起動時、既定の一覧にあって両方に
     無いもの (新しく増えた既定) を `apps` の末尾に足して書き戻す。アイコンのメニューで

@@ -154,7 +154,7 @@ ES7210 (I2S RX) → [C: 新 mic タスク]
 
 - 出力の手本: `main/drivers/audio_p4/audio_p4_hw.c`(I2S + esp_codec_dev の作り方)
 - ES7210: `managed_components/espressif__esp_codec_dev/device/es7210/`
-- Float/Math + 数値計算の Ruby 例: `lib/add/picoruby-fmrb-app/mrblib/p5.rb`
+- Float/Math + 数値計算の Ruby 例: `lib/gems/picoruby-fmrb-app/mrblib/p5.rb`
 - μs 計時の C 源: `fmrb_spx_board_micros`(`main/kernel/fmrb_spx_common.c`)
 - アプリ描画: `FmrbGfx`(fill_rect で棒)、既存デモ `flash/app/demo/`
 - エンジン方針: memory `project_engine_policy`(Spinel=標準、mruby=互換検証)

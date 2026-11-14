@@ -35,10 +35,10 @@
   に `GFX_CMD_GET_PIXEL` と `params.get_pixel` を追加
 - host_task: [main/kernel/host/host_task.c](../main/kernel/host/host_task.c)
   の `gfx_cmd_to_batch_entry()` に変換ケースを追加
-- S3 binding: [lib/add/picoruby-fmrb-app/ports/esp32/gfx.c](../lib/add/picoruby-fmrb-app/ports/esp32/gfx.c)
+- S3 binding: [lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c](../lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c)
   に `mrb_gfx_get_pixel` (sync_ctx で host_task 経由)、`_get_pixel` として
   Ruby に公開
-- Ruby ラッパ: [lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb)
+- Ruby ラッパ: [lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb)
   に `def get_pixel(x, y); _get_pixel(x, y); end`
 - WROVER ハンドラ:
   [fmruby-graphics-audio/main/graphics/graphics_handler.cpp](../../fmruby-graphics-audio/main/graphics/graphics_handler.cpp)
@@ -87,10 +87,10 @@ LovyanGFX に組み込み `pushImageWithMask` 相当はなく、行単位の
   ペイロードが大きく可変長なので host_task を経由しない直接 transport_send_sync)。
 - host_task: [main/kernel/host/host_task.c](../main/kernel/host/host_task.c)
   の `gfx_cmd_to_batch_entry()` に 2 ケース追加。
-- S3 binding: [lib/add/picoruby-fmrb-app/ports/esp32/gfx.c](../lib/add/picoruby-fmrb-app/ports/esp32/gfx.c)
+- S3 binding: [lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c](../lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c)
   に `mrb_gfx_create_mask` (transport_send_sync 直送 + 自動 fragmentation)、
   `mrb_gfx_delete_mask`、`mrb_gfx_draw_image_masked` を追加。
-- Ruby ラッパ: [lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb)
+- Ruby ラッパ: [lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb)
   に `create_mask` / `delete_mask` / `draw_image_masked` を追加。
 - WROVER ハンドラ:
   [fmruby-graphics-audio/main/graphics/graphics_handler.cpp](../../fmruby-graphics-audio/main/graphics/graphics_handler.cpp)

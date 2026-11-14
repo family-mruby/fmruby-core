@@ -128,7 +128,7 @@ c.cast_packed(px, py, pa)
 
 ## ファイル構成
 
-新規 gem: `lib/add/picoruby-fmrb-raycast/`(手本は `picoruby-fmrb-spinel-hello` と
+新規 gem: `lib/gems/picoruby-fmrb-raycast/`(手本は `picoruby-fmrb-spinel-hello` と
 `picoruby-fmrb-fft`)。
 
 作るファイル:
@@ -179,7 +179,7 @@ c.cast_packed(px, py, pa)
 
 `adding_a_spinel_gem.md` の手順どおり、以下に 1 行ずつ足します。
 
-- `lib/add/family_mruby.gembox` … `conf.gem core: "picoruby-fmrb-raycast"` を追加。
+- `lib/upstream/family_mruby.gembox` … `conf.gem core: "picoruby-fmrb-raycast"` を追加。
   **追加後は `rake clean`(または `clean_all`)**。しないと gem_init.c が再生成されず、
   gem が黙って未登録になります。
 - `rakelib/setup.rake` … `picoruby-fmrb-raycast` の `rm -rf` + `cp -rf`(staging コピー)。
@@ -187,7 +187,7 @@ c.cast_packed(px, py, pa)
   **2 か所の `set(PICORUBY_SRCS ...)` ブロック両方**に追加(FFT/SpinelHello と同じ書き方)。
 - `main/CMakeLists.txt`:
   - COMPONENT_SRCS に `native/raycast_native.c` をパス参照で追加。
-  - INCLUDE_DIRS に `../lib/add/picoruby-fmrb-raycast/native` を追加。
+  - INCLUDE_DIRS に `../lib/gems/picoruby-fmrb-raycast/native` を追加。
   - register の前に `prepare_ruby_spinel_source(raycast_entry ...)`。
   - register の後に `generate_ruby_spinel_command(... raycast_entry ...)` と
     `set_source_files_properties(... -DSP_MULTI_CTX -include sp_mem_override.h)`。

@@ -31,7 +31,7 @@ instruction_p0_p1.md の「進め方」(そのまま適用)、report/p3.md (索�
   (空いている番号、両方の写しに同じ値)。ペイロードは
   `LOAD_SPRITE_IMAGE_BMP` と同じ形 (長さ + パス文字列)。
 - core: `components/fmrb_gfx/fmrb_gfx_cmd.[ch]` に builder、
-  `lib/add/picoruby-fmrb-app/ports/esp32/gfx.c` に
+  `lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c` に
   `FmrbGfx#_export_frame(path)`、`fmrb-gfx.rb` に `export_frame(path)`
   (present を含まない。呼ぶ側が present してから呼ぶ)。Spinel 側
   (`fmrb_spx_gfx.c`) は PicoRabbit が mruby 専用なので**今回は足さない**

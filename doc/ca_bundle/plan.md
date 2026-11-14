@@ -15,7 +15,7 @@
 
 ## 今の端末 (2026-10-22 に確認)
 
-- HTTPS は `lib/patch/picoruby-socket/ports/esp32/ssl_socket.c` が `esp_crt_bundle_attach` で IDF の束を付けて相手を確かめる。束は IDF の既定 (全部入り: `cacrt_all.pem` 150 枚、Mozilla 2025-02-25 の分。emSign は G1・G3・C1・C3)。
+- HTTPS は `lib/upstream/patch/picoruby-socket/ports/esp32/ssl_socket.c` が `esp_crt_bundle_attach` で IDF の束を付けて相手を確かめる。束は IDF の既定 (全部入り: `cacrt_all.pem` 150 枚、Mozilla 2025-02-25 の分。emSign は G1・G3・C1・C3)。
 - Zenoh の TLS (Asterism の mTLS) は console の自前の認証局だけを信じるので関係しない。
 - つなぐ先とその大本のルート: api.openai.com (TTS) → GlobalSign Root CA、api.open-meteo.com・raw.githubusercontent.com・*.github.io → ISRG Root X1、github.com → USERTrust ECC。どれも G3 の系統ではない。
 

@@ -36,7 +36,7 @@
 ## 4. 範囲・決まり
 
 - **触ってよいもの**: fmruby-core (develop) のビルドの設定・ボード固有の部分・区画の表・config/ (sdkconfig.defaults.sticks3 は上の条件つき)・`flash/app/test/asterism_demo.app.rb` (画面の大きさに合わせる程度)、report。
-- **触らないもの**: 既存の端末の sdkconfig.defaults と sdkconfig、`.env` の既定 (`FMRB_HW_TARGET` は環境変数で渡す。.env を変えたら最後に戻す)、Tab5 (別の USB にいる。焼かない・リセットしない)、VPS、`~/asterism_keys/`、ユーザの VOICEVOX、submodule の直接編集 (lib/add・lib/patch の決まりで)。
+- **触らないもの**: 既存の端末の sdkconfig.defaults と sdkconfig、`.env` の既定 (`FMRB_HW_TARGET` は環境変数で渡す。.env を変えたら最後に戻す)、Tab5 (別の USB にいる。焼かない・リセットしない)、VPS、`~/asterism_keys/`、ユーザの VOICEVOX、submodule の直接編集 (lib/add・lib/upstream/patch の決まりで)。
 - 実機: StickS3 に限り、serial_* / flash を使ってよい (/home が消えてよい新しい端末)。ポートは明示する。焼いたあとに USB の名乗りが変わって WSL から外れたら、`powershell.exe -Command "usbipd attach --wsl --busid 1-5"` で繋ぎ直してよい (bind はユーザ済み)。
 - 実装は「ヘッドレス専用のコードはなるべく書かない」(plan.md 決定事項) を守る。
 - push・タグはしない。`git commit -a` は使わない。作業は develop の上で、件名は `board:` / `build:` など履歴に合わせ、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。fmruby-core の doc (この指示書・report) はコミットしない (親がする)。

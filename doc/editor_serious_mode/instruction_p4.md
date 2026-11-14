@@ -52,8 +52,8 @@ report は report/p4.md へ。タスクごとにコミット。
 
 ## gem の作り
 
-- 置き場所: `lib/add/picoruby-fmrb-editor-core/` (mrblib の薄いラッパ +
-  src/ の C 実装 + include/)。gembox (lib/add/family_mruby.gembox) に追加。
+- 置き場所: `lib/gems/picoruby-fmrb-editor-core/` (mrblib の薄いラッパ +
+  src/ の C 実装 + include/)。gembox (lib/upstream/family_mruby.gembox) に追加。
   ESP-IDF ヘッダ (fmrb_mem 等) を使うので `components/picoruby-esp32/
   CMakeLists.txt` の PICORUBY_SRCS への配線も忘れない (CLAUDE.md の規約)。
 - 文書の内部表現は実装に任せる (行ポインタ配列 + 行バッファが最も素直)。

@@ -20,9 +20,9 @@ doc/fullscreen_hires/report/h3.md 7 章。report は `report/r1.md` へ。
 
 - T1 で「flash (const)」「PSRAM」「外す」に分類し、懸念が無いと言い切れるものから
   移す。手法は既存のものに揃える (`FMRB_EXT_RAM_BSS_ATTR`、`const`、Spinel の
-  `SP_TU_BSS` 系、mruby の生成物なら lib/patch 経由)。
+  `SP_TU_BSS` 系、mruby の生成物なら lib/upstream/patch 経由)。
 - mruby の gem_init / picogem_init の `.data` を const にする件は、生成スクリプトの
-  どこで `const` が付かないかを調べ、lib/patch (submodule の直接編集は禁止) で
+  どこで `const` が付かないかを調べ、lib/upstream/patch (submodule の直接編集は禁止) で
   直せるなら直す。
 - Spinel の生成 C の定数 (`cst_*`) と module の pool の数えを PSRAM に置く手当ては、
   フォーク (kishima/spinel fmrb-ext) の変更が要るなら、R2 に回して案だけ書く。

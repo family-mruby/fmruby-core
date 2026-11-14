@@ -32,7 +32,7 @@ posix 差し替え分を除き、Modern の表示・音系と wasm/backend/ を�
 | タスク | 何をするか |
 |---|---|
 | wasm:setup | LovyanGFX (実機と同系の M5GFX、コミット固定) を取得し、platform 選択 2 箇所に FMRB_LGFX_WASM 分岐を機械 patch |
-| wasm:mruby | libmruby を emcc でクロスビルド (lib/add/family_mruby_wasm.rb) |
+| wasm:mruby | libmruby を emcc でクロスビルド (lib/upstream/family_mruby_wasm.rb) |
 | wasm:core | core 本体を emcmake でビルド → node 用 `core` |
 | wasm:web | ブラウザ用 `core_web` (+ .data) とページを束ねる |
 | wasm:serve | COOP/COEP ヘッダ付きの開発サーバ (SharedArrayBuffer の条件) |

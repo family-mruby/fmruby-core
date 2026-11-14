@@ -9,7 +9,7 @@ Mic Spectrum が動いているときに 2 つ目の Mic Spectrum を起動す�
 届かなくなる (E キーがデスクトップのショートカットとして受け取られ、エディタが開いた)。マウスは効く。
 
 ログ: `spx: HID target set to new app pid=6` → 断られて終了 → `spx: HID target back to pid=2 (app 6 terminated)`。
-カーネルの `main/prebuild_scripts/kernel/fmrb_kernel/app_lifecycle.rb` が、起動の時点でキー入力の行き先を新しい
+カーネルの `main/ruby/kernel/fmrb_kernel/app_lifecycle.rb` が、起動の時点でキー入力の行き先を新しい
 アプリに移し (78 行目付近)、アプリが終わると「起動した親 (`@run_parent`) か、無ければデスクトップ」に戻す
 (835-862 行目付近)。元の行き先 (Mic Spectrum) には戻らない。起動直後に終わるアプリ全部 (Python の 2 つ目、
 large_memory の取り合い、Spinel のプログラムの 2 つ目、`single_instance` / `exclusive_group`、起動時のエラー) で起きる。

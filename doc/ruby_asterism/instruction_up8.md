@@ -6,7 +6,7 @@
 - asterism 0.8.0 (`/home/kishima/fmrb/family-mruby/asterism`、CHANGELOG の 0.8.0)。asterism-zenoh は 0.4.1 のまま。
 - asterism-games 0.16.2: `Gemfile` で `gem "asterism", "0.7.1"` に固定、gemspec は `~> 0.7, >= 0.7.1`。0.7.1 より後の機能 (@status、メソッドの説明、on_app_join) は gem にあれば使う作り。
 - asterism-console 0.3.9: `Gemfile` で、開発は隣の checkout (`path:`)、VPS の image は `ASTERISM_GEMS=rubygems` で `~> 0.7.1`。`Gemfile.lock`。
-- fmruby-core: `lib/add/ASTERISM_PIN` (今 2d9ecd4) が端末用の層 picoruby-asterism (asterism の `mrblib/`) を固定。`rake asterism:setup` / `rake setup` で取り込む。lib/ を変えたら `rake clean`、ターゲットの切替は `rake clean_all` (fmruby-core/CLAUDE.md)。
+- fmruby-core: `lib/upstream/ASTERISM_PIN` (今 2d9ecd4) が端末用の層 picoruby-asterism (asterism の `mrblib/`) を固定。`rake asterism:setup` / `rake setup` で取り込む。lib/ を変えたら `rake clean`、ターゲットの切替は `rake clean_all` (fmruby-core/CLAUDE.md)。
 
 言葉: 文書は常体、「確かめ」ではなく「確認」。コードのコメントと asterism-* の文書は英語。
 
@@ -30,7 +30,7 @@
 
 ### fmruby-core
 
-1. `lib/add/ASTERISM_PIN` を 0.8.0 のコミット (94c3322) に。`rake asterism:setup`、`rake setup`、`rake clean` の順で取り込む。
+1. `lib/upstream/ASTERISM_PIN` を 0.8.0 のコミット (94c3322) に。`rake asterism:setup`、`rake setup`、`rake clean` の順で取り込む。
 2. 端末で、0.8.0 の層が動くこと:
    - `rake test` (ネイティブの host テスト)。
    - Linux sim (標準構成): 起動し、エディタを 1 回起動して 1 打鍵する。Asterism を使うアプリ (麻雀とオセロの卓の一覧、`/app/test/asterism_demo.app.rb` など) が、手元の zenohd と一式 (`rake mahjong:up` など) につながって動く。
@@ -46,7 +46,7 @@
 
 ## 4. 範囲・決まり
 
-- **触ってよいもの**: asterism-games (main)、asterism-console (main)、fmruby-core (develop、`lib/add/ASTERISM_PIN` とそれに伴うもの、report)。
+- **触ってよいもの**: asterism-games (main)、asterism-console (main)、fmruby-core (develop、`lib/upstream/ASTERISM_PIN` とそれに伴うもの、report)。
 - **触らないもの**: asterism (0.8.0 は公開済み)・asterism-zenoh・picoruby-asterism-zenoh、VPS、GitHub の設定、Tab5 (シリアル・WiFi)。牌のシート (`tiles_hand.bmp` / `tiles_river.bmp`) はユーザの手書き: 触らない。
 - 外の AI の API を呼ばない。push・タグはしない。`git commit -a` は使わない。コミットの末尾は `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。実在の値の検査をしてからコミットする。
 - 起こしたもの (deploy/local、games の一式、sim、ブラウザ、試しの image と volume) は名前で止めて消す (sim は sim_down)。前からある image は残す。docker の prune はしない。

@@ -60,7 +60,7 @@ J3 (折り返し) と J4 (かな入力) は本指示書の範囲外 (次フェ�
    (深さ x 128B) を report に記録。併せて cmd_copy_bytes
    (fmrb_gfx_cmd.c) の切り捨てを **UTF-8 境界で切る**よう修正 (壊れた
    マルチバイト末尾を送らない)。
-2. **FONT_METRICS の幅誤り** (lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb):
+2. **FONT_METRICS の幅誤り** (lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb):
    [:ja,8] / [:ja,12] は「半角幅 / 全角幅」のデュアル幅である事実を
    モデル化する (half_w フィールド追加等)。実測: misaki = 半4/全8、
    efont = 半6/全12。text_width も半角/全角で正しく数える。

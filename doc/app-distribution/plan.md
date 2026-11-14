@@ -59,7 +59,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、GitHub に
 | **P1-B** | 実機側の前提の確認 | sim / ブラウザ / 実機で置いて動かす。**sim・ブラウザ済、Retro 実機はユーザ** |
 | **P2** | ブラウザ版に通信手段 | `FmrbNet.request` (3 環境)。**完了** |
 | **P2b** | `startup_app` | desktop が起動時に 1 本立ち上げる。ブラウザは `?app=`。**完了** |
-| **P3** | **3 環境共通の店アプリ** | `main/prebuild_scripts/default_app/appstore.app.rb`。**完了** |
+| **P3** | **3 環境共通の店アプリ** | `main/ruby/default_app/appstore.app.rb`。**完了** |
 | P4 | 束と版 | 複数ファイル、`app_version` の比較と入れ替え |
 | P5 | 仕上げ | アイコン、絞り込み、Web Serial での書き込み |
 
@@ -198,14 +198,14 @@ family-mruby-apps/
 
 ## P3 — 店アプリ (完了)
 
-`main/prebuild_scripts/default_app/appstore.app.rb`。sim とブラウザで同じソースが動いた
+`main/ruby/default_app/appstore.app.rb`。sim とブラウザで同じソースが動いた
 (report/p3.md)。積み残しは 3 つ: **スクリーンショットを出していない**、**sha256 を
 検証していない** (この機械に digest が無い)、**弾かれる側を実測していない**
 (sim が modern なので 3 本とも入る)。
 
 ## P3 — 実機の店アプリ (当初の書き方)
 
-`main/prebuild_scripts/default_app/appstore.app.rb`。手順は spec.md 9.2、面の分け方は 13.2。
+`main/ruby/default_app/appstore.app.rb`。手順は spec.md 9.2、面の分け方は 13.2。
 
 **1 本のアプリが 2 つの面を持つ。**
 

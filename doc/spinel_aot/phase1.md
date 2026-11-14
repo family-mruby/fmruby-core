@@ -41,7 +41,7 @@ Phase 0 の UNSUPPORTED.md で「Phase 1 修正候補」とした 2 件を fork 
 1. U-1: poly レシーバの `String#ljust`/`rjust` が dispatch されない。
 2. U-3: nested-array 由来の poly 値を ctor / mixin 算術に渡すと
    miscompile する (Phase 0 では添字アクセス / concrete 化で回避した)。
-   最小再現は `tool/spinel_poc/repro/` にある。
+   最小再現は `tools/spinel_poc/repro/` にある。
 
 U-2 (同名 `rescue => e` の複数 arm) は Spinel の意図的制約のため
 修正しない (OS コード規約側に記載済みの回避で対応)。
@@ -133,7 +133,7 @@ C 側から Spinel 内部 (static メソッド) を呼ぶ必要が出た場合�
 ### T1-5: FFI シム層 fmrb_spx の骨格 (1-2 日)
 
 目的: Spinel の FFI (`ffi_func`) から呼べる「素の C 関数」の層。
-mruby バインディング (`lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c`)
+mruby バインディング (`lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c`)
 と実装を共有する。
 
 1. 既存コードの調査: kernel.c の各 mrb メソッド (`_spin`,
@@ -197,7 +197,7 @@ mruby バインディング (`lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c`
 
 ### T1-6: Ruby 側 FFI 宣言と hello-kernel 疎通 (1 日)
 
-1. `main/prebuild_scripts/spinel/fmrb_ffi.rb` を新設:
+1. `main/ruby/spinel/fmrb_ffi.rb` を新設:
    ```ruby
    module FmrbSpx
      ffi_func :fmrb_spx_board_millis, [], :int
@@ -208,11 +208,11 @@ mruby バインディング (`lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c`
    ```
    バッファ渡しは `ffi_buffer` / `:ptr` / `ffi_read_*` の流儀を
    docs/FFI.md と examples/ffi/ で確認して合わせること。
-2. `main/prebuild_scripts/spinel/hello_kernel.rb`: FmrbSpx 経由で
+2. `main/ruby/spinel/hello_kernel.rb`: FmrbSpx 経由で
    Log に "spinel hello" を出し、board_millis を 3 回読み、
    10 メッセージ poll したら return する最小プログラム。
 3. ビルド統合 (`main/CMakeLists.txt` +
-   `main/prebuild_scripts/compile_ruby_to_bytecode.cmake` を参考に
+   `main/ruby/compile_ruby_to_bytecode.cmake` を参考に
    新ファイル `compile_ruby_to_spinel.cmake`):
    - fork の spinel バイナリの場所は CMake 変数 `SPINEL_BIN`
      (rake から渡す) で受ける。

@@ -23,7 +23,7 @@
 
 ### 2.1 ビルド機構
 
-- Linux ビルドの build_config 実体は `lib/add/family_mruby_linux.rb`。
+- Linux ビルドの build_config 実体は `lib/upstream/family_mruby_linux.rb`。
   `components/picoruby-esp32/CMakeLists.txt:5` が `MRUBY_CONFIG` として lib/add の
   原本を直接参照する (Rakefile が submodule へコピーする分は実ビルドでは未使用)。
   defines 追加箇所は同ファイル 10-30 行付近の `conf.cc.defines` 群。
@@ -32,7 +32,7 @@
   `fmrb_add_mruby_abi_defines()` (20-38 行) にも追加しないと、main/ 側 C コードと
   libmruby.a で構造体レイアウトが分裂し、起動時 ABI ガードで abort する。
   **build_config と abi_defines.cmake の両方に追加が必須。**
-- 組み込みアプリのバイトコード化は `main/prebuild_scripts/compile_ruby_to_bytecode.cmake`。
+- 組み込みアプリのバイトコード化は `main/ruby/compile_ruby_to_bytecode.cmake`。
   mrbc 呼び出しは 75 行 (連結後) と 86 行 (単一ファイル) の 2 箇所のみ。`-g` はここに追加。
   combined.rb 連結は同ファイル 64 行の `cat ${SUB_RB_FILES} ${RB_FILE}` (GLOB + SORT で決定的順序)。
 - lib/ 以下を編集したら `rake clean` が必要 (CLAUDE.md 規約)。
@@ -123,10 +123,10 @@
 
 ```
 fmruby-core/
-  lib/add/family_mruby_linux.rb            [変更] MRB_USE_DEBUG_HOOK 追加
+  lib/upstream/family_mruby_linux.rb            [変更] MRB_USE_DEBUG_HOOK 追加
   components/picoruby-esp32/
     mruby_abi_defines.cmake                [変更] 同 define の ABI 同期 (linux 限定条件付き)
-  main/prebuild_scripts/
+  main/ruby/
     compile_ruby_to_bytecode.cmake         [変更] mrbc に -g (+ 行オフセット表生成)
   main/app/fmrb_app.c                      [変更] mrc_ccontext_filename 設定
   main/drivers/debug/                      [新規] デバッグコア + トランスポート
@@ -138,7 +138,7 @@ fmruby-core/
     fmrb_debug_transport_tcp.c             TCP 実装 (Linux 専用 TU)
   main/boot/boot.c                         [変更] debugd 起動
   main/CMakeLists.txt                      [変更] ソース登録 (共通 + Linux 分岐)
-  tool/debug/                             [新規] ホスト側
+  tools/debug/                             [新規] ホスト側
     fmrb_dbg_client.py                     Phase 1: CLI テストクライアント兼ライブラリ
     fmrb_dap_adapter.py                    Phase 2: DAP アダプタ
   doc/remote_debug/vm_remote_debug_protocol.md          [新規] プロトコル仕様 (実装と同時に確定)
@@ -167,7 +167,7 @@ family-mruby/ (ルートリポジトリ)
 
 ### 4.1 ビルド設定変更
 
-1. `lib/add/family_mruby_linux.rb` の defines 群に追加:
+1. `lib/upstream/family_mruby_linux.rb` の defines 群に追加:
    ```ruby
    conf.cc.defines << 'MRB_USE_DEBUG_HOOK'
    ```
@@ -177,7 +177,7 @@ family-mruby/ (ルートリポジトリ)
    マクロの実装形態を確認し、条件分岐が書けない構造なら
    「全ターゲット有効化 + ESP32 側 build_config にも追加」に切り替える
    (hook NULL 時のコストは分岐 1 個なので許容範囲。その場合はフラッシュ増を計測)。
-3. `main/prebuild_scripts/compile_ruby_to_bytecode.cmake` の 75 行・86 行の
+3. `main/ruby/compile_ruby_to_bytecode.cmake` の 75 行・86 行の
    mrbc 呼び出しに `-g` を追加。
 4. `main/app/fmrb_app.c` の `execute_mruby_script()`、`mrc_ccontext_new` (479 行)
    直後に追加:
@@ -205,7 +205,7 @@ family-mruby/ (ルートリポジトリ)
 - hook NULL 時のオーバーヘッド: 適当な Ruby ベンチ (ループ 1000 万回程度) を
   MRB_USE_DEBUG_HOOK 有効/無効ビルドで比較。
 - hook 装着時 (armed=false 相当の早期 return) のオーバーヘッド。
-- `-g` によるバイトコードサイズ増: `main/prebuild_scripts/*/mrb/*.c` の
+- `-g` によるバイトコードサイズ増: `main/ruby/*/mrb/*.c` の
   生成物サイズを前後比較 (ESP32 のフラッシュ判断材料として記録)。
 
 ### 4.4 完了条件
@@ -454,14 +454,14 @@ WSL2 -> Windows は localhost フォワードで届くため、Phase 2 の VSCod
 - msgpack 依存 (`msgpack-esp32`) が linux ビルドの REQUIRES に含まれているか確認、
   なければ追加。
 
-### 5.8 Python テストクライアント (tool/debug/fmrb_dbg_client.py)
+### 5.8 Python テストクライアント (tools/debug/fmrb_dbg_client.py)
 
 - 標準ライブラリ + `msgpack` パッケージ (or `umsgpack` 同梱) のみ。
 - ライブラリ部: `FmrbDebugClient` クラス (connect/request/イベントコールバック)。
   Phase 2 の DAP アダプタが import して使う。
 - CLI 部: `python3 fmrb_dbg_client.py <host:port> <cmd> [args...]` +
   対話モード (`ps` / `attach 3` / `b app.rb:10` / `c` / `bt` / `vars 0` 程度)。
-- スモークテストスクリプト `tool/debug/test_phase1.sh`:
+- スモークテストスクリプト `tools/debug/test_phase1.sh`:
   1. `tools/dev_run_check.sh --keep` でスタック起動
   2. ps -> shell アプリ (または専用テストアプリ) に attach
   3. bp_set -> fmrb_input.py で操作して BP をヒットさせる -> stopped イベント受信
@@ -477,7 +477,7 @@ WSL2 -> Windows は localhost フォワードで届くため、Phase 2 の VSCod
 
 ## 6. Phase 2: DAP アダプタ + VSCode 拡張
 
-### 6.1 DAP アダプタ (tool/debug/fmrb_dap_adapter.py)
+### 6.1 DAP アダプタ (tools/debug/fmrb_dap_adapter.py)
 
 - 単一プロセス。stdio で DAP、TCP で fmrb_dbg_client.py を使用。
 - 実装する DAP リクエスト:

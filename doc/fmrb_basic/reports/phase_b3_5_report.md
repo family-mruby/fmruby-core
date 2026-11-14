@@ -11,10 +11,10 @@ mruby kernel / mruby desktop、`keyboard_layout = "jp"`) で実施。
 | `components/fmrb_common/include/fmrb_app.h` | `fmrb_app_note_control_payload()` 宣言 |
 | `components/basic/fmrb_basic.cpp` | tick の HID drain が APP_CONTROL を捨てていた不具合を修正 (下記 3) |
 | `main/app/fmrb_app_spawner.c` | user app spawn 時に kernel へ `{"cmd":"spawned"}` を通知 |
-| `main/prebuild_scripts/kernel/fmrb_kernel.rb` | spawn 後処理を `after_spawn` に集約。`spawned` / `run` コマンドを追加 |
-| `main/prebuild_scripts/kernel/fmrb_kernel/app_lifecycle.rb` | `after_spawn` / `run_path_allowed?` / `reply_run_result` を追加。終了時のキーボード戻し。reload も `after_spawn` 経由に |
-| `lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb` | `FmrbApp#request_run(path, prev_pid)` を追加 |
-| `main/prebuild_scripts/default_app/editor.app.rb` | Run メニュー / F5 / Alt-R、`run_current_file`、`run_result` 受信、status バッジ汎用化 |
+| `main/ruby/kernel/fmrb_kernel.rb` | spawn 後処理を `after_spawn` に集約。`spawned` / `run` コマンドを追加 |
+| `main/ruby/kernel/fmrb_kernel/app_lifecycle.rb` | `after_spawn` / `run_path_allowed?` / `reply_run_result` を追加。終了時のキーボード戻し。reload も `after_spawn` 経由に |
+| `lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb` | `FmrbApp#request_run(path, prev_pid)` を追加 |
+| `main/ruby/default_app/editor.app.rb` | Run メニュー / F5 / Alt-R、`run_current_file`、`run_result` 受信、status バッジ汎用化 |
 
 ## 2. T3.5-1: kill の協調終了化
 

@@ -112,9 +112,9 @@ end
 
 ### 置き場所と両エンジン
 
-- 本体は `lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb` 1 ファイル。純 Ruby で
+- 本体は `lib/gems/picoruby-fmrb-app/mrblib/fmrb-ui.rb` 1 ファイル。純 Ruby で
   `FmrbGfx` の描画メソッドしか呼ばないので、**mruby では gem の mrblib として
-  全アプリ VM に入り、Spinel では `tool/spinel/gen_app_combined.rb` の `libs`
+  全アプリ VM に入り、Spinel では `tools/spinel/gen_app_combined.rb` の `libs`
   に加えるだけで同じソースが通る**。fmrb-i18n.rb / fmrb-audio.rb と同じ
   扱いで、エンジンごとに書き分けない。
 - したがって書き方は doc/spinel_aot/ruby_writing_constraints.md に従う。

@@ -54,8 +54,8 @@ report/l15.md。
 
 ## 触ってよい範囲
 
-- main/prebuild_scripts/ (エディタ・カーネルのデスクトップ)、flash/app/ (LogViewer
-  など)、lib/add/picoruby-fmrb-app/、MicroPython の Family mruby 側の部分と再生成物、
+- main/ruby/ (エディタ・カーネルのデスクトップ)、flash/app/ (LogViewer
+  など)、lib/gems/picoruby-fmrb-app/、MicroPython の Family mruby 側の部分と再生成物、
   flash/usr/share/desktop/、試験・回帰の道具と基準、doc/linux_native/。
 
 ## 止まる条件

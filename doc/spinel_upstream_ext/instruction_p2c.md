@@ -80,8 +80,8 @@ sim の打鍵遅延 (`edit_lat` / `spx: hid_lat`) と raycaster の `cast` 時�
 
 ## T5: パーティション
 
-- Tab5 / NARYAv4 (`config/partitions_p4.csv`) のアプリ区画を 6M → 7M に広げる
-  (storage は 8M のまま。16MB に収まることを確かめる)。S3 (`partitions_n16r8.csv`)
+- Tab5 / NARYAv4 (`config/partitions_p4_common.csv`) のアプリ区画を 6M → 7M に広げる
+  (storage は 8M のまま。16MB に収まることを確かめる)。S3 (`partitions_naryav3.csv`)
   は変えない (空き 28%)。
 - storage の開始位置がずれることの影響 (既存の端末の更新手順、インストーラ、
   `rake flash` / app_only の扱い) を調べて report に書く。

@@ -2,7 +2,7 @@
 
 作成日: 2026-07-23 / 対象: Spinel AOT で fmruby-core PreBuild Ruby を C 化する実現性検証。
 詳細な技術知見は `phase0_findings.md`、作業ログは `phase0_progress.md`、
-未対応構文と回避は `../../tool/spinel_poc/coverage/UNSUPPORTED.md` を参照。
+未対応構文と回避は `../../tools/spinel_poc/coverage/UNSUPPORTED.md` を参照。
 
 ## 総合判定: **Go**
 

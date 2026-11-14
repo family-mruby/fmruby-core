@@ -43,7 +43,7 @@ NARYAv4 ターゲットを「Tab5 のプレースホルダ」から実体にす�
 
 ### 1. config/sdkconfig.defaults.naryav4 (新規)
 
-`config/sdkconfig.defaults.p4` をコピーして以下だけ変える。
+`config/sdkconfig.defaults.tab5` をコピーして以下だけ変える。
 
 - **chip revision** (P4-Nano は v3.1 実測。Tab5 v1.0 とは相互排他):
 
@@ -77,7 +77,7 @@ CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54
 
 ### 2. config/system_conf_naryav4.toml (新規)
 
-`config/system_conf_p4.toml` をコピーし、`display_mode = "naryav4_hdmi"`
+`config/system_conf_tab5.toml` をコピーし、`display_mode = "naryav4_hdmi"`
 に変える。解像度 426x240・margin 0 などは据え置き。
 
 display_mode の新値はカーネル側にも足す:
@@ -94,7 +94,7 @@ display_mode の新値はカーネル側にも足す:
 - rakelib/build.rake の `hw_config` テーブル (87-100 行付近):
   NARYAv4 の行を Tab5 共用から
   `config/sdkconfig.defaults.naryav4` / `config/system_conf_naryav4.toml`
-  に向ける。パーティションは `config/partitions_p4.csv` を共用のまま。
+  に向ける。パーティションは `config/partitions_p4_common.csv` を共用のまま。
 - cmake/check_storage_inputs.cmake (30-38 行付近): 上のテーブルの
   ミラーになっているので、同じ対応を追加する。**片方だけ直すと storage
   検査がビルドを止める**。

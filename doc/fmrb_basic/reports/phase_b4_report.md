@@ -35,7 +35,7 @@
 | `fmrb_basic.cpp` | SAVE のホスト実装 (`/home/<名前>.bas`) |
 | `test/runner/main.cpp` | SAVE のホスト実装 (`BASIC_PROGRAM_DIR`)、INWAIT マーカーは golden に出さない |
 | `test/run_golden.sh` | ケースごとに SAVE の書き込み先を用意 |
-| `main/prebuild_scripts/kernel/fmrb_kernel.rb` | Ctrl-Q (system_interrupt) で HID target アプリを停止 |
+| `main/ruby/kernel/fmrb_kernel.rb` | Ctrl-Q (system_interrupt) で HID target アプリを停止 |
 | `main/app/fmrb_app_spawner.c` | `.toml` が無いファイルの名前をファイル名から補う。組み込みアプリの spawn も kernel へ通知 (フォーカス) |
 | `tools/fmrb_input.py` | `keyboard_layout` に追従した文字→キー変換 (`--layout` で上書き) |
 | `tools/basic_screen_check.py` | `.keys` ケースを sim で実行 (キー注入) |

@@ -24,7 +24,7 @@ ESP32 実機 (S3 / P4) で、リモートデバッガ debugd が BLE GATT 経由
    (エラーにならず S3 がビルドされる)。`.env` の `FMRB_HW_TARGET` を一時的に
    `NARYAv4` へ書き換えてビルドし、終わったら `NARYAv3` に戻すこと。
 3. Linux 回帰: `rake clean_all` 後 `rake build:linux` が成功し、
-   リポジトリルートの `fmruby-core/tool/debug/test_phase1.sh` / `test_phase2.sh` が
+   リポジトリルートの `fmruby-core/tools/debug/test_phase1.sh` / `test_phase2.sh` が
    PASS する (TCP パスの無退行確認)。
 4. ESP32 で `fmrb_debugd_init()` が起動し、BLE 未接続でも既存機能
    (アプリ起動・BLE ファイルサービス) が退行しないこと (ビルド+Linux回帰で
@@ -301,7 +301,7 @@ ESP32 系専用 TU。`fmrb_debug_transport_ops_t` を実装し
    - Linux 回帰: `rake clean_all && rake build:linux`、
      fmruby-graphics-audio 側は既ビルドがあればそのまま、無ければ
      `rake build:linux` (同名タスク)。その後リポジトリルート
-     (family-mruby) で `fmruby-core/tool/debug/test_phase1.sh` と
+     (family-mruby) で `fmruby-core/tools/debug/test_phase1.sh` と
      `test_phase2.sh` を実行し PASS を確認。
    - ターゲット切替のたびに `rake clean_all` を忘れない (ABI 混在防止)。
 3. ビルドのみで確認できない項目 (BLE 実疎通、パーク中の挙動) は Phase 3c の

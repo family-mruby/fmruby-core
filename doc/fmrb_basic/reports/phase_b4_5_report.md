@@ -13,7 +13,7 @@ B4 の実装を 3 コミットに分けて入れた (`e6c724f` コア/画面系 
 `.env` は含めていない。親リポジトリの注入ツールは独立コミット (`ed1d339`)。
 
 その後ユーザ指示で、注入ツールを Ruby へ移し (`tools/fmrb_input.rb`)、
-`fmruby-core/tools/` を Ruby 化して `tool/basic/` へ統合した (`a0143fd`)。
+`fmruby-core/tools/` を Ruby 化して `tools/basic/` へ統合した (`a0143fd`)。
 ツールの言語方針はルートの CLAUDE.md に明文化した。
 
 ## 2. T4.5-1: FILTER の着色
@@ -70,7 +70,7 @@ B4 の実装を 3 コミットに分けて入れた (`e6c724f` コア/画面系 
 
 ### プレースホルダタイルの多色化
 
-`tool/basic/gen_basic_tiles.rb` が **枠 = インデックス 1、本体 = 2、
+`tools/basic/gen_basic_tiles.rb` が **枠 = インデックス 1、本体 = 2、
 四隅マーク = 3** で描くようにした。これで画面を見れば多色が効いているか
 すぐ分かる。実アートに差し替えるときは BMP を置き換えるだけ。
 
@@ -113,7 +113,7 @@ B4 の実装を 3 コミットに分けて入れた (`e6c724f` コア/画面系 
 | 項目 | 結果 |
 |---|---|
 | `rake basic:test` | **103 passed, 0 failed** (B4 の 102 + roundtrip 1) |
-| `tool/basic/basic_screen_check.py` (linux sim) | **15 passed, 0 failed** |
+| `tools/basic/basic_screen_check.py` (linux sim) | **15 passed, 0 failed** |
 | `flash/app/basic/` のサンプル 6 本 | 全数 spawn -> 実行 -> stop まで**エラーなし** |
 | `rake build:linux` | 成功 |
 | 音声・実機 | 未確認 (headless の範囲外) |

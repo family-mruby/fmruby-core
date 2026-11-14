@@ -14,7 +14,7 @@
 
 ### 指示書との差異
 
-- phase1.md T1-1b は「最小再現は tool/spinel_poc/repro/ にある」とするが、
+- phase1.md T1-1b は「最小再現は tools/spinel_poc/repro/ にある」とするが、
   repro/ にあるのは Phase 0 で修正済みの FIX-2/FIX-3 系
   (bug_poly_size_strlen.rb, bug_rescue_in_class_OK.rb, bug_rescue_in_mixin_FAIL.rb)
   のみ。U-1 / U-3 の最小再現は coverage/UNSUPPORTED.md 内のインラインコードが実体。

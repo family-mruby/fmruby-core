@@ -23,7 +23,7 @@ Phase 0 の 5 件に加え、Phase 1 で以下を追加:
 
 ゲート (HEAD=5129af95): **make test 1,991 pass / 1 fail** (既存 cosmetic)、
 **make bench 58 pass / 0 fail**、**make test-lib-mode PASS**。
-fmruby-core PoC parity (`tool/spinel_poc/run_all.sh`) **9/9 ok**。
+fmruby-core PoC parity (`tools/spinel_poc/run_all.sh`) **9/9 ok**。
 
 ### T1-1b ハードニング結果
 
@@ -133,9 +133,9 @@ Spinel の hash 型は固定セット (src/types.h): `STR_INT/STR_STR/INT_INT/IN
 
 ## T1-6: hello_kernel 疎通 + エンジン切替 (完了・両エンジン検証済み)
 
-- `main/prebuild_scripts/spinel/fmrb_ffi.rb`: FmrbSpx モジュールに ffi_func 宣言 +
+- `main/ruby/spinel/fmrb_ffi.rb`: FmrbSpx モジュールに ffi_func 宣言 +
   ffi_buffer (msg_buf/type_out/src_out/win_buf) + ffi_read_i32。
-- `main/prebuild_scripts/spinel/hello_kernel.rb`: Log 出力 + board_millis×3 +
+- `main/ruby/spinel/hello_kernel.rb`: Log 出力 + board_millis×3 +
   メッセージ poll×10 の最小プログラム。`require_relative "fmrb_ffi"`。
 - ビルド統合:
   - `compile_ruby_to_spinel.cmake`: 生成 C を COMPONENT_SRCS へ。SPINEL_BIN が

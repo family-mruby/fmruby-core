@@ -22,7 +22,7 @@ Linux PC 向け (x86_64) の `.deb` を作り、**WSL2 の中の arm64 のコン
 - Dockerfile は `native/docker/` に置き、版は固定する (イメージの日付か
   digest。`latest` にしない。docker-compose.yml の冒頭の方針と同じ)。
 - libmruby の aarch64 版: picoruby の build_config に aarch64 のクロスの
-  設定を足す (`lib/add/family_mruby_native.rb` の延長でよい)。**MRB_* の ABI の
+  設定を足す (`lib/upstream/family_mruby_native.rb` の延長でよい)。**MRB_* の ABI の
   定義を揃える**決まりは同じ。mrbc などのホストの道具は x86_64 のまま。
   Ruby のバイトコードと Spinel の生成物は機種に依存しないので、そのまま使う。
 - rake のタスク (例: `native:image`、`native:cross ARCH=arm64|amd64`、

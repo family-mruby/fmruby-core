@@ -20,7 +20,7 @@ Phase 3 (ESP32 実機 + BLE トランスポート)、Phase 4 (仕上げ) を実�
 
 - デバッグコア (`main/drivers/debug/`): hook/パーク方式、BP/step/pause、
   stack_trace/frame_vars、msgpack プロトコル、トランスポート vtable、TCP 実装。
-- ホスト側 (`tool/debug/`): テストクライアント、DAP アダプタ、自律テスト
+- ホスト側 (`tools/debug/`): テストクライアント、DAP アダプタ、自律テスト
   (test_phase1/2 PASS)。VSCode 拡張 (family-mruby/vscode-fmrb-debug)。
 - ビルド: Linux 限定で `MRB_USE_DEBUG_HOOK` 有効 (build_config + abi_defines 同期済)、
   mrbc `-g`、combined.map.json 生成。
@@ -117,11 +117,11 @@ RAM 実測 (P4、objdump -h でセクション確認):
 
 ### 3.1 ビルド設定
 
-1. `lib/add/family_mruby_esp32.rb`: defines 群 (15-32 行、`FMRB_NO_IO_CONSOLE`
+1. `lib/upstream/family_mruby_esp32.rb`: defines 群 (15-32 行、`FMRB_NO_IO_CONSOLE`
    の直後) に `conf.cc.defines << 'MRB_USE_DEBUG_HOOK'` を追加。
 2. `components/picoruby-esp32/mruby_abi_defines.cmake`: 現在 linux 分岐 (28-33 行)
    にある `MRB_USE_DEBUG_HOOK` を**共通部 (20-27 行) へ移動**する
-   (linux/esp32/p4 全ターゲット有効化)。lib/add/family_mruby_esp32p4.rb も
+   (linux/esp32/p4 全ターゲット有効化)。lib/upstream/family_mruby_esp32p4.rb も
    esp32 と同様に defines を追加。
    - 全ターゲット常時有効の根拠: hook NULL 時のコストは命令ディスパッチ毎の
      分岐 1 個。3.3 の実測で問題が出た場合のみ「debug ビルド変種」に切り替える。

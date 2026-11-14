@@ -23,7 +23,7 @@ Midori の gem 構成 (調査済み):
 
 ### 1.1 パーサの輸入 (無改変)
 
-- `lib/add/picoruby-midi-mml/` として gem ごと輸入し、
+- `lib/gems/picoruby-midi-mml/` として gem ごと輸入し、
   `mrblib/midi_mml.rb` は **1 バイトも変えない** (picoruby-midi と同じ
   規律。`FAMILY_MRUBY_PORT.md` を添えて、何を輸入し何を輸入しなかったか
   と理由を書く)。md5 一致をレビューで確認できる形にする。

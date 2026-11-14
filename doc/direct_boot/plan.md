@@ -185,6 +185,6 @@ kernel は `win[:fullscreen]` で判断するが、それは**spawn した後**�
 
 | | |
 |---|---|
-| `main/prebuild_scripts/kernel/system_desktop.app.rb` | `start_boot_animation` / `finish_boot_animation` / `spawn_startup_app` / `on_control` の `show_error` |
+| `main/ruby/kernel/system_desktop.app.rb` | `start_boot_animation` / `finish_boot_animation` / `spawn_startup_app` / `on_control` の `show_error` |
 | `config/system_conf_*.toml` | キーの追加とコメント (`flash/etc/` は生成物なので触らない) |
 | kernel 側 | **変更不要の見込み**。suspend/resume は既にある |

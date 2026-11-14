@@ -158,7 +158,7 @@ rake には `wasm:poc` / `wasm:build` を追加する (rakelib/wasm.rake)。emsd
 
 ### 設計
 
-- 編集対象は原本 lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/
+- 編集対象は原本 lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/
   freertos/task_hal.c (submodule 側コピーは上書きされるため触らない)。
 - bottom-half (`mrb_hal_task_take_pending_ticks`) で、前回呼び出しからの実時間
   (fmrb_hal_time_get_us) を tick に換算して pending_ticks を自給する。
@@ -243,7 +243,7 @@ display_local_task.cpp (~5100 行) から「パネル起動 + PPA + DSI 出力�
   (fmrb_hw_defines.cmake に wasm 分岐追加)。boot.c に wasm ブランチ
   (display_wasm/audio_wasm/input_wasm の init)。
 - picoruby: build_config/picoruby-wasm.rb を土台に family_mruby 用の wasm
-  CrossBuild 設定 (lib/add/family_mruby_wasm.rb) を作る。mrbc はネイティブのまま。
+  CrossBuild 設定 (lib/upstream/family_mruby_wasm.rb) を作る。mrbc はネイティブのまま。
   MRB_* レイアウト定義は CMake 側と必ず一致させる (doc 済みの二重ビルド ABI 罠)。
 - Spinel: SP_NO_MMAN で sp_fiber.c / sp_sched.c を除外
   (fmrb_spinel_rt/CMakeLists.txt:118 の条件を「ネイティブ ISA か」に変更)。
@@ -521,7 +521,7 @@ tts_http の wasm 差し替え + VOICEVOX/OpenAI の CORS 実測)。P5b が通�
 - **実機側の追加実装はほぼ不要の見込み**: debugd の BLE GATT サービス
   (main/drivers/ble/ble_task.c + ble_debug_link) と ble_fs
   (ファイル put/get) が既にある。作るのは JS 側のクライアント
-  (ble_framing.c の対向 + プロトコルは tool/debug/fmrb_dbg_client.py が正)。
+  (ble_framing.c の対向 + プロトコルは tools/debug/fmrb_dbg_client.py が正)。
 - 一番おいしい形: **ブラウザのエディタで書いたコードを BLE で実機に送って
   起動する「beam」**。特に Retro (S3) は remote desktop が無く BLE が唯一の
   遠隔口なので、「ブラウザから Retro にプログラムを送る」初の経路になる。

@@ -127,7 +127,7 @@
 
 1. **`/home` を退避する**。普段のモード (WiFi) で上げ、devctl の `/fs/get` (`ruby tools/fmrb_rd_fs.rb <IP>` の `pull`、MCP の `tab5_fs` に ip を渡す) で利用者のファイルと `/home/asterism/config.toml` を PC へ写す。秘密のファイル (`/home/wifi.toml`、`/home/secrets.toml`、`/home/asterism/` の中で `config.toml` 以外: 証明書の tar と `receive.toml`) は端末から読み出せない (`main/kernel/fmrb_secret_path.h`)。手元の元 (WiFi の SSID とパスワード、Asterism のコンソールで出した tar、`receive.toml` の `from = [...]`) を用意する。tar を無くしたときはコンソールで出し直す。
 2. **フル flash する**: `FMRB_HW_TARGET=STICKS3` (か `ATOMS3R`) で `rake build:esp32` の後に `rake flash` (MCP の `flash`)。bootloader・区画表・app・storage を書く。**古い表の端末に `rake flash:app` を使わない** (新しいイメージが古い storage の頭に重なる)。`rake regress:boot` も app だけを焼くので、移す前の端末では `FLASH=0` で使うか、先に移す。
-3. **設定のモードで WiFi を書く**。`/home/wifi.toml` が無いので、端末は BLE だけの設定のモードで起動する (CF3)。Family mruby Console (`tool/web/`、README の「接続の設定」) の Settings で WiFi を書き、同じ時間の間に Asterism の繋ぎ先・証明書の tar も書ける。`receive.toml` も秘密の扱いなので、この間に Files から PUT する。書いたら Reboot で普段のモードへ。ビルドのときに `config/wifi.toml` を置いていれば `/etc/wifi.toml` に入り、設定のモードを通らずに WiFi で上がる。そのときに tar などを書くには、ボタンを押しながら起動して設定のモードに入る。
+3. **設定のモードで WiFi を書く**。`/home/wifi.toml` が無いので、端末は BLE だけの設定のモードで起動する (CF3)。Family mruby Console (`tools/web/`、README の「接続の設定」) の Settings で WiFi を書き、同じ時間の間に Asterism の繋ぎ先・証明書の tar も書ける。`receive.toml` も秘密の扱いなので、この間に Files から PUT する。書いたら Reboot で普段のモードへ。ビルドのときに `config/wifi.toml` を置いていれば `/etc/wifi.toml` に入り、設定のモードを通らずに WiFi で上がる。そのときに tar などを書くには、ボタンを押しながら起動して設定のモードに入る。
 4. **残りを戻す**。普段のモードで上がったら、1 で退避した普通のファイルを devctl の `/fs/put` (`push`) で戻す。`config.toml` は受け付ける時間の外では書けないので、3 の Settings で書く (退避した中身を欄に写す)。
 
 ## 段階

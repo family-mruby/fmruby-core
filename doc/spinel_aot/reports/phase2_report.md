@@ -22,7 +22,7 @@
 
 ## T2-2 / T2-4: Spinel ベース層 + combined コンパイル (核心達成)
 
-### 成果物 (`main/prebuild_scripts/spinel/`)
+### 成果物 (`main/ruby/spinel/`)
 
 - `fmrb_ffi.rb`: FmrbSpx FFI 宣言 (23 関数 + buffers)。send は `:str`+明示長
   (埋め込み NUL 保持、検証済)、recv は `:binstr` 戻り (byte-exact String、
@@ -31,10 +31,10 @@
   + `Log` / `Machine` モジュール + `SpxBytes` バイト列パーサ。window record /
   app-info をバイト列から symbol-hash に組み立て。
 - `msgpack_pure.rb`: `MessagePack` として pack/unpack (Phase 0 の 32bit 安全版)。
-- `tool/spinel/gen_const_rb.rb`: C ヘッダ (fmrb_msg.h/task_config.h/status_led.h)
+- `tools/spinel/gen_const_rb.rb`: C ヘッダ (fmrb_msg.h/task_config.h/status_led.h)
   から FmrbConst サブセットを生成 (drift-safe)。kernel が使うのは ~9 定数
   (THEME_/KEY_/PROC_STATE_ は desktop 専用で Phase 4)。
-- `tool/spinel/gen_kernel_combined.rb`: FFI -> const -> msgpack -> base ->
+- `tools/spinel/gen_kernel_combined.rb`: FFI -> const -> msgpack -> base ->
   mixins (sort 順) -> fmrb_kernel.rb を連結。require_relative と
   `#:spinel-strip-begin/end` ブロックを除去。
 

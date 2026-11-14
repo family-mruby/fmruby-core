@@ -61,7 +61,7 @@
 
 - fmruby-core: `native/` (wlr、session、package)、`config/machines/`、
   `rakelib/`、`test/`、`doc/linux_native/report/`。代役の並べ方のために
-  `main/prebuild_scripts/kernel/linux_window.app.rb` と `lib/add/` の native
+  `main/ruby/kernel/linux_window.app.rb` と `lib/add/` の native
   だけの部分。
 - 触らないもの: kernel・デスクトップの Ruby (変えないとできなければ止まる)、
   fmruby-graphics-audio、sdkconfig、submodule の中、`flash/`、plan.md、

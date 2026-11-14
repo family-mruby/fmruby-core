@@ -120,7 +120,7 @@ fail-loud 化と high-water 計測を実装し、深さ 64 → 16 に決定し�
   「一度崩れるとリセットするまで直らない」。
 - **(B) window list の stale**。canvas 作成時に `mark_window_list_dirty` が
   呼ばれず、クリックのルーティングが古いリストを見る
-  (`main/prebuild_scripts/kernel/fmrb_kernel/window_manager.rb`,
+  (`main/ruby/kernel/fmrb_kernel/window_manager.rb`,
   `app_lifecycle.rb`, `input_router.rb`)。フルスクリーン時の
   `No window at (x,y)` として観測されている。
 - **(C) Core 側 `fmrb_app.c` の z 採番**が誤った値を送り続けるパス。

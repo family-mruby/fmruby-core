@@ -39,16 +39,16 @@ C 化するプロジェクトの、実装担当 AI 向け指示書である。
 ## リポジトリと主要パス
 
 - fmruby-core: `/home/kishima/fmrb/family-mruby/fmruby-core` (このリポジトリ)
-  - PreBuild Ruby: `main/prebuild_scripts/kernel/` (カーネル ~1,160 行、
+  - PreBuild Ruby: `main/ruby/kernel/` (カーネル ~1,160 行、
     system_desktop.app.rb + system_desktop/ mixin ~4,200 行)、
-    `main/prebuild_scripts/default_app/` (shell / editor 等)
-  - バイトコード化: `main/prebuild_scripts/compile_ruby_to_bytecode.cmake`
-    (combined .rb 生成は `tool/debug/gen_combined_rb.py`)
+    `main/ruby/default_app/` (shell / editor 等)
+  - バイトコード化: `main/ruby/compile_ruby_to_bytecode.cmake`
+    (combined .rb 生成は `tools/debug/gen_combined_rb.py`)
   - VM 起動・ロード: `main/app/fmrb_app.c`, `main/app/fmrb_app_spawner.c`,
     `main/kernel/fmrb_kernel.c`
   - mruby 向け C バインディング: `lib/add/picoruby-fmrb-*` 以下
     (ビルド時に picoruby サブモジュールへコピーされる。
-    例: `lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c` の `_spin`)
+    例: `lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c` の `_spin`)
   - タスク/PID 構成: `components/fmrb_common/include/fmrb_task_config.h`
 - Spinel フォーク: `/home/kishima/fmrb/family-mruby/tmp/spinel`
   (origin = kishima/spinel、フォーク元 = matz/spinel)。**改修可能**。
@@ -75,7 +75,7 @@ fmruby-core/CLAUDE.md と family-mruby/CLAUDE.md のルールが最優先。特�
 1. **git 操作 (commit/push/submodule 追加) を勝手に行わない**。
    コミットが必要な区切りではユーザに依頼する。
 2. `.gitsubmodule` 配下 (components/picoruby-esp32/picoruby 等) を直接編集
-   しない。変更は `lib/add` / `lib/patch` / `lib/replace` + Rakefile 経由。
+   しない。変更は `lib/add` / `lib/upstream/patch` / `lib/upstream/replace` + Rakefile 経由。
 3. `sdkconfig` / `sdkconfig.defaults` は編集禁止。変更が要る場合は提案のみ。
 4. `main/` 以下の C の戻り値は `fmrb_err.h` 標準、malloc は使わず
    `fmrb_mem.h` (mruby 実行タスク系: fmrb_malloc / OS 系: fmrb_sys_malloc)。

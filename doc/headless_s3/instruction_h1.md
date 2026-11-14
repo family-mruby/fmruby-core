@@ -28,7 +28,7 @@
 
 ## 3. 範囲・決まり
 
-- **触ってよいもの**: fmruby-core の main/・components/ (submodule 以外)・config/ (新しいファイルと、system_conf の新しいキーの既定値)・lib/add・lib/patch・Rakefile・rakelib、`flash/app/test/` の試しのアプリ、doc/headless_s3/。ブランチは develop から `feature/headless-h1`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` にユーザの手元の変更がある。`.env` は変えない。ターゲットは環境変数 `FMRB_HW_TARGET=ATOMS3R` で渡す)。
+- **触ってよいもの**: fmruby-core の main/・components/ (submodule 以外)・config/ (新しいファイルと、system_conf の新しいキーの既定値)・lib/add・lib/upstream/patch・Rakefile・rakelib、`flash/app/test/` の試しのアプリ、doc/headless_s3/。ブランチは develop から `feature/headless-h1`。コミットのみ、push しない。**コミットは必ずファイルを指定する。`git commit -a` は使わない** (`.env` にユーザの手元の変更がある。`.env` は変えない。ターゲットは環境変数 `FMRB_HW_TARGET=ATOMS3R` で渡す)。
 - **触らないもの**: 既存の sdkconfig / sdkconfig.defaults の中身、submodule、fmruby-graphics-audio、ほかの端末の振る舞い (共通の部分を変えるときは、既定の値で今と同じ振る舞いになるようにする)。
 - **内蔵 RAM**: Retro と Tab5 の内蔵 RAM を増やさない (M1 の行か size-components で比べる)。
 - **端末**: AtomS3R は `/dev/ttyACM1` (USB の ID が Tab5 と同じなのでポートを明示する。ポートを開くとリセットがかかる)。焼いてよい。出荷時 (前の中身) の保存は `/home/kishima/fmrb/device_backup/atoms3r/` にある。P4-Nano (`/dev/ttyACM0`) は触らない。

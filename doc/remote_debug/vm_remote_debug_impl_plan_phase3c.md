@@ -20,7 +20,7 @@ VSCode から ESP32 実機 (S3) の VM を BLE 経由でデバッグできるよ
 
 1. フレーミングコーデック (COBS + CRC32) の Python 実装が固定テストベクタで
    デバイス実装 (ble_framing.c) とバイト一致する (セルフテストを同梱し PASS)。
-2. TCP パス無退行: `tool/debug/test_phase1.sh` / `test_phase2.sh` が PASS
+2. TCP パス無退行: `tools/debug/test_phase1.sh` / `test_phase2.sh` が PASS
    (Linux sim。fmruby-graphics-audio が ESP32 ビルド状態で残っていると起動に
    失敗するので、その場合は graphics 側で `rake clean_all && rake build:linux`)。
 3. VSCode 拡張が `npx @vscode/vsce package` で VSIX 化できる。
@@ -41,7 +41,7 @@ VSCode から ESP32 実機 (S3) の VM を BLE 経由でデバッグできるよ
 - コード内コメント・docstring は英語。絵文字・非 ASCII 記号は使わない
   (日本語ドキュメント .md は除く)。
 - 対象は 2 リポジトリにまたがる:
-  - fmruby-core (tool/debug/*.py, doc/*.md) — このリポジトリでコミット
+  - fmruby-core (tools/debug/*.py, doc/*.md) — このリポジトリでコミット
   - family-mruby リポジトリルート (vscode-fmrb-debug/) — ルートでコミット
   - 両者は独立 git リポジトリ (submodule ではない)。
 - git 操作 (commit/push) はユーザの指示を得てから行う。
@@ -50,7 +50,7 @@ VSCode から ESP32 実機 (S3) の VM を BLE 経由でデバッグできるよ
 
 ## 4. 現状の構造 (2026-07-21 時点の facts)
 
-### 4.1 ホスト側 Python (fmruby-core/tool/debug/)
+### 4.1 ホスト側 Python (fmruby-core/tools/debug/)
 
 - `fmrb_dbg_client.py` (316 行): `FmrbDebugClient` — 同期 request/response +
   背景 reader スレッド。**TCP 直書き**: `connect()` が `socket.create_connection`、
@@ -80,7 +80,7 @@ VSCode から ESP32 実機 (S3) の VM を BLE 経由でデバッグできるよ
 
 ### 4.3 BLE デバイス側 (Phase 3b で実装済み、変更不可の前提)
 
-- GATT UUID (文字列形式は tool/web/js/app.js のファイルサービス版と同規則:
+- GATT UUID (文字列形式は tools/web/js/app.js のファイルサービス版と同規則:
   `BLE_UUID128_INIT` のリトルエンディアン配列を逆順にしたもの):
   - debug service: `4652414d-4252-5942-4c45-000000000005`
   - debug RX (host -> device, WRITE | WRITE_NO_RSP): `...-000000000006`
@@ -153,7 +153,7 @@ class TcpTransport:
 - 応答タイムアウトの既定 5.0 秒は維持。BLE では応答に 1 秒程度かかり得るが
   5 秒で足りる想定 (足りなければ E2E 後に調整)。
 
-### 6.2 BLE フレーミングコーデック (tool/debug/fmrb_ble_framing.py 新規)
+### 6.2 BLE フレーミングコーデック (tools/debug/fmrb_ble_framing.py 新規)
 
 純関数のみ。bleak に依存しない。
 
@@ -175,7 +175,7 @@ def decode_frame(frame: bytes) -> bytes | None   # verify crc/len, None if bad
     (例: body = `msgpack.packb([0, 1, "version", None])` の encode 結果の
     hex ダンプをコメントに記録。実機疎通で食い違ったらここを比較する)
 
-### 6.3 BleTransport (tool/debug/fmrb_ble_transport.py 新規)
+### 6.3 BleTransport (tools/debug/fmrb_ble_transport.py 新規)
 
 `TcpTransport` と同一のインタフェース。内部は bleak + asyncio を
 デーモンスレッドのイベントループに隠蔽する。
@@ -262,12 +262,12 @@ test_phase1/2 の version 呼び出しと二重になっても害はない。
 
 ### 8.1 実装 AI が行うもの
 
-1. `python3 tool/debug/fmrb_ble_framing.py` セルフテスト PASS。
+1. `python3 tools/debug/fmrb_ble_framing.py` セルフテスト PASS。
 2. `python3 -m py_compile` 相当で全変更ファイルの構文確認
    (bleak が WSL に無くても import エラーにならない構造の確認を含む。
    `python3 -c "import fmrb_dbg_client"` が bleak 無しで通ること)。
 3. TCP 回帰: 両リポジトリ Linux ビルド済みの状態で
-   `fmruby-core/tool/debug/test_phase1.sh` / `test_phase2.sh` PASS。
+   `fmruby-core/tools/debug/test_phase1.sh` / `test_phase2.sh` PASS。
 4. `cd vscode-fmrb-debug && npx @vscode/vsce package` が成功。
 
 ### 8.2 ユーザ E2E 手順書 (実装 AI が README または進捗ログに整備する)
@@ -294,7 +294,7 @@ S3 実機 (Retro) で:
 2. `doc/remote_debug/vm_remote_debug_progress.md`: Phase 3c 実施記録。
 3. `doc/remote_debug/vm_remote_debug_impl_plan2.md`: sec 5 冒頭にステータス行を追記。
 4. コミット (ユーザの指示を得てから):
-   - fmruby-core: tool/debug の変更 + doc 更新
+   - fmruby-core: tools/debug の変更 + doc 更新
    - family-mruby ルート: vscode-fmrb-debug の変更 (VSIX 生成物はコミット対象に
      するか現状の扱いに合わせる。既存の fmrb-debug-0.0.1.vsix がコミット済みなら
      0.0.2 も同様に追加)

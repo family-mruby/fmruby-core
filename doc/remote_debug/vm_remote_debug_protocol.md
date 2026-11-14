@@ -56,7 +56,7 @@ GATT 特性 (ベース UUID `xxxxxxxx-4252-5942-4c45-000000000000` の byte[0] �
   トランスポート登録までにわずかな隙がある。この間にホストが送ったフレームは
   黙って捨てられる。ホスト側は応答が返らない場合にリトライすること。
 
-ホスト側実装の約束 (Phase 3c、`tool/debug/fmrb_ble_transport.py`):
+ホスト側実装の約束 (Phase 3c、`tools/debug/fmrb_ble_transport.py`):
 
 - 送信は 1 フレームを `MTU-3` バイト (取得できなければ 20) ずつ
   write-without-response で分割送信する。デリミタはフレーム末尾にのみ現れるので、

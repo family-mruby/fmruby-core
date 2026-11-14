@@ -38,7 +38,7 @@
 ## 触ってよい範囲
 
 - fmruby-core: `native/` (sys・wlr)、`main/kernel/` の `fmrb_platform_sys` の口、
-  `lib/add/` の該当箇所 (native だけの部分)、`main/prebuild_scripts/kernel/`
+  `lib/add/` の該当箇所 (native だけの部分)、`main/ruby/kernel/`
   (File Manager・関連付け・デスクトップ)、`flash/etc/associations.toml` の説明の
   注釈 (行き先の書き方の例)、`test/`、`rakelib/`、`tools/regress/`、
   `doc/linux_native/report/`、`doc/regression/usage.md`。

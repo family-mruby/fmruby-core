@@ -85,7 +85,7 @@ WSL2 には WSLg の Wayland (`WAYLAND_DISPLAY=wayland-0`) がある。cage は
 
 - fmruby-core: `components/apu_emu/` (0 の直しだけ)、ブラウザ版の該当の stub
   (0 の直しだけ)、`components/fmrb_hal/platform/posix/` (振り分けの表)、
-  `main/prebuild_scripts/kernel/` (File Manager の表示に要るなら)、`native/`、
+  `main/ruby/kernel/` (File Manager の表示に要るなら)、`native/`、
   `hosted/`、`config/`、`rakelib/`、`test/`、`doc/linux_native/report/`。
 - family-mruby (ルート): `tools/`。
 - 触らないもの: fmruby-graphics-audio、sdkconfig、submodule の中、`flash/` の

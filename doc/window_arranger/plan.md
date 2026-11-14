@@ -12,7 +12,7 @@
 
 ## 今の作り (出発点)
 
-- Window の管理はカーネルの Ruby (main/prebuild_scripts/kernel/fmrb_kernel/) にある。
+- Window の管理はカーネルの Ruby (main/ruby/kernel/fmrb_kernel/) にある。
   ドラッグ・大きさの変更・前面化・フォーカスは input_router.rb と
   window_manager.rb。Window を実際に動かすのは C の小さな関数
   (`_get_window_list`、`_update_window_position`、`_update_window_size`、

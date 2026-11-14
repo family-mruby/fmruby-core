@@ -34,7 +34,7 @@ dual-safe (system_desktop は Spinel 生成の対象。doctor 新規指摘 0 を
   ```
 
   表に無い拡張子の既定は `edit`。ディレクトリは対象外。
-- 解決の実装は **gem に置く** (`lib/add/picoruby-fmrb-app/mrblib/` に
+- 解決の実装は **gem に置く** (`lib/gems/picoruby-fmrb-app/mrblib/` に
   FmrbAssoc 等の小さな 1 ファイル): `FmrbAssoc.resolve(path)` →
   `["run"] | ["edit"] | [アプリパス]`。desktop と shell とユーザアプリが
   同じものを使う (**ここが案 3 の公開 API**)。toml の読解は services の

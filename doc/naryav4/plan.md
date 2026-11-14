@@ -52,7 +52,7 @@
   **回転なし・FB を 1280x720 化・パネル初期化を LT8912B に差し替え**の 3 点。
   426x240 → 1278x720 はちょうど 3 倍で、既存 PPA パスが流用できる。
 - 無線: esp_hosted 1.4.0 (SDIO)。Tab5 の SDIO ピンと C6 電源投入
-  (PI4IO #2、display 初期化に依存) は sdkconfig.defaults.p4 と
+  (PI4IO #2、display 初期化に依存) は sdkconfig.defaults.tab5 と
   boot.c の modern_radio_init_task に埋まっており、P4-Nano では両方変わる。
 - USB HID (usb_task) は S3/P4 共通実装でボード依存なし。P4-Nano の
   USB-A (HS OTG PHY) でそのまま動く見込み。
@@ -112,7 +112,7 @@
 4. fmrb_pin_assign.h に `#elif defined(FMRB_HW_NARYAV4)` ブロックを新設
    (P4-Nano の実ピン。SD は SDMMC、USB は HS PHY 専用パッド)。
 5. fmrb_hw_defines.cmake のプレースホルダ警告を外す。
-6. パーティションは partitions_p4.csv を共用 (flash 16MB 同一)。
+6. パーティションは partitions_p4_common.csv を共用 (flash 16MB 同一)。
 
 ### P2: 表示 bring-up (完了 2026-08-30、report/p2.md)
 

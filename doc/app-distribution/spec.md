@@ -530,7 +530,7 @@ Breakout<TAB>/app/usr/breakout/breakout.app.rb<TAB>R<TAB>usr/share/icon/ruby.ico
 
 外部の画像処理は要らない。読む側は `tools/fmrb_png.rb`
 (`FmrbPng.read_rgb` → `[w, h, 1 画素 3 バイトの行]`、zlib だけ)、書く側は
-`tool/gen_icon_bmp.rb` の BMP 書き出しがそのまま使える。
+`tools/gen_icon_bmp.rb` の BMP 書き出しがそのまま使える。
 
 **BMP ではなく PNG。** アプリが自分の Window に絵を描く経路
 (`sync_file` → `create_image` → `draw_image`) が**解くのは PNG だけ**で、

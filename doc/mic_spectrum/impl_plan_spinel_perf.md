@@ -31,9 +31,9 @@
 ## 既存の土台(再利用する)
 
 - C FFT: `main/kernel/fmrb_fft_bench.c`(`fmrb_fft_c` は全部 `float`)/ `.h`。
-- Ruby FFT(:ruby と :spinel が共有): `lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb`
+- Ruby FFT(:ruby と :spinel が共有): `lib/gems/picoruby-fmrb-fft/mrblib/fft_core.rb`
   (Spinel は `rake spinel:gen` がコピーして AOT。gen は gitignore)。
-- gem 分岐: `lib/add/picoruby-fmrb-fft/mrblib/fmrb-fft.rb`(`BACKENDS = [:ruby,:c,:dsp,:spinel]`、
+- gem 分岐: `lib/gems/picoruby-fmrb-fft/mrblib/fmrb-fft.rb`(`BACKENDS = [:ruby,:c,:dsp,:spinel]`、
   `run` の case、`bench`)。native binding: `ports/esp32/fft_binding.c`。
 - 計測 UI: `flash/app/demo/fft_bench.app.rb`(4者を回して μs 表示)。
 - 計時: `fmrb_fft_micros()`(esp_timer / CLOCK_MONOTONIC)。
@@ -91,7 +91,7 @@ C を double でも計り、`c`(float32/HW)/ `c64`(double/soft-float)/ `spinel`
 C にどこまで肉薄するか、mruby がどれだけ化けるかを見せる(plan の「第2段」)。
 
 ### 実装
-1. **Q15 Ruby FFT** `lib/add/picoruby-fmrb-fft/mrblib/fft_core_q15.rb`:
+1. **Q15 Ruby FFT** `lib/gems/picoruby-fmrb-fft/mrblib/fft_core_q15.rb`:
    - 入力 int16 → Q15 固定小数点、twiddle も Q15 テーブル(事前計算)、
      バタフライは整数積 + シフト(`(a*b) >> 15`)。**段ごとにスケール(>>1)して
      オーバフロー回避**、最後に振幅(整数 sqrt か近似)。
@@ -134,9 +134,9 @@ E1 と同じ手順で実機計測。`report/track_a.md` に E4 節。**期待**:
 
 ## 参考(コード位置)
 - C FFT: `main/kernel/fmrb_fft_bench.c` / `.h`
-- Ruby FFT(共有): `lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb`
-- gem 分岐: `lib/add/picoruby-fmrb-fft/mrblib/fmrb-fft.rb`、binding `ports/esp32/fft_binding.c`
-- Spinel entry/FFI: `main/prebuild_scripts/spinel/fft_spinel.rb` / `fmrb_fft_ffi.rb`、
+- Ruby FFT(共有): `lib/gems/picoruby-fmrb-fft/mrblib/fft_core.rb`
+- gem 分岐: `lib/gems/picoruby-fmrb-fft/mrblib/fmrb-fft.rb`、binding `ports/esp32/fft_binding.c`
+- Spinel entry/FFI: `main/ruby/spinel/fft_spinel.rb` / `fmrb_fft_ffi.rb`、
   生成 `rake spinel:gen`、配線 `main/CMakeLists.txt`(FMRB_FFT_SPINEL)
 - 計測アプリ: `flash/app/demo/fft_bench.app.rb`
 - 制約の一次資料: `doc/spinel_aot/embedded_constraints.md`(8.1 に soft-float の論点)

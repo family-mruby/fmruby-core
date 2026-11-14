@@ -33,7 +33,7 @@ wasm 対応のコード変更コミット (fmruby-core、develop) を時系列�
 協調 port で唯一成立しない「CPU を握った Ruby を外から剥がす」を、
 VM の自己申告に置き換えた。読みどころは 3 つ:
 
-- **lib/patch/.../src/vm.c (全文 patch 化、加筆 4 箇所)** — バイトコード
+- **lib/upstream/patch/.../src/vm.c (全文 patch 化、加筆 4 箇所)** — バイトコード
   境界 (RETURN_IF_TASK_STOPPED) に間引き計数付きの hook を差した。
   計数の初期値が 1 なのが急所: タスク再開直後の 1 命令目で必ず発火させ、
   「走っていない間に溜まった切替要求」を配達する瞬間を作る

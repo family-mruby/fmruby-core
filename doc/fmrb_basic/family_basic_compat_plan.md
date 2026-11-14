@@ -257,7 +257,7 @@ fmrb_input.py + fmrb_screenshot.py) を使う。BASIC 画面はテキスト
 ## 8. 参考
 
 - リポジトリ内の関連: components/basic (現行実装)、
-  main/app/fmrb_app_spawner.c (.bas 起動)、lib/add/picoruby-fmrb-app/mrblib/
+  main/app/fmrb_app_spawner.c (.bas 起動)、lib/gems/picoruby-fmrb-app/mrblib/
   fmrb-sprite.rb / fmrb-tilemap.rb (gfx 機構の参考)、
-  main/prebuild_scripts/kernel/fmrb_kernel/audio_handler.rb (FMSQ 経路)、
+  main/ruby/kernel/fmrb_kernel/audio_handler.rb (FMSQ 経路)、
   flash/app/tool/sprite_editor.app.rb (タイル制作ツール)

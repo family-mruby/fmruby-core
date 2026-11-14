@@ -5,7 +5,7 @@
 
 ## T1: 計測を入れる
 
-- Shell (main/prebuild_scripts/default_app/shell.app.rb と shell/*.rb) と、打鍵が app に届く経路
+- Shell (main/ruby/default_app/shell.app.rb と shell/*.rb) と、打鍵が app に届く経路
   (host → kernel → app のキュー → mruby の app の event 処理) を読み、打鍵 1 回について次の区間を測る:
   1. host がキーを受けてから、Shell の `on_event` が呼ばれるまで
   2. `on_event` から、`getch` がその文字を拾うまで

@@ -66,5 +66,5 @@
   (`spi_flash_chip_generic.c`) ので、入れても起動で止まらない。
 - Tab5 はミュートを切り替えて少し待つと若干ちらつく (許容範囲、ユーザの目視)。自動中断でこれが消える見込み。
 - 入れるなら P4-Nano と同じ形: `CONFIG_SPI_FLASH_AUTO_SUSPEND=y` と `CONFIG_SPI_FLASH_AUTO_CHECK_SUSPEND_STATUS=y` を
-  `sdkconfig.defaults.p4` に入れる。その前に、XMC のデータシートで中断の後の WIP / SUS ビットの振る舞いを確かめ、
+  `sdkconfig.defaults.tab5` に入れる。その前に、XMC のデータシートで中断の後の WIP / SUS ビットの振る舞いを確かめ、
   report/t1.md の落ちやすくする試験 (書き込み中に別のタスクで rodata を読み続ける) を Tab5 で回す (書き込み 2-5 MB)。

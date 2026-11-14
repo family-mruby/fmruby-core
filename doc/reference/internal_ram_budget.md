@@ -639,7 +639,7 @@ boot.c / fmrb_kernel_start / host task / fmrb_app_spawn 成功時。
   書き込み元で問題ない。R2 の節を参照。]**BLE ファイル同期の実機疎通確認は未** (機能は placement
   非依存のはずだが、ユーザの通常運用で一度確認する)。
 - E の残り: pm_binding_powers 1,980 B (.data、mruby prism submodule。
-  const 化で .rodata へ落とせる見込みだが lib/patch 経由が要る)。
+  const 化で .rodata へ落とせる見込みだが lib/upstream/patch 経由が要る)。
 
 ### 2026-08-02: M-2 実施 — 最悪経路を通したタスクスタック実測と A 軸の決定
 
@@ -728,7 +728,7 @@ WiFi 稼働 (BLE off) で 140,168 B。WiFi のバッファ類は
 **新たな制約は flash**: app パーティション残が 22% → **6% (約 200 KB)**。
 (2026-08-03 追記: この 6% は **app パーティションが 3M だった時点**の値。
 この後 networking gem を入れる際に 4M へ拡大したので、**現在は約 24%
-(約 1MB)**。`config/partitions_n16r8.csv` を参照。)
+(約 1MB)**。`config/partitions_naryav3.csv` を参照。)
 Spinel インスタンス追加や大きな機能はここが先に詰まる (T7-6 の懸念が現実化)。
 
 ### 2026-09-07: 起動可否の計算方式の修正と、余裕分の設定化 (Tab5)
@@ -795,7 +795,7 @@ BlockGame は最大ブロックがスタックとちょうど同値 (16,384 B) �
 | 移したもの | 移し先 | S3 | P4 |
 |---|---|---:|---:|
 | display_local の表 (`g_progs` `g_recv_buf` `g_canvases` `s_cursor_save` `g_sorted` `g_masks`) | PSRAM | - | 15,360 |
-| mrblib の子 irep 表 `*_reps_N` (mrbc の cdump.c を lib/patch で const 化) | flash | 5,480 | 5,616 |
+| mrblib の子 irep 表 `*_reps_N` (mrbc の cdump.c を lib/upstream/patch で const 化) | flash | 5,480 | 5,616 |
 | tmpfs の `s_files` `s_fds` | PSRAM | 2,144 | 5,504 |
 | link_local の `g_recv_internal_buf` | PSRAM | - | 4,096 |
 | editor の表 (`g_wrap` `g_docs` `widths` `g_hover` `g_call` `g_oom`) | PSRAM | 3,280 | 3,516 |

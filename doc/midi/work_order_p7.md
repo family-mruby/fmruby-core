@@ -50,7 +50,7 @@ B の成否に関わらず価値がある)。
   `mrb_gc_step(mrb)` は **mruby/gc.h の中核 API** で、コメントに
   「任意の独自スケジューラが自分のアイドル点から GC を進めるための、
   gem 非依存の組み込み向けプリミティブ」と明記されている。
-  `lib/add/picoruby-fmrb-app/ports/esp32/app.c` から直接呼べる。
+  `lib/gems/picoruby-fmrb-app/ports/esp32/app.c` から直接呼べる。
 - `gc->prof_last_step_us` (gc.h) が**直近 1 ステップの実時間**を持つ。
   ステップ予算の制御に使える。
 - Ruby 側スイッチ `GC.scheduler_driven=` は mruby-task gem が提供済み。
@@ -103,7 +103,7 @@ MIDI アプリ (smf_player / midi_apu デモ) で ON にして計測し、
 
 ### 3.1 現状
 
-`lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb` の `note_on` / `note_off` が
+`lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb` の `note_on` / `note_off` が
 Symbol キーの Hash を組み、`MessagePack.pack` して `_send_message` に渡す。
 1 回あたり 3 オブジェクト (Hash 1 + pack 2)。`_send_message` 自体は 0。
 
@@ -133,7 +133,7 @@ smf_player は 1 MB プールに移した直後に 100〜205ms を測ったた�
 ## 5. やらないこと
 
 - 受信 (MIDI IN)、USB-MIDI host、ピン排他、audio_note_lat (別の機会)。
-- `lib/add/picoruby-midi/` は無改変 (md5 一致維持)。
+- `lib/gems/picoruby-midi/` は無改変 (md5 一致維持)。
 - **mruby 本体・mruby-task gem の変更** (2.1 の既存 API で足りる見込み。
   どうしても足りない場合は変更せず、何が足りないかを報告に書いて止める)。
 - 計装ログ自身の割り当て除去 (1 章)。

@@ -34,7 +34,7 @@
 
 ## 前提事実(調査済)
 
-- reset の実体: `main/prebuild_scripts/spinel/gen/fft_spinel.c` の
+- reset の実体: `main/ruby/spinel/gen/fft_spinel.c` の
   `sp_reset_tu_statics()`(civ_* と `sp_*_pool_head/count` を NULL/0 に)。entry 冒頭で
   `sp_tu_ctx_init(); sp_reset_tu_statics();` の順に呼ばれる(SP_MULTI_CTX)。
 - civ_ は TU の mark 関数で `if (civ_...) sp_gc_mark(...)` 済み(非 NULL の間生存)。
@@ -51,7 +51,7 @@
 目的: 「reset を飛ばし + 永続グローバルで再利用」で本当にテーブルが持続し、前処理が
 消え、**メモリが安定**するかを、生成物の手編集だけで確認する。
 
-1. `main/prebuild_scripts/spinel/fft_spinel.rb` を編集: core を永続グローバルで再利用。
+1. `main/ruby/spinel/fft_spinel.rb` を編集: core を永続グローバルで再利用。
    ```ruby
    # 例(mode/n をキーに初回だけ生成)
    if $fft_core_n != n || $fft_core_mode != mode
@@ -135,12 +135,12 @@ kernel/desktop/editor の生成には付けない。
   Stage 0 で必ず確定してから Stage 1 へ。
 
 ## 参考(コード位置)
-- entry/reset: `main/prebuild_scripts/spinel/gen/fft_spinel.c`(`sp_reset_tu_statics`、
-  entry プロローグ)、ソース `lib/add/picoruby-fmrb-fft/spinel/fft_spinel.rb`
-- 受け皿(インスタンス lifecycle): `lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c`
+- entry/reset: `main/ruby/spinel/gen/fft_spinel.c`(`sp_reset_tu_statics`、
+  entry プロローグ)、ソース `lib/gems/picoruby-fmrb-fft/spinel/fft_spinel.rb`
+- 受け皿(インスタンス lifecycle): `lib/gems/picoruby-fmrb-fft/native/fmrb_fft_spinel.c`
   (begin/run/end、`fmrb_fft_spinel_last_total_us`)
 - ctx: `components/fmrb_spinel_rt/spinel_rt/sp_ctx.h`、import
   `components/fmrb_spinel_rt/import_from_fork.rb` / `SPINEL_PIN`
 - 生成配線: `rakelib/spinel.rake`、`main/CMakeLists.txt`(FMRB_FFT_SPINEL)
-- gem: `lib/add/picoruby-fmrb-fft/mrblib/fmrb-fft.rb`(spinel_open/close 参照カウント)
-- 共有アルゴリズム(**触らない**): `lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb`
+- gem: `lib/gems/picoruby-fmrb-fft/mrblib/fmrb-fft.rb`(spinel_open/close 参照カウント)
+- 共有アルゴリズム(**触らない**): `lib/gems/picoruby-fmrb-fft/mrblib/fft_core.rb`

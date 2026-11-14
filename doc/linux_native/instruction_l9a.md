@@ -50,7 +50,7 @@
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/` (window_manager・input_router・
+- fmruby-core: `main/ruby/kernel/` (window_manager・input_router・
   デスクトップの描き方)、`main/` の kernel と受け渡しの C の該当箇所、`native/`、
   `hosted/`、`config/machines/`、`rakelib/`、`tools/regress/` (wl_check を
   regress:full に載せる所)、`test/`、`doc/linux_native/report/`、

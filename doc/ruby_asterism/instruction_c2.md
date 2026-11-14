@@ -31,7 +31,7 @@
 ## 2. fmruby-core の側
 
 - `lib/add/picoruby-asterism/` と `lib/add/picoruby-asterism-zenoh/` は、ruby-asterism のリポジトリを**PIN で取り込む形**にする。
-  `lib/add/PICORUBY_TI_PIN` と同じ形。
+  `lib/upstream/PICORUBY_TI_PIN` と同じ形。
   - rake で vendor/ (gitignore) に取得し、`rake setup` で picoruby の mrbgems に写す。
   - ZENOH_PICO_PIN は picoruby-asterism-zenoh の側に移すか、fmruby-core に残すかを決めて README に書く。
   - 開発中に手元のチェックアウトを使うための環境変数による上書き (`ZENOH_PICO_DIR` と同じ考え方) を付ける。

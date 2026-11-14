@@ -29,7 +29,7 @@ report は doc/editor_ti/report/p3.md へ。タスクごとにコミット。
 
 ## T1: PIN 更新
 
-1. `lib/add/PICORUBY_TI_PIN` を `d40a9e6e56388b6156e847e1e67548ee054d3bcb`
+1. `lib/upstream/PICORUBY_TI_PIN` を `d40a9e6e56388b6156e847e1e67548ee054d3bcb`
    (fmrb-dev、hover 対応入り) に更新し、ti:clean -> ti:setup。
 2. sig の変更は不要。`rake ti:test` 全 green (hover の ivar テスト
    test_declared_instance_variable_type_at_cursor が増えている)。

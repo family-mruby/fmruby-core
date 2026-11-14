@@ -32,9 +32,9 @@
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/system_desktop.app.rb`、
-  `main/prebuild_scripts/kernel/system_desktop_keys.app.rb`、
-  `main/prebuild_scripts/kernel/system_desktop/`、`test/`、
+- fmruby-core: `main/ruby/kernel/system_desktop.app.rb`、
+  `main/ruby/kernel/system_desktop_keys.app.rb`、
+  `main/ruby/kernel/system_desktop/`、`test/`、
   `doc/linux_native/report/`。
 - 触らないもの: kernel、C の側、fmruby-graphics-audio、sdkconfig、
   submodule の中、`flash/`、plan.md。

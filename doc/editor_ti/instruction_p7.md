@@ -6,7 +6,7 @@ gen_help、engine の 3 エントリが揃っている)。plan.md と report/p4*
 
 ## ゴール
 
-tool/web の簡易エディタに、**ブラウザ内で完結する補完・ホバー・診断
+tools/web の簡易エディタに、**ブラウザ内で完結する補完・ホバー・診断
 (+ F1 ヘルプ)** を足す。エンジン + db を emscripten で WebAssembly 化して
 ブラウザで走らせる。**実機も BLE も不要** (実行時も開発時も)。source of
 truth は sig/ の 1 箇所で、二国語 (P4.6 の `<<en>>`) もそのまま効く。
@@ -20,7 +20,7 @@ truth は sig/ の 1 箇所で、二国語 (P4.6 の `<<en>>`) もそのまま�
 - engine は純 C で、`rake ti:test` が gcc で native ビルド済み。emcc は
   「もう一つの C ターゲット」。
 - **fork は無改修** (engine をそのまま WASM 化するだけ)。wrapper は
-  fmruby-core 側 (tool/web/wasm/) に置く。
+  fmruby-core 側 (tools/web/wasm/) に置く。
 
 ## 前提ツール (2026-08-12 導入・動作確認済み)
 
@@ -55,16 +55,16 @@ truth は sig/ の 1 箇所で、二国語 (P4.6 の `<<en>>`) もそのまま�
    担保。ブラウザゼロ。
 2. **WASM モジュールの動作**: **Node で自律**。emcc が吐いた .wasm/.js を
    Node で読み、sample ソースに suggest/hover/diagnose を呼んで期待値を
-   assert する Node テストを書く (tool/web/wasm/test_wasm.mjs)。ブラウザ不要。
+   assert する Node テストを書く (tools/web/wasm/test_wasm.mjs)。ブラウザ不要。
 3. **ページ/UI**: **Playwright headless で自律**。ローカル静的サーバで
-   tool/web を配信 → headless Chromium でページを開き、エディタに打鍵を
+   tools/web を配信 → headless Chromium でページを開き、エディタに打鍵を
    注入 → 補完ドロップダウンの DOM を assert + スクリーンショット。
    sim + fmrb_screenshot のブラウザ版。ユーザ操作ゼロ。
 
 ## T1: WASM ビルド (rake ti:wasm)
 
 - Rake タスク `ti:wasm`: engine の src/**/*.c + prism の src/*.c + 生成 db.c を
-  emcc でリンクし、`tool/web/wasm/ti.js` + `ti.wasm` を出す。
+  emcc でリンクし、`tools/web/wasm/ti.js` + `ti.wasm` を出す。
   - db は `rake ti:gen` と同じ tidbgen を使い、WASM 用の出力先に生成
     (sig/ から。firmware と同じ db)。
   - prism は firmware と同じ vendor コピーを使う (mruby 無しでコンパイル =
@@ -75,7 +75,7 @@ truth は sig/ の 1 箇所で、二国語 (P4.6 の `<<en>>`) もそのまま�
 - **生成物 (ti.js/ti.wasm/db) は gitignore** (flash/help や型 db と同じ
   方針。source は sig/ + engine)。
 
-## T2: emscripten wrapper (tool/web/wasm/ti_wasm.c)
+## T2: emscripten wrapper (tools/web/wasm/ti_wasm.c)
 
 engine の C API (ti_fill_suggestions_at_cursor / ti_find_hover_at_cursor /
 ti_fill_diagnostics / ti_find_call_context) を、JS から呼べる薄い関数で包む。
@@ -91,7 +91,7 @@ editor_ti_bridge.c の「fill してから index で get」の形を踏襲する
 - 文字列は UTF-8 のまま返し、JS 側で `UTF8ToString`。
 - EMSCRIPTEN_KEEPALIVE を付け、exports.txt に列挙。
 
-## T3: JS モジュール (tool/web/js/ti.js — WASM ラッパ)
+## T3: JS モジュール (tools/web/js/ti.js — WASM ラッパ)
 
 - `ti.wasm` をロードし、`suggest(text, byteOffset)` /
   `hover(text, byteOffset)` / `diagnose(text)` / `callContext(...)` を
@@ -100,7 +100,7 @@ editor_ti_bridge.c の「fill してから index で get」の形を踏襲する
   現在言語で割る。言語源はブラウザ側 (下記 T4 のトグル or navigator.language)。
 - F1 ヘルプ本文は T5 のバンドルから引く。
 
-## T4: エディタ UI (tool/web/js/app.js の textarea エディタに追加)
+## T4: エディタ UI (tools/web/js/app.js の textarea エディタに追加)
 
 現在の textarea + editorHighlight に足す:
 - **補完**: 識別子/`.`/`::` の後で Ctrl+Space (ブラウザは Tab を奪えないので
@@ -116,7 +116,7 @@ editor_ti_bridge.c の「fill してから index で get」の形を踏襲する
 ## T5: ヘルプのブラウザ用バンドル (任意、後回し可)
 
 - gen_help と同じ入力 (sig/ の doc 長文) から、ブラウザ用に
-  `tool/web/wasm/help.json` (`{name: markdown}` + index) を生成する
+  `tools/web/wasm/help.json` (`{name: markdown}` + index) を生成する
   小タスク (gen_help を JSON 出力にする派生 or 別スクリプト)。生成物は
   gitignore。
 - UI はパネルに markdown をレンダリング。二国語 split 適用。
@@ -124,11 +124,11 @@ editor_ti_bridge.c の「fill してから index で get」の形を踏襲する
 
 ## T6: 自律検証
 
-1. **Node (WASM ロジック)**: `node tool/web/wasm/test_wasm.mjs` が
+1. **Node (WASM ロジック)**: `node tools/web/wasm/test_wasm.mjs` が
    `n = 42` の `n.` で Integer メソッド、`class MyApp < FmrbApp` 内の
    `@gfx.` で draw_*、誤引数で診断 1 件、を assert して pass 表示。
-2. **Playwright (UI)**: `node tool/web/test/ui.mjs` (or Playwright test) が
-   - ローカル静的サーバ (python3 -m http.server or node) で tool/web を配信
+2. **Playwright (UI)**: `node tools/web/test/ui.mjs` (or Playwright test) が
+   - ローカル静的サーバ (python3 -m http.server or node) で tools/web を配信
    - headless Chromium でページを開き、エディタに `s = 1\ns.` を打鍵注入 →
      Ctrl+Space → 補完ドロップダウンに `abs` 等が出ることを DOM で assert +
      スクショ (report に貼る)
@@ -141,7 +141,7 @@ editor_ti_bridge.c の「fill してから index で get」の形を踏襲する
 2. T6-1 (Node) と T6-2 (Playwright headless) が**ユーザ操作なしで** pass、
    スクショが report にある。
 3. `rake ti:test` green。fork 無改修 (git diff が vendor/picoruby-ti や
-   tidbgen に触れない。変更は tool/web/ + Rakefile のみ)。
+   tidbgen に触れない。変更は tools/web/ + Rakefile のみ)。
 4. 生成物 (wasm/db/help.json) は gitignore。
 
 ## やらないこと (P7 の範囲外 / 別判断)

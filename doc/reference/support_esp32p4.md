@@ -102,9 +102,9 @@ IDF 非依存でそのまま有効。
 
 - `Rakefile`: `set_target:esp32` / `build:esp32` を Retro=esp32s3 / Modern(NARYAv4)=esp32p4 で切替。`hw_config` に `NARYAv4` を追加し P4 用 config を選択。
 - 追加した config（Tab5相当: Flash 16MB / PSRAM 32MB、無線はC6前提で BT/WiFi 無効）:
-  - `config/sdkconfig.defaults.p4`
-  - `config/partitions_p4.csv`
-  - `config/system_conf_p4.toml`
+  - `config/sdkconfig.defaults.tab5`
+  - `config/partitions_p4_common.csv`
+  - `config/system_conf_tab5.toml`
 - sdkconfig は実機（PSRAM速度、パーティション等）に合わせ menuconfig での調整が必要。
 
 既知の未対応（次段階のポーティング作業）:
@@ -125,7 +125,7 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 - **IDF6 の driver コンポーネント分割対応**。monolithic `driver` から個別 `esp_driver_uart/gpio/spi/sdspi` 等へ REQUIRES を追加（`fmrb_hal`, `fmrb_common`, `main` の CMakeLists）。IDF5.5 でも有効で Retro 互換。
 - **FreeRTOS API**: `xTaskGetAffinity`（IDF6で削除）→ `xTaskGetCoreID`（`fmrb_common/src/fmrb_task.c`）。
 - **picoruby のデッドgem除外**（esp32p4のみ、`components/picoruby-esp32/CMakeLists.txt`）。gembox 未収録で未使用の `picoruby-pwm`(pwm.c) と `picoruby-mbedtls`(cipher.c) を PICORUBY_SRCS から除外。後者は IDF6 で mbedtls cipher API が PSA へ移行したため。
-- **libmruby を RISC-V でビルド**。`lib/add/family_mruby_esp32p4.rb` を新規追加し、`riscv32-esp-elf-*` ツールチェーン + IDF と同じ `-march=rv32imafc_zicsr_zifencei_zaamo_zalrsc_xesploop_xespv -mabi=ilp32f` を使用。`picoruby-esp32/CMakeLists.txt` が esp32p4 では別 build dir(`build/esp32p4`) と本設定を選択。
+- **libmruby を RISC-V でビルド**。`lib/upstream/family_mruby_esp32p4.rb` を新規追加し、`riscv32-esp-elf-*` ツールチェーン + IDF と同じ `-march=rv32imafc_zicsr_zifencei_zaamo_zalrsc_xesploop_xespv -mabi=ilp32f` を使用。`picoruby-esp32/CMakeLists.txt` が esp32p4 では別 build dir(`build/esp32p4`) と本設定を選択。
 - **picolibc 対応**。IDF6 の esp32p4 は newlib でなく picolibc をリンクするため、libmruby も `-specs=picolibc.specs` でビルド（`<ctype.h>` の `_ctype_` 未定義を回避）。
 - **C11 `timespec_get` シム**。picolibc が同関数を提供せず mruby-time がリンク失敗するため、`main/compat/fmrb_libc_compat.c` に `clock_gettime` ベースの実装を esp32p4 限定で追加。
 
@@ -173,7 +173,7 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 
 2. **kernel 起動待ちタイムアウト**: `display_local_task` がトランスポートの受信側を実装していなかった。`fmrb_hal_link_local_receive_cmd` でコマンドをポーリングし、msgpack でパースして ACK を返す実装を追加（VERSION/INIT_DISPLAY/GA_VERSION/DEFINE_PROG 対応）。
 
-3. **PSRAM 速度**: DSI DPI フレームバッファの帯域が足りず画面がアンダーランしていた。`CONFIG_SPIRAM_SPEED_200M` は `CONFIG_IDF_EXPERIMENTAL_FEATURES=y` が前提になっていたため、`config/sdkconfig.defaults.p4` に追加して 200MHz を有効化。
+3. **PSRAM 速度**: DSI DPI フレームバッファの帯域が足りず画面がアンダーランしていた。`CONFIG_SPIRAM_SPEED_200M` は `CONFIG_IDF_EXPERIMENTAL_FEATURES=y` が前提になっていたため、`config/sdkconfig.defaults.tab5` に追加して 200MHz を有効化。
 
 4. **パネル型番の誤認識（主因）**: `lgfx_tab5.hpp` を当初 ST7123 でハードコードしていたが、実機は **ILI9881C**（Tab5 は生産時期でパネルが異なる。背面ラベルで確認）。M5GFX.cpp の Tab5 検出コードを参照し、以下に修正:
    - `Bus_DSI`: lane_mbps 1040 → **900**

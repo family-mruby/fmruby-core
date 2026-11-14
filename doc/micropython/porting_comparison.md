@@ -12,7 +12,7 @@
 
 | 軸 | PicoRuby | MicroPython | Lua (参考) |
 |---|---|---|---|
-| 本体の改変 | あり (lib/add / lib/patch / lib/replace を被せる) | ゼロ (port/mpconfigport.h のみ) | ゼロ |
+| 本体の改変 | あり (lib/add / lib/upstream/patch / lib/upstream/replace を被せる) | ゼロ (port/mpconfigport.h のみ) | ゼロ |
 | ビルド時生成 | 毎ビルド (mrbgems / picorbc) | オフライン生成をコミット (rake micropython:gen) | なし |
 | 同時インスタンス | アプリごとに 1 VM、何本でも | システム全体で 1 本 (排他) | 何本でも |
 | GC | 精密 (C スタックを見ない) | 保守的 (C スタック + レジスタを走査) | 精密 (Lua 内蔵) |
@@ -25,7 +25,7 @@
 ## 1. 本体の取り込み方と改変の吸収
 
 PicoRuby は submodule (components/picoruby-esp32/picoruby) に対して
-lib/add / lib/patch / lib/replace を Rakefile が被せる方式で、自前 gem の追加や
+lib/add / lib/upstream/patch / lib/upstream/replace を Rakefile が被せる方式で、自前 gem の追加や
 task_hal の差し替えなど**本体側への介入を前提に育ってきた**。介入の代償が
 「submodule 直編集は上書きで消える」という運用上の罠で、編集場所の規約
 (CLAUDE.md) で防いでいる。
@@ -65,7 +65,7 @@ report/phase4.md) はこの方式の固有問題で、PicoRuby では原理的�
 
 ## 4. アプリ基盤 (言語層) の焼き込み方
 
-- PicoRuby: FmrbApp / FmrbGfx (lib/add/picoruby-fmrb-app/mrblib/*.rb) は
+- PicoRuby: FmrbApp / FmrbGfx (lib/gems/picoruby-fmrb-app/mrblib/*.rb) は
   **ビルド時に bytecode 化されて gem に入る**。アプリ起動時のコストはゼロ。
 - MicroPython: ファイルシステム import が無いので、prelude
   (components/micropython/prelude/*.py) を**ソースのまま C 文字列で焼き込み、
@@ -75,7 +75,7 @@ report/phase4.md) はこの方式の固有問題で、PicoRuby では原理的�
 
 ## 5. C バインディングの作り
 
-PicoRuby の mrbgem C (lib/add/picoruby-fmrb-app/ports/esp32/) は IDF の中で
+PicoRuby の mrbgem C (lib/gems/picoruby-fmrb-app/ports/esp32/) は IDF の中で
 ビルドされるので **fmrb のヘッダを自由に include できる**。
 
 MicroPython は qstr 抽出がホストの gcc でプリプロセスするため、

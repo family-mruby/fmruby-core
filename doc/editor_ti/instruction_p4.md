@@ -10,7 +10,7 @@ report は doc/editor_ti/report/p4.md へ。タスクごとにコミット。
 子供が触る FMRB API の補完・ホバー・診断を一通り効かせる。同時に
 **sig/ を API ドキュメントの正**とする運用を立ち上げる。
 
-対象クラス (lib/add/picoruby-fmrb-app ほかの実装が正):
+対象クラス (lib/gems/picoruby-fmrb-app ほかの実装が正):
 FmrbApp / FmrbGfx / GfxBlock / SpriteImage / SpriteInstance /
 TileMap / TileRing / TileSheet / FmrbAudio / FmrbI18n /
 FmrbMidi / MIDI モジュール / NsfHeader / P5 (p5 互換層)
@@ -37,8 +37,8 @@ FmrbMidi / MIDI モジュール / NsfHeader / P5 (p5 互換層)
 
 @gfx が効くようになったので保留していた件。両方のスペルを出す:
 
-1. lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb と
-   main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb の attr_reader に
+1. lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb と
+   main/ruby/spinel/fmrb_app_base_spinel.rb の attr_reader に
    `:gfx` を追加 (P1 報告で名前衝突なしは確認済み。追加はこの 1 シンボル)。
 2. sig の FmrbApp に `def gfx: () -> FmrbGfx` と `@gfx: FmrbGfx` の両方を
    置く。

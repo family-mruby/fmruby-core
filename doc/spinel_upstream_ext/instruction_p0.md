@@ -41,7 +41,7 @@ P0 の結果で書くので、古い前提を最新の上流で確かめ直す�
    init 2 回・2 本同時リンクの multiple definition 数・`-m32` の k.c)。
    オプション名や生成ヘッダの形が変わっていたら全部書く。
 3. **fmrb の gem / カーネルが最新上流でどこまで通るか** (生成だけ):
-   `lib/add/picoruby-fmrb-raycast` 等の gem 型 Ruby と、kernel / desktop /
+   `lib/gems/picoruby-fmrb-raycast` 等の gem 型 Ruby と、kernel / desktop /
    editor の Spinel ソースを最新上流の `bin/spinel` に `-c` で通して、C 生成が
    通るか、`spinel-doctor` 相当の警告が出るかを見る。生成物は scratchpad に置く。
    フォーク専用オプション (`--no-main` `--entry` `--persistent-statics`) は

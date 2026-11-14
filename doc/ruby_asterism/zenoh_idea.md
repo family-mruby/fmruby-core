@@ -283,7 +283,7 @@ ROS 2 と型付きで話す場合のみ CDR エンコードが必要になるが
 ## 7. リスクと制約
 
 - **S3 の flash**: 残 6% は factory パーティション (4M) に対する残りで、
-  16MB flash 全体では約 7MB が未使用 (config/partitions_n16r8.csv の
+  16MB flash 全体では約 7MB が未使用 (config/partitions_naryav3.csv の
   コメント参照)。**パーティション見直し (factory 拡張) で対応する方針
   (決定)**。注意点は、パーティション表の変更はアプリ単体更新では配布
   できず、フル書き込み (bootloader + table + app + storage) が要ること。

@@ -15,7 +15,7 @@
 ## 現状 (コードで確認済み)
 
 - `flash/app/tool/picorabbit.app.rb` (182 行) + gem
-  `lib/add/picoruby-fmrb-picorabbit/mrblib/` (parser 195 / renderer 522 /
+  `lib/gems/picoruby-fmrb-picorabbit/mrblib/` (parser 195 / renderer 522 /
   slide 51 行)。**lib/ を触ったら `rake clean`**。
 - plan の 5 件は全部その通り。加えて 1 番は根が深い:
   `render_timer` (renderer 485 行〜) で**ジャンプ物理 `@usagi_jump_y` が
@@ -147,7 +147,7 @@ sprite_editor (`flash/app/tool/sprite_editor.app.rb`) と既存資産
   の対応が素直。
 - **8bit インデックス BMP、画素バイト = RGB332 値そのもの**
   (ローダはパレットを無視して画素バイトを色として使う。
-  `tool/gen_shooter_sprites.rb` 冒頭の説明と同じ)。`BMP332.save` が
+  `tools/gen_shooter_sprites.rb` 冒頭の説明と同じ)。`BMP332.save` が
   吐く形式。
 - **透明は 0x00**。`SpriteImage.new(..., transparent_color: 0,
   use_transparent: true)`。したがって**絵の中で純黒 0x00 は使えない**
@@ -169,7 +169,7 @@ sprite_editor (`flash/app/tool/sprite_editor.app.rb`) と既存資産
 
 ### 絵の作り方 (Claude の下書き → ユーザが editor で直す)
 
-- `tool/gen_picorabbit_sprites.rb` を `tool/gen_shooter_sprites.rb` に
+- `tools/gen_picorabbit_sprites.rb` を `tools/gen_shooter_sprites.rb` に
   倣って書く (ドット表の文字列が元。1 文字 1 画素、`.` が透明)。
   出力先 `flash/usr/share/picorabbit/`。
 - **上書きガード**: 出力先に既にファイルがあれば書かない (`--force` で

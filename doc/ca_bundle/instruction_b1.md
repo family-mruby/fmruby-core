@@ -13,7 +13,7 @@
    - 外す一覧の名前が束に見つからなければ、エラーで止まる (名前の書き違いで外したつもりにならないため)。
    - 同じ入力からは同じ出力になる (2 回作って同じ SHA-256)。
 3. **host の試験** (`rake test` から呼ばれる形か、既存の試験の流儀に合わせて): 出力の束に G3 が無いこと、枚数が「元の枚数 − 外した数」であること、各 PEM が読めること (Ruby の OpenSSL::X509::Certificate で全部読める)。
-4. **sdkconfig.defaults** (ユーザが許可した。この 4 行だけを足し、他は触らない): Wi-Fi を使う 4 つ `config/sdkconfig.defaults.p4`・`config/sdkconfig.defaults.naryav4`・`config/sdkconfig.defaults.atoms3r`・`config/sdkconfig.defaults.n16r8` に
+4. **sdkconfig.defaults** (ユーザが許可した。この 4 行だけを足し、他は触らない): Wi-Fi を使う 4 つ `config/sdkconfig.defaults.tab5`・`config/sdkconfig.defaults.naryav4`・`config/sdkconfig.defaults.atoms3r`・`config/sdkconfig.defaults.naryav3` に
    ```
    CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
    CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y
@@ -33,7 +33,7 @@
 ## 3. 範囲・決まり
 
 - **触ってよいもの**: fmruby-core (develop): `config/cacrt_exclude.txt`・`config/cacrt_fmrb.pem`、`tools/` の道具、`rakelib/` の rake、試験、上の 4 つの sdkconfig.defaults の 4 行だけ、ASSETS.md か README の 1〜2 行、report。build/ は作り直してよい。
-- **触らないもの**: `sdkconfig` (生成物)、他の sdkconfig.defaults、`lib/patch/picoruby-socket` の C (束の付け方は変えない)、submodule の中、fmruby-graphics-audio、VPS、Tab5・シリアル (焼かない)、ユーザの鍵。
+- **触らないもの**: `sdkconfig` (生成物)、他の sdkconfig.defaults、`lib/upstream/patch/picoruby-socket` の C (束の付け方は変えない)、submodule の中、fmruby-graphics-audio、VPS、Tab5・シリアル (焼かない)、ユーザの鍵。
 - push・タグはしない。`git commit -a` は使わない。件名は `tools:` / `config:` など履歴に合わせ、本文英語、末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。実在の値を差分で grep してからコミット。fmruby-core の doc (plan・この指示書・report) はコミットしない (親がする)。
 - **止まる条件**: IDF の全部入りの作りが想定 (cacrt_all.pem + cacrt_local.pem) と違い、同じものを作れない。4 行では自前の束に替わらない (Kconfig の名前や組み合わせが違う)。ビルドが通らず、直すのに範囲外の変更が要る。止まったら report に状況と選択肢 (推奨を先頭に) を書いて返す。
 - **report** (`doc/ca_bundle/report/b1.md`、常体): 道具と rake の使い方、元の束 (IDF の版・枚数・SHA-256・Mozilla の日付)、自前の束 (枚数・SHA-256)、4 行の効き方の確認 (build の sdkconfig と生成物の枚数)、試験の結果、コミット。

@@ -61,7 +61,7 @@
 - **640x360 が最適点**: 2x 整数スケールで 1280x720 パネルに厳密一致
   (現状 426x240@3x の 1px 帯も消える)。8x8 misaki フォントで
   **80 桁 x 45 行、日本語表示可**。6x8 なら 106x42。
-- 変更点: system_conf_p4.toml の display_width/height、
+- 変更点: system_conf_tab5.toml の display_width/height、
   DISPLAY_LOCAL_SCALE_FACTOR 3→2 (理想は fb サイズから導出)、
   touch の仮想解像度定数、remote desktop の定数 (info 応答 / JPEG /
   H.264。縦 360 は 16 の倍数でないため MCU パディング 368 が必要)、

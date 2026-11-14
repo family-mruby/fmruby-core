@@ -123,7 +123,7 @@ README.md
 作る。`rake registry` から呼ぶ。
 
 **外部の画像処理は使わない。** 読むのは `fmruby-core/tools/fmrb_png.rb`
-(`FmrbPng.read_rgb`)、書くのは `fmruby-core/tool/gen_icon_bmp.rb` の
+(`FmrbPng.read_rgb`)、書くのは `fmruby-core/tools/gen_icon_bmp.rb` の
 `write_bmp` と同じ形 (8 ビット、画素は RGB332 そのもの、パレットは付ける、
 透明は 0)。この 2 つを apps リポジトリへ写すか、参照するかは実装者が決める
 (写すなら出どころをコメントに書く)。

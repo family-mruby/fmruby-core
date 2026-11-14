@@ -30,7 +30,7 @@ draw_text / draw_rect が出て、選んで挿入できる。ホバー・診断�
 
 ## T1: PIN 更新と RBS の @gfx 宣言
 
-1. `lib/add/PICORUBY_TI_PIN` の commit を
+1. `lib/upstream/PICORUBY_TI_PIN` の commit を
    `333beb15fee33908e5c027a8fe541615aca3a257` (fmrb-dev、RBS ivar 宣言
    対応入り) に更新し、`rake ti:clean` -> `rake ti:setup` で取り直す。
 2. `sig/fmrb.rbs` の FmrbApp に `@gfx: FmrbGfx` を宣言する。基底の
@@ -43,7 +43,7 @@ draw_text / draw_rect が出て、選んで挿入できる。ホバー・診断�
 
 ## T2: ti ブリッジ (editor-core 内、et_*)
 
-場所: `lib/add/picoruby-fmrb-editor-core/src/` に新ファイル
+場所: `lib/gems/picoruby-fmrb-editor-core/src/` に新ファイル
 (例 editor_ti_bridge.c)。公開ヘッダは include/ に追加。P1 報告のとおり
 gem の中から呼ぶ分にはリンクは何もしなくてよい。mrbgem.rake に
 `spec.add_dependency 'picoruby-ti'` と include path (picoruby-ti/include、
@@ -75,7 +75,7 @@ mrc_ccontext_new のたびに上書きされる単一グローバルで、Spinel
 
 **B 案を採用**: global_mrb をタスクローカルにする。
 
-- mruby-compiler への変更は lib/patch / lib/replace の overlay で行う
+- mruby-compiler への変更は lib/upstream/patch / lib/upstream/replace の overlay で行う
   (対象: prism_xallocator.h と、global_mrb を定義/代入している
   ccontext.c 付近)。picoruby-ti fork 側は触らない。
 - 形: `global_mrb` を TLS 値 (fmrb_get_current_est と同じ流儀) を返す
@@ -109,10 +109,10 @@ mrc_ccontext_new のたびに上書きされる単一グローバルで、Spinel
 
 ## T3: バインディング
 
-- mruby: `lib/add/picoruby-fmrb-editor-core/ports/esp32/editor_core_mrb.c`
+- mruby: `lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_core_mrb.c`
   に et_* のラッパを追加 (既存 ec_* と同じ形)。
 - Spinel: C 実装は `main/app/fmrb_spx_editor.c`、FFI 宣言は
-  `main/prebuild_scripts/spinel/fmrb_editor_ffi.rb` (共有 FFI と別ファイル
+  `main/ruby/spinel/fmrb_editor_ffi.rb` (共有 FFI と別ファイル
   という P5 の原則は既にこの形なので、そこに足すだけ)。
 - 文字列は ptr+len で返し、Ruby 側で文字列化する (ec_render_text と同じ)。
 

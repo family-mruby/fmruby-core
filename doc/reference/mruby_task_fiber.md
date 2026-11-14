@@ -4,7 +4,7 @@
 
 ## 1. 決まり
 
-- `lib/add/family_mruby.gembox` (と、それを写す picoruby 側の gembox) に **mruby-fiber と
+- `lib/upstream/family_mruby.gembox` (と、それを写す picoruby 側の gembox) に **mruby-fiber と
   mruby-enumerator を入れない**。
 - mruby-enumerator を外すのは、外部イテレータ (`Enumerator#next`・`peek` など) が中で
   Fiber を使うため。使う側は Fiber を使ったと気づかないまま混ぜてしまう。
@@ -33,7 +33,7 @@ mruby-task の README (Limitations and Compatibility) は、Task と Fiber は�
 ## 3. Fiber と関係ない mruby-task の不具合 (参考)
 
 同じ検証で見つけた、Task だけで起きるもの。どちらも Family mruby では直してある
-(`lib/patch/picoruby-mruby/lib/mruby/` の `src/vm.c` と `mrbgems/mruby-task/src/task.c`。
+(`lib/upstream/patch/picoruby-mruby/lib/mruby/` の `src/vm.c` と `mrbgems/mruby-task/src/task.c`。
 変えた所には `fmrb: backport` のコメントがある)。
 
 ### U2: 特異クラスを持てない値への `instance_exec` / `instance_eval` で Task が途中で終わる
@@ -81,7 +81,7 @@ mruby-task の README (Limitations and Compatibility) は、Task と Fiber は�
 - `1.instance_eval { def m; end }` は今までどおり TypeError になる。
 - 状態: 上流に PR を出した (mruby/mruby#7731、2026-11-03。Task と、C から resume した Fiber の
   テストを足した)。Family mruby は
-  `lib/patch/.../src/vm.c` に同じ変更を入れた。mruby-checkpoint も patch で入れた
+  `lib/upstream/patch/.../src/vm.c` に同じ変更を入れた。mruby-checkpoint も patch で入れた
   (`patches/0003-vm-return-target-class.patch`)。
 
 ### U4: main の Task の名前と戻り値が GC で回収される
@@ -93,13 +93,13 @@ mruby-task の README (Limitations and Compatibility) は、Task と Fiber は�
   `mrb_gc_register()` が守るのはラッパーのオブジェクトだけで、`mrb_task` の構造体の中の値
   (self・result・name) はどこからもマークされない。
 - 直し方: 上流の `628ccec60` (mruby-task: mark the main task's values during GC) を、そのまま
-  `lib/patch/.../mrbgems/mruby-task/src/task.c` に移した。`mrb_task_mark_all()` の最初
+  `lib/upstream/patch/.../mrbgems/mruby-task/src/task.c` に移した。`mrb_task_mark_all()` の最初
   (キューが空のときに抜ける前) で main の Task の self・result・name をマークする。
 - 状態: Family mruby に入れた。上流は直っている。
 
 ### 確認
 
-- ホスト: `f56d44ecc` に `lib/patch` の `vm.c`・`task.c`・`gc.c` を重ねた mruby を ASan つきで
+- ホスト: `f56d44ecc` に `lib/upstream/patch` の `vm.c`・`task.c`・`gc.c` を重ねた mruby を ASan つきで
   作り、上流のテスト (default の gembox + mruby-task、U2 と U4 のテストを足したもの) が全部
   通る。修正前は U2 の再現で heap-buffer-overflow、U4 で名前が別の文字列になる。
 - sim と `rake regress` は本体の checkout に取り込んでから行う (worktree では sim を動かせない)。

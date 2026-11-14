@@ -6,7 +6,7 @@
 
 ## 目的
 
-カーネル VM (`FmrbKernelImpl`、`main/prebuild_scripts/kernel/`) を
+カーネル VM (`FmrbKernelImpl`、`main/ruby/kernel/`) を
 Spinel コンパイルされたネイティブタスクとして動かし、mruby 版と
 同一の外部挙動を自律検証ツールで確認し、性能を比較計測する。
 
@@ -16,9 +16,9 @@ Spinel コンパイルされたネイティブタスクとして動かし、mrub
    ロジック本体は 1 ソースを維持し、mruby / Spinel の両方でビルド可能に
    保つ。処理系差は「ベースクラス層」に閉じ込める:
    - mruby 版: `FmrbKernel` ベースクラスは C 定義
-     (lib/add/picoruby-fmrb-kernel) のまま。
+     (lib/gems/picoruby-fmrb-kernel) のまま。
    - Spinel 版: `FmrbKernel` ベースクラスを **Ruby で再実装**した
-     `main/prebuild_scripts/spinel/fmrb_kernel_base_spinel.rb` を用意し、
+     `main/ruby/spinel/fmrb_kernel_base_spinel.rb` を用意し、
      各メソッド (`_send_raw_message` 等) を FmrbSpx FFI 呼び出しで
      実装する。上に乗る `FmrbKernelImpl` は無改変で共通。
 2. **制御反転 (poll 化)**: 現行は C の `_spin` がキューを drain して
@@ -37,7 +37,7 @@ Spinel コンパイルされたネイティブタスクとして動かし、mrub
 
 ### T2-1: mruby 側の poll API 追加と main_loop 再構成 (1 日)
 
-1. `lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c` に
+1. `lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c` に
    `_poll_message(timeout_ms)` を追加 (既存 `_spin` の drain 部分を
    1 件取り出しに分解。既存 `_spin` は当面残すが、main_loop からの
    利用は poll に置き換え、置き換え完了後に `_spin` を削除する。
@@ -64,7 +64,7 @@ Spinel コンパイルされたネイティブタスクとして動かし、mrub
 
 ### T2-2: Spinel 用ベースクラス層 (1-2 日)
 
-`main/prebuild_scripts/spinel/fmrb_kernel_base_spinel.rb`:
+`main/ruby/spinel/fmrb_kernel_base_spinel.rb`:
 
 1. `class FmrbKernel` を定義し、`FmrbKernelImpl` が呼ぶ全メソッドを
    FFI 実装する。対象メソッドは grep で洗い出す
@@ -82,9 +82,9 @@ Spinel コンパイルされたネイティブタスクとして動かし、mrub
 3. `Machine.board_millis` 相当、`Log` モジュール、`FmrbConst` も
    ここで供給する:
    - `Log`: fmrb_spx_log_write への薄いラッパ。
-   - `FmrbConst`: C の定数テーブル (lib/add/picoruby-fmrb-const の
+   - `FmrbConst`: C の定数テーブル (lib/gems/picoruby-fmrb-const の
      const.c) から Ruby 定数定義を**生成するスクリプト**
-     `tool/spinel/gen_const_rb.rb` を作り、ビルド時に
+     `tools/spinel/gen_const_rb.rb` を作り、ビルド時に
      `fmrb_const_generated.rb` を生成する (手書き二重管理を避ける)。
 4. I2C/RTC: `sync_rtc` は Phase 1 で C 化した `fmrb_spx_sync_rtc` を
    呼ぶ形に `fmrb_kernel.rb` 側を変更 (mruby 版も同じ関数を呼ぶ
@@ -92,7 +92,7 @@ Spinel コンパイルされたネイティブタスクとして動かし、mrub
 
 ### T2-3: MessagePack 置換 (半日)
 
-1. Phase 0 の `msgpack_pure.rb` を `main/prebuild_scripts/spinel/` へ
+1. Phase 0 の `msgpack_pure.rb` を `main/ruby/spinel/` へ
    移し (または common な場所)、モジュール名を `MessagePack` として
    `pack` / `unpack` 互換 API にする。
 2. Spinel ビルドではこれを連結。mruby ビルドは従来の C msgpack のまま。
@@ -103,7 +103,7 @@ Spinel コンパイルされたネイティブタスクとして動かし、mrub
 
 ### T2-4: combined ソース生成とビルド統合 (1 日)
 
-1. Spinel 用 combined 生成: `tool/debug/gen_combined_rb.py` を参考に
+1. Spinel 用 combined 生成: `tools/debug/gen_combined_rb.py` を参考に
    (または拡張して)、以下の順で連結した
    `fmrb_kernel_combined_spinel.rb` を CMake で生成する:
    1. `spinel/fmrb_ffi.rb` (FFI 宣言)

@@ -1,6 +1,6 @@
 # Asterism C8 指示書: コンパイラの case/in の直しと、gem 0.4.0 (API の見直しの第 1 段)
 
-> 状態: 指示 | 更新: 2026-10-09 | (1) PicoRuby のコンパイラの case/in の不具合を、上流の直しを lib/patch で当てて直す。(2) asterism の docs/api_review.md の推奨案で 0.4.0 (壊さない追加・非推奨の警告・不具合の直し) を 3 つの gem に入れる
+> 状態: 指示 | 更新: 2026-10-09 | (1) PicoRuby のコンパイラの case/in の不具合を、上流の直しを lib/upstream/patch で当てて直す。(2) asterism の docs/api_review.md の推奨案で 0.4.0 (壊さない追加・非推奨の警告・不具合の直し) を 3 つの gem に入れる
 
 ユーザ決定 (2026-10-09): 「おすすめで進めて」。API の見直しの判断は、`asterism/docs/api_review.md` の推奨案に従う。
 
@@ -23,7 +23,7 @@
   - ブロックの中の束縛ができない。
   - 直した上流のコミット: mruby `0e6bac0e5a7e` と `680084ac1275`。
   - 直しの候補: `picoruby_case_in.patch`。
-- `lib/patch/compiler/` の今の仕組み (`rakelib/setup.rake` が写す) で当てる。
+- `lib/upstream/patch/compiler/` の今の仕組み (`rakelib/setup.rake` が写す) で当てる。
   - 当てる先の写しは、vendored の版 (mruby-compiler2 `10408c3`) に、上流の 2 コミットだけを足したものにする。
   - submodule の中は直接書き換えない。
 - 確かめること:
@@ -78,7 +78,7 @@
 
 ## 4. 範囲・決まり
 
-- **触らないもの**: `.env`、sdkconfig、パーティションの表、submodule の中 (lib/patch で当てる)、fmruby-graphics-audio。
+- **触らないもの**: `.env`、sdkconfig、パーティションの表、submodule の中 (lib/upstream/patch で当てる)、fmruby-graphics-audio。
 - **本当の値を書かない**: 本当の IP・機体の名前・MAC をコミットしない。
 - **機体**:
   - P4-Nano。本当の IP は親が渡す。ミュート中。

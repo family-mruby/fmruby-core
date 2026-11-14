@@ -35,7 +35,7 @@ P1 の事前変換 (FMSQ) のほうが正確で軽い。停止・再開・テン
 
 ## 2. 移植元と、そのまま持ってこられない理由
 
-`tool/midi/smf2fmsq.rb` (797 行) のうち、**`SmfReader` と `TempoMap` が
+`tools/midi/smf2fmsq.rb` (797 行) のうち、**`SmfReader` と `TempoMap` が
 そのまま使える部分**である。ただしホストの CRuby 用に書かれているので、
 picoruby (mruby) に載せるには手当てが要る。
 
@@ -51,7 +51,7 @@ picoruby (mruby) に載せるには手当てが要る。
 | `Integer#times` の数千回 | `while` のほうが軽い |
 
 **判断してほしいこと**: パーサをどこに置くか。
-(a) `lib/add/picoruby-fmrb-midi/` に Ruby で移植する、
+(a) `lib/gems/picoruby-fmrb-midi/` に Ruby で移植する、
 (b) ホストで前処理して軽い中間形式にし、デバイスではそれを読む、
 (c) C に降ろす。
 **(a) を推奨**するが、SMF は可変長数値・ランニングステータス・複数トラックの
@@ -90,15 +90,15 @@ SMF プレーヤは予約の塊なので、ここが設計の中心になる。
 
 ## 5. 検証
 
-- **P1 の事前変換と同じ音になること**。`tool/midi/test/scale.mid` を
+- **P1 の事前変換と同じ音になること**。`tools/midi/test/scale.mid` を
   両経路で鳴らして音高を比較する (P2 報告 5.3 と同じやり方)。
   P2 で音高テーブルを入れたので、**理屈の上では一致するはず**である。
-- **テンポ変更に追従すること**。`tool/midi/test/tempo_change.mid` が
+- **テンポ変更に追従すること**。`tools/midi/test/tempo_change.mid` が
   120 BPM -> 240 BPM で用意してある。実時間側でも間隔が半分になることを、
   波形かログのタイムスタンプで確認する。
 - **停止・再開が効くこと**。停止時に鳴っている音が消えること
   (note_off の取りこぼしが無いこと)。
-- ホストで走るテストを優先する (`tool/midi/test/` に P1/P2 の前例がある)。
+- ホストで走るテストを優先する (`tools/midi/test/` に P1/P2 の前例がある)。
   パーサとスケジューリングは `FmrbAudio` を差し替えれば sim 無しで試せる。
 - 音は `tools/fmrb_audio_probe.rb` で採れる。官能評価はユーザ。
 
@@ -114,7 +114,7 @@ SMF プレーヤは予約の塊なので、ここが設計の中心になる。
 
 - 実装中の気づき・実測値・申し送りは `doc/midi/report/p4.md` に書く。
 - **`doc/midi/README.md` は書き換えない**。前提が覆ったら報告書に書く。
-- 取り込んだ gem (`lib/add/picoruby-midi/`) は**引き続き無改変を保つ**。
+- 取り込んだ gem (`lib/gems/picoruby-midi/`) は**引き続き無改変を保つ**。
   必要な追加は `picoruby-fmrb-midi` 側に置く。
 - コメントは英語、コミットログは英文、ASCII 以外の記号は使わない。
 - `lib/add/` を編集したらビルド前に `rake clean`。

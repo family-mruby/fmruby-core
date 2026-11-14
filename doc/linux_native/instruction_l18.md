@@ -35,7 +35,7 @@
 
 ## 触ってよい範囲
 
-fmruby-core の `main/prebuild_scripts/kernel/` のデスクトップと i18n、`native/` の機種の
+fmruby-core の `main/ruby/kernel/` のデスクトップと i18n、`native/` の機種の
 定義と電源まわり (`native_machine.c` の CRT の既定を含む)、`test/native/`、回帰の基準、`doc/linux_native/`。ほかが要るなら止まって返す。
 
 ## 止まる条件

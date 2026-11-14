@@ -7,7 +7,7 @@
 ## 進め方の約束
 
 - fmruby-core/CLAUDE.md のルールに従う (submodule 直編集禁止、lib/add・
-  lib/patch 経由、fmrb_log.h ラッパー、素の malloc 禁止、など)。
+  lib/upstream/patch 経由、fmrb_log.h ラッパー、素の malloc 禁止、など)。
 - 実装中の気づき・計測値・引継ぎ事項は doc/editor_serious_mode/report/p1.md
   に書く。この plan.md / 指示書には確定結果だけ反映する。
 - タスクは T1 → T2 → T3 → T4 の順。T2 (計測) を T4 (差分描画) より先に
@@ -45,7 +45,7 @@
      display サイズから設定する。エディタのレイアウトは on_resize →
      recompute_layout (editor.app.rb:176-194) が追随するので、エディタ側の
      ジオメトリ改修は原則不要のはず。崩れたらそこを直す。
-2. 入り口を最低 1 つ用意する: shell の edit コマンド (main/prebuild_scripts/
+2. 入り口を最低 1 つ用意する: shell の edit コマンド (main/ruby/
    default_app/shell/shell_commands.rb の edit 実装) に -f オプションを足し、
    全画面版エントリを spawn する。エディタへのファイルパス引き渡しは
    既存の shell → editor の中継 (tick_pending_edit) をそのまま使う。
@@ -104,7 +104,7 @@ FMRB_HW_TARGET が P4 系 (TAB5 / NARYAv4) のとき、Linux sim を 426x240 で
    sdl2-display 側に固定値があれば直す (fmruby-graphics-audio 側の変更に
    なった場合は docker compose build sdl2-display が必要)。結果を report へ。
 2. 追随が確認できたら config/system_conf_linux_p4.toml を追加
-   (426x240。壁紙等 Modern 相当にしたければ system_conf_p4.toml を参考に。
+   (426x240。壁紙等 Modern 相当にしたければ system_conf_tab5.toml を参考に。
    sync_files のアセットが Retro 用と異なる場合はそちらも)。
 3. Rakefile の linux 向けコピー箇所 (Rakefile:688-691) で HW_TARGET
    (Rakefile:93 で取得済み) が P4 系ならそちらをコピーする分岐を入れる。

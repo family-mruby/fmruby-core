@@ -37,11 +37,11 @@ Spinel 化の作業量は FFI 面積で決まり、その面積は**そのコー
 
 | 機構 | 場所 | 状態 |
 |---|---|---|
-| ライブラリモード | `spinel --no-main --entry <name>_entry` | **ある**。main を持たず `int <name>_entry(void)` を公開する C を吐く (main/prebuild_scripts/compile_ruby_to_spinel.cmake) |
+| ライブラリモード | `spinel --no-main --entry <name>_entry` | **ある**。main を持たず `int <name>_entry(void)` を公開する C を吐く (main/ruby/compile_ruby_to_spinel.cmake) |
 | ビルド統合 | `rake spinel:gen` + `prepare_ruby_spinel_source` | **ある**。ホストで .c を生成し、docker ビルドは生成物を拾うだけ |
 | 多重インスタンス | `fmrb_spinel_instance_begin/end` (components/fmrb_spinel_rt) | **ある**。SP_MULTI_CTX。タスクごとに current が切り替わり、プール (estalloc) を指定して作る。`ps` の est 統計にも既に載る |
 | mruby と同居 | kernel=Spinel + アプリ=mruby の混在ビルド | **実証済み** (S3 実機で kernel-only Spinel が安定動作) |
-| FFI (Spinel→C) | `ffi_func` 宣言 (main/prebuild_scripts/spinel/fmrb_ffi.rb) | **ある**。:int / :str(+len) / :binstr (バイナリ安全 String) / :ptr |
+| FFI (Spinel→C) | `ffi_func` 宣言 (main/ruby/spinel/fmrb_ffi.rb) | **ある**。:int / :str(+len) / :binstr (バイナリ安全 String) / :ptr |
 | バイト処理の語彙 | String#getbyte / setbyte / bytesize | **Spinel が対応済み** (コンパイラの型推論に組み込み) |
 
 つまり「Spinel の生成物を firmware にリンクし、C から entry を呼び、
@@ -148,7 +148,7 @@ Spinel 側 (.rb):
 ### 4.1 置き場所の規約: gem の `spinel/` ディレクトリ
 
 ```
-lib/add/picoruby-fmrb-midi/
+lib/gems/picoruby-fmrb-midi/
   mrblib/fmrb-smf.rb        # 通常の mruby Ruby (いままで通り)
   spinel/smf_core.rb        # Spinel でネイティブ化するモジュール
   mrbgem.rake               # 変更不要
@@ -290,7 +290,7 @@ CMake を触る瞬間が存在しないこと、エラーが rake の段階で
 - 演奏経路は割り当てゼロ (P6)、escaping proc なし
 - **ビフォーの実測がある**: `channel_usage` 実機 7.9 秒。効果測定が
   「同じ曲・同じアプリ・同じログ行」でできる
-- `tool/midi/test/` に 122 項目のホストテストがあり、**同じ Ruby ソースを
+- `tools/midi/test/` に 122 項目のホストテストがあり、**同じ Ruby ソースを
   mruby と Spinel の両方で走らせて出力を突き合わせる**検証にそのまま使える
 
 分割は「復号 = Spinel、送出 = mruby」:
@@ -315,7 +315,7 @@ C 変換する** — つまり本構想の `spinel/` 規約 + 単一ソース二
 
 > **方針変更 (ユーザ決定 2026-08-10)**: この「Ruby で書いて Spinel で C 変換」
 > 案は**採らなかった**。実装は **C 直書きの native mrbgem**
-> (`lib/add/picoruby-fmrb-editor-core`、doc/editor_serious_mode/report/p4.md)。
+> (`lib/gems/picoruby-fmrb-editor-core`、doc/editor_serious_mode/report/p4.md)。
 > 理由は、mruby から同期呼び出しする Spinel オフロード基盤 (sp_export /
 > プール切り出し) が未構築で、その第 1 号は別題材 (raycaster 等) に譲ると
 > 決めたため。**単一ソース二重バックエンドの利用者第 1 号はエディタではない**。
@@ -332,7 +332,7 @@ C 変換する** — つまり本構想の `spinel/` 規約 + 単一ソース二
 - エディタには on-device デバッガ (FMRB::Debug gem + 下分割 UI) が統合済み。
   gem 切り出しの際、デバッガ UI はアプリ側に残る (文書モデルとは独立)。
 | **レイキャスト核 (raycaster.app.rb)** | **高** | `NUM_RAYS = 25` = mruby の速度に合わせて解像度を落とした痕跡 (エディタの閾値と同種の証拠)。固定小数点の純整数ループ + sin/cos 表引き。境界は極小 (入力 3 整数/フレーム、マップは初回 1 回、出力は列配列)。ネイティブ化で 160 本 = **絵が変わる** (画面上の差が候補の中で最も大きい)。要 gem 切り出し (ユーザアプリ本体は AOT 不可)。次のボトルネックは描画側 (fill_rect の本数) なので 50-80 本で釣り合いを測る。なお現状は毎フレーム Hash x 25 を割り当てており (P6 と同じ病気)、Spinel 以前に P6 式で直せる。**比較モード (4.4) の第一号**: 両バックエンド同時搭載 + 実行時切替で、同一ソースの A/B を画面上で見せる (fps/処理時間の HUD を添える) |
-| **SMF -> FMSQ の実機内変換** | 高 | 今はホスト専用ツール (tool/midi/smf2fmsq.rb)。走査が数 ms になれば「.mid を置くと実機で変換」が機能として成立。SmfCore の続編 |
+| **SMF -> FMSQ の実機内変換** | 高 | 今はホスト専用ツール (tools/midi/smf2fmsq.rb)。走査が数 ms になれば「.mid を置くと実機で変換」が機能として成立。SmfCore の続編 |
 | **将来の音声処理** | 高 (将来) | Tab5 (P4) は WROVER 無し。ミキシング・エンベロープ等は数値ループ + 割り当てゼロ必須 + GC 停止が即ノイズで、GC 境界の利点が最大に効く |
 | JSON パース | 低 | 処理は純バイトだが結果が mruby の Hash/Array の木で、境界のオブジェクト生成が節約分を食う |
 | BASIC | 対象外 | 実装が既に C++ (components/basic/core) |

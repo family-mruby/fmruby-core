@@ -57,7 +57,7 @@ reference/launcher_rescan_desktop_stop.md)。
 /home/services.toml        ユーザサービスの一覧 (ユーザが編集)
 /home/services/*.rb        ユーザサービス本体 (ユーザの Ruby)
 /home/services_state.toml  on/off の記録 (ホストが書く。ユーザは普段触らない)
-services.app.rb            ホスト (headless、prebuild。main/prebuild_scripts/default_app/)
+services.app.rb            ホスト (headless、prebuild。main/ruby/default_app/)
 ```
 
 - **システムサービス**は firmware と一緒に配る常駐 (例: `clock/hour` を

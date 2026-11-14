@@ -281,7 +281,7 @@ opendir/readdir/closedir) をアロケータフックと同型で追加し、
 これまで Spinel プログラムは「それ自身がタスク」だった (カーネル・デスクトップ・
 エディタが各々インスタンスを一生持つ)。**mruby アプリのタスクの中に Spinel
 インスタンスを併設し、AOT した Ruby を C 関数のように呼ぶ**構成も成立する
-(FFT バックエンド gem で実証。`lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c`)。
+(FFT バックエンド gem で実証。`lib/gems/picoruby-fmrb-fft/native/fmrb_fft_spinel.c`)。
 
 - 成立の根拠は 7 のマルチインスタンス化そのもの: **インスタンスはタスクごとの
   状態**なので、mruby の `mrb_state` と同居できる (`fmrb_spinel_instance_begin`

@@ -77,7 +77,7 @@ C 無しで動く。
 ### 3.1 gem の取り込み
 
 `picoruby-midi` の **Ruby 部分**を `lib/add/` に置き、
-`lib/add/family_mruby.gembox` に登録する
+`lib/upstream/family_mruby.gembox` に登録する
 (既存 gem のやり方に倣う。Rakefile のコピー行も要る)。
 
 - 取り込む: `mrblib/midi.rb` / `midi_device.rb` / `midi_constants.rb`
@@ -98,7 +98,7 @@ C 無しで動く。
 `send_packet(cable, cin, b1, b2, b3)` を受けて `FmrbAudio` の
 `note_on` / `note_off` に変換するクラスを Ruby で書く。
 
-**写像は P1 の変換器が既に持っている**。`tool/midi/smf2fmsq.rb` の
+**写像は P1 の変換器が既に持っている**。`tools/midi/smf2fmsq.rb` の
 `PulseVoice` / `TriangleVoice` / `NoiseVoice` と `DRUM_MAP` が、
 MIDI ノート -> APU の対応 (音高、音量、ドラム、声の奪い方) の実装済みの答なので、
 **同じ規則を実時間側に持ってくる**。
@@ -136,7 +136,7 @@ Midori は「Ruby タスク 1 本がハードを持つ」前提だが、Family m
 ### 3.4 動作確認
 
 - sim で動くデモアプリを 1 つ (`flash/app/demo/` か、P1 と同じく
-  `tool/midi/test/` に置いて実行時に複写する形)。
+  `tools/midi/test/` に置いて実行時に複写する形)。
   音階を鳴らす / 和音を鳴らす / BGM (FMSQ) と同時に鳴らす、の 3 つが見えるとよい。
 - **BGM との同時再生を必ず確認する**。P0-2 の結論 (MAIN/SUB は加算合成) が
   実際の経路でも成り立つことの確認になる。
@@ -145,14 +145,14 @@ Midori は「Ruby タスク 1 本がハードを持つ」前提だが、Family m
 
 ## 4. P1 の成果との関係
 
-`tool/midi/smf2fmsq.rb` (事前変換) と APU transport (実時間) は、
+`tools/midi/smf2fmsq.rb` (事前変換) と APU transport (実時間) は、
 **同じ写像の 2 つの実装**になる。P2 の時点では**重複を許してよい**
 (片方は host の Ruby、片方はデバイス上の Ruby で、動く場所が違う)。
 
 ただし **写像の規則がずれると「変換したら鳴るのに実時間だと違う音」**という
 一番厄介な不一致になる。同じテスト曲を両経路で鳴らして、
 **同じ音高・同じ長さになることを確認する**こと (P1 の
-`tool/midi/test/scale.mid` が使える)。ずれたらどちらが正しいかを報告する。
+`tools/midi/test/scale.mid` が使える)。ずれたらどちらが正しいかを報告する。
 
 ## 5. 計測の準備 (ユーザ指示: 準備しておく)
 

@@ -70,7 +70,7 @@ rake wasm:web       # core_web.{js,wasm,data} とページ
 ```
 
 - `rake clean_all` は wasm の libmruby も消す。その後は `rake wasm:mruby` からやり直す。
-- lib/add/ の gem や lib/add/family_mruby_wasm.rb を直したら `rake wasm:mruby` を先に。wasm/zenoh/ の C だけなら
+- lib/add/ の gem や lib/upstream/family_mruby_wasm.rb を直したら `rake wasm:mruby` を先に。wasm/zenoh/ の C だけなら
   `rake wasm:web` でよい。
 - ROS 2 の型 (`/usr/share/asterism/msgs`) は `rake wasm:web` が束に入れる (`rake setup` が asterism の checkout から
   作るもので、git には無い)。
@@ -116,7 +116,7 @@ wasm:serve のものがそのまま通る。`?drive=1` も同じ中継で動く�
 ## 5. ルータの場所とノードの名前の決まり方
 
 Asterism の試しのアプリ (asterism_demo、othello、rover_*、ros2_*、rt_probe、zenoh_*) は、接続の設定を
-`FmrbAsterism.settings` (lib/add/picoruby-fmrb-asterism) の 1 か所から受け取る (CF1、report/cf1.md)。
+`FmrbAsterism.settings` (lib/gems/picoruby-fmrb-asterism) の 1 か所から受け取る (CF1、report/cf1.md)。
 設定のファイルは `/home/asterism/` の下にまとめてある (ブラウザでは IndexedDB に残る)。
 
 ```

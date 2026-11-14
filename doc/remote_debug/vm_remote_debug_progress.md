@@ -29,7 +29,7 @@
 
 計画書: `doc/remote_debug/vm_remote_debug_impl_plan_phase3c.md` (逸脱なし)。デバイス側は無変更。
 
-fmruby-core/tool/debug:
+fmruby-core/tools/debug:
 - `fmrb_ble_framing.py` (新規): COBS + CRC32 の純関数 (`cobs_encode/decode`,
   `encode_frame`, `decode_frame`)。bleak 非依存。`__main__` にセルフテスト同梱。
 - `fmrb_ble_transport.py` (新規): `BleTransport`。bleak の asyncio を
@@ -59,13 +59,13 @@ family-mruby/vscode-fmrb-debug:
   しただけでは反映されない)。
 
 **検証**:
-- コーデックのセルフテスト `python3 tool/debug/fmrb_ble_framing.py` PASS。
+- コーデックのセルフテスト `python3 tools/debug/fmrb_ble_framing.py` PASS。
 - **C 実装とのバイト一致 (クロス検証)**: `ble_framing.c` をホストでビルドした
   ベクタ生成ツールと Python を、body 長 0-4096 のランダム 2000 本で比較し
   **全フレームがバイト単位で一致**、かつ C 製フレームを Python デコーダが全て復元。
   固定ベクタ (version リクエスト) `01030c940f01a776657273696f6ec0654980c900` は
   C の出力そのものをセルフテストに埋め込んである。
-  検証ハーネスは `tool/debug/` に収録: `framing_vec.c` (ビルド手順はヘッダ参照) +
+  検証ハーネスは `tools/debug/` に収録: `framing_vec.c` (ビルド手順はヘッダ参照) +
   `test_ble_framing_cross.py` で再現でき、偽 BleakClient による
   BleTransport ロジックテストは `test_ble_transport.py` (bleak 必要、電波不要)。
 - bleak 未導入環境で `import fmrb_dbg_client` / `fmrb_dap_adapter` が通ること、
@@ -165,15 +165,15 @@ ivar 20 件 + `(12 more)` (全32件, 打ち切り+集約ノート動作)。入�
 ### Phase 2 完了 — DAP アダプタ + VSCode 拡張 (2026-07-17)
 
 追加ファイル:
-- `tool/debug/gen_combined_rb.py`: combined.rb 連結 + `*_combined.map.json` 生成
+- `tools/debug/gen_combined_rb.py`: combined.rb 連結 + `*_combined.map.json` 生成
   (原本<->combined 行変換用)。`compile_ruby_to_bytecode.cmake` の `cat` を置換。
   ビルドで system_desktop/shell/fmrb_kernel の map.json が生成されることを確認。
-- `tool/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。実装リクエスト:
+- `tools/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。実装リクエスト:
   initialize/attach/setBreakpoints/configurationDone/threads/stackTrace/scopes/
   variables/continue/next/stepIn/stepOut/pause/disconnect/source。
   `Mapper` クラスで pathMappings(device<->local) + projectMappings + combinedMaps を処理。
   fmrb イベント (stopped/resumed/exited) を DAP イベント (stopped/continued/thread+terminated) へ中継。
-- `tool/debug/test_phase2.py` / `test_phase2.sh`: 自律テスト
+- `tools/debug/test_phase2.py` / `test_phase2.sh`: 自律テスト
   (Part A: 行マッパー単体 / Part B: アダプタを VSCode 相当で stdio 駆動)。
 - `family-mruby/vscode-fmrb-debug/`: 最小 VSCode 拡張
   (`package.json` contributes.debuggers type=fmrb + extensionKind:["ui"],
@@ -211,7 +211,7 @@ debugd 接続: hook系コマンド (attach/detach/bp_set/bp_clear/pause/continue
 stack_trace/frame_vars) を ctx へ委譲。events を毎ループ forward。クライアント切断で detach_all。
 attach 中 pid への kill/stop/suspend は BUSY 拒否。
 
-Python: `tool/debug/test_phase1.py` (フロー検証) + `test_phase1.sh` (ヘッドレス自律ラッパ)。
+Python: `tools/debug/test_phase1.py` (フロー検証) + `test_phase1.sh` (ヘッドレス自律ラッパ)。
 
 **検証 (ヘッドレス自律)**: `test_phase1.sh` が PASS。Kamon (オンデバイスコンパイル,
 FILE モード) に対し:
@@ -248,7 +248,7 @@ FILE モード) に対し:
   **Phase 0 PoC (fmrb_debug_poc.{c,h}) は削除** (検証完了・Legacy 排除規約)。
 - `family-mruby/docker-compose.yml`: core サービスに `ports: ["5555:5555"]` 追加
   (WSL2->Windows localhost フォワードで Phase 2 からも届く)。
-- `tool/debug/fmrb_dbg_client.py`: Python テストクライアント兼ライブラリ
+- `tools/debug/fmrb_dbg_client.py`: Python テストクライアント兼ライブラリ
   (`FmrbDebugClient` クラス + CLI/REPL)。要 `msgpack` パッケージ (pip)。
 - `doc/remote_debug/vm_remote_debug_protocol.md`: プロトコル仕様書 (正)。
 
@@ -260,9 +260,9 @@ FILE モード) に対し:
 
 ### 次アクション (Phase 2)
 
-1. `main/prebuild_scripts/compile_ruby_to_bytecode.cmake` を拡張し combined.rb 連結時に
+1. `main/ruby/compile_ruby_to_bytecode.cmake` を拡張し combined.rb 連結時に
    `<name>_combined.map.json` (`[{file,start_line,lines}]`) を生成 (原本<->combined 行変換用)。
-2. `tool/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。initialize/attach/threads/
+2. `tools/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。initialize/attach/threads/
    setBreakpoints/configurationDone/pause/continue/next/stepIn/stepOut/stackTrace/
    scopes/variables/source。pathMappings + basename フォールバック。map.json 行補正。
 2. `family-mruby/vscode-fmrb-debug/`: 最小 VSCode 拡張 (contributes.debuggers,
@@ -336,9 +336,9 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 - 計画書/設計書を読み込み、前提ファイルの現状を確認 (すべて計画記載と一致)。
 - 本進捗ログを作成。
 - Phase 0 ビルド設定4点を実施:
-  1. `lib/add/family_mruby_linux.rb`: `MRB_USE_DEBUG_HOOK` 追加。
+  1. `lib/upstream/family_mruby_linux.rb`: `MRB_USE_DEBUG_HOOK` 追加。
   2. `components/picoruby-esp32/mruby_abi_defines.cmake`: linux 分岐に同 define 追加 (ABI 同期)。
-  3. `main/prebuild_scripts/compile_ruby_to_bytecode.cmake`: mrbc 2箇所に `-g` 追加。
+  3. `main/ruby/compile_ruby_to_bytecode.cmake`: mrbc 2箇所に `-g` 追加。
   4. `main/app/fmrb_app.c`: `execute_mruby_script()` で `mrc_ccontext_filename(cc, ctx->filepath)` 挿入 (filepath 非空時)。
 - `rake clean_all` (ターゲット切替のため) 後 `rake build:linux` -> 成功 (EXIT=0)。
   - 注: 最初 `rake clean` のみだと sdkconfig が esp32p4 向けのままで失敗。ターゲット切替は `clean_all` 必須。

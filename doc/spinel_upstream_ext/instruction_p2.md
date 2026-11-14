@@ -68,7 +68,7 @@ P2 は 2 つに分ける。**P2a (この指示書) はフォークのリポジ�
    - `-DSP_NO_MMAN` 等のポート向けの口を全部付けた構成でランタイムが
      コンパイルできること (ホストの gcc で。newlib の実機ビルドは P2b)
 6. fmrb の生成手順がそのまま通るかを確かめる: fmruby-core の
-   `main/prebuild_scripts/` の kernel / system_desktop / editor の Ruby と、
+   `main/ruby/` の kernel / system_desktop / editor の Ruby と、
    gem 3 本 (fft / raycast / spinel_hello) の entry を、新しい `bin/spinel` に
    **今の rakelib/spinel.rake と同じオプション**で通し (出力は scratchpad)、
    C 生成と、`SP_MULTI_CTX` 付きのホスト gcc でのコンパイルまで通るか。

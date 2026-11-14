@@ -52,7 +52,7 @@ C5 の report の「機体側に持っていける候補」を入れる。機体
 
 - **触ってよいもの**:
   - asterism と asterism-zenoh のリポジトリ。`main` にコミットする。push は親が行う。
-  - fmruby-core の `lib/add/ASTERISM_PIN`、`flash/app/test/asterism_*` と `ros2_*`、`doc/ruby_asterism/report/c6.md`。
+  - fmruby-core の `lib/upstream/ASTERISM_PIN`、`flash/app/test/asterism_*` と `ros2_*`、`doc/ruby_asterism/report/c6.md`。
   - fmruby-core のブランチは `feature/asterism-c5` から `feature/asterism-c6` を切る。
 - **触らないもの**:
   - picoruby-asterism-zenoh の C。直す必要があれば止まって返す。

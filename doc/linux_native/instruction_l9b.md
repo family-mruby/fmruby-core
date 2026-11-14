@@ -90,7 +90,7 @@
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/` (ランチャーとデスクトップ、
+- fmruby-core: `main/ruby/kernel/` (ランチャーとデスクトップ、
   代役)、`main/` と `lib/add/` の受け口の該当箇所 (native だけの部分)、
   `native/` (session と package を含む)、`hosted/`、`config/machines/`、
   `rakelib/`、`tools/regress/`、`test/`、`doc/linux_native/report/`。

@@ -75,7 +75,7 @@ Spinel FFI・マイクタスクの全部から呼べるように1本にまとめ
 
 ---
 
-## gem 構成: `lib/add/picoruby-fmrb-fft/`(新規 mrbgem)
+## gem 構成: `lib/gems/picoruby-fmrb-fft/`(新規 mrbgem)
 
 - `mrbgem.rake` / `mrblib/fmrb-fft.rb`: `Fmrb::Fft` 本体。`backend:` で分岐。
   `:ruby` は `fft_core.rb` を include。統一 I/O(int16 byte String 入出力)。
@@ -91,12 +91,12 @@ Spinel FFI・マイクタスクの全部から呼べるように1本にまとめ
   [us, mag_str]` / `.spinel_end` も定義(下記)。
 - 登録は gem 側 init に集約。ESP/FreeRTOS ヘッダを使うので **ビルド対象追加は
   `components/picoruby-esp32/CMakeLists.txt` の `set(PICORUBY_SRCS ...)`**。
-- gembox 追加は `lib/add/family_mruby.gembox`(memory
+- gembox 追加は `lib/upstream/family_mruby.gembox`(memory
   `feedback_mrbgem_edits_live_in_lib` / `project_picoruby_json_gembox` の作法)。
 
 ### :spinel バックエンドの配線
 
-- Spinel ソース: `main/prebuild_scripts/spinel/fft_spinel.rb`(entry ラッパ)+
+- Spinel ソース: `main/ruby/spinel/fft_spinel.rb`(entry ラッパ)+
   `fft_core.rb`(gem と同一)+ `fmrb_fft_ffi.rb`(FFI 宣言)。entry 名は
   `fmrb_fft_spinel_entry`。entry は FFI で入力/K を読み、K 回 FFT し、振幅と μs を
   FFI out へ書く。
@@ -218,16 +218,16 @@ Spinel FFI・マイクタスクの全部から呼べるように1本にまとめ
 
 ## 参考(コード位置)
 
-- Spinel entry ABI / 生成: `main/prebuild_scripts/compile_ruby_to_spinel.cmake`
+- Spinel entry ABI / 生成: `main/ruby/compile_ruby_to_spinel.cmake`
 - Spinel インスタンス境界: `components/fmrb_spinel_rt/include/fmrb_spinel_host.h`
   (`instance_begin/end`)、呼び出し例 `main/kernel/fmrb_kernel.c` 599-641
-- Spinel FFI の書式: `main/prebuild_scripts/spinel/fmrb_ffi.rb`
-- Spinel 最小例: `main/prebuild_scripts/spinel/hello_kernel.rb`
+- Spinel FFI の書式: `main/ruby/spinel/fmrb_ffi.rb`
+- Spinel 最小例: `main/ruby/spinel/hello_kernel.rb`
 - エンジン CMake: `main/CMakeLists.txt` 55-140(runtime link は `FMRB_ANY_SPINEL`)
-- mruby binding 例: `lib/add/picoruby-fmrb-app/ports/esp32/gfx.c`
+- mruby binding 例: `lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c`
   (`mrb_define_method`)、ビルド `components/picoruby-esp32/CMakeLists.txt`
-- gem 追加の作法: `lib/add/family_mruby.gembox`、Float/Math の Ruby 例
-  `lib/add/picoruby-fmrb-app/mrblib/p5.rb`
+- gem 追加の作法: `lib/upstream/family_mruby.gembox`、Float/Math の Ruby 例
+  `lib/gems/picoruby-fmrb-app/mrblib/p5.rb`
 - 出力オーディオ(マイクの手本): `main/drivers/audio_p4/audio_p4_hw.c`
 - ES7210: `managed_components/espressif__esp_codec_dev/device/es7210/`
 - 実機/リモート: ルート `CLAUDE.md`「ESP32-S3 実機の自律検証」「Tab5 リモート UI」

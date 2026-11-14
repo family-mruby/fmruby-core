@@ -41,7 +41,7 @@ PreBuild コード (カーネル / system_desktop / shell) の C 言語化によ
 
 ### 2.1 fmruby-core 側 (PreBuild コードの実態)
 
-- カーネル VM 本体は `main/prebuild_scripts/kernel/` の約 1,160 行
+- カーネル VM 本体は `main/ruby/kernel/` の約 1,160 行
   (fmrb_kernel.rb + window_manager / input_router / app_lifecycle /
   audio_handler mixin)。system_desktop を含めると約 5,400 行。
 - 各 mruby プログラムは「専用 FreeRTOS タスク + 専用 VM + 隔離ヒープ」で動作し、
@@ -215,7 +215,7 @@ shell はオプション (難しければ mruby のまま残す)。**
 4. **FFI シム層 (fmrb_spx)**: カーネルが使う C API を素の C 関数として
    エクスポートするラッパを実装 (`_spin` 相当の poll 型 receive、
    `_send_raw_message`、window list 取得、`_set_hid_target` 等)。
-   既存実装 (lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c) の
+   既存実装 (lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c) の
    mrb 依存部分を剥がして共通化する。バイナリは `:binstr`/`ffi_buffer`、
    構造体は個別 getter 関数で渡す。
 5. ビルド統合: `rake` / CMake に「.rb → spinel -c → .c → コンパイル」の
@@ -329,9 +329,9 @@ Desktop / Shell 対象化の前提となる G6 の解決。設計は 2.4 節の�
   `lib/sp_gc.h:62` (SP_GC_STACK_MAX)、`lib/sp_gc.c:93` (malloc_trim)、
   `lib/sp_fiber_ctx.h:26` (arch ゲート)、`lib/sp_types.h:65-77` (32bit)、
   `src/analyze_pass.c:4715` (respond_to? のコンパイル時解決)。
-- fmruby-core: `main/prebuild_scripts/` 一式、
-  `main/prebuild_scripts/compile_ruby_to_bytecode.cmake`、
+- fmruby-core: `main/ruby/` 一式、
+  `main/ruby/compile_ruby_to_bytecode.cmake`、
   `main/app/fmrb_app.c` (bytecode ロード)、
-  `lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c` (_spin / msg_handler)、
-  `main/prebuild_scripts/kernel/fmrb_kernel/input_router.rb:299-302`
+  `lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c` (_spin / msg_handler)、
+  `main/ruby/kernel/fmrb_kernel/input_router.rb:299-302`
   (ホットパスの実測警告)。

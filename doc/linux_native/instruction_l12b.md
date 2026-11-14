@@ -52,7 +52,7 @@
 
 - fmruby-core: `native/`、`hosted/`、`config/machines/`、`main/kernel/` (入力の
   位置の口・かな入力を止める所)、`main/drivers/usb/` (かな入力の切り替えの所)、
-  `lib/add/` の該当箇所、`main/prebuild_scripts/` (エディタ・Shell の入力の位置)、
+  `lib/add/` の該当箇所、`main/ruby/` (エディタ・Shell の入力の位置)、
   `native/package/` (セッションで IME を起こす所、Depends・Recommends)、`test/`、
   `rakelib/`、`tools/regress/`、`doc/linux_native/report/`、`doc/regression/usage.md`、
   `sig/`。

@@ -46,7 +46,7 @@ Window の位置と大きさの操作として作り (Linux の Window は代役
 ## 触ってよい範囲
 
 - fmruby-core: `native/`、`hosted/`、`config/machines/`、`main/kernel/` と
-  `main/prebuild_scripts/kernel/` (window manager・入力の振り分け・デスクトップ、
+  `main/ruby/kernel/` (window manager・入力の振り分け・デスクトップ、
   PC だけの動きは機種の定義か native の口で切り替える)、`lib/add/` の該当箇所、
   `native/package/`、`test/`、`rakelib/`、`tools/regress/`、`sig/`、
   `doc/linux_native/report/`、`doc/regression/usage.md`。

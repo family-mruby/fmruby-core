@@ -79,7 +79,7 @@ flappy はプレイフィールド (スコア帯より下、地面より上) を
    - P4 `display_local_task.cpp`: `p4_canvas_t` に clip を持ち、`render_frame()`
      の既存フットプリント clip (canvas / viewport) と**交差**を取る
 6. Ruby:
-   - mruby: `lib/add/picoruby-fmrb-app/ports/esp32/gfx.c` `_set_sprite_clip`
+   - mruby: `lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c` `_set_sprite_clip`
      + `mrblib/fmrb-gfx.rb` `set_sprite_clip` / `clear_sprite_clip`
    - Spinel: `main/app/fmrb_spx_gfx.c/.h` + `prebuild_scripts/spinel/
      fmrb_app_ffi.rb` + `fmrb_app_base_spinel.rb`

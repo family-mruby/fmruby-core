@@ -34,8 +34,8 @@
 
 ## 触ってよい範囲
 
-- fmruby-core: `main/prebuild_scripts/kernel/system_desktop.app.rb` と
-  `main/prebuild_scripts/kernel/system_desktop/`、`test/`、
+- fmruby-core: `main/ruby/kernel/system_desktop.app.rb` と
+  `main/ruby/kernel/system_desktop/`、`test/`、
   `doc/linux_native/report/`。
 - 触らないもの: keys のデスクトップ、kernel の電源の受け渡し
   (`fmrb_kernel.rb` の reboot・power)、C の側、fmruby-graphics-audio、

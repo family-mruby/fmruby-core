@@ -10,7 +10,7 @@ doc/wasm/report/mjpeg.md (ブラウザ版の再生器)。報告は report/p8.md�
 
 - 再生器は実装済で、Ruby からは `@gfx.video_open(path, x:, y:, fps:, loop:)`
   → `FmrbVideo#play / pause / stop / rewind / status`
-  (`lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb:471`)。**Modern (Tab5) と
+  (`lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb:471`)。**Modern (Tab5) と
   ブラウザ (wasm) で動き、それ以外では通信せずに nil を返す**
   (`ports/esp32/gfx.c` の門。Linux sim もここで nil になるので 10 秒の
   同期待ちにはならない)。

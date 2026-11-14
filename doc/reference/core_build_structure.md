@@ -20,7 +20,7 @@ rake build:esp32
      │
      ├─ (2) picoruby (mruby rake) ビルド  ← IDFの外部コマンドとして実行
      │      components/picoruby-esp32/CMakeLists.txt が
-     │      `MRUBY_CONFIG=lib/add/family_mruby_esp32p4.rb rake` を起動し
+     │      `MRUBY_CONFIG=lib/upstream/family_mruby_esp32p4.rb rake` を起動し
      │      libmruby.a を生成する。ここに入るのは mruby本体 + 各gemの
      │      mrblib (Ruby→バイトコード) + ESPヘッダ不要な gem の C ソース
      │
@@ -37,10 +37,10 @@ rake build:esp32
 
 このほかに:
 
-- **lib/add / lib/patch / lib/replace**: Rakefile が picoruby サブモジュール
+- **lib/add / lib/upstream/patch / lib/upstream/replace**: Rakefile が picoruby サブモジュール
   ツリーへコピー/上書きする (サブモジュール直接編集禁止のため)。
   **lib/ を編集したら `rake clean` が必須** (コピーと picoruby build の再生成)
-- **main/prebuild_scripts/**: kernel / system_desktop の Ruby は、ビルド時に
+- **main/ruby/**: kernel / system_desktop の Ruby は、ビルド時に
   combined .rb に結合 → mrbc でバイトコード化 → .c 配列として main に埋め込み。
   mrb/ 以下の *_combined.rb や *.c は生成物 (タイムスタンプで確認可能)
 - **flash/**: storage.bin (LittleFS イメージ) に入るアプリスクリプト。
@@ -56,7 +56,7 @@ rake build:esp32
 |---|---|
 | (1) main のソース | main/CMakeLists.txt の `target_compile_definitions(${COMPONENT_LIB} PRIVATE ...)` |
 | (1) 他のIDFコンポーネント | 各コンポーネントの CMakeLists.txt (PRIVATE定義は他コンポーネントに伝播しない!) |
-| (2) rake ビルドの libmruby | lib/add/family_mruby_esp32p4.rb の `conf.cc.defines` |
+| (2) rake ビルドの libmruby | lib/upstream/family_mruby_esp32p4.rb の `conf.cc.defines` |
 | (3) PICORUBY_SRCS (gem ports) | components/picoruby-esp32/CMakeLists.txt の `target_compile_definitions` |
 
 ### 実際に起きた事故 (2026-07-06)

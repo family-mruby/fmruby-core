@@ -233,9 +233,9 @@ cd <games の deploy/vps> && git checkout main && ./update.sh 0.23.0
 
 ```
 cd fmruby-core
-# lib/add/ASTERISM_PIN の commit: を asterism の origin/main のコミットに
-# lib/add/PICORUBY_ASTERISM_ZENOH_PIN の commit: を picoruby-asterism-zenoh の origin/main のコミットに
-git add lib/add/ASTERISM_PIN lib/add/PICORUBY_ASTERISM_ZENOH_PIN
+# lib/upstream/ASTERISM_PIN の commit: を asterism の origin/main のコミットに
+# lib/upstream/PICORUBY_ASTERISM_ZENOH_PIN の commit: を picoruby-asterism-zenoh の origin/main のコミットに
+git add lib/upstream/ASTERISM_PIN lib/upstream/PICORUBY_ASTERISM_ZENOH_PIN
 git commit -m "build(asterism): pin asterism 0.14.0 and picoruby-asterism-zenoh 0.4.2"
 ```
 

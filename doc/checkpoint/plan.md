@@ -20,11 +20,11 @@ mruby の VM で動いているアプリを、アプリの協力なしに途中�
 
 ## 方針
 
-- gem は mruby-checkpoint を固定点で取り込む (D2)。`lib/add/MRUBY_CHECKPOINT_PIN` の
+- gem は mruby-checkpoint を固定点で取り込む (D2)。`lib/upstream/MRUBY_CHECKPOINT_PIN` の
   commit を `rake checkpoint:setup` が `vendor/mruby-checkpoint` に取り、`rake setup` が
   gem (`mrbgem.rake`・`include/`・`src/`) を picoruby の木へ写す。作業中のチェックアウトは
   `MRUBY_CHECKPOINT_DIR=<dir>` で使える (取りに行かず、pin と違えば rake がそう言う)。
-- mruby への patch は `lib/patch/picoruby-mruby/lib/mruby/` の丸ごとの写しに混ぜる (D3)。
+- mruby への patch は `lib/upstream/patch/picoruby-mruby/lib/mruby/` の丸ごとの写しに混ぜる (D3)。
   印は `fmrb: checkpoint`。中身は mruby-checkpoint の `patches/0001` (セーフポイントの
   hook、判定の遅い側を関数に、hook の後のフレームの取り直し) と `0002` (切り替えの要求を
   数える)。`0003` は Family mruby に同じ直しが既にある。

@@ -19,7 +19,7 @@
 2. **番号対応表の追従** (enum に足しただけでは壊れる箇所):
    - main/kernel/fmrb_spx_kernel.c の vm_type -> 数値変換 (buf[2] を埋める
      switch) に case を追加。
-   - main/prebuild_scripts/spinel/fmrb_kernel_base_spinel.rb の
+   - main/ruby/spinel/fmrb_kernel_base_spinel.rb の
      APP_INFO_VM_TYPES 配列に "micropython" を追加。
    - 他に FMRB_VM_TYPE_ を switch している箇所を grep で洗い、default に
      落ちて誤動作するものが無いか確認する (タスク一覧のメモリ統計

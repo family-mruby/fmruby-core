@@ -15,8 +15,8 @@
   `FmrbSpx.fmrb_spx_theme_color(i)` の FFI で入る (起動時に一度評価)。
 - **Window の枠だけ誰もテーマを見ていない**。描いているのはアプリ基底クラスの
   1 か所で、色が直値で書いてある:
-  - mruby: `lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb` の `_build_frame_block`
-  - Spinel: `main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb` の `_paint_frame`
+  - mruby: `lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb` の `_build_frame_block`
+  - Spinel: `main/ruby/spinel/fmrb_app_base_spinel.rb` の `_paint_frame`
     (Spinel は proc を保存できないので即時描画に書き換えた際、値ごと写された)
 
   値は `0xC5` (タイトルバー) と `0x60` (縁) — **classic の `menu_bg` /
@@ -216,7 +216,7 @@ system_conf と 3 つのプリセットと Spinel の生成器と wasm のペー
    置き換えた。詳細と再現の勘所は
    doc/spinel_aot/embedded_constraints.md 9.7。
 2. **wasm ビルドは mruby アプリのバイトコードを再生成しない**。
-   `main/prebuild_scripts/**/mrb/*.c` は ESP-IDF / Linux の CMake ビルドの
+   `main/ruby/**/mrb/*.c` は ESP-IDF / Linux の CMake ビルドの
    生成物で、wasm はそれを拾うだけ。shell を直しても古いままリンクされ、
    `color` コマンドが「Unknown command」になった。`rake wasm:mrb` を足し、
    `wasm:core` と `wasm:web` から呼ぶようにした (ソースより古い .c だけを

@@ -169,7 +169,7 @@ on_update で確保しない)。
 
 ## S4: デスクトップのダイアログ 5 本
 
-`main/prebuild_scripts/kernel/system_desktop/` の
+`main/ruby/kernel/system_desktop/` の
 
 | ファイル | 自前ボタンの箇所 | 要る部品 |
 |---|---|---|

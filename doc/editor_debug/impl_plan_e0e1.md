@@ -18,8 +18,8 @@ headless 検証で PASS していることがゴール。
 | main/drivers/debug/fmrb_debug_ctx.h | 直結する C API とスレッドモデルのコメント |
 | main/drivers/debug/fmrb_debugd.c | E0 の変更対象 (約 360 行、全読み推奨) |
 | doc/remote_debug/vm_remote_debug_protocol.md | inspect 応答の msgpack 形式 (frames/vars/複合型) |
-| lib/add/picoruby-fmrb-app/ | 新 gem の構造モデル (mrbgem.rake / ports/esp32 / mrblib) |
-| lib/add/picoruby-fmrb-msgpack/ | MessagePack.pack/unpack (E1 で応答デコードに利用) |
+| lib/gems/picoruby-fmrb-app/ | 新 gem の構造モデル (mrbgem.rake / ports/esp32 / mrblib) |
+| lib/gems/picoruby-fmrb-msgpack/ | MessagePack.pack/unpack (E1 で応答デコードに利用) |
 | CLAUDE.md (fmruby-core) | mrbgem 管理・ログ・メモリ関数などの必須ルール |
 | ルート CLAUDE.md | headless 検証ハーネスの使い方 |
 
@@ -40,7 +40,7 @@ headless 検証で PASS していることがゴール。
   先例あり (fmrb_debugd.c:118-127)。
 - gem の C コードから main/ のヘッダは直接 include できる
   (components/picoruby-esp32 は PRIV_REQUIRES main。例:
-  lib/add/picoruby-fmrb-app/ports/esp32/gfx.c が fmrb_app.h を include)。
+  lib/gems/picoruby-fmrb-app/ports/esp32/gfx.c が fmrb_app.h を include)。
 - デバッグ対象のサンプルアプリ flash/app/debug/dbg_sample.app.rb が既にある
   (リモート版の検証用)。E1 の検証ターゲットに流用する。
 
@@ -97,17 +97,17 @@ fmrb_dbg_owner_t fmrb_debugd_owner(void);
 
 ### 3.3 E0 単体の検証 (Linux)
 
-- 既存回帰: `tool/debug/test_phase1.sh` / `test_phase2.sh` が PASS すること
+- 既存回帰: `tools/debug/test_phase1.sh` / `test_phase2.sh` が PASS すること
   (owner=REMOTE 経路が従来と同一挙動である確認)。
 - 排他の自動テストは E1 完了後の統合テストで行う (5.3。local 取得は gem 経由が
   最も簡単なため)。E0 単体では C レベルの挙動をコードレビューで担保する。
 
 ## 4. Phase E1: mrbgem `picoruby-fmrb-debug` (Ruby API `FMRB::Debug`)
 
-### 4.1 gem 構成 (モデル: lib/add/picoruby-fmrb-app)
+### 4.1 gem 構成 (モデル: lib/gems/picoruby-fmrb-app)
 
 ```
-lib/add/picoruby-fmrb-debug/
+lib/gems/picoruby-fmrb-debug/
   mrbgem.rake            # 依存: picoruby-fmrb-msgpack
   include/picoruby_fmrb_debug.h
   ports/esp32/debug.c    # C 実装 (linux/esp32 共通。glob で両ビルドに入る)
@@ -116,7 +116,7 @@ lib/add/picoruby-fmrb-debug/
 
 組み込み (3 箇所、いずれも lib/add 配下と components/picoruby-esp32/CMakeLists.txt):
 
-1. `lib/add/family_mruby.gembox` に `conf.gem core: "picoruby-fmrb-debug"` を追加
+1. `lib/upstream/family_mruby.gembox` に `conf.gem core: "picoruby-fmrb-debug"` を追加
    (全ターゲット共通。ターゲット別 rb ファイルではなく gembox に置く)。
 2. components/picoruby-esp32/CMakeLists.txt: linux / esp32 両ブロックに
    `file(GLOB FMRB_DEBUG_PORTS_SRCS ".../picoruby-fmrb-debug/ports/esp32/*.c")`
@@ -204,7 +204,7 @@ protocol.md sec 複合型より:
 
 ### 5.2 リモート回帰 (E0 で挙動が変わらないこと)
 
-- `tool/debug/test_phase1.sh` / `test_phase2.sh` PASS。
+- `tools/debug/test_phase1.sh` / `test_phase2.sh` PASS。
 
 ### 5.3 ローカルデバッグ一巡 + 排他 (新規、Linux sim headless)
 
@@ -234,11 +234,11 @@ docker compose logs | grep "E1 TEST"             # ログでも確認
 排他確認 (同じ起動のまま):
 - dbg_e1_test が acquire 中 (テストアプリに「hold モード」を付けて BP 停止を
   維持するなど) に、ホストから
-  `python3 tool/debug/fmrb_dbg_client.py localhost:5555 attach --pid <pid>` 相当を
+  `python3 tools/debug/fmrb_dbg_client.py localhost:5555 attach --pid <pid>` 相当を
   実行し **BUSY で拒否されること**。
 - 逆方向: リモートで attach 中に dbg_e1_test を起動し acquire が false に
   なること。
-- この 2 ケースを `tool/debug/test_e0_owner.py` (+.sh) として自動化できるなら
+- この 2 ケースを `tools/debug/test_e0_owner.py` (+.sh) として自動化できるなら
   する。困難なら手動手順を進捗ログに記録して省略可 (判断を記録すること)。
 
 ### 5.4 実機 (ユーザ作業、計画書の範囲外)

@@ -55,7 +55,7 @@ spec/ は整備済み (残りは core_spec sec 17 の資料待ち項目のみ。
 
 - 音源経路の現状を調査する:
   - S3 (Retro): WROVER 側 APU エミュレータ。既存経路は FMSQ シーケンス
-    (`load_fmsq` / `play_slot`、`main/prebuild_scripts/kernel/fmrb_kernel/
+    (`load_fmsq` / `play_slot`、`main/ruby/kernel/fmrb_kernel/
     audio_handler.rb`) と NSF 再生。
   - P4 (Modern): ローカル apu_emu (`main/drivers/audio_p4/`)。
 - FMSQ の表現力 (チャンネル数、音長・テンポ・音量・ループ) を仕様/実装

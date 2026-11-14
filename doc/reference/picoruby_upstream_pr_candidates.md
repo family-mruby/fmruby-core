@@ -49,9 +49,9 @@ c14aa4400 は旧 pin)。mruby 本体 (vm.c / task.c / mruby-task) は hasumikin 
 - 本リポジトリが参照する picoruby は **c932f70b0** (2026-07 マージ済み)。
   **PR前に必ず上流HEADで各ファイルの現状を確認**すること
   (既に直っている / 実装が書き換わっている可能性がある)
-- こちらの修正の実体は全て `lib/patch/` 以下にある (rake setup がサブモジュールへ
+- こちらの修正の実体は全て `lib/upstream/patch/` 以下にある (rake setup がサブモジュールへ
   コピーする方式)。各ファイル先頭の "Family mruby patch" コメントに修正理由を記載済み
-- 手順: (1) 上流HEADで該当箇所を確認 → (2) 残存していれば lib/patch との diff から
+- 手順: (1) 上流HEADで該当箇所を確認 → (2) 残存していれば lib/upstream/patch との diff から
   fmrb固有部分 (後述) を除いた最小diffを作成 → (3) 再現手順を添えてPR
 - 発見の経緯・再現ログは doc/reference/ruby_network_api_design.md の実装状況の節を参照
 
@@ -81,7 +81,7 @@ c14aa4400 は旧 pin)。mruby 本体 (vm.c / task.c / mruby-task) は hasumikin 
 - 症状: 実機(mruby VM)で最初のHTTPS/TCPServer利用時に Load access fault
   (MTVAL=0x84、`mrb_realloc` 内)。`picorb_alloc(mrb,size)` は mruby では
   `mrb_malloc(mrb,size)` マクロのため、NULL vm は mruby/c でのみ合法
-- こちらの修正: `fmrb_sys_malloc/free` に置換 (lib/patch/picoruby-socket/ports/esp32/)
+- こちらの修正: `fmrb_sys_malloc/free` に置換 (lib/upstream/patch/picoruby-socket/ports/esp32/)
 - **上流PR時の注意**: fmrb_sys_malloc はfmrb固有。上流版は素の `malloc/free` か、
   ポート層向けのVM非依存アロケータAPIにするのが妥当 (上流方針に合わせる)
 
@@ -124,7 +124,7 @@ c14aa4400 は旧 pin)。mruby 本体 (vm.c / task.c / mruby-task) は hasumikin 
 - 症状: mruby VMビルドで
   `Can't find .../picoruby-mruby/lib/mruby/mrbgems/picoruby-pack/mrbgem.rake`。
   正しいパスは `.../mrbgems/mruby-pack`
-- こちらの修正: gemdir を mruby-pack へ (lib/patch/picoruby-net-websocket/mrbgem.rake)
+- こちらの修正: gemdir を mruby-pack へ (lib/upstream/patch/picoruby-net-websocket/mrbgem.rake)
 
 ### 7. close_notify をエラー扱い [ports/esp32/ssl_socket.c SSLSocket_recv]
 
@@ -196,7 +196,7 @@ example.com と api.github.com はどちらも ASCII なので通り、**ホス�
 修正は `bytesize` に置き換えるだけ。`header_end` は `index` が返す文字位置だが、
 ヘッダは ASCII なのでバイト位置と一致する。
 
-- fmrb 側: `lib/patch/picoruby-net-http/mrblib/http_client.rb` に適用済み
+- fmrb 側: `lib/upstream/patch/picoruby-net-http/mrblib/http_client.rb` に適用済み
 - 上流 PR: そのまま出せる (fmrb 固有の要素なし)。**優先度は高い** — 英語以外の
   応答を返す API が全部使えない
 
@@ -225,7 +225,7 @@ Regexp を持っていることは別**で、Family mruby のブラウザ版は 
 修正は `use_regexp?` に `Object.const_defined?(:Regexp)` の確認を足すだけ
 (`defined?` は picoruby に無いのでこの形)。
 
-- fmrb 側: `lib/patch/picoruby-json/mrblib/json.rb` に適用済み
+- fmrb 側: `lib/upstream/patch/picoruby-json/mrblib/json.rb` に適用済み
 - 上流 PR: そのまま出せる
 
 ## 2026-10-28 追加: 接続を切らないサーバで本文の前に止まる [picoruby-net-http mrblib/http_client.rb]

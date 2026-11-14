@@ -86,7 +86,7 @@
 ## 触ってよい範囲
 
 - fmruby-core: 受け口のための `main/` と `components/` の該当箇所
-  (端末の実装の移動を含む)、`main/prebuild_scripts/kernel/` (デスクトップ)、
+  (端末の実装の移動を含む)、`main/ruby/kernel/` (デスクトップ)、
   `native/`、`hosted/`、`config/` (機種の定義)、`rakelib/`、`test/`、
   `doc/linux_native/report/`。
 - family-mruby (ルート): `tools/`。

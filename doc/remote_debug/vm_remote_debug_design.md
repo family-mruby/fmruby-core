@@ -95,11 +95,11 @@ master 追従。microruby 統合 = prism コンパイラ + mruby-task が upstre
 - PicoRuby として追加されたデバッグ機能は特に無く、フットプリント優先で
   全部オフの状態。`MRB_USE_DEBUG_HOOK` は現行ビルド設定
   (`build_config/family_mruby_esp32.rb`, `family_mruby_linux.rb`,
-  `lib/add/family_mruby_esp32p4.rb`) では未定義 → 有効化が必要。
+  `lib/upstream/family_mruby_esp32p4.rb`) では未定義 → 有効化が必要。
 
 ### 2.3 デバッグ情報 (行番号) の現状 — ★要対応
 
-- **ビルド時プリコンパイル (組み込みアプリ)**: `main/prebuild_scripts/compile_ruby_to_bytecode.cmake`
+- **ビルド時プリコンパイル (組み込みアプリ)**: `main/ruby/compile_ruby_to_bytecode.cmake`
   は `bin/mrbc -B<sym>` で **`-g` なし** → debug_info (行番号) が落ちている。
   mrbc は `-g` (`MRC_DUMP_DEBUG_INFO`) をサポート済み (`mruby-bin-mrbc/tools/mrbc/mrbc.c:218`)。
 - **デバイス上コンパイル (flash/app の .rb)**: `fmrb_app.c:479` の `mrc_ccontext_new`
@@ -116,7 +116,7 @@ master 追従。microruby 統合 = prism コンパイラ + mruby-task が upstre
   GATT ファイル転送サービス (RX write / TX notify、COBS + CRC32 + JSON フレーミング、
   デバイス名 "FamilyMruby")。**このパターンをそのまま debug サービスに流用できる。**
   - S3: ネイティブ NimBLE。P4: C6 コンパニオンへ esp-hosted vHCI
-    (`config/sdkconfig.defaults.p4`: `CONFIG_BT_NIMBLE_ENABLED=y`,
+    (`config/sdkconfig.defaults.tab5`: `CONFIG_BT_NIMBLE_ENABLED=y`,
     `CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y`)。
 - Wi-Fi + HTTP/WebSocket サーバも既存 (`main/drivers/remote_desktop/rd_http.c`)。
   BLE 帯域が苦しい場合の代替/併用トランスポートになる。

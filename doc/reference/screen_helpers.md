@@ -2,7 +2,7 @@
 
 > 状態: 完了 | 更新: 2026-10-25 | アプリが Window の中を描くときの 3 つの道具の分け方。FmrbGfx = 描く (文字の詰め FmrbText とボタンの絵 draw_button を含む)、FmrbUI = 操作 (作ったら残る部品と、毎回描く画面の押せる範囲 HitAreas)。経緯は app_refactor の R5・R6
 
-置き場はどれも `lib/add/picoruby-fmrb-app/mrblib/` (`fmrb-gfx.rb`・`fmrb-text.rb`・`fmrb-ui.rb`)。3 つのファイルの冒頭にも同じ分け方を書いてある。
+置き場はどれも `lib/gems/picoruby-fmrb-app/mrblib/` (`fmrb-gfx.rb`・`fmrb-text.rb`・`fmrb-ui.rb`)。3 つのファイルの冒頭にも同じ分け方を書いてある。
 
 ## 1. 分け方
 
@@ -71,7 +71,7 @@ end
 
 ## 5. Spinel のプログラムから
 
-- デスクトップとエディタ (Spinel で作るとき) は `fmrb-text.rb` と `fmrb-ui.rb` を取り込む (`tool/spinel/gen_app_combined.rb`)。`fmrb-text.rb` は Spinel 版の FmrbGfx (`main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`。text_width と FONT_METRICS は同じ) に混ざる。
+- デスクトップとエディタ (Spinel で作るとき) は `fmrb-text.rb` と `fmrb-ui.rb` を取り込む (`tools/spinel/gen_app_combined.rb`)。`fmrb-text.rb` は Spinel 版の FmrbGfx (`main/ruby/spinel/fmrb_app_base_spinel.rb`。text_width と FONT_METRICS は同じ) に混ざる。
 - `fit_text` は渡された値に `to_s`・`to_i` をかけてから回すので、FmrbUI のように型の決まらない値を渡しても、中の繰り返しは整数と C の文字列で動く。型の決まった呼び出し元からなら 3 つとも型の決まった関数になる。
 - 呼ばれないメソッドは生成されない (`draw_button` は mruby の FmrbGfx だけにある。Spinel の側では使わない)。モジュール (FmrbText) とクラス (HitAreas) は 1 つずつプールの数えを持つが、生成 TU の BSS なので P4 では PSRAM に置かれる (R6 の実測: エディタの TU の内蔵の分は 92 B のまま、PSRAM が +116 B)。
 - FmrbText に書き足すときは Spinel の制約 (doc/spinel_aot/ruby_writing_constraints.md) を守る: ブロックと Hash を使わない、文字列リテラルを直接変えない (`"".dup` から足す)。

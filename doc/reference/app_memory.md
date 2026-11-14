@@ -123,7 +123,7 @@ fmrb_app: [Mahjong] VM pool at NoMemoryError: total=1572864 used=626856 free=945
 `Largest` の列がある。
 
 これらの数は estalloc が割り当てと解放のたびに数えている
-(`lib/patch/picoruby-mruby/lib/estalloc/estalloc.c` の `used_now` / `peak` /
+(`lib/upstream/patch/picoruby-mruby/lib/estalloc/estalloc.c` の `used_now` / `peak` /
 `last_fail`。プールの頭に 16 B。一番大きい空きは聞かれたときにプールを
 歩いて数える)。
 

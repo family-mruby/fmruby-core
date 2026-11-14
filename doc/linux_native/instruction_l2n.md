@@ -29,7 +29,7 @@ accept・名前解決・TLS の握手) を呼んだタスクが、全部のタ�
 posix port と OpenSSL の呼び方を読んで判断してよい。いずれにしても:
 
 - **submodule の中は直接直さない**。posix port に手を入れる必要があれば、
-  lib/add・lib/patch・lib/replace と Rakefile の仕組みで行う。
+  lib/add・lib/upstream/patch・lib/upstream/replace と Rakefile の仕組みで行う。
 - sim (SIGALRM の本来の port) と端末の動きは変えない。協調 port の
   ビルド (native) にだけ効く形にする。ブラウザ版は今の WebSocket の経路の
   ままにする。
@@ -62,7 +62,7 @@ posix port と OpenSSL の呼び方を読んで判断してよい。いずれに
 - fmruby-core: `native/`、`hosted/` (協調 port の受け口)、`lib/add/`
   (native の build_config、必要なら port の差し替え。**lib/ を触ったら
   rake clean** の決まりに注意。native の libmruby の作り直しで足りるなら
-  それでよい)、`lib/patch/`・`lib/replace/` と Rakefile (submodule の中を
+  それでよい)、`lib/upstream/patch/`・`lib/upstream/replace/` と Rakefile (submodule の中を
   変える必要があるときだけ)、`config/`、`rakelib/native.rake`、`test/`、
   `doc/linux_native/report/`。
 - family-mruby (ルート): `tools/` (確認の道具に要るもの)。

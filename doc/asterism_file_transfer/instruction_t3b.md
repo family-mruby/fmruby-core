@@ -29,7 +29,7 @@
 ## 触ってよい範囲
 
 fmruby-core (転送のアプリ・`FmrbTransfer`・Shell の `asend`・`tools/fmrb_send.rb`・
-`FmrbApp.free_bytes` の各ポート (`lib/add/picoruby-fmrb-app`、wasm の JS)・試験・rakelib、
+`FmrbApp.free_bytes` の各ポート (`lib/gems/picoruby-fmrb-app`、wasm の JS)・試験・rakelib、
 `doc/asterism_file_transfer/` の report)、asterism gem の作業用 checkout (コミットまで)。
 それ以外が要るなら止まって返す。push はしない。build/ を残さない。
 

@@ -11,7 +11,7 @@ e3.md。report は `report/i1.md` へ。**この段階は調査と見積もり�
 
 ## T1: 何が共有されているか (全部の種類)
 
-- エディタの生成 C (`main/prebuild_scripts/spinel/gen/` の editor の combined の C) と Spinel の実行時
+- エディタの生成 C (`main/ruby/spinel/gen/` の editor の combined の C) と Spinel の実行時
   (components/fmrb_spinel_rt/spinel_rt/、フォーク kishima/spinel fmrb-ext の clone `/home/kishima/fmrb/wt/spinel-rebase`)
   を読み、ファイル単位の変数 (static、大域) を種類ごとに数える: 例外・catch・break のスタック、クラスの ivar
   (`civ_`)、定数 (`cst_`)、プールの数え、シンボル、凍結リテラル (const で書き込まないもの)、GC の根、

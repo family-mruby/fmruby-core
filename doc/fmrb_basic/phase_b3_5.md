@@ -62,7 +62,7 @@ spawn 完了時に新アプリへフォーカスを移す。フルスクリー�
 
 ### T3.5-4: Run メニューと F5
 
-`main/prebuild_scripts/default_app/editor.app.rb` (メニューバーと Debug
+`main/ruby/default_app/editor.app.rb` (メニューバーと Debug
 ドロップダウンが既にある) に Run を追加する。
 
 - 操作: メニュー「Run」または F5。

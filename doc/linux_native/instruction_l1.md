@@ -107,7 +107,7 @@ plan.md「ファイルの置き場所」の表を実装する (この段は開�
   場所は sim と別にし (同時に動かしても衝突しない)、`tools/fmrb_input.rb` に
   行き先を変える引数か環境変数を足す。
 - **アプリの起動・一覧・kill**: 今の debugd (TCP) を native でも有効にし、
-  `fmruby-core/tool/debug/fmrb_dbg_client.py` で使えるようにする。ポートは
+  `fmruby-core/tools/debug/fmrb_dbg_client.py` で使えるようにする。ポートは
   sim の 5555 と別にする。
 - 起動・停止・画面の取得・入力・アプリをまとめる道具を **Ruby で**
   `tools/` に置く (例: `tools/fmrb_native.rb up|down|shot|input|app`)。
@@ -133,8 +133,8 @@ plan.md「ファイルの置き場所」の表を実装する (この段は開�
 - family-mruby (ルートのリポジトリ): `tools/` (fmrb_input.rb の行き先の追加、
   新しい道具)。
 - 触らないもの: fmruby-graphics-audio (読むだけ)、sdkconfig と
-  sdkconfig.defaults、submodule の中 (変更が要るなら lib/add・lib/patch・
-  lib/replace と Rakefile)、`flash/` の中身、`flash/etc/display_conf_linux.txt`
+  sdkconfig.defaults、submodule の中 (変更が要るなら lib/add・lib/upstream/patch・
+  lib/upstream/replace と Rakefile)、`flash/` の中身、`flash/etc/display_conf_linux.txt`
   (ユーザの未コミットの変更がある)、`doc/linux_native/plan.md` (親が反映する)。
 
 ## 作業場所と git

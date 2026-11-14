@@ -46,7 +46,7 @@
 ## 触ってよい範囲
 
 - fmruby-core: `native/`、`config/machines/`、`main/` の表示・kernel・アプリの
-  起動のうち全画面の大きさの所、`main/prebuild_scripts/` (kernel・エディタの
+  起動のうち全画面の大きさの所、`main/ruby/` (kernel・エディタの
   全画面の並べ方)、`lib/add/` の該当箇所、`rakelib/`、`tools/regress/`、`test/`、
   `doc/linux_native/report/`、`doc/regression/usage.md` (確認の一式が変わるとき)。
 - 触らないもの: fmruby-graphics-audio、sdkconfig、submodule の中、plan.md、

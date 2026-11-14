@@ -309,7 +309,7 @@ Family mruby を見て・触って・書けるか。
   なので、Safari で `fmruby.local` を開かせる方が確実)。
 - mDNS を AP の netif でも広告する。
 
-ビューア側の作業 (tool/web/remote/、EMBED_FILES で機体に埋め込み):
+ビューア側の作業 (tools/web/remote/、EMBED_FILES で機体に埋め込み):
 
 - **触る操作**: touchstart/move/end を mouse_button/mouse_move に写す。
   座標はビューアが 426x240 の絶対座標に変換して送るので、**Tab5 本体の

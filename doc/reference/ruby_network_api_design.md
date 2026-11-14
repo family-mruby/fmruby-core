@@ -16,7 +16,7 @@
     は `picorb_alloc(NULL, ...)` を使っており、mruby VMでは
     `mrb_malloc(NULL, ...)` に展開されてNULLの mrb_state をデリファレンスし
     即クラッシュする (mruby/cではvm=NULLが合法のため未発覚だった上流バグ)。
-    lib/patch で mutex保護済みの `fmrb_sys_malloc/free` に置換
+    lib/upstream/patch で mutex保護済みの `fmrb_sys_malloc/free` に置換
 - **Linux 検証済み (2026-07-09)**: 全テストOK (WSエコー含む)
 - **Phase 1〜3 実装済み・esp32p4 ビルドOK (2026-07-08)**
   - TCPSocket / UDPSocket / TCPServer / SSLSocket / Net::HTTP /
@@ -27,7 +27,7 @@
   - **ビルド名分岐の罠**: picoruby-socket / picoruby-mbedtls / net-websocket の
     mrbgem.rake は `build.name == "esp32"` 前提。P4 はビルド名 `esp32p4` の
     ため、そのままでは自前 lwIP のクローンや mbedtls ライブラリの二重リンクが
-    走る。lib/patch の mrbgem.rake 3 本で esp32p4 を esp32 相当に扱うよう修正
+    走る。lib/upstream/patch の mrbgem.rake 3 本で esp32p4 を esp32 相当に扱うよう修正
   - **構造体レイアウト整合**: ports/esp32/*.c は `PICORB_PLATFORM_POSIX` を
     定義して fd ベースの `picorb_socket_t` を使うが、gem 本体 (src/) は rake
     ビルドで同 define が無いと LwIP 版レイアウトになり不整合を起こす。
@@ -42,7 +42,7 @@
   - **ESP-IDF の mbedtls ポートに `mbedtls_net_poll` は無い** →
     SSLSocket_ready は select() (VFS経由) で実装
   - **net-websocket の mruby-pack gemdir パスが上流バグ** (存在しない
-    picoruby-pack を参照) → lib/patch で mruby-pack に修正。
+    picoruby-pack を参照) → lib/upstream/patch で mruby-pack に修正。
     `require 'pack'` は mruby-* gem が prebuilt_gems[] に "pack" として
     登録されるため実行時も解決される
   - **Linux ビルドの SSL は OpenSSL 実装 (2026-07-08 更新)**: 当初はビルド
@@ -97,7 +97,7 @@ esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に
 | picoruby-mbedtls | Digest 等の暗号プリミティブ | C | timing_alt.c 等は既に PICORUBY_SRCS に記載あり |
 
 - `mrbgems/networking.gembox` (net-http + net-ntp + net-websocket) が用意されているが、
-  `lib/add/family_mruby.gembox` には含まれていない
+  `lib/upstream/family_mruby.gembox` には含まれていない
 - `picoruby-socket` の mrbgem.rake は `build.name == "esp32"` のとき自前 lwIP/mbedtls の
   クローンをスキップし、ESP-IDF の lwIP / mbedtls を使う前提になっている
 - 依存: net-websocket は picoruby-base64 / picoruby-rng / picoruby-pack / picoruby-mbedtls に依存。
@@ -158,7 +158,7 @@ esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に
   picoruby-net-http / picoruby-socket が既に提供しており、独自 API を発明しない
 - fmruby 固有の作業は「ビルド組込み」「esp_crt_bundle 対応」「協調スケジューラとの
   親和性確保」に集中する
-- サブモジュール直接編集は禁止のため、ssl_socket.c 等の修正は `lib/patch/picoruby-socket/`
+- サブモジュール直接編集は禁止のため、ssl_socket.c 等の修正は `lib/upstream/patch/picoruby-socket/`
   に置き Rakefile で上書きする (既存の picoruby-i2c 等と同じ方式)
 
 ### 設計判断: 同期 API を基本とし、長時間ブロックはタイムアウトで抑制する
@@ -166,7 +166,7 @@ esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に
 - CRuby の `Net::HTTP.get` も同期 API であり、「同期で書ける」こと自体が
   CRuby 互換の価値。まずは同期 API をそのまま出す
 - ただしデフォルトで SO_RCVTIMEO / SO_SNDTIMEO (例: 10秒) と接続タイムアウトを
-  esp32 ポートに設定し、「無限に固まる」ことだけは防ぐ (lib/patch で対応)
+  esp32 ポートに設定し、「無限に固まる」ことだけは防ぐ (lib/upstream/patch で対応)
 - 「HTTP リクエスト中はそのアプリのイベント処理が止まる」ことは
   ドキュメント化された制限とする (ゲーム的アプリはローディング画面を挟む想定)
 - 非同期化 (専用ネットワークタスク + fmrb_msg で on_event 配信) は Phase 4 の
@@ -178,7 +178,7 @@ esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に
   esp_crt_bundle (Mozilla CA 相当) による検証付き HTTPS が通ること
 - `SSLContext#set_ca(pem)` による独自 CA 指定 (オレオレ証明書サーバ) も残す
 - `verify_mode = SSL_VERIFY_NONE` も CRuby 同様に指定可能とする (非推奨)
-- 実装: lib/patch の ssl_socket.c で、ユーザ CA 未指定時に
+- 実装: lib/upstream/patch の ssl_socket.c で、ユーザ CA 未指定時に
   `esp_crt_bundle_attach(&ssl_config)` を呼ぶ。`mbedtls_ssl_set_hostname` による
   SNI/ホスト名検証が入っていることも実装時に確認する
 
@@ -268,25 +268,25 @@ end
 
 ## 変更ファイル一覧 (実装済み)
 
-- `lib/add/family_mruby_esp32p4.rb` / `lib/add/family_mruby_linux.rb`:
+- `lib/upstream/family_mruby_esp32p4.rb` / `lib/upstream/family_mruby_linux.rb`:
   picoruby-socket / picoruby-net-http / picoruby-net-websocket を追加
-- `lib/patch/picoruby-socket/mrbgem.rake`: esp32p4 対応 (lwIP クローン抑止、
+- `lib/upstream/patch/picoruby-socket/mrbgem.rake`: esp32p4 対応 (lwIP クローン抑止、
   PICORB_PLATFORM_POSIX を gem スコープで定義)
-- `lib/patch/picoruby-socket/src/mruby/socket.c`: sys/socket.h 回避
-- `lib/patch/picoruby-socket/ports/esp32/tcp_socket.c`: 接続/送受信の
+- `lib/upstream/patch/picoruby-socket/src/mruby/socket.c`: sys/socket.h 回避
+- `lib/upstream/patch/picoruby-socket/ports/esp32/tcp_socket.c`: 接続/送受信の
   デフォルトタイムアウト (10秒、FMRB_SOCKET_*_TIMEOUT_MS)、freeaddrinfo リーク修正
-- `lib/patch/picoruby-socket/ports/esp32/ssl_socket.c`: esp_crt_bundle による
+- `lib/upstream/patch/picoruby-socket/ports/esp32/ssl_socket.c`: esp_crt_bundle による
   デフォルト証明書検証 (set_ca で独自CAに切替)、SSLSocket_ready の実装修正
   (旧実装は常に false)、read タイムアウト、mbedtls エラーコードのログ出力
-- `lib/patch/picoruby-mbedtls/mrbgem.rake`: esp32p4 で同梱 mbedtls の
+- `lib/upstream/patch/picoruby-mbedtls/mrbgem.rake`: esp32p4 で同梱 mbedtls の
   コンパイルをスキップ (ESP-IDF の mbedtls を使用)
-- `lib/patch/picoruby-net-websocket/mrbgem.rake`: mruby-pack の gemdir 修正
+- `lib/upstream/patch/picoruby-net-websocket/mrbgem.rake`: mruby-pack の gemdir 修正
 - `docker/Dockerfile`: libssl-dev を追加 (Linux ビルドの OpenSSL SSL ポート用)。
   posix ビルドは picoruby ビルドが ports/posix を自動コンパイルするため、
   上流の OpenSSL 実装がそのまま使われる (パッチ不要)
-- `lib/add/picoruby-fmrb-kernel/ports/esp32/net.c`: FmrbNet モジュール
+- `lib/gems/picoruby-fmrb-kernel/ports/esp32/net.c`: FmrbNet モジュール
   (connected? / ip_address / hostname / ssid / wait_for_ip)
-- `lib/add/picoruby-fmrb-kernel/src/picoruby_fmrb_kernel.c`: FmrbNet init 呼出し
+- `lib/gems/picoruby-fmrb-kernel/src/picoruby_fmrb_kernel.c`: FmrbNet init 呼出し
 - `Rakefile`: 上記パッチのコピーを setup タスクへ追加
 - `components/picoruby-esp32/CMakeLists.txt`: socket ポート (esp32p4/posix)、
   picoruby-mbedtls ports/common/*.c、lwip PRIV_REQUIRES を追加
@@ -295,7 +295,7 @@ end
 
 ### Phase 1: 平文 TCP / HTTP の有効化
 
-1. `lib/add/family_mruby.gembox` に追加:
+1. `lib/upstream/family_mruby.gembox` に追加:
    - `picoruby-socket`, `picoruby-net-http` (まず最小構成)
 2. `components/picoruby-esp32/CMakeLists.txt` の esp32 側 `PICORUBY_SRCS` に
    `picoruby-socket/ports/esp32/*.c` (tcp_socket / udp_socket / tcp_server /
@@ -303,7 +303,7 @@ end
    - linux ターゲット側は posix ポートが gem ビルドで賄われるか確認し、
      必要なら linux 側 PICORUBY_SRCS にも追加
 3. `FmrbNet` 状態参照 API を追加 (wifi_task.h の関数を薄く公開)
-4. esp32 ポートに接続/送受信タイムアウト (SO_RCVTIMEO 等) を lib/patch で追加
+4. esp32 ポートに接続/送受信タイムアウト (SO_RCVTIMEO 等) を lib/upstream/patch で追加
 5. 動作確認: LAN 内の HTTP サーバ + 外部サイトへの GET/POST
 
 - ビルド規約: lib/ 変更後は `rake clean`、gembox 変更はビルド3系統
@@ -312,7 +312,7 @@ end
 ### Phase 2: TLS (HTTPS)
 
 1. `picoruby-mbedtls` を gembox 依存として整理 (timing_alt.c 等は記載済み)
-2. `lib/patch/picoruby-socket/ports/esp32/ssl_socket.c` を作成:
+2. `lib/upstream/patch/picoruby-socket/ports/esp32/ssl_socket.c` を作成:
    - ユーザ CA 未指定時に `esp_crt_bundle_attach()` を使用
    - `mbedtls_ssl_set_hostname` の設定確認 (SNI + ホスト名検証)
    - エラー時に mbedtls エラーコードを Ruby 例外メッセージへ含める

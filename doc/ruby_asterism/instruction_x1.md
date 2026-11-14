@@ -24,7 +24,7 @@
 1. **asterism (gem)**: protocol 1 の実装 (portable と CRuby)。版は 0.7.0。CHANGELOG に「互換を切る」と大きく書く。`docs/protocol.md` を protocol 1 に書き直す (protocol 0 は付録に「捨てた形」として短く残す)。適合の試験の見本を protocol 1 に作り直し、CRuby と mruby の両方で通す。
 2. **asterism-zenoh / picoruby-asterism-zenoh**: bin を扱うのに要る直しがあれば行う (版をそろえるかは理由とともに決める。asterism-zenoh を上げるなら 0.7.0、gem の依存も直す)。
 3. **fmruby-core**:
-   - 端末の MessagePack (`lib/add/picoruby-fmrb-msgpack`): bin を読む (Ruby の文字列として、バイナリのまま)、余計なバイトを断る、64 ビットの整数を正しく扱う。ext の扱いは仕様に合わせる。
+   - 端末の MessagePack (`lib/gems/picoruby-fmrb-msgpack`): bin を読む (Ruby の文字列として、バイナリのまま)、余計なバイトを断る、64 ビットの整数を正しく扱う。ext の扱いは仕様に合わせる。
    - 試しのアプリ (asterism_demo・othello・rt_probe・rover_brain・rover_pilot・rover_cam・ros2_* など、Asterism を使うもの全部) を protocol 1 に合わせる。頭脳の `from:` は `expose(..., caller: :from)` に、オセロの最初の引数 `from` は `Asterism.current_call` に移す。
    - `ASTERISM_PIN` (push しないので、ビルドは `ASTERISM_DIR=../asterism`)。
    - 端末 (P4-Nano・AtomS3R) を焼き直す (アプリの区画だけ)。sim とブラウザ版を作り直す。

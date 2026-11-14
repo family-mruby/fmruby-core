@@ -21,7 +21,7 @@ issues_s3.md の棚卸しを受けた実装計画。段 3 の目標は**作者�
 ## 作業項目
 
 段 2 の S1-S4 と衝突しないよう、段 3 は T1-T5 と呼ぶ。実装ごとの報告は
-report/t1.md ... に置く。編集先は lib/add/picoruby-fmrb-app/ のみ
+report/t1.md ... に置く。編集先は lib/gems/picoruby-fmrb-app/ のみ
 (components/ 以下の複製は上書きで消える)。
 
 ### T1: イベント列テスト (課題 C) — 最初にやる
@@ -118,8 +118,8 @@ Tasks ページを確認 (確認手順は下の「検収」)。
 
   `_invalidate_attached_uis` は while で回して `invalidate_all` を呼ぶだけ。
   複数 UI (ページごとに分ける将来の形) もこれで受かる。
-- **同じ変更を 2 か所に入れる**: lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb と
-  main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb (Spinel 用基底が
+- **同じ変更を 2 か所に入れる**: lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb と
+  main/ruby/spinel/fmrb_app_base_spinel.rb (Spinel 用基底が
   clear_user_area と draw_window_frame を別に持っている)。片方だけ直すと
   engine 切替で挙動が割れる。
 - ホストテストの FakeApp に `attach_ui` の空実装と window_width/height を足す
