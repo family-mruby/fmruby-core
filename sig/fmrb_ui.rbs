@@ -321,12 +321,6 @@ class FmrbUI
   # The area of a hidden widget is repainted with the background color.
   def set_visible: (Symbol id, bool flag) -> void
 
-  # 原点をずらす <<en>> Change the user-area origin
-  #
-  # 大きさ変更で user area の左上が動いたときに、move の前に呼びます。
-  # <<en>>
-  # Call it before move when a resize moved the top-left of the user area.
-  def set_origin: (Integer x0, Integer y0) -> void
 
   # 置いてある部品の一覧 <<en>> The widgets placed so far
   #

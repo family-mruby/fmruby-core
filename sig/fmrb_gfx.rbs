@@ -155,13 +155,36 @@ class FmrbGfx
   # 画面の横幅 (ドット) <<en>> Canvas width in pixels
   #
   # canvas 全体の幅。Window のアプリが描いてよいのは、その内側の
-  # @user_area_x0 / @user_area_width の範囲で、canvas_width とは違う。
+  # 区画 (area_width、@user_area_width と同じ) で、canvas_width とは違う。
   # 全画面のアプリでは一致する。
   # <<en>>
-  # The width of the whole canvas. A windowed app may only draw inside
-  # @user_area_x0 / @user_area_width, which is not the same thing; for a
-  # fullscreen app the two agree.
+  # The width of the whole canvas. A windowed app may only draw inside its
+  # area (area_width, the same as @user_area_width), which is not the same
+  # thing; for a fullscreen app the two agree.
   def canvas_width: () -> Integer
+
+  # 描く区画の横幅 (ドット) <<en>> Width of the area drawn in
+  #
+  # 原点 (0, 0) から描いてよい幅。アプリの gfx では @user_area_width と同じ。
+  # <<en>>
+  # How far from the origin there is to draw in. For the app's gfx it is
+  # @user_area_width.
+  def area_width: () -> Integer
+
+  # 描く区画の高さ (ドット) <<en>> Height of the area drawn in
+  def area_height: () -> Integer
+
+  # 原点の canvas 上の x <<en>> Where the origin is on the canvas (x)
+  #
+  # 描く座標はすべてここに足されて canvas に届く。枠のある Window の gfx は
+  # 1、window_gfx などは 0。
+  # <<en>>
+  # Every coordinate drawn is added to it on its way to the canvas: 1 for a
+  # framed window's gfx, 0 for window_gfx and the rest.
+  def origin_x: () -> Integer
+
+  # 原点の canvas 上の y <<en>> Where the origin is on the canvas (y)
+  def origin_y: () -> Integer
 
   # 画面の高さ (ドット) <<en>> Canvas height in pixels
   #
@@ -529,7 +552,7 @@ class FmrbGfx
   #
   # ```ruby
   # w = gfx.text_width(str)
-  # x = (gfx.canvas_width - w) / 2
+  # x = (gfx.area_width - w) / 2
   # gfx.draw_text(x, 20, str, FmrbGfx::WHITE)
   # ```
   # <<en>>
@@ -540,7 +563,7 @@ class FmrbGfx
   #
   # ```ruby
   # w = gfx.text_width(str)
-  # x = (gfx.canvas_width - w) / 2
+  # x = (gfx.area_width - w) / 2
   # gfx.draw_text(x, 20, str, FmrbGfx::WHITE)
   # ```
   def text_width: (String str) -> Integer
@@ -829,8 +852,9 @@ class FmrbGfx
   # 必要はない。点数を出す帯など、さらに狭い範囲に閉じ込めたいときに使う。
   # ```ruby
   # # 上 10px を点数の帯にして、スプライトはその下だけに出す
-  # @gfx.set_sprite_clip(@user_area_x0, @user_area_y0 + 10,
-  #                      @user_area_width, @user_area_height - 10)
+  # @gfx.set_sprite_clip(0, 10,
+  #   @user_area_width,
+  #   @user_area_height - 10)
   # ```
   # <<en>>
   # Sprites are composited on top of everything drawn into the canvas, so
@@ -842,8 +866,9 @@ class FmrbGfx
   # needed to narrow it further - e.g. to keep sprites out of a score bar.
   # ```ruby
   # # reserve the top 10px for the score; sprites stay below it
-  # @gfx.set_sprite_clip(@user_area_x0, @user_area_y0 + 10,
-  #                      @user_area_width, @user_area_height - 10)
+  # @gfx.set_sprite_clip(0, 10,
+  #   @user_area_width,
+  #   @user_area_height - 10)
   # ```
   def set_sprite_clip: (Integer x, Integer y, Integer w, Integer h) -> FmrbGfx
 

@@ -57,6 +57,9 @@ payload (packed): { u16 canvas_id, u16 x, u16 y, u16 w, u16 h }
 同じ扱い。
 
 さらに狭めたいアプリは `FmrbGfx#set_sprite_clip(x, y, w, h)` を後から呼ぶ。
+矩形はスプライトと同じ座標で、2026-11-14 (doc/codebase_tidy T4) から
+アプリの区画 (user area) の左上が (0, 0)。gfx が原点を足して canvas に送る
+(区画全体なら `set_sprite_clip(0, 0, @user_area_width, @user_area_height)`)。
 flappy はプレイフィールド (スコア帯より下、地面より上) を入れており、
 スコアにも地面にも柱が掛からない。
 
