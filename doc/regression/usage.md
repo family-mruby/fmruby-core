@@ -17,11 +17,11 @@
 | `rake regress:screens ONLY=web` | 3.5 分 | ブラウザ版の画面 | wasm・ブラウザ版だけの変更 |
 | `rake regress:run` | 4.5 分 (変更前の木と比べるなら 2 倍) | sim の VM プール | アプリの起動・基底・Ruby の常駐物 |
 | `rake regress:size` | 4〜8 分 (S3・P4 の 2 台、clean から) | 内蔵 RAM とファームの大きさ | C の静的なデータ・部品・sdkconfig |
-| `rake regress:checkpoint` | 7 分 (SIM=1 は 10 分ほど) | アプリを運ぶ | 起動・復元・Window・座標・Asterism の移動 |
+| `rake regress:checkpoint` | 7 分 (SIM=1 は 15〜17 分) | アプリを運ぶ | 起動・復元・Window・座標・Asterism の移動 |
 | `rake regress:screens` | 8 分 (Retro・Modern・web・native) | 画面の画素 | 描画・画面の配置・ランチャー |
 | `rake regress:size ALL=1` | 10 分 | 全端末の大きさ | 端末ごとの sdkconfig・区画 |
-| `rake regress:wl` | 18 分 | ネイティブ版のコンポジタ | Linux の Window まわり |
-| `rake regress:full` | 35 分 | boot 以外の全部 | 区切り・公開の前 |
+| `rake regress:wl` | 14〜18 分 (絞る口なし) | ネイティブ版のコンポジタ | Linux の Window まわり |
+| `rake regress:full` | 50 分 (2026-11-15 実測。wl 14・checkpoint SIM=1 15 を含む) | boot 以外の全部 | 区切り・公開の前 |
 
 ビルド (道具の中でも走る):
 

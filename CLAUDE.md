@@ -112,7 +112,7 @@ rake -T # その他のコマンドの使い方
 | `rake regress:boot BOARD=..` | 実機の起動ログ (つないだ端末だけ) | 焼かずに約 40 秒 |
 
 - **時間の目安の全部の表は doc/regression/usage.md の 0 章**。流す道具は、変更が影響するものとかかる時間の釣り合いで選び、段ごとの確認は 15 分ほどまで、重い道具は最後にまとめて 1 回。
-- `rake regress:full` は boot 以外を全部流す (34 分ほど。sim の同じ構成は 1 回だけ作って使い回す)。基準の更新 (`:update`) は、
+- `rake regress:full` は boot 以外を全部流す (50 分ほど。sim の同じ構成は 1 回だけ作って使い回す)。基準の更新 (`:update`) は、
   変化が意図したものだと人が確認したときだけ。
 - 端末を足すときは `tools/regress/targets.rb` に 1 行、揺れの幅は
   `:calibrate` が測る (usage.md)。
