@@ -1,5 +1,5 @@
 /**
- * @file fmrb_hid_event.h
+ * @file fmrb_hid_decode.h
  * @brief One decoder for the HID event payloads in fmrb_hid_msg.h.
  *
  * Every language binding turns the same payloads into its own event object,

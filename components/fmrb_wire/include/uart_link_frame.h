@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>  // static_assert in C11, a keyword in C++
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,7 +35,7 @@ typedef struct __attribute__((packed)) {
     uint16_t data_len;      // Payload length in bytes (little-endian)
 } uart_link_header_t;
 
-_Static_assert(sizeof(uart_link_header_t) == UART_LINK_HEADER_SIZE,
+static_assert(sizeof(uart_link_header_t) == UART_LINK_HEADER_SIZE,
                "uart_link_header_t size mismatch");
 
 // Maximum frame size on wire (for buffer allocation)

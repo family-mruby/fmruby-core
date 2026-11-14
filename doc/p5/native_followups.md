@@ -28,7 +28,7 @@
 ため、`draw → get_pixel` の順序保証が自動で成立する。
 
 実装ファイル:
-- Protocol enum: [components/fmrb_common/include/fmrb_link_protocol.h](../components/fmrb_common/include/fmrb_link_protocol.h)
+- Protocol enum: [components/fmrb_wire/include/fmrb_link_protocol.h](../components/fmrb_wire/include/fmrb_link_protocol.h)
   に `FMRB_LINK_GFX_GET_PIXEL = 0x55`、`fmrb_link_graphics_get_pixel_t` /
   `fmrb_link_graphics_pixel_value_t` を追加
 - 内部 enum: [components/fmrb_msg/fmrb_gfx_msg.h](../components/fmrb_msg/fmrb_gfx_msg.h)
@@ -77,7 +77,7 @@ LovyanGFX に組み込み `pushImageWithMask` 相当はなく、行単位の
 
 ### 実装ファイル
 - Protocol:
-  [components/fmrb_common/include/fmrb_link_protocol.h](../components/fmrb_common/include/fmrb_link_protocol.h)
+  [components/fmrb_wire/include/fmrb_link_protocol.h](../components/fmrb_wire/include/fmrb_link_protocol.h)
   に enum (`0x84/0x85/0x86`) と `create_mask_t` / `mask_created_t` /
   `delete_mask_t` / `draw_image_masked_t` を追加。graphics-audio 側
   [main/common/fmrb_link_protocol.h](../../fmruby-graphics-audio/main/common/fmrb_link_protocol.h)

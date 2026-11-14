@@ -99,6 +99,7 @@ task = slurp("components/fmrb_common/include/fmrb_task_config.h")
 led = slurp("main/drivers/led_status/status_led.h")
 app_h = slurp("components/fmrb_common/include/fmrb_app.h")
 fmrb_h = slurp("components/fmrb_common/include/fmrb.h")
+link_ver_h = slurp("components/fmrb_wire/include/fmrb_link_version.h")
 const_c = slurp("lib/add/picoruby-fmrb-const/ports/esp32/const.c")
 
 msg_types = enum_values(msg, "FMRB_MSG_TYPE_APP_CONTROL",
@@ -127,7 +128,7 @@ key_names = const_c.scan(/define_int_const\([^,]+,[^,]+,\s*"(KEY_\w+)"/).flatten
 keys = int_const_values(const_c, key_names)
 os_version = str_define(fmrb_h, "FMRB_OS_VERSION")
 ga_version = str_define(fmrb_h, "FMRB_GA_VERSION")
-link_version = define_values(fmrb_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
+link_version = define_values(link_ver_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
 
 # Which board this build is for. rake keeps it in the environment (the Rakefile
 # loads .env into ENV before any task runs), and the simulator follows the

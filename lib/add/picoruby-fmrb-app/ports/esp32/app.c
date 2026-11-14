@@ -25,7 +25,7 @@
 #include "hw_proxy.h"
 #include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
-#include "fmrb_hid_event.h"
+#include "fmrb_hid_decode.h"
 #include "fmrb_gfx.h"
 #include "fmrb_app_canvas.h"
 #include "fmrb_kernel.h"

@@ -1,6 +1,6 @@
+# fmrb_link_cobs.h is in components/fmrb_wire (shared with graphics-audio).
 idf_component_register(
     SRCS
         "fmrb_link_cobs.c"
-    INCLUDE_DIRS "."
-    REQUIRES log
+    REQUIRES fmrb_wire log
 )

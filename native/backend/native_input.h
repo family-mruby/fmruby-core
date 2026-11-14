@@ -6,8 +6,8 @@
  *           source's task drains it into fmrb_host_send_*. The browser's ring
  *           (wasm/backend/input_wasm.c), with a real thread on the far side.
  *   inject  the headless way in: the simulation's packet format
- *           ([type u8][len u16 LE][payload], main/include/fmrb_hid_event.h)
- *           on a Unix datagram socket of this program's own
+ *           ([type u8][len u16 LE][payload],
+ *           components/fmrb_wire/include/fmrb_hid_event.h) on a Unix datagram socket of this program's own
  *           (<run dir>/inject), so tools/fmrb_input.rb drives this build the
  *           way it drives the simulation, side by side with it.
  *

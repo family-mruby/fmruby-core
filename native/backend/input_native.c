@@ -17,9 +17,8 @@
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
 #include "fmrb_keymap.h"
-/* main/include: the simulation's packet types (components/fmrb_msg has a
- * header of the same name, the decoder, earlier on the include path). */
-#include "../../main/include/fmrb_hid_event.h"
+/* The simulation's packet types (components/fmrb_wire). */
+#include "fmrb_hid_event.h"
 #include "host_task.h"
 #include "native_ime.h"
 #include "native_input.h"

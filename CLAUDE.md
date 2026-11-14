@@ -59,6 +59,13 @@
 - mrbgem で ESP32やFreeRTOSのヘッダを利用するものは、`components/picoruby-esp32/CMakeLists.txt` の `set(PICORUBY_SRCS` でビルド管理する。
 - main/以下のコードの関数の戻り値定義は `fmrb_err.h` を標準とする
 - GPIOのPinアサインは、 `fmrb_pin_assign.h` を参照する
+- graphics-audio との線の形 (リンクのプロトコル・フレーム・COBS・版・HID イベント・
+  sim の共有メモリ) のヘッダは `components/fmrb_wire/include` の 1 か所。
+  graphics-audio と sdl2-display はビルドのときにここを直接読む (写しは無い)。
+  ここのヘッダは libc だけで閉じる (fmrb.h などを include しない)。入力イベントの
+  型を足すときに直すヘッダは `fmrb_hid_event.h` 1 つ (と graphics-audio の中継の
+  switch)。`rake wire:check` (`rake test` に入っている) が写しの残り・参照の外れ・
+  道具の直書きの数のずれを止める。
 - esp_* を直接 include してよいのは、各 fmrb 抽象の esp32 platform 実装と
   実機専用 driver のみ。共有コード (components/ と、linux・wasm もコンパイル
   する main/ の範囲) は fmrb_* 経由 (ログは fmrb_log.h / fmrb_log_port.h、

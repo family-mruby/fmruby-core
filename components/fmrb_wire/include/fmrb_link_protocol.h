@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-// Link protocol version is defined in fmrb.h (FMRB_LINK_VERSION)
+// Link protocol version: FMRB_LINK_VERSION in fmrb_link_version.h (same directory)
 
 // Link frame size constants (single source of truth)
 // Change FMRB_LINK_FRAME_SIZE to resize frames (e.g. 1024); all derived values follow.

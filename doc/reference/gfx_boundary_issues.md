@@ -131,7 +131,7 @@ renderer は辻褄を合わせられるが、表そのものは手で保つ必�
 
 ## 関連
 
-- 境界の設計そのもの: `components/fmrb_common/include/fmrb_link_protocol.h`、
+- 境界の設計そのもの: `components/fmrb_wire/include/fmrb_link_protocol.h`、
   doc/archive/gfx_unification (送出経路の統一)。
 - 課題 1〜3 が実際に出た記録: doc/archive/video/report/p1_p4.md (未知の命令で
   ACK が返らない)、doc/picorabbit/report/p8.md / p9.md (無い画像の 10 秒待ち、

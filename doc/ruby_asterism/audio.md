@@ -107,7 +107,7 @@ Family mruby 単体で、クラウドの TTS は実機で動いている (doc/us
 
 - audio_p4_task.c の `g_wav_stream` (:77-78) の隣に PSRAM の輪を置き、混ぜる側が輪から読む形。読み切ったら無音を出して待つ (今の `fmrb_wav_stream_t` は固定のバッファで、終わりに来ると止まる作り)。
 - Ruby の口は `FmrbMic` と同じく C を直接呼ぶ形 (lib/add/picoruby-fmrb-app/ports/esp32/app.c:1741-1750)。カーネルのメッセージを通すと 1 通 約 150 B (components/fmrb_audio/audio_commands.h:27-33) に当たる。例: `pcm_open(rate)`・`pcm_write(str)` (受けた B 数を返す)・`pcm_buffered`・`pcm_close`。
-- ブラウザ版は同じ audio_p4_task.c なので同じ輪で動く見込み。sim は graphics-audio へリンクで送ることになり、1 通 4096 B (components/fmrb_common/include/fmrb_link_protocol.h:806)。
+- ブラウザ版は同じ audio_p4_task.c なので同じ輪で動く見込み。sim は graphics-audio へリンクで送ることになり、1 通 4096 B (components/fmrb_wire/include/fmrb_link_protocol.h:806)。
 - 速さ 15720 Hz で受ければ端末は変換しないで済む (調べ 4 の終わり)。
 
 **未確認**

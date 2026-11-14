@@ -9,4 +9,5 @@
 // family and the 16px cut. Both checks are strict, so a GA firmware without
 // them refuses to pair rather than silently losing any of those.
 #define FMRB_GA_VERSION "3.0.0"
-#define FMRB_LINK_VERSION 6
+// FMRB_LINK_VERSION lives with the wire format (components/fmrb_wire).
+#include "fmrb_link_version.h"

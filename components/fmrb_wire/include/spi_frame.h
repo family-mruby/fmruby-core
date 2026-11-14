@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>  // static_assert in C11, a keyword in C++
 #include "fmrb_link_protocol.h"
 
 #ifdef __cplusplus
@@ -29,7 +30,7 @@ typedef struct __attribute__((packed)) {
     uint16_t crc16;         // CRC16-CCITT over first (FMRB_LINK_FRAME_SIZE - 2) bytes
 } spi_frame_t;              // FMRB_LINK_FRAME_SIZE bytes total
 
-_Static_assert(sizeof(spi_frame_t) == FMRB_LINK_FRAME_SIZE,
+static_assert(sizeof(spi_frame_t) == FMRB_LINK_FRAME_SIZE,
                "spi_frame_t size mismatch with FMRB_LINK_FRAME_SIZE");
 
 // CRC16-CCITT (polynomial 0x1021, init 0xFFFF)

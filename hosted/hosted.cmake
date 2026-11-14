@@ -187,7 +187,7 @@ set(FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/components/fmrb_common/platform/hosted/fmrb_log_port_hosted.c
   # fmrb_msg / cobs / transport
   ${FMRB_ROOT}/components/fmrb_msg/fmrb_msg.c
-  ${FMRB_ROOT}/components/fmrb_msg/fmrb_hid_event.c
+  ${FMRB_ROOT}/components/fmrb_msg/fmrb_hid_decode.c
   ${FMRB_ROOT}/components/fmrb_cobs/fmrb_link_cobs.c
   ${FMRB_ROOT}/components/fmrb_transport/fmrb_transport.c
   ${FMRB_ROOT}/components/fmrb_transport/fmrb_transport_fragment.c
@@ -417,15 +417,14 @@ list(APPEND FMRB_HOSTED_CORE_SRCS ${SPINEL_GEN_SRCS})
 set(FMRB_HOSTED_CORE_INCLUDES
   ${FMRB_HOSTED_DIR}/backend
   ${FMRB_ROOT}/components/fmrb_common/include
+  ${FMRB_ROOT}/components/fmrb_wire/include
   ${FMRB_ROOT}/components/fmrb_hal
   ${FMRB_ROOT}/components/fmrb_hal/platform
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix
-  ${FMRB_ROOT}/components/fmrb_hal/platform/esp32
   ${FMRB_ROOT}/components/fmrb_hal/hw_proxy
   ${FMRB_ROOT}/components/fmrb_log
   ${FMRB_ROOT}/components/fmrb_mem
   ${FMRB_ROOT}/components/fmrb_msg
-  ${FMRB_ROOT}/components/fmrb_cobs
   ${FMRB_ROOT}/components/fmrb_toml
   ${FMRB_ROOT}/components/toml_parser/tomlc99
   ${FMRB_ROOT}/components/fmrb_transport
@@ -477,7 +476,6 @@ set(FMRB_HOSTED_CORE_INCLUDES
   ${FMRB_HOSTED_MRUBY_DIR}/include
   ${FMRB_HOSTED_MRUBY_DIR}/mrbgems
   # main
-  ${FMRB_ROOT}/main/include
   ${FMRB_ROOT}/main/boot
   ${FMRB_ROOT}/main/kernel
   ${FMRB_ROOT}/main/kernel/include

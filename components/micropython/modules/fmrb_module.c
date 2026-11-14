@@ -22,7 +22,7 @@
 #include "py/reader.h"
 #include "py/runtime.h"
 
-#include "fmrb_hid_event.h"
+#include "fmrb_hid_decode.h"
 #include "fmrb_mp_bridge.h"
 
 // How long a single receive waits before the spin loop re-checks the stop

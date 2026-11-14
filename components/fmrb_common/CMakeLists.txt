@@ -9,5 +9,5 @@ endif()
 idf_component_register(
     SRCS "src/fmrb_task.c" "src/fmrb_debug.c" "src/fmrb_sysinfo.c"
     INCLUDE_DIRS "include"
-    REQUIRES picoruby-esp32 ${PLATFORM_REQUIRES}
+    REQUIRES picoruby-esp32 fmrb_wire ${PLATFORM_REQUIRES}
 )
