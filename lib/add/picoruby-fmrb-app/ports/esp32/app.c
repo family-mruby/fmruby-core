@@ -263,6 +263,16 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     //Save GC arena before creating objects
     int ai = mrb_gc_arena_save(mrb);
 
+    // A pointer's place comes from the kernel in window coordinates. The app
+    // draws in the area it owns (the origin of its @gfx, doc/codebase_tidy
+    // T4), so x and y are put in that area; wx and wy keep the window's,
+    // which the frame (close button, title bar) needs.
+    int ox = 0, oy = 0;
+    if (ev.type == FMRB_HID_EVENT_MOUSE_DOWN || ev.type == FMRB_HID_EVENT_MOUSE_UP ||
+        ev.type == FMRB_HID_EVENT_MOUSE_MOVE || ev.type == FMRB_HID_EVENT_MOUSE_WHEEL) {
+        fmrb_gfx_origin_of(mrb, mrb_iv_get(mrb, self, mrb_intern_lit(mrb, "@gfx")), &ox, &oy);
+    }
+
     // Mouse moves arrive as a 30Hz stream and dominate event-path garbage
     // (~160B per event). Reuse one per-VM Hash for them, rooted through a
     // global variable so the GC keeps it alive. Handlers consume move
@@ -273,7 +283,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         mrb_sym gv_sym = mrb_intern_lit(mrb, "$fmrb_move_ev");
         event_hash = mrb_gv_get(mrb, gv_sym);
         if (!mrb_hash_p(event_hash)) {
-            event_hash = mrb_hash_new_capa(mrb, 4);
+            event_hash = mrb_hash_new_capa(mrb, 6);
             mrb_gv_set(mrb, gv_sym, event_hash);
         }
     } else {
@@ -299,14 +309,18 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         case FMRB_HID_EVENT_MOUSE_UP:
             HID_SET_TYPE(ev.type == FMRB_HID_EVENT_MOUSE_DOWN ? "mouse_down" : "mouse_up");
             HID_SET_INT("button", ev.button);
-            HID_SET_INT("x", ev.x);
-            HID_SET_INT("y", ev.y);
+            HID_SET_INT("x", ev.x - ox);
+            HID_SET_INT("y", ev.y - oy);
+            HID_SET_INT("wx", ev.x);
+            HID_SET_INT("wy", ev.y);
             break;
 
         case FMRB_HID_EVENT_MOUSE_MOVE:
             HID_SET_TYPE("mouse_move");
-            HID_SET_INT("x", ev.x);
-            HID_SET_INT("y", ev.y);
+            HID_SET_INT("x", ev.x - ox);
+            HID_SET_INT("y", ev.y - oy);
+            HID_SET_INT("wx", ev.x);
+            HID_SET_INT("wy", ev.y);
             break;
 
         // The wheel carries notches, positive away from the user. x and y are
@@ -315,8 +329,10 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         case FMRB_HID_EVENT_MOUSE_WHEEL:
             HID_SET_TYPE("mouse_wheel");
             HID_SET_INT("delta", ev.wheel);
-            HID_SET_INT("x", ev.x);
-            HID_SET_INT("y", ev.y);
+            HID_SET_INT("x", ev.x - ox);
+            HID_SET_INT("y", ev.y - oy);
+            HID_SET_INT("wx", ev.x);
+            HID_SET_INT("wy", ev.y);
             break;
 
         case FMRB_HID_EVENT_GAMEPAD_DOWN:
@@ -610,33 +626,11 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_width"), mrb_fixnum_value(new_width));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_height"), mrb_fixnum_value(new_height));
 
-                                // Update user area dimensions. Fullscreen has no
-                                // title bar and no border, so it owns the lot,
-                                // and so does a frameless window -- same split
-                                // as FmrbApp#_layout_user_area.
-                                // 11 = FmrbApp::TITLE_BAR_H
-                                int whole = is_fullscreen || ctx->frameless;
-                                mrb_int user_area_x0 = whole ? 0 : 1;
-                                mrb_int user_area_y0 = whole ? 0 : 11;
-                                mrb_int user_area_width  = whole ? new_width  : new_width - 2;
-                                mrb_int user_area_height = whole ? new_height : new_height - 12;
-                                mrb_int user_area_x1 = whole ? new_width  : new_width - 1;
-                                mrb_int user_area_y1 = whole ? new_height : new_height - 1;
-
-                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x0"), mrb_fixnum_value(user_area_x0));
-                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_y0"), mrb_fixnum_value(user_area_y0));
-                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_width"), mrb_fixnum_value(user_area_width));
-                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_height"), mrb_fixnum_value(user_area_height));
-                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x1"), mrb_fixnum_value(user_area_x1));
-                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_y1"), mrb_fixnum_value(user_area_y1));
-
-                                // The backend drops the sprite clip on resize
-                                // (it was sized for the old active area), so
-                                // re-issue one for the new user area.
-                                mrb_sym clip_sym = mrb_intern_lit(mrb, "_apply_user_area_sprite_clip");
-                                if (mrb_respond_to(mrb, self, clip_sym)) {
-                                    mrb_funcall(mrb, self, "_apply_user_area_sprite_clip", 0);
-                                }
+                                // The area the app owns and its drawing origin
+                                // follow the new shape (FmrbApp#_layout_user_area,
+                                // the one place they are worked out), which also
+                                // puts back the sprite clip the backend dropped.
+                                mrb_funcall(mrb, self, "_layout_user_area", 0);
 
                                 // Call on_resize callback if it exists
                                 mrb_sym on_resize_sym = mrb_intern_lit(mrb, "on_resize");

@@ -160,7 +160,6 @@ class KeysDesktopApp < FmrbApp
     self.idle_gc = true
     self.closable = false
     @ui = FmrbUI.new(self, bg_painter: self)
-    @ui.set_origin(0, 0)
     build_file_selector_widgets
     build_file_manager_widgets
     @fsel_x = 0

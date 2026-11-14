@@ -75,8 +75,8 @@ Regress.app "othello_table", "flash/app/game/othello/othello.app.rb" do
     s.key :right
     s.update
     # A click on a square that is not legal: the note says so.
-    bx = s.ivar(:@bx)
-    by = s.ivar(:@by)
+    bx = s.ivar(:@bx) + s.ox
+    by = s.ivar(:@by) + s.oy
     c = s.ivar(:@cell)
     s.click(bx + c * 7 + 2, by + c * 7 + 2)
     s.update

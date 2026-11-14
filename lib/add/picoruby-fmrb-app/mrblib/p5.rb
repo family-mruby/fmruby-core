@@ -69,11 +69,11 @@ class P5
   # Screen and frame control
 
   def width
-    @gfx.canvas_width
+    @gfx.area_width
   end
 
   def height
-    @gfx.canvas_height
+    @gfx.area_height
   end
 
   def background(color)

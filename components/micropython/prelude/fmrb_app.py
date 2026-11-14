@@ -3,7 +3,7 @@
 # Transcribed from the Ruby version (picoruby-fmrb-app mrblib/fmrb-app.rb) so a
 # Python app is written the same way a Ruby one is: subclass, override the
 # lifecycle methods, call start(). Attribute names match the Ruby instance
-# variables (self.gfx, self.window_width, self.user_area_x0, ...).
+# variables (self.gfx, self.window_width, self.user_area_width, ...).
 #
 # Deliberately absent rather than stubbed, so calling one raises AttributeError
 # instead of quietly doing nothing: extra canvases, scrollbars and GfxBlock.
@@ -183,15 +183,19 @@ class FmrbApp:
 
         if self.canvas is None:
             self.gfx = None
+            self.window_gfx = None
             self.bg_gfx = None
             Log.debug("Headless app: no graphics initialized")
             return
 
         self.gfx = FmrbGfx(self.canvas, self.window_width, self.window_height)
+        # The window-wide drawer: origin at the window's top-left, for the
+        # frame and anything else outside the area (doc/codebase_tidy T4).
+        self.window_gfx = FmrbGfx(self.canvas, self.window_width, self.window_height)
         self.bg_gfx = (FmrbGfx(self.bg_canvas, self.window_width, self.window_height)
                        if self.bg_canvas is not None else None)
 
-        self._recalc_user_area()
+        self._layout_user_area()
 
     # ---- window frame ----
 
@@ -201,16 +205,17 @@ class FmrbApp:
         # traffic -- fine at this stage, since the frame is redrawn rarely.
         if self.fullscreen or self.gfx is None:
             return
-        g = self.gfx
+        g = self.window_gfx
         w = self.window_width
         h = self.window_height
 
         # The title is drawn in the built-in font whatever the app selected:
         # the bar is 11 pixels tall, and a 12-pixel Japanese font would hang
         # out of it and into the app's own area.
-        saved_font = g.current_font
+        # The font is the canvas's: asked and put back through self.gfx.
+        saved_font = self.gfx.current_font
         if saved_font[0] != FmrbGfx.FONT_DEFAULT:
-            g.set_font(FmrbGfx.FONT_DEFAULT)
+            self.gfx.set_font(FmrbGfx.FONT_DEFAULT)
 
         # Title bar: rounded rect on top, then square off its bottom edge.
         g.fill_round_rect(0, 0, w, self.TITLE_BAR_H, self.CORNER_R, self.TITLE_BAR_COLOR)
@@ -232,7 +237,7 @@ class FmrbApp:
         self._clear_corners()
 
         if saved_font[0] != FmrbGfx.FONT_DEFAULT:
-            g.set_font(saved_font[0], saved_font[1])
+            self.gfx.set_font(saved_font[0], saved_font[1])
 
     def draw_resize_mark(self, w, h):
         # The resize mark of a w x h window: a right triangle filling the
@@ -241,7 +246,7 @@ class FmrbApp:
         x = w - 2
         y = h - 2
         m = self.RESIZE_MARK - 1
-        self.gfx.fill_triangle(x, y - m, x, y, x - m, y, self.TITLE_BAR_COLOR)
+        self.window_gfx.fill_triangle(x, y - m, x, y, x - m, y, self.TITLE_BAR_COLOR)
 
     def resize_corner(self):
         # Pixels to keep free at the right and bottom of the user area when
@@ -256,7 +261,7 @@ class FmrbApp:
         # Repaint the three pixels outside each corner arc with the canvas
         # colour key, so they composite as transparent. A clear() or a resize
         # leaves opaque pixels there and the corners stop looking round.
-        g = self.gfx
+        g = self.window_gfx
         t = self.TRANSPARENT_COLOR
         w = self.window_width
         h = self.window_height
@@ -295,8 +300,7 @@ class FmrbApp:
         # page colour, so an app that says nothing still matches the desktop.
         if self.gfx is None:
             return
-        self.gfx.fill_rect(self.user_area_x0, self.user_area_y0,
-                           self.user_area_width, self.user_area_height, color)
+        self.gfx.fill_rect(0, 0, self.user_area_width, self.user_area_height, color)
 
     # ---- modifier helpers, for use inside on_event ----
     #
@@ -346,6 +350,27 @@ class FmrbApp:
         self.stop()
 
     def on_event(self, ev):
+        # App hook; the base needs nothing here (the close button is
+        # _frame_event's, which runs first).
+        pass
+
+    # Called from C for every event: the frame, then the app's hook. A
+    # pointer's place comes in window coordinates; x and y are put in the
+    # area the app draws in (the origin of self.gfx), wx and wy keep the
+    # window's. Same as the Ruby base.
+    def _dispatch_event(self, ev):
+        x = ev.get("x")
+        if x is not None:
+            y = ev.get("y", 0)
+            ev["wx"] = x
+            ev["wy"] = y
+            if self.gfx:
+                ev["x"] = x - self.gfx.origin_x
+                ev["y"] = y - self.gfx.origin_y
+        self._frame_event(ev)
+        self.on_event(ev)
+
+    def _frame_event(self, ev):
         # Close button: press gives feedback, release on the button stops.
         if ev.get("button") != 1:
             return
@@ -355,13 +380,13 @@ class FmrbApp:
 
         cx = self.window_width - self.CLOSE_BTN_CX_OFFSET
         cy = self.CLOSE_BTN_CY
-        hit = (abs(ev.get("x", 0) - cx) <= self.CLOSE_BTN_HIT_R and
-               abs(ev.get("y", 0) - cy) <= self.CLOSE_BTN_HIT_R)
+        hit = (abs(ev.get("wx", 0) - cx) <= self.CLOSE_BTN_HIT_R and
+               abs(ev.get("wy", 0) - cy) <= self.CLOSE_BTN_HIT_R)
 
         if kind == "mouse_down":
             if hit and not self.fullscreen and self.gfx:
                 self._close_btn_pressed = True
-                self.gfx.fill_circle(cx, cy, self.CLOSE_BTN_R,
+                self.window_gfx.fill_circle(cx, cy, self.CLOSE_BTN_R,
                                      self.CLOSE_BTN_PRESSED_COLOR)
                 self.gfx.present()
         else:
@@ -371,7 +396,7 @@ class FmrbApp:
                     self.stop()
                 elif self.gfx:
                     # Released off the button: put the circle back.
-                    self.gfx.fill_circle(cx, cy, self.CLOSE_BTN_R,
+                    self.window_gfx.fill_circle(cx, cy, self.CLOSE_BTN_R,
                                          self.CLOSE_BTN_NORMAL_COLOR)
                     self.gfx.present()
             elif hit:
@@ -411,31 +436,37 @@ class FmrbApp:
         # A fullscreen switch says which mode it is; a plain resize (corner
         # drag) says nothing and is windowed either way.
         self.fullscreen = bool(fullscreen)
-        self._recalc_user_area()
         if self.gfx:
             self.gfx.canvas_width = width
             self.gfx.canvas_height = height
+            self.window_gfx.canvas_width = width
+            self.window_gfx.canvas_height = height
+        self._layout_user_area()
         if self.bg_gfx:
             self.bg_gfx.canvas_width = width
             self.bg_gfx.canvas_height = height
         Log.info("App " + self.name + " resized to " + str(width) + "x" + str(height))
         self.on_resize(width, height)
 
-    def _recalc_user_area(self):
-        if self.fullscreen:
-            self.user_area_x0 = 0
-            self.user_area_y0 = 0
-            self.user_area_x1 = self.window_width
-            self.user_area_y1 = self.window_height
-            self.user_area_width = self.window_width
-            self.user_area_height = self.window_height
+    def _layout_user_area(self):
+        # The area the app owns and its drawing origin, worked out in this one
+        # place (start, a resize). Fullscreen and the desktop's window own it
+        # all; a framed window loses the border and the title bar.
+        w = self.window_width
+        h = self.window_height
+        if self.fullscreen or self.bg_canvas is not None:
+            x0 = 0
+            y0 = 0
+            self.user_area_width = w
+            self.user_area_height = h
         else:
-            self.user_area_x0 = 1
-            self.user_area_y0 = self.TITLE_BAR_H
-            self.user_area_x1 = self.window_width - 1
-            self.user_area_y1 = self.window_height - 1
-            self.user_area_width = self.window_width - 2
-            self.user_area_height = self.window_height - self.TITLE_BAR_H - 1
+            x0 = 1
+            y0 = self.TITLE_BAR_H
+            self.user_area_width = w - 2
+            self.user_area_height = h - self.TITLE_BAR_H - 1
+        if self.gfx:
+            self.gfx._set_origin(x0, y0, self.user_area_width, self.user_area_height)
+            self.window_gfx._set_origin(0, 0, w, h)
 
     # ---- timers ----
     #

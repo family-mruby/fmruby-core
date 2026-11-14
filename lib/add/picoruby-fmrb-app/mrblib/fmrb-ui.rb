@@ -29,8 +29,10 @@
 # (Spinel cannot capture the enclosing locals). #handle returns the id of the
 # widget the user operated, and the app dispatches with a case.
 #
-# Coordinates passed to the factory methods are relative to the app's user
-# area; FmrbUI adds the user-area origin once, when the widget is created.
+# Coordinates are the app's: the area it owns, (0, 0) at its top-left, which
+# is where @gfx draws from and what the pointer events carry
+# (doc/codebase_tidy T4). A widget keeps them as given, so a window going
+# fullscreen and back moves nothing.
 #
 # The ground behind the widgets belongs to the app. A widget paints only
 # inside itself, in its own bg colour; the hole left by a hidden one is filled
@@ -43,8 +45,8 @@
 #
 #   1. Do not draw every frame -- nothing is drawn from on_update.
 #   2. No blocks: dispatch on the id #handle returns.
-#   3. Coordinates are user-area relative. Getting this wrong is no longer
-#      silent: a widget outside the window is reported when it is created.
+#   3. Coordinates are the area's, as @gfx draws them. Getting this wrong is no longer
+#      silent: a widget outside the area is reported when it is created.
 #   4. Hide a widget before the flush that is meant to take it off screen.
 #      What replaces it is bg, or the bg_painter if one was given.
 #   5. bg: is the colour a widget paints INSIDE itself, not the colour of
@@ -960,18 +962,14 @@ class FmrbUI
 
   def initialize(app, bg: -1, text_size: 1, bg_painter: nil)
     @gfx = app.gfx
-    @ox = app.user_area_x0
-    @oy = app.user_area_y0
     @bg_theme = bg < 0
     @bg = @bg_theme ? C_BG : bg
     @ts = text_size
     @bg_painter = bg_painter
-    # Kept for the bounds check in #add. A widget placed outside the window
-    # used to just draw somewhere wrong and say nothing: the confirm dialog's
-    # buttons sat eleven pixels below their panel because the coordinates were
-    # canvas-absolute and FmrbUI added the user-area origin on top.
-    @win_w = app.window_width
-    @win_h = app.window_height
+    # Kept for the bounds check in #add. A widget placed outside the area
+    # used to just draw somewhere wrong and say nothing.
+    @area_w = app.user_area_width
+    @area_h = app.user_area_height
     @widgets = []
     @pressed = nil
     @focus = nil
@@ -985,7 +983,7 @@ class FmrbUI
   # ---- creation (on_create only; keyword arguments are fine here) ----
 
   def label(id, x, y, w, h, text, align: :left, text_size: nil)
-    add(Label.new(id, @ox + x, @oy + y, w, h, text, align, @gfx,
+    add(Label.new(id, x, y, w, h, text, align, @gfx,
                   text_size || @ts))
   end
 
@@ -995,38 +993,38 @@ class FmrbUI
   # Use it sparingly: widgets carrying their own palette is what this set
   # exists to stop.
   def button(id, x, y, w, h, text, text_size: nil, accent: nil)
-    add(Button.new(id, @ox + x, @oy + y, w, h, text, @gfx, text_size || @ts,
+    add(Button.new(id, x, y, w, h, text, @gfx, text_size || @ts,
                    accent))
   end
 
   # accent: replaces the highlight used while the toggle is on.
   def toggle(id, x, y, w, h, text, group: nil, on: false, on_text: nil,
              text_size: nil, accent: nil)
-    add(Toggle.new(id, @ox + x, @oy + y, w, h, text, group, on, on_text, @gfx,
+    add(Toggle.new(id, x, y, w, h, text, group, on, on_text, @gfx,
                    text_size || @ts, accent))
   end
 
   def stepper(id, x, y, w, h, value, min, max, step = 1, text_size: nil)
-    add(Stepper.new(id, @ox + x, @oy + y, w, h, value, min, max, step, @gfx,
+    add(Stepper.new(id, x, y, w, h, value, min, max, step, @gfx,
                     text_size || @ts))
   end
 
   # One line of typed text. max is how many characters it will take.
   def text_field(id, x, y, w, h, text = "", max: 32, text_size: nil)
-    add(TextField.new(id, @ox + x, @oy + y, w, h, text, max, @gfx,
+    add(TextField.new(id, x, y, w, h, text, max, @gfx,
                       text_size || @ts))
   end
 
   # x, y, w, h are the bar itself. Ten pixels wide is what the rest of the
   # system uses.
   def scrollbar(id, x, y, w, h, total, visible, scroll = 0)
-    add(Scrollbar.new(id, @ox + x, @oy + y, w, h, total, visible, scroll,
+    add(Scrollbar.new(id, x, y, w, h, total, visible, scroll,
                       @gfx, @ts))
   end
 
   # options is an Array of String, read but never written by the widget.
   def enum(id, x, y, w, h, options, index: 0, text_size: nil)
-    add(Enum.new(id, @ox + x, @oy + y, w, h, options, index, @gfx,
+    add(Enum.new(id, x, y, w, h, options, index, @gfx,
                  text_size || @ts))
   end
 
@@ -1200,7 +1198,7 @@ class FmrbUI
     t = find(id)
     return nil if t.nil?
     old_w = t.w
-    t.place(@ox + x, @oy + y, w, h)
+    t.place(x, y, w, h)
     # A text cut for the old width is worked out again for the new one. Only
     # when the width moved: the monitor moves rows while running, and
     # measuring allocates.
@@ -1308,14 +1306,6 @@ class FmrbUI
     nil
   end
 
-  # Called after the app moved the window origin (resize); widgets keep their
-  # absolute coordinates, so re-place them from the app if that changed.
-  def set_origin(x0, y0)
-    @ox = x0
-    @oy = y0
-    nil
-  end
-
   private
 
   # Escape gives the focus back to nobody; Enter reports the field.
@@ -1346,8 +1336,8 @@ class FmrbUI
     # string here is not in anybody's steady state. #move deliberately does
     # not check: the monitor calls it while running, and a check there would
     # put a string into the event path.
-    if w.x < 0 || w.y < 0 || w.x + w.w > @win_w || w.y + w.h > @win_h
-      Log.warn("FmrbUI: widget #{w.id} outside window (#{w.x},#{w.y},#{w.w},#{w.h})")
+    if w.x < 0 || w.y < 0 || w.x + w.w > @area_w || w.y + w.h > @area_h
+      Log.warn("FmrbUI: widget #{w.id} outside the area (#{w.x},#{w.y},#{w.w},#{w.h})")
     end
     @widgets << w
     w

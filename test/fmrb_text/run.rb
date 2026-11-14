@@ -30,6 +30,7 @@ class FmrbGfx
   attr_reader :log
 
   def _init(_id) = (@log = [])
+  def _set_origin(*) = self
   def _set_font(*) = nil
   def _set_text_size(_n) = nil
   def _draw_text(x, y, s, c, *) = @log << [:text, x, y, s, c]

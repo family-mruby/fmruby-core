@@ -25,6 +25,12 @@ class FmrbApp
   # the editor's completion answers both spellings, and the method form is the
   # one the type signatures in sig/ describe.
   attr_reader :window_width, :window_height, :pos_x, :pos_y, :gfx
+  # The second drawer on the window's canvas, with its origin at the window's
+  # top-left instead of the area's (doc/codebase_tidy T4): for drawing outside
+  # the area -- the frame, a title of the app's own, a frameless app's own
+  # border. nil for a headless app. The font is the canvas's: set it through
+  # @gfx.
+  attr_reader :window_gfx
 
   # Which machine this is: :esp32 or :linux (the browser build says :linux
   # too; FmrbConst::BOARD tells it apart). Asked of FmrbConst each time
@@ -69,10 +75,11 @@ class FmrbApp
     return 0 if @_fullscreen
     RESIZE_MARK + 1
   end
-  # User area (inside the window frame, below the title bar). Exposed so
-  # helper libraries such as FmrbUI can place widgets in window-local
-  # coordinates without reaching into the app's instance variables.
-  attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
+  # The size of the area the app owns (inside the frame and below the title
+  # bar, or the whole window when it has no frame or is fullscreen). Its
+  # top-left is (0, 0) of @gfx and of the pointer events, so an app never
+  # adds an offset (doc/codebase_tidy T4).
+  attr_reader :user_area_width, :user_area_height
   # Whether a click on the close-button area may stop the app. System apps
   # that own the screen (the desktop) must set this to false: for them the
   # top-right corner is ordinary UI, not a close button.
@@ -103,8 +110,8 @@ class FmrbApp
     # Initialize graphics only for non-headless apps (@_canvas is set)
     if @_canvas
       @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
+      @window_gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
       Log.debug("FmrbGfx initialized: canvas_id=#{@_canvas}")
-      _layout_user_area
 
       # Background canvas (desktop only)
       if @_bg_canvas
@@ -114,7 +121,7 @@ class FmrbApp
         @bg_gfx = nil
       end
 
-      _apply_user_area_sprite_clip
+      _layout_user_area
 
       if @_fullscreen
         # nothing to frame
@@ -128,6 +135,7 @@ class FmrbApp
       end
     else
       @gfx = nil
+      @window_gfx = nil
       @bg_gfx = nil
       Log.debug("Headless app: no graphics initialized")
     end
@@ -150,7 +158,7 @@ class FmrbApp
     # so build it on the first draw after it becomes a window at runtime -- F11
     # on an editor started with `edit -f` used to leave it with no title bar,
     # no border and no close button.
-    _build_frame_block if @gfx && !@_frame_block
+    _build_frame_block if @window_gfx && !@_frame_block
     if @gfx
       # what the app asked for, not what was picked, so that the frame
       # does not turn the ask into this machine's choice
@@ -160,7 +168,7 @@ class FmrbApp
       @gfx.set_text_size(1)
     end
     # The resize mark goes under the frame's border, which is drawn next.
-    draw_resize_mark(@window_width, @window_height) if @_resizable && @gfx
+    draw_resize_mark(@window_width, @window_height) if @_resizable && @window_gfx
     if @_frame_block
       @_frame_block.draw(w: @window_width, h: @window_height)
     end
@@ -190,7 +198,7 @@ class FmrbApp
     x = w - 2
     y = h - 2
     m = RESIZE_MARK - 1
-    @gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
+    @window_gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
   end
 
   # Rows one wheel event asks for, signed: positive scrolls towards the start
@@ -337,7 +345,7 @@ class FmrbApp
   end
 
   # Clear the user area (region inside the window frame, excluding the title
-  # bar) with the given color. Use this instead of @gfx.clear to keep the
+  # bar; (0, 0) of @gfx) with the given color. Use this instead of @gfx.clear to keep the
   # title bar and close button intact.
   # @param color [Integer] RGB332 color. Defaults to the theme's window
   #   background, so an app that never names a colour follows the system
@@ -351,8 +359,7 @@ class FmrbApp
   #   A frameless window's default is the colour key, its ground.
   def clear_user_area(color = (@_frameless ? TRANSPARENT_COLOR : FmrbConst::THEME_WINDOW_BG))
     return unless @gfx
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                   @user_area_width, @user_area_height, color)
+    @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, color)
     # @_bg_canvas is the desktop, which has no frame -- letting it through here
     # builds the frame block and draws a title bar across the wallpaper.
     # @_fullscreen is refused by draw_window_frame too; it is named here so the
@@ -401,8 +408,8 @@ class FmrbApp
   # so a windowed app's sprites would paint over its own title bar and border.
   # Bound them to the user area by default; apps wanting a narrower area (e.g.
   # keeping a playfield out of their own score bar) call set_sprite_clip after
-  # startup. Public because app.c calls it from the resize path, which drops
-  # the clip on the backend.
+  # startup. Called from _layout_user_area: the resize path drops the clip on
+  # the backend.
   def _apply_user_area_sprite_clip
     return unless @gfx
     # system_desktop (the only app with a bg_canvas) draws no window frame and
@@ -413,8 +420,8 @@ class FmrbApp
     if @_fullscreen
       @gfx.clear_sprite_clip
     else
-      @gfx.set_sprite_clip(@user_area_x0, @user_area_y0,
-                           @user_area_width, @user_area_height)
+      # sprite coordinates are the area's: (0, 0) is its top-left
+      @gfx.set_sprite_clip(0, 0, @user_area_width, @user_area_height)
     end
   end
 
@@ -425,7 +432,7 @@ class FmrbApp
   # (strings are immutable after that).
   def _build_frame_block
     title = @_name
-    @_frame_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+    @_frame_block = GfxBlock.new(@window_gfx, w: @window_width, h: @window_height) do |r, w:, h:|
       # The frame is the system's, not the app's, so it takes the system's
       # colours: one edit to [theme] in system_conf.toml restyles every
       # window at once. The values it used to carry (0xC5 and 0x60) were the
@@ -505,7 +512,7 @@ class FmrbApp
   # DEFINE_PROG_MAX_PAYLOAD (220B) を超えるリスクがあるため。
   def _build_corner_clear_block
     t = TRANSPARENT_COLOR
-    @_corner_clear_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+    @_corner_clear_block = GfxBlock.new(@window_gfx, w: @window_width, h: @window_height) do |r, w:, h:|
       # top-left: (0,0)(1,0)(0,1)
       r.draw_line 0,     0,     1,     0,     t
       r.draw_line 0,     1,     0,     1,     t
@@ -627,7 +634,6 @@ class FmrbApp
       old_h = @window_height
       _checkpoint_canvases
       resized = @window_width != old_w || @window_height != old_h
-      _layout_user_area if resized
       gfxs = []
       ObjectSpace.each_object(FmrbGfx) { |g| gfxs << g }
       i = 0
@@ -635,6 +641,9 @@ class FmrbApp
         g = gfxs[i]
         if (id = g._checkpoint_rebind)
           g._canvas_size(@window_width, @window_height) if resized && (id == @_canvas || id == @_bg_canvas)
+          # the origin is not in the image: the whole canvas, until the
+          # layout below gives @gfx its area
+          g._set_origin(0, 0, g.canvas_width, g.canvas_height)
           # the font picked again from this machine's fonts, from what the
           # app asked for (not what the writing side picked)
           g._checkpoint_font
@@ -684,7 +693,9 @@ class FmrbApp
         _build_frame_block unless @_fullscreen || @_frameless
         @_composite_region_w = nil
         @_composite_region_h = nil
-        _apply_user_area_sprite_clip
+        # the area and the origin, every time (also the sprite clip): the
+        # window may have another shape here, and the origin is the C side's
+        _layout_user_area
         _apply_rounded_corner_regions
         clear_user_area
       end
@@ -711,25 +722,34 @@ class FmrbApp
     nil
   end
 
-  # The user area of a window of @window_width x @window_height (the split
-  # initialize and app.c's resize make): a fullscreen or frameless window
-  # owns it all, a framed one loses the border and the title bar.
+  # The area the app owns in a window of @window_width x @window_height, and
+  # its drawing origin: the one place they are worked out (initialize, the
+  # resize app.c delivers, a restored app). A fullscreen or frameless window
+  # owns it all, and so does the desktop (the window with a wallpaper canvas,
+  # which draws no frame); a framed one loses the border and the title bar.
+  # The origin goes to @gfx, where every draw call adds it (doc/codebase_tidy
+  # T4), and the sprite clip follows the area.
   def _layout_user_area
-    if @_fullscreen || @_frameless
-      @user_area_x0 = 0
-      @user_area_y0 = 0
-      @user_area_x1 = @window_width
-      @user_area_y1 = @window_height
-      @user_area_width = @window_width
-      @user_area_height = @window_height
+    w = @window_width
+    h = @window_height
+    if @_fullscreen || @_frameless || @_bg_canvas
+      x0 = 0
+      y0 = 0
+      @user_area_width = w
+      @user_area_height = h
     else
-      @user_area_x0 = 1
-      @user_area_y0 = TITLE_BAR_H
-      @user_area_x1 = @window_width - 1
-      @user_area_y1 = @window_height - 1
-      @user_area_width = @window_width - 2
-      @user_area_height = @window_height - TITLE_BAR_H - 1
+      x0 = 1
+      y0 = TITLE_BAR_H
+      @user_area_width = w - 2
+      @user_area_height = h - TITLE_BAR_H - 1
     end
+    if @gfx
+      @gfx._set_origin(x0, y0, @user_area_width, @user_area_height)
+      @window_gfx._set_origin(0, 0, w, h)
+      @window_gfx._canvas_size(w, h)
+      _apply_user_area_sprite_clip
+    end
+    nil
   end
 
   def on_checkpoint_refused(reason)
@@ -755,14 +775,15 @@ class FmrbApp
     if @_closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
-      hit = (ev[:x] - cx).abs <= CLOSE_BTN_HIT_R &&
-            (ev[:y] - cy).abs <= CLOSE_BTN_HIT_R
+      # the window's coordinates: the button is on the frame
+      hit = (ev[:wx] - cx).abs <= CLOSE_BTN_HIT_R &&
+            (ev[:wy] - cy).abs <= CLOSE_BTN_HIT_R
 
       case ev[:type]
       when :mouse_down
         if hit && !@_fullscreen && @gfx
           @_close_btn_pressed = true
-          @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
+          @window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
           @gfx.present
         end
       when :mouse_up
@@ -775,7 +796,7 @@ class FmrbApp
             # The frame drew this circle in THEME_TEXT_LIGHT, so putting it
             # back in CLOSE_BTN_NORMAL_COLOR (white) changed its colour
             # under any theme whose light ink is not white.
-            @gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
+            @window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
             @gfx.present
           end
         elsif hit && !@_fullscreen && @gfx
@@ -792,8 +813,8 @@ class FmrbApp
     # (doc/window_menu: Send to, Reload for a file app, Close). A fullscreen
     # app has no title bar -- y < 11 is just the top of its picture -- so the
     # guard the close button always had applies here too.
-    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@_fullscreen
-      request_window_menu(ev[:x], ev[:y])
+    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:wy] < 11 && !@_fullscreen
+      request_window_menu(ev[:wx], ev[:wy])
     end
   end
 
@@ -816,10 +837,11 @@ class FmrbApp
   # click still reaches on_event either way, a long press does not (the
   # kernel held it back).
   def on_frameless_right_click(ev)
-    request_window_menu(ev[:x], ev[:y])
+    request_window_menu(ev[:wx], ev[:wy])
   end
 
-  # Ask the desktop for this window's menu at (x, y) of the window
+  # Ask the desktop for this window's menu at (x, y) of the window (the
+  # window's coordinates, ev[:wx] and ev[:wy], not the area's)
   # (doc/window_menu). The kernel adds what the desktop needs (the place on
   # the screen, the name, whether it can be reloaded, whether sending is on)
   # and the desktop draws it on its overlay. movable: the app can be written
@@ -1029,9 +1051,11 @@ class FmrbApp
       if @_frameless && !@_fullscreen
         lx = msg["x"]
         ly = msg["y"]
+        # a frameless window's area is the whole window: x is wx
+        px = lx.is_a?(Integer) ? lx : 0
+        py = ly.is_a?(Integer) ? ly : 0
         on_frameless_right_click({ type: :long_press, button: 1,
-                                   x: lx.is_a?(Integer) ? lx : 0,
-                                   y: ly.is_a?(Integer) ? ly : 0 })
+                                   x: px, y: py, wx: px, wy: py })
       end
     end
   end
@@ -1326,6 +1350,10 @@ class FmrbApp
     if @gfx
       @gfx.destroy  # Cleanup graphics resources
       @gfx = nil    # Prevent finalizer from running during mrb_close
+    end
+    if @window_gfx
+      @window_gfx.destroy
+      @window_gfx = nil
     end
     on_destroy
     _cleanup()  # C function: cleanup canvas and message queue

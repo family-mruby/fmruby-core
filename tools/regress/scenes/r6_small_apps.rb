@@ -29,8 +29,8 @@ Regress.app "mml", "flash/app/demo/mml.app.rb" do
   scene "buttons" do |s|
     s.start
     # The rows: x0 + 8, y0 + 26 + 18 * i.
-    x0 = s.ivar(:@user_area_x0)
-    y0 = s.ivar(:@user_area_y0)
+    x0 = s.ivar(:@gfx).origin_x
+    y0 = s.ivar(:@gfx).origin_y
     [3, 5, 7, 6, 8].each do |i|
       s.click(x0 + 20, y0 + 26 + 18 * i + 5)
       s.update
@@ -60,7 +60,7 @@ Regress.app "stackchan_remote", "flash/app/demo/stackchan_remote.app.rb" do
     bs = s.ivar(:@buttons)
     [0, 1, 3, 9, 12].each do |i|
       b = bs[i]
-      s.click(b[:x] + 3, b[:y] + 3)
+      s.click(b[:x] + s.ox + 3, b[:y] + s.oy + 3)
       s.update(2)
     end
   end
@@ -78,8 +78,8 @@ Regress.app "video_play", "flash/app/modern/video_play.app.rb" do
     s.env.video = { width: 320, height: 176 }
     s.start
     s.run(1200)
-    y = s.ivar(:@user_area_y0) + 5
-    x0 = s.ivar(:@user_area_x0) + 4
+    y = s.ivar(:@gfx).origin_y + 5
+    x0 = s.ivar(:@gfx).origin_x + 4
     # Pause, Rewind, Play, the rate (left, then right), Open.
     [1, 2, 0].each { |i| s.click(x0 + i * 48 + 5, y) }
     s.click(x0 + 4 * 48 + 5, y)

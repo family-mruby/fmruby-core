@@ -56,7 +56,9 @@ check("no size command when nothing differs", g4.count(:size), 0)
 
 # --- events ---------------------------------------------------------------
 
-def ev(type, x, y, button = 1) = { type: type, x: x, y: y, button: button }
+# x, y in the window's coordinates; the event carries the area's (the default
+# FakeApp's origin is (1, 11)), as app.c makes it.
+def ev(type, x, y, button = 1) = { type: type, x: x - 1, y: y - 11, wx: x, wy: y, button: button }
 
 g5 = FakeGfx.new(1)
 ui5 = FmrbUI.new(FakeApp.new(g5))
@@ -257,7 +259,7 @@ uip.flush
 gp.log.clear
 uip.set_visible(:a, false)
 check("the flush drew something", uip.flush, true)
-check("the app was asked for the hole", painter.calls, [[1, 11, 40, 16]])
+check("the app was asked for the hole", painter.calls, [[0, 0, 40, 16]])
 check("and no bg rectangle went out", gp.count(:fill), 0)
 check("still one present", gp.count(:present), 1)
 # Only holes go to the painter; a visible widget paints itself as before.
@@ -304,12 +306,12 @@ uiw = FmrbUI.new(FakeApp.new(gw, 1, 11, 100, 60))
 Log.warnings.clear
 uiw.button(:inside, 0, 0, 40, 16, "A")
 check("a widget that fits is quiet", Log.warnings, [])
-uiw.button(:below, 0, 40, 40, 16, "B")     # 11 + 40 + 16 = 67 > 60
+uiw.button(:below, 0, 40, 40, 16, "B")     # 40 + 16 = 56 > 48 (the area of 100x60)
 check("one hanging off the bottom warns", Log.warnings.length, 1)
 check("and names it", Log.warnings[0].include?("below"), true)
-check("with its rectangle", Log.warnings[0].include?("(1,51,40,16)"), true)
+check("with its rectangle", Log.warnings[0].include?("(0,40,40,16)"), true)
 Log.warnings.clear
-uiw.label(:right, 70, 0, 40, 10, "R")      # 1 + 70 + 40 = 111 > 100
+uiw.label(:right, 70, 0, 40, 10, "R")      # 70 + 40 = 110 > 98
 check("off the right edge warns too", Log.warnings.length, 1)
 Log.warnings.clear
 # move is the runtime path (the monitor repositions rows as tasks come and
@@ -441,7 +443,7 @@ check("nor before the start", (sb.set_value(-5); sb.value), 0)
 # Everything fits: no bar, and clicks fall through to whatever is underneath.
 sb.set_range(8, 10)
 check("not needed when it all fits", sb.active?, false)
-check("and it stops taking clicks", sb.hit?(5, 15), false)
+check("and it stops taking clicks", sb.hit?(4, 4), false)
 check("a click passes through", ui10.handle(ev(:mouse_down, 5, 15)), nil)
 sb.set_range(50, 10)
 check("needed again", sb.active?, true)

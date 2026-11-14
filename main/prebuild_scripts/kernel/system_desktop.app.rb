@@ -358,17 +358,15 @@ class SystemDesktopApp < FmrbApp
     # visible; hit testing skips the invisible ones. The dialogs move, so
     # each one places its widgets with move() when it opens.
     #
-    # set_origin(0, 0) because every dialog here computes canvas-absolute
-    # coordinates (@cdlg_x, @str_y ...) and hands them straight to move().
-    # The desktop is NOT fullscreen -- it is a window with the frame
-    # suppressed -- so its user area starts at (1, TITLE_BAR_H), and letting
-    # FmrbUI add that put every dialog button eleven pixels below its panel.
+    # Every dialog here computes canvas coordinates (@cdlg_x, @str_y ...) and
+    # hands them straight to move(): the desktop's area is its whole window
+    # (the base lays out the wallpaper's window that way), so the area's
+    # coordinates are the canvas's.
     #
     # bg_painter: self because the ground here is not one colour -- see
     # paint_bg_rect. Without it, hiding a widget painted a window-coloured
     # rectangle over the wallpaper.
     @ui = FmrbUI.new(self, bg_painter: self)
-    @ui.set_origin(0, 0)
     build_confirm_widgets
     build_config_widgets
     build_storage_widgets

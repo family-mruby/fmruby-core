@@ -159,7 +159,14 @@ module Regress
       self
     end
 
+    # What app.c does to a pointer event: the scene gives the window's
+    # coordinates (as the kernel does), the app gets them in its area (x, y,
+    # from the origin of its @gfx) and the window's as wx, wy.
     def event(ev)
+      g = @app.instance_variable_get(:@gfx)
+      if ev.key?(:x) && g
+        ev = ev.merge(wx: ev[:x], wy: ev[:y], x: ev[:x] - g.origin_x, y: ev[:y] - g.origin_y)
+      end
       @app.send(:_dispatch_event, ev)
       pump
       self
@@ -202,7 +209,8 @@ module Regress
     end
 
     # A click on an FmrbUI widget of the app (by its id): its middle, or
-    # near its left / right end (a stepper's - and +).
+    # near its left / right end (a stepper's - and +). The widget is in the
+    # area's coordinates; the click in the window's.
     def tap(id, ui: :@ui, at: :middle, button: 1)
       w = @app.instance_variable_get(ui).find(id)
       raise "no widget #{id.inspect} in #{ui}" unless w
@@ -211,13 +219,22 @@ module Regress
           when :right then w.x + w.w - 4
           else w.x + w.w / 2
           end
-      click(x, w.y + w.h / 2, button: button)
+      g = @app.instance_variable_get(:@gfx)
+      ox = g ? g.origin_x : 0
+      oy = g ? g.origin_y : 0
+      click(x + ox, w.y + w.h / 2 + oy, button: button)
     end
 
     def press(x, y, button: 1) = (Rec.mark("press #{x},#{y}"); event({ type: :mouse_down, button: button, x: x, y: y }))
     def release(x, y, button: 1) = (Rec.mark("release #{x},#{y}"); event({ type: :mouse_up, button: button, x: x, y: y }))
     def move(x, y) = (Rec.mark("move #{x},#{y}"); event({ type: :mouse_move, x: x, y: y }))
     def wheel(d, x: 10, y: 20) = (Rec.mark("wheel #{d}"); event({ type: :mouse_wheel, delta: d, x: x, y: y }))
+
+    # The app's drawing origin in its window (its @gfx's): what turns a place
+    # the app keeps (in its area's coordinates) into a click's, which are the
+    # window's.
+    def ox = (g = @app.instance_variable_get(:@gfx)) ? g.origin_x : 0
+    def oy = (g = @app.instance_variable_get(:@gfx)) ? g.origin_y : 0
 
     def ivar(name, value = nil)
       return @app.instance_variable_get(name) if value.nil?
@@ -262,13 +279,7 @@ module Regress
       a.instance_variable_set(:@_fullscreen, fullscreen)
       a.instance_variable_set(:@window_width, w)
       a.instance_variable_set(:@window_height, h)
-      a.instance_variable_set(:@user_area_x0, fullscreen ? 0 : 1)
-      a.instance_variable_set(:@user_area_y0, fullscreen ? 0 : 11)
-      a.instance_variable_set(:@user_area_width, fullscreen ? w : w - 2)
-      a.instance_variable_set(:@user_area_height, fullscreen ? h : h - 12)
-      a.instance_variable_set(:@user_area_x1, fullscreen ? w : w - 1)
-      a.instance_variable_set(:@user_area_y1, fullscreen ? h : h - 1)
-      a._apply_user_area_sprite_clip
+      a._layout_user_area
       a.send(:on_resize, w, h)
     end
   end

@@ -89,7 +89,7 @@ class FmrbApp
   def stop = nil
 
   def clear_user_area(_c)
-    @gfx.record(:clear, @user_area_x0, @user_area_y0, @user_area_width, @user_area_height)
+    @gfx.record(:clear, 0, 0, @user_area_width, @user_area_height)
   end
 end
 
@@ -334,8 +334,6 @@ def new_app(w, h)
   gfx = RecGfx.new(app.scopes)
   app.instance_variable_set(:@gfx, gfx)
   app.instance_variable_set(:@hits, FmrbUI::HitAreas.new)
-  app.instance_variable_set(:@user_area_x0, 0)
-  app.instance_variable_set(:@user_area_y0, 0)
   app.instance_variable_set(:@user_area_width, w)
   app.instance_variable_set(:@user_area_height, h)
   app.setup_strings

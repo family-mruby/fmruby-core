@@ -106,6 +106,27 @@ class FmrbGfx
     @__prefix = id == 1 ? "" : "[c#{id}] "
     @__size = 1
     @__font = [:default]
+    @__ox = @__oy = @__aw = @__ah = 0
+    @__image = false
+  end
+
+  # The drawing origin gfx.c keeps (doc/codebase_tidy T4): what a draw call
+  # adds to its coordinates, so the record holds the canvas's, as the
+  # display side gets them.
+  def _set_origin(x, y, w, h) = (@__ox, @__oy, @__aw, @__ah = x, y, w, h; self)
+  def origin_x = @__ox
+  def origin_y = @__oy
+  def area_width = @__aw
+  def area_height = @__ah
+  def __dx = @__image ? 0 : @__ox
+  def __dy = @__image ? 0 : @__oy
+
+  # Coordinates in a list of arguments: which ones are x and which y.
+  def __at(a, xs, ys)
+    a = a.dup
+    xs.each { |i| a[i] += __dx if a[i].is_a?(Numeric) }
+    ys.each { |i| a[i] += __dy if a[i].is_a?(Numeric) }
+    a
   end
 
   def __rec(name, *a) = Regress::Rec.add("#{@__prefix}#{name} #{Regress::Fmt.args(a)}".rstrip)
@@ -121,6 +142,8 @@ class FmrbGfx
   # An empty text draws nothing (and is not recorded).
   def _draw_text(x, y, s, c, bg = nil)
     return if s.to_s.empty?
+    x += __dx
+    y += __dy
     t = "#{@__prefix}text #{Regress::Fmt.v(x)} #{Regress::Fmt.v(y)} #{s.to_s.inspect} #{Regress::Fmt.c(c)}"
     t += " bg=#{Regress::Fmt.c(bg)}" if bg
     Regress::Rec.add("#{t} #{__font_tag}")
@@ -129,6 +152,8 @@ class FmrbGfx
   # Font0 for ASCII and misaki 8 for the rest, whatever the font.
   def _draw_text_hybrid(x, y, s, c, bg = nil)
     return if s.to_s.empty?
+    x += __dx
+    y += __dy
     t = "#{@__prefix}textm #{Regress::Fmt.v(x)} #{Regress::Fmt.v(y)} #{s.to_s.inspect} #{Regress::Fmt.c(c)}"
     t += " bg=#{Regress::Fmt.c(bg)}" if bg
     Regress::Rec.add("#{t} x#{@__size}")
@@ -137,18 +162,20 @@ class FmrbGfx
   # Shapes: the coordinates, then the colour last.
   %i[set_pixel draw_line draw_rect fill_rect draw_circle fill_circle draw_round_rect fill_round_rect
      draw_ellipse fill_ellipse draw_triangle fill_triangle draw_arc fill_arc].each do |m|
+    pts = %i[draw_line draw_triangle fill_triangle].include?(m) ? (m == :draw_line ? 2 : 3) : 1
     define_method(m) do |*a|
+      a = __at(a, (0...pts).map { |k| 2 * k }, (0...pts).map { |k| 2 * k + 1 })
       Regress::Rec.add("#{@__prefix}#{m} #{Regress::Fmt.args(a[0..-2])} #{Regress::Fmt.c(a[-1])}")
       self
     end
   end
 
-  def blend_rect(*a) = (__rec(:blend_rect, *a); self)
+  def blend_rect(*a) = (__rec(:blend_rect, *__at(a, [0], [1])); self)
   def clear(c = 0) = (Regress::Rec.add("#{@__prefix}clear #{Regress::Fmt.c(c)}"); self)
   def present = (Regress::Rec.present(@__prefix); self)
   def destroy = (__rec(:destroy); nil)
-  def draw_wallclock(*a) = (__rec(:draw_wallclock, *a); self)
-  def draw_free_iram(*a) = (__rec(:draw_free_iram, *a); self)
+  def draw_wallclock(*a) = (__rec(:draw_wallclock, *__at(a, [0], [1])); self)
+  def draw_free_iram(*a) = (__rec(:draw_free_iram, *__at(a, [0], [1])); self)
   def set_output_level(*) = self
   def set_chroma_level(*) = self
   def _get_pixel(_x, _y) = 0
@@ -171,28 +198,28 @@ class FmrbGfx
     { id: id, width: w, height: h }
   end
 
-  def _draw_image(id, x, y, sx, sy) = (__rec(:draw_image, id, x, y, sx, sy); self)
+  def _draw_image(id, x, y, sx, sy) = (__rec(:draw_image, id, x + __dx, y + __dy, sx, sy); self)
   def _delete_image(id) = (__rec(:delete_image, id); self)
   def _create_mask(w, h, _data) = (id = __next_id; __rec(:create_mask, id, w, h); id)
   def _delete_mask(id) = (__rec(:delete_mask, id); nil)
-  def _draw_image_masked(img, mask, x, y) = (__rec(:draw_image_masked, img, mask, x, y); self)
-  def _draw_tile(id, sx, sy, w, h, dx, dy) = (__rec(:draw_tile, id, sx, sy, w, h, dx, dy); self)
-  def _video_open(path, x, y, fps, lp) = (__rec(:video_open, path, x, y, fps, lp); Regress::Env.video_info)
+  def _draw_image_masked(img, mask, x, y) = (__rec(:draw_image_masked, img, mask, x + __dx, y + __dy); self)
+  def _draw_tile(id, sx, sy, w, h, dx, dy) = (__rec(:draw_tile, id, sx, sy, w, h, dx + __dx, dy + __dy); self)
+  def _video_open(path, x, y, fps, lp) = (__rec(:video_open, path, x + __dx, y + __dy, fps, lp); Regress::Env.video_info)
   def _video_control(a) = (__rec(:video_control, a); nil)
   def _video_status = Regress::Env.video_status
 
   def _set_composite_regions(flat) = (__rec(:composite_regions, flat); self)
   def _set_canvas_viewport(*a) = (__rec(:viewport, *a); self)
-  def _set_sprite_clip(*a) = (__rec(:sprite_clip, *a); self)
+  def _set_sprite_clip(x, y, w, h) = (w > 0 ? __rec(:sprite_clip, x + @__ox, y + @__oy, w, h) : __rec(:sprite_clip, x, y, w, h); self)
   def _export_frame(path) = (__rec(:export_frame, path); true)
 
   def _create_sprite_image(w, h, tc, use) = (id = __next_id; __rec(:sprite_image, id, w, h, tc, use); id)
   def _delete_sprite_image(id) = (__rec(:delete_sprite_image, id); nil)
   def _load_sprite_image_bmp(id, path) = (__rec(:load_bmp, id, path); true)
-  def _set_sprite_image_target(id) = (__rec(:sprite_target, id); nil)
-  def _create_sprite_instance(imgs, x, y, z) = (id = __next_id; __rec(:sprite, id, imgs, x, y, z); id)
+  def _set_sprite_image_target(id) = (@__image = id != 0; __rec(:sprite_target, id); nil)
+  def _create_sprite_instance(imgs, x, y, z) = (id = __next_id; __rec(:sprite, id, imgs, x + @__ox, y + @__oy, z); id)
   def _delete_sprite_instance(id) = (__rec(:delete_sprite, id); nil)
-  def _sprite_move(id, x, y) = (__rec(:sprite_move, id, x, y); nil)
+  def _sprite_move(id, x, y) = (__rec(:sprite_move, id, x + @__ox, y + @__oy); nil)
   def _sprite_visible(id, v) = (__rec(:sprite_visible, id, v); nil)
   def _sprite_frame(id, i) = (__rec(:sprite_frame, id, i); nil)
   def _delete_all_sprites = (__rec(:delete_all_sprites); nil)

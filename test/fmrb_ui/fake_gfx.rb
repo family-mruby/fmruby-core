@@ -18,10 +18,15 @@ end
 # metrics: ASCII 6px, multi-byte 8px, both multiplied by the current text size.
 class FakeGfx
   attr_reader :current_text_size, :log
+  # The drawing origin FmrbGfx keeps in C: what every draw call adds, so the
+  # log holds canvas coordinates, as the display gets them.
+  attr_accessor :ox, :oy
 
   def initialize(size = 1)
     @current_text_size = size
     @log = []
+    @ox = 0
+    @oy = 0
   end
 
   def set_text_size(s)
@@ -44,11 +49,11 @@ class FakeGfx
     base * @current_text_size
   end
 
-  def draw_line(*a); @log << [:line, *a]; self; end
-  def fill_rect(*a); @log << [:fill, *a]; self; end
-  def draw_rect(*a); @log << [:rect, *a]; self; end
+  def draw_line(x0, y0, x1, y1, c); @log << [:line, x0 + @ox, y0 + @oy, x1 + @ox, y1 + @oy, c]; self; end
+  def fill_rect(x, y, *a); @log << [:fill, x + @ox, y + @oy, *a]; self; end
+  def draw_rect(x, y, *a); @log << [:rect, x + @ox, y + @oy, *a]; self; end
   def draw_text_mixed(x, y, s, color, _bg = nil)
-    @log << [:text, x, y, s, @current_text_size, color]
+    @log << [:text, x + @ox, y + @oy, s, @current_text_size, color]
     self
   end
   def present; @log << [:present]; self; end
@@ -86,16 +91,21 @@ class FakeBgPainter
   end
 end
 
-# The three readers FmrbUI takes from the app. The user area origin is the
-# windowed one (1, 11), so the tests see the same offsetting real apps do.
+# The readers FmrbUI takes from the app. The area is a framed window's: its
+# origin (1, 11) goes to the gfx, which adds it as FmrbGfx does, so the log
+# shows the canvas coordinates real apps produce. Events in the tests are
+# given in the window's coordinates and put in the area's by ev (run.rb), as
+# app.c does.
 class FakeApp
-  attr_reader :gfx, :user_area_x0, :user_area_y0, :window_width, :window_height
+  attr_reader :gfx, :user_area_width, :user_area_height, :window_width, :window_height
   attr_reader :attached_uis
 
   def initialize(gfx, x0 = 1, y0 = 11, w = 320, h = 240)
     @gfx = gfx
-    @user_area_x0 = x0
-    @user_area_y0 = y0
+    gfx.ox = x0
+    gfx.oy = y0
+    @user_area_width = w - 2 * x0
+    @user_area_height = h - y0 - x0
     @window_width = w
     @window_height = h
     @attached_uis = []

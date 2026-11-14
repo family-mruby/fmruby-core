@@ -78,8 +78,8 @@ Regress.app "othello_direct", "flash/app/test/othello.app.rb" do
     end
     s.key :right
     s.update
-    bx = s.ivar(:@bx)
-    by = s.ivar(:@by)
+    bx = s.ivar(:@bx) + s.ox
+    by = s.ivar(:@by) + s.oy
     c = s.ivar(:@cell)
     s.click(bx + c * 2 + 2, by + c * 3 + 2)
     s.update(2)

@@ -520,32 +520,57 @@ class FmrbGfx
   }
 
   attr_reader :current_font, :current_text_size, :canvas_width, :canvas_height, :canvas_id
+  # The drawing origin and the size of its area (doc/codebase_tidy T4); the
+  # mruby class keeps them in gfx.c. @dx/@dy are what a draw call adds: the
+  # origin, or 0 while the target is a sprite image.
+  def origin_x; @ox; end
+  def origin_y; @oy; end
+  def area_width; @aw; end
+  def area_height; @ah; end
 
   def initialize(canvas_id, width: 0, height: 0)
     @canvas_id = canvas_id
     @canvas_width = width
     @canvas_height = height
+    @ox = 0
+    @oy = 0
+    @dx = 0
+    @dy = 0
+    @aw = width
+    @ah = height
+    @to_image = false
     @current_font = [:default]
     @current_text_size = 1
   end
 
+  # The area this FmrbGfx draws in (FmrbApp#_layout_user_area).
+  def _set_origin(x, y, w, h)
+    @ox = x
+    @oy = y
+    @aw = w
+    @ah = h
+    @dx = @to_image ? 0 : x
+    @dy = @to_image ? 0 : y
+    self
+  end
+
   # ---- primitives (forward to the gfx shim with @canvas_id) ----
   def clear(color); FmrbSpxGfx.fmrb_spx_gfx_clear(@canvas_id, color); self; end
-  def set_pixel(x, y, color); FmrbSpxGfx.fmrb_spx_gfx_set_pixel(@canvas_id, x, y, color); self; end
-  def draw_line(x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_line(@canvas_id, x1, y1, x2, y2, color); self; end
-  def draw_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_draw_rect(@canvas_id, x, y, w, h, color); self; end
-  def fill_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_fill_rect(@canvas_id, x, y, w, h, color); self; end
-  def blend_rect(x, y, w, h, color, mode); FmrbSpxGfx.fmrb_spx_gfx_blend_rect(@canvas_id, x, y, w, h, color, mode); self; end
-  def draw_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_circle(@canvas_id, x, y, r, color); self; end
-  def fill_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_circle(@canvas_id, x, y, r, color); self; end
-  def draw_round_rect(x, y, w, h, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_round_rect(@canvas_id, x, y, w, h, r, color); self; end
-  def fill_round_rect(x, y, w, h, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_round_rect(@canvas_id, x, y, w, h, r, color); self; end
-  def draw_ellipse(x, y, rx, ry, color); FmrbSpxGfx.fmrb_spx_gfx_draw_ellipse(@canvas_id, x, y, rx, ry, color); self; end
-  def fill_ellipse(x, y, rx, ry, color); FmrbSpxGfx.fmrb_spx_gfx_fill_ellipse(@canvas_id, x, y, rx, ry, color); self; end
-  def draw_triangle(x0, y0, x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_triangle(@canvas_id, x0, y0, x1, y1, x2, y2, color); self; end
-  def fill_triangle(x0, y0, x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_fill_triangle(@canvas_id, x0, y0, x1, y1, x2, y2, color); self; end
-  def draw_arc(x, y, r0, r1, a0, a1, color); FmrbSpxGfx.fmrb_spx_gfx_draw_arc(@canvas_id, x, y, r0, r1, a0, a1, color); self; end
-  def fill_arc(x, y, r0, r1, a0, a1, color); FmrbSpxGfx.fmrb_spx_gfx_fill_arc(@canvas_id, x, y, r0, r1, a0, a1, color); self; end
+  def set_pixel(x, y, color); FmrbSpxGfx.fmrb_spx_gfx_set_pixel(@canvas_id, x + @dx, y + @dy, color); self; end
+  def draw_line(x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_line(@canvas_id, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
+  def draw_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_draw_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
+  def fill_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_fill_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
+  def blend_rect(x, y, w, h, color, mode); FmrbSpxGfx.fmrb_spx_gfx_blend_rect(@canvas_id, x + @dx, y + @dy, w, h, color, mode); self; end
+  def draw_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
+  def fill_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
+  def draw_round_rect(x, y, w, h, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
+  def fill_round_rect(x, y, w, h, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
+  def draw_ellipse(x, y, rx, ry, color); FmrbSpxGfx.fmrb_spx_gfx_draw_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
+  def fill_ellipse(x, y, rx, ry, color); FmrbSpxGfx.fmrb_spx_gfx_fill_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
+  def draw_triangle(x0, y0, x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
+  def fill_triangle(x0, y0, x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_fill_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
+  def draw_arc(x, y, r0, r1, a0, a1, color); FmrbSpxGfx.fmrb_spx_gfx_draw_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
+  def fill_arc(x, y, r0, r1, a0, a1, color); FmrbSpxGfx.fmrb_spx_gfx_fill_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
 
   # ---- text (with font/size caching, like fmrb-gfx.rb) ----
   def set_font(family, size = nil)
@@ -571,18 +596,18 @@ class FmrbGfx
     flags |= 1 if bg_color
     flags |= 2 if mixed
     bg = bg_color || 0
-    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x, y, s, s.bytesize, color, bg, flags)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x + @dx, y + @dy, s, s.bytesize, color, bg, flags)
     self
   end
 
   # Periodic read-outs formatted in C (twins of the mruby Graphics methods), so
   # the desktop's 1Hz repaint allocates nothing. Return true when drawn.
   def draw_wallclock(x, y, color, bg_color)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_wallclock(@canvas_id, x, y, color, bg_color) == 1
+    FmrbSpxGfx.fmrb_spx_gfx_draw_wallclock(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
   end
 
   def draw_free_iram(x, y, color, bg_color)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_free_iram(@canvas_id, x, y, color, bg_color) == 1
+    FmrbSpxGfx.fmrb_spx_gfx_draw_free_iram(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
   end
 
   # Positional-argument form of draw_text(..., mixed: true). Keyword arguments
@@ -593,7 +618,7 @@ class FmrbGfx
     flags = 2
     flags |= 1 if bg_color
     bg = bg_color || 0
-    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x, y, s, s.bytesize, color, bg, flags)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x + @dx, y + @dy, s, s.bytesize, color, bg, flags)
     self
   end
 
@@ -644,7 +669,7 @@ class FmrbGfx
   end
 
   def get_pixel(x, y)
-    v = FmrbSpxGfx.fmrb_spx_gfx_get_pixel(@canvas_id, x, y)
+    v = FmrbSpxGfx.fmrb_spx_gfx_get_pixel(@canvas_id, x + @dx, y + @dy)
     v < 0 ? 0 : v
   end
 
@@ -674,12 +699,12 @@ class FmrbGfx
   end
 
   def draw_image_masked(image_id, mask_id, x:, y:)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_image_masked(@canvas_id, image_id, mask_id, x, y)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_image_masked(@canvas_id, image_id, mask_id, x + @dx, y + @dy)
     self
   end
 
   def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_tile(@canvas_id, image_id, src_x, src_y, w, h, dst_x, dst_y)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_tile(@canvas_id, image_id, src_x, src_y, w, h, dst_x + @dx, dst_y + @dy)
     self
   end
 
@@ -744,7 +769,7 @@ class FmrbGfx
   # Returns FmrbVideo or nil; nil means this backend cannot play it.
   def video_open(path, x: 0, y: 0, fps: 15, loop: false)
     s = path.to_s
-    buf = FmrbSpxGfx.fmrb_spx_gfx_video_open(@canvas_id, s, s.bytesize, x, y,
+    buf = FmrbSpxGfx.fmrb_spx_gfx_video_open(@canvas_id, s, s.bytesize, x + @dx, y + @dy,
                                              fps, loop ? 1 : 0)
     return nil if buf.bytesize == 0
     FmrbVideo.new(self, SpxBytes.u16(buf, 0), SpxBytes.u16(buf, 2))
@@ -769,7 +794,7 @@ class FmrbGfx
     # (uniform), matching gfx.c which just multiplies.
     sxfp = (scale_x * 256.0).to_i
     syfp = (scale_y * 256.0).to_i
-    FmrbSpxGfx.fmrb_spx_gfx_draw_image(@canvas_id, image_id, x, y, sxfp, syfp)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_image(@canvas_id, image_id, x + @dx, y + @dy, sxfp, syfp)
     self
   end
 
@@ -789,8 +814,8 @@ class FmrbGfx
     img_w = img[:width]
     img_h = img[:height]
     if coord == :center
-      x = (@canvas_width - img_w) / 2
-      y = (@canvas_height - img_h) / 2
+      x = (@aw - img_w) / 2
+      y = (@ah - img_h) / 2
     elsif coord
       x = coord[0]
       y = coord[1]
@@ -850,7 +875,8 @@ class FmrbGfx
   # SpriteInstance#move. FmrbApp sets the user area by default; narrow it
   # further to keep sprites out of an app-drawn status bar.
   def set_sprite_clip(x, y, w, h)
-    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_clip(@canvas_id, x, y, w, h)
+    # sprite coordinates: from the origin (w == 0 clears, as is)
+    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_clip(@canvas_id, w > 0 ? x + @ox : x, w > 0 ? y + @oy : y, w, h)
     self
   end
 
@@ -876,6 +902,10 @@ class FmrbGfx
   end
 
   def _set_sprite_image_target(image_id)
+    # drawing into a sprite image: its own coordinates, no origin
+    @to_image = image_id != 0
+    @dx = @to_image ? 0 : @ox
+    @dy = @to_image ? 0 : @oy
     FmrbSpxGfx.fmrb_spx_gfx_set_sprite_image_target(@canvas_id, image_id)
     self
   end
@@ -888,7 +918,7 @@ class FmrbGfx
       SpxBytes.set_u16(buf, i * 2, id)
       i += 1
     end
-    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_instance(@canvas_id, buf, n, x, y, z_order)
+    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_instance(@canvas_id, buf, n, x + @ox, y + @oy, z_order)
   end
 
   def _delete_sprite_instance(instance_id)
@@ -897,7 +927,7 @@ class FmrbGfx
   end
 
   def _sprite_move(instance_id, x, y)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_move(@canvas_id, instance_id, x, y)
+    FmrbSpxGfx.fmrb_spx_gfx_sprite_move(@canvas_id, instance_id, x + @ox, y + @oy)
     self
   end
 
@@ -1218,8 +1248,12 @@ class FmrbApp
     return 0 if @_fullscreen
     RESIZE_MARK + 1
   end
-  # User area readers, same as the mruby base (FmrbUI needs them).
-  attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
+  # The size of the area the app owns; its top-left is (0, 0) of @gfx and of
+  # the pointer events. Same as the mruby base.
+  attr_reader :user_area_width, :user_area_height
+  # The drawer with its origin at the window's top-left (the frame's). Same
+  # as the mruby base.
+  attr_reader :window_gfx
   # Whether a click on the close-button area may stop the app. System apps
   # that own the screen (the desktop) set this to false: for them the
   # top-right corner is ordinary UI, not a close button. Same as the mruby
@@ -1265,22 +1299,7 @@ class FmrbApp
 
     if @_canvas
       @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
-      # A frameless window owns the whole canvas, as a fullscreen one does.
-      if @_fullscreen || @_frameless
-        @user_area_x0 = 0
-        @user_area_y0 = 0
-        @user_area_x1 = @window_width
-        @user_area_y1 = @window_height
-        @user_area_width = @window_width
-        @user_area_height = @window_height
-      else
-        @user_area_x0 = 1
-        @user_area_y0 = TITLE_BAR_H
-        @user_area_x1 = @window_width - 1
-        @user_area_y1 = @window_height - 1
-        @user_area_width = @window_width - 2
-        @user_area_height = @window_height - TITLE_BAR_H - 1
-      end
+      @window_gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
 
       if @_bg_canvas
         @bg_gfx = FmrbGfx.new(@_bg_canvas, width: @window_width, height: @window_height)
@@ -1288,7 +1307,7 @@ class FmrbApp
         @bg_gfx = nil
       end
 
-      _apply_user_area_sprite_clip
+      _layout_user_area
 
       if @_fullscreen
         # nothing to frame
@@ -1301,9 +1320,38 @@ class FmrbApp
       end
     else
       @gfx = nil
+      @window_gfx = nil
       @bg_gfx = nil
       Log.debug("Headless app: no graphics initialized")
     end
+  end
+
+  # The area the app owns and its drawing origin, worked out in this one
+  # place (initialize, a resize). Same as the mruby base: a fullscreen or
+  # frameless window and the desktop (the wallpaper's window) own it all, a
+  # framed one loses the border and the title bar. The sprite clip follows.
+  def _layout_user_area
+    w = @window_width
+    h = @window_height
+    x0 = 1
+    y0 = TITLE_BAR_H
+    if @_fullscreen || @_frameless || @_bg_canvas
+      x0 = 0
+      y0 = 0
+      @user_area_width = w
+      @user_area_height = h
+    else
+      @user_area_width = w - 2
+      @user_area_height = h - TITLE_BAR_H - 1
+    end
+    g = @gfx
+    wg = @window_gfx
+    if g && wg
+      g._set_origin(x0, y0, @user_area_width, @user_area_height)
+      wg._set_origin(0, 0, w, h)
+      _apply_user_area_sprite_clip
+    end
+    nil
   end
 
   def draw_window_frame
@@ -1545,7 +1593,7 @@ class FmrbApp
   # A frameless window's default is the colour key, its ground.
   def clear_user_area(color = (@_frameless ? TRANSPARENT_COLOR : FmrbConst::THEME_WINDOW_BG))
     return unless @gfx
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, color)
+    @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, color)
     # @_bg_canvas is the desktop, which has no frame -- letting it through
     # draws a title bar across the wallpaper. @_fullscreen is refused inside
     # draw_window_frame too; it is named here so the reason is visible.
@@ -1601,12 +1649,13 @@ class FmrbApp
     x = w - 2
     y = h - 2
     m = RESIZE_MARK - 1
-    @gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
+    @window_gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
   end
 
+  # Through @window_gfx: the frame is outside the area.
   def _paint_frame
-    return unless @gfx
-    g = @gfx
+    return unless @window_gfx
+    g = @window_gfx
     w = @window_width
     h = @window_height
     # The frame is the system's, not the app's, so it takes the system's
@@ -1688,8 +1737,8 @@ class FmrbApp
     if @_fullscreen
       @gfx.clear_sprite_clip
     else
-      @gfx.set_sprite_clip(@user_area_x0, @user_area_y0,
-                           @user_area_width, @user_area_height)
+      # sprite coordinates are the area's
+      @gfx.set_sprite_clip(0, 0, @user_area_width, @user_area_height)
     end
   end
 
@@ -1729,12 +1778,13 @@ class FmrbApp
     if @_closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
-      hit = (ev[:x] - cx).abs <= CLOSE_BTN_HIT_R && (ev[:y] - cy).abs <= CLOSE_BTN_HIT_R
+      # the window's coordinates: the button is on the frame
+      hit = (ev[:wx] - cx).abs <= CLOSE_BTN_HIT_R && (ev[:wy] - cy).abs <= CLOSE_BTN_HIT_R
       case ev[:type]
       when :mouse_down
         if hit && !@_fullscreen && @gfx
           @_close_btn_pressed = true
-          @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
+          @window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
           @gfx.present
         end
       when :mouse_up
@@ -1746,7 +1796,7 @@ class FmrbApp
             # The frame drew this circle in THEME_TEXT_LIGHT, so putting it
             # back in CLOSE_BTN_NORMAL_COLOR (white) changed its colour
             # under any theme whose light ink is not white.
-            @gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
+            @window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
             @gfx.present
           end
         elsif hit && !@_fullscreen && @gfx
@@ -1761,8 +1811,8 @@ class FmrbApp
     # A right click on the title bar opens the window menu (doc/window_menu).
     # A fullscreen app has no title bar -- y < 11 is just the top of its
     # picture -- so it needs the guard the close button always had.
-    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@_fullscreen
-      request_window_menu(ev[:x], ev[:y])
+    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:wy] < 11 && !@_fullscreen
+      request_window_menu(ev[:wx], ev[:wy])
     end
   end
 
@@ -1780,7 +1830,7 @@ class FmrbApp
   # a second (ev[:type] == :long_press). Same as the mruby base: the window
   # menu; an app using the right button overrides it.
   def on_frameless_right_click(ev)
-    request_window_menu(ev[:x], ev[:y])
+    request_window_menu(ev[:wx], ev[:wy])
   end
 
   # The window menu on the desktop (see the mruby base). A Spinel program is
@@ -1995,6 +2045,19 @@ class FmrbApp
     end
   end
 
+  # A pointer's place comes in window coordinates; x and y are put in the
+  # area the app draws in (the origin of @gfx), wx and wy keep the window's.
+  # Same as app.c for the mruby base.
+  def _event_ox
+    g = @gfx
+    g ? g.origin_x : 0
+  end
+
+  def _event_oy
+    g = @gfx
+    g ? g.origin_y : 0
+  end
+
   # Parse a raw HID event payload into the same symbol-keyed Hash the mruby C
   # dispatcher built (fmrb_hid_msg.h layouts). Returns nil for unknown/short.
   def _parse_hid_event(data)
@@ -2010,23 +2073,24 @@ class FmrbApp
         character: data.getbyte(4) }
     when 4, 5  # MOUSE_BUTTON_DOWN / UP
       return nil if data.bytesize < 6
+      wx = SpxBytes.u16(data, 2)
+      wy = SpxBytes.u16(data, 4)
       { type: (subtype == 4 ? :mouse_down : :mouse_up),
         button: data.getbyte(1),
-        x: SpxBytes.u16(data, 2),
-        y: SpxBytes.u16(data, 4) }
+        x: wx - _event_ox, y: wy - _event_oy, wx: wx, wy: wy }
     when 3  # MOUSE_MOVE (kernel sends 6-byte [subtype,button,x_lo,x_hi,y_lo,y_hi])
       return nil if data.bytesize < 6
-      { type: :mouse_move,
-        x: SpxBytes.u16(data, 2),
-        y: SpxBytes.u16(data, 4) }
+      wx = SpxBytes.u16(data, 2)
+      wy = SpxBytes.u16(data, 4)
+      { type: :mouse_move, x: wx - _event_ox, y: wy - _event_oy, wx: wx, wy: wy }
     when 10  # MOUSE_WHEEL (notches in the button slot, signed)
       return nil if data.bytesize < 6
       d = data.getbyte(1)
       d -= 256 if d > 127
-      { type: :mouse_wheel,
-        delta: d,
-        x: SpxBytes.u16(data, 2),
-        y: SpxBytes.u16(data, 4) }
+      wx = SpxBytes.u16(data, 2)
+      wy = SpxBytes.u16(data, 4)
+      { type: :mouse_wheel, delta: d,
+        x: wx - _event_ox, y: wy - _event_oy, wx: wx, wy: wy }
     when 6, 7  # GAMEPAD_BUTTON_DOWN / UP
       return nil if data.bytesize < 3
       { type: (subtype == 6 ? :gamepad_down : :gamepad_up),
@@ -2062,24 +2126,8 @@ class FmrbApp
         @_fullscreen = (fs == true) unless fs.nil?
         @window_width = w
         @window_height = ht
-        if @_fullscreen || @_frameless
-          @user_area_x0 = 0
-          @user_area_y0 = 0
-          @user_area_width = w
-          @user_area_height = ht
-          @user_area_x1 = w
-          @user_area_y1 = ht
-        else
-          @user_area_x0 = 1
-          @user_area_y0 = TITLE_BAR_H
-          @user_area_width = w - 2
-          @user_area_height = ht - TITLE_BAR_H - 1
-          @user_area_x1 = w - 1
-          @user_area_y1 = ht - 1
-        end
-        # The backend drops the sprite clip on resize (it was sized for the old
-        # active area), so re-issue one for the new user area.
-        _apply_user_area_sprite_clip
+        # the area, the origin and the sprite clip the backend dropped
+        _layout_user_area
         on_resize(w, ht)
       end
     elsif cmd == "moved"
@@ -2128,9 +2176,11 @@ class FmrbApp
       if @_frameless && !@_fullscreen
         lx = msg["x"]
         ly = msg["y"]
+        # a frameless window's area is the whole window: x is wx
+        px = lx.is_a?(Integer) ? lx : 0
+        py = ly.is_a?(Integer) ? ly : 0
         on_frameless_right_click({ type: :long_press, button: 1,
-                                   x: lx.is_a?(Integer) ? lx : 0,
-                                   y: ly.is_a?(Integer) ? ly : 0 })
+                                   x: px, y: py, wx: px, wy: py })
       end
     end
   end

@@ -748,7 +748,12 @@ static mp_obj_t fmrb_spin(mp_obj_t app, mp_obj_t timeout_in) {
         if (type == FMRB_MP_MSG_TYPE_HID_EVENT) {
             mp_obj_t ev = hid_event_to_dict(buf, (size_t)n);
             if (ev != mp_const_none) {
-                call_if_present(app, MP_QSTR_on_event, 1, &ev);
+                // The base's _dispatch_event puts the pointer in the app's
+                // area and runs the frame before on_event (fmrb_app.py). Its
+                // name is interned here rather than added to the generated
+                // qstr table (rake micropython:gen); the lookup finds it
+                // after the first event.
+                call_if_present(app, qstr_from_str("_dispatch_event"), 1, &ev);
             }
         } else if (type == FMRB_MP_MSG_TYPE_APP_CONTROL) {
             dispatch_control(app, buf, (size_t)n);

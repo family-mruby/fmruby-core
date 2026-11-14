@@ -36,9 +36,30 @@ class FmrbGfx:
         self.canvas_id = canvas_id
         self.canvas_width = width
         self.canvas_height = height
+        # The drawing origin and the size of its area (doc/codebase_tidy
+        # T4): every coordinate a draw call takes is from it. FmrbApp gives
+        # the app's gfx the area inside the frame (_layout_user_area); dx/dy
+        # are what a draw adds -- the origin, or 0 while drawing into a
+        # sprite image.
+        self.origin_x = 0
+        self.origin_y = 0
+        self.area_width = width
+        self.area_height = height
+        self.dx = 0
+        self.dy = 0
+        self.to_image = False
         # What set_font last selected, so a caller that has to draw in another
         # font (the window frame does) can put this one back.
         self.current_font = (FmrbGfx.FONT_DEFAULT, None)
+
+    def _set_origin(self, x, y, w, h):
+        self.origin_x = x
+        self.origin_y = y
+        self.area_width = w
+        self.area_height = h
+        self.dx = 0 if self.to_image else x
+        self.dy = 0 if self.to_image else y
+        return self
 
     def clear(self, color=BLACK):
         _fmrb.gfx_clear(self.canvas_id, color)
@@ -49,58 +70,58 @@ class FmrbGfx:
         return self
 
     def set_pixel(self, x, y, color):
-        _fmrb.gfx_set_pixel(self.canvas_id, x, y, color)
+        _fmrb.gfx_set_pixel(self.canvas_id, x + self.dx, y + self.dy, color)
         return self
 
     def draw_line(self, x0, y0, x1, y1, color):
-        _fmrb.gfx_draw_line(self.canvas_id, x0, y0, x1, y1, color)
+        _fmrb.gfx_draw_line(self.canvas_id, x0 + self.dx, y0 + self.dy, x1 + self.dx, y1 + self.dy, color)
         return self
 
     def draw_rect(self, x, y, w, h, color):
-        _fmrb.gfx_draw_rect(self.canvas_id, x, y, w, h, color)
+        _fmrb.gfx_draw_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, color)
         return self
 
     def fill_rect(self, x, y, w, h, color):
-        _fmrb.gfx_fill_rect(self.canvas_id, x, y, w, h, color)
+        _fmrb.gfx_fill_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, color)
         return self
 
     def draw_circle(self, x, y, r, color):
-        _fmrb.gfx_draw_circle(self.canvas_id, x, y, r, color)
+        _fmrb.gfx_draw_circle(self.canvas_id, x + self.dx, y + self.dy, r, color)
         return self
 
     def fill_circle(self, x, y, r, color):
-        _fmrb.gfx_fill_circle(self.canvas_id, x, y, r, color)
+        _fmrb.gfx_fill_circle(self.canvas_id, x + self.dx, y + self.dy, r, color)
         return self
 
     def draw_round_rect(self, x, y, w, h, r, color):
-        _fmrb.gfx_draw_round_rect(self.canvas_id, x, y, w, h, r, color)
+        _fmrb.gfx_draw_round_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, r, color)
         return self
 
     def fill_round_rect(self, x, y, w, h, r, color):
-        _fmrb.gfx_fill_round_rect(self.canvas_id, x, y, w, h, r, color)
+        _fmrb.gfx_fill_round_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, r, color)
         return self
 
     def draw_ellipse(self, x, y, rx, ry, color):
-        _fmrb.gfx_draw_ellipse(self.canvas_id, x, y, rx, ry, color)
+        _fmrb.gfx_draw_ellipse(self.canvas_id, x + self.dx, y + self.dy, rx, ry, color)
         return self
 
     def fill_ellipse(self, x, y, rx, ry, color):
-        _fmrb.gfx_fill_ellipse(self.canvas_id, x, y, rx, ry, color)
+        _fmrb.gfx_fill_ellipse(self.canvas_id, x + self.dx, y + self.dy, rx, ry, color)
         return self
 
     def draw_triangle(self, x0, y0, x1, y1, x2, y2, color):
-        _fmrb.gfx_draw_triangle(self.canvas_id, x0, y0, x1, y1, x2, y2, color)
+        _fmrb.gfx_draw_triangle(self.canvas_id, x0 + self.dx, y0 + self.dy, x1 + self.dx, y1 + self.dy, x2 + self.dx, y2 + self.dy, color)
         return self
 
     def fill_triangle(self, x0, y0, x1, y1, x2, y2, color):
-        _fmrb.gfx_fill_triangle(self.canvas_id, x0, y0, x1, y1, x2, y2, color)
+        _fmrb.gfx_fill_triangle(self.canvas_id, x0 + self.dx, y0 + self.dy, x1 + self.dx, y1 + self.dy, x2 + self.dx, y2 + self.dy, color)
         return self
 
     # mixed=True draws ASCII with the built-in 6x8 font and multi-byte runs
     # with the Japanese one, in a single line. Without it, a line is drawn
     # entirely in whatever set_font selected.
     def draw_text(self, x, y, text, color, bg_color=None, mixed=False):
-        _fmrb.gfx_draw_text(self.canvas_id, x, y, str(text), color, bg_color, mixed)
+        _fmrb.gfx_draw_text(self.canvas_id, x + self.dx, y + self.dy, str(text), color, bg_color, mixed)
         return self
 
     # family is FONT_DEFAULT or FONT_JA; size is the pixel height (the JA font
@@ -161,7 +182,7 @@ class FmrbGfx:
     def draw_image(self, image_id, x=0, y=0, scale_x=1.0, scale_y=0.0):
         # Scale is fixed point on the wire: 256 = 1.0, and 0 for y means
         # "same as x".
-        _fmrb.gfx_draw_image(self.canvas_id, image_id, x, y,
+        _fmrb.gfx_draw_image(self.canvas_id, image_id, x + self.dx, y + self.dy,
                              int(scale_x * 256), int(scale_y * 256))
         return self
 
@@ -173,7 +194,7 @@ class FmrbGfx:
     # is allocated, so this is the cheap way to draw a fixed background out of
     # a tile sheet.
     def draw_tile(self, image_id, src_x, src_y, w, h, dst_x=0, dst_y=0):
-        _fmrb.gfx_draw_tile(self.canvas_id, image_id, src_x, src_y, w, h, dst_x, dst_y)
+        _fmrb.gfx_draw_tile(self.canvas_id, image_id, src_x, src_y, w, h, dst_x + self.dx, dst_y + self.dy)
         return self
 
     def delete_all_sprites(self):
@@ -194,11 +215,19 @@ class SpriteImage:
     # Between set_target and reset_target, the parent FmrbGfx draws into this
     # image instead of onto the canvas.
     def set_target(self):
-        _fmrb.gfx_set_sprite_target(self.gfx.canvas_id, self.id)
+        g = self.gfx
+        g.to_image = True
+        g.dx = 0
+        g.dy = 0
+        _fmrb.gfx_set_sprite_target(g.canvas_id, self.id)
         return self
 
     def reset_target(self):
-        _fmrb.gfx_set_sprite_target(self.gfx.canvas_id, 0)
+        g = self.gfx
+        g.to_image = False
+        g.dx = g.origin_x
+        g.dy = g.origin_y
+        _fmrb.gfx_set_sprite_target(g.canvas_id, 0)
         return self
 
     def load_bmp(self, path):
@@ -219,10 +248,12 @@ class SpriteInstance:
         self.gfx = gfx
         frames = images if isinstance(images, list) else [images]
         self.id = _fmrb.gfx_create_sprite_instance(gfx.canvas_id,
-                                                   [f.id for f in frames], x, y, z)
+                                                   [f.id for f in frames],
+                                                   x + gfx.origin_x, y + gfx.origin_y, z)
 
     def move(self, x, y):
-        _fmrb.gfx_sprite_move(self.gfx.canvas_id, self.id, x, y)
+        g = self.gfx
+        _fmrb.gfx_sprite_move(g.canvas_id, self.id, x + g.origin_x, y + g.origin_y)
         return self
 
     def set_visible(self, visible):

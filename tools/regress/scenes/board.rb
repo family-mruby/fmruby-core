@@ -50,11 +50,11 @@ Regress.app "board", "flash/app/game/board/board.app.rb" do
 
   scene "draw_stroke" do |s|
     BoardScenes.at_board(s)
-    cx = s.ivar(:@cx)
-    cy = s.ivar(:@cy)
+    cx = s.ivar(:@cx) + s.ox
+    cy = s.ivar(:@cy) + s.oy
     # Pick a colour and a width on the panel, then draw.
-    px = s.ivar(:@px)
-    s.click(px + 14 * 2 + 3, s.ivar(:@pal_y) + 14 + 3)
+    px = s.ivar(:@px) + s.ox
+    s.click(px + 14 * 2 + 3, s.ivar(:@pal_y) + s.oy + 14 + 3)
     s.key "3"
     s.update
     s.press(cx + 20, cy + 20)

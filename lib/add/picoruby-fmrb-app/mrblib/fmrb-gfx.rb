@@ -29,10 +29,14 @@ class FmrbGfx
   # without an extra round trip.
   attr_reader :current_font, :current_text_size
 
-  # Canvas dimensions captured at construction time. Exposed so wrapper
-  # libraries (e.g. P5) can query the drawable area without an extra
-  # round trip to the graphics board.
+  # Canvas dimensions captured at construction time (the whole canvas: for
+  # an app's window, frame included).
   attr_reader :canvas_width, :canvas_height
+  # The drawing origin and the size of the area it starts (gfx.c: origin_x,
+  # origin_y, area_width, area_height). Every coordinate a draw call takes
+  # is from that origin: the app's @gfx starts at the top-left of the area
+  # the app owns (inside the frame), anything else at the canvas's
+  # (doc/codebase_tidy T4).
   attr_reader :canvas_id
 
   # Pixel metrics for the fonts currently supported by the graphics
@@ -112,6 +116,7 @@ class FmrbGfx
   # @param height [Integer] Canvas height (optional, for :center support)
   def initialize(canvas_id, width: 0, height: 0)
     _init(canvas_id)
+    _set_origin(0, 0, width, height)
     @canvas_id = canvas_id
     @canvas_width = width
     @canvas_height = height
@@ -430,8 +435,8 @@ class FmrbGfx
 
     # Calculate position
     if coord == :center
-      x = (@canvas_width - img_w) / 2
-      y = (@canvas_height - img_h) / 2
+      x = (area_width - img_w) / 2
+      y = (area_height - img_h) / 2
     elsif coord
       x = coord[0]
       y = coord[1]
@@ -509,7 +514,7 @@ class FmrbGfx
   # composited on top of everything the canvas drew, so by default they paint
   # over the window frame and title bar the app drew into the same canvas.
   # The rect uses sprite coordinates (the same space passed to
-  # SpriteInstance#move) and is clamped to the canvas. FmrbApp already sets
+  # SpriteInstance#move: from the drawing origin) and is clamped to the canvas. FmrbApp already sets
   # this to the user area for windowed apps; call it to narrow the area
   # further, e.g. to keep a game's sprites out of its own score bar.
   def set_sprite_clip(x, y, w, h)

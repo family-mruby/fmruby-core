@@ -65,8 +65,8 @@ Regress.app "logviewer", "main/prebuild_scripts/default_app/logviewer.app.rb" do
     s.env.extra[:log] = UiScenes.log_lines
     s.start
     s.key "w"
-    x0 = s.ivar(:@user_area_x0)
-    y0 = s.ivar(:@user_area_y0)
+    x0 = s.ivar(:@gfx).origin_x
+    y0 = s.ivar(:@gfx).origin_y
     s.click(x0 + 6, y0 + 4)
     s.update
     s.wheel(1)
@@ -78,9 +78,9 @@ Regress.app "monitor", "main/prebuild_scripts/default_app/monitor.app.rb" do
   window w: 240, h: 200, name: "Monitor"
 
   def self.nav(s, right)
-    x = s.ivar(:@content_x)
+    x = s.ivar(:@content_x) + s.ox
     w = s.ivar(:@content_w)
-    s.click(right ? x + w - 3 : x + 3, s.ivar(:@nav_y) + 3)
+    s.click(right ? x + w - 3 : x + 3, s.ivar(:@nav_y) + s.oy + 3)
   end
 
   scene "pages" do |s|
