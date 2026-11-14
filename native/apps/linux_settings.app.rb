@@ -121,7 +121,7 @@ class LinuxSettingsApp < FmrbApp
     @pw = ""
     @msg = ""
     build_widgets
-    Log.info("settings: the #{page_name(@page)} page, user area #{@w}x#{@h} at (#{0},#{0})")
+    Log.info("settings: the #{page_name(@page)} page, user area #{@w}x#{@h} at (#{@gfx.origin_x},#{@gfx.origin_y})")
     read_state(true)
     draw_page
   end

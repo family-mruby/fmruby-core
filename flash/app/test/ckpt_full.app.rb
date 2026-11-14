@@ -22,7 +22,7 @@ class CkptFullApp < FmrbApp
   end
 
   def size_text
-    "window=#{@window_width}x#{@window_height} user=#{0},#{0}," \
+    "window=#{@window_width}x#{@window_height} user=#{@gfx.origin_x},#{@gfx.origin_y}," \
       "#{@user_area_width}x#{@user_area_height}"
   end
 
