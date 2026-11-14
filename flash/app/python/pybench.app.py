@@ -176,12 +176,12 @@ class PyBenchApp(FmrbApp):
 
     def show(self):
         self.clear_user_area()
-        y = self.user_area_y0 + 2
-        self.gfx.draw_text(self.user_area_x0 + 3, y, "pybench (ns/call)", 0xFC)
+        y = 2
+        self.gfx.draw_text(3, y, "pybench (ns/call)", 0xFC)
         y += 10
         for name, ms, per_ns in self.rows:
-            self.gfx.draw_text(self.user_area_x0 + 3, y, name, 0x6D)
-            self.gfx.draw_text(self.user_area_x0 + 100, y,
+            self.gfx.draw_text(3, y, name, 0x6D)
+            self.gfx.draw_text(100, y,
                                str(per_ns) if per_ns else str(ms) + "ms", 0xFF)
             y += 9
         self.draw_window_frame()

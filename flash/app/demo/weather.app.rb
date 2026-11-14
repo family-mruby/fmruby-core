@@ -175,8 +175,8 @@ class WeatherApp < FmrbApp
   # --- Drawing ------------------------------------------------------------
 
   def draw_all
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     @gfx.fill_rect(x0, y0, @user_area_width, @user_area_height, COLOR_BG)
 
     @gfx.draw_text(x0 + 6, y0 + 4, CITY, COLOR_TEXT, COLOR_BG)

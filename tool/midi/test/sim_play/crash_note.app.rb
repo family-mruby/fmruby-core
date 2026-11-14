@@ -9,8 +9,8 @@ class CrashNoteApp < FmrbApp
     @audio = FmrbAudio.new(self)
     @audio.note_on(0, 440, 12, 2, 0)
     Log.info("CrashNote: note on; crashing next update")
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, 0x00)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "crashing...", 0xFF)
+    @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, 0x00)
+    @gfx.draw_text(4, 4, "crashing...", 0xFF)
     draw_window_frame
     @gfx.present
   end

@@ -213,7 +213,7 @@ class FftBenchApp < FmrbApp
     while i < bins && x < w - 4
       v = Fmrb::Fft.bin(@reference, i)
       bar = (v * 40) / peak
-      @gfx.fill_rect(@user_area_x0 + x, base - bar, 1, bar + 1, FmrbGfx::CYAN) if bar > 0
+      @gfx.fill_rect(x, base - bar, 1, bar + 1, FmrbGfx::CYAN) if bar > 0
       x += 1
       i += step
     end

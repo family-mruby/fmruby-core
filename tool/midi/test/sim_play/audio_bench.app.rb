@@ -104,8 +104,8 @@ class AudioBenchApp < FmrbApp
   end
 
   def draw
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     @gfx.fill_rect(x0, y0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
     y = y0 + 4
     @lines.each do |line|

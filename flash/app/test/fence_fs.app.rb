@@ -13,12 +13,12 @@ class FenceFsApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height,
+    @gfx.fill_rect(0, 0, @user_area_width, @user_area_height,
                    FmrbGfx::BLUE)
-    @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 8,
+    @gfx.draw_text(8, 8,
                    "fence_fs: fullscreen from comment toml",
                    FmrbGfx::WHITE, FmrbGfx::BLUE)
-    @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 24,
+    @gfx.draw_text(8, 24,
                    "area #{@user_area_width}x#{@user_area_height}",
                    FmrbGfx::WHITE, FmrbGfx::BLUE)
     @gfx.present

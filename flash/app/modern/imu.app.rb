@@ -103,8 +103,8 @@ class ImuApp < FmrbApp
   end
 
   def draw_screen
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     @gfx.fill_rect(x0, y0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
 
     draw_level(x0 + 4 + LEVEL_R, y0 + 6 + LEVEL_R)

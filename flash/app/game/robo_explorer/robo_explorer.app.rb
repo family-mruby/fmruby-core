@@ -69,10 +69,12 @@ class RoboExplorerApp < FmrbApp
   COL_OK     = 0x1C
   COL_GRID   = 0x24  # dark green-gray, board background
 
-  BOARD_X = 3
-  BOARD_Y = 13
-  PANEL_X = 176
-  PANEL_Y = 14
+  # In the user area, where @gfx draws from (inside the frame, below the
+  # title bar).
+  BOARD_X = 2
+  BOARD_Y = 2
+  PANEL_X = 175
+  PANEL_Y = 3
   LINE_H  = 15
 
   # The map toggle. Hiding the maze is the harder game: the level has to be
@@ -471,12 +473,12 @@ class RoboExplorerApp < FmrbApp
   end
 
   def btn_y
-    @user_area_y1 - BTN_Y_OFF
+    @user_area_height - BTN_Y_OFF
   end
 
   def draw_status
-    @gfx.fill_rect(PANEL_X, PANEL_Y - 2, @user_area_x1 - PANEL_X - 1,
-                   @user_area_y1 - PANEL_Y - 1, COL_FLOOR)
+    @gfx.fill_rect(PANEL_X, PANEL_Y - 2, @user_area_width - PANEL_X - 1,
+                   @user_area_height - PANEL_Y - 1, COL_FLOOR)
     y = PANEL_Y
     @gfx.draw_text(PANEL_X, y, "場所 #{@x},#{@y}", COL_TEXT)
     y += LINE_H
@@ -497,7 +499,7 @@ class RoboExplorerApp < FmrbApp
     @gfx.fill_rect(PANEL_X, btn_y, BTN_W, BTN_H, COL_GRID)
     @gfx.draw_text(PANEL_X + 4, btn_y + 2,
                    @show_map ? "地図を隠す" : "地図を出す", COL_TEXT)
-    @gfx.draw_text(PANEL_X, @user_area_y1 - 16, "R:リセット",
+    @gfx.draw_text(PANEL_X, @user_area_height - 16, "R:リセット",
                    COL_DIM)
   end
 end

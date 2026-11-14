@@ -211,11 +211,11 @@ class NetTestApp < FmrbApp
   # --- Drawing ----------------------------------------------------------------
 
   def row_y(idx)
-    @user_area_y0 + idx * ROW_H
+    idx * ROW_H
   end
 
   def row_index_at(y)
-    idx = (y - @user_area_y0) / ROW_H
+    idx = (y) / ROW_H
     (idx >= 0 && idx < TESTS.length) ? idx : nil
   end
 
@@ -229,25 +229,25 @@ class NetTestApp < FmrbApp
   end
 
   def draw_full
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
+    @gfx.fill_rect(0, 0,
                    @user_area_width, @user_area_height, COLOR_LOG_BG)
 
     TESTS.each_with_index do |t, i|
       y = row_y(i)
-      @gfx.fill_rect(@user_area_x0, y, @user_area_width, ROW_H - 1, COLOR_ROW_BG)
+      @gfx.fill_rect(0, y, @user_area_width, ROW_H - 1, COLOR_ROW_BG)
       text_y = y + (ROW_H - CHAR_H) / 2
-      @gfx.draw_text(@user_area_x0 + 2, text_y, t[:label],
+      @gfx.draw_text(2, text_y, t[:label],
                      COLOR_ROW_TEXT, COLOR_ROW_BG)
       mark, color = result_mark(t[:key])
-      @gfx.draw_text(@user_area_x0 + @user_area_width - 2 * CHAR_W - 2, text_y,
+      @gfx.draw_text(@user_area_width - 2 * CHAR_W - 2, text_y,
                      mark, color, COLOR_ROW_BG)
     end
 
     log_y0 = row_y(TESTS.length) + 2
-    max_lines = (@user_area_y0 + @user_area_height - log_y0) / CHAR_H
+    max_lines = (@user_area_height - log_y0) / CHAR_H
     lines = @log_lines.last(max_lines < 0 ? 0 : max_lines)
     lines.each_with_index do |line, i|
-      @gfx.draw_text(@user_area_x0 + 2, log_y0 + i * CHAR_H,
+      @gfx.draw_text(2, log_y0 + i * CHAR_H,
                      line, COLOR_LOG_TEXT, COLOR_LOG_BG)
     end
 

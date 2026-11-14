@@ -23,8 +23,8 @@ class StackChanRemoteApp < FmrbApp
 
   # Build the button list with auto-computed positions (2-3 columns).
   def build_buttons
-    x0 = @user_area_x0 + 4
-    y0 = @user_area_y0 + 2
+    x0 = 4
+    y0 = 2
     @buttons = []
     # Row 0: two wide toggles
     @buttons << { x: x0,       y: y0, w: 92, h: 20, type: :talk }
@@ -72,8 +72,8 @@ class StackChanRemoteApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @emos_label_y, "Emotion:", theme_border)
-    @gfx.draw_text(@user_area_x0 + 4, @emotes_label_y, "Emote:", theme_border)
+    @gfx.draw_text(4, @emos_label_y, "Emotion:", theme_border)
+    @gfx.draw_text(4, @emotes_label_y, "Emote:", theme_border)
     @buttons.each { |b| draw_button(b) }
     draw_window_frame
     @gfx.present

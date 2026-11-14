@@ -12,8 +12,8 @@ class I2cKbdApp < FmrbApp
   MAX_CHARS = 40  # Max characters to display in buffer
 
   def on_create
-    @ox = @user_area_x0
-    @oy = @user_area_y0
+    @ox = 0
+    @oy = 0
     @w = @user_area_width
     @h = @user_area_height
     @text_buf = ""

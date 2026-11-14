@@ -10,8 +10,8 @@ class MyApp < FmrbApp
   SPEED = 3
 
   def on_create
-    @x = @user_area_x0 + 20
-    @y = @user_area_y0 + 20
+    @x = 20
+    @y = 20
     @dx = SPEED
     @dy = SPEED
     draw_screen
@@ -20,16 +20,16 @@ class MyApp < FmrbApp
   def step
     @x += @dx
     @y += @dy
-    right = @user_area_x0 + @user_area_width - 16
-    bottom = @user_area_y0 + @user_area_height - 16
-    @dx = -@dx if @x < @user_area_x0 || @x > right
-    @dy = -@dy if @y < @user_area_y0 || @y > bottom
+    right = @user_area_width - 16
+    bottom = @user_area_height - 16
+    @dx = -@dx if @x < 0 || @x > right
+    @dy = -@dy if @y < 0 || @y > bottom
   end
 
   def draw_screen
     clear_user_area
     @gfx.fill_rect(@x, @y, 16, 16, FmrbGfx::YELLOW)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "Ctrl+Q to quit", theme_fg)
+    @gfx.draw_text(4, 4, "Ctrl+Q to quit", theme_fg)
     @gfx.present
   end
 

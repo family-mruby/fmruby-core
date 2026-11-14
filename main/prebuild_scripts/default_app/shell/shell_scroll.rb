@@ -269,7 +269,7 @@ module ShellScrollMixin
 
   def draw_prompt
     begin_text_font
-    content_x = @user_area_x0 + 2
+    content_x = 2
     avail = history_avail_rows
     total = total_display_rows
 
@@ -290,14 +290,14 @@ module ShellScrollMixin
 
         if entry.is_a?(Hash) && entry[:type] == :logo_line
           if vis_start == 0
-            y = @user_area_y0 + 2 + screen_row * @char_height
+            y = 2 + screen_row * @char_height
             draw_logo_line(content_x, y, entry)
             screen_row += 1
           end
         elsif ansi_entry?(entry)
           rows = entry_rows - vis_start
           rows = avail - screen_row if rows > avail - screen_row
-          y = @user_area_y0 + 2 + screen_row * @char_height
+          y = 2 + screen_row * @char_height
           draw_entry_rows(content_x, y, entry, wrap_chunks(entry[:text]), vis_start, rows)
           screen_row += rows
         else
@@ -305,7 +305,7 @@ module ShellScrollMixin
           r = vis_start
           while r < entry_rows && screen_row < avail
             chunk = chunks[r] || ""
-            y = @user_area_y0 + 2 + screen_row * @char_height
+            y = 2 + screen_row * @char_height
             @gfx.draw_text(content_x, y, chunk, @ch_col) unless chunk.empty?
             screen_row += 1
             r += 1
@@ -322,8 +322,8 @@ module ShellScrollMixin
     input_text = current_input_text
     input_rows = input_rows_for(input_text)
     # Place input right after history, but no lower than the fixed bottom position
-    input_y_after_history = @user_area_y0 + 2 + screen_row * @char_height
-    input_y_bottom = @user_area_y0 + 2 + avail * @char_height
+    input_y_after_history = 2 + screen_row * @char_height
+    input_y_bottom = 2 + avail * @char_height
     input_y = input_y_after_history < input_y_bottom ? input_y_after_history : input_y_bottom
     partial = @linux_term ? @linux_term.partial_entry : nil
     if partial && ansi_entry?(partial)
@@ -339,7 +339,6 @@ module ShellScrollMixin
   def redraw_screen
     # Full redraw: Clear user area and redraw everything
     clear_user_area(@bg_col)
-    draw_window_frame
     draw_prompt
 
     # Draw scrollbar if history exceeds visible area
@@ -370,19 +369,19 @@ module ShellScrollMixin
       return
     end
 
-    content_x = @user_area_x0 + 2
+    content_x = 2
     avail = history_avail_rows(input_text)
     total = total_display_rows
     # Visible history rows (may be less than avail if history is short)
     visible_hist = total - @scroll
     visible_hist = avail if visible_hist > avail
     visible_hist = 0 if visible_hist < 0
-    input_y_after = @user_area_y0 + 2 + visible_hist * @char_height
-    input_y_bottom = @user_area_y0 + 2 + avail * @char_height
+    input_y_after = 2 + visible_hist * @char_height
+    input_y_bottom = 2 + avail * @char_height
     input_y = input_y_after < input_y_bottom ? input_y_after : input_y_bottom
 
     # Clear input area
-    @gfx.fill_rect(@user_area_x0 + 1, input_y,
+    @gfx.fill_rect(1, input_y,
                     @user_area_width - 2 - FmrbApp::SCROLLBAR_W,
                     input_rows * @char_height, @bg_col)
 

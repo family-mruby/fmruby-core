@@ -66,7 +66,7 @@ class PyTestApp(FmrbApp):
         # A click in the user area starts a long busy loop, so the other stop
         # path can be tried: this one is interrupted by the VM hook, not by the
         # spin wait ending.
-        if ev.get("type") == "mouse_up" and ev.get("y", 0) >= self.user_area_y0:
+        if ev.get("type") == "mouse_up" and ev.get("y", 0) >= 0:
             Log.info("pytest: busy loop start")
             total = 0
             i = 0
@@ -78,8 +78,8 @@ class PyTestApp(FmrbApp):
     def redraw(self):
         self.clear_user_area(FmrbGfx.BLACK)
         g = self.gfx
-        x0 = self.user_area_x0
-        y0 = self.user_area_y0
+        x0 = 0
+        y0 = 0
         g.draw_text(x0 + 4, y0 + 4, "turn " + str(self.turns), FmrbGfx.WHITE)
         g.draw_text(x0 + 4, y0 + 18, "idle " + str(self.IDLE_MS) + "ms", FmrbGfx.GRAY)
         g.draw_text(x0 + 4, y0 + 32, "click = busy loop", FmrbGfx.CYAN)

@@ -93,11 +93,11 @@ class AppStoreApp < FmrbApp
   # ---- layout -------------------------------------------------------------
 
   def area_w
-    @user_area_x1 - @user_area_x0
+    @user_area_width
   end
 
   def area_h
-    @user_area_y1 - @user_area_y0
+    @user_area_height
   end
 
   # Tabs, then the buttons, then the list, then two lines about the selection.
@@ -127,7 +127,7 @@ class AppStoreApp < FmrbApp
   BTN_GAP = 4
 
   def bar_y
-    @user_area_y0 + BAR_TOP
+    BAR_TOP
   end
 
   # A rule under the buttons as well as above the detail, so the window reads
@@ -144,7 +144,7 @@ class AppStoreApp < FmrbApp
   end
 
   def detail_y
-    @user_area_y1 - 41
+    @user_area_height - 41
   end
 
   # A rule between the list and what is written about the selection, so the
@@ -211,7 +211,7 @@ class AppStoreApp < FmrbApp
   # create-draw-delete for one is affordable where one per row was not.
   def draw_thumb(a)
     return unless pictures?
-    x = @user_area_x1 - THUMB_W - 2
+    x = @user_area_width - THUMB_W - 2
     y = detail_y
     @gfx.fill_rect(x, y, THUMB_W, THUMB_H, theme_bg)
     path = a ? @thumbs[a["id"].to_s] : nil
@@ -307,7 +307,7 @@ class AppStoreApp < FmrbApp
 
   def draw_list
     items = shown
-    x = @user_area_x0
+    x = 0
     y = list_y
     w = area_w
     @gfx.fill_rect(x, y, w, list_h, theme_bg)
@@ -371,14 +371,14 @@ class AppStoreApp < FmrbApp
   end
 
   def draw_rules
-    x0 = @user_area_x0
-    x1 = @user_area_x1 - 1
+    x0 = 0
+    x1 = @user_area_width - 1
     @gfx.draw_line(x0, top_rule_y, x1, top_rule_y, theme_border)
     @gfx.draw_line(x0, rule_y + 2, x1, rule_y + 2, theme_border)
   end
 
   def draw_detail
-    x = @user_area_x0
+    x = 0
     y = detail_y
     w = area_w
     # Leave the corner alone: the selected app's picture lives there.
@@ -739,8 +739,8 @@ class AppStoreApp < FmrbApp
   def select(idx, items)
     was = @sel
     @sel = idx
-    draw_row(items[was], @user_area_x0, row_y(was), false) if row_visible?(was) && items[was]
-    draw_row(items[idx], @user_area_x0, row_y(idx), true)
+    draw_row(items[was], 0, row_y(was), false) if row_visible?(was) && items[was]
+    draw_row(items[idx], 0, row_y(idx), true)
     draw_detail
     draw_thumb(items[idx])
     want_thumb(items[idx])

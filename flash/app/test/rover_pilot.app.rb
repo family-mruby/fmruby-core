@@ -365,8 +365,8 @@ class RoverPilotApp < FmrbApp
     b = @frame
     @frame = nil
     t0 = Machine.board_millis
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     if @jpeg
       File.open(FRAME_FILE, "w") { |f| f.write(b) }
       img = @gfx.create_image(FRAME_FILE)
@@ -431,8 +431,8 @@ class RoverPilotApp < FmrbApp
   end
 
   def draw_text_lines
-    x = @user_area_x0 + IMG_W + 10
-    y = @user_area_y0 + 4
+    x = IMG_W + 10
+    y = 4
     w = @user_area_width - IMG_W - 12
     n = 40
     @gfx.fill_rect(x, y, w, 13 * 11, theme_bg)
@@ -464,8 +464,8 @@ class RoverPilotApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.fill_rect(@user_area_x0 + 4, @user_area_y0 + 4, IMG_W, IMG_H, FmrbGfx::BLACK)
-    @gfx.draw_text(@user_area_x0 + 30, @user_area_y0 + 58, "no picture yet", FmrbGfx::WHITE)
+    @gfx.fill_rect(4, 4, IMG_W, IMG_H, FmrbGfx::BLACK)
+    @gfx.draw_text(30, 58, "no picture yet", FmrbGfx::WHITE)
     draw_text_lines
     draw_window_frame
     @gfx.present

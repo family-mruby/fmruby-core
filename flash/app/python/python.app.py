@@ -86,8 +86,8 @@ class PythonDemoApp(FmrbApp):
     def draw_page(self):
         g = self.gfx
         self.clear_user_area(PAPER)
-        x0 = self.user_area_x0
-        y0 = self.user_area_y0
+        x0 = 0
+        y0 = 0
 
         g.draw_text(x0 + 4, y0 + 2,
                     str(self.page + 1) + "/" + str(len(PAGES)) + " " + PAGES[self.page],
@@ -104,7 +104,7 @@ class PythonDemoApp(FmrbApp):
         else:
             self.draw_system_page(x0, y0 + 14)
 
-        g.draw_text(x0 + 4, self.user_area_y1 - 10, KEYS[self.page], INK_SUB, PAPER)
+        g.draw_text(x0 + 4, self.user_area_height - 10, KEYS[self.page], INK_SUB, PAPER)
         self.draw_window_frame()
         g.present()
 
@@ -212,7 +212,7 @@ class PythonDemoApp(FmrbApp):
         g = self.gfx
         for i in range(6):
             g.draw_tile(self.sheet.id, (i % 4) * 16, 0, 16, 16, x0 + 6 + i * 16, y0 + 4)
-        g.draw_tile(self.badge.id, 0, 0, 20, 12, self.user_area_x1 - 26, y0 + 6)
+        g.draw_tile(self.badge.id, 0, 0, 20, 12, self.user_area_width - 26, y0 + 6)
 
         g.draw_text(x0 + 6, y0 + 26, "sprite: move and frame", INK, PAPER)
         g.draw_text(x0 + 6, y0 + 74, "I: a decoded picture ->", INK_SUB, PAPER)
@@ -226,7 +226,7 @@ class PythonDemoApp(FmrbApp):
         if self.image:
             # A quarter size and off to the right, so the picture sits beside
             # the sprite rather than over the labels.
-            g.draw_image(self.image["id"], self.user_area_x1 - 84, y0 + 40, 0.25)
+            g.draw_image(self.image["id"], self.user_area_width - 84, y0 + 40, 0.25)
 
     # create_image decodes a picture file (a PNG); a sprite BMP belongs in
     # load_bmp instead. Handing this one a BMP gives an empty image, silently.
@@ -323,7 +323,7 @@ class PythonDemoApp(FmrbApp):
             g.draw_text(x0 + 6, y0 + 6 + i * 11, label, INK_SUB, PAPER)
             g.draw_text(x0 + 86, y0 + 6 + i * 11, value, INK, PAPER)
         if self.blink:
-            g.fill_circle(self.user_area_x1 - 10, y0 + 8, 3, C_GREEN)
+            g.fill_circle(self.user_area_width - 10, y0 + 8, 3, C_GREEN)
 
     # One-shot timers: the callback arms the next one. They also run inside a
     # wait, which is why the dot keeps flashing while nothing else happens.
@@ -359,7 +359,7 @@ class PythonDemoApp(FmrbApp):
         kind = ev.get("type")
 
         if kind == "mouse_up" and ev.get("button") == 1:
-            if ev.get("y", 0) >= self.user_area_y0:
+            if ev.get("y", 0) >= 0:
                 self.set_page((self.page + 1) % len(PAGES))
             return
         if kind != "key_down":

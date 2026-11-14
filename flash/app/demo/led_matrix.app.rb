@@ -176,8 +176,8 @@ class LedMatrixApp < FmrbApp
     cell_w = @user_area_width / LED_COLS
     cell_h = (@user_area_height - 14) / LED_ROWS
     @cell = [cell_w, cell_h].min
-    @grid_x = @user_area_x0 + (@user_area_width - @cell * LED_COLS) / 2
-    @grid_y = @user_area_y0 + 14
+    @grid_x = (@user_area_width - @cell * LED_COLS) / 2
+    @grid_y = 14
 
     # Subscribe to topics
     subscribe(TOPIC)
@@ -266,8 +266,8 @@ class LedMatrixApp < FmrbApp
   def on_event(ev)
     return unless ev[:type] == :mouse_up
     # Ignore clicks on the title bar (super handles close / reload there).
-    return if ev[:y] < @user_area_y0
-    return if ev[:x] < @user_area_x0 || ev[:x] >= @user_area_x1
+    return if ev[:y] < 0
+    return if ev[:x] < 0 || ev[:x] >= @user_area_width
 
     case ev[:button]
     when 1  # Left click: next pattern
@@ -323,11 +323,11 @@ class LedMatrixApp < FmrbApp
   end
 
   def draw_header
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 2
+    x = 4
+    y = 2
     label = PATTERN_NAMES[@pattern] || "?"
     # Clear header area
-    @gfx.fill_rect(@user_area_x0, y, @user_area_width, 10, FmrbGfx::BLACK)
+    @gfx.fill_rect(0, y, @user_area_width, 10, FmrbGfx::BLACK)
     @gfx.draw_text(x, y, label, FmrbGfx::WHITE)
   end
 

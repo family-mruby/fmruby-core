@@ -135,8 +135,8 @@ class WalkScrollerApp < FmrbApp
   def on_create
     @w = @user_area_width
     @h = @user_area_height
-    @ox = @user_area_x0
-    @oy = @user_area_y0
+    @ox = 0
+    @oy = 0
     # Laid out for 426x240 (the hardware's screen). On a larger screen (the
     # browser build offers up to 1280x720) the text and the step scale by
     # whole steps (text stops growing at the largest size, 4); the BMPs are

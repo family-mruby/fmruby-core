@@ -14,9 +14,9 @@ class WorkerWatchApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+    @gfx.draw_text(4, 4,
                    "results: #{@count}", theme_fg)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 18, @line, theme_accent)
+    @gfx.draw_text(4, 18, @line, theme_accent)
     draw_window_frame
     @gfx.present
   end

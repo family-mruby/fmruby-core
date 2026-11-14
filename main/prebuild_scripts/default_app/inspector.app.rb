@@ -45,8 +45,8 @@ class InspectorApp < FmrbApp
   end
 
   def on_create
-    @cx = @user_area_x0 + 3
-    @cy0 = @user_area_y0 + 2
+    @cx = 3
+    @cy0 = 2
     @max_lines = (@user_area_height - 4) / LH
     @cols = (@user_area_width - 6) / 6  # chars per line (6px glyph width)
     @cols = 1 if @cols < 1
@@ -178,8 +178,8 @@ class InspectorApp < FmrbApp
         start_collecting
         @state = :wizard
       elsif ch == "c"
-        @vx = @user_area_x0 + @user_area_width / 2
-        @vy = @user_area_y0 + (@user_area_height + 18) / 2
+        @vx = @user_area_width / 2
+        @vy = (@user_area_height + 18) / 2
       elsif sc == FmrbConst::KEY_ESC
         @state = :inspect
       end
@@ -301,8 +301,8 @@ class InspectorApp < FmrbApp
   # move a dot so the user can confirm the mapping before saving.
   def enter_verify
     @collecting = false
-    @vx = @user_area_x0 + @user_area_width / 2
-    @vy = @user_area_y0 + (@user_area_height + 18) / 2
+    @vx = @user_area_width / 2
+    @vy = (@user_area_height + 18) / 2
     @vbtn = 0
     @state = :verify
   end
@@ -505,10 +505,10 @@ class InspectorApp < FmrbApp
     return unless @lay_x && @lay_y
     @vx += extract_field(report, @lay_x[:off], @lay_x[:size])
     @vy += extract_field(report, @lay_y[:off], @lay_y[:size])
-    x0 = @user_area_x0 + 3
-    x1 = @user_area_x0 + @user_area_width - 3
-    y0 = @user_area_y0 + 24
-    y1 = @user_area_y0 + @user_area_height - 12
+    x0 = 3
+    x1 = @user_area_width - 3
+    y0 = 24
+    y1 = @user_area_height - 12
     @vx = x0 if @vx < x0
     @vx = x1 if @vx > x1
     @vy = y0 if @vy < y0
@@ -625,7 +625,7 @@ class InspectorApp < FmrbApp
                         d[:layout_valid] ? "" : " ?")
         row = 2 + i
         if i == @sel
-          @gfx.fill_rect(@user_area_x0 + 1, @cy0 + row * LH - 1,
+          @gfx.fill_rect(1, @cy0 + row * LH - 1,
                          @user_area_width - 2, LH, COL_SEL)
         end
         line(row, "#{i == @sel ? '>' : ' '} #{label}",

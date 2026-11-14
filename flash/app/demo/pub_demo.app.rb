@@ -16,7 +16,7 @@ class PubDemoApp < FmrbApp
   def draw_screen
     clear_user_area
     # Info
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+    @gfx.draw_text(4, 4,
                    "Sent: #{@count}", theme_fg)
     # Button
     @gfx.fill_rect(BTN_X, BTN_Y, BTN_W, BTN_H, FmrbGfx::BLUE)

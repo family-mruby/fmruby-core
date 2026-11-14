@@ -206,8 +206,8 @@ class LogViewerApp < FmrbApp
   end
 
   def draw_view
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w = @user_area_width
     h = @user_area_height
 
@@ -328,8 +328,8 @@ class LogViewerApp < FmrbApp
       @scroll_hold = 0
 
       # Toolbar click: the two buttons, measured the way they are drawn.
-      if y >= @user_area_y0 && y < @user_area_y0 + TOOLBAR_H
-        lv_x0 = @user_area_x0 + 2
+      if y >= 0 && y < TOOLBAR_H
+        lv_x0 = 2
         wrap_x0 = lv_x0 + level_btn_w + 4
         if x >= lv_x0 && x < lv_x0 + level_btn_w
           @level_idx = (@level_idx + 1) % LEVELS.size
@@ -342,7 +342,7 @@ class LogViewerApp < FmrbApp
       end
 
       # Click on log area (not scroll bar) = toggle auto-scroll
-      log_y0 = @user_area_y0 + TOOLBAR_H
+      log_y0 = TOOLBAR_H
       # Hoisted rather than written as !bar.hit?(...): Spinel emits broken C
       # for a call negated inside a condition (ruby_writing_constraints.md).
       on_bar = @ui.find(:sb).hit?(x, y)

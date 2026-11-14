@@ -23,8 +23,8 @@ module EditorPalette
   def palette_dialog_rect
     w = 30 * CHAR_W + 12
     h = (PALETTE_ROWS + 4) * CHAR_H + 16
-    x = @user_area_x0 + (@user_area_width  - w) / 2
-    y = @user_area_y0 + (@user_area_height - h) / 2
+    x = (@user_area_width  - w) / 2
+    y = (@user_area_height - h) / 2
     [x, y, w, h]
   end
 

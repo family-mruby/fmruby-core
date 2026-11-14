@@ -122,8 +122,8 @@ class Ros2TalkerApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     @gfx.draw_text(x, y, "#{@id} #{@state}"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 11, "/chatter sent: #{@count}  /chatter_back got: #{@received}"[0, 52], theme_fg)
     row = 0

@@ -116,8 +116,8 @@ class MmCheckApp < FmrbApp
 
   def draw_summary
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "MMCHK", theme_fg)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 16,
+    @gfx.draw_text(4, 4, "MMCHK", theme_fg)
+    @gfx.draw_text(4, 16,
                    "pass=#{@pass} fail=#{@fail}", theme_fg)
     @gfx.present
   end

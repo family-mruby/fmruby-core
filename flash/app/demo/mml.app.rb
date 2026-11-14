@@ -272,7 +272,7 @@ class MmlDemoApp < FmrbApp
   # Nine rows have to fit the window (see mml.app.toml), so they are a little
   # tighter than they were when there were seven.
   def button_rect(index)
-    [@user_area_x0 + 8, @user_area_y0 + 26 + (index * 18), @user_area_width - 16, 15]
+    [8, 26 + (index * 18), @user_area_width - 16, 15]
   end
 
   # A name longer than the button would be drawn over the edge of it.
@@ -306,10 +306,10 @@ class MmlDemoApp < FmrbApp
   end
 
   def draw
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width,
+    @gfx.fill_rect(0, 0, @user_area_width,
                    @user_area_height, COL_BG)
-    @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 4, "MML", COL_TEXT, COL_BG)
-    @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 16, @status, COL_TEXT, COL_BG)
+    @gfx.draw_text(8, 4, "MML", COL_TEXT, COL_BG)
+    @gfx.draw_text(8, 16, @status, COL_TEXT, COL_BG)
 
     @hits.clear
     i = 0

@@ -207,11 +207,11 @@ class BlockGameApp < FmrbApp
   # ---- Layout helpers ----
 
   def board_x0
-    @user_area_x0 + 2
+    2
   end
 
   def board_y0
-    @user_area_y0 + 2
+    2
   end
 
   def info_x
@@ -252,7 +252,7 @@ class BlockGameApp < FmrbApp
     # nothing about it changes per draw.
     @bg_block = GfxBlock.new(@gfx) do |r|
       # Panel area (covers the whole user area beneath the title bar).
-      r.fill_rect @user_area_x0, @user_area_y0,
+      r.fill_rect 0, 0,
                   @user_area_width, @user_area_height, PANEL_COLOR
       # Playfield interior.
       r.fill_rect pf_x, pf_y, pf_w, pf_h, BG_COLOR

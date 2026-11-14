@@ -22,14 +22,14 @@ class CkptWideApp < FmrbApp
   end
 
   def size_text
-    "window=#{@window_width}x#{@window_height} user=#{@user_area_x0},#{@user_area_y0}," \
+    "window=#{@window_width}x#{@window_height} user=#{0},#{0}," \
       "#{@user_area_width}x#{@user_area_height}"
   end
 
   def draw_all
     clear_user_area
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w = @user_area_width
     h = @user_area_height
     @gfx.draw_rect(x0, y0, w, h, FmrbGfx::BLUE)

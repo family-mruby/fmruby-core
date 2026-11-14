@@ -18,8 +18,8 @@ class DrawTileTestApp < FmrbApp
   SHEET_ROWS = SHEET_H / TILE   # 2
 
   def on_create
-    @ox = @user_area_x0
-    @oy = @user_area_y0
+    @ox = 0
+    @oy = 0
 
     # Cyan background (distinct from the ruby-red title bar) so transparent
     # pixels in each tile clearly punch through.

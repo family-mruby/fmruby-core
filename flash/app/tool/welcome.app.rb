@@ -60,8 +60,8 @@ class WelcomeApp < FmrbApp
     @w = w
     @h = h
     @big = w >= 200
-    @x0 = @user_area_x0
-    @y0 = @user_area_y0
+    @x0 = 0
+    @y0 = 0
     @pad = @big ? 4 : 3
     @band_h = @big ? 22 : 14
     @line_h = 10

@@ -174,8 +174,8 @@ class Ros2TypesApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     @gfx.draw_text(x, y, "#{@id} #{@state}"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 11, "imu/array sent: #{@count}  cmd_vel: #{@twists}  array_in: #{@arrays}"[0, 52], theme_fg)
     @gfx.draw_text(x, y + 25, "/cmd_vel"[0, 52], theme_fg)

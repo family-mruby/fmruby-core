@@ -121,7 +121,7 @@ class LinuxSettingsApp < FmrbApp
     @pw = ""
     @msg = ""
     build_widgets
-    Log.info("settings: the #{page_name(@page)} page, user area #{@w}x#{@h} at (#{@user_area_x0},#{@user_area_y0})")
+    Log.info("settings: the #{page_name(@page)} page, user area #{@w}x#{@h} at (#{0},#{0})")
     read_state(true)
     draw_page
   end
@@ -145,7 +145,7 @@ class LinuxSettingsApp < FmrbApp
       return
     end
     if t == :mouse_down && ev[:button] == 1
-      click_list(ev[:x].to_i - @user_area_x0, ev[:y].to_i - @user_area_y0)
+      click_list(ev[:x].to_i, ev[:y].to_i)
     elsif t == :mouse_wheel
       scroll(ev[:delta].to_i > 0 ? -1 : 1)
     elsif t == :key_down

@@ -60,7 +60,6 @@ class MidiApuApp < FmrbApp
     Log.info("MidiApu: device=#{@device.info}")
     build_panel
     clear_user_area(FmrbConst::THEME_WINDOW_BG)
-    draw_window_frame
     refresh
   end
 

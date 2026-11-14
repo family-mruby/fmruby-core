@@ -148,8 +148,8 @@ class RtProbeApp < FmrbApp
   end
 
   def layout
-    @fx = @user_area_x0 + 2
-    @fy = @user_area_y0 + 2
+    @fx = 2
+    @fy = 2
     @fw = @user_area_width - 4
     lines = @small ? 4 : 5
     @fh = @user_area_height - 4 - lines * 11
@@ -386,11 +386,11 @@ class RtProbeApp < FmrbApp
   end
 
   def draw_text_lines
-    x = @user_area_x0 + 2
+    x = 2
     y = @ty
     w = @user_area_width - 4
     n = w / 6
-    @gfx.fill_rect(x, y, w, @user_area_y0 + @user_area_height - y, theme_bg)
+    @gfx.fill_rect(x, y, w, @user_area_height - y, theme_bg)
     peer = @peer ? @peer : "none"
     head = @small ? "#{RATES[@rate_i]}Hz #{peer}" : "#{@id} <-> #{peer} #{RATES[@rate_i]}/s #{@interp ? 'interp' : 'raw'} (+/- i)"
     @gfx.draw_text(x, y, head[0, n], theme_fg)

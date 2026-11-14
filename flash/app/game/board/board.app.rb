@@ -1014,8 +1014,8 @@ class DrawingBoardApp < FmrbApp
   # ------------------------------------------------------------ the screen
 
   def layout
-    @x0 = @user_area_x0
-    @y0 = @user_area_y0
+    @x0 = 0
+    @y0 = 0
     uw = @user_area_width
     uh = @user_area_height
     aw = uw - PANEL_W - 6

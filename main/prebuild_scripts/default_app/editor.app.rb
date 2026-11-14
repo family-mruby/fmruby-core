@@ -208,9 +208,9 @@ class EditorApp < FmrbApp
   end
 
   def recompute_layout
-    @menu_y = @user_area_y0
+    @menu_y = 0
     @edit_y = @menu_y + CHAR_H + 1
-    @status_y = @user_area_y0 + @user_area_height - CHAR_H
+    @status_y = @user_area_height - CHAR_H
     @dbg_pane_h = dbg_pane_h
     if @dbg_pane_h > 0
       @dbg_pane_y = @status_y - @dbg_pane_h - 1
@@ -457,7 +457,7 @@ class EditorApp < FmrbApp
 
     col0 = segment_start(ly, ls)
     limit = segment_chars(ly, ls)
-    want = (mx - (@user_area_x0 + 1 + @gutter_w)) / @cell_w
+    want = (mx - (1 + @gutter_w)) / @cell_w
     want = 0 if want < 0
 
     widths = EditorCore.render_width(ly, col0, @edit_cols)
@@ -578,7 +578,7 @@ class EditorApp < FmrbApp
       # Edit area click: put the cursor where the pointer is. The gutter (debug
       # breakpoints) and the status line keep their own meaning, so the test is
       # the text rectangle, not "not the menu bar".
-      text_x0 = @user_area_x0 + 1 + @gutter_w
+      text_x0 = 1 + @gutter_w
       if ev[:y] >= @edit_y && ev[:y] < @edit_y + @edit_rows * @line_h &&
          ev[:x] >= text_x0 && ev[:y] < @dbg_pane_y
         place_cursor_at(ev[:x], ev[:y])

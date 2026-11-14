@@ -359,8 +359,8 @@ class AsterismDemoApp < FmrbApp
   # newest lines kept when they do not all fit.
   def draw_small
     clear_user_area
-    x = @user_area_x0 + 1
-    y = @user_area_y0 + 1
+    x = 1
+    y = 1
     cols = (@user_area_width - 2) / 6
     cols = 1 if cols < 1
     rows = (@user_area_height - 2) / 9
@@ -389,8 +389,8 @@ class AsterismDemoApp < FmrbApp
   def draw_screen
     return draw_small if @small
     clear_user_area
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     @gfx.draw_text(x, y, "#{@node} #{@state}"[0, 52], theme_fg)
     nodes = conn ? conn.nodes : []
     @gfx.draw_text(x, y + 11, "nodes: #{nodes.join(' ')} (+#{@joins} -#{@leaves})"[0, 52], theme_fg)

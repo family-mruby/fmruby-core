@@ -139,8 +139,8 @@ class StackChanApp < FmrbApp
   def on_event(ev)
     return unless running?
     if ev[:type] == :mouse_move
-      cx = @user_area_x0 + @user_area_width  / 2
-      cy = @user_area_y0 + @user_area_height / 2
+      cx = @user_area_width  / 2
+      cy = @user_area_height / 2
       nx = (ev[:x] - cx) / (@user_area_width  / 2.0)
       ny = (ev[:y] - cy) / (@user_area_height / 2.0)
       nx = -1.0 if nx < -1.0; nx = 1.0 if nx > 1.0
@@ -151,8 +151,9 @@ class StackChanApp < FmrbApp
     end
     if ev[:type] == :mouse_up && ev[:button] == 1
       cbx = @window_width - CLOSE_BTN_CX_OFFSET
-      return if (ev[:x] - cbx).abs <= CLOSE_BTN_HIT_R &&
-                (ev[:y] - CLOSE_BTN_CY).abs <= CLOSE_BTN_HIT_R
+      # the close button is on the frame: window coordinates
+      return if (ev[:wx] - cbx).abs <= CLOSE_BTN_HIT_R &&
+                (ev[:wy] - CLOSE_BTN_CY).abs <= CLOSE_BTN_HIT_R
       @idx = (@idx + 1) % PRESETS.size
       apply_preset(@idx)
     end
@@ -422,8 +423,8 @@ class StackChanApp < FmrbApp
     breath_dy = compute_breath_dy(sc)
     mouth_w   = resolve_mouth
 
-    cx = @user_area_x0 + @user_area_width  / 2
-    cy = @user_area_y0 + @user_area_height / 2
+    cx = @user_area_width  / 2
+    cy = @user_area_height / 2
 
     @gaze_x += (@gaze_tx - @gaze_x) * GAZE_EASE
     @gaze_y += (@gaze_ty - @gaze_y) * GAZE_EASE

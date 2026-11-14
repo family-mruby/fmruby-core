@@ -69,8 +69,8 @@ class DbgSampleApp < FmrbApp
     return unless @gfx
     clear_user_area
 
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     @gfx.draw_text(x, y, "Debugger sample", theme_fg)
     y += 14
     @gfx.draw_text(x, y, "tick : #{@tick}", theme_accent)

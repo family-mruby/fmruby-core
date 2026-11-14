@@ -535,8 +535,8 @@ class RaycasterApp < FmrbApp
   # ---- Drawing ----
 
   def draw_frame
-    ox = @user_area_x0
-    oy = @user_area_y0
+    ox = 0
+    oy = 0
 
     # Viewport position (centered horizontally, top-aligned)
     vp_x = ox + (@user_area_width - VP_W) / 2

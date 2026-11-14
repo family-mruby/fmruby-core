@@ -73,7 +73,7 @@ class PianoApp < FmrbApp
     if ev[:type] == :mouse_down
       x = ev[:x]
       y = ev[:y]
-      panel_y = @user_area_y0 + PANEL_H
+      panel_y = PANEL_H
       if y < panel_y
         handle_panel_click(x, y)
       else
@@ -114,8 +114,8 @@ class PianoApp < FmrbApp
 
   # Handle click on control panel
   def handle_panel_click(mx, my)
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     btn_h = 12
     btn_y = y0 + 2
 
@@ -172,8 +172,8 @@ class PianoApp < FmrbApp
 
   # Draw everything
   def draw_all
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w = @user_area_width
     h = @user_area_height
 
@@ -186,8 +186,8 @@ class PianoApp < FmrbApp
 
   # Draw control panel
   def draw_panel
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     btn_h = 12
     btn_y = y0 + 2
 
@@ -247,8 +247,8 @@ class PianoApp < FmrbApp
 
   # Draw piano keyboard
   def draw_keyboard
-    x0 = @user_area_x0
-    y0 = @user_area_y0 + PANEL_H
+    x0 = 0
+    y0 = PANEL_H
     w = @user_area_width
     h = @user_area_height - PANEL_H
 
@@ -285,8 +285,8 @@ class PianoApp < FmrbApp
 
   # Hit test for keyboard area
   def hit_test(mx, my)
-    x0 = @user_area_x0
-    y0 = @user_area_y0 + PANEL_H
+    x0 = 0
+    y0 = PANEL_H
     w = @user_area_width
     h = @user_area_height - PANEL_H
     key_w = w / 7

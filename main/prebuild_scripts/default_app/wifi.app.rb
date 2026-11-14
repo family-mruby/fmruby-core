@@ -40,7 +40,7 @@ class WifiSettingsApp < FmrbApp
     @wifi_text = nil
     @ip = ""
     build_widgets
-    Log.info("wifi: user area #{@w}x#{@h} at (#{@user_area_x0},#{@user_area_y0})")
+    Log.info("wifi: user area #{@w}x#{@h} at (#{0},#{0})")
     # The list is only as fresh as the last scan: ask for one on opening.
     @wifi_text = FmrbApp.wifi_networks(true)
     parse_wifi
@@ -64,7 +64,7 @@ class WifiSettingsApp < FmrbApp
       return
     end
     if t == :mouse_down && ev[:button] == 1
-      click_list(ev[:x].to_i - @user_area_x0, ev[:y].to_i - @user_area_y0)
+      click_list(ev[:x].to_i, ev[:y].to_i)
     elsif t == :mouse_wheel
       scroll(ev[:delta].to_i > 0 ? -1 : 1)
     elsif t == :key_down

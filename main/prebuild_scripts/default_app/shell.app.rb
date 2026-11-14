@@ -141,12 +141,11 @@ class ShellApp < FmrbApp
                   @user_area_height, 0, 1)
 
     clear_user_area(@bg_col)
-    draw_window_frame
     show_greeting
     draw_prompt
     @gfx.present
     Log.info("on_create called")
-    Log.info("user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}")
+    Log.info("user_area: x0=#{0}, y0=#{0}, width=#{@user_area_width}, height=#{@user_area_height}")
     Log.info("window: width=#{@window_width}, height=#{@window_height}")
     Log.info("char: width=#{@char_width}, height=#{@char_height}")
     max_chars = (@user_area_width - 4) / @char_width  # -4 for left margin
@@ -394,13 +393,13 @@ class ShellApp < FmrbApp
   def redraw_script_input(partial_line)
     @script_input_line = partial_line
     begin_text_font
-    content_x = @user_area_x0 + 2
+    content_x = 2
     input_rows = partial_line.empty? ? 1 : (partial_line.length + @max_chars - 1) / @max_chars
     avail = @visible_rows - input_rows
-    input_y = @user_area_y0 + 2 + avail * @char_height
+    input_y = 2 + avail * @char_height
 
     # Clear input area
-    @gfx.fill_rect(@user_area_x0 + 1, input_y,
+    @gfx.fill_rect(1, input_y,
                     @user_area_width - 2 - FmrbApp::SCROLLBAR_W,
                     input_rows * @char_height, @bg_col)
 
@@ -768,13 +767,13 @@ class ShellApp < FmrbApp
     # key press, and the frame is the expensive half of the wipe.
     clear_user_area(@bg_col)
 
-    content_x = @user_area_x0 + 2
+    content_x = 2
     rows = less_page_rows
     i = 0
     while i < rows
       idx = @less_offset + i
       break if idx >= @less_lines.length
-      y = @user_area_y0 + 2 + i * @char_height
+      y = 2 + i * @char_height
       line = @less_lines[idx]
       @gfx.draw_text(content_x, y, line, @ch_col) unless line.empty?
       i += 1
@@ -792,8 +791,8 @@ class ShellApp < FmrbApp
     end
     max_status = (@user_area_width - 4) / @char_width
     status = status[0...max_status] if status.length > max_status
-    sy = @user_area_y0 + 2 + rows * @char_height
-    @gfx.fill_rect(@user_area_x0 + 1, sy, @user_area_width - 2, @char_height, @ch_col)
+    sy = 2 + rows * @char_height
+    @gfx.fill_rect(1, sy, @user_area_width - 2, @char_height, @ch_col)
     inv_col = @bg_col
     @gfx.draw_text(content_x, sy, status, inv_col)
 
@@ -810,8 +809,8 @@ class ShellApp < FmrbApp
     if box_w > @user_area_width - 4
       box_w = @user_area_width - 4
     end
-    box_x = @user_area_x0 + (@user_area_width - box_w) / 2
-    box_y = @user_area_y0 + (@user_area_height - box_h) / 2
+    box_x = (@user_area_width - box_w) / 2
+    box_y = (@user_area_height - box_h) / 2
 
     @gfx.fill_rect(box_x, box_y, box_w, box_h, @ch_col)
     @gfx.draw_rect(box_x, box_y, box_w, box_h, @bg_col)

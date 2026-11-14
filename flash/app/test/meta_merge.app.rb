@@ -15,8 +15,8 @@ class MetaMergeApp < FmrbApp
   def on_create
     Log.info("META: merge app up, window=#{@window_width}x#{@window_height} at #{@pos_x},#{@pos_y}")
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "MetaMerge", theme_fg)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 18,
+    @gfx.draw_text(4, 4, "MetaMerge", theme_fg)
+    @gfx.draw_text(4, 18,
                    "#{@window_width}x#{@window_height} at #{@pos_x},#{@pos_y}", theme_fg)
     @gfx.present
   end

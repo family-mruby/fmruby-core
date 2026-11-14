@@ -172,11 +172,11 @@ class BreakoutApp(FmrbApp):
     # Recomputed rather than stored as constants, because the window can be
     # resized (and a fullscreen switch is a resize).
     def measure(self):
-        self.fx0 = self.user_area_x0 + 1
-        self.fx1 = self.user_area_x1 - 1
-        self.status_y = self.user_area_y0 + 1
-        self.ftop = self.user_area_y0 + 14
-        self.fbottom = self.user_area_y1 - 2
+        self.fx0 = 1
+        self.fx1 = self.user_area_width - 1
+        self.status_y = 1
+        self.ftop = 14
+        self.fbottom = self.user_area_height - 2
         self.paddle_y = self.fbottom - PADDLE_H - 2
         self.brick_x0 = self.fx0 + ((self.fx1 - self.fx0) -
                                     COLS * (BRICK_W + BRICK_GAP)) // 2

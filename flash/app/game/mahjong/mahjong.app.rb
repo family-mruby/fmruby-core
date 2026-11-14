@@ -282,8 +282,8 @@ class MahjongApp < FmrbApp
   end
 
   def layout
-    @x0 = @user_area_x0
-    @y0 = @user_area_y0
+    @x0 = 0
+    @y0 = 0
     @w = @user_area_width
     @h = @user_area_height
     @big = @w >= 640 && @h >= 360

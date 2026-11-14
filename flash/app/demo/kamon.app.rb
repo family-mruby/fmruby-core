@@ -53,7 +53,6 @@ class KamonApp < FmrbApp
     @p5 = P5.new(@gfx)
     build_panel
     clear_user_area(FmrbGfx::WHITE)
-    draw_window_frame
     draw_preview
     @ui.flush
   end
@@ -142,10 +141,10 @@ class KamonApp < FmrbApp
   # -----------------------------------------------------------------------
 
   def draw_preview
-    @gfx.fill_rect(@user_area_x0 + PREVIEW_X, @user_area_y0 + PREVIEW_Y,
+    @gfx.fill_rect(PREVIEW_X, PREVIEW_Y,
                    PREVIEW_SIZE, PREVIEW_SIZE, FmrbGfx::WHITE)
-    cx = @user_area_x0 + PREVIEW_X + PREVIEW_SIZE / 2
-    cy = @user_area_y0 + PREVIEW_Y + PREVIEW_SIZE / 2
+    cx = PREVIEW_X + PREVIEW_SIZE / 2
+    cy = PREVIEW_Y + PREVIEW_SIZE / 2
 
     @p5.reset_matrix
     @p5.push_matrix

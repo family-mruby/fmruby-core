@@ -1177,8 +1177,8 @@ class OthelloApp < FmrbApp
   # ------------------------------------------------------------ the screen
 
   def layout
-    @x0 = @user_area_x0
-    @y0 = @user_area_y0
+    @x0 = 0
+    @y0 = 0
     uw = @user_area_width
     uh = @user_area_height
     c = (uh - 6) / 8
@@ -1401,8 +1401,8 @@ class OthelloApp < FmrbApp
   # Small screens: the latest state any game put, without playing.
   def draw_small
     clear_user_area(FmrbGfx::BLACK)
-    x = @user_area_x0
-    y = @user_area_y0
+    x = 0
+    y = 0
     w = @user_area_width
     h = @user_area_height
     st = @spec

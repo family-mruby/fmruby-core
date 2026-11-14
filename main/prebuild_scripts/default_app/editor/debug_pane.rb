@@ -193,7 +193,7 @@ module EditorDebugPane
   # Gutter dot: red circle for a breakpoint line; a yellow ring/dot marks the
   # current-stop line (ring over the red dot when a breakpoint sits there).
   def draw_gutter_marker(line_idx, y)
-    cx = @user_area_x0 + @gutter_w / 2
+    cx = @gutter_w / 2
     cyc = y + @line_h / 2
     bp = bp_on_line?(line_idx)
     stop = @dbg_stopped && stop_on_line?(line_idx)
@@ -206,29 +206,29 @@ module EditorDebugPane
   end
 
   def draw_debug_pane(y0, pane_h)
-    @gfx.fill_rect(@user_area_x0, y0, @user_area_width, pane_h, DBG_PANE_BG)
+    @gfx.fill_rect(0, y0, @user_area_width, pane_h, DBG_PANE_BG)
     # Header row.
-    @gfx.fill_rect(@user_area_x0, y0, @user_area_width, CHAR_H, DBG_HDR_BG)
+    @gfx.fill_rect(0, y0, @user_area_width, CHAR_H, DBG_HDR_BG)
     state = @dbg_stopped ? "stop ln#{@dbg_stop_line}" : "run"
     view = (@dbg_pane == :stack) ? "Stack" : "Vars f#{@dbg_frame_idx}"
     hdr = " #{view} pid=#{@dbg_pid} #{state}"
     hdr += " #{@dbg_msg}" if @dbg_msg.length > 0
-    @gfx.draw_text(@user_area_x0 + 2, y0, hdr[0, @edit_cols], DBG_HDR_TEXT, DBG_HDR_BG)
+    @gfx.draw_text(2, y0, hdr[0, @edit_cols], DBG_HDR_TEXT, DBG_HDR_BG)
 
     cy = y0 + CHAR_H
     rows = DBG_PANE_ROWS - 1
     if @dbg_pane == :stack
       if @dbg_frames.empty?
         note = @dbg_stopped ? "(no frames)" : "(running - F9 set BP / F5 continue)"
-        @gfx.draw_text(@user_area_x0 + 2, cy, note, DBG_TEXT, DBG_PANE_BG)
+        @gfx.draw_text(2, cy, note, DBG_TEXT, DBG_PANE_BG)
       else
         i = 0
         while i < rows && i < @dbg_frames.size
           f = @dbg_frames[i]
           txt = "##{f['idx']} #{f['func']} #{base(f['file'])}:#{f['line']}"
           bg = (i == @dbg_frame_idx) ? DBG_SEL_BG : DBG_PANE_BG
-          @gfx.fill_rect(@user_area_x0, cy, @user_area_width, CHAR_H, bg) if bg != DBG_PANE_BG
-          @gfx.draw_text(@user_area_x0 + 2, cy, txt[0, @edit_cols], DBG_TEXT, bg)
+          @gfx.fill_rect(0, cy, @user_area_width, CHAR_H, bg) if bg != DBG_PANE_BG
+          @gfx.draw_text(2, cy, txt[0, @edit_cols], DBG_TEXT, bg)
           cy += CHAR_H
           i += 1
         end
@@ -236,14 +236,14 @@ module EditorDebugPane
     else
       if @dbg_vars.empty?
         note = @dbg_stopped ? "(no vars)" : "(not stopped)"
-        @gfx.draw_text(@user_area_x0 + 2, cy, note, DBG_TEXT, DBG_PANE_BG)
+        @gfx.draw_text(2, cy, note, DBG_TEXT, DBG_PANE_BG)
       else
         i = 0
         while i < rows && i < @dbg_vars.size
           v = @dbg_vars[i]
           txt = "#{v['name']} = #{v['value']}"
           txt += " >" if v['ref'] && v['ref'] > 0
-          @gfx.draw_text(@user_area_x0 + 2, cy, txt[0, @edit_cols], DBG_TEXT, DBG_PANE_BG)
+          @gfx.draw_text(2, cy, txt[0, @edit_cols], DBG_TEXT, DBG_PANE_BG)
           cy += CHAR_H
           i += 1
         end
@@ -277,8 +277,8 @@ module EditorDebugPane
     n = items.size
     w = 32 * CHAR_W
     h = (n + 2) * CHAR_H + 8
-    x = @user_area_x0 + (@user_area_width - w) / 2
-    y = @user_area_y0 + (@user_area_height - h) / 2
+    x = (@user_area_width - w) / 2
+    y = (@user_area_height - h) / 2
     @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
     @gfx.draw_rect(x, y, w, h, 0x60)
     @gfx.draw_text(x + 4, y + 3, "Attach to app:", DROPDOWN_TEXT, DROPDOWN_BG)

@@ -3,8 +3,8 @@
 
 class GfxBlockTestApp < FmrbApp
   def on_create
-    @ox = @user_area_x0
-    @oy = @user_area_y0
+    @ox = 0
+    @oy = 0
     @w  = @user_area_width
     @h  = @user_area_height
 

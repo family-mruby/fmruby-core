@@ -131,8 +131,8 @@ module EditorKeys
     h = KEYS_PAD * 2 + (rows.size + 1) * KEYS_LINE_H   # + the footer line
     max_h = @user_area_height - 4
     h = max_h if h > max_h
-    x = @user_area_x0 + (@user_area_width - w) / 2
-    y = @user_area_y0 + (@user_area_height - h) / 2
+    x = (@user_area_width - w) / 2
+    y = (@user_area_height - h) / 2
     [x, y, w, h, key_w]
   end
 

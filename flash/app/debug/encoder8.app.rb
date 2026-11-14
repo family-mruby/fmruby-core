@@ -138,8 +138,8 @@ class Encoder8App < FmrbApp
   private
 
   def hit_dial(mx, my)
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w  = @user_area_width
     h  = @user_area_height
     cell_w = w / COLS
@@ -160,8 +160,8 @@ class Encoder8App < FmrbApp
   end
 
   def draw_screen
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w  = @user_area_width
     h  = @user_area_height
 

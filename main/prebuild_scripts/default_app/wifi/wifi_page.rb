@@ -193,11 +193,11 @@ module WifiPageMixin
   # ---- drawing
 
   def ax(x)
-    @user_area_x0 + x
+    x
   end
 
   def ay(y)
-    @user_area_y0 + y
+    y
   end
 
   def text(x, y, s, color = nil)

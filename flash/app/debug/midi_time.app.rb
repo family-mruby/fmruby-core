@@ -100,12 +100,12 @@ class MidiTimeApp < FmrbApp
   end
 
   def draw
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width,
+    @gfx.fill_rect(0, 0, @user_area_width,
                    @user_area_height, FmrbConst::THEME_WINDOW_BG)
-    y = @user_area_y0 + 2
+    y = 2
     i = 0
     while i < @lines.size
-      @gfx.draw_text(@user_area_x0 + 2, y, @lines[i], FmrbConst::THEME_TEXT,
+      @gfx.draw_text(2, y, @lines[i], FmrbConst::THEME_TEXT,
                      FmrbConst::THEME_WINDOW_BG)
       y += 9
       i += 1

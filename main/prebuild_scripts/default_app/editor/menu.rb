@@ -87,12 +87,12 @@ module EditorMenu
     when :view, :font
       # Right-anchored like Debug: View sits well along the bar, and its items
       # ("[x] Highlight") are wider than the label above them.
-      vx = @user_area_x0 + @user_area_width - menu_width - 2
+      vx = @user_area_width - menu_width - 2
       vx = @menu_view_x if @menu_view_x && vx > @menu_view_x
-      vx = @user_area_x0 if vx < @user_area_x0
+      vx = 0 if vx < 0
       [vx, @menu_y + CHAR_H]
     when :debug
-      dx = @user_area_x0 + @user_area_width - menu_width - 2
+      dx = @user_area_width - menu_width - 2
       dx = @menu_debug_x if dx > @menu_debug_x
       [dx, @menu_y + CHAR_H]
     else            [0, 0]

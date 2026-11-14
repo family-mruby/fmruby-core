@@ -26,7 +26,7 @@ class CkptWindowApp < FmrbApp
       end
     end
     # the marker under the last dot: a program of its own on the display side
-    @mark = GfxBlock.new(@gfx, x: @user_area_x0 + 2, y: @user_area_y0 + 2) do |r, x:, y:|
+    @mark = GfxBlock.new(@gfx, x: 2, y: 2) do |r, x:, y:|
       r.draw_rect x, y, 7, 7, FmrbGfx::RED
     end
     @ui = FmrbUI.new(self)
@@ -43,14 +43,14 @@ class CkptWindowApp < FmrbApp
   def make_sprite
     @sprite_img = SpriteImage.new(@gfx, width: 6, height: 6)
     @sprite_img.draw { |g| g.fill_rect(0, 0, 6, 6, FmrbGfx::MAGENTA) }
-    @sprite = SpriteInstance.new(@gfx, @sprite_img, x: @user_area_x0 + @user_area_width - 10,
-                                 y: @user_area_y0 + @user_area_height - 10)
+    @sprite = SpriteInstance.new(@gfx, @sprite_img, x: @user_area_width - 10,
+                                 y: @user_area_height - 10)
   end
 
   def draw_all
     clear_user_area
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     @gfx.fill_rect(x0 + 2, y0 + 2, @user_area_width - 4, 6, FmrbGfx::BLUE)
     @gfx.draw_text(x0 + 4, y0 + 12, "Window #{@text}", theme_fg)
     i = 0
@@ -94,7 +94,7 @@ class CkptWindowApp < FmrbApp
         draw_all
       end
     when :mouse_up
-      if ev[:button] == 1 && ev[:y] >= @user_area_y0 + 24
+      if ev[:button] == 1 && ev[:y] >= 24
         @dots << [ev[:x], ev[:y]]
         Log.info("ckpt_window: click #{ev[:x]},#{ev[:y]} dots=#{@dots.size}")
         draw_all

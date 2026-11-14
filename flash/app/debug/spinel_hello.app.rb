@@ -21,8 +21,8 @@ class SpinelHelloApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 6, @user_area_y0 + 10, @text.to_s, theme_fg)
-    @gfx.draw_text(@user_area_x0 + 6, @user_area_y0 + 26,
+    @gfx.draw_text(6, 10, @text.to_s, theme_fg)
+    @gfx.draw_text(6, 26,
                    "built by Spinel", theme_border)
     draw_window_frame
     @gfx.present

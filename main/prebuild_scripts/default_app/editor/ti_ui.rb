@@ -279,13 +279,13 @@ module EditorTiUi
   # close; pushed left when it would run off the right edge.
   def comp_origin(w, h)
     box = cursor_cell_box
-    cx = box.nil? ? @user_area_x0 + 1 : box[0]
+    cx = box.nil? ? 1 : box[0]
     cy = box.nil? ? @edit_y : box[1]
 
     x = cx
-    right = @user_area_x0 + @user_area_width - 2
+    right = @user_area_width - 2
     x = right - w if x + w > right
-    x = @user_area_x0 + 1 if x < @user_area_x0 + 1
+    x = 1 if x < 1
 
     y = cy + @line_h
     y = cy - h if y + h > @status_y

@@ -179,9 +179,10 @@ class PicoRubyDemoApp < FmrbApp
       # Pressing shows the pressed look; releasing on nothing restores it.
       @ui.flush
       return if t == :mouse_down
-      # The close button is handled by super; do not treat it as a page turn.
+      # The close button is the frame's; do not treat it as a page turn
+      # (window coordinates: it is on the title bar).
       close_btn_x = @window_width - 10
-      return if ev[:x] >= close_btn_x && ev[:y] >= 2 && ev[:y] < 10
+      return if ev[:wx] >= close_btn_x && ev[:wy] >= 2 && ev[:wy] < 10
       return if ev[:y] >= nav_y
       _step_page(1)
       return
@@ -260,12 +261,12 @@ class PicoRubyDemoApp < FmrbApp
   # (and says nothing when it does), which would cost the full tour.
   def build_nav
     @ui = FmrbUI.new(self, bg: COLOR_NAV_BG)
-    ny = nav_y - @user_area_y0
+    ny = nav_y
     @ui.button(:prev, 0, ny, ARROW_W, NAV_H, "<")
     @ui.label(:pageno, ARROW_W, ny, 4 * CHAR_W, NAV_H, "1/1", align: :center)
     @ui.button(:next, ARROW_W + 4 * CHAR_W, ny, ARROW_W, NAV_H, ">")
 
-    tx = _tabs_x0 - @user_area_x0
+    tx = _tabs_x0
     i = 0
     while i < SECTION_NAMES.size
       w = _tab_w(i)
@@ -282,7 +283,7 @@ class PicoRubyDemoApp < FmrbApp
   # called when the page or the section moved -- an animating page redraws
   # its picture at 15 Hz and must not drag the nav bar along with it.
   def refresh_nav
-    @gfx.fill_rect(@user_area_x0, nav_y, uw, NAV_H, COLOR_NAV_BG)
+    @gfx.fill_rect(0, nav_y, uw, NAV_H, COLOR_NAV_BG)
     @ui.set_text(:pageno, "#{@page + 1}/#{pages.size}")
     @ui.set_on(SECTION_IDS[@section], true)
     @ui.invalidate_all
@@ -294,8 +295,8 @@ class PicoRubyDemoApp < FmrbApp
 
   def uw; @user_area_width; end
   def uh; @user_area_height - NAV_H; end
-  def nav_y; @user_area_y0 + @user_area_height - NAV_H; end
-  def body_y; @user_area_y0 + HEADER_H; end
+  def nav_y; @user_area_height - NAV_H; end
+  def body_y; HEADER_H; end
   def body_h; uh - HEADER_H; end
 
   def _tab_w(i); SECTION_NAMES[i].length * CHAR_W + TAB_PAD * 2; end
@@ -307,8 +308,8 @@ class PicoRubyDemoApp < FmrbApp
       total += _tab_w(i) + 2
       i += 1
     end
-    x = @user_area_x0 + uw - total
-    min_x = @user_area_x0 + 2 * ARROW_W + 4 * CHAR_W + 4
+    x = uw - total
+    min_x = 2 * ARROW_W + 4 * CHAR_W + 4
     x < min_x ? min_x : x
   end
 
@@ -318,10 +319,10 @@ class PicoRubyDemoApp < FmrbApp
     # Sprites are composited over whatever the page draws, so they are hidden
     # everywhere except on the page that owns them.
     @player.visible = false if @sprites_ready && page_key != :sprites
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, uw, uh, PAPER)
+    @gfx.fill_rect(0, 0, uw, uh, PAPER)
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 3,
+    @gfx.draw_text(4, 3,
                    PAGE_TITLES[page_key], INK, PAPER)
     draw_page
     @gfx.set_font(:default)
@@ -390,7 +391,7 @@ class PicoRubyDemoApp < FmrbApp
 
   def draw_sprites_page
     load_sprites
-    x = @user_area_x0 + 6
+    x = 6
     y = body_y
 
     6.times do |i|
@@ -398,7 +399,7 @@ class PicoRubyDemoApp < FmrbApp
                      dst_x: x + i * 16, dst_y: y)
     end
     @gfx.draw_tile(@badge.id, 0, 0, 20, 12,
-                   dst_x: @user_area_x0 + uw - 26, dst_y: y + 2)
+                   dst_x: uw - 26, dst_y: y + 2)
 
     @gfx.draw_text(x, y + 24, "SpriteInstance: move and frame", INK, PAPER)
     @gfx.draw_text(x, y + 36, "arrows move it, SPACE steps the frame", INK_SUB, PAPER)
@@ -436,7 +437,7 @@ class PicoRubyDemoApp < FmrbApp
   # create_image decodes a picture file (a PNG); a sprite BMP belongs in
   # load_bmp instead. Handing this one a BMP gives an empty image, silently.
   def draw_picture_page
-    x = @user_area_x0 + 6
+    x = 6
     y = body_y
     @gfx.draw_text(x, y, "I: load and draw, again to drop it", INK, PAPER)
     if @image
@@ -469,7 +470,7 @@ class PicoRubyDemoApp < FmrbApp
   # allocates nothing, which is what keeps a stream of them from stuttering.
 
   def draw_sound_page
-    x = @user_area_x0 + 6
+    x = 6
     y = body_y
     rows = [
       "1: a scale on pulse1",
@@ -556,7 +557,7 @@ class PicoRubyDemoApp < FmrbApp
   # --- Section 5: the system side ----------------------------------------
 
   def draw_system_page
-    x = @user_area_x0 + 6
+    x = 6
     y = body_y
     @uptime = Machine.board_millis - @started_at
     # The rows come from picoruby_status.rb, required at the top of this file:
@@ -566,7 +567,7 @@ class PicoRubyDemoApp < FmrbApp
       @gfx.draw_text(x, y + i * 11, entry[0], INK_SUB, PAPER)
       @gfx.draw_text(x + 92, y + i * 11, entry[1], INK, PAPER)
     end
-    @gfx.fill_circle(@user_area_x0 + uw - 10, y + 4, 3, C_GREEN) if @blink
+    @gfx.fill_circle(uw - 10, y + 4, 3, C_GREEN) if @blink
   end
 
   def system_key(sc)
@@ -616,7 +617,7 @@ class PicoRubyDemoApp < FmrbApp
   # --- Section 1: @gfx primitives ----------------------------------------
 
   def draw_shapes
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
 
     @gfx.draw_round_rect(x0 + 8, y, 60, 30, 6, C_TEAL)
@@ -640,7 +641,7 @@ class PicoRubyDemoApp < FmrbApp
   end
 
   def draw_arcs
-    x0 = @user_area_x0
+    x0 = 0
     cy = body_y + body_h / 2
 
     @gfx.fill_arc(x0 + 70, cy, 0, 50, 0, 120, C_RED)
@@ -657,7 +658,7 @@ class PicoRubyDemoApp < FmrbApp
   end
 
   def draw_text_size
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
 
     @gfx.set_text_size(1)
@@ -677,7 +678,7 @@ class PicoRubyDemoApp < FmrbApp
   # --- Section 2: fonts --------------------------------------------------
 
   def draw_font_ascii
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
@@ -689,7 +690,7 @@ class PicoRubyDemoApp < FmrbApp
   end
 
   def draw_font_ja
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
     @gfx.set_text_size(1)
     @gfx.set_font(:ja, 8)
@@ -703,7 +704,7 @@ class PicoRubyDemoApp < FmrbApp
   end
 
   def draw_font_mixed
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
     @gfx.set_font(:ja, 8)
     @gfx.set_text_size(1)
@@ -716,7 +717,7 @@ class PicoRubyDemoApp < FmrbApp
   # draw_text(..., mixed: true) keeps ASCII on the 6x8 Font0 and falls back
   # to misaki_8 for multi byte UTF-8 inside the same call.
   def draw_font_hybrid
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
@@ -728,7 +729,7 @@ class PicoRubyDemoApp < FmrbApp
   end
 
   def draw_font_scaled
-    x0 = @user_area_x0
+    x0 = 0
     y = body_y
     @gfx.set_font(:ja, 8)
     @gfx.set_text_size(1)
@@ -747,7 +748,7 @@ class PicoRubyDemoApp < FmrbApp
   # of the picture area, so uw / ph below are what they may fill.
   def draw_p5_page
     @p5.reset_matrix
-    @p5.translate(@user_area_x0, body_y)
+    @p5.translate(0, body_y)
     @p5.no_stroke
     @p5.text_font(:default)
     @p5.text_color(INK)
@@ -867,7 +868,7 @@ class PicoRubyDemoApp < FmrbApp
     @p5.text_font(:default)
     @p5.text_align(:left, :top)
     swatches.each do |sw|
-      value = @gfx.get_pixel(@user_area_x0 + 60, body_y + sw[2] + 15)
+      value = @gfx.get_pixel(60, body_y + sw[2] + 15)
       @p5.text(sprintf("%s read=0x%02X", sw[1], value), 110, sw[2] + 11)
     end
   end
@@ -893,9 +894,9 @@ class PicoRubyDemoApp < FmrbApp
     @p5.text("SpriteImage + 1bpp mask (cached)", 4, 2)
 
     sid = @masked_sprite.id
-    @gfx.draw_image_masked(sid, @masks[:circle48], x: @user_area_x0 + 20, y: body_y + 30)
-    @gfx.draw_image_masked(sid, @masks[:star48],   x: @user_area_x0 + 90, y: body_y + 30)
-    @gfx.draw_image_masked(sid, @masks[:circle32], x: @user_area_x0 + 170, y: body_y + 40)
+    @gfx.draw_image_masked(sid, @masks[:circle48], x: 20, y: body_y + 30)
+    @gfx.draw_image_masked(sid, @masks[:star48],   x: 90, y: body_y + 30)
+    @gfx.draw_image_masked(sid, @masks[:circle32], x: 170, y: body_y + 40)
   end
 
   # 1bpp circular mask, MSB first per byte, 1 bit = pixel drawn. while loops

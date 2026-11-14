@@ -36,7 +36,7 @@ class MmKwApp < FmrbApp
 
     Log.info("MMKW DONE pass=#{@pass} fail=#{@fail}")
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+    @gfx.draw_text(4, 4,
                    "MMKW pass=#{@pass} fail=#{@fail}", theme_fg)
     @gfx.present
   end

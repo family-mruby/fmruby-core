@@ -15,7 +15,7 @@ class GameBase < FmrbApp
   def on_create
     Log.info("AUTOSTART: #{self.class} up")
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, label, theme_fg)
+    @gfx.draw_text(4, 4, label, theme_fg)
     @gfx.present
   end
 end

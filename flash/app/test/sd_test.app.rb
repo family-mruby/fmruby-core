@@ -83,8 +83,8 @@ class SdTestApp < FmrbApp
     return unless @gfx
     clear_user_area
 
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     @gfx.draw_text(x, y, "SD Card Test  run##{@run}", theme_fg)
     y += 12
     @gfx.draw_text(x, y, "Path: #{TEST_PATH}", theme_border)

@@ -14,8 +14,8 @@ class JaWidthApp < FmrbApp
 
   def on_create
     clear_user_area
-    x0 = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x0 = 4
+    y = 4
 
     @gfx.draw_text(x0, y, "mixed (Font0 + misaki_8)", theme_fg)
     y += 10

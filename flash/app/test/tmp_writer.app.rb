@@ -17,7 +17,7 @@ class TmpWriterApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+    @gfx.draw_text(4, 4,
                    "sent #{@count} (#{@bytes}B)", theme_fg)
     @gfx.fill_rect(BTN_X, BTN_Y, BTN_W, BTN_H, FmrbGfx::BLUE)
     @gfx.draw_rect(BTN_X, BTN_Y, BTN_W, BTN_H, theme_border)

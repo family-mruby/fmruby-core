@@ -188,7 +188,7 @@ class MicSpectrumApp < FmrbApp
     clear_user_area(FmrbGfx::BLACK)
 
     if @error
-      @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 3, @error, FmrbGfx::RED)
+      @gfx.draw_text(4, 3, @error, FmrbGfx::RED)
       draw_window_frame
       @gfx.present
       return
@@ -201,17 +201,17 @@ class MicSpectrumApp < FmrbApp
     # version of this line sat exactly on that edge and wrapped onto the bars.
     bin_hz = @rate / SIZE
     ms = @ms > 9999 ? 9999 : @ms
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 3,
+    @gfx.draw_text(4, 3,
                    sprintf("%dHz %dHz/bin %-10s %4dms [E]ngine [T]one%s",
                            @rate, bin_hz, backend.to_s, ms, @tone ? "*" : " "),
                    FmrbGfx::WHITE)
 
-    bar_bottom = @user_area_y0 + HEADER_H + bars_height
+    bar_bottom = HEADER_H + bars_height
     bw = @user_area_width / SHOWN_BINS
     bw = 1 if bw < 1
     i = 0
     while i < SHOWN_BINS
-      x = @user_area_x0 + i * bw
+      x = i * bw
       h = @bars[i]
       @gfx.fill_rect(x, bar_bottom - h, bw - 1, h, bar_color(h)) if h > 0
       p = @peaks[i]
@@ -224,7 +224,7 @@ class MicSpectrumApp < FmrbApp
     while i < SHOWN_BINS
       if i % 8 == 0
         hz = (i + 1) * bin_hz
-        @gfx.draw_text(@user_area_x0 + i * bw, bar_bottom + 3,
+        @gfx.draw_text(i * bw, bar_bottom + 3,
                        "#{hz / 1000}k", FmrbGfx::GRAY)
       end
       i += 8

@@ -290,8 +290,8 @@ class SmfPlayerApp < FmrbApp
   end
 
   def draw_ui
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w = @user_area_width
     h = @user_area_height
     vc = visible_count
@@ -467,7 +467,7 @@ class SmfPlayerApp < FmrbApp
   end
 
   def handle_click(x, y)
-    y0 = @user_area_y0
+    y0 = 0
     info_y = y0 + @user_area_height - INFO_H
 
     if y >= y0 + LIST_Y && y < info_y

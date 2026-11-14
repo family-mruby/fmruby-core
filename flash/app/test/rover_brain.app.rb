@@ -497,8 +497,8 @@ class RoverBrainApp < FmrbApp
   end
 
   def draw_lines
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 3
+    x = 4
+    y = 3
     @gfx.fill_rect(x, y, @user_area_width - 8, 13 * 10, theme_bg)
     # The long lines are cut at 312 px, 52 cells of the 6x8 font.
     @gfx.draw_text(x, y, @gfx.fit_text("#{@id}/brain/rover #{@state}", 312), theme_fg)

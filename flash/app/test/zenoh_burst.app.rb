@@ -60,8 +60,8 @@ class ZenohBurstApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    x = @user_area_x0 + 6
-    y = @user_area_y0 + 6
+    x = 6
+    y = 6
     @gfx.draw_text(x, y, @locator, theme_fg)
     @gfx.draw_text(x, y + 12, @state[0, 46], theme_fg)
     @gfx.draw_text(x, y + 24, "puts: #{@count}  slowest: #{@slowest} ms", theme_fg)

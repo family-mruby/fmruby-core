@@ -229,10 +229,10 @@ class RoboPilotApp < FmrbApp
     # page of text, so it does not follow the theme (clear_user_area defaults
     # to the theme background).
     clear_user_area(FmrbGfx::BLACK)
-    x = @user_area_x0 + 3
+    x = 3
     st = @state
     if st.nil?
-      @gfx.draw_text(x, @user_area_y0 + 3, "待機中", COL_DIM)
+      @gfx.draw_text(x, 3, "待機中", COL_DIM)
       draw_window_frame
       @gfx.present
       return
@@ -240,7 +240,7 @@ class RoboPilotApp < FmrbApp
 
     draw_view(st)
 
-    y = @user_area_y0 + VB_Y + VB_H + 5
+    y = VB_Y + VB_H + 5
     @gfx.draw_text(x, y, "場所 #{st["x"]},#{st["y"]}  #{dir_ja(st["dir"])}", COL_TEXT)
     y += LINE_H
     @gfx.draw_text(x, y, "前 #{front_ja(st["front"])}", COL_TEXT)
@@ -252,7 +252,7 @@ class RoboPilotApp < FmrbApp
     unless @result_text.empty?
       @gfx.draw_text(x, y, @result_text, @result_ok ? COL_GOAL : COL_NG)
     end
-    y = @user_area_y1 - LINE_H * 2 - 4
+    y = @user_area_height - LINE_H * 2 - 4
     @gfx.draw_text(x, y, (@auto ? "自動:ON" : "自動:OFF") +
                    "  速度:#{@think_ms}ms",
                    @auto ? COL_GOAL : COL_DIM)
@@ -270,8 +270,8 @@ class RoboPilotApp < FmrbApp
   # doorway (near vertical edge and two shelves). The list ending on floor
   # means a wall dead ahead, which is drawn as the facing rectangle.
   def draw_view(st)
-    bx = @user_area_x0 + VB_X
-    by = @user_area_y0 + VB_Y
+    bx = VB_X
+    by = VB_Y
     @gfx.fill_rect(bx, by, VB_W, VB_H, COL_BG)
     @gfx.draw_rect(bx, by, VB_W, VB_H, COL_DIM)
 

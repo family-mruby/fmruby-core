@@ -79,13 +79,13 @@ class MonitorApp < FmrbApp
 
   def on_create
     # Layout
-    @content_x = @user_area_x0 + 2
+    @content_x = 2
     @content_w = @user_area_width - 4
     @label_chars = 8
     @label_w = @label_chars * CHAR_W + 2
     @bar_x = @content_x + @label_w
     @bar_w = @content_w - @label_w
-    @nav_y = @user_area_y0 + @user_area_height - NAV_H
+    @nav_y = @user_area_height - NAV_H
 
     # Pagination + sampling state
     @page = 0
@@ -124,16 +124,16 @@ class MonitorApp < FmrbApp
   # this file is absolute, hence the subtraction.
   def build_kill_buttons
     @ui = FmrbUI.new(self, bg: COLOR_BG)
-    @rows_y0 = @user_area_y0 + 2 + CHAR_H + 3
+    @rows_y0 = 2 + CHAR_H + 3
     msg_y = @nav_y - CHAR_H - 1
     fit = (msg_y - 1 - @rows_y0) / ROW_H
     fit = KILL_IDS.size if fit > KILL_IDS.size
     fit = 0 if fit < 0
     @max_rows = fit
-    rel_x = @btn_x - @user_area_x0
+    rel_x = @btn_x
     i = 0
     while i < @max_rows
-      rel_y = @rows_y0 + i * ROW_H - @user_area_y0
+      rel_y = @rows_y0 + i * ROW_H
       b = @ui.button(KILL_IDS[i], rel_x, rel_y, BTN_W, ROW_H, "[stop]")
       b.visible = false
       b.dirty = false
@@ -142,7 +142,7 @@ class MonitorApp < FmrbApp
     end
     i = 0
     while i < SVC_IDS.size
-      b = @ui.button(SVC_IDS[i], rel_x, @rows_y0 - @user_area_y0, BTN_W,
+      b = @ui.button(SVC_IDS[i], rel_x, @rows_y0, BTN_W,
                      ROW_H, "[stop]")
       b.visible = false
       b.dirty = false
@@ -418,7 +418,7 @@ class MonitorApp < FmrbApp
   end
 
   def draw_page_memory
-    y = @user_area_y0 + 2
+    y = 2
     @gfx.draw_text(@content_x, y, "Memory", COLOR_TEXT, COLOR_BG)
     y += CHAR_H + 4
 
@@ -478,7 +478,7 @@ class MonitorApp < FmrbApp
   end
 
   def draw_page_gfx_stats
-    y = @user_area_y0 + 2
+    y = 2
     @gfx.draw_text(@content_x, y, "GFX Stats", COLOR_TEXT, COLOR_BG)
     y += CHAR_H + 4
 
@@ -538,7 +538,7 @@ class MonitorApp < FmrbApp
   def draw_tasks_heading
     head = "#{pad("ID", COL_ID_CHARS)} #{pad("NAME", COL_NAME_CHARS)} " \
            "#{pad("STATE", COL_STATE_CHARS)}"
-    @gfx.draw_text(@content_x, @user_area_y0 + 2, head, COLOR_DIM, COLOR_BG)
+    @gfx.draw_text(@content_x, 2, head, COLOR_DIM, COLOR_BG)
     nil
   end
 
@@ -599,7 +599,7 @@ class MonitorApp < FmrbApp
           # stray click a second after a page turn must not do it. The armed
           # state says so in words now; it used to be a bare [?].
           @ui.set_text(id, @kill_armed_pid == pid ? "[sure?]" : "[stop]")
-          @ui.move(id, @btn_x - @user_area_x0, y - @user_area_y0, BTN_W, ROW_H)
+          @ui.move(id, @btn_x, y, BTN_W, ROW_H)
           @ui.set_visible(id, true)
           row += 1
         end
@@ -668,7 +668,7 @@ class MonitorApp < FmrbApp
       @ui.set_visible(id, false)
     else
       @ui.set_text(id, state == "running" ? "[stop]" : "[start]")
-      @ui.move(id, @btn_x - @user_area_x0, y - @user_area_y0, BTN_W, ROW_H)
+      @ui.move(id, @btn_x, y, BTN_W, ROW_H)
       @ui.set_visible(id, true)
     end
     svc_row + 1

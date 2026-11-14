@@ -55,8 +55,8 @@ class NetL2nApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    x = @user_area_x0 + 4
-    y = @user_area_y0 + 4
+    x = 4
+    y = 4
     @gfx.draw_text(x, y, "now: #{@running || '-'}", theme_fg)
     i = 0
     while i < @lines.size

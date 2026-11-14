@@ -19,12 +19,12 @@ class BusyInputApp < FmrbApp
   end
 
   def draw
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
+    @gfx.fill_rect(0, 0,
                    @user_area_width, @user_area_height, FmrbConst::THEME_WINDOW_BG)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+    @gfx.draw_text(4, 4,
                    "busy: moves=#{@moves}", FmrbConst::THEME_TEXT,
                    FmrbConst::THEME_WINDOW_BG)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 16,
+    @gfx.draw_text(4, 16,
                    "last=(#{@last_x},#{@last_y}) downs=#{@downs}",
                    FmrbConst::THEME_TEXT, FmrbConst::THEME_WINDOW_BG)
     @gfx.present

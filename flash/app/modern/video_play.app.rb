@@ -50,7 +50,7 @@ class VideoPlayApp < FmrbApp
     @hits = FmrbUI::HitAreas.new
     i = BTN_PLAY
     while i <= BTN_RATE
-      @hits.add(i, button_x(i), @user_area_y0 + BTN_Y, BTN_W, BTN_H)
+      @hits.add(i, button_x(i), BTN_Y, BTN_W, BTN_H)
       i += 1
     end
 
@@ -70,7 +70,7 @@ class VideoPlayApp < FmrbApp
       @video.stop
       @video = nil
     end
-    @gfx.fill_rect(@user_area_x0 + VIDEO_DX, @user_area_y0 + VIDEO_DY,
+    @gfx.fill_rect(VIDEO_DX, VIDEO_DY,
                    @user_area_width - VIDEO_DX * 2,
                    @user_area_height - VIDEO_DY - 2, FmrbGfx::BLACK)
   end
@@ -79,8 +79,8 @@ class VideoPlayApp < FmrbApp
     close_video
     @path = path
     @video = @gfx.video_open(path,
-                             x: @user_area_x0 + VIDEO_DX,
-                             y: @user_area_y0 + VIDEO_DY,
+                             x: VIDEO_DX,
+                             y: VIDEO_DY,
                              fps: fps, loop: true)
     if @video.nil?
       # Modern-only, and the file has to be a readable JPEG sequence.
@@ -125,12 +125,12 @@ class VideoPlayApp < FmrbApp
 
   # Buttons sit in a row along the top, above the picture.
   def button_x(index)
-    @user_area_x0 + 4 + index * (BTN_W + 4)
+    4 + index * (BTN_W + 4)
   end
 
   def draw_button(index, label)
     x = button_x(index)
-    y = @user_area_y0 + BTN_Y
+    y = BTN_Y
     @gfx.fill_rect(x, y, BTN_W, BTN_H, FmrbGfx::BLUE)
     @gfx.draw_rect(x, y, BTN_W, BTN_H, theme_border)
     lx = x + (BTN_W - label.length * 6) / 2
@@ -140,9 +140,9 @@ class VideoPlayApp < FmrbApp
   # One status line under the buttons. Kept outside the picture rect so the
   # player never overwrites it.
   def draw_status
-    y = @user_area_y0 + BTN_Y + BTN_H + 1
+    y = BTN_Y + BTN_H + 1
     w = @user_area_width - 8
-    @gfx.fill_rect(@user_area_x0 + 4, y, w, 8, theme_bg)
+    @gfx.fill_rect(4, y, w, 8, theme_bg)
     text = @message || ""
     if @video
       st = @video.status
@@ -150,7 +150,7 @@ class VideoPlayApp < FmrbApp
         text = "#{@message}  shown:#{st[:shown]} drop:#{st[:dropped]}"
       end
     end
-    @gfx.draw_text(@user_area_x0 + 4, y, text, theme_fg)
+    @gfx.draw_text(4, y, text, theme_fg)
     @gfx.present
   end
 

@@ -173,8 +173,8 @@ class FlappyApp < FmrbApp
   # ground. The ground takes the remainder so the sky is always tile-aligned
   # and a pipe never ends up half-drawn at the bottom edge.
   def setup_layout
-    @ox = @user_area_x0
-    @oy = @user_area_y0
+    @ox = 0
+    @oy = 0
     @w  = @user_area_width
     @h  = @user_area_height
 

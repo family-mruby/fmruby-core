@@ -14,8 +14,8 @@ module EditorSearch
   def search_dialog_rect
     w = (SEARCH_QUERY_MAX + 2) * CHAR_W + 8
     h = 5 * CHAR_H + 14
-    x = @user_area_x0 + (@user_area_width  - w) / 2
-    y = @user_area_y0 + (@user_area_height - h) / 2
+    x = (@user_area_width  - w) / 2
+    y = (@user_area_height - h) / 2
     [x, y, w, h]
   end
 

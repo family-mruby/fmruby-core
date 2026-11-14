@@ -39,8 +39,8 @@ class GpioViewerApp < FmrbApp
     @legend_h = 24
     @cell_w = (@user_area_width - 2) / GRID_COLS
     @cell_h = (@user_area_height - 14 - @legend_h) / GRID_ROWS
-    @grid_x = @user_area_x0 + 1
-    @grid_y = @user_area_y0 + 14
+    @grid_x = 1
+    @grid_y = 14
 
     draw_all
   end
@@ -62,7 +62,7 @@ class GpioViewerApp < FmrbApp
 
   def draw_all
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 2, "GPIO Status", theme_fg)
+    @gfx.draw_text(4, 2, "GPIO Status", theme_fg)
 
     status = @prev_status || FmrbHw.pin_status_all
 
@@ -100,11 +100,11 @@ class GpioViewerApp < FmrbApp
       [0x6D, "SYS"], [0x1C, "GPIO"], [0x03, "I2C"], [0xE3, "RMT"],
       [0xFC, "SPI"], [0x1F, "PWM"],  [0xE0, "UART"],
     ]
-    x = @user_area_x0 + 4
+    x = 4
     ly = ly1
     items.each_with_index do |item, i|
       if i == 4
-        x = @user_area_x0 + 4
+        x = 4
         ly = ly2
       end
       @gfx.fill_rect(x, ly + 1, 6, 6, item[0])

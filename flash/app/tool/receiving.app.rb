@@ -252,11 +252,11 @@ class ReceivingApp < FmrbApp
   end
 
   def ax(x)
-    @user_area_x0 + x
+    x
   end
 
   def ay(y)
-    @user_area_y0 + y
+    y
   end
 
   # Which receive.toml is in force: the user's own copy in /home, or the

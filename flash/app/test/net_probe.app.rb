@@ -28,8 +28,8 @@ class NetProbeApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    x = @user_area_x0 + 6
-    y = @user_area_y0 + 6
+    x = 6
+    y = 6
     @gfx.draw_text(x, y, "#{FmrbConst::BOARD}: #{@url.to_s[8, 34]}", theme_fg)
     @gfx.draw_text(x, y + 12, "ticks: #{@ticks}", theme_fg)
     @gfx.draw_text(x, y + 24, "state: #{@state}", theme_fg)

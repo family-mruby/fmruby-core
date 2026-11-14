@@ -167,8 +167,8 @@ class ShooterApp < FmrbApp
   # transfers -- two of them the 80x60 boss frames -- and the screen would
   # otherwise sit blank.
   def transfer_sprites
-    ox = @user_area_x0
-    oy = @user_area_y0
+    ox = 0
+    oy = 0
     i = 0
     while i < SPRITE_FILES.length
       name = SPRITE_FILES[i]
@@ -327,7 +327,7 @@ class ShooterApp < FmrbApp
       # Park it off screen straight away: the sprite is visible from here on,
       # and without this it would show at its position from the last wave
       # until the first update moved it.
-      sprite.move(@user_area_x0 + e[:x], @user_area_y0 + e[:y])
+      sprite.move(e[:x], e[:y])
       @enemies << e
       idx += 1
     end
@@ -458,7 +458,7 @@ class ShooterApp < FmrbApp
   end
 
   def move_player_sprite
-    @player_sprite.move(@user_area_x0 + @player_x, @user_area_y0 + @player_y)
+    @player_sprite.move(@player_x, @player_y)
   end
 
   def fire_bullet
@@ -467,7 +467,7 @@ class ShooterApp < FmrbApp
     x = @player_x + PLAYER_W / 2 - BULLET_W / 2
     y = @player_y - BULLET_H
     s.visible = true
-    s.move(@user_area_x0 + x, @user_area_y0 + y)
+    s.move(x, y)
     @bullets << { x: x, y: y, sprite: s }
     sfx_shot
   end
@@ -480,7 +480,7 @@ class ShooterApp < FmrbApp
       if b[:y] < HUD_H - BULLET_H
         release_bullet(i)
       else
-        b[:sprite].move(@user_area_x0 + b[:x], @user_area_y0 + b[:y])
+        b[:sprite].move(b[:x], b[:y])
       end
       i -= 1
     end
@@ -526,7 +526,7 @@ class ShooterApp < FmrbApp
       when :form  then step_form(e)
       else             step_dive(e)
       end
-      e[:sprite].move(@user_area_x0 + e[:x], @user_area_y0 + e[:y])
+      e[:sprite].move(e[:x], e[:y])
       i += 1
     end
     # Wing beat, shared by the whole block so it reads as one swarm.
@@ -614,7 +614,7 @@ class ShooterApp < FmrbApp
     @boss_frame = -1
     @boss_sprite.frame = 0
     @boss_sprite.visible = true
-    @boss_sprite.move(@user_area_x0 + x, @user_area_y0 + @boss[:y])
+    @boss_sprite.move(x, @boss[:y])
     sfx_boss_alarm
     draw_hud
   end
@@ -680,7 +680,7 @@ class ShooterApp < FmrbApp
       b[:flash] -= 1
       @boss_sprite.visible = (b[:flash] % 2) == 0
     end
-    @boss_sprite.move(@user_area_x0 + b[:x], @user_area_y0 + b[:y])
+    @boss_sprite.move(b[:x], b[:y])
   end
 
   def boss_fire
@@ -734,7 +734,7 @@ class ShooterApp < FmrbApp
                   b[:y] + (RNG.random_int % (BOSS_H - BURST_H)))
     end
     @boss_sprite.visible = (b[:t] % 4) < 2
-    @boss_sprite.move(@user_area_x0 + b[:x], @user_area_y0 + b[:y])
+    @boss_sprite.move(b[:x], b[:y])
     end_boss if b[:t] >= BOSS_DIE_TICKS
   end
 
@@ -755,7 +755,7 @@ class ShooterApp < FmrbApp
     return if @free_ebullets.empty?
     s = @free_ebullets.pop
     s.visible = true
-    s.move(@user_area_x0 + x, @user_area_y0 + y)
+    s.move(x, y)
     @ebullets << { x: x, y: y, vx: vx, vy: vy, sprite: s }
   end
 
@@ -768,7 +768,7 @@ class ShooterApp < FmrbApp
       if b[:y] > @play_h || b[:x] < -EBULLET_W || b[:x] > @user_area_width
         release_ebullet(i)
       else
-        b[:sprite].move(@user_area_x0 + b[:x], @user_area_y0 + b[:y])
+        b[:sprite].move(b[:x], b[:y])
       end
       i -= 1
     end
@@ -899,7 +899,7 @@ class ShooterApp < FmrbApp
     s = @free_bursts.pop
     s.frame = 0
     s.visible = true
-    s.move(@user_area_x0 + x, @user_area_y0 + y)
+    s.move(x, y)
     @bursts << { sprite: s, t: 0 }
   end
 
@@ -1060,8 +1060,8 @@ class ShooterApp < FmrbApp
   # Drawn once per game: the sprites are composited over it on every present,
   # so nothing here is repainted per frame.
   def draw_background
-    ox = @user_area_x0
-    oy = @user_area_y0
+    ox = 0
+    oy = 0
     w = @user_area_width
     h = @play_h
     @gfx.fill_rect(ox, oy, w, h, COL_SKY)
@@ -1087,8 +1087,8 @@ class ShooterApp < FmrbApp
   end
 
   def draw_hud
-    ox = @user_area_x0
-    oy = @user_area_y0
+    ox = 0
+    oy = 0
     w = @user_area_width
     @gfx.fill_rect(ox, oy, w, HUD_H, COL_HUD_BG)
     @gfx.fill_rect(ox, oy + HUD_H - 1, w, 1, COL_HUD_LINE)
@@ -1133,8 +1133,8 @@ class ShooterApp < FmrbApp
   end
 
   def draw_game_over
-    ox = @user_area_x0
-    oy = @user_area_y0
+    ox = 0
+    oy = 0
     cx = ox + @user_area_width / 2
     cy = oy + @play_h / 2
     @gfx.fill_rect(cx - 62, cy - 22, 124, 46, COL_OVER_BG)

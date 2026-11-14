@@ -14,7 +14,7 @@ class TrailerApp < FmrbApp
     $autostart_trailer_count = ($autostart_trailer_count || 0) + 1
     Log.info("AUTOSTART: trailer instance #{$autostart_trailer_count}")
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+    @gfx.draw_text(4, 4,
                    "instance #{$autostart_trailer_count}", theme_fg)
     @gfx.present
     @ticks = 0

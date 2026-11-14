@@ -67,7 +67,7 @@ module EditorRender
   def draw_menu_bar
     y = @menu_y
     # +1 covers the 1px separator row between menu bar and edit area
-    @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H + 1, MENU_BG)
+    @gfx.fill_rect(0, y, @user_area_width, CHAR_H + 1, MENU_BG)
 
     @menu_ids = []
     @menu_xs = []
@@ -88,8 +88,8 @@ module EditorRender
     end
     show_keys = total <= avail
 
-    x = @user_area_x0 + 2
-    right = @user_area_x0 + @user_area_width
+    x = 2
+    right = @user_area_width
     i = 0
     while i < ids.size
       id = ids[i]
@@ -173,8 +173,8 @@ module EditorRender
   # kana badge does not sit under the kernel's resize grab.
   def draw_status_line
     y = @status_y
-    right = @user_area_x0 + @user_area_width - resize_corner
-    @gfx.fill_rect(@user_area_x0, y, right - @user_area_x0, CHAR_H, STATUS_BG)
+    right = @user_area_width - resize_corner
+    @gfx.fill_rect(0, y, right, CHAR_H, STATUS_BG)
 
     # ---- right zone: measure the badges, right to left ----
     @kana_badge_w = FmrbI18n.text_width(kana_badge) + 2
@@ -188,7 +188,7 @@ module EditorRender
     end
 
     # ---- left zone: the pending message, or the usual reading ----
-    x0 = @user_area_x0 + 2
+    x0 = 2
     room = right - x0 - 2
     if @status_msg
       text = fit_status_text(@status_msg, room)
@@ -338,12 +338,12 @@ module EditorRender
   def draw_edit_area
     # One fill for the whole area: it also clears the leftover strip below the
     # last full row (edit_height is not always a multiple of @line_h).
-    @gfx.fill_rect(@user_area_x0, @edit_y,
+    @gfx.fill_rect(0, @edit_y,
                     @user_area_width, @edit_height, BG_COLOR)
 
     # Breakpoint gutter column (debug mode only).
     if @gutter_w > 0
-      @gfx.fill_rect(@user_area_x0, @edit_y, @gutter_w, @edit_height, GUTTER_BG)
+      @gfx.fill_rect(0, @edit_y, @gutter_w, @edit_height, GUTTER_BG)
     end
 
     sel_range = selection_range  # [sx, sy, ex, ey] or nil
@@ -373,12 +373,12 @@ module EditorRender
   # +seg+ is which wrapped segment of the line this screen row shows (always 0
   # when wrapping is off, where the row starts at the horizontal scroll).
   def draw_edit_row(row, line_idx, seg, sel_range, blank_bg)
-    x = @user_area_x0 + 1 + @gutter_w
+    x = 1 + @gutter_w
     y = @edit_y + row * @line_h
 
     if blank_bg
-      @gfx.fill_rect(@user_area_x0, y, @user_area_width, @line_h, BG_COLOR)
-      @gfx.fill_rect(@user_area_x0, y, @gutter_w, @line_h, GUTTER_BG) if @gutter_w > 0
+      @gfx.fill_rect(0, y, @user_area_width, @line_h, BG_COLOR)
+      @gfx.fill_rect(0, y, @gutter_w, @line_h, GUTTER_BG) if @gutter_w > 0
     end
     return if line_idx >= EditorCore.line_count
 
@@ -404,7 +404,7 @@ module EditorRender
     line_bg = dbg_line_background(line_idx)
     line_bg = PROBLEM_BG if line_bg == BG_COLOR && problem_on_line?(line_idx)
     if line_bg != BG_COLOR
-      @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
+      @gfx.fill_rect(@gutter_w, y,
                      @user_area_width - @gutter_w, @line_h, line_bg)
     end
     dbg_draw_gutter(line_idx, y) if @gutter_w > 0
@@ -553,7 +553,7 @@ module EditorRender
     w_cells = idx < widths.bytesize ? widths.getbyte(idx) : 1
     w_cells = @edit_cols - cell if cell + w_cells > @edit_cols
 
-    [@user_area_x0 + 1 + @gutter_w + cell * @cell_w,
+    [1 + @gutter_w + cell * @cell_w,
      @edit_y + screen_row * @line_h,
      w_cells]
   end
@@ -682,7 +682,7 @@ module EditorRender
     # draws next; the rest of that corner is the page.
     corner = resize_corner
     if corner > 0
-      @gfx.fill_rect(@user_area_x0 + @user_area_width - corner, @status_y,
+      @gfx.fill_rect(@user_area_width - corner, @status_y,
                      corner, CHAR_H, BG_COLOR)
     end
     # Re-issue the title-bar / border GfxBlock with current window size so the
@@ -744,8 +744,8 @@ module EditorRender
   def quit_dialog_rect
     w = 26 * CHAR_W + 8
     h = 4 * CHAR_H + 10
-    x = @user_area_x0 + (@user_area_width  - w) / 2
-    y = @user_area_y0 + (@user_area_height - h) / 2
+    x = (@user_area_width  - w) / 2
+    y = (@user_area_height - h) / 2
     [x, y, w, h]
   end
 

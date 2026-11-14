@@ -537,8 +537,8 @@ class StepSensorApp < FmrbApp
     d = @drawn
     return if d && d[0] == shown[0] && d[1] == shown[1] && d[2] == shown[2] && d[3] == shown[3]
     @drawn = shown
-    x0 = @user_area_x0
-    y0 = @user_area_y0
+    x0 = 0
+    y0 = 0
     w = @user_area_width
     h = @user_area_height
     clear_user_area if d.nil?

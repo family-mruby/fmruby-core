@@ -197,13 +197,13 @@ class RoboPilotPyApp(FmrbApp):
     def draw_screen(self):
         g = self.gfx
         self.clear_user_area()
-        x = self.user_area_x0 + 3
+        x = 3
         if self.brain is None:
-            g.draw_text(x, self.user_area_y0 + 3, "頭脳が読めない", COL_NG)
-            g.draw_text(x, self.user_area_y0 + 3 + LINE_H,
+            g.draw_text(x, 3, "頭脳が読めない", COL_NG)
+            g.draw_text(x, 3 + LINE_H,
                         BRAIN_ERROR if BRAIN_ERROR else "MyPilot が作れない",
                         COL_DIM)
-            g.draw_text(x, self.user_area_y0 + 3 + LINE_H * 2,
+            g.draw_text(x, 3 + LINE_H * 2,
                         "my_pilot.py を直して再起動", COL_DIM)
             self.draw_window_frame()
             g.present()
@@ -211,14 +211,14 @@ class RoboPilotPyApp(FmrbApp):
 
         st = self.state
         if st is None:
-            g.draw_text(x, self.user_area_y0 + 3, "待機中", COL_DIM)
+            g.draw_text(x, 3, "待機中", COL_DIM)
             self.draw_window_frame()
             g.present()
             return
 
         self.draw_view(st)
 
-        y = self.user_area_y0 + VB_Y + VB_H + 4
+        y = VB_Y + VB_H + 4
         g.draw_text(x, y, "場所 " + str(st["x"]) + "," + str(st["y"]) + "  " +
                     self.dir_ja(st["dir"]), COL_TEXT)
         y += LINE_H
@@ -233,7 +233,7 @@ class RoboPilotPyApp(FmrbApp):
             g.draw_text(x, y, self.result_text,
                         COL_GOAL if self.result_ok else COL_NG)
 
-        y = self.user_area_y1 - LINE_H * 2 - 4
+        y = self.user_area_height - LINE_H * 2 - 4
         g.draw_text(x, y, ("自動:ON" if self.auto else "自動:OFF") +
                     "  速度:" + str(self.think_ms) + "ms",
                     COL_GOAL if self.auto else COL_DIM)
@@ -256,8 +256,8 @@ class RoboPilotPyApp(FmrbApp):
     # its frame and the next.
     def draw_view(self, st):
         g = self.gfx
-        bx = self.user_area_x0 + VB_X
-        by = self.user_area_y0 + VB_Y
+        bx = VB_X
+        by = VB_Y
         g.fill_rect(bx, by, VB_W, VB_H, COL_BG)
         g.draw_rect(bx, by, VB_W, VB_H, COL_DIM)
 

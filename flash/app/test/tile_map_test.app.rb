@@ -13,8 +13,8 @@ class TileMapTestApp < FmrbApp
   CACHE_DIR = "/cache/app/tile_map_test"
 
   def on_create
-    @ox = @user_area_x0
-    @oy = @user_area_y0
+    @ox = 0
+    @oy = 0
 
     @gfx.fill_rect(@ox, @oy, @user_area_width, @user_area_height, FmrbGfx::CYAN)
 
