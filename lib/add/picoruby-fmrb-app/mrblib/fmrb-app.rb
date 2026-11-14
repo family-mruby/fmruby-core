@@ -1076,7 +1076,7 @@ class FmrbApp
     id
   end
 
-  def clear_time(timer_id)
+  def clear_timer(timer_id)
     @_timers.reject! { |t| t[:id] == timer_id } if @_timers
     nil
   end

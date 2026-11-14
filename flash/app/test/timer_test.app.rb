@@ -1,11 +1,11 @@
-# set_timer smoke test (mruby engine): two one-shot timers + clear_time.
+# set_timer smoke test (mruby engine): two one-shot timers + clear_timer.
 class TimerTestApp < FmrbApp
   def on_create
     @t0 = Machine.board_millis
     id1 = set_timer(500) { Log.info("TIMER1 fired at +#{Machine.board_millis - @t0}ms") }
     id2 = set_timer(1500) { Log.info("TIMER2 fired at +#{Machine.board_millis - @t0}ms") }
     id3 = set_timer(1000) { Log.info("TIMER3 should never fire") }
-    clear_time(id3)
+    clear_timer(id3)
     Log.info("TIMERS armed: #{id1} #{id2} (cleared #{id3})")
   end
 

@@ -706,7 +706,7 @@ static const char fmrb_mp_prelude_src[] =
     "            self._timers.append(timer)\n"
     "        return self._timer_seq\n"
     "\n"
-    "    def clear_time(self, timer_id):\n"
+    "    def clear_timer(self, timer_id):\n"
     "        timers = self._timers\n"
     "        if timers is None:\n"
     "            return\n"

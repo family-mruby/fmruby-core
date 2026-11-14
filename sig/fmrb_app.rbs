@@ -848,7 +848,7 @@ class FmrbApp
   # 続けたいならブロックの中でもう一度 `set_timer` を呼びます。
   #
   # 呼ばれる時刻はアプリのループの刻みに丸められるので、**ミリ秒どおりには
-  # 来ません**。戻り値は `clear_time` に渡す番号です。
+  # 来ません**。戻り値は `clear_timer` に渡す番号です。
   #
   # Spinel で動かすアプリでは、**ブロックの外側のローカル変数を掴めません**
   # (インスタンス変数と定数は使えます)。
@@ -861,7 +861,7 @@ class FmrbApp
   # repeat** -- call `set_timer` again inside the block for that.
   #
   # The moment it fires is rounded to the app loop's own tick, so it is not
-  # accurate to the millisecond. The return value is the id `clear_time`
+  # accurate to the millisecond. The return value is the id `clear_timer`
   # takes.
   #
   # Under Spinel a stored block **cannot capture an outer local variable**
@@ -874,19 +874,18 @@ class FmrbApp
 
   # 時間の呼び出しをやめる <<en>> Stop a timer
   #
-  # `set_timer` が返した番号を渡して止める。名前がそろっていないので注意。
+  # `set_timer` が返した番号を渡して止める。
   # ```ruby
   # @id = set_timer(500) { blink }
-  # clear_time(@id)
+  # clear_timer(@id)
   # ```
   # <<en>>
-  # Stops the timer whose id `set_timer` returned. The two names do not
-  # match; that is how it is.
+  # Stops the timer whose id `set_timer` returned.
   # ```ruby
   # @id = set_timer(500) { blink }
-  # clear_time(@id)
+  # clear_timer(@id)
   # ```
-  def clear_time: (Integer timer_id) -> void
+  def clear_timer: (Integer timer_id) -> void
 
   # 知らせを受け取るようにする <<en>> Start receiving a kind of notice
   #

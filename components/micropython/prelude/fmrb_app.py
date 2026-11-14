@@ -453,7 +453,7 @@ class FmrbApp:
             self._timers.append(timer)
         return self._timer_seq
 
-    def clear_time(self, timer_id):
+    def clear_timer(self, timer_id):
         timers = self._timers
         if timers is None:
             return

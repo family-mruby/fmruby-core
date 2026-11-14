@@ -288,7 +288,7 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
 | ライフサイクル (続き) | `on_suspend` `on_resume` `on_resize` `on_quit_request` |
 | 描画 | `draw_window_frame` `draw_resize_mark` `resize_corner` `clear_user_area` |
 | 入力補助 | `ev_ctrl` `ev_shift` `ev_alt` |
-| タイマ | `set_timer` `clear_time` |
+| タイマ | `set_timer` `clear_timer` |
 | 連携 | `subscribe` `unsubscribe` `publish` `request_run` `request_fullscreen` `toggle_fullscreen` `request_file_select` `request_reload` |
 | その他 | `send_message` `set_window_position` |
 
