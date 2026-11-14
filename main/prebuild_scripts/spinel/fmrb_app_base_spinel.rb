@@ -1766,14 +1766,14 @@ class FmrbApp
     end
   end
 
-  # Frame first, then the app's hook: the "call super(ev)" contract is gone.
+  # Frame first, then the app's hook.
   def _dispatch_event(ev)
     _frame_event(ev)
     on_event(ev)
   end
 
   def on_event(ev)
-    # App hook, overridden freely; super(ev) from existing apps is a no-op.
+    # App hook, overridden freely; the base needs nothing here.
   end
 
   # A right click on a frameless window, or a left press held still on it for

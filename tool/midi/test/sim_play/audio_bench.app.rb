@@ -42,7 +42,6 @@ class AudioBenchApp < FmrbApp
   # Clicking runs the measurement again. Used to fire note_on traffic while an
   # FMSQ track is playing on the other APU instance (P0-2).
   def on_event(ev)
-    super(ev)
     @done = false if ev[:type] == :mouse_up
   end
 

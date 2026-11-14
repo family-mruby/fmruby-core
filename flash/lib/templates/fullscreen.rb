@@ -34,7 +34,6 @@ class MyApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     if ev[:type] == :key_down
       # scancode is a HID Usage ID and means the same thing on device and in
       # the simulator; keycode does not.

@@ -363,7 +363,6 @@ class ReceivingApp < FmrbApp
   # ---- events ----
 
   def on_event(ev)
-    super(ev)
     rows = wheel_rows(ev)
     if rows
       scroll_by(rows)

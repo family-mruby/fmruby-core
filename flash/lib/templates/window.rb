@@ -14,14 +14,12 @@ class MyApp < FmrbApp
     clear_user_area   # the theme page colour; theme_fg is its ink
     @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "clicks: #{@clicks}", theme_fg)
     @gfx.draw_text(@user_area_x0 + 12, @user_area_y0 + 26, "Hello", FmrbGfx::WHITE, FmrbGfx::BLUE)
-    draw_window_frame
     @gfx.present
   end
 
-  # Mouse and keyboard arrive here. Call super so the window frame (drag,
-  # close box, resize) keeps working.
+  # Mouse and keyboard arrive here. The window frame (drag, close box,
+  # resize) is handled by the base class before this is called.
   def on_event(ev)
-    super(ev)
     if ev[:type] == :mouse_up && ev[:button] == 1
       @clicks += 1
       draw_screen

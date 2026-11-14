@@ -40,7 +40,6 @@ class SmfPlayApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :mouse_up
 
     # Replay on click so the same path can be exercised more than once.

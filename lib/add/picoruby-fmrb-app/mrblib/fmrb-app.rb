@@ -798,16 +798,13 @@ class FmrbApp
   end
 
   # Called from C for every event: the frame first, then the app's hook.
-  # This split is what removed the old contract "override on_event and you
-  # must call super(ev), or the close button dies".
   def _dispatch_event(ev)
     _frame_event(ev)
     on_event(ev)
   end
 
   def on_event(ev)
-    # App hook, overridden freely. The base needs nothing here, so the
-    # super(ev) calls existing apps still make are harmless no-ops.
+    # App hook, overridden freely; the base needs nothing here.
   end
 
   # A right click (its release) on a frameless window, or a left press held

@@ -15,7 +15,6 @@
 # end
 #
 # def on_event(ev)
-#   super(ev)
 #   case @ui.handle(ev)
 #   when :red  then @color = FmrbGfx::RED
 #   when :blue then @color = FmrbGfx::BLUE
