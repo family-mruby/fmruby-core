@@ -96,7 +96,7 @@ class CkptWindowApp < FmrbApp
     when :mouse_up
       if ev[:button] == 1 && ev[:y] >= 24
         @dots << [ev[:x], ev[:y]]
-        Log.info("ckpt_window: click #{ev[:x]},#{ev[:y]} dots=#{@dots.size}")
+        Log.info("ckpt_window: click #{ev[:wx]},#{ev[:wy]} dots=#{@dots.size}")  # the window's coordinates, as the check clicks
         draw_all
       end
     end

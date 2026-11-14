@@ -29,8 +29,16 @@ class FmrbApp
   # top-left instead of the area's (doc/codebase_tidy T4): for drawing outside
   # the area -- the frame, a title of the app's own, a frameless app's own
   # border. nil for a headless app. The font is the canvas's: set it through
-  # @gfx.
-  attr_reader :window_gfx
+  # @gfx. Made the first time it is asked for (the frame asks when it is
+  # built), so a window that draws no frame -- fullscreen, frameless, the
+  # desktop -- carries no second FmrbGfx in its VM.
+  def window_gfx
+    return nil unless @_canvas
+    g = @window_gfx
+    return g if g
+    g = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
+    @window_gfx = g
+  end
 
   # Which machine this is: :esp32 or :linux (the browser build says :linux
   # too; FmrbConst::BOARD tells it apart). Asked of FmrbConst each time
@@ -110,7 +118,6 @@ class FmrbApp
     # Initialize graphics only for non-headless apps (@_canvas is set)
     if @_canvas
       @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
-      @window_gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
       Log.debug("FmrbGfx initialized: canvas_id=#{@_canvas}")
 
       # Background canvas (desktop only)
@@ -158,7 +165,7 @@ class FmrbApp
     # so build it on the first draw after it becomes a window at runtime -- F11
     # on an editor started with `edit -f` used to leave it with no title bar,
     # no border and no close button.
-    _build_frame_block if @window_gfx && !@_frame_block
+    _build_frame_block if @_canvas && !@_frame_block
     if @gfx
       # what the app asked for, not what was picked, so that the frame
       # does not turn the ask into this machine's choice
@@ -168,7 +175,7 @@ class FmrbApp
       @gfx.set_text_size(1)
     end
     # The resize mark goes under the frame's border, which is drawn next.
-    draw_resize_mark(@window_width, @window_height) if @_resizable && @window_gfx
+    draw_resize_mark(@window_width, @window_height) if @_resizable && @_canvas
     if @_frame_block
       @_frame_block.draw(w: @window_width, h: @window_height)
     end
@@ -198,7 +205,7 @@ class FmrbApp
     x = w - 2
     y = h - 2
     m = RESIZE_MARK - 1
-    @window_gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
+    window_gfx.fill_triangle(x, y - m, x, y, x - m, y, FmrbConst::THEME_MENU_BG)
   end
 
   # Rows one wheel event asks for, signed: positive scrolls towards the start
@@ -432,7 +439,8 @@ class FmrbApp
   # (strings are immutable after that).
   def _build_frame_block
     title = @_name
-    @_frame_block = GfxBlock.new(@window_gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+    wg = window_gfx
+    @_frame_block = GfxBlock.new(wg, w: @window_width, h: @window_height) do |r, w:, h:|
       # The frame is the system's, not the app's, so it takes the system's
       # colours: one edit to [theme] in system_conf.toml restyles every
       # window at once. The values it used to carry (0xC5 and 0x60) were the
@@ -512,7 +520,8 @@ class FmrbApp
   # DEFINE_PROG_MAX_PAYLOAD (220B) を超えるリスクがあるため。
   def _build_corner_clear_block
     t = TRANSPARENT_COLOR
-    @_corner_clear_block = GfxBlock.new(@window_gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+    wg = window_gfx
+    @_corner_clear_block = GfxBlock.new(wg, w: @window_width, h: @window_height) do |r, w:, h:|
       # top-left: (0,0)(1,0)(0,1)
       r.draw_line 0,     0,     1,     0,     t
       r.draw_line 0,     1,     0,     1,     t
@@ -745,8 +754,11 @@ class FmrbApp
     end
     if @gfx
       @gfx._set_origin(x0, y0, @user_area_width, @user_area_height)
-      @window_gfx._set_origin(0, 0, w, h)
-      @window_gfx._canvas_size(w, h)
+      wg = @window_gfx
+      if wg
+        wg._set_origin(0, 0, w, h)
+        wg._canvas_size(w, h)
+      end
       _apply_user_area_sprite_clip
     end
     nil
@@ -783,7 +795,7 @@ class FmrbApp
       when :mouse_down
         if hit && !@_fullscreen && @gfx
           @_close_btn_pressed = true
-          @window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
+          window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
           @gfx.present
         end
       when :mouse_up
@@ -796,7 +808,7 @@ class FmrbApp
             # The frame drew this circle in THEME_TEXT_LIGHT, so putting it
             # back in CLOSE_BTN_NORMAL_COLOR (white) changed its colour
             # under any theme whose light ink is not white.
-            @window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
+            window_gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
             @gfx.present
           end
         elsif hit && !@_fullscreen && @gfx

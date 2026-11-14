@@ -76,7 +76,7 @@ class LinuxWindowApp < FmrbApp
 
   private
 
-  # The frame is drawn through @window_gfx (the window's origin), the hole
+  # The frame is drawn through window_gfx (the window's origin), the hole
   # through @gfx (the area's).
   def draw
     w = @window_width
@@ -86,30 +86,30 @@ class LinuxWindowApp < FmrbApp
     border = FmrbConst::THEME_BORDER
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
-    @window_gfx.fill_rect(0, 0, w, h, border)
-    @window_gfx.fill_round_rect(0, 0, w, TITLE_BAR_H, CORNER_R, bar)
-    @window_gfx.fill_rect(0, CORNER_R, w, TITLE_BAR_H - CORNER_R, bar)
-    @window_gfx.fill_rect(0, TITLE_BAR_H, w, h - TITLE_BAR_H - CORNER_R, border)
-    @window_gfx.fill_round_rect(0, h - 2 * CORNER_R, w, 2 * CORNER_R, CORNER_R, border)
+    window_gfx.fill_rect(0, 0, w, h, border)
+    window_gfx.fill_round_rect(0, 0, w, TITLE_BAR_H, CORNER_R, bar)
+    window_gfx.fill_rect(0, CORNER_R, w, TITLE_BAR_H - CORNER_R, bar)
+    window_gfx.fill_rect(0, TITLE_BAR_H, w, h - TITLE_BAR_H - CORNER_R, border)
+    window_gfx.fill_round_rect(0, h - 2 * CORNER_R, w, 2 * CORNER_R, CORNER_R, border)
     # The content: the hole (the area, through @gfx).
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, HOLE)
     # Menu button and title, as every window has them.
-    @window_gfx.fill_rect(3, 3, 9, 1, on_bar)
-    @window_gfx.fill_rect(3, 5, 9, 1, on_bar)
-    @window_gfx.fill_rect(3, 7, 9, 1, on_bar)
+    window_gfx.fill_rect(3, 3, 9, 1, on_bar)
+    window_gfx.fill_rect(3, 5, 9, 1, on_bar)
+    window_gfx.fill_rect(3, 7, 9, 1, on_bar)
     room = w - 15 - 14
     t = @title.to_s
     t = FmrbI18n.truncate_to(t, room) if @gfx.text_width(t) > room
-    @window_gfx.draw_text(15, 2, t, on_bar)
-    @window_gfx.fill_circle(w - CLOSE_BTN_CX_OFFSET, CLOSE_BTN_CY, CLOSE_BTN_R, on_bar)
+    window_gfx.draw_text(15, 2, t, on_bar)
+    window_gfx.fill_circle(w - CLOSE_BTN_CX_OFFSET, CLOSE_BTN_CY, CLOSE_BTN_R, on_bar)
     # The resize mark, as on every resizable window. The window manager's
     # corner (the bottom-right 10x10) stays Family mruby's for the pointer
     # even where the hole beside the mark shows the Linux window
     # (native/wlr/comp_route.c).
     draw_resize_mark(w, h)
-    @window_gfx.draw_round_rect(0, 0, w, h, CORNER_R, border)
+    window_gfx.draw_round_rect(0, 0, w, h, CORNER_R, border)
     clear_corners(w, h)
-    @window_gfx.present
+    window_gfx.present
   end
 
   # The three pixels outside each rounded corner in the canvas's key, the
@@ -117,20 +117,20 @@ class LinuxWindowApp < FmrbApp
   # what is behind the window shows there.
   def clear_corners(w, h)
     k = @key
-    @window_gfx.draw_line(0, 0, 1, 0, k)
-    @window_gfx.draw_line(0, 1, 0, 1, k)
-    @window_gfx.draw_line(w - 2, 0, w - 1, 0, k)
-    @window_gfx.draw_line(w - 1, 1, w - 1, 1, k)
-    @window_gfx.draw_line(0, h - 2, 0, h - 1, k)
-    @window_gfx.draw_line(1, h - 1, 1, h - 1, k)
-    @window_gfx.draw_line(w - 1, h - 2, w - 1, h - 1, k)
-    @window_gfx.draw_line(w - 2, h - 1, w - 2, h - 1, k)
+    window_gfx.draw_line(0, 0, 1, 0, k)
+    window_gfx.draw_line(0, 1, 0, 1, k)
+    window_gfx.draw_line(w - 2, 0, w - 1, 0, k)
+    window_gfx.draw_line(w - 1, 1, w - 1, 1, k)
+    window_gfx.draw_line(0, h - 2, 0, h - 1, k)
+    window_gfx.draw_line(1, h - 1, 1, h - 1, k)
+    window_gfx.draw_line(w - 1, h - 2, w - 1, h - 1, k)
+    window_gfx.draw_line(w - 2, h - 1, w - 2, h - 1, k)
   end
 
   def redraw_close_button
     return unless @gfx
-    @window_gfx.fill_circle(@window_width - CLOSE_BTN_CX_OFFSET, CLOSE_BTN_CY, CLOSE_BTN_R,
+    window_gfx.fill_circle(@window_width - CLOSE_BTN_CX_OFFSET, CLOSE_BTN_CY, CLOSE_BTN_R,
                      FmrbConst::THEME_TEXT_LIGHT)
-    @window_gfx.present
+    window_gfx.present
   end
 end

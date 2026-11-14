@@ -27,14 +27,9 @@ class GfxBlock
   class Recorder
     attr_reader :cmds, :strings
 
-    # ox, oy: the drawing origin of the FmrbGfx the block draws on, added
-    # to every coordinate as the FmrbGfx's own draw calls add it (the
-    # program on the display side draws on the canvas).
-    def initialize(ox = 0, oy = 0)
+    def initialize
       @cmds = []
       @strings = []
-      @ox = ox
-      @oy = oy
     end
 
     def clear(color)
@@ -42,37 +37,36 @@ class GfxBlock
     end
 
     def fill_rect(x, y, w, h, color)
-      @cmds << [FmrbGfx::GFXVM_OP_FILL_RECT, to_i(x) + @ox, to_i(y) + @oy, to_i(w), to_i(h), to_i(color)]
+      @cmds << [FmrbGfx::GFXVM_OP_FILL_RECT, to_i(x), to_i(y), to_i(w), to_i(h), to_i(color)]
     end
 
     def draw_rect(x, y, w, h, color)
-      @cmds << [FmrbGfx::GFXVM_OP_DRAW_RECT, to_i(x) + @ox, to_i(y) + @oy, to_i(w), to_i(h), to_i(color)]
+      @cmds << [FmrbGfx::GFXVM_OP_DRAW_RECT, to_i(x), to_i(y), to_i(w), to_i(h), to_i(color)]
     end
     alias rect draw_rect
 
     def fill_round_rect(x, y, w, h, r, color)
       @cmds << [FmrbGfx::GFXVM_OP_FILL_ROUND_RECT,
-                to_i(x) + @ox, to_i(y) + @oy, to_i(w), to_i(h), to_i(r), to_i(color)]
+                to_i(x), to_i(y), to_i(w), to_i(h), to_i(r), to_i(color)]
     end
 
     def draw_round_rect(x, y, w, h, r, color)
       @cmds << [FmrbGfx::GFXVM_OP_DRAW_ROUND_RECT,
-                to_i(x) + @ox, to_i(y) + @oy, to_i(w), to_i(h), to_i(r), to_i(color)]
+                to_i(x), to_i(y), to_i(w), to_i(h), to_i(r), to_i(color)]
     end
 
     def draw_line(x0, y0, x1, y1, color)
-      @cmds << [FmrbGfx::GFXVM_OP_DRAW_LINE, to_i(x0) + @ox, to_i(y0) + @oy,
-                to_i(x1) + @ox, to_i(y1) + @oy, to_i(color)]
+      @cmds << [FmrbGfx::GFXVM_OP_DRAW_LINE, to_i(x0), to_i(y0), to_i(x1), to_i(y1), to_i(color)]
     end
     alias line draw_line
 
     def fill_circle(x, y, r, color)
-      @cmds << [FmrbGfx::GFXVM_OP_FILL_CIRCLE, to_i(x) + @ox, to_i(y) + @oy, to_i(r), to_i(color)]
+      @cmds << [FmrbGfx::GFXVM_OP_FILL_CIRCLE, to_i(x), to_i(y), to_i(r), to_i(color)]
     end
 
     def draw_text(x, y, str, color)
       str_id = intern_string(str)
-      @cmds << [FmrbGfx::GFXVM_OP_DRAW_TEXT, to_i(x) + @ox, to_i(y) + @oy, to_i(color), str_id]
+      @cmds << [FmrbGfx::GFXVM_OP_DRAW_TEXT, to_i(x), to_i(y), to_i(color), str_id]
     end
     alias text draw_text
 
@@ -119,24 +113,20 @@ class GfxBlock
     end
     @initial_values = initial_values
     @canvas_gfx = gfx
-    _build(initial_values)
-  end
-
-  # Compile the block for the FmrbGfx's origin now, define the program on
-  # the display side and send every register. Run again by draw when the
-  # origin has moved since (the window went fullscreen, or back): the
-  # constants of the program carry the origin.
-  def _build(initial_values)
-    block = @block
-    gfx = @gfx
+    # The constants of the program carry the FmrbGfx's origin as it is now;
+    # draw runs this again when the origin has moved since (the window went
+    # fullscreen, or back). Kept in initialize rather than a helper it
+    # calls: one more frame here is one more on the deepest path of every
+    # app's start (the window frame's block), and the VM stack grows by a
+    # chunk for it.
     @ox = gfx.origin_x
     @oy = gfx.origin_y
-    keys = initial_values.keys
 
     # Pass 1: record commands with initial values. Block receives the recorder
     # as first positional arg plus kwargs (PicoRuby lacks instance_exec).
-    rec1 = Recorder.new(@ox, @oy)
+    rec1 = Recorder.new
     block.call(rec1, **initial_values)
+    _at_origin(rec1.cmds)
 
     # Pass 2: record with sentinel values. Integers get +1, Floats get +1.0.
     # Strings stay fixed (their str_id is assigned at intern time and remains
@@ -150,8 +140,9 @@ class GfxBlock
                             else              v
                             end
     end
-    rec2 = Recorder.new(@ox, @oy)
+    rec2 = Recorder.new
     block.call(rec2, **sentinel_values)
+    _at_origin(rec2.cmds)
 
     # Detect structure equivalence (same number of commands, same opcodes, same arity)
     unless rec1.cmds.length == rec2.cmds.length
@@ -231,13 +222,14 @@ class GfxBlock
     return if @destroyed
     if @gfx.origin_x != @ox || @gfx.origin_y != @oy
       @canvas_gfx._gfx_delete_prog(@prog_id) if @prog_id
-      _build(kwargs.empty? ? @initial_values : kwargs)
+      initialize(@gfx, **(kwargs.empty? ? @initial_values : kwargs), &@block)
       return
     end
 
     # Evaluate block with new kwargs. Block receives the recorder as first arg.
-    rec = Recorder.new(@ox, @oy)
+    rec = Recorder.new
     @block.call(rec, **kwargs)
+    _at_origin(rec.cmds)
 
     # Structural assertion: command count + opcode must match.
     unless rec.cmds.length == @var_map.length
@@ -301,6 +293,33 @@ class GfxBlock
   end
 
   private
+
+  # The recorded coordinates put on the canvas: the FmrbGfx's origin added,
+  # as its own draw calls add it (the program on the display side draws on
+  # the canvas). Done on the recorded list after the block has run, not in
+  # the Recorder: the block's calls are the deepest part of every app's
+  # start (the window frame is built in FmrbApp#initialize), and more there
+  # grows the VM stack. Both passes get it, so a constant stays a constant.
+  def _at_origin(cmds)
+    ox = @ox
+    oy = @oy
+    return if ox == 0 && oy == 0
+    i = 0
+    n = cmds.length
+    while i < n
+      c = cmds[i]
+      op = c[0]
+      if op != FmrbGfx::GFXVM_OP_CLEAR
+        c[1] += ox
+        c[2] += oy
+        if op == FmrbGfx::GFXVM_OP_DRAW_LINE
+          c[3] += ox
+          c[4] += oy
+        end
+      end
+      i += 1
+    end
+  end
 
   def extract_regs(cmds)
     regs = Array.new(@reg_count, 0)
