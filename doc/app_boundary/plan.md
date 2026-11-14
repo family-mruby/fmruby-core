@@ -1,6 +1,6 @@
 # アプリの境界と型定義からの生成 計画
 
-> 状態: 計画済 | 更新: 2026-11-15 | アプリと本体の間の境界を、型定義 `sig/*.rbs` の 1 か所から全エンジン (mruby・Spinel・Lua・MicroPython・wasm の各言語・C のヘッダ) のつなぎを生成する形に整え、Window の枠と一生の処理を本体の C の殻に置く。doc/wasm_apps から W3 (殻) と W4 (生成) を分けたテーマ (wasm_apps の決定 16)。W3・W4a を wasm_apps の W1b より先に進める (決定 15)。次は W3・W4a (W4a の 3 点はユーザが決める)
+> 状態: 進行中 | 更新: 2026-11-15 | アプリと本体の間の境界を、型定義 `sig/*.rbs` の 1 か所から全エンジン (mruby・Spinel・Lua・MicroPython・wasm の各言語・C のヘッダ) のつなぎを生成する形に整え、Window の枠と一生の処理を本体の C の殻に置く。doc/wasm_apps から W3 (殻) と W4 (生成) を分けたテーマ (wasm_apps の決定 16)。W3・W4a を wasm_apps の W1b より先に進める (決定 15)。W3 完了 (殻と Lua)。次は W4a (W4a の 3 点はユーザが決める)
 
 ## 目的
 
@@ -134,6 +134,18 @@
   1 つも定義しないスクリプトはエラーの Window にする。描き手は殻が作った大域の `gfx` (`create_canvas`・`FmrbGfx.new` は
   消す)、原点は区画の左上、`clear_user_area`・`user_area_width`/`height`・`stop` を足す、枠は描かずタイトルはアプリの名前、
   `FmrbApp.sleep` は残して `on_update` の返り値で待つよう勧める。`draw_text` の引数の順の違いは W4a の課題。
+- **作り (W3 で決まった形、report/w3.md 2 章)**:
+  - 殻は `main/app/fmrb_app_shell.c`、ヘッダは `components/fmrb_common/include/fmrb_app_shell.h`。殻はエンジンを
+    知らず、エンジンは呼び出しの表 (`fmrb_shell_engine_t`: フックがあるか・フックを呼ぶ・`on_update`・`on_event`・
+    `on_resize`・区画が変わった知らせ) を渡す。入口は `fmrb_app_shell_run`。Lua のつなぎは
+    `components/lua/fmrb_lua_shell.c`。
+  - 殻の状態はアプリの task のスタックに置き、PSRAM の ctx の `shell` から届く。静的な変数は無い。
+  - 区画と原点の正は殻 (Ruby の `_layout_user_area` と同じ計算)。原点はエンジンの描き手が持って C で足す
+    (Lua は `lua_gfx_data` の `ox, oy`)。イベントの `x`・`y` は殻が区画の座標にし、`wx`・`wy` は Window の座標。
+  - 枠は Ruby の GfxBlock と同じ絵を 1 命令ずつ送る。描くのは作ったとき・`clear_user_area`・
+    `draw_window_frame`・大きさが変わったとき。
+  - 長く戻らない呼び出しの止め方: 殻は呼び出しの間で止まる印を読む。1 秒以上戻らない呼び出しだけ、
+    エンジンの止めのフックが待ち行列から stop を拾って巻き戻す (`fmrb_app_shell_unwind_now`)。
 
 ### 2. 型定義から bindings を生成する
 
@@ -244,7 +256,7 @@ doc/wasm_apps の段。
 
 | 段 | 内容 | 状態 |
 |---|---|---|
-| W3 | アプリの殻を本体の C に作る (作るもの 1)。Lua のアプリを乗せて sim で確認する。wasm のアプリを乗せるのは wasm_apps の W1b の後 | 進行中 |
+| W3 | アプリの殻を本体の C に作る (作るもの 1)。Lua のアプリを乗せて sim で確認する。wasm のアプリを乗せるのは wasm_apps の W1b の後 | 完了 (2026-11-15、report/w3.md) |
 | W4a | **最初に関数 1 つ (`fill_rect` など) だけで全部のビルドを通す** (決定 9): 型定義から生成し、mruby・Spinel・Lua・MicroPython のつなぎを差し替え、sim・ネイティブ版・ブラウザ版・ESP32 (ビルドだけ) を通す。PicoRuby のビルドとの相性を、道具を作り込む前に見るため。wasm の側の最初のアプリは C で書く (決定 12)。その後、規則と印の書き方を決め (未確定事項の 3 点、ユーザが決める)、生成する道具を作る。平らな関数の表を 1 組にまとめ、今の形のままで境界に乗る関数 (整数と文字列だけのものが中心) を出す。出力先は Lua を最初にし (wasm と切り離して sim で確認できる)、続けて wasm のつなぎと 3 言語の bindings と C のヘッダ、MicroPython、Spinel の宣言。境界の関数をひととおり呼ぶ C のアプリを 1 つ、ABI の確認として回帰の道具に入れる | 未着手 |
 | W4b | 包みを持つ関数を、機能のまとまり (7 つ: 描画の基本図形・文字・画像とスプライト・アプリと Window・時刻とログとクリップボード・ファイル・音。決定 6) ごとに整える: 今は `_` で隠れている境界の関数を公開の名前と規則の形に直して型定義に書き、包みの状態を境界の下へ移し (Spinel と Python の描画の原点を含む。決定 17)、mruby と Spinel の包みを揃え、mruby の gem のつなぎを生成に切り替える。あわせてライブラリと基底クラスの呼び出しを境界の関数へ置き換える (デスクトップと標準アプリは計測して決める)。重い回帰は段の終わりに 1 回、命令数の比較は最初のまとまりだけ | 未着手 |
 
