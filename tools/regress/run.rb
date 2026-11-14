@@ -157,8 +157,12 @@ module Regress
       w
     end
 
-    # Reads the app's file without its start code (the last `begin` that
-    # makes the app and starts it); returns the class name to make.
+    # Reads the app's file and returns the class name to make. An app file
+    # only defines its class (the runtime starts it, doc/codebase_tidy T3), so
+    # the class is picked the way FmrbApp._autostart picks it: the one app
+    # class not used as another's base, or the one `class =` names. A file
+    # that still ends with its start code (the last `begin` that makes the app
+    # and starts it) is read without it.
     def load_app(a)
       if a.inline
         a.inline.call
@@ -167,12 +171,23 @@ module Regress
       path = File.join(CORE, a.file)
       lines = File.read(path).lines
       cut = (0...lines.size).to_a.reverse.find { |i| lines[i] =~ /\Abegin\b/ && lines[i..].join.include?(".start") }
-      raise "#{a.file}: no start code (begin ... .start) found" if cut.nil?
-      trailer = lines[cut..].join
-      cls = a.klass || trailer[/(\b[A-Z]\w*(?:::\w+)*)\.new/, 1]
+      cls = a.klass || (cut && lines[cut..].join[/(\b[A-Z]\w*(?:::\w+)*)\.new/, 1]) || app_class_in(path, lines.join)
       raise "#{a.file}: cannot tell the app's class" if cls.nil?
-      eval(lines[0...cut].join, TOPLEVEL_BINDING, path) # rubocop:disable Security/Eval
+      eval(lines[0...(cut || lines.size)].join, TOPLEVEL_BINDING, path) # rubocop:disable Security/Eval
       cls
+    end
+
+    def app_class_in(path, src)
+      toml = path.sub(/\.rb\z/, ".toml")
+      named = File.exist?(toml) ? MiniToml.parse(File.read(toml))["class"] : nil
+      named ||= src[0, 512][/^#\s*class\s*=\s*"([^"]*)"/, 1]
+      return named if named
+      parents = src.scan(/^class\s+([A-Z]\w*(?:::\w+)*)\s*<\s*([A-Z]\w*(?:::\w+)*)/)
+      apps = []
+      parents.each { |k, base| apps << k if base == "FmrbApp" || apps.include?(base) }
+      apps.uniq!
+      leaves = apps.reject { |k| parents.any? { |sub, base| base == k && sub != k } }
+      leaves.size == 1 ? leaves[0] : nil
     end
 
     # ------------------------------------------------------------ the batch

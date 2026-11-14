@@ -1331,6 +1331,75 @@ class FmrbApp
     _cleanup()  # C function: cleanup canvas and message queue
   end
 
+  # ---- Starting the app the file defines ----
+  #
+  # An app file only defines its class; it does not end with
+  # `MyApp.new.start`. Every subclass is noted as it is defined (reopening a
+  # class, as an app split over several files does, defines it once), and
+  # once the file has run, C (fmrb_app.c, autostart_mruby_app) asks
+  # _autostart_task for a Task that makes the app and starts it -- unless the
+  # file made its app itself.
+  def self.inherited(klass)
+    FmrbApp._note_app_class(klass)
+  end
+
+  def self._note_app_class(klass)
+    @_app_classes = [] unless @_app_classes
+    @_app_classes << klass
+  end
+
+  def self._autostart_task(name)
+    Task.new(name: name) { FmrbApp._autostart }
+  end
+
+  # Makes and starts the app. Returns nil once it has ended, or the reason
+  # no class could be picked (C shows it in the error dialog).
+  def self._autostart
+    klass = _app_class_to_start
+    return klass if klass.is_a?(String)
+    klass.new.start
+    nil
+  end
+
+  # The class to start: the only one the file defined, not counting a class
+  # another one is derived from (a shared base). With more than one, the one
+  # `class =` names in the app's .app.toml or #---fmrb header. The metadata is
+  # read only then, so an app with one class pays nothing for it.
+  def self._app_class_to_start
+    found = @_app_classes || []
+    leaves = []
+    found.each do |k|
+      based_on = false
+      found.each { |o| based_on = true if !o.equal?(k) && _app_class_under?(o, k) }
+      leaves << k unless based_on
+    end
+    return leaves[0] if leaves.size == 1
+
+    path = FmrbApp.script_path.to_s
+    file = path.empty? ? "this program" : path
+    if leaves.empty?
+      return "No app class in #{file}.\nDefine one: class MyApp < FmrbApp"
+    end
+    names = leaves.map { |k| k.to_s }.join(", ")
+    meta = path.empty? ? nil : FmrbApp.app_meta(path)
+    want = meta ? meta["class"].to_s : ""
+    if want.empty?
+      return "#{leaves.size} app classes in #{file}: #{names}.\n" \
+             "Name the one to start: class = \"#{leaves[0]}\" in its .app.toml."
+    end
+    found.each { |k| return k if k.to_s == want }
+    "class = \"#{want}\" is not an app class in #{file}.\nApp classes: #{names}."
+  end
+
+  def self._app_class_under?(sub, base)
+    c = sub.superclass
+    while c
+      return true if c.equal?(base)
+      c = c.superclass
+    end
+    false
+  end
+
   def start
     Log.debug("start() called, @_running=#{@_running}")
     @_running = true
@@ -1345,8 +1414,8 @@ class FmrbApp
   # Every intended end goes through here: the close button, Ctrl+Q, the
   # kernel's kill, and a script that has simply finished. Marking it is what
   # lets the kernel tell this from a crash -- an app that dies on an exception
-  # never reaches this method, and to C the two look identical (the rescue at
-  # the foot of the script means the task ends normally either way).
+  # never reaches this method, and to C the two can look identical (a script
+  # that rescues around its own start ends its task normally either way).
   def stop
     @_running = false
     _mark_expected_stop

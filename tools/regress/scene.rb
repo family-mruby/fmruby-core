@@ -62,7 +62,7 @@ module Regress
     def gems(*names) = @d.gems.concat(names)
     # The window when the app has no .app.toml (a built-in app): w:, h:, name:, fullscreen:, hires:.
     def window(**kw) = @d.window = kw
-    # The class to make when the file's start code does not say.
+    # The class to make when the file does not tell (see Run#load_app).
     def klass(name) = @d.klass = name
     # Ruby run before the app's file is read (a stand-in only this app needs).
     def prelude(&blk) = @d.prelude << blk

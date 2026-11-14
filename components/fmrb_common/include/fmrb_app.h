@@ -181,9 +181,9 @@ typedef struct fmrb_app_task_context_s {
     // Set when this app was ASKED to end: the kernel's kill, an app calling
     // FmrbApp#stop (the close button, Ctrl+Q, a script that finished), or a
     // Lua/BASIC runtime latching a "stop" control message. It is the only way
-    // to tell an intended exit from a crash -- an mruby app that dies on an
-    // exception is caught by the rescue at the foot of its own script, so its
-    // task ends as normally as any other and C cannot see the difference.
+    // to tell an intended exit from a crash: a script can catch its app's
+    // exception itself (a rescue around its own start), and then its task
+    // ends as normally as any other and C cannot see the difference.
     //
     // Read by the kernel when the app exits, to decide whether something that
     // asked to be restarted should be started again. Without it, "kill" would
@@ -195,6 +195,14 @@ typedef struct fmrb_app_task_context_s {
     // and compiling its script. fmrb_app_notify_started reports that to the
     // kernel, and this keeps it to one report per app.
     bool                  started_notified;
+
+    // Set when the app's FmrbApp instance is made (FmrbApp#_init, headless
+    // apps included). An mruby app file need not end with the code that makes
+    // and starts its app: after the file has run, the runtime starts the
+    // FmrbApp subclass it defined, unless this is already set -- so a file
+    // that still starts its app itself is not started twice. A checkpoint
+    // restore never takes that path (the image carries its instance).
+    bool                  app_instance_made;
 
     // A full collection asked for from outside the app (the debug server's
     // "gc", doc/regression/usage.md): the asker bumps gc_req, the app's own

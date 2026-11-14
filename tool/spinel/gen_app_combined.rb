@@ -3,10 +3,15 @@
 # `spinel --ext-init Init_<app>`. Mirrors gen_kernel_combined.rb but for
 # the application layer (FmrbApp / FmrbGfx base + the app's mixins + main file).
 #
-# The app's bare top-level start trailer (`app = SomeApp.new; app.start`) becomes
-# the body of the init (Spinel runs all top-level statements in the
-# --ext-init function), so no wrapper method is required -- same convention
-# the kernel uses.
+# The app's source only defines its class, as every app file does (no
+# `SomeApp.new.start` at the end; doc/codebase_tidy T3). This script adds that
+# start at the foot of the combined program, which makes it the body of the
+# init (Spinel runs all top-level statements in the --ext-init function) --
+# the same thing the mruby runtime does when the file has run. Spinel cannot
+# look for the class when the program runs (no inherited hook, and a class
+# taken from a list would not have a type the compiler can follow), so it is
+# found here: the FmrbApp subclass the app's sources define, or, with more
+# than one, the one `class =` names in its .app.toml or #---fmrb header.
 #
 # Usage: ruby tool/spinel/gen_app_combined.rb <app> <out.rb> [platform]
 #   <app> currently supports: system_desktop, editor
@@ -111,6 +116,48 @@ parts.each do |p|
   combined << "\n# ==== #{p.sub(ROOT + '/', '')} ====\n"
   combined << src
   combined << "\n"
+end
+
+# The class to start (see the head of this file).
+app_sources = [*mixins, spec[:main]]
+app_classes = app_sources.flat_map do |p|
+  File.read(p).scan(/^class\s+([A-Z]\w*(?:::[A-Z]\w*)*)\s*<\s*FmrbApp\b/).flatten
+end.uniq
+main_src = File.read(spec[:main])
+meta_class = lambda do |path|
+  toml = path.sub(/\.rb\z/, ".toml")
+  text = File.exist?(toml) ? File.read(toml) : ""
+  # .app.toml wins over the #---fmrb header, as in the runtime's reader.
+  m = text.match(/^class\s*=\s*"([^"]*)"/) ||
+      main_src[0, 512].match(/^#\s*class\s*=\s*"([^"]*)"/)
+  m && m[1]
+end
+wanted = meta_class.call(spec[:main])
+start_class =
+  if wanted
+    app_classes.include?(wanted) or
+      abort "#{app}: class = \"#{wanted}\" is not an FmrbApp subclass in its sources (#{app_classes.join(', ')})"
+    wanted
+  elsif app_classes.size == 1
+    app_classes[0]
+  elsif app_classes.empty?
+    abort "#{app}: no FmrbApp subclass in #{spec[:main].sub(ROOT + '/', '')} or its mixins"
+  else
+    abort "#{app}: #{app_classes.size} FmrbApp subclasses (#{app_classes.join(', ')}); " \
+          "name the one to start with class = in its .app.toml"
+  end
+# A source that still starts its app itself is left as it is (as the mruby
+# runtime does, which does not start a second one).
+if main_src.match?(/^ {0,2}(?:\w+\s*=\s*)?#{Regexp.escape(start_class)}\.new\b/)
+  warn "#{app}: #{start_class} is already started at the foot of its source; not adding a start"
+else
+  combined << "\n# ==== start (added by tool/spinel/gen_app_combined.rb) ====\n"
+  combined << "begin\n"
+  combined << "  app = #{start_class}.new\n"
+  combined << "  app.start\n"
+  combined << "rescue => e\n"
+  combined << "  Log.error(\"#{start_class}: \" + e.message)\n"
+  combined << "end\n"
 end
 
 FileUtils.mkdir_p(File.dirname(out_path))

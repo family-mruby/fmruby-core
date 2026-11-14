@@ -170,6 +170,10 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 
     FMRB_LOGI(TAG, "_init: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
 
+    // The file made its app itself: the runtime does not start another one
+    // after the file has run (fmrb_app.c, autostart_mruby_app).
+    ctx->app_instance_made = true;
+
     // A new occupant of this slot has its own heap; do not inherit what a
     // step cost the previous one (see spin_idle_gc).
     if (ctx->app_id >= 0 && ctx->app_id < FMRB_MAX_APPS) {

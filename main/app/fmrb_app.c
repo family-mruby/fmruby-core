@@ -306,6 +306,7 @@ static void tls_destructor(int idx, void* pv) {
 static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     g_hit_shape_len[ctx - g_ctx_pool] = 0;
     ctx->started_notified = false;
+    ctx->app_instance_made = false;
     ctx->parked = false;
     ctx->expected_stop = false;
 }
@@ -864,7 +865,7 @@ static int create_vm_micropython(fmrb_app_task_context_t* ctx) {
  * How the program's Task ended, told the way every mruby app's end is told:
  * an uncaught exception goes to the log, the error dialog and the kernel.
  */
-static void report_mruby_result(fmrb_app_task_context_t* ctx, mrb_value task)
+static bool report_mruby_result(fmrb_app_task_context_t* ctx, mrb_value task)
 {
     // The scheduler files a task's uncaught exception away in the task's
     // result and clears mrb->exc (mruby-task task.c), so checking mrb->exc
@@ -888,8 +889,57 @@ static void report_mruby_result(fmrb_app_task_context_t* ctx, mrb_value task)
         FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
         notify_error_to_kernel(ctx);
         mrb_print_error(ctx->mrb);
-    } else {
-        FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
+        return true;
+    }
+    FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
+    return false;
+}
+
+/**
+ * Start the app the file defined, once the file has run (doc/codebase_tidy,
+ * T3). An app file does not end with `MyApp.new.start`: FmrbApp.inherited
+ * notes each subclass the file defines, and here, after the file's top level
+ * has finished, FmrbApp._autostart picks the one to start (the only one, or
+ * the one `class =` names in the app's metadata) and starts it in a Task of
+ * its own -- the program's Task as far as a checkpoint is concerned.
+ *
+ * Nothing is started when the file made its app itself (an old file that
+ * still ends with the start code: ctx->app_instance_made), when it failed,
+ * or when it was asked to end meanwhile. When no class can be picked, the
+ * reason _autostart returns goes to the log and the error dialog, the way a
+ * crash does, instead of the app not appearing at all.
+ */
+static void autostart_mruby_app(fmrb_app_task_context_t* ctx)
+{
+    mrb_state *mrb = ctx->mrb;
+    if (ctx->app_instance_made || ctx->expected_stop) {
+        return;
+    }
+    if (!mrb_class_defined(mrb, "FmrbApp")) {
+        return;
+    }
+    mrb_value app_class = mrb_obj_value(mrb_class_get(mrb, "FmrbApp"));
+    mrb_value name = mrb_str_new_cstr(mrb, ctx->app_name);
+    mrb_value task = mrb_funcall(mrb, app_class, "_autostart_task", 1, name);
+    if (mrb->exc) {
+        report_mruby_result(ctx, mrb_nil_value());
+        return;
+    }
+
+#ifdef FMRB_HAVE_CHECKPOINT
+    // The app runs in this Task: a restored image goes on in it.
+    fmrb_app_checkpoint_host_task(ctx, task);
+#endif
+
+    mrb_task_run(mrb);
+    if (report_mruby_result(ctx, task)) {
+        return;
+    }
+    mrb_value why = mrb_task_value(mrb, task);
+    if (mrb_string_p(why)) {
+        set_last_error(ctx, RSTRING_CSTR(mrb, why), NULL);
+        FMRB_LOGE(TAG, "[%s] Not started: %s", ctx->app_name, s_last_error_msg);
+        notify_error_to_kernel(ctx);
     }
 }
 
@@ -1084,7 +1134,9 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     mrb_task_run(ctx->mrb);
     FMRB_LOGD(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
-    report_mruby_result(ctx, task);
+    if (!report_mruby_result(ctx, task)) {
+        autostart_mruby_app(ctx);
+    }
 
     mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
     // irep_obj is not freed here. mrc_create_task handed it to the VM
