@@ -1,0 +1,17 @@
+# Bytes that are not text.
+type bin = String
+
+# A drawing board: its version, the strokes and points on it, the last stroke's id, the members as [name, flags], the limits
+type Board::state = { v: Integer, t: String, st: String, n: Integer, np: Integer, last: Integer, mb: Array[untyped], lim: Array[Integer] }
+
+# A change of a board: o "a" points of stroke id (k 0 a new stroke), "u" stroke id taken back, "c" the board cleared; v the board's version
+type Board::strokes = { o: String, id: Integer, c: Integer, w: Integer, p: Array[Integer], k: Integer, v: Integer }
+
+# One winner of a round; pa (pao) [[the seat that pays, the yakuman], ...]
+type Mahjong::win = { w: Integer, y: Array[String], yh: Array[Integer], pt: Array[Integer], h: bin, ag: Integer, pa: Array[Array[untyped]] }
+
+# A round's result (README "Views", res)
+type Mahjong::result = { k: String, rd: Array[Integer], d: Array[Integer], f: Integer, wn: Array[Mahjong::win], tp: Array[Integer], ng: Array[Integer], rs: Array[Integer] }
+
+# How a game ended: the seat that won (-1 a draw), why, the counts
+type Othello::result = { w: Integer, why: String, b: Integer, wc: Integer }
