@@ -4,8 +4,10 @@
 class TmpWriterApp < FmrbApp
   TOPIC = "tmpfile"
   PATH = "/tmp/handoff.txt"
-  BTN_X = 20
-  BTN_Y = 40
+  # In the user area; the button sits where it did when these were window
+  # coordinates (20, 40).
+  BTN_X = 19
+  BTN_Y = 29
   BTN_W = 100
   BTN_H = 24
 

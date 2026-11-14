@@ -3,8 +3,10 @@
 
 class PubDemoApp < FmrbApp
   TOPIC = "demo"
-  BTN_X = 30
-  BTN_Y = 30
+  # In the user area (where @gfx draws from); the button sits where it did
+  # when these were window coordinates (30, 30).
+  BTN_X = 29
+  BTN_Y = 19
   BTN_W = 100
   BTN_H = 24
 
