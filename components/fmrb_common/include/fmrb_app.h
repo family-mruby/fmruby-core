@@ -205,6 +205,11 @@ typedef struct fmrb_app_task_context_s {
     // (the image carries its instance).
     bool                  app_instance_made;
 
+    // The app shell running this app (fmrb_app_shell.h), or NULL. Its state
+    // is on the app task's own stack while fmrb_app_shell_run runs; this is
+    // how the engine's binding reaches it on the app's behalf.
+    void*                 shell;
+
     // A full collection asked for from outside the app (the debug server's
     // "gc", doc/regression/usage.md): the asker bumps gc_req, the app's own
     // task collects at its next message wait -- a safe point of its engine --

@@ -11,6 +11,9 @@ set(COMPONENT_SRCS
     "boot/boot.c"
     "app/fmrb_app.c"
     "app/fmrb_app_spawner.c"
+    # The app shell (doc/app_boundary W3): window, frame and life in C for an
+    # app that only exports functions (Lua today).
+    "app/fmrb_app_shell.c"
     "app/fmrb_app_checkpoint.c"
     "app/fmrb_app_transfer.c"
     "kernel/fmrb_kernel.c"

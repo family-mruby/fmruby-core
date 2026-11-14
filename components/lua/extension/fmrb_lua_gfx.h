@@ -1,26 +1,35 @@
 #pragma once
 
 #include "lua.h"
+#include "fmrb_app_shell.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * Register FmrbGfx module to Lua state
+ * Register the FmrbGfx and FmrbApp tables in a Lua state.
  *
- * Provides graphics drawing functions for Lua applications:
- * - FmrbGfx.new(canvas_id) - Create graphics object
- * - gfx:fillRect(x, y, w, h, color) - Draw filled rectangle
- * - gfx:drawString(text, x, y, color) - Draw text string
- * - gfx:present(x, y) - Present canvas to screen
- * - gfx:clear(color) - Clear canvas with color
- *
- * Color constants (RGB332 format):
- * - FmrbGfx.COLOR_BLACK, COLOR_WHITE, COLOR_RED, COLOR_GREEN,
- *   COLOR_BLUE, COLOR_YELLOW, COLOR_MAGENTA, COLOR_CYAN
+ * A Lua app runs on the app shell (fmrb_app_shell.h): the shell makes the
+ * window, and fmrb_lua_gfx_layout puts its drawer in the global `gfx`.
+ * - gfx:fill_rect / draw_rect / fill_round_rect / draw_round_rect /
+ *   draw_line / fill_circle / draw_text - drawn from the top-left of the
+ *   area the app owns (inside the frame)
+ * - gfx:clear(color) - the whole canvas, frame included
+ * - gfx:present()
+ * - FmrbApp.stop(), FmrbApp.clear_user_area([color]),
+ *   FmrbApp.draw_window_frame(), FmrbApp.sleep(ms)
+ * - FmrbApp.WINDOW_WIDTH / WINDOW_HEIGHT, user_area_width / user_area_height,
+ *   HEADLESS, THEME_*; FmrbGfx colour constants
  */
 void fmrb_lua_register_gfx(lua_State* L);
+
+/**
+ * The shell's layout reached the app: make or update the global `gfx` (its
+ * origin is the area's top-left) and the FmrbApp size fields. A headless app
+ * gets gfx = nil.
+ */
+void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout);
 
 #ifdef __cplusplus
 }

@@ -60,6 +60,19 @@ void fmrb_lua_close(lua_State* L);
  */
 void fmrb_lua_openlibs(lua_State* L);
 
+/**
+ * @brief Run a loaded Lua program as an app on the app shell
+ *
+ * The compiled chunk is on the top of the stack (luaL_loadbuffer). The shell
+ * (fmrb_app_shell.h) runs its top level, then the functions it exports.
+ *
+ * @param err Receives why the app ended in error (a Lua error with its
+ *            traceback, or the shell's reason it could not start).
+ * @return FMRB_OK when the app ended as asked, FMRB_ERR_FAILED on an error
+ */
+fmrb_err_t fmrb_lua_shell_run(fmrb_app_task_context_t* ctx, lua_State* L,
+                              char* err, size_t err_cap);
+
 #ifdef __cplusplus
 }
 #endif

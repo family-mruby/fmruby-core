@@ -236,6 +236,7 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${LUA_SRCS}
   ${FMRB_ROOT}/components/lua/fmrb_lua.c
   ${FMRB_ROOT}/components/lua/fmrb_lua_hal_stdio.c
+  ${FMRB_ROOT}/components/lua/fmrb_lua_shell.c
   ${FMRB_ROOT}/components/lua/extension/fmrb_lua_gfx.c)
 # The Lua core's file access goes through the file HAL, as in
 # components/lua/CMakeLists.txt.
@@ -316,6 +317,7 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/boot/boot.c
   ${FMRB_ROOT}/main/app/fmrb_app.c
   ${FMRB_ROOT}/main/app/fmrb_app_spawner.c
+  ${FMRB_ROOT}/main/app/fmrb_app_shell.c
   # empty unless FMRB_HAVE_CHECKPOINT (the native build defines it)
   ${FMRB_ROOT}/main/app/fmrb_app_checkpoint.c
   ${FMRB_ROOT}/main/app/fmrb_app_transfer.c

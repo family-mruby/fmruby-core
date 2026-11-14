@@ -38,6 +38,7 @@ set(LUA_CORE_SRCS
 set(FMRB_LUA_SRCS
     "fmrb_lua.c"
     "fmrb_lua_hal_stdio.c"
+    "fmrb_lua_shell.c"
 )
 
 # Extension sources

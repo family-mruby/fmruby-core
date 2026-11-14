@@ -31,6 +31,7 @@
 #include "esp_heap_caps.h"
 #endif
 #include "fmrb_lua.h"
+#include "fmrb_app_shell.h"
 #include "fmrb_mp.h"
 #include "fmrb_basic.h"
 #include "fmrb_basic_gfx.h"
@@ -307,6 +308,7 @@ static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     g_hit_shape_len[ctx - g_ctx_pool] = 0;
     ctx->started_notified = false;
     ctx->app_instance_made = false;
+    ctx->shell = NULL;
     ctx->parked = false;
     ctx->expected_stop = false;
 }
@@ -1146,15 +1148,16 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
 }
 
 /**
- * Lua debug hook: count-based, periodically polls for a stop request from
- * the kernel. When the kernel asks the app to close, this raises a Lua
- * error so lua_pcall returns and the task wrapper can run its cleanup.
+ * Lua debug hook: count-based. A Lua app runs on the app shell, which reads
+ * a stop between the app's calls; this only unwinds a call that has run for
+ * too long (fmrb_app_shell_unwind_now) by raising a Lua error, so the call
+ * returns and the shell ends the app.
  */
 static void lua_exit_check_hook(lua_State* L, lua_Debug* ar) {
     (void)ar;
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (!ctx) return;
-    if (fmrb_app_poll_exit_signal(ctx)) {
+    if (fmrb_app_shell_unwind_now(ctx)) {
         FMRB_LOGI(TAG, "[%s] Lua close requested, unwinding VM", ctx->app_name);
         lua_pushliteral(L, "__fmrb_close_requested__");
         lua_error(L);  // longjmp out of pcall; does not return
@@ -1205,27 +1208,21 @@ static int execute_lua_script(fmrb_app_task_context_t* ctx,
         script_buffer = NULL;
 
         // Install exit-signal hook: fires every N VM instructions so the
-        // kernel can request graceful shutdown without killing the task.
+        // kernel can end a call that does not return.
         lua_sethook(ctx->lua, lua_exit_check_hook, LUA_MASKCOUNT, 100);
 
-        // Execute Lua script
-        int exec_result = lua_pcall(ctx->lua, 0, LUA_MULTRET, 0);
-        if (exec_result != LUA_OK) {
-            const char* err_msg = lua_tostring(ctx->lua, -1);
-            // Close-request sentinel is not a real error; log as info so users
-            // don't see a scary E-level line on normal shutdown.
-            if (err_msg && strstr(err_msg, "__fmrb_close_requested__")) {
-                FMRB_LOGI(TAG, "[%s] Lua script closed by user", ctx->app_name);
-                lua_pop(ctx->lua, 1);
-                return 0;
-            }
-            FMRB_LOGE(TAG, "[%s] Lua execution error: %s",
-                      ctx->app_name, err_msg ? err_msg : "unknown error");
-            lua_pop(ctx->lua, 1);  // Pop error message
+        // Run it on the app shell: the top level, then the functions it
+        // exports (doc/app_boundary W3).
+        char err[512];   // on the app task stack (16 KB)
+        if (fmrb_lua_shell_run(ctx, ctx->lua, err, sizeof(err)) != FMRB_OK) {
+            FMRB_LOGE(TAG, "[%s] Lua app error: %s", ctx->app_name,
+                      err[0] ? err : "unknown error");
+            // The same error window a Ruby app's exception gets.
+            set_last_error(ctx, err[0] ? err : "Lua app error", NULL);
+            notify_error_to_kernel(ctx);
             return -1;
-        } else {
-            FMRB_LOGI(TAG, "[%s] Lua script executed successfully", ctx->app_name);
         }
+        FMRB_LOGI(TAG, "[%s] Lua app ended", ctx->app_name);
     }
 
     return 0;
