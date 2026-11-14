@@ -529,16 +529,16 @@ class FmrbApp
   #
   # ファイルのアプリでは自分で呼びません。ファイルを読み終えたあと、
   # そのファイルが定義した `FmrbApp` の子が作られ、これが呼ばれます。
-  # 子が 2 つ以上あるときは、`.app.toml` (か `#---fmrb` の囲み) の
-  # `class = "MyApp"` で起動するものを名指します。見つからないときは
-  # 理由がエラーの Window に出ます。
+  # `.app.toml` (か `#---fmrb` の囲み) に `class = "MyApp"` があれば
+  # そのクラスを、無ければ子が 1 つのときにそれを起動します。決まらない
+  # ときは理由がエラーの Window に出ます。
   # <<en>>
   # Calls `on_create`, runs the app's loop, and cleans up when it ends.
   #
   # An app file does not call it: once the file has been read, the FmrbApp
-  # subclass it defines is made and this is called. With two or more, name
-  # the one to start with `class = "MyApp"` in the .app.toml (or the
-  # `#---fmrb` header). When none can be picked, the error window says why.
+  # subclass it defines is made and this is called: the one `class = "MyApp"`
+  # in the .app.toml (or the `#---fmrb` header) names, or else the only one.
+  # When none can be picked, the error window says why.
   def start: () -> void
 
   # アプリを止める <<en>> Stop the app
