@@ -23,8 +23,6 @@ draw_line 0 218 0 219 #01
 draw_line 1 219 1 219 #01
 draw_line 159 218 159 219 #01
 draw_line 158 219 158 219 #01
-gfxblock 1 again
-gfxblock 2 again
 fill_rect 9 17 142 10 #FF
 textm 9 18 "MIDI -> APU" #00 x1
 fill_rect 9 29 142 10 #FF

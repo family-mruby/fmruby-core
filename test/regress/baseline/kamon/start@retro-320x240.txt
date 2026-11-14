@@ -23,8 +23,6 @@ draw_line 0 208 0 209 #01
 draw_line 1 209 1 209 #01
 draw_line 299 208 299 209 #01
 draw_line 298 209 298 209 #01
-gfxblock 1 again
-gfxblock 2 again
 fill_rect 5 15 180 180 #FF
 fill_arc 95 105 66 70 0 360 #00
 draw_circle 95 105 62 #00
