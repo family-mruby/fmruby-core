@@ -1,0 +1,4 @@
+# fetched WAMR source and every build output stay out of git
+/vendor/
+/build/
+/apps/rust/Cargo.lock
