@@ -104,13 +104,14 @@ rake -T # その他のコマンドの使い方
 
 | コマンド | 確認するもの | 時間 |
 |---|---|---|
-| `rake regress` | ホストの試験 (`rake test`) + 描画の記録の比較 | 約 17 秒 |
-| `rake regress:size` | 内蔵 RAM とファームの大きさ (S3・P4。`ALL=1` で全端末) | 約 4 分 |
-| `rake regress:run` | sim のアプリごとの VM プール | 約 4 分 |
+| `rake regress` | ホストの試験 (`rake test`) + 描画の記録の比較 | 約 35 秒 |
+| `rake regress:size` | 内蔵 RAM とファームの大きさ (S3・P4。`ALL=1` で全端末) | 約 4〜8 分 |
+| `rake regress:run` | sim のアプリごとの VM プール | 約 4.5 分 |
 | `rake regress:screens` | sim (Retro・Modern) とブラウザ版の画面 (エディタの 1 打鍵を含む) | 約 8 分 |
 | `rake regress:live` | 相手のいる通し (卓のゲームホスト・歩数・MIDI・音) | 約 2.5 分 |
 | `rake regress:boot BOARD=..` | 実機の起動ログ (つないだ端末だけ) | 焼かずに約 40 秒 |
 
+- **時間の目安の全部の表は doc/regression/usage.md の 0 章**。流す道具は、変更が影響するものとかかる時間の釣り合いで選び、段ごとの確認は 15 分ほどまで、重い道具は最後にまとめて 1 回。
 - `rake regress:full` は boot 以外を全部流す (34 分ほど。sim の同じ構成は 1 回だけ作って使い回す)。基準の更新 (`:update`) は、
   変化が意図したものだと人が確認したときだけ。
 - 端末を足すときは `tools/regress/targets.rb` に 1 行、揺れの幅は

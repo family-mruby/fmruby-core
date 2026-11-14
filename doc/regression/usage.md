@@ -1,6 +1,41 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-08 | `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-14 | 0 章に道具ごとの時間の目安。 `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+
+## 0. 時間の目安 (何を流すか決める前に見る)
+
+2026-11-14 の手元 (WSL2) の実測と各章の記録から。どれを流すかは、**その変更が影響するもの**と**かかる時間**の釣り合いで決める。
+段ごとの確認は合わせて 15 分ほどまでを目安にし、全部 (`regress:full`) は区切りに 1 回。
+
+| 道具 | 目安 | 何に効くか | 流すとき |
+|---|---|---|---|
+| `rake regress` | 35 秒 | ホストの試験・描画の記録 | 毎回 |
+| `rake regress:spinel` | 20 秒 | 全部 Spinel の構成の生成 | Spinel の基底・カーネル・生成の道具を変えたとき |
+| `rake regress:transfer:quick` | 1 分 (ネイティブ版のビルドがあれば) | Asterism のファイル転送 | Asterism・転送・ネイティブ版の網 |
+| `rake regress:boot BOARD=.. FLASH=0` | 40 秒 | 実機の起動 | 実機がつながっているとき |
+| `rake regress:live` | 2.5 分 (full の中では 1 分) | 入力・音・ゲームホスト・歩数・MIDI | 入力・音・Asterism の相手 |
+| `rake regress:screens ONLY=web` | 3.5 分 | ブラウザ版の画面 | wasm・ブラウザ版だけの変更 |
+| `rake regress:run` | 4.5 分 (変更前の木と比べるなら 2 倍) | sim の VM プール | アプリの起動・基底・Ruby の常駐物 |
+| `rake regress:size` | 4〜8 分 (S3・P4 の 2 台、clean から) | 内蔵 RAM とファームの大きさ | C の静的なデータ・部品・sdkconfig |
+| `rake regress:checkpoint` | 7 分 (SIM=1 は 10 分ほど) | アプリを運ぶ | 起動・復元・Window・座標・Asterism の移動 |
+| `rake regress:screens` | 8 分 (Retro・Modern・web・native) | 画面の画素 | 描画・画面の配置・ランチャー |
+| `rake regress:size ALL=1` | 10 分 | 全端末の大きさ | 端末ごとの sdkconfig・区画 |
+| `rake regress:wl` | 18 分 | ネイティブ版のコンポジタ | Linux の Window まわり |
+| `rake regress:full` | 35 分 | boot 以外の全部 | 区切り・公開の前 |
+
+ビルド (道具の中でも走る):
+
+| 作業 | 目安 |
+|---|---|
+| `rake clean_all && rake build:linux` | 3〜5 分 |
+| `rake build:esp32` (1 機種、clean から) | 3 分前後 |
+| sim の起動 (`sim_up`、3 コンテナ) / 種類の切り替え | 30 秒ほど / 17 秒 |
+| ネイティブ版 (`rake native:mruby native:core`) | 2〜3 分 |
+| ブラウザ版の配布物 (`spinel:gen` → `wasm:mruby` → `wasm:dist`) | 5 分ほど |
+
+- 同じ道具を直しのたびに流し直さない。変えた所が影響する道具だけを流し直す。
+- 重い道具 (`run`・`size`・`checkpoint`・`screens`) は、段の最後にまとめて 1 回。並べて流すと sim と build/ を取り合うので順に。
+- 目安より大きくずれたら、この表を直す (測り直した日付を書く)。
 
 ## 1. 流し方
 
