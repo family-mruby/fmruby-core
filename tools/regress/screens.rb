@@ -248,6 +248,7 @@ module Regress
       # The first boot after a family switch comes up at the old frame size
       # or not at all (report rg3b.md); one restart fixes either.
       def bring_up(config)
+        reset_launcher_cache!
         size = begin
           SimRun.up(config.family)
         rescue RuntimeError
@@ -259,6 +260,18 @@ module Regress
         end
         raise "the sim came up at #{size&.join('x') || '?'}, #{config.size.join('x')} expected" unless size == config.size
         SimRun.wait_for(90, "the desktop's boot to finish") { SimRun.core_log.include?(SimRun::BOOT_DONE) }
+      end
+
+      # The launcher replays its index from flash/var/cache/launcher_index (out
+      # of git, shared with whoever else runs the sim) and only rescans /app
+      # when there is none. A cache made before an app was added, or after a
+      # local one was tried, would put the launcher scene on whatever this
+      # checkout last saw. Removed before each boot, the desktop walks /app at
+      # boot and writes it afresh from the tree as it is.
+      LAUNCHER_CACHE = File.join(CORE, "flash", "var", "cache", "launcher_index")
+
+      def reset_launcher_cache!
+        FileUtils.rm_f(LAUNCHER_CACHE)
       end
 
       def run_scenes(config, driver)
