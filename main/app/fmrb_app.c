@@ -480,6 +480,11 @@ static void free_ctx_index(int32_t idx) {
 // App task main loop
 // ============================================================================
 
+// What follows every mruby app file (see report_autostart_refusal).
+// load_script_file leaves room for it after the file.
+#define AUTOSTART_CALL \
+    "\n(__fmrb_app = FmrbApp._app_to_start).is_a?(Class) ? __fmrb_app.new.start : __fmrb_app\n"
+
 static char* load_script_file(const char* filepath, size_t* out_size) {
     fmrb_file_t file = NULL;
     char* buffer = NULL;
@@ -510,8 +515,8 @@ static char* load_script_file(const char* filepath, size_t* out_size) {
         return NULL;
     }
 
-    // Allocate buffer (+1 for null terminator)
-    buffer = (char*)fmrb_sys_malloc(file_size + 1);
+    // Allocate buffer (+1 for null terminator, and room for AUTOSTART_CALL)
+    buffer = (char*)fmrb_sys_malloc(file_size + 1 + sizeof(AUTOSTART_CALL));
     if (!buffer) {
         FMRB_LOGE(TAG, "Failed to allocate buffer for script file");
         fmrb_hal_file_close(file);
@@ -896,48 +901,26 @@ static bool report_mruby_result(fmrb_app_task_context_t* ctx, mrb_value task)
 }
 
 /**
- * Start the app the file defined, once the file has run (doc/codebase_tidy,
- * T3). An app file does not end with `MyApp.new.start`: FmrbApp.inherited
- * notes each subclass the file defines, and here, after the file's top level
- * has finished, FmrbApp._autostart picks the one to start (the only one, or
- * the one `class =` names in the app's metadata) and starts it in a Task of
- * its own -- the program's Task as far as a checkpoint is concerned.
+ * The app the file defines is started by the code in AUTOSTART_CALL after
+ * the file's own code (doc/codebase_tidy, T3): appended to the source for a
+ * file (load_script_file leaves room), and by the bytecode build
+ * (main/prebuild_scripts/autostart.rb) for a built-in app. It runs in the
+ * program's own Task at the depth the start code at the foot of every app
+ * file used to run, so nothing is left over -- no second Task, no deeper VM
+ * stack, and the checkpoint's host task is still the program's.
  *
- * Nothing is started when the file made its app itself (an old file that
- * still ends with the start code: ctx->app_instance_made), when it failed,
- * or when it was asked to end meanwhile. When no class can be picked, the
- * reason _autostart returns goes to the log and the error dialog, the way a
- * crash does, instead of the app not appearing at all.
+ * When FmrbApp._app_to_start could not pick a class, the program ends with
+ * the reason as its value: tell it the way a crash is told (log, error
+ * dialog), instead of the app not appearing at all.
  */
-static void autostart_mruby_app(fmrb_app_task_context_t* ctx)
+static void report_autostart_refusal(fmrb_app_task_context_t* ctx, mrb_value task)
 {
-    mrb_state *mrb = ctx->mrb;
-    if (ctx->app_instance_made || ctx->expected_stop) {
+    if (ctx->app_instance_made || mrb_nil_p(task)) {
         return;
     }
-    if (!mrb_class_defined(mrb, "FmrbApp")) {
-        return;
-    }
-    mrb_value app_class = mrb_obj_value(mrb_class_get(mrb, "FmrbApp"));
-    mrb_value name = mrb_str_new_cstr(mrb, ctx->app_name);
-    mrb_value task = mrb_funcall(mrb, app_class, "_autostart_task", 1, name);
-    if (mrb->exc) {
-        report_mruby_result(ctx, mrb_nil_value());
-        return;
-    }
-
-#ifdef FMRB_HAVE_CHECKPOINT
-    // The app runs in this Task: a restored image goes on in it.
-    fmrb_app_checkpoint_host_task(ctx, task);
-#endif
-
-    mrb_task_run(mrb);
-    if (report_mruby_result(ctx, task)) {
-        return;
-    }
-    mrb_value why = mrb_task_value(mrb, task);
+    mrb_value why = mrb_task_value(ctx->mrb, task);
     if (mrb_string_p(why)) {
-        set_last_error(ctx, RSTRING_CSTR(mrb, why), NULL);
+        set_last_error(ctx, RSTRING_CSTR(ctx->mrb, why), NULL);
         FMRB_LOGE(TAG, "[%s] Not started: %s", ctx->app_name, s_last_error_msg);
         notify_error_to_kernel(ctx);
     }
@@ -1036,6 +1019,10 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
 #ifdef FMRB_HAVE_CHECKPOINT
         fmrb_app_checkpoint_add_source(ctx, script_buffer, script_size);
 #endif
+        // The file as written goes to the checkpoint (shown, not run); the
+        // start call goes after it (load_script_file left room for it).
+        memcpy(script_buffer + script_size, AUTOSTART_CALL, sizeof(AUTOSTART_CALL));
+        script_size += sizeof(AUTOSTART_CALL) - 1;
 
         const uint8_t *script_ptr = (const uint8_t *)script_buffer;
         FMRB_LOGI(TAG, "[%s] Script size: %zu bytes", ctx->app_name, script_size);
@@ -1135,7 +1122,7 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     FMRB_LOGD(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
     if (!report_mruby_result(ctx, task)) {
-        autostart_mruby_app(ctx);
+        report_autostart_refusal(ctx, task);
     }
 
     mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);

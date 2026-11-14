@@ -6,6 +6,9 @@
 #   system_desktop.app.rb), all .rb files in that subdirectory are prepended
 #   to the main file before compilation. This allows splitting large scripts
 #   into modules while keeping single-file picorbc compilation.
+#
+# An app (*.app.rb) gets autostart.rb after it: the call that starts the
+# FmrbApp subclass it defines (app files do not end with MyApp.new.start).
 
 # Step 1: Prepare Ruby bytecode source files (call before idf_component_register)
 # Arguments:
@@ -50,10 +53,18 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
     get_filename_component(RB_DIR ${RB_FILE} DIRECTORY)
     set(SUBDIR ${RB_DIR}/${RB_BASE})
 
+    set(SUB_RB_FILES "")
     if(IS_DIRECTORY ${SUBDIR})
-      # Subdirectory exists - concatenate sub/*.rb + main.rb
       file(GLOB SUB_RB_FILES ${SUBDIR}/*.rb)
       list(SORT SUB_RB_FILES)  # Deterministic order
+    endif()
+    set(TAIL_RB_FILES "")
+    if(RB_FILE MATCHES "\\.app\\.rb$")
+      set(TAIL_RB_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/autostart.rb)
+    endif()
+
+    if(SUB_RB_FILES OR TAIL_RB_FILES)
+      # Concatenate sub/*.rb + main.rb (+ autostart.rb for an app)
 
       set(COMBINED_FILE ${OUTPUT_DIR}/${RB_NAME}_combined.rb)
       set(COMBINED_MAP ${OUTPUT_DIR}/${RB_NAME}_combined.map.json)
@@ -65,8 +76,8 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
         OUTPUT ${COMBINED_FILE} ${COMBINED_MAP}
         COMMAND ${CMAKE_COMMAND} -E echo "Concatenating ${SUBDIR}/*.rb + ${RB_FILE} (+ line map)..."
         COMMAND python3 ${CMAKE_CURRENT_LIST_DIR}/../tool/debug/gen_combined_rb.py
-                ${COMBINED_FILE} ${COMBINED_MAP} ${SUB_RB_FILES} ${RB_FILE}
-        DEPENDS ${SUB_RB_FILES} ${RB_FILE}
+                ${COMBINED_FILE} ${COMBINED_MAP} ${SUB_RB_FILES} ${RB_FILE} ${TAIL_RB_FILES}
+        DEPENDS ${SUB_RB_FILES} ${RB_FILE} ${TAIL_RB_FILES}
                 ${CMAKE_CURRENT_LIST_DIR}/../tool/debug/gen_combined_rb.py
         COMMENT "Concatenating subdirectory files for ${RB_NAME}"
         VERBATIM

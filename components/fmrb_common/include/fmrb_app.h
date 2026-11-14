@@ -198,10 +198,11 @@ typedef struct fmrb_app_task_context_s {
 
     // Set when the app's FmrbApp instance is made (FmrbApp#_init, headless
     // apps included). An mruby app file need not end with the code that makes
-    // and starts its app: after the file has run, the runtime starts the
-    // FmrbApp subclass it defined, unless this is already set -- so a file
-    // that still starts its app itself is not started twice. A checkpoint
-    // restore never takes that path (the image carries its instance).
+    // and starts its app: the loader puts a start (FmrbApp._app_to_start) after
+    // the file's code, which starts the FmrbApp subclass the file defined
+    // unless this is already set -- so a file that still starts its app
+    // itself is not started twice. A checkpoint restore runs no such call
+    // (the image carries its instance).
     bool                  app_instance_made;
 
     // A full collection asked for from outside the app (the debug server's

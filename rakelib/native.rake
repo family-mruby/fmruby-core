@@ -65,17 +65,14 @@ def native_regen_apps_mrb!
     # doc/wifi_settings), put in front of the app as hosted_regen_mrb! does.
     combine = File.foreach(rb).first(80).find { |l| l.start_with?("# combine:") }
     mixins = combine ? combine.sub("# combine:", "").split.map { |f| File.expand_path(f, dir) } : []
-    newest = ([rb] + mixins).map { |f| File.mtime(f) }.max
+    # Then the call that starts the app (as hosted_regen_mrb! does).
+    newest = ([rb, HOSTED_AUTOSTART_RB] + mixins).map { |f| File.mtime(f) }.max
     next if File.exist?(out_c) && File.mtime(out_c) >= newest
     mkdir_p File.dirname(out_c)
-    if mixins.empty?
-      sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
-    else
-      combined = File.join(dir, "mrb", "#{name}_combined.rb")
-      map = File.join(dir, "mrb", "#{name}_combined.map.json")
-      sh "python3 #{gen} #{combined} #{map} #{mixins.join(' ')} #{rb}"
-      sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
-    end
+    combined = File.join(dir, "mrb", "#{name}_combined.rb")
+    map = File.join(dir, "mrb", "#{name}_combined.map.json")
+    sh "python3 #{gen} #{combined} #{map} #{(mixins + [rb, HOSTED_AUTOSTART_RB]).join(' ')}"
+    sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
     puts "native:mrb: #{name} rebuilt"
   end
 end

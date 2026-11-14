@@ -159,7 +159,7 @@ module Regress
 
     # Reads the app's file and returns the class name to make. An app file
     # only defines its class (the runtime starts it, doc/codebase_tidy T3), so
-    # the class is picked the way FmrbApp._autostart picks it: the one app
+    # the class is picked the way FmrbApp._app_to_start picks it: the one app
     # class not used as another's base, or the one `class =` names. A file
     # that still ends with its start code (the last `begin` that makes the app
     # and starts it) is read without it.

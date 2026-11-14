@@ -1335,10 +1335,15 @@ class FmrbApp
   #
   # An app file only defines its class; it does not end with
   # `MyApp.new.start`. Every subclass is noted as it is defined (reopening a
-  # class, as an app split over several files does, defines it once), and
-  # once the file has run, C (fmrb_app.c, autostart_mruby_app) asks
-  # _autostart_task for a Task that makes the app and starts it -- unless the
-  # file made its app itself.
+  # class, as an app split over several files does, defines it once). The
+  # loader puts the start after the file's own code (fmrb_app.c for a file,
+  # main/prebuild_scripts/autostart.rb for a built-in app):
+  #
+  #   (__fmrb_app = FmrbApp._app_to_start).is_a?(Class) ? __fmrb_app.new.start : __fmrb_app
+  #
+  # so the app starts in the same Task, at the same point and at the same
+  # call depth as the old start code (one more frame under the whole app
+  # would grow every app's VM stack).
   def self.inherited(klass)
     FmrbApp._note_app_class(klass)
   end
@@ -1348,25 +1353,28 @@ class FmrbApp
     @_app_classes << klass
   end
 
-  def self._autostart_task(name)
-    Task.new(name: name) { FmrbApp._autostart }
+  # The class to start; nil when the file made its app itself; or the reason
+  # no class could be picked, which is then the program's last value and C
+  # shows it in the error dialog.
+  def self._app_to_start
+    return nil if FmrbApp._app_instance_made?
+    _app_class_to_start
   end
 
-  # Makes and starts the app. Returns nil once it has ended, or the reason
-  # no class could be picked (C shows it in the error dialog).
-  def self._autostart
-    klass = _app_class_to_start
-    return klass if klass.is_a?(String)
-    klass.new.start
-    nil
-  end
-
-  # The class to start: the only one the file defined, not counting a class
-  # another one is derived from (a shared base). With more than one, the one
-  # `class =` names in the app's .app.toml or #---fmrb header. The metadata is
-  # read only then, so an app with one class pays nothing for it.
+  # The class to start. `class =` in the app's .app.toml or #---fmrb header,
+  # when it is there, always decides. Without it, the only class the file
+  # defined, not counting a class another one is derived from (a shared base).
   def self._app_class_to_start
     found = @_app_classes || []
+    path = FmrbApp.script_path.to_s
+    file = path.empty? ? "this program" : path
+    want = FmrbApp._start_class_name.to_s
+    unless want.empty?
+      found.each { |k| return k if k.to_s == want }
+      names = found.map { |k| k.to_s }.join(", ")
+      return "class = \"#{want}\" is not an app class in #{file}.\n" \
+             "App classes: #{names.empty? ? "none" : names}."
+    end
     leaves = []
     found.each do |k|
       based_on = false
@@ -1374,21 +1382,12 @@ class FmrbApp
       leaves << k unless based_on
     end
     return leaves[0] if leaves.size == 1
-
-    path = FmrbApp.script_path.to_s
-    file = path.empty? ? "this program" : path
     if leaves.empty?
       return "No app class in #{file}.\nDefine one: class MyApp < FmrbApp"
     end
     names = leaves.map { |k| k.to_s }.join(", ")
-    meta = path.empty? ? nil : FmrbApp.app_meta(path)
-    want = meta ? meta["class"].to_s : ""
-    if want.empty?
-      return "#{leaves.size} app classes in #{file}: #{names}.\n" \
-             "Name the one to start: class = \"#{leaves[0]}\" in its .app.toml."
-    end
-    found.each { |k| return k if k.to_s == want }
-    "class = \"#{want}\" is not an app class in #{file}.\nApp classes: #{names}."
+    "#{leaves.size} app classes in #{file}: #{names}.\n" \
+      "Name the one to start: class = \"#{leaves[0]}\" in its .app.toml."
   end
 
   def self._app_class_under?(sub, base)

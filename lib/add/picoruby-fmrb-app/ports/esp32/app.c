@@ -33,6 +33,7 @@
 #include "fmrb_clipboard.h"
 #include "fmrb_hal_time.h"
 #include "fmrb_app_meta.h"
+#include "fmrb_toml.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 #include "app_debug.h"
@@ -170,8 +171,8 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 
     FMRB_LOGI(TAG, "_init: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
 
-    // The file made its app itself: the runtime does not start another one
-    // after the file has run (fmrb_app.c, autostart_mruby_app).
+    // The file made its app itself: the start the loader puts after the
+    // file's code (FmrbApp._app_to_start) does not start another one.
     ctx->app_instance_made = true;
 
     // A new occupant of this slot has its own heap; do not inherit what a
@@ -1202,6 +1203,36 @@ static mrb_value mrb_fmrb_app_s_config(mrb_state *mrb, mrb_value self)
     }
 
     mrb_free(mrb, tables);
+    return result;
+}
+
+// FmrbApp._app_instance_made? -> whether this app has made its FmrbApp
+// instance (ctx->app_instance_made, set by _init). FmrbApp._app_to_start asks,
+// so a file that starts its app itself is not started a second time.
+static mrb_value mrb_fmrb_app_s_app_instance_made(mrb_state *mrb, mrb_value self)
+{
+    (void)mrb; (void)self;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    return mrb_bool_value(ctx && ctx->app_instance_made);
+}
+
+// FmrbApp._start_class_name -> String or nil: the `class =` key of this
+// app's metadata (.app.toml or #---fmrb header, the .app.toml winning), the
+// class FmrbApp._app_to_start is to start. Only that one string goes to the VM
+// (the metadata itself is read into the system heap and released).
+static mrb_value mrb_fmrb_app_s_start_class_name(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx || ctx->filepath[0] == '\0') {
+        return mrb_nil_value();
+    }
+    fmrb_app_meta_t meta;
+    fmrb_app_meta_load(ctx->filepath, &meta);
+    const char *name = fmrb_toml_get_string(fmrb_app_meta_table(&meta, "class"), "class", NULL);
+    mrb_value result = name ? mrb_str_new_cstr(mrb, name) : mrb_nil_value();
+    fmrb_toml_xfree((void *)name);
+    fmrb_app_meta_free(&meta);
     return result;
 }
 
@@ -2761,6 +2792,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "uptime_us", mrb_fmrb_app_s_uptime_us, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "script_path", mrb_fmrb_app_s_script_path, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "_app_instance_made?", mrb_fmrb_app_s_app_instance_made, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "_start_class_name", mrb_fmrb_app_s_start_class_name, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());

@@ -54,6 +54,9 @@ end
 # desktop died on the first event with a NoMethodError it had no way to
 # report. So the caller's libmruby is checked first and rebuilt (mruby_task)
 # when lib/add is newer.
+# Put after every built-in app's own code (see compile_ruby_to_bytecode.cmake).
+HOSTED_AUTOSTART_RB = File.join(ROOT_DIR, "main/prebuild_scripts/autostart.rb")
+
 def hosted_regen_mrb!(label, mruby_build, mruby_task)
   lib_a = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/build",
                     mruby_build, "lib/libmruby.a")
@@ -87,14 +90,17 @@ def hosted_regen_mrb!(label, mruby_build, mruby_task)
       if combine
         sources += combine.sub("# combine:", "").split.map { |f| File.join(dir, f) }
       end
-      newest = sources.map { |f| File.mtime(f) }.max
+      # An app gets the call that starts it after its own code
+      # (main/prebuild_scripts/autostart.rb, as the CMake build does).
+      tail = rb.end_with?(".app.rb") ? [HOSTED_AUTOSTART_RB] : []
+      newest = (sources + tail).map { |f| File.mtime(f) }.max
       next if File.exist?(out_c) && File.mtime(out_c) >= newest
       mkdir_p File.join(dir, "mrb")
-      if sources.size > 1
+      if sources.size > 1 || !tail.empty?
         combined = File.join(dir, "mrb", "#{name}_combined.rb")
         map = File.join(dir, "mrb", "#{name}_combined.map.json")
         sh "python3 #{gen} #{combined} #{map} " \
-           "#{(sources - [rb]).join(' ')} #{rb}"
+           "#{(sources - [rb] + [rb] + tail).join(' ')}"
         sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
       else
         sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
