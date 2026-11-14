@@ -1,6 +1,6 @@
 # アプリの書き方とリポジトリの置き場の整理
 
-> 状態: 計画済 | 更新: 2026-11-14 | アプリの決まった書き方 (末尾の起動コード・座標の足し算・FmrbApp のクラスメソッドの混在・古い契約の残り) と、二重管理のヘッダ、置き場の名前 (tool/tools・試験用アプリ・prebuild_scripts・lib/add・config) を整える。段ごとに、利用者に見える選択は選択肢で決めてから進める
+> 状態: 進行中 | 更新: 2026-11-14 | アプリの決まった書き方 (末尾の起動コード・座標の足し算・FmrbApp のクラスメソッドの混在・古い契約の残り) と、二重管理のヘッダ、置き場の名前 (tool/tools・試験用アプリ・prebuild_scripts・lib/add・config) を整える。段ごとに、利用者に見える選択は選択肢で決めてから進める
 
 ## 目的
 
@@ -33,7 +33,7 @@
 
 | 段 | 内容 | 状態 |
 |---|---|---|
-| T0 | 調べ: 枠なし・全画面・高解像度のアプリと、Window の外や枠の上に描くアプリの一覧、座標を取る API (描画・当たり判定・透ける区画・スプライト・キャンバス・FmrbUI) の一覧と今の原点、起動の流れ (カーネルがアプリの .rb を読んでから `start` まで、mruby・Spinel・MicroPython・checkpoint の復元)、`@gfx` の座標の通り道と全画面・枠なしアプリの例外、FmrbApp のクラスメソッドの一覧と使っている所、両リポジトリで重複するヘッダの全一覧と差分、`#---fmrb` ヘッダの読み手、tool/・tools/・ルートの tools/ の中身と呼び出し元、試験用アプリを参照している所 (regress の道具・文書) | 進行中 |
+| T0 | 調べ: 枠なし・全画面・高解像度のアプリと、Window の外や枠の上に描くアプリの一覧、座標を取る API (描画・当たり判定・透ける区画・スプライト・キャンバス・FmrbUI) の一覧と今の原点、起動の流れ (カーネルがアプリの .rb を読んでから `start` まで、mruby・Spinel・MicroPython・checkpoint の復元)、`@gfx` の座標の通り道と全画面・枠なしアプリの例外、FmrbApp のクラスメソッドの一覧と使っている所、両リポジトリで重複するヘッダの全一覧と差分、`#---fmrb` ヘッダの読み手、tool/・tools/・ルートの tools/ の中身と呼び出し元、試験用アプリを参照している所 (regress の道具・文書) | 済 (report/t0.md、69ad37b7) |
 | T1 | 古い契約の残り (安い): skill とテンプレートの `super(ev)` を消す、window.rb の不要な `draw_window_frame` を消す、`clear_time` を対になる名前に、メタデータを 1 形式に寄せる | 未着手 |
 | T2 | プロトコルヘッダの一本化: 正を 1 か所に置き、ほかは生成かビルド時の参照にする。違いがあるものは中身を揃える。足し忘れを `rake` の検査で止める | 未着手 |
 | T3 | アプリの自動起動: ランタイムが起動の決まり文句を引き受け、末尾の起動コードを全アプリから消す。起動に失敗したときは理由をログと画面に出す (黙って何も起きない、を無くす) | 未着手 |
@@ -66,11 +66,25 @@
 - T1 メタデータ: `.app.toml` と `#---fmrb` ヘッダの**両方を使えるまま**にする。読み手を 1 つにし、項目の名前と意味を両形式で同じにする。両方あるときの優先 (どちらが勝つか) を決めて文書に書く。
 - T2 ヘッダ: 正は fmruby-core の 1 か所。graphics-audio と sdl2-display はビルドのときにそれを読む (隣の checkout)。写しが要る所は rake が写し、差があれば警告する。
 
+- T0 の後の決定 (2026-11-14 ユーザ。根拠は report/t0.md):
+  - T1: `.app.toml` と `#---fmrb` の両方があるときは、項目ごとに `.app.toml` が勝つ。読み手は C の spawner 1 つにまとめ、
+    ランチャー・desktop・Shell・checkpoint はそこに問う。`clear_time` は `clear_timer` にする。
+  - T2: 共有するのは線の形のヘッダ 5 本。正は fmruby-core、graphics-audio は `../fmruby-core` を読み取り専用で mount して
+    CMake で直接 include、sdl2-display は docker の `additional_contexts` で core を足す。`MAX_TEXT_LEN` は 128 にそろえる。
+    `components/fmrb_msg/fmrb_hid_event.h` は同じ名前の別物なので名前を変える。
+  - T3: mruby は `FmrbApp.inherited` で子を覚え、読み込みの後に起動。Spinel は生成のときに末尾を足す。二重起動は C の ctx の旗
+    (PSRAM)。起動に失敗したらダイアログとログ。末尾の起動コードは全部消す。Python は後回し。
+  - T4: 原点は C の gfx 構造体 (VM の pool) に持つ。Window 座標で描く口は 2 つめの描き手 `@window_gfx`。イベントの Window 座標は
+    `ev[:wx]`・`ev[:wy]` で残す。スプライトも区画相対。画面の基準に載らないアプリのために、前後で全アプリを撮って比べる一回きりの道具を作る。
+  - T5: system 用 (wifi_*・ble_*・linux_*・reboot など 34 本) は `FmrbSystem` にまとめる。読み取り系の境目は `FmrbApp` に残す。
+    mruby と Spinel のずれ (25 本) と sig の欠け (37 本) もこの段で揃える。
+  - T6: tool/ と tools/ を tools/ に、`main/prebuild_scripts/` を `main/ruby/` に、`lib/add/` を `lib/gems/` (自作 gem) と
+    `lib/upstream/` (差し込み・patch・replace) に、`config/` の端末の名前を `FMRB_HW_TARGET` の小文字にそろえる。これに伴う
+    sdkconfig.defaults の中のパスの書き換えは承認済み。試験用アプリは置き場を変えず、配布物からだけ外す。
+
 ## 未確定事項
 
-- T1: `.app.toml` と `#---fmrb` の両方があるときの優先。
-- T5: モジュールの名前と分け方 (T0 の後に案)。
-- T6: 新しい名前の一覧 (T0 の後に案)。
+なし (段の中で新しく出たら選択肢で聞く)。
 
 ## 関連
 
