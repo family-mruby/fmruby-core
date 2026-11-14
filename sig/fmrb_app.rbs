@@ -125,8 +125,8 @@ class FmrbApp
   # 画面も Window もここで使える状態になっています。最初の絵と、あとで使う変数を
   # ここで用意します。
   #
-  # ファイルに書いたアプリは、**末尾に起動の 4 行が要ります**。これが無いと
-  # クラスを定義しただけで何も起きません。
+  # ファイルにはクラスを書くだけです。末尾に起動のコードは要りません:
+  # ファイルを読み終えると、そのクラスが作られて `start` されます。
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -135,20 +135,14 @@ class FmrbApp
   #     clear_user_area
   #     gfx.present
   #   end
-  # end
-  #
-  # begin
-  #   MyApp.new.start
-  # rescue => e
-  #   Log.error("#{e.class}: #{e.message}")
   # end
   # ```
   # <<en>>
   # The screen and the window are ready by the time this runs. Set up the
   # first frame and whatever state the app will keep.
   #
-  # An app written to a file **needs the four starting lines at the end**;
-  # without them the class is defined and nothing happens.
+  # A file only defines the class; it needs no starting code at the end.
+  # Once the file has been read, the class is made and started.
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -157,12 +151,6 @@ class FmrbApp
   #     clear_user_area
   #     gfx.present
   #   end
-  # end
-  #
-  # begin
-  #   MyApp.new.start
-  # rescue => e
-  #   Log.error("#{e.class}: #{e.message}")
   # end
   # ```
   def on_create: () -> void
@@ -538,17 +526,19 @@ class FmrbApp
   # アプリを動かし始める <<en>> Start the app running
   #
   # `on_create` を呼び、アプリのループに入り、終わったら後始末をします。
-  # **これを呼ぶまでアプリは動きません。**
   #
-  # ファイルに書いたアプリは、クラスの定義だけでは何も起きません。末尾に
-  # `MyApp.new.start` を書きます。`rescue` を添えておくと、失敗が
-  # ログに残ります。
+  # ファイルのアプリでは自分で呼びません。ファイルを読み終えたあと、
+  # そのファイルが定義した `FmrbApp` の子が作られ、これが呼ばれます。
+  # 子が 2 つ以上あるときは、`.app.toml` (か `#---fmrb` の囲み) の
+  # `class = "MyApp"` で起動するものを名指します。見つからないときは
+  # 理由がエラーの Window に出ます。
   # <<en>>
   # Calls `on_create`, runs the app's loop, and cleans up when it ends.
-  # **Nothing happens until this is called.**
   #
-  # A file that only defines a class does nothing. End it with
-  # `MyApp.new.start`, and wrap it in a `rescue` so a failure reaches the log.
+  # An app file does not call it: once the file has been read, the FmrbApp
+  # subclass it defines is made and this is called. With two or more, name
+  # the one to start with `class = "MyApp"` in the .app.toml (or the
+  # `#---fmrb` header). When none can be picked, the error window says why.
   def start: () -> void
 
   # アプリを止める <<en>> Stop the app

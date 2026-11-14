@@ -38,7 +38,7 @@ Ruby 版と違うところ:
 
 | | Ruby | Python |
 |---|---|---|
-| 終わりの起動コード | `app = MyApp.new` / `app.start` | 同じ形 (`MyApp()` / `.start()`) |
+| 終わりの起動コード | 書かない (ファイルを読み終えたらランタイムが `FmrbApp` の子を起動する) | **要る** (`app = MyApp()` / `app.start()`) |
 | 時刻 | `Machine.board_millis` | `ticks_ms()` |
 | 文字列の長さ | `String#length` は文字数 | `len()` は**バイト数** |
 | 別ファイル | `require "/app/..."` | `import mymodule` (同じディレクトリのみ) |
