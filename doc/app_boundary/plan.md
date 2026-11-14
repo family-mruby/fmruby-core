@@ -127,6 +127,14 @@
   殻なしの枠なし・全画面で動かしてよい。
 - アプリの一生とイベントの受け渡しは生成の外で、殻が受け持つ。
 
+- **Lua のアプリの書き方 (2026-11-15 ユーザ、report/w3.md の 1.6)**: Ruby のアプリと同じ形にそろえる。
+  大域の関数 `on_create`・`on_update` (次までの ms を返す)・`on_event(ev)`、任意で `on_destroy`・`on_suspend`・
+  `on_resume`・`on_resize(w, h)`・`on_quit_request`。トップレベルは最初に 1 回だけ走る。`ev.type` は文字列
+  (`"mouse_down"` など)、ほかの鍵は Ruby と同じ名前。今の書き方 (自分のループ・自分で Window を作る) は残さず、関数を
+  1 つも定義しないスクリプトはエラーの Window にする。描き手は殻が作った大域の `gfx` (`create_canvas`・`FmrbGfx.new` は
+  消す)、原点は区画の左上、`clear_user_area`・`user_area_width`/`height`・`stop` を足す、枠は描かずタイトルはアプリの名前、
+  `FmrbApp.sleep` は残して `on_update` の返り値で待つよう勧める。`draw_text` の引数の順の違いは W4a の課題。
+
 ### 2. 型定義から bindings を生成する
 
 - **元は `sig/*.rbs` だけ。** 境界に載せるメソッドに印を付ける (書き方は未確定事項)。範囲は、
