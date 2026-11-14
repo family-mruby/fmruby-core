@@ -362,11 +362,9 @@ module LauncherMixin
   S_DOT     = "."
   S_DOTDOT  = ".."
   S_SLASH   = "/"
-  S_HASH    = "#"
-  S_EQ      = "="
-  S_QUOTE   = '"'
   S_NEWLINE = "\n"
   S_TOML    = ".toml"
+  S_APP_RB  = ".app.rb"
   S_FALSE   = "false"
   S_ZERO    = "0"
   S_TAB     = "\t"
@@ -375,7 +373,7 @@ module LauncherMixin
 
   # ---- App index cache ----
   #
-  # Scanning /app costs seconds: 43 .toml files to open, read and parse plus
+  # Scanning /app costs seconds: every app's metadata to open, read and parse plus
   # the directory walk. The result almost never changes between boots, so it is
   # written to a flat file and replayed instead. Boot trusts the cache without
   # revalidating it - checking would mean walking the directories again, which
@@ -572,120 +570,84 @@ module LauncherMixin
   end
 
   # One category directory, appending what it finds to @launcher_apps.
+  # An app is a script with an .app.toml beside it, or an .app.rb that
+  # carries its attributes in a "#---fmrb" comment instead.
   def scan_category(base_path, entry)
     path = "#{base_path}/#{entry}"
     sub_entries = read_dir_entries(path)
     return unless sub_entries
     sub_entries.each do |f|
-      if f.end_with?(S_TOML)
-        app_entry = parse_app_toml("#{path}/#{f}", path, sub_entries)
-        if app_entry
-          @launcher_apps << app_entry
-          Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
-        end
+      if f.end_with?(S_TOML) || comment_app_candidate?(f, sub_entries)
+        add_scanned_app(path, f, sub_entries)
       elsif dir_candidate?(f)
         # 3rd-level scan: a subdirectory under a category may itself
-        # contain a .toml + script, so a self-contained app bundle
-        # (assets co-located with .rb / .toml, e.g. /app/game/rpg_demo/)
-        # also shows up in the launcher.
+        # contain an app, so a self-contained app bundle (assets co-located
+        # with .rb / .toml, e.g. /app/game/rpg_demo/) also shows up in the
+        # launcher.
         full = "#{path}/#{f}"
         dd_entries = read_dir_entries(full)
         next unless dd_entries
         dd_entries.each do |df|
-          next unless df.end_with?(S_TOML)
-          app_entry = parse_app_toml("#{full}/#{df}", full, dd_entries)
-          if app_entry
-            @launcher_apps << app_entry
-            Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
-          end
-          end
+          next unless df.end_with?(S_TOML) || comment_app_candidate?(df, dd_entries)
+          add_scanned_app(full, df, dd_entries)
         end
       end
-
-      # Yield to FreeRTOS so lower-priority tasks on Core 1 (status_led
-      # prio 2) get scheduled during the filesystem scan. Each top-level
-      # entry may issue many hw_proxy round-trips that keep this task in
-      # ready state continuously otherwise.
-      Machine.delay_ms(1)
-  end
-
-  # entry_names is the listing of dir_path, used to resolve the script file
-  # without touching the filesystem again.
-  def parse_app_toml(toml_path, dir_path, entry_names)
-    label = nil
-    label_lang = nil   # Localized label from app_screen_name_<lang>, takes precedence
-    icon_field = nil
-    launcher_visible = true
-    lang_key = "app_screen_name_#{FmrbI18n.lang}"
-    begin
-      file = File.open(toml_path, "r")
-      content = file.read
-      file.close
-
-      # Hot loop: runs for every line of every app's .toml at boot, so it is
-      # written around what was measured on device.
-      #
-      # String#gsub is implemented in Ruby in picoruby and dominated this loop
-      # until it was removed (scan 13.0 s -> 7.8 s); the surrounding quotes are
-      # stripped by slicing instead. Allocating calls are expensive in general,
-      # so the key is compared against constants before the value is touched at
-      # all: a line that is not one of the four keys we care about does no work
-      # beyond its own strip.
-      content.split(S_NEWLINE).each do |line|
-        line = line.strip
-        next if line.empty? || line.start_with?(S_HASH)
-        eq = line.index(S_EQ)
-        next unless eq
-        key = line[0, eq].strip
-        next unless key == lang_key || key == KEY_APP_SCREEN_NAME ||
-                    key == KEY_LAUNCHER_VISIBLE || key == KEY_ICON
-        val = line[eq + 1, line.length - eq - 1].strip
-        vlen = val.length
-        if vlen >= 2 && val[0] == S_QUOTE && val[vlen - 1] == S_QUOTE
-          val = val[1, vlen - 2]
-        end
-        # Force a fresh buffer. mruby's String#[] and String#split hand back
-        # SHARED strings for anything past the embedded-string limit: the
-        # slice keeps a reference to its parent's buffer, so a label sliced
-        # out of a line sliced out of the file contents pins the WHOLE
-        # .app.toml in the VM pool for as long as the app entry lives.
-        # Measured on a NARYA v4: the desktop pool went 549 KB -> 632 KB
-        # across one rescan and a full GC.start could not get it back --
-        # ~2 KB an app for 39 apps, which is the size of the .toml files.
-        # Two rescans then ran the 819 KB pool out and the VM died with no
-        # exception at all. Interpolation builds a new buffer, so the parent
-        # becomes garbage the moment the parse returns.
-        val = "#{val}"
-        case key
-        when lang_key
-          label_lang = val
-        when KEY_APP_SCREEN_NAME
-          label = val
-        when KEY_LAUNCHER_VISIBLE
-          v = val.downcase
-          launcher_visible = !(v == S_FALSE || v == S_ZERO)
-        when KEY_ICON
-          icon_field = val
-        end
-      end
-    rescue => e
-      Log.warn("Cannot read #{toml_path}: #{e.message}")
-      return nil
     end
 
-    return nil unless launcher_visible
+    # Yield to FreeRTOS so lower-priority tasks on Core 1 (status_led
+    # prio 2) get scheduled during the filesystem scan. Each top-level
+    # entry may issue many hw_proxy round-trips that keep this task in
+    # ready state continuously otherwise.
+    Machine.delay_ms(1)
+  end
 
-    # Derive script filename from toml filename
-    toml_name = toml_path.split(S_SLASH).last
-    base = toml_name.sub(S_TOML, "")
+  def add_scanned_app(dir_path, name, entry_names)
+    app_entry = parse_app_entry(name, dir_path, entry_names)
+    if app_entry
+      @launcher_apps << app_entry
+      Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
+    end
+  end
 
-    ext = find_script_ext(entry_names, base)
-    return nil unless ext
+  # An .app.rb without an .app.toml may still be an app through its comment
+  # (FmrbApp.app_meta reads the head of the file to tell). Only .app.rb
+  # files are tried, so helper .rb files next to apps cost no extra read.
+  def comment_app_candidate?(name, entry_names)
+    return false unless name.end_with?(S_APP_RB)
+    base = name[0, name.length - 3]
+    !entry_names.include?("#{base}#{S_TOML}")
+  end
+
+  # name is an app's .app.toml or its script; entry_names is the
+  # listing of dir_path, used to resolve the script file without touching the
+  # filesystem again. The attributes come from the spawner's own reader
+  # (FmrbApp.app_meta: the .app.toml and the "#---fmrb" comment merged, the
+  # .app.toml winning a key both set), so the launcher shows what a launch
+  # will use.
+  def parse_app_entry(name, dir_path, entry_names)
+    if name.end_with?(S_TOML)
+      base = name[0, name.length - S_TOML.length]
+      ext = find_script_ext(entry_names, base)
+      return nil unless ext
+    else
+      dot = name.rindex(S_DOT)
+      return nil unless dot
+      base = name[0, dot]
+      ext = name[dot + 1, name.length - dot - 1]
+    end
+    app_path = "#{dir_path}/#{base}.#{ext}"
+    meta = FmrbApp.app_meta(app_path)
+    return nil unless meta
+
+    visible = meta[KEY_LAUNCHER_VISIBLE]
+    if visible
+      v = visible.downcase
+      return nil if v == S_FALSE || v == S_ZERO
+    end
 
     icon_char = VM_ICONS[ext] || "?"
-    icon_file = icon_field || VM_ICON_FILES[ext]
-    label = label_lang || label || base
-    app_path = "#{dir_path}/#{base}.#{ext}"
+    icon_file = meta[KEY_ICON] || VM_ICON_FILES[ext]
+    label = meta["app_screen_name_#{FmrbI18n.lang}"] || meta[KEY_APP_SCREEN_NAME] || base
 
     { label: label, app: app_path, icon_char: icon_char, icon_file: icon_file }
   end

@@ -24,6 +24,7 @@
 #include "fmrb_spinel_host.h"
 #include "fmrb_rtos.h"
 #include "fmrb_hal.h"
+#include "fmrb_app_meta.h"
 /* estalloc stats, as declared in main/app/fmrb_app.c. */
 extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
                                   size_t *free, int32_t *frag);
@@ -617,6 +618,31 @@ int fmrb_spx_app_path_read_only(const char *path, int len)
     memcpy(vpath, path, (size_t)len);
     vpath[len] = '\0';
     return fmrb_hal_file_entry_is_read_only(vpath) ? 1 : 0;
+}
+
+/* FmrbApp.app_meta(path): an app's .app.toml and "#---fmrb" comment merged
+ * key by key, the .app.toml winning (fmrb_app_meta.h), packed as
+ * [count u8] then per key [klen u8][key][vlen u16 LE][value]; "" when the
+ * file has neither form. Same reader as the mruby binding and the spawner.
+ * The buffer is in PSRAM on the boards; an .app.toml packs to a few hundred
+ * bytes, and keys that would not fit are left out. */
+#define SPX_APP_META_MAX 2048
+const char *fmrb_spx_app_meta(const char *path, int len)
+{
+    FMRB_SPX_BSS_ATTR static uint8_t buf[SPX_APP_META_MAX];
+    *sp_ctx_ffi_bin_len() = 0;
+    char vpath[FMRB_MAX_PATH_LEN];
+    if (!path || len <= 0 || len >= (int)sizeof(vpath)) {
+        return "";
+    }
+    memcpy(vpath, path, (size_t)len);
+    vpath[len] = '\0';
+    int n = fmrb_app_meta_pack(vpath, buf, sizeof(buf));
+    if (n <= 0) {
+        return "";
+    }
+    *sp_ctx_ffi_bin_len() = n;
+    return (const char *)buf;
 }
 
 #ifdef FMRB_HAVE_CHECKPOINT

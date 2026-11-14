@@ -76,6 +76,7 @@
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_theme.h"
 #include "fmrb_toml.h"
+#include "fmrb_app_meta.h"
 
 static const char *TAG = "ckpt";
 
@@ -432,21 +433,17 @@ static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const cha
     return ret;
 }
 
-// requires = ["pack", ...] of the attributes beside path (an .app.rb's
-// .app.toml, an image's .toml): the methods the app declares it cannot go on
-// without, one space between them in out ("" when it declares none).
+// requires = ["pack", ...] of path's attributes (an .app.rb's .app.toml or
+// "#---fmrb" comment, an image's .toml; fmrb_app_meta.h): the methods the app
+// declares it cannot go on without, one space between them in out ("" when
+// it declares none).
 static void read_requires(const char *path, char *out, size_t n)
 {
     out[0] = '\0';
-    char toml[FMRB_MAX_PATH_LEN];
-    snprintf(toml, sizeof(toml), "%s", path);
-    char *dot = strrchr(toml, '.');
-    if (!dot || (size_t)(dot - toml) + 6 > sizeof(toml)) return;
-    strcpy(dot, ".toml");
-    char errbuf[64];
-    toml_table_t *conf = fmrb_toml_load_file(toml, errbuf, sizeof(errbuf));
-    if (!conf) return;
-    toml_array_t *arr = toml_array_in(conf, "requires");
+    fmrb_app_meta_t meta;
+    fmrb_app_meta_load(path, &meta);
+    const toml_table_t *conf = fmrb_app_meta_table(&meta, "requires");
+    toml_array_t *arr = conf ? toml_array_in(conf, "requires") : NULL;
     size_t used = 0;
     for (int i = 0; arr && i < toml_array_nelem(arr); i++) {
         toml_datum_t d = toml_string_at(arr, i);
@@ -460,7 +457,7 @@ static void read_requires(const char *path, char *out, size_t n)
         }
         fmrb_toml_xfree(d.u.s);
     }
-    toml_free(conf);
+    fmrb_app_meta_free(&meta);
 }
 
 // Call an app hook if the app defines it; an exception it raises is logged

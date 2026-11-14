@@ -256,8 +256,9 @@ class KeysDesktopApp < FmrbApp
     screens.include?(SCREEN_FORM)
   end
 
-  # /app/<category>/<name>.toml next to its script, or a bundle
-  # /app/<category>/<name>/<name>.toml. Only the declaration is read; a toml
+  # /app/<category>/<name>.toml next to its script, an .app.rb carrying its
+  # attributes in a "#---fmrb" comment, or a bundle
+  # /app/<category>/<name>/<name>.toml. Only the declaration is read; an app
   # without both keys is not listed (there is no shrinking an app to fit).
   def scan_declared_apps(items)
     excluded = keys_excluded_dirs
@@ -274,13 +275,15 @@ class KeysDesktopApp < FmrbApp
         if n.end_with?(".toml")
           stem = n[0, n.length - 5]
           script = script_for(names, stem)
-          add_declared(found, "#{base}/#{n}", script ? "#{base}/#{script}" : nil)
+          add_declared(found, script ? "#{base}/#{script}" : nil)
+        elsif n.end_with?(".app.rb") && !names.include?("#{n[0, n.length - 3]}.toml")
+          add_declared(found, "#{base}/#{n}")
         elsif !n.include?(".")
           inner = read_names("#{base}/#{n}")
           next unless inner
           next unless inner.include?("#{n}.toml")
           script = script_for(inner, n)
-          add_declared(found, "#{base}/#{n}/#{n}.toml", script ? "#{base}/#{n}/#{script}" : nil)
+          add_declared(found, script ? "#{base}/#{n}/#{script}" : nil)
         end
       end
     end
@@ -322,31 +325,16 @@ class KeysDesktopApp < FmrbApp
     nil
   end
 
-  def add_declared(found, toml, script)
+  # The app's attributes as the spawner reads them (FmrbApp.app_meta: the
+  # .app.toml and the "#---fmrb" comment merged, the .app.toml winning).
+  def add_declared(found, script)
     return unless script
-    text = File.open(toml, "r") { |f| f.read }
-    return unless text
-    label = nil
-    label_lang = nil
-    screens = nil
-    needs_pointer = nil
-    lang_key = "app_screen_name_#{FmrbI18n.lang}"
-    text.split("\n").each do |raw|
-      line = raw.strip
-      next if line.empty? || line.start_with?("#")
-      break if line.start_with?("[")
-      eq = line.index("=")
-      next unless eq
-      key = line[0, eq].strip
-      val = line[eq + 1, line.length - eq - 1].strip
-      case key
-      when "screens" then screens = val
-      when "needs_pointer" then needs_pointer = val.start_with?("true")
-      when "app_screen_name" then label = unquote(val)
-      when lang_key then label_lang = unquote(val)
-      end
-    end
-    return unless keys_capable?(screens, needs_pointer)
+    meta = FmrbApp.app_meta(script)
+    return unless meta
+    np = meta["needs_pointer"]
+    return unless keys_capable?(meta["screens"], np ? np == "true" : nil)
+    label_lang = meta["app_screen_name_#{FmrbI18n.lang}"]
+    label = meta["app_screen_name"]
     name = label_lang || label
     if name.nil? || name.empty?
       slash = script.rindex("/")
@@ -354,16 +342,7 @@ class KeysDesktopApp < FmrbApp
     end
     found << { label: name, app: script }
   rescue => e
-    Log.warn("keys desktop: #{toml}: #{e.message}")
-  end
-
-  def unquote(v)
-    h = v.index("#")
-    v = v[0, h].strip if h && h > 0
-    if v.length >= 2 && v.start_with?("\"") && v.end_with?("\"")
-      return v[1, v.length - 2]
-    end
-    v
+    Log.warn("keys desktop: #{script}: #{e.message}")
   end
 
   def menu_rows

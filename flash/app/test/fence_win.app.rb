@@ -3,8 +3,8 @@
 #---
 # Precedence test (doc/multivm_app/instruction_m1.md T1): the fence above asks
 # for fullscreen, the .app.toml sidecar next to it asks for a 180x90 window.
-# The sidecar must win -- if this comes up fullscreen, the fallback order is
-# wrong.
+# The two are merged key by key and the sidecar wins a key both set -- if this
+# comes up fullscreen, the order is wrong.
 class FenceWinApp < FmrbApp
   def on_create
     Log.info("FENCE: sidecar app up, area=#{@user_area_width}x#{@user_area_height}")

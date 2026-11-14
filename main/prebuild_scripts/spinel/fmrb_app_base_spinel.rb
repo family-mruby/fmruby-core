@@ -2577,6 +2577,32 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_path_read_only(s, s.bytesize) == 1
   end
 
+  # An app's metadata as the spawner reads it: its .app.toml and the
+  # "#---fmrb" comment of its .rb merged key by key, the .app.toml winning.
+  # String keys and values (an array's items joined by a space); nil when the
+  # file has neither form. Same answer as the mruby binding.
+  def self.app_meta(path)
+    s = path.to_s
+    buf = FmrbSpxApp.fmrb_spx_app_meta(s, s.bytesize)
+    return nil if buf.bytesize == 0
+    count = buf.getbyte(0)
+    off = 1
+    h = {}
+    i = 0
+    while i < count
+      klen = buf.getbyte(off)
+      off += 1
+      key = SpxBytes.slice(buf, off, klen)
+      off += klen
+      vlen = SpxBytes.u16(buf, off)
+      off += 2
+      h[key] = SpxBytes.slice(buf, off, vlen)
+      off += vlen
+      i += 1
+    end
+    h
+  end
+
   # Move app pid to another machine over Asterism (its node ID), as the
   # mruby binding: nil when asked (the answer comes as "checkpoint_result"),
   # else why not.

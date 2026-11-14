@@ -1,5 +1,6 @@
 set(COMMON_SRCS
     "fmrb_toml.c"
+    "fmrb_app_meta.c"
 )
 set(PLATFORM_REQUIRES fmrb_hal fmrb_log toml_parser)
 

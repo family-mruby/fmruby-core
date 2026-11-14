@@ -21,7 +21,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | 新しいアプリ記述形式 (`manifest.json`) | `.app.toml` が既にあり、二重帳簿になる |
 | 新しい転送手順 (BLE の 11 命令) | 実機が https を叩けるので、実機が取りに行けば済む |
 | 束形式 (`.mrpkg`) | ランチャーが 3 階層目のディレクトリを既に束として扱う |
-| 1 ファイル配布 | 埋め込み記述のアプリはランチャーに出ない (3.3 節、2026-09-02 実測) |
+| 1 ファイル配布 | 導入の記録 (`app_id` など) は `.app.toml` から読む (3.3 節) |
 | 独自の配信基盤 | GitHub の raw と自前 nginx で足りる (6 節で実測) |
 | 署名・権限・審査 | 最初の版では持たない |
 | ファームウェアの変更 | 配布の鍵は導入のときに既存の鍵へ翻訳する (8.3 節) |
@@ -31,7 +31,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | もの | 実体 | 何ができるか |
 |---|---|---|
 | アプリ記述 | `<名前>.app.toml` | Window の大きさ、記憶域、スタック、表示名 (日本語別名つき) |
-| 記述の埋め込み | `.rb` 冒頭の `#---fmrb` 囲み | 自分で起動する補助スクリプト用。**配布には使えない** (3.3 節) |
+| 記述の埋め込み | `.rb` 冒頭の `#---fmrb` 囲み | `.app.toml` と同じ鍵を書ける。両方あれば鍵ごとに `.app.toml` が勝つ (3.3 節)。配布には `.app.toml` が要る |
 | 束 (複数ファイル) | `/app/<分類>/<名前>/` | ランチャーが 3 階層目まで歩き、素材を同居させた束を 1 アプリとして拾う (`launcher.rb:378`) |
 | ユーザ用の置き場 | `/app/usr/` | 出荷ツリーに空で存在する。ブラウザ版では IndexedDB に残る (`wasm/web/main.js:469,475`) |
 | 実機の https 取得 | `Net::HTTP` | Retro (Narya) / Modern / Linux で利用可 |
@@ -48,13 +48,14 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 
 ### 3.1 実機が実際に読む鍵
 
-`fmrb_app_spawner.c` と `launcher.rb` (と、`screens`・`needs_pointer` は
-キーボード専用のデスクトップ `system_desktop_keys.app.rb`) が読む鍵は以下がすべて。ここに無い鍵は
-黙って無視される (未知の鍵を足しても壊れない)。
+読み手は C の 1 つ (`components/fmrb_toml/fmrb_app_meta.c`) で、spawner・ランチャー・
+デスクトップ (キーボード専用のものを含む)・Shell・checkpoint はみなこれに問う (Ruby からは
+`FmrbApp.app_meta(path)`)。鍵は `.app.toml` と `#---fmrb` 囲みで同じ名前・同じ意味 (3.3 節)。
+使われる鍵は以下がすべて。ここに無い鍵は黙って無視される (未知の鍵を足しても壊れない)。
 
 | 鍵 | 既定 | 効果 |
 |---|---|---|
-| `app_screen_name` | ファイル名 | 表示名。**埋め込みからは読まれない** (3.3 節) |
+| `app_screen_name` | ファイル名 | 表示名 |
 | `app_screen_name_<言語>` | — | 言語別の表示名 (`_ja` など) |
 | `icon` | 拡張子で決まる既定 | アイコンのパス |
 | `launcher_visible` | true | 一覧に出すか |
@@ -107,29 +108,35 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 `<base>.rb` / `.lua` / `.bas` / `.py` を探す規則なので (`launcher.rb:327,461`)、
 `<app_id>.app.toml` と `<app_id>.app.rb` の組になる。
 
-### 3.3 `.app.toml` は必須 (実測で判明)
+### 3.3 `.app.toml` と `#---fmrb` 囲み
 
-実機は `.rb` 冒頭の `#---fmrb` 囲みに記述を埋め込む形も読む
-(`fmrb_app_spawner.c:398`)。**しかし配布にはこれを使えない。**
+記述は 2 つの形で書ける。鍵の名前と意味はどちらも同じ (3.1 節の表)。
 
-**ランチャーの走査は `.toml` を歩き、`.rb` を開いて囲みを探すことはしない**
-(`launcher.rb:372`)。埋め込みだけのアプリは、入っても走査に拾われず、
-**一覧に現れない**。パス指定では起動するので、入れた本人が二度と辿り着けない
-形で消える。
+- `<名前>.app.toml`: 本体と同じ場所に置く別ファイル。
+- `#---fmrb` 囲み: `.rb` の先頭のコメント。`.rb` だけが読まれ (`.lua`・`.bas`・`.py` は
+  コメントの記号が違うので読まない)、先頭 512 バイトの中で、最初のコードの行より前に
+  置く。中身は各行の `# ` を外した toml。
 
-spawner 自身も同じ理由で拒否しており、警告まで出す。
-
+```ruby
+#---fmrb
+# app_screen_name = "Hello"
+# default_window_width = 200
+# default_window_height = 120
+#---
+class HelloApp < FmrbApp
 ```
-W: app_screen_name in the comment toml of hello_store.app.rb is ignored
-   (launcher metadata needs a .toml sidecar)
-```
 
-2026-09-02、sim で全走査させて確認した (report/p1b.md)。埋め込みだけの
-`hello_store` は 37 件の一覧に 1 度も現れず、`.app.toml` を足すと出た。
+**両方あるときは鍵ごとに合わせ、両方にある鍵は `.app.toml` が勝つ。** 囲みに既定を
+書き、`.app.toml` で一部だけ上書きできる (2026-11-14 決定、doc/codebase_tidy)。
+試験は `flash/app/test/meta_merge.app.rb` (名前は `.app.toml`、絵と大きさは囲み)。
 
-**埋め込みの形は、エディタや shell から自分で起動する補助スクリプトのもの**
-であって、配布の形ではない。`.rb` に囲みを残したまま `.app.toml` も置く形も
-禁じる (sidecar が勝つので、2 つの複製が黙ってずれる)。
+ランチャーは `.app.toml` に加えて、`.app.toml` の無い `<名前>.app.rb` も先頭を読んで
+囲みを探す (`.app.rb` でない `.rb` は読まないので、アプリの横の補助の `.rb` は拾わない)。
+囲みだけのアプリも一覧に出る。一覧はブート時に作るので、足したらランチャーの右クリック
+で作り直す。
+
+**配布には `.app.toml` が要る。** 3.2 節の鍵 (`app_id`・`app_version` など) は導入の
+記録として `.app.toml` から読まれる (`appstore.app.rb`)。
 
 ### 3.4 枠なしの Window (`window_frame = "none"`)
 

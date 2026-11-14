@@ -9,9 +9,6 @@ module ShellCommandsMixin
   # Index into TYPE_NAMES. Only user tasks can be ended with "kill".
   PROC_TYPE_USER = 2
   CP_CHUNK_SIZE = 4096  # cp/mv copy chunk size in bytes
-  # Comment-embedded toml fence. Same window the spawner reads.
-  COMMENT_TOML_FENCE = "#---fmrb"
-  COMMENT_TOML_SCAN_BYTES = 512
 
   # anodes: how long a connect may take (a TLS handshake is 10-20 s on a
   # board), the time the others' liveliness is given to come in after it,
@@ -749,49 +746,11 @@ module ShellCommandsMixin
     end
   end
 
+  # An app (it has an .app.toml, or a "#---fmrb" comment at the top of its
+  # .rb) is spawned; any other script runs in the Shell's sandbox. The
+  # spawner's own reader answers (FmrbApp.app_meta), so the two agree.
   def detect_run_mode(script_path)
-    # Build TOML path by replacing last extension (no regex in mruby)
-    parts = script_path.split(".")
-    if parts.size > 1
-      parts[-1] = "toml"
-      toml_path = parts.join(".")
-    else
-      toml_path = script_path + ".toml"
-    end
-    file_path = toml_path
-    begin
-      f = File.open(file_path, "r")
-      f.close
-      return :spawn
-    rescue
-      # No sidecar. A .rb may still declare its spawn attributes in a comment
-      # fence (doc/multivm_app/plan.md 3.2); that fence only means anything to
-      # the spawner, so such a file is an app rather than a sandbox script.
-      return comment_toml?(script_path) ? :spawn : :sandbox
-    end
-  end
-
-  # True when the first lines of a .rb open the "#---fmrb" attribute fence.
-  # Mirrors the spawner's rule: comments and blank lines may precede it, the
-  # first line of real code ends the search.
-  def comment_toml?(path)
-    return false unless path.end_with?(".rb")
-    head = nil
-    begin
-      f = File.open(path, "r")
-      head = f.read(COMMENT_TOML_SCAN_BYTES)
-      f.close
-    rescue
-      return false
-    end
-    return false unless head
-    head.split("\n").each do |line|
-      return true if line.start_with?(COMMENT_TOML_FENCE)
-      stripped = line.strip
-      next if stripped.empty? || stripped.start_with?("#")
-      return false
-    end
-    false
+    FmrbApp.app_meta(script_path) ? :spawn : :sandbox
   end
 
   def resolve_script_path(path)

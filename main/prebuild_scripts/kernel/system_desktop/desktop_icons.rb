@@ -311,7 +311,7 @@ module DesktopIconsMixin
     false
   end
 
-  # The launcher's entry for the app, or one read from the app's own .toml
+  # The launcher's entry for the app, or one read from the app's metadata
   # when the launcher does not list it (its category is excluded, or the
   # launcher cache predates it). nil when the app is not on this machine.
   def desktop_icon_entry(path)
@@ -332,11 +332,10 @@ module DesktopIconsMixin
     slash = path.rindex(DI_SLASH)
     dot = path.rindex(DI_DOT)
     return nil unless slash && dot && dot > slash
-    toml = "#{path[0, dot]}.toml"
-    return nil unless File.exist?(toml) && File.exist?(path)
+    return nil unless File.exist?(path)
     dir = path[0, slash]
     name = path[slash + 1, path.length - slash - 1].to_s
-    parse_app_toml(toml, dir, [name])
+    parse_app_entry(name, dir, [name])
   end
 
   # The PC's application a "linux:" entry names (the first of its

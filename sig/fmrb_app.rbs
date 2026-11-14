@@ -1351,6 +1351,32 @@ class FmrbApp
   # ```
   def self.path_read_only?: (String path) -> bool
 
+  # アプリの設定 (.app.toml とコメント) <<en>> An app's settings (.app.toml and comment)
+  #
+  # .app.toml と、.rb の先頭の `#---fmrb`
+  # コメントを合わせて読む。両方にある
+  # 項目は .app.toml が勝つ。キーも値も
+  # 文字列 (配列は空白でつなぐ)。どちらも
+  # 無いファイル (アプリでない) は nil。
+  # ```ruby
+  # m = FmrbApp.app_meta(
+  #   "/app/game/flappy.app.rb")
+  # m["app_screen_name"] if m
+  # ```
+  # <<en>>
+  # Reads the .app.toml and the `#---fmrb`
+  # comment at the top of the .rb together;
+  # a key both set takes the .app.toml's
+  # value. Keys and values are Strings (an
+  # array's items joined by a space). nil
+  # for a file with neither (not an app).
+  # ```ruby
+  # m = FmrbApp.app_meta(
+  #   "/app/game/flappy.app.rb")
+  # m["app_screen_name"] if m
+  # ```
+  def self.app_meta: (String path) -> Hash[String, String]?
+
   # その場所にあと何バイト書けるか <<en>> How many more bytes can be written where the path lives
   #
   # /tmp は RAM のファイルシステムの空き、ほかはその下のファイルシステムの空き。

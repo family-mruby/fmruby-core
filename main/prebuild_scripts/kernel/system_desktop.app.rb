@@ -604,39 +604,16 @@ class SystemDesktopApp < FmrbApp
     spawn_startup_app(startup)
   end
 
-  # Name and window mode of the startup app, from its own .app.toml -- the
-  # same file the kernel reads when it spawns it, so the two cannot disagree
-  # (a second config key saying "this one is fullscreen" could). nil when
-  # there is no sidecar to read, which lands on the ordinary path.
+  # Name and window mode of the startup app, from its metadata as the kernel
+  # reads it when it spawns it (FmrbApp.app_meta: the .app.toml and the
+  # "#---fmrb" comment merged), so the two cannot disagree (a second config
+  # key saying "this one is fullscreen" could). nil when the app has neither,
+  # which lands on the ordinary path.
   def startup_app_info(script_path)
-    dot = script_path.rindex(".")
-    return nil unless dot
-    toml = "#{script_path[0, dot]}.toml"
-    text = File.open(toml, "r") { |f| f.read }
-    return nil unless text
-    label = nil
-    label_lang = nil
-    fullscreen = false
-    lang_key = "app_screen_name_#{FmrbI18n.lang}"
-    text.split("\n").each do |raw|
-      line = raw.strip
-      next if line.empty? || line.start_with?("#")
-      eq = line.index("=")
-      next unless eq
-      key = line[0, eq].strip
-      val = line[eq + 1, line.length - eq - 1].strip
-      hash_idx = val.index("#")
-      val = val[0, hash_idx].to_s.strip if hash_idx
-      if val.length >= 2 && val.start_with?("\"") && val.end_with?("\"")
-        val = val[1, val.length - 2].to_s
-      end
-      case key
-      when "app_screen_name"      then label = val
-      when lang_key               then label_lang = val
-      when "default_window_mode"  then fullscreen = (val == "fullscreen")
-      end
-    end
-    { label: label_lang || label || "", fullscreen: fullscreen }
+    meta = FmrbApp.app_meta(script_path)
+    return nil unless meta
+    label = meta["app_screen_name_#{FmrbI18n.lang}"] || meta["app_screen_name"] || ""
+    { label: label, fullscreen: meta["default_window_mode"] == "fullscreen" }
   rescue => e
     Log.warn("startup_app_info: #{e.message}")
     nil

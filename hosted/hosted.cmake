@@ -194,6 +194,7 @@ set(FMRB_HOSTED_CORE_SRCS
   # toml
   ${FMRB_ROOT}/components/toml_parser/tomlc99/toml.c
   ${FMRB_ROOT}/components/fmrb_toml/fmrb_toml.c
+  ${FMRB_ROOT}/components/fmrb_toml/fmrb_app_meta.c
   # gfx / audio (transport side)
   ${FMRB_ROOT}/components/fmrb_gfx/fmrb_gfx.c
   ${FMRB_ROOT}/components/fmrb_gfx/fmrb_gfx_cmd.c

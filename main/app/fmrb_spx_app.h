@@ -212,6 +212,9 @@ int fmrb_spx_app_ble_settings_window(int seconds); /**< open/close the BLE setti
 int fmrb_spx_app_ble_settings_left(void);        /**< seconds left in the settings window (0 = closed) */
 int fmrb_spx_app_audio_muted(void);              /**< FmrbApp.audio_muted? (1/0) */
 int fmrb_spx_app_path_read_only(const char *path, int len); /**< FmrbApp.path_read_only? (1/0) */
+/** FmrbApp.app_meta(path): the merged .app.toml and "#---fmrb" comment,
+ *  packed (:binstr, "" when the file is not an app; fmrb_app_meta.h). */
+const char *fmrb_spx_app_meta(const char *path, int len);
 /** @brief FmrbApp.move(pid, to): ask the kernel to move an app over Asterism
  *  (the caller hears "checkpoint_result"). :binstr, "" when asked, else why not. */
 const char *fmrb_spx_app_move(int pid, const char *to, int len);

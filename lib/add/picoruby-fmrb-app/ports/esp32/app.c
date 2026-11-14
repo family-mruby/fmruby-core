@@ -32,6 +32,7 @@
 #include "fmrb_platform_sys.h"
 #include "fmrb_clipboard.h"
 #include "fmrb_hal_time.h"
+#include "fmrb_app_meta.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 #include "app_debug.h"
@@ -2296,6 +2297,41 @@ static mrb_value mrb_fmrb_app_s_path_read_only_p(mrb_state *mrb, mrb_value klass
     return mrb_bool_value(fmrb_hal_file_entry_is_read_only(path));
 }
 
+// FmrbApp.app_meta(path) -> Hash or nil. An app's metadata as the spawner
+// reads it (components/fmrb_toml/fmrb_app_meta.h): its .app.toml and the
+// "#---fmrb" comment fence at the top of its .rb merged key by key, the
+// .app.toml winning. Keys and values are Strings (an array's items joined by
+// a space); nil when the file has neither form, i.e. it is not an app. The
+// launcher, the desktops and the Shell ask here instead of reading files.
+typedef struct {
+    mrb_state *mrb;
+    mrb_value hash;
+} app_meta_hash_t;
+
+static void app_meta_put(void *ud, const char *key, const char *val, size_t len)
+{
+    app_meta_hash_t *h = (app_meta_hash_t *)ud;
+    int ai = mrb_gc_arena_save(h->mrb);
+    mrb_hash_set(h->mrb, h->hash, mrb_str_new_cstr(h->mrb, key), mrb_str_new(h->mrb, val, len));
+    mrb_gc_arena_restore(h->mrb, ai);
+}
+
+static mrb_value mrb_fmrb_app_s_app_meta(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *path;
+    mrb_get_args(mrb, "z", &path);
+    fmrb_app_meta_t meta;
+    if (!fmrb_app_meta_load(path, &meta)) {
+        fmrb_app_meta_free(&meta);
+        return mrb_nil_value();
+    }
+    app_meta_hash_t h = { mrb, mrb_hash_new(mrb) };
+    fmrb_app_meta_each(&meta, app_meta_put, &h);
+    fmrb_app_meta_free(&meta);
+    return h.hash;
+}
+
 // FmrbApp.free_bytes(path) -> Integer, or nil when not known. The bytes that
 // can still be written where path lives: /tmp from the RAM filesystem's own
 // count (its capacity less what it holds; statfs there would answer for the
@@ -2777,6 +2813,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "set_text_cursor", mrb_fmrb_app_s_set_text_cursor, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "path_read_only?", mrb_fmrb_app_s_path_read_only_p, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "app_meta", mrb_fmrb_app_s_app_meta, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "free_bytes", mrb_fmrb_app_s_free_bytes, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "audio_volume", mrb_fmrb_app_s_audio_volume, MRB_ARGS_NONE());

@@ -12,6 +12,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
 #include "fmrb_toml.h"
+#include "fmrb_app_meta.h"
 
 static const char *TAG = "fmrb_default_apps";
 
@@ -512,150 +513,6 @@ static void notify_kernel_app_spawned(int32_t pid)
     fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
 }
 
-/*
- * Comment-embedded toml (doc/multivm_app/plan.md 3.2).
- *
- * A .rb may carry its spawn attributes in a fenced comment block at the top of
- * the file, so a one-file helper needs no .app.toml sidecar:
- *
- *     #---fmrb
- *     # default_window_mode = "background"
- *     # task_stack_kb = 32
- *     #---
- *
- * The fenced body has its leading "# " stripped and is handed to the ordinary
- * toml parser, so there is no second syntax to keep in step. Only the first
- * 512 bytes are read and the fence must come before the first non-comment
- * line, which keeps the cost to one short read at spawn time. A sidecar .toml
- * always wins; this is only consulted when there is none.
- */
-#define INLINE_TOML_SCAN_BYTES 512
-#define INLINE_TOML_FENCE_OPEN "#---fmrb"
-#define INLINE_TOML_FENCE_CLOSE "#---"
-
-// True when the rest of a line is nothing but whitespace.
-static bool inline_toml_rest_blank(const char* s, size_t len)
-{
-    for (size_t i = 0; i < len; i++) {
-        if (s[i] != ' ' && s[i] != '\t' && s[i] != '\r') {
-            return false;
-        }
-    }
-    return true;
-}
-
-static toml_table_t* load_inline_toml(const char* app_name, char* errbuf, int errbufsz)
-{
-    // v1 is Ruby only: .bas / .lua / .py comment with different characters.
-    const char* ext = strrchr(app_name, '.');
-    if (!ext || strcmp(ext, ".rb") != 0) {
-        return NULL;
-    }
-
-    fmrb_file_t file = NULL;
-    if (fmrb_hal_file_open(app_name, FMRB_O_RDONLY, &file) != FMRB_OK) {
-        return NULL;
-    }
-
-    char* head = (char*)fmrb_sys_malloc(INLINE_TOML_SCAN_BYTES + 1);
-    char* body = (char*)fmrb_sys_malloc(INLINE_TOML_SCAN_BYTES + 1);
-    if (!head || !body) {
-        if (head) fmrb_sys_free(head);
-        if (body) fmrb_sys_free(body);
-        fmrb_hal_file_close(file);
-        return NULL;
-    }
-
-    size_t n = 0;
-    fmrb_err_t ret = fmrb_hal_file_read(file, head, INLINE_TOML_SCAN_BYTES, &n);
-    fmrb_hal_file_close(file);
-    if (ret != FMRB_OK || n == 0) {
-        fmrb_sys_free(head);
-        fmrb_sys_free(body);
-        return NULL;
-    }
-    head[n] = '\0';
-
-    bool in_fence = false;
-    bool found = false;
-    bool closed = false;
-    bool malformed = false;
-    size_t out = 0;
-
-    const char* p = head;
-    const char* end = head + n;
-    while (p < end) {
-        const char* nl = (const char*)memchr(p, '\n', (size_t)(end - p));
-        size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);
-        if (!nl) {
-            // The 512-byte window cut this line in half; do not guess at it.
-            break;
-        }
-
-        if (!in_fence) {
-            if (len >= strlen(INLINE_TOML_FENCE_OPEN) &&
-                strncmp(p, INLINE_TOML_FENCE_OPEN, strlen(INLINE_TOML_FENCE_OPEN)) == 0 &&
-                inline_toml_rest_blank(p + strlen(INLINE_TOML_FENCE_OPEN),
-                                       len - strlen(INLINE_TOML_FENCE_OPEN))) {
-                in_fence = true;
-                found = true;
-            } else if (len > 0 && p[0] != '#' && !inline_toml_rest_blank(p, len)) {
-                // First real line of code: a fence below this point is not ours.
-                break;
-            }
-        } else if (len >= strlen(INLINE_TOML_FENCE_CLOSE) &&
-                   strncmp(p, INLINE_TOML_FENCE_CLOSE, strlen(INLINE_TOML_FENCE_CLOSE)) == 0 &&
-                   inline_toml_rest_blank(p + strlen(INLINE_TOML_FENCE_CLOSE),
-                                          len - strlen(INLINE_TOML_FENCE_CLOSE))) {
-            closed = true;
-            break;
-        } else if (len > 0 && p[0] == '#') {
-            // Strip the comment marker and one following space.
-            size_t skip = 1;
-            if (len > 1 && p[1] == ' ') {
-                skip = 2;
-            }
-            size_t copy = len - skip;
-            if (out + copy + 1 > INLINE_TOML_SCAN_BYTES) {
-                malformed = true;
-                break;
-            }
-            memcpy(body + out, p + skip, copy);
-            out += copy;
-            body[out++] = '\n';
-        } else {
-            // Anything that is not a comment inside the fence means the fence
-            // was never closed.
-            malformed = true;
-            break;
-        }
-
-        p = nl + 1;
-    }
-
-    fmrb_sys_free(head);
-
-    if (!found) {
-        fmrb_sys_free(body);
-        return NULL;
-    }
-    if (!closed || malformed) {
-        FMRB_LOGW(TAG, "Unterminated %s fence in %s: using default attributes",
-                  INLINE_TOML_FENCE_OPEN, app_name);
-        fmrb_sys_free(body);
-        return NULL;
-    }
-    body[out] = '\0';
-
-    toml_table_t* config = toml_parse(body, errbuf, errbufsz);
-    fmrb_sys_free(body);
-    if (!config) {
-        FMRB_LOGW(TAG, "Comment toml in %s failed to parse (%s): using default attributes",
-                  app_name, errbuf);
-    }
-    return config;
-}
-
 static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 {
     if (!app_name) {
@@ -665,18 +522,6 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 
     FMRB_LOGI(TAG, "Creating user app from file: %s (stack free: %u bytes)",
               app_name, (unsigned)(fmrb_task_get_stack_high_water_mark(0) * sizeof(StackType_t)));
-
-    FMRB_LOGI(TAG, "[spawn] 1 malloc");
-    // Allocate work buffers on heap to avoid stack overflow
-    // (this function is called from deep in the kernel mruby call stack)
-    char* toml_path = (char*)fmrb_sys_malloc(FMRB_MAX_PATH_LEN);
-    char* errbuf = (char*)fmrb_sys_malloc(256);
-    if (!toml_path || !errbuf) {
-        FMRB_LOGE(TAG, "Failed to allocate work buffers");
-        if (toml_path) fmrb_sys_free(toml_path);
-        if (errbuf) fmrb_sys_free(errbuf);
-        return FMRB_ERR_NO_MEMORY;
-    }
 
     fmrb_err_t result = FMRB_ERR_FAILED;
 
@@ -723,27 +568,12 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     }
 #endif
 
-    FMRB_LOGI(TAG, "[spawn] 5 toml_path");
-    // Build TOML configuration file path
-    snprintf(toml_path, FMRB_MAX_PATH_LEN, "%s", app_name);
-
-    // Replace last extension with .toml
-    char* last_dot = strrchr(toml_path, '.');
-    if (!last_dot) {
+    FMRB_LOGI(TAG, "[spawn] 5 name check");
+    if (!strrchr(app_name, '.')) {
         FMRB_LOGE(TAG, "Invalid app name (no extension): %s", app_name);
         result = FMRB_ERR_INVALID_PARAM;
         goto cleanup_buffers;
     }
-
-    // Check if ".toml" fits in buffer
-    size_t base_len = last_dot - toml_path;
-    if (base_len + 5 >= FMRB_MAX_PATH_LEN) {
-        FMRB_LOGE(TAG, "TOML path would exceed buffer size: %s", app_name);
-        result = FMRB_ERR_INVALID_PARAM;
-        goto cleanup_buffers;
-    }
-
-    strcpy(last_dot, ".toml");
 
     // Default values for spawn attributes
     const char* app_screen_name = NULL;
@@ -772,44 +602,24 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     uint8_t fullscreen_hires = 0;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
 
-    FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
-    // Try loading TOML configuration
-    bool config_from_comment = false;
-    toml_table_t* config = fmrb_toml_load_file(toml_path, errbuf, 256);
-    if (!config) {
-        // No sidecar: fall back to a fenced comment block in the .rb itself.
-        // The sidecar always wins, so an app carrying both stays predictable.
-        config = load_inline_toml(app_name, errbuf, 256);
-        if (config) {
-            config_from_comment = true;
-            FMRB_LOGI(TAG, "Loaded comment toml from %s", app_name);
-        }
-    }
-    if (config) {
-        if (!config_from_comment) {
-            FMRB_LOGI(TAG, "Loaded TOML config: %s", toml_path);
-        }
+    FMRB_LOGI(TAG, "[spawn] 6 meta_load '%s'", app_name);
+    // The .app.toml and the "#---fmrb" comment fence, merged key by key with
+    // the sidecar winning (components/fmrb_toml/fmrb_app_meta.h). M(key) is
+    // the table that answers key, NULL (the getters' default) when neither does.
+    fmrb_app_meta_t meta;
+    bool have_meta = fmrb_app_meta_load(app_name, &meta);
+#define M(key) fmrb_app_meta_table(&meta, (key))
+    if (have_meta) {
+        FMRB_LOGI(TAG, "Loaded app attributes for %s (sidecar=%d comment=%d)",
+                  app_name, meta.sidecar != NULL, meta.comment != NULL);
 
-        // Parse app_screen_name.
-        // Launcher-facing metadata (name, icon, launcher_visible) stays
-        // sidecar-only on purpose: the boot scan must not have to open every
-        // .rb to build the launcher list (doc/multivm_app/plan.md 3.2).
-        if (config_from_comment) {
-            const char* ignored = fmrb_toml_get_string(config, "app_screen_name", NULL);
-            if (ignored) {
-                FMRB_LOGW(TAG, "app_screen_name in the comment toml of %s is ignored"
-                               " (launcher metadata needs a .toml sidecar)", app_name);
-                fmrb_sys_free((void*)ignored);
-            }
-        } else {
-            toml_screen_name = fmrb_toml_get_string(config, "app_screen_name", NULL);
-            if (toml_screen_name) {
-                app_screen_name = toml_screen_name;
-            }
+        toml_screen_name = fmrb_toml_get_string(M("app_screen_name"), "app_screen_name", NULL);
+        if (toml_screen_name) {
+            app_screen_name = toml_screen_name;
         }
 
         // Parse default_window_mode
-        toml_window_mode = fmrb_toml_get_string(config, "default_window_mode", NULL);
+        toml_window_mode = fmrb_toml_get_string(M("default_window_mode"), "default_window_mode", NULL);
         if (toml_window_mode) {
             if (strcmp(toml_window_mode, "background") == 0) {
                 headless = true;
@@ -829,8 +639,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // `true`, or as 1 like the older flags; ignored where the build cannot
         // show that screen. Such an app is laid out for 640x360
         // (FMRB_FULLSCREEN_HIRES_FIXED).
-        fullscreen_hires = (fmrb_toml_get_bool(config, "fullscreen_hires", false) ||
-                            fmrb_toml_get_int(config, "fullscreen_hires", 0) != 0)
+        fullscreen_hires = (fmrb_toml_get_bool(M("fullscreen_hires"), "fullscreen_hires", false) ||
+                            fmrb_toml_get_int(M("fullscreen_hires"), "fullscreen_hires", 0) != 0)
                                ? FMRB_FULLSCREEN_HIRES_FIXED : 0;
 
         // Parse window dimensions and position
@@ -842,38 +652,38 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             window_pos_x = 0;
             window_pos_y = 0;
         } else {
-            window_width = (int)fmrb_toml_get_int(config, "default_window_width", 100);
-            window_height = (int)fmrb_toml_get_int(config, "default_window_height", 100);
-            window_pos_x = (int)fmrb_toml_get_int(config, "default_window_pos_x", 50);
-            window_pos_y = (int)fmrb_toml_get_int(config, "default_window_pos_y", 50);
+            window_width = (int)fmrb_toml_get_int(M("default_window_width"), "default_window_width", 100);
+            window_height = (int)fmrb_toml_get_int(M("default_window_height"), "default_window_height", 100);
+            window_pos_x = (int)fmrb_toml_get_int(M("default_window_pos_x"), "default_window_pos_x", 50);
+            window_pos_y = (int)fmrb_toml_get_int(M("default_window_pos_y"), "default_window_pos_y", 50);
         }
 
         // Parse resizable flag (default: false)
-        resizable = (bool)fmrb_toml_get_int(config, "resizable", 0);
+        resizable = (bool)fmrb_toml_get_int(M("resizable"), "resizable", 0);
 
         // Parse per-app minimum window size (0 = use global default 64)
-        min_window_width  = (int)fmrb_toml_get_int(config, "min_window_width",  0);
-        min_window_height = (int)fmrb_toml_get_int(config, "min_window_height", 0);
+        min_window_width  = (int)fmrb_toml_get_int(M("min_window_width"), "min_window_width",  0);
+        min_window_height = (int)fmrb_toml_get_int(M("min_window_height"), "min_window_height", 0);
 
         // Parse large_memory flag (default: false)
-        large_memory = (bool)fmrb_toml_get_int(config, "large_memory", 0);
+        large_memory = (bool)fmrb_toml_get_int(M("large_memory"), "large_memory", 0);
 
         // Parse single_instance / exclusive_group: who the app may not run
         // beside (launch_claim in fmrb_app.c). single_instance refuses a
         // second copy of this file; exclusive_group refuses the launch while
         // any app declaring the same group runs. Written like
         // fullscreen_hires: `true` or 1.
-        single_instance = fmrb_toml_get_bool(config, "single_instance", false) ||
-                          fmrb_toml_get_int(config, "single_instance", 0) != 0;
+        single_instance = fmrb_toml_get_bool(M("single_instance"), "single_instance", false) ||
+                          fmrb_toml_get_int(M("single_instance"), "single_instance", 0) != 0;
 #ifdef FMRB_HAVE_CHECKPOINT
         // movable: the app may be written to a checkpoint image and go on
         // elsewhere (doc/checkpoint, D6). Only an mruby app can be; the
         // builds without mruby-checkpoint do not read it.
-        movable = (fmrb_toml_get_bool(config, "movable", false) ||
-                   fmrb_toml_get_int(config, "movable", 0) != 0) &&
+        movable = (fmrb_toml_get_bool(M("movable"), "movable", false) ||
+                   fmrb_toml_get_int(M("movable"), "movable", 0) != 0) &&
                   vm_type == FMRB_VM_TYPE_MRUBY;
 #endif
-        exclusive_group = fmrb_toml_get_string(config, "exclusive_group", NULL);
+        exclusive_group = fmrb_toml_get_string(M("exclusive_group"), "exclusive_group", NULL);
         if (exclusive_group && exclusive_group[0] == '\0') {
             fmrb_sys_free((void*)exclusive_group);
             exclusive_group = NULL;
@@ -886,7 +696,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // Parse rounded_corners flag (default: true).
         // When false, the window canvas is created opaque (no transparent compositing),
         // which is faster but disables the rounded corner / shaped window look.
-        rounded_corners = (bool)fmrb_toml_get_int(config, "rounded_corners", 1);
+        rounded_corners = (bool)fmrb_toml_get_int(M("rounded_corners"), "rounded_corners", 1);
 
         // Parse window_frame / window_drag (doc/frameless_window/).
         // window_frame = "none" leaves the window without a frame, title bar
@@ -894,7 +704,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // window_drag = "title" | "anywhere" | "none"; the default follows
         // the frame: a framed window is dragged by its title bar, a
         // frameless one from anywhere.
-        const char* frame_str = fmrb_toml_get_string(config, "window_frame", NULL);
+        const char* frame_str = fmrb_toml_get_string(M("window_frame"), "window_frame", NULL);
         if (frame_str) {
             if (strcmp(frame_str, "none") == 0) {
                 frameless = true;
@@ -904,7 +714,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             }
             fmrb_sys_free((void*)frame_str);
         }
-        const char* drag_str = fmrb_toml_get_string(config, "window_drag", NULL);
+        const char* drag_str = fmrb_toml_get_string(M("window_drag"), "window_drag", NULL);
         if (drag_str) {
             if (strcmp(drag_str, "title") == 0) {
                 window_drag = FMRB_WINDOW_DRAG_TITLE;
@@ -922,12 +732,12 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // Parse fullscreen_switchable: the app declares its on_suspend hides
         // the canvas and on_resume redraws, so the kernel may park it on
         // Ctrl+Tab and bring it back later instead of refusing to leave.
-        fullscreen_switchable = (bool)fmrb_toml_get_int(config, "fullscreen_switchable", 0);
+        fullscreen_switchable = (bool)fmrb_toml_get_int(M("fullscreen_switchable"), "fullscreen_switchable", 0);
 
         // Parse task_stack_kb: per-app task C stack size in KB. Costs internal
         // RAM only while the app runs; the default is a floor, not a knob to
         // lower (see FMRB_USER_APP_TASK_STACK_SIZE in fmrb_task_config.h).
-        int stack_kb = (int)fmrb_toml_get_int(config, "task_stack_kb", 0);
+        int stack_kb = (int)fmrb_toml_get_int(M("task_stack_kb"), "task_stack_kb", 0);
         if (stack_kb > 0) {
             stack_size = stack_kb * 1024;
             if (stack_size < FMRB_USER_APP_TASK_STACK_SIZE) {
@@ -942,10 +752,10 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             FMRB_LOGI(TAG, "Per-app task stack: %d KB", stack_size / 1024);
         }
     } else {
-        FMRB_LOGW(TAG, "No .toml sidecar and no comment toml for %s (%s)", app_name, errbuf);
+        FMRB_LOGW(TAG, "No .app.toml and no comment toml for %s", app_name);
     }
 
-    // A .toml is how an app under /app gets its name and window; a file the
+    // The metadata is how an app under /app gets its name and window; a file the
     // user just wrote and wants to run has none. Fall back to the file name so
     // "save, then run it" works (B4: the editor RUN and BASIC SAVE both produce
     // such files). Everything else already has a default.
@@ -969,7 +779,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             goto cleanup_toml;
         }
         app_screen_name = derived_name;
-        FMRB_LOGI(TAG, "No %s: using '%s' as the app name", toml_path, app_screen_name);
+        FMRB_LOGI(TAG, "No app_screen_name for %s: using '%s'", app_name, app_screen_name);
     }
 
 #ifdef FMRB_HAVE_CHECKPOINT
@@ -1065,13 +875,10 @@ cleanup_toml:
     if (exclusive_group) {
         fmrb_sys_free((void*)exclusive_group);
     }
-    if (config) {
-        toml_free(config);
-    }
+    fmrb_app_meta_free(&meta);
+#undef M
 
 cleanup_buffers:
-    fmrb_sys_free(toml_path);
-    fmrb_sys_free(errbuf);
     return result;
 }
 
