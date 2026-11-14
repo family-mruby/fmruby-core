@@ -501,10 +501,3 @@ class RoboExplorerApp < FmrbApp
                    COL_DIM)
   end
 end
-
-begin
-  app = RoboExplorerApp.new
-  app.start
-rescue => e
-  Log.error("RoboExplorer: #{e}")
-end

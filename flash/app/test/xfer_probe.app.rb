@@ -378,10 +378,3 @@ class XferProbeApp < FmrbApp
     Log.info("xfer_probe: bench done")
   end
 end
-
-begin
-  app = XferProbeApp.new
-  app.start
-rescue => e
-  Log.error("xfer_probe: #{e.class}: #{e.message}")
-end

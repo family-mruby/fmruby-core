@@ -252,11 +252,3 @@ class SpriteEditorApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = SpriteEditorApp.new
-  app.start
-rescue => e
-  Log.error("SpriteEd: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

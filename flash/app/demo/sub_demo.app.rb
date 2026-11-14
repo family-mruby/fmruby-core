@@ -51,6 +51,3 @@ class SubDemoApp < FmrbApp
     unsubscribe(TOPIC)
   end
 end
-
-app = SubDemoApp.new
-app.start

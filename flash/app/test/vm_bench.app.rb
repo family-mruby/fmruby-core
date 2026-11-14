@@ -30,10 +30,3 @@ class VmBenchApp < FmrbApp
     100
   end
 end
-
-begin
-  app = VmBenchApp.new
-  app.start
-rescue => e
-  Log.error("vm_bench: #{e.class}: #{e.message}")
-end

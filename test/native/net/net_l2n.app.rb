@@ -160,10 +160,3 @@ class NetL2nApp < FmrbApp
     [true, "connected"]
   end
 end
-
-begin
-  app = NetL2nApp.new
-  app.start
-rescue => e
-  puts "net_l2n: #{e.message}"
-end

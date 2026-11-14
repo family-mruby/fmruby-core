@@ -540,15 +540,3 @@ class NsfPlayerApp < FmrbApp
     Log.info("NSF Player destroyed")
   end
 end
-
-Log.info("NsfPlayerApp.new")
-begin
-  app = NsfPlayerApp.new
-  Log.info("NsfPlayerApp created successfully")
-  app.start
-rescue => e
-  Log.error("Exception caught: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("NSF Player script ended")

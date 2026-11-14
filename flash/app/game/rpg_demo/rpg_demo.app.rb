@@ -403,11 +403,3 @@ class RpgDemoApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = RpgDemoApp.new
-  Log.info("RpgDemoApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.message}")
-end

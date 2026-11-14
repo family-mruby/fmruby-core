@@ -447,10 +447,3 @@ class ReceivingApp < FmrbApp
     @link.close if @link
   end
 end
-
-begin
-  app = ReceivingApp.new
-  app.start
-rescue => e
-  Log.error("receiving: #{e}")
-end

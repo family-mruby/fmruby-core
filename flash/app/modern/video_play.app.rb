@@ -211,10 +211,3 @@ class VideoPlayApp < FmrbApp
     @video.stop if @video
   end
 end
-
-begin
-  app = VideoPlayApp.new
-  app.start
-rescue => e
-  Log.error("VideoPlayApp: #{e}")
-end

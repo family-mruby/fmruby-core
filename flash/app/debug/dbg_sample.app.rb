@@ -87,11 +87,3 @@ class DbgSampleApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = DbgSampleApp.new
-  app.start
-rescue => e
-  Log.error("DbgSampleApp: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

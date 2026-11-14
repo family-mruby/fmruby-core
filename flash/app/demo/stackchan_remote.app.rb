@@ -127,11 +127,3 @@ class StackChanRemoteApp < FmrbApp
     50
   end
 end
-
-begin
-  app = StackChanRemoteApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

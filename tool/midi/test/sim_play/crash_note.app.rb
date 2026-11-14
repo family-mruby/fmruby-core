@@ -19,12 +19,3 @@ class CrashNoteApp < FmrbApp
     raise "intentional crash while a note is sounding"
   end
 end
-
-Log.info("CrashNoteApp.new")
-begin
-  app = CrashNoteApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}: #{e.message}")
-end
-Log.info("Script ended")

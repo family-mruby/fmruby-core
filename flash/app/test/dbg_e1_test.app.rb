@@ -143,11 +143,3 @@ class DbgE1TestApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = DbgE1TestApp.new
-  app.start
-rescue => e
-  Log.error("DbgE1TestApp: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

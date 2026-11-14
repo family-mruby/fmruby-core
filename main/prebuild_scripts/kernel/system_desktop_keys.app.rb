@@ -889,6 +889,3 @@ class KeysDesktopApp < FmrbApp
     nil
   end
 end
-
-app = KeysDesktopApp.new
-app.start

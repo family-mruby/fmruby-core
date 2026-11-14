@@ -559,10 +559,3 @@ class StepSensorApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = StepSensorApp.new
-  app.start
-rescue => e
-  Log.error("step_sensor: #{e.message}")
-end

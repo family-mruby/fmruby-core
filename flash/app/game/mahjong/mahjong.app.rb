@@ -1856,10 +1856,3 @@ class MahjongApp < FmrbApp
     Log.info("mahjong: close: #{e.message}")
   end
 end
-
-begin
-  app = MahjongApp.new
-  app.start
-rescue => e
-  puts "mahjong: #{e.message}"
-end

@@ -50,11 +50,3 @@ class TileMapTestApp < FmrbApp
     500
   end
 end
-
-begin
-  app = TileMapTestApp.new
-  Log.info("TileMapTestApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.message}")
-end

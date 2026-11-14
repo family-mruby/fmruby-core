@@ -51,9 +51,3 @@ class TmpWriterApp < FmrbApp
     100
   end
 end
-
-begin
-  TmpWriterApp.new.start
-rescue => e
-  Log.error("TMPW: exception #{e.class}: #{e.message}")
-end

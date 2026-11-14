@@ -206,10 +206,3 @@ class Ros2TypesApp < FmrbApp
     Log.info("ros2_types: close: #{e.message}")
   end
 end
-
-begin
-  app = Ros2TypesApp.new
-  app.start
-rescue => e
-  puts "ros2_types: #{e.message}"
-end

@@ -785,16 +785,3 @@ class BlockGameApp < FmrbApp
     Log.info("BlockGame destroyed")
   end
 end
-
-Log.info("BlockGameApp.new")
-begin
-  app = BlockGameApp.new
-  Log.info("BlockGameApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

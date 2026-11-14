@@ -31,10 +31,3 @@ class TaskSleepApp < FmrbApp
     50
   end
 end
-
-begin
-  app = TaskSleepApp.new
-  app.start
-rescue => e
-  Log.error("task_sleep: #{e.class}: #{e.message}")
-end

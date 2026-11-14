@@ -22,10 +22,3 @@ class CkptRequiresApp < FmrbApp
     Log.info("ckpt_requires: on_restore main=#{@main}")
   end
 end
-
-begin
-  app = CkptRequiresApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_requires: #{e.class}: #{e.message}")
-end

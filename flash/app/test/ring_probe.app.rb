@@ -84,10 +84,3 @@ class RingProbeApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = RingProbeApp.new
-  app.start
-rescue => e
-  Log.error("RingProbe: #{e}")
-end

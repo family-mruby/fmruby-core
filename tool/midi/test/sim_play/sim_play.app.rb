@@ -71,14 +71,3 @@ class SmfPlayApp < FmrbApp
     Log.info("SmfPlayApp: done")
   end
 end
-
-Log.info("SmfPlayApp.new")
-begin
-  app = SmfPlayApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

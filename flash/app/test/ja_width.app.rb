@@ -43,9 +43,3 @@ class JaWidthApp < FmrbApp
     100
   end
 end
-
-begin
-  JaWidthApp.new.start
-rescue => e
-  Log.error("JAW: #{e.class}: #{e.message}")
-end

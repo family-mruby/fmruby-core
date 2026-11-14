@@ -76,10 +76,3 @@ class ZenohBurstApp < FmrbApp
     50
   end
 end
-
-begin
-  app = ZenohBurstApp.new
-  app.start
-rescue => e
-  puts "zenoh_burst: #{e.message}"
-end

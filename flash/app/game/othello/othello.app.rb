@@ -708,10 +708,3 @@ class OthelloTableApp < FmrbApp
     Log.info("othello_table: close: #{e.message}")
   end
 end
-
-begin
-  app = OthelloTableApp.new
-  app.start
-rescue => e
-  puts "othello_table: #{e.message}"
-end

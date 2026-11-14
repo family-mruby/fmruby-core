@@ -835,16 +835,3 @@ class EditorApp < FmrbApp
     Log.info("Editor destroyed")
   end
 end
-
-Log.info("EditorApp.new")
-begin
-  app = EditorApp.new
-  Log.info("EditorApp created successfully")
-  app.start
-rescue => e
-  Log.error("Exception caught: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

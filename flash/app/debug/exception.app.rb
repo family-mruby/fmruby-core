@@ -26,6 +26,3 @@ class ExceptionApp < FmrbApp
     100
   end
 end
-
-app = ExceptionApp.new
-app.start

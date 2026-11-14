@@ -844,11 +844,3 @@ class ServicesApp < FmrbApp
     nil
   end
 end
-
-begin
-  app = ServicesApp.new
-  app.start
-rescue => e
-  Log.error("services: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

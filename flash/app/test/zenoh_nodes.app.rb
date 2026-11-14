@@ -250,10 +250,3 @@ class ZenohNodesApp < FmrbApp
     50
   end
 end
-
-begin
-  app = ZenohNodesApp.new
-  app.start
-rescue => e
-  puts "zenoh_nodes: #{e.message}"
-end

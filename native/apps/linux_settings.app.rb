@@ -590,10 +590,3 @@ class LinuxSettingsApp < FmrbApp
     end
   end
 end
-
-begin
-  app = LinuxSettingsApp.new
-  app.start
-rescue => e
-  Log.error("LinuxSettings: #{e}")
-end

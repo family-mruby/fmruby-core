@@ -126,10 +126,3 @@ class MmCheckApp < FmrbApp
     1000
   end
 end
-
-begin
-  app = MmCheckApp.new
-  app.start
-rescue => e
-  Log.error("MmCheckApp: #{e}")
-end

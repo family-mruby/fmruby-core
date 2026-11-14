@@ -680,13 +680,3 @@ class RaycasterApp < FmrbApp
     Log.info("Raycaster destroyed")
   end
 end
-
-Log.info("RaycasterApp.new")
-begin
-  app = RaycasterApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

@@ -28,10 +28,3 @@ class SpinelHelloApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = SpinelHelloApp.new
-  app.start
-rescue => e
-  Log.error("SpinelHello: #{e.class}: #{e.message}")
-end

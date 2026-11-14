@@ -122,9 +122,3 @@ class TmpSmokeApp < FmrbApp
     100
   end
 end
-
-begin
-  TmpSmokeApp.new.start
-rescue => e
-  Log.error("TMP: exception #{e.class}: #{e.message}")
-end

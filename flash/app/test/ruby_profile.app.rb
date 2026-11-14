@@ -54,12 +54,3 @@ class RubyProfileApp < FmrbApp
     @gfx.present
   end
 end
-
-# Keep the locals at the top level of this file few and unlikely: in the
-# app VM, eval of code that assigns a new local with the name of one of them
-# fails with SyntaxError (see the asterism repository's docs/ruby_features.md).
-begin
-  RubyProfileApp.new.start
-rescue => rprof_top_error
-  Log.error("RubyProfileApp: #{rprof_top_error}")
-end

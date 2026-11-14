@@ -531,13 +531,3 @@ class LedMatrixApp < FmrbApp
     @gfx.present
   end
 end
-
-Log.info("LedMatrixApp.new")
-begin
-  app = LedMatrixApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

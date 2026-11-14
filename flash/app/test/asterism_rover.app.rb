@@ -235,10 +235,3 @@ class AsterismRoverApp < FmrbApp
     Log.info("asterism_rover: close: #{e.message}")
   end
 end
-
-begin
-  app = AsterismRoverApp.new
-  app.start
-rescue => e
-  puts "asterism_rover: #{e.message}"
-end

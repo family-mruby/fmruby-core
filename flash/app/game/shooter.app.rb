@@ -1145,13 +1145,3 @@ class ShooterApp < FmrbApp
     @gfx.draw_text(cx - 57, cy + 13, "ENTER retry  Ctrl-Q quit", COL_TEXT, COL_OVER_BG)
   end
 end
-
-Log.info("ShooterApp.new")
-begin
-  app = ShooterApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

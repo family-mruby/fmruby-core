@@ -211,10 +211,3 @@ class JsonProbeApp < FmrbApp
     "[" + rows.join(",") + "]"
   end
 end
-
-begin
-  app = JsonProbeApp.new
-  app.start
-rescue => e
-  Log.error("JsonProbe: #{e}")
-end

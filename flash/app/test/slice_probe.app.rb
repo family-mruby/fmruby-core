@@ -66,10 +66,3 @@ class SliceProbeApp < FmrbApp
     50
   end
 end
-
-begin
-  app = SliceProbeApp.new
-  app.start
-rescue => e
-  Log.error("slice_probe: #{e.class}: #{e.message}")
-end

@@ -55,10 +55,3 @@ class CaseInReproApp < FmrbApp
     1000
   end
 end
-
-begin
-  app = CaseInReproApp.new
-  app.start
-rescue => e
-  Log.error("CaseInReproApp: #{e}")
-end

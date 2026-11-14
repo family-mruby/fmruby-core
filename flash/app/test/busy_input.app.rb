@@ -50,10 +50,3 @@ class BusyInputApp < FmrbApp
     end
   end
 end
-
-begin
-  app = BusyInputApp.new
-  app.start
-rescue => e
-  Log.error("busy_input: #{e.class}: #{e.message}")
-end

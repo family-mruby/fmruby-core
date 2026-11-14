@@ -114,13 +114,3 @@ class MidiTimeApp < FmrbApp
     @gfx.present
   end
 end
-
-Log.info("MidiTimeApp.new")
-begin
-  app = MidiTimeApp.new
-  app.start
-rescue Exception => e
-  Log.error("midi_time: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("midi_time script ended")

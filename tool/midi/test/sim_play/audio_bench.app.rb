@@ -121,14 +121,3 @@ class AudioBenchApp < FmrbApp
     Log.info("AudioBench: done")
   end
 end
-
-Log.info("AudioBenchApp.new")
-begin
-  app = AudioBenchApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

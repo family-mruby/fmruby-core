@@ -151,11 +151,3 @@ class I2cKbdApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = I2cKbdApp.new
-  app.start
-rescue => e
-  Log.error("I2cKbd: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

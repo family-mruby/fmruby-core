@@ -52,6 +52,3 @@ class PubDemoApp < FmrbApp
     draw_screen
   end
 end
-
-app = PubDemoApp.new
-app.start

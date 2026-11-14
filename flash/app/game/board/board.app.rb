@@ -1189,10 +1189,3 @@ class DrawingBoardApp < FmrbApp
     Log.info("board: close: #{e.message}")
   end
 end
-
-begin
-  app = DrawingBoardApp.new
-  app.start
-rescue => e
-  puts "board: #{e.message}"
-end

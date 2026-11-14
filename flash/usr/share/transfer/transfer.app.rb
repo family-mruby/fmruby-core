@@ -1268,10 +1268,3 @@ class TransferApp < FmrbApp
     nil
   end
 end
-
-begin
-  app = TransferApp.new
-  app.start
-rescue => e
-  Log.error("transfer: #{e.class}: #{e.message}")
-end

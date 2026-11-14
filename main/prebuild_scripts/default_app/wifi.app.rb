@@ -194,10 +194,3 @@ class WifiSettingsApp < FmrbApp
     @ui.flush
   end
 end
-
-begin
-  app = WifiSettingsApp.new
-  app.start
-rescue => e
-  Log.error("WifiSettings: #{e}")
-end

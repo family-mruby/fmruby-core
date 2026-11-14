@@ -424,10 +424,3 @@ class RoverCamApp < FmrbApp
     Log.info("rover_cam: close: #{e.message}")
   end
 end
-
-begin
-  app = RoverCamApp.new
-  app.start
-rescue => e
-  puts "rover_cam: #{e.message}"
-end

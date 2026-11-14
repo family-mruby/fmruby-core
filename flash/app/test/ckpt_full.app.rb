@@ -59,10 +59,3 @@ class CkptFullApp < FmrbApp
     Log.info("ckpt_full: on_restore #{size_text} at #{@pos_x},#{@pos_y} resizes=#{@resizes}")
   end
 end
-
-begin
-  app = CkptFullApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_full: #{e.class}: #{e.message}")
-end

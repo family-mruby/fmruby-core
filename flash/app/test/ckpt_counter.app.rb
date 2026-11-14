@@ -45,10 +45,3 @@ class CkptCounterApp < FmrbApp
     Log.info("ckpt_counter: on_restore main=#{@main} t=#{Machine.board_millis - @t0}")
   end
 end
-
-begin
-  app = CkptCounterApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_counter: #{e.class}: #{e.message}")
-end

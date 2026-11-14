@@ -529,10 +529,3 @@ class RoverPilotApp < FmrbApp
     Log.info("rover_pilot: close: #{e.message}")
   end
 end
-
-begin
-  app = RoverPilotApp.new
-  app.start
-rescue => e
-  puts "rover_pilot: #{e.message}"
-end

@@ -116,10 +116,3 @@ class CkptWindowApp < FmrbApp
     Log.info("ckpt_window: on_restore dots=#{@dots.size} text=#{@text} #{ui_colours} #{font_note}")
   end
 end
-
-begin
-  app = CkptWindowApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_window: #{e.class}: #{e.message}")
-end

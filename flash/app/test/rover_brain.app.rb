@@ -571,10 +571,3 @@ class RoverBrainApp < FmrbApp
     Log.info("rover_brain: close: #{e.message}")
   end
 end
-
-begin
-  app = RoverBrainApp.new
-  app.start
-rescue => e
-  puts "rover_brain: #{e.message}"
-end

@@ -16,10 +16,3 @@ class BigStackApp < FmrbApp
     500
   end
 end
-
-begin
-  app = BigStackApp.new
-  app.start
-rescue => e
-  Log.error("BigStack: #{e}")
-end

@@ -150,10 +150,3 @@ class Ros2TalkerApp < FmrbApp
     Log.info("ros2_talker: close: #{e.message}")
   end
 end
-
-begin
-  app = Ros2TalkerApp.new
-  app.start
-rescue => e
-  puts "ros2_talker: #{e.message}"
-end

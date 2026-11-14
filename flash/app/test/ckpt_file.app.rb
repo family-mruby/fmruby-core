@@ -21,10 +21,3 @@ class CkptFileApp < FmrbApp
     @f.close if @f
   end
 end
-
-begin
-  app = CkptFileApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_file: #{e.class}: #{e.message}")
-end

@@ -192,10 +192,3 @@ class Ros2ServiceApp < FmrbApp
     Log.info("ros2_service: close: #{e.message}")
   end
 end
-
-begin
-  app = Ros2ServiceApp.new
-  app.start
-rescue => e
-  puts "ros2_service: #{e.message}"
-end

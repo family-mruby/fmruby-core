@@ -27,10 +27,3 @@ class SpinHogApp < FmrbApp
     1000
   end
 end
-
-begin
-  app = SpinHogApp.new
-  app.start
-rescue => e
-  Log.error("spin_hog: #{e.class}: #{e.message}")
-end

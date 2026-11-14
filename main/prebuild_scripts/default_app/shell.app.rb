@@ -890,17 +890,3 @@ class ShellApp < FmrbApp
   end
 
 end
-
-# Create and start the system GUI app instance
-Log.info("ShellApp.new")
-begin
-  app = ShellApp.new
-  Log.info("ShellApp created successfully")
-  app.start
-rescue => e
-  Log.error("Exception caught: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

@@ -325,13 +325,3 @@ class MmlDemoApp < FmrbApp
     @gfx.present
   end
 end
-
-Log.info("MmlDemoApp.new")
-begin
-  app = MmlDemoApp.new
-  app.start
-rescue Exception => e
-  Log.error("MmlDemo: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("MmlDemo script ended")

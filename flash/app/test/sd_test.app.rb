@@ -106,11 +106,3 @@ class SdTestApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = SdTestApp.new
-  app.start
-rescue => e
-  Log.error("SdTestApp: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

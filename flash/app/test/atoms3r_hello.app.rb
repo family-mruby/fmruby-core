@@ -79,10 +79,3 @@ class Atoms3rHelloApp < FmrbApp
     @gfx.draw_text(8, 32, "#{@count} / #{secs}s", FmrbGfx::COLOR_YELLOW)
   end
 end
-
-begin
-  app = Atoms3rHelloApp.new
-  app.start
-rescue => e
-  Log.error("atoms3r_hello: #{e.message}")
-end

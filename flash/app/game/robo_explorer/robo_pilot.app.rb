@@ -388,10 +388,3 @@ class RoboPilotApp < FmrbApp
     end
   end
 end
-
-begin
-  app = RoboPilotApp.new
-  app.start
-rescue => e
-  Log.error("RoboPilot: #{e}")
-end

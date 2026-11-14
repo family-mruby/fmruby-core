@@ -19,10 +19,3 @@ class RequireTestApp < FmrbApp
     500
   end
 end
-
-begin
-  app = RequireTestApp.new
-  app.start
-rescue => e
-  Log.error("require_test: #{e.class}: #{e.message}")
-end

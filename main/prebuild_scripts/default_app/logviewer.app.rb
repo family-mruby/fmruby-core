@@ -418,16 +418,3 @@ class LogViewerApp < FmrbApp
     Log.info("LogViewer destroyed")
   end
 end
-
-Log.info("LogViewerApp.new")
-begin
-  app = LogViewerApp.new
-  Log.info("LogViewerApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

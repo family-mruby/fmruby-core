@@ -150,10 +150,3 @@ class HiresTestApp < FmrbApp
     @gfx.draw_text(12, 22, "#{mode} #{@w}x#{@h}  resizes=#{@resizes}  tick=#{@tick}", FmrbGfx::COLOR_GREEN)
   end
 end
-
-begin
-  app = HiresTestApp.new
-  app.start
-rescue => e
-  Log.error("HiresTest: #{e}")
-end

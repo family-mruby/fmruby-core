@@ -21,9 +21,3 @@ class MetaMergeApp < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  MetaMergeApp.new.start
-rescue => e
-  Log.error("MetaMergeApp: #{e.class}: #{e.message}")
-end

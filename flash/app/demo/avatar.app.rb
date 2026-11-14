@@ -367,10 +367,3 @@ class AvatarApp < FmrbApp
     Log.info("avatar: leaving #{@places[-1]}, pats=#{@pats}")
   end
 end
-
-begin
-  app = AvatarApp.new
-  app.start
-rescue => e
-  Log.error("avatar: #{e.class}: #{e.message}")
-end

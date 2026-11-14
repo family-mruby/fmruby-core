@@ -934,16 +934,3 @@ class SlideShowApp < FmrbApp
     Log.info("PicoRabbit destroyed")
   end
 end
-
-Log.info("SlideShowApp.new")
-begin
-  app = SlideShowApp.new
-  Log.info("SlideShowApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

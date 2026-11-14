@@ -55,10 +55,3 @@ class MmKwApp < FmrbApp
     1000
   end
 end
-
-begin
-  app = MmKwApp.new
-  app.start
-rescue => e
-  Log.error("MmKwApp: #{e}")
-end

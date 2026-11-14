@@ -1368,10 +1368,3 @@ class WalkScrollerApp < FmrbApp
     (@pos < @target || @text_y < @top_y || @effect == "fireworks") ? FRAME_MS : IDLE_MS
   end
 end
-
-begin
-  app = WalkScrollerApp.new
-  app.start
-rescue => e
-  Log.error("walk_scroller: #{e.message}")
-end

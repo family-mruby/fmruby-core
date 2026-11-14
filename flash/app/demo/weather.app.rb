@@ -258,13 +258,3 @@ class WeatherApp < FmrbApp
     (Time.now.to_f * 1000).to_i
   end
 end
-
-Log.info("Weather: Creating WeatherApp")
-begin
-  app = WeatherApp.new
-  app.start
-rescue => e
-  Log.error("Weather: Exception: #{e.class}")
-  Log.error("Weather: Message: #{e.message}")
-end
-Log.info("Weather: Script ended")

@@ -22,9 +22,3 @@ class FenceBgApp < FmrbApp
     Log.info("FENCE: background app done")
   end
 end
-
-begin
-  FenceBgApp.new.start
-rescue => e
-  Log.error("FENCE: exception #{e.class}: #{e.message}")
-end

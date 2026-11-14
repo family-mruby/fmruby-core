@@ -37,11 +37,3 @@ class MyApp < FmrbApp
     Log.info("MyApp: bye")
   end
 end
-
-# An app file that stops here loads and does nothing: the class has to be
-# instantiated and started.
-begin
-  MyApp.new.start
-rescue => e
-  Log.error("MyApp: #{e.class}: #{e.message}")
-end

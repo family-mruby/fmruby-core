@@ -118,10 +118,3 @@ class ZenohEchoApp < FmrbApp
     50
   end
 end
-
-begin
-  app = ZenohEchoApp.new
-  app.start
-rescue => e
-  puts "zenoh_echo: #{e.message}"
-end

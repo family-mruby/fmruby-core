@@ -719,13 +719,3 @@ class InspectorApp < FmrbApp
     out
   end
 end
-
-Log.info("InspectorApp.new")
-begin
-  app = InspectorApp.new
-  app.start
-rescue => e
-  Log.error("Inspector exception: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Inspector ended")

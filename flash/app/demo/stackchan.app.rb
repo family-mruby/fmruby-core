@@ -485,11 +485,3 @@ class StackChanApp < FmrbApp
     end
   end
 end
-
-begin
-  app = StackChanApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

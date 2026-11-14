@@ -119,9 +119,3 @@ class EcSmokeApp < FmrbApp
     100
   end
 end
-
-begin
-  EcSmokeApp.new.start
-rescue => e
-  Log.error("EC: exception #{e.class}: #{e.message}")
-end

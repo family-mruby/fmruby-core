@@ -535,11 +535,3 @@ class FlappyApp < FmrbApp
     end
   end
 end
-
-begin
-  app = FlappyApp.new
-  app.start
-rescue => e
-  Log.error("Flappy: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

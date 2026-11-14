@@ -416,10 +416,3 @@ class AsterismDemoApp < FmrbApp
     wait
   end
 end
-
-begin
-  app = AsterismDemoApp.new
-  app.start
-rescue => e
-  puts "asterism_demo: #{e.message}"
-end

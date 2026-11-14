@@ -243,11 +243,3 @@ class MicSpectrumApp < FmrbApp
     FmrbGfx::RED
   end
 end
-
-begin
-  app = MicSpectrumApp.new
-  app.start
-rescue => e
-  Log.error("MicSpectrum: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

@@ -46,9 +46,3 @@ class WorkerWatchApp < FmrbApp
     unsubscribe(TOPIC)
   end
 end
-
-begin
-  WorkerWatchApp.new.start
-rescue => e
-  Log.error("WATCH: exception #{e.class}: #{e.message}")
-end

@@ -17,9 +17,3 @@ class FenceBadApp < FmrbApp
     100
   end
 end
-
-begin
-  FenceBadApp.new.start
-rescue => e
-  Log.error("FENCE: exception #{e.class}: #{e.message}")
-end

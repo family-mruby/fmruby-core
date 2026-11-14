@@ -45,10 +45,3 @@ class CkptCallsApp < FmrbApp
       "lang=#{FmrbI18n.lang} word=#{FmrbI18n.t(:ckpt_word)} language=#{FmrbApp.language}"
   end
 end
-
-begin
-  app = CkptCallsApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_calls: #{e.class}: #{e.message}")
-end

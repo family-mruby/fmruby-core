@@ -39,9 +39,3 @@ class DocMemApp < FmrbApp
     100
   end
 end
-
-begin
-  DocMemApp.new.start
-rescue => e
-  Log.error("DOCMEM: exception #{e.class}: #{e.message}")
-end

@@ -219,11 +219,3 @@ class FftBenchApp < FmrbApp
     end
   end
 end
-
-begin
-  app = FftBenchApp.new
-  app.start
-rescue => e
-  Log.error("FftBench: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

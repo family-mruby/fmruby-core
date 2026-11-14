@@ -1509,10 +1509,3 @@ class OthelloApp < FmrbApp
     Log.info("othello: close: #{e.message}")
   end
 end
-
-begin
-  app = OthelloApp.new
-  app.start
-rescue => e
-  puts "othello: #{e.message}"
-end

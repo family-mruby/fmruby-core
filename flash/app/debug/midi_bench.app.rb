@@ -680,14 +680,3 @@ class MidiBenchApp < FmrbApp
     @gfx.present
   end
 end
-
-Log.info("MidiBenchApp.new")
-begin
-  app = MidiBenchApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("MidiBench script ended")

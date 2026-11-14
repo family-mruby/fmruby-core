@@ -840,10 +840,3 @@ class AppStoreApp < FmrbApp
     apps
   end
 end
-
-begin
-  app = AppStoreApp.new
-  app.start
-rescue => e
-  puts "appstore: #{e.message}"
-end

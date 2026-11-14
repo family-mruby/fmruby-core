@@ -116,13 +116,3 @@ class GpioViewerApp < FmrbApp
     @gfx.present
   end
 end
-
-Log.info("GpioViewerApp.new")
-begin
-  app = GpioViewerApp.new
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

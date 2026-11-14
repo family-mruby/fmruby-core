@@ -213,11 +213,3 @@ class Encoder8App < FmrbApp
     @gfx.present
   end
 end
-
-begin
-  app = Encoder8App.new
-  app.start
-rescue => e
-  Log.error("Encoder8App: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

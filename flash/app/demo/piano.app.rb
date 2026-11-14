@@ -325,16 +325,3 @@ class PianoApp < FmrbApp
     -1
   end
 end
-
-Log.info("PianoApp.new")
-begin
-  app = PianoApp.new
-  Log.info("PianoApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

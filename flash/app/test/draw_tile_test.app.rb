@@ -56,12 +56,3 @@ class DrawTileTestApp < FmrbApp
     500
   end
 end
-
-begin
-  app = DrawTileTestApp.new
-  Log.info("DrawTileTestApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.message}")
-end
-

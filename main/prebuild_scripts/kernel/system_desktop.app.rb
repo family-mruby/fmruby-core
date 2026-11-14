@@ -2468,17 +2468,3 @@ class SystemDesktopApp < FmrbApp
     Log.info("Destroyed")
   end
 end
-
-# Create and start the system desktop app instance
-Log.info("SystemDesktopApp.new")
-begin
-  app = SystemDesktopApp.new
-  Log.info("SystemDesktopApp created successfully")
-  app.start
-rescue => e
-  Log.error("Exception caught: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error("Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

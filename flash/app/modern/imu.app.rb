@@ -178,11 +178,3 @@ class ImuApp < FmrbApp
     y + LINE_H
   end
 end
-
-begin
-  app = ImuApp.new
-  app.start
-rescue => e
-  Log.error("Imu: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

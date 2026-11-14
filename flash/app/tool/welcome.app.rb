@@ -262,10 +262,3 @@ class WelcomeApp < FmrbApp
     n < 10 ? "0#{n}" : n.to_s
   end
 end
-
-begin
-  app = WelcomeApp.new
-  app.start
-rescue => e
-  Log.error("welcome: #{e.message}")
-end

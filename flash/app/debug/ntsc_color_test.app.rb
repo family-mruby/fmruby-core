@@ -254,11 +254,3 @@ class NtscColorTestApp < FmrbApp
                    0xFF)
   end
 end
-
-begin
-  app = NtscColorTestApp.new
-  Log.info("NtscColorTestApp created")
-  app.start
-rescue => e
-  Log.error("Exception: #{e.message}")
-end

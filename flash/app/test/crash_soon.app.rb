@@ -21,8 +21,3 @@ class CrashSoonApp < FmrbApp
     200
   end
 end
-
-# No rescue here, unlike an ordinary app: the exception is meant to reach the
-# runtime, which reports it to the kernel as this app's error.
-app = CrashSoonApp.new
-app.start

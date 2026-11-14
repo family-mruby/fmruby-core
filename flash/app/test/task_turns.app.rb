@@ -34,10 +34,3 @@ class TaskTurnsApp < FmrbApp
     BLOCK_MS
   end
 end
-
-begin
-  app = TaskTurnsApp.new
-  app.start
-rescue => e
-  Log.error("task_turns: #{e.class}: #{e.message}")
-end

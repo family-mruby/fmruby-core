@@ -57,10 +57,3 @@ class NetProbeApp < FmrbApp
     100
   end
 end
-
-begin
-  app = NetProbeApp.new
-  app.start
-rescue => e
-  puts "net_probe: #{e.message}"
-end

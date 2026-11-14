@@ -486,17 +486,3 @@ class SmfPlayerApp < FmrbApp
     Log.info("SMF Player destroyed")
   end
 end
-
-Log.info("SmfPlayerApp.new")
-begin
-  app = SmfPlayerApp.new
-  app.start
-# Exception, not StandardError: running out of pool raises NoMemoryError,
-# which is not a StandardError, and this app used to die from it with nothing
-# in the log at all (doc/midi/report/p6.md).
-rescue Exception => e
-  Log.error("Exception caught: #{e.class}")
-  Log.error("Message: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("SMF Player script ended")

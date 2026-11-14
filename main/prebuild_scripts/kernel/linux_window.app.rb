@@ -132,6 +132,3 @@ class LinuxWindowApp < FmrbApp
     @gfx.present
   end
 end
-
-app = LinuxWindowApp.new
-app.start

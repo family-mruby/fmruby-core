@@ -42,11 +42,3 @@ class GfxBlockTestApp < FmrbApp
     Log.info("GfxBlockTest: destroyed")
   end
 end
-
-begin
-  app = GfxBlockTestApp.new
-  app.start
-rescue => e
-  Log.error("GfxBlockTest: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end

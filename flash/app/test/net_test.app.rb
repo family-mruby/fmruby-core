@@ -272,15 +272,3 @@ class NetTestApp < FmrbApp
     (Time.now.to_f * 1000).to_i
   end
 end
-
-Log.info("NetTest: Creating NetTestApp")
-begin
-  app = NetTestApp.new
-  app.start
-rescue => e
-  Log.error("NetTest: Exception: #{e.class}")
-  Log.error("NetTest: Message: #{e.message}")
-  Log.error("NetTest: Backtrace:")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("NetTest: Script ended")

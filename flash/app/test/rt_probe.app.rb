@@ -509,10 +509,3 @@ class RtProbeApp < FmrbApp
     Log.info("rt_probe: close: #{e.message}")
   end
 end
-
-begin
-  app = RtProbeApp.new
-  app.start
-rescue => e
-  puts "rt_probe: #{e.message}"
-end

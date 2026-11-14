@@ -47,9 +47,3 @@ class TmpReaderApp < FmrbApp
     unsubscribe(TOPIC)
   end
 end
-
-begin
-  TmpReaderApp.new.start
-rescue => e
-  Log.error("TMPR: exception #{e.class}: #{e.message}")
-end

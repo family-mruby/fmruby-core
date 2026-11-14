@@ -13,10 +13,3 @@ class TimerTestApp < FmrbApp
     100
   end
 end
-
-begin
-  app = TimerTestApp.new
-  app.start
-rescue => e
-  Log.error("timer_test: #{e.message}")
-end

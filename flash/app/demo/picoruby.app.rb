@@ -971,12 +971,3 @@ class PicoRubyDemoApp < FmrbApp
     sprite
   end
 end
-
-begin
-  app = PicoRubyDemoApp.new
-  app.start
-rescue => e
-  Log.error("PicoRuby demo: #{e.class}: #{e.message}")
-  Log.error(e.backtrace.join("\n")) if e.backtrace
-end
-Log.info("Script ended")

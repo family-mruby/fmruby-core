@@ -56,10 +56,3 @@ class CkptSelfApp < FmrbApp
     Log.info("ckpt_self: refused: #{reason}")
   end
 end
-
-begin
-  app = CkptSelfApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_self: #{e.class}: #{e.message}")
-end

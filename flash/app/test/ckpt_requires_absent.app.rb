@@ -19,10 +19,3 @@ class CkptRequiresAbsentApp < FmrbApp
     Log.info("ckpt_requires_absent: on_restore main=#{@main}")
   end
 end
-
-begin
-  app = CkptRequiresAbsentApp.new
-  app.start
-rescue => e
-  Log.error("ckpt_requires_absent: #{e.class}: #{e.message}")
-end
