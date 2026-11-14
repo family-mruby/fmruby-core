@@ -276,7 +276,7 @@ exit_key = "esc_long"     # keys のメニューで Esc の長押しがプログ
   mixer (開けないときは中の音量)、電源は logind (libsystemd を実行時に読み込み、
   待つ所は blocking-call gate)。機種の定義に `audio.mixer`・`system.power`
   (`exit` / `logind`)・`system.power_log_only` (試験用に要求をログに出すだけ) を足した。
-  デスクトップの電源の項目は `FmrbApp.power_actions` の答えで出し分ける。
+  デスクトップの電源の項目は `FmrbSystem.power_actions` の答えで出し分ける。
 - 電源の項目の置き場所 (2026-10-27 ユーザ決定): mouse のデスクトップでは、
   メニューバーの右上の電源ボタンのサブメニューに置き、左上のメニューからは
   消す。全端末で揃える (項目の無い sim・ブラウザ版はボタンを出さない)。keys の

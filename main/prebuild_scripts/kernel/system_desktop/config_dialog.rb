@@ -86,9 +86,9 @@ module ConfigDialogMixin
 
   # keyboard_layout: "auto" follows the layout Linux is set to, and only the
   # native program (Linux) offers it (doc/linux_native L9d) -- it alone has
-  # FmrbApp.linux_keyboard. Devices, the simulation and the browser keep
+  # FmrbSystem.linux_keyboard. Devices, the simulation and the browser keep
   # jp / us.
-  CFG_KBD_AUTO = FmrbApp.respond_to?(:linux_keyboard)
+  CFG_KBD_AUTO = FmrbSystem.respond_to?(:linux_keyboard)
   CFG_KBD_OPTIONS = CFG_KBD_AUTO ? ["auto", "jp", "us"] : ["jp", "us"]
 
   CFG_SETTINGS = [
@@ -209,7 +209,7 @@ module ConfigDialogMixin
     # Every other row is simply forgotten when the dialog closes unsaved; the
     # volume was already playing, so it goes back to what is saved.
     if FmrbApp.audio_volume != @cfg_volume_saved
-      FmrbApp.preview_audio_volume(@cfg_volume_saved)
+      FmrbSystem.preview_audio_volume(@cfg_volume_saved)
     end
     # Hidden and flushed before the repaint, or their holes land on whatever
     # was behind the dialog.
@@ -488,11 +488,11 @@ module ConfigDialogMixin
   # shown; the two special values get words instead.
   # The layout Linux is set to, for "auto" (CFG_KBD_AUTO: the native program,
   # whose desktop is the mruby one). The Spinel desktop has no
-  # FmrbApp.linux_keyboard, and its compiler refuses the call even behind the
+  # FmrbSystem.linux_keyboard, and its compiler refuses the call even behind the
   # respond_to? guard, so the call is stripped from that build.
   def cfg_linux_keyboard
     #:spinel-strip-begin
-    return FmrbApp.linux_keyboard
+    return FmrbSystem.linux_keyboard
     #:spinel-strip-end
     ""
   end
@@ -576,7 +576,7 @@ module ConfigDialogMixin
       @cfg_values[field] = v
       # Heard at once, saved only by Save: a write to flash per step showed on
       # the NARYAv4's HDMI output (doc/archive/audio_mute/report/m1.md 8).
-      FmrbApp.preview_audio_volume(v) if field == "audio_volume"
+      FmrbSystem.preview_audio_volume(v) if field == "audio_volume"
     when :float
       # Step by 0.1 in integer space to avoid float drift.
       cur = (@cfg_values[field].to_f * 10).round
@@ -596,20 +596,20 @@ module ConfigDialogMixin
     if cfg_write
       # The file now holds the live mute and volume: no other save is due,
       # and this volume is the one closing the dialog keeps.
-      FmrbApp.audio_conf_saved
+      FmrbSystem.audio_conf_saved
       @cfg_volume_saved = FmrbApp.audio_volume
       @cfg_status = FmrbI18n.t(:save_done)
       @cfg_status_until = 4
       draw_foreground
       if reboot
-        FmrbApp.reboot
+        FmrbSystem.reboot
       end
     else
       @cfg_status = FmrbI18n.t(:save_failed)
       @cfg_status_until = 4
       draw_foreground
     end
-    nil  # FmrbApp.reboot branch is noreturn -> pin a concrete return (Spinel)
+    nil  # FmrbSystem.reboot branch is noreturn -> pin a concrete return (Spinel)
   end
 
   # Rewrite /etc/system_conf.toml by walking the existing lines and replacing

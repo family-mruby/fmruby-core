@@ -8,6 +8,7 @@
  */
 #include "fmrb_spx_app.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -25,6 +26,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_hal.h"
 #include "fmrb_app_meta.h"
+#include "fmrb_tmpfs.h"
 /* estalloc stats, as declared in main/app/fmrb_app.c. */
 extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
                                   size_t *free, int32_t *frag);
@@ -646,15 +648,34 @@ const char *fmrb_spx_app_meta(const char *path, int len)
 }
 
 #ifdef FMRB_HAVE_CHECKPOINT
-/* fmrb_app_checkpoint.h needs mruby.h; only this one is wanted here. */
+/* fmrb_app_checkpoint.h needs mruby.h; only these are wanted here. */
 const char *fmrb_app_checkpoint_move_from_app(int32_t pid, const char *to, int32_t hold_ms, int32_t reply_to);
+const char *fmrb_app_checkpoint_ask_from_app(int32_t pid, bool restart, int32_t reply_to);
 #endif
+
+/* FmrbApp.checkpoint(pid, restart:): the same call as the mruby binding. ""
+ * when asked, else why not. */
+const char *fmrb_spx_app_checkpoint(int pid, int restart)
+{
+    const char *why;
+#ifdef FMRB_HAVE_CHECKPOINT
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    why = fmrb_app_checkpoint_ask_from_app((int32_t)pid, restart != 0, ctx ? (int32_t)ctx->app_id : -1);
+    if (!why) why = "";
+#else
+    (void)pid;
+    (void)restart;
+    why = "this build cannot write checkpoint images";
+#endif
+    *sp_ctx_ffi_bin_len() = (int)strlen(why);
+    return why;
+}
 
 /* FmrbApp.move(pid, to): the same call as the mruby binding (the window
  * menu's Send to, doc/window_menu M2). The kernel answers the caller with
  * "checkpoint_result". "" when asked, else why not (a string that lives on:
  * the app's checkpoint entry, or a constant). */
-const char *fmrb_spx_app_move(int pid, const char *to, int len)
+const char *fmrb_spx_app_move(int pid, const char *to, int len, int hold_ms)
 {
     const char *why;
 #ifdef FMRB_HAVE_CHECKPOINT
@@ -665,13 +686,15 @@ const char *fmrb_spx_app_move(int pid, const char *to, int len)
         memcpy(node, to, (size_t)len);
         node[len] = '\0';
         fmrb_app_task_context_t *ctx = fmrb_current();
-        why = fmrb_app_checkpoint_move_from_app((int32_t)pid, node, 0, ctx ? (int32_t)ctx->app_id : -1);
+        why = fmrb_app_checkpoint_move_from_app((int32_t)pid, node, (int32_t)(hold_ms > 0 ? hold_ms : 0),
+                                                ctx ? (int32_t)ctx->app_id : -1);
         if (!why) why = "";
     }
 #else
     (void)pid;
     (void)to;
     (void)len;
+    (void)hold_ms;
     why = "this build cannot write checkpoint images";
 #endif
     *sp_ctx_ffi_bin_len() = (int)strlen(why);
@@ -787,7 +810,7 @@ int fmrb_spx_app_reboot(void)
     FMRB_LOGI(TAG, "reboot requested");
     fmrb_host_audio_flush_save();  /* a mute / volume change still waiting to be saved */
     fmrb_task_delay_ms(100);
-    /* The OS services' reset (fmrb_platform_sys.h), as FmrbApp.reboot. */
+    /* The OS services' reset (fmrb_platform_sys.h), as FmrbSystem.reboot. */
     fmrb_platform_sys_power(FMRB_SYS_POWER_RESET);
     return 0;
 }
@@ -799,7 +822,7 @@ int fmrb_spx_app_power_actions(void)
 
 int fmrb_spx_app_power(int action)
 {
-    /* The same checks as the mruby FmrbApp.power (lib/add/picoruby-fmrb-app):
+    /* The same checks as the mruby FmrbSystem.power (lib/add/picoruby-fmrb-app):
      * one action, and only one this machine offers. */
     uint32_t bit = (uint32_t)action;
     if (bit == 0 || (bit & (bit - 1)) != 0 || !(fmrb_platform_sys_power_actions() & bit)) {
@@ -834,7 +857,7 @@ int fmrb_spx_app_ble_start(void)
 
 int fmrb_spx_app_ble_state(void)
 {
-    /* Same source as FmrbApp.ble_state in the mruby binding: the BLE host's
+    /* Same source as FmrbSystem.ble_state in the mruby binding: the BLE host's
        UI state (0 = off). The Linux sim has no radio. */
 #if !defined(CONFIG_IDF_TARGET_LINUX)
     return ble_ui_state();
@@ -845,7 +868,7 @@ int fmrb_spx_app_ble_state(void)
 
 int fmrb_spx_app_ble_settings_window(int seconds)
 {
-    /* Same as FmrbApp.ble_settings_window in the mruby binding: open the BLE
+    /* Same as FmrbSystem.ble_settings_window in the mruby binding: open the BLE
        settings window for that long (0 closes it), return the seconds left. */
 #if !defined(CONFIG_IDF_TARGET_LINUX)
     ble_settings_window_set(seconds > 0 ? (uint32_t)seconds : 0);
@@ -1035,4 +1058,220 @@ int fmrb_spx_app_gc(void)
 {
     sp_gc_collect();
     return 0;
+}
+
+/* ---- Calls the mruby binding has and the Spinel side lacked (doc/codebase_tidy
+ * T5): the same bodies as lib/add/picoruby-fmrb-app/ports/esp32/app.c. ---- */
+
+/* Copy a (str, len) argument into a NUL-terminated buffer; false when it does
+   not fit. */
+static bool spx_cstr(char *dst, size_t cap, const char *src, int len)
+{
+    if (len < 0 || (size_t)len >= cap) return false;
+    if (len > 0) memcpy(dst, src, (size_t)len);
+    dst[len] = '\0';
+    return true;
+}
+
+/* FmrbApp.pid: the caller's process id, -1 outside an app. */
+int fmrb_spx_app_pid(void)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    return ctx ? (int)ctx->app_id : -1;
+}
+
+/* FmrbApp.script_path: the file the app was started from ("" built in). */
+const char *fmrb_spx_app_script_path(void)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    const char *p = ctx ? ctx->filepath : "";
+    *sp_ctx_ffi_bin_len() = (int)strlen(p);
+    return p;
+}
+
+#if defined(FMRB_PLATFORM_WASM)
+int64_t fmrb_wasm_storage_free(void);
+#endif
+
+/* FmrbApp.free_bytes(path): bytes that can still be written where path lives,
+ * as an 8-byte :binstr (low u32, high u32), "" when unknown (Ruby nil). */
+const char *fmrb_spx_app_free_bytes(const char *path, int len)
+{
+    FMRB_SPX_BSS_ATTR static uint8_t buf[8];
+    char p[FMRB_MAX_PATH_LEN];
+    *sp_ctx_ffi_bin_len() = 0;
+    if (!spx_cstr(p, sizeof(p), path, len)) return "";
+    int64_t room = -1;
+    size_t mlen = strlen(FMRB_TMPFS_MOUNT);
+    if (strncmp(p, FMRB_TMPFS_MOUNT, mlen) == 0 && (p[mlen] == '\0' || p[mlen] == '/')) {
+        size_t used = 0, cap = 0;
+        fmrb_tmpfs_usage(&used, &cap);
+        room = (int64_t)(cap > used ? cap - used : 0);
+    } else {
+#if defined(FMRB_PLATFORM_WASM)
+        if (strncmp(p, "/home", 5) == 0 && (p[5] == '\0' || p[5] == '/')) {
+            room = fmrb_wasm_storage_free();
+        }
+#else
+        uint64_t total = 0, free_b = 0;
+        if (fmrb_hal_file_statfs(p, &total, &free_b) == FMRB_OK && total != 0) {
+            room = (int64_t)free_b;
+        }
+#endif
+    }
+    if (room < 0) return "";
+    put_u32(buf, (uint32_t)((uint64_t)room & 0xFFFFFFFFu));
+    put_u32(buf + 4, (uint32_t)((uint64_t)room >> 32));
+    *sp_ctx_ffi_bin_len() = 8;
+    return (const char *)buf;
+}
+
+/* FmrbApp.notify(summary, body): post a notice (the native program's list). */
+int fmrb_spx_app_notify(const char *summary, int slen, const char *body, int blen)
+{
+    char s[128];
+    char b[256];
+    if (!spx_cstr(s, sizeof(s), summary, slen)) return 0;
+    if (!spx_cstr(b, sizeof(b), body, blen)) return 0;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    const char *app = ctx ? ctx->app_name : "";
+    return fmrb_platform_sys_notice_post(app, s, b, -1) == FMRB_OK ? 1 : 0;
+}
+
+/* FmrbApp.linux_* : Linux commands in a terminal (fmrb_platform_sys.h). */
+#define SPX_LINUX_READ_CHUNK 4096
+FMRB_SPX_BSS_ATTR static char s_linux_why[160];
+static int s_linux_read_ended;
+
+int fmrb_spx_app_linux_available(void)
+{
+    return fmrb_platform_sys_proc_available() ? 1 : 0;
+}
+
+int fmrb_spx_app_linux_start(int has_cmd, const char *cmd, int clen, const char *cwd, int dlen,
+                             int cols, int rows)
+{
+    FMRB_SPX_BSS_ATTR static char c[1024];
+    char d[FMRB_MAX_PATH_LEN];
+    s_linux_why[0] = '\0';
+    if (!fmrb_platform_sys_proc_available()) {
+        snprintf(s_linux_why, sizeof(s_linux_why), "Linux commands are not available on this machine");
+        return -1;
+    }
+    if (!spx_cstr(c, sizeof(c), cmd, clen) || !spx_cstr(d, sizeof(d), cwd, dlen)) {
+        snprintf(s_linux_why, sizeof(s_linux_why), "the command or the directory is too long");
+        return -1;
+    }
+    if (cols < 1) cols = 1;
+    if (cols > 1000) cols = 1000;
+    if (rows < 1) rows = 1;
+    if (rows > 1000) rows = 1000;
+    fmrb_sys_proc_spec_t spec = {
+        .command = has_cmd ? c : NULL,
+        .cwd = d,
+        .cols = (uint16_t)cols,
+        .rows = (uint16_t)rows,
+    };
+    int32_t id = 0;
+    if (fmrb_platform_sys_proc_start(&spec, &id, s_linux_why, sizeof(s_linux_why)) != FMRB_OK) {
+        if (!s_linux_why[0]) snprintf(s_linux_why, sizeof(s_linux_why), "cannot start");
+        return -1;
+    }
+    return (int)id;
+}
+
+const char *fmrb_spx_app_linux_last_error(void)
+{
+    *sp_ctx_ffi_bin_len() = (int)strlen(s_linux_why);
+    return s_linux_why;
+}
+
+/* The output so far; fmrb_spx_app_linux_read_ended says whether the program
+   has ended (the mruby binding's nil). */
+const char *fmrb_spx_app_linux_read(int id)
+{
+    FMRB_SPX_BSS_ATTR static char buf[SPX_LINUX_READ_CHUNK];
+    *sp_ctx_ffi_bin_len() = 0;
+    s_linux_read_ended = 1;
+    if (!fmrb_platform_sys_proc_available()) return "";
+    int32_t n = fmrb_platform_sys_proc_read((int32_t)id, buf, sizeof(buf));
+    if (n < 0) return "";
+    s_linux_read_ended = 0;
+    *sp_ctx_ffi_bin_len() = (int)n;
+    return buf;
+}
+
+int fmrb_spx_app_linux_read_ended(void)
+{
+    return s_linux_read_ended;
+}
+
+int fmrb_spx_app_linux_write(int id, const char *str, int len)
+{
+    if (len < 0) return -1;
+    return (int)fmrb_platform_sys_proc_write((int32_t)id, str, (size_t)len);
+}
+
+/* sig: 0 int, 1 term, 2 kill, 3 hup (FmrbApp::LINUX_SIGNALS). */
+int fmrb_spx_app_linux_signal(int id, int sig)
+{
+    static const fmrb_sys_signal_t sigs[] = {
+        FMRB_SYS_SIG_INT, FMRB_SYS_SIG_TERM, FMRB_SYS_SIG_KILL, FMRB_SYS_SIG_HUP,
+    };
+    if (sig < 0 || sig >= (int)(sizeof(sigs) / sizeof(sigs[0]))) return 0;
+    return fmrb_platform_sys_proc_signal((int32_t)id, sigs[sig]) == FMRB_OK ? 1 : 0;
+}
+
+/* The exit code, FMRB_SPX_APP_LINUX_RUNNING while the program runs. */
+int fmrb_spx_app_linux_exit_code(int id)
+{
+    int code = 0;
+    if (!fmrb_platform_sys_proc_exited((int32_t)id, &code)) return FMRB_SPX_APP_LINUX_RUNNING;
+    return code;
+}
+
+int fmrb_spx_app_linux_resize(int id, int cols, int rows)
+{
+    if (cols < 1 || rows < 1 || cols > 1000 || rows > 1000) return 0;
+    return fmrb_platform_sys_proc_resize((int32_t)id, (uint16_t)cols, (uint16_t)rows) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_linux_close(int id)
+{
+    fmrb_platform_sys_proc_close((int32_t)id);
+    return 0;
+}
+
+/* FmrbSystem.wifi_connect / wifi_disconnect / wifi_forget / bt_power /
+   bt_connect: 1 done, 0 not here or failed. */
+int fmrb_spx_app_wifi_connect(const char *ssid, int slen, const char *pw, int plen)
+{
+    char s[64];
+    char p[128];
+    if (!spx_cstr(s, sizeof(s), ssid, slen) || !spx_cstr(p, sizeof(p), pw, plen)) return 0;
+    return fmrb_platform_sys_wifi_connect(s, p) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_wifi_disconnect(void)
+{
+    return fmrb_platform_sys_wifi_disconnect() == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_wifi_forget(const char *ssid, int len)
+{
+    char s[64];
+    if (!spx_cstr(s, sizeof(s), ssid, len)) return 0;
+    return fmrb_platform_sys_wifi_forget(s) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_bt_power(int on)
+{
+    return fmrb_platform_sys_bt_power(on != 0) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_bt_connect(const char *addr, int len, int on)
+{
+    char a[64];
+    if (!spx_cstr(a, sizeof(a), addr, len)) return 0;
+    return fmrb_platform_sys_bt_connect(a, on != 0) == FMRB_OK ? 1 : 0;
 }

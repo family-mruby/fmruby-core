@@ -12,8 +12,8 @@ class CkptRequiresApp < FmrbApp
 
   def on_update
     @main += 1
-    have = FmrbApp.respond_to?(:linux_settings)
-    FmrbApp.linux_settings if @open_settings && have
+    have = FmrbSystem.respond_to?(:linux_settings)
+    FmrbSystem.linux_settings if @open_settings && have
     Log.info("ckpt_requires: main=#{@main} pack=#{[65].pack('C')} linux_settings=#{have}")
     250
   end

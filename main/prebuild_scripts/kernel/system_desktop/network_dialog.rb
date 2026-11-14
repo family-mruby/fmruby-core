@@ -13,7 +13,7 @@
 # While open, on_update re-reads wifi_info every ~1s so the IP appears as
 # soon as DHCP completes without the user reopening the dialog.
 #
-# Where Family mruby can choose the network (FmrbApp.wifi_networks is not
+# Where Family mruby can choose the network (FmrbSystem.wifi_networks is not
 # ""), a third button opens the Wi-Fi page (the networks in reach,
 # connecting, disconnecting): on the PC (L14) the settings window's, on a
 # device with Wi-Fi the built-in default/wifi window, the same page
@@ -170,7 +170,7 @@ module NetworkDialogMixin
     lc = FmrbI18n.t(:close)
     @ui.button(:net_refresh, 0, 0, FmrbI18n.text_width(lr) + 12, NET_BTN_H, lr)
     @ui.button(:net_close, 0, 0, FmrbI18n.text_width(lc) + 12, NET_BTN_H, lc)
-    @net_settings_ok = FmrbApp.wifi_networks != ""
+    @net_settings_ok = FmrbSystem.wifi_networks != ""
     if @net_settings_ok
       lw = FmrbI18n.t(:wifi_settings)
       @ui.button(:net_wifi, 0, 0, FmrbI18n.text_width(lw) + 12, NET_BTN_H, lw)
@@ -208,12 +208,12 @@ module NetworkDialogMixin
     when :net_close then close_network_dialog
     when :net_wifi
       close_network_dialog
-      # FmrbApp.linux_settings exists on the PC only (a device must not have
+      # FmrbSystem.linux_settings exists on the PC only (a device must not have
       # it: the checkpoint tests name it as missing there).
       if FmrbConst::PLATFORM == "esp32"
         net_open_wifi_window
       else
-        FmrbApp.linux_settings("wifi")
+        FmrbSystem.linux_settings("wifi")
       end
     end
     nil

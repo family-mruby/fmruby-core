@@ -12,7 +12,7 @@
 # every colour-keyed canvas). The compositor draws the Linux window under the
 # picture and lets it through wherever those pixels are still on screen, so a
 # Family mruby window or menu over the stand-in hides that part of the Linux
-# window. Its canvas is keyed on a colour of its own (FmrbApp.wl_key, L9d),
+# window. Its canvas is keyed on a colour of its own (FmrbSystem.wl_key, L9d),
 # not on 0x01 as other windows' are: the 0x01 pixels reach the screen, and
 # the corners outside the rounded frame, painted in the key, show what is
 # behind the window as every window's do.
@@ -21,7 +21,7 @@
 # work, or refuse); the stand-in ends when the window has gone.
 #
 # Native program only: no device, simulation or browser build carries it
-# (main/CMakeLists.txt leaves it out; FmrbApp.wl_window exists only there).
+# (main/CMakeLists.txt leaves it out; FmrbSystem.wl_window exists only there).
 
 class LinuxWindowApp < FmrbApp
   HOLE = 0x01
@@ -29,7 +29,7 @@ class LinuxWindowApp < FmrbApp
   WAIT_POLLS = 50   # 5 s for the bridge to know this stand-in
 
   def on_create
-    @key = FmrbApp.wl_key
+    @key = FmrbSystem.wl_key
     @title = name
     @alive = true
     @unknown = 0
@@ -37,7 +37,7 @@ class LinuxWindowApp < FmrbApp
   end
 
   def on_update
-    st = FmrbApp.wl_window
+    st = FmrbSystem.wl_window
     if st.nil?
       @unknown += 1
       if @unknown > WAIT_POLLS
@@ -67,7 +67,7 @@ class LinuxWindowApp < FmrbApp
   # kernel's stop -- asks the Linux window to close instead. The window
   # decides; when it has gone, on_update ends the stand-in.
   def stop
-    if @alive && FmrbApp.wl_close
+    if @alive && FmrbSystem.wl_close
       redraw_close_button
       return nil
     end

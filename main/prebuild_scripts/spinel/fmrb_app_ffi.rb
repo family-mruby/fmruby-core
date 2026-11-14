@@ -150,7 +150,8 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_audio_muted, [], :int
   ffi_func :fmrb_spx_app_path_read_only, [:str, :int], :int
   ffi_func :fmrb_spx_app_meta, [:str, :int], :binstr
-  ffi_func :fmrb_spx_app_move, [:int, :str, :int], :binstr
+  ffi_func :fmrb_spx_app_move, [:int, :str, :int, :int], :binstr
+  ffi_func :fmrb_spx_app_checkpoint, [:int, :int], :binstr
   ffi_func :fmrb_spx_app_set_audio_mute, [:int], :int
   ffi_func :fmrb_spx_app_audio_volume, [], :int
   ffi_func :fmrb_spx_app_set_audio_volume, [:int], :int
@@ -167,6 +168,27 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_usb_devices, [], :binstr
   ffi_func :fmrb_spx_app_hid_raw_subscribe, [:int], :int
   ffi_func :fmrb_spx_app_hid_raw_unsubscribe, [:int], :int
+  ffi_func :fmrb_spx_app_wifi_connect, [:str, :int, :str, :int], :int
+  ffi_func :fmrb_spx_app_wifi_disconnect, [], :int
+  ffi_func :fmrb_spx_app_wifi_forget, [:str, :int], :int
+  ffi_func :fmrb_spx_app_bt_power, [:int], :int
+  ffi_func :fmrb_spx_app_bt_connect, [:str, :int, :int], :int
+
+  # --- class: process / files / Linux commands (doc/codebase_tidy T5) ---
+  ffi_func :fmrb_spx_app_pid, [], :int
+  ffi_func :fmrb_spx_app_script_path, [], :binstr
+  ffi_func :fmrb_spx_app_free_bytes, [:str, :int], :binstr
+  ffi_func :fmrb_spx_app_notify, [:str, :int, :str, :int], :int
+  ffi_func :fmrb_spx_app_linux_available, [], :int
+  ffi_func :fmrb_spx_app_linux_start, [:int, :str, :int, :str, :int, :int, :int], :int
+  ffi_func :fmrb_spx_app_linux_last_error, [], :binstr
+  ffi_func :fmrb_spx_app_linux_read, [:int], :binstr
+  ffi_func :fmrb_spx_app_linux_read_ended, [], :int
+  ffi_func :fmrb_spx_app_linux_write, [:int, :str, :int], :int
+  ffi_func :fmrb_spx_app_linux_signal, [:int, :int], :int
+  ffi_func :fmrb_spx_app_linux_exit_code, [:int], :int
+  ffi_func :fmrb_spx_app_linux_resize, [:int, :int, :int], :int
+  ffi_func :fmrb_spx_app_linux_close, [:int], :int
   ffi_func :fmrb_spx_app_boot_complete, [], :int
   ffi_func :fmrb_spx_app_gc, [], :int                # force GC on this task's heap
 

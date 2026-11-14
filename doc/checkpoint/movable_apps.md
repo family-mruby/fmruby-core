@@ -66,7 +66,7 @@ mruby-task の Task は、作った所の self ではなくトップレベルの
 
 ### 5.1 考え方
 
-ビルドごとに持っているメソッドが違う (ネイティブ版だけの `FmrbApp.linux_settings` など、ブラウザ版に無い通信の gem、S3 の gembox)。**運べるアプリは、すべての端末に共通でないメソッドは無いかもしれないと思って書く**。
+ビルドごとに持っているメソッドが違う (ネイティブ版だけの `FmrbSystem.linux_settings` など、ブラウザ版に無い通信の gem、S3 の gembox)。**運べるアプリは、すべての端末に共通でないメソッドは無いかもしれないと思って書く**。
 
 - `respond_to?` で確認してから呼ぶか、`rescue NoMethodError` で受ける。
 - **おすすめ**: 端末の違いをアプリの小さな窓口のオブジェクト (facade) に集め、そこで `respond_to?` か、`method_missing` と `respond_to_missing?` で足りないメソッドを吸収する (mruby はどちらも持つ。アプリが定義したメソッドは普通に運ばれる)。

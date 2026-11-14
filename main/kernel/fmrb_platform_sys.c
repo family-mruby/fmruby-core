@@ -11,7 +11,7 @@
  *   - battery: none;
  *   - volume: none (the internal volume, doc/reference/audio_output.md);
  *   - power: the device's reset (esp_restart); on the Linux builds the
- *     process ends, which is what FmrbApp.reboot did there.
+ *     process ends, which is what FmrbSystem.reboot did there.
  */
 
 #include <string.h>
@@ -86,7 +86,7 @@ static bool default_net_connected(void)
 #endif
 
 // What the desktop's menu offers: the device's reset. The Linux builds offer
-// nothing (FmrbApp.reboot still ends the process there, see default_power).
+// nothing (FmrbSystem.reboot still ends the process there, see default_power).
 static uint32_t default_power_actions(void)
 {
 #if defined(CONFIG_IDF_TARGET_LINUX)

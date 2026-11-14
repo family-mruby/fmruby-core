@@ -86,7 +86,7 @@ class SystemDesktopApp < FmrbApp
   # and the localized label resolved via FmrbI18n.t(:key) at draw time, so the
   # menu picks up the system language ("ja" / "en") from system_conf.toml.
   # Network is Modern-only (ESP32-P4 has WiFi via the C6 coprocessor).
-  # The power entries come from the OS services (FmrbApp.power_actions,
+  # The power entries come from the OS services (FmrbSystem.power_actions,
   # doc/linux_native L6): Reset on the devices (esp_restart), none in the
   # simulation and the browser, and on the native program Exit, or Power off,
   # Restart and Suspend, as its machine definition says. They are not in this
@@ -107,12 +107,12 @@ class SystemDesktopApp < FmrbApp
     end
     false
   end
-  POWER_EXIT_KEY = login_session?(FmrbApp.power_actions) ? :power_logout : :power_exit
+  POWER_EXIT_KEY = login_session?(FmrbSystem.power_actions) ? :power_logout : :power_exit
   POWER_KEYS = { reset: :reset, lock: :power_lock, exit: POWER_EXIT_KEY, power_off: :power_off,
                  restart: :power_restart, suspend: :power_suspend }
   # Menu order (2026-11-08 user): from the lightest to the heaviest --
   # Lock, Suspend, Exit / Log Out, Restart, Power off (Reset, a device's,
-  # last). FmrbApp.power_actions lists them in its bit order, not this one.
+  # last). FmrbSystem.power_actions lists them in its bit order, not this one.
   POWER_MENU_ORDER = [:lock, :suspend, :exit, :restart, :power_off, :reset]
   def self.action_offered?(actions, a)
     j = 0
@@ -133,7 +133,7 @@ class SystemDesktopApp < FmrbApp
     end
     items
   end
-  POWER_ITEMS = power_items(FmrbApp.power_actions)
+  POWER_ITEMS = power_items(FmrbSystem.power_actions)
   DROPDOWN_ITEMS = [
     { key: :launcher },
     # The editor is a built-in, so it never appears in the launcher (that list is
@@ -162,7 +162,7 @@ class SystemDesktopApp < FmrbApp
     (FmrbConst::HAS_WIFI ? [{ key: :network }] : []) +
     # The PC's Bluetooth (L14): its settings window. Only where the OS has
     # them (bt_devices is "" on every device, the simulation and the page).
-    (FmrbApp.bt_devices != "" ? [{ key: :bluetooth }] : []) +
+    (FmrbSystem.bt_devices != "" ? [{ key: :bluetooth }] : []) +
     # The CRT look of the PC's screen (doc/web_crt, C5): the same window's
     # Display page. Only where the compositor can draw it (crt_state is ""
     # on every device, the simulation, the page, and a PC without GLES).
@@ -1127,14 +1127,14 @@ class SystemDesktopApp < FmrbApp
   def draw_ble_icon
     # Right of the RAM readout, next to the wifi icon (7px gap to wifi)
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1
-    state = FmrbApp.ble_state
+    state = FmrbSystem.ble_state
     if state == 0
       @gfx.fill_rect(x, 1, BLE_CELL_W, 10, FmrbGfx::GRAY)
       return
     end
     box = (state == 2) ? FmrbGfx::WHITE : FmrbGfx::GRAY
     fg  = (state == 2) ? MENU_BG : FmrbGfx::WHITE
-    if FmrbApp.ble_settings_left > 0
+    if FmrbSystem.ble_settings_left > 0
       box = BLE_SETUP_BG
       fg = FmrbGfx::BLACK
     end
@@ -1233,12 +1233,12 @@ class SystemDesktopApp < FmrbApp
   # The menu's BLE Setup: open the settings window, or close it when it is
   # open. Retro starts BLE first when it is off (Modern's runs from boot).
   def toggle_ble_setup
-    if FmrbApp.ble_settings_left > 0
-      FmrbApp.ble_settings_window(0)
+    if FmrbSystem.ble_settings_left > 0
+      FmrbSystem.ble_settings_window(0)
       Log.info("Desktop: BLE settings window closed")
     else
-      FmrbApp.ble_start if FmrbApp.ble_state == 0 && FmrbConst::CHIP_MODEL != "ESP32-P4"
-      left = FmrbApp.ble_settings_window(BLE_SETUP_SECONDS)
+      FmrbSystem.ble_start if FmrbSystem.ble_state == 0 && FmrbConst::CHIP_MODEL != "ESP32-P4"
+      left = FmrbSystem.ble_settings_window(BLE_SETUP_SECONDS)
       if left > 0
         Log.info("Desktop: BLE settings window open (#{left} s)")
       else
@@ -1254,7 +1254,7 @@ class SystemDesktopApp < FmrbApp
   def toggle_audio_mute
     on = !FmrbApp.audio_muted?
     Log.info("Desktop: audio mute #{on ? 'on' : 'off'}")
-    FmrbApp.set_audio_mute(on)
+    FmrbSystem.set_audio_mute(on)
     draw_sound_icon
     @gfx.present
   end
@@ -1280,7 +1280,7 @@ class SystemDesktopApp < FmrbApp
     # (stale disconnect slashes would linger otherwise).
     @gfx.fill_rect(x - 1, 2, WIFI_ICON_W + 2, 10, MENU_BG)
     connected = FmrbApp.wifi_connected?
-    if connected && FmrbApp.rd_stream_state > 0
+    if connected && FmrbSystem.rd_stream_state > 0
       # Remote desktop video (MJPEG or H.264) is going out: a small screen
       # pictogram instead of the signal bars, so "someone is watching this
       # display over the network" is visible at a glance.
@@ -1343,7 +1343,7 @@ class SystemDesktopApp < FmrbApp
       return FmrbI18n.t(FmrbApp.audio_muted? ? :audio_unmute : :audio_mute)
     end
     if key == :ble_setup
-      left = FmrbApp.ble_settings_left
+      left = FmrbSystem.ble_settings_left
       if left > 0
         sec = left % 60
         return "#{FmrbI18n.t(:ble_setup_stop)} #{left / 60}:#{sec < 10 ? '0' : ''}#{sec}"
@@ -1884,12 +1884,12 @@ class SystemDesktopApp < FmrbApp
       # The answer to a Send to from the window menu (FmrbApp.move).
       window_menu_moved(msg)
     elsif msg["cmd"] == "do_reboot"
-      Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
-      FmrbApp.reboot
+      Log.info("Desktop: do_reboot received, calling FmrbSystem.reboot")
+      FmrbSystem.reboot
     elsif msg["cmd"] == "do_power"
       action = msg["action"].to_s
       Log.info("Desktop: do_power #{action}")
-      FmrbApp.power(action.to_sym) unless action.empty?
+      FmrbSystem.power(action.to_sym) unless action.empty?
     elsif msg["cmd"] == "resize_preview_start" || msg["cmd"] == "resize_preview_update"
       was_active = @resize_preview_active
       @resize_preview_active = true
@@ -1906,7 +1906,7 @@ class SystemDesktopApp < FmrbApp
       update_composite_regions
       draw_foreground
     end
-    nil  # keep a concrete return: a branch (FmrbApp.reboot) is noreturn, which
+    nil  # keep a concrete return: a branch (FmrbSystem.reboot) is noreturn, which
          # would otherwise make the if/elsif value void (Spinel)
   end
 
@@ -2406,14 +2406,14 @@ class SystemDesktopApp < FmrbApp
     when :network
       open_network_dialog
     when :bluetooth
-      FmrbApp.linux_settings("bluetooth")
+      FmrbSystem.linux_settings("bluetooth")
     when :display_look
-      FmrbApp.linux_settings("display")
+      FmrbSystem.linux_settings("display")
     when :audio_mute
       toggle_audio_mute
     when :ble_start
       Log.info("Desktop: manual BLE start requested")
-      FmrbApp.ble_start
+      FmrbSystem.ble_start
     when :ble_setup
       toggle_ble_setup
     when :reset
@@ -2421,7 +2421,7 @@ class SystemDesktopApp < FmrbApp
     when :power_lock
       # Nothing to lose, so no question: the lock program takes the screen.
       Log.info("Desktop: lock the screen")
-      FmrbApp.power(:lock)
+      FmrbSystem.power(:lock)
     when :power_exit, :power_logout, :power_off, :power_restart, :power_suspend
       # Confirmed, then the kernel hands it back as do_power (forward_power).
       open_confirm_dialog(FmrbI18n.t(:"#{item[:key]}_confirm"), "power",

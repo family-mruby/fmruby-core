@@ -189,7 +189,7 @@ int fmrb_spx_app_set_text_cursor(int x, int y, int h);
 const char *fmrb_spx_app_wallclock(void);
 
 /**
- * @brief Set the wall clock from LOCAL time fields (FmrbApp.set_wallclock) and
+ * @brief Set the wall clock from LOCAL time fields (FmrbSystem.set_wallclock) and
  *        return the equivalent UTC fields as a 12-byte :binstr (same layout as
  *        wallclock), or an empty String on failure.
  */
@@ -201,13 +201,13 @@ const char *fmrb_spx_app_set_wallclock(int year, int month, int day,
 int fmrb_spx_app_enable_cursor(void);            /**< returns 0 */
 int fmrb_spx_app_set_cursor_visible(int visible);/**< returns 0 */
 int fmrb_spx_app_reboot(void);                   /**< does not return */
-int fmrb_spx_app_power_actions(void);            /**< FmrbApp.power_actions as fmrb_sys_power_t bits */
-int fmrb_spx_app_power(int action);              /**< FmrbApp.power: one bit; 1 done, 0 not offered/failed */
+int fmrb_spx_app_power_actions(void);            /**< FmrbSystem.power_actions as fmrb_sys_power_t bits */
+int fmrb_spx_app_power(int action);              /**< FmrbSystem.power: one bit; 1 done, 0 not offered/failed */
 /** FmrbApp.battery_level / battery_charging?: -1 without a battery value,
  *  else the percent (0-100) with 0x100 set while charging. */
 int fmrb_spx_app_battery(void);
 int fmrb_spx_app_ble_start(void);                /**< manual BLE start; 1 on success */
-int fmrb_spx_app_ble_state(void);                /**< FmrbApp.ble_state (0 = off) */
+int fmrb_spx_app_ble_state(void);                /**< FmrbSystem.ble_state (0 = off) */
 int fmrb_spx_app_ble_settings_window(int seconds); /**< open/close the BLE settings window; seconds left */
 int fmrb_spx_app_ble_settings_left(void);        /**< seconds left in the settings window (0 = closed) */
 int fmrb_spx_app_audio_muted(void);              /**< FmrbApp.audio_muted? (1/0) */
@@ -217,12 +217,15 @@ int fmrb_spx_app_path_read_only(const char *path, int len); /**< FmrbApp.path_re
 const char *fmrb_spx_app_meta(const char *path, int len);
 /** @brief FmrbApp.move(pid, to): ask the kernel to move an app over Asterism
  *  (the caller hears "checkpoint_result"). :binstr, "" when asked, else why not. */
-const char *fmrb_spx_app_move(int pid, const char *to, int len);
-int fmrb_spx_app_set_audio_mute(int on);         /**< FmrbApp.set_audio_mute */
+const char *fmrb_spx_app_move(int pid, const char *to, int len, int hold_ms);
+/** @brief FmrbApp.checkpoint(pid, restart:): ask for an app's checkpoint image.
+ *  :binstr, "" when asked, else why not. */
+const char *fmrb_spx_app_checkpoint(int pid, int restart);
+int fmrb_spx_app_set_audio_mute(int on);         /**< FmrbSystem.set_audio_mute */
 int fmrb_spx_app_audio_volume(void);             /**< FmrbApp.audio_volume (0-10) */
-int fmrb_spx_app_set_audio_volume(int step);     /**< FmrbApp.set_audio_volume */
-int fmrb_spx_app_preview_audio_volume(int step); /**< FmrbApp.preview_audio_volume */
-int fmrb_spx_app_audio_conf_saved(void);         /**< FmrbApp.audio_conf_saved */
+int fmrb_spx_app_set_audio_volume(int step);     /**< FmrbSystem.set_audio_volume */
+int fmrb_spx_app_preview_audio_volume(int step); /**< FmrbSystem.preview_audio_volume */
+int fmrb_spx_app_audio_conf_saved(void);         /**< FmrbSystem.audio_conf_saved */
 int fmrb_spx_app_wifi_connected(void);           /**< FmrbApp.wifi_connected? (1/0) */
 int fmrb_spx_app_proc_generation(void);          /**< FmrbApp.ps_gen */
 /** @brief FmrbConst.bt_mac: "AA:BB:CC:DD:EE:FF" :binstr, or "-" until known. */
@@ -242,7 +245,7 @@ const char *fmrb_spx_app_bt_mac(void);
 const char *fmrb_spx_app_wifi_info(void);
 
 /**
- * @brief The Wi-Fi page's text (FmrbApp.wifi_networks, fmrb_platform_sys.h
+ * @brief The Wi-Fi page's text (FmrbSystem.wifi_networks, fmrb_platform_sys.h
  *        wifi_list) as a :binstr; empty where Family mruby does not choose
  *        the network. A text longer than FMRB_SPX_APP_WIFI_LIST_MAX is cut
  *        after its last whole line. scan != 0 also asks for a scan.
@@ -271,6 +274,34 @@ const char *fmrb_spx_app_usb_devices(void);
 
 int fmrb_spx_app_hid_raw_subscribe(int slot);   /**< 1 ok / 0 fail */
 int fmrb_spx_app_hid_raw_unsubscribe(int slot); /**< 1 ok / 0 fail */
+
+/* ---- class: the calls the Spinel side lacked (doc/codebase_tidy T5) ------ */
+
+int fmrb_spx_app_pid(void);                      /**< FmrbApp.pid (-1 outside an app) */
+const char *fmrb_spx_app_script_path(void);      /**< FmrbApp.script_path (:binstr) */
+/** @brief FmrbApp.free_bytes(path): 8-byte :binstr (low u32, high u32 LE), ""
+ *  when unknown. */
+const char *fmrb_spx_app_free_bytes(const char *path, int len);
+int fmrb_spx_app_notify(const char *summary, int slen, const char *body, int blen); /**< 1 posted */
+/** @brief What fmrb_spx_app_linux_exit_code answers while the program runs. */
+#define FMRB_SPX_APP_LINUX_RUNNING (-1000000)
+int fmrb_spx_app_linux_available(void);          /**< FmrbApp.linux_available? (1/0) */
+/** @brief FmrbApp.linux_start: a handle, or -1 (why: fmrb_spx_app_linux_last_error). */
+int fmrb_spx_app_linux_start(int has_cmd, const char *cmd, int clen, const char *cwd, int dlen,
+                             int cols, int rows);
+const char *fmrb_spx_app_linux_last_error(void); /**< why the last linux_start failed */
+const char *fmrb_spx_app_linux_read(int id);     /**< output so far (:binstr) */
+int fmrb_spx_app_linux_read_ended(void);         /**< 1 when the last read found the program ended */
+int fmrb_spx_app_linux_write(int id, const char *str, int len); /**< bytes written, <0 error */
+int fmrb_spx_app_linux_signal(int id, int sig);  /**< sig 0 int 1 term 2 kill 3 hup; 1 sent */
+int fmrb_spx_app_linux_exit_code(int id);        /**< code, or FMRB_SPX_APP_LINUX_RUNNING */
+int fmrb_spx_app_linux_resize(int id, int cols, int rows); /**< 1 done */
+int fmrb_spx_app_linux_close(int id);            /**< returns 0 */
+int fmrb_spx_app_wifi_connect(const char *ssid, int slen, const char *pw, int plen); /**< 1 done */
+int fmrb_spx_app_wifi_disconnect(void);          /**< 1 done */
+int fmrb_spx_app_wifi_forget(const char *ssid, int len); /**< 1 done */
+int fmrb_spx_app_bt_power(int on);               /**< 1 done */
+int fmrb_spx_app_bt_connect(const char *addr, int len, int on); /**< 1 done */
 
 /** @brief Signal boot complete (status LED: fast-blink -> heartbeat). The mruby
  *  desktop calls FmrbKernel.boot_complete!; the Spinel desktop routes here.

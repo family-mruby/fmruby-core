@@ -1895,7 +1895,7 @@ static void host_broadcast_kana_mode(void)
 // after the last change: a burst of toggles costs one write. The Config
 // dialog previews the volume without asking for a save at all, and writes
 // the file itself on Save. A power cut inside the delay loses that last
-// change; a reboot through FmrbApp.reboot flushes it first.
+// change; a reboot through FmrbSystem.reboot flushes it first.
 #define AUDIO_SAVE_DELAY_MS 2000
 
 // PSRAM: the internal RAM budget has no room for new statics.

@@ -1265,23 +1265,6 @@ class FmrbApp
   # ```
   def self.wallclock: () -> Hash?
 
-  # 日付と時刻を合わせる <<en>> Set the date and time
-  #
-  # 渡すのは**地方時**。戻ってくるのは同じ時刻の UTC。**端末でしか効かない**
-  # (Linux とブラウザでは何もしない)。
-  # ```ruby
-  # FmrbApp.set_wallclock(2026, 9, 1,
-  #                       12, 0, 0)
-  # ```
-  # <<en>>
-  # Takes **local time** and returns the same moment in UTC. **Only a device
-  # acts on it**; Linux and the browser do nothing.
-  # ```ruby
-  # FmrbApp.set_wallclock(2026, 9, 1,
-  #                       12, 0, 0)
-  # ```
-  def self.set_wallclock: (Integer year, Integer month, Integer day, Integer hour, Integer minute, Integer second) -> Hash?
-
   # 絵を送った回数の記録 <<en>> A tally of the frames sent
   #
   # ```ruby
@@ -1302,13 +1285,6 @@ class FmrbApp
   # FmrbApp.set_cursor_visible(false)
   # ```
   def self.set_cursor_visible: (bool visible) -> void
-
-  # 機械を再起動する <<en>> Restart the machine
-  #
-  # 機械ごと再起動する。**戻ってこない**。端末専用。
-  # <<en>>
-  # Restarts the machine. **Does not return.** Devices only.
-  def self.reboot: () -> void
 
   # かな入力を切りかえる (0 切 1 ひら 2 カタ) <<en>> Switch kana input (0 off 1 hira 2 kata)
   #
@@ -1340,22 +1316,6 @@ class FmrbApp
   # FmrbApp.set_text_cursor(x, y, 12)
   # ```
   def self.set_text_cursor: (Integer x, Integer y, Integer h) -> void
-
-  # 本体の音を消す・戻す <<en>> Mute or unmute the whole machine
-  #
-  # true で消音。音は鳴り続けたまま出力だけ無音になる (スピーカのミュート)。
-  # 少し後 (約 2 秒) に設定に保存され、再起動後も残る。外部 MIDI 出力は止めない。
-  # ```ruby
-  # FmrbApp.set_audio_mute(true)
-  # ```
-  # <<en>>
-  # true mutes. Sound keeps playing and only the output goes silent, like a
-  # speaker's mute. Saved, so it survives a reboot. External MIDI output is
-  # not affected.
-  # ```ruby
-  # FmrbApp.set_audio_mute(true)
-  # ```
-  def self.set_audio_mute: (bool on) -> void
 
   # 本体が消音中か <<en>> Whether the machine is muted
   #
@@ -1414,85 +1374,12 @@ class FmrbApp
   # ```
   def self.free_bytes: (String path) -> Integer?
 
-  # 本体の音量を変える (0-10) <<en>> Set the machine's volume (0-10)
-  #
-  # 0 は無音、10 が最大。ミュートとは別で、ミュートを外すとこの音量に戻る。
-  # 設定に保存され、再起動後も残る。
-  # ```ruby
-  # FmrbApp.set_audio_volume(5)
-  # ```
-  # <<en>>
-  # 0 is silence, 10 the loudest. Separate from the mute: unmuting comes back
-  # at this volume. Saved, so it survives a reboot.
-  # ```ruby
-  # FmrbApp.set_audio_volume(5)
-  # ```
-  def self.set_audio_volume: (Integer step) -> void
-
   # 本体の音量 (0-10) <<en>> The machine's volume (0-10)
   #
   # ```ruby
   # FmrbApp.audio_volume
   # ```
   def self.audio_volume: () -> Integer
-
-  # 音量を保存せずに試す <<en>> Try a volume without saving it
-  #
-  # 設定画面の試聴用。保存は audio_conf_saved か set_audio_volume で。
-  # <<en>>
-  # For a settings screen's live preview. Saving is audio_conf_saved or
-  # set_audio_volume.
-  def self.preview_audio_volume: (Integer step) -> void
-
-  # 設定ファイルに音の設定を書いたと知らせる <<en>> Say the sound settings were written
-  #
-  # system_conf に今の消音と音量を自分で書いた後に呼ぶ。待っている保存を取り消す。
-  # <<en>>
-  # Call after writing the current mute and volume into system_conf yourself.
-  # Drops the save that was waiting.
-  def self.audio_conf_saved: () -> void
-
-  # Bluetooth をはじめる <<en>> Start Bluetooth
-  #
-  # BLE を手で起動する。Retro 用。
-  # <<en>>
-  # Starts BLE by hand. For Retro.
-  def self.ble_start: () -> bool
-
-  # Bluetooth の様子 <<en>> How Bluetooth is doing
-  #
-  # ```ruby
-  # st = FmrbApp.ble_state
-  # ```
-  def self.ble_state: () -> Integer
-
-  # BLE で設定を受け付ける時間を開く <<en>> Open the window for settings over BLE
-  #
-  # 秒数だけ開き (0 で閉じる)、残りの秒数を返す。開けなかったときは 0。
-  # 開いている間だけ、BLE のコンソールが WiFi と Asterism の設定を書ける。
-  # <<en>>
-  # Opens it for that many seconds (0 closes it) and returns the seconds
-  # left, 0 when it did not open. While it is open the BLE console may write
-  # the WiFi and Asterism settings.
-  #
-  # ```ruby
-  # FmrbApp.ble_settings_window(300)
-  # ```
-  def self.ble_settings_window: (Integer seconds) -> Integer
-
-  # 設定を受け付ける時間の残り秒数 <<en>> Seconds left in the settings window
-  #
-  # 閉じていれば 0。
-  # <<en>>
-  # 0 when it is closed.
-  def self.ble_settings_left: () -> Integer
-
-  # 画面を配信中かどうかの様子 <<en>> Whether the screen is being streamed
-  #
-  # 遠隔デスクトップに誰か繋がっているか。
-  # <<en>>
-  # Whether anyone is watching over the remote desktop.
-  def self.rd_stream_state: () -> Integer
 
   # WiFi がつながっているか <<en>> Whether WiFi is connected
   #
@@ -1540,4 +1427,135 @@ class FmrbApp
   # FmrbApp.hid_raw_unsubscribe(1)
   # ```
   def self.hid_raw_unsubscribe: (Integer slot) -> bool
+
+  # 自分の pid <<en>> This app's own pid
+  #
+  # `ps` の :id と同じ番号。一覧から自分を外すときに使う。
+  # ```ruby
+  # me = FmrbApp.pid
+  # ```
+  # <<en>>
+  # The number `ps` reports as :id; for leaving itself out of the list.
+  # ```ruby
+  # me = FmrbApp.pid
+  # ```
+  def self.pid: () -> Integer
+
+  # 起動したファイル <<en>> The file this app was started from
+  #
+  # ファームに入っているアプリでは "" 。
+  # <<en>>
+  # "" for an app built into the firmware.
+  def self.script_path: () -> String
+
+  # 自分のメモリのごみを集める <<en>> Collect this app's garbage now
+  #
+  # ```ruby
+  # FmrbApp.gc
+  # ```
+  def self.gc: () -> void
+
+  # 電池の残り (百分率) <<en>> The battery's charge in percent
+  #
+  # 電池の無い端末では nil。
+  # ```ruby
+  # FmrbApp.battery_level
+  # ```
+  # <<en>>
+  # nil where there is no battery value.
+  # ```ruby
+  # FmrbApp.battery_level
+  # ```
+  def self.battery_level: () -> Integer?
+
+  # 電池を充電中か <<en>> Whether the battery is charging
+  #
+  # ```ruby
+  # FmrbApp.battery_charging?
+  # ```
+  def self.battery_charging?: () -> bool
+
+  # ブラウン管の見た目の今の設定 <<en>> The CRT look now
+  #
+  # 描けない所では "" 。ほかは "crt" か "sharp" と 8 つの強さ。
+  # <<en>>
+  # "" where it cannot be drawn, else "crt" or "sharp" and the eight
+  # strengths, e.g. "crt,55,30,30,15,40,0,0,0".
+  def self.crt_state: () -> String
+
+  # Linux のコマンドが使えるか <<en>> Whether Linux commands run here
+  #
+  # ネイティブ版と sim だけ true。
+  # <<en>>
+  # true on the native program and in the simulation.
+  def self.linux_available?: () -> bool
+
+  # Linux のコマンドを端末で始める <<en>> Start a Linux command in a terminal
+  #
+  # 返すのは番号。始められないときは例外。cmd が nil ならシェル。
+  # ```ruby
+  # h = FmrbApp.linux_start("ls",
+  #       "/home", 80, 24)
+  # ```
+  # <<en>>
+  # Answers a handle; raises when it cannot start. A nil cmd is a shell.
+  # ```ruby
+  # h = FmrbApp.linux_start("ls",
+  #       "/home", 80, 24)
+  # ```
+  def self.linux_start: (String? cmd, String cwd, Integer cols, Integer rows) -> Integer
+
+  # Linux のコマンドの出力を読む <<en>> Read a Linux command's output
+  #
+  # まだ無ければ ""、終わったら nil。待たない。
+  # ```ruby
+  # s = FmrbApp.linux_read(h)
+  # ```
+  # <<en>>
+  # "" when there is none yet, nil once it ended. Never waits.
+  # ```ruby
+  # s = FmrbApp.linux_read(h)
+  # ```
+  def self.linux_read: (Integer h) -> String?
+
+  # Linux のコマンドに書く <<en>> Write to a Linux command
+  #
+  # ```ruby
+  # FmrbApp.linux_write(h, "q")
+  # ```
+  def self.linux_write: (Integer h, String data) -> Integer
+
+  # Linux のコマンドにシグナルを送る <<en>> Send a signal to a Linux command
+  #
+  # :int・:term・:kill・:hup。
+  # ```ruby
+  # FmrbApp.linux_signal(h, :int)
+  # ```
+  # <<en>>
+  # :int, :term, :kill or :hup.
+  # ```ruby
+  # FmrbApp.linux_signal(h, :int)
+  # ```
+  def self.linux_signal: (Integer h, Symbol sig) -> bool
+
+  # Linux のコマンドの終わりの値 <<en>> A Linux command's exit code
+  #
+  # 動いている間は nil。
+  # <<en>>
+  # nil while it runs.
+  def self.linux_exit_code: (Integer h) -> Integer?
+
+  # Linux のコマンドの端末の大きさを変える <<en>> Resize a Linux command's terminal
+  #
+  # ```ruby
+  # FmrbApp.linux_resize(h, 80, 24)
+  # ```
+  def self.linux_resize: (Integer h, Integer cols, Integer rows) -> bool
+
+  # Linux のコマンドを閉じる <<en>> Close a Linux command
+  #
+  # まだ動いていれば止める。待たない。
+  # <<en>>
+  # Ends it if it still runs; never waits.
+  def self.linux_close: (Integer h) -> void
 end

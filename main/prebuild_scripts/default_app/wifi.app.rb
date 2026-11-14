@@ -42,7 +42,7 @@ class WifiSettingsApp < FmrbApp
     build_widgets
     Log.info("wifi: user area #{@w}x#{@h} at (#{0},#{0})")
     # The list is only as fresh as the last scan: ask for one on opening.
-    @wifi_text = FmrbApp.wifi_networks(true)
+    @wifi_text = FmrbSystem.wifi_networks(true)
     parse_wifi
     log_state("wifi", @wifi_head, @aps)
     read_ip
@@ -94,12 +94,12 @@ class WifiSettingsApp < FmrbApp
   def act(id)
     case id
     when :scan
-      @wifi_text = FmrbApp.wifi_networks(true)
+      @wifi_text = FmrbSystem.wifi_networks(true)
       parse_wifi
       draw_page
     when :connect then do_connect
     when :disconnect
-      FmrbApp.wifi_disconnect
+      FmrbSystem.wifi_disconnect
       read_state
       draw_page
     when :forget then do_forget
@@ -108,7 +108,7 @@ class WifiSettingsApp < FmrbApp
 
   # true when the text changed.
   def read_state
-    t = FmrbApp.wifi_networks(false)
+    t = FmrbSystem.wifi_networks(false)
     return false if t == @wifi_text
     @wifi_text = t
     parse_wifi
@@ -139,7 +139,7 @@ class WifiSettingsApp < FmrbApp
     ap = selected_ap
     return if ap.nil? || !ap[4]
     @msg = ""
-    FmrbApp.wifi_forget(ap[0])
+    FmrbSystem.wifi_forget(ap[0])
     read_state
     draw_page
   end

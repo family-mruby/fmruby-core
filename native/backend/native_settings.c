@@ -8,8 +8,8 @@
  * browser build has it.
  *
  * One window at most: asking again brings it in front on the page asked
- * for (the app reads the page and a count of the asks, FmrbApp.settings_page).
- * Called from the desktop's task (FmrbApp.linux_settings).
+ * for (the app reads the page and a count of the asks, FmrbSystem.settings_page).
+ * Called from the desktop's task (FmrbSystem.linux_settings).
  */
 
 #include <stdatomic.h>

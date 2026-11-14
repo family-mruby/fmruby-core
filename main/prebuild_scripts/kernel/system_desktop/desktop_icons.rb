@@ -345,7 +345,7 @@ module DesktopIconsMixin
   def desktop_linux_entry(path)
     lines = @dicon_linux_lines
     if lines.nil?
-      text = FmrbApp.linux_apps(LauncherMixin::LNX_MODE_LIST, FmrbI18n.lang)
+      text = FmrbSystem.linux_apps(LauncherMixin::LNX_MODE_LIST, FmrbI18n.lang)
       lines = text.empty? ? [] : text.split(DI_NL)
       @dicon_linux_lines = lines
     end
@@ -383,7 +383,7 @@ module DesktopIconsMixin
   # resolved; once it is ready, resolve them again and repaint.
   def tick_desktop_icons_linux
     return nil unless @dicon_linux_wait
-    head = FmrbApp.linux_apps(LauncherMixin::LNX_MODE_HEADER, FmrbI18n.lang)
+    head = FmrbSystem.linux_apps(LauncherMixin::LNX_MODE_HEADER, FmrbI18n.lang)
     return nil unless head.start_with?(LauncherMixin::LNX_READY)
     resolve_desktop_icons
     return nil if @dicon_linux_wait
@@ -531,7 +531,7 @@ module DesktopIconsMixin
         open_file_manager
       elsif lnx
         # As the launcher's "Linux" group starts it.
-        if FmrbApp.linux_launch(lnx) == 0
+        if FmrbSystem.linux_launch(lnx) == 0
           Log.info("Desktop icons: Linux app #{lnx} asked to start")
         else
           Log.warn("Desktop icons: Linux app #{lnx} could not start")

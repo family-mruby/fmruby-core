@@ -2428,6 +2428,96 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_gc
   end
 
+  # The caller's own process id (the number ps reports as :id), -1 outside an
+  # app.
+  def self.pid
+    FmrbSpxApp.fmrb_spx_app_pid
+  end
+
+  # The file this app was started from ("" for one built into the firmware).
+  def self.script_path
+    FmrbSpxApp.fmrb_spx_app_script_path.to_s
+  end
+
+  # Microseconds since boot, for timing short sections.
+  def self.uptime_us
+    FmrbSpx.fmrb_spx_board_micros
+  end
+
+  # Bytes that can still be written where path lives, nil when unknown (the
+  # same answer as the mruby binding).
+  def self.free_bytes(path)
+    s = path.to_s
+    buf = FmrbSpxApp.fmrb_spx_app_free_bytes(s, s.bytesize)
+    return nil if buf.bytesize < 8
+    SpxBytes.u32(buf, 4) * 4294967296 + SpxBytes.u32(buf, 0)
+  end
+
+  # Post a notice to the PC's notification list (the native program only;
+  # false elsewhere).
+  def self.notify(summary, body = "")
+    a = summary.to_s
+    b = body.to_s
+    FmrbSpxApp.fmrb_spx_app_notify(a, a.bytesize, b, b.bytesize) == 1
+  end
+
+  # Linux commands in a terminal (the Shell's; doc/linux_native), the same
+  # calls as the mruby binding: linux_available? says whether this machine
+  # runs them; linux_start(cmd, cwd, cols, rows) gives a handle (raises when
+  # it cannot start); linux_read the output so far ("" none yet, nil once it
+  # ended); linux_exit_code nil while it runs.
+  LINUX_SIGNALS = [:int, :term, :kill, :hup]
+  LINUX_RUNNING = -1000000   # FMRB_SPX_APP_LINUX_RUNNING (fmrb_spx_app.h)
+
+  def self.linux_available?
+    FmrbSpxApp.fmrb_spx_app_linux_available == 1
+  end
+
+  def self.linux_start(cmd, cwd, cols, rows)
+    c = cmd.nil? ? "" : cmd.to_s
+    d = cwd.to_s
+    id = FmrbSpxApp.fmrb_spx_app_linux_start(cmd.nil? ? 0 : 1, c, c.bytesize, d, d.bytesize, cols, rows)
+    if id < 0
+      why = FmrbSpxApp.fmrb_spx_app_linux_last_error.to_s
+      raise RuntimeError, (why.empty? ? "cannot start" : why)
+    end
+    id
+  end
+
+  def self.linux_read(id)
+    buf = FmrbSpxApp.fmrb_spx_app_linux_read(id)
+    return nil if FmrbSpxApp.fmrb_spx_app_linux_read_ended == 1
+    buf
+  end
+
+  def self.linux_write(id, str)
+    s = str.to_s
+    FmrbSpxApp.fmrb_spx_app_linux_write(id, s, s.bytesize)
+  end
+
+  def self.linux_signal(id, sig)
+    i = 0
+    while i < LINUX_SIGNALS.size
+      return FmrbSpxApp.fmrb_spx_app_linux_signal(id, i) == 1 if LINUX_SIGNALS[i] == sig
+      i += 1
+    end
+    false
+  end
+
+  def self.linux_exit_code(id)
+    code = FmrbSpxApp.fmrb_spx_app_linux_exit_code(id)
+    code == LINUX_RUNNING ? nil : code
+  end
+
+  def self.linux_resize(id, cols, rows)
+    FmrbSpxApp.fmrb_spx_app_linux_resize(id, cols, rows) == 1
+  end
+
+  def self.linux_close(id)
+    FmrbSpxApp.fmrb_spx_app_linux_close(id)
+    nil
+  end
+
   # ---- class methods (were C class methods; parse packed :binstr records) ----
   def self.ps
     buf = FmrbSpxApp.fmrb_spx_app_ps
@@ -2535,27 +2625,6 @@ class FmrbApp
     tables
   end
 
-  # The Linux PC's applications for the launcher (doc/linux_native L9b): only
-  # the native program as the compositor has them, and its desktop is the
-  # mruby one (lib/add/picoruby-fmrb-app: FmrbApp.linux_apps). A Spinel
-  # desktop answers as every machine without them does.
-  def self.linux_apps(mode, lang)
-    ""
-  end
-
-  def self.linux_launch(id)
-    -1
-  end
-
-  # Opening a file in a Linux application (L11): the same, none here.
-  def self.linux_handlers(path)
-    ""
-  end
-
-  def self.linux_open(id, path)
-    ""
-  end
-
   # The machine's clipboard (doc/linux_native L12a), the same as the mruby
   # FmrbApp's (lib/add/picoruby-fmrb-app): the text every app shares, at
   # most limit bytes when limit > 0 (cut before a character that would not
@@ -2654,17 +2723,20 @@ class FmrbApp
   end
 
   # Move app pid to another machine over Asterism (its node ID), as the
-  # mruby binding: nil when asked (the answer comes as "checkpoint_result"),
-  # else why not.
-  def self.move(pid, to)
+  # mruby binding: hold ms the app waits there (0: the kernel's default); nil
+  # when asked (the answer comes as "checkpoint_result"), else why not.
+  def self.move(pid, to, hold: 0)
     s = to.to_s
-    why = FmrbSpxApp.fmrb_spx_app_move(pid, s, s.bytesize)
+    why = FmrbSpxApp.fmrb_spx_app_move(pid, s, s.bytesize, hold)
     why.empty? ? nil : why
   end
 
-  def self.set_audio_mute(on)
-    FmrbSpxApp.fmrb_spx_app_set_audio_mute(on ? 1 : 0)
-    nil
+  # Ask for app pid's checkpoint image, as the mruby binding (an app on the
+  # mruby VM writes it; with restart the kernel starts the image again): nil
+  # when asked (the answer comes as "checkpoint_result"), else why not.
+  def self.checkpoint(pid, restart: false)
+    why = FmrbSpxApp.fmrb_spx_app_checkpoint(pid, restart ? 1 : 0)
+    why.empty? ? nil : why
   end
 
   # Volume step 0-10 (0 = silence); independent of the mute.
@@ -2672,36 +2744,8 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_audio_volume
   end
 
-  def self.set_audio_volume(step)
-    FmrbSpxApp.fmrb_spx_app_set_audio_volume(step)
-    nil
-  end
-
-  # Apply a volume without saving it (Config's live preview).
-  def self.preview_audio_volume(step)
-    FmrbSpxApp.fmrb_spx_app_preview_audio_volume(step)
-    nil
-  end
-
-  # The caller wrote the mute and volume into system_conf itself.
-  def self.audio_conf_saved
-    FmrbSpxApp.fmrb_spx_app_audio_conf_saved
-    nil
-  end
-
-  # Remote desktop video going out: 0 = none, 1 = MJPEG, 2 = H.264.
-  def self.rd_stream_state
-    FmrbSpxApp.fmrb_spx_app_rd_stream_state
-  end
-
   def self.wallclock
     buf = FmrbSpxApp.fmrb_spx_app_wallclock
-    return nil if buf.bytesize == 0
-    _decode_wallclock(buf)
-  end
-
-  def self.set_wallclock(year, month, day, hour, minute, second)
-    buf = FmrbSpxApp.fmrb_spx_app_set_wallclock(year, month, day, hour, minute, second)
     return nil if buf.bytesize == 0
     _decode_wallclock(buf)
   end
@@ -2727,38 +2771,7 @@ class FmrbApp
     nil
   end
 
-  def self.reboot
-    FmrbSpxApp.fmrb_spx_app_reboot
-    nil
-  end
-
-  # The OS services' power menu and battery (doc/linux_native L6), as the
-  # mruby FmrbApp's (lib/add/picoruby-fmrb-app): power_actions lists what
-  # this machine offers ([:reset] on a device, [] in the simulation and the
-  # browser), power(action) does one of them (false when not offered), and
-  # battery_level is the charge in percent or nil without a value.
-  POWER_ACTION_NAMES = [:reset, :exit, :power_off, :restart, :suspend, :lock]
-
-  def self.power_actions
-    bits = FmrbSpxApp.fmrb_spx_app_power_actions
-    out = []
-    i = 0
-    while i < POWER_ACTION_NAMES.size
-      out << POWER_ACTION_NAMES[i] if (bits & (1 << i)) != 0
-      i += 1
-    end
-    out
-  end
-
-  def self.power(action)
-    i = 0
-    while i < POWER_ACTION_NAMES.size
-      return FmrbSpxApp.fmrb_spx_app_power(1 << i) == 1 if POWER_ACTION_NAMES[i] == action
-      i += 1
-    end
-    false
-  end
-
+  # The battery's charge in percent, nil without a value.
   def self.battery_level
     b = FmrbSpxApp.fmrb_spx_app_battery
     return nil if b < 0
@@ -2770,66 +2783,9 @@ class FmrbApp
     b >= 0 && (b & 0x100) != 0
   end
 
-  # The Wi-Fi page's text (doc/wifi_settings): the same source as the mruby
-  # binding, so a Spinel desktop on a device with Wi-Fi offers the Wi-Fi
-  # window in its Network dialog too. "" where the network is not chosen
-  # here (the simulation, the browser).
-  def self.wifi_networks(scan = false)
-    FmrbSpxApp.fmrb_spx_app_wifi_networks(scan ? 1 : 0)
-  end
-
-  # The PC's settings and notices (doc/linux_native L14): only the native
-  # program has them, and its desktop is the mruby one. A Spinel desktop
-  # answers as every machine without them does: "" for the texts, -1 for
-  # notices_gen, false for opening the PC's settings window. Forgetting a
-  # network is the Wi-Fi window's, which is an mruby app.
-
-  def self.wifi_forget(ssid)
-    false
-  end
-
-  def self.bt_devices
-    ""
-  end
-
-  def self.notices_gen
-    -1
-  end
-
-  def self.notices
-    ""
-  end
-
-  def self.notice_dismiss(id)
-    nil
-  end
-
-  def self.linux_settings(page)
-    false
-  end
-
   # The native compositor's CRT look (doc/web_crt, C5): not here.
   def self.crt_state
     ""
-  end
-
-  def self.ble_start
-    FmrbSpxApp.fmrb_spx_app_ble_start != 0
-  end
-
-  # BLE host UI state, 0 = off (same source as the mruby binding).
-  def self.ble_state
-    FmrbSpxApp.fmrb_spx_app_ble_state
-  end
-
-  # The BLE settings window (doc/ruby_asterism/report/cf2.md): open it for
-  # seconds (0 closes), seconds left; same source as the mruby binding.
-  def self.ble_settings_window(seconds)
-    FmrbSpxApp.fmrb_spx_app_ble_settings_window(seconds)
-  end
-
-  def self.ble_settings_left
-    FmrbSpxApp.fmrb_spx_app_ble_settings_left
   end
 
   def self.wifi_connected?
@@ -2899,5 +2855,174 @@ class FmrbApp
 
   def self.hid_raw_unsubscribe(slot)
     FmrbSpxApp.fmrb_spx_app_hid_raw_unsubscribe(slot) == 1
+  end
+end
+
+# The machine's settings and services (doc/codebase_tidy T5), as the mruby
+# FmrbSystem (lib/add/picoruby-fmrb-app). Reading the state stays on FmrbApp.
+module FmrbSystem
+  # The Linux PC's applications for the launcher (doc/linux_native L9b): only
+  # the native program as the compositor has them, and its desktop is the
+  # mruby one (lib/add/picoruby-fmrb-app: FmrbSystem.linux_apps). A Spinel
+  # desktop answers as every machine without them does.
+  def self.linux_apps(mode, lang)
+    ""
+  end
+
+  def self.linux_launch(id)
+    -1
+  end
+
+  # Opening a file in a Linux application (L11): the same, none here.
+  def self.linux_handlers(path)
+    ""
+  end
+
+  def self.linux_open(id, path)
+    ""
+  end
+
+  def self.set_audio_mute(on)
+    FmrbSpxApp.fmrb_spx_app_set_audio_mute(on ? 1 : 0)
+    nil
+  end
+
+  def self.set_audio_volume(step)
+    FmrbSpxApp.fmrb_spx_app_set_audio_volume(step)
+    nil
+  end
+
+  # Apply a volume without saving it (Config's live preview).
+  def self.preview_audio_volume(step)
+    FmrbSpxApp.fmrb_spx_app_preview_audio_volume(step)
+    nil
+  end
+
+  # The caller wrote the mute and volume into system_conf itself.
+  def self.audio_conf_saved
+    FmrbSpxApp.fmrb_spx_app_audio_conf_saved
+    nil
+  end
+
+  # Remote desktop video going out: 0 = none, 1 = MJPEG, 2 = H.264.
+  def self.rd_stream_state
+    FmrbSpxApp.fmrb_spx_app_rd_stream_state
+  end
+
+  def self.set_wallclock(year, month, day, hour, minute, second)
+    buf = FmrbSpxApp.fmrb_spx_app_set_wallclock(year, month, day, hour, minute, second)
+    return nil if buf.bytesize == 0
+    FmrbApp._decode_wallclock(buf)
+  end
+
+  def self.reboot
+    FmrbSpxApp.fmrb_spx_app_reboot
+    nil
+  end
+
+  # The OS services' power menu (doc/linux_native L6), as the mruby
+  # FmrbSystem's (lib/add/picoruby-fmrb-app): power_actions lists what this
+  # machine offers ([:reset] on a device, [] in the simulation and the
+  # browser), power(action) does one of them (false when not offered).
+  # FmrbApp.battery_level reads the charge.
+  POWER_ACTION_NAMES = [:reset, :exit, :power_off, :restart, :suspend, :lock]
+
+  def self.power_actions
+    bits = FmrbSpxApp.fmrb_spx_app_power_actions
+    out = []
+    i = 0
+    while i < POWER_ACTION_NAMES.size
+      out << POWER_ACTION_NAMES[i] if (bits & (1 << i)) != 0
+      i += 1
+    end
+    out
+  end
+
+  def self.power(action)
+    i = 0
+    while i < POWER_ACTION_NAMES.size
+      return FmrbSpxApp.fmrb_spx_app_power(1 << i) == 1 if POWER_ACTION_NAMES[i] == action
+      i += 1
+    end
+    false
+  end
+
+  # The Wi-Fi page's text (doc/wifi_settings): the same source as the mruby
+  # binding, so a Spinel desktop on a device with Wi-Fi offers the Wi-Fi
+  # window in its Network dialog too. "" where the network is not chosen
+  # here (the simulation, the browser).
+  def self.wifi_networks(scan = false)
+    FmrbSpxApp.fmrb_spx_app_wifi_networks(scan ? 1 : 0)
+  end
+
+  # Join, leave and forget a network, Bluetooth's power and a device's link:
+  # the same calls as the mruby binding (fmrb_platform_sys.h), false where
+  # this machine cannot (the simulation, the browser).
+  def self.wifi_connect(ssid, password = "")
+    s = ssid.to_s
+    pw = password.to_s
+    FmrbSpxApp.fmrb_spx_app_wifi_connect(s, s.bytesize, pw, pw.bytesize) == 1
+  end
+
+  def self.wifi_disconnect
+    FmrbSpxApp.fmrb_spx_app_wifi_disconnect == 1
+  end
+
+  def self.wifi_forget(ssid)
+    s = ssid.to_s
+    FmrbSpxApp.fmrb_spx_app_wifi_forget(s, s.bytesize) == 1
+  end
+
+  def self.bt_power(on)
+    FmrbSpxApp.fmrb_spx_app_bt_power(on ? 1 : 0) == 1
+  end
+
+  def self.bt_connect(addr, on)
+    s = addr.to_s
+    FmrbSpxApp.fmrb_spx_app_bt_connect(s, s.bytesize, on ? 1 : 0) == 1
+  end
+
+  # The PC's settings and notices (doc/linux_native L14): only the native
+  # program has them, and its desktop is the mruby one. A Spinel desktop
+  # answers as every machine without them does: "" for the texts, -1 for
+  # notices_gen, false for opening the PC's settings window.
+
+  def self.bt_devices
+    ""
+  end
+
+  def self.notices_gen
+    -1
+  end
+
+  def self.notices
+    ""
+  end
+
+  def self.notice_dismiss(id)
+    nil
+  end
+
+  def self.linux_settings(page)
+    false
+  end
+
+  def self.ble_start
+    FmrbSpxApp.fmrb_spx_app_ble_start != 0
+  end
+
+  # BLE host UI state, 0 = off (same source as the mruby binding).
+  def self.ble_state
+    FmrbSpxApp.fmrb_spx_app_ble_state
+  end
+
+  # The BLE settings window (doc/ruby_asterism/report/cf2.md): open it for
+  # seconds (0 closes), seconds left; same source as the mruby binding.
+  def self.ble_settings_window(seconds)
+    FmrbSpxApp.fmrb_spx_app_ble_settings_window(seconds)
+  end
+
+  def self.ble_settings_left
+    FmrbSpxApp.fmrb_spx_app_ble_settings_left
   end
 end

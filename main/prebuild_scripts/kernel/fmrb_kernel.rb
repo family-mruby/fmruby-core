@@ -686,7 +686,7 @@ class FmrbKernelImpl < FmrbKernel
       end
     when "reboot"
       Log.info("Reboot requested by PID #{pid}; forwarding to desktop")
-      # Desktop VM has FmrbApp.reboot available; route there to perform the
+      # Desktop VM has FmrbSystem.reboot available; route there to perform the
       # actual esp_restart/exit. Keeping the kernel VM agnostic to FmrbApp.
       if @desktop_pid
         fwd = { "cmd" => "do_reboot" }
@@ -1304,7 +1304,7 @@ class FmrbKernelImpl < FmrbKernel
 
   # A power entry the user confirmed (the desktop's confirm dialog sends it
   # here, as it sends "reboot"): done in the desktop's VM, which has
-  # FmrbApp.power (doc/linux_native L6).
+  # FmrbSystem.power (doc/linux_native L6).
   def forward_power(pid, data)
     action = data["action"].to_s
     Log.info("Power #{action} requested by PID #{pid}; forwarding to desktop")

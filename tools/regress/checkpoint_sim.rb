@@ -40,7 +40,7 @@
 #   full          ckpt_full (fullscreen) moved from the simulation to the
 #                 native program: from Retro's 320x240 to 426x240 (on_resize),
 #                 from Modern's at the same size (none).
-#   calls         ckpt_calls, whose code calls FmrbApp.linux_settings (the
+#   calls         ckpt_calls, whose code calls FmrbSystem.linux_settings (the
 #                 native program's; the simulation has no such method; the
 #                 call is guarded and never made), moved from the native
 #                 program to the simulation: it moves, the answer names

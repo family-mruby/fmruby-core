@@ -1,0 +1,370 @@
+# 端末の設定とサービス (Wi-Fi・BLE・電源・時計・音の設定・PC の設定)。
+# デスクトップ・カーネルのアプリ・設定のアプリが使う。状態を読むだけのもの
+# (wifi_info・ps・battery_level・audio_volume など) は FmrbApp にある。
+# 実装は lib/add/picoruby-fmrb-app/ports/esp32/app.c、Spinel 版は
+# main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb。
+# 「ネイティブ版だけ」と書いたものは、ほかのビルドには無い (respond_to? で確かめる)。
+
+# 端末の設定とサービス <<en>> The machine's settings and services
+#
+# Wi-Fi・BLE・電源・時計・音の設定・PC の設定を変える。
+# 状態を読むだけのものは FmrbApp にある。
+# ```ruby
+# FmrbSystem.set_audio_mute(true)
+# ```
+# <<en>>
+# Changes the machine's Wi-Fi, BLE, power, clock, audio settings and the
+# PC's settings. Reading the state is on FmrbApp.
+# ```ruby
+# FmrbSystem.set_audio_mute(true)
+# ```
+module FmrbSystem
+  # 日付と時刻を合わせる <<en>> Set the date and time
+  #
+  # 渡すのは**地方時**。戻ってくるのは同じ時刻の UTC。**端末でしか効かない**
+  # (Linux とブラウザでは何もしない)。
+  # ```ruby
+  # FmrbSystem.set_wallclock(2026, 9, 1,
+  #                          12, 0, 0)
+  # ```
+  # <<en>>
+  # Takes **local time** and returns the same moment in UTC. **Only a device
+  # acts on it**; Linux and the browser do nothing.
+  # ```ruby
+  # FmrbSystem.set_wallclock(2026, 9, 1,
+  #                          12, 0, 0)
+  # ```
+  def self.set_wallclock: (Integer year, Integer month, Integer day, Integer hour, Integer minute, Integer second) -> Hash?
+
+  # 機械を再起動する <<en>> Restart the machine
+  #
+  # 機械ごと再起動する。**戻ってこない**。端末専用。
+  # <<en>>
+  # Restarts the machine. **Does not return.** Devices only.
+  def self.reboot: () -> void
+
+  # 本体の音を消す・戻す <<en>> Mute or unmute the whole machine
+  #
+  # true で消音。音は鳴り続けたまま出力だけ無音になる (スピーカのミュート)。
+  # 少し後 (約 2 秒) に設定に保存され、再起動後も残る。外部 MIDI 出力は止めない。
+  # ```ruby
+  # FmrbSystem.set_audio_mute(true)
+  # ```
+  # <<en>>
+  # true mutes. Sound keeps playing and only the output goes silent, like a
+  # speaker's mute. Saved, so it survives a reboot. External MIDI output is
+  # not affected.
+  # ```ruby
+  # FmrbSystem.set_audio_mute(true)
+  # ```
+  def self.set_audio_mute: (bool on) -> void
+
+  # 本体の音量を変える (0-10) <<en>> Set the machine's volume (0-10)
+  #
+  # 0 は無音、10 が最大。ミュートとは別で、ミュートを外すとこの音量に戻る。
+  # 設定に保存され、再起動後も残る。
+  # ```ruby
+  # FmrbSystem.set_audio_volume(5)
+  # ```
+  # <<en>>
+  # 0 is silence, 10 the loudest. Separate from the mute: unmuting comes back
+  # at this volume. Saved, so it survives a reboot.
+  # ```ruby
+  # FmrbSystem.set_audio_volume(5)
+  # ```
+  def self.set_audio_volume: (Integer step) -> void
+
+  # 音量を保存せずに試す <<en>> Try a volume without saving it
+  #
+  # 設定画面の試聴用。保存は audio_conf_saved か set_audio_volume で。
+  # <<en>>
+  # For a settings screen's live preview. Saving is audio_conf_saved or
+  # set_audio_volume.
+  def self.preview_audio_volume: (Integer step) -> void
+
+  # 設定ファイルに音の設定を書いたと知らせる <<en>> Say the sound settings were written
+  #
+  # system_conf に今の消音と音量を自分で書いた後に呼ぶ。待っている保存を取り消す。
+  # <<en>>
+  # Call after writing the current mute and volume into system_conf yourself.
+  # Drops the save that was waiting.
+  def self.audio_conf_saved: () -> void
+
+  # Bluetooth をはじめる <<en>> Start Bluetooth
+  #
+  # BLE を手で起動する。Retro 用。
+  # <<en>>
+  # Starts BLE by hand. For Retro.
+  def self.ble_start: () -> bool
+
+  # Bluetooth の様子 <<en>> How Bluetooth is doing
+  #
+  # ```ruby
+  # st = FmrbSystem.ble_state
+  # ```
+  def self.ble_state: () -> Integer
+
+  # BLE で設定を受け付ける時間を開く <<en>> Open the window for settings over BLE
+  #
+  # 秒数だけ開き (0 で閉じる)、残りの秒数を返す。開けなかったときは 0。
+  # 開いている間だけ、BLE のコンソールが WiFi と Asterism の設定を書ける。
+  # <<en>>
+  # Opens it for that many seconds (0 closes it) and returns the seconds
+  # left, 0 when it did not open. While it is open the BLE console may write
+  # the WiFi and Asterism settings.
+  #
+  # ```ruby
+  # FmrbSystem.ble_settings_window(300)
+  # ```
+  def self.ble_settings_window: (Integer seconds) -> Integer
+
+  # 設定を受け付ける時間の残り秒数 <<en>> Seconds left in the settings window
+  #
+  # 閉じていれば 0。
+  # <<en>>
+  # 0 when it is closed.
+  def self.ble_settings_left: () -> Integer
+
+  # 画面を配信中かどうかの様子 <<en>> Whether the screen is being streamed
+  #
+  # 遠隔デスクトップに誰か繋がっているか。
+  # <<en>>
+  # Whether anyone is watching over the remote desktop.
+  def self.rd_stream_state: () -> Integer
+
+  # 電源のメニューにある操作 <<en>> The power actions this machine offers
+  #
+  # `:reset`・`:exit`・`:power_off`・`:restart`・`:suspend`・`:lock` のうち
+  # この端末でできるもの。端末は `[:reset]`、sim とブラウザ版は空。
+  # ```ruby
+  # FmrbSystem.power_actions
+  # ```
+  # <<en>>
+  # Which of `:reset`, `:exit`, `:power_off`, `:restart`, `:suspend` and
+  # `:lock` this machine offers: `[:reset]` on a device, none in the
+  # simulation and the browser.
+  # ```ruby
+  # FmrbSystem.power_actions
+  # ```
+  def self.power_actions: () -> Array
+
+  # 電源の操作を 1 つ行う <<en>> Do one of the power actions
+  #
+  # できない操作なら false。
+  # ```ruby
+  # FmrbSystem.power(:reset)
+  # ```
+  # <<en>>
+  # false when this machine does not offer it.
+  # ```ruby
+  # FmrbSystem.power(:reset)
+  # ```
+  def self.power: (Symbol action) -> bool
+
+  # PC のアプリの一覧 (ランチャー用) <<en>> The PC's applications, for the launcher
+  #
+  # ネイティブ版がコンポジタのときだけ中身がある。ほかは "" 。
+  # 1 行目が見出し、mode 0 なら続けて 1 つずつ "名前\tid\tアイコン"。
+  # mode 1 は読み直し、mode 2 は見出しだけ。
+  # ```ruby
+  # FmrbSystem.linux_apps(0, "ja")
+  # ```
+  # <<en>>
+  # Only the native program as the compositor has them; "" elsewhere. A
+  # header line, then for mode 0 one "name\tid\ticon" line each. Mode 1
+  # reads them again, mode 2 gives the header only.
+  # ```ruby
+  # FmrbSystem.linux_apps(0, "ja")
+  # ```
+  def self.linux_apps: (Integer mode, String lang) -> String
+
+  # PC のアプリを起動する <<en>> Start one of the PC's applications
+  #
+  # 頼めたら 0、無いときは -1。待たない。
+  # ```ruby
+  # FmrbSystem.linux_launch(id)
+  # ```
+  # <<en>>
+  # 0 when asked, -1 when there is no such entry. Never waits.
+  # ```ruby
+  # FmrbSystem.linux_launch(id)
+  # ```
+  def self.linux_launch: (Integer id) -> Integer
+
+  # ファイルを開ける PC のアプリ <<en>> The PC's applications that open a file
+  #
+  # 1 行に 1 つ。ネイティブ版だけ、ほかは "" 。
+  # ```ruby
+  # FmrbSystem.linux_handlers(
+  #   "/home/a.png")
+  # ```
+  # <<en>>
+  # One a line; the native program only, "" elsewhere.
+  # ```ruby
+  # FmrbSystem.linux_handlers(
+  #   "/home/a.png")
+  # ```
+  def self.linux_handlers: (String path) -> String
+
+  # PC のアプリでファイルを開く <<en>> Open a file in one of the PC's applications
+  #
+  # 頼めたら ""、だめなら理由。
+  # ```ruby
+  # FmrbSystem.linux_open(id, path)
+  # ```
+  # <<en>>
+  # "" when asked, else why not.
+  # ```ruby
+  # FmrbSystem.linux_open(id, path)
+  # ```
+  def self.linux_open: (Integer id, String path) -> String
+
+  # Wi-Fi の網の一覧 <<en>> The Wi-Fi networks
+  #
+  # Wi-Fi の画面の文。Family mruby が網を選ばない所 (sim・ブラウザ版) では
+  # "" 。true を渡すと探し直しも頼む。
+  # ```ruby
+  # FmrbSystem.wifi_networks(true)
+  # ```
+  # <<en>>
+  # The Wi-Fi page's text; "" where Family mruby does not choose the
+  # network (the simulation, the browser). true also asks for a scan.
+  # ```ruby
+  # FmrbSystem.wifi_networks(true)
+  # ```
+  def self.wifi_networks: (bool scan) -> String
+
+  # Wi-Fi の網につなぐ <<en>> Join a Wi-Fi network
+  #
+  # ```ruby
+  # FmrbSystem.wifi_connect("home",
+  #                         "secret")
+  # ```
+  def self.wifi_connect: (String ssid, String password) -> bool
+
+  # Wi-Fi の網から離れる <<en>> Leave the Wi-Fi network
+  #
+  # ```ruby
+  # FmrbSystem.wifi_disconnect
+  # ```
+  def self.wifi_disconnect: () -> bool
+
+  # 覚えた Wi-Fi の網を忘れる <<en>> Forget a saved Wi-Fi network
+  #
+  # ```ruby
+  # FmrbSystem.wifi_forget("home")
+  # ```
+  def self.wifi_forget: (String ssid) -> bool
+
+  # Bluetooth の機器の一覧 <<en>> The Bluetooth devices
+  #
+  # PC だけ。ほかは "" 。
+  # <<en>>
+  # The PC only; "" elsewhere.
+  def self.bt_devices: () -> String
+
+  # Bluetooth を入れる・切る <<en>> Turn Bluetooth on or off
+  #
+  # ```ruby
+  # FmrbSystem.bt_power(true)
+  # ```
+  def self.bt_power: (bool on) -> bool
+
+  # Bluetooth の機器とつなぐ・離す <<en>> Connect or disconnect a Bluetooth device
+  #
+  # ```ruby
+  # FmrbSystem.bt_connect(addr, true)
+  # ```
+  def self.bt_connect: (String address, bool on) -> bool
+
+  # PC の知らせが変わった回数 <<en>> How many times the PC's notices changed
+  #
+  # 知らせの無い端末では -1。
+  # <<en>>
+  # -1 where there are no notices.
+  def self.notices_gen: () -> Integer
+
+  # PC の知らせの一覧 <<en>> The PC's notices
+  #
+  # 1 行に 1 つ "id\t種類\tアプリ\t文\t本文"。無い端末では "" 。
+  # <<en>>
+  # One "id\tkind\tapp\tsummary\tbody" line each; "" where there are none.
+  def self.notices: () -> String
+
+  # PC の知らせを消す <<en>> Dismiss one of the PC's notices
+  #
+  # ```ruby
+  # FmrbSystem.notice_dismiss(id)
+  # ```
+  def self.notice_dismiss: (Integer id) -> void
+
+  # 代役の Linux の Window の題 <<en>> The stand-in's Linux window title
+  #
+  # Linux の Window があれば題、閉じたら false、代役でなければ nil。
+  # ネイティブ版にだけある。
+  # <<en>>
+  # The title while the Linux window is there, false once it has gone, nil
+  # when the caller is no stand-in. The native program only.
+  def self.wl_window: () -> (String | bool | nil)
+
+  # Linux の Window を閉じるよう頼む <<en>> Ask the Linux window to close
+  #
+  # 保存の確認をしたり断ったりするのはその Window のプログラム。ネイティブ版だけ。
+  # <<en>>
+  # Its program may ask about unsaved work first, or refuse. The native
+  # program only.
+  def self.wl_close: () -> bool
+
+  # 自分のキャンバスの透ける色 (ネイティブ版だけ) <<en>> The canvas's colour key (native only)
+  #
+  # 代役が角の外を塗る色 (RGB332)。
+  # <<en>>
+  # The colour (RGB332) the stand-in paints outside its rounded corners.
+  def self.wl_key: () -> Integer
+
+  # Linux のキーボードの配列 (ネイティブ版だけ) <<en>> Linux's keyboard layout (native only)
+  #
+  # "jp" か "us"。keyboard_layout = "auto" がこれに従う。
+  # <<en>>
+  # "jp" or "us"; keyboard_layout = "auto" follows it.
+  def self.linux_keyboard: () -> String
+
+  # PC の設定の Window を開く (ネイティブ版だけ) <<en>> Open the PC's settings window (native only)
+  #
+  # "wifi"・"bluetooth"・"display" のページで開く。
+  # ```ruby
+  # FmrbSystem.linux_settings("wifi")
+  # ```
+  # <<en>>
+  # On the "wifi", "bluetooth" or "display" page.
+  # ```ruby
+  # FmrbSystem.linux_settings("wifi")
+  # ```
+  def self.linux_settings: (String page) -> bool
+
+  # PC の設定で頼まれたページ <<en>> The settings page asked for
+  #
+  # ネイティブ版だけ。下の 2 ビットがページ (0 Wi-Fi、1 Bluetooth、2 Display)、その上が頼まれた回数。
+  # <<en>>
+  # The native program only. The page in the low two bits (0 Wi-Fi, 1
+  # Bluetooth, 2 Display), the
+  # count of the asks above them.
+  def self.settings_page: () -> Integer
+
+  # ブラウン管の見た目を変える (ネイティブ版だけ) <<en>> Set the CRT look (native only)
+  #
+  # crt と 8 つの強さ (走査線・マスク・にじみ・曲がり・周辺減光・NTSC・
+  # ちらつき・ノイズ)。描けない所では false。
+  # ```ruby
+  # FmrbSystem.crt_set(true, 55, 30,
+  #   30, 15, 40, 0, 0, 0)
+  # ```
+  # <<en>>
+  # crt and eight strengths (scanline, mask, glow, curve, vignette, ntsc,
+  # flicker, noise); false where it cannot be drawn.
+  # ```ruby
+  # FmrbSystem.crt_set(true, 55, 30,
+  #   30, 15, 40, 0, 0, 0)
+  # ```
+  def self.crt_set: (bool crt, Integer scanline, Integer mask, Integer glow, Integer curve, Integer vignette, Integer ntsc, Integer flicker, Integer noise) -> bool
+end

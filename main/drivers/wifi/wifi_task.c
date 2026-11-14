@@ -26,7 +26,7 @@
 // at start and whenever the link drops, and joins the strongest saved
 // network in reach, then the next strongest, then the hidden ones by name.
 // When none works it waits and scans again, the wait doubling from 5 s to
-// 2 min. The Wi-Fi page's requests (FmrbApp.wifi_networks / wifi_connect /
+// 2 min. The Wi-Fi page's requests (FmrbSystem.wifi_networks / wifi_connect /
 // wifi_disconnect / wifi_forget, through fmrb_platform_sys.h) are queued to
 // the same task and never wait: a scan is asynchronous (SCAN_DONE), and the
 // event handler only wakes the task. A network chosen on the page is joined

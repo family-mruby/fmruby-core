@@ -55,7 +55,7 @@ typedef struct {
 
 /** Power actions, as bits of power_actions() and the argument of power(). */
 typedef enum {
-    FMRB_SYS_POWER_RESET    = 1u << 0,  /* the device's reset (FmrbApp.reboot) */
+    FMRB_SYS_POWER_RESET    = 1u << 0,  /* the device's reset (FmrbSystem.reboot) */
     FMRB_SYS_POWER_EXIT     = 1u << 1,  /* end the program (back to the launcher) */
     FMRB_SYS_POWER_OFF      = 1u << 2,  /* power the computer off */
     FMRB_SYS_POWER_RESTART  = 1u << 3,  /* restart the computer */

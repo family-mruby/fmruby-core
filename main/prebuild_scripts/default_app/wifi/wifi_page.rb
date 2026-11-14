@@ -1,14 +1,14 @@
 # The Wi-Fi page (doc/wifi_settings): one page, two homes.
 #
 #   - the PC's settings window (native/apps/linux_settings.app.rb, its
-#     "Wi-Fi" tab; NetworkManager behind FmrbApp.wifi_networks), which takes
+#     "Wi-Fi" tab; NetworkManager behind FmrbSystem.wifi_networks), which takes
 #     this file in through its "# combine:" line;
 #   - the devices' Wi-Fi window (default/wifi, wifi.app.rb beside this
 #     directory; the station's manager task behind the same calls,
 #     main/drivers/wifi/wifi_task.c), opened from the desktop's Network
 #     dialog.
 #
-# Both read FmrbApp.wifi_networks: "wifi\t<status>\t<active>\t<busy>\t<code>\t<arg>"
+# Both read FmrbSystem.wifi_networks: "wifi\t<status>\t<active>\t<busy>\t<code>\t<arg>"
 # then "ap\t<ssid>\t<strength>\t<secured>\t<active>\t<saved>[\t<in reach>]"
 # per network. Only a device writes the seventh field (0: a saved network
 # that the last scan did not see) and the statuses disabled / ble / failed
@@ -172,7 +172,7 @@ module WifiPageMixin
     end
     pw = @pw
     @pw = ""
-    FmrbApp.wifi_connect(ap[0], pw)
+    FmrbSystem.wifi_connect(ap[0], pw)
     pw = nil
     @msg = ""
     true

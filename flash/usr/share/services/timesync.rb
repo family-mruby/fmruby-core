@@ -241,7 +241,7 @@ class TimeSync
   # ahead, labelled UTC. The next boot then started nine hours in the future
   # until the sync corrected it. Caught on hardware -- the simulator writes no
   # RTC and could not have shown it. (Set Clock avoids the same trap by taking
-  # the UTC hash that FmrbApp.set_wallclock hands back, which is the local ->
+  # the UTC hash that FmrbSystem.set_wallclock hands back, which is the local ->
   # UTC conversion; here there is no local time involved at any point.)
   #
   # Retro carries an RX8900 and Modern an RX8130, but services are Modern

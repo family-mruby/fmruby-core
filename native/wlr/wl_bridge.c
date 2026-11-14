@@ -42,8 +42,8 @@
  *     the places carry how each window is laid out, and the compositor
  *     tells the window (maximized, tiled). A window so laid out keeps the
  *     stand-in's size: a size of its own (FIT) does not shrink it.
- *   - a window goes away: the stand-in sees it (FmrbApp.wl_window) and ends.
- *   - the stand-in's close button: FmrbApp.wl_close asks the window to close
+ *   - a window goes away: the stand-in sees it (FmrbSystem.wl_window) and ends.
+ *   - the stand-in's close button: FmrbSystem.wl_close asks the window to close
  *     (xdg close), so the program can ask about unsaved work first.
  *   - a stand-in that ends while its window is still there (killed): the
  *     window is asked to close, and a new stand-in comes after a while if it
@@ -647,7 +647,7 @@ const fmrb_input_source_t fmrb_input_source_wl_bridge = {
     .start = bridge_start,
 };
 
-/* ---- the stand-ins' calls (FmrbApp.wl_window / wl_close / wl_key) ------- */
+/* ---- the stand-ins' calls (FmrbSystem.wl_window / wl_close / wl_key) ------- */
 
 /* The stand-in's canvas key (L9d): a colour its frame never draws -- not the
  * hole (0x01), nor the theme's title bar, text and border it is drawn in --

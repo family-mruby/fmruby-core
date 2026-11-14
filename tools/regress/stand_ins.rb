@@ -180,25 +180,13 @@ class FmrbApp
   def self.uptime_us = Regress::Env.ms * 1000
   def self.script_path = Regress::Env.app_path
   def self.wallclock = [2026, 10, 25, 12, ((Regress::Env.ms - 1_000_000) / 60_000) % 60, ((Regress::Env.ms - 1_000_000) / 1000) % 60]
-  def self.set_wallclock(*) = true
   def self.gfx_stats = { frames: 100, cmds: 1000, bytes: 100_000, dropped: 0 }
   def self.enable_cursor = nil
   def self.set_cursor_visible(*) = nil
-  def self.reboot = nil
-  def self.ble_start = nil
-  def self.ble_state = 0
-  def self.ble_settings_window(*) = nil
-  def self.ble_settings_left = nil
   def self.set_kana_mode(*) = nil
   def self.audio_muted? = false
   def self.path_read_only?(_path) = false
   def self.wifi_info = Regress::Env.wifi
-  # The PC's settings and notices (L14): none, as in the simulation.
-  def self.wifi_networks(_scan = false) = ""
-  def self.wifi_forget(_ssid) = false
-  def self.bt_devices = ""
-  def self.notices_gen = -1
-  def self.notices = ""
   def self.method_missing(n, *) = Regress::Env.note_unstubbed("FmrbApp.#{n}")
   def self.respond_to_missing?(*) = true
 
@@ -235,6 +223,24 @@ class FmrbApp
     Regress::Env.outbox << [dest, type, data]
     nil
   end
+end
+
+# The machine's settings and services (FmrbSystem, doc/codebase_tidy T5).
+module FmrbSystem
+  def self.set_wallclock(*) = true
+  def self.reboot = nil
+  def self.ble_start = nil
+  def self.ble_state = 0
+  def self.ble_settings_window(*) = nil
+  def self.ble_settings_left = nil
+  # The PC's settings and notices (L14): none, as in the simulation.
+  def self.wifi_networks(_scan = false) = ""
+  def self.wifi_forget(_ssid) = false
+  def self.bt_devices = ""
+  def self.notices_gen = -1
+  def self.notices = ""
+  def self.method_missing(n, *) = Regress::Env.note_unstubbed("FmrbSystem.#{n}")
+  def self.respond_to_missing?(*) = true
 end
 
 # The firmware's mic, a stand-in that hears silence.

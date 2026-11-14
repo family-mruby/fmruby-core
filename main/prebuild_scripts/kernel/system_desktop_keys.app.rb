@@ -17,7 +17,7 @@
 # key system_conf's keys_switcher_key names) lists the running apps, Enter
 # brings one to the front, Delete ends it, Esc goes back. Esc held for
 # keys_esc_long_ms closes the app in front (host_task). The menu ends with
-# the machine's power entries (FmrbApp.power_actions, L6): Exit alone on the
+# the machine's power entries (FmrbSystem.power_actions, L6): Exit alone on the
 # Cardputer, or Power off / Restart / Suspend, each asked once more first. Held while this
 # desktop has the keyboard, host_task asks it ("keys_esc_long"): the
 # switcher, the File Manager and the file dialog close back to the menu, and
@@ -207,7 +207,7 @@ class KeysDesktopApp < FmrbApp
     @menu_top = 0
   end
 
-  # The machine's power entries, last (FmrbApp.power_actions). Exit alone
+  # The machine's power entries, last (FmrbSystem.power_actions). Exit alone
   # where ending the program is all there is (the Cardputer: back to
   # APPLaunch).
   # Where Family mruby is the login session (L18: Power off is offered, so
@@ -221,12 +221,12 @@ class KeysDesktopApp < FmrbApp
     end
     false
   end
-  POWER_EXIT_KEY = login_session?(FmrbApp.power_actions) ? :power_logout : :power_exit
+  POWER_EXIT_KEY = login_session?(FmrbSystem.power_actions) ? :power_logout : :power_exit
   POWER_LABELS = { exit: POWER_EXIT_KEY, power_off: :power_off,
                    restart: :power_restart, suspend: :power_suspend }
 
   # Same order as the mouse desktop's power menu (2026-11-08 user): Suspend,
-  # Exit / Log Out, Restart, Power off. FmrbApp.power_actions lists them in
+  # Exit / Log Out, Restart, Power off. FmrbSystem.power_actions lists them in
   # its bit order, not this one.
   POWER_MENU_ORDER = [:suspend, :exit, :restart, :power_off]
 
@@ -240,7 +240,7 @@ class KeysDesktopApp < FmrbApp
   end
 
   def add_power_items(items)
-    actions = FmrbApp.power_actions
+    actions = FmrbSystem.power_actions
     i = 0
     while i < POWER_MENU_ORDER.size
       a = POWER_MENU_ORDER[i]
@@ -416,7 +416,7 @@ class KeysDesktopApp < FmrbApp
   def power_chosen(action)
     if action == :exit
       Log.info("keys desktop: Exit chosen")
-      FmrbApp.power(:exit)
+      FmrbSystem.power(:exit)
       return
     end
     @power_confirm = action
@@ -433,7 +433,7 @@ class KeysDesktopApp < FmrbApp
     menu_clamp_top
     if scancode == FmrbConst::KEY_ENTER
       Log.info("keys desktop: #{action} confirmed")
-      FmrbApp.power(action)
+      FmrbSystem.power(action)
     end
     draw_foreground
   end
@@ -794,7 +794,7 @@ class KeysDesktopApp < FmrbApp
     elsif cmd == "keys_esc_long"
       esc_held(msg["quit"] == true)
     elsif cmd == "do_reboot"
-      FmrbApp.reboot
+      FmrbSystem.reboot
     end
     nil
   end

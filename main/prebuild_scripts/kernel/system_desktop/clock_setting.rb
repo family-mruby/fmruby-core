@@ -57,13 +57,13 @@ module ClockSettingMixin
     if FmrbConst::PLATFORM == "esp32"
       i2c = nil
       begin
-        # FmrbApp.set_wallclock interprets the six fields as LOCAL time,
+        # FmrbSystem.set_wallclock interprets the six fields as LOCAL time,
         # converts to a UTC epoch via mktime() (respects TZ env), and sets
         # the system clock. It returns the UTC equivalent as a hash, which
         # we feed straight into the RX8900 RTC so the chip stores UTC.
-        utc = FmrbApp.set_wallclock(year, month, day, hour, minute, second)
+        utc = FmrbSystem.set_wallclock(year, month, day, hour, minute, second)
         if utc.nil?
-          Log.error("FmrbApp.set_wallclock failed (invalid date?)")
+          Log.error("FmrbSystem.set_wallclock failed (invalid date?)")
           close_clock_setting
           return
         end

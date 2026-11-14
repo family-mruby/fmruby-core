@@ -5,7 +5,7 @@
 # spawns it from its bytecode; no device, simulation or browser build has
 # it): the desktop's network dialog opens it on the Wi-Fi page ("Wi-Fi..."),
 # its menu on the Bluetooth page. Asking again brings it in front and turns
-# the page (FmrbApp.settings_page counts the asks).
+# the page (FmrbSystem.settings_page counts the asks).
 #
 # Wi-Fi (NetworkManager, native/sys/linux_net.h): the networks in reach, the
 # strongest of each name, the one in use first; choose one and Connect. A
@@ -21,7 +21,7 @@
 #
 # Display (the compositor's CRT look, doc/web_crt C5 and C6): Sharp or CRT
 # and the eight strengths (0-100; NTSC's colour bleed and the two time
-# effects, flicker and noise, in a second column), applied at once (FmrbApp.crt_set asks the
+# effects, flicker and noise, in a second column), applied at once (FmrbSystem.crt_set asks the
 # compositor), and kept in the [crt] table of /etc/system_conf.toml, which
 # the next session starts from (it wins over the session file's --set).
 # Two buttons put in a set of all eight strengths at once (not the on/off),
@@ -109,7 +109,7 @@ class LinuxSettingsApp < FmrbApp
     @crt_here = @crt_text != ""
     parse_crt
     @crt_dirty = false
-    @ask = FmrbApp.settings_page
+    @ask = FmrbSystem.settings_page
     @page = ask_page(@ask)
     @wifi_text = nil
     @bt_text = nil
@@ -127,7 +127,7 @@ class LinuxSettingsApp < FmrbApp
   end
 
   def on_update
-    ask = FmrbApp.settings_page
+    ask = FmrbSystem.settings_page
     if ask != @ask
       @ask = ask
       switch_page(ask_page(ask))
@@ -161,7 +161,7 @@ class LinuxSettingsApp < FmrbApp
 
   private
 
-  # The page asked for (FmrbApp.settings_page's low two bits); Display
+  # The page asked for (FmrbSystem.settings_page's low two bits); Display
   # only where the look can be drawn.
   def ask_page(ask)
     p = ask & 3
@@ -273,13 +273,13 @@ class LinuxSettingsApp < FmrbApp
       end
       crt_change(@crt_on, st)
     when :scan
-      @wifi_text = FmrbApp.wifi_networks(true)
+      @wifi_text = FmrbSystem.wifi_networks(true)
       parse_wifi
       draw_page
     when :connect then do_connect
     when :disconnect then do_disconnect
     when :power
-      FmrbApp.bt_power(!@bt_powered)
+      FmrbSystem.bt_power(!@bt_powered)
       draw_page
     end
   end
@@ -296,13 +296,13 @@ class LinuxSettingsApp < FmrbApp
       sync_crt_widgets
       Log.info("settings: display #{t == '' ? 'unavailable' : t}")
     elsif @page == :wifi
-      t = FmrbApp.wifi_networks(false)
+      t = FmrbSystem.wifi_networks(false)
       return false if !force && t == @wifi_text
       @wifi_text = t
       parse_wifi
       log_state("wifi", @wifi_head, @aps)
     else
-      t = FmrbApp.bt_devices
+      t = FmrbSystem.bt_devices
       return false if !force && t == @bt_text
       @bt_text = t
       parse_bt
@@ -342,7 +342,7 @@ class LinuxSettingsApp < FmrbApp
     @crt_on = on
     @crt_s = strengths.dup if strengths
     sync_crt_widgets
-    ok = FmrbApp.crt_set(@crt_on, @crt_s[0], @crt_s[1], @crt_s[2], @crt_s[3], @crt_s[4],
+    ok = FmrbSystem.crt_set(@crt_on, @crt_s[0], @crt_s[1], @crt_s[2], @crt_s[3], @crt_s[4],
                          @crt_s[5], @crt_s[6], @crt_s[7])
     @msg = ok ? FmrbI18n.t(:st_crt_kept) : FmrbI18n.t(:st_crt_gone)
     @crt_dirty = ok
@@ -441,7 +441,7 @@ class LinuxSettingsApp < FmrbApp
     else
       d = @devs[@sel]
       return if d.nil?
-      FmrbApp.bt_connect(d[0], true)
+      FmrbSystem.bt_connect(d[0], true)
     end
     read_state(true)
     draw_page
@@ -449,11 +449,11 @@ class LinuxSettingsApp < FmrbApp
 
   def do_disconnect
     if @page == :wifi
-      FmrbApp.wifi_disconnect
+      FmrbSystem.wifi_disconnect
     else
       d = @devs[@sel]
       return if d.nil?
-      FmrbApp.bt_connect(d[0], false)
+      FmrbSystem.bt_connect(d[0], false)
     end
     read_state(true)
     draw_page

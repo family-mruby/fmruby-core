@@ -51,7 +51,7 @@
 # working tree's flash/home/asterism, written for the run and put back as it
 # was after it):
 #
-#   asterism calls     ckpt_calls (it calls FmrbApp.linux_settings, guarded):
+#   asterism calls     ckpt_calls (it calls FmrbSystem.linux_settings, guarded):
 #                      asked first, the simulation names linux_settings as
 #                      missing, it moves all the same and the simulation logs
 #                      the warning.

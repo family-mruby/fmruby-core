@@ -17,7 +17,7 @@
 ## 今の作り (2026-11-12 に確認)
 
 - ネイティブ版: 設定アプリ (`native/apps/linux_settings.app.rb`) の Wi-Fi のページ。探す・つなぐ・切る。中は NetworkManager。
-  ページが使う口は `FmrbApp.wifi_networks` ほか (OS がネットワークを選ばせてくれる環境だけ出す作り)。
+  ページが使う口は `FmrbSystem.wifi_networks` ほか (OS がネットワークを選ばせてくれる環境だけ出す作り)。
 - ESP32: デスクトップの Network の画面 (`system_desktop/network_dialog.rb`) は見るだけ (状態・SSID・IP・名前)。
   つなぎ先は `/home/wifi.toml` (無ければ `/etc/wifi.toml`) の `[wifi]` の `ssid`・`password` の 1 組だけ。
   `/home/wifi.toml` は遠隔 (HTTP・BLE) から読めない作り。
@@ -26,7 +26,7 @@
 
 1. **ページは 1 つ**: ネイティブ版の Wi-Fi のページを共通にして、ESP32 でも同じ部品を使う (デザインをそろえる)。
    開くのはデスクトップの Network の画面のボタン。Retro (320x240) にも収める。英日。
-2. **口をそろえる**: `FmrbApp.wifi_networks` (探した結果: SSID・強さ・鍵の有無・覚えているか)、つなぐ・切る・忘れるの口を、
+2. **口をそろえる**: `FmrbSystem.wifi_networks` (探した結果: SSID・強さ・鍵の有無・覚えているか)、つなぐ・切る・忘れるの口を、
    ESP32 の側にも作る。探すのは ESP32 の Wi-Fi の探索 (P4・Tab5 は C6 を esp_hosted で通す)。
 3. **覚える形**: `/home/wifi.toml` に複数のネットワークを持つ (例 `[[networks]]` の並び。今の `[wifi]` の 1 組も読む)。
    つないだら、そのネットワークを覚える。忘れる操作でその組を消す。パスワードはこのファイルにだけ置く (遠隔から読めない

@@ -70,7 +70,7 @@ module FileManagerMixin
     # Asked once per opening: "" on every machine without Linux apps (the
     # devices, the simulation, the browser, a native machine that is not the
     # compositor), so the item and the Linux defaults are never offered there.
-    @fmgr_linux = FmrbApp.linux_apps(2, FmrbI18n.lang) != ""
+    @fmgr_linux = FmrbSystem.linux_apps(2, FmrbI18n.lang) != ""
     close_launcher
     close_dropdown
     scan_file_manager_dir
@@ -839,7 +839,7 @@ module FileManagerMixin
   # nothing starts: with tell, a notice says so; without, the caller goes on
   # (false).
   def fmgr_linux_open(id, vpath, name, tell)
-    app = FmrbApp.linux_open(id, vpath)
+    app = FmrbSystem.linux_open(id, vpath)
     if app.empty?
       Log.info("File manager: no Linux app opened #{vpath}#{id.empty? ? '' : ' (' + id + ')'}")
       if tell
@@ -860,7 +860,7 @@ module FileManagerMixin
     entry = @file_manager_entries[idx]
     return nil if entry[:is_dir] || entry[:special] || entry[:name] == ".."
     vpath = @file_manager_dir == "/" ? "/#{entry[:name]}" : "#{@file_manager_dir}/#{entry[:name]}"
-    text = FmrbApp.linux_handlers(vpath)
+    text = FmrbSystem.linux_handlers(vpath)
     apps = []
     lines = text.split("\n")
     type = ""

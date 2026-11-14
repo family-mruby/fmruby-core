@@ -12,6 +12,12 @@ class FmrbApp
     "en"
   end
 
+  # A full GC on this VM's heap (the Spinel build: its task's heap).
+  def self.gc
+    GC.start
+    nil
+  end
+
   TITLE_BAR_H = 11
   CORNER_R = 4
   TRANSPARENT_COLOR = 0x01

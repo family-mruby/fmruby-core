@@ -1273,7 +1273,7 @@ static mrb_value mrb_fmrb_app_s_wallclock(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
-// FmrbApp.set_wallclock(year, month, day, hour, minute, second)
+// FmrbSystem.set_wallclock(year, month, day, hour, minute, second)
 //   -> Hash {year:, month:, day:, hour:, minute:, second:}
 //
 // Interprets the six arguments as LOCAL time fields, converts to a UTC
@@ -1498,7 +1498,7 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
-// FmrbApp.reboot -> never returns (on the native program: the program ends
+// FmrbSystem.reboot -> never returns (on the native program: the program ends
 // shortly after)
 // Restarts the system. On ESP32 esp_restart() (no power-cycle reset reason
 // on next boot). In the simulation the host process exits so the SDL harness
@@ -1517,7 +1517,7 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
-// FmrbApp.power_actions -> Array of Symbols: what the desktop's power menu
+// FmrbSystem.power_actions -> Array of Symbols: what the desktop's power menu
 // offers on this machine (fmrb_platform_sys.h). [:reset] on a device, [] in
 // the simulation and the browser, [:exit] or [:power_off, :restart,
 // :suspend] on the native program by its machine definition, and :lock on
@@ -1548,7 +1548,7 @@ static mrb_value mrb_fmrb_app_s_power_actions(mrb_state *mrb, mrb_value klass)
     return ary;
 }
 
-// FmrbApp.power(action) -> false when it did not happen. action is one of
+// FmrbSystem.power(action) -> false when it did not happen. action is one of
 // power_actions' symbols. :exit ends the program (it returns true and the
 // program stops shortly after); the others go to the OS.
 static mrb_value mrb_fmrb_app_s_power(mrb_state *mrb, mrb_value klass)
@@ -1813,13 +1813,13 @@ static mrb_value mrb_fmrb_app_s_linux_close(mrb_state *mrb, mrb_value klass)
 
 // ---- The Linux PC's applications (doc/linux_native L9b, fmrb_platform_sys.h) ----
 //
-// FmrbApp.linux_apps(mode, lang) -> String. "" on every machine without them
+// FmrbSystem.linux_apps(mode, lang) -> String. "" on every machine without them
 //   (the devices, the simulation, the browser, a native machine that is not
 //   the compositor). Else the launcher's list as text: a header line
 //   ("ready\t<group icon>" or "loading\t<group icon>"), then for mode 0 one
 //   "name\tid\ticon" line per entry. mode 1 reads the entries again, mode 2
 //   gives the header only. lang picks the names (Name[ja] for "ja").
-// FmrbApp.linux_launch(id) -> Integer. 0 asked to start, -1 no such entry or
+// FmrbSystem.linux_launch(id) -> Integer. 0 asked to start, -1 no such entry or
 //   not available. Never waits.
 static mrb_value mrb_fmrb_app_s_linux_apps(mrb_state *mrb, mrb_value klass)
 {
@@ -1854,11 +1854,11 @@ static mrb_value mrb_fmrb_app_s_linux_launch(mrb_state *mrb, mrb_value klass)
 
 // ---- Opening a file in a Linux application (doc/linux_native L11) ----
 //
-// FmrbApp.linux_handlers(path) -> String. "" on every machine without Linux
+// FmrbSystem.linux_handlers(path) -> String. "" on every machine without Linux
 //   applications, and for a file with no place on Linux. Else
 //   "type\t<MIME type, or empty>\n", then "name\tid\n" for each application
 //   that opens it, the default first. path is a Family mruby path.
-// FmrbApp.linux_open(id, path) -> String. The application's name when it was
+// FmrbSystem.linux_open(id, path) -> String. The application's name when it was
 //   asked to start (id "" is the default for the file's type), "" when not
 //   (the reason is in the log). Never waits for the application.
 static mrb_value mrb_fmrb_app_s_linux_handlers(mrb_state *mrb, mrb_value klass)
@@ -1960,24 +1960,24 @@ static mrb_value mrb_fmrb_app_s_clipboard_gen(mrb_state *mrb, mrb_value klass)
 // from their station (doc/wifi_settings, wifi_task.h); Bluetooth and the
 // notices are "not available" there too.
 //
-// FmrbApp.wifi_networks(scan = false) -> String. The Wi-Fi state and the
+// FmrbSystem.wifi_networks(scan = false) -> String. The Wi-Fi state and the
 //   networks in reach: "wifi\t<status>\t<active>\t<busy>\t<code>\t<arg>"
 //   then "ap\t<ssid>\t<strength>\t<secured>\t<active>\t<saved>" per
 //   network (native/sys/linux_net.h). scan true asks for a scan too.
-// FmrbApp.wifi_connect(ssid, password = "") -> bool (queued). The password
+// FmrbSystem.wifi_connect(ssid, password = "") -> bool (queued). The password
 //   goes to the OS (NetworkManager) and is not kept here.
-// FmrbApp.wifi_disconnect -> bool.
-// FmrbApp.wifi_forget(ssid) -> bool (queued). Drops a saved network from the
+// FmrbSystem.wifi_disconnect -> bool.
+// FmrbSystem.wifi_forget(ssid) -> bool (queued). Drops a saved network from the
 //   device's wifi.toml (doc/wifi_settings); false on the PC, whose networks
 //   NetworkManager keeps.
-// FmrbApp.bt_devices -> String. "bt\t<status>\t<powered>\t<busy>\t<code>\t<arg>"
+// FmrbSystem.bt_devices -> String. "bt\t<status>\t<powered>\t<busy>\t<code>\t<arg>"
 //   then "dev\t<address>\t<name>\t<connected>\t<icon>" per known device.
-// FmrbApp.bt_power(on) -> bool. FmrbApp.bt_connect(address, on) -> bool.
-// FmrbApp.notices_gen -> Integer, changes when the notices do (-1: none
+// FmrbSystem.bt_power(on) -> bool. FmrbSystem.bt_connect(address, on) -> bool.
+// FmrbSystem.notices_gen -> Integer, changes when the notices do (-1: none
 //   are shown on this machine). Allocation free, for every update.
-// FmrbApp.notices -> String, newest first: "id\tkind\tapp\tsummary\tbody"
+// FmrbSystem.notices -> String, newest first: "id\tkind\tapp\tsummary\tbody"
 //   per line (a line break in the body is 0x1F).
-// FmrbApp.notice_dismiss(id) -> nil.
+// FmrbSystem.notice_dismiss(id) -> nil.
 // FmrbApp.notify(summary, body = "") -> bool. A notice from the calling app
 //   (its name above the text), for a few seconds; false where there are
 //   none (only the PC shows them).
@@ -2132,11 +2132,11 @@ static mrb_value mrb_fmrb_app_s_crt_state(mrb_state *mrb, mrb_value klass)
 // (main/prebuild_scripts/kernel/linux_window.app.rb). The native program only:
 // no other build defines these methods.
 //
-// FmrbApp.wl_window -> String (the window's title) while the Linux window is
+// FmrbSystem.wl_window -> String (the window's title) while the Linux window is
 //   there, false once it has gone, nil when the caller is no stand-in (yet).
-// FmrbApp.wl_close -> bool. Ask the Linux window to close (the program may ask
+// FmrbSystem.wl_close -> bool. Ask the Linux window to close (the program may ask
 //   about unsaved work first, or refuse).
-// FmrbApp.wl_key -> Integer: the colour key of the caller's canvas (RGB332),
+// FmrbSystem.wl_key -> Integer: the colour key of the caller's canvas (RGB332),
 //   which the stand-in paints outside its rounded corners (L9d).
 extern int native_wl_window_state(int pid, char *title, size_t cap);
 extern bool native_wl_window_close(int pid);
@@ -2162,7 +2162,7 @@ static mrb_value mrb_fmrb_app_s_wl_close(mrb_state *mrb, mrb_value klass)
     return mrb_bool_value(native_wl_window_close((int)ctx->app_id));
 }
 
-// FmrbApp.linux_keyboard -> "jp" or "us": the layout Linux is set to, what
+// FmrbSystem.linux_keyboard -> "jp" or "us": the layout Linux is set to, what
 //   keyboard_layout = "auto" follows (L9d). Native only, like the calls above.
 extern bool native_linux_keyboard_jp(char *how, size_t how_len);
 
@@ -2172,9 +2172,9 @@ static mrb_value mrb_fmrb_app_s_linux_keyboard(mrb_state *mrb, mrb_value klass)
     return mrb_str_new_cstr(mrb, native_linux_keyboard_jp(NULL, 0) ? "jp" : "us");
 }
 
-// FmrbApp.linux_settings(page) -> bool: open the PC's settings window (L14,
+// FmrbSystem.linux_settings(page) -> bool: open the PC's settings window (L14,
 //   native/backend/native_settings.c) on the "wifi", "bluetooth" or
-//   "display" page, or bring it in front there. FmrbApp.settings_page ->
+//   "display" page, or bring it in front there. FmrbSystem.settings_page ->
 //   Integer: the page asked for last in the low two bits (0 Wi-Fi, 1
 //   Bluetooth, 2 Display), the count of the asks above them (the window
 //   turns to it when it changes). Native only.
@@ -2195,7 +2195,7 @@ static mrb_value mrb_fmrb_app_s_settings_page(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value(native_settings_page());
 }
 
-// FmrbApp.crt_set(crt, scanline, mask, glow, curve, vignette, ntsc,
+// FmrbSystem.crt_set(crt, scanline, mask, glow, curve, vignette, ntsc,
 //   flicker, noise) -> bool: ask the compositor for the CRT look
 //   (doc/web_crt, C5 and C6; native/wlr/wl_bridge.h), applied at once;
 //   false where it cannot be drawn. Native only.
@@ -2220,7 +2220,7 @@ static mrb_value mrb_fmrb_app_s_wl_key(mrb_state *mrb, mrb_value klass)
 }
 #endif
 
-// FmrbApp.ble_start -> true/false
+// FmrbSystem.ble_start -> true/false
 // Manual BLE start for the ble_auto_start=false configuration (desktop menu).
 // Retro (built-in radio) only: Modern's C6 radio path manages itself, and
 // Linux has no BLE -- both return false. Idempotent: ble_service_start is a
@@ -2229,7 +2229,7 @@ static mrb_value mrb_fmrb_app_s_wl_key(mrb_state *mrb, mrb_value klass)
 extern int ble_service_start(void);   // main/drivers/ble/ble_task.h (fmrb_err_t; 0 == OK)
 #endif
 
-// FmrbApp.ble_state -> Integer: 0 = BLE off, 1 = enabled and waiting for a
+// FmrbSystem.ble_state -> Integer: 0 = BLE off, 1 = enabled and waiting for a
 // central, 2 = connected. Allocation-free fixnum; feeds the menu-bar
 // indicator. The Linux sim has no BLE and always reports 0 (hidden).
 #if !defined(CONFIG_IDF_TARGET_LINUX)
@@ -2245,11 +2245,11 @@ static mrb_value mrb_fmrb_app_s_ble_state(mrb_state *mrb, mrb_value klass)
 #endif
 }
 
-// FmrbApp.ble_settings_window(seconds) -> Integer: opens the settings window
+// FmrbSystem.ble_settings_window(seconds) -> Integer: opens the settings window
 // for that many seconds (0 closes it) and returns the seconds left, 0 when it
 // did not open (BLE not running, or no BLE in this build). While it is open
 // the BLE console may write the WiFi and Asterism settings
-// (doc/ruby_asterism/report/cf2.md). FmrbApp.ble_settings_left -> Integer,
+// (doc/ruby_asterism/report/cf2.md). FmrbSystem.ble_settings_left -> Integer,
 // allocation-free, for the desktop's 1Hz indicator. Linux has no BLE: 0.
 #if !defined(CONFIG_IDF_TARGET_LINUX)
 extern fmrb_err_t ble_settings_window_set(uint32_t seconds);   // main/drivers/ble/ble_task.h
@@ -2398,7 +2398,7 @@ static mrb_value mrb_fmrb_app_s_free_bytes(mrb_state *mrb, mrb_value klass)
 #endif
 }
 
-// FmrbApp.set_audio_mute(on) -> nil. Mutes or unmutes the whole machine at
+// FmrbSystem.set_audio_mute(on) -> nil. Mutes or unmutes the whole machine at
 // the output stage and saves it to system_conf; see fmrb_host_set_audio_mute.
 static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
 {
@@ -2409,7 +2409,7 @@ static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
-// FmrbApp.audio_volume -> Integer 0-10, and FmrbApp.set_audio_volume(n).
+// FmrbApp.audio_volume -> Integer 0-10, and FmrbSystem.set_audio_volume(n).
 // The machine's volume (doc/reference/audio_output.md); see fmrb_host_set_audio_volume.
 static mrb_value mrb_fmrb_app_s_audio_volume(mrb_state *mrb, mrb_value klass)
 {
@@ -2426,8 +2426,8 @@ static mrb_value mrb_fmrb_app_s_set_audio_volume(mrb_state *mrb, mrb_value klass
     return mrb_nil_value();
 }
 
-// FmrbApp.preview_audio_volume(n) -> nil: apply without saving (Config's
-// live preview). FmrbApp.audio_conf_saved -> nil: the caller wrote the mute
+// FmrbSystem.preview_audio_volume(n) -> nil: apply without saving (Config's
+// live preview). FmrbSystem.audio_conf_saved -> nil: the caller wrote the mute
 // and volume into system_conf itself (Config's Save).
 static mrb_value mrb_fmrb_app_s_preview_audio_volume(mrb_state *mrb, mrb_value klass)
 {
@@ -2451,12 +2451,12 @@ static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
 #if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
     return mrb_bool_value(ble_service_start() == 0);
 #else
-    FMRB_LOGI(TAG, "FmrbApp.ble_start: not supported on this target");
+    FMRB_LOGI(TAG, "FmrbSystem.ble_start: not supported on this target");
     return mrb_false_value();
 #endif
 }
 
-// FmrbApp.rd_stream_state -> 0 none / 1 MJPEG / 2 H.264. Allocation-free,
+// FmrbSystem.rd_stream_state -> 0 none / 1 MJPEG / 2 H.264. Allocation-free,
 // polled at 1Hz by the desktop so the wifi icon can switch to a
 // screen-transfer glyph while remote desktop video is going out.
 #if defined(FMRB_HAS_WIFI) && defined(CONFIG_IDF_TARGET_ESP32P4)
@@ -2752,6 +2752,11 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 
     // Define FmrbApp class
     struct RClass *app_class = mrb_define_class(mrb, "FmrbApp", mrb->object_class);
+    // The machine's settings and services (Wi-Fi, BLE, power, the clock, the
+    // audio settings, the PC's settings): for the desktop, the kernel's apps
+    // and the settings apps, kept apart from what every app uses
+    // (doc/codebase_tidy T5). Reading the state stays on FmrbApp.
+    struct RClass *sys_module = mrb_define_module(mrb, "FmrbSystem");
 
     // Instance methods (called from Ruby instances)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
@@ -2789,22 +2794,22 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "_app_instance_made?", mrb_fmrb_app_s_app_instance_made, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_start_class_name", mrb_fmrb_app_s_start_class_name, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
+    mrb_define_class_method(mrb, sys_module, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "power_actions", mrb_fmrb_app_s_power_actions, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "power_actions", mrb_fmrb_app_s_power_actions, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "checkpoint", mrb_fmrb_app_s_checkpoint, MRB_ARGS_REQ(1) | MRB_ARGS_KEY(1, 0));
     mrb_define_class_method(mrb, app_class, "move", mrb_fmrb_app_s_move, MRB_ARGS_REQ(2) | MRB_ARGS_KEY(1, 0));
     mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
-    mrb_define_class_method(mrb, app_class, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "linux_handlers", mrb_fmrb_app_s_linux_handlers, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "linux_open", mrb_fmrb_app_s_linux_open, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, sys_module, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, sys_module, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "linux_handlers", mrb_fmrb_app_s_linux_handlers, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "linux_open", mrb_fmrb_app_s_linux_open, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, app_class, "linux_start", mrb_fmrb_app_s_linux_start, MRB_ARGS_REQ(4));
     mrb_define_class_method(mrb, app_class, "linux_read", mrb_fmrb_app_s_linux_read, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_write", mrb_fmrb_app_s_linux_write, MRB_ARGS_REQ(2));
@@ -2815,43 +2820,43 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "clipboard", mrb_fmrb_app_s_clipboard, MRB_ARGS_OPT(1));
     mrb_define_class_method(mrb, app_class, "set_clipboard", mrb_fmrb_app_s_set_clipboard, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "clipboard_gen", mrb_fmrb_app_s_clipboard_gen, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "wifi_networks", mrb_fmrb_app_s_wifi_networks, MRB_ARGS_OPT(1));
-    mrb_define_class_method(mrb, app_class, "wifi_connect", mrb_fmrb_app_s_wifi_connect, MRB_ARGS_ARG(1, 1));
-    mrb_define_class_method(mrb, app_class, "wifi_disconnect", mrb_fmrb_app_s_wifi_disconnect, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "wifi_forget", mrb_fmrb_app_s_wifi_forget, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "bt_devices", mrb_fmrb_app_s_bt_devices, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "bt_power", mrb_fmrb_app_s_bt_power, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "bt_connect", mrb_fmrb_app_s_bt_connect, MRB_ARGS_REQ(2));
-    mrb_define_class_method(mrb, app_class, "notices_gen", mrb_fmrb_app_s_notices_gen, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "notices", mrb_fmrb_app_s_notices, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "notice_dismiss", mrb_fmrb_app_s_notice_dismiss, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "wifi_networks", mrb_fmrb_app_s_wifi_networks, MRB_ARGS_OPT(1));
+    mrb_define_class_method(mrb, sys_module, "wifi_connect", mrb_fmrb_app_s_wifi_connect, MRB_ARGS_ARG(1, 1));
+    mrb_define_class_method(mrb, sys_module, "wifi_disconnect", mrb_fmrb_app_s_wifi_disconnect, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "wifi_forget", mrb_fmrb_app_s_wifi_forget, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "bt_devices", mrb_fmrb_app_s_bt_devices, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "bt_power", mrb_fmrb_app_s_bt_power, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "bt_connect", mrb_fmrb_app_s_bt_connect, MRB_ARGS_REQ(2));
+    mrb_define_class_method(mrb, sys_module, "notices_gen", mrb_fmrb_app_s_notices_gen, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "notices", mrb_fmrb_app_s_notices, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "notice_dismiss", mrb_fmrb_app_s_notice_dismiss, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "notify", mrb_fmrb_app_s_notify, MRB_ARGS_ARG(1, 1));
 #if defined(FMRB_PLATFORM_NATIVE)
-    mrb_define_class_method(mrb, app_class, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "wl_key", mrb_fmrb_app_s_wl_key, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "linux_keyboard", mrb_fmrb_app_s_linux_keyboard, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "linux_settings", mrb_fmrb_app_s_linux_settings, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "settings_page", mrb_fmrb_app_s_settings_page, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "crt_set", mrb_fmrb_app_s_crt_set, MRB_ARGS_REQ(9));
+    mrb_define_class_method(mrb, sys_module, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "wl_key", mrb_fmrb_app_s_wl_key, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "linux_keyboard", mrb_fmrb_app_s_linux_keyboard, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "linux_settings", mrb_fmrb_app_s_linux_settings, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "settings_page", mrb_fmrb_app_s_settings_page, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "crt_set", mrb_fmrb_app_s_crt_set, MRB_ARGS_REQ(9));
 #endif
     mrb_define_class_method(mrb, app_class, "crt_state", mrb_fmrb_app_s_crt_state, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "ble_settings_left", mrb_fmrb_app_s_ble_settings_left, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "ble_settings_left", mrb_fmrb_app_s_ble_settings_left, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "set_text_cursor", mrb_fmrb_app_s_set_text_cursor, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "path_read_only?", mrb_fmrb_app_s_path_read_only_p, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "app_meta", mrb_fmrb_app_s_app_meta, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "free_bytes", mrb_fmrb_app_s_free_bytes, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "audio_volume", mrb_fmrb_app_s_audio_volume, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "preview_audio_volume", mrb_fmrb_app_s_preview_audio_volume, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "audio_conf_saved", mrb_fmrb_app_s_audio_conf_saved, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "preview_audio_volume", mrb_fmrb_app_s_preview_audio_volume, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "audio_conf_saved", mrb_fmrb_app_s_audio_conf_saved, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));

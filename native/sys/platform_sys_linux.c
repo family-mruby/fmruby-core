@@ -311,7 +311,7 @@ static fmrb_err_t linux_power(fmrb_sys_power_t action)
         comp_link_command(COMP_CMD_LOCK, 0);
         return FMRB_OK;
     case FMRB_SYS_POWER_RESET:
-        /* FmrbApp.reboot: Family mruby starts again from its launcher, so
+        /* FmrbSystem.reboot: Family mruby starts again from its launcher, so
          * ending the program is the nearest thing (never the computer's
          * restart: that is FMRB_SYS_POWER_RESTART, asked for by name). */
     case FMRB_SYS_POWER_EXIT:

@@ -410,7 +410,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
   - window: `ckpt_window` を sim でクリックとキーで描かせてネイティブ版へ移し、Window の範囲が RGB332 で同じ (sim とネイティブ版の画面の取り方で RGB332 から 24 bit への広げ方が違うので、RGB332 に戻して比べる。Window の角の 4 画素は角丸の外の壁紙が見えるので除く)。移った後にクリックとキーが届く。
   - wide: `/app/test/ckpt_wide.app.rb` (Window 380x100) をネイティブ版から sim へ。Retro では Window が画面 (320 幅) に収まるように縮められ、アプリが `on_restore` の前に `on_resize` を 1 回受け、利用の範囲の四隅に描く赤い四角が新しい大きさの位置にある。Modern では大きさが変わらず `on_resize` は来ない。
   - full: `/app/test/ckpt_full.app.rb` (全画面) を sim からネイティブ版へ。Retro の 320x240 から 426x240 になり `on_resize` を受ける (Modern からなら同じ大きさで来ない)。
-  - calls: `/app/test/ckpt_calls.app.rb` (ネイティブ版だけの `FmrbApp.linux_settings` を `respond_to?` で備えて呼ぶ。申告なし) をネイティブ版から sim へ。移り、答えの `missing` が `["linux_settings"]`、sim のログに足りない名前の行、sim で数え続ける (doc/checkpoint/movable_apps.md の 5.2)。
+  - calls: `/app/test/ckpt_calls.app.rb` (ネイティブ版だけの `FmrbSystem.linux_settings` を `respond_to?` で備えて呼ぶ。申告なし) をネイティブ版から sim へ。移り、答えの `missing` が `["linux_settings"]`、sim のログに足りない名前の行、sim で数え続ける (doc/checkpoint/movable_apps.md の 5.2)。
   - requires: `ckpt_requires` (同じ名前を `requires` に書いたもの) をネイティブ版から sim へ。sim が断り (`requires the method 'linux_settings'`)、ネイティブ版で止めた所から続く (5.3)。
   - font (系列 `noja`、最初の構成だけ): 日本語のフォント (efontJA) を持たない Modern の sim (`FMRB_FONT_JA=0` で作る。AtomS3R・StickS3 と同じ) を別に作り、`ckpt_window` (`set_font(:ja, 12)`) をネイティブ版から sim へ移して戻す。ログの `font=` が、書く前に `ja,12`、sim で `ja,8` (misaki)、戻って `ja,12`。戻った Window が出る前と画素で同じ (基底クラスが頼んだフォントから選び直すこと、doc/checkpoint/report/font_pct.md)。`SIM=1` に入る (sim を 1 回多く作る)。
   - sim のログは `tmp/regress/checkpoint/sim_<構成>_<系列>.log`、そのときのネイティブ版のログは `..._native.log`、作ったときのログは `..._build.log`。出力は構成と系列ごとに 1 行。

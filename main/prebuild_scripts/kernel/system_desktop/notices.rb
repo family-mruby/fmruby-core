@@ -1,7 +1,7 @@
 # The small notices at the top right (doc/linux_native, L14), for
 # SystemDesktopApp.
 #
-# The PC only: FmrbApp.notices_gen is -1 on every device, the simulation and
+# The PC only: FmrbSystem.notices_gen is -1 on every device, the simulation and
 # the browser, and then nothing here runs again after the first update (no
 # call per update, nothing drawn). On the PC the notices come from the C side's store
 # (native/sys/linux_notify.h): Linux programs' freedesktop notifications,
@@ -38,14 +38,14 @@ module NoticesMixin
   # From on_update. true when the notices changed (they are redrawn).
   def tick_notices
     if @ntc_on.nil?
-      @ntc_gen = FmrbApp.notices_gen
+      @ntc_gen = FmrbSystem.notices_gen
       @ntc_on = @ntc_gen >= 0
       return false unless @ntc_on
       refresh_notices
       return true
     end
     return false unless @ntc_on
-    g = FmrbApp.notices_gen
+    g = FmrbSystem.notices_gen
     return false if g == @ntc_gen
     @ntc_gen = g
     refresh_notices
@@ -55,7 +55,7 @@ module NoticesMixin
   def refresh_notices
     before = @ntc_items.size
     @ntc_items = []
-    text = FmrbApp.notices
+    text = FmrbSystem.notices
     lines = text.split("\n")
     i = 0
     while i < lines.size

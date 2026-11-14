@@ -9,7 +9,7 @@
 | メニューバー | 時計のすぐ左のスピーカの印をクリックでミュートの入・切。鳴るときは波、ミュート中は白地に ×。遠隔での変更も 1 秒以内に表示に出る |
 | メニュー | 「消音 / Mute」「消音を解除 / Unmute」 |
 | Config | 「音量 / Volume」0-10。矢印で動かすとその場で聞こえる。保存は Save のときだけ。Save せずに閉じると元の値に戻る |
-| アプリ | `FmrbApp.set_audio_mute(bool)` / `FmrbApp.audio_muted?` / `FmrbApp.set_audio_volume(n)` / `FmrbApp.audio_volume` (mruby と Spinel) |
+| アプリ | `FmrbSystem.set_audio_mute(bool)` / `FmrbApp.audio_muted?` / `FmrbSystem.set_audio_volume(n)` / `FmrbApp.audio_volume` (mruby と Spinel) |
 | devctl (開発用の HTTP) | `GET /audio/mute`、`POST /audio/mute?on=0\|1`、`GET /audio/volume`、`POST /audio/volume?level=0..10`。答えは `{"ok","muted","volume"}` |
 | debugd (sim) | `audio` 命令 (`on`、`volume` は省略可) |
 | MCP (親リポジトリ) | `tab5_audio` / `sim_audio` (action: get / mute / unmute / volume)。実機を触る作業の前にミュートにする |

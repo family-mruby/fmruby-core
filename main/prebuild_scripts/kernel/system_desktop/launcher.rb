@@ -22,7 +22,7 @@
 # never mixed. Only the entries in view get icon sprites, so a PC with
 # hundreds of them costs what one screen of icons costs. Reload reads the
 # entries again. Closing the launcher goes back to the Family mruby apps.
-# Everywhere else FmrbApp.linux_apps answers "" and there is no such entry.
+# Everywhere else FmrbSystem.linux_apps answers "" and there is no such entry.
 
 module LauncherMixin
   # Launcher window layout
@@ -82,7 +82,7 @@ module LauncherMixin
   # The group's entry, or nil where there are no Linux apps (every machine
   # but the compositor: the call answers "").
   def linux_group_entry
-    head = FmrbApp.linux_apps(LNX_MODE_HEADER, FmrbI18n.lang)
+    head = FmrbSystem.linux_apps(LNX_MODE_HEADER, FmrbI18n.lang)
     return nil if head.empty?
     Log.info("Launcher: the Linux group is offered")
     { label: "Linux", app: LNX_GROUP, icon_char: "L", icon_file: LNX_GROUP_ICON }
@@ -115,7 +115,7 @@ module LauncherMixin
   # Ask for the list (mode LNX_MODE_RESCAN reads the entries again first);
   # until it is ready, on_update keeps asking (tick_rescan).
   def linux_load(mode)
-    text = FmrbApp.linux_apps(mode, FmrbI18n.lang)
+    text = FmrbSystem.linux_apps(mode, FmrbI18n.lang)
     if mode == LNX_MODE_LIST && linux_take_list(text)
       @lnc_linux_wait = false
     else
@@ -155,7 +155,7 @@ module LauncherMixin
   # Called from tick_rescan while the list is being read.
   def tick_linux_wait
     return false unless @lnc_linux_wait
-    if linux_take_list(FmrbApp.linux_apps(LNX_MODE_LIST, FmrbI18n.lang))
+    if linux_take_list(FmrbSystem.linux_apps(LNX_MODE_LIST, FmrbI18n.lang))
       @lnc_linux_wait = false
       destroy_icon_instances_only
       @launcher_selected = 0
@@ -176,7 +176,7 @@ module LauncherMixin
     elsif linux_entry?(app_name)
       id = app_name[LNX_PREFIX.length, app_name.length - LNX_PREFIX.length].to_s
       close_launcher
-      if FmrbApp.linux_launch(id) == 0
+      if FmrbSystem.linux_launch(id) == 0
         Log.info("Launcher: Linux app #{id} asked to start")
       else
         Log.warn("Launcher: Linux app #{id} could not start")
