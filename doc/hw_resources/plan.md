@@ -120,7 +120,7 @@ i2c = "grove"
 
 - H1〜H5 は、Ruby のアプリから見た書き方を保ったまま、下の層を作り直す作業。doc/wasm_apps の
   W4 を待たずに進められる。H6 だけが W4a の後。
-- **実装はアプリの API の整理 (doc/codebase_tidy) の後。** 代理の gem が `lib/add/` にあり、
+- **実装はアプリの API の整理 (doc/codebase_tidy) の後。** 代理の gem が `lib/upstream/` にあり、
   整理の置き場の改名とぶつかる。
 - 確認のしかた: 日々は軽い回帰 (`rake regress`) だけ。端末での確認は段の終わりに 1 回 (H3 は
   基板ごとに 1 回)。端末をつなぐのはユーザ。
