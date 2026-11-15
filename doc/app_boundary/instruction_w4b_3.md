@@ -14,6 +14,9 @@
 
 ## やること
 
+0. **W4b-2 の後の決定を入れる**: FmrbAudio の C の境界を受け手の番号を取る形に戻す (本体では番号を使わない。
+   ABI のハッシュが変わったら新しい値を書く)。`NO_RECEIVER` は FmrbApp だけ。FmrbApp に印を付けたら `STAGED` を消す。
+
 1. **調べて表にする** (report の最初の章): FmrbApp (sig/fmrb_app.rbs) のメソッドを、(a) 境界に載せる頼みごと、
    (b) フック (`on_create`・`on_update`・`on_event` など、`%a{fmrb.hook}`)、(c) 載せない内側 (`%a{fmrb.internal}`、
    エンジンのオブジェクトの一生・Ruby で書かれたもの) に分ける。W3 の殻 (main/app/fmrb_app_shell.c) が持つ処理と、
