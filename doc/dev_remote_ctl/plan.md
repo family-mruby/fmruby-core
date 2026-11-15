@@ -144,3 +144,45 @@ Claude(および開発者)が実機(Tab5 / ESP32-P4)の検証を、速く・確�
   (同じ穴を二度作らないため)。
 - ツール側: 素の `readpartial` はブロックし続けるので、呼び出し側の timeout が効かない。
   `IO.select` で締め切りを持たせ、`Content-Length` 分読んだら抜けるようにした。
+
+---
+
+## 開発のビルドの決まり (2026-11-15、doc/remote_guard の G0)
+
+開発のビルド (`FMRB_DEV_REMOTE_CTL`、既定 ON) の devctl は**読み書きを自由にする** (ユーザの決定、
+doc/remote_guard/plan.md の方針)。リリースのビルドは devctl を入れないので変わらない。
+
+- **場所の制限なし**: `/fs/*` は `/` の下を全部読み書きできる (`/etc`・`/usr`・`/boot` も)。`..` の段だけは
+  今までどおり断る。
+- **鍵も読める**: `/fs/get` は FMRB_PATH_SECRET (/home/asterism の .tar ほか)・FMRB_PATH_PASSWORD (wifi.toml・
+  secrets.toml) も渡す。/home を鍵ごと WiFi で退避するため。道具は中身を標準出力に出さず、退避は
+  `~/asterism_keys/` の下だけに置く (700/600)。
+- **1 か所で表す**: `devctl_fs_unrestricted()` (main/drivers/devctl/devctl_http.c、宣言は devctl_http.h)。
+  開発のビルドで true。false のときは前の決まり (4 つの根 `/app`・`/home`・`/usr/share`・`/mnt/sd` だけ、
+  鍵は読まない) になる。G1・G2 でリリースのビルドに devctl を入れるときの足場。
+- **BLE の console の決まりは変えない** (`fmrb_secret_path.h` の共有。設定の受け付けが開いているときだけ
+  パスワードを読む、鍵は読まない)。
+- 足した口: `GET /fs/md5?path=` (ファイルの MD5 と大きさ。ROM の MD5、変化の検出用)、`POST /sys/reboot`
+  (FmrbSystem.reboot と同じ再起動。答えてから 300 ms 後)。`/status` は開発のビルドで
+  `"board"` (FmrbConst::BOARD の綴り) と `"host"` (mDNS 名 fmruby-XXXXXX) も返す。
+
+### /home の退避と書き戻し、焼くときの流れ
+
+| 道具 | すること |
+|---|---|
+| `ruby tools/fmrb_rd_fs.rb <IP> backup [dir]` | /home を鍵ごと `dir/home/` へ。既定の dir は `~/asterism_keys/devices/<機種>-<MAC 下 3>/home_backup_<日時>/` (機種と MAC は /status から。naryav4 → p4nano、narya_v3 → naryav3。`--machine`・`--mac` で指定も可)。1 ファイルずつ端末の MD5 と照合し、`.part` に書いてから名前を付ける。最後に `manifest.json` (全ファイルと空のディレクトリ、`complete: true`) を書く。同じ dir でもう一度流すと途中から (合っている物は取り直さない) |
+| `ruby tools/fmrb_rd_fs.rb <IP> restore <dir>` | ディレクトリ (空の物も) を作り、違うファイルだけ送って MD5 で確かめる。端末にあって退避に無い物は一覧に出すだけで消さない。`complete: false` の退避は断る |
+| `ruby tools/fmrb_rd_fs.rb <IP> sync <storage_root>` | ビルドの storage の木と端末の差を送る (下) |
+| `rake flash:keep_home HOST=<IP か fmruby-xxxxxx.local>` | (a) 新しい像の /etc/wifi.toml で WiFi が上がるか確かめ (上がらないなら焼かずに止まる)、/home を退避 → (b) 全体を焼く → (c) WiFi に戻るのを待つ (DHCP で IP が変われば mDNS 名で引き直す) → (d) 書き戻す → (e) 再起動して待つ。MCP の flash の `keep_home: true` も同じ (WiFi の半分は `tools/fmrb_flash_keep.rb` を共有) |
+| `rake flash:app_sync HOST=` | app の区画だけ焼き、起動を待って `build/storage_root` と端末の差を WiFi で送る。/home に触らない。一番速い。MCP の flash の `app_sync: true` も同じ |
+| `rake flash:keep_home_serial` | 予備 (WiFi が上がらない端末): storage を esptool の read_flash で読み (`READ_BAUD` 既定 460800)、ビルドの venv の littlefs-python で開き、/home を `build/storage_root` に重ねた像を作って書く。`BACKUP=<dir>` なら読まずにその退避の /home を使う、`STORAGE_ONLY=1` は storage の区画だけ書く (keep_home の (c) で止まったときの後始末) |
+
+- **app_sync の差の取り方**: 端末の一覧の大きさと比べ、違えば送る。同じなら `/fs/md5` で中身を比べる
+  (端末には日時が無い: littlefs-python の像も devctl の put も mtime を持たない)。送らない所は `/home`・`/tmp`・
+  `/mnt`・`/var/cache` と `/etc/system_conf.toml` (端末が保存した設定。音量・ミュートもここ。違えば一覧に出し、
+  `CONF=1` / `--conf` で送る)。消えたファイルは消さずに一覧だけ出す。
+- **書き込みの速さ**: `rake flash` 系は CH34x (USB の vendor 1a86。NARYAv3 の CH340、P4-Nano の CH343) なら
+  最初から 115200 bps (sysfs で読めないときは FMRB_HW_TARGET が NARYAv3・NARYAv4 なら)。`FLASH_BAUD=` が勝つ。
+- 属性: LittleFS は所有者・権限・日時を持たないので、名前・中身・ディレクトリ (空の物も) だけを保つ。
+- 前提: 焼く前と後の両方が開発のビルドであること (2026-11-15 より前のファームは鍵を渡さないので、最初の 1 回は
+  `keep_home_serial` を使う)。
