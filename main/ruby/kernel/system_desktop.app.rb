@@ -81,8 +81,8 @@ class SystemDesktopApp < FmrbApp
   #
   # Every stage is placed on the wall clock (ms since the first tick), not on
   # a count of frames: a slow frame must not stretch the show or pull it
-  # apart from the sound (BOOT_EVENTS uses the same clock). Each frame only
-  # draws the strips that changed.
+  # apart from the sound (the chime starts on the first tick). Each frame
+  # only draws the strips that changed.
   BOOT_FRAME_MS = 33
   BOOT_LINE_H = 2           # the line's height in pixels
   BOOT_STRETCH_START_MS = 90   # the short line holds until here...
@@ -90,6 +90,16 @@ class SystemDesktopApp < FmrbApp
   BOOT_OPEN_END_MS = 500       # fully open: the chord starts
   BOOT_FLASH_END_MS = 580      # the logo comes back from the white peak
   BOOT_END_MS = 1200           # the desktop takes over
+
+  # The boot chime: two FMSQ sequences, one per APU instance, made by
+  # tools/boot_chime.rb and timed to the stages above in 60 Hz frames. Loaded
+  # inline (each file is under the 176-byte message) and started together on
+  # the first tick. The slots are the audio side's machine-wide table, so
+  # they sit well away from the small numbers the apps use (0, 4, 12-14).
+  BOOT_CHIME_MAIN_PATH = "/boot/boot_chime_main.fmsq"
+  BOOT_CHIME_SUB_PATH = "/boot/boot_chime_sub.fmsq"
+  BOOT_CHIME_SLOT_MAIN = 200
+  BOOT_CHIME_SLOT_SUB = 201
 
   # Dropdown menu items. `:key` drives both the dispatch in handle_dropdown_click
   # and the localized label resolved via FmrbI18n.t(:key) at draw time, so the
@@ -333,8 +343,7 @@ class SystemDesktopApp < FmrbApp
     @boot_flash = 0    # 0 = not yet, 1 = logo washed out, 2 = settled
     @boot_img = nil
     @boot_audio = nil
-    @boot_ev_i = 0     # next BOOT_EVENTS entry to fire
-    @boot_audio_finished = false
+    @boot_chime = 0    # 0 = none, 1 = loaded, 2 = playing
 
     # Composite regions opt-in. While false the desktop main canvas is
     # composited as the full transparent area (boot screen path). Switched
@@ -425,49 +434,6 @@ class SystemDesktopApp < FmrbApp
 
   # ---- Boot animation ----
 
-  # A fifth rising into a ringing sus2/add9 chord, on the APU (FmrbAudio, the
-  # SUB instance). Each event: [ms, ch, freq, vol, duty].
-  # ms: since the first tick, the same clock as the picture (BOOT_*_MS).
-  # ch: 0=P1, 1=P2, 2=Triangle, 3=Noise. freq is Hz on the tone channels and
-  # the period index (| 0x80 for the short, metallic mode) on noise.
-  # vol 0 means note_off. duty: 0=12.5% 1=25% 2=50% 3=75%.
-  #
-  # The line appears: G3 over a G2 bass. The line spans the width: up a fifth
-  # to D4. Fully open: G4 A4 D5 with a light noise sparkle. The APU has three
-  # tone channels and only the pulses have a volume, so the pulses hold the
-  # chord's frame (G4, D5) and step down in volume -- the end fades out on an
-  # open fifth instead of being cut -- while the triangle leaves the G2 bass
-  # for the A4 color and drops out under the louder pulses partway through.
-  BOOT_EVENTS = [
-    [0,    0, 196, 9, 2],    # P1 G3
-    [0,    2,  98, 15, 0],   # Tri G2 bass
-    [0,    3,   4, 3, 0],    # Noise: a soft tick as the line lights
-    [40,   3,   0, 0, 0],
-    [BOOT_OPEN_START_MS, 0, 294, 9, 2],   # P1 D4, the fifth up
-    [BOOT_OPEN_END_MS,   0, 587, 10, 1],  # P1 D5
-    [BOOT_OPEN_END_MS,   1, 392, 12, 2],  # P2 G4
-    [BOOT_OPEN_END_MS,   2, 440, 15, 0],  # Tri A4
-    [BOOT_OPEN_END_MS,   3, 0x81, 4, 0],  # Noise sparkle (short mode, high)
-    [600,  3, 0x81, 2, 0],
-    [660,  0, 587, 8, 1],    # the fade: the pulses step down
-    [660,  1, 392, 10, 2],
-    [680,  3,   0, 0, 0],
-    [760,  0, 587, 6, 1],
-    [760,  1, 392, 8, 2],
-    [820,  2,   0, 0, 0],    # the triangle has no volume: it leaves here
-    [860,  0, 587, 5, 1],
-    [860,  1, 392, 6, 2],
-    [950,  0, 587, 3, 1],
-    [950,  1, 392, 4, 2],
-    [1030, 0, 587, 2, 1],
-    [1030, 1, 392, 3, 2],
-    [1100, 0, 587, 1, 1],
-    [1100, 1, 392, 2, 2],
-    [1150, 1, 392, 1, 2],
-    [1190, 0,   0, 0, 0],
-    [1190, 1,   0, 0, 0],
-  ]
-
   def start_boot_animation
     return unless @gfx && @bg_gfx
 
@@ -508,8 +474,31 @@ class SystemDesktopApp < FmrbApp
     @boot_anim_state = :revealing
 
     @boot_audio = FmrbAudio.new(self)
-    @boot_ev_i = 0
-    @boot_audio_finished = false
+    @boot_chime = load_boot_chime ? 1 : 0
+  end
+
+  # Send the two chime sequences to the audio side. False (and silence) when
+  # either file is missing.
+  def load_boot_chime
+    main = read_boot_chime(BOOT_CHIME_MAIN_PATH)
+    sub = read_boot_chime(BOOT_CHIME_SUB_PATH)
+    return false unless main && sub
+    @boot_audio.load_fmsq(BOOT_CHIME_SLOT_MAIN, main)
+    @boot_audio.load_fmsq(BOOT_CHIME_SLOT_SUB, sub)
+    true
+  end
+
+  def read_boot_chime(path)
+    data = nil
+    begin
+      f = File.open(path, "r")
+      data = f.read
+      f.close
+    rescue => e
+      Log.warn("Boot chime not found: #{path}")
+      return nil
+    end
+    data
   end
 
   # Ease-out on integers: how far along `span` we are after `t` of `dur`
@@ -525,9 +514,11 @@ class SystemDesktopApp < FmrbApp
     case @boot_anim_state
     when :revealing
       now = Machine.board_millis
-      @boot_t0 = now if @boot_t0 == 0
+      if @boot_t0 == 0
+        @boot_t0 = now
+        start_boot_chime
+      end
       el = now - @boot_t0
-      tick_boot_jingle(el)
       if el >= BOOT_END_MS
         finish_boot_animation
         return
@@ -617,23 +608,14 @@ class SystemDesktopApp < FmrbApp
     end
   end
 
-  # Fire the BOOT_EVENTS that are due at `el` ms. The table must stay sorted
-  # by time: this walks it with one index.
-  def tick_boot_jingle(el)
-    return unless @boot_audio
-    return if @boot_audio_finished
-    n = BOOT_EVENTS.size
-    while @boot_ev_i < n
-      ev = BOOT_EVENTS[@boot_ev_i]
-      break if ev[0] > el
-      if ev[3] == 0
-        @boot_audio.note_off(ev[1])
-      else
-        @boot_audio.note_on(ev[1], ev[2], ev[3], ev[4], 0)
-      end
-      @boot_ev_i += 1
-    end
-    @boot_audio_finished = true if @boot_ev_i >= n
+  # Both instances on the same frame as the line: MAIN then SUB, back to
+  # back, so the two players start on the same audio frame (the doubled G2
+  # bass only adds up when its two triangles are in phase).
+  def start_boot_chime
+    return unless @boot_chime == 1
+    @boot_audio.play_slot(BOOT_CHIME_SLOT_MAIN, instance: FmrbAudio::MAIN)
+    @boot_audio.play_slot(BOOT_CHIME_SLOT_SUB, instance: FmrbAudio::SUB)
+    @boot_chime = 2
   end
 
   def finish_boot_animation
@@ -641,13 +623,15 @@ class SystemDesktopApp < FmrbApp
       @bg_gfx.delete_image(@boot_img[:id])
       @boot_img = nil
     end
-    if @boot_audio && !@boot_audio_finished
-      @boot_audio.note_off(0)
-      @boot_audio.note_off(1)
-      @boot_audio.note_off(2)
-      @boot_audio.note_off(3)
-      @boot_audio_finished = true
+    # The chime has ended by now (silent at 1190 ms) unless the show was cut
+    # short; stop stops both players either way. It also takes the desktop
+    # off the kernel's list of apps playing music, where play_slot put it:
+    # left there, the desktop -- which never exits -- would count as still
+    # playing and the kernel would never stop a song a crashed app left on.
+    if @boot_audio && @boot_chime == 2
+      @boot_audio.stop
     end
+    @boot_chime = 0
     @boot_audio = nil
 
     # A fullscreen startup app is about to take the screen, and it needs
