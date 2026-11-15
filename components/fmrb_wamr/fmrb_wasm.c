@@ -30,12 +30,16 @@
  *   on_destroy(), on_suspend(), on_resume(), on_quit_request()
  *   on_resize(new_width, new_height)
  *
- * on_event's record (60 bytes, fmrb_bnd_app_event_t here) is put on the
- * app's own C stack: below the value of its stack pointer global (the first
- * mutable i32 global the module defines: LLVM's __stack_pointer, which
- * TinyGo, clang, zig and Rust all have), which is lowered over the call and
- * put back after it, as a C caller passing a pointer to a local does. A
- * module with on_event and no such global is refused at load. The type is
+ * on_event's record (60 bytes, fmrb_bnd_app_event_t here) goes into the
+ * static buffer the SDK exports (decision 20): the module's
+ * fmrb_event_buffer() -> i32 (FMRB_BND_EVENT_BUFFER_EXPORT) gives its
+ * address, asked once before the first event. A module without it gets the
+ * record on its own C stack: below the value of its stack pointer global
+ * (the first mutable i32 global the module defines: LLVM's __stack_pointer),
+ * which is lowered over the call and put back after it, as a C caller
+ * passing a pointer to a local does. A module with on_event and neither
+ * (a small app whose optimiser dropped the stack pointer, built with an
+ * older SDK) is refused at load. The type is
  * the record's choice number (FMRB_BND_APP_EVENT_TYPE_*, the order Lua's
  * strings have); the fields each kind fills are Lua's (the others are 0):
  *   key_down / key_up:      keycode, scancode, modifier, character
@@ -87,6 +91,9 @@
 #include "fmrb_gen/fmrb_boundary_wasm.inc"
 
 static const char *TAG = "wasm";
+
+_Static_assert(sizeof(fmrb_bnd_app_event_t) <= FMRB_BND_EVENT_BUFFER_SIZE,
+               "the SDK's event buffer holds the event record");
 
 /** The runtime's shared pool: about 28 KB per running app (16 KB of it the
  *  operand stack) plus the module data (report/w1a.md 8). */
@@ -284,6 +291,8 @@ typedef struct {
     wasm_function_inst_t fn[FMRB_SHELL_HOOK_COUNT];
     int32_t drawer;
     uint32_t *sp;               /* the app's stack pointer global */
+    wasm_function_inst_t buf_fn; /* the SDK's fmrb_event_buffer, when exported */
+    uint32_t buf;               /* the address it gave (0: not asked yet) */
     char *err;
     size_t err_cap;
 } wasm_app_t;
@@ -398,8 +407,37 @@ static int e_call_event(void *ud, const fmrb_shell_event_t *ev)
         return FMRB_SHELL_OK;
     }
 
-    /* The record goes on the app's C stack, 16-byte aligned below its
-       stack pointer, which stays lowered over the call. */
+    if (a->buf_fn && !a->buf) {
+        /* Ask once where the SDK's buffer is. */
+        uint32_t argv[1] = { 0 };
+        wasm_runtime_set_instruction_count_limit(a->env, FMRB_WASM_CALL_INSN_LIMIT);
+        bool called = wasm_runtime_call_wasm(a->env, a->buf_fn, 0, argv);
+        if (called && argv[0] != 0 &&
+            wasm_runtime_validate_app_addr(a->inst, argv[0], FMRB_BND_EVENT_BUFFER_SIZE)) {
+            a->buf = argv[0];
+        } else {
+            wasm_runtime_clear_exception(a->inst);
+            a->buf_fn = NULL;
+            FMRB_LOGW(TAG, "[%s] %s gave no usable buffer (0x%x)%s", a->ctx->app_name,
+                      FMRB_BND_EVENT_BUFFER_EXPORT, (unsigned)argv[0],
+                      a->sp ? ": the record goes on the app's stack" : "");
+            if (!a->sp) {
+                if (a->err && a->err_cap) {
+                    snprintf(a->err, a->err_cap, "on_event: %s gave no usable buffer",
+                             FMRB_BND_EVENT_BUFFER_EXPORT);
+                }
+                return FMRB_SHELL_RAISED;
+            }
+        }
+    }
+    if (a->buf) {
+        memcpy(wasm_runtime_addr_app_to_native(a->inst, a->buf), &r, sizeof(r));
+        uint32_t argv[1] = { a->buf };
+        return call_hook(a, FMRB_SHELL_HOOK_EVENT, 1, argv);
+    }
+
+    /* No buffer: the record goes on the app's C stack, 16-byte aligned below
+       its stack pointer, which stays lowered over the call. */
     uint32_t sp = *a->sp;
     uint32_t at = (sp - (uint32_t)sizeof(r)) & ~15u;
     if (sp < sizeof(r) + 16 ||
@@ -517,9 +555,22 @@ static bool find_hooks(wasm_app_t *a, char *err, size_t err_cap)
         }
         a->fn[h] = f;
     }
-    if (a->fn[FMRB_SHELL_HOOK_EVENT] && !(a->sp = stack_pointer_global(a->inst))) {
-        snprintf(err, err_cap, "on_event needs a stack pointer global (__stack_pointer) "
-                 "for its record");
+    if (!a->fn[FMRB_SHELL_HOOK_EVENT]) return true;
+    wasm_function_inst_t buf = wasm_runtime_lookup_function(a->inst, FMRB_BND_EVENT_BUFFER_EXPORT);
+    if (buf) {
+        if (wasm_func_get_param_count(buf, a->inst) != 0 ||
+            wasm_func_get_result_count(buf, a->inst) != 1) {
+            snprintf(err, err_cap, "%s must take nothing and return an address",
+                     FMRB_BND_EVENT_BUFFER_EXPORT);
+            return false;
+        }
+        a->buf_fn = buf;
+    }
+    a->sp = stack_pointer_global(a->inst);
+    if (!a->buf_fn && !a->sp) {
+        snprintf(err, err_cap, "on_event needs %s (the SDK's event buffer) or a stack pointer "
+                 "global (__stack_pointer) for its record: rebuild with the current SDK",
+                 FMRB_BND_EVENT_BUFFER_EXPORT);
         return false;
     }
     return true;
@@ -586,13 +637,14 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
     unsigned pool_used = wasm_runtime_get_mem_alloc_info(&pinfo)
                              ? (unsigned)(pinfo.total_size - pinfo.total_free_size) : 0u;
     FMRB_LOGI(TAG, "[%s] loaded %s (%u bytes, memory %u pages, up to %u, shared pool used %u)"
-              "%s%s%s",
+              "%s%s%s%s",
               ctx->app_name, path, (unsigned)size,
               mem ? (unsigned)wasm_memory_get_cur_page_count(mem) : 0u, (unsigned)max_pages,
               pool_used,
               a.fn[FMRB_SHELL_HOOK_CREATE] ? " on_create" : "",
               a.fn[FMRB_SHELL_HOOK_UPDATE] ? " on_update" : "",
-              a.fn[FMRB_SHELL_HOOK_EVENT] ? " on_event" : "");
+              a.fn[FMRB_SHELL_HOOK_EVENT] ? " on_event" : "",
+              a.buf_fn ? " (event buffer)" : "");
 
     ret = fmrb_app_shell_run(ctx, &WASM_ENGINE, &a, why, sizeof(why));
     if (ret != FMRB_OK && why[0] && err && err_cap) {

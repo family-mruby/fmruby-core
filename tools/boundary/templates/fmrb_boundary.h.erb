@@ -54,6 +54,16 @@ typedef struct __attribute__((packed)) {
 } <%= r.cname %>;
 _Static_assert(sizeof(<%= r.cname %>) == <%= r.size %>, "<%= r.cname %> is packed");
 <% end -%>
+<% unless hook_records.empty? -%>
+
+/* A wasm app's place for a hook's record (doc/wasm_apps decision 20): the SDK
+   exports this function, which returns the address of a static buffer of
+   FMRB_BND_EVENT_BUFFER_SIZE bytes; the engine glue writes the record there.
+   A module without it gets the record on its own stack (below its stack
+   pointer global), as before. */
+#define FMRB_BND_EVENT_BUFFER_EXPORT "fmrb_event_buffer"
+#define FMRB_BND_EVENT_BUFFER_SIZE <%= (hook_records.map(&:size).max + 15) / 16 * 16 %>
+<% end -%>
 <% funcs.each do |f| -%>
 <% f.params.select { |p| p.ty.kind == :choice }.each do |p| -%>
 

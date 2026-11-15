@@ -138,6 +138,26 @@ typedef struct __attribute__((packed)) {
 <% end -%>
 } <%= r.api_cname %>;
 <% end -%>
+<% unless hook_records.empty? -%>
+
+/**
+ * The place for the event record. The firmware writes on_event's record into
+ * a static buffer of the app, whose address fmrb_event_buffer returns, and
+ * passes on_event a pointer to it. FMRB_EVENT_BUFFER() at file scope defines
+ * both (one line; an app that has on_event puts it in one of its files).
+ * Without it the firmware puts the record on the app's own stack, below its
+ * stack pointer global (__stack_pointer); a module that has neither is refused
+ * at load.
+ *
+ * @return the address of FMRB_EVENT_BUFFER_SIZE bytes, 16-byte aligned
+ */
+#define FMRB_EVENT_BUFFER_SIZE <%= (hook_records.map(&:size).max + 15) / 16 * 16 %>
+FMRB_EXPORT("fmrb_event_buffer")
+void *fmrb_event_buffer(void);
+#define FMRB_EVENT_BUFFER() \
+    static uint8_t fmrb_event_buffer_bytes_[FMRB_EVENT_BUFFER_SIZE] __attribute__((aligned(16))); \
+    void *fmrb_event_buffer(void) { return fmrb_event_buffer_bytes_; }
+<% end -%>
 <% hooks.each do |h| -%>
 
 /**
