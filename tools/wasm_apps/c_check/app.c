@@ -15,6 +15,9 @@
 
 #define EXPORT(name) __attribute__((export_name(name)))
 
+/* The place the firmware writes on_event's record into (decision 20). */
+FMRB_EVENT_BUFFER();
+
 static int32_t frames, events, bad_ptr;
 static fmrb_app_event_t last;
 
