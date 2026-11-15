@@ -27,6 +27,8 @@
 #   freertos_hosted          static library: the vendored kernel, the
 #                            cooperative port and its clock for the platform
 #   lgfx_hosted              static library: LovyanGFX sprite/font core
+#   fmrb_wamr_hosted         static library: WAMR and the wasm app glue
+#                            (hosted/wamr/); the executables link it
 #   fmrb_hosted_core_objs(<target>)
 #                            an OBJECT library with every shared firmware
 #                            source, include path and definition
@@ -604,12 +606,22 @@ set_source_files_properties(
   ${FMRB_ROOT}/lib/gems/picoruby-fmrb-raycast/native/raycast_native.c
   PROPERTIES COMPILE_OPTIONS "${FMRB_HOSTED_SPINEL_TU_FLAGS};-I${SPINEL_GEN}")
 
+# --- wasm apps (WAMR, doc/wasm_apps W1c) -----------------------------------
+#
+# WAMR and fmrb_wasm.c as the static library fmrb_wamr_hosted, built in a
+# directory of its own (hosted/wamr/CMakeLists.txt: WAMR's build scripts set
+# directory-wide definitions). The firmware objects see FMRB_HAVE_WASM, as
+# the ESP-IDF component gives it to main; the platform links the library
+# into its executables.
+add_subdirectory(${FMRB_HOSTED_DIR}/wamr ${CMAKE_BINARY_DIR}/fmrb_wamr_hosted)
+list(APPEND FMRB_HOSTED_CORE_INCLUDES ${FMRB_ROOT}/components/fmrb_wamr/include)
+
 # The shared OBJECT library. The platform adds its own backends with
 # target_sources and its own definitions with target_compile_definitions.
 function(fmrb_hosted_core_objs target)
   add_library(${target} OBJECT ${FMRB_HOSTED_CORE_SRCS})
   target_link_libraries(${target} PUBLIC lgfx_hosted freertos_hosted)
   target_include_directories(${target} PRIVATE ${FMRB_HOSTED_CORE_INCLUDES})
-  target_compile_definitions(${target} PRIVATE ${FMRB_HOSTED_CORE_DEFINES})
+  target_compile_definitions(${target} PRIVATE ${FMRB_HOSTED_CORE_DEFINES} FMRB_HAVE_WASM=1)
   target_compile_options(${target} PRIVATE -pthread -Wno-format ${FMRB_HOSTED_SECTION_FLAGS})
 endfunction()

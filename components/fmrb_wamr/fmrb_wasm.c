@@ -62,6 +62,11 @@
  * A call that traps, or runs past FMRB_WASM_CALL_INSN_LIMIT instructions,
  * ends the app with the reason (decision 3): it is not called again.
  */
+/* pthread_getattr_np on the hosted native build (ESP-IDF's linux target
+   defines it already). */
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(__EMSCRIPTEN__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include "fmrb_wasm.h"
 
 #include <stdio.h>
@@ -82,7 +87,9 @@
 
 #if !defined(CONFIG_IDF_TARGET_LINUX)
 #include "esp_heap_caps.h"
-#elif !defined(__EMSCRIPTEN__)
+#elif defined(__EMSCRIPTEN__)
+#include <emscripten/stack.h>
+#else
 #include <pthread.h>
 #endif
 
@@ -277,8 +284,11 @@ static uint8_t *native_stack_boundary(void)
     pthread_attr_destroy(&attr);
     return addr ? (uint8_t *)addr + FMRB_WASM_NATIVE_STACK_GUARD : NULL;
 #else
-    /* The browser build: the check is off for now (doc/wasm_apps W1b). */
-    return NULL;
+    /* The browser build: every FreeRTOS task is a pthread (a Worker) whose C
+       stack is in emscripten's linear memory, and emscripten keeps the
+       calling thread's limits (doc/wasm_apps report/w1c.md). */
+    uintptr_t end = emscripten_stack_get_end();
+    return end ? (uint8_t *)end + FMRB_WASM_NATIVE_STACK_GUARD : NULL;
 #endif
 }
 
@@ -629,18 +639,21 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
         snprintf(err, err_cap, "wasm: no room for the exec env");
         goto out;
     }
-    wasm_runtime_set_native_stack_boundary(a.env, native_stack_boundary());
+    uint8_t *bound = native_stack_boundary();
+    wasm_runtime_set_native_stack_boundary(a.env, bound);
+    /* What the interpreter and the boundary functions have below this frame. */
+    unsigned stack_room = bound ? (unsigned)((uint8_t *)&bound - bound) : 0u;
     if (!find_hooks(&a, err, err_cap)) goto out;
 
     wasm_memory_inst_t mem = wasm_runtime_get_default_memory(a.inst);
     mem_alloc_info_t pinfo;
     unsigned pool_used = wasm_runtime_get_mem_alloc_info(&pinfo)
                              ? (unsigned)(pinfo.total_size - pinfo.total_free_size) : 0u;
-    FMRB_LOGI(TAG, "[%s] loaded %s (%u bytes, memory %u pages, up to %u, shared pool used %u)"
-              "%s%s%s%s",
+    FMRB_LOGI(TAG, "[%s] loaded %s (%u bytes, memory %u pages, up to %u, shared pool used %u, "
+              "native stack room %u)%s%s%s%s",
               ctx->app_name, path, (unsigned)size,
               mem ? (unsigned)wasm_memory_get_cur_page_count(mem) : 0u, (unsigned)max_pages,
-              pool_used,
+              pool_used, stack_room,
               a.fn[FMRB_SHELL_HOOK_CREATE] ? " on_create" : "",
               a.fn[FMRB_SHELL_HOOK_UPDATE] ? " on_update" : "",
               a.fn[FMRB_SHELL_HOOK_EVENT] ? " on_event" : "",

@@ -286,7 +286,7 @@ set_source_files_properties(${N}/net/net_wrap.c PROPERTIES COMPILE_OPTIONS "${OP
 
 add_executable(fmruby-native $<TARGET_OBJECTS:core_objs>)
 target_link_libraries(fmruby-native PRIVATE
-  freertos_hosted lgfx_hosted ${FMRB_HOSTED_LIBMRUBY}
+  fmrb_wamr_hosted freertos_hosted lgfx_hosted ${FMRB_HOSTED_LIBMRUBY}
   PkgConfig::SDL2 PkgConfig::OPENSSL m pthread ${CMAKE_DL_LIBS})
 # The calls that wait in the kernel, as the networking gems in libmruby make
 # them, go through native/net/net_wrap.c (__wrap_X; __real_X is the library's).

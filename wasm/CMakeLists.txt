@@ -152,10 +152,10 @@ target_include_directories(core_objs PRIVATE
   ${FMRB_ROOT}/components/picoruby-esp32/picoruby/mrbgems/mruby-checkpoint/include)
 
 add_executable(core $<TARGET_OBJECTS:core_objs>)
-target_link_libraries(core PRIVATE freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
+target_link_libraries(core PRIVATE fmrb_wamr_hosted freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
 
 add_executable(core_web $<TARGET_OBJECTS:core_objs>)
-target_link_libraries(core_web PRIVATE freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
+target_link_libraries(core_web PRIVATE fmrb_wamr_hosted freertos_hosted lgfx_hosted ${LIBMRUBY_WASM} zenoh_wasm)
 set_target_properties(core_web PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 # The checkpoint table of this build (doc/checkpoint/flash_table.md, Ff),
