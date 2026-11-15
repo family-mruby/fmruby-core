@@ -23,6 +23,18 @@
    - どの「中身の違い」で断るかの判定 (mrblib のハッシュ・版の番号など) は、今ある互換の判定 (SND0 など) の作りに
      合わせて決め、report に書く。黙って通る経路を残さない。
 
+4. **呼び出しの経路の小さな直し** (2026-11-15 の調べ。アプリの作者から見える変化は無い。ユーザ: 確認は Ruby の
+   エンジンだけでよい):
+   - 記録の詰め込み (`set_composite_regions`、型紙 `tools/boundary/templates/fmrb_boundary_mrb.inc.erb`): 欄の鍵を
+     `mrb_intern_cstr(key)` から型紙が欄ごとに書き出す `mrb_intern_lit("...")` に。mruby と Spinel の包みが区画ごとに
+     中間の Hash を作らない形にできるなら、そうする (欠けた欄の補いは包みに残す)。
+   - 描き手を引く処理 (`drawer_of`) と `fmrb_gfx_submit` で TLS (`fmrb_current()`) を 2 回読む件: 引いた ctx を submit に
+     渡す内部の版を作り、描く命令 1 つにつき 1 回に (`main/app/fmrb_boundary_gfx.c`)。`present_raw` の 3 回も同じ。
+   - 選択肢の引数 (`set_font_raw` など) の比べ方: 毎回の `mrb_intern_lit` をやめ、前の形 (`sym2name` 1 回と `strcmp`)
+     か、それより軽い形に。
+   - 前後は mruby のホストの bench (scratchpad/hotpath、実時間) で測る。docker が空いていれば `ghost-valgrind` で
+     命令数も。
+
 ## 確かめること (これだけ)
 
 - `rake regress` (35 秒)、`rake regress:spinel` (20 秒)。
