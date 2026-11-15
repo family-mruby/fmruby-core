@@ -807,7 +807,8 @@ static mp_obj_t gfx_drawer_open(mp_obj_t canvas, mp_obj_t w, mp_obj_t h) {
     int32_t d = fmrb_gfx_drawer_open((int32_t)mp_obj_get_int(canvas), (int32_t)mp_obj_get_int(w),
                                      (int32_t)mp_obj_get_int(h));
     if (d < 0) {
-        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("no room for another FmrbGfx"));
+        mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("no room for another FmrbGfx (%d at most)"),
+                          (int)FMRB_GFX_DRAWERS_MAX);
     }
     return MP_OBJ_NEW_SMALL_INT(d);
 }

@@ -529,6 +529,9 @@ class FmrbGfx
   # here adds it.
   def initialize(canvas_id, width: 0, height: 0)
     @d = FmrbSpxGfx.fmrb_spx_gfx_drawer_open(canvas_id, width, height)
+    # An app has FMRB_GFX_DRAWERS_MAX (fmrb_gfx_drawer.h) at most; the same
+    # words as the mruby and MicroPython FmrbGfx.
+    raise RuntimeError, "no room for another FmrbGfx (8 at most)" if @d < 0
     @canvas_width = width
     @canvas_height = height
     @current_font = [:default]
