@@ -80,3 +80,13 @@ Family mruby の `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` は同�
 
 アプリのエラーの Window (Ruby・Lua・Python・wasm のアプリが落ちたときに出るもの) を、閉じるボタンだけでなく
 Return キーでも閉じられるようにする。
+
+## WAMR の様子を見えるようにする (2026-11-16 記録、ユーザの希望、夜の作業に入れる)
+
+今は System Monitor (`main/ruby/default_app/monitor.app.rb`) にも Shell の `ps` にも WAMR の様子が出ない (Spinel の
+カーネルの写しは wasm を native と表示する)。案:
+- C に `fmrb_wasm_stats` (ランタイム: 動いているか、共通のプールの使用・最大・全体、境界の関数の数、モジュールの数) と、
+  アプリごとの値 (wasm のメモリのページの今と上限、バイナリの大きさ、直近のフックの時間・命令数、トラップの回数) を
+  足し、読むだけのメソッド (決定 18 の形) で Ruby に出す。
+- System Monitor に WAMR の欄 (ページか、タスクの一覧の列)。Shell の `ps` のエンジンの列に wasm。
+- 10 秒ごとのシリアルのダンプに `fmrb_wasm:` の行。
