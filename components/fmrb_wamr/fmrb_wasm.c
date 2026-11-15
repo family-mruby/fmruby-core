@@ -532,6 +532,97 @@ static uint8_t *read_binary(fmrb_app_task_context_t *ctx, const char *path, uint
     return buf;
 }
 
+/* The SDK version the app was built with: sdk_version = "X.Y.Z" in the
+   .app.toml next to the .wasm (the SDK's build script writes it). Read only
+   when an app is refused, for the reason; "" when there is none. */
+static void read_sdk_version(fmrb_app_task_context_t *ctx, const char *path, char *out, size_t cap)
+{
+    out[0] = '\0';
+    size_t plen = strlen(path);
+    if (plen < 5 || strcmp(path + plen - 5, ".wasm") != 0) return;
+    char toml[FMRB_MAX_PATH_LEN];
+    if (plen >= sizeof(toml)) return;
+    memcpy(toml, path, plen - 5);
+    memcpy(toml + plen - 5, ".toml", 6);
+    uint32_t n = 0;
+    char err[8];
+    uint8_t *text = read_binary(ctx, toml, &n, err, sizeof(err));
+    if (!text) return;
+    /* Lines of the form   sdk_version = "..."   (spaces around = allowed). */
+    for (uint32_t i = 0; i < n; ) {
+        uint32_t end = i;
+        while (end < n && text[end] != '\n') end++;
+        static const char key[] = "sdk_version";
+        uint32_t j = i;
+        if (end - j > sizeof(key) - 1 && memcmp(text + j, key, sizeof(key) - 1) == 0) {
+            j += sizeof(key) - 1;
+            while (j < end && text[j] == ' ') j++;
+            if (j < end && text[j] == '=') {
+                j++;
+                while (j < end && text[j] == ' ') j++;
+                if (j < end && text[j] == '"') {
+                    uint32_t k = ++j;
+                    while (k < end && text[k] != '"') k++;
+                    size_t len = k - j;
+                    if (k < end && len > 0 && len < cap) {
+                        memcpy(out, text + j, len);
+                        out[len] = '\0';
+                    }
+                }
+            }
+            break;
+        }
+        i = end + 1;
+    }
+    fmrb_free(ctx->mem_handle, text);
+}
+
+/* Every function the module imports must be one of the boundary's with the
+   boundary's shape (doc/wasm_apps decision 14). WAMR links an import when
+   its module, name and signature match a registered native, and leaves the
+   others to trap when called; an app made with a newer SDK than this
+   firmware would start and then stop at the first call of what is missing.
+   This refuses it at load, with the first such import and the SDK version
+   from its .app.toml. Imports that are not functions are left to WAMR. */
+static bool check_imports(fmrb_app_task_context_t *ctx, wasm_module_t module, const char *path,
+                          char *err, size_t err_cap)
+{
+    int32_t count = wasm_runtime_get_import_count(module);
+    int32_t missing = 0;
+    wasm_import_t first;
+    memset(&first, 0, sizeof(first));
+    for (int32_t i = 0; i < count; i++) {
+        wasm_import_t im;
+        wasm_runtime_get_import_type(module, i, &im);
+        if (im.kind != WASM_IMPORT_EXPORT_KIND_FUNC || im.linked) continue;
+        if (missing++ == 0) first = im;
+    }
+    if (missing == 0) return true;
+
+    char more[24] = "";
+    if (missing > 1) snprintf(more, sizeof(more), " (and %d more)", (int)(missing - 1));
+    if (strcmp(first.module_name, "fmrb") != 0) {
+        /* WASI or another runtime's functions: no firmware has them. */
+        snprintf(err, err_cap, "imports %.32s.%.48s%s, but the firmware gives only \"fmrb\" "
+                 "functions: build the app without WASI or libc's I/O", first.module_name,
+                 first.name, more);
+        return false;
+    }
+    const char *what = "which this firmware does not have";
+    for (size_t i = 0; i < NATIVES_COUNT; i++) {
+        if (strcmp(k_natives[i].symbol, first.name) == 0) {
+            what = "in another shape than this firmware's";
+            break;
+        }
+    }
+    char ver[24];
+    read_sdk_version(ctx, path, ver, sizeof(ver));
+    snprintf(err, err_cap, "imports fmrb.%.48s, %s%s: the app was built with %s%s%s; "
+             "update the firmware", first.name, what, more,
+             ver[0] ? "SDK " : "a newer SDK", ver, ver[0] ? ", newer than this firmware" : "");
+    return false;
+}
+
 /* The app's stack pointer: the first mutable i32 global the module
    defines (LLVM's __stack_pointer; WAMR finds it the same way when the
    module exports __heap_base, which these apps do not). */
@@ -609,6 +700,7 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
         snprintf(err, err_cap, "%s did not load: %s", path, lerr);
         goto out;
     }
+    if (!check_imports(ctx, module, path, err, err_cap)) goto out;
 
     /* The linear memory may grow to what the app's pool has left. */
     fmrb_pool_stats_t st;
