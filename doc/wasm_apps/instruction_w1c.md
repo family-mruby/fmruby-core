@@ -27,6 +27,14 @@ git -C /home/kishima/fmrb/family-mruby/fmruby-core worktree add /home/kishima/fm
 
 ## やること
 
+0. **イベントの記録の置き場 (決定 20)**: SDK が export する静的な置き場 (名前を決める) に本体が書き、無ければ今の
+   スタックの形に戻る。`components/fmrb_wamr/fmrb_wasm.c`、生成の C のヘッダ (`tools/boundary/templates` の SDK の
+   ヘッダ。C のアプリが 1 行で置き場を用意できるマクロなど)、family-mruby-sdk の TinyGo の `fmrb` パッケージ
+   (`tinygo/fmrb/`、ASCII のみ、ローカルのコミットまで)。この 0 に限り生成の道具の型紙を変えてよい。ABI のハッシュが
+   変わったら書く。スタックを使わない最小の TinyGo のアプリ (scratchpad) が読み込まれることを確かめ、SDK の
+   手順書 (`docs/getting_started*.md`) のトラブルシューティングから回避策を消す。fmruby-core の `flash/app/` の wasm の
+   アプリ (bounce・hello・c_check) は作り直す。
+
 1. **ネイティブ版**: `hosted/hosted.cmake` (と関係するビルド) で `components/fmrb_wamr` をつなぎ、`FMRB_HAVE_WASM` を
    有効にする。`.app.wasm` が起動し、bounce と c_check が描いてイベントを受けること。
 2. **ブラウザ版**: emscripten 向けに WAMR をビルドしてつなぐ (W1a の設定を参考に)。スタックの境界 (今は NULL) を
@@ -40,7 +48,7 @@ git -C /home/kishima/fmrb/family-mruby/fmruby-core worktree add /home/kishima/fm
 
 ## 触ってよい範囲
 
-- worktree の fmruby-core。graphics-audio は変えない。境界の規則・sig・生成の道具は変えない。
+- worktree の fmruby-core と family-mruby-sdk。graphics-audio は変えない。境界の規則・sig は変えない。生成の道具は 0 の型紙だけ。
 - コミットは `wt/w1c` に。件名 `<種類>(<場所>): <要約>`、英語、Co-Authored-By、pathspec を明示。push しない。
 
 ## 止まる条件
