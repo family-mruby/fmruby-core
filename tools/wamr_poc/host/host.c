@@ -149,6 +149,41 @@ fmrb_gfx_fill_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h,
 #include "fmrb_gen/fmrb_boundary_wasm.inc"
 
 static NativeSymbol g_boundary_natives[] = { FMRB_GEN_WASM_NATIVES };
+
+/* Every other flat function: a stand-in that hashes its arguments as they
+ * arrived (FNV-1a over the name and the bytes of each), so the ABI tour of
+ * the C app (apps/c_boundary/tour.h) can be compared with the same calls
+ * made natively. */
+static uint32_t g_stub_hash = 2166136261u;
+static int g_stub_calls;
+
+static void
+stub_mix(const void *data, size_t len)
+{
+    const uint8_t *p = (const uint8_t *)data;
+    for (size_t i = 0; i < len; i++) {
+        g_stub_hash ^= p[i];
+        g_stub_hash *= 16777619u;
+    }
+}
+
+void
+fmrb_stub_begin(const char *name)
+{
+    g_stub_calls++;
+    stub_mix(name, strlen(name) + 1);
+}
+
+void
+fmrb_stub_arg(const void *data, size_t len)
+{
+    stub_mix(&len, sizeof(uint32_t));
+    stub_mix(data, len);
+}
+
+#define FMRB_STUB_HAVE_fmrb_gfx_fill_rect
+#include "fmrb_gen/fmrb_boundary_stub.inc"
+#include "../apps/c_boundary/tour.h"
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -452,16 +487,27 @@ cmd_boundary(const char *path)
     PocModule m;
     PocApp a;
     int32_t next_ms = -1;
+    /* the tour made natively first: what the stand-ins should see */
+    g_stub_hash = 2166136261u;
+    g_stub_calls = 0;
+    boundary_tour();
+    uint32_t abi_expected = g_stub_hash;
+    int calls_expected = g_stub_calls;
+    g_stub_hash = 2166136261u;
+    g_stub_calls = 0;
     if (!module_load(&m, path) || !app_start(&a, &m, label_of(path), 0))
         return 1;
+    uint32_t abi = g_stub_hash;
+    int calls = g_stub_calls;
     for (int i = 0; i < DEFAULT_FRAMES; i++)
         if (!app_update(&a, &next_ms))
             return 1;
     printf("RESULT boundary app=%s build=%s frames=%d next_ms=%d "
-           "checksum=%08x expected=%08x wasm_size=%u\n",
+           "checksum=%08x expected=%08x abi=%08x/%d abi_expected=%08x/%d wasm_size=%u\n",
            a.ctx.name, POC_BUILD, DEFAULT_FRAMES, next_ms,
            fnv1a(a.ctx.canvas, sizeof(a.ctx.canvas)),
-           expected_boundary_checksum(DEFAULT_FRAMES), m.size);
+           expected_boundary_checksum(DEFAULT_FRAMES), abi, calls, abi_expected,
+           calls_expected, m.size);
     app_stop(&a);
     module_unload(&m);
     return 0;

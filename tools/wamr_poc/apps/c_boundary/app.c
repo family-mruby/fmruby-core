@@ -1,15 +1,20 @@
 /*
  * The first wasm app written in C against the generated boundary header
- * (sdk/c/fmrb_boundary.h, doc/app_boundary W4a). It only calls
- * fmrb_gfx_fill_rect; the host plays the firmware and checks the canvas.
+ * (sdk/c/fmrb_boundary.h, doc/app_boundary W4a). on_create makes one call of
+ * every kind of argument and result (tour.h), which the host's stand-ins
+ * hash; on_update draws with fmrb_gfx_fill_rect, which the host plays on a
+ * canvas it checks.
  * Built with: zig cc -target wasm32-freestanding (run.rb boundary).
  */
 #include "fmrb_boundary.h"
+#define BOUNDARY_TOUR_IN_APP 1
+#include "tour.h"
 
 static int32_t frame;
 
 __attribute__((export_name("on_create"))) void on_create(void)
 {
+    boundary_tour();
     fmrb_gfx_fill_rect(0, 0, 0, 64, 64, 0x00);
 }
 

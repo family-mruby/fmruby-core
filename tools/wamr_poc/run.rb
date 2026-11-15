@@ -399,10 +399,11 @@ def boundary
   HOSTS.each_key do |b|
     run = host_run(b, 'boundary', out)
     r = find(run, 'boundary').first
-    pass = run[:ok] && r && r.fields['checksum'] == r.fields['expected']
+    pass = run[:ok] && r && r.fields['checksum'] == r.fields['expected'] &&
+           r.fields['abi'] == r.fields['abi_expected']
     ok &&= pass
     puts format('  %-10s %s %s', b, pass ? 'ok' : 'FAIL',
-                r ? r.fields.slice('checksum', 'expected', 'wasm_size').map { |k, v| "#{k}=#{v}" }.join(' ') : run[:out])
+                r ? r.fields.slice('checksum', 'expected', 'abi', 'abi_expected', 'wasm_size').map { |k, v| "#{k}=#{v}" }.join(' ') : run[:out])
   end
   ok
 end
