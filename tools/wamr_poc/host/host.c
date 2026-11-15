@@ -121,6 +121,36 @@ static NativeSymbol g_natives[] = {
     { "fmrb_nop", (void *)n_nop, "(i)i", NULL },
 };
 
+#ifdef POC_BOUNDARY
+/* ------------------------------------------------------------------ */
+/* the app boundary (doc/app_boundary W4a)                             */
+/* ------------------------------------------------------------------ */
+
+/* The generated raw natives call the flat functions without the exec env,
+ * as the firmware's do; the host is single-threaded, so the app being
+ * called is kept here. */
+static AppCtx *g_current;
+
+/* The firmware's body of the flat function, played on the 64x64 canvas:
+ * receiver 0 is that canvas. */
+int32_t
+fmrb_gfx_fill_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h,
+                   int32_t color)
+{
+    if (gfx != 0 || !g_current)
+        return -1;
+    for (int32_t yy = y; yy < y + h; yy++)
+        for (int32_t xx = x; xx < x + w; xx++)
+            if (xx >= 0 && xx < CANVAS_W && yy >= 0 && yy < CANVAS_H)
+                g_current->canvas[yy * CANVAS_W + xx] = (uint8_t)color;
+    return 0;
+}
+
+#include "fmrb_gen/fmrb_boundary_wasm.inc"
+
+static NativeSymbol g_boundary_natives[] = { FMRB_GEN_WASM_NATIVES };
+#endif
+
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
 /* ------------------------------------------------------------------ */
@@ -190,6 +220,14 @@ runtime_init(void)
         printf("RESULT error stage=register_natives_raw\n");
         return false;
     }
+#ifdef POC_BOUNDARY
+    if (!wasm_runtime_register_natives_raw(
+            "fmrb", g_boundary_natives,
+            sizeof(g_boundary_natives) / sizeof(g_boundary_natives[0]))) {
+        printf("RESULT error stage=register_boundary\n");
+        return false;
+    }
+#endif
     return true;
 }
 
@@ -256,6 +294,9 @@ call(PocApp *a, const char *fn, int insn_limit, int nargs, uint32_t a0,
         return false;
     }
     wasm_runtime_set_instruction_count_limit(a->env, insn_limit);
+#ifdef POC_BOUNDARY
+    g_current = &a->ctx;
+#endif
     if (!wasm_runtime_call_wasm(a->env, f, (uint32_t)nargs, argv)) {
         return false;
     }
@@ -385,6 +426,47 @@ cmd_run(const char *path)
     print_pool("unloaded");
     return 0;
 }
+
+#ifdef POC_BOUNDARY
+/* The pattern the C boundary app draws, computed directly in C. */
+static uint32_t
+expected_boundary_checksum(int frames)
+{
+    static uint8_t canvas[CANVAS_W * CANVAS_H];
+    memset(canvas, 0, sizeof(canvas));
+    for (int f = 0; f < frames; f++)
+        for (int i = 0; i < 8; i++) {
+            int x = (i * 7 + f * 3) & 63, y = (i * 13 + f * 5) & 63;
+            int w = 1 + (i & 3), h = 1 + ((i >> 1) & 3);
+            for (int yy = y; yy < y + h && yy < CANVAS_H; yy++)
+                for (int xx = x; xx < x + w && xx < CANVAS_W; xx++)
+                    canvas[yy * CANVAS_W + xx] = (uint8_t)((i * 31 + f * 17) & 255);
+        }
+    return fnv1a(canvas, sizeof(canvas));
+}
+
+/* W4a: a C app calls the generated boundary function. */
+static int
+cmd_boundary(const char *path)
+{
+    PocModule m;
+    PocApp a;
+    int32_t next_ms = -1;
+    if (!module_load(&m, path) || !app_start(&a, &m, label_of(path), 0))
+        return 1;
+    for (int i = 0; i < DEFAULT_FRAMES; i++)
+        if (!app_update(&a, &next_ms))
+            return 1;
+    printf("RESULT boundary app=%s build=%s frames=%d next_ms=%d "
+           "checksum=%08x expected=%08x wasm_size=%u\n",
+           a.ctx.name, POC_BUILD, DEFAULT_FRAMES, next_ms,
+           fnv1a(a.ctx.canvas, sizeof(a.ctx.canvas)),
+           expected_boundary_checksum(DEFAULT_FRAMES), m.size);
+    app_stop(&a);
+    module_unload(&m);
+    return 0;
+}
+#endif
 
 static bool
 read_stack_pointer(PocApp *a, uint32_t *sp)
@@ -675,6 +757,10 @@ main(int argc, char **argv)
     int rc;
     if (!strcmp(cmd, "run"))
         rc = cmd_run(argv[2]);
+#ifdef POC_BOUNDARY
+    else if (!strcmp(cmd, "boundary"))
+        rc = cmd_boundary(argv[2]);
+#endif
     else if (!strcmp(cmd, "spin"))
         rc = cmd_spin(argv[2]);
     else if (!strcmp(cmd, "multi") && argc >= 4)

@@ -62,6 +62,13 @@ add_library(vmlib STATIC ${WAMR_RUNTIME_LIB_SOURCE}
 
 add_executable(poc_host host.c)
 target_link_libraries(poc_host vmlib)
+# The app boundary (doc/app_boundary W4a): the generated WAMR glue, when
+# tools/boundary/gen.rb has written it (rake setup, or run.rb boundary).
+set(FMRB_GEN_INCLUDE ${CMAKE_CURRENT_LIST_DIR}/../../../components/fmrb_common/include)
+if (EXISTS ${FMRB_GEN_INCLUDE}/fmrb_gen/fmrb_boundary_wasm.inc)
+  target_compile_definitions(poc_host PRIVATE POC_BOUNDARY)
+  target_include_directories(poc_host PRIVATE ${FMRB_GEN_INCLUDE})
+endif ()
 # The same program shape without WAMR, to measure what WAMR adds.
 add_executable(baseline baseline.c)
 foreach (t poc_host baseline)

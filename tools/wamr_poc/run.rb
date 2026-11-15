@@ -8,7 +8,7 @@
 # the checks and prints the acceptance table (A1-A7) and the measurements.
 #
 #   ruby tools/wamr_poc/run.rb            # everything (fetch, build, test, features)
-#   ruby tools/wamr_poc/run.rb fetch|build|test|features|clean
+#   ruby tools/wamr_poc/run.rb fetch|build|test|features|boundary|clean
 #
 # Tools: Rust (wasm32-unknown-unknown) and node from PATH, emscripten from
 # EMSDK_ENV (default ~/emsdk/emsdk_env.sh), TinyGo/Go/Zig unpacked under
@@ -380,6 +380,33 @@ def features
   puts "  rust without -zstack-size: mem_pages=#{run&.fields&.fetch('mem_pages')}"
 end
 
+# ---------------------------------------------------------------- boundary
+
+# doc/app_boundary W4a: the glue generated from sig/ (tools/boundary/gen.rb)
+# in this host, and the first C app built against the generated SDK header.
+SDK_C = File.expand_path('../../sdk/c', ROOT)
+
+def boundary
+  step 'boundary (generated glue, C app)'
+  sh([RbConfig.ruby, File.expand_path('../boundary/gen.rb', ROOT)])
+  FileUtils.mkdir_p(APPS_OUT)
+  out = app('c_boundary')
+  sh(['zig', 'cc', '-target', 'wasm32-freestanding', '-nostdlib', '-O2',
+      "-I#{SDK_C}", '-Wl,--no-entry', "-Wl,-z,stack-size=#{WASM_STACK}",
+      File.join(ROOT, 'apps', 'c_boundary', 'app.c'), '-o', out])
+  build_hosts
+  ok = true
+  HOSTS.each_key do |b|
+    run = host_run(b, 'boundary', out)
+    r = find(run, 'boundary').first
+    pass = run[:ok] && r && r.fields['checksum'] == r.fields['expected']
+    ok &&= pass
+    puts format('  %-10s %s %s', b, pass ? 'ok' : 'FAIL',
+                r ? r.fields.slice('checksum', 'expected', 'wasm_size').map { |k, v| "#{k}=#{v}" }.join(' ') : run[:out])
+  end
+  ok
+end
+
 # ---------------------------------------------------------------- main
 
 cmd = ARGV.first || 'all'
@@ -391,6 +418,10 @@ when 'build'
   build_hosts
 when 'test' then exit(test ? 0 : 1)
 when 'features' then features
+when 'boundary'
+  fetch
+  check_tools
+  exit(boundary ? 0 : 1)
 when 'clean' then FileUtils.rm_rf(BUILD)
 when 'all'
   fetch
@@ -401,5 +432,5 @@ when 'all'
   features
   exit(ok ? 0 : 1)
 else
-  abort "usage: #{$PROGRAM_NAME} [all|fetch|build|test|features|clean]"
+  abort "usage: #{$PROGRAM_NAME} [all|fetch|build|test|features|boundary|clean]"
 end
