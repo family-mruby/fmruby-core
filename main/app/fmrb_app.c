@@ -1481,7 +1481,14 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
             break;
         case FMRB_VM_TYPE_WASM:
             // fmrb_wasm_app_run has already freed the module and the instance;
-            // the pool handle goes below with the others.
+            // the pool handle goes below with the others. A forced kill never
+            // got there: give its use of the runtime back, or the runtime and
+            // its shared pool would never end (and its count never fall).
+#ifdef FMRB_HAVE_WASM
+            if (forced) {
+                fmrb_wasm_app_forget(ctx);
+            }
+#endif
             break;
         default:
             FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);

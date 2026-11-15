@@ -17,27 +17,39 @@
  * The upper bound of the linear memory is what the pool leaves after the
  * copy (decision 5): the instance gets a maximum page count from it.
  *
- * The app runs on the app shell (fmrb_app_shell.h), as a Lua app does:
+ * The app runs on the app shell (fmrb_app_shell.h), as a Lua app does. The
+ * hooks are the ones the generated SDK header (sdk/c/fmrb_boundary.h) ends
+ * with, from sig/ (doc/app_boundary W4b-3):
  *
  *   _initialize()                  run once first, when exported (TinyGo,
  *                                  WASI reactors): the shell's LOAD
  *   on_create()
  *   on_update() -> i32             ms until the next call (negative: the
  *                                  default FMRB_SHELL_DEFAULT_UPDATE_MS)
- *   on_event(kind, x, y, button, keycode, modifier, character, value)
+ *   on_event(const fmrb_app_event_t *ev)
  *   on_destroy(), on_suspend(), on_resume(), on_quit_request()
- *   on_resize(w, h)
+ *   on_resize(new_width, new_height)
  *
- * The hook signatures are this phase's own (W1b); doc/app_boundary W4b-3
- * puts the hooks in sig/ and the generated headers, and this table follows
- * it then. on_event's arguments by kind (fmrb_hid_event_type_t):
- *   key_down / key_up:      keycode, modifier, character
- *   mouse_down / mouse_up:  x, y, button (x, y in the app's area)
- *   mouse_move:             x, y
- *   mouse_wheel:            x, y, value = delta
- *   gamepad_down / _up:     button, value = gamepad id
- *   gamepad_axis:           button = axis, value = value, keycode = gamepad id
- *   kana_mode:              value = mode
+ * on_event's record (60 bytes, fmrb_bnd_app_event_t here) is put on the
+ * app's own C stack: below the value of its stack pointer global (the first
+ * mutable i32 global the module defines: LLVM's __stack_pointer, which
+ * TinyGo, clang, zig and Rust all have), which is lowered over the call and
+ * put back after it, as a C caller passing a pointer to a local does. A
+ * module with on_event and no such global is refused at load. The type is
+ * the record's choice number (FMRB_BND_APP_EVENT_TYPE_*, the order Lua's
+ * strings have); the fields each kind fills are Lua's (the others are 0):
+ *   key_down / key_up:      keycode, scancode, modifier, character
+ *   mouse_down / mouse_up:  button, x, y, wx, wy (x, y in the app's area;
+ *                           wx, wy in the window)
+ *   mouse_move:             x, y, wx, wy
+ *   mouse_wheel:            delta, x, y, wx, wy
+ *   gamepad_down / _up:     gamepad_id, button
+ *   gamepad_axis:           gamepad_id, axis, value
+ *   kana_mode:              mode
+ *
+ * The boundary's FmrbApp functions that work on the window (the area, stop,
+ * the frame, clear_user_area_raw) need the shell (ctx->shell): every hook is
+ * called from inside fmrb_app_shell_run, so they work from any hook.
  *
  * The window's FmrbGfx is drawer 0 (the shell's layout opens it before
  * on_create; no other drawer is open then): every fmrb_gfx_* call of the app
@@ -52,6 +64,8 @@
 #include <string.h>
 
 #include "wasm_export.h"
+/* The interpreter's instance: its globals (the app's stack pointer). */
+#include "wasm_runtime.h"
 
 #include "fmrb_app.h"
 #include "fmrb_app_shell.h"
@@ -69,6 +83,7 @@
 #endif
 
 /* The generated raw natives of the boundary (tools/boundary/gen.rb). */
+#include "fmrb_gen/fmrb_boundary.h"
 #include "fmrb_gen/fmrb_boundary_wasm.inc"
 
 static const char *TAG = "wasm";
@@ -99,6 +114,14 @@ static StaticSemaphore_t s_lock_storage;
 static int s_users;
 static void *s_pool;
 static NativeSymbol *s_natives;
+/* The apps that count as users, so a forced kill can give its count back
+   (fmrb_wasm_app_forget). */
+static fmrb_app_task_context_t *s_holders[FMRB_MAX_APPS];
+
+/** How long a start waits for the runtime's lock before it gives up (only a
+ *  task killed inside the start or the end of another wasm app holds it
+ *  for longer than a moment). */
+#define FMRB_WASM_LOCK_WAIT_MS 2000
 
 void fmrb_wasm_init(void)
 {
@@ -118,13 +141,16 @@ static void *pool_alloc(size_t size)
 #endif
 }
 
-static bool runtime_acquire(char *err, size_t err_cap)
+static bool runtime_acquire(fmrb_app_task_context_t *ctx, char *err, size_t err_cap)
 {
     if (!s_lock) {
         snprintf(err, err_cap, "wasm: the runtime was not set up at boot");
         return false;
     }
-    fmrb_semaphore_take(s_lock, portMAX_DELAY);
+    if (fmrb_semaphore_take(s_lock, FMRB_MS_TO_TICKS(FMRB_WASM_LOCK_WAIT_MS)) != pdTRUE) {
+        snprintf(err, err_cap, "wasm: the runtime's lock is held (an app killed in its start?)");
+        return false;
+    }
     bool ok = true;
     if (s_users == 0) {
         if (!s_pool) {
@@ -155,22 +181,34 @@ static bool runtime_acquire(char *err, size_t err_cap)
                 wasm_runtime_destroy();
                 ok = false;
             } else {
-                FMRB_LOGI(TAG, "runtime started (pool %u KB at %p, %u boundary functions)",
+                mem_alloc_info_t info;
+                unsigned used = wasm_runtime_get_mem_alloc_info(&info)
+                                    ? (unsigned)(info.total_size - info.total_free_size) : 0u;
+                FMRB_LOGI(TAG, "runtime started (pool %u KB at %p, %u boundary functions, "
+                          "table %u bytes, pool used %u bytes)",
                           (unsigned)(FMRB_WASM_POOL_SIZE / 1024), s_pool,
-                          (unsigned)NATIVES_COUNT);
+                          (unsigned)NATIVES_COUNT, (unsigned)sizeof(k_natives), used);
             }
         }
     }
     if (ok) {
         s_users++;
+        for (int i = 0; i < FMRB_MAX_APPS; i++) {
+            if (!s_holders[i]) { s_holders[i] = ctx; break; }
+        }
     }
     fmrb_semaphore_give(s_lock);
     return ok;
 }
 
-static void runtime_release(void)
+/* Drop ctx's use of the runtime and end the runtime with the last one; the
+   caller holds s_lock. false when ctx was not a user. */
+static bool runtime_drop_locked(fmrb_app_task_context_t *ctx)
 {
-    fmrb_semaphore_take(s_lock, portMAX_DELAY);
+    int i = 0;
+    while (i < FMRB_MAX_APPS && s_holders[i] != ctx) i++;
+    if (i == FMRB_MAX_APPS) return false;
+    s_holders[i] = NULL;
     if (--s_users == 0) {
         mem_alloc_info_t info;
         bool have = wasm_runtime_get_mem_alloc_info(&info);
@@ -184,6 +222,35 @@ static void runtime_release(void)
         } else {
             FMRB_LOGI(TAG, "runtime ended");
         }
+    }
+    return true;
+}
+
+static void runtime_release(fmrb_app_task_context_t *ctx)
+{
+    fmrb_semaphore_take(s_lock, portMAX_DELAY);
+    runtime_drop_locked(ctx);
+    fmrb_semaphore_give(s_lock);
+}
+
+void fmrb_wasm_app_forget(fmrb_app_task_context_t *ctx)
+{
+    /* The app's task is gone, inside a call or between them. Nothing of its
+       instance is freed here: the deleted task may have held the shared
+       pool's allocator lock or the app pool's, and the linear memory and the
+       binary copy go with the app pool anyway. Its module, instance and exec
+       env stay in the shared pool until the runtime ends; when it was the
+       last wasm app, that is now, and wasm_runtime_destroy drops the whole
+       pool (the next start lays it out afresh). */
+    if (!s_lock) return;
+    if (fmrb_semaphore_take(s_lock, FMRB_MS_TO_TICKS(FMRB_WASM_LOCK_WAIT_MS)) != pdTRUE) {
+        FMRB_LOGE(TAG, "[%s] killed while holding the runtime's lock: wasm apps cannot start "
+                  "until a reboot", ctx->app_name);
+        return;
+    }
+    if (runtime_drop_locked(ctx)) {
+        FMRB_LOGW(TAG, "[%s] killed by force: its use of the runtime is given back "
+                  "(%d wasm app%s left)", ctx->app_name, s_users, s_users == 1 ? "" : "s");
     }
     fmrb_semaphore_give(s_lock);
 }
@@ -216,6 +283,7 @@ typedef struct {
     wasm_exec_env_t env;
     wasm_function_inst_t fn[FMRB_SHELL_HOOK_COUNT];
     int32_t drawer;
+    uint32_t *sp;               /* the app's stack pointer global */
     char *err;
     size_t err_cap;
 } wasm_app_t;
@@ -234,7 +302,7 @@ static const char *const HOOK_NAMES[FMRB_SHELL_HOOK_COUNT] = {
 
 /* Parameters and results each hook must have. */
 static const uint8_t HOOK_PARAMS[FMRB_SHELL_HOOK_COUNT] = {
-    [FMRB_SHELL_HOOK_EVENT] = 8, [FMRB_SHELL_HOOK_RESIZE] = 2,
+    [FMRB_SHELL_HOOK_EVENT] = 1, [FMRB_SHELL_HOOK_RESIZE] = 2,
 };
 static const uint8_t HOOK_RESULTS[FMRB_SHELL_HOOK_COUNT] = {
     [FMRB_SHELL_HOOK_UPDATE] = 1,
@@ -287,40 +355,70 @@ static int e_call_update(void *ud, int *next_ms)
 static int e_call_event(void *ud, const fmrb_shell_event_t *ev)
 {
     wasm_app_t *a = ud;
-    int32_t x = 0, y = 0, button = 0, keycode = 0, modifier = 0, character = 0, value = 0;
+    if (!a->fn[FMRB_SHELL_HOOK_EVENT]) return FMRB_SHELL_OK;
+    fmrb_bnd_app_event_t r;
+    memset(&r, 0, sizeof(r));
     switch (ev->kind) {
     case FMRB_HID_EVENT_KEY_DOWN:
     case FMRB_HID_EVENT_KEY_UP:
-        keycode = ev->keycode; modifier = ev->modifier; character = ev->character;
+        r.type = ev->kind == FMRB_HID_EVENT_KEY_DOWN ? FMRB_BND_APP_EVENT_TYPE_KEY_DOWN
+                                                     : FMRB_BND_APP_EVENT_TYPE_KEY_UP;
+        r.keycode = ev->keycode; r.scancode = ev->scancode;
+        r.modifier = ev->modifier; r.character = ev->character;
         break;
     case FMRB_HID_EVENT_MOUSE_DOWN:
     case FMRB_HID_EVENT_MOUSE_UP:
-        button = ev->button;
-        /* fall through */
     case FMRB_HID_EVENT_MOUSE_MOVE:
-        x = ev->x; y = ev->y;
-        break;
     case FMRB_HID_EVENT_MOUSE_WHEEL:
-        x = ev->x; y = ev->y; value = ev->delta;
+        r.type = ev->kind == FMRB_HID_EVENT_MOUSE_DOWN ? FMRB_BND_APP_EVENT_TYPE_MOUSE_DOWN
+               : ev->kind == FMRB_HID_EVENT_MOUSE_UP   ? FMRB_BND_APP_EVENT_TYPE_MOUSE_UP
+               : ev->kind == FMRB_HID_EVENT_MOUSE_MOVE ? FMRB_BND_APP_EVENT_TYPE_MOUSE_MOVE
+                                                       : FMRB_BND_APP_EVENT_TYPE_MOUSE_WHEEL;
+        if (ev->kind == FMRB_HID_EVENT_MOUSE_DOWN || ev->kind == FMRB_HID_EVENT_MOUSE_UP) {
+            r.button = ev->button;
+        }
+        if (ev->kind == FMRB_HID_EVENT_MOUSE_WHEEL) r.delta = ev->delta;
+        r.x = ev->x; r.y = ev->y; r.wx = ev->wx; r.wy = ev->wy;
         break;
     case FMRB_HID_EVENT_GAMEPAD_DOWN:
     case FMRB_HID_EVENT_GAMEPAD_UP:
-        button = ev->button; value = ev->gamepad_id;
+        r.type = ev->kind == FMRB_HID_EVENT_GAMEPAD_DOWN ? FMRB_BND_APP_EVENT_TYPE_GAMEPAD_DOWN
+                                                         : FMRB_BND_APP_EVENT_TYPE_GAMEPAD_UP;
+        r.gamepad_id = ev->gamepad_id; r.button = ev->button;
         break;
     case FMRB_HID_EVENT_GAMEPAD_AXIS:
-        button = ev->axis; value = ev->value; keycode = ev->gamepad_id;
+        r.type = FMRB_BND_APP_EVENT_TYPE_GAMEPAD_AXIS;
+        r.gamepad_id = ev->gamepad_id; r.axis = ev->axis; r.value = ev->value;
         break;
     case FMRB_HID_EVENT_KANA_MODE:
-        value = ev->mode;
+        r.type = FMRB_BND_APP_EVENT_TYPE_KANA_MODE;
+        r.mode = ev->mode;
         break;
     default:
         return FMRB_SHELL_OK;
     }
-    uint32_t argv[8] = {
-        (uint32_t)ev->kind, (uint32_t)x, (uint32_t)y, (uint32_t)button,
-        (uint32_t)keycode, (uint32_t)modifier, (uint32_t)character, (uint32_t)value,
-    };
-    return call_hook(a, FMRB_SHELL_HOOK_EVENT, 8, argv);
+
+    /* The record goes on the app's C stack, 16-byte aligned below its
+       stack pointer, which stays lowered over the call. */
+    uint32_t sp = *a->sp;
+    uint32_t at = (sp - (uint32_t)sizeof(r)) & ~15u;
+    if (sp < sizeof(r) + 16 ||
+        !wasm_runtime_validate_app_addr(a->inst, at, sizeof(r))) {
+        wasm_runtime_clear_exception(a->inst);   /* the check raises one */
+        if (a->err && a->err_cap) {
+            snprintf(a->err, a->err_cap, "on_event: no room on the app's stack (sp 0x%x)",
+                     (unsigned)sp);
+        }
+        FMRB_LOGE(TAG, "[%s] on_event: no room on the app's stack (sp 0x%x)",
+                  a->ctx->app_name, (unsigned)sp);
+        return FMRB_SHELL_RAISED;
+    }
+    memcpy(wasm_runtime_addr_app_to_native(a->inst, at), &r, sizeof(r));
+    *a->sp = at;
+    uint32_t argv[1] = { at };
+    int rc = call_hook(a, FMRB_SHELL_HOOK_EVENT, 1, argv);
+    *a->sp = sp;
+    return rc;
 }
 
 static int e_call_resize(void *ud, int w, int h)
@@ -386,6 +484,22 @@ static uint8_t *read_binary(fmrb_app_task_context_t *ctx, const char *path, uint
     return buf;
 }
 
+/* The app's stack pointer: the first mutable i32 global the module
+   defines (LLVM's __stack_pointer; WAMR finds it the same way when the
+   module exports __heap_base, which these apps do not). */
+static uint32_t *stack_pointer_global(wasm_module_inst_t inst)
+{
+    WASMModuleInstance *mi = (WASMModuleInstance *)inst;
+    if (mi->module_type != Wasm_Module_Bytecode) return NULL;
+    for (uint32_t i = mi->module->import_global_count; i < mi->e->global_count; i++) {
+        WASMGlobalInstance *g = &mi->e->globals[i];
+        if (g->is_mutable && g->type == VALUE_TYPE_I32) {
+            return (uint32_t *)(mi->global_data + g->data_offset);
+        }
+    }
+    return NULL;
+}
+
 /* Look up the hooks and check their types; false (with why) when one has
    the wrong shape. */
 static bool find_hooks(wasm_app_t *a, char *err, size_t err_cap)
@@ -403,6 +517,11 @@ static bool find_hooks(wasm_app_t *a, char *err, size_t err_cap)
         }
         a->fn[h] = f;
     }
+    if (a->fn[FMRB_SHELL_HOOK_EVENT] && !(a->sp = stack_pointer_global(a->inst))) {
+        snprintf(err, err_cap, "on_event needs a stack pointer global (__stack_pointer) "
+                 "for its record");
+        return false;
+    }
     return true;
 }
 
@@ -411,7 +530,7 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
 {
     char why[160];
     if (err && err_cap) err[0] = '\0';
-    if (!runtime_acquire(err, err_cap)) {
+    if (!runtime_acquire(ctx, err, err_cap)) {
         FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, err);
         return FMRB_ERR_FAILED;
     }
@@ -463,9 +582,14 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
     if (!find_hooks(&a, err, err_cap)) goto out;
 
     wasm_memory_inst_t mem = wasm_runtime_get_default_memory(a.inst);
-    FMRB_LOGI(TAG, "[%s] loaded %s (%u bytes, memory %u pages, up to %u)%s%s%s",
+    mem_alloc_info_t pinfo;
+    unsigned pool_used = wasm_runtime_get_mem_alloc_info(&pinfo)
+                             ? (unsigned)(pinfo.total_size - pinfo.total_free_size) : 0u;
+    FMRB_LOGI(TAG, "[%s] loaded %s (%u bytes, memory %u pages, up to %u, shared pool used %u)"
+              "%s%s%s",
               ctx->app_name, path, (unsigned)size,
               mem ? (unsigned)wasm_memory_get_cur_page_count(mem) : 0u, (unsigned)max_pages,
+              pool_used,
               a.fn[FMRB_SHELL_HOOK_CREATE] ? " on_create" : "",
               a.fn[FMRB_SHELL_HOOK_UPDATE] ? " on_update" : "",
               a.fn[FMRB_SHELL_HOOK_EVENT] ? " on_event" : "");
@@ -485,7 +609,7 @@ out:
     if (module) wasm_runtime_unload(module);
     if (bin) fmrb_free(ctx->mem_handle, bin);
     if (a.drawer >= 0) fmrb_gfx_drawer_close(a.drawer);
-    runtime_release();
+    runtime_release(ctx);
     if (ret != FMRB_OK && err && err[0]) {
         FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, err);
     }

@@ -39,6 +39,15 @@ void fmrb_wasm_init(void);
 fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
                              char *err, size_t err_cap);
 
+/**
+ * @brief Give back a wasm app's use of the runtime after its task was
+ *        deleted by a forced kill (fmrb_wasm_app_run did not get to its
+ *        end). Frees nothing of the app; the runtime ends (and its shared
+ *        pool is laid out afresh by the next start) when it was the last
+ *        wasm app. Does nothing for an app that was not a user.
+ */
+void fmrb_wasm_app_forget(fmrb_app_task_context_t *ctx);
+
 #ifdef __cplusplus
 }
 #endif

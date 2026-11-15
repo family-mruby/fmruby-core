@@ -37,6 +37,23 @@ typedef struct __attribute__((packed)) {
 } <%= r.cname %>;
 _Static_assert(sizeof(<%= r.cname %>) == <%= r.size %>, "<%= r.cname %> is packed");
 <% end -%>
+<% hook_records.each do |r| -%>
+<% r.fields.select { |f| f.ty.kind == :choice }.each do |f| -%>
+
+/* <%= r.klass %>::<%= r.name %>.<%= f.name %> (a hook's record; the engine glue fills it) */
+<% f.ty.values.each_with_index do |v, i| -%>
+#define <%= "#{r.cname.delete_suffix('_t')}_#{f.name}_#{v}".upcase %> <%= i %>
+<% end -%>
+<% end -%>
+
+/* <%= r.klass %>::<%= r.name %>, packed little-endian (<%= r.size %> bytes; a hook's argument) */
+typedef struct __attribute__((packed)) {
+<% r.fields.each do |f| -%>
+    <%= f.ty.ctype %> <%= f.name %>;
+<% end -%>
+} <%= r.cname %>;
+_Static_assert(sizeof(<%= r.cname %>) == <%= r.size %>, "<%= r.cname %> is packed");
+<% end -%>
 <% funcs.each do |f| -%>
 <% f.params.select { |p| p.ty.kind == :choice }.each do |p| -%>
 
