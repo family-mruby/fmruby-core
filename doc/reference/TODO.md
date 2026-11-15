@@ -72,5 +72,10 @@ Family mruby の `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` は同�
 
 - **storage を書かない**: app の区画だけ書き (app_only)、storage の /home 以外の差分 (ビルドの storage_root と
   端末の中身の差) を WiFi の `/fs/put` (fmrb_rd_fs.rb の push) で送る。/home にも鍵にも触らない。
-- **書き込みの速さ**: CH343 で切れない一番速い bps を測り、切れたら下げて続ける (今は 115200 固定)。
+- **書き込みの速さ**: CH34x (CH340・CH343) の端末は最初から 115200 bps にする (ユーザ: 115200 が安定、ほかは時々失敗する)。
 - 一式を `rake flash:keep_home` (と MCP の flash の選択肢) にまとめ、退避の像も念のため残す。
+
+## エラーの Window を Return キーでも閉じる (2026-11-15 記録、ユーザの希望)
+
+アプリのエラーの Window (Ruby・Lua・Python・wasm のアプリが落ちたときに出るもの) を、閉じるボタンだけでなく
+Return キーでも閉じられるようにする。
