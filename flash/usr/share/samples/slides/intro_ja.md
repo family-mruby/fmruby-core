@@ -75,7 +75,7 @@ end
 
 {:.center}
 
-![60%](images/desktop.png)
+![60%](/usr/share/backgrounds/bg_426x240.png)
 
 {:.center}
 

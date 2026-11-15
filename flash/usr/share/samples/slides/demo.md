@@ -98,7 +98,7 @@ $fmrb_y = y + 12 + rows.length * 10 + 4
 - 320x240 `RGB332`
 - PNG image support
 
-![the desktop](images/desktop.png)
+![a wallpaper](/usr/share/backgrounds/bg_426x240.png)
 
 {::wait/}
 
@@ -178,10 +178,10 @@ The APU emulator supports:
 
 # Video
 
-A `.mjpg` plays inside the slide (Modern and the browser):
+A `.mjpg` plays inside the slide (Modern and the browser),
+written the way a picture is:
 
-![fps=15](movies/demo.mjpg)
-{:.center}
+`![fps=15](movie.mjpg)`
 
 # Sizes
 

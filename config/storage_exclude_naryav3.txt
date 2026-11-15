@@ -10,3 +10,13 @@ app/demo/walk_scroller.app.toml  # WROVER's 256-dot sprite limit, so Retro canno
 app/demo/walk_scroller
 usr/share/sprites/walk_scroller
 app/tinygo             # wasm apps: an S3 build carries no WAMR (doc/wasm_apps)
+
+# Wallpapers for screens larger than this one: the 320x240 desktop takes the
+# 426x240 picture (system_desktop.app.rb theme_wallpaper; it never asks for a
+# larger one on a screen this size).
+usr/share/backgrounds/bg_640x360.png
+usr/share/backgrounds/bg_852x480.png
+usr/share/backgrounds/bg_1280x720.png
+usr/share/backgrounds/bg_cyber_640x360.png
+usr/share/backgrounds/bg_cyber_852x480.png
+usr/share/backgrounds/bg_cyber_1280x720.png

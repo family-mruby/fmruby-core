@@ -72,9 +72,9 @@ end
 # 動画
 
 `.mjpg` を置くと、その場で動きます (Modern とブラウザ版)。
+画像と同じ書き方です。
 
-![fps=15](movies/demo.mjpg)
-{:.center}
+`![fps=15](movie.mjpg)`
 
 # 大きさ
 
