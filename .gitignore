@@ -133,3 +133,8 @@ flash_local/
 
 # Kanji dictionary sources and output (rake kanji:dict); never in the repository
 tools/kanji/work/
+
+# App boundary glue, generated from sig/ on every build by tools/boundary/gen.rb
+# (rake setup). The SDK it also writes (sdk/) is committed.
+components/fmrb_common/include/fmrb_gen/
+main/ruby/spinel/fmrb_gen/

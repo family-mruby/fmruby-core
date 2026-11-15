@@ -803,13 +803,8 @@ static mp_obj_t gfx_draw_rect(size_t n_args, const mp_obj_t *args) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_draw_rect_obj, 6, 6, gfx_draw_rect);
 
-static mp_obj_t gfx_fill_rect(size_t n_args, const mp_obj_t *args) {
-    (void)n_args;
-    check_gfx(fmrb_mp_gfx_rect(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3),
-                               ARG_INT(4), ARG_INT(5), true));
-    return mp_const_none;
-}
-static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_fill_rect_obj, 6, 6, gfx_fill_rect);
+// FmrbGfx functions generated from sig/ (tools/boundary/gen.rb): gfx_fill_rect
+#include "fmrb_gen/fmrb_boundary_mp.inc"
 
 static mp_obj_t gfx_draw_circle(size_t n_args, const mp_obj_t *args) {
     (void)n_args;
@@ -1099,7 +1094,7 @@ static const mp_rom_map_elem_t fmrb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_gfx_set_pixel), MP_ROM_PTR(&gfx_set_pixel_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_draw_line), MP_ROM_PTR(&gfx_draw_line_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_draw_rect), MP_ROM_PTR(&gfx_draw_rect_obj) },
-    { MP_ROM_QSTR(MP_QSTR_gfx_fill_rect), MP_ROM_PTR(&gfx_fill_rect_obj) },
+    FMRB_GEN_MP_GLOBALS
     { MP_ROM_QSTR(MP_QSTR_gfx_draw_circle), MP_ROM_PTR(&gfx_draw_circle_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_fill_circle), MP_ROM_PTR(&gfx_fill_circle_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_draw_round_rect), MP_ROM_PTR(&gfx_draw_round_rect_obj) },

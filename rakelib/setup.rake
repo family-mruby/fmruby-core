@@ -38,6 +38,9 @@ end
 
 desc "Build Setup (Patch files)"
 task :setup do
+  # The boundary glue first: the gem ports, Spinel's combined programs and the
+  # Lua / MicroPython components all include what it writes (rakelib/boundary.rake).
+  Rake::Task['boundary:gen'].invoke
   mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
   # ---------- Add ----------
   # const (must be copied first, as it's used by kernel and app)

@@ -29,7 +29,9 @@ namespace :micropython do
   MP_EMBED_SRCS_CMAKE = "#{MP_DIR}/mp_embed_srcs.cmake"
 
   desc "Regenerate #{MP_EMBED_DIR} from the submodule (needs make + python3)"
-  task :gen => :prelude do
+  # boundary:gen first: fmrb_module.c includes the generated glue, and the
+  # qstr extractor must see it.
+  task :gen => ["boundary:gen", :prelude] do
     unless File.exist?("#{MP_SUBMODULE}/ports/embed/embed.mk")
       abort "#{MP_SUBMODULE} is empty. Run 'git submodule update --init #{MP_SUBMODULE}'"
     end

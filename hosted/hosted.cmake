@@ -318,6 +318,7 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/app/fmrb_app.c
   ${FMRB_ROOT}/main/app/fmrb_app_spawner.c
   ${FMRB_ROOT}/main/app/fmrb_app_shell.c
+  ${FMRB_ROOT}/main/app/fmrb_boundary_gfx.c
   # empty unless FMRB_HAVE_CHECKPOINT (the native build defines it)
   ${FMRB_ROOT}/main/app/fmrb_app_checkpoint.c
   ${FMRB_ROOT}/main/app/fmrb_app_transfer.c

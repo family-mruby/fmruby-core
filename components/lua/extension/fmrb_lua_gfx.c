@@ -8,6 +8,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_theme.h"
 #include "fmrb_app_shell.h"
+#include "fmrb_boundary_recv.h"
 #include <string.h>
 
 static const char *TAG = "lua_gfx";
@@ -25,31 +26,20 @@ typedef struct {
 #define GX(d, x) ((int16_t)((d)->ox + (x)))
 #define GY(d, y) ((int16_t)((d)->oy + (y)))
 
-// gfx:fillRect(x, y, w, h, color)
-static int lua_gfx_fill_rect(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x = luaL_checkinteger(L, 2);
-    int y = luaL_checkinteger(L, 3);
-    int w = luaL_checkinteger(L, 4);
-    int h = luaL_checkinteger(L, 5);
-    int color = luaL_checkinteger(L, 6);
-
+// The receiver number of the app boundary's FmrbGfx functions
+// (fmrb_boundary_recv.h): the canvas, with this gfx's origin bound for the call.
+static int32_t fmrb_lua_recv_gfx(lua_State *L, int idx)
+{
+    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, idx, "FmrbGfx");
     if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
+        luaL_error(L, "Graphics not initialized");
+        return -1;
     }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, GX(data, x), GY(data, y),
-                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, true);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "fillRect failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
+    return fmrb_gfx_recv_bind(data->canvas_id, data->ox, data->oy);
 }
+
+// FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): fill_rect
+#include "fmrb_gen/fmrb_boundary_lua.inc"
 
 // gfx:drawRect(x, y, w, h, color)
 static int lua_gfx_draw_rect(lua_State* L) {
@@ -269,7 +259,7 @@ static int lua_gfx_fill_circle(lua_State* L) {
 
 // Method table
 static const luaL_Reg gfx_methods[] = {
-    {"fill_rect", lua_gfx_fill_rect},
+    FMRB_GEN_LUA_FmrbGfx_METHODS
     {"draw_rect", lua_gfx_draw_rect},
     {"fill_round_rect", lua_gfx_fill_round_rect},
     {"draw_round_rect", lua_gfx_draw_round_rect},

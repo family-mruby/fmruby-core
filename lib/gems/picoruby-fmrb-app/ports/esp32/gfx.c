@@ -28,6 +28,7 @@
 #include "app_local.h"
 #include "fmrb_kernel.h"
 #include "fmrb_app_canvas.h"
+#include "fmrb_boundary_recv.h"
 #ifdef FMRB_HAVE_CHECKPOINT
 #include <mruby/checkpoint.h>
 #endif
@@ -260,33 +261,23 @@ static mrb_value mrb_gfx_draw_rect(mrb_state *mrb, mrb_value self)
     return self;
 }
 
-// Graphics#fill_rect(x, y, w, h, color)
-static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
+// The receiver number of the app boundary's FmrbGfx functions
+// (fmrb_boundary_recv.h): the canvas, with this object's origin bound for
+// the call unless the target is a sprite image (which has no origin).
+static int32_t fmrb_mrb_recv_gfx(mrb_state *mrb, mrb_value self)
 {
-    mrb_int x, y, w, h, color;
-    mrb_get_args(mrb, "iiiii", &x, &y, &w, &h, &color);
-
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
-
-    FMRB_LOGD("gfx", "fill_rect called: x=%d, y=%d, w=%d, h=%d, color=0x%02X, canvas_id=%d",
-              (int)x, (int)y, (int)w, (int)h, (int)color, data->canvas_id);
-
-    // Send GFX command to Host Task
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, GX(data, x), GY(data, y),
-                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, true);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE("gfx", "fill_rect fmrb_gfx_submit failed: %d", ret);
-        mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill rect failed: %d", ret);
+    if (data->to_image) {
+        return data->canvas_id;
     }
-
-    return self;
+    return fmrb_gfx_recv_bind(data->canvas_id, data->ox, data->oy);
 }
+
+// FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): fill_rect
+#include "fmrb_gen/fmrb_boundary_mrb.inc"
 
 // Graphics#blend_rect(x, y, w, h, color, mode)
 // Blend color into each pixel in the rectangle
@@ -1972,7 +1963,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_get_pixel", mrb_gfx_get_pixel, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "draw_line", mrb_gfx_draw_line, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "draw_rect", mrb_gfx_draw_rect, MRB_ARGS_REQ(5));
-    mrb_define_method(mrb, gfx_class, "fill_rect", mrb_gfx_fill_rect, MRB_ARGS_REQ(5));
+    FMRB_GEN_MRB_DEFINE_FmrbGfx(mrb, gfx_class);
     mrb_define_method(mrb, gfx_class, "blend_rect", mrb_gfx_blend_rect, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, gfx_class, "draw_circle", mrb_gfx_draw_circle, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "fill_circle", mrb_gfx_fill_circle, MRB_ARGS_REQ(4));

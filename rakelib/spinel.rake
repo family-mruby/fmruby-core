@@ -119,6 +119,8 @@ namespace :spinel do
 
   desc "Generate Spinel C from PreBuild Ruby on the host (before docker build)"
   task :gen do
+    # the app programs splice the generated FmrbBoundary declarations
+    Rake::Task['boundary:gen'].invoke
     dir = spinel_compiler_dir
     bin = File.join(dir, "bin/spinel")
     # Guard against compiler/runtime-snapshot divergence: the generated C and

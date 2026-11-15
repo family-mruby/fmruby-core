@@ -32,7 +32,6 @@ module FmrbSpxGfx
   ffi_func :fmrb_spx_gfx_get_pixel,    [:int, :int, :int], :int   # >=0 color / neg
   ffi_func :fmrb_spx_gfx_draw_line,    [:int, :int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_gfx_draw_rect,    [:int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_fill_rect,    [:int, :int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_gfx_blend_rect,   [:int, :int, :int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_gfx_draw_circle,  [:int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_gfx_fill_circle,  [:int, :int, :int, :int, :int], :int

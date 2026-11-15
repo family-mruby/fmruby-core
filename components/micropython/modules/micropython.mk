@@ -18,4 +18,8 @@ FMRB_CORE_DIR := $(FMRB_MOD_DIR)/../../..
 SRC_USERMOD += $(FMRB_MOD_DIR)/fmrb_module.c
 
 CFLAGS_USERMOD += -I$(FMRB_MOD_DIR)
+# fmrb_gen/fmrb_boundary*.{h,inc}: the boundary glue generated from sig/
+# (tools/boundary/gen.rb, run by rake setup). Plain C over stdint.h only; run
+# rake setup before this generation so they exist.
+CFLAGS_USERMOD += -I$(FMRB_CORE_DIR)/components/fmrb_common/include
 CFLAGS_USERMOD += -I$(FMRB_CORE_DIR)/components/fmrb_msg

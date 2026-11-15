@@ -218,6 +218,14 @@ typedef struct fmrb_app_task_context_s {
     // wait pays one compare.
     volatile uint32_t     gc_req;
     volatile uint32_t     gc_done;
+
+    // The drawing target an engine binds for one boundary call whose
+    // receiver carries a drawing origin in the engine's own object (mruby,
+    // Lua): fmrb_gfx_recv_bind / _resolve (fmrb_boundary_recv.h). Interim
+    // until the origin moves below the boundary (doc/app_boundary W4b).
+    int32_t               gfx_bound_canvas;
+    int16_t               gfx_bound_ox;
+    int16_t               gfx_bound_oy;
 } fmrb_app_task_context_t;
 
 /**

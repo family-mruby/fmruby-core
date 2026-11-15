@@ -96,6 +96,9 @@ parts = [
   # Splicing the kernel shim would emit externs for every kernel ffi_func and
   # break a mixed mruby-kernel + Spinel-desktop link.
   File.join(SPINEL_DIR, "fmrb_app_ffi.rb"),    # FmrbSpx(min) / FmrbSpxApp / FmrbSpxGfx
+  # FmrbBoundary: the boundary's flat functions, generated from sig/ by
+  # tools/boundary/gen.rb (rake setup runs it before this script)
+  File.join(SPINEL_DIR, "fmrb_gen", "fmrb_boundary_ffi.rb"),
   const_rb,                                    # FmrbConst
   File.join(SPINEL_DIR, "msgpack_pure.rb"),    # MessagePack
   File.join(SPINEL_DIR, "fmrb_app_base_spinel.rb"), # Log/Machine/SpxBytes/FmrbGfx/GfxBlock/FmrbApp

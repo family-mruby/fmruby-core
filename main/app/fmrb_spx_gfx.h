@@ -45,7 +45,6 @@ int fmrb_spx_gfx_set_pixel(int canvas_id, int x, int y, int color);
 int fmrb_spx_gfx_get_pixel(int canvas_id, int x, int y);
 int fmrb_spx_gfx_draw_line(int canvas_id, int x1, int y1, int x2, int y2, int color);
 int fmrb_spx_gfx_draw_rect(int canvas_id, int x, int y, int w, int h, int color);
-int fmrb_spx_gfx_fill_rect(int canvas_id, int x, int y, int w, int h, int color);
 /** mode: 0=ADD (saturating), 1=XOR. */
 int fmrb_spx_gfx_blend_rect(int canvas_id, int x, int y, int w, int h, int color, int mode);
 int fmrb_spx_gfx_draw_circle(int canvas_id, int x, int y, int r, int color);

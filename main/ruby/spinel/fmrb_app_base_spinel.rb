@@ -559,7 +559,7 @@ class FmrbGfx
   def set_pixel(x, y, color); FmrbSpxGfx.fmrb_spx_gfx_set_pixel(@canvas_id, x + @dx, y + @dy, color); self; end
   def draw_line(x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_line(@canvas_id, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
   def draw_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_draw_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
-  def fill_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_fill_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
+  def fill_rect(x, y, w, h, color); FmrbBoundary.fmrb_gfx_fill_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
   def blend_rect(x, y, w, h, color, mode); FmrbSpxGfx.fmrb_spx_gfx_blend_rect(@canvas_id, x + @dx, y + @dy, w, h, color, mode); self; end
   def draw_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
   def fill_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end

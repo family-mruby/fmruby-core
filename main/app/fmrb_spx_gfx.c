@@ -114,9 +114,6 @@ static int spx_gfx_rect(int canvas_id, int x, int y, int w, int h, int color, bo
 int fmrb_spx_gfx_draw_rect(int canvas_id, int x, int y, int w, int h, int color)
 { return spx_gfx_rect(canvas_id, x, y, w, h, color, false); }
 
-int fmrb_spx_gfx_fill_rect(int canvas_id, int x, int y, int w, int h, int color)
-{ return spx_gfx_rect(canvas_id, x, y, w, h, color, true); }
-
 int fmrb_spx_gfx_blend_rect(int canvas_id, int x, int y, int w, int h, int color, int mode)
 {
     gfx_cmd_t cmd;

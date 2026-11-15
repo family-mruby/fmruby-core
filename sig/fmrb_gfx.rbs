@@ -339,6 +339,7 @@ class FmrbGfx
   #   end
   # end
   # ```
+  %a{fmrb.boundary}
   def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
   # 下の絵と混ぜて四角をぬる <<en>> Fill a rectangle blended with what is under it
