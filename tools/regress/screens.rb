@@ -41,6 +41,7 @@ require_relative "targets"
 require_relative "tree"
 require_relative "build_tree"
 require_relative "sim_run"
+require_relative "fixtures"
 require_relative "screens/image"
 require_relative "screens/dsl"
 require_relative "screens/drivers"
@@ -242,13 +243,14 @@ module Regress
       ensure
         kept = @opts[:keep] && config == selected_configs.select { |c| c.kind == :sim }.last
         SimRun.down if SimRun.core_running? && !kept
+        reset_launcher_cache! unless kept
         tree.keep_for_later! unless kept
       end
 
       # The first boot after a family switch comes up at the old frame size
       # or not at all (report rg3b.md); one restart fixes either.
       def bring_up(config)
-        reset_launcher_cache!
+        seed_launcher_cache!
         size = begin
           SimRun.up(config.family)
         rescue RuntimeError
@@ -263,12 +265,17 @@ module Regress
       end
 
       # The launcher replays its index from flash/var/cache/launcher_index (out
-      # of git, shared with whoever else runs the sim) and only rescans /app
-      # when there is none. A cache made before an app was added, or after a
-      # local one was tried, would put the launcher scene on whatever this
-      # checkout last saw. Removed before each boot, the desktop walks /app at
-      # boot and writes it afresh from the tree as it is.
+      # of git, shared with whoever else runs the sim) and only walks /app
+      # when there is none. Before each boot the fixed index of the fixtures
+      # (fixtures.rb) is put there, so the launcher lists the same apps
+      # whatever flash/app holds; after the configuration it is removed, so
+      # the next boot (someone's sim) walks /app and writes it afresh.
       LAUNCHER_CACHE = File.join(CORE, "flash", "var", "cache", "launcher_index")
+
+      def seed_launcher_cache!
+        FileUtils.mkdir_p(File.dirname(LAUNCHER_CACHE))
+        File.binwrite(LAUNCHER_CACHE, Fixtures.launcher_index)
+      end
 
       def reset_launcher_cache!
         FileUtils.rm_f(LAUNCHER_CACHE)
@@ -279,22 +286,26 @@ module Regress
         boot = session_class.new(self, config, Scene.new(name: "_boot", on: [], block: nil), driver)
         boot.before_scene if boot.respond_to?(:before_scene)
         @desktop = boot.respond_to?(:after_boot) ? boot.after_boot : nil
-        scenes_for(config).each do |scene|
-          driver.mark_log!
-          t_scene = now
-          s = session_class.new(self, config, scene, driver)
-          error = nil
-          begin
-            s.before_scene if s.respond_to?(:before_scene)
-            scene.block.call(s)
-            error = "nothing compared" unless s.compared?
-          rescue Failure, DriverError => e
-            error = e.message
-          end
-          @results << { "config" => config.name, "scene" => scene.name, "error" => error } if error
-          clean_up(s, driver)
-          @scene_secs << [config.name, scene.name, (now - t_scene).round(1)]
+        scenes_for(config).each { |scene| run_scene(config, scene, driver) }
+      ensure
+        driver.restore_fixtures! if driver.respond_to?(:restore_fixtures!)
+      end
+
+      def run_scene(config, scene, driver)
+        driver.mark_log!
+        t_scene = now
+        s = session_class.new(self, config, scene, driver)
+        error = nil
+        begin
+          s.before_scene if s.respond_to?(:before_scene)
+          scene.block.call(s)
+          error = "nothing compared" unless s.compared?
+        rescue Failure, DriverError => e
+          error = e.message
         end
+        @results << { "config" => config.name, "scene" => scene.name, "error" => error } if error
+        clean_up(s, driver)
+        @scene_secs << [config.name, scene.name, (now - t_scene).round(1)]
       end
 
       # Close what the scene opened (the sim: by the process list; the
@@ -435,6 +446,9 @@ module Regress
         SimRun.wait_for(30, "the development server on port #{port}") { port_open?(port) }
         driver = WebDriver.new(port, tmp_dir)
         driver.tool("up", "--headless", timeout: 60)
+        # The launcher's fixed index, put down by the page at every boot of
+        # this tab from the next one on (the reset's reload below).
+        driver.seed_launcher!
         # Erase what an earlier run left in this origin's store (files and
         # settings), so the page starts as shipped.
         driver.tool("reset", timeout: 60)

@@ -88,18 +88,10 @@ Regress::Screens.helpers do
     wait_stable
   end
 
-  # An app by its path; the browser build has no door for that, so there it
-  # is the launcher's index (arrow keys from the first icon, then Enter).
-  def open_app(path, web_index: nil)
-    if web?
-      raise Regress::Screens::Failure, "open_app(#{path}): no launcher index for the browser build" unless web_index
-      menu :launcher
-      wait_title("the launcher")
-      web_index.times { key "right" } # the launcher opens on the first icon
-      key "enter"
-    else
-      launch path
-    end
+  # An app by its path (every configuration has a door for it: the debug
+  # server's spawn, or the page's launch slot on the browser build).
+  def open_app(path)
+    launch path
     pause 500
     park
   end

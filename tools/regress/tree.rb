@@ -18,10 +18,13 @@
 #            same digest. Clear of the developer's native program (5565), the
 #            sim (5555), the screens' native program (5575), the compositor
 #            checks (15565..15679) and the shared checkout's own ports.
-#   ports    checked before use: one that answers or cannot be bound stops
-#            the run with the reason (two trees whose digests share a slot,
-#            or a program an earlier run left behind).
+#   ports    the default (above) when it is free, else a free one of
+#            24000..24999, said on stderr; marked as the process's own in
+#            /tmp/fmrb-regress-ports-<uid> until it exits, so parallel jobs
+#            pass each other's by. Checked again before use: one that
+#            answers or cannot be bound then stops the run with the reason.
 require "digest"
+require "fileutils"
 require "socket"
 
 module Regress
@@ -53,10 +56,96 @@ module Regress
     # A run directory under /tmp: /tmp/<base>-<uid>, or /tmp/<base>-<uid>-<ID>.
     def run_dir(base) = name("/tmp/#{base}-#{Process.uid}", sep: "-")
 
-    # The shared checkout's port, or this tree's port for that use.
+    # The shared checkout's port, or this tree's port for that use -- when it
+    # is free. When something answers on it, it cannot be bound, or another
+    # job holds its mark (below), the first free port of FALLBACK is taken
+    # instead and the run says so. Either way the port is marked as this
+    # process's until it exits, so a job started meanwhile (another tool, the
+    # same tool twice) passes it by.
     def port(shared_port, use)
-      return shared_port if shared?
-      PORT_BASE + SLOT * 8 + PORTS.fetch(use)
+      want = shared? ? shared_port : PORT_BASE + SLOT * 8 + PORTS.fetch(use)
+      claim_port(want, use)
+    end
+
+    # --- port marks ---------------------------------------------------------
+    #
+    # One file per port in LOCK_DIR, made with O_EXCL: "<pid> <use> <tree>".
+    # A mark whose pid is gone is stale and taken over. A process removes its
+    # own marks when it exits (not a forked child's exit: the pid is checked).
+    LOCK_DIR = "/tmp/fmrb-regress-ports-#{Process.uid}"
+    # Above the worktrees' blocks (20000..23207) and clear of the ports the
+    # tools and the developer use (5555.., 8006.., 15565.., 17447..).
+    FALLBACK = (24_000..24_999).freeze
+
+    @claimed = {}
+    @mine = []
+
+    class << self
+      attr_reader :claimed, :mine
+    end
+
+    def claim_port(want, use)
+      key = "#{use}:#{want}"
+      return Tree.claimed[key] if Tree.claimed[key]
+      ([want] + FALLBACK.to_a).each do |p|
+        next if p != want && Tree.claimed.value?(p)
+        next unless mark_port(p, use)
+        if port_busy?(p)
+          unmark_port(p)
+          next
+        end
+        unless p == want
+          who = holder(want) || marked_by(want)
+          warn "regress: port #{want} (#{use}) is taken#{who ? " by #{who}" : ''}; using #{p}"
+        end
+        Tree.claimed[key] = p
+        return p
+      end
+      raise Busy, "no free port for #{use} (#{want}, #{FALLBACK})"
+    end
+
+    def lock_path(port) = File.join(LOCK_DIR, "#{port}.lock")
+
+    # true when the mark is now this process's
+    def mark_port(port, use)
+      FileUtils.mkdir_p(LOCK_DIR)
+      2.times do
+        begin
+          File.open(lock_path(port), File::WRONLY | File::CREAT | File::EXCL) do |f|
+            f.write("#{Process.pid} #{use} #{label}\n")
+          end
+          Tree.mine << port
+          return true
+        rescue Errno::EEXIST
+          pid = File.read(lock_path(port)).split.first.to_i rescue 0 # rubocop:disable Style/RescueModifier
+          return true if pid == Process.pid
+          return false if alive?(pid)
+          FileUtils.rm_f(lock_path(port)) # stale: its process is gone
+        end
+      end
+      false
+    end
+
+    def unmark_port(port)
+      FileUtils.rm_f(lock_path(port)) if Tree.mine.delete(port)
+    end
+
+    # who holds a port's mark ("pid N (use, tree)"), when someone does
+    def marked_by(port)
+      pid, use, *tree = File.read(lock_path(port)).split
+      alive?(pid) ? "pid #{pid} (#{use}, #{tree.join(' ')})" : nil
+    rescue SystemCallError
+      nil
+    end
+
+    OWNER = Process.pid
+    at_exit do
+      if Process.pid == OWNER
+        Tree.mine.dup.each do |p|
+          pid = File.read(Tree.lock_path(p)).split.first.to_i rescue 0 # rubocop:disable Style/RescueModifier
+          FileUtils.rm_f(Tree.lock_path(p)) if pid == OWNER
+        end
+      end
     end
 
     def label = ID ? "tree #{ID} (#{CORE})" : "the shared checkout"

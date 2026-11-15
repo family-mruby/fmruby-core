@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-14 | 0 章に道具ごとの時間の目安。 `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-16 | 0 章に道具ごとの時間の目安。 `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 0. 時間の目安 (何を流すか決める前に見る)
 
@@ -129,7 +129,7 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 - `rake regress:full` に ONLY= は効かない (部分ごとに意味が違う)。絞るときは部分を 1 つずつ流す。
 - `rake regress:full` の中では、**sim の同じ構成を 1 回だけ作る** (`tools/regress/build_tree.rb` の `sim_build!`・`keep_for_later!`)。標準の Retro は run・screens・checkpoint が、標準の Modern は run・screens・live・checkpoint が使う。部分が使い終えた build/ (と sdkconfig、libmruby、flash/etc の生成物) を `tmp/regress/build_cache/<鍵>/` へ移し、次の部分が同じ鍵なら作らずに戻す (移すだけで写さない)。鍵は作る設定と、そのときのソース (HEAD、追跡しているファイルの変更、追跡していないファイルの名前・大きさ・時刻、`.env`、`MRUBY_CHECKPOINT_DIR` の中身) なので、途中でソースを変えれば作り直す。置き場は `regress:full` の始めと終わりに消す。部分を 1 つずつ流すときは今までどおり毎回作る。作ったか使い回したかは各部分の要約に出る (`build cached`)。
 - sim は種類 (Retro・Modern) を切り替えると graphics-audio を起こし直す (1 回 17 秒ほど) ので、各部分は sim が今いる種類から流す (`tmp/regress/sim_family`)。regress:checkpoint の sim の場面は種類ごとにまとめて流す (標準・全部 mruby の順)。
-- ブラウザ版のページを人が開いている (`tools/fmrb_web.rb` のブラウザか、port 8016 の開発サーバ) ときは、`regress:screens` のブラウザ版だけを外して流す (要約に `web SKIPPED`。9 章)。
+- ブラウザ版のページを人が開いている (`tools/fmrb_web.rb` のブラウザ) ときは、`regress:screens` のブラウザ版だけを外して流す (要約に `web SKIPPED`。9 章)。
 - 最後に部分ごとの時間が 1 行出る (`regress:full: 33.3 min (regress 0.4, size 4.1, run 4.3, screens 4.1, live 1.1, wl 9.8, checkpoint 9.4)`)。測り方と内訳は `report/rg_full_time.md`。
 
 ### 7.1 ビルドの時点の表 (rake regress:size)
@@ -150,6 +150,8 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 - 控えの前の GC (2026-11-03 から): それまでは GC がどこまで進んでいたかで数が動き、Modern のカーネルは 5 回で 68 KB 動いた (幅を 137 KB にしていた)。閉じた直後のカーネルは 40 KB 動くので比べていなかった。GC をかけてからは、カーネルの揺れは 1 KB 未満、ほかは 0〜56 B。数は「生きているもの」の量になり、前より 25〜60 KB 小さい。
 - 幅は種類ごとに基準の json の `tolerance` が既定で、種類 (retro・modern) ごとの `families.<種類>.tolerance` があればそれが勝つ (calibrate の APPLY=1 が書く)。
 - **台本や構成を変えて揺れ方が変わったとき**: `rake regress:run:calibrate ONLY=<種類>` → 要約を読む → `APPLY=1`。要約の読み方は 8.1 と同じ。sim では幅の案は絶対値の部分だけで、割合の部分 (カーネル・サービスホストの 3%) は今の値のまま。比べない数があればその揺れも `not compared:` の行に出る (今は無い)。結果は `tmp/regress/sim/<種類>.calibrate.json`、各回のコアのログは `<種類>.calibrate.<n>.log`。
+- ランチャーの一覧は決まった組 (9.4) にしてから起こす。デスクトップの VM プールはランチャーの項目の数で動く (1 項目 200 B ほど) ので、本物の `flash/app` にアプリを足しても基準が動かないように。
+- **既知の揺れは 1 回だけやり直す**: 控えの前の GC にサービスホストが間に合わない (`Services timeout`、サービスの tick の最中)。もう 1 回 gc を頼み、通ればそのまま進み、要約の最後に `1 retried: gc at idle: Services timeout, retried ok` のように出る。2 回目も間に合わなければ今までどおり落ちる。
 - sim で取れないもの: 起動ログの M1| (Linux のビルドは出さない) と周期ダンプの IRAM free (sim では周期ダンプが出ない)。これらは実機の起動の確認 (RG4) で見る。
 
 ### 7.3 落ちたとき
@@ -263,8 +265,8 @@ ruby tools/regress/screens.rb --attach modern   # もう動いている sim (web
 
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
 - 構成は 6 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)、`native` (Linux のネイティブ版、標準構成、機種の定義 `sdl`。doc/linux_native/)。
-- 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016、`WEB_PORT=` で変える)** とヘッドレスのブラウザを起こし、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
-- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザは `wasm/build/drive_browser.pid` の印で見る。印の pid がもう無い (Windows の Chrome のときは、プロファイル `fmrb_drive` の chrome.exe も無い) なら古い印として消して進む (`web: removed a stale ...` と出る)。ブラウザ版の port (8016) を誰かの開発サーバが使っているときも同じ。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
+- 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016。塞がっていれば空いている port、13 章)** とヘッドレスのブラウザを起こし、ランチャーの決まった一覧を置き (9.4)、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
+- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザは `wasm/build/drive_browser.pid` の印で見る。印の pid がもう無い (Windows の Chrome のときは、プロファイル `fmrb_drive` の chrome.exe も無い) なら古い印として消して進む (`web: removed a stale ...` と出る)。ブラウザ版の port (8016) が塞がっているときは止まらず、空いている port を使う (13 章)。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
 - 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
 
 ### 9.1 台本の書き方
@@ -282,7 +284,7 @@ Regress::Screens.scene "editor_type", on: %w[modern retro web modern-mruby retro
 end
 ```
 
-- 入力: `key`・`text`・`click(x, y)`・`move`・`press`・`release`・`wheel` (tools/fmrb_input.rb・fmrb_web.rb と同じ言葉)。`launch(path)` は sim とネイティブ版 (debug server の spawn)。ブラウザ版はランチャーから開く (`open_app(path, web_index:)`)。
+- 入力: `key`・`text`・`click(x, y)`・`move`・`press`・`release`・`wheel` (tools/fmrb_input.rb・fmrb_web.rb と同じ言葉)。`launch(path)`・`open_app(path)` はパスでアプリを開く: sim とネイティブ版は debug server の spawn、ブラウザ版はページの launch の口 (`fmrb_web.rb launch PATH`、wasm/backend/launch_wasm.c)。ランチャーの何番目かで開くことはしない (アプリが増えると別のアプリが開く)。`seed_fm` はファイルマネージャの決まった木を置く (9.4)。
 - 待つ: 時間ではなく画面で待つ。`wait_stable(quiet: 1.0)` (その秒数だけ画面が変わらなくなるまで)、`wait_change(rect)` (直前の入力の前の画面、か `mark` した画面から変わるまで)、`wait_until("説明") { |img| ... }`・`wait_pixel(x, y, [r, g, b])`、`wait_log(/re/)` (sim のコアのログ)。どれも上限の秒数を持ち、超えたら場面が落ちる。`pause(ms)` は最後の手段。
 - `shot(名前 = nil, quiet:, timeout:, rect:)`: 画面が落ち着くのを待ち、基準があればそれと同じになるまで最大 timeout 秒 (既定 8) 待ってから比べる。1 つの場面で何枚撮ってもよい (名前を付ける)。
 - 隠す範囲: `mask(x, y, w, h)` はその場面のすべての比較と待ちから外す。helpers.rb の `before_scene` が全場面でメニューバーの時計 (日付と秒、右端から 90 px) と、置いたポインタの所を隠す。
@@ -300,6 +302,17 @@ end
 
 - 音、実機の入力、表示の後段 (HDMI・NTSC)、実機だけの初期化。sim とブラウザ版の画面は実機と同じ描画の部品 (LovyanGFX) を通るが、Retro の実機は WROVER の側で描くので、Retro の実機の画素は見ていない。
 - 時計の中身と日付 (隠している)。
+- 本物の `flash/app` の一覧 (ランチャー・ファイルマネージャは決まった組を見せる、9.4)。
+
+### 9.4 決まった組 (アプリを足しても基準が動かないように)
+
+一覧を写す場面は、本物の `flash/app` ではなく、回帰専用の決まった組を見せる (`tools/regress/fixtures.rb`)。アプリを 1 本足しても、ランチャー・ファイルマネージャの基準と sim の VM プールの基準 (7.2) は動かない。
+
+- **ランチャー**: `test/regress/fixtures/launcher_index` (本物のアプリ 12 本の索引。ルビー・BASIC・Python・Lua・wasm・アプリ自身の絵の印、2 行の名前を含む)。デスクトップは起動時に索引のキャッシュ (`/var/cache/launcher_index`) があれば /app を歩かずにそれを使うので、起動の前にこれを置く。sim は checkout の `flash/var/cache/` に置いて、構成が終わったら消す (次に誰かが起こす sim は /app を歩き直す)。ネイティブ版はその回のキャッシュの場所に、ブラウザ版はページの seed (`fmrb_web.rb seed LOCAL /flash/var/cache/launcher_index`。そのタブの起動のたびにページが書く) で置く。組込みの 3 つ (Shell・Editor・App Store) は索引に入らず、いつも先頭に出る。
+- **ファイルマネージャ**: 場面の頭で `s.seed_fm` が `/tmp/regress_fm` の小さな木 (alpha・beta・gamma.txt、alpha の下に 3 つのファイルと sub) とファイルマネージャの状態 (`/tmp/file_manager.state.toml`、開く場所をそこに) を置く。ファイルマネージャは "/" や /app でなくそこから開く。sim では checkout の `flash/tmp/` に置き、構成の後で木を消して状態を前のものに戻す。ネイティブ版はその回のキャッシュの場所 (毎回空から)。
+- 組を変えたら (索引の行を足す・ファイルを変える)、その場面の基準を見直す。本物のアプリの絵の印や名前の付け方を変えたときは、索引に載っているアプリなら基準が変わる (見た目の変化として正しい)。
+- メニューバーの空きメモリの欄は、sim・ネイティブ版では `---KB` のまま、ブラウザ版には無いので隠していない。時計は全場面で隠している (9.1)。
+- 見た目そのものを比べる場面 (デスクトップ・メニュー・Config・ランチャー・エディタの 1 打鍵・picoruby の図形と日本語・kamon・walk_scroller・ファイルマネージャ) は画素で比べる。「開いた」だけを見る場面は今は無い (2026-11-16 に見直し、report/hardening.md)。
 
 ## 10. 相手のいる通し (rake regress:live)
 
@@ -494,7 +507,7 @@ rake regress:transfer:quick WEB=1     # 相手をブラウザ版にして (resen
 
 - **共有 checkout** (`.git` がディレクトリ) は今までと同じ名前: `regress:checkpoint` の run dir `/tmp/fmrb-native-ckpt-<uid>` (`-b-`・`-c-`・`-sim-` も)、debug の port 5585・5586・5587、ルータ `fmrb_regress_ckpt_zenohd` (17457・ws 17459)、実機のルータ `fmrb_regress_ckpt_zenohd_board`、ブラウザ版の開発サーバ 8067。`regress:screens` のネイティブ版 `/tmp/fmrb-native-regress-<uid>`・5575、ブラウザ版 8016。
 - **ほかの木** (`.git` がファイルの worktree) は、木の実のパスの SHA-1 の先頭 6 桁 (ID) を名前に足す: `/tmp/fmrb-native-ckpt-<uid>-<ID>`、`fmrb_regress_ckpt_zenohd_<ID>` など。port は木ごとの 8 個の組 `20000 + 8 × slot` から (slot は ID から決まる 1〜400): +0〜+2 がネイティブ版 A・B・C、+3・+4 がルータ (tcp・ws)、+5 が checkpoint のブラウザ版、+6 が画面の比較のネイティブ版、+7 がそのブラウザ版。人のネイティブ版 (5565)、sim (5555)、コンポジタの確認 (15565〜15679)、共有 checkout の port とは重ならない。実機のルータの port (7447) は実機から届く port なので木によらない (同時に 2 つの木で実機の場面は流せない)。
-- **使う前に port の空きを確認する**。答えるものがいるか bind できなければ、port と持ち主 (`ss` で分かれば) と理由を言って止まる (ID の slot が別の木と重なったときや、前の回の残り)。
+- **port は道具が空きを探して取る** (`Tree.port`)。上の既定の port (worktree は木の組の port) が空いていればそれを使い、答えるものがいる・bind できない・ほかの作業の印がある、のどれかなら 24000〜24999 の空きを取り、`regress: port 8016 (screens_web) is taken by ...; using 24000` と言う。取った port には印 (`/tmp/fmrb-regress-ports-<uid>/<port>.lock`、中身は pid・用途・木) を置き、そのプロセスが終わるときに消す。印の pid がもう無ければ古い印として取り直す。同じ道具を 2 つ並べて流しても、ほかの道具 (checkpoint・transfer・screens) と並べても、port では重ならない。使う直前にもう一度空きを確認し、塞がっていれば port と持ち主 (`ss` で分かれば) と理由を言って止まる。
 - **止め損ねを残さない**: `regress:checkpoint` は起こしたネイティブ版とルータを、通っても落ちても Ctrl+C でも止める (ensure と、それが届かなかったときの at_exit)。始めるときは同じ木の前の回の残り (run dir の pid の file が指す生きた fmruby-native、同じ名前のルータ) を止めてから起こす。ほかの木のものには触らない。
 - **直下の道具** (`tools/fmrb_native.rb`・`fmrb_png.rb` など、family-mruby の tools/) は、木の 1 つ上か、`FMRB_ROOT=<ディレクトリ>` で渡した所で探す。worktree の上には無いので、worktree から流すときは、直下の tools/ を写し、その `fmruby-core` をこの木への symlink にしたディレクトリを `FMRB_ROOT=` で渡す。無ければ「worktree なら FMRB_ROOT を渡す」と言って止まる。`regress:checkpoint`・`regress:screens`・`regress:live`・`test/native/` の確認 (wl・sdl・deb・net) が見る。`rake regress` (安い方) は直下の道具を使わないので要らない。
 

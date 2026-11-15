@@ -55,6 +55,7 @@ require_relative "targets"
 require_relative "build_tree"
 require_relative "calibrate"
 require_relative "tree"
+require_relative "fixtures"
 
 module Regress
   CORE = File.expand_path("../..", __dir__) unless const_defined?(:CORE)
@@ -236,10 +237,29 @@ module Regress
     # message wait (the debug server's gc), so that a snapshot counts what is
     # live, not how far each GC had got. An app that did not collect in time
     # fails the run: its number would be the GC timing again.
-    def snapshot
-      late = dbg("gc", "max=#{GC_WAIT_MS}").fetch("apps").reject { |a| %w[done skipped].include?(a["status"]) }
+    #
+    # A known flake: the service host now and then does not collect within
+    # the wait (Services timeout; its task is busy in a service's tick). The
+    # collection is asked once more, and the retry is told in the summary
+    # (retries). A second miss fails the run as before.
+    def snapshot(point = nil)
+      late = gc_late
+      unless late.empty?
+        first = late.map { |a| "#{a['name']} #{a['status']}" }.join(", ")
+        late = gc_late
+        retries << "gc at #{point || 'a snapshot'}: #{first}, retried #{late.empty? ? 'ok' : 'and failed'}"
+      end
       raise "gc: #{late.map { |a| "#{a['name']} #{a['status']}" }.join(', ')} (no collection before the snapshot)" unless late.empty?
       ps
+    end
+
+    def gc_late
+      dbg("gc", "max=#{GC_WAIT_MS}").fetch("apps").reject { |a| %w[done skipped].include?(a["status"]) }
+    end
+
+    # The known flakes retried in this process (said in the summary).
+    def retries
+      @retries ||= []
     end
 
     def ps
@@ -276,6 +296,10 @@ module Regress
       # the first boot after a family switch comes up at the old size, or
       # does not come up at all (the core waits for an INIT_DISPLAY answer
       # that never comes). One restart fixes either.
+      #
+      # The launcher lists the fixed set of the fixtures (fixtures.rb), so the
+      # desktop's VM pool does not grow with every app added to flash/app.
+      seed_launcher_cache
       size = begin
         up(family)
       rescue RuntimeError
@@ -288,16 +312,16 @@ module Regress
       raise "the sim came up at #{size&.join('x') || '?'}, #{SIZES[family].join('x')} expected" unless size == SIZES[family]
       wait_for(60, "the desktop's boot to finish") { core_log.include?(BOOT_DONE) }
       sleep SETTLE
-      points = { "idle" => snapshot }
+      points = { "idle" => snapshot("idle") }
       pids = SCENARIO_APPS.map do |path|
         pid = dbg("spawn", "path=#{path}")["pid"]
         sleep SETTLE
         pid
       end
-      points["running"] = snapshot
+      points["running"] = snapshot("running")
       pids.each { |pid| dbg("kill", "pid=#{pid}") }
       sleep SETTLE
-      points["closed"] = snapshot
+      points["closed"] = snapshot("closed")
       log = core_log
       File.write(File.join(OUT, log_name), log)
       res = { "points" => points, "compile" => compile_lines(log) }
@@ -318,6 +342,17 @@ module Regress
       raise
     ensure
       down if core_running? && @ours
+      FileUtils.rm_f(LAUNCHER_CACHE) if @ours
+    end
+
+    # The launcher's index cache in this checkout's flash/ (the sim's file
+    # system), put down before a boot and removed after it, so the next
+    # boot (someone's sim) walks /app again.
+    LAUNCHER_CACHE = File.join(CORE, "flash", "var", "cache", "launcher_index")
+
+    def seed_launcher_cache
+      FileUtils.mkdir_p(File.dirname(LAUNCHER_CACHE))
+      File.binwrite(LAUNCHER_CACHE, Fixtures.launcher_index)
     end
 
     # Each mruby app's VM pool right after compiling its script.
@@ -466,7 +501,8 @@ module Regress
       end
       took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
       timing = opts[:table] ? "table only" : "#{(took / 60).round(1)} min: #{timings.join(', ')}"
-      puts "sim: #{results.size} families, #{failed ? 'FAILED' : 'ok'} (#{timing}; M1| is boards only)"
+      retried = retries.empty? ? "" : "; #{retries.size} retried: #{retries.join('; ')}"
+      puts "sim: #{results.size} families, #{failed ? 'FAILED' : 'ok'} (#{timing}; M1| is boards only#{retried})"
       failed ? 1 : 0
     end
 

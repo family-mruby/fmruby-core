@@ -97,12 +97,19 @@ module Regress
       # Whether the scene compared anything (a scene that does not fails).
       def compared? = !@shots.empty?
 
-      # Open an app by its path (the sim's debug server; the browser build
-      # has no such door, so a web scene goes through the launcher instead).
+      # Open an app by its path: the sim's and the native program's debug
+      # server, the browser build's launch slot (fmrb_web.rb launch).
       def launch(path)
-        raise Failure, "launch(#{path}): the browser build cannot open an app by path; use the launcher" if web?
         @driver.launch(path)
         @last = nil
+      end
+
+      # The File Manager's fixture (fixtures.rb): a fixed tree under
+      # /tmp/regress_fm and the File Manager's state pointing at it, so it
+      # opens there and lists those files rather than /app. Put back after
+      # the configuration's scenes.
+      def seed_fm
+        @driver.seed_fm!
       end
 
       # --- masks ------------------------------------------------------------

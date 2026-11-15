@@ -19,6 +19,7 @@ require "json"
 require "open3"
 require_relative "image"
 require_relative "../tree"
+require_relative "../fixtures"
 
 module Regress
   module Screens
@@ -79,6 +80,29 @@ module Regress
         @log_mark = @sim.core_log.bytesize
       end
 
+      # The sim's file system is this checkout's flash/ (the flat table of
+      # fmrb_hal_file_posix.c), shared with whoever runs the sim later: what
+      # a fixture replaces is put back by restore_fixtures!.
+      FLASH = File.join(Tree::CORE, "flash")
+
+      def seed_fm!
+        @fm_state_was ||= begin
+          f = File.join(FLASH, Fixtures::FM_STATE_VPATH)
+          [File.exist?(f) ? File.binread(f) : nil]
+        end
+        Fixtures.write_fm_tree(FLASH)
+        File.binwrite(File.join(FLASH, Fixtures::FM_STATE_VPATH), Fixtures.fm_state)
+      end
+
+      def restore_fixtures!
+        return unless @fm_state_was
+        FileUtils.rm_rf(File.join(FLASH, Fixtures::FM_DIR))
+        f = File.join(FLASH, Fixtures::FM_STATE_VPATH)
+        was = @fm_state_was.first
+        was ? File.binwrite(f, was) : FileUtils.rm_f(f)
+        @fm_state_was = nil
+      end
+
       def log_since_mark
         @sim.core_log.byteslice(@log_mark..) || ""
       end
@@ -113,9 +137,24 @@ module Regress
         img
       end
 
-      def launch(_path)
-        raise DriverError, "the browser build has no launch by path"
+      # The page's launch slot (wasm/backend/launch_wasm.c, fmrb_web.rb launch).
+      def launch(path)
+        JSON.parse(tool("launch", path).lines.last.to_s)
+      rescue JSON::ParserError => e
+        raise DriverError, "launch #{path}: #{e.message}"
       end
+
+      # The launcher's fixed index, written by the page at every boot of this
+      # tab (fmrb_web.rb seed); takes effect from the next reload or reset.
+      def seed_launcher!
+        tool("seed", Fixtures::LAUNCHER_INDEX, "/flash#{Fixtures::LAUNCHER_CACHE_VPATH}")
+      end
+
+      def seed_fm!
+        raise DriverError, "the browser build has no File Manager fixture (no scene needs one)"
+      end
+
+      def restore_fixtures!; end
 
       def status
         tool("status")[/running=.*/].to_s
@@ -167,6 +206,11 @@ module Regress
       end
 
       def up(user_dir, cache_dir, machine: "sdl")
+        @cache_dir = cache_dir
+        # the launcher's fixed index in the cache root (/var is the cache's)
+        idx = File.join(cache_dir, Fixtures::LAUNCHER_CACHE_VPATH)
+        FileUtils.mkdir_p(File.dirname(idx))
+        File.binwrite(idx, Fixtures.launcher_index)
         tool("up", "--machine", machine, "--user-dir", user_dir, "--cache-dir", cache_dir,
              "--timeout", "90", timeout: 120)
       end
@@ -225,6 +269,16 @@ module Regress
       end
 
       def log_path = File.join(@run_dir, "core.log")
+
+      # /tmp is the cache root's (the layered table): a directory of this
+      # run's own, emptied at every start, so nothing to put back.
+      def seed_fm!
+        raise DriverError, "seed_fm!: the native program was not started by this run" unless @cache_dir
+        Fixtures.write_fm_tree(@cache_dir)
+        File.binwrite(File.join(@cache_dir, Fixtures::FM_STATE_VPATH), Fixtures.fm_state)
+      end
+
+      def restore_fixtures!; end
 
       def mark_log!
         @log_mark = core_log.bytesize

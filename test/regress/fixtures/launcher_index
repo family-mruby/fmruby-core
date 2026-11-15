@@ -1,0 +1,13 @@
+1	en
+Avatar	/app/demo/avatar.app.rb	R	usr/share/icon/ruby.icon
+BASIC app demo	/app/basic/basic.app.bas	B	usr/share/icon/basic.icon
+Board	/app/game/board/board.app.rb	R	app/game/board/board.icon
+Breakout.py	/app/game/breakout/breakout.app.py	P	usr/share/icon/python.icon
+C tour	/app/c/tour.app.wasm	W	
+Hide Jong	/app/game/mahjong/mahjong.app.rb	R	app/game/mahjong/mahjong.icon
+Kamon	/app/demo/kamon.app.rb	R	usr/share/icon/ruby.icon
+Lua app demo	/app/lua/lua.app.lua	L	usr/share/icon/lua.icon
+NSF Player	/app/tool/nsf_player.app.rb	R	app/tool/nsf_player.icon
+Othello (table)	/app/game/othello/othello.app.rb	R	app/test/othello.icon
+PicoRuby demo	/app/demo/picoruby.app.rb	R	usr/share/icon/ruby.icon
+Walk Scroller	/app/demo/walk_scroller.app.rb	R	usr/share/icon/ruby.icon
