@@ -1,0 +1,9 @@
+# WAMR's static state and the wasm runtime's (fmrb_wasm.c) in PSRAM: the
+# runtime keeps its globals (the registered natives, the module lists, its
+# locks) in .bss, which would otherwise be internal RAM. Only app tasks touch
+# it (no interrupt handler). The scheme fmrb_extram_bss is main's
+# (main/mbedtls_psram.lf), listed on every board that has this component.
+[mapping:fmrb_wamr_psram]
+archive: libfmrb_wamr.a
+entries:
+    * (fmrb_extram_bss)

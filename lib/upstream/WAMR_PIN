@@ -1,0 +1,9 @@
+# Pinned WAMR (wasm-micro-runtime, doc/wasm_apps): the classic interpreter the
+# firmware runs wasm apps on (components/fmrb_wamr). Same scheme as the other
+# pins: `rake wamr:setup` (run by `rake setup`) clones this exact commit into
+# vendor/wamr (gitignored). WAMR_DIR=<checkout> builds from another checkout.
+# To update: put the new release's tag and commit here, run `rake setup`, and
+# build P4 and Linux (the platform layer is ours: components/fmrb_wamr/platform).
+repo: https://github.com/bytecodealliance/wasm-micro-runtime.git
+branch: WAMR-2.4.5
+commit: 25bd7eb63e828e4bd242cc9b38d260b4b31c6605
