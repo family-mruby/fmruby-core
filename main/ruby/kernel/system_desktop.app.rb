@@ -73,14 +73,23 @@ class SystemDesktopApp < FmrbApp
   BG_SHARED_NAME = "bg_426x240.png"
   BG_IMAGE_PATH = BG_LOCAL ? "#{BG_DIR}#{BG_SHARED_NAME}" : "/data/#{BG_SHARED_NAME}"
   BOOT_IMAGE_PATH = "/boot/boot.png"
-  # Iris reveal: a diamond-shaped window opens from the center, one punched
-  # rect per horizontal band per frame. With the diamond's half-width scaled
-  # by width/height, the corners are reached exactly at radius = height, on
-  # any screen size.
-  BOOT_IRIS_BAND_H = 8
-  BOOT_IRIS_FRAMES = 28   # ~1.7s at BOOT_FRAME_MS (same length as the jingle)
-  BOOT_FRAME_MS = 60
-  BOOT_HOLD_MS = 1000  # Wait time after full reveal, before swapping to desktop
+  # CRT power-on reveal (doc/boot_splash). The foreground canvas starts black
+  # over the logo layer; a thin white line appears in the middle, stretches to
+  # the full width, then opens up and down (punched to the color key 0x01) to
+  # show the logo screen. Once fully open the logo is washed out white for a
+  # moment -- the brightness peak -- and settles.
+  #
+  # Every stage is placed on the wall clock (ms since the first tick), not on
+  # a count of frames: a slow frame must not stretch the show or pull it
+  # apart from the sound (BOOT_EVENTS uses the same clock). Each frame only
+  # draws the strips that changed.
+  BOOT_FRAME_MS = 33
+  BOOT_LINE_H = 2           # the line's height in pixels
+  BOOT_STRETCH_START_MS = 90   # the short line holds until here...
+  BOOT_OPEN_START_MS = 260     # ...and spans the full width here
+  BOOT_OPEN_END_MS = 500       # fully open: the chord starts
+  BOOT_FLASH_END_MS = 580      # the logo comes back from the white peak
+  BOOT_END_MS = 1200           # the desktop takes over
 
   # Dropdown menu items. `:key` drives both the dispatch in handle_dropdown_click
   # and the localized label resolved via FmrbI18n.t(:key) at draw time, so the
@@ -316,11 +325,15 @@ class SystemDesktopApp < FmrbApp
     @kana_mode = 0
 
     # Boot animation state
-    @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
-    @boot_iris_t = 0
+    @boot_anim_state = :init  # :init -> :revealing -> :done (or :skip -> :done)
+    @boot_t0 = 0       # Machine.board_millis at the first tick (0 = not yet)
+    @boot_lx0 = 0      # the line's drawn span [lx0, lx1)
+    @boot_lx1 = 0
+    @boot_open_h = 0   # half-height of the opened band, 0 before opening
+    @boot_flash = 0    # 0 = not yet, 1 = logo washed out, 2 = settled
     @boot_img = nil
     @boot_audio = nil
-    @boot_audio_tick = 0
+    @boot_ev_i = 0     # next BOOT_EVENTS entry to fire
     @boot_audio_finished = false
 
     # Composite regions opt-in. While false the desktop main canvas is
@@ -412,46 +425,57 @@ class SystemDesktopApp < FmrbApp
 
   # ---- Boot animation ----
 
-  # Famicom-style chord progression with a sweep flourish on the
-  # final tonic. Each event: [tick, ch, freq, vol, duty, sweep].
-  # ch: 0=P1, 1=P2, 2=Triangle, 3=Noise. Tick uses BOOT_FRAME_MS (60ms).
-  # freq=0 means note_off on that channel.
-  # Sweep byte: 0x80 | (period<<4) | negate(0x08=up) | shift.
-  BOOT_SWEEP_UP = 0x80 | (5 << 4) | 0x08 | 2  # slow rising sweep on tonic
+  # A fifth rising into a ringing sus2/add9 chord, on the APU (FmrbAudio, the
+  # SUB instance). Each event: [ms, ch, freq, vol, duty].
+  # ms: since the first tick, the same clock as the picture (BOOT_*_MS).
+  # ch: 0=P1, 1=P2, 2=Triangle, 3=Noise. freq is Hz on the tone channels and
+  # the period index (| 0x80 for the short, metallic mode) on noise.
+  # vol 0 means note_off. duty: 0=12.5% 1=25% 2=50% 3=75%.
+  #
+  # The line appears: G3 over a G2 bass. The line spans the width: up a fifth
+  # to D4. Fully open: G4 A4 D5 with a light noise sparkle. The APU has three
+  # tone channels and only the pulses have a volume, so the pulses hold the
+  # chord's frame (G4, D5) and step down in volume -- the end fades out on an
+  # open fifth instead of being cut -- while the triangle leaves the G2 bass
+  # for the A4 color and drops out under the louder pulses partway through.
   BOOT_EVENTS = [
-    # Beat 1 (~0ms): C major + noise kick
-    [0, 0, 523,  9, 2, 0],   # P1 C5
-    [0, 1, 659,  6, 1, 0],   # P2 E5  (third, slight detune by harmonic)
-    [0, 2, 131, 12, 0, 0],   # Tri C3 bass
-    [0, 3,   6,  8, 0, 0],   # Noise short kick
-    [1, 3,   0,  0, 0, 0],   # Noise off (~60ms)
-    # Beat 2 (~180ms): F major
-    [3, 0, 698,  9, 2, 0],   # P1 F5
-    [3, 1, 880,  6, 1, 0],   # P2 A5
-    [3, 2, 175, 12, 0, 0],   # Tri F3
-    # Beat 3 (~360ms): G major
-    [6, 0, 784,  9, 2, 0],   # P1 G5
-    [6, 1, 988,  6, 1, 0],   # P2 B5
-    [6, 2, 196, 12, 0, 0],   # Tri G3
-    # Beat 4 (~540ms): C major resolution + up-sweep flourish on top
-    [9, 0, 1047, 10, 2, BOOT_SWEEP_UP],  # P1 C6 with up sweep
-    [9, 1, 659,  6, 1, 0],               # P2 E5
-    [9, 2, 262, 12, 0, 0],               # Tri C4
-    # End (~960ms): silence everything
-    [16, 0, 0, 0, 0, 0],
-    [16, 1, 0, 0, 0, 0],
-    [16, 2, 0, 0, 0, 0],
+    [0,    0, 196, 9, 2],    # P1 G3
+    [0,    2,  98, 15, 0],   # Tri G2 bass
+    [0,    3,   4, 3, 0],    # Noise: a soft tick as the line lights
+    [40,   3,   0, 0, 0],
+    [BOOT_OPEN_START_MS, 0, 294, 9, 2],   # P1 D4, the fifth up
+    [BOOT_OPEN_END_MS,   0, 587, 10, 1],  # P1 D5
+    [BOOT_OPEN_END_MS,   1, 392, 12, 2],  # P2 G4
+    [BOOT_OPEN_END_MS,   2, 440, 15, 0],  # Tri A4
+    [BOOT_OPEN_END_MS,   3, 0x81, 4, 0],  # Noise sparkle (short mode, high)
+    [600,  3, 0x81, 2, 0],
+    [660,  0, 587, 8, 1],    # the fade: the pulses step down
+    [660,  1, 392, 10, 2],
+    [680,  3,   0, 0, 0],
+    [760,  0, 587, 6, 1],
+    [760,  1, 392, 8, 2],
+    [820,  2,   0, 0, 0],    # the triangle has no volume: it leaves here
+    [860,  0, 587, 5, 1],
+    [860,  1, 392, 6, 2],
+    [950,  0, 587, 3, 1],
+    [950,  1, 392, 4, 2],
+    [1030, 0, 587, 2, 1],
+    [1030, 1, 392, 3, 2],
+    [1100, 0, 587, 1, 1],
+    [1100, 1, 392, 2, 2],
+    [1150, 1, 392, 1, 2],
+    [1190, 0,   0, 0, 0],
+    [1190, 1,   0, 0, 0],
   ]
 
   def start_boot_animation
     return unless @gfx && @bg_gfx
 
     # `boot_splash = false` in system_conf skips the logo and the jingle. The
-    # machine that exists to run one thing does not want 2.7 s of ceremony
-    # every time (28 iris frames at BOOT_FRAME_MS, then BOOT_HOLD_MS). Only
-    # the show is skipped: :skip sends the next on_update straight to
-    # finish_boot_animation, which is where the cursor, boot_complete!, the
-    # compositing switch and the startup app all live.
+    # machine that exists to run one thing does not want the ceremony every
+    # time (BOOT_END_MS). Only the show is skipped: :skip sends the next
+    # on_update straight to finish_boot_animation, which is where the cursor,
+    # boot_complete!, the compositing switch and the startup app all live.
     if read_conf_string("boot_splash") == "false"
       @boot_anim_state = :skip
       return
@@ -474,68 +498,142 @@ class SystemDesktopApp < FmrbApp
       Log.warn("Boot logo not found: #{BOOT_IMAGE_PATH}")
     end
 
-    @boot_iris_t = 0
+    # The clock starts at the first tick, not here: what is left of
+    # on_create and the first wait would otherwise eat the first stage.
+    @boot_t0 = 0
+    @boot_lx0 = 0
+    @boot_lx1 = 0
+    @boot_open_h = 0
+    @boot_flash = 0
     @boot_anim_state = :revealing
 
     @boot_audio = FmrbAudio.new(self)
-    @boot_audio_tick = 0
+    @boot_ev_i = 0
     @boot_audio_finished = false
+  end
+
+  # Ease-out on integers: how far along `span` we are after `t` of `dur`
+  # (fast at first, slowing to a stop; no Float).
+  def boot_ease_out(span, t, dur)
+    return span if t >= dur
+    return 0 if t <= 0
+    r = dur - t
+    span - span * r * r / (dur * dur)
   end
 
   def tick_boot_animation
     case @boot_anim_state
     when :revealing
-      tick_boot_jingle
-      @boot_iris_t += 1
-      # Ease-in: radius grows with t^2, so the window opens slowly at first
-      # and accelerates, reaching the full screen at BOOT_IRIS_FRAMES.
-      r = @window_height * @boot_iris_t * @boot_iris_t /
-          (BOOT_IRIS_FRAMES * BOOT_IRIS_FRAMES)
-      cx = @window_width / 2
-      cy = @window_height / 2
-      y = 0
-      while y < @window_height
-        dy = y + BOOT_IRIS_BAND_H / 2 - cy
-        dy = -dy if dy < 0
-        # Diamond half-width at this band; integer math only (no Float).
-        hw = (r - dy) * @window_width / @window_height
-        if hw > 0
-          x0 = cx - hw
-          x0 = 0 if x0 < 0
-          x1 = cx + hw
-          x1 = @window_width if x1 > @window_width
-          # 0x01 is the foreground canvas' color key -> pixel becomes transparent.
-          @gfx.fill_rect(x0, y, x1 - x0, BOOT_IRIS_BAND_H, 0x01)
-        end
-        y += BOOT_IRIS_BAND_H
+      now = Machine.board_millis
+      @boot_t0 = now if @boot_t0 == 0
+      el = now - @boot_t0
+      tick_boot_jingle(el)
+      if el >= BOOT_END_MS
+        finish_boot_animation
+        return
       end
-      @gfx.present
-      if @boot_iris_t >= BOOT_IRIS_FRAMES
-        @gfx.clear(0x01)  # Ensure full transparency
-        @gfx.present
-        @boot_anim_state = :wait_to_finish
-      end
-    when :wait_to_finish, :skip
+      @gfx.present if draw_boot_frame(el)
+    when :skip
       finish_boot_animation
     end
   end
 
-  # Fire any BOOT_EVENTS scheduled for the current animation tick.
-  def tick_boot_jingle
+  # Draw what changed since the last frame for the moment `el` (ms). True
+  # when something was drawn (and the canvas needs a present).
+  def draw_boot_frame(el)
+    w = @window_width
+    h = @window_height
+    cx = w / 2
+    ly = h / 2 - BOOT_LINE_H / 2
+    drew = false
+
+    # 1-2. The line: a short dash, then stretching to the full width.
+    if el < BOOT_OPEN_START_MS
+      half0 = w / 16
+      half = half0 + boot_ease_out(cx - half0, el - BOOT_STRETCH_START_MS,
+                                   BOOT_OPEN_START_MS - BOOT_STRETCH_START_MS)
+      x0 = cx - half
+      x1 = cx + half
+      x1 = w if x1 > w
+      if @boot_lx1 == 0
+        @gfx.fill_rect(x0, ly, x1 - x0, BOOT_LINE_H, 0xFF)
+        drew = true
+      elsif x0 < @boot_lx0
+        # Only the two new ends.
+        @gfx.fill_rect(x0, ly, @boot_lx0 - x0, BOOT_LINE_H, 0xFF)
+        @gfx.fill_rect(@boot_lx1, ly, x1 - @boot_lx1, BOOT_LINE_H, 0xFF)
+        drew = true
+      end
+      @boot_lx0 = x0
+      @boot_lx1 = x1
+      return drew
+    end
+
+    # 3. Opening up and down. 0x01 is the foreground canvas' color key, so a
+    # punched strip shows the logo layer under it. Only the strips the band
+    # grew by since the last frame are punched.
+    full = h - h / 2   # rows below the middle (>= the rows above it)
+    if @boot_open_h < full
+      oh = BOOT_LINE_H / 2 + boot_ease_out(full - BOOT_LINE_H / 2,
+                                           el - BOOT_OPEN_START_MS,
+                                           BOOT_OPEN_END_MS - BOOT_OPEN_START_MS)
+      if oh > @boot_open_h
+        prev = @boot_open_h
+        # Above the middle: rows [h/2 - oh, h/2 - prev), clipped at row 0.
+        t0 = h / 2 - oh
+        t0 = 0 if t0 < 0
+        t1 = h / 2 - prev
+        @gfx.fill_rect(0, t0, w, t1 - t0, 0x01) if t1 > t0
+        # Below it: rows [h/2 + prev, h/2 + oh).
+        @gfx.fill_rect(0, h / 2 + prev, w, oh - prev, 0x01)
+        @boot_open_h = oh
+        drew = true
+      end
+      return drew if @boot_open_h < full
+    end
+
+    # 4. The brightness peak: the logo washed out to white, then settling.
+    if @boot_flash == 0
+      boot_logo_rect(0xFF)
+      @boot_flash = 1
+      drew = true
+    elsif @boot_flash == 1 && el >= BOOT_FLASH_END_MS
+      boot_logo_rect(0x01)
+      @boot_flash = 2
+      drew = true
+    end
+    drew
+  end
+
+  # Fill the logo's rectangle on the foreground canvas (the whole screen when
+  # there is no logo: it is white there anyway).
+  def boot_logo_rect(color)
+    if @boot_img
+      iw = @boot_img[:width]
+      ih = @boot_img[:height]
+      @gfx.fill_rect((@window_width - iw) / 2, (@window_height - ih) / 2, iw, ih, color)
+    elsif color == 0x01
+      @gfx.clear(0x01)
+    end
+  end
+
+  # Fire the BOOT_EVENTS that are due at `el` ms. The table must stay sorted
+  # by time: this walks it with one index.
+  def tick_boot_jingle(el)
     return unless @boot_audio
     return if @boot_audio_finished
-    BOOT_EVENTS.each do |ev|
-      next unless ev[0] == @boot_audio_tick
-      ch = ev[1]
-      if ev[2] == 0
-        @boot_audio.note_off(ch)
+    n = BOOT_EVENTS.size
+    while @boot_ev_i < n
+      ev = BOOT_EVENTS[@boot_ev_i]
+      break if ev[0] > el
+      if ev[3] == 0
+        @boot_audio.note_off(ev[1])
       else
-        @boot_audio.note_on(ch, ev[2], ev[3], ev[4], ev[5])
+        @boot_audio.note_on(ev[1], ev[2], ev[3], ev[4], 0)
       end
+      @boot_ev_i += 1
     end
-    last_tick = BOOT_EVENTS.last[0]
-    @boot_audio_finished = true if @boot_audio_tick >= last_tick
-    @boot_audio_tick += 1
+    @boot_audio_finished = true if @boot_ev_i >= n
   end
 
   def finish_boot_animation
@@ -1662,9 +1760,6 @@ class SystemDesktopApp < FmrbApp
   def on_update()
     if @boot_anim_state != :done
       tick_boot_animation
-      # After full reveal, hold the logo on screen for BOOT_HOLD_MS before
-      # the :wait_to_finish tick swaps to the regular desktop.
-      return BOOT_HOLD_MS if @boot_anim_state == :wait_to_finish
       return BOOT_FRAME_MS
     end
 
