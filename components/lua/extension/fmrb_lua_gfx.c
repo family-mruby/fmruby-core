@@ -35,6 +35,14 @@ static int32_t fmrb_lua_recv_gfx(lua_State *L, int idx)
     return data->drawer;
 }
 
+// The receiver number of FmrbAudio's: an FmrbAudio.new() table. Nothing
+// reads the number yet (the sound is the app's), so every object is 0.
+static int32_t fmrb_lua_recv_audio(lua_State *L, int idx)
+{
+    luaL_checktype(L, idx, LUA_TTABLE);
+    return 0;
+}
+
 // FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): every method
 // of the class on the app boundary, with Ruby's names and argument order.
 #include "fmrb_gen/fmrb_boundary_lua.inc"
@@ -49,8 +57,7 @@ static const luaL_Reg gfx_functions[] = {
     {NULL, NULL}
 };
 
-// FmrbAudio (generated): the methods take no receiver number (the sound is
-// the app's), but are called on an object as in Ruby: audio:note_off(0).
+// FmrbAudio (generated): called on an object as in Ruby: audio:note_off(0).
 static const luaL_Reg audio_methods[] = {
     FMRB_GEN_LUA_FmrbAudio_METHODS
     {NULL, NULL}
@@ -100,7 +107,7 @@ static const char gfx_prelude[] =
     "  return self:set_composite_regions_raw(list)\n"
     "end\n";
 
-// The wrappers of FmrbAudio, Log and FmrbApp over their generated *_raw
+// The wrappers of FmrbAudio, Log, FmrbApp and FmrbFile over their generated *_raw
 // functions, with Ruby's defaults (mrblib/fmrb-audio.rb, fmrb-app.rb). Run
 // once after the globals are set.
 static const char app_prelude[] =
@@ -116,7 +123,18 @@ static const char app_prelude[] =
     "function Log.info(msg) return Log.info_raw(tostring(msg)) end\n"
     "function Log.warn(msg) return Log.warn_raw(tostring(msg)) end\n"
     "function Log.error(msg) return Log.error_raw(tostring(msg)) end\n"
-    "function FmrbApp.clipboard(limit) return FmrbApp.clipboard_raw(limit or 0) end\n";
+    "function FmrbApp.clipboard(limit) return FmrbApp.clipboard_raw(limit or 0) end\n"
+    "function FmrbApp.clear_user_area(color) return FmrbApp.clear_user_area_raw(color or -1) end\n"
+    "function FmrbApp.request_file_select(mode) return FmrbApp.request_file_select_raw(mode or 'open') end\n"
+    "function FmrbApp.request_run(path, prev_pid) return FmrbApp.request_run_raw(path, prev_pid or -1) end\n"
+    "function FmrbApp.notify(summary, body) return FmrbApp.notify_raw(summary, body or '') end\n"
+    "function FmrbFile.list(dir)\n"
+    "  local s = FmrbFile.list_raw(dir)\n"
+    "  if s == nil then return nil end\n"
+    "  local t = {}\n"
+    "  for name in s:gmatch('([^\\n]*)\\n') do t[#t + 1] = name end\n"
+    "  return t\n"
+    "end\n";
 
 // FmrbApp.sleep(ms) - Sleep for specified milliseconds
 static int lua_app_sleep(lua_State* L) {
@@ -132,77 +150,19 @@ static int lua_app_sleep(lua_State* L) {
     return 0;
 }
 
-// FmrbApp.stop() - end the app after the current function returns
-static int lua_app_stop(lua_State* L) {
-    fmrb_app_shell_stop(fmrb_current());
-    return 0;
-}
-
-// FmrbApp.clear_user_area([color]) - fill the area the app owns (the theme's
-// page colour by default) and draw the frame again
-static int lua_app_clear_user_area(lua_State* L) {
-    int color = (int)luaL_optinteger(L, 1, -1);
-    fmrb_app_shell_clear_user_area(fmrb_current(), color);
-    return 0;
-}
-
-// FmrbApp.draw_window_frame() - draw the frame again, after drawing near it
-static int lua_app_draw_window_frame(lua_State* L) {
-    (void)L;
-    fmrb_app_shell_draw_frame(fmrb_current());
-    return 0;
-}
-
-// The layout the shell gave last (fmrb_lua_gfx_layout), kept in the registry.
-static const fmrb_shell_layout_t *app_layout(lua_State* L)
-{
-    lua_getfield(L, LUA_REGISTRYINDEX, "fmrb.layout");
-    const fmrb_shell_layout_t *layout = (const fmrb_shell_layout_t *)lua_touserdata(L, -1);
-    lua_pop(L, 1);
-    if (!layout) {
-        luaL_error(L, "no window layout yet");
-    }
-    return layout;
-}
-
-// FmrbApp.user_area_width() and the rest: the sizes as they are now (the
-// shell changes them on a resize), as functions like the other languages'.
-static int lua_app_user_area_width(lua_State* L)
-{
-    lua_pushinteger(L, app_layout(L)->area_w);
-    return 1;
-}
-
-static int lua_app_user_area_height(lua_State* L)
-{
-    lua_pushinteger(L, app_layout(L)->area_h);
-    return 1;
-}
-
-static int lua_app_window_width(lua_State* L)
-{
-    lua_pushinteger(L, app_layout(L)->window_w);
-    return 1;
-}
-
-static int lua_app_window_height(lua_State* L)
-{
-    lua_pushinteger(L, app_layout(L)->window_h);
-    return 1;
-}
-
+// FmrbApp: sleep is Lua's own; the rest is the app boundary's (generated):
+// the window's sizes and state as functions (FmrbApp.user_area_width()),
+// stop, draw_window_frame, the requests, the machine's state.
 // FmrbApp table with helper functions
 static const luaL_Reg app_functions[] = {
     {"sleep", lua_app_sleep},
-    {"user_area_width", lua_app_user_area_width},
-    {"user_area_height", lua_app_user_area_height},
-    {"window_width", lua_app_window_width},
-    {"window_height", lua_app_window_height},
-    {"stop", lua_app_stop},
-    {"clear_user_area", lua_app_clear_user_area},
-    {"draw_window_frame", lua_app_draw_window_frame},
-    // The clipboard and the clocks (generated)
     FMRB_GEN_LUA_FmrbApp_FUNCTIONS
+    {NULL, NULL}
+};
+
+// FmrbFile (generated): FmrbFile.read(path) ...; the prelude adds list.
+static const luaL_Reg file_functions[] = {
+    FMRB_GEN_LUA_FmrbFile_FUNCTIONS
     {NULL, NULL}
 };
 
@@ -256,12 +216,6 @@ void fmrb_lua_register_gfx(lua_State* L) {
     lua_newtable(L);
     luaL_setfuncs(L, app_functions, 0);
 
-    // The sizes are functions (user_area_width() ...), read from the layout
-    // the shell gives: zero until it gives one.
-    fmrb_shell_layout_t *layout = (fmrb_shell_layout_t *)lua_newuserdatauv(L, sizeof(*layout), 0);
-    memset(layout, 0, sizeof(*layout));
-    layout->canvas = -1;
-    lua_setfield(L, LUA_REGISTRYINDEX, "fmrb.layout");
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (ctx) {
         lua_pushboolean(L, ctx->headless);
@@ -317,13 +271,17 @@ void fmrb_lua_register_gfx(lua_State* L) {
     luaL_setfuncs(L, log_functions, 0);
     lua_setglobal(L, "Log");
 
+    lua_newtable(L);
+    luaL_setfuncs(L, file_functions, 0);
+    lua_setglobal(L, "FmrbFile");
+
     if (luaL_loadbufferx(L, app_prelude, sizeof(app_prelude) - 1, "=fmrb_app", "t") != LUA_OK ||
         lua_pcall(L, 0, 0, 0) != LUA_OK) {
         FMRB_LOGE(TAG, "app prelude: %s", lua_tostring(L, -1));
         lua_pop(L, 1);
     }
 
-    FMRB_LOGI(TAG, "FmrbGfx, FmrbApp, FmrbAudio and Log registered to Lua");
+    FMRB_LOGI(TAG, "FmrbGfx, FmrbApp, FmrbAudio, FmrbFile and Log registered to Lua");
 }
 
 void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout)
@@ -353,11 +311,4 @@ void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout)
                                    layout->area_w, layout->area_h);
         data->ctx = data->drawer >= 0 ? fmrb_gfx_get_global_context() : NULL;
     }
-
-    lua_getfield(L, LUA_REGISTRYINDEX, "fmrb.layout");
-    fmrb_shell_layout_t *kept = (fmrb_shell_layout_t *)lua_touserdata(L, -1);
-    if (kept) {
-        *kept = *layout;
-    }
-    lua_pop(L, 1);
 }

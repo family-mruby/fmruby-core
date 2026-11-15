@@ -6,8 +6,9 @@
  * Lua functions of the app boundary. Included by the Lua extension after it
  * defines the receiver hook of each class: int32_t fmrb_lua_recv_<name>(L,
  * index) gives the receiver number (and raises a Lua error when there is
- * none). A class whose methods take no receiver number (FmrbAudio) is still
- * called with one object (audio:note_off(0)); the object is not read.
+ * none). The instance methods of a class without a receiver number
+ * (FmrbApp: the receiver is the app) are functions of the class's table, as
+ * the class's own are (FmrbApp.window_width()): a Lua app has no app object.
  * FMRB_GEN_LUA_<Class>_METHODS are the luaL_Reg entries of the
  * instance methods, FMRB_GEN_LUA_<Class>_FUNCTIONS those of the class's own.
  * A method that returns self in Ruby returns its receiver here too; a record
@@ -79,7 +80,7 @@ static __attribute__((unused)) void fmrb_gen_lua_unpack_<%= r.cname %>(lua_State
 }
 <% end -%>
 <% funcs.each do |f| -%>
-<% base = f.instance? ? 2 : 1 -%>
+<% base = f.recv ? 2 : 1 -%>
 
 /* <%= f.ruby_sig %>: <%= f.doc_en %> */
 static int fmrb_gen_lua_<%= f.import_name %>(lua_State *L)
@@ -150,12 +151,28 @@ static int fmrb_gen_lua_<%= f.import_name %>(lua_State *L)
     luaL_Buffer b;
     char *buf = luaL_buffinitsize(L, &b, 128);
     int32_t ret = <%= f.flat %>(<%= (args + ["(#{f.ret.kind == :bin ? 'uint8_t' : 'char'} *)buf", '128']).join(', ') %>);
+<% if f.nilable? -%>
+    if (ret == FMRB_BOUNDARY_NONE) {
+        luaL_pushresultsize(&b, 0);
+        lua_pop(L, 1);
+        lua_pushnil(L);
+        return 1;
+    }
+<% end -%>
     if (ret < 0) {
         return fmrb_gen_lua_check(L, ret, "<%= f.method %>");
     }
     if (ret > 128) {
         buf = luaL_prepbuffsize(&b, (size_t)ret);
         int32_t got = <%= f.flat %>(<%= (args + ["(#{f.ret.kind == :bin ? 'uint8_t' : 'char'} *)buf", 'ret']).join(', ') %>);
+<% if f.nilable? -%>
+        if (got == FMRB_BOUNDARY_NONE) {
+            luaL_pushresultsize(&b, 0);
+            lua_pop(L, 1);
+            lua_pushnil(L);
+            return 1;
+        }
+<% end -%>
         if (got < 0) {
             return fmrb_gen_lua_check(L, got, "<%= f.method %>");
         }
@@ -165,11 +182,17 @@ static int fmrb_gen_lua_<%= f.import_name %>(lua_State *L)
     return 1;
 <% else -%>
     <%= f.ret_ctype %> ret = <%= f.flat %>(<%= args.join(', ') %>);
+<% if f.nilable? -%>
+    if (ret == FMRB_BOUNDARY_NONE) {
+        lua_pushnil(L);
+        return 1;
+    }
+<% end -%>
     if (ret < 0) {
         return fmrb_gen_lua_check(L, (int32_t)ret, "<%= f.name %>");
     }
 <% case f.ret when :self -%>
-<% if f.instance? -%>
+<% if f.recv -%>
     lua_pushvalue(L, 1);
     return 1;
 <% else -%>
@@ -194,13 +217,13 @@ static int fmrb_gen_lua_<%= f.import_name %>(lua_State *L)
 <% funcs.group_by(&:klass).each do |klass, fs| -%>
 
 #define FMRB_GEN_LUA_<%= klass %>_METHODS \
-<% fs.reject(&:singleton).each do |f| -%>
+<% fs.select(&:recv).each do |f| -%>
     {"<%= f.name %>", fmrb_gen_lua_<%= f.import_name %>}, \
 <% end -%>
     /* end of the list */
 
 #define FMRB_GEN_LUA_<%= klass %>_FUNCTIONS \
-<% fs.select(&:singleton).each do |f| -%>
+<% fs.reject(&:recv).each do |f| -%>
     {"<%= f.name %>", fmrb_gen_lua_<%= f.import_name %>}, \
 <% end -%>
     /* end of the list */

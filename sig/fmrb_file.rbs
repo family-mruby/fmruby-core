@@ -1,0 +1,163 @@
+# ファイルを丸ごと読み書きする。実装は本体の C (main/app/fmrb_boundary_file.c)、
+# list の包みは lib/gems/picoruby-fmrb-app/mrblib/fmrb-file.rb。
+#
+# パスで呼ぶ、開いたままの状態を持たない関数だけを置く。1 回の呼び出しで
+# ファイル全体を読む・書くので、大きなファイルは丸ごとメモリに載る。読む位置を
+# 持って少しずつ読むなら Ruby の File (picoruby の IO) を使う。File は今のまま。
+# 読み書きできる場所は File と同じ (判定は本体)。
+#
+# FmrbFile はモジュールごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
+# 結果が nil のことがあるもの (read・size・free_bytes) は、ほかの言語では
+# FMRB_BOUNDARY_NONE (C) や None・nil で「無い」を表す。
+
+%a{fmrb.boundary}
+module FmrbFile
+  # ファイル全体を読む <<en>> Read a whole file
+  #
+  # 無い・読めないときは nil。
+  # ```ruby
+  # text = FmrbFile.read("/home/memo.txt")
+  # ```
+  # <<en>>
+  # nil when it is not there or cannot be read.
+  # ```ruby
+  # text = FmrbFile.read("/home/memo.txt")
+  # ```
+  def self.read: (String path) -> bin?
+
+  # ファイル全体を書く (前の中身は消える) <<en>> Write a whole file, replacing it
+  #
+  # 書けたら true。
+  # ```ruby
+  # FmrbFile.write("/home/memo.txt",
+  #                "hello")
+  # ```
+  # <<en>>
+  # true when it was written.
+  # ```ruby
+  # FmrbFile.write("/home/memo.txt",
+  #                "hello")
+  # ```
+  def self.write: (String path, bin data) -> bool
+
+  # ファイルの終わりに足す <<en>> Add to the end of a file
+  #
+  # 無ければ作る。書けたら true。
+  # ```ruby
+  # FmrbFile.append("/home/log.txt",
+  #                 "one more\n")
+  # ```
+  # <<en>>
+  # Makes the file when it is not there; true when it was written.
+  # ```ruby
+  # FmrbFile.append("/home/log.txt",
+  #                 "one more\n")
+  # ```
+  def self.append: (String path, bin data) -> bool
+
+  # ファイルかディレクトリがあるか <<en>> Whether a file or a directory is there
+  #
+  # ```ruby
+  # FmrbFile.exist?("/home/memo.txt")
+  # ```
+  def self.exist?: (String path) -> bool
+
+  # ファイルの大きさ (バイト) <<en>> A file's size in bytes
+  #
+  # 無いときは nil。
+  # ```ruby
+  # n = FmrbFile.size("/home/memo.txt")
+  # ```
+  # <<en>>
+  # nil when it is not there.
+  # ```ruby
+  # n = FmrbFile.size("/home/memo.txt")
+  # ```
+  def self.size: (String path) -> int64?
+
+  # ファイルか空のディレクトリを消す <<en>> Delete a file or an empty directory
+  #
+  # 消せたら true。
+  # ```ruby
+  # FmrbFile.delete("/home/old.txt")
+  # ```
+  # <<en>>
+  # true when it was deleted.
+  # ```ruby
+  # FmrbFile.delete("/home/old.txt")
+  # ```
+  def self.delete: (String path) -> bool
+
+  # ディレクトリを作る <<en>> Make a directory
+  #
+  # 作れたら true (もうあるときも true)。
+  # ```ruby
+  # FmrbFile.mkdir("/home/notes")
+  # ```
+  # <<en>>
+  # true when it was made, or is there already.
+  # ```ruby
+  # FmrbFile.mkdir("/home/notes")
+  # ```
+  def self.mkdir: (String path) -> bool
+
+  # ディレクトリの中の名前の一覧 <<en>> The names in a directory
+  #
+  # ディレクトリの名前は後ろに "/" が付く。読めないときは nil。
+  # ```ruby
+  # FmrbFile.list("/home").each do |n|
+  #   Log.info(n)
+  # end
+  # ```
+  # <<en>>
+  # A directory's name ends in "/". nil when it cannot be read.
+  # ```ruby
+  # FmrbFile.list("/home").each do |n|
+  #   Log.info(n)
+  # end
+  # ```
+  %a{fmrb.internal}
+  def self.list: (String dir) -> Array[String]?
+
+  # list の省略なしの形 (名前を改行でつなぐ) <<en>> list as one String, a name per line
+  #
+  # 名前を "\n" でつないだ 1 つの文字列 (最後の名前の後にも "\n")。
+  # ディレクトリの名前は後ろに "/"。読めないときは nil。包みは list (配列にする)。
+  # <<en>>
+  # The names joined by "\n", one after the last name too; a directory's
+  # name ends in "/". nil when it cannot be read. The wrapper is list (an
+  # Array).
+  # ```ruby
+  # FmrbFile.list_raw("/home")
+  # ```
+  def self.list_raw: (String dir) -> String?
+
+  # 消せない・名前を変えられない場所か <<en>> Whether the entry cannot be deleted or renamed
+  #
+  # PC 版の配布物の木と /mnt/root で true。端末・sim・ブラウザ版では常に false。
+  # ```ruby
+  # FmrbFile.path_read_only?("/mnt/root/etc/hostname")
+  # ```
+  # <<en>>
+  # true for the PC build's distribution tree and /mnt/root; always false on
+  # the devices, the simulation and the browser.
+  # ```ruby
+  # FmrbFile.path_read_only?("/mnt/root/etc/hostname")
+  # ```
+  def self.path_read_only?: (String path) -> bool
+
+  # その場所にあと何バイト書けるか <<en>> How many more bytes can be written where the path lives
+  #
+  # /tmp は RAM のファイルシステムの空き、ほかはその下のファイルシステムの空き。
+  # 分からないとき (ブラウザ版の SD など) は nil。
+  # ```ruby
+  # FmrbFile.free_bytes("/tmp")
+  # ```
+  # <<en>>
+  # /tmp: what is left of the RAM filesystem; elsewhere: the free space of
+  # the filesystem under it. nil when it cannot be known.
+  # ```ruby
+  # FmrbFile.free_bytes("/tmp")
+  # ```
+  def self.free_bytes: (String path) -> int64?
+end

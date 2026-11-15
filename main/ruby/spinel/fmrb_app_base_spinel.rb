@@ -1265,74 +1265,146 @@ class FmrbHitMask
   end
 end
 
+# FmrbFile: whole files by path, the app boundary's (sig/fmrb_file.rbs). The
+# results that may be longer than the boundary's Spinel adaptor gives (256
+# bytes) -- a file, a listing -- are read in pieces (fmrb_spx_file_chunk).
+module FmrbFile
+  def self.read(path)
+    _pieces(0, path)
+  end
+
+  def self.write(path, data)
+    FmrbBoundary.fmrb_bnd_file_write(path, path.bytesize, data, data.bytesize) == 1
+  end
+
+  def self.append(path, data)
+    FmrbBoundary.fmrb_bnd_file_append(path, path.bytesize, data, data.bytesize) == 1
+  end
+
+  def self.exist?(path)
+    FmrbBoundary.fmrb_bnd_file_exist(path, path.bytesize) == 1
+  end
+
+  def self.size(path)
+    n = FmrbBoundary.fmrb_bnd_file_size(path, path.bytesize)
+    return nil if n < 0
+    n
+  end
+
+  def self.delete(path)
+    FmrbBoundary.fmrb_bnd_file_delete(path, path.bytesize) == 1
+  end
+
+  def self.mkdir(path)
+    FmrbBoundary.fmrb_bnd_file_mkdir(path, path.bytesize) == 1
+  end
+
+  def self.list(dir)
+    s = list_raw(dir)
+    return nil if s.nil?
+    s.split("\n")
+  end
+
+  def self.list_raw(dir)
+    _pieces(1, dir)
+  end
+
+  def self.path_read_only?(path)
+    FmrbBoundary.fmrb_bnd_file_path_read_only(path, path.bytesize) == 1
+  end
+
+  def self.free_bytes(path)
+    n = FmrbBoundary.fmrb_bnd_file_free_bytes(path, path.bytesize)
+    return nil if n < 0
+    n
+  end
+
+  def self._pieces(kind, path)
+    total = FmrbSpxApp.fmrb_spx_file_length(kind, path, path.bytesize)
+    return nil if total < 0
+    out = ""
+    off = 0
+    while off < total
+      part = FmrbSpxApp.fmrb_spx_file_chunk(kind, path, path.bytesize, off)
+      n = part.bytesize
+      break if n == 0
+      out = out + part
+      off += n
+    end
+    out
+  end
+end
+
 # FmrbAudio's methods on the app boundary (sig/fmrb_audio.rbs): what is C in
 # the mruby build. The class itself, its constants and the wrappers with
 # optional arguments (play, play_slot, note_on) are the mrblib's
 # (lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb), spliced after this file
-# and opening the class again. No receiver number: the sound is the app's.
+# and opening the class again. The receiver number is 0: nothing reads it yet
+# (the sound is the app's; the number keeps the shape for sound state of an
+# app's own).
 class FmrbAudio
   def play_raw(path, track)
-    FmrbBoundary.fmrb_bnd_audio_play_raw(path, path.bytesize, track)
+    FmrbBoundary.fmrb_bnd_audio_play_raw(0, path, path.bytesize, track)
     nil
   end
 
   def stop
-    FmrbBoundary.fmrb_bnd_audio_stop
+    FmrbBoundary.fmrb_bnd_audio_stop(0)
     nil
   end
 
   def pause
-    FmrbBoundary.fmrb_bnd_audio_pause
+    FmrbBoundary.fmrb_bnd_audio_pause(0)
     nil
   end
 
   def resume
-    FmrbBoundary.fmrb_bnd_audio_resume
+    FmrbBoundary.fmrb_bnd_audio_resume(0)
     nil
   end
 
   # The boundary's record (FmrbAudio::nsf_status): four u8, two u16, a u32.
   def nsf_status
-    buf = FmrbBoundary.fmrb_spx_b_audio_nsf_status
+    buf = FmrbBoundary.fmrb_spx_b_audio_nsf_status(0)
     return nil if buf.bytesize < 12
     { state: buf.getbyte(0), reason: buf.getbyte(1), track: buf.getbyte(2), laps: buf.getbyte(3),
       gen: SpxBytes.u16(buf, 4), period: SpxBytes.u16(buf, 6), frames: SpxBytes.u32(buf, 8) }
   end
 
   def load_fmsq(slot_id, binary_data)
-    FmrbBoundary.fmrb_bnd_audio_load_fmsq(slot_id, binary_data, binary_data.bytesize)
+    FmrbBoundary.fmrb_bnd_audio_load_fmsq(0, slot_id, binary_data, binary_data.bytesize)
     nil
   end
 
   def load_fmsq_file(slot_id, path)
-    FmrbBoundary.fmrb_bnd_audio_load_fmsq_file(slot_id, path, path.bytesize)
+    FmrbBoundary.fmrb_bnd_audio_load_fmsq_file(0, slot_id, path, path.bytesize)
     nil
   end
 
   def play_slot_raw(slot_id, instance)
-    FmrbBoundary.fmrb_bnd_audio_play_slot_raw(slot_id, instance)
+    FmrbBoundary.fmrb_bnd_audio_play_slot_raw(0, slot_id, instance)
     nil
   end
 
   def main_volume=(percent)
-    FmrbBoundary.fmrb_bnd_audio_set_main_volume(percent)
+    FmrbBoundary.fmrb_bnd_audio_set_main_volume(0, percent)
   end
 
   def play_wav(path)
-    FmrbBoundary.fmrb_bnd_audio_play_wav(path, path.bytesize) == 1
+    FmrbBoundary.fmrb_bnd_audio_play_wav(0, path, path.bytesize) == 1
   end
 
   def stop_wav
-    FmrbBoundary.fmrb_bnd_audio_stop_wav == 1
+    FmrbBoundary.fmrb_bnd_audio_stop_wav(0) == 1
   end
 
   def note_on_raw(channel, freq, volume, duty, sweep)
-    FmrbBoundary.fmrb_bnd_audio_note_on_raw(channel, freq, volume, duty, sweep)
+    FmrbBoundary.fmrb_bnd_audio_note_on_raw(0, channel, freq, volume, duty, sweep)
     nil
   end
 
   def note_off(channel)
-    FmrbBoundary.fmrb_bnd_audio_note_off(channel)
+    FmrbBoundary.fmrb_bnd_audio_note_off(0, channel)
     nil
   end
 end
@@ -1727,6 +1799,15 @@ class FmrbApp
     nil
   end
 
+  # The boundary's simple form: a negative color is the default.
+  def clear_user_area_raw(color)
+    if color < 0
+      clear_user_area
+    else
+      clear_user_area(color)
+    end
+  end
+
   # FmrbUI calls this on itself when it is created, so clear_user_area can put
   # the widgets back without the app wiring anything up.
   def attach_ui(ui)
@@ -1958,17 +2039,17 @@ class FmrbApp
     request_window_menu(ev[:wx], ev[:wy])
   end
 
-  # The window menu on the desktop (see the mruby base). A Spinel program is
-  # never written to an image, so it is not movable (no Send to).
+  # The window menu on the desktop (the boundary's; a Spinel program is never
+  # written to an image, so the body says it is not movable: no Send to).
   def request_window_menu(x, y)
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "window_menu", "x" => x, "y" => y, "movable" => false })
+    FmrbBoundary.fmrb_bnd_app_request_window_menu(x, y)
+    nil
   end
 
   # Ask the desktop to put up "Close <this app>?" (Yes -> on_quit_request).
   def request_close_confirm
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "close_confirm" })
+    FmrbBoundary.fmrb_bnd_app_request_close_confirm
+    nil
   end
 
   # ---- hit shape (frameless windows, doc/frameless_window/ W3b) ----
@@ -2105,8 +2186,8 @@ class FmrbApp
   end
 
   def request_reload
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "reload_confirm" })
+    FmrbBoundary.fmrb_bnd_app_request_reload
+    nil
   end
 
   # ---- main loop (poll form; C _spin's dispatch is reimplemented below) ----
@@ -2393,14 +2474,22 @@ class FmrbApp
   end
 
   def request_file_select(mode = "open")
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "file_select", "mode" => mode })
+    request_file_select_raw(mode)
+  end
+
+  def request_file_select_raw(mode)
+    FmrbBoundary.fmrb_bnd_app_request_file_select_raw(mode, mode.bytesize)
+    nil
   end
 
   # Run a file, replacing the instance this app started last time (editor F5).
   def request_run(path, prev_pid = nil)
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
+    request_run_raw(path, prev_pid.nil? ? -1 : prev_pid)
+  end
+
+  def request_run_raw(path, prev_pid)
+    FmrbBoundary.fmrb_bnd_app_request_run_raw(path, path.bytesize, prev_pid)
+    nil
   end
 
   # An app's checkpoint image (doc/checkpoint) is for apps on the mruby VM
@@ -2414,9 +2503,8 @@ class FmrbApp
   # VM keeps running; the answer arrives as on_resize with @_fullscreen and the
   # user area already updated.
   def request_fullscreen(on)
-    cmd = on ? "enter_fullscreen" : "exit_fullscreen"
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => cmd })
+    FmrbBoundary.fmrb_bnd_app_request_fullscreen(on ? 1 : 0)
+    nil
   end
 
   def toggle_fullscreen
@@ -2538,12 +2626,12 @@ class FmrbApp
   # The caller's own process id (the number ps reports as :id), -1 outside an
   # app.
   def self.pid
-    FmrbSpxApp.fmrb_spx_app_pid
+    FmrbBoundary.fmrb_bnd_app_pid
   end
 
   # The file this app was started from ("" for one built into the firmware).
   def self.script_path
-    FmrbSpxApp.fmrb_spx_app_script_path.to_s
+    FmrbBoundary.fmrb_spx_b_app_script_path.to_s
   end
 
   # Microseconds since boot, for timing short sections (the boundary's, 64
@@ -2552,21 +2640,24 @@ class FmrbApp
     FmrbBoundary.fmrb_bnd_app_uptime_us
   end
 
+  def self.uptime_ms
+    FmrbBoundary.fmrb_bnd_app_uptime_ms
+  end
+
   # Bytes that can still be written where path lives, nil when unknown (the
   # same answer as the mruby binding).
   def self.free_bytes(path)
-    s = path.to_s
-    buf = FmrbSpxApp.fmrb_spx_app_free_bytes(s, s.bytesize)
-    return nil if buf.bytesize < 8
-    SpxBytes.u32(buf, 4) * 4294967296 + SpxBytes.u32(buf, 0)
+    FmrbFile.free_bytes(path)
   end
 
   # Post a notice to the PC's notification list (the native program only;
   # false elsewhere).
   def self.notify(summary, body = "")
-    a = summary.to_s
-    b = body.to_s
-    FmrbSpxApp.fmrb_spx_app_notify(a, a.bytesize, b, b.bytesize) == 1
+    notify_raw(summary.to_s, body.to_s)
+  end
+
+  def self.notify_raw(summary, body)
+    FmrbBoundary.fmrb_bnd_app_notify_raw(summary, summary.bytesize, body, body.bytesize) == 1
   end
 
   # Linux commands in a terminal (the Shell's; doc/linux_native), the same
@@ -2578,7 +2669,7 @@ class FmrbApp
   LINUX_RUNNING = -1000000   # FMRB_SPX_APP_LINUX_RUNNING (fmrb_spx_app.h)
 
   def self.linux_available?
-    FmrbSpxApp.fmrb_spx_app_linux_available == 1
+    FmrbBoundary.fmrb_bnd_app_linux_available == 1
   end
 
   def self.linux_start(cmd, cwd, cols, rows)
@@ -2679,8 +2770,9 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_pool_used
   end
 
+  # The boundary's record (FmrbApp::sys_pool_info): five u32.
   def self.sys_pool_info
-    buf = FmrbSpxApp.fmrb_spx_app_sys_pool_info
+    buf = FmrbBoundary.fmrb_spx_b_app_sys_pool_info
     {
       total: SpxBytes.u32(buf, 0),
       used: SpxBytes.u32(buf, 4),
@@ -2690,8 +2782,9 @@ class FmrbApp
     }
   end
 
+  # The boundary's record (FmrbApp::gfx_stats): two u32.
   def self.gfx_stats
-    buf = FmrbSpxApp.fmrb_spx_app_gfx_stats
+    buf = FmrbBoundary.fmrb_spx_b_app_gfx_stats
     { cmds: SpxBytes.u32(buf, 0), presents: SpxBytes.u32(buf, 4) }
   end
 
@@ -2779,7 +2872,7 @@ class FmrbApp
   # that table is generated when the Spinel program is compiled, and the
   # language is a setting the Config app changes.
   def self.language
-    FmrbSpxApp.fmrb_spx_app_language.to_s
+    FmrbBoundary.fmrb_spx_b_app_language.to_s
   end
 
   # Kana input mode: 0 = off, 1 = hiragana, 2 = katakana. Behind the
@@ -2792,21 +2885,20 @@ class FmrbApp
   # Where the app's text cursor is (canvas coordinates, h the line's height;
   # 0 = no text input now), for a PC's IME. Nothing on the devices.
   def self.set_text_cursor(x, y, h)
-    FmrbSpxApp.fmrb_spx_app_set_text_cursor(x, y, h)
+    FmrbBoundary.fmrb_bnd_app_set_text_cursor(x, y, h)
     nil
   end
 
   # The machine-wide mute (doc/reference/audio_output.md), applied at the output stage;
   # set_audio_mute saves the setting.
   def self.audio_muted?
-    FmrbSpxApp.fmrb_spx_app_audio_muted == 1
+    FmrbBoundary.fmrb_bnd_app_audio_muted == 1
   end
 
   # Whether the entry at a virtual path cannot be deleted or renamed (the
   # native build's distribution tree and /mnt/root; false on the devices).
   def self.path_read_only?(path)
-    s = path.to_s
-    FmrbSpxApp.fmrb_spx_app_path_read_only(s, s.bytesize) == 1
+    FmrbFile.path_read_only?(path)
   end
 
   # An app's metadata as the spawner reads it: its .app.toml and the
@@ -2854,7 +2946,7 @@ class FmrbApp
 
   # Volume step 0-10 (0 = silence); independent of the mute.
   def self.audio_volume
-    FmrbSpxApp.fmrb_spx_app_audio_volume
+    FmrbBoundary.fmrb_bnd_app_audio_volume
   end
 
   # The boundary's record (FmrbApp::wallclock): year u16, then five u8.
@@ -2894,29 +2986,29 @@ class FmrbApp
 
   # The battery's charge in percent, nil without a value.
   def self.battery_level
-    b = FmrbSpxApp.fmrb_spx_app_battery
+    b = FmrbBoundary.fmrb_bnd_app_battery_level
     return nil if b < 0
-    b & 0xFF
+    b
   end
 
   def self.battery_charging?
-    b = FmrbSpxApp.fmrb_spx_app_battery
-    b >= 0 && (b & 0x100) != 0
+    FmrbBoundary.fmrb_bnd_app_battery_charging == 1
   end
 
-  # The native compositor's CRT look (doc/web_crt, C5): not here.
+  # The native compositor's CRT look (doc/web_crt, C5), "" where it cannot be
+  # drawn.
   def self.crt_state
-    ""
+    FmrbBoundary.fmrb_spx_b_app_crt_state.to_s
   end
 
   def self.wifi_connected?
-    FmrbSpxApp.fmrb_spx_app_wifi_connected == 1
+    FmrbBoundary.fmrb_bnd_app_wifi_connected == 1
   end
 
   # Process-set generation: bumped by the kernel on every state transition, so
   # a 1Hz poll can skip the allocating ps call while nothing changed.
   def self.ps_gen
-    FmrbSpxApp.fmrb_spx_app_proc_generation
+    FmrbBoundary.fmrb_bnd_app_ps_gen
   end
 
   def self.wifi_info

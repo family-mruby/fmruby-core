@@ -5,9 +5,37 @@
 # 省略可能引数とキーワード引数は型推論エンジンが扱えないので、よく使う
 # 呼び方を必須引数だけの形にして書いてある (sig/README.md)。
 
+#
+# FmrbApp はクラスごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
+# 境界のメソッドは受け手の番号を取らない (受け手は呼んだアプリ)。アプリが書く
+# メソッドは %a{fmrb.hook} (C の殻が呼ぶもの)、Ruby で書いたもの・エンジンの
+# オブジェクトを返すもの・省略できる引数を持つ包みは %a{fmrb.internal}。
+# Window の大きさや状態を読むメソッドは、Ruby (mruby・Spinel) では基底クラスが
+# 自分の値で答え、ほかの言語では境界の関数が C の殻の値で答える。
+
+%a{fmrb.boundary}
 class FmrbApp
   # wallclock が返す日付と時刻 <<en>> The date and time, from wallclock
   type wallclock = { year: uint16, month: uint8, day: uint8, hour: uint8, minute: uint8, second: uint8 }
+
+  # sys_pool_info が返す本体のメモリのようす <<en>> The system pool, from sys_pool_info
+  type sys_pool_info = { total: uint32, used: uint32, free: uint32, used_blocks: uint32, free_blocks: uint32 }
+
+  # gfx_stats が返す絵を送った回数 <<en>> The frames sent, from gfx_stats
+  type gfx_stats = { cmds: uint32, presents: uint32 }
+
+  # on_event に来る入力 <<en>> One input event, as on_event gets it
+  #
+  # Ruby では Symbol を鍵とする Hash。入力の種類ごとに使う鍵だけが入る
+  # (キーは keycode・scancode・modifier・character、マウスは x・y・wx・wy と
+  # button か delta、ゲームパッドは gamepad_id と button か axis・value、
+  # かな入力の切り替えは mode)。
+  # <<en>>
+  # A Hash with Symbol keys in Ruby, holding the keys of its kind only (a key:
+  # keycode, scancode, modifier, character; the mouse: x, y, wx, wy and button
+  # or delta; a gamepad: gamepad_id and button, or axis and value; the kana
+  # mode: mode).
+  type event = { type: :key_down | :key_up | :mouse_down | :mouse_up | :mouse_move | :mouse_wheel | :gamepad_down | :gamepad_up | :gamepad_axis | :kana_mode, x: int32, y: int32, wx: int32, wy: int32, button: int32, keycode: int32, scancode: int32, modifier: int32, character: int32, delta: int32, gamepad_id: int32, axis: int32, value: int32, mode: int32 }
 
   # 絵を描く画面
   @gfx: FmrbGfx
@@ -30,6 +58,7 @@ class FmrbApp
   #               theme_fg)
   # gfx.present
   # ```
+  %a{fmrb.internal}
   def gfx: () -> FmrbGfx
 
   # Window 全体に描く画面 (枠の上も) <<en>> Draws on the whole window, frame too
@@ -49,6 +78,7 @@ class FmrbApp
   # window_gfx.fill_rect(0, 0,
   #   window_width, 11, theme_accent)
   # ```
+  %a{fmrb.internal}
   def window_gfx: () -> FmrbGfx
 
   # ---- 名前や大きさ ----
@@ -65,7 +95,8 @@ class FmrbApp
   # ```ruby
   # stop unless running
   # ```
-  def running: () -> bool
+  %a{fmrb.internal}
+  def running?: () -> bool
 
   # Window の横幅 (ドット) <<en>> Window width in pixels
   #
@@ -102,6 +133,27 @@ class FmrbApp
   # ```
   def pos_y: () -> Integer
 
+  # 中に描ける区画の横幅 (ドット) <<en>> Width of the area the app owns
+  #
+  # 枠の内側 (枠なし・全画面では Window 全体)。gfx の (0, 0) はここの左上。
+  # ```ruby
+  # w = user_area_width
+  # ```
+  # <<en>>
+  # Inside the frame (the whole window when it has none or is fullscreen);
+  # gfx's (0, 0) is its top-left.
+  # ```ruby
+  # w = user_area_width
+  # ```
+  def user_area_width: () -> Integer
+
+  # 中に描ける区画の高さ (ドット) <<en>> Height of the area the app owns
+  #
+  # ```ruby
+  # h = user_area_height
+  # ```
+  def user_area_height: () -> Integer
+
   # 動いている機械の種類 <<en>> Which machine this is
   #
   # `:esp32` か `:linux` (Symbol) を返す。ブラウザ版も `:linux` なので、
@@ -117,28 +169,29 @@ class FmrbApp
   # ```ruby
   # if platform == :esp32
   # ```
-  def platform: () -> Symbol
+  def platform: () -> (:esp32 | :linux)
 
   # 全画面かどうか <<en>> Whether it fills the screen
   #
   # ```ruby
   # draw_window_frame unless fullscreen
   # ```
-  def fullscreen: () -> bool
+  def fullscreen?: () -> bool
 
   # Window の角が丸いかどうか <<en>> Whether the corners are rounded
   #
   # ```ruby
   # r = rounded_corners ? 6 : 0
   # ```
-  def rounded_corners: () -> bool
+  def rounded_corners?: () -> bool
 
   # 閉じるボタンで終われるか <<en>> Whether the close button ends it
   #
   # ```ruby
   # show_close_button if closable
   # ```
-  def closable: () -> bool
+  %a{fmrb.internal}
+  def closable?: () -> bool
 
   # 枠なしの Window か (window_frame = "none") <<en>> Whether the window has no frame
   #
@@ -150,6 +203,16 @@ class FmrbApp
   # bg = frameless? ? nil : theme_bg
   # ```
   def frameless?: () -> bool
+
+  # 右下の角で大きさを変えられるか <<en>> Whether the window resizes from its corner
+  #
+  # .app.toml の resizable。枠の右下に印が出る。
+  # <<en>>
+  # The app's .app.toml resizable; the frame shows the mark at the corner.
+  # ```ruby
+  # pad = resizable? ? 9 : 0
+  # ```
+  def resizable?: () -> bool
 
   # ---- 呼ばれるところ (書きかえて使う) ----
 
@@ -186,6 +249,7 @@ class FmrbApp
   #   end
   # end
   # ```
+  %a{fmrb.hook}
   def on_create: () -> void
 
   # 毎フレーム呼ばれる。描画を書く場所 <<en>> called every frame; draw here
@@ -233,6 +297,7 @@ class FmrbApp
   #   end
   # end
   # ```
+  %a{fmrb.hook}
   def on_update: () -> void
 
   # 終わるときに一度だけ呼ばれる <<en>> Called once as it ends
@@ -249,6 +314,7 @@ class FmrbApp
   # It runs only on an orderly exit. An app that dies on an exception never
   # gets here, so anything that must not be lost should be written out
   # before then.
+  %a{fmrb.hook}
   def on_destroy: () -> void
 
   # 他のアプリに画面を渡すとき <<en>> Called when the screen goes to another app
@@ -260,6 +326,7 @@ class FmrbApp
   # Called when another app comes to the front. This app keeps running; only
   # its screen goes away. Nobody is looking at what it draws, so this is
   # where to stop an expensive animation or a sound.
+  %a{fmrb.hook}
   def on_suspend: () -> void
 
   # 画面が戻ってきたとき <<en>> Called when the screen comes back
@@ -269,6 +336,7 @@ class FmrbApp
   # <<en>>
   # Called when this app gets the screen back. What was on it is gone;
   # redraw here.
+  %a{fmrb.hook}
   def on_resume: () -> void
 
   # イメージに書かれた直後 <<en>> Called once the app is written to an image
@@ -282,6 +350,7 @@ class FmrbApp
   # moved rather than ended, so `on_destroy` does not come. What is done here
   # is not in the image. Only an app on mruby whose `.app.toml` says
   # `movable = true` can be written (doc/checkpoint/movable_apps.md).
+  %a{fmrb.internal}
   def on_checkpoint: () -> void
 
   # イメージから起動したとき <<en>> Called when started from an image
@@ -327,6 +396,7 @@ class FmrbApp
   # the app cannot go on without goes in its `.app.toml` as
   # `requires = ["name"]`: it is not moved to a build without it.
   # See doc/checkpoint/movable_apps.md.
+  %a{fmrb.internal}
   def on_restore: () -> void
 
   # 自分のイメージを断られたとき <<en>> Called when its own image is refused
@@ -336,6 +406,7 @@ class FmrbApp
   # <<en>>
   # Called with the reason when the image asked for with
   # `checkpoint` could not be written. The app goes on.
+  %a{fmrb.internal}
   def on_checkpoint_refused: (String reason) -> void
 
   # キーやマウスの入力が来たとき <<en>> called on key and mouse input
@@ -385,7 +456,8 @@ class FmrbApp
   #   end
   # end
   # ```
-  def on_event: (Hash ev) -> void
+  %a{fmrb.hook}
+  def on_event: (event ev) -> void
 
   # Window の大きさが変わったとき <<en>> Called when the window is resized
   #
@@ -417,6 +489,7 @@ class FmrbApp
   #   redraw
   # end
   # ```
+  %a{fmrb.hook}
   def on_resize: (Integer new_width, Integer new_height) -> void
 
   # 閉じてよいか聞かれたとき <<en>> Called when it is asked to close
@@ -444,6 +517,7 @@ class FmrbApp
   #   end
   # end
   # ```
+  %a{fmrb.hook}
   def on_quit_request: () -> void
 
   # 枠なしの Window の右クリック・長押し <<en>> Right click or long press, frameless
@@ -468,7 +542,8 @@ class FmrbApp
   # def on_frameless_right_click(ev)
   # end
   # ```
-  def on_frameless_right_click: (Hash ev) -> void
+  %a{fmrb.internal}
+  def on_frameless_right_click: (event ev) -> void
 
   # 当たりを四角の一覧で決める (枠なし) <<en>> Hit shape: rectangles (frameless window)
   #
@@ -488,6 +563,7 @@ class FmrbApp
   # set_hit_shape([[0, 0, 40, 30],
   #                [10, 30, 20, 8]])
   # ```
+  %a{fmrb.internal}
   def set_hit_shape: (Array rects) -> bool
 
   # 当たりをマスク (FmrbHitMask) で決める <<en>> Hit shape: a mask (FmrbHitMask)
@@ -505,6 +581,7 @@ class FmrbApp
   #       transparent: ".", scale: 3)
   # set_hit_mask(m, 36, 38)
   # ```
+  %a{fmrb.internal}
   def set_hit_mask: (FmrbHitMask? mask, ?Integer x, ?Integer y) -> bool
 
   # ドット絵の文字列から当たりのマスクを作る <<en>> A hit mask from dot-art strings
@@ -524,6 +601,7 @@ class FmrbApp
   #       ["..XX..", ".XXXX."],
   #       transparent: ".", scale: 2)
   # ```
+  %a{fmrb.internal}
   def hit_mask_from_art: (Array rows, ?transparent: String, ?scale: Integer) -> FmrbHitMask
 
   # sprite に当たりの印を付ける <<en>> Mark a sprite as part of the hit shape
@@ -540,6 +618,7 @@ class FmrbApp
   # ```ruby
   # add_hit_sprite(@player)
   # ```
+  %a{fmrb.internal}
   def add_hit_sprite: (SpriteInstance sprite, ?FmrbHitMask? mask) -> bool
 
   # sprite の当たりの印を外す <<en>> Unmark a sprite
@@ -547,6 +626,7 @@ class FmrbApp
   # ```ruby
   # remove_hit_sprite(@player)
   # ```
+  %a{fmrb.internal}
   def remove_hit_sprite: (SpriteInstance sprite) -> void
 
   # 当たりを Window の四角に戻す <<en>> Back to the window rectangle
@@ -554,6 +634,7 @@ class FmrbApp
   # ```ruby
   # clear_hit_shape
   # ```
+  %a{fmrb.internal}
   def clear_hit_shape: () -> bool
 
   # ---- 動かす ----
@@ -574,6 +655,7 @@ class FmrbApp
   # subclass it defines is made and this is called: the one `class = "MyApp"`
   # in the .app.toml (or the `#---fmrb` header) names, or else the only one.
   # When none can be picked, the error window says why.
+  %a{fmrb.internal}
   def start: () -> void
 
   # アプリを止める <<en>> Stop the app
@@ -590,6 +672,7 @@ class FmrbApp
   # 後始末。`start` が最後に自分で呼ぶので、普通は書かない。
   # <<en>>
   # Cleanup. `start` calls it at the end, so an app rarely calls it itself.
+  %a{fmrb.internal}
   def destroy: () -> void
 
   # 自分をもう一度読み込み直す <<en>> Ask to be loaded again
@@ -628,6 +711,7 @@ class FmrbApp
   # `start` の中身。自分で呼ぶことはまず無い。
   # <<en>>
   # What `start` runs. There is rarely a reason to call it directly.
+  %a{fmrb.internal}
   def main_loop: () -> void
 
   # ---- Window と絵 ----
@@ -674,7 +758,24 @@ class FmrbApp
   #
   # `gfx.clear` paints the whole canvas, taking the title bar and the border
   # with it.
+  %a{fmrb.internal}
   def clear_user_area: () -> void
+
+  # clear_user_area の省略なしの形 <<en>> clear_user_area with nothing left out
+  #
+  # 引数を省略できない単純な形。color が負ならテーマの紙の色 (枠なしでは
+  # 透ける色)。包みは clear_user_area (色を省くと負と同じ)。
+  # ```ruby
+  # clear_user_area_raw(-1)
+  # ```
+  # <<en>>
+  # The simple form. A negative color is the theme's page colour (the colour
+  # key on a frameless window). The wrapper is clear_user_area (no colour is
+  # the same as a negative one).
+  # ```ruby
+  # clear_user_area_raw(-1)
+  # ```
+  def clear_user_area_raw: (Integer color) -> void
 
   # ---- テーマの色 (system_conf.toml の [theme]) ----
 
@@ -735,6 +836,7 @@ class FmrbApp
   #                @lines.size,
   #                visible_rows)
   # ```
+  %a{fmrb.internal}
   def draw_scrollbar: (Integer scroll, Integer total, Integer visible) -> void
 
   # つまみのどこを押したか調べる <<en>> Work out where the scrollbar was pressed
@@ -754,6 +856,7 @@ class FmrbApp
   # when :down then @scroll += 1
   # end
   # ```
+  %a{fmrb.internal}
   def scrollbar_hit: (Integer click_x, Integer click_y) -> Symbol?
 
   # Window を動かす <<en>> Move the window
@@ -819,6 +922,7 @@ class FmrbApp
   #
   # **Meant for fullscreen apps.** The window manager does not follow extra
   # canvases across a change of focus.
+  %a{fmrb.internal}
   def create_canvas_gfx: (Integer width, Integer height) -> FmrbGfx
 
   # 作った画面を片づける <<en>> Let go of a canvas it made
@@ -826,6 +930,7 @@ class FmrbApp
   # ```ruby
   # delete_canvas_gfx(@layer)
   # ```
+  %a{fmrb.internal}
   def delete_canvas_gfx: (FmrbGfx gfx) -> void
 
   # ---- キーの調べかた (on_event の中で使う) ----
@@ -855,21 +960,24 @@ class FmrbApp
   # if ev_ctrl?(ev) &&
   #    ev[:scancode] == 0x16
   # ```
-  def ev_ctrl?: (Hash ev) -> bool
+  %a{fmrb.internal}
+  def ev_ctrl?: (event ev) -> bool
 
   # Shift を押していたかどうか <<en>> Whether Shift was held
   #
   # ```ruby
   # if ev_shift?(ev)
   # ```
-  def ev_shift?: (Hash ev) -> bool
+  %a{fmrb.internal}
+  def ev_shift?: (event ev) -> bool
 
   # Alt を押していたかどうか <<en>> Whether Alt was held
   #
   # ```ruby
   # if ev_alt?(ev)
   # ```
-  def ev_alt?: (Hash ev) -> bool
+  %a{fmrb.internal}
+  def ev_alt?: (event ev) -> bool
 
   # ---- 時間と伝言 ----
 
@@ -901,6 +1009,7 @@ class FmrbApp
   # ```ruby
   # @id = set_timer(500) { blink }
   # ```
+  %a{fmrb.internal}
   def set_timer: (Integer interval) -> Integer
 
   # 時間の呼び出しをやめる <<en>> Stop a timer
@@ -916,6 +1025,7 @@ class FmrbApp
   # @id = set_timer(500) { blink }
   # clear_timer(@id)
   # ```
+  %a{fmrb.internal}
   def clear_timer: (Integer timer_id) -> void
 
   # 知らせを受け取るようにする <<en>> Start receiving a kind of notice
@@ -929,6 +1039,7 @@ class FmrbApp
   # ```ruby
   # subscribe("clock/hour")
   # ```
+  %a{fmrb.internal}
   def subscribe: (String topic) -> void
 
   # 知らせを受け取るのをやめる <<en>> Stop receiving a kind of notice
@@ -936,6 +1047,7 @@ class FmrbApp
   # ```ruby
   # unsubscribe("clock/hour")
   # ```
+  %a{fmrb.internal}
   def unsubscribe: (String topic) -> void
 
   # みんなに知らせを送る <<en>> Send a notice to everyone
@@ -951,6 +1063,7 @@ class FmrbApp
   # **One message carries at most 176 bytes.** For anything larger, write it
   # to `/tmp` and publish the path instead (`/tmp` lives in memory and is
   # gone on the next boot).
+  %a{fmrb.internal}
   def publish: (String topic) -> void
 
   # 他のアプリに伝言を送る <<en>> Send a message to another app
@@ -968,6 +1081,7 @@ class FmrbApp
   #   FmrbConst::MSG_TYPE_APP_CONTROL,
   #   { "cmd" => "hello" })
   # ```
+  %a{fmrb.internal}
   def send_message: (Integer dest_pid, Integer msg_type, untyped data) -> void
 
   # ---- ファイル ----
@@ -985,14 +1099,48 @@ class FmrbApp
   # ```ruby
   # request_file_select("open")
   # ```
+  %a{fmrb.internal}
   def request_file_select: (String mode) -> void
+
+  # request_file_select の省略なしの形 <<en>> request_file_select with nothing left out
+  #
+  # 引数を省略できない単純な形。包みは request_file_select (mode を省くと "open")。
+  # ```ruby
+  # request_file_select_raw("save")
+  # ```
+  # <<en>>
+  # The simple form. The wrapper is request_file_select (mode left out is
+  # "open").
+  # ```ruby
+  # request_file_select_raw("save")
+  # ```
+  def request_file_select_raw: (String mode) -> void
 
   # ファイルをアプリとして動かす <<en>> Run a file as an app
   #
   # ```ruby
   # request_run("/app/usr/mine.app.rb")
   # ```
+  %a{fmrb.internal}
   def request_run: (String path) -> void
+
+  # request_run の省略なしの形 <<en>> request_run with nothing left out
+  #
+  # 引数を省略できない単純な形。prev_pid は前に頼んで起動したアプリ
+  # (カーネルが先に止める)。負なら無し。包みは request_run (prev_pid を
+  # 省くと無し)。答えは on_control に run_result で届く。
+  # ```ruby
+  # request_run_raw("/app/usr/mine.app.rb", -1)
+  # ```
+  # <<en>>
+  # The simple form. prev_pid is the app an earlier request started, which
+  # the kernel stops first; negative for none. The wrapper is request_run
+  # (prev_pid left out is none). The answer arrives at on_control as
+  # run_result.
+  # ```ruby
+  # request_run_raw("/app/usr/mine.app.rb", -1)
+  # ```
+  def request_run_raw: (String path, Integer prev_pid) -> void
 
   # 自分をイメージに書いて閉じる <<en>> Write this app to an image and close
   #
@@ -1017,6 +1165,7 @@ class FmrbApp
   # why = checkpoint(restart: true)
   # Log.warn(why) if why
   # ```
+  %a{fmrb.internal}
   def checkpoint: () -> String?
 
   # 自分を別の端末へ移す <<en>> Move this app to another machine
@@ -1041,6 +1190,7 @@ class FmrbApp
   # why = move_to("fmruby-abcdef")
   # Log.warn(why) if why
   # ```
+  %a{fmrb.internal}
   def move_to: (String to) -> String?
 
   # ---- 後片づけの調子 ----
@@ -1050,6 +1200,7 @@ class FmrbApp
   # 暇なときに GC を回す設定が入っているかどうか。
   # <<en>>
   # Whether the app collects garbage while it has nothing to do.
+  %a{fmrb.internal}
   def idle_gc: () -> bool
 
   # ---- クラスメソッド ----
@@ -1140,7 +1291,21 @@ class FmrbApp
   # ```ruby
   # FmrbApp.notify("Saved", "/home/a.txt")
   # ```
+  %a{fmrb.internal}
   def self.notify: (String summary, String body) -> bool
+
+  # notify の省略なしの形 <<en>> notify with nothing left out
+  #
+  # 引数を省略できない単純な形。包みは notify (body を省くと "")。
+  # ```ruby
+  # FmrbApp.notify_raw("Saved", "")
+  # ```
+  # <<en>>
+  # The simple form. The wrapper is notify (body left out is "").
+  # ```ruby
+  # FmrbApp.notify_raw("Saved", "")
+  # ```
+  def self.notify_raw: (String summary, String body) -> bool
 
   # 動いているアプリの一覧 <<en>> The apps that are running
   #
@@ -1157,6 +1322,7 @@ class FmrbApp
   #   Log.info("#{a[:pid]} #{a[:name]}")
   # end
   # ```
+  %a{fmrb.internal}
   def self.ps: () -> Array
 
   # アプリ一覧が変わった回数 <<en>> How many times the app list changed
@@ -1189,6 +1355,7 @@ class FmrbApp
   # FmrbApp.checkpoint(5,
   #                    restart: true)
   # ```
+  %a{fmrb.internal}
   def self.checkpoint: (Integer pid) -> String?
 
   # 別のアプリを別の端末へ移す <<en>> Move another app to another machine
@@ -1209,6 +1376,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.move(5, "fmruby-abcdef")
   # ```
+  %a{fmrb.internal}
   def self.move: (Integer pid, String to) -> String?
 
   # 空きメモリの様子 <<en>> How much memory is free
@@ -1217,6 +1385,7 @@ class FmrbApp
   # h = FmrbApp.heap_info
   # Log.info("#{h[:free]} free")
   # ```
+  %a{fmrb.internal}
   def self.heap_info: () -> Hash
 
   # 自分のメモリの使用率 (百分率) <<en>> How much of its own memory is used
@@ -1224,6 +1393,7 @@ class FmrbApp
   # ```ruby
   # pct = FmrbApp.pool_usage
   # ```
+  %a{fmrb.internal}
   def self.pool_usage: () -> Integer
 
   # 自分のメモリの使用量 (バイト) <<en>> How much of its own memory is used, in bytes
@@ -1245,6 +1415,7 @@ class FmrbApp
   # scan_everything
   # kb = (FmrbApp.pool_used - before) / 1024
   # ```
+  %a{fmrb.internal}
   def self.pool_used: () -> Integer
 
   # 機械全体のメモリの様子 <<en>> The whole machine's memory
@@ -1252,7 +1423,7 @@ class FmrbApp
   # ```ruby
   # i = FmrbApp.sys_pool_info
   # ```
-  def self.sys_pool_info: () -> Hash
+  def self.sys_pool_info: () -> sys_pool_info
 
   # 設定ファイルの中身を読む <<en>> Read a settings file
   #
@@ -1265,6 +1436,7 @@ class FmrbApp
   # ```ruby
   # rows = FmrbApp.config("theme")
   # ```
+  %a{fmrb.internal}
   def self.config: (String section_name) -> Array?
 
   # 電源を入れてからの時間 (百万分の一秒) <<en>> Microseconds since power-on
@@ -1275,6 +1447,13 @@ class FmrbApp
   # us = FmrbApp.uptime_us - t0
   # ```
   def self.uptime_us: () -> int64
+
+  # 電源を入れてからの時間 (ミリ秒) <<en>> Milliseconds since power-on
+  #
+  # ```ruby
+  # t0 = FmrbApp.uptime_ms
+  # ```
+  def self.uptime_ms: () -> int64
 
   # 今の日付と時刻 <<en>> The date and time now
   #
@@ -1296,13 +1475,14 @@ class FmrbApp
   # ```ruby
   # s = FmrbApp.gfx_stats
   # ```
-  def self.gfx_stats: () -> Hash
+  def self.gfx_stats: () -> gfx_stats
 
   # マウスの矢印を出す <<en>> Show the mouse pointer
   #
   # マウスの矢印を出す。デスクトップが起動時に呼ぶ。
   # <<en>>
   # Shows the mouse pointer; the desktop does this at boot.
+  %a{fmrb.internal}
   def self.enable_cursor: () -> void
 
   # マウスの矢印を見せるか隠すか <<en>> Show or hide the mouse pointer
@@ -1310,6 +1490,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.set_cursor_visible(false)
   # ```
+  %a{fmrb.internal}
   def self.set_cursor_visible: (bool visible) -> void
 
   # かな入力を切りかえる (0 切 1 ひら 2 カタ) <<en>> Switch kana input (0 off 1 hira 2 kata)
@@ -1323,6 +1504,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.set_kana_mode(1)
   # ```
+  %a{fmrb.internal}
   def self.set_kana_mode: (Integer mode) -> void
 
   # 文字カーソルの位置を知らせる (PC の IME 用) <<en>> Tell where the text cursor is (for a PC's IME)
@@ -1357,6 +1539,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.path_read_only?("/mnt/root/etc/hostname")
   # ```
+  %a{fmrb.internal}
   def self.path_read_only?: (String path) -> bool
 
   # アプリの設定 (.app.toml とコメント) <<en>> An app's settings (.app.toml and comment)
@@ -1383,6 +1566,7 @@ class FmrbApp
   #   "/app/game/flappy.app.rb")
   # m["app_screen_name"] if m
   # ```
+  %a{fmrb.internal}
   def self.app_meta: (String path) -> Hash[String, String]?
 
   # その場所にあと何バイト書けるか <<en>> How many more bytes can be written where the path lives
@@ -1398,6 +1582,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.free_bytes("/tmp")
   # ```
+  %a{fmrb.internal}
   def self.free_bytes: (String path) -> Integer?
 
   # 本体の音量 (0-10) <<en>> The machine's volume (0-10)
@@ -1427,6 +1612,7 @@ class FmrbApp
   # i = FmrbApp.wifi_info
   # Log.info(i[:ip]) if i
   # ```
+  %a{fmrb.internal}
   def self.wifi_info: () -> Hash?
 
   # つないだ USB 機器の一覧 <<en>> The USB devices attached
@@ -1436,6 +1622,7 @@ class FmrbApp
   #   Log.info(d[:type])
   # end
   # ```
+  %a{fmrb.internal}
   def self.usb_devices: () -> Array
 
   # USB の生の入力を受け取る <<en>> Start receiving raw USB input
@@ -1445,6 +1632,7 @@ class FmrbApp
   # <<en>>
   # Raw reports from that slot start arriving at `on_control`. The HID
   # Inspector is what uses this.
+  %a{fmrb.internal}
   def self.hid_raw_subscribe: (Integer slot) -> bool
 
   # USB の生の入力をやめる <<en>> Stop receiving raw USB input
@@ -1452,6 +1640,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.hid_raw_unsubscribe(1)
   # ```
+  %a{fmrb.internal}
   def self.hid_raw_unsubscribe: (Integer slot) -> bool
 
   # 自分の pid <<en>> This app's own pid
@@ -1479,6 +1668,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.gc
   # ```
+  %a{fmrb.internal}
   def self.gc: () -> void
 
   # 電池の残り (百分率) <<en>> The battery's charge in percent
@@ -1529,6 +1719,7 @@ class FmrbApp
   # h = FmrbApp.linux_start("ls",
   #       "/home", 80, 24)
   # ```
+  %a{fmrb.internal}
   def self.linux_start: (String? cmd, String cwd, Integer cols, Integer rows) -> Integer
 
   # Linux のコマンドの出力を読む <<en>> Read a Linux command's output
@@ -1542,6 +1733,7 @@ class FmrbApp
   # ```ruby
   # s = FmrbApp.linux_read(h)
   # ```
+  %a{fmrb.internal}
   def self.linux_read: (Integer h) -> String?
 
   # Linux のコマンドに書く <<en>> Write to a Linux command
@@ -1549,6 +1741,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.linux_write(h, "q")
   # ```
+  %a{fmrb.internal}
   def self.linux_write: (Integer h, String data) -> Integer
 
   # Linux のコマンドにシグナルを送る <<en>> Send a signal to a Linux command
@@ -1562,6 +1755,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.linux_signal(h, :int)
   # ```
+  %a{fmrb.internal}
   def self.linux_signal: (Integer h, Symbol sig) -> bool
 
   # Linux のコマンドの終わりの値 <<en>> A Linux command's exit code
@@ -1569,6 +1763,7 @@ class FmrbApp
   # 動いている間は nil。
   # <<en>>
   # nil while it runs.
+  %a{fmrb.internal}
   def self.linux_exit_code: (Integer h) -> Integer?
 
   # Linux のコマンドの端末の大きさを変える <<en>> Resize a Linux command's terminal
@@ -1576,6 +1771,7 @@ class FmrbApp
   # ```ruby
   # FmrbApp.linux_resize(h, 80, 24)
   # ```
+  %a{fmrb.internal}
   def self.linux_resize: (Integer h, Integer cols, Integer rows) -> bool
 
   # Linux のコマンドを閉じる <<en>> Close a Linux command
@@ -1583,5 +1779,6 @@ class FmrbApp
   # まだ動いていれば止める。待たない。
   # <<en>>
   # Ends it if it still runs; never waits.
+  %a{fmrb.internal}
   def self.linux_close: (Integer h) -> void
 end

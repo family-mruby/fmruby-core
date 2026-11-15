@@ -74,19 +74,17 @@ module FmrbSpxApp
   # --- class: process / memory info (all :binstr) ---
   ffi_func :fmrb_spx_app_ps, [], :binstr
   ffi_func :fmrb_spx_app_heap_info, [], :binstr
-  ffi_func :fmrb_spx_app_sys_pool_info, [], :binstr
   ffi_func :fmrb_spx_app_pool_usage, [], :int
   ffi_func :fmrb_spx_app_pool_used, [], :int
-  ffi_func :fmrb_spx_app_gfx_stats, [], :binstr
   ffi_func :fmrb_spx_app_last_error, [], :binstr
 
   # --- class: configuration / clock ---
   ffi_func :fmrb_spx_app_config, [:str, :int], :binstr
-  ffi_func :fmrb_spx_app_language, [], :binstr
   ffi_func :fmrb_spx_app_set_kana_mode, [:int], :int
-  ffi_func :fmrb_spx_app_set_text_cursor, [:int, :int, :int], :int
   ffi_func :fmrb_spx_app_clipboard_length, [], :int
   ffi_func :fmrb_spx_app_clipboard_chunk, [:int, :int], :binstr
+  ffi_func :fmrb_spx_file_length, [:int, :str, :int], :int
+  ffi_func :fmrb_spx_file_chunk, [:int, :str, :int, :int], :binstr
   ffi_func :fmrb_spx_app_rd_stream_state, [], :int
   ffi_func :fmrb_spx_app_set_wallclock, [:int, :int, :int, :int, :int, :int], :binstr
 
@@ -96,23 +94,17 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_reboot, [], :int
   ffi_func :fmrb_spx_app_power_actions, [], :int
   ffi_func :fmrb_spx_app_power, [:int], :int
-  ffi_func :fmrb_spx_app_battery, [], :int
   ffi_func :fmrb_spx_app_ble_start, [], :int
   ffi_func :fmrb_spx_app_ble_state, [], :int
   ffi_func :fmrb_spx_app_ble_settings_window, [:int], :int
   ffi_func :fmrb_spx_app_ble_settings_left, [], :int
-  ffi_func :fmrb_spx_app_audio_muted, [], :int
-  ffi_func :fmrb_spx_app_path_read_only, [:str, :int], :int
   ffi_func :fmrb_spx_app_meta, [:str, :int], :binstr
   ffi_func :fmrb_spx_app_move, [:int, :str, :int, :int], :binstr
   ffi_func :fmrb_spx_app_checkpoint, [:int, :int], :binstr
   ffi_func :fmrb_spx_app_set_audio_mute, [:int], :int
-  ffi_func :fmrb_spx_app_audio_volume, [], :int
   ffi_func :fmrb_spx_app_set_audio_volume, [:int], :int
   ffi_func :fmrb_spx_app_preview_audio_volume, [:int], :int
   ffi_func :fmrb_spx_app_audio_conf_saved, [], :int
-  ffi_func :fmrb_spx_app_wifi_connected, [], :int
-  ffi_func :fmrb_spx_app_proc_generation, [], :int
   ffi_func :fmrb_spx_app_bt_mac, [], :binstr
 
   # --- class: network / usb ---
@@ -129,11 +121,6 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_bt_connect, [:str, :int, :int], :int
 
   # --- class: process / files / Linux commands (doc/codebase_tidy T5) ---
-  ffi_func :fmrb_spx_app_pid, [], :int
-  ffi_func :fmrb_spx_app_script_path, [], :binstr
-  ffi_func :fmrb_spx_app_free_bytes, [:str, :int], :binstr
-  ffi_func :fmrb_spx_app_notify, [:str, :int, :str, :int], :int
-  ffi_func :fmrb_spx_app_linux_available, [], :int
   ffi_func :fmrb_spx_app_linux_start, [:int, :str, :int, :str, :int, :int, :int], :int
   ffi_func :fmrb_spx_app_linux_last_error, [], :binstr
   ffi_func :fmrb_spx_app_linux_read, [:int], :binstr

@@ -58,11 +58,6 @@
 #include "audio_p4.h"
 #endif
 
-#if defined(FMRB_PLATFORM_WASM)
-// The browser's storage room as the page last saw it (wasm/backend/storage_wasm.c).
-int64_t fmrb_wasm_storage_free(void);
-#endif
-
 static const char* TAG = "app";
 
 // What one GC step has been costing this app. Biased upward: it jumps to any
@@ -1027,31 +1022,6 @@ static mrb_value mrb_fmrb_app_audio_note_bytes(mrb_state *mrb, mrb_value self)
     return mrb_str_new(mrb, (const char *)buf, n);
 }
 
-// FmrbApp.pid -> Integer (nil outside an app context)
-// The caller's own process id, the same number ps reports as :id. An app that
-// acts on the process list needs it to leave itself out (the shell's and the
-// monitor's kill).
-static mrb_value mrb_fmrb_app_s_pid(mrb_state *mrb, mrb_value self)
-{
-    (void)mrb; (void)self;
-    fmrb_app_task_context_t* ctx = fmrb_current();
-    if (!ctx) {
-        return mrb_nil_value();
-    }
-    return mrb_fixnum_value((mrb_int)ctx->app_id);
-}
-
-// FmrbApp.ps() -> Array[Hash]
-// Get process list with memory statistics
-// FmrbApp.ps_gen -> Integer. Process-set generation: bumped by the kernel
-// on every state transition. A 1Hz UI poll compares it to its last value
-// and calls the allocating FmrbApp.ps only when something actually changed.
-static mrb_value mrb_fmrb_app_s_ps_gen(mrb_state *mrb, mrb_value self)
-{
-    (void)mrb; (void)self;
-    return mrb_fixnum_value((mrb_int)fmrb_app_proc_generation());
-}
-
 static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
 {
     fmrb_app_info_t list[FMRB_MAX_APPS];
@@ -1185,15 +1155,6 @@ static mrb_value mrb_fmrb_app_s_start_class_name(mrb_state *mrb, mrb_value self)
     return result;
 }
 
-// FmrbApp.script_path -> String: the file this app was started from ("" for
-// an app built into the firmware). FmrbApp#app_handle_name starts from it.
-static mrb_value mrb_fmrb_app_s_script_path(mrb_state *mrb, mrb_value self)
-{
-    (void)self;
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    return mrb_str_new_cstr(mrb, ctx ? ctx->filepath : "");
-}
-
 // FmrbSystem.set_wallclock(year, month, day, hour, minute, second)
 //   -> Hash {year:, month:, day:, hour:, minute:, second:}
 //
@@ -1248,65 +1209,6 @@ static mrb_value mrb_fmrb_app_s_set_wallclock(mrb_state *mrb, mrb_value self)
                  mrb_fixnum_value(utc_tm.tm_min));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "second")),
                  mrb_fixnum_value(utc_tm.tm_sec));
-    return hash;
-}
-
-// FmrbApp.gfx_stats() -> Hash { cmds: uint32, presents: uint32 }
-// Returns cumulative counters from the Host Task. Counters wrap modulo 2^32;
-// callers should compute rate from deltas between successive samples.
-static mrb_value mrb_fmrb_app_s_gfx_stats(mrb_state *mrb, mrb_value self)
-{
-    (void)self;
-    uint32_t cmds = 0, presents = 0;
-    fmrb_host_get_gfx_counters(&cmds, &presents);
-
-    mrb_value hash = mrb_hash_new_capa(mrb, 2);
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "cmds")),
-                 mrb_fixnum_value((mrb_int)cmds));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "presents")),
-                 mrb_fixnum_value((mrb_int)presents));
-    return hash;
-}
-
-// FmrbApp.sys_pool_info() -> Hash
-// Get system pool (fmrb_sys_malloc) information (TLSF allocator)
-static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
-{
-    fmrb_pool_stats_t stats;
-    mrb_value hash = mrb_hash_new_capa(mrb, 5);
-
-    int ret = fmrb_sys_mem_get_stats(&stats);
-    static int log_count = 0;
-    if (log_count < 3) {
-        FMRB_LOGI(TAG, "sys_pool_info: ret=%d, total=%zu, used=%zu, free=%zu",
-                  ret, stats.total_size, stats.used_size, stats.free_size);
-        log_count++;
-    }
-    if (ret == 0) {
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
-                     mrb_fixnum_value(stats.total_size));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used")),
-                     mrb_fixnum_value(stats.used_size));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
-                     mrb_fixnum_value(stats.free_size));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used_blocks")),
-                     mrb_fixnum_value(stats.used_blocks));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free_blocks")),
-                     mrb_fixnum_value(stats.free_blocks));
-    } else {
-        // Return zeros on error
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
-                     mrb_fixnum_value(0));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used")),
-                     mrb_fixnum_value(0));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
-                     mrb_fixnum_value(0));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used_blocks")),
-                     mrb_fixnum_value(0));
-        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free_blocks")),
-                     mrb_fixnum_value(0));
-    }
-
     return hash;
 }
 
@@ -1489,23 +1391,6 @@ static mrb_value mrb_fmrb_app_s_power(mrb_state *mrb, mrb_value klass)
     return mrb_false_value();
 }
 
-// FmrbApp.battery_level -> Integer 0-100, or nil without a battery value.
-// FmrbApp.battery_charging? -> bool. Allocation free, for the 1 Hz status.
-static mrb_value mrb_fmrb_app_s_battery_level(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    fmrb_sys_battery_t b;
-    if (!fmrb_platform_sys_battery(&b)) return mrb_nil_value();
-    return mrb_fixnum_value(b.percent);
-}
-
-static mrb_value mrb_fmrb_app_s_battery_charging_p(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    fmrb_sys_battery_t b;
-    return mrb_bool_value(fmrb_platform_sys_battery(&b) && b.charging);
-}
-
 // ---- Linux programs (doc/linux_native L10, fmrb_platform_sys.h) ----
 //
 // FmrbApp.linux_available? -> bool. false on the devices, the simulation and
@@ -1628,12 +1513,6 @@ static mrb_value mrb_fmrb_app_checkpoint_canvases(mrb_state *mrb, mrb_value self
     return self;
 }
 #endif
-
-static mrb_value mrb_fmrb_app_s_linux_available_p(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    return mrb_bool_value(fmrb_platform_sys_proc_available());
-}
 
 static mrb_value mrb_fmrb_app_s_linux_start(mrb_state *mrb, mrb_value klass)
 {
@@ -1957,36 +1836,6 @@ static mrb_value mrb_fmrb_app_s_notice_dismiss(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
-static mrb_value mrb_fmrb_app_s_notify(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    const char *summary;
-    const char *body = "";
-    mrb_get_args(mrb, "z|z", &summary, &body);
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    const char *app = ctx ? ctx->app_name : "";
-    return mrb_bool_value(fmrb_platform_sys_notice_post(app, summary, body, -1) == FMRB_OK);
-}
-
-// FmrbApp.crt_state -> String: the native compositor's CRT look for the
-//   settings window (doc/web_crt, C5): "" where it cannot be drawn (every
-//   build but the native program as a GLES compositor), else "crt" or
-//   "sharp" and the eight strengths, "crt,55,30,30,15,40,0,0,0" (scanline,
-//   mask, glow, curve, vignette, ntsc, flicker, noise; doc/web_crt C6).
-#if defined(FMRB_PLATFORM_NATIVE)
-extern void native_crt_state(char *out, size_t cap);
-#endif
-
-static mrb_value mrb_fmrb_app_s_crt_state(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    char buf[64] = "";
-#if defined(FMRB_PLATFORM_NATIVE)
-    native_crt_state(buf, sizeof(buf));
-#endif
-    return mrb_str_new_cstr(mrb, buf);
-}
-
 #if defined(FMRB_PLATFORM_NATIVE)
 // ---- Linux windows (doc/linux_native L9a, native/wlr/wl_bridge.h) ----
 //
@@ -2154,40 +2003,6 @@ static mrb_value mrb_fmrb_app_s_set_kana_mode(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
-// FmrbApp.set_text_cursor(x, y, h) -> nil. Where this app's text cursor is
-// (canvas coordinates, h the line's height; 0 says it takes no text now), so
-// a PC's IME shows the text being composed and its candidates there
-// (doc/linux_native L12b). Nothing happens on the devices.
-static mrb_value mrb_fmrb_app_s_set_text_cursor(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    mrb_int x, y, h;
-    mrb_get_args(mrb, "iii", &x, &y, &h);
-    fmrb_host_set_text_cursor((int)x, (int)y, (int)h);
-    return mrb_nil_value();
-}
-
-// FmrbApp.audio_muted? -> bool. The machine-wide mute (doc/reference/audio_output.md).
-// Allocation-free: the desktop's speaker cell reads it every second, which is
-// how a change made remotely shows up there.
-static mrb_value mrb_fmrb_app_s_audio_muted_p(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    return mrb_bool_value(fmrb_host_audio_muted());
-}
-
-// FmrbApp.path_read_only?(path) -> bool. Whether the entry at a virtual path
-// cannot be deleted or renamed (fmrb_hal_file_entry_is_read_only): the native
-// build's distribution tree and /mnt/root. Always false on the devices, the
-// simulation and the browser. The File Manager asks before it offers a delete.
-static mrb_value mrb_fmrb_app_s_path_read_only_p(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    const char *path;
-    mrb_get_args(mrb, "z", &path);
-    return mrb_bool_value(fmrb_hal_file_entry_is_read_only(path));
-}
-
 // FmrbApp.app_meta(path) -> Hash or nil. An app's metadata as the spawner
 // reads it (components/fmrb_toml/fmrb_app_meta.h): its .app.toml and the
 // "#---fmrb" comment fence at the top of its .rb merged key by key, the
@@ -2223,43 +2038,6 @@ static mrb_value mrb_fmrb_app_s_app_meta(mrb_state *mrb, mrb_value klass)
     return h.hash;
 }
 
-// FmrbApp.free_bytes(path) -> Integer, or nil when not known. The bytes that
-// can still be written where path lives: /tmp from the RAM filesystem's own
-// count (its capacity less what it holds; statfs there would answer for the
-// flash or the host's disk), anything else from the filesystem under it
-// (LittleFS or the SD card on the devices, the host directory on Linux).
-// The browser's statvfs is a constant: there /home answers the estimate the
-// page last took of the browser's storage (navigator.storage.estimate,
-// quota less usage, a tenth kept back; wasm/backend/storage_wasm.c), and
-// anything else (no SD card there) is nil.
-// Allocation-free. The transfer app asks before it takes a file
-// (doc/asterism_file_transfer T2).
-static mrb_value mrb_fmrb_app_s_free_bytes(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    const char *path;
-    mrb_get_args(mrb, "z", &path);
-    size_t mlen = strlen(FMRB_TMPFS_MOUNT);
-    if (strncmp(path, FMRB_TMPFS_MOUNT, mlen) == 0 && (path[mlen] == '\0' || path[mlen] == '/')) {
-        size_t used = 0, cap = 0;
-        fmrb_tmpfs_usage(&used, &cap);
-        return mrb_fixnum_value((mrb_int)(cap > used ? cap - used : 0));
-    }
-#if defined(FMRB_PLATFORM_WASM)
-    if (strncmp(path, "/home", 5) == 0 && (path[5] == '\0' || path[5] == '/')) {
-        int64_t room = fmrb_wasm_storage_free();
-        return room < 0 ? mrb_nil_value() : mrb_fixnum_value((mrb_int)room);
-    }
-    return mrb_nil_value();
-#else
-    uint64_t total = 0, free_bytes = 0;
-    if (fmrb_hal_file_statfs(path, &total, &free_bytes) != FMRB_OK || total == 0) {
-        return mrb_nil_value();
-    }
-    return mrb_fixnum_value((mrb_int)free_bytes);
-#endif
-}
-
 // FmrbSystem.set_audio_mute(on) -> nil. Mutes or unmutes the whole machine at
 // the output stage and saves it to system_conf; see fmrb_host_set_audio_mute.
 static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
@@ -2269,14 +2047,6 @@ static mrb_value mrb_fmrb_app_s_set_audio_mute(mrb_state *mrb, mrb_value klass)
     mrb_get_args(mrb, "b", &on);
     fmrb_host_set_audio_mute(on ? true : false);
     return mrb_nil_value();
-}
-
-// FmrbApp.audio_volume -> Integer 0-10, and FmrbSystem.set_audio_volume(n).
-// The machine's volume (doc/reference/audio_output.md); see fmrb_host_set_audio_volume.
-static mrb_value mrb_fmrb_app_s_audio_volume(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    return mrb_fixnum_value(fmrb_host_audio_volume());
 }
 
 static mrb_value mrb_fmrb_app_s_set_audio_volume(mrb_state *mrb, mrb_value klass)
@@ -2332,14 +2102,6 @@ static mrb_value mrb_fmrb_app_s_rd_stream_state(mrb_state *mrb, mrb_value klass)
 #else
     return mrb_fixnum_value(0);
 #endif
-}
-
-// FmrbApp.wifi_connected? -> bool. Allocation-free subset of wifi_info for
-// the 1Hz status-bar icon, which only needs the connection state.
-static mrb_value mrb_fmrb_app_s_wifi_connected_p(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    return mrb_bool_value(fmrb_platform_sys_net_connected());
 }
 
 // FmrbApp.wifi_info() -> Hash {connected:, ip:, ssid:, hostname:[, signal:]}
@@ -2605,12 +2367,24 @@ static mrb_value mrb_fmrb_mic_read(mrb_state *mrb, mrb_value self)
 }
 
 // FmrbApp's and FmrbAudio's methods on the app boundary, generated from sig/
-// (tools/boundary/gen.rb): FmrbApp's clipboard and clocks (the rest of
-// FmrbApp is still written here), and every FmrbAudio method (the wrappers
-// with optional arguments are in mrblib/fmrb-audio.rb). Neither takes a
-// receiver number: the receiver is the calling app.
+// (tools/boundary/gen.rb). FmrbApp's take no receiver number (the receiver
+// is the calling app). The readers of the window (window_width, fullscreen?
+// ...), stop, draw_window_frame and clear_user_area_raw are registered here
+// too and defined again by mrblib/fmrb-app.rb, which loads after this: a Ruby
+// app's base keeps that state itself (the C bodies serve the app shell). FmrbAudio's take one, as FmrbGfx's do, so that the
+// shape stays when an app gets sound state of its own; nothing reads it yet,
+// so an FmrbAudio is number 0 (the wrappers with optional arguments are in
+// mrblib/fmrb-audio.rb).
+static int32_t fmrb_mrb_recv_audio(mrb_state *mrb, mrb_value self)
+{
+    (void)mrb;
+    (void)self;
+    return 0;
+}
+
 #define FMRB_GEN_MRB_FmrbApp
 #define FMRB_GEN_MRB_FmrbAudio
+#define FMRB_GEN_MRB_FmrbFile
 #include "fmrb_gen/fmrb_boundary_mrb.inc"
 
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
@@ -2633,6 +2407,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // boundary methods.
     struct RClass *audio_class = mrb_define_class(mrb, "FmrbAudio", mrb->object_class);
     FMRB_GEN_MRB_DEFINE_FmrbAudio(mrb, audio_class);
+    // FmrbFile: whole files by path (list's wrapper is mrblib/fmrb-file.rb).
+    struct RClass *file_module = mrb_define_module(mrb, "FmrbFile");
+    FMRB_GEN_MRB_DEFINE_FmrbFile(mrb, file_module);
 
     // Instance methods (called from Ruby instances)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
@@ -2652,32 +2429,24 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_delete_canvas", mrb_fmrb_app_delete_canvas, MRB_ARGS_REQ(1));
 
     // Class methods
-    mrb_define_class_method(mrb, app_class, "pid", mrb_fmrb_app_s_pid, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_set_hit_shape", mrb_fmrb_app_s_set_hit_shape, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "_hit_sprite_place", mrb_fmrb_app_s_hit_sprite_place, MRB_ARGS_REQ(4));
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "ps_gen", mrb_fmrb_app_s_ps_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "pool_usage", mrb_fmrb_app_s_pool_usage, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "pool_used", mrb_fmrb_app_s_pool_used, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "script_path", mrb_fmrb_app_s_script_path, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_app_instance_made?", mrb_fmrb_app_s_app_instance_made, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_start_class_name", mrb_fmrb_app_s_start_class_name, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
-    mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "power_actions", mrb_fmrb_app_s_power_actions, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "power", mrb_fmrb_app_s_power, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "battery_level", mrb_fmrb_app_s_battery_level, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "battery_charging?", mrb_fmrb_app_s_battery_charging_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "checkpoint", mrb_fmrb_app_s_checkpoint, MRB_ARGS_REQ(1) | MRB_ARGS_KEY(1, 0));
     mrb_define_class_method(mrb, app_class, "move", mrb_fmrb_app_s_move, MRB_ARGS_REQ(2) | MRB_ARGS_KEY(1, 0));
-    mrb_define_class_method(mrb, app_class, "linux_available?", mrb_fmrb_app_s_linux_available_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "linux_apps", mrb_fmrb_app_s_linux_apps, MRB_ARGS_REQ(2));
     mrb_define_class_method(mrb, sys_module, "linux_launch", mrb_fmrb_app_s_linux_launch, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "linux_handlers", mrb_fmrb_app_s_linux_handlers, MRB_ARGS_REQ(1));
@@ -2699,7 +2468,6 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, sys_module, "notices_gen", mrb_fmrb_app_s_notices_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "notices", mrb_fmrb_app_s_notices, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "notice_dismiss", mrb_fmrb_app_s_notice_dismiss, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "notify", mrb_fmrb_app_s_notify, MRB_ARGS_ARG(1, 1));
 #if defined(FMRB_PLATFORM_NATIVE)
     mrb_define_class_method(mrb, sys_module, "wl_window", mrb_fmrb_app_s_wl_window, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "wl_close", mrb_fmrb_app_s_wl_close, MRB_ARGS_NONE());
@@ -2709,25 +2477,18 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, sys_module, "settings_page", mrb_fmrb_app_s_settings_page, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "crt_set", mrb_fmrb_app_s_crt_set, MRB_ARGS_REQ(9));
 #endif
-    mrb_define_class_method(mrb, app_class, "crt_state", mrb_fmrb_app_s_crt_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "ble_settings_window", mrb_fmrb_app_s_ble_settings_window, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "ble_settings_left", mrb_fmrb_app_s_ble_settings_left, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "set_text_cursor", mrb_fmrb_app_s_set_text_cursor, MRB_ARGS_REQ(3));
-    mrb_define_class_method(mrb, app_class, "audio_muted?", mrb_fmrb_app_s_audio_muted_p, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "path_read_only?", mrb_fmrb_app_s_path_read_only_p, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "app_meta", mrb_fmrb_app_s_app_meta, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "free_bytes", mrb_fmrb_app_s_free_bytes, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "set_audio_mute", mrb_fmrb_app_s_set_audio_mute, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "audio_volume", mrb_fmrb_app_s_audio_volume, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "preview_audio_volume", mrb_fmrb_app_s_preview_audio_volume, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "audio_conf_saved", mrb_fmrb_app_s_audio_conf_saved, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "hid_raw_subscribe", mrb_fmrb_app_s_hid_raw_subscribe, MRB_ARGS_REQ(1));

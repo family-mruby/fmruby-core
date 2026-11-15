@@ -23,10 +23,24 @@ def ticks_ms():
     return _fmrb.ticks_ms()
 
 
-# UI language the user chose, "ja" or "en". There is no shared string table:
-# an app that wants both keeps its own dict and picks with this.
+# UI language the user chose, "ja" or "en" (FmrbApp.language, the app
+# boundary's). There is no shared string table: an app that wants both keeps
+# its own dict and picks with this.
 def language():
-    return _fmrb.language()
+    return _fmrb.app_language()
+
+
+# Whole files by path (the app boundary's, _FmrbFileBoundary: read, write,
+# append, exist, size, delete, mkdir, list_raw, path_read_only, free_bytes).
+# read gives bytes, or None when there is no such file. list is the wrapper
+# that makes list_raw's lines a list (a directory's name ends in "/").
+class FmrbFile(_FmrbFileBoundary):
+    @staticmethod
+    def list(dir):
+        s = FmrbFile.list_raw(dir)
+        if s is None:
+            return None
+        return s.split("\n")[:-1]
 
 
 # The *_raw functions are the app boundary's (generated, _LogBoundary): one
@@ -290,6 +304,14 @@ class FmrbApp(_FmrbAppBoundary):
             return
         self.gfx.fill_rect(0, 0, self.user_area_width, self.user_area_height, color)
 
+    # The boundary's simple form, kept here as the frame is: a negative color
+    # is the default.
+    def clear_user_area_raw(self, color):
+        if color < 0:
+            self.clear_user_area()
+        else:
+            self.clear_user_area(color)
+
     # ---- modifier helpers, for use inside on_event ----
     #
     # The modifier byte is the project's own layout (fmrb_keymap.h), not the
@@ -527,32 +549,30 @@ class FmrbApp(_FmrbAppBoundary):
     # file and gives it the keyboard. The new pid comes back through on_control
     # as {"cmd": "run_result", "path": ..., "pid": ...}, with pid None when it
     # failed. The kernel limits paths to /app and /home.
+    # request_run_raw, request_file_select_raw, request_fullscreen(on),
+    # request_reload, request_close_confirm and request_window_menu(x, y) are
+    # the app boundary's (_FmrbAppBoundary); these are the wrappers with
+    # defaults. request_fullscreen: the VM keeps running, so app state
+    # survives; the answer arrives as on_resize with the user area updated.
     def request_run(self, path, prev_pid=None):
-        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
-                                 {"cmd": "run", "path": path, "prev_pid": prev_pid})
-
-    # The VM keeps running, so app state survives; the answer arrives as
-    # on_resize with the user area already updated.
-    def request_fullscreen(self, on):
-        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
-                                 {"cmd": "enter_fullscreen" if on else "exit_fullscreen"})
+        self.request_run_raw(path, -1 if prev_pid is None else prev_pid)
 
     def toggle_fullscreen(self):
-        return self.request_fullscreen(not self.fullscreen)
+        self.request_fullscreen(not self.fullscreen)
 
     def request_file_select(self, mode="open"):
-        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
-                                 {"cmd": "file_select", "mode": mode})
-
-    def request_reload(self):
-        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
-                                 {"cmd": "reload_confirm"})
+        self.request_file_select_raw(mode)
 
     # The clipboard every app shares (clipboard_raw, set_clipboard,
     # clipboard_gen, uptime_us and wallclock are the app boundary's).
     @staticmethod
     def clipboard(limit=0):
         return FmrbApp.clipboard_raw(limit)
+
+    # A notice at the top right of the PC's screen (False elsewhere).
+    @staticmethod
+    def notify(summary, body=""):
+        return FmrbApp.notify_raw(summary, body)
 
     def send_message(self, dest_pid, msg_type, data):
         return _fmrb.send_message(dest_pid, msg_type, data)

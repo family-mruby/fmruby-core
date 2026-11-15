@@ -751,6 +751,24 @@ out:
 
 /* ---- for the binding ---------------------------------------------------- */
 
+bool fmrb_app_shell_layout(fmrb_app_task_context_t *ctx, fmrb_shell_layout_t *out)
+{
+    shell_t *s = shell_of(ctx);
+    if (!s) {
+        return false;
+    }
+    if (out) {
+        *out = (fmrb_shell_layout_t){
+            .canvas = s->canvas,
+            .window_w = s->ww, .window_h = s->wh,
+            .area_x = s->ax, .area_y = s->ay,
+            .area_w = s->aw, .area_h = s->ah,
+            .fullscreen = s->fullscreen,
+        };
+    }
+    return true;
+}
+
 void fmrb_app_shell_stop(fmrb_app_task_context_t *ctx)
 {
     shell_t *s = shell_of(ctx);

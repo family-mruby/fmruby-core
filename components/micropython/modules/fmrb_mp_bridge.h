@@ -133,9 +133,6 @@ int fmrb_mp_gfx_sprite_frame(int canvas_id, int instance_id, int frame_index);
 int fmrb_mp_gfx_delete_sprite_instance(int canvas_id, int instance_id);
 int fmrb_mp_gfx_delete_all_sprites(int canvas_id);
 
-/** UI language from system_conf.toml ("ja" / "en"). Never NULL. */
-const char *fmrb_mp_bridge_language(void);
-
 /**
  * Files. Guests get no open()/write(): they read whole files, either as data
  * (_fmrb.read_file) or as a module the importer compiles.

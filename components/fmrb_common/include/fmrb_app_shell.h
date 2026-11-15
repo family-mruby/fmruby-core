@@ -118,6 +118,9 @@ fmrb_err_t fmrb_app_shell_run(fmrb_app_task_context_t *ctx,
 
 /* ---- for an engine's binding, on behalf of the app ---------------------- */
 
+/** Whether the app runs on the shell; *out (when not NULL) gets the layout
+ *  as the shell gave it last (FmrbApp.window_width and the rest). */
+bool fmrb_app_shell_layout(fmrb_app_task_context_t *ctx, fmrb_shell_layout_t *out);
 /** End the app after the current call (FmrbApp.stop). */
 void fmrb_app_shell_stop(fmrb_app_task_context_t *ctx);
 /** Draw the frame again (FmrbApp.draw_window_frame). */

@@ -11,8 +11,9 @@
  * - an object's method takes the object's number first: for FmrbGfx a drawer
  *   of the app, which has the canvas, the drawing origin and the area (the
  *   firmware adds the origin to the coordinates drawn; origin_x and the rest
- *   read them). FmrbApp's and FmrbAudio's take none: their object is the
- *   app itself;
+ *   read them). FmrbAudio's is 0 for now
+ *   (the sound is the app's); FmrbApp's take none: their object is the app
+ *   itself;
  * - a Ruby setter (main_volume=) is set_<name> (fmrb_audio_set_main_volume);
  * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
  *   bool is int32_t 0 or 1; Float is double;
@@ -24,9 +25,15 @@
  *   when there is none; a String result into the caller's buffer, returning
  *   the full length (as snprintf does).
  *
+ * - a Ruby predicate (exist?) is the name without the ? (fmrb_file_exist).
+ *
  * Results: 0 or more on success; FMRB_BOUNDARY_ERR_FAILED, or
  * FMRB_BOUNDARY_ERR_ARG when an argument was out of range or a pointer
- * pointed outside the app's memory.
+ * pointed outside the app's memory; FMRB_BOUNDARY_NONE where Ruby gives nil
+ * (a function whose result may be nil: Integer?, String? ...).
+ *
+ * The end of this header lists what the app exports: the functions the
+ * firmware's app shell calls (on_create, on_update ...), by these names.
  */
 #ifndef FMRB_BOUNDARY_H
 #define FMRB_BOUNDARY_H
@@ -41,16 +48,26 @@ extern "C" {
 #define FMRB_ABI_VERSION_MAJOR 0
 #define FMRB_ABI_VERSION_MINOR 1
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0xd34fea71u
+#define FMRB_ABI_HASH 0x922a7dadu
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
+#define FMRB_BOUNDARY_NONE       (-3)
 
 #if defined(__wasm__)
 #define FMRB_IMPORT(name) __attribute__((import_module("fmrb"), import_name(name)))
 #else
 #define FMRB_IMPORT(name)
 #endif
+
+/** FmrbApp::sys_pool_info (20 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint32_t total;
+    uint32_t used;
+    uint32_t free;
+    uint32_t used_blocks;
+    uint32_t free_blocks;
+} fmrb_app_sys_pool_info_t;
 
 /** FmrbApp::wallclock (7 bytes, packed, little-endian) */
 typedef struct __attribute__((packed)) {
@@ -61,6 +78,12 @@ typedef struct __attribute__((packed)) {
     uint8_t minute;
     uint8_t second;
 } fmrb_app_wallclock_t;
+
+/** FmrbApp::gfx_stats (8 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint32_t cmds;
+    uint32_t presents;
+} fmrb_app_gfx_stats_t;
 
 /** FmrbAudio::nsf_status (12 bytes, packed, little-endian) */
 typedef struct __attribute__((packed)) {
@@ -97,10 +120,293 @@ typedef struct __attribute__((packed)) {
     uint32_t size;
 } fmrb_gfx_file_info_t;
 
+/** FmrbApp#platform(): the choices of the result (a Symbol in Ruby) */
+#define FMRB_APP_PLATFORM_ESP32 0
+#define FMRB_APP_PLATFORM_LINUX 1
+
 /** FmrbGfx#set_font_raw(family, size): the choices of family */
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_DEFAULT 0
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA 1
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA_BOLD 2
+
+/**
+ * アプリの名前
+ * The app's name
+ *
+ * Ruby: FmrbApp#name()
+ * @return the full length of the result (more than out_size: cut short)
+ */
+FMRB_IMPORT("app_name")
+int32_t fmrb_app_name(char *out, int32_t out_size);
+
+/**
+ * Window の横幅 (ドット)
+ * Window width in pixels
+ *
+ * Ruby: FmrbApp#window_width()
+ * @return the value
+ */
+FMRB_IMPORT("app_window_width")
+int32_t fmrb_app_window_width(void);
+
+/**
+ * Window の高さ (ドット)
+ * Window height in pixels
+ *
+ * Ruby: FmrbApp#window_height()
+ * @return the value
+ */
+FMRB_IMPORT("app_window_height")
+int32_t fmrb_app_window_height(void);
+
+/**
+ * Window の左上の位置
+ * Left edge of the window
+ *
+ * Ruby: FmrbApp#pos_x()
+ * @return the value
+ */
+FMRB_IMPORT("app_pos_x")
+int32_t fmrb_app_pos_x(void);
+
+/**
+ * Window の左上の位置
+ * Top edge of the window
+ *
+ * Ruby: FmrbApp#pos_y()
+ * @return the value
+ */
+FMRB_IMPORT("app_pos_y")
+int32_t fmrb_app_pos_y(void);
+
+/**
+ * 中に描ける区画の横幅 (ドット)
+ * Width of the area the app owns
+ *
+ * Ruby: FmrbApp#user_area_width()
+ * @return the value
+ */
+FMRB_IMPORT("app_user_area_width")
+int32_t fmrb_app_user_area_width(void);
+
+/**
+ * 中に描ける区画の高さ (ドット)
+ * Height of the area the app owns
+ *
+ * Ruby: FmrbApp#user_area_height()
+ * @return the value
+ */
+FMRB_IMPORT("app_user_area_height")
+int32_t fmrb_app_user_area_height(void);
+
+/**
+ * 動いている機械の種類
+ * Which machine this is
+ *
+ * Ruby: FmrbApp#platform()
+ * @return the value
+ */
+FMRB_IMPORT("app_platform")
+int32_t fmrb_app_platform(void);
+
+/**
+ * 全画面かどうか
+ * Whether it fills the screen
+ *
+ * Ruby: FmrbApp#fullscreen?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_fullscreen")
+int32_t fmrb_app_fullscreen(void);
+
+/**
+ * Window の角が丸いかどうか
+ * Whether the corners are rounded
+ *
+ * Ruby: FmrbApp#rounded_corners?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_rounded_corners")
+int32_t fmrb_app_rounded_corners(void);
+
+/**
+ * 枠なしの Window か (window_frame = "none")
+ * Whether the window has no frame
+ *
+ * Ruby: FmrbApp#frameless?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_frameless")
+int32_t fmrb_app_frameless(void);
+
+/**
+ * 右下の角で大きさを変えられるか
+ * Whether the window resizes from its corner
+ *
+ * Ruby: FmrbApp#resizable?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_resizable")
+int32_t fmrb_app_resizable(void);
+
+/**
+ * アプリを止める
+ * Stop the app
+ *
+ * Ruby: FmrbApp#stop()
+ */
+FMRB_IMPORT("app_stop")
+int32_t fmrb_app_stop(void);
+
+/**
+ * 自分をもう一度読み込み直す
+ * Ask to be loaded again
+ *
+ * Ruby: FmrbApp#request_reload()
+ */
+FMRB_IMPORT("app_request_reload")
+int32_t fmrb_app_request_reload(void);
+
+/**
+ * Window のメニューを出す
+ * Open this window's menu
+ *
+ * Ruby: FmrbApp#request_window_menu(x, y)
+ */
+FMRB_IMPORT("app_request_window_menu")
+int32_t fmrb_app_request_window_menu(int32_t x, int32_t y);
+
+/**
+ * 「<アプリ> を閉じますか?」と聞く
+ * Ask "Close <app>?" on the desktop
+ *
+ * Ruby: FmrbApp#request_close_confirm()
+ */
+FMRB_IMPORT("app_request_close_confirm")
+int32_t fmrb_app_request_close_confirm(void);
+
+/**
+ * Window のふちと題名を描き直す
+ * Redraw the frame and the title
+ *
+ * Ruby: FmrbApp#draw_window_frame()
+ */
+FMRB_IMPORT("app_draw_window_frame")
+int32_t fmrb_app_draw_window_frame(void);
+
+/**
+ * clear_user_area の省略なしの形
+ * clear_user_area with nothing left out
+ *
+ * Ruby: FmrbApp#clear_user_area_raw(color)
+ */
+FMRB_IMPORT("app_clear_user_area_raw")
+int32_t fmrb_app_clear_user_area_raw(int32_t color);
+
+/**
+ * 紙の色
+ * page background from the system theme
+ *
+ * Ruby: FmrbApp#theme_bg()
+ * @return the value
+ */
+FMRB_IMPORT("app_theme_bg")
+int32_t fmrb_app_theme_bg(void);
+
+/**
+ * 紙に書く字の色
+ * ink for text on theme_bg
+ *
+ * Ruby: FmrbApp#theme_fg()
+ * @return the value
+ */
+FMRB_IMPORT("app_theme_fg")
+int32_t fmrb_app_theme_fg(void);
+
+/**
+ * 目立たせる色
+ * selection / emphasis colour
+ *
+ * Ruby: FmrbApp#theme_accent()
+ * @return the value
+ */
+FMRB_IMPORT("app_theme_accent")
+int32_t fmrb_app_theme_accent(void);
+
+/**
+ * 線や枠、うすい字の色
+ * rules, boxes, muted text
+ *
+ * Ruby: FmrbApp#theme_border()
+ * @return the value
+ */
+FMRB_IMPORT("app_theme_border")
+int32_t fmrb_app_theme_border(void);
+
+/**
+ * 濃い地の上に書く字の色
+ * ink on accent or button backgrounds
+ *
+ * Ruby: FmrbApp#theme_fg_light()
+ * @return the value
+ */
+FMRB_IMPORT("app_theme_fg_light")
+int32_t fmrb_app_theme_fg_light(void);
+
+/**
+ * Window を動かす
+ * Move the window
+ *
+ * Ruby: FmrbApp#set_window_position(x, y)
+ */
+FMRB_IMPORT("app_set_window_position")
+int32_t fmrb_app_set_window_position(int32_t x, int32_t y);
+
+/**
+ * 全画面にするか元に戻すか頼む
+ * Ask to go full screen or come back
+ *
+ * Ruby: FmrbApp#request_fullscreen(on)
+ */
+FMRB_IMPORT("app_request_fullscreen")
+int32_t fmrb_app_request_fullscreen(int32_t on);
+
+/**
+ * 全画面と Window を切りかえる
+ * Switch between full screen and window
+ *
+ * Ruby: FmrbApp#toggle_fullscreen()
+ */
+FMRB_IMPORT("app_toggle_fullscreen")
+int32_t fmrb_app_toggle_fullscreen(void);
+
+/**
+ * request_file_select の省略なしの形
+ * request_file_select with nothing left out
+ *
+ * Ruby: FmrbApp#request_file_select_raw(mode)
+ */
+FMRB_IMPORT("app_request_file_select_raw")
+int32_t fmrb_app_request_file_select_raw(const char *mode, int32_t mode_len);
+
+/**
+ * request_run の省略なしの形
+ * request_run with nothing left out
+ *
+ * Ruby: FmrbApp#request_run_raw(path, prev_pid)
+ */
+FMRB_IMPORT("app_request_run_raw")
+int32_t fmrb_app_request_run_raw(const char *path, int32_t path_len, int32_t prev_pid);
+
+/**
+ * 今の言葉 ("ja" か "en")
+ * The language now, "ja" or "en"
+ *
+ * Ruby: FmrbApp.language()
+ * @return the full length of the result (more than out_size: cut short)
+ */
+FMRB_IMPORT("app_language")
+int32_t fmrb_app_language(char *out, int32_t out_size);
 
 /**
  * clipboard の省略なしの形
@@ -133,6 +439,36 @@ FMRB_IMPORT("app_clipboard_gen")
 int32_t fmrb_app_clipboard_gen(void);
 
 /**
+ * notify の省略なしの形
+ * notify with nothing left out
+ *
+ * Ruby: FmrbApp.notify_raw(summary, body)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_notify_raw")
+int32_t fmrb_app_notify_raw(const char *summary, int32_t summary_len, const char *body, int32_t body_len);
+
+/**
+ * アプリ一覧が変わった回数
+ * How many times the app list changed
+ *
+ * Ruby: FmrbApp.ps_gen()
+ * @return the value
+ */
+FMRB_IMPORT("app_ps_gen")
+int32_t fmrb_app_ps_gen(void);
+
+/**
+ * 機械全体のメモリの様子
+ * The whole machine's memory
+ *
+ * Ruby: FmrbApp.sys_pool_info()
+ * @return 1 when *out was filled
+ */
+FMRB_IMPORT("app_sys_pool_info")
+int32_t fmrb_app_sys_pool_info(fmrb_app_sys_pool_info_t *out);
+
+/**
  * 電源を入れてからの時間 (百万分の一秒)
  * Microseconds since power-on
  *
@@ -141,6 +477,16 @@ int32_t fmrb_app_clipboard_gen(void);
  */
 FMRB_IMPORT("app_uptime_us")
 int64_t fmrb_app_uptime_us(void);
+
+/**
+ * 電源を入れてからの時間 (ミリ秒)
+ * Milliseconds since power-on
+ *
+ * Ruby: FmrbApp.uptime_ms()
+ * @return the value (64 bits)
+ */
+FMRB_IMPORT("app_uptime_ms")
+int64_t fmrb_app_uptime_ms(void);
 
 /**
  * 今の日付と時刻
@@ -153,124 +499,351 @@ FMRB_IMPORT("app_wallclock")
 int32_t fmrb_app_wallclock(fmrb_app_wallclock_t *out);
 
 /**
+ * 絵を送った回数の記録
+ * A tally of the frames sent
+ *
+ * Ruby: FmrbApp.gfx_stats()
+ * @return 1 when *out was filled
+ */
+FMRB_IMPORT("app_gfx_stats")
+int32_t fmrb_app_gfx_stats(fmrb_app_gfx_stats_t *out);
+
+/**
+ * 文字カーソルの位置を知らせる (PC の IME 用)
+ * Tell where the text cursor is (for a PC's IME)
+ *
+ * Ruby: FmrbApp.set_text_cursor(x, y, h)
+ */
+FMRB_IMPORT("app_set_text_cursor")
+int32_t fmrb_app_set_text_cursor(int32_t x, int32_t y, int32_t h);
+
+/**
+ * 本体が消音中か
+ * Whether the machine is muted
+ *
+ * Ruby: FmrbApp.audio_muted?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_audio_muted")
+int32_t fmrb_app_audio_muted(void);
+
+/**
+ * 本体の音量 (0-10)
+ * The machine's volume (0-10)
+ *
+ * Ruby: FmrbApp.audio_volume()
+ * @return the value
+ */
+FMRB_IMPORT("app_audio_volume")
+int32_t fmrb_app_audio_volume(void);
+
+/**
+ * WiFi がつながっているか
+ * Whether WiFi is connected
+ *
+ * Ruby: FmrbApp.wifi_connected?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_wifi_connected")
+int32_t fmrb_app_wifi_connected(void);
+
+/**
+ * 自分の pid
+ * This app's own pid
+ *
+ * Ruby: FmrbApp.pid()
+ * @return the value
+ */
+FMRB_IMPORT("app_pid")
+int32_t fmrb_app_pid(void);
+
+/**
+ * 起動したファイル
+ * The file this app was started from
+ *
+ * Ruby: FmrbApp.script_path()
+ * @return the full length of the result (more than out_size: cut short)
+ */
+FMRB_IMPORT("app_script_path")
+int32_t fmrb_app_script_path(char *out, int32_t out_size);
+
+/**
+ * 電池の残り (百分率)
+ * The battery's charge in percent
+ *
+ * Ruby: FmrbApp.battery_level()
+ * @return the value
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+ */
+FMRB_IMPORT("app_battery_level")
+int32_t fmrb_app_battery_level(void);
+
+/**
+ * 電池を充電中か
+ * Whether the battery is charging
+ *
+ * Ruby: FmrbApp.battery_charging?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_battery_charging")
+int32_t fmrb_app_battery_charging(void);
+
+/**
+ * ブラウン管の見た目の今の設定
+ * The CRT look now
+ *
+ * Ruby: FmrbApp.crt_state()
+ * @return the full length of the result (more than out_size: cut short)
+ */
+FMRB_IMPORT("app_crt_state")
+int32_t fmrb_app_crt_state(char *out, int32_t out_size);
+
+/**
+ * Linux のコマンドが使えるか
+ * Whether Linux commands run here
+ *
+ * Ruby: FmrbApp.linux_available?()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_linux_available")
+int32_t fmrb_app_linux_available(void);
+
+/**
  * play の省略なしの形
  * play with nothing left out
  *
  * Ruby: FmrbAudio#play_raw(path, track)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_play_raw")
-int32_t fmrb_audio_play_raw(const char *path, int32_t path_len, int32_t track);
+int32_t fmrb_audio_play_raw(int32_t audio, const char *path, int32_t path_len, int32_t track);
 
 /**
  * 曲を止める
  * Stop the song
  *
  * Ruby: FmrbAudio#stop()
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_stop")
-int32_t fmrb_audio_stop(void);
+int32_t fmrb_audio_stop(int32_t audio);
 
 /**
  * 曲がどこまで進んだかを聞く
  * Ask where the song is
  *
  * Ruby: FmrbAudio#nsf_status()
+ * @param audio the FmrbAudio receiver number
  * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
  */
 FMRB_IMPORT("audio_nsf_status")
-int32_t fmrb_audio_nsf_status(fmrb_audio_nsf_status_t *out);
+int32_t fmrb_audio_nsf_status(int32_t audio, fmrb_audio_nsf_status_t *out);
 
 /**
  * 曲をいったん止める
  * Pause the song
  *
  * Ruby: FmrbAudio#pause()
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_pause")
-int32_t fmrb_audio_pause(void);
+int32_t fmrb_audio_pause(int32_t audio);
 
 /**
  * 止めた曲の続きを鳴らす
  * Carry on from the pause
  *
  * Ruby: FmrbAudio#resume()
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_resume")
-int32_t fmrb_audio_resume(void);
+int32_t fmrb_audio_resume(int32_t audio);
 
 /**
  * 曲のデータを箱に入れる
  * Put song data into a slot
  *
  * Ruby: FmrbAudio#load_fmsq(slot_id, binary_data)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_load_fmsq")
-int32_t fmrb_audio_load_fmsq(int32_t slot_id, const uint8_t *binary_data, int32_t binary_data_len);
+int32_t fmrb_audio_load_fmsq(int32_t audio, int32_t slot_id, const uint8_t *binary_data, int32_t binary_data_len);
 
 /**
  * 曲のファイルを箱に読み込む
  * Read a song file into a slot
  *
  * Ruby: FmrbAudio#load_fmsq_file(slot_id, path)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_load_fmsq_file")
-int32_t fmrb_audio_load_fmsq_file(int32_t slot_id, const char *path, int32_t path_len);
+int32_t fmrb_audio_load_fmsq_file(int32_t audio, int32_t slot_id, const char *path, int32_t path_len);
 
 /**
  * play_slot の省略なしの形
  * play_slot with nothing left out
  *
  * Ruby: FmrbAudio#play_slot_raw(slot_id, instance)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_play_slot_raw")
-int32_t fmrb_audio_play_slot_raw(int32_t slot_id, int32_t instance);
+int32_t fmrb_audio_play_slot_raw(int32_t audio, int32_t slot_id, int32_t instance);
 
 /**
  * 曲 (MAIN) だけの音量を変える
  * Set the volume of the music (MAIN) only
  *
  * Ruby: FmrbAudio#main_volume=(percent)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_set_main_volume")
-int32_t fmrb_audio_set_main_volume(int32_t percent);
+int32_t fmrb_audio_set_main_volume(int32_t audio, int32_t percent);
 
 /**
  * 録音した音 (WAV) を鳴らす
  * Play a recorded sound (WAV)
  *
  * Ruby: FmrbAudio#play_wav(path)
+ * @param audio the FmrbAudio receiver number
  * @return the answer, 1 or 0
  */
 FMRB_IMPORT("audio_play_wav")
-int32_t fmrb_audio_play_wav(const char *path, int32_t path_len);
+int32_t fmrb_audio_play_wav(int32_t audio, const char *path, int32_t path_len);
 
 /**
  * 鳴っている WAV を止める
  * Stop the WAV that is playing
  *
  * Ruby: FmrbAudio#stop_wav()
+ * @param audio the FmrbAudio receiver number
  * @return the answer, 1 or 0
  */
 FMRB_IMPORT("audio_stop_wav")
-int32_t fmrb_audio_stop_wav(void);
+int32_t fmrb_audio_stop_wav(int32_t audio);
 
 /**
  * note_on の省略なしの形
  * note_on with nothing left out
  *
  * Ruby: FmrbAudio#note_on_raw(channel, freq, volume, duty, sweep)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_note_on_raw")
-int32_t fmrb_audio_note_on_raw(int32_t channel, int32_t freq, int32_t volume, int32_t duty, int32_t sweep);
+int32_t fmrb_audio_note_on_raw(int32_t audio, int32_t channel, int32_t freq, int32_t volume, int32_t duty, int32_t sweep);
 
 /**
  * 鳴っている音を止める
  * Stop a note
  *
  * Ruby: FmrbAudio#note_off(channel)
+ * @param audio the FmrbAudio receiver number
  */
 FMRB_IMPORT("audio_note_off")
-int32_t fmrb_audio_note_off(int32_t channel);
+int32_t fmrb_audio_note_off(int32_t audio, int32_t channel);
+
+/**
+ * ファイル全体を読む
+ * Read a whole file
+ *
+ * Ruby: FmrbFile.read(path)
+ * @return the full length of the result (more than out_size: cut short)
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+ */
+FMRB_IMPORT("file_read")
+int32_t fmrb_file_read(const char *path, int32_t path_len, uint8_t *out, int32_t out_size);
+
+/**
+ * ファイル全体を書く (前の中身は消える)
+ * Write a whole file, replacing it
+ *
+ * Ruby: FmrbFile.write(path, data)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_write")
+int32_t fmrb_file_write(const char *path, int32_t path_len, const uint8_t *data, int32_t data_len);
+
+/**
+ * ファイルの終わりに足す
+ * Add to the end of a file
+ *
+ * Ruby: FmrbFile.append(path, data)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_append")
+int32_t fmrb_file_append(const char *path, int32_t path_len, const uint8_t *data, int32_t data_len);
+
+/**
+ * ファイルかディレクトリがあるか
+ * Whether a file or a directory is there
+ *
+ * Ruby: FmrbFile.exist?(path)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_exist")
+int32_t fmrb_file_exist(const char *path, int32_t path_len);
+
+/**
+ * ファイルの大きさ (バイト)
+ * A file's size in bytes
+ *
+ * Ruby: FmrbFile.size(path)
+ * @return the value (64 bits)
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+ */
+FMRB_IMPORT("file_size")
+int64_t fmrb_file_size(const char *path, int32_t path_len);
+
+/**
+ * ファイルか空のディレクトリを消す
+ * Delete a file or an empty directory
+ *
+ * Ruby: FmrbFile.delete(path)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_delete")
+int32_t fmrb_file_delete(const char *path, int32_t path_len);
+
+/**
+ * ディレクトリを作る
+ * Make a directory
+ *
+ * Ruby: FmrbFile.mkdir(path)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_mkdir")
+int32_t fmrb_file_mkdir(const char *path, int32_t path_len);
+
+/**
+ * list の省略なしの形 (名前を改行でつなぐ)
+ * list as one String, a name per line
+ *
+ * Ruby: FmrbFile.list_raw(dir)
+ * @return the full length of the result (more than out_size: cut short)
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+ */
+FMRB_IMPORT("file_list_raw")
+int32_t fmrb_file_list_raw(const char *dir, int32_t dir_len, char *out, int32_t out_size);
+
+/**
+ * 消せない・名前を変えられない場所か
+ * Whether the entry cannot be deleted or renamed
+ *
+ * Ruby: FmrbFile.path_read_only?(path)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_path_read_only")
+int32_t fmrb_file_path_read_only(const char *path, int32_t path_len);
+
+/**
+ * その場所にあと何バイト書けるか
+ * How many more bytes can be written where the path lives
+ *
+ * Ruby: FmrbFile.free_bytes(path)
+ * @return the value (64 bits)
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+ */
+FMRB_IMPORT("file_free_bytes")
+int64_t fmrb_file_free_bytes(const char *path, int32_t path_len);
 
 /**
  * 画面の番号
@@ -780,6 +1353,123 @@ int32_t fmrb_log_warn_raw(const char *msg, int32_t msg_len);
  */
 FMRB_IMPORT("log_error_raw")
 int32_t fmrb_log_error_raw(const char *msg, int32_t msg_len);
+
+/* ---- what the app exports (the hooks; the firmware calls them) ----------
+ *
+ * The firmware's app shell runs the app: it makes the window and draws its
+ * frame, waits for input and calls these. An app exports the ones it wants
+ * (export_name is the function's own name); one of on_create, on_update and
+ * on_event at least. They are Ruby's FmrbApp hooks with the same names.
+ */
+#if defined(__wasm__)
+#define FMRB_EXPORT(name) __attribute__((export_name(name)))
+#else
+#define FMRB_EXPORT(name)
+#endif
+
+/** FmrbApp::event.type: the choices (a Symbol in Ruby) */
+#define FMRB_APP_EVENT_TYPE_KEY_DOWN 0
+#define FMRB_APP_EVENT_TYPE_KEY_UP 1
+#define FMRB_APP_EVENT_TYPE_MOUSE_DOWN 2
+#define FMRB_APP_EVENT_TYPE_MOUSE_UP 3
+#define FMRB_APP_EVENT_TYPE_MOUSE_MOVE 4
+#define FMRB_APP_EVENT_TYPE_MOUSE_WHEEL 5
+#define FMRB_APP_EVENT_TYPE_GAMEPAD_DOWN 6
+#define FMRB_APP_EVENT_TYPE_GAMEPAD_UP 7
+#define FMRB_APP_EVENT_TYPE_GAMEPAD_AXIS 8
+#define FMRB_APP_EVENT_TYPE_KANA_MODE 9
+
+/** FmrbApp::event (60 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    int32_t type;  /* one of the choices above */
+    int32_t x;
+    int32_t y;
+    int32_t wx;
+    int32_t wy;
+    int32_t button;
+    int32_t keycode;
+    int32_t scancode;
+    int32_t modifier;
+    int32_t character;
+    int32_t delta;
+    int32_t gamepad_id;
+    int32_t axis;
+    int32_t value;
+    int32_t mode;
+} fmrb_app_event_t;
+
+/**
+ * 始まるときに一度だけ呼ばれる
+ * Called once as it starts
+ *
+ * Ruby: FmrbApp#on_create
+ */
+FMRB_EXPORT("on_create")
+void on_create(void);
+
+/**
+ * 毎フレーム呼ばれる。描画を書く場所
+ * called every frame; draw here
+ *
+ * Ruby: FmrbApp#on_update
+ * @return the ms until the next call; negative for the default (330)
+ */
+FMRB_EXPORT("on_update")
+int32_t on_update(void);
+
+/**
+ * 終わるときに一度だけ呼ばれる
+ * Called once as it ends
+ *
+ * Ruby: FmrbApp#on_destroy
+ */
+FMRB_EXPORT("on_destroy")
+void on_destroy(void);
+
+/**
+ * 他のアプリに画面を渡すとき
+ * Called when the screen goes to another app
+ *
+ * Ruby: FmrbApp#on_suspend
+ */
+FMRB_EXPORT("on_suspend")
+void on_suspend(void);
+
+/**
+ * 画面が戻ってきたとき
+ * Called when the screen comes back
+ *
+ * Ruby: FmrbApp#on_resume
+ */
+FMRB_EXPORT("on_resume")
+void on_resume(void);
+
+/**
+ * キーやマウスの入力が来たとき
+ * called on key and mouse input
+ *
+ * Ruby: FmrbApp#on_event
+ */
+FMRB_EXPORT("on_event")
+void on_event(const fmrb_app_event_t *ev);
+
+/**
+ * Window の大きさが変わったとき
+ * Called when the window is resized
+ *
+ * Ruby: FmrbApp#on_resize
+ */
+FMRB_EXPORT("on_resize")
+void on_resize(int32_t new_width, int32_t new_height);
+
+/**
+ * 閉じてよいか聞かれたとき
+ * Called when it is asked to close
+ *
+ * Ruby: FmrbApp#on_quit_request
+ */
+FMRB_EXPORT("on_quit_request")
+void on_quit_request(void);
 
 #ifdef __cplusplus
 }

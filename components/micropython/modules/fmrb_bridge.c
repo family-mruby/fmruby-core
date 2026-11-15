@@ -281,11 +281,6 @@ int fmrb_mp_gfx_delete_all_sprites(int canvas_id) {
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
-const char *fmrb_mp_bridge_language(void) {
-    const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
-    return (cfg && cfg->language[0]) ? cfg->language : "en";
-}
-
 fmrb_mp_path_kind_t fmrb_mp_bridge_path_kind(const char *path) {
     fmrb_file_info_t info;
     if (!path || fmrb_hal_file_stat(path, &info) != FMRB_OK) {

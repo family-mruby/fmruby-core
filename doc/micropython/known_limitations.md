@@ -10,7 +10,7 @@ Ruby アプリ (picoruby-fmrb-app) との差分という形で書く。
 ```python
 # 共通層 (FmrbApp / FmrbGfx / FmrbAudio / SpriteImage / SpriteInstance /
 # Log / ticks_ms / language) はアプリの名前空間に用意済み。import は要らない。
-import _fmrb          # 低水準の口。read_file などはここから
+import _fmrb          # 低水準の口 (普通は要らない。ファイルは FmrbFile)
 
 class MyApp(FmrbApp):
     def on_create(self):
@@ -141,15 +141,18 @@ VM 内の擬似スレッドではなく**ネイティブスレッドに 1:1** �
 方式の対比 (mruby-task = VM 内スケジューラとの違い) は
 porting_comparison.md 参照。
 
-### ファイルは読めるが書けない
+### ファイルは FmrbFile で丸ごと読み書きする
 
 `open` は builtins と `io` に存在するが、呼ぶと `OSError` を投げる。
 「黙って存在しない」より「呼ぶと明示的に失敗する」ほうが分かるため、
 この形にしてある。`io.StringIO` などメモリ上のものは使える。
 
-読むほうは `_fmrb.read_file(path)` がある (丸ごと読んで `bytes` を返す。
-1 ファイル 64KB まで)。大きさだけなら `_fmrb.file_size(path)`。
-**書き込む手段は無い**。
+ファイルは `FmrbFile` (本体との境界、Ruby と同じ。sig/fmrb_file.rbs) で、パスで
+丸ごと読み書きする: `FmrbFile.read(path)` (`bytes`、無ければ `None`)・
+`write(path, data)`・`append`・`exist`・`size` (無ければ `None`)・`delete`・
+`mkdir`・`list(dir)` (名前の list、ディレクトリは後ろに `/`)・
+`path_read_only`・`free_bytes`。読む大きさに上限は無い (大きすぎれば
+MemoryError)。読む位置を持って少しずつ読む口は無い。
 
 ## 絵
 
@@ -302,7 +305,9 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
 (Ruby 版と同じ扱い)。
 
 共通層のトップレベルには `ticks_ms()` (起動からのミリ秒) と `language()`
-("ja" / "en") もある。
+("ja" / "en") もある。`FmrbApp.uptime_ms()`・`uptime_us()` は 64 ビットの整数
+(長い整数を有効にしてある。`MICROPY_LONGINT_IMPL_LONGLONG`: 64 ビットまでで、
+それを超える整数は OverflowError)。
 
 ### FmrbGfx
 

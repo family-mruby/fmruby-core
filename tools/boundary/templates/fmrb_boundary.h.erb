@@ -9,7 +9,8 @@
  * preprocesses it with no firmware header in sight.
  *
  * Results: 0 or more on success; FMRB_BOUNDARY_ERR_FAILED, or
- * FMRB_BOUNDARY_ERR_ARG when an argument was out of range.
+ * FMRB_BOUNDARY_ERR_ARG when an argument was out of range; FMRB_BOUNDARY_NONE
+ * for nil from a function whose Ruby result may be nil.
  */
 #pragma once
 
@@ -22,6 +23,8 @@ extern "C" {
 #define FMRB_BOUNDARY_ABI_HASH 0x<%= abi_hash %>u
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
+/* A result that may be nil (Integer?, String? ...) and is not there. */
+#define FMRB_BOUNDARY_NONE       (-3)
 /* The most elements the engines' glue passes in one array argument. */
 #define FMRB_BOUNDARY_ARRAY_MAX  32
 <% records.each do |r| -%>
@@ -40,6 +43,13 @@ _Static_assert(sizeof(<%= r.cname %>) == <%= r.size %>, "<%= r.cname %> is packe
 /* <%= f.ruby_sig %>: <%= p.name %> */
 <% p.ty.values.each_with_index do |v, i| -%>
 #define <%= f.choice_const(p, v) %> <%= i %>
+<% end -%>
+<% end -%>
+<% if f.ret.is_a?(Ty) && f.ret.kind == :choice -%>
+
+/* <%= f.ruby_sig %>: the result */
+<% f.ret.values.each_with_index do |v, i| -%>
+#define <%= "#{f.flat}_#{v}".upcase %> <%= i %>
 <% end -%>
 <% end -%>
 <% end -%>

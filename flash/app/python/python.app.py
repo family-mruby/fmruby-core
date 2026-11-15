@@ -71,7 +71,7 @@ class PythonDemoApp(FmrbApp):
         self.uptime = 0
         self.lang = language()
         self.note_i = -1
-        self.toml_bytes = len(_fmrb.read_file(MY_TOML) or "")
+        self.toml_bytes = len(FmrbFile.read(MY_TOML) or b"")
         self.subscribe(TOPIC)
         self.tick_blink()
         self.draw_page()

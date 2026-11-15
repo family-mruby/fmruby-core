@@ -32,8 +32,8 @@
 # The rules (doc/app_boundary/plan.md, "作るもの 2" and report/w4a.md 3):
 #
 #   receiver           instance method -> int32_t <class> first; singleton -> none.
-#                      FmrbApp's and FmrbAudio's instance methods take none
-#                      either (NO_RECEIVER: the receiver is the calling app)
+#                      FmrbApp's instance methods take none either
+#                      (NO_RECEIVER: the receiver is the calling app)
 #   name=              a setter is set_<name> in C and the other languages
 #   Integer / intN...  int32_t, or the alias's width (sig/fmrb_types.rbs)
 #   bool               int32_t 0 / 1
@@ -43,13 +43,19 @@
 #   record alias       const pointer to a packed struct (fmrb_<class>_<name>_t)
 #   Array[record|int]  pointer and count
 #   returns self       int32_t status; the glue gives back the receiver
+#   name?              a predicate is the name without ? outside Ruby
 #   returns Integer    int32_t, 0 or more; negative is an error
 #   returns int64      int64_t, 0 or more; negative is an error (a clock in us)
 #   returns bool       int32_t 1 / 0; negative is an error
 #   returns record(?)  a pointer to the caller's struct; 1 filled, 0 none (nil)
 #   returns String/bin the caller's buffer and its size; returns the full
 #                      length (as snprintf does), negative on error
+#   returns X? (Integer, int64, String, bin)
+#                      FMRB_BOUNDARY_NONE (-3) for nil, else as X
 #   errors             -1 failed, -2 bad argument (ArgumentError / ValueError)
+#   hooks              %a{fmrb.hook}: what the app exports and the shell calls;
+#                      the C header gives their prototypes (a record they take
+#                      may hold a Symbol choice, an int32 there)
 #
 # A method with optional, rest or keyword arguments is not a boundary function:
 # its wrapper is marked internal and the simple form is written next to it
@@ -75,16 +81,9 @@ MARK_HOOK = 'fmrb.hook'
 
 # Classes whose instance methods take no receiver number: the receiver is the
 # app that calls (doc/app_boundary/plan.md, "FmrbApp のインスタンスメソッドと
-# モジュールの関数は、番号なし"). An FmrbAudio holds nothing but its app.
-NO_RECEIVER = %w[FmrbApp FmrbAudio].freeze
-
-# A class not yet marked whose listed methods are already on the boundary,
-# while its other methods wait for their phase (FmrbApp: the clipboard and the
-# clocks in W4b-2; the class gets %a{fmrb.boundary} in W4b-3, and this entry
-# goes). A listed method marked internal or hook is an error.
-STAGED = {
-  'FmrbApp' => %w[clipboard_raw set_clipboard clipboard_gen uptime_us wallclock]
-}.freeze
+# モジュールの関数は、番号なし"). FmrbAudio takes one, as FmrbGfx does
+# (decided after W4b-2): its body reads none yet.
+NO_RECEIVER = %w[FmrbApp].freeze
 
 FW_DIR = File.join(ROOT, 'components/fmrb_common/include/fmrb_gen')
 OUTPUTS = {
@@ -157,6 +156,8 @@ Func = Struct.new(:klass, :method, :prefix, :flat, :api, :import_name, :recv, :p
   def instance? = !singleton
   def returns_record? = ret.is_a?(Ty) && ret.kind == :record
   def returns_bytes? = ret.is_a?(Ty) && %i[str bin].include?(ret.kind)
+  # A result that may be nil and is not a record: FMRB_BOUNDARY_NONE for nil.
+  def nilable? = ret.is_a?(Ty) && ret.optional && ret.kind != :record
   def raw? = name.end_with?('_raw')
   def recv_param = recv ? [['int32_t', recv]] : []
 
@@ -180,7 +181,15 @@ Func = Struct.new(:klass, :method, :prefix, :flat, :api, :import_name, :recv, :p
   def choice_const(param, value, api: false) = "#{api ? self.api : flat}_#{param.name}_#{value}".upcase
   def ruby_sig = "#{klass}#{singleton ? '.' : '#'}#{method}(#{params.map(&:name).join(', ')})"
 end
-Hook = Struct.new(:klass, :method, :doc_ja, :doc_en, keyword_init: true)
+# A hook is what the app exports and the shell calls (fmrb_app_shell.h): the
+# C header gives its prototype. params as a function's; ret :void or an int32
+# (on_update: the ms until the next call, negative for the default).
+Hook = Struct.new(:klass, :method, :params, :ret, :doc_ja, :doc_en, keyword_init: true) do
+  def c_args = params.flat_map { |p| C.params_of(p.ty, p.name, api: true) }.map { |t, n| t.end_with?('*') ? "#{t}#{n}" : "#{t} #{n}" }.join(', ')
+end
+# The hooks whose Ruby result the shell reads, and what it means in C (the
+# sig keeps Ruby's void, which is what the editor checks an app against).
+HOOK_RESULTS = { 'on_update' => 'int32_t' }.freeze
 
 module C
   module_function
@@ -213,12 +222,13 @@ def split_summary(comment)
 end
 
 class Collector
-  attr_reader :funcs, :hooks, :records
+  attr_reader :funcs, :hooks, :records, :hook_records
 
   def initialize
     @funcs = []
     @hooks = []
     @records = {}   # "Klass::name" / "name" -> Rec (filled lazily)
+    @hook_records = {} # the records only a hook takes (the C header only)
     @aliases = {}   # same keys -> RBS type
   end
 
@@ -235,6 +245,8 @@ class Collector
     abort "no class in #{SIG_DIR} carries %a{#{MARK_CLASS}}" if @funcs.empty?
     check_bodies
     check_raw_names
+    check_names
+    @hook_records.reject! { |k, _| @records.key?(k) }
     self
   end
 
@@ -264,10 +276,6 @@ class Collector
   def visit(path, decl)
     klass = decl.name.to_s
     on_class = marks(decl).include?(MARK_CLASS)
-    staged = STAGED[klass]
-    if on_class && staged
-      abort "#{File.basename(path)}: #{klass} carries %a{#{MARK_CLASS}}; drop its STAGED entry in tools/boundary/gen.rb"
-    end
     decl.members.each do |m|
       next unless m.is_a?(RBS::AST::Members::MethodDefinition)
 
@@ -277,21 +285,27 @@ class Collector
         abort "#{where}: %a{#{MARK_CLASS}} goes on the class, not on a method " \
               '(doc/app_boundary/plan.md, W4a decisions)'
       end
-      if staged
-        next unless staged.include?(m.name.to_s)
-        abort "#{where}: listed in STAGED but marked #{(ms & [MARK_INTERNAL, MARK_HOOK]).join(', ')}" if (ms & [MARK_INTERNAL, MARK_HOOK]).any?
-      else
-        next unless on_class
-      end
+      next unless on_class
       next if ms.include?(MARK_INTERNAL)
 
       ja, en = split_summary(m.comment&.string)
       if ms.include?(MARK_HOOK)
-        @hooks << Hook.new(klass: klass, method: m.name.to_s, doc_ja: ja, doc_en: en)
+        @hooks << build_hook(where, klass, m, ja, en)
         next
       end
       @funcs << build_func(where, klass, m, ja, en)
     end
+  end
+
+  def build_hook(where, klass, m, ja, en)
+    abort "#{where}: one signature only (no overloads)" unless m.overloads.size == 1
+    fn = m.overloads.first.method_type.type
+    params = fn.required_positionals.map do |p|
+      abort "#{where}: every argument needs a name" unless p.name
+      Param.new(p.name.to_s, value_type(p.type, klass, "#{where} (#{p.name})", records: @hook_records))
+    end
+    Hook.new(klass: klass, method: m.name.to_s, params: params, ret: HOOK_RESULTS.fetch(m.name.to_s, 'void'),
+             doc_ja: ja, doc_en: en)
   end
 
   def build_func(where, klass, m, ja, en)
@@ -305,8 +319,10 @@ class Collector
     abort "#{where}: a block is not a boundary argument" if m.overloads.first.method_type.block
     singleton = m.kind == :singleton
     prefix = short_name(klass)
-    # A setter (main_volume=) is set_main_volume in C and the other languages.
-    name = m.name.to_s.end_with?('=') ? "set_#{m.name.to_s.delete_suffix('=')}" : m.name.to_s
+    # A setter (main_volume=) is set_main_volume in C and the other languages,
+    # a predicate (exist?) is the name without its ? (as MicroPython's prelude
+    # spells them, ev_ctrl).
+    name = m.name.to_s.end_with?('=') ? "set_#{m.name.to_s.delete_suffix('=')}" : m.name.to_s.delete_suffix('?')
     abort "#{where}: a method name of the boundary is letters, digits and _ (or a setter)" unless name.match?(/\A[a-z_][a-z0-9_]*\z/)
     params = fn.required_positionals.map do |p|
       abort "#{where}: every argument needs a name" unless p.name
@@ -330,7 +346,7 @@ class Collector
   end
 
   # The type of one value: an argument, a record field, an array element.
-  def value_type(t, klass, where, in_record: false)
+  def value_type(t, klass, where, in_record: false, records: @records)
     case t
     when RBS::Types::Bases::Bool
       Ty.new(kind: :bool, ctype: in_record ? 'uint8_t' : 'int32_t')
@@ -344,7 +360,7 @@ class Collector
       when 'Array'
         abort "#{where}: an array inside a record has no fixed width" if in_record
         elem_t = t.args.first or abort "#{where}: write the element type (Array[...])"
-        elem = value_type(elem_t, klass, where, in_record: true)
+        elem = value_type(elem_t, klass, where, in_record: true, records: records)
         abort "#{where}: Array[#{elem_t}] is not handled (records or fixed-width integers)" unless %i[record int].include?(elem.kind)
         Ty.new(kind: :array, elem: elem)
       else
@@ -363,9 +379,9 @@ class Collector
       end
       key, target = lookup_alias(name, klass)
       abort "#{where}: type alias #{name} is not defined" unless target
-      return Ty.new(kind: :record, record: record_of(key, target, klass, where)) if target.is_a?(RBS::Types::Record)
+      return Ty.new(kind: :record, record: record_of(key, target, klass, where, records)) if target.is_a?(RBS::Types::Record)
 
-      value_type(target, klass, where, in_record: in_record)
+      value_type(target, klass, where, in_record: in_record, records: records)
     when RBS::Types::Union
       vals = t.types.map { |x| x.is_a?(RBS::Types::Literal) && x.literal.is_a?(Symbol) ? x.literal : nil }
       abort "#{where}: a union is handled only as a choice of Symbols (:a | :b)" if vals.include?(nil)
@@ -375,16 +391,19 @@ class Collector
     end
   end
 
-  def record_of(key, rtype, klass, where)
-    @records[key] ||= begin
+  # A record a function takes or gives has fixed-width numbers only; one only
+  # a hook takes (the event) may also have a Symbol choice, an int32 in C.
+  def record_of(key, rtype, klass, where, records = @records)
+    records[key] ||= begin
       owner = key.include?('::') ? key.split('::').first : klass
       name = key.split('::').last
       if rtype.respond_to?(:optional_fields) && !rtype.optional_fields.empty?
         abort "#{where}: record #{name} has optional fields; a record has every field"
       end
       fields = rtype.fields.map do |fname, ft|
-        ty = value_type(ft, owner, "#{where} (#{name}.#{fname})", in_record: true)
-        abort "#{where}: record #{name}.#{fname}: #{ft} is not a fixed-width value" unless %i[int bool float].include?(ty.kind)
+        ty = value_type(ft, owner, "#{where} (#{name}.#{fname})", in_record: true, records: records)
+        kinds = records.equal?(@records) ? %i[int bool float] : %i[int bool float choice]
+        abort "#{where}: record #{name}.#{fname}: #{ft} is not a fixed-width value" unless kinds.include?(ty.kind)
         Field.new(fname.to_s, ty)
       end
       Rec.new(name, owner, "fmrb_bnd_#{short_name(owner)}_#{name}_t", "fmrb_#{short_name(owner)}_#{name}_t", fields)
@@ -403,10 +422,11 @@ class Collector
     optional = t.is_a?(RBS::Types::Optional)
     ty = value_type(optional ? t.type : t, klass, where)
     case ty.kind
-    when :record then ty.optional = optional
-    when :int, :bool, :choice, :str, :bin
-      abort "#{where}: only a record may be returned as optional (#{t})" if optional
+    when :record, :int, :str, :bin
+      ty.optional = optional
       abort "#{where}: an Integer result is int32 or int64 (#{t})" if ty.int? && !%w[int32_t int64_t].include?(ty.ctype)
+    when :bool, :choice
+      abort "#{where}: a #{ty.kind} result cannot be nil (#{t})" if optional
     else
       abort "#{where}: result type #{t} is not handled by the boundary rules"
     end
@@ -421,6 +441,16 @@ class Collector
 
     abort "boundary: no C body for #{missing.map(&:ruby_sig).join(', ')} in main/app/fmrb_boundary_*.c. " \
           "A method written in Ruby (or state the object keeps) is marked %a{#{MARK_INTERNAL}}."
+  end
+
+  # One name per class in C and the other languages (exist? and exist would
+  # both be fmrb_..._exist).
+  def check_names
+    @funcs.group_by { |f| [f.klass, f.singleton] }.each_value do |fs|
+      fs.group_by(&:name).each do |name, same|
+        abort "#{same.map(&:ruby_sig).join(' and ')}: both are #{name} outside Ruby" if same.size > 1
+      end
+    end
   end
 
   # A _raw method is the simple form of a wrapper: the wrapper is in the same
@@ -442,15 +472,20 @@ end
 # From what a C app sees (its names, not the firmware's own), so renaming the
 # firmware's side leaves it as it is.
 def abi_hash(table)
-  lines = table.funcs.map { |f| [(f.wide_ret? ? "#{f.api}->int64" : f.api), f.c_args(api: true)].join(':') }
-  lines += table.records.values.map { |r| ([r.api_cname] + r.fields.map { |x| "#{x.ty.ctype} #{x.name}" }).join(':') }
+  lines = table.funcs.map do |f|
+    [f.api + (f.wide_ret? ? '->int64' : '') + (f.nilable? ? '?' : ''), f.c_args(api: true)].join(':')
+  end
+  lines += (table.records.values + table.hook_records.values).map do |r|
+    ([r.api_cname] + r.fields.map { |x| "#{x.ty.ctype} #{x.name}" }).join(':')
+  end
+  lines += table.hooks.map { |h| "hook #{h.ret} #{h.method}:#{h.c_args}" }
   Digest::SHA256.hexdigest(lines.join("\n"))[0, 8]
 end
 
 def render(template, table)
   ERB.new(File.read(File.join(TEMPLATE_DIR, template)), trim_mode: '-')
      .result_with_hash(funcs: table.funcs, hooks: table.hooks, records: table.records.values,
-                       abi_hash: abi_hash(table))
+                       hook_records: table.hook_records.values, abi_hash: abi_hash(table))
 end
 
 # Only a changed file is rewritten, so a build that regenerates nothing new
@@ -487,7 +522,7 @@ if ARGV.include?('--check')
           '(run rake micropython:gen and commit components/micropython/mp_embed)'
   end
   puts "boundary: SDK and MicroPython qstrs match sig/ (#{table.funcs.size} functions, " \
-       "#{table.records.size} records, #{table.hooks.size} hooks)"
+       "#{table.records.size + table.hook_records.size} records, #{table.hooks.size} hooks)"
   exit
 end
 

@@ -17,6 +17,7 @@ set(COMPONENT_SRCS
     "app/fmrb_boundary_gfx.c"
     "app/fmrb_boundary_audio.c"
     "app/fmrb_boundary_app.c"
+    "app/fmrb_boundary_file.c"
     "app/fmrb_boundary_log.c"
     "app/fmrb_app_checkpoint.c"
     "app/fmrb_app_transfer.c"

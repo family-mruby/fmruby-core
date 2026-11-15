@@ -114,17 +114,6 @@ const char *fmrb_spx_app_ps(void);
 const char *fmrb_spx_app_heap_info(void);
 
 /**
- * @brief System pool info (FmrbApp.sys_pool_info). :binstr of five u32 LE:
- *        total, used, free, used_blocks, free_blocks.
- */
-#define FMRB_SPX_APP_SYSPOOL_RECORD_SIZE 20
-const char *fmrb_spx_app_sys_pool_info(void);
-
-/** @brief GFX counters (FmrbApp.gfx_stats). :binstr of two u32 LE: cmds, presents. */
-#define FMRB_SPX_APP_GFXSTATS_RECORD_SIZE 8
-const char *fmrb_spx_app_gfx_stats(void);
-
-/**
  * @brief Last app error (FmrbApp._get_last_error). :binstr with name at offset
  *        0 (width 64) and message at offset 64 (width 112); empty String when
  *        there is no error (Ruby returns nil).
@@ -148,15 +137,6 @@ const char *fmrb_spx_app_last_error(void);
 const char *fmrb_spx_app_config(const char *section, int len);
 
 /**
- * @brief UI language code from system_conf ("en" / "ja"), as a :binstr.
- *
- * The generated FmrbConst is a compile-time table, so a Spinel program cannot
- * read a setting the user can change; this is the run-time source. The mruby
- * side gets the same value through FmrbConst::LANGUAGE.
- */
-const char *fmrb_spx_app_language(void);
-
-/**
  * @brief The machine's clipboard (fmrb_clipboard.h, L12a): its length in
  *        bytes and a piece of it (the generation and setting it are the app
  *        boundary's, fmrb_bnd_app_*).
@@ -169,7 +149,17 @@ const char *fmrb_spx_app_language(void);
 #define FMRB_SPX_APP_CLIP_CHUNK 4096
 int fmrb_spx_app_clipboard_length(void);
 const char *fmrb_spx_app_clipboard_chunk(int off, int limit);
-int fmrb_spx_app_set_text_cursor(int x, int y, int h);
+
+/**
+ * @brief FmrbFile.read (kind 0) and FmrbFile.list_raw (kind 1) in pieces: the
+ *        boundary's Spinel adaptor gives at most 256 bytes.
+ *
+ * length answers the whole length, -1 for nil (no such file, a directory that
+ * cannot be read). chunk answers up to FMRB_SPX_APP_CLIP_CHUNK bytes of it
+ * from byte off (a :binstr, empty past the end).
+ */
+int fmrb_spx_file_length(int kind, const char *path, int len);
+const char *fmrb_spx_file_chunk(int kind, const char *path, int len, int off);
 
 /** The record of set_wallclock: six u16 LE (year, month, day, hour, minute, second). */
 #define FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE 12
@@ -189,15 +179,10 @@ int fmrb_spx_app_set_cursor_visible(int visible);/**< returns 0 */
 int fmrb_spx_app_reboot(void);                   /**< does not return */
 int fmrb_spx_app_power_actions(void);            /**< FmrbSystem.power_actions as fmrb_sys_power_t bits */
 int fmrb_spx_app_power(int action);              /**< FmrbSystem.power: one bit; 1 done, 0 not offered/failed */
-/** FmrbApp.battery_level / battery_charging?: -1 without a battery value,
- *  else the percent (0-100) with 0x100 set while charging. */
-int fmrb_spx_app_battery(void);
 int fmrb_spx_app_ble_start(void);                /**< manual BLE start; 1 on success */
 int fmrb_spx_app_ble_state(void);                /**< FmrbSystem.ble_state (0 = off) */
 int fmrb_spx_app_ble_settings_window(int seconds); /**< open/close the BLE settings window; seconds left */
 int fmrb_spx_app_ble_settings_left(void);        /**< seconds left in the settings window (0 = closed) */
-int fmrb_spx_app_audio_muted(void);              /**< FmrbApp.audio_muted? (1/0) */
-int fmrb_spx_app_path_read_only(const char *path, int len); /**< FmrbApp.path_read_only? (1/0) */
 /** FmrbApp.app_meta(path): the merged .app.toml and "#---fmrb" comment,
  *  packed (:binstr, "" when the file is not an app; fmrb_app_meta.h). */
 const char *fmrb_spx_app_meta(const char *path, int len);
@@ -208,12 +193,9 @@ const char *fmrb_spx_app_move(int pid, const char *to, int len, int hold_ms);
  *  :binstr, "" when asked, else why not. */
 const char *fmrb_spx_app_checkpoint(int pid, int restart);
 int fmrb_spx_app_set_audio_mute(int on);         /**< FmrbSystem.set_audio_mute */
-int fmrb_spx_app_audio_volume(void);             /**< FmrbApp.audio_volume (0-10) */
 int fmrb_spx_app_set_audio_volume(int step);     /**< FmrbSystem.set_audio_volume */
 int fmrb_spx_app_preview_audio_volume(int step); /**< FmrbSystem.preview_audio_volume */
 int fmrb_spx_app_audio_conf_saved(void);         /**< FmrbSystem.audio_conf_saved */
-int fmrb_spx_app_wifi_connected(void);           /**< FmrbApp.wifi_connected? (1/0) */
-int fmrb_spx_app_proc_generation(void);          /**< FmrbApp.ps_gen */
 /** @brief FmrbConst.bt_mac: "AA:BB:CC:DD:EE:FF" :binstr, or "-" until known. */
 const char *fmrb_spx_app_bt_mac(void);
 
@@ -263,15 +245,8 @@ int fmrb_spx_app_hid_raw_unsubscribe(int slot); /**< 1 ok / 0 fail */
 
 /* ---- class: the calls the Spinel side lacked (doc/codebase_tidy T5) ------ */
 
-int fmrb_spx_app_pid(void);                      /**< FmrbApp.pid (-1 outside an app) */
-const char *fmrb_spx_app_script_path(void);      /**< FmrbApp.script_path (:binstr) */
-/** @brief FmrbApp.free_bytes(path): 8-byte :binstr (low u32, high u32 LE), ""
- *  when unknown. */
-const char *fmrb_spx_app_free_bytes(const char *path, int len);
-int fmrb_spx_app_notify(const char *summary, int slen, const char *body, int blen); /**< 1 posted */
 /** @brief What fmrb_spx_app_linux_exit_code answers while the program runs. */
 #define FMRB_SPX_APP_LINUX_RUNNING (-1000000)
-int fmrb_spx_app_linux_available(void);          /**< FmrbApp.linux_available? (1/0) */
 /** @brief FmrbApp.linux_start: a handle, or -1 (why: fmrb_spx_app_linux_last_error). */
 int fmrb_spx_app_linux_start(int has_cmd, const char *cmd, int clen, const char *cwd, int dlen,
                              int cols, int rows);

@@ -175,17 +175,32 @@ static mrb_value fmrb_gen_mrb_<%= f.import_name %>(mrb_state *mrb, mrb_value sel
 <% elsif f.returns_bytes? -%>
     char buf[128];
     int32_t ret = <%= f.flat %>(<%= (args + ["(#{f.ret.kind == :bin ? 'uint8_t' : 'char'} *)buf", 'sizeof(buf)']).join(', ') %>);
+<% if f.nilable? -%>
+    if (ret == FMRB_BOUNDARY_NONE) {
+        return mrb_nil_value();
+    }
+<% end -%>
     fmrb_gen_mrb_check(mrb, ret, "<%= f.method %>");
     if (ret <= (int32_t)sizeof(buf)) {
         return mrb_str_new(mrb, buf, ret);
     }
     mrb_value s = mrb_str_new(mrb, NULL, ret);
     int32_t got = <%= f.flat %>(<%= (args + ["(#{f.ret.kind == :bin ? 'uint8_t' : 'char'} *)RSTRING_PTR(s)", 'ret']).join(', ') %>);
+<% if f.nilable? -%>
+    if (got == FMRB_BOUNDARY_NONE) {
+        return mrb_nil_value();
+    }
+<% end -%>
     fmrb_gen_mrb_check(mrb, got, "<%= f.method %>");
     mrb_str_resize(mrb, s, got < ret ? got : ret);
     return s;
 <% else -%>
     <%= f.ret_ctype %> ret = <%= f.flat %>(<%= args.join(', ') %>);
+<% if f.nilable? -%>
+    if (ret == FMRB_BOUNDARY_NONE) {
+        return mrb_nil_value();
+    }
+<% end -%>
     fmrb_gen_mrb_check(mrb, <%= f.wide_ret? ? '(int32_t)(ret < 0 ? ret : 0)' : 'ret' %>, "<%= f.method %>");
 <% case f.ret when :self -%>
     return self;

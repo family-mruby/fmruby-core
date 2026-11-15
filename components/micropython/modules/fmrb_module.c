@@ -36,9 +36,10 @@
 // queue is full, and then this poll is the only thing that ends the app.
 #define FMRB_MP_SPIN_SLICE_MS (100)
 
-// Ceiling for one read_file and one imported module. Both land in the GC heap
-// (256KB, shared with everything the app allocates), so an unbounded read would
-// take the app down with a memory error at an unrelated place later on.
+// Ceiling for one imported module. It lands in the GC heap (256KB, shared with
+// everything the app allocates), so an unbounded read would take the app down
+// with a memory error at an unrelated place later on. (FmrbFile.read, the app
+// boundary's, has no ceiling of its own: a file too big is a MemoryError.)
 #define FMRB_MP_READ_FILE_MAX (64 * 1024)
 
 /* ---------------------------------------------------------------------------
@@ -462,44 +463,6 @@ static mp_obj_t fmrb_ticks_ms(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(fmrb_ticks_ms_obj, fmrb_ticks_ms);
 
-/* ---------------------------------------------------------------------------
- * Files
- *
- * open() is not available to a guest (mpport.c raises), so these two are how a
- * Python app reads its own data. Both go through the firmware's file layer.
- * ------------------------------------------------------------------------ */
-
-static mp_obj_t fmrb_file_size(mp_obj_t path_in) {
-    uint32_t size = 0;
-    if (fmrb_mp_bridge_file_size(mp_obj_str_get_str(path_in), &size) != 0) {
-        return mp_const_none;
-    }
-    return mp_obj_new_int_from_uint(size);
-}
-static MP_DEFINE_CONST_FUN_OBJ_1(fmrb_file_size_obj, fmrb_file_size);
-
-static mp_obj_t fmrb_read_file(mp_obj_t path_in) {
-    const char *path = mp_obj_str_get_str(path_in);
-    uint32_t size = 0;
-    if (fmrb_mp_bridge_file_size(path, &size) != 0) {
-        return mp_const_none;
-    }
-    if (size > FMRB_MP_READ_FILE_MAX) {
-        // Refuse rather than truncate: a half-read file is a bug that shows up
-        // as corrupt data much later.
-        mp_raise_msg(&mp_type_MemoryError, MP_ERROR_TEXT("file too large to read"));
-    }
-
-    vstr_t vstr;
-    vstr_init_len(&vstr, size);
-    if (fmrb_mp_bridge_file_read(path, (uint8_t *)vstr.buf, size) != 0) {
-        vstr_clear(&vstr);
-        return mp_const_none;
-    }
-    return mp_obj_new_bytes_from_vstr(&vstr);
-}
-static MP_DEFINE_CONST_FUN_OBJ_1(fmrb_read_file_obj, fmrb_read_file);
-
 /**
  * Import hooks (MICROPY_ENABLE_EXTERNAL_IMPORT).
  *
@@ -784,6 +747,13 @@ static int32_t fmrb_mp_recv_gfx(mp_obj_t o) {
     return (int32_t)mp_obj_get_int(mp_load_attr(o, MP_QSTR__drawer));
 }
 
+/* The receiver number of FmrbAudio's boundary functions. Nothing reads it
+ * yet (the sound is the app's), so every FmrbAudio is 0. */
+static int32_t fmrb_mp_recv_audio(mp_obj_t o) {
+    (void)o;
+    return 0;
+}
+
 /* The drawer of a receiver, for the functions not on the boundary yet
  * (sprites), which take its canvas and the canvas's own coordinates. */
 static const fmrb_gfx_drawer_t *mp_drawer(mp_obj_t o) {
@@ -929,12 +899,6 @@ static mp_obj_t gfx_delete_all_sprites(mp_obj_t cid) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(gfx_delete_all_sprites_obj, gfx_delete_all_sprites);
 
-static mp_obj_t fmrb_language(void) {
-    const char *lang = fmrb_mp_bridge_language();
-    return mp_obj_new_str(lang, strlen(lang));
-}
-static MP_DEFINE_CONST_FUN_OBJ_0(fmrb_language_obj, fmrb_language);
-
 /* ------------------------------------------------------------------------ */
 
 static const mp_rom_map_elem_t fmrb_module_globals_table[] = {
@@ -949,12 +913,8 @@ static const mp_rom_map_elem_t fmrb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_is_file_app), MP_ROM_PTR(&fmrb_is_file_app_obj) },
     { MP_ROM_QSTR(MP_QSTR_should_exit), MP_ROM_PTR(&fmrb_should_exit_obj) },
     { MP_ROM_QSTR(MP_QSTR_ticks_ms), MP_ROM_PTR(&fmrb_ticks_ms_obj) },
-    { MP_ROM_QSTR(MP_QSTR_read_file), MP_ROM_PTR(&fmrb_read_file_obj) },
-    { MP_ROM_QSTR(MP_QSTR_file_size), MP_ROM_PTR(&fmrb_file_size_obj) },
 
     FMRB_GEN_MP_GLOBALS
-    { MP_ROM_QSTR(MP_QSTR_language), MP_ROM_PTR(&fmrb_language_obj) },
-
 
     { MP_ROM_QSTR(MP_QSTR_gfx_drawer_open), MP_ROM_PTR(&gfx_drawer_open_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_set_origin), MP_ROM_PTR(&gfx_set_origin_obj) },

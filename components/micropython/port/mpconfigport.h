@@ -13,6 +13,12 @@
 // modules that live in py/ (array, collections, math, struct, io, gc).
 #define MICROPY_CONFIG_ROM_LEVEL                (MICROPY_CONFIG_ROM_LEVEL_CORE_FEATURES)
 
+// Integers past the small int (31 bits on the 32-bit targets) as 64-bit long
+// long, so FmrbApp.uptime_us() does not overflow after 18 minutes
+// (doc/app_boundary W4b-3). LONGLONG rather than MPZ: 64 bits cover the
+// boundary's widest integer, and it is the smaller of the two.
+#define MICROPY_LONGINT_IMPL                    (MICROPY_LONGINT_IMPL_LONGLONG)
+
 // Single precision: the firmware has no FPU-backed double path worth paying
 // for, and float keeps object sizes down on the 32-bit targets.
 #define MICROPY_FLOAT_IMPL                      (MICROPY_FLOAT_IMPL_FLOAT)
@@ -67,7 +73,7 @@ extern void fmrb_mp_vm_hook(void);
 // sys.path is narrowed at app start (fmrb_mp.c) to the app's own directory and
 // the shared library directory, so a guest cannot import from anywhere else.
 // mp_builtin_open (mpport.c) still raises: reading a file as data goes through
-// _fmrb.read_file, which has a size limit.
+// FmrbFile.read (the app boundary's), whole files by path.
 #define MICROPY_ENABLE_EXTERNAL_IMPORT          (1)
 #define MICROPY_READER_POSIX                    (0)
 #define MICROPY_READER_VFS                      (0)

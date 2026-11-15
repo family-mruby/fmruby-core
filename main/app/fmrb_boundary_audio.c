@@ -4,8 +4,10 @@
  * engine's glue (mruby, Lua, MicroPython, Spinel, WAMR) is generated and
  * calls these; nothing here knows an engine.
  *
- * FmrbAudio's methods take no receiver number: the sound is the calling
- * app's (fmrb_current()). Most of them are a command to the kernel's audio
+ * FmrbAudio's methods take a receiver number, as FmrbGfx's do, so the shape
+ * stays when an app gets sound state of its own (decided after W4b-2). It is
+ * not read yet: every engine passes 0 and the sound is the calling app's
+ * (fmrb_current()). Most of them are a command to the kernel's audio
  * handler (main/ruby/kernel/fmrb_kernel/audio_handler.rb), a MessagePack map
  * with String keys, built here straight into the message -- the same bytes
  * the Ruby wrappers sent from a Hash before (doc/app_boundary W4b-2), so the
@@ -31,131 +33,28 @@
 #include "fmrb_msg.h"
 #include "fmrb_kernel.h"
 #include "picoruby_fmrb_app.h"
+#include "fmrb_boundary_msg.h"
 
 #define ERR_FAILED FMRB_BOUNDARY_ERR_FAILED
 #define ERR_ARG    FMRB_BOUNDARY_ERR_ARG
 
 static const char *TAG = "audio";
 
-/* ---- a MessagePack map, written into a message --------------------------- */
-
-typedef struct {
-    uint8_t *buf;
-    size_t len;
-    size_t cap;
-    bool over;
-} mp_out_t;
-
-static void put(mp_out_t *o, const void *p, size_t n)
-{
-    if (o->over || o->len + n > o->cap) {
-        o->over = true;
-        return;
-    }
-    memcpy(o->buf + o->len, p, n);
-    o->len += n;
-}
-
-static void put_byte(mp_out_t *o, uint8_t b)
-{
-    put(o, &b, 1);
-}
-
-// A String, as the msgpack gem writes one (fixstr, str8, str16).
-static void put_str(mp_out_t *o, const char *s, size_t n)
-{
-    if (n < 32) {
-        put_byte(o, (uint8_t)(0xa0 | n));
-    } else if (n < 256) {
-        uint8_t h[2] = { 0xd9, (uint8_t)n };
-        put(o, h, 2);
-    } else if (n < 65536) {
-        uint8_t h[3] = { 0xda, (uint8_t)(n >> 8), (uint8_t)n };
-        put(o, h, 3);
-    } else {
-        o->over = true;
-        return;
-    }
-    put(o, s, n);
-}
-
-static void put_key(mp_out_t *o, const char *key)
-{
-    put_str(o, key, strlen(key));
-}
-
-// An integer in the narrowest form (the width msgpack-c chooses).
-static void put_int(mp_out_t *o, int32_t v)
-{
-    if (v >= 0) {
-        if (v < 128) {
-            put_byte(o, (uint8_t)v);
-        } else if (v < 256) {
-            uint8_t h[2] = { 0xcc, (uint8_t)v };
-            put(o, h, 2);
-        } else if (v < 65536) {
-            uint8_t h[3] = { 0xcd, (uint8_t)(v >> 8), (uint8_t)v };
-            put(o, h, 3);
-        } else {
-            uint8_t h[5] = { 0xce, (uint8_t)(v >> 24), (uint8_t)(v >> 16), (uint8_t)(v >> 8), (uint8_t)v };
-            put(o, h, 5);
-        }
-    } else if (v >= -32) {
-        put_byte(o, (uint8_t)v);
-    } else if (v >= INT8_MIN) {
-        uint8_t h[2] = { 0xd0, (uint8_t)v };
-        put(o, h, 2);
-    } else if (v >= INT16_MIN) {
-        uint8_t h[3] = { 0xd1, (uint8_t)((uint16_t)v >> 8), (uint8_t)v };
-        put(o, h, 3);
-    } else {
-        uint32_t u = (uint32_t)v;
-        uint8_t h[5] = { 0xd2, (uint8_t)(u >> 24), (uint8_t)(u >> 16), (uint8_t)(u >> 8), (uint8_t)u };
-        put(o, h, 5);
-    }
-}
-
 /* ---- sending -------------------------------------------------------------- */
 
-typedef struct {
-    fmrb_msg_t msg;
-    mp_out_t out;
-} audio_cmd_t;
-
-// A map of npairs pairs whose first is "cmd" => cmd.
-static fmrb_app_task_context_t *cmd_begin(audio_cmd_t *c, const char *cmd, int npairs)
+static fmrb_app_task_context_t *cmd_begin(fmrb_bnd_cmd_t *c, const char *cmd, int npairs)
 {
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        return NULL;
-    }
-    memset(&c->msg, 0, offsetof(fmrb_msg_t, data));
-    c->msg.type = FMRB_MSG_TYPE_APP_AUDIO;
-    c->msg.src_pid = ctx->app_id;
-    c->out = (mp_out_t){ .buf = c->msg.data, .len = 0, .cap = FMRB_MAX_MSG_PAYLOAD_SIZE, .over = false };
-    put_byte(&c->out, (uint8_t)(0x80 | npairs));
-    put_key(&c->out, "cmd");
-    put_key(&c->out, cmd);
-    return ctx;
+    return fmrb_bnd_cmd_begin(c, FMRB_MSG_TYPE_APP_AUDIO, cmd, npairs);
 }
 
-static int32_t cmd_send(audio_cmd_t *c, const char *cmd)
+static int32_t cmd_send(fmrb_bnd_cmd_t *c, const char *cmd)
 {
-    if (c->out.over) {
-        FMRB_LOGE(TAG, "%s: the command does not fit one message (%d bytes)", cmd,
-                  FMRB_MAX_MSG_PAYLOAD_SIZE);
-        return ERR_ARG;
-    }
-    c->msg.size = (uint32_t)c->out.len;
-    if (fmrb_msg_send(PROC_ID_KERNEL, &c->msg, 1000) != FMRB_OK) {
-        FMRB_LOGW(TAG, "%s: the kernel's queue did not take it; dropped", cmd);
-    }
-    return 0;
+    return fmrb_bnd_cmd_send(c, TAG, cmd);
 }
 
 static int32_t send_bare(const char *cmd)
 {
-    audio_cmd_t c;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, cmd, 1)) {
         return ERR_FAILED;
     }
@@ -167,7 +66,7 @@ static __attribute__((unused)) int32_t send_path(const char *cmd, const char *pa
     if (!path || path_len < 0) {
         return ERR_ARG;
     }
-    audio_cmd_t c;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, cmd, 2)) {
         return ERR_FAILED;
     }
@@ -178,12 +77,13 @@ static __attribute__((unused)) int32_t send_path(const char *cmd, const char *pa
 
 /* ---- the flat functions --------------------------------------------------- */
 
-int32_t fmrb_bnd_audio_play_raw(const char *path, int32_t path_len, int32_t track)
+int32_t fmrb_bnd_audio_play_raw(int32_t audio, const char *path, int32_t path_len, int32_t track)
 {
+    (void)audio;
     if (!path || path_len < 0) {
         return ERR_ARG;
     }
-    audio_cmd_t c;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, "play", 3)) {
         return ERR_FAILED;
     }
@@ -194,25 +94,29 @@ int32_t fmrb_bnd_audio_play_raw(const char *path, int32_t path_len, int32_t trac
     return cmd_send(&c, "play");
 }
 
-int32_t fmrb_bnd_audio_stop(void)
+int32_t fmrb_bnd_audio_stop(int32_t audio)
 {
+    (void)audio;
     return send_bare("stop");
 }
 
-int32_t fmrb_bnd_audio_pause(void)
+int32_t fmrb_bnd_audio_pause(int32_t audio)
 {
+    (void)audio;
     return send_bare("pause");
 }
 
-int32_t fmrb_bnd_audio_resume(void)
+int32_t fmrb_bnd_audio_resume(int32_t audio)
 {
+    (void)audio;
     return send_bare("resume");
 }
 
 // Asked of the audio side directly (it does not queue behind the kernel):
 // 0 (nil) when it did not answer, an older graphics-audio firmware.
-int32_t fmrb_bnd_audio_nsf_status(fmrb_bnd_audio_nsf_status_t *out)
+int32_t fmrb_bnd_audio_nsf_status(int32_t audio, fmrb_bnd_audio_nsf_status_t *out)
 {
+    (void)audio;
     fmrb_app_nsf_status_t st;
     if (fmrb_app_audio_nsf_status(&st, 500) != FMRB_OK) {
         return 0;
@@ -229,12 +133,13 @@ int32_t fmrb_bnd_audio_nsf_status(fmrb_bnd_audio_nsf_status_t *out)
 
 // Inline, so a short tune only: one message holds FMRB_MAX_MSG_PAYLOAD_SIZE
 // bytes. A bigger one goes by file (load_fmsq_file).
-int32_t fmrb_bnd_audio_load_fmsq(int32_t slot_id, const uint8_t *binary_data, int32_t binary_data_len)
+int32_t fmrb_bnd_audio_load_fmsq(int32_t audio, int32_t slot_id, const uint8_t *binary_data, int32_t binary_data_len)
 {
+    (void)audio;
     if (!binary_data || binary_data_len < 0) {
         return ERR_ARG;
     }
-    audio_cmd_t c;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, "load_fmsq", 3)) {
         return ERR_FAILED;
     }
@@ -245,12 +150,13 @@ int32_t fmrb_bnd_audio_load_fmsq(int32_t slot_id, const uint8_t *binary_data, in
     return cmd_send(&c, "load_fmsq");
 }
 
-int32_t fmrb_bnd_audio_load_fmsq_file(int32_t slot_id, const char *path, int32_t path_len)
+int32_t fmrb_bnd_audio_load_fmsq_file(int32_t audio, int32_t slot_id, const char *path, int32_t path_len)
 {
+    (void)audio;
     if (!path || path_len < 0) {
         return ERR_ARG;
     }
-    audio_cmd_t c;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, "load_fmsq_file", 3)) {
         return ERR_FAILED;
     }
@@ -261,9 +167,10 @@ int32_t fmrb_bnd_audio_load_fmsq_file(int32_t slot_id, const char *path, int32_t
     return cmd_send(&c, "load_fmsq_file");
 }
 
-int32_t fmrb_bnd_audio_play_slot_raw(int32_t slot_id, int32_t instance)
+int32_t fmrb_bnd_audio_play_slot_raw(int32_t audio, int32_t slot_id, int32_t instance)
 {
-    audio_cmd_t c;
+    (void)audio;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, "play_slot", 3)) {
         return ERR_FAILED;
     }
@@ -275,15 +182,16 @@ int32_t fmrb_bnd_audio_play_slot_raw(int32_t slot_id, int32_t instance)
 }
 
 // The MAIN instance's own volume, 0-100 (%): out of range is clamped.
-int32_t fmrb_bnd_audio_set_main_volume(int32_t percent)
+int32_t fmrb_bnd_audio_set_main_volume(int32_t audio, int32_t percent)
 {
+    (void)audio;
     if (percent < 0) {
         percent = 0;
     }
     if (percent > 100) {
         percent = 100;
     }
-    audio_cmd_t c;
+    fmrb_bnd_cmd_t c;
     if (!cmd_begin(&c, "main_volume", 2)) {
         return ERR_FAILED;
     }
@@ -301,8 +209,9 @@ int32_t fmrb_bnd_audio_set_main_volume(int32_t percent)
 #define WAV_CACHE_DIR "/cache/audio"
 #define WAV_PATH_MAX 120
 
-int32_t fmrb_bnd_audio_play_wav(const char *path, int32_t path_len)
+int32_t fmrb_bnd_audio_play_wav(int32_t audio, const char *path, int32_t path_len)
 {
+    (void)audio;
     if (!path || path_len < 0) {
         return ERR_ARG;
     }
@@ -334,8 +243,9 @@ int32_t fmrb_bnd_audio_play_wav(const char *path, int32_t path_len)
 #endif
 }
 
-int32_t fmrb_bnd_audio_stop_wav(void)
+int32_t fmrb_bnd_audio_stop_wav(int32_t audio)
 {
+    (void)audio;
 #if !defined(FMRB_HW_FAMILY_MODERN)
     return 0;
 #else
@@ -346,8 +256,9 @@ int32_t fmrb_bnd_audio_stop_wav(void)
 
 // The two sent in a stream (a MIDI song sends one every few milliseconds):
 // built by the shared builder, nothing allocated.
-int32_t fmrb_bnd_audio_note_on_raw(int32_t channel, int32_t freq, int32_t volume, int32_t duty, int32_t sweep)
+int32_t fmrb_bnd_audio_note_on_raw(int32_t audio, int32_t channel, int32_t freq, int32_t volume, int32_t duty, int32_t sweep)
 {
+    (void)audio;
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
         return ERR_FAILED;
@@ -358,8 +269,9 @@ int32_t fmrb_bnd_audio_note_on_raw(int32_t channel, int32_t freq, int32_t volume
     return 0;
 }
 
-int32_t fmrb_bnd_audio_note_off(int32_t channel)
+int32_t fmrb_bnd_audio_note_off(int32_t audio, int32_t channel)
 {
+    (void)audio;
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
         return ERR_FAILED;

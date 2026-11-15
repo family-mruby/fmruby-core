@@ -11,8 +11,9 @@
  * - an object's method takes the object's number first: for FmrbGfx a drawer
  *   of the app, which has the canvas, the drawing origin and the area (the
  *   firmware adds the origin to the coordinates drawn; origin_x and the rest
- *   read them). FmrbApp's and FmrbAudio's take none: their object is the
- *   app itself;
+ *   read them). FmrbAudio's is 0 for now
+ *   (the sound is the app's); FmrbApp's take none: their object is the app
+ *   itself;
  * - a Ruby setter (main_volume=) is set_<name> (fmrb_audio_set_main_volume);
  * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
  *   bool is int32_t 0 or 1; Float is double;
@@ -24,9 +25,15 @@
  *   when there is none; a String result into the caller's buffer, returning
  *   the full length (as snprintf does).
  *
+ * - a Ruby predicate (exist?) is the name without the ? (fmrb_file_exist).
+ *
  * Results: 0 or more on success; FMRB_BOUNDARY_ERR_FAILED, or
  * FMRB_BOUNDARY_ERR_ARG when an argument was out of range or a pointer
- * pointed outside the app's memory.
+ * pointed outside the app's memory; FMRB_BOUNDARY_NONE where Ruby gives nil
+ * (a function whose result may be nil: Integer?, String? ...).
+ *
+ * The end of this header lists what the app exports: the functions the
+ * firmware's app shell calls (on_create, on_update ...), by these names.
  */
 #ifndef FMRB_BOUNDARY_H
 #define FMRB_BOUNDARY_H
@@ -45,6 +52,7 @@ extern "C" {
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
+#define FMRB_BOUNDARY_NONE       (-3)
 
 #if defined(__wasm__)
 #define FMRB_IMPORT(name) __attribute__((import_module("fmrb"), import_name(name)))
@@ -68,6 +76,13 @@ typedef struct __attribute__((packed)) {
 #define <%= f.choice_const(p, v, api: true) %> <%= i %>
 <% end -%>
 <% end -%>
+<% if f.ret.is_a?(Ty) && f.ret.kind == :choice -%>
+
+/** <%= f.ruby_sig %>: the choices of the result (a Symbol in Ruby) */
+<% f.ret.values.each_with_index do |v, i| -%>
+#define <%= "#{f.api}_#{v}".upcase %> <%= i %>
+<% end -%>
+<% end -%>
 <% end -%>
 <% funcs.each do |f| -%>
 
@@ -86,16 +101,56 @@ typedef struct __attribute__((packed)) {
 <% elsif f.ret.is_a?(Ty) -%>
  * @return the <%= f.ret.kind == :bool ? 'answer, 1 or 0' : 'value' %><%= f.wide_ret? ? ' (64 bits)' : '' %>
 <% end -%>
+<% if f.nilable? -%>
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+<% end -%>
  */
 FMRB_IMPORT("<%= f.import_name %>")
 <%= f.ret_ctype %> <%= f.api %>(<%= f.c_args(api: true).empty? ? 'void' : f.c_args(api: true) %>);
 <% end -%>
 <% unless hooks.empty? -%>
 
-/* ---- what the app exports (the hooks; the firmware calls them) ---- */
+/* ---- what the app exports (the hooks; the firmware calls them) ----------
+ *
+ * The firmware's app shell runs the app: it makes the window and draws its
+ * frame, waits for input and calls these. An app exports the ones it wants
+ * (export_name is the function's own name); one of on_create, on_update and
+ * on_event at least. They are Ruby's FmrbApp hooks with the same names.
+ */
+#if defined(__wasm__)
+#define FMRB_EXPORT(name) __attribute__((export_name(name)))
+#else
+#define FMRB_EXPORT(name)
+#endif
+<% hook_records.each do |r| -%>
+<% r.fields.select { |f| f.ty.kind == :choice }.each do |f| -%>
+
+/** <%= r.klass %>::<%= r.name %>.<%= f.name %>: the choices (a Symbol in Ruby) */
+<% f.ty.values.each_with_index do |v, i| -%>
+#define <%= "#{r.api_cname.delete_suffix('_t')}_#{f.name}_#{v}".upcase %> <%= i %>
+<% end -%>
+<% end -%>
+
+/** <%= r.klass %>::<%= r.name %> (<%= r.size %> bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+<% r.fields.each do |f| -%>
+    <%= f.ty.ctype %> <%= f.name %>;<%= f.ty.kind == :choice ? '  /* one of the choices above */' : '' %>
+<% end -%>
+} <%= r.api_cname %>;
+<% end -%>
 <% hooks.each do |h| -%>
 
-/** <%= h.doc_ja %> / <%= h.doc_en %> (<%= h.klass %>#<%= h.method %>) */
+/**
+ * <%= h.doc_ja %>
+ * <%= h.doc_en %>
+ *
+ * Ruby: <%= h.klass %>#<%= h.method %>
+<% if h.ret == 'int32_t' -%>
+ * @return the ms until the next call; negative for the default (330)
+<% end -%>
+ */
+FMRB_EXPORT("<%= h.method %>")
+<%= h.ret %> <%= h.method %>(<%= h.c_args.empty? ? 'void' : h.c_args %>);
 <% end -%>
 <% end -%>
 

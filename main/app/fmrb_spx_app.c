@@ -38,6 +38,7 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #include "status_led.h"
 #include "fmrb_platform_sys.h"
 #include "fmrb_clipboard.h"
+#include "fmrb_gen/fmrb_boundary.h"
 
 #ifdef CONFIG_IDF_TARGET_LINUX
 #include <sys/sysinfo.h>
@@ -391,36 +392,6 @@ int fmrb_spx_app_pool_used(void)
     return (int)used;
 }
 
-const char *fmrb_spx_app_sys_pool_info(void)
-{
-    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_SYSPOOL_RECORD_SIZE];
-    *sp_ctx_ffi_bin_len() = 0;
-    memset(buf, 0, sizeof(buf));
-
-    fmrb_pool_stats_t stats;
-    if (fmrb_sys_mem_get_stats(&stats) == 0) {
-        put_u32(buf + 0, (uint32_t)stats.total_size);
-        put_u32(buf + 4, (uint32_t)stats.used_size);
-        put_u32(buf + 8, (uint32_t)stats.free_size);
-        put_u32(buf + 12, (uint32_t)stats.used_blocks);
-        put_u32(buf + 16, (uint32_t)stats.free_blocks);
-    }
-    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_SYSPOOL_RECORD_SIZE;
-    return (const char *)buf;
-}
-
-const char *fmrb_spx_app_gfx_stats(void)
-{
-    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_GFXSTATS_RECORD_SIZE];
-    *sp_ctx_ffi_bin_len() = 0;
-    uint32_t cmds = 0, presents = 0;
-    fmrb_host_get_gfx_counters(&cmds, &presents);
-    put_u32(buf + 0, cmds);
-    put_u32(buf + 4, presents);
-    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_GFXSTATS_RECORD_SIZE;
-    return (const char *)buf;
-}
-
 const char *fmrb_spx_app_last_error(void)
 {
     FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_LASTERR_RECORD_SIZE];
@@ -495,21 +466,6 @@ const char *fmrb_spx_app_config(const char *section, int len)
     return (const char *)buf;
 }
 
-/* The UI language from system_conf ("en" / "ja").
- *
- * FmrbConst is generated at Spinel compile time, so its LANGUAGE is a build
- * constant -- but the language is a setting the user changes from the Config
- * app and a reboot applies. A Spinel program has to ask for it at run time,
- * which is what this is for. The mruby side reads the same field through
- * FmrbConst::LANGUAGE, populated per VM at startup. */
-const char *fmrb_spx_app_language(void)
-{
-    const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
-    const char *lang = (cfg && cfg->language[0]) ? cfg->language : "en";
-    *sp_ctx_ffi_bin_len() = (int)strlen(lang);
-    return lang;
-}
-
 /* The machine's clipboard (L12a): its text in pieces, as the boundary's
  * Spinel adaptor would cut a 64 KB text at 256 bytes (FmrbApp.clipboard_raw
  * in fmrb_app_base_spinel.rb; set_clipboard and clipboard_gen are the
@@ -551,6 +507,54 @@ const char *fmrb_spx_app_clipboard_chunk(int off, int limit)
     return buf;
 }
 
+/* FmrbFile.read and list_raw in pieces (fmrb_spx_app.h). The pieces of a
+ * file are read from where they start; a listing is made whole each time
+ * (a directory is short) and the piece copied out of it. */
+int fmrb_spx_file_length(int kind, const char *path, int len)
+{
+    int64_t n = kind == 0 ? fmrb_bnd_file_size(path, len)
+                          : fmrb_bnd_file_list_raw(path, len, NULL, 0);
+    if (n < 0 || n > INT32_MAX) return -1;
+    return (int)n;
+}
+
+const char *fmrb_spx_file_chunk(int kind, const char *path, int len, int off)
+{
+    FMRB_SPX_BSS_ATTR static char buf[FMRB_SPX_APP_CLIP_CHUNK];
+    *sp_ctx_ffi_bin_len() = 0;
+    if (off < 0 || len <= 0 || len >= FMRB_MAX_PATH_LEN) return "";
+    char p[FMRB_MAX_PATH_LEN];
+    memcpy(p, path, (size_t)len);
+    p[len] = '\0';
+    size_t got = 0;
+    if (kind == 0) {
+        fmrb_file_t f = NULL;
+        if (fmrb_hal_file_open(p, FMRB_O_RDONLY, &f) != FMRB_OK) return "";
+        if (fmrb_hal_file_seek(f, off, FMRB_SEEK_SET) == FMRB_OK) {
+            while (got < sizeof(buf)) {
+                size_t n = 0;
+                if (fmrb_hal_file_read(f, buf + got, sizeof(buf) - got, &n) != FMRB_OK || n == 0) break;
+                got += n;
+            }
+        }
+        fmrb_hal_file_close(f);
+    } else {
+        int32_t total = fmrb_bnd_file_list_raw(path, len, NULL, 0);
+        if (total <= off) return "";
+        char *all = (char *)fmrb_sys_malloc((size_t)total);
+        if (!all) return "";
+        int32_t n = fmrb_bnd_file_list_raw(path, len, all, total);
+        if (n > total) n = total;
+        if (n > off) {
+            got = (size_t)(n - off) < sizeof(buf) ? (size_t)(n - off) : sizeof(buf);
+            memcpy(buf, all + off, got);
+        }
+        fmrb_sys_free(all);
+    }
+    *sp_ctx_ffi_bin_len() = (int)got;
+    return buf;
+}
+
 /* What remote desktop video is going out right now: 0 none / 1 MJPEG /
  * 2 H.264. Polled at 1Hz by the desktop's wifi icon. */
 #if defined(FMRB_HAS_WIFI) && defined(CONFIG_IDF_TARGET_ESP32P4)
@@ -574,28 +578,6 @@ int fmrb_spx_app_set_kana_mode(int mode)
     }
     fmrb_host_set_kana_mode((uint8_t)mode);
     return 0;
-}
-
-/* FmrbApp.set_text_cursor(x, y, h): where the app's text cursor is, for a
- * PC's IME (fmrb_host_set_text_cursor; nothing on the devices). */
-int fmrb_spx_app_set_text_cursor(int x, int y, int h)
-{
-    fmrb_host_set_text_cursor(x, y, h);
-    return 0;
-}
-
-/* FmrbApp.path_read_only?(path): whether the entry at a virtual path cannot be
- * deleted or renamed (fmrb_hal_file_entry_is_read_only). Same call as the
- * mruby binding. */
-int fmrb_spx_app_path_read_only(const char *path, int len)
-{
-    char vpath[256];
-    if (!path || len <= 0 || len >= (int)sizeof(vpath)) {
-        return 0;
-    }
-    memcpy(vpath, path, (size_t)len);
-    vpath[len] = '\0';
-    return fmrb_hal_file_entry_is_read_only(vpath) ? 1 : 0;
 }
 
 /* FmrbApp.app_meta(path): an app's .app.toml and "#---fmrb" comment merged
@@ -677,23 +659,10 @@ const char *fmrb_spx_app_move(int pid, const char *to, int len, int hold_ms)
     return why;
 }
 
-/* The machine's mute and volume (doc/reference/audio_output.md): FmrbApp.audio_muted?,
- * set_audio_mute, audio_volume and set_audio_volume. Same calls as the mruby
- * binding. */
-int fmrb_spx_app_audio_muted(void)
-{
-    return fmrb_host_audio_muted() ? 1 : 0;
-}
-
 int fmrb_spx_app_set_audio_mute(int on)
 {
     fmrb_host_set_audio_mute(on != 0);
     return 0;
-}
-
-int fmrb_spx_app_audio_volume(void)
-{
-    return fmrb_host_audio_volume();
 }
 
 int fmrb_spx_app_set_audio_volume(int step)
@@ -792,13 +761,6 @@ int fmrb_spx_app_power(int action)
     return fmrb_platform_sys_power((fmrb_sys_power_t)bit) == FMRB_OK ? 1 : 0;
 }
 
-int fmrb_spx_app_battery(void)
-{
-    fmrb_sys_battery_t b;
-    if (!fmrb_platform_sys_battery(&b)) return -1;
-    return (int)b.percent | (b.charging ? 0x100 : 0);
-}
-
 int fmrb_spx_app_ble_start(void)
 {
     /* Manual BLE start (ble_auto_start=false). Retro built-in radio only:
@@ -846,11 +808,6 @@ int fmrb_spx_app_ble_settings_left(void)
 #endif
 }
 
-int fmrb_spx_app_proc_generation(void)
-{
-    return (int)fmrb_app_proc_generation();
-}
-
 const char *fmrb_spx_app_bt_mac(void)
 {
     /* FmrbConst.bt_mac: asked at call time, not frozen at boot, because on the
@@ -868,13 +825,6 @@ const char *fmrb_spx_app_bt_mac(void)
 }
 
 /* ---- class: network / usb ----------------------------------------------- */
-
-int fmrb_spx_app_wifi_connected(void)
-{
-    /* FmrbApp.wifi_connected?: the OS services' answer (fmrb_platform_sys.h),
-       the same as the mruby binding's. */
-    return fmrb_platform_sys_net_connected() ? 1 : 0;
-}
 
 const char *fmrb_spx_app_wifi_info(void)
 {
@@ -1031,80 +981,14 @@ static bool spx_cstr(char *dst, size_t cap, const char *src, int len)
     return true;
 }
 
-/* FmrbApp.pid: the caller's process id, -1 outside an app. */
-int fmrb_spx_app_pid(void)
-{
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    return ctx ? (int)ctx->app_id : -1;
-}
-
-/* FmrbApp.script_path: the file the app was started from ("" built in). */
-const char *fmrb_spx_app_script_path(void)
-{
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    const char *p = ctx ? ctx->filepath : "";
-    *sp_ctx_ffi_bin_len() = (int)strlen(p);
-    return p;
-}
-
 #if defined(FMRB_PLATFORM_WASM)
 int64_t fmrb_wasm_storage_free(void);
 #endif
-
-/* FmrbApp.free_bytes(path): bytes that can still be written where path lives,
- * as an 8-byte :binstr (low u32, high u32), "" when unknown (Ruby nil). */
-const char *fmrb_spx_app_free_bytes(const char *path, int len)
-{
-    FMRB_SPX_BSS_ATTR static uint8_t buf[8];
-    char p[FMRB_MAX_PATH_LEN];
-    *sp_ctx_ffi_bin_len() = 0;
-    if (!spx_cstr(p, sizeof(p), path, len)) return "";
-    int64_t room = -1;
-    size_t mlen = strlen(FMRB_TMPFS_MOUNT);
-    if (strncmp(p, FMRB_TMPFS_MOUNT, mlen) == 0 && (p[mlen] == '\0' || p[mlen] == '/')) {
-        size_t used = 0, cap = 0;
-        fmrb_tmpfs_usage(&used, &cap);
-        room = (int64_t)(cap > used ? cap - used : 0);
-    } else {
-#if defined(FMRB_PLATFORM_WASM)
-        if (strncmp(p, "/home", 5) == 0 && (p[5] == '\0' || p[5] == '/')) {
-            room = fmrb_wasm_storage_free();
-        }
-#else
-        uint64_t total = 0, free_b = 0;
-        if (fmrb_hal_file_statfs(p, &total, &free_b) == FMRB_OK && total != 0) {
-            room = (int64_t)free_b;
-        }
-#endif
-    }
-    if (room < 0) return "";
-    put_u32(buf, (uint32_t)((uint64_t)room & 0xFFFFFFFFu));
-    put_u32(buf + 4, (uint32_t)((uint64_t)room >> 32));
-    *sp_ctx_ffi_bin_len() = 8;
-    return (const char *)buf;
-}
-
-/* FmrbApp.notify(summary, body): post a notice (the native program's list). */
-int fmrb_spx_app_notify(const char *summary, int slen, const char *body, int blen)
-{
-    char s[128];
-    char b[256];
-    if (!spx_cstr(s, sizeof(s), summary, slen)) return 0;
-    if (!spx_cstr(b, sizeof(b), body, blen)) return 0;
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    const char *app = ctx ? ctx->app_name : "";
-    return fmrb_platform_sys_notice_post(app, s, b, -1) == FMRB_OK ? 1 : 0;
-}
 
 /* FmrbApp.linux_* : Linux commands in a terminal (fmrb_platform_sys.h). */
 #define SPX_LINUX_READ_CHUNK 4096
 FMRB_SPX_BSS_ATTR static char s_linux_why[160];
 FMRB_SPX_BSS_ATTR static int s_linux_read_ended;
-
-int fmrb_spx_app_linux_available(void)
-{
-    return fmrb_platform_sys_proc_available() ? 1 : 0;
-}
 
 int fmrb_spx_app_linux_start(int has_cmd, const char *cmd, int clen, const char *cwd, int dlen,
                              int cols, int rows)

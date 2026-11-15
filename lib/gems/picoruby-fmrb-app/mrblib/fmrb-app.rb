@@ -2,14 +2,24 @@
 # User app should inherit this class and override lifecycle methods.
 
 class FmrbApp
-  # UI language ("en" / "ja"). Here it is simply the constant const.c filled in
-  # from system_conf when this VM started; the Spinel build backs the same call
-  # with an FFI read, because its constants are baked at compile time. FmrbI18n
-  # asks through this so both engines see the setting the user chose.
-  def self.language
-    FmrbConst::LANGUAGE.to_s
-  rescue
-    "en"
+  # FmrbApp is on the app boundary (sig/fmrb_app.rbs, doc/app_boundary): the
+  # gem's C registers the boundary's methods first (language, pid, the
+  # requests ...). The readers of the window and stop, draw_window_frame and
+  # clear_user_area_raw are defined again below: this base keeps that state
+  # itself, and the C bodies serve the engines on the C app shell.
+
+  # The machine's notice (the boundary's notify_raw), body left out is "".
+  def self.notify(summary, body = "")
+    notify_raw(summary.to_s, body.to_s)
+  end
+
+  # FmrbFile's, by the names apps have used (sig/fmrb_file.rbs).
+  def self.path_read_only?(path)
+    FmrbFile.path_read_only?(path)
+  end
+
+  def self.free_bytes(path)
+    FmrbFile.free_bytes(path)
   end
 
   # The machine's clipboard (doc/linux_native L12a): the text every app
@@ -388,6 +398,11 @@ class FmrbApp
     draw_window_frame unless @_bg_canvas || @_fullscreen
     _invalidate_attached_uis
     nil
+  end
+
+  # The boundary's simple form: a negative color is the default.
+  def clear_user_area_raw(color)
+    color < 0 ? clear_user_area : clear_user_area(color)
   end
 
   # FmrbUI calls this on itself when it is created, so clear_user_area can put
@@ -873,23 +888,8 @@ class FmrbApp
   # and the desktop draws it on its overlay. movable: the app can be written
   # to an image (movable = true in .app.toml, or started from one), which is
   # what Send to needs.
-  def request_window_menu(x, y)
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      {"cmd" => "window_menu", "x" => x.to_i, "y" => y.to_i, "movable" => _window_movable?})
-  end
-
-  def _window_movable?
-    g = @gfx
-    return false unless g && g.respond_to?(:_checkpoint_keep?)
-    g._checkpoint_keep? ? true : false
-  end
-
-  # Ask the desktop to put up "Close <this app>?". Yes comes back as the
-  # quit request (on_quit_request); No or a click outside does nothing.
-  def request_close_confirm
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      {"cmd" => "close_confirm"})
-  end
+  # request_window_menu(x, y) and request_close_confirm ("Close <this app>?";
+  # Yes comes back as on_quit_request) are the boundary's (C).
 
   # ---- hit shape (frameless windows, doc/frameless_window/ W3b) ----
   # A frameless window takes a press only inside the shape it declares here;
@@ -1020,11 +1020,6 @@ class FmrbApp
 
   def on_resize(new_width, new_height)
     # Called from C
-  end
-
-  def request_reload
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      {"cmd" => "reload_confirm"})
   end
 
   # Internal methods
@@ -1194,9 +1189,10 @@ class FmrbApp
       {"cmd" => "publish", "topic" => topic, "data" => data})
   end
 
+  # request_reload, request_fullscreen(on) and the _raw forms of the two
+  # below are the boundary's (C).
   def request_file_select(mode = "open")
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "file_select", "mode" => mode })
+    request_file_select_raw(mode)
   end
 
   # Ask the kernel to run a file (.rb / .bas) as an app.
@@ -1207,8 +1203,7 @@ class FmrbApp
   # {"cmd" => "run_result", "path" => ..., "pid" => ... (nil on failure)}.
   # Paths are limited to /app and /home by the kernel.
   def request_run(path, prev_pid = nil)
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
+    request_run_raw(path, prev_pid || -1)
   end
 
   # Ask for this app's own checkpoint image (doc/checkpoint): the kernel asks
@@ -1235,15 +1230,9 @@ class FmrbApp
     FmrbApp.move(FmrbApp.pid, to, hold: hold)
   end
 
-  # Ask the kernel to switch this app between windowed and fullscreen. The VM
-  # keeps running, so app state survives; the answer arrives as on_resize with
-  # @_fullscreen and the user area already updated.
-  def request_fullscreen(on)
-    cmd = on ? "enter_fullscreen" : "exit_fullscreen"
-    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
-      { "cmd" => cmd })
-  end
-
+  # request_fullscreen(on) is the boundary's (C): the VM keeps running, and
+  # the answer arrives as on_resize with @_fullscreen and the user area
+  # already updated.
   def toggle_fullscreen
     request_fullscreen(!@_fullscreen)
   end

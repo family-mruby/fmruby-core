@@ -72,7 +72,18 @@ end
   定数は `FmrbAudio.MAIN`・`SUB`・`CH_PULSE1`…・`NSF_ENDED`…。
 - ログ: `Log.info(msg)`・`debug`・`warn`・`error` (行の頭にアプリの名前)。
 - クリップボード: `FmrbApp.clipboard([limit])`・`FmrbApp.set_clipboard(text)`・`FmrbApp.clipboard_gen()`。
-- 時計: `FmrbApp.uptime_us()` (起動からの µs)・`FmrbApp.wallclock()` (`{year=, month=, ...}` か nil)。
+- 時計: `FmrbApp.uptime_us()` (起動からの µs)・`uptime_ms()`・`FmrbApp.wallclock()` (`{year=, month=, ...}` か nil)。
+- アプリと Window (本体との境界、`sig/fmrb_app.rbs`。Ruby の `FmrbApp` のメソッドが `FmrbApp.` の関数になる。
+  Ruby の `fullscreen?` などは `?` を落とした名前): `FmrbApp.name()`・`pos_x()`・`pos_y()`・`fullscreen()`・
+  `frameless()`・`resizable()`・`rounded_corners()`・`platform()` (`"esp32"` か `"linux"`)・`theme_bg()` など、
+  `FmrbApp.request_reload()`・`request_close_confirm()`・`request_window_menu(x, y)`・`request_fullscreen(on)`・
+  `toggle_fullscreen()`・`request_file_select([mode])`・`request_run(path[, prev_pid])`・`set_window_position(x, y)`、
+  機械の様子 `FmrbApp.pid()`・`language()`・`script_path()`・`ps_gen()`・`audio_volume()`・`audio_muted()`・
+  `wifi_connected()`・`battery_level()` (nil もある)・`battery_charging()`・`sys_pool_info()`・`gfx_stats()`・
+  `crt_state()`・`linux_available()`・`notify(summary[, body])`・`set_text_cursor(x, y, h)`。
+- ファイル: `FmrbFile.read(path)` (無ければ nil)・`write(path, data)`・`append`・`exist(path)`・`size` (無ければ nil)・
+  `delete`・`mkdir`・`list(dir)` (名前の表、ディレクトリは後ろに `/`)・`path_read_only`・`free_bytes`。Lua の
+  標準の `io` も使える。
 
 ## 入力 (`ev`)
 

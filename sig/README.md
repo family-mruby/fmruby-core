@@ -122,7 +122,7 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   変数 (`@gfx` など) はこれを書いておくと補完が効く。
 - **ドメインごとにファイルを分ける** (`fmrb_app.rbs` / `fmrb_gfx.rbs` /
   `fmrb_sprite.rbs` / `fmrb_tile.rbs` / `fmrb_audio.rbs` / `fmrb_midi.rbs` /
-  `fmrb_misc.rbs` / `fmrb_p5.rbs`)。
+  `fmrb_misc.rbs` / `fmrb_p5.rbs` / `fmrb_file.rbs`)。
 - **上流由来の 15 ファイルは変更禁止**: `array` `class` `false_class`
   `float` `hash` `integer` `kernel` `nil_class` `object` `proc` `range`
   `string` `symbol` `true_class` `untyped`。picoruby-ti の example/rbs の
@@ -152,17 +152,31 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   タグを先に渡す 2 引数の形も読む)。例外も印は同じ internal で、道具はどちらで
   書いたかを区別しない。
 - 受け手の番号: インスタンスメソッドは第 1 引数に受け手の番号を取る
-  (FmrbGfx は描き手)。`FmrbApp` と `FmrbAudio` のインスタンスメソッドは取らない
-  (受け手は呼んだアプリ。道具の `NO_RECEIVER`)。Lua・Python では、それでも
-  オブジェクトのメソッドとして呼ぶ (`audio:note_off(0)`)。
+  (FmrbGfx は描き手、FmrbAudio は今は 0)。`FmrbApp` のインスタンスメソッドは
+  取らない (受け手は呼んだアプリ。道具の `NO_RECEIVER`)。Lua では `FmrbApp` の
+  表の関数 (`FmrbApp.window_width()`)、Python では基底クラスのメソッドになる。
 - 書き込みのメソッド (`main_volume=`) は、C と他の言語では `set_main_volume`。
-- `FmrbApp` はクラスの印を W4b-3 で付ける。それまでは道具の `STAGED` に
-  並べたメソッド (クリップボードと時計) だけが境界に載る。
+  問いのメソッド (`exist?`) は、C と他の言語では `?` を落とした名前
+  (`fmrb_file_exist`、Python の `ev_ctrl` と同じ)。落とした名前が同じクラスで
+  ぶつかると道具が止まる。
+- **FmrbApp の Window の状態を読むメソッドと `stop`・`draw_window_frame`・
+  `clear_user_area_raw`** は、境界に載せたうえで、Ruby (mruby・Spinel) と
+  MicroPython では基底クラスが自分の値で答える (mrblib は gem の C の後に読まれる
+  ので、同じ名前の Ruby の定義が生成した C の登録を上書きする)。C の実体は C の殻
+  (Lua・wasm) のためのもの。Ruby の基底が持つ状態 (`@window_width` など) は今の
+  まま。
+- アプリが書くメソッド (`on_create` など) は `%a{fmrb.hook}`。C の殻が呼ぶもの
+  だけに付け、C のヘッダの終わりに wasm のアプリが公開する関数の形を出す
+  (`on_update` は C では次までの ms を返す。`on_event` は記録 `event` を受ける。
+  記録 `event` の `type` は Symbol の選択肢で、C では番号)。Ruby だけが呼ぶフック
+  (`on_checkpoint` など) は internal。
 - 型の規則: `Integer` は int32、幅は `sig/fmrb_types.rbs` の別名
   (`int16`・`uint8`・`float32`・`bin` など、ROS 2 と同じ名前) で書く。Symbol の
   選択肢はリテラルの型 (`:default | :ja`)。記録は record 型の別名
   (`type image_info = { id: uint16, ... }`)、要素の決まった配列は
-  `Array[記録]`。結果に nil があり得るのは記録だけ (`image_info?`)。整数の
+  `Array[記録]`。結果に nil があり得るのは記録 (`image_info?`。C は 0) と、整数・
+  文字列・バイト列 (`Integer?`・`int64?`・`String?`・`bin?`。C は
+  `FMRB_BOUNDARY_NONE` (-3) を返し、mruby・Lua は nil、Python は None)。整数の
   結果は `Integer` (int32) か `int64` (時計の µs など。C は `int64_t` を返す)。
   扱えない型を書くと、道具がメソッドの名前を出して止まる。
 - 載せたメソッドには本体の C の実体 (`main/app/fmrb_boundary_*.c` の

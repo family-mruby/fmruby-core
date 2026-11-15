@@ -17,7 +17,7 @@
         py << "    def #{f.name}(#{names.join(', ')}):"
         call = "_fmrb.#{f.import_name}(#{names.join(', ')})"
       else
-        # A method without a receiver number (FmrbAudio) does not pass self.
+        # A method without a receiver number (FmrbApp's) does not pass self.
         py << "    def #{f.name}(#{(['self'] + names).join(', ')}):"
         call = "_fmrb.#{f.import_name}(#{((f.recv ? ['self'] : []) + names).join(', ')})"
       end

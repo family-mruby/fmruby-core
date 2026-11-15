@@ -152,6 +152,11 @@ static mp_obj_t fmrb_gen_mp_<%= f.import_name %>(size_t n_args, const mp_obj_t *
 <% ct = f.ret.kind == :bin ? 'uint8_t' : 'char' -%>
     char buf[128];
     int32_t ret = <%= f.flat %>(<%= (args + ["(#{ct} *)buf", 'sizeof(buf)']).join(', ') %>);
+<% if f.nilable? -%>
+    if (ret == FMRB_BOUNDARY_NONE) {
+        return mp_const_none;
+    }
+<% end -%>
     fmrb_gen_mp_check(ret);
     if (ret <= (int32_t)sizeof(buf)) {
         return <%= f.ret.kind == :bin ? 'mp_obj_new_bytes((const byte *)buf, ret)' : 'mp_obj_new_str(buf, ret)' %>;
@@ -159,11 +164,22 @@ static mp_obj_t fmrb_gen_mp_<%= f.import_name %>(size_t n_args, const mp_obj_t *
     vstr_t vs;
     vstr_init_len(&vs, ret);
     int32_t got = <%= f.flat %>(<%= (args + ["(#{ct} *)vs.buf", 'ret']).join(', ') %>);
+<% if f.nilable? -%>
+    if (got == FMRB_BOUNDARY_NONE) {
+        vstr_clear(&vs);
+        return mp_const_none;
+    }
+<% end -%>
     fmrb_gen_mp_check(got);
     vs.len = (size_t)(got < ret ? got : ret);
     return <%= f.ret.kind == :bin ? 'mp_obj_new_bytes_from_vstr(&vs)' : 'mp_obj_new_str_from_vstr(&vs)' %>;
 <% else -%>
     <%= f.ret_ctype %> ret = <%= f.flat %>(<%= args.join(",\n        ") %>);
+<% if f.nilable? -%>
+    if (ret == FMRB_BOUNDARY_NONE) {
+        return mp_const_none;
+    }
+<% end -%>
     fmrb_gen_mp_check(<%= f.wide_ret? ? '(int32_t)(ret < 0 ? ret : 0)' : 'ret' %>);
 <% if f.ret == :self || f.ret == :void -%>
     return mp_const_none;
@@ -174,8 +190,7 @@ static mp_obj_t fmrb_gen_mp_<%= f.import_name %>(size_t n_args, const mp_obj_t *
     const char *name = ret_names[ret < <%= f.ret.values.size %> ? ret : 0];
     return mp_obj_new_str(name, strlen(name));
 <% elsif f.wide_ret? -%>
-    /* A small int when it fits; a bigger one needs the long ints this build
-       may not have (then OverflowError). */
+    /* A small int when it fits, else a long int (MICROPY_LONGINT_IMPL). */
     if (MP_SMALL_INT_FITS(ret)) {
         return MP_OBJ_NEW_SMALL_INT((mp_int_t)ret);
     }
