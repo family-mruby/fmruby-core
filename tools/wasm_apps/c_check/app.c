@@ -3,7 +3,10 @@
  * decisions 4, 5 and 12). It calls the generated SDK header's functions
  * directly, so a fault here is the firmware's side, not an SDK's. It draws,
  * logs, reads the clock, checks that a pointer outside its memory is
- * refused (FMRB_BOUNDARY_ERR_ARG) and counts its updates and events.
+ * refused (FMRB_BOUNDARY_ERR_ARG), counts its updates and events and shows
+ * the last event's record (on_event takes fmrb_app_event_t *). It reads the
+ * window's user area with the FmrbApp functions that need the app shell,
+ * and q ends it with fmrb_app_stop().
  * Nothing it calls changes the machine's settings (no volume, no clipboard).
  * Built by tools/wasm_apps/build.rb (zig cc) into flash/app/test.
  */
@@ -13,6 +16,7 @@
 #define EXPORT(name) __attribute__((export_name(name)))
 
 static int32_t frames, events, bad_ptr;
+static fmrb_app_event_t last;
 
 static void log_str(const char *s)
 {
@@ -53,6 +57,19 @@ EXPORT("on_update") int32_t on_update(void)
     fmrb_gfx_draw_text_raw(0, 2, 32, line,
                            fmt(line, "up s ", (int32_t)(fmrb_app_uptime_us() / 1000000)), 0xff, -1, 0);
     fmrb_gfx_draw_text_raw(0, 2, 42, line, fmt(line, "bad ptr ", bad_ptr), 0xff, -1, 0);
+    /* The last event: its type, then x, y for the mouse or the character. */
+    int32_t n = fmt(line, "ev ", last.type);
+    if (last.type <= FMRB_APP_EVENT_TYPE_KEY_UP) {
+        n += fmt(line + n, " ch ", last.character);
+    } else {
+        n += fmt(line + n, " x ", last.x);
+        n += fmt(line + n, " y ", last.y);
+    }
+    fmrb_gfx_draw_text_raw(0, 2, 52, line, n, 0xff, -1, 0);
+    /* The shell's user area, read through FmrbApp (needs ctx->shell). */
+    n = fmt(line, "area ", fmrb_app_user_area_width());
+    n += fmt(line + n, "x", fmrb_app_user_area_height());
+    fmrb_gfx_draw_text_raw(0, 2, 62, line, n, 0xff, -1, 0);
     int32_t x = (frames * 3) % (w > 10 ? w - 10 : 1);
     fmrb_gfx_fill_circle(0, x + 5, h - 8, 4, fmrb_gfx_rgb_to_332(255, 160, 0));
     fmrb_gfx_present_raw(0, 0, 0, 0);
@@ -60,13 +77,14 @@ EXPORT("on_update") int32_t on_update(void)
     return 100;
 }
 
-EXPORT("on_event") void on_event(int32_t kind, int32_t x, int32_t y, int32_t button,
-                                  int32_t keycode, int32_t modifier, int32_t character,
-                                  int32_t value)
+EXPORT("on_event") void on_event(const fmrb_app_event_t *ev)
 {
-    (void)kind; (void)x; (void)y; (void)button; (void)keycode; (void)modifier;
-    (void)character; (void)value;
+    last = *ev;
     events++;
+    if (ev->type == FMRB_APP_EVENT_TYPE_KEY_DOWN && ev->character == 'q') {
+        log_str("c_check: q, stopping");
+        fmrb_app_stop();
+    }
 }
 
 EXPORT("on_destroy") void on_destroy(void)
