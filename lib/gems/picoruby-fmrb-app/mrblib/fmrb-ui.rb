@@ -69,6 +69,16 @@ class FmrbUI
   C_HIGHLIGHT  = FmrbConst::THEME_HIGHLIGHT
   C_BORDER     = FmrbConst::THEME_BORDER
   C_BUTTON     = FmrbConst::THEME_BUTTON
+  # Ink on a C_TEXT_LIGHT ground (the TextField). The theme's text colour is
+  # the ink of the window page, and on a dark page it is light itself: white
+  # on white (dark), bright green on white (cyberpunk). So the page's ink is
+  # kept only when it is dark -- the same brightness test and threshold the
+  # editor uses to tell a dark page (RGB332 weighted 5/9/2, below 45 is
+  # dark) -- and otherwise the field takes C_BUTTON, the ink the kit already
+  # puts on this ground (a pressed Button, a pressed Stepper arrow): every
+  # theme's text_light is its text on the button colour, so the two contrast.
+  C_FIELD_TEXT = (((C_TEXT >> 5) & 7) * 5 + ((C_TEXT >> 2) & 7) * 9 +
+                  (C_TEXT & 3) * 2) < 45 ? C_TEXT : C_BUTTON
 
   # Glyph cell height of the mixed renderer at text size 1 (Font0 and
   # misaki_8 are both 8px). A widget multiplies it by its own text size.
@@ -859,11 +869,11 @@ class FmrbUI
       gfx.fill_rect(@x, @y, @w, @h, C_TEXT_LIGHT)
       gfx.draw_rect(@x, @y, @w, @h, @focused ? C_HIGHLIGHT : C_BORDER)
       ty = @y + (@h - text_h) / 2
-      gfx.draw_text_mixed(@x + 2, ty, @text, C_TEXT)
+      gfx.draw_text_mixed(@x + 2, ty, @text, C_FIELD_TEXT)
       if @focused
         cx = @x + 2 + measure(gfx, @text)
         cx = @x + @w - 2 if cx > @x + @w - 2
-        gfx.draw_line(cx, ty, cx, ty + text_h - 1, C_TEXT)
+        gfx.draw_line(cx, ty, cx, ty + text_h - 1, C_FIELD_TEXT)
       end
       nil
     end
