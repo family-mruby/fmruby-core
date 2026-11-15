@@ -23,8 +23,6 @@ typedef struct {
     int16_t ox, oy;
 } lua_gfx_data;
 
-#define GX(d, x) ((int16_t)((d)->ox + (x)))
-#define GY(d, y) ((int16_t)((d)->oy + (y)))
 
 // The receiver number of the app boundary's FmrbGfx functions
 // (fmrb_boundary_recv.h): the canvas, with this gfx's origin bound for the call.
@@ -38,238 +36,57 @@ static int32_t fmrb_lua_recv_gfx(lua_State *L, int idx)
     return fmrb_gfx_recv_bind(data->canvas_id, data->ox, data->oy);
 }
 
-// FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): fill_rect
+// FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): every method
+// of the class on the app boundary, with Ruby's names and argument order.
 #include "fmrb_gen/fmrb_boundary_lua.inc"
 
-// gfx:drawRect(x, y, w, h, color)
-static int lua_gfx_draw_rect(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x = luaL_checkinteger(L, 2);
-    int y = luaL_checkinteger(L, 3);
-    int w = luaL_checkinteger(L, 4);
-    int h = luaL_checkinteger(L, 5);
-    int color = luaL_checkinteger(L, 6);
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, GX(data, x), GY(data, y),
-                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, false);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "drawRect failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:drawString(text, x, y, color [, bg_color])
-static int lua_gfx_draw_string(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    const char *text = luaL_checkstring(L, 2);
-    int x = luaL_checkinteger(L, 3);
-    int y = luaL_checkinteger(L, 4);
-    int color = luaL_checkinteger(L, 5);
-
-    // Optional background color (6th argument)
-    int bg_color = 0;
-    bool bg_transparent = true;
-    if (lua_gettop(L) >= 6) {
-        bg_color = luaL_checkinteger(L, 6);
-        bg_transparent = false;
-    }
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_text(&cmd, data->canvas_id, GX(data, x), GY(data, y), text,
-                      (fmrb_color_t)color, (fmrb_color_t)bg_color,
-                      bg_transparent, FMRB_FONT_SIZE_MEDIUM, 0);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "drawString failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:present()
-static int lua_gfx_present(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    // Get current app context for window position
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        return luaL_error(L, "No app context available");
-    }
-
-    // Window position comes from the TOML config; 0xFF = no transparency.
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_present(&cmd, data->canvas_id, (int16_t)ctx->window_pos_x,
-                         (int16_t)ctx->window_pos_y, 0xFF);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "present failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:clear(color)
-static int lua_gfx_clear(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int color = luaL_checkinteger(L, 2);
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_clear(&cmd, data->canvas_id, (fmrb_color_t)color);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "clear failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:draw_line(x1, y1, x2, y2, color)
-static int lua_gfx_draw_line(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x1 = luaL_checkinteger(L, 2);
-    int y1 = luaL_checkinteger(L, 3);
-    int x2 = luaL_checkinteger(L, 4);
-    int y2 = luaL_checkinteger(L, 5);
-    int color = luaL_checkinteger(L, 6);
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_line(&cmd, data->canvas_id, GX(data, x1), GY(data, y1),
-                      GX(data, x2), GY(data, y2), (fmrb_color_t)color);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "draw_line failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:fill_round_rect(x, y, w, h, radius, color)
-static int lua_gfx_fill_round_rect(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x = luaL_checkinteger(L, 2);
-    int y = luaL_checkinteger(L, 3);
-    int w = luaL_checkinteger(L, 4);
-    int h = luaL_checkinteger(L, 5);
-    int r = luaL_checkinteger(L, 6);
-    int color = luaL_checkinteger(L, 7);
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_round_rect(&cmd, data->canvas_id, GX(data, x), GY(data, y),
-                            (int16_t)w, (int16_t)h, (int16_t)r,
-                            (fmrb_color_t)color, true);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "fill_round_rect failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:draw_round_rect(x, y, w, h, radius, color)
-static int lua_gfx_draw_round_rect(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x = luaL_checkinteger(L, 2);
-    int y = luaL_checkinteger(L, 3);
-    int w = luaL_checkinteger(L, 4);
-    int h = luaL_checkinteger(L, 5);
-    int r = luaL_checkinteger(L, 6);
-    int color = luaL_checkinteger(L, 7);
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_round_rect(&cmd, data->canvas_id, GX(data, x), GY(data, y),
-                            (int16_t)w, (int16_t)h, (int16_t)r,
-                            (fmrb_color_t)color, false);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "draw_round_rect failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// gfx:fill_circle(x, y, radius, color)
-static int lua_gfx_fill_circle(lua_State* L) {
-    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x = luaL_checkinteger(L, 2);
-    int y = luaL_checkinteger(L, 3);
-    int r = luaL_checkinteger(L, 4);
-    int color = luaL_checkinteger(L, 5);
-
-    if (!data || !data->ctx) {
-        return luaL_error(L, "Graphics not initialized");
-    }
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_circle(&cmd, data->canvas_id, GX(data, x), GY(data, y),
-                        (int16_t)r, (fmrb_color_t)color, true);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        return luaL_error(L, "fill_circle failed: %d", ret);
-    }
-
-    lua_pushvalue(L, 1);  // Return self
-    return 1;
-}
-
-// Method table
 static const luaL_Reg gfx_methods[] = {
     FMRB_GEN_LUA_FmrbGfx_METHODS
-    {"draw_rect", lua_gfx_draw_rect},
-    {"fill_round_rect", lua_gfx_fill_round_rect},
-    {"draw_round_rect", lua_gfx_draw_round_rect},
-    {"draw_line", lua_gfx_draw_line},
-    {"fill_circle", lua_gfx_fill_circle},
-    {"draw_text", lua_gfx_draw_string},
-    {"present", lua_gfx_present},
-    {"clear", lua_gfx_clear},
     {NULL, NULL}
 };
+
+static const luaL_Reg gfx_functions[] = {
+    FMRB_GEN_LUA_FmrbGfx_FUNCTIONS
+    {NULL, NULL}
+};
+
+// The small Lua prelude: the wrappers Ruby has in mrblib (fmrb-gfx.rb) over
+// the *_raw methods, so arguments can be left out the same way. Run once with
+// the FmrbGfx metatable as its argument.
+static const char gfx_prelude[] =
+    "local G = ...\n"
+    "function G:draw_text(x, y, text, color, bg_color, mixed)\n"
+    "  return self:draw_text_raw(x, y, text, color, bg_color or -1, mixed or false)\n"
+    "end\n"
+    "function G:present(x, y)\n"
+    "  if x and y then return self:present_raw(x, y, true) end\n"
+    "  return self:present_raw(0, 0, false)\n"
+    "end\n"
+    "function G:set_font(family, size)\n"
+    "  if family == 'default' then return self:set_font_raw('default', 12) end\n"
+    "  return self:set_font_raw(family, size or 8)\n"
+    "end\n"
+    "function G:set_text_size(size) return self:set_text_size_raw(size) end\n"
+    "function G:draw_image(id, x, y, scale_x, scale_y)\n"
+    "  return self:draw_image_raw(id, x or 0, y or 0, scale_x or 1.0, scale_y or 0.0)\n"
+    "end\n"
+    "function G:draw_tile(id, src_x, src_y, w, h, dst_x, dst_y)\n"
+    "  return self:draw_tile_raw(id, src_x, src_y, w, h, dst_x or 0, dst_y or 0)\n"
+    "end\n"
+    "function G:draw_image_masked(id, mask_id, x, y)\n"
+    "  return self:draw_image_masked_raw(id, mask_id, x or 0, y or 0)\n"
+    "end\n"
+    "function G:sync_file(path, dest) return self:sync_file_raw(path, dest or path) end\n"
+    "function G:transfer_file(path, dest) return self:transfer_file_raw(path, dest or path) end\n"
+    "function G:set_composite_regions(regions)\n"
+    "  local list = {}\n"
+    "  for i, r in ipairs(regions or {}) do\n"
+    "    local dx, dy = r.dst_x or 0, r.dst_y or 0\n"
+    "    list[i] = { src_x = r.src_x or dx, src_y = r.src_y or dy, dst_x = dx, dst_y = dy,\n"
+    "                w = r.w or 0, h = r.h or 0, transparent = r.transparent and true or false }\n"
+    "  end\n"
+    "  return self:set_composite_regions_raw(list)\n"
+    "end\n";
 
 // FmrbApp.sleep(ms) - Sleep for specified milliseconds
 static int lua_app_sleep(lua_State* L) {
@@ -306,9 +123,51 @@ static int lua_app_draw_window_frame(lua_State* L) {
     return 0;
 }
 
+// The layout the shell gave last (fmrb_lua_gfx_layout), kept in the registry.
+static const fmrb_shell_layout_t *app_layout(lua_State* L)
+{
+    lua_getfield(L, LUA_REGISTRYINDEX, "fmrb.layout");
+    const fmrb_shell_layout_t *layout = (const fmrb_shell_layout_t *)lua_touserdata(L, -1);
+    lua_pop(L, 1);
+    if (!layout) {
+        luaL_error(L, "no window layout yet");
+    }
+    return layout;
+}
+
+// FmrbApp.user_area_width() and the rest: the sizes as they are now (the
+// shell changes them on a resize), as functions like the other languages'.
+static int lua_app_user_area_width(lua_State* L)
+{
+    lua_pushinteger(L, app_layout(L)->area_w);
+    return 1;
+}
+
+static int lua_app_user_area_height(lua_State* L)
+{
+    lua_pushinteger(L, app_layout(L)->area_h);
+    return 1;
+}
+
+static int lua_app_window_width(lua_State* L)
+{
+    lua_pushinteger(L, app_layout(L)->window_w);
+    return 1;
+}
+
+static int lua_app_window_height(lua_State* L)
+{
+    lua_pushinteger(L, app_layout(L)->window_h);
+    return 1;
+}
+
 // FmrbApp table with helper functions
 static const luaL_Reg app_functions[] = {
     {"sleep", lua_app_sleep},
+    {"user_area_width", lua_app_user_area_width},
+    {"user_area_height", lua_app_user_area_height},
+    {"window_width", lua_app_window_width},
+    {"window_height", lua_app_window_height},
     {"stop", lua_app_stop},
     {"clear_user_area", lua_app_clear_user_area},
     {"draw_window_frame", lua_app_draw_window_frame},
@@ -324,11 +183,22 @@ void fmrb_lua_register_gfx(lua_State* L) {
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
     luaL_setfuncs(L, gfx_methods, 0);
+    if (luaL_loadbufferx(L, gfx_prelude, sizeof(gfx_prelude) - 1, "=fmrb_gfx", "t") != LUA_OK) {
+        FMRB_LOGE(TAG, "gfx prelude: %s", lua_tostring(L, -1));
+        lua_pop(L, 1);
+    } else {
+        lua_pushvalue(L, -2);
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+            FMRB_LOGE(TAG, "gfx prelude: %s", lua_tostring(L, -1));
+            lua_pop(L, 1);
+        }
+    }
     lua_pop(L, 1);
 
-    // Create FmrbGfx global table (colour constants; the drawer itself is
-    // the global gfx the shell's layout makes)
+    // Create FmrbGfx global table (colour constants and the class's own
+    // functions; the drawer itself is the global gfx the shell's layout makes)
     lua_newtable(L);
+    luaL_setfuncs(L, gfx_functions, 0);
 
     // Add color constants (matching mruby API)
     lua_pushinteger(L, 0x00);  // Black
@@ -354,17 +224,14 @@ void fmrb_lua_register_gfx(lua_State* L) {
     lua_newtable(L);
     luaL_setfuncs(L, app_functions, 0);
 
-    // Add window size global variables (will be set by C code)
+    // The sizes are functions (user_area_width() ...), read from the layout
+    // the shell gives: zero until it gives one.
+    fmrb_shell_layout_t *layout = (fmrb_shell_layout_t *)lua_newuserdatauv(L, sizeof(*layout), 0);
+    memset(layout, 0, sizeof(*layout));
+    layout->canvas = -1;
+    lua_setfield(L, LUA_REGISTRYINDEX, "fmrb.layout");
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (ctx) {
-        lua_pushinteger(L, ctx->window_width);
-        lua_setfield(L, -2, "WINDOW_WIDTH");
-        lua_pushinteger(L, ctx->window_height);
-        lua_setfield(L, -2, "WINDOW_HEIGHT");
-        lua_pushinteger(L, ctx->window_width);
-        lua_setfield(L, -2, "user_area_width");
-        lua_pushinteger(L, ctx->window_height);
-        lua_setfield(L, -2, "user_area_height");
         lua_pushboolean(L, ctx->headless);
         lua_setfield(L, -2, "HEADLESS");
     }
@@ -419,16 +286,10 @@ void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout)
         data->oy = layout->area_y;
     }
 
-    lua_getglobal(L, "FmrbApp");
-    if (lua_istable(L, -1)) {
-        lua_pushinteger(L, layout->window_w);
-        lua_setfield(L, -2, "WINDOW_WIDTH");
-        lua_pushinteger(L, layout->window_h);
-        lua_setfield(L, -2, "WINDOW_HEIGHT");
-        lua_pushinteger(L, layout->area_w);
-        lua_setfield(L, -2, "user_area_width");
-        lua_pushinteger(L, layout->area_h);
-        lua_setfield(L, -2, "user_area_height");
+    lua_getfield(L, LUA_REGISTRYINDEX, "fmrb.layout");
+    fmrb_shell_layout_t *kept = (fmrb_shell_layout_t *)lua_touserdata(L, -1);
+    if (kept) {
+        *kept = *layout;
     }
     lua_pop(L, 1);
 }

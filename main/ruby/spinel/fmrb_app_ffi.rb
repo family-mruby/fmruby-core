@@ -26,61 +26,14 @@ module FmrbSpx
 end
 
 module FmrbSpxGfx
-  # --- basic drawing primitives (0 ok / neg err) ---
-  ffi_func :fmrb_spx_gfx_clear,        [:int, :int], :int
-  ffi_func :fmrb_spx_gfx_set_pixel,    [:int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_get_pixel,    [:int, :int, :int], :int   # >=0 color / neg
-  ffi_func :fmrb_spx_gfx_draw_line,    [:int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_rect,    [:int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_blend_rect,   [:int, :int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_circle,  [:int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_fill_circle,  [:int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_round_rect, [:int, :int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_fill_round_rect, [:int, :int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_ellipse, [:int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_fill_ellipse, [:int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_triangle, [:int, :int, :int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_fill_triangle, [:int, :int, :int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_arc,     [:int, :int, :int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_fill_arc,     [:int, :int, :int, :int, :int, :int, :int, :int], :int
+  # The FmrbGfx methods on the app boundary are declared in the generated
+  # module FmrbBoundary (fmrb_gen/fmrb_boundary_ffi.rb, from sig/). Here is
+  # what the boundary does not carry yet.
 
-  # --- text ---
-  ffi_func :fmrb_spx_gfx_set_text_size, [:int, :int], :int
-  ffi_func :fmrb_spx_gfx_set_font,      [:int, :int, :int], :int
-  # text passed as :str + explicit length; flags bit0=bg given, bit1=hybrid
-  ffi_func :fmrb_spx_gfx_draw_text, [:int, :int, :int, :str, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_wallclock, [:int, :int, :int, :int, :int], :int   # 1 drawn / 0 clock unset
-  ffi_func :fmrb_spx_gfx_draw_free_iram, [:int, :int, :int, :int, :int], :int
-
-  ffi_func :fmrb_spx_gfx_present, [:int, :int, :int, :int], :int
-
-  # --- CVBS/NTSC output control ---
-  ffi_func :fmrb_spx_gfx_set_output_level, [:int, :int], :int
-  ffi_func :fmrb_spx_gfx_set_chroma_level, [:int, :int], :int
-
-  # --- composite regions / viewport / sprite clip ---
-  # packed: :str of count records, 14 bytes each (7 int16 LE)
-  ffi_func :fmrb_spx_gfx_set_composite_regions, [:int, :str, :int], :int
-  ffi_func :fmrb_spx_gfx_set_canvas_viewport,   [:int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_set_sprite_clip,       [:int, :int, :int, :int, :int], :int
-
-  # --- image API ---
-  ffi_func :fmrb_spx_gfx_draw_image,   [:int, :int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_delete_image, [:int, :int], :int
-  # returns :binstr 6B (id,w,h u16 LE) or "" (nil)
-  ffi_func :fmrb_spx_gfx_create_image_from_file, [:int, :str, :int], :binstr
+  # --- motion-JPEG playback ---
   ffi_func :fmrb_spx_gfx_video_open,    [:int, :str, :int, :int, :int, :int, :int], :binstr
   ffi_func :fmrb_spx_gfx_video_control, [:int], :binstr
   ffi_func :fmrb_spx_gfx_video_status,  [], :binstr
-  ffi_func :fmrb_spx_gfx_create_mask,  [:int, :int, :int, :str, :int], :int
-  ffi_func :fmrb_spx_gfx_delete_mask,  [:int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_image_masked, [:int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_draw_tile,    [:int, :int, :int, :int, :int, :int, :int, :int], :int
-
-  # --- file transfer ---
-  ffi_func :fmrb_spx_gfx_sync_file,     [:str, :int, :str, :int], :int   # 1=ok
-  ffi_func :fmrb_spx_gfx_transfer_file, [:str, :int, :str, :int], :int
-  ffi_func :fmrb_spx_gfx_file_status,   [:str, :int], :int   # size>=0 / neg=absent
 
   # --- sprite API ---
   ffi_func :fmrb_spx_gfx_create_sprite_image, [:int, :int, :int, :int, :int], :int

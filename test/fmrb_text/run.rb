@@ -25,15 +25,16 @@ end
 
 GEM = File.expand_path("../../lib/gems/picoruby-fmrb-app/mrblib", __dir__)
 
-# The C half of FmrbGfx (gfx.c): record what is drawn.
+# The C half of FmrbGfx (gfx.c, the generated boundary methods): record what
+# is drawn.
 class FmrbGfx
   attr_reader :log
 
   def _init(_id) = (@log = [])
   def _set_origin(*) = self
-  def _set_font(*) = nil
-  def _set_text_size(_n) = nil
-  def _draw_text(x, y, s, c, *) = @log << [:text, x, y, s, c]
+  def set_font_raw(*) = self
+  def set_text_size_raw(_n) = self
+  def draw_text_raw(x, y, s, c, *) = (@log << [:text, x, y, s, c]; self)
   def fill_round_rect(x, y, w, h, r, c) = @log << [:round, x, y, w, h, r, c]
 end
 load File.join(GEM, "fmrb-gfx.rb")

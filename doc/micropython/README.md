@@ -182,10 +182,17 @@ gen -> ビルド -> 生成物も一緒にコミット、の順で進める。
 |---|---|---|
 | port/mpconfigport.h | mp_embed/ (+ mp_embed_srcs.cmake) | 機能の有無が qstr 表と生成ヘッダに影響する |
 | modules/fmrb_module.c | mp_embed/genhdr/ | 新しい qstr とモジュール登録を取り込む |
+| sig/*.rbs の境界のメソッド (関数・引数の名前・記録のキー) | mp_embed/genhdr/ | 生成したつなぎ (fmrb_gen/fmrb_boundary_mp.inc) の qstr を取り込む |
 | prelude/*.py | prelude/fmrb_prelude.h | Python 層をファームに焼き込むため |
 
 prelude だけなら `rake micropython:prelude` で足りる (gen は make と python3 を
 要求するが、prelude は Ruby だけで済む)。
+
+本体との境界 (doc/app_boundary) のつなぎは型定義 `sig/*.rbs` から毎回のビルドで
+生成し、リポジトリに入れない。ただし qstr の表はコミットされた生成物なので、
+**境界に関数を足す・名前を変える・記録のキーを足すと `rake micropython:gen` を
+流して mp_embed/ をコミットし直す必要がある**。忘れると `rake test` の
+`boundary:check` が、表に無い qstr の名前を出して落ちる。
 modules/fmrb_bridge.c は生成に関係しないので、編集してもビルドし直すだけでよい。
 
 ## 実装時の全般ルール (実装担当への申し送り)

@@ -101,54 +101,11 @@ void fmrb_mp_bridge_set_window_pos(int32_t x, int32_t y);
 /** True when this app was started from a file rather than built in. */
 bool fmrb_mp_bridge_is_file_app(void);
 
-/**
- * Drawing. Every call is one command on the host queue, in the same shape the
- * mruby and Spinel bindings use. Returns 0 on success, negative on failure.
+/*
+ * Drawing: the FmrbGfx methods are on the app boundary, generated from sig/
+ * (fmrb_gen/fmrb_boundary.h and _mp.inc, doc/app_boundary). What follows is
+ * what the boundary does not carry yet.
  */
-int fmrb_mp_gfx_clear(int canvas_id, int color);
-int fmrb_mp_gfx_set_pixel(int canvas_id, int x, int y, int color);
-int fmrb_mp_gfx_draw_line(int canvas_id, int x0, int y0, int x1, int y1, int color);
-int fmrb_mp_gfx_rect(int canvas_id, int x, int y, int w, int h, int color, bool filled);
-int fmrb_mp_gfx_circle(int canvas_id, int x, int y, int r, int color, bool filled);
-int fmrb_mp_gfx_round_rect(int canvas_id, int x, int y, int w, int h, int r, int color,
-                           bool filled);
-int fmrb_mp_gfx_ellipse(int canvas_id, int x, int y, int rx, int ry, int color, bool filled);
-int fmrb_mp_gfx_triangle(int canvas_id, int x0, int y0, int x1, int y1, int x2, int y2,
-                         int color, bool filled);
-int fmrb_mp_gfx_draw_text(int canvas_id, int x, int y, const char *text, int color,
-                          int bg_color, bool has_bg, bool mixed);
-int fmrb_mp_gfx_present(int canvas_id, int x, int y, bool explicit_pos);
-
-/** Font family: 0 = the built-in 6x8 one, 1 = the Japanese one. */
-int fmrb_mp_gfx_set_font(int canvas_id, int family, int size);
-/** Scale factor applied on top of the font, 1 to 4. */
-int fmrb_mp_gfx_set_text_size(int canvas_id, int size);
-
-/**
- * Images living on the graphics side.
- *
- * The pixels never pass through Python: an app names a file, the firmware
- * copies it across if the copy there differs, and the graphics side decodes it.
- */
-
-/** Copy src to dest on the graphics side, unless the copy there matches. */
-bool fmrb_mp_gfx_sync_file(const char *src, const char *dest);
-
-/**
- * @brief Decode a file on the graphics side into an image
- * @return 0 on success, negative on failure (missing file, bad format)
- */
-int fmrb_mp_gfx_create_image(int canvas_id, const char *path, uint16_t *out_id,
-                             uint16_t *out_width, uint16_t *out_height);
-
-/** Scale is fixed point: 256 = 1.0. scale_y_fp8 of 0 means "same as x". */
-int fmrb_mp_gfx_draw_image(int canvas_id, int image_id, int x, int y,
-                           int scale_x_fp8, int scale_y_fp8);
-int fmrb_mp_gfx_delete_image(int canvas_id, int image_id);
-
-/** Stamp a rectangle of a sprite image onto the canvas, without an instance. */
-int fmrb_mp_gfx_draw_tile(int canvas_id, int image_id, int src_x, int src_y, int w,
-                          int h, int dst_x, int dst_y);
 
 /**
  * Sprites. An image holds pixels, an instance places one or more images on the

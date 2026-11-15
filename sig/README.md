@@ -130,6 +130,36 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   (`enumerable.rbs` と `gpio.rbs` はうちのもの。ただしエンジンのテストが
   前提にしているので、宣言を減らさないこと)。
 
+## 本体との境界の印 (doc/app_boundary)
+
+型定義は、本体とアプリの間の境界 (平らな C の関数) と、各言語のつなぎ
+(mruby・Spinel・Lua・MicroPython・WAMR・C のヘッダ) の元でもある。生成の道具は
+`tools/boundary/gen.rb` (`rake boundary:gen`、`rake setup` が毎回流す)。
+
+- **クラスに `%a{fmrb.boundary}`** を付けると、そのクラスに書いたメソッドが
+  全部境界に載る。載せないメソッドに **`%a{fmrb.internal}`** (Ruby で書いた
+  メソッド・オブジェクトが持つ状態・省略できる引数を持つ包み)、アプリが書く
+  フックに **`%a{fmrb.hook}`**。印は `def` の前の行に置く (`def` と同じ行に
+  書くと `rakelib/fmrb_system.rake` の数え方から漏れる)。印は RBS の標準の
+  注釈なので、エディタの型 db と F1 のヘルプは印の有無で変わらない。
+- 境界のメソッドは必須の位置引数だけで書く。省略できる引数・キーワードを
+  持つメソッド (包み) は internal にし、隣に後ろへ `_raw` を付けた省略なしの形を
+  書く (`draw_text` と `draw_text_raw`)。説明文に「包みは draw_text」と書く。
+- 型の規則: `Integer` は int32、幅は `sig/fmrb_types.rbs` の別名
+  (`int16`・`uint8`・`float32`・`bin` など、ROS 2 と同じ名前) で書く。Symbol の
+  選択肢はリテラルの型 (`:default | :ja`)。記録は record 型の別名
+  (`type image_info = { id: uint16, ... }`)、要素の決まった配列は
+  `Array[記録]`。結果に nil があり得るのは記録だけ (`image_info?`)。扱えない
+  型を書くと、道具がメソッドの名前を出して止まる。
+- 載せたメソッドには本体の C の実体 (`main/app/fmrb_boundary_*.c` の
+  `fmrb_<クラス>_<メソッド>`) が要る。無ければ道具が名前を出して止まる
+  (Ruby で書いたメソッドを載せかけたら internal を付ける)。
+- **MicroPython の qstr の表はコミットされた生成物**。境界に関数を足す・
+  名前や記録のキーを変えたら `rake micropython:gen` を流して
+  `components/micropython/mp_embed` をコミットする。`rake test`
+  (`boundary:check`) が、C の SDK (`sdk/c/fmrb_boundary.h`) と qstr の表が型定義と
+  合っているかを見る。
+
 ## 直したら確かめる
 
 ```

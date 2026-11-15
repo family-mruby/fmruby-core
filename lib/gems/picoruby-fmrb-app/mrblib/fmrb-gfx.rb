@@ -1,6 +1,8 @@
 # FmrbGfx - Graphics API for Family mruby applications
-# Core class is defined in C (gfx.c)
-# This file provides Ruby-level wrapper methods
+# Core class is defined in C (gfx.c). The methods on the app boundary
+# (sig/fmrb_gfx.rbs, doc/app_boundary) are generated C methods; the ones
+# here are the Ruby wrappers: optional and keyword arguments over the
+# simple forms named *_raw, and what the object itself keeps (the font).
 #
 # FmrbGfx draws, and that includes the text helpers mixed in from FmrbText
 # (fit_text, wrap_text, draw_text_lines) and the rounded button picture
@@ -157,7 +159,7 @@ class FmrbGfx
     key = FmrbGfx.resolve_font(asked)
     @asked_font = asked
     @current_font = key
-    key.length > 1 ? _set_font(key[0], key[1]) : _set_font(key[0])
+    set_font_raw(key[0], key.length > 1 ? key[1] : 12)
     key
   end
 
@@ -185,7 +187,7 @@ class FmrbGfx
   # Set the text scale multiplier (1..4). Applies on top of the active font.
   def set_text_size(size)
     @current_text_size = size
-    _set_text_size(size)
+    set_text_size_raw(size)
     self
   end
 
@@ -194,20 +196,7 @@ class FmrbGfx
   #   Font0 (6x8) and UTF-8 multi-byte runs render with misaki_8 (8x8).
   #   The current_font selection is preserved on either side of the call.
   def draw_text(x, y, str, color, bg_color = nil, mixed: false)
-    if mixed
-      if bg_color
-        _draw_text_hybrid(x, y, str, color, bg_color)
-      else
-        _draw_text_hybrid(x, y, str, color)
-      end
-    else
-      if bg_color
-        _draw_text(x, y, str, color, bg_color)
-      else
-        _draw_text(x, y, str, color)
-      end
-    end
-    self
+    draw_text_raw(x, y, str, color, bg_color || -1, mixed)
   end
 
   # Positional-argument form of draw_text(..., mixed: true).
@@ -217,12 +206,7 @@ class FmrbGfx
   # form renders ASCII with Font0 (6x8) and multi-byte UTF-8 runs with
   # misaki_8 (8x8) without touching the current font selection.
   def draw_text_mixed(x, y, str, color, bg_color = nil)
-    if bg_color
-      _draw_text_hybrid(x, y, str, color, bg_color)
-    else
-      _draw_text_hybrid(x, y, str, color)
-    end
-    self
+    draw_text_raw(x, y, str, color, bg_color || -1, true)
   end
 
   # Compute the rendered pixel width of a string with the given font.
@@ -288,29 +272,8 @@ class FmrbGfx
     self
   end
 
-  # Read a single RGB332 pixel back from this canvas. Synchronous round
-  # trip to the graphics backend, so use sparingly in tight loops.
-  # Returns 0 when (x, y) is outside the canvas bounds.
-  def get_pixel(x, y)
-    _get_pixel(x, y)
-  end
-
-  # Upload a 1bpp mask to the graphics backend.
-  # @param width  [Integer]
-  # @param height [Integer]
-  # @param data   [String] binary string, ceil(width/8)*height bytes,
-  #   MSB-first per byte. 1 bit = pixel drawn, 0 bit = transparent.
-  # @return [Integer] mask_id, for use with draw_image_masked / delete_mask
-  def create_mask(width, height, data)
-    _create_mask(width, height, data)
-  end
-
-  # Release a mask uploaded with create_mask. Safe to call from any task;
-  # routed through the host queue so it stays ordered with preceding
-  # draw_image_masked calls that may still reference the mask.
-  def delete_mask(mask_id)
-    _delete_mask(mask_id)
-  end
+  # get_pixel, create_mask and delete_mask are on the boundary as they are
+  # (generated in gfx.c; sig/fmrb_gfx.rbs).
 
   # Blit a SpriteImage onto this canvas using a 1bpp mask cutout. Pixels
   # are sampled from the SpriteImage at local (xx, yy) and written at
@@ -320,7 +283,7 @@ class FmrbGfx
   # @param x [Integer]
   # @param y [Integer]
   def draw_image_masked(image_id, mask_id, x:, y:)
-    _draw_image_masked(image_id, mask_id, x, y)
+    draw_image_masked_raw(image_id, mask_id, x, y)
   end
 
   # Stamp the sub-region (src_x, src_y, w, h) of a SpriteImage onto this
@@ -336,7 +299,7 @@ class FmrbGfx
   # @param dst_x [Integer] destination x on this canvas
   # @param dst_y [Integer] destination y on this canvas
   def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
-    _draw_tile(image_id, src_x, src_y, w, h, dst_x, dst_y)
+    draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
   end
 
   # Draw a thick line by stacking parallel 1-pixel lines along the
@@ -373,20 +336,14 @@ class FmrbGfx
   # file_status[:exists] instead leaves an edited asset stale forever.
   # dest: destination path on graphics-audio (defaults to same as source path)
   def sync_file(path, dest: nil)
-    _sync_file(path, dest || path)
+    sync_file_raw(path, dest || path)
   end
 
   # Transfer a file from core to graphics-audio LittleFS unconditionally.
   # Prefer sync_file unless you know the destination has to be rewritten.
   # dest: destination path on graphics-audio (defaults to same as source path)
   def transfer_file(path, dest: nil)
-    _transfer_file(path, dest || path)
-  end
-
-  # Check if a file exists on graphics-audio side
-  # Returns Hash: {exists: bool, size: int}
-  def file_status(path)
-    _file_status(path)
+    transfer_file_raw(path, dest || path)
   end
 
   # Write the picture the last present put on screen to a file, on the display
@@ -401,23 +358,15 @@ class FmrbGfx
     _export_frame(path)
   end
 
-  # Create an image from a file on graphics-audio side
-  # Returns Hash {id: image_id, width: w, height: h} or nil
-  def create_image(path)
-    _create_image_from_file(path)
-  end
-
   # Draw a previously created image on the canvas
   # scale_x/scale_y: scaling factor (1.0 = original size, 2.0 = double, 0.5 = half)
   # When scale_y is 0.0, it uses the same value as scale_x (uniform scaling)
   def draw_image(image_id, x: 0, y: 0, scale_x: 1.0, scale_y: 0.0)
-    _draw_image(image_id, x, y, scale_x, scale_y)
+    draw_image_raw(image_id, x, y, scale_x, scale_y)
   end
 
-  # Delete a previously created image
-  def delete_image(image_id)
-    _delete_image(image_id)
-  end
+  # file_status, create_image and delete_image are on the boundary as they
+  # are (generated in gfx.c).
 
   # High-level API: transfer if needed, create, draw, delete
   # coord: [x, y] array, :center symbol, or nil (defaults to [0,0])
@@ -471,61 +420,35 @@ class FmrbGfx
   # Up to 8 regions can be set in one call (graphics-audio buffer cap).
   def set_composite_regions(regions)
     if regions.nil? || regions.empty?
-      _set_composite_regions([])
+      set_composite_regions_raw([])
       return self
     end
 
-    flat = []
+    list = []
     regions.each do |r|
       dst_x = r[:dst_x] || 0
       dst_y = r[:dst_y] || 0
-      src_x = r[:src_x] || dst_x
-      src_y = r[:src_y] || dst_y
-      w = r[:w] || 0
-      h = r[:h] || 0
-      trans = r[:transparent] ? 1 : 0
-      flat << src_x << src_y << dst_x << dst_y << w << h << trans
+      list << { src_x: r[:src_x] || dst_x, src_y: r[:src_y] || dst_y, dst_x: dst_x, dst_y: dst_y,
+                w: r[:w] || 0, h: r[:h] || 0, transparent: r[:transparent] ? true : false }
     end
-    _set_composite_regions(flat)
+    set_composite_regions_raw(list)
     self
   end
 
-  # Composite source viewport (hardware scroll register, Modern/P4 only):
-  # show only the (src_x, src_y, w, h) sub-rect of this canvas at its push
-  # position. The canvas is addressed as a torus (the source rect wraps
-  # around the canvas edges), so a ring-buffer canvas slightly larger than
-  # the viewport can scroll an arbitrarily large world: pass the world
-  # scroll offset directly and stamp newly exposed tiles as it moves (see
-  # TileRing). Gate usage on FmrbConst::CHIP_MODEL == "ESP32-P4"; the
-  # Retro backend ignores this command.
-  def set_viewport(src_x, src_y, w, h)
-    _set_canvas_viewport(src_x, src_y, w, h)
-    self
-  end
+  # set_viewport / clear_viewport (Modern only: the hardware scroll register,
+  # the canvas addressed as a torus) and set_sprite_clip / clear_sprite_clip
+  # (sprite coordinates, from the drawing origin) are on the boundary as they
+  # are (generated in gfx.c; sig/fmrb_gfx.rbs has their help).
 
-  # Composite the whole canvas again (clears the viewport). Modern only, as
-  # set_viewport is.
-  def clear_viewport
-    _set_canvas_viewport(0, 0, 0, 0)
-    self
-  end
-
-  # Confine this canvas's sprites to the (x, y, w, h) sub-rect. Sprites are
-  # composited on top of everything the canvas drew, so by default they paint
-  # over the window frame and title bar the app drew into the same canvas.
-  # The rect uses sprite coordinates (the same space passed to
-  # SpriteInstance#move: from the drawing origin) and is clamped to the canvas. FmrbApp already sets
-  # this to the user area for windowed apps; call it to narrow the area
-  # further, e.g. to keep a game's sprites out of its own score bar.
-  def set_sprite_clip(x, y, w, h)
-    _set_sprite_clip(x, y, w, h)
-    self
-  end
-
-  # Let sprites use the whole canvas again (clears the clip).
-  def clear_sprite_clip
-    _set_sprite_clip(0, 0, 0, 0)
-    self
+  # Show what has been drawn. Without a position the canvas goes where the
+  # app's window is; present(x, y) puts it at (x, y) on the screen (an extra
+  # canvas of FmrbApp#create_canvas_gfx, which no window tracks).
+  def present(x = nil, y = nil)
+    if x && y
+      present_raw(x, y, true)
+    else
+      present_raw(0, 0, false)
+    end
   end
 
   # Play a file of concatenated JPEG frames into this canvas at (x, y).

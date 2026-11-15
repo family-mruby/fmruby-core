@@ -2,7 +2,8 @@
 --
 -- The system makes the window, draws its frame and runs the loop; the app
 -- only defines functions. gfx draws from the top-left of the area inside the
--- frame, the same as @gfx of a Ruby app.
+-- frame, the same as @gfx of a Ruby app, and takes the same arguments in the
+-- same order (gfx:draw_text(x, y, text, color)).
 
 local seconds = 0
 local clicks = 0
@@ -10,10 +11,10 @@ local clicks = 0
 local function draw_counter()
     -- Erase in the page colour, not white: on a dark theme a white band
     -- would be left behind.
-    gfx:fill_rect(0, 40, FmrbApp.user_area_width, 10, FmrbApp.THEME_WINDOW_BG)
-    gfx:draw_text("Running: " .. tostring(seconds) .. "s", 8, 40, FmrbApp.THEME_BORDER)
-    gfx:fill_rect(0, 52, FmrbApp.user_area_width, 10, FmrbApp.THEME_WINDOW_BG)
-    gfx:draw_text("Clicks: " .. tostring(clicks), 8, 52, FmrbApp.THEME_BORDER)
+    gfx:fill_rect(0, 40, FmrbApp.user_area_width(), 10, FmrbApp.THEME_WINDOW_BG)
+    gfx:draw_text(8, 40, "Running: " .. tostring(seconds) .. "s", FmrbApp.THEME_BORDER)
+    gfx:fill_rect(0, 52, FmrbApp.user_area_width(), 10, FmrbApp.THEME_WINDOW_BG)
+    gfx:draw_text(8, 52, "Clicks: " .. tostring(clicks), FmrbApp.THEME_BORDER)
     gfx:present()
 end
 
@@ -21,9 +22,9 @@ function on_create()
     print("Hello from Lua! " .. _VERSION)
     FmrbApp.clear_user_area()
     -- Theme ink, not FmrbGfx.BLUE: 0x03 vanishes on a dark page.
-    gfx:draw_text("Hello from Lua!", 2, 2, FmrbApp.THEME_TEXT)
-    gfx:draw_text("FMRuby Graphics", 2, 12, FmrbApp.THEME_TEXT)
-    gfx:draw_text(_VERSION, 2, 22, FmrbGfx.RED)
+    gfx:draw_text(2, 2, "Hello from Lua!", FmrbApp.THEME_TEXT)
+    gfx:draw_text(2, 12, "FMRuby Graphics", FmrbApp.THEME_TEXT)
+    gfx:draw_text(2, 22, _VERSION, FmrbGfx.RED)
     draw_counter()
 end
 

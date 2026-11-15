@@ -1,6 +1,11 @@
 # 絵を描くための道具。実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-gfx.rb と
 # ports/esp32/gfx.c。`_` で始まる内部用のメソッドは書いていない。
 #
+# FmrbGfx はクラスごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
+# 載せないもの (Ruby で書いたメソッドと、オブジェクトが持つ状態) には
+# %a{fmrb.internal} を付ける。後ろに _raw の付くメソッドは、省略できる引数を
+# 持つ包み (draw_text など) の、省略なしの形。
+#
 # 描くメソッドは自分自身を返すので、続けて書ける。
 # 色は RGB332 の数 (FmrbGfx.rgb_to_332 で作れる)。
 
@@ -51,7 +56,7 @@ module FmrbText
   # @gfx.fit_text(name, w, "..", nil,
   #               :default)
   # ```
-  def fit_text: (String str, Integer width) -> String
+  def fit_text: (String text, Integer width) -> String
 
   # 文字を最大 2 行に折る <<en>> Wrap a text into at most two lines
   #
@@ -71,7 +76,7 @@ module FmrbText
   # ```ruby
   # lines = @gfx.wrap_text(msg, 120)
   # ```
-  def wrap_text: (String str, Integer width) -> Array[String]
+  def wrap_text: (String text, Integer width) -> Array[String]
 
   # 折った文字を行ごとに描く <<en>> Draw a text wrapped into lines
   #
@@ -89,11 +94,21 @@ module FmrbText
   # y = @gfx.draw_text_lines(x, y, msg,
   #       120, theme_fg, 15)
   # ```
-  def draw_text_lines: (Integer x, Integer y, String str, Integer width, Integer color, Integer line_h) -> Integer
+  def draw_text_lines: (Integer x, Integer y, String text, Integer width, Integer color, Integer line_h) -> Integer
 end
 
+%a{fmrb.boundary}
 class FmrbGfx
   include FmrbText
+
+  # create_image が返す絵の番号と大きさ <<en>> An image's number and size, from create_image
+  type image_info = { id: uint16, width: uint16, height: uint16 }
+
+  # file_status が返す描画側のファイルのようす <<en>> A file on the graphics side, from file_status
+  type file_info = { exists: bool, size: uint32 }
+
+  # 合成する矩形 1 つ (set_composite_regions_raw) <<en>> One composited rectangle
+  type composite_region = { src_x: int16, src_y: int16, dst_x: int16, dst_y: int16, w: int16, h: int16, transparent: bool }
 
   # ---- 色 ----
   #
@@ -150,6 +165,7 @@ class FmrbGfx
   # ```ruby
   # id = gfx.canvas_id
   # ```
+  %a{fmrb.internal}
   def canvas_id: () -> Integer
 
   # 画面の横幅 (ドット) <<en>> Canvas width in pixels
@@ -161,6 +177,7 @@ class FmrbGfx
   # The width of the whole canvas. A windowed app may only draw inside its
   # area (area_width, the same as @user_area_width), which is not the same
   # thing; for a fullscreen app the two agree.
+  %a{fmrb.internal}
   def canvas_width: () -> Integer
 
   # 描く区画の横幅 (ドット) <<en>> Width of the area drawn in
@@ -169,9 +186,11 @@ class FmrbGfx
   # <<en>>
   # How far from the origin there is to draw in. For the app's gfx it is
   # @user_area_width.
+  %a{fmrb.internal}
   def area_width: () -> Integer
 
   # 描く区画の高さ (ドット) <<en>> Height of the area drawn in
+  %a{fmrb.internal}
   def area_height: () -> Integer
 
   # 原点の canvas 上の x <<en>> Where the origin is on the canvas (x)
@@ -181,9 +200,11 @@ class FmrbGfx
   # <<en>>
   # Every coordinate drawn is added to it on its way to the canvas: 1 for a
   # framed window's gfx, 0 for window_gfx and the rest.
+  %a{fmrb.internal}
   def origin_x: () -> Integer
 
   # 原点の canvas 上の y <<en>> Where the origin is on the canvas (y)
+  %a{fmrb.internal}
   def origin_y: () -> Integer
 
   # 画面の高さ (ドット) <<en>> Canvas height in pixels
@@ -191,6 +212,7 @@ class FmrbGfx
   # ```ruby
   # h = gfx.canvas_height
   # ```
+  %a{fmrb.internal}
   def canvas_height: () -> Integer
 
   # 今えらんでいる字の種類 <<en>> The font in use now
@@ -200,6 +222,7 @@ class FmrbGfx
   # gfx.set_font(:ja)
   # gfx.set_font(saved)
   # ```
+  %a{fmrb.internal}
   def current_font: () -> Symbol
 
   # 今の字の大きさの倍率 <<en>> The text scale in use now
@@ -207,6 +230,7 @@ class FmrbGfx
   # ```ruby
   # n = gfx.current_text_size
   # ```
+  %a{fmrb.internal}
   def current_text_size: () -> Integer
 
   # ---- 形を描く ----
@@ -267,6 +291,7 @@ class FmrbGfx
   # The graphics side has no thick-line primitive, so this stacks thickness
   # one-pixel lines side by side. The cost grows with the thickness, which
   # shows if thick lines are drawn every frame.
+  %a{fmrb.internal}
   def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
 
   # 四角のふちを描く <<en>> Draw the outline of a rectangle
@@ -339,7 +364,6 @@ class FmrbGfx
   #   end
   # end
   # ```
-  %a{fmrb.boundary}
   def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
   # 下の絵と混ぜて四角をぬる <<en>> Fill a rectangle blended with what is under it
@@ -402,6 +426,7 @@ class FmrbGfx
   #   theme_accent, theme_fg_light)
   # @hits.add(:ok, x, y, 60, 16)
   # ```
+  %a{fmrb.internal}
   def draw_button: (Integer x, Integer y, Integer w, Integer h, String label, Integer fill, Integer fg) -> FmrbGfx
 
   # 円のふちを描く <<en>> Draw a circle outline
@@ -511,7 +536,28 @@ class FmrbGfx
   #   end
   # end
   # ```
-  def draw_text: (Integer x, Integer y, String str, Integer color) -> FmrbGfx
+  %a{fmrb.internal}
+  def draw_text: (Integer x, Integer y, String text, Integer color) -> FmrbGfx
+
+# draw_text の省略なしの形 <<en>> draw_text with nothing left out
+#
+# 引数を省略できない単純な形。毎フレーム何度も描くような、速さが要る所で
+# 使う。bg_color が負なら背景は塗らない。mixed が true なら英数を 6x8、
+# それ以外を misaki 8 で描く (draw_text の mixed: true)。包みは draw_text。
+# ```ruby
+# gfx.draw_text_raw(10, 20, "hi",
+#   FmrbGfx::WHITE, -1, false)
+# ```
+# <<en>>
+# The simple form, with no argument left out, for where speed matters
+# (drawing many times a frame). A negative bg_color leaves the background
+# alone; mixed true draws ASCII in 6x8 and the rest in misaki 8 (draw_text's
+# mixed: true). The wrapper is draw_text.
+# ```ruby
+# gfx.draw_text_raw(10, 20, "hi",
+#   FmrbGfx::WHITE, -1, false)
+# ```
+def draw_text_raw: (Integer x, Integer y, String text, Integer color, Integer bg_color, bool mixed) -> FmrbGfx
 
   # 字の種類と大きさをえらぶ <<en>> Choose the font and size
   #
@@ -533,7 +579,26 @@ class FmrbGfx
   # ```ruby
   # got = gfx.set_font(:ja, 12)
   # ```
+  %a{fmrb.internal}
   def set_font: (Symbol family, ?Integer size) -> Array[untyped]
+
+# set_font の省略なしの形 <<en>> set_font with nothing left out
+#
+# 引数を省略できない単純な形。機種が持つ字への置き換えはしないので、
+# 無い大きさはエラーになる (:ja は 8・12・16、:ja_bold は 12。:default の
+# size は使われない)。current_font は変わらない。包みは set_font。
+# ```ruby
+# gfx.set_font_raw(:ja, 12)
+# ```
+# <<en>>
+# The simple form, with no argument left out. It does not pick the nearest
+# face this machine has, so a size it lacks is an error (:ja takes 8, 12
+# and 16, :ja_bold 12; :default ignores size). current_font is left as it
+# is. The wrapper is set_font.
+# ```ruby
+# gfx.set_font_raw(:ja, 12)
+# ```
+def set_font_raw: (:default | :ja | :ja_bold family, Integer size) -> FmrbGfx
 
   # 字の大きさの倍率を決める <<en>> Set the text scale
   #
@@ -543,7 +608,23 @@ class FmrbGfx
   # Scales the selected font by an integer factor. It is the same glyphs
   # enlarged, so the edges get blocky. text_width reports the width after the
   # multiplier.
+  %a{fmrb.internal}
   def set_text_size: (Integer size) -> FmrbGfx
+
+# set_text_size の包みのない形 <<en>> set_text_size without the wrapper
+#
+# 倍率 (1〜4) を描画側へ送るだけで、current_text_size と text_width の
+# 測り方は変わらない。包みは set_text_size。
+# ```ruby
+# gfx.set_text_size_raw(2)
+# ```
+# <<en>>
+# Only sends the scale (1 to 4) to the graphics side; current_text_size and
+# what text_width measures stay as they were. The wrapper is set_text_size.
+# ```ruby
+# gfx.set_text_size_raw(2)
+# ```
+def set_text_size_raw: (Integer size) -> FmrbGfx
 
   # 字を描いたときの横幅を測る <<en>> Measure how wide text would be
   #
@@ -552,9 +633,9 @@ class FmrbGfx
   # なく実際の幅が返る。
   #
   # ```ruby
-  # w = gfx.text_width(str)
+  # w = gfx.text_width(text)
   # x = (gfx.area_width - w) / 2
-  # gfx.draw_text(x, 20, str, FmrbGfx::WHITE)
+  # gfx.draw_text(x, 20, text, FmrbGfx::WHITE)
   # ```
   # <<en>>
   # Measured with the font set_font selected and the multiplier set_text_size
@@ -563,11 +644,12 @@ class FmrbGfx
   # character count.
   #
   # ```ruby
-  # w = gfx.text_width(str)
+  # w = gfx.text_width(text)
   # x = (gfx.area_width - w) / 2
-  # gfx.draw_text(x, 20, str, FmrbGfx::WHITE)
+  # gfx.draw_text(x, 20, text, FmrbGfx::WHITE)
   # ```
-  def text_width: (String str) -> Integer
+  %a{fmrb.internal}
+  def text_width: (String text) -> Integer
 
   # 一行分の高さを調べる <<en>> The height of one line
   #
@@ -575,6 +657,7 @@ class FmrbGfx
   # <<en>>
   # The height of the font currently selected -- the spacing to use when
   # stacking lines. It changes with the font.
+  %a{fmrb.internal}
   def font_height: () -> Integer
 
   # 今の時刻を描く <<en>> Draw the time now
@@ -591,7 +674,7 @@ class FmrbGfx
   # gfx.draw_wallclock(300, 2,
   #                    theme_fg, theme_bg)
   # ```
-  def draw_wallclock: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
+  def draw_wallclock: (Integer x, Integer y, Integer color, Integer bg_color) -> bool
 
   # 空きメモリの量を描く <<en>> Draw how much memory is free
   #
@@ -607,7 +690,7 @@ class FmrbGfx
   # gfx.draw_free_iram(360, 2,
   #                    theme_fg, theme_bg)
   # ```
-  def draw_free_iram: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
+  def draw_free_iram: (Integer x, Integer y, Integer color, Integer bg_color) -> bool
 
   # ---- 絵の読み込みと表示 ----
 
@@ -633,6 +716,7 @@ class FmrbGfx
   # ```ruby
   # gfx.load_image("/home/pic.png", coord: :center)
   # ```
+  %a{fmrb.internal}
   def load_image: (String path) -> void
 
   # 絵のファイルから絵を作る <<en>> Make an image from a file
@@ -665,7 +749,7 @@ class FmrbGfx
   # img = gfx.create_image(path)
   # gfx.draw_image(img[:id], x: 0, y: 0) if img
   # ```
-  def create_image: (String path) -> Hash?
+  def create_image: (String path) -> image_info?
 
   # 作った絵を描く <<en>> Draw an image you made
   #
@@ -686,7 +770,25 @@ class FmrbGfx
   # gfx.draw_image(id, x: 10, y: 20,
   #                scale_x: 2.0)   # both axes doubled
   # ```
+  %a{fmrb.internal}
   def draw_image: (Integer image_id) -> FmrbGfx
+
+# draw_image の省略なしの形 <<en>> draw_image with nothing left out
+#
+# 引数を省略できない単純な形。scale_y に 0.0 を渡すと scale_x と同じ倍率。
+# 包みは draw_image。
+# ```ruby
+# gfx.draw_image_raw(id, 10, 20,
+#                    1.0, 0.0)
+# ```
+# <<en>>
+# The simple form, with no argument left out. A scale_y of 0.0 means the
+# same as scale_x. The wrapper is draw_image.
+# ```ruby
+# gfx.draw_image_raw(id, 10, 20,
+#                    1.0, 0.0)
+# ```
+def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Float scale_y) -> FmrbGfx
 
   # 作った絵を片づける <<en>> Let go of an image you made
   #
@@ -726,7 +828,24 @@ class FmrbGfx
   # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
   #               dst_x: 32, dst_y: 16)
   # ```
+  %a{fmrb.internal}
   def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
+
+# draw_tile の省略なしの形 <<en>> draw_tile with nothing left out
+#
+# 置き場所をキーワードでなく位置の引数で渡す形。包みは draw_tile。
+# ```ruby
+# gfx.draw_tile_raw(sheet.id, 0, 0,
+#                   16, 16, 32, 16)
+# ```
+# <<en>>
+# The destination as plain arguments rather than keywords. The wrapper is
+# draw_tile.
+# ```ruby
+# gfx.draw_tile_raw(sheet.id, 0, 0,
+#                   16, 16, 32, 16)
+# ```
+def draw_tile_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h, Integer dst_x, Integer dst_y) -> FmrbGfx
 
   # 型ぬきの形を作る <<en>> Make a mask
   #
@@ -739,14 +858,14 @@ class FmrbGfx
   # bit leftmost. Only the pixels whose bit is set are drawn.
   #
   # Returns a mask_id for draw_image_masked; release it with delete_mask.
-  def create_mask: (Integer width, Integer height, String data) -> Integer
+  def create_mask: (Integer width, Integer height, bin data) -> Integer
 
   # 型ぬきの形を片づける <<en>> Let go of a mask
   #
   # ```ruby
   # gfx.delete_mask(@mask_id)
   # ```
-  def delete_mask: (Integer mask_id) -> void
+  def delete_mask: (Integer mask_id) -> FmrbGfx
 
   # 型でぬいた形の絵を描く <<en>> Draw an image through a mask
   #
@@ -756,7 +875,24 @@ class FmrbGfx
   # Copies a SpriteImage onto the canvas only where the mask's bits are set.
   # The position is passed by keyword (x:, y:): the image's (xx, yy) lands at
   # (x + xx, y + yy).
+  %a{fmrb.internal}
   def draw_image_masked: (Integer image_id, Integer mask_id) -> FmrbGfx
+
+# draw_image_masked の省略なしの形 <<en>> draw_image_masked, plain arguments
+#
+# 置き場所をキーワードでなく位置の引数で渡す形。包みは draw_image_masked。
+# ```ruby
+# gfx.draw_image_masked_raw(img.id,
+#   @mask_id, 10, 20)
+# ```
+# <<en>>
+# The position as plain arguments rather than keywords. The wrapper is
+# draw_image_masked.
+# ```ruby
+# gfx.draw_image_masked_raw(img.id,
+#   @mask_id, 10, 20)
+# ```
+def draw_image_masked_raw: (Integer image_id, Integer mask_id, Integer x, Integer y) -> FmrbGfx
 
   # ---- 画面に出す ----
 
@@ -787,7 +923,24 @@ class FmrbGfx
   # gfx.draw_text(10, 10, "hi", FmrbGfx::WHITE)
   # gfx.present   # now it appears
   # ```
+  %a{fmrb.internal}
   def present: () -> FmrbGfx
+
+# present の省略なしの形 <<en>> present with nothing left out
+#
+# positioned が false なら Window の位置に出し (x, y は使わない)、true なら
+# 画面の (x, y) に出す。包みは present (present(x, y) で位置を渡す)。
+# ```ruby
+# gfx.present_raw(0, 0, false)
+# ```
+# <<en>>
+# With positioned false the canvas goes where the window is (x and y are
+# not used); with true it goes to (x, y) on the screen. The wrapper is
+# present (present(x, y) gives a position).
+# ```ruby
+# gfx.present_raw(0, 0, false)
+# ```
+def present_raw: (Integer x, Integer y, bool positioned) -> FmrbGfx
 
   # この画面を片づける <<en>> Let go of this canvas
   #
@@ -796,6 +949,7 @@ class FmrbGfx
   # <<en>>
   # Throws away a canvas made by the app. They go on their own when the
   # app ends, so this is for one that is finished with early.
+  %a{fmrb.internal}
   def destroy: () -> FmrbGfx
 
   # 画面の見せる場所をずらす <<en>> Shift what part of the canvas is shown
@@ -814,7 +968,7 @@ class FmrbGfx
   #
   # Modern (ESP32-P4) only; the Retro backend ignores the command. Gate it on
   # FmrbConst::CHIP_MODEL == "ESP32-P4".
-  def set_viewport: (Integer src_x, Integer src_y, Integer w, Integer h) -> void
+  def set_viewport: (Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
 
   # ずらした場所を元に戻す <<en>> Put the shown part back
   #
@@ -823,7 +977,7 @@ class FmrbGfx
   # <<en>>
   # Undo set_viewport: the whole canvas is composited again. Modern
   # (ESP32-P4) only, as set_viewport is.
-  def clear_viewport: () -> void
+  def clear_viewport: () -> FmrbGfx
 
   # 重ねて見せる場所を決める <<en>> Set the regions that are composited
   #
@@ -841,7 +995,30 @@ class FmrbGfx
   #
   # For a windowed app the system sets this from rounded_corners in the
   # .app.toml, so calling it directly is rarely needed.
-  def set_composite_regions: (Array regions) -> void
+  %a{fmrb.internal}
+  def set_composite_regions: (Array[Hash] regions) -> FmrbGfx
+
+# set_composite_regions の省略なしの形 <<en>> set_composite_regions, every field given
+#
+# 矩形ごとに src_x・src_y・dst_x・dst_y・w・h・transparent を全部書く形。
+# 空の配列で既定 (canvas 全体) に戻る。包みは set_composite_regions。
+# ```ruby
+# gfx.set_composite_regions_raw([
+#   { src_x: 0, src_y: 0, dst_x: 0,
+#     dst_y: 0, w: 8, h: 8,
+#     transparent: true }])
+# ```
+# <<en>>
+# Every field of each rectangle written out: src_x, src_y, dst_x, dst_y,
+# w, h and transparent. An empty array restores the default (the whole
+# canvas). The wrapper is set_composite_regions.
+# ```ruby
+# gfx.set_composite_regions_raw([
+#   { src_x: 0, src_y: 0, dst_x: 0,
+#     dst_y: 0, w: 8, h: 8,
+#     transparent: true }])
+# ```
+def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
 
   # スプライトが出られる範囲を決める <<en>> limit where sprites may appear
   #
@@ -924,7 +1101,22 @@ class FmrbGfx
   # gfx.sync_file("/home/bird.bmp",
   #               dest: "/cache/app/x/bird.bmp")
   # ```
+  %a{fmrb.internal}
   def sync_file: (String path) -> bool
+
+# sync_file の省略なしの形 <<en>> sync_file with nothing left out
+#
+# 送り先を省略できない形。包みは sync_file (dest: を省くと同じパス)。
+# ```ruby
+# gfx.sync_file_raw(path, path)
+# ```
+# <<en>>
+# The destination cannot be left out. The wrapper is sync_file (without
+# dest: it uses the same path).
+# ```ruby
+# gfx.sync_file_raw(path, path)
+# ```
+def sync_file_raw: (String path, String dest) -> bool
 
   # ファイルを必ず送り直す <<en>> Send a file again whatever happens
   #
@@ -934,7 +1126,21 @@ class FmrbGfx
   # Transfers unconditionally, without looking at what is already there.
   # sync_file is the usual choice; this one is for when the destination is
   # known to need rewriting.
+  %a{fmrb.internal}
   def transfer_file: (String path) -> bool
+
+# transfer_file の省略なしの形 <<en>> transfer_file with nothing left out
+#
+# 送り先を省略できない形。包みは transfer_file。
+# ```ruby
+# gfx.transfer_file_raw(path, path)
+# ```
+# <<en>>
+# The destination cannot be left out. The wrapper is transfer_file.
+# ```ruby
+# gfx.transfer_file_raw(path, path)
+# ```
+def transfer_file_raw: (String path, String dest) -> bool
 
   # 送った先にファイルがあるか <<en>> Whether the file arrived
   #
@@ -948,7 +1154,7 @@ class FmrbGfx
   # Do not use it to decide whether to send an asset. exists stays true after
   # the contents change, so an edited asset would stay stale; leave that
   # decision to sync_file.
-  def file_status: (String path) -> Hash
+  def file_status: (String path) -> file_info
 
   # ---- クラスメソッド ----
 
@@ -985,5 +1191,6 @@ class FmrbGfx
   # r, g, b = FmrbGfx.hsv_to_rgb(hue, 255, 255)
   # color = FmrbGfx.rgb_to_332(r, g, b)
   # ```
+  %a{fmrb.internal}
   def self.hsv_to_rgb: (Integer h, Integer s, Integer v) -> Array
 end

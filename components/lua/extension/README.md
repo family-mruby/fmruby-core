@@ -11,7 +11,7 @@ local seconds = 0
 
 function on_create()            -- Window ができた後に 1 回
   FmrbApp.clear_user_area()     -- 区画をテーマの色で塗り、枠を描き直す
-  gfx:draw_text("Hello", 2, 2, FmrbApp.THEME_TEXT)
+  gfx:draw_text(2, 2, "Hello", FmrbApp.THEME_TEXT)
   gfx:present()
 end
 
@@ -39,13 +39,23 @@ end
 ## 描く
 
 - `gfx` は殻が作った描き手。座標の (0, 0) は枠の内側 (区画) の左上 (Ruby の `@gfx` と同じ)。
-  区画の大きさは `FmrbApp.user_area_width`・`user_area_height`、Window の大きさは
-  `FmrbApp.WINDOW_WIDTH`・`WINDOW_HEIGHT` (大きさが変わると殻が書き直す)。
-- `gfx:fill_rect(x, y, w, h, c)`・`draw_rect`・`fill_round_rect(x, y, w, h, r, c)`・`draw_round_rect`・
-  `draw_line(x1, y1, x2, y2, c)`・`fill_circle(x, y, r, c)`・`draw_text(text, x, y, c [, bg])`・
-  `present()`。`gfx:clear(c)` は canvas 全体 (枠ごと) を消す。区画だけ消すのは
+  区画の大きさは `FmrbApp.user_area_width()`・`user_area_height()`、Window の大きさは
+  `FmrbApp.window_width()`・`window_height()` (関数なので、呼んだ時点の大きさが返る)。
+- `gfx` のメソッドは Ruby の `FmrbGfx` と同じ名前・同じ引数の順で、型定義 `sig/fmrb_gfx.rbs` から
+  生成している (doc/app_boundary)。`gfx:fill_rect(x, y, w, h, c)`・`draw_rect`・`fill_round_rect(x, y,
+  w, h, r, c)`・`draw_line(x1, y1, x2, y2, c)`・`fill_circle(x, y, r, c)`・`draw_ellipse`・
+  `draw_triangle`・`draw_arc` など。`gfx:clear(c)` は canvas 全体 (枠ごと) を消す。区画だけ消すのは
   `FmrbApp.clear_user_area([c])` (枠も描き直す)。区画の隅を塗った後に枠を描き直すのは
   `FmrbApp.draw_window_frame()`。
+- 省略できる引数を持つものは、小さな Lua の前置き (`fmrb_lua_gfx.c` の `gfx_prelude`) が Ruby と同じ
+  既定値で包む: `gfx:draw_text(x, y, text, color [, bg_color [, mixed]])`・`gfx:present([x, y])`・
+  `set_font(family [, size])`・`draw_image(id [, x, y, scale_x, scale_y])`・`draw_tile`・
+  `draw_image_masked`・`sync_file(path [, dest])`・`transfer_file`・`set_composite_regions`。
+  省略できない形は後ろに `_raw` が付く (`gfx:draw_text_raw(x, y, text, color, bg_color, mixed)`。
+  `bg_color` が負なら背景を塗らない)。
+- 記録 (`gfx:create_image(path)` の `{id=, width=, height=}` など) は表、Ruby の Symbol の選択肢は
+  文字列 (`gfx:set_font("ja", 12)`)。失敗はエラーになる。
+- `FmrbGfx.rgb_to_332(r, g, b)` で色を作れる。
 - 色: `FmrbGfx.BLACK` などの定数と、テーマの `FmrbApp.THEME_WINDOW_BG`・`THEME_TEXT`・`THEME_BORDER` など。
 - ヘッドレス (`default_window_mode = "background"`) のアプリでは `gfx` は nil。
 
@@ -68,6 +78,7 @@ Ruby のアプリの `ev` と同じ鍵と値。`ev.type` は文字列。
 
 ## このディレクトリ
 
-- `fmrb_lua_gfx.c`: `gfx` の描画 (原点を C で足す) と `FmrbGfx`・`FmrbApp` の表。
+- `fmrb_lua_gfx.c`: 生成した `gfx` のメソッド (`fmrb_gen/fmrb_boundary_lua.inc`) を載せる表と前置き、
+  受け手の番号 (原点つき) を渡すフック、`FmrbGfx`・`FmrbApp` の表。
 - `../fmrb_lua_shell.c`: 殻とのつなぎ (関数を呼ぶ・`ev` を表にする・区画を `gfx` に伝える)。
 - 足すときは `../CMakeLists.txt` と `hosted/hosted.cmake` の両方に載せる。

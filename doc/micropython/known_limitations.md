@@ -178,9 +178,10 @@ Python 固有の話ではない。
 
 ### 用意していない描画
 
-マスク、円弧、半透明の矩形、`get_pixel`、描画のまとめ送り (GfxBlock)、
-合成領域、表示範囲。地図クラスも無い (`draw_tile` はあるので、並べるのは
-アプリ側で書く)。
+描画のまとめ送り (GfxBlock)、動画。地図クラスも無い (`draw_tile` はあるので、
+並べるのはアプリ側で書く)。FmrbGfx の境界に載るメソッドは全部ある
+(doc/app_boundary の W4a で、型定義 `sig/fmrb_gfx.rbs` から生成するように
+なった)。
 
 ## 音
 
@@ -301,12 +302,32 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
 
 ### FmrbGfx
 
-`clear` `present` `set_pixel` `draw_line` `draw_rect` `fill_rect`
-`draw_circle` `fill_circle` `draw_round_rect` `fill_round_rect`
-`draw_ellipse` `fill_ellipse` `draw_triangle` `fill_triangle`
-`draw_text` `text_width` `font_height` `set_font` `set_text_size`
-`sync_file` `create_image` `draw_image` `delete_image` `draw_tile`
-`delete_all_sprites`
+境界のメソッドは型定義 (`sig/fmrb_gfx.rbs`) から生成した `_FmrbGfxBoundary`
+にあり、`FmrbGfx` はそれを継いで包みを足す (Ruby の mrblib と同じ 2 段)。
+名前・引数の順・引数名は Ruby と同じ (`draw_text(x, y, text, color)`)。
+
+- 生成 (省略できる引数は無い): `clear(color)` `set_pixel` `get_pixel`
+  `draw_line` `draw_rect` `fill_rect` `blend_rect` `draw_circle` `fill_circle`
+  `draw_round_rect` `fill_round_rect` `draw_ellipse` `fill_ellipse`
+  `draw_triangle` `fill_triangle` `draw_arc` `fill_arc` `draw_wallclock`
+  `draw_free_iram` `create_image` `delete_image` `create_mask` `delete_mask`
+  `set_viewport` `clear_viewport` `set_sprite_clip` `clear_sprite_clip`
+  `set_output_level` `set_chroma_level` `file_status`、`FmrbGfx.rgb_to_332`。
+  包みの下の省略なしの形 `draw_text_raw` `set_font_raw` `set_text_size_raw`
+  `present_raw` `draw_image_raw` `draw_tile_raw` `draw_image_masked_raw`
+  `set_composite_regions_raw` `sync_file_raw` `transfer_file_raw`
+- 手書きの包み (既定値を持つ): `present(x=None, y=None)`
+  `draw_text(x, y, text, color, bg_color=None, mixed=False)`
+  `set_font(family, size=None)` `set_text_size` `draw_image(id, x=0, y=0, ...)`
+  `draw_tile(..., dst_x=0, dst_y=0)` `draw_image_masked(id, mask, x=0, y=0)`
+  `sync_file(path, dest=None)` `transfer_file(path, dest=None)`
+  `set_composite_regions(regions)`
+- そのほか: `text_width` `font_height` `delete_all_sprites`
+- `clear` は包みを持たないので、色は省略できない (W4a で `clear()` の既定の
+  黒をやめた)。
+- 記録 (`create_image`・`file_status` の結果、`set_composite_regions_raw` の
+  要素) は dict。Symbol の選択肢 (`set_font_raw` の family) は名前の str
+  (`"ja"`) か番号 (`FmrbGfx.FONT_JA`)。
 
 スプライトは `SpriteImage` (`set_target` `reset_target` `load_bmp` `destroy`)
 と `SpriteInstance` (`move` `set_visible` `set_frame` `destroy`)。
@@ -337,9 +358,9 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
 | 分類 | 内容 |
 |---|---|
 | 地図 | タイルマップのクラス / `TileRing` (`draw_tile` はあるので自分で並べる) |
-| 画像 | マスク (`draw_image_masked`) / `load_image` (`sync_file` + `create_image` + `draw_image` で書く) |
-| 描画最適化 | `GfxBlock` / composite region / `set_viewport` (ハードウェアスクロール) |
-| その他 | 音声 / `draw_arc` `fill_arc` `blend_rect` `get_pixel` / 追加キャンバス / スクロールバー / p5 互換層 |
+| 画像 | `load_image` (`sync_file` + `create_image` + `draw_image` で書く) / 動画 |
+| 描画最適化 | `GfxBlock` |
+| その他 | 音声 / 追加キャンバス / スクロールバー / p5 互換層 |
 
 音声はこれから (doc/micropython/phase8.md)。
 

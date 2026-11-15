@@ -815,7 +815,7 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             c.canvas_id = cmd->canvas_id;
             c.count = count;
             for (uint8_t i = 0; i < count; i++) {
-                const fmrb_gfx_composite_region_t *r =
+                const fmrb_gfx_canvas_region_t *r =
                     &cmd->params.set_composite_regions.regions[i];
                 c.regions[i].src_x = r->src_x;
                 c.regions[i].src_y = r->src_y;

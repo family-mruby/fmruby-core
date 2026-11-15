@@ -1,0 +1,33 @@
+# 幅のある数とバイト列の型の別名。名前は ROS 2 の型と同じ。
+#
+# Ruby から見ればただの Integer・Float・String で、エディタもそう扱う。
+# 幅に意味があるのは、本体との境界 (doc/app_boundary) で値を固定の並びの
+# バイト列に詰めるときで、生成の道具 (tools/boundary/gen.rb) はこの名前で
+# 幅を見分ける。幅を書かない Integer は int32、Float は float64 として扱い、
+# 範囲の外の値は詰めるときにエラーになる。
+#
+# 境界の固定の並び・ROS 2 の形式・Asterism の型の宣言で同じ名前を使う
+# (doc/wasm_apps の決定 10)。
+
+# 符号つき 8 ビットの整数 <<en>> signed 8-bit integer
+type int8 = Integer
+# 符号つき 16 ビットの整数 <<en>> signed 16-bit integer
+type int16 = Integer
+# 符号つき 32 ビットの整数 <<en>> signed 32-bit integer
+type int32 = Integer
+# 符号つき 64 ビットの整数 <<en>> signed 64-bit integer
+type int64 = Integer
+# 符号なし 8 ビットの整数 <<en>> unsigned 8-bit integer
+type uint8 = Integer
+# 符号なし 16 ビットの整数 <<en>> unsigned 16-bit integer
+type uint16 = Integer
+# 符号なし 32 ビットの整数 <<en>> unsigned 32-bit integer
+type uint32 = Integer
+# 符号なし 64 ビットの整数 <<en>> unsigned 64-bit integer
+type uint64 = Integer
+# 32 ビットの小数 <<en>> 32-bit float
+type float32 = Float
+# 64 ビットの小数 <<en>> 64-bit float
+type float64 = Float
+# 中身の決まらないバイト列 <<en>> raw bytes
+type bin = String

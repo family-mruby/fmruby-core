@@ -199,7 +199,7 @@ typedef struct {
     int16_t dst_x, dst_y;     // Destination offset relative to the canvas position
     int16_t w, h;             // Region dimensions in pixels
     uint8_t use_transparent;  // 1 = color-key compare, 0 = opaque memcpy
-} fmrb_gfx_composite_region_t;
+} fmrb_gfx_canvas_region_t;
 
 #define FMRB_GFX_MAX_COMPOSITE_REGIONS 8
 
@@ -221,7 +221,7 @@ typedef struct {
 fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
     fmrb_gfx_context_t context,
     fmrb_canvas_handle_t canvas_handle,
-    const fmrb_gfx_composite_region_t *regions,
+    const fmrb_gfx_canvas_region_t *regions,
     uint8_t count);
 
 /**
@@ -266,7 +266,7 @@ fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
  * @param h Clip height (0 = clear clip)
  * @return FMRB_GFX_OK on success
  */
-fmrb_gfx_err_t fmrb_gfx_set_sprite_clip(
+fmrb_gfx_err_t fmrb_gfx_set_canvas_sprite_clip(
     fmrb_gfx_context_t context,
     fmrb_canvas_handle_t canvas_handle,
     uint16_t x, uint16_t y,

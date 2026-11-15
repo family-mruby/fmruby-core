@@ -6,9 +6,22 @@
  * The functions the firmware offers to an app, as the app imports them. The
  * same definitions (the .rbs files in sig/) give the Ruby, Lua, MicroPython
  * and other bindings, so this header also tells what crosses the boundary in
- * every language: integers, and a receiver number for methods of an object.
+ * every language:
  *
- * Results: 0 or more on success, negative on failure.
+ * - an object's method takes the object's number first (a canvas for FmrbGfx);
+ * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
+ *   bool is int32_t 0 or 1; Float is double;
+ * - a String is a pointer and a length (not NUL-terminated);
+ * - a Symbol choice is its number (the FMRB_..._<NAME> constants);
+ * - a record is a packed little-endian struct, passed by pointer, and an
+ *   array of them a pointer and a count;
+ * - a record result is written into the caller's struct: 1 when filled, 0
+ *   when there is none; a String result into the caller's buffer, returning
+ *   the full length (as snprintf does).
+ *
+ * Results: 0 or more on success; FMRB_BOUNDARY_ERR_FAILED, or
+ * FMRB_BOUNDARY_ERR_ARG when an argument was out of range or a pointer
+ * pointed outside the app's memory.
  */
 #ifndef FMRB_BOUNDARY_H
 #define FMRB_BOUNDARY_H
@@ -22,27 +35,63 @@ extern "C" {
 /** Version of the boundary (decided by the generator; see doc/wasm_apps decision 14). */
 #define FMRB_ABI_VERSION_MAJOR 0
 #define FMRB_ABI_VERSION_MINOR 1
-/** Hash of the function list; changes whenever a function or its form changes. */
+/** Hash of the function list and records; changes whenever one of them changes. */
 #define FMRB_ABI_HASH 0x<%= abi_hash %>u
+
+#define FMRB_BOUNDARY_ERR_FAILED (-1)
+#define FMRB_BOUNDARY_ERR_ARG    (-2)
 
 #if defined(__wasm__)
 #define FMRB_IMPORT(name) __attribute__((import_module("fmrb"), import_name(name)))
 #else
 #define FMRB_IMPORT(name)
 #endif
+<% records.each do |r| -%>
+
+/** <%= r.klass %>::<%= r.name %> (<%= r.size %> bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+<% r.fields.each do |f| -%>
+    <%= f.ty.ctype %> <%= f.name %>;<%= f.ty.kind == :bool ? '  /* 0 or 1 */' : '' %>
+<% end -%>
+} <%= r.cname %>;
+<% end -%>
+<% funcs.each do |f| -%>
+<% f.params.select { |p| p.ty.kind == :choice }.each do |p| -%>
+
+/** <%= f.ruby_sig %>: the choices of <%= p.name %> */
+<% p.ty.values.each_with_index do |v, i| -%>
+#define <%= "#{f.flat}_#{p.name}_#{v}".upcase %> <%= i %>
+<% end -%>
+<% end -%>
+<% end -%>
 <% funcs.each do |f| -%>
 
 /**
  * <%= f.doc_ja %>
  * <%= f.doc_en %>
  *
- * Ruby: <%= f.klass %>#<%= f.method %>(<%= f.params.map(&:name).join(', ') %>)
+ * Ruby: <%= f.ruby_sig %>
 <% if f.recv -%>
  * @param <%= f.recv %> the <%= f.klass %> receiver number
 <% end -%>
+<% if f.returns_record? -%>
+ * @return 1 when *out was filled<%= f.ret.optional ? ', 0 when there is none (nil in Ruby)' : '' %>
+<% elsif f.returns_bytes? -%>
+ * @return the full length of the result (more than out_size: cut short)
+<% elsif f.ret.is_a?(Ty) -%>
+ * @return the <%= f.ret.kind == :bool ? 'answer, 1 or 0' : 'value' %>
+<% end -%>
  */
 FMRB_IMPORT("<%= f.import_name %>")
-int32_t <%= f.flat %>(<%= f.c_args %>);
+int32_t <%= f.flat %>(<%= f.c_args.empty? ? 'void' : f.c_args %>);
+<% end -%>
+<% unless hooks.empty? -%>
+
+/* ---- what the app exports (the hooks; the firmware calls them) ---- */
+<% hooks.each do |h| -%>
+
+/** <%= h.doc_ja %> / <%= h.doc_en %> (<%= h.klass %>#<%= h.method %>) */
+<% end -%>
 <% end -%>
 
 #ifdef __cplusplus

@@ -2,21 +2,23 @@
 #
 # Transcribed from the Ruby version (picoruby-fmrb-app mrblib/fmrb-gfx.rb plus
 # the primitives gfx.c defines directly on the class), so method names,
-# argument order and colour values match. The Ruby class keeps the low-level
-# calls as methods on a C object; here they are flat functions in _fmrb taking
-# the canvas id, and this class supplies the object shape.
+# argument order and colour values match. The methods on the app boundary are
+# generated from sig/ into _FmrbGfxBoundary (fmrb_boundary_py.h, doc/
+# app_boundary), which passes the object itself to _fmrb so the firmware adds
+# the drawing origin. This class adds what the Ruby mrblib adds: the wrappers
+# with default arguments over the *_raw methods, and the text metrics.
 #
-# Not provided (see doc/micropython/README.md): masks, arcs, blend_rect,
-# get_pixel, GfxBlock, composite regions and viewports.
+# Not provided (see doc/micropython/README.md): GfxBlock, video.
 
 import _fmrb
 
 
-class FmrbGfx:
+class FmrbGfx(_FmrbGfxBoundary):
     # Font families for set_font. JA carries the Japanese glyphs; the default
     # one is ASCII only.
     FONT_DEFAULT = 0
     FONT_JA = 1
+    FONT_JA_BOLD = 2
     # RGB332: 3-bit red, 3-bit green, 2-bit blue.
     BLACK = 0x00
     WHITE = 0xFF
@@ -61,80 +63,33 @@ class FmrbGfx:
         self.dy = 0 if self.to_image else y
         return self
 
-    def clear(self, color=BLACK):
-        _fmrb.gfx_clear(self.canvas_id, color)
-        return self
+    # The wrappers: the same defaults as Ruby's.
 
+    # present(x, y) puts the canvas at (x, y) on the screen; without them it
+    # goes where the app's window is.
     def present(self, x=None, y=None):
-        _fmrb.gfx_present(self.canvas_id, x, y)
-        return self
-
-    def set_pixel(self, x, y, color):
-        _fmrb.gfx_set_pixel(self.canvas_id, x + self.dx, y + self.dy, color)
-        return self
-
-    def draw_line(self, x0, y0, x1, y1, color):
-        _fmrb.gfx_draw_line(self.canvas_id, x0 + self.dx, y0 + self.dy, x1 + self.dx, y1 + self.dy, color)
-        return self
-
-    def draw_rect(self, x, y, w, h, color):
-        _fmrb.gfx_draw_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, color)
-        return self
-
-    def fill_rect(self, x, y, w, h, color):
-        _fmrb.gfx_fill_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, color)
-        return self
-
-    def draw_circle(self, x, y, r, color):
-        _fmrb.gfx_draw_circle(self.canvas_id, x + self.dx, y + self.dy, r, color)
-        return self
-
-    def fill_circle(self, x, y, r, color):
-        _fmrb.gfx_fill_circle(self.canvas_id, x + self.dx, y + self.dy, r, color)
-        return self
-
-    def draw_round_rect(self, x, y, w, h, r, color):
-        _fmrb.gfx_draw_round_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, r, color)
-        return self
-
-    def fill_round_rect(self, x, y, w, h, r, color):
-        _fmrb.gfx_fill_round_rect(self.canvas_id, x + self.dx, y + self.dy, w, h, r, color)
-        return self
-
-    def draw_ellipse(self, x, y, rx, ry, color):
-        _fmrb.gfx_draw_ellipse(self.canvas_id, x + self.dx, y + self.dy, rx, ry, color)
-        return self
-
-    def fill_ellipse(self, x, y, rx, ry, color):
-        _fmrb.gfx_fill_ellipse(self.canvas_id, x + self.dx, y + self.dy, rx, ry, color)
-        return self
-
-    def draw_triangle(self, x0, y0, x1, y1, x2, y2, color):
-        _fmrb.gfx_draw_triangle(self.canvas_id, x0 + self.dx, y0 + self.dy, x1 + self.dx, y1 + self.dy, x2 + self.dx, y2 + self.dy, color)
-        return self
-
-    def fill_triangle(self, x0, y0, x1, y1, x2, y2, color):
-        _fmrb.gfx_fill_triangle(self.canvas_id, x0 + self.dx, y0 + self.dy, x1 + self.dx, y1 + self.dy, x2 + self.dx, y2 + self.dy, color)
-        return self
+        if x is None or y is None:
+            return self.present_raw(0, 0, False)
+        return self.present_raw(x, y, True)
 
     # mixed=True draws ASCII with the built-in 6x8 font and multi-byte runs
     # with the Japanese one, in a single line. Without it, a line is drawn
     # entirely in whatever set_font selected.
     def draw_text(self, x, y, text, color, bg_color=None, mixed=False):
-        _fmrb.gfx_draw_text(self.canvas_id, x + self.dx, y + self.dy, str(text), color, bg_color, mixed)
-        return self
+        return self.draw_text_raw(x, y, str(text), color, -1 if bg_color is None else bg_color, mixed)
 
-    # family is FONT_DEFAULT or FONT_JA; size is the pixel height (the JA font
-    # has one size, so it can be left out).
+    # family is FONT_DEFAULT, FONT_JA or FONT_JA_BOLD (or its name, "ja");
+    # size is the pixel height: 8, 12 or 16 for FONT_JA (8 when left out),
+    # 12 for FONT_JA_BOLD.
     def set_font(self, family, size=None):
         self.current_font = (family, size)
-        _fmrb.gfx_set_font(self.canvas_id, family, size)
-        return self
+        if size is None:
+            size = 12 if family in (FmrbGfx.FONT_DEFAULT, FmrbGfx.FONT_JA_BOLD, "default", "ja_bold") else 8
+        return self.set_font_raw(family, size)
 
     # Scale on top of the font, 1 to 4.
     def set_text_size(self, size):
-        _fmrb.gfx_set_text_size(self.canvas_id, size)
-        return self
+        return self.set_text_size_raw(size)
 
     # Rendered width of a string drawn with mixed=True, in pixels.
     #
@@ -172,30 +127,37 @@ class FmrbGfx:
 
     # Copy a file to the graphics side, unless the copy there already matches.
     def sync_file(self, path, dest=None):
-        return _fmrb.gfx_sync_file(path, dest if dest else path)
+        return self.sync_file_raw(path, dest if dest else path)
 
-    # -> {"id":, "width":, "height":} or None. The path is a graphics-side one,
-    # so sync_file it there first.
-    def create_image(self, path):
-        return _fmrb.gfx_create_image(self.canvas_id, path)
+    def transfer_file(self, path, dest=None):
+        return self.transfer_file_raw(path, dest if dest else path)
+
+    # create_image(path) -> {"id":, "width":, "height":} or None (generated).
+    # The path is a graphics-side one, so sync_file it there first.
 
     def draw_image(self, image_id, x=0, y=0, scale_x=1.0, scale_y=0.0):
-        # Scale is fixed point on the wire: 256 = 1.0, and 0 for y means
-        # "same as x".
-        _fmrb.gfx_draw_image(self.canvas_id, image_id, x + self.dx, y + self.dy,
-                             int(scale_x * 256), int(scale_y * 256))
-        return self
-
-    def delete_image(self, image_id):
-        _fmrb.gfx_delete_image(self.canvas_id, image_id)
-        return self
+        return self.draw_image_raw(image_id, x, y, scale_x, scale_y)
 
     # Stamp a rectangle of a sprite image straight onto the canvas. No instance
     # is allocated, so this is the cheap way to draw a fixed background out of
     # a tile sheet.
     def draw_tile(self, image_id, src_x, src_y, w, h, dst_x=0, dst_y=0):
-        _fmrb.gfx_draw_tile(self.canvas_id, image_id, src_x, src_y, w, h, dst_x + self.dx, dst_y + self.dy)
-        return self
+        return self.draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+
+    def draw_image_masked(self, image_id, mask_id, x=0, y=0):
+        return self.draw_image_masked_raw(image_id, mask_id, x, y)
+
+    # regions: dicts with src_x, src_y, dst_x, dst_y, w, h, transparent; what
+    # is left out is filled in as Ruby's set_composite_regions does.
+    def set_composite_regions(self, regions):
+        out = []
+        for r in regions or []:
+            dx = r.get("dst_x", 0)
+            dy = r.get("dst_y", 0)
+            out.append({"src_x": r.get("src_x", dx), "src_y": r.get("src_y", dy),
+                        "dst_x": dx, "dst_y": dy, "w": r.get("w", 0), "h": r.get("h", 0),
+                        "transparent": bool(r.get("transparent", False))})
+        return self.set_composite_regions_raw(out)
 
     def delete_all_sprites(self):
         _fmrb.gfx_delete_all_sprites(self.canvas_id)

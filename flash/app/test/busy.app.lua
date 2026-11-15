@@ -8,7 +8,7 @@
 -- No .app.toml, so the launcher does not list it; start it with
 -- "run /app/test/busy.app.lua" or spawn from the debug panel.
 function on_create()
-    gfx:draw_text("busy loop", 10, 10, FmrbApp.THEME_TEXT)
+    gfx:draw_text(10, 10, "busy loop", FmrbApp.THEME_TEXT)
     gfx:present()
     print("busy: entering loop")
     while true do end

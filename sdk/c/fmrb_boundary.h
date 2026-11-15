@@ -6,9 +6,22 @@
  * The functions the firmware offers to an app, as the app imports them. The
  * same definitions (the .rbs files in sig/) give the Ruby, Lua, MicroPython
  * and other bindings, so this header also tells what crosses the boundary in
- * every language: integers, and a receiver number for methods of an object.
+ * every language:
  *
- * Results: 0 or more on success, negative on failure.
+ * - an object's method takes the object's number first (a canvas for FmrbGfx);
+ * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
+ *   bool is int32_t 0 or 1; Float is double;
+ * - a String is a pointer and a length (not NUL-terminated);
+ * - a Symbol choice is its number (the FMRB_..._<NAME> constants);
+ * - a record is a packed little-endian struct, passed by pointer, and an
+ *   array of them a pointer and a count;
+ * - a record result is written into the caller's struct: 1 when filled, 0
+ *   when there is none; a String result into the caller's buffer, returning
+ *   the full length (as snprintf does).
+ *
+ * Results: 0 or more on success; FMRB_BOUNDARY_ERR_FAILED, or
+ * FMRB_BOUNDARY_ERR_ARG when an argument was out of range or a pointer
+ * pointed outside the app's memory.
  */
 #ifndef FMRB_BOUNDARY_H
 #define FMRB_BOUNDARY_H
@@ -22,14 +35,97 @@ extern "C" {
 /** Version of the boundary (decided by the generator; see doc/wasm_apps decision 14). */
 #define FMRB_ABI_VERSION_MAJOR 0
 #define FMRB_ABI_VERSION_MINOR 1
-/** Hash of the function list; changes whenever a function or its form changes. */
-#define FMRB_ABI_HASH 0xb1d9063du
+/** Hash of the function list and records; changes whenever one of them changes. */
+#define FMRB_ABI_HASH 0x8acc030au
+
+#define FMRB_BOUNDARY_ERR_FAILED (-1)
+#define FMRB_BOUNDARY_ERR_ARG    (-2)
 
 #if defined(__wasm__)
 #define FMRB_IMPORT(name) __attribute__((import_module("fmrb"), import_name(name)))
 #else
 #define FMRB_IMPORT(name)
 #endif
+
+/** FmrbGfx::image_info (6 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint16_t id;
+    uint16_t width;
+    uint16_t height;
+} fmrb_gfx_image_info_t;
+
+/** FmrbGfx::composite_region (13 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    int16_t src_x;
+    int16_t src_y;
+    int16_t dst_x;
+    int16_t dst_y;
+    int16_t w;
+    int16_t h;
+    uint8_t transparent;  /* 0 or 1 */
+} fmrb_gfx_composite_region_t;
+
+/** FmrbGfx::file_info (5 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint8_t exists;  /* 0 or 1 */
+    uint32_t size;
+} fmrb_gfx_file_info_t;
+
+/** FmrbGfx#set_font_raw(family, size): the choices of family */
+#define FMRB_GFX_SET_FONT_RAW_FAMILY_DEFAULT 0
+#define FMRB_GFX_SET_FONT_RAW_FAMILY_JA 1
+#define FMRB_GFX_SET_FONT_RAW_FAMILY_JA_BOLD 2
+
+/**
+ * 画面ぜんぶを一色でぬる
+ * Paint the whole canvas one colour
+ *
+ * Ruby: FmrbGfx#clear(color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_clear")
+int32_t fmrb_gfx_clear(int32_t gfx, int32_t color);
+
+/**
+ * 点を一つ打つ
+ * Set one pixel
+ *
+ * Ruby: FmrbGfx#set_pixel(x, y, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_pixel")
+int32_t fmrb_gfx_set_pixel(int32_t gfx, int32_t x, int32_t y, int32_t color);
+
+/**
+ * 点の色を読む
+ * Read one pixel's colour
+ *
+ * Ruby: FmrbGfx#get_pixel(x, y)
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_get_pixel")
+int32_t fmrb_gfx_get_pixel(int32_t gfx, int32_t x, int32_t y);
+
+/**
+ * まっすぐな線を引く
+ * Draw a straight line
+ *
+ * Ruby: FmrbGfx#draw_line(x0, y0, x1, y1, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_line")
+int32_t fmrb_gfx_draw_line(int32_t gfx, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t color);
+
+/**
+ * 四角のふちを描く
+ * Draw the outline of a rectangle
+ *
+ * Ruby: FmrbGfx#draw_rect(x, y, w, h, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_rect")
+int32_t fmrb_gfx_draw_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t color);
 
 /**
  * 四角をぬりつぶす
@@ -40,6 +136,363 @@ extern "C" {
  */
 FMRB_IMPORT("gfx_fill_rect")
 int32_t fmrb_gfx_fill_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t color);
+
+/**
+ * 下の絵と混ぜて四角をぬる
+ * Fill a rectangle blended with what is under it
+ *
+ * Ruby: FmrbGfx#blend_rect(x, y, w, h, color, mode)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_blend_rect")
+int32_t fmrb_gfx_blend_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t color, int32_t mode);
+
+/**
+ * 角の丸い四角のふちを描く
+ * Draw a rounded rectangle outline
+ *
+ * Ruby: FmrbGfx#draw_round_rect(x, y, w, h, r, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_round_rect")
+int32_t fmrb_gfx_draw_round_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, int32_t color);
+
+/**
+ * 角の丸い四角をぬりつぶす
+ * Fill a rounded rectangle
+ *
+ * Ruby: FmrbGfx#fill_round_rect(x, y, w, h, r, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_fill_round_rect")
+int32_t fmrb_gfx_fill_round_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, int32_t color);
+
+/**
+ * 円のふちを描く
+ * Draw a circle outline
+ *
+ * Ruby: FmrbGfx#draw_circle(x, y, r, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_circle")
+int32_t fmrb_gfx_draw_circle(int32_t gfx, int32_t x, int32_t y, int32_t r, int32_t color);
+
+/**
+ * 円をぬりつぶす
+ * Fill a circle
+ *
+ * Ruby: FmrbGfx#fill_circle(x, y, r, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_fill_circle")
+int32_t fmrb_gfx_fill_circle(int32_t gfx, int32_t x, int32_t y, int32_t r, int32_t color);
+
+/**
+ * だ円のふちを描く
+ * Draw an ellipse outline
+ *
+ * Ruby: FmrbGfx#draw_ellipse(x, y, rx, ry, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_ellipse")
+int32_t fmrb_gfx_draw_ellipse(int32_t gfx, int32_t x, int32_t y, int32_t rx, int32_t ry, int32_t color);
+
+/**
+ * だ円をぬりつぶす
+ * Fill an ellipse
+ *
+ * Ruby: FmrbGfx#fill_ellipse(x, y, rx, ry, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_fill_ellipse")
+int32_t fmrb_gfx_fill_ellipse(int32_t gfx, int32_t x, int32_t y, int32_t rx, int32_t ry, int32_t color);
+
+/**
+ * 三角のふちを描く
+ * Draw a triangle outline
+ *
+ * Ruby: FmrbGfx#draw_triangle(x0, y0, x1, y1, x2, y2, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_triangle")
+int32_t fmrb_gfx_draw_triangle(int32_t gfx, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t color);
+
+/**
+ * 三角をぬりつぶす
+ * Fill a triangle
+ *
+ * Ruby: FmrbGfx#fill_triangle(x0, y0, x1, y1, x2, y2, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_fill_triangle")
+int32_t fmrb_gfx_fill_triangle(int32_t gfx, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t color);
+
+/**
+ * 円の一部の弧を描く
+ * Draw an arc
+ *
+ * Ruby: FmrbGfx#draw_arc(x, y, r0, r1, angle0, angle1, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_arc")
+int32_t fmrb_gfx_draw_arc(int32_t gfx, int32_t x, int32_t y, int32_t r0, int32_t r1, int32_t angle0, int32_t angle1, int32_t color);
+
+/**
+ * 円の一部をぬりつぶす
+ * Fill a wedge of a circle
+ *
+ * Ruby: FmrbGfx#fill_arc(x, y, r0, r1, angle0, angle1, color)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_fill_arc")
+int32_t fmrb_gfx_fill_arc(int32_t gfx, int32_t x, int32_t y, int32_t r0, int32_t r1, int32_t angle0, int32_t angle1, int32_t color);
+
+/**
+ * draw_text の省略なしの形
+ * draw_text with nothing left out
+ *
+ * Ruby: FmrbGfx#draw_text_raw(x, y, text, color, bg_color, mixed)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_text_raw")
+int32_t fmrb_gfx_draw_text_raw(int32_t gfx, int32_t x, int32_t y, const char *text, int32_t text_len, int32_t color, int32_t bg_color, int32_t mixed);
+
+/**
+ * set_font の省略なしの形
+ * set_font with nothing left out
+ *
+ * Ruby: FmrbGfx#set_font_raw(family, size)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_font_raw")
+int32_t fmrb_gfx_set_font_raw(int32_t gfx, int32_t family, int32_t size);
+
+/**
+ * set_text_size の包みのない形
+ * set_text_size without the wrapper
+ *
+ * Ruby: FmrbGfx#set_text_size_raw(size)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_text_size_raw")
+int32_t fmrb_gfx_set_text_size_raw(int32_t gfx, int32_t size);
+
+/**
+ * 今の時刻を描く
+ * Draw the time now
+ *
+ * Ruby: FmrbGfx#draw_wallclock(x, y, color, bg_color)
+ * @param gfx the FmrbGfx receiver number
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("gfx_draw_wallclock")
+int32_t fmrb_gfx_draw_wallclock(int32_t gfx, int32_t x, int32_t y, int32_t color, int32_t bg_color);
+
+/**
+ * 空きメモリの量を描く
+ * Draw how much memory is free
+ *
+ * Ruby: FmrbGfx#draw_free_iram(x, y, color, bg_color)
+ * @param gfx the FmrbGfx receiver number
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("gfx_draw_free_iram")
+int32_t fmrb_gfx_draw_free_iram(int32_t gfx, int32_t x, int32_t y, int32_t color, int32_t bg_color);
+
+/**
+ * 絵のファイルから絵を作る
+ * Make an image from a file
+ *
+ * Ruby: FmrbGfx#create_image(path)
+ * @param gfx the FmrbGfx receiver number
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("gfx_create_image")
+int32_t fmrb_gfx_create_image(int32_t gfx, const char *path, int32_t path_len, fmrb_gfx_image_info_t *out);
+
+/**
+ * draw_image の省略なしの形
+ * draw_image with nothing left out
+ *
+ * Ruby: FmrbGfx#draw_image_raw(image_id, x, y, scale_x, scale_y)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_image_raw")
+int32_t fmrb_gfx_draw_image_raw(int32_t gfx, int32_t image_id, int32_t x, int32_t y, double scale_x, double scale_y);
+
+/**
+ * 作った絵を片づける
+ * Let go of an image you made
+ *
+ * Ruby: FmrbGfx#delete_image(image_id)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_delete_image")
+int32_t fmrb_gfx_delete_image(int32_t gfx, int32_t image_id);
+
+/**
+ * draw_tile の省略なしの形
+ * draw_tile with nothing left out
+ *
+ * Ruby: FmrbGfx#draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_tile_raw")
+int32_t fmrb_gfx_draw_tile_raw(int32_t gfx, int32_t image_id, int32_t src_x, int32_t src_y, int32_t w, int32_t h, int32_t dst_x, int32_t dst_y);
+
+/**
+ * 型ぬきの形を作る
+ * Make a mask
+ *
+ * Ruby: FmrbGfx#create_mask(width, height, data)
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_create_mask")
+int32_t fmrb_gfx_create_mask(int32_t gfx, int32_t width, int32_t height, const uint8_t *data, int32_t data_len);
+
+/**
+ * 型ぬきの形を片づける
+ * Let go of a mask
+ *
+ * Ruby: FmrbGfx#delete_mask(mask_id)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_delete_mask")
+int32_t fmrb_gfx_delete_mask(int32_t gfx, int32_t mask_id);
+
+/**
+ * draw_image_masked の省略なしの形
+ * draw_image_masked, plain arguments
+ *
+ * Ruby: FmrbGfx#draw_image_masked_raw(image_id, mask_id, x, y)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_image_masked_raw")
+int32_t fmrb_gfx_draw_image_masked_raw(int32_t gfx, int32_t image_id, int32_t mask_id, int32_t x, int32_t y);
+
+/**
+ * present の省略なしの形
+ * present with nothing left out
+ *
+ * Ruby: FmrbGfx#present_raw(x, y, positioned)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_present_raw")
+int32_t fmrb_gfx_present_raw(int32_t gfx, int32_t x, int32_t y, int32_t positioned);
+
+/**
+ * 画面の見せる場所をずらす
+ * Shift what part of the canvas is shown
+ *
+ * Ruby: FmrbGfx#set_viewport(src_x, src_y, w, h)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_viewport")
+int32_t fmrb_gfx_set_viewport(int32_t gfx, int32_t src_x, int32_t src_y, int32_t w, int32_t h);
+
+/**
+ * ずらした場所を元に戻す
+ * Put the shown part back
+ *
+ * Ruby: FmrbGfx#clear_viewport()
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_clear_viewport")
+int32_t fmrb_gfx_clear_viewport(int32_t gfx);
+
+/**
+ * set_composite_regions の省略なしの形
+ * set_composite_regions, every field given
+ *
+ * Ruby: FmrbGfx#set_composite_regions_raw(regions)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_composite_regions_raw")
+int32_t fmrb_gfx_set_composite_regions_raw(int32_t gfx, const fmrb_gfx_composite_region_t *regions, int32_t regions_count);
+
+/**
+ * スプライトが出られる範囲を決める
+ * limit where sprites may appear
+ *
+ * Ruby: FmrbGfx#set_sprite_clip(x, y, w, h)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_sprite_clip")
+int32_t fmrb_gfx_set_sprite_clip(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h);
+
+/**
+ * スプライトの範囲の決まりをなくす
+ * let sprites use the whole canvas
+ *
+ * Ruby: FmrbGfx#clear_sprite_clip()
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_clear_sprite_clip")
+int32_t fmrb_gfx_clear_sprite_clip(int32_t gfx);
+
+/**
+ * 映像の明るさを決める
+ * Set the video brightness
+ *
+ * Ruby: FmrbGfx#set_output_level(level)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_output_level")
+int32_t fmrb_gfx_set_output_level(int32_t gfx, int32_t level);
+
+/**
+ * 映像の色の濃さを決める
+ * Set the colour depth of the video
+ *
+ * Ruby: FmrbGfx#set_chroma_level(level)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_chroma_level")
+int32_t fmrb_gfx_set_chroma_level(int32_t gfx, int32_t level);
+
+/**
+ * sync_file の省略なしの形
+ * sync_file with nothing left out
+ *
+ * Ruby: FmrbGfx#sync_file_raw(path, dest)
+ * @param gfx the FmrbGfx receiver number
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("gfx_sync_file_raw")
+int32_t fmrb_gfx_sync_file_raw(int32_t gfx, const char *path, int32_t path_len, const char *dest, int32_t dest_len);
+
+/**
+ * transfer_file の省略なしの形
+ * transfer_file with nothing left out
+ *
+ * Ruby: FmrbGfx#transfer_file_raw(path, dest)
+ * @param gfx the FmrbGfx receiver number
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("gfx_transfer_file_raw")
+int32_t fmrb_gfx_transfer_file_raw(int32_t gfx, const char *path, int32_t path_len, const char *dest, int32_t dest_len);
+
+/**
+ * 送った先にファイルがあるか
+ * Whether the file arrived
+ *
+ * Ruby: FmrbGfx#file_status(path)
+ * @param gfx the FmrbGfx receiver number
+ * @return 1 when *out was filled
+ */
+FMRB_IMPORT("gfx_file_status")
+int32_t fmrb_gfx_file_status(int32_t gfx, const char *path, int32_t path_len, fmrb_gfx_file_info_t *out);
+
+/**
+ * 赤緑青の三つの数から色を作る
+ * Make a colour from red, green and blue
+ *
+ * Ruby: FmrbGfx.rgb_to_332(r, g, b)
+ * @return the value
+ */
+FMRB_IMPORT("gfx_rgb_to_332")
+int32_t fmrb_gfx_rgb_to_332(int32_t r, int32_t g, int32_t b);
 
 #ifdef __cplusplus
 }

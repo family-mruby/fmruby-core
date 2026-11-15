@@ -214,7 +214,7 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
 fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
     fmrb_gfx_context_t context,
     fmrb_canvas_handle_t canvas_handle,
-    const fmrb_gfx_composite_region_t *regions,
+    const fmrb_gfx_canvas_region_t *regions,
     uint8_t count)
 {
     if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
@@ -239,7 +239,7 @@ fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
     cmd.params.set_composite_regions.count = count;
     if (count > 0) {
         memcpy(cmd.params.set_composite_regions.regions, regions,
-               (size_t)count * sizeof(fmrb_gfx_composite_region_t));
+               (size_t)count * sizeof(fmrb_gfx_canvas_region_t));
     }
 
     fmrb_err_t send_ret = fmrb_gfx_submit(&cmd);
@@ -282,7 +282,7 @@ fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
     return FMRB_GFX_OK;
 }
 
-fmrb_gfx_err_t fmrb_gfx_set_sprite_clip(
+fmrb_gfx_err_t fmrb_gfx_set_canvas_sprite_clip(
     fmrb_gfx_context_t context,
     fmrb_canvas_handle_t canvas_handle,
     uint16_t x, uint16_t y,

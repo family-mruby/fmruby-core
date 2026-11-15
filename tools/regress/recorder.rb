@@ -136,27 +136,21 @@ class FmrbGfx
     "#{f}x#{@__size}"
   end
 
-  def _set_font(family, size = nil) = (@__font = size ? [family, size] : [family])
-  def _set_text_size(n) = (@__size = n)
+  # The methods on the app boundary are generated C methods in the firmware
+  # (sig/fmrb_gfx.rbs, doc/app_boundary); these stand in for them.
+  def set_font_raw(family, size) = (@__font = family == :default ? [:default] : [family, size]; self)
+  def set_text_size_raw(n) = (@__size = n; self)
 
-  # An empty text draws nothing (and is not recorded).
-  def _draw_text(x, y, s, c, bg = nil)
-    return if s.to_s.empty?
+  # An empty text draws nothing (and is not recorded). mixed: Font0 for ASCII
+  # and misaki 8 for the rest, whatever the font. A negative bg is none.
+  def draw_text_raw(x, y, s, c, bg, mixed)
+    return self if s.to_s.empty?
     x += __dx
     y += __dy
-    t = "#{@__prefix}text #{Regress::Fmt.v(x)} #{Regress::Fmt.v(y)} #{s.to_s.inspect} #{Regress::Fmt.c(c)}"
-    t += " bg=#{Regress::Fmt.c(bg)}" if bg
-    Regress::Rec.add("#{t} #{__font_tag}")
-  end
-
-  # Font0 for ASCII and misaki 8 for the rest, whatever the font.
-  def _draw_text_hybrid(x, y, s, c, bg = nil)
-    return if s.to_s.empty?
-    x += __dx
-    y += __dy
-    t = "#{@__prefix}textm #{Regress::Fmt.v(x)} #{Regress::Fmt.v(y)} #{s.to_s.inspect} #{Regress::Fmt.c(c)}"
-    t += " bg=#{Regress::Fmt.c(bg)}" if bg
-    Regress::Rec.add("#{t} x#{@__size}")
+    t = "#{@__prefix}#{mixed ? 'textm' : 'text'} #{Regress::Fmt.v(x)} #{Regress::Fmt.v(y)} #{s.to_s.inspect} #{Regress::Fmt.c(c)}"
+    t += " bg=#{Regress::Fmt.c(bg)}" if bg >= 0
+    Regress::Rec.add(mixed ? "#{t} x#{@__size}" : "#{t} #{__font_tag}")
+    self
   end
 
   # Shapes: the coordinates, then the colour last.
@@ -172,25 +166,25 @@ class FmrbGfx
 
   def blend_rect(*a) = (__rec(:blend_rect, *__at(a, [0], [1])); self)
   def clear(c = 0) = (Regress::Rec.add("#{@__prefix}clear #{Regress::Fmt.c(c)}"); self)
-  def present = (Regress::Rec.present(@__prefix); self)
+  def present_raw(_x, _y, _positioned) = (Regress::Rec.present(@__prefix); self)
   def destroy = (__rec(:destroy); nil)
   def draw_wallclock(*a) = (__rec(:draw_wallclock, *__at(a, [0], [1])); self)
   def draw_free_iram(*a) = (__rec(:draw_free_iram, *__at(a, [0], [1])); self)
   def set_output_level(*) = self
   def set_chroma_level(*) = self
-  def _get_pixel(_x, _y) = 0
+  def get_pixel(_x, _y) = 0
 
-  def _sync_file(_path, _dest) = true
-  def _transfer_file(_path, _dest) = true
+  def sync_file_raw(_path, _dest) = true
+  def transfer_file_raw(_path, _dest) = true
 
-  def _file_status(path)
+  def file_status(path)
     host = Regress::FakeFS.read_path(path)
     host ? { exists: true, size: File.__regress_size(host) } : { exists: false, size: 0 }
   end
 
   def __next_id = (Regress::Env.ids += 1)
 
-  def _create_image_from_file(path)
+  def create_image(path)
     w, h = Regress::Env.image_size(path)
     return nil unless w
     id = __next_id
@@ -198,19 +192,26 @@ class FmrbGfx
     { id: id, width: w, height: h }
   end
 
-  def _draw_image(id, x, y, sx, sy) = (__rec(:draw_image, id, x + __dx, y + __dy, sx, sy); self)
-  def _delete_image(id) = (__rec(:delete_image, id); self)
-  def _create_mask(w, h, _data) = (id = __next_id; __rec(:create_mask, id, w, h); id)
-  def _delete_mask(id) = (__rec(:delete_mask, id); nil)
-  def _draw_image_masked(img, mask, x, y) = (__rec(:draw_image_masked, img, mask, x + __dx, y + __dy); self)
-  def _draw_tile(id, sx, sy, w, h, dx, dy) = (__rec(:draw_tile, id, sx, sy, w, h, dx + __dx, dy + __dy); self)
+  def draw_image_raw(id, x, y, sx, sy) = (__rec(:draw_image, id, x + __dx, y + __dy, sx, sy); self)
+  def delete_image(id) = (__rec(:delete_image, id); self)
+  def create_mask(w, h, _data) = (id = __next_id; __rec(:create_mask, id, w, h); id)
+  def delete_mask(id) = (__rec(:delete_mask, id); self)
+  def draw_image_masked_raw(img, mask, x, y) = (__rec(:draw_image_masked, img, mask, x + __dx, y + __dy); self)
+  def draw_tile_raw(id, sx, sy, w, h, dx, dy) = (__rec(:draw_tile, id, sx, sy, w, h, dx + __dx, dy + __dy); self)
   def _video_open(path, x, y, fps, lp) = (__rec(:video_open, path, x + __dx, y + __dy, fps, lp); Regress::Env.video_info)
   def _video_control(a) = (__rec(:video_control, a); nil)
   def _video_status = Regress::Env.video_status
 
-  def _set_composite_regions(flat) = (__rec(:composite_regions, flat); self)
-  def _set_canvas_viewport(*a) = (__rec(:viewport, *a); self)
-  def _set_sprite_clip(x, y, w, h) = (w > 0 ? __rec(:sprite_clip, x + @__ox, y + @__oy, w, h) : __rec(:sprite_clip, x, y, w, h); self)
+  # Recorded as the flat list the display gets, seven numbers a region.
+  def set_composite_regions_raw(list)
+    flat = list.flat_map { |r| [r[:src_x], r[:src_y], r[:dst_x], r[:dst_y], r[:w], r[:h], r[:transparent] ? 1 : 0] }
+    __rec(:composite_regions, flat)
+    self
+  end
+  def set_viewport(*a) = (__rec(:viewport, *a); self)
+  def clear_viewport = set_viewport(0, 0, 0, 0)
+  def set_sprite_clip(x, y, w, h) = (w > 0 ? __rec(:sprite_clip, x + @__ox, y + @__oy, w, h) : __rec(:sprite_clip, x, y, w, h); self)
+  def clear_sprite_clip = set_sprite_clip(0, 0, 0, 0)
   def _export_frame(path) = (__rec(:export_frame, path); true)
 
   def _create_sprite_image(w, h, tc, use) = (id = __next_id; __rec(:sprite_image, id, w, h, tc, use); id)

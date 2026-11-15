@@ -554,23 +554,24 @@ class FmrbGfx
     self
   end
 
-  # ---- primitives (forward to the gfx shim with @canvas_id) ----
-  def clear(color); FmrbSpxGfx.fmrb_spx_gfx_clear(@canvas_id, color); self; end
-  def set_pixel(x, y, color); FmrbSpxGfx.fmrb_spx_gfx_set_pixel(@canvas_id, x + @dx, y + @dy, color); self; end
-  def draw_line(x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_line(@canvas_id, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
-  def draw_rect(x, y, w, h, color); FmrbSpxGfx.fmrb_spx_gfx_draw_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
+  # ---- primitives: the app boundary's flat functions (sig/fmrb_gfx.rbs,
+  # doc/app_boundary) with @canvas_id and the origin added here ----
+  def clear(color); FmrbBoundary.fmrb_gfx_clear(@canvas_id, color); self; end
+  def set_pixel(x, y, color); FmrbBoundary.fmrb_gfx_set_pixel(@canvas_id, x + @dx, y + @dy, color); self; end
+  def draw_line(x1, y1, x2, y2, color); FmrbBoundary.fmrb_gfx_draw_line(@canvas_id, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
+  def draw_rect(x, y, w, h, color); FmrbBoundary.fmrb_gfx_draw_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
   def fill_rect(x, y, w, h, color); FmrbBoundary.fmrb_gfx_fill_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
-  def blend_rect(x, y, w, h, color, mode); FmrbSpxGfx.fmrb_spx_gfx_blend_rect(@canvas_id, x + @dx, y + @dy, w, h, color, mode); self; end
-  def draw_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
-  def fill_circle(x, y, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
-  def draw_round_rect(x, y, w, h, r, color); FmrbSpxGfx.fmrb_spx_gfx_draw_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
-  def fill_round_rect(x, y, w, h, r, color); FmrbSpxGfx.fmrb_spx_gfx_fill_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
-  def draw_ellipse(x, y, rx, ry, color); FmrbSpxGfx.fmrb_spx_gfx_draw_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
-  def fill_ellipse(x, y, rx, ry, color); FmrbSpxGfx.fmrb_spx_gfx_fill_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
-  def draw_triangle(x0, y0, x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_draw_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
-  def fill_triangle(x0, y0, x1, y1, x2, y2, color); FmrbSpxGfx.fmrb_spx_gfx_fill_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
-  def draw_arc(x, y, r0, r1, a0, a1, color); FmrbSpxGfx.fmrb_spx_gfx_draw_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
-  def fill_arc(x, y, r0, r1, a0, a1, color); FmrbSpxGfx.fmrb_spx_gfx_fill_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
+  def blend_rect(x, y, w, h, color, mode); FmrbBoundary.fmrb_gfx_blend_rect(@canvas_id, x + @dx, y + @dy, w, h, color, mode); self; end
+  def draw_circle(x, y, r, color); FmrbBoundary.fmrb_gfx_draw_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
+  def fill_circle(x, y, r, color); FmrbBoundary.fmrb_gfx_fill_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
+  def draw_round_rect(x, y, w, h, r, color); FmrbBoundary.fmrb_gfx_draw_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
+  def fill_round_rect(x, y, w, h, r, color); FmrbBoundary.fmrb_gfx_fill_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
+  def draw_ellipse(x, y, rx, ry, color); FmrbBoundary.fmrb_gfx_draw_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
+  def fill_ellipse(x, y, rx, ry, color); FmrbBoundary.fmrb_gfx_fill_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
+  def draw_triangle(x0, y0, x1, y1, x2, y2, color); FmrbBoundary.fmrb_gfx_draw_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
+  def fill_triangle(x0, y0, x1, y1, x2, y2, color); FmrbBoundary.fmrb_gfx_fill_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
+  def draw_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_gfx_draw_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
+  def fill_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_gfx_fill_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
 
   # ---- text (with font/size caching, like fmrb-gfx.rb) ----
   def set_font(family, size = nil)
@@ -579,47 +580,56 @@ class FmrbGfx
     # the shim selects it too (fmrb_spx_gfx_set_font).
     sz = 8 if family == :ja && !FmrbConst::FONT_JA
     @current_font = size ? [family, sz] : [family]
-    fam = family == :ja ? 1 : 0
-    FmrbSpxGfx.fmrb_spx_gfx_set_font(@canvas_id, fam, sz)
+    # :ja_bold is not selected here (FONT_METRICS has no bold): the regular cut.
+    set_font_raw(family == :ja ? :ja : :default, sz)
+    self
+  end
+
+  # The simple forms (the *_raw methods of sig/fmrb_gfx.rbs).
+  def set_font_raw(family, size)
+    fam = 0
+    fam = 1 if family == :ja
+    fam = 2 if family == :ja_bold
+    FmrbBoundary.fmrb_gfx_set_font_raw(@canvas_id, fam, size)
     self
   end
 
   def set_text_size(size)
     @current_text_size = size
-    FmrbSpxGfx.fmrb_spx_gfx_set_text_size(@canvas_id, size)
+    set_text_size_raw(size)
+  end
+
+  def set_text_size_raw(size)
+    FmrbBoundary.fmrb_gfx_set_text_size_raw(@canvas_id, size)
     self
   end
 
   def draw_text(x, y, str, color, bg_color = nil, mixed: false)
-    s = str.to_s
-    flags = 0
-    flags |= 1 if bg_color
-    flags |= 2 if mixed
-    bg = bg_color || 0
-    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x + @dx, y + @dy, s, s.bytesize, color, bg, flags)
+    draw_text_raw(x, y, str, color, bg_color || -1, mixed)
+  end
+
+  def draw_text_raw(x, y, text, color, bg_color, mixed)
+    s = text.to_s
+    FmrbBoundary.fmrb_gfx_draw_text_raw(@canvas_id, x + @dx, y + @dy, s, s.bytesize, color, bg_color,
+                                        mixed ? 1 : 0)
     self
   end
 
   # Periodic read-outs formatted in C (twins of the mruby Graphics methods), so
   # the desktop's 1Hz repaint allocates nothing. Return true when drawn.
   def draw_wallclock(x, y, color, bg_color)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_wallclock(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
+    FmrbBoundary.fmrb_gfx_draw_wallclock(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
   end
 
   def draw_free_iram(x, y, color, bg_color)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_free_iram(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
+    FmrbBoundary.fmrb_gfx_draw_free_iram(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
   end
 
   # Positional-argument form of draw_text(..., mixed: true). Keyword arguments
   # allocate a Hash per call, so the no-allocation redraw path (FmrbUI#flush)
   # uses this instead.
   def draw_text_mixed(x, y, str, color, bg_color = nil)
-    s = str.to_s
-    flags = 2
-    flags |= 1 if bg_color
-    bg = bg_color || 0
-    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x + @dx, y + @dy, s, s.bytesize, color, bg, flags)
-    self
+    draw_text_raw(x, y, str, color, bg_color || -1, true)
   end
 
   # Rendered pixel width of a string with the given (or current) font.
@@ -669,42 +679,54 @@ class FmrbGfx
   end
 
   def get_pixel(x, y)
-    v = FmrbSpxGfx.fmrb_spx_gfx_get_pixel(@canvas_id, x + @dx, y + @dy)
+    v = FmrbBoundary.fmrb_gfx_get_pixel(@canvas_id, x + @dx, y + @dy)
     v < 0 ? 0 : v
   end
 
   # ---- present ----
   def present(x = nil, y = nil)
     if x && y
-      FmrbSpxGfx.fmrb_spx_gfx_present(@canvas_id, x, y, 1)
+      present_raw(x, y, true)
     else
-      FmrbSpxGfx.fmrb_spx_gfx_present(@canvas_id, 0, 0, 0)
+      present_raw(0, 0, false)
     end
+  end
+
+  def present_raw(x, y, positioned)
+    FmrbBoundary.fmrb_gfx_present_raw(@canvas_id, x, y, positioned ? 1 : 0)
     self
   end
 
   # ---- CVBS/NTSC output ----
-  def set_output_level(level); FmrbSpxGfx.fmrb_spx_gfx_set_output_level(@canvas_id, level); self; end
-  def set_chroma_level(level); FmrbSpxGfx.fmrb_spx_gfx_set_chroma_level(@canvas_id, level); self; end
+  def set_output_level(level); FmrbBoundary.fmrb_gfx_set_output_level(@canvas_id, level); self; end
+  def set_chroma_level(level); FmrbBoundary.fmrb_gfx_set_chroma_level(@canvas_id, level); self; end
 
   # ---- masks ----
   def create_mask(width, height, data)
     d = data.to_s
-    FmrbSpxGfx.fmrb_spx_gfx_create_mask(@canvas_id, width, height, d, d.bytesize)
+    FmrbBoundary.fmrb_gfx_create_mask(@canvas_id, width, height, d, d.bytesize)
   end
 
   def delete_mask(mask_id)
-    FmrbSpxGfx.fmrb_spx_gfx_delete_mask(@canvas_id, mask_id)
+    FmrbBoundary.fmrb_gfx_delete_mask(@canvas_id, mask_id)
     self
   end
 
   def draw_image_masked(image_id, mask_id, x:, y:)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_image_masked(@canvas_id, image_id, mask_id, x + @dx, y + @dy)
+    draw_image_masked_raw(image_id, mask_id, x, y)
+  end
+
+  def draw_image_masked_raw(image_id, mask_id, x, y)
+    FmrbBoundary.fmrb_gfx_draw_image_masked_raw(@canvas_id, image_id, mask_id, x + @dx, y + @dy)
     self
   end
 
   def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
-    FmrbSpxGfx.fmrb_spx_gfx_draw_tile(@canvas_id, image_id, src_x, src_y, w, h, dst_x + @dx, dst_y + @dy)
+    draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+  end
+
+  def draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+    FmrbBoundary.fmrb_gfx_draw_tile_raw(@canvas_id, image_id, src_x, src_y, w, h, dst_x + @dx, dst_y + @dy)
     self
   end
 
@@ -741,26 +763,37 @@ class FmrbGfx
   # this for assets; checking file_status[:exists] leaves an edited asset
   # stale forever.
   def sync_file(path, dest: nil)
+    sync_file_raw(path, dest || path)
+  end
+
+  def sync_file_raw(path, dest)
     s = path.to_s
-    d = (dest || path).to_s
-    FmrbSpxGfx.fmrb_spx_gfx_sync_file(s, s.bytesize, d, d.bytesize) == 1
+    d = dest.to_s
+    FmrbBoundary.fmrb_gfx_sync_file_raw(@canvas_id, s, s.bytesize, d, d.bytesize) == 1
   end
 
   def transfer_file(path, dest: nil)
-    s = path.to_s
-    d = (dest || path).to_s
-    FmrbSpxGfx.fmrb_spx_gfx_transfer_file(s, s.bytesize, d, d.bytesize) == 1
+    transfer_file_raw(path, dest || path)
   end
 
+  def transfer_file_raw(path, dest)
+    s = path.to_s
+    d = dest.to_s
+    FmrbBoundary.fmrb_gfx_transfer_file_raw(@canvas_id, s, s.bytesize, d, d.bytesize) == 1
+  end
+
+  # The records come as their packed bytes (fmrb_boundary.h): file_info is
+  # exists (1 byte) and size (uint32), image_info id, width, height (uint16).
   def file_status(path)
     s = path.to_s
-    sz = FmrbSpxGfx.fmrb_spx_gfx_file_status(s, s.bytesize)
-    sz < 0 ? { exists: false, size: 0 } : { exists: true, size: sz }
+    buf = FmrbBoundary.fmrb_spx_b_gfx_file_status(@canvas_id, s, s.bytesize)
+    return { exists: false, size: 0 } if buf.bytesize < 5 || buf.getbyte(0) == 0
+    { exists: true, size: SpxBytes.u32(buf, 1) }
   end
 
   def create_image(path)
     s = path.to_s
-    buf = FmrbSpxGfx.fmrb_spx_gfx_create_image_from_file(@canvas_id, s, s.bytesize)
+    buf = FmrbBoundary.fmrb_spx_b_gfx_create_image(@canvas_id, s, s.bytesize)
     return nil if buf.bytesize == 0
     { id: SpxBytes.u16(buf, 0), width: SpxBytes.u16(buf, 2), height: SpxBytes.u16(buf, 4) }
   end
@@ -790,16 +823,17 @@ class FmrbGfx
   end
 
   def draw_image(image_id, x: 0, y: 0, scale_x: 1.0, scale_y: 0.0)
-    # scale_y_fp8 == 0 is interpreted by the backend as "use scale_x"
-    # (uniform), matching gfx.c which just multiplies.
-    sxfp = (scale_x * 256.0).to_i
-    syfp = (scale_y * 256.0).to_i
-    FmrbSpxGfx.fmrb_spx_gfx_draw_image(@canvas_id, image_id, x + @dx, y + @dy, sxfp, syfp)
+    draw_image_raw(image_id, x, y, scale_x, scale_y)
+  end
+
+  # A scale_y of 0.0 is "as scale_x".
+  def draw_image_raw(image_id, x, y, scale_x, scale_y)
+    FmrbBoundary.fmrb_gfx_draw_image_raw(@canvas_id, image_id, x + @dx, y + @dy, scale_x * 1.0, scale_y * 1.0)
     self
   end
 
   def delete_image(image_id)
-    FmrbSpxGfx.fmrb_spx_gfx_delete_image(@canvas_id, image_id)
+    FmrbBoundary.fmrb_gfx_delete_image(@canvas_id, image_id)
     self
   end
 
@@ -829,43 +863,47 @@ class FmrbGfx
   end
 
   # ---- composite regions / viewport ----
+  # The wrapper fills in what a region leaves out; the simple form takes every
+  # field and packs composite_region records (13 bytes: six int16 and a byte).
   def set_composite_regions(regions)
-    if regions.nil? || regions.empty?
-      FmrbSpxGfx.fmrb_spx_gfx_set_composite_regions(@canvas_id, "", 0)
-      return self
+    list = []
+    if regions
+      regions.each do |r|
+        dst_x = r[:dst_x] || 0
+        dst_y = r[:dst_y] || 0
+        list << { src_x: r[:src_x] || dst_x, src_y: r[:src_y] || dst_y, dst_x: dst_x, dst_y: dst_y,
+                  w: r[:w] || 0, h: r[:h] || 0, transparent: r[:transparent] ? true : false }
+      end
     end
+    set_composite_regions_raw(list)
+  end
+
+  def set_composite_regions_raw(regions)
     count = regions.length
-    buf = "\x00" * (count * 14)
+    buf = "\x00" * (count * 13)
     i = 0
     regions.each do |r|
-      dst_x = r[:dst_x] || 0
-      dst_y = r[:dst_y] || 0
-      src_x = r[:src_x] || dst_x
-      src_y = r[:src_y] || dst_y
-      w = r[:w] || 0
-      h = r[:h] || 0
-      trans = r[:transparent] ? 1 : 0
-      base = i * 14
-      SpxBytes.set_i16(buf, base + 0, src_x)
-      SpxBytes.set_i16(buf, base + 2, src_y)
-      SpxBytes.set_i16(buf, base + 4, dst_x)
-      SpxBytes.set_i16(buf, base + 6, dst_y)
-      SpxBytes.set_i16(buf, base + 8, w)
-      SpxBytes.set_i16(buf, base + 10, h)
-      SpxBytes.set_i16(buf, base + 12, trans)
+      base = i * 13
+      SpxBytes.set_i16(buf, base + 0, r[:src_x])
+      SpxBytes.set_i16(buf, base + 2, r[:src_y])
+      SpxBytes.set_i16(buf, base + 4, r[:dst_x])
+      SpxBytes.set_i16(buf, base + 6, r[:dst_y])
+      SpxBytes.set_i16(buf, base + 8, r[:w])
+      SpxBytes.set_i16(buf, base + 10, r[:h])
+      buf.setbyte(base + 12, r[:transparent] ? 1 : 0)
       i += 1
     end
-    FmrbSpxGfx.fmrb_spx_gfx_set_composite_regions(@canvas_id, buf, count)
+    FmrbBoundary.fmrb_gfx_set_composite_regions_raw(@canvas_id, buf, count)
     self
   end
 
   def set_viewport(src_x, src_y, w, h)
-    FmrbSpxGfx.fmrb_spx_gfx_set_canvas_viewport(@canvas_id, src_x, src_y, w, h)
+    FmrbBoundary.fmrb_gfx_set_viewport(@canvas_id, src_x, src_y, w, h)
     self
   end
 
   def clear_viewport
-    FmrbSpxGfx.fmrb_spx_gfx_set_canvas_viewport(@canvas_id, 0, 0, 0, 0)
+    FmrbBoundary.fmrb_gfx_clear_viewport(@canvas_id)
     self
   end
 
@@ -876,12 +914,12 @@ class FmrbGfx
   # further to keep sprites out of an app-drawn status bar.
   def set_sprite_clip(x, y, w, h)
     # sprite coordinates: from the origin (w == 0 clears, as is)
-    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_clip(@canvas_id, w > 0 ? x + @ox : x, w > 0 ? y + @oy : y, w, h)
+    FmrbBoundary.fmrb_gfx_set_sprite_clip(@canvas_id, w > 0 ? x + @ox : x, w > 0 ? y + @oy : y, w, h)
     self
   end
 
   def clear_sprite_clip
-    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_clip(@canvas_id, 0, 0, 0, 0)
+    FmrbBoundary.fmrb_gfx_clear_sprite_clip(@canvas_id)
     self
   end
 

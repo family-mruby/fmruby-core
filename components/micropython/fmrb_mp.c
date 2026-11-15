@@ -15,6 +15,7 @@
 #include "fmrb_mp_bridge.h"
 #include "fmrb_rtos.h"
 #include "fmrb_prelude.h"
+#include "fmrb_gen/fmrb_boundary_py.h"
 
 static const char *TAG = "fmrb_mp";
 
@@ -259,9 +260,15 @@ fmrb_err_t fmrb_mp_start(fmrb_app_task_context_t *ctx) {
     // firmware. Running it here rather than from the app leaves the guest
     // script with the classes already in its own globals, the way a .rb app
     // finds the Ruby framework's classes.
+    // The boundary's classes (generated from sig/) go first: the prelude's
+    // FmrbGfx inherits _FmrbGfxBoundary.
     uint32_t prelude_start = uptime_ms();
-    fmrb_err_t pret = exec_source(ctx, fmrb_mp_prelude_src,
-                                  sizeof(fmrb_mp_prelude_src) - 1, "<prelude>");
+    fmrb_err_t pret = exec_source(ctx, fmrb_mp_boundary_src,
+                                  sizeof(fmrb_mp_boundary_src) - 1, "<boundary>");
+    if (pret == FMRB_OK) {
+        pret = exec_source(ctx, fmrb_mp_prelude_src,
+                           sizeof(fmrb_mp_prelude_src) - 1, "<prelude>");
+    }
     if (pret != FMRB_OK) {
         // A broken prelude is a firmware defect, not a user script error, and
         // nothing the app does afterwards would make sense.

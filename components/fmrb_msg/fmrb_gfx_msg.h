@@ -264,7 +264,7 @@ typedef struct {
         // inline; fits comfortably inside the gfx_cmd_t payload budget.
         struct {
             uint8_t count;  // 0 = clear, 1..FMRB_GFX_MAX_COMPOSITE_REGIONS = valid entries
-            fmrb_gfx_composite_region_t regions[FMRB_GFX_MAX_COMPOSITE_REGIONS];
+            fmrb_gfx_canvas_region_t regions[FMRB_GFX_MAX_COMPOSITE_REGIONS];
         } set_composite_regions;
         // Canvas viewport (source-rect scroll). view_w == 0 clears.
         struct {
