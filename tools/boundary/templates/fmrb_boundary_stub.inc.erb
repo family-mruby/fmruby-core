@@ -16,7 +16,7 @@ void fmrb_stub_arg(const void *data, size_t len);
 <% funcs.each do |f| -%>
 
 #ifndef FMRB_STUB_HAVE_<%= f.flat %>
-int32_t <%= f.flat %>(<%= f.c_args.empty? ? 'void' : f.c_args %>)
+<%= f.ret_ctype %> <%= f.flat %>(<%= f.c_args.empty? ? 'void' : f.c_args %>)
 {
     fmrb_stub_begin("<%= f.import_name %>");
 <% ps = f.c_params -%>

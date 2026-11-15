@@ -46,7 +46,7 @@ _Static_assert(sizeof(<%= r.cname %>) == <%= r.size %>, "<%= r.cname %> is packe
 <% funcs.each do |f| -%>
 
 /* <%= f.ruby_sig %>: <%= f.doc_en %> */
-int32_t <%= f.flat %>(<%= f.c_args %>);
+<%= f.ret_ctype %> <%= f.flat %>(<%= f.c_args %>);
 <% end -%>
 
 #ifdef __cplusplus

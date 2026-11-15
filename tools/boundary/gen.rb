@@ -31,7 +31,10 @@
 #
 # The rules (doc/app_boundary/plan.md, "作るもの 2" and report/w4a.md 3):
 #
-#   receiver           instance method -> int32_t <class> first; singleton -> none
+#   receiver           instance method -> int32_t <class> first; singleton -> none.
+#                      FmrbApp's and FmrbAudio's instance methods take none
+#                      either (NO_RECEIVER: the receiver is the calling app)
+#   name=              a setter is set_<name> in C and the other languages
 #   Integer / intN...  int32_t, or the alias's width (sig/fmrb_types.rbs)
 #   bool               int32_t 0 / 1
 #   Float / floatN     double / float
@@ -41,6 +44,7 @@
 #   Array[record|int]  pointer and count
 #   returns self       int32_t status; the glue gives back the receiver
 #   returns Integer    int32_t, 0 or more; negative is an error
+#   returns int64      int64_t, 0 or more; negative is an error (a clock in us)
 #   returns bool       int32_t 1 / 0; negative is an error
 #   returns record(?)  a pointer to the caller's struct; 1 filled, 0 none (nil)
 #   returns String/bin the caller's buffer and its size; returns the full
@@ -68,6 +72,19 @@ BODY_GLOB = File.join(ROOT, 'main/app/fmrb_boundary_*.c')
 MARK_CLASS = 'fmrb.boundary'
 MARK_INTERNAL = 'fmrb.internal'
 MARK_HOOK = 'fmrb.hook'
+
+# Classes whose instance methods take no receiver number: the receiver is the
+# app that calls (doc/app_boundary/plan.md, "FmrbApp のインスタンスメソッドと
+# モジュールの関数は、番号なし"). An FmrbAudio holds nothing but its app.
+NO_RECEIVER = %w[FmrbApp FmrbAudio].freeze
+
+# A class not yet marked whose listed methods are already on the boundary,
+# while its other methods wait for their phase (FmrbApp: the clipboard and the
+# clocks in W4b-2; the class gets %a{fmrb.boundary} in W4b-3, and this entry
+# goes). A listed method marked internal or hook is an error.
+STAGED = {
+  'FmrbApp' => %w[clipboard_raw set_clipboard clipboard_gen uptime_us wallclock]
+}.freeze
 
 FW_DIR = File.join(ROOT, 'components/fmrb_common/include/fmrb_gen')
 OUTPUTS = {
@@ -127,12 +144,20 @@ Param = Struct.new(:name, :ty)
 # (inside WAMR), so only the firmware's names share a namespace with the
 # firmware's own API (decided 2026-11-15, doc/app_boundary/plan.md).
 Func = Struct.new(:klass, :method, :prefix, :flat, :api, :import_name, :recv, :params, :ret,
-                  :doc_ja, :doc_en, :singleton, keyword_init: true) do
+                  :doc_ja, :doc_en, :singleton, :name, keyword_init: true) do
   # ret: :self, :void, or a Ty (:int, :bool, :choice, :record, :str, :bin)
+  # name: the method's name in C and the languages without setters
+  # (main_volume= -> set_main_volume); method is Ruby's.
   def returns_self? = ret == :self
+  # The C type of the result: int32_t (a value or a status), int64_t for int64.
+  def ret_ctype = ret.is_a?(Ty) && ret.ctype == 'int64_t' ? 'int64_t' : 'int32_t'
+  def wide_ret? = ret_ctype == 'int64_t'
+  # An instance method, with or without a receiver number: the languages
+  # with objects still call it on one (self is skipped when there is none).
+  def instance? = !singleton
   def returns_record? = ret.is_a?(Ty) && ret.kind == :record
   def returns_bytes? = ret.is_a?(Ty) && %i[str bin].include?(ret.kind)
-  def raw? = method.end_with?('_raw')
+  def raw? = name.end_with?('_raw')
   def recv_param = recv ? [['int32_t', recv]] : []
 
   # The flat function's C parameters, in order: [[ctype, name], ...]; with
@@ -239,6 +264,10 @@ class Collector
   def visit(path, decl)
     klass = decl.name.to_s
     on_class = marks(decl).include?(MARK_CLASS)
+    staged = STAGED[klass]
+    if on_class && staged
+      abort "#{File.basename(path)}: #{klass} carries %a{#{MARK_CLASS}}; drop its STAGED entry in tools/boundary/gen.rb"
+    end
     decl.members.each do |m|
       next unless m.is_a?(RBS::AST::Members::MethodDefinition)
 
@@ -248,7 +277,12 @@ class Collector
         abort "#{where}: %a{#{MARK_CLASS}} goes on the class, not on a method " \
               '(doc/app_boundary/plan.md, W4a decisions)'
       end
-      next unless on_class
+      if staged
+        next unless staged.include?(m.name.to_s)
+        abort "#{where}: listed in STAGED but marked #{(ms & [MARK_INTERNAL, MARK_HOOK]).join(', ')}" if (ms & [MARK_INTERNAL, MARK_HOOK]).any?
+      else
+        next unless on_class
+      end
       next if ms.include?(MARK_INTERNAL)
 
       ja, en = split_summary(m.comment&.string)
@@ -271,16 +305,19 @@ class Collector
     abort "#{where}: a block is not a boundary argument" if m.overloads.first.method_type.block
     singleton = m.kind == :singleton
     prefix = short_name(klass)
+    # A setter (main_volume=) is set_main_volume in C and the other languages.
+    name = m.name.to_s.end_with?('=') ? "set_#{m.name.to_s.delete_suffix('=')}" : m.name.to_s
+    abort "#{where}: a method name of the boundary is letters, digits and _ (or a setter)" unless name.match?(/\A[a-z_][a-z0-9_]*\z/)
     params = fn.required_positionals.map do |p|
       abort "#{where}: every argument needs a name" unless p.name
       Param.new(p.name.to_s, arg_type(p.type, klass, "#{where} (#{p.name})"))
     end
     names = params.map(&:name)
     abort "#{where}: an argument may not be called #{prefix}, out or out_size" if (names & [prefix, 'out', 'out_size']).any?
-    Func.new(klass: klass, method: m.name.to_s, prefix: prefix,
-             flat: "fmrb_bnd_#{prefix}_#{m.name}", api: "fmrb_#{prefix}_#{m.name}",
-             import_name: "#{prefix}_#{m.name}",
-             recv: singleton ? nil : prefix, params: params,
+    Func.new(klass: klass, method: m.name.to_s, name: name, prefix: prefix,
+             flat: "fmrb_bnd_#{prefix}_#{name}", api: "fmrb_#{prefix}_#{name}",
+             import_name: "#{prefix}_#{name}",
+             recv: singleton || NO_RECEIVER.include?(klass) ? nil : prefix, params: params,
              ret: ret_type(fn.return_type, klass, where), doc_ja: ja, doc_en: en, singleton: singleton)
   end
 
@@ -369,7 +406,7 @@ class Collector
     when :record then ty.optional = optional
     when :int, :bool, :choice, :str, :bin
       abort "#{where}: only a record may be returned as optional (#{t})" if optional
-      abort "#{where}: an Integer result is int32 (#{t})" if ty.int? && ty.ctype != 'int32_t'
+      abort "#{where}: an Integer result is int32 or int64 (#{t})" if ty.int? && !%w[int32_t int64_t].include?(ty.ctype)
     else
       abort "#{where}: result type #{t} is not handled by the boundary rules"
     end
@@ -379,7 +416,7 @@ class Collector
   # Every flat function needs its C body in main/app/fmrb_boundary_*.c.
   def check_bodies
     src = Dir[BODY_GLOB].sort.map { |p| File.read(p) }.join("\n")
-    missing = @funcs.reject { |f| src.match?(/^int32_t\s+#{f.flat}\s*\(/) }
+    missing = @funcs.reject { |f| src.match?(/^#{f.ret_ctype}\s+#{f.flat}\s*\(/) }
     return if missing.empty?
 
     abort "boundary: no C body for #{missing.map(&:ruby_sig).join(', ')} in main/app/fmrb_boundary_*.c. " \
@@ -391,8 +428,8 @@ class Collector
   def check_raw_names
     by_class = @funcs.group_by(&:klass)
     @funcs.select(&:raw?).each do |f|
-      base = f.method.delete_suffix('_raw')
-      if by_class[f.klass].any? { |g| g.method == base }
+      base = f.name.delete_suffix('_raw')
+      if by_class[f.klass].any? { |g| g.name == base }
         abort "#{f.ruby_sig}: #{base} is on the boundary too; a _raw method stands for a wrapper " \
               "(mark #{base} #{MARK_INTERNAL})"
       end
@@ -405,7 +442,7 @@ end
 # From what a C app sees (its names, not the firmware's own), so renaming the
 # firmware's side leaves it as it is.
 def abi_hash(table)
-  lines = table.funcs.map { |f| [f.api, f.c_args(api: true)].join(':') }
+  lines = table.funcs.map { |f| [(f.wide_ret? ? "#{f.api}->int64" : f.api), f.c_args(api: true)].join(':') }
   lines += table.records.values.map { |r| ([r.api_cname] + r.fields.map { |x| "#{x.ty.ctype} #{x.name}" }).join(':') }
   Digest::SHA256.hexdigest(lines.join("\n"))[0, 8]
 end

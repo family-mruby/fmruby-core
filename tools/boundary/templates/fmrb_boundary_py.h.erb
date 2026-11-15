@@ -14,11 +14,12 @@
       py << "    # #{f.doc_en}"
       if f.singleton
         py << '    @staticmethod'
-        py << "    def #{f.method}(#{names.join(', ')}):"
+        py << "    def #{f.name}(#{names.join(', ')}):"
         call = "_fmrb.#{f.import_name}(#{names.join(', ')})"
       else
-        py << "    def #{f.method}(#{(['self'] + names).join(', ')}):"
-        call = "_fmrb.#{f.import_name}(#{(['self'] + names).join(', ')})"
+        # A method without a receiver number (FmrbAudio) does not pass self.
+        py << "    def #{f.name}(#{(['self'] + names).join(', ')}):"
+        call = "_fmrb.#{f.import_name}(#{((f.recv ? ['self'] : []) + names).join(', ')})"
       end
       if f.ret == :self && !f.singleton
         py << "        #{call}"

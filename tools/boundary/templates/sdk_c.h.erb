@@ -11,7 +11,9 @@
  * - an object's method takes the object's number first: for FmrbGfx a drawer
  *   of the app, which has the canvas, the drawing origin and the area (the
  *   firmware adds the origin to the coordinates drawn; origin_x and the rest
- *   read them);
+ *   read them). FmrbApp's and FmrbAudio's take none: their object is the
+ *   app itself;
+ * - a Ruby setter (main_volume=) is set_<name> (fmrb_audio_set_main_volume);
  * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
  *   bool is int32_t 0 or 1; Float is double;
  * - a String is a pointer and a length (not NUL-terminated);
@@ -82,11 +84,11 @@ typedef struct __attribute__((packed)) {
 <% elsif f.returns_bytes? -%>
  * @return the full length of the result (more than out_size: cut short)
 <% elsif f.ret.is_a?(Ty) -%>
- * @return the <%= f.ret.kind == :bool ? 'answer, 1 or 0' : 'value' %>
+ * @return the <%= f.ret.kind == :bool ? 'answer, 1 or 0' : 'value' %><%= f.wide_ret? ? ' (64 bits)' : '' %>
 <% end -%>
  */
 FMRB_IMPORT("<%= f.import_name %>")
-int32_t <%= f.api %>(<%= f.c_args(api: true).empty? ? 'void' : f.c_args(api: true) %>);
+<%= f.ret_ctype %> <%= f.api %>(<%= f.c_args(api: true).empty? ? 'void' : f.c_args(api: true) %>);
 <% end -%>
 <% unless hooks.empty? -%>
 

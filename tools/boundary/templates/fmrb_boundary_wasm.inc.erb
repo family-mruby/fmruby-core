@@ -58,16 +58,16 @@ static void fmrb_gen_wasm_<%= f.import_name %>(wasm_exec_env_t env, uint64_t *ar
 <% end -%>
 <% if ps.any? { |t, _| t.end_with?('*') } -%>
     if (bad) {
-        *(int32_t *)&args[0] = FMRB_BOUNDARY_ERR_ARG;
+        *(<%= f.ret_ctype %> *)&args[0] = FMRB_BOUNDARY_ERR_ARG;
         return;
     }
 <% end -%>
-    *(int32_t *)&args[0] = <%= f.flat %>(<%= ps.map { |_, n| n }.join(', ') %>);
+    *(<%= f.ret_ctype %> *)&args[0] = <%= f.flat %>(<%= ps.map { |_, n| n }.join(', ') %>);
 }
 <% end -%>
 
 #define FMRB_GEN_WASM_NATIVES \
 <% funcs.each do |f| -%>
-    { "<%= f.import_name %>", (void *)fmrb_gen_wasm_<%= f.import_name %>, "(<%= f.c_params.map { |t, _| slot.(t)[0] }.join %>)i", NULL }, \
+    { "<%= f.import_name %>", (void *)fmrb_gen_wasm_<%= f.import_name %>, "(<%= f.c_params.map { |t, _| slot.(t)[0] }.join %>)<%= f.wide_ret? ? 'I' : 'i' %>", NULL }, \
 <% end -%>
     /* end of the list */

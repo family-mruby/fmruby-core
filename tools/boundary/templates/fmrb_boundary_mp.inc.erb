@@ -15,15 +15,16 @@
  * (components/micropython/mp_embed): rake micropython:gen after a change,
  * and rake test (boundary:check) says when it was forgotten.
  */
+#include "py/smallint.h"
 #include "fmrb_gen/fmrb_boundary.h"
 
-static void fmrb_gen_mp_check(int32_t ret)
+static __attribute__((unused)) void fmrb_gen_mp_check(int32_t ret)
 {
     if (ret == FMRB_BOUNDARY_ERR_ARG) {
         mp_raise_ValueError(MP_ERROR_TEXT("argument out of range"));
     }
     if (ret < 0) {
-        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("graphics command failed"));
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("the firmware call failed"));
     }
 }
 <% if records.any? -%>
@@ -162,8 +163,8 @@ static mp_obj_t fmrb_gen_mp_<%= f.import_name %>(size_t n_args, const mp_obj_t *
     vs.len = (size_t)(got < ret ? got : ret);
     return <%= f.ret.kind == :bin ? 'mp_obj_new_bytes_from_vstr(&vs)' : 'mp_obj_new_str_from_vstr(&vs)' %>;
 <% else -%>
-    int32_t ret = <%= f.flat %>(<%= args.join(",\n        ") %>);
-    fmrb_gen_mp_check(ret);
+    <%= f.ret_ctype %> ret = <%= f.flat %>(<%= args.join(",\n        ") %>);
+    fmrb_gen_mp_check(<%= f.wide_ret? ? '(int32_t)(ret < 0 ? ret : 0)' : 'ret' %>);
 <% if f.ret == :self || f.ret == :void -%>
     return mp_const_none;
 <% elsif f.ret.kind == :bool -%>
@@ -172,6 +173,13 @@ static mp_obj_t fmrb_gen_mp_<%= f.import_name %>(size_t n_args, const mp_obj_t *
     static const char *const ret_names[] = { <%= f.ret.values.map { |v| %("#{v}") }.join(', ') %> };
     const char *name = ret_names[ret < <%= f.ret.values.size %> ? ret : 0];
     return mp_obj_new_str(name, strlen(name));
+<% elsif f.wide_ret? -%>
+    /* A small int when it fits; a bigger one needs the long ints this build
+       may not have (then OverflowError). */
+    if (MP_SMALL_INT_FITS(ret)) {
+        return MP_OBJ_NEW_SMALL_INT((mp_int_t)ret);
+    }
+    return mp_obj_new_int_from_ll((long long)ret);
 <% else -%>
     return mp_obj_new_int(ret);
 <% end -%>

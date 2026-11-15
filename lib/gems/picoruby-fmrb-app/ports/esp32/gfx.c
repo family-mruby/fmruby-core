@@ -187,6 +187,7 @@ static int32_t fmrb_mrb_recv_gfx(mrb_state *mrb, mrb_value self)
 // FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): every
 // method of the class on the app boundary (sig/fmrb_gfx.rbs). The Ruby
 // wrappers (draw_text, set_font ...) are in mrblib/fmrb-gfx.rb.
+#define FMRB_GEN_MRB_FmrbGfx
 #include "fmrb_gen/fmrb_boundary_mrb.inc"
 
 // FmrbGfx#present([x, y]): the wrapper of present_raw, written in C here

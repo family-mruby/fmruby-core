@@ -31,7 +31,7 @@ module FmrbBoundary
 <% ps = f.c_params[0...(f.returns_record? ? -1 : -2)] -%>
   ffi_func :fmrb_spx_b_<%= f.import_name %>, [<%= ps.map { |t, _| ffi.(t, f.ruby_sig) }.join(', ') %>], :binstr  # <%= f.ruby_sig %>
 <% else -%>
-  ffi_func :<%= f.flat %>, [<%= f.c_params.map { |t, _| ffi.(t, f.ruby_sig) }.join(', ') %>], :int32  # <%= f.ruby_sig %>
+  ffi_func :<%= f.flat %>, [<%= f.c_params.map { |t, _| ffi.(t, f.ruby_sig) }.join(', ') %>], :<%= f.wide_ret? ? 'int64' : 'int32' %>  # <%= f.ruby_sig %>
 <% end -%>
 <% end -%>
 end
