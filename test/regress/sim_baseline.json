@@ -4,24 +4,24 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 155920,
+            "used": 156200,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 814976,
+            "used": 801624,
             "total": 1572864,
             "stack_free": 14723
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 160480,
+            "used": 159472,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 815648,
+            "used": 802240,
             "total": 1572864,
             "stack_free": 14703
           },
@@ -48,12 +48,12 @@
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 174264,
+            "used": 175904,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 814976,
+            "used": 801624,
             "total": 1572864,
             "stack_free": 14703
           }
@@ -79,7 +79,7 @@
       },
       "family": "retro",
       "board": "NARYAv3",
-      "commit": "d1e33475",
+      "commit": "7837a2d9",
       "tolerance": {
         "app_used": [
           0.0,
@@ -113,12 +113,12 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 178864,
+            "used": 178688,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 815112,
+            "used": 801784,
             "total": 1572864,
             "stack_free": 14723
           },
@@ -130,14 +130,14 @@
         },
         "running": {
           "fmrb_kernel": {
-            "used": 175224,
+            "used": 175304,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 815688,
+            "used": 802344,
             "total": 1572864,
-            "stack_free": 14723
+            "stack_free": 14703
           },
           "Services": {
             "used": 528504,
@@ -167,14 +167,14 @@
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 190392,
+            "used": 190584,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 815016,
+            "used": 801648,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14671
           },
           "Services": {
             "used": 528504,
@@ -203,7 +203,7 @@
       },
       "family": "modern",
       "board": "TAB5",
-      "commit": "d1e33475",
+      "commit": "7837a2d9",
       "tolerance": {
         "app_used": [
           0.0,
