@@ -111,15 +111,16 @@ fmrb_err_t devctl_start(void)
     cfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    // Fifteen routes, sixteen with /fb, and the default is eight.
+    // Sixteen routes, seventeen with /fb (/fs/df, doc/flash_layout F1), and
+    // the default is eight.
     // Registration answers ESP_ERR_HTTPD_HANDLERS_FULL rather than failing the
     // start (the /fb registration below says so in the log).
     // With mruby-checkpoint (doc/checkpoint F6) three more: /app/checkpoint
     // (POST and GET) and /app/move (devctl_http.c).
 #ifdef FMRB_HAVE_CHECKPOINT
-    cfg.max_uri_handlers = 19;
+    cfg.max_uri_handlers = 20;
 #else
-    cfg.max_uri_handlers = 16;
+    cfg.max_uri_handlers = 17;
 #endif
 
     esp_err_t err = httpd_start(&s_server, &cfg);

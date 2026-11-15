@@ -562,6 +562,27 @@ static esp_err_t fs_md5_handler(httpd_req_t *req)
     return ctl_json(req, "200 OK", body);
 }
 
+// How full the filesystem under path is (the storage partition, or the SD
+// card for a path under /mnt/sd): {"ok":true,"total":N,"free":N} in bytes.
+// The tools that put the test apps on a board look before they send
+// (tools/fmrb_rd_fs.rb tests push, doc/flash_layout F1). Only sizes, so a
+// restricted build answers it too.
+static esp_err_t fs_df_handler(httpd_req_t *req)
+{
+    char vpath[RD_FS_VPATH_MAX];
+    char rpath[RD_FS_RPATH_MAX];
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    uint64_t total = 0, free_bytes = 0;
+    if (fmrb_hal_file_statfs(vpath, &total, &free_bytes) != FMRB_OK) {
+        return ctl_json(req, "500 Internal Server Error",
+                        "{\"ok\":false,\"err\":\"cannot read the filesystem's size\"}");
+    }
+    char body[80];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"total\":%llu,\"free\":%llu}",
+             (unsigned long long)total, (unsigned long long)free_bytes);
+    return ctl_json(req, "200 OK", body);
+}
+
 // Restart the board, as FmrbSystem.reboot does: after /home is written back
 // (rake flash:keep_home) the WiFi settings and the keys are read again only at
 // boot. The answer goes out first; the reset follows a moment later.
@@ -769,6 +790,8 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         .uri = "/fs/mkdir", .method = HTTP_POST, .handler = fs_mkdir_handler };
     static const httpd_uri_t uri_fs_md5 = {
         .uri = "/fs/md5", .method = HTTP_GET, .handler = fs_md5_handler };
+    static const httpd_uri_t uri_fs_df = {
+        .uri = "/fs/df", .method = HTTP_GET, .handler = fs_df_handler };
     static const httpd_uri_t uri_sys_reboot = {
         .uri = "/sys/reboot", .method = HTTP_POST, .handler = sys_reboot_handler };
     static const httpd_uri_t uri_audio_mute_get = {
@@ -788,6 +811,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_fs_del);
     devctl_register_uri(server, &uri_fs_mkdir);
     devctl_register_uri(server, &uri_fs_md5);
+    devctl_register_uri(server, &uri_fs_df);
     devctl_register_uri(server, &uri_sys_reboot);
     devctl_register_uri(server, &uri_audio_mute_get);
     devctl_register_uri(server, &uri_audio_mute_post);
