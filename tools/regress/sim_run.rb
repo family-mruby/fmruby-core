@@ -17,8 +17,9 @@
 # containers headless, then the scenario:
 #
 #   boot -> the desktop's "Boot complete" -> snapshot (idle)
-#   -> spawn SCENARIO_APPS one by one -> snapshot (running)
-#   -> kill them -> snapshot (closed)
+#   -> for each group of SCENARIO: spawn its apps one by one -> snapshot
+#      (running, running_langs, running_tools) -> kill them
+#   -> snapshot (closed)
 #
 # A snapshot is a full collection in every app (the debug server's `gc`,
 # each app's own task collecting at its next message wait), then the debug
@@ -71,15 +72,45 @@ module Regress
     BOOT_DONE = "Boot complete: switching to heartbeat"
     HOST_TIMEOUT = "waiting host timeout"
     SETTLE = 3 # seconds after each step before the next one
-    # Apps both families carry and that need no network, sensor or input to
-    # come up: an FmrbUI app, the MML player, StackChan Remote (buttons that
-    # publish) and a Spinel program.
-    SCENARIO_APPS = %w[
-      /app/demo/kamon.app.rb
-      /app/demo/mml.app.rb
-      /app/demo/stackchan_remote.app.rb
-      /app/debug/spinel_hello.app.rb
-    ].freeze
+    # A representative mix of apps, one per kind of engine and one per kind
+    # of app that has its own path through the firmware, chosen by hand
+    # (doc/regression/usage.md 7.2): none needs a network, sensor or input to
+    # come up. Groups of at most 4, each run on its own and closed before the
+    # next: a sim admits 5 user apps and, on Modern, the service host takes one.
+    #
+    #   running        picoruby: an FmrbUI app (kamon), the MML player (sound),
+    #                  StackChan Remote (buttons that publish); Spinel: a
+    #                  compiled program (spinel_hello)
+    #   running_langs  the other engines: Lua, MicroPython, a wasm app
+    #                  (TinyGo hello on WAMR; its memory is WAMR's, outside
+    #                  the VM pools, so ps shows 0 for it and its stack only)
+    #   running_tools  the editor (default/editor, Spinel, the built-in app
+    #                  people use most) and a game (flappy: BMP sprites)
+    #
+    # Family BASIC is left out: a .bas app opens fullscreen and suspends the
+    # others, and the debug server's ps does not list it.
+    #
+    # The first group is the scenario as it was before the others came
+    # (2026-11-16), so its numbers stay comparable with the older baselines.
+    # A family runs only the apps its board's storage carries (targets.rb
+    # carries?): Retro leaves the wasm app out (an S3 has no WAMR).
+    SCENARIO = [
+      ["running", %w[
+        /app/demo/kamon.app.rb
+        /app/demo/mml.app.rb
+        /app/demo/stackchan_remote.app.rb
+        /app/debug/spinel_hello.app.rb
+      ]],
+      ["running_langs", %w[
+        /app/lua/lua.app.lua
+        /app/python/python.app.py
+        /app/tinygo/hello.app.wasm
+      ]],
+      ["running_tools", %w[
+        default/editor
+        /app/game/flappy.app.rb
+      ]]
+    ].map { |pt, apps| [pt, apps.freeze].freeze }.freeze
     SIZES = { "retro" => [320, 240], "modern" => [426, 240] }.freeze
     # [relative, absolute bytes]: a value may move by the larger of the two.
     # Measured spread over 3 runs x 2 families (report rg3b.md): the apps the
@@ -313,22 +344,24 @@ module Regress
       wait_for(60, "the desktop's boot to finish") { core_log.include?(BOOT_DONE) }
       sleep SETTLE
       points = { "idle" => snapshot("idle") }
-      pids = SCENARIO_APPS.map do |path|
-        pid = dbg("spawn", "path=#{path}")["pid"]
+      short = []
+      scenario_for(t).each do |pt, apps|
+        pids = apps.map do |path|
+          pid = dbg("spawn", "path=#{path}")["pid"]
+          sleep SETTLE
+          pid
+        end
+        points[pt] = snapshot(pt)
+        pids.each { |pid| dbg("kill", "pid=#{pid}") }
         sleep SETTLE
-        pid
+        started = points[pt].keys - points["idle"].keys
+        short << "#{pt}: #{started.size} running, #{apps.size} spawned" if started.size != apps.size
       end
-      points["running"] = snapshot("running")
-      pids.each { |pid| dbg("kill", "pid=#{pid}") }
-      sleep SETTLE
       points["closed"] = snapshot("closed")
       log = core_log
       File.write(File.join(OUT, log_name), log)
       res = { "points" => points, "compile" => compile_lines(log) }
-      started = points["running"].keys - points["idle"].keys
-      if started.size != SCENARIO_APPS.size
-        raise "#{SCENARIO_APPS.size - started.size} of the scenario's apps were not running at the snapshot (#{family}.log)"
-      end
+      raise "the scenario's apps at the snapshots: #{short.join('; ')} (#{family}.log)" unless short.empty?
       res["family"] = family
       res["board"] = t.firmware
       res["commit"] = sh("git", "rev-parse", "--short=8", "HEAD", chdir: CORE)[1].strip
@@ -343,6 +376,13 @@ module Regress
     ensure
       down if core_running? && @ours
       FileUtils.rm_f(LAUNCHER_CACHE) if @ours
+    end
+
+    # The scenario's groups for a target: the apps its storage carries.
+    def scenario_for(t)
+      SCENARIO.map do |pt, apps|
+        [pt, apps.select { |a| !a.start_with?("/app/") || t.carries?("flash#{a}", CORE) }]
+      end.reject { |_pt, apps| apps.empty? }
     end
 
     # The launcher's index cache in this checkout's flash/ (the sim's file
@@ -416,7 +456,9 @@ module Regress
       sys = pts["idle"].keys.filter_map do |n|
         pts["closed"][n] && "#{n.sub('fmrb_', '').sub('system_', '')} #{kb(pts['idle'][n]['used'])}->#{kb(pts['closed'][n]['used'])}"
       end
-      apps = pts["running"].reject { |k, _| pts["idle"].key?(k) }.map { |k, v| "#{k} #{kb(v['used'])}" }
+      apps = pts.select { |pt, _| pt.start_with?("running") }.flat_map do |_pt, list|
+        list.reject { |k, _| pts["idle"].key?(k) }.map { |k, v| "#{k} #{kb(v['used'])}" }
+      end
       format("%-7s idle->closed: %s | running: %s", r["family"], sys.join(", "), apps.join(", "))
     end
 
