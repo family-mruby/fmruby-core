@@ -70,6 +70,7 @@ Family mruby の `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` は同�
 今は /home を残すために、storage (8 MB) を読み出し (P4-Nano の CH343 で 460800 bps・約 3.5 分) → PC で littlefs を
 開いて /home を新しい storage に重ねる → 全体を 115200 bps で書く (約 9 分)、を手でやっている。案:
 
+- **開発のビルドでは鍵ごと WiFi で退避できる** (2026-11-15 ユーザ: 開発のビルドは読み書き自由。doc/remote_guard の G0)。
 - **storage を書かない**: app の区画だけ書き (app_only)、storage の /home 以外の差分 (ビルドの storage_root と
   端末の中身の差) を WiFi の `/fs/put` (fmrb_rd_fs.rb の push) で送る。/home にも鍵にも触らない。
 - **書き込みの速さ**: CH34x (CH340・CH343) の端末は最初から 115200 bps にする (ユーザ: 115200 が安定、ほかは時々失敗する)。
