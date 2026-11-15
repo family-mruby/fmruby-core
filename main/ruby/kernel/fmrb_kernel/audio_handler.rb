@@ -57,7 +57,11 @@ module AudioHandlerMixin
       slot = data["slot"] || 0
       fmsq_data = data["data"] || ""
       # Build binary: cmd_type=0x01 (LOAD_BINARY) + music_id(4 LE) + data_size(4 LE) + data
-      data_len = fmsq_data.length
+      # bytesize, not length: an FMSQ is binary, and on mruby (MRB_UTF8_STRING)
+      # length counts a register write such as C0 B5 as one character, which
+      # declared the sequence shorter than it is and the audio side refused it
+      # as truncated.
+      data_len = fmsq_data.bytesize
       bin = "\x01\x00\x00\x00\x00\x00\x00\x00\x00" + fmsq_data
       bin.setbyte(1, slot & 0xFF)
       bin.setbyte(2, (slot >> 8) & 0xFF)
