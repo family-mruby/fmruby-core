@@ -6,7 +6,9 @@
  * whose stand-in bodies hash every argument as it arrives
  * (fmrb_boundary_stub.inc) gets the same hash from the wasm app as from the
  * same calls made natively. Include fmrb_boundary.h (the SDK's in the app,
- * the firmware's in the host) before this.
+ * the firmware's in the host) before this. Since W4b-2 also the calls with
+ * no receiver number (FmrbAudio, FmrbApp, Log), a setter's name
+ * (set_main_volume), an int64 result and a byte result into the app's buffer.
  */
 #ifndef C_BOUNDARY_TOUR_H
 #define C_BOUNDARY_TOUR_H
@@ -37,6 +39,20 @@ boundary_tour(void)
     fmrb_gfx_set_pixel(0, r, st.exists, (int32_t)st.size);
     fmrb_gfx_present_raw(0, 0, 0, 0);
     fmrb_gfx_rgb_to_332(255, 128, 0);
+
+    char clip[8];
+    fmrb_app_wallclock_t wc = { 0, 0, 0, 0, 0, 0 };
+    static const char line[] = "tour";
+    int64_t us = fmrb_app_uptime_us();
+    fmrb_gfx_set_pixel(0, (int32_t)us, (int32_t)(us >> 32), 0);
+    r = fmrb_app_clipboard_raw(3, clip, (int32_t)sizeof(clip));
+    fmrb_app_set_clipboard(clip, r < (int32_t)sizeof(clip) ? r : (int32_t)sizeof(clip));
+    r = fmrb_app_wallclock(&wc);
+    fmrb_gfx_set_pixel(0, r, wc.year, wc.second);
+    fmrb_audio_note_on_raw(1, 440, 10, 2, 0);
+    fmrb_audio_set_main_volume(30);
+    fmrb_audio_play_slot_raw(2, 1);
+    fmrb_log_info_raw(line, (int32_t)(sizeof(line) - 1));
     /* A pointer outside the app's memory: the wasm glue refuses it before the
        body runs (FMRB_BOUNDARY_ERR_ARG); in the host the answer is written in. */
 #if defined(BOUNDARY_TOUR_IN_APP)
