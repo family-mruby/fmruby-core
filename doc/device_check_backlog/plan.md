@@ -25,7 +25,7 @@
 
 | 項目 | 確かめること | 経緯 |
 |---|---|---|
-| 起動の和音 (FMSQ、MAIN と SUB) | 起動の音が鳴り、低音が弱くならないか (2 つの三角波の位相)。絵と音の合わせ目 (和音が開ききる画面と揃う) | boot_splash (report/b2.md) |
+| 起動の和音 (FMSQ、MAIN と SUB) | P4-Nano で済 (2026-11-15、ユーザの耳と目: 違和感なし。エディタの BS も確認)。MAIN と SUB の開始は 7 ms 差 (1 コマ 16.7 ms)。Tab5 は未確認 | boot_splash (report/b2.md) |
 | 保存のちらつき | 済 (2026-10-07、ユーザの目視): ミュートを切り替えて少し待つと若干ちらつくことがある (約 2 秒後のまとめた書き込み) が、許容できる範囲 (ユーザ判断)。Config の Save・エディタの保存は問題なし。自動中断 (AUTO_SUSPEND) は入れない | flash_write_flicker、p4_transfer_crash |
 | 上流 Spinel の取り込み | 7M の区画: 済 (2026-10-07 に develop を全体で書き込み、起動 Guru 0) | spinel_upstream_ext |
 | 全画面の高解像度 | 済 (2026-10-07、ユーザ確認で問題なし)。H1-H4 の動き (エディタの全画面、フォント) | fullscreen_hires |
