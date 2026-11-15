@@ -19,11 +19,13 @@
 | アプリの終了・二重解放・mrb_close | Shell・ゲーム・BASIC などの起動と終了をくり返す。estalloc の点検を外した後で落ちないか | shell_input_lag (S2c)、app_exit |
 | 同じ Spinel プログラムの 2 つ目を断る、gem の持ち主、.app.toml の single_instance / exclusive_group | エディタの 2 つ目、断られた後のキー入力 | spinel_multi_instance (C1-G4) |
 | Shell の打鍵、App Store のスタック | 打鍵の感じ、App Store の install の連打 | shell_input_lag、App Store 16 KB |
+| 起動の和音 (FMSQ、MAIN と SUB) | 起動の音が鳴り、低音が弱くならないか (2 つの三角波は同じコマで始まらないと 1 コマのずれで 0.67 倍)。WROVER のオーディオ側の FMSQ の表 (16 件) が起動のくり返しで埋まらないか | boot_splash (report/b2.md) |
 
 ## Tab5 (P4)
 
 | 項目 | 確かめること | 経緯 |
 |---|---|---|
+| 起動の和音 (FMSQ、MAIN と SUB) | 起動の音が鳴り、低音が弱くならないか (2 つの三角波の位相)。絵と音の合わせ目 (和音が開ききる画面と揃う) | boot_splash (report/b2.md) |
 | 保存のちらつき | 済 (2026-10-07、ユーザの目視): ミュートを切り替えて少し待つと若干ちらつくことがある (約 2 秒後のまとめた書き込み) が、許容できる範囲 (ユーザ判断)。Config の Save・エディタの保存は問題なし。自動中断 (AUTO_SUSPEND) は入れない | flash_write_flicker、p4_transfer_crash |
 | 上流 Spinel の取り込み | 7M の区画: 済 (2026-10-07 に develop を全体で書き込み、起動 Guru 0) | spinel_upstream_ext |
 | 全画面の高解像度 | 済 (2026-10-07、ユーザ確認で問題なし)。H1-H4 の動き (エディタの全画面、フォント) | fullscreen_hires |
