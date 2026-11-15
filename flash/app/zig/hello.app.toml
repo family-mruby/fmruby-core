@@ -1,0 +1,11 @@
+# The app of docs/getting_started.md (zig/examples/hello). zig/build.rb
+# writes this next to hello.app.wasm with sdk_version set; put both in a
+# directory under /app (the directory is the launcher's category).
+app_screen_name = "Zig hello"
+language = "zig"
+default_window_mode = "window"
+default_window_width = 160
+default_window_height = 70
+default_window_pos_x = 60
+default_window_pos_y = 50
+sdk_version = "0.1.0"
