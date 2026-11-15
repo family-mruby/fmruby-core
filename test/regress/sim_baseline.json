@@ -4,82 +4,82 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 174904,
+            "used": 178848,
             "total": 1048576,
-            "stack_free": 14661
+            "stack_free": 14621
           },
           "system_desktop": {
-            "used": 817680,
+            "used": 818984,
             "total": 1572864,
-            "stack_free": 14801
+            "stack_free": 14723
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 166016,
+            "used": 172896,
             "total": 1048576,
-            "stack_free": 14661
+            "stack_free": 14621
           },
           "system_desktop": {
-            "used": 818344,
+            "used": 819672,
             "total": 1572864,
-            "stack_free": 14751
+            "stack_free": 14711
           },
           "Kamon": {
-            "used": 503536,
+            "used": 503464,
             "total": 1572864,
-            "stack_free": 14506
+            "stack_free": 14466
           },
           "MML": {
-            "used": 497344,
+            "used": 497248,
             "total": 1572864,
-            "stack_free": 14696
+            "stack_free": 14656
           },
           "StackChan Remote": {
-            "used": 439128,
+            "used": 439208,
             "total": 1572864,
-            "stack_free": 14526
+            "stack_free": 14486
           },
           "Spinel Hello": {
-            "used": 425880,
+            "used": 425912,
             "total": 1572864,
-            "stack_free": 14815
+            "stack_free": 14775
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 181528,
+            "used": 188696,
             "total": 1048576,
-            "stack_free": 14661
+            "stack_free": 14621
           },
           "system_desktop": {
-            "used": 817680,
+            "used": 818984,
             "total": 1572864,
-            "stack_free": 14751
+            "stack_free": 14679
           }
         }
       },
       "compile": {
         "Kamon": {
-          "used": 438184,
-          "peak": 570184
+          "used": 438192,
+          "peak": 570192
         },
         "MML": {
-          "used": 436504,
-          "peak": 540648
+          "used": 436512,
+          "peak": 540656
         },
         "StackChan Remote": {
-          "used": 426664,
-          "peak": 511232
+          "used": 426672,
+          "peak": 511240
         },
         "Spinel Hello": {
-          "used": 415632,
-          "peak": 438992
+          "used": 415640,
+          "peak": 439000
         }
       },
       "family": "retro",
       "board": "NARYAv3",
-      "commit": "d6afe856",
+      "commit": "72a9b398",
       "tolerance": {
         "app_used": [
           0.0,
@@ -113,97 +113,97 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 186416,
+            "used": 186952,
             "total": 1048576,
-            "stack_free": 14661
+            "stack_free": 14621
           },
           "system_desktop": {
-            "used": 818992,
+            "used": 814856,
             "total": 1572864,
-            "stack_free": 14801
+            "stack_free": 14723
           },
           "Services": {
-            "used": 526312,
+            "used": 526760,
             "total": 1572864,
-            "stack_free": 17723
+            "stack_free": 17683
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 179136,
+            "used": 179944,
             "total": 1048576,
-            "stack_free": 14661
+            "stack_free": 14621
           },
           "system_desktop": {
-            "used": 819576,
+            "used": 815504,
             "total": 1572864,
-            "stack_free": 14751
+            "stack_free": 14711
           },
           "Services": {
-            "used": 526312,
+            "used": 526344,
             "total": 1572864,
-            "stack_free": 17723
+            "stack_free": 17683
           },
           "Kamon": {
-            "used": 503536,
+            "used": 503464,
             "total": 1572864,
-            "stack_free": 14506
+            "stack_free": 14466
           },
           "MML": {
-            "used": 497344,
+            "used": 497248,
             "total": 1572864,
-            "stack_free": 14696
+            "stack_free": 14656
           },
           "StackChan Remote": {
-            "used": 439128,
+            "used": 439208,
             "total": 1572864,
-            "stack_free": 14526
+            "stack_free": 14486
           },
           "Spinel Hello": {
-            "used": 425880,
+            "used": 425912,
             "total": 1572864,
-            "stack_free": 14815
+            "stack_free": 14775
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 194992,
+            "used": 195456,
             "total": 1048576,
-            "stack_free": 14661
+            "stack_free": 14621
           },
           "system_desktop": {
-            "used": 818904,
+            "used": 814856,
             "total": 1572864,
-            "stack_free": 14751
+            "stack_free": 14711
           },
           "Services": {
-            "used": 526312,
+            "used": 526344,
             "total": 1572864,
-            "stack_free": 17723
+            "stack_free": 17683
           }
         }
       },
       "compile": {
         "Kamon": {
-          "used": 438184,
-          "peak": 570184
+          "used": 438192,
+          "peak": 570192
         },
         "MML": {
-          "used": 436504,
-          "peak": 540648
+          "used": 436512,
+          "peak": 540656
         },
         "StackChan Remote": {
-          "used": 426664,
-          "peak": 511232
+          "used": 426672,
+          "peak": 511240
         },
         "Spinel Hello": {
-          "used": 415632,
-          "peak": 438992
+          "used": 415640,
+          "peak": 439000
         }
       },
       "family": "modern",
       "board": "TAB5",
-      "commit": "d6afe856",
+      "commit": "72a9b398",
       "tolerance": {
         "app_used": [
           0.0,
