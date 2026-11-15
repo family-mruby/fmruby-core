@@ -16,4 +16,12 @@ namespace :boundary do
   task :check do
     sh "#{RbConfig.ruby} tools/boundary/gen.rb --check"
   end
+
+  # The SDK repository takes boundary.json and the C header (English only)
+  # from here and generates the language bindings itself (doc/wasm_apps W5).
+  desc "Write the boundary into a family-mruby-sdk checkout (SDK=dir, default ../family-mruby-sdk)"
+  task :sdk do
+    dir = ENV['SDK'] || File.expand_path('../family-mruby-sdk', Dir.pwd)
+    sh "#{RbConfig.ruby} tools/boundary/gen.rb --sdk #{dir}"
+  end
 end

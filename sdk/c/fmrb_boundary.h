@@ -44,9 +44,12 @@
 extern "C" {
 #endif
 
-/** Version of the boundary (decided by the generator; see doc/wasm_apps decision 14). */
-#define FMRB_ABI_VERSION_MAJOR 0
-#define FMRB_ABI_VERSION_MINOR 1
+/*
+ * The version is the SDK's (family-mruby-sdk: VERSION, c/fmrb_sdk_version.h),
+ * numbered by comparing boundary.json with the last release's
+ * (doc/wasm_apps decision 14). The firmware does not compare numbers: it
+ * refuses an app that imports a function it lacks, before the app starts.
+ */
 /** Hash of the function list and records; changes whenever one of them changes. */
 #define FMRB_ABI_HASH 0x922a7dadu
 
