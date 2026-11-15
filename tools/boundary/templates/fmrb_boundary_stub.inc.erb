@@ -49,3 +49,20 @@ int32_t <%= f.flat %>(<%= f.c_args.empty? ? 'void' : f.c_args %>)
 }
 #endif
 <% end -%>
+
+#ifdef FMRB_STUB_APP_NAMES
+/* The names a C app calls the functions, records and choices by
+   (sdk/c/fmrb_boundary.h), for a host that also compiles the app's own code
+   natively (tools/wamr_poc: the ABI tour made without wasm). */
+<% records.each do |r| -%>
+typedef <%= r.cname %> <%= r.api_cname %>;
+<% end -%>
+<% funcs.each do |f| -%>
+<% f.params.select { |p| p.ty.kind == :choice }.each do |p| -%>
+<% p.ty.values.each do |v| -%>
+#define <%= f.choice_const(p, v, api: true) %> <%= f.choice_const(p, v) %>
+<% end -%>
+<% end -%>
+#define <%= f.api %> <%= f.flat %>
+<% end -%>
+#endif

@@ -2,7 +2,9 @@
 /*
  * The flat functions of the app boundary, as the firmware's own glue calls
  * them (mruby, Lua, MicroPython, Spinel, WAMR), with the records they pass and
- * the numbers of the Symbol choices. Fixed-width integers and plain pointers
+ * the numbers of the Symbol choices. The firmware's names have fmrb_bnd_ (a
+ * C app calls the same functions fmrb_<class>_<method>, sdk/c/fmrb_boundary.h),
+ * so they never meet the firmware's own fmrb_<module>_* API. Fixed-width integers and plain pointers
  * only: the MicroPython module includes this while the qstr extractor
  * preprocesses it with no firmware header in sight.
  *
@@ -37,7 +39,7 @@ _Static_assert(sizeof(<%= r.cname %>) == <%= r.size %>, "<%= r.cname %> is packe
 
 /* <%= f.ruby_sig %>: <%= p.name %> */
 <% p.ty.values.each_with_index do |v, i| -%>
-#define <%= "#{f.flat}_#{p.name}_#{v}".upcase %> <%= i %>
+#define <%= f.choice_const(p, v) %> <%= i %>
 <% end -%>
 <% end -%>
 <% end -%>

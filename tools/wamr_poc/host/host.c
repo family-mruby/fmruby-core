@@ -131,10 +131,10 @@ static NativeSymbol g_natives[] = {
  * called is kept here. */
 static AppCtx *g_current;
 
-/* The firmware's body of the flat function, played on the 64x64 canvas:
- * receiver 0 is that canvas. */
+/* The firmware's body of the flat function (its own name, fmrb_bnd_), played
+ * on the 64x64 canvas: receiver 0 is that canvas. */
 int32_t
-fmrb_gfx_fill_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h,
+fmrb_bnd_gfx_fill_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h,
                    int32_t color)
 {
     if (gfx != 0 || !g_current)
@@ -181,7 +181,8 @@ fmrb_stub_arg(const void *data, size_t len)
     stub_mix(data, len);
 }
 
-#define FMRB_STUB_HAVE_fmrb_gfx_fill_rect
+#define FMRB_STUB_HAVE_fmrb_bnd_gfx_fill_rect
+#define FMRB_STUB_APP_NAMES   /* tour.h is the app's code: the SDK names */
 #include "fmrb_gen/fmrb_boundary_stub.inc"
 #include "../apps/c_boundary/tour.h"
 #endif

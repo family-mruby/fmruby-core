@@ -152,8 +152,12 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   `Array[記録]`。結果に nil があり得るのは記録だけ (`image_info?`)。扱えない
   型を書くと、道具がメソッドの名前を出して止まる。
 - 載せたメソッドには本体の C の実体 (`main/app/fmrb_boundary_*.c` の
-  `fmrb_<クラス>_<メソッド>`) が要る。無ければ道具が名前を出して止まる
-  (Ruby で書いたメソッドを載せかけたら internal を付ける)。
+  `fmrb_bnd_<クラス>_<メソッド>`) が要る。無ければ道具が名前を出して止まる
+  (Ruby で書いたメソッドを載せかけたら internal を付ける)。C の名前は 2 つ:
+  本体の中の実体と生成するつなぎは `fmrb_bnd_<クラス>_<メソッド>`
+  (記録は `fmrb_bnd_<クラス>_<名>_t`、選択肢は `FMRB_BND_...`)、C のアプリから
+  見える名前 (SDK のヘッダ・wasm の import) は `fmrb_<クラス>_<メソッド>`。
+  本体の内部の API (`fmrb_gfx_*` など) とぶつからないため (2026-11-15)。
 - **MicroPython の qstr の表はコミットされた生成物**。境界に関数を足す・
   名前や記録のキーを変えたら `rake micropython:gen` を流して
   `components/micropython/mp_embed` をコミットする。`rake test`

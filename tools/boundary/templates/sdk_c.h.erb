@@ -53,14 +53,14 @@ typedef struct __attribute__((packed)) {
 <% r.fields.each do |f| -%>
     <%= f.ty.ctype %> <%= f.name %>;<%= f.ty.kind == :bool ? '  /* 0 or 1 */' : '' %>
 <% end -%>
-} <%= r.cname %>;
+} <%= r.api_cname %>;
 <% end -%>
 <% funcs.each do |f| -%>
 <% f.params.select { |p| p.ty.kind == :choice }.each do |p| -%>
 
 /** <%= f.ruby_sig %>: the choices of <%= p.name %> */
 <% p.ty.values.each_with_index do |v, i| -%>
-#define <%= "#{f.flat}_#{p.name}_#{v}".upcase %> <%= i %>
+#define <%= f.choice_const(p, v, api: true) %> <%= i %>
 <% end -%>
 <% end -%>
 <% end -%>
@@ -83,7 +83,7 @@ typedef struct __attribute__((packed)) {
 <% end -%>
  */
 FMRB_IMPORT("<%= f.import_name %>")
-int32_t <%= f.flat %>(<%= f.c_args.empty? ? 'void' : f.c_args %>);
+int32_t <%= f.api %>(<%= f.c_args(api: true).empty? ? 'void' : f.c_args(api: true) %>);
 <% end -%>
 <% unless hooks.empty? -%>
 

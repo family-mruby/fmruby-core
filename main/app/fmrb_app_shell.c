@@ -154,19 +154,19 @@ static void apply_regions(shell_t *s)
     if (!s->rounded && !s->frameless) return;
     if (s->region_w == s->ww && s->region_h == s->wh) return;
     int16_t w = (int16_t)s->ww, h = (int16_t)s->wh, c = CORNER_R;
-    fmrb_gfx_canvas_region_t r[7];
+    fmrb_gfx_composite_region_t r[7];
     uint8_t n;
     if (s->frameless) {
-        r[0] = (fmrb_gfx_canvas_region_t){0, 0, 0, 0, w, h, 1};
+        r[0] = (fmrb_gfx_composite_region_t){0, 0, 0, 0, w, h, 1};
         n = 1;
     } else {
-        r[0] = (fmrb_gfx_canvas_region_t){0,     0,     0,     0,     c, c, 1};
-        r[1] = (fmrb_gfx_canvas_region_t){w - c, 0,     w - c, 0,     c, c, 1};
-        r[2] = (fmrb_gfx_canvas_region_t){0,     h - c, 0,     h - c, c, c, 1};
-        r[3] = (fmrb_gfx_canvas_region_t){w - c, h - c, w - c, h - c, c, c, 1};
-        r[4] = (fmrb_gfx_canvas_region_t){c, 0,     c, 0,     (int16_t)(w - 2 * c), c, 0};
-        r[5] = (fmrb_gfx_canvas_region_t){c, h - c, c, h - c, (int16_t)(w - 2 * c), c, 0};
-        r[6] = (fmrb_gfx_canvas_region_t){0, c,     0, c,     w, (int16_t)(h - 2 * c), 0};
+        r[0] = (fmrb_gfx_composite_region_t){0,     0,     0,     0,     c, c, 1};
+        r[1] = (fmrb_gfx_composite_region_t){w - c, 0,     w - c, 0,     c, c, 1};
+        r[2] = (fmrb_gfx_composite_region_t){0,     h - c, 0,     h - c, c, c, 1};
+        r[3] = (fmrb_gfx_composite_region_t){w - c, h - c, w - c, h - c, c, c, 1};
+        r[4] = (fmrb_gfx_composite_region_t){c, 0,     c, 0,     (int16_t)(w - 2 * c), c, 0};
+        r[5] = (fmrb_gfx_composite_region_t){c, h - c, c, h - c, (int16_t)(w - 2 * c), c, 0};
+        r[6] = (fmrb_gfx_composite_region_t){0, c,     0, c,     w, (int16_t)(h - 2 * c), 0};
         n = 7;
     }
     fmrb_gfx_set_composite_regions(fmrb_gfx_get_global_context(),

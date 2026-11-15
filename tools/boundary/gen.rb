@@ -8,7 +8,10 @@
 # %a{fmrb.internal} (written in Ruby, or state an engine's object keeps) and
 # the hooks marked %a{fmrb.hook} (what the app exports; listed, not called).
 # Each boundary method becomes one flat C function by the fixed rules below,
-# and the glue of every engine is written from that one table:
+# and the glue of every engine is written from that one table. The firmware
+# calls it fmrb_bnd_<class>_<method> (its body and every engine's glue); a C
+# app calls it fmrb_<class>_<method> (the SDK header, the wasm import
+# "<class>_<method>"):
 #
 #   in the firmware, made on every build, not committed
 #     components/fmrb_common/include/fmrb_gen/fmrb_boundary.h       flat declarations, records
@@ -47,7 +50,7 @@
 # A method with optional, rest or keyword arguments is not a boundary function:
 # its wrapper is marked internal and the simple form is written next to it
 # with "_raw" after the name. A boundary method needs its C body: the tool
-# looks for the definition of every flat function in main/app/fmrb_boundary_*.c
+# looks for the definition of every flat function (fmrb_bnd_...) in main/app/fmrb_boundary_*.c
 # and stops, naming the method, when one is missing (a method written in Ruby
 # must be marked internal instead).
 
@@ -106,14 +109,22 @@ Ty = Struct.new(:kind, :ctype, :min, :max, :values, :record, :elem, :optional, k
   def to_s = (kind == :record ? record.name : kind.to_s)
 end
 Field = Struct.new(:name, :ty)
-Rec = Struct.new(:name, :klass, :cname, :fields) do
+# cname is the firmware's own name of the record (fmrb_bnd_<class>_<name>_t),
+# api_cname what a C app sees (fmrb_<class>_<name>_t, the SDK header).
+Rec = Struct.new(:name, :klass, :cname, :api_cname, :fields) do
   def size = fields.sum { |f| FIELD_SIZE.fetch(f.ty.ctype) }
 end
 FIELD_SIZE = { 'int8_t' => 1, 'uint8_t' => 1, 'int16_t' => 2, 'uint16_t' => 2, 'int32_t' => 4,
                'uint32_t' => 4, 'int64_t' => 8, 'uint64_t' => 8, 'float' => 4, 'double' => 8 }.freeze
 
 Param = Struct.new(:name, :ty)
-Func = Struct.new(:klass, :method, :prefix, :flat, :import_name, :recv, :params, :ret,
+# flat is the firmware's own name of the function (fmrb_bnd_<class>_<method>:
+# the body in main/app/fmrb_boundary_*.c and every engine's glue), api the
+# name a C app calls it by (fmrb_<class>_<method>: the SDK header, and the
+# wasm import "<class>_<method>"). A C app is linked apart from the firmware
+# (inside WAMR), so only the firmware's names share a namespace with the
+# firmware's own API (decided 2026-11-15, doc/app_boundary/plan.md).
+Func = Struct.new(:klass, :method, :prefix, :flat, :api, :import_name, :recv, :params, :ret,
                   :doc_ja, :doc_en, :singleton, keyword_init: true) do
   # ret: :self, :void, or a Ty (:int, :bool, :choice, :record, :str, :bin)
   def returns_self? = ret == :self
@@ -122,19 +133,24 @@ Func = Struct.new(:klass, :method, :prefix, :flat, :import_name, :recv, :params,
   def raw? = method.end_with?('_raw')
   def recv_param = recv ? [['int32_t', recv]] : []
 
-  # The flat function's C parameters, in order: [[ctype, name], ...]
-  def c_params
+  # The flat function's C parameters, in order: [[ctype, name], ...]; with
+  # api: true, the record types by the names a C app sees.
+  def c_params(api: false)
     ps = recv_param.dup
-    params.each { |p| ps.concat(C.params_of(p.ty, p.name)) }
+    params.each { |p| ps.concat(C.params_of(p.ty, p.name, api: api)) }
     if returns_record?
-      ps << ["#{ret.record.cname} *", 'out']
+      ps << ["#{api ? ret.record.api_cname : ret.record.cname} *", 'out']
     elsif returns_bytes?
       ps << [ret.kind == :bin ? 'uint8_t *' : 'char *', 'out'] << %w[int32_t out_size]
     end
     ps
   end
 
-  def c_args = c_params.map { |t, n| t.end_with?('*') ? "#{t}#{n}" : "#{t} #{n}" }.join(', ')
+  def c_args(api: false) = c_params(api: api).map { |t, n| t.end_with?('*') ? "#{t}#{n}" : "#{t} #{n}" }.join(', ')
+
+  # The number of one Symbol choice of an argument: FMRB_BND_GFX_SET_FONT_RAW_FAMILY_JA
+  # in the firmware, FMRB_GFX_SET_FONT_RAW_FAMILY_JA for a C app.
+  def choice_const(param, value, api: false) = "#{api ? self.api : flat}_#{param.name}_#{value}".upcase
   def ruby_sig = "#{klass}#{singleton ? '.' : '#'}#{method}(#{params.map(&:name).join(', ')})"
 end
 Hook = Struct.new(:klass, :method, :doc_ja, :doc_en, keyword_init: true)
@@ -142,15 +158,16 @@ Hook = Struct.new(:klass, :method, :doc_ja, :doc_en, keyword_init: true)
 module C
   module_function
 
-  def params_of(ty, name)
+  def params_of(ty, name, api: false)
+    rec = ->(r) { api ? r.api_cname : r.cname }
     case ty.kind
     when :int, :choice then [[ty.ctype, name]]
     when :bool then [['int32_t', name]]
     when :float then [[ty.ctype, name]]
     when :str then [['const char *', name], ['int32_t', "#{name}_len"]]
     when :bin then [['const uint8_t *', name], ['int32_t', "#{name}_len"]]
-    when :record then [["const #{ty.record.cname} *", name]]
-    when :array then [["const #{ty.elem.kind == :record ? ty.elem.record.cname : ty.elem.ctype} *", name],
+    when :record then [["const #{rec.(ty.record)} *", name]]
+    when :array then [["const #{ty.elem.kind == :record ? rec.(ty.elem.record) : ty.elem.ctype} *", name],
                       ['int32_t', "#{name}_count"]]
     end
   end
@@ -259,7 +276,8 @@ class Collector
     names = params.map(&:name)
     abort "#{where}: an argument may not be called #{prefix}, out or out_size" if (names & [prefix, 'out', 'out_size']).any?
     Func.new(klass: klass, method: m.name.to_s, prefix: prefix,
-             flat: "fmrb_#{prefix}_#{m.name}", import_name: "#{prefix}_#{m.name}",
+             flat: "fmrb_bnd_#{prefix}_#{m.name}", api: "fmrb_#{prefix}_#{m.name}",
+             import_name: "#{prefix}_#{m.name}",
              recv: singleton ? nil : prefix, params: params,
              ret: ret_type(fn.return_type, klass, where), doc_ja: ja, doc_en: en, singleton: singleton)
   end
@@ -330,7 +348,7 @@ class Collector
         abort "#{where}: record #{name}.#{fname}: #{ft} is not a fixed-width value" unless %i[int bool float].include?(ty.kind)
         Field.new(fname.to_s, ty)
       end
-      Rec.new(name, owner, "fmrb_#{short_name(owner)}_#{name}_t", fields)
+      Rec.new(name, owner, "fmrb_bnd_#{short_name(owner)}_#{name}_t", "fmrb_#{short_name(owner)}_#{name}_t", fields)
     end
   end
 
@@ -382,9 +400,11 @@ end
 
 # ---------------------------------------------------------------- output
 
+# From what a C app sees (its names, not the firmware's own), so renaming the
+# firmware's side leaves it as it is.
 def abi_hash(table)
-  lines = table.funcs.map { |f| [f.flat, f.c_args].join(':') }
-  lines += table.records.values.map { |r| ([r.cname] + r.fields.map { |x| "#{x.ty.ctype} #{x.name}" }).join(':') }
+  lines = table.funcs.map { |f| [f.api, f.c_args(api: true)].join(':') }
+  lines += table.records.values.map { |r| ([r.api_cname] + r.fields.map { |x| "#{x.ty.ctype} #{x.name}" }).join(':') }
   Digest::SHA256.hexdigest(lines.join("\n"))[0, 8]
 end
 
