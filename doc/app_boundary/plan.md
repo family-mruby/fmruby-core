@@ -261,6 +261,14 @@
 | Lua・MicroPython の書き方 | Lua の `gfx:draw_text` は Ruby と同じ `(x, y, text, color)` の順に。Lua にも省略できる引数のための小さな前置き。Lua の大きさは `FmrbApp.user_area_width()` などの関数に。MicroPython の既定の引数は、包みを持つメソッドだけ手書きで残し、ほかは生成。型定義の引数名を自然な名前に (`str` → `text`) |
 | BASIC | 生成の対象に入れない |
 
+### W4b-1 の後に決めたこと (2026-11-15 ユーザ、report/w4b_1.md)
+
+| 項目 | 決定 |
+|---|---|
+| mruby の `present` | mruby だけ C のメソッドに戻し、中で `present_raw` を呼ぶ (W4a で Ruby の包みにして命令数が 620 → 1,326 に増えたため)。手書きの包みの例外として扱う |
+| 版をまたぐ checkpoint | 止めた瞬間に Task が FmrbGfx の Ruby の包みの中にいると、復元後に NoMethodError になる。今直す: mruby-checkpoint の gem の側で、運ぶ前に版の違う mrblib のフレームを見つけて断る |
+| 描き手の上限 | 1 アプリ 8 個のまま。9 個目は全エンジンで例外に揃える (Spinel も黙って描かないのをやめる) |
+
 ## スコープ (段)
 
 段の名前は doc/wasm_apps から引き継いだもの (W3・W4a・W4b) をそのまま使う。両方の文書・
