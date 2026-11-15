@@ -64,3 +64,13 @@ Family mruby の `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` は同�
 
 - **Console の接続の設定 (tools/web の settings) が端末の状態に追いつかない**: 端末で「BLE Setup」を選んで受け付けを開いても、すでに BLE でつないでいたページは「The board is not accepting settings」のままで、「Read from board」が押せない。ページを読み込み直すと書けた。端末のログでは受け付けを開いた (`settings window open for 300 s`) あとにページがつながり、そのあと読み書きの要求が 1 つも来ていない。ページがつないだときの状態を持ったままで、受け付けが開いたことを知る手段 (通知か、押したときの問い合わせ) が無いと見られる。
 - **デスクトップの設定の画面 (config_dialog) が Retro の画面に収まらない**: 項目が多く、下のボタンが画面の外に出て押せない (NARYAv3、320x240)。ページの切り替え (タブか、次へ・前へ) が要る。
+
+## 実機の /home を残したまま焼く仕組み (2026-11-15 記録、ユーザの希望)
+
+今は /home を残すために、storage (8 MB) を読み出し (P4-Nano の CH343 で 460800 bps・約 3.5 分) → PC で littlefs を
+開いて /home を新しい storage に重ねる → 全体を 115200 bps で書く (約 9 分)、を手でやっている。案:
+
+- **storage を書かない**: app の区画だけ書き (app_only)、storage の /home 以外の差分 (ビルドの storage_root と
+  端末の中身の差) を WiFi の `/fs/put` (fmrb_rd_fs.rb の push) で送る。/home にも鍵にも触らない。
+- **書き込みの速さ**: CH343 で切れない一番速い bps を測り、切れたら下げて続ける (今は 115200 固定)。
+- 一式を `rake flash:keep_home` (と MCP の flash の選択肢) にまとめ、退避の像も念のため残す。
