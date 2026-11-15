@@ -1,6 +1,6 @@
 # アプリの境界と型定義からの生成 計画
 
-> 状態: 進行中 | 更新: 2026-11-15 | アプリと本体の間の境界を、型定義 `sig/*.rbs` の 1 か所から全エンジン (mruby・Spinel・Lua・MicroPython・wasm の各言語・C のヘッダ) のつなぎを生成する形に整え、Window の枠と一生の処理を本体の C の殻に置く。doc/wasm_apps から W3 (殻) と W4 (生成) を分けたテーマ (wasm_apps の決定 16)。W3・W4a を wasm_apps の W1b より先に進める (決定 15)。W3 完了 (殻と Lua)。W4a 完了 (印と規則を道具に入れ、FmrbGfx をクラスごと境界に載せて全エンジンのつなぎを生成に、report/w4a.md)。次は W4b (C の名前は本体側の実体だけ `fmrb_bnd_` に決めた)
+> 状態: 進行中 | 更新: 2026-11-15 | アプリと本体の間の境界を、型定義 `sig/*.rbs` の 1 か所から全エンジン (mruby・Spinel・Lua・MicroPython・wasm の各言語・C のヘッダ) のつなぎを生成する形に整え、Window の枠と一生の処理を本体の C の殻に置く。doc/wasm_apps から W3 (殻) と W4 (生成) を分けたテーマ (wasm_apps の決定 16)。W3・W4a を wasm_apps の W1b より先に進める (決定 15)。W3 完了 (殻と Lua)。W4a 完了 (印と規則を道具に入れ、FmrbGfx をクラスごと境界に載せて全エンジンのつなぎを生成に、report/w4a.md)。W4b-1・W4b-1b 済 (描き手、`present` を C に戻す、描き手の上限の例外、版の違う mrblib の checkpoint を断る、report/w4b_1.md・w4b_1b.md)
 
 ## 目的
 
@@ -268,6 +268,9 @@
 | mruby の `present` | mruby だけ C のメソッドに戻し、中で `present_raw` を呼ぶ (W4a で Ruby の包みにして命令数が 620 → 1,326 に増えたため)。手書きの包みの例外として扱う |
 | 版をまたぐ checkpoint | 止めた瞬間に Task が FmrbGfx の Ruby の包みの中にいると、復元後に NoMethodError になる。今直す: mruby-checkpoint の gem の側で、運ぶ前に版の違う mrblib のフレームを見つけて断る |
 | 描き手の上限 | 1 アプリ 8 個のまま。9 個目は全エンジンで例外に揃える (Spinel も黙って描かないのをやめる) |
+
+3 つとも W4b-1b で入れた (report/w4b_1b.md)。checkpoint の直しは mruby-checkpoint の手元のコミットで、
+ピンの更新と push はユーザの指示の後。
 
 ## スコープ (段)
 
