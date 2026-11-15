@@ -127,7 +127,11 @@ development on a trusted local network.
   with `FMRB_DEV_REMOTE_CTL` (the default; build a release image with
   `CMAKE_OPTS="-DFMRB_DEV_REMOTE_CTL=OFF"`). It starts and stops apps by path,
   which the remote desktop above already allows through the launcher — this is
-  the scriptable form of it. See `doc/dev_remote_ctl/plan.md`.
+  the scriptable form of it. Its file endpoints (`/fs/*`) read and write
+  **every file, the WiFi password, the API keys and the Asterism private keys
+  included**, and `/sys/reboot` restarts the board: a development build lets
+  anyone on the network copy the board's keys. See `doc/dev_remote_ctl/plan.md`
+  ("the development build") and `doc/remote_guard/plan.md`.
 - **BLE debug service** — starts at boot by default on the Retro board (NARYA v3),
   Tab5 and NARYA v4 (`ble_auto_start` in the system configuration, the "BLE Auto
   Start" setting); AtomS3R and StickS3 run it only in setup mode. While it runs it has

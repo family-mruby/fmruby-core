@@ -433,14 +433,20 @@ static esp_err_t status_handler(httpd_req_t *req)
 {
     char ip[16];
     wifi_get_ip_str(ip, sizeof(ip));
-    char body[160];
+    // A development build also says which board this is (devctl_status_ident:
+    // the backup tools name a board's directory from it).
+    char ident[96] = "";
+#ifdef FMRB_DEV_REMOTE_CTL
+    devctl_status_ident(ident, sizeof(ident));
+#endif
+    char body[256];
     int n = snprintf(body, sizeof(body),
                      "{\"ip\":\"%s\",\"mode\":\"mjpeg\",\"streaming\":%s,"
-                     "\"fps\":%u.%u,\"kbps\":%u}",
+                     "\"fps\":%u.%u,\"kbps\":%u%s}",
                      ip, atomic_load(&s_stream_busy) ? "true" : "false",
                      (unsigned)(s_stat_fps_x10 / 10),
                      (unsigned)(s_stat_fps_x10 % 10),
-                     (unsigned)s_stat_kbps);
+                     (unsigned)s_stat_kbps, ident);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, body, n);
 }
@@ -490,8 +496,9 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     // it over, and httpd_register_uri_handler answers ESP_ERR_HTTPD_HANDLERS_FULL
     // rather than complaining -- so the server came up looking healthy and every
     // one of the new routes returned 404. Sized with room to add more (the
-    // dev file endpoints bring the count to 16).
-    hcfg.max_uri_handlers = 24;
+    // dev file endpoints bring the count to 16; /fs/md5, /sys/reboot and the
+    // checkpoint gem's three to 24).
+    hcfg.max_uri_handlers = 28;
 
     esp_err_t err = httpd_start(&s_server, &hcfg);
     if (err != ESP_OK) {

@@ -1,6 +1,6 @@
 // Host tests for the secret-file rules (main/kernel/fmrb_secret_path.c).
 //
-// The BLE console and devctl both ask these functions whether a remote
+// The BLE console (and devctl, in a restricted build) ask these functions whether a remote
 // client may read, write, delete or rename a path. A mistake here is silent
 // (a password handed out, or a setting that cannot be written), so the whole
 // table runs here under the host compiler with no device.

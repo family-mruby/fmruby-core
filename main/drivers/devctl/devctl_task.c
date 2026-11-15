@@ -39,7 +39,9 @@ static esp_err_t status_handler(httpd_req_t *req)
 {
     char ip[16];
     wifi_get_ip_str(ip, sizeof(ip));
-    char body[112];
+    char ident[96];
+    devctl_status_ident(ident, sizeof(ident));
+    char body[208];
     // "fb": this board answers /fb (below), the one way to see its screen.
 #if defined(FMRB_HAS_LOCAL_DISPLAY)
     const char *fb = ",\"fb\":true";
@@ -47,7 +49,8 @@ static esp_err_t status_handler(httpd_req_t *req)
     const char *fb = "";
 #endif
     int n = snprintf(body, sizeof(body),
-                     "{\"ip\":\"%s\",\"mode\":\"none\",\"streaming\":false%s}", ip, fb);
+                     "{\"ip\":\"%s\",\"mode\":\"none\",\"streaming\":false%s%s}",
+                     ip, fb, ident);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, body, n);
 }
@@ -108,15 +111,15 @@ fmrb_err_t devctl_start(void)
     cfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    // Thirteen routes, fourteen with /fb, and the default is eight.
+    // Fifteen routes, sixteen with /fb, and the default is eight.
     // Registration answers ESP_ERR_HTTPD_HANDLERS_FULL rather than failing the
     // start (the /fb registration below says so in the log).
     // With mruby-checkpoint (doc/checkpoint F6) three more: /app/checkpoint
     // (POST and GET) and /app/move (devctl_http.c).
 #ifdef FMRB_HAVE_CHECKPOINT
-    cfg.max_uri_handlers = 17;
+    cfg.max_uri_handlers = 19;
 #else
-    cfg.max_uri_handlers = 14;
+    cfg.max_uri_handlers = 16;
 #endif
 
     esp_err_t err = httpd_start(&s_server, &cfg);

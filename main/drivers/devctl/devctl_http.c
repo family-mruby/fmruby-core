@@ -4,7 +4,8 @@
 //
 //   POST /app/launch?path=   GET /app/list        POST /app/kill?pid=
 //   GET  /fs/list?path=      GET  /fs/get?path=   PUT  /fs/put?path=
-//   DELETE /fs/del?path=     POST /fs/mkdir?path=
+//   DELETE /fs/del?path=     POST /fs/mkdir?path=     GET /fs/md5?path=
+//   POST /sys/reboot
 //   GET  /audio/mute         POST /audio/mute?on=0|1
 //   GET  /audio/volume       POST /audio/volume?level=0-10
 //   POST /app/checkpoint?pid=[&restart=1][&hold=ms]   (builds with the
@@ -22,8 +23,10 @@
 // (devctl_task.c), so a machine with no network pays nothing.
 //
 // This is unauthenticated, like the remote desktop, and compiled in only when
-// FMRB_DEV_REMOTE_CTL is defined -- a release build does not carry it.
-// Plan and history: doc/dev_remote_ctl/plan.md.
+// FMRB_DEV_REMOTE_CTL is defined -- a release build does not carry it. The
+// development build reads and writes every file, keys included
+// (devctl_fs_unrestricted). Plan and history: doc/dev_remote_ctl/plan.md,
+// doc/remote_guard/plan.md.
 //
 // Every query value is decoded the same way before a handler sees it
 // (ctl_query_value): %XX and "+" (a space), as a query string is written. A
@@ -37,9 +40,13 @@
 #include "fmrb_hal_file.h"
 #include "host_task.h"
 #include "fmrb_secret_path.h"
+#include "fmrb_platform_sys.h"
+#include "fmrb_rtos.h"
+#include "wifi_task.h"
 
 #include "esp_http_server.h"
 #include "esp_attr.h"
+#include "esp_rom_md5.h"
 #include "sdkconfig.h"
 
 #include <stdio.h>
@@ -242,12 +249,17 @@ static esp_err_t list_handler(httpd_req_t *req)
 // pull an exported slide off the card, push an app into /app and start it
 // with /app/launch without a reflash.
 //
-// Paths are the ones apps use (/app, /home, /usr/share, /mnt/sd) and go
-// through the HAL resolver, the same as File does. Only those four roots are
-// reachable, and a ".." segment is refused before resolving; /etc stays out
-// of reach because a broken system_conf is a broken boot. Same standing as
-// the control endpoints above: unauthenticated, development only, compiled
-// out of a release.
+// Paths go through the HAL resolver, the same as File does, and a ".."
+// segment is refused before resolving. What else is refused depends on the
+// build, decided in one place (devctl_fs_unrestricted): the development build
+// reaches everything under "/" -- /etc and /usr included, and the files that
+// hold keys and passwords -- so /home can be backed up and restored over WiFi
+// and a firmware's storage brought up to date without a full flash
+// (doc/remote_guard G0). Otherwise only the four roots apps use (/app, /home,
+// /usr/share, /mnt/sd) are reachable and the keys are never read; that is the
+// footing for a release build that carries these endpoints (G1, G2). Today
+// only the development build compiles this file: unauthenticated, compiled out
+// of a release.
 //
 // Transfers stream through one static 4KB buffer rather than the httpd task's
 // 8KB stack. A put writes to "<path>.part" and renames at the end so a dropped
@@ -270,9 +282,19 @@ static uint8_t s_fs_buf[RD_FS_IO_CHUNK];
 EXT_RAM_BSS_ATTR static uint8_t s_fs_buf[RD_FS_IO_CHUNK];
 #endif
 
+bool devctl_fs_unrestricted(void)
+{
+#ifdef FMRB_DEV_REMOTE_CTL
+    return true;
+#else
+    return false;
+#endif
+}
+
 static const char *const s_fs_roots[] = { "/mnt/sd", "/home", "/app", "/usr/share" };
 
-// Reject anything outside the allowed roots or containing a ".." segment.
+// Reject a path containing a ".." segment, and -- unless the build is
+// unrestricted -- anything outside the four roots.
 static bool fs_path_allowed(const char *vpath)
 {
     if (vpath[0] != '/') return false;
@@ -282,6 +304,7 @@ static bool fs_path_allowed(const char *vpath)
             return false;
         }
     }
+    if (devctl_fs_unrestricted()) return true;
     for (size_t i = 0; i < sizeof(s_fs_roots) / sizeof(s_fs_roots[0]); i++) {
         size_t n = strlen(s_fs_roots[i]);
         if (strncmp(vpath, s_fs_roots[i], n) == 0 &&
@@ -361,23 +384,24 @@ static esp_err_t fs_list_handler(httpd_req_t *req)
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
-// Files that hold secrets are not handed out: anyone on the LAN can call
-// this server. The WiFi settings (/home/wifi.toml, /etc/wifi.toml) hold the
-// network's password, secrets.toml (/home, /etc) the API keys (the tts key)
-// and /home/asterism the board's Asterism credentials
-// (the .tar with the private key); config.toml there only says where to
-// connect and is read. The rules are shared with the BLE console
-// (fmrb_secret_path.h, doc/ruby_asterism/report/cf2.md), which reads the WiFi
-// files while the board's settings window is open; this server has no such
-// window and never reads them. Secrets can be put, listed and deleted.
+// Files that hold secrets: the WiFi settings (/home/wifi.toml, /etc/wifi.toml)
+// hold the network's password, secrets.toml (/home, /etc) the API keys (the
+// tts key) and /home/asterism the board's Asterism credentials (the .tar with
+// the private key). The development build hands them out like any other file
+// -- it is how /home is backed up with its keys (doc/remote_guard G0) -- and
+// the tools that fetch them keep them out of their output. A restricted build
+// never reads them: anyone on the LAN can call this server, and it has no
+// settings window like the BLE console's (fmrb_secret_path.h, which this
+// shares, doc/ruby_asterism/report/cf2.md). Secrets can be put, listed and
+// deleted either way.
 static esp_err_t fs_get_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
     if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
-    // devctl has no settings window: the WiFi files and the keys are never read here.
     fmrb_path_class_t cls = fmrb_path_classify(vpath);
-    if (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_PASSWORD) {
+    if (!devctl_fs_unrestricted() &&
+        (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_PASSWORD)) {
         return ctl_json(req, "403 Forbidden",
                         "{\"ok\":false,\"err\":\"this file holds keys or passwords and is not read remotely\"}");
     }
@@ -496,6 +520,85 @@ static esp_err_t fs_mkdir_handler(httpd_req_t *req)
     }
     FMRB_LOGI(TAG, "dev fs: mkdir %s", vpath);
     return ctl_json(req, "200 OK", "{\"ok\":true}");
+}
+
+// A file's MD5, so a tool can tell whether the copy on the board matches its
+// own without fetching it (rake flash:app_sync compares the build's storage
+// tree with the board's). Read through the same 4KB buffer as get; the ROM's
+// MD5 needs no table of its own. Change detection, not security. Same rules
+// as get: a restricted build does not hash a key either.
+static esp_err_t fs_md5_handler(httpd_req_t *req)
+{
+    char vpath[RD_FS_VPATH_MAX];
+    char rpath[RD_FS_RPATH_MAX];
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    fmrb_path_class_t cls = fmrb_path_classify(vpath);
+    if (!devctl_fs_unrestricted() &&
+        (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_PASSWORD)) {
+        return ctl_json(req, "403 Forbidden",
+                        "{\"ok\":false,\"err\":\"this file holds keys or passwords and is not read remotely\"}");
+    }
+    FILE *f = fopen(rpath, "rb");
+    if (!f) {
+        return ctl_json(req, "404 Not Found", "{\"ok\":false,\"err\":\"no such file\"}");
+    }
+    md5_context_t ctx;
+    esp_rom_md5_init(&ctx);
+    size_t total = 0;
+    size_t n;
+    while ((n = fread(s_fs_buf, 1, sizeof(s_fs_buf), f)) > 0) {
+        esp_rom_md5_update(&ctx, s_fs_buf, (uint32_t)n);
+        total += n;
+    }
+    fclose(f);
+    uint8_t digest[ESP_ROM_MD5_DIGEST_LEN];
+    esp_rom_md5_final(digest, &ctx);
+    char body[96];
+    int off = snprintf(body, sizeof(body), "{\"ok\":true,\"size\":%u,\"md5\":\"", (unsigned)total);
+    for (int i = 0; i < ESP_ROM_MD5_DIGEST_LEN; i++) {
+        off += snprintf(body + off, sizeof(body) - (size_t)off, "%02x", digest[i]);
+    }
+    snprintf(body + off, sizeof(body) - (size_t)off, "\"}");
+    return ctl_json(req, "200 OK", body);
+}
+
+// Restart the board, as FmrbSystem.reboot does: after /home is written back
+// (rake flash:keep_home) the WiFi settings and the keys are read again only at
+// boot. The answer goes out first; the reset follows a moment later.
+static esp_err_t sys_reboot_handler(httpd_req_t *req)
+{
+    ctl_json(req, "200 OK", "{\"ok\":true}");
+    FMRB_LOGW(TAG, "reboot requested over HTTP");
+    fmrb_host_audio_flush_save();  // a mute / volume change still waiting to be saved
+    fmrb_task_delay_ms(300);
+    fmrb_platform_sys_power(FMRB_SYS_POWER_RESET);
+    return ESP_OK;
+}
+
+size_t devctl_status_ident(char *out, size_t cap)
+{
+    if (!out || cap == 0) return 0;
+#if defined(FMRB_HW_TAB5)
+    const char *board = "tab5";
+#elif defined(FMRB_HW_NARYAV4)
+    const char *board = "naryav4";
+#elif defined(FMRB_HW_ATOM_DISPLAY)
+    const char *board = "atom_display";
+#elif defined(FMRB_HW_ATOMS3R)
+    const char *board = "atoms3r";
+#elif defined(FMRB_HW_STICKS3)
+    const char *board = "sticks3";
+#else
+    const char *board = "narya_v3";
+#endif
+    char host[40];
+    wifi_get_hostname(host, sizeof(host));
+    int n = snprintf(out, cap, ",\"board\":\"%s\",\"host\":\"%s\"", board, host);
+    if (n < 0) {
+        out[0] = '\0';
+        return 0;
+    }
+    return (size_t)n < cap ? (size_t)n : cap - 1;
 }
 
 // The machine's mute and volume (doc/reference/audio_output.md). Here so a development loop
@@ -664,6 +767,10 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         .uri = "/fs/del", .method = HTTP_DELETE, .handler = fs_del_handler };
     static const httpd_uri_t uri_fs_mkdir = {
         .uri = "/fs/mkdir", .method = HTTP_POST, .handler = fs_mkdir_handler };
+    static const httpd_uri_t uri_fs_md5 = {
+        .uri = "/fs/md5", .method = HTTP_GET, .handler = fs_md5_handler };
+    static const httpd_uri_t uri_sys_reboot = {
+        .uri = "/sys/reboot", .method = HTTP_POST, .handler = sys_reboot_handler };
     static const httpd_uri_t uri_audio_mute_get = {
         .uri = "/audio/mute", .method = HTTP_GET, .handler = audio_get_handler };
     static const httpd_uri_t uri_audio_mute_post = {
@@ -680,6 +787,8 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_fs_put);
     devctl_register_uri(server, &uri_fs_del);
     devctl_register_uri(server, &uri_fs_mkdir);
+    devctl_register_uri(server, &uri_fs_md5);
+    devctl_register_uri(server, &uri_sys_reboot);
     devctl_register_uri(server, &uri_audio_mute_get);
     devctl_register_uri(server, &uri_audio_mute_post);
     devctl_register_uri(server, &uri_audio_volume_get);
@@ -695,6 +804,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_ckpt_get);
     devctl_register_uri(server, &uri_move);
 #endif
-    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*)");
+    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot); "
+              "the file endpoints reach every path, keys included");
     return FMRB_OK;
 }

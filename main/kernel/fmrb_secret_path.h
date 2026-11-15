@@ -9,10 +9,15 @@
  * anything else in that directory but config.toml), never read remotely, and
  * the passwords: the WiFi settings (/home/wifi.toml, /etc/wifi.toml) and the
  * API keys (/home/secrets.toml, /etc/secrets.toml), read over BLE only while
- * the board's settings window is open (the owner asked for it on the board)
- * and never over devctl. All of them, and /home/asterism/config.toml, are
- * written only while the window is open (doc/ruby_asterism/report/cf2.md,
+ * the board's settings window is open (the owner asked for it on the board).
+ * All of them, and /home/asterism/config.toml, are written over BLE only
+ * while the window is open (doc/ruby_asterism/report/cf2.md,
  * doc/user_extension/voice/report/secrets.md).
+ *
+ * devctl (the WiFi development endpoints) follows these rules only when it is
+ * restricted: the development build reads and writes every file, the keys
+ * included, so /home can be backed up over WiFi (devctl_fs_unrestricted,
+ * doc/remote_guard/plan.md).
  *
  * Pure C over strings, no file system access: the rules are tested on the
  * host (test/secret_path).

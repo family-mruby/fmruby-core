@@ -22,7 +22,7 @@ set(COMPONENT_SRCS
     "app/fmrb_app_checkpoint.c"
     "app/fmrb_app_transfer.c"
     "kernel/fmrb_kernel.c"
-    # Which files the BLE console and devctl may read and write (the WiFi
+    # Which files the BLE console (and a restricted devctl) may read and write (the WiFi
     # password, the Asterism keys), and the setup mode's decision the kernel
     # makes on every target. Pure C, tested on the host (rake secret:test).
     "kernel/fmrb_secret_path.c"
