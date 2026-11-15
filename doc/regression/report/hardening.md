@@ -85,6 +85,6 @@
 
 ## 5. 残り・決めていないこと
 
-- MCP の `web_*` ツールには launch を足していない (`fmrb_web.rb launch` は shell から使える)。足すかどうかは使う場面が出てから。
-- regress:run の VM プールも決まった組で測るようにした。本物の一覧 (45 項目) の重さは測らなくなったが、項目 1 つあたりの重さが増えれば 12 項目でも出る。本物の数で測りたい場合は戻せる (`sim_run.rb` の `seed_launcher_cache` を外す) — ユーザが決めてよい。
-- `test/native/` の確認 (wl・sdl・deb・net) の固定の port (15565 から) は `Tree.port` を通していない (今回の重なりは起きていない)。
+- MCP の `web_*` ツールには launch を足していない (`fmrb_web.rb launch` は shell から使える)。足すかどうかは使う場面が出てから。→ 2026-11-16 ユーザの頼みで `web_app` (action `spawn`) を足した (family-mruby の tools/mcp)。
+- regress:run の VM プールも決まった組で測るようにした。本物の一覧 (45 項目) の重さは測らなくなったが、項目 1 つあたりの重さが増えれば 12 項目でも出る。本物の数で測りたい場合は戻せる (`sim_run.rb` の `seed_launcher_cache` を外す) — ユーザが決めてよい。→ 2026-11-16 ユーザ: 代表的なものでよい。ランチャーは決まった組のまま、起動して測るアプリを代表の組 (エンジンごと・エディタ・ゲーム) に広げた (usage.md 7.2)。
+- `test/native/` の確認 (wl・sdl・deb・net) の固定の port (15565 から) は `Tree.port` を通していない (今回の重なりは起きていない)。→ 2026-11-16 `Tree.free_port` で空きを取るようにした (usage.md 13 章)。コンテナ名と run dir は固定のまま。

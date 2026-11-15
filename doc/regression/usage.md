@@ -15,7 +15,7 @@
 | `rake regress:boot BOARD=.. FLASH=0` | 40 秒 | 実機の起動 | 実機がつながっているとき |
 | `rake regress:live` | 2.5 分 (full の中では 1 分) | 入力・音・ゲームホスト・歩数・MIDI | 入力・音・Asterism の相手 |
 | `rake regress:screens ONLY=web` | 3.5 分 | ブラウザ版の画面 | wasm・ブラウザ版だけの変更 |
-| `rake regress:run` | 4.5 分 (変更前の木と比べるなら 2 倍) | sim の VM プール | アプリの起動・基底・Ruby の常駐物 |
+| `rake regress:run` | 5.5 分ほど (見込み。2026-11-16 にアプリを 4 つから 9 つ (Retro は 8 つ) に増やした。変更前の木と比べるなら 2 倍) | sim の VM プール | アプリの起動・基底・Ruby の常駐物 |
 | `rake regress:size` | 4〜8 分 (S3・P4 の 2 台、clean から) | 内蔵 RAM とファームの大きさ | C の静的なデータ・部品・sdkconfig |
 | `rake regress:checkpoint` | 7 分 (SIM=1 は 15〜17 分) | アプリを運ぶ | 起動・復元・Window・座標・Asterism の移動 |
 | `rake regress:screens` | 8 分 (Retro・Modern・web・native) | 画面の画素 | 描画・画面の配置・ランチャー |
@@ -115,7 +115,7 @@ rake regress:size ONLY=sticks3   # 1 端末だけ (名前か FMRB_HW_TARGET、�
 rake regress:size TABLE=1        # 作らずに、前回の結果から表だけ出す
 rake regress:size NO_RESTORE=1   # 最後の端末のビルドを build/ に残す (元の build/ は退避されたまま)
 rake regress:size:update         # 前回の結果を基準にする (5 章の決まりを守る)
-rake regress:run                 # sim (Retro・Modern) で決まった台本を流し、VM プールを基準と比べる (4.5 分ほど)
+rake regress:run                 # sim (Retro・Modern) で決まった台本を流し、VM プールを基準と比べる (5.5 分ほどの見込み)
 rake regress:run ONLY=modern     # 片方だけ
 rake regress:run TABLE=1         # sim を起こさずに、前回の結果から表だけ出す
 rake regress:run:update          # 前回の結果を基準にする
@@ -144,7 +144,14 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 
 ### 7.2 動かした時点の表 (rake regress:run)
 
-- Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → アプリ 4 つ (kamon・MML・StackChan Remote・Spinel Hello) を順に起動 → 控え (running) → 閉じる → 控え (closed)。控えは、まず debug server の gc で全アプリに完全な GC をかけ (各アプリの task が次のメッセージ待ちで自分のエンジンの GC を回す。全部が終わるまで最大 5 秒待ち、間に合わないアプリがあれば落ちる)、そのあと debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
+- Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → 下の組ごとに、アプリを順に起動 → 控え (組の名前) → 閉じる → 最後に控え (closed)。控えは、まず debug server の gc で全アプリに完全な GC をかけ (各アプリの task が次のメッセージ待ちで自分のエンジンの GC を回す。全部が終わるまで最大 5 秒待ち、間に合わないアプリがあれば落ちる)、そのあと debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
+- **測るアプリは代表の組** (`tools/regress/sim_run.rb` の `SCENARIO`)。全部のアプリでなく、エンジンの種類ごとに 1 つと、ファームの中に自分の道を持つ種類のアプリを 1 つずつ、手で選んだ。どれもネットワーク・センサー・入力なしで起きる。sim が同時に受けるユーザのアプリは 5 つ (Modern ではサービスホストが 1 つ使う) なので、4 つまでの組に分け、組ごとに起動して控え、閉じてから次の組へ。
+  - `running`: picoruby の FmrbUI のアプリ (kamon)・MML の再生 (音)・StackChan Remote (ボタンと publish)、Spinel のプログラム (Spinel Hello)。2026-11-16 より前の台本と同じ組なので、前の基準と比べられる。
+  - `running_langs`: ほかのエンジン。Lua (`/app/lua/lua.app.lua`)・MicroPython (`/app/python/python.app.py`)・wasm (`/app/tinygo/hello.app.wasm`、WAMR)。wasm のアプリのメモリは WAMR のもので VM プールの外なので、ps の使用量は 0 で、比べるのはスタックの空き (と、ほかの VM への影響)。
+  - `running_tools`: エディタ (`default/editor`、Spinel、組込みで一番使うアプリ) とゲーム (`/app/game/flappy.app.rb`、BMP のスプライト)。
+  - 種類ごとに、その端末の storage に載るアプリだけを流す (`targets.rb` の `carries?`、storage_exclude の一覧): Retro は wasm のアプリを外す (S3 には WAMR が無い)。
+  - Family BASIC は入れていない: `.bas` のアプリは全画面で開いてほかのアプリを止め (suspend)、debug server の ps に出ないため。
+  - 組を変えたら基準を作り直す (`rake regress:run` → 要約を読んで `regress:run:update`)。基準に無い数は「new」と出るだけで落ちない。閉じた後 (closed) の数は組の数で少し動きうる。
 - 結果は `tmp/regress/sim/<種類>.json` とコアのログ (`<種類>.log`)。基準は `test/regress/sim_baseline.json`。
 - 比べ方 (幅): 起動したアプリ・デスクトップの使用量は 512 B、カーネルとサービスホストは 4 KB か 3% の大きい方、スタックの空きは 512 B、コンパイル直後は 256 B まで動いてよい。悪い向き (使用量が増える・空きが減る) に幅を超えたら落ちる。閉じた直後のカーネルの使用量も比べる。幅の根拠は `report/rg3b.md` と `report/rg_gc.md`。
 - 控えの前の GC (2026-11-03 から): それまでは GC がどこまで進んでいたかで数が動き、Modern のカーネルは 5 回で 68 KB 動いた (幅を 137 KB にしていた)。閉じた直後のカーネルは 40 KB 動くので比べていなかった。GC をかけてからは、カーネルの揺れは 1 KB 未満、ほかは 0〜56 B。数は「生きているもの」の量になり、前より 25〜60 KB 小さい。
@@ -506,8 +513,9 @@ rake regress:transfer:quick WEB=1     # 相手をブラウザ版にして (resen
 共有 checkout (family-mruby の中の fmruby-core) と worktree、または worktree 同士で、同じ道具を同時に流せる。ネイティブ版の置き場・port・ルータの名前を、木ごとに決まる値にしてあるため (`tools/regress/tree.rb`)。
 
 - **共有 checkout** (`.git` がディレクトリ) は今までと同じ名前: `regress:checkpoint` の run dir `/tmp/fmrb-native-ckpt-<uid>` (`-b-`・`-c-`・`-sim-` も)、debug の port 5585・5586・5587、ルータ `fmrb_regress_ckpt_zenohd` (17457・ws 17459)、実機のルータ `fmrb_regress_ckpt_zenohd_board`、ブラウザ版の開発サーバ 8067。`regress:screens` のネイティブ版 `/tmp/fmrb-native-regress-<uid>`・5575、ブラウザ版 8016。
-- **ほかの木** (`.git` がファイルの worktree) は、木の実のパスの SHA-1 の先頭 6 桁 (ID) を名前に足す: `/tmp/fmrb-native-ckpt-<uid>-<ID>`、`fmrb_regress_ckpt_zenohd_<ID>` など。port は木ごとの 8 個の組 `20000 + 8 × slot` から (slot は ID から決まる 1〜400): +0〜+2 がネイティブ版 A・B・C、+3・+4 がルータ (tcp・ws)、+5 が checkpoint のブラウザ版、+6 が画面の比較のネイティブ版、+7 がそのブラウザ版。人のネイティブ版 (5565)、sim (5555)、コンポジタの確認 (15565〜15679)、共有 checkout の port とは重ならない。実機のルータの port (7447) は実機から届く port なので木によらない (同時に 2 つの木で実機の場面は流せない)。
+- **ほかの木** (`.git` がファイルの worktree) は、木の実のパスの SHA-1 の先頭 6 桁 (ID) を名前に足す: `/tmp/fmrb-native-ckpt-<uid>-<ID>`、`fmrb_regress_ckpt_zenohd_<ID>` など。port は木ごとの 8 個の組 `20000 + 8 × slot` から (slot は ID から決まる 1〜400): +0〜+2 がネイティブ版 A・B・C、+3・+4 がルータ (tcp・ws)、+5 が checkpoint のブラウザ版、+6 が画面の比較のネイティブ版、+7 がそのブラウザ版。人のネイティブ版 (5565)、sim (5555)、コンポジタの確認 (15565〜15681)、共有 checkout の port とは重ならない。実機のルータの port (7447) は実機から届く port なので木によらない (同時に 2 つの木で実機の場面は流せない)。
 - **port は道具が空きを探して取る** (`Tree.port`)。上の既定の port (worktree は木の組の port) が空いていればそれを使い、答えるものがいる・bind できない・ほかの作業の印がある、のどれかなら 24000〜24999 の空きを取り、`regress: port 8016 (screens_web) is taken by ...; using 24000` と言う。取った port には印 (`/tmp/fmrb-regress-ports-<uid>/<port>.lock`、中身は pid・用途・木) を置き、そのプロセスが終わるときに消す。印の pid がもう無ければ古い印として取り直す。同じ道具を 2 つ並べて流しても、ほかの道具 (checkpoint・transfer・screens) と並べても、port では重ならない。使う直前にもう一度空きを確認し、塞がっていれば port と持ち主 (`ss` で分かれば) と理由を言って止まる。
+- **`test/native/` の確認も同じ取り方** (`Tree.free_port(既定, 用途)`、2026-11-16 から)。これらの port は木によらない既定 (下) で、空いていればそれ、塞がっていれば 24000〜24999 の空きを取って同じ印を置く。wl の確認の debug の port (15565〜15569、全部 mruby の構成は +100、ime はその +1・+2 と、中の SDL のプログラムの +10)、sdl の clip (15568)、net の l2n の debug の port (5585) と PC 側の相手 5 つ (7601〜7605。アプリは `/home/l2n/ports.txt` で取った port を読む)。l2n の zenoh の場面の 7447 は docker compose の zenohd の port なので対象外。deb の確認の 5565 はコンテナの中の port なので対象外。
 - **止め損ねを残さない**: `regress:checkpoint` は起こしたネイティブ版とルータを、通っても落ちても Ctrl+C でも止める (ensure と、それが届かなかったときの at_exit)。始めるときは同じ木の前の回の残り (run dir の pid の file が指す生きた fmruby-native、同じ名前のルータ) を止めてから起こす。ほかの木のものには触らない。
 - **直下の道具** (`tools/fmrb_native.rb`・`fmrb_png.rb` など、family-mruby の tools/) は、木の 1 つ上か、`FMRB_ROOT=<ディレクトリ>` で渡した所で探す。worktree の上には無いので、worktree から流すときは、直下の tools/ を写し、その `fmruby-core` をこの木への symlink にしたディレクトリを `FMRB_ROOT=` で渡す。無ければ「worktree なら FMRB_ROOT を渡す」と言って止まる。`regress:checkpoint`・`regress:screens`・`regress:live`・`test/native/` の確認 (wl・sdl・deb・net) が見る。`rake regress` (安い方) は直下の道具を使わないので要らない。
 
@@ -518,6 +526,6 @@ FMRB_ROOT=/path/root rake regress:screens ONLY=native
 ```
 
 - **sim は共有 checkout からだけ**。sim の docker compose は `<FMRB_ROOT>/fmruby-core` をマウントするので、それがこの木でなければ (worktree から共有の family-mruby を指したときなど) 理由を言って止まる (`regress:run`・`regress:screens` の sim・`regress:live`・`regress:checkpoint SIM=`)。sim のコンテナ名は 1 組なので、木が違っても sim は同時に 1 つ。
-- 名前を木ごとに分けたのは `regress:checkpoint` と `regress:screens` (と、それを使う `regress:live`) のネイティブ版・ルータ・開発サーバ。`regress:wl` などの `test/native/` の確認は今も固定の名前と port (15565 から) なので、2 つの木で同時に流さない。
+- 名前を木ごとに分けたのは `regress:checkpoint` と `regress:screens` (と、それを使う `regress:live`) のネイティブ版・ルータ・開発サーバ。`regress:wl` などの `test/native/` の確認は、port は上のとおり空きを取るが、コンテナ名と run dir (`fmrb-wl-<名前>-<構成>-<描き方>`・`/tmp/fmrb-wl-...`・`/tmp/fmrb-native-l2n-<uid>` など) は今も固定なので、2 つの木で同時に流さない。
 - 経緯は report/rg_tree_iso.md。
 

@@ -105,4 +105,5 @@ Return キーでも閉じられるようにする。
 
 → 2026-11-16 対応 (doc/regression/report/hardening.md)。ブラウザ版の `launch`、ランチャーとファイルマネージャの決まった組、
 `Tree.port` の空きと印、regress:run の GC の 1 回のやり直し。画素から「開いた」に変える場面は見直して無し。残りは report の 5 章。
-- (2026-11-16 ユーザ) regress:run で測るアプリは代表的なものでよい (決まった組のまま、組み合わせを意図して選ぶ)。MCP の web_* にパスで開く口、ネイティブ版の試験の port も空きを取る形に (作業中)。
+- (2026-11-16 ユーザ) regress:run で測るアプリは代表的なものでよい (決まった組のまま、組み合わせを意図して選ぶ)。MCP の web_* にパスで開く口、ネイティブ版の試験の port も空きを取る形に。
+  → 2026-11-16 対応: regress:run は代表の組 (usage.md 7.2、sim の基準の作り直しが残り)、MCP の `web_app`、`test/native/` の port は `Tree.free_port` (usage.md 13 章)。
