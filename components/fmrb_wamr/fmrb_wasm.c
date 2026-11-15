@@ -532,49 +532,51 @@ static uint8_t *read_binary(fmrb_app_task_context_t *ctx, const char *path, uint
     return buf;
 }
 
-/* The SDK version the app was built with: sdk_version = "X.Y.Z" in the
-   .app.toml next to the .wasm (the SDK's build script writes it). Read only
-   when an app is refused, for the reason; "" when there is none. */
-static void read_sdk_version(fmrb_app_task_context_t *ctx, const char *path, char *out, size_t cap)
+/* The SDK version the app was built with: the content of the module's
+   custom section "fmrb.sdk" (each SDK language's library puts its version
+   there). Read from the binary before WAMR loads it (the loader may work on
+   the buffer in place); "" when there is none or it is not printable. */
+#define SDK_SECTION_NAME "fmrb.sdk"
+
+static bool read_leb_u32(const uint8_t *p, const uint8_t *end, const uint8_t **next, uint32_t *v)
+{
+    uint32_t r = 0;
+    for (int shift = 0; shift < 35 && p < end; shift += 7) {
+        uint8_t b = *p++;
+        r |= (uint32_t)(b & 0x7f) << shift;
+        if (!(b & 0x80)) {
+            *v = r;
+            *next = p;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void read_sdk_version(const uint8_t *bin, uint32_t size, char *out, size_t cap)
 {
     out[0] = '\0';
-    size_t plen = strlen(path);
-    if (plen < 5 || strcmp(path + plen - 5, ".wasm") != 0) return;
-    char toml[FMRB_MAX_PATH_LEN];
-    if (plen >= sizeof(toml)) return;
-    memcpy(toml, path, plen - 5);
-    memcpy(toml + plen - 5, ".toml", 6);
-    uint32_t n = 0;
-    char err[8];
-    uint8_t *text = read_binary(ctx, toml, &n, err, sizeof(err));
-    if (!text) return;
-    /* Lines of the form   sdk_version = "..."   (spaces around = allowed). */
-    for (uint32_t i = 0; i < n; ) {
-        uint32_t end = i;
-        while (end < n && text[end] != '\n') end++;
-        static const char key[] = "sdk_version";
-        uint32_t j = i;
-        if (end - j > sizeof(key) - 1 && memcmp(text + j, key, sizeof(key) - 1) == 0) {
-            j += sizeof(key) - 1;
-            while (j < end && text[j] == ' ') j++;
-            if (j < end && text[j] == '=') {
-                j++;
-                while (j < end && text[j] == ' ') j++;
-                if (j < end && text[j] == '"') {
-                    uint32_t k = ++j;
-                    while (k < end && text[k] != '"') k++;
-                    size_t len = k - j;
-                    if (k < end && len > 0 && len < cap) {
-                        memcpy(out, text + j, len);
-                        out[len] = '\0';
-                    }
-                }
+    if (size < 8 || memcmp(bin, "\0asm", 4) != 0) return;
+    const uint8_t *p = bin + 8, *end = bin + size;
+    while (p < end) {
+        uint8_t id = *p++;
+        uint32_t len, nlen;
+        if (!read_leb_u32(p, end, &p, &len) || len > (uint32_t)(end - p)) return;
+        const uint8_t *sec_end = p + len;
+        if (id == 0 && read_leb_u32(p, sec_end, &p, &nlen) && nlen <= (uint32_t)(sec_end - p) &&
+            nlen == sizeof(SDK_SECTION_NAME) - 1 && memcmp(p, SDK_SECTION_NAME, nlen) == 0) {
+            p += nlen;
+            size_t n = (size_t)(sec_end - p);
+            if (n == 0 || n >= cap) return;
+            for (size_t i = 0; i < n; i++) {
+                if (p[i] < 0x21 || p[i] > 0x7e) return;
             }
-            break;
+            memcpy(out, p, n);
+            out[n] = '\0';
+            return;
         }
-        i = end + 1;
+        p = sec_end;
     }
-    fmrb_free(ctx->mem_handle, text);
 }
 
 /* Every function the module imports must be one of the boundary's with the
@@ -583,9 +585,9 @@ static void read_sdk_version(fmrb_app_task_context_t *ctx, const char *path, cha
    others to trap when called; an app made with a newer SDK than this
    firmware would start and then stop at the first call of what is missing.
    This refuses it at load, with the first such import and the SDK version
-   from its .app.toml. Imports that are not functions are left to WAMR. */
-static bool check_imports(fmrb_app_task_context_t *ctx, wasm_module_t module, const char *path,
-                          char *err, size_t err_cap)
+   the app carries (sdk_ver, "" when none). Imports that are not functions
+   are left to WAMR. */
+static bool check_imports(wasm_module_t module, const char *sdk_ver, char *err, size_t err_cap)
 {
     int32_t count = wasm_runtime_get_import_count(module);
     int32_t missing = 0;
@@ -615,11 +617,9 @@ static bool check_imports(fmrb_app_task_context_t *ctx, wasm_module_t module, co
             break;
         }
     }
-    char ver[24];
-    read_sdk_version(ctx, path, ver, sizeof(ver));
     snprintf(err, err_cap, "imports fmrb.%.48s, %s%s: the app was built with %s%s%s; "
              "update the firmware", first.name, what, more,
-             ver[0] ? "SDK " : "a newer SDK", ver, ver[0] ? ", newer than this firmware" : "");
+             sdk_ver[0] ? "SDK " : "a newer SDK", sdk_ver, sdk_ver[0] ? ", newer than this firmware" : "");
     return false;
 }
 
@@ -694,13 +694,15 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
     uint8_t *bin = read_binary(ctx, path, &size, err, err_cap);
     if (!bin) goto out;
 
+    char sdk_ver[24];
+    read_sdk_version(bin, size, sdk_ver, sizeof(sdk_ver));
     char lerr[128];
     module = wasm_runtime_load(bin, size, lerr, sizeof(lerr));
     if (!module) {
         snprintf(err, err_cap, "%s did not load: %s", path, lerr);
         goto out;
     }
-    if (!check_imports(ctx, module, path, err, err_cap)) goto out;
+    if (!check_imports(module, sdk_ver, err, err_cap)) goto out;
 
     /* The linear memory may grow to what the app's pool has left. */
     fmrb_pool_stats_t st;
