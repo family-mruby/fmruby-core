@@ -227,6 +227,11 @@ if(FMRB_ANY_SPINEL)
     list(APPEND COMPONENT_REQUIRES fmrb_spinel_rt)
 endif()
 
+# wasm apps (doc/wasm_apps W1b): WAMR on the P4 and the Linux simulation only.
+if(IDF_TARGET STREQUAL "esp32p4" OR IDF_TARGET STREQUAL "linux")
+    list(APPEND COMPONENT_REQUIRES fmrb_wamr)
+endif()
+
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash)

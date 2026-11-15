@@ -32,6 +32,9 @@
 #endif
 #include "fmrb_lua.h"
 #include "fmrb_app_shell.h"
+#ifdef FMRB_HAVE_WASM
+#include "fmrb_wasm.h"
+#endif
 #include "fmrb_mp.h"
 #include "fmrb_basic.h"
 #include "fmrb_basic_gfx.h"
@@ -1638,6 +1641,13 @@ static void app_task_main(void* arg) {
                 goto cleanup;
             }
             break;
+#ifdef FMRB_HAVE_WASM
+        case FMRB_VM_TYPE_WASM:
+            // The module and its instance are made in fmrb_wasm_app_run, in
+            // the app's pool and the runtime's; nothing to make before it.
+            FMRB_LOGI(TAG, "[%s] wasm app (mempool=%d)", ctx->app_name, ctx->mempool_id);
+            break;
+#endif
         case FMRB_VM_TYPE_NATIVE:
             FMRB_LOGI(TAG, "[%s] Native function mode", ctx->app_name);
             break;
@@ -1710,6 +1720,23 @@ static void app_task_main(void* arg) {
                 // Error already logged in execute_micropython_script
             }
             break;
+#ifdef FMRB_HAVE_WASM
+        case FMRB_VM_TYPE_WASM:
+            if (load_mode != FMRB_LOAD_MODE_FILE) {
+                FMRB_LOGE(TAG, "[%s] a wasm app loads from a file only", ctx->app_name);
+                break;
+            } else {
+                char err[256];   // on the app task stack
+                if (fmrb_wasm_app_run(ctx, (const char *)load_data, err, sizeof(err)) != FMRB_OK) {
+                    // The same error window a Ruby app's exception gets.
+                    set_last_error(ctx, err[0] ? err : "wasm app error", NULL);
+                    notify_error_to_kernel(ctx);
+                } else {
+                    FMRB_LOGI(TAG, "[%s] wasm app ended", ctx->app_name);
+                }
+            }
+            break;
+#endif
 
         case FMRB_VM_TYPE_NATIVE:
             if (execute_native_function(ctx, load_data) != 0) {
@@ -1861,6 +1888,10 @@ bool fmrb_app_init(void) {
                   (unsigned)picorb_abi_mrb_state_size(), (unsigned)sizeof(mrb_state));
         abort();
     }
+
+#ifdef FMRB_HAVE_WASM
+    fmrb_wasm_init();
+#endif
 
     // Create mutex
     g_ctx_lock = fmrb_semaphore_create_mutex();
@@ -2250,7 +2281,8 @@ unwind:
             }
             break;
         case FMRB_VM_TYPE_NATIVE:
-            // No VM to close
+        case FMRB_VM_TYPE_WASM:
+            // No VM to close (a wasm app frees its module in its own task)
             break;
         case FMRB_VM_TYPE_MAX:
             // Not a valid VM type

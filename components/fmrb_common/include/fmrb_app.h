@@ -50,6 +50,7 @@ typedef enum {
     FMRB_VM_TYPE_BASIC,          // BASIC
     FMRB_VM_TYPE_NATIVE,         // Native C function
     FMRB_VM_TYPE_MICROPYTHON,    // MicroPython
+    FMRB_VM_TYPE_WASM,           // wasm (WAMR, .app.wasm; P4 and Linux: FMRB_HAVE_WASM)
     FMRB_VM_TYPE_MAX
 } fmrb_vm_type_t;
 

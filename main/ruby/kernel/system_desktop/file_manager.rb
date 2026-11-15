@@ -187,7 +187,7 @@ module FileManagerMixin
 
   def fmgr_runnable?(name)
     name.end_with?(".rb") || name.end_with?(".lua") ||
-      name.end_with?(".bas") || name.end_with?(".py")
+      name.end_with?(".bas") || name.end_with?(".py") || name.end_with?(".wasm")
   end
 
   # ---- Drawing ----

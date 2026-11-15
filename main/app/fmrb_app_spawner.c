@@ -13,6 +13,9 @@
 #include "fmrb_kernel.h"
 #include "fmrb_toml.h"
 #include "fmrb_app_meta.h"
+#ifdef FMRB_HAVE_WASM
+#include "fmrb_wasm.h"
+#endif
 
 static const char *TAG = "fmrb_default_apps";
 
@@ -554,6 +557,15 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         } else if (strcmp(ext, ".py") == 0) {
             vm_type = FMRB_VM_TYPE_MICROPYTHON;
             FMRB_LOGI(TAG, "Detected Python script: %s", app_name);
+        } else if (strcmp(ext, ".wasm") == 0) {
+#ifdef FMRB_HAVE_WASM
+            vm_type = FMRB_VM_TYPE_WASM;
+            FMRB_LOGI(TAG, "Detected wasm app: %s", app_name);
+#else
+            FMRB_LOGE(TAG, "wasm apps are not in this build: %s", app_name);
+            result = FMRB_ERR_NOT_SUPPORTED;
+            goto cleanup_buffers;
+#endif
         }
     }
 #ifdef FMRB_HAVE_CHECKPOINT
@@ -601,6 +613,13 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     bool fullscreen_switchable = false;
     uint8_t fullscreen_hires = 0;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
+#ifdef FMRB_HAVE_WASM
+    // The interpreter's frames and the boundary functions it calls share the
+    // app task's stack (decision 4: wasm apps get a larger default).
+    if (vm_type == FMRB_VM_TYPE_WASM) {
+        stack_size = FMRB_WASM_APP_TASK_STACK_SIZE;
+    }
+#endif
 
     FMRB_LOGI(TAG, "[spawn] 6 meta_load '%s'", app_name);
     // The .app.toml and the "#---fmrb" comment fence, merged key by key with
