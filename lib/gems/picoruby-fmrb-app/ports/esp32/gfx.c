@@ -186,8 +186,29 @@ static int32_t fmrb_mrb_recv_gfx(mrb_state *mrb, mrb_value self)
 
 // FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): every
 // method of the class on the app boundary (sig/fmrb_gfx.rbs). The Ruby
-// wrappers (draw_text, set_font, present ...) are in mrblib/fmrb-gfx.rb.
+// wrappers (draw_text, set_font ...) are in mrblib/fmrb-gfx.rb.
 #include "fmrb_gen/fmrb_boundary_mrb.inc"
+
+// FmrbGfx#present([x, y]): the wrapper of present_raw, written in C here
+// rather than in mrblib (doc/app_boundary, decided after W4b-1). An app calls
+// it once a frame; in Ruby it cost twice the VM instructions of the C method
+// it had been before W4a. Without a position (or with either nil) the canvas
+// goes where the app's window is, as the Ruby wrapper did.
+static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
+{
+    mrb_value x = mrb_nil_value();
+    mrb_value y = mrb_nil_value();
+    mrb_get_args(mrb, "|oo", &x, &y);
+    int32_t gfx = fmrb_mrb_recv_gfx(mrb, self);
+    int32_t ret;
+    if (mrb_test(x) && mrb_test(y)) {
+        ret = fmrb_bnd_gfx_present_raw(gfx, (int32_t)mrb_as_int(mrb, x), (int32_t)mrb_as_int(mrb, y), 1);
+    } else {
+        ret = fmrb_bnd_gfx_present_raw(gfx, 0, 0, 0);
+    }
+    fmrb_gen_mrb_check(mrb, ret, "present");
+    return self;
+}
 
 // Graphics#destroy - Explicitly release graphics resources
 static mrb_value mrb_gfx_destroy(mrb_state *mrb, mrb_value self)
@@ -784,6 +805,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_set_origin", mrb_gfx_set_origin, MRB_ARGS_REQ(4));
     // Everything on the app boundary (sig/fmrb_gfx.rbs), generated.
     FMRB_GEN_MRB_DEFINE_FmrbGfx(mrb, gfx_class);
+    mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_OPT(2));
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 #ifdef FMRB_HAVE_CHECKPOINT
     mrb_define_method(mrb, gfx_class, "_checkpoint_rebind", mrb_gfx_checkpoint_rebind, MRB_ARGS_NONE());

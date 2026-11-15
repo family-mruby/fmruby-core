@@ -49,7 +49,9 @@
 #
 # A method with optional, rest or keyword arguments is not a boundary function:
 # its wrapper is marked internal and the simple form is written next to it
-# with "_raw" after the name. A boundary method needs its C body: the tool
+# with "_raw" after the name. A wrapper is each engine's Ruby, with one
+# exception the tool need not know: mruby's FmrbGfx#present is a C method of
+# the gem (gfx.c), called every frame. A boundary method needs its C body: the tool
 # looks for the definition of every flat function (fmrb_bnd_...) in main/app/fmrb_boundary_*.c
 # and stops, naming the method, when one is missing (a method written in Ruby
 # must be marked internal instead).

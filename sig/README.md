@@ -145,6 +145,10 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
 - 境界のメソッドは必須の位置引数だけで書く。省略できる引数・キーワードを
   持つメソッド (包み) は internal にし、隣に後ろへ `_raw` を付けた省略なしの形を
   書く (`draw_text` と `draw_text_raw`)。説明文に「包みは draw_text」と書く。
+  包みは各エンジンの Ruby (mruby は gem の mrblib) で書くのが決まりで、例外は
+  mruby の `present` だけ (gem の C、`gfx.c` の `mrb_gfx_present`。毎フレーム
+  呼ぶので、Ruby の包みでは命令数が W4a の前の 2 倍になった。2026-11-15 決定)。
+  例外も印は同じ internal で、道具はどちらで書いたかを区別しない。
 - 型の規則: `Integer` は int32、幅は `sig/fmrb_types.rbs` の別名
   (`int16`・`uint8`・`float32`・`bin` など、ROS 2 と同じ名前) で書く。Symbol の
   選択肢はリテラルの型 (`:default | :ja`)。記録は record 型の別名

@@ -441,16 +441,8 @@ class FmrbGfx
   # (sprite coordinates, from the drawing origin) are on the boundary as they
   # are (generated in gfx.c; sig/fmrb_gfx.rbs has their help).
 
-  # Show what has been drawn. Without a position the canvas goes where the
-  # app's window is; present(x, y) puts it at (x, y) on the screen (an extra
-  # canvas of FmrbApp#create_canvas_gfx, which no window tracks).
-  def present(x = nil, y = nil)
-    if x && y
-      present_raw(x, y, true)
-    else
-      present_raw(0, 0, false)
-    end
-  end
+  # present([x, y]), the wrapper of present_raw, is a C method (gfx.c): an
+  # app calls it every frame (doc/app_boundary, decided after W4b-1).
 
   # Play a file of concatenated JPEG frames into this canvas at (x, y).
   # Modern (Tab5) only; returns nil anywhere else, so callers can fall back.

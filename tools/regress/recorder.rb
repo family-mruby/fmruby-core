@@ -168,6 +168,8 @@ class FmrbGfx
   def blend_rect(*a) = (__rec(:blend_rect, *__at(a, [0], [1])); self)
   def clear(c = 0) = (Regress::Rec.add("#{@__prefix}clear #{Regress::Fmt.c(c)}"); self)
   def present_raw(_x, _y, _positioned) = (Regress::Rec.present(@__prefix); self)
+  # present([x, y]) is a C method in the firmware too (gfx.c), not mrblib.
+  def present(_x = nil, _y = nil) = (Regress::Rec.present(@__prefix); self)
   def destroy = (__rec(:destroy); nil)
   def draw_wallclock(*a) = (__rec(:draw_wallclock, *__at(a, [0], [1])); self)
   def draw_free_iram(*a) = (__rec(:draw_free_iram, *__at(a, [0], [1])); self)
