@@ -1,0 +1,11 @@
+# The SDK's tour example (tinygo/examples/tour; docs/tour.md is the common
+# specification every language's tour follows). tinygo/build.rb writes this
+# next to tour.app.wasm with sdk_version set.
+app_screen_name = "TinyGo tour"
+language = "tinygo"
+default_window_mode = "window"
+default_window_width = 230
+default_window_height = 175
+default_window_pos_x = 45
+default_window_pos_y = 30
+sdk_version = "0.1.0"
