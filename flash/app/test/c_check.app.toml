@@ -1,0 +1,9 @@
+# A wasm app in C on the firmware's path (doc/wasm_apps W1b). Source and
+# build: tools/wasm_apps/ (ruby tools/wasm_apps/build.rb).
+app_screen_name = "C wasm check"
+language = "c"
+default_window_mode = "window"
+default_window_width = 140
+default_window_height = 80
+default_window_pos_x = 60
+default_window_pos_y = 60

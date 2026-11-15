@@ -1,0 +1,11 @@
+# A wasm app written in TinyGo (doc/wasm_apps W1b). The source is in the SDK
+# repository (family-mruby-sdk: tinygo/examples/bounce); rebuild with
+#   ruby tinygo/build.rb bounce -o <fmruby-core>/flash/app/tinygo
+app_screen_name = "TinyGo bounce"
+app_screen_name_ja = "TinyGo バウンド"
+language = "tinygo"
+default_window_mode = "window"
+default_window_width = 180
+default_window_height = 120
+default_window_pos_x = 30
+default_window_pos_y = 30
