@@ -213,16 +213,33 @@ class FmrbApp
   def _is_file_app = true
   def _mark_expected_stop = nil
   def _sync_file(*) = true
-  def _send_audio_note(*) = nil
-  # The audio side's answer about the NSF (FmrbAudio#nsf_status): what a scene
-  # put in env.extra[:nsf_status], nil (no answer) when it put nothing.
-  def _audio_nsf_status = Regress::Env.extra[:nsf_status]
   def _audio_note_bytes(*) = nil
 
   def _send_message(dest, type, data)
     Regress::Env.outbox << [dest, type, data]
     nil
   end
+end
+
+# FmrbAudio's C half (the app boundary, sig/fmrb_audio.rbs): the commands go
+# nowhere (the record does not show sound), as the kernel's audio messages
+# did before.
+class FmrbAudio
+  def play_raw(*) = nil
+  def stop = nil
+  def pause = nil
+  def resume = nil
+  # The audio side's answer about the NSF: what a scene put in
+  # env.extra[:nsf_status], nil (no answer) when it put nothing.
+  def nsf_status = Regress::Env.extra[:nsf_status]
+  def load_fmsq(*) = nil
+  def load_fmsq_file(*) = nil
+  def play_slot_raw(*) = nil
+  def main_volume=(_v); end
+  def play_wav(*) = false
+  def stop_wav = false
+  def note_on_raw(*) = nil
+  def note_off(*) = nil
 end
 
 # The machine's settings and services (FmrbSystem, doc/codebase_tidy T5).

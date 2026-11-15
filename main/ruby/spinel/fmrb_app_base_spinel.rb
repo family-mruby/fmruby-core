@@ -17,14 +17,20 @@
 # Enumerable#partition, Math.sqrt, splat def, String#bytes, setbyte, ::Const)
 # were verified against the Spinel compiler before authoring.
 
+# Log is on the app boundary (sig/fmrb_misc.rbs): the *_raw functions write
+# one line tagged with the app's name; debug / info / warn / error are their
+# wrappers, as in mruby.
 module Log
-  # Return nil (not the :void FFI result): a method whose tail is a Log call is
-  # otherwise inferred to return void, and using its value (e.g. a rescue arm
-  # feeding an expression) trips Spinel's "void value not ignored".
-  def self.debug(msg); FmrbSpx.fmrb_spx_log_write(0, msg, msg.bytesize); nil; end
-  def self.info(msg);  FmrbSpx.fmrb_spx_log_write(1, msg, msg.bytesize); nil; end
-  def self.warn(msg);  FmrbSpx.fmrb_spx_log_write(2, msg, msg.bytesize); nil; end
-  def self.error(msg); FmrbSpx.fmrb_spx_log_write(3, msg, msg.bytesize); nil; end
+  # Return nil (not the FFI's status): a method whose tail is a Log call is
+  # used as a value now and then (e.g. a rescue arm feeding an expression).
+  def self.debug_raw(msg); FmrbBoundary.fmrb_bnd_log_debug_raw(msg, msg.bytesize); nil; end
+  def self.info_raw(msg);  FmrbBoundary.fmrb_bnd_log_info_raw(msg, msg.bytesize); nil; end
+  def self.warn_raw(msg);  FmrbBoundary.fmrb_bnd_log_warn_raw(msg, msg.bytesize); nil; end
+  def self.error_raw(msg); FmrbBoundary.fmrb_bnd_log_error_raw(msg, msg.bytesize); nil; end
+  def self.debug(msg); FmrbBoundary.fmrb_bnd_log_debug_raw(msg, msg.bytesize); nil; end
+  def self.info(msg);  FmrbBoundary.fmrb_bnd_log_info_raw(msg, msg.bytesize); nil; end
+  def self.warn(msg);  FmrbBoundary.fmrb_bnd_log_warn_raw(msg, msg.bytesize); nil; end
+  def self.error(msg); FmrbBoundary.fmrb_bnd_log_error_raw(msg, msg.bytesize); nil; end
 end
 
 module Machine
@@ -1259,6 +1265,78 @@ class FmrbHitMask
   end
 end
 
+# FmrbAudio's methods on the app boundary (sig/fmrb_audio.rbs): what is C in
+# the mruby build. The class itself, its constants and the wrappers with
+# optional arguments (play, play_slot, note_on) are the mrblib's
+# (lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb), spliced after this file
+# and opening the class again. No receiver number: the sound is the app's.
+class FmrbAudio
+  def play_raw(path, track)
+    FmrbBoundary.fmrb_bnd_audio_play_raw(path, path.bytesize, track)
+    nil
+  end
+
+  def stop
+    FmrbBoundary.fmrb_bnd_audio_stop
+    nil
+  end
+
+  def pause
+    FmrbBoundary.fmrb_bnd_audio_pause
+    nil
+  end
+
+  def resume
+    FmrbBoundary.fmrb_bnd_audio_resume
+    nil
+  end
+
+  # The boundary's record (FmrbAudio::nsf_status): four u8, two u16, a u32.
+  def nsf_status
+    buf = FmrbBoundary.fmrb_spx_b_audio_nsf_status
+    return nil if buf.bytesize < 12
+    { state: buf.getbyte(0), reason: buf.getbyte(1), track: buf.getbyte(2), laps: buf.getbyte(3),
+      gen: SpxBytes.u16(buf, 4), period: SpxBytes.u16(buf, 6), frames: SpxBytes.u32(buf, 8) }
+  end
+
+  def load_fmsq(slot_id, binary_data)
+    FmrbBoundary.fmrb_bnd_audio_load_fmsq(slot_id, binary_data, binary_data.bytesize)
+    nil
+  end
+
+  def load_fmsq_file(slot_id, path)
+    FmrbBoundary.fmrb_bnd_audio_load_fmsq_file(slot_id, path, path.bytesize)
+    nil
+  end
+
+  def play_slot_raw(slot_id, instance)
+    FmrbBoundary.fmrb_bnd_audio_play_slot_raw(slot_id, instance)
+    nil
+  end
+
+  def main_volume=(percent)
+    FmrbBoundary.fmrb_bnd_audio_set_main_volume(percent)
+  end
+
+  def play_wav(path)
+    FmrbBoundary.fmrb_bnd_audio_play_wav(path, path.bytesize) == 1
+  end
+
+  def stop_wav
+    FmrbBoundary.fmrb_bnd_audio_stop_wav == 1
+  end
+
+  def note_on_raw(channel, freq, volume, duty, sweep)
+    FmrbBoundary.fmrb_bnd_audio_note_on_raw(channel, freq, volume, duty, sweep)
+    nil
+  end
+
+  def note_off(channel)
+    FmrbBoundary.fmrb_bnd_audio_note_off(channel)
+    nil
+  end
+end
+
 class FmrbApp
   TITLE_BAR_H = 11
   CORNER_R = 4
@@ -2406,24 +2484,6 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_send_message(dest_pid, msg_type, s, s.bytesize) == 1
   end
 
-  # FmrbAudio#note_on / note_off go through this. It exists here because the
-  # mruby build resolves the respond_to? check in FmrbAudio at run time and
-  # Spinel resolves it statically: without the method the compiled call is
-  # still emitted and the app dies with NoMethodError the first time it plays
-  # a note.
-  def _send_audio_note(on, ch, freq, vol, duty, sweep)
-    flag = on ? 1 : 0
-    FmrbSpxApp.fmrb_spx_app_send_audio_note(flag, ch.to_i, freq.to_i, vol.to_i,
-                                            duty.to_i, sweep.to_i) == 1
-  end
-
-  # FmrbAudio#nsf_status goes through this (the mruby binding asks the audio
-  # side, doc/nsf_player_v2). No Spinel program plays NSF files, so it answers
-  # nil -- "the audio side did not answer" -- rather than carry the binding.
-  def _audio_nsf_status
-    nil
-  end
-
   def _set_window_param(param, value)
     which = param == :pos_y ? 1 : 0
     FmrbSpxApp.fmrb_spx_app_set_window_param(which, value)
@@ -2486,9 +2546,10 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_script_path.to_s
   end
 
-  # Microseconds since boot, for timing short sections.
+  # Microseconds since boot, for timing short sections (the boundary's, 64
+  # bits).
   def self.uptime_us
-    FmrbSpx.fmrb_spx_board_micros
+    FmrbBoundary.fmrb_bnd_app_uptime_us
   end
 
   # Bytes that can still be written where path lives, nil when unknown (the
@@ -2676,12 +2737,17 @@ class FmrbApp
   # FmrbApp's (lib/gems/picoruby-fmrb-app): the text every app shares, at
   # most limit bytes when limit > 0 (cut before a character that would not
   # fit whole); set_clipboard is false when over the maximum (64 KB);
-  # clipboard_gen counts the changes. Read in pieces, again if it changed
-  # meanwhile.
+  # clipboard_gen counts the changes. set_clipboard and clipboard_gen are the
+  # boundary's. clipboard_raw reads the text in pieces of its own, again if it
+  # changed meanwhile: the boundary's Spinel adaptor gives at most 256 bytes.
   def self.clipboard(limit = 0)
+    clipboard_raw(limit)
+  end
+
+  def self.clipboard_raw(limit)
     tries = 0
     while tries < 4
-      gen = FmrbSpxApp.fmrb_spx_app_clipboard_gen
+      gen = FmrbBoundary.fmrb_bnd_app_clipboard_gen
       out = ""
       off = 0
       loop_on = true
@@ -2695,18 +2761,18 @@ class FmrbApp
           off += n
         end
       end
-      return out if FmrbSpxApp.fmrb_spx_app_clipboard_gen == gen
+      return out if FmrbBoundary.fmrb_bnd_app_clipboard_gen == gen
       tries += 1
     end
     ""
   end
 
-  def self.set_clipboard(str)
-    FmrbSpxApp.fmrb_spx_app_set_clipboard(str, str.bytesize) == 1
+  def self.set_clipboard(text)
+    FmrbBoundary.fmrb_bnd_app_set_clipboard(text, text.bytesize) == 1
   end
 
   def self.clipboard_gen
-    FmrbSpxApp.fmrb_spx_app_clipboard_gen
+    FmrbBoundary.fmrb_bnd_app_clipboard_gen
   end
 
   # UI language ("en" / "ja"). Read at run time rather than from FmrbConst:
@@ -2791,10 +2857,18 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_audio_volume
   end
 
+  # The boundary's record (FmrbApp::wallclock): year u16, then five u8.
   def self.wallclock
-    buf = FmrbSpxApp.fmrb_spx_app_wallclock
-    return nil if buf.bytesize == 0
-    _decode_wallclock(buf)
+    buf = FmrbBoundary.fmrb_spx_b_app_wallclock
+    return nil if buf.bytesize < 7
+    {
+      year: SpxBytes.u16(buf, 0),
+      month: buf.getbyte(2),
+      day: buf.getbyte(3),
+      hour: buf.getbyte(4),
+      minute: buf.getbyte(5),
+      second: buf.getbyte(6),
+    }
   end
 
   def self._decode_wallclock(buf)

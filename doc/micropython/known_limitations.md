@@ -196,10 +196,14 @@ audio.play_slot(1, FmrbAudio.MAIN)
 audio.note_on(FmrbAudio.CH_PULSE2, 988, 12, 2, 0)       # 効果音は副系
 ```
 
+ほかに Ruby と同じく `stop`・`pause`・`resume`・`nsf_status()` (dict か None)・
+`set_main_volume(percent)` (Ruby の `main_volume =`)・`play_wav(path)`・`stop_wav()`・
+`load_fmsq(slot, data)` がある (本体との境界から生成。命令はどれも C が組むので dict を作らない)。
+`load_fmsq` は 1 メッセージに入る短い譜面だけで、実用的な曲はファイルを送って
+`load_fmsq_file` で読む。
+
 用意していないもの:
 
-- **譜面をメッセージに直接詰める形** (`load_fmsq`)。1 メッセージの上限に
-  実用的な譜面が入らない。ファイルを送って `load_fmsq_file` で読む。
 - マイク入力、外部への MIDI 送出。
 
 注意:

@@ -30,7 +30,6 @@
 #include "fmrb_app_canvas.h"
 #include "fmrb_kernel.h"
 #include "fmrb_platform_sys.h"
-#include "fmrb_clipboard.h"
 #include "fmrb_hal_time.h"
 #include "fmrb_app_meta.h"
 #include "fmrb_toml.h"
@@ -999,13 +998,10 @@ static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
 }
 
 
-// FmrbApp#_send_audio_note(on, ch, freq, vol, duty, sweep) -> bool
-// The note_on / note_off half of FmrbAudio, without the Hash.
 // FmrbApp#_sync_file(src_path, dest_path) -> true/false
 //
 // The same transfer FmrbGfx#sync_file does, reachable without a canvas: a
-// headless app (the service host) has no FmrbGfx at all, and play_wav has to
-// put the file where the audio side can read it.
+// headless app (the service host) has no FmrbGfx at all.
 static mrb_value mrb_fmrb_app_sync_file(mrb_state *mrb, mrb_value self)
 {
     const char *src;
@@ -1013,47 +1009,6 @@ static mrb_value mrb_fmrb_app_sync_file(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "zz", &src, &dest);
 
     return mrb_bool_value(fmrb_kernel_sync_file(src, dest) == FMRB_OK);
-}
-
-static mrb_value mrb_fmrb_app_send_audio_note(mrb_state *mrb, mrb_value self)
-{
-    mrb_bool on;
-    mrb_int ch, freq, vol, duty, sweep;
-    mrb_get_args(mrb, "biiiii", &on, &ch, &freq, &vol, &duty, &sweep);
-
-    fmrb_app_task_context_t* ctx = fmrb_current();
-    if (!ctx) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
-    }
-
-    int ret = fmrb_app_send_audio_note(ctx->app_id, on, ch, freq, vol,
-                                       duty, sweep, 1000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "App %s failed to send audio note: %d", ctx->app_name, ret);
-        return mrb_false_value();
-    }
-    return mrb_true_value();
-}
-
-// FmrbApp#_audio_nsf_status -> Hash or nil
-// Where the NSF is (FmrbAudio#nsf_status, doc/nsf_player_v2): {state:,
-// reason:, track:, laps:, gen:, period:, frames:}, nil when the audio side did
-// not answer.
-static mrb_value mrb_fmrb_app_audio_nsf_status(mrb_state *mrb, mrb_value self)
-{
-    fmrb_app_nsf_status_t st;
-    if (fmrb_app_audio_nsf_status(&st, 500) != FMRB_OK) {
-        return mrb_nil_value();
-    }
-    mrb_value h = mrb_hash_new_capa(mrb, 7);
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "state")), mrb_fixnum_value(st.state));
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "reason")), mrb_fixnum_value(st.reason));
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "track")), mrb_fixnum_value(st.track));
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "laps")), mrb_fixnum_value(st.laps));
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "gen")), mrb_fixnum_value(st.gen));
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "period")), mrb_fixnum_value(st.period_frames));
-    mrb_hash_set(mrb, h, mrb_symbol_value(mrb_intern_lit(mrb, "frames")), mrb_fixnum_value((mrb_int)st.frames));
-    return h;
 }
 
 // FmrbApp#_audio_note_bytes(on, ch, freq, vol, duty, sweep) -> String
@@ -1237,40 +1192,6 @@ static mrb_value mrb_fmrb_app_s_script_path(mrb_state *mrb, mrb_value self)
     (void)self;
     fmrb_app_task_context_t *ctx = fmrb_current();
     return mrb_str_new_cstr(mrb, ctx ? ctx->filepath : "");
-}
-
-// FmrbApp.uptime_us() -> Integer
-// Microseconds since boot, for profiling from Ruby. Log timestamps only have
-// millisecond resolution and each log line blocks the console UART for several
-// milliseconds, which is too coarse and too intrusive to time short sections.
-static mrb_value mrb_fmrb_app_s_uptime_us(mrb_state *mrb, mrb_value self)
-{
-    (void)self;
-    return mrb_int_value(mrb, (mrb_int)fmrb_hal_time_get_us());
-}
-
-// FmrbApp.wallclock() -> Hash {year:, month:, day:, hour:, minute:, second:} or nil
-static mrb_value mrb_fmrb_app_s_wallclock(mrb_state *mrb, mrb_value self)
-{
-    fmrb_wallclock_t wc;
-    if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
-        return mrb_nil_value();
-    }
-
-    mrb_value hash = mrb_hash_new_capa(mrb, 6);
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "year")),
-                 mrb_fixnum_value(wc.year));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "month")),
-                 mrb_fixnum_value(wc.month));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "day")),
-                 mrb_fixnum_value(wc.day));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hour")),
-                 mrb_fixnum_value(wc.hour));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "minute")),
-                 mrb_fixnum_value(wc.minute));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "second")),
-                 mrb_fixnum_value(wc.second));
-    return hash;
 }
 
 // FmrbSystem.set_wallclock(year, month, day, hour, minute, second)
@@ -1892,65 +1813,6 @@ static mrb_value mrb_fmrb_app_s_linux_open(mrb_state *mrb, mrb_value klass)
         return mrb_str_new_lit(mrb, "");
     }
     return name[0] ? mrb_str_new_cstr(mrb, name) : mrb_str_new_lit(mrb, "?");
-}
-
-// ---- The machine's clipboard (doc/linux_native L12a, fmrb_clipboard.h) ----
-//
-// FmrbApp.clipboard(limit = 0) -> String. The text every app shares ("" when
-//   empty); with a limit > 0, at most that many bytes, cut before a character
-//   that would not fit whole. On the Linux PC and in the browser it is what
-//   was last copied there or here.
-// FmrbApp.set_clipboard(str) -> true, or false when str is over the maximum
-//   (64 KB; the clipboard is then unchanged).
-// FmrbApp.clipboard_gen -> Integer: how many times the text has changed, to
-//   tell a change without reading the text.
-/* The first n bytes of b without a last character that is not all there. */
-static size_t clip_utf8_whole(const unsigned char *b, size_t n)
-{
-    size_t i = n;
-    for (int k = 0; i > 0 && k < 4; k++) {
-        i--;
-        if ((b[i] & 0xC0) != 0x80) break;
-    }
-    if (i >= n) return n;
-    unsigned char c = b[i];
-    size_t need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
-    return (n - i >= need) ? n : i;
-}
-
-static mrb_value mrb_fmrb_app_s_clipboard(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    mrb_int limit = 0;
-    mrb_get_args(mrb, "|i", &limit);
-    for (int tries = 0; tries < 4; tries++) {
-        uint32_t gen0 = fmrb_clipboard_generation();
-        size_t len = fmrb_clipboard_length();
-        size_t want = (limit > 0 && (size_t)limit < len) ? (size_t)limit : len;
-        if (want == 0) return mrb_str_new_lit(mrb, "");
-        mrb_value str = mrb_str_new_capa(mrb, want);
-        uint32_t gen1 = 0;
-        size_t got = fmrb_clipboard_read(0, RSTRING_PTR(str), want, &gen1);
-        if (gen1 != gen0 || got != want) continue;   /* changed meanwhile */
-        if (want < len) got = clip_utf8_whole((const unsigned char *)RSTRING_PTR(str), got);
-        mrb_str_resize(mrb, str, (mrb_int)got);
-        return str;
-    }
-    return mrb_str_new_lit(mrb, "");
-}
-
-static mrb_value mrb_fmrb_app_s_set_clipboard(mrb_state *mrb, mrb_value klass)
-{
-    (void)klass;
-    mrb_value str;
-    mrb_get_args(mrb, "S", &str);
-    return mrb_bool_value(fmrb_clipboard_set(RSTRING_PTR(str), (size_t)RSTRING_LEN(str)) == FMRB_OK);
-}
-
-static mrb_value mrb_fmrb_app_s_clipboard_gen(mrb_state *mrb, mrb_value klass)
-{
-    (void)mrb; (void)klass;
-    return mrb_fixnum_value((mrb_int)fmrb_clipboard_generation());
 }
 
 // ---- The PC's settings and notices (doc/linux_native L14, fmrb_platform_sys.h) ----
@@ -2742,6 +2604,15 @@ static mrb_value mrb_fmrb_mic_read(mrb_state *mrb, mrb_value self)
 #endif
 }
 
+// FmrbApp's and FmrbAudio's methods on the app boundary, generated from sig/
+// (tools/boundary/gen.rb): FmrbApp's clipboard and clocks (the rest of
+// FmrbApp is still written here), and every FmrbAudio method (the wrappers
+// with optional arguments are in mrblib/fmrb-audio.rb). Neither takes a
+// receiver number: the receiver is the calling app.
+#define FMRB_GEN_MRB_FmrbApp
+#define FMRB_GEN_MRB_FmrbAudio
+#include "fmrb_gen/fmrb_boundary_mrb.inc"
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     struct RClass *mic_module = mrb_define_module(mrb, "FmrbMic");
@@ -2757,6 +2628,11 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // and the settings apps, kept apart from what every app uses
     // (doc/codebase_tidy T5). Reading the state stays on FmrbApp.
     struct RClass *sys_module = mrb_define_module(mrb, "FmrbSystem");
+    FMRB_GEN_MRB_DEFINE_FmrbApp(mrb, app_class);
+    // FmrbAudio: the class is the mrblib's, opened here first for its
+    // boundary methods.
+    struct RClass *audio_class = mrb_define_class(mrb, "FmrbAudio", mrb->object_class);
+    FMRB_GEN_MRB_DEFINE_FmrbAudio(mrb, audio_class);
 
     // Instance methods (called from Ruby instances)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
@@ -2768,8 +2644,6 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_mark_expected_stop", mrb_fmrb_app_mark_expected_stop, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, app_class, "_sync_file", mrb_fmrb_app_sync_file, MRB_ARGS_REQ(2));
-    mrb_define_method(mrb, app_class, "_send_audio_note", mrb_fmrb_app_send_audio_note, MRB_ARGS_REQ(6));
-    mrb_define_method(mrb, app_class, "_audio_nsf_status", mrb_fmrb_app_audio_nsf_status, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_audio_note_bytes", mrb_fmrb_app_audio_note_bytes, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
 
@@ -2789,11 +2663,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "uptime_us", mrb_fmrb_app_s_uptime_us, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "script_path", mrb_fmrb_app_s_script_path, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_app_instance_made?", mrb_fmrb_app_s_app_instance_made, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_start_class_name", mrb_fmrb_app_s_start_class_name, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
@@ -2817,9 +2689,6 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "linux_exit_code", mrb_fmrb_app_s_linux_exit_code, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "linux_resize", mrb_fmrb_app_s_linux_resize, MRB_ARGS_REQ(3));
     mrb_define_class_method(mrb, app_class, "linux_close", mrb_fmrb_app_s_linux_close, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "clipboard", mrb_fmrb_app_s_clipboard, MRB_ARGS_OPT(1));
-    mrb_define_class_method(mrb, app_class, "set_clipboard", mrb_fmrb_app_s_set_clipboard, MRB_ARGS_REQ(1));
-    mrb_define_class_method(mrb, app_class, "clipboard_gen", mrb_fmrb_app_s_clipboard_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "wifi_networks", mrb_fmrb_app_s_wifi_networks, MRB_ARGS_OPT(1));
     mrb_define_class_method(mrb, sys_module, "wifi_connect", mrb_fmrb_app_s_wifi_connect, MRB_ARGS_ARG(1, 1));
     mrb_define_class_method(mrb, sys_module, "wifi_disconnect", mrb_fmrb_app_s_wifi_disconnect, MRB_ARGS_NONE());

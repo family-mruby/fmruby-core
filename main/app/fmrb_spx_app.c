@@ -213,22 +213,6 @@ int fmrb_spx_app_send_message(int dest_pid, int msg_type, const char *data, int 
     return fmrb_msg_send((fmrb_proc_id_t)dest_pid, &msg, 1000) == FMRB_OK ? 1 : 0;
 }
 
-int fmrb_spx_app_send_audio_note(int on, int ch, int freq, int vol, int duty,
-                                 int sweep)
-{
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        return FMRB_SPX_ERR;
-    }
-    int ret = fmrb_app_send_audio_note(ctx->app_id, on != 0, ch, freq, vol,
-                                       duty, sweep, 1000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "App %s failed to send audio note: %d", ctx->app_name, ret);
-        return 0;
-    }
-    return 1;
-}
-
 /* FmrbApp._set_hit_shape: this app's hit shape (layout in fmrb_app.h), len 0
  * withdraws it. 1 ok, 0 malformed or too long. doc/frameless_window/ W3b. */
 int fmrb_spx_app_set_hit_shape(const char *data, int len)
@@ -526,12 +510,10 @@ const char *fmrb_spx_app_language(void)
     return lang;
 }
 
-/* The machine's clipboard (L12a). */
-int fmrb_spx_app_clipboard_gen(void)
-{
-    return (int)fmrb_clipboard_generation();
-}
-
+/* The machine's clipboard (L12a): its text in pieces, as the boundary's
+ * Spinel adaptor would cut a 64 KB text at 256 bytes (FmrbApp.clipboard_raw
+ * in fmrb_app_base_spinel.rb; set_clipboard and clipboard_gen are the
+ * boundary's). */
 int fmrb_spx_app_clipboard_length(void)
 {
     return (int)fmrb_clipboard_length();
@@ -567,12 +549,6 @@ const char *fmrb_spx_app_clipboard_chunk(int off, int limit)
     }
     *sp_ctx_ffi_bin_len() = (int)got;
     return buf;
-}
-
-int fmrb_spx_app_set_clipboard(const char *s, int len)
-{
-    if (len < 0) return 0;
-    return fmrb_clipboard_set(s, (size_t)len) == FMRB_OK ? 1 : 0;
 }
 
 /* What remote desktop video is going out right now: 0 none / 1 MJPEG /
@@ -736,24 +712,6 @@ int fmrb_spx_app_audio_conf_saved(void)
 {
     fmrb_host_audio_conf_written();
     return 0;
-}
-
-const char *fmrb_spx_app_wallclock(void)
-{
-    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
-    *sp_ctx_ffi_bin_len() = 0;
-    fmrb_wallclock_t wc;
-    if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
-        return "";
-    }
-    put_u16(buf + 0, wc.year);
-    put_u16(buf + 2, wc.month);
-    put_u16(buf + 4, wc.day);
-    put_u16(buf + 6, wc.hour);
-    put_u16(buf + 8, wc.minute);
-    put_u16(buf + 10, wc.second);
-    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE;
-    return (const char *)buf;
 }
 
 const char *fmrb_spx_app_set_wallclock(int year, int month, int day,

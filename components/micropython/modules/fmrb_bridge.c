@@ -281,18 +281,6 @@ int fmrb_mp_gfx_delete_all_sprites(int canvas_id) {
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
-bool fmrb_mp_bridge_audio_note(bool on, int channel, int freq, int volume,
-                               int duty, int sweep) {
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        return false;
-    }
-    // The shared builder in main/app/fmrb_app.c, so a note from Python is
-    // byte for byte the note the Ruby binding and the MIDI scheduler send.
-    return fmrb_app_send_audio_note((int)ctx->app_id, on, channel, freq, volume,
-                                    duty, sweep, 1000) == FMRB_OK;
-}
-
 const char *fmrb_mp_bridge_language(void) {
     const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
     return (cfg && cfg->language[0]) ? cfg->language : "en";
@@ -364,14 +352,3 @@ bool fmrb_mp_bridge_app_dir(char *out, size_t cap) {
     return true;
 }
 
-void fmrb_mp_bridge_log(char level, const char *msg) {
-    if (!msg) {
-        return;
-    }
-    switch (level) {
-        case 'D': FMRB_LOGD(TAG, "%s", msg); break;
-        case 'W': FMRB_LOGW(TAG, "%s", msg); break;
-        case 'E': FMRB_LOGE(TAG, "%s", msg); break;
-        default:  FMRB_LOGI(TAG, "%s", msg); break;
-    }
-}

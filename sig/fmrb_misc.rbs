@@ -1,5 +1,6 @@
-# その他。言葉の切りかえと、ファイルの読み書き。
-# 実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-i18n.rb と picoruby の File。
+# その他。言葉の切りかえ、ログ、ファイルの読み書き。
+# 実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-i18n.rb、
+# lib/gems/picoruby-fmrb-log と picoruby の File。
 
 # 日本語と英語で表示を切りかえる。
 module FmrbI18n
@@ -81,6 +82,124 @@ module FmrbI18n
   # s = FmrbI18n.truncate_to(name, 120)
   # ```
   def self.truncate_to: (String str, Integer max_px) -> String
+end
+
+
+# ログ (シリアルと sim の端末に出る)。
+#
+# Log はクラスごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
+# info などは包みで、隣に省略なしの _raw の形がある (mruby の包みは C で、
+# 前に書いたタグを 1 つめに受ける形 `Log.info("TAG", msg)` も読む)。
+%a{fmrb.boundary}
+module Log
+  # 細かい様子をログに書く <<en>> Write a debug line to the log
+  #
+  # 行の頭にアプリの名前が付く。
+  # ```ruby
+  # Log.debug("x = #{x}")
+  # ```
+  # <<en>>
+  # The line starts with the app's name.
+  # ```ruby
+  # Log.debug("x = #{x}")
+  # ```
+  %a{fmrb.internal}
+  def self.debug: (String msg) -> void
+
+  # debug の省略なしの形 <<en>> debug with nothing left out
+  #
+  # 細かい様子 (D) の 1 行を書く。包みは debug。
+  # ```ruby
+  # Log.debug_raw("ready")
+  # ```
+  # <<en>>
+  # Writes one line, debug (D). The wrapper is debug.
+  # ```ruby
+  # Log.debug_raw("ready")
+  # ```
+  def self.debug_raw: (String msg) -> void
+
+  # ログに書く <<en>> Write a line to the log
+  #
+  # 行の頭にアプリの名前が付く。
+  # ```ruby
+  # Log.info("saved #{path}")
+  # ```
+  # <<en>>
+  # The line starts with the app's name.
+  # ```ruby
+  # Log.info("saved #{path}")
+  # ```
+  %a{fmrb.internal}
+  def self.info: (String msg) -> void
+
+  # info の省略なしの形 <<en>> info with nothing left out
+  #
+  # ふつうの知らせ (I) の 1 行を書く。包みは info。
+  # ```ruby
+  # Log.info_raw("ready")
+  # ```
+  # <<en>>
+  # Writes one line, an ordinary note (I). The wrapper is info.
+  # ```ruby
+  # Log.info_raw("ready")
+  # ```
+  def self.info_raw: (String msg) -> void
+
+  # 注意をログに書く <<en>> Write a warning to the log
+  #
+  # 行の頭にアプリの名前が付く。
+  # ```ruby
+  # Log.warn("x = #{x}")
+  # ```
+  # <<en>>
+  # The line starts with the app's name.
+  # ```ruby
+  # Log.warn("x = #{x}")
+  # ```
+  %a{fmrb.internal}
+  def self.warn: (String msg) -> void
+
+  # warn の省略なしの形 <<en>> warn with nothing left out
+  #
+  # 注意 (W) の 1 行を書く。包みは warn。
+  # ```ruby
+  # Log.warn_raw("ready")
+  # ```
+  # <<en>>
+  # Writes one line, a warning (W). The wrapper is warn.
+  # ```ruby
+  # Log.warn_raw("ready")
+  # ```
+  def self.warn_raw: (String msg) -> void
+
+  # エラーをログに書く <<en>> Write an error to the log
+  #
+  # 行の頭にアプリの名前が付く。
+  # ```ruby
+  # Log.error("x = #{x}")
+  # ```
+  # <<en>>
+  # The line starts with the app's name.
+  # ```ruby
+  # Log.error("x = #{x}")
+  # ```
+  %a{fmrb.internal}
+  def self.error: (String msg) -> void
+
+  # error の省略なしの形 <<en>> error with nothing left out
+  #
+  # エラー (E) の 1 行を書く。包みは error。
+  # ```ruby
+  # Log.error_raw("ready")
+  # ```
+  # <<en>>
+  # Writes one line, an error (E). The wrapper is error.
+  # ```ruby
+  # Log.error_raw("ready")
+  # ```
+  def self.error_raw: (String msg) -> void
+
 end
 
 # ファイルの読み書き。最小限だけ (picoruby の File)。

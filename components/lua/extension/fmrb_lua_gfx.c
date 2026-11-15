@@ -49,6 +49,19 @@ static const luaL_Reg gfx_functions[] = {
     {NULL, NULL}
 };
 
+// FmrbAudio (generated): the methods take no receiver number (the sound is
+// the app's), but are called on an object as in Ruby: audio:note_off(0).
+static const luaL_Reg audio_methods[] = {
+    FMRB_GEN_LUA_FmrbAudio_METHODS
+    {NULL, NULL}
+};
+
+// Log (generated): Log.info_raw(msg) ...; the prelude adds Log.info.
+static const luaL_Reg log_functions[] = {
+    FMRB_GEN_LUA_Log_FUNCTIONS
+    {NULL, NULL}
+};
+
 // The small Lua prelude: the wrappers Ruby has in mrblib (fmrb-gfx.rb) over
 // the *_raw methods, so arguments can be left out the same way. Run once with
 // the FmrbGfx metatable as its argument.
@@ -86,6 +99,24 @@ static const char gfx_prelude[] =
     "  end\n"
     "  return self:set_composite_regions_raw(list)\n"
     "end\n";
+
+// The wrappers of FmrbAudio, Log and FmrbApp over their generated *_raw
+// functions, with Ruby's defaults (mrblib/fmrb-audio.rb, fmrb-app.rb). Run
+// once after the globals are set.
+static const char app_prelude[] =
+    "local A = FmrbAudio.__methods\n"
+    "function FmrbAudio.new() return setmetatable({}, A) end\n"
+    "function A:play(path, track) return self:play_raw(path, track or 0) end\n"
+    "function A:play_slot(slot_id, instance) return self:play_slot_raw(slot_id, instance or 0) end\n"
+    "function A:note_on(channel, freq, volume, duty, sweep)\n"
+    "  return self:note_on_raw(channel, freq, volume or 10, duty or 2, sweep or 0)\n"
+    "end\n"
+    "FmrbAudio.__methods = nil\n"
+    "function Log.debug(msg) return Log.debug_raw(tostring(msg)) end\n"
+    "function Log.info(msg) return Log.info_raw(tostring(msg)) end\n"
+    "function Log.warn(msg) return Log.warn_raw(tostring(msg)) end\n"
+    "function Log.error(msg) return Log.error_raw(tostring(msg)) end\n"
+    "function FmrbApp.clipboard(limit) return FmrbApp.clipboard_raw(limit or 0) end\n";
 
 // FmrbApp.sleep(ms) - Sleep for specified milliseconds
 static int lua_app_sleep(lua_State* L) {
@@ -170,6 +201,8 @@ static const luaL_Reg app_functions[] = {
     {"stop", lua_app_stop},
     {"clear_user_area", lua_app_clear_user_area},
     {"draw_window_frame", lua_app_draw_window_frame},
+    // The clipboard and the clocks (generated)
+    FMRB_GEN_LUA_FmrbApp_FUNCTIONS
     {NULL, NULL}
 };
 
@@ -260,7 +293,37 @@ void fmrb_lua_register_gfx(lua_State* L) {
 
     lua_setglobal(L, "FmrbApp");
 
-    FMRB_LOGI(TAG, "FmrbGfx and FmrbApp modules registered to Lua");
+    // FmrbAudio: the class table (new and the constants), its objects'
+    // metatable handed to the prelude as FmrbAudio.__methods.
+    lua_newtable(L);
+    static const struct { const char *name; int value; } audio_consts[] = {
+        {"MAIN", 0}, {"SUB", 1},
+        {"CH_PULSE1", 0}, {"CH_PULSE2", 1}, {"CH_TRIANGLE", 2}, {"CH_NOISE", 3},
+        {"NSF_IDLE", 0}, {"NSF_PLAYING", 1}, {"NSF_FADING", 2}, {"NSF_ENDED", 3},
+        {"NSF_END_SILENCE", 1}, {"NSF_END_LOOP", 2}, {"NSF_END_LIMIT", 3},
+    };
+    for (size_t i = 0; i < sizeof(audio_consts) / sizeof(audio_consts[0]); i++) {
+        lua_pushinteger(L, audio_consts[i].value);
+        lua_setfield(L, -2, audio_consts[i].name);
+    }
+    luaL_newmetatable(L, "FmrbAudio");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index");
+    luaL_setfuncs(L, audio_methods, 0);
+    lua_setfield(L, -2, "__methods");
+    lua_setglobal(L, "FmrbAudio");
+
+    lua_newtable(L);
+    luaL_setfuncs(L, log_functions, 0);
+    lua_setglobal(L, "Log");
+
+    if (luaL_loadbufferx(L, app_prelude, sizeof(app_prelude) - 1, "=fmrb_app", "t") != LUA_OK ||
+        lua_pcall(L, 0, 0, 0) != LUA_OK) {
+        FMRB_LOGE(TAG, "app prelude: %s", lua_tostring(L, -1));
+        lua_pop(L, 1);
+    }
+
+    FMRB_LOGI(TAG, "FmrbGfx, FmrbApp, FmrbAudio and Log registered to Lua");
 }
 
 void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout)

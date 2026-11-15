@@ -137,21 +137,6 @@ int fmrb_mp_gfx_delete_all_sprites(int canvas_id);
 const char *fmrb_mp_bridge_language(void);
 
 /**
- * @brief Send one APU note on / off
- *
- * Notes are the only audio message sent in a stream, so this takes the values
- * rather than a message: nothing is allocated on either side of the call, in
- * any language. Everything else about audio is an ordinary send_message.
- *
- * @return true when the message was queued
- */
-bool fmrb_mp_bridge_audio_note(bool on, int channel, int freq, int volume,
-                               int duty, int sweep);
-
-/** Log one line at the given level ('D', 'I', 'W', 'E'). */
-void fmrb_mp_bridge_log(char level, const char *msg);
-
-/**
  * Files. Guests get no open()/write(): they read whole files, either as data
  * (_fmrb.read_file) or as a module the importer compiles.
  */

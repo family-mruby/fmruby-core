@@ -289,10 +289,18 @@ mrb_log_get_buffer_level(mrb_state *mrb, mrb_value self)
   return mrb_str_new_cstr(mrb, buf);
 }
 
+// Log's methods on the app boundary, generated from sig/fmrb_misc.rbs
+// (tools/boundary/gen.rb): debug_raw, info_raw, warn_raw and error_raw, one
+// line tagged with the app's name. debug / info / warn / error below are
+// their wrappers, in C, which also take a tag of the caller's own first.
+#define FMRB_GEN_MRB_Log
+#include "fmrb_gen/fmrb_boundary_mrb.inc"
+
 void
 mrb_fmrb_log_init(mrb_state *mrb)
 {
   struct RClass *log_module = mrb_define_module(mrb, "Log");
+  FMRB_GEN_MRB_DEFINE_Log(mrb, log_module);
   
   // Log level constants
   mrb_define_const(mrb, log_module, "LEVEL_NONE", mrb_fixnum_value(LOG_LEVEL_NONE));

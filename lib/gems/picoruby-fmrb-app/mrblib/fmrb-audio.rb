@@ -1,5 +1,12 @@
 # Family mruby OS - Audio API
 # Provides audio control for apps via kernel message routing.
+#
+# FmrbAudio is on the app boundary (sig/fmrb_audio.rbs, doc/app_boundary):
+# play_raw, stop, pause, resume, nsf_status, load_fmsq, load_fmsq_file,
+# play_slot_raw, main_volume=, play_wav, stop_wav, note_on_raw and note_off
+# are C (generated in mruby, the Spinel base's for Spinel), and build the
+# kernel's command themselves -- no Hash per call. What is here are the
+# wrappers with optional arguments, and the microphone.
 
 class FmrbAudio
   # The two APU instances. A long piece of music belongs on MAIN and the short
@@ -15,13 +22,10 @@ class FmrbAudio
   CH_TRIANGLE = 2
   CH_NOISE = 3
 
+  # The sound is the calling app's (the boundary takes no receiver); app is
+  # kept for the code that asks for it.
   def initialize(app)
     @app = app
-    # note_on / note_off go through a C builder when the owner is a real
-    # FmrbApp (see below). Asked once here rather than per note, and there is
-    # a Ruby path for owners that only have send_message (the desktop builds
-    # an FmrbAudio on itself, and the host tests use a stub).
-    @native_note = app.respond_to?(:_send_audio_note)
   end
 
   # ---- Microphone (Modern / Tab5 only) ----
@@ -55,13 +59,7 @@ class FmrbAudio
   end
 
   def play(path, track: 0)
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "play", "path" => path, "track" => track})
-  end
-
-  def stop
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "stop"})
+    play_raw(path, track)
   end
 
   # Where the NSF started with play is, asked of the audio side
@@ -87,55 +85,24 @@ class FmrbAudio
   NSF_END_LOOP = 2
   NSF_END_LIMIT = 3
 
-  def nsf_status
-    @app._audio_nsf_status
-  end
+  # nsf_status, pause, resume, load_fmsq and load_fmsq_file are on the
+  # boundary. load_fmsq sends the tune inline, so a short one only (one
+  # message); a bigger one is pushed with @gfx.transfer_file and loaded with
+  # load_fmsq_file.
 
-  def pause
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "pause"})
-  end
-
-  def resume
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "resume"})
-  end
-
-  def load_fmsq(slot_id, binary_data)
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "load_fmsq", "slot" => slot_id, "data" => binary_data})
-  end
-
-  # Load an FMSQ slot from a file already present on the graphics-audio side
-  # (push it there first with @gfx.transfer_file). Use this when the FMSQ
-  # data would exceed the inline IPC payload limit of load_fmsq.
-  def load_fmsq_file(slot_id, path)
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "load_fmsq_file", "slot" => slot_id, "path" => path})
-  end
-
-  # Play a previously-loaded FMSQ slot. instance picks the APU instance:
-  # 0 = MAIN (mixed with NSF), 1 = SUB (mixed with note_on/off SE). Use
-  # SUB for short FMSQ sound effects so a long BGM on MAIN keeps playing.
+  # instance picks the APU: MAIN (0, mixed with NSF) or SUB (1, mixed with
+  # note_on/off). Short FMSQ effects go on SUB so a long BGM on MAIN keeps
+  # playing.
   def play_slot(slot_id, instance: 0)
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "play_slot", "slot" => slot_id, "instance" => instance})
+    play_slot_raw(slot_id, instance)
   end
 
-  # The MAIN instance's own volume, in percent (0-100, default 100): the
-  # music played with play / play_slot on MAIN, so a BGM can sit under the
-  # effects on SUB. SUB, WAV and the machine's volume are not touched. It is
-  # one value for the whole machine; the kernel puts it back to 100 when the
-  # app that lowered it ends.
+  # main_volume= (on the boundary): the MAIN instance's own volume, 0-100 %,
+  # for the music played with play / play_slot on MAIN, so a BGM can sit
+  # under the effects on SUB. One value for the whole machine; the kernel
+  # puts it back to 100 when the app that lowered it ends.
   #
   #   audio.main_volume = 30
-  def main_volume=(percent)
-    v = percent.to_i
-    v = 0 if v < 0
-    v = 100 if v > 100
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "main_volume", "volume" => v})
-  end
 
   # ---- WAV playback (Modern only) ----
   #
@@ -146,9 +113,9 @@ class FmrbAudio
   #
   #   audio.play_wav("/usr/share/sounds/sine440_16k.wav")
   #
-  # The file is synced to the audio side first, the same as a sprite sheet or
-  # an FMSQ. On Modern that is a copy inside the one filesystem, so it is
-  # cheap and only happens when the bytes actually differ.
+  # The audio side reads the file. On the devices that is the one
+  # filesystem; the simulator's audio lives in another process with its own
+  # storage, so there the file is synced into /cache/audio first.
   #
   # Retro does not do this, and is not going to. The audio there lives on the
   # WROVER at the far end of a serial link, so every clip would have to be
@@ -157,77 +124,13 @@ class FmrbAudio
   # not big. play_wav returns false on Retro without sending anything, so an
   # app can call it unconditionally and fall back on the answer (which is what
   # the hourly chime does: a recording if it can, its note if it cannot).
-  WAV_CACHE_DIR = "/cache/audio"
+  # play_wav and stop_wav are on the boundary (main/app/fmrb_boundary_audio.c).
 
-  def play_wav(path)
-    unless ::FmrbConst::HW_FAMILY == "modern"
-      ::Log.info("play_wav: not supported on this machine (#{path})")
-      return false
-    end
-    dest = path
-    if sync_needed?
-      dest = wav_cache_path(path)
-      unless @app.sync_file(path, dest: dest)
-        ::Log.warn("play_wav: cannot put #{path} where the audio side can read it")
-        return false
-      end
-    end
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "play_wav", "path" => dest})
-    true
-  end
-
-  # Whether the file has to be copied before the audio side can see it.
-  #
-  # On Modern hardware it does not: the audio driver is this firmware and
-  # reads the same filesystem, so the copy was pure cost -- 1.9 s and a
-  # rewrite of the flash for every fresh file, both of which show up
-  # immediately with anything as big as speech. The simulator looks like a
-  # Modern machine but its audio lives in another process with its own
-  # storage, so there the transfer is still the only way across.
-  def sync_needed?
-    ::FmrbConst::PLATFORM != "esp32"
-  end
-
-  def stop_wav
-    return false unless ::FmrbConst::HW_FAMILY == "modern"
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "stop_wav"})
-    true
-  end
-
-  # Where a source file lands on the audio side. The source tree is mirrored
-  # under /cache/audio rather than flattened, so two files with the same
-  # basename in different directories do not fight over one cache entry.
-  def wav_cache_path(path)
-    path[0] == "/" ? "#{WAV_CACHE_DIR}#{path}" : "#{WAV_CACHE_DIR}/#{path}"
-  end
-
-  # These two are the only ones called in a stream: a MIDI song sends one
-  # every few milliseconds. That makes their garbage matter - on the device a
-  # collection stops the app for 100-205 ms, long enough to hear
-  # (doc/midi/report/p7.md) - so the message is built in C and this path
-  # allocates nothing at all.
-  #
-  # The Ruby fallback below is the same message written as a Hash. Its keys
-  # are Symbols rather than Strings because a String key is a fresh object at
-  # every call; the serializer writes a Symbol exactly as it writes a String,
-  # so both paths and the kernel side see the same bytes.
+  # note_on is the one sent in a stream (a MIDI song sends one every few
+  # milliseconds): note_on_raw and note_off build the message in C and
+  # allocate nothing, so a collection (100-205 ms on the device, audible)
+  # never follows from a note (doc/midi/report/p7.md).
   def note_on(channel, freq, volume = 10, duty = 2, sweep = 0)
-    if @native_note
-      @app._send_audio_note(true, channel, freq, volume, duty, sweep)
-    else
-      @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-        { cmd: :note_on, ch: channel, freq: freq, vol: volume, duty: duty, sweep: sweep })
-    end
-  end
-
-  def note_off(channel)
-    if @native_note
-      @app._send_audio_note(false, channel, 0, 0, 0, 0)
-    else
-      @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-        { cmd: :note_off, ch: channel })
-    end
+    note_on_raw(channel, freq, volume, duty, sweep)
   end
 end

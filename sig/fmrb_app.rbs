@@ -6,6 +6,9 @@
 # 呼び方を必須引数だけの形にして書いてある (sig/README.md)。
 
 class FmrbApp
+  # wallclock が返す日付と時刻 <<en>> The date and time, from wallclock
+  type wallclock = { year: uint16, month: uint8, day: uint8, hour: uint8, minute: uint8, second: uint8 }
+
   # 絵を描く画面
   @gfx: FmrbGfx
 
@@ -1075,7 +1078,24 @@ class FmrbApp
   # ```ruby
   # text = FmrbApp.clipboard
   # ```
+  %a{fmrb.internal}
   def self.clipboard: () -> String
+
+  # clipboard の省略なしの形 <<en>> clipboard with nothing left out
+  #
+  # 引数を省略できない単純な形。limit が 0 なら全部、正なら そのバイト数までを、
+  # 文字の途中で切らずに返す。包みは clipboard (limit を省くと 0)。
+  # ```ruby
+  # text = FmrbApp.clipboard_raw(0)
+  # ```
+  # <<en>>
+  # The simple form, with no argument left out. limit 0 gives all of it; above
+  # 0, at most that many bytes, never cutting a character. The wrapper is
+  # clipboard (limit left out is 0).
+  # ```ruby
+  # text = FmrbApp.clipboard_raw(0)
+  # ```
+  def self.clipboard_raw: (Integer limit) -> String
 
   # クリップボードに文字を入れる <<en>> Put text on the clipboard
   #
@@ -1254,7 +1274,7 @@ class FmrbApp
   # work
   # us = FmrbApp.uptime_us - t0
   # ```
-  def self.uptime_us: () -> Integer
+  def self.uptime_us: () -> int64
 
   # 今の日付と時刻 <<en>> The date and time now
   #
@@ -1269,7 +1289,7 @@ class FmrbApp
   # t = FmrbApp.wallclock
   # Log.info("#{t[:hour]}") if t
   # ```
-  def self.wallclock: () -> Hash?
+  def self.wallclock: () -> wallclock?
 
   # 絵を送った回数の記録 <<en>> A tally of the frames sent
   #

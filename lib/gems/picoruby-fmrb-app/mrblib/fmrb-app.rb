@@ -12,6 +12,14 @@ class FmrbApp
     "en"
   end
 
+  # The machine's clipboard (doc/linux_native L12a): the text every app
+  # shares, at most limit bytes when limit > 0 (cut before a character that
+  # would not fit whole). clipboard_raw, set_clipboard and clipboard_gen are
+  # on the app boundary (sig/fmrb_app.rbs, C).
+  def self.clipboard(limit = 0)
+    clipboard_raw(limit)
+  end
+
   # A full GC on this VM's heap (the Spinel build: its task's heap).
   def self.gc
     GC.start

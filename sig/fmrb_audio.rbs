@@ -3,13 +3,22 @@
 #
 # FmrbAudio はアプリが持っている音の係。曲を鳴らすのと、
 # 音を一つずつ鳴らすのと、両方できる。
+#
+# FmrbAudio はクラスごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
+# 境界のメソッドは受け手の番号を取らない (受け手は呼んだアプリ)。省略できる
+# 引数を持つメソッド (包み) は %a{fmrb.internal} で、隣に _raw の形がある。
 
+%a{fmrb.boundary}
 class FmrbAudio
+  # nsf_status が返す曲のようす <<en>> Where the song is, from nsf_status
+  type nsf_status = { state: uint8, reason: uint8, track: uint8, laps: uint8, gen: uint16, period: uint16, frames: uint32 }
+
   # 音の係を作る <<en>> Make the sound handler
   #
   # ```ruby
   # @audio = FmrbAudio.new(self)
   # ```
+  %a{fmrb.internal}
   def self.new: (FmrbApp app) -> FmrbAudio
 
   # 曲のファイルを鳴らす <<en>> Play a song file
@@ -23,7 +32,23 @@ class FmrbAudio
   # ```ruby
   # @audio.play("/usr/share/sounds/nsf/test.nsf")
   # ```
+  %a{fmrb.internal}
   def play: (String path) -> void
+
+  # play の省略なしの形 <<en>> play with nothing left out
+  #
+  # 引数を省略できない単純な形。track は NSF の中の曲の番号 (0 から)。
+  # 包みは play (track: を省くと 0)。
+  # ```ruby
+  # @audio.play_raw("/usr/share/sounds/nsf/test.nsf", 0)
+  # ```
+  # <<en>>
+  # The simple form, with no argument left out. track is the song inside the
+  # NSF, from 0. The wrapper is play (track: left out is 0).
+  # ```ruby
+  # @audio.play_raw("/usr/share/sounds/nsf/test.nsf", 0)
+  # ```
+  def play_raw: (String path, Integer track) -> void
 
   # 曲を止める <<en>> Stop the song
   #
@@ -49,7 +74,7 @@ class FmrbAudio
   # st = @audio.nsf_status
   # next_song if st && st[:state] == FmrbAudio::NSF_ENDED
   # ```
-  def nsf_status: () -> Hash[Symbol, Integer]?
+  def nsf_status: () -> nsf_status?
 
   NSF_IDLE: Integer
   NSF_PLAYING: Integer
@@ -86,7 +111,7 @@ class FmrbAudio
   # data = File.open(path, "r") { |f| f.read }
   # @audio.load_fmsq(0, data)
   # ```
-  def load_fmsq: (Integer slot_id, String binary_data) -> void
+  def load_fmsq: (Integer slot_id, bin binary_data) -> void
 
   # 曲のファイルを箱に読み込む <<en>> Read a song file into a slot
   #
@@ -101,7 +126,26 @@ class FmrbAudio
   # ```ruby
   # @audio.play_slot(0)
   # ```
+  %a{fmrb.internal}
   def play_slot: (Integer slot_id) -> void
+
+  # play_slot の省略なしの形 <<en>> play_slot with nothing left out
+  #
+  # 引数を省略できない単純な形。instance は鳴らす APU で、MAIN (0) か SUB (1)。
+  # 長い曲は MAIN、短い効果音は SUB に置くと、効果音が曲を切らない。
+  # 包みは play_slot (instance: を省くと MAIN)。
+  # ```ruby
+  # @audio.play_slot_raw(0, FmrbAudio::SUB)
+  # ```
+  # <<en>>
+  # The simple form, with no argument left out. instance is the APU that plays
+  # it, MAIN (0) or SUB (1): a long tune on MAIN and the short effects on SUB,
+  # so an effect never cuts the tune. The wrapper is play_slot (instance: left
+  # out is MAIN).
+  # ```ruby
+  # @audio.play_slot_raw(0, FmrbAudio::SUB)
+  # ```
+  def play_slot_raw: (Integer slot_id, Integer instance) -> void
 
   # 曲 (MAIN) だけの音量を変える <<en>> Set the volume of the music (MAIN) only
   #
@@ -148,7 +192,25 @@ class FmrbAudio
   # ```ruby
   # @audio.note_on(0, 440)
   # ```
+  %a{fmrb.internal}
   def note_on: (Integer channel, Integer freq) -> void
+
+  # note_on の省略なしの形 <<en>> note_on with nothing left out
+  #
+  # 引数を省略できない単純な形。曲の中で何度も鳴らすような、速さが要る所で
+  # 使う。volume は 0〜15 (包みは 10)、duty は矩形波の幅 0〜3 (包みは 2)、
+  # sweep は 0 (包みと同じ)。包みは note_on。
+  # ```ruby
+  # @audio.note_on_raw(0, 440, 10, 2, 0)
+  # ```
+  # <<en>>
+  # The simple form, with no argument left out, for where speed matters (many
+  # notes in a tune). volume 0 to 15 (10 in the wrapper), duty the pulse width
+  # 0 to 3 (2 in the wrapper), sweep 0 (as the wrapper). The wrapper is note_on.
+  # ```ruby
+  # @audio.note_on_raw(0, 440, 10, 2, 0)
+  # ```
+  def note_on_raw: (Integer channel, Integer freq, Integer volume, Integer duty, Integer sweep) -> void
 
   # 鳴っている音を止める <<en>> Stop a note
   #

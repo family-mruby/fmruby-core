@@ -452,13 +452,6 @@ static mp_obj_t fmrb_set_window_pos(mp_obj_t x_in, mp_obj_t y_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(fmrb_set_window_pos_obj, fmrb_set_window_pos);
 
-static mp_obj_t fmrb_log(mp_obj_t level_in, mp_obj_t msg_in) {
-    const char *level = mp_obj_str_get_str(level_in);
-    fmrb_mp_bridge_log(level[0], mp_obj_str_get_str(msg_in));
-    return mp_const_none;
-}
-static MP_DEFINE_CONST_FUN_OBJ_2(fmrb_log_obj, fmrb_log);
-
 /**
  * Milliseconds since boot. The guest has no other clock: the time module lives
  * in extmod/, which the embed package does not carry, so timers and every
@@ -936,22 +929,6 @@ static mp_obj_t gfx_delete_all_sprites(mp_obj_t cid) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(gfx_delete_all_sprites_obj, gfx_delete_all_sprites);
 
-/**
- * audio_note(on, ch, freq, vol, duty, sweep) -> bool
- *
- * The note_on / note_off half of FmrbAudio, without a dict. A song sends one
- * every few milliseconds, and on the device a collection stops the app for
- * 100-205 ms, which is audible -- so this path allocates nothing.
- */
-static mp_obj_t fmrb_audio_note(size_t n_args, const mp_obj_t *args) {
-    (void)n_args;
-    return mp_obj_new_bool(fmrb_mp_bridge_audio_note(mp_obj_is_true(args[0]),
-                                                     ARG_INT(1), ARG_INT(2),
-                                                     ARG_INT(3), ARG_INT(4),
-                                                     ARG_INT(5)));
-}
-static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(fmrb_audio_note_obj, 6, 6, fmrb_audio_note);
-
 static mp_obj_t fmrb_language(void) {
     const char *lang = fmrb_mp_bridge_language();
     return mp_obj_new_str(lang, strlen(lang));
@@ -971,14 +948,12 @@ static const mp_rom_map_elem_t fmrb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_set_window_pos), MP_ROM_PTR(&fmrb_set_window_pos_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_file_app), MP_ROM_PTR(&fmrb_is_file_app_obj) },
     { MP_ROM_QSTR(MP_QSTR_should_exit), MP_ROM_PTR(&fmrb_should_exit_obj) },
-    { MP_ROM_QSTR(MP_QSTR_log), MP_ROM_PTR(&fmrb_log_obj) },
     { MP_ROM_QSTR(MP_QSTR_ticks_ms), MP_ROM_PTR(&fmrb_ticks_ms_obj) },
     { MP_ROM_QSTR(MP_QSTR_read_file), MP_ROM_PTR(&fmrb_read_file_obj) },
     { MP_ROM_QSTR(MP_QSTR_file_size), MP_ROM_PTR(&fmrb_file_size_obj) },
 
     FMRB_GEN_MP_GLOBALS
     { MP_ROM_QSTR(MP_QSTR_language), MP_ROM_PTR(&fmrb_language_obj) },
-    { MP_ROM_QSTR(MP_QSTR_audio_note), MP_ROM_PTR(&fmrb_audio_note_obj) },
 
 
     { MP_ROM_QSTR(MP_QSTR_gfx_drawer_open), MP_ROM_PTR(&gfx_drawer_open_obj) },

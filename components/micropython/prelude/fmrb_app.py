@@ -29,22 +29,24 @@ def language():
     return _fmrb.language()
 
 
-class Log:
+# The *_raw functions are the app boundary's (generated, _LogBoundary): one
+# line tagged with the app's name. These wrappers take any value, as Ruby's.
+class Log(_LogBoundary):
     @staticmethod
     def debug(msg):
-        _fmrb.log("D", str(msg))
+        Log.debug_raw(str(msg))
 
     @staticmethod
     def info(msg):
-        _fmrb.log("I", str(msg))
+        Log.info_raw(str(msg))
 
     @staticmethod
     def warn(msg):
-        _fmrb.log("W", str(msg))
+        Log.warn_raw(str(msg))
 
     @staticmethod
     def error(msg):
-        _fmrb.log("E", str(msg))
+        Log.error_raw(str(msg))
 
 
 # The system theme, read once here so the constants below can be plain class
@@ -73,13 +75,16 @@ class FmrbConst:
 
 
 # Audio, transcribed from the Ruby version (picoruby-fmrb-app
-# mrblib/fmrb-audio.rb). Everything here except the notes is one message to the
-# kernel, which is why this class needs nothing but an app to send through.
+# mrblib/fmrb-audio.rb). The methods are the app boundary's (generated,
+# _FmrbAudioBoundary: stop, pause, resume, nsf_status, load_fmsq,
+# load_fmsq_file, set_main_volume, play_wav, stop_wav, note_off and the *_raw
+# forms); each builds the kernel's command in C, so none makes a dict. Here are
+# the wrappers with defaults, as in Ruby.
 #
 # Two APU instances play at once: MAIN (0) carries a tune, SUB (1) carries the
 # effects that note_on/note_off make. Keeping a long piece of music on MAIN and
 # the short noises on SUB is what stops an effect from cutting the music.
-class FmrbAudio:
+class FmrbAudio(_FmrbAudioBoundary):
     MAIN = 0
     SUB = 1
 
@@ -89,51 +94,34 @@ class FmrbAudio:
     CH_TRIANGLE = 2
     CH_NOISE = 3
 
+    # Where an NSF is (nsf_status()["state"] and ["reason"]).
+    NSF_IDLE = 0
+    NSF_PLAYING = 1
+    NSF_FADING = 2
+    NSF_ENDED = 3
+    NSF_END_SILENCE = 1
+    NSF_END_LOOP = 2
+    NSF_END_LIMIT = 3
+
+    # The sound is the app's; app is kept for the code that asks for it.
     def __init__(self, app):
         self.app = app
 
-    def _send(self, data):
-        return self.app.send_message(FmrbConst.PROC_ID_KERNEL,
-                                     FmrbConst.MSG_TYPE_APP_AUDIO, data)
-
-    # ---- music ----
-
     def play(self, path, track=0):
-        return self._send({"cmd": "play", "path": path, "track": track})
+        self.play_raw(path, track)
 
-    def stop(self):
-        return self._send({"cmd": "stop"})
-
-    def pause(self):
-        return self._send({"cmd": "pause"})
-
-    def resume(self):
-        return self._send({"cmd": "resume"})
-
-    # Load a tune into a slot from a file the graphics-audio side can read
-    # (push it there with FmrbGfx#sync_file first). The inline form of this
-    # would have to fit in one message, so a real tune goes by path.
-    def load_fmsq_file(self, slot_id, path):
-        return self._send({"cmd": "load_fmsq_file", "slot": slot_id, "path": path})
-
+    # A big tune goes by file (push it with FmrbGfx#sync_file first, then
+    # load_fmsq_file): load_fmsq sends the bytes in one message.
     def play_slot(self, slot_id, instance=MAIN):
-        return self._send({"cmd": "play_slot", "slot": slot_id, "instance": instance})
+        self.play_slot_raw(slot_id, instance)
 
-    # ---- notes ----
-    #
-    # These two are the only audio calls made in a stream, so they skip the
-    # dict and go straight to C: a note allocates nothing at all. The Ruby
-    # version does the same thing for the same reason -- a collection in the
-    # middle of a tune stops the app long enough to hear.
-
+    # The note sent in a stream: nothing allocated (a collection in the middle
+    # of a tune stops the app long enough to hear).
     def note_on(self, channel, freq, volume=10, duty=2, sweep=0):
-        return _fmrb.audio_note(True, channel, freq, volume, duty, sweep)
-
-    def note_off(self, channel):
-        return _fmrb.audio_note(False, channel, 0, 0, 0, 0)
+        self.note_on_raw(channel, freq, volume, duty, sweep)
 
 
-class FmrbApp:
+class FmrbApp(_FmrbAppBoundary):
     TITLE_BAR_H = 11
     CORNER_R = 4
     TRANSPARENT_COLOR = 0x01
@@ -559,6 +547,12 @@ class FmrbApp:
     def request_reload(self):
         return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
                                  {"cmd": "reload_confirm"})
+
+    # The clipboard every app shares (clipboard_raw, set_clipboard,
+    # clipboard_gen, uptime_us and wallclock are the app boundary's).
+    @staticmethod
+    def clipboard(limit=0):
+        return FmrbApp.clipboard_raw(limit)
 
     def send_message(self, dest_pid, msg_type, data):
         return _fmrb.send_message(dest_pid, msg_type, data)

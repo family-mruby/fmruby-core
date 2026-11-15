@@ -61,6 +61,19 @@ end
 - 色: `FmrbGfx.BLACK` などの定数と、テーマの `FmrbApp.THEME_WINDOW_BG`・`THEME_TEXT`・`THEME_BORDER` など。
 - ヘッドレス (`default_window_mode = "background"`) のアプリでは `gfx` は nil。
 
+## 音・ログ・クリップボード・時計
+
+本体との境界から生成した関数 (Ruby と同じ名前と既定値。`_raw` は省略できない形)。
+
+- 音: `local audio = FmrbAudio.new()`、`audio:note_on(ch, freq [, volume, duty, sweep])`・
+  `audio:note_off(ch)`・`audio:play(path [, track])`・`audio:play_slot(slot [, instance])`・
+  `audio:load_fmsq_file(slot, path)`・`audio:stop()`・`audio:set_main_volume(percent)`
+  (Ruby の `main_volume =`)・`audio:play_wav(path)`・`audio:nsf_status()` (表か nil) など。
+  定数は `FmrbAudio.MAIN`・`SUB`・`CH_PULSE1`…・`NSF_ENDED`…。
+- ログ: `Log.info(msg)`・`debug`・`warn`・`error` (行の頭にアプリの名前)。
+- クリップボード: `FmrbApp.clipboard([limit])`・`FmrbApp.set_clipboard(text)`・`FmrbApp.clipboard_gen()`。
+- 時計: `FmrbApp.uptime_us()` (起動からの µs)・`FmrbApp.wallclock()` (`{year=, month=, ...}` か nil)。
+
 ## 入力 (`ev`)
 
 Ruby のアプリの `ev` と同じ鍵と値。`ev.type` は文字列。

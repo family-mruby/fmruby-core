@@ -11,7 +11,9 @@
  * - an object's method takes the object's number first: for FmrbGfx a drawer
  *   of the app, which has the canvas, the drawing origin and the area (the
  *   firmware adds the origin to the coordinates drawn; origin_x and the rest
- *   read them);
+ *   read them). FmrbApp's and FmrbAudio's take none: their object is the
+ *   app itself;
+ * - a Ruby setter (main_volume=) is set_<name> (fmrb_audio_set_main_volume);
  * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
  *   bool is int32_t 0 or 1; Float is double;
  * - a String is a pointer and a length (not NUL-terminated);
@@ -39,7 +41,7 @@ extern "C" {
 #define FMRB_ABI_VERSION_MAJOR 0
 #define FMRB_ABI_VERSION_MINOR 1
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0xb2e857c4u
+#define FMRB_ABI_HASH 0xd34fea71u
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -49,6 +51,27 @@ extern "C" {
 #else
 #define FMRB_IMPORT(name)
 #endif
+
+/** FmrbApp::wallclock (7 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+} fmrb_app_wallclock_t;
+
+/** FmrbAudio::nsf_status (12 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint8_t state;
+    uint8_t reason;
+    uint8_t track;
+    uint8_t laps;
+    uint16_t gen;
+    uint16_t period;
+    uint32_t frames;
+} fmrb_audio_nsf_status_t;
 
 /** FmrbGfx::image_info (6 bytes, packed, little-endian) */
 typedef struct __attribute__((packed)) {
@@ -78,6 +101,176 @@ typedef struct __attribute__((packed)) {
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_DEFAULT 0
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA 1
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA_BOLD 2
+
+/**
+ * clipboard の省略なしの形
+ * clipboard with nothing left out
+ *
+ * Ruby: FmrbApp.clipboard_raw(limit)
+ * @return the full length of the result (more than out_size: cut short)
+ */
+FMRB_IMPORT("app_clipboard_raw")
+int32_t fmrb_app_clipboard_raw(int32_t limit, char *out, int32_t out_size);
+
+/**
+ * クリップボードに文字を入れる
+ * Put text on the clipboard
+ *
+ * Ruby: FmrbApp.set_clipboard(text)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("app_set_clipboard")
+int32_t fmrb_app_set_clipboard(const char *text, int32_t text_len);
+
+/**
+ * クリップボードが変わった回数
+ * How many times the clipboard changed
+ *
+ * Ruby: FmrbApp.clipboard_gen()
+ * @return the value
+ */
+FMRB_IMPORT("app_clipboard_gen")
+int32_t fmrb_app_clipboard_gen(void);
+
+/**
+ * 電源を入れてからの時間 (百万分の一秒)
+ * Microseconds since power-on
+ *
+ * Ruby: FmrbApp.uptime_us()
+ * @return the value (64 bits)
+ */
+FMRB_IMPORT("app_uptime_us")
+int64_t fmrb_app_uptime_us(void);
+
+/**
+ * 今の日付と時刻
+ * The date and time now
+ *
+ * Ruby: FmrbApp.wallclock()
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("app_wallclock")
+int32_t fmrb_app_wallclock(fmrb_app_wallclock_t *out);
+
+/**
+ * play の省略なしの形
+ * play with nothing left out
+ *
+ * Ruby: FmrbAudio#play_raw(path, track)
+ */
+FMRB_IMPORT("audio_play_raw")
+int32_t fmrb_audio_play_raw(const char *path, int32_t path_len, int32_t track);
+
+/**
+ * 曲を止める
+ * Stop the song
+ *
+ * Ruby: FmrbAudio#stop()
+ */
+FMRB_IMPORT("audio_stop")
+int32_t fmrb_audio_stop(void);
+
+/**
+ * 曲がどこまで進んだかを聞く
+ * Ask where the song is
+ *
+ * Ruby: FmrbAudio#nsf_status()
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("audio_nsf_status")
+int32_t fmrb_audio_nsf_status(fmrb_audio_nsf_status_t *out);
+
+/**
+ * 曲をいったん止める
+ * Pause the song
+ *
+ * Ruby: FmrbAudio#pause()
+ */
+FMRB_IMPORT("audio_pause")
+int32_t fmrb_audio_pause(void);
+
+/**
+ * 止めた曲の続きを鳴らす
+ * Carry on from the pause
+ *
+ * Ruby: FmrbAudio#resume()
+ */
+FMRB_IMPORT("audio_resume")
+int32_t fmrb_audio_resume(void);
+
+/**
+ * 曲のデータを箱に入れる
+ * Put song data into a slot
+ *
+ * Ruby: FmrbAudio#load_fmsq(slot_id, binary_data)
+ */
+FMRB_IMPORT("audio_load_fmsq")
+int32_t fmrb_audio_load_fmsq(int32_t slot_id, const uint8_t *binary_data, int32_t binary_data_len);
+
+/**
+ * 曲のファイルを箱に読み込む
+ * Read a song file into a slot
+ *
+ * Ruby: FmrbAudio#load_fmsq_file(slot_id, path)
+ */
+FMRB_IMPORT("audio_load_fmsq_file")
+int32_t fmrb_audio_load_fmsq_file(int32_t slot_id, const char *path, int32_t path_len);
+
+/**
+ * play_slot の省略なしの形
+ * play_slot with nothing left out
+ *
+ * Ruby: FmrbAudio#play_slot_raw(slot_id, instance)
+ */
+FMRB_IMPORT("audio_play_slot_raw")
+int32_t fmrb_audio_play_slot_raw(int32_t slot_id, int32_t instance);
+
+/**
+ * 曲 (MAIN) だけの音量を変える
+ * Set the volume of the music (MAIN) only
+ *
+ * Ruby: FmrbAudio#main_volume=(percent)
+ */
+FMRB_IMPORT("audio_set_main_volume")
+int32_t fmrb_audio_set_main_volume(int32_t percent);
+
+/**
+ * 録音した音 (WAV) を鳴らす
+ * Play a recorded sound (WAV)
+ *
+ * Ruby: FmrbAudio#play_wav(path)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("audio_play_wav")
+int32_t fmrb_audio_play_wav(const char *path, int32_t path_len);
+
+/**
+ * 鳴っている WAV を止める
+ * Stop the WAV that is playing
+ *
+ * Ruby: FmrbAudio#stop_wav()
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("audio_stop_wav")
+int32_t fmrb_audio_stop_wav(void);
+
+/**
+ * note_on の省略なしの形
+ * note_on with nothing left out
+ *
+ * Ruby: FmrbAudio#note_on_raw(channel, freq, volume, duty, sweep)
+ */
+FMRB_IMPORT("audio_note_on_raw")
+int32_t fmrb_audio_note_on_raw(int32_t channel, int32_t freq, int32_t volume, int32_t duty, int32_t sweep);
+
+/**
+ * 鳴っている音を止める
+ * Stop a note
+ *
+ * Ruby: FmrbAudio#note_off(channel)
+ */
+FMRB_IMPORT("audio_note_off")
+int32_t fmrb_audio_note_off(int32_t channel);
 
 /**
  * 画面の番号
@@ -551,6 +744,42 @@ int32_t fmrb_gfx_file_status(int32_t gfx, const char *path, int32_t path_len, fm
  */
 FMRB_IMPORT("gfx_rgb_to_332")
 int32_t fmrb_gfx_rgb_to_332(int32_t r, int32_t g, int32_t b);
+
+/**
+ * debug の省略なしの形
+ * debug with nothing left out
+ *
+ * Ruby: Log.debug_raw(msg)
+ */
+FMRB_IMPORT("log_debug_raw")
+int32_t fmrb_log_debug_raw(const char *msg, int32_t msg_len);
+
+/**
+ * info の省略なしの形
+ * info with nothing left out
+ *
+ * Ruby: Log.info_raw(msg)
+ */
+FMRB_IMPORT("log_info_raw")
+int32_t fmrb_log_info_raw(const char *msg, int32_t msg_len);
+
+/**
+ * warn の省略なしの形
+ * warn with nothing left out
+ *
+ * Ruby: Log.warn_raw(msg)
+ */
+FMRB_IMPORT("log_warn_raw")
+int32_t fmrb_log_warn_raw(const char *msg, int32_t msg_len);
+
+/**
+ * error の省略なしの形
+ * error with nothing left out
+ *
+ * Ruby: Log.error_raw(msg)
+ */
+FMRB_IMPORT("log_error_raw")
+int32_t fmrb_log_error_raw(const char *msg, int32_t msg_len);
 
 #ifdef __cplusplus
 }

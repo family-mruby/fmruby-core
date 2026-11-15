@@ -146,15 +146,25 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   持つメソッド (包み) は internal にし、隣に後ろへ `_raw` を付けた省略なしの形を
   書く (`draw_text` と `draw_text_raw`)。説明文に「包みは draw_text」と書く。
   包みは各エンジンの Ruby (mruby は gem の mrblib) で書くのが決まりで、例外は
-  mruby の `present` だけ (gem の C、`gfx.c` の `mrb_gfx_present`。毎フレーム
-  呼ぶので、Ruby の包みでは命令数が W4a の前の 2 倍になった。2026-11-15 決定)。
-  例外も印は同じ internal で、道具はどちらで書いたかを区別しない。
+  mruby の `present` (gem の C、`gfx.c` の `mrb_gfx_present`。毎フレーム
+  呼ぶので、Ruby の包みでは命令数が W4a の前の 2 倍になった。2026-11-15 決定) と
+  mruby の `Log.info` など (picoruby-fmrb-log の C。前からの C のメソッドで、
+  タグを先に渡す 2 引数の形も読む)。例外も印は同じ internal で、道具はどちらで
+  書いたかを区別しない。
+- 受け手の番号: インスタンスメソッドは第 1 引数に受け手の番号を取る
+  (FmrbGfx は描き手)。`FmrbApp` と `FmrbAudio` のインスタンスメソッドは取らない
+  (受け手は呼んだアプリ。道具の `NO_RECEIVER`)。Lua・Python では、それでも
+  オブジェクトのメソッドとして呼ぶ (`audio:note_off(0)`)。
+- 書き込みのメソッド (`main_volume=`) は、C と他の言語では `set_main_volume`。
+- `FmrbApp` はクラスの印を W4b-3 で付ける。それまでは道具の `STAGED` に
+  並べたメソッド (クリップボードと時計) だけが境界に載る。
 - 型の規則: `Integer` は int32、幅は `sig/fmrb_types.rbs` の別名
   (`int16`・`uint8`・`float32`・`bin` など、ROS 2 と同じ名前) で書く。Symbol の
   選択肢はリテラルの型 (`:default | :ja`)。記録は record 型の別名
   (`type image_info = { id: uint16, ... }`)、要素の決まった配列は
-  `Array[記録]`。結果に nil があり得るのは記録だけ (`image_info?`)。扱えない
-  型を書くと、道具がメソッドの名前を出して止まる。
+  `Array[記録]`。結果に nil があり得るのは記録だけ (`image_info?`)。整数の
+  結果は `Integer` (int32) か `int64` (時計の µs など。C は `int64_t` を返す)。
+  扱えない型を書くと、道具がメソッドの名前を出して止まる。
 - 載せたメソッドには本体の C の実体 (`main/app/fmrb_boundary_*.c` の
   `fmrb_bnd_<クラス>_<メソッド>`) が要る。無ければ道具が名前を出して止まる
   (Ruby で書いたメソッドを載せかけたら internal を付ける)。C の名前は 2 つ:

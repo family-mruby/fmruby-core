@@ -63,7 +63,6 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_cleanup, [], :int
   ffi_func :fmrb_spx_app_mark_expected_stop, [], :int
   ffi_func :fmrb_spx_app_send_message, [:int, :int, :str, :int], :int
-  ffi_func :fmrb_spx_app_send_audio_note, [:int, :int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_app_set_window_param, [:int, :int], :int  # 0=pos_x 1=pos_y
   # hit shape of a frameless window (fmrb_app.h layout): 1 ok / 0 refused
   ffi_func :fmrb_spx_app_set_hit_shape, [:str, :int], :int
@@ -86,12 +85,9 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_language, [], :binstr
   ffi_func :fmrb_spx_app_set_kana_mode, [:int], :int
   ffi_func :fmrb_spx_app_set_text_cursor, [:int, :int, :int], :int
-  ffi_func :fmrb_spx_app_clipboard_gen, [], :int
   ffi_func :fmrb_spx_app_clipboard_length, [], :int
   ffi_func :fmrb_spx_app_clipboard_chunk, [:int, :int], :binstr
-  ffi_func :fmrb_spx_app_set_clipboard, [:str, :int], :int
   ffi_func :fmrb_spx_app_rd_stream_state, [], :int
-  ffi_func :fmrb_spx_app_wallclock, [], :binstr
   ffi_func :fmrb_spx_app_set_wallclock, [:int, :int, :int, :int, :int, :int], :binstr
 
   # --- class: cursor / power ---

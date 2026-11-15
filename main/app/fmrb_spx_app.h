@@ -76,15 +76,6 @@ int fmrb_spx_app_mark_expected_stop(void);
 /** Send a message to another task. 1 on success, 0 if undelivered, neg on err. */
 int fmrb_spx_app_send_message(int dest_pid, int msg_type, const char *data, int len);
 
-/**
- * @brief Send one APU note on behalf of this app (FmrbApp#_send_audio_note).
- *
- * Same message as the mruby method: builds the msgpack note_on / note_off
- * payload in C and posts it to the kernel. 1 on success, 0 on failure.
- */
-int fmrb_spx_app_send_audio_note(int on, int ch, int freq, int vol, int duty,
-                                 int sweep);
-
 /** which: 0 = pos_x, 1 = pos_y. Updates the context and returns 0 / neg. */
 int fmrb_spx_app_set_window_param(int which, int value);
 /** @brief Declare this app's hit shape (fmrb_app_set_hit_shape); len 0 withdraws. 1 ok, 0 refused. */
@@ -166,27 +157,22 @@ const char *fmrb_spx_app_config(const char *section, int len);
 const char *fmrb_spx_app_language(void);
 
 /**
- * @brief The machine's clipboard (fmrb_clipboard.h, L12a): its generation,
- *        its length in bytes, a piece of it, and setting it.
+ * @brief The machine's clipboard (fmrb_clipboard.h, L12a): its length in
+ *        bytes and a piece of it (the generation and setting it are the app
+ *        boundary's, fmrb_bnd_app_*).
  *
  * chunk returns, as a :binstr, up to FMRB_SPX_APP_CLIP_CHUNK bytes from byte
  * off, never past limit (> 0) cut before a character that would not fit
  * whole; empty past the end. The Ruby side reads it in pieces and checks the
- * generation around them. set returns 1, or 0 when over the maximum.
+ * generation around them.
  */
 #define FMRB_SPX_APP_CLIP_CHUNK 4096
-int fmrb_spx_app_clipboard_gen(void);
 int fmrb_spx_app_clipboard_length(void);
 const char *fmrb_spx_app_clipboard_chunk(int off, int limit);
-int fmrb_spx_app_set_clipboard(const char *s, int len);
 int fmrb_spx_app_set_text_cursor(int x, int y, int h);
 
-/**
- * @brief Current wall clock (FmrbApp.wallclock). :binstr of six u16 LE:
- *        year, month, day, hour, minute, second. Empty String when unavailable.
- */
+/** The record of set_wallclock: six u16 LE (year, month, day, hour, minute, second). */
 #define FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE 12
-const char *fmrb_spx_app_wallclock(void);
 
 /**
  * @brief Set the wall clock from LOCAL time fields (FmrbSystem.set_wallclock) and
