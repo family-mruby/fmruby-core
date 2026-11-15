@@ -1,6 +1,6 @@
 # The SDK's tour example (rust/examples/tour; docs/tour.md is the common
-# specification every language's tour follows). rust/build.rb writes this
-# next to tour.app.wasm with sdk_version set.
+# specification every language's tour follows). Put it next to
+# tour.app.wasm.
 app_screen_name = "Rust tour"
 language = "rust"
 default_window_mode = "window"
@@ -8,4 +8,3 @@ default_window_width = 230
 default_window_height = 175
 default_window_pos_x = 45
 default_window_pos_y = 30
-sdk_version = "0.1.0"
