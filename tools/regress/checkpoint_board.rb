@@ -28,7 +28,10 @@
 # transfer app this run started there is stopped (the kernel takes it as its
 # own when it connects: "Transfer app adopted"). The apps the rounds start on
 # the board (BOARD_FILES) are put there from this tree when the board's copy
-# is missing or differs, and put back after the run.
+# is missing or differs, and put back after the run: one that was missing is
+# deleted again. No storage image carries /app/test (config/
+# storage_exclude_common.txt, doc/flash_layout F1), so on a board flashed
+# since then the test apps come and go with the run.
 #
 #   board self       /app/test/ckpt_self.app.rb asks for its own image
 #                    (restart): written and started again on the board (F1's

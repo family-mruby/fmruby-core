@@ -85,33 +85,33 @@ if(NOT IDF_TARGET STREQUAL "linux")
             COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/usr/share/sounds/voice/mahjong
             COMMENT "Retro image: leaving the service host's files and the voices out")
     endif()
-    # The test apps (flash/app/test) are for development and the regression
-    # tools: a release image (FMRB_RELEASE=1 rake build:esp32, which the
-    # release workflow sets) goes without them. Every board, so it is here
-    # rather than in a board's list below. Development builds keep them.
-    if(FMRB_RELEASE)
-        add_custom_command(TARGET storage_staging POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/app/test
-            COMMENT "Release image: leaving the test apps out")
-    endif()
-    # What a board leaves out of its image: config/storage_exclude_<target>.txt
-    # (target lower-cased, e.g. storage_exclude_atoms3r.txt; no target is the
-    # NARYA v3, naryav3), one path per line relative to the storage root, #
-    # starts a comment. Any board can have one; a board without the file keeps
-    # the whole tree. The files stay in git and in the simulator -- only this
-    # board's image goes without.
+    # What a board leaves out of its image, two lists, one path per line
+    # relative to the storage root, # starts a comment:
+    #   config/storage_exclude_common.txt  every board: what is put on a board
+    #     over WiFi only when it is wanted (the test apps, the regression tools
+    #     put them and take them away again; walk_scroller and its scenery;
+    #     doc/flash_layout F0-F1)
+    #   config/storage_exclude_<target>.txt  this board (target lower-cased,
+    #     e.g. storage_exclude_atoms3r.txt; no target is the NARYA v3,
+    #     naryav3): what the board cannot use. A board without the file keeps
+    #     the rest of the tree.
+    # The files stay in git and in the simulator -- only the image goes
+    # without.
     if(FMRB_HW_TARGET)
         string(TOLOWER "${FMRB_HW_TARGET}" FMRB_STORAGE_EXCLUDE_TARGET)
     else()
         set(FMRB_STORAGE_EXCLUDE_TARGET "naryav3")
     endif()
-    set(FMRB_STORAGE_EXCLUDE_FILE
-        ${CMAKE_SOURCE_DIR}/config/storage_exclude_${FMRB_STORAGE_EXCLUDE_TARGET}.txt)
-    if(EXISTS ${FMRB_STORAGE_EXCLUDE_FILE})
+    set(FMRB_STORAGE_EXCLUDE_CMDS "")
+    foreach(FMRB_STORAGE_EXCLUDE_FILE
+            ${CMAKE_SOURCE_DIR}/config/storage_exclude_common.txt
+            ${CMAKE_SOURCE_DIR}/config/storage_exclude_${FMRB_STORAGE_EXCLUDE_TARGET}.txt)
+        if(NOT EXISTS ${FMRB_STORAGE_EXCLUDE_FILE})
+            continue()
+        endif()
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
                      ${FMRB_STORAGE_EXCLUDE_FILE})
         file(STRINGS ${FMRB_STORAGE_EXCLUDE_FILE} FMRB_STORAGE_EXCLUDE_LINES)
-        set(FMRB_STORAGE_EXCLUDE_CMDS "")
         foreach(line IN LISTS FMRB_STORAGE_EXCLUDE_LINES)
             string(REGEX REPLACE "#.*$" "" line "${line}")
             string(STRIP "${line}" line)
@@ -125,11 +125,11 @@ if(NOT IDF_TARGET STREQUAL "linux")
             list(APPEND FMRB_STORAGE_EXCLUDE_CMDS
                  COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/${line})
         endforeach()
-        if(FMRB_STORAGE_EXCLUDE_CMDS)
-            add_custom_command(TARGET storage_staging POST_BUILD
-                ${FMRB_STORAGE_EXCLUDE_CMDS}
-                COMMENT "${FMRB_STORAGE_EXCLUDE_TARGET} image: leaving out what ${FMRB_STORAGE_EXCLUDE_FILE} lists")
-        endif()
+    endforeach()
+    if(FMRB_STORAGE_EXCLUDE_CMDS)
+        add_custom_command(TARGET storage_staging POST_BUILD
+            ${FMRB_STORAGE_EXCLUDE_CMDS}
+            COMMENT "${FMRB_STORAGE_EXCLUDE_TARGET} image: leaving out what config/storage_exclude_common.txt and storage_exclude_${FMRB_STORAGE_EXCLUDE_TARGET}.txt list")
     endif()
     littlefs_create_partition_image(storage ${STORAGE_STAGING} FLASH_IN_PROJECT
                                     DEPENDS storage_staging)

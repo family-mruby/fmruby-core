@@ -124,10 +124,19 @@ namespace :wasm do
     # the bundle must put nothing there -- the placeholder that keeps the
     # directory in git would otherwise be unpacked over the mount.
     files = files.reject { |f| f.start_with?("flash/app/usr/") }
-    # The test apps (flash/app/test) stay in the development bundle, which the
-    # regression tools drive, and are left out of a published one (wasm:site,
-    # wasm:deploy set FMRB_RELEASE=1 before the bundle is made).
-    files = files.reject { |f| f.start_with?("flash/app/test/") } if ENV["FMRB_RELEASE"] == "1"
+    # What no board's image carries (config/storage_exclude_common.txt: the
+    # test apps, the test tones, walk_scroller) stays in the development
+    # bundle, which the regression tools drive, and is left out of a
+    # published one (wasm:site, wasm:deploy set FMRB_RELEASE=1 before the
+    # bundle is made).
+    if ENV["FMRB_RELEASE"] == "1"
+      common = File.readlines(File.join(ROOT_DIR, "config/storage_exclude_common.txt"))
+                   .map { |l| l.sub(/#.*/, "").strip }.reject(&:empty?)
+      files = files.reject do |f|
+        rel = f.sub(%r{\Aflash/}, "")
+        common.any? { |e| rel == e || rel.start_with?("#{e}/") }
+      end
+    end
     files.each do |f|
       dest = File.join(staging, f.sub(%r{\Aflash/}, ""))
       mkdir_p File.dirname(dest)

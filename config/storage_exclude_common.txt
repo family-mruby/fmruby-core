@@ -1,0 +1,27 @@
+# What no board's storage image carries (top-level CMakeLists.txt reads this
+# for every board, before the board's own storage_exclude_<target>.txt). The
+# files stay in git, in the simulator, in the native program and in the
+# development browser bundle; the published browser bundle (rake wasm:site,
+# wasm:deploy) leaves them out as well (rakelib/wasm.rake).
+#
+# These are put on a board over WiFi when they are wanted
+# (doc/flash_layout/plan.md F0-F1). tools/regress/targets.rb does not read
+# this list: a board can still run them once they are put there.
+
+# The test apps. The tools that run them on a board put them there first and
+# take them away when they are done (ruby tools/fmrb_rd_fs.rb <IP> tests push
+# ... / tests clean, fmruby-core doc/regression/usage.md 8.2).
+app/test
+
+# Test tones (test/wav reads them from flash/; no app plays them).
+usr/share/sounds/sine440_16k.wav
+usr/share/sounds/sine440_8k.wav
+
+# walk_scroller and its 650 KB of scenery: an app for a walk with a step
+# sensor, not for every board's storage. Install it with
+#   ruby tools/fmrb_rd_fs.rb <IP> extra walk_scroller
+# (doc/flash_layout/report/f01.md).
+app/demo/walk_scroller.app.rb
+app/demo/walk_scroller.app.toml
+app/demo/walk_scroller
+usr/share/sprites/walk_scroller

@@ -225,6 +225,29 @@ calibrate: naryav4 3 boots (1.8 min: capture 36-36s x3); tmp/regress/boot/naryav
 
 sim の台本 (7.2) も同じ形: `rake regress:run:calibrate ONLY=<種類>` → 要約 → `APPLY=1`。
 
+### 8.2 実機で試験のアプリを使うとき (WiFi で送り、終わりに消す)
+
+2026-11-16 (doc/flash_layout F1) から、**どの端末の storage の像にも `app/test` (試験のアプリ) は入らない**
+(`config/storage_exclude_common.txt`。試験の音 `sine440_*.wav` と walk_scroller も同じ)。sim・ネイティブ版・
+開発のブラウザ版は `flash/` をそのまま見るので今までどおり。実機で試験のアプリが要るときは、使う前に WiFi で送り
+(開発のビルドの `/fs/*`)、試験のまとまりの終わりに消す。
+
+```
+ruby ../tools/fmrb_rd_fs.rb <IP> tests push ckpt_counter ckpt_window   # 名前は .app.rb の前の部分。省くと app/test 全部
+ruby ../tools/fmrb_rd_fs.rb <IP> tests ls                              # 端末の /app/test と、送った時刻
+ruby ../tools/fmrb_rd_fs.rb <IP> tests clean                           # まとまりの終わりに /app/test ごと消す
+ruby ../tools/fmrb_rd_fs.rb <IP> df                                    # 空き (/fs/df)
+```
+
+- 送るのは端末に無いか大きさの違うものだけ。端末の `/app/test/.pushed.json` に送った時刻を残す。
+- 送ると空きが 512 KB (`--reserve KB`) を切るときは、先に、今回要らない試験のファイルを送った時刻の古いものから
+  消す。それでも足りなければ送らずに止まる。`/fs/df` の無いファーム (2026-11-16 より前) では空きを見ずに送る。
+- MCP では `tab5_fs` の `tests_push` (`names`)・`tests_clean`・`tests_ls`・`df`。
+- 送ったアプリはランチャーの一覧にはすぐ出ない (右クリックで読み直す)。パスでの起動 (`tab5_app`、`/app/launch`) は
+  すぐ使える。
+- `rake regress:checkpoint BOARD=` (12 章) は自分で要るものだけを送り、終わりに消す (元から無かったものは消える)。
+- `rake regress:boot` は試験のアプリを使わない。
+
 ## 9. 画面の比較 (rake regress:screens)
 
 ```
@@ -429,7 +452,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
   - web requires: `ckpt_requires` をブラウザ版へ。聞かれた所で断られ、A で止まらずに数え続ける。
   - web late: `--hold 1` で移す。A で続き、ブラウザ版に写しは残らない (途中で捨てられるか、起動した写しが止められる)。
   - ログは `tmp/regress/checkpoint/web.chrome.log` (ページ) と `web_native.log` (A)。
-- 実機との場面 (F6、`BOARD=<端末>` のときだけ、`tools/regress/checkpoint_board.rb`)。`regress:boot` と同じく opt-in で、既定にも `regress:full` にも入らない。実機にはこの木のファーム (P4 の構成は gem を持つ) を焼いておき、fmrb の MCP の `serial_start` でシリアルを開いておく (ログは MCP の capture の file から読み、ポートは開かない。別の file は `BOARD_LOG=`)。実機は開発の遠隔操作 (`FMRB_DEV_REMOTE_CTL`、HTTP) で動かす: アプリの起動・一覧・停止、ファイル、止める頼み (`POST /app/checkpoint`・`POST /app/move`、結果は `GET /app/checkpoint?pid=`。実機のデバッグサーバは BLE なので)。実機の IP はログの `Connected, ip=` (なければ `BOARD_IP=`)、この PC の側の IP は実機への経路の送り元 (`HOST_IP=`)。自前の Zenoh のルータ (`fmrb_regress_ckpt_zenohd_board`、全部のインターフェースの 7447。Zenoh の決まりの port で、端末のためにルータを置く PC はもう通してある。WSL2 の mirrored は Hyper-V のファイアウォールが port ごとに通すので、ほかの port は実機から届かない。別の port は `BOARD_ROUTER_PORT=`。sim の zenohd と同じ port なので、sim が動いているときは断って止まる) を起こし、実機の `/home/asterism` の `config.toml`・`receive.toml` を流すあいだだけ書き換えて、終わったら元に戻す。場面が実機で起こすアプリ (`ckpt_*` と転送のアプリ) は、実機のものが無いか違うときだけこの木の `flash/` から置き、終わったら元に戻す (app だけ焼いた実機は storage が古いままなので)。転送のアプリは開発の遠隔操作で起こし、カーネルがそれを自分の転送のアプリとして引き取る (`Transfer app adopted`)。最初の構成のネイティブ版 (A、ノード `rg-ckpt-a`) と実機 (ノード `rg-ckpt-board`) の間で流す。`BOARD_ONLY=1` なら実機の場面だけ (ネイティブ版の場面は飛ばす)。fmruby-core の worktree で流すときは、`tools/fmrb_native.rb` などの直下の道具を置いたディレクトリ (その `fmruby-core` がこの木) を `FMRB_ROOT=` で渡す。
+- 実機との場面 (F6、`BOARD=<端末>` のときだけ、`tools/regress/checkpoint_board.rb`)。`regress:boot` と同じく opt-in で、既定にも `regress:full` にも入らない。実機にはこの木のファーム (P4 の構成は gem を持つ) を焼いておき、fmrb の MCP の `serial_start` でシリアルを開いておく (ログは MCP の capture の file から読み、ポートは開かない。別の file は `BOARD_LOG=`)。実機は開発の遠隔操作 (`FMRB_DEV_REMOTE_CTL`、HTTP) で動かす: アプリの起動・一覧・停止、ファイル、止める頼み (`POST /app/checkpoint`・`POST /app/move`、結果は `GET /app/checkpoint?pid=`。実機のデバッグサーバは BLE なので)。実機の IP はログの `Connected, ip=` (なければ `BOARD_IP=`)、この PC の側の IP は実機への経路の送り元 (`HOST_IP=`)。自前の Zenoh のルータ (`fmrb_regress_ckpt_zenohd_board`、全部のインターフェースの 7447。Zenoh の決まりの port で、端末のためにルータを置く PC はもう通してある。WSL2 の mirrored は Hyper-V のファイアウォールが port ごとに通すので、ほかの port は実機から届かない。別の port は `BOARD_ROUTER_PORT=`。sim の zenohd と同じ port なので、sim が動いているときは断って止まる) を起こし、実機の `/home/asterism` の `config.toml`・`receive.toml` を流すあいだだけ書き換えて、終わったら元に戻す。場面が実機で起こすアプリ (`ckpt_*` と転送のアプリ) は、実機のものが無いか違うときだけこの木の `flash/` から置き、終わったら元に戻す (無かったものは消す。storage の像に `app/test` は無いので、ふつうは送って消す。8.2)。転送のアプリは開発の遠隔操作で起こし、カーネルがそれを自分の転送のアプリとして引き取る (`Transfer app adopted`)。最初の構成のネイティブ版 (A、ノード `rg-ckpt-a`) と実機 (ノード `rg-ckpt-board`) の間で流す。`BOARD_ONLY=1` なら実機の場面だけ (ネイティブ版の場面は飛ばす)。fmruby-core の worktree で流すときは、`tools/fmrb_native.rb` などの直下の道具を置いたディレクトリ (その `fmruby-core` がこの木) を `FMRB_ROOT=` で渡す。
   - board self: 実機の中で `ckpt_self` が自分のイメージを頼み (`restart: true`)、書かれて起動し直し、数が次の 1 歩から続く。
   - board in・out: カウンタを A から実機へ、実機の `/app/move` で A へ戻す。どちらも次の 1 歩から続く。
   - board window: `ckpt_window` を実機へ移して戻す (`on_restore` と Task が続くことだけ。実機の画面は HDMI なので画素は比べない)。

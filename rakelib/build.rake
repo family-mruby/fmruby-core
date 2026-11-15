@@ -216,10 +216,9 @@ namespace :build do
     #   CMAKE_OPTS="-DFMRB_LINK_TRANSPORT=SPI" rake build:esp32
     cmake_opts = "-DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\""
     cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}" unless hw_target.empty?
-    # A release image leaves the test apps (flash/app/test) out of storage
-    # (top-level CMakeLists.txt). Passed both ways, as CMake keeps a -D value
-    # in its cache: FMRB_RELEASE=1 is set by the release workflow.
-    cmake_opts += " -DFMRB_RELEASE=#{ENV['FMRB_RELEASE'] == '1' ? 'ON' : 'OFF'}"
+    # No image carries the test apps (flash/app/test) any more, release or
+    # not (config/storage_exclude_common.txt, doc/flash_layout F1), so the
+    # release workflow's FMRB_RELEASE=1 changes nothing here.
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end
