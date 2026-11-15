@@ -108,11 +108,36 @@ task :"check-port" do
   end
 end
 
-desc "Flash to ESP32 (override baud with FLASH_BAUD=115200 etc; default 460800)"
-task :flash do
+# The write speed. FLASH_BAUD wins; otherwise a CH34x bridge (CH340 on
+# NARYAv3, CH343 on the P4-Nano) gets 115200 from the start -- at the rake
+# default of 460800 a long write fails now and then on those, and 115200 has
+# not (2026-11-15) -- and anything else idf.py's default (460800). The bridge
+# is read from sysfs (USB vendor 1a86); when that cannot be read, the target
+# decides (NARYAv3, NARYAv4).
+def flash_baud(port)
   baud = ENV['FLASH_BAUD']
-  baud_opt = baud && !baud.empty? ? "-b #{baud}" : ''
-  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} #{baud_opt} flash".gsub(/\s+/, ' ')
+  return baud if baud && !baud.empty?
+  ch34x_port?(port) ? "115200" : nil
+end
+
+def flash_baud_opt(port)
+  baud = flash_baud(port)
+  baud ? "-b #{baud}" : ''
+end
+
+def ch34x_port?(port)
+  dev = File.basename(File.realpath(port)) rescue File.basename(port.to_s)
+  ["device/../idVendor", "device/../../idVendor"].each do |rel|
+    f = "/sys/class/tty/#{dev}/#{rel}"
+    return File.read(f).strip.downcase == "1a86" if File.exist?(f)
+  end
+  %w[NARYAv3 NARYAv4].include?(ENV['FMRB_HW_TARGET'])
+end
+
+desc "Flash to ESP32 (FLASH_BAUD= overrides the speed; CH34x boards 115200, others 460800)"
+task :flash do
+  port = get_serial_port
+  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{port} #{flash_baud_opt(port)} flash".gsub(/\s+/, ' ')
 end
 
 namespace :flash do
@@ -123,11 +148,155 @@ namespace :flash do
   # regress:boot finds its board by VID:PID and passes it here).
   desc "Flash only the app partition (keeps storage incl. the device's /home; PORT= overrides .serial_port)"
   task :app do
-    baud = ENV['FLASH_BAUD']
-    baud_opt = baud && !baud.empty? ? "-b #{baud}" : ''
     port = ENV['PORT'] && !ENV['PORT'].empty? ? ENV['PORT'] : get_serial_port
-    sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{port} #{baud_opt} app-flash".gsub(/\s+/, ' ')
+    sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{port} #{flash_baud_opt(port)} app-flash".gsub(/\s+/, ' ')
   end
+
+  # Flashing without losing the board's /home (doc/dev_remote_ctl/plan.md,
+  # "the development build"; doc/remote_guard G0). The WiFi halves are
+  # ../tools/fmrb_flash_keep.rb, shared with the MCP flash tool; they need a
+  # development build on the board (FMRB_DEV_REMOTE_CTL) both before and after.
+  # Build first (rake build:esp32): the storage tree sent or written is
+  # build/storage_root as the last build left it.
+
+  desc "Full flash that keeps the board's /home: back it up over WiFi (keys too, into ~/asterism_keys), flash, write it back, reboot (HOST=ip|fmruby-xxxxxx.local, BACKUP_DIR=)"
+  task :keep_home do
+    host = flash_keep_host
+    flash_keep_need_storage_root
+    dir = ENV['BACKUP_DIR'] && !ENV['BACKUP_DIR'].empty? ? ["--dir", File.expand_path(ENV['BACKUP_DIR'])] : []
+    t0 = Time.now
+    out = flash_keep_tool("prepare", host, "--storage-root", FLASH_KEEP_ROOT, *dir)
+    backup = out[/^backup=(.+)$/, 1] or abort "the backup did not say where it went"
+    name = out[/^name=(.+)$/, 1]
+    t1 = Time.now
+    Rake::Task[:flash].invoke
+    t2 = Time.now
+    flash_keep_tool("finish", host, "--dir", backup, *(name ? ["--name", name] : []))
+    puts format("keep_home: backup %ds, flash %ds, write-back and reboot %ds; /home is saved in %s",
+                t1 - t0, t2 - t1, Time.now - t2, backup)
+  end
+
+  desc "App-only flash, then send what differs between build/storage_root and the board over WiFi; /home untouched (HOST=, CONF=1 sends /etc/system_conf.toml too)"
+  task :app_sync do
+    host = flash_keep_host
+    flash_keep_need_storage_root
+    t0 = Time.now
+    name = flash_keep_tool("name", host, fail_ok: true)[/^name=(.+)$/, 1]
+    Rake::Task["flash:app"].invoke
+    t1 = Time.now
+    conf = ENV['CONF'] == "1" ? ["--conf"] : []
+    flash_keep_tool("sync", host, "--storage-root", FLASH_KEEP_ROOT,
+                    *(name ? ["--name", name] : []), *conf)
+    puts format("app_sync: flash %ds, sync %ds", t1 - t0, Time.now - t1)
+  end
+
+  # The serial way, for a board WiFi does not bring back with an empty /home
+  # (no /etc/wifi.toml in the image): the storage partition read with esptool
+  # (or the /home of a WiFi backup, BACKUP=), opened with littlefs-python, its
+  # /home put into the new storage tree, and that image written in place of
+  # build/storage.bin. Everything in the container the build uses, with the
+  # build's own littlefs venv.
+  desc "Full flash keeping /home over serial: read storage, put its /home into the new image, write (BACKUP=dir uses a backup's /home instead of reading; STORAGE_ONLY=1 writes only storage; BACKUP_DIR=, DEVICE=<machine>-<mac>, READ_BAUD=, PORT=)"
+  task :keep_home_serial do
+    require "json"
+    require "fileutils"
+    flash_keep_need_storage_root
+    fa = JSON.parse(File.read("build/flasher_args.json"))
+    offset = fa.dig("storage", "offset") or abort "build/flasher_args.json names no storage partition"
+    chip = fa.dig("extra_esptool_args", "chip")
+    size = File.size("build/storage.bin")
+    name_max = File.read("sdkconfig")[/^CONFIG_LITTLEFS_OBJ_NAME_LEN=(\d+)/, 1] || "64"
+    port = ENV['PORT'] && !ENV['PORT'].empty? ? ENV['PORT'] : get_serial_port
+    old_umask = File.umask(0o077)
+    if ENV['BACKUP'] && !ENV['BACKUP'].empty?
+      dir = File.expand_path(ENV['BACKUP'])
+      home_rel = "home"
+      abort "#{dir}/home is not a directory" unless File.directory?(File.join(dir, home_rel))
+    else
+      dir = flash_keep_serial_dir
+      FileUtils.mkdir_p(dir, mode: 0o700)
+      read_baud = ENV['READ_BAUD'] && !ENV['READ_BAUD'].empty? ? ENV['READ_BAUD'] : "460800"
+      sh "#{flash_keep_docker_priv(dir)} esptool.py --chip #{chip} -p #{port} -b #{read_baud} " \
+         "read_flash #{offset} #{size} /backup/storage.bin"
+      sh "#{flash_keep_docker_lfs(dir)} extract --block-size=4096 --name-max=#{name_max} " \
+         "/backup/storage.bin /backup/extract"
+      home_rel = "extract/home"
+      FileUtils.mkdir_p(File.join(dir, home_rel))
+    end
+    merged = File.join(dir, "merged_root")
+    FileUtils.rm_rf(merged)
+    FileUtils.cp_r(FLASH_KEEP_ROOT, merged)
+    FileUtils.rm_rf(File.join(merged, "home"))
+    FileUtils.cp_r(File.join(dir, home_rel), File.join(merged, "home"))
+    sh "#{flash_keep_docker_lfs(dir)} create /backup/merged_root /backup/storage_keep_home.bin " \
+       "--fs-size=#{size} --name-max=#{name_max} --block-size=4096"
+    baud = flash_baud(port) || "460800"
+    if ENV['STORAGE_ONLY'] == "1"
+      sh "#{flash_keep_docker_priv(dir)} esptool.py --chip #{chip} -p #{port} -b #{baud} " \
+         "--before default_reset --after hard_reset write_flash #{offset} /backup/storage_keep_home.bin"
+    else
+      args = File.read("build/flash_args").lines.map do |l|
+        l.split.first == offset ? "#{offset} /backup/storage_keep_home.bin\n" : l
+      end
+      File.write(File.join(dir, "flash_args_keep_home"), args.join)
+      sh "#{flash_keep_docker_priv(dir, workdir: '/project/build')} esptool.py --chip #{chip} -p #{port} " \
+         "-b #{baud} --before default_reset --after hard_reset write_flash @/backup/flash_args_keep_home"
+    end
+    system("chmod", "-R", "go-rwx", dir)
+    puts "keep_home_serial: done; the storage image read, the merged tree and the image written are in #{dir}"
+  ensure
+    File.umask(old_umask) if old_umask
+  end
+end
+
+FLASH_KEEP_ROOT = "build/storage_root"
+FLASH_KEEP_TOOL = File.expand_path("../tools/fmrb_flash_keep.rb", PWD_)
+
+def flash_keep_host
+  host = ENV['HOST'] || ENV['IP']
+  abort "say which board: HOST=<ip> or HOST=fmruby-xxxxxx.local (its WiFi address)" if host.nil? || host.empty?
+  host
+end
+
+def flash_keep_need_storage_root
+  return if File.directory?(FLASH_KEEP_ROOT) && File.exist?("build/flasher_args.json")
+  abort "no ESP32 build here (#{FLASH_KEEP_ROOT}, build/flasher_args.json): rake build:esp32 first"
+end
+
+# Run the WiFi tool, its output shown as it comes and returned. Exit 3 is
+# "the board did not come back on WiFi"; the tool has said what to do.
+def flash_keep_tool(cmd, *args, fail_ok: false)
+  out = +""
+  IO.popen([RbConfig.ruby, FLASH_KEEP_TOOL, cmd, *args], err: [:child, :out]) do |io|
+    io.each_line { |l| print l; out << l }
+  end
+  return out if $?.success? || fail_ok
+  abort "fmrb_flash_keep.rb #{cmd} failed (exit #{$?.exitstatus})"
+end
+
+# Where the serial way keeps what it read: next to the WiFi backups.
+def flash_keep_serial_dir
+  return File.expand_path(ENV['BACKUP_DIR']) if ENV['BACKUP_DIR'] && !ENV['BACKUP_DIR'].empty?
+  device = ENV['DEVICE']
+  if (device.nil? || device.empty?) && ENV['HOST'] && !ENV['HOST'].empty?
+    out = flash_keep_tool("name", ENV['HOST'], fail_ok: true)
+    mac = out[/^name=\S*-(\h{6})$/, 1]
+    machine = { "NARYAv4" => "p4nano", "NARYAv3" => "naryav3" }.fetch(ENV['FMRB_HW_TARGET'], ENV['FMRB_HW_TARGET'].to_s.downcase)
+    device = "#{machine}-#{mac}" if mac
+  end
+  abort "say where the image goes: BACKUP_DIR=<dir>, or DEVICE=<machine>-<MAC last 3> " \
+        "(e.g. p4nano-xxxxxx) for ~/asterism_keys/devices/<DEVICE>/" if device.nil? || device.empty?
+  File.expand_path("~/asterism_keys/devices/#{device}/home_backup_serial_#{Time.now.strftime('%Y%m%d-%H%M%S')}")
+end
+
+def flash_keep_docker_priv(dir, workdir: nil)
+  w = workdir ? "-w #{workdir}" : ""
+  DOCKER_CMD_PRIVILEGED.sub(/ #{Regexp.escape(IMAGE)}\z/, " -v #{dir}:/backup #{w} #{IMAGE}")
+end
+
+def flash_keep_docker_lfs(dir)
+  ["docker run --rm", USER_OPT, "-e HOME=/tmp", "-v #{PWD_}:/project", "-v #{dir}:/backup",
+   "--entrypoint /project/build/littlefs_py_venv/bin/littlefs-python", IMAGE].join(" ")
 end
 
 desc "Check ESP32 HW"
