@@ -30,6 +30,13 @@
 5. 毎フレーム・毎イベントで呼ぶもの (メッセージ待ち・タイマー・イベントの座標など) の mruby の命令数を前後で測る。
    増えたものは理由と、C に戻す候補を report に (戻すかは親が決める)。
 
+6. **W4b-2 の後の決定の残り** (2026-11-15 ユーザ):
+   - ファイル: 新しいモジュール `FmrbFile` を sig に定義して境界に載せる (パスで呼ぶ丸ごとの読み書き。read・write・
+     exist?・size・delete・list など。`path_read_only?`・`free_bytes` もここ。`free_bytes` の「分からない」の表し方は
+     決めて書く)。Ruby の `File` は変えない。MicroPython の `read_file` は FmrbFile に置き換える。
+   - MicroPython: `uptime_ms` を足し、長い整数 (`MICROPY_LONGINT_IMPL`) も有効にする。内蔵 RAM の静的な増分は 0 の
+     まま、ファームの増分は report に。
+
 ## 確かめること (これだけ)
 
 - `rake regress`・`rake regress:spinel`・`ruby tools/wamr_poc/run.rb boundary`。sig を直したら `rake clean` してから

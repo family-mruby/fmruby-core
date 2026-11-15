@@ -278,6 +278,8 @@
 | 項目 | 決定 |
 |---|---|
 | FmrbAudio の C の形 | 受け手の番号を取る形にする (FmrbGfx と同じ)。本体の中では今は番号を使わず何もしない。アプリごとの音の状態を持つときに形を変えずに済むようにするため。FmrbApp は番号を取らないまま |
+| ファイル | 新しいモジュール `FmrbFile` (パスで呼ぶ丸ごとの読み書き: read・write・exist?・size・delete・list など) を境界に載せる。Ruby の `File` (picoruby の IO) は今のまま。`path_read_only?`・`free_bytes` も FmrbFile に |
+| MicroPython の時計 | 両方: `uptime_ms` を足し、長い整数も有効にする (ESP32 で約 18 分後の `uptime_us()` の OverflowError をなくす。ファームが数 KB 増えるのは受け入れる) |
 | VM プールの +360 B | 受け入れる (Log の `*_raw` で約 168 B、FmrbAudio と FmrbApp で約 192 B)。基準を更新した |
 
 ## スコープ (段)
