@@ -1,6 +1,6 @@
 # アプリの境界と型定義からの生成 計画
 
-> 状態: 進行中 | 更新: 2026-11-15 | アプリと本体の間の境界を、型定義 `sig/*.rbs` の 1 か所から全エンジン (mruby・Spinel・Lua・MicroPython・wasm の各言語・C のヘッダ) のつなぎを生成する形に整え、Window の枠と一生の処理を本体の C の殻に置く。doc/wasm_apps から W3 (殻) と W4 (生成) を分けたテーマ (wasm_apps の決定 16)。W3・W4a を wasm_apps の W1b より先に進める (決定 15)。W3 完了 (殻と Lua)。W4a 完了 (印と規則を道具に入れ、FmrbGfx をクラスごと境界に載せて全エンジンのつなぎを生成に、report/w4a.md)。W4b-1・W4b-1b 済 (描き手、`present` を C に戻す、描き手の上限の例外、版の違う mrblib の checkpoint を断る、report/w4b_1.md・w4b_1b.md)
+> 状態: 進行中 | 更新: 2026-11-15 | アプリと本体の間の境界を、型定義 `sig/*.rbs` の 1 か所から全エンジン (mruby・Spinel・Lua・MicroPython・wasm の各言語・C のヘッダ) のつなぎを生成する形に整え、Window の枠と一生の処理を本体の C の殻に置く。doc/wasm_apps から W3 (殻) と W4 (生成) を分けたテーマ (wasm_apps の決定 16)。W3・W4a を wasm_apps の W1b より先に進める (決定 15)。W3 完了 (殻と Lua)。W4a 完了 (印と規則を道具に入れ、FmrbGfx をクラスごと境界に載せて全エンジンのつなぎを生成に、report/w4a.md)。W4b-1・W4b-1b 済 (描き手、`present` を C に戻す、描き手の上限の例外、版の違う mrblib の checkpoint を断る、report/w4b_1.md・w4b_1b.md)。W4b-2 済 (音・ログ・クリップボードと時計を境界に。ファイルは書き方の選択を返した、report/w4b_2.md)
 
 ## 目的
 
