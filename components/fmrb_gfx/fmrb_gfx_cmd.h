@@ -55,6 +55,22 @@ void fmrb_gfx_set_flow_semaphore(fmrb_semaphore_t sem);
  */
 fmrb_err_t fmrb_gfx_submit(const gfx_cmd_t *cmd);
 
+struct fmrb_app_task_context_s;
+
+/**
+ * @brief fmrb_gfx_submit() for a caller that already has the calling app's
+ *        context (fmrb_current()), so it is not looked up again.
+ *
+ * For the app boundary's drawing functions, which find the context to resolve
+ * their receiver: one thread-local read per drawing call instead of three.
+ *
+ * @param ctx The calling app's context (fmrb_current()); NULL fails as
+ *            fmrb_gfx_submit() does outside an app task.
+ * @param cmd Command to send. Copied into the message payload.
+ * @return As fmrb_gfx_submit().
+ */
+fmrb_err_t fmrb_gfx_submit_from(const struct fmrb_app_task_context_s *ctx, const gfx_cmd_t *cmd);
+
 /**
  * @brief Queue a command without taking a flow-control slot.
  *

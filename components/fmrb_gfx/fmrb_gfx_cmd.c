@@ -18,9 +18,9 @@ void fmrb_gfx_set_flow_semaphore(fmrb_semaphore_t sem)
 
 // Queue one command. The caller has already settled the flow-control
 // accounting; this only moves the bytes.
-static fmrb_err_t submit_queued(const gfx_cmd_t *cmd, fmrb_semaphore_t sem)
+static fmrb_err_t submit_queued(const fmrb_app_task_context_t *ctx, const gfx_cmd_t *cmd,
+                                fmrb_semaphore_t sem)
 {
-    fmrb_app_task_context_t *ctx = fmrb_current();
     fmrb_msg_t msg = {
         .type = FMRB_MSG_TYPE_APP_GFX,
         .src_pid = ctx ? ctx->app_id : PROC_ID_KERNEL,
@@ -55,16 +55,20 @@ fmrb_err_t fmrb_gfx_submit_unmetered(const gfx_cmd_t *cmd)
     }
     gfx_cmd_t copy = *cmd;
     copy.unmetered = 1;
-    return submit_queued(&copy, NULL);
+    return submit_queued(fmrb_current(), &copy, NULL);
 }
 
 fmrb_err_t fmrb_gfx_submit(const gfx_cmd_t *cmd)
+{
+    return fmrb_gfx_submit_from(fmrb_current(), cmd);
+}
+
+fmrb_err_t fmrb_gfx_submit_from(const struct fmrb_app_task_context_s *ctx, const gfx_cmd_t *cmd)
 {
     if (!cmd) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
         FMRB_LOGE(TAG, "No app context for graphics command");
         return FMRB_ERR_INVALID_STATE;
@@ -81,7 +85,7 @@ fmrb_err_t fmrb_gfx_submit(const gfx_cmd_t *cmd)
         }
     }
 
-    return submit_queued(cmd, sem);
+    return submit_queued(ctx, cmd, sem);
 }
 
 /* ---- command constructors ---------------------------------------------- */

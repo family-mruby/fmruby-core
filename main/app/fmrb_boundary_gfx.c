@@ -51,16 +51,21 @@
 
 /* ---- the drawers --------------------------------------------------------- */
 
-static fmrb_gfx_drawer_t *drawer_of(int32_t drawer)
+// A drawer of the given app context (the caller has looked it up).
+static fmrb_gfx_drawer_t *drawer_in(fmrb_app_task_context_t *ctx, int32_t drawer)
 {
     if (drawer < 0 || drawer >= FMRB_GFX_DRAWERS_MAX) {
         return NULL;
     }
-    fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx || !ctx->gfx_drawers[drawer].used) {
         return NULL;
     }
     return &ctx->gfx_drawers[drawer];
+}
+
+static fmrb_gfx_drawer_t *drawer_of(int32_t drawer)
+{
+    return drawer_in(fmrb_current(), drawer);
 }
 
 static uint16_t clamp_size(int32_t v)
@@ -137,6 +142,7 @@ const fmrb_gfx_drawer_t *fmrb_gfx_drawer_get(int32_t drawer)
 }
 
 typedef struct {
+    fmrb_app_task_context_t *ctx;  // the calling app's, looked up once per call
     fmrb_canvas_handle_t canvas;
     int16_t ox, oy;   // what a drawing call adds: the origin, or 0 into an image
     int16_t ax, ay;   // the origin itself (the sprite clip's)
@@ -144,7 +150,8 @@ typedef struct {
 
 static bool target_of(int32_t gfx, gfx_target_t *t)
 {
-    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    t->ctx = fmrb_current();
+    const fmrb_gfx_drawer_t *d = drawer_in(t->ctx, gfx);
     if (!d) {
         return false;
     }
@@ -195,9 +202,11 @@ int32_t fmrb_bnd_gfx_area_height(int32_t gfx)
     return d ? (int32_t)d->area_h : ERR_FAILED;
 }
 
-static int32_t submit(const gfx_cmd_t *cmd)
+// Queue a command for the app whose drawer TARGET found (its context, not
+// looked up again).
+static int32_t submit(const gfx_target_t *t, const gfx_cmd_t *cmd)
 {
-    return fmrb_gfx_submit(cmd) == FMRB_OK ? 0 : ERR_FAILED;
+    return fmrb_gfx_submit_from(t->ctx, cmd) == FMRB_OK ? 0 : ERR_FAILED;
 }
 
 /* A Ruby string (not NUL terminated) as a C path. */
@@ -218,7 +227,7 @@ int32_t fmrb_bnd_gfx_clear(int32_t gfx, int32_t color)
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_clear(&cmd, t.canvas, (fmrb_color_t)color);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_set_pixel(int32_t gfx, int32_t x, int32_t y, int32_t color)
@@ -226,7 +235,7 @@ int32_t fmrb_bnd_gfx_set_pixel(int32_t gfx, int32_t x, int32_t y, int32_t color)
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_pixel(&cmd, t.canvas, TX(t, x), TY(t, y), (fmrb_color_t)color);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 // A synchronous command through host_task, so every queued drawing command
@@ -247,7 +256,7 @@ int32_t fmrb_bnd_gfx_get_pixel(int32_t gfx, int32_t x, int32_t y)
     }
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_get_pixel(&cmd, t.canvas, TX(t, x), TY(t, y), &sync);
-    if (fmrb_gfx_submit(&cmd) != FMRB_OK) {
+    if (fmrb_gfx_submit_from(t.ctx, &cmd) != FMRB_OK) {
         fmrb_semaphore_delete(sync.done);
         return ERR_FAILED;
     }
@@ -270,7 +279,7 @@ int32_t fmrb_bnd_gfx_draw_line(int32_t gfx, int32_t x0, int32_t y0, int32_t x1, 
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_line(&cmd, t.canvas, TX(t, x0), TY(t, y0), TX(t, x1), TY(t, y1), (fmrb_color_t)color);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 static int32_t rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t color, bool filled)
@@ -279,7 +288,7 @@ static int32_t rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_rect(&cmd, t.canvas, TX(t, x), TY(t, y), (uint16_t)w, (uint16_t)h,
                       (fmrb_color_t)color, filled);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t color)
@@ -299,7 +308,7 @@ int32_t fmrb_bnd_gfx_blend_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, in
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_blend_rect(&cmd, t.canvas, TX(t, x), TY(t, y), (uint16_t)w, (uint16_t)h,
                             (fmrb_color_t)color, (uint8_t)mode);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 static int32_t round_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r,
@@ -309,7 +318,7 @@ static int32_t round_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t 
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_round_rect(&cmd, t.canvas, TX(t, x), TY(t, y), (int16_t)w, (int16_t)h, (int16_t)r,
                             (fmrb_color_t)color, filled);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_round_rect(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r,
@@ -329,7 +338,7 @@ static int32_t circle(int32_t gfx, int32_t x, int32_t y, int32_t r, int32_t colo
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_circle(&cmd, t.canvas, TX(t, x), TY(t, y), (int16_t)r, (fmrb_color_t)color, filled);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_circle(int32_t gfx, int32_t x, int32_t y, int32_t r, int32_t color)
@@ -348,7 +357,7 @@ static int32_t ellipse(int32_t gfx, int32_t x, int32_t y, int32_t rx, int32_t ry
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_ellipse(&cmd, t.canvas, TX(t, x), TY(t, y), (int16_t)rx, (int16_t)ry,
                          (fmrb_color_t)color, filled);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_ellipse(int32_t gfx, int32_t x, int32_t y, int32_t rx, int32_t ry, int32_t color)
@@ -368,7 +377,7 @@ static int32_t triangle(int32_t gfx, int32_t x0, int32_t y0, int32_t x1, int32_t
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_triangle(&cmd, t.canvas, TX(t, x0), TY(t, y0), TX(t, x1), TY(t, y1), TX(t, x2), TY(t, y2),
                           (fmrb_color_t)color, filled);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_triangle(int32_t gfx, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2,
@@ -390,7 +399,7 @@ static int32_t arc(int32_t gfx, int32_t x, int32_t y, int32_t r0, int32_t r1, in
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_arc(&cmd, t.canvas, TX(t, x), TY(t, y), (int16_t)r0, (int16_t)r1, (int16_t)a0, (int16_t)a1,
                      (fmrb_color_t)color, filled);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_arc(int32_t gfx, int32_t x, int32_t y, int32_t r0, int32_t r1, int32_t angle0,
@@ -418,7 +427,7 @@ int32_t fmrb_bnd_gfx_draw_text_raw(int32_t gfx, int32_t x, int32_t y, const char
     fmrb_gfx_cmd_text_n(&cmd, t.canvas, TX(t, x), TY(t, y), text, (size_t)text_len,
                         (fmrb_color_t)color, (fmrb_color_t)(bg_color < 0 ? 0 : bg_color), bg_color < 0,
                         FMRB_FONT_SIZE_MEDIUM, mixed ? 1 : 0);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 // family: FMRB_BND_GFX_SET_FONT_RAW_FAMILY_{DEFAULT,JA,JA_BOLD}. The sizes are the
@@ -457,7 +466,7 @@ int32_t fmrb_bnd_gfx_set_font_raw(int32_t gfx, int32_t family, int32_t size)
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_set_font(&cmd, t.canvas, fam, (uint8_t)size);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_set_text_size_raw(int32_t gfx, int32_t size)
@@ -467,7 +476,7 @@ int32_t fmrb_bnd_gfx_set_text_size_raw(int32_t gfx, int32_t size)
     if (size > 4) size = 4;
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_text_size(&cmd, t.canvas, (uint8_t)size);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 // "MM/DD hh:mm:ss" formatted on the C stack and sent as one text command, so
@@ -488,7 +497,7 @@ int32_t fmrb_bnd_gfx_draw_wallclock(int32_t gfx, int32_t x, int32_t y, int32_t c
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_text(&cmd, t.canvas, TX(t, x), TY(t, y), buf, (fmrb_color_t)color,
                       (fmrb_color_t)bg_color, 0, FMRB_FONT_SIZE_MEDIUM, 0);
-    return submit(&cmd) == 0 ? 1 : 0;
+    return submit(&t, &cmd) == 0 ? 1 : 0;
 }
 
 // The free internal RAM in KB as a fixed 5-char cell ("187KB"); "---KB" on
@@ -506,7 +515,7 @@ int32_t fmrb_bnd_gfx_draw_free_iram(int32_t gfx, int32_t x, int32_t y, int32_t c
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_text(&cmd, t.canvas, TX(t, x), TY(t, y), buf, (fmrb_color_t)color,
                       (fmrb_color_t)bg_color, 0, FMRB_FONT_SIZE_MEDIUM, 0);
-    return submit(&cmd) == 0 ? 1 : 0;
+    return submit(&t, &cmd) == 0 ? 1 : 0;
 }
 
 /* ---- images and masks ---------------------------------------------------- */
@@ -552,7 +561,7 @@ int32_t fmrb_bnd_gfx_draw_image_raw(int32_t gfx, int32_t image_id, int32_t x, in
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_draw_image(&cmd, t.canvas, (uint16_t)image_id, TX(t, x), TY(t, y), 0,
                             (int16_t)(scale_x * 256.0), (int16_t)(scale_y * 256.0));
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_delete_image(int32_t gfx, int32_t image_id)
@@ -560,7 +569,7 @@ int32_t fmrb_bnd_gfx_delete_image(int32_t gfx, int32_t image_id)
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_delete_image(&cmd, t.canvas, (uint16_t)image_id);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_tile_raw(int32_t gfx, int32_t image_id, int32_t src_x, int32_t src_y, int32_t w,
@@ -570,7 +579,7 @@ int32_t fmrb_bnd_gfx_draw_tile_raw(int32_t gfx, int32_t image_id, int32_t src_x,
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_draw_tile(&cmd, t.canvas, (uint16_t)image_id, (int16_t)src_x, (int16_t)src_y, (uint16_t)w,
                            (uint16_t)h, TX(t, dst_x), TY(t, dst_y));
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 /* Mask upload: a BEGIN that reserves the buffer on the display, then the bits
@@ -631,7 +640,7 @@ int32_t fmrb_bnd_gfx_delete_mask(int32_t gfx, int32_t mask_id)
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_delete_mask(&cmd, t.canvas, (uint16_t)mask_id);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_draw_image_masked_raw(int32_t gfx, int32_t image_id, int32_t mask_id, int32_t x, int32_t y)
@@ -639,7 +648,7 @@ int32_t fmrb_bnd_gfx_draw_image_masked_raw(int32_t gfx, int32_t image_id, int32_
     TARGET(gfx, t);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_draw_image_masked(&cmd, t.canvas, (uint16_t)image_id, (uint16_t)mask_id, TX(t, x), TY(t, y));
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 /* ---- present and the canvas-wide settings -------------------------------- */
@@ -649,15 +658,11 @@ int32_t fmrb_bnd_gfx_draw_image_masked_raw(int32_t gfx, int32_t image_id, int32_
 // manager does not track).
 int32_t fmrb_bnd_gfx_present_raw(int32_t gfx, int32_t x, int32_t y, int32_t positioned)
 {
-    TARGET(gfx, t);
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        return ERR_FAILED;
-    }
+    TARGET(gfx, t);  // (a drawer was found: t.ctx is the app's context)
     gfx_cmd_t cmd;  // 0xFF = no transparency
-    fmrb_gfx_cmd_present(&cmd, t.canvas, positioned ? (int16_t)x : (int16_t)ctx->window_pos_x,
-                         positioned ? (int16_t)y : (int16_t)ctx->window_pos_y, 0xFF);
-    return submit(&cmd);
+    fmrb_gfx_cmd_present(&cmd, t.canvas, positioned ? (int16_t)x : (int16_t)t.ctx->window_pos_x,
+                         positioned ? (int16_t)y : (int16_t)t.ctx->window_pos_y, 0xFF);
+    return submit(&t, &cmd);
 }
 
 // The composite source viewport (the hardware scroll register; Modern only,
@@ -740,7 +745,7 @@ int32_t fmrb_bnd_gfx_set_output_level(int32_t gfx, int32_t level)
     if (level > 255) level = 255;
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_set_output_level(&cmd, t.canvas, (uint8_t)level);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 int32_t fmrb_bnd_gfx_set_chroma_level(int32_t gfx, int32_t level)
@@ -750,7 +755,7 @@ int32_t fmrb_bnd_gfx_set_chroma_level(int32_t gfx, int32_t level)
     if (level > 255) level = 255;
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_set_chroma_level(&cmd, t.canvas, (uint8_t)level);
-    return submit(&cmd);
+    return submit(&t, &cmd);
 }
 
 /* ---- files on the graphics side ------------------------------------------ */

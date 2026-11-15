@@ -859,19 +859,31 @@ class FmrbGfx
   end
 
   # ---- composite regions / viewport ----
-  # The wrapper fills in what a region leaves out; the simple form takes every
-  # field and packs composite_region records (13 bytes: six int16 and a byte).
+  # Both forms pack composite_region records (13 bytes: six int16 and a
+  # byte) straight from the regions given. The wrapper fills in what a region
+  # leaves out as it packs, so it makes no Hash per region; the simple form
+  # takes every field.
   def set_composite_regions(regions)
-    list = []
+    count = regions ? regions.length : 0
+    buf = "\x00" * (count * 13)
+    i = 0
     if regions
       regions.each do |r|
+        base = i * 13
         dst_x = r[:dst_x] || 0
         dst_y = r[:dst_y] || 0
-        list << { src_x: r[:src_x] || dst_x, src_y: r[:src_y] || dst_y, dst_x: dst_x, dst_y: dst_y,
-                  w: r[:w] || 0, h: r[:h] || 0, transparent: r[:transparent] ? true : false }
+        SpxBytes.set_i16(buf, base + 0, r[:src_x] || dst_x)
+        SpxBytes.set_i16(buf, base + 2, r[:src_y] || dst_y)
+        SpxBytes.set_i16(buf, base + 4, dst_x)
+        SpxBytes.set_i16(buf, base + 6, dst_y)
+        SpxBytes.set_i16(buf, base + 8, r[:w] || 0)
+        SpxBytes.set_i16(buf, base + 10, r[:h] || 0)
+        buf.setbyte(base + 12, r[:transparent] ? 1 : 0)
+        i += 1
       end
     end
-    set_composite_regions_raw(list)
+    FmrbBoundary.fmrb_bnd_gfx_set_composite_regions_raw(@d, buf, count)
+    self
   end
 
   def set_composite_regions_raw(regions)

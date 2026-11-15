@@ -34,6 +34,7 @@
  * self) gives the receiver number. FMRB_GEN_MRB_DEFINE_<Class>(mrb, cls)
  * registers the class's methods. A record is a Hash with Symbol keys.
  */
+#include <string.h>
 #include "fmrb_gen/fmrb_boundary.h"
 
 static void fmrb_gen_mrb_check(mrb_state *mrb, int32_t ret, const char *what)
@@ -47,11 +48,14 @@ static void fmrb_gen_mrb_check(mrb_state *mrb, int32_t ret, const char *what)
 }
 <% if records.any? -%>
 
-/* One field of a record: present, an Integer, and in its width's range. */
-static __attribute__((unused)) mrb_int fmrb_gen_mrb_field_int(mrb_state *mrb, mrb_value h, const char *key,
-                                                                    long long lo, unsigned long long hi)
+/* One field of a record: present, an Integer, and in its width's range. The
+   key's symbol comes from the caller (mrb_intern_lit, the length known when
+   compiled); the text is for the message. */
+static __attribute__((unused)) mrb_int fmrb_gen_mrb_field_int(mrb_state *mrb, mrb_value h, mrb_sym sym,
+                                                                    const char *key, long long lo,
+                                                                    unsigned long long hi)
 {
-    mrb_value v = mrb_hash_get(mrb, h, mrb_symbol_value(mrb_intern_cstr(mrb, key)));
+    mrb_value v = mrb_hash_get(mrb, h, mrb_symbol_value(sym));
     if (mrb_nil_p(v)) {
         mrb_raisef(mrb, E_ARGUMENT_ERROR, "record field %s: missing", key);
     }
@@ -62,10 +66,10 @@ static __attribute__((unused)) mrb_int fmrb_gen_mrb_field_int(mrb_state *mrb, mr
     return n;
 }
 
-static __attribute__((unused)) mrb_value fmrb_gen_mrb_field(mrb_state *mrb, mrb_value h, const char *key)
+static __attribute__((unused)) mrb_value fmrb_gen_mrb_field(mrb_state *mrb, mrb_value h, mrb_sym sym, const char *key)
 {
-    mrb_value v = mrb_hash_get(mrb, h, mrb_symbol_value(mrb_intern_cstr(mrb, key)));
-    if (mrb_nil_p(v) && !mrb_hash_key_p(mrb, h, mrb_symbol_value(mrb_intern_cstr(mrb, key)))) {
+    mrb_value v = mrb_hash_get(mrb, h, mrb_symbol_value(sym));
+    if (mrb_nil_p(v) && !mrb_hash_key_p(mrb, h, mrb_symbol_value(sym))) {
         mrb_raisef(mrb, E_ARGUMENT_ERROR, "record field %s: missing", key);
     }
     return v;
@@ -81,11 +85,11 @@ static __attribute__((unused)) void fmrb_gen_mrb_pack_<%= r.cname %>(mrb_state *
     }
 <% r.fields.each do |f| -%>
 <% case f.ty.kind when :int -%>
-    out-><%= f.name %> = (<%= f.ty.ctype %>)fmrb_gen_mrb_field_int(mrb, h, "<%= f.name %>", <%= int_lit.(f.ty.min) %>, <%= int_lit.(f.ty.max) %>);
+    out-><%= f.name %> = (<%= f.ty.ctype %>)fmrb_gen_mrb_field_int(mrb, h, mrb_intern_lit(mrb, "<%= f.name %>"), "<%= f.name %>", <%= int_lit.(f.ty.min) %>, <%= int_lit.(f.ty.max) %>);
 <% when :bool -%>
-    out-><%= f.name %> = mrb_test(fmrb_gen_mrb_field(mrb, h, "<%= f.name %>")) ? 1 : 0;
+    out-><%= f.name %> = mrb_test(fmrb_gen_mrb_field(mrb, h, mrb_intern_lit(mrb, "<%= f.name %>"), "<%= f.name %>")) ? 1 : 0;
 <% when :float -%>
-    out-><%= f.name %> = (<%= f.ty.ctype %>)mrb_as_float(mrb, fmrb_gen_mrb_field(mrb, h, "<%= f.name %>"));
+    out-><%= f.name %> = (<%= f.ty.ctype %>)mrb_as_float(mrb, fmrb_gen_mrb_field(mrb, h, mrb_intern_lit(mrb, "<%= f.name %>"), "<%= f.name %>"));
 <% end -%>
 <% end -%>
 }
@@ -115,9 +119,12 @@ static mrb_value fmrb_gen_mrb_<%= f.import_name %>(mrb_state *mrb, mrb_value sel
 <% end -%>
 <% f.params.each do |p| -%>
 <% case p.ty.kind when :choice -%>
+    /* the choice by its name, looked up once (no symbol interned per call) */
     int32_t c_<%= p.name %>;
+    mrb_int n_<%= p.name %>;
+    const char *s_<%= p.name %> = mrb_sym_name_len(mrb, a_<%= p.name %>, &n_<%= p.name %>);
 <% p.ty.values.each_with_index do |v, i| -%>
-    <%= i.zero? ? '' : '} else ' %>if (a_<%= p.name %> == mrb_intern_lit(mrb, "<%= v %>")) {
+    <%= i.zero? ? '' : '} else ' %>if (n_<%= p.name %> == <%= v.to_s.bytesize %> && memcmp(s_<%= p.name %>, "<%= v %>", <%= v.to_s.bytesize %>) == 0) {
         c_<%= p.name %> = <%= i %>;
 <% end -%>
     } else {
