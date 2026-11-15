@@ -185,7 +185,16 @@ class FmrbApp
   def self.set_cursor_visible(*) = nil
   def self.set_kana_mode(*) = nil
   def self.audio_muted? = false
-  def self.path_read_only?(_path) = false
+  def self.language = Regress::Env.lang.to_s
+  def self.uptime_ms = Regress::Env.ms
+  def self.notify_raw(*) = false
+  def self.audio_volume = 5
+  def self.wifi_connected? = true
+  def self.battery_level = nil
+  def self.battery_charging? = false
+  def self.crt_state = ""
+  def self.linux_available? = false
+  def self.set_text_cursor(*) = nil
   def self.wifi_info = Regress::Env.wifi
   def self.method_missing(n, *) = Regress::Env.note_unstubbed("FmrbApp.#{n}")
   def self.respond_to_missing?(*) = true
@@ -219,6 +228,35 @@ class FmrbApp
     Regress::Env.outbox << [dest, type, data]
     nil
   end
+
+  # The requests on the app boundary (C, fmrb_boundary_app.c): the same
+  # messages the Ruby wrappers sent before, into the outbox.
+  def _request(data) = _send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+  def request_reload = _request({ "cmd" => "reload_confirm" })
+  def request_close_confirm = _request({ "cmd" => "close_confirm" })
+  def request_fullscreen(on) = _request({ "cmd" => on ? "enter_fullscreen" : "exit_fullscreen" })
+  def request_file_select_raw(mode) = _request({ "cmd" => "file_select", "mode" => mode })
+  def request_run_raw(path, prev) = _request({ "cmd" => "run", "path" => path, "prev_pid" => prev < 0 ? nil : prev })
+
+  def request_window_menu(x, y)
+    g = @gfx
+    movable = g && g.respond_to?(:_checkpoint_keep?) && g._checkpoint_keep? ? true : false
+    _request({ "cmd" => "window_menu", "x" => x.to_i, "y" => y.to_i, "movable" => movable })
+  end
+end
+
+# FmrbFile (the app boundary, C): whole files by path, on the fake file system.
+module FmrbFile
+  def self.read(p) = (File.exist?(p) && !File.directory?(p) ? File.open(p, "rb") { |f| f.read } : nil)
+  def self.write(p, d) = (File.open(p, "wb") { |f| f.write(d) }; true)
+  def self.append(p, d) = (File.open(p, "ab") { |f| f.write(d) }; true)
+  def self.exist?(p) = File.exist?(p)
+  def self.size(p) = (File.exist?(p) && !File.directory?(p) ? File.size(p) : nil)
+  def self.delete(p) = (File.exist?(p) ? (File.directory?(p) ? Dir.rmdir(p) : File.delete(p)) && true : false)
+  def self.mkdir(p) = (File.directory?(p) || (Dir.mkdir(p) && true))
+  def self.list_raw(d) = (File.directory?(d) ? Dir.children(d).map { |n| File.directory?(File.join(d, n)) ? "#{n}/\n" : "#{n}\n" }.join : nil)
+  def self.path_read_only?(_p) = false
+  def self.free_bytes(_p) = 1_000_000
 end
 
 # FmrbAudio's C half (the app boundary, sig/fmrb_audio.rbs): the commands go

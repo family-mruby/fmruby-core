@@ -49,10 +49,23 @@ boundary_tour(void)
     fmrb_app_set_clipboard(clip, r < (int32_t)sizeof(clip) ? r : (int32_t)sizeof(clip));
     r = fmrb_app_wallclock(&wc);
     fmrb_gfx_set_pixel(0, r, wc.year, wc.second);
-    fmrb_audio_note_on_raw(1, 440, 10, 2, 0);
-    fmrb_audio_set_main_volume(30);
-    fmrb_audio_play_slot_raw(2, 1);
+    fmrb_audio_note_on_raw(0, 1, 440, 10, 2, 0);
+    fmrb_audio_set_main_volume(0, 30);
+    fmrb_audio_play_slot_raw(0, 2, 1);
     fmrb_log_info_raw(line, (int32_t)(sizeof(line) - 1));
+    /* FmrbApp without a receiver, a record result, a choice result;
+       FmrbFile with a predicate's name, a nilable int64 and bytes. */
+    fmrb_app_sys_pool_info_t pool = { 0, 0, 0, 0, 0 };
+    static const char tpath[] = "/tmp/tour.txt";
+    char got[8];
+    r = fmrb_app_sys_pool_info(&pool);
+    fmrb_gfx_set_pixel(0, r, (int32_t)pool.total, fmrb_app_platform());
+    r = fmrb_file_write(tpath, (int32_t)(sizeof(tpath) - 1), (const uint8_t *)line, (int32_t)(sizeof(line) - 1));
+    fmrb_gfx_set_pixel(0, r, fmrb_file_exist(tpath, (int32_t)(sizeof(tpath) - 1)), 0);
+    int64_t sz = fmrb_file_size(tpath, (int32_t)(sizeof(tpath) - 1));
+    r = fmrb_file_read(tpath, (int32_t)(sizeof(tpath) - 1), (uint8_t *)got, (int32_t)sizeof(got));
+    fmrb_gfx_set_pixel(0, r, (int32_t)sz, got[0]);
+    fmrb_app_request_run_raw(tpath, (int32_t)(sizeof(tpath) - 1), -1);
     /* A pointer outside the app's memory: the wasm glue refuses it before the
        body runs (FMRB_BOUNDARY_ERR_ARG); in the host the answer is written in. */
 #if defined(BOUNDARY_TOUR_IN_APP)
