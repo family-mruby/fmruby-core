@@ -23,7 +23,7 @@ Regress::Screens.scene "picoruby_fonts_ja", on: %w[modern retro] do |s|
 end
 
 Regress::Screens.scene "kamon", on: %w[modern retro web] do |s|
-  s.open_app "/app/demo/kamon.app.rb", web_index: 12
+  s.open_app "/app/demo/kamon.app.rb", web_index: 13 # "C tour" sorts before it since 2026-11-16
   s.shot
 end
 
