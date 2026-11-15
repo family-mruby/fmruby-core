@@ -68,6 +68,7 @@ class EditorApp < FmrbApp
     @need_redraw = true
     @dirty_lines = []   # document line indices to repaint
     @dirty_from = nil   # repaint this line and everything below (line shift)
+    @drawn_rows = 0     # screen rows that showed text at the last draw
     @dirty_status = false
     @frame_ms = 33
     @modified = false

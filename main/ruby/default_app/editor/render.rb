@@ -362,6 +362,7 @@ module EditorRender
       end
       row += 1
     end
+    @drawn_rows = row
 
     draw_cursor
     end_edit_font
@@ -695,14 +696,22 @@ module EditorRender
   # the status line (Ln/Col changes with every key, and it is two commands).
   # The menu bar, the window frame and any open overlay are untouched by row
   # drawing, so they are not re-issued -- that is most of the saving.
+  #
+  # Rows past the end of the text are left alone, except the ones that showed
+  # text at the last draw: a join (Backspace at the start of a line), a deleted
+  # multi-line selection or a line that folds into fewer rows moves the end of
+  # the text up, and the rows it leaves -- the old last line, with the cursor
+  # block on it -- must be cleared. @drawn_rows remembers where the text ended.
   def redraw_dirty
     sel_range = selection_range
     begin_edit_font
     row = 0
     ly = @scroll_y
     ls = @anchor_seg
+    used = 0
     while row < @edit_rows
       if ly >= EditorCore.line_count
+        draw_edit_row(row, ly, 0, nil, true) if row < @drawn_rows
         row += 1
         next
       end
@@ -713,7 +722,9 @@ module EditorRender
         ls = 0
       end
       row += 1
+      used = row
     end
+    @drawn_rows = used
     draw_cursor
     end_edit_font
     draw_status_line
