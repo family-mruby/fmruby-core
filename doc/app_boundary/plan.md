@@ -267,6 +267,7 @@
 |---|---|
 | mruby の `present` | mruby だけ C のメソッドに戻し、中で `present_raw` を呼ぶ (W4a で Ruby の包みにして命令数が 620 → 1,326 に増えたため)。手書きの包みの例外として扱う |
 | 版をまたぐ checkpoint | 止めた瞬間に Task が FmrbGfx の Ruby の包みの中にいると、復元後に NoMethodError になる。今直す: mruby-checkpoint の gem の側で、運ぶ前に版の違う mrblib のフレームを見つけて断る |
+| 版の違う mrblib のフレーム (W4b-1b の後、2026-11-15 ユーザ) | 受け手は運んだ中身でなく自分の版のコードを途中から動かすと分かった (report/w4b_1b.md 8 章)。中身の違う mrblib の中で止まったフレームはすべて断る (`main_loop` の中身が違う版どうしの移動も断る。同じ版どうしは今までどおり)。運んだ中身で動かす形 (format_v1 の 7 章) は入れない |
 | 描き手の上限 | 1 アプリ 8 個のまま。9 個目は全エンジンで例外に揃える (Spinel も黙って描かないのをやめる) |
 
 3 つとも W4b-1b で入れた (report/w4b_1b.md)。checkpoint の直しは mruby-checkpoint の手元のコミットで、
