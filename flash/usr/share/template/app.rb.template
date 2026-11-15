@@ -10,10 +10,9 @@ class {{class}} < FmrbApp
     500
   end
 
-  # Keyboard / mouse / gamepad events.
-  # Always call super to keep the close button and reload working.
+  # Keyboard / mouse / gamepad events. The close button, the window menu and
+  # dragging are the system's; the app sees only what is its own.
   def on_event(ev)
-    super
     # case ev[:type]
     # when :key_down
     # when :mouse_down
@@ -37,11 +36,10 @@ class {{class}} < FmrbApp
     # clear_user_area with no colour paints the system theme's page colour,
     # and theme_fg is the ink that goes with it (see [theme] in
     # system_conf.toml). Name colours yourself only when the picture is the
-    # point of the app.
+    # point of the app. It draws the window frame again too.
     clear_user_area
     @gfx.draw_text(4, 4,
                    "{{title}}", theme_fg)
-    draw_window_frame
     @gfx.present
   end
 end

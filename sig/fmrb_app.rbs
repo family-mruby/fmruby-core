@@ -633,8 +633,11 @@ class FmrbApp
   #
   # タイトルバーとわく、閉じるボタンを描きます。全画面のときは何もしません。
   #
-  # **大きさの変わるアプリは、描き直すたびに呼ぶこと。** 一度描いたきりに
-  # すると、Window を広げたときにわくが壊れます。
+  # **ふつうは呼ばなくてよい。** 起動したときは基底が描き、
+  # clear_user_area も区画を塗った後に枠を描き直します。大きさが変わった
+  # ときは、on_resize で clear_user_area から描き直せば枠も付いてきます。
+  # 呼ぶのは、区画の端に描いて枠の線を踏んだとき (clear_user_area を
+  # 使わずに fill_rect で塗ったときなど) だけです。
   #
   # タイトルバーは既定のフォントで描かれますが、**呼ぶ前のフォント設定は
   # 戻されます**。`set_font(:ja)` を毎フレーム掛け直す必要はありません。
@@ -642,8 +645,11 @@ class FmrbApp
   # Draws the title bar, the border and the close button. Does nothing in
   # full screen.
   #
-  # **An app that can be resized must call this on every redraw.** Drawing
-  # the frame once leaves it broken the first time the window grows.
+  # **Usually there is no need to call it.** The base draws the frame when
+  # the app starts, and clear_user_area draws it again after painting the
+  # area. After a resize, redrawing from clear_user_area in on_resize brings
+  # the frame along. Call it only after drawing over the frame's edge (when
+  # the area was painted with fill_rect instead of clear_user_area, say).
   #
   # The title bar uses the default font, but the font in force before the
   # call is put back, so `set_font(:ja)` does not have to be re-applied
