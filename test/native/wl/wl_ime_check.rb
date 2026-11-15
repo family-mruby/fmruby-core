@@ -125,7 +125,10 @@ class ImeRun
     @label = label
     @ime = ime
     @name = "fmrb-wl-#{label}-#{ENGINE}-#{renderer}"
-    @port = DEBUG_PORT + port_offset
+    # the program's debug port and the SDL program's (10 above), each taken
+    # with Regress::Tree.free_port (this one when it is free, else a free one)
+    @port = Regress::Tree.free_port(DEBUG_PORT + port_offset, :"wl_ime_check_debug#{port_offset}")
+    @sdl_port = Regress::Tree.free_port(DEBUG_PORT + port_offset + 10, :"wl_ime_check_sdl#{port_offset}")
     @run = "/tmp/fmrb-wl-#{label}-#{ENGINE}-#{renderer}-#{Process.uid}"
     @out = File.join(CORE, "tmp/wl_check", "#{label}-#{ENGINE}-#{renderer}")
     @results = []
@@ -154,7 +157,7 @@ class ImeRun
 
   def start
     sh!("docker", "rm", "-f", @name, ok: false)
-    a = ["docker", "run", "--rm", "--init", "--name", @name, "-d", "-p", "127.0.0.1:#{@port}:5565", "-p", "127.0.0.1:#{@port + 10}:5575",
+    a = ["docker", "run", "--rm", "--init", "--name", @name, "-d", "-p", "127.0.0.1:#{@port}:5565", "-p", "127.0.0.1:#{@sdl_port}:5575",
          "-u", "#{Process.uid}:#{Process.gid}", "-v", "#{CORE}:/src", "-w", "/src", "-v", "#{@run}:/run/fmrb",
          "-e", "XDG_RUNTIME_DIR=/run/fmrb/xdg", "-e", "HOME=/run/fmrb/home", "-e", "LANG=C.UTF-8",
          "-e", "XDG_CONFIG_HOME=/run/fmrb/home/.config",
@@ -475,7 +478,7 @@ class ImeRun
   def sdl_tool(*args, timeout: 30)
     cmd = ["timeout", timeout.to_s, "ruby", File.join(TOOLS, "fmrb_native.rb"), "--run-dir", File.join(@run, "sdl"),
            *args.map(&:to_s)]
-    sh!({ "FMRB_DEBUG_TCP_PORT" => (@port + 10).to_s }, *cmd, ok: false)
+    sh!({ "FMRB_DEBUG_TCP_PORT" => @sdl_port.to_s }, *cmd, ok: false)
   end
 
   def sdl_log = file("sdl/core.log")

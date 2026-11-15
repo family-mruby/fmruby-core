@@ -17,12 +17,14 @@
 #            from a block of its own: 20000 + 8 * slot, slot 1..400 from the
 #            same digest. Clear of the developer's native program (5565), the
 #            sim (5555), the screens' native program (5575), the compositor
-#            checks (15565..15679) and the shared checkout's own ports.
+#            checks (15565..15681) and the shared checkout's own ports.
 #   ports    the default (above) when it is free, else a free one of
 #            24000..24999, said on stderr; marked as the process's own in
 #            /tmp/fmrb-regress-ports-<uid> until it exits, so parallel jobs
 #            pass each other's by. Checked again before use: one that
 #            answers or cannot be bound then stops the run with the reason.
+#            Tools whose port is the same in every tree (test/native/'s
+#            checks) take it with free_port(default, use) the same way.
 require "digest"
 require "fileutils"
 require "socket"
@@ -66,6 +68,13 @@ module Regress
       want = shared? ? shared_port : PORT_BASE + SLOT * 8 + PORTS.fetch(use)
       claim_port(want, use)
     end
+
+    # A port that is the same in every tree (a check that runs one at a time
+    # per tree, e.g. test/native/'s debug ports): `default` when it is free,
+    # else a free one of FALLBACK, marked like port() above. Two trees (or a
+    # tree and a leftover program) then pass each other by instead of
+    # failing on a taken port.
+    def free_port(default, use) = claim_port(default, use)
 
     # --- port marks ---------------------------------------------------------
     #

@@ -91,7 +91,9 @@ WSLG = "/mnt/wslg/runtime-dir/wayland-0"
 # from a native program running on the host.
 # The all-mruby configuration's checks publish theirs 100 above, so that
 # rake regress:wl can run the two configurations side by side.
-DEBUG_PORT = 15_565 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0)
+# Taken with Regress::Tree.free_port: this one when it is free, else a free
+# one (said on stderr), so two trees or a leftover container do not collide.
+DEBUG_PORT = Regress::Tree.free_port(15_565 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0), :wl_check_debug)
 RENDER_NODE = "/dev/dri/renderD128"
 TITLE_RGB = [222, 36, 82]
 # RGB332 0x01, the stand-in's content (a hole), as the shot shows it.

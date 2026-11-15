@@ -76,7 +76,13 @@ WORK = File.join(Dir.tmpdir, "fmrb-native-l2n-#{Process.uid}")
 RUN_DIR = File.join(WORK, "run")
 USER_DIR = File.join(WORK, "user")
 CACHE_DIR = File.join(WORK, "cache")
-DEBUG_PORT = "5585"
+# The ports this check listens on, each taken with Regress::Tree.free_port
+# (the default when it is free, else a free one, said on stderr): the
+# program's debug port and the PC's servers, whose ports the app reads from
+# /home/l2n/ports.txt (write_steps).
+DEBUG_PORT = Regress::Tree.free_port(5585, :l2n_debug).to_s
+PORTS = { tcp: 7601, http: 7602, https_bad: 7603, ws: 7604, silent: 7605 }
+        .to_h { |k, v| [k, Regress::Tree.free_port(v, :"l2n_#{k}")] }.freeze
 ENV["FMRB_DEBUG_TCP_PORT"] = DEBUG_PORT
 
 $failures = []
@@ -178,6 +184,7 @@ def write_steps(*steps)
   dir = File.join(USER_DIR, "home", "l2n")
   FileUtils.mkdir_p(dir)
   File.write(File.join(dir, "steps.txt"), steps.join("\n") + "\n")
+  File.write(File.join(dir, "ports.txt"), PORTS.map { |k, v| "#{k} #{v}\n" }.join)
   FileUtils.cp(File.join(HERE, "net_l2n.app.rb"), dir)
   FileUtils.cp(File.join(HERE, "net_l2n.app.toml"), dir)
 end
@@ -197,7 +204,7 @@ class Servers
     @events << msg
   end
 
-  # 7601: reads a line, answers "pong <line>" after delay seconds.
+  # tcp: reads a line, answers "pong <line>" after delay seconds.
   def delayed_echo(port, delay)
     srv = TCPServer.new("127.0.0.1", port)
     @closers << srv
@@ -218,7 +225,7 @@ class Servers
     end
   end
 
-  # 7605: reads a line and never answers; reports when the peer closes.
+  # silent: reads a line and never answers; reports when the peer closes.
   def silent(port)
     srv = TCPServer.new("127.0.0.1", port)
     @closers << srv
@@ -255,7 +262,7 @@ class Servers
     @threads << Thread.new { s.start }
   end
 
-  # 7604: a WebSocket echo (one text frame back per text frame).
+  # ws: a WebSocket echo (one text frame back per text frame).
   def ws_echo(port)
     srv = TCPServer.new("127.0.0.1", port)
     @closers << srv
@@ -365,7 +372,7 @@ def part_kill(servers)
   base_sockets = sockets_of(pid)
   from = log_text.bytesize
   app = spawn_app("/home/l2n/net_l2n.app.rb")
-  return check("kill", false, "the app did not send") unless wait_log(/l2n: tcp sent, waiting for 127.0.0.1:7605/, 15, from: from)
+  return check("kill", false, "the app did not send") unless wait_log(/l2n: tcp sent, waiting for 127.0.0.1:#{PORTS[:silent]}/, 15, from: from)
   sleep 1
   before = stats
   waiting_sockets = sockets_of(pid)
@@ -385,7 +392,7 @@ def part_kill(servers)
   check("kill/ended", out.match?(/true|ok|killed/i) && graceful && !app_alive?(app),
         "kill answered in #{format('%.2f', took)} s, #{graceful ? 'ended on request' : 'forced or not ended'}; #{out.strip[0, 80]}")
   check("kill/peer", closed.any? { |e| e.start_with?("silent: peer closed") }, "server saw: #{closed.join('; ')}")
-  peer = peer_sockets_of(pid, 7605)
+  peer = peer_sockets_of(pid, PORTS[:silent])
   check("kill/cleanup", after["busy"].zero? && peer.zero? && sockets_of(pid) == base_sockets &&
         later["helpers"].zero? && gate_threads_of(pid).zero?,
         "after: busy=#{after['busy']} cancels=#{after['cancels']} deleted=#{after['deleted']} sockets to the peer=#{peer}; " \
@@ -406,7 +413,7 @@ def part_forcekill
   base = stats
   from = log_text.bytesize
   app = spawn_app("/home/l2n/net_l2n.app.rb")
-  return check("forcekill", false, "the app did not send") unless wait_log(/l2n: tcp sent, waiting for 127.0.0.1:7605/, 15, from: from)
+  return check("forcekill", false, "the app did not send") unless wait_log(/l2n: tcp sent, waiting for 127.0.0.1:#{PORTS[:silent]}/, 15, from: from)
   sleep 1
   t0 = Time.now
   native("app", "kill", app.to_s)
@@ -415,7 +422,7 @@ def part_forcekill
   ended = log_text[from..].to_s
   forced = ended.match?(/forcing termination/)
   after = stats
-  peer = peer_sockets_of(pid, 7605)
+  peer = peer_sockets_of(pid, PORTS[:silent])
   sleep 6
   later = stats
   check("forcekill/forced", forced && !app_alive?(app), "kill took #{format('%.2f', took)} s, #{forced ? 'forced' : 'not forced'}")
@@ -489,11 +496,11 @@ FileUtils.mkdir_p(www)
 File.write(File.join(www, "l2n.txt"), "l2n says hello\n")
 
 servers = Servers.new
-servers.delayed_echo(7601, 6)
-servers.http(7602, www)
-servers.https_self_signed(7603, www)
-servers.ws_echo(7604)
-servers.silent(7605)
+servers.delayed_echo(PORTS[:tcp], 6)
+servers.http(PORTS[:http], www)
+servers.https_self_signed(PORTS[:https_bad], www)
+servers.ws_echo(PORTS[:ws])
+servers.silent(PORTS[:silent])
 
 ENV["FMRB_NATIVE_GATE"] = "off" unless opts[:gate]
 up_args = ["up", "--user-dir", USER_DIR, "--cache-dir", CACHE_DIR]

@@ -48,7 +48,9 @@ Regress::Tree.need_root!
 TOOLS = Regress::Tree::TOOLS
 # The all-mruby configuration's checks publish theirs 100 above, so that
 # rake regress:wl can run the two configurations side by side.
-DEBUG_PORT = 15_565 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0)
+# Taken with Regress::Tree.free_port: this one when it is free, else a free
+# one (said on stderr), so two trees or a leftover container do not collide.
+DEBUG_PORT = Regress::Tree.free_port(15_565 + (ARGV.each_cons(2).include?(["--engine", "mruby"]) ? 100 : 0), :wl_winops_check_debug)
 MENU_BAR_H = 13
 MENU_ITEM_H = 12
 FRAME_TOP = 11

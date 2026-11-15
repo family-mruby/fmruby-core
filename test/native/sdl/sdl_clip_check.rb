@@ -30,7 +30,8 @@ CORE = File.expand_path("../../..", __dir__)
 require_relative "../../../tools/regress/tree"
 Regress::Tree.need_root!
 TOOLS = Regress::Tree::TOOLS
-DEBUG_PORT = 15_568
+# Regress::Tree.free_port: 15568 when it is free, else a free one.
+DEBUG_PORT = Regress::Tree.free_port(15_568, :sdl_clip_check_debug)
 FM_TEXT = "fm: アプリからデスクトップへ"
 PEER_TEXT = "peer: デスクトップから日本語"
 

@@ -22,6 +22,11 @@
 #   lookup       TCPSocket to example.com:80 (a name lookup that is not
 #                localhost, then a connect), closed at once
 #
+# The ports of the PC's servers are in /home/l2n/ports.txt, one "<name>
+# <port>" per line (tcp, http, https_bad, ws, silent): the check takes free
+# ones (Regress::Tree.free_port). The ports above are the defaults, used for a
+# name the file does not give.
+#
 # Every step logs one line, "l2n: <step> ok|ng <ms> ms <detail>", which the
 # check reads from the program's log; the window shows the same.
 
@@ -31,9 +36,12 @@ require 'socket'
 
 class NetL2nApp < FmrbApp
   STEPS_FILE = "/home/l2n/steps.txt"
+  PORTS_FILE = "/home/l2n/ports.txt"
+  DEFAULT_PORTS = { "tcp" => 7601, "http" => 7602, "https_bad" => 7603, "ws" => 7604, "silent" => 7605 }
 
   def on_create
     @steps = read_steps
+    @ports = read_ports
     @lines = []
     @running = nil
     note("steps: #{@steps.join(' ')}")
@@ -46,6 +54,23 @@ class NetL2nApp < FmrbApp
   rescue => e
     Log.info("l2n: no #{STEPS_FILE}: #{e.message}")
     []
+  end
+
+  def read_ports
+    ports = {}
+    DEFAULT_PORTS.each { |k, v| ports[k] = v }
+    read_text(PORTS_FILE).split("\n").each do |l|
+      kv = l.strip.split(" ")
+      ports[kv[0]] = kv[1].to_i if kv.size == 2 && kv[1].to_i > 0
+    end
+    ports
+  end
+
+  def read_text(path)
+    File.open(path, "r") { |f| f.read }.to_s
+  rescue => e
+    Log.info("l2n: no #{path}: #{e.message}")
+    ""
   end
 
   def note(line)
@@ -92,11 +117,11 @@ class NetL2nApp < FmrbApp
   end
 
   def step_tcp
-    tcp_round_trip(7601)
+    tcp_round_trip(@ports["tcp"])
   end
 
   def step_tcp_hang
-    tcp_round_trip(7605)
+    tcp_round_trip(@ports["silent"])
   end
 
   def step_tcp_stubborn
@@ -105,9 +130,9 @@ class NetL2nApp < FmrbApp
       n += 1
       sock = nil
       begin
-        sock = TCPSocket.new("127.0.0.1", 7605)
+        sock = TCPSocket.new("127.0.0.1", @ports["silent"])
         sock.write("ping #{n}\n")
-        Log.info("l2n: tcp sent, waiting for 127.0.0.1:7605 (#{n})") if n == 1
+        Log.info("l2n: tcp sent, waiting for 127.0.0.1:#{@ports["silent"]} (#{n})") if n == 1
         sock.readpartial(128)
       rescue => e
         Log.info("l2n: stubborn #{n}: #{e.class}") if n <= 3
@@ -127,7 +152,7 @@ class NetL2nApp < FmrbApp
   end
 
   def step_http
-    res = Net::HTTP.get_response(URI.parse("http://127.0.0.1:7602/l2n.txt"))
+    res = Net::HTTP.get_response(URI.parse("http://127.0.0.1:#{@ports["http"]}/l2n.txt"))
     body = res.body.to_s
     [res.code == "200" && body.start_with?("l2n"), "#{res.code} #{body.bytesize}B #{body.strip[0, 24]}"]
   end
@@ -139,7 +164,7 @@ class NetL2nApp < FmrbApp
   end
 
   def step_https_bad
-    res = Net::HTTP.get_response(URI.parse("https://localhost:7603/"))
+    res = Net::HTTP.get_response(URI.parse("https://localhost:#{@ports["https_bad"]}/"))
     [false, "accepted a self-signed certificate (#{res.code})"]
   rescue IOError => e
     [true, "rejected: #{e.message[0, 60]}"]
@@ -147,7 +172,7 @@ class NetL2nApp < FmrbApp
 
   def step_ws
     got = nil
-    Net::WebSocket::Client.connect("ws://127.0.0.1:7604/") do |ws|
+    Net::WebSocket::Client.connect("ws://127.0.0.1:#{@ports["ws"]}/") do |ws|
       ws.send_text("hello l2n")
       got = ws.receive(timeout: 5)
     end
