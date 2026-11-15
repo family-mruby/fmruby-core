@@ -3105,6 +3105,60 @@ function driveSleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// Files a driven page puts down before the machine boots (`seed`): kept in
+// this tab's sessionStorage, written on every boot until replaced, so they
+// outlive the reloads a driving tool makes. For places the bundle ships
+// nothing into and nothing persists -- the regression's launcher index in
+// /flash/var/cache, which the launcher replays at boot instead of walking
+// /app (rake regress:screens shows a fixed set of apps that way). Not for
+// /home or /app/usr: those are read back from IndexedDB after this.
+const DRIVE_SEED_KEY = 'fmrb-drive-seed';
+if (DRIVE) {
+  moduleConfig.preRun.push((mod) => {
+    let seeds = null;
+    try { seeds = JSON.parse(sessionStorage.getItem(DRIVE_SEED_KEY) || 'null'); } catch (e) { seeds = null; }
+    if (!seeds) return;
+    for (const [path, b64] of Object.entries(seeds)) {
+      try {
+        const raw = atob(b64);
+        const data = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) data[i] = raw.charCodeAt(i);
+        const slash = path.lastIndexOf('/');
+        if (slash > 0) mod.FS.mkdirTree(path.slice(0, slash));
+        mod.FS.writeFile(path, data);
+      } catch (e) {
+        console.warn('fmrb: drive seed ' + path + ' not written:', e);
+      }
+    }
+  });
+}
+
+// An app by its path (`launch`): the slot launch_wasm.c polls from the input
+// task, which answers with the pid or the error.
+async function driveLaunch(path, timeoutMs) {
+  if (!M || !M._fmrb_wasm_launch_path) throw new Error('this build has no launch by path');
+  const bytes = new TextEncoder().encode(path);
+  if (bytes.length + 1 > M._fmrb_wasm_launch_cap()) throw new Error('path too long: ' + path);
+  const heap32 = new Int32Array(M.HEAPU8.buffer);
+  const reqIdx = M._fmrb_wasm_launch_req_ptr() >> 2;
+  const doneIdx = M._fmrb_wasm_launch_done_ptr() >> 2;
+  if (Atomics.load(heap32, reqIdx) !== Atomics.load(heap32, doneIdx)) {
+    throw new Error('a launch is still being answered');
+  }
+  const buf = M._fmrb_wasm_launch_path();
+  M.HEAPU8.set(bytes, buf);
+  M.HEAPU8[buf + bytes.length] = 0;
+  const req = Atomics.add(heap32, reqIdx, 1) + 1;
+  const deadline = performance.now() + timeoutMs;
+  while (Atomics.load(heap32, doneIdx) !== req) {
+    if (performance.now() > deadline) throw new Error('no answer to launch ' + path);
+    await driveSleep(20);
+  }
+  const err = Atomics.load(heap32, M._fmrb_wasm_launch_err_ptr() >> 2);
+  if (err !== 0) throw new Error('launch ' + path + ' failed (error ' + err + ')');
+  return { pid: Atomics.load(heap32, M._fmrb_wasm_launch_pid_ptr() >> 2) };
+}
+
 // One turn of the event loop for the latency probe below. setTimeout, not a
 // MessageChannel ping-pong: the machine's file calls are proxied to this
 // thread, and a tight MessageChannel loop starved them (measured: the whole
@@ -3356,6 +3410,16 @@ async function runDriveCommand(cmd) {
         return { removed: path };
       }
       throw new Error('unknown fs action: ' + cmd.action);
+    }
+    case 'launch':
+      return await driveLaunch(String(cmd.path || ''), (cmd.timeout || 25) * 1000);
+    case 'seed': {
+      // Replace the files put down at every boot (an empty set clears them);
+      // they take effect from the next reload.
+      const files = cmd.files || {};
+      if (Object.keys(files).length) sessionStorage.setItem(DRIVE_SEED_KEY, JSON.stringify(files));
+      else sessionStorage.removeItem(DRIVE_SEED_KEY);
+      return { seeded: Object.keys(files) };
     }
     case 'reload':
       // Answer first; the page is gone a moment later.

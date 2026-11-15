@@ -19,6 +19,7 @@
 #include "input_source.h"
 #include "host_task.h"
 #include "input_wasm.h"
+#include "launch_wasm.h"
 
 #include <emscripten/emscripten.h>
 
@@ -165,6 +166,8 @@ static void input_wasm_task(void *arg)
             s_rd++;
             dispatch(&ev);
         }
+        /* An app the driven page asked to open by its path (launch_wasm.c). */
+        fmrb_wasm_launch_poll();
         fmrb_task_delay_ms(10);
     }
 }
