@@ -13,7 +13,7 @@
  *
  * This file may only include py/ headers, fmrb_hid_msg.h (stdint alone),
  * fmrb_mp_bridge.h and the stdint-only boundary headers (fmrb_gen/,
- * fmrb_boundary_recv.h): the qstr extractor preprocesses it with the host
+ * fmrb_gfx_drawer.h): the qstr extractor preprocesses it with the host
  * compiler, where nothing from ESP-IDF resolves. Anything needing firmware
  * headers goes in fmrb_bridge.c.
  */
@@ -29,7 +29,7 @@
 
 #include "fmrb_hid_decode.h"
 #include "fmrb_mp_bridge.h"
-#include "fmrb_boundary_recv.h"
+#include "fmrb_gfx_drawer.h"
 
 // How long a single receive waits before the spin loop re-checks the stop
 // flag. The kernel does send a stop message, but it gives up after 10ms if the
@@ -780,23 +780,48 @@ static void check_gfx(int ret) {
 
 #define ARG_INT(i) mp_obj_get_int(args[i])
 
-/* The receiver of the boundary's FmrbGfx functions (fmrb_boundary_recv.h):
- * a canvas id as it is, or an FmrbGfx object of the prelude, whose canvas and
- * origin (dx, dy: 0 while drawing into a sprite image) are bound for the call
- * so the flat function adds the origin. */
+/* The receiver of the boundary's FmrbGfx functions: a drawer of the app
+ * (fmrb_gfx_drawer.h), as a number or as an FmrbGfx object of the prelude,
+ * which keeps its drawer's number in _drawer. The drawer has the canvas and
+ * the drawing origin, which the flat function adds (doc/app_boundary W4b). */
 static int32_t fmrb_mp_recv_gfx(mp_obj_t o) {
     if (mp_obj_is_int(o)) {
         return (int32_t)mp_obj_get_int(o);
     }
-    int32_t canvas = (int32_t)mp_obj_get_int(mp_load_attr(o, MP_QSTR_canvas_id));
-    int32_t dx = (int32_t)mp_obj_get_int(mp_load_attr(o, MP_QSTR_dx));
-    int32_t dy = (int32_t)mp_obj_get_int(mp_load_attr(o, MP_QSTR_dy));
-    int32_t r = fmrb_gfx_recv_bind(canvas, dx, dy);
-    if (r < 0 && r != FMRB_GFX_RECV_BOUND) {
-        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("no app context"));
-    }
-    return r;
+    return (int32_t)mp_obj_get_int(mp_load_attr(o, MP_QSTR__drawer));
 }
+
+/* The drawer of a receiver, for the functions not on the boundary yet
+ * (sprites), which take its canvas and the canvas's own coordinates. */
+static const fmrb_gfx_drawer_t *mp_drawer(mp_obj_t o) {
+    const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(fmrb_mp_recv_gfx(o));
+    if (!d) {
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("graphics not initialized"));
+    }
+    return d;
+}
+
+/* gfx_drawer_open(canvas, width, height) -> the number of a new drawer of
+ * the app on that canvas (FmrbGfx.__init__). */
+static mp_obj_t gfx_drawer_open(mp_obj_t canvas, mp_obj_t w, mp_obj_t h) {
+    int32_t d = fmrb_gfx_drawer_open((int32_t)mp_obj_get_int(canvas), (int32_t)mp_obj_get_int(w),
+                                     (int32_t)mp_obj_get_int(h));
+    if (d < 0) {
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("no room for another FmrbGfx"));
+    }
+    return MP_OBJ_NEW_SMALL_INT(d);
+}
+static MP_DEFINE_CONST_FUN_OBJ_3(gfx_drawer_open_obj, gfx_drawer_open);
+
+/* gfx_set_origin(gfx, x, y, w, h): the area a drawer draws in (FmrbApp's
+ * layout, FmrbGfx._set_origin). */
+static mp_obj_t gfx_set_origin(size_t n_args, const mp_obj_t *args) {
+    (void)n_args;
+    check_gfx(fmrb_gfx_drawer_set_origin(fmrb_mp_recv_gfx(args[0]), ARG_INT(1), ARG_INT(2),
+                                         ARG_INT(3), ARG_INT(4)));
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_set_origin_obj, 5, 5, gfx_set_origin);
 
 // FmrbGfx functions generated from sig/ (tools/boundary/gen.rb): every method
 // of the class on the app boundary, gfx_<method>, the receiver first.
@@ -809,9 +834,10 @@ static int32_t fmrb_mp_recv_gfx(mp_obj_t o) {
  * what comes back to Python is an id.
  * ------------------------------------------------------------------------ */
 
+/* The first argument of each is the FmrbGfx (or its drawer's number). */
 static mp_obj_t gfx_create_sprite_image(size_t n_args, const mp_obj_t *args) {
     (void)n_args;
-    int id = fmrb_mp_gfx_create_sprite_image(ARG_INT(0), ARG_INT(1), ARG_INT(2),
+    int id = fmrb_mp_gfx_create_sprite_image(mp_drawer(args[0])->canvas, ARG_INT(1), ARG_INT(2),
                                              ARG_INT(3), mp_obj_is_true(args[4]));
     if (id == 0) {
         mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("failed to create sprite image"));
@@ -822,7 +848,7 @@ static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_create_sprite_image_obj, 5, 5,
                                            gfx_create_sprite_image);
 
 static mp_obj_t gfx_load_sprite_image_bmp(mp_obj_t cid, mp_obj_t image_id, mp_obj_t path) {
-    check_gfx(fmrb_mp_gfx_load_sprite_image_bmp(mp_obj_get_int(cid),
+    check_gfx(fmrb_mp_gfx_load_sprite_image_bmp(mp_drawer(cid)->canvas,
                                                 mp_obj_get_int(image_id),
                                                 mp_obj_str_get_str(path)));
     return mp_const_none;
@@ -830,15 +856,18 @@ static mp_obj_t gfx_load_sprite_image_bmp(mp_obj_t cid, mp_obj_t image_id, mp_ob
 static MP_DEFINE_CONST_FUN_OBJ_3(gfx_load_sprite_image_bmp_obj, gfx_load_sprite_image_bmp);
 
 static mp_obj_t gfx_delete_sprite_image(mp_obj_t cid, mp_obj_t image_id) {
-    check_gfx(fmrb_mp_gfx_delete_sprite_image(mp_obj_get_int(cid),
+    check_gfx(fmrb_mp_gfx_delete_sprite_image(mp_drawer(cid)->canvas,
                                               mp_obj_get_int(image_id)));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(gfx_delete_sprite_image_obj, gfx_delete_sprite_image);
 
+/* Drawing goes into the image (no origin) until the target is 0 again. */
 static mp_obj_t gfx_set_sprite_target(mp_obj_t cid, mp_obj_t image_id) {
-    check_gfx(fmrb_mp_gfx_set_sprite_target(mp_obj_get_int(cid),
-                                            mp_obj_get_int(image_id)));
+    int32_t drawer = fmrb_mp_recv_gfx(cid);
+    int image = mp_obj_get_int(image_id);
+    check_gfx(fmrb_mp_gfx_set_sprite_target(mp_drawer(cid)->canvas, image));
+    fmrb_gfx_drawer_set_to_image(drawer, image != 0);
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(gfx_set_sprite_target_obj, gfx_set_sprite_target);
@@ -858,8 +887,10 @@ static mp_obj_t gfx_create_sprite_instance(size_t n_args, const mp_obj_t *args) 
         image_ids[i] = (uint16_t)mp_obj_get_int(items[i]);
     }
 
-    int id = fmrb_mp_gfx_create_sprite_instance(ARG_INT(0), image_ids, (int)count,
-                                                ARG_INT(2), ARG_INT(3), ARG_INT(4));
+    /* sprite coordinates: from the origin, also while drawing into an image */
+    const fmrb_gfx_drawer_t *d = mp_drawer(args[0]);
+    int id = fmrb_mp_gfx_create_sprite_instance(d->canvas, image_ids, (int)count,
+                                                ARG_INT(2) + d->ox, ARG_INT(3) + d->oy, ARG_INT(4));
     if (id == 0) {
         mp_raise_msg(&mp_type_RuntimeError,
                      MP_ERROR_TEXT("failed to create sprite instance"));
@@ -871,34 +902,35 @@ static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_create_sprite_instance_obj, 5, 5,
 
 static mp_obj_t gfx_sprite_move(size_t n_args, const mp_obj_t *args) {
     (void)n_args;
-    check_gfx(fmrb_mp_gfx_sprite_move(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3)));
+    const fmrb_gfx_drawer_t *d = mp_drawer(args[0]);
+    check_gfx(fmrb_mp_gfx_sprite_move(d->canvas, ARG_INT(1), ARG_INT(2) + d->ox, ARG_INT(3) + d->oy));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(gfx_sprite_move_obj, 4, 4, gfx_sprite_move);
 
 static mp_obj_t gfx_sprite_visible(mp_obj_t cid, mp_obj_t inst, mp_obj_t visible) {
-    check_gfx(fmrb_mp_gfx_sprite_visible(mp_obj_get_int(cid), mp_obj_get_int(inst),
+    check_gfx(fmrb_mp_gfx_sprite_visible(mp_drawer(cid)->canvas, mp_obj_get_int(inst),
                                          mp_obj_is_true(visible)));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(gfx_sprite_visible_obj, gfx_sprite_visible);
 
 static mp_obj_t gfx_sprite_frame(mp_obj_t cid, mp_obj_t inst, mp_obj_t frame) {
-    check_gfx(fmrb_mp_gfx_sprite_frame(mp_obj_get_int(cid), mp_obj_get_int(inst),
+    check_gfx(fmrb_mp_gfx_sprite_frame(mp_drawer(cid)->canvas, mp_obj_get_int(inst),
                                        mp_obj_get_int(frame)));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(gfx_sprite_frame_obj, gfx_sprite_frame);
 
 static mp_obj_t gfx_delete_sprite_instance(mp_obj_t cid, mp_obj_t inst) {
-    check_gfx(fmrb_mp_gfx_delete_sprite_instance(mp_obj_get_int(cid),
+    check_gfx(fmrb_mp_gfx_delete_sprite_instance(mp_drawer(cid)->canvas,
                                                  mp_obj_get_int(inst)));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(gfx_delete_sprite_instance_obj, gfx_delete_sprite_instance);
 
 static mp_obj_t gfx_delete_all_sprites(mp_obj_t cid) {
-    check_gfx(fmrb_mp_gfx_delete_all_sprites(mp_obj_get_int(cid)));
+    check_gfx(fmrb_mp_gfx_delete_all_sprites(mp_drawer(cid)->canvas));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(gfx_delete_all_sprites_obj, gfx_delete_all_sprites);
@@ -948,6 +980,8 @@ static const mp_rom_map_elem_t fmrb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_audio_note), MP_ROM_PTR(&fmrb_audio_note_obj) },
 
 
+    { MP_ROM_QSTR(MP_QSTR_gfx_drawer_open), MP_ROM_PTR(&gfx_drawer_open_obj) },
+    { MP_ROM_QSTR(MP_QSTR_gfx_set_origin), MP_ROM_PTR(&gfx_set_origin_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_create_sprite_image),
       MP_ROM_PTR(&gfx_create_sprite_image_obj) },
     { MP_ROM_QSTR(MP_QSTR_gfx_load_sprite_image_bmp),

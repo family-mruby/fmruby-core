@@ -4,9 +4,11 @@
 # the primitives gfx.c defines directly on the class), so method names,
 # argument order and colour values match. The methods on the app boundary are
 # generated from sig/ into _FmrbGfxBoundary (fmrb_boundary_py.h, doc/
-# app_boundary), which passes the object itself to _fmrb so the firmware adds
-# the drawing origin. This class adds what the Ruby mrblib adds: the wrappers
-# with default arguments over the *_raw methods, and the text metrics.
+# app_boundary), which passes the object itself to _fmrb. The object is a
+# drawer of the firmware (_drawer, its number): the canvas, the drawing origin
+# and the area are kept there and the firmware adds the origin, so nothing
+# here adds it. This class adds what the Ruby mrblib adds: the wrappers with
+# default arguments over the *_raw methods, and the text metrics.
 #
 # Not provided (see doc/micropython/README.md): GfxBlock, video.
 
@@ -35,32 +37,26 @@ class FmrbGfx(_FmrbGfxBoundary):
     LINE_H = 8
 
     def __init__(self, canvas_id, width=0, height=0):
-        self.canvas_id = canvas_id
+        # The firmware's drawer on that canvas. Its drawing origin and the
+        # size of its area (doc/codebase_tidy T4) start at (0, 0) and the
+        # canvas size; FmrbApp gives the app's gfx the area inside the frame
+        # (_layout_user_area). canvas_id, origin_x, origin_y, area_width and
+        # area_height read them back (properties over the boundary).
+        self._drawer = _fmrb.gfx_drawer_open(canvas_id, width, height)
         self.canvas_width = width
         self.canvas_height = height
-        # The drawing origin and the size of its area (doc/codebase_tidy
-        # T4): every coordinate a draw call takes is from it. FmrbApp gives
-        # the app's gfx the area inside the frame (_layout_user_area); dx/dy
-        # are what a draw adds -- the origin, or 0 while drawing into a
-        # sprite image.
-        self.origin_x = 0
-        self.origin_y = 0
-        self.area_width = width
-        self.area_height = height
-        self.dx = 0
-        self.dy = 0
-        self.to_image = False
         # What set_font last selected, so a caller that has to draw in another
         # font (the window frame does) can put this one back.
         self.current_font = (FmrbGfx.FONT_DEFAULT, None)
 
+    canvas_id = property(_FmrbGfxBoundary.canvas_id)
+    origin_x = property(_FmrbGfxBoundary.origin_x)
+    origin_y = property(_FmrbGfxBoundary.origin_y)
+    area_width = property(_FmrbGfxBoundary.area_width)
+    area_height = property(_FmrbGfxBoundary.area_height)
+
     def _set_origin(self, x, y, w, h):
-        self.origin_x = x
-        self.origin_y = y
-        self.area_width = w
-        self.area_height = h
-        self.dx = 0 if self.to_image else x
-        self.dy = 0 if self.to_image else y
+        _fmrb.gfx_set_origin(self, x, y, w, h)
         return self
 
     # The wrappers: the same defaults as Ruby's.
@@ -160,7 +156,7 @@ class FmrbGfx(_FmrbGfxBoundary):
         return self.set_composite_regions_raw(out)
 
     def delete_all_sprites(self):
-        _fmrb.gfx_delete_all_sprites(self.canvas_id)
+        _fmrb.gfx_delete_all_sprites(self)
         return self
 
 
@@ -171,62 +167,53 @@ class SpriteImage:
         self.gfx = gfx
         self.width = width
         self.height = height
-        self.id = _fmrb.gfx_create_sprite_image(gfx.canvas_id, width, height,
+        self.id = _fmrb.gfx_create_sprite_image(gfx, width, height,
                                                 transparent_color, use_transparent)
 
     # Between set_target and reset_target, the parent FmrbGfx draws into this
-    # image instead of onto the canvas.
+    # image instead of onto the canvas (in the image's own coordinates: the
+    # firmware adds no origin meanwhile).
     def set_target(self):
-        g = self.gfx
-        g.to_image = True
-        g.dx = 0
-        g.dy = 0
-        _fmrb.gfx_set_sprite_target(g.canvas_id, self.id)
+        _fmrb.gfx_set_sprite_target(self.gfx, self.id)
         return self
 
     def reset_target(self):
-        g = self.gfx
-        g.to_image = False
-        g.dx = g.origin_x
-        g.dy = g.origin_y
-        _fmrb.gfx_set_sprite_target(g.canvas_id, 0)
+        _fmrb.gfx_set_sprite_target(self.gfx, 0)
         return self
 
     def load_bmp(self, path):
-        _fmrb.gfx_load_sprite_image_bmp(self.gfx.canvas_id, self.id, path)
+        _fmrb.gfx_load_sprite_image_bmp(self.gfx, self.id, path)
         return self
 
     def destroy(self):
         if self.id:
-            _fmrb.gfx_delete_sprite_image(self.gfx.canvas_id, self.id)
+            _fmrb.gfx_delete_sprite_image(self.gfx, self.id)
             self.id = None
 
 
 # A placement of one or more SpriteImages on the canvas. Moving one costs a
 # single command, and the compositing happens on the graphics side, which is
-# why anything that moves every frame should be a sprite.
+# why anything that moves every frame should be a sprite. Its coordinates are
+# from the gfx's origin (the firmware adds it).
 class SpriteInstance:
     def __init__(self, gfx, images, x, y, z=0):
         self.gfx = gfx
         frames = images if isinstance(images, list) else [images]
-        self.id = _fmrb.gfx_create_sprite_instance(gfx.canvas_id,
-                                                   [f.id for f in frames],
-                                                   x + gfx.origin_x, y + gfx.origin_y, z)
+        self.id = _fmrb.gfx_create_sprite_instance(gfx, [f.id for f in frames], x, y, z)
 
     def move(self, x, y):
-        g = self.gfx
-        _fmrb.gfx_sprite_move(g.canvas_id, self.id, x + g.origin_x, y + g.origin_y)
+        _fmrb.gfx_sprite_move(self.gfx, self.id, x, y)
         return self
 
     def set_visible(self, visible):
-        _fmrb.gfx_sprite_visible(self.gfx.canvas_id, self.id, visible)
+        _fmrb.gfx_sprite_visible(self.gfx, self.id, visible)
         return self
 
     def set_frame(self, index):
-        _fmrb.gfx_sprite_frame(self.gfx.canvas_id, self.id, index)
+        _fmrb.gfx_sprite_frame(self.gfx, self.id, index)
         return self
 
     def destroy(self):
         if self.id:
-            _fmrb.gfx_delete_sprite_instance(self.gfx.canvas_id, self.id)
+            _fmrb.gfx_delete_sprite_instance(self.gfx, self.id)
             self.id = None

@@ -8,7 +8,10 @@
  * and other bindings, so this header also tells what crosses the boundary in
  * every language:
  *
- * - an object's method takes the object's number first (a canvas for FmrbGfx);
+ * - an object's method takes the object's number first: for FmrbGfx a drawer
+ *   of the app, which has the canvas, the drawing origin and the area (the
+ *   firmware adds the origin to the coordinates drawn; origin_x and the rest
+ *   read them);
  * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
  *   bool is int32_t 0 or 1; Float is double;
  * - a String is a pointer and a length (not NUL-terminated);

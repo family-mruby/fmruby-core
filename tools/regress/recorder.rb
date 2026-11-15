@@ -114,6 +114,7 @@ class FmrbGfx
   # adds to its coordinates, so the record holds the canvas's, as the
   # display side gets them.
   def _set_origin(x, y, w, h) = (@__ox, @__oy, @__aw, @__ah = x, y, w, h; self)
+  def canvas_id = @canvas_id
   def origin_x = @__ox
   def origin_y = @__oy
   def area_width = @__aw

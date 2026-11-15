@@ -28,7 +28,13 @@ end
 module FmrbSpxGfx
   # The FmrbGfx methods on the app boundary are declared in the generated
   # module FmrbBoundary (fmrb_gen/fmrb_boundary_ffi.rb, from sig/). Here is
-  # what the boundary does not carry yet.
+  # what the boundary does not carry yet. The first argument is the FmrbGfx's
+  # drawer number (as for the boundary's functions), not a canvas id.
+
+  # --- the drawer: FmrbGfx.new, _set_origin, destroy ---
+  ffi_func :fmrb_spx_gfx_drawer_open, [:int, :int, :int], :int
+  ffi_func :fmrb_spx_gfx_drawer_set_origin, [:int, :int, :int, :int, :int], :int
+  ffi_func :fmrb_spx_gfx_drawer_close, [:int], :int
 
   # --- motion-JPEG playback ---
   ffi_func :fmrb_spx_gfx_video_open,    [:int, :str, :int, :int, :int, :int, :int], :binstr

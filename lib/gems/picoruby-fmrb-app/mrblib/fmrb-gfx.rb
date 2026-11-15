@@ -2,7 +2,9 @@
 # Core class is defined in C (gfx.c). The methods on the app boundary
 # (sig/fmrb_gfx.rbs, doc/app_boundary) are generated C methods; the ones
 # here are the Ruby wrappers: optional and keyword arguments over the
-# simple forms named *_raw, and what the object itself keeps (the font).
+# simple forms named *_raw, and what the object itself still keeps (the
+# font and the canvas size). The canvas, the drawing origin and the area are
+# the C side's (its drawer): canvas_id, origin_x ... read them from there.
 #
 # FmrbGfx draws, and that includes the text helpers mixed in from FmrbText
 # (fit_text, wrap_text, draw_text_lines) and the rounded button picture
@@ -34,12 +36,12 @@ class FmrbGfx
   # Canvas dimensions captured at construction time (the whole canvas: for
   # an app's window, frame included).
   attr_reader :canvas_width, :canvas_height
-  # The drawing origin and the size of the area it starts (gfx.c: origin_x,
-  # origin_y, area_width, area_height). Every coordinate a draw call takes
-  # is from that origin: the app's @gfx starts at the top-left of the area
-  # the app owns (inside the frame), anything else at the canvas's
-  # (doc/codebase_tidy T4).
-  attr_reader :canvas_id
+  # The canvas, the drawing origin and the size of the area it starts are
+  # the C side's (canvas_id, origin_x, origin_y, area_width, area_height, on
+  # the app boundary). Every coordinate a draw call takes is from that
+  # origin, which the firmware adds: the app's @gfx starts at the top-left
+  # of the area the app owns (inside the frame), anything else at the
+  # canvas's (doc/codebase_tidy T4).
 
   # Pixel metrics for the fonts currently supported by the graphics
   # backend (LovyanGFX on the WROVER side). All supported fonts are
@@ -119,7 +121,6 @@ class FmrbGfx
   def initialize(canvas_id, width: 0, height: 0)
     _init(canvas_id)
     _set_origin(0, 0, width, height)
-    @canvas_id = canvas_id
     @canvas_width = width
     @canvas_height = height
     # LovyanGFX boots a fresh target with Font0 and text size 1.

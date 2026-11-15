@@ -8,32 +8,31 @@
 #include "fmrb_rtos.h"
 #include "fmrb_theme.h"
 #include "fmrb_app_shell.h"
-#include "fmrb_boundary_recv.h"
+#include "fmrb_gfx_drawer.h"
 #include <string.h>
 
 static const char *TAG = "lua_gfx";
 
-// Userdata type for graphics context. ox / oy is the drawing origin: the
-// top-left of the area the app owns, which the shell works out (the same idea
-// as mrb_gfx_data of the mruby binding). Every draw call adds it; clear and
-// present do not.
+// Userdata type for graphics context. What it draws on is a drawer of the app
+// (fmrb_gfx_drawer.h): the canvas, and the drawing origin -- the top-left of
+// the area the app owns, which the shell works out. The firmware adds the
+// origin to every draw call (clear and present take none), as for every
+// engine's FmrbGfx (doc/app_boundary W4b).
 typedef struct {
     fmrb_gfx_context_t ctx;
-    fmrb_canvas_handle_t canvas_id;
-    int16_t ox, oy;
+    int32_t drawer;
 } lua_gfx_data;
 
 
-// The receiver number of the app boundary's FmrbGfx functions
-// (fmrb_boundary_recv.h): the canvas, with this gfx's origin bound for the call.
+// The receiver number of the app boundary's FmrbGfx functions: the drawer.
 static int32_t fmrb_lua_recv_gfx(lua_State *L, int idx)
 {
     lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, idx, "FmrbGfx");
-    if (!data || !data->ctx) {
+    if (!data || !data->ctx || data->drawer < 0) {
         luaL_error(L, "Graphics not initialized");
         return -1;
     }
-    return fmrb_gfx_recv_bind(data->canvas_id, data->ox, data->oy);
+    return data->drawer;
 }
 
 // FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): every method
@@ -276,14 +275,20 @@ void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout)
         if (!data) {
             data = (lua_gfx_data *)lua_newuserdatauv(L, sizeof(lua_gfx_data), 0);
             memset(data, 0, sizeof(*data));
+            data->drawer = -1;
             luaL_getmetatable(L, "FmrbGfx");
             lua_setmetatable(L, -2);
             lua_setglobal(L, "gfx");
         }
-        data->ctx = fmrb_gfx_get_global_context();
-        data->canvas_id = (fmrb_canvas_handle_t)layout->canvas;
-        data->ox = layout->area_x;
-        data->oy = layout->area_y;
+        // One drawer for the app's gfx, kept for the app's life (the app's
+        // drawers go with it); the layout moves its canvas and origin.
+        if (data->drawer < 0) {
+            data->drawer = fmrb_gfx_drawer_open(layout->canvas, layout->area_w, layout->area_h);
+        }
+        fmrb_gfx_drawer_set_canvas(data->drawer, layout->canvas);
+        fmrb_gfx_drawer_set_origin(data->drawer, layout->area_x, layout->area_y,
+                                   layout->area_w, layout->area_h);
+        data->ctx = data->drawer >= 0 ? fmrb_gfx_get_global_context() : NULL;
     }
 
     lua_getfield(L, LUA_REGISTRYINDEX, "fmrb.layout");

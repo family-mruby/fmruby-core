@@ -4,10 +4,13 @@
  * Every engine's glue (mruby, Lua, MicroPython, Spinel, WAMR) is generated
  * and calls these; nothing here knows an engine.
  *
- * The receiver (the first argument) is a canvas id, or FMRB_GFX_RECV_BOUND
- * for a canvas drawn with an origin (fmrb_boundary_recv.h). Coordinates of a
- * drawing call are from that origin; clear, present and the canvas-wide
- * settings ignore it. Results follow fmrb_gen/fmrb_boundary.h: 0 or more on
+ * The receiver (the first argument) is a drawer of the calling app
+ * (fmrb_gfx_drawer.h): its canvas, its drawing origin and area, and whether
+ * it draws into a sprite image. Coordinates of a drawing call are from that
+ * origin (none while it draws into a sprite image); clear, present and the
+ * canvas-wide settings ignore it. The drawers are opened, laid out and closed
+ * here too: the engines' FmrbGfx keep only the number (doc/app_boundary W4b).
+ * Results follow fmrb_gen/fmrb_boundary.h: 0 or more on
  * success, FMRB_BOUNDARY_ERR_FAILED, or FMRB_BOUNDARY_ERR_ARG for an
  * argument out of range.
  *
@@ -20,7 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "fmrb_gen/fmrb_boundary.h"
-#include "fmrb_boundary_recv.h"
+#include "fmrb_gfx_drawer.h"
 #include "fmrb_app.h"
 #include "fmrb_err.h"
 #include "fmrb_gfx.h"
@@ -46,53 +49,110 @@
 /* The longest path the graphics side takes (file_cmd_t.path). */
 #define GFX_PATH_MAX 120
 
-int32_t fmrb_gfx_recv_bind(int32_t canvas_id, int32_t ox, int32_t oy)
+/* ---- the drawers --------------------------------------------------------- */
+
+static fmrb_gfx_drawer_t *drawer_of(int32_t drawer)
 {
-    if (ox == 0 && oy == 0) {
-        return canvas_id;
+    if (drawer < 0 || drawer >= FMRB_GFX_DRAWERS_MAX) {
+        return NULL;
     }
     fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        return -1;
+    if (!ctx || !ctx->gfx_drawers[drawer].used) {
+        return NULL;
     }
-    ctx->gfx_bound_canvas = canvas_id;
-    ctx->gfx_bound_ox = (int16_t)ox;
-    ctx->gfx_bound_oy = (int16_t)oy;
-    return FMRB_GFX_RECV_BOUND;
+    return &ctx->gfx_drawers[drawer];
 }
 
-int fmrb_gfx_recv_resolve(int32_t gfx, uint16_t *canvas, int16_t *ox, int16_t *oy)
+static uint16_t clamp_size(int32_t v)
 {
-    if (gfx == FMRB_GFX_RECV_BOUND) {
-        const fmrb_app_task_context_t *ctx = fmrb_current();
-        if (!ctx) {
-            return -1;
-        }
-        *canvas = (uint16_t)ctx->gfx_bound_canvas;
-        *ox = ctx->gfx_bound_ox;
-        *oy = ctx->gfx_bound_oy;
-        return 0;
+    return (uint16_t)(v < 0 ? 0 : (v > 0xFFFF ? 0xFFFF : v));
+}
+
+int32_t fmrb_gfx_drawer_open(int32_t canvas, int32_t area_w, int32_t area_h)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) {
+        return ERR_FAILED;
     }
-    // Anything else is a canvas id as the canvas handle type takes it (a
-    // headless MicroPython app passes -1, as it did before the boundary).
-    *canvas = (uint16_t)gfx;
-    *ox = 0;
-    *oy = 0;
+    for (int32_t i = 0; i < FMRB_GFX_DRAWERS_MAX; i++) {
+        fmrb_gfx_drawer_t *d = &ctx->gfx_drawers[i];
+        if (!d->used) {
+            memset(d, 0, sizeof(*d));
+            d->used = 1;
+            // A headless MicroPython app's -1 stays what the canvas handle
+            // type makes of it, as before the drawers.
+            d->canvas = (uint16_t)canvas;
+            d->area_w = clamp_size(area_w);
+            d->area_h = clamp_size(area_h);
+            return i;
+        }
+    }
+    return ERR_FAILED;
+}
+
+void fmrb_gfx_drawer_close(int32_t drawer)
+{
+    fmrb_gfx_drawer_t *d = drawer_of(drawer);
+    if (d) {
+        d->used = 0;
+    }
+}
+
+int32_t fmrb_gfx_drawer_set_origin(int32_t drawer, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    fmrb_gfx_drawer_t *d = drawer_of(drawer);
+    if (!d) {
+        return ERR_FAILED;
+    }
+    d->ox = (int16_t)x;
+    d->oy = (int16_t)y;
+    d->area_w = clamp_size(w);
+    d->area_h = clamp_size(h);
     return 0;
+}
+
+int32_t fmrb_gfx_drawer_set_canvas(int32_t drawer, int32_t canvas)
+{
+    fmrb_gfx_drawer_t *d = drawer_of(drawer);
+    if (!d) {
+        return ERR_FAILED;
+    }
+    d->canvas = (uint16_t)canvas;
+    return 0;
+}
+
+int32_t fmrb_gfx_drawer_set_to_image(int32_t drawer, int32_t to_image)
+{
+    fmrb_gfx_drawer_t *d = drawer_of(drawer);
+    if (!d) {
+        return ERR_FAILED;
+    }
+    d->to_image = to_image ? 1 : 0;
+    return 0;
+}
+
+const fmrb_gfx_drawer_t *fmrb_gfx_drawer_get(int32_t drawer)
+{
+    return drawer_of(drawer);
 }
 
 typedef struct {
     fmrb_canvas_handle_t canvas;
-    int16_t ox, oy;
+    int16_t ox, oy;   // what a drawing call adds: the origin, or 0 into an image
+    int16_t ax, ay;   // the origin itself (the sprite clip's)
 } gfx_target_t;
 
 static bool target_of(int32_t gfx, gfx_target_t *t)
 {
-    uint16_t canvas;
-    if (fmrb_gfx_recv_resolve(gfx, &canvas, &t->ox, &t->oy) < 0) {
+    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    if (!d) {
         return false;
     }
-    t->canvas = (fmrb_canvas_handle_t)canvas;
+    t->canvas = (fmrb_canvas_handle_t)d->canvas;
+    t->ax = d->ox;
+    t->ay = d->oy;
+    t->ox = d->to_image ? 0 : d->ox;
+    t->oy = d->to_image ? 0 : d->oy;
     return true;
 }
 
@@ -102,6 +162,38 @@ static bool target_of(int32_t gfx, gfx_target_t *t)
 
 #define TX(t, v) ((int16_t)((v) + (t).ox))
 #define TY(t, v) ((int16_t)((v) + (t).oy))
+
+/* ---- the drawer's state -------------------------------------------------- */
+
+int32_t fmrb_bnd_gfx_canvas_id(int32_t gfx)
+{
+    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    return d ? (int32_t)d->canvas : ERR_FAILED;
+}
+
+int32_t fmrb_bnd_gfx_origin_x(int32_t gfx)
+{
+    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    return d ? (int32_t)d->ox : ERR_FAILED;
+}
+
+int32_t fmrb_bnd_gfx_origin_y(int32_t gfx)
+{
+    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    return d ? (int32_t)d->oy : ERR_FAILED;
+}
+
+int32_t fmrb_bnd_gfx_area_width(int32_t gfx)
+{
+    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    return d ? (int32_t)d->area_w : ERR_FAILED;
+}
+
+int32_t fmrb_bnd_gfx_area_height(int32_t gfx)
+{
+    const fmrb_gfx_drawer_t *d = drawer_of(gfx);
+    return d ? (int32_t)d->area_h : ERR_FAILED;
+}
 
 static int32_t submit(const gfx_cmd_t *cmd)
 {
@@ -613,8 +705,10 @@ int32_t fmrb_bnd_gfx_set_composite_regions_raw(int32_t gfx, const fmrb_bnd_gfx_c
     return 0;
 }
 
-// The rect is in sprite coordinates, the area's (from the origin); a width of
-// 0 clears the clip.
+// The rect is in sprite coordinates, which are the area's (from the origin)
+// whatever the drawer draws into: a sprite instance is placed from the
+// origin (SpriteInstance#move) also while the drawer draws into a sprite
+// image, so the clip is too. A width of 0 clears the clip.
 int32_t fmrb_bnd_gfx_set_sprite_clip(int32_t gfx, int32_t x, int32_t y, int32_t w, int32_t h)
 {
     TARGET(gfx, t);
@@ -623,8 +717,8 @@ int32_t fmrb_bnd_gfx_set_sprite_clip(int32_t gfx, int32_t x, int32_t y, int32_t 
         return ERR_FAILED;
     }
     if (w > 0) {
-        x += t.ox;
-        y += t.oy;
+        x += t.ax;
+        y += t.ay;
     }
     if (x < 0) x = 0;
     if (y < 0) y = 0;

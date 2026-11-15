@@ -41,6 +41,8 @@ end
 - `gfx` は殻が作った描き手。座標の (0, 0) は枠の内側 (区画) の左上 (Ruby の `@gfx` と同じ)。
   区画の大きさは `FmrbApp.user_area_width()`・`user_area_height()`、Window の大きさは
   `FmrbApp.window_width()`・`window_height()` (関数なので、呼んだ時点の大きさが返る)。
+  原点は本体の側 (描き手、`fmrb_gfx_drawer.h`) が持って足す。`gfx:origin_x()`・`origin_y()`・
+  `area_width()`・`area_height()`・`canvas_id()` で読める。
 - `gfx` のメソッドは Ruby の `FmrbGfx` と同じ名前・同じ引数の順で、型定義 `sig/fmrb_gfx.rbs` から
   生成している (doc/app_boundary)。`gfx:fill_rect(x, y, w, h, c)`・`draw_rect`・`fill_round_rect(x, y,
   w, h, r, c)`・`draw_line(x1, y1, x2, y2, c)`・`fill_circle(x, y, r, c)`・`draw_ellipse`・

@@ -10,6 +10,7 @@
 #include "fmrb_log.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_mem.h"
+#include "fmrb_gfx_drawer.h"
 
 static const char *TAG = "gfx_block";
 
@@ -24,11 +25,12 @@ static const char *TAG = "gfx_block";
 #define OP_FILL_CIRCLE     0x07
 #define OP_DRAW_TEXT       0x08
 
-// Access the canvas_id/ctx stored on the FmrbGfx instance. Mirrors mrb_gfx_data
-// in gfx.c; duplicated here because the struct is file-scope there.
+// Access the ctx and the drawer stored on the FmrbGfx instance. Mirrors the
+// head of mrb_gfx_data in gfx.c; duplicated here because the struct is
+// file-scope there. The canvas is the drawer's (fmrb_gfx_drawer.h).
 typedef struct {
     fmrb_gfx_context_t ctx;
-    fmrb_canvas_handle_t canvas_id;
+    int32_t drawer;
 } gfx_data_view_t;
 
 // Extract (ctx, canvas_id) from a FmrbGfx instance value.
@@ -39,8 +41,10 @@ static bool get_gfx(mrb_state *mrb, mrb_value gfx_self,
     if (mrb_type(gfx_self) != MRB_TT_DATA) return false;
     gfx_data_view_t *d = (gfx_data_view_t *)DATA_PTR(gfx_self);
     if (!d || !d->ctx) return false;
+    const fmrb_gfx_drawer_t *dr = fmrb_gfx_drawer_get(d->drawer);
+    if (!dr) return false;
     *out_ctx = d->ctx;
-    *out_canvas_id = d->canvas_id;
+    *out_canvas_id = (fmrb_canvas_handle_t)dr->canvas;
     return true;
 }
 

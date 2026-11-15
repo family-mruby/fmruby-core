@@ -2,9 +2,10 @@
 # ports/esp32/gfx.c。`_` で始まる内部用のメソッドは書いていない。
 #
 # FmrbGfx はクラスごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
-# 載せないもの (Ruby で書いたメソッドと、オブジェクトが持つ状態) には
+# 載せないもの (Ruby で書いたメソッドと、まだ包みが持つ状態) には
 # %a{fmrb.internal} を付ける。後ろに _raw の付くメソッドは、省略できる引数を
-# 持つ包み (draw_text など) の、省略なしの形。
+# 持つ包み (draw_text など) の、省略なしの形。描く先の canvas・原点・区画は
+# 境界の下 (本体の C) が持ち、canvas_id・origin_x などで読める。
 #
 # 描くメソッドは自分自身を返すので、続けて書ける。
 # 色は RGB332 の数 (FmrbGfx.rgb_to_332 で作れる)。
@@ -165,7 +166,6 @@ class FmrbGfx
   # ```ruby
   # id = gfx.canvas_id
   # ```
-  %a{fmrb.internal}
   def canvas_id: () -> Integer
 
   # 画面の横幅 (ドット) <<en>> Canvas width in pixels
@@ -186,25 +186,25 @@ class FmrbGfx
   # <<en>>
   # How far from the origin there is to draw in. For the app's gfx it is
   # @user_area_width.
-  %a{fmrb.internal}
   def area_width: () -> Integer
 
   # 描く区画の高さ (ドット) <<en>> Height of the area drawn in
-  %a{fmrb.internal}
   def area_height: () -> Integer
 
   # 原点の canvas 上の x <<en>> Where the origin is on the canvas (x)
   #
-  # 描く座標はすべてここに足されて canvas に届く。枠のある Window の gfx は
-  # 1、window_gfx などは 0。
+  # 描く座標はすべてここに足されて canvas に届く (本体の側で足す)。枠のある
+  # Window の gfx は 1、window_gfx などは 0。スプライトの画像へ描いている間は
+  # 描く座標に足さないが、スプライトの座標 (set_sprite_clip・SpriteInstance)
+  # には足す。
   # <<en>>
-  # Every coordinate drawn is added to it on its way to the canvas: 1 for a
-  # framed window's gfx, 0 for window_gfx and the rest.
-  %a{fmrb.internal}
+  # Every coordinate drawn is added to it on its way to the canvas (the
+  # firmware adds it): 1 for a framed window's gfx, 0 for window_gfx and the
+  # rest. While drawing into a sprite image it is not added to what is drawn,
+  # but it still is to sprite coordinates (set_sprite_clip, SpriteInstance).
   def origin_x: () -> Integer
 
   # 原点の canvas 上の y <<en>> Where the origin is on the canvas (y)
-  %a{fmrb.internal}
   def origin_y: () -> Integer
 
   # 画面の高さ (ドット) <<en>> Canvas height in pixels
@@ -1024,7 +1024,8 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   #
   # スプライトは canvas に描いた絵の上に重ねて合成されるので、何も
   # しないと Window のわくやタイトルバーの上にもはみ出す。この四角の中だけに
-  # 出るようにする。x, y, w, h は SpriteInstance#move と同じ座標。
+  # 出るようにする。x, y, w, h は SpriteInstance#move と同じ座標 (原点から。
+  # スプライトの画像へ描いている間も原点を足す)。
   #
   # Window のアプリは起動時に Window の中身の範囲が入っているので、ふつうは呼ぶ
   # 必要はない。点数を出す帯など、さらに狭い範囲に閉じ込めたいときに使う。
@@ -1038,7 +1039,8 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   # Sprites are composited on top of everything drawn into the canvas, so
   # without a clip they paint over the window frame and title bar. This
   # confines them to the given rect, in the same coordinates as
-  # SpriteInstance#move.
+  # SpriteInstance#move (from the origin, also while drawing into a sprite
+  # image).
   #
   # Windowed apps start with their user area set, so calling this is only
   # needed to narrow it further - e.g. to keep sprites out of a score bar.

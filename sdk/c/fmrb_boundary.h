@@ -8,7 +8,10 @@
  * and other bindings, so this header also tells what crosses the boundary in
  * every language:
  *
- * - an object's method takes the object's number first (a canvas for FmrbGfx);
+ * - an object's method takes the object's number first: for FmrbGfx a drawer
+ *   of the app, which has the canvas, the drawing origin and the area (the
+ *   firmware adds the origin to the coordinates drawn; origin_x and the rest
+ *   read them);
  * - Integer is int32_t unless the definition gives a width (int16, uint8 ...);
  *   bool is int32_t 0 or 1; Float is double;
  * - a String is a pointer and a length (not NUL-terminated);
@@ -36,7 +39,7 @@ extern "C" {
 #define FMRB_ABI_VERSION_MAJOR 0
 #define FMRB_ABI_VERSION_MINOR 1
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0x8acc030au
+#define FMRB_ABI_HASH 0xb2e857c4u
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -75,6 +78,61 @@ typedef struct __attribute__((packed)) {
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_DEFAULT 0
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA 1
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA_BOLD 2
+
+/**
+ * 画面の番号
+ * The canvas number
+ *
+ * Ruby: FmrbGfx#canvas_id()
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_canvas_id")
+int32_t fmrb_gfx_canvas_id(int32_t gfx);
+
+/**
+ * 描く区画の横幅 (ドット)
+ * Width of the area drawn in
+ *
+ * Ruby: FmrbGfx#area_width()
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_area_width")
+int32_t fmrb_gfx_area_width(int32_t gfx);
+
+/**
+ * 描く区画の高さ (ドット)
+ * Height of the area drawn in
+ *
+ * Ruby: FmrbGfx#area_height()
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_area_height")
+int32_t fmrb_gfx_area_height(int32_t gfx);
+
+/**
+ * 原点の canvas 上の x
+ * Where the origin is on the canvas (x)
+ *
+ * Ruby: FmrbGfx#origin_x()
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_origin_x")
+int32_t fmrb_gfx_origin_x(int32_t gfx);
+
+/**
+ * 原点の canvas 上の y
+ * Where the origin is on the canvas (y)
+ *
+ * Ruby: FmrbGfx#origin_y()
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_origin_y")
+int32_t fmrb_gfx_origin_y(int32_t gfx);
 
 /**
  * 画面ぜんぶを一色でぬる

@@ -28,29 +28,25 @@
 #include "app_local.h"
 #include "fmrb_kernel.h"
 #include "fmrb_app_canvas.h"
-#include "fmrb_boundary_recv.h"
+#include "fmrb_gfx_drawer.h"
 #ifdef FMRB_HAVE_CHECKPOINT
 #include <mruby/checkpoint.h>
 #endif
 
 static const char* TAG = "gfx";
 
-// Graphics context wrapper for mruby
+// Graphics context wrapper for mruby. What it draws on is a drawer of the app
+// (fmrb_gfx_drawer.h, doc/app_boundary W4b): the canvas, the drawing origin
+// (the top-left of the area the app owns on it, doc/codebase_tidy T4, which
+// FmrbApp lays out with _set_origin) and whether the target is a sprite image
+// now. They are kept there, below the app boundary, for every engine alike;
+// this object keeps the drawer's number.
 typedef struct {
     fmrb_gfx_context_t ctx;
-    fmrb_canvas_handle_t canvas_id;  // Canvas ID for this instance
-    // The drawing origin: the top-left of the area the app owns on this
-    // canvas (doc/codebase_tidy T4), and that area's size. FmrbApp sets them
-    // (_layout_user_area); every coordinate a draw call takes is added to the
-    // origin before it goes to the canvas. 0 and the canvas size for any
-    // other FmrbGfx (the window-wide @window_gfx, the wallpaper, an extra
-    // canvas). While the drawing target is a sprite image the origin is not
-    // added: that image has coordinates of its own.
-    int16_t ox;
-    int16_t oy;
-    uint16_t area_w;
-    uint16_t area_h;
-    uint8_t to_image;
+    int32_t drawer;                  // the app's drawer, or -1
+    // The app the drawer is of: a drawer number means something only in its
+    // own app's table, so it is closed only from there.
+    const fmrb_app_task_context_t *owner;
 #ifdef FMRB_HAVE_CHECKPOINT
     // An FmrbGfx restored from a checkpoint image (doc/checkpoint F3) draws on
     // nothing until _checkpoint_rebind binds it to the canvas of the same role
@@ -64,15 +60,77 @@ typedef struct {
 #endif
 } mrb_gfx_data;
 
-// A coordinate of the area, as the canvas takes it.
-#define GX(d, v) ((int16_t)((v) + ((d)->to_image ? 0 : (d)->ox)))
-#define GY(d, v) ((int16_t)((v) + ((d)->to_image ? 0 : (d)->oy)))
+// The canvas a drawer draws on and what a coordinate of the area becomes on
+// it (the origin, or nothing into a sprite image). These are for the methods
+// not on the boundary yet (video, sprites), which take the canvas's own.
+typedef struct {
+    fmrb_canvas_handle_t canvas;
+    int16_t ox, oy;   // what a drawn coordinate gets
+    int16_t ax, ay;   // the origin itself (sprite coordinates)
+} gfx_at_t;
+
+static __attribute__((unused)) bool gfx_at(const mrb_gfx_data *data, gfx_at_t *at)
+{
+    const fmrb_gfx_drawer_t *d = data ? fmrb_gfx_drawer_get(data->drawer) : NULL;
+    if (!d) {
+        return false;
+    }
+    at->canvas = (fmrb_canvas_handle_t)d->canvas;
+    at->ax = d->ox;
+    at->ay = d->oy;
+    at->ox = d->to_image ? 0 : d->ox;
+    at->oy = d->to_image ? 0 : d->oy;
+    return true;
+}
+
+// The canvas of a bound object (data->ctx set means its drawer is open).
+static fmrb_canvas_handle_t gfx_canvas(const mrb_gfx_data *data)
+{
+    const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(data->drawer);
+    return d ? (fmrb_canvas_handle_t)d->canvas : FMRB_CANVAS_SCREEN;
+}
+
+// A sprite coordinate on the canvas: from the origin, also while the drawer
+// draws into a sprite image (a sprite instance is placed on the canvas).
+static int16_t gfx_sprite_x(const mrb_gfx_data *data, mrb_int v)
+{
+    const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(data->drawer);
+    return (int16_t)(v + (d ? d->ox : 0));
+}
+
+static int16_t gfx_sprite_y(const mrb_gfx_data *data, mrb_int v)
+{
+    const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(data->drawer);
+    return (int16_t)(v + (d ? d->oy : 0));
+}
+
+static void gfx_drawer_release(mrb_gfx_data *data)
+{
+    if (data->drawer >= 0 && data->owner && data->owner == fmrb_current()) {
+        fmrb_gfx_drawer_close(data->drawer);
+    }
+    data->drawer = -1;
+    data->owner = NULL;
+}
+
+static int32_t gfx_drawer_take(mrb_state *mrb, mrb_gfx_data *data, int32_t canvas)
+{
+    int32_t d = fmrb_gfx_drawer_open(canvas, 0, 0);
+    if (d < 0) {
+        return d;
+    }
+    data->drawer = d;
+    data->owner = fmrb_current();
+    (void)mrb;
+    return d;
+}
 
 static void mrb_gfx_data_free(mrb_state *mrb, void *ptr)
 {
     if (ptr) {
-        // Don't deinitialize global context, just free the wrapper
-        // The global context is managed by fmrb_gfx layer
+        // Don't deinitialize global context, just free the wrapper (and its
+        // drawer). The global context is managed by fmrb_gfx layer
+        gfx_drawer_release((mrb_gfx_data *)ptr);
         mrb_free(mrb, ptr);
     }
 }
@@ -91,6 +149,7 @@ static mrb_value mrb_gfx_initialize(mrb_state *mrb, mrb_value self)
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_malloc(mrb, sizeof(mrb_gfx_data));
     memset(data, 0, sizeof(mrb_gfx_data));
+    data->drawer = -1;
 
     // Get global graphics context (already initialized by kernel/host)
     data->ctx = fmrb_gfx_get_global_context();
@@ -100,29 +159,29 @@ static mrb_value mrb_gfx_initialize(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics context not initialized");
     }
 
-    // Store canvas_id for this instance
-    data->canvas_id = (fmrb_canvas_handle_t)canvas_id;
+    // The drawer for this instance, on its canvas
+    if (gfx_drawer_take(mrb, data, (int32_t)canvas_id) < 0) {
+        mrb_free(mrb, data);
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "no room for another FmrbGfx (%d at most)",
+                   (int)FMRB_GFX_DRAWERS_MAX);
+    }
 
-    FMRB_LOGI(TAG, "FmrbGfx initialized: canvas_id=%d, ctx=%p",
-              (int)data->canvas_id, data->ctx);
+    FMRB_LOGI(TAG, "FmrbGfx initialized: canvas_id=%d, drawer=%d, ctx=%p",
+              (int)canvas_id, (int)data->drawer, data->ctx);
 
     mrb_data_init(self, data, &mrb_gfx_data_type);
     return self;
 }
 
-// The receiver number of the app boundary's FmrbGfx functions
-// (fmrb_boundary_recv.h): the canvas, with this object's origin bound for
-// the call unless the target is a sprite image (which has no origin).
+// The receiver number of the app boundary's FmrbGfx functions: this
+// object's drawer (fmrb_gfx_drawer.h), which has the canvas and the origin.
 static int32_t fmrb_mrb_recv_gfx(mrb_state *mrb, mrb_value self)
 {
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) {
+    if (!data || !data->ctx || data->drawer < 0) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
-    if (data->to_image) {
-        return data->canvas_id;
-    }
-    return fmrb_gfx_recv_bind(data->canvas_id, data->ox, data->oy);
+    return data->drawer;
 }
 
 // FmrbGfx methods generated from sig/ (tools/boundary/gen.rb): every
@@ -136,6 +195,7 @@ static mrb_value mrb_gfx_destroy(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (data && data->ctx) {
         data->ctx = NULL;
+        gfx_drawer_release(data);
     }
     return mrb_nil_value();
 }
@@ -171,7 +231,8 @@ static mrb_value mrb_gfx_video_open(mrb_state *mrb, mrb_value self)
 #else
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) {
+    gfx_at_t at;
+    if (!data || !data->ctx || !gfx_at(data, &at)) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
@@ -184,9 +245,9 @@ static mrb_value mrb_gfx_video_open(mrb_state *mrb, mrb_value self)
     size_t payload_len = sizeof(fmrb_link_graphics_video_open_t) + path_len;
     fmrb_link_graphics_video_open_t *hdr =
         (fmrb_link_graphics_video_open_t *)payload_buf;
-    hdr->canvas_id = data->canvas_id;
-    hdr->x         = GX(data, x);
-    hdr->y         = GY(data, y);
+    hdr->canvas_id = at.canvas;
+    hdr->x         = (int16_t)(x + at.ox);
+    hdr->y         = (int16_t)(y + at.oy);
     hdr->fps       = (uint16_t)fps;
     hdr->flags     = loop ? FMRB_LINK_GFX_VIDEO_FLAG_LOOP : 0;
     hdr->path_len  = (uint16_t)path_len;
@@ -344,7 +405,7 @@ static mrb_value mrb_gfx_create_sprite_image(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiii", &width, &height, &trans_color, &use_trans);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    uint16_t id = fmrb_gfx_create_sprite_image(data->ctx, data->canvas_id,
+    uint16_t id = fmrb_gfx_create_sprite_image(data->ctx, gfx_canvas(data),
         (uint16_t)width, (uint16_t)height, (uint8_t)trans_color, use_trans != 0);
     if (id == 0) mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create sprite image");
     return mrb_fixnum_value(id);
@@ -360,7 +421,7 @@ static mrb_value mrb_gfx_load_sprite_image_bmp(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_load_sprite_image_bmp(&cmd, data->canvas_id, (uint16_t)image_id,
+    fmrb_gfx_cmd_load_sprite_image_bmp(&cmd, gfx_canvas(data), (uint16_t)image_id,
                                        path);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
@@ -385,7 +446,7 @@ static mrb_value mrb_gfx_export_frame(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_export_frame(&cmd, data->canvas_id, path);
+    fmrb_gfx_cmd_export_frame(&cmd, gfx_canvas(data), path);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -402,7 +463,7 @@ static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_delete_sprite_image(&cmd, data->canvas_id, (uint16_t)image_id);
+    fmrb_gfx_cmd_delete_sprite_image(&cmd, gfx_canvas(data), (uint16_t)image_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "delete_sprite_image fmrb_gfx_submit failed: %d", ret);
@@ -421,9 +482,9 @@ static mrb_value mrb_gfx_set_sprite_image_target(mrb_state *mrb, mrb_value self)
     // order with the surrounding pixel commands. Bypassing the queue (calling
     // fmrb_gfx_set_sprite_image_target directly) lets target=0 race past the
     // tail of a sprite draw and clips the bottom-right pixels.
-    data->to_image = image_id != 0;
+    fmrb_gfx_drawer_set_to_image(data->drawer, image_id != 0);
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_set_sprite_image_target(&cmd, data->canvas_id,
+    fmrb_gfx_cmd_set_sprite_image_target(&cmd, gfx_canvas(data),
                                          (uint16_t)image_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -445,8 +506,8 @@ static mrb_value mrb_gfx_create_sprite_instance(mrb_state *mrb, mrb_value self)
     uint16_t image_ids[FMRB_SPRITE_MAX_FRAMES];
     for (mrb_int i = 0; i < frame_count; i++)
         image_ids[i] = (uint16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i));
-    uint16_t id = fmrb_gfx_create_sprite_instance(data->ctx, data->canvas_id,
-        image_ids, (uint8_t)frame_count, GX(data, x), GY(data, y), (int16_t)z_order);
+    uint16_t id = fmrb_gfx_create_sprite_instance(data->ctx, gfx_canvas(data),
+        image_ids, (uint8_t)frame_count, gfx_sprite_x(data, x), gfx_sprite_y(data, y), (int16_t)z_order);
     if (id == 0) mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create sprite instance");
     return mrb_fixnum_value(id);
 }
@@ -459,7 +520,7 @@ static mrb_value mrb_gfx_delete_sprite_instance(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_delete_sprite_instance(&cmd, data->canvas_id,
+    fmrb_gfx_cmd_delete_sprite_instance(&cmd, gfx_canvas(data),
                                         (uint16_t)instance_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -476,9 +537,9 @@ static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_sprite_instance_move(&cmd, data->canvas_id,
-                                      (uint16_t)instance_id, GX(data, x),
-                                      GY(data, y));
+    fmrb_gfx_cmd_sprite_instance_move(&cmd, gfx_canvas(data),
+                                      (uint16_t)instance_id, gfx_sprite_x(data, x),
+                                      gfx_sprite_y(data, y));
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "sprite_move fmrb_gfx_submit failed: %d", ret);
@@ -495,7 +556,7 @@ static mrb_value mrb_gfx_sprite_visible(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_sprite_instance_set_visible(&cmd, data->canvas_id,
+    fmrb_gfx_cmd_sprite_instance_set_visible(&cmd, gfx_canvas(data),
                                              (uint16_t)instance_id, visible);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -512,7 +573,7 @@ static mrb_value mrb_gfx_sprite_frame(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_sprite_instance_set_frame(&cmd, data->canvas_id,
+    fmrb_gfx_cmd_sprite_instance_set_frame(&cmd, gfx_canvas(data),
                                            (uint16_t)instance_id,
                                            (uint8_t)frame_index);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
@@ -528,7 +589,7 @@ static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    fmrb_gfx_cmd_delete_all_sprites(&cmd, data->canvas_id);
+    fmrb_gfx_cmd_delete_all_sprites(&cmd, gfx_canvas(data));
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "delete_all_sprites fmrb_gfx_submit failed: %d", ret);
@@ -537,7 +598,8 @@ static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
 }
 
 // FmrbGfx#_set_origin(x, y, w, h)
-// The area this FmrbGfx draws in: its top-left on the canvas and its size.
+// The area this FmrbGfx draws in: its top-left on the canvas and its size,
+// kept by its drawer (origin_x, area_width ... are on the app boundary).
 // FmrbApp lays it out (_layout_user_area); nothing else needs to call it.
 static mrb_value mrb_gfx_set_origin(mrb_state *mrb, mrb_value self)
 {
@@ -545,35 +607,8 @@ static mrb_value mrb_gfx_set_origin(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiii", &x, &y, &w, &h);
     mrb_gfx_data *data = (mrb_gfx_data *)DATA_PTR(self);
     if (!data) return self;
-    data->ox = (int16_t)x;
-    data->oy = (int16_t)y;
-    data->area_w = (uint16_t)(w < 0 ? 0 : w);
-    data->area_h = (uint16_t)(h < 0 ? 0 : h);
+    fmrb_gfx_drawer_set_origin(data->drawer, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h);
     return self;
-}
-
-static mrb_value mrb_gfx_origin_x(mrb_state *mrb, mrb_value self)
-{
-    mrb_gfx_data *data = (mrb_gfx_data *)DATA_PTR(self);
-    return mrb_fixnum_value(data ? data->ox : 0);
-}
-
-static mrb_value mrb_gfx_origin_y(mrb_state *mrb, mrb_value self)
-{
-    mrb_gfx_data *data = (mrb_gfx_data *)DATA_PTR(self);
-    return mrb_fixnum_value(data ? data->oy : 0);
-}
-
-static mrb_value mrb_gfx_area_width(mrb_state *mrb, mrb_value self)
-{
-    mrb_gfx_data *data = (mrb_gfx_data *)DATA_PTR(self);
-    return mrb_fixnum_value(data ? data->area_w : 0);
-}
-
-static mrb_value mrb_gfx_area_height(mrb_state *mrb, mrb_value self)
-{
-    mrb_gfx_data *data = (mrb_gfx_data *)DATA_PTR(self);
-    return mrb_fixnum_value(data ? data->area_h : 0);
 }
 
 // The origin of an FmrbGfx, for app.c to put a pointer event into the same
@@ -584,9 +619,10 @@ bool fmrb_gfx_origin_of(mrb_state *mrb, mrb_value gfx, int *ox, int *oy)
     *oy = 0;
     if (!mrb_data_p(gfx) || DATA_TYPE(gfx) != &mrb_gfx_data_type) return false;
     mrb_gfx_data *data = (mrb_gfx_data *)DATA_PTR(gfx);
-    if (!data) return false;
-    *ox = data->ox;
-    *oy = data->oy;
+    const fmrb_gfx_drawer_t *d = data ? fmrb_gfx_drawer_get(data->drawer) : NULL;
+    if (!d) return false;
+    *ox = d->ox;
+    *oy = d->oy;
     return true;
 }
 
@@ -632,14 +668,15 @@ static int gfx_ckpt_dump(mrb_state *mrb, mrb_value obj, mrb_checkpoint_buf *out)
     size_t n = 0;
     uint8_t role = GFX_CKPT_ROLE_DEAD;
     b[n++] = GFX_CKPT_VERSION;
-    if (d && d->ctx && ctx && d->canvas_id != FMRB_CANVAS_SCREEN) {
-        if (d->canvas_id == ctx->canvas_id) {
+    fmrb_canvas_handle_t canvas = (d && d->ctx) ? gfx_canvas(d) : FMRB_CANVAS_SCREEN;
+    if (d && d->ctx && ctx && canvas != FMRB_CANVAS_SCREEN) {
+        if (canvas == ctx->canvas_id) {
             role = GFX_CKPT_ROLE_WINDOW;
-        } else if (d->canvas_id == ctx->bg_canvas_id) {
+        } else if (canvas == ctx->bg_canvas_id) {
             role = GFX_CKPT_ROLE_WALLPAPER;
         } else {
             for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-                if (ctx->extra_canvas_ids[i] == d->canvas_id) role = GFX_CKPT_ROLE_EXTRA;
+                if (ctx->extra_canvas_ids[i] == canvas) role = GFX_CKPT_ROLE_EXTRA;
             }
         }
     }
@@ -674,6 +711,7 @@ static void *gfx_ckpt_restore(mrb_state *mrb, const uint8_t *p, size_t len)
     }
     mrb_gfx_data *d = (mrb_gfx_data *)mrb_malloc(mrb, sizeof(mrb_gfx_data));
     memset(d, 0, sizeof(*d));
+    d->drawer = -1;   // none until _checkpoint_rebind
     d->ckpt_role = p[1];
     if (d->ckpt_role == GFX_CKPT_ROLE_EXTRA) {
         if (len < 10) {
@@ -718,10 +756,12 @@ static mrb_value mrb_gfx_checkpoint_rebind(mrb_state *mrb, mrb_value self)
     }
     d->ckpt_role = GFX_CKPT_ROLE_NONE;
     if (id == FMRB_CANVAS_SCREEN) return mrb_nil_value();   // stays on nothing
+    if (!fmrb_gfx_get_global_context()) return mrb_nil_value();
+    // A drawer of this program on that canvas (the origin comes after, from
+    // FmrbApp's layout). The image's own canvas id, an ivar of the builds
+    // before the drawers, is not read.
+    if (gfx_drawer_take(mrb, d, (int32_t)id) < 0) return mrb_nil_value();
     d->ctx = fmrb_gfx_get_global_context();
-    if (!d->ctx) return mrb_nil_value();
-    d->canvas_id = id;
-    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@canvas_id"), mrb_fixnum_value(id));
     return mrb_fixnum_value(id);
 }
 // FmrbGfx#_checkpoint_keep? -> bool
@@ -742,10 +782,6 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
 
     mrb_define_method(mrb, gfx_class, "_init", mrb_gfx_initialize, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_set_origin", mrb_gfx_set_origin, MRB_ARGS_REQ(4));
-    mrb_define_method(mrb, gfx_class, "origin_x", mrb_gfx_origin_x, MRB_ARGS_NONE());
-    mrb_define_method(mrb, gfx_class, "origin_y", mrb_gfx_origin_y, MRB_ARGS_NONE());
-    mrb_define_method(mrb, gfx_class, "area_width", mrb_gfx_area_width, MRB_ARGS_NONE());
-    mrb_define_method(mrb, gfx_class, "area_height", mrb_gfx_area_height, MRB_ARGS_NONE());
     // Everything on the app boundary (sig/fmrb_gfx.rbs), generated.
     FMRB_GEN_MRB_DEFINE_FmrbGfx(mrb, gfx_class);
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());

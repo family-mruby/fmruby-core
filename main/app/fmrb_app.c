@@ -311,6 +311,7 @@ static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     ctx->shell = NULL;
     ctx->parked = false;
     ctx->expected_stop = false;
+    memset(ctx->gfx_drawers, 0, sizeof(ctx->gfx_drawers));
 }
 
 /* Is a user app pool held? (must hold g_ctx_lock)

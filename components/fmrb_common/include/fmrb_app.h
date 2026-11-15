@@ -6,6 +6,7 @@
 #include "fmrb_mem_config.h"
 #include "fmrb_task_config.h"
 #include "fmrb_rtos.h"
+#include "fmrb_gfx_drawer.h"
 
 // Forward declarations to avoid circular dependencies with other components
 typedef struct lua_State lua_State;
@@ -219,13 +220,10 @@ typedef struct fmrb_app_task_context_s {
     volatile uint32_t     gc_req;
     volatile uint32_t     gc_done;
 
-    // The drawing target an engine binds for one boundary call whose
-    // receiver carries a drawing origin in the engine's own object (mruby,
-    // Lua): fmrb_gfx_recv_bind / _resolve (fmrb_boundary_recv.h). Interim
-    // until the origin moves below the boundary (doc/app_boundary W4b).
-    int32_t               gfx_bound_canvas;
-    int16_t               gfx_bound_ox;
-    int16_t               gfx_bound_oy;
+    // The app's FmrbGfx below the app boundary: canvas, drawing origin and
+    // area of each (fmrb_gfx_drawer.h, doc/app_boundary W4b). The receiver
+    // number of a boundary FmrbGfx function is an index here.
+    fmrb_gfx_drawer_t     gfx_drawers[FMRB_GFX_DRAWERS_MAX];
 } fmrb_app_task_context_t;
 
 /**

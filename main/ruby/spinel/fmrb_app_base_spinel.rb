@@ -519,59 +519,52 @@ class FmrbGfx
     [:ja, 12]  => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
   }
 
-  attr_reader :current_font, :current_text_size, :canvas_width, :canvas_height, :canvas_id
-  # The drawing origin and the size of its area (doc/codebase_tidy T4); the
-  # mruby class keeps them in gfx.c. @dx/@dy are what a draw call adds: the
-  # origin, or 0 while the target is a sprite image.
-  def origin_x; @ox; end
-  def origin_y; @oy; end
-  def area_width; @aw; end
-  def area_height; @ah; end
+  attr_reader :current_font, :current_text_size, :canvas_width, :canvas_height
 
+  # What this object draws on is a drawer of the firmware (@d, its number;
+  # main/app/fmrb_boundary_gfx.c, doc/app_boundary W4b): the canvas, the
+  # drawing origin and the size of its area (doc/codebase_tidy T4), and
+  # whether the target is a sprite image now. They are kept there, as for the
+  # mruby class, and the firmware adds the origin to every draw call: nothing
+  # here adds it.
   def initialize(canvas_id, width: 0, height: 0)
-    @canvas_id = canvas_id
+    @d = FmrbSpxGfx.fmrb_spx_gfx_drawer_open(canvas_id, width, height)
     @canvas_width = width
     @canvas_height = height
-    @ox = 0
-    @oy = 0
-    @dx = 0
-    @dy = 0
-    @aw = width
-    @ah = height
-    @to_image = false
     @current_font = [:default]
     @current_text_size = 1
   end
 
+  def canvas_id; FmrbBoundary.fmrb_bnd_gfx_canvas_id(@d); end
+  def origin_x; FmrbBoundary.fmrb_bnd_gfx_origin_x(@d); end
+  def origin_y; FmrbBoundary.fmrb_bnd_gfx_origin_y(@d); end
+  def area_width; FmrbBoundary.fmrb_bnd_gfx_area_width(@d); end
+  def area_height; FmrbBoundary.fmrb_bnd_gfx_area_height(@d); end
+
   # The area this FmrbGfx draws in (FmrbApp#_layout_user_area).
   def _set_origin(x, y, w, h)
-    @ox = x
-    @oy = y
-    @aw = w
-    @ah = h
-    @dx = @to_image ? 0 : x
-    @dy = @to_image ? 0 : y
+    FmrbSpxGfx.fmrb_spx_gfx_drawer_set_origin(@d, x, y, w, h)
     self
   end
 
   # ---- primitives: the app boundary's flat functions (sig/fmrb_gfx.rbs,
-  # doc/app_boundary) with @canvas_id and the origin added here ----
-  def clear(color); FmrbBoundary.fmrb_bnd_gfx_clear(@canvas_id, color); self; end
-  def set_pixel(x, y, color); FmrbBoundary.fmrb_bnd_gfx_set_pixel(@canvas_id, x + @dx, y + @dy, color); self; end
-  def draw_line(x1, y1, x2, y2, color); FmrbBoundary.fmrb_bnd_gfx_draw_line(@canvas_id, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
-  def draw_rect(x, y, w, h, color); FmrbBoundary.fmrb_bnd_gfx_draw_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
-  def fill_rect(x, y, w, h, color); FmrbBoundary.fmrb_bnd_gfx_fill_rect(@canvas_id, x + @dx, y + @dy, w, h, color); self; end
-  def blend_rect(x, y, w, h, color, mode); FmrbBoundary.fmrb_bnd_gfx_blend_rect(@canvas_id, x + @dx, y + @dy, w, h, color, mode); self; end
-  def draw_circle(x, y, r, color); FmrbBoundary.fmrb_bnd_gfx_draw_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
-  def fill_circle(x, y, r, color); FmrbBoundary.fmrb_bnd_gfx_fill_circle(@canvas_id, x + @dx, y + @dy, r, color); self; end
-  def draw_round_rect(x, y, w, h, r, color); FmrbBoundary.fmrb_bnd_gfx_draw_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
-  def fill_round_rect(x, y, w, h, r, color); FmrbBoundary.fmrb_bnd_gfx_fill_round_rect(@canvas_id, x + @dx, y + @dy, w, h, r, color); self; end
-  def draw_ellipse(x, y, rx, ry, color); FmrbBoundary.fmrb_bnd_gfx_draw_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
-  def fill_ellipse(x, y, rx, ry, color); FmrbBoundary.fmrb_bnd_gfx_fill_ellipse(@canvas_id, x + @dx, y + @dy, rx, ry, color); self; end
-  def draw_triangle(x0, y0, x1, y1, x2, y2, color); FmrbBoundary.fmrb_bnd_gfx_draw_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
-  def fill_triangle(x0, y0, x1, y1, x2, y2, color); FmrbBoundary.fmrb_bnd_gfx_fill_triangle(@canvas_id, x0 + @dx, y0 + @dy, x1 + @dx, y1 + @dy, x2 + @dx, y2 + @dy, color); self; end
-  def draw_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_bnd_gfx_draw_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
-  def fill_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_bnd_gfx_fill_arc(@canvas_id, x + @dx, y + @dy, r0, r1, a0, a1, color); self; end
+  # doc/app_boundary) on the drawer ----
+  def clear(color); FmrbBoundary.fmrb_bnd_gfx_clear(@d, color); self; end
+  def set_pixel(x, y, color); FmrbBoundary.fmrb_bnd_gfx_set_pixel(@d, x, y, color); self; end
+  def draw_line(x1, y1, x2, y2, color); FmrbBoundary.fmrb_bnd_gfx_draw_line(@d, x1, y1, x2, y2, color); self; end
+  def draw_rect(x, y, w, h, color); FmrbBoundary.fmrb_bnd_gfx_draw_rect(@d, x, y, w, h, color); self; end
+  def fill_rect(x, y, w, h, color); FmrbBoundary.fmrb_bnd_gfx_fill_rect(@d, x, y, w, h, color); self; end
+  def blend_rect(x, y, w, h, color, mode); FmrbBoundary.fmrb_bnd_gfx_blend_rect(@d, x, y, w, h, color, mode); self; end
+  def draw_circle(x, y, r, color); FmrbBoundary.fmrb_bnd_gfx_draw_circle(@d, x, y, r, color); self; end
+  def fill_circle(x, y, r, color); FmrbBoundary.fmrb_bnd_gfx_fill_circle(@d, x, y, r, color); self; end
+  def draw_round_rect(x, y, w, h, r, color); FmrbBoundary.fmrb_bnd_gfx_draw_round_rect(@d, x, y, w, h, r, color); self; end
+  def fill_round_rect(x, y, w, h, r, color); FmrbBoundary.fmrb_bnd_gfx_fill_round_rect(@d, x, y, w, h, r, color); self; end
+  def draw_ellipse(x, y, rx, ry, color); FmrbBoundary.fmrb_bnd_gfx_draw_ellipse(@d, x, y, rx, ry, color); self; end
+  def fill_ellipse(x, y, rx, ry, color); FmrbBoundary.fmrb_bnd_gfx_fill_ellipse(@d, x, y, rx, ry, color); self; end
+  def draw_triangle(x0, y0, x1, y1, x2, y2, color); FmrbBoundary.fmrb_bnd_gfx_draw_triangle(@d, x0, y0, x1, y1, x2, y2, color); self; end
+  def fill_triangle(x0, y0, x1, y1, x2, y2, color); FmrbBoundary.fmrb_bnd_gfx_fill_triangle(@d, x0, y0, x1, y1, x2, y2, color); self; end
+  def draw_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_bnd_gfx_draw_arc(@d, x, y, r0, r1, a0, a1, color); self; end
+  def fill_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_bnd_gfx_fill_arc(@d, x, y, r0, r1, a0, a1, color); self; end
 
   # ---- text (with font/size caching, like fmrb-gfx.rb) ----
   def set_font(family, size = nil)
@@ -590,7 +583,7 @@ class FmrbGfx
     fam = 0
     fam = 1 if family == :ja
     fam = 2 if family == :ja_bold
-    FmrbBoundary.fmrb_bnd_gfx_set_font_raw(@canvas_id, fam, size)
+    FmrbBoundary.fmrb_bnd_gfx_set_font_raw(@d, fam, size)
     self
   end
 
@@ -600,7 +593,7 @@ class FmrbGfx
   end
 
   def set_text_size_raw(size)
-    FmrbBoundary.fmrb_bnd_gfx_set_text_size_raw(@canvas_id, size)
+    FmrbBoundary.fmrb_bnd_gfx_set_text_size_raw(@d, size)
     self
   end
 
@@ -610,7 +603,7 @@ class FmrbGfx
 
   def draw_text_raw(x, y, text, color, bg_color, mixed)
     s = text.to_s
-    FmrbBoundary.fmrb_bnd_gfx_draw_text_raw(@canvas_id, x + @dx, y + @dy, s, s.bytesize, color, bg_color,
+    FmrbBoundary.fmrb_bnd_gfx_draw_text_raw(@d, x, y, s, s.bytesize, color, bg_color,
                                         mixed ? 1 : 0)
     self
   end
@@ -618,11 +611,11 @@ class FmrbGfx
   # Periodic read-outs formatted in C (twins of the mruby Graphics methods), so
   # the desktop's 1Hz repaint allocates nothing. Return true when drawn.
   def draw_wallclock(x, y, color, bg_color)
-    FmrbBoundary.fmrb_bnd_gfx_draw_wallclock(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
+    FmrbBoundary.fmrb_bnd_gfx_draw_wallclock(@d, x, y, color, bg_color) == 1
   end
 
   def draw_free_iram(x, y, color, bg_color)
-    FmrbBoundary.fmrb_bnd_gfx_draw_free_iram(@canvas_id, x + @dx, y + @dy, color, bg_color) == 1
+    FmrbBoundary.fmrb_bnd_gfx_draw_free_iram(@d, x, y, color, bg_color) == 1
   end
 
   # Positional-argument form of draw_text(..., mixed: true). Keyword arguments
@@ -679,7 +672,7 @@ class FmrbGfx
   end
 
   def get_pixel(x, y)
-    v = FmrbBoundary.fmrb_bnd_gfx_get_pixel(@canvas_id, x + @dx, y + @dy)
+    v = FmrbBoundary.fmrb_bnd_gfx_get_pixel(@d, x, y)
     v < 0 ? 0 : v
   end
 
@@ -693,22 +686,22 @@ class FmrbGfx
   end
 
   def present_raw(x, y, positioned)
-    FmrbBoundary.fmrb_bnd_gfx_present_raw(@canvas_id, x, y, positioned ? 1 : 0)
+    FmrbBoundary.fmrb_bnd_gfx_present_raw(@d, x, y, positioned ? 1 : 0)
     self
   end
 
   # ---- CVBS/NTSC output ----
-  def set_output_level(level); FmrbBoundary.fmrb_bnd_gfx_set_output_level(@canvas_id, level); self; end
-  def set_chroma_level(level); FmrbBoundary.fmrb_bnd_gfx_set_chroma_level(@canvas_id, level); self; end
+  def set_output_level(level); FmrbBoundary.fmrb_bnd_gfx_set_output_level(@d, level); self; end
+  def set_chroma_level(level); FmrbBoundary.fmrb_bnd_gfx_set_chroma_level(@d, level); self; end
 
   # ---- masks ----
   def create_mask(width, height, data)
     d = data.to_s
-    FmrbBoundary.fmrb_bnd_gfx_create_mask(@canvas_id, width, height, d, d.bytesize)
+    FmrbBoundary.fmrb_bnd_gfx_create_mask(@d, width, height, d, d.bytesize)
   end
 
   def delete_mask(mask_id)
-    FmrbBoundary.fmrb_bnd_gfx_delete_mask(@canvas_id, mask_id)
+    FmrbBoundary.fmrb_bnd_gfx_delete_mask(@d, mask_id)
     self
   end
 
@@ -717,7 +710,7 @@ class FmrbGfx
   end
 
   def draw_image_masked_raw(image_id, mask_id, x, y)
-    FmrbBoundary.fmrb_bnd_gfx_draw_image_masked_raw(@canvas_id, image_id, mask_id, x + @dx, y + @dy)
+    FmrbBoundary.fmrb_bnd_gfx_draw_image_masked_raw(@d, image_id, mask_id, x, y)
     self
   end
 
@@ -726,7 +719,7 @@ class FmrbGfx
   end
 
   def draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
-    FmrbBoundary.fmrb_bnd_gfx_draw_tile_raw(@canvas_id, image_id, src_x, src_y, w, h, dst_x + @dx, dst_y + @dy)
+    FmrbBoundary.fmrb_bnd_gfx_draw_tile_raw(@d, image_id, src_x, src_y, w, h, dst_x, dst_y)
     self
   end
 
@@ -769,7 +762,7 @@ class FmrbGfx
   def sync_file_raw(path, dest)
     s = path.to_s
     d = dest.to_s
-    FmrbBoundary.fmrb_bnd_gfx_sync_file_raw(@canvas_id, s, s.bytesize, d, d.bytesize) == 1
+    FmrbBoundary.fmrb_bnd_gfx_sync_file_raw(@d, s, s.bytesize, d, d.bytesize) == 1
   end
 
   def transfer_file(path, dest: nil)
@@ -779,21 +772,21 @@ class FmrbGfx
   def transfer_file_raw(path, dest)
     s = path.to_s
     d = dest.to_s
-    FmrbBoundary.fmrb_bnd_gfx_transfer_file_raw(@canvas_id, s, s.bytesize, d, d.bytesize) == 1
+    FmrbBoundary.fmrb_bnd_gfx_transfer_file_raw(@d, s, s.bytesize, d, d.bytesize) == 1
   end
 
   # The records come as their packed bytes (fmrb_boundary.h): file_info is
   # exists (1 byte) and size (uint32), image_info id, width, height (uint16).
   def file_status(path)
     s = path.to_s
-    buf = FmrbBoundary.fmrb_spx_b_gfx_file_status(@canvas_id, s, s.bytesize)
+    buf = FmrbBoundary.fmrb_spx_b_gfx_file_status(@d, s, s.bytesize)
     return { exists: false, size: 0 } if buf.bytesize < 5 || buf.getbyte(0) == 0
     { exists: true, size: SpxBytes.u32(buf, 1) }
   end
 
   def create_image(path)
     s = path.to_s
-    buf = FmrbBoundary.fmrb_spx_b_gfx_create_image(@canvas_id, s, s.bytesize)
+    buf = FmrbBoundary.fmrb_spx_b_gfx_create_image(@d, s, s.bytesize)
     return nil if buf.bytesize == 0
     { id: SpxBytes.u16(buf, 0), width: SpxBytes.u16(buf, 2), height: SpxBytes.u16(buf, 4) }
   end
@@ -802,7 +795,7 @@ class FmrbGfx
   # Returns FmrbVideo or nil; nil means this backend cannot play it.
   def video_open(path, x: 0, y: 0, fps: 15, loop: false)
     s = path.to_s
-    buf = FmrbSpxGfx.fmrb_spx_gfx_video_open(@canvas_id, s, s.bytesize, x + @dx, y + @dy,
+    buf = FmrbSpxGfx.fmrb_spx_gfx_video_open(@d, s, s.bytesize, x, y,
                                              fps, loop ? 1 : 0)
     return nil if buf.bytesize == 0
     FmrbVideo.new(self, SpxBytes.u16(buf, 0), SpxBytes.u16(buf, 2))
@@ -828,12 +821,12 @@ class FmrbGfx
 
   # A scale_y of 0.0 is "as scale_x".
   def draw_image_raw(image_id, x, y, scale_x, scale_y)
-    FmrbBoundary.fmrb_bnd_gfx_draw_image_raw(@canvas_id, image_id, x + @dx, y + @dy, scale_x * 1.0, scale_y * 1.0)
+    FmrbBoundary.fmrb_bnd_gfx_draw_image_raw(@d, image_id, x, y, scale_x * 1.0, scale_y * 1.0)
     self
   end
 
   def delete_image(image_id)
-    FmrbBoundary.fmrb_bnd_gfx_delete_image(@canvas_id, image_id)
+    FmrbBoundary.fmrb_bnd_gfx_delete_image(@d, image_id)
     self
   end
 
@@ -848,8 +841,8 @@ class FmrbGfx
     img_w = img[:width]
     img_h = img[:height]
     if coord == :center
-      x = (@aw - img_w) / 2
-      y = (@ah - img_h) / 2
+      x = (area_width - img_w) / 2
+      y = (area_height - img_h) / 2
     elsif coord
       x = coord[0]
       y = coord[1]
@@ -893,17 +886,17 @@ class FmrbGfx
       buf.setbyte(base + 12, r[:transparent] ? 1 : 0)
       i += 1
     end
-    FmrbBoundary.fmrb_bnd_gfx_set_composite_regions_raw(@canvas_id, buf, count)
+    FmrbBoundary.fmrb_bnd_gfx_set_composite_regions_raw(@d, buf, count)
     self
   end
 
   def set_viewport(src_x, src_y, w, h)
-    FmrbBoundary.fmrb_bnd_gfx_set_viewport(@canvas_id, src_x, src_y, w, h)
+    FmrbBoundary.fmrb_bnd_gfx_set_viewport(@d, src_x, src_y, w, h)
     self
   end
 
   def clear_viewport
-    FmrbBoundary.fmrb_bnd_gfx_clear_viewport(@canvas_id)
+    FmrbBoundary.fmrb_bnd_gfx_clear_viewport(@d)
     self
   end
 
@@ -913,38 +906,37 @@ class FmrbGfx
   # SpriteInstance#move. FmrbApp sets the user area by default; narrow it
   # further to keep sprites out of an app-drawn status bar.
   def set_sprite_clip(x, y, w, h)
-    # sprite coordinates: from the origin (w == 0 clears, as is)
-    FmrbBoundary.fmrb_bnd_gfx_set_sprite_clip(@canvas_id, w > 0 ? x + @ox : x, w > 0 ? y + @oy : y, w, h)
+    # sprite coordinates: from the origin, which the firmware adds (also while
+    # drawing into a sprite image); w == 0 clears
+    FmrbBoundary.fmrb_bnd_gfx_set_sprite_clip(@d, x, y, w, h)
     self
   end
 
   def clear_sprite_clip
-    FmrbBoundary.fmrb_bnd_gfx_clear_sprite_clip(@canvas_id)
+    FmrbBoundary.fmrb_bnd_gfx_clear_sprite_clip(@d)
     self
   end
 
   # ---- sprite low-level (used by SpriteImage / SpriteInstance) ----
   def _create_sprite_image(width, height, trans_color, use_trans)
-    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_image(@canvas_id, width, height, trans_color, use_trans)
+    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_image(@d, width, height, trans_color, use_trans)
   end
 
   def _delete_sprite_image(image_id)
-    FmrbSpxGfx.fmrb_spx_gfx_delete_sprite_image(@canvas_id, image_id)
+    FmrbSpxGfx.fmrb_spx_gfx_delete_sprite_image(@d, image_id)
     self
   end
 
   def _load_sprite_image_bmp(image_id, path)
     s = path.to_s
-    FmrbSpxGfx.fmrb_spx_gfx_load_sprite_image_bmp(@canvas_id, image_id, s, s.bytesize)
+    FmrbSpxGfx.fmrb_spx_gfx_load_sprite_image_bmp(@d, image_id, s, s.bytesize)
     self
   end
 
   def _set_sprite_image_target(image_id)
-    # drawing into a sprite image: its own coordinates, no origin
-    @to_image = image_id != 0
-    @dx = @to_image ? 0 : @ox
-    @dy = @to_image ? 0 : @oy
-    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_image_target(@canvas_id, image_id)
+    # drawing into a sprite image: its own coordinates (the drawer adds no
+    # origin until the target is 0 again)
+    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_image_target(@d, image_id)
     self
   end
 
@@ -956,37 +948,39 @@ class FmrbGfx
       SpxBytes.set_u16(buf, i * 2, id)
       i += 1
     end
-    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_instance(@canvas_id, buf, n, x + @ox, y + @oy, z_order)
+    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_instance(@d, buf, n, x, y, z_order)
   end
 
   def _delete_sprite_instance(instance_id)
-    FmrbSpxGfx.fmrb_spx_gfx_delete_sprite_instance(@canvas_id, instance_id)
+    FmrbSpxGfx.fmrb_spx_gfx_delete_sprite_instance(@d, instance_id)
     self
   end
 
   def _sprite_move(instance_id, x, y)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_move(@canvas_id, instance_id, x + @ox, y + @oy)
+    FmrbSpxGfx.fmrb_spx_gfx_sprite_move(@d, instance_id, x, y)
     self
   end
 
   def _sprite_visible(instance_id, visible)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_visible(@canvas_id, instance_id, visible ? 1 : 0)
+    FmrbSpxGfx.fmrb_spx_gfx_sprite_visible(@d, instance_id, visible ? 1 : 0)
     self
   end
 
   def _sprite_frame(instance_id, frame_index)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_frame(@canvas_id, instance_id, frame_index)
+    FmrbSpxGfx.fmrb_spx_gfx_sprite_frame(@d, instance_id, frame_index)
     self
   end
 
   def _delete_all_sprites
-    FmrbSpxGfx.fmrb_spx_gfx_delete_all_sprites(@canvas_id)
+    FmrbSpxGfx.fmrb_spx_gfx_delete_all_sprites(@d)
     self
   end
 
-  # No-op on Spinel: there is no boxed C resource to release (the canvas is
-  # owned by the app context and freed in _cleanup).
+  # Lets the drawer go (the canvas is owned by the app context and freed in
+  # _cleanup; the app's drawers go with the app too).
   def destroy
+    FmrbSpxGfx.fmrb_spx_gfx_drawer_close(@d)
+    @d = -1
     nil
   end
 

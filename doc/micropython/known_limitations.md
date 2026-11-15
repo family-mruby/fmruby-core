@@ -322,7 +322,12 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
   `draw_tile(..., dst_x=0, dst_y=0)` `draw_image_masked(id, mask, x=0, y=0)`
   `sync_file(path, dest=None)` `transfer_file(path, dest=None)`
   `set_composite_regions(regions)`
+- 描き手の状態 (属性として読む。本体の C が持ち、境界の関数で読む):
+  `canvas_id` `origin_x` `origin_y` `area_width` `area_height`。
+  `canvas_width` `canvas_height` `current_font` は Python のオブジェクトの属性
 - そのほか: `text_width` `font_height` `delete_all_sprites`
+- 原点は本体の側で足す (FmrbGfx は本体の描き手の番号 `_drawer` だけを持つ、
+  doc/app_boundary W4b)。スプライトの座標も原点から (画像へ描いている間も)
 - `clear` は包みを持たないので、色は省略できない (W4a で `clear()` の既定の
   黒をやめた)。
 - 記録 (`create_image`・`file_status` の結果、`set_composite_regions_raw` の
