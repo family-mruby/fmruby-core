@@ -1479,6 +1479,10 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
             // next instance resets its own part of them on entry.
             ctx->spinel_program = NULL;
             break;
+        case FMRB_VM_TYPE_WASM:
+            // fmrb_wasm_app_run has already freed the module and the instance;
+            // the pool handle goes below with the others.
+            break;
         default:
             FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
             break;
@@ -2077,9 +2081,10 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                 FMRB_LOGE(TAG, "Invalid USER_APP proc_id: %d", idx);
                 goto unwind;
             }
-            // Note: MRUBY uses estalloc which manages pool memory directly, so no TLSF handle needed
+            // Note: MRUBY uses estalloc which manages pool memory directly, so no TLSF handle needed.
+            // A wasm app keeps its binary copy and its linear memory in the pool through this handle.
             if(ctx->vm_type == FMRB_VM_TYPE_LUA || ctx->vm_type == FMRB_VM_TYPE_BASIC ||
-               ctx->vm_type == FMRB_VM_TYPE_MICROPYTHON){
+               ctx->vm_type == FMRB_VM_TYPE_MICROPYTHON || ctx->vm_type == FMRB_VM_TYPE_WASM){
                 if (fmrb_mem_handle_exist(ctx->mempool_id) == 0) {
                     void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
                     size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
