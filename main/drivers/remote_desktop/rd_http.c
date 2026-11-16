@@ -22,7 +22,7 @@
 // page and /status stay open, the page to pair from, /status to find the
 // board. Turning the switch off (or revoking the PCs) ends what is open:
 // devctl closes the WebSockets, and the MJPEG stream stops at its next frame
-// (fmrb_rguard_epoch).
+// (fmrb_rguard_epoch) and closes its session.
 //
 // The httpd instance runs on core 0 next to the hosted/lwIP tasks.
 
@@ -142,10 +142,12 @@ static void mjpeg_stream_task(void *arg)
     // Admitted under this epoch: the switch going off or the PCs being
     // revoked moves it, and the stream ends (doc/remote_guard G2).
     const uint32_t epoch = fmrb_rguard_epoch();
+    bool guard_ended = false;
 
     while (!atomic_load(&s_stop)) {
         if (fmrb_rguard_epoch() != epoch || fmrb_rguard_state() == FMRB_RGUARD_CLOSED) {
             FMRB_LOGI(TAG, "MJPEG stream ended: remote control turned off");
+            guard_ended = true;
             break;
         }
         int64_t t_frame = esp_timer_get_time();
@@ -222,6 +224,20 @@ static void mjpeg_stream_task(void *arg)
     s_stat_fps_x10 = 0;
     s_stat_kbps = 0;
     FMRB_LOGI(TAG, "MJPEG client disconnected");
+    // Completing the async request only hands the socket back to the httpd
+    // task's select(), with the chunked response left open: the client would
+    // sit there with nothing coming. When the guard ended it, finish the
+    // response (the last chunk) and close the session. The close is queued
+    // before the completion, while the session is still ours (for_async_req):
+    // queued after, the fd could already belong to a new connection. The
+    // httpd task deletes the session from its work queue (closing the fd and
+    // freeing the slot); the completion afterwards only frees this request's
+    // copy and wakes select(), so the order is safe either way it runs.
+    if (guard_ended) {
+        httpd_resp_send_chunk(req, NULL, 0);
+        int fd = httpd_req_to_sockfd(req);
+        if (fd >= 0) httpd_sess_trigger_close(req->handle, fd);
+    }
     httpd_req_async_handler_complete(req);
     atomic_store(&s_stream_busy, false);
     fmrb_task_delete_ex(NULL);
