@@ -40,13 +40,13 @@
 # - Retro (S3): its image leaves this app out (config/storage_exclude_naryav3.txt).
 #   A Retro sim keeps the whole tree, so the app still says it has no table.
 #
-# The tiles are sprite sheets (8-bit BMPs whose pixel values are RGB332;
+# The tiles are sprite sheets (palette PNGs whose colours are RGB332 values;
 # made by tools/mahjong_tilegen.rb --sheets, then edited by hand: the sheets
 # are the source of truth). Tile numbers (one byte on the wire):
 #   0..8 1m..9m, 9 0m (red five), 10..18 1p..9p, 19 0p, 20..28 1s..9s,
 #   29 0s, 30..36 1z..7z (E S W N white green red), 37 back.
 # Both sheets are 10 x 4 cells without gaps, transparent colour RGB332 0xE3:
-#   tiles_hand.bmp (420x224, cells of 42x56), tiles_river.bmp (240x128,
+#   tiles_hand.png (420x224, cells of 42x56), tiles_river.png (240x128,
 #   cells of 24x32); tile n is at src_x = (n % 10) * w, src_y = (n / 10) * h.
 # The hand sheet is wider than 256 px, which Retro's sprite loader refuses
 # (the Linux sim's takes it); it is loaded only for the big table, which a
@@ -222,7 +222,7 @@ class MahjongApp < FmrbApp
       draw_screen
       return
     end
-    @river_sheet = load_sheet("tiles_river.bmp", 240, 128)
+    @river_sheet = load_sheet("tiles_river.png", 240, 128)
     load_hand_sheet
     load_xl_sheets
     st = ::FmrbAsterism.settings
@@ -310,7 +310,7 @@ class MahjongApp < FmrbApp
   def load_hand_sheet
     return unless @big && !@xl
     m640_load
-    @hand_sheet = load_sheet("tiles_hand.bmp", 420, 224) if @hand_sheet.nil?
+    @hand_sheet = load_sheet("tiles_hand.png", 420, 224) if @hand_sheet.nil?
   end
 
   # ------------------------------------------------------------ network

@@ -1,16 +1,18 @@
 #!/usr/bin/env ruby
 # Generates the sprites for the Python breakout demo.
 #
-#   paddle.bmp     32x6   the bat
-#   paddle_wide.bmp 48x6  the bat after the widening item
-#   ball.bmp       4x4    the ball
-#   item_wide.bmp  8x8    widen the bat
-#   item_slow.bmp  8x8    slow the ball
-#   item_life.bmp  8x8    one more life
+#   paddle.png     32x6   the bat
+#   paddle_wide.png 48x6  the bat after the widening item
+#   ball.png       4x4    the ball
+#   item_wide.png  8x8    widen the bat
+#   item_slow.png  8x8    slow the ball
+#   item_life.png  8x8    one more life
 #
-# Pixel bytes are RGB332: the loader on the graphics side ignores the BMP
-# palette and reads the pixel bytes as RRRGGGBB. The palette is written to
-# match, so the files also look right in an ordinary image viewer.
+# Colours are RGB332 values, written as palette PNGs of the colours used
+# (tools/rgb332_png.rb): the sprite loader turns each colour back into its
+# RGB332 value, and the files open in any image viewer.
+
+require_relative "../../../../tools/rgb332_png"
 
 def rgb332(r, g, b)
   (r & 0xE0) | ((g & 0xE0) >> 3) | ((b & 0xC0) >> 6)
@@ -86,42 +88,20 @@ def item(colour, mark)
   [buf, w, w]
 end
 
-def write_bmp(path, width, height, pixels_top_down)
-  raise "bad pixel size" unless pixels_top_down.size == width * height
-  raise "row not aligned to 4" unless (width % 4).zero?
-  pixel_data_size = width * height
-  header_bytes    = 14 + 40 + 256 * 4
-  file_size       = header_bytes + pixel_data_size
-  File.open(path, "wb") do |f|
-    f.write("BM")
-    f.write([file_size].pack("V"))
-    f.write([0, 0].pack("v2"))
-    f.write([header_bytes].pack("V"))
-    f.write([40, width, height].pack("Vl<l<"))
-    f.write([1, 8].pack("v2"))
-    f.write([0, pixel_data_size].pack("V2"))
-    f.write([2835, 2835].pack("l<l<"))
-    f.write([256, 0].pack("V2"))
-    256.times do |i|
-      r = ((i >> 5) & 0x7) * 255 / 7
-      g = ((i >> 2) & 0x7) * 255 / 7
-      b =  (i       & 0x3) * 255 / 3
-      f.write([b, g, r, 0].pack("C4"))
-    end
-    (height - 1).downto(0) { |y| f.write(pixels_top_down[y * width, width].pack("C*")) }
-  end
-  puts "Wrote #{path} (#{width}x#{height})"
+def write_png(path, width, height, pixels_top_down)
+  size = Rgb332Png.write(path, width, height, pixels_top_down)
+  puts "Wrote #{path} (#{width}x#{height}, #{size} B)"
 end
 
 ASSETS = {
-  "paddle.bmp"      => paddle(32),
-  "paddle_wide.bmp" => paddle(48),
-  "ball.bmp"        => ball,
-  "item_wide.bmp"   => item(CYAN, :wide),
-  "item_slow.bmp"   => item(GREEN, :slow),
-  "item_life.bmp"   => item(PINK, :life),
+  "paddle.png"      => paddle(32),
+  "paddle_wide.png" => paddle(48),
+  "ball.png"        => ball,
+  "item_wide.png"   => item(CYAN, :wide),
+  "item_slow.png"   => item(GREEN, :slow),
+  "item_life.png"   => item(PINK, :life),
 }
 
 ASSETS.each do |name, (buf, w, h)|
-  write_bmp(File.join(__dir__, name), w, h, buf)
+  write_png(File.join(__dir__, name), w, h, buf)
 end

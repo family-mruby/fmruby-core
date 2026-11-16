@@ -1,11 +1,11 @@
 # TileSheet / TileMap end-to-end smoke test.
 #
-# - Loads tile_map_test.map.json (5x4 map referencing tilesheet.bmp).
-# - Transfers tilesheet.bmp to the WROVER cache, builds a TileSheet.
+# - Loads tile_map_test.map.json (5x4 map referencing tilesheet.png).
+# - Transfers tilesheet.png to the WROVER cache, builds a TileSheet.
 # - Renders the map onto the user area via map.render(sheet, ...).
 # - Logs the event found at every cell so we can confirm event_at works.
 #
-# Expected: 5x4 grid of tiles from tilesheet.bmp, with cells (2,2), (0,3)
+# Expected: 5x4 grid of tiles from tilesheet.png, with cells (2,2), (0,3)
 # and (4,3) showing the cyan background (those are -1 in the JSON).
 
 class TileMapTestApp < FmrbApp
@@ -21,11 +21,11 @@ class TileMapTestApp < FmrbApp
     @map = TileMap.new(MAP_JSON)
     Log.info("TileMap loaded: #{@map.width}x#{@map.height}, sheet=#{@map.tilesheet_path}")
 
-    sheet_dst = "#{CACHE_DIR}/sheet.bmp"
+    sheet_dst = "#{CACHE_DIR}/sheet.png"
     @gfx.sync_file(@map.tilesheet_path, dest: sheet_dst)
     @sheet = TileSheet.new(@gfx, sheet_dst,
                            cols: @map.tilesheet_cols,
-                           tile_size: @map.tile_size)
+                           tile_size: @map.tile_size, source: @map.tilesheet_path)
     Log.info("TileSheet: #{@sheet.cols}x#{@sheet.rows} tiles")
 
     @map.render(@sheet, origin_x: @ox, origin_y: @oy)

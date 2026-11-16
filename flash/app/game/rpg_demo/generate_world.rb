@@ -4,7 +4,7 @@
 # Run:
 #   ruby flash/app/game/rpg_demo/generate_world.rb
 #
-# Tile IDs match world.bmp (generate_tiles.rb):
+# Tile IDs match world.png (generate_tiles.rb):
 #   0 plain   1 forest  2 desert  3 sea
 #   4 hill    5 mountain 6 cave    7 castle
 #
@@ -18,7 +18,7 @@ require "rbconfig"
 WIDTH      = 64
 HEIGHT     = 64
 TILE_SIZE  = 16
-TILESHEET  = "/app/game/rpg_demo/world.bmp"
+TILESHEET  = "/app/game/rpg_demo/world.png"
 SHEET_COLS = 4
 SEED       = 0xD24A
 

@@ -1,8 +1,9 @@
-# TileSheet / TileMap — runtime support for fmrb_map JSON and its sister BMP.
+# TileSheet / TileMap — runtime support for fmrb_map JSON and its sister picture
+# (a PNG, or an 8-bit BMP).
 #
 # Architecture (see plan):
-#   - The tilesheet BMP must already live on the WROVER LittleFS (use
-#     @gfx.transfer_file to push it from core flash first).
+#   - The tilesheet picture must already live on the graphics side (use
+#     @gfx.sync_file to push it from core flash first).
 #   - TileSheet wraps the loaded SpriteImage and exposes one stamp(index)
 #     helper that issues a draw_tile RPC (sub-region copy onto the current
 #     canvas, transparent_color honored). No SpriteInstance is allocated.
@@ -10,25 +11,32 @@
 #     calling stamp once per cell, so the BG is baked into the canvas in a
 #     single pass at app start.
 
-# Wraps one BMP-backed SpriteImage that holds a grid of tiles.
+# Wraps one SpriteImage, loaded from a picture, that holds a grid of tiles.
 class TileSheet
   TILE = 16
   attr_reader :image, :cols, :rows, :tile_size
 
   # @param gfx       [FmrbGfx]
-  # @param path      [String]  WROVER-side BMP path (already transferred)
+  # @param path      [String]  graphics-side picture path (already transferred)
   # @param cols      [Integer] tile columns in the sheet
-  # @param rows      [Integer] tile rows. If nil, derived from file size via
-  #                            @gfx.file_status (assumes 8bpp BMP with the
-  #                            standard 1078-byte header+palette).
+  # @param rows      [Integer] tile rows. If nil, read from the picture's
+  #                            header in `source`, or, without one, derived
+  #                            from the size of `path` via @gfx.file_status
+  #                            (an 8bpp BMP with the standard 1078-byte
+  #                            header+palette; a PNG needs `source`).
   # @param tile_size [Integer] pixel size of one tile (default 16)
-  def initialize(gfx, path, cols:, rows: nil, tile_size: TILE)
+  # @param source    [String]  this side's copy of the picture (the one sent
+  #                            with sync_file), read for its height
+  def initialize(gfx, path, cols:, rows: nil, tile_size: TILE, source: nil)
     @gfx = gfx
     @tile_size = tile_size
     @cols = cols
     width = @cols * tile_size
 
-    if rows.nil?
+    height = rows.nil? && source ? TileSheet.picture_height(source) : 0
+    if height > 0
+      @rows = height / tile_size
+    elsif rows.nil?
       status = @gfx.file_status(path)
       unless status && status[:exists]
         raise "TileSheet: file not found on graphics side: #{path}"
@@ -47,6 +55,21 @@ class TileSheet
                              width: width, height: height,
                              transparent_color: 0, use_transparent: true)
     @image.load_bmp(path)
+  end
+
+  # The height of a PNG or BMP from its header, or 0 when it is neither.
+  def self.picture_height(path)
+    d = File.open(path, "r") { |f| f.read }
+    return 0 if d.nil? || d.bytesize < 26
+    if d.getbyte(0) == 0x89 && d.getbyte(1) == 80 && d.getbyte(2) == 78 && d.getbyte(3) == 71
+      return ((d.getbyte(20) * 256 + d.getbyte(21)) * 256 + d.getbyte(22)) * 256 + d.getbyte(23)
+    end
+    return 0 unless d.getbyte(0) == 66 && d.getbyte(1) == 77
+    h = ((d.getbyte(25) * 256 + d.getbyte(24)) * 256 + d.getbyte(23)) * 256 + d.getbyte(22)
+    h = 4294967296 - h if h >= 2147483648 # top-down
+    h
+  rescue
+    0
   end
 
   # Stamp tile #index onto the current canvas at (dst_x, dst_y). index is

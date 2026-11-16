@@ -104,12 +104,12 @@ class MahjongApp < FmrbApp
   def xl_load_sheets
     return if @xl_sheets || !@xl
     @xl_sheets = true
-    @xl_hand = [load_sheet("tiles_hand2_a.bmp", 840, 224, XL_DIR), load_sheet("tiles_hand2_b.bmp", 840, 224, XL_DIR)]
-    @xl_r2 = [load_sheet("tiles_river2_r0.bmp", 480, 256, XL_DIR), load_sheet("tiles_river2_r90.bmp", 640, 192, XL_DIR),
-              load_sheet("tiles_river2_r180.bmp", 480, 256, XL_DIR), load_sheet("tiles_river2_r270.bmp", 640, 192, XL_DIR)]
+    @xl_hand = [load_sheet("tiles_hand2_a.png", 840, 224, XL_DIR), load_sheet("tiles_hand2_b.png", 840, 224, XL_DIR)]
+    @xl_r2 = [load_sheet("tiles_river2_r0.png", 480, 256, XL_DIR), load_sheet("tiles_river2_r90.png", 640, 192, XL_DIR),
+              load_sheet("tiles_river2_r180.png", 480, 256, XL_DIR), load_sheet("tiles_river2_r270.png", 640, 192, XL_DIR)]
     load_turned_sheets
     @xl_r1 = @turned
-    @xl_side = load_sheet("tiles_side.bmp", 72, 32, XL_DIR)
+    @xl_side = load_sheet("tiles_side.png", 72, 32, XL_DIR)
   end
 
   def img_id(img)

@@ -68,23 +68,45 @@ module BasicSheet
     glyphs
   end
 
-  # Write [128][128] palette indices as an 8bpp bottom-up indexed BMP.
+  # Write [128][128] palette indices as a bottom-up indexed BMP, in the fewest
+  # bits that hold them (the firmware reads 1, 4 and 8):
+  #   1 bpp when the sheet is off and index 3 only (the text font: a 1bpp
+  #     sheet's ink is index 3, the firmware's rule), 2,102 B;
+  #   4 bpp when every index fits in 4 bits (table A), 8,310 B;
+  #   8 bpp otherwise, 17,462 B.
   def write_bmp(px, path)
-    palette = PALETTE.map { |r, g, b| [b, g, r, 0].pack("C4") }.join
-    palette += "\0" * (4 * (256 - PALETTE.length))
+    flat = px.flatten
+    bpp = if flat.all? { |v| v == 0 || v == 3 } then 1
+          elsif flat.max <= 15 then 4
+          else 8
+          end
+    colours = bpp == 1 ? [PALETTE[0], PALETTE[3]] : PALETTE
+    entries = 1 << bpp
+    palette = colours.map { |r, g, b| [b, g, r, 0].pack("C4") }.join
+    palette += "\0" * (4 * (entries - colours.length))
     pixel_offset = 14 + 40 + palette.bytesize
-    body = (DIM - 1).downto(0).map { |y| px[y].pack("C*") }.join  # bottom-up
+    stride = ((DIM * bpp + 31) / 32) * 4
+    body = (DIM - 1).downto(0).map do |y|  # bottom-up
+      row = px[y]
+      bytes = case bpp
+              when 8 then row
+              when 4 then row.each_slice(2).map { |a, b| (a << 4) | b }
+              else row.each_slice(8).map { |s| s.each_with_index.sum { |v, i| v == 0 ? 0 : 0x80 >> i } }
+              end
+      bytes.pack("C*").ljust(stride, "\0")
+    end.join
 
     header = "BM".b + [pixel_offset + body.bytesize, 0, pixel_offset].pack("VVV")
     dib = [40, DIM, DIM].pack("VVV") +
-          [1, 8].pack("vv") +
-          [0, body.bytesize, 2835, 2835, PALETTE.length, 0].pack("V6")
+          [1, bpp].pack("vv") +
+          [0, body.bytesize, 2835, 2835, colours.length, 0].pack("V6")
     File.binwrite(path, header + dib + palette + body)
   end
 
   # Read an indexed BMP sheet back into [128][128] palette indices.
   #
-  # Mirrors the firmware loader: 1, 4 and 8 bits per pixel, either row order.
+  # Mirrors the firmware loader: 1, 4 and 8 bits per pixel, either row order;
+  # a 1bpp sheet's ink is index 3.
   def read_bmp(path)
     data = File.binread(path)
     raise "#{path}: not a BMP" unless data[0, 2] == "BM"
@@ -110,7 +132,7 @@ module BasicSheet
         px[y][x] = case bpp
                    when 8 then row[x]
                    when 4 then x.odd? ? (row[x / 2] & 0x0F) : (row[x / 2] >> 4)
-                   else (row[x / 8] >> (7 - (x % 8))) & 1
+                   else ((row[x / 8] >> (7 - (x % 8))) & 1) * 3
                    end
       end
     end

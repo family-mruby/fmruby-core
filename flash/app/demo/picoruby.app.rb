@@ -4,7 +4,7 @@
 #   Shapes  @gfx primitives (rect / ellipse / triangle / arc / text size)
 #   Fonts   @gfx text: the built in 6x8 font, the Japanese fonts, and the
 #           mixed / hybrid modes that put both in one call
-#   Sprite  BMP sprites, tiles out of a sheet, an image drawn from Ruby, and
+#   Sprite  sprite pictures, tiles out of a sheet, an image drawn from Ruby, and
 #           a decoded picture
 #   Sound   the internal sound chip: a scale, a tune, effects
 #   System  the clock, the language, a file, a random number, pub/sub with
@@ -360,11 +360,11 @@ class PicoRubyDemoApp < FmrbApp
 
   def load_sprites
     return if @sprites_ready
-    ["player_down_0.bmp", "player_down_1.bmp", "world.bmp"].each do |name|
+    ["player_down_0.png", "player_down_1.png", "world.png"].each do |name|
       @gfx.sync_file("#{RPG_DIR}/#{name}", dest: "#{CACHE}/#{name}")
     end
 
-    @frames = ["player_down_0.bmp", "player_down_1.bmp"].map do |name|
+    @frames = ["player_down_0.png", "player_down_1.png"].map do |name|
       img = SpriteImage.new(@gfx, width: 16, height: 16,
                             transparent_color: 0, use_transparent: true)
       img.load_bmp("#{CACHE}/#{name}")
@@ -375,7 +375,7 @@ class PicoRubyDemoApp < FmrbApp
     # The tile sheet stays an image: draw_tile stamps rectangles out of it
     # without an instance per tile.
     @sheet = SpriteImage.new(@gfx, width: 128, height: 128, transparent_color: 0)
-    @sheet.load_bmp("#{CACHE}/world.bmp")
+    @sheet.load_bmp("#{CACHE}/world.png")
 
     # An image drawn from Ruby rather than loaded. The block form sets this
     # image as the drawing target and puts the canvas back afterwards.
@@ -434,8 +434,9 @@ class PicoRubyDemoApp < FmrbApp
     end
   end
 
-  # create_image decodes a picture file (a PNG); a sprite BMP belongs in
-  # load_bmp instead. Handing this one a BMP gives an empty image, silently.
+  # create_image decodes a picture file (a PNG) into a picture drawn with
+  # draw_image; a sprite sheet (PNG or BMP) belongs in load_bmp, and handing
+  # create_image a BMP gives an empty image, silently.
   def draw_picture_page
     x = 6
     y = body_y

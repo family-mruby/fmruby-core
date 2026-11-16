@@ -1,4 +1,4 @@
-# Walk Scroller: a walker drawn from BMP frames whose every step comes from a step
+# Walk Scroller: a walker drawn from picture frames whose every step comes from a step
 # sensor on Asterism, over a background that scrolls in layers (parallax).
 #
 # - Steps: subscribes to asterism/<node>/step/pedometer/step, the value a
@@ -57,13 +57,15 @@
 #   (two calls when the layer is as wide as the screen), and the sprites
 #   (walker, text, status). Text is drawn into a sprite only when it
 #   changes.
-# - Pictures: BMP files read with SpriteImage#load_bmp, the defaults in
-#   /usr/share/sprites/walk_scroller/. They are 8-bit BMPs whose pixel
-#   bytes are RGB332 colours, with the RGB332 palette (what the Family
-#   mruby Console sprite editor and tools/fm_asset_editor write). 0x00
-#   (black) is transparent everywhere, so draw black as 0x24. Nothing is
-#   scaled. A file over 256 KB is refused.
-# - Scenery: scene<N>_far.bmp, scene<N>_mid.bmp and scene<N>_gnd.bmp for
+# - Pictures: PNG or BMP files read with SpriteImage#load_bmp, the defaults
+#   in /usr/share/sprites/walk_scroller/ (palette PNGs). A PNG's colours
+#   become RGB332 (the top 3/3/2 bits; its alpha is not transparency); a
+#   BMP is 8-bit with pixel bytes that are RGB332 colours (what the Family
+#   mruby Console sprite editor and tools/fm_asset_editor write). Where
+#   both name.png and name.bmp are there, the PNG is used. 0x00 (black) is
+#   transparent everywhere, so draw black as 0x24. Nothing is scaled. A
+#   file over 256 KB is refused.
+# - Scenery: scene<N>_far, scene<N>_mid and scene<N>_gnd (.png or .bmp) for
 #   the scenes 0-4. The ground layer stands on the bottom of the screen,
 #   the middle and the far layer stand on the ground layer, the sky fills
 #   what is above (the defaults: far 426x160, mid 426x84, gnd 426x50).
@@ -74,12 +76,12 @@
 #   in the script). Only the current scene's layers are in memory; a layer
 #   of the size already held is read into the same image.
 # - Your own pictures: the script's `scenery` key names a folder (e.g.
-#   "/home/walk_scroller/scenery") whose scene<N>_<layer>.bmp files are
+#   "/home/walk_scroller/scenery") whose scene<N>_<layer> files are
 #   used instead of the defaults, file by file; `walker` names a folder of
 #   walker frames used instead of the default walker as a whole. A walker
-#   folder holds walker_0.bmp, walker_1.bmp, ... (the walking frames, as
+#   folder holds walker_0, walker_1, ... (the walking frames, as
 #   many as there are in a row, up to 8; together they are one walking
-#   cycle, which is two steps) and walker_stand.bmp (standing; left out,
+#   cycle, which is two steps) and walker_stand (standing; left out,
 #   walker_0 is used), at most 160x160 and all the same size. The frame's
 #   middle is at a quarter of the screen and its bottom row 8 pixels below
 #   the top of the ground layer; the default frames are 48x75 (a 16x24
@@ -114,7 +116,7 @@ class WalkScrollerApp < FmrbApp
   SPEEDS = [20, 50, 100] # layer scroll speeds, % of the walking distance
   LAYER_MAX_W = 1024
   LAYER_MAX_H = 240
-  BMP_MAX_FILE = 262144 # what the graphics side reads in one go
+  ART_MAX_FILE = 262144 # what the graphics side reads in one go
   NOTE_MS = 6000        # how long "walker: <folder>" stays in the status line
   # Tuning panel (T)
   TUNE_POLL_MS = 3000   # pedometer.state again this often while open
@@ -139,14 +141,14 @@ class WalkScrollerApp < FmrbApp
     @oy = 0
     # Laid out for 426x240 (the hardware's screen). On a larger screen (the
     # browser build offers up to 1280x720) the text and the step scale by
-    # whole steps (text stops growing at the largest size, 4); the BMPs are
+    # whole steps (text stops growing at the largest size, 4); the pictures are
     # shown as they are, the layers tiled across and the sky filling the top.
     @s = @h / 240
     @s = 1 if @s < 1
     @text_h = 124 * @s
     @top_y = 6 * @s
     # The layers stand on the bottom of the screen; build_scene sets these
-    # from the heights of the scene's BMPs.
+    # from the heights of the scene's pictures.
     @ground_y = @h - 50
     @far_y = 30
     @mid_y = 106
@@ -367,11 +369,11 @@ class WalkScrollerApp < FmrbApp
     draw_status_sprite
   end
 
-  # The walker's frames: walker_0.bmp, walker_1.bmp, ... (as many as there
-  # are in a row, up to MAX_WALK; they make one walking cycle of two steps)
-  # and walker_stand.bmp (left out: walker_0 stands in). The script's
+  # The walker's frames: walker_0, walker_1, ... (.png or .bmp, as many as
+  # there are in a row, up to MAX_WALK; they make one walking cycle of two
+  # steps) and walker_stand (left out: walker_0 stands in). The script's
   # `walker` folder is tried first; anything wrong with it (no walker_0, a
-  # file that is not an 8-bit BMP, frames of different sizes) and the
+  # file that is not a PNG or an 8-bit BMP, frames of different sizes) and the
   # defaults in SPRITE_DIR are used, with the reason in the status line and
   # the log.
   # After the script was read again: its folders may have changed, or the
@@ -465,21 +467,22 @@ class WalkScrollerApp < FmrbApp
     names = []
     i = 0
     while i < MAX_WALK
-      name = "walker_#{i}.bmp"
-      break unless ::File.exist?("#{dir}/#{name}")
+      name = art_name(dir, "walker_#{i}")
+      break if name.empty?
       names << name
       i += 1
     end
-    return "no walker_0.bmp" if names.empty?
-    has_stand = ::File.exist?("#{dir}/walker_stand.bmp")
-    names << "walker_stand.bmp" if has_stand
+    return "no walker_0" if names.empty?
+    stand = art_name(dir, "walker_stand")
+    has_stand = !stand.empty?
+    names << stand if has_stand
     w = 0
     h = 0
     paths = []
     i = 0
     while i < names.size
       name = names[i]
-      size = bmp_size("#{dir}/#{name}", MAX_ART, MAX_ART)
+      size = art_size("#{dir}/#{name}", MAX_ART, MAX_ART)
       return "#{name} #{size}" if size.is_a?(String)
       if i == 0
         w = size[0]
@@ -495,13 +498,27 @@ class WalkScrollerApp < FmrbApp
     [w, h, paths, has_stand, dir]
   end
 
-  # [width, height] of an 8-bit uncompressed BMP, or what is wrong with it
-  # (what the sprite loader on the graphics side accepts).
-  def bmp_size(path, max_w, max_h)
+  # The picture's file name in dir for stem: stem.png, else stem.bmp, else
+  # "" (there is none).
+  def art_name(dir, stem)
+    return "#{stem}.png" if ::File.exist?("#{dir}/#{stem}.png")
+    return "#{stem}.bmp" if ::File.exist?("#{dir}/#{stem}.bmp")
+    ""
+  end
+
+  # [width, height] of a PNG or an 8-bit uncompressed BMP, or what is wrong
+  # with it (what the sprite loader on the graphics side accepts).
+  def art_size(path, max_w, max_h)
     d = read_file(path)
     return "unreadable" if d.nil?
-    return "file over 256 KB" if d.bytesize > BMP_MAX_FILE
-    return "not a BMP" if d.bytesize < 54 || d.getbyte(0) != 66 || d.getbyte(1) != 77
+    return "file over 256 KB" if d.bytesize > ART_MAX_FILE
+    if d.bytesize >= 24 && d.getbyte(0) == 0x89 && d.getbyte(1) == 80 && d.getbyte(2) == 78 && d.getbyte(3) == 71
+      w = be(d, 16)
+      h = be(d, 20)
+      return "size #{w}x#{h}" if w <= 0 || h <= 0 || w > max_w || h > max_h
+      return [w, h]
+    end
+    return "not a PNG or BMP" if d.bytesize < 54 || d.getbyte(0) != 66 || d.getbyte(1) != 77
     return "not 8-bit" if le(d, 28, 2) != 8
     return "compressed" if le(d, 30, 4) != 0
     w = le(d, 18, 4)
@@ -510,6 +527,11 @@ class WalkScrollerApp < FmrbApp
     return "size #{w}x#{h}" if w <= 0 || h <= 0 || w > max_w || h > max_h
     return "too short" if le(d, 10, 4) + ((w + 3) / 4 * 4) * h > d.bytesize
     [w, h]
+  end
+
+  # A 4-byte big-endian number (the PNG header's width and height).
+  def be(d, at)
+    ((d.getbyte(at) * 256 + d.getbyte(at + 1)) * 256 + d.getbyte(at + 2)) * 256 + d.getbyte(at + 3)
   end
 
   def le(d, at, n)
@@ -680,14 +702,17 @@ class WalkScrollerApp < FmrbApp
       row = []
       l = 0
       while l < 3
-        name = "scene#{n}_#{LAYERS[l]}.bmp"
+        stem = "scene#{n}_#{LAYERS[l]}"
+        name = art_name(SPRITE_DIR, stem)
+        name = "#{stem}.png" if name.empty?
         loading(name, n * 3 + l + 1) if first
         f = nil
-        if !@scenery_dir.empty? && ::File.exist?("#{@scenery_dir}/#{name}")
-          f = layer_file(@scenery_dir, name, "user")
+        mine_name = @scenery_dir.empty? ? "" : art_name(@scenery_dir, stem)
+        unless mine_name.empty?
+          f = layer_file(@scenery_dir, mine_name, "user")
           if f.is_a?(String)
-            Log.warn("walk_scroller: #{@scenery_dir}/#{name}: #{f}; using the default")
-            bad = "#{name} #{f}" if bad.empty?
+            Log.warn("walk_scroller: #{@scenery_dir}/#{mine_name}: #{f}; using the default")
+            bad = "#{mine_name} #{f}" if bad.empty?
             f = nil
           else
             mine += 1
@@ -721,7 +746,7 @@ class WalkScrollerApp < FmrbApp
   end
 
   def layer_file(dir, name, tag)
-    size = bmp_size("#{dir}/#{name}", LAYER_MAX_W, LAYER_MAX_H)
+    size = art_size("#{dir}/#{name}", LAYER_MAX_W, LAYER_MAX_H)
     return size if size.is_a?(String)
     dest = "#{CACHE}/#{tag}/#{name}"
     return "copy failed" unless @gfx.sync_file("#{dir}/#{name}", dest: dest)

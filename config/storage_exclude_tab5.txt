@@ -5,13 +5,13 @@
 # The mahjong sheets of the 1280x720 table (browser build only; apps get
 # 640x360 here). The small tiles in three turns stay: the 640x360
 # spectators' screen turns each hand to its player (MJ5).
-app/game/mahjong/large/tiles_hand2_a.bmp
-app/game/mahjong/large/tiles_hand2_b.bmp
-app/game/mahjong/large/tiles_river2_r0.bmp
-app/game/mahjong/large/tiles_river2_r90.bmp
-app/game/mahjong/large/tiles_river2_r180.bmp
-app/game/mahjong/large/tiles_river2_r270.bmp
-app/game/mahjong/large/tiles_side.bmp
+app/game/mahjong/large/tiles_hand2_a.png
+app/game/mahjong/large/tiles_hand2_b.png
+app/game/mahjong/large/tiles_river2_r0.png
+app/game/mahjong/large/tiles_river2_r90.png
+app/game/mahjong/large/tiles_river2_r180.png
+app/game/mahjong/large/tiles_river2_r270.png
+app/game/mahjong/large/tiles_side.png
 app/game/mahjong/large/README.md
 
 # Wallpapers for screens larger than any P4 board's: the desktop is 426x240

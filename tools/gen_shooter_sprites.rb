@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Generate the shooter's sprite BMPs from the pixel art below.
+# Generate the shooter's sprite pictures (PNG) from the pixel art below.
 #
 # The art is the editable source: one string per row, one character per pixel,
 # '.' transparent. Each sheet names a palette, so the same drawing can be
@@ -7,18 +7,21 @@
 # and the boss are all made from one shape), and a scale, so the boss can be the
 # same drawing blown up.
 #
-# Pixel bytes are RGB332 values, not palette indices: the BMP loader on the
-# graphics side ignores the palette and takes the byte as the colour directly
-# (same as tools/gen_icon_bmp.rb). The palette is written anyway, expanded to
-# RGB888, so the files also open correctly in an ordinary image viewer.
+# The palette values are RGB332 colours, written as palette PNGs of the colours
+# used (tools/rgb332_png.rb, same as tools/gen_icon_png.rb): the sprite loader
+# turns each colour back into its RGB332 value, and the files open in any
+# image viewer.
 #
 # Transparent pixels are written as 0x00, which is what the app passes as
 # SpriteImage transparent_color. No visible colour here is 0x00.
 #
-# Widths are kept to a multiple of 4 so BMP rows need no padding; the loader is
-# only exercised with unpadded rows elsewhere. The check runs after scaling.
+# Widths are kept to a multiple of 4 (from the BMP days, when rows then needed
+# no padding; kept so the sprite sizes stay as the app expects). The check runs
+# after scaling.
 #
 # Usage: ruby tools/gen_shooter_sprites.rb [out_dir]   (default flash/usr/share/sprites/shooter)
+
+require_relative "rgb332_png"
 
 TRANSPARENT = 0
 
@@ -163,27 +166,19 @@ BURST_B = [
 BOSS_SCALE = 5
 
 SHEETS = [
-  ["player_a.bmp", PLAYER_A, PAL_PLAYER,  1],
-  ["player_b.bmp", PLAYER_B, PAL_PLAYER,  1],
-  ["enemy1_a.bmp", ENEMY_A,  PAL_ENEMY1,  1],
-  ["enemy1_b.bmp", ENEMY_B,  PAL_ENEMY1,  1],
-  ["enemy2_a.bmp", ENEMY_A,  PAL_ENEMY2,  1],
-  ["enemy2_b.bmp", ENEMY_B,  PAL_ENEMY2,  1],
-  ["boss_a.bmp",   ENEMY_A,  PAL_BOSS,    BOSS_SCALE],
-  ["boss_b.bmp",   ENEMY_B,  PAL_BOSS,    BOSS_SCALE],
-  ["bullet.bmp",   BULLET,   PAL_BULLET,  1],
-  ["ebullet.bmp",  EBULLET,  PAL_EBULLET, 1],
-  ["burst_a.bmp",  BURST_A,  PAL_BURST,   1],
-  ["burst_b.bmp",  BURST_B,  PAL_BURST,   1],
+  ["player_a.png", PLAYER_A, PAL_PLAYER,  1],
+  ["player_b.png", PLAYER_B, PAL_PLAYER,  1],
+  ["enemy1_a.png", ENEMY_A,  PAL_ENEMY1,  1],
+  ["enemy1_b.png", ENEMY_B,  PAL_ENEMY1,  1],
+  ["enemy2_a.png", ENEMY_A,  PAL_ENEMY2,  1],
+  ["enemy2_b.png", ENEMY_B,  PAL_ENEMY2,  1],
+  ["boss_a.png",   ENEMY_A,  PAL_BOSS,    BOSS_SCALE],
+  ["boss_b.png",   ENEMY_B,  PAL_BOSS,    BOSS_SCALE],
+  ["bullet.png",   BULLET,   PAL_BULLET,  1],
+  ["ebullet.png",  EBULLET,  PAL_EBULLET, 1],
+  ["burst_a.png",  BURST_A,  PAL_BURST,   1],
+  ["burst_b.png",  BURST_B,  PAL_BURST,   1],
 ]
-
-# RGB332 byte -> BGR0 palette entry, so viewers show the real colour.
-def palette_entry(v)
-  r = ((v >> 5) & 0x07) * 255 / 7
-  g = ((v >> 2) & 0x07) * 255 / 7
-  b = (v & 0x03) * 255 / 3
-  [b, g, r, 0].pack("C4")
-end
 
 def to_pixels(rows, palette, name)
   width = rows[0].length
@@ -210,20 +205,6 @@ def scale_pixels(pixels, n)
   out
 end
 
-def write_bmp(path, pixels)
-  height = pixels.size
-  width  = pixels[0].size
-  palette = (0..255).map { |v| palette_entry(v) }.join
-  pixel_offset = 14 + 40 + palette.bytesize
-  # BMP scanlines run bottom-up.
-  body = (height - 1).downto(0).map { |y| pixels[y].pack("C*") }.join
-  header = "BM".b + [pixel_offset + body.bytesize, 0, pixel_offset].pack("VVV")
-  dib = [40, width, height].pack("Vll") +
-        [1, 8].pack("vv") +
-        [0, body.bytesize, 2835, 2835, 256, 0].pack("V6")
-  File.binwrite(path, header + dib + palette + body)
-end
-
 out_dir = ARGV[0] || "flash/usr/share/sprites/shooter"
 require "fileutils"
 FileUtils.mkdir_p(out_dir)
@@ -234,7 +215,7 @@ SHEETS.each do |name, rows, palette, scale|
     abort "#{name}: width #{pixels[0].size} is not a multiple of 4"
   end
   path = File.join(out_dir, name)
-  write_bmp(path, pixels)
+  Rgb332Png.write(path, pixels[0].size, pixels.size, pixels.flatten)
   puts "#{path} (#{pixels[0].size}x#{pixels.size})"
 end
 puts "#{SHEETS.size} sprites written to #{out_dir}"

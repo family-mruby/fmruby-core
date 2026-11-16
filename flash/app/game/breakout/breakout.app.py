@@ -136,20 +136,20 @@ class BreakoutApp(FmrbApp):
     # ---- assets ----
 
     def load_assets(self):
-        names = ("paddle.bmp", "paddle_wide.bmp", "ball.bmp",
-                 "item_wide.bmp", "item_slow.bmp", "item_life.bmp", "bgm.fmsq")
+        names = ("paddle.png", "paddle_wide.png", "ball.png",
+                 "item_wide.png", "item_slow.png", "item_life.png", "bgm.fmsq")
         for name in names:
             self.gfx.sync_file(ASSETS + "/" + name, CACHE + "/" + name)
 
-        self.img_paddle = self.load_sprite("paddle.bmp", PADDLE_W, PADDLE_H)
-        self.img_paddle_wide = self.load_sprite("paddle_wide.bmp", PADDLE_WIDE_W,
+        self.img_paddle = self.load_sprite("paddle.png", PADDLE_W, PADDLE_H)
+        self.img_paddle_wide = self.load_sprite("paddle_wide.png", PADDLE_WIDE_W,
                                                 PADDLE_H)
-        self.img_ball = self.load_sprite("ball.bmp", BALL_R, BALL_R)
+        self.img_ball = self.load_sprite("ball.png", BALL_R, BALL_R)
         # One image per item kind, all frames of a single sprite: a falling
         # item changes what it is by changing frame, not by being recreated.
-        self.item_images = [self.load_sprite("item_wide.bmp", 8, 8),
-                            self.load_sprite("item_slow.bmp", 8, 8),
-                            self.load_sprite("item_life.bmp", 8, 8)]
+        self.item_images = [self.load_sprite("item_wide.png", 8, 8),
+                            self.load_sprite("item_slow.png", 8, 8),
+                            self.load_sprite("item_life.png", 8, 8)]
 
         self.paddle = SpriteInstance(self.gfx, [self.img_paddle,
                                                 self.img_paddle_wide], 0, 0, 2)

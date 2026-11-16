@@ -207,11 +207,11 @@ module LauncherMixin
 
   # ---- Icon sprite lifecycle ----
 
-  # Icon artwork is shipped as a BMP next to its .icon source (see
-  # tools/gen_icon_bmp.rb, "rake icons"). The launcher used to parse the .icon
+  # Icon artwork is shipped as a PNG next to its .icon source (see
+  # tools/gen_icon_png.rb, "rake icons"). The launcher used to parse the .icon
   # text here and push the bitmap to the graphics side one GFX command per
-  # pixel, which cost about 2 s of boot for five icons. graphics-audio decodes
-  # a BMP itself, so the file is transferred there once and loaded with
+  # pixel, which cost about 2 s of boot for five icons. The display side
+  # decodes a picture itself, so the file is transferred there once and loaded with
   # SpriteImage#load_bmp instead - the same route flappy.rb and rpg_demo use
   # for their sprites.
   #
@@ -226,11 +226,14 @@ module LauncherMixin
   # tracked directory, showing up as untracked files in every checkout.
   ICON_CACHE_DIR = "/cache/launcher"
   S_ICON_EXT = ".icon"
+  S_PNG_EXT  = ".png"
   S_BMP_EXT  = ".bmp"
 
   # App entries still carry the .icon path (that is what the .toml files and
-  # VM_ICON_FILES name); the BMP beside it is what actually gets loaded.
-  def icon_bmp_source(icon_file)
+  # VM_ICON_FILES name); the picture beside it is what actually gets loaded:
+  # the PNG, or a BMP where there is no PNG (an app made before the icons
+  # became PNGs; the sprite loader reads both).
+  def icon_picture_source(icon_file)
     # to_s, and not because the caller might hand over a nil: it arrives from
     # a Hash, so Spinel only knows it as a boxed value, and returning it
     # unchanged from one branch makes the whole method boxed. Anything native
@@ -239,14 +242,18 @@ module LauncherMixin
     # sp_file_exist". Both branches String, and the method is a String.
     name = icon_file.to_s
     return name unless name.end_with?(S_ICON_EXT)
-    "#{name[0, name.length - S_ICON_EXT.length]}#{S_BMP_EXT}"
+    stem = name[0, name.length - S_ICON_EXT.length]
+    png = "#{stem}#{S_PNG_EXT}"
+    return png if File.exist?(png)
+    "#{stem}#{S_BMP_EXT}"
   end
 
-  # Push the BMP to graphics-audio once and build the sprite image from it.
-  # Returns nil when the artwork is missing so the caller just skips the icon.
+  # Push the picture to the display side once and build the sprite image from
+  # it. Returns nil when the artwork is missing so the caller just skips the
+  # icon.
   def build_icon_sprite_image(icon_file)
-    src = icon_bmp_source(icon_file)
-    # Look before pointing. A missing BMP does not fail on this side: sync_file
+    src = icon_picture_source(icon_file)
+    # Look before pointing. A missing picture does not fail on this side: sync_file
     # only warns ("source ... not found or empty"), load_bmp is a command the
     # graphics side answers asynchronously, and its complaint
     # ("LOAD_SPRITE_BMP: cannot open ...") never comes back here. So the

@@ -35,15 +35,25 @@ PALETTE = [
 DIM = 128
 
 
+def one_bit_bmp(path):
+    with open(path, "rb") as f:
+        head = f.read(30)
+    return head[:2] == b"BM" and head[28] == 1
+
+
 def load_indices(path):
     """Any supported sheet file -> [128][128] palette indices."""
     im = Image.open(path)
     if im.size != (DIM, DIM):
         raise SystemExit("%s: sheet must be %dx%d, got %dx%d"
                          % (path, DIM, DIM, im.width, im.height))
-    if im.mode == "P":
+    if im.mode in ("P", "1"):
         px = im.load()
-        return [[px[x, y] for x in range(im.width)] for y in range(im.height)]
+        out = [[px[x, y] for x in range(im.width)] for y in range(im.height)]
+        if one_bit_bmp(path):
+            # A 1bpp sheet's ink is index 3, as the firmware reads it.
+            out = [[3 if v else 0 for v in row] for row in out]
+        return out
 
     im = im.convert("RGBA")
     px = im.load()

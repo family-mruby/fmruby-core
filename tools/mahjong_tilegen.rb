@@ -18,11 +18,12 @@
 #   OUT_DIR/preview.png          (all tiles, 3x, for checking)
 #
 # Output (--sheets DIR): the sprite sheets Family mruby loads
-# (SpriteImage#load_bmp + FmrbGfx#draw_tile), 8-bit BMPs whose pixel values
-# are RGB332 colours (the palette is the RGB332 decode, so a paint program
-# shows the right colours; Family mruby reads the index as the colour):
-#   DIR/tiles_hand.bmp     420x224  every tile, 42x56 cells
-#   DIR/tiles_river.bmp    240x128  every tile, 24x32 cells
+# (SpriteImage#load_bmp + FmrbGfx#draw_tile), palette PNGs whose colours are
+# RGB332 values (tools/rgb332_png.rb: the palette is the RGB332 decode of the
+# colours used, so a paint program shows the right colours and Family mruby
+# gets the RGB332 values back; 8-bit BMPs of RGB332 bytes are read too):
+#   DIR/tiles_hand.png     420x224  every tile, 42x56 cells
+#   DIR/tiles_river.png    240x128  every tile, 24x32 cells
 #   DIR/sheets_preview.png          the two sheets at 3x, for checking
 # Grids of 10 x 4 cells without gaps, the same on both sheets: the cell of
 # tile number i (TILES below) is
@@ -37,10 +38,10 @@
 # The rounded corners are a post-process on the finished cells ("rounded
 # corners" below, radius per sheet in CORNER_R): --sheets and
 # --layout-sheets apply it (the latter to its two sources in place too), and
-# --round DIR applies it to DIR/tiles_hand.bmp and tiles_river.bmp alone,
+# --round DIR applies it to DIR/tiles_hand.png and tiles_river.png alone,
 # for sheets edited by hand.
 # Output (--patch DIR TILE...): draws only the named tiles (e.g. 8s) again
-# into the existing DIR/tiles_hand.bmp and tiles_river.bmp; every other cell
+# into the existing DIR/tiles_hand.png and tiles_river.png; every other cell
 # stays as it is. Then run --layout-sheets for the 1280x720 sheets.
 #
 # **The sheets are the source of truth once edited by hand**: Family mruby
@@ -55,6 +56,7 @@
 
 require "zlib"
 require "fileutils"
+require_relative "rgb332_png"
 
 # ---------------------------------------------------------------- colors
 
@@ -665,29 +667,20 @@ def rgb332(c)
   v
 end
 
-# The RGB a device shows for an RGB332 value (the BMP palette).
+# The RGB a device shows for an RGB332 value (the palette of the sheets).
 def rgb332_to_rgb(v)
   [((v >> 5) & 7) * 255 / 7, ((v >> 2) & 7) * 255 / 7, (v & 3) * 255 / 3]
 end
 
-# An 8-bit uncompressed BMP, bottom-up, palette = the RGB332 decode.
-def bmp8(w, h, px)
-  row = (w + 3) & ~3
-  palette = (0..255).map { |v| r, g, b = rgb332_to_rgb(v); [b, g, r, 0].pack("C4") }.join
-  data = +"".b
-  (h - 1).downto(0) do |y|
-    data << px[y * w, w].pack("C*") << ("\x00" * (row - w)).b
-  end
-  off = 14 + 40 + palette.bytesize
-  ["BM", off + data.bytesize, 0, 0, off].pack("a2VvvV") +
-    [40, w, h, 1, 8, 0, data.bytesize, 2835, 2835, 256, 0].pack("VVVvvVVVVVV") +
-    palette + data
+# A sheet as a palette PNG of the RGB332 colours it uses.
+def sheet_file(w, h, px)
+  Rgb332Png.encode(w, h, px)
 end
 
 SHEETS = [
   # [file, profile, columns, rows, first tile number, count]
-  ["tiles_hand.bmp", HAND, 10, 4, 0, 38],
-  ["tiles_river.bmp", RIVER, 10, 4, 0, 38],
+  ["tiles_hand.png", HAND, 10, 4, 0, 38],
+  ["tiles_river.png", RIVER, 10, 4, 0, 38],
 ].freeze
 
 def sheet_pixels(pf, cols, rows, first, count, tiles)
@@ -718,7 +711,7 @@ def write_sheets(dir, force)
   SHEETS.each do |file, pf, cols, rows, first, count|
     w, h, px = sheet_pixels(pf, cols, rows, first, count, tiles[pf])
     round_sheet!(w, h, px, pf.w, pf.h, CORNER_R[file], 1)
-    File.binwrite(File.join(dir, file), bmp8(w, h, px))
+    File.binwrite(File.join(dir, file), sheet_file(w, h, px))
     shots << [w, h, px]
     puts "wrote #{file} (#{w}x#{h}, #{count} tiles)"
   end
@@ -746,8 +739,8 @@ end
 # sheets above, not from the drawing code: the sheets are the source of truth
 # once edited by hand, so these are only their tiles scaled by whole numbers
 # (nearest neighbour), their corners rounded at the new size and turned by
-# quarter turns. Edit tiles_hand.bmp /
-# tiles_river.bmp and run --layout-sheets again; the files it writes are
+# quarter turns. Edit tiles_hand.png /
+# tiles_river.png and run --layout-sheets again; the files it writes are
 # derived and are overwritten without asking.
 #
 # Rotations are clockwise; r90 turns the top of the picture to the right.
@@ -758,43 +751,26 @@ end
 
 # [file, source sheet, scale, rotation, first tile, count, columns]
 LAYOUT_SHEETS = [
-  ["tiles_hand2_a.bmp", "tiles_hand.bmp", 2, 0, 0, 20, 10],
-  ["tiles_hand2_b.bmp", "tiles_hand.bmp", 2, 0, 20, 18, 10],
-  ["tiles_river2_r0.bmp", "tiles_river.bmp", 2, 0, 0, 38, 10],
-  ["tiles_river2_r90.bmp", "tiles_river.bmp", 2, 90, 0, 38, 10],
-  ["tiles_river2_r180.bmp", "tiles_river.bmp", 2, 180, 0, 38, 10],
-  ["tiles_river2_r270.bmp", "tiles_river.bmp", 2, 270, 0, 38, 10],
-  ["tiles_river_r90.bmp", "tiles_river.bmp", 1, 90, 0, 38, 10],
-  ["tiles_river_r180.bmp", "tiles_river.bmp", 1, 180, 0, 38, 10],
-  ["tiles_river_r270.bmp", "tiles_river.bmp", 1, 270, 0, 38, 10],
+  ["tiles_hand2_a.png", "tiles_hand.png", 2, 0, 0, 20, 10],
+  ["tiles_hand2_b.png", "tiles_hand.png", 2, 0, 20, 18, 10],
+  ["tiles_river2_r0.png", "tiles_river.png", 2, 0, 0, 38, 10],
+  ["tiles_river2_r90.png", "tiles_river.png", 2, 90, 0, 38, 10],
+  ["tiles_river2_r180.png", "tiles_river.png", 2, 180, 0, 38, 10],
+  ["tiles_river2_r270.png", "tiles_river.png", 2, 270, 0, 38, 10],
+  ["tiles_river_r90.png", "tiles_river.png", 1, 90, 0, 38, 10],
+  ["tiles_river_r180.png", "tiles_river.png", 1, 180, 0, 38, 10],
+  ["tiles_river_r270.png", "tiles_river.png", 1, 270, 0, 38, 10],
 ].freeze
 
 # The side of an opponent's concealed tile (the back seen standing), one cell
 # per direction: across (32x20), left (20x32), right (20x32), in a row.
-SIDE_SHEET = "tiles_side.bmp"
+SIDE_SHEET = "tiles_side.png"
 SIDE_LONG = 32
 SIDE_SHORT = 20
 
-# An 8-bit BMP as [w, h, pixels top-down]; the pixel values are the RGB332
-# colours (the palette is not read, as on the device).
-def read_bmp8(path)
-  b = File.binread(path)
-  raise "#{path}: not a BMP" unless b[0, 2] == "BM"
-  off = b[10, 4].unpack1("V")
-  w = b[18, 4].unpack1("l<")
-  h = b[22, 4].unpack1("l<")
-  bpp = b[28, 2].unpack1("v")
-  raise "#{path}: #{bpp} bits per pixel (8 expected)" unless bpp == 8
-  top_down = h < 0
-  h = h.abs
-  row = (w + 3) & ~3
-  px = Array.new(w * h)
-  h.times do |r|
-    y = top_down ? r : h - 1 - r
-    line = b[off + r * row, w].bytes
-    w.times { |x| px[y * w + x] = line[x] }
-  end
-  [w, h, px]
+# A sheet as [w, h, pixels top-down] of RGB332 values (PNG or 8-bit BMP).
+def read_sheet(path)
+  Rgb332Png.read(path)
 end
 
 # One cell of a sheet: [w, h, pixels].
@@ -881,12 +857,12 @@ end
 # Radius per sheet (px of that sheet). The 1x sheets are the sources; the
 # others are made from them (scaled, then rounded again, then turned).
 CORNER_R = {
-  "tiles_hand.bmp" => 3, "tiles_river.bmp" => 2,
-  "tiles_hand2_a.bmp" => 5, "tiles_hand2_b.bmp" => 5,
-  "tiles_river2_r0.bmp" => 4, "tiles_river2_r90.bmp" => 4,
-  "tiles_river2_r180.bmp" => 4, "tiles_river2_r270.bmp" => 4,
-  "tiles_river_r90.bmp" => 2, "tiles_river_r180.bmp" => 2, "tiles_river_r270.bmp" => 2,
-  "tiles_side.bmp" => 2,
+  "tiles_hand.png" => 3, "tiles_river.png" => 2,
+  "tiles_hand2_a.png" => 5, "tiles_hand2_b.png" => 5,
+  "tiles_river2_r0.png" => 4, "tiles_river2_r90.png" => 4,
+  "tiles_river2_r180.png" => 4, "tiles_river2_r270.png" => 4,
+  "tiles_river_r90.png" => 2, "tiles_river_r180.png" => 2, "tiles_river_r270.png" => 2,
+  "tiles_side.png" => 2,
 }.freeze
 
 # Whether corner pixel (dx, dy) (from the corner inwards) is outside radius r.
@@ -944,15 +920,15 @@ end
 
 # Rounds the two source sheets in DIR in place (only written when changed).
 def round_source_sheets(dir)
-  { "tiles_hand.bmp" => [42, 56], "tiles_river.bmp" => [24, 32] }.each do |file, (cw, ch)|
+  { "tiles_hand.png" => [42, 56], "tiles_river.png" => [24, 32] }.each do |file, (cw, ch)|
     path = File.join(dir, file)
-    w, h, px = read_bmp8(path)
+    w, h, px = read_sheet(path)
     old = px.dup
     round_sheet!(w, h, px, cw, ch, CORNER_R[file], 1)
     if px == old
       puts "#{file}: corners already round (r=#{CORNER_R[file]})"
     else
-      File.binwrite(path, bmp8(w, h, px))
+      File.binwrite(path, sheet_file(w, h, px))
       puts "rounded #{file} (r=#{CORNER_R[file]})"
     end
   end
@@ -962,8 +938,8 @@ def write_layout_sheets(src_dir, dst_dir, preview_path = nil)
   FileUtils.mkdir_p(dst_dir)
   round_source_sheets(src_dir)
   src = {}
-  %w[tiles_hand.bmp tiles_river.bmp].each { |f| src[f] = read_bmp8(File.join(src_dir, f)) }
-  base_cell = { "tiles_hand.bmp" => [42, 56], "tiles_river.bmp" => [24, 32] }
+  %w[tiles_hand.png tiles_river.png].each { |f| src[f] = read_sheet(File.join(src_dir, f)) }
+  base_cell = { "tiles_hand.png" => [42, 56], "tiles_river.png" => [24, 32] }
   shots = []
   LAYOUT_SHEETS.each do |file, from, k, deg, first, count, cols|
     bw, bh = base_cell[from]
@@ -976,23 +952,23 @@ def write_layout_sheets(src_dir, dst_dir, preview_path = nil)
     rows = 4 if count == 38
     w = cols * cw
     h = rows * ch
-    raise "#{file}: #{w}x#{h} is over the 2048 px the BMP loader takes" if w > 2048 || h > 2048
+    raise "#{file}: #{w}x#{h} is over the 2048 px the sprite loader takes" if w > 2048 || h > 2048
     px = Array.new(w * h, TRANSPARENT)
     cells.each_with_index { |c, i| paste(px, w, c, (i % cols) * cw, (i / cols) * ch) }
-    data = bmp8(w, h, px)
+    data = sheet_file(w, h, px)
     raise "#{file}: #{data.bytesize} B is over the 256 KB a sprite file may be" if data.bytesize > 256 * 1024
     File.binwrite(File.join(dst_dir, file), data)
     shots << [w, h, px]
     puts "wrote #{file} (#{w}x#{h}, cells #{cw}x#{ch}, #{data.bytesize} B)"
   end
-  sides = side_cells(src["tiles_hand.bmp"])
+  sides = side_cells(src["tiles_hand.png"])
   w = SIDE_LONG + SIDE_SHORT * 2
   h = SIDE_LONG
   px = Array.new(w * h, TRANSPARENT)
   paste(px, w, sides[0], 0, 0)
   paste(px, w, sides[1], SIDE_LONG, 0)
   paste(px, w, sides[2], SIDE_LONG + SIDE_SHORT, 0)
-  File.binwrite(File.join(dst_dir, SIDE_SHEET), bmp8(w, h, px))
+  File.binwrite(File.join(dst_dir, SIDE_SHEET), sheet_file(w, h, px))
   shots << [w, h, px]
   puts "wrote #{SIDE_SHEET} (#{w}x#{h})"
   # A preview at 1x on the felt, for checking (not next to the sheets: the
@@ -1023,7 +999,7 @@ def patch_sheets(dir, ids)
   abort "unknown tiles: #{bad.join(' ')} (MPSZ names, e.g. 8s)" unless bad.empty?
   SHEETS.each do |file, pf, cols, _rows, first, _count|
     path = File.join(dir, file)
-    w, h, px = read_bmp8(path)
+    w, h, px = read_sheet(path)
     ids.each do |id|
       k = TILES.index(id) - first
       cv = make_tile(pf, id)
@@ -1032,7 +1008,7 @@ def patch_sheets(dir, ids)
       round_cell!(cell, CORNER_R[file], 1)
       paste(px, w, cell, (k % cols) * pf.w, (k / cols) * pf.h)
     end
-    File.binwrite(path, bmp8(w, h, px))
+    File.binwrite(path, sheet_file(w, h, px))
     puts "#{file}: drew #{ids.join(' ')} again"
   end
 end

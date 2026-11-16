@@ -10,7 +10,7 @@
 # Sea and mountain are not walkable. Cave / castle are walkable and trigger
 # named events. The walkable_tiles array is read from world.map.json.
 #
-# Player sheet is one BMP (128x16) with 8 frames laid out horizontally:
+# Player sheet is one picture (128x16) with 8 frames laid out horizontally:
 #   0 down_0  1 down_1  2 up_0  3 up_1  4 left_0  5 left_1  6 right_0  7 right_1
 # The sheet is loaded into one SpriteImage, then split into eight 16x16
 # SpriteImage frames so SpriteInstance#frame= can toggle the walking pose.
@@ -41,10 +41,10 @@ class RpgDemoApp < FmrbApp
   }
 
   PLAYER_FRAME_NAMES = [
-    "player_down_0.bmp",  "player_down_1.bmp",
-    "player_up_0.bmp",    "player_up_1.bmp",
-    "player_left_0.bmp",  "player_left_1.bmp",
-    "player_right_0.bmp", "player_right_1.bmp",
+    "player_down_0.png",  "player_down_1.png",
+    "player_up_0.png",    "player_up_1.png",
+    "player_left_0.png",  "player_left_1.png",
+    "player_right_0.png", "player_right_1.png",
   ]
 
   APP_DIR    = "/app/game/rpg_demo"
@@ -52,7 +52,7 @@ class RpgDemoApp < FmrbApp
   # device took 39 s (tools/map_json2bin.rb rebuilds this after any edit to
   # world.map.json).
   MAP_PATH   = "#{APP_DIR}/world.map.bin"
-  SHEET_SRC  = "#{APP_DIR}/world.bmp"
+  SHEET_SRC  = "#{APP_DIR}/world.png"
   BGM_SRC    = "#{APP_DIR}/bgm.fmsq"
   CACHE_DIR  = "/cache/app/rpg_demo"
 
@@ -86,12 +86,12 @@ class RpgDemoApp < FmrbApp
                                    height: buf_tiles * TILE)
       @sheet = TileSheet.new(@map_gfx, cache_path_for(SHEET_SRC),
                              cols: @map.tilesheet_cols,
-                             tile_size: @map.tile_size)
+                             tile_size: @map.tile_size, source: SHEET_SRC)
       @ring = TileRing.new(@map, @sheet, tiles_w: buf_tiles, tiles_h: buf_tiles)
     else
       @sheet = TileSheet.new(@gfx, cache_path_for(SHEET_SRC),
                              cols: @map.tilesheet_cols,
-                             tile_size: @map.tile_size)
+                             tile_size: @map.tile_size, source: SHEET_SRC)
     end
 
     load_player_frames
@@ -222,7 +222,7 @@ class RpgDemoApp < FmrbApp
     "#{CACHE_DIR}/#{src.split("/").last}"
   end
 
-  # Load each player frame from its own 16x16 BMP into a separate SpriteImage.
+  # Load each player frame from its own 16x16 PNG into a separate SpriteImage.
   # With hardware scroll the frames live on the map canvas (the player
   # instance rides that canvas and everything is freed with it).
   def load_player_frames

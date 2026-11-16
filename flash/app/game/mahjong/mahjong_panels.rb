@@ -1332,12 +1332,12 @@ class MahjongApp < FmrbApp
     @turned ||= [@river_sheet, nil, nil, nil]
     unless @turned_side
       @turned_side = true
-      @turned[3] = load_sheet("tiles_river_r270.bmp", 320, 96, XL_DIR)
+      @turned[3] = load_sheet("tiles_river_r270.png", 320, 96, XL_DIR)
     end
     return if side_only
     @turned_all = true
-    @turned[1] = load_sheet("tiles_river_r90.bmp", 320, 96, XL_DIR)
-    @turned[2] = load_sheet("tiles_river_r180.bmp", 240, 128, XL_DIR)
+    @turned[1] = load_sheet("tiles_river_r90.png", 320, 96, XL_DIR)
+    @turned[2] = load_sheet("tiles_river_r180.png", 240, 128, XL_DIR)
   end
 
   # The base turn of a seat's tiles (rl: 0 self, 1 right, 2 across, 3 left):

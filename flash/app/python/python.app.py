@@ -180,12 +180,12 @@ class PythonDemoApp(FmrbApp):
     def load_sprites(self):
         if self.sprites_ready:
             return
-        names = ("player_down_0.bmp", "player_down_1.bmp", "world.bmp")
+        names = ("player_down_0.png", "player_down_1.png", "world.png")
         for name in names:
             self.gfx.sync_file(RPG_DIR + "/" + name, CACHE + "/" + name)
 
         self.frames = []
-        for name in ("player_down_0.bmp", "player_down_1.bmp"):
+        for name in ("player_down_0.png", "player_down_1.png"):
             img = SpriteImage(self.gfx, 16, 16, transparent_color=0,
                               use_transparent=True)
             img.load_bmp(CACHE + "/" + name)
@@ -195,7 +195,7 @@ class PythonDemoApp(FmrbApp):
         # A tile sheet stays an image: draw_tile stamps rectangles out of it
         # without an instance per tile.
         self.sheet = SpriteImage(self.gfx, 128, 128, transparent_color=0)
-        self.sheet.load_bmp(CACHE + "/world.bmp")
+        self.sheet.load_bmp(CACHE + "/world.png")
 
         # An image drawn from Python rather than loaded.
         self.badge = SpriteImage(self.gfx, 20, 12)
@@ -228,8 +228,9 @@ class PythonDemoApp(FmrbApp):
             # the sprite rather than over the labels.
             g.draw_image(self.image["id"], self.user_area_width - 84, y0 + 40, 0.25)
 
-    # create_image decodes a picture file (a PNG); a sprite BMP belongs in
-    # load_bmp instead. Handing this one a BMP gives an empty image, silently.
+    # create_image decodes a picture file (a PNG) into a picture drawn with
+    # draw_image; a sprite sheet (PNG or BMP) belongs in load_bmp, and handing
+    # create_image a BMP gives an empty image, silently.
     def toggle_image(self):
         if self.image:
             self.gfx.delete_image(self.image["id"])

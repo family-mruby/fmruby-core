@@ -4,7 +4,7 @@
 #   Keyboard: arrows move, Space fires (hold to keep firing), Enter restarts
 #   Gamepad:  D-pad / left stick move, Circle fires, Cross restarts, Start quits
 #
-# The artwork is a set of BMPs under /usr/share/sprites/shooter, the same
+# The artwork is a set of PNGs under /usr/share/sprites/shooter, the same
 # route flappy.app.rb uses: the files are transferred to the graphics side once
 # (sync_file, which skips the copy when the CRC already matches) and decoded
 # there by SpriteImage#load_bmp. The editable source is the pixel art in
@@ -56,12 +56,12 @@ class ShooterApp < FmrbApp
   # size), so the colour is already baked into the file.
   SPRITE_SRC = "/usr/share/sprites/shooter"
   SPRITE_CACHE = "/cache/app/shooter"
-  SPRITE_FILES = ["player_a.bmp", "player_b.bmp",
-                  "enemy1_a.bmp", "enemy1_b.bmp",
-                  "enemy2_a.bmp", "enemy2_b.bmp",
-                  "boss_a.bmp", "boss_b.bmp",
-                  "bullet.bmp", "ebullet.bmp",
-                  "burst_a.bmp", "burst_b.bmp"]
+  SPRITE_FILES = ["player_a.png", "player_b.png",
+                  "enemy1_a.png", "enemy1_b.png",
+                  "enemy2_a.png", "enemy2_b.png",
+                  "boss_a.png", "boss_b.png",
+                  "bullet.png", "ebullet.png",
+                  "burst_a.png", "burst_b.png"]
 
   PLAYER_W = 16
   PLAYER_H = 16
@@ -192,20 +192,20 @@ class ShooterApp < FmrbApp
 
   def setup_sprites
     transfer_sprites
-    @player_imgs = [load_sprite_image("player_a.bmp", PLAYER_W, PLAYER_H),
-                    load_sprite_image("player_b.bmp", PLAYER_W, PLAYER_H)]
+    @player_imgs = [load_sprite_image("player_a.png", PLAYER_W, PLAYER_H),
+                    load_sprite_image("player_b.png", PLAYER_W, PLAYER_H)]
     @enemy_imgs = [
-      [load_sprite_image("enemy1_a.bmp", ENEMY_W, ENEMY_H),
-       load_sprite_image("enemy1_b.bmp", ENEMY_W, ENEMY_H)],
-      [load_sprite_image("enemy2_a.bmp", ENEMY_W, ENEMY_H),
-       load_sprite_image("enemy2_b.bmp", ENEMY_W, ENEMY_H)],
+      [load_sprite_image("enemy1_a.png", ENEMY_W, ENEMY_H),
+       load_sprite_image("enemy1_b.png", ENEMY_W, ENEMY_H)],
+      [load_sprite_image("enemy2_a.png", ENEMY_W, ENEMY_H),
+       load_sprite_image("enemy2_b.png", ENEMY_W, ENEMY_H)],
     ]
-    @boss_imgs = [load_sprite_image("boss_a.bmp", BOSS_W, BOSS_H),
-                  load_sprite_image("boss_b.bmp", BOSS_W, BOSS_H)]
-    @bullet_img = load_sprite_image("bullet.bmp", BULLET_W, BULLET_H)
-    @ebullet_img = load_sprite_image("ebullet.bmp", EBULLET_W, EBULLET_H)
-    @burst_imgs = [load_sprite_image("burst_a.bmp", BURST_W, BURST_H),
-                   load_sprite_image("burst_b.bmp", BURST_W, BURST_H)]
+    @boss_imgs = [load_sprite_image("boss_a.png", BOSS_W, BOSS_H),
+                  load_sprite_image("boss_b.png", BOSS_W, BOSS_H)]
+    @bullet_img = load_sprite_image("bullet.png", BULLET_W, BULLET_H)
+    @ebullet_img = load_sprite_image("ebullet.png", EBULLET_W, EBULLET_H)
+    @burst_imgs = [load_sprite_image("burst_a.png", BURST_W, BURST_H),
+                   load_sprite_image("burst_b.png", BURST_W, BURST_H)]
 
     @player_sprite = SpriteInstance.new(@gfx, @player_imgs, x: 0, y: 0, z: 3)
     @player_sprite.visible = false

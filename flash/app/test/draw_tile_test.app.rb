@@ -1,6 +1,6 @@
 # draw_tile smoke test
 #
-# Loads /usr/share/sprites/test/tilesheet.bmp (64x32 = 8 tiles, 4 columns x 2 rows)
+# Loads /usr/share/sprites/test/tilesheet.png (64x32 = 8 tiles, 4 columns x 2 rows)
 # and stamps a few sub-regions onto the canvas via the new draw_tile RPC.
 #
 # Expected: each tile of the sheet appears at the matching position in a 4x2
@@ -9,9 +9,9 @@
 
 class DrawTileTestApp < FmrbApp
   TILE = 16
-  SHEET_SRC  = "/usr/share/sprites/test/tilesheet.bmp"
+  SHEET_SRC  = "/usr/share/sprites/test/tilesheet.png"
   CACHE_DIR  = "/cache/app/draw_tile_test"
-  SHEET_DST  = "#{CACHE_DIR}/sheet.bmp"
+  SHEET_DST  = "#{CACHE_DIR}/sheet.png"
   SHEET_W    = 64
   SHEET_H    = 32
   SHEET_COLS = SHEET_W / TILE   # 4

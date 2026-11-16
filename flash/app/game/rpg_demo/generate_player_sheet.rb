@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Generates eight 16x16 player frame BMPs (player_<dir>_<step>.bmp).
+# Generates eight 16x16 player frames (player_<dir>_<step>.png).
 #
 # Style references (Dragon Quest 1/2 Famicom hero):
 #   - dotartplay.com/dragonquest-dot  (DQ pixel-art conventions)
@@ -8,9 +8,11 @@
 # 2 dots apart on the face, "one foot forward at a time" walking animation,
 # black outline so the figure reads on any terrain tile.
 #
-# Pixel bytes are RGB332 (the WROVER BMP loader ignores the BMP palette and
-# reads pixel bytes directly as RRRGGGBB). Palette is emitted self-consistently
-# so the BMP also views correctly in normal viewers.
+# Colors are RGB332 values, written as palette PNGs of the colors used
+# (tools/rgb332_png.rb): the sprite loader turns each palette color back into
+# its RGB332 value, and the files view correctly in normal viewers.
+
+require_relative "../../../../tools/rgb332_png"
 
 TILE = 16
 
@@ -227,40 +229,16 @@ FRAMES = [
 ].freeze
 
 # --------------------------------------------------------------------------
-# BMP writer
+# PNG writer
 # --------------------------------------------------------------------------
-def write_bmp(path, width, height, pixels_top_down)
-  raise "bad pixel size" unless pixels_top_down.size == width * height
-  raise "row not aligned to 4" unless (width % 4).zero?
-  pixel_data_size = width * height
-  header_bytes    = 14 + 40 + 256 * 4
-  file_size       = header_bytes + pixel_data_size
-  File.open(path, "wb") do |f|
-    f.write("BM")
-    f.write([file_size].pack("V"))
-    f.write([0, 0].pack("v2"))
-    f.write([header_bytes].pack("V"))
-    f.write([40, width, height].pack("Vl<l<"))
-    f.write([1, 8].pack("v2"))
-    f.write([0, pixel_data_size].pack("V2"))
-    f.write([2835, 2835].pack("l<l<"))
-    f.write([256, 0].pack("V2"))
-    256.times do |i|
-      r = ((i >> 5) & 0x7) * 255 / 7
-      g = ((i >> 2) & 0x7) * 255 / 7
-      b =  (i       & 0x3) * 255 / 3
-      f.write([b, g, r, 0].pack("C4"))
-    end
-    (height - 1).downto(0) do |y|
-      f.write(pixels_top_down[y * width, width].pack("C*"))
-    end
-  end
+def write_png(path, width, height, pixels_top_down)
+  Rgb332Png.write(path, width, height, pixels_top_down)
 end
 
 FRAMES.each do |dir, step, drawer, step_arg|
   t = new_tile
   send(drawer, t, step_arg)
-  path = File.join(__dir__, "player_#{dir}_#{step}.bmp")
-  write_bmp(path, TILE, TILE, t)
+  path = File.join(__dir__, "player_#{dir}_#{step}.png")
+  write_png(path, TILE, TILE, t)
   puts "Wrote #{path}"
 end

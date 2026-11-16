@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
-# Generates world.bmp: 64x32, 8bpp indexed, 4x2 grid of 16x16 tiles.
+# Generates world.png: 64x32, a 4x2 grid of 16x16 tiles.
 #
-# The graphics-audio side ignores the BMP palette and interprets each pixel
-# byte directly as an RGB332 value (RRRGGGBB). So we:
-#   1. Express tile colors via rgb332(r, g, b) and write the resulting byte
-#      straight into the pixel buffer.
-#   2. Emit a self-consistent palette (palette[i] expands to the RGB332 value
-#      that i encodes) just so the file opens cleanly in normal viewers.
+# Tile colors are RGB332 values (rgb332(r, g, b)), written as a palette PNG of
+# the colors used (tools/rgb332_png.rb): the sprite loader turns each palette
+# color back into the RGB332 value it came from, and the file opens in any
+# image viewer.
+
+require_relative "../../../../tools/rgb332_png"
 #
 # Tile IDs (row-major, sheet cols=4 rows=2):
 #   0 plain   1 forest  2 desert  3 sea
@@ -224,40 +224,12 @@ def build_sheet
   sheet
 end
 
-# ---------- BMP writer ----------
-#
-# Pixel bytes are interpreted as RGB332 by the renderer. The palette below is
-# just to keep the file viewable: palette[i] is the 24-bit expansion of the
-# RGB332 value encoded by index i.
+# ---------- PNG writer ----------
 
-def write_bmp(path, width, height, pixels_top_down)
-  raise "bad pixel size" unless pixels_top_down.size == width * height
-  raise "row not aligned to 4" unless (width % 4).zero?
-  pixel_data_size = width * height
-  header_bytes    = 14 + 40 + 256 * 4
-  file_size       = header_bytes + pixel_data_size
-  File.open(path, "wb") do |f|
-    f.write("BM")
-    f.write([file_size].pack("V"))
-    f.write([0, 0].pack("v2"))
-    f.write([header_bytes].pack("V"))
-    f.write([40, width, height].pack("Vl<l<"))
-    f.write([1, 8].pack("v2"))
-    f.write([0, pixel_data_size].pack("V2"))
-    f.write([2835, 2835].pack("l<l<"))
-    f.write([256, 0].pack("V2"))
-    256.times do |i|
-      r = ((i >> 5) & 0x7) * 255 / 7
-      g = ((i >> 2) & 0x7) * 255 / 7
-      b =  (i       & 0x3) * 255 / 3
-      f.write([b, g, r, 0].pack("C4"))
-    end
-    (height - 1).downto(0) do |y|
-      f.write(pixels_top_down[y * width, width].pack("C*"))
-    end
-  end
+def write_png(path, width, height, pixels_top_down)
+  Rgb332Png.write(path, width, height, pixels_top_down)
 end
 
-out_path = File.join(__dir__, "world.bmp")
-write_bmp(out_path, WIDTH, HEIGHT, build_sheet)
+out_path = File.join(__dir__, "world.png")
+write_png(out_path, WIDTH, HEIGHT, build_sheet)
 puts "Wrote #{out_path} (#{WIDTH}x#{HEIGHT}, #{File.size(out_path)} bytes)"

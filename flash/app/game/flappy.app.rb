@@ -1,4 +1,4 @@
-# Flappy - Flappy Bird style demo with BMP sprites
+# Flappy - Flappy Bird style demo with PNG sprites
 # Space/Up to flap, auto-scrolling pipes
 #
 # Layout: the user area is split into a score band, a sky and a ground strip.
@@ -198,7 +198,7 @@ class FlappyApp < FmrbApp
   def load_sprites
     src_dir = "/usr/share/sprites/flappy"
     cache_dir = "/cache/app/flappy"
-    files = ["bird_up.bmp", "bird_down.bmp", "pipe.bmp", "grass.bmp"]
+    files = ["bird_up.png", "bird_down.png", "pipe.png", "grass.png"]
     files.each_with_index do |name, i|
       @gfx.fill_rect(@ox, @oy, @w, @h, FmrbGfx::BLACK)
       @gfx.draw_text(@ox + 4, @oy + 4, "Loading sprites...", FmrbGfx::WHITE)
@@ -211,7 +211,7 @@ class FlappyApp < FmrbApp
     Log.info("Flappy: files transferred")
 
     @bird_frames = []
-    ["bird_up.bmp", "bird_down.bmp"].each do |name|
+    ["bird_up.png", "bird_down.png"].each do |name|
       img = SpriteImage.new(@gfx, width: TILE, height: TILE,
                             transparent_color: 0, use_transparent: true)
       img.load_bmp("#{cache_dir}/#{name}")
@@ -219,10 +219,10 @@ class FlappyApp < FmrbApp
     end
 
     @pipe_img = SpriteImage.new(@gfx, width: TILE, height: TILE)
-    @pipe_img.load_bmp("#{cache_dir}/pipe.bmp")
+    @pipe_img.load_bmp("#{cache_dir}/pipe.png")
 
     @grass_img = SpriteImage.new(@gfx, width: TILE, height: TILE)
-    @grass_img.load_bmp("#{cache_dir}/grass.bmp")
+    @grass_img.load_bmp("#{cache_dir}/grass.png")
   end
 
   # ---- pipes ----
