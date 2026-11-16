@@ -613,9 +613,10 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     bool fullscreen_switchable = false;
     uint8_t fullscreen_hires = 0;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
+    int32_t wasm_memory_pages = 0;  // 0: the default
 #ifdef FMRB_HAVE_WASM
     // The interpreter's frames and the boundary functions it calls share the
-    // app task's stack (decision 4: wasm apps get a larger default).
+    // app task's stack (its own default, doc/wasm_apps decision 27).
     if (vm_type == FMRB_VM_TYPE_WASM) {
         stack_size = FMRB_WASM_APP_TASK_STACK_SIZE;
     }
@@ -770,6 +771,15 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             }
             FMRB_LOGI(TAG, "Per-app task stack: %d KB", stack_size / 1024);
         }
+
+        // Parse wasm_memory_pages: the most a wasm app's linear memory may
+        // grow to, in 64 KB pages. Kept as written; the wasm runtime checks
+        // it against the app's frame and refuses a bad value with the reason
+        // (a value that is not a whole number of 1 or more is passed as -1).
+        if (vm_type == FMRB_VM_TYPE_WASM && M("wasm_memory_pages")) {
+            int64_t pages = fmrb_toml_get_int(M("wasm_memory_pages"), "wasm_memory_pages", -1);
+            wasm_memory_pages = pages < 1 ? -1 : (pages > 65536 ? 65536 : (int32_t)pages);
+        }
     } else {
         FMRB_LOGW(TAG, "No .app.toml and no comment toml for %s", app_name);
     }
@@ -853,6 +863,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .fullscreen_hires = fullscreen_hires,
         .resizable = resizable,
         .large_memory = large_memory,
+        .wasm_memory_pages = wasm_memory_pages,
         .single_instance = single_instance,
         .movable = movable,
         .exclusive_group = exclusive_group,

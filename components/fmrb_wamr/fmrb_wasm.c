@@ -14,8 +14,9 @@
  * An app: its .wasm is read into the app's own memory pool (the classic
  * interpreter rewrites the copy as it runs), and its linear memory is mapped
  * from the same pool by the platform layer (platform/fmrb_wamr_platform.c).
- * The upper bound of the linear memory is what the pool leaves after the
- * copy (decision 5): the instance gets a maximum page count from it.
+ * The upper bound of the linear memory is FMRB_WASM_DEFAULT_MEMORY_PAGES on
+ * every machine, or the .app.toml's wasm_memory_pages, which may go up to
+ * what the pool leaves after the copy (decisions 5 and 27).
  *
  * The app runs on the app shell (fmrb_app_shell.h), as a Lua app does. The
  * hooks are the ones the generated SDK header (sdk/c/fmrb_boundary.h) ends
@@ -103,17 +104,34 @@ static const char *TAG = "wasm";
 _Static_assert(sizeof(fmrb_bnd_app_event_t) <= FMRB_BND_EVENT_BUFFER_SIZE,
                "the SDK's event buffer holds the event record");
 
-/** The runtime's shared pool: about 28 KB per running app (16 KB of it the
- *  operand stack) plus the module data (report/w1a.md 8). */
+/** The runtime's shared pool: about 22 KB per running app (16 KB of it the
+ *  operand stack) plus the module data, about 120 bytes per function
+ *  (report/w2.md 2.1). The same on every machine: the app frames (4 on the
+ *  P4) run out before it does. A module that does not fit is refused with
+ *  the pool's sizes (decision 27). */
 #define FMRB_WASM_POOL_SIZE (256 * 1024)
-/** The operand stack of an instance, from the shared pool. */
+/** The operand stack of an instance, from the shared pool (recursion of
+ *  100 to 200 levels, report/w2.md 3). */
 #define FMRB_WASM_OPERAND_STACK (16 * 1024)
-/** Instructions one call of the app may run before it is stopped. */
-#define FMRB_WASM_CALL_INSN_LIMIT (20 * 1000 * 1000)
+/** Instructions one call of the app may run before it is stopped: about
+ *  0.9 s on the P4 (decision 27). A count, not a time, so it is the same on
+ *  every machine. */
+#define FMRB_WASM_CALL_INSN_LIMIT (5 * 1000 * 1000)
 /** Native stack left below the boundary for the interpreter's own frames
  *  and the boundary functions it calls (WAMR adds no guard to a boundary
- *  that is set by hand). */
+ *  that is set by hand). Of the 16 KB task stack, about 9 KB is left above
+ *  it for the interpreter; the most a wasm app was seen to use in all is
+ *  6.6 KB (report/w2.md 2). */
 #define FMRB_WASM_NATIVE_STACK_GUARD (6 * 1024)
+/** The least a module takes of the shared pool per function, to refuse at
+ *  install a module that would not fit even an empty pool (fmrb_wasm_check_file).
+ *  Below the 120 bytes the P4 was seen to take, so it never refuses one
+ *  that fits. */
+#define FMRB_WASM_POOL_PER_FUNCTION 100
+/** What the runtime and one instance take of the shared pool besides the
+ *  module data (the boundary's table, the instance, the exec env and the
+ *  operand stack), at the least. */
+#define FMRB_WASM_POOL_PER_APP (FMRB_WASM_OPERAND_STACK + 4 * 1024)
 /** Room left in the app's pool for the rest (logs, the shell, the
  *  boundary's own allocations) when the linear memory's bound is worked out. */
 #define FMRB_WASM_POOL_MARGIN (64 * 1024)
@@ -595,6 +613,51 @@ static bool read_leb_u32(const uint8_t *p, const uint8_t *end, const uint8_t **n
     return false;
 }
 
+/* The number of functions the module defines (its function section), read
+   from the binary before WAMR loads it; 0 when it cannot be read. */
+static uint32_t count_functions(const uint8_t *bin, uint32_t size)
+{
+    if (size < 8) return 0;
+    const uint8_t *p = bin + 8, *end = bin + size;
+    while (p < end) {
+        uint8_t id = *p++;
+        uint32_t len, n;
+        if (!read_leb_u32(p, end, &p, &len) || len > (uint32_t)(end - p)) return 0;
+        if (id == 3) {
+            const uint8_t *q;
+            return read_leb_u32(p, p + len, &q, &n) ? n : 0;
+        }
+        p += len;
+    }
+    return 0;
+}
+
+/* The refusal of a module the shared pool has no room for, with the sizes
+   (decision 27), in place of WAMR's bare "allocate memory failed". */
+static void refuse_pool_short(char *err, size_t err_cap, const char *path, uint32_t size,
+                              uint32_t functions, uint32_t pool_free, bool others)
+{
+    snprintf(err, err_cap, "%s does not fit the shared wasm pool: %u KB of %u KB free "
+             "(the module is %u bytes with %u functions, and each function takes some of it)%s",
+             path, (unsigned)(pool_free / 1024), (unsigned)(FMRB_WASM_POOL_SIZE / 1024),
+             (unsigned)size, (unsigned)functions,
+             others ? "; other wasm apps hold the rest" : "");
+}
+
+static bool is_alloc_failure(const char *lerr)
+{
+    return strstr(lerr, "allocate memory failed") != NULL;
+}
+
+/* The pages the module's memory starts with (0 when it has none). */
+static uint32_t initial_pages(wasm_module_t module)
+{
+    const WASMModule *m = (const WASMModule *)module;
+    if (m->import_memory_count > 0) return m->import_memories[0].u.memory.mem_type.init_page_count;
+    if (m->memory_count > 0) return m->memories[0].init_page_count;
+    return 0;
+}
+
 static void read_sdk_version(const uint8_t *bin, uint32_t size, char *out, size_t cap)
 {
     out[0] = '\0';
@@ -913,7 +976,7 @@ bool fmrb_wasm_check_file(const char *path, fmrb_wasm_alloc_fn alloc, fmrb_wasm_
     bool ok = false;
     uint8_t *types = NULL, *imports = NULL;
     uint32_t *offs = NULL;
-    uint32_t types_len = 0, imports_len = 0;
+    uint32_t types_len = 0, imports_len = 0, functions = 0;
     uint8_t head[8];
     if (fmrb_hal_file_size(r.f, &r.size) != FMRB_OK || !wr_read(&r, head, 8) ||
         memcmp(head, "\0asm", 4) != 0 || head[4] != 1) {
@@ -968,7 +1031,22 @@ bool fmrb_wasm_check_file(const char *path, fmrb_wasm_alloc_fn alloc, fmrb_wasm_
             if (!wr_skip(&r, at + len - r.pos)) goto short_read;
             continue;
         }
+        if (id == 3) {
+            /* the function section: its count, for the size it takes of the pool */
+            uint32_t at = r.pos;
+            if (!wr_leb(&r, &functions) || r.pos > at + len) goto short_read;
+            if (!wr_skip(&r, at + len - r.pos)) goto short_read;
+            continue;
+        }
         if (!wr_skip(&r, len)) goto short_read;
+    }
+    if ((uint64_t)functions * FMRB_WASM_POOL_PER_FUNCTION + FMRB_WASM_POOL_PER_APP > FMRB_WASM_POOL_SIZE) {
+        snprintf(err, err_cap, "%s cannot fit the shared wasm pool of %u KB even alone: its "
+                 "%u functions take at least %u KB of it", path,
+                 (unsigned)(FMRB_WASM_POOL_SIZE / 1024), (unsigned)functions,
+                 (unsigned)(((uint64_t)functions * FMRB_WASM_POOL_PER_FUNCTION +
+                             FMRB_WASM_POOL_PER_APP + 1023) / 1024));
+        goto out;
     }
     if (!imports) {
         ok = true;          /* imports nothing */
@@ -1104,22 +1182,58 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
 
     char sdk_ver[24];
     read_sdk_version(bin, size, sdk_ver, sizeof(sdk_ver));
+    /* Before the loader works on the buffer in place: for a refusal's text. */
+    uint32_t functions = count_functions(bin, size);
+    mem_alloc_info_t pinfo;
+    uint32_t pool_free = wasm_runtime_get_mem_alloc_info(&pinfo) ? pinfo.total_free_size : 0u;
+    bool others = s_users > 1;
     char lerr[128];
     module = wasm_runtime_load(bin, size, lerr, sizeof(lerr));
     if (!module) {
-        snprintf(err, err_cap, "%s did not load: %s", path, lerr);
+        if (is_alloc_failure(lerr)) {
+            refuse_pool_short(err, err_cap, path, size, functions, pool_free, others);
+        } else {
+            snprintf(err, err_cap, "%s did not load: %s", path, lerr);
+        }
         goto out;
     }
     if (!check_imports(module, sdk_ver, err, err_cap)) goto out;
 
-    /* The linear memory may grow to what the app's pool has left. */
+    /* The linear memory's bound: FMRB_WASM_DEFAULT_MEMORY_PAGES, or the
+       .app.toml's wasm_memory_pages, up to what the app's frame has left
+       after the binary's copy (decision 27). */
     fmrb_pool_stats_t st;
-    uint32_t max_pages = 0;
+    uint32_t frame_pages = 0;
     if (fmrb_mem_get_stats(ctx->mem_handle, &st) == 0 &&
         st.free_size > FMRB_WASM_POOL_MARGIN + WASM_PAGE_SIZE) {
-        max_pages = (uint32_t)((st.free_size - FMRB_WASM_POOL_MARGIN) / WASM_PAGE_SIZE);
+        frame_pages = (uint32_t)((st.free_size - FMRB_WASM_POOL_MARGIN) / WASM_PAGE_SIZE);
     } else {
-        max_pages = 1;
+        frame_pages = 1;
+    }
+    uint32_t max_pages;
+    if (ctx->wasm_memory_pages < 0) {
+        snprintf(err, err_cap, "%s: wasm_memory_pages in its .app.toml must be a whole number "
+                 "from 1 to %u (pages of 64 KB this machine's app frame has room for)",
+                 path, (unsigned)frame_pages);
+        goto out;
+    } else if (ctx->wasm_memory_pages > 0) {
+        if ((uint32_t)ctx->wasm_memory_pages > frame_pages) {
+            snprintf(err, err_cap, "%s: wasm_memory_pages = %d in its .app.toml is more than "
+                     "this machine's app frame has room for (%u pages of 64 KB)",
+                     path, (int)ctx->wasm_memory_pages, (unsigned)frame_pages);
+            goto out;
+        }
+        max_pages = (uint32_t)ctx->wasm_memory_pages;
+    } else {
+        max_pages = frame_pages < FMRB_WASM_DEFAULT_MEMORY_PAGES ? frame_pages
+                                                                 : FMRB_WASM_DEFAULT_MEMORY_PAGES;
+    }
+    uint32_t init_pages = initial_pages(module);
+    if (init_pages > max_pages) {
+        snprintf(err, err_cap, "%s starts with %u pages of memory, more than its limit of %u "
+                 "(raise wasm_memory_pages in its .app.toml; this machine has room for %u)",
+                 path, (unsigned)init_pages, (unsigned)max_pages, (unsigned)frame_pages);
+        goto out;
     }
     struct InstantiationArgs2 *args = NULL;
     if (!wasm_runtime_instantiation_args_create(&args)) {
@@ -1132,13 +1246,17 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
     a.inst = wasm_runtime_instantiate_ex2(module, args, lerr, sizeof(lerr));
     wasm_runtime_instantiation_args_destroy(args);
     if (!a.inst) {
-        snprintf(err, err_cap, "%s did not start: %s", path, lerr);
+        if (is_alloc_failure(lerr)) {
+            refuse_pool_short(err, err_cap, path, size, functions, pool_free, others);
+        } else {
+            snprintf(err, err_cap, "%s did not start: %s", path, lerr);
+        }
         goto out;
     }
     wasm_runtime_set_custom_data(a.inst, ctx);
     a.env = wasm_runtime_create_exec_env(a.inst, FMRB_WASM_OPERAND_STACK);
     if (!a.env) {
-        snprintf(err, err_cap, "wasm: no room for the exec env");
+        refuse_pool_short(err, err_cap, path, size, functions, pool_free, others);
         goto out;
     }
     uint8_t *bound = native_stack_boundary();
@@ -1149,7 +1267,6 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
 
     wasm_memory_inst_t mem = wasm_runtime_get_default_memory(a.inst);
     slot_attach(&a, size, max_pages);
-    mem_alloc_info_t pinfo;
     unsigned pool_used = wasm_runtime_get_mem_alloc_info(&pinfo)
                              ? (unsigned)(pinfo.total_size - pinfo.total_free_size) : 0u;
     FMRB_LOGI(TAG, "[%s] loaded %s (%u bytes, memory %u pages, up to %u, shared pool used %u, "

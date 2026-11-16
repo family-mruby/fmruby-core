@@ -104,6 +104,11 @@ typedef struct fmrb_app_task_context_s {
     // The app asked for a large pool (large_memory = 1). On the S3 an ordinary
     // app may run in a large pool too, so mempool_id alone does not say it.
     bool                  large_memory;
+    // wasm apps only: the .app.toml wasm_memory_pages as written (doc/wasm_apps
+    // decision 27). 0: not set (the default, FMRB_WASM_DEFAULT_MEMORY_PAGES);
+    // -1: set to something that is not a whole number of 1 or more. The wasm
+    // runtime checks it against the app's frame and refuses a bad value.
+    int32_t               wasm_memory_pages;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
@@ -300,6 +305,7 @@ typedef struct {
     uint8_t               fullscreen_hires; // Fullscreen may use the high-resolution screen (see context struct)
     bool                  resizable;        // Allow window resize (default: false)
     bool                  large_memory;     // Use a large pool (2x the ordinary one; one of them, two on the S3)
+    int32_t               wasm_memory_pages; // .app.toml wasm_memory_pages (see the context struct)
     bool                  single_instance;  // Refuse a second copy of this app (same file)
     bool                  movable;          // May be written to a checkpoint image (.app.toml movable)
     const char*           exclusive_group;  // Refuse while another app of this group runs (NULL = none)

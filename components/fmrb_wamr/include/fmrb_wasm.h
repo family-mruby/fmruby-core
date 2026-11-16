@@ -24,8 +24,16 @@ typedef struct fmrb_app_task_context_s fmrb_app_task_context_t;
 extern "C" {
 #endif
 
-/** The task stack a wasm app gets when its .app.toml does not say (bytes). */
-#define FMRB_WASM_APP_TASK_STACK_SIZE (24 * 1024)
+/** The task stack a wasm app gets when its .app.toml does not say (bytes;
+ *  internal RAM). The same as a Ruby app's: the most a wasm app was seen to
+ *  use is 6.6 KB (doc/wasm_apps report/w2.md, decision 27). */
+#define FMRB_WASM_APP_TASK_STACK_SIZE (16 * 1024)
+
+/** The most a wasm app's linear memory may grow to when its .app.toml does
+ *  not set wasm_memory_pages, in 64 KB pages; the same on every machine
+ *  (decision 27). wasm_memory_pages may set 1 up to what the app's frame
+ *  leaves after the binary's copy. */
+#define FMRB_WASM_DEFAULT_MEMORY_PAGES 4
 
 /** @brief Set up the runtime's lock at boot (fmrb_app_init); takes no pool. */
 void fmrb_wasm_init(void);

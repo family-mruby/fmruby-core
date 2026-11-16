@@ -2165,6 +2165,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     }
     ctx->headless = attr->headless;
     ctx->large_memory = attr->large_memory;
+    ctx->wasm_memory_pages = attr->wasm_memory_pages;
     ctx->window_pos_x = attr->window_pos_x;
     ctx->window_pos_y = attr->window_pos_y;
 
