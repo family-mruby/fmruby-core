@@ -181,6 +181,13 @@ class FmrbApp
   def self.script_path = Regress::Env.app_path
   def self.wallclock = [2026, 10, 25, 12, ((Regress::Env.ms - 1_000_000) / 60_000) % 60, ((Regress::Env.ms - 1_000_000) / 1000) % 60]
   def self.gfx_stats = { frames: 100, cmds: 1000, bytes: 100_000, dropped: 0 }
+  # The wasm runtime: a scene may give its own (Env.extra[:wasm], and
+  # Env.extra[:wasm_apps] keyed by pid); by default it has never run.
+  def self.wasm_stats
+    Regress::Env.extra[:wasm] || { running: 0, apps: 0, modules: 0, natives: 124, pool_total: 0, pool_used: 0,
+                                   pool_high: 0, traps: 0 }
+  end
+  def self.wasm_app_stats(pid) = (Regress::Env.extra[:wasm_apps] || {})[pid]
   def self.enable_cursor = nil
   def self.set_cursor_visible(*) = nil
   def self.set_kana_mode(*) = nil

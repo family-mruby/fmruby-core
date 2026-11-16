@@ -13,7 +13,9 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include "fmrb_err.h"
 
 typedef struct fmrb_app_task_context_s fmrb_app_task_context_t;
@@ -47,6 +49,40 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
  *        wasm app. Does nothing for an app that was not a user.
  */
 void fmrb_wasm_app_forget(fmrb_app_task_context_t *ctx);
+
+/** The runtime as a whole (fmrb_wasm_stats). */
+typedef struct {
+    bool running;           /**< started (a wasm app holds it) */
+    uint32_t apps;          /**< wasm apps using it */
+    uint32_t modules;       /**< modules loaded and instantiated now */
+    uint32_t natives;       /**< the boundary's functions it registers */
+    uint32_t pool_total;    /**< the shared pool (0: not taken yet) */
+    uint32_t pool_used;     /**< in use now (0 while not running) */
+    uint32_t pool_high;     /**< the most ever in use, since boot */
+    uint32_t traps;         /**< calls that trapped (or ran too long), since boot */
+} fmrb_wasm_stats_t;
+
+/** One wasm app (fmrb_wasm_app_stats). */
+typedef struct {
+    uint32_t pages;         /**< its linear memory now, in 64 KB pages */
+    uint32_t max_pages;     /**< the most it may grow to */
+    uint32_t binary_size;   /**< its .wasm, bytes */
+    uint32_t hook_us;       /**< the last hook call took (us) */
+    uint32_t hook_max_us;   /**< the longest hook call (us) */
+    uint32_t calls;         /**< hook calls so far */
+} fmrb_wasm_app_stats_t;
+
+/** @brief The runtime's state; always fills out (all zero before the first wasm app). */
+void fmrb_wasm_stats(fmrb_wasm_stats_t *out);
+
+/**
+ * @brief The state of the wasm app pid.
+ * @return false (out zeroed) when pid is not a wasm app with its module loaded.
+ */
+bool fmrb_wasm_app_stats(int pid, fmrb_wasm_app_stats_t *out);
+
+/** @brief The fmrb_wasm: lines of the periodic dump (fmrb_app_dump_vm_pools). */
+void fmrb_wasm_dump_stats(void);
 
 #ifdef __cplusplus
 }

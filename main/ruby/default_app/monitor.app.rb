@@ -1,7 +1,9 @@
 # System Monitor
 #   Page 1: heap usage color bars (memory)
 #   Page 2: GFX stats time-series graphs (cmds/s, presents/s) over last 30s
-#   Page 3: task list, with [X] to end a user task (two clicks; the kernel
+#   Page 3: the wasm runtime (WAMR) and each wasm app (FmrbApp.wasm_stats,
+#           FmrbApp.wasm_app_stats)
+#   Page 4: task list, with [X] to end a user task (two clicks; the kernel
 #           asks the app to end itself -- nothing is forced)
 #
 # Click the "<" / ">" arrows in the bottom nav bar to switch pages.
@@ -16,7 +18,12 @@ class MonitorApp < FmrbApp
   NAV_H = 10          # bottom nav bar height (incl. padding)
   ARROW_HIT_W = 16    # click area width for < and >
   HIST_LEN = 30       # 30 samples = 30 seconds at 1 Hz
-  NUM_PAGES = 3
+  NUM_PAGES = 4
+  WASM_PAGE = 2
+  # The task list is the last page, one "<" from the first.
+  TASKS_PAGE = 3
+  # FmrbApp.ps :vm_type of a wasm app (FMRB_VM_TYPE_WASM).
+  VM_TYPE_WASM = 5
   TYPE_USER = 2       # FmrbApp.ps :type of a user task (the only killable one)
   # The same words the shell's ps prints, so a state means one thing across
   # both tools -- and the same set the services answer svc/ctl list with.
@@ -176,7 +183,7 @@ class MonitorApp < FmrbApp
     sample_gfx_stats
     # Pages 1 and 2 are live graphs and redraw every tick by definition. The
     # task list normally does not change, so it only repaints when it did.
-    if @page == 2
+    if @page == TASKS_PAGE
       refresh_tasks
     else
       draw_all
@@ -185,7 +192,7 @@ class MonitorApp < FmrbApp
   end
 
   def on_event(ev)
-    if @page == 2
+    if @page == TASKS_PAGE
       id = @ui.handle(ev)
       if id
         if KILL_IDS.index(id)
@@ -218,7 +225,7 @@ class MonitorApp < FmrbApp
     else
       @kill_msg = "PID #{pid}: #{msg["info"]}"
     end
-    refresh_tasks if @page == 2
+    refresh_tasks if @page == TASKS_PAGE
   end
 
   # ---- services ----------------------------------------------------------
@@ -272,7 +279,7 @@ class MonitorApp < FmrbApp
       @svcs = @svc_pending
       @svc_pending = []
       @task_sig = nil          # the rows changed; let the page repaint
-      refresh_tasks if @page == 2
+      refresh_tasks if @page == TASKS_PAGE
     when "svc_result"
       @kill_msg = data["ok"] ? "#{data["name"]}: ok" : "#{data["name"]}: #{data["err"]}"
       # Ask again rather than guessing the new state from the answer.
@@ -332,7 +339,7 @@ class MonitorApp < FmrbApp
     @kill_armed_pid = nil
     @task_sig = nil
     draw_all
-    if @page == 2
+    if @page == TASKS_PAGE
       request_svc("list", nil)
       refresh_tasks
     end
@@ -409,6 +416,8 @@ class MonitorApp < FmrbApp
       draw_page_memory
     elsif @page == 1
       draw_page_gfx_stats
+    elsif @page == WASM_PAGE
+      draw_page_wasm
     else
       draw_tasks_heading
     end
@@ -534,7 +543,66 @@ class MonitorApp < FmrbApp
     end
   end
 
-  # Page 3 furniture. The rows themselves are refresh_tasks' business.
+  # Page 3: the wasm runtime, then two lines per wasm app. The runtime starts
+  # with the first wasm app and ends with the last, so "off" with a pool
+  # total is a runtime that has run and ended (the pool is kept).
+  def draw_page_wasm
+    y = 2
+    @gfx.draw_text(@content_x, y, "WASM (WAMR)", COLOR_TEXT, COLOR_BG)
+    y += CHAR_H + 4
+    w = FmrbApp.wasm_stats
+    on = w[:running] == 1
+    wasm_line(y, "runtime #{on ? "on" : "off"}  apps #{w[:apps]}  modules #{w[:modules]}",
+              on ? COLOR_TEXT : COLOR_DIM)
+    y += CHAR_H + 2
+    wasm_line(y, "natives #{w[:natives]}  traps #{w[:traps]}", COLOR_TEXT)
+    y += CHAR_H + 2
+    if w[:pool_total] > 0
+      wasm_line(y, "pool #{kb(w[:pool_used])}/#{kb(w[:pool_total])}K high #{kb(w[:pool_high])}K",
+                COLOR_TEXT)
+    else
+      wasm_line(y, "pool not taken yet", COLOR_DIM)
+    end
+    y += CHAR_H + 6
+
+    procs = FmrbApp.ps
+    return unless procs
+    shown = 0
+    i = 0
+    while i < procs.size
+      p = procs[i]
+      i += 1
+      next unless p[:vm_type] == VM_TYPE_WASM
+      break if y + CHAR_H * 2 + 2 > @nav_y - 2
+      s = FmrbApp.wasm_app_stats(p[:id])
+      next unless s
+      name = p[:name] || "?"
+      name = name[0, 12] if name.length > 12
+      wasm_line(y, "#{pad(p[:id].to_s, COL_ID_CHARS)} #{pad(name, 12)} " \
+                   "#{s[:pages]}/#{s[:max_pages]}p #{s[:hook_us]}us", COLOR_TEXT)
+      y += CHAR_H + 1
+      wasm_line(y, "   bin #{kb(s[:binary_size])}K max #{s[:hook_max_us]}us n=#{s[:calls]}",
+                COLOR_DIM)
+      y += CHAR_H + 3
+      shown += 1
+    end
+    wasm_line(y, "no wasm app running", COLOR_DIM) if shown == 0
+    nil
+  end
+
+  # One line of the wasm page, cut at the window's right edge.
+  def wasm_line(y, text, color)
+    max = @content_w / CHAR_W
+    text = text[0, max] if text.length > max
+    @gfx.draw_text(@content_x, y, text, color, COLOR_BG)
+  end
+
+  # Bytes as whole KB, rounded up (a 300-byte module is not "0K").
+  def kb(bytes)
+    (bytes + 1023) / 1024
+  end
+
+  # Page 4 furniture. The rows themselves are refresh_tasks' business.
   def draw_tasks_heading
     head = "#{pad("ID", COL_ID_CHARS)} #{pad("NAME", COL_NAME_CHARS)} " \
            "#{pad("STATE", COL_STATE_CHARS)}"

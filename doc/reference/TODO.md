@@ -94,6 +94,12 @@ Return・テンキーの Enter・Esc で閉じ、閉じたら前の持ち主へ�
 - System Monitor に WAMR の欄 (ページか、タスクの一覧の列)。Shell の `ps` のエンジンの列に wasm。
 - 10 秒ごとのシリアルのダンプに `fmrb_wasm:` の行。
 
+**済 (2026-11-16、wt/small)**: C の `fmrb_wasm_stats`・`fmrb_wasm_app_stats` (components/fmrb_wamr)、境界の
+`FmrbApp.wasm_stats`・`FmrbApp.wasm_app_stats(pid)` (読むだけ、決定 18)、System Monitor の 3 ページ目「WASM」、
+Shell の `ps` の ENGINE 列、両カーネルの vm_type の `:wasm`、ダンプの `fmrb_wasm:` 行。直近の命令数は WAMR が
+残りの数を書き戻さないので出していない (WAMR に手を入れれば出せる)。トラップの回数はアプリが止まるので
+ランタイム全体の数 (起動から) にした。
+
 ## set_font の mruby と Spinel の違い (2026-11-16 ユーザ決定、doc/app_boundary/plan.md)
 
 **済 (2026-11-16、wt/small)**: Spinel の `FmrbGfx#set_font` を mruby に揃えた (`:ja_bold` を選ぶ、近い字への

@@ -2819,6 +2819,37 @@ class FmrbApp
     { cmds: SpxBytes.u32(buf, 0), presents: SpxBytes.u32(buf, 4) }
   end
 
+  # The boundary's record (FmrbApp::wasm_stats): u8 running, apps, modules,
+  # u16 natives, then four u32.
+  def self.wasm_stats
+    buf = FmrbBoundary.fmrb_spx_b_app_wasm_stats
+    {
+      running: buf.getbyte(0),
+      apps: buf.getbyte(1),
+      modules: buf.getbyte(2),
+      natives: SpxBytes.u16(buf, 3),
+      pool_total: SpxBytes.u32(buf, 5),
+      pool_used: SpxBytes.u32(buf, 9),
+      pool_high: SpxBytes.u32(buf, 13),
+      traps: SpxBytes.u32(buf, 17),
+    }
+  end
+
+  # The boundary's record (FmrbApp::wasm_app_stats): six u32; nil when pid
+  # is not a wasm app.
+  def self.wasm_app_stats(pid)
+    buf = FmrbBoundary.fmrb_spx_b_app_wasm_app_stats(pid)
+    return nil if buf.bytesize < 24
+    {
+      pages: SpxBytes.u32(buf, 0),
+      max_pages: SpxBytes.u32(buf, 4),
+      binary_size: SpxBytes.u32(buf, 8),
+      hook_us: SpxBytes.u32(buf, 12),
+      hook_max_us: SpxBytes.u32(buf, 16),
+      calls: SpxBytes.u32(buf, 20),
+    }
+  end
+
   def self._get_last_error
     buf = FmrbSpxApp.fmrb_spx_app_last_error
     return nil if buf.bytesize == 0

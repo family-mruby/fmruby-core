@@ -30,6 +30,9 @@
 #include "fmrb_theme.h"
 #include "fmrb_platform_sys.h"
 #include "host_task.h"
+#ifdef FMRB_HAVE_WASM
+#include "fmrb_wasm.h"
+#endif
 
 static const char *TAG = "app";
 
@@ -488,6 +491,47 @@ int32_t fmrb_bnd_app_gfx_stats(fmrb_bnd_app_gfx_stats_t *out)
     out->cmds = cmds;
     out->presents = presents;
     return 1;
+}
+
+// The wasm runtime (components/fmrb_wamr); zeros on a machine without it.
+int32_t fmrb_bnd_app_wasm_stats(fmrb_bnd_app_wasm_stats_t *out)
+{
+    memset(out, 0, sizeof(*out));
+#ifdef FMRB_HAVE_WASM
+    fmrb_wasm_stats_t st;
+    fmrb_wasm_stats(&st);
+    out->running = st.running ? 1 : 0;
+    out->apps = (uint8_t)st.apps;
+    out->modules = (uint8_t)st.modules;
+    out->natives = (uint16_t)st.natives;
+    out->pool_total = st.pool_total;
+    out->pool_used = st.pool_used;
+    out->pool_high = st.pool_high;
+    out->traps = st.traps;
+#endif
+    return 1;
+}
+
+// One wasm app; 0 (nil) when pid is not a wasm app with its module loaded.
+int32_t fmrb_bnd_app_wasm_app_stats(int32_t pid, fmrb_bnd_app_wasm_app_stats_t *out)
+{
+    memset(out, 0, sizeof(*out));
+#ifdef FMRB_HAVE_WASM
+    fmrb_wasm_app_stats_t st;
+    if (!fmrb_wasm_app_stats((int)pid, &st)) {
+        return 0;
+    }
+    out->pages = st.pages;
+    out->max_pages = st.max_pages;
+    out->binary_size = st.binary_size;
+    out->hook_us = st.hook_us;
+    out->hook_max_us = st.hook_max_us;
+    out->calls = st.calls;
+    return 1;
+#else
+    (void)pid;
+    return 0;
+#endif
 }
 
 // Where this app's text cursor is, for a PC's IME (h = 0: no text now).

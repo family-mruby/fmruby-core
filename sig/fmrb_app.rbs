@@ -24,6 +24,12 @@ class FmrbApp
   # gfx_stats が返す絵を送った回数 <<en>> The frames sent, from gfx_stats
   type gfx_stats = { cmds: uint32, presents: uint32 }
 
+  # wasm_stats が返す wasm のランタイムのようす <<en>> The wasm runtime, from wasm_stats
+  type wasm_stats = { running: uint8, apps: uint8, modules: uint8, natives: uint16, pool_total: uint32, pool_used: uint32, pool_high: uint32, traps: uint32 }
+
+  # wasm_app_stats が返す wasm のアプリのようす <<en>> One wasm app, from wasm_app_stats
+  type wasm_app_stats = { pages: uint32, max_pages: uint32, binary_size: uint32, hook_us: uint32, hook_max_us: uint32, calls: uint32 }
+
   # on_event に来る入力 <<en>> One input event, as on_event gets it
   #
   # Ruby では Symbol を鍵とする Hash。入力の種類ごとに使う鍵だけが入る
@@ -1476,6 +1482,54 @@ class FmrbApp
   # s = FmrbApp.gfx_stats
   # ```
   def self.gfx_stats: () -> gfx_stats
+
+  # wasm のランタイムのようす <<en>> How the wasm runtime is doing
+  #
+  # wasm のアプリを動かすランタイム (WAMR) のようす。running は動いていれば 1
+  # (wasm のアプリが 1 つでも動いている間)、apps はそれを使うアプリの数、
+  # modules は読み込んだモジュールの数、natives は本体が渡す境界の関数の数。
+  # pool_* は全部の wasm のアプリが分けて使う共通のプール (バイト。high は
+  # 起動してからの最大)、traps は起動してからトラップ (か、長すぎる呼び出し) で
+  # 止まった回数。wasm のアプリを載せない端末 (ESP32-S3) では全部 0。
+  # ```ruby
+  # w = FmrbApp.wasm_stats
+  # Log.info("#{w[:pool_used]} of #{w[:pool_total]}") if w[:running] == 1
+  # ```
+  # <<en>>
+  # The runtime wasm apps run on (WAMR). running is 1 while it is up (while
+  # any wasm app runs), apps the apps using it, modules the modules loaded,
+  # natives the boundary's functions the firmware gives. pool_* is the shared
+  # pool every wasm app takes from (bytes; high is the most since boot), traps
+  # the calls that trapped (or ran too long) since boot. All 0 on a machine
+  # without wasm apps (the ESP32-S3).
+  # ```ruby
+  # w = FmrbApp.wasm_stats
+  # Log.info("#{w[:pool_used]} of #{w[:pool_total]}") if w[:running] == 1
+  # ```
+  def self.wasm_stats: () -> wasm_stats
+
+  # wasm のアプリ 1 つのようす <<en>> How one wasm app is doing
+  #
+  # pid の wasm のアプリのようす。wasm のアプリでなければ nil。pages は
+  # 線形メモリの今の大きさ、max_pages は伸ばせる上限 (64 KB のページ)、
+  # binary_size は .wasm の大きさ、hook_us は直近のフック (on_update など) の
+  # 呼び出しにかかった時間、hook_max_us はその最長 (百万分の一秒)、calls は
+  # フックを呼んだ回数。
+  # ```ruby
+  # s = FmrbApp.wasm_app_stats(pid)
+  # Log.info("#{s[:pages]}/#{s[:max_pages]} pages") if s
+  # ```
+  # <<en>>
+  # The wasm app pid, or nil when pid is not one. pages is its linear memory
+  # now and max_pages the most it may grow to (64 KB pages), binary_size its
+  # .wasm, hook_us how long the last hook call (on_update and the others)
+  # took and hook_max_us the longest (microseconds), calls the hook calls so
+  # far.
+  # ```ruby
+  # s = FmrbApp.wasm_app_stats(pid)
+  # Log.info("#{s[:pages]}/#{s[:max_pages]} pages") if s
+  # ```
+  def self.wasm_app_stats: (Integer pid) -> wasm_app_stats?
 
   # マウスの矢印を出す <<en>> Show the mouse pointer
   #

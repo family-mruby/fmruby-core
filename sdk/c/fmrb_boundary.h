@@ -51,7 +51,7 @@ extern "C" {
  * refuses an app that imports a function it lacks, before the app starts.
  */
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0x922a7dadu
+#define FMRB_ABI_HASH 0xbfef18a6u
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -87,6 +87,28 @@ typedef struct __attribute__((packed)) {
     uint32_t cmds;
     uint32_t presents;
 } fmrb_app_gfx_stats_t;
+
+/** FmrbApp::wasm_stats (21 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint8_t running;
+    uint8_t apps;
+    uint8_t modules;
+    uint16_t natives;
+    uint32_t pool_total;
+    uint32_t pool_used;
+    uint32_t pool_high;
+    uint32_t traps;
+} fmrb_app_wasm_stats_t;
+
+/** FmrbApp::wasm_app_stats (24 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint32_t pages;
+    uint32_t max_pages;
+    uint32_t binary_size;
+    uint32_t hook_us;
+    uint32_t hook_max_us;
+    uint32_t calls;
+} fmrb_app_wasm_app_stats_t;
 
 /** FmrbAudio::nsf_status (12 bytes, packed, little-endian) */
 typedef struct __attribute__((packed)) {
@@ -510,6 +532,26 @@ int32_t fmrb_app_wallclock(fmrb_app_wallclock_t *out);
  */
 FMRB_IMPORT("app_gfx_stats")
 int32_t fmrb_app_gfx_stats(fmrb_app_gfx_stats_t *out);
+
+/**
+ * wasm のランタイムのようす
+ * How the wasm runtime is doing
+ *
+ * Ruby: FmrbApp.wasm_stats()
+ * @return 1 when *out was filled
+ */
+FMRB_IMPORT("app_wasm_stats")
+int32_t fmrb_app_wasm_stats(fmrb_app_wasm_stats_t *out);
+
+/**
+ * wasm のアプリ 1 つのようす
+ * How one wasm app is doing
+ *
+ * Ruby: FmrbApp.wasm_app_stats(pid)
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("app_wasm_app_stats")
+int32_t fmrb_app_wasm_app_stats(int32_t pid, fmrb_app_wasm_app_stats_t *out);
 
 /**
  * 文字カーソルの位置を知らせる (PC の IME 用)

@@ -211,7 +211,7 @@ class FmrbKernel
   #   167: fullscreen_hires(1)
   # Byte 2 -> vm_type symbol, indexed by the value fmrb_spx_kernel.c writes.
   # Keep in step with fmrb_vm_type_t when a VM type is added.
-  APP_INFO_VM_TYPES = [:unknown, :mruby, :lua, :basic, :native, :micropython]
+  APP_INFO_VM_TYPES = [:unknown, :mruby, :lua, :basic, :native, :micropython, :wasm]
 
   def _get_app_info(pid)
     buf = FmrbSpx.fmrb_spx_app_info_snapshot(pid)   # :binstr, 168 bytes or ""

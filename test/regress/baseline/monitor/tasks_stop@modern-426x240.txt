@@ -42,7 +42,7 @@ fill_rect 54 60 124 8 #C4
 text 106 60 "700/1024K 68%" #FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
+text 111 190 "1/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -69,7 +69,7 @@ fill_rect 54 60 124 8 #C4
 text 106 60 "700/1024K 68%" #FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
+text 111 190 "1/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -80,7 +80,7 @@ gfxblock 2 again
 text 3 13 "ID NAME           STATE    " #60 bg=#FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "3/3" #00 bg=#FF defaultx1
+text 111 190 "4/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present

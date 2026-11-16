@@ -80,6 +80,7 @@
 #include "fmrb_app_shell.h"
 #include "fmrb_gfx_drawer.h"
 #include "fmrb_hal_file.h"
+#include "fmrb_hal_time.h"
 #include "fmrb_hid_decode.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
@@ -131,6 +132,24 @@ static NativeSymbol *s_natives;
 /* The apps that count as users, so a forced kill can give its count back
    (fmrb_wasm_app_forget). */
 static fmrb_app_task_context_t *s_holders[FMRB_MAX_APPS];
+
+/* What the System Monitor, the shell and the periodic dump show of each
+   holder (fmrb_wasm_app_stats), at the holder's index. inst is set while the
+   app's module is instantiated, under s_lock; the timings are written by the
+   app's own task only and read as they are. */
+typedef struct {
+    wasm_module_inst_t inst;
+    uint32_t binary_size;
+    uint32_t max_pages;
+    uint32_t hook_us;
+    uint32_t hook_max_us;
+    uint32_t calls;
+} wasm_slot_t;
+static wasm_slot_t s_slots[FMRB_MAX_APPS];
+/* Since boot: calls that trapped, and the shared pool's high mark of the
+   runtimes that have ended (each start lays the pool out afresh). */
+static uint32_t s_traps;
+static uint32_t s_pool_high;
 
 /** How long a start waits for the runtime's lock before it gives up (only a
  *  task killed inside the start or the end of another wasm app holds it
@@ -208,7 +227,11 @@ static bool runtime_acquire(fmrb_app_task_context_t *ctx, char *err, size_t err_
     if (ok) {
         s_users++;
         for (int i = 0; i < FMRB_MAX_APPS; i++) {
-            if (!s_holders[i]) { s_holders[i] = ctx; break; }
+            if (!s_holders[i]) {
+                s_holders[i] = ctx;
+                memset(&s_slots[i], 0, sizeof(s_slots[i]));
+                break;
+            }
         }
     }
     fmrb_semaphore_give(s_lock);
@@ -223,9 +246,13 @@ static bool runtime_drop_locked(fmrb_app_task_context_t *ctx)
     while (i < FMRB_MAX_APPS && s_holders[i] != ctx) i++;
     if (i == FMRB_MAX_APPS) return false;
     s_holders[i] = NULL;
+    s_slots[i].inst = NULL;
     if (--s_users == 0) {
         mem_alloc_info_t info;
         bool have = wasm_runtime_get_mem_alloc_info(&info);
+        if (have && info.highmark_size > s_pool_high) {
+            s_pool_high = (uint32_t)info.highmark_size;
+        }
         wasm_runtime_unregister_natives("fmrb", s_natives);
         wasm_runtime_free(s_natives);
         s_natives = NULL;
@@ -296,6 +323,7 @@ static uint8_t *native_stack_boundary(void)
 
 typedef struct {
     fmrb_app_task_context_t *ctx;
+    wasm_slot_t *slot;          /* its row of s_slots (NULL: not found) */
     wasm_module_inst_t inst;
     wasm_exec_env_t env;
     wasm_function_inst_t fn[FMRB_SHELL_HOOK_COUNT];
@@ -333,9 +361,18 @@ static int call_hook(wasm_app_t *a, fmrb_shell_hook_t hook, uint32_t argc, uint3
     wasm_function_inst_t f = a->fn[hook];
     if (!f) return FMRB_SHELL_OK;
     wasm_runtime_set_instruction_count_limit(a->env, FMRB_WASM_CALL_INSN_LIMIT);
-    if (wasm_runtime_call_wasm(a->env, f, argc, argv)) {
+    uint64_t t0 = fmrb_hal_time_get_us();
+    bool ok = wasm_runtime_call_wasm(a->env, f, argc, argv);
+    if (a->slot) {
+        uint32_t us = (uint32_t)(fmrb_hal_time_get_us() - t0);
+        a->slot->hook_us = us;
+        if (us > a->slot->hook_max_us) a->slot->hook_max_us = us;
+        a->slot->calls++;
+    }
+    if (ok) {
         return FMRB_SHELL_OK;
     }
+    __atomic_fetch_add(&s_traps, 1u, __ATOMIC_RELAXED);
     const char *exc = wasm_runtime_get_exception(a->inst);
     if (a->err && a->err_cap) {
         snprintf(a->err, a->err_cap, "%s: %s", HOOK_NAMES[hook], exc ? exc : "trap");
@@ -677,6 +714,32 @@ static bool find_hooks(wasm_app_t *a, char *err, size_t err_cap)
     return true;
 }
 
+/* Show the app's instance in its row (fmrb_wasm_app_stats), and take it out
+   again before the instance goes. */
+static void slot_attach(wasm_app_t *a, uint32_t binary_size, uint32_t max_pages)
+{
+    fmrb_semaphore_take(s_lock, portMAX_DELAY);
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        if (s_holders[i] == a->ctx) {
+            a->slot = &s_slots[i];
+            a->slot->binary_size = binary_size;
+            a->slot->max_pages = max_pages;
+            a->slot->inst = a->inst;
+            break;
+        }
+    }
+    fmrb_semaphore_give(s_lock);
+}
+
+static void slot_detach(wasm_app_t *a)
+{
+    if (!a->slot) return;
+    fmrb_semaphore_take(s_lock, portMAX_DELAY);
+    a->slot->inst = NULL;
+    fmrb_semaphore_give(s_lock);
+    a->slot = NULL;
+}
+
 fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
                              char *err, size_t err_cap)
 {
@@ -740,6 +803,7 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
     if (!find_hooks(&a, err, err_cap)) goto out;
 
     wasm_memory_inst_t mem = wasm_runtime_get_default_memory(a.inst);
+    slot_attach(&a, size, max_pages);
     mem_alloc_info_t pinfo;
     unsigned pool_used = wasm_runtime_get_mem_alloc_info(&pinfo)
                              ? (unsigned)(pinfo.total_size - pinfo.total_free_size) : 0u;
@@ -763,6 +827,7 @@ fmrb_err_t fmrb_wasm_app_run(fmrb_app_task_context_t *ctx, const char *path,
     }
 
 out:
+    slot_detach(&a);
     if (a.env) wasm_runtime_destroy_exec_env(a.env);
     if (a.inst) wasm_runtime_deinstantiate(a.inst);
     if (module) wasm_runtime_unload(module);
@@ -773,4 +838,94 @@ out:
         FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, err);
     }
     return ret;
+}
+
+/* ------------------------------------------------------------ the state */
+
+/** The dump's tag (a literal: a static pointer would be .data in internal RAM). */
+#define DTAG "fmrb_wasm"
+/** How long a reader waits for s_lock: a monitor must not stall on a start. */
+#define FMRB_WASM_STATS_WAIT_MS 50
+
+void fmrb_wasm_stats(fmrb_wasm_stats_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    out->natives = (uint32_t)NATIVES_COUNT;
+    out->traps = __atomic_load_n(&s_traps, __ATOMIC_RELAXED);
+    out->pool_high = s_pool_high;
+    if (!s_lock) return;
+    if (fmrb_semaphore_take(s_lock, FMRB_MS_TO_TICKS(FMRB_WASM_STATS_WAIT_MS)) != pdTRUE) {
+        return;
+    }
+    out->pool_total = s_pool ? (uint32_t)FMRB_WASM_POOL_SIZE : 0u;
+    out->apps = (uint32_t)s_users;
+    out->running = s_users > 0;
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        if (s_holders[i] && s_slots[i].inst) out->modules++;
+    }
+    mem_alloc_info_t info;
+    if (out->running && wasm_runtime_get_mem_alloc_info(&info)) {
+        out->pool_used = (uint32_t)(info.total_size - info.total_free_size);
+        if (info.highmark_size > out->pool_high) out->pool_high = (uint32_t)info.highmark_size;
+    }
+    fmrb_semaphore_give(s_lock);
+}
+
+bool fmrb_wasm_app_stats(int pid, fmrb_wasm_app_stats_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (!s_lock || pid < 0) return false;
+    if (fmrb_semaphore_take(s_lock, FMRB_MS_TO_TICKS(FMRB_WASM_STATS_WAIT_MS)) != pdTRUE) {
+        return false;
+    }
+    bool found = false;
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        const wasm_slot_t *sl = &s_slots[i];
+        if (!s_holders[i] || !sl->inst || s_holders[i]->app_id != pid) continue;
+        /* The instance stays while s_lock is held (slot_detach takes it). */
+        wasm_memory_inst_t mem = wasm_runtime_get_default_memory(sl->inst);
+        out->pages = mem ? (uint32_t)wasm_memory_get_cur_page_count(mem) : 0u;
+        out->max_pages = sl->max_pages;
+        out->binary_size = sl->binary_size;
+        out->hook_us = sl->hook_us;
+        out->hook_max_us = sl->hook_max_us;
+        out->calls = sl->calls;
+        found = true;
+        break;
+    }
+    fmrb_semaphore_give(s_lock);
+    return found;
+}
+
+void fmrb_wasm_dump_stats(void)
+{
+    fmrb_wasm_stats_t st;
+    fmrb_wasm_stats(&st);
+    FMRB_LOGI(DTAG, "runtime %s apps=%u modules=%u natives=%u pool used=%u high=%u total=%u traps=%u",
+              st.running ? "on" : "off", (unsigned)st.apps, (unsigned)st.modules,
+              (unsigned)st.natives, (unsigned)st.pool_used, (unsigned)st.pool_high,
+              (unsigned)st.pool_total, (unsigned)st.traps);
+    if (!st.modules) return;
+    /* The holders' pids and names, taken under the lock and printed after
+       (a line of UART is a few ms; the lock must not be held across it). */
+    int pids[FMRB_MAX_APPS];
+    char names[FMRB_MAX_APPS][24];
+    int n = 0;
+    if (fmrb_semaphore_take(s_lock, FMRB_MS_TO_TICKS(FMRB_WASM_STATS_WAIT_MS)) != pdTRUE) return;
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        if (!s_holders[i] || !s_slots[i].inst) continue;
+        pids[n] = s_holders[i]->app_id;
+        snprintf(names[n], sizeof(names[n]), "%s", s_holders[i]->app_name);
+        n++;
+    }
+    fmrb_semaphore_give(s_lock);
+    for (int i = 0; i < n; i++) {
+        fmrb_wasm_app_stats_t as;
+        if (!fmrb_wasm_app_stats(pids[i], &as)) continue;
+        FMRB_LOGI(DTAG, "  pid=%d %-16s pages=%u/%u bin=%u hook=%uus max=%uus calls=%u",
+                  pids[i], names[i], (unsigned)as.pages, (unsigned)as.max_pages,
+                  (unsigned)as.binary_size, (unsigned)as.hook_us, (unsigned)as.hook_max_us,
+                  (unsigned)as.calls);
+        fmrb_task_delay_ms(1);
+    }
 }

@@ -42,7 +42,7 @@ fill_rect 54 60 124 8 #C4
 text 106 60 "700/1024K 68%" #FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
+text 111 190 "1/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -69,7 +69,7 @@ fill_rect 54 60 124 8 #C4
 text 106 60 "700/1024K 68%" #FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
+text 111 190 "1/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -95,7 +95,7 @@ fill_rect 54 60 124 8 #C4
 text 106 60 "700/1024K 68%" #FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
+text 111 190 "1/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -114,7 +114,7 @@ draw_line 3 117 3 186 #60
 draw_line 3 186 11 186 #CC
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "2/3" #00 bg=#FF defaultx1
+text 111 190 "2/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -135,7 +135,37 @@ draw_line 3 186 11 186 #CC
 draw_line 11 186 19 186 #CC
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "2/3" #00 bg=#FF defaultx1
+text 111 190 "2/4" #00 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+== click 234,192
+fill_rect 1 11 238 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 3 13 "WASM (WAMR)" #00 bg=#FF defaultx1
+text 3 25 "runtime off  apps 0  modules 0" #60 bg=#FF defaultx1
+text 3 35 "natives 124  traps 0" #00 bg=#FF defaultx1
+text 3 45 "pool not taken yet" #60 bg=#FF defaultx1
+text 3 59 "no wasm app running" #60 bg=#FF defaultx1
+text 3 190 "<" #00 bg=#FF defaultx1
+text 231 190 ">" #00 bg=#FF defaultx1
+text 111 190 "3/4" #00 bg=#FF defaultx1
+gfxblock 1 again
+gfxblock 2 again
+present
+== run 1000 ms
+fill_rect 1 11 238 188 #FF
+gfxblock 1 again
+gfxblock 2 again
+text 3 13 "WASM (WAMR)" #00 bg=#FF defaultx1
+text 3 25 "runtime off  apps 0  modules 0" #60 bg=#FF defaultx1
+text 3 35 "natives 124  traps 0" #00 bg=#FF defaultx1
+text 3 45 "pool not taken yet" #60 bg=#FF defaultx1
+text 3 59 "no wasm app running" #60 bg=#FF defaultx1
+text 3 190 "<" #00 bg=#FF defaultx1
+text 231 190 ">" #00 bg=#FF defaultx1
+text 111 190 "3/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -146,7 +176,7 @@ gfxblock 2 again
 text 3 13 "ID NAME           STATE    " #60 bg=#FF defaultx1
 text 3 190 "<" #00 bg=#FF defaultx1
 text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "3/3" #00 bg=#FF defaultx1
+text 111 190 "4/4" #00 bg=#FF defaultx1
 gfxblock 1 again
 gfxblock 2 again
 present
@@ -160,59 +190,3 @@ draw_rect 193 51 44 9 #60
 textm 197 51 "[stop]" #FF x1
 present
 == run 1000 ms
-== click 234,192
-fill_rect 193 51 44 9 #FF
-present
-fill_rect 1 11 238 188 #FF
-gfxblock 1 again
-gfxblock 2 again
-text 3 13 "Memory" #00 bg=#FF defaultx1
-text 3 25 "IRAM free: 87/292K" #00 bg=#FF defaultx1
-text 3 36 "desktop" #00 bg=#FF defaultx1
-fill_rect 53 35 184 10 #60
-fill_rect 54 36 182 8 #34
-fill_rect 54 36 63 8 #C4
-text 109 36 "180/512K 35%" #FF defaultx1
-text 3 48 "app" #00 bg=#FF defaultx1
-fill_rect 53 47 184 10 #60
-fill_rect 54 48 182 8 #34
-fill_rect 54 48 17 8 #C4
-text 112 48 "96/1024K 9%" #FF defaultx1
-text 3 60 "a_rather" #60 bg=#FF defaultx1
-fill_rect 53 59 184 10 #60
-fill_rect 54 60 182 8 #34
-fill_rect 54 60 124 8 #C4
-text 106 60 "700/1024K 68%" #FF defaultx1
-text 3 190 "<" #00 bg=#FF defaultx1
-text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
-gfxblock 1 again
-gfxblock 2 again
-present
-== run 1000 ms
-fill_rect 1 11 238 188 #FF
-gfxblock 1 again
-gfxblock 2 again
-text 3 13 "Memory" #00 bg=#FF defaultx1
-text 3 25 "IRAM free: 87/292K" #00 bg=#FF defaultx1
-text 3 36 "desktop" #00 bg=#FF defaultx1
-fill_rect 53 35 184 10 #60
-fill_rect 54 36 182 8 #34
-fill_rect 54 36 63 8 #C4
-text 109 36 "180/512K 35%" #FF defaultx1
-text 3 48 "app" #00 bg=#FF defaultx1
-fill_rect 53 47 184 10 #60
-fill_rect 54 48 182 8 #34
-fill_rect 54 48 17 8 #C4
-text 112 48 "96/1024K 9%" #FF defaultx1
-text 3 60 "a_rather" #60 bg=#FF defaultx1
-fill_rect 53 59 184 10 #60
-fill_rect 54 60 182 8 #34
-fill_rect 54 60 124 8 #C4
-text 106 60 "700/1024K 68%" #FF defaultx1
-text 3 190 "<" #00 bg=#FF defaultx1
-text 231 190 ">" #00 bg=#FF defaultx1
-text 111 190 "1/3" #00 bg=#FF defaultx1
-gfxblock 1 again
-gfxblock 2 again
-present

@@ -724,6 +724,11 @@ void fmrb_app_dump_vm_pools(void)
         fmrb_task_delay_ms(1);
     }
     FMRB_LOGI(TAG, "----------------");
+#ifdef FMRB_HAVE_WASM
+    /* The wasm runtime's shared pool and each wasm app's linear memory are
+       not in the VM pools above. */
+    fmrb_wasm_dump_stats();
+#endif
 }
 
 // Store error with backtrace into static buffer

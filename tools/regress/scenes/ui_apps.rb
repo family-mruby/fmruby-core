@@ -92,6 +92,28 @@ Regress.app "monitor", "main/ruby/default_app/monitor.app.rb" do
     end
   end
 
+  # Page 3 with the runtime up and one wasm app (its two lines), then with
+  # the runtime ended.
+  scene "wasm" do |s|
+    s.env.extra[:ps] = [
+      { id: 0, pid: 0, name: "kernel", state: 2, type: 0, vm_type: 3, mem_used: 0, mem_total: 0 },
+      { id: 5, pid: 5, name: "bounce", state: 2, type: 2, vm_type: 5, mem_used: 200 * 1024,
+        mem_total: 1024 * 1024 }
+    ]
+    s.env.extra[:wasm] = { running: 1, apps: 1, modules: 1, natives: 124, pool_total: 256 * 1024,
+                           pool_used: 30_000, pool_high: 41_000, traps: 0 }
+    s.env.extra[:wasm_apps] = { 5 => { pages: 2, max_pages: 14, binary_size: 12_345, hook_us: 120,
+                                       hook_max_us: 3_100, calls: 523 } }
+    s.start
+    nav(s, true)
+    nav(s, true)
+    s.update
+    s.env.extra[:wasm] = { running: 0, apps: 0, modules: 0, natives: 124, pool_total: 256 * 1024,
+                           pool_used: 0, pool_high: 41_000, traps: 1 }
+    s.env.extra[:wasm_apps] = {}
+    s.update
+  end
+
   scene "tasks_stop" do |s|
     s.start
     s.update

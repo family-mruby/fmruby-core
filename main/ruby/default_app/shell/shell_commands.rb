@@ -6,6 +6,9 @@ module ShellCommandsMixin
   # vocabulary in the same listing.
   STATE_NAMES = ["free", "init", "running", "suspended", "stopping"]
   TYPE_NAMES = ["kernel", "system", "user"]
+  # FmrbApp.ps :vm_type (fmrb_vm_type_t): the engine an app runs on. "native"
+  # is a Spinel program (the kernel, the desktop and the built-in apps).
+  ENGINE_NAMES = ["mruby", "lua", "basic", "native", "python", "wasm"]
   # Index into TYPE_NAMES. Only user tasks can be ended with "kill".
   PROC_TYPE_USER = 2
   CP_CHUNK_SIZE = 4096  # cp/mv copy chunk size in bytes
@@ -981,7 +984,7 @@ module ShellCommandsMixin
     # Kernel-managed tasks (FmrbApp.ps). Type "user" ones can be ended with
     # `kill <pid>`; kernel and system tasks hold the machine up and cannot.
     @history << "Tasks (kernel-managed, 'user' can be killed):"
-    @history << " PID TYPE    STATE     NAME"
+    @history << " PID TYPE    STATE     ENGINE NAME"
     procs = FmrbApp.ps
     my_pid = FmrbApp.pid
     i = 0
@@ -989,8 +992,11 @@ module ShellCommandsMixin
       p = procs[i]
       state = STATE_NAMES[p[:state]] || "?"
       type = TYPE_NAMES[p[:type]] || "?"
-      mark = p[:id] == my_pid ? " (this shell)" : ""
-      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(9)} #{p[:name]}#{mark}"
+      engine = ENGINE_NAMES[p[:vm_type]] || "?"
+      # " (this)", not " (this shell)": with the ENGINE column a longer mark
+      # wrapped in the shell's 47-column default window.
+      mark = p[:id] == my_pid ? " (this)" : ""
+      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(9)} #{engine.ljust(6)} #{p[:name]}#{mark}"
       i += 1
     end
 
