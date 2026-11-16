@@ -54,10 +54,11 @@ module ErrorDialogMixin
       @error_dlg_y = 12
     end
 
-    # Keyless: the dialog only closes on a click, so clicking it must leave the
-    # keyboard with whatever app had it (e.g. the one a refused launch fell
-    # back to).
-    notify_overlay_state(true, @error_dlg_x, @error_dlg_y, EDLG_W, @error_dlg_h, true)
+    # Keyless: clicking it must not move the keyboard to the desktop for good;
+    # it stays with whatever app had it (e.g. the one a refused launch fell
+    # back to). take_keys: while the dialog is up the desktop holds the
+    # keyboard, so that Return closes it, and the kernel gives it back then.
+    notify_overlay_state(true, @error_dlg_x, @error_dlg_y, EDLG_W, @error_dlg_h, true, true)
     update_composite_regions
     draw_foreground
   end
@@ -102,9 +103,9 @@ module ErrorDialogMixin
     end
 
     # Footer
-    # 16 characters of 6 px end flush with the border at -96; -104 leaves the
+    # 25 characters of 6 px end flush with the border at -150; -158 leaves the
     # same 8 px margin the text lines keep on the left.
-    @gfx.draw_text(x + EDLG_W - 104, y + h - 12, "(click to close)", EDLG_HINT, EDLG_BG)
+    @gfx.draw_text(x + EDLG_W - 158, y + h - 12, "(click or Enter to close)", EDLG_HINT, EDLG_BG)
   end
 
   def handle_error_dialog_click(x, y)

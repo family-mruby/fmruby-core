@@ -860,7 +860,11 @@ module AppLifecycleMixin
     # that is a parked fullscreen app: bringing it back would cover the error
     # dialog the desktop is about to show, so the rule above decides (it still
     # unparks the editor after an F5).
-    if @hid_target_pid == pid && @pending_unpark.nil?
+    # While the error dialog holds the keyboard (overlay_take_keys) the app it
+    # was taken from is the one that had it: the answer goes to what the
+    # dialog gives it back to, and the dialog keeps it until then.
+    held_for = @overlay_keys_held && @overlay_keys_prev == pid
+    if (@hid_target_pid == pid || held_for) && @pending_unpark.nil?
       back_to = nil
       prev = @launch_prev_hid[pid]
       if prev && prev != @parked_fullscreen_pid
@@ -882,6 +886,9 @@ module AppLifecycleMixin
         @pending_unpark_after = pid
         @pending_unpark_tries = 0
         Log.info("Unpark of PID #{back_to} deferred until pid=#{pid} is reaped")
+      elsif held_for
+        @overlay_keys_prev = back_to
+        Log.info("Keyboard goes to pid=#{back_to || -1} when the dialog closes (app #{pid} terminated)")
       else
         back_to = @desktop_pid if back_to.nil?
         if back_to

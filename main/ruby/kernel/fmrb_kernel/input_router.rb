@@ -491,6 +491,37 @@ module InputRouterMixin
     end
   end
 
+  # The error dialog asked for the keyboard (overlay_state "take_keys"), so
+  # that Return closes it: the desktop gets the keys while it is up, without
+  # coming to the front (its canvas is the bottom one), and whoever had them is
+  # remembered. Not under the keys desktop, which routes keys itself, nor over
+  # a fullscreen app (the desktop is not drawn then).
+  def overlay_take_keys
+    return if @keys_mode || @fullscreen_pid || @desktop_pid.nil?
+    unless @overlay_keys_held
+      @overlay_keys_held = true
+      @overlay_keys_prev = @hid_target_pid
+    end
+    return if @hid_target_pid == @desktop_pid
+    _set_hid_target(@desktop_pid)
+    @hid_target_pid = @desktop_pid
+  end
+
+  # The dialog closed (or another overlay replaced it): the keyboard goes back
+  # to whoever had it, unless something else took it meanwhile or that app is
+  # gone.
+  def overlay_give_keys_back
+    return unless @overlay_keys_held
+    @overlay_keys_held = false
+    prev = @overlay_keys_prev
+    @overlay_keys_prev = nil
+    return if prev.nil? || prev == @desktop_pid
+    return unless @hid_target_pid == @desktop_pid
+    return unless focusable?(prev)
+    _set_hid_target(prev)
+    @hid_target_pid = prev
+  end
+
   # True when a click at (x, y) routed to the desktop lands inside its current
   # overlay and the desktop said that overlay takes no keys.
   def keyless_overlay_hit?(pid, x, y)

@@ -81,6 +81,9 @@ Family mruby の `lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` は同�
 アプリのエラーの Window (Ruby・Lua・Python・wasm のアプリが落ちたときに出るもの) を、閉じるボタンだけでなく
 Return キーでも閉じられるようにする。
 
+**済 (2026-11-16、wt/small)**: Window が出ている間はデスクトップがキーボードを預かり (overlay_state の take_keys)、
+Return・テンキーの Enter・Esc で閉じ、閉じたら前の持ち主へ返す。ほかのキーは Window の裏へ通さない。
+
 ## WAMR の様子を見えるようにする (2026-11-16 記録、ユーザの希望、夜の作業に入れる)
 
 今は System Monitor (`main/ruby/default_app/monitor.app.rb`) にも Shell の `ps` にも WAMR の様子が出ない (Spinel の

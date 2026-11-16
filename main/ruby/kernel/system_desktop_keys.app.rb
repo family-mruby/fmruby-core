@@ -151,7 +151,7 @@ class KeysDesktopApp < FmrbApp
 
   # The kernel keeps the rectangle of a mouse overlay for its hit testing.
   # There is no pointer here, so there is nothing to tell it.
-  def notify_overlay_state(active, x, y, w, h, keyless = false)
+  def notify_overlay_state(active, x, y, w, h, keyless = false, take_keys = false)
     nil
   end
 

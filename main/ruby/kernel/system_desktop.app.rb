@@ -35,6 +35,8 @@ class SystemDesktopApp < FmrbApp
   # it may arrive. The kernel sends the two back to back (find_window_at), so
   # this only has to cover the desktop's own queue, not the user.
   SWALLOW_CLICK_MS = 300
+  # Keypad Enter (HID usage 0x58; FmrbConst has KEY_ENTER only).
+  KEY_KP_ENTER_SC = 0x58
   MENU_BG = FmrbConst::THEME_MENU_BG
   DROPDOWN_BG = FmrbConst::THEME_WINDOW_BG
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
@@ -1550,13 +1552,17 @@ class SystemDesktopApp < FmrbApp
   # keyless: the overlay takes no keys (the error dialog), so a click inside it
   # must not move the keyboard to the desktop; the kernel then routes the
   # click here without changing the focus.
-  def notify_overlay_state(active, x, y, w, h, keyless = false)
+  # take_keys: the overlay holds the keyboard while it is up and the kernel
+  # gives it back to whoever had it when the overlay goes (the error dialog,
+  # so that Return closes it).
+  def notify_overlay_state(active, x, y, w, h, keyless = false, take_keys = false)
     data = {
       "cmd" => "overlay_state",
       "active" => active,
       "rect_x" => x, "rect_y" => y,
       "rect_w" => w, "rect_h" => h,
-      "keyless" => keyless
+      "keyless" => keyless,
+      "take_keys" => take_keys
     }
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
   end
@@ -2218,6 +2224,16 @@ class SystemDesktopApp < FmrbApp
       # the keys desktop; otherwise the File Manager behind it took the key.
       if @error_dlg_open && @file_manager_open
         close_error_dialog
+        return
+      end
+      # The error dialog holds the keyboard while it is up (take_keys): Return
+      # (or keypad Enter, or Esc) closes it and the kernel gives the keyboard
+      # back. Nothing else may act behind it.
+      if @error_dlg_open
+        if scancode == FmrbConst::KEY_ENTER || scancode == KEY_KP_ENTER_SC ||
+           scancode == FmrbConst::KEY_ESC
+          close_error_dialog
+        end
         return
       end
 

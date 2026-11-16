@@ -78,6 +78,7 @@ module WindowManagerMixin
                             build_hid_close_overlay)
           @desktop_overlay_active = false
           @desktop_overlay_keyless = false
+          overlay_give_keys_back
         end
       end
     end
