@@ -19,6 +19,16 @@
 #                                        gets a name of its own, foo(1).txt)
 #        [--name NAME]                   the name there (default: the file's)
 #        [--sd]                          to the SD card's /sd/inbox/ there
+#        [--app]                         <file> is an app (its folder, or its
+#                                        program <name>.app.<ext> with the
+#                                        files of its name beside it): it is
+#                                        packed and installed there as
+#                                        /app/usr/<name>/ (doc/wasm_apps W6),
+#                                        when that machine takes apps from
+#                                        this node ([app] from) and its owner
+#                                        says yes (unless install = "auto"
+#                                        there); --overwrite replaces the
+#                                        app of that name there
 #        [--credentials ROW.tar]         connect with a member row's
 #                                        certificate (the console's .tar):
 #                                        its router and its name, unless
@@ -37,6 +47,7 @@
 # asterism:setup), else the installed gem; asterism-zenoh is the installed
 # gem.
 require "optparse"
+require "tmpdir"
 
 module FmrbSend
   CORE = File.expand_path("..", __dir__)
@@ -56,7 +67,7 @@ module FmrbSend
   end
 
   def self.main(argv)
-    opt = { router: DEFAULT_ROUTER, node: DEFAULT_NODE, overwrite: false, name: nil, sd: false }
+    opt = { router: DEFAULT_ROUTER, node: DEFAULT_NODE, overwrite: false, name: nil, sd: false, app: false }
     parser = OptionParser.new do |o|
       o.banner = "usage: fmrb_send.rb <node> <file> [--router LOC] [--node ID] [--overwrite] [--name NAME] [--sd] " \
                  "[--credentials ROW.tar]"
@@ -65,13 +76,14 @@ module FmrbSend
       o.on("--overwrite") { opt[:overwrite] = true }
       o.on("--name NAME") { |v| opt[:name] = v }
       o.on("--sd") { opt[:sd] = true }
+      o.on("--app") { opt[:app] = true }
       o.on("--credentials TAR") { |v| opt[:credentials] = v }
     end
     given = argv.join(" ")
     parser.parse!(argv)
     abort parser.banner unless argv.size == 2
     to, path = argv
-    abort "fmrb_send: no such file: #{path}" unless File.file?(path)
+    abort "fmrb_send: no such file: #{path}" unless File.file?(path) || (opt[:app] && File.directory?(path))
     load_asterism
     if opt[:credentials]
       args = given.include?("--router") ? [opt[:router]] : []
@@ -81,11 +93,102 @@ module FmrbSend
       net = Asterism.connect(opt[:router], node: opt[:node], app: APP)
     end
     begin
-      ok = send_file(net, to, path, overwrite: opt[:overwrite], name: opt[:name], sd: opt[:sd])
+      ok = if opt[:app]
+             send_app(net, to, path, overwrite: opt[:overwrite])
+           else
+             send_file(net, to, path, overwrite: opt[:overwrite], name: opt[:name], sd: opt[:sd])
+           end
     ensure
       net.close
     end
     ok
+  end
+
+  # ---- an app to install (doc/wasm_apps W6) ----
+
+  EXTS = %w[rb lua py bas wasm].freeze
+  # the owner there has 60 s to answer (the transfer app's ASK_MS)
+  ANSWER_S = 75
+  STATUS_EVERY_S = 0.5
+
+  # The files of an app: its folder (subfolders too, no hidden files), or
+  # its program and the files beside it whose names start with "<name>.".
+  # -> [name, [[path in the package, file], ...]]
+  def self.app_files(path)
+    if File.directory?(path)
+      dir = File.expand_path(path)
+      name = File.basename(dir)
+      files = Dir.glob("**/*", base: dir).sort.reject { |r| File.directory?(File.join(dir, r)) }
+      return [name, files.map { |r| [r, File.join(dir, r)] }]
+    end
+    base = File.basename(path)
+    name, ext = base.split(".app.", 2)
+    abort "fmrb_send: #{base} is not an app (<name>.app.#{EXTS.join('|')})" unless ext && EXTS.include?(ext)
+    dir = File.dirname(File.expand_path(path))
+    files = Dir.children(dir).sort.select { |n| n.start_with?("#{name}.") && File.file?(File.join(dir, n)) }
+    [name, files.map { |n| [n, File.join(dir, n)] }]
+  end
+
+  # The app at path packed into a tar (ustar, what the machines read:
+  # /usr/share/transfer/app_package.rb). -> [name, the tar's path, files]
+  def self.pack_app(path, out)
+    require "rubygems/package"
+    name, files = app_files(path)
+    abort "fmrb_send: #{name}: not an app's name (letters, digits, _ and -)" unless name.match?(/\A[A-Za-z0-9_-]{1,40}\z/)
+    abort "fmrb_send: #{path}: no files" if files.empty?
+    File.open(out, "wb") do |io|
+      Gem::Package::TarWriter.new(io) do |tar|
+        files.each do |rel, file|
+          data = File.binread(file)
+          tar.add_file_simple(rel, 0o644, data.bytesize) { |f| f.write(data) }
+        end
+      end
+    end
+    [name, out, files.size]
+  end
+
+  # The app at path installed on <to>: sent as the kind "app", then status
+  # until it is installed there or refused. -> true when installed.
+  def self.send_app(net, to, path, overwrite: false, out: $stdout, answer_s: ANSWER_S)
+    Dir.mktmpdir("fmrb_send") do |tmp|
+      name, tar, n = pack_app(path, File.join(tmp, "app.tar"))
+      meta = { "app" => name, "files" => n }
+      meta["overwrite"] = true if overwrite
+      s = Asterism::Transfer::Sender.new("#{to}/transfer/inbox", "app", tar, net: net, name: name, meta: meta)
+      s.logger = nil
+      out.puts "fmrb_send: the app #{name} (#{n} file(s), #{s.size} bytes packed) to #{to}"
+      until s.done?
+        net.poll
+        s.step
+        sleep 0.0005
+      end
+      unless s.ok?
+        out.puts "fmrb_send: not installed: #{s.reason}"
+        return false
+      end
+      answer = s.answer
+      said = false
+      deadline = Time.now + answer_s
+      while answer["status"] == "pending"
+        unless said
+          out.puts "fmrb_send: #{to} looks at it (its owner may be asked; up to #{answer_s} s)"
+          said = true
+        end
+        if Time.now > deadline
+          out.puts "fmrb_send: no answer from #{to} in #{answer_s} s"
+          return false
+        end
+        sleep STATUS_EVERY_S
+        answer = net["#{to}/transfer/inbox", timeout_ms: 10_000].asterism_call("status", s.id)
+      end
+      if answer["status"] == "installed"
+        out.puts "fmrb_send: installed on #{to} as #{answer['path']} (#{answer['lang']})"
+        true
+      else
+        out.puts "fmrb_send: not installed: #{answer['reason'] || answer['status']}"
+        false
+      end
+    end
   end
 
   # One file to <to>/transfer/inbox over net (an Asterism::Connection).
