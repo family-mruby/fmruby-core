@@ -1,0 +1,7 @@
+app_screen_name = "W2 probe"
+default_window_mode = "window"
+default_window_width = 120
+default_window_height = 30
+default_window_pos_x = 280
+default_window_pos_y = 190
+launcher_visible = false
