@@ -328,7 +328,7 @@ namespace :regress do
     puts "regress:wl: ok (tmp/wl_check/)"
   end
 
-  desc "Everything: regress + regress:spinel (the all-Spinel generation, as CI) + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build) + regress:transfer:quick (the file transfer's gist, a minute). Each sim build is made once and shared between the parts"
+  desc "Everything: regress + regress:spinel (the all-Spinel generation, as CI) + regress:size (one board per chip; ALL=1 every board) + regress:run + regress:screens (sim, browser) + regress:live + regress:wl (the compositor) + regress:checkpoint SIM=1 (moving an app, with the simulation and the browser build) + regress:transfer:quick (the file transfer's gist, a minute) + regress:transfer:install (apps installed over Asterism, W6). Each sim build is made once and shared between the parts"
   task :full do
     only = ENV.delete("ONLY")
     warn "regress:full: ONLY=#{only} ignored (narrow the parts one by one)" if only
@@ -349,7 +349,7 @@ namespace :regress do
     t_all = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     begin
       %w[regress regress:spinel regress:size regress:run regress:screens regress:live regress:wl regress:checkpoint
-         regress:transfer:quick].each do |t|
+         regress:transfer:quick regress:transfer:install].each do |t|
         t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         begin
           Rake::Task[t].invoke
@@ -524,6 +524,13 @@ namespace :regress do
       args << "--web" if ENV["WEB"] == "1"
       args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
       abort "regress:transfer:quick: failed" unless system(Gem.ruby, File.join(ROOT_DIR, "tools", "regress", "transfer_quick.rb"), *args)
+    end
+
+    desc "Apps installed over Asterism (doc/wasm_apps W6; in regress:full, about 20 s): two native programs and this process -- a Ruby app installed without asking (its icon, the launcher told, it starts), the same again (refused; replaced with overwrite), a wasm app importing what the firmware lacks (refused with the SDK version), a sender not listed, a wasm app sent by the other program's app and installed after Install is clicked in the owner's question, a Lua app declined with Esc (ONLY=<case>)"
+    task :install do
+      args = []
+      args += ["--only", ENV["ONLY"]] if ENV["ONLY"]
+      abort "regress:transfer:install: failed" unless system(Gem.ruby, File.join(ROOT_DIR, "tools", "regress", "install.rb"), *args)
     end
   end
 end

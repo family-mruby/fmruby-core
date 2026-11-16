@@ -229,6 +229,35 @@ check("no note without * on checkpoint", C.lines.any? { _1.start_with?("note:") 
 reset
 check("off and the file", C.lines[0].start_with?("receiving: off (#{SYS})"), true)
 
+puts "apps to install (doc/wasm_apps W6)"
+reset
+check("no line: ask", C.install_mode, "ask")
+check("the view says ask", C.view["install"], "ask")
+check("app: nobody listed (the shipped copy)", C.view["app"]["hand"], [])
+check("ask again: not written", C.set_install_mode("ask"), false)
+check("auto: written", C.set_install_mode("auto"), true)
+check("now auto", C.install_mode, "auto")
+check("the line replaced in the table", File.read(USER).include?("[app]\nfrom = []\ninstall = \"auto\"\n"), true)
+check("still off", C.enabled?, false)
+check("auto again: not written", C.set_install_mode("auto"), false)
+check("allow app pc-desk", C.allow("app", "pc-desk"), true)
+check("the app list", C.view["app"]["hand"], ["pc-desk"])
+check("the mode kept beside it", C.install_mode, "auto")
+check("back to ask", C.set_install_mode("ask"), true)
+check("ask", C.install_mode, "ask")
+check("senders of app", C.senders("app")["hand"], ["pc-desk"])
+raises("not a mode", /not a way to install/) { C.set_install_mode("sometimes") }
+reset(user: "enabled = true\n[app]\ninstall = \"yes\"\n")
+check("another value: ask", C.install_mode, "ask")
+reset(user: "enabled = true\n[app]\nfrom = [\"a\"]\n\n#{MANAGED}")
+check("the console's part has no app list", C.senders("app")["managed"], nil)
+l = C.lines
+check("areceive shows app", l.include?("app:") && l.include?("  a  by hand"), true)
+check("areceive shows the mode",
+      l.include?("app: the owner is asked each time (areceive install auto: without asking)"), true)
+C.set_install_mode("auto")
+check("the console's part as it was", File.read(USER).end_with?(MANAGED), true)
+
 puts "the console's part written (T6) on a machine with no file of its own"
 reset
 check("written", C.write_managed("console", "2026-11-10T00:00:00Z", { "file" => ["a"], "checkpoint" => [] }), true)
