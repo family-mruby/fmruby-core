@@ -320,6 +320,9 @@ C のヘッダを配る。
   `/usr/share/transfer/transfer.app.rb` が `<ノード>/transfer/inbox` に `check` / `begin` / `chunk` /
   `commit` / `status` / `cancel` を出す。W6 は種類の表に `.app.wasm` の種類を足し、`commit` で置き場所へ
   移してランチャーの一覧に足す処理を書く形になる。
+- (W6 で作った、report/w6.md) 種類 `app`: アプリのフォルダを tar 1 つにして送り、受け手は
+  `/app/usr/.<名前>.new/` に開いて中を見て (wasm は本体に無い関数を import していないか)、設定で確認してから
+  `/app/usr/<名前>/` に置き、ランチャーに読み直させる。wasm に限らず Ruby・Lua・Python・BASIC のアプリも同じ形。
 
 ### 6. 将来: wasm のアプリを checkpoint で運ぶ
 
@@ -343,7 +346,7 @@ W3・W4a・W4b は doc/app_boundary/plan.md の段 (決定 16)。名前はその
 | W2 | P4 に載せ、内蔵 RAM・flash・速さ・スタックの使用量を測る | 未着手 |
 | W4b | 包みを持つ関数を機能のまとまり (7 つ) ごとに整える → doc/app_boundary。W1b・W2 との前後は決めていない | 未着手 (doc/app_boundary) |
 | W5 | アプリの包み (`.app.wasm`・`.app.toml` の SDK の版、本体に無い関数を使うアプリを起動の前に断る)、SDK の配り方 (専用のリポジトリ 1 つ、言語ごとに公開できる配置)、版 (大きい番号・小さい番号を前回のリリースの型定義との比較で判定)、店での配布、デモのアプリ (決定 13・14) | 未着手 |
-| W6 | Asterism の受け口でのインストール (checkpoint の F5 と共用) | 未着手 |
+| W6 | Asterism の受け口でのインストール (checkpoint の F5 と共用) | 実装済・検収待ち (report/w6.md。種類 `app` で tar 1 つ、`[app] from`・`install = "ask"/"auto"`、確認の Window、wasm はインストールの時点で import を照合、`rake regress:transfer:install`。ESP32・ブラウザ版は未、ユーザに決めてほしいことは report の 6 章) |
 
 **着手の順 (決定 15、2026-11-15)**: W3 (殻) と W4a (型定義からの生成の道具) を、W1b・W2 (WAMR を
 本体に載せる) より先にする。W1a で WAMR の最大の危険は消え、W3・W4a は WAMR に依存せず Lua の
