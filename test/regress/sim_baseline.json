@@ -4,26 +4,26 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 133768,
+            "used": 133808,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 802048,
+            "used": 808472,
             "total": 1572864,
             "stack_free": 14723
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 153144,
+            "used": 153008,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 802696,
+            "used": 809136,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14679
           },
           "Kamon": {
             "used": 504600,
@@ -36,7 +36,7 @@
             "stack_free": 14656
           },
           "StackChan Remote": {
-            "used": 441232,
+            "used": 441056,
             "total": 1572864,
             "stack_free": 14486
           },
@@ -53,9 +53,9 @@
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 802544,
+            "used": 808992,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14679
           },
           "Lua app demo": {
             "used": 61920,
@@ -80,31 +80,31 @@
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 802392,
+            "used": 808816,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14679
           },
           "FM-Editor": {
-            "used": 215952,
+            "used": 215992,
             "total": 1572864,
-            "stack_free": 22919
+            "stack_free": 22820
           },
           "FlappyDemo": {
             "used": 532096,
             "total": 1572864,
-            "stack_free": 14355
+            "stack_free": 14500
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 157064,
+            "used": 157040,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 802048,
+            "used": 808472,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14679
           }
         }
       },
@@ -132,7 +132,7 @@
       },
       "family": "retro",
       "board": "NARYAv3",
-      "commit": "f2f4e3b0",
+      "commit": "f5bc4baa",
       "tolerance": {
         "app_used": [
           0.0,
@@ -166,12 +166,12 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 153024,
+            "used": 153000,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 806328,
+            "used": 808616,
             "total": 1572864,
             "stack_free": 14723
           },
@@ -183,12 +183,12 @@
         },
         "running": {
           "fmrb_kernel": {
-            "used": 160296,
+            "used": 161888,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 806888,
+            "used": 809240,
             "total": 1572864,
             "stack_free": 14671
           },
@@ -208,7 +208,7 @@
             "stack_free": 14656
           },
           "StackChan Remote": {
-            "used": 441232,
+            "used": 441056,
             "total": 1572864,
             "stack_free": 14486
           },
@@ -220,12 +220,12 @@
         },
         "running_langs": {
           "fmrb_kernel": {
-            "used": 163232,
+            "used": 163000,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 806712,
+            "used": 809000,
             "total": 1572864,
             "stack_free": 14671
           },
@@ -252,12 +252,12 @@
         },
         "running_tools": {
           "fmrb_kernel": {
-            "used": 162040,
+            "used": 161736,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 806528,
+            "used": 808848,
             "total": 1572864,
             "stack_free": 14671
           },
@@ -267,7 +267,7 @@
             "stack_free": 17683
           },
           "FM-Editor": {
-            "used": 215952,
+            "used": 215904,
             "total": 1572864,
             "stack_free": 22919
           },
@@ -279,12 +279,12 @@
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 160888,
+            "used": 160840,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 806232,
+            "used": 808520,
             "total": 1572864,
             "stack_free": 14671
           },
@@ -319,7 +319,7 @@
       },
       "family": "modern",
       "board": "TAB5",
-      "commit": "f2f4e3b0",
+      "commit": "f5bc4baa",
       "tolerance": {
         "app_used": [
           0.0,
