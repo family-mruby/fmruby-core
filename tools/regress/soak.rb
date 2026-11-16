@@ -41,11 +41,14 @@
 # capture file (~/.fmrb_mcp/current.log, or BOARD_LOG=): the parent starts
 # serial_start and leaves it running; this tool never opens the port (Tab5
 # reboots when it is opened), so it needs no lock and resets nothing. After a
-# round it waits for DUMPS (default 2) whole dumps that began after the last
-# kill and keeps the smallest pool usage and the largest free memory of
-# them: a board has no remote "collect now", so the least of a few dumps
-# stands in for the collection the sim does. IRAM free, PSRAM free, every VM
-# pool and the fmrb_wasm: runtime line are kept.
+# round, as on the sim, a full collection in every app (devctl's /sys/gc, the
+# debug server's gc over WiFi: a Spinel VM sweeps its strings too), then the
+# first whole dump that begins after it; DUMPS (default 1) times, keeping the
+# smallest pool usage and the largest free memory of them. A firmware without
+# /sys/gc (it answers 404) falls back to what this did before it existed:
+# DUMPS (default 2) whole dumps after the last kill, the least of them
+# standing in for the collection. IRAM free, PSRAM free, every VM pool and the
+# fmrb_wasm: runtime line are kept.
 require "fileutils"
 require "json"
 require "net/http"
@@ -166,7 +169,8 @@ module Regress
     def summary(res)
       first = res["rounds"].first || {}
       idle = res["idle"] || {}
-      lines = ["#{res['label']}: #{res['rounds'].size} rounds (warm-up #{res['warmup']}, #{res['seconds']}s)"]
+      lines = ["#{res['label']}: #{res['rounds'].size} rounds (warm-up #{res['warmup']}, #{res['seconds']}s" \
+               "#{res['collect'] ? "; #{res['collect']}" : ''})"]
       res["judged"].each do |name, j|
         start = idle[name] ? "idle #{kb(idle[name])}, round 1 #{kb(first.dig('pools', name) || first.dig('free', name))}; " : ""
         lines << "  #{start}#{verdict_text(name, j)}"
@@ -389,6 +393,7 @@ module Regress
         raise BoardError, "no serial capture log (#{@log}); start one with the MCP serial_start" unless File.exist?(@log)
         @ip = ENV["BOARD_IP"].to_s.empty? ? ip_from_log : ENV["BOARD_IP"]
         raise BoardError, "no 'Connected, ip=' in the board's log; give BOARD_IP=" unless @ip
+        @gc = nil # nil: not asked yet; true: /sys/gc answers; false: the old firmware's way
       end
 
       def run
@@ -401,9 +406,11 @@ module Regress
           groups = named.empty? ? [["apps", picked]] : named
         end
         label = "#{@t.name} #{@opts[:group] ? groups.map(&:first).join('+') : 'all'}"
-        idle = settle_dumps("idle")
+        @notes = []
+        idle = settle_dumps("idle", @notes)
         res = { "label" => label, "board" => @t.firmware, "groups" => groups, "ip" => "(from the log)",
-                "idle" => flat(idle), "idle_dump" => idle, "rounds" => [], "notes" => [] }
+                "idle" => flat(idle), "idle_dump" => idle, "rounds" => [], "notes" => @notes.dup,
+                "collect" => @gc ? "devctl /sys/gc" : "least of the periodic dumps (no /sys/gc)" }
         @opts[:rounds].times do |i|
           r0 = Soak.now
           groups.each do |pt, list|
@@ -416,7 +423,7 @@ module Regress
             sleep SR::SETTLE
             res["notes"] << "round #{i + 1} #{pt}: #{pids.compact.size} of #{list.size} started" if pids.compact.size != list.size
           end
-          d = settle_dumps("round #{i + 1}")
+          d = settle_dumps("round #{i + 1}", res["notes"])
           row = { "pools" => d["pools"], "free" => { "iram_free" => d["iram_free"], "psram_free" => d["psram_free"] },
                   "wasm" => d["wasm"], "seconds" => (Soak.now - r0).round }
           res["rounds"] << row
@@ -435,23 +442,60 @@ module Regress
         nil
       end
 
-      # DUMPS whole periodic dumps that start after now; the least usage and
-      # the most free memory of them (a dump each 10 s).
-      def settle_dumps(what)
-        from = lines.size
-        want = @opts[:dumps]
-        dumps = Soak.wait(15 * want + 20, "#{want} periodic dumps (#{what}); is debug mode on?") do
-          got = Soak.parse_dumps(lines.drop(from))
-          got.size >= want ? got.first(want) : nil
+      # The numbers after a round: with /sys/gc, DUMPS times a collection in
+      # every app and the first whole dump that starts after it; without it,
+      # DUMPS whole dumps that start after now. The least usage and the most
+      # free memory of them (a dump each 10 s).
+      def settle_dumps(what, notes)
+        collect(what, notes) if @gc.nil?
+        unless @gc
+          want = @opts[:dumps] || 2
+          return Soak.least(next_dumps(want, what))
+        end
+        want = @opts[:dumps] || 1
+        dumps = Array.new(want) do |k|
+          collect(what, notes) unless k.zero? && @gc_fresh
+          @gc_fresh = false
+          next_dumps(1, what).first
         end
         Soak.least(dumps)
       end
 
-      def http(method, path, query = {})
+      def next_dumps(want, what)
+        from = lines.size
+        Soak.wait(15 * want + 20, "#{want} periodic dumps (#{what}); is debug mode on?") do
+          got = Soak.parse_dumps(lines.drop(from))
+          got.size >= want ? got.first(want) : nil
+        end
+      end
+
+      # A full collection in every app (devctl /sys/gc), once again for an app
+      # that timed out (the sim's snapshot does the same). The first call
+      # finds out whether the firmware has the route at all.
+      def collect(what, notes)
+        2.times do |k|
+          j = http(:post, "/sys/gc", { max: 5000 }, allow404: @gc.nil?)
+          if j.nil?
+            @gc = false
+            notes << "the firmware has no /sys/gc: the least of the periodic dumps stands in for the collection"
+            warn "soak: no /sys/gc on the board; falling back to the least of #{@opts[:dumps] || 2} dumps"
+            return
+          end
+          @gc = true
+          @gc_fresh = true
+          slow = j.fetch("apps", []).select { |a| a["status"] == "timeout" }.map { |a| "#{a['name']}(#{a['pid']})" }
+          return if slow.empty?
+          notes << "#{what}: gc timed out in #{slow.join(', ')}#{k.zero? ? ', asked again' : ''}"
+        end
+      end
+
+      # The answer's JSON; nil for a 404 when allow404 (a route the firmware lacks).
+      def http(method, path, query = {}, allow404: false)
         uri = URI("http://#{@ip}#{path}")
         uri.query = query.map { |k, v| "#{k}=#{v.to_s.gsub(%r{[^A-Za-z0-9_.~/-]}) { |c| c.bytes.map { |b| format('%%%02X', b) }.join }}" }.join("&") unless query.empty?
         req = (method == :get ? Net::HTTP::Get : Net::HTTP::Post).new(uri)
         res = Net::HTTP.start(uri.host, uri.port, open_timeout: 5, read_timeout: 15) { |h| h.request(req) }
+        return nil if allow404 && res.code == "404"
         j = JSON.parse(res.body.to_s) rescue nil # rubocop:disable Style/RescueModifier
         raise BoardError, "#{path} #{query.inspect} answered #{res.code} #{res.body.to_s[0, 120]}" unless res.code == "200" && j
         j
@@ -462,8 +506,8 @@ module Regress
       end
 
       def apps = http(:get, "/app/list").fetch("apps", [])
-      def spawn(path) = http(:post, "/app/launch", path: path)["pid"]
-      def kill(pid) = http(:post, "/app/kill", pid: pid)
+      def spawn(path) = http(:post, "/app/launch", { path: path })["pid"]
+      def kill(pid) = http(:post, "/app/kill", { pid: pid })
     end
 
     def wait(timeout, what)
@@ -522,7 +566,7 @@ module Regress
 
     def main(argv)
       opts = { rounds: ROUNDS, warmup: WARMUP, only: ENV["ONLY"], group: nil, split: false, board: nil,
-               dumps: 2, table: false, no_build: false }
+               dumps: nil, table: false, no_build: false }
       OptionParser.new do |o|
         o.on("--rounds N", Integer) { |v| opts[:rounds] = v }
         o.on("--warmup N", Integer) { |v| opts[:warmup] = v }
