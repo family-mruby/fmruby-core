@@ -4,60 +4,60 @@
 == start
 sprite_clip 0 0 0 0
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene0_far.bmp (1/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene0_far.png (1/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene0_mid.bmp (2/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene0_mid.png (2/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene0_gnd.bmp (3/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene0_gnd.png (3/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene1_far.bmp (4/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene1_far.png (4/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene1_mid.bmp (5/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene1_mid.png (5/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene1_gnd.bmp (6/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene1_gnd.png (6/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene2_far.bmp (7/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene2_far.png (7/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene2_mid.bmp (8/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene2_mid.png (8/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene2_gnd.bmp (9/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene2_gnd.png (9/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene3_far.bmp (10/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene3_far.png (10/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene3_mid.bmp (11/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene3_mid.png (11/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene3_gnd.bmp (12/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene3_gnd.png (12/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene4_far.bmp (13/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene4_far.png (13/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene4_mid.bmp (14/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene4_mid.png (14/15)" #FF defaultx1
 present
 fill_rect 0 0 426 240 #53
-text 8 8 "Walk Scroller: loading scene4_gnd.bmp (15/15)" #FF defaultx1
+text 8 8 "Walk Scroller: loading scene4_gnd.png (15/15)" #FF defaultx1
 present
 sprite_image 101 48 75 0 1
-load_bmp 101 "/cache/app/walk_scroller/default/walker_0.bmp"
+load_bmp 101 "/cache/app/walk_scroller/default/walker_0.png"
 sprite_image 102 48 75 0 1
-load_bmp 102 "/cache/app/walk_scroller/default/walker_1.bmp"
+load_bmp 102 "/cache/app/walk_scroller/default/walker_1.png"
 sprite_image 103 48 75 0 1
-load_bmp 103 "/cache/app/walk_scroller/default/walker_2.bmp"
+load_bmp 103 "/cache/app/walk_scroller/default/walker_2.png"
 sprite_image 104 48 75 0 1
-load_bmp 104 "/cache/app/walk_scroller/default/walker_3.bmp"
+load_bmp 104 "/cache/app/walk_scroller/default/walker_3.png"
 sprite_image 105 48 75 0 1
-load_bmp 105 "/cache/app/walk_scroller/default/walker_stand.bmp"
+load_bmp 105 "/cache/app/walk_scroller/default/walker_stand.png"
 sprite 106 [101,102,103,104,105] 98 123 2
 sprite_frame 106 4
 sprite_image 107 426 124 0 1
@@ -69,11 +69,11 @@ fill_rect 0 0 300 10 #00
 fill_rect 293 2 5 5 #E0
 sprite_target 0
 sprite_image 111 426 160 0 1
-load_bmp 111 "/cache/app/walk_scroller/default/scene0_far.bmp"
+load_bmp 111 "/cache/app/walk_scroller/default/scene0_far.png"
 sprite_image 112 426 84 0 1
-load_bmp 112 "/cache/app/walk_scroller/default/scene0_mid.bmp"
+load_bmp 112 "/cache/app/walk_scroller/default/scene0_mid.png"
 sprite_image 113 426 50 0 1
-load_bmp 113 "/cache/app/walk_scroller/default/scene0_gnd.bmp"
+load_bmp 113 "/cache/app/walk_scroller/default/scene0_gnd.png"
 sprite_move 106 98 123
 sprite_target 107
 fill_rect 0 0 426 124 #00
