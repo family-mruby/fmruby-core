@@ -3,6 +3,7 @@
 # tour.app.wasm.
 app_screen_name = "TinyGo tour"
 language = "tinygo"
+icon = "usr/share/icon/tinygo.icon"
 default_window_mode = "window"
 default_window_width = 230
 default_window_height = 175

@@ -1,0 +1,16 @@
+# C (12x12) color=0x4F
+# The letter C cut out of a rounded tile, in a slate blue (the colour C is
+# usually shown in on code sites; #5C6BC0 -> RGB332 0x4F). The same tile as
+# the other wasm languages' icons, so they read as one family.
+.1111111111.
+111111111111
+11111...1111
+1111.111.111
+111.11111111
+111.11111111
+111.11111111
+111.11111111
+1111.111.111
+11111...1111
+111111111111
+.1111111111.

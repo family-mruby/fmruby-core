@@ -1,0 +1,15 @@
+# Zig (12x12) color=0xF0
+# The letters "Zg" cut out of a rounded tile, in an amber (#F7A41D ->
+# RGB332 0xF0, one step redder than Python's yellow so the two stay apart).
+.1111111111.
+111111111111
+111111111111
+11....111111
+11111.11...1
+1111.11.11.1
+111.111.11.1
+11.11111...1
+11....1111.1
+11111111..11
+111111111111
+.1111111111.

@@ -1,0 +1,16 @@
+# wasm (12x12) color=0x6B
+# A wasm app whose .app.toml names no icon of its own: the letter W cut out
+# of the same rounded tile as the C, TinyGo, Rust and Zig icons, in a violet
+# (#654FF0 -> RGB332 0x6B).
+.1111111111.
+111111111111
+111111111111
+111111111111
+11.111111.11
+11.111111.11
+11.11..11.11
+11.1.11.1.11
+11..1111..11
+111111111111
+111111111111
+.1111111111.

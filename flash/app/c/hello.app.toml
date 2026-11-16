@@ -3,6 +3,7 @@
 # launcher's category).
 app_screen_name = "C hello"
 language = "c"
+icon = "usr/share/icon/c.icon"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 70

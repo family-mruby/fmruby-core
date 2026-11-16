@@ -3,6 +3,7 @@
 # tour.app.wasm.
 app_screen_name = "C tour"
 language = "c"
+icon = "usr/share/icon/c.icon"
 default_window_mode = "window"
 default_window_width = 230
 default_window_height = 175

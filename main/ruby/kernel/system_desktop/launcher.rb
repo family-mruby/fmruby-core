@@ -194,6 +194,9 @@ module LauncherMixin
     "lua" => "usr/share/icon/lua.icon",
     "bas" => "usr/share/icon/basic.icon",
     "py"  => "usr/share/icon/python.icon",
+    # A wasm app's own .app.toml usually names its language's icon (c, tinygo,
+    # rust, zig); this is for one that does not.
+    "wasm" => "usr/share/icon/wasm.icon",
   }
 
   # Fallback icon characters (when icon file is not available)

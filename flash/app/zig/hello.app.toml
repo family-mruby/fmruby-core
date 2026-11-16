@@ -3,6 +3,7 @@
 # launcher's category).
 app_screen_name = "Zig hello"
 language = "zig"
+icon = "usr/share/icon/zig.icon"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 70

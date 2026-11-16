@@ -2,6 +2,7 @@
 # docs/getting_started.md, tinygo/examples/hello). Rebuild with
 #   ruby tinygo/build.rb hello -o <fmruby-core>/flash/app/tinygo
 app_screen_name = "TinyGo hello"
+icon = "usr/share/icon/tinygo.icon"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 70

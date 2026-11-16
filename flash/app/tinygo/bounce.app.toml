@@ -4,6 +4,7 @@
 app_screen_name = "TinyGo bounce"
 app_screen_name_ja = "TinyGo バウンド"
 language = "tinygo"
+icon = "usr/share/icon/tinygo.icon"
 default_window_mode = "window"
 default_window_width = 180
 default_window_height = 120

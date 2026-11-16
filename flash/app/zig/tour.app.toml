@@ -3,6 +3,7 @@
 # tour.app.wasm.
 app_screen_name = "Zig tour"
 language = "zig"
+icon = "usr/share/icon/zig.icon"
 default_window_mode = "window"
 default_window_width = 230
 default_window_height = 175
