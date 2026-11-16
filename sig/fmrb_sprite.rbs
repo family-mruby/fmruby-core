@@ -77,19 +77,24 @@ class SpriteImage
   # ```
   def draw: () -> void
 
-  # BMP のファイルをこの絵に読み込む <<en>> Read a BMP file into this image
+  # 絵 (PNG か BMP) をこの絵に読み込む <<en>> Read a PNG or BMP into this image
   #
-  # **BMP だけ**。PNG は `FmrbGfx#create_image` の方。展開は描画側でやる。
+  # PNG (色は上位の 3/3/2 ビットで RGB332 になる。アルファは透明色に
+  # ならない) か、画素の値が RGB332 の 8 bit BMP。先頭のバイトで見分ける。
+  # 名前は BMP しか読めなかった頃のまま。展開は描画側でやる。一枚絵は
+  # `FmrbGfx#create_image` の方。
   # ```ruby
   # img.load_bmp(
-  #   "/usr/share/sprites/flappy/bird_up.bmp")
+  #   "/usr/share/sprites/flappy/bird_up.png")
   # ```
   # <<en>>
-  # **BMP only**; PNG goes through `FmrbGfx#create_image`. It is decoded on
-  # the graphics side.
+  # A PNG (its colours become RGB332 by their top 3/3/2 bits; alpha is not
+  # transparency) or an 8-bit BMP whose pixel values are RGB332, told apart
+  # by the first bytes. The name is from when it read BMP only. It is decoded
+  # on the graphics side. A whole picture goes through `FmrbGfx#create_image`.
   # ```ruby
   # img.load_bmp(
-  #   "/usr/share/sprites/flappy/bird_up.bmp")
+  #   "/usr/share/sprites/flappy/bird_up.png")
   # ```
   def load_bmp: (String path) -> void
 
@@ -118,7 +123,7 @@ class SpriteInstance
   #
   # ```ruby
   # img = SpriteImage.new(gfx, width: 16, height: 16)
-  # img.load_bmp("/app/img/player.bmp")
+  # img.load_bmp("/app/img/player.png")
   # sp = SpriteInstance.new(gfx, img, x: 40, y: 80)
   # sp.move(48, 80)
   # ```
@@ -128,7 +133,7 @@ class SpriteInstance
   #
   # ```ruby
   # img = SpriteImage.new(gfx, width: 16, height: 16)
-  # img.load_bmp("/app/img/player.bmp")
+  # img.load_bmp("/app/img/player.png")
   # sp = SpriteInstance.new(gfx, img, x: 40, y: 80)
   # sp.move(48, 80)
   # ```

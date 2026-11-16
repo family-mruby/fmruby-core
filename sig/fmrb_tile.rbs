@@ -7,16 +7,16 @@
 class TileSheet
   # タイルの絵を読み込む <<en>> Load a sheet of tiles
   #
-  # 並んだ絵を 1 枚の BMP から読む。
+  # 並んだ絵を 1 枚の PNG (か BMP) から読む。
   # ```ruby
   # sheet = TileSheet.new(gfx,
-  #   "/app/img/world.bmp")
+  #   "/app/img/world.png")
   # ```
   # <<en>>
-  # Reads a grid of pictures from one BMP.
+  # Reads a grid of pictures from one PNG (or BMP).
   # ```ruby
   # sheet = TileSheet.new(gfx,
-  #   "/app/img/world.bmp")
+  #   "/app/img/world.png")
   # ```
   def self.new: (FmrbGfx gfx, String path) -> TileSheet
 

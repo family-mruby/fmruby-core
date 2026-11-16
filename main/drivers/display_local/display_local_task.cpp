@@ -2318,38 +2318,87 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         // The whole file is read into the system pool (PSRAM on the P4
         // boards, 500 KB, shared). 256 KB takes one 640x360 picture, the
         // largest screen an app gets (231,478 B as an 8-bit BMP), and leaves
-        // the pool room for everyone else.
+        // the pool room for everyone else. A PNG of the same picture is a
+        // few KB.
         if (fsz <= 0 || fsz > 256 * 1024) {
             FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: invalid file size %ld", fsz);
             fclose(fp);
             return -1;
         }
 
-        uint8_t *bmp_buf = (uint8_t *)fmrb_sys_malloc((size_t)fsz);
-        if (!bmp_buf) {
+        uint8_t *file_buf = (uint8_t *)fmrb_sys_malloc((size_t)fsz);
+        if (!file_buf) {
             fclose(fp);
             return -1;
         }
-        fread(bmp_buf, 1, (size_t)fsz, fp);
+        size_t got = fread(file_buf, 1, (size_t)fsz, fp);
         fclose(fp);
-
-        fmrb_bmp332_t bmp;
-        if (fmrb_bmp332_parse(bmp_buf, (size_t)fsz, &bmp) != 0) {
-            FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: parse failed: %s", full_path);
-            fmrb_sys_free(bmp_buf);
+        if ((long)got != fsz) {
+            FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: short read: %s", full_path);
+            fmrb_sys_free(file_buf);
             return -1;
         }
 
-        uint16_t copy_w = (uint16_t)((bmp.width  < (uint16_t)spr->width())  ? bmp.width  : spr->width());
-        uint16_t copy_h = (uint16_t)((bmp.height < (uint16_t)spr->height()) ? bmp.height : spr->height());
+        // The picture is an 8-bit BMP whose bytes are RGB332 colours, or a
+        // PNG; the first bytes tell. Either way it becomes a grid of RGB332
+        // bytes first and goes into the RGB565 sprite through the same
+        // drawPixel below, so a PNG gives exactly the pixel values the BMP
+        // did (transparent-colour comparisons such as mahjong's 0xE3 stay
+        // the same).
+        static const uint8_t k_png_sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+        const uint8_t *pixels = nullptr;
+        uint16_t src_w = 0, src_h = 0;
+        fmrb_bmp332_t bmp;
+        LGFX_Sprite png_spr;
+        if (fsz >= 24 && memcmp(file_buf, k_png_sig, sizeof(k_png_sig)) == 0) {
+            const uint32_t pw = ((uint32_t)file_buf[16] << 24) | ((uint32_t)file_buf[17] << 16) |
+                                ((uint32_t)file_buf[18] << 8) | file_buf[19];
+            const uint32_t ph = ((uint32_t)file_buf[20] << 24) | ((uint32_t)file_buf[21] << 16) |
+                                ((uint32_t)file_buf[22] << 8) | file_buf[23];
+            if (pw == 0 || ph == 0 || pw > 2048 || ph > 2048) {
+                FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: PNG %s is %lux%lu", full_path,
+                          (unsigned long)pw, (unsigned long)ph);
+                fmrb_sys_free(file_buf);
+                return -1;
+            }
+            // Decoded into an 8-bit (RGB332) scratch sprite in PSRAM, no
+            // bigger than the target: the decoder's RGB888 keeps its top
+            // 3/3/2 bits there, which gives back the RGB332 value each
+            // palette colour was expanded from.
+            src_w = (uint16_t)(pw < (uint32_t)spr->width()  ? pw : (uint32_t)spr->width());
+            src_h = (uint16_t)(ph < (uint32_t)spr->height() ? ph : (uint32_t)spr->height());
+            png_spr.setColorDepth(lgfx::rgb332_1Byte);
+            png_spr.setPsram(true);
+            if (!png_spr.createSprite(src_w, src_h) ||
+                !png_spr.drawPng(file_buf, (size_t)fsz, 0, 0, src_w, src_h)) {
+                FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: PNG decode failed: %s", full_path);
+                png_spr.deleteSprite();
+                fmrb_sys_free(file_buf);
+                return -1;
+            }
+            pixels = (const uint8_t *)png_spr.getBuffer();
+        } else {
+            if (fmrb_bmp332_parse(file_buf, (size_t)fsz, &bmp) != 0) {
+                FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: parse failed: %s", full_path);
+                fmrb_sys_free(file_buf);
+                return -1;
+            }
+            pixels = bmp.pixels;
+            src_w = bmp.width;
+            src_h = bmp.height;
+        }
+
+        uint16_t copy_w = (uint16_t)((src_w < (uint16_t)spr->width())  ? src_w : spr->width());
+        uint16_t copy_h = (uint16_t)((src_h < (uint16_t)spr->height()) ? src_h : spr->height());
         for (uint16_t y = 0; y < copy_h; y++) {
             for (uint16_t x = 0; x < copy_w; x++) {
-                spr->drawPixel(x, y, bmp.pixels[(size_t)y * bmp.width + x]);
+                spr->drawPixel(x, y, pixels[(size_t)y * src_w + x]);
             }
         }
-        fmrb_sys_free(bmp_buf);
+        png_spr.deleteSprite();
+        fmrb_sys_free(file_buf);
         FMRB_LOGI(TAG, "LOAD_SPRITE_BMP: loaded %s -> image %u (%ux%u)",
-                  full_path, cmd->image_id, bmp.width, bmp.height);
+                  full_path, cmd->image_id, src_w, src_h);
         return 0;
     }
 

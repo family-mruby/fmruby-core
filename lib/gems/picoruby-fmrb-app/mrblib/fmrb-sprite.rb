@@ -36,7 +36,8 @@ class SpriteImage
     reset_target
   end
 
-  # Load a BMP file into this sprite image (fast: decoded on graphics-audio side)
+  # Load a picture (a PNG, or an 8-bit RGB332 BMP) into this sprite image
+  # (fast: decoded on the graphics side; the name is from the BMP-only days)
   def load_bmp(path)
     @gfx._load_sprite_image_bmp(@id, path)
   end
