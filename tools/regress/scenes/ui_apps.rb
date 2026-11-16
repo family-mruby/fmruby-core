@@ -97,7 +97,7 @@ Regress.app "monitor", "main/ruby/default_app/monitor.app.rb" do
   scene "wasm" do |s|
     s.env.extra[:ps] = [
       { id: 0, pid: 0, name: "kernel", state: 2, type: 0, vm_type: 3, mem_used: 0, mem_total: 0 },
-      { id: 5, pid: 5, name: "bounce", state: 2, type: 2, vm_type: 5, mem_used: 200 * 1024,
+      { id: 5, pid: 5, name: "tour", state: 2, type: 2, vm_type: 5, mem_used: 200 * 1024,
         mem_total: 1024 * 1024 }
     ]
     s.env.extra[:wasm] = { running: 1, apps: 1, modules: 1, natives: 124, pool_total: 256 * 1024,
