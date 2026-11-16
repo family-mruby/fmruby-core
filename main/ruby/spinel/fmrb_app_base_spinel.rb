@@ -523,6 +523,9 @@ class FmrbGfx
     [:default] => { char_w: 6,  half_w: 6, kana_w: 4,  line_h: 8  },
     [:ja, 8]   => { char_w: 8,  half_w: 4, kana_w: 4,  line_h: 8  },
     [:ja, 12]  => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
+    [:ja, 16]  => { char_w: 16, half_w: 8, kana_w: 16, line_h: 16 },
+    # The bold cut is the same metal-width as the regular one (fmrb-gfx.rb).
+    [:ja_bold, 12] => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
   }
 
   attr_reader :current_font, :current_text_size, :canvas_width, :canvas_height
@@ -541,6 +544,7 @@ class FmrbGfx
     @canvas_width = width
     @canvas_height = height
     @current_font = [:default]
+    @asked_font = [:default]
     @current_text_size = 1
   end
 
@@ -576,15 +580,42 @@ class FmrbGfx
   def fill_arc(x, y, r0, r1, a0, a1, color); FmrbBoundary.fmrb_bnd_gfx_fill_arc(@d, x, y, r0, r1, a0, a1, color); self; end
 
   # ---- text (with font/size caching, like fmrb-gfx.rb) ----
+  # The same as the mruby FmrbGfx#set_font (fmrb-gfx.rb, doc/app_boundary
+  # "set_font の mruby と Spinel の違い"): the size left out is 8, the font
+  # asked for becomes the nearest one this machine has (resolve_font) and the
+  # answer is what was selected, [family, size] or [:default] -- also what
+  # current_font, text_width and font_height then measure.
   def set_font(family, size = nil)
-    sz = size || 12
-    # Without the efontJA fonts (FMRB_FONT_JA=0) Japanese is misaki 8 alone;
-    # the shim selects it too (fmrb_spx_gfx_set_font).
-    sz = 8 if family == :ja && !FmrbConst::FONT_JA
-    @current_font = size ? [family, sz] : [family]
-    # :ja_bold is not selected here (FONT_METRICS has no bold): the regular cut.
-    set_font_raw(family == :ja ? :ja : :default, sz)
-    self
+    if family == :default
+      @asked_font = [:default]
+      @current_font = [:default]
+      set_font_raw(:default, 12)
+      return @current_font
+    end
+    sz = size || 8
+    @asked_font = [family, sz]
+    key = resolve_font(family, sz)
+    @current_font = key
+    set_font_raw(key[0], key.length > 1 ? key[1] : 12)
+    key
+  end
+
+  # Nearest font this machine has (FmrbGfx.resolve_font of the mruby class):
+  # both families carry misaki 8, efont 12 and 16 and the bold 12; a build
+  # without the efontJA fonts has misaki 8 alone. A size it does not carry
+  # falls back to 12, a bold it does not carry to the regular cut.
+  def resolve_font(family, size)
+    return [:default] unless family == :ja || family == :ja_bold
+    return [:ja, 8] unless FmrbConst::FONT_JA
+    return [:ja_bold, 12] if family == :ja_bold && size == 12
+    return [:ja, size] if size == 8 || size == 12 || size == 16
+    [:ja, 12]
+  end
+
+  # The font last asked for with set_font, before the nearest was picked
+  # (current_font): what the frame puts back around itself.
+  def _asked_font
+    @asked_font
   end
 
   # The simple forms (the *_raw methods of sig/fmrb_gfx.rbs).
@@ -1559,7 +1590,7 @@ class FmrbApp
       _apply_rounded_corner_regions
       return
     end
-    saved_font = @gfx.current_font
+    saved_font = @gfx._asked_font
     saved_size = @gfx.current_text_size
     @gfx.set_font(:default)
     @gfx.set_text_size(1)

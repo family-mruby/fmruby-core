@@ -91,6 +91,11 @@ Return キーでも閉じられるようにする。
 - System Monitor に WAMR の欄 (ページか、タスクの一覧の列)。Shell の `ps` のエンジンの列に wasm。
 - 10 秒ごとのシリアルのダンプに `fmrb_wasm:` の行。
 
+## set_font の mruby と Spinel の違い (2026-11-16 ユーザ決定、doc/app_boundary/plan.md)
+
+**済 (2026-11-16、wt/small)**: Spinel の `FmrbGfx#set_font` を mruby に揃えた (`:ja_bold` を選ぶ、近い字への
+置き換え、返り値は選ばれた `[family, size]`、大きさを省くと 8、`current_font` と幅の測り方も mruby と同じ)。
+
 ## 回帰の道具を壊れにくくする (2026-11-16 記録、ユーザの指摘)
 
 今夜だけで、作りの変化と関係ない所で道具が落ち、調べて直して流し直す手間が何度も出た: ブラウザ版はランチャーの
