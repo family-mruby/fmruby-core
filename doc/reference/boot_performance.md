@@ -196,6 +196,8 @@ GC を切っても速くならない。
   デコードさせる。BMP は GA 側に 1 度転送してキャッシュ。**4.0 秒 → 1.33 秒**。
   `load_icon` / `@icon_cache` / `_force_gc` は役目を終えたので削除
   (`_force_gc` は per-pixel の churn 対策だったので、churn ごと消えた)。
+  (2026-11-16 doc/flash_layout F2 で絵はパレットの PNG になった。道具は
+  `tools/gen_icon_png.rb`、読む所は BMP も読む。)
 - **GA 側の file STATUS が CRC32 を返すように** (fmruby-graphics-audio 43fb541)。
   毎ブートの再転送 240 ms が消えた。
 - **ブート画面の引き継ぎを直した** (fmruby-graphics-audio e96f874)。INIT_DISPLAY
