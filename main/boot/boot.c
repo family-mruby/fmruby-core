@@ -33,7 +33,7 @@
 #include "ble_task.h"
 #ifdef FMRB_HAS_WIFI
 #include "wifi_task.h"
-#if defined(FMRB_DEV_REMOTE_CTL) && !defined(FMRB_HW_MODERN)
+#if !defined(FMRB_HW_MODERN)
 #include "devctl_task.h"
 #endif
 #endif
@@ -628,12 +628,13 @@ void fmrb_os_init(void)
             if (wret != FMRB_OK && wret != FMRB_ERR_NOT_FOUND) {
                 FMRB_LOGW(TAG, "Failed to start WiFi, continuing without it");
             }
-#ifdef FMRB_DEV_REMOTE_CTL
+#if !defined(FMRB_HW_MODERN)
             // Retro has no remote desktop to hang these off, so they get a
             // server of their own -- here, where WiFi has just been asked
-            // for, so a machine without it creates no task at all.
+            // for, so a machine without it creates no task at all. A release
+            // build too, behind the guard (doc/remote_guard G2).
             else if (devctl_start() != FMRB_OK) {
-                FMRB_LOGW(TAG, "development remote control not started");
+                FMRB_LOGW(TAG, "remote control (devctl) not started");
             }
             // Its own snapshot: this is the one subsystem here that a person
             // can decide not to have, so what it costs should be readable

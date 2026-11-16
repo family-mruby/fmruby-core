@@ -22,11 +22,17 @@
 // viewer as well. Retro starts a small server of its own once WiFi is up
 // (devctl_task.c), so a machine with no network pays nothing.
 //
-// This is unauthenticated, like the remote desktop, and compiled in only when
-// FMRB_DEV_REMOTE_CTL is defined -- a release build does not carry it. The
-// development build reads and writes every file, keys included
-// (devctl_fs_unrestricted). Plan and history: doc/dev_remote_ctl/plan.md,
-// doc/remote_guard/plan.md.
+// Two kinds of build carry it (doc/remote_guard/plan.md):
+// - The development build (FMRB_DEV_REMOTE_CTL, the default) is free: no
+//   pairing, and the file endpoints read and write every file, keys included
+//   (devctl_fs_unrestricted).
+// - A release build arms the guard (main/kernel/fmrb_remote_guard.c): every
+//   route here answers 401 until the owner turns on "Remote control" in
+//   Config and the PC has paired with the number shown there (POST /pair,
+//   then the token in an X-Fmrb-Token header or a token= query value).
+//   Files are written only under /home and /app (403 elsewhere) and the keys
+//   are never read. /status stays open so the tools can find the board.
+// Plan and history: doc/dev_remote_ctl/plan.md, doc/remote_guard/plan.md.
 //
 // Every query value is decoded the same way before a handler sees it
 // (ctl_query_value): %XX and "+" (a space), as a query string is written. A
@@ -40,6 +46,7 @@
 #include "fmrb_hal_file.h"
 #include "host_task.h"
 #include "fmrb_secret_path.h"
+#include "fmrb_remote_guard.h"
 #include "fmrb_platform_sys.h"
 #include "fmrb_rtos.h"
 #include "wifi_task.h"
@@ -50,6 +57,11 @@
 #include "esp_http_server.h"
 #include "esp_attr.h"
 #include "esp_rom_md5.h"
+#include "esp_random.h"
+#include "esp_heap_caps.h"
+#include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "sdkconfig.h"
 
 #include <stdio.h>
@@ -73,11 +85,9 @@ static const char *TAG = "devctl";
 // that matters would be the one that never arrives; boot and crash logs come
 // from a serial capture held open for the session instead.
 //
-// This is a control plane for development and is unauthenticated, like the
-// rest of the remote desktop. It opens no door that was not already open --
-// anyone who can reach the viewer can drive the launcher and start anything --
-// but it is compiled out unless FMRB_DEV_REMOTE_CTL is defined, so a release
-// build does not carry it.
+// A control plane for development. The development build leaves it open to
+// the LAN, like the rest of the remote desktop there; a release build puts
+// every route behind the guard (devctl_guard_admit, below).
 //
 // Called straight from the httpd task, the way debugd calls the same functions
 // from its own. That task has 8KB of stack against debugd's 6KB, so spawning
@@ -152,6 +162,163 @@ static bool ctl_query_value(httpd_req_t *req, const char *key, char *out, size_t
     }
     memcpy(out, v, n + 1);
     return true;
+}
+
+// ---------------------------------------------------------------
+// The release build's guard (doc/remote_guard G2)
+//
+// The rules live in main/kernel/fmrb_remote_guard.c, shared with FmrbSystem
+// (Config turns it on and shows the number). Here: where the tokens are kept
+// (NVS, up to four PCs), the randomness for numbers and tokens, a lock between
+// the httpd task and the app that runs Config, and the 401 the tools read.
+// ---------------------------------------------------------------
+
+#define RG_NVS_NAMESPACE "fmrb_rguard"
+#define RG_NVS_KEY       "tokens"
+#define RG_TOKEN_HEADER  "X-Fmrb-Token"
+
+// Created when the guard is armed (a release build only). In external RAM
+// like the guard's own state: a development build pays nothing internal.
+EXT_RAM_BSS_ATTR static SemaphoreHandle_t s_rg_mutex;
+
+static bool rg_load(void *blob, size_t len)
+{
+    nvs_handle_t h;
+    if (nvs_open(RG_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t n = len;
+    esp_err_t err = nvs_get_blob(h, RG_NVS_KEY, blob, &n);
+    nvs_close(h);
+    return err == ESP_OK && n == len;
+}
+
+static bool rg_save(const void *blob, size_t len)
+{
+    // The table lives in external RAM; hand NVS a copy on this stack.
+    uint8_t copy[FMRB_RGUARD_BLOB_SIZE];
+    if (len > sizeof(copy)) return false;
+    memcpy(copy, blob, len);
+    nvs_handle_t h;
+    if (nvs_open(RG_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return false;
+    esp_err_t err = nvs_set_blob(h, RG_NVS_KEY, copy, len);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    if (err != ESP_OK) FMRB_LOGW(TAG, "could not save the paired PCs: %d", (int)err);
+    return err == ESP_OK;
+}
+
+static void rg_random(void *buf, size_t len)
+{
+    esp_fill_random(buf, len);  // WiFi is up, so the RF noise feeds it
+}
+
+static void rg_lock(void)
+{
+    if (s_rg_mutex) xSemaphoreTake(s_rg_mutex, portMAX_DELAY);
+}
+
+static void rg_unlock(void)
+{
+    if (s_rg_mutex) xSemaphoreGive(s_rg_mutex);
+}
+
+static const fmrb_rguard_ops_t s_rg_ops = {
+    .load = rg_load, .save = rg_save, .random = rg_random,
+    .lock = rg_lock, .unlock = rg_unlock,
+};
+
+static void devctl_guard_arm(void)
+{
+    if (fmrb_rguard_state() != FMRB_RGUARD_NONE) return;
+    if (!s_rg_mutex) s_rg_mutex = xSemaphoreCreateMutex();
+    fmrb_rguard_arm(&s_rg_ops);
+}
+
+fmrb_rguard_verdict_t devctl_guard_verdict(httpd_req_t *req)
+{
+    if (fmrb_rguard_state() == FMRB_RGUARD_NONE) return FMRB_RGUARD_ALLOW;
+    char tok[FMRB_RGUARD_TOKEN_HEX_LEN + 8];
+    tok[0] = '\0';
+    if (httpd_req_get_hdr_value_str(req, RG_TOKEN_HEADER, tok, sizeof(tok)) != ESP_OK) {
+        // A browser cannot add a header to an <img> or a WebSocket.
+        char q[RD_CTL_QUERY_MAX];
+        tok[0] = '\0';
+        if (httpd_req_get_url_query_str(req, q, sizeof(q)) != ESP_OK ||
+            httpd_query_key_value(q, "token", tok, sizeof(tok)) != ESP_OK) {
+            tok[0] = '\0';
+        }
+    }
+    return fmrb_rguard_check(tok);
+}
+
+bool devctl_guard_admit(httpd_req_t *req)
+{
+    fmrb_rguard_verdict_t v = devctl_guard_verdict(req);
+    if (v == FMRB_RGUARD_ALLOW) return true;
+    char body[320];
+    snprintf(body, sizeof(body), "{\"ok\":false,\"guard\":\"%s\",\"err\":\"%s\"}",
+             fmrb_rguard_verdict_name(v), fmrb_rguard_reason(v));
+    ctl_json(req, "401 Unauthorized", body);
+    return false;
+}
+
+// Every guarded route goes through here: user_ctx is the route as it was
+// written (a static httpd_uri_t), so the handlers stay as they are.
+static esp_err_t guarded_handler(httpd_req_t *req)
+{
+    if (!devctl_guard_admit(req)) return ESP_OK;
+    const httpd_uri_t *uri = (const httpd_uri_t *)req->user_ctx;
+    return uri->handler(req);
+}
+
+// POST /pair?code=NNNNNN -> {"ok":true,"token":"<hex>"}. Open to anyone (it is
+// how a PC gets in), so it gives nothing away: a wrong number counts, and
+// after FMRB_RGUARD_CODE_TRIES of them pairing stops until the switch in
+// Config is turned off and on. A development build answers "free".
+static esp_err_t pair_handler(httpd_req_t *req)
+{
+    if (fmrb_rguard_state() == FMRB_RGUARD_NONE) {
+        return ctl_json(req, "200 OK", "{\"ok\":true,\"guard\":\"free\",\"token\":\"\"}");
+    }
+    char code[16];
+    if (!ctl_query_value(req, "code", code, sizeof(code))) code[0] = '\0';
+    char tok[FMRB_RGUARD_TOKEN_HEX_LEN + 1];
+    int left = 0;
+    fmrb_rguard_pair_t r = fmrb_rguard_pair(code, tok, &left);
+    char body[256];
+    switch (r) {
+    case FMRB_RGUARD_PAIR_OK:
+        FMRB_LOGI(TAG, "remote control: a PC paired (%d paired)", fmrb_rguard_paired());
+        snprintf(body, sizeof(body), "{\"ok\":true,\"guard\":\"open\",\"token\":\"%s\"}", tok);
+        return ctl_json(req, "200 OK", body);
+    case FMRB_RGUARD_PAIR_CLOSED:
+        return ctl_json(req, "403 Forbidden",
+                        "{\"ok\":false,\"guard\":\"closed\",\"err\":\"remote control is off on this "
+                        "board: turn on Config > Remote control first, then send the number it shows\"}");
+    case FMRB_RGUARD_PAIR_WRONG:
+        FMRB_LOGW(TAG, "remote control: a wrong pairing number (%d tries left)", left);
+        snprintf(body, sizeof(body),
+                 "{\"ok\":false,\"guard\":\"wrong\",\"left\":%d,\"err\":\"that is not the number "
+                 "shown in Config > Remote control (%d tries left)\"}", left, left);
+        return ctl_json(req, "403 Forbidden", body);
+    case FMRB_RGUARD_PAIR_LOCKED:
+    default:
+        FMRB_LOGW(TAG, "remote control: pairing locked after wrong numbers");
+        return ctl_json(req, "403 Forbidden",
+                        "{\"ok\":false,\"guard\":\"locked\",\"err\":\"too many wrong numbers: turn "
+                        "Config > Remote control off and on for a new number\"}");
+    }
+}
+
+// GET /auth -> 200 {"ok":true} when this request would be let in, the 401
+// otherwise. For a tool or the viewer to check its token before a WebSocket,
+// whose refusal cannot carry a reason (the handshake is answered first).
+static esp_err_t auth_handler(httpd_req_t *req)
+{
+    if (!devctl_guard_admit(req)) return ESP_OK;
+    const char *g = fmrb_rguard_state() == FMRB_RGUARD_NONE ? "free" : "open";
+    char body[64];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"guard\":\"%s\"}", g);
+    return ctl_json(req, "200 OK", body);
 }
 
 static esp_err_t launch_handler(httpd_req_t *req)
@@ -259,10 +426,9 @@ static esp_err_t list_handler(httpd_req_t *req)
 // hold keys and passwords -- so /home can be backed up and restored over WiFi
 // and a firmware's storage brought up to date without a full flash
 // (doc/remote_guard G0). Otherwise only the four roots apps use (/app, /home,
-// /usr/share, /mnt/sd) are reachable and the keys are never read; that is the
-// footing for a release build that carries these endpoints (G1, G2). Today
-// only the development build compiles this file: unauthenticated, compiled out
-// of a release.
+// /usr/share, /mnt/sd) are reachable, files are written only under /home and
+// /app, and the keys are never read: a release build (G1), whose routes are
+// also behind the guard (G2).
 //
 // Transfers stream through one static 4KB buffer rather than the httpd task's
 // 8KB stack. A put writes to "<path>.part" and renames at the end so a dropped
@@ -279,14 +445,23 @@ static esp_err_t list_handler(httpd_req_t *req)
 // buffer inside sdmmc_write_sectors). So it can live in PSRAM. The S3 keeps it
 // internal until that is verified on a Retro board
 // (doc/iram_reduction/report/r2.md).
+//
+// On the S3 it is taken from the heap when the server starts (devctl_http_
+// register), not kept in .bss: the server exists only once WiFi is up, and a
+// release build carries this file too, so a board that never starts WiFi
+// should not pay 4KB of internal RAM for it.
 #if CONFIG_IDF_TARGET_ESP32S3
-static uint8_t s_fs_buf[RD_FS_IO_CHUNK];
+static uint8_t *s_fs_buf;
+#define RD_FS_BUF_SIZE RD_FS_IO_CHUNK
 #else
 EXT_RAM_BSS_ATTR static uint8_t s_fs_buf[RD_FS_IO_CHUNK];
+#define RD_FS_BUF_SIZE sizeof(s_fs_buf)
 #endif
 
 bool devctl_fs_unrestricted(void)
 {
+    // The development build; a release build is built with
+    // FMRB_DEV_REMOTE_CTL=OFF (rake build:esp32 with FMRB_RELEASE=1 does so).
 #ifdef FMRB_DEV_REMOTE_CTL
     return true;
 #else
@@ -319,9 +494,11 @@ static bool fs_path_allowed(const char *vpath)
 }
 
 // Query "path" -> checked virtual path and resolved real path. Answers the
-// request itself on failure so the handlers can just return.
+// request itself on failure so the handlers can just return. write: the
+// request changes the file system (put, del, mkdir), which a restricted build
+// allows only under /home and /app (doc/remote_guard G1).
 static bool fs_req_path(httpd_req_t *req, char *vpath, size_t vlen,
-                        char *rpath, size_t rlen)
+                        char *rpath, size_t rlen, bool write)
 {
     if (!ctl_query_value(req, "path", vpath, vlen) || vpath[0] == '\0') {
         ctl_json(req, "400 Bad Request", "{\"ok\":false,\"err\":\"path required\"}");
@@ -330,6 +507,12 @@ static bool fs_req_path(httpd_req_t *req, char *vpath, size_t vlen,
     if (!fs_path_allowed(vpath)) {
         ctl_json(req, "400 Bad Request",
                  "{\"ok\":false,\"err\":\"path outside /mnt/sd, /home, /app, /usr/share\"}");
+        return false;
+    }
+    if (write && !devctl_fs_unrestricted() && !fmrb_rguard_write_allowed(vpath)) {
+        ctl_json(req, "403 Forbidden",
+                 "{\"ok\":false,\"err\":\"a release build changes files only under /home and /app "
+                 "(the rest is the firmware's own; update it by flashing)\"}");
         return false;
     }
     fmrb_hal_file_resolve_path(vpath, rpath, rlen);
@@ -353,7 +536,7 @@ static esp_err_t fs_list_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), false)) return ESP_OK;
 
     DIR *dir = opendir(rpath);
     if (!dir) {
@@ -401,7 +584,7 @@ static esp_err_t fs_get_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), false)) return ESP_OK;
     fmrb_path_class_t cls = fmrb_path_classify(vpath);
     if (!devctl_fs_unrestricted() &&
         (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_PASSWORD)) {
@@ -416,7 +599,7 @@ static esp_err_t fs_get_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/octet-stream");
     size_t total = 0;
     size_t n;
-    while ((n = fread(s_fs_buf, 1, sizeof(s_fs_buf), f)) > 0) {
+    while ((n = fread(s_fs_buf, 1, RD_FS_BUF_SIZE, f)) > 0) {
         if (httpd_resp_send_chunk(req, (const char *)s_fs_buf, n) != ESP_OK) {
             fclose(f);
             FMRB_LOGW(TAG, "dev fs: get %s aborted after %u bytes", vpath, (unsigned)total);
@@ -433,7 +616,7 @@ static esp_err_t fs_put_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), true)) return ESP_OK;
 
     char tmp[RD_FS_RPATH_MAX + 8];
     snprintf(tmp, sizeof(tmp), "%s.part", rpath);
@@ -445,7 +628,7 @@ static esp_err_t fs_put_handler(httpd_req_t *req)
     size_t remaining = req->content_len;
     size_t total = 0;
     while (remaining > 0) {
-        size_t want = remaining < sizeof(s_fs_buf) ? remaining : sizeof(s_fs_buf);
+        size_t want = remaining < RD_FS_BUF_SIZE ? remaining : RD_FS_BUF_SIZE;
         int got = httpd_req_recv(req, (char *)s_fs_buf, want);
         if (got <= 0) {
             if (got == HTTPD_SOCK_ERR_TIMEOUT) continue;
@@ -487,7 +670,7 @@ static esp_err_t fs_del_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), true)) return ESP_OK;
 
     struct stat st;
     if (stat(rpath, &st) != 0) {
@@ -511,7 +694,7 @@ static esp_err_t fs_mkdir_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), true)) return ESP_OK;
 
     struct stat st;
     if (stat(rpath, &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -534,7 +717,7 @@ static esp_err_t fs_md5_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), false)) return ESP_OK;
     fmrb_path_class_t cls = fmrb_path_classify(vpath);
     if (!devctl_fs_unrestricted() &&
         (cls == FMRB_PATH_SECRET || cls == FMRB_PATH_PASSWORD)) {
@@ -549,7 +732,7 @@ static esp_err_t fs_md5_handler(httpd_req_t *req)
     esp_rom_md5_init(&ctx);
     size_t total = 0;
     size_t n;
-    while ((n = fread(s_fs_buf, 1, sizeof(s_fs_buf), f)) > 0) {
+    while ((n = fread(s_fs_buf, 1, RD_FS_BUF_SIZE, f)) > 0) {
         esp_rom_md5_update(&ctx, s_fs_buf, (uint32_t)n);
         total += n;
     }
@@ -574,7 +757,7 @@ static esp_err_t fs_df_handler(httpd_req_t *req)
 {
     char vpath[RD_FS_VPATH_MAX];
     char rpath[RD_FS_RPATH_MAX];
-    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath))) return ESP_OK;
+    if (!fs_req_path(req, vpath, sizeof(vpath), rpath, sizeof(rpath), false)) return ESP_OK;
     uint64_t total = 0, free_bytes = 0;
     if (fmrb_hal_file_statfs(vpath, &total, &free_bytes) != FMRB_OK) {
         return ctl_json(req, "500 Internal Server Error",
@@ -658,7 +841,13 @@ size_t devctl_status_ident(char *out, size_t cap)
 #endif
     char host[40];
     wifi_get_hostname(host, sizeof(host));
-    int n = snprintf(out, cap, ",\"board\":\"%s\",\"host\":\"%s\"", board, host);
+    // guard: "free" (a development build: no pairing), "closed" or "open"
+    // (a release build, Config > Remote control), so a tool can say which
+    // step is missing before it asks for anything.
+    fmrb_rguard_state_t gs = fmrb_rguard_state();
+    const char *guard = gs == FMRB_RGUARD_NONE ? "free" : gs == FMRB_RGUARD_OPEN ? "open" : "closed";
+    int n = snprintf(out, cap, ",\"board\":\"%s\",\"host\":\"%s\",\"guard\":\"%s\"",
+                     board, host, guard);
     if (n < 0) {
         out[0] = '\0';
         return 0;
@@ -811,9 +1000,14 @@ static esp_err_t checkpoint_get_handler(httpd_req_t *req)
 // Register and say so when it does not take. httpd_register_uri_handler
 // returns ESP_ERR_HTTPD_HANDLERS_FULL rather than asserting, so ignoring it
 // leaves a server that starts cleanly and 404s the route just added.
+// Every route goes through the guard (guarded_handler); the server copies the
+// route, so the one built here on the stack is enough.
 static void devctl_register_uri(httpd_handle_t server, const httpd_uri_t *uri)
 {
-    esp_err_t err = httpd_register_uri_handler(server, uri);
+    httpd_uri_t g = *uri;
+    g.handler = guarded_handler;
+    g.user_ctx = (void *)uri;
+    esp_err_t err = httpd_register_uri_handler(server, &g);
     if (err != ESP_OK) {
         FMRB_LOGE(TAG, "could not register %s: %d (raise max_uri_handlers?)",
                   uri->uri, err);
@@ -823,6 +1017,16 @@ static void devctl_register_uri(httpd_handle_t server, const httpd_uri_t *uri)
 fmrb_err_t devctl_http_register(httpd_handle_t server)
 {
     if (!server) return FMRB_ERR_INVALID_PARAM;
+#if CONFIG_IDF_TARGET_ESP32S3
+    if (!s_fs_buf) {
+        s_fs_buf = heap_caps_malloc(RD_FS_IO_CHUNK, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!s_fs_buf) {
+            FMRB_LOGE(TAG, "no memory for the file transfer buffer");
+            return FMRB_ERR_NO_MEMORY;
+        }
+    }
+#endif
+    if (!devctl_fs_unrestricted()) devctl_guard_arm();
     static const httpd_uri_t uri_launch = {
         .uri = "/app/launch", .method = HTTP_POST, .handler = launch_handler };
     static const httpd_uri_t uri_kill = {
@@ -855,6 +1059,16 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         .uri = "/audio/volume", .method = HTTP_GET, .handler = audio_get_handler };
     static const httpd_uri_t uri_audio_volume_post = {
         .uri = "/audio/volume", .method = HTTP_POST, .handler = audio_volume_post_handler };
+    // Open to everyone: how a PC gets its token, and how it checks one.
+    static const httpd_uri_t uri_pair = {
+        .uri = "/pair", .method = HTTP_POST, .handler = pair_handler };
+    static const httpd_uri_t uri_auth = {
+        .uri = "/auth", .method = HTTP_GET, .handler = auth_handler };
+    esp_err_t perr = httpd_register_uri_handler(server, &uri_pair);
+    if (perr == ESP_OK) perr = httpd_register_uri_handler(server, &uri_auth);
+    if (perr != ESP_OK) {
+        FMRB_LOGE(TAG, "could not register /pair, /auth: %d (raise max_uri_handlers?)", perr);
+    }
     devctl_register_uri(server, &uri_launch);
     devctl_register_uri(server, &uri_kill);
     devctl_register_uri(server, &uri_list);
@@ -882,7 +1096,13 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_ckpt_get);
     devctl_register_uri(server, &uri_move);
 #endif
-    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot, /sys/gc); "
-              "the file endpoints reach every path, keys included");
+    if (devctl_fs_unrestricted()) {
+        FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot, /sys/gc); "
+                  "the file endpoints reach every path, keys included");
+    } else {
+        FMRB_LOGI(TAG, "remote control is closed until Config > Remote control is turned on "
+                  "(%d PCs paired); files are written only under /home and /app",
+                  fmrb_rguard_paired());
+    }
     return FMRB_OK;
 }

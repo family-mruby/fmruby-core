@@ -330,6 +330,7 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/app/fmrb_app_transfer.c
   ${FMRB_ROOT}/main/kernel/fmrb_kernel.c
   ${FMRB_ROOT}/main/kernel/fmrb_secret_path.c
+  ${FMRB_ROOT}/main/kernel/fmrb_remote_guard.c
   ${FMRB_ROOT}/main/kernel/fmrb_rtc.c
   ${FMRB_ROOT}/main/kernel/fmrb_platform_sys.c
   ${FMRB_ROOT}/main/kernel/fmrb_clipboard.c

@@ -20,7 +20,7 @@
 # are not here because CI cannot fetch that private repository.
 desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "png332:test", "nsf:test", "tts:test", "native:test",
-               "secret:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
   # The BMI270 driver against a fake device, and the step sensor app's step
@@ -242,6 +242,26 @@ namespace :secret do
     sh "#{cc} -std=c11 -O1 -g -Wall -Wextra -Werror -I main/kernel " \
        "main/kernel/fmrb_secret_path.c #{SECRET_TEST_DIR}/main.c -o #{SECRET_RUNNER_BIN}"
     sh SECRET_RUNNER_BIN
+  end
+end
+
+namespace :remote_guard do
+  # The release build's WiFi remote control guard (main/kernel/
+  # fmrb_remote_guard.c, doc/remote_guard G1-G2): the switch, the pairing
+  # number, the tokens kept for several PCs, revoking them, and where a paired
+  # PC may write. Pure C with a fake store, so it builds with the host cc.
+  RGUARD_TEST_DIR   = "test/remote_guard"
+  RGUARD_TEST_BUILD = "#{RGUARD_TEST_DIR}/build"
+  RGUARD_RUNNER_BIN = "#{RGUARD_TEST_BUILD}/remote_guard_test"
+
+  desc "Remote control guard tests: pairing, tokens, write rule (host cc, no docker)"
+  task :test do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p RGUARD_TEST_BUILD
+    sh "#{cc} -std=c11 -O1 -g -Wall -Wextra -Werror -DFMRB_RGUARD_HOST_TEST -I main/kernel " \
+       "main/kernel/fmrb_remote_guard.c #{RGUARD_TEST_DIR}/main.c -o #{RGUARD_RUNNER_BIN}"
+    sh RGUARD_RUNNER_BIN
   end
 end
 

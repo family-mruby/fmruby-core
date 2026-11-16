@@ -1,10 +1,9 @@
 set(COMPONENTS main)
-# Development remote control (/app/launch, /app/list, /fs/*). Declared up here
-# rather than beside the target_compile_definitions below, because the
-# per-board branches test it to decide whether to compile the endpoints and
-# require esp_http_server -- and those run before idf_component_register.
-# See the longer note beside that definition.
-option(FMRB_DEV_REMOTE_CTL "Enable the development remote control endpoints" ON)
+# Development build: the remote control (/app/launch, /app/list, /fs/*) is free
+# -- no pairing, every file. OFF is a release build: the same endpoints behind
+# the guard (doc/remote_guard). See the longer note beside the
+# target_compile_definitions below.
+option(FMRB_DEV_REMOTE_CTL "Development build: the remote control needs no pairing and reaches every file" ON)
 
 set(COMPONENT_SRCS
     "main.c"
@@ -26,6 +25,11 @@ set(COMPONENT_SRCS
     # password, the Asterism keys), and the setup mode's decision the kernel
     # makes on every target. Pure C, tested on the host (rake secret:test).
     "kernel/fmrb_secret_path.c"
+    # Who may use a release build's WiFi remote control: the switch in
+    # Config, the pairing number, the PCs' tokens, where they may write
+    # (doc/remote_guard G1-G2). Pure C, tested on the host (rake
+    # remote_guard:test); every target has it so FmrbSystem answers the same.
+    "kernel/fmrb_remote_guard.c"
     # Battery-backed clock. Target independent on purpose: the whole file is a
     # no-op off ESP32, and keeping it in one list means the kernel Ruby never
     # has to know which engine or platform it is running on.
@@ -281,11 +285,10 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/remote_desktop/rd_stream.c"
             "drivers/remote_desktop/rd_input.c"
         )
-        if(FMRB_DEV_REMOTE_CTL)
-            # The endpoints moved out of rd_http.c so Retro can have them too;
-            # the viewer's server registers them from here.
-            list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c")
-        endif()
+        # The endpoints moved out of rd_http.c so Retro can have them too;
+        # the viewer's server registers them from here. Every build: a
+        # release build has them behind the guard (doc/remote_guard G2).
+        list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c")
         # Touch panel and the Tab5 Keyboard accessory are Tab5 hardware.
         # NARYA v4 has neither -- its input comes over USB -- and leaving them
         # in would do more than log failures: tab5_keyboard claims I2C_NUM_0,
@@ -342,14 +345,13 @@ if(NOT IDF_TARGET STREQUAL "linux")
             # runtime; see wifi_task.c.
             list(APPEND COMPONENT_SRCS "drivers/wifi/wifi_task.c" "drivers/wifi/wifi_conf.c")
             list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event)
-            # Development remote control: no viewer here to hang it off, so it
-            # brings its own small server. esp_http_server comes with it, and
-            # only on a board that has WiFi at all.
-            if(FMRB_DEV_REMOTE_CTL)
-                list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c"
-                                           "drivers/devctl/devctl_task.c")
-                list(APPEND COMPONENT_REQUIRES esp_http_server)
-            endif()
+            # Remote control: no viewer here to hang it off, so it brings its
+            # own small server. esp_http_server comes with it, and only on a
+            # board that has WiFi at all. Every build: a release build has it
+            # behind the guard (doc/remote_guard G2).
+            list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c"
+                                       "drivers/devctl/devctl_task.c")
+            list(APPEND COMPONENT_REQUIRES esp_http_server)
         endif()
     endif()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY" OR FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
@@ -550,18 +552,20 @@ if(ENABLE_SD_TEST)
     message(STATUS "SD card connection test enabled")
 endif()
 
-# Development remote control: /app/launch, /app/kill and /app/list on the
-# remote desktop's HTTP server, so a development loop can start and stop apps
-# by path instead of driving the launcher through synthetic clicks
-# (doc/dev_remote_ctl/plan.md). ON by default because that loop is what the
-# firmware is developed with; turn it off for a release image with
+# The remote control (/app/*, /fs/*, /audio/*, /sys/*, and on Modern the
+# remote desktop): ON by default, the development build, where it is open to
+# the LAN with no pairing and reaches every file, keys included -- the loop the
+# firmware is developed with (doc/dev_remote_ctl/plan.md). OFF is a release
+# build: the same endpoints closed until the owner turns on Config > Remote
+# control and pairs a PC with the number shown there; files written only under
+# /home and /app, keys never read (doc/remote_guard/plan.md). rake build:esp32
+# turns it off when FMRB_RELEASE=1 (the release workflow); by hand:
 #   CMAKE_OPTS="-DFMRB_DEV_REMOTE_CTL=OFF" rake build:esp32
-# It adds no authentication and none exists to add: the remote desktop already
-# lets anyone on the network drive the launcher. What it does add is a
-# convenient, scriptable version of that, which is not something to ship.
 if(FMRB_DEV_REMOTE_CTL)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_DEV_REMOTE_CTL)
-    message(STATUS "FMRB_DEV_REMOTE_CTL=ON: /app/launch, /app/kill, /app/list are in this build")
+    message(STATUS "FMRB_DEV_REMOTE_CTL=ON: development build, the remote control needs no pairing")
+else()
+    message(STATUS "FMRB_DEV_REMOTE_CTL=OFF: release build, the remote control is behind the guard (doc/remote_guard)")
 endif()
 
 # FMRB_HW_* board / chip-generation macros (FMRB_HW_MODERN + FMRB_HW_TAB5 /

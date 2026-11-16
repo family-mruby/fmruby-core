@@ -10,6 +10,14 @@
 // aspect-preserving fill in fullscreen -- so a mode switch changes how fine
 // the picture is, not how large. Every size below derives from `scale`
 // (page pixels per screen pixel), so both modes share one code path.
+//
+// A release build keeps the screen and the input closed until the owner turns
+// on Config > Remote control and this browser has paired with the number
+// shown there (doc/remote_guard G2). The page asks /auth first; when the board
+// wants a number it asks for it, trades it at /pair for a token, keeps the
+// token in this browser's storage and sends it as token= with /stream, /ws and
+// /ws_video. A development build answers /auth with "free" and none of it
+// shows.
 'use strict';
 
 const BASE_W = 426, BASE_H = 240;
@@ -35,6 +43,61 @@ let lastMoveSent = 0;
 let useH264 = false;
 let videoStarted = false;
 let lastCursor = { x: 0, y: 0, v: false };
+
+// --- Pairing (release builds) ---
+
+const TOKEN_KEY = 'fmrb_rd_token';
+let token = '';
+try { token = localStorage.getItem(TOKEN_KEY) || ''; } catch (_) { token = ''; }
+
+function saveToken(t) {
+  token = t || '';
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch (_) { /* a private window keeps it for this page only */ }
+}
+
+function withToken(path) {
+  if (!token) return path;
+  return path + (path.indexOf('?') < 0 ? '?' : '&') + 'token=' + encodeURIComponent(token);
+}
+
+function showConn(text, ok) {
+  connEl.textContent = text;
+  connEl.className = ok ? 'ok' : 'ng';
+}
+
+// Resolves once the board lets this page in; asks for the number when it has
+// to, and waits (polling) while the remote control is off on the board.
+function authorize() {
+  return fetch(withToken('/auth')).then((r) => {
+    if (r.status === 404) return true;          // firmware without the guard
+    return r.json().catch(() => ({})).then((doc) => {
+      if (r.ok && doc.ok) return true;
+      if (doc.guard === 'closed') {
+        showConn('remote control is off: turn on Config > Remote control on the board', false);
+        return new Promise((res) => setTimeout(res, 3000)).then(authorize);
+      }
+      saveToken('');
+      const code = window.prompt('Enter the number shown on the board in Config > Remote control');
+      if (!code) {
+        showConn('not paired (reload to enter the number)', false);
+        return new Promise(() => {});           // stay here until a reload
+      }
+      return fetch('/pair?code=' + encodeURIComponent(code.trim()), { method: 'POST' })
+        .then((p) => p.json())
+        .then((pd) => {
+          if (pd.ok && pd.token) saveToken(pd.token);
+          else window.alert(pd.err || 'pairing failed');
+          return authorize();
+        });
+    });
+  }).catch(() => {
+    showConn('cannot reach the board (retrying...)', false);
+    return new Promise((res) => setTimeout(res, 3000)).then(authorize);
+  });
+}
 
 // --- Layout: one scale factor drives the view, the cursor and hit testing ---
 
@@ -119,7 +182,7 @@ function setupScreen() {
   } else {
     canvas.style.display = 'none';
     img.style.display = 'block';
-    img.src = '/stream';
+    img.src = withToken('/stream');
     modeEl.textContent = 'mode: mjpeg';
   }
   layout();
@@ -196,7 +259,7 @@ function startVideo() {
   }
   newDecoder();
 
-  const vws = new WebSocket('ws://' + location.host + '/ws_video');
+  const vws = new WebSocket('ws://' + location.host + withToken('/ws_video'));
   vws.binaryType = 'arraybuffer';
   vws.onopen = () => {
     // Ask for an IDR so decoding can start immediately
@@ -259,7 +322,7 @@ function startVideo() {
 }
 
 function wsConnect() {
-  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws = new WebSocket('ws://' + location.host + withToken('/ws'));
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
     wsReady = true;
@@ -270,13 +333,19 @@ function wsConnect() {
     wsReady = false;
     connEl.textContent = 'disconnected (retrying...)';
     connEl.className = 'ng';
-    setTimeout(wsConnect, 2000);
+    // Through /auth again: the board may have been restarted (closed until
+    // it is allowed again) or this browser's token revoked.
+    setTimeout(() => authorize().then(wsConnect), 2000);
   };
   ws.onerror = () => ws.close();
   ws.onmessage = (ev) => {
     if (typeof ev.data !== 'string') return;
     let msg;
     try { msg = JSON.parse(ev.data); } catch (_) { return; }
+    if (msg.t === 'denied') {
+      showConn(msg.err || 'refused by the board', false);
+      return;
+    }
     if (msg.t === 'info') {
       useH264 = !!msg.h264 && typeof window.VideoDecoder === 'function';
       if (msg.w > 0 && msg.h > 0) {
@@ -433,8 +502,10 @@ wrap.addEventListener('keyup', (e) => {
   e.preventDefault();
 });
 
-setupScreen();
-wsConnect();
+authorize().then(() => {
+  setupScreen();
+  wsConnect();
+});
 setInterval(() => {
   fetch('/status').then(r => r.json()).then(s => {
     if (s.streaming) statsEl.textContent = s.fps + ' fps / ' + s.kbps + ' kbps';

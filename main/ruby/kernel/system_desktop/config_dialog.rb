@@ -8,6 +8,10 @@
 #   language, keyboard_layout, mouse_scale_x/y, theme preset, wallpaper,
 #   timezone, audio_volume, debug_mode, ble/wifi_auto_start,
 #   display_margin_x/y
+# and, in a release build with WiFi up, one that is not in the file: the
+# remote control (doc/remote_guard G2). Its arrows step OFF -> ON (with the
+# number a PC pairs with; on until the restart) -> "forget N PCs" -> OFF. OFF
+# and ON take effect at once; forgetting the paired PCs waits for Save.
 #
 # Save & Reboot is shown only on ESP32; on Linux the user must restart the
 # host process manually after a plain Save.
@@ -113,10 +117,25 @@ module ConfigDialogMixin
     { key: :display_margin_y, field: "display_margin_y", type: :int,   min: 0, max: 16, step: 1 },
   ].reject { |s| FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field]) }
 
+  # The release build's WiFi remote control (doc/remote_guard G2). Not in the
+  # file: turning it on lasts until the restart, and the paired PCs live on
+  # the board (NVS). Shown only where FmrbSystem.remote_access says the build
+  # has the guard -- a development build's remote control needs no allowing.
+  # One row: the dialog already fills a 240-line screen, and a second row
+  # would not fit (cfg_place_y lets this one cover the menu bar).
+  CFG_REMOTE_ROWS = [
+    { key: :remote_access, field: "remote_access", type: :remote },
+  ]
+
   # Tall enough for the rows there actually are. It was a fixed 200, which the
   # rows outgrew the moment one was added: the last of them ended up under the
   # footer. The 4 is the gap between the last row and the separator line.
+  # The height without the remote control rows; cfg_height counts them.
   CFG_H = CFG_TITLE_H + 2 + CFG_SETTINGS.size * CFG_ROW_H + 4 + CFG_FOOTER_H
+
+  def cfg_height(rows)
+    CFG_TITLE_H + 2 + rows * CFG_ROW_H + 4 + CFG_FOOTER_H
+  end
 
   CFG_BTN_H = CFG_FOOTER_H - 8
 
@@ -185,12 +204,27 @@ module ConfigDialogMixin
     @cfg_selected = -1
     @cfg_status = nil
     @cfg_status_until = 0
+    rows = []
+    CFG_SETTINGS.each { |s| rows << s }
+    if FmrbSystem.remote_access >= 0
+      CFG_REMOTE_ROWS.each { |s| rows << s }
+    end
+    @cfg_rows = rows
+    @cfg_h = cfg_height(rows.size)
+    @cfg_code_shown = FmrbSystem.remote_access_code
+    @cfg_forget = false
     @cfg_x = (@window_width - CFG_W) / 2
-    @cfg_y = (@window_height - CFG_H) / 2
+    @cfg_y = (@window_height - @cfg_h) / 2
     # Keep below the menu bar. picoruby resolves bare constants in the mixin's
     # lexical scope only, so reach into the including class explicitly.
     menu_h = self.class::MENU_BAR_HEIGHT
     @cfg_y = menu_h + 2 if @cfg_y < menu_h + 2
+    # Unless that pushes the bottom off the screen (the remote control row on
+    # a 240-line screen): then over the menu bar, all of it on the screen.
+    if @cfg_y + @cfg_h > @window_height
+      @cfg_y = @window_height - @cfg_h - 1
+      @cfg_y = 0 if @cfg_y < 0
+    end
     cfg_scan_wallpapers
     cfg_load
     # The volume row plays as it is stepped but is saved only by Save, like
@@ -198,7 +232,7 @@ module ConfigDialogMixin
     @cfg_volume_saved = FmrbApp.audio_volume
     close_launcher
     close_dropdown
-    notify_overlay_state(true, @cfg_x, @cfg_y, CFG_W, CFG_H)
+    notify_overlay_state(true, @cfg_x, @cfg_y, CFG_W, @cfg_h)
     update_composite_regions
     draw_foreground
   end
@@ -223,7 +257,7 @@ module ConfigDialogMixin
   def hit_config_dialog?(x, y)
     @cfg_open &&
       x >= @cfg_x && x < @cfg_x + CFG_W &&
-      y >= @cfg_y && y < @cfg_y + CFG_H
+      y >= @cfg_y && y < @cfg_y + @cfg_h
   end
 
   # ---- Loading ----
@@ -440,11 +474,11 @@ module ConfigDialogMixin
     return unless @cfg_open
     x = @cfg_x
     y = @cfg_y
-    @gfx.fill_rect(x, y, CFG_W, CFG_H, CFG_BG)
-    @gfx.draw_rect(x, y, CFG_W, CFG_H, CFG_BORDER)
+    @gfx.fill_rect(x, y, CFG_W, @cfg_h, CFG_BG)
+    @gfx.draw_rect(x, y, CFG_W, @cfg_h, CFG_BORDER)
     @gfx.fill_rect(x + 1, y + 1, CFG_W - 2, CFG_TITLE_H - 1, CFG_HEADER)
     @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:config), FmrbConst::THEME_TEXT_LIGHT, CFG_HEADER, mixed: true)
-    CFG_SETTINGS.each_with_index { |s, i| cfg_draw_row(i, s) }
+    @cfg_rows.each_with_index { |s, i| cfg_draw_row(i, s) }
     cfg_draw_footer
   end
 
@@ -467,6 +501,7 @@ module ConfigDialogMixin
   def cfg_value_text(s)
     v = @cfg_values[s[:field]]
     case s[:type]
+    when :remote then cfg_remote_text
     when :bool  then v ? FmrbI18n.t(:on) : FmrbI18n.t(:off)
     when :float then sprintf("%.1f", v.to_f)
     when :int   then v.to_i.to_s
@@ -497,6 +532,19 @@ module ConfigDialogMixin
     ""
   end
 
+  # "OFF", or "ON" and the number a PC pairs with; "ON (locked)" after too
+  # many wrong numbers, until it is turned off and on. "Forget N PCs" while
+  # that waits for Save.
+  def cfg_remote_text
+    if @cfg_forget
+      return "#{FmrbI18n.t(:remote_forget)} #{FmrbSystem.remote_access_paired} PC"
+    end
+    return FmrbI18n.t(:off) if FmrbSystem.remote_access != 1
+    code = FmrbSystem.remote_access_code
+    return "#{FmrbI18n.t(:on)} (#{FmrbI18n.t(:remote_locked)})" if code < 0
+    "#{FmrbI18n.t(:on)} #{sprintf('%06d', code)}"
+  end
+
   def cfg_wallpaper_text(v)
     return FmrbI18n.t(:wallpaper_theme) if v.length == 0
     return FmrbI18n.t(:wallpaper_none) if v == "none"
@@ -516,7 +564,7 @@ module ConfigDialogMixin
 
   def cfg_draw_footer
     x = @cfg_x
-    y = @cfg_y + CFG_H - CFG_FOOTER_H
+    y = @cfg_y + @cfg_h - CFG_FOOTER_H
     w = CFG_W
     # Inside the frame, not over it. Filling the full width from @cfg_x
     # painted out the dialog's left and right border columns and its bottom
@@ -539,7 +587,7 @@ module ConfigDialogMixin
   # ---- Interaction ----
 
   def handle_config_dialog_click(x, y)
-    CFG_SETTINGS.each_with_index do |s, i|
+    @cfg_rows.each_with_index do |s, i|
       ry = cfg_row_y(i)
       next unless y >= ry - 1 && y < ry + CFG_ROW_H - 1
       @cfg_selected = i
@@ -561,6 +609,18 @@ module ConfigDialogMixin
   def cfg_cycle(s, dir)
     field = s[:field]
     case s[:type]
+    when :remote
+      # OFF (0) -> ON (1) -> forget the PCs (2) -> OFF. ON and OFF at once,
+      # like the volume (nothing here goes into the file); forgetting waits
+      # for Save, so stepping past it by mistake costs nothing.
+      pos = @cfg_forget ? 2 : (FmrbSystem.remote_access == 1 ? 1 : 0)
+      pos = (pos + dir + 3) % 3
+      @cfg_forget = (pos == 2)
+      unless @cfg_forget
+        want = (pos == 1)
+        FmrbSystem.set_remote_access(want) if want != (FmrbSystem.remote_access == 1)
+      end
+      @cfg_code_shown = FmrbSystem.remote_access_code
     when :enum
       opts = cfg_options_for(s)
       idx = opts.index(@cfg_values[field]) || 0
@@ -593,12 +653,17 @@ module ConfigDialogMixin
   # ---- Save ----
 
   def cfg_do_save(reboot)
+    forgot = false
+    if @cfg_forget
+      @cfg_forget = false
+      forgot = FmrbSystem.revoke_remote_access
+    end
     if cfg_write
       # The file now holds the live mute and volume: no other save is due,
       # and this volume is the one closing the dialog keeps.
       FmrbSystem.audio_conf_saved
       @cfg_volume_saved = FmrbApp.audio_volume
-      @cfg_status = FmrbI18n.t(:save_done)
+      @cfg_status = FmrbI18n.t(forgot ? :remote_revoked : :save_done)
       @cfg_status_until = 4
       draw_foreground
       if reboot
@@ -749,7 +814,15 @@ module ConfigDialogMixin
   # Periodic tick from on_update: lets the "Saved" status fade after a few
   # update cycles so the user sees the feedback then it disappears.
   def tick_config_dialog
-    return unless @cfg_open && @cfg_status && @cfg_status_until > 0
+    return unless @cfg_open
+    # A PC paired (the number is used once) or too many wrong numbers came
+    # in: show the new number, or that pairing has stopped.
+    code = FmrbSystem.remote_access_code
+    if code != @cfg_code_shown
+      @cfg_code_shown = code
+      draw_foreground
+    end
+    return unless @cfg_status && @cfg_status_until > 0
     @cfg_status_until -= 1
     if @cfg_status_until <= 0
       @cfg_status = nil

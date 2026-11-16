@@ -30,6 +30,7 @@
 #include "fmrb_app_canvas.h"
 #include "fmrb_kernel.h"
 #include "fmrb_platform_sys.h"
+#include "fmrb_remote_guard.h"
 #include "fmrb_hal_time.h"
 #include "fmrb_app_meta.h"
 #include "fmrb_toml.h"
@@ -2077,6 +2078,45 @@ static mrb_value mrb_fmrb_app_s_audio_conf_saved(mrb_state *mrb, mrb_value klass
     return mrb_nil_value();
 }
 
+// The release build's WiFi remote control (doc/remote_guard G2), for Config:
+// FmrbSystem.remote_access -> -1 (not here: a development build, or no
+// server), 0 (off), 1 (on until the restart). remote_access_code -> the
+// pairing number to show, -1 when there is none. set_remote_access(on),
+// remote_access_paired -> how many PCs hold a token, revoke_remote_access ->
+// true when every token is gone from storage too.
+static mrb_value mrb_fmrb_app_s_remote_access(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value((mrb_int)fmrb_rguard_state());
+}
+
+static mrb_value mrb_fmrb_app_s_remote_access_code(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value((mrb_int)fmrb_rguard_code());
+}
+
+static mrb_value mrb_fmrb_app_s_set_remote_access(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_bool on;
+    mrb_get_args(mrb, "b", &on);
+    fmrb_rguard_set_open(on ? true : false);
+    return mrb_nil_value();
+}
+
+static mrb_value mrb_fmrb_app_s_remote_access_paired(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_fixnum_value((mrb_int)fmrb_rguard_paired());
+}
+
+static mrb_value mrb_fmrb_app_s_revoke_remote_access(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    return mrb_bool_value(fmrb_rguard_revoke_all());
+}
+
 static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
@@ -2487,6 +2527,11 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, sys_module, "set_audio_volume", mrb_fmrb_app_s_set_audio_volume, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "preview_audio_volume", mrb_fmrb_app_s_preview_audio_volume, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "audio_conf_saved", mrb_fmrb_app_s_audio_conf_saved, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "remote_access", mrb_fmrb_app_s_remote_access, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "remote_access_code", mrb_fmrb_app_s_remote_access_code, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "set_remote_access", mrb_fmrb_app_s_set_remote_access, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "remote_access_paired", mrb_fmrb_app_s_remote_access_paired, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, sys_module, "revoke_remote_access", mrb_fmrb_app_s_revoke_remote_access, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));

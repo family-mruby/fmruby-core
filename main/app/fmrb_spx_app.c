@@ -38,6 +38,7 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #include "status_led.h"
 #include "fmrb_platform_sys.h"
 #include "fmrb_clipboard.h"
+#include "fmrb_remote_guard.h"
 #include "fmrb_gen/fmrb_boundary.h"
 
 #ifdef CONFIG_IDF_TARGET_LINUX
@@ -681,6 +682,33 @@ int fmrb_spx_app_audio_conf_saved(void)
 {
     fmrb_host_audio_conf_written();
     return 0;
+}
+
+// The release build's WiFi remote control (doc/remote_guard G2), for Config.
+int fmrb_spx_app_remote_access(void)
+{
+    return (int)fmrb_rguard_state();
+}
+
+int fmrb_spx_app_remote_access_code(void)
+{
+    return (int)fmrb_rguard_code();
+}
+
+int fmrb_spx_app_set_remote_access(int on)
+{
+    fmrb_rguard_set_open(on != 0);
+    return 0;
+}
+
+int fmrb_spx_app_remote_access_paired(void)
+{
+    return fmrb_rguard_paired();
+}
+
+int fmrb_spx_app_revoke_remote_access(void)
+{
+    return fmrb_rguard_revoke_all() ? 1 : 0;
 }
 
 const char *fmrb_spx_app_set_wallclock(int year, int month, int day,

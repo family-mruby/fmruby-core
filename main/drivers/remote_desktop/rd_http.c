@@ -11,10 +11,16 @@
 // - "/ws"         WebSocket: binary input messages (rd_input) from the
 //                 browser; JSON cursor/info messages to the browser.
 // - "/status"     small JSON status document.
-// - "/app/launch" "/app/kill" "/app/list" "/fs/*"
-//                 development remote control, registered from
-//                 drivers/devctl and compiled in only with
-//                 FMRB_DEV_REMOTE_CTL (doc/dev_remote_ctl/plan.md).
+// - "/app/launch" "/app/kill" "/app/list" "/fs/*" "/pair" "/auth"
+//                 remote control, registered from drivers/devctl
+//                 (doc/dev_remote_ctl/plan.md).
+//
+// A release build (FMRB_DEV_REMOTE_CTL off) puts the screen and the input
+// behind the same guard as devctl (doc/remote_guard G2): /stream answers 401
+// and /ws, /ws_video close at once without a paired PC's token (header
+// X-Fmrb-Token, or token= in the query as a browser sends it). The viewer's
+// page and /status stay open, the page to pair from, /status to find the
+// board.
 //
 // The httpd instance runs on core 0 next to the hosted/lwIP tasks.
 
@@ -22,9 +28,7 @@
 #include "rd_encoder_jpeg.h"
 #include "rd_input.h"
 #include "rd_stream.h"
-#ifdef FMRB_DEV_REMOTE_CTL
 #include "devctl_http.h"
-#endif
 
 #include "fmrb_app.h"
 #include "fmrb_log.h"
@@ -225,6 +229,7 @@ int rd_http_stream_state(void)
 
 static esp_err_t stream_handler(httpd_req_t *req)
 {
+    if (!devctl_guard_admit(req)) return ESP_OK;
     bool expected = false;
     if (!atomic_compare_exchange_strong(&s_stream_busy, &expected, true)) {
         httpd_resp_set_status(req, "503 Service Unavailable");
@@ -280,6 +285,22 @@ static void ws_unregister_fd(int fd)
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
+        // The handshake has been answered already, so a refusal cannot be a
+        // 401: say why in one frame and close (ESP_FAIL ends the session).
+        // The tools ask GET /auth first, which can carry the reason.
+        fmrb_rguard_verdict_t v = devctl_guard_verdict(req);
+        if (v != FMRB_RGUARD_ALLOW) {
+            char deny[288];
+            int dn = snprintf(deny, sizeof(deny), "{\"t\":\"denied\",\"guard\":\"%s\",\"err\":\"%s\"}",
+                              fmrb_rguard_verdict_name(v), fmrb_rguard_reason(v));
+            httpd_ws_frame_t df = {
+                .type = HTTPD_WS_TYPE_TEXT,
+                .payload = (uint8_t *)deny,
+                .len = (size_t)(dn < (int)sizeof(deny) ? dn : (int)sizeof(deny) - 1),
+            };
+            httpd_ws_send_frame(req, &df);
+            return ESP_FAIL;
+        }
         // Handshake done: greet with the screen size (the coordinates input
         // is sent in; 640x360 while a fullscreen app has the high-resolution
         // mode) and the stream geometry
@@ -335,6 +356,8 @@ static esp_err_t ws_video_handler(httpd_req_t *req)
 {
     int fd = httpd_req_to_sockfd(req);
     if (req->method == HTTP_GET) {
+        // As /ws: refused after the handshake, so the session is just closed.
+        if (devctl_guard_verdict(req) != FMRB_RGUARD_ALLOW) return ESP_FAIL;
         rd_stream_add_client(fd);
         return ESP_OK;
     }
@@ -433,13 +456,12 @@ static esp_err_t status_handler(httpd_req_t *req)
 {
     char ip[16];
     wifi_get_ip_str(ip, sizeof(ip));
-    // A development build also says which board this is (devctl_status_ident:
-    // the backup tools name a board's directory from it), and the flash
-    // layout and font image rake flash:app_sync checks (about 130 bytes).
+    // Which board this is (devctl_status_ident: the backup tools name a
+    // board's directory from it, the tools key a paired PC's token by it),
+    // whether the remote control needs pairing ("guard"), and the flash
+    // layout and font image rake flash:app_sync checks (about 150 bytes).
     char ident[256] = "";
-#ifdef FMRB_DEV_REMOTE_CTL
     devctl_status_ident(ident, sizeof(ident));
-#endif
     char body[384];
     int n = snprintf(body, sizeof(body),
                      "{\"ip\":\"%s\",\"mode\":\"mjpeg\",\"streaming\":%s,"
@@ -498,8 +520,9 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     // rather than complaining -- so the server came up looking healthy and every
     // one of the new routes returned 404. Sized with room to add more (the
     // dev file endpoints bring the count to 16; /fs/md5, /sys/reboot and the
-    // checkpoint gem's three to 24, /fs/df to 25, /sys/gc to 26).
-    hcfg.max_uri_handlers = 28;
+    // checkpoint gem's three to 24, /fs/df to 25, /sys/gc to 26, /pair and
+    // /auth to 28).
+    hcfg.max_uri_handlers = 30;
 
     esp_err_t err = httpd_start(&s_server, &hcfg);
     if (err != ESP_OK) {
@@ -510,6 +533,13 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
         }
         return FMRB_ERR_FAILED;
     }
+
+    // The remote control endpoints live in drivers/devctl so Retro can have
+    // them without this file, which needs the P4 display and the JPEG
+    // encoder. It announces itself; saying so again here would print the line
+    // twice. A release build arms the guard there, so it comes first: no
+    // window in which /stream or /ws is registered and the guard is not.
+    devctl_http_register(s_server);
 
     static const httpd_uri_t uri_index = {
         .uri = "/", .method = HTTP_GET, .handler = asset_handler };
@@ -534,12 +564,6 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     rd_register_uri(&uri_stream);
     rd_register_uri(&uri_status);
     rd_register_uri(&uri_ws);
-#ifdef FMRB_DEV_REMOTE_CTL
-    // The development endpoints live in drivers/devctl so Retro can have them
-    // without this file, which needs the P4 display and the JPEG encoder.
-    // It announces itself; saying so again here would print the line twice.
-    devctl_http_register(s_server);
-#endif
     if (s_cfg.h264_enable) {
         rd_register_uri(&uri_ws_video);
         rd_stream_config_t scfg = {

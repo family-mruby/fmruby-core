@@ -119,19 +119,26 @@ Neither task touches `vendor/`, so the Spinel compiler survives a full clean —
 The networking features (WiFi / BLE) have **no access control**. They are meant for
 development on a trusted local network.
 
-- **Remote desktop (HTTP / WebSocket)** — unauthenticated. Any client on the same
-  network can view the screen and send keyboard / mouse input, i.e. fully operate
-  the device.
-- **Development remote control (`/app/launch`, `/app/kill`, `/app/list`)** —
-  unauthenticated, and for development only. Present when the firmware is built
-  with `FMRB_DEV_REMOTE_CTL` (the default; build a release image with
-  `CMAKE_OPTS="-DFMRB_DEV_REMOTE_CTL=OFF"`). It starts and stops apps by path,
-  which the remote desktop above already allows through the launcher — this is
-  the scriptable form of it. Its file endpoints (`/fs/*`) read and write
-  **every file, the WiFi password, the API keys and the Asterism private keys
-  included**, and `/sys/reboot` restarts the board: a development build lets
-  anyone on the network copy the board's keys. See `doc/dev_remote_ctl/plan.md`
-  ("the development build") and `doc/remote_guard/plan.md`.
+- **Remote desktop (HTTP / WebSocket) and the remote control (`/app/*`, `/fs/*`,
+  `/audio/*`, `/sys/*`)** — what they allow depends on the build
+  (`doc/remote_guard/plan.md`):
+  - **Development build** (`FMRB_DEV_REMOTE_CTL`, the default): unauthenticated.
+    Any client on the same network can view the screen, send keyboard / mouse
+    input, start and stop apps, and read and write **every file, the WiFi
+    password, the API keys and the Asterism private keys included**;
+    `/sys/reboot` restarts the board. A development build lets anyone on the
+    network copy the board's keys. See `doc/dev_remote_ctl/plan.md` ("the
+    development build").
+  - **Release build** (`FMRB_RELEASE=1 rake build:esp32`, which passes
+    `-DFMRB_DEV_REMOTE_CTL=OFF`): closed until the owner turns on
+    **Config > Remote control** on the device (it stays on until the next
+    restart). The device then shows a six-digit number; a PC sends it once
+    (`ruby tools/fmrb_rd_fs.rb <IP> pair <number>` in the family-mruby tools)
+    and receives a token, which every request must carry. Up to four PCs are
+    kept (NVS); Config forgets them all. Files are written only under `/home`
+    and `/app`, and the keys and passwords are never read. `/status` stays
+    open. Plain HTTP: the token can be seen by anyone who can watch the
+    network traffic.
 - **BLE debug service** — starts at boot by default on the Retro board (NARYA v3),
   Tab5 and NARYA v4 (`ble_auto_start` in the system configuration, the "BLE Auto
   Start" setting); AtomS3R and StickS3 run it only in setup mode. While it runs it has

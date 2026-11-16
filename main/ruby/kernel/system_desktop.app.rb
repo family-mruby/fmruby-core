@@ -324,6 +324,12 @@ class SystemDesktopApp < FmrbApp
     @cfg_status = nil
     @cfg_status_until = 0
     @cfg_volume_saved = 0
+    # The rows shown, and the dialog's height: the file's settings, and the
+    # release build's remote control rows when that build has them.
+    @cfg_rows = ConfigDialogMixin::CFG_SETTINGS
+    @cfg_h = ConfigDialogMixin::CFG_H
+    @cfg_code_shown = -2
+    @cfg_forget = false
 
     # Network dialog state (Modern only)
     @net_open = false
@@ -1629,7 +1635,7 @@ class SystemDesktopApp < FmrbApp
     end
     if @cfg_open
       regions << { dst_x: @cfg_x, dst_y: @cfg_y,
-                   w: ConfigDialogMixin::CFG_W, h: ConfigDialogMixin::CFG_H, transparent: false }
+                   w: ConfigDialogMixin::CFG_W, h: @cfg_h, transparent: false }
     end
     if @str_open
       regions << { dst_x: @str_x, dst_y: @str_y,
@@ -1725,7 +1731,7 @@ class SystemDesktopApp < FmrbApp
     if @cfg_open
       return true if rect_covers?(@cfg_x, @cfg_y,
                                   ConfigDialogMixin::CFG_W,
-                                  ConfigDialogMixin::CFG_H, x, y, w, h)
+                                  @cfg_h, x, y, w, h)
     end
     if @str_open
       return true if rect_covers?(@str_x, @str_y,

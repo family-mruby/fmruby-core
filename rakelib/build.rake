@@ -224,8 +224,14 @@ namespace :build do
     cmake_opts = "-DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\""
     cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}" unless hw_target.empty?
     # No image carries the test apps (flash/app/test) any more, release or
-    # not (config/storage_exclude_common.txt, doc/flash_layout F1), so the
-    # release workflow's FMRB_RELEASE=1 changes nothing here.
+    # not (config/storage_exclude_common.txt, doc/flash_layout F1). What the
+    # release workflow's FMRB_RELEASE=1 changes is the remote control: a
+    # release build has it behind the guard (doc/remote_guard). Always passed,
+    # because CMake keeps an option in its cache: a release build followed by a
+    # plain one would otherwise stay a release build. CMAKE_OPTS comes after
+    # and wins.
+    release = ENV["FMRB_RELEASE"] == "1"
+    cmake_opts += " -DFMRB_DEV_REMOTE_CTL=#{release ? 'OFF' : 'ON'}"
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end

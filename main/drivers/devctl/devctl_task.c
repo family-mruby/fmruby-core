@@ -1,4 +1,5 @@
-// The development control endpoints on a machine with no remote desktop.
+// The remote control endpoints on a machine with no remote desktop. A release
+// build carries them too, behind the guard (devctl_http.c, doc/remote_guard).
 //
 // Modern registers them on the viewer's server (rd_http.c). Retro has no
 // viewer -- the S3 has no hardware video encoder -- but it does have WiFi and
@@ -39,9 +40,9 @@ static esp_err_t status_handler(httpd_req_t *req)
 {
     char ip[16];
     wifi_get_ip_str(ip, sizeof(ip));
-    char ident[96];
+    char ident[128];
     devctl_status_ident(ident, sizeof(ident));
-    char body[208];
+    char body[240];
     // "fb": this board answers /fb (below), the one way to see its screen.
 #if defined(FMRB_HAS_LOCAL_DISPLAY)
     const char *fb = ",\"fb\":true";
@@ -69,6 +70,8 @@ static esp_err_t status_handler(httpd_req_t *req)
 // the slot straight to the socket, so no internal RAM is used for it.
 static esp_err_t fb_handler(httpd_req_t *req)
 {
+    // The screen is behind the guard in a release build, as on Modern.
+    if (!devctl_guard_admit(req)) return ESP_OK;
     fmrb_err_t err = display_local_capture_enable(true);
     if (err != FMRB_OK) {
         httpd_resp_set_status(req, "503 Service Unavailable");
@@ -111,16 +114,17 @@ fmrb_err_t devctl_start(void)
     cfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    // Seventeen routes, eighteen with /fb (/fs/df, doc/flash_layout F1;
-    // /sys/gc, doc/regression/report/soak.md), and the default is eight.
+    // Nineteen routes, twenty with /fb (/fs/df, doc/flash_layout F1;
+    // /sys/gc, doc/regression/report/soak.md; /pair and /auth,
+    // doc/remote_guard G2), and the default is eight.
     // Registration answers ESP_ERR_HTTPD_HANDLERS_FULL rather than failing the
     // start (the /fb registration below says so in the log).
     // With mruby-checkpoint (doc/checkpoint F6) three more: /app/checkpoint
     // (POST and GET) and /app/move (devctl_http.c).
 #ifdef FMRB_HAVE_CHECKPOINT
-    cfg.max_uri_handlers = 21;
+    cfg.max_uri_handlers = 23;
 #else
-    cfg.max_uri_handlers = 18;
+    cfg.max_uri_handlers = 20;
 #endif
 
     esp_err_t err = httpd_start(&s_server, &cfg);
