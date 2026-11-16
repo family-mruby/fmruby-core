@@ -621,6 +621,33 @@ static void read_sdk_version(const uint8_t *bin, uint32_t size, char *out, size_
     }
 }
 
+/* The refusal of an app whose function imports are not all linked: the
+   first such import (module, name), how many there are, and the SDK
+   version the app carries. Shared by the check at load (check_imports) and
+   the one an installer makes (fmrb_wasm_check_file). */
+static void refuse_imports(const char *module_name, const char *name, int32_t missing, const char *sdk_ver,
+                           char *err, size_t err_cap)
+{
+    char more[24] = "";
+    if (missing > 1) snprintf(more, sizeof(more), " (and %d more)", (int)(missing - 1));
+    if (strcmp(module_name, "fmrb") != 0) {
+        /* WASI or another runtime's functions: no firmware has them. */
+        snprintf(err, err_cap, "imports %.32s.%.48s%s, but the firmware gives only \"fmrb\" "
+                 "functions: build the app without WASI or libc's I/O", module_name, name, more);
+        return;
+    }
+    const char *what = "which this firmware does not have";
+    for (size_t i = 0; i < NATIVES_COUNT; i++) {
+        if (strcmp(k_natives[i].symbol, name) == 0) {
+            what = "in another shape than this firmware's";
+            break;
+        }
+    }
+    snprintf(err, err_cap, "imports fmrb.%.48s, %s%s: the app was built with %s%s%s; "
+             "update the firmware", name, what, more,
+             sdk_ver[0] ? "SDK " : "a newer SDK", sdk_ver, sdk_ver[0] ? ", newer than this firmware" : "");
+}
+
 /* Every function the module imports must be one of the boundary's with the
    boundary's shape (doc/wasm_apps decision 14). WAMR links an import when
    its module, name and signature match a registered native, and leaves the
@@ -642,27 +669,340 @@ static bool check_imports(wasm_module_t module, const char *sdk_ver, char *err, 
         if (missing++ == 0) first = im;
     }
     if (missing == 0) return true;
+    refuse_imports(first.module_name, first.name, missing, sdk_ver, err, err_cap);
+    return false;
+}
 
-    char more[24] = "";
-    if (missing > 1) snprintf(more, sizeof(more), " (and %d more)", (int)(missing - 1));
-    if (strcmp(first.module_name, "fmrb") != 0) {
-        /* WASI or another runtime's functions: no firmware has them. */
-        snprintf(err, err_cap, "imports %.32s.%.48s%s, but the firmware gives only \"fmrb\" "
-                 "functions: build the app without WASI or libc's I/O", first.module_name,
-                 first.name, more);
-        return false;
+/* ---- the check without WAMR (an installer's, fmrb_wasm_check_file) ---- */
+
+/* The file read a little at a time. */
+typedef struct {
+    fmrb_file_t f;
+    uint32_t pos;           /* of the next byte in the file */
+    uint32_t size;
+    uint8_t buf[64];
+    uint32_t have, at;      /* bytes in buf, the next one */
+    bool bad;
+} wreader_t;
+
+static int wr_byte(wreader_t *r)
+{
+    if (r->at == r->have) {
+        size_t got = 0;
+        if (r->bad || r->pos >= r->size ||
+            fmrb_hal_file_read(r->f, r->buf, sizeof(r->buf), &got) != FMRB_OK || got == 0) {
+            r->bad = true;
+            return -1;
+        }
+        r->have = (uint32_t)got;
+        r->at = 0;
     }
-    const char *what = "which this firmware does not have";
-    for (size_t i = 0; i < NATIVES_COUNT; i++) {
-        if (strcmp(k_natives[i].symbol, first.name) == 0) {
-            what = "in another shape than this firmware's";
-            break;
+    r->pos++;
+    return r->buf[r->at++];
+}
+
+static bool wr_leb(wreader_t *r, uint32_t *v)
+{
+    uint32_t out = 0;
+    for (int shift = 0; shift < 35; shift += 7) {
+        int b = wr_byte(r);
+        if (b < 0) return false;
+        out |= (uint32_t)(b & 0x7f) << shift;
+        if (!(b & 0x80)) {
+            *v = out;
+            return true;
         }
     }
-    snprintf(err, err_cap, "imports fmrb.%.48s, %s%s: the app was built with %s%s%s; "
-             "update the firmware", first.name, what, more,
-             sdk_ver[0] ? "SDK " : "a newer SDK", sdk_ver, sdk_ver[0] ? ", newer than this firmware" : "");
     return false;
+}
+
+static bool wr_read(wreader_t *r, uint8_t *dst, uint32_t n)
+{
+    for (uint32_t i = 0; i < n; i++) {
+        int b = wr_byte(r);
+        if (b < 0) return false;
+        dst[i] = (uint8_t)b;
+    }
+    return true;
+}
+
+static bool wr_skip(wreader_t *r, uint32_t n)
+{
+    uint32_t left = r->have - r->at;
+    if (n <= left) {
+        r->at += n;
+        r->pos += n;
+        return true;
+    }
+    if (n > r->size - r->pos) {
+        r->bad = true;
+        return false;
+    }
+    r->pos += n;
+    r->at = r->have = 0;
+    return fmrb_hal_file_seek(r->f, (int32_t)r->pos, FMRB_SEEK_SET) == FMRB_OK;
+}
+
+/* A section held in memory, read with bounds. */
+typedef struct {
+    const uint8_t *p, *end;
+} wbytes_t;
+
+static bool wb_leb(wbytes_t *b, uint32_t *v)
+{
+    return read_leb_u32(b->p, b->end, &b->p, v);
+}
+
+static bool wb_name(wbytes_t *b, const uint8_t **s, uint32_t *n)
+{
+    if (!wb_leb(b, n) || *n > (uint32_t)(b->end - b->p)) return false;
+    *s = b->p;
+    b->p += *n;
+    return true;
+}
+
+/* WAMR's signature check (wasm_native.c check_symbol_signature) for a
+   function type of params and results (value type bytes): i i32, I i64,
+   f f32, F f64; * (a pointer, maybe followed by ~ its length) and $ (a
+   string) take an i32. Only the first result is looked at, as WAMR does. */
+static bool sig_type_is(uint8_t t, char c)
+{
+    return (t == 0x7f && c == 'i') || (t == 0x7e && c == 'I') || (t == 0x7d && c == 'f') ||
+           (t == 0x7c && c == 'F');
+}
+
+static bool sig_matches(const char *sig, const uint8_t *params, uint32_t np, const uint8_t *res, uint32_t nr)
+{
+    if (!sig || sig[0] == '\0') return true;
+    const char *p = sig, *end = sig + strlen(sig);
+    if (end - p < 2 || *p++ != '(') return false;
+    if ((uint32_t)(end - p) < np + 1) return false;
+    for (uint32_t i = 0; i < np; i++) {
+        char c = *p++;
+        if (sig_type_is(params[i], c)) continue;
+        if (params[i] != 0x7f) return false;
+        if (c == '*') {
+            if (i + 1 < np && params[i + 1] == 0x7f && *p == '~') {
+                i++;
+                p++;
+            }
+        } else if (c != '$') {
+            return false;
+        }
+    }
+    if (*p++ != ')') return false;
+    if (nr) {
+        if (p >= end || !sig_type_is(res[0], *p)) return false;
+        p++;
+    }
+    return *p == '\0';
+}
+
+/* The boundary's native of that name (WAMR also tries it without a leading
+   _), NULL when none. */
+static const NativeSymbol *native_named(const uint8_t *name, uint32_t n)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        const uint8_t *s = name;
+        uint32_t len = n;
+        if (pass == 1) {
+            if (n == 0 || name[0] != '_') break;
+            s++;
+            len--;
+        }
+        for (size_t i = 0; i < NATIVES_COUNT; i++) {
+            const char *sym = k_natives[i].symbol;
+            if (strlen(sym) == len && memcmp(sym, s, len) == 0) return &k_natives[i];
+        }
+    }
+    return NULL;
+}
+
+/* One import section against the type section: false (and err) at the
+   first function import this firmware does not link. */
+static bool check_import_section(wbytes_t types, uint32_t *offs, uint32_t ntypes, wbytes_t im,
+                                 const char *sdk_ver, char *err, size_t err_cap)
+{
+    uint32_t count;
+    if (!wb_leb(&im, &count)) goto bad;
+    int32_t missing = 0;
+    char first_mod[33] = "", first_name[49] = "";
+    for (uint32_t i = 0; i < count; i++) {
+        const uint8_t *mod, *name;
+        uint32_t mn, nn, idx, v;
+        if (!wb_name(&im, &mod, &mn) || !wb_name(&im, &name, &nn) || im.p >= im.end) goto bad;
+        uint8_t kind = *im.p++;
+        if (kind == 0) {
+            if (!wb_leb(&im, &idx) || idx >= ntypes) goto bad;
+        } else if (kind == 1) {           /* table: reftype, limits */
+            if (im.p >= im.end) goto bad;
+            im.p++;
+            uint32_t flags;
+            if (!wb_leb(&im, &flags) || !wb_leb(&im, &v) || ((flags & 1) && !wb_leb(&im, &v))) goto bad;
+            continue;
+        } else if (kind == 2) {           /* memory: limits */
+            uint32_t flags;
+            if (!wb_leb(&im, &flags) || !wb_leb(&im, &v) || ((flags & 1) && !wb_leb(&im, &v))) goto bad;
+            continue;
+        } else if (kind == 3) {           /* global: type, mutability */
+            if (im.end - im.p < 2) goto bad;
+            im.p += 2;
+            continue;
+        } else if (kind == 4) {           /* tag: attribute, type */
+            if (im.p >= im.end) goto bad;
+            im.p++;
+            if (!wb_leb(&im, &v)) goto bad;
+            continue;
+        } else {
+            goto bad;
+        }
+        /* the function's type: 0x60, params, results */
+        wbytes_t t = { types.p + offs[idx], types.end };
+        uint32_t np, nr;
+        if (t.p >= t.end || *t.p++ != 0x60 || !wb_leb(&t, &np) || np > (uint32_t)(t.end - t.p)) goto bad;
+        const uint8_t *params = t.p;
+        t.p += np;
+        if (!wb_leb(&t, &nr) || nr > (uint32_t)(t.end - t.p)) goto bad;
+        const uint8_t *res = t.p;
+        bool linked = false;
+        if (mn == 4 && memcmp(mod, "fmrb", 4) == 0) {
+            const NativeSymbol *ns = native_named(name, nn);
+            linked = ns && sig_matches(ns->signature, params, np, res, nr);
+        }
+        if (!linked && missing++ == 0) {
+            snprintf(first_mod, sizeof(first_mod), "%.*s", (int)(mn < 32 ? mn : 32), (const char *)mod);
+            snprintf(first_name, sizeof(first_name), "%.*s", (int)(nn < 48 ? nn : 48), (const char *)name);
+        }
+    }
+    if (missing == 0) return true;
+    refuse_imports(first_mod, first_name, missing, sdk_ver, err, err_cap);
+    return false;
+bad:
+    snprintf(err, err_cap, "its import section cannot be read (not a wasm module this firmware loads)");
+    return false;
+}
+
+/* Where each function type starts in the type section (offsets from its
+   start, after the count); false when it cannot be read. */
+static bool index_types(wbytes_t types, uint32_t *offs, uint32_t ntypes)
+{
+    const uint8_t *start = types.p;
+    for (uint32_t i = 0; i < ntypes; i++) {
+        offs[i] = (uint32_t)(types.p - start);
+        uint32_t n;
+        if (types.p >= types.end || *types.p++ != 0x60) return false;
+        for (int k = 0; k < 2; k++) {
+            if (!wb_leb(&types, &n) || n > (uint32_t)(types.end - types.p)) return false;
+            types.p += n;
+        }
+    }
+    return true;
+}
+
+bool fmrb_wasm_check_file(const char *path, fmrb_wasm_alloc_fn alloc, fmrb_wasm_free_fn release, void *ud,
+                          char *sdk_ver, size_t sdk_cap, char *err, size_t err_cap)
+{
+    if (sdk_cap) sdk_ver[0] = '\0';
+    if (err_cap) err[0] = '\0';
+    wreader_t r;
+    memset(&r, 0, sizeof(r));
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &r.f) != FMRB_OK) {
+        snprintf(err, err_cap, "cannot open %s", path);
+        return false;
+    }
+    bool ok = false;
+    uint8_t *types = NULL, *imports = NULL;
+    uint32_t *offs = NULL;
+    uint32_t types_len = 0, imports_len = 0;
+    uint8_t head[8];
+    if (fmrb_hal_file_size(r.f, &r.size) != FMRB_OK || !wr_read(&r, head, 8) ||
+        memcmp(head, "\0asm", 4) != 0 || head[4] != 1) {
+        snprintf(err, err_cap, "%s is not a wasm module", path);
+        goto out;
+    }
+    while (r.pos < r.size) {
+        int id = wr_byte(&r);
+        uint32_t len;
+        if (id < 0 || !wr_leb(&r, &len) || len > r.size - r.pos) {
+            snprintf(err, err_cap, "%s: a section goes past the end of the file", path);
+            goto out;
+        }
+        uint8_t **into = id == 1 ? &types : id == 2 ? &imports : NULL;
+        if (into && !*into) {
+            *into = alloc(ud, len ? len : 1);
+            if (!*into) {
+                snprintf(err, err_cap, "no room for %u bytes of %s's sections", (unsigned)len, path);
+                goto out;
+            }
+            if (!wr_read(&r, *into, len)) {
+                snprintf(err, err_cap, "short read of %s", path);
+                goto out;
+            }
+            if (id == 1) types_len = len;
+            else imports_len = len;
+            continue;
+        }
+        if (id == 0 && sdk_cap && !sdk_ver[0]) {
+            /* a custom section: fmrb.sdk holds the SDK version (read_sdk_version) */
+            uint32_t at = r.pos, nlen;
+            char name[sizeof(SDK_SECTION_NAME)];
+            if (wr_leb(&r, &nlen) && nlen == sizeof(SDK_SECTION_NAME) - 1 &&
+                wr_read(&r, (uint8_t *)name, nlen) && memcmp(name, SDK_SECTION_NAME, nlen) == 0) {
+                uint32_t n = len - (r.pos - at);
+                if (n > 0 && n < sdk_cap) {
+                    char v[32];
+                    if (n < sizeof(v) && wr_read(&r, (uint8_t *)v, n)) {
+                        bool printable = true;
+                        for (uint32_t i = 0; i < n; i++) printable = printable && v[i] >= 0x21 && v[i] <= 0x7e;
+                        if (printable) {
+                            memcpy(sdk_ver, v, n);
+                            sdk_ver[n] = '\0';
+                        }
+                    }
+                }
+            }
+            if (r.bad || r.pos > at + len) {
+                snprintf(err, err_cap, "%s: a custom section cannot be read", path);
+                goto out;
+            }
+            if (!wr_skip(&r, at + len - r.pos)) goto short_read;
+            continue;
+        }
+        if (!wr_skip(&r, len)) goto short_read;
+    }
+    if (!imports) {
+        ok = true;          /* imports nothing */
+        goto out;
+    }
+    uint32_t ntypes = 0;
+    wbytes_t tb = { types, types + types_len };
+    if (types && !wb_leb(&tb, &ntypes)) ntypes = 0;
+    if (ntypes > types_len) {
+        snprintf(err, err_cap, "%s: its type section cannot be read", path);
+        goto out;
+    }
+    if (ntypes) {
+        offs = alloc(ud, ntypes * sizeof(uint32_t));
+        if (!offs) {
+            snprintf(err, err_cap, "no room for the types of %s", path);
+            goto out;
+        }
+        if (!index_types(tb, offs, ntypes)) {
+            snprintf(err, err_cap, "%s: its type section cannot be read", path);
+            goto out;
+        }
+    }
+    wbytes_t ib = { imports, imports + imports_len };
+    ok = check_import_section(tb, offs, ntypes, ib, sdk_ver, err, err_cap);
+    goto out;
+short_read:
+    snprintf(err, err_cap, "short read of %s", path);
+out:
+    if (offs) release(ud, offs);
+    if (types) release(ud, types);
+    if (imports) release(ud, imports);
+    fmrb_hal_file_close(r.f);
+    return ok;
 }
 
 /* The app's stack pointer: the first mutable i32 global the module

@@ -58,6 +58,9 @@
 #include <mruby/string.h>
 #include <mruby/array.h>
 #include <mruby/class.h>
+#ifdef FMRB_HAVE_WASM
+#include "fmrb_wasm.h"
+#endif
 #include <mruby/error.h>
 #include <mruby/throw.h>
 #include <mruby/checkpoint.h>
@@ -868,6 +871,44 @@ static mrb_value app_s_checkpoint_restore_poll(mrb_state *mrb, mrb_value klass)
     return out;
 }
 
+// FmrbApp._wasm_check(path) -> [ok, sdk_version, reason]
+// Whether this firmware would start the .wasm at path as far as its imports
+// go (fmrb_wasm_check_file: the check of the load, made without WAMR): the
+// installer of the transfer app refuses an app with the reason before it is
+// placed (doc/wasm_apps W6). sdk_version: the module's custom section
+// fmrb.sdk ("" when none). A build without wasm apps answers false.
+#ifdef FMRB_HAVE_WASM
+static void *wasm_check_alloc(void *ud, size_t n)
+{
+    return mrb_malloc_simple((mrb_state *)ud, n);
+}
+
+static void wasm_check_free(void *ud, void *p)
+{
+    mrb_free((mrb_state *)ud, p);
+}
+#endif
+
+static mrb_value app_s_wasm_check(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    const char *path;
+    mrb_get_args(mrb, "z", &path);
+    char ver[24] = "";
+    char why[200] = "";
+    bool ok = false;
+#ifdef FMRB_HAVE_WASM
+    ok = fmrb_wasm_check_file(path, wasm_check_alloc, wasm_check_free, mrb, ver, sizeof(ver), why, sizeof(why));
+#else
+    snprintf(why, sizeof(why), "this build has no wasm apps");
+#endif
+    mrb_value out = mrb_ary_new_capa(mrb, 3);
+    mrb_ary_push(mrb, out, mrb_bool_value(ok));
+    mrb_ary_push(mrb, out, mrb_str_new_cstr(mrb, ver));
+    mrb_ary_push(mrb, out, mrb_str_new_cstr(mrb, why));
+    return out;
+}
+
 static void define_receiving_methods(mrb_state *mrb)
 {
     if (!mrb_class_defined(mrb, "FmrbApp")) return;
@@ -875,6 +916,7 @@ static void define_receiving_methods(mrb_state *mrb)
     mrb_define_class_method(mrb, app, "_checkpoint_has_method", app_s_checkpoint_has_method, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app, "_checkpoint_restore", app_s_checkpoint_restore, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app, "_checkpoint_restore_poll", app_s_checkpoint_restore_poll, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app, "_wasm_check", app_s_wasm_check, MRB_ARGS_REQ(1));
 }
 
 // ---- setting a VM up ------------------------------------------------------------

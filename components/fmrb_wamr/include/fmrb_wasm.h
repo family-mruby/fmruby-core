@@ -84,6 +84,28 @@ bool fmrb_wasm_app_stats(int pid, fmrb_wasm_app_stats_t *out);
 /** @brief The fmrb_wasm: lines of the periodic dump (fmrb_app_dump_vm_pools). */
 void fmrb_wasm_dump_stats(void);
 
+/** Memory for fmrb_wasm_check_file (the caller's: the app's pool). */
+typedef void *(*fmrb_wasm_alloc_fn)(void *ud, size_t size);
+typedef void (*fmrb_wasm_free_fn)(void *ud, void *p);
+
+/**
+ * @brief Whether this firmware would start the .wasm at path, as far as its
+ *        imports go: every function it imports is one of the boundary's
+ *        with the boundary's shape (the check fmrb_wasm_app_run makes after
+ *        WAMR loads the module, with the same message). Made without WAMR
+ *        (the runtime is not started), from the module's type and import
+ *        sections, so an installer can refuse an app before it is placed
+ *        (doc/wasm_apps W6).
+ *
+ * @param alloc,release,ud  where the two sections are read to (a few KB)
+ * @param sdk_ver  the SDK version in the module's custom section fmrb.sdk
+ *                 ("" when there is none)
+ * @param err      why not, when false (a file that is not wasm, cannot be
+ *                 read, or imports what this firmware does not give)
+ */
+bool fmrb_wasm_check_file(const char *path, fmrb_wasm_alloc_fn alloc, fmrb_wasm_free_fn release, void *ud,
+                          char *sdk_ver, size_t sdk_cap, char *err, size_t err_cap);
+
 #ifdef __cplusplus
 }
 #endif
