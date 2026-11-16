@@ -43,7 +43,9 @@
 #include <mruby/string.h>
 #include "fmrb_gen/fmrb_boundary.h"
 
-static __attribute__((unused)) void fmrb_gen_mrb_check(mrb_state *mrb, int32_t ret, const char *what)
+/* Called only for a negative result (the call sites test it first, so a call
+   that succeeds costs no function call). */
+static __attribute__((unused, cold, noinline)) void fmrb_gen_mrb_check(mrb_state *mrb, int32_t ret, const char *what)
 {
     if (ret == FMRB_BOUNDARY_ERR_ARG) {
         mrb_raisef(mrb, E_ARGUMENT_ERROR, "%s: argument out of range", what);
@@ -165,7 +167,7 @@ static mrb_value fmrb_gen_mrb_<%= f.import_name %>(mrb_state *mrb, mrb_value sel
 <% if f.returns_record? -%>
     <%= f.ret.record.cname %> out;
     int32_t ret = <%= f.flat %>(<%= (args + ['&out']).join(', ') %>);
-    fmrb_gen_mrb_check(mrb, ret, "<%= f.method %>");
+    if (ret < 0) fmrb_gen_mrb_check(mrb, ret, "<%= f.method %>");
 <% if f.ret.optional -%>
     if (ret == 0) {
         return mrb_nil_value();
@@ -180,7 +182,7 @@ static mrb_value fmrb_gen_mrb_<%= f.import_name %>(mrb_state *mrb, mrb_value sel
         return mrb_nil_value();
     }
 <% end -%>
-    fmrb_gen_mrb_check(mrb, ret, "<%= f.method %>");
+    if (ret < 0) fmrb_gen_mrb_check(mrb, ret, "<%= f.method %>");
     if (ret <= (int32_t)sizeof(buf)) {
         return mrb_str_new(mrb, buf, ret);
     }
@@ -191,7 +193,7 @@ static mrb_value fmrb_gen_mrb_<%= f.import_name %>(mrb_state *mrb, mrb_value sel
         return mrb_nil_value();
     }
 <% end -%>
-    fmrb_gen_mrb_check(mrb, got, "<%= f.method %>");
+    if (got < 0) fmrb_gen_mrb_check(mrb, got, "<%= f.method %>");
     mrb_str_resize(mrb, s, got < ret ? got : ret);
     return s;
 <% else -%>
@@ -201,7 +203,7 @@ static mrb_value fmrb_gen_mrb_<%= f.import_name %>(mrb_state *mrb, mrb_value sel
         return mrb_nil_value();
     }
 <% end -%>
-    fmrb_gen_mrb_check(mrb, <%= f.wide_ret? ? '(int32_t)(ret < 0 ? ret : 0)' : 'ret' %>, "<%= f.method %>");
+    if (ret < 0) fmrb_gen_mrb_check(mrb, <%= f.wide_ret? ? '(int32_t)ret' : 'ret' %>, "<%= f.method %>");
 <% case f.ret when :self -%>
     return self;
 <% when :void -%>
