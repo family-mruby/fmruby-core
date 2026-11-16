@@ -326,9 +326,15 @@ class SystemDesktopApp < FmrbApp
     @cfg_status = nil
     @cfg_status_until = 0
     @cfg_volume_saved = 0
-    # The rows shown, and the dialog's height: the file's settings, and the
-    # release build's remote control rows when that build has them.
+    # The pages (each a list of rows; the release build's remote control
+    # rows go on System when that build has them), the tabs' labels and
+    # where they sit, the page shown and its rows, and the dialog's height.
     @cfg_rows = ConfigDialogMixin::CFG_SETTINGS
+    @cfg_pages = [ConfigDialogMixin::CFG_SETTINGS]
+    @cfg_page_keys = ConfigDialogMixin::CFG_PAGES
+    @cfg_page = 0
+    @cfg_tab_x = [0]
+    @cfg_tab_w = [0]
     @cfg_h = ConfigDialogMixin::CFG_H
     @cfg_code_shown = -2
     @cfg_forget = false
@@ -2256,6 +2262,13 @@ class SystemDesktopApp < FmrbApp
       # the shortcuts) may act while a question is on screen.
       if @cdlg_open
         handle_confirm_dialog_key(scancode)
+        return
+      end
+
+      # Config: the tabs and rows read the keys, and nothing behind it acts
+      # (config_dialog.rb, handle_config_dialog_key).
+      if @cfg_open
+        handle_config_dialog_key(scancode, ev_shift?(ev))
         return
       end
 

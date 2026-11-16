@@ -4,16 +4,28 @@
 # rewrites of the existing file so comments, [[shortcuts]] / [[sync_files]]
 # entries, and other unrelated keys are preserved.
 #
-# Items (in display order):
-#   language, keyboard_layout, mouse_scale_x/y, theme preset, wallpaper,
-#   timezone, audio_volume, debug_mode, ble/wifi_auto_start,
-#   display_margin_x/y
-# and, in a release build with WiFi up, one that is not in the file: the
-# remote control (doc/remote_guard G2). Its arrows step OFF -> ON -> "Pair a
-# PC" (on, and taking new PCs: the number they pair with is shown) ->
-# "forget N PCs" -> OFF. OFF and ON take effect at once and are kept across
-# restarts; pairing lasts while the row shows it and the dialog is open;
-# forgetting the paired PCs waits for Save.
+# The rows are split into pages, picked by the tabs under the title:
+#   Display      theme preset, wallpaper, display_margin_x/y
+#   Input        keyboard_layout, mouse_scale_x/y
+#   Sound & Time audio_volume, timezone
+#   System       language, debug_mode, ble/wifi_auto_start
+# and, on System in a release build with WiFi up, one that is not in the
+# file: the remote control (doc/remote_guard G2). Its arrows step OFF -> ON
+# -> "Pair a PC" (on, and taking new PCs: the number they pair with is
+# shown) -> "forget N PCs" -> OFF. OFF and ON take effect at once and are
+# kept across restarts; pairing lasts while the row shows it and the dialog
+# is open; forgetting the paired PCs waits for Save.
+#
+# One page is shown at a time, but the dialog edits them all: Save writes
+# every page's rows, and Cancel (or a click outside) forgets every page's
+# changes, the volume preview included. It is as tall as CFG_PAGE_ROWS rows
+# whatever the page, so it never moves while the tabs are switched, and it
+# always sits below the menu bar (all 240 lines of the screens: it was one
+# column of 14 rows that had to cover the menu bar to fit).
+#
+# Keys: Tab / Shift+Tab switch pages; Up / Down move between the tab line
+# and the rows; Left / Right switch pages on the tab line and step the value
+# on a row; Enter saves; Esc cancels.
 #
 # Save & Reboot is shown only on ESP32; on Linux the user must restart the
 # host process manually after a plain Save.
@@ -25,9 +37,12 @@ module ConfigDialogMixin
   CFG_FACTORY_PATH = "/etc/system_conf.factory.toml"
   CFG_W       = 280
   CFG_TITLE_H = 14
+  CFG_TAB_H   = 14
   CFG_ROW_H   = 14
   CFG_FOOTER_H= 22
   CFG_ARROW_W = 10
+  # Keypad Enter (HID usage 0x58; FmrbConst has KEY_ENTER only).
+  CFG_KEY_KP_ENTER = 0x58
 
   CFG_BG     = FmrbConst::THEME_WINDOW_BG
   CFG_TEXT   = FmrbConst::THEME_TEXT
@@ -65,7 +80,8 @@ module ConfigDialogMixin
 
   # Setting rows. :enum -> options[], :float / :int -> min/max/step,
   # :bool -> on/off. field is the TOML key, or :theme_preset (synthetic) which
-  # expands to the nine [theme] entries on save.
+  # expands to the nine [theme] entries on save. page is the tab the row is
+  # on (CFG_PAGES); a page shows its rows in this order.
   # Rows a browser has no answer for. The mouse scale is applied to a
   # relative device in usb_task; a page sends absolute canvas coordinates, so
   # nothing the slider does can reach them. The radios do not exist -- the web
@@ -97,26 +113,43 @@ module ConfigDialogMixin
   CFG_KBD_AUTO = FmrbSystem.respond_to?(:linux_keyboard)
   CFG_KBD_OPTIONS = CFG_KBD_AUTO ? ["auto", "jp", "us"] : ["jp", "us"]
 
+  # The tabs, in order: the label's string key. A page with no row left (the
+  # browser hides some) gets no tab.
+  CFG_PAGES = [:cfg_page_display, :cfg_page_input, :cfg_page_sound, :cfg_page_system]
+  CFG_PAGE_DISPLAY = 0
+  CFG_PAGE_INPUT   = 1
+  CFG_PAGE_SOUND   = 2
+  CFG_PAGE_SYSTEM  = 3
+
   CFG_SETTINGS = [
-    { key: :language,         field: "language",         type: :enum,  options: ["en", "ja"] },
-    { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: CFG_KBD_OPTIONS },
-    { key: :mouse_scale_x,    field: "mouse_scale_x",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
-    { key: :mouse_scale_y,    field: "mouse_scale_y",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
-    { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "cyberpunk"] },
+    { key: :theme,            field: "theme_preset",     type: :enum,  page: CFG_PAGE_DISPLAY,
+      options: ["light", "dark", "cyberpunk"] },
     # The choices are found when the dialog opens (cfg_scan_wallpapers), so
     # this list is only the two that always exist. "" means "whatever the
     # theme says"; a path names a file and beats the theme.
-    { key: :wallpaper,        field: "wallpaper",        type: :enum,  options: ["", "none"] },
-    { key: :timezone,         field: "timezone",         type: :enum,
-      options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
+    { key: :wallpaper,        field: "wallpaper",        type: :enum,  page: CFG_PAGE_DISPLAY,
+      options: ["", "none"] },
+    { key: :display_margin_x, field: "display_margin_x", type: :int,   page: CFG_PAGE_DISPLAY,
+      min: 0, max: 16, step: 1 },
+    { key: :display_margin_y, field: "display_margin_y", type: :int,   page: CFG_PAGE_DISPLAY,
+      min: 0, max: 16, step: 1 },
+    { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  page: CFG_PAGE_INPUT,
+      options: CFG_KBD_OPTIONS },
+    { key: :mouse_scale_x,    field: "mouse_scale_x",    type: :float, page: CFG_PAGE_INPUT,
+      min: 0.1, max: 2.0, step: 0.1 },
+    { key: :mouse_scale_y,    field: "mouse_scale_y",    type: :float, page: CFG_PAGE_INPUT,
+      min: 0.1, max: 2.0, step: 0.1 },
     # 0 = silence, 10 = the loudest the output goes (doc/reference/audio_output.md). Heard as
     # it is stepped, like a knob; saved by Save like every other row.
-    { key: :audio_volume,     field: "audio_volume",     type: :int,   min: 0, max: 10, step: 1 },
-    { key: :debug_mode,       field: "debug_mode",       type: :bool },
-    { key: :ble_auto_start,   field: "ble_auto_start",   type: :bool },
-    { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool },
-    { key: :display_margin_x, field: "display_margin_x", type: :int,   min: 0, max: 16, step: 1 },
-    { key: :display_margin_y, field: "display_margin_y", type: :int,   min: 0, max: 16, step: 1 },
+    { key: :audio_volume,     field: "audio_volume",     type: :int,   page: CFG_PAGE_SOUND,
+      min: 0, max: 10, step: 1 },
+    { key: :timezone,         field: "timezone",         type: :enum,  page: CFG_PAGE_SOUND,
+      options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
+    { key: :language,         field: "language",         type: :enum,  page: CFG_PAGE_SYSTEM,
+      options: ["en", "ja"] },
+    { key: :debug_mode,       field: "debug_mode",       type: :bool,  page: CFG_PAGE_SYSTEM },
+    { key: :ble_auto_start,   field: "ble_auto_start",   type: :bool,  page: CFG_PAGE_SYSTEM },
+    { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool,  page: CFG_PAGE_SYSTEM },
   ].reject { |s| FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field]) }
 
   # The release build's WiFi remote control (doc/remote_guard G2). Not in the
@@ -124,27 +157,31 @@ module ConfigDialogMixin
   # kept until it is turned off. Shown only where FmrbSystem.remote_access
   # says the build has the guard -- a development build's remote control
   # needs no allowing.
-  # One row: the dialog already fills a 240-line screen, and a second row
-  # would not fit (cfg_place_y lets this one cover the menu bar).
+  # On the System page, after the file's rows.
   CFG_REMOTE_ROWS = [
-    { key: :remote_access, field: "remote_access", type: :remote },
+    { key: :remote_access, field: "remote_access", type: :remote, page: CFG_PAGE_SYSTEM },
   ]
 
-  # Tall enough for the rows there actually are. It was a fixed 200, which the
-  # rows outgrew the moment one was added: the last of them ended up under the
-  # footer. The 4 is the gap between the last row and the separator line.
-  # The height without the remote control rows; cfg_height counts them.
-  CFG_H = CFG_TITLE_H + 2 + CFG_SETTINGS.size * CFG_ROW_H + 4 + CFG_FOOTER_H
+  # Rows a page has room for. The fullest page has five (System with the
+  # remote control); the spare row is for the next setting, and a page that
+  # would outgrow this wants a new tab rather than a taller dialog.
+  CFG_PAGE_ROWS = 6
 
-  def cfg_height(rows)
-    CFG_TITLE_H + 2 + rows * CFG_ROW_H + 4 + CFG_FOOTER_H
-  end
+  # The same height on every page, so the dialog does not jump when the tabs
+  # are switched. The 2 is the gap under the tabs, the 4 the gap between the
+  # last row and the footer's separator line. 140 lines: on a 240-line screen
+  # it sits below the 13-line menu bar with room to spare.
+  CFG_H = CFG_TITLE_H + CFG_TAB_H + 2 + CFG_PAGE_ROWS * CFG_ROW_H + 4 + CFG_FOOTER_H
+
+  # Gap between the menu bar and the dialog when the screen is too short to
+  # centre it there.
+  CFG_TOP_GAP = 4
 
   CFG_BTN_H = CFG_FOOTER_H - 8
 
   # ---- Widgets ----
   #
-  # Only the footer buttons. The eleven setting rows stay hand-drawn: a row
+  # Only the footer buttons. The setting rows and the tabs stay hand-drawn: a row
   # is a label, a derived value and two arrows, where the value is typed
   # (enum / bool / int / float), its text is computed and sometimes
   # localized, and the row carries a selection highlight. Nothing in the
@@ -207,13 +244,8 @@ module ConfigDialogMixin
     @cfg_selected = -1
     @cfg_status = nil
     @cfg_status_until = 0
-    rows = []
-    CFG_SETTINGS.each { |s| rows << s }
-    if FmrbSystem.remote_access >= 0
-      CFG_REMOTE_ROWS.each { |s| rows << s }
-    end
-    @cfg_rows = rows
-    @cfg_h = cfg_height(rows.size)
+    cfg_build_pages
+    @cfg_h = CFG_H
     @cfg_forget = false
     # Pairing is open only while this dialog shows it: start from closed (a
     # dialog that went away without closing, say with a crashed desktop,
@@ -222,17 +254,13 @@ module ConfigDialogMixin
     FmrbSystem.set_remote_pairing(false) if FmrbSystem.remote_access >= 0
     @cfg_code_shown = FmrbSystem.remote_access_code
     @cfg_x = (@window_width - CFG_W) / 2
-    @cfg_y = (@window_height - @cfg_h) / 2
-    # Keep below the menu bar. picoruby resolves bare constants in the mixin's
-    # lexical scope only, so reach into the including class explicitly.
+    # Centred in the screen below the menu bar, never over it. picoruby
+    # resolves bare constants in the mixin's lexical scope only, so reach
+    # into the including class explicitly.
     menu_h = self.class::MENU_BAR_HEIGHT
-    @cfg_y = menu_h + 2 if @cfg_y < menu_h + 2
-    # Unless that pushes the bottom off the screen (the remote control row on
-    # a 240-line screen): then over the menu bar, all of it on the screen.
-    if @cfg_y + @cfg_h > @window_height
-      @cfg_y = @window_height - @cfg_h - 1
-      @cfg_y = 0 if @cfg_y < 0
-    end
+    @cfg_y = menu_h + (@window_height - menu_h - @cfg_h) / 2
+    @cfg_y = menu_h + CFG_TOP_GAP if @cfg_y < menu_h + CFG_TOP_GAP
+    cfg_layout_tabs
     cfg_scan_wallpapers
     cfg_load
     # The volume row plays as it is stepped but is saved only by Save, like
@@ -240,9 +268,69 @@ module ConfigDialogMixin
     @cfg_volume_saved = FmrbApp.audio_volume
     close_launcher
     close_dropdown
-    notify_overlay_state(true, @cfg_x, @cfg_y, CFG_W, @cfg_h)
+    # take_keys: the tabs and rows answer the keyboard (Tab, the arrows,
+    # Enter, Esc) whoever had it, and it goes back to them when this closes.
+    notify_overlay_state(true, @cfg_x, @cfg_y, CFG_W, @cfg_h, false, true)
     update_composite_regions
     draw_foreground
+  end
+
+  # The pages there are on this machine: each page's rows, in CFG_SETTINGS
+  # order, with the remote control rows on System where the build has them.
+  # A page left with no rows (the browser hides some) is dropped, tab and
+  # all.
+  def cfg_build_pages
+    remote = FmrbSystem.remote_access >= 0
+    pages = []
+    keys = []
+    CFG_PAGES.each_with_index do |label, pi|
+      rows = []
+      CFG_SETTINGS.each { |s| rows << s if s[:page] == pi }
+      if remote
+        CFG_REMOTE_ROWS.each { |s| rows << s if s[:page] == pi }
+      end
+      next if rows.empty?
+      pages << rows
+      keys << label
+    end
+    @cfg_pages = pages
+    @cfg_page_keys = keys
+    @cfg_page = 0
+    @cfg_rows = pages[0]
+    nil
+  end
+
+  # Where each tab sits: its label's width plus padding, left to right from
+  # the dialog's left edge. Measured once per opening (the language changes
+  # only with a restart).
+  def cfg_layout_tabs
+    xs = []
+    ws = []
+    x = @cfg_x + 4
+    @cfg_page_keys.each do |k|
+      w = FmrbI18n.text_width(FmrbI18n.t(k)) + 12
+      xs << x
+      ws << w
+      x += w + 2
+    end
+    @cfg_tab_x = xs
+    @cfg_tab_w = ws
+    nil
+  end
+
+  def cfg_tab_y
+    @cfg_y + CFG_TITLE_H + 1
+  end
+
+  def cfg_show_page(i)
+    n = @cfg_pages.size
+    i = (i + n) % n
+    return if i == @cfg_page
+    @cfg_page = i
+    @cfg_rows = @cfg_pages[i]
+    @cfg_selected = -1
+    draw_foreground
+    nil
   end
 
   def close_config_dialog
@@ -488,12 +576,38 @@ module ConfigDialogMixin
     @gfx.draw_rect(x, y, CFG_W, @cfg_h, CFG_BORDER)
     @gfx.fill_rect(x + 1, y + 1, CFG_W - 2, CFG_TITLE_H - 1, CFG_HEADER)
     @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:config), FmrbConst::THEME_TEXT_LIGHT, CFG_HEADER, mixed: true)
+    cfg_draw_tabs
     @cfg_rows.each_with_index { |s, i| cfg_draw_row(i, s) }
     cfg_draw_footer
   end
 
+  # The tab line: the page shown in the highlight colour and joined to the
+  # page below (no line under it), the others framed on the dialog's
+  # background. With the keyboard on the tab line (no row selected) the
+  # shown tab's label is underlined.
+  def cfg_draw_tabs
+    ty = cfg_tab_y
+    base = ty + CFG_TAB_H - 1
+    @gfx.draw_line(@cfg_x + 1, base, @cfg_x + CFG_W - 2, base, CFG_BORDER)
+    @cfg_page_keys.each_with_index do |k, i|
+      tx = @cfg_tab_x[i]
+      tw = @cfg_tab_w[i]
+      cur = (i == @cfg_page)
+      bg = cur ? CFG_SEL : CFG_BG
+      @gfx.fill_rect(tx, ty + 1, tw, CFG_TAB_H - 2, bg)
+      @gfx.draw_rect(tx, ty + 1, tw, CFG_TAB_H - 1, CFG_BORDER)
+      @gfx.draw_line(tx + 1, base, tx + tw - 2, base, bg) if cur
+      label = FmrbI18n.t(k)
+      @gfx.draw_text(tx + 6, ty + 3, label, CFG_TEXT, bg, mixed: true)
+      if cur && @cfg_selected < 0
+        @gfx.draw_line(tx + 6, ty + 11, tx + 5 + FmrbI18n.text_width(label), ty + 11, CFG_TEXT)
+      end
+    end
+    nil
+  end
+
   def cfg_row_y(i)
-    @cfg_y + CFG_TITLE_H + 2 + i * CFG_ROW_H
+    @cfg_y + CFG_TITLE_H + CFG_TAB_H + 2 + i * CFG_ROW_H
   end
 
   def cfg_arrow_l_x
@@ -606,6 +720,15 @@ module ConfigDialogMixin
   # ---- Interaction ----
 
   def handle_config_dialog_click(x, y)
+    ty = cfg_tab_y
+    if y >= ty && y < ty + CFG_TAB_H
+      @cfg_tab_x.each_with_index do |tx, i|
+        next unless x >= tx && x < tx + @cfg_tab_w[i]
+        cfg_show_page(i)
+        return
+      end
+      return
+    end
     @cfg_rows.each_with_index do |s, i|
       ry = cfg_row_y(i)
       next unless y >= ry - 1 && y < ry + CFG_ROW_H - 1
@@ -618,6 +741,40 @@ module ConfigDialogMixin
       draw_foreground
       return
     end
+  end
+
+  # Tab / Shift+Tab: the next or previous page, wherever the keyboard is.
+  # Up / Down: between the tab line (-1) and the page's rows. Left / Right:
+  # the page on the tab line, the value on a row. Enter saves, Esc cancels
+  # (as the buttons do). Every other key is swallowed: the dialog is modal.
+  def handle_config_dialog_key(scancode, shift)
+    case scancode
+    when FmrbConst::KEY_TAB
+      cfg_show_page(@cfg_page + (shift ? -1 : 1))
+    when FmrbConst::KEY_UP
+      if @cfg_selected >= 0
+        @cfg_selected -= 1
+        draw_foreground
+      end
+    when FmrbConst::KEY_DOWN
+      if @cfg_selected < @cfg_rows.size - 1
+        @cfg_selected += 1
+        draw_foreground
+      end
+    when FmrbConst::KEY_LEFT, FmrbConst::KEY_RIGHT
+      dir = (scancode == FmrbConst::KEY_LEFT) ? -1 : 1
+      if @cfg_selected < 0
+        cfg_show_page(@cfg_page + dir)
+      else
+        cfg_cycle(@cfg_rows[@cfg_selected], dir)
+        draw_foreground
+      end
+    when FmrbConst::KEY_ENTER, CFG_KEY_KP_ENTER
+      cfg_do_save(false)
+    when FmrbConst::KEY_ESC
+      close_config_dialog
+    end
+    nil
   end
 
   def cfg_hit_rect?(x, y, r)
