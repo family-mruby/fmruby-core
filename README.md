@@ -131,14 +131,16 @@ development on a trusted local network.
     development build").
   - **Release build** (`FMRB_RELEASE=1 rake build:esp32`, which passes
     `-DFMRB_DEV_REMOTE_CTL=OFF`): closed until the owner turns on
-    **Config > Remote control** on the device (it stays on until the next
-    restart). The device then shows a six-digit number; a PC sends it once
+    **Config > Remote control** on the device (it stays on, across restarts,
+    until it is turned off; turning it off closes the open viewer
+    connections). A new PC pairs only while the owner has stepped that row to
+    **Pair a PC**, which shows a six-digit number; the PC sends it once
     (`ruby tools/fmrb_rd_fs.rb <IP> pair <number>` in the family-mruby tools)
     and receives a token, which every request must carry. Up to four PCs are
-    kept (NVS); Config forgets them all. Files are written only under `/home`
-    and `/app`, and the keys and passwords are never read. `/status` stays
-    open. Plain HTTP: the token can be seen by anyone who can watch the
-    network traffic.
+    kept (only the SHA-256 of each token, in NVS); Config forgets them all.
+    Files are written only under `/home`, `/app` and `/mnt/sd`, and the keys
+    and passwords are never read. `/status` stays open. Plain HTTP: the token
+    can be seen by anyone who can watch the network traffic.
 - **BLE debug service** — starts at boot by default on the Retro board (NARYA v3),
   Tab5 and NARYA v4 (`ble_auto_start` in the system configuration, the "BLE Auto
   Start" setting); AtomS3R and StickS3 run it only in setup mode. While it runs it has
