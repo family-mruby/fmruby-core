@@ -152,6 +152,7 @@ module ShellCommandsMixin
       @history << "  restore <image> - Start an app from its image (.ckpt)"
       @history << "  amove <pid|name> <node> - Move an app to another machine (its Asterism node ID; name as ps shows it)"
       @history << "  asend <node> <file> [-o] [-s] - Send a file over Asterism to another machine's /home/inbox (-o: overwrite; -s: its SD card's /sd/inbox)"
+      @history << "  asend -a <node> <app> [-o] - Install an app (its folder or program) on another machine (-o: replace the one there)"
       @history << "  asend -c - Stop the file being sent"
       @history << "  asend -l - Who may send files here (by hand, and from the console)"
       @history << "  asend on|off - Keep the machines to send to (the window menu's Send to), or stop; asend: whether it is on"
@@ -159,7 +160,8 @@ module ShellCommandsMixin
       @history << "  anodes info <node> - One machine: its profile, apps and their status, whether it takes files and apps"
       @history << "  areceive - Whether this machine receives files and apps, and from whom"
       @history << "  areceive on|off - Receive (and start the transfer app), or stop receiving"
-      @history << "  areceive allow|deny <file|checkpoint> <node> - Who may send files / move apps here ('*': everyone on the network)"
+      @history << "  areceive allow|deny <file|checkpoint|app> <node> - Who may send files / move apps / install apps here ('*': everyone on the network)"
+      @history << "  areceive install ask|auto - Ask before an app sent here is installed (ask, the default), or not"
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
@@ -1425,10 +1427,13 @@ module ShellCommandsMixin
     end
     over = false
     sd = false
+    as_app = false
     rest = []
     i = 0
     while i < args.size
-      if args[i] == "-o"
+      if args[i] == "-a" || args[i] == "--app"
+        as_app = true
+      elsif args[i] == "-o"
         over = true
       elsif args[i] == "-s" || args[i] == "--sd"
         sd = true
@@ -1446,6 +1451,10 @@ module ShellCommandsMixin
       return
     end
     path = resolve_virtual_path(rest[1])
+    if as_app
+      send_app(rest[0], path, over)
+      return
+    end
     unless File.exist?(path) && !File.directory?(path)
       @history << "asend: no such file: #{rest[1]}"
       return
@@ -1463,8 +1472,36 @@ module ShellCommandsMixin
     @send_path = path
     @send_to = rest[0]
     @send_shown = 0
+    @send_app = false
     @send_inbox = sd ? "/sd/inbox" : "/home/inbox"
     @history << "asend: #{path} to #{rest[0]}#{sd ? ' (SD card)' : ''}#{over ? ' (overwrite)' : ''}"
+  end
+
+  # asend -a <node> <app> [-o] (doc/wasm_apps W6): the app (its folder, or
+  # its program with the files of its name beside it) installed on that
+  # machine as /app/usr/<name>/, when it takes apps from this one ([app]
+  # from in its receive.toml) and its owner says yes (unless install =
+  # "auto" there).
+  def send_app(to, path, over)
+    unless File.exist?(path) || Dir.exist?(path)
+      @history << "asend: no such app: #{path}"
+      return
+    end
+    begin
+      unless @xfer
+        require "/usr/share/transfer/fmrb_transfer"
+        @xfer = FmrbTransfer.new(self)
+      end
+      @send_rq = @xfer.send_app(to, path, overwrite: over)
+    rescue => e
+      @history << "asend: #{e.message}"
+      return
+    end
+    @send_path = path
+    @send_to = to
+    @send_shown = 0
+    @send_app = true
+    @history << "asend: installing #{path} on #{to}#{over ? ' (replacing the one there)' : ''}; its owner may be asked"
   end
 
   # asend on|off, or asend alone (on: nil): the send switch.
@@ -1539,6 +1576,13 @@ module ShellCommandsMixin
         @history << "areceive: receiving is #{op}#{written ? " (written to #{FmrbReceiveConf::PATH})" : ' (it was already)'}"
         @history << "areceive: the transfer app is started" if said == :started
         @history << "areceive: the transfer app ends once what is coming in is in" if said == :stopping
+      elsif op == "install" && args.size == 2
+        written = FmrbReceiveConf.set_install_mode(args[1])
+        how = args[1] == "auto" ? "installed without asking" : "installed after asking the owner"
+        @history << "areceive: apps sent here are #{how}#{written ? " (written to #{FmrbReceiveConf::PATH})" : ' (it was so already)'}"
+        if args[1] == "auto"
+          @history << "areceive: note: the machines in the app list may now install apps here without asking"
+        end
       elsif (op == "allow" || op == "deny") && args.size == 3
         kind = args[1]
         node = unquoted(args[2])
@@ -1546,7 +1590,7 @@ module ShellCommandsMixin
           written = FmrbReceiveConf.allow(kind, node)
           @history << (written ? "areceive: #{kind} from #{node} allowed" : "areceive: #{node} is in the #{kind} list already")
           if node == FmrbReceiveConf::ANYONE
-            what = kind == "checkpoint" ? "move apps" : "send files"
+            what = kind == "checkpoint" ? "move apps" : (kind == "app" ? "install apps" : "send files")
             @history << "areceive: note: everyone on the network may now #{what} here"
           end
         else
@@ -1555,7 +1599,7 @@ module ShellCommandsMixin
         end
         @history << "areceive: receiving is off; areceive on to take anything" unless FmrbReceiveConf.enabled?
       else
-        @history << "Usage: areceive [on|off] | areceive allow|deny <file|checkpoint> <node>   (node: an Asterism node ID or pattern, '*' everyone on the network)"
+        @history << "Usage: areceive [on|off] | areceive allow|deny <file|checkpoint|app> <node> | areceive install ask|auto   (node: an Asterism node ID or pattern, '*' everyone on the network)"
       end
     rescue ArgumentError => e
       @history << "areceive: #{e.message}"
@@ -1580,13 +1624,17 @@ module ShellCommandsMixin
     return unless st
     state = st["state"]
     if state == "done"
-      append_output("asend: #{@send_path} is in #{@send_to}'s #{@send_inbox} as #{st["name"]}")
+      if @send_app
+        append_output("asend: #{@send_path} is installed on #{@send_to} as #{st["name"]}")
+      else
+        append_output("asend: #{@send_path} is in #{@send_to}'s #{@send_inbox} as #{st["name"]}")
+      end
       @xfer.forget(@send_rq)
       @send_rq = nil
       return
     end
     if state == "failed"
-      append_output("asend: #{@send_path} not sent (#{st["reason"]})")
+      append_output("asend: #{@send_path} #{@send_app ? 'not installed' : 'not sent'} (#{st["reason"]})")
       @xfer.forget(@send_rq)
       @send_rq = nil
       return
