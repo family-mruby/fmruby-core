@@ -25,6 +25,18 @@
 #
 #   @xfer.cancel(id)          # stops it; the other machine drops what it has
 #
+#   id = @xfer.send_app(node, "/app/usr/hello")    # an app installed there
+#   id = @xfer.send_app(node, "/app/usr/hello/hello.app.wasm", overwrite: true)
+#
+# send_app (doc/wasm_apps W6): the app's folder (or its program with the
+# files beside it of its name) goes as one package, and the other machine
+# installs it as /app/usr/<name>/ -- when receiving is on there and its
+# receive.toml takes apps from this machine ([app] from), after asking its
+# owner unless it says install = "auto". An app of that name there is
+# replaced only with overwrite. "done" then has name: the program's path
+# there; "failed" the reason (declined there, a wasm app that imports what
+# that firmware lacks, ...).
+#
 # state: "asking" (the transfer app has not taken it yet), "queued" (it
 # waits behind another), "sending", "done" (name: the name it was placed
 # under there; "foo(1).txt" when a foo.txt was there and overwrite was not
@@ -89,6 +101,28 @@ class FmrbTransfer
     end
     @reqs[rq] = { "state" => "asking", "req" => req, "t0" => now, "at" => now, "sent" => 0,
                   "size" => File.size(path), "name" => nil, "reason" => nil }
+    start_app
+    @app.publish(TOPIC, req)
+    rq
+  end
+
+  # Asks for the app at path (its folder, or its program) to be installed
+  # on the machine named to. -> the request's id. overwrite: an app of that
+  # name there is replaced.
+  def send_app(to, path, overwrite: false)
+    to = to.to_s
+    path = path.to_s
+    raise ArgumentError, "no node to send to" if to.empty?
+    raise ArgumentError, "no such file or folder: #{path}" unless File.exist?(path) || Dir.exist?(path)
+    rq = new_rq
+    req = { "cmd" => "send_app", "rq" => rq, "to" => to, "path" => path }
+    req["ow"] = true if overwrite
+    fwd = { "cmd" => "topic_data", "topic" => TOPIC, "data" => req, "src_pid" => 255 }
+    if MessagePack.pack(fwd).bytesize > MSG_MAX
+      raise ArgumentError, "the node and the path are too long for a request (#{to}, #{path})"
+    end
+    @reqs[rq] = { "state" => "asking", "req" => req, "t0" => now, "at" => now, "sent" => 0,
+                  "size" => 0, "name" => nil, "reason" => nil }
     start_app
     @app.publish(TOPIC, req)
     rq

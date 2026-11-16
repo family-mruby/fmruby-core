@@ -1,0 +1,14 @@
+app_handle_name = "install_ask"
+app_screen_name = "Install an app?"
+app_screen_name_ja = "アプリを入れますか"
+default_window_mode = "window"
+default_window_width = 270
+default_window_height = 134
+default_window_pos_x = 25
+default_window_pos_y = 40
+launcher_visible = false
+single_instance = true
+# The owner's question when an app comes over Asterism to be installed
+# (doc/wasm_apps W6): started by the transfer app with a ticket
+# (/tmp/.install_ask), answered with Install or Decline; closing it is
+# Decline.

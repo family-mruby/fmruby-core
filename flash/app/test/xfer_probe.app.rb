@@ -47,6 +47,11 @@
 #                                          (FmrbTransfer, the kind "file";
 #                                          cancel_at: cancel it once that
 #                                          much is there)
+#   {"api": {"app": true, "to": "node-b", "path": "/home/w6go",
+#    "overwrite": true}}                   install an app there through the
+#                                          transfer app (FmrbTransfer#send_app,
+#                                          the kind "app", doc/wasm_apps W6):
+#                                          path its folder or its program
 #   {"bench": "hash", "path": ..., "make": 262144}
 #                                          SHA-256 (each engine there is)
 #                                          and CRC32 of the file (make: write
@@ -253,8 +258,12 @@ class XferProbeApp < FmrbApp
     require "/usr/share/transfer/fmrb_transfer"
     @api = FmrbTransfer.new(self)
     @api_said = ""
-    @api_rq = @api.send_file(a["to"].to_s, a["path"].to_s, overwrite: a["overwrite"] == true, name: a["name"],
-                             sd: a["sd"] == true)
+    @api_rq = if a["app"] == true
+                @api.send_app(a["to"].to_s, a["path"].to_s, overwrite: a["overwrite"] == true)
+              else
+                @api.send_file(a["to"].to_s, a["path"].to_s, overwrite: a["overwrite"] == true, name: a["name"],
+                               sd: a["sd"] == true)
+              end
     @api_cancel_at = a["cancel_at"]
     Log.info("xfer_probe: api asked to send #{a['path']} to #{a['to']}")
   rescue => e

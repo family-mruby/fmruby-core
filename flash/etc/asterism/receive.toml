@@ -23,3 +23,10 @@ from = []
 # (the owner's trusted members) move apps to this machine.
 [checkpoint]
 from = []
+
+# Who may install apps here (doc/wasm_apps W6): an app sent from another
+# machine is placed in /app/usr/<name>/. install: "ask" asks the owner on
+# this screen each time (the default); "auto" installs without asking.
+[app]
+from = []
+install = "ask"

@@ -19,6 +19,12 @@
 #   [file]
 #   from = ["pc-desk"]
 #
+#   [app]                           # apps to install (doc/wasm_apps W6)
+#   from = ["pc-desk"]
+#   install = "ask"                 # ask the owner each time (the default,
+#                                   # also with no line); "auto": install
+#                                   # without asking
+#
 # Below the mark, what the console sends (T6): the senders chosen for this
 # machine in its member row (Admin > Members), written by the transfer app
 # when the console calls policy_set, and only when the list changed (the
@@ -68,7 +74,12 @@ module FmrbReceiveConf
   TMP_PATH = "/home/asterism/.receive.toml.new"
   MARK = "# ---- managed by the console"
   MARK_LINE = "# ---- managed by the console (below this line; edit above it) ----"
+  # The kinds the console's list carries (T6: Admin > Members, policy_set).
   KINDS = ["file", "checkpoint"]
+  # The kinds written by hand: those, and apps to install (doc/wasm_apps
+  # W6), which the console does not list yet (a list of its own by hand).
+  HAND_KINDS = ["file", "checkpoint", "app"]
+  INSTALL_MODES = ["ask", "auto"]
   ANYONE = "*"
   # what one list may hold (a call carries about 4 KB)
   ENTRY_MAX = 64
@@ -133,6 +144,31 @@ module FmrbReceiveConf
     h.is_a?(Hash) && h["send_enabled"] == true
   end
 
+  # How an app sent here is installed (doc/wasm_apps W6): "auto" when the
+  # part by hand says [app] install = "auto", else "ask" (the owner is asked
+  # each time; no line, another value, a part that is not TOML).
+  def self.install_mode(p = parts)
+    h = hand(p)
+    t = h.is_a?(Hash) ? h["app"] : nil
+    t.is_a?(Hash) && t["install"] == "auto" ? "auto" : "ask"
+  end
+
+  # Sets it ("ask" or "auto"). Returns whether the file was written.
+  def self.set_install_mode(mode)
+    m = mode.to_s
+    raise ArgumentError, "not a way to install: #{m} (ask or auto)" unless INSTALL_MODES.include?(m)
+    p = parts || ["", ""]
+    hand_for_edit(p)
+    return false if install_mode(p) == m && (m == "ask" || ::File.exist?(PATH))
+    head = set_key(p[0], "app", "install", "\"#{m}\"")
+    h = FmrbToml.parse(head)
+    t = h.is_a?(Hash) ? h["app"] : nil
+    unless t.is_a?(Hash) && t["install"] == m
+      raise ArgumentError, "the change does not read back (install); not written"
+    end
+    save_hand(p, head, "app", nil)
+  end
+
   # The managed part: {"by", "at", "file" => [...], "checkpoint" => [...]}
   # (a kind's list nil when not there), nil when there is none.
   def self.managed(p = parts)
@@ -192,11 +228,13 @@ module FmrbReceiveConf
             "hand_ok" => p.nil? || p[0].strip.empty? || h.is_a?(Hash),
             "by" => m ? m["by"] : "", "at" => m ? m["at"] : "" }
     i = 0
-    while i < KINDS.size
-      k = KINDS[i]
+    while i < HAND_KINDS.size
+      k = HAND_KINDS[i]
       out[k] = { "hand" => hand_senders(k, h), "managed" => m ? m[k] : nil }
       i += 1
     end
+    t = h.is_a?(Hash) ? h["app"] : nil
+    out["install"] = t.is_a?(Hash) && t["install"] == "auto" ? "auto" : "ask"
     out
   end
 
@@ -434,8 +472,8 @@ module FmrbReceiveConf
     out << (snd ? "sending: on (the transfer app keeps the machines to send to)" : "sending: off (asend on keeps the machines to send to)")
     out << "#{f} (by hand) is not TOML: #{FmrbToml.error}" if !p.nil? && !p[0].strip.empty? && h.nil?
     i = 0
-    while i < KINDS.size
-      k = KINDS[i]
+    while i < HAND_KINDS.size
+      k = HAND_KINDS[i]
       by_hand = hand_senders(k, h)
       by_console = m ? m[k] : nil
       if by_hand.nil? && by_console.nil?
@@ -446,6 +484,10 @@ module FmrbReceiveConf
         list_lines(out, by_hand, "by hand")
         list_lines(out, by_console, "from #{m['by']}") if m
         out << "note: everyone on the network may move apps here" if wide
+      end
+      if k == "app"
+        out << (install_mode(p) == "auto" ? "app: installed without asking (install = \"auto\")" :
+                                              "app: the owner is asked each time (areceive install auto: without asking)")
       end
       i += 1
     end
@@ -496,7 +538,7 @@ module FmrbReceiveConf
 
   def self.kind_of(kind)
     k = kind.to_s
-    raise ArgumentError, "not a kind: #{k} (file or checkpoint)" unless KINDS.include?(k)
+    raise ArgumentError, "not a kind: #{k} (file, checkpoint or app)" unless HAND_KINDS.include?(k)
     k
   end
 

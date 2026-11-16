@@ -61,6 +61,20 @@
 # it stops being written).
 #
 #   checkpoint   an app's image (doc/checkpoint F5): started here
+#   app          an app to install (doc/wasm_apps W6): a package (a tar of
+#                its folder, /usr/share/transfer/app_package.rb) under the
+#                app's name (meta {"app" => the name, "overwrite"}),
+#                written to /app/usr/.<name>.app.part, unpacked beside it
+#                and looked at (a wasm app must import only what this
+#                firmware gives), then -- asked first unless receive.toml
+#                says [app] install = "auto" -- placed as /app/usr/<name>/
+#                and the launcher told. commit answers {"status" =>
+#                "pending"}; status then {"status" => "pending"} (being
+#                looked at, or the owner is asked: ASK_MS) | {"status" =>
+#                "installed", "name", "path", "lang"} | {"status" =>
+#                "refused", "reason"} (declined, or not an app this machine
+#                runs). An app of that name installed here already is
+#                refused at begin unless the sender asks to overwrite.
 #   file         any file: placed under /home/inbox/ (made when missing),
 #                or under /sd/inbox/ when the sender chooses the SD card
 #                (meta "inbox" => "sd"; a machine with no card to write to
@@ -86,6 +100,10 @@
 #
 #   [file]
 #   from = ["fmruby-abcdef", "pc-desk"]       # may put files in /home/inbox
+#
+#   [app]
+#   from = ["pc-desk"]                        # may install apps here
+#   install = "ask"                           # "auto": without asking
 #
 # The older form, a from at the top with no table, is read as the
 # checkpoint's (it was written when apps were all that came):
@@ -133,6 +151,23 @@
 #                            (then it may still come up, and move_cancel
 #                            stops it). Taken at once, not queued
 #   move_cancel {to, pid}    the copy there is stopped (it came up too late)
+#
+# Installing an app there (FmrbTransfer#send_app, the shell's asend -a):
+#
+#   topic "transfer/ctl" {"cmd" => "send_app", "rq", "to", "path" (the
+#   app's folder or its program), "ow"}
+#                            packed into /tmp (FmrbAppPackage.pack) and sent
+#                            as the kind "app"; then status until it is
+#                            installed there or refused (the owner there may
+#                            take up to ASK_MS to answer): "transfer_done"
+#                            {rq, ok, name (the program's path there) |
+#                            reason}, "transfer_progress" as for a file
+#
+# The owner's answer (the install_ask app, spawned by this app with a
+# ticket, /usr/share/transfer/install_ask.app.rb):
+#
+#   topic "transfer/ctl" {"cmd" => "install_answer", "id", "yes"}
+#                            taken from that app's PID only
 #
 # Sending a file (asked by an app over Pub/Sub, FmrbTransfer in
 # /usr/share/transfer/fmrb_transfer.rb, which the shell's send uses):
@@ -189,6 +224,7 @@
 
 require "/usr/share/asterism/transfer/transfer"
 require "/usr/share/transfer/receive_conf"
+require "/usr/share/transfer/app_package"
 
 # The receiving side: Asterism::Transfer::Inbox (begin / chunk / commit /
 # cancel, resending from the receiver's position, the sha256 of the whole,
@@ -197,7 +233,12 @@ require "/usr/share/transfer/receive_conf"
 # (receive.toml), where the pieces are written, how many may come at once,
 # the checkpoint's check and status.
 class TransferInbox < ::Asterism::Transfer::Inbox
-  KINDS = ["checkpoint", "file"]
+  KINDS = ["checkpoint", "file", "app"]
+  # An app to install (doc/wasm_apps W6): the owner has this long to answer
+  # the question (the sender's wait is longer), and the question's app
+  ASK_MS = 60000
+  ASK_APP = "/usr/share/transfer/install_ask.app.rb"
+  ASK_TICKET = "/tmp/.install_ask"
   INBOX = "/home/inbox/"
   # The SD card's inbox, which the sender chooses (meta "inbox" => "sd")
   SD = "/sd"
@@ -220,6 +261,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   def initialize
     super(TMP)
     @ckpt = nil       # the last committed checkpoint {id, from, path, at, result}
+    @inst = nil       # the last app to install {id, from, name, state, ...}
   end
 
   # A call came in a moment ago: the app polls often for the next one.
@@ -255,6 +297,8 @@ class TransferInbox < ::Asterism::Transfer::Inbox
 
   def status(id, from: nil)
     @last_call = now_ms
+    a = @inst
+    return install_result(a) if a && a["id"] == id && a["from"] == from
     d = @ckpt
     raise ArgumentError, "no file #{id} from #{from}" unless d && d["id"] == id && d["from"] == from
     restore_result(d)
@@ -262,6 +306,11 @@ class TransferInbox < ::Asterism::Transfer::Inbox
 
   def cancel(id, from: nil)
     return true if super(id, from: from)
+    a = @inst
+    if a && a["id"] == id && a["from"] == from
+      install_end(a, { "status" => "refused", "reason" => "cancelled by #{from}" }) if a["result"].nil?
+      return true
+    end
     d = @ckpt
     return false unless d && d["id"] == id && d["from"] == from
     r = restore_result(d)
@@ -335,13 +384,37 @@ class TransferInbox < ::Asterism::Transfer::Inbox
       return "#{node_name} takes no #{k} from #{from} (#{k} from in #{RECEIVE_CONF})" if managed.nil?
       return "#{node_name} takes no #{k} from #{from} (not in receive.toml, by hand or from #{s['by']})"
     end
-    k == "file" ? inbox_dir(meta) : nil
+    return inbox_dir(meta) if k == "file"
+    return app_refused(from, meta) if k == "app"
+    nil
+  end
+
+  # An app to install: its name is the file's (meta "app" the same), it is
+  # not installed here unless the sender asks to overwrite, and no other is
+  # being installed.
+  def app_refused(from, meta)
+    m = meta.is_a?(Hash) ? meta : {}
+    name = m["name"].to_s
+    return "not an app's name: #{name} (letters, digits, _ and -)" unless ::FmrbAppPackage.name_ok?(name)
+    a = @inst
+    if a && a["result"].nil? && !(a["from"] == from && a["name"] == name)
+      return "#{node_name} is installing another app (#{a['name']}); try again later"
+    end
+    if ::FmrbAppPackage.installed?(name) && m["overwrite"] != true
+      return "#{name} is installed on #{node_name} already (send with overwrite to replace it)"
+    end
+    root = ::FmrbAppPackage::ROOT
+    Dir.mkdir(root) unless Dir.exist?(root)
+    nil
+  rescue => e
+    "cannot make #{::FmrbAppPackage::ROOT} (#{e.message})"
   end
 
   # A file's name may be any name that stays in /home/inbox/; an image's is
   # a plain one (letters, digits, _ and -).
   def name_ok?(kind, name)
     return ::Asterism::Transfer.file_name?(name) if kind == "file"
+    return ::FmrbAppPackage.name_ok?(name) if kind == "app"
     ::Asterism::Transfer.plain_name?(name)
   end
 
@@ -351,12 +424,18 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   # or the place cannot tell).
   def room(kind, meta)
     return nil unless FmrbApp.respond_to?(:free_bytes)
+    if kind == "app"
+      # the package and the app unpacked from it are there at once
+      left = FmrbApp.free_bytes(::FmrbAppPackage::ROOT)
+      return left.nil? ? nil : left / 2
+    end
     FmrbApp.free_bytes(kind == "file" ? inbox_of(meta) : TMP)
   end
 
   # A "file"'s pieces go beside where it goes, hidden (a file sent here
   # never starts with "."): the commit renames it, nothing is copied.
   def part_path(kind, name, meta)
+    return "#{::FmrbAppPackage::ROOT}/.#{name}.app.part" if kind == "app"
     return super unless kind == "file"
     "#{inbox_of(meta)}.#{name}.#{kind}.part"
   end
@@ -371,7 +450,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   # of this app's pool holds PIECE_COST times over, 1 to WINDOW_MOST (an
   # image: WINDOW_IMAGE).
   def window(kind, meta)
-    most = kind == "file" ? WINDOW_MOST : WINDOW_IMAGE
+    most = kind == "checkpoint" ? WINDOW_IMAGE : WINDOW_MOST
     used = FmrbApp.pool_used
     pct = FmrbApp.pool_usage
     return 1 unless used.is_a?(Integer) && pct.is_a?(Integer) && used > 0 && pct > 0
@@ -383,7 +462,153 @@ class TransferInbox < ::Asterism::Transfer::Inbox
 
   def received(t)
     return place_file(t) if t["kind"] == "file"
+    return take_app(t) if t["kind"] == "app"
     place_image(t)
+  end
+
+  # ---- an app to install (doc/wasm_apps W6) ----
+
+  # The package is whole (its sha256 matches): it is unpacked and looked at
+  # from the app's update (install_step), and the sender asks status.
+  def take_app(t)
+    a = @inst
+    if a && a["result"].nil?
+      remove(t["part"])
+      return { "status" => "refused", "reason" => "#{node_name} is installing another app (#{a['name']})" }
+    end
+    @inst = { "id" => t["id"], "from" => t["from"], "name" => t["name"], "part" => t["part"],
+              "meta" => t["meta"], "size" => t["size"], "state" => "unpack", "at" => now_ms, "result" => nil }
+    Log.info("transfer: the app #{t['name']} from #{t['from']} (#{t['size']} bytes) came; looking at it")
+    { "status" => "pending" }
+  end
+
+  def install_result(a)
+    a["result"] || { "status" => "pending" }
+  end
+
+  # The app being installed, nil when none.
+  def installing
+    a = @inst
+    a && a["result"].nil? ? a : nil
+  end
+
+  # A step of the install from the app's update: unpack and look, then
+  # place or ask (and wait for the answer).
+  def install_step
+    a = installing
+    return nil unless a
+    if a["state"] == "unpack"
+      install_unpack(a)
+    elsif a["state"] == "asking"
+      if now_ms - a["asked_at"] > ASK_MS
+        install_end(a, { "status" => "refused", "reason" => "not answered on #{node_name} in #{ASK_MS / 1000} s" })
+      end
+    end
+    nil
+  end
+
+  def install_unpack(a)
+    stage = ::FmrbAppPackage.stage_of(a["name"])
+    ::FmrbAppPackage.remove_tree(stage)
+    got = ::FmrbAppPackage.unpack(a["part"], stage)
+    a["stage"] = stage
+    remove(a["part"])
+    info = ::FmrbAppPackage.check(stage, a["name"], got["files"])
+    a["info"] = info
+    a["replaces"] = ::FmrbAppPackage.installed?(a["name"])
+    mode = ::FmrbReceiveConf.install_mode
+    Log.info("transfer: the app #{a['name']} from #{a['from']}: #{info['lang']}, #{info['files']} file(s), " \
+             "#{info['bytes']} bytes#{info['sdk'].empty? ? '' : ", SDK #{info['sdk']}"}; install: #{mode}")
+    if mode == "auto"
+      install_place(a)
+    else
+      install_ask(a)
+    end
+  rescue ArgumentError => e
+    remove(a["part"])
+    ::FmrbAppPackage.remove_tree(a["stage"]) if a["stage"]
+    install_end(a, { "status" => "refused", "reason" => "#{node_name} does not install #{a['name']}: #{e.message}" })
+  end
+
+  def install_place(a)
+    path = ::FmrbAppPackage.place(a["stage"], a["info"])
+    a["stage"] = nil
+    Log.info("transfer: installed #{path} from #{a['from']}#{a['replaces'] ? ' (it replaces the one there)' : ''}")
+    @app.installed(a["name"]) if @app
+    install_end(a, { "status" => "installed", "name" => a["name"], "path" => path, "lang" => a["info"]["lang"] })
+  rescue ArgumentError => e
+    ::FmrbAppPackage.remove_tree(a["stage"]) if a["stage"]
+    install_end(a, { "status" => "refused", "reason" => e.message })
+  end
+
+  # The owner is asked (the question's app with a ticket: who sent what).
+  def install_ask(a)
+    info = a["info"]
+    lines = [["id", a["id"]], ["from", a["from"]], ["name", a["name"]], ["label", info["label"]],
+             ["lang", info["lang"]], ["bytes", info["bytes"]], ["files", info["files"]], ["sdk", info["sdk"]],
+             ["replaces", a["replaces"] ? "1" : "0"]]
+    text = ""
+    i = 0
+    while i < lines.size
+      v = flat(lines[i][1].to_s)
+      text << "#{lines[i][0]}\t#{v}\n"
+      i += 1
+    end
+    File.open(ASK_TICKET, "w") { |f| f.write(text) }
+    a["state"] = "asking"
+    a["asked_at"] = now_ms
+    a["ask_pid"] = nil
+    if @app
+      @app.ask_owner(a)
+    else
+      install_end(a, { "status" => "refused", "reason" => "nobody to ask on #{node_name}" })
+    end
+  end
+
+  # A value of the ticket on one line (tabs and line ends as spaces).
+  def flat(s)
+    out = ""
+    i = 0
+    while i < s.bytesize
+      c = s.getbyte(i)
+      out << ((c == 9 || c == 10 || c == 13) ? " " : s.byteslice(i, 1).to_s)
+      i += 1
+    end
+    out
+  end
+
+  # The owner's answer (yes: install it).
+  def install_answer(yes)
+    a = installing
+    return unless a && a["state"] == "asking"
+    # the question's app ends by itself once it has answered
+    a["ask_pid"] = nil
+    if yes
+      Log.info("transfer: the owner installs #{a['name']} from #{a['from']}")
+      install_place(a)
+    else
+      install_end(a, { "status" => "refused", "reason" => "declined on #{node_name}" })
+    end
+  end
+
+  # The question's app is gone: an answer that did not come is a no.
+  def ask_gone(pid)
+    a = installing
+    return unless a && a["state"] == "asking" && a["ask_pid"] == pid
+    install_end(a, { "status" => "refused", "reason" => "declined on #{node_name} (the question was closed)" })
+  end
+
+  def install_end(a, result)
+    ::FmrbAppPackage.remove_tree(a["stage"]) if a["stage"]
+    a["stage"] = nil
+    remove(a["part"]) if a["part"]
+    a["result"] = result
+    @app.ask_close(a) if @app && a["ask_pid"]
+    File.delete(ASK_TICKET) if File.exist?(ASK_TICKET)
+    Log.info("transfer: the app #{a['name']} from #{a['from']}: #{result['status']}" \
+             "#{result['reason'] ? " (#{result['reason']})" : ''}")
+  rescue => e
+    Log.warn("transfer: #{e.message}")
   end
 
   # A "file" is whole (its sha256 matches): its hidden piece file beside
@@ -538,6 +763,7 @@ end
 class TransferApp < FmrbApp
   APP = "transfer"
   OBJECT = "inbox"
+  TMP_DIR = "/tmp/"
   # The names sent in one check call (a call carries 4 KB in all).
   CHECK_BYTES = 2048
   # A call waits this long for its answer: a slow machine on the other side
@@ -583,6 +809,7 @@ class TransferApp < FmrbApp
     # a file that was coming in when this app last ended goes on
     @inbox.resume_held
     @inbox.sweep_inbox
+    ::FmrbAppPackage.sweep
     @jobs = []
     @asked = {}       # pid => the last request id taken from that app
     @job = nil        # the kernel's request under way (a Hash)
@@ -653,6 +880,7 @@ class TransferApp < FmrbApp
 
   def on_control(data)
     cmd = data["cmd"].to_s
+    asked_spawned(data) if cmd == "spawn_result"
     @jobs << data if cmd == "move_check" || cmd == "move_send" || cmd == "move_cancel"
     stop_move(data["to"].to_s) if cmd == "move_stop"
     if cmd == "peers_to"
@@ -668,6 +896,7 @@ class TransferApp < FmrbApp
   def on_update
     up = @link.update
     @inbox.tick
+    @inbox.install_step
     now = Machine.board_millis
     if now - @checked_at >= RECHECK_MS
       @checked_at = now
@@ -705,10 +934,23 @@ class TransferApp < FmrbApp
       return
     end
     return unless pid.is_a?(Integer)
+    if req["cmd"].to_s == "install_answer"
+      install_answered(req, pid)
+      return
+    end
     rq = req["rq"]
     return unless rq.is_a?(Integer)
     c = req["cmd"].to_s
-    if c == "send"
+    if c == "send_app"
+      seen = @asked[pid]
+      if seen.nil? || rq > seen
+        @asked[pid] = rq
+        @jobs << { "cmd" => "app_send", "to" => req["to"].to_s, "path" => req["path"].to_s,
+                   "overwrite" => req["ow"] == true, "pid" => pid, "rq" => rq }
+        Log.info("transfer: PID #{pid} asks to install #{req['path']} on #{req['to']}")
+      end
+      tell_app(pid, { "cmd" => "transfer_queued", "rq" => rq })
+    elsif c == "send"
       # asked again (the answer had not come yet): taken once. The ids count
       # up from 1 in each app (FmrbTransfer), and @asked forgets a pid when
       # its app ends (app_ended), so a larger id is a new request.
@@ -732,15 +974,61 @@ class TransferApp < FmrbApp
   def app_ended(d)
     return unless d.is_a?(Hash)
     @asked.delete(d["pid"])
+    @inbox.ask_gone(d["pid"])
+  end
+
+  # ---- installing an app here: the owner's question (doc/wasm_apps W6) ----
+
+  # The question's app is started with the ticket (the kernel hands it the
+  # file as a file_selected message).
+  def ask_owner(a)
+    @asking = a
+    tell_kernel({ "cmd" => "spawn", "app_name" => TransferInbox::ASK_APP,
+                  "open_path" => TransferInbox::ASK_TICKET })
+  end
+
+  # Its PID (the kernel's spawn_result): the answer is taken from it only.
+  def asked_spawned(data)
+    a = @asking
+    return unless a && data["app"].to_s == TransferInbox::ASK_APP
+    a["ask_pid"] = data["pid"]
+    Log.info("transfer: asking the owner about #{a['name']} (PID #{data['pid']})")
+  end
+
+  def install_answered(req, pid)
+    a = @asking
+    unless a && a["ask_pid"] == pid && req["id"] == a["id"]
+      Log.warn("transfer: an answer about an app from PID #{pid} not taken (not the question's app)")
+      return
+    end
+    @asking = nil
+    @inbox.install_answer(req["yes"] == true)
+  end
+
+  # The question is over without an answer (no answer in time, the sender
+  # cancelled): its app is stopped.
+  def ask_close(a)
+    pid = a["ask_pid"]
+    a["ask_pid"] = nil
+    @asking = nil if @asking && @asking["id"] == a["id"]
+    tell_kernel({ "cmd" => "kill", "pid" => pid }) if pid
+  end
+
+  # An app was placed in /app/usr: the desktop reads the launcher's list
+  # again (the kernel passes it on).
+  def installed(name)
+    tell_kernel({ "cmd" => "apps_installed", "name" => name })
   end
 
   def cancel_request(pid, rq)
     job = @job
-    if job && job["cmd"] == "file_send" && job["pid"] == pid && job["rq"] == rq
+    if job && (job["cmd"] == "file_send" || job["cmd"] == "app_send") && job["pid"] == pid && job["rq"] == rq
       sender = job["sender"]
       if sender
         sender.cancel
       else
+        # an app there being looked at or asked about: it is dropped there
+        drop_there(job) if job["cmd"] == "app_send" && job["id"]
         failed("cancelled")
       end
       return
@@ -748,7 +1036,7 @@ class TransferApp < FmrbApp
     i = 0
     while i < @jobs.size
       j = @jobs[i]
-      if j["cmd"] == "file_send" && j["pid"] == pid && j["rq"] == rq
+      if (j["cmd"] == "file_send" || j["cmd"] == "app_send") && j["pid"] == pid && j["rq"] == rq
         @jobs.delete_at(i)
         tell_app(pid, { "cmd" => "transfer_done", "rq" => rq, "ok" => false, "reason" => "cancelled" })
         return
@@ -925,6 +1213,7 @@ class TransferApp < FmrbApp
   # whose pieces stopped), no call for a moment.
   def idle?
     return false if @job || !@jobs.empty?
+    return false if @inbox.installing
     now = Machine.board_millis
     return false if now - @job_end < QUIET_MS
     return false if @inbox.busy?(QUIET_MS)
@@ -943,7 +1232,7 @@ class TransferApp < FmrbApp
     i = 0
     while i < @jobs.size
       j = @jobs[i]
-      if j["cmd"] == "file_send"
+      if j["cmd"] == "file_send" || j["cmd"] == "app_send"
         tell_app(j["pid"], { "cmd" => "transfer_done", "rq" => j["rq"], "ok" => false, "reason" => why })
       else
         kept << j
@@ -974,6 +1263,8 @@ class TransferApp < FmrbApp
       start_send(job)
     elsif cmd == "file_send"
       start_file_send(job)
+    elsif cmd == "app_send"
+      start_app_send(job)
     else
       id = @last_sent[job["to"].to_s]
       return finish(nil) unless id
@@ -989,6 +1280,7 @@ class TransferApp < FmrbApp
       sender = job["sender"]
       sender.step
       return file_step(job, sender) if job["cmd"] == "file_send"
+      return app_step(job, sender) if job["cmd"] == "app_send"
       return give_up_send(job) if job["stop"] && !sender.done? && !sender.committing?
       @last_sent[job["to"].to_s] = sender.id if sender.id
       sent(job, sender) if sender.done?
@@ -1011,7 +1303,8 @@ class TransferApp < FmrbApp
     end
     @fut = nil
     s = job["step"]
-    if s == "check" then checked(job, v)
+    if s == "app_status" then app_status(job, v)
+    elsif s == "check" then checked(job, v)
     elsif s == "status" then started(job, v)
     elsif s == "cancel"
       Log.info("transfer: asked #{job['to']} to stop what it started")
@@ -1205,6 +1498,92 @@ class TransferApp < FmrbApp
     failed(why == "cancelled" ? why : "#{job['to']}: #{why}")
   end
 
+  # ---- app_send: an app installed on another machine (doc/wasm_apps W6) ----
+
+  # The owner there may take ASK_MS to answer; status is asked this often
+  APP_STATUS_POLL_MS = 500
+  APP_STATUS_MS = TransferInbox::ASK_MS + 15000
+
+  def start_app_send(job)
+    tar = "#{TMP_DIR}xfer_app.tar"
+    packed = ::FmrbAppPackage.pack(job["path"], tar)
+    job["tar"] = tar
+    job["name"] = packed["name"]
+    job["size"] = packed["size"]
+    job["told"] = -1
+    job["told_at"] = 0
+    meta = { "app" => packed["name"], "files" => packed["files"] }
+    meta["overwrite"] = true if job["overwrite"]
+    job["sender"] = ::Asterism::Transfer::Sender.new("#{job['to']}/#{APP}/#{OBJECT}", "app", tar,
+                                                     net: net, name: packed["name"], meta: meta,
+                                                     timeout_ms: CALL_TIMEOUT_MS)
+    job["step"] = "send"
+    Log.info("transfer: sending the app #{packed['name']} (#{packed['files']} file(s), #{packed['size']} bytes) " \
+             "to #{job['to']}")
+    job["sender"].step
+  rescue ArgumentError => e
+    failed("cannot send #{job['path']}: #{e.message}")
+  rescue => e
+    failed("cannot send #{job['path']}: #{e.message}")
+  end
+
+  def app_step(job, sender)
+    pos = sender.pos
+    now = Machine.board_millis
+    if pos != job["told"] && (now - job["told_at"] >= PROGRESS_MS || sender.done?)
+      job["told"] = pos
+      job["told_at"] = now
+      tell_app(job["pid"], { "cmd" => "transfer_progress", "rq" => job["rq"], "sent" => pos, "size" => job["size"] })
+    end
+    return unless sender.done?
+    job.delete("sender")
+    job["id"] = sender.id
+    job["committed"] = now
+    unless sender.ok?
+      why = sender.reason.to_s
+      return failed(why == "cancelled" ? why : "#{job['to']}: #{why}")
+    end
+    app_status(job, sender.answer)
+  end
+
+  # The answer of commit, then of status: pending until it is installed
+  # there or refused.
+  def app_status(job, v)
+    r = v.is_a?(Hash) ? v : {}
+    st = r["status"].to_s
+    if st == "pending"
+      if Machine.board_millis - job["committed"] > APP_STATUS_MS
+        return failed("#{job['to']} did not answer about #{job['name']} in #{APP_STATUS_MS / 1000} s")
+      end
+      job["step"] = "app_status"
+      job["wait_until"] = Machine.board_millis + APP_STATUS_POLL_MS
+      return
+    end
+    remove_tar(job)
+    if st == "installed"
+      path = r["path"].to_s
+      Log.info("transfer: #{job['name']} installed on #{job['to']} as #{path} in #{Machine.board_millis - job['t0']} ms")
+      tell_app(job["pid"], { "cmd" => "transfer_done", "rq" => job["rq"], "ok" => true, "name" => cut(path) })
+      return finish(nil)
+    end
+    failed(r["reason"].to_s.empty? ? "#{job['to']}: #{st}" : r["reason"].to_s)
+  end
+
+  # The other machine is asked to drop what it holds (no answer waited for).
+  def drop_there(job)
+    net["#{job['to']}/#{APP}/#{OBJECT}", timeout_ms: CALL_TIMEOUT_MS].async.asterism_call("cancel", job["id"])
+  rescue => e
+    Log.warn("transfer: cannot ask #{job['to']} to drop #{job['name']}: #{e.message}")
+  end
+
+  def remove_tar(job)
+    t = job["tar"]
+    File.delete(t) if t && File.exist?(t)
+    job.delete("tar")
+  rescue
+    nil
+  end
+
   # ---- the end of a request ----
 
   def failed(why)
@@ -1218,7 +1597,8 @@ class TransferApp < FmrbApp
       # that it does not go on in two places (the app goes on here).
       @jobs.unshift({ "cmd" => "move_cancel", "to" => job["to"] }) if job["committed"]
       finish({ "cmd" => "move_sent", "ok" => false, "pid" => -1, "reason" => cut(why) })
-    elsif cmd == "file_send"
+    elsif cmd == "file_send" || cmd == "app_send"
+      remove_tar(job)
       tell_app(job["pid"], { "cmd" => "transfer_done", "rq" => job["rq"], "ok" => false, "reason" => cut(why) })
       finish(nil)
     else
