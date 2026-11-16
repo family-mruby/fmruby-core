@@ -9,3 +9,6 @@ default_window_width = 160
 default_window_height = 70
 default_window_pos_x = 60
 default_window_pos_y = 50
+# Not listed in the launcher (the guide starts it by path); the tour and
+# the other examples are.
+launcher_visible = false
