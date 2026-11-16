@@ -11,6 +11,7 @@
 #include "fmrb_audio.h"
 #include "fmrb_toml.h"
 #include "fmrb_kernel.h"
+#include "fmrb_remote_guard.h"
 #include "host/host_task.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
@@ -660,6 +661,10 @@ void fmrb_os_init(void)
     fmrb_debugd_init();
     fmrb_mem_log_boot_snapshot("debugd");
 #endif
+
+    // The simulation's stand-in for a release build's remote control guard,
+    // when its system_conf asks for it (sim_remote_guard); empty elsewhere.
+    fmrb_rguard_sim_arm_from_conf();
 }
 
 void fmrb_os_close(void)

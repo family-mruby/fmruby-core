@@ -111,6 +111,14 @@ typedef enum {
  */
 void fmrb_rguard_arm(const fmrb_rguard_ops_t *ops);
 
+/**
+ * @brief The simulation only: arm the guard over in-memory stand-ins when its
+ *        /etc/system_conf.toml says `sim_remote_guard = true`, so Config shows
+ *        the release build's remote control row there. Empty on every other
+ *        build (fmrb_remote_guard_sim.c).
+ */
+void fmrb_rguard_sim_arm_from_conf(void);
+
 /** @brief FMRB_RGUARD_NONE, _CLOSED or _OPEN. */
 fmrb_rguard_state_t fmrb_rguard_state(void);
 

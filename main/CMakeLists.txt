@@ -30,6 +30,9 @@ set(COMPONENT_SRCS
     # (doc/remote_guard G1-G2). Pure C, tested on the host (rake
     # remote_guard:test); every target has it so FmrbSystem answers the same.
     "kernel/fmrb_remote_guard.c"
+    # The sim's stand-in for it (system_conf sim_remote_guard), so Config's
+    # remote control row can be checked there; empty on every other build.
+    "kernel/fmrb_remote_guard_sim.c"
     # Battery-backed clock. Target independent on purpose: the whole file is a
     # no-op off ESP32, and keeping it in one list means the kernel Ruby never
     # has to know which engine or platform it is running on.
