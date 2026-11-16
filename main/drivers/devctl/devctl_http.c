@@ -43,6 +43,9 @@
 #include "fmrb_platform_sys.h"
 #include "fmrb_rtos.h"
 #include "wifi_task.h"
+#if defined(FMRB_HW_MODERN)
+#include "fonts/font_ja/font_ja.h"
+#endif
 
 #include "esp_http_server.h"
 #include "esp_attr.h"
@@ -619,7 +622,14 @@ size_t devctl_status_ident(char *out, size_t cap)
         out[0] = '\0';
         return 0;
     }
-    return (size_t)n < cap ? (size_t)n : cap - 1;
+    size_t len = (size_t)n < cap ? (size_t)n : cap - 1;
+#if defined(FMRB_HW_MODERN)
+    // The partitions an app-only flash relies on and the font image in its
+    // partition (doc/flash_layout F4): rake flash:app_sync compares them with
+    // the build and stops when a full flash is needed.
+    len += font_ja_flash_status(out + len, cap - len);
+#endif
+    return len;
 }
 
 // The machine's mute and volume (doc/reference/audio_output.md). Here so a development loop

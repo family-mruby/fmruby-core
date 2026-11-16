@@ -176,10 +176,14 @@ namespace :flash do
                 t1 - t0, t2 - t1, Time.now - t2, backup)
   end
 
-  desc "App-only flash, then send what differs between build/storage_root and the board over WiFi; /home untouched (HOST=, CONF=1 sends /etc/system_conf.toml too)"
+  # An app-only flash writes neither the partition table nor the P4's font
+  # partition (doc/flash_layout F4), so first the board's are compared with
+  # the build's; when they differ this stops and says to use keep_home.
+  desc "App-only flash, then send what differs between build/storage_root and the board over WiFi; /home untouched; stops when the board's partition table or font image is not the build's (HOST=, CONF=1 sends /etc/system_conf.toml too)"
   task :app_sync do
     host = flash_keep_host
     flash_keep_need_storage_root
+    flash_keep_tool("layout", host, "--build", File.expand_path("build"))
     t0 = Time.now
     name = flash_keep_tool("name", host, fail_ok: true)[/^name=(.+)$/, 1]
     Rake::Task["flash:app"].invoke

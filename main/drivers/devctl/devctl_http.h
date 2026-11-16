@@ -37,7 +37,9 @@ bool devctl_fs_unrestricted(void);
  *
  * board is FmrbConst::BOARD's spelling (naryav4, tab5, narya_v3, ...), host
  * the mDNS name without ".local" (fmruby-XXXXXX, the WiFi MAC's last three
- * bytes). The backup tools name a board's directory from them.
+ * bytes). The backup tools name a board's directory from them. On the P4
+ * the flash layout and the font image follow (font_ja_flash_status), which
+ * rake flash:app_sync compares with the build.
  * @return the length written (out is always terminated)
  */
 size_t devctl_status_ident(char *out, size_t cap);

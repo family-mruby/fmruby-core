@@ -434,12 +434,13 @@ static esp_err_t status_handler(httpd_req_t *req)
     char ip[16];
     wifi_get_ip_str(ip, sizeof(ip));
     // A development build also says which board this is (devctl_status_ident:
-    // the backup tools name a board's directory from it).
-    char ident[96] = "";
+    // the backup tools name a board's directory from it), and the flash
+    // layout and font image rake flash:app_sync checks (about 130 bytes).
+    char ident[256] = "";
 #ifdef FMRB_DEV_REMOTE_CTL
     devctl_status_ident(ident, sizeof(ident));
 #endif
-    char body[256];
+    char body[384];
     int n = snprintf(body, sizeof(body),
                      "{\"ip\":\"%s\",\"mode\":\"mjpeg\",\"streaming\":%s,"
                      "\"fps\":%u.%u,\"kbps\":%u%s}",
