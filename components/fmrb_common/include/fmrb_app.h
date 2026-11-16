@@ -415,6 +415,25 @@ int fmrb_app_gc_request(int32_t id, uint32_t* gen, uint32_t* seq);
 int fmrb_app_gc_poll(int32_t id, uint32_t gen, uint32_t seq);
 
 /**
+ * @brief Collect in every running app, or in pid alone, and wait for them
+ *
+ * Asks each app with fmrb_app_gc_request() and polls until all have collected
+ * or max_ms (<= 0: 3000) has passed. An app `skip` names (may be NULL) is not
+ * asked. For the test paths (the debug server's "gc", devctl's /sys/gc): a
+ * Spinel app's collection here also sweeps its strings (fmrb_spinel_gc_full).
+ *
+ * @param pid    an app id, or -1 for every app
+ * @param list   FMRB_MAX_APPS entries: the apps asked
+ * @param status FMRB_MAX_APPS entries: FMRB_APP_GC_* for each (PENDING: timed out)
+ * @return the number of apps filled in (0 when pid is not running)
+ */
+int32_t fmrb_app_gc_all(int32_t pid, int max_ms, bool (*skip)(int pid),
+                        fmrb_app_info_t* list, int* status);
+
+/** @brief "done", "timeout" (PENDING), "gone" or "skipped" */
+const char* fmrb_app_gc_status_name(int status);
+
+/**
  * @brief Process-set generation counter, bumped on every state transition.
  *
  * Cheap change detector for UI polls: call fmrb_app_ps() (which allocates)

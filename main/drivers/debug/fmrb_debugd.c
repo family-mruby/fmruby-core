@@ -334,55 +334,18 @@ static void handle_audio(const fmrb_dbg_req_t *req) {
 // gc {pid?, max?}: a full collection in each app (or in pid alone), run by
 // the app's own task at its next message wait -- never from here, which would
 // touch a VM another task is running -- with the engine's own collector
-// (fmrb_app_gc_request). Waits until every app asked has collected or max ms
-// (default 3000) have passed, then answers {apps: [{pid, name, status}]} with
+// (fmrb_app_gc_all; a Spinel app sweeps its strings too, young and old, so the
+// pools hold only what is live). Waits until every app asked has collected or
+// max ms (default 3000) have passed, then answers {apps: [{pid, name, status}]} with
 // status "done", "timeout", "skipped" (not running, an engine that does not
 // answer, or parked by the debugger) or "gone" (ended meanwhile). For tools
 // that read the VM pools (rake regress:run) and want them free of garbage.
-#define DEBUGD_GC_WAIT_MS_DEFAULT 3000
-#define DEBUGD_GC_POLL_MS         10
-
-static const char *gc_status_str(int st) {
-    switch (st) {
-        case FMRB_APP_GC_DONE:    return "done";
-        case FMRB_APP_GC_PENDING: return "timeout";
-        case FMRB_APP_GC_GONE:    return "gone";
-        default:                  return "skipped";
-    }
-}
-
 static void handle_gc(const fmrb_dbg_req_t *req) {
     fmrb_app_info_t list[FMRB_MAX_APPS];
-    int32_t n = fmrb_app_ps(list, FMRB_MAX_APPS);
-    if (n < 0) n = 0;
     int st[FMRB_MAX_APPS];
-    uint32_t gen[FMRB_MAX_APPS];
-    uint32_t seq[FMRB_MAX_APPS];
-    int32_t m = 0;
-    for (int32_t i = 0; i < n; i++) {
-        if (req->have_pid && list[i].app_id != req->pid) continue;
-        list[m] = list[i];
-        if (fmrb_debug_ctx_is_attached(list[m].app_id)) {
-            st[m] = FMRB_APP_GC_SKIPPED;
-        } else {
-            st[m] = fmrb_app_gc_request(list[m].app_id, &gen[m], &seq[m]);
-        }
-        m++;
-    }
+    int32_t m = fmrb_app_gc_all(req->have_pid ? req->pid : -1, req->max,
+                                fmrb_debug_ctx_is_attached, list, st);
     if (req->have_pid && m == 0) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
-
-    int wait_ms = req->max > 0 ? req->max : DEBUGD_GC_WAIT_MS_DEFAULT;
-    fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
-    for (;;) {
-        bool pending = false;
-        for (int32_t i = 0; i < m; i++) {
-            if (st[i] != FMRB_APP_GC_PENDING) continue;
-            st[i] = fmrb_app_gc_poll(list[i].app_id, gen[i], seq[i]);
-            if (st[i] == FMRB_APP_GC_PENDING) pending = true;
-        }
-        if (!pending || fmrb_hal_time_get_us() >= deadline) break;
-        fmrb_task_delay_ms(DEBUGD_GC_POLL_MS);
-    }
 
     fmrb_dbg_writer_t w;
     fmrb_dbg_writer_init(&w);
@@ -394,13 +357,15 @@ static void handle_gc(const fmrb_dbg_req_t *req) {
         msgpack_pack_map(&w.pk, 3);
         fmrb_dbg_pack_kv_int(&w.pk, "pid", list[i].app_id);
         fmrb_dbg_pack_kv_str(&w.pk, "name", list[i].app_name);
-        fmrb_dbg_pack_kv_str(&w.pk, "status", gc_status_str(st[i]));
+        fmrb_dbg_pack_kv_str(&w.pk, "status", fmrb_app_gc_status_name(st[i]));
     }
     send_writer(&w);
     fmrb_dbg_writer_destroy(&w);
 }
 
 #ifdef FMRB_HAVE_CHECKPOINT
+#define DEBUGD_GC_POLL_MS         10   // the checkpoint waits' poll interval
+
 // checkpoint {pid, restart?, max?, hold?}: ask the kernel to have the app write
 // its checkpoint image (doc/checkpoint). The kernel holds the steps (it sends
 // the app the request, and with restart starts the image again once the app

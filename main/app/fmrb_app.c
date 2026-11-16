@@ -2892,6 +2892,56 @@ int fmrb_app_gc_poll(int32_t id, uint32_t gen, uint32_t seq) {
     return r;
 }
 
+#define FMRB_APP_GC_WAIT_MS_DEFAULT 3000
+#define FMRB_APP_GC_POLL_MS         10
+
+/**
+ * Ask every running app (or pid alone) for a collection and wait for them:
+ * the debug server's "gc" and devctl's /sys/gc share it.
+ */
+int32_t fmrb_app_gc_all(int32_t pid, int max_ms, bool (*skip)(int pid),
+                        fmrb_app_info_t* list, int* status) {
+    if (!list || !status) return 0;
+    int32_t n = fmrb_app_ps(list, FMRB_MAX_APPS);
+    if (n < 0) n = 0;
+    uint32_t gen[FMRB_MAX_APPS];
+    uint32_t seq[FMRB_MAX_APPS];
+    int32_t m = 0;
+    for (int32_t i = 0; i < n; i++) {
+        if (pid >= 0 && list[i].app_id != pid) continue;
+        list[m] = list[i];
+        if (skip && skip(list[m].app_id)) {
+            status[m] = FMRB_APP_GC_SKIPPED;
+        } else {
+            status[m] = fmrb_app_gc_request(list[m].app_id, &gen[m], &seq[m]);
+        }
+        m++;
+    }
+
+    int wait_ms = max_ms > 0 ? max_ms : FMRB_APP_GC_WAIT_MS_DEFAULT;
+    fmrb_time_t deadline = fmrb_hal_time_get_us() + (fmrb_time_t)wait_ms * 1000;
+    for (;;) {
+        bool pending = false;
+        for (int32_t i = 0; i < m; i++) {
+            if (status[i] != FMRB_APP_GC_PENDING) continue;
+            status[i] = fmrb_app_gc_poll(list[i].app_id, gen[i], seq[i]);
+            if (status[i] == FMRB_APP_GC_PENDING) pending = true;
+        }
+        if (!pending || fmrb_hal_time_get_us() >= deadline) break;
+        fmrb_task_delay_ms(FMRB_APP_GC_POLL_MS);
+    }
+    return m;
+}
+
+const char* fmrb_app_gc_status_name(int status) {
+    switch (status) {
+        case FMRB_APP_GC_DONE:    return "done";
+        case FMRB_APP_GC_PENDING: return "timeout";
+        case FMRB_APP_GC_GONE:    return "gone";
+        default:                  return "skipped";
+    }
+}
+
 /**
  * Get app list (ps-style)
  */

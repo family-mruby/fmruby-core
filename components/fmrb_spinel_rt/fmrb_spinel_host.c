@@ -182,14 +182,35 @@ int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw) {
  * this one full (both heaps, old strings too), and the schedule carries on
  * from there as if that full had come when it was due. With threads, a
  * concurrent sweep the cycle started is finished before returning, as
- * GC.start does. */
+ * GC.start does.
+ *
+ * The string heap keeps its own gate: the young strings are swept only once
+ * they pass str_threshold, the old ones only on the string major schedule or
+ * past str_old_threshold (sp_str_sweep_begin). Left alone, what a test reads
+ * after this call would still hold up to a threshold's worth of dead strings,
+ * and where in that cycle the reading falls moves it by tens of KB
+ * (doc/regression/report/soak.md). So both thresholds are dropped to zero for
+ * this one collection, which opens the gate and makes it a string major. The
+ * sweep re-aims both from what survived, as any sweep does; a threshold still
+ * at zero (the gate stayed shut: no young string at all) gets its old value
+ * back, and the major cadence is put back as it was, so the schedule goes on
+ * as if this collection had not been asked for. Only the debug server's gc
+ * comes here, so the ordinary collections are unchanged. */
 void fmrb_spinel_gc_full(void) {
     if (!sp_ctx_current()) return;
     int iv = sp_gc_full_interval;
     if (iv < 1) iv = 1;
     int r = sp_gc_cycle % iv;
     if (r != 0) sp_gc_cycle += iv - r;
+    size_t young_thr = sp_str_threshold;
+    size_t old_thr = sp_str_old_threshold;
+    int major_iv = sp_str_major_interval;
+    sp_str_threshold = 0;
+    sp_str_old_threshold = 0;
     sp_gc_collect();
+    if (sp_str_threshold == 0) sp_str_threshold = young_thr;
+    if (sp_str_old_threshold == 0) sp_str_old_threshold = old_thr;
+    sp_str_major_interval = major_iv;
 #ifdef SP_THREADS
     if (sp_gc_conc_wait_hook) sp_gc_conc_wait_hook();
 #endif

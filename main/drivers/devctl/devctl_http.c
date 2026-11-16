@@ -5,7 +5,7 @@
 //   POST /app/launch?path=   GET /app/list        POST /app/kill?pid=
 //   GET  /fs/list?path=      GET  /fs/get?path=   PUT  /fs/put?path=
 //   DELETE /fs/del?path=     POST /fs/mkdir?path=     GET /fs/md5?path=
-//   POST /sys/reboot
+//   POST /sys/reboot         POST /sys/gc[?pid=][&max=ms]
 //   GET  /audio/mute         POST /audio/mute?on=0|1
 //   GET  /audio/volume       POST /audio/volume?level=0-10
 //   POST /app/checkpoint?pid=[&restart=1][&hold=ms]   (builds with the
@@ -599,6 +599,47 @@ static esp_err_t sys_reboot_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// A full collection in every app (or in pid alone), the same as the debug
+// server's gc (fmrb_app_gc_all): each app collects in its own task at its next
+// message wait, a Spinel app sweeping its strings too, and the answer comes once
+// all have or max ms (default 3000) have passed. For the board's soak
+// (rake regress:soak BOARD=), so a reading after it holds only what is live,
+// as on the sim. {"ok":true,"apps":[{"pid","name","status"}]}, status "done",
+// "timeout", "skipped" (an engine that does not answer) or "gone".
+static esp_err_t sys_gc_handler(httpd_req_t *req)
+{
+    char val[16];
+    int32_t pid = -1;
+    int max_ms = 0;
+    if (ctl_query_value(req, "pid", val, sizeof(val)) && val[0] != '\0') {
+        pid = atoi(val);
+    }
+    if (ctl_query_value(req, "max", val, sizeof(val)) && val[0] != '\0') {
+        max_ms = atoi(val);
+    }
+    fmrb_app_info_t list[FMRB_MAX_APPS];
+    int st[FMRB_MAX_APPS];
+    int32_t m = fmrb_app_gc_all(pid, max_ms, NULL, list, st);
+    if (pid >= 0 && m == 0) {
+        return ctl_json(req, "404 Not Found", "{\"ok\":false,\"err\":\"no such app\"}");
+    }
+
+    char body[768];
+    size_t off = 0;
+    off += (size_t)snprintf(body + off, sizeof(body) - off, "{\"ok\":true,\"apps\":[");
+    for (int32_t i = 0; i < m && off < sizeof(body); i++) {
+        off += (size_t)snprintf(body + off, sizeof(body) - off,
+                                "%s{\"pid\":%d,\"name\":\"%s\",\"status\":\"%s\"}",
+                                i ? "," : "", (int)list[i].app_id, list[i].app_name,
+                                fmrb_app_gc_status_name(st[i]));
+    }
+    if (off < sizeof(body)) {
+        off += (size_t)snprintf(body + off, sizeof(body) - off, "]}");
+    }
+    body[sizeof(body) - 1] = '\0';
+    return ctl_json(req, "200 OK", body);
+}
+
 size_t devctl_status_ident(char *out, size_t cap)
 {
     if (!out || cap == 0) return 0;
@@ -804,6 +845,8 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         .uri = "/fs/df", .method = HTTP_GET, .handler = fs_df_handler };
     static const httpd_uri_t uri_sys_reboot = {
         .uri = "/sys/reboot", .method = HTTP_POST, .handler = sys_reboot_handler };
+    static const httpd_uri_t uri_sys_gc = {
+        .uri = "/sys/gc", .method = HTTP_POST, .handler = sys_gc_handler };
     static const httpd_uri_t uri_audio_mute_get = {
         .uri = "/audio/mute", .method = HTTP_GET, .handler = audio_get_handler };
     static const httpd_uri_t uri_audio_mute_post = {
@@ -823,6 +866,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_fs_md5);
     devctl_register_uri(server, &uri_fs_df);
     devctl_register_uri(server, &uri_sys_reboot);
+    devctl_register_uri(server, &uri_sys_gc);
     devctl_register_uri(server, &uri_audio_mute_get);
     devctl_register_uri(server, &uri_audio_mute_post);
     devctl_register_uri(server, &uri_audio_volume_get);
@@ -838,7 +882,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_ckpt_get);
     devctl_register_uri(server, &uri_move);
 #endif
-    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot); "
+    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot, /sys/gc); "
               "the file endpoints reach every path, keys included");
     return FMRB_OK;
 }

@@ -498,7 +498,7 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     // rather than complaining -- so the server came up looking healthy and every
     // one of the new routes returned 404. Sized with room to add more (the
     // dev file endpoints bring the count to 16; /fs/md5, /sys/reboot and the
-    // checkpoint gem's three to 24, /fs/df to 25).
+    // checkpoint gem's three to 24, /fs/df to 25, /sys/gc to 26).
     hcfg.max_uri_handlers = 28;
 
     esp_err_t err = httpd_start(&s_server, &hcfg);
