@@ -32,6 +32,7 @@ require "json"
 require "net/http"
 require "uri"
 require "fileutils"
+require_relative "ima_adpcm"
 
 module MahjongVoice
   CORE = File.expand_path("..", __dir__)
@@ -309,6 +310,9 @@ module MahjongVoice
       wav = vv.synthesize(text, id)
       info = check_wav!(wav, "#{name}.wav")
       wav, gain, = normalize_wav(wav)
+      # Ship it as 4-bit IMA-ADPCM like the default voices (about a quarter of
+      # the PCM size; play_wav decodes it as it plays, doc/flash_layout/report/f3.md).
+      wav = ImaAdpcm.convert(wav)
       File.binwrite(File.join(dir, "#{name}.wav"), wav)
       out.puts format("  %-12s %-8s %6d bytes  %.2f s  %d Hz  x%.3f (%+.1f dB)", "#{name}.wav", text, wav.bytesize,
                       info[:seconds], info[:rate], gain, gain_db(gain))
