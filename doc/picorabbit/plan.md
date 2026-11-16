@@ -40,7 +40,7 @@ PicoRabbit は Harucom 向けの Markdown 発表ツールで、Family mruby に�
 - 表示は `move` + `frame=` + `present` だけ。composite 側で合成されるので
   **スライド本文を汚さず、帯の塗り直しも不要**。`on_update` は 1 秒周期に
   落とし、変化が無ければ present しない (FmrbUI と同じ考え方)。
-- 置き場所: `flash/usr/share/picorabbit/usagi_*.bmp`、`kame_*.bmp`。
+- 置き場所: `flash/usr/share/picorabbit/usagi_*.png`、`kame_*.png` (2026-11-16 に BMP からパレットの PNG へ。doc/flash_layout/report/f2b.md)。
 - 下書きは Claude がテキストのドット表から BMP に起こして画像で見せ、
   気に入らないコマを sprite_editor で直す分担。
 - 居眠り/焦りは「うさぎの進捗 − 亀の進捗」の符号と大きさで決める。

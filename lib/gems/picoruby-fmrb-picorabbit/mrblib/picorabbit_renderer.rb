@@ -130,9 +130,9 @@ module PicoRabbit
     IMAGE_CACHE = "/cache/app/picorabbit"
 
     # Frame order inside each SpriteInstance's image list.
-    USAGI_FILES = ["usagi_run1.bmp", "usagi_run2.bmp", "usagi_jump.bmp",
-                   "usagi_sleep.bmp", "usagi_hurry.bmp"]
-    KAME_FILES = ["kame_walk1.bmp", "kame_walk2.bmp", "kame_banzai.bmp"]
+    USAGI_FILES = ["usagi_run1.png", "usagi_run2.png", "usagi_jump.png",
+                   "usagi_sleep.png", "usagi_hurry.png"]
+    KAME_FILES = ["kame_walk1.png", "kame_walk2.png", "kame_banzai.png"]
     U_RUN1 = 0
     U_RUN2 = 1
     U_JUMP = 2
