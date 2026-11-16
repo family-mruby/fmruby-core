@@ -88,7 +88,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — **完了** (2026-09-28) 段階 1-4・6 完了。段階 5 (640x360 全体切替) は、全画面のアプリだけを 640x360 にする doc/fullscreen_hires で置き換えて閉じた 〔11 files〕
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔21 files〕
-- `flash_layout/` [storage を減らし、日本語フォントを専用の区画へ移す計画](flash_layout/plan.md) — **計画済** (2026-11-16) P4 の 16 MB はファームの区画 (7.94 MB、空き 8%) と storage (8 MB、使用 6.3 MB) で埋まっている。試験用のアプリを storage に入れず WiFi で送る形にし (F1)、画像と音を小さくし (F2・F3)、空いた分で storage を縮めて日本語フォントの専用の区画を作る (F4)。ファームから約 1.2 MB が抜け、焼く時間とファームの区画の空きが良くなる 〔6 files〕
+- `flash_layout/` [storage を減らし、日本語フォントを専用の区画へ移す計画](flash_layout/plan.md) — **計画済** (2026-11-16) P4 の 16 MB はファームの区画 (7.94 MB、空き 8%) と storage (8 MB、使用 6.3 MB) で埋まっている。試験用のアプリを storage に入れず WiFi で送る形にし (F1)、画像と音を小さくし (F2・F3)、空いた分で storage を縮めて日本語フォントの専用の区画を作る (F4)。ファームから約 1.2 MB が抜け、焼く時間とファームの区画の空きが良くなる 〔7 files〕
 - `flash_write_flicker/` [フラッシュへの書き込みで画面が青くちらつく件 (P4)](flash_write_flicker/plan.md) — **完了 (NARYAv4)** (2026-10-02) 原因はアンダーランではなく、4 KB の消去の間 (33-49 ms) キャッシュと割り込みが止まり、DPI の送り出しを 1 フレームごとに再開する割り込みが動けないこと。CONFIG_SPI_FLASH_AUTO_SUSPEND で抜けたフレーム 0、静的な D/IRAM +76 B。ユーザの目視で解消を確認し採用。Tab5 はチップの確認待ち 〔3 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
 - `frameless_window/` [枠なしの GUI アプリ (アバターのような形のある Window)](frameless_window/plan.md) — **進行中** (2026-11-10) W0 済、次は W1 (ユーザ: 指示なしで行けるところまで。未確定事項は親の仮決めで進め、後でユーザが見直す)。 枠とタイトルバーを持たず、透ける地の上に絵だけを見せるアプリを、FmrbApp の決まった口で書けるようにする。カーネルの「上の 11 行はタイトルバー」の扱いを toml のフラグで変え、どこを掴んでも動かせるドラッグをカーネルが受け持つ。着手はユーザの指示で 〔11 files〕
