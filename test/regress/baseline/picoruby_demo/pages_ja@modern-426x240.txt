@@ -33,14 +33,14 @@ text 15 2 "PicoRuby demo" #FF defaultx1
 fill_circle 294 5 3 #FF
 draw_round_rect 0 0 300 214 4 #60
 gfxblock 2 {w:300,h:214}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 298 0 299 0 #01
-draw_line 299 1 299 1 #01
-draw_line 0 212 0 213 #01
-draw_line 1 213 1 213 #01
-draw_line 299 212 299 213 #01
-draw_line 298 213 298 213 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 297 0 299 0 #01
+draw_line 299 1 299 2 #01
+draw_line 0 211 0 213 #01
+draw_line 1 213 2 213 #01
+draw_line 299 211 299 213 #01
+draw_line 297 213 298 213 #01
 fill_rect 1 201 12 12 #60
 draw_rect 1 201 12 12 #60
 textm 4 203 "<" #FF x1

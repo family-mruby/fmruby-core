@@ -15,14 +15,14 @@ text 15 2 "Step Sensor" #FF defaultx1
 fill_circle 234 5 3 #FF
 draw_round_rect 0 0 240 150 4 #60
 gfxblock 2 {w:240,h:150}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 238 0 239 0 #01
-draw_line 239 1 239 1 #01
-draw_line 0 148 0 149 #01
-draw_line 1 149 1 149 #01
-draw_line 239 148 239 149 #01
-draw_line 238 149 238 149 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 237 0 239 0 #01
+draw_line 239 1 239 2 #01
+draw_line 0 147 0 149 #01
+draw_line 1 149 2 149 #01
+draw_line 239 147 239 149 #01
+draw_line 237 149 238 149 #01
 fill_rect 1 11 238 18 #FF
 text 3 12 "WiFi ok" #00 defaultx2
 text 165 12 "AST --" #EE defaultx2

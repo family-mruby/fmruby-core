@@ -15,14 +15,14 @@ text 15 2 "VideoPlay" #FF defaultx1
 fill_circle 326 5 3 #FF
 draw_round_rect 0 0 332 218 4 #60
 gfxblock 2 {w:332,h:218}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 330 0 331 0 #01
-draw_line 331 1 331 1 #01
-draw_line 0 216 0 217 #01
-draw_line 1 217 1 217 #01
-draw_line 331 216 331 217 #01
-draw_line 330 217 330 217 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 329 0 331 0 #01
+draw_line 331 1 331 2 #01
+draw_line 0 215 0 217 #01
+draw_line 1 217 2 217 #01
+draw_line 331 215 331 217 #01
+draw_line 329 217 330 217 #01
 fill_rect 5 15 44 10 #03
 draw_rect 5 15 44 10 #60
 text 15 16 "Play" #FF bg=#03 defaultx1

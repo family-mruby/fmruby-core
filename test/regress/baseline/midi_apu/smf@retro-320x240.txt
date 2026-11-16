@@ -15,14 +15,14 @@ text 15 2 "MIDI APU" #FF defaultx1
 fill_circle 154 5 3 #FF
 draw_round_rect 0 0 160 220 4 #60
 gfxblock 2 {w:160,h:220}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 158 0 159 0 #01
-draw_line 159 1 159 1 #01
-draw_line 0 218 0 219 #01
-draw_line 1 219 1 219 #01
-draw_line 159 218 159 219 #01
-draw_line 158 219 158 219 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 157 0 159 0 #01
+draw_line 159 1 159 2 #01
+draw_line 0 217 0 219 #01
+draw_line 1 219 2 219 #01
+draw_line 159 217 159 219 #01
+draw_line 157 219 158 219 #01
 fill_rect 9 17 142 10 #FF
 textm 9 18 "MIDI -> APU" #00 x1
 fill_rect 9 29 142 10 #FF

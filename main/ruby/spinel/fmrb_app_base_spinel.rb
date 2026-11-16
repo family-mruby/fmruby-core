@@ -1917,14 +1917,15 @@ class FmrbApp
     # Re-stamp the outer corner pixels with the canvas color key so the rounded
     # corners composite as transparent again after clears/resizes.
     t = TRANSPARENT_COLOR
-    g.draw_line(0, 0, 1, 0, t)
-    g.draw_line(0, 1, 0, 1, t)
-    g.draw_line(w - 2, 0, w - 1, 0, t)
-    g.draw_line(w - 1, 1, w - 1, 1, t)
-    g.draw_line(0, h - 2, 0, h - 1, t)
-    g.draw_line(1, h - 1, 1, h - 1, t)
-    g.draw_line(w - 1, h - 2, w - 1, h - 1, t)
-    g.draw_line(w - 2, h - 1, w - 2, h - 1, t)
+    # The five pixels outside each r=4 arc (fmrb-app.rb's corner block).
+    g.draw_line(0, 0, 2, 0, t)
+    g.draw_line(0, 1, 0, 2, t)
+    g.draw_line(w - 3, 0, w - 1, 0, t)
+    g.draw_line(w - 1, 1, w - 1, 2, t)
+    g.draw_line(0, h - 3, 0, h - 1, t)
+    g.draw_line(1, h - 1, 2, h - 1, t)
+    g.draw_line(w - 1, h - 3, w - 1, h - 1, t)
+    g.draw_line(w - 3, h - 1, w - 2, h - 1, t)
   end
 
   def _apply_rounded_corner_regions

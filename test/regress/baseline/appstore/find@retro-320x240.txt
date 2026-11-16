@@ -16,14 +16,14 @@ text 15 2 "App Store" #FF defaultx1
 fill_circle 274 5 3 #FF
 draw_round_rect 0 0 280 190 4 #60
 gfxblock 2 {w:280,h:190}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 278 0 279 0 #01
-draw_line 279 1 279 1 #01
-draw_line 0 188 0 189 #01
-draw_line 1 189 1 189 #01
-draw_line 279 188 279 189 #01
-draw_line 278 189 278 189 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 277 0 279 0 #01
+draw_line 279 1 279 2 #01
+draw_line 0 187 0 189 #01
+draw_line 1 189 2 189 #01
+draw_line 279 187 279 189 #01
+draw_line 277 189 278 189 #01
 fill_rect 1 13 66 14 #EE
 draw_rect 1 13 66 14 #60
 textm 22 16 "Find" #00 x1

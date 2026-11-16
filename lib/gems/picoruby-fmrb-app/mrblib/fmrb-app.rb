@@ -542,7 +542,7 @@ class FmrbApp
     @_composite_region_h = h
   end
 
-  # CORNER_R=4 の弧外側 3 px ずつ (= 12 px / window) を canvas color key
+  # CORNER_R=4 の弧外側 5 px ずつ (= 20 px / window) を canvas color key
   # (0x01) で塗り直す。canvas resize やアプリの clear で角丸の外側ピクセルが
   # 不透明色に書き換わると compositing で透けなくなるための保険。
   # 別 GfxBlock に分離しているのは _build_frame_block と合体させると
@@ -551,18 +551,16 @@ class FmrbApp
     t = TRANSPARENT_COLOR
     wg = window_gfx
     @_corner_clear_block = GfxBlock.new(wg, w: @window_width, h: @window_height) do |r, w:, h:|
-      # top-left: (0,0)(1,0)(0,1)
-      r.draw_line 0,     0,     1,     0,     t
-      r.draw_line 0,     1,     0,     1,     t
-      # top-right: (w-2,0)(w-1,0)(w-1,1)
-      r.draw_line w - 2, 0,     w - 1, 0,     t
-      r.draw_line w - 1, 1,     w - 1, 1,     t
-      # bottom-left: (0,h-2)(0,h-1)(1,h-1)
-      r.draw_line 0,     h - 2, 0,     h - 1, t
-      r.draw_line 1,     h - 1, 1,     h - 1, t
-      # bottom-right: (w-1,h-2)(w-1,h-1)(w-2,h-1)
-      r.draw_line w - 1, h - 2, w - 1, h - 1, t
-      r.draw_line w - 2, h - 1, w - 2, h - 1, t
+      # LovyanGFX's r=4 arc is (1,1)(2,1)(1,2) in the top-left corner: the
+      # five pixels outside it are (0,0)(1,0)(2,0)(0,1)(0,2).
+      r.draw_line 0,     0,     2,     0,     t
+      r.draw_line 0,     1,     0,     2,     t
+      r.draw_line w - 3, 0,     w - 1, 0,     t
+      r.draw_line w - 1, 1,     w - 1, 2,     t
+      r.draw_line 0,     h - 3, 0,     h - 1, t
+      r.draw_line 1,     h - 1, 2,     h - 1, t
+      r.draw_line w - 1, h - 3, w - 1, h - 1, t
+      r.draw_line w - 3, h - 1, w - 2, h - 1, t
     end
   end
 

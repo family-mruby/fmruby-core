@@ -15,14 +15,14 @@ text 15 2 "Board" #FF defaultx1
 fill_circle 366 5 3 #FF
 draw_round_rect 0 0 372 222 4 #60
 gfxblock 2 {w:372,h:222}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 370 0 371 0 #01
-draw_line 371 1 371 1 #01
-draw_line 0 220 0 221 #01
-draw_line 1 221 1 221 #01
-draw_line 371 220 371 221 #01
-draw_line 370 221 370 221 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 369 0 371 0 #01
+draw_line 371 1 371 2 #01
+draw_line 0 219 0 221 #01
+draw_line 1 221 2 221 #01
+draw_line 371 219 371 221 #01
+draw_line 369 221 370 221 #01
 text 5 14 "お絵かき: ボードを選ぶ (Enter で入る)" #00 ja12x1
 text 5 29 "つないでいます: tcp/192.0.2.1:7447" #60 ja12x1
 text 5 45 "-" #60 ja12x1

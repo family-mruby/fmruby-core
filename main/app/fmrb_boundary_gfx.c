@@ -39,6 +39,7 @@
 #include "fmrb_transport.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_kernel.h"
+#include "fmrb_theme.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
 #endif
@@ -656,9 +657,38 @@ int32_t fmrb_bnd_gfx_draw_image_masked_raw(int32_t gfx, int32_t image_id, int32_
 // Not positioned: where the app's window is. Positioned: (x, y) on the
 // screen (an extra canvas of FmrbApp#create_canvas_gfx, which the window
 // manager does not track).
+/* The window frame's outline, drawn again just before the window is shown.
+   The bottom corners' arcs (with CORNER_R 4: (1,h-3), (1,h-2), (2,h-2) and
+   their mirror) lie inside the user area, which is a plain rectangle
+   (1, 11, w-2, h-12): anything the app draws at the bottom of its area --
+   a clear with fill_rect, a background -- wipes them, and the border then
+   stopped short of both bottom corners. Every engine presents through here
+   (the mruby gem's present, Spinel's present_raw, the C shell's apps through
+   the boundary), so one outline here keeps every framed window whole
+   whatever its app drew. The same outline as the frame's (fmrb-app.rb,
+   fmrb_app_base_spinel.rb, fmrb_app_shell.c): one command, the border's
+   pixels only. */
+#define FRAME_CORNER_R 4
+
+static void restamp_frame_outline(const gfx_target_t *t, int32_t gfx)
+{
+    const fmrb_app_task_context_t *ctx = t->ctx;
+    if (!ctx || ctx->canvas_id == 0 || (uint16_t)t->canvas != ctx->canvas_id) return;
+    if (ctx->fullscreen || ctx->frameless || ctx->bg_canvas_id != 0 || ctx->headless) return;
+    if (ctx->window_width < 2 * FRAME_CORNER_R || ctx->window_height < 2 * FRAME_CORNER_R) return;
+    const fmrb_gfx_drawer_t *d = drawer_in(t->ctx, gfx);
+    if (!d || d->to_image) return;
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_round_rect(&cmd, t->canvas, 0, 0, (int16_t)ctx->window_width,
+                            (int16_t)ctx->window_height, FRAME_CORNER_R,
+                            fmrb_theme_get()->border, false);
+    submit(t, &cmd);
+}
+
 int32_t fmrb_bnd_gfx_present_raw(int32_t gfx, int32_t x, int32_t y, int32_t positioned)
 {
     TARGET(gfx, t);  // (a drawer was found: t.ctx is the app's context)
+    restamp_frame_outline(&t, gfx);
     gfx_cmd_t cmd;  // 0xFF = no transparency
     fmrb_gfx_cmd_present(&cmd, t.canvas, positioned ? (int16_t)x : (int16_t)t.ctx->window_pos_x,
                          positioned ? (int16_t)y : (int16_t)t.ctx->window_pos_y, 0xFF);

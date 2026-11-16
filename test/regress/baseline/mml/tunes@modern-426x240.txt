@@ -35,14 +35,14 @@ text 15 2 "MML" #FF defaultx1
 fill_circle 172 5 3 #FF
 draw_round_rect 0 0 178 214 4 #60
 gfxblock 2 {w:178,h:214}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 176 0 177 0 #01
-draw_line 177 1 177 1 #01
-draw_line 0 212 0 213 #01
-draw_line 1 213 1 213 #01
-draw_line 177 212 177 213 #01
-draw_line 176 213 176 213 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 175 0 177 0 #01
+draw_line 177 1 177 2 #01
+draw_line 0 211 0 213 #01
+draw_line 1 213 2 213 #01
+draw_line 177 211 177 213 #01
+draw_line 175 213 176 213 #01
 present
 == key "2"
 fill_rect 1 11 176 202 #FF

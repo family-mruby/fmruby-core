@@ -15,14 +15,14 @@ text 15 2 "Kamon" #FF defaultx1
 fill_circle 294 5 3 #FF
 draw_round_rect 0 0 300 210 4 #60
 gfxblock 2 {w:300,h:210}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 298 0 299 0 #01
-draw_line 299 1 299 1 #01
-draw_line 0 208 0 209 #01
-draw_line 1 209 1 209 #01
-draw_line 299 208 299 209 #01
-draw_line 298 209 298 209 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 297 0 299 0 #01
+draw_line 299 1 299 2 #01
+draw_line 0 207 0 209 #01
+draw_line 1 209 2 209 #01
+draw_line 299 207 299 209 #01
+draw_line 297 209 298 209 #01
 fill_rect 5 15 180 180 #FF
 fill_arc 95 105 66 70 0 360 #00
 draw_circle 95 105 62 #00

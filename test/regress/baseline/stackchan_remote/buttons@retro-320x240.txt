@@ -16,14 +16,14 @@ text 15 2 "StackChan Remote" #FF defaultx1
 fill_circle 204 5 3 #FF
 draw_round_rect 0 0 210 150 4 #60
 gfxblock 2 {w:210,h:150}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 208 0 209 0 #01
-draw_line 209 1 209 1 #01
-draw_line 0 148 0 149 #01
-draw_line 1 149 1 149 #01
-draw_line 209 148 209 149 #01
-draw_line 208 149 208 149 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 207 0 209 0 #01
+draw_line 209 1 209 2 #01
+draw_line 0 147 0 149 #01
+draw_line 1 149 2 149 #01
+draw_line 209 147 209 149 #01
+draw_line 207 149 208 149 #01
 text 5 37 "Emotion:" #60 defaultx1
 text 5 97 "Emote:" #60 defaultx1
 fill_rect 5 13 92 20 #03

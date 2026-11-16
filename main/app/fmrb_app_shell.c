@@ -213,16 +213,17 @@ static void draw_frame(shell_t *s)
     fmrb_gfx_cmd_round_rect(&cmd, cv, 0, 0, (int16_t)w, (int16_t)h, CORNER_R, t->border, false);
     submit(&cmd);
 
-    /* The three pixels outside each corner arc, back to the colour key. */
+    /* The five pixels outside each corner arc (r=4: the arc is (1,1)(2,1)
+       (1,2) in the top-left), back to the colour key. */
     int k = TRANSPARENT_COLOR;
-    line(s, 0, 0, 1, 0, k);
-    line(s, 0, 1, 0, 1, k);
-    line(s, w - 2, 0, w - 1, 0, k);
-    line(s, w - 1, 1, w - 1, 1, k);
-    line(s, 0, h - 2, 0, h - 1, k);
-    line(s, 1, h - 1, 1, h - 1, k);
-    line(s, w - 1, h - 2, w - 1, h - 1, k);
-    line(s, w - 2, h - 1, w - 2, h - 1, k);
+    line(s, 0, 0, 2, 0, k);
+    line(s, 0, 1, 0, 2, k);
+    line(s, w - 3, 0, w - 1, 0, k);
+    line(s, w - 1, 1, w - 1, 2, k);
+    line(s, 0, h - 3, 0, h - 1, k);
+    line(s, 1, h - 1, 2, h - 1, k);
+    line(s, w - 1, h - 3, w - 1, h - 1, k);
+    line(s, w - 3, h - 1, w - 2, h - 1, k);
 
     apply_regions(s);
 }

@@ -43,14 +43,14 @@ text 15 2 "LogViewer" #FF defaultx1
 fill_circle 294 5 3 #FF
 draw_round_rect 0 0 300 200 4 #60
 gfxblock 2 {w:300,h:200}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 298 0 299 0 #01
-draw_line 299 1 299 1 #01
-draw_line 0 198 0 199 #01
-draw_line 1 199 1 199 #01
-draw_line 299 198 299 199 #01
-draw_line 298 199 298 199 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 297 0 299 0 #01
+draw_line 299 1 299 2 #01
+draw_line 0 197 0 199 #01
+draw_line 1 199 2 199 #01
+draw_line 299 197 299 199 #01
+draw_line 297 199 298 199 #01
 draw_line 289 25 289 189 #60
 fill_rect 289 25 10 10 #FF
 draw_rect 289 25 10 10 #60

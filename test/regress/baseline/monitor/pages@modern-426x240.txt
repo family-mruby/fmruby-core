@@ -15,14 +15,14 @@ text 15 2 "Monitor" #FF defaultx1
 fill_circle 234 5 3 #FF
 draw_round_rect 0 0 240 200 4 #60
 gfxblock 2 {w:240,h:200}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 238 0 239 0 #01
-draw_line 239 1 239 1 #01
-draw_line 0 198 0 199 #01
-draw_line 1 199 1 199 #01
-draw_line 239 198 239 199 #01
-draw_line 238 199 238 199 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 237 0 239 0 #01
+draw_line 239 1 239 2 #01
+draw_line 0 197 0 199 #01
+draw_line 1 199 2 199 #01
+draw_line 239 197 239 199 #01
+draw_line 237 199 238 199 #01
 text 3 13 "Memory" #00 bg=#FF defaultx1
 text 3 25 "IRAM free: 87/292K" #00 bg=#FF defaultx1
 text 3 36 "desktop" #00 bg=#FF defaultx1

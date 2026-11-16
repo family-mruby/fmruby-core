@@ -15,14 +15,14 @@ text 15 2 "NSF Player" #FF defaultx1
 fill_circle 274 5 3 #FF
 draw_round_rect 0 0 280 200 4 #60
 gfxblock 2 {w:280,h:200}
-draw_line 0 0 1 0 #01
-draw_line 0 1 0 1 #01
-draw_line 278 0 279 0 #01
-draw_line 279 1 279 1 #01
-draw_line 0 198 0 199 #01
-draw_line 1 199 1 199 #01
-draw_line 279 198 279 199 #01
-draw_line 278 199 278 199 #01
+draw_line 0 0 2 0 #01
+draw_line 0 1 0 2 #01
+draw_line 277 0 279 0 #01
+draw_line 279 1 279 2 #01
+draw_line 0 197 0 199 #01
+draw_line 1 199 2 199 #01
+draw_line 279 197 279 199 #01
+draw_line 277 199 278 199 #01
 fill_rect 1 13 270 10 #EE
 text 3 14 "b.nsf" #FF bg=#EE defaultx1
 text 239 14 "1trk" #FF bg=#EE defaultx1

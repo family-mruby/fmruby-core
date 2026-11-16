@@ -260,21 +260,21 @@ class FmrbApp(_FmrbAppBoundary):
         return self.RESIZE_MARK + 1
 
     def _clear_corners(self):
-        # Repaint the three pixels outside each corner arc with the canvas
+        # Repaint the five pixels outside each corner arc with the canvas
         # colour key, so they composite as transparent. A clear() or a resize
         # leaves opaque pixels there and the corners stop looking round.
         g = self.window_gfx
         t = self.TRANSPARENT_COLOR
         w = self.window_width
         h = self.window_height
-        g.draw_line(0, 0, 1, 0, t)
-        g.draw_line(0, 1, 0, 1, t)
-        g.draw_line(w - 2, 0, w - 1, 0, t)
-        g.draw_line(w - 1, 1, w - 1, 1, t)
-        g.draw_line(0, h - 2, 0, h - 1, t)
-        g.draw_line(1, h - 1, 1, h - 1, t)
-        g.draw_line(w - 1, h - 2, w - 1, h - 1, t)
-        g.draw_line(w - 2, h - 1, w - 2, h - 1, t)
+        g.draw_line(0, 0, 2, 0, t)
+        g.draw_line(0, 1, 0, 2, t)
+        g.draw_line(w - 3, 0, w - 1, 0, t)
+        g.draw_line(w - 1, 1, w - 1, 2, t)
+        g.draw_line(0, h - 3, 0, h - 1, t)
+        g.draw_line(1, h - 1, 2, h - 1, t)
+        g.draw_line(w - 1, h - 3, w - 1, h - 1, t)
+        g.draw_line(w - 3, h - 1, w - 2, h - 1, t)
 
     # ---- the system theme (see FmrbConst.THEME_*) ----
     #
