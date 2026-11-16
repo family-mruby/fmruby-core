@@ -2080,10 +2080,12 @@ static mrb_value mrb_fmrb_app_s_audio_conf_saved(mrb_state *mrb, mrb_value klass
 
 // The release build's WiFi remote control (doc/remote_guard G2), for Config:
 // FmrbSystem.remote_access -> -1 (not here: a development build, or no
-// server), 0 (off), 1 (on until the restart). remote_access_code -> the
-// pairing number to show, -1 when there is none. set_remote_access(on),
-// remote_access_paired -> how many PCs hold a token, revoke_remote_access ->
-// true when every token is gone from storage too.
+// server), 0 (off), 1 (on; kept across restarts until turned off).
+// set_remote_access(on). set_remote_pairing(on) opens or closes "Pair a PC";
+// remote_access_code -> the number to show while it is open, -1 when there is
+// none, -2 when wrong numbers locked it. remote_access_paired -> how many PCs
+// hold a token, revoke_remote_access -> true when every token is gone from
+// storage too.
 static mrb_value mrb_fmrb_app_s_remote_access(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
@@ -2102,6 +2104,15 @@ static mrb_value mrb_fmrb_app_s_set_remote_access(mrb_state *mrb, mrb_value klas
     mrb_bool on;
     mrb_get_args(mrb, "b", &on);
     fmrb_rguard_set_open(on ? true : false);
+    return mrb_nil_value();
+}
+
+static mrb_value mrb_fmrb_app_s_set_remote_pairing(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_bool on;
+    mrb_get_args(mrb, "b", &on);
+    fmrb_rguard_set_pairing(on ? true : false);
     return mrb_nil_value();
 }
 
@@ -2530,6 +2541,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, sys_module, "remote_access", mrb_fmrb_app_s_remote_access, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "remote_access_code", mrb_fmrb_app_s_remote_access_code, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "set_remote_access", mrb_fmrb_app_s_set_remote_access, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, sys_module, "set_remote_pairing", mrb_fmrb_app_s_set_remote_pairing, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, sys_module, "remote_access_paired", mrb_fmrb_app_s_remote_access_paired, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "revoke_remote_access", mrb_fmrb_app_s_revoke_remote_access, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, sys_module, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());

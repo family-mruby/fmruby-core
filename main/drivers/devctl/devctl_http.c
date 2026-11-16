@@ -27,11 +27,14 @@
 //   pairing, and the file endpoints read and write every file, keys included
 //   (devctl_fs_unrestricted).
 // - A release build arms the guard (main/kernel/fmrb_remote_guard.c): every
-//   route here answers 401 until the owner turns on "Remote control" in
-//   Config and the PC has paired with the number shown there (POST /pair,
-//   then the token in an X-Fmrb-Token header or a token= query value).
-//   Files are written only under /home and /app (403 elsewhere) and the keys
-//   are never read. /status stays open so the tools can find the board.
+//   route here answers 401 unless the owner has turned on "Remote control"
+//   in Config (kept across restarts until turned off) and the PC has paired:
+//   once, with the number Config shows while "Pair a PC" is open (POST
+//   /pair), then the token in an X-Fmrb-Token header or a token= query
+//   value. Files are written only under /home, /app and /mnt/sd (403
+//   elsewhere) and the keys are never read. /status stays open so the tools
+//   can find the board. Turning the switch off closes the WebSockets at once
+//   (rg_cut); a request already running finishes, the next is refused.
 // Plan and history: doc/dev_remote_ctl/plan.md, doc/remote_guard/plan.md.
 //
 // Every query value is decoded the same way before a handler sees it
@@ -59,6 +62,7 @@
 #include "esp_rom_md5.h"
 #include "esp_random.h"
 #include "esp_heap_caps.h"
+#include "mbedtls/sha256.h"
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -168,23 +172,34 @@ static bool ctl_query_value(httpd_req_t *req, const char *key, char *out, size_t
 // The release build's guard (doc/remote_guard G2)
 //
 // The rules live in main/kernel/fmrb_remote_guard.c, shared with FmrbSystem
-// (Config turns it on and shows the number). Here: where the tokens are kept
-// (NVS, up to four PCs), the randomness for numbers and tokens, a lock between
-// the httpd task and the app that runs Config, and the 401 the tools read.
+// (Config turns it on and shows the number). Here: where the switch and the
+// tokens' hashes are kept (NVS, up to four PCs), the randomness for numbers
+// and tokens, SHA-256, a lock between the httpd task and the app that runs
+// Config, closing the connections when the switch goes off, and the 401 the
+// tools read.
 // ---------------------------------------------------------------
 
 #define RG_NVS_NAMESPACE "fmrb_rguard"
-#define RG_NVS_KEY       "tokens"
+#define RG_NVS_KEY       "state"
+// The first version's table (plaintext tokens, 2026-11-16, never released):
+// erased when the guard is armed.
+#define RG_NVS_KEY_OLD   "tokens"
 #define RG_TOKEN_HEADER  "X-Fmrb-Token"
 
 // Created when the guard is armed (a release build only). In external RAM
 // like the guard's own state: a development build pays nothing internal.
 EXT_RAM_BSS_ATTR static SemaphoreHandle_t s_rg_mutex;
+// The server the guard's connections are on, for rg_cut.
+EXT_RAM_BSS_ATTR static httpd_handle_t s_rg_server;
 
 static bool rg_load(void *blob, size_t len)
 {
     nvs_handle_t h;
-    if (nvs_open(RG_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+    if (nvs_open(RG_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return false;
+    if (nvs_erase_key(h, RG_NVS_KEY_OLD) == ESP_OK) {
+        nvs_commit(h);
+        FMRB_LOGW(TAG, "remote control: dropped the old token table; pair the PCs again");
+    }
     size_t n = len;
     esp_err_t err = nvs_get_blob(h, RG_NVS_KEY, blob, &n);
     nvs_close(h);
@@ -202,13 +217,23 @@ static bool rg_save(const void *blob, size_t len)
     esp_err_t err = nvs_set_blob(h, RG_NVS_KEY, copy, len);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    if (err != ESP_OK) FMRB_LOGW(TAG, "could not save the paired PCs: %d", (int)err);
+    if (err != ESP_OK) FMRB_LOGW(TAG, "could not save the remote control state: %d", (int)err);
     return err == ESP_OK;
 }
 
 static void rg_random(void *buf, size_t len)
 {
     esp_fill_random(buf, len);  // WiFi is up, so the RF noise feeds it
+}
+
+static void rg_sha256(const void *in, size_t len, uint8_t out[FMRB_RGUARD_HASH_BYTES])
+{
+    // Already linked for WiFi; the one-shot form keeps its context on the stack.
+    if (mbedtls_sha256((const unsigned char *)in, len, out, 0) != 0) {
+        // Never matches a stored hash: a failure refuses rather than admits.
+        memset(out, 0xff, FMRB_RGUARD_HASH_BYTES);
+        out[0] ^= 0x5a;
+    }
 }
 
 static void rg_lock(void)
@@ -221,14 +246,45 @@ static void rg_unlock(void)
     if (s_rg_mutex) xSemaphoreGive(s_rg_mutex);
 }
 
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+// On the httpd task: close every WebSocket (the viewer's input, the H.264
+// video). The handshake was the only check, so these would carry on after
+// the switch went off. Plain requests are checked one by one and need no
+// closing; the MJPEG stream watches fmrb_rguard_epoch itself (its session is
+// detached, and closing it under the stream task is not safe).
+static void rg_cut_work(void *arg)
+{
+    (void)arg;
+    int fds[CONFIG_LWIP_MAX_SOCKETS];
+    size_t n = sizeof(fds) / sizeof(fds[0]);
+    if (httpd_get_client_list(s_rg_server, &n, fds) != ESP_OK) return;
+    int closed = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (httpd_ws_get_fd_info(s_rg_server, fds[i]) == HTTPD_WS_CLIENT_WEBSOCKET) {
+            httpd_sess_trigger_close(s_rg_server, fds[i]);
+            closed++;
+        }
+    }
+    if (closed) FMRB_LOGI(TAG, "remote control: closed %d connection(s)", closed);
+}
+#endif
+
+static void rg_cut(void)
+{
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    if (s_rg_server) httpd_queue_work(s_rg_server, rg_cut_work, NULL);
+#endif
+}
+
 static const fmrb_rguard_ops_t s_rg_ops = {
-    .load = rg_load, .save = rg_save, .random = rg_random,
-    .lock = rg_lock, .unlock = rg_unlock,
+    .load = rg_load, .save = rg_save, .random = rg_random, .sha256 = rg_sha256,
+    .lock = rg_lock, .unlock = rg_unlock, .cut = rg_cut,
 };
 
-static void devctl_guard_arm(void)
+static void devctl_guard_arm(httpd_handle_t server)
 {
     if (fmrb_rguard_state() != FMRB_RGUARD_NONE) return;
+    s_rg_server = server;
     if (!s_rg_mutex) s_rg_mutex = xSemaphoreCreateMutex();
     fmrb_rguard_arm(&s_rg_ops);
 }
@@ -271,9 +327,10 @@ static esp_err_t guarded_handler(httpd_req_t *req)
 }
 
 // POST /pair?code=NNNNNN -> {"ok":true,"token":"<hex>"}. Open to anyone (it is
-// how a PC gets in), so it gives nothing away: a wrong number counts, and
-// after FMRB_RGUARD_CODE_TRIES of them pairing stops until the switch in
-// Config is turned off and on. A development build answers "free".
+// how a PC gets in), so it gives nothing away: it answers only while "Pair a
+// PC" is open in Config, a wrong number counts, and after
+// FMRB_RGUARD_CODE_TRIES of them pairing stops until "Pair a PC" is opened
+// again. A development build answers "free".
 static esp_err_t pair_handler(httpd_req_t *req)
 {
     if (fmrb_rguard_state() == FMRB_RGUARD_NONE) {
@@ -293,19 +350,25 @@ static esp_err_t pair_handler(httpd_req_t *req)
     case FMRB_RGUARD_PAIR_CLOSED:
         return ctl_json(req, "403 Forbidden",
                         "{\"ok\":false,\"guard\":\"closed\",\"err\":\"remote control is off on this "
-                        "board: turn on Config > Remote control first, then send the number it shows\"}");
+                        "board: turn on Config > Remote control, open Pair a PC there, then send the "
+                        "number it shows\"}");
+    case FMRB_RGUARD_PAIR_NOT_PAIRING:
+        return ctl_json(req, "403 Forbidden",
+                        "{\"ok\":false,\"guard\":\"not_pairing\",\"err\":\"the board is not taking new "
+                        "PCs now: open Config > Remote control > Pair a PC on the board, then send the "
+                        "number it shows while it is open\"}");
     case FMRB_RGUARD_PAIR_WRONG:
         FMRB_LOGW(TAG, "remote control: a wrong pairing number (%d tries left)", left);
         snprintf(body, sizeof(body),
                  "{\"ok\":false,\"guard\":\"wrong\",\"left\":%d,\"err\":\"that is not the number "
-                 "shown in Config > Remote control (%d tries left)\"}", left, left);
+                 "shown in Config > Remote control > Pair a PC (%d tries left)\"}", left, left);
         return ctl_json(req, "403 Forbidden", body);
     case FMRB_RGUARD_PAIR_LOCKED:
     default:
         FMRB_LOGW(TAG, "remote control: pairing locked after wrong numbers");
         return ctl_json(req, "403 Forbidden",
-                        "{\"ok\":false,\"guard\":\"locked\",\"err\":\"too many wrong numbers: turn "
-                        "Config > Remote control off and on for a new number\"}");
+                        "{\"ok\":false,\"guard\":\"locked\",\"err\":\"too many wrong numbers: leave "
+                        "Pair a PC in Config and open it again for a new number\"}");
     }
 }
 
@@ -426,9 +489,9 @@ static esp_err_t list_handler(httpd_req_t *req)
 // hold keys and passwords -- so /home can be backed up and restored over WiFi
 // and a firmware's storage brought up to date without a full flash
 // (doc/remote_guard G0). Otherwise only the four roots apps use (/app, /home,
-// /usr/share, /mnt/sd) are reachable, files are written only under /home and
-// /app, and the keys are never read: a release build (G1), whose routes are
-// also behind the guard (G2).
+// /usr/share, /mnt/sd) are reachable, files are written only under /home,
+// /app and /mnt/sd, and the keys are never read: a release build (G1), whose
+// routes are also behind the guard (G2).
 //
 // Transfers stream through one static 4KB buffer rather than the httpd task's
 // 8KB stack. A put writes to "<path>.part" and renames at the end so a dropped
@@ -511,7 +574,7 @@ static bool fs_req_path(httpd_req_t *req, char *vpath, size_t vlen,
     }
     if (write && !devctl_fs_unrestricted() && !fmrb_rguard_write_allowed(vpath)) {
         ctl_json(req, "403 Forbidden",
-                 "{\"ok\":false,\"err\":\"a release build changes files only under /home and /app "
+                 "{\"ok\":false,\"err\":\"a release build changes files only under /home, /app and /mnt/sd "
                  "(the rest is the firmware's own; update it by flashing)\"}");
         return false;
     }
@@ -1026,7 +1089,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         }
     }
 #endif
-    if (!devctl_fs_unrestricted()) devctl_guard_arm();
+    if (!devctl_fs_unrestricted()) devctl_guard_arm(server);
     static const httpd_uri_t uri_launch = {
         .uri = "/app/launch", .method = HTTP_POST, .handler = launch_handler };
     static const httpd_uri_t uri_kill = {
@@ -1100,8 +1163,9 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot, /sys/gc); "
                   "the file endpoints reach every path, keys included");
     } else {
-        FMRB_LOGI(TAG, "remote control is closed until Config > Remote control is turned on "
-                  "(%d PCs paired); files are written only under /home and /app",
+        FMRB_LOGI(TAG, "remote control is %s (Config > Remote control, %d PCs paired); "
+                  "files are written only under /home, /app and /mnt/sd",
+                  fmrb_rguard_state() == FMRB_RGUARD_OPEN ? "on" : "off",
                   fmrb_rguard_paired());
     }
     return FMRB_OK;

@@ -197,8 +197,9 @@ int fmrb_spx_app_set_audio_volume(int step);     /**< FmrbSystem.set_audio_volum
 int fmrb_spx_app_preview_audio_volume(int step); /**< FmrbSystem.preview_audio_volume */
 int fmrb_spx_app_audio_conf_saved(void);         /**< FmrbSystem.audio_conf_saved */
 int fmrb_spx_app_remote_access(void);            /**< FmrbSystem.remote_access: -1 not here, 0 off, 1 on */
-int fmrb_spx_app_remote_access_code(void);       /**< FmrbSystem.remote_access_code: the pairing number, -1 none */
+int fmrb_spx_app_remote_access_code(void);       /**< FmrbSystem.remote_access_code: the pairing number, -1 none, -2 locked */
 int fmrb_spx_app_set_remote_access(int on);      /**< FmrbSystem.set_remote_access */
+int fmrb_spx_app_set_remote_pairing(int on);     /**< FmrbSystem.set_remote_pairing: "Pair a PC" open or closed */
 int fmrb_spx_app_remote_access_paired(void);     /**< FmrbSystem.remote_access_paired: PCs holding a token */
 int fmrb_spx_app_revoke_remote_access(void);     /**< FmrbSystem.revoke_remote_access: 1 when saved */
 /** @brief FmrbConst.bt_mac: "AA:BB:CC:DD:EE:FF" :binstr, or "-" until known. */

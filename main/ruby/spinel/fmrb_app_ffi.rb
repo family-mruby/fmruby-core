@@ -90,6 +90,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_remote_access, [], :int
   ffi_func :fmrb_spx_app_remote_access_code, [], :int
   ffi_func :fmrb_spx_app_set_remote_access, [:int], :int
+  ffi_func :fmrb_spx_app_set_remote_pairing, [:int], :int
   ffi_func :fmrb_spx_app_remote_access_paired, [], :int
   ffi_func :fmrb_spx_app_revoke_remote_access, [], :int
   ffi_func :fmrb_spx_app_bt_mac, [], :binstr

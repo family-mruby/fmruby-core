@@ -311,7 +311,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
         # Remote desktop: WiFi STA over esp_hosted (esp_wifi_remote) +
         # HTTP/WS server + JPEG (MJPEG) / H.264 hardware encoders
         list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event
-             esp_http_server esp_driver_jpeg esp_h264)
+             esp_http_server esp_driver_jpeg esp_h264 mbedtls)
     else()
         if(FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)
             # AtomS3R, StickS3: the S3 draws on its own SPI panel with the
@@ -351,7 +351,9 @@ if(NOT IDF_TARGET STREQUAL "linux")
             # behind the guard (doc/remote_guard G2).
             list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c"
                                        "drivers/devctl/devctl_task.c")
-            list(APPEND COMPONENT_REQUIRES esp_http_server)
+            # mbedtls: the guard keeps SHA-256 of the tokens (already linked
+            # for WiFi; this only adds its headers).
+            list(APPEND COMPONENT_REQUIRES esp_http_server mbedtls)
         endif()
     endif()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY" OR FMRB_HW_TARGET IN_LIST FMRB_HW_MINI_TARGETS)

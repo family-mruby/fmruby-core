@@ -11,9 +11,10 @@
 // the picture is, not how large. Every size below derives from `scale`
 // (page pixels per screen pixel), so both modes share one code path.
 //
-// A release build keeps the screen and the input closed until the owner turns
-// on Config > Remote control and this browser has paired with the number
-// shown there (doc/remote_guard G2). The page asks /auth first; when the board
+// A release build keeps the screen and the input closed unless the owner has
+// turned on Config > Remote control (kept until turned off) and this browser
+// has paired, once, with the number Config shows while "Pair a PC" is open
+// there (doc/remote_guard G2). The page asks /auth first; when the board
 // wants a number it asks for it, trades it at /pair for a token, keeps the
 // token in this browser's storage and sends it as token= with /stream, /ws and
 // /ws_video. A development build answers /auth with "free" and none of it
@@ -80,7 +81,8 @@ function authorize() {
         return new Promise((res) => setTimeout(res, 3000)).then(authorize);
       }
       saveToken('');
-      const code = window.prompt('Enter the number shown on the board in Config > Remote control');
+      const code = window.prompt('On the board, open Config > Remote control > Pair a PC ' +
+                                 'and enter the number it shows');
       if (!code) {
         showConn('not paired (reload to enter the number)', false);
         return new Promise(() => {});           // stay here until a reload
@@ -333,8 +335,8 @@ function wsConnect() {
     wsReady = false;
     connEl.textContent = 'disconnected (retrying...)';
     connEl.className = 'ng';
-    // Through /auth again: the board may have been restarted (closed until
-    // it is allowed again) or this browser's token revoked.
+    // Through /auth again: the switch may have been turned off (which closes
+    // this connection) or this browser's token revoked.
     setTimeout(() => authorize().then(wsConnect), 2000);
   };
   ws.onerror = () => ws.close();

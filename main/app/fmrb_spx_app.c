@@ -701,6 +701,12 @@ int fmrb_spx_app_set_remote_access(int on)
     return 0;
 }
 
+int fmrb_spx_app_set_remote_pairing(int on)
+{
+    fmrb_rguard_set_pairing(on != 0);
+    return 0;
+}
+
 int fmrb_spx_app_remote_access_paired(void)
 {
     return fmrb_rguard_paired();

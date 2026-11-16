@@ -93,25 +93,39 @@ module FmrbSystem
   # 遠隔操作の許可の状態 <<en>> Whether the remote control is allowed
   #
   # リリースのビルドの WiFi の遠隔操作。-1 はここに無い (開発のビルドは
-  # 許可なしで使える)、0 は閉じている、1 は再起動まで開いている。
+  # 許可なしで使える)、0 は閉じている、1 は開いている (閉じるまで、再起動しても残る)。
   # <<en>>
   # The release build's WiFi remote control. -1: not here (a development
-  # build needs no allowing), 0: closed, 1: open until the board restarts.
+  # build needs no allowing), 0: closed, 1: open (kept across restarts until
+  # it is closed).
   def self.remote_access: () -> Integer
 
   # PC に入れてもらう番号 <<en>> The number a PC pairs with
   #
-  # 開いている間に画面に出す 6 桁の番号。無いときは -1。
+  # 「PC を登録」を開いている間に画面に出す 6 桁の番号。無いときは -1、
+  # 番号違いが続いて止まっているときは -2。
   # <<en>>
-  # The six-digit number shown while it is open; -1 when there is none.
+  # The six-digit number shown while "Pair a PC" is open; -1 when there is
+  # none, -2 when wrong numbers stopped pairing.
   def self.remote_access_code: () -> Integer
 
   # 遠隔操作を開く・閉じる <<en>> Open or close the remote control
   #
-  # 開くと新しい番号が出る。再起動で閉じる。
+  # 閉じるまで残る (再起動しても)。閉じると開いている接続も切る。
   # <<en>>
-  # Opening shows a new number. A restart closes it again.
+  # Kept until it is closed, across restarts. Closing it also cuts what is
+  # connected.
   def self.set_remote_access: (bool on) -> void
+
+  # PC の登録を受け付ける・やめる <<en>> Start or stop taking new PCs
+  #
+  # 受け付けている間だけ番号が出て、新しい PC が登録できる。開くたびに新しい番号に
+  # なり、番号違いの停止も解ける。登録済みの PC はこれに関係なく使える。
+  # <<en>>
+  # New PCs pair only while it is on, with the number it shows. Each start
+  # shows a new number and lifts the stop after wrong numbers. PCs already
+  # paired work either way.
+  def self.set_remote_pairing: (bool on) -> void
 
   # 登録した PC の数 <<en>> How many PCs are paired
   def self.remote_access_paired: () -> Integer

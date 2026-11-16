@@ -20,7 +20,9 @@
 // and /ws, /ws_video close at once without a paired PC's token (header
 // X-Fmrb-Token, or token= in the query as a browser sends it). The viewer's
 // page and /status stay open, the page to pair from, /status to find the
-// board.
+// board. Turning the switch off (or revoking the PCs) ends what is open:
+// devctl closes the WebSockets, and the MJPEG stream stops at its next frame
+// (fmrb_rguard_epoch).
 //
 // The httpd instance runs on core 0 next to the hosted/lwIP tasks.
 
@@ -137,8 +139,15 @@ static void mjpeg_stream_task(void *arg)
     uint32_t last_seq = 0;
     uint32_t frames = 0, bytes = 0;
     int64_t stat_t0 = esp_timer_get_time();
+    // Admitted under this epoch: the switch going off or the PCs being
+    // revoked moves it, and the stream ends (doc/remote_guard G2).
+    const uint32_t epoch = fmrb_rguard_epoch();
 
     while (!atomic_load(&s_stop)) {
+        if (fmrb_rguard_epoch() != epoch || fmrb_rguard_state() == FMRB_RGUARD_CLOSED) {
+            FMRB_LOGI(TAG, "MJPEG stream ended: remote control turned off");
+            break;
+        }
         int64_t t_frame = esp_timer_get_time();
 
         // Wait for a newer frame; on timeout resend the latest one as a
@@ -321,6 +330,12 @@ static esp_err_t ws_handler(httpd_req_t *req)
         httpd_ws_send_frame(req, &f);
         FMRB_LOGI(TAG, "WS client connected (fd=%d)", httpd_req_to_sockfd(req));
         return ESP_OK;
+    }
+
+    // Off since the handshake: no more input (devctl is closing the session).
+    if (fmrb_rguard_state() == FMRB_RGUARD_CLOSED) {
+        ws_unregister_fd(httpd_req_to_sockfd(req));
+        return ESP_FAIL;
     }
 
     httpd_ws_frame_t frame = { 0 };

@@ -3205,18 +3205,26 @@ module FmrbSystem
   end
 
   # The release build's WiFi remote control (Config, doc/remote_guard G2):
-  # -1 not here (a development build, or no server), 0 off, 1 on.
+  # -1 not here (a development build, or no server), 0 off, 1 on (kept
+  # across restarts until turned off).
   def self.remote_access
     FmrbSpxApp.fmrb_spx_app_remote_access
   end
 
-  # The pairing number to show, -1 when there is none.
+  # The pairing number to show while "Pair a PC" is open, -1 when there is
+  # none, -2 when wrong numbers locked it.
   def self.remote_access_code
     FmrbSpxApp.fmrb_spx_app_remote_access_code
   end
 
   def self.set_remote_access(on)
     FmrbSpxApp.fmrb_spx_app_set_remote_access(on ? 1 : 0)
+    nil
+  end
+
+  # Open or close "Pair a PC": new PCs pair only while it is open.
+  def self.set_remote_pairing(on)
+    FmrbSpxApp.fmrb_spx_app_set_remote_pairing(on ? 1 : 0)
     nil
   end
 

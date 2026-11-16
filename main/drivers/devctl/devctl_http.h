@@ -30,8 +30,8 @@ fmrb_err_t devctl_http_register(httpd_handle_t server);
  * The one place that says what a development build may do: true in a build
  * with FMRB_DEV_REMOTE_CTL (every path, the keys and passwords included, so
  * /home can be backed up and restored over WiFi, and no pairing), false in a
- * release build (reads in the four roots apps use, writes under /home and
- * /app, keys never read, the guard armed). doc/remote_guard/plan.md.
+ * release build (reads in the four roots apps use, writes under /home, /app
+ * and /mnt/sd, keys never read, the guard armed). doc/remote_guard/plan.md.
  */
 bool devctl_fs_unrestricted(void);
 

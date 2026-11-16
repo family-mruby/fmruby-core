@@ -256,9 +256,11 @@ end
 
 namespace :remote_guard do
   # The release build's WiFi remote control guard (main/kernel/
-  # fmrb_remote_guard.c, doc/remote_guard G1-G2): the switch, the pairing
-  # number, the tokens kept for several PCs, revoking them, and where a paired
-  # PC may write. Pure C with a fake store, so it builds with the host cc.
+  # fmrb_remote_guard.c, doc/remote_guard G1-G2): the switch kept across
+  # restarts, pairing only while "Pair a PC" is open, the tokens' hashes kept
+  # for several PCs, revoking them and cutting connections, and where a paired
+  # PC may write. Pure C with a fake store and a small SHA-256 (sha256.c), so
+  # it builds with the host cc.
   RGUARD_TEST_DIR   = "test/remote_guard"
   RGUARD_TEST_BUILD = "#{RGUARD_TEST_DIR}/build"
   RGUARD_RUNNER_BIN = "#{RGUARD_TEST_BUILD}/remote_guard_test"
@@ -269,7 +271,8 @@ namespace :remote_guard do
     abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
     mkdir_p RGUARD_TEST_BUILD
     sh "#{cc} -std=c11 -O1 -g -Wall -Wextra -Werror -DFMRB_RGUARD_HOST_TEST -I main/kernel " \
-       "main/kernel/fmrb_remote_guard.c #{RGUARD_TEST_DIR}/main.c -o #{RGUARD_RUNNER_BIN}"
+       "main/kernel/fmrb_remote_guard.c #{RGUARD_TEST_DIR}/main.c #{RGUARD_TEST_DIR}/sha256.c " \
+       "-o #{RGUARD_RUNNER_BIN}"
     sh RGUARD_RUNNER_BIN
   end
 end

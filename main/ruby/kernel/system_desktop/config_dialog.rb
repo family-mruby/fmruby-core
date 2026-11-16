@@ -9,9 +9,11 @@
 #   timezone, audio_volume, debug_mode, ble/wifi_auto_start,
 #   display_margin_x/y
 # and, in a release build with WiFi up, one that is not in the file: the
-# remote control (doc/remote_guard G2). Its arrows step OFF -> ON (with the
-# number a PC pairs with; on until the restart) -> "forget N PCs" -> OFF. OFF
-# and ON take effect at once; forgetting the paired PCs waits for Save.
+# remote control (doc/remote_guard G2). Its arrows step OFF -> ON -> "Pair a
+# PC" (on, and taking new PCs: the number they pair with is shown) ->
+# "forget N PCs" -> OFF. OFF and ON take effect at once and are kept across
+# restarts; pairing lasts while the row shows it and the dialog is open;
+# forgetting the paired PCs waits for Save.
 #
 # Save & Reboot is shown only on ESP32; on Linux the user must restart the
 # host process manually after a plain Save.
@@ -118,9 +120,10 @@ module ConfigDialogMixin
   ].reject { |s| FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field]) }
 
   # The release build's WiFi remote control (doc/remote_guard G2). Not in the
-  # file: turning it on lasts until the restart, and the paired PCs live on
-  # the board (NVS). Shown only where FmrbSystem.remote_access says the build
-  # has the guard -- a development build's remote control needs no allowing.
+  # file: the switch and the paired PCs live on the board (NVS), the switch
+  # kept until it is turned off. Shown only where FmrbSystem.remote_access
+  # says the build has the guard -- a development build's remote control
+  # needs no allowing.
   # One row: the dialog already fills a 240-line screen, and a second row
   # would not fit (cfg_place_y lets this one cover the menu bar).
   CFG_REMOTE_ROWS = [
@@ -211,8 +214,13 @@ module ConfigDialogMixin
     end
     @cfg_rows = rows
     @cfg_h = cfg_height(rows.size)
-    @cfg_code_shown = FmrbSystem.remote_access_code
     @cfg_forget = false
+    # Pairing is open only while this dialog shows it: start from closed (a
+    # dialog that went away without closing, say with a crashed desktop,
+    # leaves it open until the next one).
+    @cfg_pairing = false
+    FmrbSystem.set_remote_pairing(false) if FmrbSystem.remote_access >= 0
+    @cfg_code_shown = FmrbSystem.remote_access_code
     @cfg_x = (@window_width - CFG_W) / 2
     @cfg_y = (@window_height - @cfg_h) / 2
     # Keep below the menu bar. picoruby resolves bare constants in the mixin's
@@ -240,6 +248,8 @@ module ConfigDialogMixin
   def close_config_dialog
     return unless @cfg_open
     @cfg_open = false
+    # New PCs pair only while the dialog shows the number.
+    cfg_stop_pairing
     # Every other row is simply forgotten when the dialog closes unsaved; the
     # volume was already playing, so it goes back to what is saved.
     if FmrbApp.audio_volume != @cfg_volume_saved
@@ -532,17 +542,26 @@ module ConfigDialogMixin
     ""
   end
 
-  # "OFF", or "ON" and the number a PC pairs with; "ON (locked)" after too
-  # many wrong numbers, until it is turned off and on. "Forget N PCs" while
-  # that waits for Save.
+  # "OFF", "ON", "Pair 123456" (the number a new PC pairs with) or "Pair
+  # (locked)" after too many wrong numbers, until it is stepped away from and
+  # back. "Forget N PCs" while that waits for Save.
   def cfg_remote_text
     if @cfg_forget
       return "#{FmrbI18n.t(:remote_forget)} #{FmrbSystem.remote_access_paired} PC"
     end
     return FmrbI18n.t(:off) if FmrbSystem.remote_access != 1
+    return FmrbI18n.t(:on) unless @cfg_pairing
     code = FmrbSystem.remote_access_code
-    return "#{FmrbI18n.t(:on)} (#{FmrbI18n.t(:remote_locked)})" if code < 0
-    "#{FmrbI18n.t(:on)} #{sprintf('%06d', code)}"
+    return "#{FmrbI18n.t(:remote_pair)} (#{FmrbI18n.t(:remote_locked)})" if code == -2
+    return FmrbI18n.t(:remote_pair) if code < 0
+    "#{FmrbI18n.t(:remote_pair)} #{sprintf('%06d', code)}"
+  end
+
+  # Stop taking new PCs, if this dialog had started to.
+  def cfg_stop_pairing
+    return unless @cfg_pairing
+    @cfg_pairing = false
+    FmrbSystem.set_remote_pairing(false)
   end
 
   def cfg_wallpaper_text(v)
@@ -610,15 +629,30 @@ module ConfigDialogMixin
     field = s[:field]
     case s[:type]
     when :remote
-      # OFF (0) -> ON (1) -> forget the PCs (2) -> OFF. ON and OFF at once,
-      # like the volume (nothing here goes into the file); forgetting waits
-      # for Save, so stepping past it by mistake costs nothing.
-      pos = @cfg_forget ? 2 : (FmrbSystem.remote_access == 1 ? 1 : 0)
-      pos = (pos + dir + 3) % 3
-      @cfg_forget = (pos == 2)
-      unless @cfg_forget
-        want = (pos == 1)
-        FmrbSystem.set_remote_access(want) if want != (FmrbSystem.remote_access == 1)
+      # OFF (0) -> ON (1) -> pair a PC (2) -> forget the PCs (3) -> OFF. ON
+      # and OFF at once, like the volume (nothing here goes into the file;
+      # the board keeps the switch). Pairing is on, and taking new PCs while
+      # the row stays there. Forgetting waits for Save, so stepping past it
+      # by mistake costs nothing, and leaves the switch as it is.
+      on = (FmrbSystem.remote_access == 1)
+      pos = 0
+      pos = 1 if on
+      pos = 2 if @cfg_pairing
+      pos = 3 if @cfg_forget
+      pos = (pos + dir + 4) % 4
+      @cfg_forget = (pos == 3)
+      if pos == 0
+        cfg_stop_pairing
+        FmrbSystem.set_remote_access(false) if on
+      elsif pos == 1
+        cfg_stop_pairing
+        FmrbSystem.set_remote_access(true) unless on
+      elsif pos == 2
+        FmrbSystem.set_remote_access(true) unless on
+        @cfg_pairing = true
+        FmrbSystem.set_remote_pairing(true)
+      else
+        cfg_stop_pairing
       end
       @cfg_code_shown = FmrbSystem.remote_access_code
     when :enum
@@ -816,7 +850,7 @@ module ConfigDialogMixin
   def tick_config_dialog
     return unless @cfg_open
     # A PC paired (the number is used once) or too many wrong numbers came
-    # in: show the new number, or that pairing has stopped.
+    # in while pairing: show the new number, or that pairing has stopped.
     code = FmrbSystem.remote_access_code
     if code != @cfg_code_shown
       @cfg_code_shown = code
