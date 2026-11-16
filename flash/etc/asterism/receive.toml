@@ -26,7 +26,10 @@ from = []
 
 # Who may install apps here (doc/wasm_apps W6): an app sent from another
 # machine is placed in /app/usr/<name>/. install: "ask" asks the owner on
-# this screen each time (the default); "auto" installs without asking.
+# this screen each time (the default); "auto" installs without asking when
+# the sender is checked by its certificate (a tls/ router), and still asks
+# the others. A board with no screen refuses an app it would have to ask
+# about.
 [app]
 from = []
 install = "ask"

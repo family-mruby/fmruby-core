@@ -218,6 +218,14 @@ P.remove_tree(s)
 check("names", [P.name_ok?("ok_1-x"), P.name_ok?("a.b"), P.name_ok?(""), P.name_ok?("x" * 41)],
       [true, false, false, false])
 
+puts "how it is installed (auto only with a certificate; no screen: refused)"
+check("auto, certified", P.install_how("auto", true, true), "auto")
+check("auto, not certified: asked", P.install_how("auto", false, true), "ask")
+check("auto, certified, no screen", P.install_how("auto", true, false), "auto")
+check("auto, not certified, no screen: refused", P.install_how("auto", false, false), "refuse")
+check("ask, certified", P.install_how("ask", true, true), "ask")
+check("ask, no screen: refused", P.install_how("ask", true, false), "refuse")
+
 puts "left from an install that did not end"
 FileUtils.mkdir_p("#{USR}/.zz.new/sub")
 File.write("#{USR}/.zz.new/sub/f", "x")

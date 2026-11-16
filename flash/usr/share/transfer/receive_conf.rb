@@ -23,7 +23,9 @@
 #   from = ["pc-desk"]
 #   install = "ask"                 # ask the owner each time (the default,
 #                                   # also with no line); "auto": install
-#                                   # without asking
+#                                   # without asking when the sender is
+#                                   # checked by its certificate (a tls/
+#                                   # router); the others are still asked
 #
 # Below the mark, what the console sends (T6): the senders chosen for this
 # machine in its member row (Admin > Members), written by the transfer app
@@ -486,7 +488,7 @@ module FmrbReceiveConf
         out << "note: everyone on the network may move apps here" if wide
       end
       if k == "app"
-        out << (install_mode(p) == "auto" ? "app: installed without asking (install = \"auto\")" :
+        out << (install_mode(p) == "auto" ? "app: installed without asking from senders with a certificate (install = \"auto\"); the others are asked" :
                                               "app: the owner is asked each time (areceive install auto: without asking)")
       end
       i += 1

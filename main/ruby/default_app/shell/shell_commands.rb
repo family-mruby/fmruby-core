@@ -1578,10 +1578,10 @@ module ShellCommandsMixin
         @history << "areceive: the transfer app ends once what is coming in is in" if said == :stopping
       elsif op == "install" && args.size == 2
         written = FmrbReceiveConf.set_install_mode(args[1])
-        how = args[1] == "auto" ? "installed without asking" : "installed after asking the owner"
+        how = args[1] == "auto" ? "installed without asking when the sender has a certificate (tls/), else after asking" : "installed after asking the owner"
         @history << "areceive: apps sent here are #{how}#{written ? " (written to #{FmrbReceiveConf::PATH})" : ' (it was so already)'}"
         if args[1] == "auto"
-          @history << "areceive: note: the machines in the app list may now install apps here without asking"
+          @history << "areceive: note: the machines in the app list connected with a certificate may now install apps here without asking"
         end
       elsif (op == "allow" || op == "deny") && args.size == 3
         kind = args[1]

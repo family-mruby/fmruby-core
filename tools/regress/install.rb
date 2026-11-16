@@ -7,13 +7,16 @@
 # PC (rg-xfer-pc, CRuby Asterism and tools/fmrb_send.rb's send_app). B
 # installs; its receive.toml takes apps from the PC and A ([app] from).
 #
-#   auto      install = "auto": the PC's Ruby app (a folder with its
+#   auto      install = "auto", but over a plain tcp router (no
+#             certificate binds the PC's name): B asks all the same
+#             (auto holds only for a certified sender), Install is
+#             clicked; the PC's Ruby app (a folder with its
 #             .app.toml and its icon) is placed in B's /app/usr/w6rb/ with
 #             the icon written as its path there, the desktop is told: the
 #             launcher, opened from the desktop's menu, reads /app again and
 #             shows it (launcher.png); and the app starts there
 #   again     the same app again: refused at begin (installed already);
-#             with overwrite it is replaced
+#             with overwrite (asked, Install) it is replaced
 #   wasm_bad  a wasm app that imports a function B's firmware does not have
 #             (built, it says, with SDK 9.1.0): refused with the reason,
 #             naming the import and the SDK version; nothing is left in
@@ -27,6 +30,9 @@
 #             wasm app starts on B
 #   ask_no    the PC's Lua app; the question is closed with Esc: declined,
 #             and the PC hears so
+#   no_screen B started again into a single app (boot_mode = "app", no
+#             desktop): the PC's app is refused at once with the reason
+#             ("this board has no screen to ask ...")
 #
 #   ruby tools/regress/install.rb [--only CASE] [--keep]
 #
@@ -42,7 +48,7 @@ module Regress
     T = Regress::Transfer
     NODE_PC = "rg-xfer-pc"
     OUT = File.join(T::CORE, "tmp", "regress", "install")
-    CASES = %w[auto again wasm_bad listed ask_yes ask_no].freeze
+    CASES = %w[auto again wasm_bad listed ask_yes ask_no no_screen].freeze
 
     class Runner < T::Runner
       def initialize(opts)
@@ -164,16 +170,52 @@ module Regress
         [ok, out.string]
       end
 
+      # pc_send while B asks its owner: the question answered (:install, a
+      # click; :esc) once it is up, its screen kept as shot.png.
+      def pc_send_asked(path, name, answer, shot, overwrite: false)
+        mark = log_lines(T::RUN_DIR_B).size
+        result = nil
+        th = Thread.new { result = pc_send(path, overwrite: overwrite) }
+        wait_line(T::RUN_DIR_B, /asking the owner about #{name} \(PID \d+\)/, mark, "B asking its owner", timeout: 30)
+        if answer == :install
+          click_install(T::RUN_DIR_B, T::PORT_B, shot)
+        else
+          sleep 1.5
+          native(T::RUN_DIR_B, T::PORT_B, "shot", File.join(OUT, "#{shot}.png"))
+          native(T::RUN_DIR_B, T::PORT_B, "input", "key", "esc")
+        end
+        th.join(60)
+        result || [false, "no answer"]
+      end
+
+      # B started again into a single app (boot_mode = "app"): no desktop to
+      # ask on. Its home is kept.
+      def restart_b_single_app
+        down(T::RUN_DIR_B, T::PORT_B)
+        conf = File.join(home(T::RUN_DIR_B), "etc", "system_conf.toml")
+        text = File.read(conf).sub(/^boot_mode = .*$/, "boot_mode = \"app\"")
+                   .sub(/^startup_app = .*$/, "startup_app = \"/app/usr/w6rb/w6rb.app.rb\"")
+        File.write(conf, text)
+        user = home(T::RUN_DIR_B)
+        native(T::RUN_DIR_B, T::PORT_B, "up", "--engine", @engine, "--machine", "sdl", "--debug-port", T::PORT_B.to_s,
+               "--user-dir", user, "--cache-dir", File.join(File.dirname(user), "cache"), "--timeout", "90", timeout: 120)
+      end
+
       def expect(what, cond, detail = "")
         raise T::Failure, "#{what}#{detail.empty? ? '' : " (#{detail.strip.lines.last(2).join(' ').strip})"}" unless cond
       end
 
       # ---- the cases ----
 
+      # install = "auto", but the router here is plain tcp (no certificate
+      # binds the PC's name): B asks all the same, and Install is clicked.
       def case_auto
         receive(%W[#{NODE_PC} #{T::NODE_A}], "auto")
         mark = log_lines(T::RUN_DIR_B).size
-        ok, said = pc_send(@rb)
+        ok, said = pc_send_asked(@rb, "w6rb", :install, "auto_uncertified")
+        i = wait_line(T::RUN_DIR_B, /the app w6rb from #{NODE_PC}: .*install: ask \(auto, but the sender is not checked by a certificate\)/,
+                      mark, "auto turned to ask (no certificate)")
+        expect("asked, not placed at once", !i.nil?)
         expect("the PC hears it installed", ok && said.include?("installed on #{T::NODE_B} as /app/usr/w6rb/w6rb.app.rb"), said)
         dir = File.join(b_usr, "w6rb")
         expect("its files in /app/usr/w6rb", Dir.exist?(dir) && Dir.children(dir).sort == %w[w6rb.app.rb w6rb.app.toml w6rb.png],
@@ -203,7 +245,7 @@ module Regress
         ok, said = pc_send(@rb)
         expect("refused without overwrite", !ok && said.include?("w6rb is installed on #{T::NODE_B} already"), said)
         File.write(File.join(@rb, "w6rb.txt"), "a file more")
-        ok, said = pc_send(@rb, overwrite: true)
+        ok, said = pc_send_asked(@rb, "w6rb", :install, "again", overwrite: true)
         FileUtils.rm_f(File.join(@rb, "w6rb.txt"))
         expect("replaced with overwrite", ok, said)
         expect("the new file there", File.exist?(File.join(b_usr, "w6rb", "w6rb.txt")))
@@ -249,15 +291,7 @@ module Regress
 
       def case_ask_no
         receive(%W[#{NODE_PC} #{T::NODE_A}], "ask")
-        mark = log_lines(T::RUN_DIR_B).size
-        result = nil
-        th = Thread.new { result = pc_send(@lua) }
-        wait_line(T::RUN_DIR_B, /asking the owner about w6lua \(PID \d+\)/, mark, "B asking its owner", timeout: 30)
-        sleep 1.5
-        native(T::RUN_DIR_B, T::PORT_B, "shot", File.join(OUT, "ask_no.png"))
-        native(T::RUN_DIR_B, T::PORT_B, "input", "key", "esc")
-        th.join(30)
-        ok, said = result
+        ok, said = pc_send_asked(@lua, "w6lua", :esc, "ask_no")
         expect("declined", ok == false && said.to_s.include?("declined on #{T::NODE_B}"), said.to_s)
         expect("nothing in /app/usr", !Dir.exist?(File.join(b_usr, "w6lua")))
         expect("no hidden folder left", Dir.children(b_usr).none? { _1.start_with?(".") }, Dir.children(b_usr).join(" "))
@@ -290,6 +324,20 @@ module Regress
         raise T::Failure, "no question's window on B" unless a
         @ask_info = a
         [a["x"] || 25, a["y"] || 40, a["w"] || 270, a["h"] || 134]
+      end
+
+      # B booted into one app (no desktop): an app it would ask about is
+      # refused at once, with the reason, to the PC (auto without a
+      # certificate too). Last: B is started again for it.
+      def case_no_screen
+        receive(%W[#{NODE_PC} #{T::NODE_A}], "auto")
+        restart_b_single_app
+        wait_line(T::RUN_DIR_B, /Transfer app connected as #{T::NODE_B}/, 0, "B's transfer app connected", timeout: 30)
+        t = now
+        ok, said = pc_send(@lua)
+        expect("refused", !ok && said.include?("this board has no screen to ask"), said)
+        expect("at once (no wait for an answer)", now - t < 10, format("%.1f s", now - t))
+        expect("nothing in /app/usr", !Dir.exist?(File.join(b_usr, "w6lua")))
       end
 
       def app_running?(dir, port, name)

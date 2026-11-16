@@ -67,7 +67,9 @@
 #                written to /app/usr/.<name>.app.part, unpacked beside it
 #                and looked at (a wasm app must import only what this
 #                firmware gives), then -- asked first unless receive.toml
-#                says [app] install = "auto" -- placed as /app/usr/<name>/
+#                says [app] install = "auto" and the sender is checked by
+#                its certificate (certified?); refused at once when there is
+#                no desktop to ask on -- placed as /app/usr/<name>/
 #                and the launcher told. commit answers {"status" =>
 #                "pending"}; status then {"status" => "pending"} (being
 #                looked at, or the owner is asked: ASK_MS) | {"status" =>
@@ -517,12 +519,18 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     a["info"] = info
     a["replaces"] = ::FmrbAppPackage.installed?(a["name"])
     mode = ::FmrbReceiveConf.install_mode
+    certified = @app ? @app.certified? : false
+    how = ::FmrbAppPackage.install_how(mode, certified, @app ? @app.can_ask? : false)
+    why = ""
+    why = " (auto, but the sender is not checked by a certificate)" if mode == "auto" && how != "auto"
     Log.info("transfer: the app #{a['name']} from #{a['from']}: #{info['lang']}, #{info['files']} file(s), " \
-             "#{info['bytes']} bytes#{info['sdk'].empty? ? '' : ", SDK #{info['sdk']}"}; install: #{mode}")
-    if mode == "auto"
+             "#{info['bytes']} bytes#{info['sdk'].empty? ? '' : ", SDK #{info['sdk']}"}; install: #{how}#{why}")
+    if how == "auto"
       install_place(a)
-    else
+    elsif how == "ask"
       install_ask(a)
+    else
+      install_end(a, { "status" => "refused", "reason" => "#{node_name}: #{::FmrbAppPackage::NO_SCREEN}" })
     end
   rescue ArgumentError => e
     remove(a["part"])
@@ -1015,6 +1023,20 @@ class TransferApp < FmrbApp
     a["ask_pid"] = nil
     @asking = nil if @asking && @asking["id"] == a["id"]
     tell_kernel({ "cmd" => "kill", "pid" => pid }) if pid
+  end
+
+  # Whether the owner can be asked: a desktop is up to show the question
+  # (a board with no screen, or one booted into a single app, has none).
+  def can_ask?
+    procs = FmrbApp.ps
+    return false unless procs
+    i = 0
+    while i < procs.size
+      pr = procs[i]
+      return true if pr[:name] == "system_desktop" && pr[:state] != FmrbConst::PROC_STATE_FREE
+      i += 1
+    end
+    false
   end
 
   # An app was placed in /app/usr: the desktop reads the launcher's list

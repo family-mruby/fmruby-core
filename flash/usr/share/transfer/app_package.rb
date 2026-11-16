@@ -324,6 +324,22 @@ module FmrbAppPackage
     Dir.rmdir(tmp)
   end
 
+  # ---- how it is installed (doc/wasm_apps W6, 2026-11-16 user) ----
+
+  NO_SCREEN = "this board has no screen to ask; set it to auto with a certificate or allow the sender"
+
+  # mode: the setting ("ask" | "auto"); certified: the sender's node ID is
+  # bound to its certificate (a tls/ router, or the browser page the
+  # console's door connected: TransferApp#certified?); can_ask: there is a
+  # desktop to show the question on. -> "auto" (placed without asking),
+  # "ask", or "refuse" (no screen to ask on). "auto" holds only for a
+  # sender checked by its certificate; anybody else may only call itself by
+  # a listed name, so the owner is asked even then.
+  def self.install_how(mode, certified, can_ask)
+    return "auto" if mode == "auto" && certified
+    can_ask ? "ask" : "refuse"
+  end
+
   # ---- placing it ----
 
   # The checked folder stage becomes /app/usr/<name>/ (the installed one
