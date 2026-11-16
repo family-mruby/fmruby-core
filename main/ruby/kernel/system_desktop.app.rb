@@ -234,6 +234,8 @@ class SystemDesktopApp < FmrbApp
     @last_click_time = 0
     @last_click_idx = -1
     @launcher_apps = []
+    # an app was installed while the launcher was shut: rescan when it opens
+    @launcher_stale = false
     # The Linux list in the launcher (launcher.rb, L9b)
     @lnc_linux = false
     @lnc_linux_wait = false
@@ -1930,6 +1932,11 @@ class SystemDesktopApp < FmrbApp
       # here put the menu bar and taskbar on screen before the logo appeared.
       rebuilt = update_taskbar_apps
       draw_foreground if rebuilt && @boot_anim_state == :done && !@direct_boot
+    elsif msg["cmd"] == "apps_installed"
+      # An app came over Asterism and was placed in /app/usr (doc/wasm_apps
+      # W6): the launcher reads /app again, now when it is open, else the
+      # next time it opens.
+      launcher_apps_changed(msg["name"].to_s)
     elsif msg["cmd"] == "focus_changed"
       # The kernel reports every focus move (spawn, Ctrl+Tab, a click on a
       # window, an app exiting). Before this the taskbar only knew about its

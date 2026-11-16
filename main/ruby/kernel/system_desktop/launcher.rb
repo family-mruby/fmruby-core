@@ -1098,6 +1098,10 @@ module LauncherMixin
     notify_overlay_state(true, @launcher_x, @launcher_y, LAUNCHER_W, LAUNCHER_H)
     update_composite_regions
     draw_foreground
+    if @launcher_stale
+      @launcher_stale = false
+      launcher_request_rescan
+    end
   end
 
   # Right click: the icon menu for the icon under the pointer (selecting it),
@@ -1145,6 +1149,20 @@ module LauncherMixin
   # waiting=64), on top of the event-dispatch frames, with a second
   # second request able to re-enter the whole thing. Mark it and let on_update
   # pick it up, which is the shallowest point in the loop and cannot nest.
+  # An app was added or removed in /app by another app (the transfer app's
+  # install): rescanned now when the launcher is open, else when it opens
+  # next (the rescan paints its title bar).
+  def launcher_apps_changed(name)
+    if @launcher_open && !@lnc_linux
+      Log.info("Launcher: #{name} was installed; rescanning")
+      launcher_request_rescan
+    else
+      Log.info("Launcher: #{name} was installed; rescanning when the launcher opens")
+      @launcher_stale = true
+    end
+    nil
+  end
+
   def launcher_request_rescan
     return nil if @rescan_pending || @rescanning
     @rescan_pending = true

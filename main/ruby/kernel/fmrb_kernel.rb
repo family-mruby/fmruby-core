@@ -572,6 +572,13 @@ class FmrbKernelImpl < FmrbKernel
         _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL,
                           MessagePack.pack(fwd))
       end
+    when "apps_installed"
+      # An app was placed in /app/usr (the transfer app's install, doc/
+      # wasm_apps W6): the desktop reads the launcher's list again.
+      if @desktop_pid
+        fwd = { "cmd" => "apps_installed", "name" => data["name"].to_s }
+        _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(fwd))
+      end
     when "close_confirmed"
       # Yes on that question. The app gets the same quit request a long press
       # gave it directly before (on_quit_request, which closes unless the app
