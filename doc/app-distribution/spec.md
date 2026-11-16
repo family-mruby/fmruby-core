@@ -71,6 +71,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `fullscreen_hires` | false | 全画面の間だけ 640x360 にしてよい (P4 系とブラウザ版。`true` か `1`。reference/fullscreen_hires.md) |
 | `large_memory` | 0 | 大きい方のプール (通常の 2 倍: Retro 1 MB、Modern 2 MB、sim とブラウザ版 3 MB) を専有する。同時に 1 アプリ (S3 の端末は 2 アプリ)。本体の `.app.rb` が大きいアプリ (コンパイルの山はソースの十数倍から二十数倍) にも要る (reference/app_memory.md) |
 | `task_stack_kb` | 16 | タスクの C スタック。`[16, 64]` KB に丸められる |
+| `wasm_memory_pages` | 4 | wasm のアプリだけ。wasm のメモリが増えてよい最大のページ数 (1 ページ 64 KB、全端末で同じ既定)。1 からアプリの枠の空き (P4 で 14) まで。外れた値・整数でない値はエラーの Window で理由を出して断る (doc/wasm_apps 決定 27) |
 | `single_instance` | false | 同じファイルのアプリの 2 つ目の起動を断る (`true` か `1`)。断るときはエラーの Window「This app is already running.」 |
 | `exclusive_group` | なし | 同じ名前 (15 バイトまで) を書いたアプリが動いている間は起動を断る。自分の 2 つ目も断る。例: FFT を使うアプリの `"fft"`。Window は「<動いているアプリ> is already running. / Only one "<名前>" app can run at a time.」 |
 | `screens` | なし | 描ける画面の形の並び。`["426x240", "320x170"]` のように書く。今読むのはキーボード専用のデスクトップ (Linux 版の 320x170、doc/linux_native) だけで、`"320x170"` を含むアプリだけをメニューに出す。320x170 ではアプリは帯の下の 320x160 の全画面で動くので、その大きさで読める (Window の大きさを固定で描かない) アプリにだけ書く。この 2 つは最初の `[表]` より前 (一番上の階層) に書く |
