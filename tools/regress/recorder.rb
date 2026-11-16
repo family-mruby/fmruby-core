@@ -201,9 +201,12 @@ class FmrbGfx
   def delete_mask(id) = (__rec(:delete_mask, id); self)
   def draw_image_masked_raw(img, mask, x, y) = (__rec(:draw_image_masked, img, mask, x + __dx, y + __dy); self)
   def draw_tile_raw(id, sx, sy, w, h, dx, dy) = (__rec(:draw_tile, id, sx, sy, w, h, dx + __dx, dy + __dy); self)
-  def _video_open(path, x, y, fps, lp) = (__rec(:video_open, path, x + __dx, y + __dy, fps, lp); Regress::Env.video_info)
-  def _video_control(a) = (__rec(:video_control, a); nil)
-  def _video_status = Regress::Env.video_status
+  def video_open_raw(path, x, y, fps, lp) = (__rec(:video_open, path, x + __dx, y + __dy, fps, lp); Regress::Env.video_info)
+  # One player for the whole app, so no FmrbGfx (the protocol's numbers in
+  # the record, as before the boundary).
+  VIDEO_ACTIONS = { play: 0, pause: 1, stop: 2, rewind: 3 }.freeze
+  def self.video_control(a) = (Regress::Rec.add("video_control #{VIDEO_ACTIONS.fetch(a)}"); nil)
+  def self.video_status = Regress::Env.video_status
 
   # Recorded as the flat list the display gets, seven numbers a region.
   def set_composite_regions_raw(list)
@@ -215,18 +218,20 @@ class FmrbGfx
   def clear_viewport = set_viewport(0, 0, 0, 0)
   def set_sprite_clip(x, y, w, h) = (w > 0 ? __rec(:sprite_clip, x + @__ox, y + @__oy, w, h) : __rec(:sprite_clip, x, y, w, h); self)
   def clear_sprite_clip = set_sprite_clip(0, 0, 0, 0)
-  def _export_frame(path) = (__rec(:export_frame, path); true)
+  def export_frame(path) = (__rec(:export_frame, path); self)
 
-  def _create_sprite_image(w, h, tc, use) = (id = __next_id; __rec(:sprite_image, id, w, h, tc, use); id)
-  def _delete_sprite_image(id) = (__rec(:delete_sprite_image, id); nil)
-  def _load_sprite_image_bmp(id, path) = (__rec(:load_bmp, id, path); true)
-  def _set_sprite_image_target(id) = (@__image = id != 0; __rec(:sprite_target, id); nil)
-  def _create_sprite_instance(imgs, x, y, z) = (id = __next_id; __rec(:sprite, id, imgs, x + @__ox, y + @__oy, z); id)
-  def _delete_sprite_instance(id) = (__rec(:delete_sprite, id); nil)
-  def _sprite_move(id, x, y) = (__rec(:sprite_move, id, x + @__ox, y + @__oy); nil)
-  def _sprite_visible(id, v) = (__rec(:sprite_visible, id, v); nil)
-  def _sprite_frame(id, i) = (__rec(:sprite_frame, id, i); nil)
-  def _delete_all_sprites = (__rec(:delete_all_sprites); nil)
+  # Sprites (the app boundary's functions under SpriteImage / SpriteInstance).
+  # The record keeps the names it had before the boundary.
+  def create_sprite_image(w, h, tc, use) = (id = __next_id; __rec(:sprite_image, id, w, h, tc, use ? 1 : 0); id)
+  def delete_sprite_image(id) = (__rec(:delete_sprite_image, id); self)
+  def load_sprite_image(id, path) = (__rec(:load_bmp, id, path); self)
+  def set_sprite_image_target(id) = (@__image = id != 0; __rec(:sprite_target, id); self)
+  def create_sprite_instance(imgs, x, y, z) = (id = __next_id; __rec(:sprite, id, imgs, x + @__ox, y + @__oy, z); id)
+  def delete_sprite_instance(id) = (__rec(:delete_sprite, id); self)
+  def move_sprite(id, x, y) = (__rec(:sprite_move, id, x + @__ox, y + @__oy); self)
+  def set_sprite_visible(id, v) = (__rec(:sprite_visible, id, v); self)
+  def set_sprite_frame(id, i) = (__rec(:sprite_frame, id, i); self)
+  def delete_all_sprites = (__rec(:delete_all_sprites); self)
 end
 
 # A drawing block (gfx_block.rb compiles it into a program on the display

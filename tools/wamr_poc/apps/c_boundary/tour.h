@@ -8,7 +8,9 @@
  * same calls made natively. Include fmrb_boundary.h (the SDK's in the app,
  * the firmware's in the host) before this. Since W4b-2 also the calls with
  * no receiver number (FmrbAudio, FmrbApp, Log), a setter's name
- * (set_main_volume), an int64 result and a byte result into the app's buffer.
+ * (set_main_volume), an int64 result and a byte result into the app's buffer;
+ * since W4b-4 an array of uint16 (sprite frames) and a function of the class
+ * with a choice (FmrbGfx.video_control).
  */
 #ifndef C_BOUNDARY_TOUR_H
 #define C_BOUNDARY_TOUR_H
@@ -66,6 +68,28 @@ boundary_tour(void)
     r = fmrb_file_read(tpath, (int32_t)(sizeof(tpath) - 1), (uint8_t *)got, (int32_t)sizeof(got));
     fmrb_gfx_set_pixel(0, r, (int32_t)sz, got[0]);
     fmrb_app_request_run_raw(tpath, (int32_t)(sizeof(tpath) - 1), -1);
+    /* Sprites and video (W4b-4): an array of uint16, a bool, a singleton
+       with a choice and a nilable record result. */
+    static const char spath[] = "/cache/bird.png";
+    uint16_t frames[3];
+    fmrb_gfx_video_info_t vi = { 0, 0 };
+    fmrb_gfx_video_status_t vs = { 0, 0, 0 };
+    int32_t img = fmrb_gfx_create_sprite_image(0, 16, 8, 0xe3, 1);
+    fmrb_gfx_load_sprite_image(0, img, spath, (int32_t)(sizeof(spath) - 1));
+    frames[0] = (uint16_t)img;
+    frames[1] = 7;
+    frames[2] = 65535;
+    int32_t sp = fmrb_gfx_create_sprite_instance(0, frames, 3, -5, 6, 2);
+    fmrb_gfx_move_sprite(0, sp, 40, -2);
+    fmrb_gfx_set_sprite_visible(0, sp, 0);
+    fmrb_gfx_set_sprite_frame(0, sp, 2);
+    r = fmrb_gfx_video_open_raw(0, spath, (int32_t)(sizeof(spath) - 1), 1, 2, 15, 1, &vi);
+    fmrb_gfx_set_pixel(0, r, vi.width, vi.height);
+    r = fmrb_gfx_video_control(FMRB_GFX_VIDEO_CONTROL_ACTION_REWIND, &vs);
+    fmrb_gfx_set_pixel(0, r, vs.state, (int32_t)vs.dropped);
+    r = fmrb_gfx_video_status(&vs);
+    fmrb_gfx_set_pixel(0, r, (int32_t)vs.shown, 0);
+    fmrb_gfx_export_frame(0, spath, (int32_t)(sizeof(spath) - 1));
     /* A pointer outside the app's memory: the wasm glue refuses it before the
        body runs (FMRB_BOUNDARY_ERR_ARG); in the host the answer is written in. */
 #if defined(BOUNDARY_TOUR_IN_APP)
