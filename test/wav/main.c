@@ -9,6 +9,12 @@
 //
 // The graphics-audio copy of fmrb_wav.c is byte-identical, so this covers it
 // too; keep them that way.
+//
+// IMA-ADPCM (the bundled voices, doc/flash_layout/report/f3.md): a block built
+// by hand checks the nibble arithmetic, and the shipped voices are decoded
+// through the stream and compared sample for sample with what
+// tools/ima_adpcm.rb decodes (that decoder was checked once against ffmpeg's;
+// rakelib/test.rake writes its output next to the runner).
 
 #include "fmrb_wav.h"
 
@@ -298,6 +304,183 @@ static void test_stop_is_safe(void) {
     CHECK(!st.playing, "started with zero frames");
 }
 
+// ---- IMA-ADPCM --------------------------------------------------------------
+
+// A mono IMA-ADPCM file: fmt (20 bytes, with the samples per block), an
+// optional fact, then `nblocks` blocks of `ba` bytes copied from `blocks`.
+static size_t build_adpcm(uint8_t *out, size_t cap, uint32_t rate, uint16_t ba,
+                          const uint8_t *blocks, uint32_t data_bytes, uint32_t fact) {
+    size_t need = 12 + 28 + (fact ? 12 : 0) + 8 + data_bytes;
+    if (cap < need) return 0;
+    size_t pos = 0;
+    memcpy(out, "RIFF", 4); put_u32(out + 4, (uint32_t)(need - 8));
+    memcpy(out + 8, "WAVE", 4); pos = 12;
+    memcpy(out + pos, "fmt ", 4); put_u32(out + pos + 4, 20); pos += 8;
+    put_u16(out + pos, 0x11); put_u16(out + pos + 2, 1);
+    put_u32(out + pos + 4, rate); put_u32(out + pos + 8, rate / 2);
+    put_u16(out + pos + 12, ba); put_u16(out + pos + 14, 4);
+    put_u16(out + pos + 16, 2); put_u16(out + pos + 18, (uint16_t)((ba - 4) * 2 + 1));
+    pos += 20;
+    if (fact) {
+        memcpy(out + pos, "fact", 4); put_u32(out + pos + 4, 4); put_u32(out + pos + 8, fact);
+        pos += 12;
+    }
+    memcpy(out + pos, "data", 4); put_u32(out + pos + 4, data_bytes); pos += 8;
+    memcpy(out + pos, blocks, data_bytes);
+    return pos + data_bytes;
+}
+
+// Play a parsed file at its own rate (one source frame per output sample),
+// so what comes out is the decoded clip itself.
+static int play_at_own_rate(uint8_t *buf, const fmrb_wav_info_t *info, int16_t *out, int cap) {
+    fmrb_wav_stream_t st;
+    fmrb_wav_err_t err = fmrb_wav_stream_start_file(&st, buf, info, info->sample_rate);
+    CHECK(err == FMRB_WAV_OK, "start_file: %s", fmrb_wav_strerror(err));
+    memset(out, 0, (size_t)cap * sizeof(int16_t));
+    int n = fmrb_wav_stream_mix(&st, out, cap);
+    CHECK(!st.playing || n < cap, "the stream kept playing past its end");
+    return n;
+}
+
+static void test_adpcm_by_hand(void) {
+    // Two blocks of 8 bytes (9 samples each). Block 0 starts at 1000 with
+    // step index 0; its nibbles are 7, 7, 8+7 (down), 0, then zeros.
+    // By hand, with diff = ((2n + 1) * step) >> 3:
+    //   7: step 7  -> diff 13, 1013, index 0 + 8 = 8
+    //   7: step 16 -> diff 30, 1043, index 16
+    //  15: step 34 -> diff 63,  980, index 24
+    //   0: step 73 -> diff 9,   989, index 23
+    //   0: step 66 -> diff 8,   997, index 22
+    //   0: step 60 -> diff 7,  1004, index 21
+    //   0: step 55 -> diff 6,  1010, index 20
+    //   0: step 50 -> diff 6,  1016, index 19
+    // Block 1 restarts at -500 with the index its header gives (88 clamps
+    // a junk 200) and the fact chunk stops the clip after its 3rd sample.
+    static const uint8_t blocks[16] = {
+        0xE8, 0x03, 0, 0, 0x77, 0x0F, 0x00, 0x00,
+        0x0C, 0xFE, 200, 0, 0x01, 0x00, 0x00, 0x00,
+    };
+    static const int16_t expect[12] = {1000, 1013, 1043, 980, 989, 997, 1004, 1010, 1016,
+                                       -500, 0, 0};
+    static uint8_t buf[256];
+    size_t len = build_adpcm(buf, sizeof(buf), 16000, 8, blocks, 16, 12);
+    fmrb_wav_info_t info;
+    fmrb_wav_err_t err = fmrb_wav_parse(buf, len, &info);
+    CHECK(err == FMRB_WAV_OK, "err=%s", fmrb_wav_strerror(err));
+    CHECK(info.format == FMRB_WAV_FORMAT_IMA_ADPCM && info.frames == 12,
+          "format=0x%x frames=%u", info.format, info.frames);
+    int16_t out[32];
+    int n = play_at_own_rate(buf, &info, out, 32);
+    CHECK(n == 12, "played %d samples, expected 12", n);
+    for (int i = 0; i < 10 && i < n; i++) {
+        CHECK(out[i] == expect[i], "sample %d is %d, expected %d", i, out[i], expect[i]);
+    }
+    // Block 1, nibble 1 from index 88: step 32767 -> diff 12287, -500 + 12287.
+    CHECK(n > 10 && out[10] == 11787, "sample 10 is %d, expected 11787", out[10]);
+
+    // Without the fact chunk both whole blocks play (18 samples), and a block
+    // cut short plays the samples it has: 5 bytes of block 1 = 3 samples.
+    len = build_adpcm(buf, sizeof(buf), 16000, 8, blocks, 16, 0);
+    CHECK(fmrb_wav_parse(buf, len, &info) == FMRB_WAV_OK && info.frames == 18, "frames=%u", info.frames);
+    len = build_adpcm(buf, sizeof(buf), 16000, 8, blocks, 13, 0);
+    CHECK(fmrb_wav_parse(buf, len, &info) == FMRB_WAV_OK && info.frames == 12, "frames=%u", info.frames);
+
+    // A samples-per-block that disagrees with the block size, and 3-bit
+    // ADPCM, are refused rather than played as noise.
+    len = build_adpcm(buf, sizeof(buf), 16000, 8, blocks, 16, 0);
+    put_u16(buf + 12 + 8 + 18, 10);
+    CHECK(fmrb_wav_parse(buf, len, &info) == FMRB_WAV_ERR_UNSUPPORTED, "wrong samples per block accepted");
+    len = build_adpcm(buf, sizeof(buf), 16000, 8, blocks, 16, 0);
+    put_u16(buf + 12 + 8 + 14, 3);
+    CHECK(fmrb_wav_parse(buf, len, &info) == FMRB_WAV_ERR_UNSUPPORTED, "3-bit ADPCM accepted");
+}
+
+// A clip longer than 65536 frames (4 s at 16 kHz) plays to its end: the read
+// position used to be one 16.16 word, which wrapped there and started over.
+static void test_long_clip_does_not_wrap(void) {
+    uint32_t frames = 100000;
+    int16_t *pcm = (int16_t *)malloc(frames * sizeof(int16_t));
+    for (uint32_t i = 0; i < frames; i++) pcm[i] = (int16_t)(i & 0x3FFF);
+    fmrb_wav_stream_t st;
+    fmrb_wav_stream_start(&st, pcm, frames, 16000, 16000);
+    int16_t *out = (int16_t *)calloc(frames + 16, sizeof(int16_t));
+    int n = fmrb_wav_stream_mix(&st, out, (int)frames + 16);
+    CHECK(n == (int)frames, "mixed %d of %u frames", n, frames);
+    CHECK(out[70000] == (int16_t)(70000 & 0x3FFF), "frame 70000 came out as %d", out[70000]);
+    free(pcm);
+    free(out);
+}
+
+static uint8_t *read_file(const char *path, size_t *len) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return NULL;
+    fseek(fp, 0, SEEK_END);
+    long n = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    uint8_t *buf = (uint8_t *)malloc((size_t)n + 1);
+    size_t rd = fread(buf, 1, (size_t)n, fp);
+    fclose(fp);
+    *len = rd;
+    return buf;
+}
+
+// The bundled voices: IMA-ADPCM at 16 kHz, decoded through the stream exactly
+// as tools/ima_adpcm.rb decodes them (ref_dir/<name>.raw, 16-bit LE).
+static void test_shipped_voices(const char *dir, const char *ref_dir) {
+    const char *names[] = {"riichi", "pon", "chi", "kan", "tsumo", "ron"};
+    for (int i = 0; i < 6; i++) {
+        char path[512];
+        size_t len = 0, rlen = 0;
+        snprintf(path, sizeof(path), "%s/%s.wav", dir, names[i]);
+        uint8_t *buf = read_file(path, &len);
+        snprintf(path, sizeof(path), "%s/%s.raw", ref_dir, names[i]);
+        uint8_t *ref = read_file(path, &rlen);
+        if (!buf || !ref) {
+            printf("FAIL %s: cannot open %s or its reference\n", __func__, names[i]);
+            g_fail++;
+            free(buf);
+            free(ref);
+            continue;
+        }
+        uint8_t *again = (uint8_t *)malloc(len);
+        memcpy(again, buf, len);
+        fmrb_wav_info_t info;
+        fmrb_wav_err_t err = fmrb_wav_parse(buf, len, &info);
+        CHECK(err == FMRB_WAV_OK, "%s: %s", names[i], fmrb_wav_strerror(err));
+        CHECK(info.format == FMRB_WAV_FORMAT_IMA_ADPCM && info.sample_rate == 16000,
+              "%s: format 0x%x at %u Hz", names[i], info.format, info.sample_rate);
+        CHECK(info.frames == rlen / 2, "%s: %u frames, the reference has %zu", names[i], info.frames, rlen / 2);
+        int cap = (int)info.frames + 64;
+        int16_t *out = (int16_t *)malloc((size_t)cap * sizeof(int16_t));
+        int n = play_at_own_rate(buf, &info, out, cap);
+        CHECK(n == (int)info.frames, "%s: played %d of %u", names[i], n, info.frames);
+        int bad = 0, first = -1, peak = 0;
+        for (int k = 0; k < n && (size_t)k < rlen / 2; k++) {
+            int16_t r = (int16_t)(ref[2 * k] | (ref[2 * k + 1] << 8));
+            if (out[k] != r) { bad++; if (first < 0) first = k; }
+            if (abs(out[k]) > peak) peak = abs(out[k]);
+        }
+        CHECK(bad == 0, "%s: %d samples differ from the reference, first at %d", names[i], bad, first);
+        // Each word was scaled to a -1 dBFS peak before it was encoded.
+        CHECK(peak > 20000, "%s: peak %d, too quiet for a -1 dBFS word", names[i], peak);
+        // At the APU's rate (the decoder held while the resampler steps
+        // between its samples) the clip lasts as long as it did.
+        // (start_file wrote the decoder over the header: start from a fresh copy.)
+        memcpy(buf, again, len);
+        CHECK(fmrb_wav_parse(buf, len, &info) == FMRB_WAV_OK, "%s: copy unreadable", names[i]);
+        fmrb_wav_stream_t st;
+        fmrb_wav_stream_start_file(&st, buf, &info, 15720);
+        memset(out, 0, (size_t)cap * sizeof(int16_t));
+        n = fmrb_wav_stream_mix(&st, out, cap);
+        int expect = (int)((double)info.frames * 15720 / 16000);
+        CHECK(abs(n - expect) <= 1, "%s: %d samples at 15720 Hz, expected about %d", names[i], n, expect);
+        free(out);
+        free(again);
+        free(buf);
+        free(ref);
+    }
+}
+
 // ---- the shipped files ----------------------------------------------------
 
 // tools/gen_sine_wav.rb writes these; if what it produces stops being what
@@ -343,7 +526,10 @@ int main(int argc, char **argv) {
     test_mix_adds_rather_than_replaces();
     test_stream_ends_and_stays_quiet();
     test_stop_is_safe();
+    test_adpcm_by_hand();
+    test_long_clip_does_not_wrap();
     if (argc > 1) test_shipped_tones(argv[1]);
+    if (argc > 3) test_shipped_voices(argv[2], argv[3]);
 
     if (g_fail) {
         printf("WAV tests: %d failure(s)\n", g_fail);

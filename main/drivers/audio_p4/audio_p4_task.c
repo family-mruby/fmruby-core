@@ -73,12 +73,14 @@ static void engine_unlock(void) { xSemaphoreGive(g_engine_lock); }
 // serves are notification sounds and short spoken lines, and a reader task
 // feeding a ring would be a second timing loop to keep in step with the APU's.
 // A 2 MB ceiling (FMRB_WAV_MAX_BYTES) is about 60 s at 16 kHz, well past
-// anything that belongs in a notification.
+// anything that belongs in a notification. An IMA-ADPCM file (the bundled
+// voices) stays compressed in that buffer and is decoded a sample at a time
+// as it is mixed (fmrb_wav.c), so it takes a quarter of the PSRAM.
 //
 // Everything below runs under the engine lock, including the mix in the task
 // loop, because starting a new clip frees the buffer the mixer is reading.
-static int16_t *g_wav_pcm = NULL;      // PSRAM, owns the samples
-static fmrb_wav_stream_t g_wav_stream; // reads g_wav_pcm
+static uint8_t *g_wav_buf = NULL;      // PSRAM, owns the file read in
+static fmrb_wav_stream_t g_wav_stream; // reads g_wav_buf
 
 // The output stage's switch and gain (doc/reference/audio_output.md). PSRAM: the internal
 // RAM budget has no room for new statics, and these are read once per frame.
@@ -189,9 +191,9 @@ static void out_settings_load(void) {
 
 static void wav_release_locked(void) {
     fmrb_wav_stream_stop(&g_wav_stream);
-    if (g_wav_pcm) {
-        apuemu_free(g_wav_pcm);
-        g_wav_pcm = NULL;
+    if (g_wav_buf) {
+        apuemu_free(g_wav_buf);
+        g_wav_buf = NULL;
     }
 }
 
@@ -269,21 +271,25 @@ int audio_p4_engine_play_wav(const char *path) {
         return -1;
     }
 
-    // Move the samples to the front of the allocation. The data chunk starts
-    // at an even offset in every file seen so far, but "so far" is not an
-    // alignment guarantee on RISC-V, and one memmove is cheaper than finding
-    // out the hard way. It also lets the header bytes be reused as slack.
-    memmove(raw, raw + info.data_offset, (size_t)info.frames * 2u);
-
     engine_lock();
     wav_release_locked();
-    g_wav_pcm = (int16_t *)raw;
-    fmrb_wav_stream_start(&g_wav_stream, g_wav_pcm, info.frames,
-                          info.sample_rate, FMRB_APU_MIX_RATE);
+    g_wav_buf = raw;
+    // Rearranges the buffer in place: PCM moves to its front (aligned for
+    // int16 reads), an ADPCM clip gets its decoder written over the header.
+    fmrb_wav_err_t serr = fmrb_wav_stream_start_file(&g_wav_stream, raw, &info,
+                                                     FMRB_APU_MIX_RATE);
+    if (serr != FMRB_WAV_OK) {
+        wav_release_locked();
+    }
     engine_unlock();
 
-    FMRB_LOGI(TAG, "play_wav: %s (%lu frames @ %lu Hz)", full_path,
-              (unsigned long)info.frames, (unsigned long)info.sample_rate);
+    if (serr != FMRB_WAV_OK) {
+        FMRB_LOGW(TAG, "play_wav: %s rejected: %s", full_path, fmrb_wav_strerror(serr));
+        return -1;
+    }
+    FMRB_LOGI(TAG, "play_wav: %s (%lu frames @ %lu Hz%s)", full_path,
+              (unsigned long)info.frames, (unsigned long)info.sample_rate,
+              info.format == FMRB_WAV_FORMAT_IMA_ADPCM ? ", IMA-ADPCM" : "");
     return 0;
 }
 

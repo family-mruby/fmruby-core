@@ -106,9 +106,10 @@ class FmrbAudio
 
   # ---- WAV playback (Modern only) ----
   #
-  # Plays a PCM 16-bit mono WAV (8-48 kHz, up to 2 MB) mixed on top of the
-  # APU, so a spoken line or a recorded chime rides over whatever music is
-  # going. One clip at a time for the whole machine: starting another
+  # Plays a mono WAV (8-48 kHz, up to 2 MB; 16-bit PCM or 4-bit IMA-ADPCM,
+  # which is how the bundled voices ship -- tools/ima_adpcm.rb) mixed on top
+  # of the APU, so a spoken line or a recorded chime rides over whatever
+  # music is going. One clip at a time for the whole machine: starting another
   # replaces it.
   #
   #   audio.play_wav("/usr/share/sounds/sine440_16k.wav")

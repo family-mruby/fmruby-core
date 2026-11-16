@@ -19,6 +19,7 @@ require "json"
 CORE = File.expand_path("../..", __dir__)
 require File.join(CORE, "tools", "mahjong_voice")
 require File.join(CORE, "tools", "mahjong_voice_default")
+require File.join(CORE, "tools", "ima_adpcm")
 
 $failures = 0
 
@@ -209,22 +210,48 @@ check("CREDITS.md: the source's digests") { md.include?(MahjongVoiceDefault::ZIP
 check("CREDITS.md: generated, not edited") { md.include?("Generated, not edited") }
 check("the shipped CREDITS.md is the tool's") { File.read(File.join(MahjongVoiceDefault::DIR, "CREDITS.md")) == md }
 MahjongVoice::WORDS.each do |n, _|
-  check("default/#{n}.wav is 16-bit mono 16 kHz, under 1 s") do
-    i = MahjongVoice.check_wav!(File.binread(File.join(MahjongVoiceDefault::DIR, "#{n}.wav")), n)
-    i[:seconds] > 0.3 && i[:seconds] < 1.0
+  w = File.binread(File.join(MahjongVoiceDefault::DIR, "#{n}.wav"))
+  check("default/#{n}.wav is IMA-ADPCM mono 16 kHz, under 1 s") do
+    i = ImaAdpcm.info(w)
+    s = (i[:fact] || 0).to_f / i[:rate]
+    i[:format] == 0x11 && i[:channels] == 1 && i[:rate] == 16_000 && i[:block_align] == 1024 && s > 0.3 && s < 1.0
   end
-  check("default/#{n}.wav peaks at -1 dBFS (normalised)") do
-    w = File.binread(File.join(MahjongVoiceDefault::DIR, "#{n}.wav"))
-    off, len = MahjongVoice.data_chunk(w)
-    MahjongVoice.peak(w[off, len]) == MahjongVoice.peak_target
+  # The PCM was scaled to -1 dBFS before it was encoded; the encoder lands
+  # within a few percent of it.
+  check("default/#{n}.wav peaks near -1 dBFS once decoded") do
+    pk = ImaAdpcm.decode(w).map(&:abs).max
+    (pk - MahjongVoice.peak_target).abs < MahjongVoice.peak_target / 10
   end
 end
-check("CREDITS.md says how they were scaled") { md.include?("peak is at -1 dBFS") }
+check("CREDITS.md says how they were scaled and encoded") { md.include?("peak is at -1 dBFS") && md.include?("IMA-ADPCM") }
 check("CREDITS.md: rendered at 48000 Hz and brought to 16000 Hz") do
   md.include?("48000 Hz") && md.include?("16000 Hz") && md.include?("7200 Hz windowed-sinc low-pass")
 end
 check("open_jtalk at the voice's own rate (no -s, no -p)") do
   !MahjongVoiceDefault::OPTIONS.include?("-s") && !MahjongVoiceDefault::OPTIONS.include?("-p")
+end
+
+# ---- tools/ima_adpcm.rb ------------------------------------------------------
+
+puts "== tools/ima_adpcm.rb"
+tone = Array.new(5000) { |i| (Math.sin(2 * Math::PI * 440 * i / 16_000) * 20_000).round }
+pcm_wav = "RIFF".b + [36 + tone.size * 2].pack("V") + "WAVEfmt ".b + [16, 1, 1, 16_000, 32_000, 2, 16].pack("VvvVVvv") +
+          "data".b + [tone.size * 2].pack("V") + tone.pack("s<*")
+ad = ImaAdpcm.convert(pcm_wav)
+ai = ImaAdpcm.info(ad)
+eq "format, block, rate", [ai[:format], ai[:block_align], ai[:rate], ai[:fact]], [0x11, 1024, 16_000, 5000]
+eq "3 blocks of 1024 bytes for 5000 samples", ai[:data_len], 3 * 1024
+dec = ImaAdpcm.decode(ad)
+eq "decodes to the samples it was given", dec.size, 5000
+check("and close to them (a steady tone)") { dec.zip(tone).drop(200).map { |a, b| (a - b).abs }.max < 1500 }
+check("the header of each block is that block's first sample") do
+  ad.b[ai[:data_off] + 1024, 2].unpack1("s<") == tone[2041]
+end
+check("a stereo WAV is refused") do
+  ImaAdpcm.convert(pcm_wav.sub([1, 1].pack("vv"), [1, 2].pack("vv")))
+  false
+rescue ImaAdpcm::Error => e
+  e.message.include?("not 16-bit mono PCM")
 end
 
 # ---- the app (mahjong_sound.rb) ----------------------------------------------

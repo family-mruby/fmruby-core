@@ -165,11 +165,11 @@ class FmrbAudio
 
   # 録音した音 (WAV) を鳴らす <<en>> Play a recorded sound (WAV)
   #
-  # PCM 16bit・モノラル・8000〜48000Hz・2MB まで。APU の音に重ねて鳴る。
+  # モノラル・8000〜48000Hz・2MB まで。PCM 16bit か IMA-ADPCM 4bit。APU の音に重ねて鳴る。
   # 一度に鳴らせるのは 1 本で、鳴っている間にもう一度呼ぶと入れ替わる。
   # Retro では鳴らせないので false を返す (鳴ったときは true)。
   # <<en>>
-  # 16-bit PCM, mono, 8000 to 48000Hz, up to 2MB. It plays over the APU.
+  # Mono, 8000 to 48000Hz, up to 2MB, 16-bit PCM or 4-bit IMA-ADPCM. It plays over the APU.
   # Only one at a time: calling again while one sounds replaces it.
   # Retro cannot play it and gets false back (true when it does play).
   def play_wav: (String path) -> bool

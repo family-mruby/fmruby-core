@@ -19,7 +19,8 @@ played by `flash/app/game/mahjong/mahjong_sound.rb` when someone declares.
 - **Generated, not edited**: rendered by `tools/mahjong_voice_default.rb`
   (open_jtalk `-g 6` at the voice's own 48000 Hz, +6 dB; then brought to 16-bit mono
   16000 Hz by a 7200 Hz windowed-sinc low-pass (191 taps, Blackman) keeping
-  every 3rd sample; then each word scaled so its peak is at -1 dBFS). Mei is a
+  every 3rd sample; then each word scaled so its peak is at -1 dBFS; then encoded as
+  4-bit IMA-ADPCM by `tools/ima_adpcm.rb`). Mei is a
   48 kHz voice: rendered directly at 16 kHz its frequency warping is wrong and the words
   blur. Run it again to reproduce them.
 

@@ -146,7 +146,15 @@ namespace :wav do
   task :test => :runner do
     # The shipped tones are checked too, so a regenerated pair that stopped
     # being PCM 16-bit mono fails here rather than on the device.
-    sh "#{WAV_RUNNER_BIN} flash/usr/share/sounds"
+    # And the bundled voices (IMA-ADPCM): decoded by the firmware's stream and
+    # by tools/ima_adpcm.rb, which must agree sample for sample.
+    voices = "flash/usr/share/sounds/voice/mahjong/default"
+    ref = "#{WAV_TEST_BUILD}/voices"
+    mkdir_p ref, verbose: false
+    ruby "-r./tools/ima_adpcm", "-e", "Dir['#{voices}/*.wav'].each { |f| " \
+         "File.binwrite(File.join('#{ref}', File.basename(f, '.wav') + '.raw'), " \
+         "ImaAdpcm.decode(File.binread(f)).pack('s<*')) }", verbose: false
+    sh "#{WAV_RUNNER_BIN} flash/usr/share/sounds #{voices} #{ref}"
   end
 
   desc "Remove the host WAV test build"

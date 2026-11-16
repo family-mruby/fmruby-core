@@ -26,8 +26,10 @@
 # then brings each word to 16-bit mono 16000 Hz (MahjongVoice.decimate:
 # a 7200 Hz windowed-sinc low-pass, every 3rd sample) and scales it so its
 # peak is at -1 dBFS (MahjongVoice.normalize_wav), both in integer
-# arithmetic: the same bytes every time. CREDITS.md is written next to
-# them. Needs docker and the network (the zip from SourceForge, the
+# arithmetic, and encodes it as 4-bit IMA-ADPCM (tools/ima_adpcm.rb, the
+# bytes ffmpeg's adpcm_ima_wav writes; a quarter of the size,
+# doc/flash_layout/report/f3.md): the same bytes every time. CREDITS.md is
+# written next to them. Needs docker and the network (the zip from SourceForge, the
 # packages from Debian); nothing is left running.
 
 require "digest"
@@ -36,6 +38,7 @@ require "net/http"
 require "tmpdir"
 require "uri"
 require_relative "mahjong_voice"
+require_relative "ima_adpcm"
 
 module MahjongVoiceDefault
   CORE = MahjongVoice::CORE
@@ -110,7 +113,8 @@ module MahjongVoiceDefault
       - **Generated, not edited**: rendered by `tools/mahjong_voice_default.rb`
         (open_jtalk `#{OPTIONS}` at the voice's own 48000 Hz, +6 dB; then brought to 16-bit mono
         16000 Hz by a #{MahjongVoice::LOWPASS_CUTOFF.round} Hz windowed-sinc low-pass (#{MahjongVoice::LOWPASS_TAPS} taps, Blackman) keeping
-        every 3rd sample; then each word scaled so its peak is at #{MahjongVoice::PEAK_DBFS.round} dBFS). Mei is a
+        every 3rd sample; then each word scaled so its peak is at #{MahjongVoice::PEAK_DBFS.round} dBFS; then encoded as
+        4-bit IMA-ADPCM by `tools/ima_adpcm.rb`). Mei is a
         48 kHz voice: rendered directly at 16 kHz its frequency warping is wrong and the words
         blur. Run it again to reproduce them.
 
@@ -145,6 +149,7 @@ module MahjongVoiceDefault
         wav = MahjongVoice.decimate_wav(wav48, "#{n}.wav")
         info = MahjongVoice.check_wav!(wav, "#{n}.wav")
         wav, gain, = MahjongVoice.normalize_wav(wav)
+        wav = ImaAdpcm.convert(wav)
         File.binwrite(File.join(dir, "#{n}.wav"), wav)
         out.puts format("  %-12s %-8s %6d bytes  %.2f s  %d Hz  x%.3f (%+.1f dB)", "#{n}.wav", t, wav.bytesize,
                         info[:seconds], info[:rate], gain, MahjongVoice.gain_db(gain))
