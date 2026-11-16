@@ -18,8 +18,8 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # are not here because CI cannot fetch that private repository.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "nsf:test", "tts:test", "native:test",
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "png332:test", "nsf:test", "tts:test", "native:test",
                "secret:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
@@ -160,6 +160,38 @@ namespace :wav do
   desc "Remove the host WAV test build"
   task :clean do
     rm_rf WAV_TEST_BUILD
+  end
+end
+
+namespace :png332 do
+  # The sprite editor's PNG reader and writer (picoruby-fmrb-bmp332's
+  # ports/esp32/png332.c, BMP332.load / BMP332.save): pure C over buffers, so
+  # it builds with the host cc. Every PNG in flash/ must read as
+  # tools/rgb332_png.rb reads it, and what the C writer writes must read back
+  # the same in Ruby with the same header and palette as Rgb332Png.encode.
+  PNG332_TEST_DIR   = "test/png332"
+  PNG332_TEST_BUILD = "#{PNG332_TEST_DIR}/build"
+  PNG332_RUNNER_BIN = "#{PNG332_TEST_BUILD}/png332_test"
+  PNG332_GEM_DIR    = "lib/gems/picoruby-fmrb-bmp332"
+  PNG332_CFLAGS     = "-std=c11 -O1 -g -Wall -Wextra -Werror"
+
+  desc "Build the host PNG332 test runner (cc, no docker)"
+  task :runner do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p PNG332_TEST_BUILD
+    sh "#{cc} #{PNG332_CFLAGS} -I #{PNG332_GEM_DIR}/include " \
+       "#{PNG332_GEM_DIR}/ports/esp32/png332.c #{PNG332_TEST_DIR}/main.c -o #{PNG332_RUNNER_BIN}"
+  end
+
+  desc "Sprite editor PNG read/write tests (host cc + Ruby, no docker)"
+  task :test => :runner do
+    ruby "#{PNG332_TEST_DIR}/run.rb #{PNG332_RUNNER_BIN} #{PNG332_TEST_BUILD}"
+  end
+
+  desc "Remove the host PNG332 test build"
+  task :clean do
+    rm_rf PNG332_TEST_BUILD
   end
 end
 

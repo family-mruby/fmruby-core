@@ -1,5 +1,6 @@
 # Sprite Editor - 16x16 RGB332 tile editor
-# Load a tile sheet BMP, select a tile, edit pixels, save back
+# Load a tile sheet (palette PNG or 8-bit BMP), select a tile, edit pixels,
+# save back in the format it came in (BMP332.save goes by the extension).
 
 class SpriteEditorApp < FmrbApp
   TILE = 16
@@ -70,7 +71,7 @@ class SpriteEditorApp < FmrbApp
 
   def draw_waiting
     @gfx.fill_rect(@ox, @oy, @w, @h, FmrbGfx::BLACK)
-    @gfx.draw_text(@ox + 4, @oy + @h / 2 - 6, "Select a BMP file...", FmrbGfx::WHITE)
+    @gfx.draw_text(@ox + 4, @oy + @h / 2 - 6, "Select a PNG or BMP file...", FmrbGfx::WHITE)
     draw_window_frame
     @gfx.present
   end
@@ -88,8 +89,16 @@ class SpriteEditorApp < FmrbApp
     cache_path = "/cache/app/sprite_editor/#{name}"
     @gfx.sync_file(path, dest: cache_path)
 
-    # Load BMP
-    bmp = BMP332.load(path)
+    # Load the picture (PNG or BMP, told apart by its first bytes)
+    begin
+      bmp = BMP332.load(path)
+    rescue => e
+      Log.error("SpriteEd: cannot open #{path}: #{e.message}")
+      @mode = :waiting
+      @need_redraw = true
+      request_file_select("open")
+      return
+    end
     @sheet_w = bmp[:width]
     @sheet_h = bmp[:height]
     @sheet_pixels = bmp[:pixels].bytes
@@ -174,7 +183,12 @@ class SpriteEditorApp < FmrbApp
 
   def save_sheet
     pixels_str = @sheet_pixels.map { |b| b.chr }.join
-    BMP332.save(@sheet_path, @sheet_w, @sheet_h, pixels_str)
+    begin
+      BMP332.save(@sheet_path, @sheet_w, @sheet_h, pixels_str)
+    rescue => e
+      Log.error("SpriteEd: cannot save #{@sheet_path}: #{e.message}")
+      return
+    end
     @dirty = false
     Log.info("SpriteEd: saved #{@sheet_path}")
     @need_redraw = true
