@@ -34,21 +34,21 @@ text 6 26 "/usr/share/samples/slides/demo_ja.md" #FF bg=#EE defaultx1
 present
 == key enter
 sprite_image 101 16 16 0 1
-load_bmp 101 "/cache/app/picorabbit/usagi_run1.bmp"
+load_bmp 101 "/cache/app/picorabbit/usagi_run1.png"
 sprite_image 102 16 16 0 1
-load_bmp 102 "/cache/app/picorabbit/usagi_run2.bmp"
+load_bmp 102 "/cache/app/picorabbit/usagi_run2.png"
 sprite_image 103 16 16 0 1
-load_bmp 103 "/cache/app/picorabbit/usagi_jump.bmp"
+load_bmp 103 "/cache/app/picorabbit/usagi_jump.png"
 sprite_image 104 16 16 0 1
-load_bmp 104 "/cache/app/picorabbit/usagi_sleep.bmp"
+load_bmp 104 "/cache/app/picorabbit/usagi_sleep.png"
 sprite_image 105 16 16 0 1
-load_bmp 105 "/cache/app/picorabbit/usagi_hurry.bmp"
+load_bmp 105 "/cache/app/picorabbit/usagi_hurry.png"
 sprite_image 106 16 16 0 1
-load_bmp 106 "/cache/app/picorabbit/kame_walk1.bmp"
+load_bmp 106 "/cache/app/picorabbit/kame_walk1.png"
 sprite_image 107 16 16 0 1
-load_bmp 107 "/cache/app/picorabbit/kame_walk2.bmp"
+load_bmp 107 "/cache/app/picorabbit/kame_walk2.png"
 sprite_image 108 16 16 0 1
-load_bmp 108 "/cache/app/picorabbit/kame_banzai.bmp"
+load_bmp 108 "/cache/app/picorabbit/kame_banzai.png"
 sprite 109 [106,107,108] 0 224 2
 sprite 110 [101,102,103,104,105] 0 224 3
 sprite_visible 110 true
