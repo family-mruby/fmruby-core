@@ -2,7 +2,7 @@
 #
 # The desktop (system_desktop, mruby in every configuration): at rest, its
 # dropdown, the launcher (the icons are BMPs from /app) and the Config
-# dialog. Each one is closed again; the runner checks that the desktop
+# dialog's pages. Each one is closed again; the runner checks that the desktop
 # comes back pixel for pixel.
 
 Regress::Screens.scene "desktop", on: %w[modern retro web native modern-mruby retro-mruby] do |s|
@@ -25,10 +25,17 @@ Regress::Screens.scene "launcher", on: %w[modern retro web] do |s|
   s.key "esc"
 end
 
+# Every page of the Config dialog (Display, Input, Sound & Time, System),
+# switched with Tab, then Cancel.
 Regress::Screens.scene "config", on: %w[modern retro web] do |s|
   s.menu :config
   s.wait_title("the Config dialog")
   s.park
   s.shot
-  s.click_button(s.button_rgb, [(s.w - 280) / 2, 20, 280, s.h - 20]) # Cancel (no Esc here)
+  %w[input sound system].each do |page|
+    s.key "tab"
+    s.wait_change
+    s.shot(page)
+  end
+  s.click_button(s.button_rgb, [(s.w - 280) / 2, 20, 280, s.h - 20]) # Cancel
 end
