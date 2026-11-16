@@ -145,7 +145,7 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
 
 ### 7.2 動かした時点の表 (rake regress:run)
 
-- Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → 下の組ごとに、アプリを順に起動 → 控え (組の名前) → 閉じる → 最後に控え (closed)。控えは、まず debug server の gc で全アプリに完全な GC をかけ (各アプリの task が次のメッセージ待ちで自分のエンジンの GC を回す。全部が終わるまで最大 5 秒待ち、間に合わないアプリがあれば落ちる)、そのあと debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
+- Retro (NARYAv3) と Modern (TAB5) の Linux ビルドを作り、3 つのコンテナを headless で起こして台本を流す: 起動 → デスクトップの「Boot complete」→ 控え (idle) → 下の組ごとに、アプリを順に起動 → 控え (組の名前) → 閉じる → 最後に控え (closed)。控えは、まず debug server の gc で全アプリに完全な GC をかけ (各アプリの task が次のメッセージ待ちで自分のエンジンの GC を回す。Spinel の VM は文字列の掃除も若い世代・古い世代の両方を行う (2026-11-16 から、report/soak.md 6 章)。全部が終わるまで最大 5 秒待ち、間に合わないアプリがあれば落ちる)、そのあと debug server の ps (sim_app ps と同じ): アプリごとの VM プールの使用量とタスクのスタックの空きの最小。ほかにログから mruby のアプリごとの「コンパイル直後のプール」(使用量と最大)。
 - **測るアプリは代表の組** (`tools/regress/sim_run.rb` の `SCENARIO`)。全部のアプリでなく、エンジンの種類ごとに 1 つと、ファームの中に自分の道を持つ種類のアプリを 1 つずつ、手で選んだ。どれもネットワーク・センサー・入力なしで起きる。sim が同時に受けるユーザのアプリは 5 つ (Modern ではサービスホストが 1 つ使う) なので、4 つまでの組に分け、組ごとに起動して控え、閉じてから次の組へ。
   - `running`: picoruby の FmrbUI のアプリ (kamon)・MML の再生 (音)・StackChan Remote (ボタンと publish)、Spinel のプログラム (Spinel Hello)。2026-11-16 より前の台本と同じ組なので、前の基準と比べられる。
   - `running_langs`: ほかのエンジン。Lua (`/app/lua/lua.app.lua`)・MicroPython (`/app/python/python.app.py`)・wasm (`/app/tinygo/hello.app.wasm`、WAMR)。wasm のアプリのメモリは WAMR のもので VM プールの外なので、ps の使用量は 0 で、比べるのはスタックの空き (と、ほかの VM への影響)。
@@ -549,24 +549,25 @@ rake regress:soak BOARD=naryav4            # つないだ実機 (下)
 
 - **1 回 (round)**: 組ごとにアプリを順に起動 → 全部閉じる、を全部の組について行い、最後に控えを取る。控えは `regress:run` と同じ (debug server の gc で全アプリに完全な GC → ps): カーネル・デスクトップ・(Modern) サービスホストの VM プールの使用量とスタックの空き。Modern は wasm の共通のプールも記録する (下)。
 - **判定** (`tools/regress/soak.rb` の `GROW`): 最初の `WARMUP` 回 (既定 3) は慣らし。その後の回を前半と後半に分け、それぞれの**最小値 (床)** を比べる。後半の床が 1 KB 以上、かつ 1 回あたりのふだんの上がり (回から回への増えの中央値) 以上高く、傾き (最小二乗、B/回) が 128 B/回以上なら「増え続ける」(GROWS) で、道具は落ちる。そうでなければ「落ち着いた」(settled)。
-- **なぜ床で見るか**: Spinel の VM (カーネル) は GC をかけても同じ値に戻らない。文字列のヒープは自分の閾値を越えたときだけ掃除される (spinel_rt/sp_alloc.c の string sweep の gate) ので、回ごとに死んだ文字列の分だけ上がり、掃除の回にまとめて下がる (のこぎりの歯の形、Modern のカーネルで 30〜40 KB の幅)。debug server の gc はこの掃除を起こさない。漏れが動かすのは床なので、床を比べる。
-- **UNDECIDED**: Spinel の VM (`SAWTOOTH`、今はカーネル) で、床は上がったが一度も下がらなかった (掃除が 1 回も来なかった) とき。死んだ文字列と漏れの区別がつかないので、回数を増やして流し直す。落ちはしない (要約の最後に `1 undecided`)。mruby の VM (デスクトップ・サービスホスト) は完全な GC で文字列も集めるので、上がり続ければそのまま GROWS。
+- **なぜ床で見るか**: Spinel の VM (カーネル) は GC をかけても同じ値には戻らない。2026-11-16 までは debug server の gc が Spinel の文字列の掃除を起こさず (文字列のヒープは自分の閾値を越えたときだけ掃除される、spinel_rt/sp_alloc.c の string sweep の gate)、のこぎりの歯の形に 20〜60 KB 上下していた。今は gc が文字列も若い世代・古い世代とも掃除する (`fmrb_spinel_gc_full`) ので、10 回の振れはカーネルで数 KB (Retro 2.6 KB・Modern 7.3 KB、report/soak.md 6 章)。それでも残る上下 (スラブの空き方など) があるので、床を比べる決まりはそのまま。
+- **UNDECIDED**: Spinel の VM (`SAWTOOTH`、今はカーネル) で、床は上がったが一度も下がらなかった (大きく下がる回が 2 回未満の) とき。文字列も掃除するようになってからは、振れ幅自体が小さいので出にくい。死んだ文字列と漏れの区別がつかないので、回数を増やして流し直す。落ちはしない (要約の最後に `1 undecided`)。mruby の VM (デスクトップ・サービスホスト) は完全な GC で文字列も集めるので、上がり続ければそのまま GROWS。
 - 要約は 1 回の流しにつき数行 (`modern all: 10 rounds ...`、名前ごとに `settled (floor +808 B, 186.2K, swings 37.9K)` など)。`SOAK_TABLE=1` (または `TABLE=1`) で回ごとの表も出る。結果は `tmp/regress/soak/<種類>.<組>.json` (回ごとの値と判定)、コアのログは `<種類>.<組>.log`。
 - **wasm の共通のプール** (Modern): sim は周期ダンプを出さないので、`FmrbApp.wasm_stats` を 1 行ログに出すだけの試験のアプリ (`tools/regress/soak/wasm_probe.app.rb`) を sim の `/tmp` (checkout の `flash/tmp/`、平らなので `/tmp/regress_soak_wasm_probe.app.rb`) に置いて起動する。控えの後 (と wasm のアプリが動いている組の間) に 1 回ずつ。全部閉じた後は WAMR が止まり (running 0)、`high` (最大の使用量) だけが残る。`wasm_high` も判定に入る。
 - **`SPINEL=1`** (sim だけ、調べるとき): 控えのたびに gdb を当てて (ルートの CLAUDE.md の「sim のハング/クラッシュ調査」と同じ別コンテナの attach。止めずに続く)、Spinel の各インスタンス (`fmrb_spinel_host.c` の `s_instances`、最初がカーネル) の数を読む: `gc_bytes`・`gc_old_bytes`・`gc_threshold`・`str_heap_bytes` (若い文字列)・`str_threshold`・`str_old_bytes` (古い文字列)・`str_old_threshold`・`gc_cycle`。json の `spinel` に入る。1 回に 5 秒ほど足される。
 - sim で取れないもの: 内蔵 RAM と PSRAM の空き (Linux のビルドには無く、周期ダンプも出ない)。実機で取る。
-- 数の読み方と、Spinel のカーネルが 10 回では UNDECIDED になりうる理由 (文字列の掃除の周期、Retro の 1 組で 11 回・60 KB) は report/soak.md。カーネルをはっきりさせるなら `ROUNDS=30`。regress:run の closed のカーネルの値が組を変えると動くのも同じ理由 (漏れではない)。
+- 数の読み方と、文字列の掃除を gc に入れる前の振れ (Retro の 1 組で 11 回周期・60 KB) は report/soak.md。
 - 基準は持たない (同じ流しの中の前の回と比べる)。`regress:full` には入れていない。build/ は `regress:run` と同じく退避して戻す (`NO_BUILD=1` のときは触らない)。
 
 ### 14.1 実機で流す (BOARD=)
 
 ```
 # 先に MCP の serial_start で capture を開いたままにしておく (WiFi につながった実機、debug mode ON)
-rake regress:soak BOARD=naryav4 [ROUNDS=10] [DUMPS=2] [GROUP=...]
+rake regress:soak BOARD=naryav4 [ROUNDS=10] [DUMPS=1] [GROUP=...]
 ```
 
 - 起動と終了は WiFi の devctl (`/app/launch`・`/app/kill`、`/app/list` で生きているかを見る)。`FMRB_DEV_REMOTE_CTL` (既定で ON) のファームが要る。端末の IP は capture のログの `Connected, ip=` から (無ければ `BOARD_IP=`)。
 - **数はシリアルの周期ダンプから**。道具はポートを開かず、MCP サーバの capture のファイル (`~/.fmrb_mcp/current.log`、別のファイルなら `BOARD_LOG=`) を読む (Tab5 はポートを開くだけでリブートするので、道具が自分で開く形にはしなかった)。ポートの錠も取らないので、MCP の serial_* と並べて使える。debug mode (周期ダンプ) が ON であること。
-- 各回の後 (と始めの idle)、最後に閉じてから**後に始まった**周期ダンプを `DUMPS` 個 (既定 2、10 秒ごと) 待ち、その中でプールごとの最小の使用量と、最大の IRAM free・PSRAM free を取る。実機には外から GC をかける口が無い (debug server は BLE だけ、devctl に gc は無い) ので、数個のダンプの最小で GC の代わりにしている。IRAM free と PSRAM free は「空きが減り続けるか」で同じ規則で判定し、VM プールは表にある全部を判定する。wasm の共通のプールは `fmrb_wasm: runtime ...` の行から。
-- 流すアプリはその端末の storage に載るもの (`targets.rb` の `carries?`)。1 回は sim より長い (起動の間の 3 秒 × アプリの数 + ダンプ待ち 20〜30 秒)。10 回で 15 分ほどの見込み (未計測)。
+- 各回の後 (と始めの idle)、**sim と同じく全アプリに完全な GC** をかける: devctl の `POST /sys/gc` (debug server の gc と同じ中身。Spinel は文字列も。2026-11-16 から)。その後に**始まった**周期ダンプを 1 つ待つ。これを `DUMPS` 回 (既定 1、10 秒ごと) 繰り返し、プールごとの最小の使用量と、最大の IRAM free・PSRAM free を取る。gc が間に合わないアプリがあれば 1 回頼み直し、要約の note に出る。要約の 1 行目に `devctl /sys/gc` と出る。
+- `/sys/gc` の無い古いファーム (404 を返す) では前の測り方に戻る: 最後に閉じてから後に始まった周期ダンプを `DUMPS` 個 (既定 2) 待ち、その最小で GC の代わりにする。要約の 1 行目に `least of the periodic dumps (no /sys/gc)`、note にもその旨が出る。IRAM free と PSRAM free は「空きが減り続けるか」で同じ規則で判定し、VM プールは表にある全部を判定する。wasm の共通のプールは `fmrb_wasm: runtime ...` の行から。
+- 流すアプリはその端末の storage に載るもの (`targets.rb` の `carries?`)。1 回は sim より長い (起動の間の 3 秒 × アプリの数 + gc とダンプ待ち 10〜20 秒)。10 回で 15 分ほどの見込み (未計測)。
 - 結果は `tmp/regress/soak/board.<端末>.json`。

@@ -137,3 +137,5 @@ doc/regression/report/soak.md: Spinel のカーネルの文字列は自分の閾
 - debug server の gc で Spinel の文字列の掃除も行う (試験の口だけ。ふだんの動きは変えない)。直した後に regress:run の
   基準を取り直す。
 - 開発のビルドの devctl に「GC をかける」口を足し、実機の soak も sim と同じ測り方にする。
+- 2026-11-16 両方入れた (`fmrb_spinel_gc_full` が文字列も若い・古いとも掃除、devctl `POST /sys/gc`、soak の実機は
+  それを使う)。sim の soak の振れは数 KB に縮み、regress:run の基準も取り直した (report/soak.md 6 章)。残りは実機の soak。

@@ -1,6 +1,6 @@
 # アプリを何回も開いて閉じる道具 (rake regress:soak) と 17 KB の正体
 
-> 状態: 完了 | 更新: 2026-11-16 | `rake regress:soak` を作った (sim の Retro・Modern、実機は WiFi の devctl と MCP の capture のファイル)。regress:run の代表の組を閉じた後のカーネルの 17 KB は**漏れではない**: Spinel のカーネルの文字列が自分の周期でしか掃除されず、閉じた後の値が数十 KB の幅で上下する。その周期のどこで控えを取ったかの差。30 回流しても床は上がらない。使い方の正は usage.md 14 章。指示書は instruction_soak.md
+> 状態: 完了 | 更新: 2026-11-16 | 6 章: debug server の gc で Spinel の文字列も掃除するようにし、devctl に `POST /sys/gc` を足した。sim の 10 回でカーネルの振れが 20〜60 KB から数 KB (Retro 2.6 KB・Modern 7.3 KB) に縮んだ。`rake regress:soak` を作った (sim の Retro・Modern、実機は WiFi の devctl と MCP の capture のファイル)。regress:run の代表の組を閉じた後のカーネルの 17 KB は**漏れではない**: Spinel のカーネルの文字列が自分の周期でしか掃除されず、閉じた後の値が数十 KB の幅で上下する。その周期のどこで控えを取ったかの差。30 回流しても床は上がらない。使い方の正は usage.md 14 章。指示書は instruction_soak.md
 
 ## 1. 道具の作り
 
@@ -83,6 +83,43 @@
 
 ## 5. 残り・決めていないこと
 
-- **sim の判定の精度** (ユーザが決める): Spinel のカーネルは文字列の周期のせいで、10 回では「数 KB/回」より小さい漏れが見えず、組によっては UNDECIDED になる。debug server の gc が Spinel の文字列の掃除 (若い世代と古い世代の両方) も強制するようにすれば (`fmrb_spinel_gc_full` で文字列の major を起こす)、控えは生きているものだけになり、soak は数回で、regress:run の closed も組の数で動かなくなるはず。ファームの変更なのでこの段では入れていない。
+- **sim の判定の精度** (2026-11-16 ユーザが決めて入れた、6 章): Spinel のカーネルは文字列の周期のせいで、10 回では「数 KB/回」より小さい漏れが見えず、組によっては UNDECIDED になる。debug server の gc が Spinel の文字列の掃除 (若い世代と古い世代の両方) も強制するようにすれば (`fmrb_spinel_gc_full` で文字列の major を起こす)、控えは生きているものだけになり、soak は数回で、regress:run の closed も組の数で動かなくなるはず。ファームの変更なのでこの段では入れていない。
 - 予定していた Modern の running_tools・running_langs の 30 回は時間の都合で流していない (10 回では running_tools が settled、running_langs が UNDECIDED)。
-- 実機に外から GC をかける口が無い (devctl に gc を足すかはユーザが決める)。今は数個のダンプの最小。
+- 実機に外から GC をかける口が無い → devctl に `POST /sys/gc` を足した (2026-11-16、6 章)。
+
+## 6. 試験の GC で Spinel の文字列も掃除する・devctl に GC (2026-11-16)
+
+5 章の 1 つ目と 3 つ目をユーザが決めた (doc/reference/TODO.md の同名の節)。
+
+### 6.1 変えたこと
+
+- **`fmrb_spinel_gc_full`** (components/fmrb_spinel_rt/fmrb_spinel_host.c): その 1 回の collection だけ、文字列の 2 つの閾値 (`str_threshold`・`str_old_threshold`) を 0 にしてから `sp_gc_collect` を呼ぶ。若い文字列の gate (`str_heap_bytes > str_threshold`) が開き、古い世代は「閾値越え」の側で major になる (オブジェクトの側はもともと周期を full の境に合わせて full にしていた)。掃除は残ったものから両方の閾値を決め直すので、それはそのまま使い、0 のまま残ったとき (若い文字列が 1 つも無く gate が閉じたまま) だけ元の値に戻す。古い世代の major の間隔 (`str_major_interval`) は元に戻す (閾値越えの major は間隔を半分にするため)。runtime の写し (spinel_rt/) は変えていない。
+- 呼ぶのは debug server の gc (と下の devctl) だけ (`fmrb_app_gc_take` の後)。ふだんの collection は変わらない。
+- **`fmrb_app_gc_all`** (main/app/fmrb_app.c): debug server の gc の「全アプリ (か pid) に頼んで、終わるか max ms まで待つ」を関数に出し、debug server と devctl が共有する (debug server は debugger に止められたアプリを除く関数を渡す)。
+- **devctl の `POST /sys/gc[?pid=][&max=ms]`** (main/drivers/devctl/devctl_http.c): 答えは `{"ok":true,"apps":[{"pid","name","status"}]}` (status は debug server と同じ done・timeout・skipped・gone)。開発のビルド (`FMRB_DEV_REMOTE_CTL`) だけ。Retro の devctl の `max_uri_handlers` を 1 つずつ足した (17→18、checkpoint 入り 20→21)。Modern の remote desktop の server は 28 のままで足りる (26 本)。
+- 内蔵 RAM: 静的な増えは 0 (regress:size、6.3)。動かしたときに 1 本の route の分 (httpd の handler の表 4 B と登録の写し・URI の文字列で数十 B) のヒープが開発のビルドだけ増える。
+- **`tools/regress/soak.rb` の実機** (`BOARD=`): 各回の後に `/sys/gc` → その後に始まった周期ダンプを 1 つ、を `DUMPS` 回 (既定 1)。`/sys/gc` が 404 の古いファームは前の測り方 (`DUMPS` 既定 2 のダンプの最小) に戻り、要約と note に出る。作り物の実機 (devctl を真似る HTTP と 1 秒ごとのダンプ) で両方の道を通した。本物の実機では流していない (親が流す)。
+
+### 6.2 sim の結果 (既定の 10 回、両方)
+
+カーネルの VM プール (KB、全部閉じて GC の後)。デスクトップ・サービスホスト・wasm の high は前と同じくどの回も同じ値。
+
+| 種類 | idle | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 判定 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Retro 全部 | 130.6 | 154.3 | 155.3 | 156.9 | 157.9 | 156.9 | 158.1 | 159.6 | 157.7 | 158.1 | 157.5 | settled (床 +616 B、振れ 2.6 KB) |
+| Modern 全部 | 148.8 | 169.6 | 174.3 | 177.4 | 174.8 | 173.9 | 171.2 | 170.8 | 167.6 | 169.4 | 172.9 | settled (床 -3.7 KB、振れ 7.3 KB) |
+
+- 2.1 の同じ組 (Retro 171〜230 KB、Modern 198〜236 KB) と比べて、**回ごとの振れが 20〜60 KB から数 KB に縮んだ**。値そのものも 20〜50 KB 下がった (死んだ文字列が控えに入らなくなった分)。16.9 分 (ビルド 2 回を含む)。
+- 残る数 KB の上下は文字列ではない (若い文字列は毎回 0 に近いところまで掃除される)。スラブの塊の空き方などと見ているが、gdb (`SPINEL=1`) では確かめていない。
+- Retro の慣らしの後の上がり (154→158 KB) は 4 回目で止まり、床は上がらない。
+
+### 6.3 ほかの道具
+
+- `rake regress:run`: 落ちはしないが、カーネルの値が全部の控えで下がった (closed: Retro 176.9→157.3 KB、Modern 210.8→160.9 KB) ので基準を取り直した。Spinel のエディタも文字列の分だけ下がった (FM-Editor 224.5→215.9 KB)。取り直しの中には前の基準からの別の変化も入る: エディタの PNG 読み (F2b、+0.6 KB ほど。今回の下がりに隠れて単独では見えない)、Retro の running_langs に TinyGo hello (W1d の後 NARYAv3 も app/tinygo を載せる。wasm のアプリなので VM プールは 0)。組を変えても closed が数十 KB 動く件 (3 章) も、これで小さくなるはず。
+- `rake regress`: 通った。`rake regress:screens` (1 回): 33 通り、Retro も変わらず (ランチャーの場面は固定の番号なので app/tinygo のアイコンは効かない)。
+- `rake regress:size`: 内蔵 RAM は増えていない (基準 4e7e7e61 と比べて NARYAv3 DIRAM -32 B・IRAM ±0、TAB5 DIRAM -360 B。基準からの差には間の別のコミットも入る。足したのはコードと flash に置かれる `static const` の route の定義だけで、静的な変数は無い)。
+
+### 6.4 残り
+
+- 実機の soak (`rake regress:soak BOARD=naryav4`、親が流す)。`/sys/gc` の入ったファームで、要約の 1 行目が `devctl /sys/gc` になること。
+- 5 章の「Modern の running_tools・running_langs の 30 回」は流していない。振れが小さくなったので 10 回で足りる見込み。
