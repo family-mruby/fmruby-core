@@ -1,14 +1,15 @@
 # WAMR (wasm-micro-runtime) and the wasm apps on it (doc/wasm_apps W1b).
 #
-# Built on the P4 and the Linux simulation; an empty component elsewhere
-# (the S3 does not carry wasm apps). WAMR's source is the pinned checkout in
+# Built on the ESP32-P4, the ESP32-S3 and the Linux simulation (an empty
+# component elsewhere). WAMR's source is the pinned checkout in
 # vendor/wamr (rake wamr:setup, lib/upstream/WAMR_PIN); the platform layer
 # under platform/ is ours. The configuration is fixed here (decision 1):
 # the classic interpreter only, reference types and extended constant
 # expressions on, instruction metering on; no AOT, JIT, WASI, libc, threads,
 # shared memory, multi-module or SIMD. invokeNative is replaced by a trap:
 # every host function is registered raw.
-if(NOT (IDF_TARGET STREQUAL "esp32p4" OR IDF_TARGET STREQUAL "linux"))
+if(NOT (IDF_TARGET STREQUAL "esp32p4" OR IDF_TARGET STREQUAL "esp32s3"
+        OR IDF_TARGET STREQUAL "linux"))
     idf_component_register()
     return()
 endif()
@@ -32,6 +33,11 @@ set(WAMR_BUILD_PLATFORM "fmrb")
 set(SHARED_PLATFORM_CONFIG ${CMAKE_CURRENT_LIST_DIR}/platform/shared_platform.cmake)
 if(IDF_TARGET STREQUAL "linux")
     set(WAMR_BUILD_TARGET "X86_64")
+elseif(IDF_TARGET STREQUAL "esp32s3")
+    # Xtensa LX7: no unaligned loads, so WAMR's config.h turns
+    # WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS off and the interpreter reads
+    # the bytecode byte by byte.
+    set(WAMR_BUILD_TARGET "XTENSA")
 else()
     set(WAMR_BUILD_TARGET "RISCV32_ILP32F")
 endif()
@@ -57,6 +63,9 @@ include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 list(FILTER WAMR_RUNTIME_LIB_SOURCE EXCLUDE REGEX "invokeNative_")
 
 set(FMRB_WAMR_LDFRAGMENTS "")
+if(NOT IDF_TARGET STREQUAL "linux")
+    list(APPEND FMRB_WAMR_LDFRAGMENTS "fmrb_wamr_flash.lf")
+endif()
 if(CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY)
     list(APPEND FMRB_WAMR_LDFRAGMENTS "fmrb_wamr_psram.lf")
 endif()
@@ -72,7 +81,8 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error -Wno-unused-variable
     -Wno-unused-function -Wno-format -Wno-maybe-uninitialized)
 # No small-data sections on RISC-V: .sbss is not covered by the PSRAM
 # mapping (fmrb_wamr_psram.lf), so small globals would land in internal RAM.
-if(NOT IDF_TARGET STREQUAL "linux")
+# (Xtensa has no small data: everything is .bss/.data already.)
+if(IDF_TARGET STREQUAL "esp32p4")
     target_compile_options(${COMPONENT_LIB} PRIVATE -msmall-data-limit=0)
 endif()
 # Every user of the component knows wasm apps are there.

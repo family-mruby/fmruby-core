@@ -7,7 +7,7 @@
  *   FreeRTOS mutexes. A korp_mutex carries its own storage
  *   (xSemaphoreCreateMutexStatic), so a lock costs nothing from the FreeRTOS
  *   heap (internal RAM on the ESP32): it lives where WAMR keeps the structure
- *   that holds it -- its pool or its .bss, both in PSRAM on the P4.
+ *   that holds it -- its pool or its .bss, both in PSRAM on the ESP32.
  * - No WASI, no files, no hardware bound checks (software bound checks).
  */
 #ifndef _PLATFORM_INTERNAL_H

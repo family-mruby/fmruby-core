@@ -9,7 +9,7 @@
  * wasm app and kept. The app's binary copy and its linear memory come from
  * the app's own memory pool, the same frame a Ruby app takes (decision 5).
  *
- * Built on the P4 and the Linux builds (FMRB_HAVE_WASM); not on the S3.
+ * Built on the P4, the S3 and the Linux builds (FMRB_HAVE_WASM).
  */
 #pragma once
 

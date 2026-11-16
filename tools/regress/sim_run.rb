@@ -93,7 +93,7 @@ module Regress
     # The first group is the scenario as it was before the others came
     # (2026-11-16), so its numbers stay comparable with the older baselines.
     # A family runs only the apps its board's storage carries (targets.rb
-    # carries?): Retro leaves the wasm app out (an S3 has no WAMR).
+    # carries?).
     SCENARIO = [
       ["running", %w[
         /app/demo/kamon.app.rb

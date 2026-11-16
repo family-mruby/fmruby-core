@@ -123,7 +123,7 @@ _Static_assert(sizeof(fmrb_bnd_app_event_t) <= FMRB_BND_EVENT_BUFFER_SIZE,
 static const NativeSymbol k_natives[] = { FMRB_GEN_WASM_NATIVES };
 #define NATIVES_COUNT (sizeof(k_natives) / sizeof(k_natives[0]))
 
-/* The runtime's state (PSRAM .bss on the P4: fmrb_wamr_psram.lf). */
+/* The runtime's state (PSRAM .bss on the ESP32: fmrb_wamr_psram.lf). */
 static fmrb_semaphore_t s_lock;
 static StaticSemaphore_t s_lock_storage;
 static int s_users;
@@ -372,7 +372,12 @@ static int call_hook(wasm_app_t *a, fmrb_shell_hook_t hook, uint32_t argc, uint3
     if (ok) {
         return FMRB_SHELL_OK;
     }
-    __atomic_fetch_add(&s_traps, 1u, __ATOMIC_RELAXED);
+    /* Counted under the runtime's lock, not with an atomic add: s_traps is in
+       PSRAM, and on the S3 an atomic on PSRAM is a libcall into newlib's
+       stdatomic, which ESP-IDF keeps in internal RAM (IRAM). */
+    fmrb_semaphore_take(s_lock, portMAX_DELAY);
+    s_traps++;
+    fmrb_semaphore_give(s_lock);
     const char *exc = wasm_runtime_get_exception(a->inst);
     if (a->err && a->err_cap) {
         snprintf(a->err, a->err_cap, "%s: %s", HOOK_NAMES[hook], exc ? exc : "trap");
@@ -851,12 +856,12 @@ void fmrb_wasm_stats(fmrb_wasm_stats_t *out)
 {
     memset(out, 0, sizeof(*out));
     out->natives = (uint32_t)NATIVES_COUNT;
-    out->traps = __atomic_load_n(&s_traps, __ATOMIC_RELAXED);
     out->pool_high = s_pool_high;
     if (!s_lock) return;
     if (fmrb_semaphore_take(s_lock, FMRB_MS_TO_TICKS(FMRB_WASM_STATS_WAIT_MS)) != pdTRUE) {
         return;
     }
+    out->traps = s_traps;
     out->pool_total = s_pool ? (uint32_t)FMRB_WASM_POOL_SIZE : 0u;
     out->apps = (uint32_t)s_users;
     out->running = s_users > 0;

@@ -1,0 +1,14 @@
+# What the wasm runtime calls in ESP-IDF that would otherwise sit in internal
+# RAM (IRAM) only because of it. fmrb_wasm.c reads the app task's stack start
+# (pxTaskGetStackStart) once per app to set the interpreter's native stack
+# boundary. On a board that keeps FreeRTOS in IRAM (the S3:
+# CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH off) nothing else links it, so it
+# would add 36 bytes of IRAM. ESP-IDF itself puts it in flash when that option
+# is on (freertos/linker_common.lf: it is never called from an ISR), so flash
+# is a placement ESP-IDF already supports; with the option on, its own
+# mapping does this and this one stays out of the way.
+[mapping:fmrb_wamr_freertos_flash]
+archive: libfreertos.a
+entries:
+    if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = n:
+        tasks:pxTaskGetStackStart (default)

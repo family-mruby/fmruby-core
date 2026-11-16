@@ -227,8 +227,9 @@ if(FMRB_ANY_SPINEL)
     list(APPEND COMPONENT_REQUIRES fmrb_spinel_rt)
 endif()
 
-# wasm apps (doc/wasm_apps W1b): WAMR on the P4 and the Linux simulation only.
-if(IDF_TARGET STREQUAL "esp32p4" OR IDF_TARGET STREQUAL "linux")
+# wasm apps (doc/wasm_apps W1b, W1d): WAMR on the P4, the S3 and the Linux
+# simulation.
+if(IDF_TARGET STREQUAL "esp32p4" OR IDF_TARGET STREQUAL "esp32s3" OR IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_REQUIRES fmrb_wamr)
 endif()
 

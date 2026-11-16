@@ -2,7 +2,7 @@
 # native program and the browser build; doc/wasm_apps W1c).
 #
 # The same configuration as components/fmrb_wamr/CMakeLists.txt (the ESP-IDF
-# component of the P4 and the Linux simulation), with its platform layer and
+# component of the P4, the S3 and the Linux simulation), with its platform layer and
 # fmrb_wasm.c. It is a directory of its own because WAMR's
 # build-scripts/runtime_lib.cmake (and the platform's shared_platform.cmake)
 # set include paths and definitions for the whole directory: here they stay

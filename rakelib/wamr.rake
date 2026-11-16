@@ -1,6 +1,6 @@
 # rakelib/wamr.rake
 # WAMR (doc/wasm_apps): fetch the pinned wasm-micro-runtime into vendor/wamr.
-# components/fmrb_wamr builds it into the P4 and Linux firmware. Part of the
+# components/fmrb_wamr builds it into the P4, S3 and Linux firmware. Part of the
 # Rakefile split: shared constants and helpers live in the top-level Rakefile.
 
 namespace :wamr do
