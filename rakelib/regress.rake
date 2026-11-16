@@ -29,6 +29,10 @@
 #                          test/regress/sim_baseline.json (with a tolerance).
 #                          ONLY=retro|modern, TABLE=1 (no sim, the last results)
 #   rake regress:run:update    the last results become the baseline
+#   rake regress:soak      regress:run's apps opened and closed ROUNDS times:
+#                          the VM pools after closing settle or keep growing
+#                          (BOARD=<name>: a connected board, WiFi + the MCP
+#                          serial capture; not in regress:full)
 #   rake regress:run:calibrate the scenario RUNS times on one build: spreads
 #                          and tolerance proposals (APPLY=1 or :apply writes
 #                          them, after a person has read the summary). The
@@ -272,6 +276,18 @@ namespace :regress do
     end
   end
 
+  desc "Open and close regress:run's apps ROUNDS times (default 10) and judge whether the VM pools left after closing settle or keep growing (sim Retro and Modern; ONLY=retro|modern, GROUP=<group or app paths>, SPLIT=1 each group alone too, WARMUP=n, NO_BUILD=1 the Linux build there is, SPINEL=1 the Spinel heaps' own counters through gdb, TABLE=1 the last results with their tables; BOARD=<name> a connected board over WiFi with the MCP serial capture running, DUMPS=n)"
+  task :soak do
+    args = []
+    { "ROUNDS" => "--rounds", "WARMUP" => "--warmup", "ONLY" => "--only", "GROUP" => "--group",
+      "BOARD" => "--board", "DUMPS" => "--dumps" }.each { |k, o| args += [o, ENV[k]] if ENV[k] && !ENV[k].empty? }
+    args << "--split" if ENV["SPLIT"] == "1"
+    args << "--no-build" if ENV["NO_BUILD"] == "1"
+    args << "--spinel" if ENV["SPINEL"] == "1"
+    args << "--table" if ENV["TABLE"] == "1"
+    abort "regress:soak: failed" unless system(Gem.ruby, File.join(ROOT_DIR, "tools", "regress", "soak.rb"), *args)
+  end
+
   desc "The compositor in the Ubuntu 26.04 image: native:wl, wl_check, wl_apps_check, wl_dialog_check, wl_keys_check, wl_open_check, wl_clip_check, wl_ime_check, wl_winops_check, wl_settings_check, wl_size_check and wl_touch_check (headless, pixman), standard and all-mruby (built one after the other, checked side by side; WL_SERIAL=1 one after the other). About 18 minutes"
   task :wl do
     checks = %w[wl_check wl_apps_check wl_dialog_check wl_keys_check wl_open_check wl_clip_check wl_ime_check
@@ -436,6 +452,7 @@ namespace :regress do
     task :test do
       sh "#{Gem.ruby} test/regress/boot_log_test.rb"
       sh "#{Gem.ruby} test/regress/calibrate_test.rb"
+      sh "#{Gem.ruby} test/regress/soak_test.rb"
     end
 
     desc "Boot BOARD= RUNS times (default 5) on the firmware it has (FLASH=1: build and flash once first), propose tolerances; APPLY=1 writes the last calibration as the baseline"
