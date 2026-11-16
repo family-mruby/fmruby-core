@@ -1,0 +1,8 @@
+app_handle_name = "wav_voice"
+app_screen_name = "WAV Voice"
+app_screen_name_ja = "声の再生試験"
+default_window_mode = "window"
+default_window_width = 240
+default_window_height = 40
+default_window_pos_x = 40
+default_window_pos_y = 60

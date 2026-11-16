@@ -2,8 +2,9 @@
 #
 # Apps that take a stream or put one out: walk_scroller driven by a step
 # sender on Asterism (counterpart :steps), the MIDI APU demo out of the
-# serial MIDI port into the monitor (counterpart :midi), and the same demo
-# on the built-in sound read from the APU's ring (counterpart :audio).
+# serial MIDI port into the monitor (counterpart :midi), the same demo on
+# the built-in sound read from the APU's ring (counterpart :audio), and the
+# bundled voices (IMA-ADPCM WAVs) through play_wav on the same ring.
 
 Regress::Live.scene "walk_scroller" do |s|
   st = s.counterpart :steps
@@ -59,5 +60,31 @@ Regress::Live.scene "apu_sound" do |s|
     "sounded" => loud["peak"] > 256,
     # sounding windows (50 ms) as seconds: the scale sounds for 8 x 260 ms
     "sounding_s" => (loud["sounding"] * Regress::Counterparts::Audio::WINDOW_S).round
+  }
+end
+
+# The mahjong voices are IMA-ADPCM (doc/flash_layout/report/f3.md); play_wav
+# decodes them as they play. Measured on the sim (2026-11-16), the ring's
+# peak and sounding windows (50 ms) were the same for the PCM files before
+# and the ADPCM ones after: リーチ 5081 / 9 windows (PCM) and 5240 / 8
+# (ADPCM), ロン 4996 / 6 and 5207 / 6. (The ring's level is the mix's, not
+# the file's 29205.) The ranges below hold either and catch a clip that is
+# silent, noise or cut short.
+Regress::Live.scene "wav_voice" do |s|
+  a = s.counterpart :audio
+  s.launch "/app/test/wav_voice.app.rb"
+  s.wait_log(/WavVoice: ready/, timeout: 15)
+  s.pause 300
+  quiet = a.listen(1.0)
+  riichi = a.listen(2.0) { s.key "1" }
+  s.wait_log(/WavVoice: riichi \S+ true/, timeout: 5)
+  ron = a.listen(2.0) { s.key "6" }
+  w = Regress::Counterparts::Audio::WINDOW_S
+  s.check "voices", {
+    "silent_before" => quiet["sounding"].zero?,
+    "riichi_loud" => riichi["peak"].between?(3500, 8000),
+    "ron_loud" => ron["peak"].between?(3500, 8000),
+    "riichi_length" => (riichi["sounding"] * w).between?(0.3, 0.6),
+    "ron_length" => (ron["sounding"] * w).between?(0.2, 0.45)
   }
 end
