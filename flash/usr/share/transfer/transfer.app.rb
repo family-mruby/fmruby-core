@@ -595,6 +595,7 @@ class TransferInbox < ::Asterism::Transfer::Inbox
   def ask_gone(pid)
     a = installing
     return unless a && a["state"] == "asking" && a["ask_pid"] == pid
+    a["ask_pid"] = nil
     install_end(a, { "status" => "refused", "reason" => "declined on #{node_name} (the question was closed)" })
   end
 
@@ -603,7 +604,9 @@ class TransferInbox < ::Asterism::Transfer::Inbox
     a["stage"] = nil
     remove(a["part"]) if a["part"]
     a["result"] = result
-    @app.ask_close(a) if @app && a["ask_pid"]
+    # the question's app stopped if it is still up (no answer in time, the
+    # sender cancelled); the transfer app forgets the question either way
+    @app.ask_close(a) if @app
     File.delete(ASK_TICKET) if File.exist?(ASK_TICKET)
     Log.info("transfer: the app #{a['name']} from #{a['from']}: #{result['status']}" \
              "#{result['reason'] ? " (#{result['reason']})" : ''}")
