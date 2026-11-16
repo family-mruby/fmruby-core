@@ -150,7 +150,9 @@ Claude(および開発者)が実機(Tab5 / ESP32-P4)の検証を、速く・確�
 ## 開発のビルドの決まり (2026-11-15、doc/remote_guard の G0)
 
 開発のビルド (`FMRB_DEV_REMOTE_CTL`、既定 ON) の devctl は**読み書きを自由にする** (ユーザの決定、
-doc/remote_guard/plan.md の方針)。リリースのビルドは devctl を入れないので変わらない。
+doc/remote_guard/plan.md の方針)。リリースのビルド (`FMRB_RELEASE=1 rake build:esp32` が
+`-DFMRB_DEV_REMOTE_CTL=OFF` を渡す) も 2026-11-16 から devctl とリモートデスクトップを入れ、
+端末の Config > 遠隔操作 と PC の登録 (トークン) で閉じる (doc/remote_guard の G1・G2、report/g12.md)。
 
 - **場所の制限なし**: `/fs/*` は `/` の下を全部読み書きできる (`/etc`・`/usr`・`/boot` も)。`..` の段だけは
   今までどおり断る。
@@ -158,8 +160,8 @@ doc/remote_guard/plan.md の方針)。リリースのビルドは devctl を入�
   secrets.toml) も渡す。/home を鍵ごと WiFi で退避するため。道具は中身を標準出力に出さず、退避は
   `~/asterism_keys/` の下だけに置く (700/600)。
 - **1 か所で表す**: `devctl_fs_unrestricted()` (main/drivers/devctl/devctl_http.c、宣言は devctl_http.h)。
-  開発のビルドで true。false のときは前の決まり (4 つの根 `/app`・`/home`・`/usr/share`・`/mnt/sd` だけ、
-  鍵は読まない) になる。G1・G2 でリリースのビルドに devctl を入れるときの足場。
+  開発のビルドで true。false (リリースのビルド) のときは、読むのは 4 つの根 `/app`・`/home`・`/usr/share`・
+  `/mnt/sd` だけ、書くのは `/home`・`/app` の下だけ、鍵は読まない。
 - **BLE の console の決まりは変えない** (`fmrb_secret_path.h` の共有。設定の受け付けが開いているときだけ
   パスワードを読む、鍵は読まない)。
 - 足した口: `GET /fs/md5?path=` (ファイルの MD5 と大きさ。ROM の MD5、変化の検出用)、`POST /sys/reboot`
