@@ -364,6 +364,7 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
   ${FMRB_ROOT}/main/drivers/display_local/display_blend_cpu.c
   ${FMRB_ROOT}/main/drivers/display_local/fonts/misaki/lgfx_misaki.c
   ${FMRB_ROOT}/main/drivers/display_local/fonts/misaki/lgfx_misaki.cpp
+  ${FMRB_ROOT}/main/drivers/display_local/fonts/font_ja/font_ja_builtin.cpp
   # the Modern audio pipeline over the platform's ring backend
   ${FMRB_ROOT}/main/drivers/audio_p4/audio_p4_task.c
   ${FMRB_ROOT}/main/drivers/audio_p4/audio_p4_handler.c

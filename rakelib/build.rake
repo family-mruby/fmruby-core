@@ -206,6 +206,13 @@ namespace :build do
     # it. Made again only when the host libmruby or the gem ports changed.
     Rake::Task['checkpoint:table'].invoke
 
+    # The P4's Japanese font image (doc/flash_layout F4): made here on the
+    # host, before the configure that looks for it (the top-level
+    # CMakeLists.txt). Written only when it changes.
+    if cfg && cfg[:chip] == 'esp32p4' && FMRB_FONT_JA
+      Rake::Task['font_ja:image'].invoke
+    end
+
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
     # correctly (it runs the first cmake configure).
     unless Dir.exist?('build')

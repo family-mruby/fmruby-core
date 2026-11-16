@@ -267,6 +267,9 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_local/display_local_video.cpp"
             "drivers/display_local/fonts/misaki/lgfx_misaki.c"
             "drivers/display_local/fonts/misaki/lgfx_misaki.cpp"
+            # efontJA from the font partition (doc/flash_layout F4)
+            "drivers/display_local/fonts/font_ja/font_ja_partition.cpp"
+            "drivers/display_local/fonts/font_ja/font_ja_image.c"
             "kernel/host/host_file_local.c"
             "drivers/wifi/wifi_task.c"
             "drivers/wifi/wifi_conf.c"
@@ -294,8 +297,10 @@ if(NOT IDF_TARGET STREQUAL "linux")
         endif()
         # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
         # esp_app_format: esp_app_get_description() for the boot screen
+        # esp_partition: the font partition is mapped (font_ja_partition.cpp)
         list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
-             esp_codec_dev esp_driver_i2s esp_driver_i2c esp_app_format)
+             esp_codec_dev esp_driver_i2s esp_driver_i2c esp_app_format
+             esp_partition)
         # BLE: NimBLE host on P4, controller on the C6 via esp_hosted (bt
         # itself is required below, with the choice of BLE sources).
         list(APPEND COMPONENT_REQUIRES esp_hosted)
@@ -320,6 +325,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
                 "drivers/display_local/display_nojpeg.c"
                 "drivers/display_local/fonts/misaki/lgfx_misaki.c"
                 "drivers/display_local/fonts/misaki/lgfx_misaki.cpp"
+                "drivers/display_local/fonts/font_ja/font_ja_builtin.cpp"
                 "drivers/audio_p4/audio_none.c"
                 "kernel/host/host_file_local.c"
             )

@@ -7,15 +7,25 @@
 #
 # mruby-checkpoint (doc/checkpoint F6) took the 7M image to 2% spare (the
 # baseline table alone is about 264 KB). factory now takes the unused 960K as
-# well: 0x10000 + 0x7F0000 ends at 0x800000, and storage keeps its 8M from
-# 0x800000 to the end of the 16MB flash (0x1000000).
+# well: 0x10000 + 0x7F0000 ends at 0x800000, and storage kept its 8M from
+# 0x800000 to the end of the 16MB flash (0x1000000) until F4 below.
 #
 # A partition-table change cannot ship as an app-only update: it needs a full
 # flash (bootloader + table + app + storage), which erases /home. `rake
 # flash:app` onto a board still carrying an older table writes an image that
 # table cannot hold, or runs with storage at the old offset.
+# The Japanese fonts (efontJA 16 / 12 / 12 bold, about 1.03 MB) have a
+# partition of their own at the end of the flash (doc/flash_layout F4):
+# font_ja, data with the subtype 0x40, 1.3125 MB (0x150000), taken from
+# storage, which goes from 8M to 0x6B0000 (6.69 MB) at the same offset. The
+# firmware maps it at boot (main/drivers/display_local/fonts/font_ja/); the
+# image is tools/font_ja/font_ja_image.rb's, written by `idf.py flash` and
+# not by app-flash. Like any table change this one needs a full flash once
+# (`rake flash:keep_home`); `rake flash:app_sync` checks the board's table
+# and font image and stops when they differ.
 # Name,   Type, SubType,  Offset,  Size, Flags
 nvs,      data, nvs,      0x9000,  24K,
 phy_init, data, phy,             ,  4K,
 factory,  app,  factory,         ,  0x7F0000,
-storage,  data, littlefs,        ,  8M,
+storage,  data, littlefs,        ,  0x6B0000,
+font_ja,  data, 0x40,            ,  0x150000,

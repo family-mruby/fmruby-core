@@ -19,6 +19,7 @@
 // The board this build drives: its device, its bring-up and its I2C bus.
 #include "board_display.h"
 #include "fonts/misaki/lgfx_misaki_fonts.hpp"
+#include "fonts/font_ja/font_ja.h"
 #include "../audio_p4/audio_p4.h"
 #include "audio_commands.h"
 
@@ -1866,34 +1867,29 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             case FMRB_LINK_GFX_FONT_FAMILY_DEFAULT:
                 s->setFont(&fonts::Font0);
                 break;
-#if defined(FMRB_NO_FONT_JA)
-            case FMRB_LINK_GFX_FONT_FAMILY_JA:
-            case FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD:
-                // Built with FMRB_FONT_JA=0: the efontJA fonts are not in
-                // this firmware (nothing here may name them, or the linker
-                // keeps them), so every Japanese size is misaki 8. set_font
-                // already answers [:ja, 8] (FmrbGfx.resolve_font).
-                s->setFont(&fonts::misaki_8);
-                break;
-#else
-            case FMRB_LINK_GFX_FONT_FAMILY_JA:
+            case FMRB_LINK_GFX_FONT_FAMILY_JA: {
                 // size=8 -> misaki (matches the system 8px UI height),
-                // 12 and 16 -> efontJA (bundled with M5GFX). Anything else
-                // lands on 12: a caller that cares which it got asks
-                // FmrbGfx#set_font, which answers from the same table.
-                if (cmd->size == 8) {
-                    s->setFont(&fonts::misaki_8);
-                } else if (cmd->size == 16) {
-                    s->setFont(&fonts::efontJA_16);
-                } else {
+                // 12 and 16 -> efontJA (font_ja.h: the P4's font partition,
+                // linked in elsewhere). Anything else lands on 12: a caller
+                // that cares which it got asks FmrbGfx#set_font, which
+                // answers from the same table. With no efontJA on this board
+                // (built with FMRB_FONT_JA=0, where set_font already answers
+                // [:ja, 8], or a P4 whose font partition could not be used,
+                // said at boot) every size is misaki 8.
+                const lgfx::IFont *f = nullptr;
+                if (cmd->size == 16) {
+                    f = font_ja_get(FONT_JA_16);
+                } else if (cmd->size != 8) {
                     if (cmd->size != 12) {
                         FMRB_LOGW(TAG, "SET_FONT: no JA %upx, using 12",
                                   cmd->size);
                     }
-                    s->setFont(&fonts::efontJA_12);
+                    f = font_ja_get(FONT_JA_12);
                 }
+                s->setFont(f ? f : &fonts::misaki_8);
                 break;
-            case FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD:
+            }
+            case FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD: {
                 // Only the 12px cut is carried. A heading is 16px and stands
                 // out by its size and its band, so its bold is not worth the
                 // flash.
@@ -1901,9 +1897,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                     FMRB_LOGW(TAG, "SET_FONT: no JA bold %upx, using 12",
                               cmd->size);
                 }
-                s->setFont(&fonts::efontJA_12_b);
+                const lgfx::IFont *f = font_ja_get(FONT_JA_12_BOLD);
+                s->setFont(f ? f : &fonts::misaki_8);
                 break;
-#endif
+            }
             default:
                 FMRB_LOGW(TAG, "SET_FONT: unknown family=%u", cmd->family);
                 return -1;
@@ -3857,6 +3854,10 @@ static void display_local_task(void *arg) {
 }
 
 extern "C" fmrb_err_t display_local_task_init(void) {
+    // The Japanese fonts first: on the P4 they are mapped from their own
+    // partition, and the first SET_FONT may come as soon as the task runs.
+    // A board without them logs why and draws Japanese in misaki 8.
+    font_ja_init();
     if (!g_i2c_mutex) {
         g_i2c_mutex = xSemaphoreCreateMutex();
         if (!g_i2c_mutex) {

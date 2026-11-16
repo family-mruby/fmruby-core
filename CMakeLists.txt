@@ -134,3 +134,35 @@ if(NOT IDF_TARGET STREQUAL "linux")
     littlefs_create_partition_image(storage ${STORAGE_STAGING} FLASH_IN_PROJECT
                                     DEPENDS storage_staging)
 endif()
+
+# The Japanese fonts' partition on the ESP32-P4 (doc/flash_layout F4): the
+# image is made on the host before the configure (rake font_ja:image, which
+# rake build:esp32 runs; the build container has no Ruby), copied into the
+# build tree and written by `idf.py flash` -- not by app-flash, so the
+# everyday app-only loop leaves it as it is. A build with FMRB_FONT_JA=0 has
+# the partition but nothing to put in it.
+if(IDF_TARGET STREQUAL "esp32p4" AND NOT "$ENV{FMRB_FONT_JA}" STREQUAL "0")
+    set(FONT_JA_IMAGE_SRC ${CMAKE_SOURCE_DIR}/tmp/font_ja/font_ja.bin)
+    set(FONT_JA_IMAGE ${CMAKE_BINARY_DIR}/font_ja.bin)
+    if(NOT EXISTS ${FONT_JA_IMAGE_SRC})
+        message(FATAL_ERROR "No Japanese font image (${FONT_JA_IMAGE_SRC}): run "
+                            "`rake font_ja:image` on the host (rake build:esp32 does it first)")
+    endif()
+    partition_table_get_partition_info(font_ja_offset "--partition-name font_ja" "offset")
+    partition_table_get_partition_info(font_ja_size "--partition-name font_ja" "size")
+    if(NOT font_ja_offset)
+        message(FATAL_ERROR "The partition table has no font_ja partition (config/partitions_p4_common.csv)")
+    endif()
+    file(SIZE ${FONT_JA_IMAGE_SRC} font_ja_image_size)
+    math(EXPR font_ja_size_dec "${font_ja_size}")
+    if(font_ja_image_size GREATER font_ja_size_dec)
+        message(FATAL_ERROR "The Japanese font image (${font_ja_image_size} bytes) is larger "
+                            "than the font_ja partition (${font_ja_size})")
+    endif()
+    add_custom_command(OUTPUT ${FONT_JA_IMAGE}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FONT_JA_IMAGE_SRC} ${FONT_JA_IMAGE}
+        DEPENDS ${FONT_JA_IMAGE_SRC}
+        COMMENT "Japanese font image -> font_ja.bin")
+    add_custom_target(font_ja_image ALL DEPENDS ${FONT_JA_IMAGE})
+    esptool_py_flash_target_image(flash font_ja "${font_ja_offset}" "${FONT_JA_IMAGE}")
+endif()
