@@ -321,30 +321,40 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
   `draw_triangle` `fill_triangle` `draw_arc` `fill_arc` `draw_wallclock`
   `draw_free_iram` `create_image` `delete_image` `create_mask` `delete_mask`
   `set_viewport` `clear_viewport` `set_sprite_clip` `clear_sprite_clip`
-  `set_output_level` `set_chroma_level` `file_status`、`FmrbGfx.rgb_to_332`。
+  `set_output_level` `set_chroma_level` `file_status` `export_frame`、
+  スプライトの関数 (`create_sprite_image` `delete_sprite_image`
+  `load_sprite_image` `set_sprite_image_target` `create_sprite_instance`
+  `delete_sprite_instance` `move_sprite` `set_sprite_visible` `set_sprite_frame`
+  `delete_all_sprites`)、`FmrbGfx.rgb_to_332` `FmrbGfx.video_control`
+  `FmrbGfx.video_status`。
   包みの下の省略なしの形 `draw_text_raw` `set_font_raw` `set_text_size_raw`
   `present_raw` `draw_image_raw` `draw_tile_raw` `draw_image_masked_raw`
   `set_composite_regions_raw` `sync_file_raw` `transfer_file_raw`
+  `video_open_raw`
 - 手書きの包み (既定値を持つ): `present(x=None, y=None)`
   `draw_text(x, y, text, color, bg_color=None, mixed=False)`
   `set_font(family, size=None)` `set_text_size` `draw_image(id, x=0, y=0, ...)`
   `draw_tile(..., dst_x=0, dst_y=0)` `draw_image_masked(id, mask, x=0, y=0)`
   `sync_file(path, dest=None)` `transfer_file(path, dest=None)`
   `set_composite_regions(regions)`
+  `video_open(path, x=0, y=0, fps=15, loop=False)` (`FmrbVideo` か None)
 - 描き手の状態 (属性として読む。本体の C が持ち、境界の関数で読む):
   `canvas_id` `origin_x` `origin_y` `area_width` `area_height`。
   `canvas_width` `canvas_height` `current_font` は Python のオブジェクトの属性
-- そのほか: `text_width` `font_height` `delete_all_sprites`
+- そのほか: `text_width` `font_height`
 - 原点は本体の側で足す (FmrbGfx は本体の描き手の番号 `_drawer` だけを持つ、
   doc/app_boundary W4b)。スプライトの座標も原点から (画像へ描いている間も)
 - `clear` は包みを持たないので、色は省略できない (W4a で `clear()` の既定の
   黒をやめた)。
 - 記録 (`create_image`・`file_status` の結果、`set_composite_regions_raw` の
   要素) は dict。Symbol の選択肢 (`set_font_raw` の family) は名前の str
-  (`"ja"`) か番号 (`FmrbGfx.FONT_JA`)。
+  (`"ja"`) か番号 (`FmrbGfx.FONT_JA`)。`video_control` の action も名前の str
+  (`"play"`)。
 
 スプライトは `SpriteImage` (`set_target` `reset_target` `load_bmp` `destroy`)
-と `SpriteInstance` (`move` `set_visible` `set_frame` `destroy`)。
+と `SpriteInstance` (`move` `set_visible` `set_frame` `destroy`)。どちらも
+上のスプライトの関数を呼ぶ包み (Ruby と同じ 2 段)。動画は `FmrbVideo`
+(`play` `pause` `stop` `rewind` `status` `playing` `finished`)。
 
 色定数: `BLACK` `WHITE` `RED` `GREEN` `BLUE` `YELLOW` `CYAN` `MAGENTA` `GRAY`
 (RGB332、Ruby 版と同値)
@@ -372,7 +382,7 @@ Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド�
 | 分類 | 内容 |
 |---|---|
 | 地図 | タイルマップのクラス / `TileRing` (`draw_tile` はあるので自分で並べる) |
-| 画像 | `load_image` (`sync_file` + `create_image` + `draw_image` で書く) / 動画 |
+| 画像 | `load_image` (`sync_file` + `create_image` + `draw_image` で書く) |
 | 描画最適化 | `GfxBlock` |
 | その他 | 音声 / 追加キャンバス / スクロールバー / p5 互換層 |
 

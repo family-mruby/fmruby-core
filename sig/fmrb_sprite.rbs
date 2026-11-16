@@ -2,7 +2,8 @@
 # lib/gems/picoruby-fmrb-app/mrblib/fmrb-sprite.rb と gfx_block.rb。
 #
 # SpriteImage が絵そのもの、SpriteInstance が画面のどこに置くか。
-# 一枚の絵を何個も置ける。
+# 一枚の絵を何個も置ける。どちらも FmrbGfx の境界の関数
+# (create_sprite_image・move_sprite など) を呼ぶ Ruby の包み。
 
 # うごく絵の中身。ここに描いた絵を SpriteInstance で画面に置く。
 class SpriteImage
@@ -167,6 +168,19 @@ class SpriteInstance
   # sp.visible = false
   # ```
   def visible=: (bool v) -> void
+
+  # 何枚目の絵を見せるか (0 が 1 枚目) <<en>> Which frame to show (0 is the first)
+  #
+  # 何枚も渡して置いたときに、パラパラ漫画のこまを選ぶ。
+  # ```ruby
+  # sp.frame = (sp.x / 4) % 2
+  # ```
+  # <<en>>
+  # Picks the frame of a flip book, when it was placed with several images.
+  # ```ruby
+  # sp.frame = (sp.x / 4) % 2
+  # ```
+  def frame=: (Integer index) -> void
 
   # 見えているか <<en>> Whether it is shown
   #

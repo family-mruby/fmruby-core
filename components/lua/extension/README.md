@@ -52,11 +52,21 @@ end
 - 省略できる引数を持つものは、小さな Lua の前置き (`fmrb_lua_gfx.c` の `gfx_prelude`) が Ruby と同じ
   既定値で包む: `gfx:draw_text(x, y, text, color [, bg_color [, mixed]])`・`gfx:present([x, y])`・
   `set_font(family [, size])`・`draw_image(id [, x, y, scale_x, scale_y])`・`draw_tile`・
-  `draw_image_masked`・`sync_file(path [, dest])`・`transfer_file`・`set_composite_regions`。
+  `draw_image_masked`・`sync_file(path [, dest])`・`transfer_file`・`set_composite_regions`・`video_open`。
   省略できない形は後ろに `_raw` が付く (`gfx:draw_text_raw(x, y, text, color, bg_color, mixed)`。
   `bg_color` が負なら背景を塗らない)。
 - 記録 (`gfx:create_image(path)` の `{id=, width=, height=}` など) は表、Ruby の Symbol の選択肢は
   文字列 (`gfx:set_font("ja", 12)`)。失敗はエラーになる。
+- スプライト (Ruby の `SpriteImage`・`SpriteInstance` の下の関数): `local id = gfx:create_sprite_image(16, 16,
+  0, true)` (幅・高さ・透明色・透明を使うか、番号を返す)・`gfx:load_sprite_image(id, path)` (描画側の PNG か
+  BMP。先に `gfx:sync_file`)・`gfx:set_sprite_image_target(id)` (この後の描画は絵の中へ、0 で戻す)・
+  `local sp = gfx:create_sprite_instance({id1, id2}, x, y, z)`・`gfx:move_sprite(sp, x, y)`・
+  `gfx:set_sprite_visible(sp, false)`・`gfx:set_sprite_frame(sp, 1)`・`gfx:delete_sprite_instance(sp)`・
+  `gfx:delete_sprite_image(id)`・`gfx:delete_all_sprites()`。座標は原点から。動かした後は `gfx:present()`。
+- 動画 (Modern とネイティブ版・ブラウザ版): `gfx:video_open(path [, x, y, fps, loop])` は `{width=, height=}`
+  か nil (止まった状態で開く)。`FmrbGfx.video_control("play")` (`"pause"`・`"stop"`・`"rewind"`) と
+  `FmrbGfx.video_status()` は `{state=, shown=, dropped=}` か nil。`gfx:export_frame(path)` は最後の
+  present の絵を描画側のファイルに書く。
 - `FmrbGfx.rgb_to_332(r, g, b)` で色を作れる。
 - 色: `FmrbGfx.BLACK` などの定数と、テーマの `FmrbApp.THEME_WINDOW_BG`・`THEME_TEXT`・`THEME_BORDER` など。
 - ヘッドレス (`default_window_mode = "background"`) のアプリでは `gfx` は nil。

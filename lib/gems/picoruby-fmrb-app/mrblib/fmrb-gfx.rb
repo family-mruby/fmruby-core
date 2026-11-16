@@ -347,17 +347,8 @@ class FmrbGfx
     transfer_file_raw(path, dest || path)
   end
 
-  # Write the picture the last present put on screen to a file, on the display
-  # side's filesystem. This does not present: send present first, then this,
-  # and the two keep their order.
-  #
-  # Tab5 writes a JPEG through the SoC's encoder, into the filesystem the core
-  # shares with it (so File.exist? can tell when it is done). The simulator
-  # writes a BMP into the graphics side's own storage, which the core cannot
-  # see. Retro (WROVER) does not support it and says so in its log.
-  def export_frame(path)
-    _export_frame(path)
-  end
+  # export_frame(path) is on the boundary as it is (generated in gfx.c): it
+  # writes what the last present showed to a file on the display side.
 
   # Draw a previously created image on the canvas
   # scale_x/scale_y: scaling factor (1.0 = original size, 2.0 = double, 0.5 = half)
@@ -449,7 +440,7 @@ class FmrbGfx
   # Whatever the app drew elsewhere on the canvas stays; do not draw inside
   # the picture rect while it plays.
   def video_open(path, x: 0, y: 0, fps: 15, loop: false)
-    info = _video_open(path, x, y, fps, loop)
+    info = video_open_raw(path, x, y, fps, loop ? true : false)
     return nil if info.nil?
     FmrbVideo.new(self, info[:width], info[:height])
   end
@@ -465,11 +456,12 @@ class FmrbGfx
 end
 
 # Handle for a motion-JPEG file being played into a canvas (FmrbGfx#video_open).
-# One player exists at a time, so every instance talks to the same one.
+# One player exists at a time, so every instance talks to the same one, through
+# FmrbGfx.video_control / video_status (the app boundary; they need no FmrbGfx,
+# so a handle still stops the player from on_destroy, after the app's FmrbGfx
+# has gone). The state is the protocol's number:
+#   0 idle / 1 playing / 2 paused / 3 finished
 class FmrbVideo
-  # Actions and states are the raw protocol numbers:
-  #   action 0 play / 1 pause / 2 stop / 3 rewind
-  #   state  0 idle / 1 playing / 2 paused / 3 finished
 
   def initialize(gfx, width, height)
     @gfx = gfx
@@ -486,38 +478,38 @@ class FmrbVideo
   end
 
   def play
-    @gfx._video_control(0)
+    FmrbGfx.video_control(:play)
     self
   end
 
   def pause
-    @gfx._video_control(1)
+    FmrbGfx.video_control(:pause)
     self
   end
 
   # Stops and releases the file. The canvas keeps the last frame drawn.
   def stop
-    @gfx._video_control(2)
+    FmrbGfx.video_control(:stop)
     self
   end
 
   def rewind
-    @gfx._video_control(3)
+    FmrbGfx.video_control(:rewind)
     self
   end
 
   # {state:, shown:, dropped:} or nil
   def status
-    @gfx._video_status
+    FmrbGfx.video_status
   end
 
   def playing?
-    st = @gfx._video_status
+    st = FmrbGfx.video_status
     st ? st[:state] == 1 : false
   end
 
   def finished?
-    st = @gfx._video_status
+    st = FmrbGfx.video_status
     st ? st[:state] == 3 : false
   end
 end

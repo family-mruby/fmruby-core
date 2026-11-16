@@ -103,35 +103,9 @@ bool fmrb_mp_bridge_is_file_app(void);
 
 /*
  * Drawing: the FmrbGfx methods are on the app boundary, generated from sig/
- * (fmrb_gen/fmrb_boundary.h and _mp.inc, doc/app_boundary). What follows is
- * what the boundary does not carry yet.
+ * (fmrb_gen/fmrb_boundary.h and _mp.inc, doc/app_boundary), sprites and
+ * video included.
  */
-
-/**
- * Sprites. An image holds pixels, an instance places one or more images on the
- * canvas; moving an instance costs one command and the compositing happens on
- * the graphics side.
- */
-
-/** Copy of FMRB_SPRITE_MAX_FRAMES (fmrb_link_protocol.h), static-asserted. */
-#define FMRB_MP_SPRITE_MAX_FRAMES (8)
-
-/** @return image id (> 0), or 0 on failure */
-int fmrb_mp_gfx_create_sprite_image(int canvas_id, int width, int height,
-                                    int transparent_color, bool use_transparent);
-int fmrb_mp_gfx_load_sprite_image_bmp(int canvas_id, int image_id, const char *path);
-int fmrb_mp_gfx_delete_sprite_image(int canvas_id, int image_id);
-/** Redirect drawing into a sprite image; 0 puts it back on the canvas. */
-int fmrb_mp_gfx_set_sprite_target(int canvas_id, int image_id);
-
-/** @return instance id (> 0), or 0 on failure */
-int fmrb_mp_gfx_create_sprite_instance(int canvas_id, const uint16_t *image_ids,
-                                       int frame_count, int x, int y, int z_order);
-int fmrb_mp_gfx_sprite_move(int canvas_id, int instance_id, int x, int y);
-int fmrb_mp_gfx_sprite_visible(int canvas_id, int instance_id, bool visible);
-int fmrb_mp_gfx_sprite_frame(int canvas_id, int instance_id, int frame_index);
-int fmrb_mp_gfx_delete_sprite_instance(int canvas_id, int instance_id);
-int fmrb_mp_gfx_delete_all_sprites(int canvas_id);
 
 /**
  * Files. Guests get no open()/write(): they read whole files, either as data

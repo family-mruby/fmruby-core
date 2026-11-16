@@ -103,7 +103,7 @@ class TileSheet
       dst_x = rx0
       dst_y = ry0
     end
-    @gfx.draw_tile(@image.id, sx, sy, w, h, dst_x: dst_x, dst_y: dst_y)
+    @gfx.draw_tile_raw(@image.id, sx, sy, w, h, dst_x, dst_y)
   end
 
   def destroy

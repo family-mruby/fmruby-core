@@ -929,6 +929,235 @@ int32_t fmrb_bnd_gfx_file_status(int32_t gfx, const char *path, int32_t path_len
     return 1;
 }
 
+/* ---- sprites ------------------------------------------------------------- */
+
+// An image and a placed sprite are the graphics side's, numbered within the
+// drawer's canvas. A sprite's position is from the origin, also while the
+// drawer draws into a sprite image (a sprite is placed on the canvas); what
+// is drawn into an image is in the image's own coordinates (to_image).
+
+int32_t fmrb_bnd_gfx_create_sprite_image(int32_t gfx, int32_t width, int32_t height,
+                                         int32_t transparent_color, int32_t use_transparent)
+{
+    if (width <= 0 || height <= 0 || width > 0xFFFF || height > 0xFFFF) {
+        return ERR_ARG;
+    }
+    TARGET(gfx, t);
+    fmrb_gfx_context_t gctx = fmrb_gfx_get_global_context();
+    if (!gctx) {
+        return ERR_FAILED;
+    }
+    uint16_t id = fmrb_gfx_create_sprite_image(gctx, t.canvas, (uint16_t)width, (uint16_t)height,
+                                               (uint8_t)transparent_color, use_transparent != 0);
+    return id == 0 ? ERR_FAILED : (int32_t)id;
+}
+
+int32_t fmrb_bnd_gfx_delete_sprite_image(int32_t gfx, int32_t image_id)
+{
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_sprite_image(&cmd, t.canvas, (uint16_t)image_id);
+    return submit(&t, &cmd);
+}
+
+// A PNG or an 8-bit RGB332 BMP, told apart by the graphics side (which
+// decodes it) from the first bytes (doc/flash_layout F2).
+int32_t fmrb_bnd_gfx_load_sprite_image(int32_t gfx, int32_t image_id, const char *path, int32_t path_len)
+{
+    if (!path || path_len <= 0 || path_len >= GFX_PATH_MAX) {
+        return ERR_ARG;
+    }
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_load_sprite_image_bmp_n(&cmd, t.canvas, (uint16_t)image_id, path, (size_t)path_len);
+    return submit(&t, &cmd);
+}
+
+// Through the host_task queue, so the switch stays in order with the drawing
+// around it (bypassing it lets target 0 race past the tail of a sprite draw
+// and clips its bottom-right pixels). The drawer adds no origin while it
+// draws into the image.
+int32_t fmrb_bnd_gfx_set_sprite_image_target(int32_t gfx, int32_t image_id)
+{
+    TARGET(gfx, t);
+    fmrb_gfx_drawer_set_to_image(gfx, image_id != 0);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_set_sprite_image_target(&cmd, t.canvas, (uint16_t)image_id);
+    return submit(&t, &cmd);
+}
+
+int32_t fmrb_bnd_gfx_create_sprite_instance(int32_t gfx, const uint16_t *image_ids, int32_t image_ids_count,
+                                            int32_t x, int32_t y, int32_t z)
+{
+    if (!image_ids || image_ids_count <= 0 || image_ids_count > FMRB_SPRITE_MAX_FRAMES) {
+        return ERR_ARG;
+    }
+    TARGET(gfx, t);
+    fmrb_gfx_context_t gctx = fmrb_gfx_get_global_context();
+    if (!gctx) {
+        return ERR_FAILED;
+    }
+    uint16_t id = fmrb_gfx_create_sprite_instance(gctx, t.canvas, image_ids, (uint8_t)image_ids_count,
+                                                  (int16_t)(x + t.ax), (int16_t)(y + t.ay), (int16_t)z);
+    return id == 0 ? ERR_FAILED : (int32_t)id;
+}
+
+int32_t fmrb_bnd_gfx_delete_sprite_instance(int32_t gfx, int32_t instance_id)
+{
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_sprite_instance(&cmd, t.canvas, (uint16_t)instance_id);
+    return submit(&t, &cmd);
+}
+
+int32_t fmrb_bnd_gfx_move_sprite(int32_t gfx, int32_t instance_id, int32_t x, int32_t y)
+{
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_move(&cmd, t.canvas, (uint16_t)instance_id, (int16_t)(x + t.ax),
+                                      (int16_t)(y + t.ay));
+    return submit(&t, &cmd);
+}
+
+int32_t fmrb_bnd_gfx_set_sprite_visible(int32_t gfx, int32_t instance_id, int32_t visible)
+{
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_set_visible(&cmd, t.canvas, (uint16_t)instance_id, visible != 0);
+    return submit(&t, &cmd);
+}
+
+int32_t fmrb_bnd_gfx_set_sprite_frame(int32_t gfx, int32_t instance_id, int32_t frame)
+{
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_set_frame(&cmd, t.canvas, (uint16_t)instance_id, (uint8_t)frame);
+    return submit(&t, &cmd);
+}
+
+int32_t fmrb_bnd_gfx_delete_all_sprites(int32_t gfx)
+{
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_all_sprites(&cmd, t.canvas);
+    return submit(&t, &cmd);
+}
+
+/* ---- video and the picture on screen -------------------------------------- */
+
+// Motion-JPEG playback is the display task's: the P4 (its hardware decoder)
+// and the hosted builds (the native one and the browser, a software decoder,
+// hosted/backend/display_video_soft.c). Retro has no decoder and its display
+// cannot read this board's files, and the Linux simulator's display is
+// another process that knows none of these commands (every call would cost a
+// full sync timeout): there the answer is "none" at once, so the app can
+// fall back. This is not FMRB_HW_FAMILY_MODERN, which takes the simulator in.
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_HOSTED)
+#define GFX_HAS_VIDEO 1
+#else
+#define GFX_HAS_VIDEO 0
+#endif
+
+int32_t fmrb_bnd_gfx_video_open_raw(int32_t gfx, const char *path, int32_t path_len, int32_t x, int32_t y,
+                                    int32_t fps, int32_t loop, fmrb_bnd_gfx_video_info_t *out)
+{
+    if (!path || path_len <= 0 || path_len >= GFX_PATH_MAX) {
+        return ERR_ARG;
+    }
+    TARGET(gfx, t);
+#if !GFX_HAS_VIDEO
+    (void)t; (void)x; (void)y; (void)fps; (void)loop; (void)out;
+    return 0;
+#else
+    uint8_t payload_buf[sizeof(fmrb_link_graphics_video_open_t) + GFX_PATH_MAX];
+    size_t payload_len = sizeof(fmrb_link_graphics_video_open_t) + (size_t)path_len;
+    fmrb_link_graphics_video_open_t *hdr = (fmrb_link_graphics_video_open_t *)payload_buf;
+    hdr->canvas_id = (uint16_t)t.canvas;
+    hdr->x = TX(t, x);
+    hdr->y = TY(t, y);
+    hdr->fps = (uint16_t)fps;
+    hdr->flags = loop ? FMRB_LINK_GFX_VIDEO_FLAG_LOOP : 0;
+    hdr->path_len = (uint16_t)path_len;
+    memcpy(payload_buf + sizeof(*hdr), path, (size_t)path_len);
+
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_opened_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(FMRB_LINK_TYPE_GRAPHICS, FMRB_LINK_GFX_VIDEO_OPEN, payload_buf,
+                                              payload_len, resp_buf, &resp_len, 10000);
+    if (ret != FMRB_OK || resp_len < sizeof(fmrb_link_graphics_video_opened_t)) {
+        return 0;
+    }
+    const fmrb_link_graphics_video_opened_t *resp = (const fmrb_link_graphics_video_opened_t *)resp_buf;
+    if (resp->result != 0) {
+        return 0;   // the app can fall back
+    }
+    out->width = resp->width;
+    out->height = resp->height;
+    return 1;
+#endif
+}
+
+#if GFX_HAS_VIDEO
+static int32_t video_ask(uint8_t cmd, const uint8_t *payload, size_t payload_len, fmrb_bnd_gfx_video_status_t *out)
+{
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(FMRB_LINK_TYPE_GRAPHICS, cmd, payload, payload_len, resp_buf,
+                                              &resp_len, 5000);
+    if (ret != FMRB_OK || resp_len < sizeof(fmrb_link_graphics_video_status_t)) {
+        return 0;
+    }
+    const fmrb_link_graphics_video_status_t *st = (const fmrb_link_graphics_video_status_t *)resp_buf;
+    out->state = st->state;
+    out->shown = st->frames_shown;
+    out->dropped = st->frames_dropped;
+    return 1;
+}
+#endif
+
+// action: FMRB_BND_GFX_VIDEO_CONTROL_ACTION_PLAY (0), PAUSE, STOP, REWIND,
+// the protocol's numbers.
+int32_t fmrb_bnd_gfx_video_control(int32_t action, fmrb_bnd_gfx_video_status_t *out)
+{
+    if (action < 0 || action > 3) {
+        return ERR_ARG;
+    }
+#if !GFX_HAS_VIDEO
+    (void)out;
+    return 0;
+#else
+    fmrb_link_graphics_video_control_t payload;
+    payload.action = (uint8_t)action;
+    return video_ask(FMRB_LINK_GFX_VIDEO_CONTROL, (const uint8_t *)&payload, sizeof(payload), out);
+#endif
+}
+
+int32_t fmrb_bnd_gfx_video_status(fmrb_bnd_gfx_video_status_t *out)
+{
+#if !GFX_HAS_VIDEO
+    (void)out;
+    return 0;
+#else
+    return video_ask(FMRB_LINK_GFX_VIDEO_STATUS, NULL, 0, out);
+#endif
+}
+
+// Queued behind what was sent before, so the picture written is the one the
+// last present composited. Nothing waits: Tab5 writes a JPEG into the
+// filesystem it shares with this side (File.exist? tells when it is done),
+// the simulator a BMP into its own storage; Retro says in its log that it
+// cannot.
+int32_t fmrb_bnd_gfx_export_frame(int32_t gfx, const char *path, int32_t path_len)
+{
+    if (!path || path_len <= 0 || path_len >= GFX_PATH_MAX) {
+        return ERR_ARG;
+    }
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_export_frame_n(&cmd, t.canvas, path, (size_t)path_len);
+    return submit(&t, &cmd);
+}
+
 /* ---- colour -------------------------------------------------------------- */
 
 int32_t fmrb_bnd_gfx_rgb_to_332(int32_t r, int32_t g, int32_t b)

@@ -111,6 +111,12 @@ class FmrbGfx
   # 合成する矩形 1 つ (set_composite_regions_raw) <<en>> One composited rectangle
   type composite_region = { src_x: int16, src_y: int16, dst_x: int16, dst_y: int16, w: int16, h: int16, transparent: bool }
 
+  # video_open_raw が返す動画の大きさ <<en>> A video's size, from video_open_raw
+  type video_info = { width: uint16, height: uint16 }
+
+  # 動画の再生のようす <<en>> The video player's state
+  type video_status = { state: uint8, shown: uint32, dropped: uint32 }
+
   # ---- 色 ----
   #
   # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
@@ -1059,6 +1065,232 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   # ```
   def clear_sprite_clip: () -> FmrbGfx
 
+  # ---- スプライト (SpriteImage・SpriteInstance の下の関数) ----
+  #
+  # SpriteImage と SpriteInstance は、ここの関数を呼ぶ Ruby の包み。速さが
+  # 要る所や Ruby 以外の言語では、番号を持ってこちらを直接呼ぶ。絵と置いた
+  # 絵の番号は、この FmrbGfx の canvas の中のもの。
+
+  # スプライトの絵を作る <<en>> Make a sprite image
+  #
+  # 描画側に width x height の絵を作り、番号を返す。use_transparent が真なら
+  # transparent_color の画素は抜ける。包みは SpriteImage.new。
+  # ```ruby
+  # id = gfx.create_sprite_image(16, 16,
+  #                              0x00, true)
+  # ```
+  # <<en>>
+  # Makes a width x height image on the graphics side and returns its
+  # number. With use_transparent,
+  # the pixels of transparent_color are see-through. The wrapper is
+  # SpriteImage.new.
+  # ```ruby
+  # id = gfx.create_sprite_image(16, 16,
+  #                              0x00, true)
+  # ```
+  def create_sprite_image: (Integer width, Integer height, Integer transparent_color, bool use_transparent) -> Integer
+
+  # スプライトの絵を片づける <<en>> Let go of a sprite image
+  #
+  # 包みは SpriteImage#destroy。
+  # ```ruby
+  # gfx.delete_sprite_image(id)
+  # ```
+  # <<en>>
+  # The wrapper is SpriteImage#destroy.
+  # ```ruby
+  # gfx.delete_sprite_image(id)
+  # ```
+  def delete_sprite_image: (Integer image_id) -> FmrbGfx
+
+  # 絵 (PNG か BMP) をスプライトの絵に読み込む <<en>> Read a PNG or BMP into a sprite image
+  #
+  # 描画側のパスを渡す (先に sync_file で送る)。展開は描画側でやる。
+  # 包みは SpriteImage#load_bmp。
+  # ```ruby
+  # gfx.load_sprite_image(id,
+  #   "/cache/app/x/bird.png")
+  # ```
+  # <<en>>
+  # Takes a path on the graphics side (send it there with sync_file first),
+  # which decodes it. The wrapper is SpriteImage#load_bmp.
+  # ```ruby
+  # gfx.load_sprite_image(id,
+  #   "/cache/app/x/bird.png")
+  # ```
+  def load_sprite_image: (Integer image_id, String path) -> FmrbGfx
+
+  # 描く先をスプライトの絵にする <<en>> Draw into a sprite image
+  #
+  # この後の描画は、その絵の中の座標で絵に描かれる (原点は足さない)。0 で
+  # canvas に戻す。
+  # 包みは SpriteImage#set_target・#reset_target・#draw。
+  # ```ruby
+  # gfx.set_sprite_image_target(id)
+  # gfx.fill_rect(0, 0, 16, 16, FmrbGfx::RED)
+  # gfx.set_sprite_image_target(0)
+  # ```
+  # <<en>>
+  # What is drawn next goes into that image, in its own coordinates (no
+  # origin added); 0 goes back to the canvas. The wrappers are SpriteImage#set_target, #reset_target and
+  # #draw.
+  # ```ruby
+  # gfx.set_sprite_image_target(id)
+  # gfx.fill_rect(0, 0, 16, 16, FmrbGfx::RED)
+  # gfx.set_sprite_image_target(0)
+  # ```
+  def set_sprite_image_target: (Integer image_id) -> FmrbGfx
+
+  # スプライトの絵を画面に置く <<en>> Place sprite images on the canvas
+  #
+  # 置いた絵の番号を返す。image_ids はパラパラ漫画の絵の番号 (1〜8 枚)。座標は原点から (絵に
+  # 描いている間も)。z が大きいほど手前。包みは SpriteInstance.new。
+  # ```ruby
+  # sp = gfx.create_sprite_instance(
+  #   [id1, id2], 40, 80, 0)
+  # ```
+  # <<en>>
+  # Returns the placed sprite's number. image_ids are the frames of a flip
+  # book (1 to 8). The position is from
+  # the origin, also while drawing into a sprite image; a larger z is nearer.
+  # The wrapper is SpriteInstance.new.
+  # ```ruby
+  # sp = gfx.create_sprite_instance(
+  #   [id1, id2], 40, 80, 0)
+  # ```
+  def create_sprite_instance: (Array[uint16] image_ids, Integer x, Integer y, Integer z) -> Integer
+
+  # 置いた絵を片づける <<en>> Let go of a placed sprite
+  #
+  # 包みは SpriteInstance#destroy。
+  # ```ruby
+  # gfx.delete_sprite_instance(sp)
+  # ```
+  # <<en>>
+  # The wrapper is SpriteInstance#destroy.
+  # ```ruby
+  # gfx.delete_sprite_instance(sp)
+  # ```
+  def delete_sprite_instance: (Integer instance_id) -> FmrbGfx
+
+  # 置いた絵を動かす <<en>> Move a placed sprite
+  #
+  # 座標は原点から。合成は次の present で走る。包みは SpriteInstance#move
+  # (枠なしの Window の当たりに印を付けたスプライトは、包みが当たりも動かす)。
+  # ```ruby
+  # gfx.move_sprite(sp, 48, 80)
+  # gfx.present
+  # ```
+  # <<en>>
+  # From the origin. The compositing happens at the next present. The wrapper
+  # is SpriteInstance#move, which also moves a frameless window's hit shape
+  # when the sprite is marked for it.
+  # ```ruby
+  # gfx.move_sprite(sp, 48, 80)
+  # gfx.present
+  # ```
+  def move_sprite: (Integer instance_id, Integer x, Integer y) -> FmrbGfx
+
+  # 置いた絵を見せるか隠すか <<en>> Show or hide a placed sprite
+  #
+  # 包みは SpriteInstance#visible=。
+  # ```ruby
+  # gfx.set_sprite_visible(sp, false)
+  # ```
+  # <<en>>
+  # The wrapper is SpriteInstance#visible=.
+  # ```ruby
+  # gfx.set_sprite_visible(sp, false)
+  # ```
+  def set_sprite_visible: (Integer instance_id, bool visible) -> FmrbGfx
+
+  # 置いた絵の何枚目を見せるか <<en>> Which frame a placed sprite shows
+  #
+  # 0 が 1 枚目。包みは SpriteInstance#frame=。
+  # ```ruby
+  # gfx.set_sprite_frame(sp, 1)
+  # ```
+  # <<en>>
+  # 0 is the first. The wrapper is SpriteInstance#frame=.
+  # ```ruby
+  # gfx.set_sprite_frame(sp, 1)
+  # ```
+  def set_sprite_frame: (Integer instance_id, Integer frame) -> FmrbGfx
+
+  # この canvas のスプライトを全部片づける <<en>> Let go of every sprite on this canvas
+  #
+  # 置いた絵も絵の中身も消える。
+  # ```ruby
+  # gfx.delete_all_sprites
+  # ```
+  # <<en>>
+  # The placed sprites and their images both go.
+  # ```ruby
+  # gfx.delete_all_sprites
+  # ```
+  def delete_all_sprites: () -> FmrbGfx
+
+  # ---- 動画と画面の書き出し ----
+
+  # JPEG を並べた動画を canvas で流す (Modern) <<en>> Play a motion-JPEG file into the canvas (Modern)
+  #
+  # 位置と速さはキーワード (x:, y:, fps:, loop:)。止まった状態で開くので、
+  # 返った FmrbVideo の play で流す。流せない端末 (Retro・sim) では nil。
+  # 流している間は、その四角の中に描かない。
+  # ```ruby
+  # v = gfx.video_open("/home/a.mjpeg",
+  #                    x: 0, y: 0, fps: 15)
+  # v.play if v
+  # ```
+  # <<en>>
+  # Position and speed are keyword arguments (x:, y:, fps:, loop:). It opens
+  # paused; play the FmrbVideo it gives back. nil where it cannot be played
+  # (Retro, the sim). Do not draw inside the picture while it plays.
+  # ```ruby
+  # v = gfx.video_open("/home/a.mjpeg",
+  #                    x: 0, y: 0, fps: 15)
+  # v.play if v
+  # ```
+  %a{fmrb.internal}
+  def video_open: (String path) -> FmrbVideo?
+
+# video_open の省略なしの形 <<en>> video_open with nothing left out
+#
+# 引数を省略できない単純な形。返すのは動画の {width:, height:} か、流せない
+# ときは nil。流す・止めるは FmrbGfx.video_control。包みは video_open。
+# ```ruby
+# info = gfx.video_open_raw(path,
+#          0, 0, 15, false)
+# ```
+# <<en>>
+# The simple form, with no argument left out. It returns the video's
+# {width:, height:}, or nil when it cannot be played; FmrbGfx.video_control
+# plays and stops it. The wrapper is video_open.
+# ```ruby
+# info = gfx.video_open_raw(path,
+#          0, 0, 15, false)
+# ```
+def video_open_raw: (String path, Integer x, Integer y, Integer fps, bool loop) -> video_info?
+
+  # 描いた画面をファイルに書き出す <<en>> Write the presented picture to a file
+  #
+  # 最後の present で出た絵を、描画側のファイルシステムに書く (Tab5 は JPEG、
+  # sim は BMP。Retro はできない)。present はしないので先に呼んでおく。
+  # 待たずに返る。
+  # ```ruby
+  # gfx.present
+  # gfx.export_frame("/home/shot.jpg")
+  # ```
+  # <<en>>
+  # Writes what the last present showed to a file on the graphics side
+  # (Tab5 a JPEG, the sim a BMP; Retro cannot). It does not present, so
+  # present first. It does not wait for the write.
+  # ```ruby
+  # gfx.present
+  # gfx.export_frame("/home/shot.jpg")
+  # ```
+  def export_frame: (String path) -> FmrbGfx
+
   # 映像の明るさを決める <<en>> Set the video brightness
   #
   # Retro のコンポジット映像の明るさを決める。Modern には効かない。
@@ -1176,6 +1408,40 @@ def transfer_file_raw: (String path, String dest) -> bool
   # transparency key, so a window painted with it shows through.
   def self.rgb_to_332: (Integer r, Integer g, Integer b) -> Integer
 
+  # 動画を流す・止める <<en>> Play, pause, stop or rewind the video
+  #
+  # 流せる動画は 1 つ。video_open で開いた動画を操作して、そのあとのようすを返す (返事が無ければ
+  # nil)。:stop はファイルを閉じ、canvas には最後の絵が残る。包みは FmrbVideo の
+  # play・pause・stop・rewind。
+  # ```ruby
+  # FmrbGfx.video_control(:play)
+  # ```
+  # <<en>>
+  # There is one player. Acts on the video video_open opened and returns its state afterwards (nil
+  # when there is no answer). :stop closes the file; the canvas keeps the last
+  # picture. The wrappers are FmrbVideo's play, pause, stop and rewind.
+  # ```ruby
+  # FmrbGfx.video_control(:play)
+  # ```
+  def self.video_control: (:play | :pause | :stop | :rewind action) -> video_status?
+
+  # 動画の再生のようす <<en>> The video player's state
+  #
+  # {state:, shown:, dropped:} か、返事が無ければ nil。state は 0 止まり・
+  # 1 再生中・2 一時停止・3 終わり。shown と dropped は出した・飛ばしたこま数。
+  # 包みは FmrbVideo#status。
+  # ```ruby
+  # st = FmrbGfx.video_status
+  # ```
+  # <<en>>
+  # {state:, shown:, dropped:}, or nil when there is no answer. state is 0
+  # idle, 1 playing, 2 paused, 3 finished; shown and dropped count frames.
+  # The wrapper is FmrbVideo#status.
+  # ```ruby
+  # st = FmrbGfx.video_status
+  # ```
+  def self.video_status: () -> video_status?
+
   # 色あいと濃さと明るさから色を作る <<en>> Make a colour from hue, saturation and value
   #
   # h は 0-360、s と v は 0-255。戻り値は [r, g, b] の配列で、そのままでは
@@ -1195,4 +1461,71 @@ def transfer_file_raw: (String path, String dest) -> bool
   # ```
   %a{fmrb.internal}
   def self.hsv_to_rgb: (Integer h, Integer s, Integer v) -> Array
+end
+
+# FmrbGfx#video_open が返す、流している動画の取っ手。流せる動画は 1 つなので、
+# どの取っ手も同じ再生機を操作する。中身は FmrbGfx.video_control を呼ぶ Ruby。
+class FmrbVideo
+  # 動画の横幅 (ドット) <<en>> The video's width in pixels
+  #
+  # ```ruby
+  # w = v.width
+  # ```
+  def width: () -> Integer
+
+  # 動画の高さ (ドット) <<en>> The video's height in pixels
+  #
+  # ```ruby
+  # h = v.height
+  # ```
+  def height: () -> Integer
+
+  # 流す <<en>> Play
+  #
+  # ```ruby
+  # v.play
+  # ```
+  def play: () -> FmrbVideo
+
+  # 一時停止する <<en>> Pause
+  #
+  # ```ruby
+  # v.pause
+  # ```
+  def pause: () -> FmrbVideo
+
+  # 止めてファイルを閉じる <<en>> Stop and close the file
+  #
+  # canvas には最後の絵が残る。
+  # <<en>>
+  # The canvas keeps the last picture.
+  def stop: () -> FmrbVideo
+
+  # 頭に戻す <<en>> Back to the start
+  #
+  # ```ruby
+  # v.rewind
+  # ```
+  def rewind: () -> FmrbVideo
+
+  # 再生のようす <<en>> The player's state
+  #
+  # {state:, shown:, dropped:} か nil (FmrbGfx.video_status と同じ)。
+  # <<en>>
+  # {state:, shown:, dropped:} or nil, as FmrbGfx.video_status.
+  def status: () -> FmrbGfx::video_status?
+
+  # 流れているか <<en>> Whether it is playing
+  #
+  # ```ruby
+  # v.play unless v.playing?
+  # ```
+  def playing?: () -> bool
+
+  # 終わりまで流れたか <<en>> Whether it has played to the end
+  #
+  # ```ruby
+  # v.rewind if v.finished?
+  # ```
+  def finished?: () -> bool
 end

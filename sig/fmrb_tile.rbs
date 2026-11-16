@@ -7,16 +7,25 @@
 class TileSheet
   # タイルの絵を読み込む <<en>> Load a sheet of tiles
   #
-  # 並んだ絵を 1 枚の PNG (か BMP) から読む。
+  # 並んだ絵を 1 枚の PNG (か BMP) から読む。**キーワード引数で呼ぶ**
+  # (cols: は必須。上の形は型推論の都合)。path は描画側のパスで、先に
+  # sync_file で送る。rows: を省くなら source: に core の側の元の絵を渡す
+  # (頭から高さを読む)。
   # ```ruby
-  # sheet = TileSheet.new(gfx,
-  #   "/app/img/world.png")
+  # gfx.sync_file(src, dest: dst)
+  # sheet = TileSheet.new(gfx, dst,
+  #   cols: 8, source: src)
   # ```
   # <<en>>
-  # Reads a grid of pictures from one PNG (or BMP).
+  # Reads a grid of pictures from one PNG (or BMP). **Takes keyword
+  # arguments** (cols: is required; the signature is positional because the
+  # type engine has none). path is on the graphics side: send it with
+  # sync_file first. Without rows:, give source: the picture on this side,
+  # whose header has the height.
   # ```ruby
-  # sheet = TileSheet.new(gfx,
-  #   "/app/img/world.png")
+  # gfx.sync_file(src, dest: dst)
+  # sheet = TileSheet.new(gfx, dst,
+  #   cols: 8, source: src)
   # ```
   def self.new: (FmrbGfx gfx, String path) -> TileSheet
 
@@ -50,16 +59,17 @@ class TileSheet
 
   # 番号のタイルを画面に一つ描く <<en>> Stamp one numbered tile
   #
-  # **押す場所は先に決める** — 今の描き先の原点に出る。
+  # 置き場所はキーワード (dst_x:, dst_y:) で、原点から。clip_x: など 4 つで
+  # 押す範囲を絞れる。nil か負の番号は何もしない。
   # ```ruby
-  # gfx.set_cursor(x, y)
-  # sheet.stamp(3)
+  # sheet.stamp(3, dst_x: x, dst_y: y)
   # ```
   # <<en>>
-  # **Position first**: it lands at the current drawing origin.
+  # The place is by keyword (dst_x:, dst_y:), from the origin; clip_x: and
+  # its three companions narrow what is stamped. nil or a negative number
+  # does nothing.
   # ```ruby
-  # gfx.set_cursor(x, y)
-  # sheet.stamp(3)
+  # sheet.stamp(3, dst_x: x, dst_y: y)
   # ```
   def stamp: (Integer index) -> void
 

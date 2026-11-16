@@ -105,6 +105,9 @@ static const char gfx_prelude[] =
     "                w = r.w or 0, h = r.h or 0, transparent = r.transparent and true or false }\n"
     "  end\n"
     "  return self:set_composite_regions_raw(list)\n"
+    "end\n"
+    "function G:video_open(path, x, y, fps, loop)\n"
+    "  return self:video_open_raw(path, x or 0, y or 0, fps or 15, loop or false)\n"
     "end\n";
 
 // The wrappers of FmrbAudio, Log, FmrbApp and FmrbFile over their generated *_raw

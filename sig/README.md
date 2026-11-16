@@ -151,6 +151,12 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   mruby の `Log.info` など (picoruby-fmrb-log の C。前からの C のメソッドで、
   タグを先に渡す 2 引数の形も読む)。例外も印は同じ internal で、道具はどちらで
   書いたかを区別しない。
+- **包みのクラス**: 境界の関数を呼ぶ Ruby のクラス (`SpriteImage`・
+  `SpriteInstance`・`FmrbVideo`・`TileSheet` など) には印を付けない (境界に
+  載らず、型定義はエディタのためだけにある)。スプライトと動画の境界の関数は
+  `FmrbGfx` にあり (`create_sprite_image`・`move_sprite`・`video_open_raw`・
+  `FmrbGfx.video_control` など)、包みのクラスは番号を持ってそれを呼ぶ。
+  包みのファイル (`fmrb-sprite.rb`) は mruby と Spinel で同じもの。
 - 受け手の番号: インスタンスメソッドは第 1 引数に受け手の番号を取る
   (FmrbGfx は描き手、FmrbAudio は今は 0)。`FmrbApp` のインスタンスメソッドは
   取らない (受け手は呼んだアプリ。道具の `NO_RECEIVER`)。Lua では `FmrbApp` の

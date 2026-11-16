@@ -831,28 +831,48 @@ class FmrbGfx
     { id: SpxBytes.u16(buf, 0), width: SpxBytes.u16(buf, 2), height: SpxBytes.u16(buf, 4) }
   end
 
-  # Play a file of concatenated JPEG frames into this canvas (Modern only).
-  # Returns FmrbVideo or nil; nil means this backend cannot play it.
+  # Play a file of concatenated JPEG frames into this canvas (Modern and the
+  # hosted builds). Returns FmrbVideo or nil; nil means this backend cannot
+  # play it.
   def video_open(path, x: 0, y: 0, fps: 15, loop: false)
+    info = video_open_raw(path, x, y, fps, loop)
+    return nil if info.nil?
+    FmrbVideo.new(self, info[:width], info[:height])
+  end
+
+  # The app boundary's video functions (sig/fmrb_gfx.rbs).
+  def video_open_raw(path, x, y, fps, loop)
     s = path.to_s
-    buf = FmrbSpxGfx.fmrb_spx_gfx_video_open(@d, s, s.bytesize, x, y,
-                                             fps, loop ? 1 : 0)
+    buf = FmrbBoundary.fmrb_spx_b_gfx_video_open_raw(@d, s, s.bytesize, x, y, fps, loop ? 1 : 0)
     return nil if buf.bytesize == 0
-    FmrbVideo.new(self, SpxBytes.u16(buf, 0), SpxBytes.u16(buf, 2))
+    { width: SpxBytes.u16(buf, 0), height: SpxBytes.u16(buf, 2) }
   end
 
-  # Raw hooks FmrbVideo talks through, so the handle class is identical in
-  # both engines.
-  def _video_control(action)
-    buf = FmrbSpxGfx.fmrb_spx_gfx_video_control(action)
+  def self.video_control(action)
+    n = 0
+    if action == :pause
+      n = 1
+    elsif action == :stop
+      n = 2
+    elsif action == :rewind
+      n = 3
+    end
+    FmrbGfx._video_status_of(FmrbBoundary.fmrb_spx_b_gfx_video_control(n))
+  end
+
+  def self.video_status
+    FmrbGfx._video_status_of(FmrbBoundary.fmrb_spx_b_gfx_video_status)
+  end
+
+  def self._video_status_of(buf)
     return nil if buf.bytesize == 0
     { state: buf.getbyte(0), shown: SpxBytes.u32(buf, 1), dropped: SpxBytes.u32(buf, 5) }
   end
 
-  def _video_status
-    buf = FmrbSpxGfx.fmrb_spx_gfx_video_status
-    return nil if buf.bytesize == 0
-    { state: buf.getbyte(0), shown: SpxBytes.u32(buf, 1), dropped: SpxBytes.u32(buf, 5) }
+  def export_frame(path)
+    s = path.to_s
+    FmrbBoundary.fmrb_bnd_gfx_export_frame(@d, s, s.bytesize)
+    self
   end
 
   def draw_image(image_id, x: 0, y: 0, scale_x: 1.0, scale_y: 0.0)
@@ -969,30 +989,33 @@ class FmrbGfx
     self
   end
 
-  # ---- sprite low-level (used by SpriteImage / SpriteInstance) ----
-  def _create_sprite_image(width, height, trans_color, use_trans)
-    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_image(@d, width, height, trans_color, use_trans)
+  # ---- sprites: the app boundary's functions (SpriteImage / SpriteInstance
+  # in fmrb-sprite.rb wrap them). Nothing raises: a negative number is the
+  # firmware's error, as before. ----
+  def create_sprite_image(width, height, transparent_color, use_transparent)
+    FmrbBoundary.fmrb_bnd_gfx_create_sprite_image(@d, width, height, transparent_color,
+                                                  use_transparent ? 1 : 0)
   end
 
-  def _delete_sprite_image(image_id)
-    FmrbSpxGfx.fmrb_spx_gfx_delete_sprite_image(@d, image_id)
+  def delete_sprite_image(image_id)
+    FmrbBoundary.fmrb_bnd_gfx_delete_sprite_image(@d, image_id)
     self
   end
 
-  def _load_sprite_image_bmp(image_id, path)
+  def load_sprite_image(image_id, path)
     s = path.to_s
-    FmrbSpxGfx.fmrb_spx_gfx_load_sprite_image_bmp(@d, image_id, s, s.bytesize)
+    FmrbBoundary.fmrb_bnd_gfx_load_sprite_image(@d, image_id, s, s.bytesize)
     self
   end
 
-  def _set_sprite_image_target(image_id)
+  def set_sprite_image_target(image_id)
     # drawing into a sprite image: its own coordinates (the drawer adds no
     # origin until the target is 0 again)
-    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_image_target(@d, image_id)
+    FmrbBoundary.fmrb_bnd_gfx_set_sprite_image_target(@d, image_id)
     self
   end
 
-  def _create_sprite_instance(image_ids, x, y, z_order)
+  def create_sprite_instance(image_ids, x, y, z)
     n = image_ids.length
     buf = "\x00" * (n * 2)
     i = 0
@@ -1000,31 +1023,31 @@ class FmrbGfx
       SpxBytes.set_u16(buf, i * 2, id)
       i += 1
     end
-    FmrbSpxGfx.fmrb_spx_gfx_create_sprite_instance(@d, buf, n, x, y, z_order)
+    FmrbBoundary.fmrb_bnd_gfx_create_sprite_instance(@d, buf, n, x, y, z)
   end
 
-  def _delete_sprite_instance(instance_id)
-    FmrbSpxGfx.fmrb_spx_gfx_delete_sprite_instance(@d, instance_id)
+  def delete_sprite_instance(instance_id)
+    FmrbBoundary.fmrb_bnd_gfx_delete_sprite_instance(@d, instance_id)
     self
   end
 
-  def _sprite_move(instance_id, x, y)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_move(@d, instance_id, x, y)
+  def move_sprite(instance_id, x, y)
+    FmrbBoundary.fmrb_bnd_gfx_move_sprite(@d, instance_id, x, y)
     self
   end
 
-  def _sprite_visible(instance_id, visible)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_visible(@d, instance_id, visible ? 1 : 0)
+  def set_sprite_visible(instance_id, visible)
+    FmrbBoundary.fmrb_bnd_gfx_set_sprite_visible(@d, instance_id, visible ? 1 : 0)
     self
   end
 
-  def _sprite_frame(instance_id, frame_index)
-    FmrbSpxGfx.fmrb_spx_gfx_sprite_frame(@d, instance_id, frame_index)
+  def set_sprite_frame(instance_id, frame)
+    FmrbBoundary.fmrb_bnd_gfx_set_sprite_frame(@d, instance_id, frame)
     self
   end
 
-  def _delete_all_sprites
-    FmrbSpxGfx.fmrb_spx_gfx_delete_all_sprites(@d)
+  def delete_all_sprites
+    FmrbBoundary.fmrb_bnd_gfx_delete_all_sprites(@d)
     self
   end
 
@@ -1095,9 +1118,10 @@ end
 # (same pixels), without the define-program shim. Slower (re-sends all ops), but
 # correct; batching can be added later if profiling shows it matters.
 # Handle for a motion-JPEG file being played into a canvas (FmrbGfx#video_open).
-# Mirrors the mruby class in picoruby-fmrb-app/mrblib/fmrb-gfx.rb: the numbers
-# are the raw protocol values (action 0 play / 1 pause / 2 stop / 3 rewind,
-# state 0 idle / 1 playing / 2 paused / 3 finished).
+# Mirrors the mruby class in picoruby-fmrb-app/mrblib/fmrb-gfx.rb: one player,
+# reached through FmrbGfx.video_control / video_status (the app boundary).
+# The state is the protocol's number (0 idle / 1 playing / 2 paused /
+# 3 finished).
 class FmrbVideo
   def initialize(gfx, width, height)
     @gfx = gfx
@@ -1114,36 +1138,36 @@ class FmrbVideo
   end
 
   def play
-    @gfx._video_control(0)
+    FmrbGfx.video_control(:play)
     self
   end
 
   def pause
-    @gfx._video_control(1)
+    FmrbGfx.video_control(:pause)
     self
   end
 
   def stop
-    @gfx._video_control(2)
+    FmrbGfx.video_control(:stop)
     self
   end
 
   def rewind
-    @gfx._video_control(3)
+    FmrbGfx.video_control(:rewind)
     self
   end
 
   def status
-    @gfx._video_status
+    FmrbGfx.video_status
   end
 
   def playing?
-    st = @gfx._video_status
+    st = FmrbGfx.video_status
     st ? st[:state] == 1 : false
   end
 
   def finished?
-    st = @gfx._video_status
+    st = FmrbGfx.video_status
     st ? st[:state] == 3 : false
   end
 end

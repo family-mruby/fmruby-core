@@ -10,7 +10,7 @@
 # here adds it. This class adds what the Ruby mrblib adds: the wrappers with
 # default arguments over the *_raw methods, and the text metrics.
 #
-# Not provided (see doc/micropython/README.md): GfxBlock, video.
+# Not provided (see doc/micropython/README.md): GfxBlock.
 
 import _fmrb
 
@@ -155,13 +155,55 @@ class FmrbGfx(_FmrbGfxBoundary):
                         "transparent": bool(r.get("transparent", False))})
         return self.set_composite_regions_raw(out)
 
-    def delete_all_sprites(self):
-        _fmrb.gfx_delete_all_sprites(self)
+    # Play a motion-JPEG file into the canvas (Modern and the hosted builds):
+    # an FmrbVideo, or None where it cannot be played. It opens paused.
+    def video_open(self, path, x=0, y=0, fps=15, loop=False):
+        info = self.video_open_raw(path, x, y, fps, loop)
+        if info is None:
+            return None
+        return FmrbVideo(self, info["width"], info["height"])
+
+
+# The one video player (FmrbGfx.video_open). state: 0 idle, 1 playing,
+# 2 paused, 3 finished.
+class FmrbVideo:
+    def __init__(self, gfx, width, height):
+        self.gfx = gfx
+        self.width = width
+        self.height = height
+
+    def play(self):
+        FmrbGfx.video_control("play")
         return self
+
+    def pause(self):
+        FmrbGfx.video_control("pause")
+        return self
+
+    def stop(self):
+        FmrbGfx.video_control("stop")
+        return self
+
+    def rewind(self):
+        FmrbGfx.video_control("rewind")
+        return self
+
+    def status(self):
+        return FmrbGfx.video_status()
+
+    def playing(self):
+        st = FmrbGfx.video_status()
+        return st is not None and st["state"] == 1
+
+    def finished(self):
+        st = FmrbGfx.video_status()
+        return st is not None and st["state"] == 3
 
 
 # A block of pixels held on the graphics side. Either drawn into (with the
-# canvas drawing methods, while it is the target) or loaded from a BMP.
+# canvas drawing methods, while it is the target) or loaded from a PNG or BMP.
+# SpriteImage and SpriteInstance wrap FmrbGfx's functions on the app boundary
+# (create_sprite_image, move_sprite ...), calling them in _fmrb directly.
 class SpriteImage:
     def __init__(self, gfx, width, height, transparent_color=0, use_transparent=False):
         self.gfx = gfx
@@ -174,15 +216,15 @@ class SpriteImage:
     # image instead of onto the canvas (in the image's own coordinates: the
     # firmware adds no origin meanwhile).
     def set_target(self):
-        _fmrb.gfx_set_sprite_target(self.gfx, self.id)
+        _fmrb.gfx_set_sprite_image_target(self.gfx, self.id)
         return self
 
     def reset_target(self):
-        _fmrb.gfx_set_sprite_target(self.gfx, 0)
+        _fmrb.gfx_set_sprite_image_target(self.gfx, 0)
         return self
 
     def load_bmp(self, path):
-        _fmrb.gfx_load_sprite_image_bmp(self.gfx, self.id, path)
+        _fmrb.gfx_load_sprite_image(self.gfx, self.id, path)
         return self
 
     def destroy(self):
@@ -202,15 +244,15 @@ class SpriteInstance:
         self.id = _fmrb.gfx_create_sprite_instance(gfx, [f.id for f in frames], x, y, z)
 
     def move(self, x, y):
-        _fmrb.gfx_sprite_move(self.gfx, self.id, x, y)
+        _fmrb.gfx_move_sprite(self.gfx, self.id, x, y)
         return self
 
     def set_visible(self, visible):
-        _fmrb.gfx_sprite_visible(self.gfx, self.id, visible)
+        _fmrb.gfx_set_sprite_visible(self.gfx, self.id, visible)
         return self
 
     def set_frame(self, index):
-        _fmrb.gfx_sprite_frame(self.gfx, self.id, index)
+        _fmrb.gfx_set_sprite_frame(self.gfx, self.id, index)
         return self
 
     def destroy(self):

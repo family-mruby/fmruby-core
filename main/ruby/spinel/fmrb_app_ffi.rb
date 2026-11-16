@@ -27,32 +27,14 @@ end
 
 module FmrbSpxGfx
   # The FmrbGfx methods on the app boundary are declared in the generated
-  # module FmrbBoundary (fmrb_gen/fmrb_boundary_ffi.rb, from sig/). Here is
-  # what the boundary does not carry yet. The first argument is the FmrbGfx's
-  # drawer number (as for the boundary's functions), not a canvas id.
+  # module FmrbBoundary (fmrb_gen/fmrb_boundary_ffi.rb, from sig/), sprites and
+  # video included. Here is only the drawer, which the engine's FmrbGfx opens,
+  # lays out and closes (not on the boundary).
 
   # --- the drawer: FmrbGfx.new, _set_origin, destroy ---
   ffi_func :fmrb_spx_gfx_drawer_open, [:int, :int, :int], :int
   ffi_func :fmrb_spx_gfx_drawer_set_origin, [:int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_gfx_drawer_close, [:int], :int
-
-  # --- motion-JPEG playback ---
-  ffi_func :fmrb_spx_gfx_video_open,    [:int, :str, :int, :int, :int, :int, :int], :binstr
-  ffi_func :fmrb_spx_gfx_video_control, [:int], :binstr
-  ffi_func :fmrb_spx_gfx_video_status,  [], :binstr
-
-  # --- sprite API ---
-  ffi_func :fmrb_spx_gfx_create_sprite_image, [:int, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_delete_sprite_image, [:int, :int], :int
-  ffi_func :fmrb_spx_gfx_load_sprite_image_bmp, [:int, :int, :str, :int], :int
-  ffi_func :fmrb_spx_gfx_set_sprite_image_target, [:int, :int], :int
-  # frames: :str of frame_count u16 LE image ids
-  ffi_func :fmrb_spx_gfx_create_sprite_instance, [:int, :str, :int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_delete_sprite_instance, [:int, :int], :int
-  ffi_func :fmrb_spx_gfx_sprite_move,    [:int, :int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_sprite_visible, [:int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_sprite_frame,   [:int, :int, :int], :int
-  ffi_func :fmrb_spx_gfx_delete_all_sprites, [:int], :int
 end
 
 module FmrbSpxApp

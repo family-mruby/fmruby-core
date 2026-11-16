@@ -1,3 +1,8 @@
+# SpriteImage and SpriteInstance are Ruby wrappers over FmrbGfx's functions
+# on the app boundary (create_sprite_image, move_sprite ...; sig/fmrb_gfx.rbs),
+# which keep the numbers. The same file is spliced into the Spinel programs
+# (tools/spinel/gen_app_combined.rb).
+
 # SpriteImage - Sprite image buffer (reusable pixel data)
 # Tied to a parent FmrbGfx instance. Destroyed when #destroy is called or GC'd.
 class SpriteImage
@@ -12,21 +17,20 @@ class SpriteImage
     @gfx = gfx
     @width = width
     @height = height
-    @id = gfx._create_sprite_image(width, height,
-                                    transparent_color,
-                                    use_transparent ? 1 : 0)
+    @id = gfx.create_sprite_image(width, height, transparent_color,
+                                  use_transparent ? true : false)
   end
 
   # Set this image as drawing target.
   # After calling this, FmrbGfx draw methods (fill_rect, draw_circle, etc.)
   # will draw onto this sprite image.
   def set_target
-    @gfx._set_sprite_image_target(@id)
+    @gfx.set_sprite_image_target(@id)
   end
 
   # Reset drawing target back to the canvas
   def reset_target
-    @gfx._set_sprite_image_target(0)
+    @gfx.set_sprite_image_target(0)
   end
 
   # Draw onto this sprite image with a block
@@ -39,13 +43,18 @@ class SpriteImage
   # Load a picture (a PNG, or an 8-bit RGB332 BMP) into this sprite image
   # (fast: decoded on the graphics side; the name is from the BMP-only days)
   def load_bmp(path)
-    @gfx._load_sprite_image_bmp(@id, path)
+    @gfx.load_sprite_image(@id, path)
   end
 
   # Destroy this sprite image and free resources
   def destroy
     return unless @id
-    @gfx._delete_sprite_image(@id)
+    begin
+      @gfx.delete_sprite_image(@id)
+    rescue RuntimeError
+      # The FmrbGfx went first (FmrbApp#destroy runs on_destroy after it):
+      # the image goes with the app's canvas.
+    end
     @id = nil
   end
 
@@ -71,7 +80,7 @@ class SpriteInstance
     @gfx = gfx
     image_list = images.is_a?(Array) ? images : [images]
     image_ids = image_list.map { |img| img.id }
-    @id = gfx._create_sprite_instance(image_ids, x, y, z)
+    @id = gfx.create_sprite_instance(image_ids, x, y, z)
     @x = x
     @y = y
     @width = image_list[0].width
@@ -87,14 +96,14 @@ class SpriteInstance
   def move(x, y)
     @x = x
     @y = y
-    @gfx._sprite_move(@id, x, y)
+    @gfx.move_sprite(@id, x, y)
     FmrbApp._hit_sprite_place(@id, x, y, @visible ? 1 : 0) if @_hit && @id
   end
 
   # Set visibility
   def visible=(v)
     @visible = v ? true : false
-    @gfx._sprite_visible(@id, v)
+    @gfx.set_sprite_visible(@id, v)
     FmrbApp._hit_sprite_place(@id, @x, @y, @visible ? 1 : 0) if @_hit && @id
   end
 
@@ -104,14 +113,19 @@ class SpriteInstance
 
   # Set animation frame index
   def frame=(index)
-    @gfx._sprite_frame(@id, index)
+    @gfx.set_sprite_frame(@id, index)
   end
 
   # Destroy this sprite instance
   def destroy
     return unless @id
     FmrbApp._hit_sprite_place(@id, @x, @y, 0) if @_hit
-    @gfx._delete_sprite_instance(@id)
+    begin
+      @gfx.delete_sprite_instance(@id)
+    rescue RuntimeError
+      # The FmrbGfx went first (on_destroy runs after it): the sprite goes
+      # with the app's canvas.
+    end
     @id = nil
   end
 

@@ -51,7 +51,7 @@ extern "C" {
  * refuses an app that imports a function it lacks, before the app starts.
  */
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0xbfef18a6u
+#define FMRB_ABI_HASH 0x84e75e43u
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -139,11 +139,24 @@ typedef struct __attribute__((packed)) {
     uint8_t transparent;  /* 0 or 1 */
 } fmrb_gfx_composite_region_t;
 
+/** FmrbGfx::video_info (4 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint16_t width;
+    uint16_t height;
+} fmrb_gfx_video_info_t;
+
 /** FmrbGfx::file_info (5 bytes, packed, little-endian) */
 typedef struct __attribute__((packed)) {
     uint8_t exists;  /* 0 or 1 */
     uint32_t size;
 } fmrb_gfx_file_info_t;
+
+/** FmrbGfx::video_status (9 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint8_t state;
+    uint32_t shown;
+    uint32_t dropped;
+} fmrb_gfx_video_status_t;
 
 /** FmrbApp#platform(): the choices of the result (a Symbol in Ruby) */
 #define FMRB_APP_PLATFORM_ESP32 0
@@ -153,6 +166,12 @@ typedef struct __attribute__((packed)) {
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_DEFAULT 0
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA 1
 #define FMRB_GFX_SET_FONT_RAW_FAMILY_JA_BOLD 2
+
+/** FmrbGfx.video_control(action): the choices of action */
+#define FMRB_GFX_VIDEO_CONTROL_ACTION_PLAY 0
+#define FMRB_GFX_VIDEO_CONTROL_ACTION_PAUSE 1
+#define FMRB_GFX_VIDEO_CONTROL_ACTION_STOP 2
+#define FMRB_GFX_VIDEO_CONTROL_ACTION_REWIND 3
 
 /**
  * アプリの名前
@@ -1301,6 +1320,129 @@ FMRB_IMPORT("gfx_clear_sprite_clip")
 int32_t fmrb_gfx_clear_sprite_clip(int32_t gfx);
 
 /**
+ * スプライトの絵を作る
+ * Make a sprite image
+ *
+ * Ruby: FmrbGfx#create_sprite_image(width, height, transparent_color, use_transparent)
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_create_sprite_image")
+int32_t fmrb_gfx_create_sprite_image(int32_t gfx, int32_t width, int32_t height, int32_t transparent_color, int32_t use_transparent);
+
+/**
+ * スプライトの絵を片づける
+ * Let go of a sprite image
+ *
+ * Ruby: FmrbGfx#delete_sprite_image(image_id)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_delete_sprite_image")
+int32_t fmrb_gfx_delete_sprite_image(int32_t gfx, int32_t image_id);
+
+/**
+ * 絵 (PNG か BMP) をスプライトの絵に読み込む
+ * Read a PNG or BMP into a sprite image
+ *
+ * Ruby: FmrbGfx#load_sprite_image(image_id, path)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_load_sprite_image")
+int32_t fmrb_gfx_load_sprite_image(int32_t gfx, int32_t image_id, const char *path, int32_t path_len);
+
+/**
+ * 描く先をスプライトの絵にする
+ * Draw into a sprite image
+ *
+ * Ruby: FmrbGfx#set_sprite_image_target(image_id)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_sprite_image_target")
+int32_t fmrb_gfx_set_sprite_image_target(int32_t gfx, int32_t image_id);
+
+/**
+ * スプライトの絵を画面に置く
+ * Place sprite images on the canvas
+ *
+ * Ruby: FmrbGfx#create_sprite_instance(image_ids, x, y, z)
+ * @param gfx the FmrbGfx receiver number
+ * @return the value
+ */
+FMRB_IMPORT("gfx_create_sprite_instance")
+int32_t fmrb_gfx_create_sprite_instance(int32_t gfx, const uint16_t *image_ids, int32_t image_ids_count, int32_t x, int32_t y, int32_t z);
+
+/**
+ * 置いた絵を片づける
+ * Let go of a placed sprite
+ *
+ * Ruby: FmrbGfx#delete_sprite_instance(instance_id)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_delete_sprite_instance")
+int32_t fmrb_gfx_delete_sprite_instance(int32_t gfx, int32_t instance_id);
+
+/**
+ * 置いた絵を動かす
+ * Move a placed sprite
+ *
+ * Ruby: FmrbGfx#move_sprite(instance_id, x, y)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_move_sprite")
+int32_t fmrb_gfx_move_sprite(int32_t gfx, int32_t instance_id, int32_t x, int32_t y);
+
+/**
+ * 置いた絵を見せるか隠すか
+ * Show or hide a placed sprite
+ *
+ * Ruby: FmrbGfx#set_sprite_visible(instance_id, visible)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_sprite_visible")
+int32_t fmrb_gfx_set_sprite_visible(int32_t gfx, int32_t instance_id, int32_t visible);
+
+/**
+ * 置いた絵の何枚目を見せるか
+ * Which frame a placed sprite shows
+ *
+ * Ruby: FmrbGfx#set_sprite_frame(instance_id, frame)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_set_sprite_frame")
+int32_t fmrb_gfx_set_sprite_frame(int32_t gfx, int32_t instance_id, int32_t frame);
+
+/**
+ * この canvas のスプライトを全部片づける
+ * Let go of every sprite on this canvas
+ *
+ * Ruby: FmrbGfx#delete_all_sprites()
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_delete_all_sprites")
+int32_t fmrb_gfx_delete_all_sprites(int32_t gfx);
+
+/**
+ * video_open の省略なしの形
+ * video_open with nothing left out
+ *
+ * Ruby: FmrbGfx#video_open_raw(path, x, y, fps, loop)
+ * @param gfx the FmrbGfx receiver number
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("gfx_video_open_raw")
+int32_t fmrb_gfx_video_open_raw(int32_t gfx, const char *path, int32_t path_len, int32_t x, int32_t y, int32_t fps, int32_t loop, fmrb_gfx_video_info_t *out);
+
+/**
+ * 描いた画面をファイルに書き出す
+ * Write the presented picture to a file
+ *
+ * Ruby: FmrbGfx#export_frame(path)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_export_frame")
+int32_t fmrb_gfx_export_frame(int32_t gfx, const char *path, int32_t path_len);
+
+/**
  * 映像の明るさを決める
  * Set the video brightness
  *
@@ -1362,6 +1504,26 @@ int32_t fmrb_gfx_file_status(int32_t gfx, const char *path, int32_t path_len, fm
  */
 FMRB_IMPORT("gfx_rgb_to_332")
 int32_t fmrb_gfx_rgb_to_332(int32_t r, int32_t g, int32_t b);
+
+/**
+ * 動画を流す・止める
+ * Play, pause, stop or rewind the video
+ *
+ * Ruby: FmrbGfx.video_control(action)
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("gfx_video_control")
+int32_t fmrb_gfx_video_control(int32_t action, fmrb_gfx_video_status_t *out);
+
+/**
+ * 動画の再生のようす
+ * The video player's state
+ *
+ * Ruby: FmrbGfx.video_status()
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("gfx_video_status")
+int32_t fmrb_gfx_video_status(fmrb_gfx_video_status_t *out);
 
 /**
  * debug の省略なしの形

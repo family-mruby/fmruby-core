@@ -60,49 +60,14 @@ typedef struct {
 #endif
 } mrb_gfx_data;
 
-// The canvas a drawer draws on and what a coordinate of the area becomes on
-// it (the origin, or nothing into a sprite image). These are for the methods
-// not on the boundary yet (video, sprites), which take the canvas's own.
-typedef struct {
-    fmrb_canvas_handle_t canvas;
-    int16_t ox, oy;   // what a drawn coordinate gets
-    int16_t ax, ay;   // the origin itself (sprite coordinates)
-} gfx_at_t;
-
-static __attribute__((unused)) bool gfx_at(const mrb_gfx_data *data, gfx_at_t *at)
-{
-    const fmrb_gfx_drawer_t *d = data ? fmrb_gfx_drawer_get(data->drawer) : NULL;
-    if (!d) {
-        return false;
-    }
-    at->canvas = (fmrb_canvas_handle_t)d->canvas;
-    at->ax = d->ox;
-    at->ay = d->oy;
-    at->ox = d->to_image ? 0 : d->ox;
-    at->oy = d->to_image ? 0 : d->oy;
-    return true;
-}
-
+#ifdef FMRB_HAVE_CHECKPOINT
 // The canvas of a bound object (data->ctx set means its drawer is open).
 static fmrb_canvas_handle_t gfx_canvas(const mrb_gfx_data *data)
 {
     const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(data->drawer);
     return d ? (fmrb_canvas_handle_t)d->canvas : FMRB_CANVAS_SCREEN;
 }
-
-// A sprite coordinate on the canvas: from the origin, also while the drawer
-// draws into a sprite image (a sprite instance is placed on the canvas).
-static int16_t gfx_sprite_x(const mrb_gfx_data *data, mrb_int v)
-{
-    const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(data->drawer);
-    return (int16_t)(v + (d ? d->ox : 0));
-}
-
-static int16_t gfx_sprite_y(const mrb_gfx_data *data, mrb_int v)
-{
-    const fmrb_gfx_drawer_t *d = fmrb_gfx_drawer_get(data->drawer);
-    return (int16_t)(v + (d ? d->oy : 0));
-}
+#endif
 
 static void gfx_drawer_release(mrb_gfx_data *data)
 {
@@ -173,13 +138,21 @@ static mrb_value mrb_gfx_initialize(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+static __attribute__((cold, noinline)) void gfx_not_initialized(mrb_state *mrb)
+{
+    mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+}
+
 // The receiver number of the app boundary's FmrbGfx functions: this
 // object's drawer (fmrb_gfx_drawer.h), which has the canvas and the origin.
-static int32_t fmrb_mrb_recv_gfx(mrb_state *mrb, mrb_value self)
+// Inlined into each generated method (a sprite's move is one per frame); a
+// drawer means ctx is set too (both are set together and cleared together:
+// initialize, destroy, a checkpoint's rebind), so the drawer alone is tested.
+static inline int32_t fmrb_mrb_recv_gfx(mrb_state *mrb, mrb_value self)
 {
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx || data->drawer < 0) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    if (__builtin_expect(!data || data->drawer < 0, 0)) {
+        gfx_not_initialized(mrb);
     }
     return data->drawer;
 }
@@ -207,7 +180,7 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
     } else {
         ret = fmrb_bnd_gfx_present_raw(gfx, 0, 0, 0);
     }
-    fmrb_gen_mrb_check(mrb, ret, "present");
+    if (ret < 0) fmrb_gen_mrb_check(mrb, ret, "present");
     return self;
 }
 
@@ -222,162 +195,6 @@ static mrb_value mrb_gfx_destroy(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// ============================================================
-// Video (not on the boundary yet: FmrbVideo has no sig)
-// ============================================================
-
-// FmrbGfx#_video_open(path, x, y, fps, loop) -> Hash {width:, height:} or nil
-// Starts (paused) a motion-JPEG file playing into this canvas at (x, y).
-// Modern/P4 only; any other backend answers with an error and this returns nil.
-static mrb_value mrb_gfx_video_open(mrb_state *mrb, mrb_value self)
-{
-    char *path;
-    mrb_int x, y, fps;
-    mrb_bool loop;
-    mrb_get_args(mrb, "ziiib", &path, &x, &y, &fps, &loop);
-
-#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
-    // Retro has no JPEG decoder and its display backend cannot read this
-    // board's filesystem. Answer immediately instead of letting the app wait
-    // out a sync timeout on a command the backend will never know.
-    //
-    // The browser is admitted alongside the P4: its display backend is the
-    // same display task, and wasm/backend/display_video_wasm.c plays the file
-    // with TJpgDec where the P4 uses its hardware engine. Note this is NOT
-    // FMRB_HW_FAMILY_MODERN, which would also let the Linux simulator in --
-    // there the display is another process that knows nothing of these
-    // commands, so every call would cost the full 10 s sync timeout instead
-    // of failing here.
-    (void)self; (void)path; (void)x; (void)y; (void)fps; (void)loop;
-    return mrb_nil_value();
-#else
-
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    gfx_at_t at;
-    if (!data || !data->ctx || !gfx_at(data, &at)) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    }
-
-    size_t path_len = strlen(path);
-    if (path_len >= 120) {
-        mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
-    }
-
-    uint8_t payload_buf[sizeof(fmrb_link_graphics_video_open_t) + 120];
-    size_t payload_len = sizeof(fmrb_link_graphics_video_open_t) + path_len;
-    fmrb_link_graphics_video_open_t *hdr =
-        (fmrb_link_graphics_video_open_t *)payload_buf;
-    hdr->canvas_id = at.canvas;
-    hdr->x         = (int16_t)(x + at.ox);
-    hdr->y         = (int16_t)(y + at.oy);
-    hdr->fps       = (uint16_t)fps;
-    hdr->flags     = loop ? FMRB_LINK_GFX_VIDEO_FLAG_LOOP : 0;
-    hdr->path_len  = (uint16_t)path_len;
-    memcpy(payload_buf + sizeof(fmrb_link_graphics_video_open_t), path, path_len);
-
-    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_opened_t)];
-    uint32_t resp_len = sizeof(resp_buf);
-    fmrb_err_t ret = fmrb_transport_send_sync(
-        FMRB_LINK_TYPE_GRAPHICS,
-        FMRB_LINK_GFX_VIDEO_OPEN,
-        payload_buf, payload_len,
-        resp_buf, &resp_len,
-        10000);
-    if (ret != FMRB_OK || resp_len < sizeof(fmrb_link_graphics_video_opened_t)) {
-        FMRB_LOGE(TAG, "video_open failed: %d (path=%s)", ret, path);
-        return mrb_nil_value();
-    }
-
-    fmrb_link_graphics_video_opened_t *resp =
-        (fmrb_link_graphics_video_opened_t *)resp_buf;
-    if (resp->result != 0) {
-        FMRB_LOGE(TAG, "video_open rejected: %u (path=%s)", resp->result, path);
-        return mrb_nil_value();
-    }
-
-    mrb_value hash = mrb_hash_new(mrb);
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "width")),
-                 mrb_fixnum_value(resp->width));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "height")),
-                 mrb_fixnum_value(resp->height));
-    return hash;
-#endif  /* FMRB_HW_MODERN */
-}
-
-// Shared tail for _video_control / _video_status: unpack the status record.
-static mrb_value video_status_hash(mrb_state *mrb, const uint8_t *buf, uint32_t len)
-{
-    if (len < sizeof(fmrb_link_graphics_video_status_t)) {
-        FMRB_LOGW(TAG, "video status: %u bytes, need %u",
-                  (unsigned)len, (unsigned)sizeof(fmrb_link_graphics_video_status_t));
-        return mrb_nil_value();
-    }
-    const fmrb_link_graphics_video_status_t *st =
-        (const fmrb_link_graphics_video_status_t *)buf;
-    mrb_value hash = mrb_hash_new(mrb);
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "state")),
-                 mrb_fixnum_value(st->state));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "shown")),
-                 mrb_fixnum_value((mrb_int)st->frames_shown));
-    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "dropped")),
-                 mrb_fixnum_value((mrb_int)st->frames_dropped));
-    return hash;
-}
-
-// FmrbGfx#_video_control(action) -> Hash status or nil
-static mrb_value mrb_gfx_video_control(mrb_state *mrb, mrb_value self)
-{
-    mrb_int action;
-    mrb_get_args(mrb, "i", &action);
-    (void)self;
-
-#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
-    (void)action;
-    return mrb_nil_value();
-#else
-
-    fmrb_link_graphics_video_control_t payload;
-    payload.action = (uint8_t)action;
-
-    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
-    uint32_t resp_len = sizeof(resp_buf);
-    fmrb_err_t ret = fmrb_transport_send_sync(
-        FMRB_LINK_TYPE_GRAPHICS,
-        FMRB_LINK_GFX_VIDEO_CONTROL,
-        (uint8_t *)&payload, sizeof(payload),
-        resp_buf, &resp_len, 5000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGW(TAG, "video control: send failed (%d)", (int)ret);
-        return mrb_nil_value();
-    }
-    return video_status_hash(mrb, resp_buf, resp_len);
-#endif  /* FMRB_HW_MODERN */
-}
-
-// FmrbGfx#_video_status -> Hash status or nil
-static mrb_value mrb_gfx_video_status(mrb_state *mrb, mrb_value self)
-{
-    (void)self;
-#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
-    return mrb_nil_value();
-#else
-    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
-    uint32_t resp_len = sizeof(resp_buf);
-    fmrb_err_t ret = fmrb_transport_send_sync(
-        FMRB_LINK_TYPE_GRAPHICS,
-        FMRB_LINK_GFX_VIDEO_STATUS,
-        NULL, 0,
-        resp_buf, &resp_len, 5000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGW(TAG, "video status: send failed (%d)", (int)ret);
-        return mrb_nil_value();
-    }
-    return video_status_hash(mrb, resp_buf, resp_len);
-#endif  /* FMRB_HW_MODERN */
-}
-
-// FmrbGfx#_create_mask(width, height, data) -> Integer
-//
 // FmrbGfx.hsv_to_rgb(h, s, v) -> [r, g, b]
 // h: 0-360, s: 0-255, v: 0-255
 static mrb_value mrb_gfx_s_hsv_to_rgb(mrb_state *mrb, mrb_value klass)
@@ -417,206 +234,6 @@ static mrb_value mrb_gfx_s_hsv_to_rgb(mrb_state *mrb, mrb_value klass)
     mrb_ary_push(mrb, ary, mrb_fixnum_value(g));
     mrb_ary_push(mrb, ary, mrb_fixnum_value(b));
     return ary;
-}
-
-// --- Sprite API bindings ---
-
-static mrb_value mrb_gfx_create_sprite_image(mrb_state *mrb, mrb_value self)
-{
-    mrb_int width, height, trans_color, use_trans;
-    mrb_get_args(mrb, "iiii", &width, &height, &trans_color, &use_trans);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    uint16_t id = fmrb_gfx_create_sprite_image(data->ctx, gfx_canvas(data),
-        (uint16_t)width, (uint16_t)height, (uint8_t)trans_color, use_trans != 0);
-    if (id == 0) mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create sprite image");
-    return mrb_fixnum_value(id);
-}
-
-// FmrbGfx#_load_sprite_image_bmp(image_id, path)
-static mrb_value mrb_gfx_load_sprite_image_bmp(mrb_state *mrb, mrb_value self)
-{
-    mrb_int image_id;
-    char *path;
-    mrb_get_args(mrb, "iz", &image_id, &path);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_load_sprite_image_bmp(&cmd, gfx_canvas(data), (uint16_t)image_id,
-                                       path);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to load BMP: %d", ret);
-    }
-    return self;
-}
-
-// FmrbGfx#_export_frame(path)
-//
-// Queued behind whatever has already been sent, so the picture written is the
-// one the last present composited. Nothing is returned and nothing waits: the
-// caller learns the write finished by finding the file (Tab5, where core and
-// display share a filesystem) or by waiting a fixed time (the simulator,
-// where they do not).
-static mrb_value mrb_gfx_export_frame(mrb_state *mrb, mrb_value self)
-{
-    char *path;
-    mrb_get_args(mrb, "z", &path);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_export_frame(&cmd, gfx_canvas(data), path);
-
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to export frame: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
-{
-    mrb_int image_id;
-    mrb_get_args(mrb, "i", &image_id);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_delete_sprite_image(&cmd, gfx_canvas(data), (uint16_t)image_id);
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "delete_sprite_image fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_set_sprite_image_target(mrb_state *mrb, mrb_value self)
-{
-    mrb_int image_id;
-    mrb_get_args(mrb, "i", &image_id);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    // Route through the host_task GFX queue so this target switch stays in
-    // order with the surrounding pixel commands. Bypassing the queue (calling
-    // fmrb_gfx_set_sprite_image_target directly) lets target=0 race past the
-    // tail of a sprite draw and clips the bottom-right pixels.
-    fmrb_gfx_drawer_set_to_image(data->drawer, image_id != 0);
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_set_sprite_image_target(&cmd, gfx_canvas(data),
-                                         (uint16_t)image_id);
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "set_sprite_image_target fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_create_sprite_instance(mrb_state *mrb, mrb_value self)
-{
-    mrb_value ary;
-    mrb_int x, y, z_order;
-    mrb_get_args(mrb, "Aiii", &ary, &x, &y, &z_order);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    mrb_int frame_count = RARRAY_LEN(ary);
-    if (frame_count <= 0 || frame_count > FMRB_SPRITE_MAX_FRAMES)
-        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid frame count");
-    uint16_t image_ids[FMRB_SPRITE_MAX_FRAMES];
-    for (mrb_int i = 0; i < frame_count; i++)
-        image_ids[i] = (uint16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i));
-    uint16_t id = fmrb_gfx_create_sprite_instance(data->ctx, gfx_canvas(data),
-        image_ids, (uint8_t)frame_count, gfx_sprite_x(data, x), gfx_sprite_y(data, y), (int16_t)z_order);
-    if (id == 0) mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create sprite instance");
-    return mrb_fixnum_value(id);
-}
-
-static mrb_value mrb_gfx_delete_sprite_instance(mrb_state *mrb, mrb_value self)
-{
-    mrb_int instance_id;
-    mrb_get_args(mrb, "i", &instance_id);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_delete_sprite_instance(&cmd, gfx_canvas(data),
-                                        (uint16_t)instance_id);
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "delete_sprite_instance fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
-{
-    mrb_int instance_id, x, y;
-    mrb_get_args(mrb, "iii", &instance_id, &x, &y);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_sprite_instance_move(&cmd, gfx_canvas(data),
-                                      (uint16_t)instance_id, gfx_sprite_x(data, x),
-                                      gfx_sprite_y(data, y));
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "sprite_move fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_sprite_visible(mrb_state *mrb, mrb_value self)
-{
-    mrb_int instance_id;
-    mrb_bool visible;
-    mrb_get_args(mrb, "ib", &instance_id, &visible);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_sprite_instance_set_visible(&cmd, gfx_canvas(data),
-                                             (uint16_t)instance_id, visible);
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "sprite_visible fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_sprite_frame(mrb_state *mrb, mrb_value self)
-{
-    mrb_int instance_id, frame_index;
-    mrb_get_args(mrb, "ii", &instance_id, &frame_index);
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_sprite_instance_set_frame(&cmd, gfx_canvas(data),
-                                           (uint16_t)instance_id,
-                                           (uint8_t)frame_index);
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "sprite_frame fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
-}
-
-static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
-{
-    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
-    if (!data || !data->ctx) return self;
-
-    gfx_cmd_t cmd;
-    fmrb_gfx_cmd_delete_all_sprites(&cmd, gfx_canvas(data));
-    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "delete_all_sprites fmrb_gfx_submit failed: %d", ret);
-    }
-    return self;
 }
 
 // FmrbGfx#_set_origin(x, y, w, h)
@@ -812,24 +429,6 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_checkpoint_rebind", mrb_gfx_checkpoint_rebind, MRB_ARGS_NONE());
     mrb_define_method(mrb, gfx_class, "_checkpoint_keep?", mrb_gfx_checkpoint_keep_p, MRB_ARGS_NONE());
 #endif
-
-    // Motion-JPEG playback (Modern/P4 only; nil elsewhere)
-    mrb_define_method(mrb, gfx_class, "_video_open", mrb_gfx_video_open, MRB_ARGS_REQ(5));
-    mrb_define_method(mrb, gfx_class, "_video_control", mrb_gfx_video_control, MRB_ARGS_REQ(1));
-    mrb_define_method(mrb, gfx_class, "_video_status", mrb_gfx_video_status, MRB_ARGS_NONE());
-
-    // Sprite API
-    mrb_define_method(mrb, gfx_class, "_create_sprite_image", mrb_gfx_create_sprite_image, MRB_ARGS_REQ(4));
-    mrb_define_method(mrb, gfx_class, "_delete_sprite_image", mrb_gfx_delete_sprite_image, MRB_ARGS_REQ(1));
-    mrb_define_method(mrb, gfx_class, "_load_sprite_image_bmp", mrb_gfx_load_sprite_image_bmp, MRB_ARGS_REQ(2));
-    mrb_define_method(mrb, gfx_class, "_export_frame", mrb_gfx_export_frame, MRB_ARGS_REQ(1));
-    mrb_define_method(mrb, gfx_class, "_set_sprite_image_target", mrb_gfx_set_sprite_image_target, MRB_ARGS_REQ(1));
-    mrb_define_method(mrb, gfx_class, "_create_sprite_instance", mrb_gfx_create_sprite_instance, MRB_ARGS_REQ(4));
-    mrb_define_method(mrb, gfx_class, "_delete_sprite_instance", mrb_gfx_delete_sprite_instance, MRB_ARGS_REQ(1));
-    mrb_define_method(mrb, gfx_class, "_sprite_move", mrb_gfx_sprite_move, MRB_ARGS_REQ(3));
-    mrb_define_method(mrb, gfx_class, "_sprite_visible", mrb_gfx_sprite_visible, MRB_ARGS_REQ(2));
-    mrb_define_method(mrb, gfx_class, "_sprite_frame", mrb_gfx_sprite_frame, MRB_ARGS_REQ(2));
-    mrb_define_method(mrb, gfx_class, "_delete_all_sprites", mrb_gfx_delete_all_sprites, MRB_ARGS_NONE());
 
     // Color utility class methods
     mrb_define_class_method(mrb, gfx_class, "hsv_to_rgb", mrb_gfx_s_hsv_to_rgb, MRB_ARGS_REQ(3));
