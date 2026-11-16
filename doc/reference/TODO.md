@@ -129,3 +129,11 @@ regress:run を代表の組 (9 本) にしたら、全部閉じた後のカー�
 - 同じ組を N 回 (例えば 10 回) 続けて開いて閉じ、回ごとに各 VM プール・内蔵 RAM・PSRAM の空きを記録する道具
   (`regress:soak` など)。回を重ねても値が落ち着けば漏れではなく、増え続けるなら漏れ。
 - 実機 (P4・S3) でも同じ台本を流せる形 (WiFi の devctl の起動・終了と、シリアルの `IRAM free` / `fmrb_app:` の行)。
+
+## 試験の GC で Spinel の文字列も掃除する・devctl に GC (2026-11-16 ユーザ、soak の結果から)
+
+doc/regression/report/soak.md: Spinel のカーネルの文字列は自分の閾値や予定でしか掃除されず、debug server の gc では
+掃除されないので、regress:run と soak の控えが 20〜60 KB の周期で揺れる (漏れではない)。決めたこと:
+- debug server の gc で Spinel の文字列の掃除も行う (試験の口だけ。ふだんの動きは変えない)。直した後に regress:run の
+  基準を取り直す。
+- 開発のビルドの devctl に「GC をかける」口を足し、実機の soak も sim と同じ測り方にする。
