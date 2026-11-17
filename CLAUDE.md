@@ -108,7 +108,7 @@ rake -T # その他のコマンドの使い方
 | `rake regress` | ホストの試験 (`rake test`) + 描画の記録の比較 | 約 35 秒 |
 | `rake regress:size` | 内蔵 RAM とファームの大きさ (S3・P4。`ALL=1` で全端末) | 約 4〜8 分 |
 | `rake regress:run` | sim のアプリごとの VM プール | 約 4.5 分 |
-| `rake regress:screens` | sim (Retro・Modern) とブラウザ版の画面 (エディタの 1 打鍵を含む) | 約 8 分 |
+| `rake regress:screens` | sim (Retro・Modern)・ブラウザ版・ネイティブ版が上がる・エディタの 1 打鍵・アプリが開いて閉じる・落ちていない (画面の中身は見ない) | 約 7 分 |
 | `rake regress:live` | 相手のいる通し (卓のゲームホスト・歩数・MIDI・音) | 約 2.5 分 |
 | `rake regress:boot BOARD=..` | 実機の起動ログ (つないだ端末だけ) | 焼かずに約 40 秒 |
 

@@ -37,15 +37,18 @@
 #                          and tolerance proposals (APPLY=1 or :apply writes
 #                          them, after a person has read the summary). The
 #                          same for a board: rake regress:boot:calibrate
-#   rake regress:screens   scripted screens (test/regress/screens/*.rb) on the
-#                          sim (Retro, Modern), the browser build and the
-#                          native program, pixel for pixel against
-#                          test/regress/screens/baseline/.
+#   rake regress:screens   does each configuration come up and run (scenes in
+#                          test/regress/screens/*.rb) on the sim (Retro,
+#                          Modern), the browser build and the native program:
+#                          the desktop boots, the editor takes a key, a few
+#                          apps open and close, no crash in the log. What the
+#                          screens look like is not compared (only regions a
+#                          scene names, against test/regress/screens/baseline/).
 #                          ONLY=retro|modern|web|native, SCENE=<text>, FULL=1 (also
 #                          everything on mruby), WEB_PORT=n (the page's server,
 #                          default 8016)
-#   rake regress:screens:update  the last run's failed or new shots become the
-#                          baseline (ONLY=, SCENE= narrow it)
+#   rake regress:screens:update  the last run's failed or new region shots
+#                          become the baseline (ONLY=, SCENE= narrow it)
 #   rake regress:live      live scenes (test/regress/live/*.rb) on the Modern
 #                          sim with their counterparts started by the tool: a
 #                          local game host (othello, board, mahjong), a step
@@ -382,13 +385,13 @@ def regress_screens_args
 end
 
 namespace :regress do
-  desc "Scripted screens on the sim, the browser build and the native program vs baseline PNGs (ONLY=retro|modern|web|native, SCENE=, FULL=1, WEB_PORT=)"
+  desc "Each configuration comes up and runs on the sim, the browser build and the native program: boot, the editor takes a key, apps open and close, no crash (ONLY=retro|modern|web|native, SCENE=, FULL=1, WEB_PORT=)"
   task :screens do
     abort "regress:screens: failed" unless system(Gem.ruby, REGRESS_SCREENS, *regress_screens_args)
   end
 
   namespace :screens do
-    desc "Write the last regress:screens run's failed or new shots as the baseline (only for a change a person has checked)"
+    desc "Write the last regress:screens run's failed or new region shots as the baseline (only for a change a person has checked)"
     task :update do
       args = ["--update"]
       args += ["--only", ENV["ONLY"]] if ENV["ONLY"]

@@ -1,6 +1,6 @@
 # 回帰の確認の使い方 (rake regress)
 
-> 状態: 進行中 | 更新: 2026-11-16 | 0 章に道具ごとの時間の目安。 `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版の画面を台本で動かして画素で比べる `rake regress:screens` は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
+> 状態: 進行中 | 更新: 2026-11-17 | 0 章に道具ごとの時間の目安。 `rake regress` 1 つでホストの試験と描画の記録の比較を流し、短い要約だけを見る。場面の足し方、端末の足し方、基準の更新の決まり。重い方 (`rake regress:full`: 全部 Spinel の構成の Spinel の生成、S3・P4 のファームの大きさと内蔵 RAM の表、sim の VM プールの表) は 7 章。実機の起動ログの比較 (`rake regress:boot`、実機がつながっているときだけ) は 8 章。sim・ブラウザ版・ネイティブ版を台本で動かして、構成ごとに上がる・エディタに打てる・アプリが開いて閉じる・落ちていないだけを見る `rake regress:screens` (画面の中身は見ない) は 9 章。アプリが外の相手 (ゲームホスト・歩数の送り手・MIDI のモニタ・音の探り) とやり取りする場面を、相手を道具が立てて流す `rake regress:live` は 10 章。ネイティブ版のコンポジタ (Linux の Window とアプリ) の一式 `rake regress:wl` は 11 章。ネイティブ版でアプリを止めて続ける・2 つのネイティブ版の間や sim・ブラウザ版・実機との間で移す (チェックポイント) `rake regress:checkpoint` は 12 章
 
 ## 0. 時間の目安 (何を流すか決める前に見る)
 
@@ -14,13 +14,13 @@
 | `rake regress:transfer:quick` | 1 分 (ネイティブ版のビルドがあれば) | Asterism のファイル転送 | Asterism・転送・ネイティブ版の網 |
 | `rake regress:transfer:install` | 20 秒 (ネイティブ版のビルドがあれば) | Asterism で届いたアプリのインストール (doc/wasm_apps W6) | 転送のアプリの種類 `app`・`app_package.rb`・確認の Window・ランチャーの読み直し・wasm の import の照合 |
 | `rake regress:boot BOARD=.. FLASH=0` | 40 秒 | 実機の起動 | 実機がつながっているとき |
+| `rake regress:screens ONLY=web` | 2 分ほど (ブラウザ版のビルドがあれば) | ブラウザ版が上がる・動く | wasm・ブラウザ版だけの変更 |
 | `rake regress:live` | 2.5 分 (full の中では 1 分) | 入力・音・ゲームホスト・歩数・MIDI | 入力・音・Asterism の相手 |
-| `rake regress:screens ONLY=web` | 3.5 分 | ブラウザ版の画面 | wasm・ブラウザ版だけの変更 |
 | `rake regress:run` | 5.5 分ほど (見込み。2026-11-16 にアプリを 4 つから 9 つ (Retro は 8 つ) に増やした。変更前の木と比べるなら 2 倍) | sim の VM プール | アプリの起動・基底・Ruby の常駐物 |
 | `rake regress:soak` | 17〜20 分 (2026-11-16 実測: 10 回が Modern 7.1 分・Retro 6.5 分 + ビルド 2 回。`SPLIT=1` は 34 分、`ROUNDS=30` は Modern の全部で 22 分) | アプリの出入りで VM プールが増え続けないか | アプリの起動と終了・カーネルの表・エンジンの後始末 |
 | `rake regress:size` | 4〜8 分 (S3・P4 の 2 台、clean から) | 内蔵 RAM とファームの大きさ | C の静的なデータ・部品・sdkconfig |
 | `rake regress:checkpoint` | 7 分 (SIM=1 は 15〜17 分) | アプリを運ぶ | 起動・復元・Window・座標・Asterism の移動 |
-| `rake regress:screens` | 8 分 (Retro・Modern・web・native) | 画面の画素 | 描画・画面の配置・ランチャー |
+| `rake regress:screens` | 7 分 (Retro・Modern・web・native。`FULL=1` は 11 分。2026-11-17 実測、うち sim のビルドが 1 構成 1.1〜1.6 分) | 構成ごとに上がる・エディタに打てる・アプリが開いて閉じる・落ちていない (画面の中身は見ない) | 起動・カーネル・エディタ・アプリの起動と終了・構成ごとのビルド |
 | `rake regress:size ALL=1` | 10 分 | 全端末の大きさ | 端末ごとの sdkconfig・区画 |
 | `rake regress:wl` | 14〜18 分 (絞る口なし) | ネイティブ版のコンポジタ | Linux の Window まわり |
 | `rake regress:full` | 50 分 (2026-11-15 実測。wl 14・checkpoint SIM=1 15 を含む) | boot 以外の全部 | 区切り・公開の前 |
@@ -121,7 +121,7 @@ end
 
 - 本当の画素 (フォントの字形、LovyanGFX の角丸の描き方、合成、透過色)。記録は「何をどこに描くよう頼んだか」まで。
 - 音、実機の入力 (タッチは相対移動)、表示の後段 (HDMI・NTSC)、Spinel のプログラム (デスクトップ・エディタ・シェル。CRuby では読めない)。
-- これらは sim・ブラウザ版の画面の比較 (`rake regress:screens`、9 章) と実機で見る。
+- これらは sim・ブラウザ版で撮って目視するか領域を指定した比較 (`rake regress:screens` の `shot(rect:)`、9.2) と、実機で見る。`rake regress:screens` 自体は画面の中身を見ず、構成ごとに上がる・動くだけを見る (9 章)。
 
 ## 7. 重い方: RAM とフットプリント (rake regress:full)
 
@@ -276,69 +276,88 @@ ruby ../tools/fmrb_rd_fs.rb <IP> df                                    # 空き 
 - `rake regress:checkpoint BOARD=` (12 章) は自分で要るものだけを送り、終わりに消す (元から無かったものは消える)。
 - `rake regress:boot` は試験のアプリを使わない。
 
-## 9. 画面の比較 (rake regress:screens)
+## 9. 起動と動作の確認 (rake regress:screens)
+
+構成ごとに「上がる・動く」だけを見る (2026-11-17 から。report/rg7.md)。**画面の中身は見ていない**。描画の中身は描画の記録 (`rake regress`) が受け持つ。変えた所の反映は、sim で撮って目視するか、領域を指定した比較 (`shot(rect:)`、9.2) で見る。
 
 ```
-rake regress:screens                    # sim の Retro・Modern (標準構成)・ブラウザ版・ネイティブ版で全場面 (9 分ほど)
+rake regress:screens                    # sim の Retro・Modern (標準構成)・ブラウザ版・ネイティブ版 (sdl・sdl_keys) (7 分ほど)
 rake regress:screens ONLY=modern        # 1 つだけ (retro・modern・web・native。FULL=1 のときは modern で modern-mruby も)
 rake regress:screens SCENE=editor       # 名前にこの文字を含む場面だけ (カンマで複数)
-rake regress:screens FULL=1             # 全 mruby の構成 (retro-mruby・modern-mruby) も足す (12.5 分ほど)
-rake regress:screens:update             # 前回の結果のうち落ちた・基準の無い写しを基準にする (5 章の決まりを守る)
-ruby tools/regress/screens.rb --list    # 場面と、それを流す構成の一覧、基準の大きさ
+rake regress:screens FULL=1             # 全 mruby の構成 (retro-mruby・modern-mruby) も足す (11 分ほど)
+rake regress:screens:update             # 前回の結果のうち落ちた・基準の無い領域の写しを基準にする (5 章の決まりを守る)
+ruby tools/regress/screens.rb --list    # 場面と、それを流す構成の一覧、領域の基準の数と大きさ
 ruby tools/regress/screens.rb --attach modern   # もう動いている sim (web なら --port のページ、native なら
                                                 # tools/fmrb_native.rb up で起こしたもの) に台本だけ流す
 ```
 
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
-- 構成は 6 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)、`native` (Linux のネイティブ版、標準構成、機種の定義 `sdl`。doc/linux_native/)。
-- 流れ: sim の構成ごとに clean:linux → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016。塞がっていれば空いている port、13 章)** とヘッドレスのブラウザを起こし、ランチャーの決まった一覧を置き (9.4)、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
+- 構成は 7 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)、`native` (Linux のネイティブ版、標準構成、機種の定義 `sdl`。doc/linux_native/)、`native-keys` (同じネイティブ版を機種の定義 `sdl_keys` で: 320x170、キーだけのデスクトップ。`ONLY=native` に入る)。
+- 構成ごとに見ること:
+
+| 場面 | 構成 | 見ること |
+|---|---|---|
+| (起動) | 全部 | デスクトップの「Boot complete」(sim・ネイティブ版はコアのログ、ブラウザ版はページが 2 回続けて答える) |
+| `boot`・`keys_boot` | 全部 | 画面が真っ黒でない・1 色でない |
+| `editor_type`・`keys_editor_type` | 全部 | メニューからエディタを開く: Window の出る範囲がデスクトップから変わり、プロセスの一覧 (sim・ネイティブ版) にエディタがいる。`a` を 1 打鍵して、エディタの 1 行目の範囲が変わる |
+| `apps` | sim・web・native | パスで kamon・picoruby の見本・Lua の見本を順に開き、並べて動かす。それぞれ Window の出る範囲が変わり、プロセスの一覧にいる。1 秒置いてもまだいる。kill して一覧から消える (ブラウザ版はプロセスの一覧が無いので、開いたことは launch の答え (pid、無いパスは失敗) と Window で見て、閉じるのは道具の読み直し) |
+| `keys_switcher` | native-keys | エディタとシェルを開いて両方が一覧にいる、切り替えの一覧が出て Esc で戻る |
+| `fmgr_remember`・`keys_fmgr_remember` | retro・modern・native・native-keys | ファイルマネージャを開いて alpha へ入り、閉じて開き直すと alpha のまま (同じ回の写し同士で比べる) |
+| `alive` (場面の後) | 全部 | まだ動いている (sim・ネイティブ版は debug server がプロセスの一覧を返す、ブラウザ版はページが `running=true` を返す) と、コアのログにクラッシュの印 (`Guru Meditation`・`abort()`・`Backtrace:`・`Segmentation fault`・`stack overflow` など。`tools/regress/screens/drivers.rb` の `CRASH`) が無いこと。ブラウザ版はログを道具から読めないので印は見ていない |
+
+- 流れ: sim の構成ごとに clean:linux → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に → `alive`。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016。塞がっていれば空いている port、13 章)** とヘッドレスのブラウザを起こし、ランチャーの決まった一覧を置き (9.4)、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
 - **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザは `wasm/build/drive_browser.pid` の印で見る。印の pid がもう無い (Windows の Chrome のときは、プロファイル `fmrb_drive` の chrome.exe も無い) なら古い印として消して進む (`web: removed a stale ...` と出る)。ブラウザ版の port (8016) が塞がっているときは止まらず、空いている port を使う (13 章)。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build-linux/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby はその場で作り直す。印も新しくなる)。
-- 出力は落ちたものだけ。通ったときは 2 行 (`build-linux/: linux sim (retro)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
+- 出力は落ちたものだけ。通ったときは 2 行 (`build-linux/: linux sim (retro)` と `screens: N passed / 0 failed (...)`。N は通った場面と `alive` の数)。落ちたときは 1 行に何を見て落ちたかを出す (6 つまで):
+  - `FAIL modern editor_type: the typed key in the editor's text: nothing changed in [4, 30, 40, 22] within 10s (screen: tmp/regress/screens/out/modern/editor_type.fail.png)` (確認の名前・見ていた範囲・落ちたときの画面の写し)
+  - `FAIL modern apps: /app/demo/x.app.rb did not open (...)`、`... is not in the process list within 10s`、`... is still in the process list 10s after the kill`
+  - `FAIL modern alive: 1 crash line in the core's log (docker logs fmruby_core), the first: ...`
+  - `FAIL modern fmgr_remember: the desktop did not come back (N px in [...]; tmp/regress/screens/out/modern/fmgr_remember.left.png)` (下の「デスクトップへ戻る」)
+  - 領域の比較: `FAIL <構成> <場面>: <画素数> px of the region [x, y, w, h] in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png`
 
 ### 9.1 台本の書き方
 
 `test/regress/screens/*.rb` に書く (ファイル名の順に流れる)。共通の手順は `helpers.rb`。
 
 ```ruby
-Regress::Screens.scene "editor_type", on: %w[modern retro web modern-mruby retro-mruby] do |s|
-  s.open_editor      # helpers.rb: デスクトップのメニューから開き、Window が出るまで待つ
+Regress::Screens.scene "editor_type", on: %w[modern retro web native modern-mruby retro-mruby] do |s|
+  s.open_editor      # helpers.rb: メニューから開き、Window の範囲が変わり、一覧にいるまで待つ
   s.mark             # 今の画面を覚える
   s.key "a"
-  s.wait_change      # 覚えた画面から変わるまで
-  s.park             # ポインタを決まった場所へ
-  s.shot             # 落ち着くのを待って基準と比べる
+  s.wait_change(s.editor_text_rect, what: "the typed key in the editor's text")  # その範囲が変わるまで
 end
 ```
 
-- 入力: `key`・`text`・`click(x, y)`・`move`・`press`・`release`・`wheel` (tools/fmrb_input.rb・fmrb_web.rb と同じ言葉)。`launch(path)`・`open_app(path)` はパスでアプリを開く: sim とネイティブ版は debug server の spawn、ブラウザ版はページの launch の口 (`fmrb_web.rb launch PATH`、wasm/backend/launch_wasm.c)。ランチャーの何番目かで開くことはしない (アプリが増えると別のアプリが開く)。`seed_fm` はファイルマネージャの決まった木を置く (9.4)。
-- 待つ: 時間ではなく画面で待つ。`wait_stable(quiet: 1.0)` (その秒数だけ画面が変わらなくなるまで)、`wait_change(rect)` (直前の入力の前の画面、か `mark` した画面から変わるまで)、`wait_until("説明") { |img| ... }`・`wait_pixel(x, y, [r, g, b])`、`wait_log(/re/)` (sim のコアのログ)。どれも上限の秒数を持ち、超えたら場面が落ちる。`pause(ms)` は最後の手段。
-- `shot(名前 = nil, quiet:, timeout:, rect:)`: 画面が落ち着くのを待ち、基準があればそれと同じになるまで最大 timeout 秒 (既定 8) 待ってから比べる。1 つの場面で何枚撮ってもよい (名前を付ける)。
-- 隠す範囲: `mask(x, y, w, h)` はその場面のすべての比較と待ちから外す。helpers.rb の `before_scene` が全場面でメニューバーの時計 (日付と秒、右端から 90 px) と、置いたポインタの所を隠す。
-- 各場面はデスクトップに何も開いていない状態から始まる。場面の後で、道具は場面が開いたアプリを閉じ (sim はプロセスの一覧で、ブラウザ版はページの読み直しで)、**デスクトップが起動直後の画面と画素で同じに戻ること**を確認する。戻らないとその場面が落ちる (ダイアログを閉じた跡が残る不具合を拾う)。デスクトップのダイアログ (メニュー・ランチャー・Config) は場面の中で自分で閉じる。
-- テーマが違う: sim は Light、ブラウザ版は Cyberpunk (設定の既定)。Window の題の色・ボタンの色は helpers.rb の `title_rgb`・`button_rgb` が構成ごとに返す。ネイティブ版は sim と同じ Light だが、写しが合成済みの RGB565 そのもの (sim の写しは graphics-audio の RGB332 を通る) なので、同じ赤でも値が少し違う (`native?` で分ける)。今のネイティブ版の場面は `desktop` と `editor_type` の 2 つ。
+- 場面は、落ちずに終わり、何か 1 つでも確かめた (`what:` を付けた待ち、`wait_until`・`wait_log`・`wait_running` など) ときに通る。何も確かめずに終わると `nothing compared or confirmed` で落ちる。
+- 入力: `key`・`text`・`click(x, y)`・`move`・`press`・`release`・`wheel` (tools/fmrb_input.rb・fmrb_web.rb と同じ言葉)。`launch(path)` はパスでアプリを開いて pid を返す: sim とネイティブ版は debug server の spawn、ブラウザ版はページの launch の口 (`fmrb_web.rb launch PATH`、wasm/backend/launch_wasm.c)。開けないパスはその場面の失敗。helpers.rb の `open_app_checked(path)` は開いて、Window の範囲が変わり、一覧にいるまでを見る。ランチャーの何番目かで開くことはしない (アプリが増えると別のアプリが開く)。`seed_fm` はファイルマネージャの決まった木を置く (9.4)。
+- プロセス: `apps` (`{pid => 名前}`、ブラウザ版は nil)、`wait_running(pid, 説明)`、`close_app(pid, 説明)` (kill して一覧から消えるまで)。helpers.rb の `wait_app_named(/re/, 説明)`・`wait_for_apps(説明) { |list| ... }`。
+- 待つ: 時間ではなく画面で待つ。`wait_change(rect, what:)` (直前の入力 (か launch) の前の画面、か `mark` した画面から、その範囲が変わるまで)、`wait_differs(写し, rect)`・`wait_same(写し, rect)` (場面が持っている写し、たとえば `desktop_at_rest` (起動直後のデスクトップ) との違い・一致)、`wait_not_blank(説明)`、`wait_stable(quiet: 1.0)`、`wait_until("説明") { |img| ... }`・`wait_pixel(x, y, [r, g, b])`、`wait_log(/re/)` (sim・ネイティブ版のコアのログ)。どれも上限の秒数を持ち、超えたら場面が落ちる。`pause(ms)` は最後の手段。
+- 範囲 (rect) の決め方: **メニューバー・タスクバー・時計・空きメモリの数字・Window の枠と題 (テーマで変わる) を入れない**。変わるはずの所 (新しい Window の本体: `window_body_rect`、エディタの 1 行目: `editor_text_rect`) か、同じ回の写しと比べる広い所 (`below_menu_bar_rect`) にする。どれも helpers.rb にある。
+- 隠す範囲: `mask(x, y, w, h)` はその場面のすべての待ちと比較から外す。helpers.rb の `before_scene` が全場面でメニューバーの時計 (日付と秒、右端から 90 px) と、置いたポインタの所を隠す。
+- **デスクトップへ戻る**: 各場面はデスクトップに何も開いていない状態から始まる。場面の後で、道具は場面が開いたアプリを閉じ (sim・ネイティブ版はプロセスの一覧で、ブラウザ版はページの読み直しで)、デスクトップが**同じ回の起動直後の写し**と同じ画面に戻ることを確認する (基準の PNG は使わない。時計は隠している)。戻らないとその場面が落ちる (ダイアログを閉じた跡が残る不具合を拾う)。デスクトップのダイアログ (メニュー・ファイルマネージャ) は場面の中で自分で閉じる。
+- 構成の違い: 新しい Window はどの構成でも左上に出る (開いているものがあると少しずつ下へ)。ネイティブ版の `sdl_keys` はアプリを帯の下に全画面で出し、ポインタが無い (キーだけで動かす)。
 
-### 9.2 基準と落ちたとき
+### 9.2 領域の比較と基準、落ちたとき
 
-- 基準は `test/regress/screens/baseline/<構成>/<場面>.png` (git に入れる。30 枚で 160 KB ほど)。今回の写しは `tmp/regress/screens/out/`、差分の絵は `tmp/regress/screens/diff/` (基準を灰色に、違う画素を赤紫、隠した範囲を紺で塗ったもの)、結果の一覧は `tmp/regress/screens/results.json`、sim のコアのログは `tmp/regress/screens/<構成>.log`。
-- 落ちたら差分の絵と写しを見る。意図した変化なら、人が確認してから `rake regress:screens:update` (前回の結果の落ちた・新しい写しだけを基準に写す。流し直さない)。
-- 場面を足したら一度流すと `NEW ... no baseline` と出る。写しを見て、思ったとおりなら `rake regress:screens:update`。
+- `shot(名前 = nil, rect:, quiet:, timeout:)` は**指定した領域だけ**を基準と比べる道具として残している。画面全体は比べない (rect の無い shot は落ちる。`rake regress:live` の場面だけは画面全体の shot が使える)。基準は `test/regress/screens/baseline/<構成>/<場面>.png` で、**その領域だけの PNG**。領域には上の「入れない物」を入れない。
+- 今 (2026-11-17) は領域の基準を 1 枚も置いていない (どの場面も確認だけで判定できるため)。置くなら数枚まで。
+- 今回の写しは `tmp/regress/screens/out/` (落ちた場面の画面は `<場面>.fail.png`、戻らなかったデスクトップは `<場面>.left.png`)、領域の差分の絵は `tmp/regress/screens/diff/`、結果の一覧は `tmp/regress/screens/results.json` (通った場面ごとに確かめたこと (`confirmed`) の一覧も入る)、sim のコアのログは `tmp/regress/screens/<構成>.log`。
+- 落ちたら、その行の確認の名前と範囲、写しを見る。領域の比較が意図した変化で落ちたなら、人が確認してから `rake regress:screens:update` (前回の結果の落ちた・新しい領域の写しだけを基準に写す。流し直さない)。領域の shot を足したら一度流すと `NEW ... no baseline` と出る。
 - 場面を書くときは `--attach`: sim を `--keep` を付けて流すと最後の構成の sim を起こしたまま (build-linux/ も退避したまま) 終わるので、`ruby tools/regress/screens.rb --attach modern --scene <名前>` を繰り返す。済んだら `docker compose ... down` と `ruby tools/regress/size.rb --restore`。
 
-### 9.3 画面の比較で分からないこと
+### 9.3 この道具で分からないこと
 
-- 音、実機の入力、表示の後段 (HDMI・NTSC)、実機だけの初期化。sim とブラウザ版の画面は実機と同じ描画の部品 (LovyanGFX) を通るが、Retro の実機は WROVER の側で描くので、Retro の実機の画素は見ていない。
-- 時計の中身と日付 (隠している)。
+- **画面の中身** (メニューバー・Window・アプリの絵が正しいか、字形、色)。変えた所の反映は sim で撮って目視するか、領域を指定した比較で見る。描いた中身は描画の記録 (`rake regress`) が見る。
+- 音、実機の入力、表示の後段 (HDMI・NTSC)、実機だけの初期化。Retro の実機は WROVER の側で描く。
+- ブラウザ版のアプリが今も動いているか (プロセスの一覧が無い。launch の答えと Window で見る) と、ブラウザ版のコアのログ (ブラウザの console に出るので、道具から読めない)。
 - 本物の `flash/app` の一覧 (ランチャー・ファイルマネージャは決まった組を見せる、9.4)。
 
-### 9.4 決まった組 (アプリを足しても基準が動かないように)
+### 9.4 決まった組 (アプリを足しても結果が動かないように)
 
-一覧を写す場面は、本物の `flash/app` ではなく、回帰専用の決まった組を見せる (`tools/regress/fixtures.rb`)。アプリを 1 本足しても、ランチャー・ファイルマネージャの基準と sim の VM プールの基準 (7.2) は動かない。
+一覧を見せる場面は、本物の `flash/app` ではなく、回帰専用の決まった組を見せる (`tools/regress/fixtures.rb`)。アプリを 1 本足しても、ファイルマネージャの場面と sim の VM プールの基準 (7.2) は動かない。
 
-- **ランチャー**: `test/regress/fixtures/launcher_index` (本物のアプリ 12 本の索引。ルビー・BASIC・Python・Lua・wasm・アプリ自身の絵の印、2 行の名前を含む)。デスクトップは起動時に索引のキャッシュ (`/var/cache/launcher_index`) があれば /app を歩かずにそれを使うので、起動の前にこれを置く。sim は checkout の `flash/var/cache/` に置いて、構成が終わったら消す (次に誰かが起こす sim は /app を歩き直す)。ネイティブ版はその回のキャッシュの場所に、ブラウザ版はページの seed (`fmrb_web.rb seed LOCAL /flash/var/cache/launcher_index`。そのタブの起動のたびにページが書く) で置く。組込みの 3 つ (Shell・Editor・App Store) は索引に入らず、いつも先頭に出る。
+- **ランチャー**: `test/regress/fixtures/launcher_index` (本物のアプリ 12 本の索引)。デスクトップは起動時に索引のキャッシュ (`/var/cache/launcher_index`) があれば /app を歩かずにそれを使うので、起動の前にこれを置く。sim は checkout の `flash/var/cache/` に置いて、構成が終わったら消す (次に誰かが起こす sim は /app を歩き直す)。ネイティブ版はその回のキャッシュの場所に、ブラウザ版はページの seed (`fmrb_web.rb seed LOCAL /flash/var/cache/launcher_index`。そのタブの起動のたびにページが書く) で置く。今のランチャーを開く場面は無いが、起動の時間と中身を揃えるために置いている。
 - **ファイルマネージャ**: 場面の頭で `s.seed_fm` が `/tmp/regress_fm` の小さな木 (alpha・beta・gamma.txt、alpha の下に 3 つのファイルと sub) とファイルマネージャの状態 (`/tmp/file_manager.state.toml`、開く場所をそこに) を置く。ファイルマネージャは "/" や /app でなくそこから開く。sim では checkout の `flash/tmp/` に置き、構成の後で木を消して状態を前のものに戻す。ネイティブ版はその回のキャッシュの場所 (毎回空から)。
-- 組を変えたら (索引の行を足す・ファイルを変える)、その場面の基準を見直す。本物のアプリの絵の印や名前の付け方を変えたときは、索引に載っているアプリなら基準が変わる (見た目の変化として正しい)。
-- メニューバーの空きメモリの欄は、sim・ネイティブ版では `---KB` のまま、ブラウザ版には無いので隠していない。時計は全場面で隠している (9.1)。
-- 見た目そのものを比べる場面 (デスクトップ・メニュー・Config・ランチャー・エディタの 1 打鍵・picoruby の図形と日本語・kamon・walk_scroller・ファイルマネージャ) は画素で比べる。「開いた」だけを見る場面は今は無い (2026-11-16 に見直し、report/hardening.md)。
+- 2026-11-16 までは、見た目そのものを比べる場面 (デスクトップ・メニュー・Config・ランチャー・エディタの 1 打鍵・picoruby の図形と日本語・kamon・walk_scroller・ファイルマネージャ) を画面全体の画素で比べていた。メニューバーのように全画面に映る物を変えると基準がほぼ全部作り直しになるのでやめた (report/rg7.md)。
 
 ## 10. 相手のいる通し (rake regress:live)
 
