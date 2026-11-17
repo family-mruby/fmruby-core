@@ -24,7 +24,7 @@
 # the two halves, since a Spinel VM's numbers saw-tooth). Anything that
 # grows fails the run.
 #
-# Sim: the same build and boot as regress:run (clean_all, build:linux with
+# Sim: the same build and boot as regress:run (clean:linux, build:linux with
 # the family's pinned options, the developer's build/ moved aside and put
 # back, the fixed launcher index), then the rounds on one boot. The numbers
 # of a round: a full collection in every app, then the debug server's ps
@@ -233,12 +233,12 @@ module Regress
       FileUtils.mkdir_p(OUT)
       results = []
       errors = []
-      tree = BuildTree.new(CORE)
+      tree = BuildTree.new(CORE, :linux)
       if opts[:no_build]
         raise "--no-build takes one family (ONLY=retro|modern)" unless fams.size == 1
         have = tree.describe
         want = "linux sim (#{fams[0][0]})"
-        raise "--no-build: build/ holds #{have}, #{want} wanted" unless have == want
+        raise "--no-build: build-linux/ holds #{have}, #{want} wanted" unless have == want
       else
         tree.stash!
       end
@@ -263,7 +263,7 @@ module Regress
         SR.down if SR.core_running?
         FileUtils.rm_f(PROBE_FILE)
         FileUtils.rm_f(SR::LAUNCHER_CACHE)
-        puts "build/: #{tree.restore!}" unless opts[:no_build]
+        puts "build-linux/: #{tree.restore!}" unless opts[:no_build]
       end
       [results, errors]
     end
@@ -350,7 +350,7 @@ module Regress
       end
       cmd = ["docker", "run", "--rm", "-u", "root", "--pid=container:fmruby_core", "--cap-add=SYS_PTRACE",
              "-v", "#{CORE}:/project", GDB_IMAGE, "gdb", "-batch", "-ex", "set pagination off",
-             "-ex", "set sysroot /proc/#{pid}/root", "-ex", "file /project/build/fmruby-core.elf",
+             "-ex", "set sysroot /proc/#{pid}/root", "-ex", "file /project/build-linux/fmruby-core.elf",
              "-ex", "attach #{pid}", *exprs, "-ex", "detach"]
       _, out = SR.sh(*cmd)
       live = out.scan(/^I(\d) (0x[0-9a-f]+)/).reject { |_i, p| p == "0x0" }.map(&:first)

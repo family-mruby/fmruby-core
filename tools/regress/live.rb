@@ -15,7 +15,7 @@
 #   ruby tools/regress/live.rb --update         # the last run's failed or new checks become the baseline
 #   ruby tools/regress/live.rb --list
 #   ruby tools/regress/live.rb --attach modern  # against a sim that is up (writing scenes)
-#   ruby tools/regress/live.rb --keep           # leave the sim up (and build/ stashed)
+#   ruby tools/regress/live.rb --keep           # leave the sim up (and build-linux/ stashed)
 #
 # The scenes are written as the screen scenes (tools/regress/screens/dsl.rb,
 # test/regress/live/*.rb) with a few more words: s.counterpart, s.check,

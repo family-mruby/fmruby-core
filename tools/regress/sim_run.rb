@@ -12,7 +12,7 @@
 #   ruby tools/regress/sim_run.rb --apply       # the last calibration becomes the baseline
 #
 # For each family (the first board of that family with firmware in
-# targets.rb): clean_all, `rake build:linux` with that board's
+# targets.rb): clean:linux, `rake build:linux` with that board's
 # FMRB_HW_TARGET and the pinned options (FIRMWARE_ENV), the three
 # containers headless, then the scenario:
 #
@@ -308,14 +308,14 @@ module Regress
       tree.keep_for_later!
     end
 
-    # clean_all and build:linux (or, inside rake regress:full, the same
+    # clean:linux and build:linux (or, inside rake regress:full, the same
     # build an earlier part made: BuildTree#sim_build!)
     def build(family, t, tree)
       FileUtils.mkdir_p(OUT)
       blog = File.join(OUT, "#{family}.build.log")
       ok, bsecs, = tree.sim_build!(t.firmware_env, blog)
       raise "build:linux for #{t.firmware} failed (#{blog.sub("#{CORE}/", '')})" unless ok
-      raise "build/fmruby-core.elf is not an x86-64 build after build:linux" unless elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
+      raise "build-linux/fmruby-core.elf is not an x86-64 build after build:linux" unless elf_x86?(tree.elf)
       bsecs
     end
 
@@ -508,7 +508,7 @@ module Regress
         raise "a sim stack is already running (someone's?); leave it or take it down first" if core_running?
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
         raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless elf_x86?(ga)
-        tree = BuildTree.new(CORE)
+        tree = BuildTree.new(CORE, :linux)
         tree.stash!
         @ours = true
         begin
@@ -524,7 +524,7 @@ module Regress
           end
         ensure
           down if core_running?
-          puts "build/: #{tree.restore!}"
+          puts "build-linux/: #{tree.restore!}"
         end
       end
       errors.each { |e| puts "FAIL #{e}" }
@@ -577,7 +577,7 @@ module Regress
       cals = {}
       errors = []
       timings = []
-      tree = BuildTree.new(CORE)
+      tree = BuildTree.new(CORE, :linux)
       tree.stash!
       @ours = true
       begin
@@ -596,7 +596,7 @@ module Regress
         end
       ensure
         down if core_running?
-        puts "build/: #{tree.restore!}"
+        puts "build-linux/: #{tree.restore!}"
       end
       errors.each { |e| puts "FAIL #{e}" }
       cals.each { |f, cal| puts calibration_summary(f, cal, doc) }

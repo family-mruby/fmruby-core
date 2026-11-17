@@ -15,7 +15,7 @@
 #                                                  # --port) that is already up: no build, nothing
 #                                                  # started or stopped (writing scenes)
 #
-# For each sim configuration: clean_all, `rake build:linux` with the board's
+# For each sim configuration: clean:linux, `rake build:linux` with the board's
 # pinned options (targets.rb FIRMWARE_ENV; the -mruby ones with the kernel,
 # desktop and editor on mruby), the three containers headless, the desktop's
 # boot, then every scene of that configuration, each from the desktop with
@@ -171,7 +171,7 @@ module Regress
         check_web_free! if web
         ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
         raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" if !sims.empty? && !SimRun.elf_x86?(ga)
-        tree = BuildTree.new(CORE)
+        tree = BuildTree.new(CORE, :linux)
         tree.stash!
         begin
           SimRun.current_first(sims, &:family).each { |c| run_sim_config(c, tree) }
@@ -180,9 +180,9 @@ module Regress
         ensure
           SimRun.down if SimRun.core_running? && !@opts[:keep]
           if @opts[:keep]
-            puts "build/: left as is (--keep); put it back with: ruby tools/regress/size.rb --restore"
+            puts "build-linux/: left as is (--keep); put it back with: ruby tools/regress/size.rb --restore"
           else
-            puts "build/: #{tree.restore!}"
+            puts "build-linux/: #{tree.restore!}"
           end
         end
         run_web_config(web) if web && @web_built
@@ -226,7 +226,7 @@ module Regress
         blog = File.join(out_dir, "#{config.name}.build.log")
         ok, bsecs, cached = tree.sim_build!(config.env, blog)
         raise "build:linux for #{config.name} failed (#{rel(blog)})" unless ok
-        raise "build/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
+        raise "build-linux/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(tree.elf)
         t0 = now
         bring_up(config)
         driver = SimDriver.new(SimRun, tmp_dir)
@@ -418,9 +418,9 @@ module Regress
       end
 
       # spinel:gen with the standard options (the sim builds may have left
-      # another configuration's programs), the wasm libmruby (clean_all took
-      # it) and the bundle. The fresh libmruby replaces the stashed one, so
-      # the developer gets a current one back.
+      # another configuration's programs), the wasm libmruby (in place: the
+      # sim's stash leaves it alone, so this is usually up to date) and the
+      # bundle, which stamps wasm/build for the stale-build guard.
       def build_web(tree)
         log = File.join(out_dir, "web.build.log")
         cfg = Screens.configs.find { |c| c.kind == :web }
@@ -479,8 +479,7 @@ module Regress
 
       # spinel:gen when the browser build did not just run it (the sim builds
       # may have left another configuration's programs), the native libmruby
-      # (clean_all took it) and the program. The fresh libmruby replaces the
-      # stashed one, as the browser's does.
+      # (in place, as the browser's) and the program.
       def build_native(tree, gen:)
         log = File.join(out_dir, "native.build.log")
         cfg = Screens.configs.find { |c| c.kind == :native }

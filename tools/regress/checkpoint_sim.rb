@@ -114,7 +114,7 @@ module Regress
       # Every configuration's families, build/ borrowed for the time.
       def run_sims(configs)
         return [] if sim_families.empty?
-        tree = BuildTree.new(CORE)
+        tree = BuildTree.new(CORE, :linux)
         begin
           tree.stash!
         rescue RuntimeError => e
@@ -132,7 +132,7 @@ module Regress
         ensure
           SimRun.down if SimRun.core_running?
           sim_asterism_teardown
-          lines << "build/: #{tree.restore!}"
+          lines << "build-linux/: #{tree.restore!}"
         end
         lines
       end
@@ -152,7 +152,7 @@ module Regress
         blog = File.join(OUT, "sim_#{config}_#{family}.build.log")
         ok, bsecs, cached = tree.sim_build!(sim_env(config, family), blog)
         raise Failure, "build:linux failed (#{blog.sub("#{CORE}/", '')})" unless ok
-        raise Failure, "build/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(File.join(CORE, "build", "fmruby-core.elf"))
+        raise Failure, "build-linux/fmruby-core.elf is not an x86-64 build" unless SimRun.elf_x86?(tree.elf)
         screen = family == NOJA ? "modern" : family
         sim_up(screen)
         down_if_running

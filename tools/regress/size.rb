@@ -297,7 +297,13 @@ module Regress
       end.parse!(argv)
       tree = BuildTree.new(CORE)
       if opts[:restore_only]
-        puts "build/: #{tree.restore!}"
+        # Whatever a killed run left: the ESP32 build's stash and the sim's.
+        kinds = BuildTree.stashed_kinds(CORE)
+        raise "nothing to restore (no stash of build/ or build-linux/)" if kinds.empty?
+        kinds.each do |k|
+          t = BuildTree.new(CORE, k)
+          puts "#{t.root}/: #{t.restore!}"
+        end
         return 0
       end
       sel = boards(opts[:only], opts[:all])
