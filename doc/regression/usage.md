@@ -32,6 +32,8 @@
 | `rake build:linux` (`build-linux/`、clean から。2026-11-17 実測) | 1.5 分ほど |
 | `rake build:linux` (小さい変更の後) | 30 秒ほど |
 | `rake build:esp32` (1 機種、clean から) | 3 分前後 |
+| `rake build:esp32` (変更なし・sim から切り替えた直後。2026-11-17 実測、NARYAv4) | 4 秒ほど |
+| `rake build:esp32` (main/ の .c を 1 行変えた後) | 12〜14 秒 (ほとんどがリンク) |
 | sim の起動 (`sim_up`、3 コンテナ) / 種類の切り替え | 30 秒ほど / 17 秒 |
 | ネイティブ版 (`rake native:mruby native:core`) | 2〜3 分 |
 | ブラウザ版の配布物 (`spinel:gen` → `wasm:mruby` → `wasm:dist`) | 5 分ほど |
@@ -70,7 +72,8 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 - 判定: 起動の前に、印と今の木を中身で比べる。ファイルの時刻は見ない (`touch` だけなら古くならない。作った後にその変更をコミットしても古くならない。コミットで動いた分は `git diff <印の HEAD> HEAD` で拾う)。違うファイルがあれば、新しい順に名前と、作り直すコマンドを出して止まる。印が無い (仕組みより前に作った・ビルドが途中で落ちた) ときも止まる。
 - 断る道具: sim は `sim_up` と `tools/dev_run_check.sh` (core と graphics-audio の両方の印を見る)、ネイティブ版は `native_up` と `tools/fmrb_native.rb up`、ブラウザ版は `web_up` と `rake wasm:serve` (`DIST=1` は調べない)。そのまま起動するときは MCP では `allow_stale: true`、CLI では `STALE_OK=1` (`fmrb_native.rb up` は `--allow-stale` も)。もう動いている sim・開いているページを使い回すときは断らず、古いことを notes に書く。
 - Spinel の生成物: ビルドごとに別の場所 (`main/ruby/spinel/gen/esp32` は build/、`gen/linux` は build-linux/、`gen/hosted` はネイティブ版とブラウザ版)。`rake build:esp32`・`build:linux`・`native:core` (`:cross`・`:wl`)・`wasm:core`・`wasm:web` がそれぞれの場所に作り、`rake spinel:gen` は `SPINEL_GEN_TARGET=esp32|linux|hosted` (既定 hosted) で選ぶ。FmrbConst::PLATFORM は場所から決まる (esp32 だけ esp32、ほかは linux)。プログラムごとにコンパイラ・コマンド・入力 (BUILD_DATE の行を除く) の要約を `<名前>.key` に置き、同じなら作り直さない (.c の時刻が変わらないので再コンパイルも起きない。生成は 0.6 秒ほどで済む)。よって ESP32 と sim の切り替えで Spinel の生成・再コンパイルは起きない。`cmake/check_spinel_gen_platform.cmake` は場所の中身がその platform 用かを念のため確かめるだけで、ふつうは止まらない。`rake spinel:doctor` は `gen/doctor` を使う。
-- 切り替えの実測 (2026-11-17、NARYAv4): `build:esp32` の後の `build:linux` が 9.9 秒、その後の `build:esp32` が 68 秒 (切り替えなしで続けて流しても 62 秒。`rake setup` の `cp -rf` が gem の写しの時刻を毎回進めるため、ESP32 では切り替えと関係なく 50 ほどの C を作り直す。切り替えで増えるのは両方のビルドが書く mrb の C の 9 個だけ)。graphics-audio は linux と esp32 を交互に流して 2 秒台 (最初の 1 回だけ再構成で 10 秒)。
+- 作り直しの少なさ: `rake setup` の写し (gem・patch・ti・zenoh-pico・checkpoint・asterism の msgs/transfer・F1 ヘルプ・型 db) は、中身が変わったファイルだけを書く (`tools/tree_sync.rb`。上流で消えたファイルは消す)。picoruby の `src/version.c` と `picogem_init.c` も変わったときだけ書く (lib/upstream/patch/picoruby-lib/build.rb・picoruby-require/mrbgem.rake)。checkpoint の表は中身が同じなら時刻を変えず (`ckpt_table.rb --stamp`)、その CMake の configure は引数が変わったときだけ流す。mrb のバイトコードの C はビルドごとの場所 (`build/ruby_mrb`・`build-linux/ruby_mrb`。`main/ruby/*/mrb` はネイティブ版とブラウザ版の `native:mrb`・`wasm:mrb` のもの) に作る。デバッガの `combinedMaps` もこの場所を指す。
+- 切り替えの実測 (2026-11-17、NARYAv4): 変更なしで続けて流した `build:esp32` が 4.3 秒 (前は 62 秒)、sim から切り替えた直後の `build:esp32` が 4.2〜4.5 秒 (前は 68 秒)、変更なしの `build:linux` が 2.6 秒、ESP32 から切り替えた直後の `build:linux` が 4.4 秒 (前は 9.9 秒)。`regress:size` などが build/ を退避して戻した直後の 1 回だけは、managed_components を作り直して 20 秒ほどかかる。残りは rake の準備 (setup・Spinel の確かめ・checkpoint の表の確かめで 2 秒ほど) と docker と idf.py の起動 (2 秒ほど。ninja 自体は 0.3 秒) で、storage の像は毎回作り直す (0.2 秒ほど)。main/ の .c を 1 行変えると 12〜14 秒で、ほとんどが 55 MB の ELF のリンク。graphics-audio は linux と esp32 を交互に流して 2 秒台 (最初の 1 回だけ再構成で 10 秒)。
 - 手で調べる: `ruby tools/build_stamp.rb check linux|native|native-mruby|web` (新しければ 0、古ければ 3 で理由を出す)。
 - `rake build:linux` は、前の印から lib/ が動いていて libmruby の方が古いときに `rake clean` を勧める (libmruby は .a が無いときにしか作り直さないため。印は lib/ の変更を拾うので sim は古いと言うが、作り直しても libmruby は古いまま)。
 
