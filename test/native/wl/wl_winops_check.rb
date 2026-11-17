@@ -309,7 +309,7 @@ class WinopsRun
     work = [0, MENU_BAR_H, fw, fh - MENU_BAR_H]
 
     # ---- 1. maximize: the editor (Family mruby's window)
-    click(30, 5)
+    click(6, 5)
     sleep 1.0
     click(30, MENU_BAR_H + MENU_ITEM_H + MENU_ITEM_H / 2)
     wait_for("the editor's window", 60) { shot(File.join(@out, "editor.png")).pixel(150, 20) == TITLE_RGB }

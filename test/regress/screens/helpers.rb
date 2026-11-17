@@ -54,7 +54,7 @@ Regress::Screens.helpers do
 
   def menu(item)
     idx = menu_items.index(item) or raise Regress::Screens::Failure, "no menu entry #{item}"
-    click(30, 5)
+    click(6, 5)
     wait_change([0, menu_bar_h, 80, 30])
     click(30, menu_bar_h + idx * menu_item_h + menu_item_h / 2)
   end

@@ -290,7 +290,7 @@ class OpenRun
   end
 
   def open_fmgr
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     click(30, MENU_BAR_H + 1 + 2 * MENU_ITEM_H + MENU_ITEM_H / 2)
     sleep 1.0

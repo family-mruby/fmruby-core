@@ -719,7 +719,7 @@ class Run
     # 5. keys to Family mruby: its menu (the click takes the keyboard back),
     #    the editor, one key, against the native baseline (the editor's
     #    window; foot is beside it).
-    click(30, 5)
+    click(6, 5)
     sleep 1.2
     focus_back = info["focus"] == "0"
     click(30, MENU_BAR_H + MENU_ITEM_H + MENU_ITEM_H / 2)
@@ -803,7 +803,7 @@ class Run
     # The desktop's menu and the exit question, foot under them.
     drag(151 + 40, 48 + 5, -110, -8)
     wait_for("foot under the menu", 10) { win(info, @foot)[:fx] == 41 }
-    click(30, 5)
+    click(6, 5)
     sleep 1.2
     ok, detail, under_menu = composite_check("menu_over_foot")
     result("the desktop's menu over foot", ok && under_menu < all, "#{detail} (#{all} without it)")

@@ -275,7 +275,7 @@ class AppsRun
   # ------------------------------------------------- the launcher by keys
 
   def open_launcher
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     click(30, MENU_BAR_H + MENU_ITEM_H / 2)
   end
@@ -306,7 +306,7 @@ class AppsRun
 
   # The time from the menu's item to the launcher on screen, ms.
   def time_open_launcher(label)
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     before = shot(File.join(@out, "#{label}_before.png"))
     ms = time_to_frame(label, before, 20_000) { click(30, MENU_BAR_H + MENU_ITEM_H / 2) }

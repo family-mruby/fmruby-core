@@ -11,7 +11,7 @@
 module TaskbarMixin
   TASKBAR_ICON_SIZE = 9   # px, square icon on 13px menu bar
   TASKBAR_ICON_PAD = 3    # px between icons
-  TASKBAR_X_START = 82    # after "Family mruby" text
+  TASKBAR_X_START = 19    # after the menu gem and its divider (focus frame at 18)
   TASKBAR_Y = 1           # top margin; keeps the focused app's white frame
                           # clear of the menu bar's bottom border line
 

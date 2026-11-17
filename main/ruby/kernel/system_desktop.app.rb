@@ -1041,7 +1041,7 @@ class SystemDesktopApp < FmrbApp
   def draw_menu_bar
     @gfx.clear(0x01)  # Transparent (clear foreground, 0x01 = transparent color key)
     @gfx.fill_rect(0, 0, @window_width, MENU_BAR_HEIGHT, MENU_BG)
-    @gfx.draw_text(2, 2, "Family mruby", FmrbGfx::WHITE)
+    draw_logo
     draw_taskbar
     draw_clock
     draw_wifi_icon
@@ -1052,6 +1052,55 @@ class SystemDesktopApp < FmrbApp
     draw_sound_icon
     draw_power_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
+  end
+
+  # The system menu's button at the left end: a small red gem (a ruby), drawn
+  # from code like the other cells so it costs no constant data (on Spinel a
+  # constant is a static in internal RAM). Inverted while the system menu is
+  # open, as the classic Mac apple menu was. A 1 px divider in the theme's
+  # border colour, inset from the top and bottom, keeps the button apart from
+  # the running apps' indicators that follow (TaskbarMixin); clicks left of it
+  # open the menu (LOGO_HIT_W).
+  LOGO_CELL_W = 13
+  LOGO_DIVIDER_X = 15
+  LOGO_HIT_W = LOGO_DIVIDER_X
+
+  def draw_logo
+    lit = @dropdown_open && @dropdown_menu == :main
+    box = lit ? FmrbGfx::WHITE : MENU_BG
+    @gfx.fill_rect(0, 1, LOGO_CELL_W, 10, box)
+    @gfx.fill_rect(LOGO_DIVIDER_X, 2, 1, 9, FmrbConst::THEME_BORDER)
+    # The gem, 9 x 8 at (2, 2). The outline first, as the whole silhouette;
+    # the facets are filled in over it.
+    x = 2
+    y = 2
+    # Dark red: on the light bar, the dark one's grey, cyberpunk's navy and
+    # the open cell's white alike it parts from what is behind it (by hue on
+    # the two dark bars, where black would by brightness).
+    c = 0x40
+    @gfx.fill_rect(x + 2, y, 5, 1, c)
+    @gfx.fill_rect(x + 1, y + 1, 7, 1, c)
+    @gfx.fill_rect(x, y + 2, 9, 2, c)
+    @gfx.fill_rect(x + 1, y + 4, 7, 1, c)
+    @gfx.fill_rect(x + 2, y + 5, 5, 1, c)
+    @gfx.fill_rect(x + 3, y + 6, 3, 1, c)
+    @gfx.fill_rect(x + 4, y + 7, 1, 1, c)
+    # Red body.
+    c = 0xC0
+    @gfx.fill_rect(x + 3, y + 2, 1, 1, c)
+    @gfx.fill_rect(x + 5, y + 2, 1, 1, c)
+    @gfx.fill_rect(x + 3, y + 4, 3, 2, c)
+    @gfx.fill_rect(x + 4, y + 6, 1, 1, c)
+    # Lit facets.
+    c = 0xED
+    @gfx.fill_rect(x + 3, y + 1, 1, 1, c)
+    @gfx.fill_rect(x + 5, y + 1, 2, 1, c)
+    @gfx.fill_rect(x + 1, y + 2, 2, 1, c)
+    @gfx.fill_rect(x + 6, y + 2, 2, 1, c)
+    @gfx.fill_rect(x + 2, y + 4, 1, 1, c)
+    @gfx.fill_rect(x + 6, y + 4, 1, 1, c)
+    # The highlight.
+    @gfx.fill_rect(x + 2, y + 1, 1, 1, FmrbGfx::WHITE)
   end
 
   def draw_clock
@@ -1397,7 +1446,7 @@ class SystemDesktopApp < FmrbApp
   end
 
   # Two menus open from the bar and share everything below: the system menu
-  # under "Family mruby" (DROPDOWN_ITEMS, at the left) and the power menu under
+  # under the gem at the left end (DROPDOWN_ITEMS) and the power menu under
   # the power button (POWER_ITEMS, right-aligned with the button).
   # @dropdown_menu says which one is open; it keeps its value after closing,
   # nothing reads it then.
@@ -2462,7 +2511,7 @@ class SystemDesktopApp < FmrbApp
 
     # Menu bar
     if y < MENU_BAR_HEIGHT
-      if x < 80
+      if x < LOGO_HIT_W
         open_dropdown
       elsif @power_icon_x && x >= @power_icon_x && x < @power_icon_x + POWER_CELL_W
         open_dropdown(:power)

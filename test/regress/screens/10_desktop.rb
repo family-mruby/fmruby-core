@@ -10,7 +10,7 @@ Regress::Screens.scene "desktop", on: %w[modern retro web native modern-mruby re
 end
 
 Regress::Screens.scene "menu", on: %w[modern retro web] do |s|
-  s.click(30, 5)
+  s.click(6, 5)
   s.wait_change([0, s.menu_bar_h, 80, 30])
   s.park
   s.shot

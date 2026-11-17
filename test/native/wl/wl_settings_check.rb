@@ -351,7 +351,7 @@ class SettingsRun
             started[/activation environment: [^\n]*/]].join("; "))
 
     # ---- 1. Wi-Fi from the network dialog
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     click(30, MENU_BAR_H + 1 + 9 * MENU_ITEM_H + MENU_ITEM_H / 2)     # Network
     sleep 1.0
@@ -427,7 +427,7 @@ class SettingsRun
     result("Scan asks NetworkManager for a scan", scanned ? true : false, "RequestScan #{scanned ? 'asked' : 'not asked'}")
 
     # ---- 2. Bluetooth from the menu
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     click(30, MENU_BAR_H + 1 + 10 * MENU_ITEM_H + MENU_ITEM_H / 2)    # Bluetooth
     s = wait_state("bt") { |x| x[:status] == "ok" }
@@ -507,11 +507,11 @@ class SettingsRun
     end
     sleep 1.0
     # The desktop's Mute moves PipeWire's.
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     click(30, MENU_BAR_H + 1 + 7 * MENU_ITEM_H + MENU_ITEM_H / 2)     # Mute
     m1 = try_wait(5) { volume[1] }
-    click(30, 5)
+    click(6, 5)
     sleep 0.8
     click(30, MENU_BAR_H + 1 + 7 * MENU_ITEM_H + MENU_ITEM_H / 2)     # Unmute
     m2 = try_wait(5) { !volume[1] }
