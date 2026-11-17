@@ -1,4 +1,6 @@
 build
+# The Linux sim's build (rake build:linux), beside the ESP32 build/
+build-linux/
 build.log
 sdkconfig
 sdkconfig.old

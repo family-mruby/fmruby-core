@@ -20,6 +20,16 @@ set(EXTRA_COMPONENT_DIRS "components")
 set(ENV{IDF_COMPONENT_CHECK_NEW_VERSION} 0)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+# The Linux sim builds in build-linux/ beside the ESP32 build in build/
+# (rakelib/build.rake), but the component manager knows one project-wide
+# managed_components/ and dependencies.lock. Solved for linux, where every
+# dependency in main/idf_component.yml is ruled out, it rewrote the lock and
+# deleted every board's downloaded component, so the next ESP32 build fetched
+# and compiled them all again. The sim needs none of them: the manager is
+# off for it.
+if(IDF_TARGET STREQUAL "linux")
+    idf_build_set_property(IDF_COMPONENT_MANAGER 0)
+endif()
 project(fmruby-core)
 
 # Generate storage image data directory (ESP32 only).
@@ -47,19 +57,34 @@ if(NOT IDF_TARGET STREQUAL "linux")
     else()
         set(STORAGE_LOCAL_OVERLAY_CMD "")
     endif()
+    # The generated /etc files (settings, service list, secrets, WiFi,
+    # associations) come from this build's own directory, where rake
+    # build:esp32 stages them. flash/etc has the Linux sim's, which it reads
+    # live; the ones with these names are taken out of the copy first, so
+    # nothing of the sim's reaches a board.
+    set(FMRB_ETC_GEN ${CMAKE_BINARY_DIR}/fmrb_etc)
+    set(FMRB_ETC_GEN_NAMES system_conf.toml system_conf.factory.toml services.toml
+                           associations.toml secrets.toml wifi.toml)
+    set(FMRB_ETC_GEN_RM "")
+    foreach(name IN LISTS FMRB_ETC_GEN_NAMES)
+        list(APPEND FMRB_ETC_GEN_RM COMMAND ${CMAKE_COMMAND} -E rm -f ${STORAGE_STAGING}/etc/${name})
+    endforeach()
     add_custom_target(storage_staging
-        # Settings first: flash/etc/system_conf.toml and its factory copy are
-        # not in git and are staged by rake build:esp32. Building without them
+        # Settings first: the system_conf.toml and its factory copy are not
+        # in git and are staged by rake build:esp32. Building without them
         # (or with another board's) used to succeed silently and produce an
         # image that boots with no settings -- and, with no factory copy, one
         # bad save away from needing a reflash. See the script for the detail.
         COMMAND ${CMAKE_COMMAND}
                 -DSRC_DIR=${CMAKE_SOURCE_DIR}
+                -DETC_DIR=${FMRB_ETC_GEN}
                 -DIDF_TARGET=${IDF_TARGET}
                 -DFMRB_HW_TARGET=${FMRB_HW_TARGET}
                 -P ${CMAKE_SOURCE_DIR}/cmake/check_storage_inputs.cmake
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/flash ${STORAGE_STAGING}
+        ${FMRB_ETC_GEN_RM}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${FMRB_ETC_GEN} ${STORAGE_STAGING}/etc
         ${STORAGE_LOCAL_OVERLAY_CMD}
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/var/cache
         COMMAND ${CMAKE_COMMAND} -E make_directory ${STORAGE_STAGING}/var/cache

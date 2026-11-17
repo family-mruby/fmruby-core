@@ -3,12 +3,12 @@
 # target in the top level CMakeLists.txt, so it is checked on every build and
 # not only when cmake reconfigures.
 #
-# Why this exists: flash/etc/system_conf.toml and its factory copy are not in
-# git. rake build:esp32 writes them from config/system_conf_<chip>.toml before
-# it calls idf.py, so the rake path is always right -- but a plain "idf.py
-# build" produced an image with no settings at all on a fresh checkout, or
-# with the previous target's settings after switching boards, and said nothing
-# about it either time.
+# Why this exists: system_conf.toml and its factory copy are not in git.
+# rake build:esp32 writes them from config/system_conf_<chip>.toml into the
+# build's own fmrb_etc/ before it calls idf.py, so the rake path is always
+# right -- but a plain "idf.py build" produced an image with no settings at
+# all on a fresh checkout, or with the previous target's settings after
+# switching boards, and said nothing about it either time.
 #
 # The factory copy is the one that matters most. The kernel boots from
 # /etc/system_conf.toml, falls back to /etc/system_conf.factory.toml when that
@@ -19,10 +19,14 @@
 #
 # Expected inputs (passed with -D):
 #   SRC_DIR         repository root
+#   ETC_DIR         where rake build:esp32 staged the generated /etc
+#                   (<build>/fmrb_etc)
 #   IDF_TARGET      esp32s3 / esp32p4
 #   FMRB_HW_TARGET  NARYAv3 / TAB5 / NARYAv4 / ATOM_DISPLAY / ATOMS3R / STICKS3
 
-set(ETC_DIR "${SRC_DIR}/flash/etc")
+if(NOT ETC_DIR)
+    message(FATAL_ERROR "check_storage_inputs: ETC_DIR is not given")
+endif()
 set(LIVE "${ETC_DIR}/system_conf.toml")
 set(FACTORY "${ETC_DIR}/system_conf.factory.toml")
 
@@ -65,10 +69,8 @@ if(NOT EXISTS "${EXPECTED}")
         "The board table in this check and in rakelib/build.rake disagree.")
 endif()
 
-# The live file is compared too, not just the factory one: the Linux
-# simulation runs out of this same flash/ tree and rewrites it whenever
-# settings are changed there, so a build that skipped rake can otherwise bake
-# a simulator's settings into a board image.
+# The live file is compared too, not just the factory one: a build that
+# skipped rake could otherwise bake another board's settings into an image.
 file(SHA256 "${EXPECTED}" EXPECTED_HASH)
 file(SHA256 "${LIVE}" LIVE_HASH)
 file(SHA256 "${FACTORY}" FACTORY_HASH)
@@ -92,7 +94,7 @@ endif()
 # loud, because an image built this way carries them.
 if(EXISTS "${ETC_DIR}/wifi.toml")
     message(STATUS
-        "storage image: flash/etc/wifi.toml is included -- this image carries "
+        "storage image: ${ETC_DIR}/wifi.toml is included -- this image carries "
         "WiFi credentials and should not be distributed")
 endif()
 

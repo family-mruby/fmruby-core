@@ -447,6 +447,19 @@ idf_component_register(
 include(${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/mruby_abi_defines.cmake)
 fmrb_add_mruby_abi_defines()
 
+# The Spinel programs in gen/ are made on the host for one platform, and the
+# sim (build-linux/) and the ESP32 build (build/) share that directory: check
+# on every build, before this component compiles, that they were made for
+# this one (cmake/check_spinel_gen_platform.cmake).
+add_custom_target(fmrb_spinel_gen_platform
+    COMMAND ${CMAKE_COMMAND}
+            -DGEN_DIR=${FMRB_SPINEL_GEN_DIR}
+            -DIDF_TARGET=${IDF_TARGET}
+            -P ${CMAKE_CURRENT_LIST_DIR}/../cmake/check_spinel_gen_platform.cmake
+    COMMENT "Checking the Spinel programs were generated for ${IDF_TARGET}"
+    VERBATIM)
+add_dependencies(${COMPONENT_LIB} fmrb_spinel_gen_platform)
+
 # mruby-checkpoint's header, for the glue that moves an app (Linux, the P4 and
 # the S3, where libmruby carries the gem; app/fmrb_app_checkpoint.c is empty
 # elsewhere).

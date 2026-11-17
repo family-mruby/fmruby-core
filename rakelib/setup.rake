@@ -342,7 +342,10 @@ end
 namespace :set_target do
   desc "Linux target (dev/test)"
   task :linux => :setup do
-    sh "#{DOCKER_CMD} idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" set-target linux"
+    # In its own build directory with its own sdkconfig (LINUX_IDF_ARGS,
+    # rakelib/build.rake), so the ESP32 build in build/ and the top-level
+    # sdkconfig are left alone.
+    sh "#{DOCKER_CMD} idf.py --preview #{LINUX_IDF_ARGS} set-target linux"
   end
 
   desc "Set ESP32 target (esp32s3 Retro / esp32p4 Modern)"

@@ -139,8 +139,14 @@ namespace :native do
                       NATIVE_MRUBY_BUILD, "lib/libmruby.a")
     Rake::Task["native:mruby"].invoke unless File.exist?(lib_a)
     dir = native_build_dir
+    # The sources it is made from, for the stale-build guard of
+    # tools/fmrb_native.rb up and native_up (tools/build_stamp.rb).
+    stamp_kind = native_engine == "mruby" ? "native-mruby" : "native"
+    stamp_state = FmrbBuildStamp.state(ROOT_DIR, stamp_kind)
     sh "cmake -S #{NATIVE_DIR} -B #{dir} -DCMAKE_BUILD_TYPE=RelWithDebInfo #{native_engine_defines}"
     sh "cmake --build #{dir} -j#{ENV['JOBS'] || 8} --target fmruby-native"
+    FmrbBuildStamp.write(ROOT_DIR, stamp_kind, dir, state: stamp_state,
+                         options: { "engine" => native_engine })
     puts "native:core: #{native_binary}"
   end
 

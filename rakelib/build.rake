@@ -3,6 +3,28 @@
 # Part of the Rakefile split: shared constants, helper defs, and the
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
+#
+# The two builds live side by side, so switching between them costs no
+# rebuild:
+#   build-linux/   the Linux sim (its sdkconfig is build-linux/sdkconfig; it
+#                  uses no managed component, CMakeLists.txt)
+#   build/         the ESP32 firmware (sdkconfig at the top, as idf.py expects;
+#                  the generated /etc files of its storage image in
+#                  build/fmrb_etc, not in flash/etc, which is the sim's)
+# Each Linux build stamps the sources it was made from (tools/build_stamp.rb),
+# and the starters refuse a stale one.
+require_relative "../tools/build_stamp"
+
+LINUX_BUILD_DIR = 'build-linux'
+LINUX_SDKCONFIG = "#{LINUX_BUILD_DIR}/sdkconfig"
+# The ESP32 build's generated /etc (system_conf, services, secrets, wifi,
+# associations): staged here by rake build:esp32 and laid over the copy of
+# flash/ by the storage_staging target (CMakeLists.txt). flash/etc holds the
+# sim's, which it reads live.
+ESP32_ETC_DIR = 'build/fmrb_etc'
+# idf.py arguments that put the Linux build in its own place.
+LINUX_IDF_ARGS = "-B #{LINUX_BUILD_DIR} -DSDKCONFIG=#{LINUX_SDKCONFIG} " \
+                 "-DSDKCONFIG_DEFAULTS=config/sdkconfig.defaults.linux"
 
 # Developer's tts key (doc/user_extension/voice/report/secrets.md). A reflash
 # rewrites the storage image and with it /home, which kept wiping a key the
@@ -55,15 +77,34 @@ def check_services_toml_has_no_key(path = 'flash/etc/services.toml')
   end
 end
 
-def stage_services(modern)
+def stage_services(modern, etc = 'flash/etc')
+  services = "#{etc}/services.toml"
+  secrets = "#{etc}/secrets.toml"
   if modern
-    cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
-    check_services_toml_has_no_key
-    write_dev_secrets
+    cp 'config/services.toml', services, verbose: true
+    check_services_toml_has_no_key(services)
+    write_dev_secrets(secrets)
   else
-    rm_f 'flash/etc/services.toml'
-    rm_f DEV_SECRETS_TOML
+    rm_f services
+    rm_f secrets
   end
+end
+
+# libmruby is rebuilt only when its .a is missing (the custom command in
+# components/picoruby-esp32/CMakeLists.txt), which is why lib/ edits want
+# `rake clean`. Say so when the last stamp shows lib/ has moved since.
+def warn_libmruby_left_behind(now)
+  prev = FmrbBuildStamp.read(LINUX_BUILD_DIR)
+  return unless prev
+  lib_a = 'components/picoruby-esp32/picoruby/build/family-mruby-linux/lib/libmruby.a'
+  return unless File.exist?(lib_a)
+  res = FmrbBuildStamp.check(ROOT_DIR, :linux, LINUX_BUILD_DIR)
+  libs = res[:files].select { |f| f.start_with?('lib/') }
+  return if libs.empty?
+  newer = libs.select { |f| File.exist?(f) && File.mtime(f) > File.mtime(lib_a) }
+  return if newer.empty?
+  warn "build:linux: lib/ changed since libmruby was built (#{newer.first(3).join(', ')}" \
+       "#{newer.size > 3 ? ', ...' : ''}); it is not rebuilt by itself -- run `rake clean` first if those go into libmruby"
 end
 
 namespace :build do
@@ -103,7 +144,12 @@ namespace :build do
     ENV['SPINEL_GEN_PLATFORM'] = 'linux'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
-    unless Dir.exist?('build')
+    # The sources this build is made from, taken before it starts: a file
+    # changed while it runs makes the build stale, as it should.
+    stamp_state = FmrbBuildStamp.state(ROOT_DIR, :linux)
+    warn_libmruby_left_behind(stamp_state)
+
+    unless File.exist?("#{LINUX_BUILD_DIR}/CMakeCache.txt")
       Rake::Task['set_target:linux'].invoke
     end
     # Which machine the sim stands in for. Reaches the C as
@@ -111,8 +157,17 @@ namespace :build do
     # FmrbConst::HW_FAMILY, so a Modern sim has Modern's fonts and a Retro
     # sim has Retro's.
     hw_family = MODERN_HW_TARGETS.include?(HW_TARGET) ? 'modern' : 'retro'
-    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DFMRB_HW_FAMILY=#{hw_family} -DCMAKE_BUILD_TYPE=Debug build'"
-    puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
+    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview #{LINUX_IDF_ARGS} -DFMRB_HW_FAMILY=#{hw_family} -DCMAKE_BUILD_TYPE=Debug build'"
+    # The guard believes the ELF header, not this task's word: a Linux build
+    # dir that somehow holds another ISA must not be stamped as good.
+    elf = "#{LINUX_BUILD_DIR}/fmruby-core.elf"
+    machine = File.exist?(elf) ? File.binread(elf, 20)[18, 2].unpack1('v') : nil
+    abort "build:linux: #{elf} is not an x86-64 ELF (e_machine #{machine.inspect})" unless machine == 0x3E
+    FmrbBuildStamp.write(ROOT_DIR, :linux, LINUX_BUILD_DIR, state: stamp_state,
+                         options: { 'hw_family' => hw_family, 'hw_target' => HW_TARGET,
+                                    'kernel' => FMRB_KERNEL_ENGINE, 'editor' => FMRB_APP_ENGINE_EDITOR,
+                                    'desktop' => FMRB_APP_ENGINE_DESKTOP })
+    puts "Linux build complete (#{hw_family}): #{elf}. Start it with the sim tools (sim_up, tools/dev_run_check.sh)."
   end
 
   desc "ESP32(S3) build"
@@ -156,29 +211,6 @@ namespace :build do
       puts "HW target: #{hw_target} (#{cfg[:chip]})"
     end
 
-    # Copy HW-specific system_conf.toml to flash directory, plus the factory
-    # copy the kernel falls back to when the live file is unreadable.
-    cp system_conf_path, 'flash/etc/system_conf.toml', verbose: true
-    cp system_conf_path, 'flash/etc/system_conf.factory.toml', verbose: true
-
-    # System service list (doc/user_extension/services), generated the same
-    # way as system_conf above. Modern only; the storage image drops the rest
-    # of the service files for Retro (top-level CMakeLists).
-    stage_services(MODERN_HW_TARGETS.include?(hw_target))
-
-    # File associations (doc/user_extension/assoc), both machines.
-    cp 'config/associations.toml', 'flash/etc/associations.toml', verbose: true
-
-    # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
-    # out of git (see config/wifi.toml.example). Copied into the flash image
-    # only when present. wifi_p4.toml is the pre-rename fallback.
-    if File.exist?('config/wifi.toml')
-      cp 'config/wifi.toml', 'flash/etc/wifi.toml', verbose: true
-    elsif File.exist?('config/wifi_p4.toml')
-      warn 'config/wifi_p4.toml is deprecated; rename it to config/wifi.toml'
-      cp 'config/wifi_p4.toml', 'flash/etc/wifi.toml', verbose: true
-    end
-
     # Spinel engine(s): pre-generate the C on the host (compiler is not in the
     # docker build) with PLATFORM=esp32 so ESP32-only branches (RTC HW etc.) are
     # compiled. Mirrors build:linux; without this the esp32 build used a manually
@@ -215,8 +247,40 @@ namespace :build do
 
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
     # correctly (it runs the first cmake configure).
-    unless Dir.exist?('build')
+    unless File.exist?('build/CMakeCache.txt')
       sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}"
+    end
+
+    # The storage image's generated /etc, into the build (ESP32_ETC_DIR):
+    # flash/etc holds the sim's, which it reads live, so a board build no
+    # longer overwrites them and the sim build stays usable beside it.
+    # Started from nothing every time, so a file a board does not get (the
+    # service list on Retro, wifi.toml when config/ has none) is not left
+    # over from another board.
+    etc = ESP32_ETC_DIR
+    rm_rf etc
+    mkdir_p etc
+    # The HW-specific system_conf.toml, plus the factory copy the kernel
+    # falls back to when the live file is unreadable.
+    cp system_conf_path, "#{etc}/system_conf.toml", verbose: true
+    cp system_conf_path, "#{etc}/system_conf.factory.toml", verbose: true
+
+    # System service list (doc/user_extension/services), generated the same
+    # way as system_conf above. Modern only; the storage image drops the rest
+    # of the service files for Retro (top-level CMakeLists).
+    stage_services(MODERN_HW_TARGETS.include?(hw_target), etc)
+
+    # File associations (doc/user_extension/assoc), both machines.
+    cp 'config/associations.toml', "#{etc}/associations.toml", verbose: true
+
+    # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
+    # out of git (see config/wifi.toml.example). Copied into the flash image
+    # only when present. wifi_p4.toml is the pre-rename fallback.
+    if File.exist?('config/wifi.toml')
+      cp 'config/wifi.toml', "#{etc}/wifi.toml", verbose: true
+    elsif File.exist?('config/wifi_p4.toml')
+      warn 'config/wifi_p4.toml is deprecated; rename it to config/wifi.toml'
+      cp 'config/wifi_p4.toml', "#{etc}/wifi.toml", verbose: true
     end
 
     # Link transport: default is UART. To use SPI instead:
@@ -237,15 +301,34 @@ namespace :build do
   end
 end
 
-desc "Full clean build artifacts (including host)"
+# The libmruby builds under components/picoruby-esp32/picoruby/build that
+# belong to the ESP32 firmware (one per ISA, and the checkpoint tables).
+ESP32_MRUBY_BUILDS = %w[esp32 esp32p4 ckpt-table-*].freeze
+PICORUBY_BUILD_DIR = 'components/picoruby-esp32/picoruby/build'
+
+desc "Clean the ESP32 build (build/, sdkconfig, its libmruby); the sim, native and browser builds stay"
 task :clean_all do
   sh "rm -f sdkconfig"
   sh "rm -rf build"
-  sh "rm -rf components/picoruby-esp32/picoruby/build/*"
+  ESP32_MRUBY_BUILDS.each { |b| sh "rm -rf #{PICORUBY_BUILD_DIR}/#{b}" }
 end
 
-desc "Clean picoruby build artifacts"
+desc "Clean picoruby build artifacts (every libmruby: after a lib/ edit)"
 task :clean do
-  sh "rm -rf components/picoruby-esp32/picoruby/build/*"
+  sh "rm -rf #{PICORUBY_BUILD_DIR}/*"
   sh "rm -f build/esp-idf/picoruby-esp32/libpicoruby-esp32.a"
+  sh "rm -f #{LINUX_BUILD_DIR}/esp-idf/picoruby-esp32/libpicoruby-esp32.a"
+end
+
+namespace :clean do
+  desc "Clean the Linux sim build (build-linux/, its sdkconfig and libmruby)"
+  task :linux do
+    sh "rm -rf #{LINUX_BUILD_DIR}"
+    sh "rm -rf #{PICORUBY_BUILD_DIR}/family-mruby-linux"
+  end
+
+  desc "Clean the browser build (wasm/build and the wasm libmruby)"
+  task :web => "wasm:clean" do
+    sh "rm -rf #{PICORUBY_BUILD_DIR}/#{WASM_MRUBY_BUILD}"
+  end
 end

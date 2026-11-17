@@ -202,12 +202,16 @@ namespace :wasm do
 
   desc "Build the browser bundle (core_web.js/.wasm/.data + wasm/web page)"
   task :web => [:webflash, :mrb, "webcrt:gen"] do
+    # The sources the bundle is made from, for the stale-build guard of rake
+    # wasm:serve and web_up (tools/build_stamp.rb).
+    stamp_state = FmrbBuildStamp.state(ROOT_DIR, :web)
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     # The packed .data is produced at link time; the staging just changed, so
     # force the link step to run again.
     rm_f Dir[File.join(WASM_BUILD_DIR, "core_web.{js,wasm,data}")]
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core_web"
+    FmrbBuildStamp.write(ROOT_DIR, :web, WASM_BUILD_DIR, state: stamp_state)
   end
 
   # ---- distribution -------------------------------------------------------
@@ -420,6 +424,14 @@ namespace :wasm do
 
   desc "Serve the repo with COOP/COEP for the wasm page (PORT=n, default 8006; DIST=1 serves build/dist with probe-hold, for headless checks of the real artifacts)"
   task :serve do
+    # The development page loads wasm/build/core_web.*: refuse to serve a
+    # bundle older than the sources (STALE_OK=1 serves it anyway). DIST=1
+    # serves a made distribution (wasm:dist, maybe a release one), which is
+    # not checked. No bundle at all: nothing to be stale.
+    if !ENV["DIST"] && File.exist?(File.join(WASM_BUILD_DIR, "core_web.js")) &&
+       (why = FmrbBuildStamp.refusal(ROOT_DIR, :web, WASM_BUILD_DIR))
+      abort "wasm:serve: #{why}"
+    end
     port = (ENV["PORT"] || 8006).to_i
     root = ENV["DIST"] ? File.join(WASM_BUILD_DIR, "dist") : ROOT_DIR
     puts "open http://localhost:#{port}/" + (ENV["DIST"] ? "" : "wasm/web/index.html")
