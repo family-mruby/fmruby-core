@@ -9,8 +9,13 @@ buttons in English.
 Uses (the top row)
 
 - Question: type it on the bottom line and press Enter or Send. The editor's
-  document is not changed. "Send the document" on the bottom row sends the
-  open document along (off by default).
+  document is not changed. When the open document has something in it, it
+  goes along with the question (the default). Press "Send the document" on
+  the bottom row to make it "Don't send the document" and send the question
+  alone. With no editor running, an empty document, or a dialog or help page
+  up in the editor, the question goes alone. Your line says which:
+  "(question + document name)" or "(question, no document)", and so does the
+  status line.
 - Hint: sends the open document and gets hints put in as comments starting
   with "# AI: " above the lines. No line of code changes. The text may be
   empty; saying what puzzles you aims the hints there.
@@ -19,7 +24,9 @@ Uses (the top row)
   file as "name.bak1" and so on (five at most; the first, .bak1, always
   stays), no replaces it without a copy, stop changes nothing. A document
   with no name cannot be kept, so you are asked whether to overwrite it.
-- Fix: after an app run with F5 has failed, ask with its error. Each time
+- Fix: after an app run with F5 has failed, ask with its error. Only the
+  error of the app the editor's current document last ran as with F5 is
+  used (none for a document not run yet, or after switching to another). Each time
   you choose a hint or the fixed document (asked like Make before it goes in).
 - Erase AI lines: counts the lines starting with "# AI: ", asks, and removes
   them. Lines you wrote in the same form go too.

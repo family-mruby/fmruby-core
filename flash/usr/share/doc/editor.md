@@ -1,9 +1,10 @@
 # The editor: several files at once
 
 The editor keeps up to five files open. While there is more than one, a row
-of tabs under the menu bar names them; the one you are editing is shown
-inverted, and a "*" after a name means it has changes you have not saved.
-With a single file the row is not there.
+of tabs under the menu bar names them, on a band of its own colour between
+the menu bar and the text; the one you are editing is shown inverted, and a
+"*" after a name means it has changes you have not saved. With a single file
+the row is not there.
 
 Opening and closing
 
@@ -43,3 +44,6 @@ there and keeps the editor open.
 Run (F5), Search, the type help (F1, Ctrl+T, Ctrl+E) and the clipboard work
 on the file you are on. Copy in one file and paste in another to move text
 between them. The key list (Keys on the menu bar, or Alt+K) has all of this.
+
+The editor remembers, per file, which app it last ran as with F5; the AI
+Helper's Fix (Modern) uses that app's error only.
