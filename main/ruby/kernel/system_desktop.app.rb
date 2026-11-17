@@ -1085,15 +1085,11 @@ class SystemDesktopApp < FmrbApp
     ng = g + dir
     ng = 0 if ng < 0
     ng = 7 if ng > 7
-    # When R or G cannot move (at its end), B moves instead and R and G meet
-    # at the larger of the two: a greyer step of the same lightness reads as
-    # one band further, where one channel alone is too small a step to see
-    # and a pure B step goes near black (cyberpunk's bottom band becomes
-    # 0x25, chosen by the user from candidates, 2026-11-17).
-    if nr == r || ng == g
-      m = r > g ? r : g
-      nr = m
-      ng = m
+    # B is too coarse a step (2 bits) to move with R and G: it moves only
+    # when both are at their end. Where one of R and G is at its end the step
+    # is the other one alone (cyberpunk's bottom band, 0x02: chosen on the
+    # device from candidates, 2026-11-17 user).
+    if nr == r && ng == g
       b += dir
       b = 0 if b < 0
       b = 3 if b > 3
