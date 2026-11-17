@@ -10,9 +10,12 @@ module EditorMenu
   # Dropdown contents. Built per open rather than held in a constant: the words
   # depend on the language, and a menu opens rarely enough for the allocation
   # not to matter.
+  # Open and New add a document beside the open ones (editor/docs.rb); Close
+  # closes the current one. The order matches MENU_FILE_HOTKEYS.
   def menu_file_items
-    [FmrbI18n.t(:open).to_s, FmrbI18n.t(:save).to_s, FmrbI18n.t(:save_as).to_s,
-     FmrbI18n.t(:template).to_s, FmrbI18n.t(:exit).to_s]
+    [FmrbI18n.t(:open).to_s, FmrbI18n.t(:new_doc).to_s, FmrbI18n.t(:save).to_s,
+     FmrbI18n.t(:save_as).to_s, FmrbI18n.t(:template).to_s,
+     FmrbI18n.t(:close_doc).to_s, FmrbI18n.t(:exit).to_s]
   end
 
   def menu_edit_items
@@ -242,18 +245,22 @@ module EditorMenu
 
   def activate_file_item(idx)
     case idx
-    when 0  # Open
+    when 0  # Open (beside the open documents; editor/docs.rb)
       @pending_file_op = :open
       request_file_select("open")
-    when 1  # Save
+    when 1  # New
+      docs_new
+    when 2  # Save
       save_file
-    when 2  # Save as
+    when 3  # Save as
       @pending_file_op = :save
       request_file_select("save")
-    when 3  # Template
+    when 4  # Template
       open_template_menu
-    when 4  # Exit
-      stop
+    when 5  # Close
+      docs_close
+    when 6  # Exit (asks about every unsaved document, as Ctrl-X does)
+      request_quit
     end
   end
 
@@ -304,8 +311,10 @@ module EditorMenu
     @template_labels = labels
   end
 
-  # Insert the chosen skeleton at the cursor. Same shape as a paste: the
-  # document model does the work and reports where the cursor ended up.
+  # Insert the chosen skeleton. Same shape as a paste: the document model does
+  # the work and reports where the cursor ended up. It goes into the current
+  # document when that is blank, and into a new one otherwise (the rule
+  # File > Open follows, editor/docs.rb).
   def insert_template(idx)
     return if idx < 0 || idx >= @template_names.size
     path = "#{TEMPLATE_DIR}/#{@template_names[idx]}"
@@ -324,6 +333,7 @@ module EditorMenu
       flash_status(FmrbI18n.t(:b_empty).to_s)
       return
     end
+    return unless docs_for_template
     delete_selection if has_selection?
     start_y = @cy
     rec = EditorCore.insert_multiline(@cy, @cx, body)

@@ -13,7 +13,8 @@
 - /usr/share/services/           この機械が動かしているサービスの本体
 - /usr/share/doc/                この文書と kanji_ja.md (漢字変換: SD に置く
                                  辞書とキー)、wifi_ja.md (Wi-Fi: 画面と
-                                 wifi.toml)
+                                 wifi.toml)、editor_ja.md (エディタで
+                                 複数のファイルを開く)
 - /app/                          インストール済みアプリ (試験用は /app/test)
 
 サンプルで遊ぶときは、まず /home へ写してから自分の写しを編集してください。

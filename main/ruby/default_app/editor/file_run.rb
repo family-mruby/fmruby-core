@@ -9,7 +9,7 @@ module EditorFileRun
   # EditorCore reads the file straight into its arena in chunks, so nothing here
   # holds the contents: no whole-file String, no Array of lines. A negative
   # return means the file could not be read or the arena is full -- the editor
-  # says so and keeps the buffer it had.
+  # says so and keeps the buffer it had. True when the file was read.
   def load_file(path)
     n = EditorCore.load_file(path)
     if n < 0
@@ -21,7 +21,7 @@ module EditorFileRun
         Log.error("Failed to load file '#{path}' (err=#{n})")
       end
       @need_redraw = true
-      return
+      return false
     end
     @cx = 0
     @cy = 0
@@ -40,6 +40,7 @@ module EditorFileRun
     # and on the device: how much of THIS VM's mruby pool the open file costs
     # (percent) versus how much of the document arena it takes (bytes).
     Log.info("edit_doc: lines=#{n} bytes=#{EditorCore.doc_bytesize} arena=#{EditorCore.mem_used} pool=#{FmrbApp.pool_usage}% file=#{path}")
+    true
   end
 
   # Shown when the arena cannot grow: the editor stays alive and editable, which
@@ -143,6 +144,8 @@ module EditorFileRun
       apply_hl_enabled
     end
     @current_file = path
+    # The tab shows the new name; the row is redrawn with the screen.
+    @need_redraw = true if @tabs_on
     save_file
   end
 

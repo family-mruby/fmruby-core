@@ -37,6 +37,8 @@ class EditorApp < FmrbApp
   # Several documents in one editor: the per-document ivars are put aside and
   # brought back on a switch (editor/docs.rb). EditorCore holds the text.
   include EditorDocs
+  # The tab row naming the open documents (editor/tabs.rb).
+  include EditorTabs
 
   def initialize
     super()
@@ -109,8 +111,15 @@ class EditorApp < FmrbApp
     @run_pid = nil
     # Set when RUN had to ask for a file name first: run once the save lands.
     @run_after_save = false
-    # Modal "save before quit?" dialog raised by Ctrl-X when @modified.
+    # Modal "save before ...?" dialog (editor/render.rb): @dlg_kind is
+    # DLG_QUIT (Ctrl-X with unsaved edits) or DLG_CLOSE (Ctrl-W).
     @quit_dialog_open = false
+    @dlg_kind = DLG_QUIT
+    # A "yes" on a document with no name waits for the file dialog; this is
+    # the question it answered (0 when none is waiting).
+    @after_save = 0
+    # Leaving: a bit per document answered "no" in this round (editor/docs.rb).
+    @quit_skip = 0
     @keys_open = false
     # ---- Completion (Tab) ----
     # Candidates from the type inference engine, asked for only when Tab is
@@ -165,6 +174,14 @@ class EditorApp < FmrbApp
     dbg_init
     # Saved state of each open document; the first is this one.
     docs_init
+    # The tab row (editor/tabs.rb): shown while more than one is open, set by
+    # recompute_layout. The positions are for the click test.
+    @tabs_on = false
+    @tab_y = 0
+    @tab_xs = []
+    @tab_ws = []
+    @tab_ids = []
+    @tab_drawn_mod = false
     # ---- Latency instrumentation ----
     @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
     @lat_n = 0
@@ -194,15 +211,12 @@ class EditorApp < FmrbApp
     @need_redraw = true
   end
 
-  # Ctrl+Q. Same question Ctrl-X asks, so an unsaved buffer is never dropped.
+  # Ctrl+Q. Same questions Ctrl-X asks, so an unsaved document is never
+  # dropped.
   def on_quit_request
-    if @modified
-      @quit_dialog_open = true
-      @need_redraw = true
-      redraw_if_dirty
-    else
-      stop
-    end
+    return if @quit_dialog_open
+    request_quit
+    redraw_if_dirty
   end
 
   def on_resize(new_width, new_height)
@@ -215,7 +229,11 @@ class EditorApp < FmrbApp
 
   def recompute_layout
     @menu_y = 0
-    @edit_y = @menu_y + CHAR_H + 1
+    # The tab row sits between the menu bar and the text, only while there is
+    # more than one document (editor/tabs.rb); everything below follows @edit_y.
+    @tabs_on = EditorCore.doc_count > 1
+    @tab_y = @menu_y + CHAR_H + 1
+    @edit_y = @tabs_on ? @tab_y + TAB_ROW_H : @tab_y
     @status_y = @user_area_height - CHAR_H
     @dbg_pane_h = dbg_pane_h
     if @dbg_pane_h > 0
@@ -499,10 +517,16 @@ class EditorApp < FmrbApp
           @run_after_save = false
           run_current_file
         end
+        # A save-before question that was waiting for this name goes on.
+        save_dialog_saved(msg["path"])
       else
-        load_file(msg["path"])
+        # Opened beside the others (editor/docs.rb), or switched to.
+        docs_open_path(msg["path"])
       end
       @pending_file_op = nil
+    elsif msg["cmd"] == "file_selected"
+      # The file dialog was cancelled: a question waiting for a name ends.
+      save_dialog_saved(nil)
     elsif msg["cmd"] == "run_result"
       @run_pid = msg["pid"]
       if @run_pid
@@ -572,6 +596,15 @@ class EditorApp < FmrbApp
           activate_menu_bar(@menu_ids[hit])
           return
         end
+        return
+      end
+
+      # Tab row: a click on a name makes that document the current one. Not
+      # while the save-before dialog is up: leaving goes through the
+      # documents in its own order.
+      if tab_row_hit?(ev[:x], ev[:y])
+        idx = tab_hit(ev[:x])
+        docs_switch(idx) if idx >= 0 && !@quit_dialog_open
         return
       end
 
@@ -712,13 +745,8 @@ class EditorApp < FmrbApp
         when 0x16  # Ctrl-S -> save
           save_file
           return
-        when 0x1B  # Ctrl-X -> quit (prompt if unsaved)
-          if @modified
-            @quit_dialog_open = true
-            @need_redraw = true
-          else
-            stop
-          end
+        when 0x1B  # Ctrl-X -> quit (asks about every unsaved document)
+          request_quit
           return
         when 0x06  # Ctrl-C -> Copy
           copy_selection
@@ -741,7 +769,7 @@ class EditorApp < FmrbApp
         when 0x11  # Ctrl-N -> a new empty document
           docs_new
           return
-        when 0x1A  # Ctrl-W -> close the current document
+        when 0x1A  # Ctrl-W -> close the current document (asks if unsaved)
           docs_close
           return
         when 0x4E  # Ctrl-PageDown -> next document (Alt-. where Alt is
@@ -789,6 +817,9 @@ class EditorApp < FmrbApp
           return
         when 0x36  # Alt-, -> previous document
           docs_cycle(-1)
+          return
+        when 0x1E, 0x1F, 0x20, 0x21, 0x22  # Alt-1 .. Alt-5 -> that document
+          docs_switch((ev[:scancode] || 0) - 0x1E)
           return
         end
       end

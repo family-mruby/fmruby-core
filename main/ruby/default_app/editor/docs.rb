@@ -51,13 +51,6 @@ module EditorDocs
     EditorCore.doc_count
   end
 
-  # The "[2/3]" mark the status line shows while more than one is open.
-  def docs_mark
-    n = EditorCore.doc_count
-    return "" if n < 2
-    "[#{EditorCore.doc_index + 1}/#{n}] "
-  end
-
   # ---- Saving and restoring one document's ivars ----
 
   def docs_save(idx)
@@ -185,10 +178,22 @@ module EditorDocs
     @need_redraw = true
   end
 
-  # ---- The operations (keys in editor.app.rb) ----
+  # The tab row comes with the second document and goes with it, which takes
+  # one row from the edit area or gives it back. Everything that counts rows
+  # reads @edit_rows and @edit_y, so it is the font change again: lay out, keep
+  # the cursor on screen, and draw everything. Called with the new current
+  # document's ivars already in place.
+  def docs_relayout
+    was = @tabs_on
+    recompute_layout
+    relayout_for_font if was != @tabs_on
+  end
 
-  # A new empty document, after the current one. Refused, with the current
+  # ---- The operations (keys and the File menu in editor.app.rb) ----
+
+  # A new empty document, after the last one. Refused, with the current
   # document untouched, when five are open or there is no room for it.
+  # True when it was made (it is then the current one).
   def docs_new
     cur = EditorCore.doc_index
     docs_leave
@@ -196,18 +201,20 @@ module EditorDocs
     r = EditorCore.doc_add
     if r < 0
       if r == -1
-        flash_status("Max #{EditorCore.doc_count} files open")
+        flash_status(FmrbI18n.t(:b_max_docs).to_s)
       else
         doc_full
       end
       Log.info("doc_add refused (#{r}); docs=#{EditorCore.doc_count} arena=#{EditorCore.mem_used}")
       @need_redraw = true
-      return
+      return false
     end
     docs_append_entry
     docs_fresh_state
+    docs_relayout
     docs_enter
     Log.info("doc_add: #{r + 1}/#{EditorCore.doc_count} arena=#{EditorCore.mem_used}")
+    true
   end
 
   # Make document +idx+ the current one (0-based, in the order they were
@@ -230,17 +237,22 @@ module EditorDocs
     docs_switch((EditorCore.doc_index + step + n) % n)
   end
 
-  # Close the current document. One with unsaved edits is not closed (asking
-  # whether to save comes with the tab row). Closing the last one leaves an
-  # empty document with no name, as a fresh editor has.
+  # Close the current document (Ctrl+W, File > Close). With unsaved edits the
+  # save-before dialog asks first (editor/render.rb), and its answer closes it.
   def docs_close
     # A help page stands in for the document while it is open; the question
     # is about the document underneath.
     close_help if @help_open
     if @modified
-      flash_status("Unsaved: Ctrl+S first")
+      open_save_dialog(DLG_CLOSE)
       return
     end
+    docs_close_now
+  end
+
+  # Close the current document whatever it holds. Closing the last one leaves
+  # an empty document with no name, as a fresh editor has.
+  def docs_close_now
     cur = EditorCore.doc_index
     n = EditorCore.doc_count
     docs_leave
@@ -255,7 +267,130 @@ module EditorDocs
       docs_remove_entry(cur)
       docs_restore(r)
     end
+    docs_relayout
     docs_enter
     Log.info("doc_close: now #{EditorCore.doc_index + 1}/#{EditorCore.doc_count} arena=#{EditorCore.mem_used}")
+  end
+
+  # Nothing to lose: no name, no edits, one empty line. File > Open and
+  # File > Template use such a document rather than adding one.
+  def docs_blank?
+    return false if @help_open
+    return false if @modified
+    return false unless @current_file.nil?
+    EditorCore.line_count == 1 && EditorCore.line_length(0) == 0
+  end
+
+  # The save dialog writes "//tmp/a.rb" for "/tmp/a.rb"; both are one file.
+  def docs_norm_path(path)
+    p = path
+    while p.length > 1 && p[0, 2] == "//"
+      p = p[1, p.length - 1]
+    end
+    p
+  end
+
+  # The document holding +path+, or -1.
+  def docs_find_path(path)
+    want = docs_norm_path(path)
+    n = EditorCore.doc_count
+    cur = EditorCore.doc_index
+    i = 0
+    while i < n
+      f = tab_path(i, cur)
+      return i if f.length > 0 && docs_norm_path(f) == want
+      i += 1
+    end
+    -1
+  end
+
+  # File > Open (and a file handed to the editor): a file already open is
+  # switched to; otherwise it goes into the current document if that is blank,
+  # or into a new one. When five are open, or the file cannot be read into the
+  # new one, nothing changes but the message.
+  def docs_open_path(path)
+    close_help if @help_open
+    idx = docs_find_path(path)
+    if idx >= 0
+      docs_switch(idx)
+      return
+    end
+    if docs_blank?
+      load_file(path)
+      return
+    end
+    prev = EditorCore.doc_index
+    return unless docs_new
+    return if load_file(path)
+    # Not read: the empty document made for it goes again, and the message
+    # load_file left survives the switch back.
+    msg = @status_msg
+    docs_close_now
+    docs_switch(prev)
+    docs_restore_message(msg)
+  end
+
+  def docs_restore_message(msg)
+    return if msg.nil?
+    @status_msg = msg
+    @status_msg_ok = false
+    @status_msg_frames = STATUS_MSG_FRAMES
+    @status_msg_fresh = true
+    @dirty_status = true
+  end
+
+  # File > Template: into the current document when it is blank, otherwise
+  # into a new one. False when no document could be had.
+  def docs_for_template
+    return true if docs_blank?
+    docs_new
+  end
+
+  # ---- Leaving the editor ----
+  #
+  # Every document with unsaved edits is asked about in turn: the current one
+  # first, then the others in tab order, each shown before its question.
+  # @quit_skip has a bit per document answered "no" in this round. Cancel
+  # anywhere ends the round where it is.
+
+  def request_quit
+    close_help if @help_open
+    @quit_skip = 0
+    quit_next
+  end
+
+  def quit_next
+    idx = docs_next_unsaved
+    if idx < 0
+      stop
+      return
+    end
+    docs_switch(idx)
+    open_save_dialog(DLG_QUIT)
+  end
+
+  def docs_next_unsaved
+    cur = EditorCore.doc_index
+    return cur if @modified && !docs_quit_skipped?(cur)
+    n = EditorCore.doc_count
+    i = 0
+    while i < n
+      if i != cur && !docs_quit_skipped?(i) && docs_saved_modified?(i)
+        return i
+      end
+      i += 1
+    end
+    -1
+  end
+
+  # The "*" of a document that is not the current one, as it was put aside.
+  # Here rather than in editor/tabs.rb: the DOC_ST_ offsets are this module's,
+  # and the mruby build finds a constant only through the module it is in.
+  def docs_saved_modified?(idx)
+    @doc_ints[idx * DOC_ST_N + DOC_ST_MODIFIED] == 1
+  end
+
+  def docs_quit_skipped?(idx)
+    ((@quit_skip >> idx) & 1) == 1
   end
 end

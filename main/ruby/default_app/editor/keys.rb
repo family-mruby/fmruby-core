@@ -29,6 +29,14 @@ module EditorKeys
     rows << ["Ctrl+V", FmrbI18n.t(:paste).to_s]
     rows << ["Ctrl+A", FmrbI18n.t(:select_all).to_s]
 
+    rows << ["", FmrbI18n.t(:k_docs).to_s]
+    rows << ["Ctrl+N", FmrbI18n.t(:k_doc_new).to_s]
+    rows << ["Ctrl+W", FmrbI18n.t(:k_doc_close).to_s]
+    rows << ["Alt+. / Alt+,", FmrbI18n.t(:k_doc_next).to_s]
+    # The same, for keyboards (and the Linux sim) that do not carry Alt.
+    rows << ["Ctrl+PgDn/PgUp", FmrbI18n.t(:k_doc_next).to_s]
+    rows << ["Alt+1..5", FmrbI18n.t(:k_doc_number).to_s]
+
     rows << ["", FmrbI18n.t(:k_search).to_s]
     rows << ["Alt+S", FmrbI18n.t(:k_find).to_s]
     rows << ["F3", FmrbI18n.t(:k_find_next).to_s]

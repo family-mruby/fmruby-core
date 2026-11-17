@@ -138,7 +138,7 @@ module EditorConst
   # Per-menu config: scancode hotkeys (labels come from FmrbI18n).
   # Hotkey scancodes pick a distinguishing letter per item (DOS-Edit style) and
   # are the same in every language -- only the words next to them change.
-  MENU_FILE_HOTKEYS  = [0x12, 0x16, 0x04, 0x17, 0x1B]  # O, S, A, T, X
+  MENU_FILE_HOTKEYS  = [0x12, 0x11, 0x16, 0x04, 0x17, 0x06, 0x1B]  # O, N, S, A, T, C, X
 
   # App skeletons, as files so a user can add their own next to the shipped
   # ones. File > Template lists this directory and inserts the chosen file at
@@ -171,6 +171,19 @@ module EditorConst
   # bar, then the Colors dialog and the Font list.
   MENU_VIEW_HOTKEYS = [0x0B, 0x1A, 0x09, 0x06, 0x12]  # H, W, F, C (Colors), O (fOnt)
   MENU_BAR_GAP  = 6   # px between menu bar items
+
+  # The tab row (editor/tabs.rb): one line of the chrome font under the menu
+  # bar, shown only while more than one document is open. One pixel above the
+  # text and one below it; the bottom one is the edge against the page.
+  TAB_ROW_H    = CHAR_H + 2
+  TAB_PAD      = 3   # px either side of a tab's name
+  TAB_GAP      = 2   # px between two tabs
+  TAB_NAME_MIN = 4   # characters a name is never cut below
+
+  # What the save-before dialog is asking about (editor/render.rb): leaving
+  # the editor, or closing the current document.
+  DLG_QUIT  = 1
+  DLG_CLOSE = 2
 
   # Selection / clipboard colors
   SEL_BG = EDITOR_COLORS["selection"] || FmrbConst::THEME_HIGHLIGHT               # selection
