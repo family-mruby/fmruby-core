@@ -7,12 +7,14 @@
 #   Left / Right, or click the arrows beside the city name      other city
 #   (the arrows only show when the settings list more than one city)
 #
-# Settings: /home/weather.toml (this app's app_settings file). Without it the
-# app shows Tokyo (35.68, 139.69) from Open-Meteo. An example with a few
+# Settings: /home/weather.toml (this app's app_settings file). Without a city
+# list there the app offers Tokyo, Nagoya, Osaka, Fukuoka and Sapporo from
+# Open-Meteo (DEFAULT_CITIES). An example with a few
 # cities and every key explained is in
 #   /usr/share/samples/weather/weather.toml.example
 # -- copy it to /home/weather.toml and edit it. The city chosen with the
-# arrows is written back into that file (the "city" line) and is the one shown
+# arrows is written back into that file (the "city" line; the file is made
+# for it when there is none) and is the one shown
 # next time. The server must answer like Open-Meteo's /v1/forecast
 # (?latitude=..&longitude=..&current_weather=true).
 # API: https://open-meteo.com/ (WMO weather codes)
@@ -27,9 +29,14 @@ require 'json'
 
 class WeatherApp < FmrbApp
   DEFAULT_API  = "https://api.open-meteo.com/v1/forecast"
-  DEFAULT_CITY = "Tokyo"
-  DEFAULT_LAT  = 35.68
-  DEFAULT_LON  = 139.69
+  # The cities offered when the settings list none, in this order.
+  DEFAULT_CITIES = [
+    ["Tokyo",   35.68, 139.69],
+    ["Nagoya",  35.18, 136.91],
+    ["Osaka",   34.69, 135.50],
+    ["Fukuoka", 33.59, 130.40],
+    ["Sapporo", 43.06, 141.35],
+  ]
   REFRESH_INTERVAL_MS = 10 * 60 * 1000
   # Until the first successful fetch, retry quickly. On the device the very
   # first TCP/TLS flow after WiFi association is sometimes dropped by the
@@ -198,7 +205,12 @@ class WeatherApp < FmrbApp
       end
     end
     if @cities.empty?
-      @cities << { name: DEFAULT_CITY, lat: DEFAULT_LAT, lon: DEFAULT_LON }
+      i = 0
+      while i < DEFAULT_CITIES.size
+        d = DEFAULT_CITIES[i]
+        @cities << { name: d[0], lat: d[1], lon: d[2] }
+        i += 1
+      end
     end
     @idx = 0
     want = conf["city"]
@@ -259,8 +271,6 @@ class WeatherApp < FmrbApp
     return if @save_at.nil?
     return if !force && now_ms < @save_at
     @save_at = nil
-    path = app_settings_path
-    return unless File.exist?(path)
     name = @cities[@idx][:name]
     if save_app_settings({ "city" => name })
       Log.info("Weather: remembered #{name}")
