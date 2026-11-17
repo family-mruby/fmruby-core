@@ -27,6 +27,14 @@ module EditorConst
   MENU_BG       = EDITOR_COLORS["menu_bg"] ||
                   FmrbColors.shade(FmrbConst::THEME_MENU_BG, BG_COLOR)           # menu_bg
   MENU_TEXT     = EDITOR_COLORS["menu_text"] || FmrbConst::THEME_TEXT_LIGHT       # menu_text
+  # The tab row (editor/tabs.rb) is its own band between the menu row and the
+  # page: the system's menu colour itself, which the menu row is a step away
+  # from. Only when that would meet one of its two neighbours (an [editor]
+  # menu_bg or bg set to it) is it a step from the menu row instead.
+  TAB_BG_THEME  = FmrbConst::THEME_MENU_BG
+  TAB_BG        = EDITOR_COLORS["tab_bg"] ||
+                  (TAB_BG_THEME == MENU_BG || TAB_BG_THEME == BG_COLOR ?
+                   FmrbColors.shade(MENU_BG, BG_COLOR) : TAB_BG_THEME)         # tab_bg
   MENU_KEY      = EDITOR_COLORS["menu_key"] || FmrbGfx.rgb_to_332(255, 255, 0)    # menu_key
   # The same role on a light panel (the key list): yellow on white is unreadable.
   MENU_KEY_DARK = EDITOR_COLORS["menu_key_alt"] || FmrbGfx.rgb_to_332(120, 60, 0) # menu_key_alt
@@ -244,7 +252,7 @@ module EditorConst
   # line with "uninitialized constant EditorConst::SEL_BG".
   EDITOR_COLOR_KEYS = [
     "bg", "text", "cursor", "selection", "gutter",
-    "menu_bg", "menu_text", "menu_key", "menu_key_alt",
+    "menu_bg", "menu_text", "menu_key", "menu_key_alt", "tab_bg",
     "status_bg", "status_text", "saved_bg", "saved_text",
     "dropdown_bg", "dropdown_text", "dropdown_sel_bg", "dropdown_sel_text",
     "dialog_bg", "dialog_text", "dialog_border", "dialog_key",
@@ -254,7 +262,7 @@ module EditorConst
   ]
   EDITOR_COLOR_VALUES = [
     BG_COLOR, TEXT_COLOR, CURSOR_COLOR, SEL_BG, GUTTER_BG,
-    MENU_BG, MENU_TEXT, MENU_KEY, MENU_KEY_DARK,
+    MENU_BG, MENU_TEXT, MENU_KEY, MENU_KEY_DARK, TAB_BG,
     STATUS_BG, STATUS_TEXT, STATUS_OK_BG, STATUS_OK_TEXT,
     DROPDOWN_BG, DROPDOWN_TEXT, DROPDOWN_SEL_BG, DROPDOWN_SEL_TEXT,
     QUIT_DLG_BG, QUIT_DLG_TEXT, QUIT_DLG_BORDER, QUIT_DLG_KEY,

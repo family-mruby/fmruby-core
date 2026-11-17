@@ -4,7 +4,9 @@
 #
 # A tab is the file name without its folder (the status line's word for a
 # document with no name yet), with a "*" after it while it has unsaved edits.
-# The current one is drawn inverted in the menu row's own two colours. When
+# The row has a ground of its own (TAB_BG), so it reads as a band apart from
+# the menu row above it and the page below; the current tab is drawn inverted
+# in the menu row's two colours, the others in the menu's ink. When
 # the names do not fit, they are cut from the back, all to the same length,
 # down to TAB_NAME_MIN characters; when even that is too wide, the row starts
 # far enough along that the current tab is on it.
@@ -78,7 +80,7 @@ module EditorTabs
 
   def draw_tab_row
     y = @tab_y
-    @gfx.fill_rect(0, y, @user_area_width, TAB_ROW_H, MENU_BG)
+    @gfx.fill_rect(0, y, @user_area_width, TAB_ROW_H, TAB_BG)
     @tab_xs = []
     @tab_ws = []
     @tab_ids = []
@@ -119,7 +121,7 @@ module EditorTabs
         @gfx.fill_rect(x, y, w, TAB_ROW_H - 1, MENU_TEXT)
         @gfx.draw_text(x + TAB_PAD, y + 1, texts[i], MENU_BG, MENU_TEXT, mixed: true)
       else
-        @gfx.draw_text(x + TAB_PAD, y + 1, texts[i], MENU_TEXT, MENU_BG, mixed: true)
+        @gfx.draw_text(x + TAB_PAD, y + 1, texts[i], MENU_TEXT, TAB_BG, mixed: true)
       end
       @tab_xs << x
       @tab_ws << w
