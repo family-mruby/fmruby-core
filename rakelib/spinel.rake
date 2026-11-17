@@ -235,7 +235,26 @@ namespace :spinel do
     # can't resolve here. INTERIM allowlist: Phase 5 routes RTC writes through the
     # set_wallclock FFI (decision (b), phase5.md T5-4) and deletes the direct
     # driver instantiation from clock_setting.rb -- then REMOVE this allowlist.
-    allow = [/unresolved call 'write_time' on .* receiver/]
+    # `rtc.init` on the same driver object is the same case.
+    #
+    # Compiler false positives (verified in the generated C): a `?`-named user
+    # method called on a poly receiver. The analysis records a builtin answer
+    # for any `?` name (bool), so emit_poly_builtin_default tries a builtin arm,
+    # reaches the unresolved path (which prints this warning), then throws the
+    # trial away. The C keeps the per-class user arms plus a CRuby-shaped
+    # NoMethodError default. `move` on the launcher's SpriteInstance reaches the
+    # same trial. Only the "NoMethodError (matching CRuby)" form is accepted;
+    # a call that silently degrades to nil still fails the gate. Remove these
+    # once the Spinel fork stops warning from the trial generation.
+    #   hit? / fires_on_press?  FmrbUI press/release and the file manager's
+    #                           scrollbar (Button / Scrollbar / TextField)
+    #   on?                     FmrbUI#on?(id)
+    #   move                    launcher icon SpriteInstance
+    allow = [
+      /unresolved call 'write_time' on .* receiver/,
+      /unresolved call 'init' on poly receiver -> NoMethodError \(matching CRuby\)/,
+      /unresolved call '(hit\?|fires_on_press\?|on\?|move)' on poly receiver -> NoMethodError \(matching CRuby\)/,
+    ]
     failed = []
     # The gems' ext kernels link standalone (no FFI), so they get every leg,
     # build and behavior included. One finding is expected and allowlisted:
@@ -271,10 +290,10 @@ namespace :spinel do
       findings = out.lines.select { |l| l =~ /warning:|error:/ }
       unexpected = findings.reject { |l| allow.any? { |p| l =~ p } }
       allowed = findings.size - unexpected.size
-      puts "  (#{allowed} known ESP32-only finding(s) allowlisted)" if allowed > 0
+      puts "  (#{allowed} known finding(s) allowlisted)" if allowed > 0
       failed << name unless unexpected.empty?
     end
     abort "spinel-doctor UNEXPECTED findings in: #{failed.join(', ')}" unless failed.empty?
-    puts "spinel-doctor: clean (modulo allowlisted ESP32-only findings)"
+    puts "spinel-doctor: clean (modulo allowlisted findings)"
   end
 end
