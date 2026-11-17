@@ -223,7 +223,7 @@ module Regress
         toml = File.read(File.join(dir, "w6rb.app.toml"))
         expect("the icon as its path there", toml.include?("icon = \"app/usr/w6rb/w6rb.icon\""), toml)
         expect("no hidden folder left", Dir.children(b_usr).none? { _1.start_with?(".") }, Dir.children(b_usr).join(" "))
-        wait_line(T::RUN_DIR_B, /Launcher: w6rb was installed; rescanning when the launcher opens/, mark,
+        wait_line(T::RUN_DIR_B, /Launcher: \/app changed \(w6rb\); rescanning when the launcher opens/, mark,
                   "the desktop told")
         # the launcher (the desktop's menu, its first entry) reads /app again
         # as it opens, and shows the app; Esc closes it

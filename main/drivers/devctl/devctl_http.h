@@ -18,7 +18,7 @@ extern "C" {
  * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM for a NULL server
  *
  * Whoever started the server owns it; this only adds routes. It needs
- * eighteen free URI handler slots (httpd_config_t::max_uri_handlers), three
+ * nineteen free URI handler slots (httpd_config_t::max_uri_handlers), three
  * more with the checkpoint gem. A release build arms the guard here
  * (fmrb_remote_guard.h): every route but /pair and /auth asks for a token.
  */

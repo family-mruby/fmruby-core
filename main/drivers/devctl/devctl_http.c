@@ -6,6 +6,7 @@
 //   GET  /fs/list?path=      GET  /fs/get?path=   PUT  /fs/put?path=
 //   DELETE /fs/del?path=     POST /fs/mkdir?path=     GET /fs/md5?path=
 //   POST /sys/reboot         POST /sys/gc[?pid=][&max=ms]
+//   POST /app/rescan         (the launcher reads /app again)
 //   GET  /audio/mute         POST /audio/mute?on=0|1
 //   GET  /audio/volume       POST /audio/volume?level=0-10
 //   POST /app/checkpoint?pid=[&restart=1][&hold=ms]   (builds with the
@@ -46,6 +47,7 @@
 
 #include "fmrb_app.h"
 #include "fmrb_log.h"
+#include "fmrb_msg.h"
 #include "fmrb_hal_file.h"
 #include "host_task.h"
 #include "fmrb_secret_path.h"
@@ -886,6 +888,34 @@ static esp_err_t sys_gc_handler(httpd_req_t *req)
     return ctl_json(req, "200 OK", body);
 }
 
+// Ask the desktop to read /app again, the way the launcher's Reload does:
+// after files were sent over (tools/fmrb_rd_fs.rb sync, the app_sync flash)
+// the launcher still shows the list it built at boot, so changed .app.toml
+// files and icons did not show until a restart. The kernel passes the same
+// "apps_installed" note the transfer app sends on to the desktop, which
+// rescans now when the launcher is open, else when it next opens. The
+// message lives in .rodata; the kernel's queue taking it is all this waits
+// for.
+static esp_err_t app_rescan_handler(httpd_req_t *req)
+{
+    // {"cmd" => "apps_installed", "name" => "remote sync"} in MessagePack.
+    static const char k_note[] =
+        "\x82" "\xa3" "cmd" "\xae" "apps_installed" "\xa4" "name" "\xab" "remote sync";
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = PROC_ID_HOST,
+        .size = (uint32_t)(sizeof(k_note) - 1),
+    };
+    memcpy(msg.data, k_note, sizeof(k_note) - 1);
+    if (fmrb_msg_send(PROC_ID_KERNEL, &msg, 500) != FMRB_OK) {
+        FMRB_LOGW(TAG, "dev ctl: rescan not sent (the kernel's queue did not take it)");
+        return ctl_json(req, "503 Service Unavailable",
+                        "{\"ok\":false,\"err\":\"kernel busy\"}");
+    }
+    FMRB_LOGI(TAG, "dev ctl: asked the launcher to rescan /app");
+    return ctl_json(req, "200 OK", "{\"ok\":true}");
+}
+
 size_t devctl_status_ident(char *out, size_t cap)
 {
     if (!out || cap == 0) return 0;
@@ -1114,6 +1144,8 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
         .uri = "/sys/reboot", .method = HTTP_POST, .handler = sys_reboot_handler };
     static const httpd_uri_t uri_sys_gc = {
         .uri = "/sys/gc", .method = HTTP_POST, .handler = sys_gc_handler };
+    static const httpd_uri_t uri_app_rescan = {
+        .uri = "/app/rescan", .method = HTTP_POST, .handler = app_rescan_handler };
     static const httpd_uri_t uri_audio_mute_get = {
         .uri = "/audio/mute", .method = HTTP_GET, .handler = audio_get_handler };
     static const httpd_uri_t uri_audio_mute_post = {
@@ -1144,6 +1176,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_fs_df);
     devctl_register_uri(server, &uri_sys_reboot);
     devctl_register_uri(server, &uri_sys_gc);
+    devctl_register_uri(server, &uri_app_rescan);
     devctl_register_uri(server, &uri_audio_mute_get);
     devctl_register_uri(server, &uri_audio_mute_post);
     devctl_register_uri(server, &uri_audio_volume_get);
@@ -1160,7 +1193,7 @@ fmrb_err_t devctl_http_register(httpd_handle_t server)
     devctl_register_uri(server, &uri_move);
 #endif
     if (devctl_fs_unrestricted()) {
-        FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*, /audio/*, /sys/reboot, /sys/gc); "
+        FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /app/rescan, /fs/*, /audio/*, /sys/reboot, /sys/gc); "
                   "the file endpoints reach every path, keys included");
     } else {
         FMRB_LOGI(TAG, "remote control is %s (Config > Remote control, %d PCs paired); "

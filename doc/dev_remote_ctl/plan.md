@@ -167,7 +167,8 @@ doc/remote_guard/plan.md の方針)。リリースのビルド (`FMRB_RELEASE=1 
 - 足した口: `GET /fs/md5?path=` (ファイルの MD5 と大きさ。ROM の MD5、変化の検出用)、`POST /sys/reboot`
   (FmrbSystem.reboot と同じ再起動。答えてから 300 ms 後)。`POST /sys/gc[?pid=][&max=ms]` (2026-11-16:
   debug server の gc と同じ。全アプリか pid のアプリに完全な GC、Spinel は文字列も。実機の
-  `rake regress:soak BOARD=` が使う。doc/regression/report/soak.md 6 章)。`/status` は開発のビルドで
+  `rake regress:soak BOARD=` が使う。doc/regression/report/soak.md 6 章)。`POST /app/rescan` (2026-11-17: デスクトップに
+ランチャーの読み直しを頼む。sync が送った後に使う。doc/reference/TODO.md)。`/status` は開発のビルドで
   `"board"` (FmrbConst::BOARD の綴り) と `"host"` (mDNS 名 fmruby-XXXXXX) も返す。
 
 ### /home の退避と書き戻し、焼くときの流れ

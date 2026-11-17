@@ -1150,14 +1150,16 @@ module LauncherMixin
   # second request able to re-enter the whole thing. Mark it and let on_update
   # pick it up, which is the shallowest point in the loop and cannot nest.
   # An app was added or removed in /app by another app (the transfer app's
-  # install): rescanned now when the launcher is open, else when it opens
-  # next (the rescan paints its title bar).
+  # install, name the app's), or files were sent over WiFi (devctl's
+  # /app/rescan after a sync, name "remote sync"): rescanned now when the
+  # launcher is open, else when it opens next (the rescan paints its title
+  # bar).
   def launcher_apps_changed(name)
     if @launcher_open && !@lnc_linux
-      Log.info("Launcher: #{name} was installed; rescanning")
+      Log.info("Launcher: /app changed (#{name}); rescanning")
       launcher_request_rescan
     else
-      Log.info("Launcher: #{name} was installed; rescanning when the launcher opens")
+      Log.info("Launcher: /app changed (#{name}); rescanning when the launcher opens")
       @launcher_stale = true
     end
     nil
