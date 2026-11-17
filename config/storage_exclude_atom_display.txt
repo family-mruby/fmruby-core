@@ -25,3 +25,5 @@ usr/share/backgrounds/bg_cyber_1280x720.png
 # this storage as it was.
 app/modern/ai_helper.app.rb
 app/modern/ai_helper.app.toml
+usr/share/doc/ai_helper.md
+usr/share/doc/ai_helper_ja.md
