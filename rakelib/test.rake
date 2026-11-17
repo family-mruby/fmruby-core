@@ -17,7 +17,7 @@
 #
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
-# are not here because CI cannot fetch that private repository.
+# live there with the code they test.
 desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the app package (W6) + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "app_package:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "png332:test", "nsf:test", "tts:test", "native:test",
                "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "ti:test", "basic:test", "micropython:smoke"]
@@ -79,7 +79,13 @@ namespace :app_package do
   # An app's package for installing it over Asterism (doc/wasm_apps W6):
   # flash/usr/share/transfer/app_package.rb on the host.
   desc "App package tests: pack, unpack, check and place an app for /app/usr (host Ruby + cc, no docker)"
+  # The transfer code it loads is the pinned asterism checkout (public over
+  # https, so CI fetches it here too; the Zenoh gem asterism:setup also
+  # fetches is not needed).
   task :test do
+    if ASTERISM_DIR == ASTERISM_VENDOR_DIR
+      fetch_pinned_checkout("asterism", asterism_pin, ASTERISM_VENDOR_DIR)
+    end
     sh "ruby test/app_package/run.rb"
   end
 end
