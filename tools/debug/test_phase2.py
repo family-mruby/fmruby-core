@@ -35,7 +35,7 @@ def check(cond, msg):
 # --------------------------------------------------------------------------
 def part_a_mapper():
     print("== Part A: combined line mapper ==")
-    maps_glob = os.path.join(CORE, "main", "ruby", "*", "mrb")
+    maps_glob = os.path.join(CORE, "build-linux", "ruby_mrb", "*")
     m = Mapper(
         path_mappings=[{"device": "/app/", "local": os.path.join(CORE, "flash/app/")}],
         project_mappings=[{"device": "/project/", "local": CORE + "/"}],
@@ -142,7 +142,7 @@ def part_b_e2e(host, port, app, src_base, line):
             "host": host, "port": port, "app": app,
             "pathMappings": [{"device": "/app/", "local": os.path.join(CORE, "flash/app/")}],
             "projectMappings": [{"device": "/project/", "local": CORE + "/"}],
-            "combinedMaps": [os.path.join(CORE, "main", "ruby", "*", "mrb")],
+            "combinedMaps": [os.path.join(CORE, "build-linux", "ruby_mrb", "*")],
         })
         check(r["success"], f"attach to {app} ok")
 

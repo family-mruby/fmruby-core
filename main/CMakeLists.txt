@@ -127,9 +127,17 @@ list(REMOVE_ITEM KERNEL_RUBY_FILES
 list(REMOVE_ITEM KERNEL_RUBY_FILES
      ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/linux_window.app.rb)
 
+# The bytecode goes into this build's own directory (build/ruby_mrb for the
+# ESP32 firmware, build-linux/ruby_mrb for the sim), so the two builds no
+# longer write the same files and switching between them compiles nothing
+# again. main/ruby/*/mrb is the native program's and the browser build's
+# (rake native:mrb / wasm:mrb, rakelib/hosted.rake). The remote debugger's
+# combinedMaps globs name these directories (tools/debug/fmrb_dap_adapter.py).
+set(FMRB_RUBY_MRB_DIR ${CMAKE_BINARY_DIR}/ruby_mrb)
+
 # Step 1: Prepare Ruby bytecode sources (add C files to COMPONENT_SRCS)
-prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/mrb COMPONENT_SRCS)
-prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/mrb COMPONENT_SRCS)
+prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${FMRB_RUBY_MRB_DIR}/kernel COMPONENT_SRCS)
+prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${FMRB_RUBY_MRB_DIR}/default_app COMPONENT_SRCS)
 
 # Kernel engine selection (Phase 1 T1-6, Phase 2 T2-5). Default mruby; `spinel`
 # swaps the kernel task for the Spinel-compiled combined kernel VM.
@@ -625,8 +633,8 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 )
 
 # Step 2: Generate Ruby bytecode compilation commands (must be after idf_component_register)
-generate_ruby_bytecode_commands(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/mrb)
-generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/mrb)
+generate_ruby_bytecode_commands(KERNEL_RUBY_FILES ${FMRB_RUBY_MRB_DIR}/kernel)
+generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${FMRB_RUBY_MRB_DIR}/default_app)
 
 # Spinel engine: define the switch macro (fmrb_kernel.c) and, when a host
 # SPINEL_BIN is available, wire the .rb -> .c regeneration. The docker linux

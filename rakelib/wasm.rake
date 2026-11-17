@@ -73,8 +73,8 @@ namespace :wasm do
   end
 
   # The browser build compiles the mruby apps from their PRE-GENERATED
-  # bytecode (main/ruby/**/mrb/*.c), and only the ESP-IDF / Linux
-  # CMake build produces those. Editing an app's Ruby and building for wasm
+  # bytecode (main/ruby/**/mrb/*.c), which the ESP-IDF / Linux CMake
+  # builds do not make (theirs are in <build>/ruby_mrb). Editing an app's Ruby and building for wasm
   # alone therefore linked yesterday's bytecode without a word -- an hour went
   # into a shell command that "did not exist" because of it. This runs the two
   # commands that CMake step runs, for whatever is older than its sources.

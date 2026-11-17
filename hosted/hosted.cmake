@@ -406,7 +406,8 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
 
 # Ruby bytecode (mrbc output, target independent) and the host-generated
 # Spinel programs. Both are produced by the existing generation steps (rake
-# hosted:mrb, which runs what the IDF build's CMake step runs, and
+# native:mrb / wasm:mrb, which run what the IDF build's CMake step runs into
+# main/ruby/*/mrb -- the IDF builds keep theirs in <build>/ruby_mrb -- and
 # spinel_gen!('hosted') in the rake tasks) and reused as-is; regenerating
 # them is not this build's job.
 file(GLOB KERNEL_MRB_SRCS ${FMRB_ROOT}/main/ruby/kernel/mrb/*.c)

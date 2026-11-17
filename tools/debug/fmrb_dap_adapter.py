@@ -18,7 +18,8 @@ launch.json (type "fmrb", request "attach"):
       { "device": "/project/", "local": "${workspaceFolder}/fmruby-core/" }
     ],
     "combinedMaps": [                     // dirs/globs holding *_combined.map.json
-      "${workspaceFolder}/fmruby-core/main/ruby/*/mrb"
+      "${workspaceFolder}/fmruby-core/build/ruby_mrb/*",       // ESP32 firmware
+      "${workspaceFolder}/fmruby-core/build-linux/ruby_mrb/*"  // Linux sim
     ]
   }
 
