@@ -4,6 +4,36 @@
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 
+# Every copy rake setup makes (into the picoruby submodule, its build
+# configs, components/esp_littlefs and flash/) goes through these
+# (tools/tree_sync.rb): a file is written only when its content differs, so
+# an unchanged one keeps its time and ninja, the host mruby build and the
+# checkpoint table do not rebuild what it feeds. With cp -rf every build
+# recompiled ~50 C files and re-ran the CMake configure.
+require_relative "../tools/tree_sync"
+
+def setup_report(what, n)
+  puts "setup: #{what} (#{n} file#{n == 1 ? '' : 's'} updated)" if n > 0
+end
+
+# dst becomes exactly src (a directory, or a { "rel" => source } map):
+# what rm -rf dst + cp -r src dst did.
+def setup_mirror(dst, src, keep: [])
+  map = src.is_a?(Hash) ? src : { "" => src }
+  setup_report(dst, FmrbTreeSync.mirror(dst, map, keep: keep))
+end
+
+# src's files laid over dst (cp -rf src/. dst/), nothing deleted.
+def setup_overlay(src, dst)
+  setup_report(dst, FmrbTreeSync.overlay(src, dst))
+end
+
+# One file; a dst ending in / is the directory it goes into (cp -f).
+def setup_copy(src, dst)
+  dst = File.join(dst, File.basename(src)) if dst.end_with?("/")
+  setup_report(dst, FmrbTreeSync.file(src, dst))
+end
+
 desc "Regenerate the icon PNGs from their .icon sources (shared and in the app folders)"
 task :icons do
   # The .icon text files are the editable source; the PNGs beside them are what
@@ -46,40 +76,35 @@ task :setup do
   mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
   # ---------- Add ----------
   # const (must be copied first, as it's used by kernel and app)
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-const"
-  sh "cp -rf lib/gems/picoruby-fmrb-const #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-const", "lib/gems/picoruby-fmrb-const"
   # log
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-log"
-  sh "cp -rf lib/gems/picoruby-fmrb-log #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-log", "lib/gems/picoruby-fmrb-log"
   # msgpack (must be copied before app, as app depends on it)
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-msgpack"
-  sh "cp -rf lib/gems/picoruby-fmrb-msgpack #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-msgpack", "lib/gems/picoruby-fmrb-msgpack"
   # kernel
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-kernel"
-  sh "cp -rf lib/gems/picoruby-fmrb-kernel #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-kernel", "lib/gems/picoruby-fmrb-kernel"
   # app
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
-  sh "cp -rf lib/gems/picoruby-fmrb-app #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-app", "lib/gems/picoruby-fmrb-app"
   # editor-core (document model in C; depends on syntax-highlight, copied below)
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-editor-core"
-  sh "cp -rf lib/gems/picoruby-fmrb-editor-core #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-editor-core", "lib/gems/picoruby-fmrb-editor-core"
   # ti (type inference engine for the editor). Unlike the gems above this one
   # is not ours: it comes from the pinned fork checkout (rake ti:setup), so the
   # copy source is PICORUBY_TI_DIR instead of lib/gems. Everything the firmware
   # does not need is dropped from the copy: .git, the unused lib/prism
   # submodule, the Go LSP server, the host tests, docs and the generator.
   ti_dir = picoruby_ti_dir!
-  sh "rm -rf #{mrbgem_path}/picoruby-ti"
-  sh "cp -rf #{ti_dir} #{mrbgem_path}/picoruby-ti"
-  # (rm_rf, not a brace expansion in sh: /bin/sh is dash here and would take
-  # the braces literally, silently leaving the directories in place)
-  %w[.git lib lsp host_test images example tidbgen].each do |unused|
-    rm_rf "#{mrbgem_path}/picoruby-ti/#{unused}"
-  end
   # Where the engine's working arena lives on the ESP32 targets. The engine
   # includes this by name (TI_ARENA_INCLUDE, set in the esp32 build configs)
-  # and finds it because the gem puts its own src/ on the include path.
-  sh "cp -f lib/upstream/ti_arena_esp32.h #{mrbgem_path}/picoruby-ti/src/"
+  # and finds it because the gem puts its own src/ on the include path. It
+  # rides in the same mirror; src/generated is left to picoruby_ti_gen_db.
+  unused = %w[.git lib lsp host_test images example tidbgen]
+  ti_map = (Dir.children(ti_dir) - unused).to_h { |e| [e, File.join(ti_dir, e)] }
+  ti_map.delete("src")
+  (Dir.children(File.join(ti_dir, "src")) - ["generated"]).each do |e|
+    ti_map["src/#{e}"] = File.join(ti_dir, "src", e)
+  end
+  ti_map["src/ti_arena_esp32.h"] = "lib/upstream/ti_arena_esp32.h"
+  setup_mirror "#{mrbgem_path}/picoruby-ti", ti_map, keep: ["src/generated"]
   # The type database is generated from OUR sig/*.rbs (the FMRB API), on the
   # host, into the copy only -- the docker build has no ruby for this.
   picoruby_ti_gen_db(ti_dir, "#{PICORUBY_TI_GEM_DIR}/src/generated")
@@ -87,71 +112,53 @@ task :setup do
   # flash/, so it is in place before the storage image is staged.
   picoruby_ti_gen_help
   # debug (on-device debugger API; depends on msgpack, copied above)
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-debug"
-  sh "cp -rf lib/gems/picoruby-fmrb-debug #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-debug", "lib/gems/picoruby-fmrb-debug"
   # filesystem
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-filesystem"
-  sh "cp -rf lib/gems/picoruby-fmrb-filesystem #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-filesystem", "lib/gems/picoruby-fmrb-filesystem"
   # io
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-io"
-  sh "cp -rf lib/gems/picoruby-fmrb-io #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-io", "lib/gems/picoruby-fmrb-io"
   # syntax-highlight
-  sh "rm -rf #{mrbgem_path}/picoruby-syntax-highlight"
-  sh "cp -rf lib/gems/picoruby-syntax-highlight #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-syntax-highlight", "lib/gems/picoruby-syntax-highlight"
   # rx8900
-  sh "rm -rf #{mrbgem_path}/picoruby-rx8900"
-  sh "cp -rf lib/gems/picoruby-rx8900 #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-rx8900", "lib/gems/picoruby-rx8900"
   # rx8130 (Tab5 RTC)
-  sh "rm -rf #{mrbgem_path}/picoruby-rx8130"
-  sh "cp -rf lib/gems/picoruby-rx8130 #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-rx8130", "lib/gems/picoruby-rx8130"
   # bmi270 (Tab5 six-axis IMU)
-  sh "rm -rf #{mrbgem_path}/picoruby-bmi270"
-  sh "cp -rf lib/gems/picoruby-bmi270 #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-bmi270", "lib/gems/picoruby-bmi270"
   # picorabbit
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-picorabbit"
-  sh "cp -rf lib/gems/picoruby-fmrb-picorabbit #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-picorabbit", "lib/gems/picoruby-fmrb-picorabbit"
   # bmp332
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
-  sh "cp -rf lib/gems/picoruby-fmrb-bmp332 #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-bmp332", "lib/gems/picoruby-fmrb-bmp332"
   # fft (the four-engine FFT: doc/mic_spectrum). Its mrblib/fft_core.rb is also
   # what the Spinel backend compiles, copied into the Spinel source dir by
   # rake spinel:gen -- one file, both engines.
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-fft"
-  sh "cp -rf lib/gems/picoruby-fmrb-fft #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-fft", "lib/gems/picoruby-fmrb-fft"
   # spinel-hello (minimal sample of "Spinel as a gem": doc/spinel_aot/
   # adding_a_spinel_gem.md). native/ and spinel/ ride along in the copy but are
   # not compiled from here (main compiles native/, rake spinel:gen the entry).
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-spinel-hello"
-  sh "cp -rf lib/gems/picoruby-fmrb-spinel-hello #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-spinel-hello", "lib/gems/picoruby-fmrb-spinel-hello"
   # raycast (the raycaster's inner loop on both engines: doc/raycast_spinel).
   # Same shape as fft: mrblib/raycast_core.rb is what the Spinel backend
   # compiles too, staged by rake spinel:gen -- one file, both engines.
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-raycast"
-  sh "cp -rf lib/gems/picoruby-fmrb-raycast #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-raycast", "lib/gems/picoruby-fmrb-raycast"
   # sha256 (Digest::SHA256 in C for the browser build, which has no mbedTLS:
   # doc/asterism_file_transfer T2)
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-sha256"
-  sh "cp -rf lib/gems/picoruby-fmrb-sha256 #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-sha256", "lib/gems/picoruby-fmrb-sha256"
   # midi (imported from Midori; Ruby protocol layer only, see the gem's
   # FAMILY_MRUBY_PORT.md)
-  sh "rm -rf #{mrbgem_path}/picoruby-midi"
-  sh "cp -rf lib/gems/picoruby-midi #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-midi", "lib/gems/picoruby-midi"
   # midi-mml (the MML parser only, same import rule; the player is ours)
-  sh "rm -rf #{mrbgem_path}/picoruby-midi-mml"
-  sh "cp -rf lib/gems/picoruby-midi-mml #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-midi-mml", "lib/gems/picoruby-midi-mml"
   # fmrb-midi (APU transport; depends on midi and app, copied above)
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-midi"
-  sh "cp -rf lib/gems/picoruby-fmrb-midi #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-midi", "lib/gems/picoruby-fmrb-midi"
   # hal-task-freertos (name-only gem: makes mruby-task drop its own task_hal
   # port so the FreeRTOS case-D port is used via CMake instead; see the gem's
   # mrbgem.rake and doc/work_picoruby_merge/instruct_d7_b1_tick.md sec 3.5)
-  sh "rm -rf #{mrbgem_path}/hal-task-freertos"
-  sh "cp -rf lib/upstream/hal-task-freertos #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/hal-task-freertos", "lib/upstream/hal-task-freertos"
   # hal-dir-fmrb (name-only gem: makes mruby-dir drop its flat "flash/" posix
   # port; the native build compiles lib/upstream/hal-esp32-dir/dir_hal.c against
   # the file HAL's resolver instead -- doc/linux_native/)
-  sh "rm -rf #{mrbgem_path}/hal-dir-fmrb"
-  sh "cp -rf lib/upstream/hal-dir-fmrb #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/hal-dir-fmrb", "lib/upstream/hal-dir-fmrb"
   # picoruby-asterism-zenoh (Asterism::Zenoh, the Zenoh client:
   # doc/ruby_asterism). Not ours to keep here: like picoruby-ti it comes from
   # a pinned checkout (rake asterism:setup, PICORUBY_ASTERISM_ZENOH_DIR
@@ -159,76 +166,66 @@ task :setup do
   # test, Rakefile or vendor/). The zenoh-pico sources the gem pins (rake
   # zenoh:setup) go under the copy's vendor/, where its mrbgem.rake looks for
   # them. Only the Linux and P4 builds link it (listed in
-  # lib/upstream/family_mruby_linux.rb and family_mruby_esp32p4.rb). The
-  # zenoh-pico files keep their timestamps (cp -p) so its ~150 objects are
-  # not rebuilt on every build. The copy under the gem's former name
-  # (picoruby-zenoh) is removed.
+  # lib/upstream/family_mruby_linux.rb and family_mruby_esp32p4.rb). Like
+  # every copy here, a file is written only when its content changed, so the
+  # ~150 zenoh-pico objects are not rebuilt on every build. The copy under the
+  # gem's former name (picoruby-zenoh) is removed.
   zz_dir = picoruby_asterism_zenoh_dir!
   zp_dir = zenoh_pico_dir!
-  sh "rm -rf #{mrbgem_path}/picoruby-zenoh"
-  sh "rm -rf #{mrbgem_path}/picoruby-asterism-zenoh"
-  mkdir_p "#{mrbgem_path}/picoruby-asterism-zenoh"
+  rm_rf "#{mrbgem_path}/picoruby-zenoh"
   # LICENSE-APACHE and NOTICE: the gem's zenoh-pico derived files and
   # zenoh-pico itself are used under Apache-2.0 (THIRD_PARTY_LICENSES.md).
   # mrblib/: the gem's Ruby half (0.4.0 on: keywords, deprecations).
+  zz_map = {}
   %w[mrbgem.rake include src ports mrblib README.md LICENSE LICENSE-APACHE NOTICE].each do |entry|
     next if entry == "mrblib" && !File.directory?("#{zz_dir}/mrblib")
-    sh "cp -rf #{zz_dir}/#{entry} #{mrbgem_path}/picoruby-asterism-zenoh/"
+    zz_map[entry] = "#{zz_dir}/#{entry}"
   end
-  zp_copy = "#{mrbgem_path}/picoruby-asterism-zenoh/vendor/zenoh-pico"
-  mkdir_p zp_copy
   %w[src include LICENSE NOTICE.md version.txt].each do |entry|
-    sh "cp -rp #{zp_dir}/#{entry} #{zp_copy}/"
+    zz_map["vendor/zenoh-pico/#{entry}"] = "#{zp_dir}/#{entry}"
   end
+  setup_mirror "#{mrbgem_path}/picoruby-asterism-zenoh", zz_map
   # picoruby-asterism (Asterism, the object layer and the ROS 2 node over
   # Asterism::Zenoh; pure Ruby). From the pinned asterism checkout (rake
   # asterism:setup, ASTERISM_DIR overrides): the mrbgem is its mrbgem.rake
   # and mrblib/. Linked by the same builds as picoruby-asterism-zenoh.
   ast_dir = asterism_dir!
-  sh "rm -rf #{mrbgem_path}/picoruby-asterism"
-  mkdir_p "#{mrbgem_path}/picoruby-asterism"
-  %w[mrbgem.rake mrblib README.md LICENSE].each do |entry|
-    sh "cp -rf #{ast_dir}/#{entry} #{mrbgem_path}/picoruby-asterism/"
-  end
+  setup_mirror "#{mrbgem_path}/picoruby-asterism",
+               %w[mrbgem.rake mrblib README.md LICENSE].to_h { |e| [e, "#{ast_dir}/#{e}"] }
   # Family mruby's default Asterism node profile (V2.5): pure Ruby, listed
   # after picoruby-asterism by the builds that have it.
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-asterism"
-  sh "cp -rf lib/gems/picoruby-fmrb-asterism #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-fmrb-asterism", "lib/gems/picoruby-fmrb-asterism"
   # The bundled ROS 2 message types, from the same checkout into the storage
   # tree (/usr/share/asterism/msgs on the device; the sim reads flash/
   # directly). Generated here and gitignored, like flash/help: the source is
   # the asterism repository. NOTICE and the Apache-2.0 text travel with them.
-  rm_rf ASTERISM_MSGS_DIR
-  mkdir_p File.dirname(ASTERISM_MSGS_DIR)
-  cp_r "#{ast_dir}/data/msgs", ASTERISM_MSGS_DIR
+  setup_mirror ASTERISM_MSGS_DIR, "#{ast_dir}/data/msgs"
   # Asterism::Transfer, loaded at run time by the transfer app
   # (/usr/share/asterism/transfer/transfer.rb), from the same checkout.
-  rm_rf ASTERISM_TRANSFER_DIR
-  cp_r "#{ast_dir}/data/transfer", ASTERISM_TRANSFER_DIR
+  setup_mirror ASTERISM_TRANSFER_DIR, "#{ast_dir}/data/transfer"
   # mruby-checkpoint (doc/checkpoint): from the pinned checkout (rake
   # checkpoint:setup, MRUBY_CHECKPOINT_DIR overrides), only what an mruby
   # build reads -- no tools/ (the repository's own driver, whose absence also
   # keeps the gem from declaring an executable), tests or vendored mruby.
   # Linked by the Linux and native builds only (their build configs list it).
   ck_dir = mruby_checkpoint_dir!
-  sh "rm -rf #{mrbgem_path}/mruby-checkpoint"
-  mkdir_p "#{mrbgem_path}/mruby-checkpoint"
-  %w[mrbgem.rake include src].each do |entry|
-    sh "cp -rf #{ck_dir}/mrbgems/mruby-checkpoint/#{entry} #{mrbgem_path}/mruby-checkpoint/"
-  end
-  %w[README.md LICENSE].each do |entry|
-    sh "cp -f #{ck_dir}/#{entry} #{mrbgem_path}/mruby-checkpoint/"
-  end
+  ck_map = %w[mrbgem.rake include src].to_h { |e| [e, "#{ck_dir}/mrbgems/mruby-checkpoint/#{e}"] }
+  %w[README.md LICENSE].each { |e| ck_map[e] = "#{ck_dir}/#{e}" }
+  setup_mirror "#{mrbgem_path}/mruby-checkpoint", ck_map
   # conf
-  sh "cp -f lib/upstream/family_mruby.gembox #{mrbgem_path}/"
-  sh "cp -f lib/upstream/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
-  sh "cp -f lib/upstream/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
-  sh "cp -f lib/upstream/family_mruby_wasm.rb components/picoruby-esp32/picoruby/build_config/"
+  setup_copy "lib/upstream/family_mruby.gembox", "#{mrbgem_path}/"
+  setup_copy "lib/upstream/family_mruby_linux.rb", "components/picoruby-esp32/picoruby/build_config/"
+  setup_copy "lib/upstream/family_mruby_esp32.rb", "components/picoruby-esp32/picoruby/build_config/"
+  setup_copy "lib/upstream/family_mruby_wasm.rb", "components/picoruby-esp32/picoruby/build_config/"
+  # picoruby's build helper: src/version.c written only when it changes
+  # (upstream writes it on every rake run, which put the presym scan, mrbc and
+  # every gem_init.c of every libmruby out of date each time). Whole-file
+  # copy: refresh it when the picoruby submodule moves.
+  setup_copy "lib/upstream/patch/picoruby-lib/build.rb", "components/picoruby-esp32/picoruby/lib/picoruby/build.rb"
 
   # ---------- Replace ----------
   # Machine
-  sh "rm -rf #{mrbgem_path}/picoruby-machine"
-  sh "cp -rf lib/upstream/replace/picoruby-machine #{mrbgem_path}/"
+  setup_mirror "#{mrbgem_path}/picoruby-machine", "lib/upstream/replace/picoruby-machine"
 
   # ---------- Patch ----------
   # picoruby-mruby: alloc.c (estalloc multi-VM), hal.h, mrbgem.rake, and
@@ -240,32 +237,32 @@ task :setup do
   # GC root hook (only with MRB_VM_SAFEPOINT_HOOK, doc/checkpoint Ff), marked
   # "fmrb: checkpoint" (doc/checkpoint/plan.md). These are whole-file copies,
   # so they have to be refreshed when the mruby submodule moves.
-  sh "cp -rf lib/upstream/patch/picoruby-mruby #{mrbgem_path}/"
+  setup_overlay "lib/upstream/patch/picoruby-mruby", "#{mrbgem_path}/picoruby-mruby"
 
   # mruby-io file_constants.rb
-  sh "cp -f lib/upstream/patch/picoruby-mruby/mrbgems/mruby-io/mrblib/file_constants.rb #{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-io/mrblib/"
+  setup_copy "lib/upstream/patch/picoruby-mruby/mrbgems/mruby-io/mrblib/file_constants.rb", "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-io/mrblib/"
 
   # littleFS
-  sh "cp -f lib/upstream/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
+  setup_copy "lib/upstream/patch/esp_littlefs/CMakeLists.txt", "components/esp_littlefs/"
 
   # picoruby-env
-  sh "cp -f lib/upstream/patch/picoruby-env/ports/posix/env.c #{mrbgem_path}/picoruby-env/ports/posix/"
+  setup_copy "lib/upstream/patch/picoruby-env/ports/posix/env.c", "#{mrbgem_path}/picoruby-env/ports/posix/"
 
   # mruby-compiler (renamed upstream from mruby-compiler2; same repo).
   # prism allocator patches dropped: upstream routes prism through the VM
   # estalloc heap via global_mrb (owner decision "Option A"). Only the
   # compile.c NULL-guard remains.
-  sh "cp -f lib/upstream/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler/src/compile.c"
+  setup_copy "lib/upstream/patch/compiler/mruby-compiler2-compile.c", "#{mrbgem_path}/mruby-compiler/src/compile.c"
   # prism's allocator: per calling task instead of one process-wide mrb_state
   # (doc/editor_ti/report/p2.md). The two files go together -- the header names
   # the hooks, ccontext.c implements them.
-  sh "cp -f lib/upstream/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler/include/prism_xallocator.h"
-  sh "cp -f lib/upstream/patch/compiler/mruby-compiler2-ccontext.c #{mrbgem_path}/mruby-compiler/src/ccontext.c"
+  setup_copy "lib/upstream/patch/compiler/prism_xallocator.h", "#{mrbgem_path}/mruby-compiler/include/prism_xallocator.h"
+  setup_copy "lib/upstream/patch/compiler/mruby-compiler2-ccontext.c", "#{mrbgem_path}/mruby-compiler/src/ccontext.c"
   # cdump.c: mrbc -B emits the child-irep tables (`*_reps_N`) as
   # `const mrb_irep *const`, so every gem's mrblib lands in flash instead of
   # internal RAM (doc/iram_reduction/report/r1.md). Whole-file copy: refresh it
   # when the mruby-compiler submodule moves.
-  sh "cp -f lib/upstream/patch/compiler/mruby-compiler-cdump.c #{mrbgem_path}/mruby-compiler/src/cdump.c"
+  setup_copy "lib/upstream/patch/compiler/mruby-compiler-cdump.c", "#{mrbgem_path}/mruby-compiler/src/cdump.c"
   # codegen.c: case/in fixes backported from mruby/mruby 0e6bac0e5a7e (a hash
   # pattern's value no longer overwrites the value it is compared with) and
   # 680084ac1275 (a capture inside a block binds a local of the enclosing
@@ -273,68 +270,68 @@ task :setup do
   # (doc/ruby_asterism/upstream/picoruby_case_in.patch, report/c8.md).
   # Whole-file copy: drop it when the mruby-compiler submodule moves to
   # picoruby/mruby-compiler2 a2c72afb or later, which has both.
-  sh "cp -f lib/upstream/patch/compiler/mruby-compiler-codegen.c #{mrbgem_path}/mruby-compiler/src/codegen.c"
+  setup_copy "lib/upstream/patch/compiler/mruby-compiler-codegen.c", "#{mrbgem_path}/mruby-compiler/src/codegen.c"
 
   # mrbgem.rake patches
-  sh "cp -f lib/upstream/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
+  setup_copy "lib/upstream/patch/picoruby-require/mrbgem.rake", "#{mrbgem_path}/picoruby-require/"
   # The list of prebuilt gems as `const char *const` (the template and its
   # reader): read-only data, in flash on ESP32, instead of a writable array of
   # pointers in internal RAM that grew by 4 bytes with every gem (doc/checkpoint
   # F6). Whole-file copies: refresh them when the picoruby submodule moves.
-  sh "cp -f lib/upstream/patch/picoruby-require/templates/mruby/picogem_init.c.erb #{mrbgem_path}/picoruby-require/templates/mruby/"
-  sh "cp -f lib/upstream/patch/picoruby-require/src/mruby/require.c #{mrbgem_path}/picoruby-require/src/mruby/"
-  sh "cp -f lib/upstream/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
-  sh "cp -f lib/upstream/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
+  setup_copy "lib/upstream/patch/picoruby-require/templates/mruby/picogem_init.c.erb", "#{mrbgem_path}/picoruby-require/templates/mruby/"
+  setup_copy "lib/upstream/patch/picoruby-require/src/mruby/require.c", "#{mrbgem_path}/picoruby-require/src/mruby/"
+  setup_copy "lib/upstream/patch/picoruby-yaml/mrbgem.rake", "#{mrbgem_path}/picoruby-yaml/"
+  setup_copy "lib/upstream/patch/picoruby-sandbox/mrbgem.rake", "#{mrbgem_path}/picoruby-sandbox/"
   # (sandbox.c patch dropped: upstream fixed the uninitialized name in Sandbox.new)
 
   # picoruby-i2c: add I2C#close method and I2C_release declaration
-  sh "cp -f lib/upstream/patch/picoruby-i2c/include/i2c.h #{mrbgem_path}/picoruby-i2c/include/"
-  sh "cp -f lib/upstream/patch/picoruby-i2c/src/mruby/i2c.c #{mrbgem_path}/picoruby-i2c/src/mruby/"
+  setup_copy "lib/upstream/patch/picoruby-i2c/include/i2c.h", "#{mrbgem_path}/picoruby-i2c/include/"
+  setup_copy "lib/upstream/patch/picoruby-i2c/src/mruby/i2c.c", "#{mrbgem_path}/picoruby-i2c/src/mruby/"
 
   # picoruby-socket: esp32p4 (ESP-IDF) build support, default socket timeouts,
   # TLS via the ESP-IDF certificate bundle (esp_crt_bundle), and a GC-time
   # release of native TLS sessions (leak fix)
-  sh "cp -f lib/upstream/patch/picoruby-socket/mrbgem.rake #{mrbgem_path}/picoruby-socket/"
-  sh "cp -f lib/upstream/patch/picoruby-socket/src/mruby/socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
-  sh "cp -f lib/upstream/patch/picoruby-socket/src/mruby/ssl_socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
-  sh "cp -f lib/upstream/patch/picoruby-socket/ports/esp32/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
-  sh "cp -f lib/upstream/patch/picoruby-socket/ports/esp32/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
+  setup_copy "lib/upstream/patch/picoruby-socket/mrbgem.rake", "#{mrbgem_path}/picoruby-socket/"
+  setup_copy "lib/upstream/patch/picoruby-socket/src/mruby/socket.c", "#{mrbgem_path}/picoruby-socket/src/mruby/"
+  setup_copy "lib/upstream/patch/picoruby-socket/src/mruby/ssl_socket.c", "#{mrbgem_path}/picoruby-socket/src/mruby/"
+  setup_copy "lib/upstream/patch/picoruby-socket/ports/esp32/tcp_socket.c", "#{mrbgem_path}/picoruby-socket/ports/esp32/"
+  setup_copy "lib/upstream/patch/picoruby-socket/ports/esp32/ssl_socket.c", "#{mrbgem_path}/picoruby-socket/ports/esp32/"
   # (tcp_server.c patch dropped: upstream's vm-threaded ports API fixed the alloc crash)
-  sh "cp -f lib/upstream/patch/picoruby-socket/ports/posix/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
-  sh "cp -f lib/upstream/patch/picoruby-socket/ports/posix/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
+  setup_copy "lib/upstream/patch/picoruby-socket/ports/posix/tcp_socket.c", "#{mrbgem_path}/picoruby-socket/ports/posix/"
+  setup_copy "lib/upstream/patch/picoruby-socket/ports/posix/ssl_socket.c", "#{mrbgem_path}/picoruby-socket/ports/posix/"
 
   # picoruby-mbedtls: skip bundled-library objects on esp32p4 (ESP-IDF provides mbedTLS)
-  sh "cp -f lib/upstream/patch/picoruby-mbedtls/mrbgem.rake #{mrbgem_path}/picoruby-mbedtls/"
+  setup_copy "lib/upstream/patch/picoruby-mbedtls/mrbgem.rake", "#{mrbgem_path}/picoruby-mbedtls/"
 
   # picoruby-net-websocket: fix mruby-pack gemdir (upstream points to a
   # non-existent picoruby-pack path inside the mruby tree)
-  sh "cp -f lib/upstream/patch/picoruby-net-websocket/mrbgem.rake #{mrbgem_path}/picoruby-net-websocket/"
+  setup_copy "lib/upstream/patch/picoruby-net-websocket/mrbgem.rake", "#{mrbgem_path}/picoruby-net-websocket/"
   # client.rb: the handshake accepts any "HTTP/1.1 101" status line (not only
   # "Switching Protocols"), Host carries a non-default port, and #receive
   # re-polls every 30 ms instead of 100 ms.
-  sh "cp -f lib/upstream/patch/picoruby-net-websocket/mrblib/client.rb #{mrbgem_path}/picoruby-net-websocket/mrblib/"
+  setup_copy "lib/upstream/patch/picoruby-net-websocket/mrblib/client.rb", "#{mrbgem_path}/picoruby-net-websocket/mrblib/"
 
   # picoruby-net-http: accept URI objects in get/get_response/post_form (CRuby
   # style); read headers and chunks with readpartial so a server that keeps
   # the connection open does not stall the response
-  sh "cp -f lib/upstream/patch/picoruby-net-http/mrblib/http_client.rb #{mrbgem_path}/picoruby-net-http/mrblib/"
+  setup_copy "lib/upstream/patch/picoruby-net-http/mrblib/http_client.rb", "#{mrbgem_path}/picoruby-net-http/mrblib/"
 
   # (picoruby-json parse_float patch dropped: upstream fixed the decimal handling)
 
   # picoruby-json: do not take the Regexp fast path on a wasm32 build that has
   # no Regexp. Ours is one, and JSON.parse died on it.
-  sh "cp -f lib/upstream/patch/picoruby-json/mrblib/json.rb #{mrbgem_path}/picoruby-json/mrblib/"
+  setup_copy "lib/upstream/patch/picoruby-json/mrblib/json.rb", "#{mrbgem_path}/picoruby-json/mrblib/"
 
   # mruby-task (case-D tick split): task.c (bottom-half) and the FreeRTOS
-  # ports/posix/task_hal.c (top-half) are delivered by the bulk
-  # `cp -rf lib/upstream/patch/picoruby-mruby` above. The mrbgem.rake patch is dropped:
+  # ports/posix/task_hal.c (top-half) are delivered by the overlay of
+  # lib/upstream/patch/picoruby-mruby above. The mrbgem.rake patch is dropped:
   # upstream rewrote it to select ports via conf.ports/effective_ports, so
   # the old HAL-auto-load removal no longer applies (port wiring is done in
   # build_config instead).
 
   # mruby-dir: the "flash/" prefix dir_hal now lives at
   # mruby-dir/ports/posix/dir_hal.c (hal-posix-dir gem was removed upstream)
-  # and is delivered by the bulk `cp -rf lib/upstream/patch/picoruby-mruby` above.
+  # and is delivered by the overlay of lib/upstream/patch/picoruby-mruby above.
   # D5 (skip HAL auto-detection on ESP32) is dropped: upstream removed the
   # auto-detection logic from mruby-dir/mrbgem.rake entirely.
 end

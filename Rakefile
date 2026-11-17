@@ -503,8 +503,16 @@ def picoruby_ti_gen_db(engine_dir, out_dir, sig_dir: PICORUBY_TI_SIG_DIR)
     abort "the rbs gem is required to generate the picoruby-ti type database" \
           " (gem install rbs)"
   end
-  mkdir_p out_dir
-  sh "#{RbConfig.ruby} #{main} --sig-dir #{sig_dir} --out #{out_dir}"
+  # Made in a scratch directory and laid over out_dir file by file, written
+  # only where it changed: the database is ~1 MB of C that the firmware
+  # would otherwise recompile on every build (tools/tree_sync.rb).
+  require_relative "tools/tree_sync"
+  tmp = File.expand_path("tmp/ti_gen_db", __dir__)
+  rm_rf tmp
+  mkdir_p tmp
+  sh "#{RbConfig.ruby} #{main} --sig-dir #{sig_dir} --out #{tmp}"
+  FmrbTreeSync.overlay(tmp, out_dir)
+  rm_rf tmp
 end
 
 # The signature directory the host tests generate from: the firmware API sig
@@ -552,7 +560,14 @@ def picoruby_ti_gen_help
   unless Dir.exist?(PICORUBY_TI_SIG_DIR)
     abort "signature directory #{PICORUBY_TI_SIG_DIR} is missing"
   end
-  sh "#{RbConfig.ruby} tools/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --out flash/help"
+  # Through a scratch directory, so an unchanged page keeps its time and the
+  # storage image is not taken for changed (tools/tree_sync.rb).
+  require_relative "tools/tree_sync"
+  tmp = File.expand_path("tmp/ti_gen_help", __dir__)
+  rm_rf tmp
+  sh "#{RbConfig.ruby} tools/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --out #{tmp}"
+  FmrbTreeSync.mirror("flash/help", { "" => tmp })
+  rm_rf tmp
 end
 
 # Where the WebConsole's browser build lands (doc/editor_ti/instruction_p7.md).
