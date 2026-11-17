@@ -200,7 +200,12 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 内蔵 RAM の静的な増分は 0 (口の表と送る中身は const で .rodata、処理はコード)。httpd の口の数が 1 つ増え
 (Retro 20→21、checkpoint 入り 23→24、Modern は 30 のまま 29 を使う)、起動時のヒープが数十バイト増える。
 
-## 漢字の辞書は 4 MB があれば優先する (2026-11-17、ユーザ)
+## 漢字の辞書は 4 MB があれば優先する (2026-11-17、ユーザ) -- 済 (2026-11-17)
+
+- **済 (2026-11-17)**: 辞書を開くたびに選ぶ (`fmrb_kanji_pick_default`)。変更の口は 2 つの名前のどちらにも反応し、置けば
+  4 MB に切り替わり、消せば 1 MB に戻る。開いている間に持つ表は 1 MB 15,545 バイト・4 MB 24,196 バイトで、どちらも
+  SYSTEM プール (PSRAM)。内蔵 RAM の静的な増分は 0。P4-Nano と sim で確認。経緯は doc/kanji_input/plan.md の
+  「4 MB の辞書を優先する」。以下はもとの要件。
 
 - `kanji_dict` を設定していないときは `/sd/dict/fmrb_kanji_4m.dic` があればそれを、無ければ `/sd/dict/fmrb_kanji.dic`
   を使う。設定したときはその 1 つだけ。案内 (/usr/share/doc/kanji_ja.md・kanji.md)・system_conf の説明・doc/kanji_input も合わせる。
