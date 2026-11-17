@@ -1,0 +1,185 @@
+module MRuby
+  class Command::Compiler
+    attr_accessor :host_command
+  end
+
+  class Build
+    # Override
+    def build_mrbc_exec
+      gem core: 'mruby-compiler' unless @gems['mruby-compiler']
+      gem core: "mruby-bin-mrbc" unless @gems['mruby-bin-mrbc']
+      self.mrbcfile = "#{build_dir}/bin/mrbc"
+      set_build_info
+    end
+
+    alias_method :original_create_mrbc_build, :create_mrbc_build
+
+    def create_mrbc_build
+      # mrbc is a standalone compiler; strip VM-specific defines so
+      # the sub-build does not pull in mruby.h (and presym/id.h).
+      vm_defines = %w[PICORB_VM_MRUBY MRB_USE_TASK_SCHEDULER]
+      saved = vm_defines.select { |d| cc.defines.include?(d) }
+      saved.each { |d| cc.defines.delete(d) }
+      build = original_create_mrbc_build
+      saved.each { |d| cc.defines << d }
+      build
+    end
+
+    def picoruby?
+      cc.defines.include?("PICORB_VM_MRUBY")
+    end
+    alias_method :vm_mruby?, :picoruby?
+
+    def femtoruby?
+      cc.defines.include?("PICORB_VM_MRUBYC")
+    end
+    alias_method :vm_mrubyc?, :femtoruby?
+
+    def common
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/mruby-compiler/include"
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/mruby-compiler/lib/prism/include"
+      # Workaround: To avoid error in compiling gem_init.c
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/include"
+      # Pass PICORUBY_VERSION to mruby-compiler
+      version = File.read("#{MRUBY_ROOT}/include/version.h").match(/#define PICORUBY_VERSION "(.+?)"/)[1]
+      cc.defines << "PICORUBY_VERSION=\\\"#{version}\\\""
+      set_build_info
+    end
+
+    def set_build_info
+      return if cc.defines.any? { _1.start_with?("MRC_COMMIT_TIMESTAMP=") }
+      timestamp = Time.at(`git log -1 --format=%ct`.to_i).utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+      branch = `git branch --show-current`.strip
+      commit_hash = `git log -1 --format=%h`.strip
+      cc.defines << "MRC_COMMIT_TIMESTAMP=\\\"#{timestamp}\\\""
+      cc.defines << "MRC_COMMIT_BRANCH=\\\"#{branch}\\\""
+      cc.defines << "MRC_COMMIT_HASH=\\\"#{commit_hash}\\\""
+    end
+
+    def rite_version
+      mrc_dump = File.read("#{MRUBY_ROOT}/mrbgems/mruby-compiler/include/mrc_dump.h")
+      ident = mrc_dump[/#define RITE_BINARY_IDENT\s+"(.+?)"/, 1]
+      major = mrc_dump[/#define RITE_BINARY_MAJOR_VER\s+"(.+?)"/, 1]
+      minor = mrc_dump[/#define RITE_BINARY_MINOR_VER\s+"(.+?)"/, 1]
+      "#{ident}#{major}#{minor}"
+    end
+
+    def picoruby
+      # Place picoruby-mruby at the top so that Kernel#require is defined first
+      if gems.first
+        gems.first.add_dependency 'picoruby-mruby'
+      else
+        gem core: 'picoruby-mruby'
+      end
+      common
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/include"
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
+      cc.defines << "PICORB_VM_MRUBY"
+      cc.defines << "MRB_USE_TASK_SCHEDULER"
+
+      timestamp = Time.at(`git log -1 --format=%ct`.to_i).utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+      commit_hash = `git log -1 --format=%h`.strip
+      build_date = Time.now.utc.strftime("%Y-%m-%d")
+
+      write_version_c(timestamp, commit_hash, build_date)
+
+      debug_flag
+    end
+
+    # fmrb: src/version.c is written only when its content changes. Written
+    # on every rake run, it made the presym scan, mrbc and every gem_init.c
+    # of every build out of date each time (Family mruby rebuilt its host
+    # libmruby on every firmware build because of it).
+    def write_version_c(timestamp, commit_hash, build_date)
+      path = "#{MRUBY_ROOT}/src/version.c"
+      content = File.read("#{MRUBY_ROOT}/src/version.c.in")
+          .gsub('@PICORUBY_COMMIT_TIMESTAMP@', timestamp)
+          .gsub('@PICORUBY_COMMIT_HASH@', commit_hash)
+          .gsub('@PICORUBY_BUILD_DATE@', build_date)
+          .gsub('@RITE_VERSION@', rite_version)
+      return if File.exist?(path) && File.read(path) == content
+      File.write(path, content)
+    end
+
+    def femtoruby(alloc_libc: true)
+      common
+
+      # Override by environment variable
+      alloc_libc = false if ENV["PICORB_NO_LIBC_ALLOC"]
+
+      cc.defines << "PICORB_VM_MRUBYC"
+      cc.defines << "MRBC_SCHEDULER_EXIT=1"
+      cc.defines << "MRBC_NO_STDIO" # skip implementing methods like c_object_puts
+      cc.defines << (alloc_libc ? "MRBC_ALLOC_LIBC" : "MRBC_USE_ALLOC_PROF")
+      cc.defines << "DISABLE_MRUBY"
+      cc.defines << "MRBC_INT64" if cc.defines.include?("PICORB_INT64")
+      %w(MRBC_USE_MATH=1 MAX_SYMBOLS_COUNT=1000 MAX_VM_COUNT=255 MAX_REGS_SIZE=255).each do |define|
+        key, _value = define.split("=")
+        cc.defines << define if cc.defines.none? { _1.start_with? key }
+      end
+
+      timestamp = Time.at(`git log -1 --format=%ct`.to_i).utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+      commit_hash = `git log -1 --format=%h`.strip
+      build_date = Time.now.utc.strftime("%Y-%m-%d")
+
+      write_version_c(timestamp, commit_hash, build_date)
+
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-machine/include"
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mrubyc/include"
+      cc.include_paths << "#{MRUBY_ROOT}/include/picoruby"
+      cc.include_paths << "#{build_dir}/mrbgems" # for `#include <picogem_init.c>`
+      cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mrubyc/lib/mrubyc/src"
+
+      debug_flag
+    end
+
+    def platform?(name)
+      cc.defines.include?("PICORB_PLATFORM_#{name.to_s.upcase}")
+    end
+
+    def posix?
+      platform?(:posix)
+    end
+
+    def wasm?
+      config = ENV['CONFIG'] || ENV['MRUBY_CONFIG']
+      return true if config&.include?('picoruby-wasm')
+      # Also check defines for WASM platform
+      platform?(:wasm)
+    end
+
+    def generate_package_json_from_template(template_path, output_path)
+      return unless File.exist?(template_path)
+      version = File.read("#{MRUBY_ROOT}/include/version.h")
+                    .match(/#define PICORUBY_VERSION "(.+?)"/)[1]
+      template_content = File.read(template_path)
+      generated_content = template_content.gsub('{{VERSION}}', version)
+      File.write(output_path, generated_content)
+    end
+
+    private def debug_flag
+      cc.flags.flatten!
+      cc.flags.reject! { |f| %w(-g -g1 -g2 -g3 -O0 -O1 -O2 -O3).include? f }
+      if ENV["PICORB_DEBUG"]
+        cc.defines << "PICORB_DEBUG=1"
+        cc.flags << "-O0"
+        cc.flags << "-g3"
+        cc.flags << "-fno-inline"
+      else
+        cc.defines << "NDEBUG=1"
+        cc.flags << "-Os"
+        cc.flags << "-finline-functions"
+        cc.flags << "-ffunction-sections"
+        cc.flags << "-fdata-sections"
+        cc.flags << "-fomit-frame-pointer"
+        # cc.flags << "-flto" # Build fails with -flto
+        unless cc.command == "clang" || cc.command == "emcc"
+          linker.flags << "-s" unless RUBY_PLATFORM.include?("darwin")
+          linker.flags << (RUBY_PLATFORM.include?("darwin") ? "-Wl,-dead_strip" : "-Wl,--gc-sections")
+        end
+      end
+    end
+
+  end
+
+end

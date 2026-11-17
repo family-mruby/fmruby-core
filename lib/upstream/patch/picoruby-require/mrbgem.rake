@@ -61,7 +61,14 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
   build.libmruby_objs << objfile("#{mrbgems_dir}/picogem_init")
   file objfile("#{mrbgems_dir}/picogem_init") => ["#{mrbgems_dir}/picogem_init.c"]
 
-  file "#{mrbgems_dir}/picogem_init.c" => [*picogems.values.map{_1[:mrbfile]}, MRUBY_CONFIG, __FILE__, :collect_gems] do |t|
+  # fmrb: picogem_init.c is written only when it changes, and what depends on
+  # it no longer sees :collect_gems. That plain task's timestamp is "now",
+  # and Rake looks at every prerequisite recursively (all_prerequisite_tasks),
+  # so picogem_init.pi/.o and libmruby were rebuilt on every rake run. The
+  # generation runs every time from a proxy whose timestamp is the file's own
+  # (the shape tasks/presym.rake uses, mruby/mruby#6721).
+  picogem_init_c = "#{mrbgems_dir}/picogem_init.c"
+  picogem_gen = task "picogem_init:gen:#{build.name}" => [MRUBY_CONFIG, __FILE__, :collect_gems] do
     picogems.each do |_require_name, v|
       if Rake::Task.task_defined?(v[:mrbfile])
         Rake::FileTask[v[:mrbfile]].invoke
@@ -73,7 +80,17 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
                       File.join(spec.dir, "templates/mrubyc/picogem_init.c.erb")
                     end
     template = ERB.new(File.read(template_path), trim_mode: "%-")
-    File.write(t.name, template.result(binding))
+    content = template.result(binding)
+    unless File.exist?(picogem_init_c) && File.read(picogem_init_c) == content
+      File.write(picogem_init_c, content)
+    end
   end
+  picogem_proxy = task "picogem_init:update:#{build.name}" do
+    picogem_gen.invoke
+  end
+  picogem_proxy.define_singleton_method(:timestamp) do
+    File.exist?(picogem_init_c) ? File.mtime(picogem_init_c) : Rake::LATE
+  end
+  file picogem_init_c => picogem_proxy
 end
 

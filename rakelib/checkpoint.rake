@@ -38,10 +38,20 @@ namespace :checkpoint do
     sh env, "rake", chdir: picoruby
     dir = File.join(CKPT_TABLE_TMP, board)
     out = File.join(dir, "fmrb_checkpoint_table.c")
-    sh "cmake", "-S", File.join(ROOT_DIR, "tools/ckpt_table"), "-B", File.join(dir, "build"),
-       "-DCMAKE_BUILD_TYPE=Release", "-DFMRB_CKPT_OF=#{of}", "-DIDF_TARGET=#{ESP_CHIP}",
-       "-DFMRB_HW_TARGET=#{board}", "-DFMRB_CKPT_OUT=#{out}"
-    sh "cmake", "--build", File.join(dir, "build"), "-j#{ENV['JOBS'] || 8}"
+    # Configured again only when the arguments change (or there is no
+    # cache): a configure costs ~3 s on every firmware build, and the build
+    # step re-runs it by itself when a CMakeLists it read has changed.
+    build_dir = File.join(dir, "build")
+    cmake_args = ["-S", File.join(ROOT_DIR, "tools/ckpt_table"), "-B", build_dir,
+                  "-DCMAKE_BUILD_TYPE=Release", "-DFMRB_CKPT_OF=#{of}", "-DIDF_TARGET=#{ESP_CHIP}",
+                  "-DFMRB_HW_TARGET=#{board}", "-DFMRB_CKPT_OUT=#{out}"]
+    args_file = File.join(build_dir, "fmrb_configure_args")
+    unless File.exist?(File.join(build_dir, "CMakeCache.txt")) &&
+           File.exist?(args_file) && File.read(args_file) == cmake_args.join("\n")
+      sh "cmake", *cmake_args
+      File.write(args_file, cmake_args.join("\n"))
+    end
+    sh "cmake", "--build", build_dir, "-j#{ENV['JOBS'] || 8}"
     head = File.foreach(out).first(3).join
     puts "checkpoint:table: #{out}"
     puts head[/\d+ names, \d+ snapshots, \d+ mrblib ireps/].to_s

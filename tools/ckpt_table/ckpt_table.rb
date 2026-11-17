@@ -3,6 +3,7 @@
 #
 #   ruby ckpt_table.rb --cc CC --work DIR --out TABLE.c [--run RUNNER]
 #                      [--ldflag FLAG]... [--measure FILE --table-cflags FLAGS]
+#                      [--stamp FILE]
 #                      -- OBJECT... ARCHIVE... [-lX]...
 #
 # The maker (gen_main.c) is the gem ports and the checkpoint glue of one
@@ -15,7 +16,11 @@
 # references allowed and reading the linker's list.
 #
 # The table is written to TABLE.c only when it changes, so that a build that
-# changes nothing the VM sees compiles nothing again.
+# changes nothing the VM sees compiles nothing again. Without --stamp TABLE.c
+# is touched either way (it is the build step's output); with it, the stamp
+# is touched instead and TABLE.c keeps its time when unchanged, for a
+# consumer outside this build that goes by time (the device firmware, whose
+# CMake configure and compile read the table made by rake checkpoint:table).
 #
 # --measure FILE: the maker is linked once more with the table (compiled for
 # the host with --table-cflags) and run with --measure: what a VM's baseline
@@ -34,6 +39,7 @@ parser = OptionParser.new do |o|
   o.on('--ldflag FLAG') { |v| opt[:ldflags] << v }
   o.on('--measure FILE') { |v| opt[:measure] = v }
   o.on('--table-cflags FLAGS') { |v| opt[:table_cflags] = v }
+  o.on('--stamp FILE') { |v| opt[:stamp] = v }
 end
 inputs = parser.parse(ARGV)
 abort parser.to_s unless opt[:cc] && opt[:work] && opt[:out] && !inputs.empty?
@@ -170,7 +176,7 @@ else
   puts "ckpt_table: wrote #{opt[:out]} (#{missing.size} stand-ins)"
 end
 # the build's output is touched either way, so that make/ninja see it as done
-FileUtils.touch(opt[:out])
+FileUtils.touch(opt[:stamp] || opt[:out])
 
 # 5. what the baseline costs with the table (--measure)
 if opt[:measure]

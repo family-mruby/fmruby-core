@@ -56,10 +56,16 @@ find_program(FMRB_RUBY ruby REQUIRED)
 # 64-bit pointers, next to the table as measure.txt)
 get_filename_component(ckpt_out_dir ${FMRB_CKPT_OUT} DIRECTORY)
 set(table_cflags "-DMRB_INT64 -DMRB_NO_BOXING -DMRB_UTF8_STRING -I${MRBGEMS}/picoruby-mruby/lib/mruby/include -I${FMRB_HOSTED_MRUBY_DIR}/include -I${MRBGEMS}/mruby-checkpoint/include")
-add_custom_command(OUTPUT ${FMRB_CKPT_OUT}
+# The step's output is a stamp: the table keeps its time when it comes out
+# the same, so the firmware build that reads it neither reconfigures nor
+# recompiles (ckpt_table.rb --stamp).
+set(ckpt_stamp ${CMAKE_BINARY_DIR}/fmrb_checkpoint_table.stamp)
+add_custom_command(OUTPUT ${ckpt_stamp}
+  BYPRODUCTS ${FMRB_CKPT_OUT}
   COMMAND ${FMRB_RUBY} ${CMAKE_CURRENT_LIST_DIR}/ckpt_table.rb
           --cc ${CMAKE_C_COMPILER} --work ${CMAKE_BINARY_DIR}/work --out ${FMRB_CKPT_OUT}
           --measure ${ckpt_out_dir}/measure.txt --table-cflags "${table_cflags}"
+          --stamp ${ckpt_stamp}
           -- $<TARGET_OBJECTS:ckpt_table_objs> ${FMRB_HOSTED_LIBMRUBY} -lm -pthread
   DEPENDS ckpt_table_objs $<TARGET_OBJECTS:ckpt_table_objs> ${FMRB_HOSTED_LIBMRUBY}
           ${CMAKE_CURRENT_LIST_DIR}/ckpt_table.rb ${CMAKE_CURRENT_LIST_DIR}/gen_main.c
@@ -73,6 +79,6 @@ add_custom_command(OUTPUT ${obj}
           -DMRB_32BIT -DMRB_INT64 -DMRB_NO_BOXING -DMRB_UTF8_STRING
           -I${MRBGEMS}/picoruby-mruby/lib/mruby/include -I${FMRB_HOSTED_MRUBY_DIR}/include
           -I${MRBGEMS}/mruby-checkpoint/include
-  DEPENDS ${FMRB_CKPT_OUT}
+  DEPENDS ${ckpt_stamp}
   COMMENT "Compiling the table as a 32-bit object")
-add_custom_target(ckpt_table ALL DEPENDS ${FMRB_CKPT_OUT} ${obj})
+add_custom_target(ckpt_table ALL DEPENDS ${ckpt_stamp} ${obj})
