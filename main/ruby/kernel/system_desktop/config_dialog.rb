@@ -594,13 +594,14 @@ module ConfigDialogMixin
       tw = @cfg_tab_w[i]
       cur = (i == @cfg_page)
       bg = cur ? CFG_SEL : CFG_BG
+      fg = cur ? cfg_sel_text : CFG_TEXT
       @gfx.fill_rect(tx, ty + 1, tw, CFG_TAB_H - 2, bg)
       @gfx.draw_rect(tx, ty + 1, tw, CFG_TAB_H - 1, CFG_BORDER)
       @gfx.draw_line(tx + 1, base, tx + tw - 2, base, bg) if cur
       label = FmrbI18n.t(k)
-      @gfx.draw_text(tx + 6, ty + 3, label, CFG_TEXT, bg, mixed: true)
+      @gfx.draw_text(tx + 6, ty + 3, label, fg, bg, mixed: true)
       if cur && @cfg_selected < 0
-        @gfx.draw_line(tx + 6, ty + 11, tx + 5 + FmrbI18n.text_width(label), ty + 11, CFG_TEXT)
+        @gfx.draw_line(tx + 6, ty + 11, tx + 5 + FmrbI18n.text_width(label), ty + 11, fg)
       end
     end
     nil
@@ -687,12 +688,57 @@ module ConfigDialogMixin
 
   def cfg_draw_row(i, s)
     y = cfg_row_y(i)
-    bg = (i == @cfg_selected) ? CFG_SEL : CFG_BG
+    sel = (i == @cfg_selected)
+    bg = sel ? CFG_SEL : CFG_BG
+    fg = sel ? cfg_sel_text : CFG_TEXT
     @gfx.fill_rect(@cfg_x + 1, y - 1, CFG_W - 2, CFG_ROW_H, bg)
-    @gfx.draw_text(@cfg_x + 4, y + 2, FmrbI18n.t(s[:key]), CFG_TEXT, bg, mixed: true)
-    @gfx.draw_text(cfg_arrow_l_x, y + 2, "<", CFG_TEXT, bg)
-    @gfx.draw_text(cfg_arrow_r_x, y + 2, ">", CFG_TEXT, bg)
-    @gfx.draw_text(cfg_value_x, y + 2, cfg_value_text(s), CFG_TEXT, bg, mixed: true)
+    @gfx.draw_text(@cfg_x + 4, y + 2, FmrbI18n.t(s[:key]), fg, bg, mixed: true)
+    @gfx.draw_text(cfg_arrow_l_x, y + 2, "<", fg, bg)
+    @gfx.draw_text(cfg_arrow_r_x, y + 2, ">", fg, bg)
+    @gfx.draw_text(cfg_value_x, y + 2, cfg_value_text(s), fg, bg, mixed: true)
+  end
+
+  # The ink on the highlight (the tab shown, the row selected). The theme's
+  # text colour wherever it reads there, which leaves light (black on pink)
+  # and dark (white on grey) as they were. Where it does not -- cyberpunk's
+  # green 0x1C on magenta 0xE3, about 2.3:1 -- the theme colour that stands
+  # out most from the highlight: there the window background, black (about
+  # 6.7:1). Never 0x01, the colour key. The bar is 3:1 (300 here), WCAG's
+  # floor for large text and controls. Worked out when drawn, a few integer
+  # operations: no constant or ivar for it, since a Spinel constant is a
+  # static in internal RAM.
+  def cfg_sel_text
+    hl = cfg_lum(CFG_SEL)
+    return CFG_TEXT if cfg_contrast(CFG_TEXT, hl) >= 300
+    best = CFG_TEXT
+    best = cfg_inkier(FmrbConst::THEME_TEXT_LIGHT, best, hl)
+    best = cfg_inkier(CFG_BG, best, hl)
+    best = cfg_inkier(CFG_HEADER, best, hl)
+    best = cfg_inkier(CFG_BORDER, best, hl)
+    cfg_inkier(CFG_BTN, best, hl)
+  end
+
+  def cfg_inkier(c, best, hl)
+    return best if c == 0x01
+    cfg_contrast(c, hl) > cfg_contrast(best, hl) ? c : best
+  end
+
+  # Relative luminance of an RGB332 colour, scaled by 4,410,000 (= 1.0).
+  # Gamma 2 rather than sRGB's 2.2: near enough to rank colours, and whole
+  # numbers only.
+  def cfg_lum(c)
+    r = (c >> 5) & 7
+    g = (c >> 2) & 7
+    b = c & 3
+    19134 * r * r + 64368 * g * g + 35378 * b * b
+  end
+
+  # The contrast ratio between c and a luminance from cfg_lum, x100:
+  # (L1 + 0.05) / (L2 + 0.05), the lighter over the darker.
+  def cfg_contrast(c, lum)
+    a = cfg_lum(c) + 220500
+    b = lum + 220500
+    a > b ? a * 100 / b : b * 100 / a
   end
 
   def cfg_draw_footer
