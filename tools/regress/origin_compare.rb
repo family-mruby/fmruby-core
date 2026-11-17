@@ -71,6 +71,11 @@ module Regress
       end
 
       def label = "origin #{@phase}"
+      # Whole screens, one shot per app, counted as shots (screens.rb now
+      # compares regions only and counts scenes).
+      def whole_shots? = true
+      def record_scene_ok(_config, _scene, _session); end
+      def check_alive? = false
       def out_dir = File.join(OUT, @phase)
       # "after" compares with what "before" shot; "before" has nothing to
       # compare with (every shot is "new").

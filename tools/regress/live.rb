@@ -151,6 +151,13 @@ module Regress
       def baseline_dir = BASELINE
       def label = "live"
 
+      # The live scenes keep their whole-screen shots (walk_scroller), count
+      # their checks and shots rather than scenes, and have no end-of-run
+      # crash check (the screens' alive).
+      def whole_shots? = true
+      def record_scene_ok(_config, _scene, _session); end
+      def check_alive? = false
+
       def check_path(config, id) = File.join(BASELINE, config.name, "#{id}.json")
       def check_out(config, id) = File.join(OUT, "out", config.name, "#{id}.json")
 

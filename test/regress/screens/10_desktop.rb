@@ -1,41 +1,8 @@
 # frozen_string_literal: true
 #
-# The desktop (system_desktop, mruby in every configuration): at rest, its
-# dropdown, the launcher (the icons are BMPs from /app) and the Config
-# dialog's pages. Each one is closed again; the runner checks that the desktop
-# comes back pixel for pixel.
+# The desktop came up (the runner waited for the boot's "Boot complete"):
+# the screen shows something, not one colour and not black.
 
-Regress::Screens.scene "desktop", on: %w[modern retro web native modern-mruby retro-mruby] do |s|
-  s.shot
-end
-
-Regress::Screens.scene "menu", on: %w[modern retro web] do |s|
-  s.click(6, 5)
-  s.wait_change([0, s.menu_bar_h, 80, 30])
-  s.park
-  s.shot
-  s.key "esc"
-end
-
-Regress::Screens.scene "launcher", on: %w[modern retro web] do |s|
-  s.menu :launcher
-  s.wait_title("the launcher")
-  s.park
-  s.shot
-  s.key "esc"
-end
-
-# Every page of the Config dialog (Display, Input, Sound & Time, System),
-# switched with Tab, then Cancel.
-Regress::Screens.scene "config", on: %w[modern retro web] do |s|
-  s.menu :config
-  s.wait_title("the Config dialog")
-  s.park
-  s.shot
-  %w[input sound system].each do |page|
-    s.key "tab"
-    s.wait_change
-    s.shot(page)
-  end
-  s.click_button(s.button_rgb, [(s.w - 280) / 2, 20, 280, s.h - 20]) # Cancel
+Regress::Screens.scene "boot", on: %w[modern retro web native modern-mruby retro-mruby] do |s|
+  s.wait_not_blank("the desktop")
 end

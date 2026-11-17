@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 #
-# image.rb - a screen capture in memory for rake regress:screens: read (the
-# root tools' FmrbPng), compare with masks, write PNGs (the shot, the diff).
+# image.rb - a screen capture in memory for rake regress:screens and
+# regress:live: read (the root tools' FmrbPng), compare with masks, crop to a
+# region, write PNGs (the shot, the diff).
 #
 # Captures come from the sim's shared memory or the browser build's frame
 # buffer, never from a camera or a JPEG, so they are compared exactly: one
@@ -71,6 +72,33 @@ module Regress
 
       def same?(other, masks = [], rect: nil)
         diff(other, masks, rect: rect)[0].zero?
+      end
+
+      # The part of the picture in rect ([x, y, w, h], clipped to the
+      # screen): what a region's baseline holds.
+      def crop(rect)
+        x0, y0, x1, y1 = Image.clip(rect, @w, @h)
+        rows = (y0...y1).map { |y| @rows[y].byteslice(x0 * 3, (x1 - x0) * 3) }
+        Image.new(x1 - x0, y1 - y0, rows)
+      end
+
+      # How the picture is coloured, for "the screen shows something": the
+      # number of distinct colours (counting stops at limit) and the share
+      # of pure black pixels.
+      def colour_stats(limit: 16)
+        seen = {}
+        black = 0
+        @rows.each do |r|
+          x = 0
+          n = r.bytesize
+          while x < n
+            px = r.byteslice(x, 3)
+            black += 1 if px == "\x00\x00\x00".b
+            seen[px] = true if seen.size < limit
+            x += 3
+          end
+        end
+        [seen.size, black.fdiv(@w * @h)]
       end
 
       # rows[y] -> nil (nothing masked) or an Array of booleans per x.

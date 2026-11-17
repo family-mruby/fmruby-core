@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 #
 # drivers.rb - the machines rake regress:screens drives, behind one face:
-# input (fmrb_input.rb's words), capture (an Image), launch by path, and
-# closing what a scene opened.
+# input (fmrb_input.rb's words), capture (an Image), launch by path, the
+# process list and closing what a scene opened, and at the end whether the
+# machine is still there and its log has no crash in it.
 #
 #   SimDriver     the Linux sim the runner started (tools/fmrb_input.rb,
 #                 tools/fmrb_screenshot.py, the debug server's spawn/ps/kill)
@@ -20,6 +21,7 @@ require "open3"
 require_relative "image"
 require_relative "../tree"
 require_relative "../fixtures"
+require_relative "../boot_log"
 
 module Regress
   module Screens
@@ -28,6 +30,16 @@ module Regress
     TOOLS = Tree::TOOLS
 
     class DriverError < StandardError; end
+
+    # What a crash leaves in the core's log: the boards' marks (boot_log.rb)
+    # and what a Linux process prints when it dies (the sim's container and
+    # the native program are such processes).
+    CRASH = Regexp.union(BootLog::CRASH, /Segmentation fault/, /core dumped/, /AddressSanitizer/,
+                         /terminate called/, /\bSIGSEGV\b/, /\bSIGABRT\b/).freeze
+
+    def self.crash_lines(log)
+      log.to_s.scrub.each_line.grep(CRASH).map(&:strip)
+    end
 
     class SimDriver
       attr_reader :width, :height
@@ -56,11 +68,36 @@ module Regress
       end
 
       def launch(path)
-        @spawned << @sim.dbg("spawn", "path=#{path}")["pid"]
+        pid = dbg("spawn", "path=#{path}")["pid"]
+        @spawned << pid
+        pid
       end
 
       def apps
-        @sim.dbg("ps").fetch("apps").to_h { |a| [a["pid"], a["name"]] }
+        dbg("ps").fetch("apps").to_h { |a| [a["pid"], a["name"]] }
+      end
+
+      def kill(pid)
+        dbg("kill", "pid=#{pid}")
+      end
+
+      # The debug client's failures (a path that does not open: error -7)
+      # are the scene's, not the run's.
+      def dbg(*args)
+        @sim.dbg(*args)
+      rescue RuntimeError => e
+        raise DriverError, e.message.strip
+      end
+
+      # The core's log since the container started, and whether the core is
+      # still up and answering.
+      def core_log = @sim.core_log
+      def log_name = "the core's log (docker logs fmruby_core)"
+
+      def alive?
+        @sim.core_running? && !apps.empty?
+      rescue DriverError
+        false
       end
 
       # The apps of the desktop at rest, taken once after boot: anything
@@ -71,7 +108,7 @@ module Regress
 
       def close_extra_apps
         extra = apps.keys - @resident
-        extra.each { |pid| @sim.dbg("kill", "pid=#{pid}") }
+        extra.each { |pid| kill(pid) }
         @spawned.clear
         extra.size
       end
@@ -137,10 +174,11 @@ module Regress
         img
       end
 
-      # The page's launch slot (wasm/backend/launch_wasm.c, fmrb_web.rb launch).
+      # The page's launch slot (wasm/backend/launch_wasm.c, fmrb_web.rb
+      # launch): the pid, or a DriverError when the firmware refused the path.
       def launch(path)
-        JSON.parse(tool("launch", path).lines.last.to_s)
-      rescue JSON::ParserError => e
+        JSON.parse(tool("launch", path).lines.last.to_s).fetch("pid")
+      rescue JSON::ParserError, KeyError => e
         raise DriverError, "launch #{path}: #{e.message}"
       end
 
@@ -169,6 +207,18 @@ module Regress
 
       def mark_log!; end
       def log_since_mark = ""
+
+      # The page keeps no log a tool can read (the firmware prints to the
+      # browser's console): what is left is that the page still answers with
+      # the machine running.
+      def core_log = nil
+      def log_name = "the page"
+
+      def alive?
+        status.start_with?("running=true")
+      rescue DriverError
+        false
+      end
     end
   
     class NativeDriver
@@ -247,7 +297,21 @@ module Regress
       end
 
       def launch(path)
-        dbg("spawn", path)
+        dbg("spawn", path).fetch("pid")
+      rescue KeyError
+        raise DriverError, "app spawn #{path}: no pid in the answer"
+      end
+
+      def kill(pid)
+        dbg("kill", pid.to_s)
+      end
+
+      def log_name = "the native program's log (#{log_path})"
+
+      def alive?
+        running? && !apps.empty?
+      rescue DriverError
+        false
       end
 
       def apps
@@ -260,7 +324,7 @@ module Regress
 
       def close_extra_apps
         extra = apps.keys - @resident
-        extra.each { |pid| dbg("kill", pid.to_s) }
+        extra.each { |pid| kill(pid) }
         extra.size
       end
 

@@ -1,15 +1,21 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 #
-# screens.rb - scripted screens on the sim, the browser build and the native
-# Linux program, compared pixel for pixel with baseline PNGs (rake
-# regress:screens, doc/regression/usage.md chapter 9).
+# screens.rb - does each configuration come up and run: the sim, the browser
+# build and the native Linux program driven by scripted scenes (rake
+# regress:screens, doc/regression/usage.md chapter 9). Per configuration:
+# the desktop boots and the screen is not blank, the editor opens and one
+# key shows in it, a few apps open by path (in the process list, their
+# Window changes the screen) and close again, and at the end the machine
+# is still there with no crash in its log. What the screens look like is
+# the draw records' (rake regress); a scene may still compare one region
+# with a baseline PNG of that region (shot(rect:)), never a whole screen.
 #
 #   ruby tools/regress/screens.rb                  # retro, modern, web, native
 #   ruby tools/regress/screens.rb --only modern    # one family (retro|modern|web|native, or a config name)
 #   ruby tools/regress/screens.rb --scene editor   # scenes whose name has this (comma: several)
 #   ruby tools/regress/screens.rb --full           # also everything on mruby (retro-mruby, modern-mruby)
-#   ruby tools/regress/screens.rb --update         # the last run's shots that failed become the baseline
+#   ruby tools/regress/screens.rb --update         # the last run's region shots that failed become the baseline
 #   ruby tools/regress/screens.rb --list           # scenes and the configurations they run on
 #   ruby tools/regress/screens.rb --attach modern  # scenes against a sim (or with web, a page on
 #                                                  # --port) that is already up: no build, nothing
@@ -19,7 +25,9 @@
 # pinned options (targets.rb FIRMWARE_ENV; the -mruby ones with the kernel,
 # desktop and editor on mruby), the three containers headless, the desktop's
 # boot, then every scene of that configuration, each from the desktop with
-# no app open. For the browser build: `rake wasm:mruby wasm:web`
+# no app open and leaving it as it was after the boot (compared with a
+# capture of the same run, not with a baseline), then the check that the
+# machine is alive and its log clean. For the browser build: `rake wasm:mruby wasm:web`
 # (the standard configuration), a development server of its own on --port
 # (default 8016, not the 8006 a developer keeps) and a headless browser,
 # erased first so the page starts from the shipped settings. For the native
@@ -107,6 +115,13 @@ module Regress
       def baseline_dir = BASELINE
       def results_path = File.join(out_dir, "results.json")
       def label = "screens"
+
+      # Whether a shot may compare the whole screen (rake regress:live's
+      # older shots); here only regions are compared.
+      def whole_shots? = false
+
+      # The desktop at rest after the configuration's boot.
+      attr_reader :desktop
 
       def initialize(opts)
         @opts = opts
@@ -287,8 +302,37 @@ module Regress
         boot.before_scene if boot.respond_to?(:before_scene)
         @desktop = boot.respond_to?(:after_boot) ? boot.after_boot : nil
         scenes_for(config).each { |scene| run_scene(config, scene, driver) }
+        check_alive(config, driver)
       ensure
         driver.restore_fixtures! if driver.respond_to?(:restore_fixtures!)
+      end
+
+      # After the scenes: the machine still answers and the core's log (where
+      # there is one) has no crash in it. Its own line in the results ("alive").
+      def check_alive(config, driver)
+        return unless check_alive?
+        error = nil
+        if !driver.alive?
+          error = "the machine no longer answers (#{driver.log_name})"
+        elsif (lines = Screens.crash_lines(driver.core_log)).any?
+          error = "#{lines.size} crash line#{lines.size == 1 ? '' : 's'} in #{driver.log_name}, the first: #{lines.first[0, 160]}"
+        end
+        @results << if error
+                      { "config" => config.name, "scene" => "alive", "error" => error }
+                    else
+                      { "config" => config.name, "scene" => "alive", "kind" => "scene", "status" => "ok" }
+                    end
+      rescue DriverError => e
+        @results << { "config" => config.name, "scene" => "alive", "error" => e.message }
+      end
+
+      def check_alive? = true
+
+      # A scene that passed is one line of the results (live counts its
+      # checks and shots instead).
+      def record_scene_ok(config, scene, session)
+        @results << { "config" => config.name, "scene" => scene.name, "kind" => "scene", "status" => "ok",
+                      "confirmed" => session.confirmed }
       end
 
       def run_scene(config, scene, driver)
@@ -299,19 +343,26 @@ module Regress
         begin
           s.before_scene if s.respond_to?(:before_scene)
           scene.block.call(s)
-          error = "nothing compared" unless s.compared?
+          error = "nothing compared or confirmed" unless s.compared?
         rescue Failure, DriverError => e
           error = e.message
+          shot = keep_failure_capture(config, scene.name, s)
+          error += " (screen: #{shot})" if shot
         end
-        @results << { "config" => config.name, "scene" => scene.name, "error" => error } if error
+        if error
+          @results << { "config" => config.name, "scene" => scene.name, "error" => error }
+        elsif s.shots.all? { |r| r["status"] == "ok" }
+          record_scene_ok(config, scene, s)
+        end
         clean_up(s, driver)
         @scene_secs << [config.name, scene.name, (now - t_scene).round(1)]
       end
 
       # Close what the scene opened (the sim: by the process list; the
       # browser build: a reload), then the desktop has to be back as it was
-      # after the boot, pixel for pixel: a dialog that leaves a mark behind
-      # fails the scene that opened it.
+      # after the boot, pixel for pixel against the capture this run took
+      # after the boot (never a baseline; the clock is masked): a dialog
+      # that leaves a mark behind fails the scene that opened it.
       def clean_up(session, driver)
         driver.close_extra_apps
         return unless @desktop
@@ -332,6 +383,17 @@ module Regress
                       "error" => "the desktop did not come back (#{count} px in #{box.inspect}; #{rel(left)})" }
       rescue Failure, DriverError => e
         @errors << "#{session.config.name}: cleaning up after #{session.scene_name}: #{e.message}"
+      end
+
+      # The screen the scene last saw when it failed, for the failure's line.
+      def keep_failure_capture(config, name, session)
+        img = session.last_capture || session.capture
+        path = File.join(out_dir, "out", config.name, "#{name}.fail.png")
+        FileUtils.mkdir_p(File.dirname(path))
+        img.write(path)
+        rel(path)
+      rescue StandardError
+        nil
       end
 
       def desktop_back(session, timeout)
@@ -560,9 +622,9 @@ module Regress
           "#{c} #{ok}/#{rs.size}"
         end
         @errors.each { |e| puts "FAIL #{e}" }
-        broken.each { |r| puts "FAIL #{r['config']} #{r['scene']}: #{r['error']}" }
-        failed.first(6).each { |r| puts fail_line(r) }
-        puts "     ... #{failed.size - 6} more (#{rel(results_path)})" if failed.size > 6
+        lines = broken.map { |r| "FAIL #{r['config']} #{r['scene']}: #{r['error']}" } + failed.map { |r| fail_line(r) }
+        lines.first(6).each { |l| puts l }
+        puts "     ... #{lines.size - 6} more (#{rel(results_path)})" if lines.size > 6
         n_ok = shots.size - failed.size
         n_bad = failed.size + broken.size
         took = now - t0
@@ -574,7 +636,8 @@ module Regress
       def fail_line(r)
         return "NEW  #{r['config']} #{r['scene']}: no baseline (#{r['out']})" if r["status"] == "new"
         b = r["box"]
-        "FAIL #{r['config']} #{r['scene']}: #{r['pixels']} px in (#{b[0]},#{b[1]})-(#{b[2]},#{b[3]}) -> #{r['diff']}"
+        where = r["rect"] ? " of the region #{r['rect'].inspect}" : ""
+        "FAIL #{r['config']} #{r['scene']}: #{r['pixels']} px#{where} in (#{b[0]},#{b[1]})-(#{b[2]},#{b[3]}) -> #{r['diff']}"
       end
 
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -594,7 +657,7 @@ module Regress
         true
       end
       if picked.empty?
-        puts "screens:update: nothing to write (every shot of the last run matched)"
+        puts "screens:update: nothing to write (every region shot of the last run matched, or none was taken)"
         return 0
       end
       picked.each do |r|
@@ -612,7 +675,8 @@ module Regress
         puts format("%-24s %s", s.name, s.on.select { |o| cfgs.include?(o) }.join(" "))
       end
       bytes = Dir[File.join(BASELINE, "**", "*.png")].sum { |f| File.size(f) }
-      puts "#{SCENES.size} scenes; baseline #{Dir[File.join(BASELINE, '**', '*.png')].size} PNGs, #{(bytes / 1024.0).round} KB"
+      puts "#{SCENES.size} scenes (and \"alive\" after each configuration); " \
+           "region baselines: #{Dir[File.join(BASELINE, '**', '*.png')].size} PNGs, #{(bytes / 1024.0).round} KB"
       0
     end
 
