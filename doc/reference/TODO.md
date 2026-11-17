@@ -210,3 +210,11 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 
 - `kanji_dict` を設定していないときは `/sd/dict/fmrb_kanji_4m.dic` があればそれを、無ければ `/sd/dict/fmrb_kanji.dic`
   を使う。設定したときはその 1 つだけ。案内 (/usr/share/doc/kanji_ja.md・kanji.md)・system_conf の説明・doc/kanji_input も合わせる。
+
+## 画面の回帰のブラウザ版で、アプリの一覧とコアのログを見る口 (2026-11-17)
+
+- `rake regress:screens` (doc/regression/report/rg7.md) は、ブラウザ版では「アプリが動いている・閉じた」
+  (プロセスの一覧) と「コアのログのクラッシュの印」を見られない (ページが答える・Window が出る、まで)。
+  場面の片付けもページの読み直しで 1 回 30 秒ほどかかる。
+- ページに「動いているアプリの一覧」「pid で閉じる」「コアのログを読む」口を足せば見られるが、ファームと
+  wasm/web の変更になる。**今は足さない** (2026-11-17 ユーザ)。sim とネイティブ版が同じコードを見ている。
