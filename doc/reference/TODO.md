@@ -199,3 +199,8 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 `fmrb_rd_fs.rb <IP> reboot` を案内する (sync は失敗にしない)。手で頼むのは `fmrb_rd_fs.rb <IP> rescan`。
 内蔵 RAM の静的な増分は 0 (口の表と送る中身は const で .rodata、処理はコード)。httpd の口の数が 1 つ増え
 (Retro 20→21、checkpoint 入り 23→24、Modern は 30 のまま 29 を使う)、起動時のヒープが数十バイト増える。
+
+## 漢字の辞書は 4 MB があれば優先する (2026-11-17、ユーザ)
+
+- `kanji_dict` を設定していないときは `/sd/dict/fmrb_kanji_4m.dic` があればそれを、無ければ `/sd/dict/fmrb_kanji.dic`
+  を使う。設定したときはその 1 つだけ。案内 (/usr/share/doc/kanji_ja.md・kanji.md)・system_conf の説明・doc/kanji_input も合わせる。
