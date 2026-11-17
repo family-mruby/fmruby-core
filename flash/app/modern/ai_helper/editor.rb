@@ -78,6 +78,11 @@ class AiHelperApp < FmrbApp
   # The editor would not do it (busy, help, io, nomem, no answer): what was
   # being done stops; a result waiting to go in can be put in again.
   def editor_gave_up(text)
+    if @after_read == :ask
+      # a question still goes, without the document
+      @after_read = nil
+      return ask_without_doc("エディタから文書を読めなかったので")
+    end
     if @apply
       ask_child(text, [[:retry_apply, "もう一度"], [:drop, "やめる"]])
     else
@@ -94,11 +99,15 @@ class AiHelperApp < FmrbApp
   def took_doc(msg)
     if msg["ok"] != 1
       Log.info("ai_helper: ai_doc refused #{msg['why']}")
+      if @after_read == :ask
+        @after_read = nil
+        return ask_without_doc(ASK_WHY[msg["why"].to_s] || "エディタから文書を読めなかったので")
+      end
       editor_gave_up(why_text(msg["why"]))
       return
     end
     @doc = msg
-    Log.info("ai_helper: ai_doc ver=#{msg['ver']} n=#{msg['n']} b=#{msg['b']} y=#{msg['y']} m=#{msg['m']} f=#{msg['f']} rp=#{msg['rp']}")
+    Log.info("ai_helper: ai_doc ver=#{msg['ver']} n=#{msg['n']} b=#{msg['b']} y=#{msg['y']} m=#{msg['m']} f=#{msg['f']} rp=#{msg['rp']} rn=#{msg['rn']}")
     what = @after_read
     @after_read = nil
     case what
@@ -462,18 +471,24 @@ class AiHelperApp < FmrbApp
     read_editor(:fix)
   end
 
-  # The last error is the editor's run when its app name is the document's.
+  # The last error is this document's when it is filed under the name the
+  # editor says the document last ran as with F5 ("rn" in ai_doc; "" before
+  # its first run). The editor cuts a long name to RUN_NAME_MAX bytes, so the
+  # error's name is cut the same way before the two are compared.
   def run_error
     e = FmrbApp._get_last_error
-    return nil unless e && @doc && @doc["rp"].to_i >= 0
-    name = e[:name].to_s
-    f = base_name(doc_file)
-    return nil if f.empty?
-    stem = f
-    k = stem.index(".")
-    stem = stem[0, k] if k
-    return nil unless name == f || name == stem || name.downcase == stem.downcase
+    return nil unless e && @doc
+    rn = @doc["rn"].to_s
+    return nil if rn.empty?
+    return nil unless cut_name(e[:name].to_s) == rn
     e[:error].to_s
+  end
+
+  def cut_name(s)
+    return s if s.bytesize <= RUN_NAME_MAX
+    k = RUN_NAME_MAX
+    k -= 1 while k > 0 && (s.getbyte(k) & 0xC0) == 0x80
+    s.byteslice(0, k).to_s
   end
 
   def offer_fix

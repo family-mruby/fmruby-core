@@ -17,8 +17,11 @@
 # backups <file>.bakN beside the document. The document is streamed through
 # those files, never held whole in the VM.
 #
-# Uses: question (the editor is not touched, unless "send the document" is
-# on), hint (AI comments "# AI: " above lines, the code unchanged), make (the
+# Uses: question (the editor's document goes with it when the editor runs
+# and the document has something in it, unless the child turned "send the
+# document" off; with no editor, an empty document or an editor that cannot
+# hand it over, the question goes alone and says so), hint (AI comments
+# "# AI: " above lines, the code unchanged), make (the
 # whole document, after asking whether to back it up), fix (after a run that
 # failed: a hint or the fixed document, the child chooses each time), and
 # erase (the AI comment lines, after showing how many).
@@ -49,6 +52,10 @@ class AiHelperApp < FmrbApp
   REBASE_MAX = 3
   CHUNK = 4096
   BTN_H = 15
+  # The editor cuts the app name in ai_doc ("rn") to this many bytes on a
+  # character boundary (editor/remote.rb AI_RUN_NAME_MAX); run_error cuts the
+  # last error's name the same way.
+  RUN_NAME_MAX = 24
 
   MODE_LABEL = { "ask" => "質問", "hint" => "ヒント", "make" => "作る" }
   PLACEHOLDER = {
@@ -68,6 +75,12 @@ class AiHelperApp < FmrbApp
     "help" => "エディタでヘルプ (F1) が開いています。閉じてから、もう一度押してください。",
     "io" => "エディタがファイルを読み書きできませんでした。",
     "nomem" => "エディタのメモリが足りません。",
+  }
+  # Why a question went without the document, when the editor would not
+  # hand it over (the question is not stopped for it).
+  ASK_WHY = {
+    "busy" => "エディタでダイアログやメニューが開いているので",
+    "help" => "エディタでヘルプ (F1) が開いているので",
   }
 
   # ------------------------------------------------------------ lifecycle
@@ -103,7 +116,9 @@ class AiHelperApp < FmrbApp
     @link_state = nil
     @link_failed = false
     @mode = "hint"
-    @attach = false
+    @attach = true        # a question takes the editor's document along
+    @ask_note = ""
+    @asked_doc = ""
     # the editor
     @msg_id = 0
     @ed_wait = nil
@@ -134,7 +149,7 @@ class AiHelperApp < FmrbApp
     @question = nil
     @choices = nil
     layout
-    add_text("AI", "AI ヘルパーです。答えるのは AI (人ではありません) です。上で使い方を選び、下の行に打って Enter か「送る」を押してください。「ヒント」と「作る」は、エディタで開いている文書を使います。")
+    add_text("AI", "AI ヘルパーです。答えるのは AI (人ではありません) です。上で使い方を選び、下の行に打って Enter か「送る」を押してください。「質問」「ヒント」「作る」は、エディタで開いている文書を使います (質問は、下の切り替えで文書を送らないこともできます)。")
     set_status("つないでいます…")
     # connect blocks the app for a few seconds when the router is not
     # there: try less often than the Link's default
@@ -469,10 +484,16 @@ class AiHelperApp < FmrbApp
     @rebases = 0
     label = mode == "fix" || !error.empty? ? "直して" : MODE_LABEL[mode]
     @req_shown = text.empty? ? "(#{label})" : "(#{label}) #{text}"
-    if mode == "ask" && (!@attach || editor_pid < 0)
-      add_text("AI", "(エディタが動いていないので、文書は送りません)") if @attach
+    if mode == "ask"
       @doc = nil
-      send_request("ask")
+      if !@attach
+        @ask_note = ""
+        ask_now(nil, nil)
+      elsif editor_pid < 0
+        ask_without_doc("エディタが動いていないので")
+      else
+        read_editor(:ask) || ask_without_doc("エディタが動いていないので")
+      end
     elsif mode == "fix" || !error.empty?
       send_request(mode)   # the document was read already (offer_fix)
     else
@@ -482,16 +503,25 @@ class AiHelperApp < FmrbApp
 
   # The request (the document, if one was read for it, goes first).
   def send_request(mode)
-    if mode != "ask" || @attach
-      if mode == "ask" && @doc.nil?
-        # no editor: the question goes without it
-      elsif doc_bytes == 0 && mode != "make" && mode != "ask"
-        @phase = :idle
-        return set_status("エディタの文書が空です。")
-      elsif doc_bytes > 0
-        return begin_upload(:ask)
-      end
+    if mode == "ask"
+      return ask_without_doc("エディタが動いていないので") if @doc.nil?
+      return ask_without_doc("エディタの文書が空なので") if doc_bytes == 0
+      return begin_upload(:ask)
     end
+    if doc_bytes == 0 && mode != "make"
+      @phase = :idle
+      return set_status("エディタの文書が空です。")
+    elsif doc_bytes > 0
+      return begin_upload(:ask)
+    end
+    ask_now(nil, nil)
+  end
+
+  # A question that goes alone although the document was to go with it; the
+  # reason is shown with it.
+  def ask_without_doc(reason)
+    @doc = nil
+    @ask_note = reason
     ask_now(nil, nil)
   end
 
@@ -506,8 +536,11 @@ class AiHelperApp < FmrbApp
       req["cx"] = @doc["x"].to_i
     end
     req["error"] = @req_error unless @req_error.empty?
-    # shown (and the input line emptied) once it really goes
-    add_text("あなた", @req_shown)
+    # shown (and the input line emptied) once it really goes; a question
+    # says whether the document went with it
+    @asked_doc = doc_id || doc_text ? doc_label : ""
+    add_text("あなた", ask_shown(doc_id || doc_text))
+    add_text("AI", "(#{@ask_note}、文書は付けずに送りました)") if @req_mode == "ask" && !(doc_id || doc_text) && !@ask_note.empty?
     @input = ""
     draw_input
     @phase = :asking
@@ -516,6 +549,23 @@ class AiHelperApp < FmrbApp
     @asked_at = Machine.board_millis
     start_call(:ask, req)
     set_status("送っています…")
+  end
+
+  def ask_shown(with_doc)
+    return @req_shown unless @req_mode == "ask"
+    head = with_doc ? "(質問 + #{doc_label})" : "(質問、文書なし)"
+    @req_text.empty? ? head : "#{head} #{@req_text}"
+  end
+
+  def doc_label
+    n = base_name(doc_file)
+    n.empty? ? "名前のない文書" : "文書 #{n}"
+  end
+
+  # The end of the status line after a question was taken.
+  def ask_status_tail
+    return "" unless @req_mode == "ask"
+    @asked_doc.empty? ? "文書は付けていません。" : "#{@asked_doc}#{@asked_doc.end_with?("文書") ? "" : " "}を付けました。"
   end
 
   def took_ask(v)
@@ -529,7 +579,7 @@ class AiHelperApp < FmrbApp
     @ticket = v["ticket"].to_s
     @phase = :poll
     @next_poll = Machine.board_millis + 300
-    set_status("受け付けました。")
+    set_status("受け付けました。#{ask_status_tail}")
     Log.info("ai_helper: ticket #{@ticket}")
   end
 
