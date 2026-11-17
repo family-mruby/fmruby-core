@@ -22,12 +22,15 @@ see "The browser and native builds" below.
 
 ## 2. Putting it on the SD card
 
-The machine reads /sd/dict/fmrb_kanji.dic (a folder named dict at the top
-of the card). Keep the LICENSE in the same folder.
+The dictionaries go in a folder named dict at the top of the card
+(/sd/dict/). Keep the LICENSE in the same folder.
 
-To use the larger dictionary, rename fmrb_kanji_4m.dic to fmrb_kanji.dic
-when you put it there, or keep its name and point kanji_dict at it (section
-4). The machine uses one dictionary.
+- When fmrb_kanji_4m.dic (the larger one) is there, the machine uses it.
+- Otherwise it uses fmrb_kanji.dic (the standard one).
+
+Both can be there (the larger one is used). Keep their names. The machine
+uses one dictionary. For a dictionary somewhere else or under another name,
+point kanji_dict at it (section 4).
 
 ### Copying on a PC
 
@@ -62,7 +65,9 @@ file of that name, the new one gets a name like fmrb_kanji(1).dic (send
 with -o to overwrite instead).
 
 The machine **uses the dictionary as soon as it is placed or replaced** (no
-restart). While it is being replaced, and after it is deleted, kana input
+restart). Placing the larger one while the standard one is in use switches
+to the larger one; deleting the larger one goes back to the standard one.
+While a dictionary is being replaced, and once neither is left, kana input
 goes on without conversion; so it does with no card, no dictionary or a
 broken one. Where there is no room for two dictionaries, delete the old one
 first, then put the new one.
@@ -112,7 +117,11 @@ place over every app, full-screen ones included.
 Write these lines in /etc/system_conf.toml and restart:
 
     kanji_convert = false                    # no conversion, file or not
-    kanji_dict = "/sd/dict/fmrb_kanji.dic"   # where the dictionary is (the default)
+    kanji_dict = "/sd/dict/fmrb_kanji.dic"   # where the dictionary is
+
+Without kanji_dict the machine uses /sd/dict/fmrb_kanji_4m.dic when it is
+there and /sd/dict/fmrb_kanji.dic otherwise (section 2). With kanji_dict it
+uses that file only (not the larger one, even when it is there).
 
 Taking the dictionary off the card turns conversion off too.
 

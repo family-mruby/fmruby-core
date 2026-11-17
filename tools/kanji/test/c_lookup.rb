@@ -17,6 +17,8 @@
 #   4. the generated dictionary (tools/kanji/work/out/fmrb_kanji.dic, from
 #      `rake kanji:dict`) when it is there: every reading and thousands of
 #      longest-match queries. Skipped, with the reason, when it is not.
+#   5. the default dictionary's choice without kanji_dict (the 4 MB one when
+#      it is there) and the names the file change hook reacts to
 #
 # The program is built with AddressSanitizer and UBSan when the compiler has
 # them, so a read past the block shows up as a failure.
@@ -291,6 +293,37 @@ def broken_files(prog, dir, src)
   check("small buffer refused", out[3] == "S\t#{ERR_INVALID_PARAM}")
 end
 
+# 5. which default dictionary is used without kanji_dict (fmrb_kanji_pick_default):
+#    the 4 MB name when it is there (a regular file), the 1 MB name otherwise;
+#    and which changes the change hook reacts to (fmrb_kanji_is_default_path).
+def default_choice(prog, dir)
+  d = File.join(dir, "sd", "dict")
+  FileUtils.mkdir_p(d)
+  std = File.join(d, "fmrb_kanji.dic")
+  large = File.join(d, "fmrb_kanji_4m.dic")
+  pick = -> { run_program(prog, ["pick #{d}"])[0] }
+  check("choice: neither there -> the 1 MB name", pick.call == "pick\t#{OK}\t#{std}")
+  File.write(std, "x")
+  check("choice: only the 1 MB one -> it", pick.call == "pick\t#{OK}\t#{std}")
+  File.write(large, "x")
+  check("choice: both -> the 4 MB one", pick.call == "pick\t#{OK}\t#{large}")
+  File.delete(std)
+  check("choice: only the 4 MB one -> it", pick.call == "pick\t#{OK}\t#{large}")
+  File.delete(large)
+  Dir.mkdir(large)
+  check("choice: a directory with the 4 MB name is not a file", pick.call == "pick\t#{OK}\t#{std}")
+  Dir.rmdir(large)
+  check("choice: a path that does not fit is refused",
+        run_program(prog, ["pick /#{'d' * 200}"])[0].start_with?("pick\t#{ERR_INVALID_PARAM}\t"))
+  {
+    "#{d}/fmrb_kanji.dic" => 1, "#{d}/fmrb_kanji_4m.dic" => 1, "#{d}/fmrb_kanji_LICENSE.txt" => 0,
+    "#{d}/fmrb_kanji.dic.tmp" => 0, "#{d}x/fmrb_kanji.dic" => 0, "#{d}/sub/fmrb_kanji.dic" => 0,
+    "#{d}fmrb_kanji.dic" => 0, d => 0
+  }.each do |path, want|
+    check("hook: #{path.sub(dir, '')} -> #{want}", run_program(prog, ["isdef #{d} #{path}"])[0] == "isdef\t#{want}")
+  end
+end
+
 Dir.mktmpdir("kanji_c") do |dir|
   prog, sanitized = build_program(dir)
   rng = Random.new(1)
@@ -324,6 +357,15 @@ Dir.mktmpdir("kanji_c") do |dir|
   else
     puts "generated dictionary: skipped (no #{DICT.sub("#{ROOT}/", '')}; `rake kanji:dict` makes it)"
   end
+  large = DICT.sub("fmrb_kanji.dic", "fmrb_kanji_4m.dic")
+  if File.exist?(large)
+    info = run_program(prog, ["open #{large}", "info", "close"])
+    check("generated 4 MB dictionary: opens", info[0] == "open\t0")
+    puts "generated 4 MB dictionary: held while open #{info[1].split("\t")[1].split[4]} bytes"
+  end
+
+  # 5. the default dictionary's choice
+  default_choice(prog, dir)
   puts "kanji C lookup: built #{sanitized ? 'with' : 'without'} AddressSanitizer/UBSan"
 end
 

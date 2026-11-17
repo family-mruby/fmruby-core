@@ -2,7 +2,8 @@
 # frozen_string_literal: true
 #
 # Put the generated kanji dictionary where a machine looks for it, checked
-# (doc/kanji_input/ K5). The machine reads /sd/dict/fmrb_kanji.dic, so DEST
+# (doc/kanji_input/ K5). The machine reads /sd/dict/ (fmrb_kanji_4m.dic when
+# it is there, fmrb_kanji.dic otherwise, without kanji_dict), so DEST
 # is the root of what becomes /sd: a mounted SD card, a directory to attach
 # to a release from, or a test directory whose dict/ the configuration's
 # kanji_dict points at.
@@ -12,8 +13,8 @@
 #       kanji:dict_release makes both) and DIR/LICENSE (tools/kanji/work/out
 #       by default) to DEST/dict/ (the LICENSE as fmrb_kanji_LICENSE.txt),
 #       checking each file before and the copy after (header, size, crc32).
-#       The machine reads fmrb_kanji.dic; the 4 MB one is used by renaming it
-#       to that or pointing kanji_dict at it.
+#       The machine uses the 4 MB one when it was copied (no renaming), the
+#       1 MB one otherwise.
 #   ruby tools/kanji/place.rb --check FILE...
 #       checks dictionary files only (one taken from a release, or the one on
 #       a card)

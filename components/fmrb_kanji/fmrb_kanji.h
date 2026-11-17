@@ -11,6 +11,7 @@
 // 4 KB block into a buffer the caller owns. A dictionary handle is not
 // thread-safe: one task opens it and does all of its lookups.
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 #include "fmrb_err.h"
@@ -72,6 +73,34 @@ typedef struct {
  *         FMRB_ERR_FAILED on a read error. Any error means "no dictionary".
  */
 fmrb_err_t fmrb_kanji_open(const char *path, fmrb_kanji_dict_t **out);
+
+/** Where the dictionary is looked for when system_conf names none. */
+#define FMRB_KANJI_DEFAULT_DIR "/sd/dict"
+/** The standard (1 MB) dictionary's name in FMRB_KANJI_DEFAULT_DIR. */
+#define FMRB_KANJI_DEFAULT_NAME "fmrb_kanji.dic"
+/** The large (4 MB) one's name; preferred when it is there. */
+#define FMRB_KANJI_LARGE_NAME "fmrb_kanji_4m.dic"
+
+/**
+ * @brief Pick the default dictionary in @p dir.
+ *
+ * Writes dir/FMRB_KANJI_LARGE_NAME to @p path when that file exists (a
+ * regular file), dir/FMRB_KANJI_DEFAULT_NAME otherwise. Only existence
+ * decides: a large file that is there but broken is still the choice (and
+ * fails to open). Made at each (re)open, so placing or removing the large
+ * file switches the dictionary.
+ *
+ * @return FMRB_OK; FMRB_ERR_INVALID_PARAM when the path does not fit.
+ */
+fmrb_err_t fmrb_kanji_pick_default(const char *dir, char *path, size_t path_size);
+
+/**
+ * @brief Whether @p path is one of the two default names in @p dir.
+ *
+ * For the file change hook: either file's change makes the choice again.
+ * Both arguments are in the same form (virtual, or both resolved).
+ */
+bool fmrb_kanji_is_default_path(const char *path, const char *dir);
 
 /** @brief Close the file and free the tables. NULL is ignored. */
 void fmrb_kanji_close(fmrb_kanji_dict_t *dict);

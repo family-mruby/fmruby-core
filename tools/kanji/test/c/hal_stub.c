@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "fmrb_hal_file.h"
 #include "fmrb_mem.h"
@@ -83,5 +84,18 @@ fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size)
     long end = ftell(f);
     fseek(f, here, SEEK_SET);
     *size = (uint32_t)end;
+    return FMRB_OK;
+}
+
+fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info)
+{
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        return FMRB_ERR_NOT_FOUND;
+    }
+    memset(info, 0, sizeof(*info));
+    info->mode = (uint32_t)st.st_mode;
+    info->size = (uint64_t)st.st_size;
+    info->is_dir = S_ISDIR(st.st_mode);
     return FMRB_OK;
 }

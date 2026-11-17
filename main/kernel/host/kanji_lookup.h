@@ -19,6 +19,11 @@
 // before it is written, removed or renamed, and to open it again after. While
 // it is closed, lookups answer "none" and kana input goes on as kana. A
 // dictionary placed later at the configured path starts the task.
+//
+// Without kanji_dict the task chooses at each open: /sd/dict/fmrb_kanji_4m.dic
+// when it is there, /sd/dict/fmrb_kanji.dic otherwise (fmrb_kanji_pick_default).
+// A change to either file makes the choice again, so placing the large one
+// switches to it and removing it falls back to the standard one.
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -52,8 +57,9 @@ typedef struct {
  * @brief The settings, from system_conf (kanji_dict, kanji_convert).
  *
  * Called by the kernel while it reads the configuration, before
- * fmrb_kanji_lookup_start. A NULL or empty path keeps the default
- * (/sd/dict/fmrb_kanji.dic).
+ * fmrb_kanji_lookup_start. A NULL or empty path picks the default at each
+ * open: /sd/dict/fmrb_kanji_4m.dic when it exists, /sd/dict/fmrb_kanji.dic
+ * otherwise. A path given is the only file used.
  */
 void fmrb_kanji_lookup_configure(const char *path, bool enabled);
 

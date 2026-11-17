@@ -13,6 +13,8 @@
 //   failreads N    -> (no answer) the file HAL fails reads after N more
 //   stats          -> stats<TAB>block_reads<TAB>microseconds since the last stats
 //   close          -> close<TAB>live bytes and blocks left in the pool
+//   pick DIR       -> pick<TAB>rc<TAB>path   the default dictionary chosen in DIR
+//   isdef DIR PATH -> isdef<TAB>0|1          PATH is one of DIR's two default names
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,6 +122,14 @@ int main(void)
             double t = now_us();
             printf("stats\t%u\t%.0f\n", fmrb_kanji_block_reads(dict), t - t0);
             t0 = t;
+        } else if (strcmp(s_line, "pick") == 0) {
+            char path[128];
+            fmrb_err_t err = fmrb_kanji_pick_default(arg, path, sizeof(path));
+            printf("pick\t%d\t%s\n", err, path);
+        } else if (strcmp(s_line, "isdef") == 0) {
+            char *path = strchr(arg, ' ');
+            if (path) *path++ = '\0';
+            printf("isdef\t%d\n", path ? (int)fmrb_kanji_is_default_path(path, arg) : 0);
         } else if (strcmp(s_line, "close") == 0) {
             fmrb_kanji_close(dict);
             dict = NULL;

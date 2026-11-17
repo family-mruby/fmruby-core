@@ -83,6 +83,9 @@ wallpaper = ""
 # The simulation has no /sd: to try it, put the dictionary (rake kanji:dict)
 # under flash/home/ and point kanji_dict there, e.g. "/home/fmrb_kanji.dic".
 # kanji_convert = false turns conversion off with the file in place.
+# Without kanji_dict the machine uses /sd/dict/fmrb_kanji_4m.dic when it is
+# there and /sd/dict/fmrb_kanji.dic otherwise, chosen again when either is
+# placed or removed; with kanji_dict, that file only.
 # kanji_dict = "/sd/dict/fmrb_kanji.dic"
 # kanji_convert = true
 

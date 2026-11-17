@@ -4,6 +4,7 @@
 
 #include "fmrb_kanji.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "fmrb_hal_file.h"
@@ -216,6 +217,41 @@ fmrb_err_t fmrb_kanji_open(const char *path, fmrb_kanji_dict_t **out)
 fail:
     fmrb_hal_file_close(f);
     return err;
+}
+
+fmrb_err_t fmrb_kanji_pick_default(const char *dir, char *path, size_t path_size)
+{
+    if (dir == NULL || path == NULL || path_size == 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    int n = snprintf(path, path_size, "%s/%s", dir, FMRB_KANJI_LARGE_NAME);
+    if (n < 0 || (size_t)n >= path_size) {
+        path[0] = '\0';
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    fmrb_file_info_t st;
+    if (fmrb_hal_file_stat(path, &st) == FMRB_OK && FMRB_S_ISREG(st.mode)) {
+        return FMRB_OK;
+    }
+    n = snprintf(path, path_size, "%s/%s", dir, FMRB_KANJI_DEFAULT_NAME);
+    if (n < 0 || (size_t)n >= path_size) {
+        path[0] = '\0';
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    return FMRB_OK;
+}
+
+bool fmrb_kanji_is_default_path(const char *path, const char *dir)
+{
+    if (path == NULL || dir == NULL) {
+        return false;
+    }
+    size_t n = strlen(dir);
+    if (strncmp(path, dir, n) != 0 || path[n] != '/') {
+        return false;
+    }
+    const char *name = path + n + 1;
+    return strcmp(name, FMRB_KANJI_DEFAULT_NAME) == 0 || strcmp(name, FMRB_KANJI_LARGE_NAME) == 0;
 }
 
 void fmrb_kanji_close(fmrb_kanji_dict_t *dict)

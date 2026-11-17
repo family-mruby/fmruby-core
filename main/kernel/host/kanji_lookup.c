@@ -60,7 +60,6 @@ const char *fmrb_kanji_lookup_candidate(uint16_t index, size_t *len)
 _Static_assert(FMRB_KANJI_NO_INDEX == FMRB_KANJI_LOOKUP_NO_WHOLE,
                "the two no-whole markers are the same value");
 
-#define KANJI_DEFAULT_PATH "/sd/dict/fmrb_kanji.dic"
 #define KANJI_PATH_MAX 128
 // The resolved path is longer on the hosted builds (the flash directory's
 // own path in front).
@@ -73,11 +72,15 @@ _Static_assert(FMRB_KANJI_NO_INDEX == FMRB_KANJI_LOOKUP_NO_WHOLE,
 #define KANJI_RESULT_TEXT_BYTES (12 * 1024)
 
 typedef struct {
-    // Written by the kernel task before the start, read by the task.
+    // Written by the kernel task before the start, read by the task. With
+    // `pick` (no kanji_dict), the task writes the default it chose here at
+    // each open (fmrb_kanji_pick_default).
     char path[KANJI_PATH_MAX];
-    // The same path as the file HAL resolves it, for the change hook.
+    // The same path as the file HAL resolves it, for the change hook; with
+    // `pick`, the default directory resolved (either name in it counts).
     char real_path[KANJI_REAL_PATH_MAX];
     bool enabled;
+    bool pick;
     // Request: written by the host task, read by the lookup task after the
     // notification.
     char reading[FMRB_KANJI_LOOKUP_READING_MAX];
@@ -117,9 +120,14 @@ FMRB_EXT_RAM_BSS_ATTR static kanji_buffers_t *s_buf;
 
 void fmrb_kanji_lookup_configure(const char *path, bool enabled)
 {
-    const char *p = (path && path[0]) ? path : KANJI_DEFAULT_PATH;
-    strncpy(s_kj.path, p, sizeof(s_kj.path) - 1);
-    s_kj.path[sizeof(s_kj.path) - 1] = '\0';
+    s_kj.pick = !(path && path[0]);
+    if (s_kj.pick) {
+        // The large dictionary when it is there; chosen again at each open.
+        fmrb_kanji_pick_default(FMRB_KANJI_DEFAULT_DIR, s_kj.path, sizeof(s_kj.path));
+    } else {
+        strncpy(s_kj.path, path, sizeof(s_kj.path) - 1);
+        s_kj.path[sizeof(s_kj.path) - 1] = '\0';
+    }
     s_kj.enabled = enabled;
 }
 
@@ -208,6 +216,9 @@ static fmrb_kanji_dict_t *open_dict(void)
 {
     fmrb_time_t t0 = fmrb_hal_time_get_us();
     fmrb_kanji_dict_t *dict = NULL;
+    if (s_kj.pick) {
+        fmrb_kanji_pick_default(FMRB_KANJI_DEFAULT_DIR, s_kj.path, sizeof(s_kj.path));
+    }
     fmrb_err_t err = fmrb_kanji_open(s_kj.path, &dict);
     if (err == FMRB_OK && !s_buf) {
         s_buf = (kanji_buffers_t *)fmrb_sys_malloc(sizeof(kanji_buffers_t));
@@ -301,7 +312,9 @@ static bool change_hook(const char *real_path, fmrb_file_change_t change)
 {
     // NULL: the end of a write reported by a close, on the path this hook
     // said true to (the only hook).
-    if (real_path != NULL && strcmp(real_path, s_kj.real_path) != 0) {
+    if (real_path != NULL &&
+        (s_kj.pick ? !fmrb_kanji_is_default_path(real_path, s_kj.real_path)
+                   : strcmp(real_path, s_kj.real_path) != 0)) {
         return false;
     }
     switch (change) {
@@ -334,8 +347,15 @@ static bool change_hook(const char *real_path, fmrb_file_change_t change)
         return true;
     case FMRB_FILE_CHANGE_REMOVED:
         s_kj.held = false;
-        s_kj.reopen = false;
-        FMRB_LOGI(TAG, "%s removed: kanji conversion off", s_kj.path);
+        if (s_kj.pick) {
+            // Choose again: the large file gone falls back to the standard
+            // one; neither there leaves conversion off (open_dict says so).
+            s_kj.reopen = true;
+            FMRB_LOGI(TAG, "a dictionary in %s removed: choosing again", FMRB_KANJI_DEFAULT_DIR);
+        } else {
+            s_kj.reopen = false;
+            FMRB_LOGI(TAG, "%s removed: kanji conversion off", s_kj.path);
+        }
         if (s_kj.task) fmrb_task_notify_give(s_kj.task);
         return true;
     }
@@ -353,12 +373,18 @@ void fmrb_kanji_lookup_start(void)
     }
     // Watch the file from now on, also when it is not there yet: replacing
     // or placing it needs no reboot.
-    if (fmrb_hal_file_resolve_path(s_kj.path, s_kj.real_path, sizeof(s_kj.real_path)) == FMRB_OK) {
+    // Without kanji_dict, the directory: either default name in it counts.
+    const char *watched = s_kj.pick ? FMRB_KANJI_DEFAULT_DIR : s_kj.path;
+    if (fmrb_hal_file_resolve_path(watched, s_kj.real_path, sizeof(s_kj.real_path)) == FMRB_OK) {
         fmrb_hal_file_set_change_hook(change_hook);
     } else {
-        FMRB_LOGW(TAG, "%s: path too long to watch for changes", s_kj.path);
+        FMRB_LOGW(TAG, "%s: path too long to watch for changes", watched);
     }
     s_kj.reopen = true;
+    if (s_kj.pick) {
+        // The card is mounted by now; the open chooses again anyway.
+        fmrb_kanji_pick_default(FMRB_KANJI_DEFAULT_DIR, s_kj.path, sizeof(s_kj.path));
+    }
     fmrb_file_info_t st;
     if (fmrb_hal_file_stat(s_kj.path, &st) != FMRB_OK) {
         // The usual case: no dictionary on this machine. Nothing is created.
