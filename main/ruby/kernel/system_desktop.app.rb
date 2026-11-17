@@ -1040,7 +1040,7 @@ class SystemDesktopApp < FmrbApp
 
   def draw_menu_bar
     @gfx.clear(0x01)  # Transparent (clear foreground, 0x01 = transparent color key)
-    @gfx.fill_rect(0, 0, @window_width, MENU_BAR_HEIGHT, MENU_BG)
+    paint_bar(0, @window_width)
     draw_logo
     draw_taskbar
     draw_clock
@@ -1054,29 +1054,77 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
+  # The bar's face: three bands of 4 rows above the bottom border line -- the
+  # theme's menu bar colour one step lighter, the colour itself, one step
+  # darker -- as distinct bands rather than a smooth ramp. The two outer
+  # colours are worked out on every call (bar_step) rather than kept in
+  # constants: on Spinel a constant is a static in internal RAM, and this is
+  # a few shifts. A cell that the 1Hz tick repaints without the whole bar
+  # under it (clock, RAM, battery, wifi, speaker, power) calls this for its
+  # own columns first and then draws with a transparent text background.
+  # (Rows 0-3, 4-7 and 8-11 as literals, not a band-height constant, for the
+  # same reason.)
+  def paint_bar(x, w)
+    @gfx.fill_rect(x, 0, w, 4, bar_step(MENU_BG, 1))
+    @gfx.fill_rect(x, 4, w, 4, MENU_BG)
+    @gfx.fill_rect(x, 8, w, 4, bar_step(MENU_BG, -1))
+  end
+
+  # One step lighter (dir 1) or darker (dir -1) in RGB332: R and G (3 bits,
+  # about 14% a step) move by one and stop at their ends; B (2 bits, 33% a
+  # step, too coarse) moves only when R and G are both already at the end
+  # they are going to. 0x01 is the canvas's transparent key, so a result of
+  # 0x01 becomes black (0x00) instead.
+  def bar_step(color, dir)
+    r = (color >> 5) & 7
+    g = (color >> 2) & 7
+    b = color & 3
+    nr = r + dir
+    nr = 0 if nr < 0
+    nr = 7 if nr > 7
+    ng = g + dir
+    ng = 0 if ng < 0
+    ng = 7 if ng > 7
+    if nr == r && ng == g
+      b += dir
+      b = 0 if b < 0
+      b = 3 if b > 3
+    end
+    out = (nr << 5) | (ng << 2) | b
+    out == 0x01 ? 0x00 : out
+  end
+
   # The system menu's button at the left end: a small red gem (a ruby), drawn
   # from code like the other cells so it costs no constant data (on Spinel a
-  # constant is a static in internal RAM). Inverted while the system menu is
-  # open, as the classic Mac apple menu was. A 1 px divider in the theme's
+  # constant is a static in internal RAM). It has no cell of its own: the gem
+  # sits on the bar's bands, open menu or not. A 1 px divider in the theme's
   # border colour, inset from the top and bottom, keeps the button apart from
   # the running apps' indicators that follow (TaskbarMixin); clicks left of it
   # open the menu (LOGO_HIT_W).
-  LOGO_CELL_W = 13
-  LOGO_DIVIDER_X = 15
+  #
+  # The gem's pixel art is all in draw_logo, from its top-left corner (x, y)
+  # there: to change the picture, change only that method's body.
+  LOGO_DIVIDER_X = 18
   LOGO_HIT_W = LOGO_DIVIDER_X
 
   def draw_logo
-    lit = @dropdown_open && @dropdown_menu == :main
-    box = lit ? FmrbGfx::WHITE : MENU_BG
-    @gfx.fill_rect(0, 1, LOGO_CELL_W, 10, box)
     @gfx.fill_rect(LOGO_DIVIDER_X, 2, 1, 9, FmrbConst::THEME_BORDER)
-    # The gem, 9 x 8 at (2, 2). The outline first, as the whole silhouette;
-    # the facets are filled in over it.
-    x = 2
+    # The gem, 9 x 8 (. transparent, A outline 0x40, B highlight white,
+    # C red 0xC0, D light red 0xED):
+    #   ..AAAAA..
+    #   .ABCCCCA.
+    #   ABDDCCCCA
+    #   ADCCCCCCA
+    #   .ADCCCCA.
+    #   ..ADCCA..
+    #   ...ACA...
+    #   ....A....
+    # The outline first, as the whole silhouette; the inside over it.
+    x = 5
     y = 2
-    # Dark red: on the light bar, the dark one's grey, cyberpunk's navy and
-    # the open cell's white alike it parts from what is behind it (by hue on
-    # the two dark bars, where black would by brightness).
+    # Dark red: on the light bar, the dark one's grey and cyberpunk's navy
+    # alike it parts from what is behind it (by hue on the two dark bars,
+    # where black would by brightness).
     c = 0x40
     @gfx.fill_rect(x + 2, y, 5, 1, c)
     @gfx.fill_rect(x + 1, y + 1, 7, 1, c)
@@ -1085,29 +1133,34 @@ class SystemDesktopApp < FmrbApp
     @gfx.fill_rect(x + 2, y + 5, 5, 1, c)
     @gfx.fill_rect(x + 3, y + 6, 3, 1, c)
     @gfx.fill_rect(x + 4, y + 7, 1, 1, c)
-    # Red body.
+    # C: the red body.
     c = 0xC0
-    @gfx.fill_rect(x + 3, y + 2, 1, 1, c)
-    @gfx.fill_rect(x + 5, y + 2, 1, 1, c)
-    @gfx.fill_rect(x + 3, y + 4, 3, 2, c)
+    @gfx.fill_rect(x + 3, y + 1, 4, 1, c)
+    @gfx.fill_rect(x + 4, y + 2, 4, 1, c)
+    @gfx.fill_rect(x + 2, y + 3, 6, 1, c)
+    @gfx.fill_rect(x + 3, y + 4, 4, 1, c)
+    @gfx.fill_rect(x + 4, y + 5, 2, 1, c)
     @gfx.fill_rect(x + 4, y + 6, 1, 1, c)
-    # Lit facets.
+    # D: the lit left edge.
     c = 0xED
-    @gfx.fill_rect(x + 3, y + 1, 1, 1, c)
-    @gfx.fill_rect(x + 5, y + 1, 2, 1, c)
-    @gfx.fill_rect(x + 1, y + 2, 2, 1, c)
-    @gfx.fill_rect(x + 6, y + 2, 2, 1, c)
+    @gfx.fill_rect(x + 2, y + 2, 2, 1, c)
+    @gfx.fill_rect(x + 1, y + 3, 1, 1, c)
     @gfx.fill_rect(x + 2, y + 4, 1, 1, c)
-    @gfx.fill_rect(x + 6, y + 4, 1, 1, c)
-    # The highlight.
+    @gfx.fill_rect(x + 3, y + 5, 1, 1, c)
+    # B: the highlight.
     @gfx.fill_rect(x + 2, y + 1, 1, 1, FmrbGfx::WHITE)
+    @gfx.fill_rect(x + 1, y + 2, 1, 1, FmrbGfx::WHITE)
   end
 
   def draw_clock
     # Entirely in C (one text command formatted on the C stack): the 1Hz
     # tick is the desktop's steady state and must create no Ruby object.
     # The Ruby route cost a wallclock Hash + a sprintf String per second.
-    @gfx.draw_wallclock(@window_width - CLOCK_RIGHT, 2, FmrbGfx::WHITE, MENU_BG)
+    # The 84 px "MM/DD hh:mm:ss" cell gets its bands back first, then the
+    # text goes on with no background (-1) so the bands show between strokes.
+    x = @window_width - CLOCK_RIGHT
+    paint_bar(x, 84)
+    @gfx.draw_wallclock(x, 2, FmrbGfx::WHITE, -1)
   end
 
   # Network status icon just left of the clock. Shown on Modern (WiFi) and
@@ -1230,7 +1283,8 @@ class SystemDesktopApp < FmrbApp
     # better than a broken-looking one.
     return if ON_WEB
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
-    @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
+    paint_bar(x, MEMINFO_W)
+    @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, -1)
   end
 
   # Battery, left of the free-RAM readout, only where the OS gives a value
@@ -1245,13 +1299,13 @@ class SystemDesktopApp < FmrbApp
     return unless level
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 -
         MEMINFO_W - 4 - BATTERY_W
-    @gfx.fill_rect(x, 1, BATTERY_W, 10, MENU_BG)
+    paint_bar(x, BATTERY_W)
     @gfx.draw_rect(x, 3, 9, 6, FmrbGfx::WHITE)
     @gfx.fill_rect(x + 9, 5, 1, 2, FmrbGfx::WHITE)
     fill = level * 7 / 100
     @gfx.fill_rect(x + 1, 4, fill, 4, FmrbGfx::WHITE) if fill > 0
     label = FmrbApp.battery_charging? ? "#{level}+" : "#{level}%"
-    @gfx.draw_text(x + 12, 2, label, FmrbGfx::WHITE, MENU_BG)
+    @gfx.draw_text(x + 12, 2, label, FmrbGfx::WHITE)
   end
 
   # BLE indicator, left of the free-RAM readout, drawn as a filled box so
@@ -1332,9 +1386,12 @@ class SystemDesktopApp < FmrbApp
     x = @window_width - CLOCK_RIGHT - 4 - SOUND_CELL_W
     @sound_icon_x = x
     muted = FmrbApp.audio_muted?
-    box = muted ? FmrbGfx::WHITE : MENU_BG
     fg = muted ? MENU_BG : FmrbGfx::WHITE
-    @gfx.fill_rect(x, 1, SOUND_CELL_W, 10, box)
+    if muted
+      @gfx.fill_rect(x, 1, SOUND_CELL_W, 10, FmrbGfx::WHITE)
+    else
+      paint_bar(x, SOUND_CELL_W)
+    end
     # Speaker: a small magnet and a cone opening to the right.
     @gfx.fill_rect(x + 1, 4, 2, 4, fg)
     @gfx.draw_line(x + 3, 4, x + 5, 2, fg)
@@ -1362,9 +1419,12 @@ class SystemDesktopApp < FmrbApp
     x = @window_width - POWER_CELL_RIGHT
     @power_icon_x = x
     lit = @dropdown_open && @dropdown_menu == :power
-    box = lit ? FmrbGfx::WHITE : MENU_BG
     fg = lit ? MENU_BG : FmrbGfx::WHITE
-    @gfx.fill_rect(x, 1, POWER_CELL_W, 10, box)
+    if lit
+      @gfx.fill_rect(x, 1, POWER_CELL_W, 10, FmrbGfx::WHITE)
+    else
+      paint_bar(x, POWER_CELL_W)
+    end
     # The ring, centered on x + 5, broken at the top.
     @gfx.draw_line(x + 3, 3, x + 2, 4, fg)
     @gfx.draw_line(x + 7, 3, x + 8, 4, fg)
@@ -1425,7 +1485,7 @@ class SystemDesktopApp < FmrbApp
     # Clear the icon cell first: this draw must be self-contained now that
     # the 1Hz tick repaints it without a full menu-bar repaint underneath
     # (stale disconnect slashes would linger otherwise).
-    @gfx.fill_rect(x - 1, 2, WIFI_ICON_W + 2, 10, MENU_BG)
+    paint_bar(x - 1, WIFI_ICON_W + 2)
     connected = FmrbApp.wifi_connected?
     if connected && FmrbSystem.rd_stream_state > 0
       # Remote desktop video (MJPEG or H.264) is going out: a small screen

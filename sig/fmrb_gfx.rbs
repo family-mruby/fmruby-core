@@ -669,13 +669,14 @@ def set_text_size_raw: (Integer size) -> FmrbGfx
   # 今の時刻を描く <<en>> Draw the time now
   #
   # 時刻の文字はこの中で組み立てられる。毎秒呼んでもごみが出ない。
+  # bg_color が負なら背景は塗らない。
   # ```ruby
   # gfx.draw_wallclock(300, 2,
   #                    theme_fg, theme_bg)
   # ```
   # <<en>>
   # The time is formatted inside the call, so calling it every second
-  # allocates nothing.
+  # allocates nothing. A negative bg_color leaves the background as it is.
   # ```ruby
   # gfx.draw_wallclock(300, 2,
   #                    theme_fg, theme_bg)
@@ -685,13 +686,14 @@ def set_text_size_raw: (Integer size) -> FmrbGfx
   # 空きメモリの量を描く <<en>> Draw how much memory is free
   #
   # 値の取得も整形もこの中。空きが読めない環境では横棒が出る。
+  # bg_color が負なら背景は塗らない。
   # ```ruby
   # gfx.draw_free_iram(360, 2,
   #                    theme_fg, theme_bg)
   # ```
   # <<en>>
   # Fetching and formatting both happen inside. Where no figure can be
-  # read, it draws dashes.
+  # read, it draws dashes. A negative bg_color leaves the background as it is.
   # ```ruby
   # gfx.draw_free_iram(360, 2,
   #                    theme_fg, theme_bg)

@@ -482,7 +482,8 @@ int32_t fmrb_bnd_gfx_set_text_size_raw(int32_t gfx, int32_t size)
 
 // "MM/DD hh:mm:ss" formatted on the C stack and sent as one text command, so
 // the desktop's 1Hz clock repaint allocates nothing. 0 (nothing drawn) while
-// the wallclock is not set.
+// the wallclock is not set. A negative bg_color leaves the background as it
+// is, as draw_text_raw's does.
 int32_t fmrb_bnd_gfx_draw_wallclock(int32_t gfx, int32_t x, int32_t y, int32_t color, int32_t bg_color)
 {
     TARGET(gfx, t);
@@ -497,12 +498,14 @@ int32_t fmrb_bnd_gfx_draw_wallclock(int32_t gfx, int32_t x, int32_t y, int32_t c
              (int)wc.month, (int)wc.day, (int)wc.hour, (int)wc.minute, (int)wc.second);
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_text(&cmd, t.canvas, TX(t, x), TY(t, y), buf, (fmrb_color_t)color,
-                      (fmrb_color_t)bg_color, 0, FMRB_FONT_SIZE_MEDIUM, 0);
+                      (fmrb_color_t)(bg_color < 0 ? 0 : bg_color), bg_color < 0,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
     return submit(&t, &cmd) == 0 ? 1 : 0;
 }
 
 // The free internal RAM in KB as a fixed 5-char cell ("187KB"); "---KB" on
-// the Linux builds, which have no meaningful figure.
+// the Linux builds, which have no meaningful figure. A negative bg_color
+// leaves the background as it is.
 int32_t fmrb_bnd_gfx_draw_free_iram(int32_t gfx, int32_t x, int32_t y, int32_t color, int32_t bg_color)
 {
     TARGET(gfx, t);
@@ -515,7 +518,8 @@ int32_t fmrb_bnd_gfx_draw_free_iram(int32_t gfx, int32_t x, int32_t y, int32_t c
 #endif
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_text(&cmd, t.canvas, TX(t, x), TY(t, y), buf, (fmrb_color_t)color,
-                      (fmrb_color_t)bg_color, 0, FMRB_FONT_SIZE_MEDIUM, 0);
+                      (fmrb_color_t)(bg_color < 0 ? 0 : bg_color), bg_color < 0,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
     return submit(&t, &cmd) == 0 ? 1 : 0;
 }
 
