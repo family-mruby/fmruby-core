@@ -158,7 +158,13 @@ Save、Esc で Cancel (以前はキーを読んでいなかった。開いてい
 fmrb_remote_guard_sim.c。メモリの中だけの代役で、ESP32・ブラウザ版・ネイティブ版のパッケージでは空の関数。
 `rake build:linux` がこのファイルを作り直すので、ビルドの後に足す)。
 
-## sim のビルドを ESP32 と分け、古いビルドで起動しない (2026-11-16、ユーザ。今夜の作業の後に入れる)
+## sim のビルドを ESP32 と分け、古いビルドで起動しない (2026-11-16、ユーザ。今夜の作業の後に入れる) -- 済 (2026-11-17)
+
+- **済 (2026-11-17)**: sim は `build-linux/` (sdkconfig も中、コンポーネント管理は使わない)、ESP32 の storage の
+  `/etc` の生成物は `build/fmrb_etc/`。`clean_all` は ESP32 の分だけ (`clean:linux`・`clean:web` を足した)。印は
+  `tools/build_stamp.rb` (回帰の道具の sim のビルドの使い回しの鍵も同じもの)、断るのは sim_up・native_up・web_up・
+  `tools/dev_run_check.sh`・`tools/fmrb_native.rb up`・`rake wasm:serve` (`allow_stale: true` / `STALE_OK=1`)。
+  使い方は doc/regression/usage.md 2.1。以下はもとの要件。
 
 - 今は sim が `build/` を ESP32 と共用し、実機用に作る (`build:esp32`・`clean_all`) たびに sim のビルドが消えて 3〜5 分
   作り直している。また `clean_all` がブラウザ版の wasm の libmruby まで消す。

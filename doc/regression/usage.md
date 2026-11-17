@@ -29,14 +29,16 @@
 
 | 作業 | 目安 |
 |---|---|
-| `rake clean_all && rake build:linux` | 3〜5 分 |
+| `rake build:linux` (`build-linux/`、clean から。2026-11-17 実測) | 1.5 分ほど |
+| `rake build:linux` (小さい変更の後) | 30 秒ほど |
 | `rake build:esp32` (1 機種、clean から) | 3 分前後 |
 | sim の起動 (`sim_up`、3 コンテナ) / 種類の切り替え | 30 秒ほど / 17 秒 |
 | ネイティブ版 (`rake native:mruby native:core`) | 2〜3 分 |
 | ブラウザ版の配布物 (`spinel:gen` → `wasm:mruby` → `wasm:dist`) | 5 分ほど |
 
 - 同じ道具を直しのたびに流し直さない。変えた所が影響する道具だけを流し直す。
-- 重い道具 (`run`・`size`・`checkpoint`・`screens`) は、段の最後にまとめて 1 回。並べて流すと sim と build/ を取り合うので順に。
+- 重い道具 (`run`・`size`・`checkpoint`・`screens`) は、段の最後にまとめて 1 回。並べて流すと sim と build-linux/・build/ を取り合うので順に。
+- sim のビルドは `build-linux/`、ESP32 のビルドは `build/` で、別の場所にある (2026-11-17 から)。実機用に作っても (`build:esp32`・`clean_all`) sim のビルドは消えないので、切り替えに作り直しは要らない。ソースを変えた後の sim・ネイティブ版・ブラウザ版は、起動の道具が古いビルドを断る (2.1)。
 - 目安より大きくずれたら、この表を直す (測り直した日付を書く)。
 
 ## 1. 流し方
@@ -59,6 +61,17 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 - 揺れるものは固定する: 時計 (`Machine.board_millis`・`Time.now`) は台本が進めたときだけ進む、乱数は場面ごとに決まった種、ファイルは git に入っている `flash/` と場面が置いたものだけ (`tools/regress/fake_fs.rb`)、網は偽物 (`tools/regress/fake_asterism.rb`。Link・TableClient・fmrb-asterism.rb の設定は本物を読み、その下の Asterism を偽物にする)。
 - 1 つの場面 × 1 つの端末ごとに fork した別のプロセスで流す (前の場面の状態が残らない)。
 - 基準は `test/regress/baseline/<アプリ>/<場面>@<端末の組>.txt`。
+
+### 2.1 ビルドの置き場と、古いビルドで起動しない仕組み (2026-11-17)
+
+- 置き場: sim は `build-linux/` (sdkconfig は `build-linux/sdkconfig`。IDF のコンポーネント管理は使わない)、ESP32 は `build/` (sdkconfig は一番上)。実機の storage の `/etc` の生成物 (system_conf・services・secrets・wifi・associations) は `build/fmrb_etc/` に置き、`flash/etc` の同じ名前のものは sim のもの (sim が直接読む) として storage には入れない。ネイティブ版は `native/build`・`native/build-mruby`、ブラウザ版は `wasm/build`。
+- 片付け: `rake clean_all` は ESP32 の分だけ (build/・sdkconfig・esp32/esp32p4/ckpt-table-* の libmruby)。sim は `rake clean:linux`、ブラウザ版は `rake clean:web` (wasm/build と wasm の libmruby)。`rake clean` (lib/ を変えた後) は今までどおり全部の libmruby を消す。
+- 印: `rake build:linux`・`rake native:core`・`rake wasm:web` は、作ったソースの印をビルドの場所の `fmrb_build_stamp.json` に書く (`tools/build_stamp.rb`)。印は HEAD と、ファームに入るソース (main/・components/・sig/・lib/・config/・cmake/・CMakeLists.txt・tools/boundary・tools/spinel。ネイティブ版は native/・hosted/ も、ブラウザ版は wasm/・hosted/ と追跡している flash/ も) の HEAD との違い (変えた・消した・追跡していないファイルの中身の blob id)。submodule は commit だけを見る (rake setup が毎回写す中身は lib/ から来る)。生成物 (Spinel の C、fmrb_gen、mrb、flash/etc ほか) は gitignore されているので数えない。sim とネイティブ版は flash/ をその場で読むので flash/ は数えない。
+- 判定: 起動の前に、印と今の木を中身で比べる。ファイルの時刻は見ない (`touch` だけなら古くならない。作った後にその変更をコミットしても古くならない。コミットで動いた分は `git diff <印の HEAD> HEAD` で拾う)。違うファイルがあれば、新しい順に名前と、作り直すコマンドを出して止まる。印が無い (仕組みより前に作った・ビルドが途中で落ちた) ときも止まる。
+- 断る道具: sim は `sim_up` と `tools/dev_run_check.sh`、ネイティブ版は `native_up` と `tools/fmrb_native.rb up`、ブラウザ版は `web_up` と `rake wasm:serve` (`DIST=1` は調べない)。そのまま起動するときは MCP では `allow_stale: true`、CLI では `STALE_OK=1` (`fmrb_native.rb up` は `--allow-stale` も)。もう動いている sim・開いているページを使い回すときは断らず、古いことを notes に書く。
+- 共有のまま残るもの: Spinel の生成物 (`main/ruby/spinel/gen`) は 1 か所で、`rake build:linux` と `rake build:esp32` がそれぞれの platform で作り直す。`build:esp32` の後に `build:linux` を流すと Linux 用の生成物が残るので、build/ を `idf.py build`・`idf.py flash` (`rake flash` と MCP の flash を含む) でそのまま作り直すと、ビルドが `cmake/check_spinel_gen_platform.cmake` で止まり `rake build:esp32` を案内する (黙って Linux 用を実機に入れない)。
+- 手で調べる: `ruby tools/build_stamp.rb check linux|native|native-mruby|web` (新しければ 0、古ければ 3 で理由を出す)。
+- `rake build:linux` は、前の印から lib/ が動いていて libmruby の方が古いときに `rake clean` を勧める (libmruby は .a が無いときにしか作り直さないため。印は lib/ の変更を拾うので sim は古いと言うが、作り直しても libmruby は古いまま)。
 
 ## 3. 端末の一覧 (端末を足すとき)
 
@@ -123,13 +136,13 @@ rake regress:run TABLE=1         # sim を起こさずに、前回の結果か�
 rake regress:run:update          # 前回の結果を基準にする
 rake regress:run:calibrate ONLY=modern [RUNS=5]   # 1 回作って台本を RUNS 回流し、揺れと幅の案を出す (RUNS=3 で 3 分ほど)
 rake regress:run:calibrate APPLY=1 ONLY=modern    # 前回の calibrate を基準と幅にする (regress:run:calibrate:apply も同じ)
-ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避した build/ を戻す
+ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避した build/・build-linux/ を戻す
 ```
 
 - `rake regress` (安い方) には入らない。docker でファームを作り、sim を起こす。sim がすでに動いている (誰かが使っている) と `rake regress:run` は始めない。
-- **build/ は元に戻る**: 始める前の build/・sdkconfig・端末ごとの libmruby・Spinel の生成物・flash/etc の生成物を `build.regress.saved/` と `build.regress-aside.saved/` に退避し、終わったら (落ちても) 戻す。最後に `build/: TAB5 (esp32p4)` のように何が入っているかを出す。殺したときは次の実行が止まって `--restore` を案内する。
+- **ビルドは元に戻る**: 道具は自分が作る方だけを借りる (`tools/regress/build_tree.rb`)。実機の道具 (`size`・`boot`) は build/・sdkconfig・端末ごとの libmruby (esp32・esp32p4・ckpt-table-*)・Spinel の生成物を `build.regress.saved/` と `build.regress-aside.saved/` に、sim の道具 (`run`・`screens`・`live`・`checkpoint`・`soak`) は build-linux/ (sdkconfig は中にある)・sim の libmruby (family-mruby-linux)・Spinel の生成物・flash/etc の生成物を `build-linux.regress.saved/` と `build-linux.regress-aside.saved/` に退避し、終わったら (落ちても) 戻す。もう片方のビルドと、ブラウザ版・ネイティブ版の libmruby には触らない。最後に `build/: TAB5 (esp32p4)`・`build-linux/: linux sim (retro)` のように何が入っているかを出す。殺したときは次の実行が止まって `--restore` を案内する (`--restore` は両方を戻す)。
 - `rake regress:full` に ONLY= は効かない (部分ごとに意味が違う)。絞るときは部分を 1 つずつ流す。
-- `rake regress:full` の中では、**sim の同じ構成を 1 回だけ作る** (`tools/regress/build_tree.rb` の `sim_build!`・`keep_for_later!`)。標準の Retro は run・screens・checkpoint が、標準の Modern は run・screens・live・checkpoint が使う。部分が使い終えた build/ (と sdkconfig、libmruby、flash/etc の生成物) を `tmp/regress/build_cache/<鍵>/` へ移し、次の部分が同じ鍵なら作らずに戻す (移すだけで写さない)。鍵は作る設定と、そのときのソース (HEAD、追跡しているファイルの変更、追跡していないファイルの名前・大きさ・時刻、`.env`、`MRUBY_CHECKPOINT_DIR` の中身) なので、途中でソースを変えれば作り直す。置き場は `regress:full` の始めと終わりに消す。部分を 1 つずつ流すときは今までどおり毎回作る。作ったか使い回したかは各部分の要約に出る (`build cached`)。
+- `rake regress:full` の中では、**sim の同じ構成を 1 回だけ作る** (`tools/regress/build_tree.rb` の `sim_build!`・`keep_for_later!`)。標準の Retro は run・screens・checkpoint が、標準の Modern は run・screens・live・checkpoint が使う。部分が使い終えた build-linux/ (と sim の libmruby、flash/etc の生成物) を `tmp/regress/build_cache/<鍵>/` へ移し、次の部分が同じ鍵なら作らずに戻す (移すだけで写さない)。鍵は作る設定と、そのときの sim のソース (古いビルドを断る仕組みと同じ `tools/build_stamp.rb` の状態: HEAD と、ファームに入るソースの変更の中身。2.1)、`.env`、`MRUBY_CHECKPOINT_DIR` の中身なので、途中でソースを変えれば作り直す。置き場は `regress:full` の始めと終わりに消す。部分を 1 つずつ流すときは今までどおり毎回作る。作ったか使い回したかは各部分の要約に出る (`build cached`)。
 - sim は種類 (Retro・Modern) を切り替えると graphics-audio を起こし直す (1 回 17 秒ほど) ので、各部分は sim が今いる種類から流す (`tmp/regress/sim_family`)。regress:checkpoint の sim の場面は種類ごとにまとめて流す (標準・全部 mruby の順)。
 - ブラウザ版のページを人が開いている (`tools/fmrb_web.rb` のブラウザ) ときは、`regress:screens` のブラウザ版だけを外して流す (要約に `web SKIPPED`。9 章)。
 - 最後に部分ごとの時間が 1 行出る (`regress:full: 33.3 min (regress 0.4, size 4.1, run 4.3, screens 4.1, live 1.1, wl 9.8, checkpoint 9.4)`)。測り方と内訳は `report/rg_full_time.md`。
@@ -274,9 +287,9 @@ ruby tools/regress/screens.rb --attach modern   # もう動いている sim (web
 
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
 - 構成は 6 つ: `retro`・`modern` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ。targets.rb の `FIRMWARE_ENV`)、`retro-mruby`・`modern-mruby` (カーネル・デスクトップ・エディタを mruby に。`FULL=1` のときだけ)、`web` (ブラウザ版、標準構成)、`native` (Linux のネイティブ版、標準構成、機種の定義 `sdl`。doc/linux_native/)。
-- 流れ: sim の構成ごとに clean_all → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016。塞がっていれば空いている port、13 章)** とヘッドレスのブラウザを起こし、ランチャーの決まった一覧を置き (9.4)、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
-- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザは `wasm/build/drive_browser.pid` の印で見る。印の pid がもう無い (Windows の Chrome のときは、プロファイル `fmrb_drive` の chrome.exe も無い) なら古い印として消して進む (`web: removed a stale ...` と出る)。ブラウザ版の port (8016) が塞がっているときは止まらず、空いている port を使う (13 章)。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby も新しいものが戻る)。
-- 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
+- 流れ: sim の構成ごとに clean:linux → `rake build:linux` → 3 つのコンテナを headless で起こす (種類を切り替えた直後の 1 回目が上がらないときは起こし直す) → デスクトップの「Boot complete」→ 場面を順に。ブラウザ版は `rake spinel:gen`・`wasm:mruby`・`wasm:web` で作り、**自分の開発サーバ (既定 port 8016。塞がっていれば空いている port、13 章)** とヘッドレスのブラウザを起こし、ランチャーの決まった一覧を置き (9.4)、ページの保存 (/home と設定) を消してから場面を流す。終わったらサーバもブラウザも止める。port 8006 の `rake wasm:serve` (人が使っているもの) には触らない。ネイティブ版は最後に `rake native:mruby`・`native:core` で作り (ブラウザ版を流さないときは `spinel:gen` も)、`tools/fmrb_native.rb` でヘッドレスに起こす。**自分の置き場 (run dir `/tmp/fmrb-native-regress-<uid>`、debug の port 5575、利用者と キャッシュの場所は `tmp/regress/screens/native_home/` を毎回空から)** を使うので、人が起こしているネイティブ版 (`/tmp/fmrb-native-<uid>`・5565) とは並べて動く。終わったら止める。run dir・port・ブラウザ版の port は共有 checkout のもので、worktree から流すと木ごとの名前になる (13 章)。前の回の残り (同じ木の run dir で動いているネイティブ版) は止めてから始める。
+- **誰かの sim、または tools/fmrb_web.rb が起こしたブラウザが動いていたら始めない**。ブラウザは `wasm/build/drive_browser.pid` の印で見る。印の pid がもう無い (Windows の Chrome のときは、プロファイル `fmrb_drive` の chrome.exe も無い) なら古い印として消して進む (`web: removed a stale ...` と出る)。ブラウザ版の port (8016) が塞がっているときは止まらず、空いている port を使う (13 章)。ただし `rake regress:full` の中 (`--skip-busy-web`) では、ブラウザ版だけを外して (作らず、流さない) ほかの構成を流し、要約に `web: SKIPPED (...)` と `web SKIPPED` が出る。人が開いているページとそのサーバには触らない。ブラウザ版を確認するのは、それを閉じてから `rake regress:screens ONLY=web` で。build-linux/ は 7 章と同じく退避して戻す。wasm/build と native/build は今の checkout から作ったものが残る (wasm・native の libmruby はその場で作り直す。印も新しくなる)。
+- 出力は落ちたものだけ。通ったときは 2 行 (`build-linux/: linux sim (retro)` と `screens: N passed / 0 failed (...)`)。落ちたときは `FAIL <構成> <場面>: <画素数> px in (x0,y0)-(x1,y1) -> tmp/regress/screens/diff/<構成>/<場面>.png` が 6 つまで。
 
 ### 9.1 台本の書き方
 
@@ -305,7 +318,7 @@ end
 - 基準は `test/regress/screens/baseline/<構成>/<場面>.png` (git に入れる。30 枚で 160 KB ほど)。今回の写しは `tmp/regress/screens/out/`、差分の絵は `tmp/regress/screens/diff/` (基準を灰色に、違う画素を赤紫、隠した範囲を紺で塗ったもの)、結果の一覧は `tmp/regress/screens/results.json`、sim のコアのログは `tmp/regress/screens/<構成>.log`。
 - 落ちたら差分の絵と写しを見る。意図した変化なら、人が確認してから `rake regress:screens:update` (前回の結果の落ちた・新しい写しだけを基準に写す。流し直さない)。
 - 場面を足したら一度流すと `NEW ... no baseline` と出る。写しを見て、思ったとおりなら `rake regress:screens:update`。
-- 場面を書くときは `--attach`: sim を `--keep` を付けて流すと最後の構成の sim を起こしたまま (build/ も退避したまま) 終わるので、`ruby tools/regress/screens.rb --attach modern --scene <名前>` を繰り返す。済んだら `docker compose ... down` と `ruby tools/regress/size.rb --restore`。
+- 場面を書くときは `--attach`: sim を `--keep` を付けて流すと最後の構成の sim を起こしたまま (build-linux/ も退避したまま) 終わるので、`ruby tools/regress/screens.rb --attach modern --scene <名前>` を繰り返す。済んだら `docker compose ... down` と `ruby tools/regress/size.rb --restore`。
 
 ### 9.3 画面の比較で分からないこと
 
@@ -335,8 +348,8 @@ ruby tools/regress/live.rb --attach modern --scene board   # もう動いてい�
 
 - `rake regress:full` に入っている。`rake regress` (安い方) には入らない。
 - アプリが外の相手とやり取りする場面を、**相手を道具が立てて**流し、相手の側の状態 (卓の様子・受けたバイト列・音の数値) を基準と比べる。実機・VPS は使わない。相手はすべてこの PC の上: sim の zenohd (tcp 127.0.0.1:7447)、asterism-games の作業コピー (fmruby-core の隣、`ASTERISM_GAMES_DIR` で変える) から起こすゲームホスト、ルートの `tools/fmrb_midi_monitor.rb`・`tools/fmrb_audio_probe.rb`、`tools/imu/step_send.rb`。
-- 流れは 9 章と同じ (build/ を退避 → clean_all → `rake build:linux` (TAB5) → sim を headless で起こす → 場面ごとにデスクトップから始めて、終わったらアプリを閉じてデスクトップが元どおりか見る → 片付け)。構成は `modern` だけ (Asterism・卓のアプリ・walk_scroller がそろう。麻雀は 640x360)。
-- 出力は落ちたものだけ。通ったときは 2 行 (`build/: TAB5 (esp32p4)` と `live: N passed / 0 failed (...)`)。落ちたときは `FAIL modern <場面>.<名前>: <違う所>` が 6 つまで。
+- 流れは 9 章と同じ (build-linux/ を退避 → clean:linux → `rake build:linux` (TAB5) → sim を headless で起こす → 場面ごとにデスクトップから始めて、終わったらアプリを閉じてデスクトップが元どおりか見る → 片付け)。構成は `modern` だけ (Asterism・卓のアプリ・walk_scroller がそろう。麻雀は 640x360)。
+- 出力は落ちたものだけ。通ったときは 2 行 (`build-linux/: linux sim (modern)` と `live: N passed / 0 failed (...)`)。落ちたときは `FAIL modern <場面>.<名前>: <違う所>` が 6 つまで。
 
 ### 10.1 相手 (tools/regress/counterparts/)
 
@@ -427,7 +440,7 @@ rake regress:checkpoint BOARD=naryav4 BOARD_ONLY=1 ONLY=standard NO_BUILD=1  # �
 ```
 
 - 動いているアプリをイメージに書き出して閉じ、そのイメージから起動し直して、止まった所から続くことを確かめる (doc/checkpoint の F1)。もう 1 つのネイティブ版へ移すこと (F2)、Window のあるアプリを運ぶこと (F3)、ビルドの違う sim とネイティブ版の間で運ぶこと (F4a)、Asterism で移すこと (F5) も確かめる。段取りはカーネル (Ruby) が持つので、カーネルの構成 2 つ (標準 = Spinel、全部 mruby) で流す。
-- `rake regress:full` に入っている (最後に、`SIM=1` で流す。ブラウザ版の場面も入る)。`rake regress` (安い方) には入らない。ブラウザ版の場面は既定で流す (2026-11-06 から。公開のブラウザ版が gem を持つようになったため、doc/checkpoint/report/web_public.md)。`WEB=0` で飛ばす。`BOARD_ONLY=1` のときも流さない。実機は使わない。ネイティブ版の場面は build/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
+- `rake regress:full` に入っている (最後に、`SIM=1` で流す。ブラウザ版の場面も入る)。`rake regress` (安い方) には入らない。ブラウザ版の場面は既定で流す (2026-11-06 から。公開のブラウザ版が gem を持つようになったため、doc/checkpoint/report/web_public.md)。`WEB=0` で飛ばす。`BOARD_ONLY=1` のときも流さない。実機は使わない。ネイティブ版の場面は build/・build-linux/ に触らない (`spinel:gen`・`native:mruby`・`native:core` だけ)。sim の場面は build-linux/ を借りて返す (`regress:run` と同じ `build_tree.rb`)。sim は 3 つのコンテナを使うので、`regress:run`・`regress:screens` と同時に流さない。sim がもう動いている (人のもの) ときは、作る前に断って止まる。
 - ネイティブ版は `tools/fmrb_native.rb` でヘッドレスに、**自分の置き場** (run dir `/tmp/fmrb-native-ckpt-<uid>`、debug の port 5585、利用者とキャッシュの場所は `tmp/regress/checkpoint/<構成>_home/` を毎回空から) で起こす。移す場面の相手 (B) は同じビルドをもう 1 つ (run dir `/tmp/fmrb-native-ckpt-b-<uid>`、port 5586、`<構成>_home_b/`)。人が起こしているネイティブ版 (5565) や画面の比較のもの (5575) と並べて動く。ここに書いた run dir・port・ルータのコンテナ名と port は共有 checkout のもの。worktree から流すと木ごとの名前になり、別の木の `regress:checkpoint` と同時に流せる (13 章)。起こしたネイティブ版とルータは、通っても落ちても Ctrl+C でも止める。始めるときは同じ木の前の回の残りを止めてから起こし、port がふさがっていれば理由を言って止まる。
 - 試験のアプリは `/app/test/ckpt_counter.app.rb` (Window なし、`.app.toml` に `movable = true`)。Task 2 つ (a・b) と本体のループ (main) が数え、1 歩ずつログに出す。`t=` は `Machine.board_millis` の起動からの差。
 - 最初に、運ぶのではない場面を 1 つ流す。
@@ -544,7 +557,7 @@ rake regress:soak ONLY=modern ROUNDS=20    # 片方、回数を変える (WARMUP
 rake regress:soak GROUP=running_langs      # regress:run の組の 1 つだけ (カンマで複数)
 rake regress:soak GROUP=/app/lua/lua.app.lua   # アプリのパスを直に (カンマで複数、1 つの組として)
 rake regress:soak SPLIT=1                  # 全部の組を流した後、同じビルドで組ごとにも流す (増えるときの切り分け)
-rake regress:soak NO_BUILD=1 ONLY=modern   # build/ にある Linux のビルドをそのまま使う (種類が合わなければ止まる)
+rake regress:soak NO_BUILD=1 ONLY=modern   # build-linux/ にある Linux のビルドをそのまま使う (種類が合わなければ止まる)
 rake regress:soak NO_BUILD=1 ONLY=retro GROUP=running SPINEL=1   # Spinel の VM の内側の数も (下)
 rake regress:soak TABLE=1                  # sim を起こさずに、前回の結果を今の決まりで判定し直し、回ごとの表も出す
 rake regress:soak BOARD=naryav4            # つないだ実機 (下)
@@ -559,7 +572,7 @@ rake regress:soak BOARD=naryav4            # つないだ実機 (下)
 - **`SPINEL=1`** (sim だけ、調べるとき): 控えのたびに gdb を当てて (ルートの CLAUDE.md の「sim のハング/クラッシュ調査」と同じ別コンテナの attach。止めずに続く)、Spinel の各インスタンス (`fmrb_spinel_host.c` の `s_instances`、最初がカーネル) の数を読む: `gc_bytes`・`gc_old_bytes`・`gc_threshold`・`str_heap_bytes` (若い文字列)・`str_threshold`・`str_old_bytes` (古い文字列)・`str_old_threshold`・`gc_cycle`。json の `spinel` に入る。1 回に 5 秒ほど足される。
 - sim で取れないもの: 内蔵 RAM と PSRAM の空き (Linux のビルドには無く、周期ダンプも出ない)。実機で取る。
 - 数の読み方と、文字列の掃除を gc に入れる前の振れ (Retro の 1 組で 11 回周期・60 KB) は report/soak.md。
-- 基準は持たない (同じ流しの中の前の回と比べる)。`regress:full` には入れていない。build/ は `regress:run` と同じく退避して戻す (`NO_BUILD=1` のときは触らない)。
+- 基準は持たない (同じ流しの中の前の回と比べる)。`regress:full` には入れていない。build-linux/ は `regress:run` と同じく退避して戻す (`NO_BUILD=1` のときは触らない)。
 
 ### 14.1 実機で流す (BOARD=)
 

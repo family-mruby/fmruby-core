@@ -92,7 +92,8 @@ rake -T # その他のコマンドの使い方
 ### 注意
 
 - lib/ 以下のファイルを編集した場合は、ビルド前に `rake clean` を実行すること
-- ターゲットをlinux - ESP32で切り替えてビルドするときは、ビルド前に `rake clean_all` を実行すること
+- Linux (sim) のビルドは `build-linux/`、ESP32 のビルドは `build/` で別の場所にある。切り替えに `rake clean_all` は要らない (`clean_all` は ESP32 の分だけを消す。sim は `rake clean:linux`、ブラウザ版は `rake clean:web`)
+- sim・ネイティブ版・ブラウザ版は、作ったソースの印 (`fmrb_build_stamp.json`) より木が新しいと起動の道具が断る (doc/regression/usage.md 2.1)。断られたら出たコマンドで作り直す
 - プログラムの実行確認は、リポジトリルート (family-mruby) の自律検証ツールで headless に行える
   (起動+画面キャプチャ+入力注入。使い方はルートの CLAUDE.md 参照)。音声・実機・操作感の最終確認はユーザが行う。
 
