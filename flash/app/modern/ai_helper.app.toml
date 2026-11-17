@@ -1,0 +1,9 @@
+app_handle_name = "ai_helper"
+app_screen_name = "AI Helper"
+app_screen_name_ja = "AI ヘルパー"
+default_window_mode = "window"
+default_window_width = 300
+default_window_height = 222
+default_window_pos_x = 122
+default_window_pos_y = 14
+single_instance = true

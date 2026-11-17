@@ -19,3 +19,8 @@ usr/share/backgrounds/bg_1280x720.png
 usr/share/backgrounds/bg_cyber_640x360.png
 usr/share/backgrounds/bg_cyber_852x480.png
 usr/share/backgrounds/bg_cyber_1280x720.png
+
+# The AI helper (doc/ai_coding): Modern only (plan 2.2), and it keeps
+# this storage as it was.
+app/modern/ai_helper.app.rb
+app/modern/ai_helper.app.toml
