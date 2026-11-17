@@ -34,6 +34,9 @@ class EditorApp < FmrbApp
   # File load/save, Run (F5) and the status-line helpers live in
   # editor/file_run.rb.
   include EditorFileRun
+  # Several documents in one editor: the per-document ivars are put aside and
+  # brought back on a switch (editor/docs.rb). EditorCore holds the text.
+  include EditorDocs
 
   def initialize
     super()
@@ -160,6 +163,8 @@ class EditorApp < FmrbApp
     @kana_badge_x = nil
     @kana_badge_w = 0
     dbg_init
+    # Saved state of each open document; the first is this one.
+    docs_init
     # ---- Latency instrumentation ----
     @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
     @lat_n = 0
@@ -733,6 +738,18 @@ class EditorApp < FmrbApp
         when SC_E  # Ctrl-E -> type errors, then walk them
           diagnostics_key
           return
+        when 0x11  # Ctrl-N -> a new empty document
+          docs_new
+          return
+        when 0x1A  # Ctrl-W -> close the current document
+          docs_close
+          return
+        when 0x4E  # Ctrl-PageDown -> next document (Alt-. where Alt is
+          docs_cycle(1)   # carried; the Linux sim drops Alt)
+          return
+        when 0x4B  # Ctrl-PageUp -> previous document
+          docs_cycle(-1)
+          return
         end
       end
 
@@ -766,6 +783,12 @@ class EditorApp < FmrbApp
           return
         when 0x0E  # Alt-K -> the key list
           @keys_open ? close_keys_list : open_keys_list
+          return
+        when 0x37  # Alt-. -> next document
+          docs_cycle(1)
+          return
+        when 0x36  # Alt-, -> previous document
+          docs_cycle(-1)
           return
         end
       end

@@ -13,8 +13,9 @@
  * String#[] -- not bytes. Every entry point that takes an x converts.
  *
  * Documents are addressed by an int slot (ec_open_slot), which is what lets the
- * same code back both the mruby binding and the Spinel FFI. Each editor instance
- * holds one slot; a fourth editor gets a negative slot and reports it.
+ * same code back both the mruby binding and the Spinel FFI. Each editor holds a
+ * set of slots (ec_docset_t, up to EC_DOCSET_MAX) and works on one of them at a
+ * time; a slot that cannot be had is reported, never fatal.
  */
 
 #include <string.h>
@@ -107,10 +108,19 @@ static void ed_free(void *p)
     if (p && g_handle >= 0) fmrb_free(g_handle, p);
 }
 
+/* Bumped by anything that changes a line's contents or moves lines around.
+   The wrap cache is keyed by it, so one counter invalidates every entry -- the
+   conservative choice, and an edit already forces a repaint of the lines it
+   touched. */
+static uint32_t g_wrap_stamp = 1;
+
 /* ---- documents --------------------------------------------------------- */
 
 static void doc_clear(ed_doc_t *d)
 {
+    /* The slot may come back as another document (a reset, or a closed slot
+       handed to the next one opened): no wrap entry may outlive its text. */
+    g_wrap_stamp++;
     if (d->lines) {
         for (int32_t i = 0; i < d->count; i++) {
             ed_free(d->lines[i].buf);
@@ -150,6 +160,83 @@ void ec_close_slot(int slot)
     d->used = 0;
 }
 
+/* ---- document sets ------------------------------------------------------ */
+
+int ec_docset_slot(ec_docset_t *s)
+{
+    if (s->count == 0) {
+        /* The first document is opened on first use, as the single slot was. */
+        int slot = ec_open_slot();
+        if (slot < 0) return slot;
+        s->slots[0] = slot;
+        s->count = 1;
+        s->cur = 0;
+    }
+    return s->slots[s->cur];
+}
+
+int ec_docset_add(ec_docset_t *s)
+{
+    if (ec_docset_slot(s) < 0) return EC_ERR_NOMEM;
+    if (s->count >= EC_DOCSET_MAX) return EC_ERR_RANGE;
+    int slot = ec_open_slot();
+    if (slot < 0) return EC_ERR_NOMEM;
+    /* An empty document still takes one line from the arena. When even that
+       is not there, give the slot back and leave the set as it was. */
+    if (ec_reset(slot) < 0) {
+        ec_close_slot(slot);
+        return EC_ERR_NOMEM;
+    }
+    s->slots[s->count] = slot;
+    s->cur = s->count;
+    s->count++;
+    return s->cur;
+}
+
+int ec_docset_switch(ec_docset_t *s, int idx)
+{
+    if (idx < 0 || idx >= s->count) return EC_ERR_RANGE;
+    s->cur = idx;
+    return 0;
+}
+
+int ec_docset_close(ec_docset_t *s)
+{
+    if (s->count == 0) return 0;
+    if (s->count == 1) {
+        /* The last document is emptied, not closed: the editor always has one. */
+        int r = ec_reset(s->slots[0]);
+        return r < 0 ? r : 0;
+    }
+    ec_close_slot(s->slots[s->cur]);
+    for (int i = s->cur; i + 1 < s->count; i++) {
+        s->slots[i] = s->slots[i + 1];
+    }
+    s->count--;
+    if (s->cur >= s->count) s->cur = s->count - 1;
+    return s->cur;
+}
+
+void ec_docset_release(ec_docset_t *s)
+{
+    int n = s->count;
+    for (int i = 0; i < n; i++) {
+        ec_close_slot(s->slots[i]);
+    }
+    s->count = 0;
+    s->cur = 0;
+    /* The last editor has gone: the type helper's kept answers go too. */
+    int open = 0;
+    for (int i = 0; i < ED_MAX_DOCS; i++) {
+        if (g_docs[i].used) open++;
+    }
+    if (open == 0) et_release_answers();
+    if (n > 0) {
+        FMRB_LOGI(TAG, "released %d document(s); arena in use %d bytes",
+                  n, ec_mem_used());
+    }
+}
+
 /* ---- UTF-8 ------------------------------------------------------------- */
 
 static int32_t u8_chars(const char *s, int32_t len)
@@ -176,12 +263,6 @@ static int32_t u8_byte_of(const char *s, int32_t len, int32_t ci)
 }
 
 /* ---- line primitives --------------------------------------------------- */
-
-/* Bumped by anything that changes a line's contents or moves lines around.
-   The wrap cache is keyed by it, so one counter invalidates every entry -- the
-   conservative choice, and an edit already forces a repaint of the lines it
-   touched. */
-static uint32_t g_wrap_stamp = 1;
 
 static void line_drop_hl(ed_line_t *l)
 {

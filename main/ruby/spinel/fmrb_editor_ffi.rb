@@ -11,8 +11,12 @@
 # entry point takes the window (col0, max_cols) rather than handing out a whole
 # line: nothing is copied on either side of the boundary.
 module FmrbSpxEc
-  ffi_func :fmrb_spx_ec_open_slot,   [], :int
-  ffi_func :fmrb_spx_ec_close_slot,  [:int], :void
+  ffi_func :fmrb_spx_ec_slot,        [], :int
+  ffi_func :fmrb_spx_ec_doc_add,     [], :int
+  ffi_func :fmrb_spx_ec_doc_switch,  [:int], :int
+  ffi_func :fmrb_spx_ec_doc_close,   [], :int
+  ffi_func :fmrb_spx_ec_doc_count,   [], :int
+  ffi_func :fmrb_spx_ec_doc_index,   [], :int
   ffi_func :fmrb_spx_ec_reset,       [:int], :int
   ffi_func :fmrb_spx_ec_line_count,  [:int], :int
   ffi_func :fmrb_spx_ec_line_length, [:int, :int], :int
@@ -56,12 +60,21 @@ end
 # editor source calls the same names either way.
 module EditorCore
   # Asked of the C side on every call, not kept in an ivar: a module ivar is
-  # reset to nil when the next instance of this program starts, so the slot
+  # reset to nil when the next instance of this program starts, so the slots
   # would never be given back. fmrb_spx_editor.c remembers the running
-  # editor's slot and opens it on first use.
+  # editor's documents and which one is current, and opens the first on use.
   def self.slot
-    FmrbSpxEc.fmrb_spx_ec_open_slot
+    FmrbSpxEc.fmrb_spx_ec_slot
   end
+
+  # Documents: several are held, one is current, and every call below goes to
+  # the current one. doc_add answers the new index (it becomes current) or a
+  # negative error; doc_close answers the index that is current afterwards.
+  def self.doc_add;        FmrbSpxEc.fmrb_spx_ec_doc_add; end
+  def self.doc_switch(i);  FmrbSpxEc.fmrb_spx_ec_doc_switch(i); end
+  def self.doc_close;      FmrbSpxEc.fmrb_spx_ec_doc_close; end
+  def self.doc_count;      FmrbSpxEc.fmrb_spx_ec_doc_count; end
+  def self.doc_index;      FmrbSpxEc.fmrb_spx_ec_doc_index; end
 
   def self.reset;        FmrbSpxEc.fmrb_spx_ec_reset(slot); end
   def self.line_count;   FmrbSpxEc.fmrb_spx_ec_line_count(slot); end

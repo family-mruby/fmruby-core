@@ -115,25 +115,25 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
    the Spinel-compiled program instead of editor_irep, as a NATIVE task backed
    by this app slot's pool, so the window attributes are unchanged. */
 extern void Init_editor(void);   /* the Spinel ext program's init: its top level */
-extern void fmrb_spx_ec_release_slot(void);   /* fmrb_spx_editor.c */
+extern void fmrb_spx_ec_release_docs(void);   /* fmrb_spx_editor.c */
 
 /* The editor program's init as fmrb_app_run_spinel_vm sees it (its address
    is also what the one-instance claim records). It runs once the program is
-   claimed, so the slot it gives back before Init_editor can only be one a
-   killed editor left (fmrb_spx_editor.c), never a running editor's: a refused
+   claimed, so the documents it gives back before Init_editor can only be ones
+   a killed editor left (fmrb_spx_editor.c), never a running editor's: a refused
    second editor never gets here. */
 static void spinel_editor_init(void)
 {
-    fmrb_spx_ec_release_slot();
+    fmrb_spx_ec_release_docs();
     Init_editor();
 }
 
 static void spinel_editor_native(void *arg)
 {
-    // The program never closes its document slot (fmrb_spx_editor.c says
-    // why), so it is given back once the program has ended.
+    // The program never closes its document slots (fmrb_spx_editor.c says
+    // why), so they are given back once the program has ended.
     fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, spinel_editor_init,
-                           fmrb_spx_ec_release_slot);
+                           fmrb_spx_ec_release_docs);
 }
 #endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
 

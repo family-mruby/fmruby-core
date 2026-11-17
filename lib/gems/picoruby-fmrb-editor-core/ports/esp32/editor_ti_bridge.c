@@ -344,6 +344,19 @@ static void et_sources(et_run_t *r, TiSource *item, TiSourceList *list)
     list->count = 1;
 }
 
+/* The answer tables are kept from one request to the next, but nothing needs
+   them once no editor holds a document: give them back then, so the document
+   pool reads empty again (editor_core.c calls this). */
+void et_release_answers(void)
+{
+    int h = ec_doc_mem_handle();
+    if (h < 0) return;
+    if (g_items) { fmrb_free(h, g_items); g_items = NULL; }
+    if (g_diags) { fmrb_free(h, g_diags); g_diags = NULL; }
+    g_count = 0;
+    g_diag_count = 0;
+}
+
 /* ---- completion --------------------------------------------------------- */
 
 /* Copy the engine's answer into our own storage: its strings point into the

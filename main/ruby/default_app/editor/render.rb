@@ -219,7 +219,7 @@ module EditorRender
   def status_reading
     fname = @current_file ? @current_file.split("/").last : FmrbI18n.t(:st_new).to_s
     fname = "[Help] " + fname if @help_open
-    s = " #{fname}  #{FmrbI18n.t(:st_ln).to_s} #{@cy + 1}, #{FmrbI18n.t(:st_col).to_s} #{@cx + 1}"
+    s = " #{docs_mark}#{fname}  #{FmrbI18n.t(:st_ln).to_s} #{@cy + 1}, #{FmrbI18n.t(:st_col).to_s} #{@cx + 1}"
     s += " *" if @modified
     s += "  " + FmrbI18n.t(:st_hl_off).to_s unless @hl_enabled
     s
