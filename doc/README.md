@@ -87,7 +87,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
-- `editor_multi_file/` [エディタで複数のファイルを同時に開く](editor_multi_file/plan.md) — **計画済** (2026-11-17) エディタは Spinel の制約 (同じプログラムは 1 つだけ) で同時に 2 つ起動できない。代わりに 1 つのエディタの中で 5 つまでのファイルを開き、タブの行で切り替える。外 (ファイルマネージャ・デスクトップ) から開いたファイルは、動いているエディタに渡して追加で開く。AI 連携 (doc/ai_coding) がエディタを外から読む・書く口も M3 で作る。M1 済 (ブランチ editor-multi-file)、M2 から 〔6 files〕
+- `editor_multi_file/` [エディタで複数のファイルを同時に開く](editor_multi_file/plan.md) — **計画済** (2026-11-17) エディタは Spinel の制約 (同じプログラムは 1 つだけ) で同時に 2 つ起動できない。代わりに 1 つのエディタの中で 5 つまでのファイルを開き、タブの行で切り替える。外 (ファイルマネージャ・デスクトップ) から開いたファイルは、動いているエディタに渡して追加で開く。AI 連携 (doc/ai_coding) がエディタを外から読む・書く口も M3 で作る。M1 済 (ブランチ editor-multi-file)、M2 から 〔7 files〕
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — **完了** (2026-09-28) 段階 1-4・6 完了。段階 5 (640x360 全体切替) は、全画面のアプリだけを 640x360 にする doc/fullscreen_hires で置き換えて閉じた 〔11 files〕
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔21 files〕
 - `flash_layout/` [storage を減らし、日本語フォントを専用の区画へ移す計画](flash_layout/plan.md) — **実装中** (2026-11-16) F0〜F4・F2b 済、P4-Nano での確認待ち (F4 でファームの区画の空き 8% → 21%)。P4 の 16 MB はファームの区画 (7.94 MB、空き 8%) と storage (8 MB、使用 6.3 MB) で埋まっていた。試験用のアプリを storage に入れず WiFi で送る形にし (F1)、画像と音を小さくし (F2・F3)、空いた分で storage を縮めて日本語フォントの専用の区画を作る (F4)。ファームから約 1.2 MB が抜け、焼く時間とファームの区画の空きが良くなる 〔9 files〕
