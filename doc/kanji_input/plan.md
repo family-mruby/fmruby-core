@@ -71,8 +71,11 @@
   設定したときはその 1 つだけ** (それまでは `fmrb_kanji.dic` だけを探し、4 MB を使うには名前を変えるか `kanji_dict` で指した)。
 - → 入れた (2026-11-17)。選ぶのは辞書を開くたび (起動と、ファイルの変更の後)。設定が無いときの変更の口は `/sd/dict/` の
   2 つの名前のどちらにも反応するので、動いている間に 4 MB を置けば切り替わり (WiFi の `/fs/put`・Shell の `mv` など)、消せば
-  1 MB に戻る。2 つとも無くなれば変換なし。あるかどうかだけで選ぶ (4 MB が壊れていても 1 MB には落ちず、変換なしになる)。
-  部品は `fmrb_kanji_pick_default`・`fmrb_kanji_is_default_path` (components/fmrb_kanji、`rake kanji:test` で確認)。
+  1 MB に戻る。2 つとも無くなれば変換なし。(同日追記、ユーザ) **4 MB があっても開けない (壊れた見出し・CRC、読めない、メモリが足りない) ときは、理由をログに出して
+  1 MB を開く。両方開けなければ変換なし** (`kanji_dict` を設定したときはそのファイルだけのまま)。部品は
+  `fmrb_kanji_open_default`・`fmrb_kanji_pick_default`・`fmrb_kanji_is_default_path` (components/fmrb_kanji、`rake kanji:test` で
+  確認。切れた 4 MB・別の版・辞書でない 4 MB の横の 1 MB が開くこと、両方壊れていれば無し)。sim で切れた 4 MB の写しを置き、
+  ログに理由が出て 1 MB が開くことを確認した。
 - 開いている間に持つ表は 1 MB で 15,545 バイト、4 MB で 24,196 バイト (ホスト。P4-Nano の実測は 24,184 バイト)。どちらも
   SYSTEM プール (PSRAM の静的な領域) で、内蔵 RAM は増えない (状態の構造体も PSRAM、足したのは bool 1 つ。パスの
   バッファは今の 2 つのまま)。読みのバッファ 17,410 バイトは変わらない。P4-Nano (SD に両方) で 4 MB が開き (15.9 ms)、

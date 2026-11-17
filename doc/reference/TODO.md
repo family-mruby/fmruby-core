@@ -204,7 +204,8 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 
 - **済 (2026-11-17)**: 辞書を開くたびに選ぶ (`fmrb_kanji_pick_default`)。変更の口は 2 つの名前のどちらにも反応し、置けば
   4 MB に切り替わり、消せば 1 MB に戻る。開いている間に持つ表は 1 MB 15,545 バイト・4 MB 24,196 バイトで、どちらも
-  SYSTEM プール (PSRAM)。内蔵 RAM の静的な増分は 0。P4-Nano と sim で確認。経緯は doc/kanji_input/plan.md の
+  SYSTEM プール (PSRAM)。内蔵 RAM の静的な増分は 0。P4-Nano と sim で確認。(同日追記) 4 MB があっても開けなければ理由を
+  ログに出して 1 MB を開く (`fmrb_kanji_open_default`)。経緯は doc/kanji_input/plan.md の
   「4 MB の辞書を優先する」。以下はもとの要件。
 
 - `kanji_dict` を設定していないときは `/sd/dict/fmrb_kanji_4m.dic` があればそれを、無ければ `/sd/dict/fmrb_kanji.dic`
