@@ -25,6 +25,12 @@ module TaskbarMixin
     0xA3,  # 5: wasm     - purple
   ]
   TASKBAR_FOCUSED_BORDER = 0xFF  # white border for focused app
+  # Kept clear at the right for the status cells: power button (where there is
+  # one, its POWER_PAD is added), clock, speaker, wifi, BLE, kana and the
+  # free-IRAM readout, whose leftmost cell starts at width-180-POWER_PAD; 4 px
+  # more is the margin. draw_taskbar and handle_taskbar_click both stop here,
+  # so a click never lands on an icon that was not drawn.
+  TASKBAR_RIGHT_RESERVE = 184
 
   def init_taskbar
     @taskbar_apps = []
@@ -75,11 +81,7 @@ module TaskbarMixin
   def draw_taskbar
     return if @taskbar_apps.empty?
 
-    # Reserved for the status cells: power button (where there is one, its
-    # POWER_PAD), clock, speaker, wifi, BLE, kana and the free-IRAM readout
-    # (leftmost cell starts at width-180-POWER_PAD; keep a small margin).
-    clock_area = 184 + self.class::POWER_PAD
-    max_x = @window_width - clock_area
+    max_x = @window_width - TASKBAR_RIGHT_RESERVE - self.class::POWER_PAD
     x = TASKBAR_X_START
 
     @taskbar_apps.each do |app|
@@ -109,8 +111,7 @@ module TaskbarMixin
 
     # Must match draw_taskbar: clicks past the drawn icons would otherwise
     # focus an app whose icon was cut off by the status cells.
-    clock_area = 170 + self.class::POWER_PAD
-    max_x = @window_width - clock_area
+    max_x = @window_width - TASKBAR_RIGHT_RESERVE - self.class::POWER_PAD
     x = TASKBAR_X_START
 
     @taskbar_apps.each do |app|
