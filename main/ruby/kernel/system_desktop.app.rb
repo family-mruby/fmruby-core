@@ -1085,9 +1085,12 @@ class SystemDesktopApp < FmrbApp
     ng = g + dir
     ng = 0 if ng < 0
     ng = 7 if ng > 7
-    # B moves too when R or G could not (at its end): one channel alone is
-    # too small a step to see (cyberpunk's bottom band, 2026-11-17 user).
+    # When R or G cannot move (at its end), R and G stay and B moves instead:
+    # one of them alone is too small a step to see, and moving it with B
+    # shifts the hue (cyberpunk's bottom band, 2026-11-17 user).
     if nr == r || ng == g
+      nr = r
+      ng = g
       b += dir
       b = 0 if b < 0
       b = 3 if b > 3
