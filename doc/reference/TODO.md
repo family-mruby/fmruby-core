@@ -158,6 +158,13 @@ Save、Esc で Cancel (以前はキーを読んでいなかった。開いてい
 fmrb_remote_guard_sim.c。メモリの中だけの代役で、ESP32・ブラウザ版・ネイティブ版のパッケージでは空の関数。
 `rake build:linux` がこのファイルを作り直すので、ビルドの後に足す)。
 
+**済 (2026-11-17)**: Cyberpunk で、選んだタブと選んだ行の字 (緑 0x1C) が地の強調色 (マゼンタ 0xE3) の上で読みにくかった
+(コントラスト比 約 2.3:1)。選んだ所の字は、テーマの字の色が強調色の上で 3:1 に届けばそのまま、届かなければテーマの色
+(text_light・window_bg・menu_bg・border・button、0x01 は除く) のうち一番離れるものにした (config_dialog.rb の
+`cfg_sel_text`)。Cyberpunk は黒 (window_bg、約 6.7:1)。Light (黒/ピンク 約 8.5:1)・Dark (白/灰 約 4.6:1) は今までどおり。
+ブラウザ版も同じテーマの値 (config/system_conf_wasm.toml) なので同じく黒になる。メニューのドロップダウンの選んだ項目も
+同じ組 (緑/マゼンタ) だが、これは別 (system_desktop.app.rb の DROPDOWN_TEXT)。
+
 ## sim のビルドを ESP32 と分け、古いビルドで起動しない (2026-11-16、ユーザ。今夜の作業の後に入れる) -- 済 (2026-11-17)
 
 - **済 (2026-11-17)**: sim は `build-linux/` (sdkconfig も中、コンポーネント管理は使わない)、ESP32 の storage の
@@ -183,3 +190,12 @@ fmrb_remote_guard_sim.c。メモリの中だけの代役で、ESP32・ブラウ�
 - app_sync は「ファームを焼く → 起動 → storage の差分を WiFi で送る」の順。ランチャーの一覧は起動時に作るので、送った
   .app.toml・アイコンが反映されない (P4-Nano で「C hello」が隠れず、「C tour」が仮の W のアイコンだった。再起動で直った)。
 - 直し: 差分を送った後に、ランチャーに読み直させる (devctl から一覧の再スキャンを頼む口) か、送った物があれば再起動する。
+
+**済 (2026-11-17)**: devctl に `POST /app/rescan` を足した (main/drivers/devctl/devctl_http.c)。カーネルへ転送のアプリと同じ
+`apps_installed` (name は "remote sync") を送り、デスクトップがランチャーを読み直す (開いていれば今、閉じていれば次に
+開いたとき。ログは `Launcher: /app changed (remote sync); ...`)。リリースのビルドではほかの口と同じく登録した PC だけ。
+sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:app_sync` と MCP の flash の app_sync) は 1 つでも
+送ったら最後にこれを頼み、結果を 1 行出す。口の無い古いファームでは「再起動まで起動時の一覧のまま」と
+`fmrb_rd_fs.rb <IP> reboot` を案内する (sync は失敗にしない)。手で頼むのは `fmrb_rd_fs.rb <IP> rescan`。
+内蔵 RAM の静的な増分は 0 (口の表と送る中身は const で .rodata、処理はコード)。httpd の口の数が 1 つ増え
+(Retro 20→21、checkpoint 入り 23→24、Modern は 30 のまま 29 を使う)、起動時のヒープが数十バイト増える。
