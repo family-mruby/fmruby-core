@@ -19,12 +19,12 @@
 # pinned options (targets.rb FIRMWARE_ENV; the -mruby ones with the kernel,
 # desktop and editor on mruby), the three containers headless, the desktop's
 # boot, then every scene of that configuration, each from the desktop with
-# no app open. For the browser build: `rake spinel:gen wasm:mruby wasm:web`
+# no app open. For the browser build: `rake wasm:mruby wasm:web`
 # (the standard configuration), a development server of its own on --port
 # (default 8016, not the 8006 a developer keeps) and a headless browser,
 # erased first so the page starts from the shipped settings. For the native
-# program: `rake native:mruby native:core` (the standard configuration, after
-# the browser build's spinel:gen), started headless as machine "sdl" by
+# program: `rake native:mruby native:core` (the standard configuration; both
+# generate their Spinel programs into gen/hosted), started headless as machine "sdl" by
 # tools/fmrb_native.rb in a run directory, debug port and user directory of
 # its own (a fresh /home and /etc each run), so a developer's copy can stay
 # up beside it.
@@ -169,14 +169,14 @@ module Regress
           configs.delete_if { |c| c.kind == :web }
         end
         check_web_free! if web
-        ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
+        ga = File.join(ROOT, "fmruby-graphics-audio", "build-linux", "fmruby-graphics-audio.elf")
         raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" if !sims.empty? && !SimRun.elf_x86?(ga)
         tree = BuildTree.new(CORE, :linux)
         tree.stash!
         begin
           SimRun.current_first(sims, &:family).each { |c| run_sim_config(c, tree) }
           build_web(tree) if web
-          build_native(tree, gen: !@web_built) unless natives.empty?
+          build_native(tree) unless natives.empty?
         ensure
           SimRun.down if SimRun.core_running? && !@opts[:keep]
           if @opts[:keep]
@@ -417,16 +417,16 @@ module Regress
         false
       end
 
-      # spinel:gen with the standard options (the sim builds may have left
-      # another configuration's programs), the wasm libmruby (in place: the
-      # sim's stash leaves it alone, so this is usually up to date) and the
-      # bundle, which stamps wasm/build for the stale-build guard.
+      # The wasm libmruby (in place: the sim's stash leaves it alone, so this
+      # is usually up to date) and the bundle, which generates its Spinel
+      # programs into gen/hosted (the sim builds have gen/linux) and stamps
+      # wasm/build for the stale-build guard.
       def build_web(tree)
         log = File.join(out_dir, "web.build.log")
         cfg = Screens.configs.find { |c| c.kind == :web }
         env = cfg.env.reject { |k, _| k == "FMRB_HW_TARGET" }
         cmd = ["bash", "-c", "source #{EMSDK_ENV} >/dev/null 2>&1; " \
-                             "#{ENV['RAKE'] || 'rake'} spinel:gen && #{ENV['RAKE'] || 'rake'} wasm:mruby && " \
+                             "#{ENV['RAKE'] || 'rake'} wasm:mruby && " \
                              "#{ENV['RAKE'] || 'rake'} wasm:web"]
         ok, secs = SimRun.run_logged(env, cmd, log)
         raise "the browser build failed (#{rel(log)})" unless ok
@@ -477,16 +477,14 @@ module Regress
 
       # --- the native program ---------------------------------------------------
 
-      # spinel:gen when the browser build did not just run it (the sim builds
-      # may have left another configuration's programs), the native libmruby
-      # (in place, as the browser's) and the program.
-      def build_native(tree, gen:)
+      # The native libmruby (in place, as the browser's) and the program,
+      # whose Spinel programs are the browser build's (gen/hosted).
+      def build_native(tree)
         log = File.join(out_dir, "native.build.log")
         cfg = Screens.configs.find { |c| c.kind == :native }
         env = cfg.env.reject { |k, _| k == "FMRB_HW_TARGET" }.merge("NATIVE_ENGINE" => "standard")
         rake = ENV["RAKE"] || "rake"
-        steps = gen ? "#{rake} spinel:gen && " : ""
-        cmd = ["bash", "-c", "#{steps}#{rake} native:mruby && #{rake} native:core"]
+        cmd = ["bash", "-c", "#{rake} native:mruby && #{rake} native:core"]
         ok, secs = SimRun.run_logged(env, cmd, log)
         raise "the native build failed (#{rel(log)})" unless ok
         tree.keep_built!("family-mruby-native")

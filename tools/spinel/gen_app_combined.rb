@@ -31,17 +31,17 @@ SPINEL_DIR = File.join(ROOT, "main/ruby/spinel")
 KERNEL_DIR = File.join(ROOT, "main/ruby/kernel")
 MRBLIB_DIR = File.join(ROOT, "lib/gems/picoruby-fmrb-app/mrblib")
 # The generated constants go next to the output (normally
-# main/ruby/spinel/gen; rake regress:spinel writes elsewhere so
-# the build's generated files are left alone).
+# main/ruby/spinel/gen/<build>; rake regress:spinel writes elsewhere so
+# the builds' generated files are left alone).
 GEN_DIR = File.dirname(File.expand_path(out_path))
 FileUtils.mkdir_p(GEN_DIR)
 
 # 1. Generate FmrbConst (superset incl. the desktop THEME_/KEY_/PROC_STATE_ set).
+# Made every time, as the kernel's is: a copy left by an earlier run may be
+# for another board (the sim's directory serves Retro and Modern).
 const_rb = File.join(GEN_DIR, "fmrb_const_generated.rb")
-unless File.exist?(const_rb)
-  system(RbConfig.ruby, File.join(ROOT, "tools/spinel/gen_const_rb.rb"), const_rb, platform) or
-    abort "const generation failed"
-end
+system(RbConfig.ruby, File.join(ROOT, "tools/spinel/gen_const_rb.rb"), const_rb, platform) or
+  abort "const generation failed"
 
 # Per-app source manifest. Extend this hash to add more Spinel apps.
 APPS = {

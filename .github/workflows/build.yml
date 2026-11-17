@@ -178,7 +178,9 @@ jobs:
 
       - name: Generate Spinel C for kernel, desktop and editor
         # rake spinel:gen self-provisions the pinned compiler into vendor/spinel
-        # (components/fmrb_spinel_rt/SPINEL_PIN) on a fresh checkout.
+        # (components/fmrb_spinel_rt/SPINEL_PIN) on a fresh checkout. It writes
+        # main/ruby/spinel/gen/hosted (SPINEL_GEN_TARGET's default, platform
+        # linux); build-linux (spinel) generates gen/linux itself.
         env:
           FMRB_KERNEL_ENGINE: spinel
           FMRB_APP_ENGINE_DESKTOP: spinel

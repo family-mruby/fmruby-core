@@ -87,6 +87,8 @@ namespace :wasm do
 
   desc "Build the core firmware for wasm (doc/wasm/ P4a; needs wasm:mruby once)"
   task :core => ["^setup", :setup, :mrb] do
+    # The Spinel programs, into gen/hosted (shared with the native program).
+    spinel_gen!("hosted")
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} #{WASM_CMAKE_ARGS}"
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core"
@@ -202,6 +204,9 @@ namespace :wasm do
 
   desc "Build the browser bundle (core_web.js/.wasm/.data + wasm/web page)"
   task :web => [:webflash, :mrb, "webcrt:gen"] do
+    # The Spinel programs, into gen/hosted (shared with the native program;
+    # nothing when they are up to date).
+    spinel_gen!("hosted")
     # The sources the bundle is made from, for the stale-build guard of rake
     # wasm:serve and web_up (tools/build_stamp.rb).
     stamp_state = FmrbBuildStamp.state(ROOT_DIR, :web)

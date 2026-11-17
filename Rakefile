@@ -105,7 +105,15 @@ SPINEL_DIR =
     File.expand_path("../tmp/spinel", __dir__)
   end
 SPINEL_SRC_DIR = "main/ruby/spinel"
-SPINEL_GEN_DIR = "#{SPINEL_SRC_DIR}/gen"
+# The generated Spinel programs, one directory per build that compiles them
+# (rake spinel:gen, rakelib/spinel.rake), so no build overwrites another's:
+#   gen/esp32   the ESP32 firmware (build/), FmrbConst::PLATFORM "esp32"
+#   gen/linux   the Linux sim (build-linux/), PLATFORM "linux"
+#   gen/hosted  the native program and the browser build (hosted/hosted.cmake),
+#               PLATFORM "linux"
+SPINEL_GEN_ROOT = "#{SPINEL_SRC_DIR}/gen"
+SPINEL_GEN_TARGETS = { "esp32" => "esp32", "linux" => "linux", "hosted" => "linux" }.freeze
+def spinel_gen_dir(target) = "#{SPINEL_GEN_ROOT}/#{target}"
 
 # picoruby-ti: the on-device type inference engine behind the editor's
 # completion/hover/diagnostics (doc/editor_ti/plan.md). Pinned exactly like

@@ -11,17 +11,17 @@
 #     build/                                -> build.regress.saved/
 #     sdkconfig                             -> sdkconfig.regress.saved
 #     picoruby/build/{esp32,esp32p4,ckpt-table-*}  (libmruby per chip)
-#     main/ruby/spinel/gen/*                (generated for one platform)
+#     main/ruby/spinel/gen/esp32            (its Spinel programs)
 #                                           -> build.regress-aside.saved/
 #   BuildTree.new(core, :linux)  the Linux sim build (the sim parts)
 #     build-linux/ (its sdkconfig inside)   -> build-linux.regress.saved/
-#     picoruby/build/family-mruby-linux, main/ruby/spinel/gen/*,
+#     picoruby/build/family-mruby-linux, main/ruby/spinel/gen/linux,
 #     flash/etc/<generated>                 (system_conf, services, ...: the
 #                                            sim reads flash/ directly)
 #                                           -> build-linux.regress-aside.saved/
 #
-# The other builds (the browser's and the native program's libmruby among
-# them) are left where they are.
+# The other builds (the browser's and the native program's libmruby and
+# their Spinel programs, gen/hosted, among them) are left where they are.
 #
 # A run that is killed leaves the stash in place; the next run refuses to
 # start until `ruby tools/regress/size.rb --restore` puts it back (both
@@ -46,7 +46,6 @@ require_relative "../build_stamp"
 module Regress
   class BuildTree
     PICORUBY_BUILD = "components/picoruby-esp32/picoruby/build"
-    SPINEL_GEN = "main/ruby/spinel/gen"
     GENERATED_ETC = %w[system_conf.toml system_conf.factory.toml services.toml associations.toml
                        secrets.toml wifi.toml].map { |f| "flash/etc/#{f}" }.freeze
     LINUX_ROOT = "build-linux"
@@ -54,10 +53,10 @@ module Regress
     KINDS = {
       esp32: { root: "build", sdk: "sdkconfig", stash: "build.regress.saved",
                stash_sdk: "sdkconfig.regress.saved", aside: "build.regress-aside.saved",
-               mruby: %w[esp32 esp32p4 ckpt-table-*], etc: [] },
+               mruby: %w[esp32 esp32p4 ckpt-table-*], etc: [], gen: "main/ruby/spinel/gen/esp32" },
       linux: { root: LINUX_ROOT, sdk: nil, stash: "build-linux.regress.saved",
                stash_sdk: nil, aside: "build-linux.regress-aside.saved",
-               mruby: %w[family-mruby-linux], etc: GENERATED_ETC },
+               mruby: %w[family-mruby-linux], etc: GENERATED_ETC, gen: "main/ruby/spinel/gen/linux" },
     }.freeze
 
     # The ESP32 kind's names, as the tools' messages have always said them.
@@ -113,7 +112,7 @@ module Regress
       FileUtils.mv(path(root), path(@k[:stash])) if File.exist?(path(root))
       FileUtils.mv(path(@k[:sdk]), path(@k[:stash_sdk])) if @k[:sdk] && File.exist?(path(@k[:sdk]))
       mruby_dirs.each { |d| move(d, File.join(aside, "picoruby_build", File.basename(d))) }
-      move_children(path(SPINEL_GEN), File.join(aside, "spinel_gen"))
+      move_children(path(@k[:gen]), File.join(aside, "spinel_gen"))
       @k[:etc].each do |f|
         next unless File.exist?(path(f))
         FileUtils.mkdir_p(File.join(aside, "etc"))
@@ -128,12 +127,12 @@ module Regress
       raise "nothing to restore (no #{@k[:aside]}/)" unless stashed?
       aside = path(@k[:aside])
       clean!
-      FileUtils.rm_rf(Dir[path("#{SPINEL_GEN}/*")])
+      FileUtils.rm_rf(Dir[path("#{@k[:gen]}/*")])
       @k[:etc].each { |f| FileUtils.rm_f(path(f)) }
       FileUtils.mv(path(@k[:stash]), path(root)) if File.exist?(path(@k[:stash]))
       FileUtils.mv(path(@k[:stash_sdk]), path(@k[:sdk])) if @k[:sdk] && File.exist?(path(@k[:stash_sdk]))
       move_children(File.join(aside, "picoruby_build"), path(PICORUBY_BUILD))
-      move_children(File.join(aside, "spinel_gen"), path(SPINEL_GEN))
+      move_children(File.join(aside, "spinel_gen"), path(@k[:gen]))
       Dir[File.join(aside, "etc", "*")].each { |f| FileUtils.mv(f, path("flash/etc/#{File.basename(f)}")) }
       FileUtils.rm_rf(aside)
       describe

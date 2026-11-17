@@ -11,6 +11,8 @@
 #   build/         the ESP32 firmware (sdkconfig at the top, as idf.py expects;
 #                  the generated /etc files of its storage image in
 #                  build/fmrb_etc, not in flash/etc, which is the sim's)
+# and so do their Spinel programs (main/ruby/spinel/gen/linux and gen/esp32,
+# rakelib/spinel.rake).
 # Each Linux build stamps the sources it was made from (tools/build_stamp.rb),
 # and the starters refuse a stale one.
 require_relative "../tools/build_stamp"
@@ -141,8 +143,9 @@ namespace :build do
     # the cmake configure rather than build something smaller.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
                  FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL || true
-    ENV['SPINEL_GEN_PLATFORM'] = 'linux'
-    Rake::Task['spinel:gen'].invoke if any_spinel
+    # Into main/ruby/spinel/gen/linux, the sim's own (the ESP32 build has
+    # gen/esp32), so switching between the two generates nothing.
+    spinel_gen!('linux') if any_spinel
 
     # The sources this build is made from, taken before it starts: a file
     # changed while it runs makes the build stale, as it should.
@@ -221,8 +224,8 @@ namespace :build do
     # the cmake configure rather than build something smaller.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
                  FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL || true
-    ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
-    Rake::Task['spinel:gen'].invoke if any_spinel
+    # Into main/ruby/spinel/gen/esp32, this build's own (the sim has gen/linux).
+    spinel_gen!('esp32') if any_spinel
 
     # main/CMakeLists.txt selects the engine from $ENV{} INSIDE the container (a
     # -D value would be overwritten by set(... "$ENV{...}")), and it falls back to
@@ -306,10 +309,11 @@ end
 ESP32_MRUBY_BUILDS = %w[esp32 esp32p4 ckpt-table-*].freeze
 PICORUBY_BUILD_DIR = 'components/picoruby-esp32/picoruby/build'
 
-desc "Clean the ESP32 build (build/, sdkconfig, its libmruby); the sim, native and browser builds stay"
+desc "Clean the ESP32 build (build/, sdkconfig, its libmruby and Spinel programs); the sim, native and browser builds stay"
 task :clean_all do
   sh "rm -f sdkconfig"
   sh "rm -rf build"
+  sh "rm -rf #{spinel_gen_dir('esp32')}"
   ESP32_MRUBY_BUILDS.each { |b| sh "rm -rf #{PICORUBY_BUILD_DIR}/#{b}" }
 end
 
@@ -321,10 +325,11 @@ task :clean do
 end
 
 namespace :clean do
-  desc "Clean the Linux sim build (build-linux/, its sdkconfig and libmruby)"
+  desc "Clean the Linux sim build (build-linux/, its sdkconfig, libmruby and Spinel programs)"
   task :linux do
     sh "rm -rf #{LINUX_BUILD_DIR}"
     sh "rm -rf #{PICORUBY_BUILD_DIR}/family-mruby-linux"
+    sh "rm -rf #{spinel_gen_dir('linux')}"
   end
 
   desc "Clean the browser build (wasm/build and the wasm libmruby)"

@@ -63,8 +63,7 @@ module Regress
 
       def web_build
         log = File.join(OUT, "web.build.log")
-        cmd = "source #{EMSDK_ENV} >/dev/null 2>&1; rake spinel:gen && " \
-              "rake wasm:mruby && rake wasm:dist"
+        cmd = "source #{EMSDK_ENV} >/dev/null 2>&1; rake wasm:mruby && rake wasm:dist"
         out, st = Open3.capture2e("bash", "-c", cmd, chdir: CORE)
         File.write(log, out)
         raise Failure, "web: the browser build failed (#{log.sub("#{CORE}/", '')})" unless st.success?

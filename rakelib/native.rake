@@ -130,11 +130,14 @@ namespace :native do
 
   desc "Build the native program (NATIVE_ENGINE=standard|mruby; needs native:mruby once)"
   task :core => ["^setup", "hosted:m5gfx", :mrb, :etc] do
-    gen = File.join(ROOT_DIR, "main/ruby/spinel/gen")
+    # The Spinel programs, into gen/hosted (shared with the browser build;
+    # nothing when they are up to date).
+    spinel_gen!("hosted")
+    gen = File.join(ROOT_DIR, spinel_gen_dir("hosted"))
     needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c]
     needed += %w[fmrb_kernel_combined.c editor_combined.c] if native_engine == "standard"
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
-    abort "native:core: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
+    abort "native:core: #{missing.join(', ')} missing in #{gen}; the Spinel engine settings (FMRB_KERNEL_ENGINE / FMRB_APP_ENGINE_EDITOR) leave them out" unless missing.empty?
     lib_a = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/build",
                       NATIVE_MRUBY_BUILD, "lib/libmruby.a")
     Rake::Task["native:mruby"].invoke unless File.exist?(lib_a)
@@ -405,10 +408,13 @@ namespace :native do
   task :cross => ["^setup", "hosted:m5gfx", :mrb, :image] do
     arch = native_deb_arch
     lay = NATIVE_DEB_LAYOUT[arch]
-    gen = File.join(ROOT_DIR, "main/ruby/spinel/gen")
+    # The Spinel programs, into gen/hosted (shared with the browser build;
+    # nothing when they are up to date).
+    spinel_gen!("hosted")
+    gen = File.join(ROOT_DIR, spinel_gen_dir("hosted"))
     needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c fmrb_kernel_combined.c editor_combined.c]
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
-    abort "native:cross: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
+    abort "native:cross: #{missing.join(', ')} missing in #{gen}; the Spinel engine settings (FMRB_KERNEL_ENGINE / FMRB_APP_ENGINE_EDITOR) leave them out" unless missing.empty?
     dir = File.join(NATIVE_DEB_DIR, arch)
     mkdir_p dir
     rel = dir.sub("#{ROOT_DIR}/", "")
@@ -686,11 +692,14 @@ namespace :native do
   desc "Build the program with the wlroots compositor in the Ubuntu 26.04 image (native/build-wl)"
   task :wl => ["^setup", "hosted:m5gfx", :mrb, :etc] do
     native_image_build("amd64")
-    gen = File.join(ROOT_DIR, "main/ruby/spinel/gen")
+    # The Spinel programs, into gen/hosted (shared with the browser build;
+    # nothing when they are up to date).
+    spinel_gen!("hosted")
+    gen = File.join(ROOT_DIR, spinel_gen_dir("hosted"))
     needed = %w[fft_kernel.c spinel_hello_kernel.c raycast_kernel.c]
     needed += %w[fmrb_kernel_combined.c editor_combined.c] if native_engine == "standard"
     missing = needed.reject { |f| File.exist?(File.join(gen, f)) }
-    abort "native:wl: #{missing.join(', ')} missing in #{gen}; run rake spinel:gen" unless missing.empty?
+    abort "native:wl: #{missing.join(', ')} missing in #{gen}; the Spinel engine settings (FMRB_KERNEL_ENGINE / FMRB_APP_ENGINE_EDITOR) leave them out" unless missing.empty?
     rel = NATIVE_WL_DIR.sub("#{ROOT_DIR}/", "")
     crel = native_wl_cmake_dir.sub("#{ROOT_DIR}/", "")
     native_docker("cd components/picoruby-esp32/picoruby && rake -j#{ENV['JOBS'] || 8}",

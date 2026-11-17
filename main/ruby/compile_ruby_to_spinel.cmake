@@ -74,7 +74,7 @@ function(generate_ruby_spinel_command RB_FILE INIT GEN_DIR)
   elseif(NOT EXISTS ${C_FILE})
     message(FATAL_ERROR
       "Spinel-generated ${C_FILE} not found and SPINEL_BIN is unset. "
-      "Run `rake spinel:gen` on the host first (it uses vendor/spinel/bin/spinel, "
-      "which is not available inside the docker build).")
+      "Build with rake (build:esp32 / build:linux), which generates it on the host "
+      "first (vendor/spinel/bin/spinel is not available inside the docker build).")
   endif()
 endfunction()

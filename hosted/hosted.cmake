@@ -406,12 +406,16 @@ list(APPEND FMRB_HOSTED_CORE_SRCS
 
 # Ruby bytecode (mrbc output, target independent) and the host-generated
 # Spinel programs. Both are produced by the existing generation steps (rake
-# hosted:mrb, which runs what the IDF build's CMake step runs, and rake
-# spinel:gen) and reused as-is; regenerating them is not this build's job.
+# hosted:mrb, which runs what the IDF build's CMake step runs, and
+# spinel_gen!('hosted') in the rake tasks) and reused as-is; regenerating
+# them is not this build's job.
 file(GLOB KERNEL_MRB_SRCS ${FMRB_ROOT}/main/ruby/kernel/mrb/*.c)
 file(GLOB APP_MRB_SRCS ${FMRB_ROOT}/main/ruby/default_app/mrb/*.c)
 list(APPEND FMRB_HOSTED_CORE_SRCS ${KERNEL_MRB_SRCS} ${APP_MRB_SRCS})
-set(SPINEL_GEN ${FMRB_ROOT}/main/ruby/spinel/gen)
+# gen/hosted: the native program's and the browser build's own (the sim and
+# the ESP32 firmware have gen/linux and gen/esp32), made by the rake tasks
+# that configure these builds (spinel_gen!, rakelib/spinel.rake).
+set(SPINEL_GEN ${FMRB_ROOT}/main/ruby/spinel/gen/hosted)
 set(SPINEL_GEN_SRCS
   ${SPINEL_GEN}/fft_kernel.c
   ${SPINEL_GEN}/spinel_hello_kernel.c

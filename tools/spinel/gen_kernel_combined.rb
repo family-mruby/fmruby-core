@@ -14,8 +14,8 @@ platform = ARGV[1] || "linux"
 SPINEL_DIR = File.join(ROOT, "main/ruby/spinel")
 KERNEL_DIR = File.join(ROOT, "main/ruby/kernel")
 # The generated constants go next to the output (normally
-# main/ruby/spinel/gen; rake regress:spinel writes elsewhere so
-# the build's generated files are left alone).
+# main/ruby/spinel/gen/<build>; rake regress:spinel writes elsewhere so
+# the builds' generated files are left alone).
 GEN_DIR = File.dirname(File.expand_path(out_path))
 FileUtils.mkdir_p(GEN_DIR)
 

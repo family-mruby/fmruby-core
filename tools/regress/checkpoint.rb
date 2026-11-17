@@ -228,7 +228,6 @@ module Regress
       def build(configs)
         log = File.join(OUT, "build.log")
         steps = []
-        steps << "rake spinel:gen" if configs.include?("standard")
         steps << "rake native:mruby"
         steps << "rake native:core" if configs.include?("standard")
         steps << "NATIVE_ENGINE=mruby rake native:core" if configs.include?("mruby")

@@ -18,11 +18,13 @@ def spinel_compiler_dir
 end
 
 # The commands that generate the Spinel C, one group per program:
-# [[name, [command, ...]], ...]. The gems' sources are staged into stage_dir
-# here. rake spinel:gen runs them for the build (gen_dir = SPINEL_GEN_DIR,
-# stage_dir = SPINEL_SRC_DIR); rake regress:spinel runs them for the
-# all-Spinel configuration into a directory of its own, so the build's
-# generated files and their timestamps stay as they are.
+# [[name, [command, ...], [input, ...]], ...]. The last command is the
+# compiler's; the ones before it make its input. The inputs are the files the
+# compiler reads, for spinel_gen!'s up-to-date check. The gems' sources are
+# staged into stage_dir here. spinel_gen! runs them for a build (gen_dir =
+# spinel_gen_dir(target), stage_dir = SPINEL_SRC_DIR); rake regress:spinel
+# runs them for the all-Spinel configuration into a directory of its own, so
+# the builds' generated files and their timestamps stay as they are.
 def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, fft:, platform:)
   # Flags every generated program gets. --no-inline-hot: the compiler forces
   # small leaf methods inline by default, and a large dispatcher that calls
@@ -48,7 +50,8 @@ def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, f
   vm = lambda do |name, combine, init|
     rb = "#{gen_dir}/#{name}.rb"
     programs << [name, ["#{RbConfig.ruby} #{combine} #{rb} #{platform}",
-                        "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{rb} --ext-init #{init} -o #{gen_dir}/#{name}.c"]]
+                        "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{rb} --ext-init #{init} -o #{gen_dir}/#{name}.c"],
+                 [rb]]
   end
   vm.call("fmrb_kernel_combined", "tools/spinel/gen_kernel_combined.rb", "Init_fmrb_kernel") if kernel
   vm.call("editor_combined", "tools/spinel/gen_app_combined.rb editor", "Init_editor") if editor
@@ -72,7 +75,8 @@ def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, f
     init = spec[/^# spinel-ext-init: *(\S+)/, 1] or abort "#{kernel_rb}: no `# spinel-ext-init:` line"
     entries = spec[/^# spinel-ext-entry: *(\S+)/, 1] or abort "#{kernel_rb}: no `# spinel-ext-entry:` line"
     programs << [name, ["#{bin} #{gen_flags} -I #{stage_dir} -c #{stage_dir}/#{name}.rb " \
-                        "--ext-init #{init} --ext-entry #{entries} -o #{gen_dir}/#{name}.c"]]
+                        "--ext-init #{init} --ext-entry #{entries} -o #{gen_dir}/#{name}.c"],
+                 [kernel_rb, *cores].map { |src| "#{stage_dir}/#{File.basename(src)}" }]
   end
   # FFT: not built with FMRB_FFT_SPINEL=0 (doc/mic_spectrum).
   if fft
@@ -88,6 +92,81 @@ def spinel_gen_programs(bin, gen_dir:, stage_dir:, kernel:, editor:, desktop:, f
   gem.call("lib/gems/picoruby-fmrb-raycast/spinel/raycast_kernel.rb",
            "lib/gems/picoruby-fmrb-raycast/mrblib/raycast_core.rb")
   programs
+end
+
+# What spinel_gen! compares to decide a program is up to date: the compiler
+# (its commit, else the binary), the compile command and the inputs. The
+# combined programs carry FmrbConst::BUILD_DATE, the time the generator ran,
+# which is left out; otherwise every build would compile the programs again.
+def spinel_gen_key(compiler_dir, bin, cmd, inputs)
+  require "digest"
+  head = `git -C #{compiler_dir} rev-parse HEAD 2>/dev/null`.strip
+  head = Digest::SHA256.file(bin).hexdigest if head.empty?
+  parts = [head, cmd]
+  inputs.each do |f|
+    parts << f << File.read(f).gsub(/^ *BUILD_DATE = .*$/, "")
+  end
+  Digest::SHA256.hexdigest(parts.join("\0"))
+end
+
+# Generate the Spinel C for one build (target: a key of SPINEL_GEN_TARGETS)
+# into spinel_gen_dir(target). Each build has its own directory, so the ESP32
+# firmware, the sim and the hosted builds never compile one another's
+# programs, and switching between them generates nothing. A program whose
+# compiler, command and inputs are unchanged (<name>.key beside it) is not
+# compiled again, so its .c keeps its timestamp and the build does not
+# recompile it. Once per target in a rake run.
+def spinel_gen!(target)
+  @spinel_gen_done ||= {}
+  return if @spinel_gen_done[target]
+  platform = SPINEL_GEN_TARGETS.fetch(target) do
+    abort "spinel:gen: unknown target #{target.inspect} (#{SPINEL_GEN_TARGETS.keys.join(', ')})"
+  end
+  # the app programs splice the generated FmrbBoundary declarations
+  Rake::Task['boundary:gen'].invoke
+  dir = spinel_compiler_dir
+  bin = File.join(dir, "bin/spinel")
+  # Guard against compiler/runtime-snapshot divergence: the generated C and
+  # components/fmrb_spinel_rt/spinel_rt must come from the same fork commit.
+  import_info = File.expand_path("components/fmrb_spinel_rt/spinel_rt/IMPORT_INFO", ROOT_DIR)
+  if File.exist?(import_info)
+    snap = File.read(import_info)[/^fork_commit: (\h+)/, 1]
+    head = `git -C #{dir} rev-parse HEAD 2>/dev/null`.strip
+    if snap && !head.empty? && snap != head
+      warn "WARNING: spinel compiler at #{head[0, 12]} but runtime snapshot is #{snap[0, 12]};" \
+           " re-snapshot it with" \
+           " `ruby components/fmrb_spinel_rt/import_from_fork.rb #{dir}`" \
+           " (and bump SPINEL_PIN to match), or align the checkouts."
+    end
+  end
+  # The programs of the layout before the per-build directories (gen/*.c and
+  # friends directly in gen/): nothing reads them any more.
+  rm_f Dir.glob("#{SPINEL_GEN_ROOT}/*").select { |f| File.file?(f) }, verbose: false
+  gen_dir = spinel_gen_dir(target)
+  mkdir_p gen_dir, verbose: false
+  # The platform baked into the programs (FmrbConst::PLATFORM, which gates
+  # ESP32-only code such as the RTC) follows from the target, so a directory
+  # never holds another platform's programs.
+  programs = spinel_gen_programs(bin, gen_dir: gen_dir, stage_dir: SPINEL_SRC_DIR,
+                                 kernel: FMRB_KERNEL_ENGINE == "spinel",
+                                 editor: FMRB_APP_ENGINE_EDITOR == "spinel",
+                                 desktop: FMRB_APP_ENGINE_DESKTOP == "spinel",
+                                 fft: FMRB_FFT_SPINEL, platform: platform)
+  programs.each do |name, cmds, inputs|
+    cmds[0..-2].each { |c| sh c }
+    key_file = "#{gen_dir}/#{name}.key"
+    key = spinel_gen_key(dir, bin, cmds[-1], inputs)
+    outputs = %w[c h].map { |ext| "#{gen_dir}/#{name}.#{ext}" }
+    if outputs.all? { |f| File.exist?(f) } && File.exist?(key_file) && File.read(key_file) == key
+      puts "Spinel #{gen_dir}/#{name}.c is up to date"
+      next
+    end
+    rm_f key_file, verbose: false
+    sh cmds[-1]
+    File.write(key_file, key)
+    puts "Spinel generated #{gen_dir}/#{name}.c"
+  end
+  @spinel_gen_done[target] = true
 end
 
 namespace :spinel do
@@ -117,40 +196,12 @@ namespace :spinel do
     puts "Spinel compiler ready: #{bin} (#{head[0, 12]})"
   end
 
-  desc "Generate Spinel C from PreBuild Ruby on the host (before docker build)"
+  # SPINEL_GEN_TARGET picks the build: esp32, linux or hosted (the default,
+  # for the native program and the browser build). rake build:esp32,
+  # build:linux, native:* and wasm:core/web run it themselves.
+  desc "Generate Spinel C on the host into main/ruby/spinel/gen/<SPINEL_GEN_TARGET> (esp32|linux|hosted, default hosted)"
   task :gen do
-    # the app programs splice the generated FmrbBoundary declarations
-    Rake::Task['boundary:gen'].invoke
-    dir = spinel_compiler_dir
-    bin = File.join(dir, "bin/spinel")
-    # Guard against compiler/runtime-snapshot divergence: the generated C and
-    # components/fmrb_spinel_rt/spinel_rt must come from the same fork commit.
-    import_info = File.expand_path("components/fmrb_spinel_rt/spinel_rt/IMPORT_INFO", ROOT_DIR)
-    if File.exist?(import_info)
-      snap = File.read(import_info)[/^fork_commit: (\h+)/, 1]
-      head = `git -C #{dir} rev-parse HEAD 2>/dev/null`.strip
-      if snap && !head.empty? && snap != head
-        warn "WARNING: spinel compiler at #{head[0, 12]} but runtime snapshot is #{snap[0, 12]};" \
-             " re-snapshot it with" \
-             " `ruby components/fmrb_spinel_rt/import_from_fork.rb #{dir}`" \
-             " (and bump SPINEL_PIN to match), or align the checkouts."
-      end
-    end
-    mkdir_p SPINEL_GEN_DIR
-    # Platform passed to the gen scripts (sets PLATFORM in the combined Ruby, which
-    # gates ESP32-only code like RTC HW access). Defaults to linux; build:esp32 sets
-    # SPINEL_GEN_PLATFORM=esp32. Getting this wrong silently compiles the wrong
-    # PLATFORM branch (esp32 build with linux gen = RTC/HW code dropped).
-    platform = ENV['SPINEL_GEN_PLATFORM'] || 'linux'
-    programs = spinel_gen_programs(bin, gen_dir: SPINEL_GEN_DIR, stage_dir: SPINEL_SRC_DIR,
-                                   kernel: FMRB_KERNEL_ENGINE == "spinel",
-                                   editor: FMRB_APP_ENGINE_EDITOR == "spinel",
-                                   desktop: FMRB_APP_ENGINE_DESKTOP == "spinel",
-                                   fft: FMRB_FFT_SPINEL, platform: platform)
-    programs.each do |name, cmds|
-      cmds.each { |c| sh c }
-      puts "Spinel generated #{SPINEL_GEN_DIR}/#{name}.c"
-    end
+    spinel_gen!(ENV['SPINEL_GEN_TARGET'].to_s.empty? ? "hosted" : ENV['SPINEL_GEN_TARGET'])
   end
 
   desc "Lint Spinel-targeted Ruby with spinel-doctor (source-level: unsupported/unresolved/inference)"
@@ -162,7 +213,10 @@ namespace :spinel do
     end
     doctor = File.join(dir, "bin/spinel-doctor")
     abort "spinel-doctor not found at #{doctor}. Run `rake spinel:setup`." unless File.executable?(doctor)
-    mkdir_p SPINEL_GEN_DIR
+    # A directory of its own, so the lint's Linux programs never stand in for
+    # a build's.
+    lint_dir = "#{SPINEL_GEN_ROOT}/doctor"
+    mkdir_p lint_dir
     # Lint kernel + desktop (both are Spinel-convertible programs). We generate
     # the require-inlined combined Ruby, then run the SOURCE-LEVEL legs only.
     # --skip build,behavior: those legs link/run the combined standalone, which
@@ -198,10 +252,10 @@ namespace :spinel do
     gem_allow_legs = %w[behavior]
     gems.each do |gem, kernel, cores|
       [["spinel", kernel], *cores.map { |c| ["mrblib", c] }].each do |sub, f|
-        cp "lib/gems/#{gem}/#{sub}/#{f}.rb", "#{SPINEL_GEN_DIR}/#{f}.rb"
+        cp "lib/gems/#{gem}/#{sub}/#{f}.rb", "#{lint_dir}/#{f}.rb"
       end
       puts "== spinel-doctor: #{kernel} =="
-      out = `cd #{SPINEL_GEN_DIR} && SPINEL_DIR=#{dir} #{doctor} #{kernel}.rb 2>&1`
+      out = `cd #{lint_dir} && SPINEL_DIR=#{dir} #{doctor} #{kernel}.rb 2>&1`
       puts out
       legs = out.scan(/^\[ERR\]\s+(\S+)/).flatten
       unexpected = legs - gem_allow_legs
@@ -209,7 +263,7 @@ namespace :spinel do
       failed << kernel unless unexpected.empty?
     end
     targets.each do |name, gen, arg|
-      rb = "#{SPINEL_GEN_DIR}/#{name}_combined.rb"
+      rb = "#{lint_dir}/#{name}_combined.rb"
       sh "#{RbConfig.ruby} #{gen} #{arg ? "#{arg} " : ""}#{rb} linux"
       puts "== spinel-doctor: #{name} =="
       out = `SPINEL_DIR=#{dir} #{doctor} --only unsupported,unresolved #{rb} 2>&1`

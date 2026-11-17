@@ -149,7 +149,15 @@ set(FMRB_APP_ENGINE_EDITOR "$ENV{FMRB_APP_ENGINE_EDITOR}")
 if(NOT FMRB_APP_ENGINE_EDITOR)
     set(FMRB_APP_ENGINE_EDITOR "mruby")
 endif()
-set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/ruby/spinel/gen)
+# The host-generated Spinel programs (rake spinel:gen): one directory per
+# build, so the sim (build-linux/) and the ESP32 firmware (build/) never
+# compile each other's (rakelib/spinel.rake).
+if(IDF_TARGET STREQUAL "linux")
+    set(FMRB_SPINEL_GEN_TARGET linux)
+else()
+    set(FMRB_SPINEL_GEN_TARGET esp32)
+endif()
+set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/ruby/spinel/gen/${FMRB_SPINEL_GEN_TARGET})
 
 # The Spinel FFT backend (doc/mic_spectrum): a Spinel program that is not a VM
 # for anything -- an mruby task calls it as a library. On by default; set
@@ -447,10 +455,10 @@ idf_component_register(
 include(${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/mruby_abi_defines.cmake)
 fmrb_add_mruby_abi_defines()
 
-# The Spinel programs in gen/ are made on the host for one platform, and the
-# sim (build-linux/) and the ESP32 build (build/) share that directory: check
-# on every build, before this component compiles, that they were made for
-# this one (cmake/check_spinel_gen_platform.cmake).
+# Each build reads its own gen/<build> directory, so the programs there are
+# for this platform by construction; this cheap check (run on every build,
+# idf.py flash included) keeps it so if a directory is ever filled by hand
+# (cmake/check_spinel_gen_platform.cmake).
 add_custom_target(fmrb_spinel_gen_platform
     COMMAND ${CMAKE_COMMAND}
             -DGEN_DIR=${FMRB_SPINEL_GEN_DIR}
