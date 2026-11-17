@@ -112,6 +112,10 @@ class EditorApp < FmrbApp
     # pid of the app the last RUN started, so the next RUN replaces it. The
     # kernel reports it back in "run_result"; nil when nothing is running.
     @run_pid = nil
+    # The name the kernel gave the app this document last ran as (F5), the
+    # one its last error is filed under; "" until it has run. Per document
+    # (editor/docs.rb keeps the others'), told to the AI helper in "ai_doc".
+    @run_name = ""
     # Set when RUN had to ask for a file name first: run once the save lands.
     @run_after_save = false
     # Modal "save before ...?" dialog (editor/render.rb): @dlg_kind is
@@ -550,6 +554,7 @@ class EditorApp < FmrbApp
       ai_replace(msg)
     elsif cmd == "run_result"
       @run_pid = msg["pid"]
+      remote_run_name(msg)
       if @run_pid
         flash_status("#{FmrbI18n.t(:b_run_pid).to_s} #{@run_pid}")
         Log.info("Run started: #{msg["path"]} pid=#{@run_pid}")

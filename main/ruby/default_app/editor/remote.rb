@@ -19,6 +19,10 @@
 #   refused, never kept waiting, while a question or a menu is up ("busy") or a
 #   help page stands in for the document ("help").
 #
+# "ai_doc" also says which app the document last ran as with F5 ("rn", the
+# name the kernel files that app's last error under; "" before its first run),
+# so the asking app can tell whether the last error is this document's.
+#
 # Every message is a flat Hash (no nesting: the Spinel build reads values one
 # key at a time, narrowed with is_a?) and stays under the 176-byte message cap.
 module EditorRemote
@@ -29,6 +33,12 @@ module EditorRemote
   AI_DOC_PATH = "/tmp/ai_doc.rb"
   # Longer paths go out as the name alone, to keep "ai_doc" under the cap.
   AI_PATH_MAX = 60
+  # The app name in "ai_doc" ("rn") is cut to this many bytes, on a character
+  # boundary: with "f" at AI_PATH_MAX and every integer at its widest the
+  # message is then 175 bytes. A kernel name is 31 bytes at most, so only a
+  # long one is cut; the asking app cuts the last error's name the same way
+  # before it compares the two.
+  AI_RUN_NAME_MAX = 24
 
   def remote_init
     # A file handed over while the editor was busy ("" when none is waiting).
@@ -92,6 +102,41 @@ module EditorRemote
                    "ver" => EditorCore.doc_version })
   end
 
+  # ---- The app a document last ran as ----
+
+  # "run_result" from the kernel (editor.app.rb): the name goes to the
+  # document whose file was run -- normally the current one, but the answer
+  # arrives a little later and the user may have switched by then. A run that
+  # did not start leaves the document with no name: its last run is no app.
+  def remote_run_name(msg)
+    p = msg["path"]
+    path = p.is_a?(String) ? p : ""
+    n = msg["name"]
+    name = n.is_a?(String) ? remote_cut_name(n) : ""
+    name = "" unless msg["pid"].is_a?(Integer)
+    idx = path.length > 0 ? docs_find_path(path) : -1
+    if idx < 0
+      Log.info("run_result: #{path} is not open here; name '#{name}' not kept")
+      return
+    end
+    if idx == EditorCore.doc_index
+      @run_name = name
+    else
+      @doc_runs[idx] = name
+    end
+    Log.info("run_result: document #{idx + 1} ran as '#{name}'")
+  end
+
+  # +s+ cut to AI_RUN_NAME_MAX bytes, before a character that would not fit.
+  def remote_cut_name(s)
+    return s if s.bytesize <= AI_RUN_NAME_MAX
+    k = AI_RUN_NAME_MAX
+    while k > 0 && (s.getbyte(k) & 0xC0) == 0x80
+      k -= 1
+    end
+    s.byteslice(0, k).to_s
+  end
+
   # The file name for "ai_doc": "" for a document with no name, the name alone
   # when the whole path would not fit.
   def remote_file_field
@@ -126,7 +171,7 @@ module EditorRemote
                    "y" => @cy, "x" => @cx,
                    "sy" => sy.nil? ? -1 : sy, "sx" => sx.nil? ? -1 : sx,
                    "m" => @modified ? 1 : 0, "f" => remote_file_field,
-                   "rp" => rp.nil? ? -1 : rp })
+                   "rp" => rp.nil? ? -1 : rp, "rn" => @run_name })
   end
 
   def ai_replace(msg)

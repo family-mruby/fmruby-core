@@ -9,8 +9,9 @@
 #
 # The saved state is two flat arrays indexed by document: DOC_ST_N integers
 # per document in @doc_ints (booleans as 0/1, a missing selection as -1) and
-# one String per document in @doc_files ("" for a document with no name).
-# One element type per array, so the Spinel build can type both of them.
+# one String per document in @doc_files ("" for a document with no name) and
+# in @doc_runs (the app it last ran as, editor/remote.rb; "" before a run).
+# One element type per array, so the Spinel build can type all of them.
 module EditorDocs
   include EditorConst
 
@@ -34,6 +35,7 @@ module EditorDocs
   def docs_init
     @doc_ints = []
     @doc_files = []
+    @doc_runs = []
     docs_append_entry
   end
 
@@ -45,6 +47,7 @@ module EditorDocs
       i += 1
     end
     @doc_files << ""
+    @doc_runs << ""
   end
 
   def docs_count
@@ -64,6 +67,7 @@ module EditorDocs
     docs_save_flags(b)
     f = @current_file
     @doc_files[idx] = f ? f : ""
+    @doc_runs[idx] = @run_name
   end
 
   # Split from docs_save to keep each method's frame small (Spinel inlines).
@@ -89,6 +93,7 @@ module EditorDocs
     docs_restore_flags(b)
     f = @doc_files[idx]
     @current_file = f.length > 0 ? f : nil
+    @run_name = @doc_runs[idx]
   end
 
   def docs_restore_flags(b)
@@ -121,6 +126,7 @@ module EditorDocs
     @wrap_on = true
     @modified = false
     @current_file = nil
+    @run_name = ""
     @hl_enabled = true
     @hl_manual = false
   end
@@ -130,6 +136,7 @@ module EditorDocs
   def docs_remove_entry(idx)
     ints = []
     files = []
+    runs = []
     n = @doc_files.length
     d = 0
     while d < n
@@ -141,11 +148,13 @@ module EditorDocs
           k += 1
         end
         files << @doc_files[d]
+        runs << @doc_runs[d]
       end
       d += 1
     end
     @doc_ints = ints
     @doc_files = files
+    @doc_runs = runs
   end
 
   # ---- Before and after a switch ----

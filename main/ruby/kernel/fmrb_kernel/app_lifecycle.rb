@@ -311,13 +311,27 @@ module AppLifecycleMixin
 
   # Tell a Run requester (the editor) which pid its file is running as, and
   # remember the parentage so the keyboard goes back there when the app ends.
+  #
+  # "name" is the app's name as the kernel knows it: the one the last error
+  # carries (the .app.toml's or #---fmrb's app_screen_name, else the file
+  # name). Read here because this runs before the kernel can reap the app;
+  # an app that fails at once may be gone by the time the editor could ask.
+  # Left out when it would take the message past the 176-byte cap.
+  #
+  # The bytes the path and the name may take together: 176 less the keys,
+  # "run_result", a pid and the string headers (34), less a little.
+  RUN_RESULT_TEXT_MAX = 140
+
   def reply_run_result(requester, path, new_pid)
     return unless requester
+    reply = { "cmd" => "run_result", "path" => path, "pid" => new_pid }
     if new_pid
       @run_parent = {} unless @run_parent
       @run_parent[new_pid] = requester
+      info = _get_app_info(new_pid)
+      nm = info ? info[:name].to_s : ""
+      reply["name"] = nm if nm.length > 0 && path.to_s.bytesize + nm.bytesize <= RUN_RESULT_TEXT_MAX
     end
-    reply = { "cmd" => "run_result", "path" => path, "pid" => new_pid }
     _send_raw_message(requester, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
   end
 
