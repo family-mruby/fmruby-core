@@ -39,6 +39,9 @@ class EditorApp < FmrbApp
   include EditorDocs
   # The tab row naming the open documents (editor/tabs.rb).
   include EditorTabs
+  # Files handed over from outside, and the read / replace requests of other
+  # apps on the machine (editor/remote.rb).
+  include EditorRemote
 
   def initialize
     super()
@@ -182,6 +185,7 @@ class EditorApp < FmrbApp
     @tab_ws = []
     @tab_ids = []
     @tab_drawn_mod = false
+    remote_init
     # ---- Latency instrumentation ----
     @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
     @lat_n = 0
@@ -510,8 +514,10 @@ class EditorApp < FmrbApp
   # ---- Events ----
 
   def on_control(msg)
-    if msg["cmd"] == "file_selected" && msg["path"]
-      if msg["mode"] == "save" || @pending_file_op == :save
+    cmd = msg["cmd"]
+    mode = msg["mode"]
+    if cmd == "file_selected" && msg["path"]
+      if mode == "save" || (mode != "open" && @pending_file_op == :save)
         save_file_as(msg["path"])
         if @run_after_save
           @run_after_save = false
@@ -519,15 +525,30 @@ class EditorApp < FmrbApp
         end
         # A save-before question that was waiting for this name goes on.
         save_dialog_saved(msg["path"])
+        @pending_file_op = nil
+      elsif mode == "open" && @pending_file_op != :open
+        # Not the answer to File > Open: a file handed over from outside (the
+        # kernel when it started this editor for a file, the shell's edit).
+        # Opened like open_file, after any dialog that is up.
+        remote_open(msg["path"].to_s)
       else
         # Opened beside the others (editor/docs.rb), or switched to.
         docs_open_path(msg["path"])
+        @pending_file_op = nil
       end
-      @pending_file_op = nil
-    elsif msg["cmd"] == "file_selected"
-      # The file dialog was cancelled: a question waiting for a name ends.
+    elsif cmd == "file_selected"
+      # The file dialog was cancelled: a question waiting for a name ends, and
+      # so does the wait for the dialog's answer.
       save_dialog_saved(nil)
-    elsif msg["cmd"] == "run_result"
+      @pending_file_op = nil
+    elsif cmd == "open_file"
+      # The kernel, when the editor was asked for while this one runs.
+      remote_open(msg["path"].to_s)
+    elsif cmd == "ai_read"
+      ai_read(msg)
+    elsif cmd == "ai_replace"
+      ai_replace(msg)
+    elsif cmd == "run_result"
       @run_pid = msg["pid"]
       if @run_pid
         flash_status("#{FmrbI18n.t(:b_run_pid).to_s} #{@run_pid}")
@@ -879,6 +900,9 @@ class EditorApp < FmrbApp
       @status_msg_frames -= 1
       clear_status_message if @status_msg_frames == 0
     end
+
+    # A file handed over while a dialog was up, once it has gone.
+    remote_flush_open
 
     redraw_if_dirty
     @frame_ms

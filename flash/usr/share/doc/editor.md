@@ -18,6 +18,14 @@ Opening and closing
   C or Esc keeps it open. Closing the last file leaves an empty one.
 - With five files open, opening another is refused; close one first.
 
+Opening from elsewhere
+
+While the editor runs, a file opened from the file manager or with the
+shell's edit goes to the running editor as a new tab (the File > Open rules
+apply) instead of starting a second editor. If a question or a menu is up,
+the file opens once it is gone. The editor's icon and menu entry on the
+desktop bring the running editor to the front.
+
 Moving between files
 
 - Click a tab.

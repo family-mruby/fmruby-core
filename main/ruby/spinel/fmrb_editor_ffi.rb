@@ -37,6 +37,8 @@ module FmrbSpxEc
   ffi_func :fmrb_spx_ec_insert_multiline, [:int, :int, :int, :str, :int], :binstr
   ffi_func :fmrb_spx_ec_load_file,   [:int, :str], :int
   ffi_func :fmrb_spx_ec_save_file,   [:int, :str], :int
+  ffi_func :fmrb_spx_ec_replace_file, [:int, :str], :int
+  ffi_func :fmrb_spx_ec_doc_version, [:int], :int
   ffi_func :fmrb_spx_ec_find,        [:int, :str, :int, :int, :int, :int], :binstr
   ffi_func :fmrb_spx_ec_copy_range,  [:int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_ec_paste_at,    [:int, :int, :int], :binstr
@@ -108,6 +110,10 @@ module EditorCore
 
   def self.load_file(path); FmrbSpxEc.fmrb_spx_ec_load_file(slot, path); end
   def self.save_file(path); FmrbSpxEc.fmrb_spx_ec_save_file(slot, path); end
+  # Whole-document replacement that leaves the text alone when the file
+  # cannot be read in full, and the version that moves with every edit.
+  def self.replace_file(path); FmrbSpxEc.fmrb_spx_ec_replace_file(slot, path); end
+  def self.doc_version;    FmrbSpxEc.fmrb_spx_ec_doc_version(slot); end
 
   def self.find(query, from_y, from_x, after)
     FmrbSpxEc.fmrb_spx_ec_find(slot, query, query.bytesize, from_y, from_x, after ? 1 : 0)

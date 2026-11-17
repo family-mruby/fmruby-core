@@ -169,6 +169,9 @@ class FmrbKernelImpl < FmrbKernel
     @open_path_pid = nil
     @open_path = nil
     @open_path_tries = 0
+    # The running editor (one at a time; a second request goes to it). -1 when
+    # none is known; checked against the app's name before use.
+    @editor_pid = -1
 
     # PUB/SUB topic subscriptions: {"topic" => [pid1, pid2, ...]}
     @subscriptions = {}
@@ -304,6 +307,10 @@ class FmrbKernelImpl < FmrbKernel
     when "spawn"
       app_name = data["app_name"] || data["app"] || ""
       Log.info("Spawn request from pid=#{pid}: #{app_name}")
+
+      # The editor runs once and holds several files: asked for again, the
+      # running one gets the file and comes to the front.
+      return if hand_to_running_editor(app_name, pid, data["open_path"])
 
       new_pid = _spawn_app_req(app_name)
       if new_pid
@@ -629,25 +636,7 @@ class FmrbKernelImpl < FmrbKernel
       end
     when "focus_app"
       target_pid = data["pid"]
-      if target_pid
-        # Kept in a local rather than called in the elsif: Spinel emits the
-        # call's hoisted temporaries inside the condition's parens, which does
-        # not compile (ruby_writing_constraints B).
-        can_focus = focusable?(target_pid)
-        if target_pid == @parked_fullscreen_pid
-          # A parked fullscreen app has a hidden canvas and a suspended task;
-          # plain focus would show nothing and eat the keyboard. Unpark it.
-          unpark_fullscreen
-        elsif can_focus
-          _bring_to_front(target_pid)
-          _set_hid_target(target_pid)
-          @hid_target_pid = target_pid
-          mark_window_list_dirty
-          Log.info("Focus switched to PID #{target_pid} (requested by pid=#{pid})")
-        else
-          Log.info("Focus refused for PID #{target_pid}: nothing on screen")
-        end
-      end
+      focus_app_pid(target_pid, pid) if target_pid
     when "cycle_focus"
       # Ctrl+Tab (intercepted in host_task, works even in fullscreen). Under
       # the keys desktop it is the switcher key, and the desktop draws it.

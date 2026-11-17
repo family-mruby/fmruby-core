@@ -134,6 +134,8 @@ const char *fmrb_spx_ec_insert_multiline(int slot, int y, int x, const char *s, 
 
 int fmrb_spx_ec_load_file(int slot, const char *path) { return ec_load_file(slot, path); }
 int fmrb_spx_ec_save_file(int slot, const char *path) { return ec_save_file(slot, path); }
+int fmrb_spx_ec_replace_file(int slot, const char *path) { return ec_replace_file(slot, path); }
+int fmrb_spx_ec_doc_version(int slot) { return ec_doc_version(slot); }
 
 const char *fmrb_spx_ec_find(int slot, const char *q, int qlen,
                              int from_y, int from_x, int after)

@@ -228,6 +228,18 @@ static mrb_value m_save_file(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(ec_save_file(slot_of(mrb), RSTRING_CSTR(mrb, path)));
 }
 
+static mrb_value m_replace_file(mrb_state *mrb, mrb_value self)
+{
+    mrb_value path;
+    mrb_get_args(mrb, "S", &path);
+    return mrb_fixnum_value(ec_replace_file(slot_of(mrb), RSTRING_CSTR(mrb, path)));
+}
+
+static mrb_value m_doc_version(mrb_state *mrb, mrb_value self)
+{
+    return mrb_fixnum_value(ec_doc_version(slot_of(mrb)));
+}
+
 /* ---- search / clipboard ------------------------------------------------ */
 
 static mrb_value m_find(mrb_state *mrb, mrb_value self)
@@ -412,6 +424,8 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
 
     mrb_define_module_function(mrb, mod, "load_file",    m_load_file,    MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "save_file",    m_save_file,    MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "replace_file", m_replace_file, MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "doc_version",  m_doc_version,  MRB_ARGS_NONE());
     mrb_define_module_function(mrb, mod, "find",         m_find,         MRB_ARGS_REQ(4));
 
     mrb_define_module_function(mrb, mod, "copy_range",   m_copy_range,   MRB_ARGS_REQ(4));

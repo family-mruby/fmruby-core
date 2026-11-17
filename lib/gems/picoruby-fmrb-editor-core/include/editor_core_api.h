@@ -94,6 +94,15 @@ const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
 /* File I/O */
 int  ec_load_file(int slot, const char *path);
 int  ec_save_file(int slot, const char *path);
+/* Load path in place of the document only when all of it could be read; on
+   an error the document is unchanged. Answers the line count or EC_ERR_*. */
+int  ec_replace_file(int slot, const char *path);
+
+/* The document's version: a number from one sequence shared by every
+   document, moved by each call above that changes the text (reset, the
+   editing calls, paste, load, replace) and by nothing else. Equal versions
+   mean the same text in the same document. */
+int  ec_doc_version(int slot);
 
 /* Search: packed [found u8, y u32, x u32] */
 const char *ec_find(int slot, const char *q, int qlen, int from_y, int from_x,
