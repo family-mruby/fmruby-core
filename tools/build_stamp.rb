@@ -16,7 +16,7 @@
 # What counts as a source: the files that go into the program (INPUTS
 # below). flash/ is read live by the sim and the native program, so it is
 # not theirs; the browser bundle packs the tracked flash/ files, so it is the
-# browser's. Generated files (main/ruby/spinel/gen, fmrb_gen, the mrb
+# browser's. Generated files (main/ruby/spinel/gen/*, fmrb_gen, the mrb
 # bytecode, flash/etc, ...) are gitignored and never counted. Submodules count
 # by their commit only: rake setup copies files into them on every build, and
 # what it copies comes from lib/, which is an input.
@@ -32,7 +32,13 @@
 #   ruby tools/build_stamp.rb check KIND [DIR]   exit 0 fresh, 3 stale (the reason on stderr)
 #   ruby tools/build_stamp.rb write KIND [DIR]   stamp DIR with the tree as it is now
 #   ruby tools/build_stamp.rb show  KIND [DIR]
-# KIND: linux | native | native-mruby | web
+# KIND: linux | native | native-mruby | web | ga-linux
+#
+# ga-linux is fmruby-graphics-audio's sim build (its build-linux/), checked
+# in that repository next to this one (KINDS' repo:). The wire headers it
+# reads from this repository (components/fmrb_wire) are not among its
+# inputs; they are this repository's linux build's, so a change there makes
+# the core's sim build stale, not graphics-audio's.
 require "digest"
 require "json"
 require "open3"
@@ -63,6 +69,12 @@ module FmrbBuildStamp
     # wasm/vendor holds fetched libraries, never edited here.
     "web" => { dir: "wasm/build", inputs: FIRMWARE + %w[wasm hosted :(exclude)wasm/vendor],
                tracked_only: %w[flash], name: "the browser build", rebuild: "rake wasm:web" },
+    # fmruby-graphics-audio's Linux sim build, beside its ESP32 build/. Its
+    # flash/ is read live, like the core's.
+    "ga-linux" => { repo: "../fmruby-graphics-audio", dir: "build-linux",
+                    inputs: %w[main components CMakeLists.txt sdkconfig.defaults sdkconfig.defaults.linux
+                               partitions.csv patches],
+                    tracked_only: [], name: "graphics-audio's Linux sim build", rebuild: "rake build:linux" },
   }.freeze
 
   module_function
@@ -71,7 +83,14 @@ module FmrbBuildStamp
     KINDS[kind.to_s] or raise ArgumentError, "unknown build kind #{kind.inspect} (#{KINDS.keys.join('|')})"
   end
 
-  def default_dir(core, kind) = File.join(core, kind!(kind)[:dir])
+  # The repository the kind's sources are in: this one, or the one its
+  # repo: names (relative to this one).
+  def root(core, kind)
+    r = kind!(kind)[:repo]
+    r ? File.expand_path(r, core) : core
+  end
+
+  def default_dir(core, kind) = File.join(root(core, kind), kind!(kind)[:dir])
 
   def stamp_path(dir) = File.join(dir, FILE)
 
@@ -92,6 +111,7 @@ module FmrbBuildStamp
   # differs from HEAD ("-" when deleted, a submodule's commit for a
   # submodule).
   def state(core, kind)
+    core = root(core, kind)
     head = git(core, "rev-parse", "HEAD").strip
     changed = git(core, "diff", "--name-only", "-z", "--ignore-submodules=dirty", "HEAD", "--",
                   *pathspecs(kind)).split("\0")
@@ -164,6 +184,7 @@ module FmrbBuildStamp
                        "before the stale-build guard, or the build did not finish" }
     end
     now = state(core, kind)
+    core = root(core, kind)
     old_files = stamp["files"] || {}
     candidates = (old_files.keys + now["files"].keys).uniq
     if stamp["head"] != now["head"]
@@ -206,7 +227,7 @@ module FmrbBuildStamp
       lines << "  newer than the build: #{shown.join(', ')}" \
                "#{result[:files].size > shown.size ? " (and #{result[:files].size - shown.size} more)" : ''}"
     end
-    lines << "  rebuild: cd #{core} && #{k[:rebuild]}"
+    lines << "  rebuild: cd #{root(core, kind)} && #{k[:rebuild]}"
     lines << "  or start it as it is: #{override}"
     lines.join("\n")
   end

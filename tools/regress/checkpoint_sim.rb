@@ -107,7 +107,7 @@ module Regress
         why = Tree.sim_problem
         raise Failure, "the sim cannot run from here: #{why}" if why
         raise Failure, "a sim stack is already running (someone's?); leave it or take it down first" if SimRun.core_running?
-        ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
+        ga = File.join(ROOT, "fmruby-graphics-audio", "build-linux", "fmruby-graphics-audio.elf")
         raise Failure, "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless SimRun.elf_x86?(ga)
       end
 

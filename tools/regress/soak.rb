@@ -228,7 +228,7 @@ module Regress
       fams = SR.families(opts[:only])
       SR.need_sim!
       raise "a sim stack is already running (someone's?); leave it or take it down first" if SR.core_running?
-      ga = File.join(SR::ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
+      ga = File.join(SR::ROOT, "fmruby-graphics-audio", "build-linux", "fmruby-graphics-audio.elf")
       raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless SR.elf_x86?(ga)
       FileUtils.mkdir_p(OUT)
       results = []

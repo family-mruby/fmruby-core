@@ -506,7 +506,7 @@ module Regress
       unless opts[:table]
         need_sim!
         raise "a sim stack is already running (someone's?); leave it or take it down first" if core_running?
-        ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
+        ga = File.join(ROOT, "fmruby-graphics-audio", "build-linux", "fmruby-graphics-audio.elf")
         raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless elf_x86?(ga)
         tree = BuildTree.new(CORE, :linux)
         tree.stash!
@@ -570,7 +570,7 @@ module Regress
       raise "--calibrate needs at least 2 runs" if runs < 2
       need_sim!
       raise "a sim stack is already running (someone's?); leave it or take it down first" if core_running?
-      ga = File.join(ROOT, "fmruby-graphics-audio", "build", "fmruby-graphics-audio.elf")
+      ga = File.join(ROOT, "fmruby-graphics-audio", "build-linux", "fmruby-graphics-audio.elf")
       raise "fmruby-graphics-audio has no Linux build (rake build:linux there first)" unless elf_x86?(ga)
       t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       doc = load_doc
