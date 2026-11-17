@@ -14,6 +14,8 @@
 //   stats          -> stats<TAB>block_reads<TAB>microseconds since the last stats
 //   close          -> close<TAB>live bytes and blocks left in the pool
 //   pick DIR       -> pick<TAB>rc<TAB>path   the default dictionary chosen in DIR
+//   opendef DIR    -> opendef<TAB>rc<TAB>large_err<TAB>path  (fmrb_kanji_open_default;
+//                     the dictionary stays open for info/close)
 //   isdef DIR PATH -> isdef<TAB>0|1          PATH is one of DIR's two default names
 
 #include <stdio.h>
@@ -126,6 +128,13 @@ int main(void)
             char path[128];
             fmrb_err_t err = fmrb_kanji_pick_default(arg, path, sizeof(path));
             printf("pick\t%d\t%s\n", err, path);
+        } else if (strcmp(s_line, "opendef") == 0) {
+            char path[128];
+            fmrb_err_t large_err = FMRB_OK;
+            fmrb_kanji_close(dict);
+            dict = NULL;
+            fmrb_err_t err = fmrb_kanji_open_default(arg, path, sizeof(path), &dict, &large_err);
+            printf("opendef\t%d\t%d\t%s\n", err, large_err, path);
         } else if (strcmp(s_line, "isdef") == 0) {
             char *path = strchr(arg, ' ');
             if (path) *path++ = '\0';

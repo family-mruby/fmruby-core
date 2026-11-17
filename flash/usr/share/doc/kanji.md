@@ -26,7 +26,8 @@ The dictionaries go in a folder named dict at the top of the card
 (/sd/dict/). Keep the LICENSE in the same folder.
 
 - When fmrb_kanji_4m.dic (the larger one) is there, the machine uses it.
-- Otherwise it uses fmrb_kanji.dic (the standard one).
+- Otherwise it uses fmrb_kanji.dic (the standard one). So it does when
+  the larger one is there but broken and does not open.
 
 Both can be there (the larger one is used). Keep their names. The machine
 uses one dictionary. For a dictionary somewhere else or under another name,
@@ -120,7 +121,7 @@ Write these lines in /etc/system_conf.toml and restart:
     kanji_dict = "/sd/dict/fmrb_kanji.dic"   # where the dictionary is
 
 Without kanji_dict the machine uses /sd/dict/fmrb_kanji_4m.dic when it is
-there and /sd/dict/fmrb_kanji.dic otherwise (section 2). With kanji_dict it
+there and opens, and /sd/dict/fmrb_kanji.dic otherwise (section 2). With kanji_dict it
 uses that file only (not the larger one, even when it is there).
 
 Taking the dictionary off the card turns conversion off too.

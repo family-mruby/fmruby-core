@@ -74,7 +74,7 @@ _Static_assert(FMRB_KANJI_NO_INDEX == FMRB_KANJI_LOOKUP_NO_WHOLE,
 typedef struct {
     // Written by the kernel task before the start, read by the task. With
     // `pick` (no kanji_dict), the task writes the default it chose here at
-    // each open (fmrb_kanji_pick_default).
+    // each open (fmrb_kanji_open_default).
     char path[KANJI_PATH_MAX];
     // The same path as the file HAL resolves it, for the change hook; with
     // `pick`, the default directory resolved (either name in it counts).
@@ -216,10 +216,19 @@ static fmrb_kanji_dict_t *open_dict(void)
 {
     fmrb_time_t t0 = fmrb_hal_time_get_us();
     fmrb_kanji_dict_t *dict = NULL;
+    fmrb_err_t err;
     if (s_kj.pick) {
-        fmrb_kanji_pick_default(FMRB_KANJI_DEFAULT_DIR, s_kj.path, sizeof(s_kj.path));
+        // The 4 MB one when it is there and opens, else the 1 MB one.
+        fmrb_err_t large_err = FMRB_OK;
+        err = fmrb_kanji_open_default(FMRB_KANJI_DEFAULT_DIR, s_kj.path, sizeof(s_kj.path),
+                                      &dict, &large_err);
+        if (large_err != FMRB_OK) {
+            FMRB_LOGW(TAG, "%s/%s not opened (%d): trying %s", FMRB_KANJI_DEFAULT_DIR,
+                      FMRB_KANJI_LARGE_NAME, large_err, FMRB_KANJI_DEFAULT_NAME);
+        }
+    } else {
+        err = fmrb_kanji_open(s_kj.path, &dict);
     }
-    fmrb_err_t err = fmrb_kanji_open(s_kj.path, &dict);
     if (err == FMRB_OK && !s_buf) {
         s_buf = (kanji_buffers_t *)fmrb_sys_malloc(sizeof(kanji_buffers_t));
         if (!s_buf) {

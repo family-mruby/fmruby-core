@@ -241,6 +241,39 @@ fmrb_err_t fmrb_kanji_pick_default(const char *dir, char *path, size_t path_size
     return FMRB_OK;
 }
 
+fmrb_err_t fmrb_kanji_open_default(const char *dir, char *path, size_t path_size,
+                                   fmrb_kanji_dict_t **out, fmrb_err_t *large_err)
+{
+    if (large_err) {
+        *large_err = FMRB_OK;
+    }
+    if (out == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    *out = NULL;
+    fmrb_err_t err = fmrb_kanji_pick_default(dir, path, path_size);
+    if (err != FMRB_OK) {
+        return err;
+    }
+    err = fmrb_kanji_open(path, out);
+    size_t n = strlen(path);
+    size_t large_len = strlen(FMRB_KANJI_LARGE_NAME);
+    bool was_large = n >= large_len && strcmp(path + n - large_len, FMRB_KANJI_LARGE_NAME) == 0;
+    if (err == FMRB_OK || !was_large) {
+        return err;
+    }
+    // The large file is there but did not open: the standard one instead.
+    if (large_err) {
+        *large_err = err;
+    }
+    int m = snprintf(path, path_size, "%s/%s", dir, FMRB_KANJI_DEFAULT_NAME);
+    if (m < 0 || (size_t)m >= path_size) {
+        path[0] = '\0';
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    return fmrb_kanji_open(path, out);
+}
+
 bool fmrb_kanji_is_default_path(const char *path, const char *dir)
 {
     if (path == NULL || dir == NULL) {

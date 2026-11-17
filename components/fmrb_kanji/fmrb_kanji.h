@@ -85,14 +85,29 @@ fmrb_err_t fmrb_kanji_open(const char *path, fmrb_kanji_dict_t **out);
  * @brief Pick the default dictionary in @p dir.
  *
  * Writes dir/FMRB_KANJI_LARGE_NAME to @p path when that file exists (a
- * regular file), dir/FMRB_KANJI_DEFAULT_NAME otherwise. Only existence
- * decides: a large file that is there but broken is still the choice (and
- * fails to open). Made at each (re)open, so placing or removing the large
- * file switches the dictionary.
+ * regular file), dir/FMRB_KANJI_DEFAULT_NAME otherwise. Made at each
+ * (re)open, so placing or removing the large file switches the dictionary.
  *
  * @return FMRB_OK; FMRB_ERR_INVALID_PARAM when the path does not fit.
  */
 fmrb_err_t fmrb_kanji_pick_default(const char *dir, char *path, size_t path_size);
+
+/**
+ * @brief Open the default dictionary in @p dir.
+ *
+ * The large one when it exists; when it exists but does not open (broken,
+ * read error, no memory), the standard one instead. Neither opening means
+ * no dictionary.
+ *
+ * @param path      Receives the path opened, or the last one tried.
+ * @param out       Receives the handle on success.
+ * @param large_err Receives the large file's error when it was there and
+ *                  did not open (the caller logs it), FMRB_OK otherwise.
+ * @return as fmrb_kanji_open, for the file in @p path;
+ *         FMRB_ERR_INVALID_PARAM when the path does not fit.
+ */
+fmrb_err_t fmrb_kanji_open_default(const char *dir, char *path, size_t path_size,
+                                   fmrb_kanji_dict_t **out, fmrb_err_t *large_err);
 
 /**
  * @brief Whether @p path is one of the two default names in @p dir.

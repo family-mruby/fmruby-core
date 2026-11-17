@@ -18,7 +18,8 @@
 #      `rake kanji:dict`) when it is there: every reading and thousands of
 #      longest-match queries. Skipped, with the reason, when it is not.
 #   5. the default dictionary's choice without kanji_dict (the 4 MB one when
-#      it is there) and the names the file change hook reacts to
+#      it is there and opens, else the 1 MB one: truncated, broken header,
+#      both broken) and the names the file change hook reacts to
 #
 # The program is built with AddressSanitizer and UBSan when the compiler has
 # them, so a read past the block shows up as a failure.
@@ -295,8 +296,10 @@ end
 
 # 5. which default dictionary is used without kanji_dict (fmrb_kanji_pick_default):
 #    the 4 MB name when it is there (a regular file), the 1 MB name otherwise;
-#    and which changes the change hook reacts to (fmrb_kanji_is_default_path).
-def default_choice(prog, dir)
+#    the 1 MB one when the 4 MB one is there but does not open
+#    (fmrb_kanji_open_default); and which changes the change hook reacts to
+#    (fmrb_kanji_is_default_path).
+def default_choice(prog, dir, good)
   d = File.join(dir, "sd", "dict")
   FileUtils.mkdir_p(d)
   std = File.join(d, "fmrb_kanji.dic")
@@ -315,6 +318,40 @@ def default_choice(prog, dir)
   Dir.rmdir(large)
   check("choice: a path that does not fit is refused",
         run_program(prog, ["pick /#{'d' * 200}"])[0].start_with?("pick\t#{ERR_INVALID_PARAM}\t"))
+
+  # Opening: a 4 MB file there but not opening falls back to the 1 MB one.
+  opendef = ->(cmds = []) { run_program(prog, ["opendef #{d}", "info", "close"] + cmds) }
+  FileUtils.cp(good, std)
+  FileUtils.cp(good, large)
+  out = opendef.call
+  check("open: both good -> the 4 MB name opens", out[0] == "opendef\t#{OK}\t#{OK}\t#{large}")
+  check("open: nothing left in the pool", out[2] == "close\t0 0")
+  File.binwrite(large, File.binread(good, 1000))  # truncated
+  out = opendef.call
+  check("open: a truncated 4 MB one -> the 1 MB one, with the reason",
+        out[0] == "opendef\t#{OK}\t#{ERR_INVALID_STATE}\t#{std}" && out[1].start_with?("info\t#{File.size(good)} "))
+  check("open: nothing left in the pool after the fallback", out[2] == "close\t0 0")
+  File.binwrite(large, "FMKD" + "\0" * 60)       # another format version
+  out = opendef.call
+  check("open: another version -> the 1 MB one", out[0] == "opendef\t#{OK}\t#{ERR_NOT_SUPPORTED}\t#{std}")
+  File.binwrite(large, "x" * 5000)                # not a dictionary
+  out = opendef.call
+  check("open: not a dictionary -> the 1 MB one", out[0] == "opendef\t#{OK}\t#{ERR_INVALID_STATE}\t#{std}")
+  File.binwrite(std, File.binread(good, 2000))
+  out = opendef.call
+  check("open: both broken -> none", out[0] == "opendef\t#{ERR_INVALID_STATE}\t#{ERR_INVALID_STATE}\t#{std}")
+  check("open: nothing left in the pool when none opened", out[2] == "close\t0 0")
+  File.delete(std)
+  out = opendef.call
+  check("open: a broken 4 MB one and no 1 MB one -> none",
+        out[0] == "opendef\t#{ERR_NOT_FOUND}\t#{ERR_INVALID_STATE}\t#{std}")
+  File.delete(large)
+  FileUtils.cp(good, std)
+  out = opendef.call
+  check("open: only the 1 MB one -> it, no 4 MB error", out[0] == "opendef\t#{OK}\t#{OK}\t#{std}")
+  File.delete(std)
+  check("open: neither -> none", opendef.call[0] == "opendef\t#{ERR_NOT_FOUND}\t#{OK}\t#{std}")
+
   {
     "#{d}/fmrb_kanji.dic" => 1, "#{d}/fmrb_kanji_4m.dic" => 1, "#{d}/fmrb_kanji_LICENSE.txt" => 0,
     "#{d}/fmrb_kanji.dic.tmp" => 0, "#{d}x/fmrb_kanji.dic" => 0, "#{d}/sub/fmrb_kanji.dic" => 0,
@@ -365,7 +402,7 @@ Dir.mktmpdir("kanji_c") do |dir|
   end
 
   # 5. the default dictionary's choice
-  default_choice(prog, dir)
+  default_choice(prog, dir, small[:out])
   puts "kanji C lookup: built #{sanitized ? 'with' : 'without'} AddressSanitizer/UBSan"
 end
 
