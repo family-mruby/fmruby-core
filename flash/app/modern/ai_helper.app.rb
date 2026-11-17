@@ -1,4 +1,4 @@
-# AI helper (doc/ai_coding): asks the parent's AI helper gem (fmrb-tutor)
+# AI helper (doc/ai_coding): asks the parent's AI helper gem (asterism-tutor)
 # over Asterism, and puts what comes back into the editor's document. The
 # device never talks to an LLM provider and holds no key: its only partner
 # is <node>/tutor/helper, found on the network.

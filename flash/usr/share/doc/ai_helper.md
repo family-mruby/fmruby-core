@@ -50,6 +50,6 @@ Good to know
 - When something is in the way (the network, no tutor, today's limit used, a
   use turned off) the reason is shown on the bottom line.
 
-For the family: the tutor is fmrb-tutor (doc/ai_coding). Its settings decide
+For the family: the tutor is asterism-tutor (doc/ai_coding). Its settings decide
 which machines may ask, how many times a day, and whether Make and Fix are
 allowed. Every exchange is recorded on the tutor's side.
