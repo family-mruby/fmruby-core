@@ -1,0 +1,35 @@
+# An example of the Weather app's settings. Copy it to /home/weather.toml
+# and edit it:
+#
+#   cp /usr/share/samples/weather/weather.toml.example /home/weather.toml
+#
+# Without /home/weather.toml the app shows Tokyo from Open-Meteo.
+#
+# api   the forecast URL. It is asked as
+#       <api>?latitude=..&longitude=..&current_weather=true
+#       and must answer like Open-Meteo's /v1/forecast (no API key needed).
+# city  the city shown when the app opens. The app rewrites this line when
+#       you pick another city with Left / Right or the arrows beside the name.
+#       Any other line of this file is left as you wrote it.
+#
+# [[cities]] one table per city: name (shown; Japanese is fine), lat, lon
+# (decimal degrees, north and east positive). The order is the order the
+# arrows step through.
+
+api = "https://api.open-meteo.com/v1/forecast"
+city = "Tokyo"
+
+[[cities]]
+name = "Tokyo"
+lat = 35.68
+lon = 139.69
+
+[[cities]]
+name = "Osaka"
+lat = 34.69
+lon = 135.50
+
+[[cities]]
+name = "Sapporo"
+lat = 43.06
+lon = 141.35
