@@ -1,0 +1,8 @@
+app_handle_name = "ai_editor_probe"
+app_screen_name = "AI Probe"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 100
+default_window_pos_x = 200
+default_window_pos_y = 120
+launcher_visible = false
