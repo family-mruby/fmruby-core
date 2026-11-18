@@ -468,10 +468,18 @@ static size_t canvas_commit_rows(p4_canvas_t *c, const uint16_t *sb, uint16_t *r
         int y1 = c->dirty_y1[i];
         if (y1 > h) y1 = h;
         if (y0 >= y1) continue;
-        memcpy(rb + (size_t)y0 * w, sb + (size_t)y0 * w, (size_t)(y1 - y0) * w * 2);
         copied += (size_t)(y1 - y0) * w * 2;
         if (ink && !rescan) {
-            for (int y = y0; y < y1; y++) c->ink[y] = row_ink(sb + (size_t)y * w, w, c->ck565);
+            // Row by row, so the row is read for its ink while the copy has
+            // just brought it into the cache: a span of a few hundred rows
+            // copied in one go would have to be read from PSRAM again.
+            for (int y = y0; y < y1; y++) {
+                const uint16_t *src = sb + (size_t)y * w;
+                memcpy(rb + (size_t)y * w, src, (size_t)w * 2);
+                c->ink[y] = row_ink(src, w, c->ck565);
+            }
+        } else {
+            memcpy(rb + (size_t)y0 * w, sb + (size_t)y0 * w, (size_t)(y1 - y0) * w * 2);
         }
     }
     c->ndirty = 0;
