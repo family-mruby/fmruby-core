@@ -11,7 +11,8 @@ module DesktopCommonMixin
   # The built-ins' declarations live here, beside their names and icons:
   # a desktop is what offers them to the user, and nothing else reads these.
   # The same two keys an app's .app.toml carries:
-  #   screens        the screen forms the app draws on ("426x240", "320x170")
+  #   screens        the screen forms the app draws on ("426x240", "640x360",
+  #                  "320x170")
   #   needs_pointer  whether it cannot be used without a mouse or touch
   # An entry without them is offered by the mouse desktop only. Labels are
   # resolved through FmrbI18n when this is called, so they follow the
@@ -20,10 +21,10 @@ module DesktopCommonMixin
     [
       { label: FmrbI18n.t(:shell), app: "default/shell",
         icon_file: "usr/share/icon/shell.icon",
-        screens: ["426x240", "320x170"], needs_pointer: false },
+        screens: ["426x240", "640x360", "320x170"], needs_pointer: false },
       { label: FmrbI18n.t(:editor), app: "default/editor",
         icon_file: "usr/share/icon/editor.icon",
-        screens: ["426x240", "320x170"], needs_pointer: false },
+        screens: ["426x240", "640x360", "320x170"], needs_pointer: false },
       # The store is built in like the other two: it installs apps, so it must
       # not be one of the things it can uninstall. Its .app.toml is gone, so
       # this list is the only place its name and icon now live.
