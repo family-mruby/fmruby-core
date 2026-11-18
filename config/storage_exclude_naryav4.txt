@@ -14,9 +14,9 @@ app/game/mahjong/large/tiles_river2_r270.png
 app/game/mahjong/large/tiles_side.png
 app/game/mahjong/large/README.md
 
-# Wallpapers for screens larger than any P4 board's: the desktop is 426x240
-# (system_conf display_width/height) and takes the picture of that size; the
-# 640x360 one stays for a desktop set to the high-resolution size.
+# Wallpapers for screens larger than any P4 board's: the desktop is 640x360
+# by default (system_conf display_width/height) and takes the picture of that
+# size; the 426x240 one stays for a desktop set to the standard size.
 # (system_desktop.app.rb theme_wallpaper asks for <stem><w>x<h>.png, and
 # 852x480 and 1280x720 only on a screen larger than 426x240.)
 usr/share/backgrounds/bg_852x480.png

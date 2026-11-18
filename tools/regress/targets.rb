@@ -51,9 +51,9 @@
 #           earlier device reports.
 #
 # Boards with the same screen (everything above but name and conf) draw the
-# same picture, so they share one set of records: the profile. Tab5,
-# NARYAv4 and the browser build are one profile; a new board with a new
-# screen size is a new profile.
+# same picture, so they share one set of records: the profile. Tab5 and the
+# browser build are one profile, NARYAv4 (640x360) another; a new board with
+# a new screen size is a new profile.
 module Regress
   # The build options every firmware in the size table is built with, so the
   # table does not move with a developer's .env (the standard configuration:
@@ -119,7 +119,10 @@ module Regress
                font_ja: true, conf: "system_conf_tab5.toml", exclude: "storage_exclude_tab5.txt",
                firmware: "TAB5", size_default: true,
                serial: { usb: "303a:1001", reset: "open", baud: 115_200, flash_baud: 115_200 }),
-    Target.new(name: "naryav4", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
+    # The P4-Nano's default is 640x360 (doc/modern_resolution R2); the Tab5,
+    # the browser build and the Modern sim keep 426x240.
+    Target.new(name: "naryav4", family: "modern", screen: [640, 360], hires: nil, plain: [426, 240], margin: [0, 0],
+               app: [386, 180],
                font_ja: true, conf: "system_conf_naryav4.toml", exclude: "storage_exclude_naryav4.txt",
                firmware: "NARYAv4",
                serial: { usb: "1a86:55d3", reset: "rts", baud: 115_200, flash_baud: 460_800 }),
