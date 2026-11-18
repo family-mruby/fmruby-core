@@ -443,10 +443,10 @@ module AppLifecycleMixin
 
   def enter_fullscreen(pid)
     Log.info("Entering fullscreen mode: PID #{pid} (depth #{@fs_stack.length + 1})")
-    # The high-resolution screen, if this app takes it, is asked for before
+    # The screen switched for this app, if it is, is asked for before
     # anything is hidden (sync_screen_mode).
-    hires = screen_mode_for(pid)
-    sync_screen_mode(hires) if hires
+    owner = screen_mode_for(pid)
+    sync_screen_mode(owner) if owner
     suspended = []
 
     # Suspend all other user apps (not kernel, not the fullscreen app itself).
@@ -504,12 +504,12 @@ module AppLifecycleMixin
     end
     return fs_top_pid if idx.nil?
 
-    # The app that owns the screen afterwards (the frame underneath). If it
-    # takes the high-resolution screen, ask for it before it is resumed, so
-    # its canvas never shows at the base size (sync_screen_mode).
+    # The app that owns the screen afterwards (the frame underneath). If the
+    # screen is switched for it, ask for that before it is resumed, so its
+    # canvas never shows on the base screen (sync_screen_mode).
     under = idx > 0 ? @fs_stack[idx - 1][:pid] : nil
-    hires = screen_mode_for(under)
-    sync_screen_mode(hires) if hires
+    owner = screen_mode_for(under)
+    sync_screen_mode(owner) if owner
 
     while @fs_stack.length > idx
       frame = @fs_stack.pop
@@ -541,14 +541,20 @@ module AppLifecycleMixin
   # The windowed geometry is remembered here so leaving fullscreen puts the
   # window back where it was.
 
-  # ---- Fullscreen high-resolution screen (doc/fullscreen_hires/) ----
+  # ---- The screen a fullscreen app is shown on (doc/fullscreen_hires/,
+  #      doc/modern_resolution/) ----
   #
-  # An app that declares fullscreen_hires (.app.toml, or the spawner's table)
-  # is shown on the 640x360 screen at 2x instead of 426x240 at 3x while it owns
-  # the screen in fullscreen -- where the build and the display can do that at
-  # all (_fullscreen_hires_size; nil on Retro, the Retro simulator and a Modern
-  # simulator whose graphics-audio does not know the mode, which keep the usual
-  # fullscreen). The app only declares; this decides, from the
+  # While an app owns the screen in fullscreen, the display may switch to
+  # another screen for it (_screen_mode_size, from what the app declares in
+  # .app.toml or the spawner's table, and the base screen):
+  #   - on Modern's standard 426x240 screen, an app that declares
+  #     fullscreen_hires is shown on a 640x360 screen at 2x;
+  #   - on the 640x360 screen chosen in Config, an app that declares neither
+  #     fullscreen_hires nor fullscreen_any_size (laid out for 426x240) is
+  #     shown on a 426x240 screen at 3x.
+  # Nowhere else (nil on Retro, the Retro simulator, the browser's larger
+  # pages and a Modern simulator whose graphics-audio does not know the mode):
+  # the usual fullscreen. The app only declares; this decides, from the
   # fullscreen stack and nothing else: the top frame owns the screen (a parked
   # app has been popped off it).
   #
@@ -562,15 +568,13 @@ module AppLifecycleMixin
   # When the owner is hidden (a park) or deleted (it ended), the display goes
   # back by itself; the call here then only updates the input side.
   #
-  #   @screen_hires_pid  pid holding the high-resolution screen, nil if none
+  #   @screen_mode_pid  pid the screen is switched for, nil if none
 
-  # +pid+ if it would take the high-resolution screen as the fullscreen top,
-  # else nil.
+  # +pid+ if the display would switch the screen for it as the fullscreen
+  # top, else nil.
   def screen_mode_for(pid)
     return nil unless pid
-    return nil unless _fullscreen_hires_size
-    info = _get_app_info(pid)
-    return nil unless info && info[:fullscreen_hires]
+    return nil unless _screen_mode_size(pid)
     pid
   end
 
@@ -579,29 +583,30 @@ module AppLifecycleMixin
   end
 
   def sync_screen_mode(want)
-    cur = @screen_hires_pid
+    cur = @screen_mode_pid
     return if want == cur
     unless want
       if cur
-        Log.info("Screen mode: PID #{cur} gives the high-resolution screen back")
+        Log.info("Screen mode: PID #{cur} gives the base screen back")
         _set_app_screen_mode(cur, 0, 0)
       end
-      @screen_hires_pid = nil
+      @screen_mode_pid = nil
       return
     end
-    size = _fullscreen_hires_size
+    size = _screen_mode_size(want)
     return unless size
     w = size[0]
     h = size[1]
     # Another owner taking over needs no step back to the base screen in
-    # between: the display hands the screen to the new owner.
+    # between: the display hands the screen to the new owner. Both take the
+    # same screen (the base screen decides which one there is).
     Log.info("Screen mode: PID #{want} takes the #{w}x#{h} screen")
     unless _set_app_screen_mode(want, w, h)
       Log.warn("Screen mode: PID #{want} refused")
-      @screen_hires_pid = nil
+      @screen_mode_pid = nil
       return
     end
-    @screen_hires_pid = want
+    @screen_mode_pid = want
     # Normally the app is already at that size (the spawner starts it there,
     # F11 sizes it with fullscreen_size) or is about to be resized by the
     # caller while still windowed. A fullscreen app at another size is resized
@@ -617,11 +622,11 @@ module AppLifecycleMixin
   end
 
   # Size a fullscreen window gets, the same the spawner gives a fullscreen
-  # app (fmrb_app_fullscreen_size): the high-resolution screen for an app that
-  # takes it (screen_mode_for), else the display minus its margins -- which on
-  # the native compositor's wider screen (doc/linux_native L9d, L9e) is
-  # Modern's 426x240 for a plain fullscreen app, and the whole screen or
-  # 640x360 for one that declares fullscreen_hires.
+  # app (fmrb_app_fullscreen_size): the screen the display switches to for it
+  # (screen_mode_for), else the display minus its margins -- which on the
+  # native compositor's wider screen (doc/linux_native L9d, L9e) is Modern's
+  # 426x240 for a plain fullscreen app, and the whole screen or 640x360 for
+  # one that declares fullscreen_hires.
   def fullscreen_size(pid)
     _fullscreen_size(pid)
   end
@@ -645,9 +650,9 @@ module AppLifecycleMixin
     w = size[0]
     h = size[1]
     Log.info("Runtime fullscreen: PID #{pid} -> #{w}x#{h}")
-    # The high-resolution screen before the resize (sync_screen_mode).
-    hires = screen_mode_for(pid)
-    sync_screen_mode(hires) if hires
+    # The switched screen before the resize (sync_screen_mode).
+    owner = screen_mode_for(pid)
+    sync_screen_mode(owner) if owner
     unless _set_app_fullscreen(pid, true, w, h)
       sync_screen_mode(screen_mode_want)
       return

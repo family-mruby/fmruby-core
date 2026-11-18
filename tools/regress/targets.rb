@@ -11,6 +11,10 @@
 #   screen  [w, h] the display (system_conf display_width/height)
 #   hires   [w, h] the high-resolution fullscreen screen (fullscreen_hires
 #           apps start at this size), or nil where there is none
+#   plain   [w, h] the screen a plain fullscreen app (one that declares
+#           neither fullscreen_hires nor fullscreen_any_size) is switched to,
+#           or nil where it gets the screen: Modern's 640x360 screen shows
+#           such an app at 426x240 (doc/modern_resolution R1b)
 #   margin  [x, y] system_conf display_margin_x/y: a fullscreen app gets the
 #           screen minus this
 #   app     [w, h] system_conf default_user_app_width/height (the window of
@@ -47,9 +51,9 @@
 #           earlier device reports.
 #
 # Boards with the same screen (everything above but name and conf) draw the
-# same picture, so they share one set of records: the profile. Tab5,
-# NARYAv4 and the browser build are one profile; a new board with a new
-# screen size is a new profile.
+# same picture, so they share one set of records: the profile. Tab5 and the
+# browser build are one profile, NARYAv4 (640x360) another; a new board with
+# a new screen size is a new profile.
 module Regress
   # The build options every firmware in the size table is built with, so the
   # table does not move with a developer's .env (the standard configuration:
@@ -76,8 +80,8 @@ module Regress
     "FMRB_ASTERISM" => "1"
   }.freeze
 
-  Target = Struct.new(:name, :family, :screen, :hires, :margin, :app, :font_ja, :conf, :exclude, :firmware, :build,
-                      :size_default, :serial, keyword_init: true) do
+  Target = Struct.new(:name, :family, :screen, :hires, :plain, :margin, :app, :font_ja, :conf, :exclude, :firmware,
+                      :build, :size_default, :serial, keyword_init: true) do
     # The environment its firmware is built with (FMRB_HW_TARGET included).
     def firmware_env
       FIRMWARE_ENV.merge(build || {}).merge("FMRB_HW_TARGET" => firmware)
@@ -85,12 +89,15 @@ module Regress
 
     # What decides the picture. Two targets with the same key draw the same.
     def profile_key
-      [family, screen, hires, margin, app, font_ja]
+      [family, screen, hires, plain, margin, app, font_ja]
     end
 
-    # The fullscreen size an app gets (hires only for a fullscreen_hires app).
-    def fullscreen_size(hires_app)
+    # The fullscreen size an app gets, as the kernel's
+    # fmrb_app_fullscreen_size_for decides it: hires for a fullscreen_hires
+    # app, plain for an app that declares neither, else the screen.
+    def fullscreen_size(hires_app, any_size_app = false)
       return hires if hires_app && hires
+      return plain if plain && !hires_app && !any_size_app
       [screen[0] - margin[0], screen[1] - margin[1]]
     end
 
@@ -112,7 +119,10 @@ module Regress
                font_ja: true, conf: "system_conf_tab5.toml", exclude: "storage_exclude_tab5.txt",
                firmware: "TAB5", size_default: true,
                serial: { usb: "303a:1001", reset: "open", baud: 115_200, flash_baud: 115_200 }),
-    Target.new(name: "naryav4", family: "modern", screen: [426, 240], hires: [640, 360], margin: [0, 0], app: [386, 180],
+    # The P4-Nano's default is 640x360 (doc/modern_resolution R2); the Tab5,
+    # the browser build and the Modern sim keep 426x240.
+    Target.new(name: "naryav4", family: "modern", screen: [640, 360], hires: nil, plain: [426, 240], margin: [0, 0],
+               app: [386, 180],
                font_ja: true, conf: "system_conf_naryav4.toml", exclude: "storage_exclude_naryav4.txt",
                firmware: "NARYAv4",
                serial: { usb: "1a86:55d3", reset: "rts", baud: 115_200, flash_baud: 460_800 }),

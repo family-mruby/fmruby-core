@@ -14,7 +14,8 @@
 - /usr/share/doc/                この文書と kanji_ja.md (漢字変換: SD に置く
                                  辞書とキー)、wifi_ja.md (Wi-Fi: 画面と
                                  wifi.toml)、editor_ja.md (エディタで
-                                 複数のファイルを開く)
+                                 複数のファイルを開く)、display_ja.md
+                                 (Modern: 画面の解像度と戻し方)
 - /app/                          インストール済みアプリ (試験用は /app/test)
 
 サンプルで遊ぶときは、まず /home へ写してから自分の写しを編集してください。

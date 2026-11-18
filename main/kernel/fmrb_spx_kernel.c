@@ -196,10 +196,10 @@ int fmrb_spx_set_app_fullscreen(int pid, int on, int w, int h)
                                    (uint16_t)w, (uint16_t)h) == FMRB_OK ? 1 : 0;
 }
 
-int fmrb_spx_fullscreen_hires_size(void)
+int fmrb_spx_screen_mode_size(int pid)
 {
     uint16_t w = 0, h = 0;
-    if (!fmrb_app_fullscreen_hires_size(&w, &h)) {
+    if (pid < 0 || pid > 255 || !fmrb_app_pid_screen_mode_size((uint8_t)pid, &w, &h)) {
         return 0;
     }
     return ((int)w << 16) | (int)h;
@@ -311,8 +311,6 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     /* expected_stop: this app was asked to end (a kill, or its own stop), as
        opposed to dying. Read at exit, before the slot is reaped. */
     buf[166] = ctx->expected_stop ? 1 : 0;
-    /* fullscreen_hires: may use the high-resolution fullscreen screen. */
-    buf[167] = ctx->fullscreen_hires ? 1 : 0;
     *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_INFO_RECORD_SIZE;
     return (const char *)buf;
 }

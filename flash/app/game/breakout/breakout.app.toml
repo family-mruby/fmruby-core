@@ -2,6 +2,7 @@ app_handle_name = "breakout"
 app_screen_name = "Breakout.py"
 app_screen_name_ja = "ブロック崩し"
 default_window_mode = "window"
+fullscreen_any_size = true   # lays itself out at any size (F11): no 426x240 screen on a 640x360 one
 default_window_width = 250
 default_window_height = 210
 default_window_pos_x = 35

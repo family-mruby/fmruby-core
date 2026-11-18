@@ -111,7 +111,14 @@ module Regress
         /app/game/flappy.app.rb
       ]]
     ].map { |pt, apps| [pt, apps.freeze].freeze }.freeze
-    SIZES = { "retro" => [320, 240], "modern" => [426, 240] }.freeze
+    # The screen each family's sim comes up at. Modern's is the resolution
+    # its system_conf asks for (doc/modern_resolution: 426x240, or 640x360
+    # chosen in Config), read from the file the sim boots from
+    # (flash/etc/system_conf.toml, made by build:linux from config/); the
+    # kernel boots any other value as 426x240, and so does this.
+    RETRO_SIZE = [320, 240].freeze
+    MODERN_SIZES = [[426, 240], [640, 360]].freeze
+    SIM_CONF = File.join(CORE, "flash", "etc", "system_conf.toml")
     # [relative, absolute bytes]: a value may move by the larger of the two.
     # Measured spread over 3 runs x 2 families (report rg3b.md): the apps the
     # scenario starts, their compile numbers and the desktop moved by 0-88 B,
@@ -146,6 +153,28 @@ module Regress
     UNCOMPARED = [].freeze
 
     module_function
+
+    def modern_size
+      w = h = nil
+      if File.exist?(SIM_CONF)
+        File.foreach(SIM_CONF) do |line|
+          break if line.lstrip.start_with?("[")
+          k, v = line.split("#", 2).first.split("=", 2).map { |x| x.to_s.strip }
+          w = v.to_i if k == "display_width"
+          h = v.to_i if k == "display_height"
+        end
+      end
+      MODERN_SIZES.include?([w, h]) ? [w, h] : MODERN_SIZES.first
+    end
+
+    # family -> [w, h] the sim of that family comes up at now
+    def sizes
+      { "retro" => RETRO_SIZE, "modern" => modern_size }
+    end
+
+    def size_for(family)
+      sizes[family]
+    end
 
     def families(only)
       fams = %w[retro modern].filter_map do |f|
@@ -247,7 +276,7 @@ module Regress
       end
       sleep 3
       size = screen_size
-      came = SIZES.key(size)
+      came = sizes.key(size)
       if came
         FileUtils.mkdir_p(File.dirname(LAST_FAMILY))
         File.write(LAST_FAMILY, came)
@@ -336,11 +365,12 @@ module Regress
       rescue RuntimeError
         nil
       end
-      if size != SIZES[family]
+      want = size_for(family)
+      if size != want
         down
         size = up(family)
       end
-      raise "the sim came up at #{size&.join('x') || '?'}, #{SIZES[family].join('x')} expected" unless size == SIZES[family]
+      raise "the sim came up at #{size&.join('x') || '?'}, #{want.join('x')} expected" unless size == want
       wait_for(60, "the desktop's boot to finish") { core_log.include?(BOOT_DONE) }
       sleep SETTLE
       points = { "idle" => snapshot("idle") }

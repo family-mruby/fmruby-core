@@ -60,7 +60,8 @@ module Regress
     def setup(&blk) = @d.setups << blk
     # More gem directories under lib/gems/ whose mrblib/*.rb the app needs.
     def gems(*names) = @d.gems.concat(names)
-    # The window when the app has no .app.toml (a built-in app): w:, h:, name:, fullscreen:, hires:.
+    # The window when the app has no .app.toml (a built-in app): w:, h:, name:, fullscreen:, hires:,
+    # any_size:.
     def window(**kw) = @d.window = kw
     # The class to make when the file does not tell (see Run#load_app).
     def klass(name) = @d.klass = name
@@ -254,7 +255,7 @@ module Regress
           Rec.mark("kernel #{cmd}")
           on = cmd == "enter_fullscreen"
           w = Env.extra[:window]
-          size = on ? @target.fullscreen_size(w[:hires]) : [w[:win_w], w[:win_h]]
+          size = on ? @target.fullscreen_size(w[:hires], w[:any_size]) : [w[:win_w], w[:win_h]]
           resize(size[0], size[1], on)
         when "exit"
           nil

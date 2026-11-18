@@ -23,6 +23,7 @@
 #include "esp_private/esp_cache_private.h"
 #include "esp_heap_caps.h"
 #include "fmrb_attr.h"
+#include "fmrb_hal_time.h"
 
 #include <cstring>
 
@@ -217,6 +218,7 @@ static void ppa_blend_block(const display_blend_req_t *r)
      * canvas, flush only the rows the blend block reads (rounded to cache
      * lines): a scroll canvas may be much larger than the visible part. */
     esp_err_t sync_err;
+    uint64_t t_sync = fmrb_hal_time_get_us();
     {
         uintptr_t row_start = (uintptr_t)fg_buf
             + (size_t)r->src_y * r->fg_pic_w * 2;
@@ -230,8 +232,31 @@ static void ppa_blend_block(const display_blend_req_t *r)
                                    ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     }
     if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fg msync C2M failed: %d", sync_err);
-    sync_err = esp_cache_msync(bg_buf, r->bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    /* The framebuffer: only the rows this block reads and writes, rounded
+     * out to cache lines (a canvas blended in bands is several blocks a
+     * frame, and the whole framebuffer each time cost ~0.3 ms a block). A
+     * line outside them that the CPU dirtied is not one the PPA writes, so
+     * it is written back later (the next block over it, or present_flush)
+     * with nothing of the PPA's under it. The invalidate after the blend
+     * covers the same lines, which this write-back has just made clean. */
+    void  *bg_sync;
+    size_t bg_sync_len;
+    {
+        uintptr_t row_start = (uintptr_t)bg_buf
+            + (size_t)r->dst_y * r->bg_pic_w * 2;
+        size_t row_len = (size_t)r->h * r->bg_pic_w * 2;
+        uintptr_t astart = row_start & ~(uintptr_t)(s_cache_line - 1);
+        uintptr_t aend = (row_start + row_len + s_cache_line - 1)
+            & ~(uintptr_t)(s_cache_line - 1);
+        uintptr_t buf_end = (uintptr_t)bg_buf + r->bg_size;
+        if (aend > buf_end) aend = buf_end;
+        bg_sync = (void *)astart;
+        bg_sync_len = (size_t)(aend - astart);
+    }
+    sync_err = esp_cache_msync(bg_sync, bg_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     if (sync_err != ESP_OK) FMRB_LOGE(TAG, "bg msync C2M failed: %d", sync_err);
+    uint64_t t_hw = fmrb_hal_time_get_us();
+    g_display_backend_timing.blend_sync_us += (uint32_t)(t_hw - t_sync);
 
     ppa_blend_oper_config_t blend = {};
     /* Background: framebuffer */
@@ -285,10 +310,14 @@ static void ppa_blend_block(const display_blend_req_t *r)
     blend.mode = PPA_TRANS_MODE_BLOCKING;
 
     esp_err_t err = ppa_do_blend(s_ppa_blend, &blend);
+    uint64_t t_done = fmrb_hal_time_get_us();
+    g_display_backend_timing.blend_hw_us += (uint32_t)(t_done - t_hw);
     if (err == ESP_OK) {
         /* Invalidate output cache so CPU sees DMA-written data */
-        esp_cache_msync(bg_buf, r->bg_size,
+        esp_cache_msync(bg_sync, bg_sync_len,
                         ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+        g_display_backend_timing.blend_sync_us +=
+            (uint32_t)(fmrb_hal_time_get_us() - t_done);
     } else {
         FMRB_LOGE(TAG, "PPA Blend failed: %d (canvas=%u viewport=%d)",
                   err, r->canvas_id, (int)r->is_viewport);
@@ -314,8 +343,10 @@ static void ppa_blend_block(const display_blend_req_t *r)
  * the SRM DMA reads what was just drawn. */
 static void present_flush(void *fb_ptr, size_t fb_size)
 {
+    uint64_t t0 = fmrb_hal_time_get_us();
     esp_err_t sync_err = esp_cache_msync(fb_ptr, fb_size,
                                          ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    g_display_backend_timing.out_sync_us += (uint32_t)(fmrb_hal_time_get_us() - t0);
     if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fb msync C2M failed: %d", sync_err);
 }
 
@@ -386,7 +417,9 @@ static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
     srm.byte_swap      = false;
     srm.mode           = PPA_TRANS_MODE_BLOCKING;
 
+    uint64_t t_srm = fmrb_hal_time_get_us();
     esp_err_t err = ppa_do_scale_rotate_mirror(s_ppa_srm, &srm);
+    g_display_backend_timing.out_hw_us += (uint32_t)(fmrb_hal_time_get_us() - t_srm);
     if (err != ESP_OK) {
         FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
     }
@@ -496,7 +529,9 @@ static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
     srm.byte_swap      = false;  /* All buffers use PPA-native RGB565 */
     srm.mode           = PPA_TRANS_MODE_BLOCKING;
 
+    uint64_t t_srm = fmrb_hal_time_get_us();
     esp_err_t err = ppa_do_scale_rotate_mirror(s_ppa_srm, &srm);
+    g_display_backend_timing.out_hw_us += (uint32_t)(fmrb_hal_time_get_us() - t_srm);
     if (err != ESP_OK) {
         FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
     }

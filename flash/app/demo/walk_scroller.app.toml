@@ -2,5 +2,6 @@ app_handle_name = "walk_scroller"
 app_screen_name = "Walk Scroller"
 app_screen_name_ja = "歩いて進む"
 default_window_mode = "fullscreen"
+fullscreen_any_size = true   # lays itself out at any size: no 426x240 screen on a 640x360 one
 single_instance = true
 large_memory = 1

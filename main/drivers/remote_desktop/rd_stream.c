@@ -18,6 +18,7 @@
 #include "fmrb_rtos.h"
 #include "display_local_task.h"
 #include "host_task.h"
+#include "fmrb_kernel.h"
 
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
@@ -226,7 +227,7 @@ static bool ensure_task_running(void)
     // stream task follows the frame size from then on.
     int sw = 0, sh = 0;
     fmrb_host_get_screen_size(&sw, &sh);
-    if (sw <= 0 || sh <= 0) { sw = 426; sh = 240; }
+    if (sw <= 0 || sh <= 0) { sw = FMRB_MODERN_STD_W; sh = FMRB_MODERN_STD_H; }
     if (!encoder_for((uint16_t)sw, (uint16_t)sh)) return false;
     s_task_running = true;
     if (xTaskCreatePinnedToCore(stream_task, "rd_stream",

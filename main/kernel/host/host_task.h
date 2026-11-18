@@ -238,8 +238,8 @@ void fmrb_host_set_cursor_visible(bool visible);
 /**
  * @brief Record the size of the screen the input coordinates are in.
  *
- * The fullscreen high-resolution mode (doc/fullscreen_hires/) changes the
- * screen from 426x240 to 640x360 while a fullscreen app owns it. The input
+ * The screen mode (doc/fullscreen_hires/, doc/modern_resolution/) changes the
+ * screen between Modern's 426x240 and 640x360 while a fullscreen app owns it. The input
  * sources (touch, USB mouse, remote input) read the size back with
  * fmrb_host_get_screen_size, clamp to it and rescale their cursor when it
  * changes. Set by fmrb_app_set_screen_mode; callable from any task.

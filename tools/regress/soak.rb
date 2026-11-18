@@ -278,11 +278,11 @@ module Regress
       rescue RuntimeError
         nil
       end
-      if size != SR::SIZES[family]
+      if size != SR.size_for(family)
         SR.down
         size = SR.up(family)
       end
-      raise "the sim came up at #{size&.join('x') || '?'}, #{SR::SIZES[family].join('x')} expected" unless size == SR::SIZES[family]
+      raise "the sim came up at #{size&.join('x') || '?'}, #{SR.size_for(family).join('x')} expected" unless size == SR.size_for(family)
       SR.wait_for(60, "the desktop's boot to finish") { SR.core_log.include?(SR::BOOT_DONE) }
       sleep SR::SETTLE
       wasm = family == "modern" && SR::SCENARIO.flatten.any? { |a| a.end_with?(".wasm") }

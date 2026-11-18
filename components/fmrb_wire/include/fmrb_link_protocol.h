@@ -154,7 +154,8 @@ typedef enum {
     FMRB_LINK_GFX_SET_COMPOSITE_REGIONS = 0x56,
     FMRB_LINK_GFX_SET_CANVAS_VIEWPORT = 0x57,
     FMRB_LINK_GFX_SET_SPRITE_CLIP = 0x58,
-    // Fullscreen high-resolution mode (doc/fullscreen_hires/). The Modern
+    // The screen a fullscreen app is shown on (doc/fullscreen_hires/,
+    // doc/modern_resolution/). The Modern
     // display task (display_local, and the browser build that shares it) knows
     // it, and so does graphics-audio's Linux build (the Modern simulator),
     // which says so in its INIT_DISPLAY ACK (FMRB_LINK_DISPLAY_CAP_SCREEN_MODE).
@@ -514,9 +515,12 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_graphics_set_sprite_clip_t;
 
 // SET_SCREEN_MODE: switch the whole screen between the base framebuffer
-// (INIT_DISPLAY's size, 426x240 on the P4 boards) and the fullscreen
-// high-resolution one (640x360, shown at 2x), which shows owner_canvas_id
-// alone. width == 0 / height == 0 (or the base size) asks for the base mode.
+// (INIT_DISPLAY's size) and another one that shows owner_canvas_id alone, at
+// the output's scale for that size. Modern's two screens: on a 426x240 base,
+// 640x360 (2x) for an app laid out for it (doc/fullscreen_hires/); on a
+// 640x360 base, 426x240 (3x) for an app laid out for that
+// (doc/modern_resolution/). width == 0 / height == 0 (or the base size) asks
+// for the base mode.
 //
 // The display holds the previous picture until the owner canvas commits a
 // frame at the new size (PUSH_CANVAS to the screen after UPDATE_WINDOW), or

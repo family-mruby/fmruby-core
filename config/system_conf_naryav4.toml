@@ -1,6 +1,6 @@
 system_name = "Family mruby OS (Modern)"
-display_width = 426
-display_height = 240
+display_width = 640
+display_height = 360
 # No overscan margin: the HDMI monitor shows the full framebuffer, unlike
 # the NTSC output where the border area is hidden by overscan.
 display_margin_x = 0

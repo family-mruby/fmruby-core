@@ -27,3 +27,8 @@ app/modern/ai_helper.app.toml
 app/modern/ai_helper
 usr/share/doc/ai_helper.md
 usr/share/doc/ai_helper_ja.md
+
+# The screen resolution guide (doc/modern_resolution): Modern only, the
+# only machines with two resolutions to choose from.
+usr/share/doc/display.md
+usr/share/doc/display_ja.md

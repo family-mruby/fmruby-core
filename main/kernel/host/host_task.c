@@ -258,8 +258,29 @@ static void host_audio_output_cmd(fmrb_audio_output_cmd_t *out)
     out->level_db_x10 = fmrb_audio_step_db_x10(step, min_x10, max_x10);
 }
 
+#if defined(FMRB_MODERN_RESOLUTIONS)
+// The way back from a resolution the screen cannot show (doc/modern_resolution):
+// Shift held while the machine starts boots it at the standard resolution
+// once. Whether Shift is down, from the modifier byte every key event
+// carries, whichever key the event is for. A Shift held since before the
+// keyboard came up makes no event by itself (a keyboard reports changes
+// only); the USB task asks a new keyboard for its state with GET_REPORT and
+// turns a held modifier into a key down (usb_task.c), so it lands here like
+// a press. Pressing Shift repeatedly during boot works too. Read once, just
+// before the display is initialized; the keyboard has been enumerated by
+// then (about 0.3 s before INIT_DISPLAY on the P4-Nano), so nothing waits
+// for it. Written by the input tasks before the host queue exists, which is
+// why it is set here and not in the queue's consumer. PSRAM: no new internal RAM statics.
+FMRB_EXT_RAM_BSS_ATTR static volatile bool s_shift_down;
+#endif
+
 static int init_gfx_audio(void)
 {
+#if defined(FMRB_MODERN_RESOLUTIONS)
+    if (s_shift_down) {
+        fmrb_kernel_force_standard_display("Shift held");
+    }
+#endif
     const fmrb_system_config_t* conf = fmrb_kernel_get_config();
 
     // Initialize Graphics subsystem (this initializes the transport layer)
@@ -3185,6 +3206,9 @@ static int host_send_key(host_msg_type_t type, int key_code, int scancode,
     FMRB_LOGD(TAG, "%s: code=%d scan=%d mod=0x%x us=%d",
               type == HOST_MSG_HID_KEY_DOWN ? "KEY_DOWN" : "KEY_UP",
               key_code, scancode, modifier, force_us);
+#if defined(FMRB_MODERN_RESOLUTIONS)
+    s_shift_down = (modifier & (FMRB_KEYMAP_MOD_LSHIFT | FMRB_KEYMAP_MOD_RSHIFT)) != 0;
+#endif
     host_message_t msg = {
         .type = type,
         .data.key.key_code = key_code,

@@ -157,8 +157,8 @@ class FmrbKernelImpl < FmrbKernel
     @pending_unpark_after = nil   # ... this terminating app has released its slot
     @pending_unpark_tries = 0
     @suspended_pids = []
-    # Fullscreen app holding the high-resolution screen (sync_screen_mode).
-    @screen_hires_pid = nil
+    # Fullscreen app the display has switched the screen for (sync_screen_mode).
+    @screen_mode_pid = nil
     # The keyboard-only desktop's state (keys_desktop.rb); off until that
     # desktop announces itself.
     keys_init

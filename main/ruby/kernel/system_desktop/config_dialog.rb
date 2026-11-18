@@ -5,7 +5,8 @@
 # entries, and other unrelated keys are preserved.
 #
 # The rows are split into pages, picked by the tabs under the title:
-#   Display      theme preset, wallpaper, display_margin_x/y
+#   Display      resolution (Modern only), theme preset, wallpaper,
+#                display_margin_x/y
 #   Input        keyboard_layout, mouse_scale_x/y
 #   Sound & Time audio_volume, timezone
 #   System       language, debug_mode, ble/wifi_auto_start
@@ -113,6 +114,16 @@ module ConfigDialogMixin
   CFG_KBD_AUTO = FmrbSystem.respond_to?(:linux_keyboard)
   CFG_KBD_OPTIONS = CFG_KBD_AUTO ? ["auto", "jp", "us"] : ["jp", "us"]
 
+  # Resolution (doc/modern_resolution): Modern's screen is 426x240 or 640x360,
+  # stored as display_width / display_height and read at boot, so a change
+  # takes a restart like the other boot-time rows (Save & Reboot). The Modern
+  # boards and the Modern simulation only: the browser's page picks its own
+  # size, the native program's machine definition has it (CFG_KBD_AUTO is
+  # what tells the native program apart here), and Retro has one screen. The
+  # kernel boots any other value as 426x240, so the row shows that for one.
+  CFG_RES_ROW = (FmrbConst::HW_FAMILY == "modern" && FmrbConst::BOARD != "wasm" && !CFG_KBD_AUTO)
+  CFG_RES_OPTIONS = ["426x240", "640x360"]
+
   # The tabs, in order: the label's string key. A page with no row left (the
   # browser hides some) gets no tab.
   CFG_PAGES = [:cfg_page_display, :cfg_page_input, :cfg_page_sound, :cfg_page_system]
@@ -122,6 +133,10 @@ module ConfigDialogMixin
   CFG_PAGE_SYSTEM  = 3
 
   CFG_SETTINGS = [
+    # "resolution" is not a key of the file: it stands for display_width and
+    # display_height, which Save writes from it (like theme_preset).
+    { key: :resolution,       field: "resolution",       type: :enum,  page: CFG_PAGE_DISPLAY,
+      options: CFG_RES_OPTIONS },
     { key: :theme,            field: "theme_preset",     type: :enum,  page: CFG_PAGE_DISPLAY,
       options: ["light", "dark", "cyberpunk"] },
     # The choices are found when the dialog opens (cfg_scan_wallpapers), so
@@ -150,7 +165,8 @@ module ConfigDialogMixin
     { key: :debug_mode,       field: "debug_mode",       type: :bool,  page: CFG_PAGE_SYSTEM },
     { key: :ble_auto_start,   field: "ble_auto_start",   type: :bool,  page: CFG_PAGE_SYSTEM },
     { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool,  page: CFG_PAGE_SYSTEM },
-  ].reject { |s| FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field]) }
+  ].reject { |s| (FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field])) ||
+                 (s[:field] == "resolution" && !CFG_RES_ROW) }
 
   # The release build's WiFi remote control (doc/remote_guard G2). Not in the
   # file: the switch and the paired PCs live on the board (NVS), the switch
@@ -414,7 +430,12 @@ module ConfigDialogMixin
     end
 
     @cfg_values["theme_preset"] = cfg_detect_preset(theme) || "light"
+    res = "#{@cfg_values['display_width']}x#{@cfg_values['display_height']}"
+    @cfg_values["resolution"] = CFG_RES_OPTIONS.include?(res) ? res : CFG_RES_OPTIONS[0]
     CFG_SETTINGS.each { |s| cfg_ensure_default(s) }
+    # What the rows showed when the dialog opened: Save writes only the rows
+    # changed since (cfg_write).
+    @cfg_loaded = @cfg_values.dup
   end
 
   def cfg_parse_value(s)
@@ -633,6 +654,8 @@ module ConfigDialogMixin
     when :enum
       if s[:key] == :theme
         FmrbI18n.t("theme_#{v}".to_sym)
+      elsif s[:key] == :resolution
+        "#{FmrbI18n.t(v.to_s == CFG_RES_OPTIONS[0] ? :res_standard : :res_high)} (#{v})"
       elsif s[:key] == :wallpaper
         cfg_wallpaper_text(v.to_s)
       elsif s[:key] == :keyboard_layout && v.to_s == "auto" && CFG_KBD_AUTO
@@ -934,9 +957,22 @@ module ConfigDialogMixin
       Log.warn("Config: cannot read #{CFG_PATH} again: #{e.message}")
     end
 
+    # Only the rows changed since the dialog opened, so that Save leaves every
+    # other line as it is: its value, its comment, and a key the file does
+    # not have (the dialog shows a default for that, which is not always the
+    # kernel's). The volume is the exception: written whatever it is, it
+    # being the live one (see below).
     top_updates = {}
     CFG_SETTINGS.each do |s|
       next if s[:key] == :theme
+      next if s[:field] != "audio_volume" && @cfg_values[s[:field]] == @cfg_loaded[s[:field]]
+      if s[:key] == :resolution
+        # The two lines the row stands for, and nothing under its own name.
+        wh = @cfg_values["resolution"].to_s.split("x")
+        top_updates["display_width"] = wh[0].to_s
+        top_updates["display_height"] = wh[1].to_s
+        next
+      end
       top_updates[s[:field]] = cfg_format_value(@cfg_values[s[:field]])
     end
     # Not a row of this dialog, but the file was read when the dialog opened,
@@ -946,7 +982,7 @@ module ConfigDialogMixin
 
     preset_name = @cfg_values["theme_preset"]
     theme_updates = {}
-    if preset_name && CFG_THEME_PRESETS[preset_name]
+    if preset_name != @cfg_loaded["theme_preset"] && preset_name && CFG_THEME_PRESETS[preset_name]
       CFG_THEME_PRESETS[preset_name].each do |k, v|
         theme_updates[k.to_s] = sprintf("0x%02X", v)
       end
@@ -988,10 +1024,10 @@ module ConfigDialogMixin
       key = stripped[0, idx].strip
 
       if in_theme && theme_updates.key?(key)
-        out_lines << "#{key} = #{theme_updates[key]}"
+        out_lines << cfg_line(key, theme_updates[key], stripped, idx)
         pending_theme.delete(key)
       elsif !in_theme && !other_section && top_updates.key?(key)
-        out_lines << "#{key} = #{top_updates[key]}"
+        out_lines << cfg_line(key, top_updates[key], stripped, idx)
         pending_top.delete(key)
       else
         out_lines << raw
@@ -1026,6 +1062,8 @@ module ConfigDialogMixin
       f.close
       File.rename(tmp, path)
       Log.info("Config: saved #{CFG_PATH}")
+      # A second Save in the same dialog compares with what is in the file now.
+      @cfg_loaded = @cfg_values.dup
       true
     rescue => e
       Log.error("Config: write failed: #{e.message}")
@@ -1036,6 +1074,14 @@ module ConfigDialogMixin
       end
       false
     end
+  end
+
+  # `key = value`, keeping the comment the line had after its value.
+  def cfg_line(key, value, stripped, eq_idx)
+    rest = stripped[eq_idx + 1, stripped.length - eq_idx - 1].to_s
+    hash_idx = rest.index("#")
+    return "#{key} = #{value}" unless hash_idx
+    "#{key} = #{value} #{rest[hash_idx, rest.length - hash_idx]}"
   end
 
   def cfg_format_value(v)

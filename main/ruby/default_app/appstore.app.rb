@@ -65,6 +65,7 @@ class AppStoreApp < FmrbApp
   def on_create
     @env = detect_env
     @info = ENV_INFO[@env] || ENV_INFO["modern"]
+    @info = modern_info if @env == "modern"
     @face = :find              # :find or :installed
     @apps = []
     @sel = 0
@@ -88,6 +89,40 @@ class AppStoreApp < FmrbApp
   def detect_env
     return "web" if ::FmrbConst::BOARD == "wasm"
     ::FmrbConst::HW_FAMILY
+  end
+
+  # Modern's screen is the resolution chosen in Config (426x240 or 640x360,
+  # doc/modern_resolution), which is display_width / display_height in
+  # system_conf; the kernel boots anything else as 426x240, and so does this.
+  def modern_info
+    info = ENV_INFO["modern"]
+    w = conf_int("display_width")
+    h = conf_int("display_height")
+    return info unless w == 640 && h == 360
+    { w: w, h: h, pool: info[:pool], large: info[:large] }
+  end
+
+  # One top-level `key = number` of system_conf, or nil. No Regexp here, so
+  # the lines are walked.
+  def conf_int(key)
+    text = begin
+      File.open("/etc/system_conf.toml", "r") { |f| f.read }
+    rescue
+      nil
+    end
+    return nil unless text
+    text.split("\n").each do |raw|
+      line = raw.strip
+      return nil if line.start_with?("[")
+      idx = line.index("=")
+      next unless idx
+      next unless line[0, idx].strip == key
+      v = line[idx + 1, line.length - idx - 1].to_s
+      hash = v.index("#")
+      v = v[0, hash] if hash
+      return v.strip.to_i
+    end
+    nil
   end
 
   # ---- layout -------------------------------------------------------------

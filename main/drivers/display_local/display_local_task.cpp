@@ -45,6 +45,7 @@ extern "C" {
 #include "fmrb_bmp332.h"
 #include "rd_encoder_jpeg.h"   // EXPORT_FRAME writes a JPEG with it
 #include "host_task.h"         // the input sources follow the screen size
+#include "fmrb_app.h"          // which app a canvas belongs to (the screen mode rules)
 }
 
 #include <msgpack.h>
@@ -182,7 +183,32 @@ typedef struct {
     // Cache-line-aligned size of the sprite buffer (esp_cache_msync requires
     // both address and size aligned to the cache line, or it fails silently)
     size_t       buf_aligned_size;
+    // Where the committed frame of a colour-keyed canvas has anything that
+    // is not the key, row by row (doc/modern_resolution/report/r0b.md): one
+    // entry per row of the buffer, (end_x << 16) | start_x of the span
+    // between the first and the last non-key pixel, 0 for a row that is all
+    // key. Worked out from the pixels at the commit, so no drawing path can
+    // be missed. render_frame blends only the rows and columns that have
+    // something; a key pixel leaves the background alone, so the frame is the
+    // same. ink_valid is false whenever the committed buffer was written or
+    // reshaped some other way (a resize, a video frame, a new buffer): the
+    // whole canvas is blended then, as it always was. nullptr for a canvas
+    // without a colour key.
+    uint32_t    *ink;
+    size_t       ink_aligned_size;
+    bool         ink_valid;
+    uint16_t     ck565;            // the key as the RGB565 pixel value
+    // The rows of the working buffer that may differ from the committed one:
+    // up to CANVAS_DIRTY_MAX spans [y0, y1) of buffer rows. Every command
+    // that writes the working buffer marks the rows it can touch (with a
+    // margin, and the whole buffer when it cannot tell); the commit copies
+    // only these and clears them. Outside them the two buffers are the same,
+    // so the copy that is left out would not have changed anything.
+    uint16_t     dirty_y0[4], dirty_y1[4];
+    uint8_t      ndirty;
 } p4_canvas_t;
+
+#define CANVAS_DIRTY_MAX 4
 
 // PSRAM: canvas bookkeeping, touched by the display task and never by an ISR.
 FMRB_EXT_RAM_BSS_ATTR static p4_canvas_t g_canvases[DISPLAY_LOCAL_MAX_CANVAS];
@@ -256,15 +282,18 @@ static uint16_t g_display_width  = 0;   // the base framebuffer (INIT_DISPLAY)
 static uint16_t g_display_height = 0;
 
 // ============================================================
-// Screen mode: the fullscreen high-resolution mode
-// (doc/fullscreen_hires/, H1).
+// Screen mode: another screen for one fullscreen app
+// (doc/fullscreen_hires/ H1, doc/modern_resolution/ R1b).
 //
 // Normally every visible canvas is composited into the base framebuffer
-// (426x240 on the P4 boards) and shown at 3x. SET_SCREEN_MODE asks for the
-// high-resolution mode instead: one canvas, the owner (a fullscreen app's),
-// is shown alone on a 640x360 framebuffer at 2x. Nothing is mixed with it,
-// because a fullscreen app hides everything else anyway -- which is what
-// makes a second resolution possible at all (the PPA blend cannot scale).
+// (426x240 or 640x360 on the P4 boards, at 3x or 2x). SET_SCREEN_MODE asks for
+// the other screen instead (the "alternate" one): one canvas, the owner (a
+// fullscreen app's), is shown alone on a framebuffer of that size at the
+// output's scale for it -- 640x360 at 2x on a 426x240 base, for an app laid
+// out for 640x360; 426x240 at 3x on a 640x360 base, for an app laid out for
+// 426x240. Nothing is mixed with it, because a fullscreen app hides
+// everything else anyway -- which is what makes a second resolution possible
+// at all (the PPA blend cannot scale).
 //
 // The switch is not immediate. A request makes it PENDING and the previous
 // picture is held (no render) until the owner commits a frame at the new
@@ -273,8 +302,8 @@ static uint16_t g_display_height = 0;
 // bounds the wait. While in the high-resolution mode, the display gives the
 // screen back by itself when the owner canvas is deleted or hidden (an app
 // that died, a park), without waiting for anyone to ask. An owner that was
-// only too slow -- the bound ran out before its first 640x360 frame -- gets
-// the screen back when that frame arrives (late_owner).
+// only too slow -- the bound ran out before its first frame at the alternate
+// size -- gets the screen back when that frame arrives (late_owner).
 //
 // All of this is state of the display task alone. It lives in PSRAM
 // (FMRB_EXT_RAM_BSS_ATTR): it is read a few times per frame at most, and the
@@ -282,18 +311,24 @@ static uint16_t g_display_height = 0;
 // state: base mode, nothing pending.
 // ============================================================
 
+// Modern's two screens (FMRB_MODERN_STD_* / _HIGH_* in fmrb_kernel.h). The
+// alternate screen is the one of the two the base is not: 640x360 from
+// anything smaller, 426x240 from 640x360 (screen_mode_alt_ok).
 #define DISPLAY_LOCAL_HIRES_W   640
 #define DISPLAY_LOCAL_HIRES_H   360
+#define DISPLAY_LOCAL_STD_W     426
+#define DISPLAY_LOCAL_STD_H     240
 #define SCREEN_MODE_WAIT_MS  500
 
 typedef struct {
     LGFX_Sprite *fb_base;          // INIT_DISPLAY's framebuffer
     size_t       fb_base_size;
-    LGFX_Sprite *fb_hires;         // DISPLAY_LOCAL_HIRES_W x _H, on first use
-    size_t       fb_hires_size;
-    bool         hires;            // the high-resolution framebuffer is current
+    LGFX_Sprite *fb_alt;           // the alternate screen's, on first use
+    size_t       fb_alt_size;
+    uint16_t     alt_w, alt_h;     // its size (the base never changes, so one)
+    bool         alt;              // the alternate framebuffer is current
     bool         pending;          // a switch was asked for and is waiting
-    bool         pending_hires;    // ... towards this mode
+    bool         pending_alt;      // ... towards this mode
     bool         force_render;     // the wait timed out: render once regardless
     uint16_t     owner;            // canvas the switch/mode belongs to
     uint32_t     pending_since_ms;
@@ -306,15 +341,15 @@ typedef struct {
     // from its resize handler (both engines), which travels the same ordered
     // queue as the app's presents.
     bool         owner_resize_unacked;
-    // In the high-resolution mode, since when the owner has had nothing that
-    // can be shown (hidden, gone, a committed frame that is not 640x360, or
+    // In the alternate mode, since when the owner has had nothing that can be
+    // shown (hidden, gone, a committed frame not at the alternate size, or
     // none since a resize); 0 while it has. See screen_mode_poll.
     uint32_t     owner_unshowable_since_ms;
     // The owner the screen was taken back from because it had nothing to
     // show in time (screen_mode_poll), not because it left or was asked to.
     // An app that is slow to draw its first frame -- the mahjong table loads
     // its tile sheets on its first start, which can take seconds -- gets the
-    // screen back when that frame does arrive at 640x360. Cleared by any
+    // screen back when that frame does arrive at the alternate size. Cleared by any
     // request and when that canvas is hidden or deleted. The Linux
     // simulator's graphics-audio follows the same rule.
     uint16_t     late_owner;
@@ -335,6 +370,143 @@ static p4_canvas_t* canvas_find(uint16_t canvas_id) {
             return &g_canvases[i];
     }
     return nullptr;
+}
+
+// The ink table (see p4_canvas_t) of a colour-keyed canvas: one entry per row
+// of its buffer, in PSRAM next to the pixels. Left out (nullptr) when the
+// canvas has no key or the memory is not there; the canvas is then blended
+// whole, as before.
+static void canvas_ink_free(p4_canvas_t *c) {
+    if (c->ink) heap_caps_free(c->ink);
+    c->ink = nullptr;
+    c->ink_aligned_size = 0;
+    c->ink_valid = false;
+}
+
+static void canvas_ink_alloc(p4_canvas_t *c) {
+    canvas_ink_free(c);
+    if (!c->create_use_transparency) return;
+    c->ink = (uint32_t *)ppa_alloc_buffer((size_t)c->alloc_height * sizeof(uint32_t),
+                                          &c->ink_aligned_size);
+}
+
+// The ink of one row: (end << 16) | start of the span from the first to the
+// last pixel that is not the key, or 0 when the whole row is the key.
+static uint32_t row_ink(const uint16_t *row, int w, uint16_t key) {
+    int x0 = 0;
+    // Two pixels at a time while the row is word-aligned (canvas rows are
+    // whenever the width is even; the buffer itself is cache-line aligned).
+    if (((uintptr_t)row & 3) == 0) {
+        const uint32_t key2 = ((uint32_t)key << 16) | key;
+        const uint32_t *r32 = (const uint32_t *)row;
+        const int n2 = w / 2;
+        while (x0 / 2 < n2 && r32[x0 / 2] == key2) x0 += 2;
+    }
+    while (x0 < w && row[x0] == key) x0++;
+    if (x0 >= w) return 0;
+    int x1 = w;
+    while (row[x1 - 1] == key) x1--;
+    return ((uint32_t)x1 << 16) | (uint32_t)x0;
+}
+
+// Mark rows [y0, y1) of the working buffer as written (see p4_canvas_t).
+// One row of margin either side; clamped to the buffer. Past
+// CANVAS_DIRTY_MAX spans, the two nearest are joined (which only copies a
+// few unchanged rows more).
+static void canvas_mark_rows(p4_canvas_t *c, int y0, int y1) {
+    y0 -= 1;
+    y1 += 1;
+    if (y0 < 0) y0 = 0;
+    if (y1 > (int)c->alloc_height) y1 = c->alloc_height;
+    if (y0 >= y1) return;
+    int s0[CANVAS_DIRTY_MAX + 1], s1[CANVAS_DIRTY_MAX + 1];
+    int n = 0;
+    // Take the new span in, absorbing every span it overlaps or touches.
+    for (int i = 0; i < c->ndirty; i++) {
+        if (c->dirty_y0[i] <= y1 && c->dirty_y1[i] >= y0) {
+            if (c->dirty_y0[i] < y0) y0 = c->dirty_y0[i];
+            if (c->dirty_y1[i] > y1) y1 = c->dirty_y1[i];
+        } else {
+            s0[n] = c->dirty_y0[i];
+            s1[n] = c->dirty_y1[i];
+            n++;
+        }
+    }
+    s0[n] = y0;
+    s1[n] = y1;
+    n++;
+    if (n > CANVAS_DIRTY_MAX) {
+        // Join the two spans nearest each other (disjoint, so the gap > 0).
+        int bi = 0, bj = 1, best = INT32_MAX;
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (i == j || s0[j] < s1[i]) continue;
+                if (s0[j] - s1[i] < best) { best = s0[j] - s1[i]; bi = i; bj = j; }
+            }
+        }
+        s1[bi] = s1[bj];
+        s0[bj] = s0[n - 1];
+        s1[bj] = s1[n - 1];
+        n--;
+    }
+    for (int i = 0; i < n; i++) {
+        c->dirty_y0[i] = (uint16_t)s0[i];
+        c->dirty_y1[i] = (uint16_t)s1[i];
+    }
+    c->ndirty = (uint8_t)n;
+}
+
+static void canvas_mark_all(p4_canvas_t *c) {
+    c->dirty_y0[0] = 0;
+    c->dirty_y1[0] = c->alloc_height;
+    c->ndirty = 1;
+}
+
+// The present's commit: the written rows of the working buffer's active area
+// into the committed one (stride == width, so a span of rows is contiguous).
+// A colour-keyed canvas has each copied row's ink worked out as it goes, from
+// the row just copied while it is still in the cache; when its table is not
+// valid, every row is read for it once.
+static size_t canvas_commit_rows(p4_canvas_t *c, const uint16_t *sb, uint16_t *rb) {
+    const int w = c->width;
+    const int h = c->height;
+    const bool ink = c->ink && h <= (int)c->alloc_height;
+    const bool rescan = ink && !c->ink_valid;
+    size_t copied = 0;
+    for (int i = 0; i < c->ndirty; i++) {
+        int y0 = c->dirty_y0[i];
+        int y1 = c->dirty_y1[i];
+        if (y1 > h) y1 = h;
+        if (y0 >= y1) continue;
+        copied += (size_t)(y1 - y0) * w * 2;
+        if (ink && !rescan) {
+            // Row by row, so the row is read for its ink while the copy has
+            // just brought it into the cache: a span of a few hundred rows
+            // copied in one go would have to be read from PSRAM again.
+            for (int y = y0; y < y1; y++) {
+                const uint16_t *src = sb + (size_t)y * w;
+                memcpy(rb + (size_t)y * w, src, (size_t)w * 2);
+                c->ink[y] = row_ink(src, w, c->ck565);
+            }
+        } else {
+            memcpy(rb + (size_t)y0 * w, sb + (size_t)y0 * w, (size_t)(y1 - y0) * w * 2);
+        }
+    }
+    c->ndirty = 0;
+    if (rescan) {
+        for (int y = 0; y < h; y++) c->ink[y] = row_ink(rb + (size_t)y * w, w, c->ck565);
+    }
+    if (c->ink) c->ink_valid = ink;
+    return copied;
+}
+
+// The drawing target of a command that writes rows [y0, y1) of it: as
+// get_sprite, and when that is the canvas's own working buffer (not a
+// SpriteImage the commands are redirected to), those rows are marked.
+static void mark_sprite_rows(uint16_t canvas_id, LGFX_Sprite *s, int y0, int y1) {
+    if (!s) return;
+    p4_canvas_t *c = canvas_find(canvas_id);
+    if (c && s == c->sprite) canvas_mark_rows(c, y0, y1);
 }
 
 static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
@@ -422,6 +594,12 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->clip_w                   = 0;   // 0 = no sprite clip (canvas footprint)
     c->clip_h                   = 0;
     c->buf_aligned_size         = aligned_size;
+    c->ink                      = nullptr;
+    c->ink_aligned_size         = 0;
+    c->ink_valid                = false;
+    c->ck565 = (uint16_t)((tc565.r5 << 11) | (tc565.g6 << 5) | tc565.b5);
+    canvas_ink_alloc(c);
+    canvas_mark_all(c);
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d (buffer %dx%d) z=%d transp=%u/%u",
               canvas_id, width, height, alloc_w, alloc_h, z_order,
@@ -463,6 +641,8 @@ static bool canvas_grow(p4_canvas_t *c, uint16_t need_w, uint16_t need_h) {
     c->alloc_height     = ah;
     c->buf_aligned_size = aligned;
     c->committed_fresh  = false;
+    canvas_ink_alloc(c);   // a row per row of the new buffer; not valid yet
+    canvas_mark_all(c);
     FMRB_LOGI(TAG, "Canvas grow: id=%u buffer %dx%d", c->canvas_id, (int)aw, (int)ah);
     return true;
 }
@@ -488,6 +668,7 @@ static void canvas_free(p4_canvas_t *c) {
         c->render_sprite = nullptr;
         if (rbuf) heap_caps_free(rbuf);
     }
+    canvas_ink_free(c);
 
     size_t idx = (size_t)(c - g_canvases);
     if (idx < g_canvas_count - 1) {
@@ -580,6 +761,79 @@ struct cursor_stats_t {
     uint32_t msgs_since_render, msgs_per_render_max;
 };
 FMRB_EXT_RAM_BSS_ATTR static cursor_stats_t s_cst;
+
+// Frame timing (doc/modern_resolution/report/r0.md): where one render_frame
+// spends its time, in microseconds, per section, over the same 5-second window
+// as the render line. The sections:
+//   clear    the framebuffer cleared by the CPU
+//   compose  every visible canvas blended in, with its sprites; of that,
+//            sync (cache write-back / invalidate) and hw (the PPA Blend) come
+//            from the backend (g_display_backend_timing)
+//   capture  the copy for the remote desktop (only frames that were copied)
+//   out      cursor bake, the scale-out onto the panel and the restore; of
+//            that, sync (framebuffer write-back) and hw (the PPA SRM)
+//   total    the whole render_frame
+// Plus the commit copy a present makes (PUSH_CANVAS to the screen), which runs
+// with the commands, not in the render. Reading the clock is the only cost.
+// PSRAM: display task only, and the internal RAM budget has no room for new
+// statics.
+enum {
+    FT_TOTAL, FT_CLEAR, FT_COMPOSE, FT_BLEND_SYNC, FT_BLEND_HW,
+    FT_CAPTURE, FT_OUT, FT_OUT_SYNC, FT_OUT_HW, FT_COUNT
+};
+struct frame_timing_t {
+    uint32_t frames;
+    uint32_t captures;              // frames that were copied for the capture
+    uint32_t canvases;              // canvases composited, summed over frames
+    uint32_t canvases_max;
+    uint32_t blocks;                // blend blocks, summed over frames
+    uint64_t sum_us[FT_COUNT];
+    uint32_t max_us[FT_COUNT];
+    uint32_t commits;
+    uint64_t commit_us;
+    uint32_t commit_max_us;
+    uint64_t commit_bytes;
+};
+FMRB_EXT_RAM_BSS_ATTR static frame_timing_t s_ft;
+
+static inline void frame_timing_add(int section, uint32_t us) {
+    s_ft.sum_us[section] += us;
+    if (us > s_ft.max_us[section]) s_ft.max_us[section] = us;
+}
+
+static void frame_timing_log(void) {
+    if (s_ft.frames == 0) return;
+    const uint32_t n = s_ft.frames;
+    const uint32_t nc = s_ft.captures;
+#define FT_AVG(s)  (unsigned long)(s_ft.sum_us[s] / n)
+#define FT_MAX(s)  (unsigned long)s_ft.max_us[s]
+    FMRB_LOGI(TAG, "frame: n=%lu fb=%dx%d cv=%lu/%lu blk=%lu | us avg/max total=%lu/%lu "
+              "clear=%lu/%lu compose=%lu/%lu (sync=%lu/%lu hw=%lu/%lu) "
+              "capture=%lu/%lu n=%lu out=%lu/%lu (sync=%lu/%lu hw=%lu/%lu)",
+              (unsigned long)n,
+              g_framebuffer ? (int)g_framebuffer->width() : 0,
+              g_framebuffer ? (int)g_framebuffer->height() : 0,
+              (unsigned long)(s_ft.canvases / n), (unsigned long)s_ft.canvases_max,
+              (unsigned long)(s_ft.blocks / n),
+              FT_AVG(FT_TOTAL), FT_MAX(FT_TOTAL),
+              FT_AVG(FT_CLEAR), FT_MAX(FT_CLEAR),
+              FT_AVG(FT_COMPOSE), FT_MAX(FT_COMPOSE),
+              FT_AVG(FT_BLEND_SYNC), FT_MAX(FT_BLEND_SYNC),
+              FT_AVG(FT_BLEND_HW), FT_MAX(FT_BLEND_HW),
+              (unsigned long)(nc ? s_ft.sum_us[FT_CAPTURE] / nc : 0), FT_MAX(FT_CAPTURE),
+              (unsigned long)nc,
+              FT_AVG(FT_OUT), FT_MAX(FT_OUT),
+              FT_AVG(FT_OUT_SYNC), FT_MAX(FT_OUT_SYNC),
+              FT_AVG(FT_OUT_HW), FT_MAX(FT_OUT_HW));
+#undef FT_AVG
+#undef FT_MAX
+    FMRB_LOGI(TAG, "frame commit: n=%lu avg=%luus max=%luus avg_bytes=%lu",
+              (unsigned long)s_ft.commits,
+              (unsigned long)(s_ft.commits ? s_ft.commit_us / s_ft.commits : 0),
+              (unsigned long)s_ft.commit_max_us,
+              (unsigned long)(s_ft.commits ? s_ft.commit_bytes / s_ft.commits : 0));
+    memset(&s_ft, 0, sizeof(s_ft));
+}
 
 extern "C" void display_local_cursor_stamp(void) {
     uint32_t w = __atomic_load_n(&s_cur_w, __ATOMIC_RELAXED);
@@ -877,7 +1131,146 @@ static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
     req.canvas_id   = c->canvas_id;
     req.is_viewport = (c->view_w > 0);
 
+    s_ft.blocks++;
     display_backend()->blend_block(&req);
+}
+
+// Bands of a colour-keyed canvas that have ink in them: runs of rows with
+// something that is not the key, each with the columns its rows span. Runs
+// closer than INK_BAND_GAP rows are one band (each blend has a fixed cost),
+// and past INK_BANDS_MAX the two nearest bands are joined. A joined band only
+// takes in rows and columns that are key, which the blend leaves alone.
+#define INK_BAND_GAP   8
+#define INK_BANDS_MAX  8
+
+typedef struct { int y0, y1, x0, x1; } ink_band_t;
+
+static void ink_band_add(ink_band_t *b, int *n, int y0, int y1, int x0, int x1) {
+    if (*n > 0 && y0 - b[*n - 1].y1 < INK_BAND_GAP) {
+        ink_band_t *l = &b[*n - 1];
+        l->y1 = y1;
+        if (x0 < l->x0) l->x0 = x0;
+        if (x1 > l->x1) l->x1 = x1;
+        return;
+    }
+    if (*n == INK_BANDS_MAX) {
+        // Join the pair with the smallest gap to make room.
+        int best = 0, best_gap = INT32_MAX;
+        for (int i = 0; i + 1 < *n; i++) {
+            int gap = b[i + 1].y0 - b[i].y1;
+            if (gap < best_gap) { best_gap = gap; best = i; }
+        }
+        b[best].y1 = b[best + 1].y1;
+        if (b[best + 1].x0 < b[best].x0) b[best].x0 = b[best + 1].x0;
+        if (b[best + 1].x1 > b[best].x1) b[best].x1 = b[best + 1].x1;
+        memmove(&b[best + 1], &b[best + 2], (size_t)(*n - best - 2) * sizeof(ink_band_t));
+        (*n)--;
+    }
+    b[*n].y0 = y0; b[*n].y1 = y1; b[*n].x0 = x0; b[*n].x1 = x1;
+    (*n)++;
+}
+
+static void blend_canvas_inked(p4_canvas_t *c, int sw, int sh,
+                               int pos_x, int pos_y, int fb_w, int fb_h) {
+    if (!c->ink || !c->ink_valid || sh > c->alloc_height ||
+        sw != c->width || sh != c->height) {
+        blend_canvas_block(c, sw, sh, 0, 0, sw, sh, pos_x, pos_y, fb_w, fb_h);
+        return;
+    }
+    ink_band_t bands[INK_BANDS_MAX];
+    int n = 0;
+    int run_y0 = -1, run_x0 = 0, run_x1 = 0;
+    for (int y = 0; y <= sh; y++) {
+        const uint32_t e = (y < sh) ? c->ink[y] : 0;
+        if (e) {
+            const int x0 = (int)(e & 0xFFFF);
+            const int x1 = (int)(e >> 16);
+            if (run_y0 < 0) { run_y0 = y; run_x0 = x0; run_x1 = x1; }
+            else {
+                if (x0 < run_x0) run_x0 = x0;
+                if (x1 > run_x1) run_x1 = x1;
+            }
+        } else if (run_y0 >= 0) {
+            ink_band_add(bands, &n, run_y0, y, run_x0, run_x1);
+            run_y0 = -1;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        const ink_band_t *b = &bands[i];
+        blend_canvas_block(c, sw, sh, b->x0, b->y0, b->x1 - b->x0, b->y1 - b->y0,
+                           pos_x + b->x0, pos_y + b->y0, fb_w, fb_h);
+    }
+}
+
+// Whether render_frame leaves this canvas out of the frame altogether.
+static bool canvas_left_out(const p4_canvas_t *c, int fb_w, int fb_h) {
+    if (!c->is_visible || !c->render_sprite) return true;
+    // Alternate mode: the owner's app alone. Whatever else is still
+    // visible (a desktop the kernel has not hidden yet) is not composited
+    // -- it was laid out for the base framebuffer. The owner's own extra
+    // canvases (create_canvas: the RPG demo's scrolling map) are part of its
+    // picture and go with it. The system's own overlay (the kanji conversion
+    // line) is the other exception: it is laid out for whatever screen is
+    // current and has to show over a fullscreen editor as well.
+    if (g_smode.alt && c->canvas_id != g_smode.owner &&
+        c->z_order < FMRB_GFX_Z_SYSTEM_OVERLAY &&
+        !fmrb_app_canvas_extra_of(g_smode.owner, c->canvas_id)) return true;
+    // Base mode: a canvas at the high-resolution size is a fullscreen
+    // app's that is about to get (or has just left) the high-resolution
+    // screen. Laid out for 640x360, it would show as its top-left corner
+    // at 3x; leave it out until the switch completes. A viewport canvas
+    // is exempt: it is a larger surface on purpose. So is every canvas
+    // when the base framebuffer itself is 640x360 (the browser build's
+    // 640x360 page): there the desktop and the fullscreen apps are at
+    // that size by right, and leaving them out left the screen black.
+    // The native compositor's screen wider than that (doc/linux_native
+    // L9e) has no high-resolution mode at all: a 640x360 canvas there is
+    // a fullscreen app laid out for 640x360, shown as it is.
+    if (!g_smode.alt && c->view_w == 0 &&
+        (fb_w != DISPLAY_LOCAL_HIRES_W || fb_h != DISPLAY_LOCAL_HIRES_H) &&
+#if defined(FMRB_PLATFORM_NATIVE)
+        (fb_w < DISPLAY_LOCAL_HIRES_W || fb_h < DISPLAY_LOCAL_HIRES_H) &&
+#endif
+        c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) return true;
+#if !defined(FMRB_PLATFORM_HOSTED)
+    // The other way round on the 640x360 base (doc/modern_resolution R1b): a
+    // fullscreen app's canvas at 426x240 is one laid out for that screen,
+    // about to get it or just leaving it; at 2x it would show in the top-left
+    // corner. A window can be 426x240 too, so the size alone does not say it:
+    // the app context does. Not the browser's and the native builds' screens,
+    // where no switch goes this way and a plain fullscreen app is 426x240 by
+    // right (the native compositor's Modern-sized fullscreen).
+    if (!g_smode.alt && c->view_w == 0 &&
+        fb_w == DISPLAY_LOCAL_HIRES_W && fb_h == DISPLAY_LOCAL_HIRES_H &&
+        c->width == DISPLAY_LOCAL_STD_W && c->height == DISPLAY_LOCAL_STD_H &&
+        fmrb_app_canvas_fullscreen(c->canvas_id)) return true;
+#endif
+    return false;
+}
+
+// Where render_frame puts the canvas. The alternate screen's owner is the whole
+// screen by definition, so it goes at (0, 0) whatever position it was given:
+// a canvas moved off the origin (a stale window position, a drag that should
+// not have happened) must not leave part of the screen to chance.
+static void canvas_screen_pos(const p4_canvas_t *c, int *x, int *y) {
+    const bool as_owner = g_smode.alt && c->canvas_id == g_smode.owner;
+    *x = as_owner ? 0 : c->push_x;
+    *y = as_owner ? 0 : c->push_y;
+}
+
+// A canvas that writes every framebuffer pixel when it is blended: no colour
+// key, no viewport (a viewport canvas is composited in up to four blocks;
+// left to the general path), and its committed frame covering the whole
+// framebuffer from where it is placed. Nothing composited before it can show,
+// so render_frame starts at the topmost such canvas and skips the clear
+// (doc/modern_resolution/report/r0b.md).
+static bool canvas_covers_frame(const p4_canvas_t *c, int fb_w, int fb_h) {
+    if (c->create_use_transparency || c->view_w != 0) return false;
+    int x, y;
+    canvas_screen_pos(c, &x, &y);
+    return x <= 0 && y <= 0 &&
+           x + (int)c->render_sprite->width()  >= fb_w &&
+           y + (int)c->render_sprite->height() >= fb_h;
 }
 
 static void render_frame(void) {
@@ -888,7 +1281,10 @@ static void render_frame(void) {
         g_first_render = false;
     }
 
-    g_framebuffer->clear(0);
+    // Frame timing (s_ft): the clock is read between the sections.
+    memset(&g_display_backend_timing, 0, sizeof(g_display_backend_timing));
+    const uint64_t t_start = fmrb_hal_time_get_us();
+    uint32_t composited = 0;
 
     if (g_canvas_count > 1) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
@@ -897,52 +1293,41 @@ static void render_frame(void) {
     int fb_w = g_framebuffer->width();
     int fb_h = g_framebuffer->height();
 
-    for (size_t i = 0; i < g_canvas_count; i++) {
-        p4_canvas_t *c = &g_canvases[i];
-        if (!c->is_visible || !c->render_sprite) continue;
-        // High-resolution mode: the owner's canvas alone. Whatever else is
-        // still visible (a desktop the kernel has not hidden yet) is not
-        // composited -- it was laid out for the base framebuffer.
-        // The system's own overlay (the kanji conversion line) is the
-        // exception: it is laid out for whatever screen is current and has to
-        // show over a fullscreen editor as well.
-        if (g_smode.hires && c->canvas_id != g_smode.owner &&
-            c->z_order < FMRB_GFX_Z_SYSTEM_OVERLAY) continue;
-        // Base mode: a canvas at the high-resolution size is a fullscreen
-        // app's that is about to get (or has just left) the high-resolution
-        // screen. Laid out for 640x360, it would show as its top-left corner
-        // at 3x; leave it out until the switch completes. A viewport canvas
-        // is exempt: it is a larger surface on purpose. So is every canvas
-        // when the base framebuffer itself is 640x360 (the browser build's
-        // 640x360 page): there the desktop and the fullscreen apps are at
-        // that size by right, and leaving them out left the screen black.
-        // The native compositor's screen wider than that (doc/linux_native
-        // L9e) has no high-resolution mode at all: a 640x360 canvas there is
-        // a fullscreen app laid out for 640x360, shown as it is.
-        if (!g_smode.hires && c->view_w == 0 &&
-            (fb_w != DISPLAY_LOCAL_HIRES_W || fb_h != DISPLAY_LOCAL_HIRES_H) &&
-#if defined(FMRB_PLATFORM_NATIVE)
-            (fb_w < DISPLAY_LOCAL_HIRES_W || fb_h < DISPLAY_LOCAL_HIRES_H) &&
-#endif
-            c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) continue;
+    // The topmost canvas that covers the whole frame opaquely (the desktop's
+    // wallpaper, a fullscreen app): everything under it is hidden, and it
+    // overwrites every pixel the clear would have set. Without one, the frame
+    // starts black as it always has.
+    size_t first = 0;
+    bool covered = false;
+    for (size_t i = g_canvas_count; i-- > 0;) {
+        const p4_canvas_t *c = &g_canvases[i];
+        if (canvas_left_out(c, fb_w, fb_h)) continue;
+        if (canvas_covers_frame(c, fb_w, fb_h)) {
+            first = i;
+            covered = true;
+            break;
+        }
+    }
+    if (!covered) g_framebuffer->clear(0);
+    const uint64_t t_cleared = fmrb_hal_time_get_us();
 
+    for (size_t i = first; i < g_canvas_count; i++) {
+        p4_canvas_t *c = &g_canvases[i];
+        if (canvas_left_out(c, fb_w, fb_h)) continue;
+
+        composited++;
         // Composite the committed buffer, never the working one (commit-on-present).
         int sw = c->render_sprite->width();
         int sh = c->render_sprite->height();
 
-        // Where the canvas goes. The high-resolution owner is the whole screen
-        // by definition, so it goes at (0, 0) whatever position it was given:
-        // a canvas moved off the origin (a stale window position, a drag that
-        // should not have happened) must not leave part of the screen to
-        // chance.
-        const bool as_owner = g_smode.hires && c->canvas_id == g_smode.owner;
-        const int  pos_x = as_owner ? 0 : c->push_x;
-        const int  pos_y = as_owner ? 0 : c->push_y;
+        int pos_x, pos_y;
+        canvas_screen_pos(c, &pos_x, &pos_y);
 
         if (c->view_w == 0) {
-            // Default path: composite the whole canvas at its push position
-            blend_canvas_block(c, sw, sh, 0, 0, sw, sh,
-                               pos_x, pos_y, fb_w, fb_h);
+            // Default path: composite the canvas at its push position -- the
+            // whole of it, or, for a colour-keyed one whose ink is known,
+            // only the bands that have something in them.
+            blend_canvas_inked(c, sw, sh, pos_x, pos_y, fb_w, fb_h);
         } else {
             // Viewport path (SET_CANVAS_VIEWPORT): the canvas is a torus.
             // The source rect may wrap around the canvas edges, so the
@@ -1008,6 +1393,10 @@ static void render_frame(void) {
         }
     }
 
+    const uint64_t t_composed = fmrb_hal_time_get_us();
+    const display_backend_timing_t blend_t = g_display_backend_timing;
+    bool captured = false;
+
     // Remote-desktop capture: grab the composited frame before the SRM
     // scale-out. The writer (this task) never touches the slot locked by
     // the reader; while the reader is slow, frames simply overwrite the
@@ -1037,7 +1426,9 @@ static void render_frame(void) {
         g_cap_seq++;
         portEXIT_CRITICAL(&g_cap_lock);
         xSemaphoreGive(g_cap_sem);
+        captured = true;
     }
+    const uint64_t t_captured = fmrb_hal_time_get_us();
 
     // Bake the cursor into the framebuffer so the scale-out below writes it to
     // the DSI buffer atomically with the frame (no separate post-scale patch,
@@ -1067,6 +1458,23 @@ static void render_frame(void) {
     } else {
         g_cursor_drawn = false;
     }
+
+    const uint64_t t_end = fmrb_hal_time_get_us();
+    s_ft.frames++;
+    s_ft.canvases += composited;
+    if (composited > s_ft.canvases_max) s_ft.canvases_max = composited;
+    frame_timing_add(FT_TOTAL,      (uint32_t)(t_end - t_start));
+    frame_timing_add(FT_CLEAR,      (uint32_t)(t_cleared - t_start));
+    frame_timing_add(FT_COMPOSE,    (uint32_t)(t_composed - t_cleared));
+    frame_timing_add(FT_BLEND_SYNC, blend_t.blend_sync_us);
+    frame_timing_add(FT_BLEND_HW,   blend_t.blend_hw_us);
+    if (captured) {
+        s_ft.captures++;
+        frame_timing_add(FT_CAPTURE, (uint32_t)(t_captured - t_composed));
+    }
+    frame_timing_add(FT_OUT,        (uint32_t)(t_end - t_captured));
+    frame_timing_add(FT_OUT_SYNC,   g_display_backend_timing.out_sync_us);
+    frame_timing_add(FT_OUT_HW,     g_display_backend_timing.out_hw_us);
 }
 
 // ============================================================
@@ -1085,28 +1493,52 @@ static void render_asap(void) {
     g_last_render_ms = now_ms() - RENDER_MIN_INTERVAL_MS;
 }
 
-// The high-resolution framebuffer, allocated the first time the mode is
-// asked for and kept from then on (a second mode switch must not be able to
-// fail on memory).
-static bool screen_mode_ensure_hires_fb(void) {
-    if (g_smode.fb_hires) return true;
+// Whether w x h is the alternate screen for this base: 640x360 from a base
+// smaller than that (the fullscreen high-resolution mode), 426x240 from the
+// 640x360 base (an app laid out for 426x240, doc/modern_resolution R1b).
+static bool screen_mode_alt_ok(uint16_t w, uint16_t h) {
+    if (w == DISPLAY_LOCAL_HIRES_W && h == DISPLAY_LOCAL_HIRES_H) {
+        return g_display_width < DISPLAY_LOCAL_HIRES_W && g_display_height < DISPLAY_LOCAL_HIRES_H;
+    }
+    if (w == DISPLAY_LOCAL_STD_W && h == DISPLAY_LOCAL_STD_H) {
+        return g_display_width == DISPLAY_LOCAL_HIRES_W && g_display_height == DISPLAY_LOCAL_HIRES_H;
+    }
+    return false;
+}
+
+// The alternate framebuffer, allocated the first time the mode is asked for
+// and kept from then on (a second mode switch must not be able to fail on
+// memory). The base never changes while the display runs, so neither does
+// the alternate size.
+static bool screen_mode_ensure_alt_fb(uint16_t w, uint16_t h) {
+    if (g_smode.fb_alt) {
+        if (g_smode.alt_w == w && g_smode.alt_h == h) return true;
+        FMRB_LOGE(TAG, "screen mode: the alternate screen is %ux%u, not %ux%u",
+                  g_smode.alt_w, g_smode.alt_h, w, h);
+        return false;
+    }
     size_t aligned = 0;
-    void *buf = ppa_alloc_buffer((size_t)DISPLAY_LOCAL_HIRES_W * DISPLAY_LOCAL_HIRES_H * 2,
-                                 &aligned);
+    void *buf = ppa_alloc_buffer((size_t)w * h * 2, &aligned);
     if (!buf) {
-        FMRB_LOGE(TAG, "screen mode: no PSRAM for the %dx%d framebuffer",
-                  DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
+        FMRB_LOGE(TAG, "screen mode: no PSRAM for the %ux%u framebuffer", w, h);
         return false;
     }
     auto *fb = new LGFX_Sprite(&lcd());
     // Depth must be set BEFORE setBuffer (see canvas_alloc)
     set_ppa_native_depth(fb);
-    fb->setBuffer(buf, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
-    g_smode.fb_hires = fb;
-    g_smode.fb_hires_size = aligned;
-    FMRB_LOGI(TAG, "screen mode: %dx%d framebuffer allocated (%u bytes PSRAM)",
-              DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H, (unsigned)aligned);
+    fb->setBuffer(buf, w, h);
+    g_smode.fb_alt = fb;
+    g_smode.fb_alt_size = aligned;
+    g_smode.alt_w = w;
+    g_smode.alt_h = h;
+    FMRB_LOGI(TAG, "screen mode: %ux%u framebuffer allocated (%u bytes PSRAM)",
+              w, h, (unsigned)aligned);
     return true;
+}
+
+// Whether canvas c is at the alternate size (false before the first request).
+static bool screen_mode_at_alt(const p4_canvas_t *c) {
+    return g_smode.fb_alt && c->width == g_smode.alt_w && c->height == g_smode.alt_h;
 }
 
 // The input sources (touch, USB mouse, remote input) clamp and scale to the
@@ -1115,8 +1547,8 @@ static bool screen_mode_ensure_hires_fb(void) {
 // away, a switch that was cancelled, the fallback in screen_mode_poll), so
 // the pointer cannot be left in the coordinates of a screen not shown.
 static void screen_mode_tell_input(void) {
-    if (g_smode.hires) {
-        fmrb_host_set_screen_size(DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
+    if (g_smode.alt) {
+        fmrb_host_set_screen_size(g_smode.alt_w, g_smode.alt_h);
     } else {
         fmrb_host_set_screen_size(0, 0);
     }
@@ -1125,9 +1557,9 @@ static void screen_mode_tell_input(void) {
 // Swap the framebuffer: the switch itself. The cursor keeps its place on the
 // screen (scaled by the ratio of the two sizes) until the next input event
 // sets it in the new coordinates.
-static void screen_mode_apply(bool hires, const char *why) {
-    LGFX_Sprite *to     = hires ? g_smode.fb_hires : g_smode.fb_base;
-    size_t       to_len = hires ? g_smode.fb_hires_size : g_smode.fb_base_size;
+static void screen_mode_apply(bool alt, const char *why) {
+    LGFX_Sprite *to     = alt ? g_smode.fb_alt : g_smode.fb_base;
+    size_t       to_len = alt ? g_smode.fb_alt_size : g_smode.fb_base_size;
     // Only a pending switch has waited; an owner hidden or deleted switches
     // back at once.
     uint32_t waited = g_smode.pending ? now_ms() - g_smode.pending_since_ms : 0;
@@ -1138,8 +1570,8 @@ static void screen_mode_apply(bool hires, const char *why) {
     const int oh = g_framebuffer ? g_framebuffer->height() : to->height();
     g_framebuffer     = to;
     g_fb_aligned_size = to_len;
-    g_smode.hires     = hires;
-    if (!hires) {
+    g_smode.alt       = alt;
+    if (!alt) {
         g_smode.owner = 0;
         g_smode.owner_resize_unacked = false;
     }
@@ -1169,7 +1601,7 @@ static void screen_mode_apply(bool hires, const char *why) {
 static void screen_mode_try_complete(void) {
     if (!g_smode.pending) return;
     p4_canvas_t *c = canvas_find(g_smode.owner);
-    if (g_smode.pending_hires) {
+    if (g_smode.pending_alt) {
         if (!c) {
             g_smode.pending = false;
             g_smode.owner = 0;
@@ -1180,8 +1612,7 @@ static void screen_mode_try_complete(void) {
             render_asap();
             return;
         }
-        if (c->committed_fresh &&
-            c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) {
+        if (c->committed_fresh && screen_mode_at_alt(c)) {
             screen_mode_apply(true, "owner presented");
         }
     } else {
@@ -1194,15 +1625,14 @@ static void screen_mode_try_complete(void) {
     }
 }
 
-// The owner the screen was taken back from presented its 640x360 frame after
-// all (late_owner): it gets the screen now. The kernel still holds the
-// high-resolution mode for it, so nothing else will ask.
+// The owner the screen was taken back from presented its frame at the
+// alternate size after all (late_owner): it gets the screen now. The kernel
+// still holds the mode for it, so nothing else will ask.
 static void screen_mode_late_present(uint16_t canvas_id) {
     if (canvas_id == 0 || canvas_id != g_smode.late_owner) return;
-    if (g_smode.hires || g_smode.pending || !g_smode.fb_hires) return;
+    if (g_smode.alt || g_smode.pending || !g_smode.fb_alt) return;
     p4_canvas_t *c = canvas_find(canvas_id);
-    if (!c || !c->is_visible || !c->committed_fresh ||
-        c->width != DISPLAY_LOCAL_HIRES_W || c->height != DISPLAY_LOCAL_HIRES_H) return;
+    if (!c || !c->is_visible || !c->committed_fresh || !screen_mode_at_alt(c)) return;
     g_smode.late_owner = 0;
     g_smode.owner = canvas_id;
     g_smode.owner_resize_unacked = false;
@@ -1216,24 +1646,19 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
         FMRB_LOGW(TAG, "SET_SCREEN_MODE before INIT_DISPLAY, ignored");
         return;
     }
-    const bool want_hires = (w != 0 && h != 0 &&
-                             !(w == g_display_width && h == g_display_height));
-    if (want_hires) {
-        if (w != DISPLAY_LOCAL_HIRES_W || h != DISPLAY_LOCAL_HIRES_H) {
-            FMRB_LOGW(TAG, "SET_SCREEN_MODE: %ux%u is not a mode (only %dx%d)",
-                      w, h, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H);
-            return;
-        }
-        if (g_display_width >= DISPLAY_LOCAL_HIRES_W || g_display_height >= DISPLAY_LOCAL_HIRES_H) {
-            FMRB_LOGW(TAG, "SET_SCREEN_MODE: the screen is already %ux%u, ignored",
-                      g_display_width, g_display_height);
+    const bool want_alt = (w != 0 && h != 0 &&
+                           !(w == g_display_width && h == g_display_height));
+    if (want_alt) {
+        if (!screen_mode_alt_ok(w, h)) {
+            FMRB_LOGW(TAG, "SET_SCREEN_MODE: %ux%u is not a mode on the %ux%u screen",
+                      w, h, g_display_width, g_display_height);
             return;
         }
         if (!canvas_find(owner)) {
             FMRB_LOGW(TAG, "SET_SCREEN_MODE: owner canvas %u not found", owner);
             return;
         }
-        if (!screen_mode_ensure_hires_fb()) return;
+        if (!screen_mode_ensure_alt_fb(w, h)) return;
     }
     // A request, either way, supersedes a late owner's claim.
     g_smode.late_owner = 0;
@@ -1241,14 +1666,14 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
               owner, w, h, flags, g_framebuffer->width(), g_framebuffer->height(),
               g_smode.pending ? ", a switch pending" : "");
 
-    if (want_hires == g_smode.hires) {
+    if (want_alt == g_smode.alt) {
         // Already in that mode. Drop a pending switch the other way, and
-        // (high-resolution) hand the screen to this owner.
+        // (alternate) hand the screen to this owner.
         if (g_smode.pending) {
             g_smode.pending = false;
             render_asap();
         }
-        if (want_hires && owner != g_smode.owner) {
+        if (want_alt && owner != g_smode.owner) {
             g_smode.owner = owner;
             g_smode.owner_resize_unacked = false;
             g_smode.owner_unshowable_since_ms = 0;  // its own wait starts now
@@ -1258,10 +1683,10 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
     }
 
     g_smode.pending          = true;
-    g_smode.pending_hires    = want_hires;
+    g_smode.pending_alt      = want_alt;
     g_smode.pending_since_ms = now_ms();
     // Going back, the canvas to wait for is the one on screen now.
-    if (want_hires && owner != g_smode.owner) {
+    if (want_alt && owner != g_smode.owner) {
         g_smode.owner = owner;
         g_smode.owner_resize_unacked = false;
     }
@@ -1269,13 +1694,13 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
 }
 
 // Called when a canvas is hidden or about to be deleted. If it owns the
-// high-resolution screen, the screen goes back to the base mode now.
+// alternate screen, the screen goes back to the base mode now.
 static void screen_mode_owner_leaving(uint16_t canvas_id, const char *why) {
     if (canvas_id != 0 && canvas_id == g_smode.late_owner) g_smode.late_owner = 0;
     if (canvas_id == 0 || canvas_id != g_smode.owner) return;
-    if (g_smode.hires) {
+    if (g_smode.alt) {
         screen_mode_apply(false, why);
-    } else if (g_smode.pending && g_smode.pending_hires) {
+    } else if (g_smode.pending && g_smode.pending_alt) {
         g_smode.pending = false;
         g_smode.owner = 0;
         g_smode.owner_resize_unacked = false;
@@ -1290,23 +1715,23 @@ static bool screen_mode_owner_showable(void);
 // Task loop: give up waiting after SCREEN_MODE_WAIT_MS and switch anyway, so
 // an owner that never presents cannot freeze the screen.
 //
-// The same bound holds once in the high-resolution mode. Nothing is rendered
-// there unless the owner has a 640x360 frame to show (screen_mode_can_render),
+// The same bound holds once in the alternate mode. Nothing is rendered there
+// unless the owner has a frame at that size to show (screen_mode_can_render),
 // so an owner that stops having one -- resized to another size, hidden without
 // the hide reaching this task, handed the screen while it had no frame --
 // would otherwise hold the last picture for good, and the screen would look
-// hung. The ordinary way out (the kernel shrinks the canvas, then asks for the
+// hung. The ordinary way out (the kernel resizes the canvas, then asks for the
 // base mode) takes a few milliseconds; if the owner is still unshowable after
 // SCREEN_MODE_WAIT_MS, the display goes back to the base mode by itself.
 static void screen_mode_poll(void) {
     if (g_smode.pending) {
         if (now_ms() - g_smode.pending_since_ms < SCREEN_MODE_WAIT_MS) return;
-        bool to_hires = g_smode.pending_hires;
-        screen_mode_apply(to_hires, "timed out");
+        bool to_alt = g_smode.pending_alt;
+        screen_mode_apply(to_alt, "timed out");
         g_smode.force_render = true;
         return;
     }
-    if (!g_smode.hires) return;
+    if (!g_smode.alt) return;
     if (screen_mode_owner_showable()) {
         g_smode.owner_unshowable_since_ms = 0;
         return;
@@ -1318,15 +1743,15 @@ static void screen_mode_poll(void) {
     }
     if (now - g_smode.owner_unshowable_since_ms < SCREEN_MODE_WAIT_MS) return;
     p4_canvas_t *c = canvas_find(g_smode.owner);
-    FMRB_LOGW(TAG, "screen mode: owner %u has shown no %dx%d frame for %lums "
+    FMRB_LOGW(TAG, "screen mode: owner %u has shown no %ux%u frame for %lums "
               "(%s), back to the base screen",
-              g_smode.owner, DISPLAY_LOCAL_HIRES_W, DISPLAY_LOCAL_HIRES_H,
+              g_smode.owner, g_smode.alt_w, g_smode.alt_h,
               (unsigned long)(now - g_smode.owner_unshowable_since_ms),
               !c ? "gone" : !c->is_visible ? "hidden" :
-              (c->width != DISPLAY_LOCAL_HIRES_W || c->height != DISPLAY_LOCAL_HIRES_H)
-                  ? "wrong size" : "no frame");
+              !screen_mode_at_alt(c) ? "wrong size" : "no frame");
     // Still there (only late, or hidden for now): it may yet present its
-    // 640x360 frame, and then it gets the screen back (screen_mode_late_present).
+    // frame at the alternate size, and then it gets the screen back
+    // (screen_mode_late_present).
     const uint16_t late = c ? g_smode.owner : 0;
     screen_mode_apply(false, "owner unshowable");
     g_smode.late_owner = late;
@@ -1334,21 +1759,21 @@ static void screen_mode_poll(void) {
 }
 
 // Whether render_frame may run now. Pending: no, the previous picture is
-// held. High-resolution: only once the owner's committed frame is at the
-// high-resolution size (on the way out the kernel shrinks the canvas before it
-// asks for the base mode, and that frame must not be shown at 2x).
+// held. Alternate: only once the owner's committed frame is at the alternate
+// size (on the way out the kernel resizes the canvas before it asks for the
+// base mode, and that frame must not be shown at the alternate scale).
 static bool screen_mode_can_render(void) {
     if (g_smode.pending) return false;
     if (g_smode.force_render) {
         g_smode.force_render = false;
         return true;
     }
-    if (!g_smode.hires) return true;
+    if (!g_smode.alt) return true;
     return screen_mode_owner_showable();
 }
 
-// In the high-resolution mode: the owner has a committed frame at the
-// high-resolution size, on a visible canvas.
+// In the alternate mode: the owner has a committed frame at that size, on a
+// visible canvas.
 static bool screen_mode_owner_showable(void) {
     p4_canvas_t *c = canvas_find(g_smode.owner);
     return c && c->is_visible && c->committed_fresh &&
@@ -1440,6 +1865,7 @@ static void note_render(uint32_t start_ms) {
                   (unsigned long)(g_stat_render_ms_total / g_stat_frames),
                   (unsigned long)g_stat_render_ms_max);
         cursor_stats_log();
+        frame_timing_log();
         flash_probe_log();
         g_stat_frames = 0;
         g_stat_render_ms_total = 0;
@@ -1627,6 +2053,9 @@ static bool export_frame_jpeg(const char *path)
     return ok;
 }
 
+static inline int imin(int a, int b) { return a < b ? a : b; }
+static inline int imax(int a, int b) { return a > b ? a : b; }
+
 static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                                 const uint8_t *data, size_t size) {
     switch (sub_cmd) {
@@ -1642,6 +2071,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         // composited half-done -- the quick-tap / mid-burst wallpaper flicker
         // (doc/p4_display_flicker/) cannot recur.
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, 0, s ? (int)s->height() : 0);
         if (s) s->fillScreen(cmd->color);
         return 0;
     }
@@ -1652,6 +2082,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_pixel_t)) break;
         const auto *cmd = (const fmrb_link_graphics_pixel_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y, cmd->y + 1);
         if (s) s->drawPixel(cmd->x, cmd->y, cmd->color);
         return 0;
     }
@@ -1662,6 +2093,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto *cmd = (const fmrb_link_graphics_line_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y1, cmd->y2), imax(cmd->y1, cmd->y2) + 1);
         if (s) s->drawLine(cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
         return 0;
     }
@@ -1670,6 +2102,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto *cmd = (const fmrb_link_graphics_line_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y1, cmd->y2), imax(cmd->y1, cmd->y2) + 1);
         if (s) s->drawFastVLine(cmd->x1, cmd->y1, cmd->y2 - cmd->y1, cmd->color);
         return 0;
     }
@@ -1678,6 +2111,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto *cmd = (const fmrb_link_graphics_line_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y1, cmd->y1 + 1);
         if (s) s->drawFastHLine(cmd->x1, cmd->y1, cmd->x2 - cmd->x1, cmd->color);
         return 0;
     }
@@ -1688,6 +2122,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->drawRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
         return 0;
     }
@@ -1696,6 +2132,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
         return 0;
     }
@@ -1704,6 +2142,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_round_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_round_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->drawRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
         return 0;
     }
@@ -1712,6 +2152,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_round_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_round_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->fillRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
         return 0;
     }
@@ -1722,6 +2164,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_circle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_circle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->radius), cmd->y + abs(cmd->radius) + 1);
         if (s) s->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
         return 0;
     }
@@ -1730,6 +2173,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_circle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_circle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->radius), cmd->y + abs(cmd->radius) + 1);
         if (s) s->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
         return 0;
     }
@@ -1738,6 +2182,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_ellipse_t)) break;
         const auto *cmd = (const fmrb_link_graphics_ellipse_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->ry), cmd->y + abs(cmd->ry) + 1);
         if (s) s->drawEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
         return 0;
     }
@@ -1746,6 +2191,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_ellipse_t)) break;
         const auto *cmd = (const fmrb_link_graphics_ellipse_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->ry), cmd->y + abs(cmd->ry) + 1);
         if (s) s->fillEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
         return 0;
     }
@@ -1756,6 +2202,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_triangle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_triangle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y0, imin(cmd->y1, cmd->y2)),
+                         imax(cmd->y0, imax(cmd->y1, cmd->y2)) + 1);
         if (s) s->drawTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
         return 0;
     }
@@ -1764,6 +2212,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_triangle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_triangle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y0, imin(cmd->y1, cmd->y2)),
+                         imax(cmd->y0, imax(cmd->y1, cmd->y2)) + 1);
         if (s) s->fillTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
         return 0;
     }
@@ -1774,6 +2224,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_arc_t)) break;
         const auto *cmd = (const fmrb_link_graphics_arc_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        {
+            const int r = imax(abs((int)cmd->r0), abs((int)cmd->r1));
+            mark_sprite_rows(cmd->canvas_id, s, cmd->y - r, cmd->y + r + 1);
+        }
         if (s) s->drawArc(cmd->x, cmd->y, cmd->r0, cmd->r1, cmd->angle0, cmd->angle1, cmd->color);
         return 0;
     }
@@ -1782,6 +2236,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_arc_t)) break;
         const auto *cmd = (const fmrb_link_graphics_arc_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        {
+            const int r = imax(abs((int)cmd->r0), abs((int)cmd->r1));
+            mark_sprite_rows(cmd->canvas_id, s, cmd->y - r, cmd->y + r + 1);
+        }
         if (s) s->fillArc(cmd->x, cmd->y, cmd->r0, cmd->r1, cmd->angle0, cmd->angle1, cmd->color);
         return 0;
     }
@@ -1836,6 +2294,18 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             } else {
                 s->print(buf);
             }
+            // The rows the text can have touched: from a line above where it
+            // started (a font that draws above its datum) to a line below
+            // where the cursor ended (wrapped lines and newlines move it
+            // down; descenders). The height is the larger of the font's and
+            // that of the 8-pixel fonts the hybrid mode switches to.
+            // This holds only while LovyanGFX's own wrapping and scrolling
+            // stay off (no setTextWrap(.., true) / setTextScroll here): with
+            // them the cursor can come back up and rows are missed.
+            const int fh = imax((int)s->fontHeight(), 8 * (int)s->getTextSizeY());
+            const int cy = (int)s->getCursorY();
+            mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cy) - fh,
+                             imax(cmd->y, cy) + 2 * fh);
         }
         return 0;
     }
@@ -1990,6 +2460,11 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 c->clip_x = c->clip_y = c->clip_w = c->clip_h = 0;
                 // The committed frame was laid out for the old size.
                 c->committed_fresh = false;
+                // ... and the rows of its ink table were for the old width.
+                c->ink_valid = false;
+                // Both buffers now read with the new stride: rows that were
+                // the same are not the same rows any more.
+                canvas_mark_all(c);
                 if (c->canvas_id == g_smode.owner) g_smode.owner_resize_unacked = true;
             }
             c->width  = nw;
@@ -2020,7 +2495,14 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 void *sb = src->sprite->getBuffer();
                 void *rb = src->render_sprite->getBuffer();
                 if (sb && rb) {
-                    memcpy(rb, sb, (size_t)src->width * src->height * 2);
+                    const uint64_t t0 = fmrb_hal_time_get_us();
+                    const size_t len =
+                        canvas_commit_rows(src, (const uint16_t *)sb, (uint16_t *)rb);
+                    const uint32_t us = (uint32_t)(fmrb_hal_time_get_us() - t0);
+                    s_ft.commits++;
+                    s_ft.commit_us += us;
+                    s_ft.commit_bytes += len;
+                    if (us > s_ft.commit_max_us) s_ft.commit_max_us = us;
                 }
             }
             src->push_x           = (int16_t)cmd->x;
@@ -2047,6 +2529,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             int s_h = src->sprite->height();
             int d_w = dst->sprite->width();
             int d_h = dst->sprite->height();
+            canvas_mark_rows(dst, cmd->y, cmd->y + s_h);
             if (s_buf && d_buf) {
                 lgfx::rgb332_t tr332; tr332.raw = cmd->transparent_color;
                 lgfx::rgb565_t tr_s; tr_s = tr332;
@@ -2230,6 +2713,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         size_t off = sizeof(fmrb_link_graphics_exec_prog_t);
         if (size < off + (size_t)cmd->reg_count * 3) break;
         auto *s = get_sprite(cmd->canvas_id);
+        // A program can draw anywhere on the canvas.
+        mark_sprite_rows(cmd->canvas_id, s, 0, s ? (int)s->height() : 0);
         if (s) {
             display_local_vm_exec_prog(cmd->canvas_id, cmd->prog_id,
                                     data + off, cmd->reg_count, s);
@@ -2701,6 +3186,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             // (x, y) stays the corner whatever the scale.
             float zx = cmd->scale_x_fp8 ? cmd->scale_x_fp8 / 256.0f : 1.0f;
             float zy = cmd->scale_y_fp8 ? cmd->scale_y_fp8 / 256.0f : zx;
+            if (zy > 0.0f) {
+                mark_sprite_rows(cmd->canvas_id, dst, cmd->y,
+                                 cmd->y + (int)(img->height * zy) + 2);
+            } else {
+                mark_sprite_rows(cmd->canvas_id, dst, 0, (int)dst->height());
+            }
             if (zx == 1.0f && zy == 1.0f) {
                 img->sprite->pushSprite(dst, cmd->x, cmd->y);
             } else {
@@ -2725,6 +3216,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
+        mark_sprite_rows(cmd->canvas_id, dst, cmd->dst_y, cmd->dst_y + (int)cmd->h);
 
         uint8_t trans_color_332 = 0;
         bool use_trans = display_local_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
@@ -2782,6 +3274,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
+        mark_sprite_rows(cmd->canvas_id, dst, 0, (int)dst->height());
         display_local_mask_blit(cmd->mask_id, src, dst, cmd->x, cmd->y);
         return 0;
     }
@@ -3706,6 +4199,11 @@ static bool video_service(void) {
                     void *rb = c->render_sprite->getBuffer();
                     if (rb) memcpy(rb, dst, (size_t)c->width * c->height * 2);
                 }
+                // Written without the ink scan: blend it whole until the next
+                // present works the ink out again. The whole working buffer
+                // went over, so nothing is left to copy.
+                c->ink_valid = false;
+                c->ndirty = 0;
                 g_needs_render = true;
                 display_local_video_note_copy_us(
                     (uint32_t)((int64_t)fmrb_hal_time_get_us() - copy_t0));

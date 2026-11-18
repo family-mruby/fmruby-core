@@ -72,6 +72,41 @@ void fmrb_kernel_stop(void);
 
 const fmrb_system_config_t* fmrb_kernel_get_config(void);
 
+/*
+ * Modern's two screen resolutions (doc/modern_resolution). The standard one is
+ * every Modern machine's default; the high one (2x on a 1280x720 output) is
+ * chosen in Config. Each is also the screen the display switches to from the
+ * other while a fullscreen app laid out for it is on top (fmrb_app_screen_mode_size:
+ * doc/fullscreen_hires, doc/modern_resolution R1b).
+ */
+#define FMRB_MODERN_STD_W   426
+#define FMRB_MODERN_STD_H   240
+#define FMRB_MODERN_HIGH_W  640
+#define FMRB_MODERN_HIGH_H  360
+
+/*
+ * Whether this build takes its screen from the two Modern resolutions: the
+ * Modern boards and the Modern simulator. Not the browser and native builds
+ * (FMRB_PLATFORM_HOSTED): their screen is the page's or the machine's.
+ */
+#if defined(FMRB_HW_FAMILY_MODERN) && !defined(FMRB_PLATFORM_HOSTED)
+#define FMRB_MODERN_RESOLUTIONS 1
+#endif
+
+/**
+ * @brief Whether width x height is one of the Modern resolutions.
+ */
+bool fmrb_kernel_modern_resolution(uint16_t width, uint16_t height);
+
+/**
+ * @brief Boot this once at the standard Modern resolution, whatever
+ *        system_conf says (the recovery key held at boot). The file is not
+ *        changed. Only before the display is initialized; a no-op on builds
+ *        without FMRB_MODERN_RESOLUTIONS.
+ * @param why  what asked for it, for the log line
+ */
+void fmrb_kernel_force_standard_display(const char *why);
+
 /**
  * @brief The size a fullscreen window gets: the display minus its margins,
  *        except on the native compositor machine with a screen larger than

@@ -226,9 +226,13 @@ static int g_screen_width = 0;
 static int g_screen_height = 0;
 static double g_mouse_scale_x = 1.0;
 static double g_mouse_scale_y = 1.0;
-// The base screen (system config), which mouse_scale_x/y are tuned for. On a
-// larger screen the scale is multiplied by the ratio so the cursor keeps its
-// on-screen speed. PSRAM: no new internal RAM statics.
+// The screen mouse_scale_x/y are tuned for. On a larger screen the scale is
+// multiplied by the ratio so the cursor keeps its on-screen speed: the
+// system config's screen on Retro, Modern's standard 426x240 on Modern, so
+// that the same hand movement crosses the same part of the monitor at either
+// resolution Config offers (doc/modern_resolution) and in the fullscreen
+// high-resolution mode. The setting itself stays as written. PSRAM: no new
+// internal RAM statics.
 EXT_RAM_BSS_ATTR static int g_base_width;
 EXT_RAM_BSS_ATTR static int g_base_height;
 
@@ -728,19 +732,26 @@ static bool ensure_screen_size(void)
         if (!conf || conf->display_width <= 0 || conf->display_height <= 0) {
             return false;
         }
+#if defined(FMRB_HW_FAMILY_MODERN)
+        g_base_width = FMRB_MODERN_STD_W;
+        g_base_height = FMRB_MODERN_STD_H;
+#else
         g_base_width = conf->display_width;
         g_base_height = conf->display_height;
+#endif
         g_mouse_scale_x = conf->mouse_scale_x;
         g_mouse_scale_y = conf->mouse_scale_y;
-        FMRB_LOGI(TAG, "Screen size acquired: %dx%d, mouse scale: %.2f/%.2f",
-                  g_base_width, g_base_height, g_mouse_scale_x, g_mouse_scale_y);
+        FMRB_LOGI(TAG, "Screen size acquired: %dx%d, mouse scale: %.2f/%.2f (for %dx%d)",
+                  conf->display_width, conf->display_height, g_mouse_scale_x, g_mouse_scale_y,
+                  g_base_width, g_base_height);
     }
 
     int w, h;
     fmrb_host_get_screen_size(&w, &h);
     if (w <= 0 || h <= 0) {
-        w = g_base_width;
-        h = g_base_height;
+        const fmrb_system_config_t* conf = fmrb_kernel_get_config();
+        w = conf->display_width;
+        h = conf->display_height;
     }
     if (w != g_screen_width || h != g_screen_height) {
         // The screen changed size: keep every mouse's cursor at the same place
@@ -939,8 +950,9 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         }
 
         // Apply mouse sensitivity with fractional accumulation
-        // Scaled by the screen's size against the base screen, so the cursor
-        // crosses the screen at the same speed in the high-resolution mode.
+        // Scaled by the screen's size against the one mouse_scale is tuned
+        // for (g_base_*), so the cursor crosses the screen at the same speed
+        // at 640x360 as at 426x240.
         device->mouse_state.accum_x += dx * g_mouse_scale_x * g_screen_width / g_base_width;
         device->mouse_state.accum_y += dy * g_mouse_scale_y * g_screen_height / g_base_height;
 
@@ -1170,6 +1182,82 @@ static void process_gamepad_report(hid_device_info_t *device, const uint8_t *dat
         }
     }
 }
+
+#if defined(FMRB_MODERN_RESOLUTIONS)
+// ---- The keys held when a keyboard comes up (doc/modern_resolution R2) ----
+//
+// A keyboard reports only when its keys change, so a modifier held since
+// before it was enumerated (Shift held at power-on, the way back to the
+// standard resolution) never shows up as an event. Each new boot keyboard is
+// asked once for its current state with GET_REPORT, and a held modifier goes
+// through the ordinary report handling, where it becomes a key down like a
+// press. The key array is left empty: a letter held at boot is not typed.
+//
+// The request blocks until the transfer completes, and neither USB task can
+// make it: the HID driver's callbacks run inside hid_host_handle_events,
+// which dispatches the transfer's completion, and the USB Host Library task's
+// usb_host_lib_handle_events is what processes the endpoint events. Made from
+// either, it waits out its 5 s timeout (both seen on the P4-Nano). So a short
+// task of its own asks, with its stack on PSRAM, and ends. Nothing in the boot
+// path waits for it.
+#define KBD_STATE_TASK_STACK_SIZE (3 * 1024)
+#define KBD_STATE_TASK_PRIORITY   (4)
+EXT_RAM_BSS_ATTR static uint32_t s_kbd_state_gen[MAX_HID_DEVICES];
+
+static void kbd_state_task(void *arg)
+{
+    int slot = (int)(intptr_t)arg;
+    uint32_t gen = s_kbd_state_gen[slot];
+
+    hid_host_device_handle_t handle = NULL;
+    if (g_usb_running && fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+        if (g_hid_devices[slot].connected && g_hid_devices[slot].generation == gen) {
+            handle = g_hid_devices[slot].handle;
+        }
+        fmrb_semaphore_give(g_hid_devices_mutex);
+    }
+    if (handle != NULL) {
+        uint8_t state[8] = {0};
+        size_t len = sizeof(state);
+        esp_err_t ret = hid_class_request_get_report(handle, HID_REPORT_TYPE_INPUT, 0, state, &len);
+        if (ret != ESP_OK || len < sizeof(state)) {
+            FMRB_LOGW(TAG, "Keyboard state at connect (slot %d): GET_REPORT failed (0x%x, %u bytes)",
+                      slot, ret, (unsigned)len);
+        } else {
+            FMRB_LOGI(TAG, "Keyboard state at connect (slot %d): modifier=0x%02X", slot, state[0]);
+            // Handled here under the device lock, as the HID task handles a
+            // report, rather than queued for it: that task drains its queue
+            // only between waits of up to 100 ms, and the display is
+            // initialized about 0.1 s after this on the P4-Nano.
+            if (state[0] != 0 &&
+                fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                hid_device_info_t *device = &g_hid_devices[slot];
+                if (device->connected && device->generation == gen &&
+                    device->proto == HID_PROTOCOL_KEYBOARD) {
+                    uint8_t seed[8] = {0};
+                    seed[0] = state[0];
+                    process_keyboard_report(device, seed, sizeof(seed));
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+        }
+    }
+    fmrb_task_delete(NULL);
+}
+
+static void kbd_state_request(int slot_index, uint32_t generation)
+{
+    s_kbd_state_gen[slot_index] = generation;
+    // The handle registers the task, which is how its own delete knows to
+    // free a PSRAM (WithCaps) task.
+    fmrb_task_handle_t handle = NULL;
+    if (fmrb_task_create_ex(kbd_state_task, "kbd_state", KBD_STATE_TASK_STACK_SIZE,
+                            (void *)(intptr_t)slot_index, KBD_STATE_TASK_PRIORITY, &handle,
+                            FMRB_TASK_FLAG_PSRAM) != FMRB_PASS) {
+        FMRB_LOGW(TAG, "Keyboard state at connect (slot %d): no task to ask with", slot_index);
+    }
+}
+#endif
 
 static void hid_host_interface_callback(hid_host_device_handle_t hid_device_handle,
                                          const hid_host_interface_event_t event,
@@ -1582,6 +1670,12 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                 }
             } else if (is_boot_device && proto == HID_PROTOCOL_KEYBOARD) {
                 FMRB_LOGI(TAG, "Boot keyboard ready for slot %d", slot_index);
+#if defined(FMRB_MODERN_RESOLUTIONS)
+                if (!is_control_transfer_broken(vid, pid) &&
+                    !hid_device_config_skip_control_transfer(vid, pid)) {
+                    kbd_state_request(slot_index, slot_generation);
+                }
+#endif
             }
 
             FMRB_LOGI(TAG, "HID Device Connected (proto=%d, VID=0x%04X, PID=0x%04X)", proto, vid, pid);

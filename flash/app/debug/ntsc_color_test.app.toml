@@ -2,3 +2,4 @@ app_handle_name = "ntsc_color_test"
 app_screen_name = "NTSC Test"
 app_screen_name_ja = "NTSCテスト"
 default_window_mode = "fullscreen"
+fullscreen_any_size = true   # lays itself out at any size: no 426x240 screen on a 640x360 one
