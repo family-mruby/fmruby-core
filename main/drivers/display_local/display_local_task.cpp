@@ -197,7 +197,17 @@ typedef struct {
     size_t       ink_aligned_size;
     bool         ink_valid;
     uint16_t     ck565;            // the key as the RGB565 pixel value
+    // The rows of the working buffer that may differ from the committed one:
+    // up to CANVAS_DIRTY_MAX spans [y0, y1) of buffer rows. Every command
+    // that writes the working buffer marks the rows it can touch (with a
+    // margin, and the whole buffer when it cannot tell); the commit copies
+    // only these and clears them. Outside them the two buffers are the same,
+    // so the copy that is left out would not have changed anything.
+    uint16_t     dirty_y0[4], dirty_y1[4];
+    uint8_t      ndirty;
 } p4_canvas_t;
+
+#define CANVAS_DIRTY_MAX 4
 
 // PSRAM: canvas bookkeeping, touched by the display task and never by an ISR.
 FMRB_EXT_RAM_BSS_ATTR static p4_canvas_t g_canvases[DISPLAY_LOCAL_MAX_CANVAS];
@@ -389,24 +399,96 @@ static uint32_t row_ink(const uint16_t *row, int w, uint16_t key) {
     return ((uint32_t)x1 << 16) | (uint32_t)x0;
 }
 
-// The present's commit: the working buffer's active area into the committed
-// one (stride == width, so the area is contiguous). A colour-keyed canvas has
-// each row's ink worked out as it goes, from the row just copied while it is
-// still in the cache.
-static void canvas_commit_rows(p4_canvas_t *c, const uint16_t *sb, uint16_t *rb) {
+// Mark rows [y0, y1) of the working buffer as written (see p4_canvas_t).
+// One row of margin either side; clamped to the buffer. Past
+// CANVAS_DIRTY_MAX spans, the two nearest are joined (which only copies a
+// few unchanged rows more).
+static void canvas_mark_rows(p4_canvas_t *c, int y0, int y1) {
+    y0 -= 1;
+    y1 += 1;
+    if (y0 < 0) y0 = 0;
+    if (y1 > (int)c->alloc_height) y1 = c->alloc_height;
+    if (y0 >= y1) return;
+    int s0[CANVAS_DIRTY_MAX + 1], s1[CANVAS_DIRTY_MAX + 1];
+    int n = 0;
+    // Take the new span in, absorbing every span it overlaps or touches.
+    for (int i = 0; i < c->ndirty; i++) {
+        if (c->dirty_y0[i] <= y1 && c->dirty_y1[i] >= y0) {
+            if (c->dirty_y0[i] < y0) y0 = c->dirty_y0[i];
+            if (c->dirty_y1[i] > y1) y1 = c->dirty_y1[i];
+        } else {
+            s0[n] = c->dirty_y0[i];
+            s1[n] = c->dirty_y1[i];
+            n++;
+        }
+    }
+    s0[n] = y0;
+    s1[n] = y1;
+    n++;
+    if (n > CANVAS_DIRTY_MAX) {
+        // Join the two spans nearest each other (disjoint, so the gap > 0).
+        int bi = 0, bj = 1, best = INT32_MAX;
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (i == j || s0[j] < s1[i]) continue;
+                if (s0[j] - s1[i] < best) { best = s0[j] - s1[i]; bi = i; bj = j; }
+            }
+        }
+        s1[bi] = s1[bj];
+        s0[bj] = s0[n - 1];
+        s1[bj] = s1[n - 1];
+        n--;
+    }
+    for (int i = 0; i < n; i++) {
+        c->dirty_y0[i] = (uint16_t)s0[i];
+        c->dirty_y1[i] = (uint16_t)s1[i];
+    }
+    c->ndirty = (uint8_t)n;
+}
+
+static void canvas_mark_all(p4_canvas_t *c) {
+    c->dirty_y0[0] = 0;
+    c->dirty_y1[0] = c->alloc_height;
+    c->ndirty = 1;
+}
+
+// The present's commit: the written rows of the working buffer's active area
+// into the committed one (stride == width, so a span of rows is contiguous).
+// A colour-keyed canvas has each copied row's ink worked out as it goes, from
+// the row just copied while it is still in the cache; when its table is not
+// valid, every row is read for it once.
+static size_t canvas_commit_rows(p4_canvas_t *c, const uint16_t *sb, uint16_t *rb) {
     const int w = c->width;
     const int h = c->height;
-    if (!c->ink || h > c->alloc_height) {
-        memcpy(rb, sb, (size_t)w * h * 2);
-        if (c->ink) c->ink_valid = false;
-        return;
+    const bool ink = c->ink && h <= (int)c->alloc_height;
+    const bool rescan = ink && !c->ink_valid;
+    size_t copied = 0;
+    for (int i = 0; i < c->ndirty; i++) {
+        int y0 = c->dirty_y0[i];
+        int y1 = c->dirty_y1[i];
+        if (y1 > h) y1 = h;
+        if (y0 >= y1) continue;
+        memcpy(rb + (size_t)y0 * w, sb + (size_t)y0 * w, (size_t)(y1 - y0) * w * 2);
+        copied += (size_t)(y1 - y0) * w * 2;
+        if (ink && !rescan) {
+            for (int y = y0; y < y1; y++) c->ink[y] = row_ink(sb + (size_t)y * w, w, c->ck565);
+        }
     }
-    for (int y = 0; y < h; y++) {
-        const uint16_t *src = sb + (size_t)y * w;
-        memcpy(rb + (size_t)y * w, src, (size_t)w * 2);
-        c->ink[y] = row_ink(src, w, c->ck565);
+    c->ndirty = 0;
+    if (rescan) {
+        for (int y = 0; y < h; y++) c->ink[y] = row_ink(rb + (size_t)y * w, w, c->ck565);
     }
-    c->ink_valid = true;
+    if (c->ink) c->ink_valid = ink;
+    return copied;
+}
+
+// The drawing target of a command that writes rows [y0, y1) of it: as
+// get_sprite, and when that is the canvas's own working buffer (not a
+// SpriteImage the commands are redirected to), those rows are marked.
+static void mark_sprite_rows(uint16_t canvas_id, LGFX_Sprite *s, int y0, int y1) {
+    if (!s) return;
+    p4_canvas_t *c = canvas_find(canvas_id);
+    if (c && s == c->sprite) canvas_mark_rows(c, y0, y1);
 }
 
 static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
@@ -499,6 +581,7 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->ink_valid                = false;
     c->ck565 = (uint16_t)((tc565.r5 << 11) | (tc565.g6 << 5) | tc565.b5);
     canvas_ink_alloc(c);
+    canvas_mark_all(c);
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d (buffer %dx%d) z=%d transp=%u/%u",
               canvas_id, width, height, alloc_w, alloc_h, z_order,
@@ -541,6 +624,7 @@ static bool canvas_grow(p4_canvas_t *c, uint16_t need_w, uint16_t need_h) {
     c->buf_aligned_size = aligned;
     c->committed_fresh  = false;
     canvas_ink_alloc(c);   // a row per row of the new buffer; not valid yet
+    canvas_mark_all(c);
     FMRB_LOGI(TAG, "Canvas grow: id=%u buffer %dx%d", c->canvas_id, (int)aw, (int)ah);
     return true;
 }
@@ -1919,6 +2003,9 @@ static bool export_frame_jpeg(const char *path)
     return ok;
 }
 
+static inline int imin(int a, int b) { return a < b ? a : b; }
+static inline int imax(int a, int b) { return a > b ? a : b; }
+
 static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                                 const uint8_t *data, size_t size) {
     switch (sub_cmd) {
@@ -1934,6 +2021,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         // composited half-done -- the quick-tap / mid-burst wallpaper flicker
         // (doc/p4_display_flicker/) cannot recur.
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, 0, s ? (int)s->height() : 0);
         if (s) s->fillScreen(cmd->color);
         return 0;
     }
@@ -1944,6 +2032,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_pixel_t)) break;
         const auto *cmd = (const fmrb_link_graphics_pixel_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y, cmd->y + 1);
         if (s) s->drawPixel(cmd->x, cmd->y, cmd->color);
         return 0;
     }
@@ -1954,6 +2043,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto *cmd = (const fmrb_link_graphics_line_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y1, cmd->y2), imax(cmd->y1, cmd->y2) + 1);
         if (s) s->drawLine(cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
         return 0;
     }
@@ -1962,6 +2052,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto *cmd = (const fmrb_link_graphics_line_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y1, cmd->y2), imax(cmd->y1, cmd->y2) + 1);
         if (s) s->drawFastVLine(cmd->x1, cmd->y1, cmd->y2 - cmd->y1, cmd->color);
         return 0;
     }
@@ -1970,6 +2061,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto *cmd = (const fmrb_link_graphics_line_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y1, cmd->y1 + 1);
         if (s) s->drawFastHLine(cmd->x1, cmd->y1, cmd->x2 - cmd->x1, cmd->color);
         return 0;
     }
@@ -1980,6 +2072,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->drawRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
         return 0;
     }
@@ -1988,6 +2082,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
         return 0;
     }
@@ -1996,6 +2092,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_round_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_round_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->drawRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
         return 0;
     }
@@ -2004,6 +2102,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_round_rect_t)) break;
         const auto *cmd = (const fmrb_link_graphics_round_rect_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cmd->y + cmd->height),
+                         imax(cmd->y, cmd->y + cmd->height) + 1);
         if (s) s->fillRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
         return 0;
     }
@@ -2014,6 +2114,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_circle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_circle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->radius), cmd->y + abs(cmd->radius) + 1);
         if (s) s->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
         return 0;
     }
@@ -2022,6 +2123,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_circle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_circle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->radius), cmd->y + abs(cmd->radius) + 1);
         if (s) s->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
         return 0;
     }
@@ -2030,6 +2132,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_ellipse_t)) break;
         const auto *cmd = (const fmrb_link_graphics_ellipse_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->ry), cmd->y + abs(cmd->ry) + 1);
         if (s) s->drawEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
         return 0;
     }
@@ -2038,6 +2141,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_ellipse_t)) break;
         const auto *cmd = (const fmrb_link_graphics_ellipse_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, cmd->y - abs(cmd->ry), cmd->y + abs(cmd->ry) + 1);
         if (s) s->fillEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
         return 0;
     }
@@ -2048,6 +2152,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_triangle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_triangle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y0, imin(cmd->y1, cmd->y2)),
+                         imax(cmd->y0, imax(cmd->y1, cmd->y2)) + 1);
         if (s) s->drawTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
         return 0;
     }
@@ -2056,6 +2162,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_triangle_t)) break;
         const auto *cmd = (const fmrb_link_graphics_triangle_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y0, imin(cmd->y1, cmd->y2)),
+                         imax(cmd->y0, imax(cmd->y1, cmd->y2)) + 1);
         if (s) s->fillTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
         return 0;
     }
@@ -2066,6 +2174,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_arc_t)) break;
         const auto *cmd = (const fmrb_link_graphics_arc_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        {
+            const int r = imax(abs((int)cmd->r0), abs((int)cmd->r1));
+            mark_sprite_rows(cmd->canvas_id, s, cmd->y - r, cmd->y + r + 1);
+        }
         if (s) s->drawArc(cmd->x, cmd->y, cmd->r0, cmd->r1, cmd->angle0, cmd->angle1, cmd->color);
         return 0;
     }
@@ -2074,6 +2186,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_arc_t)) break;
         const auto *cmd = (const fmrb_link_graphics_arc_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
+        {
+            const int r = imax(abs((int)cmd->r0), abs((int)cmd->r1));
+            mark_sprite_rows(cmd->canvas_id, s, cmd->y - r, cmd->y + r + 1);
+        }
         if (s) s->fillArc(cmd->x, cmd->y, cmd->r0, cmd->r1, cmd->angle0, cmd->angle1, cmd->color);
         return 0;
     }
@@ -2128,6 +2244,15 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             } else {
                 s->print(buf);
             }
+            // The rows the text can have touched: from a line above where it
+            // started (a font that draws above its datum) to a line below
+            // where the cursor ended (wrapped lines and newlines move it
+            // down; descenders). The height is the larger of the font's and
+            // that of the 8-pixel fonts the hybrid mode switches to.
+            const int fh = imax((int)s->fontHeight(), 8 * (int)s->getTextSizeY());
+            const int cy = (int)s->getCursorY();
+            mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cy) - fh,
+                             imax(cmd->y, cy) + 2 * fh);
         }
         return 0;
     }
@@ -2284,6 +2409,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 c->committed_fresh = false;
                 // ... and the rows of its ink table were for the old width.
                 c->ink_valid = false;
+                // Both buffers now read with the new stride: rows that were
+                // the same are not the same rows any more.
+                canvas_mark_all(c);
                 if (c->canvas_id == g_smode.owner) g_smode.owner_resize_unacked = true;
             }
             c->width  = nw;
@@ -2314,9 +2442,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 void *sb = src->sprite->getBuffer();
                 void *rb = src->render_sprite->getBuffer();
                 if (sb && rb) {
-                    const size_t len = (size_t)src->width * src->height * 2;
                     const uint64_t t0 = fmrb_hal_time_get_us();
-                    canvas_commit_rows(src, (const uint16_t *)sb, (uint16_t *)rb);
+                    const size_t len =
+                        canvas_commit_rows(src, (const uint16_t *)sb, (uint16_t *)rb);
                     const uint32_t us = (uint32_t)(fmrb_hal_time_get_us() - t0);
                     s_ft.commits++;
                     s_ft.commit_us += us;
@@ -2348,6 +2476,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             int s_h = src->sprite->height();
             int d_w = dst->sprite->width();
             int d_h = dst->sprite->height();
+            canvas_mark_rows(dst, cmd->y, cmd->y + s_h);
             if (s_buf && d_buf) {
                 lgfx::rgb332_t tr332; tr332.raw = cmd->transparent_color;
                 lgfx::rgb565_t tr_s; tr_s = tr332;
@@ -2531,6 +2660,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         size_t off = sizeof(fmrb_link_graphics_exec_prog_t);
         if (size < off + (size_t)cmd->reg_count * 3) break;
         auto *s = get_sprite(cmd->canvas_id);
+        // A program can draw anywhere on the canvas.
+        mark_sprite_rows(cmd->canvas_id, s, 0, s ? (int)s->height() : 0);
         if (s) {
             display_local_vm_exec_prog(cmd->canvas_id, cmd->prog_id,
                                     data + off, cmd->reg_count, s);
@@ -3002,6 +3133,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             // (x, y) stays the corner whatever the scale.
             float zx = cmd->scale_x_fp8 ? cmd->scale_x_fp8 / 256.0f : 1.0f;
             float zy = cmd->scale_y_fp8 ? cmd->scale_y_fp8 / 256.0f : zx;
+            if (zy > 0.0f) {
+                mark_sprite_rows(cmd->canvas_id, dst, cmd->y,
+                                 cmd->y + (int)(img->height * zy) + 2);
+            } else {
+                mark_sprite_rows(cmd->canvas_id, dst, 0, (int)dst->height());
+            }
             if (zx == 1.0f && zy == 1.0f) {
                 img->sprite->pushSprite(dst, cmd->x, cmd->y);
             } else {
@@ -3026,6 +3163,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
+        mark_sprite_rows(cmd->canvas_id, dst, cmd->dst_y, cmd->dst_y + (int)cmd->h);
 
         uint8_t trans_color_332 = 0;
         bool use_trans = display_local_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
@@ -3083,6 +3221,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
+        mark_sprite_rows(cmd->canvas_id, dst, 0, (int)dst->height());
         display_local_mask_blit(cmd->mask_id, src, dst, cmd->x, cmd->y);
         return 0;
     }
@@ -4008,8 +4147,10 @@ static bool video_service(void) {
                     if (rb) memcpy(rb, dst, (size_t)c->width * c->height * 2);
                 }
                 // Written without the ink scan: blend it whole until the next
-                // present works the ink out again.
+                // present works the ink out again. The whole working buffer
+                // went over, so nothing is left to copy.
                 c->ink_valid = false;
+                c->ndirty = 0;
                 g_needs_render = true;
                 display_local_video_note_copy_us(
                     (uint32_t)((int64_t)fmrb_hal_time_get_us() - copy_t0));
