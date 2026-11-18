@@ -83,7 +83,7 @@ ruby tools/regress/run.rb --debug board/list@modern-426x240   # 1 つをこの�
 - `firmware` のある端末は `rake regress:size ALL=1` (7 章) の表にも入る (既定で作るのは `size_default` の付いた S3・P4 の 1 台ずつ)。ファームの設定は `FIRMWARE_ENV` (標準構成: Spinel のカーネルとエディタ、mruby のデスクトップ) に端末ごとの `build` を重ねたもので、`.env` には左右されない。Rakefile の BOARD_BUILD_DEFAULTS と食い違うと `rake regress:size` が止まる。
 - **端末を 1 台足すときは、この一覧に 1 行足す**。次の `rake regress` でその端末の記録が「基準が無い」と出るので、記録を見て `rake regress:update` する。
 - 実機の起動ログ (8 章) と sim の台本 (7.2) の基準と幅は、手で数回流して見比べずに calibrate で取る: `rake regress:boot:calibrate BOARD=<端末>` → 数行の要約を読む → `APPLY=1` (8.1)。
-- 画面が同じ端末 (Tab5・NARYAv4・ブラウザ版) は同じ絵になるので、1 組の記録を共有する (端末の組、`modern-426x240` のような名前)。新しい大きさの端末だけが記録を増やす。端末が増えても確認の手間は大きさの種類の分しか増えない。
+- 画面が同じ端末 (Tab5・ブラウザ版) は同じ絵になるので、1 組の記録を共有する (端末の組、`modern-426x240` のような名前)。NARYAv4 は既定の画面が 640x360 なので別の組 (`modern-640x360`。宣言の無い全画面のアプリは 426x240、`targets.rb` の `plain`)。新しい大きさの端末だけが記録を増やす。端末が増えても確認の手間は大きさの種類の分しか増えない。
 - どの場面をどの端末で描くか: その端末の storage_exclude がアプリのファイルを外していれば描かない (Retro は walk_scroller と麻雀、StickS3・AtomS3R は app/game・app/demo を外す)。それに加えて場面ごとに条件を書ける (`on:`)。
 
 ## 4. 場面の足し方

@@ -1,13 +1,14 @@
 # 全画面の高解像度モード (使い方と仕組み)
 
-> 状態: 完了 | 更新: 2026-11-18 | P4 系 (Tab5 / NARYAv4)、ブラウザ版と Modern の Linux sim で、属性を持つアプリの全画面だけ 640x360 になる。画面そのものを Config で 640x360 にしたときは逆に、426x240 向けの全画面のアプリ (属性なし) の間だけ 426x240 になる (どの大きさでも描けるアプリは `fullscreen_any_size` で外す)。アプリの書き方、エディタのフォント、遠隔の道具での見え方
+> 状態: 完了 | 更新: 2026-11-18 | P4 系 (Tab5 / NARYAv4)、ブラウザ版と Modern の Linux sim で、属性を持つアプリの全画面だけ 640x360 になる。画面そのものが 640x360 のとき (P4-Nano の既定、ほかは Config で選ぶ) は逆に、426x240 向けの全画面のアプリ (属性なし) の間だけ 426x240 になる (どの大きさでも描けるアプリは `fullscreen_any_size` で外す)。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 
 企画の経緯は `doc/fullscreen_hires/` (plan.md と report/)。画面そのものの解像度を
-選べるようにした経緯は `doc/modern_resolution/` (R1a)。
+選べるようにした経緯は `doc/modern_resolution/` (R1a。P4-Nano の既定を 640x360 にしたのは R2)。
 
 ## 何が起きるか
 
-- 通常の画面は 426x240 で、Tab5 と NARYAv4 はそれを 3 倍して 1280x720 に出す。
+- 標準の画面は 426x240 で、Tab5 と NARYAv4 はそれを 3 倍して 1280x720 に出す
+  (P4-Nano の既定は 640x360 の画面。次の「画面を 640x360 にした端末」)。
 - `fullscreen_hires` を持つアプリが**全画面の一番上**にいる間だけ、画面は
   640x360 になり、2 倍して出る。物理の大きさは同じで、細かさだけが上がる。
 - Window に戻る (F11)、別の全画面アプリが上に来る、park される (Ctrl+Tab)、
@@ -33,8 +34,13 @@
 
 ## 画面の解像度 (Config)
 
-Modern (P4-Nano・Tab5・Modern の sim) の画面は 426x240 と 640x360 から選べる
-(既定はどの端末も 426x240)。
+Modern (P4-Nano・Tab5・Modern の sim) の画面は 426x240 と 640x360 から選べる。
+既定は P4-Nano (`config/system_conf_naryav4.toml`) が 640x360、Tab5・Modern の sim が
+426x240 (ブラウザ版・ネイティブ版は選ぶ項目が無く、426x240 のまま)。
+
+- 選んだ値は端末の `/etc/system_conf.toml` にあり、`app_sync` などでファームを焼き直しても
+  端末のものが残る。前から 426x240 で使っていた P4-Nano は、焼き直しても 426x240 のまま
+  (Config で選ぶ)。既定が効くのは、設定の無い端末 (storage ごと焼いたとき) だけ。
 
 - Config > 表示 > 画面の解像度: 「標準 (426x240)」「高精細 (640x360)」。
   `/etc/system_conf.toml` の `display_width`・`display_height` の 2 行に書かれ、
@@ -44,9 +50,12 @@ Modern (P4-Nano・Tab5・Modern の sim) の画面は 426x240 と 640x360 から
   `display WxH is not a Modern resolution` を出す。ファイルはそのまま。
 - **戻り道**: Shift を押したまま起動すると、設定を見ずにその回だけ 426x240 で
   上がる (ファイルは書き換えない。Config で選び直せば直る)。ログは
-  `Shift held at boot: starting at 426x240 this time`。キーボードが USB で
-  認識されてから画面を初期化するまで (P4-Nano で約 0.3 秒) の間に Shift が
-  押されていれば効く。sim では効かない (sim の入力は画面の初期化の後で開く)。
+  `Shift held at boot: starting at 426x240 this time`。押しっぱなしでも、起動中の
+  連打でもよい。キーボードは状態が変わったときにしか報告しないので、USB の受け側は
+  キーボードを認識したときに一度 GET_REPORT で今の状態を読み、押されている修飾キーを
+  押下として流す (ログ `Keyboard state at connect (slot N): modifier=0x..`。0x02・0x20 が
+  Shift)。キーボードの認識が画面の初期化より前 (P4-Nano で約 0.3 秒前) なら効く。
+  sim では効かない (sim の入力は画面の初期化の後で開く)。
 - PC から戻すときは、WiFi の遠隔操作で `/etc/system_conf.toml` の 2 行を
   426 / 240 に書き戻して再起動する (`tools/fmrb_rd_fs.rb <IP>` の get・put と
   `reboot`)。
