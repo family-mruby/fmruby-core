@@ -253,3 +253,9 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - 解像度に合わせて大きさと位置を決める形を、ブラウザ版 (640x360・852x480 のページ)・ネイティブ版
   (広い画面) も併せて検討する。
 - **R2 では直さない** (2026-11-18 ユーザ。今のまま)。
+
+## デスクトップの VM プール: Config の「画面の解像度」の分 約 3 KB (2026-11-18、ユーザ決定「受け入れて取り込む」)
+
+- doc/modern_resolution の R1a で、system_desktop の VM プールが約 3.1 KB 増えた (811 KB → 814 KB。Retro と
+  Modern の両方。主に `system_desktop/config_dialog.rb` の項目と、変えた行だけを保存する作り)。
+- 削る余地: Retro では項目のコードを読み込まない、保存の作りを C 側に寄せる、など。調べていない。
