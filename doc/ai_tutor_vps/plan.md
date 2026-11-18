@@ -1,6 +1,6 @@
 # AI の係 (asterism-tutor) を VPS のコンテナで動かす
 
-> 状態: 計画済 | 更新: 2026-11-19 | asterism-tutor を、Asterism console の隣の Docker コンテナとして VPS で常時動かす (麻雀のゲームホスト asterism-games と同じ流儀)。リポジトリを公開し、イメージは ghcr に置く。実装は未着手
+> 状態: 進行中 | 更新: 2026-11-19 | asterism-tutor を、Asterism console の隣の Docker コンテナとして VPS で常時動かす (麻雀のゲームホスト asterism-games と同じ流儀)。V0 (公開の準備と公開) 済、V1 (コンテナで動く形) を実装中
 
 もとの企画は `doc/ai_coding/` (端末の AI ヘルパーと、親の PC で動く gem)。ここは、その gem を
 親の PC の代わりに VPS で動かす段だけを扱う。手本は asterism-games の `deploy/vps/` と `docs/install.md`。
@@ -91,7 +91,7 @@
 
 | 段 | 中身 | 場所 | 誰が |
 |---|---|---|---|
-| V0 | 公開の準備: LICENSE、README、CHANGELOG、履歴の確認 | asterism-tutor | サブ + 親。公開はユーザの指示で |
+| V0 (済 2026-11-19、公開済み) | 公開の準備: LICENSE、README、CHANGELOG、履歴の確認 | asterism-tutor | サブ + 親。公開はユーザの指示で |
 | V1 | コンテナで動く形: 環境変数の設定、状態の volume、status、SIGTERM、`deploy/vps/` 一式、image の CI。手元で、console の手元の stack (mTLS のルータ) の隣に起こし、sim の AI ヘルパーから通す (偽物の LLM)。役割の鍵式を決める | asterism-tutor | サブ (Opus)、親が検収 |
 | V2 | VPS の手順と scripts (RUNBOOK。置き場はこれまでの `asterism_deploy` の下)。console の役割と台帳の行、.env、credentials、起こす・更新・戻す・記録の読み方 | 手順書 | 親 |
 | V3 | VPS に入れる: タグを打って image を作る、console の画面の操作、scripts の実行 | VPS | ユーザ (sudo の要らない script は、その回の合意があれば親) |
