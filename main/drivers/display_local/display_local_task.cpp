@@ -2257,6 +2257,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             // where the cursor ended (wrapped lines and newlines move it
             // down; descenders). The height is the larger of the font's and
             // that of the 8-pixel fonts the hybrid mode switches to.
+            // This holds only while LovyanGFX's own wrapping and scrolling
+            // stay off (no setTextWrap(.., true) / setTextScroll here): with
+            // them the cursor can come back up and rows are missed.
             const int fh = imax((int)s->fontHeight(), 8 * (int)s->getTextSizeY());
             const int cy = (int)s->getCursorY();
             mark_sprite_rows(cmd->canvas_id, s, imin(cmd->y, cy) - fh,
