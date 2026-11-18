@@ -37,6 +37,7 @@
 #include "fmrb_rtos.h"
 #include "display_local_task.h"
 #include "host_task.h"
+#include "fmrb_kernel.h"
 #include "fmrb_attr.h"
 #include "wifi_task.h"
 
@@ -330,13 +331,19 @@ static esp_err_t ws_handler(httpd_req_t *req)
         // is sent in; 640x360 while a fullscreen app has the high-resolution
         // mode) and the stream geometry
         ws_register_fd(httpd_req_to_sockfd(req));
+        // bw/bh: the base screen (the resolution Config chose), which the
+        // page sizes its windowed view by, so that a fullscreen app's
+        // high-resolution mode does not change how large the view is.
         int sw = 0, sh = 0;
         fmrb_host_get_screen_size(&sw, &sh);
-        char info[112];
+        const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+        char info[128];
         int n = snprintf(info, sizeof(info),
-                         "{\"t\":\"info\",\"w\":%d,\"h\":%d,"
+                         "{\"t\":\"info\",\"w\":%d,\"h\":%d,\"bw\":%d,\"bh\":%d,"
                          "\"encw\":%u,\"h264\":%s}",
-                         sw, sh, (unsigned)rd_encoder_jpeg_width(),
+                         sw, sh, conf ? (int)conf->display_width : sw,
+                         conf ? (int)conf->display_height : sh,
+                         (unsigned)rd_encoder_jpeg_width(),
                          s_cfg.h264_enable ? "true" : "false");
         httpd_ws_frame_t f = {
             .type = HTTPD_WS_TYPE_TEXT,
@@ -535,7 +542,13 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     // stop are no longer the only ones touching it.
     fmrb_err_t ferr = rd_encoder_jpeg_lock(2000);
     if (ferr != FMRB_OK) return ferr;
-    ferr = rd_encoder_jpeg_init(426, 240, s_cfg.jpeg_quality);
+    // At the screen's size now (either Modern resolution, or the
+    // high-resolution mode); every frame re-inits it at the frame's own size
+    // anyway, so this only saves the first frame a re-init.
+    int sw = 0, sh = 0;
+    fmrb_host_get_screen_size(&sw, &sh);
+    if (sw <= 0 || sh <= 0) { sw = FMRB_MODERN_STD_W; sh = FMRB_MODERN_STD_H; }
+    ferr = rd_encoder_jpeg_init((uint16_t)sw, (uint16_t)sh, s_cfg.jpeg_quality);
     rd_encoder_jpeg_unlock();
     if (ferr != FMRB_OK) return ferr;
 

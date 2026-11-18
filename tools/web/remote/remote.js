@@ -3,13 +3,15 @@
 // The device encodes frames padded to 16px (426 -> 432); only the visible
 // part is shown. Cursor is drawn client-side from "cur" messages.
 //
-// The screen is 426x240, or 640x360 while a fullscreen app has the
-// high-resolution mode. The device announces the size ("info", "cur", and the
-// H.264 frame header); clicks are mapped into it and the cursor drawn in it.
-// The view keeps the same size on the page either way -- 852x480 windowed,
-// aspect-preserving fill in fullscreen -- so a mode switch changes how fine
-// the picture is, not how large. Every size below derives from `scale`
-// (page pixels per screen pixel), so both modes share one code path.
+// The base screen is the resolution chosen in Config, 426x240 or 640x360
+// (doc/modern_resolution); on 426x240 a fullscreen app may switch it to the
+// 640x360 high-resolution mode. The device announces the size ("info", "cur",
+// and the H.264 frame header); clicks are mapped into it and the cursor drawn
+// in it. The windowed view is the base screen at 2x (852x480 or 1280x720, so
+// every screen pixel is a whole number of page pixels), fullscreen an
+// aspect-preserving fill; a mode switch changes how fine the picture is, not
+// how large. Every size below derives from `scale` (page pixels per screen
+// pixel), so all of them share one code path.
 //
 // A release build keeps the screen and the input closed unless the owner has
 // turned on Config > Remote control (kept until turned off) and this browser
@@ -21,9 +23,11 @@
 // shows.
 'use strict';
 
-const BASE_W = 426, BASE_H = 240;
-const WIN_W = BASE_W * 2;     // width of the normal (windowed) view, page px
-let screenW = BASE_W, screenH = BASE_H;
+// The base screen, from "info" (bw/bh); 426x240 until it arrives, and for a
+// board that does not say.
+let baseW = 426, baseH = 240;
+let winW = baseW * 2;         // width of the normal (windowed) view, page px
+let screenW = baseW, screenH = baseH;
 
 const wrap = document.getElementById('wrap');
 const view = document.getElementById('view');
@@ -108,9 +112,9 @@ function isFullscreen() {
 }
 
 // Fullscreen fills as much of the screen as the 16:9 aspect ratio allows
-// (426x240 leaves only a hairline letterbox); windowed stays WIN_W wide.
+// (426x240 leaves only a hairline letterbox); windowed stays winW wide.
 function computeScale() {
-  const win = WIN_W / screenW;
+  const win = winW / screenW;
   if (!isFullscreen()) return win;
   const s = Math.min(window.innerWidth / screenW, window.innerHeight / screenH);
   return s > 0 ? s : win;
@@ -157,7 +161,7 @@ function layout() {
   canvas.style.height = Math.round(encH * scale) + 'px';
   // The arrow is 10x16 page px in the windowed view whatever the screen
   // size: it scales with the view, not with the screen's resolution.
-  const unit = vw / BASE_W;
+  const unit = vw / baseW;
   cursorEl.style.width = (5 * unit) + 'px';
   cursorEl.style.height = (8 * unit) + 'px';
   drawCursor();
@@ -350,6 +354,11 @@ function wsConnect() {
     }
     if (msg.t === 'info') {
       useH264 = !!msg.h264 && typeof window.VideoDecoder === 'function';
+      if (msg.bw > 0 && msg.bh > 0) {
+        baseW = msg.bw;
+        baseH = msg.bh;
+        winW = baseW * 2;
+      }
       if (msg.w > 0 && msg.h > 0) {
         screenW = msg.w;
         screenH = msg.h;
