@@ -226,9 +226,13 @@ static int g_screen_width = 0;
 static int g_screen_height = 0;
 static double g_mouse_scale_x = 1.0;
 static double g_mouse_scale_y = 1.0;
-// The base screen (system config), which mouse_scale_x/y are tuned for. On a
-// larger screen the scale is multiplied by the ratio so the cursor keeps its
-// on-screen speed. PSRAM: no new internal RAM statics.
+// The screen mouse_scale_x/y are tuned for. On a larger screen the scale is
+// multiplied by the ratio so the cursor keeps its on-screen speed: the
+// system config's screen on Retro, Modern's standard 426x240 on Modern, so
+// that the same hand movement crosses the same part of the monitor at either
+// resolution Config offers (doc/modern_resolution) and in the fullscreen
+// high-resolution mode. The setting itself stays as written. PSRAM: no new
+// internal RAM statics.
 EXT_RAM_BSS_ATTR static int g_base_width;
 EXT_RAM_BSS_ATTR static int g_base_height;
 
@@ -728,19 +732,26 @@ static bool ensure_screen_size(void)
         if (!conf || conf->display_width <= 0 || conf->display_height <= 0) {
             return false;
         }
+#if defined(FMRB_HW_FAMILY_MODERN)
+        g_base_width = FMRB_MODERN_STD_W;
+        g_base_height = FMRB_MODERN_STD_H;
+#else
         g_base_width = conf->display_width;
         g_base_height = conf->display_height;
+#endif
         g_mouse_scale_x = conf->mouse_scale_x;
         g_mouse_scale_y = conf->mouse_scale_y;
-        FMRB_LOGI(TAG, "Screen size acquired: %dx%d, mouse scale: %.2f/%.2f",
-                  g_base_width, g_base_height, g_mouse_scale_x, g_mouse_scale_y);
+        FMRB_LOGI(TAG, "Screen size acquired: %dx%d, mouse scale: %.2f/%.2f (for %dx%d)",
+                  conf->display_width, conf->display_height, g_mouse_scale_x, g_mouse_scale_y,
+                  g_base_width, g_base_height);
     }
 
     int w, h;
     fmrb_host_get_screen_size(&w, &h);
     if (w <= 0 || h <= 0) {
-        w = g_base_width;
-        h = g_base_height;
+        const fmrb_system_config_t* conf = fmrb_kernel_get_config();
+        w = conf->display_width;
+        h = conf->display_height;
     }
     if (w != g_screen_width || h != g_screen_height) {
         // The screen changed size: keep every mouse's cursor at the same place
@@ -939,8 +950,9 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         }
 
         // Apply mouse sensitivity with fractional accumulation
-        // Scaled by the screen's size against the base screen, so the cursor
-        // crosses the screen at the same speed in the high-resolution mode.
+        // Scaled by the screen's size against the one mouse_scale is tuned
+        // for (g_base_*), so the cursor crosses the screen at the same speed
+        // at 640x360 as at 426x240.
         device->mouse_state.accum_x += dx * g_mouse_scale_x * g_screen_width / g_base_width;
         device->mouse_state.accum_y += dy * g_mouse_scale_y * g_screen_height / g_base_height;
 
