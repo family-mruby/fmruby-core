@@ -81,7 +81,7 @@
   plan.md は親が直す。
 
 ### 作業場所と git
-- 本体の checkout (`/home/kishima/fmrb/family-mruby/fmruby-core`)。worktree は作らない。
+- 本体の checkout (`fmruby-core`)。worktree は作らない。
 - `develop` からブランチ `editor-multi-file` を切り、そこへコミットする (この指示書を最初のコミットに
   入れる)。コミットの書き方は fmruby-core/CLAUDE.md の「コミット規約」。**push しない。develop へマージしない。**
 - 終わったら sim・ブラウザ・開発サーバ・ネイティブ版を止める。build-linux/ は今の木から作ったものが

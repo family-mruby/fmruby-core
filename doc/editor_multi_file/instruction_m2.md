@@ -92,7 +92,7 @@ Alt のキー (Alt+. など) は sim で送れないので、コードを読ん�
   直下 (family-mruby) のリポジトリ、`wasm/vendor/`、`doc/ai_coding/`。plan.md は親が直す。
 
 ### 作業場所と git
-- 本体の checkout (`/home/kishima/fmrb/family-mruby/fmruby-core`)、**今いるブランチ `editor-multi-file` の
+- 本体の checkout (`fmruby-core`)、**今いるブランチ `editor-multi-file` の
   上に続けてコミットする** (この指示書を最初のコミットに入れる)。コミットの書き方は fmruby-core/CLAUDE.md。
   **push しない。develop へマージしない。** `git add -A` を使わない。
 - 終わったら sim・ブラウザ・開発サーバ・ネイティブ版を止める。ESP32 の `build/` には触らない。

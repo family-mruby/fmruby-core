@@ -14,10 +14,10 @@
 付ける。ユーザだけが決められること (利用者から見た動き、費用、公開) は「決めてほしいこと」に分ける。
 
 ### 1.1 Asterism に載せる形 (plan 6.2)
-- 読むもの: `/home/kishima/fmrb/family-mruby/asterism` (CRuby の gem。README・lib・doc)、
+- 読むもの: `asterism` (CRuby の gem。README・lib・doc)、
   `fmruby-core/doc/asterism_protocol2/design.md`、`fmruby-core/doc/asterism_file_transfer/plan.md`、
   端末のアプリから Asterism を使っている例 (`fmruby-core/flash/` の中で `Asterism`・`link.conn` を grep。
-  麻雀・transfer のアプリなど)、`/home/kishima/fmrb/family-mruby/asterism-console`、
+  麻雀・transfer のアプリなど)、`asterism-console`、
   `picoruby-asterism-zenoh`、ローカルのルータの立て方 (zenohd。回帰の道具 `tools/regress/checkpoint*.rb`・
   `transfer*.rb` が自前のルータを立てている)。
 - 決めること: AI の gem が公開するオブジェクトとメソッドの名前・引数・返り値の形、進み具合のトピック、
@@ -61,7 +61,7 @@
   単体のコマンドとして動くか、型のデータ (rbs から作る db) を束に入れられるか。最初の版に入れるかの推奨。
 
 ### 1.5 知識の束 (plan 6.3)
-- 何を入れるか: `/home/kishima/fmrb/family-mruby/.claude/skills/fmrb-app-new/SKILL.md`、`fmruby-core/sig/*.rbs`、
+- 何を入れるか: `.claude/skills/fmrb-app-new/SKILL.md`、`fmruby-core/sig/*.rbs`、
   端末の案内 (`flash/usr/share/doc/`)、見本 (`flash/usr/share/samples/`・`flash/app/demo/`)。
   全部でどのくらいの大きさ (バイトと、おおよそのトークン数) になるかを測る。絞り方の案。
 - gem に同梱する形 (ファイルの並び、ファームの版との対応表、束を作るスクリプトをどちらのリポジトリに置くか)。
@@ -81,7 +81,7 @@
   `flash/app/` の `.py` の見本、束ね)。AI 連携に入れる段の推奨。
 
 ### 1.8 gem とアプリの置き場
-- gem を作る場所の案 (`/home/kishima/fmrb/family-mruby/` の下に新しいディレクトリ = 新しいリポジトリ。
+- gem を作る場所の案 (`family-mruby/` の下に新しいディレクトリ = 新しいリポジトリ。
   `repos.yaml` の書き方)、名前の候補を 3 つ (rubygems で空いているかは確認しなくてよい)。
 - 端末のアプリの置き場 (`flash/app/tool/` か、ほかか)、Modern だけに入れる方法 (storage の除外の仕組み)。
 

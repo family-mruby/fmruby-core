@@ -80,7 +80,7 @@
 - `flash/app/test/` に試験用のアプリ 1 つ。エディタの案内の文書に外から開くの説明。
 - `doc/editor_multi_file/report/m3.md`、`rake docs:index` の結果。
 - **触らない**: 回帰の道具の本体、sdkconfig、submodule の中、graphics-audio、直下 (family-mruby) の
-  リポジトリ、`wasm/vendor/`、`doc/ai_coding/`、`/home/kishima/fmrb/family-mruby/fmrb-tutor/`。
+  リポジトリ、`wasm/vendor/`、`doc/ai_coding/`、`fmrb-tutor/`。
   plan.md は親が直す。
 
 ### 作業場所と git

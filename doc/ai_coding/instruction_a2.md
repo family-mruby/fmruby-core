@@ -50,14 +50,14 @@ a0.md 10 章の A2 の 1〜6 と A3 の 2〜4 (A3 の 1 と 2 = エディタ側�
 - Retro の storage と内蔵 RAM を増やさない (a0.md 9 章の除外)。使っていないときに常駐しない。
 - PicoRuby の罠 (Regexp 無し、`Array#pack` 無し、ブロックは重い、`sleep_ms` でなく `Machine.delay_ms`、
   配列要素への多重代入、`String#length` は文字数) と、アプリの書き方 (skill
-  `/home/kishima/fmrb/family-mruby/.claude/skills/fmrb-app-new/SKILL.md`) を守る。
+  `.claude/skills/fmrb-app-new/SKILL.md`) を守る。
 - VM プールを使い切らない (`.app.toml` のプールの大きさ。8 KB の片と数十 KB の文書を扱うので、
   文書は VM の文字列に丸ごと持たず、`/tmp` のファイルと片で流す)。
 
 ## 2. 確認の環境
 
 - sim (Modern のビルド) の中の zenohd に、ホストから gem をつなぐ:
-  `cd /home/kishima/fmrb/family-mruby/fmrb-tutor && bundle exec exe/fmrb-tutor --router tcp/127.0.0.1:7447 --llm fake`
+  `cd fmrb-tutor && bundle exec exe/fmrb-tutor --router tcp/127.0.0.1:7447 --llm fake`
   (形は a1.md の引き継ぎ。sim の中の端末からは `tcp/zenohd:7447`)。端末側の Asterism の設定
   (`/home/asterism` など) の置き方は、今ある Asterism を使うアプリ・回帰の道具 (`tools/regress/live.rb` の
   卓のゲームホスト) を参考にする。**ユーザの設定・鍵 (`~/asterism_keys/`、端末の /home の中身) を
@@ -107,7 +107,7 @@ ESP32 のビルドはしない (親が後で行う)。
 - エディタ・カーネル・C は**直さない**。M3 の口に不具合・足りない所があれば、再現の手順を report に書いて、
   その機能だけ後回しにしてほかを進める。小さな直し (数行、動きの決まりを変えないもの) だけは直してよい
   (別のコミットにし、report に書く)。
-- fmrb-tutor (`/home/kishima/fmrb/family-mruby/fmrb-tutor/`): 端末とつないで分かった不具合の直しと、
+- fmrb-tutor (`fmrb-tutor/`): 端末とつないで分かった不具合の直しと、
   片の大きさなどの設定の既定。変えたら `bundle exec rake test` を通し、そこでコミットする。
 - **触らない**: 回帰の道具の本体、sdkconfig、submodule の中、graphics-audio、直下 (family-mruby) の
   リポジトリ、asterism の gem、`wasm/vendor/`。plan.md は親が直す。P4-Nano (`/dev/ttyACM0`)。

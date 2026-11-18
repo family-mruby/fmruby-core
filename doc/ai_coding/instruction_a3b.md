@@ -58,7 +58,7 @@ sim の Modern、標準構成 (エディタは Spinel) で確認し、1.1 と 1.
 ## 3. 確認の環境
 
 - gem は `--llm fake` だけ (**本物の LLM は使わない**。鍵のファイルに触らない)。
-  `cd /home/kishima/fmrb/family-mruby/fmrb-tutor && bundle exec exe/fmrb-tutor --config <スクラッチの toml>`。
+  `cd fmrb-tutor && bundle exec exe/fmrb-tutor --config <スクラッチの toml>`。
   **既定のモデルが Sonnet になり、偽物の LLM でも費用の見積もりが 9 回ほどで 1 日の上限 (1 ドル) に
   当たる**。試験の設定 (スクラッチの場所に置く toml) で `[limits] cost_per_day_usd = 1000` にする
   (書き方は gem の `test/test_e2e.rb` の設定と `config/tutor.toml.example`)。

@@ -9,7 +9,7 @@ report/a0.md の 10 章「A1: gem の最小」の 1〜9 を、a0.md の 2 章 (A
 5 章 (検査)・6 章 (知識の束)・7 章 (LLM) の案のとおりに作る。plan.md の決定 (2 章) に従う。
 食い違いがあれば plan.md の決定が先、形の細部は a0.md。
 
-置き場: **`/home/kishima/fmrb/family-mruby/fmrb-tutor/`** (新しいディレクトリ。`git init` してローカルの
+置き場: **`fmrb-tutor/`** (新しいディレクトリ。`git init` してローカルの
 リポジトリにする。**どこにも公開しない**: GitHub のリポジトリを作らない、`gem push` しない、
 family-mruby の `repos.yaml` に足さない。名前は仮)。
 
@@ -56,7 +56,7 @@ family-mruby の `repos.yaml` に足さない。名前は仮)。
 
 ## 4. 範囲と止まる条件
 
-- 書いてよいのは `/home/kishima/fmrb/family-mruby/fmrb-tutor/` の中と、
+- 書いてよいのは `fmrb-tutor/` の中と、
   `fmruby-core/doc/ai_coding/report/a1.md` (未追跡のまま置く。fmruby-core で git の操作をしない) だけ。
 - **fmruby-core・asterism・ほかのリポジトリを変更しない。fmruby-core でビルドしない。sim・ブラウザ版・
   ネイティブ版を起こさない** (別のサブがエディタの改修で使っている)。P4-Nano (`/dev/ttyACM0`) に触らない。
