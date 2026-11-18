@@ -259,3 +259,6 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - doc/modern_resolution の R1a で、system_desktop の VM プールが約 3.1 KB 増えた (811 KB → 814 KB。Retro と
   Modern の両方。主に `system_desktop/config_dialog.rb` の項目と、変えた行だけを保存する作り)。
 - 削る余地: Retro では項目のコードを読み込まない、保存の作りを C 側に寄せる、など。調べていない。
+
+- ブラウザ版の AI ヘルパーが、つながるまで約 20 秒「Wi-Fi につながるのを待っています」と出る
+  (Asterism Link の wifi 待ちが原因の見立て。doc/ai_tutor_vps/report/v1.md。2026-11-19 ユーザ: 課題に残す)。
