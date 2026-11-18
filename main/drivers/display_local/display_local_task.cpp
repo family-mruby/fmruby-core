@@ -954,6 +954,62 @@ static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
     display_backend()->blend_block(&req);
 }
 
+// Whether render_frame leaves this canvas out of the frame altogether.
+static bool canvas_left_out(const p4_canvas_t *c, int fb_w, int fb_h) {
+    if (!c->is_visible || !c->render_sprite) return true;
+    // High-resolution mode: the owner's canvas alone. Whatever else is
+    // still visible (a desktop the kernel has not hidden yet) is not
+    // composited -- it was laid out for the base framebuffer.
+    // The system's own overlay (the kanji conversion line) is the
+    // exception: it is laid out for whatever screen is current and has to
+    // show over a fullscreen editor as well.
+    if (g_smode.hires && c->canvas_id != g_smode.owner &&
+        c->z_order < FMRB_GFX_Z_SYSTEM_OVERLAY) return true;
+    // Base mode: a canvas at the high-resolution size is a fullscreen
+    // app's that is about to get (or has just left) the high-resolution
+    // screen. Laid out for 640x360, it would show as its top-left corner
+    // at 3x; leave it out until the switch completes. A viewport canvas
+    // is exempt: it is a larger surface on purpose. So is every canvas
+    // when the base framebuffer itself is 640x360 (the browser build's
+    // 640x360 page): there the desktop and the fullscreen apps are at
+    // that size by right, and leaving them out left the screen black.
+    // The native compositor's screen wider than that (doc/linux_native
+    // L9e) has no high-resolution mode at all: a 640x360 canvas there is
+    // a fullscreen app laid out for 640x360, shown as it is.
+    if (!g_smode.hires && c->view_w == 0 &&
+        (fb_w != DISPLAY_LOCAL_HIRES_W || fb_h != DISPLAY_LOCAL_HIRES_H) &&
+#if defined(FMRB_PLATFORM_NATIVE)
+        (fb_w < DISPLAY_LOCAL_HIRES_W || fb_h < DISPLAY_LOCAL_HIRES_H) &&
+#endif
+        c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) return true;
+    return false;
+}
+
+// Where render_frame puts the canvas. The high-resolution owner is the whole
+// screen by definition, so it goes at (0, 0) whatever position it was given:
+// a canvas moved off the origin (a stale window position, a drag that should
+// not have happened) must not leave part of the screen to chance.
+static void canvas_screen_pos(const p4_canvas_t *c, int *x, int *y) {
+    const bool as_owner = g_smode.hires && c->canvas_id == g_smode.owner;
+    *x = as_owner ? 0 : c->push_x;
+    *y = as_owner ? 0 : c->push_y;
+}
+
+// A canvas that writes every framebuffer pixel when it is blended: no colour
+// key, no viewport (a viewport canvas is composited in up to four blocks;
+// left to the general path), and its committed frame covering the whole
+// framebuffer from where it is placed. Nothing composited before it can show,
+// so render_frame starts at the topmost such canvas and skips the clear
+// (doc/modern_resolution/report/r0b.md).
+static bool canvas_covers_frame(const p4_canvas_t *c, int fb_w, int fb_h) {
+    if (c->create_use_transparency || c->view_w != 0) return false;
+    int x, y;
+    canvas_screen_pos(c, &x, &y);
+    return x <= 0 && y <= 0 &&
+           x + (int)c->render_sprite->width()  >= fb_w &&
+           y + (int)c->render_sprite->height() >= fb_h;
+}
+
 static void render_frame(void) {
     if (!g_framebuffer || g_canvas_count == 0) return;
 
@@ -967,9 +1023,6 @@ static void render_frame(void) {
     const uint64_t t_start = fmrb_hal_time_get_us();
     uint32_t composited = 0;
 
-    g_framebuffer->clear(0);
-    const uint64_t t_cleared = fmrb_hal_time_get_us();
-
     if (g_canvas_count > 1) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
     }
@@ -977,48 +1030,35 @@ static void render_frame(void) {
     int fb_w = g_framebuffer->width();
     int fb_h = g_framebuffer->height();
 
-    for (size_t i = 0; i < g_canvas_count; i++) {
+    // The topmost canvas that covers the whole frame opaquely (the desktop's
+    // wallpaper, a fullscreen app): everything under it is hidden, and it
+    // overwrites every pixel the clear would have set. Without one, the frame
+    // starts black as it always has.
+    size_t first = 0;
+    bool covered = false;
+    for (size_t i = g_canvas_count; i-- > 0;) {
+        const p4_canvas_t *c = &g_canvases[i];
+        if (canvas_left_out(c, fb_w, fb_h)) continue;
+        if (canvas_covers_frame(c, fb_w, fb_h)) {
+            first = i;
+            covered = true;
+            break;
+        }
+    }
+    if (!covered) g_framebuffer->clear(0);
+    const uint64_t t_cleared = fmrb_hal_time_get_us();
+
+    for (size_t i = first; i < g_canvas_count; i++) {
         p4_canvas_t *c = &g_canvases[i];
-        if (!c->is_visible || !c->render_sprite) continue;
-        // High-resolution mode: the owner's canvas alone. Whatever else is
-        // still visible (a desktop the kernel has not hidden yet) is not
-        // composited -- it was laid out for the base framebuffer.
-        // The system's own overlay (the kanji conversion line) is the
-        // exception: it is laid out for whatever screen is current and has to
-        // show over a fullscreen editor as well.
-        if (g_smode.hires && c->canvas_id != g_smode.owner &&
-            c->z_order < FMRB_GFX_Z_SYSTEM_OVERLAY) continue;
-        // Base mode: a canvas at the high-resolution size is a fullscreen
-        // app's that is about to get (or has just left) the high-resolution
-        // screen. Laid out for 640x360, it would show as its top-left corner
-        // at 3x; leave it out until the switch completes. A viewport canvas
-        // is exempt: it is a larger surface on purpose. So is every canvas
-        // when the base framebuffer itself is 640x360 (the browser build's
-        // 640x360 page): there the desktop and the fullscreen apps are at
-        // that size by right, and leaving them out left the screen black.
-        // The native compositor's screen wider than that (doc/linux_native
-        // L9e) has no high-resolution mode at all: a 640x360 canvas there is
-        // a fullscreen app laid out for 640x360, shown as it is.
-        if (!g_smode.hires && c->view_w == 0 &&
-            (fb_w != DISPLAY_LOCAL_HIRES_W || fb_h != DISPLAY_LOCAL_HIRES_H) &&
-#if defined(FMRB_PLATFORM_NATIVE)
-            (fb_w < DISPLAY_LOCAL_HIRES_W || fb_h < DISPLAY_LOCAL_HIRES_H) &&
-#endif
-            c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) continue;
+        if (canvas_left_out(c, fb_w, fb_h)) continue;
 
         composited++;
         // Composite the committed buffer, never the working one (commit-on-present).
         int sw = c->render_sprite->width();
         int sh = c->render_sprite->height();
 
-        // Where the canvas goes. The high-resolution owner is the whole screen
-        // by definition, so it goes at (0, 0) whatever position it was given:
-        // a canvas moved off the origin (a stale window position, a drag that
-        // should not have happened) must not leave part of the screen to
-        // chance.
-        const bool as_owner = g_smode.hires && c->canvas_id == g_smode.owner;
-        const int  pos_x = as_owner ? 0 : c->push_x;
-        const int  pos_y = as_owner ? 0 : c->push_y;
+        int pos_x, pos_y;
+        canvas_screen_pos(c, &pos_x, &pos_y);
 
         if (c->view_w == 0) {
             // Default path: composite the whole canvas at its push position
