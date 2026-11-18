@@ -581,6 +581,79 @@ struct cursor_stats_t {
 };
 FMRB_EXT_RAM_BSS_ATTR static cursor_stats_t s_cst;
 
+// Frame timing (doc/modern_resolution/report/r0.md): where one render_frame
+// spends its time, in microseconds, per section, over the same 5-second window
+// as the render line. The sections:
+//   clear    the framebuffer cleared by the CPU
+//   compose  every visible canvas blended in, with its sprites; of that,
+//            sync (cache write-back / invalidate) and hw (the PPA Blend) come
+//            from the backend (g_display_backend_timing)
+//   capture  the copy for the remote desktop (only frames that were copied)
+//   out      cursor bake, the scale-out onto the panel and the restore; of
+//            that, sync (framebuffer write-back) and hw (the PPA SRM)
+//   total    the whole render_frame
+// Plus the commit copy a present makes (PUSH_CANVAS to the screen), which runs
+// with the commands, not in the render. Reading the clock is the only cost.
+// PSRAM: display task only, and the internal RAM budget has no room for new
+// statics.
+enum {
+    FT_TOTAL, FT_CLEAR, FT_COMPOSE, FT_BLEND_SYNC, FT_BLEND_HW,
+    FT_CAPTURE, FT_OUT, FT_OUT_SYNC, FT_OUT_HW, FT_COUNT
+};
+struct frame_timing_t {
+    uint32_t frames;
+    uint32_t captures;              // frames that were copied for the capture
+    uint32_t canvases;              // canvases composited, summed over frames
+    uint32_t canvases_max;
+    uint32_t blocks;                // blend blocks, summed over frames
+    uint64_t sum_us[FT_COUNT];
+    uint32_t max_us[FT_COUNT];
+    uint32_t commits;
+    uint64_t commit_us;
+    uint32_t commit_max_us;
+    uint64_t commit_bytes;
+};
+FMRB_EXT_RAM_BSS_ATTR static frame_timing_t s_ft;
+
+static inline void frame_timing_add(int section, uint32_t us) {
+    s_ft.sum_us[section] += us;
+    if (us > s_ft.max_us[section]) s_ft.max_us[section] = us;
+}
+
+static void frame_timing_log(void) {
+    if (s_ft.frames == 0) return;
+    const uint32_t n = s_ft.frames;
+    const uint32_t nc = s_ft.captures;
+#define FT_AVG(s)  (unsigned long)(s_ft.sum_us[s] / n)
+#define FT_MAX(s)  (unsigned long)s_ft.max_us[s]
+    FMRB_LOGI(TAG, "frame: n=%lu fb=%dx%d cv=%lu/%lu blk=%lu | us avg/max total=%lu/%lu "
+              "clear=%lu/%lu compose=%lu/%lu (sync=%lu/%lu hw=%lu/%lu) "
+              "capture=%lu/%lu n=%lu out=%lu/%lu (sync=%lu/%lu hw=%lu/%lu)",
+              (unsigned long)n,
+              g_framebuffer ? (int)g_framebuffer->width() : 0,
+              g_framebuffer ? (int)g_framebuffer->height() : 0,
+              (unsigned long)(s_ft.canvases / n), (unsigned long)s_ft.canvases_max,
+              (unsigned long)(s_ft.blocks / n),
+              FT_AVG(FT_TOTAL), FT_MAX(FT_TOTAL),
+              FT_AVG(FT_CLEAR), FT_MAX(FT_CLEAR),
+              FT_AVG(FT_COMPOSE), FT_MAX(FT_COMPOSE),
+              FT_AVG(FT_BLEND_SYNC), FT_MAX(FT_BLEND_SYNC),
+              FT_AVG(FT_BLEND_HW), FT_MAX(FT_BLEND_HW),
+              (unsigned long)(nc ? s_ft.sum_us[FT_CAPTURE] / nc : 0), FT_MAX(FT_CAPTURE),
+              (unsigned long)nc,
+              FT_AVG(FT_OUT), FT_MAX(FT_OUT),
+              FT_AVG(FT_OUT_SYNC), FT_MAX(FT_OUT_SYNC),
+              FT_AVG(FT_OUT_HW), FT_MAX(FT_OUT_HW));
+#undef FT_AVG
+#undef FT_MAX
+    FMRB_LOGI(TAG, "frame commit: n=%lu avg=%luus max=%luus avg_bytes=%lu",
+              (unsigned long)s_ft.commits,
+              (unsigned long)(s_ft.commits ? s_ft.commit_us / s_ft.commits : 0),
+              (unsigned long)s_ft.commit_max_us,
+              (unsigned long)(s_ft.commits ? s_ft.commit_bytes / s_ft.commits : 0));
+    memset(&s_ft, 0, sizeof(s_ft));
+}
+
 extern "C" void display_local_cursor_stamp(void) {
     uint32_t w = __atomic_load_n(&s_cur_w, __ATOMIC_RELAXED);
     s_cur_ts[w % CURSOR_TS_RING] = (uint32_t)fmrb_hal_time_get_us();
@@ -877,6 +950,7 @@ static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
     req.canvas_id   = c->canvas_id;
     req.is_viewport = (c->view_w > 0);
 
+    s_ft.blocks++;
     display_backend()->blend_block(&req);
 }
 
@@ -888,7 +962,13 @@ static void render_frame(void) {
         g_first_render = false;
     }
 
+    // Frame timing (s_ft): the clock is read between the sections.
+    memset(&g_display_backend_timing, 0, sizeof(g_display_backend_timing));
+    const uint64_t t_start = fmrb_hal_time_get_us();
+    uint32_t composited = 0;
+
     g_framebuffer->clear(0);
+    const uint64_t t_cleared = fmrb_hal_time_get_us();
 
     if (g_canvas_count > 1) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
@@ -926,6 +1006,7 @@ static void render_frame(void) {
 #endif
             c->width == DISPLAY_LOCAL_HIRES_W && c->height == DISPLAY_LOCAL_HIRES_H) continue;
 
+        composited++;
         // Composite the committed buffer, never the working one (commit-on-present).
         int sw = c->render_sprite->width();
         int sh = c->render_sprite->height();
@@ -1008,6 +1089,10 @@ static void render_frame(void) {
         }
     }
 
+    const uint64_t t_composed = fmrb_hal_time_get_us();
+    const display_backend_timing_t blend_t = g_display_backend_timing;
+    bool captured = false;
+
     // Remote-desktop capture: grab the composited frame before the SRM
     // scale-out. The writer (this task) never touches the slot locked by
     // the reader; while the reader is slow, frames simply overwrite the
@@ -1037,7 +1122,9 @@ static void render_frame(void) {
         g_cap_seq++;
         portEXIT_CRITICAL(&g_cap_lock);
         xSemaphoreGive(g_cap_sem);
+        captured = true;
     }
+    const uint64_t t_captured = fmrb_hal_time_get_us();
 
     // Bake the cursor into the framebuffer so the scale-out below writes it to
     // the DSI buffer atomically with the frame (no separate post-scale patch,
@@ -1067,6 +1154,23 @@ static void render_frame(void) {
     } else {
         g_cursor_drawn = false;
     }
+
+    const uint64_t t_end = fmrb_hal_time_get_us();
+    s_ft.frames++;
+    s_ft.canvases += composited;
+    if (composited > s_ft.canvases_max) s_ft.canvases_max = composited;
+    frame_timing_add(FT_TOTAL,      (uint32_t)(t_end - t_start));
+    frame_timing_add(FT_CLEAR,      (uint32_t)(t_cleared - t_start));
+    frame_timing_add(FT_COMPOSE,    (uint32_t)(t_composed - t_cleared));
+    frame_timing_add(FT_BLEND_SYNC, blend_t.blend_sync_us);
+    frame_timing_add(FT_BLEND_HW,   blend_t.blend_hw_us);
+    if (captured) {
+        s_ft.captures++;
+        frame_timing_add(FT_CAPTURE, (uint32_t)(t_captured - t_composed));
+    }
+    frame_timing_add(FT_OUT,        (uint32_t)(t_end - t_captured));
+    frame_timing_add(FT_OUT_SYNC,   g_display_backend_timing.out_sync_us);
+    frame_timing_add(FT_OUT_HW,     g_display_backend_timing.out_hw_us);
 }
 
 // ============================================================
@@ -1440,6 +1544,7 @@ static void note_render(uint32_t start_ms) {
                   (unsigned long)(g_stat_render_ms_total / g_stat_frames),
                   (unsigned long)g_stat_render_ms_max);
         cursor_stats_log();
+        frame_timing_log();
         flash_probe_log();
         g_stat_frames = 0;
         g_stat_render_ms_total = 0;
@@ -2020,7 +2125,14 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 void *sb = src->sprite->getBuffer();
                 void *rb = src->render_sprite->getBuffer();
                 if (sb && rb) {
-                    memcpy(rb, sb, (size_t)src->width * src->height * 2);
+                    const size_t len = (size_t)src->width * src->height * 2;
+                    const uint64_t t0 = fmrb_hal_time_get_us();
+                    memcpy(rb, sb, len);
+                    const uint32_t us = (uint32_t)(fmrb_hal_time_get_us() - t0);
+                    s_ft.commits++;
+                    s_ft.commit_us += us;
+                    s_ft.commit_bytes += len;
+                    if (us > s_ft.commit_max_us) s_ft.commit_max_us = us;
                 }
             }
             src->push_x           = (int16_t)cmd->x;

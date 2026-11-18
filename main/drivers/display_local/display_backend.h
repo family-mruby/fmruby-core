@@ -101,6 +101,21 @@ typedef struct {
     bool        is_viewport;
 } display_blend_req_t;
 
+/* Where the output backend's time goes, for the frame timing log
+ * (doc/modern_resolution/report/r0.md). A backend that has cache maintenance
+ * and a hardware engine to wait for (the PPA one) adds the microseconds of
+ * each to these; the others leave them at zero. display_local_task.cpp clears
+ * them at the start of every render and reads them at its end, so they cover
+ * exactly one frame. Display task only. */
+typedef struct {
+    uint32_t blend_sync_us;   /* cache write-back / invalidate around blends */
+    uint32_t blend_hw_us;     /* the blends themselves (PPA Blend) */
+    uint32_t out_sync_us;     /* framebuffer write-back before the scale-out */
+    uint32_t out_hw_us;       /* the scale-out onto the panel (PPA SRM) */
+} display_backend_timing_t;
+
+extern display_backend_timing_t g_display_backend_timing;
+
 /* The software compositing core behind display_backend_cpu.cpp: plain C with
  * no ESP-IDF in it, shared with the wasm target. Defined in
  * display_blend_cpu.c. */

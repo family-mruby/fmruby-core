@@ -12,6 +12,11 @@
  */
 
 #include "display_backend.h"
+#include "fmrb_attr.h"
+
+/* PSRAM: written a few times per frame by the display task, and the internal
+ * RAM budget has no room for new statics. */
+FMRB_EXT_RAM_BSS_ATTR display_backend_timing_t g_display_backend_timing;
 
 const display_backend_t *display_backend_ppa(void);
 const display_backend_t *display_backend_cpu(void);
