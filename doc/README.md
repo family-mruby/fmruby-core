@@ -36,6 +36,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
 - [CPU の使用率 (P4、タスクごと・場面ごと)](reference/cpu_usage.md) — **計測済** (2026-10-03) P4-Nano (NARYAv4) の実測。どの場面でも core 1 は最大 55%、core 0 は配信中を除き 17% 以下で、両方とも余っている。表示の描画の長さの大半は PPA の完了待ち (眠っている時間)。core の割り振りは変えない (2026-10-03 決定)。経緯は archive/core_alloc/report/c1.md
+- [表示の 1 フレームの時間 (P4、場面ごと・区間ごと)](reference/display_frame_time.md) — **計測済** (2026-11-18) P4-Nano (NARYAv4) の実測。表示の合成に 3 つの手当てを入れ、426x240 のデスクトップは 1 フレーム 27.4 → 約 20 ms、640x360 は 41.5 → 約 25.5 ms になった (640x360 が、手当ての前の 426x240 より速い)。残りの 2/3 は拡大して出す処理 (SRM、約 17 ms)。区間ごとの時間は 5 秒周期のログ `display_local: frame:` で読める
 - [DSI (DPI) フレームバッファの置き場所と走査のアンダーラン](reference/dpi_frame_buffer_alignment.md)
 - [全画面の高解像度モード (使い方と仕組み)](reference/fullscreen_hires.md) — **完了** (2026-10-16) P4 系 (Tab5 / NARYAv4)、ブラウザ版と Modern の Linux sim で、属性を持つアプリの全画面だけ 640x360 になる。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
