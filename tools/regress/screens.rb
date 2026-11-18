@@ -80,7 +80,7 @@ module Regress
         engine == "mruby" ? e.merge(MRUBY_ENV) : e
       end
 
-      def size = SimRun::SIZES[family]
+      def size = SimRun.size_for(family)
     end
 
     def self.configs

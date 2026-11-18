@@ -204,11 +204,11 @@ module Regress
         rescue RuntimeError
           nil
         end
-        if size != SimRun::SIZES[family]
+        if size != SimRun.size_for(family)
           SimRun.down
           size = SimRun.up(family)
         end
-        raise Failure, "the sim came up at #{size&.join('x') || '?'}" unless size == SimRun::SIZES[family]
+        raise Failure, "the sim came up at #{size&.join('x') || '?'}" unless size == SimRun.size_for(family)
         SimRun.wait_for(60, "the desktop's boot to finish") { SimRun.core_log.include?(SimRun::BOOT_DONE) }
         sleep 2
       end
@@ -462,7 +462,7 @@ module Regress
         ep_wait(to, /#{tag}: task=\d+ /, i + 1, "a Task step")
         lines = ep_lines(to)
         got = lines[i]
-        sw, sh = to.kind == :sim ? SimRun::SIZES[@family] : NATIVE_SCREEN
+        sw, sh = to.kind == :sim ? SimRun.size_for(@family) : NATIVE_SCREEN
         x, y, w, h = rect ? fitted(rect, sw, sh) : [0, 0, sw, sh]
         want = rect ? "window=#{w}x#{h} user=1,#{TITLE_BAR_H},#{w - 2}x#{h - TITLE_BAR_H - 1} at #{x},#{y}" :
                       "window=#{w}x#{h} user=0,0,#{w}x#{h} at 0,0"
