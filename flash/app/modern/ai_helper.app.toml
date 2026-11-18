@@ -7,3 +7,6 @@ default_window_height = 222
 default_window_pos_x = 122
 default_window_pos_y = 14
 single_instance = true
+resizable = 1
+min_window_width = 300
+min_window_height = 222
