@@ -13,11 +13,12 @@ extern "C" {
 #define FMRB_SEM_AUDIO_NAME    "/fmrb_audio_ready"
 
 // Display constants. A frame slot holds the largest frame graphics-audio
-// publishes: the base screen (up to 480x320, INIT_DISPLAY) or the 640x360
-// high-resolution screen a fullscreen app takes (SET_SCREEN_MODE). The two
-// limits are separate: init accepts a base screen only up to the old maximum.
-#define FMRB_SHM_MAX_WIDTH     480
-#define FMRB_SHM_MAX_HEIGHT    320
+// publishes: the base screen (INIT_DISPLAY) or the 640x360 high-resolution
+// screen a fullscreen app takes (SET_SCREEN_MODE). The base screen goes up to
+// 640x360 too, Modern's high resolution chosen in Config
+// (doc/modern_resolution); the slot size is the same, so the layout is not.
+#define FMRB_SHM_MAX_WIDTH     640
+#define FMRB_SHM_MAX_HEIGHT    360
 #define FMRB_SHM_HIRES_WIDTH   640
 #define FMRB_SHM_HIRES_HEIGHT  360
 #define FMRB_SHM_FRAMEBUF_SIZE (FMRB_SHM_HIRES_WIDTH * FMRB_SHM_HIRES_HEIGHT)
