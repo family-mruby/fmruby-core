@@ -75,8 +75,9 @@ const fmrb_system_config_t* fmrb_kernel_get_config(void);
 /*
  * Modern's two screen resolutions (doc/modern_resolution). The standard one is
  * every Modern machine's default; the high one (2x on a 1280x720 output) is
- * chosen in Config, and is also the size a fullscreen_hires app switches the
- * standard screen to (doc/fullscreen_hires).
+ * chosen in Config. Each is also the screen the display switches to from the
+ * other while a fullscreen app laid out for it is on top (fmrb_app_screen_mode_size:
+ * doc/fullscreen_hires, doc/modern_resolution R1b).
  */
 #define FMRB_MODERN_STD_W   426
 #define FMRB_MODERN_STD_H   240

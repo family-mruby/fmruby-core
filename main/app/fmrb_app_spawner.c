@@ -233,7 +233,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         // show one (doc/fullscreen_hires/); elsewhere this is ignored. It lays
         // itself out at any size (recompute_layout): the whole of a wider
         // screen (doc/linux_native L9e).
-        .fullscreen_hires = FMRB_FULLSCREEN_HIRES_ANY,
+        .fullscreen_flags = FMRB_FULLSCREEN_HIRES | FMRB_FULLSCREEN_ANY_SIZE,
         .rounded_corners = true
     }},
     // Fullscreen editor ("serious mode", doc/editor_serious_mode/plan.md).
@@ -268,7 +268,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .fullscreen_switchable = true,
         // High-resolution fullscreen where available (doc/fullscreen_hires/),
         // any size (see default/editor).
-        .fullscreen_hires = FMRB_FULLSCREEN_HIRES_ANY,
+        .fullscreen_flags = FMRB_FULLSCREEN_HIRES | FMRB_FULLSCREEN_ANY_SIZE,
         // Same window behaviour as default/editor once F11 makes it a window:
         // without these the corner drag is refused and the window is stuck at
         // whatever size it fell back to.
@@ -428,14 +428,15 @@ static const builtin_app_entry_t builtin_app_table[] = {
 
 static void notify_kernel_app_spawned(int32_t pid);
 
-// The window a fullscreen app starts with: the display size, or the
-// high-resolution screen for an app that declares fullscreen_hires where the
-// build can show it (doc/fullscreen_hires/; fmrb_app_fullscreen_size_for has
-// the native compositor's wider screen). Starting at that size means the
-// canvas is created large enough and the kernel's switch needs no resize.
-static void fullscreen_window_size(uint8_t hires, uint16_t* w, uint16_t* h)
+// The window a fullscreen app starts with: the display size, or the screen
+// the display switches to for it (fmrb_app_screen_mode_size: 640x360 for a
+// fullscreen_hires app on the standard screen, 426x240 for a plain one on the
+// 640x360 screen; fmrb_app_fullscreen_size_for has the native compositor's
+// wider screen). Starting at that size means the canvas is created large
+// enough and the kernel's switch needs no resize.
+static void fullscreen_window_size(uint8_t flags, uint16_t* w, uint16_t* h)
 {
-    fmrb_app_fullscreen_size_for(hires, w, h);
+    fmrb_app_fullscreen_size_for(flags, w, h);
 }
 
 /*
@@ -513,7 +514,7 @@ static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* o
     // size here, the same way the .app.toml path does for a fullscreen app
     // (fmrb_app_init would otherwise fall back to default_user_app_*).
     if (attr.fullscreen && attr.window_width == 0 && attr.window_height == 0) {
-        fullscreen_window_size(attr.fullscreen_hires, &attr.window_width, &attr.window_height);
+        fullscreen_window_size(attr.fullscreen_flags, &attr.window_width, &attr.window_height);
         attr.window_pos_x = 0;
         attr.window_pos_y = 0;
     }
@@ -666,7 +667,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     bool frameless = false;
     int window_drag = -1;  // -1: the default for the frame (resolved below)
     bool fullscreen_switchable = false;
-    uint8_t fullscreen_hires = 0;
+    uint8_t fullscreen_flags = 0;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
     int32_t wasm_memory_pages = 0;  // 0: the default
 #ifdef FMRB_HAVE_WASM
@@ -709,19 +710,25 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             }
         }
 
-        // Parse fullscreen_hires: the app may be shown on the high-resolution
-        // screen while it is fullscreen (doc/fullscreen_hires/). Written as
-        // `true`, or as 1 like the older flags; ignored where the build cannot
-        // show that screen. Such an app is laid out for 640x360
-        // (FMRB_FULLSCREEN_HIRES_FIXED).
-        fullscreen_hires = (fmrb_toml_get_bool(M("fullscreen_hires"), "fullscreen_hires", false) ||
-                            fmrb_toml_get_int(M("fullscreen_hires"), "fullscreen_hires", 0) != 0)
-                               ? FMRB_FULLSCREEN_HIRES_FIXED : 0;
+        // Parse fullscreen_hires: the app is laid out for 640x360 and may be
+        // shown on the high-resolution screen while it is fullscreen
+        // (doc/fullscreen_hires/). fullscreen_any_size: it lays itself out at
+        // whatever size it is given, so a 640x360 screen is not switched to
+        // 426x240 for it (doc/modern_resolution/). Each written as `true`, or
+        // as 1 like the older flags; ignored where they mean nothing.
+        if (fmrb_toml_get_bool(M("fullscreen_hires"), "fullscreen_hires", false) ||
+            fmrb_toml_get_int(M("fullscreen_hires"), "fullscreen_hires", 0) != 0) {
+            fullscreen_flags |= FMRB_FULLSCREEN_HIRES;
+        }
+        if (fmrb_toml_get_bool(M("fullscreen_any_size"), "fullscreen_any_size", false) ||
+            fmrb_toml_get_int(M("fullscreen_any_size"), "fullscreen_any_size", 0) != 0) {
+            fullscreen_flags |= FMRB_FULLSCREEN_ANY_SIZE;
+        }
 
         // Parse window dimensions and position
         if (fullscreen) {
             uint16_t fw, fh;
-            fullscreen_window_size(fullscreen_hires, &fw, &fh);
+            fullscreen_window_size(fullscreen_flags, &fw, &fh);
             window_width = fw;
             window_height = fh;
             window_pos_x = 0;
@@ -875,7 +882,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     // this screen's fullscreen size above, like any app.
     if (load_mode == FMRB_LOAD_MODE_CHECKPOINT && !fullscreen && !headless) {
         uint16_t sw = 0, sh = 0;
-        fmrb_app_fullscreen_size_for(0, &sw, &sh);
+        fmrb_kernel_fullscreen_size(&sw, &sh);
         if (sw > 0 && sh > 0) {
             int w0 = window_width, h0 = window_height, x0 = window_pos_x, y0 = window_pos_y;
             if (window_width > sw) window_width = sw;
@@ -915,7 +922,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .headless = headless,
         .fullscreen = fullscreen,
         .fullscreen_switchable = fullscreen_switchable,
-        .fullscreen_hires = fullscreen_hires,
+        .fullscreen_flags = fullscreen_flags,
         .resizable = resizable,
         .large_memory = large_memory,
         .wasm_memory_pages = wasm_memory_pages,

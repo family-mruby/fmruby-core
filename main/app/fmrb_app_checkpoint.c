@@ -404,9 +404,12 @@ static fmrb_err_t write_attributes(const fmrb_app_task_context_t *ctx, const cha
         }
         n += snprintf(t + n, cap - n,
                       "resizable = %d\nrounded_corners = %d\nfullscreen_switchable = %d\n"
-                      "fullscreen_hires = %d\nmin_window_width = %u\nmin_window_height = %u\n",
+                      "fullscreen_hires = %d\nfullscreen_any_size = %d\n"
+                      "min_window_width = %u\nmin_window_height = %u\n",
                       ctx->resizable ? 1 : 0, ctx->rounded_corners ? 1 : 0,
-                      ctx->fullscreen_switchable ? 1 : 0, ctx->fullscreen_hires ? 1 : 0,
+                      ctx->fullscreen_switchable ? 1 : 0,
+                      (ctx->fullscreen_flags & FMRB_FULLSCREEN_HIRES) ? 1 : 0,
+                      (ctx->fullscreen_flags & FMRB_FULLSCREEN_ANY_SIZE) ? 1 : 0,
                       ctx->min_window_width, ctx->min_window_height);
         // The frame and the drag as the window had them, so a frameless
         // window lands frameless (doc/frameless_window/).

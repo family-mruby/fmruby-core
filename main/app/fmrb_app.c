@@ -2190,7 +2190,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->bg_canvas_id = 0;
     ctx->fullscreen = attr->fullscreen;
     ctx->fullscreen_switchable = attr->fullscreen_switchable;
-    ctx->fullscreen_hires = attr->fullscreen_hires;
+    ctx->fullscreen_flags = attr->fullscreen_flags;
     ctx->resizable = attr->resizable;
     ctx->min_window_width = attr->min_window_width;
     ctx->min_window_height = attr->min_window_height;
@@ -3823,59 +3823,81 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
 #endif
 }
 
-bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
+bool fmrb_app_screen_mode_size(uint8_t flags, uint16_t *width, uint16_t *height)
 {
 #if defined(FMRB_HAS_LOCAL_DISPLAY) || defined(FMRB_PLATFORM_HOSTED) || \
     (defined(CONFIG_IDF_TARGET_LINUX) && defined(FMRB_HW_FAMILY_MODERN))
 #if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_HOSTED)
     // The Modern simulator: graphics-audio draws the screen, and only one
-    // that says it knows SET_SCREEN_MODE (its INIT_DISPLAY ACK) can be given
-    // 640x360 canvases -- an older one would draw them past its buffers.
-    // Not the hosted builds (browser, native): they define
-    // CONFIG_IDF_TARGET_LINUX too, but their screen is display_local, whose INIT_DISPLAY ACK carries no capability
-    // byte and which always knows the mode.
+    // that says it knows SET_SCREEN_MODE (its INIT_DISPLAY ACK) can be asked
+    // for another screen -- an older one would draw 640x360 canvases past its
+    // buffers. Not the hosted builds (browser, native): they define
+    // CONFIG_IDF_TARGET_LINUX too, but their screen is display_local, whose
+    // INIT_DISPLAY ACK carries no capability byte and which always knows the mode.
     if (!(fmrb_host_display_caps() & FMRB_LINK_DISPLAY_CAP_SCREEN_MODE)) {
-        (void)width; (void)height;
+        (void)flags; (void)width; (void)height;
         return false;
     }
 #endif
     // Not FMRB_HW_FAMILY_MODERN alone: that one is also set for a Linux
     // simulator, which needs the capability check above as well.
-    //
-    // Only from the standard screen. On the high-resolution one (Config's
-    // Resolution, doc/modern_resolution) the screen already is 640x360, so a
-    // fullscreen_hires app takes it as it is, without a mode switch
-    // (fmrb_app_fullscreen_size_for falls through to the whole screen).
     const fmrb_system_config_t *conf = fmrb_kernel_get_config();
     if (conf && conf->display_width == FMRB_MODERN_STD_W &&
         conf->display_height == FMRB_MODERN_STD_H) {
-        if (width)  *width  = FMRB_MODERN_HIGH_W;
-        if (height) *height = FMRB_MODERN_HIGH_H;
+        // The standard screen: an app laid out for 640x360 gets that screen.
+        if (flags & FMRB_FULLSCREEN_HIRES) {
+            if (width)  *width  = FMRB_MODERN_HIGH_W;
+            if (height) *height = FMRB_MODERN_HIGH_H;
+            return true;
+        }
+    }
+#if defined(FMRB_MODERN_RESOLUTIONS)
+    // The high-resolution screen chosen in Config (doc/modern_resolution):
+    // an app that declares neither 640x360 nor any size was laid out for
+    // 426x240, and gets that screen rather than the corner of this one. The
+    // other two take this screen as it is, without a mode switch.
+    if (conf && conf->display_width == FMRB_MODERN_HIGH_W &&
+        conf->display_height == FMRB_MODERN_HIGH_H &&
+        (flags & (FMRB_FULLSCREEN_HIRES | FMRB_FULLSCREEN_ANY_SIZE)) == 0) {
+        if (width)  *width  = FMRB_MODERN_STD_W;
+        if (height) *height = FMRB_MODERN_STD_H;
         return true;
     }
 #endif
-    (void)width; (void)height;
+#endif
+    (void)flags; (void)width; (void)height;
     return false;
 }
 
-void fmrb_app_fullscreen_size_for(uint8_t hires, uint16_t *width, uint16_t *height)
+bool fmrb_app_pid_screen_mode_size(uint8_t pid, uint16_t *width, uint16_t *height)
 {
-    if (hires != 0 && fmrb_app_fullscreen_hires_size(width, height)) {
+    if (pid >= FMRB_MAX_APPS) return false;
+    uint8_t flags = 0;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    const bool found = g_ctx_pool[pid].state != PROC_STATE_FREE;
+    if (found) flags = g_ctx_pool[pid].fullscreen_flags;
+    fmrb_semaphore_give(g_ctx_lock);
+    return found && fmrb_app_screen_mode_size(flags, width, height);
+}
+
+void fmrb_app_fullscreen_size_for(uint8_t flags, uint16_t *width, uint16_t *height)
+{
+    if (fmrb_app_screen_mode_size(flags, width, height)) {
         return;
     }
 #if defined(FMRB_PLATFORM_NATIVE)
     // The compositor's screen wider than Modern's (doc/linux_native L9e): a
     // plain fullscreen app keeps Modern's 426x240 (fullscreen_w), and there
-    // is no high-resolution mode to switch to. An app that lays itself out at
-    // any size takes the whole screen instead; one laid out for 640x360 gets
-    // that where it fits, and is shown alone at the output's largest whole
-    // scale like any fullscreen app smaller than the screen.
+    // is no mode to switch to. An app laid out for 640x360 gets that where it
+    // fits, and is shown alone at the output's largest whole scale like any
+    // fullscreen app smaller than the screen; one that also lays itself out
+    // at any size takes the whole screen.
     const fmrb_native_machine_conf_t *m = fmrb_kernel_native_machine();
     const fmrb_system_config_t *conf = fmrb_kernel_get_config();
-    if (hires != 0 && m->fullscreen_w > 0 && conf != NULL) {
+    if ((flags & FMRB_FULLSCREEN_HIRES) && m->fullscreen_w > 0 && conf != NULL) {
         uint16_t sw = (uint16_t)(conf->display_width - conf->display_margin_x);
         uint16_t sh = (uint16_t)(conf->display_height - conf->display_margin_y);
-        if (hires == FMRB_FULLSCREEN_HIRES_ANY) {
+        if (flags & FMRB_FULLSCREEN_ANY_SIZE) {
             *width = sw;
             *height = sh;
             return;
@@ -3890,7 +3912,6 @@ void fmrb_app_fullscreen_size_for(uint8_t hires, uint16_t *width, uint16_t *heig
     fmrb_kernel_fullscreen_size(width, height);
 }
 
-#if defined(FMRB_PLATFORM_NATIVE)
 bool fmrb_app_canvas_fullscreen(uint16_t canvas_id)
 {
     if (canvas_id == 0) return false;
@@ -3903,21 +3924,35 @@ bool fmrb_app_canvas_fullscreen(uint16_t canvas_id)
     }
     return false;
 }
-#endif
+
+bool fmrb_app_canvas_extra_of(uint16_t main_canvas_id, uint16_t canvas_id)
+{
+    if (main_canvas_id == 0 || canvas_id == 0) return false;
+    // Without the lock, for the same reason as fmrb_app_canvas_fullscreen.
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        const volatile fmrb_app_task_context_t *ctx = &g_ctx_pool[i];
+        if (ctx->state == PROC_STATE_FREE || ctx->canvas_id != main_canvas_id) continue;
+        for (int k = 0; k < FMRB_APP_MAX_EXTRA_CANVAS; k++) {
+            if (ctx->extra_canvas_ids[k] == canvas_id) return true;
+        }
+        return false;
+    }
+    return false;
+}
 
 bool fmrb_app_fullscreen_size(uint8_t pid, uint16_t *width, uint16_t *height)
 {
-    uint8_t hires = 0;
+    uint8_t flags = 0;
     bool found = false;
     if (pid < FMRB_MAX_APPS) {
         fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
         if (g_ctx_pool[pid].state != PROC_STATE_FREE) {
-            hires = g_ctx_pool[pid].fullscreen_hires;
+            flags = g_ctx_pool[pid].fullscreen_flags;
             found = true;
         }
         fmrb_semaphore_give(g_ctx_lock);
     }
-    fmrb_app_fullscreen_size_for(hires, width, height);
+    fmrb_app_fullscreen_size_for(flags, width, height);
     return found;
 }
 
