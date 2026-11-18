@@ -1,6 +1,6 @@
 # 端末だけで AI と一緒にアプリを作る (AI 連携)
 
-> 状態: 進行中 | 更新: 2026-11-18 | P4-Nano・Tab5 だけを持つ人 (子どもなど) が、端末の AI 連携アプリから AI に質問し、ヒントをコメントでもらい、丸ごと作ってもらえるようにする。AI は親が外に用意した独立した gem の Ruby アプリで、Asterism のルータ経由で端末と話す。試作 A0〜A3 済 (sim と P4-Nano で通し、本物の LLM で作ったアプリが動いた。report/a0〜a3b.md)。gem は asterism-tutor (GitHub の ruby-asterism の下、非公開)、端末のアプリは flash/app/modern/ai_helper。ブランチ editor-multi-file、develop へは未取り込み。残り: A4・A5、Tab5 での確認
+> 状態: 進行中 | 更新: 2026-11-18 | P4-Nano・Tab5 だけを持つ人 (子どもなど) が、端末の AI 連携アプリから AI に質問し、ヒントをコメントでもらい、丸ごと作ってもらえるようにする。AI は親が外に用意した独立した gem の Ruby アプリで、Asterism のルータ経由で端末と話す。試作 A0〜A3 済 (sim と P4-Nano で通し、本物の LLM で作ったアプリが動いた。report/a0〜a3b.md)。gem は asterism-tutor (GitHub の ruby-asterism の下、非公開)、端末のアプリは flash/app/modern/ai_helper。ブランチ editor-multi-file、develop へは未取り込み。P4-Nano でユーザが基本の動きと漢字の入力を確認 (2026-11-18)。残り: UI の細かい改善 (別途相談)、A4・A5、Tab5 での確認
 
 ## 1. 目的
 
