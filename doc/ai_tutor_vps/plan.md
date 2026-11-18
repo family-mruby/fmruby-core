@@ -1,6 +1,6 @@
 # AI の係 (asterism-tutor) を VPS のコンテナで動かす
 
-> 状態: 進行中 | 更新: 2026-11-19 | asterism-tutor を、Asterism console の隣の Docker コンテナとして VPS で常時動かす (麻雀のゲームホスト asterism-games と同じ流儀)。V0 (公開の準備と公開) 済、V1 (コンテナで動く形) を実装中
+> 状態: 進行中 | 更新: 2026-11-19 | asterism-tutor を、Asterism console の隣の Docker コンテナとして VPS で常時動かす (麻雀のゲームホスト asterism-games と同じ流儀)。V0〜V2 済 (asterism-tutor 0.2.0 と console 0.4.2 を公開、VPS の手順と scripts を用意)。次は V3 (VPS に入れる。ユーザの作業)
 
 もとの企画は `doc/ai_coding/` (端末の AI ヘルパーと、親の PC で動く gem)。ここは、その gem を
 親の PC の代わりに VPS で動かす段だけを扱う。手本は asterism-games の `deploy/vps/` と `docs/install.md`。
@@ -101,9 +101,9 @@
 | V0 (済 2026-11-19、公開済み) | 公開の準備: LICENSE、README、CHANGELOG、履歴の確認 | asterism-tutor | サブ + 親。公開はユーザの指示で |
 | V1 | コンテナで動く形: 環境変数の設定、状態の volume、status、SIGTERM、`deploy/vps/` 一式、image の CI。手元で、console の手元の stack (mTLS のルータ) の隣に起こし、sim の AI ヘルパーから通す (偽物の LLM)。役割の鍵式を決める | asterism-tutor | サブ (Opus)、親が検収 |
 | V1 (済 2026-11-19) | 上の V1。report/v1.md。asterism-tutor のブランチ `vps-container` (0.2.0、未マージ) | | |
-| V1b | 決定 11・12 を gem に入れる (TZ、止めた失敗を数えない) | asterism-tutor | サブ、親が検収 |
-| V1c | console: ブラウザの利用者ごとに役割を選べるようにする (決定 10)。指示書は別に書く | asterism-console | サブ、親が検収。リリースはユーザの指示で |
-| V2 | VPS の手順と scripts (RUNBOOK。置き場はこれまでの `asterism_deploy` の下)。console の役割と台帳の行、.env、credentials、起こす・更新・戻す・記録の読み方 | 手順書 | 親 |
+| V1b (済 2026-11-19、report/v1b.md) | 決定 11・12 を gem に入れる (TZ、止めた失敗を数えない) | asterism-tutor | サブ、親が検収 |
+| V1c (済 2026-11-19、report/v1c.md、console 0.4.2) | console: ブラウザの利用者ごとに役割を選べるようにする (決定 10)。指示書は別に書く | asterism-console | サブ、親が検収。リリースはユーザの指示で |
+| V2 (済 2026-11-19。手順書と scripts は公開しない置き場に) | VPS の手順と scripts (RUNBOOK。置き場はこれまでの `asterism_deploy` の下)。console の役割と台帳の行、.env、credentials、起こす・更新・戻す・記録の読み方 | 手順書 | 親 |
 | V3 | VPS に入れる: タグを打って image を作る、console の画面の操作、scripts の実行 | VPS | ユーザ (sudo の要らない script は、その回の合意があれば親) |
 | V4 | 通し: P4-Nano (接続先は VPS のまま) から 質問・ヒント・作成・修正。上限・役割の無い端末が断られること。記録が残ること。ブラウザ版・ネイティブ版からも 1 回ずつ | 端末 + VPS | 親が遠隔で、目視はユーザ |
 
