@@ -669,6 +669,7 @@ module EditorRender
 
   def redraw_all
     draw_menu_bar
+    draw_tab_row if @tabs_on
     draw_edit_area
     dbg_draw_pane(@dbg_pane_y, @dbg_pane_h) if @dbg_pane_h > 0
     draw_status_line
@@ -728,6 +729,9 @@ module EditorRender
     draw_cursor
     end_edit_font
     draw_status_line
+    # The current tab's "*" follows the status line's: the first edit after a
+    # save puts it up, the save takes it down. Nothing else here moves a tab.
+    draw_tab_row if @tabs_on && cur_tab_modified? != @tab_drawn_mod
     @gfx.present
   end
 
@@ -749,8 +753,18 @@ module EditorRender
     lat_sample(t_start)
   end
 
-  # ---- Quit-confirm dialog ----
+  # ---- Save-before dialog ----
+  #
+  # One dialog for both questions: leaving the editor (Ctrl+X, Ctrl+Q,
+  # File > Exit) and closing a document (Ctrl+W, File > Close). @dlg_kind says
+  # which; the answers are the same three. Leaving asks once per document with
+  # unsaved edits (editor/docs.rb, quit_next), each one shown behind it.
 
+  def open_save_dialog(kind)
+    @dlg_kind = kind
+    @quit_dialog_open = true
+    @need_redraw = true
+  end
 
   def quit_dialog_rect
     w = 26 * CHAR_W + 8
@@ -770,7 +784,9 @@ module EditorRender
     ty = y + 4
     @gfx.draw_text(tx, ty, FmrbI18n.t(:unsaved).to_s,
                    QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
-    @gfx.draw_text(tx, ty + CHAR_H + 2, FmrbI18n.t(:save_before_exit).to_s,
+    question = @dlg_kind == DLG_CLOSE ? FmrbI18n.t(:save_before_close).to_s :
+                                        FmrbI18n.t(:save_before_exit).to_s
+    @gfx.draw_text(tx, ty + CHAR_H + 2, question,
                    QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
 
     # Laid out left to right from measured widths: the words differ per
@@ -799,16 +815,77 @@ module EditorRender
   # 0x1C=Y, 0x11=N, 0x06=C, 0x29=Esc.
   def handle_quit_dialog_key(ev)
     case ev[:scancode] || 0
-    when 0x1C
-      save_file
-      stop unless @modified  # Save failed (e.g. no current_file) -> stay open
-      @need_redraw = true
-    when 0x11
-      stop
-    when 0x06, 0x29
-      @quit_dialog_open = false
-      @need_redraw = true
+    when 0x1C then save_dialog_yes
+    when 0x11 then save_dialog_no
+    when 0x06, 0x29 then save_dialog_cancel
     end
+  end
+
+  # Save, then go on. A document with no name asks for one first; the answer
+  # comes back as file_selected, and save_dialog_saved goes on from there.
+  # A save that fails puts the question back.
+  def save_dialog_yes
+    @quit_dialog_open = false
+    @need_redraw = true
+    if @current_file.nil?
+      @after_save = @dlg_kind
+      @pending_file_op = :save
+      request_file_select("save")
+      return
+    end
+    save_file
+    if @modified
+      @quit_dialog_open = true
+      return
+    end
+    save_dialog_go_on
+  end
+
+  # The edits are dropped: the document closes, or leaving moves on to the
+  # next document with edits.
+  def save_dialog_no
+    @quit_dialog_open = false
+    @need_redraw = true
+    if @dlg_kind == DLG_CLOSE
+      docs_close_now
+    else
+      @quit_skip |= (1 << EditorCore.doc_index)
+      quit_next
+    end
+  end
+
+  # Nothing happens; the document stays where it is, and so does the editor.
+  def save_dialog_cancel
+    @quit_dialog_open = false
+    @after_save = 0
+    @quit_skip = 0
+    @need_redraw = true
+  end
+
+  def save_dialog_go_on
+    if @dlg_kind == DLG_CLOSE
+      docs_close_now
+    else
+      quit_next
+    end
+  end
+
+  # The file name a "yes" asked for has come back (on_control). +path+ is nil
+  # when the file dialog was cancelled, which cancels the question too.
+  def save_dialog_saved(path)
+    kind = @after_save
+    return if kind == 0
+    @after_save = 0
+    if path.nil?
+      @quit_skip = 0
+      return
+    end
+    @dlg_kind = kind
+    if @modified
+      open_save_dialog(kind)
+      return
+    end
+    save_dialog_go_on
   end
 
 end

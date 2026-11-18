@@ -4,24 +4,24 @@
       "points": {
         "idle": {
           "fmrb_kernel": {
-            "used": 133808,
+            "used": 133872,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 810680,
+            "used": 811368,
             "total": 1572864,
             "stack_free": 14723
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 153112,
+            "used": 152992,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 811344,
+            "used": 812048,
             "total": 1572864,
             "stack_free": 14703
           },
@@ -41,21 +41,21 @@
             "stack_free": 14486
           },
           "Spinel Hello": {
-            "used": 427560,
+            "used": 428304,
             "total": 1572864,
             "stack_free": 14775
           }
         },
         "running_langs": {
           "fmrb_kernel": {
-            "used": 157200,
+            "used": 155752,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 811160,
+            "used": 811848,
             "total": 1572864,
-            "stack_free": 14671
+            "stack_free": 14703
           },
           "Lua app demo": {
             "used": 61920,
@@ -75,34 +75,34 @@
         },
         "running_tools": {
           "fmrb_kernel": {
-            "used": 160240,
+            "used": 159760,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 811024,
+            "used": 811720,
             "total": 1572864,
-            "stack_free": 14671
+            "stack_free": 14703
           },
           "FM-Editor": {
-            "used": 215952,
+            "used": 219584,
             "total": 1572864,
-            "stack_free": 22917
+            "stack_free": 22883
           },
           "FlappyDemo": {
-            "used": 532576,
+            "used": 532624,
             "total": 1572864,
             "stack_free": 14494
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 157560,
+            "used": 157080,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 810680,
+            "used": 811368,
             "total": 1572864,
             "stack_free": 14671
           }
@@ -132,7 +132,7 @@
       },
       "family": "retro",
       "board": "NARYAv3",
-      "commit": "f3e25ad4",
+      "commit": "8f3cf572",
       "tolerance": {
         "app_used": [
           0.0,
@@ -171,29 +171,29 @@
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 810824,
+            "used": 811504,
             "total": 1572864,
             "stack_free": 14723
           },
           "Services": {
-            "used": 529216,
+            "used": 529208,
             "total": 1572864,
             "stack_free": 17683
           }
         },
         "running": {
           "fmrb_kernel": {
-            "used": 161920,
+            "used": 161048,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 811384,
+            "used": 812064,
             "total": 1572864,
             "stack_free": 14703
           },
           "Services": {
-            "used": 529216,
+            "used": 529208,
             "total": 1572864,
             "stack_free": 17683
           },
@@ -213,30 +213,30 @@
             "stack_free": 14486
           },
           "Spinel Hello": {
-            "used": 427560,
+            "used": 428304,
             "total": 1572864,
             "stack_free": 14775
           }
         },
         "running_langs": {
           "fmrb_kernel": {
-            "used": 163072,
+            "used": 163320,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 811208,
+            "used": 811888,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14671
           },
           "Services": {
-            "used": 529216,
+            "used": 529208,
             "total": 1572864,
             "stack_free": 17683
           },
           "Lua app demo": {
-            "used": 62064,
-            "total": 1559984,
+            "used": 61992,
+            "total": 1560000,
             "stack_free": 15135
           },
           "Python demo": {
@@ -252,44 +252,44 @@
         },
         "running_tools": {
           "fmrb_kernel": {
-            "used": 161640,
+            "used": 161936,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 811024,
+            "used": 811776,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14671
           },
           "Services": {
-            "used": 529216,
+            "used": 529208,
             "total": 1572864,
             "stack_free": 17683
           },
           "FM-Editor": {
-            "used": 215904,
+            "used": 219480,
             "total": 1572864,
-            "stack_free": 22917
+            "stack_free": 22874
           },
           "FlappyDemo": {
-            "used": 532576,
+            "used": 532624,
             "total": 1572864,
             "stack_free": 14494
           }
         },
         "closed": {
           "fmrb_kernel": {
-            "used": 160848,
+            "used": 161000,
             "total": 1048576,
             "stack_free": 14621
           },
           "system_desktop": {
-            "used": 810728,
+            "used": 811408,
             "total": 1572864,
-            "stack_free": 14703
+            "stack_free": 14671
           },
           "Services": {
-            "used": 529216,
+            "used": 529208,
             "total": 1572864,
             "stack_free": 17683
           }
@@ -319,7 +319,7 @@
       },
       "family": "modern",
       "board": "TAB5",
-      "commit": "f3e25ad4",
+      "commit": "8f3cf572",
       "tolerance": {
         "app_used": [
           0.0,

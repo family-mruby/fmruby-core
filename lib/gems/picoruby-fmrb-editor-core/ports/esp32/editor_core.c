@@ -13,8 +13,9 @@
  * String#[] -- not bytes. Every entry point that takes an x converts.
  *
  * Documents are addressed by an int slot (ec_open_slot), which is what lets the
- * same code back both the mruby binding and the Spinel FFI. Each editor instance
- * holds one slot; a fourth editor gets a negative slot and reports it.
+ * same code back both the mruby binding and the Spinel FFI. Each editor holds a
+ * set of slots (ec_docset_t, up to EC_DOCSET_MAX) and works on one of them at a
+ * time; a slot that cannot be had is reported, never fatal.
  */
 
 #include <string.h>
@@ -61,6 +62,7 @@ typedef struct {
     int32_t    count;
     int32_t    cap;
     int        hl_on;
+    uint32_t   ver;     /* g_edit_seq when the text last changed (ec_doc_version) */
 } ed_doc_t;
 
 /* The tables below (documents, wrap cache, width record) live in PSRAM: the
@@ -69,6 +71,18 @@ typedef struct {
    them. */
 static fmrb_mem_handle_t g_handle = -1;
 FMRB_EXT_RAM_BSS_ATTR static ed_doc_t g_docs[ED_MAX_DOCS];
+
+/* Document versions. One sequence for every document, so two documents never
+   share a number: a reader that kept a version and then saw the editor switch
+   to another document still finds it different. Moved on every public call
+   that changes a document's text, never by reading, highlighting or wrapping
+   (the wrap stamp below moves for those, so it cannot serve). */
+FMRB_EXT_RAM_BSS_ATTR static uint32_t g_edit_seq;
+
+static void doc_touch(ed_doc_t *d)
+{
+    d->ver = ++g_edit_seq;
+}
 
 /* ---- arena ------------------------------------------------------------- */
 
@@ -107,10 +121,19 @@ static void ed_free(void *p)
     if (p && g_handle >= 0) fmrb_free(g_handle, p);
 }
 
+/* Bumped by anything that changes a line's contents or moves lines around.
+   The wrap cache is keyed by it, so one counter invalidates every entry -- the
+   conservative choice, and an edit already forces a repaint of the lines it
+   touched. */
+static uint32_t g_wrap_stamp = 1;
+
 /* ---- documents --------------------------------------------------------- */
 
 static void doc_clear(ed_doc_t *d)
 {
+    /* The slot may come back as another document (a reset, or a closed slot
+       handed to the next one opened): no wrap entry may outlive its text. */
+    g_wrap_stamp++;
     if (d->lines) {
         for (int32_t i = 0; i < d->count; i++) {
             ed_free(d->lines[i].buf);
@@ -150,6 +173,83 @@ void ec_close_slot(int slot)
     d->used = 0;
 }
 
+/* ---- document sets ------------------------------------------------------ */
+
+int ec_docset_slot(ec_docset_t *s)
+{
+    if (s->count == 0) {
+        /* The first document is opened on first use, as the single slot was. */
+        int slot = ec_open_slot();
+        if (slot < 0) return slot;
+        s->slots[0] = slot;
+        s->count = 1;
+        s->cur = 0;
+    }
+    return s->slots[s->cur];
+}
+
+int ec_docset_add(ec_docset_t *s)
+{
+    if (ec_docset_slot(s) < 0) return EC_ERR_NOMEM;
+    if (s->count >= EC_DOCSET_MAX) return EC_ERR_RANGE;
+    int slot = ec_open_slot();
+    if (slot < 0) return EC_ERR_NOMEM;
+    /* An empty document still takes one line from the arena. When even that
+       is not there, give the slot back and leave the set as it was. */
+    if (ec_reset(slot) < 0) {
+        ec_close_slot(slot);
+        return EC_ERR_NOMEM;
+    }
+    s->slots[s->count] = slot;
+    s->cur = s->count;
+    s->count++;
+    return s->cur;
+}
+
+int ec_docset_switch(ec_docset_t *s, int idx)
+{
+    if (idx < 0 || idx >= s->count) return EC_ERR_RANGE;
+    s->cur = idx;
+    return 0;
+}
+
+int ec_docset_close(ec_docset_t *s)
+{
+    if (s->count == 0) return 0;
+    if (s->count == 1) {
+        /* The last document is emptied, not closed: the editor always has one. */
+        int r = ec_reset(s->slots[0]);
+        return r < 0 ? r : 0;
+    }
+    ec_close_slot(s->slots[s->cur]);
+    for (int i = s->cur; i + 1 < s->count; i++) {
+        s->slots[i] = s->slots[i + 1];
+    }
+    s->count--;
+    if (s->cur >= s->count) s->cur = s->count - 1;
+    return s->cur;
+}
+
+void ec_docset_release(ec_docset_t *s)
+{
+    int n = s->count;
+    for (int i = 0; i < n; i++) {
+        ec_close_slot(s->slots[i]);
+    }
+    s->count = 0;
+    s->cur = 0;
+    /* The last editor has gone: the type helper's kept answers go too. */
+    int open = 0;
+    for (int i = 0; i < ED_MAX_DOCS; i++) {
+        if (g_docs[i].used) open++;
+    }
+    if (open == 0) et_release_answers();
+    if (n > 0) {
+        FMRB_LOGI(TAG, "released %d document(s); arena in use %d bytes",
+                  n, ec_mem_used());
+    }
+}
+
 /* ---- UTF-8 ------------------------------------------------------------- */
 
 static int32_t u8_chars(const char *s, int32_t len)
@@ -176,12 +276,6 @@ static int32_t u8_byte_of(const char *s, int32_t len, int32_t ci)
 }
 
 /* ---- line primitives --------------------------------------------------- */
-
-/* Bumped by anything that changes a line's contents or moves lines around.
-   The wrap cache is keyed by it, so one counter invalidates every entry -- the
-   conservative choice, and an edit already forces a repaint of the lines it
-   touched. */
-static uint32_t g_wrap_stamp = 1;
 
 static void line_drop_hl(ed_line_t *l)
 {
@@ -417,6 +511,7 @@ int ec_reset(int slot)
     ed_doc_t *d = doc_of(slot);
     if (!d) return EC_ERR_NOMEM;
     int r = doc_reset(d);
+    doc_touch(d);
     return r < 0 ? r : 0;
 }
 
@@ -726,6 +821,7 @@ int ec_insert_text(int slot, int y, int x, const char *s, int len)
     int32_t at = u8_byte_of(l->buf, l->len, x);
     int r = line_insert_bytes(l, at, s, len);
     if (r < 0) return r;
+    doc_touch(d);
     return x + u8_chars(s, len);
 }
 
@@ -738,6 +834,7 @@ int ec_split_line(int slot, int y, int x)
     int32_t tail = d->lines[y].len - at;
     int r = lines_insert(d, y + 1);
     if (r < 0) return r;
+    doc_touch(d);
     ed_line_t *src = &d->lines[y];       /* the array may have moved */
     ed_line_t *dst = &d->lines[y + 1];
     if (tail > 0) {
@@ -764,6 +861,7 @@ int ec_join_line(int slot, int y)
         if (r < 0) return r;
     }
     lines_remove(d, y + 1);
+    doc_touch(d);
     return prev_chars;
 }
 
@@ -777,6 +875,7 @@ int ec_delete_char(int slot, int y, int x)
     if (b0 >= l->len) return 0;
     int32_t b1 = u8_byte_of(l->buf, l->len, x + 1);
     line_delete_bytes(l, b0, b1 - b0);
+    doc_touch(d);
     return 0;
 }
 
@@ -784,7 +883,9 @@ int ec_delete_range(int slot, int sy, int sx, int ey, int ex)
 {
     ed_doc_t *d = doc_of(slot);
     if (!d) return EC_ERR_NOMEM;
-    return doc_delete_range(d, sy, sx, ey, ex);
+    int r = doc_delete_range(d, sy, sx, ey, ex);
+    if (r != ED_ERR_RANGE) doc_touch(d);   /* a partial failure changed it too */
+    return r;
 }
 
 const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
@@ -794,30 +895,20 @@ const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
     if (!d || !y_ok(d, y)) return pos_record(y, x, out_len);
     int32_t ny = y, nx = x;
     int r = doc_insert_multiline(d, y, x, s, len, &ny, &nx);
+    doc_touch(d);   /* even a failure may have inserted part of it */
     if (r < 0) return pos_record(y, x, out_len);
     return pos_record(ny, nx, out_len);
 }
 
 /* ---- API: file I/O ----------------------------------------------------- */
 
-/* Read in chunks and append lines as they complete, so peak memory is the
-   document itself -- not the document plus a whole-file copy. */
-int ec_load_file(int slot, const char *path)
+/* Read the open file into d, which doc_reset has emptied, in chunks, appending
+   lines as they complete: peak memory is the document itself -- not the
+   document plus a whole-file copy. On an error d holds what was read so far. */
+static int doc_read(ed_doc_t *d, fmrb_file_t f)
 {
-    ed_doc_t *d = doc_of(slot);
-    if (!d) return EC_ERR_NOMEM;
-
-    fmrb_file_t f = NULL;
-    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) return EC_ERR_IO;
-    if (doc_reset(d) < 0) {
-        fmrb_hal_file_close(f);
-        return EC_ERR_NOMEM;
-    }
     char *chunk = (char *)ed_alloc(ED_IO_CHUNK);
-    if (!chunk) {
-        fmrb_hal_file_close(f);
-        return EC_ERR_NOMEM;
-    }
+    if (!chunk) return EC_ERR_NOMEM;
 
     int32_t cur = 0;
     int rc = 0;
@@ -847,18 +938,70 @@ int ec_load_file(int slot, const char *path)
         }
     }
     ed_free(chunk);
-    fmrb_hal_file_close(f);
-
-    if (rc < 0) {
-        doc_reset(d);   /* leave a usable empty buffer, not a half-read one */
-        return rc;
-    }
+    if (rc < 0) return rc;
     /* A trailing newline leaves an empty last line, which the Ruby split("\n")
        did not produce -- drop it so line counts match. */
     if (d->count > 1 && d->lines[d->count - 1].len == 0) {
         lines_remove(d, d->count - 1);
     }
     return d->count;
+}
+
+int ec_load_file(int slot, const char *path)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+
+    fmrb_file_t f = NULL;
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) return EC_ERR_IO;
+    int rc = doc_reset(d);
+    doc_touch(d);
+    if (rc >= 0) rc = doc_read(d, f);
+    fmrb_hal_file_close(f);
+
+    if (rc < 0) {
+        doc_reset(d);   /* leave a usable empty buffer, not a half-read one */
+        return rc;
+    }
+    return rc;
+}
+
+/* Like ec_load_file, but the document is only touched when the whole file was
+   read: the new text is built beside the old one and then takes its place, so
+   a missing file or a full arena leaves the document as it was (the old and
+   the new text are both in the arena for that moment). */
+int ec_replace_file(int slot, const char *path)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+
+    fmrb_file_t f = NULL;
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) return EC_ERR_IO;
+    ed_doc_t tmp;
+    memset(&tmp, 0, sizeof(tmp));
+    tmp.used = 1;
+    tmp.hl_on = d->hl_on;
+    int rc = doc_reset(&tmp);
+    if (rc >= 0) rc = doc_read(&tmp, f);
+    fmrb_hal_file_close(f);
+    if (rc < 0) {
+        doc_clear(&tmp);
+        return rc;
+    }
+    doc_clear(d);
+    d->lines = tmp.lines;
+    d->count = tmp.count;
+    d->cap = tmp.cap;
+    doc_touch(d);
+    return d->count;
+}
+
+int ec_doc_version(int slot)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return 0;
+    /* Kept positive for the int boundary: wraps after 2^31 edits. */
+    return (int)(d->ver & 0x7FFFFFFF);
 }
 
 int ec_save_file(int slot, const char *path)
@@ -977,6 +1120,7 @@ const char *ec_paste_at(int slot, int y, int x, int *out_len)
     int32_t ny = y, nx = x;
     int r = (len > 0) ? doc_insert_multiline(d, y, x, clip, (int32_t)len, &ny, &nx) : -1;
     fmrb_clipboard_unlock();
+    if (len > 0) doc_touch(d);
     if (r < 0) return pos_record(y, x, out_len);
     return pos_record(ny, nx, out_len);
 }

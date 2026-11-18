@@ -31,6 +31,84 @@ module AppLifecycleMixin
     true
   end
 
+  # Bring +target_pid+ to the front with the keyboard (a taskbar click, the
+  # window menu, the editor asked for again). +requester+ is for the log.
+  def focus_app_pid(target_pid, requester)
+    # Kept in a local rather than called in the elsif: Spinel emits the
+    # call's hoisted temporaries inside the condition's parens, which does
+    # not compile (ruby_writing_constraints B).
+    can_focus = focusable?(target_pid)
+    if target_pid == @parked_fullscreen_pid
+      # A parked fullscreen app has a hidden canvas and a suspended task;
+      # plain focus would show nothing and eat the keyboard. Unpark it.
+      unpark_fullscreen
+    elsif can_focus
+      _bring_to_front(target_pid)
+      _set_hid_target(target_pid)
+      @hid_target_pid = target_pid
+      mark_window_list_dirty
+      Log.info("Focus switched to PID #{target_pid} (requested by pid=#{requester})")
+    else
+      Log.info("Focus refused for PID #{target_pid}: nothing on screen")
+    end
+    nil
+  end
+
+  # ---- The editor runs once (doc/editor_multi_file, plan 4.4) ----
+  #
+  # The editor holds up to five files, and the Spinel one cannot run twice
+  # anyway. A request for it while one runs -- the file manager, the desktop's
+  # icon and menu, the shell -- goes to the running one instead: the file, if
+  # there is one, as "open_file", and the editor comes to the front. Both
+  # names start the same program (FM-Editor), the windowed one and the
+  # fullscreen one; the running editor keeps the mode it is in.
+  EDITOR_APP_NAME = "FM-Editor"
+
+  def editor_app_name?(name)
+    name == "default/editor" || name == "default/editor_fs"
+  end
+
+  # Remember the editor when it starts, whichever way it was started (the
+  # spawn request here, or a "spawned" report from the C side). Kept small:
+  # it runs inside after_spawn, under the spawn handler's frame. A second
+  # copy never replaces the one that runs; cleanup_terminated_app forgets it.
+  def note_editor(pid, info)
+    return nil if @editor_pid >= 0 || info.nil?
+    @editor_pid = pid if info[:name].to_s == EDITOR_APP_NAME
+    nil
+  end
+
+  # The running editor's pid, or -1. The remembered pid is checked against the
+  # name each time: an editor that ended leaves its slot to whatever comes next.
+  def running_editor_pid
+    epid = @editor_pid
+    return -1 if epid < 0
+    info = _get_app_info(epid)
+    return epid if info && info[:name].to_s == EDITOR_APP_NAME
+    @editor_pid = -1
+    -1
+  end
+
+  # A request for the editor (+name+) while one runs: hand it +open_path+ (nil or
+  # "" for none) and bring it to the front. False when there is nothing to
+  # hand it to, and the spawn goes on as usual.
+  def hand_to_running_editor(name, requester, open_path)
+    return false unless editor_app_name?(name)
+    epid = running_editor_pid
+    return false if epid < 0
+    path = open_path.to_s
+    if path.length > 0
+      msg = MessagePack.pack({ "cmd" => "open_file", "path" => path })
+      _send_raw_message(epid, FmrbConst::MSG_TYPE_APP_CONTROL, msg)
+    end
+    Log.info("Editor already running as PID #{epid}: handed #{path.length > 0 ? path : "nothing"} over")
+    focus_app_pid(epid, requester)
+    # The requester hears which pid it got, as after a spawn.
+    spawned = { "cmd" => "spawn_result", "app" => name, "pid" => epid }
+    _send_raw_message(requester, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(spawned))
+    true
+  end
+
   def after_spawn(new_pid)
     return false unless new_pid
 
@@ -43,6 +121,7 @@ module AppLifecycleMixin
     # Read fullscreen from the app context rather than the window list: the
     # list is refreshed asynchronously and is not there yet at this point.
     info = _get_app_info(new_pid)
+    note_editor(new_pid, info)
     # A fullscreen app is not given the screen here. Spawn returns as soon as
     # the task exists and the script is loaded and compiled inside it, which
     # on the device takes seconds; entering fullscreen now would suspend the
@@ -232,13 +311,27 @@ module AppLifecycleMixin
 
   # Tell a Run requester (the editor) which pid its file is running as, and
   # remember the parentage so the keyboard goes back there when the app ends.
+  #
+  # "name" is the app's name as the kernel knows it: the one the last error
+  # carries (the .app.toml's or #---fmrb's app_screen_name, else the file
+  # name). Read here because this runs before the kernel can reap the app;
+  # an app that fails at once may be gone by the time the editor could ask.
+  # Left out when it would take the message past the 176-byte cap.
+  #
+  # The bytes the path and the name may take together: 176 less the keys,
+  # "run_result", a pid and the string headers (34), less a little.
+  RUN_RESULT_TEXT_MAX = 140
+
   def reply_run_result(requester, path, new_pid)
     return unless requester
+    reply = { "cmd" => "run_result", "path" => path, "pid" => new_pid }
     if new_pid
       @run_parent = {} unless @run_parent
       @run_parent[new_pid] = requester
+      info = _get_app_info(new_pid)
+      nm = info ? info[:name].to_s : ""
+      reply["name"] = nm if nm.length > 0 && path.to_s.bytesize + nm.bytesize <= RUN_RESULT_TEXT_MAX
     end
-    reply = { "cmd" => "run_result", "path" => path, "pid" => new_pid }
     _send_raw_message(requester, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
   end
 
@@ -798,6 +891,7 @@ module AppLifecycleMixin
   # not something to restart on a guess.
   def cleanup_terminated_app(pid, expected = true)
     Log.info("Cleaning up terminated app: pid=#{pid}")
+    @editor_pid = -1 if pid == @editor_pid
 
     # The name is only for the app/died payload, so an already-freed slot just
     # means an empty one.

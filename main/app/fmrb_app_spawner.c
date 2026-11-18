@@ -115,25 +115,25 @@ void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void),
    the Spinel-compiled program instead of editor_irep, as a NATIVE task backed
    by this app slot's pool, so the window attributes are unchanged. */
 extern void Init_editor(void);   /* the Spinel ext program's init: its top level */
-extern void fmrb_spx_ec_release_slot(void);   /* fmrb_spx_editor.c */
+extern void fmrb_spx_ec_release_docs(void);   /* fmrb_spx_editor.c */
 
 /* The editor program's init as fmrb_app_run_spinel_vm sees it (its address
    is also what the one-instance claim records). It runs once the program is
-   claimed, so the slot it gives back before Init_editor can only be one a
-   killed editor left (fmrb_spx_editor.c), never a running editor's: a refused
+   claimed, so the documents it gives back before Init_editor can only be ones
+   a killed editor left (fmrb_spx_editor.c), never a running editor's: a refused
    second editor never gets here. */
 static void spinel_editor_init(void)
 {
-    fmrb_spx_ec_release_slot();
+    fmrb_spx_ec_release_docs();
     Init_editor();
 }
 
 static void spinel_editor_native(void *arg)
 {
-    // The program never closes its document slot (fmrb_spx_editor.c says
-    // why), so it is given back once the program has ended.
+    // The program never closes its document slots (fmrb_spx_editor.c says
+    // why), so they are given back once the program has ended.
     fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, spinel_editor_init,
-                           fmrb_spx_ec_release_slot);
+                           fmrb_spx_ec_release_docs);
 }
 #endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
 
@@ -438,9 +438,64 @@ static void fullscreen_window_size(uint8_t hires, uint16_t* w, uint16_t* h)
     fmrb_app_fullscreen_size_for(hires, w, h);
 }
 
+/*
+ * The editor runs once (doc/editor_multi_file, plan 4.4): it holds several
+ * files, and the Spinel one cannot run twice. The kernel hands a second
+ * request to the running editor itself before it gets here; this covers the
+ * callers that reach the spawner directly (the debug daemon, the remote
+ * control's launch), which used to get a second editor -- refused with an
+ * error dialog on Spinel, running beside the first on mruby. They get the
+ * running editor's pid instead, and the kernel brings it to the front.
+ * Answers that pid, or -1 when no editor is up (one that is stopping does not
+ * count: a new one may start once it has gone).
+ */
+static int32_t running_builtin_id(const char* name)
+{
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        const fmrb_app_task_context_t* ctx = fmrb_app_get_context_by_id(i);
+        if (!ctx || ctx->state == PROC_STATE_STOPPING) continue;
+        if (strncmp(ctx->app_name, name, FMRB_MAX_APP_NAME) == 0) return ctx->app_id;
+    }
+    return -1;
+}
+
+/* {"cmd":"focus_app","pid":N} to the kernel, as the taskbar sends it. */
+static void notify_kernel_focus(int32_t pid)
+{
+    if (pid < 0 || pid > 0x7F) {
+        return;
+    }
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = (fmrb_proc_id_t)pid,
+    };
+    uint8_t* d = msg.data;
+    size_t p = 0;
+    d[p++] = 0x82;  // fixmap 2
+    d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
+    d[p++] = 0xA9; memcpy(&d[p], "focus_app", 9); p += 9;
+    d[p++] = 0xA3; memcpy(&d[p], "pid", 3); p += 3;
+    d[p++] = (uint8_t)pid;
+    msg.size = p;
+    fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
+}
+
 static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* out_pid)
 {
     FMRB_LOGI(TAG, "Spawning built-in app: %s", entry->lookup_name);
+
+    if (strncmp(entry->lookup_name, "default/editor", 14) == 0) {
+        int32_t running = running_builtin_id(entry->attr.name);
+        if (running >= 0) {
+            FMRB_LOGI(TAG, "%s already running as pid %d: brought to the front",
+                      entry->attr.name, (int)running);
+            if (out_pid) {
+                *out_pid = running;
+            }
+            notify_kernel_focus(running);
+            return FMRB_OK;
+        }
+    }
 
     fmrb_spawn_attr_t attr = entry->attr;
 #if defined(FMRB_PLATFORM_NATIVE)

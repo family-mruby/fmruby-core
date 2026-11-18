@@ -13,7 +13,8 @@ it wholesale:
 - /usr/share/services/           the bodies of the services the machine runs
 - /usr/share/doc/                this file, kanji.md (kanji conversion:
                                  the dictionary on the SD card, the keys)
-                                 and wifi.md (Wi-Fi: the window, wifi.toml)
+                                 wifi.md (Wi-Fi: the window, wifi.toml)
+                                 and editor.md (the editor: several files)
 - /app/                          the installed apps (tests under /app/test)
 
 To play with a sample, copy it into /home first and edit your copy. That way

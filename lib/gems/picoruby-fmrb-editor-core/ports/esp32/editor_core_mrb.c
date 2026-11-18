@@ -1,8 +1,9 @@
 /*
  * EditorCore: the mruby binding.
  *
- * All this layer does is map the calling mrb_state to a document slot and turn
- * the pure C API's (pointer, length) results into mruby Strings. The document
+ * All this layer does is map the calling mrb_state to its documents (a set of
+ * slots and the current one) and turn the pure C API's (pointer, length)
+ * results into mruby Strings. The document
  * model itself is in editor_core.c and knows nothing about mruby, which is what
  * lets the Spinel build of the editor use the same code through an FFI shim
  * (main/app/fmrb_spx_editor.c).
@@ -14,43 +15,55 @@
 #include <mruby/string.h>
 #include <mruby/class.h>
 
+#include "fmrb_attr.h"
+
 #include "../../include/editor_core_api.h"
 #include "../../include/picoruby_fmrb_editor_core.h"
 
 #define ECM_MAX_VMS 4
 
-static struct {
-    mrb_state *owner;
-    int        slot;
-} g_vm_slots[ECM_MAX_VMS];
+/* The documents each editor VM holds (ec_docset_t: up to EC_DOCSET_MAX, and
+   which one it is working on). In PSRAM like the document table itself:
+   internal RAM is the scarce one, and only the editors' own tasks read it. */
+FMRB_EXT_RAM_BSS_ATTR static struct {
+    mrb_state  *owner;
+    ec_docset_t docs;
+} g_vm_docs[ECM_MAX_VMS];
 
-/* Slot for this VM, claimed on first use. A VM that cannot get one gets -1 and
-   every call answers with the "no document" branch, which the editor reports as
-   "Doc full" rather than failing silently. */
-static int slot_of(mrb_state *mrb)
+/* This VM's set, claimed on first use. NULL when every entry is taken. */
+static ec_docset_t *docs_of(mrb_state *mrb)
 {
     for (int i = 0; i < ECM_MAX_VMS; i++) {
-        if (g_vm_slots[i].owner == mrb) return g_vm_slots[i].slot;
+        if (g_vm_docs[i].owner == mrb) return &g_vm_docs[i].docs;
     }
     for (int i = 0; i < ECM_MAX_VMS; i++) {
-        if (g_vm_slots[i].owner == NULL) {
-            int s = ec_open_slot();
-            if (s < 0) return -1;
-            g_vm_slots[i].owner = mrb;
-            g_vm_slots[i].slot = s;
-            return s;
+        if (g_vm_docs[i].owner == NULL) {
+            g_vm_docs[i].owner = mrb;
+            g_vm_docs[i].docs.count = 0;
+            g_vm_docs[i].docs.cur = 0;
+            return &g_vm_docs[i].docs;
         }
     }
-    return -1;
+    return NULL;
+}
+
+/* Slot of this VM's current document. A VM that cannot get one gets -1 and
+   every call answers with the "no document" branch, which the editor reports
+   as "Doc full" rather than failing silently. */
+static int slot_of(mrb_state *mrb)
+{
+    ec_docset_t *d = docs_of(mrb);
+    if (!d) return -1;
+    int s = ec_docset_slot(d);
+    return s < 0 ? -1 : s;
 }
 
 static void slot_release(mrb_state *mrb)
 {
     for (int i = 0; i < ECM_MAX_VMS; i++) {
-        if (g_vm_slots[i].owner == mrb) {
-            ec_close_slot(g_vm_slots[i].slot);
-            g_vm_slots[i].owner = NULL;
-            g_vm_slots[i].slot = -1;
+        if (g_vm_docs[i].owner == mrb) {
+            ec_docset_release(&g_vm_docs[i].docs);
+            g_vm_docs[i].owner = NULL;
             return;
         }
     }
@@ -215,6 +228,18 @@ static mrb_value m_save_file(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(ec_save_file(slot_of(mrb), RSTRING_CSTR(mrb, path)));
 }
 
+static mrb_value m_replace_file(mrb_state *mrb, mrb_value self)
+{
+    mrb_value path;
+    mrb_get_args(mrb, "S", &path);
+    return mrb_fixnum_value(ec_replace_file(slot_of(mrb), RSTRING_CSTR(mrb, path)));
+}
+
+static mrb_value m_doc_version(mrb_state *mrb, mrb_value self)
+{
+    return mrb_fixnum_value(ec_doc_version(slot_of(mrb)));
+}
+
 /* ---- search / clipboard ------------------------------------------------ */
 
 static mrb_value m_find(mrb_state *mrb, mrb_value self)
@@ -248,6 +273,41 @@ static mrb_value m_paste_at(mrb_state *mrb, mrb_value self)
 static mrb_value m_clipboard_length(mrb_state *mrb, mrb_value self)
 {
     return mrb_fixnum_value(ec_clipboard_length(slot_of(mrb)));
+}
+
+/* ---- documents --------------------------------------------------------- */
+
+static mrb_value m_doc_add(mrb_state *mrb, mrb_value self)
+{
+    ec_docset_t *d = docs_of(mrb);
+    return mrb_fixnum_value(d ? ec_docset_add(d) : EC_ERR_NOMEM);
+}
+
+static mrb_value m_doc_switch(mrb_state *mrb, mrb_value self)
+{
+    mrb_int idx;
+    mrb_get_args(mrb, "i", &idx);
+    ec_docset_t *d = docs_of(mrb);
+    return mrb_fixnum_value(d ? ec_docset_switch(d, (int)idx) : EC_ERR_RANGE);
+}
+
+static mrb_value m_doc_close(mrb_state *mrb, mrb_value self)
+{
+    ec_docset_t *d = docs_of(mrb);
+    return mrb_fixnum_value(d ? ec_docset_close(d) : 0);
+}
+
+static mrb_value m_doc_count(mrb_state *mrb, mrb_value self)
+{
+    ec_docset_t *d = docs_of(mrb);
+    if (!d || ec_docset_slot(d) < 0) return mrb_fixnum_value(0);
+    return mrb_fixnum_value(d->count);
+}
+
+static mrb_value m_doc_index(mrb_state *mrb, mrb_value self)
+{
+    ec_docset_t *d = docs_of(mrb);
+    return mrb_fixnum_value(d ? d->cur : 0);
 }
 
 /* ---- completion -------------------------------------------------------- */
@@ -364,11 +424,21 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
 
     mrb_define_module_function(mrb, mod, "load_file",    m_load_file,    MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "save_file",    m_save_file,    MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "replace_file", m_replace_file, MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "doc_version",  m_doc_version,  MRB_ARGS_NONE());
     mrb_define_module_function(mrb, mod, "find",         m_find,         MRB_ARGS_REQ(4));
 
     mrb_define_module_function(mrb, mod, "copy_range",   m_copy_range,   MRB_ARGS_REQ(4));
     mrb_define_module_function(mrb, mod, "paste_at",     m_paste_at,     MRB_ARGS_REQ(2));
     mrb_define_module_function(mrb, mod, "clipboard_length", m_clipboard_length, MRB_ARGS_NONE());
+
+    /* Documents: the editor holds several and works on one at a time. Every
+       call above goes to the current one, so none of them names a slot. */
+    mrb_define_module_function(mrb, mod, "doc_add",      m_doc_add,      MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mod, "doc_switch",   m_doc_switch,   MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "doc_close",    m_doc_close,    MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mod, "doc_count",    m_doc_count,    MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mod, "doc_index",    m_doc_index,    MRB_ARGS_NONE());
 
     /* Completion. suggest answers a count (negative on error), then each
        candidate is read field by field until the next suggest. */

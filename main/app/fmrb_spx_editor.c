@@ -22,52 +22,43 @@
 int *sp_ctx_ffi_bin_len(void);
 
 /* Called on the editor's own task while the program is claimed
-   (fmrb_app_spawner.c): once before the program starts, to reclaim a slot a
-   killed editor left, and once after it has ended, so the document's memory
-   goes back. */
-void fmrb_spx_ec_release_slot(void);
+   (fmrb_app_spawner.c): once before the program starts, to reclaim documents
+   a killed editor left, and once after it has ended, so their memory goes
+   back. */
+void fmrb_spx_ec_release_docs(void);
 
-/* The document slot the running Spinel editor holds, plus one (0 = none).
-   The editor cannot keep it in a class-level ivar: the next instance's entry
-   resets that to nil, so nothing on the Ruby side ever closed the slot (every
-   editor that ended leaked one, and the sixth since boot found the table
-   full: "Doc full" on every keystroke). The C side remembers it instead, and
-   EditorCore asks for it on every call (fmrb_editor_ffi.rb). One variable is
-   enough because only one Spinel editor runs at a time
-   (fmrb_app_spinel_claim), so a slot still recorded when an editor starts
-   was left by one that was killed (the forced path skips the release), in
-   whichever app slot it ran. In PSRAM: internal RAM is the scarce one. */
-FMRB_EXT_RAM_BSS_ATTR static int s_slot_plus1;
+/* The documents the running Spinel editor holds, and which one it is working
+   on. The editor cannot keep them in a class-level ivar: the next instance's
+   entry resets that to nil, so nothing on the Ruby side would ever close them
+   (every editor that ended used to leak its slot, and the sixth since boot
+   found the table full: "Doc full" on every keystroke). The C side remembers
+   them instead, and EditorCore asks for the current slot on every call
+   (fmrb_editor_ffi.rb). One set is enough because only one Spinel editor runs
+   at a time (fmrb_app_spinel_claim), so documents still recorded when an
+   editor starts were left by one that was killed (the forced path skips the
+   release), in whichever app slot it ran. In PSRAM: internal RAM is the
+   scarce one. */
+FMRB_EXT_RAM_BSS_ATTR static ec_docset_t s_docs;
 
-int fmrb_spx_ec_open_slot(void)
+int fmrb_spx_ec_slot(void)
 {
-    /* The first call opens the slot and the rest get the same one back. */
-    if (s_slot_plus1 > 0) {
-        return s_slot_plus1 - 1;
-    }
-    int slot = ec_open_slot();
-    if (slot >= 0) {
-        s_slot_plus1 = slot + 1;
-    }
-    return slot;
+    return ec_docset_slot(&s_docs);
 }
 
-void fmrb_spx_ec_release_slot(void)
+void fmrb_spx_ec_release_docs(void)
 {
-    if (s_slot_plus1 > 0) {
-        ec_close_slot(s_slot_plus1 - 1);
-        s_slot_plus1 = 0;
-    }
+    ec_docset_release(&s_docs);
 }
 
-void fmrb_spx_ec_close_slot(int slot)
+int fmrb_spx_ec_doc_add(void)          { return ec_docset_add(&s_docs); }
+int fmrb_spx_ec_doc_switch(int idx)    { return ec_docset_switch(&s_docs, idx); }
+int fmrb_spx_ec_doc_close(void)        { return ec_docset_close(&s_docs); }
+int fmrb_spx_ec_doc_index(void)        { return s_docs.cur; }
+
+int fmrb_spx_ec_doc_count(void)
 {
-    /* Forget it too, or the next call would hand the closed slot back and
-       the release at exit would close it again. */
-    if (s_slot_plus1 == slot + 1) {
-        s_slot_plus1 = 0;
-    }
-    ec_close_slot(slot);
+    if (ec_docset_slot(&s_docs) < 0) return 0;
+    return s_docs.count;
 }
 
 int fmrb_spx_ec_reset(int slot)          { return ec_reset(slot); }
@@ -143,6 +134,8 @@ const char *fmrb_spx_ec_insert_multiline(int slot, int y, int x, const char *s, 
 
 int fmrb_spx_ec_load_file(int slot, const char *path) { return ec_load_file(slot, path); }
 int fmrb_spx_ec_save_file(int slot, const char *path) { return ec_save_file(slot, path); }
+int fmrb_spx_ec_replace_file(int slot, const char *path) { return ec_replace_file(slot, path); }
+int fmrb_spx_ec_doc_version(int slot) { return ec_doc_version(slot); }
 
 const char *fmrb_spx_ec_find(int slot, const char *q, int qlen,
                              int from_y, int from_x, int after)

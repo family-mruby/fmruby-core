@@ -1,0 +1,405 @@
+# Several documents in one editor (doc/editor_multi_file).
+#
+# The text of every document is in EditorCore (C), which holds up to five and
+# answers every call for the current one. What lives here is the rest of a
+# document's state: the cursor, the view and the flags the editor keeps in its
+# own ivars. Switching puts the current document's ivars aside, makes the
+# other one current in C, and brings its ivars back -- so the rest of the
+# editor keeps reading @cx, @current_file, ... and never knows there are more.
+#
+# The saved state is two flat arrays indexed by document: DOC_ST_N integers
+# per document in @doc_ints (booleans as 0/1, a missing selection as -1) and
+# one String per document in @doc_files ("" for a document with no name) and
+# in @doc_runs (the app it last ran as, editor/remote.rb; "" before a run).
+# One element type per array, so the Spinel build can type all of them.
+module EditorDocs
+  include EditorConst
+
+  # Offsets into one document's run of integers in @doc_ints.
+  DOC_ST_CX        = 0
+  DOC_ST_CY        = 1
+  DOC_ST_SCROLL_Y  = 2
+  DOC_ST_ANCHOR    = 3
+  DOC_ST_SCROLL_X  = 4
+  DOC_ST_LINE_SEGS = 5
+  DOC_ST_SEL_X     = 6
+  DOC_ST_SEL_Y     = 7
+  DOC_ST_WRAP      = 8
+  DOC_ST_MODIFIED  = 9
+  DOC_ST_HL        = 10
+  DOC_ST_HL_MANUAL = 11
+  DOC_ST_N         = 12
+
+  # Called once from initialize, after the ivars it saves have their values:
+  # the editor starts with one document, the one EditorCore opened.
+  def docs_init
+    @doc_ints = []
+    @doc_files = []
+    @doc_runs = []
+    docs_append_entry
+  end
+
+  # Room for one more document's state, filled in when it is first put aside.
+  def docs_append_entry
+    i = 0
+    while i < DOC_ST_N
+      @doc_ints << 0
+      i += 1
+    end
+    @doc_files << ""
+    @doc_runs << ""
+  end
+
+  def docs_count
+    EditorCore.doc_count
+  end
+
+  # ---- Saving and restoring one document's ivars ----
+
+  def docs_save(idx)
+    b = idx * DOC_ST_N
+    @doc_ints[b + DOC_ST_CX] = @cx
+    @doc_ints[b + DOC_ST_CY] = @cy
+    @doc_ints[b + DOC_ST_SCROLL_Y] = @scroll_y
+    @doc_ints[b + DOC_ST_ANCHOR] = @anchor_seg
+    @doc_ints[b + DOC_ST_SCROLL_X] = @scroll_x
+    @doc_ints[b + DOC_ST_LINE_SEGS] = @cur_line_segs
+    docs_save_flags(b)
+    f = @current_file
+    @doc_files[idx] = f ? f : ""
+    @doc_runs[idx] = @run_name
+  end
+
+  # Split from docs_save to keep each method's frame small (Spinel inlines).
+  def docs_save_flags(b)
+    sx = @sel_anchor_x
+    sy = @sel_anchor_y
+    @doc_ints[b + DOC_ST_SEL_X] = sx ? sx : -1
+    @doc_ints[b + DOC_ST_SEL_Y] = sy ? sy : -1
+    @doc_ints[b + DOC_ST_WRAP] = @wrap_on ? 1 : 0
+    @doc_ints[b + DOC_ST_MODIFIED] = @modified ? 1 : 0
+    @doc_ints[b + DOC_ST_HL] = @hl_enabled ? 1 : 0
+    @doc_ints[b + DOC_ST_HL_MANUAL] = @hl_manual ? 1 : 0
+  end
+
+  def docs_restore(idx)
+    b = idx * DOC_ST_N
+    @cx = @doc_ints[b + DOC_ST_CX]
+    @cy = @doc_ints[b + DOC_ST_CY]
+    @scroll_y = @doc_ints[b + DOC_ST_SCROLL_Y]
+    @anchor_seg = @doc_ints[b + DOC_ST_ANCHOR]
+    @scroll_x = @doc_ints[b + DOC_ST_SCROLL_X]
+    @cur_line_segs = @doc_ints[b + DOC_ST_LINE_SEGS]
+    docs_restore_flags(b)
+    f = @doc_files[idx]
+    @current_file = f.length > 0 ? f : nil
+    @run_name = @doc_runs[idx]
+  end
+
+  def docs_restore_flags(b)
+    sx = @doc_ints[b + DOC_ST_SEL_X]
+    sy = @doc_ints[b + DOC_ST_SEL_Y]
+    if sx < 0 || sy < 0
+      @sel_anchor_x = nil
+      @sel_anchor_y = nil
+    else
+      @sel_anchor_x = sx
+      @sel_anchor_y = sy
+    end
+    @wrap_on = @doc_ints[b + DOC_ST_WRAP] == 1
+    @modified = @doc_ints[b + DOC_ST_MODIFIED] == 1
+    @hl_enabled = @doc_ints[b + DOC_ST_HL] == 1
+    @hl_manual = @doc_ints[b + DOC_ST_HL_MANUAL] == 1
+  end
+
+  # The ivars of a document that has just been made: what initialize gives
+  # the first one.
+  def docs_fresh_state
+    @cx = 0
+    @cy = 0
+    @scroll_y = 0
+    @anchor_seg = 0
+    @scroll_x = 0
+    @cur_line_segs = 1
+    @sel_anchor_x = nil
+    @sel_anchor_y = nil
+    @wrap_on = true
+    @modified = false
+    @current_file = nil
+    @run_name = ""
+    @hl_enabled = true
+    @hl_manual = false
+  end
+
+  # Drop the entry of document +idx+; the ones after it move down by one,
+  # as EditorCore's do when it closes a document.
+  def docs_remove_entry(idx)
+    ints = []
+    files = []
+    runs = []
+    n = @doc_files.length
+    d = 0
+    while d < n
+      if d != idx
+        b = d * DOC_ST_N
+        k = 0
+        while k < DOC_ST_N
+          ints << @doc_ints[b + k]
+          k += 1
+        end
+        files << @doc_files[d]
+        runs << @doc_runs[d]
+      end
+      d += 1
+    end
+    @doc_ints = ints
+    @doc_files = files
+    @doc_runs = runs
+  end
+
+  # ---- Before and after a switch ----
+
+  # Whatever is on screen for the document being left goes first: dropdowns,
+  # dialogs, the completion list, a help page (which has the document itself
+  # put aside), half a typed character, a held key, the problem markers.
+  def docs_leave
+    close_menu if @active_menu
+    close_search_dialog if @search_open
+    close_palette_dialog if @palette_open
+    close_keys_list if @keys_open
+    close_completion
+    close_help if @help_open
+    utf8_reset
+    @held_keycode = nil
+    @hold_frames = 0
+    clear_diagnostics
+    clear_status_message
+  end
+
+  # The document now current in EditorCore is shown from its own state.
+  def docs_enter
+    apply_hl_enabled
+    clamp_cy
+    clamp_cx
+    ensure_cursor_visible
+    @dirty_lines.clear
+    @dirty_from = nil
+    @need_redraw = true
+  end
+
+  # The tab row comes with the second document and goes with it, which takes
+  # one row from the edit area or gives it back. Everything that counts rows
+  # reads @edit_rows and @edit_y, so it is the font change again: lay out, keep
+  # the cursor on screen, and draw everything. Called with the new current
+  # document's ivars already in place.
+  def docs_relayout
+    was = @tabs_on
+    recompute_layout
+    relayout_for_font if was != @tabs_on
+  end
+
+  # ---- The operations (keys and the File menu in editor.app.rb) ----
+
+  # A new empty document, after the last one. Refused, with the current
+  # document untouched, when five are open or there is no room for it.
+  # True when it was made (it is then the current one).
+  def docs_new
+    cur = EditorCore.doc_index
+    docs_leave
+    docs_save(cur)
+    r = EditorCore.doc_add
+    if r < 0
+      if r == -1
+        flash_status(FmrbI18n.t(:b_max_docs).to_s)
+      else
+        doc_full
+      end
+      Log.info("doc_add refused (#{r}); docs=#{EditorCore.doc_count} arena=#{EditorCore.mem_used}")
+      @need_redraw = true
+      return false
+    end
+    docs_append_entry
+    docs_fresh_state
+    docs_relayout
+    docs_enter
+    Log.info("doc_add: #{r + 1}/#{EditorCore.doc_count} arena=#{EditorCore.mem_used}")
+    true
+  end
+
+  # Make document +idx+ the current one (0-based, in the order they were
+  # opened).
+  def docs_switch(idx)
+    cur = EditorCore.doc_index
+    n = EditorCore.doc_count
+    return if idx == cur || idx < 0 || idx >= n
+    docs_leave
+    docs_save(cur)
+    return if EditorCore.doc_switch(idx) < 0
+    docs_restore(idx)
+    docs_enter
+  end
+
+  # Next / previous, wrapping around. +step+ is 1 or -1.
+  def docs_cycle(step)
+    n = EditorCore.doc_count
+    return if n < 2
+    docs_switch((EditorCore.doc_index + step + n) % n)
+  end
+
+  # Close the current document (Ctrl+W, File > Close). With unsaved edits the
+  # save-before dialog asks first (editor/render.rb), and its answer closes it.
+  def docs_close
+    # A help page stands in for the document while it is open; the question
+    # is about the document underneath.
+    close_help if @help_open
+    if @modified
+      open_save_dialog(DLG_CLOSE)
+      return
+    end
+    docs_close_now
+  end
+
+  # Close the current document whatever it holds. Closing the last one leaves
+  # an empty document with no name, as a fresh editor has.
+  def docs_close_now
+    cur = EditorCore.doc_index
+    n = EditorCore.doc_count
+    docs_leave
+    r = EditorCore.doc_close
+    if r < 0
+      doc_full
+      return
+    end
+    if n <= 1
+      docs_fresh_state
+    else
+      docs_remove_entry(cur)
+      docs_restore(r)
+    end
+    docs_relayout
+    docs_enter
+    Log.info("doc_close: now #{EditorCore.doc_index + 1}/#{EditorCore.doc_count} arena=#{EditorCore.mem_used}")
+  end
+
+  # Nothing to lose: no name, no edits, one empty line. File > Open and
+  # File > Template use such a document rather than adding one.
+  def docs_blank?
+    return false if @help_open
+    return false if @modified
+    return false unless @current_file.nil?
+    EditorCore.line_count == 1 && EditorCore.line_length(0) == 0
+  end
+
+  # The save dialog writes "//tmp/a.rb" for "/tmp/a.rb"; both are one file.
+  def docs_norm_path(path)
+    p = path
+    while p.length > 1 && p[0, 2] == "//"
+      p = p[1, p.length - 1]
+    end
+    p
+  end
+
+  # The document holding +path+, or -1.
+  def docs_find_path(path)
+    want = docs_norm_path(path)
+    n = EditorCore.doc_count
+    cur = EditorCore.doc_index
+    i = 0
+    while i < n
+      f = tab_path(i, cur)
+      return i if f.length > 0 && docs_norm_path(f) == want
+      i += 1
+    end
+    -1
+  end
+
+  # File > Open (and a file handed to the editor): a file already open is
+  # switched to; otherwise it goes into the current document if that is blank,
+  # or into a new one. When five are open, or the file cannot be read into the
+  # new one, nothing changes but the message.
+  def docs_open_path(path)
+    close_help if @help_open
+    idx = docs_find_path(path)
+    if idx >= 0
+      docs_switch(idx)
+      return
+    end
+    if docs_blank?
+      load_file(path)
+      return
+    end
+    prev = EditorCore.doc_index
+    return unless docs_new
+    return if load_file(path)
+    # Not read: the empty document made for it goes again, and the message
+    # load_file left survives the switch back.
+    msg = @status_msg
+    docs_close_now
+    docs_switch(prev)
+    docs_restore_message(msg)
+  end
+
+  def docs_restore_message(msg)
+    return if msg.nil?
+    @status_msg = msg
+    @status_msg_ok = false
+    @status_msg_frames = STATUS_MSG_FRAMES
+    @status_msg_fresh = true
+    @dirty_status = true
+  end
+
+  # File > Template: into the current document when it is blank, otherwise
+  # into a new one. False when no document could be had.
+  def docs_for_template
+    return true if docs_blank?
+    docs_new
+  end
+
+  # ---- Leaving the editor ----
+  #
+  # Every document with unsaved edits is asked about in turn: the current one
+  # first, then the others in tab order, each shown before its question.
+  # @quit_skip has a bit per document answered "no" in this round. Cancel
+  # anywhere ends the round where it is.
+
+  def request_quit
+    close_help if @help_open
+    @quit_skip = 0
+    quit_next
+  end
+
+  def quit_next
+    idx = docs_next_unsaved
+    if idx < 0
+      stop
+      return
+    end
+    docs_switch(idx)
+    open_save_dialog(DLG_QUIT)
+  end
+
+  def docs_next_unsaved
+    cur = EditorCore.doc_index
+    return cur if @modified && !docs_quit_skipped?(cur)
+    n = EditorCore.doc_count
+    i = 0
+    while i < n
+      if i != cur && !docs_quit_skipped?(i) && docs_saved_modified?(i)
+        return i
+      end
+      i += 1
+    end
+    -1
+  end
+
+  # The "*" of a document that is not the current one, as it was put aside.
+  # Here rather than in editor/tabs.rb: the DOC_ST_ offsets are this module's,
+  # and the mruby build finds a constant only through the module it is in.
+  def docs_saved_modified?(idx)
+    @doc_ints[idx * DOC_ST_N + DOC_ST_MODIFIED] == 1
+  end
+
+  def docs_quit_skipped?(idx)
+    ((@quit_skip >> idx) & 1) == 1
+  end
+end

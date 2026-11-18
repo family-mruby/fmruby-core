@@ -25,9 +25,38 @@ extern "C" {
 #define EC_ERR_IO     (-3)
 #define EC_ERR_TOOBIG (-4)   /* over the clipboard's maximum (fmrb_clipboard.h) */
 
-/* Slots. Claim one per editor instance; close it when the VM goes away. */
+/* Slots. One per document; close it when the document goes away. */
 int  ec_open_slot(void);
 void ec_close_slot(int slot);
+
+/*
+ * Document sets: the documents one editor holds, and which of them it is
+ * working on. The bindings keep one set per editor and answer every ec_* call
+ * with the current slot, so the editor's own calls never name a slot.
+ * A zeroed set is empty; the first document is opened on first use.
+ */
+#define EC_DOCSET_MAX 5
+
+typedef struct {
+    int count;                  /* documents held */
+    int cur;                    /* index of the current one, 0..count-1 */
+    int slots[EC_DOCSET_MAX];   /* in the order they were opened */
+} ec_docset_t;
+
+/* The current document's slot, opening the first on demand. Negative when no
+   slot is free. */
+int  ec_docset_slot(ec_docset_t *s);
+/* A new empty document, which becomes the current one. Answers its index, or
+   EC_ERR_RANGE when the set is full, EC_ERR_NOMEM when no slot or no arena is
+   left; the set is unchanged on an error. */
+int  ec_docset_add(ec_docset_t *s);
+/* Make document idx the current one. 0, or EC_ERR_RANGE. */
+int  ec_docset_switch(ec_docset_t *s, int idx);
+/* Close the current document and answer the index of the one that is current
+   now. The last document is emptied instead of closed. */
+int  ec_docset_close(ec_docset_t *s);
+/* Close every document of the set (the editor ended or was killed). */
+void ec_docset_release(ec_docset_t *s);
 
 /* Longest run ec_render_width answers in one call. A 640px display is 106
    cells, so this covers a full row with room to spare. */
@@ -65,6 +94,15 @@ const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
 /* File I/O */
 int  ec_load_file(int slot, const char *path);
 int  ec_save_file(int slot, const char *path);
+/* Load path in place of the document only when all of it could be read; on
+   an error the document is unchanged. Answers the line count or EC_ERR_*. */
+int  ec_replace_file(int slot, const char *path);
+
+/* The document's version: a number from one sequence shared by every
+   document, moved by each call above that changes the text (reset, the
+   editing calls, paste, load, replace) and by nothing else. Equal versions
+   mean the same text in the same document. */
+int  ec_doc_version(int slot);
 
 /* Search: packed [found u8, y u32, x u32] */
 const char *ec_find(int slot, const char *q, int qlen, int from_y, int from_x,
@@ -98,6 +136,9 @@ int  ec_doc_mem_handle(void);
 #define ET_FIELD_DOC     2   /* its doc comment, empty when it has none */
 
 int  et_suggest(int slot, int y, int x);
+/* Free the answer tables kept between requests. Only when no document is
+   open (ec_docset_release does it), since an answer outlives its request. */
+void et_release_answers(void);
 const char *et_suggestion(int i, int field, int *out_len);
 /* Documents above this many bytes are refused with ET_ERR_TOO_LARGE. */
 int  et_max_source_bytes(void);
