@@ -23,13 +23,22 @@
 # hand it over, the question goes alone and says so), hint (AI comments
 # "# AI: " above lines, the code unchanged), make (the
 # whole document, after asking whether to back it up), fix (after a run that
-# failed: a hint or the fixed document, the child chooses each time), and
-# erase (the AI comment lines, after showing how many).
+# failed: a hint or the fixed document, the child chooses each time),
+# erase (the AI comment lines, after showing how many) and restore (the
+# document back to one of its backups, no gem needed).
 #
-# The class is in two files: this one (the gem, the screen, the input) and
-# ai_helper/editor.rb (the editor, the document, backups), required at the
-# end. One file of 47 KB put the compile peak at 76% of the VM pool on the
-# sim; the main file alone is 58%.
+# The screen: a menu-bar band on top (the three uses, the selected one
+# inverted; Fix; the Edit pull-down with erase and restore), the answers,
+# the status line, the input line, and the bottom row (Send, Abort, the
+# document switch, Reset talk on the right). The window can be resized down
+# to its first size; the answers are kept as whole messages and wrapped
+# again for the new width.
+#
+# The class is in three files: this one (the gem and the requests),
+# ai_helper/editor.rb (the editor, the document, backups) and
+# ai_helper/screen.rb (the drawing and the input), required at the end.
+# One file of 47 KB put the compile peak at 76% of the VM pool on the sim;
+# the compile peak follows the largest file.
 class AiHelperApp < FmrbApp
   APP_NAME = "ai_helper"
   HELPER = "*/tutor/helper"
@@ -52,19 +61,23 @@ class AiHelperApp < FmrbApp
   REBASE_MAX = 3
   CHUNK = 4096
   BTN_H = 15
+  MENU_H = 15            # the menu-bar band
+  ITEM_H = 15            # one row of the Edit pull-down
   # The editor cuts the app name in ai_doc ("rn") to this many bytes on a
   # character boundary (editor/remote.rb AI_RUN_NAME_MAX); run_error cuts the
   # last error's name the same way.
   RUN_NAME_MAX = 24
 
-  MODE_LABEL = { "ask" => "質問", "hint" => "ヒント", "make" => "作る" }
+  MODE_LABEL = { "ask" => "質問", "hint" => "ヒント", "make" => "作成" }
   PLACEHOLDER = {
     "ask" => "質問を打って Enter",
     "hint" => "どこが分からないか (空でもよい)",
     "make" => "作りたいものを書いて Enter",
   }
-  TOP_BUTTONS = [[:m_ask, "質問", 36], [:m_hint, "ヒント", 44], [:m_make, "作る", 36],
-                 [:fix, "直して", 46], [:erase, "AIの行を消す", 80]]
+  # The menu bar: the uses, a separator (:sep), Fix and the Edit pull-down.
+  MENU_BAR = [[:m_ask, "質問"], [:m_hint, "ヒント"], [:m_make, "作成"], [:sep, ""],
+              [:fix, "修正"], [:edit, "編集"]]
+  EDIT_ITEMS = [[:erase, "AIコメント削除"], [:restore, "バックアップから戻す"]]
   STATE_TEXT = {
     "queued" => "順番を待っています",
     "thinking" => "考えています",
@@ -88,9 +101,24 @@ class AiHelperApp < FmrbApp
   def on_create
     @gfx.set_font(:ja, 12)
     @hits = FmrbUI::HitAreas.new
-    @lines = []
-    @colors = []
+    # The answers: whole messages (wrapped again when the width changes) and
+    # the lines they make, as (message number, byte offset, byte length).
+    @msgs = []
+    @msg_colors = []
+    @msg_base = 0         # the number of @msgs[0]
+    @l_msg = []
+    @l_off = []
+    @l_len = []
+    @wrap_w = 0
     @top = 0
+    # the menu bar's colours: the editor's menu row (a step off the title
+    # bar, never the key 0x01), its text, and a muted text for a use that
+    # is turned off
+    @bar_bg = FmrbColors.shade(FmrbConst::THEME_MENU_BG, theme_bg)
+    @bar_fg = theme_fg_light
+    @bar_dim = FmrbColors.shade(@bar_fg, @bar_bg)
+    @menu_open = false
+    @edit_x = 0
     @input = ""
     @u8_buf = ""
     @u8_need = 0
@@ -149,7 +177,8 @@ class AiHelperApp < FmrbApp
     @question = nil
     @choices = nil
     layout
-    add_text("AI", "AI ヘルパーです。答えるのは AI (人ではありません) です。上で使い方を選び、下の行に打って Enter か「送る」を押してください。「質問」「ヒント」「作る」は、エディタで開いている文書を使います (質問は、下の切り替えで文書を送らないこともできます)。")
+    @wrap_w = @area_w - 8
+    add_text("AI", "AI ヘルパーです。答えるのは AI (人ではありません) です。上で使い方を選び、下の行に打って Enter か「送信」を押してください。「質問」「ヒント」「作成」は、エディタで開いている文書を使います (質問は、下の切り替えで文書を送らないこともできます)。")
     set_status("つないでいます…")
     # connect blocks the app for a few seconds when the router is not
     # there: try less often than the Link's default
@@ -162,8 +191,13 @@ class AiHelperApp < FmrbApp
     @link.close if @link
   end
 
-  def on_resize
+  # The kernel resizes on the release of the corner (an outline follows
+  # the pointer meanwhile), so this runs once per resize: the answers are
+  # wrapped again only when the width changed.
+  def on_resize(w, h)
+    @menu_open = false
     layout
+    rewrap if @area_w - 8 != @wrap_w
     draw_all
   end
 
@@ -469,7 +503,7 @@ class AiHelperApp < FmrbApp
     if @mode == "ask"
       return set_status("質問を打ってください。") if text.empty?
     elsif @mode == "make"
-      return set_status("「作る」は、親の設定で止められています。") unless mode_on?("make")
+      return set_status("「作成」は、親の設定で止められています。") unless mode_on?("make")
       return set_status("作りたいものを打ってください。") if text.empty?
     end
     start_request(@mode, text, "")
@@ -482,7 +516,7 @@ class AiHelperApp < FmrbApp
     @req_text = text
     @req_error = error
     @rebases = 0
-    label = mode == "fix" || !error.empty? ? "直して" : MODE_LABEL[mode]
+    label = mode == "fix" || !error.empty? ? "修正" : MODE_LABEL[mode]
     @req_shown = text.empty? ? "(#{label})" : "(#{label}) #{text}"
     if mode == "ask"
       @doc = nil
@@ -599,14 +633,14 @@ class AiHelperApp < FmrbApp
     end
     secs = (Machine.board_millis - @asked_at) / 1000
     word = STATE_TEXT[st] || st
-    set_status(@cancelled ? "やめています… (#{secs} 秒)" : "#{word}… (#{secs} 秒)")
+    set_status(@cancelled ? "中断しています… (#{secs} 秒)" : "#{word}… (#{secs} 秒)")
   end
 
   def took_result(v)
     secs = (Machine.board_millis - @asked_at) / 1000
     Log.info("ai_helper: result #{@ticket} after #{secs} s, status #{@poll_n} calls avg #{@poll_n > 0 ? @poll_sum / @poll_n : 0} ms max #{@poll_max} ms pool #{FmrbApp.pool_used}")
     if @cancelled
-      set_status("やめました。")
+      set_status("中断しました。")
       @phase = :ack
       return
     end
@@ -616,7 +650,7 @@ class AiHelperApp < FmrbApp
         return
       end
       add_text("AI", message_of(v))
-      set_status(error_of(v) == "cancelled" ? "やめました。" : "うまくいきませんでした。")
+      set_status(error_of(v) == "cancelled" ? "中断しました。" : "うまくいきませんでした。")
       @phase = :ack
       return
     end
@@ -684,11 +718,15 @@ class AiHelperApp < FmrbApp
   end
 
   def took_new_talk(v)
-    @lines = []
-    @colors = []
+    @msgs = []
+    @msg_colors = []
+    @msg_base = 0
+    @l_msg = []
+    @l_off = []
+    @l_len = []
     @top = 0
-    add_text("AI", "新しい話を始めます。前のやり取りは AI に送りません。")
-    set_status("新しい話にしました。")
+    add_text("AI", "会話をリセットしました。前のやり取りは AI に送りません。")
+    set_status("会話をリセットしました。")
   end
 
   def cancel_request
@@ -696,7 +734,7 @@ class AiHelperApp < FmrbApp
     return set_status("今は頼んでいません。") if @ticket.nil? || !net_phase?
     return if @cancelled
     @cancelled = true
-    set_status("やめています…")
+    set_status("中断しています…")
     # the cancel goes between two status calls
     if @call.nil?
       start_call(:cancel, @ticket)
@@ -710,374 +748,14 @@ class AiHelperApp < FmrbApp
   end
 
   def pick_mode(m)
-    return set_status("「作る」は、親の設定で止められています。") if m == "make" && @hello && !mode_on?("make")
+    return set_status("「作成」は、親の設定で止められています。") if m == "make" && @hello && !mode_on?("make")
     @mode = m
     draw_buttons(false)
     draw_input(false)
     draw_status
   end
-
-  # ------------------------------------------------------------ the text
-
-  # Adds str (may hold newlines) under the label, wrapped to the area, and
-  # shows its first line.
-  def add_text(who, str)
-    color = who == "あなた" ? theme_accent : theme_fg
-    first = @lines.size
-    ls = wrap("#{who}: #{str}", @area_w - 8)
-    i = 0
-    while i < ls.size
-      push_line(ls[i], color)
-      i += 1
-    end
-    push_line("", color)
-    while @lines.size > MAX_LINES
-      @lines.shift
-      @colors.shift
-      first -= 1
-    end
-    first = 0 if first < 0
-    rows = answer_rows
-    # the start of the new text, or the end when it is short
-    @top = @lines.size - rows
-    @top = first if @top > first
-    @top = 0 if @top < 0
-    draw_answers if @ready
-  end
-
-  def push_line(s, color)
-    @lines << s
-    @colors << color
-  end
-
-  # s cut into lines of w pixels at its newlines and where it gets too
-  # wide. Fixed-pitch widths of the 12px Japanese font: ASCII 6, the rest 12.
-  def wrap(s, w)
-    out = []
-    n = s.bytesize
-    i = 0
-    start = 0
-    used = 0
-    while i < n
-      b = s.getbyte(i)
-      if b == 10
-        out << s.byteslice(start, i - start).to_s
-        i += 1
-        start = i
-        used = 0
-        next
-      end
-      len = b < 0x80 ? 1 : (b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : (b >= 0xC0 ? 2 : 1)))
-      cw = b < 0x80 ? 6 : 12
-      if used + cw > w && i > start
-        out << s.byteslice(start, i - start).to_s
-        start = i
-        used = 0
-      end
-      used += cw
-      i += len
-    end
-    out << s.byteslice(start, n - start).to_s if start < n
-    out
-  end
-
-  def text_px(s)
-    n = s.bytesize
-    i = 0
-    px = 0
-    while i < n
-      b = s.getbyte(i)
-      if b < 0x80
-        px += 6
-      elsif b >= 0xC0
-        px += 12
-      end
-      i += 1
-    end
-    px
-  end
-
-  # The end of s that fits in w pixels.
-  def tail_fit(s, w)
-    return s if text_px(s) <= w
-    i = s.bytesize
-    px = 0
-    while i > 0
-      j = i - 1
-      j -= 1 while j > 0 && (s.getbyte(j) & 0xC0) == 0x80
-      cw = s.getbyte(j) < 0x80 ? 6 : 12
-      break if px + cw > w
-      px += cw
-      i = j
-    end
-    s.byteslice(i, s.bytesize - i).to_s
-  end
-
-  # The start of s that fits (the status line keeps its beginning).
-  def head_fit(s, w)
-    return s if text_px(s) <= w
-    n = s.bytesize
-    i = 0
-    px = 0
-    while i < n
-      b = s.getbyte(i)
-      len = b < 0x80 ? 1 : (b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : 2))
-      cw = b < 0x80 ? 6 : 12
-      break if px + cw > w - 12
-      px += cw
-      i += len
-    end
-    s.byteslice(0, i).to_s + ".."
-  end
-
-  def set_status(s)
-    return if s == @status
-    @status = s
-    draw_status if @ready
-  end
-
-  # ------------------------------------------------------------ drawing
-
-  def layout
-    @area_w = @user_area_width
-    @area_h = @user_area_height
-    @top_y = 1
-    @ans_y = @top_y + BTN_H + 3
-    @btn_y = @area_h - BTN_H - 1
-    @in_y = @btn_y - BTN_H - 3
-    @st_y = @in_y - LINE_H * 2 - 1
-    @ans_h = @st_y - @ans_y - 2
-    @ready = true
-  end
-
-  def answer_rows
-    r = @ans_h / LINE_H
-    r < 1 ? 1 : r
-  end
-
-  def draw_all
-    clear_user_area
-    draw_answers(false)
-    draw_status(false)
-    draw_input(false)
-    draw_buttons(false)
-    @gfx.present
-  end
-
-  def draw_answers(show = true)
-    @gfx.fill_rect(0, @ans_y, @area_w, @ans_h, theme_bg)
-    rows = answer_rows
-    i = 0
-    while i < rows && @top + i < @lines.size
-      @gfx.draw_text(3, @ans_y + i * LINE_H, @lines[@top + i], @colors[@top + i])
-      i += 1
-    end
-    # where the view is in the whole
-    if @lines.size > rows
-      bar_h = @ans_h * rows / @lines.size
-      bar_h = 6 if bar_h < 6
-      bar_y = @ans_y + (@ans_h - bar_h) * @top / (@lines.size - rows)
-      @gfx.fill_rect(@area_w - 3, @ans_y, 2, @ans_h, theme_bg)
-      @gfx.fill_rect(@area_w - 3, bar_y, 2, bar_h, theme_border)
-    end
-    @gfx.present if show
-  end
-
-  def draw_status(show = true)
-    @gfx.fill_rect(0, @st_y - 1, @area_w, LINE_H * 2 + 1, theme_bg)
-    @gfx.draw_line(0, @st_y - 2, @area_w - 1, @st_y - 2, theme_border)
-    color = @phase == :choice ? theme_fg : theme_border
-    ls = wrap(@status, @area_w - 6)
-    @gfx.draw_text(3, @st_y, ls[0].to_s, color)
-    if ls.size > 1
-      l2 = ls.size > 2 ? head_fit(ls[1] + ls[2], @area_w - 6) : ls[1]
-      @gfx.draw_text(3, @st_y + LINE_H, l2, color)
-    end
-    @gfx.present if show
-  end
-
-  def draw_input(show = true)
-    h = BTN_H
-    @gfx.fill_rect(1, @in_y, @area_w - 2, h, theme_bg)
-    @gfx.draw_rect(1, @in_y, @area_w - 2, h, theme_border)
-    if @input.empty?
-      @gfx.draw_text(4, @in_y + 2, "#{MODE_LABEL[@mode]}: #{PLACEHOLDER[@mode]}", theme_border)
-      @gfx.draw_line(4, @in_y + 2, 4, @in_y + h - 3, theme_fg)
-    else
-      t = tail_fit(@input, @area_w - 14)
-      @gfx.draw_text(4, @in_y + 2, t, theme_fg)
-      cx = 4 + text_px(t)
-      @gfx.draw_line(cx, @in_y + 2, cx, @in_y + h - 3, theme_fg)
-    end
-    @gfx.present if show
-  end
-
-  def button(id, x, y, w, label, on, enabled = true)
-    fill = on ? theme_accent : theme_bg
-    fg = on ? theme_fg_light : (enabled ? theme_fg : theme_border)
-    @gfx.draw_button(x, y, w, BTN_H, label, fill, fg)
-    @gfx.draw_rect(x, y, w, BTN_H, theme_border) unless on
-    @hits.add(id, x, y, w, BTN_H)
-  end
-
-  def draw_buttons(show = true)
-    @hits.clear
-    # the uses and the two actions
-    @gfx.fill_rect(0, @top_y, @area_w, BTN_H, theme_bg)
-    x = 1
-    i = 0
-    while i < TOP_BUTTONS.size
-      b = TOP_BUTTONS[i]
-      id = b[0]
-      on = (id == :m_ask && @mode == "ask") || (id == :m_hint && @mode == "hint") || (id == :m_make && @mode == "make")
-      enabled = id != :m_make || @hello.nil? || mode_on?("make")
-      x += 6 if id == :fix
-      button(id, x, @top_y, b[2], b[1], on, enabled)
-      x += b[2] + 2
-      i += 1
-    end
-    # the bottom row: the choices of a question, or the usual buttons
-    @gfx.fill_rect(0, @btn_y, @area_w, BTN_H, theme_bg)
-    x = 1
-    if @choices
-      i = 0
-      while i < @choices.size
-        c = @choices[i]
-        w = text_px(c[1]) + 14
-        button(c[0], x, @btn_y, w, c[1], true)
-        x += w + 4
-        i += 1
-      end
-    else
-      button(:send, x, @btn_y, 40, "送る", true)
-      x += 43
-      button(:stop, x, @btn_y, 46, "やめる", true)
-      x += 49
-      button(:talk, x, @btn_y, 58, "新しい話", true)
-      x += 61
-      if @mode == "ask"
-        w = @area_w - x - 2
-        button(:attach, x, @btn_y, w, @attach ? "文書も送る" : "文書は送らない", @attach)
-      end
-    end
-    @gfx.present if show
-  end
-
-  # ------------------------------------------------------------ input
-
-  def on_event(ev)
-    t = ev[:type]
-    if t == :mouse_down
-      press(@hits.id_at(ev[:x], ev[:y]))
-    elsif t == :mouse_wheel
-      rows = wheel_rows(ev)
-      scroll(-rows) if rows
-    elsif t == :key_down
-      key(ev)
-    end
-  end
-
-  def press(id)
-    return if id.nil?
-    if @choices
-      i = 0
-      while i < @choices.size
-        return choose(id) if @choices[i][0] == id
-        i += 1
-      end
-    end
-    case id
-    when :send then send_input
-    when :stop then cancel_request
-    when :talk then new_talk
-    when :m_ask then pick_mode("ask")
-    when :m_hint then pick_mode("hint")
-    when :m_make then pick_mode("make")
-    when :fix then press_fix
-    when :erase then press_erase
-    when :attach
-      @attach = !@attach
-      draw_buttons
-    end
-  end
-
-  def scroll(d)
-    rows = answer_rows
-    top = @top + d
-    max = @lines.size - rows
-    top = max if top > max
-    top = 0 if top < 0
-    return if top == @top
-    @top = top
-    draw_answers
-  end
-
-  def key(ev)
-    return if ev_ctrl?(ev)
-    case ev[:scancode].to_i
-    when 0x52 then return scroll(-1)
-    when 0x51 then return scroll(1)
-    when 0x4B then return scroll(-answer_rows)
-    when 0x4E then return scroll(answer_rows)
-    end
-    ch = ev[:character].to_i
-    return if ch == 0
-    if ch >= 0x80
-      s = utf8_feed(ch)
-      type_char(s) if s
-      return
-    end
-    @u8_need = 0
-    if ch == 10 || ch == 13
-      send_input unless @choices
-    elsif ch == 8
-      n = @input.length
-      @input = @input[0, n - 1].to_s if n > 0
-      draw_input
-    elsif ch == 27
-      cancel_request
-    elsif ch >= 32 && ch <= 126
-      type_char(ch.chr)
-    end
-  end
-
-  def type_char(s)
-    return if @input.length >= INPUT_MAX
-    @input = @input + s
-    draw_input
-  end
-
-  # One byte of a UTF-8 character (kana input sends them one per event).
-  def utf8_feed(byte)
-    if @u8_need == 0
-      if byte >= 0xF0
-        @u8_need = 3
-      elsif byte >= 0xE0
-        @u8_need = 2
-      elsif byte >= 0xC0
-        @u8_need = 1
-      else
-        return nil
-      end
-      @u8_buf = one_byte(byte)
-      return nil
-    end
-    if byte < 0x80 || byte >= 0xC0
-      @u8_need = 0
-      return utf8_feed(byte)
-    end
-    @u8_buf += one_byte(byte)
-    @u8_need -= 1
-    return nil if @u8_need > 0
-    @u8_buf
-  end
-
-  def one_byte(b)
-    s = " ".dup
-    s.setbyte(0, b)
-    s
-  end
 end
 
-# the editor half (one class, two files)
+# the editor half and the screen (one class, three files)
 require "/app/modern/ai_helper/editor"
+require "/app/modern/ai_helper/screen"

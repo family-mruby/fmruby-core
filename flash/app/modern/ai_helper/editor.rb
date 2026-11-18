@@ -6,8 +6,8 @@
 # its document to /tmp/ai_doc.rb and answer ai_doc; ai_replace loads
 # /tmp/ai_new.rb in its place when the version is still the one read, and
 # answers ai_done. Also here: sending the document in pieces, putting a
-# result in (hint, whole document, rebase), backups, fix, erase and the
-# questions to the child.
+# result in (hint, whole document, rebase), backups and restoring one, fix,
+# erase and the questions to the child.
 class AiHelperApp < FmrbApp
   # ------------------------------------------------------------ the editor
 
@@ -84,7 +84,7 @@ class AiHelperApp < FmrbApp
       return ask_without_doc("エディタから文書を読めなかったので")
     end
     if @apply
-      ask_child(text, [[:retry_apply, "もう一度"], [:drop, "やめる"]])
+      ask_child(text, [[:retry_apply, "もう一度"], [:drop, "キャンセル"]])
     else
       @phase = :idle
       @after_read = nil
@@ -116,6 +116,7 @@ class AiHelperApp < FmrbApp
     when :make then send_request("make")
     when :fix then offer_fix
     when :erase then count_ai_lines
+    when :restore then list_backups
     when :apply then apply_result
     end
   end
@@ -248,6 +249,7 @@ class AiHelperApp < FmrbApp
   # document is the one sent, else it is placed again on the new one
   # (rebase); a whole document asks first.
   def apply_result
+    return restore_again if @apply == :restore
     base = @res["base_ver"]
     same = base.is_a?(Integer) && base == @doc["ver"].to_i
     if @apply == :hint
@@ -331,10 +333,10 @@ class AiHelperApp < FmrbApp
       replace_whole(false)
     elsif f.empty? || f.getbyte(0) != 47
       ask_child("#{head}今の文書には名前が無いので、退避できません。上書きしますか?",
-                [[:over, "上書きする"], [:drop, "やめる"]])
+                [[:over, "上書きする"], [:drop, "キャンセル"]])
     else
       ask_child("#{head}今の中身を残しますか? (#{base_name(f)}.bak に退避します)",
-                [[:bak, "はい"], [:over, "いいえ"], [:drop, "やめる"]])
+                [[:bak, "はい"], [:over, "いいえ"], [:drop, "キャンセル"]])
     end
   end
 
@@ -388,13 +390,20 @@ class AiHelperApp < FmrbApp
       @apply = nil
       @phase = :idle
       return
+    when :restore
+      back = "#{base_name(doc_file)}.bak#{@restore_k} の中身に戻しました。"
+      set_status(@new_bak ? "#{back}前の中身は #{base_name(@new_bak)} に残しました。" : back)
+      @apply = nil
+      @new_bak = nil
+      @phase = :idle
+      return
     end
     @new_bak = nil
     @phase = :ack
   end
 
   def give_up_apply
-    if @apply == :erase || @ticket.nil?
+    if @apply == :erase || @apply == :restore || @ticket.nil?
       @apply = nil
       @phase = :idle
       @question = nil
@@ -432,7 +441,7 @@ class AiHelperApp < FmrbApp
     end
     i.close
     o.close
-    Log.info("ai_helper: backup #{from} -> #{to} (#{File.size(to)} bytes)")
+    Log.info("ai_helper: copied #{from} -> #{to} (#{File.size(to)} bytes)")
     true
   rescue => e
     Log.info("ai_helper: backup failed: #{e.message}")
@@ -461,6 +470,104 @@ class AiHelperApp < FmrbApp
       end
       i += 1
     end
+  end
+
+  # ------------------------------------------------------------ restoring a backup
+
+  # Edit > Restore from backup: the editor's document back to one of its
+  # backups. No gem is needed (nothing goes to the AI).
+  def press_restore
+    return set_status("前の頼みがまだ終わっていません。") if @phase != :idle
+    read_editor(:restore)
+  end
+
+  def backup_nums(f)
+    nums = []
+    n = 1
+    while n <= BAK_SCAN
+      nums << n if File.exist?("#{f}.bak#{n}")
+      n += 1
+    end
+    nums
+  end
+
+  # After ai_read: the backups of the document, listed in the answers, and
+  # one button for each.
+  def list_backups
+    @phase = :idle
+    f = doc_file
+    if f.empty? || f.getbyte(0) != 47
+      return set_status("今の文書には名前が無いので、バックアップはありません。")
+    end
+    nums = backup_nums(f)
+    name = base_name(f)
+    if nums.empty?
+      return set_status("#{name} のバックアップはありません。")
+    end
+    text = "#{name} のバックアップ (1 が最初の中身、番号が大きいほど新しい):"
+    choices = []
+    i = 0
+    while i < nums.size
+      k = nums[i]
+      tag = k == 1 ? " (最初の中身)" : (i == nums.size - 1 ? " (いちばん新しい)" : "")
+      text += "\n#{k}#{tag}: #{bak_hint("#{f}.bak#{k}")}"
+      choices << [k, k.to_s]
+      i += 1
+    end
+    choices << [:drop_local, "キャンセル"]
+    @restore_file = f
+    add_text("AI", text)
+    ask_child("どのバックアップに戻しますか? 番号を選んでください。", choices)
+  end
+
+  # Its size and its first line of code (a comment line when it has none).
+  def bak_hint(path)
+    size = File.size(path)
+    head = File.open(path, "r") { |io| io.read(512) }.to_s
+    first = ""
+    code = ""
+    i = 0
+    n = head.bytesize
+    while i < n && code.empty?
+      j = i
+      j += 1 while j < n && head.getbyte(j) != 10
+      line = head.byteslice(i, j - i).to_s.strip
+      if !line.empty?
+        first = line if first.empty?
+        code = line if line.getbyte(0) != 35
+      end
+      i = j + 1
+    end
+    line = code.empty? ? first : code
+    line.empty? ? "#{size} バイト" : "#{size} バイト「#{head_fit(line, 150)}」"
+  rescue => e
+    Log.info("ai_helper: bak_hint #{path}: #{e.message}")
+    "読めません"
+  end
+
+  # The chosen backup is copied to NEW first: backing up the document now
+  # may remove or renumber it (BAK_KEEP, the second oldest goes, the
+  # numbers close up), and what goes in must be what was chosen.
+  def restore_from(k)
+    @phase = :idle
+    src = "#{@restore_file}.bak#{k}"
+    return set_status("バックアップ #{base_name(src)} が見つかりません。") unless File.exist?(src)
+    return set_status("バックアップ #{base_name(src)} を読めませんでした。") unless copy_file(src, NEW)
+    @apply = :restore
+    @restore_k = k
+    ask_overwrite(true)
+  end
+
+  # The editor was read again (written meanwhile, or "again" after busy):
+  # the same question once more, unless it now shows another document.
+  def restore_again
+    if doc_file != @restore_file
+      add_text("AI", "エディタの文書が切りかわったので、戻しませんでした。")
+      set_status("戻しませんでした。")
+      give_up_apply
+      return
+    end
+    ask_overwrite(false)
   end
 
   # ------------------------------------------------------------ fix and erase
@@ -499,10 +606,10 @@ class AiHelperApp < FmrbApp
     end
     @fix_error = err
     add_text("AI", "このエラーについて頼めます:\n#{first_lines(err, 3)}")
-    choices = [[:fix_hint, "ヒントをもらう"]]
-    choices << [:fix_make, "直してもらう"] if mode_on?("fix")
-    choices << [:drop_local, "やめる"]
-    ask_child(mode_on?("fix") ? "ヒントをもらいますか、直してもらいますか?" : "ヒントをもらいますか? (「直してもらう」は親の設定で止められています)", choices)
+    choices = [[:fix_hint, "ヒント"]]
+    choices << [:fix_make, "修正してもらう"] if mode_on?("fix")
+    choices << [:drop_local, "キャンセル"]
+    ask_child(mode_on?("fix") ? "「ヒント」か「修正してもらう」を選んでください。" : "「ヒント」を選んでください (「修正してもらう」は親の設定で止められています)。", choices)
   end
 
   def first_lines(s, n)
@@ -583,7 +690,7 @@ class AiHelperApp < FmrbApp
     @erase_n = n
     @apply = :erase
     ask_child("AI のコメント (# AI: で始まる行) を #{n} 行消します。自分で同じ形に書いた行も消えます。",
-              [[:erase_go, "消す"], [:drop_local, "やめる"]])
+              [[:erase_go, "消す"], [:drop_local, "キャンセル"]])
   end
 
   def erase_go
@@ -628,6 +735,7 @@ class AiHelperApp < FmrbApp
     @question = nil
     @choices = nil
     draw_buttons
+    return restore_from(id) if id.is_a?(Integer)
     case id
     when :bak then replace_whole(true)
     when :over then replace_whole(false)
@@ -640,15 +748,15 @@ class AiHelperApp < FmrbApp
     when :erase_go then erase_go
     when :fix_hint then start_request("hint", "", @fix_error.to_s)
     when :fix_make
-      return set_status("「直してもらう」は、親の設定で止められています。") unless mode_on?("fix")
+      return set_status("「修正してもらう」は、親の設定で止められています。") unless mode_on?("fix")
       start_request("fix", "", @fix_error.to_s)
     when :drop
-      set_status("やめました。エディタの文書はそのままです。")
+      set_status("キャンセルしました。エディタの文書はそのままです。")
       give_up_apply
     when :drop_local
       @apply = nil
       @phase = :idle
-      set_status("やめました。")
+      set_status("キャンセルしました。")
     end
   end
 end
