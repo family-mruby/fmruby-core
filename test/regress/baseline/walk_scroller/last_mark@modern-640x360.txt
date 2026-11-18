@@ -1,0 +1,1047 @@
+# scene walk_scroller/last_mark
+# profile modern-640x360
+# window 640x360 fullscreen lang en
+== start
+sprite_clip 0 0 0 0
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene0_far.png (1/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene0_mid.png (2/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene0_gnd.png (3/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene1_far.png (4/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene1_mid.png (5/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene1_gnd.png (6/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene2_far.png (7/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene2_mid.png (8/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene2_gnd.png (9/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene3_far.png (10/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene3_mid.png (11/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene3_gnd.png (12/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene4_far.png (13/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene4_mid.png (14/15)" #FF defaultx1
+present
+fill_rect 0 0 640 360 #53
+text 8 8 "Walk Scroller: loading scene4_gnd.png (15/15)" #FF defaultx1
+present
+sprite_image 101 48 75 0 1
+load_bmp 101 "/cache/app/walk_scroller/default/walker_0.png"
+sprite_image 102 48 75 0 1
+load_bmp 102 "/cache/app/walk_scroller/default/walker_1.png"
+sprite_image 103 48 75 0 1
+load_bmp 103 "/cache/app/walk_scroller/default/walker_2.png"
+sprite_image 104 48 75 0 1
+load_bmp 104 "/cache/app/walk_scroller/default/walker_3.png"
+sprite_image 105 48 75 0 1
+load_bmp 105 "/cache/app/walk_scroller/default/walker_stand.png"
+sprite 106 [101,102,103,104,105] 152 243 2
+sprite_frame 106 4
+sprite_image 107 640 124 0 1
+sprite 108 [107] 0 6 3
+sprite_image 109 300 10 0 1
+sprite 110 [109] 338 349 4
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+sprite_target 0
+sprite_image 111 426 160 0 1
+load_bmp 111 "/cache/app/walk_scroller/default/scene0_far.png"
+sprite_image 112 426 84 0 1
+load_bmp 112 "/cache/app/walk_scroller/default/scene0_mid.png"
+sprite_image 113 426 50 0 1
+load_bmp 113 "/cache/app/walk_scroller/default/scene0_gnd.png"
+sprite_move 106 152 243
+sprite_target 107
+fill_rect 0 0 640 124 #00
+text 258 16 "Hello" #24 ja16x3
+text 260 16 "Hello" #24 ja16x3
+text 262 16 "Hello" #24 ja16x3
+text 258 18 "Hello" #24 ja16x3
+text 262 18 "Hello" #24 ja16x3
+text 258 20 "Hello" #24 ja16x3
+text 260 20 "Hello" #24 ja16x3
+text 262 20 "Hello" #24 ja16x3
+text 260 18 "Hello" #FF ja16x3
+text 215 69 "walk to start" #24 ja16x2
+text 216 69 "walk to start" #24 ja16x2
+text 217 69 "walk to start" #24 ja16x2
+text 215 70 "walk to start" #24 ja16x2
+text 217 70 "walk to start" #24 ja16x2
+text 215 71 "walk to start" #24 ja16x2
+text 216 71 "walk to start" #24 ja16x2
+text 217 71 "walk to start" #24 ja16x2
+text 216 70 "walk to start" #FC ja16x2
+sprite_target 0
+fill_rect 0 0 640 77 #53
+fill_rect 0 77 640 77 #57
+fill_rect 0 154 640 77 #7B
+fill_rect 0 231 640 79 #9F
+fill_circle 550 36 14 #FC
+draw_tile 111 0 0 426 160 0 150
+draw_tile 111 0 0 214 160 426 150
+draw_tile 112 0 0 426 84 0 226
+draw_tile 112 0 0 214 84 426 226
+draw_tile 113 0 0 426 50 0 310
+draw_tile 113 0 0 214 50 426 310
+sprite_move 108 0 -40
+present
+== update 1/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #E0
+text 236 1 "offline 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 640 77 #53
+fill_rect 0 77 640 77 #57
+fill_rect 0 154 640 77 #7B
+fill_rect 0 231 640 79 #9F
+fill_circle 550 36 14 #FC
+draw_tile 111 0 0 426 160 0 150
+draw_tile 111 0 0 214 160 426 150
+draw_tile 112 0 0 426 84 0 226
+draw_tile 112 0 0 214 84 426 226
+draw_tile 113 0 0 426 50 0 310
+draw_tile 113 0 0 214 50 426 310
+sprite_move 108 0 -40
+present
+== update 2/2
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #FC
+text 236 1 "waiting 0" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 640 77 #53
+fill_rect 0 77 640 77 #57
+fill_rect 0 154 640 77 #7B
+fill_rect 0 231 640 79 #9F
+fill_circle 550 36 14 #FC
+draw_tile 111 0 0 426 160 0 150
+draw_tile 111 0 0 214 160 426 150
+draw_tile 112 0 0 426 84 0 226
+draw_tile 112 0 0 214 84 426 226
+draw_tile 113 0 0 426 50 0 310
+draw_tile 113 0 0 214 50 426 310
+sprite_move 108 0 -31
+present
+== key "n"
+== key "n"
+== key "n"
+== key "n"
+== key "n"
+== key "n"
+== run 2000 ms
+sprite_target 107
+fill_rect 0 0 640 124 #00
+sprite_target 0
+load_bmp 111 "/cache/app/walk_scroller/default/scene1_far.png"
+load_bmp 112 "/cache/app/walk_scroller/default/scene1_mid.png"
+load_bmp 113 "/cache/app/walk_scroller/default/scene1_gnd.png"
+sprite_move 106 152 243
+sprite_target 107
+fill_rect 0 0 640 124 #00
+text 210 16 "Mountains" #24 ja16x3
+text 212 16 "Mountains" #24 ja16x3
+text 214 16 "Mountains" #24 ja16x3
+text 210 18 "Mountains" #24 ja16x3
+text 214 18 "Mountains" #24 ja16x3
+text 210 20 "Mountains" #24 ja16x3
+text 212 20 "Mountains" #24 ja16x3
+text 214 20 "Mountains" #24 ja16x3
+text 212 18 "Mountains" #FF ja16x3
+text 255 69 "20 steps" #24 ja16x2
+text 256 69 "20 steps" #24 ja16x2
+text 257 69 "20 steps" #24 ja16x2
+text 255 70 "20 steps" #24 ja16x2
+text 257 70 "20 steps" #24 ja16x2
+text 255 71 "20 steps" #24 ja16x2
+text 256 71 "20 steps" #24 ja16x2
+text 257 71 "20 steps" #24 ja16x2
+text 256 70 "20 steps" #FC ja16x2
+sprite_target 0
+sprite_target 107
+fill_rect 0 0 640 124 #00
+sprite_target 0
+load_bmp 111 "/cache/app/walk_scroller/default/scene2_far.png"
+load_bmp 112 "/cache/app/walk_scroller/default/scene2_mid.png"
+load_bmp 113 "/cache/app/walk_scroller/default/scene2_gnd.png"
+sprite_move 106 152 243
+sprite_target 107
+fill_rect 0 0 640 124 #00
+text 270 16 "Town" #24 ja16x3
+text 272 16 "Town" #24 ja16x3
+text 274 16 "Town" #24 ja16x3
+text 270 18 "Town" #24 ja16x3
+text 274 18 "Town" #24 ja16x3
+text 270 20 "Town" #24 ja16x3
+text 272 20 "Town" #24 ja16x3
+text 274 20 "Town" #24 ja16x3
+text 272 18 "Town" #FF ja16x3
+text 255 69 "40 steps" #24 ja16x2
+text 256 69 "40 steps" #24 ja16x2
+text 257 69 "40 steps" #24 ja16x2
+text 255 70 "40 steps" #24 ja16x2
+text 257 70 "40 steps" #24 ja16x2
+text 255 71 "40 steps" #24 ja16x2
+text 256 71 "40 steps" #24 ja16x2
+text 257 71 "40 steps" #24 ja16x2
+text 256 70 "40 steps" #FC ja16x2
+sprite_target 0
+sprite_target 107
+fill_rect 0 0 640 124 #00
+sprite_target 0
+load_bmp 111 "/cache/app/walk_scroller/default/scene3_far.png"
+load_bmp 112 "/cache/app/walk_scroller/default/scene3_mid.png"
+load_bmp 113 "/cache/app/walk_scroller/default/scene3_gnd.png"
+sprite_move 106 152 243
+sprite_target 107
+fill_rect 0 0 640 124 #00
+text 234 16 "Seaside" #24 ja16x3
+text 236 16 "Seaside" #24 ja16x3
+text 238 16 "Seaside" #24 ja16x3
+text 234 18 "Seaside" #24 ja16x3
+text 238 18 "Seaside" #24 ja16x3
+text 234 20 "Seaside" #24 ja16x3
+text 236 20 "Seaside" #24 ja16x3
+text 238 20 "Seaside" #24 ja16x3
+text 236 18 "Seaside" #FF ja16x3
+text 255 69 "55 steps" #24 ja16x2
+text 256 69 "55 steps" #24 ja16x2
+text 257 69 "55 steps" #24 ja16x2
+text 255 70 "55 steps" #24 ja16x2
+text 257 70 "55 steps" #24 ja16x2
+text 255 71 "55 steps" #24 ja16x2
+text 256 71 "55 steps" #24 ja16x2
+text 257 71 "55 steps" #24 ja16x2
+text 256 70 "55 steps" #FC ja16x2
+sprite_target 0
+sprite_target 109
+fill_rect 0 0 300 10 #00
+fill_rect 293 2 5 5 #FC
+text 230 1 "waiting 55" #92 defaultx1
+sprite_target 0
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 0 0 426 160 0 150
+draw_tile 111 0 0 214 160 426 150
+draw_tile 112 1 0 425 84 0 226
+draw_tile 112 0 0 215 84 425 226
+draw_tile 113 2 0 424 50 0 310
+draw_tile 113 0 0 216 50 424 310
+sprite_frame 106 0
+sprite_move 108 0 -31
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 0 0 426 160 0 150
+draw_tile 111 0 0 214 160 426 150
+draw_tile 112 2 0 424 84 0 226
+draw_tile 112 0 0 216 84 424 226
+draw_tile 113 4 0 422 50 0 310
+draw_tile 113 0 0 218 50 422 310
+sprite_move 108 0 -23
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 1 0 425 160 0 150
+draw_tile 111 0 0 215 160 425 150
+draw_tile 112 3 0 423 84 0 226
+draw_tile 112 0 0 217 84 423 226
+draw_tile 113 7 0 419 50 0 310
+draw_tile 113 0 0 221 50 419 310
+sprite_move 108 0 -15
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 1 0 425 160 0 150
+draw_tile 111 0 0 215 160 425 150
+draw_tile 112 4 0 422 84 0 226
+draw_tile 112 0 0 218 84 422 226
+draw_tile 113 9 0 417 50 0 310
+draw_tile 113 0 0 223 50 417 310
+sprite_move 108 0 -7
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 2 0 424 160 0 150
+draw_tile 111 0 0 216 160 424 150
+draw_tile 112 5 0 421 84 0 226
+draw_tile 112 0 0 219 84 421 226
+draw_tile 113 11 0 415 50 0 310
+draw_tile 113 0 0 225 50 415 310
+sprite_move 108 0 1
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 2 0 424 160 0 150
+draw_tile 111 0 0 216 160 424 150
+draw_tile 112 7 0 419 84 0 226
+draw_tile 112 0 0 221 84 419 226
+draw_tile 113 14 0 412 50 0 310
+draw_tile 113 0 0 228 50 412 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 3 0 423 160 0 150
+draw_tile 111 0 0 217 160 423 150
+draw_tile 112 8 0 418 84 0 226
+draw_tile 112 0 0 222 84 418 226
+draw_tile 113 16 0 410 50 0 310
+draw_tile 113 0 0 230 50 410 310
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 3 0 423 160 0 150
+draw_tile 111 0 0 217 160 423 150
+draw_tile 112 9 0 417 84 0 226
+draw_tile 112 0 0 223 84 417 226
+draw_tile 113 18 0 408 50 0 310
+draw_tile 113 0 0 232 50 408 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 4 0 422 160 0 150
+draw_tile 111 0 0 218 160 422 150
+draw_tile 112 10 0 416 84 0 226
+draw_tile 112 0 0 224 84 416 226
+draw_tile 113 21 0 405 50 0 310
+draw_tile 113 0 0 235 50 405 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 4 0 422 160 0 150
+draw_tile 111 0 0 218 160 422 150
+draw_tile 112 11 0 415 84 0 226
+draw_tile 112 0 0 225 84 415 226
+draw_tile 113 23 0 403 50 0 310
+draw_tile 113 0 0 237 50 403 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 5 0 421 160 0 150
+draw_tile 111 0 0 219 160 421 150
+draw_tile 112 12 0 414 84 0 226
+draw_tile 112 0 0 226 84 414 226
+draw_tile 113 25 0 401 50 0 310
+draw_tile 113 0 0 239 50 401 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 5 0 421 160 0 150
+draw_tile 111 0 0 219 160 421 150
+draw_tile 112 14 0 412 84 0 226
+draw_tile 112 0 0 228 84 412 226
+draw_tile 113 28 0 398 50 0 310
+draw_tile 113 0 0 242 50 398 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 6 0 420 160 0 150
+draw_tile 111 0 0 220 160 420 150
+draw_tile 112 15 0 411 84 0 226
+draw_tile 112 0 0 229 84 411 226
+draw_tile 113 30 0 396 50 0 310
+draw_tile 113 0 0 244 50 396 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 6 0 420 160 0 150
+draw_tile 111 0 0 220 160 420 150
+draw_tile 112 16 0 410 84 0 226
+draw_tile 112 0 0 230 84 410 226
+draw_tile 113 32 0 394 50 0 310
+draw_tile 113 0 0 246 50 394 310
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 7 0 419 160 0 150
+draw_tile 111 0 0 221 160 419 150
+draw_tile 112 17 0 409 84 0 226
+draw_tile 112 0 0 231 84 409 226
+draw_tile 113 35 0 391 50 0 310
+draw_tile 113 0 0 249 50 391 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 7 0 419 160 0 150
+draw_tile 111 0 0 221 160 419 150
+draw_tile 112 18 0 408 84 0 226
+draw_tile 112 0 0 232 84 408 226
+draw_tile 113 37 0 389 50 0 310
+draw_tile 113 0 0 251 50 389 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 7 0 419 160 0 150
+draw_tile 111 0 0 221 160 419 150
+draw_tile 112 19 0 407 84 0 226
+draw_tile 112 0 0 233 84 407 226
+draw_tile 113 39 0 387 50 0 310
+draw_tile 113 0 0 253 50 387 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 8 0 418 160 0 150
+draw_tile 111 0 0 222 160 418 150
+draw_tile 112 21 0 405 84 0 226
+draw_tile 112 0 0 235 84 405 226
+draw_tile 113 42 0 384 50 0 310
+draw_tile 113 0 0 256 50 384 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 8 0 418 160 0 150
+draw_tile 111 0 0 222 160 418 150
+draw_tile 112 22 0 404 84 0 226
+draw_tile 112 0 0 236 84 404 226
+draw_tile 113 44 0 382 50 0 310
+draw_tile 113 0 0 258 50 382 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 9 0 417 160 0 150
+draw_tile 111 0 0 223 160 417 150
+draw_tile 112 23 0 403 84 0 226
+draw_tile 112 0 0 237 84 403 226
+draw_tile 113 46 0 380 50 0 310
+draw_tile 113 0 0 260 50 380 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 9 0 417 160 0 150
+draw_tile 111 0 0 223 160 417 150
+draw_tile 112 24 0 402 84 0 226
+draw_tile 112 0 0 238 84 402 226
+draw_tile 113 49 0 377 50 0 310
+draw_tile 113 0 0 263 50 377 310
+sprite_frame 106 3
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 10 0 416 160 0 150
+draw_tile 111 0 0 224 160 416 150
+draw_tile 112 25 0 401 84 0 226
+draw_tile 112 0 0 239 84 401 226
+draw_tile 113 51 0 375 50 0 310
+draw_tile 113 0 0 265 50 375 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 10 0 416 160 0 150
+draw_tile 111 0 0 224 160 416 150
+draw_tile 112 26 0 400 84 0 226
+draw_tile 112 0 0 240 84 400 226
+draw_tile 113 53 0 373 50 0 310
+draw_tile 113 0 0 267 50 373 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 11 0 415 160 0 150
+draw_tile 111 0 0 225 160 415 150
+draw_tile 112 28 0 398 84 0 226
+draw_tile 112 0 0 242 84 398 226
+draw_tile 113 56 0 370 50 0 310
+draw_tile 113 0 0 270 50 370 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 11 0 415 160 0 150
+draw_tile 111 0 0 225 160 415 150
+draw_tile 112 29 0 397 84 0 226
+draw_tile 112 0 0 243 84 397 226
+draw_tile 113 58 0 368 50 0 310
+draw_tile 113 0 0 272 50 368 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 12 0 414 160 0 150
+draw_tile 111 0 0 226 160 414 150
+draw_tile 112 30 0 396 84 0 226
+draw_tile 112 0 0 244 84 396 226
+draw_tile 113 61 0 365 50 0 310
+draw_tile 113 0 0 275 50 365 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 12 0 414 160 0 150
+draw_tile 111 0 0 226 160 414 150
+draw_tile 112 31 0 395 84 0 226
+draw_tile 112 0 0 245 84 395 226
+draw_tile 113 63 0 363 50 0 310
+draw_tile 113 0 0 277 50 363 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 13 0 413 160 0 150
+draw_tile 111 0 0 227 160 413 150
+draw_tile 112 32 0 394 84 0 226
+draw_tile 112 0 0 246 84 394 226
+draw_tile 113 65 0 361 50 0 310
+draw_tile 113 0 0 279 50 361 310
+sprite_frame 106 0
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 13 0 413 160 0 150
+draw_tile 111 0 0 227 160 413 150
+draw_tile 112 34 0 392 84 0 226
+draw_tile 112 0 0 248 84 392 226
+draw_tile 113 68 0 358 50 0 310
+draw_tile 113 0 0 282 50 358 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 14 0 412 160 0 150
+draw_tile 111 0 0 228 160 412 150
+draw_tile 112 35 0 391 84 0 226
+draw_tile 112 0 0 249 84 391 226
+draw_tile 113 70 0 356 50 0 310
+draw_tile 113 0 0 284 50 356 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 14 0 412 160 0 150
+draw_tile 111 0 0 228 160 412 150
+draw_tile 112 36 0 390 84 0 226
+draw_tile 112 0 0 250 84 390 226
+draw_tile 113 72 0 354 50 0 310
+draw_tile 113 0 0 286 50 354 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 15 0 411 160 0 150
+draw_tile 111 0 0 229 160 411 150
+draw_tile 112 37 0 389 84 0 226
+draw_tile 112 0 0 251 84 389 226
+draw_tile 113 75 0 351 50 0 310
+draw_tile 113 0 0 289 50 351 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 15 0 411 160 0 150
+draw_tile 111 0 0 229 160 411 150
+draw_tile 112 38 0 388 84 0 226
+draw_tile 112 0 0 252 84 388 226
+draw_tile 113 77 0 349 50 0 310
+draw_tile 113 0 0 291 50 349 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 15 0 411 160 0 150
+draw_tile 111 0 0 229 160 411 150
+draw_tile 112 39 0 387 84 0 226
+draw_tile 112 0 0 253 84 387 226
+draw_tile 113 79 0 347 50 0 310
+draw_tile 113 0 0 293 50 347 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 16 0 410 160 0 150
+draw_tile 111 0 0 230 160 410 150
+draw_tile 112 41 0 385 84 0 226
+draw_tile 112 0 0 255 84 385 226
+draw_tile 113 82 0 344 50 0 310
+draw_tile 113 0 0 296 50 344 310
+sprite_frame 106 1
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 16 0 410 160 0 150
+draw_tile 111 0 0 230 160 410 150
+draw_tile 112 42 0 384 84 0 226
+draw_tile 112 0 0 256 84 384 226
+draw_tile 113 84 0 342 50 0 310
+draw_tile 113 0 0 298 50 342 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 17 0 409 160 0 150
+draw_tile 111 0 0 231 160 409 150
+draw_tile 112 43 0 383 84 0 226
+draw_tile 112 0 0 257 84 383 226
+draw_tile 113 86 0 340 50 0 310
+draw_tile 113 0 0 300 50 340 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 17 0 409 160 0 150
+draw_tile 111 0 0 231 160 409 150
+draw_tile 112 44 0 382 84 0 226
+draw_tile 112 0 0 258 84 382 226
+draw_tile 113 89 0 337 50 0 310
+draw_tile 113 0 0 303 50 337 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 18 0 408 160 0 150
+draw_tile 111 0 0 232 160 408 150
+draw_tile 112 45 0 381 84 0 226
+draw_tile 112 0 0 259 84 381 226
+draw_tile 113 91 0 335 50 0 310
+draw_tile 113 0 0 305 50 335 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 18 0 408 160 0 150
+draw_tile 111 0 0 232 160 408 150
+draw_tile 112 46 0 380 84 0 226
+draw_tile 112 0 0 260 84 380 226
+draw_tile 113 93 0 333 50 0 310
+draw_tile 113 0 0 307 50 333 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 19 0 407 160 0 150
+draw_tile 111 0 0 233 160 407 150
+draw_tile 112 48 0 378 84 0 226
+draw_tile 112 0 0 262 84 378 226
+draw_tile 113 96 0 330 50 0 310
+draw_tile 113 0 0 310 50 330 310
+sprite_frame 106 2
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 19 0 407 160 0 150
+draw_tile 111 0 0 233 160 407 150
+draw_tile 112 49 0 377 84 0 226
+draw_tile 112 0 0 263 84 377 226
+draw_tile 113 98 0 328 50 0 310
+draw_tile 113 0 0 312 50 328 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 20 0 406 160 0 150
+draw_tile 111 0 0 234 160 406 150
+draw_tile 112 50 0 376 84 0 226
+draw_tile 112 0 0 264 84 376 226
+draw_tile 113 100 0 326 50 0 310
+draw_tile 113 0 0 314 50 326 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 20 0 406 160 0 150
+draw_tile 111 0 0 234 160 406 150
+draw_tile 112 51 0 375 84 0 226
+draw_tile 112 0 0 265 84 375 226
+draw_tile 113 103 0 323 50 0 310
+draw_tile 113 0 0 317 50 323 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 21 0 405 160 0 150
+draw_tile 111 0 0 235 160 405 150
+draw_tile 112 52 0 374 84 0 226
+draw_tile 112 0 0 266 84 374 226
+draw_tile 113 105 0 321 50 0 310
+draw_tile 113 0 0 319 50 321 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 21 0 405 160 0 150
+draw_tile 111 0 0 235 160 405 150
+draw_tile 112 53 0 373 84 0 226
+draw_tile 112 0 0 267 84 373 226
+draw_tile 113 107 0 319 50 0 310
+draw_tile 113 0 0 321 50 319 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 22 0 404 160 0 150
+draw_tile 111 0 0 236 160 404 150
+draw_tile 112 55 0 371 84 0 226
+draw_tile 112 0 0 269 84 371 226
+draw_tile 113 110 0 316 50 0 310
+draw_tile 113 0 0 324 50 316 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 22 0 404 160 0 150
+draw_tile 111 0 0 236 160 404 150
+draw_tile 112 56 0 370 84 0 226
+draw_tile 112 0 0 270 84 370 226
+draw_tile 113 112 0 314 50 0 310
+draw_tile 113 0 0 326 50 314 310
+sprite_frame 106 3
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 22 0 404 160 0 150
+draw_tile 111 0 0 236 160 404 150
+draw_tile 112 57 0 369 84 0 226
+draw_tile 112 0 0 271 84 369 226
+draw_tile 113 114 0 312 50 0 310
+draw_tile 113 0 0 328 50 312 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 23 0 403 160 0 150
+draw_tile 111 0 0 237 160 403 150
+draw_tile 112 58 0 368 84 0 226
+draw_tile 112 0 0 272 84 368 226
+draw_tile 113 117 0 309 50 0 310
+draw_tile 113 0 0 331 50 309 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 23 0 403 160 0 150
+draw_tile 111 0 0 237 160 403 150
+draw_tile 112 59 0 367 84 0 226
+draw_tile 112 0 0 273 84 367 226
+draw_tile 113 119 0 307 50 0 310
+draw_tile 113 0 0 333 50 307 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 24 0 402 160 0 150
+draw_tile 111 0 0 238 160 402 150
+draw_tile 112 61 0 365 84 0 226
+draw_tile 112 0 0 275 84 365 226
+draw_tile 113 122 0 304 50 0 310
+draw_tile 113 0 0 336 50 304 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 24 0 402 160 0 150
+draw_tile 111 0 0 238 160 402 150
+draw_tile 112 62 0 364 84 0 226
+draw_tile 112 0 0 276 84 364 226
+draw_tile 113 124 0 302 50 0 310
+draw_tile 113 0 0 338 50 302 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 25 0 401 160 0 150
+draw_tile 111 0 0 239 160 401 150
+draw_tile 112 63 0 363 84 0 226
+draw_tile 112 0 0 277 84 363 226
+draw_tile 113 126 0 300 50 0 310
+draw_tile 113 0 0 340 50 300 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 25 0 401 160 0 150
+draw_tile 111 0 0 239 160 401 150
+draw_tile 112 64 0 362 84 0 226
+draw_tile 112 0 0 278 84 362 226
+draw_tile 113 129 0 297 50 0 310
+draw_tile 113 0 0 343 50 297 310
+sprite_frame 106 0
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 26 0 400 160 0 150
+draw_tile 111 0 0 240 160 400 150
+draw_tile 112 65 0 361 84 0 226
+draw_tile 112 0 0 279 84 361 226
+draw_tile 113 131 0 295 50 0 310
+draw_tile 113 0 0 345 50 295 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 26 0 400 160 0 150
+draw_tile 111 0 0 240 160 400 150
+draw_tile 112 66 0 360 84 0 226
+draw_tile 112 0 0 280 84 360 226
+draw_tile 113 133 0 293 50 0 310
+draw_tile 113 0 0 347 50 293 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 27 0 399 160 0 150
+draw_tile 111 0 0 241 160 399 150
+draw_tile 112 68 0 358 84 0 226
+draw_tile 112 0 0 282 84 358 226
+draw_tile 113 136 0 290 50 0 310
+draw_tile 113 0 0 350 50 290 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 27 0 399 160 0 150
+draw_tile 111 0 0 241 160 399 150
+draw_tile 112 69 0 357 84 0 226
+draw_tile 112 0 0 283 84 357 226
+draw_tile 113 138 0 288 50 0 310
+draw_tile 113 0 0 352 50 288 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 28 0 398 160 0 150
+draw_tile 111 0 0 242 160 398 150
+draw_tile 112 70 0 356 84 0 226
+draw_tile 112 0 0 284 84 356 226
+draw_tile 113 140 0 286 50 0 310
+draw_tile 113 0 0 354 50 286 310
+sprite_move 108 0 6
+present
+fill_rect 0 0 640 77 #66
+fill_rect 0 77 640 77 #A6
+fill_rect 0 154 640 77 #E9
+fill_rect 0 231 640 79 #F0
+fill_circle 380 240 30 #FC
+draw_tile 111 28 0 398 160 0 150
+draw_tile 111 0 0 242 160 398 150
+draw_tile 112 71 0 355 84 0 226
+draw_tile 112 0 0 285 84 355 226
+draw_tile 113 143 0 283 50 0 310
+draw_tile 113 0 0 357 50 283 310
+sprite_move 108 0 6
+present
