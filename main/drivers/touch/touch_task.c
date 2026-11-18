@@ -24,6 +24,7 @@
 #include "touch_task.h"
 #include "display_local_task.h"
 #include "host/host_task.h"
+#include "fmrb_kernel.h"
 #include "fmrb_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -38,9 +39,11 @@ static const char *TAG = "touch";
 #define TOUCH_POLL_MS        33   // ~30 Hz
 #define TOUCH_READY_POLL_MS  200  // Poll for display ready at startup
 
-// Virtual display bounds before the screen size is known (the base screen)
-#define TOUCH_VIRTUAL_W   426
-#define TOUCH_VIRTUAL_H   240
+// Virtual display bounds before the screen size is known. The screen size
+// itself (sync_screen_size) is whichever resolution Config chose, or the
+// fullscreen high-resolution mode; this is only the start.
+#define TOUCH_VIRTUAL_W   FMRB_MODERN_STD_W
+#define TOUCH_VIRTUAL_H   FMRB_MODERN_STD_H
 
 // The panel's short side, which the virtual screen is scaled up to: panel
 // pixels per virtual pixel = TOUCH_PANEL_SHORT / virtual height (3 on the

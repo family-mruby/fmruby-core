@@ -448,6 +448,21 @@ static bool read_system_config(void)
                                                                     g_system_config.display_margin_x);
     g_system_config.display_margin_y = (uint8_t)fmrb_toml_get_int(conf, "display_margin_y",
                                                                     g_system_config.display_margin_y);
+#if defined(FMRB_MODERN_RESOLUTIONS)
+    // Modern is one of two resolutions (Config's Resolution row writes the
+    // two keys). Anything else -- a hand-edited file, a size from another
+    // machine -- would come up at a size nothing was made for: the standard
+    // one instead, and the file as it is.
+    if (!fmrb_kernel_modern_resolution(g_system_config.display_width,
+                                       g_system_config.display_height)) {
+        FMRB_LOGW(TAG, "display %ux%u is not a Modern resolution (%dx%d or %dx%d); using %dx%d",
+                  (unsigned)g_system_config.display_width, (unsigned)g_system_config.display_height,
+                  FMRB_MODERN_STD_W, FMRB_MODERN_STD_H, FMRB_MODERN_HIGH_W, FMRB_MODERN_HIGH_H,
+                  FMRB_MODERN_STD_W, FMRB_MODERN_STD_H);
+        g_system_config.display_width = FMRB_MODERN_STD_W;
+        g_system_config.display_height = FMRB_MODERN_STD_H;
+    }
+#endif
 
 #if defined(FMRB_PLATFORM_NATIVE)
     apply_native_machine(conf);
@@ -1307,6 +1322,31 @@ int fmrb_kernel_setup_reason(void)
 const fmrb_system_config_t* fmrb_kernel_get_config(void)
 {
     return &g_system_config;
+}
+
+bool fmrb_kernel_modern_resolution(uint16_t width, uint16_t height)
+{
+    return (width == FMRB_MODERN_STD_W && height == FMRB_MODERN_STD_H) ||
+           (width == FMRB_MODERN_HIGH_W && height == FMRB_MODERN_HIGH_H);
+}
+
+void fmrb_kernel_force_standard_display(const char *why)
+{
+#if defined(FMRB_MODERN_RESOLUTIONS)
+    if (g_system_config.display_width == FMRB_MODERN_STD_W &&
+        g_system_config.display_height == FMRB_MODERN_STD_H) {
+        FMRB_LOGI(TAG, "%s at boot: the screen is %dx%d already", why,
+                  FMRB_MODERN_STD_W, FMRB_MODERN_STD_H);
+        return;
+    }
+    FMRB_LOGW(TAG, "%s at boot: starting at %dx%d this time (system_conf says %ux%u, "
+              "and is left as it is)", why, FMRB_MODERN_STD_W, FMRB_MODERN_STD_H,
+              (unsigned)g_system_config.display_width, (unsigned)g_system_config.display_height);
+    g_system_config.display_width = FMRB_MODERN_STD_W;
+    g_system_config.display_height = FMRB_MODERN_STD_H;
+#else
+    (void)why;
+#endif
 }
 
 void fmrb_kernel_fullscreen_size(uint16_t *width, uint16_t *height)

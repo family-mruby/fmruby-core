@@ -3841,10 +3841,16 @@ bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
 #endif
     // Not FMRB_HW_FAMILY_MODERN alone: that one is also set for a Linux
     // simulator, which needs the capability check above as well.
+    //
+    // Only from the standard screen. On the high-resolution one (Config's
+    // Resolution, doc/modern_resolution) the screen already is 640x360, so a
+    // fullscreen_hires app takes it as it is, without a mode switch
+    // (fmrb_app_fullscreen_size_for falls through to the whole screen).
     const fmrb_system_config_t *conf = fmrb_kernel_get_config();
-    if (conf && conf->display_width == 426 && conf->display_height == 240) {
-        if (width)  *width  = 640;
-        if (height) *height = 360;
+    if (conf && conf->display_width == FMRB_MODERN_STD_W &&
+        conf->display_height == FMRB_MODERN_STD_H) {
+        if (width)  *width  = FMRB_MODERN_HIGH_W;
+        if (height) *height = FMRB_MODERN_HIGH_H;
         return true;
     }
 #endif
