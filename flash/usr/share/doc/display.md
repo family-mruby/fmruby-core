@@ -31,11 +31,11 @@ Save & Reboot. The machine comes back at the new resolution.
 
 ## When the screen does not come up (the way back)
 
-- **Hold Shift while the machine starts (power on or reset)** and it starts
-  at Standard (426x240) that one time, whatever the setting says. Pressing
-  Shift again and again while it starts works too. The setting is not
-  changed: pick it again in Config. The keyboard has to be plugged into the
-  machine itself.
+- **Press Shift again and again while the machine starts (power on or
+  reset)** and it starts at Standard (426x240) that one time, whatever the
+  setting says. Holding Shift down may not be enough: tap it. The setting is
+  not changed: pick it again in Config. The keyboard has to be plugged into
+  the machine itself.
 - From a PC: over the WiFi remote control, set display_width = 426 and
   display_height = 240 in /etc/system_conf.toml and restart (the development
   tool tools/fmrb_rd_fs.rb: get, put, reboot).
