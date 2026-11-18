@@ -14,8 +14,13 @@ Open Config from the menu, pick Display > Resolution with < >, and press
 Save & Reboot. The machine comes back at the new resolution.
 
 - At High, the fullscreen editor is shown at 640x360 without switching.
-- Fullscreen apps made for 426x240 (games and the like) show small, in the
-  top-left corner of the 640x360 screen, for now.
+- Fullscreen apps made for 426x240 (games and the like) switch the screen to
+  426x240 while they are in front, so they look as they do at Standard. It
+  goes back to 640x360 when they close or return to a window. The picture may
+  glitch for a moment at the switch.
+- Apps that lay themselves out at any size (Shooter, PicoRabbit and others)
+  stay at 640x360 without switching. For an app of your own, write
+  `fullscreen_any_size = true` in its .app.toml.
 - The mouse moves the same distance on the monitor at either resolution
   (the mouse scale on Config's Input page applies as it is).
 
