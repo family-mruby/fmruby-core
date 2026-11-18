@@ -1,6 +1,6 @@
 # AI の係 (asterism-tutor) を VPS のコンテナで動かす
 
-> 状態: 進行中 | 更新: 2026-11-19 | asterism-tutor を、Asterism console の隣の Docker コンテナとして VPS で常時動かす (麻雀のゲームホスト asterism-games と同じ流儀)。V0〜V2 済 (asterism-tutor 0.2.0 と console 0.4.2 を公開、VPS の手順と scripts を用意)。次は V3 (VPS に入れる。ユーザの作業)
+> 状態: 進行中 | 更新: 2026-11-19 | asterism-tutor を、Asterism console の隣の Docker コンテナとして VPS で常時動かす (麻雀のゲームホスト asterism-games と同じ流儀)。V0〜V2 済 (asterism-tutor 0.2.0 と console 0.4.2 を公開、VPS の手順と scripts を用意)。V3 済 (2026-11-19、VPS で動いている。P4-Nano から質問が通った)。残りは V4 の通し (ヒント・作成・修正、上限、ブラウザ版・ネイティブ版)
 
 もとの企画は `doc/ai_coding/` (端末の AI ヘルパーと、親の PC で動く gem)。ここは、その gem を
 親の PC の代わりに VPS で動かす段だけを扱う。手本は asterism-games の `deploy/vps/` と `docs/install.md`。
@@ -104,7 +104,7 @@
 | V1b (済 2026-11-19、report/v1b.md) | 決定 11・12 を gem に入れる (TZ、止めた失敗を数えない) | asterism-tutor | サブ、親が検収 |
 | V1c (済 2026-11-19、report/v1c.md、console 0.4.2) | console: ブラウザの利用者ごとに役割を選べるようにする (決定 10)。指示書は別に書く | asterism-console | サブ、親が検収。リリースはユーザの指示で |
 | V2 (済 2026-11-19。手順書と scripts は公開しない置き場に) | VPS の手順と scripts (RUNBOOK。置き場はこれまでの `asterism_deploy` の下)。console の役割と台帳の行、.env、credentials、起こす・更新・戻す・記録の読み方 | 手順書 | 親 |
-| V3 | VPS に入れる: タグを打って image を作る、console の画面の操作、scripts の実行 | VPS | ユーザ (sudo の要らない script は、その回の合意があれば親) |
+| V3 (済 2026-11-19) | VPS に入れる: タグを打って image を作る、console の画面の操作、scripts の実行 | VPS | ユーザ (sudo の要らない script は、その回の合意があれば親) |
 | V4 | 通し: P4-Nano (接続先は VPS のまま) から 質問・ヒント・作成・修正。上限・役割の無い端末が断られること。記録が残ること。ブラウザ版・ネイティブ版からも 1 回ずつ | 端末 + VPS | 親が遠隔で、目視はユーザ |
 
 ## 5. 受け入れ条件
