@@ -1517,6 +1517,40 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                 }
             }
 
+#if defined(FMRB_MODERN_RESOLUTIONS)
+            // A keyboard reports only when its keys change, so a modifier
+            // held since before it was plugged in (Shift held at power-on,
+            // the way back to the standard resolution: doc/modern_resolution)
+            // never shows up as an event. Ask the keyboard for its current
+            // state once, before interrupt IN starts (same ordering reason as
+            // SET_PROTOCOL above), and feed the modifier byte through the
+            // ordinary report path so a held modifier becomes a key down.
+            // The key array is left empty: a letter held at boot is not typed.
+            // This runs in the USB driver's callback, not in the boot path,
+            // so nothing waits for it.
+            if (is_boot_device && proto == HID_PROTOCOL_KEYBOARD &&
+                !is_control_transfer_broken(vid, pid) &&
+                !hid_device_config_skip_control_transfer(vid, pid)) {
+                uint8_t kbd_state[8] = {0};
+                size_t kbd_len = sizeof(kbd_state);
+                esp_err_t gr_ret = hid_class_request_get_report(hid_device_handle,
+                                                                 HID_REPORT_TYPE_INPUT, 0,
+                                                                 kbd_state, &kbd_len);
+                if (gr_ret == ESP_OK && kbd_len >= sizeof(kbd_state)) {
+                    FMRB_LOGI(TAG, "Keyboard state at connect (slot %d): modifier=0x%02X",
+                              slot_index, kbd_state[0]);
+                    if (kbd_state[0] != 0) {
+                        uint8_t seed[8] = {0};
+                        seed[0] = kbd_state[0];
+                        input_report_push((int8_t)slot_index, slot_generation, seed, sizeof(seed));
+                    }
+                } else {
+                    FMRB_LOGW(TAG, "Keyboard state at connect (slot %d): GET_REPORT failed (0x%x, %u bytes)",
+                              slot_index, gr_ret, (unsigned)kbd_len);
+                }
+            }
+#endif
+
             ret = hid_host_device_start(hid_device_handle);
             if (ret != ESP_OK) {
                 FMRB_LOGE(TAG, "hid_host_device_start failed: 0x%x", ret);
