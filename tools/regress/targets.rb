@@ -11,6 +11,10 @@
 #   screen  [w, h] the display (system_conf display_width/height)
 #   hires   [w, h] the high-resolution fullscreen screen (fullscreen_hires
 #           apps start at this size), or nil where there is none
+#   plain   [w, h] the screen a plain fullscreen app (one that declares
+#           neither fullscreen_hires nor fullscreen_any_size) is switched to,
+#           or nil where it gets the screen: Modern's 640x360 screen shows
+#           such an app at 426x240 (doc/modern_resolution R1b)
 #   margin  [x, y] system_conf display_margin_x/y: a fullscreen app gets the
 #           screen minus this
 #   app     [w, h] system_conf default_user_app_width/height (the window of
@@ -76,8 +80,8 @@ module Regress
     "FMRB_ASTERISM" => "1"
   }.freeze
 
-  Target = Struct.new(:name, :family, :screen, :hires, :margin, :app, :font_ja, :conf, :exclude, :firmware, :build,
-                      :size_default, :serial, keyword_init: true) do
+  Target = Struct.new(:name, :family, :screen, :hires, :plain, :margin, :app, :font_ja, :conf, :exclude, :firmware,
+                      :build, :size_default, :serial, keyword_init: true) do
     # The environment its firmware is built with (FMRB_HW_TARGET included).
     def firmware_env
       FIRMWARE_ENV.merge(build || {}).merge("FMRB_HW_TARGET" => firmware)
@@ -85,12 +89,15 @@ module Regress
 
     # What decides the picture. Two targets with the same key draw the same.
     def profile_key
-      [family, screen, hires, margin, app, font_ja]
+      [family, screen, hires, plain, margin, app, font_ja]
     end
 
-    # The fullscreen size an app gets (hires only for a fullscreen_hires app).
-    def fullscreen_size(hires_app)
+    # The fullscreen size an app gets, as the kernel's
+    # fmrb_app_fullscreen_size_for decides it: hires for a fullscreen_hires
+    # app, plain for an app that declares neither, else the screen.
+    def fullscreen_size(hires_app, any_size_app = false)
       return hires if hires_app && hires
+      return plain if plain && !hires_app && !any_size_app
       [screen[0] - margin[0], screen[1] - margin[1]]
     end
 
