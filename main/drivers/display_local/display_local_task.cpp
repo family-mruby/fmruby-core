@@ -182,6 +182,21 @@ typedef struct {
     // Cache-line-aligned size of the sprite buffer (esp_cache_msync requires
     // both address and size aligned to the cache line, or it fails silently)
     size_t       buf_aligned_size;
+    // Where the committed frame of a colour-keyed canvas has anything that
+    // is not the key, row by row (doc/modern_resolution/report/r0b.md): one
+    // entry per row of the buffer, (end_x << 16) | start_x of the span
+    // between the first and the last non-key pixel, 0 for a row that is all
+    // key. Worked out from the pixels at the commit, so no drawing path can
+    // be missed. render_frame blends only the rows and columns that have
+    // something; a key pixel leaves the background alone, so the frame is the
+    // same. ink_valid is false whenever the committed buffer was written or
+    // reshaped some other way (a resize, a video frame, a new buffer): the
+    // whole canvas is blended then, as it always was. nullptr for a canvas
+    // without a colour key.
+    uint32_t    *ink;
+    size_t       ink_aligned_size;
+    bool         ink_valid;
+    uint16_t     ck565;            // the key as the RGB565 pixel value
 } p4_canvas_t;
 
 // PSRAM: canvas bookkeeping, touched by the display task and never by an ISR.
@@ -337,6 +352,63 @@ static p4_canvas_t* canvas_find(uint16_t canvas_id) {
     return nullptr;
 }
 
+// The ink table (see p4_canvas_t) of a colour-keyed canvas: one entry per row
+// of its buffer, in PSRAM next to the pixels. Left out (nullptr) when the
+// canvas has no key or the memory is not there; the canvas is then blended
+// whole, as before.
+static void canvas_ink_free(p4_canvas_t *c) {
+    if (c->ink) heap_caps_free(c->ink);
+    c->ink = nullptr;
+    c->ink_aligned_size = 0;
+    c->ink_valid = false;
+}
+
+static void canvas_ink_alloc(p4_canvas_t *c) {
+    canvas_ink_free(c);
+    if (!c->create_use_transparency) return;
+    c->ink = (uint32_t *)ppa_alloc_buffer((size_t)c->alloc_height * sizeof(uint32_t),
+                                          &c->ink_aligned_size);
+}
+
+// The ink of one row: (end << 16) | start of the span from the first to the
+// last pixel that is not the key, or 0 when the whole row is the key.
+static uint32_t row_ink(const uint16_t *row, int w, uint16_t key) {
+    int x0 = 0;
+    // Two pixels at a time while the row is word-aligned (canvas rows are
+    // whenever the width is even; the buffer itself is cache-line aligned).
+    if (((uintptr_t)row & 3) == 0) {
+        const uint32_t key2 = ((uint32_t)key << 16) | key;
+        const uint32_t *r32 = (const uint32_t *)row;
+        const int n2 = w / 2;
+        while (x0 / 2 < n2 && r32[x0 / 2] == key2) x0 += 2;
+    }
+    while (x0 < w && row[x0] == key) x0++;
+    if (x0 >= w) return 0;
+    int x1 = w;
+    while (row[x1 - 1] == key) x1--;
+    return ((uint32_t)x1 << 16) | (uint32_t)x0;
+}
+
+// The present's commit: the working buffer's active area into the committed
+// one (stride == width, so the area is contiguous). A colour-keyed canvas has
+// each row's ink worked out as it goes, from the row just copied while it is
+// still in the cache.
+static void canvas_commit_rows(p4_canvas_t *c, const uint16_t *sb, uint16_t *rb) {
+    const int w = c->width;
+    const int h = c->height;
+    if (!c->ink || h > c->alloc_height) {
+        memcpy(rb, sb, (size_t)w * h * 2);
+        if (c->ink) c->ink_valid = false;
+        return;
+    }
+    for (int y = 0; y < h; y++) {
+        const uint16_t *src = sb + (size_t)y * w;
+        memcpy(rb + (size_t)y * w, src, (size_t)w * 2);
+        c->ink[y] = row_ink(src, w, c->ck565);
+    }
+    c->ink_valid = true;
+}
+
 static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
                                   uint16_t width, uint16_t height, int16_t z_order,
                                   uint8_t transparent_color, bool use_transparency) {
@@ -422,6 +494,11 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->clip_w                   = 0;   // 0 = no sprite clip (canvas footprint)
     c->clip_h                   = 0;
     c->buf_aligned_size         = aligned_size;
+    c->ink                      = nullptr;
+    c->ink_aligned_size         = 0;
+    c->ink_valid                = false;
+    c->ck565 = (uint16_t)((tc565.r5 << 11) | (tc565.g6 << 5) | tc565.b5);
+    canvas_ink_alloc(c);
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d (buffer %dx%d) z=%d transp=%u/%u",
               canvas_id, width, height, alloc_w, alloc_h, z_order,
@@ -463,6 +540,7 @@ static bool canvas_grow(p4_canvas_t *c, uint16_t need_w, uint16_t need_h) {
     c->alloc_height     = ah;
     c->buf_aligned_size = aligned;
     c->committed_fresh  = false;
+    canvas_ink_alloc(c);   // a row per row of the new buffer; not valid yet
     FMRB_LOGI(TAG, "Canvas grow: id=%u buffer %dx%d", c->canvas_id, (int)aw, (int)ah);
     return true;
 }
@@ -488,6 +566,7 @@ static void canvas_free(p4_canvas_t *c) {
         c->render_sprite = nullptr;
         if (rbuf) heap_caps_free(rbuf);
     }
+    canvas_ink_free(c);
 
     size_t idx = (size_t)(c - g_canvases);
     if (idx < g_canvas_count - 1) {
@@ -954,6 +1033,73 @@ static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
     display_backend()->blend_block(&req);
 }
 
+// Bands of a colour-keyed canvas that have ink in them: runs of rows with
+// something that is not the key, each with the columns its rows span. Runs
+// closer than INK_BAND_GAP rows are one band (each blend has a fixed cost),
+// and past INK_BANDS_MAX the two nearest bands are joined. A joined band only
+// takes in rows and columns that are key, which the blend leaves alone.
+#define INK_BAND_GAP   8
+#define INK_BANDS_MAX  8
+
+typedef struct { int y0, y1, x0, x1; } ink_band_t;
+
+static void ink_band_add(ink_band_t *b, int *n, int y0, int y1, int x0, int x1) {
+    if (*n > 0 && y0 - b[*n - 1].y1 < INK_BAND_GAP) {
+        ink_band_t *l = &b[*n - 1];
+        l->y1 = y1;
+        if (x0 < l->x0) l->x0 = x0;
+        if (x1 > l->x1) l->x1 = x1;
+        return;
+    }
+    if (*n == INK_BANDS_MAX) {
+        // Join the pair with the smallest gap to make room.
+        int best = 0, best_gap = INT32_MAX;
+        for (int i = 0; i + 1 < *n; i++) {
+            int gap = b[i + 1].y0 - b[i].y1;
+            if (gap < best_gap) { best_gap = gap; best = i; }
+        }
+        b[best].y1 = b[best + 1].y1;
+        if (b[best + 1].x0 < b[best].x0) b[best].x0 = b[best + 1].x0;
+        if (b[best + 1].x1 > b[best].x1) b[best].x1 = b[best + 1].x1;
+        memmove(&b[best + 1], &b[best + 2], (size_t)(*n - best - 2) * sizeof(ink_band_t));
+        (*n)--;
+    }
+    b[*n].y0 = y0; b[*n].y1 = y1; b[*n].x0 = x0; b[*n].x1 = x1;
+    (*n)++;
+}
+
+static void blend_canvas_inked(p4_canvas_t *c, int sw, int sh,
+                               int pos_x, int pos_y, int fb_w, int fb_h) {
+    if (!c->ink || !c->ink_valid || sh > c->alloc_height ||
+        sw != c->width || sh != c->height) {
+        blend_canvas_block(c, sw, sh, 0, 0, sw, sh, pos_x, pos_y, fb_w, fb_h);
+        return;
+    }
+    ink_band_t bands[INK_BANDS_MAX];
+    int n = 0;
+    int run_y0 = -1, run_x0 = 0, run_x1 = 0;
+    for (int y = 0; y <= sh; y++) {
+        const uint32_t e = (y < sh) ? c->ink[y] : 0;
+        if (e) {
+            const int x0 = (int)(e & 0xFFFF);
+            const int x1 = (int)(e >> 16);
+            if (run_y0 < 0) { run_y0 = y; run_x0 = x0; run_x1 = x1; }
+            else {
+                if (x0 < run_x0) run_x0 = x0;
+                if (x1 > run_x1) run_x1 = x1;
+            }
+        } else if (run_y0 >= 0) {
+            ink_band_add(bands, &n, run_y0, y, run_x0, run_x1);
+            run_y0 = -1;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        const ink_band_t *b = &bands[i];
+        blend_canvas_block(c, sw, sh, b->x0, b->y0, b->x1 - b->x0, b->y1 - b->y0,
+                           pos_x + b->x0, pos_y + b->y0, fb_w, fb_h);
+    }
+}
+
 // Whether render_frame leaves this canvas out of the frame altogether.
 static bool canvas_left_out(const p4_canvas_t *c, int fb_w, int fb_h) {
     if (!c->is_visible || !c->render_sprite) return true;
@@ -1061,9 +1207,10 @@ static void render_frame(void) {
         canvas_screen_pos(c, &pos_x, &pos_y);
 
         if (c->view_w == 0) {
-            // Default path: composite the whole canvas at its push position
-            blend_canvas_block(c, sw, sh, 0, 0, sw, sh,
-                               pos_x, pos_y, fb_w, fb_h);
+            // Default path: composite the canvas at its push position -- the
+            // whole of it, or, for a colour-keyed one whose ink is known,
+            // only the bands that have something in them.
+            blend_canvas_inked(c, sw, sh, pos_x, pos_y, fb_w, fb_h);
         } else {
             // Viewport path (SET_CANVAS_VIEWPORT): the canvas is a torus.
             // The source rect may wrap around the canvas edges, so the
@@ -2135,6 +2282,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 c->clip_x = c->clip_y = c->clip_w = c->clip_h = 0;
                 // The committed frame was laid out for the old size.
                 c->committed_fresh = false;
+                // ... and the rows of its ink table were for the old width.
+                c->ink_valid = false;
                 if (c->canvas_id == g_smode.owner) g_smode.owner_resize_unacked = true;
             }
             c->width  = nw;
@@ -2167,7 +2316,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 if (sb && rb) {
                     const size_t len = (size_t)src->width * src->height * 2;
                     const uint64_t t0 = fmrb_hal_time_get_us();
-                    memcpy(rb, sb, len);
+                    canvas_commit_rows(src, (const uint16_t *)sb, (uint16_t *)rb);
                     const uint32_t us = (uint32_t)(fmrb_hal_time_get_us() - t0);
                     s_ft.commits++;
                     s_ft.commit_us += us;
@@ -3858,6 +4007,9 @@ static bool video_service(void) {
                     void *rb = c->render_sprite->getBuffer();
                     if (rb) memcpy(rb, dst, (size_t)c->width * c->height * 2);
                 }
+                // Written without the ink scan: blend it whole until the next
+                // present works the ink out again.
+                c->ink_valid = false;
                 g_needs_render = true;
                 display_local_video_note_copy_us(
                     (uint32_t)((int64_t)fmrb_hal_time_get_us() - copy_t0));

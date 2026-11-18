@@ -232,7 +232,28 @@ static void ppa_blend_block(const display_blend_req_t *r)
                                    ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     }
     if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fg msync C2M failed: %d", sync_err);
-    sync_err = esp_cache_msync(bg_buf, r->bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    /* The framebuffer: only the rows this block reads and writes, rounded
+     * out to cache lines (a canvas blended in bands is several blocks a
+     * frame, and the whole framebuffer each time cost ~0.3 ms a block). A
+     * line outside them that the CPU dirtied is not one the PPA writes, so
+     * it is written back later (the next block over it, or present_flush)
+     * with nothing of the PPA's under it. The invalidate after the blend
+     * covers the same lines, which this write-back has just made clean. */
+    void  *bg_sync;
+    size_t bg_sync_len;
+    {
+        uintptr_t row_start = (uintptr_t)bg_buf
+            + (size_t)r->dst_y * r->bg_pic_w * 2;
+        size_t row_len = (size_t)r->h * r->bg_pic_w * 2;
+        uintptr_t astart = row_start & ~(uintptr_t)(s_cache_line - 1);
+        uintptr_t aend = (row_start + row_len + s_cache_line - 1)
+            & ~(uintptr_t)(s_cache_line - 1);
+        uintptr_t buf_end = (uintptr_t)bg_buf + r->bg_size;
+        if (aend > buf_end) aend = buf_end;
+        bg_sync = (void *)astart;
+        bg_sync_len = (size_t)(aend - astart);
+    }
+    sync_err = esp_cache_msync(bg_sync, bg_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     if (sync_err != ESP_OK) FMRB_LOGE(TAG, "bg msync C2M failed: %d", sync_err);
     uint64_t t_hw = fmrb_hal_time_get_us();
     g_display_backend_timing.blend_sync_us += (uint32_t)(t_hw - t_sync);
@@ -293,7 +314,7 @@ static void ppa_blend_block(const display_blend_req_t *r)
     g_display_backend_timing.blend_hw_us += (uint32_t)(t_done - t_hw);
     if (err == ESP_OK) {
         /* Invalidate output cache so CPU sees DMA-written data */
-        esp_cache_msync(bg_buf, r->bg_size,
+        esp_cache_msync(bg_sync, bg_sync_len,
                         ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
         g_display_backend_timing.blend_sync_us +=
             (uint32_t)(fmrb_hal_time_get_us() - t_done);
