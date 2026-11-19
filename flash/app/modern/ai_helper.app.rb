@@ -122,6 +122,9 @@ class AiHelperApp < FmrbApp
     @input = ""
     @u8_buf = ""
     @u8_need = 0
+    # the input line's cursor, and the last one told to a PC's IME
+    @in_cx = 4
+    @tc = -2
     @status = ""
     @ai = nil
     @ai_path = nil
@@ -196,6 +199,7 @@ class AiHelperApp < FmrbApp
   # wrapped again only when the width changed.
   def on_resize(w, h)
     @menu_open = false
+    @tc = -2              # the area's origin may have moved: tell it again
     layout
     rewrap if @area_w - 8 != @wrap_w
     draw_all

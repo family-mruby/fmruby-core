@@ -55,7 +55,9 @@ Other buttons and keys
 - Up/Down, PageUp/PageDown and the wheel scroll the answers.
 - Drag the window's bottom-right corner to resize it (not below its first
   size). The answers are wrapped again; what you were typing stays.
-- Kana and kanji: the usual kana input (Ctrl+Space).
+- Kana and kanji: the usual kana input (Ctrl+Space). In the browser and on
+  a Linux PC, the PC's Japanese input (IME) works too (it composes at the
+  input line).
 
 Good to know
 
