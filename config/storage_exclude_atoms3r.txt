@@ -26,6 +26,13 @@ app/modern/ai_helper.app.toml
 app/modern/ai_helper
 usr/share/doc/ai_helper.md
 usr/share/doc/ai_helper_ja.md
+app/modern/chat.app.rb
+app/modern/chat.app.toml
+app/modern/chat.icon
+app/modern/chat.png
+app/modern/chat
+usr/share/doc/chat.md
+usr/share/doc/chat_ja.md
 
 # The screen resolution guide (doc/modern_resolution): Modern only, the
 # only machines with two resolutions to choose from.
