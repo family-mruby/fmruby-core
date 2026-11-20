@@ -508,9 +508,7 @@ class AiHelperApp < FmrbApp
     if ch == 10 || ch == 13
       send_input unless @choices
     elsif ch == 8
-      n = @input.length
-      @input = @input[0, n - 1].to_s if n > 0
-      draw_input
+      erase_char
     elsif ch == 27
       cancel_request
     elsif ch >= 32 && ch <= 126
@@ -521,6 +519,22 @@ class AiHelperApp < FmrbApp
   def type_char(s)
     return if @input.length >= INPUT_MAX
     @input = @input + s
+    draw_input
+  end
+
+  # Backspace: the last character off, found by its bytes, into a string of
+  # its own ("" + copies it). A slice longer than an embedded string shares
+  # the longer text's buffer, and this mruby counts a shared string's
+  # characters past its end while the bytes there are not ASCII
+  # (mrb_utf8_strlen), so String#length on it was too large and Backspace
+  # stopped, or cut into a character, after the first one (32-bit builds
+  # from 4 kana, 64-bit ones from 10).
+  def erase_char
+    i = @input.bytesize
+    return if i == 0
+    i -= 1
+    i -= 1 while i > 0 && (@input.getbyte(i) & 0xC0) == 0x80
+    @input = "" + @input.byteslice(0, i).to_s
     draw_input
   end
 

@@ -235,7 +235,9 @@ task :setup do
   # include/mruby.h and mruby-task's task.h, task.c and task_queue.c also carry
   # mruby-checkpoint's safe point hook and switch-request count, and gc.c its
   # GC root hook (only with MRB_VM_SAFEPOINT_HOOK, doc/checkpoint Ff), marked
-  # "fmrb: checkpoint" (doc/checkpoint/plan.md). These are whole-file copies,
+  # "fmrb: checkpoint" (doc/checkpoint/plan.md). src/string.c carries one
+  # backported line, marked "fmrb: backport" (mrb_utf8_strlen stops at the
+  # end of a shared string; doc/ai_coding/report/a3e.md). These are whole-file copies,
   # so they have to be refreshed when the mruby submodule moves.
   setup_overlay "lib/upstream/patch/picoruby-mruby", "#{mrbgem_path}/picoruby-mruby"
 
