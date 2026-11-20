@@ -262,3 +262,4 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 
 - ブラウザ版の AI ヘルパーが、つながるまで約 20 秒「Wi-Fi につながるのを待っています」と出る
   (Asterism Link の wifi 待ちが原因の見立て。doc/ai_tutor_vps/report/v1.md。2026-11-19 ユーザ: 課題に残す)。
+  **済 (2026-11-20、doc/ai_coding/report/a3e.md)**: ブラウザ版はネットワークを「つながっている」と報告する (アドレス・SSID なし)。
