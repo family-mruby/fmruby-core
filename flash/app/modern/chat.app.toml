@@ -1,0 +1,13 @@
+app_handle_name = "chat"
+app_screen_name = "Chat"
+app_screen_name_ja = "チャット"
+default_window_mode = "window"
+default_window_width = 300
+default_window_height = 210
+default_window_pos_x = 60
+default_window_pos_y = 14
+single_instance = true
+resizable = 1
+min_window_width = 240
+min_window_height = 170
+icon = "app/modern/chat.icon"
