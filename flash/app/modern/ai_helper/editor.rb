@@ -574,7 +574,7 @@ class AiHelperApp < FmrbApp
 
   def press_fix
     return set_status("前の頼みがまだ終わっていません。") if @phase != :idle
-    return set_status("AI の係につながっていません。") unless @hello
+    return set_status("AI ホストにつながっていません。") unless @hello
     read_editor(:fix)
   end
 

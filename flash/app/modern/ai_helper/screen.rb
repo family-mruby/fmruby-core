@@ -262,14 +262,31 @@ class AiHelperApp < FmrbApp
     @gfx.draw_rect(1, @in_y, @area_w - 2, h, theme_border)
     if @input.empty?
       @gfx.draw_text(4, @in_y + 2, "#{MODE_LABEL[@mode]}: #{PLACEHOLDER[@mode]}", theme_border)
-      @gfx.draw_line(4, @in_y + 2, 4, @in_y + h - 3, theme_fg)
+      @in_cx = 4
     else
       t = tail_fit(@input, @area_w - 14)
       @gfx.draw_text(4, @in_y + 2, t, theme_fg)
-      cx = 4 + text_px(t)
-      @gfx.draw_line(cx, @in_y + 2, cx, @in_y + h - 3, theme_fg)
+      @in_cx = 4 + text_px(t)
     end
+    @gfx.draw_line(@in_cx, @in_y + 2, @in_cx, @in_y + h - 3, theme_fg)
+    tell_text_cursor
     @gfx.present if show
+  end
+
+  # Where a PC's or a browser's IME composes (FmrbApp.set_text_cursor, as
+  # the editor and the Shell do; nothing on the devices): the input line's
+  # cursor while the line takes text, none while the bottom row asks a
+  # question or the Edit pull-down is open. Sent only when it changes (the
+  # kernel keeps the last one; it follows the focused window by itself).
+  # The kernel takes canvas coordinates (from the window's top-left): the
+  # user area's origin is added to this app's own.
+  def tell_text_cursor
+    on = @choices.nil? && !@menu_open
+    k = on ? @in_cx * 4096 + @in_y : -1
+    return if k == @tc
+    @tc = k
+    return FmrbApp.set_text_cursor(0, 0, 0) unless on
+    FmrbApp.set_text_cursor(@gfx.origin_x + @in_cx, @gfx.origin_y + @in_y + 1, LINE_H)
   end
 
   def button(id, x, y, w, label, on, enabled = true)
@@ -407,6 +424,8 @@ class AiHelperApp < FmrbApp
         button(:attach, x, @btn_y, w, label, @attach) if w > 20
       end
     end
+    # a question in the bottom row and the pull-down take the cursor away
+    tell_text_cursor
     @gfx.present if show
   end
 

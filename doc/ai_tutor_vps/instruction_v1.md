@@ -23,7 +23,7 @@
    `asterism-tutor status` (healthcheck 用。つながっていなければ 0 以外で終わる)。作りは asterism-games の
    `status` を手本にする (外へ port を開かない)。
 4. **SIGTERM**: 進行中の頼みをどうするかを決めて実装する (親の見立て: 新しい頼みを断り、進行中のものは
-   短い猶予の間待ち、終わらなければ「係が止まった」の失敗として残す。端末は後で `pending`・`result` で
+   短い猶予の間待ち、終わらなければ「AI ホストが止まった」の失敗として残す。端末は後で `pending`・`result` で
    読める)。見立てと違う作りが良ければ、理由を report に書いてそちらで作ってよい。
 5. **`deploy/vps/`**: `Dockerfile` (ruby slim、2 段、uid 1000 で動く)、`docker-compose.yml`
    (project `asterism-tutor`、console の `<project>_router` の network に名前で入る、volume `state`、
@@ -38,7 +38,7 @@
 
 ## 2. 役割の鍵式 (console の画面で作るもの。コードは変えない)
 
-- 役割 **tutor-host** (係) と **tutor** (使う端末) の ACL の行を決める。今の gem と端末 (AI ヘルパー) が
+- 役割 **tutor-host** (AI ホスト) と **tutor** (使う端末) の ACL の行を決める。今の gem と端末 (AI ヘルパー) が
   実際に使う鍵 (queryable・@profile・@status など) を、手元の mTLS のルータで洗う。
 - **役割 tutor の無い端末からは呼べない**ことを、手元の stack で確認する。
 - console のコードの変更が要ると分かったら、止まって返す。

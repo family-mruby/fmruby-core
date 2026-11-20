@@ -122,6 +122,9 @@ class AiHelperApp < FmrbApp
     @input = ""
     @u8_buf = ""
     @u8_need = 0
+    # the input line's cursor, and the last one told to a PC's IME
+    @in_cx = 4
+    @tc = -2
     @status = ""
     @ai = nil
     @ai_path = nil
@@ -196,6 +199,7 @@ class AiHelperApp < FmrbApp
   # wrapped again only when the width changed.
   def on_resize(w, h)
     @menu_open = false
+    @tc = -2              # the area's origin may have moved: tell it again
     layout
     rewrap if @area_w - 8 != @wrap_w
     draw_all
@@ -207,7 +211,7 @@ class AiHelperApp < FmrbApp
     @ai = nil
     @hello = nil
     @next_scan = 0
-    set_status("AI の係を探しています…")
+    set_status("AI ホストを探しています…")
   end
 
   def link_down(link)
@@ -308,7 +312,7 @@ class AiHelperApp < FmrbApp
     @next_scan = now + SCAN_MS
     found = @link.conn.each(HELPER)
     if found.empty?
-      set_status("AI の係が見つかりません。親の PC で AI の係が動いているか確かめてください。")
+      set_status("AI ホストが見つかりません。親の PC で AI ホストが動いているか確かめてください。")
       return
     end
     @ai_path = found[0].asterism_path
@@ -330,7 +334,7 @@ class AiHelperApp < FmrbApp
     end
     Log.info("ai_helper: #{@ai_path} left")
     forget_ai
-    set_status("AI の係が見つかりません。親の PC で AI の係が動いているか確かめてください。")
+    set_status("AI ホストが見つかりません。親の PC で AI ホストが動いているか確かめてください。")
     false
   rescue ::Asterism::Error
     false
@@ -380,9 +384,9 @@ class AiHelperApp < FmrbApp
     network_lost if had
     @next_scan = Machine.board_millis + SCAN_MS
     if had
-      set_status("AI の係から返事がありません。つながったら答えを受け取りに行きます。")
+      set_status("AI ホストから返事がありません。つながったら答えを受け取りに行きます。")
     else
-      set_status("AI の係から返事がありません。親の PC で AI の係が動いているか確かめてください。")
+      set_status("AI ホストから返事がありません。親の PC で AI ホストが動いているか確かめてください。")
     end
   end
 
@@ -422,7 +426,7 @@ class AiHelperApp < FmrbApp
 
   def message_of(v)
     m = v.is_a?(Hash) ? v["message"].to_s : ""
-    m.empty? ? "AI の係が断りました (#{error_of(v)})。" : m
+    m.empty? ? "AI ホストが断りました (#{error_of(v)})。" : m
   end
 
   def took_hello(v)
@@ -472,7 +476,7 @@ class AiHelperApp < FmrbApp
         @next_poll = 0
       end
     elsif @ticket && @phase == :idle
-      add_text("AI", "前の頼みの答えは、AI の係が持っていませんでした。もう一度送ってください。")
+      add_text("AI", "前の頼みの答えは、AI ホストが持っていませんでした。もう一度送ってください。")
       @ticket = nil
     end
   end
@@ -499,7 +503,7 @@ class AiHelperApp < FmrbApp
   def send_input
     text = @input.strip
     return set_status("前の頼みがまだ終わっていません。") if @phase != :idle
-    return set_status("AI の係につながっていません。") unless @hello
+    return set_status("AI ホストにつながっていません。") unless @hello
     if @mode == "ask"
       return set_status("質問を打ってください。") if text.empty?
     elsif @mode == "make"
@@ -622,7 +626,7 @@ class AiHelperApp < FmrbApp
   def took_status(v)
     if error_of(v)
       # the helper no longer has it (restarted)
-      add_text("AI", "前の頼みの答えは、AI の係が持っていませんでした。もう一度送ってください。")
+      add_text("AI", "前の頼みの答えは、AI ホストが持っていませんでした。もう一度送ってください。")
       finish_request
       return
     end
@@ -713,7 +717,7 @@ class AiHelperApp < FmrbApp
   # ------------------------------------------------------------ other buttons
 
   def new_talk
-    return set_status("AI の係につながっていません。") unless @hello && @call.nil? && @phase == :idle
+    return set_status("AI ホストにつながっていません。") unless @hello && @call.nil? && @phase == :idle
     start_call(:new_talk)
   end
 
