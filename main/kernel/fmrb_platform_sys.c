@@ -5,9 +5,9 @@
  * FmrbApp bindings unchanged:
  *   - network: the device's WiFi STA (FMRB_HAS_WIFI), and its Wi-Fi page's
  *     networks (scan, connect, disconnect, forget; doc/wifi_settings); on the Linux builds
- *     (the simulation, the browser build, a native machine without
- *     system.services = "linux") the first non-loopback IPv4 of the host;
- *     elsewhere none;
+ *     (the simulation, a native machine without system.services = "linux")
+ *     the first non-loopback IPv4 of the host; on the browser build always
+ *     connected, with no address; elsewhere none;
  *   - battery: none;
  *   - volume: none (the internal volume, doc/reference/audio_output.md);
  *   - power: the device's reset (esp_restart); on the Linux builds the
@@ -49,6 +49,24 @@ static bool default_net_info(fmrb_sys_net_t *out)
 static bool default_net_connected(void)
 {
     return wifi_is_connected();
+}
+#elif defined(FMRB_PLATFORM_WASM)
+// The browser build: the page was loaded over the network, so there is one,
+// and the browser does not tell a page its addresses (getifaddrs finds none
+// in WebAssembly, which read as "no address yet" and made the Asterism link
+// wait for WiFi). Connected, with no address, SSID or mDNS name: nothing
+// made up (the dialog shows "-" for the SSID and hides the name row).
+static bool default_net_info(fmrb_sys_net_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    out->connected = true;
+    out->signal = -1;
+    return true;
+}
+
+static bool default_net_connected(void)
+{
+    return true;
 }
 #elif defined(CONFIG_IDF_TARGET_LINUX)
 // The host's network: the first IPv4 address that is not loopback. No SSID
