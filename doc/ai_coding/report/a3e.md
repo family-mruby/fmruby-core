@@ -206,3 +206,13 @@ AI ヘルパーの Backspace は `@input = @input[0, @input.length - 1]`。読�
 - `e4786af4` fix(wasm): the browser build reports its network as connected
 - `8f32f92e` fix(ai_helper): Backspace on Japanese text stopped working after a while
 - (この report と TODO.md) docs(ai_coding): report on the browser build's network state and Japanese input in the AI helper
+
+## 追記 (親、2026-11-20 夜)
+
+- mruby の終わりの検査は、ユーザの決定で patch として入れた: `lib/upstream/patch/picoruby-mruby/lib/mruby/src/string.c`
+  (上流の `src/string.c` の写しに、`mrb_utf8_strlen` の `while (p < e && NOASCII(*p))` の 1 行。印は `fmrb: backport`。
+  `rake setup` が submodule の上に重ねる)。ブラウザ版で `"あいうえお"[0, 4].length` が 4 になることを確認した。
+  sim・ネイティブ版・ESP32 は作り直すと入る (確認はブラウザ版だけ)。mruby の submodule を上流の直しの入った版に
+  進めたら、この写しは消す。AI ヘルパーの `erase_char` はそのまま残した。
+- 2 章 (漢字変換): この版 (44a53276 のバンドル) を VPS に置いた後、ユーザが Windows の Chrome で試して、AI ヘルパーの
+  入力の行で漢字変換ができた (いろいろ試して問題なし)。原因は特定していない。「今の版では再現しない」の扱い。
