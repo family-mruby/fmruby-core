@@ -10,23 +10,20 @@
 # - the user's own pictures: /home/stamps/*.png (the sprite editor's place).
 # The distribution image carries no stamp at all (plan decision 8b).
 #
-# Every picture is read here (BMP332.parse) and written again
-# (BMP332.encode_png) before it is named or sent: a PNG drawn on a PC with
-# an alpha channel then has 0x01 (transparent) where it was see-through, the
-# file is the small palette PNG, and the graphics side's loader reads it
-# without blacking the transparent part out. The sha256 is that of the
-# rewritten bytes, so the same picture is the same stamp on every device.
+# Every picture is read and written again (BMP332.to_png, in C) before it
+# is named or sent: a PNG drawn on a PC with an alpha channel then has 0x01
+# (transparent) where it was see-through and the file is the small palette
+# PNG. The sha256 is that of the rewritten bytes, so the same picture is the
+# same stamp on every device.
 #
-# What is drawn is a second file, the picture scaled up to about SHOW_PX
-# (16x16 twice, 8x8 four times, larger ones as they are), kept under
-# STAMP_CACHE/<sha>.png for both one's own and the ones fetched from the
-# host (stamp_get), so a stamp travels once. Nothing of it goes under
-# /home/stamps: the own list never shows the fetched ones.
-#
-# On the screen a stamp is a sprite image (transparent colour 0x01) stamped
-# with draw_tile. The sprite images are 64 for the whole machine, so this
-# app holds at most SPRITES_MAX of them, the least recently used going
-# first, and lets them all go when the room changes and when it closes.
+# That PNG is kept under STAMP_CACHE/<sha>.png, both one's own and the ones
+# fetched from the host (stamp_get), so a stamp travels once. Nothing of it
+# goes under /home/stamps: the own list never shows the fetched ones. It is
+# drawn from there scaled up to about SHOW_PX (16x16 twice, 8x8 four times,
+# larger ones as they are) by FmrbGfx's picture store (draw_picture), which
+# keeps the sprite images and lets the least recently drawn go. A file left
+# by an older version of this app holds the picture already scaled up: its
+# size then asks for no more scaling, so it shows as large as before.
 class ChatApp < FmrbApp
   OWN_DIR = "/home/stamps"
   PACK_ROOT = "/app/usr"
@@ -35,10 +32,8 @@ class ChatApp < FmrbApp
   STAMP_BYTES = 8192     # until hello says (stamp_bytes)
   SOURCE_MAX = 65536     # a picture file larger than this is not read at all
   SHOW_PX = 32
-  SPRITES_MAX = 8
   TAB_H = 16
   PICK_ITEMS_MAX = 96    # pictures of one tab looked at
-  TRANSPARENT = 0x01
   HEXDIGITS = "0123456789abcdef"
 
   def stamps_reset
@@ -51,13 +46,10 @@ class ChatApp < FmrbApp
     @pick_top = 0         # the first row shown
     @pick_cell = SHOW_PX + 6
     @prep = {}            # path => [sha, show w, show h, w, h] | [:big, w, h] | [:heavy, bytes] | [:bad]
-    @st_size = {}         # sha => [show w, show h] (the shown file is here)
+    @st_size = {}         # sha => [show w, show h, scale] (its file is here)
     @st_gone = {}         # sha => true: the host does not have it
     @st_want = []         # shas to fetch, oldest first
-    @spr = {}             # sha => SpriteImage
-    @spr_order = []
-    @spr_made = 0         # sprite images made so far (the log of a costly redraw)
-    @synced = {}
+    @stamps_drawn = 0     # stamp lines drawn by the last draw_talk
   end
 
   # ------------------------------------------------------------ the sha256
@@ -84,17 +76,6 @@ class ChatApp < FmrbApp
 
   # ------------------------------------------------------------ pictures
 
-  # The width and height of a PNG from its IHDR, or nil.
-  def png_size(data)
-    return nil if data.nil? || data.bytesize < 24
-    return nil unless data.getbyte(1) == 0x50 && data.getbyte(2) == 0x4E && data.getbyte(3) == 0x47
-    [be32(data, 16), be32(data, 20)]
-  end
-
-  def be32(s, i)
-    (s.getbyte(i) << 24) | (s.getbyte(i + 1) << 16) | (s.getbyte(i + 2) << 8) | s.getbyte(i + 3)
-  end
-
   # How many times a w x h picture is drawn larger (about SHOW_PX).
   def show_scale(w, h)
     m = w > h ? w : h
@@ -114,97 +95,64 @@ class ChatApp < FmrbApp
     @cache_dir_ok = true
   end
 
-  # PNG (or BMP) bytes read and written again: [png, w, h, pixels], or a
-  # refusal [:big, w, h] / [:heavy, bytes] / [:bad]. The bytes are looked at
-  # before they are decoded, so a large picture never fills the VM pool.
-  def rewrite_picture(data)
-    return [:bad] if data.nil? || data.bytesize < 8
-    sz = png_size(data)
-    return [:big, sz[0], sz[1]] if sz && (sz[0] > @stamp_px || sz[1] > @stamp_px)
-    info = ::BMP332.parse(data)
-    w = info[:width]
-    h = info[:height]
-    return [:big, w, h] if w > @stamp_px || h > @stamp_px
-    png = ::BMP332.encode_png(w, h, info[:pixels])
-    return [:heavy, png.bytesize] if png.bytesize > @stamp_bytes
-    [png, w, h, info[:pixels]]
-  rescue => e
-    Log.info("chat: picture: #{e.message}")
+  # A picture (a path, or data: bytes) read and written again as it is
+  # sent: [png, w, h], or a refusal [:big, w, h] / [:heavy, bytes] / [:bad].
+  # Its size is looked at before it is decoded, and the pixels stay in C.
+  def rewrite_picture(path, data = nil)
+    if data
+      r = ::BMP332.to_png(data: data, max_width: @stamp_px, max_height: @stamp_px,
+                          max_bytes: @stamp_bytes, max_file_bytes: SOURCE_MAX)
+    else
+      r = ::BMP332.to_png(path, max_width: @stamp_px, max_height: @stamp_px,
+                          max_bytes: @stamp_bytes, max_file_bytes: SOURCE_MAX)
+    end
+    e = r[:error]
+    return [r[:png], r[:width], r[:height]] if e.nil?
+    return [:big, r[:width], r[:height]] if e == :too_big
+    return [:heavy, r[:bytes]] if e == :too_heavy || e == :file_too_large
+    Log.info("chat: picture: #{e}")
     [:bad]
   end
 
-  # The file drawn for a picture (scaled up), written once.
-  def write_shown(sha, w, h, pixels)
-    k = show_scale(w, h)
-    sw = w * k
-    sh = h * k
+  # The stamp's PNG kept (written when it is not there yet); its shown
+  # size, or nil.
+  def keep_shown(sha, png)
     path = show_path(sha)
     unless FmrbFile.exist?(path)
       ensure_cache_dir
-      FmrbFile.write(path, k == 1 ? ::BMP332.encode_png(w, h, pixels) : ::BMP332.encode_png(sw, sh, scale_up(pixels, w, h, k)))
+      FmrbFile.write(path, png)
     end
-    @st_size[sha] = [sw, sh]
+    shown_size(sha)
   end
 
-  def scale_up(px, w, h, k)
-    out = "\x00" * (w * k * h * k)
-    o = 0
-    y = 0
-    while y < h
-      row = o
-      x = 0
-      while x < w
-        c = px.getbyte(y * w + x)
-        r = 0
-        while r < k
-          out.setbyte(o, c)
-          o += 1
-          r += 1
-        end
-        x += 1
-      end
-      # the row k - 1 more times
-      line = out.byteslice(row, w * k)
-      r = 1
-      while r < k
-        j = 0
-        while j < w * k
-          out.setbyte(o + j, line.getbyte(j))
-          j += 1
-        end
-        o += w * k
-        r += 1
-      end
-      y += 1
-    end
-    out
+  # The size the kept file of sha is shown at, noted in @st_size; nil when
+  # it is not a picture.
+  def shown_size(sha)
+    i = ::BMP332.info(show_path(sha))
+    return nil if i.nil?
+    w = i[:width]
+    h = i[:height]
+    k = show_scale(w, h)
+    @st_size[sha] = [w * k, h * k, k]
   end
 
-  # One picture of the picker made ready (named and its shown file
-  # written): the @prep entry.
+  # One picture of the picker made ready (named and its PNG kept): the
+  # @prep entry.
   def prepare(path)
     p = @prep[path]
     return p if p
-    n = FmrbFile.size(path)
-    if n.nil?
-      p = [:bad]
-    elsif n > SOURCE_MAX
-      p = [:heavy, n]
-    else
-      r = rewrite_picture(FmrbFile.read(path))
-      if r[0].is_a?(String)
-        sha = sha_hex(r[0])
-        if sha.nil?
-          p = [:bad]
-          set_status("この端末ではスタンプを送れません (sha256 がありません)。")
-        else
-          write_shown(sha, r[1], r[2], r[3])
-          sz = @st_size[sha]
-          p = [sha, sz[0], sz[1], r[1], r[2]]
-        end
+    r = rewrite_picture(path)
+    if r[0].is_a?(String)
+      sha = sha_hex(r[0])
+      if sha.nil?
+        p = [:bad]
+        set_status("この端末ではスタンプを送れません (sha256 がありません)。")
       else
-        p = r
+        sz = keep_shown(sha, r[0])
+        p = sz ? [sha, sz[0], sz[1], r[1], r[2]] : [:bad]
       end
+    else
+      p = r
     end
     @prep[path] = p
     p
@@ -213,7 +161,7 @@ class ChatApp < FmrbApp
   # The PNG of a picture as it is sent (rewritten), or nil when it no
   # longer is the one named sha.
   def stamp_bytes_of(path, sha)
-    r = rewrite_picture(FmrbFile.read(path))
+    r = rewrite_picture(path)
     return nil unless r[0].is_a?(String)
     sha_hex(r[0]) == sha ? r[0] : nil
   end
@@ -358,17 +306,10 @@ class ChatApp < FmrbApp
 
   # ------------------------------------------------------------ receiving
 
-  # A stamp of a message held: its shown file, or asked for.
+  # A stamp of a message held: its kept file, or asked for.
   def want_stamp(sha)
     return if sha.nil? || @st_size[sha] || @st_gone[sha]
-    path = show_path(sha)
-    if FmrbFile.exist?(path)
-      sz = png_size(FmrbFile.read(path))
-      if sz
-        @st_size[sha] = sz
-        return
-      end
-    end
+    return if FmrbFile.exist?(show_path(sha)) && shown_size(sha)
     @st_want << sha unless @st_want.index(sha)
   end
 
@@ -398,9 +339,8 @@ class ChatApp < FmrbApp
         @st_gone[sha] = true
         Log.info("chat: stamp #{sha[0, 12]} does not match its sha")
       else
-        r = rewrite_picture(png)
-        if r[0].is_a?(String)
-          write_shown(sha, r[1], r[2], r[3])
+        r = rewrite_picture(nil, png)
+        if r[0].is_a?(String) && keep_shown(sha, r[0])
           Log.info("chat: stamp #{sha[0, 12]} #{png.bytesize} B #{r[1]}x#{r[2]} kept (#{png.class})")
         else
           @st_gone[sha] = true
@@ -414,48 +354,6 @@ class ChatApp < FmrbApp
   end
 
   # ------------------------------------------------------------ drawing
-
-  # The sprite image of a stamp (made when not held), or nil.
-  def stamp_sprite(sha)
-    s = @spr[sha]
-    if s
-      if @spr_order[@spr_order.size - 1] != sha
-        @spr_order.delete(sha)
-        @spr_order << sha
-      end
-      return s
-    end
-    sz = @st_size[sha]
-    return nil unless sz
-    while @spr_order.size >= SPRITES_MAX
-      old = @spr_order.shift
-      o = @spr.delete(old)
-      o.destroy if o
-    end
-    path = show_path(sha)
-    unless @synced[path]
-      @gfx.sync_file(path)
-      @synced[path] = true
-    end
-    s = SpriteImage.new(@gfx, width: sz[0], height: sz[1], transparent_color: TRANSPARENT, use_transparent: true)
-    s.load_bmp(path)
-    @spr[sha] = s
-    @spr_order << sha
-    @spr_made += 1
-    s
-  end
-
-  def release_sprites
-    keys = @spr_order
-    i = 0
-    while i < keys.size
-      s = @spr[keys[i]]
-      s.destroy if s
-      i += 1
-    end
-    @spr = {}
-    @spr_order = []
-  end
 
   # Rows a stamp takes below the line with its name (the usual size while
   # it is fetched, one row for the word when it could not be).
@@ -479,11 +377,10 @@ class ChatApp < FmrbApp
     h = sz[1] - sy
     return if h <= 0
     h = LINE_H if h > LINE_H
-    s = stamp_sprite(sha)
-    return unless s
     w = sz[0]
     w = @area_w - 4 - x if x + w > @area_w - 4
-    @gfx.draw_tile(s.id, 0, sy, w, h, dst_x: x, dst_y: y)
+    @stamps_drawn += 1
+    @gfx.draw_picture(show_path(sha), x, y - sy, scale: sz[2], clip: [x, y, w, h])
   end
 
   # The picker, in the place of the talk.
@@ -568,9 +465,8 @@ class ChatApp < FmrbApp
   def draw_pick_cell(path, x, y, c)
     p = prepare(path)
     if p[0].is_a?(String)
-      sha = p[0]
-      s = stamp_sprite(sha)
-      @gfx.draw_tile(s.id, 0, 0, p[1], p[2], dst_x: x + (c - p[1]) / 2, dst_y: y + (c - p[2]) / 2) if s
+      sz = @st_size[p[0]]
+      @gfx.draw_picture(show_path(p[0]), x + (c - p[1]) / 2, y + (c - p[2]) / 2, scale: sz[2]) if sz
     else
       @gfx.draw_rect(x + 2, y + 2, c - 4, c - 4, theme_border)
       @gfx.draw_text(x + (c - 12) / 2, y + (c - 12) / 2, p[0] == :bad ? "?" : "大", theme_border)

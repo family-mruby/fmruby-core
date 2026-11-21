@@ -37,7 +37,7 @@ class ChatApp < FmrbApp
     if id != @cur
       @cur = id
       talk_reset
-      release_sprites
+      @gfx.release_pictures
       @st_want = []
       @st_gone = {}
       @picking = false
@@ -51,7 +51,7 @@ class ChatApp < FmrbApp
   def close_room
     @cur = nil
     talk_reset
-    release_sprites
+    @gfx.release_pictures
     @st_want = []
     @picking = false
     show_face(:list)

@@ -117,7 +117,6 @@ class ChatApp < FmrbApp
 
   def on_destroy
     save_settings if @seen_dirty
-    release_sprites
     @link.close if @link
   end
 

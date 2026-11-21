@@ -191,7 +191,7 @@ class ChatApp < FmrbApp
       @gfx.present if show
       return
     end
-    made = @spr_made
+    @stamps_drawn = 0
     t0 = Machine.board_millis
     @gfx.fill_rect(@px, @ans_y, @pw, @ans_h, theme_bg)
     x0 = @px + 3
@@ -203,8 +203,8 @@ class ChatApp < FmrbApp
       draw_lines(x0)
     end
     @gfx.present if show
-    # how much a screen with many kinds of stamps costs (report/c3.md 4)
-    Log.info("chat: talk drawn, #{@spr_made - made} stamp images loaded, #{Machine.board_millis - t0} ms") if @spr_made != made
+    # how much a screen with stamps costs (report/c3.md 4)
+    Log.info("chat: talk drawn, #{@stamps_drawn} stamp lines, #{Machine.board_millis - t0} ms") if @stamps_drawn > 0
   end
 
   def draw_lines(x0)
