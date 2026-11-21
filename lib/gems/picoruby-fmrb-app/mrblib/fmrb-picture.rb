@@ -26,10 +26,12 @@
 # last looked at. A file is looked at again (picture_info: its head only)
 # at most once a second; another size or time reads it again.
 #
-# Limits: 65,536 pixels and a 65,536-byte file (the Retro display side reads
-# no larger PNG; the sim and P4 take more, but a picture that shows on one
-# machine shows on every one). A larger picture is refused (:too_big,
-# :file_too_large), not shrunk: draw it at scale: -2 .. -32 once it is in.
+# Limits: 65,536 pixels. A file over 65,536 bytes is not handed to the
+# display side (the Retro one reads no larger PNG; the sim and P4 take more,
+# but a picture that shows on one machine shows on every one): it is read
+# here instead (BMP332.load, the file and its pixels in the VM pool for a
+# moment) and its pixels are put. A picture of more pixels is refused
+# (:too_big), not shrunk: draw it at scale: -2 .. -32 once it is in.
 class FmrbGfx
   PICTURE_LIMIT = 8
   PICTURE_MAX = 65536
@@ -160,8 +162,8 @@ class FmrbGfx
     n
   end
 
-  # Why the last picture call failed: :unreadable, :too_big, :file_too_large,
-  # :no_room or :not_sent; nil after one that did not.
+  # Why the last picture call failed: :unreadable, :too_big, :no_room or
+  # :not_sent; nil after one that did not.
   def picture_error
     @_pe
   end
@@ -323,10 +325,7 @@ class FmrbGfx
       @_pe = :too_big
       return -1
     end
-    if bytes > PICTURE_MAX
-      @_pe = :file_too_large
-      return -1
-    end
+    return _pic_read(path, w, h, bytes, info[:mtime].to_i) if bytes > PICTURE_MAX
     id = _pic_make(w, h)
     return -1 if id <= 0
     unless sync_file(path)
@@ -336,6 +335,25 @@ class FmrbGfx
     end
     load_sprite_image(id, path)
     _pic_add(path, id, w, h, bytes, info[:mtime].to_i)
+  end
+
+  # A picture whose file is too large for the display side: read here and
+  # its pixels put (write_sprite_image); its index, or -1.
+  def _pic_read(path, w, h, bytes, mtime)
+    pix = nil
+    begin
+      pix = BMP332.load(path)[:pixels]
+    rescue => e
+      pix = nil
+    end
+    if pix.nil? || pix.bytesize < w * h
+      @_pe = :unreadable
+      return -1
+    end
+    id = _pic_make(w, h)
+    return -1 if id <= 0
+    write_sprite_image(id, 0, 0, w, h, pix)
+    _pic_add(path, id, w, h, bytes, mtime)
   end
 
   # A sprite image of w x h for a picture, the store's oldest let go while

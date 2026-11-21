@@ -931,8 +931,10 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   # - checker: true で透明の所に市松を敷く (draw_checker)
   # - clip: [x, y, w, h] でその矩形の中だけ描く
   #
-  # 描けなければ false (落ちない)。理由は picture_error。65,536 点か
-  # 65,536 バイトを超える絵は断る。透明は 0x01 の色 (PNG の α・tRNS)。
+  # 描けなければ false (落ちない)。理由は picture_error。65,536 点を
+  # 超える絵は断る。65,536 バイトを超えるファイルはアプリの側で読んで
+  # (BMP332.load、読む間は VM プールに載る) 画素を置く。透明は 0x01 の色
+  # (PNG の α・tRNS)。
   # ```ruby
   # gfx.draw_picture("/home/stamps/a.png",
   #   10, 20, scale: 2)
@@ -954,8 +956,9 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   # - clip: [x, y, w, h] draws only inside that rect
   #
   # false when it cannot be drawn (nothing raises); picture_error says why.
-  # A picture past 65,536 pixels or 65,536 bytes is refused. Transparent is
-  # the colour 0x01 (a PNG's alpha and tRNS).
+  # A picture past 65,536 pixels is refused. A file past 65,536 bytes is
+  # read on the app side (BMP332.load: in the VM pool while it is read) and
+  # its pixels put. Transparent is the colour 0x01 (a PNG's alpha and tRNS).
   # ```ruby
   # gfx.draw_picture("/home/stamps/a.png",
   #   10, 20, scale: 2)
@@ -1053,8 +1056,8 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   # 絵が描けなかった理由 <<en>> Why the last picture could not be drawn
   #
   # :unreadable (無い・絵でない)、:too_big (65,536 点を超える)、
-  # :file_too_large (65,536 バイトを超える)、:no_room (描画側に場所が
-  # 無い)、:not_sent (描画側へ送れない)。うまくいった後は nil。
+  # :no_room (描画側に場所が無い)、:not_sent (描画側へ送れない)。
+  # うまくいった後は nil。
   # ```ruby
   # unless gfx.draw_picture(path, 0, 0)
   #   Log.info(gfx.picture_error.to_s)
@@ -1062,8 +1065,8 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   # ```
   # <<en>>
   # :unreadable (not there, not a picture), :too_big (past 65,536 pixels),
-  # :file_too_large (past 65,536 bytes), :no_room (no room on the display
-  # side), :not_sent (could not be sent there). nil after one that worked.
+  # :no_room (no room on the display side), :not_sent (could not be sent
+  # there). nil after one that worked.
   # ```ruby
   # unless gfx.draw_picture(path, 0, 0)
   #   Log.info(gfx.picture_error.to_s)
