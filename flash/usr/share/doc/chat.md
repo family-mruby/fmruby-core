@@ -34,6 +34,26 @@ In a room
   a time (farther ones are fetched again).
 - Esc or "<" at the top left goes back to the rooms.
 
+Stamps (small pictures)
+
+- In a room, "Stamp" on the bottom line opens the list; click a picture and it
+  is sent at once. Esc or "Stamp" again closes the list.
+- The tabs on top: "My pictures" and the stamp packs installed from the App
+  Store.
+  - My pictures are the PNGs in /home/stamps/ (up to 48x48). Draw one in the
+    Sprite Editor and save it there, and it is in the list the next time the
+    app opens. A PNG drawn on a PC works too (see-through parts stay
+    transparent).
+  - Packs come from the App Store; the machine comes with no pictures of its
+    own.
+- The others see the picture even without the pack or the file: it travels
+  through the chat host, once for each picture. A 16x16 picture is shown twice
+  as large.
+- A picture marked with a box is too large to send (48x48 and 8 KB at most);
+  click it to see why.
+- When the chat host no longer has a picture, "(could not get the stamp)" is
+  shown in its place.
+
 The window
 
 - Drag the bottom-right corner to resize it. When wide, the rooms are on the
@@ -44,8 +64,10 @@ When something is wrong
 The line at the bottom says why: the chat host is not found (ask your
 family), this machine is not registered for the chat (tell your family the
 machine's name shown there), the message is too long (200 characters, or
-what the host allows), or today's messages are used up. A message sent while
-the chat host is away goes when it is back.
+what the host allows), today's messages are used up, today's new pictures are
+used up (pictures sent before still go), or the chat host has no room left for
+pictures (tell your family). A message sent while the chat host is away goes
+when it is back.
 
 For the family: the chat host is asterism-chat (doc/asterism_chat). The
 rooms, the machines it takes and the limits are its settings. The text of a

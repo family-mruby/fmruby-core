@@ -76,6 +76,7 @@ class ChatApp < FmrbApp
     else
       draw_list(false) if list_on?
       draw_talk(false) if talk_on?
+      draw_stamp_button if talk_on? && @cur
       @gfx.draw_line(LIST_W, 0, LIST_W, @area_h - 1, theme_border) if @wide
     end
     draw_status(false)
@@ -185,6 +186,13 @@ class ChatApp < FmrbApp
   # another node also uses among the messages on the screen.
   def draw_talk(show = true)
     return unless talk_on?
+    if @picking && @cur
+      draw_picker
+      @gfx.present if show
+      return
+    end
+    made = @spr_made
+    t0 = Machine.board_millis
     @gfx.fill_rect(@px, @ans_y, @pw, @ans_h, theme_bg)
     x0 = @px + 3
     if @cur.nil?
@@ -195,6 +203,8 @@ class ChatApp < FmrbApp
       draw_lines(x0)
     end
     @gfx.present if show
+    # how much a screen with many kinds of stamps costs (report/c3.md 4)
+    Log.info("chat: talk drawn, #{@spr_made - made} stamp images loaded, #{Machine.board_millis - t0} ms") if @spr_made != made
   end
 
   def draw_lines(x0)
@@ -218,7 +228,11 @@ class ChatApp < FmrbApp
         @gfx.draw_text(x, y, label, own ? theme_accent : theme_fg)
         x += text_px(label)
       end
-      @gfx.draw_text(x, y, line_text(k), body) if @l_len[k] > 0
+      if @m_stamp[j]
+        draw_stamp_line(@m_stamp[j], @l_off[k], x0 + 12, y) if @l_off[k] > 0
+      elsif @l_len[k] > 0
+        @gfx.draw_text(x, y, line_text(k), body)
+      end
       i += 1
     end
     if n > rows
@@ -302,10 +316,31 @@ class ChatApp < FmrbApp
     @hits.add(:send, send_x, @in_y, send_w, BTN_H)
   end
 
+  # The stamps' button, left of the send button (a room is open).
+  def stamp_on?
+    @face != :name && talk_on? && !@cur.nil?
+  end
+
+  def stamp_w
+    text_px("スタンプ") + 12
+  end
+
+  def stamp_x
+    send_x - 3 - stamp_w
+  end
+
+  def draw_stamp_button
+    return unless stamp_on?
+    fill = @picking ? theme_accent : theme_bg
+    fg = @picking ? theme_fg_light : theme_fg
+    @gfx.draw_button(stamp_x, @in_y, stamp_w, BTN_H, "スタンプ", fill, fg)
+    @hits.add(:stamps, stamp_x, @in_y, stamp_w, BTN_H)
+  end
+
   def draw_input(show = true)
     return unless input_on?
     x = @px + 1
-    w = send_x - 3 - x
+    w = (stamp_on? ? stamp_x : send_x) - 3 - x
     h = BTN_H
     @gfx.fill_rect(x, @in_y, w, h, theme_bg)
     @gfx.draw_rect(x, @in_y, w, h, theme_border)
@@ -375,13 +410,15 @@ class ChatApp < FmrbApp
     if t == :mouse_down
       x = ev[:x]
       y = ev[:y]
-      id = @hits.id_at(x, y)
-      return press(id) if id
+      b = @hits.at(x, y)
+      return press(b[0], b[5]) if b
       r = room_at(x, y)
       open_room(@rooms[r]) if r
     elsif t == :mouse_wheel
       rows = wheel_rows(ev)
-      scroll(-rows) if rows && talk_on? && @cur
+      if rows && talk_on? && @cur
+        @picking ? pick_scroll(rows < 0 ? 1 : -1) : scroll(-rows)
+      end
     elsif t == :key_down
       key(ev)
     end
@@ -395,11 +432,17 @@ class ChatApp < FmrbApp
     i < @rooms.size ? i : nil
   end
 
-  def press(id)
+  def press(id, data = nil)
     case id
     when :back then close_room
     when :name then show_face(:name)
     when :send then send_input
+    when :stamps then open_picker
+    when :cell then pick(data)
+    when :tab
+      @pick_tab = data
+      load_tab
+      draw_all
     end
   end
 
@@ -416,11 +459,18 @@ class ChatApp < FmrbApp
     if sc == 0x29 || ch == 27
       # Esc: back from the name, or from a room to the list (narrow)
       return leave_name if @face == :name
+      return close_picker if @picking
       return close_room if !@wide && @face == :talk
       return
     end
     if @face == :list && !@wide
       return list_key(sc, ch)
+    end
+    if @picking && talk_on? && @face != :name
+      case sc
+      when 0x52, 0x4B then return pick_scroll(-1)
+      when 0x51, 0x4E then return pick_scroll(1)
+      end
     end
     if talk_on? && @face != :name
       case sc

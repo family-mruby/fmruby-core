@@ -14,9 +14,11 @@
 # Every call is async (a Future checked in on_update), one at a time, so
 # the window never waits on the network (the browser build is cooperative).
 #
-# The class is in three files: this one (the host, the calls, the
-# settings), chat/talk.rb (the messages of the open room and their lines)
-# and chat/screen.rb (the drawing and the input), required at the end.
+# The class is in four files: this one (the host, the calls, the
+# settings), chat/talk.rb (the messages of the open room and their lines),
+# chat/screen.rb (the drawing and the input) and chat/stamps.rb (the
+# pictures: the picker, putting and fetching them, drawing them), required
+# at the end.
 class ChatApp < FmrbApp
   APP_NAME = "chat"
   HOST = "*/chat/room"
@@ -44,8 +46,16 @@ class ChatApp < FmrbApp
     "no_name" => "先に表示名を決めてください。",
     "limit" => "今日送れる数を使い切りました。また明日送ってください。",
     "stopping" => "チャットホストが止まるところです。少し待ってからもう一度送ってください。",
+    "too_big" => "その絵はスタンプには大きすぎます。",
+    "bad_stamp" => "その絵はスタンプにできません。",
+    "stamp_limit" => "今日送れる新しい絵の数を使い切りました。また明日送ってください。",
+    "stamp_full" => "チャットホストの絵の置き場がいっぱいです。家の人に伝えてください。",
   }
   NOT_FOUND = "チャットホストが見つかりません。家の人に、チャットホストが動いているか聞いてください。"
+
+  # How stamp_get is asked to send a picture (MessagePack str or bin; the
+  # device reads both the same: report/c3.md).
+  STAMP_AS = "bin"
 
   # ------------------------------------------------------------ lifecycle
 
@@ -80,9 +90,13 @@ class ChatApp < FmrbApp
     @seen_dirty = false
     @save_at = 0
     load_settings
-    # a post on its way: [room, text, cid], and whether it is being sent
+    # a post on its way: [room, text, cid] or, a stamp, [room, nil, cid,
+    # sha, path]; whether it is being sent, and whether its picture is to be
+    # put first (the host said no_stamp)
     @out = nil
     @out_busy = false
+    @out_put = false
+    stamps_reset
     @cid_seq = 0
     # the screen
     @face = @name.empty? ? :name : :list   # :list, :talk, :name (narrow)
@@ -103,6 +117,7 @@ class ChatApp < FmrbApp
 
   def on_destroy
     save_settings if @seen_dirty
+    release_sprites
     @link.close if @link
   end
 
@@ -191,13 +206,21 @@ class ChatApp < FmrbApp
       start_call(:hello, nil, info)
     elsif @out && !@out_busy && !@name.empty?
       @out_busy = true
-      start_call(:post, @out[0], { "room" => @out[0], "text" => @out[1], "cid" => @out[2] })
+      if @out_put
+        put_stamp
+      elsif @out[3]
+        start_call(:post, @out[0], { "room" => @out[0], "stamp" => @out[3], "cid" => @out[2] })
+      else
+        start_call(:post, @out[0], { "room" => @out[0], "text" => @out[1], "cid" => @out[2] })
+      end
     elsif @cur && @t_open
       start_call(:open, @cur, { "room" => @cur })
     elsif @cur && @t_after
       start_call(:after, @cur, { "room" => @cur, "after" => @m_n.empty? ? 0 : @m_n[@m_n.size - 1] })
     elsif @cur && @t_before && !@m_n.empty?
       start_call(:before, @cur, { "room" => @cur, "before" => @m_n[0] })
+    elsif @cur && (sha = next_wanted)
+      start_call(:stamp_get, sha, { "sha" => sha, "as" => STAMP_AS })
     elsif @need_rooms || now >= @rooms_at
       @need_rooms = false
       @rooms_at = now + ROOMS_EVERY_MS
@@ -287,6 +310,8 @@ class ChatApp < FmrbApp
     when :rooms then took_rooms(v)
     when :post then took_post(v)
     when :open, :after, :before then took_history(kind, room, v)
+    when :stamp_put then took_stamp_put(v)
+    when :stamp_get then took_stamp_get(room, v)
     end
   end
 
@@ -328,6 +353,10 @@ class ChatApp < FmrbApp
     @text_max = t > 0 ? t : TEXT_MAX
     t = int(v["name_max"])
     @name_max = t > 0 ? t : NAME_MAX
+    t = int(v["stamp_px"])
+    @stamp_px = t > 0 ? t : STAMP_PX
+    t = int(v["stamp_bytes"])
+    @stamp_bytes = t > 0 ? t : STAMP_BYTES
     n = v["name"].to_s
     if @name.empty? && !n.empty?
       # this device's name, kept by the host (the settings were lost)
@@ -388,11 +417,17 @@ class ChatApp < FmrbApp
     out = @out
     @out_busy = false
     e = error_of(v)
+    if e == "no_stamp" && out && out[3] && !@out_put
+      # the host does not have the picture: put it, then post again
+      @out_put = true
+      set_status("絵を送っています…")
+      return
+    end
     if e || !v.is_a?(Hash)
       @out = nil
       if e == "no_name"
         show_face(:name)
-      elsif out && @input.empty?
+      elsif out && out[1] && @input.empty?
         # the text comes back to the input line, to be changed and sent again
         @input = out[1]
       end
@@ -448,6 +483,7 @@ class ChatApp < FmrbApp
     @cid_seq += 1
     @out = [@cur, text, "#{Machine.board_millis}-#{@cid_seq}"]
     @out_busy = false
+    @out_put = false
     @input = ""
     draw_input
     set_status(@hello ? "送っています…" : "チャットホストにつながっていません。つながったら送ります。")
@@ -521,3 +557,4 @@ end
 # the messages and the screen (one class, three files)
 require "/app/modern/chat/talk"
 require "/app/modern/chat/screen"
+require "/app/modern/chat/stamps"

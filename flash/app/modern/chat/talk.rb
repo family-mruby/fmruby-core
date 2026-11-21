@@ -19,6 +19,7 @@ class ChatApp < FmrbApp
     @m_node = []
     @m_name = []
     @m_text = []
+    @m_stamp = []         # the sha of a stamp message, nil for text
     @m_base = 0
     @l_msg = []
     @l_off = []
@@ -36,6 +37,10 @@ class ChatApp < FmrbApp
     if id != @cur
       @cur = id
       talk_reset
+      release_sprites
+      @st_want = []
+      @st_gone = {}
+      @picking = false
       @t_open = true
     end
     @sel = @rooms.index(id) || 0
@@ -46,6 +51,9 @@ class ChatApp < FmrbApp
   def close_room
     @cur = nil
     talk_reset
+    release_sprites
+    @st_want = []
+    @picking = false
     show_face(:list)
   end
 
@@ -98,14 +106,17 @@ class ChatApp < FmrbApp
     draw_talk
   end
 
-  # One message of the host -> [n, t, node, name, text], or nil.
+  # One message of the host -> [n, t, node, name, text, stamp sha], or nil.
   def msg_of(m)
     return nil unless m.is_a?(Hash)
     text = m["text"].to_s
-    # a stamp (C3) is not shown yet: a word in its place
-    text = "(スタンプ)" if text.empty? && m.key?("stamp")
+    sha = nil
+    if text.empty? && m["stamp"].is_a?(String) && m["stamp"].bytesize == 64
+      sha = m["stamp"]
+      want_stamp(sha)
+    end
     text = " " if text.empty?
-    [int(m["n"]), int(m["t"]), m["node"].to_s, m["name"].to_s, text]
+    [int(m["n"]), int(m["t"]), m["node"].to_s, m["name"].to_s, text, sha]
   end
 
   # Newer messages at the end (the ones held already are skipped); the
@@ -121,6 +132,7 @@ class ChatApp < FmrbApp
       @m_node << m[2]
       @m_name << m[3]
       @m_text << m[4]
+      @m_stamp << m[5]
       wrap_msg(@m_base + @m_n.size - 1, @l_msg, @l_off, @l_len)
     end
     while @m_n.size > HOLD
@@ -136,6 +148,7 @@ class ChatApp < FmrbApp
       @m_node.shift
       @m_name.shift
       @m_text.shift
+      @m_stamp.shift
       @m_base += 1
       @t_more = true
       @top -= gone
@@ -168,6 +181,7 @@ class ChatApp < FmrbApp
       @m_node.unshift(m[2])
       @m_name.unshift(m[3])
       @m_text.unshift(m[4])
+      @m_stamp.unshift(m[5])
       j -= 1
     end
     @m_base = base
@@ -194,6 +208,7 @@ class ChatApp < FmrbApp
       @m_node.pop
       @m_name.pop
       @m_text.pop
+      @m_stamp.pop
       @t_cut = true
     end
     mx = max_top
@@ -202,9 +217,22 @@ class ChatApp < FmrbApp
 
   # ------------------------------------------------------------ lines
 
-  # The lines of message id into the three arrays.
+  # The lines of message id into the three arrays. A stamp is its line with
+  # the name, then the rows of the picture (their offset is the row number).
   def wrap_msg(id, lm, lo, ll)
     k = id - @m_base
+    sha = @m_stamp[k]
+    if sha
+      r = 0
+      n = stamp_rows(sha) + 1
+      while r < n
+        lm << id
+        lo << r
+        ll << 0
+        r += 1
+      end
+      return id
+    end
     s = @m_text[k]
     first = @talk_w - TIME_PX - text_px(@m_name[k]) - 12 - MARK_PX
     if first < 48
