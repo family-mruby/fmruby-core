@@ -3,15 +3,17 @@
 # same RGB332 pixels, and what the C writer writes must read back the same in
 # Ruby and carry the same header and palette as Rgb332Png.encode. A few
 # made-up pictures with alpha and tRNS check that both readers turn their
-# transparent pixels into the transparent colour (0x01).
+# transparent pixels into the transparent colour (0x01). The display sides'
+# reader (LovyanGFX's pngle with the same rule, fmrb_png332_pngle.h) must
+# give the same pixels for all of them.
 #
-#   ruby test/png332/run.rb <png332_test binary> <build dir>
+#   ruby test/png332/run.rb <png332_test binary> <build dir> [<pngle binary>]
 
 require "fileutils"
 require "zlib"
 require_relative "../../tools/rgb332_png"
 
-bin, build = ARGV
+bin, build, pngle_bin = ARGV
 abort "usage: run.rb <bin> <build dir>" unless bin && build
 refs = File.join(build, "ref")
 outs = File.join(build, "out")
@@ -64,6 +66,7 @@ alpha_cases.each do |name, (data, w, h, px)|
 end
 
 system(bin, outs, *args) or abort "png332: the C test failed"
+system(pngle_bin, *args) or abort "png332: the display sides' reader differs" if pngle_bin
 
 # The C writer's files, read by the Ruby reader.
 fails = 0

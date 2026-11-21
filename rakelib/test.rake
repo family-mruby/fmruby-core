@@ -187,8 +187,12 @@ namespace :png332 do
   PNG332_TEST_DIR   = "test/png332"
   PNG332_TEST_BUILD = "#{PNG332_TEST_DIR}/build"
   PNG332_RUNNER_BIN = "#{PNG332_TEST_BUILD}/png332_test"
+  PNG332_PNGLE_BIN  = "#{PNG332_TEST_BUILD}/png332_pngle_test"
   PNG332_GEM_DIR    = "lib/gems/picoruby-fmrb-bmp332"
   PNG332_CFLAGS     = "-std=c11 -O1 -g -Wall -Wextra -Werror"
+  # The display sides' reader (fmrb_png332_pngle.h) runs LovyanGFX's pngle:
+  # the copy the native and browser builds compile, built as it is there.
+  PNG332_LGFX_DIR   = "hosted/vendor/m5gfx/src"
 
   desc "Build the host PNG332 test runner (cc, no docker)"
   task :runner do
@@ -197,11 +201,18 @@ namespace :png332 do
     mkdir_p PNG332_TEST_BUILD
     sh "#{cc} #{PNG332_CFLAGS} -I #{PNG332_GEM_DIR}/include " \
        "#{PNG332_GEM_DIR}/ports/esp32/png332.c #{PNG332_TEST_DIR}/main.c -o #{PNG332_RUNNER_BIN}"
+    lgfx = "#{PNG332_LGFX_DIR}/lgfx/utility"
+    %w[lgfx_pngle lgfx_miniz].each do |f|
+      sh "#{cc} -std=c11 -O1 -g -w -c #{lgfx}/#{f}.c -o #{PNG332_TEST_BUILD}/#{f}.o"
+    end
+    sh "#{cc} #{PNG332_CFLAGS} -I #{PNG332_GEM_DIR}/include -I #{PNG332_LGFX_DIR} " \
+       "#{PNG332_TEST_DIR}/pngle.c #{PNG332_TEST_BUILD}/lgfx_pngle.o #{PNG332_TEST_BUILD}/lgfx_miniz.o " \
+       "-o #{PNG332_PNGLE_BIN}"
   end
 
   desc "Sprite editor PNG read/write tests (host cc + Ruby, no docker)"
   task :test => :runner do
-    ruby "#{PNG332_TEST_DIR}/run.rb #{PNG332_RUNNER_BIN} #{PNG332_TEST_BUILD}"
+    ruby "#{PNG332_TEST_DIR}/run.rb #{PNG332_RUNNER_BIN} #{PNG332_TEST_BUILD} #{PNG332_PNGLE_BIN}"
   end
 
   desc "Remove the host PNG332 test build"
