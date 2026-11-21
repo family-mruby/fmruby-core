@@ -107,38 +107,44 @@ class SpriteEditorApp < FmrbApp
   # ------------------------------------------------------------ images
   #
   # A command to the drawing side per rectangle is what a redraw costs, so
-  # what is drawn often is made once on the drawing side and stamped with
-  # draw_tile: the 256 colours, and strips of the transparent checkerboard
-  # (a run of transparent pixels is one stamp, not three rectangles a
-  # pixel). Made again when the layout changes.
+  # what is drawn often is kept on the drawing side and stamped: the 256
+  # colours (16x16 pixels in FmrbGfx's picture store, drawn scaled up), the
+  # picture itself (a sprite image written from the pixels, for the real
+  # size and the tiles) and a strip of the zoomed view's checkerboard (a run
+  # of transparent pixels is one stamp, not three rectangles a pixel). The
+  # strip is made again when the layout changes.
 
   def build_images
     free_images
     @cimg = checker_strip(@rw, @z, @grid)
-    @timg = checker_strip(@sheet ? TILE : @iw, @sheet ? 1 : preview_scale, 0)
-    @pimg = SpriteImage.new(@gfx, width: 16 * @pc, height: 16 * @pc)
-    @pimg.set_target
-    c = 0
-    while c < 256
-      x = (c & 15) * @pc
-      y = (c >> 4) * @pc
-      if c == TRANSPARENT
-        checker(x, y, @pc, @pc, 0)
-      else
-        @gfx.fill_rect(x, y, @pc, @pc, c)
+    unless @pal_put
+      px = "\x00" * 256
+      c = 0
+      while c < 256
+        px.setbyte(c, c)
+        c += 1
       end
-      c += 1
+      @pal_put = @gfx.put_picture("pal", 16, 16, px)
     end
-    @pimg.reset_target
   end
 
   def free_images
     @cimg.destroy if @cimg
-    @timg.destroy if @timg
-    @pimg.destroy if @pimg
     @cimg = nil
-    @timg = nil
-    @pimg = nil
+  end
+
+  # The picture as a sprite image (transparent 0x01) for the side: written
+  # whole for another picture, the region's rows (what an edit changes)
+  # written again each time.
+  def thumb_image
+    t = @thumb
+    unless t && t.width == @iw && t.height == @ih && @thumb_of.equal?(@pix)
+      t.destroy if t
+      @thumb = SpriteImage.new(@gfx, width: @iw, height: @ih, transparent_color: TRANSPARENT, use_transparent: true)
+      @thumb_of = @pix
+      return @thumb.write_pixels(@pix)
+    end
+    t.write_pixels(@pix.byteslice(@ry * @iw, @rh * @iw), y: @ry, height: @rh)
   end
 
   # n cells of cell x cell pixels in two rows. A cell large enough has the
@@ -408,15 +414,17 @@ class SpriteEditorApp < FmrbApp
   # ------------------------------------------------------------ colours
 
   def draw_palette
-    @gfx.draw_tile(@pimg.id, 0, 0, 16 * @pc, 16 * @pc, dst_x: @pal_x, dst_y: @pal_y)
+    @gfx.draw_picture("pal", @pal_x, @pal_y, scale: @pc)
+    checker(@pal_x + (TRANSPARENT & 15) * @pc, @pal_y + (TRANSPARENT >> 4) * @pc, @pc, @pc, 0)
     draw_pal_cell(@color)
   end
 
   def draw_pal_cell(c)
-    sx = (c & 15) * @pc
-    sy = (c >> 4) * @pc
-    @gfx.draw_tile(@pimg.id, sx, sy, @pc, @pc, dst_x: @pal_x + sx, dst_y: @pal_y + sy)
-    @gfx.draw_rect(@pal_x + sx, @pal_y + sy, @pc, @pc, contrast(c)) if c == @color
+    x = @pal_x + (c & 15) * @pc
+    y = @pal_y + (c >> 4) * @pc
+    @gfx.draw_picture("pal", @pal_x, @pal_y, scale: @pc, clip: [x, y, @pc, @pc])
+    checker(x, y, @pc, @pc, 0) if c == TRANSPARENT
+    @gfx.draw_rect(x, y, @pc, @pc, contrast(c)) if c == @color
   end
 
   def contrast(c)
@@ -481,6 +489,7 @@ class SpriteEditorApp < FmrbApp
   def draw_side
     @gfx.fill_rect(@list_x, @list_y, @list_w, @list_h, theme_bg)
     return if @list_h < 4
+    thumb_image
     if @sheet
       draw_tile_list
     else
@@ -516,27 +525,15 @@ class SpriteEditorApp < FmrbApp
     end
   end
 
-  # Pixels (sx, sy, w, h) of the picture at (dx, dy), each s x s.
+  # Pixels (sx, sy, w, h) of the picture at (dx, dy), each s x s, over the
+  # checkerboard of s x s cells (the first one light grey, as
+  # draw_thumb_px's). Rows starting below the list are left out.
   def draw_thumb(sx, sy, w, h, dx, dy, s)
-    y = 0
-    while y < h && dy + y * s < @list_y + @list_h
-      base = (sy + y) * @iw + sx
-      x = 0
-      while x < w
-        c = @pix.getbyte(base + x)
-        x2 = x + 1
-        while x2 < w && @pix.getbyte(base + x2) == c
-          x2 += 1
-        end
-        if c == TRANSPARENT
-          stamp_clear(@timg, s, x, x2 - x, y, dx + x * s, dy + y * s)
-        else
-          @gfx.fill_rect(dx + x * s, dy + y * s, (x2 - x) * s, s, c)
-        end
-        x = x2
-      end
-      y += 1
-    end
+    rows = (@list_y + @list_h - dy + s - 1) / s
+    rows = h if rows > h
+    return if rows <= 0
+    @gfx.draw_checker(dx - s, dy, (w + 1) * s, rows * s, cell: s, clip: [dx, dy, w * s, rows * s])
+    @gfx.draw_tile(@thumb.id, sx, sy, w, rows, dst_x: dx, dst_y: dy, scale: s)
   end
 
   # One pixel of the region changed: the same pixel on the side.
