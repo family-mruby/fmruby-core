@@ -99,8 +99,9 @@ gfxblock 1 again
 gfxblock 2 again
 present
 fill_rect 245 148 32 24 #FF
-create_image 101 "/cache/app/appstore/clock.png"
-draw_image 101 245 148 1.00 0.00
+sprite_image 101 32 24 1 1
+load_bmp 101 "/cache/app/appstore/clock.png"
+draw_tile 101 0 0 32 24 245 148
 present
 == update 2/2
 == key down
