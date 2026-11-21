@@ -7,7 +7,7 @@
 > update.sh・README、`docs/install.md` の役割と配置の節、`.github/workflows/`、CHANGELOG の 0.2.0〜0.2.2)。
 > fmruby-core の doc/ai_tutor_vps/plan.md と report/v1.md (役割 tutor-host・tutor の行と、VPS の置き方の経緯)。
 
-作業場所は `/home/kishima/fmrb/family-mruby/asterism-chat/` だけ。
+作業場所は `../asterism-chat/` (直下の隣) だけ。
 
 ## 1. スタンプ (ホストの側。c0.md 3.2・3.3)
 
@@ -58,7 +58,7 @@
 
 ## 4. 範囲と止まる条件
 
-- 触ってよい所: `/home/kishima/fmrb/family-mruby/asterism-chat/` の中だけ。その中でコミットする (英語、
+- 触ってよい所: `../asterism-chat/` (直下の隣) の中だけ。その中でコミットする (英語、
   `<type>(<place>): <summary>`、Co-Authored-By のトレーラ)。**push しない。GitHub のリポジトリを作らない。**
 - report は `asterism-chat/` の外に書けないので、**最後の返事に全部書く** (親が fmruby-core の report にまとめる)。
 - **触らない**: fmruby-core (読むだけ。ビルド・sim・web・コミットをしない)、asterism-tutor・asterism-games・console・

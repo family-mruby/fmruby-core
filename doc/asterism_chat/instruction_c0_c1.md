@@ -30,7 +30,7 @@ plan.md の 3 章・6 章を、実物を読んで具体の値にする。**決�
 
 ## C1: ホストの gem の最小 (文字だけ。スタンプは C3)
 
-- 置き場: `/home/kishima/fmrb/family-mruby/asterism-chat/` (新しいディレクトリ。`git init` して、その中でコミット。
+- 置き場: `../asterism-chat/` (直下の隣) (新しいディレクトリ。`git init` して、その中でコミット。
   **GitHub にリポジトリを作らない。push しない。** asterism-tutor と同じく直下のリポジトリからは追跡しない)。
 - 形は asterism-tutor に倣う (gemspec・`exe/asterism-chat`・`lib/chat/`・`test/`・README.md (英語)・README.ja.md・
   CHANGELOG・MIT の LICENSE・`.ruby-version` 3.4.13)。コードのコメントは **ASCII だけ** (公開する前提)。
