@@ -196,7 +196,9 @@ namespace :png332 do
   PNG332_LGFX_DIR   = "hosted/vendor/m5gfx/src"
 
   desc "Build the host PNG332 test runner (cc, no docker)"
-  task :runner do
+  # hosted:m5gfx fetches LovyanGFX when the checkout does not have it yet (CI's
+  # host test job starts without it).
+  task :runner => ["hosted:m5gfx"] do
     cc = ENV["CC"] || "cc"
     abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
     mkdir_p PNG332_TEST_BUILD
