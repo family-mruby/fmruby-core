@@ -28,8 +28,9 @@
 # app reads too. Re-read with the rest every ~1s while the dialog is open.
 #
 # Global IP (doc/global_ip): where system_conf names a lookup URL
-# (`global_ip_url`, a top-level string), the dialog grows by two lines and
-# asks that URL once per opening which address the request came from. The
+# (`global_ip_url`, a top-level string), the dialog grows by two lines and a
+# Look up button, and each press of the button asks that URL once which
+# address the request came from (opening the dialog asks nothing). The
 # answer must look like one IPv4 or IPv6 address (net_gip_tick); anything
 # else (an HTML page, several lines, a long body, a non-2xx status) is shown
 # as a failure.
@@ -38,9 +39,9 @@
 # the ~1s tick: in the browser it runs on the page while the desktop keeps
 # going; on a board, the simulation and the native program it is made inside
 # `request` and holds the desktop's own task until the server answers, so the
-# "asking" text is drawn one tick before it starts. Nothing is asked while
-# not connected. The answer lives only in the dialog's own variables and is
-# not logged.
+# press draws "asking" first and the lookup starts on the next tick. A press
+# while one is asked, or while not connected, does nothing. The answer lives
+# only in the dialog's own variables and is not logged.
 
 module NetworkDialogMixin
   NET_W       = 240
@@ -68,11 +69,12 @@ module NetworkDialogMixin
     url = url.strip if url
     if url && !url.empty?
       @net_gip_url = url
-      # Two more lines (label, then the address on its own so a full IPv6
-      # address, 39 chars, fits), and a little wider.
+      # Two more lines (label with the Look up button, then the address on
+      # its own so a full IPv6 address, 39 chars, fits), and a little wider.
+      # "-" until the button is pressed.
       @net_gip = "-"
       @net_w = NET_W + 16
-      @net_h = NET_H + 28
+      @net_h = NET_H + 32
     end
     show_network_widgets(true)
     @net_x = (@window_width - @net_w) / 2
@@ -80,8 +82,6 @@ module NetworkDialogMixin
     menu_h = self.class::MENU_BAR_HEIGHT
     @net_y = menu_h + 2 if @net_y < menu_h + 2
     net_refresh
-    # Puts "asking" up now when connected; the lookup starts on the next tick.
-    net_gip_tick if @net_gip_url
     close_launcher
     close_dropdown
     notify_overlay_state(true, @net_x, @net_y, @net_w, @net_h)
@@ -128,9 +128,8 @@ module NetworkDialogMixin
     nil
   end
 
-  # From the ~1s tick. Collect an answer, or -- while connected (the browser
-  # has no state to show, so it always tries) -- put up "asking" for one
-  # tick and then start the one lookup.
+  # From the ~1s tick. Collect an answer, or start the lookup the button
+  # asked for (it put up "asking", drawn before this tick holds the task).
   #
   # The answer is taken only as a single line of an address's characters
   # (hex digits, ':' and '.', at most 45 bytes: IPv6 text in its longest,
@@ -164,18 +163,11 @@ module NetworkDialogMixin
       return
     end
     url = @net_gip_url
-    return unless url
-    info = @net_info
-    return unless self.class::ON_WEB || (info && info[:connected])
-    asking = FmrbI18n.lang == "ja" ? "調べています..." : "Asking..."
-    if @net_gip != asking
-      @net_gip = asking
-      return
-    end
-    @net_gip_url = nil
+    return unless url && @net_gip == (FmrbI18n.lang == "ja" ? "調べています..." : "Asking...")
     @net_gip_req = FmrbNet.request(url)
     nil
   end
+
 
   # The label, then the answer on its own line.
   #
@@ -186,8 +178,10 @@ module NetworkDialogMixin
   def net_draw_gip(x, y)
     label = FmrbI18n.lang == "ja" ? "グローバル IP:" : "Global IP:"
     @gfx.draw_text(x + 8, y, label, NET_TEXT, NET_BG, mixed: true)
+    gw = @ui.find(:net_gip).w
+    @ui.move(:net_gip, x + @net_w - gw - 8, y - 2, gw, NET_GIP_BTN_H)
     value = FmrbI18n.truncate_to(@net_gip, @net_w - 22)
-    @gfx.draw_text(x + 14, y + 12, value, NET_TEXT, NET_BG, mixed: true)
+    @gfx.draw_text(x + 14, y + 16, value, NET_TEXT, NET_BG, mixed: true)
   end
 
   # The node the router checks for this page, or "" (web/main.js writes it).
@@ -259,7 +253,7 @@ module NetworkDialogMixin
       host_y = row_y + 28
       if @net_gip
         net_draw_gip(x, host_y)
-        host_y += 28
+        host_y += 32
       end
       if host && !host.empty?
         net_draw_row(x, host_y, FmrbI18n.t(:hostname_label), "#{host}.local")
@@ -276,12 +270,16 @@ module NetworkDialogMixin
   end
 
   NET_BTN_H = 16
+  NET_GIP_BTN_H = 14
 
   def build_network_widgets
     lr = FmrbI18n.t(:refresh)
     lc = FmrbI18n.t(:close)
     @ui.button(:net_refresh, 0, 0, FmrbI18n.text_width(lr) + 12, NET_BTN_H, lr)
     @ui.button(:net_close, 0, 0, FmrbI18n.text_width(lc) + 12, NET_BTN_H, lc)
+    # Global IP's Look up, beside its label (shown only with global_ip_url).
+    lg = FmrbI18n.lang == "ja" ? "調べる" : "Look up"
+    @ui.button(:net_gip, 0, 0, FmrbI18n.text_width(lg) + 12, NET_GIP_BTN_H, lg)
     @net_settings_ok = FmrbSystem.wifi_networks != ""
     if @net_settings_ok
       lw = FmrbI18n.t(:wifi_settings)
@@ -294,6 +292,7 @@ module NetworkDialogMixin
   def show_network_widgets(on)
     @ui.set_visible(:net_refresh, on && !self.class::ON_WEB)
     @ui.set_visible(:net_close, on)
+    @ui.set_visible(:net_gip, on && !@net_gip_url.nil?)
     @ui.set_visible(:net_wifi, on) if @net_settings_ok
     nil
   end
@@ -318,6 +317,16 @@ module NetworkDialogMixin
       net_refresh
       draw_foreground
     when :net_close then close_network_dialog
+    when :net_gip
+      # One lookup at a time, and only while connected (the browser has no
+      # state to show, so it always may). "asking" is drawn now; the next tick
+      # starts the request, which on a board holds the desktop until answered.
+      info = @net_info
+      if @net_gip_url && !@net_gip_req && (self.class::ON_WEB || (info && info[:connected]))
+        # A second press before the tick sets the same text: still one lookup.
+        @net_gip = FmrbI18n.lang == "ja" ? "調べています..." : "Asking..."
+        draw_foreground
+      end
     when :net_wifi
       close_network_dialog
       # FmrbSystem.linux_settings exists on the PC only (a device must not have
@@ -366,6 +375,6 @@ module NetworkDialogMixin
   def tick_network_dialog
     return unless @net_open
     net_refresh
-    net_gip_tick if @net_gip_req || @net_gip_url
+    net_gip_tick if @net_gip_url
   end
 end

@@ -92,10 +92,14 @@ by default).
 global_ip_url = "https://router.example.org/fmrb/ip"
 ```
 
-- It is asked once each time the Network window opens (close and open it
-  to ask again). While asking it says "Asking..."; when the answer is not one
-  line holding an IP address, or the URL cannot be reached, it says
-  "Could not find out". Nothing is asked while not connected.
+- Opening the Network window asks nothing. Press "Look up" beside
+  "Global IP:" to ask once (press it again to ask again). While asking it
+  says "Asking..."; when the answer is not one line holding an IP address,
+  or the URL cannot be reached, it says "Could not find out". Pressing it
+  while not connected asks nothing.
+- After a press the screen stops taking input for a little while (a few
+  seconds, up to ten or twenty) until the answer comes (not in the browser
+  build).
 - The URL should answer a GET with `text/plain`, the caller's address
   (IPv4 or IPv6) on one line. The browser build also needs
   `Access-Control-Allow-Origin: *` in the answer (and, from a page served
