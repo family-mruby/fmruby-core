@@ -1991,7 +1991,7 @@ class SystemDesktopApp < FmrbApp
 
   def on_control(msg)
     if msg["cmd"] == "file_select"
-      open_file_selector(msg["requester_pid"], msg["mode"] || "open")
+      open_file_selector(msg["requester_pid"], msg["mode"] || "open", (msg["dir"] || "").to_s)
     elsif msg["cmd"] == "show_error"
       # The startup app failed. The dialog needs a desktop behind it, and
       # this is the failure direct boot exists to survive.

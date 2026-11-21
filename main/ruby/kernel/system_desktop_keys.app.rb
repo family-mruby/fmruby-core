@@ -770,7 +770,7 @@ class KeysDesktopApp < FmrbApp
     elsif cmd == "keys_switcher"
       open_switcher
     elsif cmd == "file_select"
-      open_file_selector(msg["requester_pid"], msg["mode"] || "open")
+      open_file_selector(msg["requester_pid"], msg["mode"] || "open", (msg["dir"] || "").to_s)
     elsif cmd == "app_starting"
       @starting_name = msg["name"] || ""
       @starting_at = Machine.board_millis

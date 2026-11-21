@@ -1189,8 +1189,14 @@ class FmrbApp
 
   # request_reload, request_fullscreen(on) and the _raw forms of the two
   # below are the boundary's (C).
-  def request_file_select(mode = "open")
-    request_file_select_raw(mode)
+  # dir: the folder the dialog opens in ("" or left out: where it always
+  # opens). The boundary's form has no room for it, so a request with a
+  # folder goes as the message the boundary would have sent, plus "dir".
+  def request_file_select(mode = "open", dir: "")
+    return request_file_select_raw(mode) if dir.empty?
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "file_select", "mode" => mode, "dir" => dir})
+    nil
   end
 
   # Ask the kernel to run a file (.rb / .bas) as an app.

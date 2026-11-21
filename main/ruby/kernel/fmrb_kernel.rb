@@ -480,7 +480,8 @@ class FmrbKernelImpl < FmrbKernel
         # Redirect keyboard input to desktop for filename entry
         _set_hid_target(@desktop_pid)
         @hid_target_pid = @desktop_pid
-        fwd = { "cmd" => "file_select", "mode" => data["mode"] || "open", "requester_pid" => pid }
+        fwd = { "cmd" => "file_select", "mode" => data["mode"] || "open", "requester_pid" => pid,
+                "dir" => (data["dir"] || "").to_s }
         binary = MessagePack.pack(fwd)
         _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
         Log.info("File select request from pid=#{pid} forwarded to desktop, HID -> desktop")

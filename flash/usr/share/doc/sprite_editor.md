@@ -33,13 +33,13 @@ Colours (the right)
 Files (the File menu)
 
 - New (Ctrl+N): choose 16x16, 24x24, 32x32 or 48x48. It starts all transparent.
-- Open (Ctrl+O): choose a PNG or a BMP.
+- Open (Ctrl+O): choose a PNG or a BMP. The file dialog of Open, Save and
+  Save as starts in /home/stamps/ (made when missing).
 - To open a picture here with a double click in the File Manager, put
   `png = "/app/tool/sprite_editor.app.rb"` (bmp = ... for a BMP) in
   /home/associations.toml.
 - Save (Ctrl+S): writes to the file it came from, in its format (PNG or BMP).
-  A new picture goes under /home/stamps/ as sprite1.png, sprite2.png ...
-  (the folder is made when missing).
+  A new picture that has no file yet is Save as.
 - Save as: choose the folder and the name. A name without .png or .bmp gets .png.
 - New, Open and closing (the round button, Ctrl+Q) ask first whether to save
   unsaved changes. Cancel goes back to the picture.

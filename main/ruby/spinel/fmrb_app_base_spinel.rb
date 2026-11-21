@@ -2529,8 +2529,11 @@ class FmrbApp
       { "cmd" => "publish", "topic" => topic, "data" => data })
   end
 
-  def request_file_select(mode = "open")
-    request_file_select_raw(mode)
+  def request_file_select(mode = "open", dir: "")
+    return request_file_select_raw(mode) if dir.empty?
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "file_select", "mode" => mode, "dir" => dir })
+    nil
   end
 
   def request_file_select_raw(mode)

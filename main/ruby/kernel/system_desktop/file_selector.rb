@@ -26,11 +26,15 @@ module FileSelectorMixin
   # itself (the keys desktop fills the screen under its bar).
   def fsel_w; FSEL_W; end
   def fsel_h; FSEL_H; end
-  def open_file_selector(requester_pid, mode = "open")
+  # start_dir: the folder the requester asked to open in ("" for none: the
+  # root, as always). One that cannot be listed gives way to its nearest
+  # parent that can -- the dialog never makes a folder; that is the asking
+  # app's to do, if it wants one.
+  def open_file_selector(requester_pid, mode = "open", start_dir = "")
     @file_selector_open = true
     @file_selector_mode = mode
     @file_selector_requester = requester_pid
-    @file_selector_dir = "/"
+    @file_selector_dir = fsel_existing_dir(start_dir)
     @file_selector_scroll = 0
     @file_selector_selected = -1
     @file_selector_filename = ""
@@ -48,6 +52,24 @@ module FileSelectorMixin
     notify_overlay_state(true, @fsel_x, @fsel_y, fsel_w, fsel_h)
     update_composite_regions
     draw_foreground
+  end
+
+  # dir if it can be listed, else the nearest parent that can, else "/".
+  # Only absolute paths count; a trailing "/" is dropped.
+  def fsel_existing_dir(dir)
+    return "/" unless dir.start_with?("/")
+    parts = dir.split("/").reject { |seg| seg.empty? }
+    while parts.size > 0
+      path = "/" + parts.join("/")
+      begin
+        d = Dir.open(path)
+        d.close
+        return path
+      rescue
+        parts.pop
+      end
+    end
+    "/"
   end
 
   def close_file_selector(selected_path = nil)

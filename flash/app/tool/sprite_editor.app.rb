@@ -12,8 +12,9 @@
 # Files go the way of the text editor: the File menu has New (the size is
 # asked), Open and Save as through the desktop's file dialog
 # (request_file_select), Save writes back to the file in the format it came
-# in (BMP332.save goes by the extension). A new picture that was never saved
-# goes to STAMP_DIR under a free name. Unsaved changes are asked about
+# in (BMP332.save goes by the extension). The dialog opens in STAMP_DIR (made
+# when missing), and Save of a picture that was never saved is Save as.
+# Unsaved changes are asked about
 # before New, Open, a file handed over by the File Manager, the close button
 # and Ctrl+Q.
 #
@@ -81,6 +82,7 @@ class SpriteEditorApp < FmrbApp
     @pending = nil
     @pending_path = nil
     @select_for = nil     # :open or :save_as while the file dialog is up
+    @after_save = nil     # what a Save as asked for by a question goes on to
     @drawing = false
     @last_px = -1
     @last_py = -1
@@ -115,9 +117,11 @@ class SpriteEditorApp < FmrbApp
     path = msg["path"]
     want = @select_for
     @select_for = nil
+    after = @after_save
+    @after_save = nil
     return unless path.is_a?(String) && path.size > 0
     if want == :save_as
-      save_to(with_extension(path))
+      go_on(after) if save_to(with_extension(path)) && after
     elsif @dirty
       @pending = :load
       @pending_path = path
@@ -236,19 +240,29 @@ class SpriteEditorApp < FmrbApp
     draw_all
   end
 
-  def save_current
-    if @path
-      save_to(@path)
-    else
-      save_to(free_stamp_path)
+  # True when saved now. A picture with no file yet asks for a name first
+  # (false here); after_save is what to go on to once it is saved there.
+  def save_current(after_save = nil)
+    return save_to(@path) if @path
+    ask_file(:save_as)
+    @after_save = after_save
+    false
+  end
+
+  # The desktop's file dialog, opened in STAMP_DIR (made when missing).
+  def ask_file(what)
+    begin
+      Dir.mkdir(STAMP_DIR) unless Dir.exist?(STAMP_DIR)
+    rescue => e
+      Log.error("SpriteEd: cannot make #{STAMP_DIR}: #{e.message}")
     end
+    @select_for = what
+    @after_save = nil
+    request_file_select(what == :open ? "open" : "save", dir: STAMP_DIR)
   end
 
   def save_to(path)
     begin
-      if path.start_with?(STAMP_DIR + "/") && !Dir.exist?(STAMP_DIR)
-        Dir.mkdir(STAMP_DIR)
-      end
       BMP332.save(path, @iw, @ih, @pix)
     rescue => e
       Log.error("SpriteEd: cannot save #{path}: #{e.message}")
@@ -261,16 +275,6 @@ class SpriteEditorApp < FmrbApp
     Log.info("SpriteEd: saved #{path}")
     show_message("#{@w[:saved]}: #{path}")
     true
-  end
-
-  # sprite1.png, sprite2.png, ... the first not there yet.
-  def free_stamp_path
-    n = 1
-    while true
-      p = "#{STAMP_DIR}/sprite#{n}.png"
-      return p unless File.exist?(p)
-      n += 1
-    end
   end
 
   # A name typed without a known extension gets .png (the stamps' format).
@@ -485,9 +489,7 @@ class SpriteEditorApp < FmrbApp
     when :open then ask_first(:open)
     when :save
       save_current
-    when :save_as
-      @select_for = :save_as
-      request_file_select("save")
+    when :save_as then ask_file(:save_as)
     when :close then on_quit_request
     when :undo, :undo_btn then undo
     when :clear then clear_region
@@ -511,9 +513,7 @@ class SpriteEditorApp < FmrbApp
   def go_on(what)
     case what
     when :new then open_size_dialog
-    when :open
-      @select_for = :open
-      request_file_select("open")
+    when :open then ask_file(:open)
     when :load then load_picture(@pending_path)
     when :close then stop
     end
@@ -668,7 +668,7 @@ class SpriteEditorApp < FmrbApp
       what = @pending
       @pending = nil
       if id == :d_save
-        go_on(what) if save_current
+        go_on(what) if save_current(what)
       elsif id == :d_discard
         @dirty = false
         go_on(what)
