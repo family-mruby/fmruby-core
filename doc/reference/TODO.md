@@ -276,3 +276,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   今は VM の中の読み手 (`png332.c`、`BMP332.parse`) だけが透明を `0x01` にし、絵を直接読む側 (`SpriteImage#load_bmp`・
   `create_image`: sim・Retro は graphics-audio、P4・ブラウザ版・ネイティブ版は `display_local_task.cpp`) は透明を捨てて黒く出す。
   **読み方を共通化して、アプリごとに避ける実装が増えないようにする** (ユーザ)。graphics-audio の直しを含む。未着手。
+
+- ホストの gem (asterism-chat・asterism-tutor) の `status` が、**自分の公開が外から見えているか**まで確かめる
+  (2026-11-21。VPS で台帳の行に役割を付け忘れ、`up, joined` と出るのに console の図にもほかのノードからも見えなかった。
+  今の `up, joined` は証明書で接続できたことまで)。案: 自分のオブジェクトの meta を自分で問い合わせて答えが返るかを見る。未着手。
