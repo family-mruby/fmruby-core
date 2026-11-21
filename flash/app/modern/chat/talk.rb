@@ -5,12 +5,12 @@
 # its index plus @m_base, so lines stay valid when older messages are put
 # in front or the oldest go.
 #
-# A message is shown as "HH:MM name: text". Its first line leaves room for
+# A message is shown as "M/D HH:MM name: text". Its first line leaves room for
 # the time, the name and a node mark "(abc)", which is drawn only when the
 # same name comes from another node among the messages on the screen
 # (screen.rb), so the wrapping never depends on what is scrolled into view.
 class ChatApp < FmrbApp
-  TIME_PX = 36           # "HH:MM "
+  TIME_PX = 72           # "MM/DD HH:MM "
   MARK_PX = 30           # "(abc)"
 
   def talk_reset
@@ -323,12 +323,23 @@ class ChatApp < FmrbApp
     @top >= max_top
   end
 
-  # "HH:MM" of a host time, in the host's zone (hello's tz).
+  # "M/D HH:MM" of a host time, in the host's zone (hello's tz). No year.
+  # The date is worked out from the day count (no Time on this machine's
+  # clock: the host's time is the one shown).
   def hhmm(t)
-    s = (t + @tz) % 86400
+    lt = t + @tz
+    s = lt % 86400
     h = s / 3600
     m = s % 3600 / 60
-    "#{h < 10 ? '0' : ''}#{h}:#{m < 10 ? '0' : ''}#{m}"
+    z = lt / 86400 + 719468
+    era = z / 146097
+    doe = z - era * 146097
+    yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    mp = (5 * doy + 2) / 153
+    d = doy - (153 * mp + 2) / 5 + 1
+    mo = mp < 10 ? mp + 3 : mp - 9
+    "#{mo}/#{d} #{h < 10 ? '0' : ''}#{h}:#{m < 10 ? '0' : ''}#{m}"
   end
 
   # ------------------------------------------------------------ moving

@@ -27,7 +27,7 @@ In a room
 - Type on the bottom line and press Enter or "Send". Kana and kanji work
   with the usual kana input (Ctrl+Space); in the browser and on a Linux PC
   the PC's input method (IME) works too.
-- A message reads "time name: text"; yours are in another colour. The time
+- A message reads "month/day time name: text" (no year); yours are in another colour. The time
   is the chat host's clock.
 - Read back with the arrows, PageUp, PageDown or the wheel. Going up past the
   top fetches older messages. A machine keeps up to 50 messages of a room at
