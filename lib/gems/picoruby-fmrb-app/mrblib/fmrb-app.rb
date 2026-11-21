@@ -684,6 +684,8 @@ class FmrbApp
           # app asked for (not what the writing side picked)
           g._checkpoint_font
         end
+        # its pictures' sprite images were the writing program's
+        g._picture_forget
         i += 1
       end
       # The frame's blocks bake the system's [theme] colours and the corner

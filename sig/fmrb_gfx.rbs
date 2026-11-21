@@ -919,6 +919,181 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   # ```
   def picture_info: (String path) -> picture_info?
 
+  # 絵のファイルを描く (無ければ読む) <<en>> Draw a picture file, reading it in the first time
+  #
+  # パス (か put_picture の名前) を渡すだけでよい。初めての絵は描画側の
+  # スプライトの絵に読み、この FmrbGfx が picture_limit 枚 (既定 8) まで
+  # 持つ。超えたら最近使っていないものから離す。ファイルを書き換えると
+  # (大きさか時刻が変わると) 次に描くときに読み直す (見に行くのは 1 秒に
+  # 1 回まで)。アプリが終わると全部離れる。
+  #
+  # - scale: 1〜32 は元の 1 点を scale x scale に、-2〜-32 は 1/|scale| に
+  # - checker: true で透明の所に市松を敷く (draw_checker)
+  # - clip: [x, y, w, h] でその矩形の中だけ描く
+  #
+  # 描けなければ false (落ちない)。理由は picture_error。65,536 点か
+  # 65,536 バイトを超える絵は断る。透明は 0x01 の色 (PNG の α・tRNS)。
+  # ```ruby
+  # gfx.draw_picture("/home/stamps/a.png",
+  #   10, 20, scale: 2)
+  # gfx.draw_picture(path, 0, 0,
+  #   scale: -2, checker: true)
+  # ```
+  # <<en>>
+  # Just hand the path (or put_picture's name). A picture is read into a
+  # sprite image on the display side the first time; this FmrbGfx keeps up
+  # to picture_limit of them (8 unless set), letting the least recently
+  # drawn go first. A file written again (another size or time) is read
+  # again the next time it is drawn (looked at once a second at most). They
+  # all go when the app ends.
+  #
+  # - scale: 1 to 32 turns each pixel into scale x scale; -2 to -32 draws
+  #   1/|scale| of the size
+  # - checker: true lays the checkerboard under the transparent parts
+  #   (draw_checker)
+  # - clip: [x, y, w, h] draws only inside that rect
+  #
+  # false when it cannot be drawn (nothing raises); picture_error says why.
+  # A picture past 65,536 pixels or 65,536 bytes is refused. Transparent is
+  # the colour 0x01 (a PNG's alpha and tRNS).
+  # ```ruby
+  # gfx.draw_picture("/home/stamps/a.png",
+  #   10, 20, scale: 2)
+  # gfx.draw_picture(path, 0, 0,
+  #   scale: -2, checker: true)
+  # ```
+  %a{fmrb.internal}
+  def draw_picture: (String path, Integer x, Integer y) -> bool
+
+  # 絵の幅と高さ ([w, h]) <<en>> A picture's width and height, as [w, h]
+  #
+  # 置き場にあればその大きさ、無ければファイルの先頭だけを読む
+  # (picture_info)。描画側には送らない。絵でなければ nil。
+  # ```ruby
+  # w, h = gfx.picture_size("/home/a.png")
+  # ```
+  # <<en>>
+  # From the store when the picture is there, else from the file's head
+  # (picture_info); nothing goes to the display side. nil when it is not a
+  # picture.
+  # ```ruby
+  # w, h = gfx.picture_size("/home/a.png")
+  # ```
+  %a{fmrb.internal}
+  def picture_size: (String path) -> Array[Integer]?
+
+  # 手元の画素を名前で置き場に置く <<en>> Put RGB332 pixels in the picture store by name
+  #
+  # pixels は幅 x 高さバイト (上の行から、0x01 が透明)。置いた後は
+  # draw_picture(名前, ...) で描く。同じ名前で置き直すと画素を書き直す。
+  # ファイルは使わない。場所が無ければ false。
+  # ```ruby
+  # gfx.put_picture("mine", 16, 16, px)
+  # gfx.draw_picture("mine", 0, 0,
+  #   scale: 4)
+  # ```
+  # <<en>>
+  # pixels is width x height bytes, top row first; 0x01 is transparent.
+  # Draw it with draw_picture(name, ...). Putting the same name again
+  # writes the pixels again. No file is involved. false when there is no
+  # room.
+  # ```ruby
+  # gfx.put_picture("mine", 16, 16, px)
+  # gfx.draw_picture("mine", 0, 0,
+  #   scale: 4)
+  # ```
+  %a{fmrb.internal}
+  def put_picture: (String name, Integer width, Integer height, String pixels) -> bool
+
+  # 置き場の絵を 1 枚離す <<en>> Let go of one picture in the picture store
+  #
+  # ```ruby
+  # gfx.release_picture("/home/a.png")
+  # ```
+  # <<en>>
+  # ```ruby
+  # gfx.release_picture("/home/a.png")
+  # ```
+  %a{fmrb.internal}
+  def release_picture: (String path) -> FmrbGfx
+
+  # 置き場の絵を全部離す <<en>> Let go of every picture in the picture store
+  #
+  # アプリが終わるときは呼ばなくてよい (絵は canvas と一緒に離れる)。
+  # 部屋を変えるときなど、もう描かない絵をまとめて離すのに使う。
+  # ```ruby
+  # gfx.release_pictures
+  # ```
+  # <<en>>
+  # Not needed when the app ends (the pictures go with the canvas). For
+  # letting go of pictures no longer drawn, all at once.
+  # ```ruby
+  # gfx.release_pictures
+  # ```
+  %a{fmrb.internal}
+  def release_pictures: () -> FmrbGfx
+
+  # 置き場に持つ絵の枚数を決める <<en>> How many pictures the picture store keeps
+  #
+  # 既定は 8。減らすと古いものから離す。描画側の絵の数は機械全体で
+  # 限りがある (sim・Retro は 64 枚・256 KB、P4 は 160 枚)。
+  # ```ruby
+  # gfx.picture_limit = 16
+  # ```
+  # <<en>>
+  # 8 unless set; fewer lets the oldest go now. The display side's sprite
+  # images are limited for the whole machine (64 and 256 KB on the sim and
+  # Retro, 160 on P4).
+  # ```ruby
+  # gfx.picture_limit = 16
+  # ```
+  %a{fmrb.internal}
+  def picture_limit=: (Integer n) -> Integer
+
+  # 絵が描けなかった理由 <<en>> Why the last picture could not be drawn
+  #
+  # :unreadable (無い・絵でない)、:too_big (65,536 点を超える)、
+  # :file_too_large (65,536 バイトを超える)、:no_room (描画側に場所が
+  # 無い)、:not_sent (描画側へ送れない)。うまくいった後は nil。
+  # ```ruby
+  # unless gfx.draw_picture(path, 0, 0)
+  #   Log.info(gfx.picture_error.to_s)
+  # end
+  # ```
+  # <<en>>
+  # :unreadable (not there, not a picture), :too_big (past 65,536 pixels),
+  # :file_too_large (past 65,536 bytes), :no_room (no room on the display
+  # side), :not_sent (could not be sent there). nil after one that worked.
+  # ```ruby
+  # unless gfx.draw_picture(path, 0, 0)
+  #   Log.info(gfx.picture_error.to_s)
+  # end
+  # ```
+  %a{fmrb.internal}
+  def picture_error: () -> Symbol?
+
+  # 透明を表す市松を描く <<en>> Draw the checkerboard that stands for transparency
+  #
+  # 白と薄い灰色の升 (cell: px、既定 4) を (x, y, w, h) に敷く。clip:
+  # [x, y, w, h] で切れる。描画側に帯を 1 枚作って押すので、命令は
+  # 高さ / (cell x 2) 回。
+  # ```ruby
+  # gfx.draw_checker(0, 0, 64, 64)
+  # gfx.draw_checker(0, 0, 64, 64,
+  #   cell: 2)
+  # ```
+  # <<en>>
+  # White and light grey cells (cell: px, 4 unless given) over
+  # (x, y, w, h); clip: [x, y, w, h] cuts it. One strip is made on the
+  # display side and stamped, height / (cell x 2) commands.
+  # ```ruby
+  # gfx.draw_checker(0, 0, 64, 64)
+  # gfx.draw_checker(0, 0, 64, 64,
+  #   cell: 2)
+  # ```
+  %a{fmrb.internal}
+  def draw_checker: (Integer x, Integer y, Integer w, Integer h) -> FmrbGfx
+
   # 型ぬきの形を作る <<en>> Make a mask
   #
   # data は 1 画素 1 ビットの列。1 行あたり ceil(width / 8) バイトで、各バイトは
