@@ -35,7 +35,10 @@ Files (the File menu)
 - New (Ctrl+N): choose 16x16, 24x24, 32x32 or 48x48. It starts all transparent.
 - Open (Ctrl+O): choose a PNG or a BMP. The file dialog of Open, Save and
   Save as starts in /home/stamps/ (made when missing).
-- To open a picture here with a double click in the File Manager, put
+- A double click on a picture in the File Manager opens the Image Viewer;
+  its "Open in Sprite Editor" brings the picture here. In the File Manager,
+  a right click on a picture (or S) has "Open in Sprite Editor" too. To
+  have the double click open this app instead, put
   `png = "/app/tool/sprite_editor.app.rb"` (bmp = ... for a BMP) in
   /home/associations.toml.
 - Save (Ctrl+S): writes to the file it came from, in its format (PNG or BMP).

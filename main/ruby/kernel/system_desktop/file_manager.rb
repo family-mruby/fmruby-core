@@ -35,8 +35,14 @@ module FileManagerMixin
   # letter, and Delete stays on the Delete key rather than a letter that could
   # be hit while reaching for something else.
   FMGR_CTX_KEYS = {
-    "Run" => "Ent", "Edit" => "E", "Copy" => "C", "Delete" => "Del", "Paste" => "V", "Linux" => "L"
+    "Run" => "Ent", "Edit" => "E", "Copy" => "C", "Delete" => "Del", "Paste" => "V", "Linux" => "L",
+    "Sprite" => "S"
   }
+
+  # "Open in the sprite editor": on a picture (PNG, BMP), whose double click
+  # opens the viewer (config/associations.toml).
+  FMGR_CTX_SPRITE = "Sprite"
+  FMGR_SPRITE_EDITOR = "/app/tool/sprite_editor.app.rb"
 
   # "Open in a Linux app" (L11): the menu item, on the machines that have
   # Linux apps (the PC's compositor) and only there. It opens a second menu,
@@ -311,9 +317,9 @@ module FileManagerMixin
 
     items.each_with_index do |label, i|
       iy = cy + 1 + i * FMGR_CTX_ITEM_H
-      if label == FMGR_CTX_LINUX
-        # The one item in the user's language (Japanese needs the mixed font).
-        @gfx.draw_text_mixed(cx + 6, iy + 3, FmrbI18n.t(:fmgr_open_linux), FMGR_CTX_TEXT)
+      if label == FMGR_CTX_LINUX || label == FMGR_CTX_SPRITE
+        # The items in the user's language (Japanese needs the mixed font).
+        @gfx.draw_text_mixed(cx + 6, iy + 3, fmgr_ctx_label(label), FMGR_CTX_TEXT)
       else
         @gfx.draw_text(cx + 6, iy + 3, label, FMGR_CTX_TEXT, FMGR_CTX_BG)
       end
@@ -324,11 +330,27 @@ module FileManagerMixin
     end
   end
 
-  # The menu's width: FMGR_CTX_W, wider when the Linux item's label needs it.
+  # The menu's width: FMGR_CTX_W, wider when a translated item's label needs it.
   def fmgr_ctx_w(items)
-    return FMGR_CTX_W unless items.include?(FMGR_CTX_LINUX)
-    w = FmrbI18n.text_width(FmrbI18n.t(:fmgr_open_linux)) + 6 + 12 + 6 + 4
-    w > FMGR_CTX_W ? w : FMGR_CTX_W
+    w = FMGR_CTX_W
+    w = fmgr_ctx_label_w(FMGR_CTX_LINUX, w) if items.include?(FMGR_CTX_LINUX)
+    w = fmgr_ctx_label_w(FMGR_CTX_SPRITE, w) if items.include?(FMGR_CTX_SPRITE)
+    w
+  end
+
+  # w, or wider when the label and its key need more.
+  def fmgr_ctx_label_w(label, w)
+    lw = FmrbI18n.text_width(fmgr_ctx_label(label)) + 6 + 12 + 6 + 4
+    lw > w ? lw : w
+  end
+
+  def fmgr_ctx_label(label)
+    label == FMGR_CTX_SPRITE ? FmrbI18n.t(:fmgr_open_sprite) : FmrbI18n.t(:fmgr_open_linux)
+  end
+
+  def fmgr_picture?(name)
+    ext = FmrbAssoc.extension_of(name)
+    ext == "png" || ext == "bmp"
   end
 
   def fmgr_ctx_items
@@ -343,6 +365,7 @@ module FileManagerMixin
       else
         items = FMGR_CTX_ITEMS_FILE.dup
         items.delete("Run") unless fmgr_runnable?(entry[:name])
+        items << FMGR_CTX_SPRITE if !entry[:special] && fmgr_picture?(entry[:name])
         items << FMGR_CTX_LINUX if @fmgr_linux && !entry[:special]
       end
     end
@@ -539,6 +562,8 @@ module FileManagerMixin
       fmgr_paste_file
     when FMGR_CTX_LINUX
       fmgr_open_linux_menu(@fmgr_ctx_idx, true)
+    when FMGR_CTX_SPRITE
+      fmgr_open_in_sprite_editor(@fmgr_ctx_idx)
     end
   end
 
@@ -674,6 +699,8 @@ module FileManagerMixin
         fmgr_paste_file
       elsif (character == 108 || character == 76) && @fmgr_linux  # l / L
         fmgr_open_linux_menu(@file_manager_selected, false)
+      elsif character == 115 || character == 83     # s / S
+        fmgr_open_in_sprite_editor(@file_manager_selected)
       end
     end
     nil  # same reason as fmgr_activate
@@ -762,6 +789,20 @@ module FileManagerMixin
     # itself, which was the same job done worse: the count was a guess, and it
     # was the only caller in the machine still doing it.
     spawn_app("default/editor", file_path)
+    nil
+  end
+
+  # A picture into the sprite editor, whatever the table says opens it.
+  def fmgr_open_in_sprite_editor(idx)
+    return nil if idx < 0 || idx >= @file_manager_entries.size
+    entry = @file_manager_entries[idx]
+    return nil if entry[:is_dir] || entry[:special]
+    return nil unless fmgr_picture?(entry[:name])
+    vpath = fmgr_selected_virtual_path
+    return nil unless vpath
+    Log.info("File manager: #{vpath} in the sprite editor")
+    close_file_manager
+    spawn_app(FMGR_SPRITE_EDITOR, vpath)
     nil
   end
 
