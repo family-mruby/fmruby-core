@@ -117,6 +117,9 @@ class FmrbGfx
   # 動画の再生のようす <<en>> The video player's state
   type video_status = { state: uint8, shown: uint32, dropped: uint32 }
 
+  # picture_info が返す絵の大きさと形 <<en>> A picture file's size and kind, from picture_info
+  type picture_info = { width: uint16, height: uint16, format: uint8, bytes: uint32, mtime: uint32 }
+
   # ---- 色 ----
   #
   # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
@@ -817,10 +820,16 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
   # use_transparent: true で作った SpriteImage なら、その透明色は抜ける。
   # タイル 1 枚ずつを並べる高水準の側は TileMap にある。
   #
+  # scale: で大きさを変えて描ける。2〜32 は元の 1 点を scale x scale に
+  # (scale: 2 で 2 倍)、-2〜-32 は 1/|scale| に (scale: -4 で 1/4。
+  # 升ごとに左上の 1 点を取る)。中身は draw_tile_scaled_raw。
+  #
   # ```ruby
   # sheet.load_bmp("/cache/app/x/tiles.png")
   # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
   #               dst_x: 32, dst_y: 16)
+  # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
+  #   dst_x: 0, dst_y: 40, scale: 3)
   # ```
   # <<en>>
   # Stamps part of a SpriteImage straight onto the canvas. No SpriteInstance
@@ -831,10 +840,17 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
   # colour transparent here. TileMap is the higher-level way to lay a whole
   # map out.
   #
+  # scale: draws it at another size. 2 to 32 turns each pixel into a
+  # scale x scale block (scale: 2 is twice the size); -2 to -32 draws
+  # 1/|scale| of it (scale: -4 is a quarter, taking the top-left pixel of
+  # each block). It goes through draw_tile_scaled_raw.
+  #
   # ```ruby
   # sheet.load_bmp("/cache/app/x/tiles.png")
   # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
   #               dst_x: 32, dst_y: 16)
+  # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
+  #   dst_x: 0, dst_y: 40, scale: 3)
   # ```
   %a{fmrb.internal}
   def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
@@ -854,6 +870,232 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
 #                   16, 16, 32, 16)
 # ```
 def draw_tile_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h, Integer dst_x, Integer dst_y) -> FmrbGfx
+
+# draw_tile を拡大・縮小して描く <<en>> draw_tile drawn larger or smaller
+#
+# scale が 1〜32 なら元の 1 点を scale x scale に、-2〜-32 なら 1/|scale|
+# の大きさに (升ごとに左上の 1 点。0 と -1 は 1)。範囲の外は ERR_ARG。
+# 描く先は clip の矩形 (原点から。clip_w か clip_h が 0 なら無し) と
+# canvas で切る。透明色は draw_tile と同じに抜ける。包みは draw_tile の
+# scale:。
+# ```ruby
+# gfx.draw_tile_scaled_raw(id, 0, 0,
+#   16, 16, 40, 20, 2, 0, 0, 0, 0)
+# ```
+# <<en>>
+# A scale of 1 to 32 turns each pixel into a scale x scale block; -2 to -32
+# draws 1/|scale| of the size (the top-left pixel of each block; 0 and -1
+# are 1). Out of range is ERR_ARG. The destination is cut to the clip rect
+# (from the origin; none when clip_w or clip_h is 0) and to the canvas. The
+# transparent colour is skipped as in draw_tile. The wrapper is draw_tile's
+# scale:.
+# ```ruby
+# gfx.draw_tile_scaled_raw(id, 0, 0,
+#   16, 16, 40, 20, 2, 0, 0, 0, 0)
+# ```
+def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h, Integer dst_x, Integer dst_y, Integer scale, Integer clip_x, Integer clip_y, Integer clip_w, Integer clip_h) -> FmrbGfx
+
+  # 絵のファイルの大きさを読む <<en>> Read a picture file's width and height
+  #
+  # PNG と 8 ビットの BMP の先頭だけを読み、解かない (BMP332.info と同じ
+  # C)。結果は {width:, height:, format:, bytes:, mtime:}。format は 1 が
+  # PNG、2 が BMP。bytes はファイルの大きさ、mtime は書いた時刻
+  # (時刻を持たないファイルシステムでは 0)。無い・読めなければ nil。
+  # ファイルは本体の側のもの (描画側に送る前でよい)。
+  # ```ruby
+  # info = gfx.picture_info("/home/a.png")
+  # w = info[:width] if info
+  # ```
+  # <<en>>
+  # Reads only the head of a PNG or an 8-bit BMP; nothing is decoded (the
+  # same C as BMP332.info). The result is {width:, height:, format:, bytes:,
+  # mtime:}: format is 1 for PNG, 2 for BMP; bytes is the file's size and
+  # mtime when it was written (0 on a file system that keeps no time). nil
+  # when it is not there or cannot be read. The file is the app's own (it
+  # need not have been sent to the display side).
+  # ```ruby
+  # info = gfx.picture_info("/home/a.png")
+  # w = info[:width] if info
+  # ```
+  def picture_info: (String path) -> picture_info?
+
+  # 絵のファイルを描く (無ければ読む) <<en>> Draw a picture file, reading it in the first time
+  #
+  # パス (か put_picture の名前) を渡すだけでよい。初めての絵は描画側の
+  # スプライトの絵に読み、この FmrbGfx が picture_limit 枚 (既定 8) まで
+  # 持つ。超えたら最近使っていないものから離す。ファイルを書き換えると
+  # (大きさか時刻が変わると) 次に描くときに読み直す (見に行くのは 1 秒に
+  # 1 回まで)。アプリが終わると全部離れる。
+  #
+  # - scale: 1〜32 は元の 1 点を scale x scale に、-2〜-32 は 1/|scale| に
+  # - checker: true で透明の所に市松を敷く (draw_checker)
+  # - clip: [x, y, w, h] でその矩形の中だけ描く
+  #
+  # 描けなければ false (落ちない)。理由は picture_error。65,536 点を
+  # 超える絵は断る。65,536 バイトを超えるファイルはアプリの側で読んで
+  # (BMP332.load、読む間は VM プールに載る) 画素を置く。透明は 0x01 の色
+  # (PNG の α・tRNS)。
+  # ```ruby
+  # gfx.draw_picture("/home/stamps/a.png",
+  #   10, 20, scale: 2)
+  # gfx.draw_picture(path, 0, 0,
+  #   scale: -2, checker: true)
+  # ```
+  # <<en>>
+  # Just hand the path (or put_picture's name). A picture is read into a
+  # sprite image on the display side the first time; this FmrbGfx keeps up
+  # to picture_limit of them (8 unless set), letting the least recently
+  # drawn go first. A file written again (another size or time) is read
+  # again the next time it is drawn (looked at once a second at most). They
+  # all go when the app ends.
+  #
+  # - scale: 1 to 32 turns each pixel into scale x scale; -2 to -32 draws
+  #   1/|scale| of the size
+  # - checker: true lays the checkerboard under the transparent parts
+  #   (draw_checker)
+  # - clip: [x, y, w, h] draws only inside that rect
+  #
+  # false when it cannot be drawn (nothing raises); picture_error says why.
+  # A picture past 65,536 pixels is refused. A file past 65,536 bytes is
+  # read on the app side (BMP332.load: in the VM pool while it is read) and
+  # its pixels put. Transparent is the colour 0x01 (a PNG's alpha and tRNS).
+  # ```ruby
+  # gfx.draw_picture("/home/stamps/a.png",
+  #   10, 20, scale: 2)
+  # gfx.draw_picture(path, 0, 0,
+  #   scale: -2, checker: true)
+  # ```
+  %a{fmrb.internal}
+  def draw_picture: (String path, Integer x, Integer y) -> bool
+
+  # 絵の幅と高さ ([w, h]) <<en>> A picture's width and height, as [w, h]
+  #
+  # 置き場にあればその大きさ、無ければファイルの先頭だけを読む
+  # (picture_info)。描画側には送らない。絵でなければ nil。
+  # ```ruby
+  # w, h = gfx.picture_size("/home/a.png")
+  # ```
+  # <<en>>
+  # From the store when the picture is there, else from the file's head
+  # (picture_info); nothing goes to the display side. nil when it is not a
+  # picture.
+  # ```ruby
+  # w, h = gfx.picture_size("/home/a.png")
+  # ```
+  %a{fmrb.internal}
+  def picture_size: (String path) -> Array[Integer]?
+
+  # 手元の画素を名前で置き場に置く <<en>> Put RGB332 pixels in the picture store by name
+  #
+  # pixels は幅 x 高さバイト (上の行から、0x01 が透明)。置いた後は
+  # draw_picture(名前, ...) で描く。同じ名前で置き直すと画素を書き直す。
+  # ファイルは使わない。場所が無ければ false。
+  # ```ruby
+  # gfx.put_picture("mine", 16, 16, px)
+  # gfx.draw_picture("mine", 0, 0,
+  #   scale: 4)
+  # ```
+  # <<en>>
+  # pixels is width x height bytes, top row first; 0x01 is transparent.
+  # Draw it with draw_picture(name, ...). Putting the same name again
+  # writes the pixels again. No file is involved. false when there is no
+  # room.
+  # ```ruby
+  # gfx.put_picture("mine", 16, 16, px)
+  # gfx.draw_picture("mine", 0, 0,
+  #   scale: 4)
+  # ```
+  %a{fmrb.internal}
+  def put_picture: (String name, Integer width, Integer height, String pixels) -> bool
+
+  # 置き場の絵を 1 枚離す <<en>> Let go of one picture in the picture store
+  #
+  # ```ruby
+  # gfx.release_picture("/home/a.png")
+  # ```
+  # <<en>>
+  # ```ruby
+  # gfx.release_picture("/home/a.png")
+  # ```
+  %a{fmrb.internal}
+  def release_picture: (String path) -> FmrbGfx
+
+  # 置き場の絵を全部離す <<en>> Let go of every picture in the picture store
+  #
+  # アプリが終わるときは呼ばなくてよい (絵は canvas と一緒に離れる)。
+  # 部屋を変えるときなど、もう描かない絵をまとめて離すのに使う。
+  # ```ruby
+  # gfx.release_pictures
+  # ```
+  # <<en>>
+  # Not needed when the app ends (the pictures go with the canvas). For
+  # letting go of pictures no longer drawn, all at once.
+  # ```ruby
+  # gfx.release_pictures
+  # ```
+  %a{fmrb.internal}
+  def release_pictures: () -> FmrbGfx
+
+  # 置き場に持つ絵の枚数を決める <<en>> How many pictures the picture store keeps
+  #
+  # 既定は 8。減らすと古いものから離す。描画側の絵の数は機械全体で
+  # 限りがある (sim・Retro は 64 枚・256 KB、P4 は 160 枚)。
+  # ```ruby
+  # gfx.picture_limit = 16
+  # ```
+  # <<en>>
+  # 8 unless set; fewer lets the oldest go now. The display side's sprite
+  # images are limited for the whole machine (64 and 256 KB on the sim and
+  # Retro, 160 on P4).
+  # ```ruby
+  # gfx.picture_limit = 16
+  # ```
+  %a{fmrb.internal}
+  def picture_limit=: (Integer n) -> Integer
+
+  # 絵が描けなかった理由 <<en>> Why the last picture could not be drawn
+  #
+  # :unreadable (無い・絵でない)、:too_big (65,536 点を超える)、
+  # :no_room (描画側に場所が無い)、:not_sent (描画側へ送れない)。
+  # うまくいった後は nil。
+  # ```ruby
+  # unless gfx.draw_picture(path, 0, 0)
+  #   Log.info(gfx.picture_error.to_s)
+  # end
+  # ```
+  # <<en>>
+  # :unreadable (not there, not a picture), :too_big (past 65,536 pixels),
+  # :no_room (no room on the display side), :not_sent (could not be sent
+  # there). nil after one that worked.
+  # ```ruby
+  # unless gfx.draw_picture(path, 0, 0)
+  #   Log.info(gfx.picture_error.to_s)
+  # end
+  # ```
+  %a{fmrb.internal}
+  def picture_error: () -> Symbol?
+
+  # 透明を表す市松を描く <<en>> Draw the checkerboard that stands for transparency
+  #
+  # 白と薄い灰色の升 (cell: px、既定 4) を (x, y, w, h) に敷く。clip:
+  # [x, y, w, h] で切れる。描画側に帯を 1 枚作って押すので、命令は
+  # 高さ / (cell x 2) 回。
+  # ```ruby
+  # gfx.draw_checker(0, 0, 64, 64)
+  # gfx.draw_checker(0, 0, 64, 64,
+  #   cell: 2)
+  # ```
+  # <<en>>
+  # White and light grey cells (cell: px, 4 unless given) over
+  # (x, y, w, h); clip: [x, y, w, h] cuts it. One strip is made on the
+  # display side and stamped, height / (cell x 2) commands.
+  # ```ruby
+  # gfx.draw_checker(0, 0, 64, 64)
+  # gfx.draw_checker(0, 0, 64, 64,
+  #   cell: 2)
+  # ```
+  %a{fmrb.internal}
+  def draw_checker: (Integer x, Integer y, Integer w, Integer h) -> FmrbGfx
 
   # 型ぬきの形を作る <<en>> Make a mask
   #
@@ -1108,6 +1350,7 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   # 絵 (PNG か BMP) をスプライトの絵に読み込む <<en>> Read a PNG or BMP into a sprite image
   #
   # 描画側のパスを渡す (先に sync_file で送る)。展開は描画側でやる。
+  # PNG の透明な点 (α が 128 未満、tRNS) は透明色 0x01 になる。
   # 包みは SpriteImage#load_bmp。
   # ```ruby
   # gfx.load_sprite_image(id,
@@ -1115,12 +1358,35 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   # ```
   # <<en>>
   # Takes a path on the graphics side (send it there with sync_file first),
-  # which decodes it. The wrapper is SpriteImage#load_bmp.
+  # which decodes it. A PNG's transparent pixels (alpha below 128, tRNS)
+  # become the transparent colour 0x01. The wrapper is SpriteImage#load_bmp.
   # ```ruby
   # gfx.load_sprite_image(id,
   #   "/cache/app/x/bird.png")
   # ```
   def load_sprite_image: (Integer image_id, String path) -> FmrbGfx
+
+  # 画素 (RGB332) をスプライトの絵に書く <<en>> Write RGB332 pixels into a sprite image
+  #
+  # pixels は w * h バイト (上の行から)。絵の (x, y) から書き、絵の外は
+  # 捨てる。1 回 65,536 点まで (超えると ERR_ARG)。描く命令と同じ列で
+  # 送るので、前に頼んだ draw_tile は書く前の絵で描かれる。
+  # 包みは SpriteImage#write_pixels。
+  # ```ruby
+  # gfx.write_sprite_image(img.id, 0, 0,
+  #   16, 16, pixels)
+  # ```
+  # <<en>>
+  # pixels is w * h bytes, top row first, written from (x, y) of the image;
+  # what falls outside it is dropped. Up to 65,536 pixels a call (more is
+  # ERR_ARG). It travels with the drawing commands, so a draw_tile asked for
+  # earlier still draws the image as it was. The wrapper is
+  # SpriteImage#write_pixels.
+  # ```ruby
+  # gfx.write_sprite_image(img.id, 0, 0,
+  #   16, 16, pixels)
+  # ```
+  def write_sprite_image: (Integer image_id, Integer x, Integer y, Integer w, Integer h, bin pixels) -> FmrbGfx
 
   # 描く先をスプライトの絵にする <<en>> Draw into a sprite image
   #

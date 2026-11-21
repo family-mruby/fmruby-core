@@ -754,12 +754,22 @@ class FmrbGfx
     self
   end
 
-  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
-    draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:, scale: 1)
+    if scale == 1
+      draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+    else
+      draw_tile_scaled_raw(image_id, src_x, src_y, w, h, dst_x, dst_y, scale, 0, 0, 0, 0)
+    end
   end
 
   def draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
     FmrbBoundary.fmrb_bnd_gfx_draw_tile_raw(@d, image_id, src_x, src_y, w, h, dst_x, dst_y)
+    self
+  end
+
+  def draw_tile_scaled_raw(image_id, src_x, src_y, w, h, dst_x, dst_y, scale, clip_x, clip_y, clip_w, clip_h)
+    FmrbBoundary.fmrb_bnd_gfx_draw_tile_scaled_raw(@d, image_id, src_x, src_y, w, h, dst_x, dst_y, scale,
+                                                   clip_x, clip_y, clip_w, clip_h)
     self
   end
 
@@ -829,6 +839,16 @@ class FmrbGfx
     buf = FmrbBoundary.fmrb_spx_b_gfx_create_image(@d, s, s.bytesize)
     return nil if buf.bytesize == 0
     { id: SpxBytes.u16(buf, 0), width: SpxBytes.u16(buf, 2), height: SpxBytes.u16(buf, 4) }
+  end
+
+  # picture_info is width, height (uint16), format (1 byte), bytes, mtime
+  # (uint32).
+  def picture_info(path)
+    s = path.to_s
+    buf = FmrbBoundary.fmrb_spx_b_gfx_picture_info(@d, s, s.bytesize)
+    return nil if buf.bytesize < 13
+    { width: SpxBytes.u16(buf, 0), height: SpxBytes.u16(buf, 2), format: buf.getbyte(4),
+      bytes: SpxBytes.u32(buf, 5), mtime: SpxBytes.u32(buf, 9) }
   end
 
   # Play a file of concatenated JPEG frames into this canvas (Modern and the
@@ -1005,6 +1025,12 @@ class FmrbGfx
   def load_sprite_image(image_id, path)
     s = path.to_s
     FmrbBoundary.fmrb_bnd_gfx_load_sprite_image(@d, image_id, s, s.bytesize)
+    self
+  end
+
+  def write_sprite_image(image_id, x, y, w, h, pixels)
+    s = pixels.to_s
+    FmrbBoundary.fmrb_bnd_gfx_write_sprite_image(@d, image_id, x, y, w, h, s, s.bytesize)
     self
   end
 
@@ -2529,8 +2555,11 @@ class FmrbApp
       { "cmd" => "publish", "topic" => topic, "data" => data })
   end
 
-  def request_file_select(mode = "open")
-    request_file_select_raw(mode)
+  def request_file_select(mode = "open", dir: "")
+    return request_file_select_raw(mode) if dir.empty?
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "file_select", "mode" => mode, "dir" => dir })
+    nil
   end
 
   def request_file_select_raw(mode)

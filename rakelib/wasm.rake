@@ -182,6 +182,11 @@ namespace :wasm do
     # that can work without a network.
     cp File.join(ROOT_DIR, "config/services_wasm.toml"),
        File.join(staging, "etc/services.toml")
+    # Which app opens which file (the file manager's double click, the shell's
+    # open). Generated into flash/etc on the other builds, so not tracked; the
+    # browser gets the same table.
+    cp File.join(ROOT_DIR, "config/associations.toml"),
+       File.join(staging, "etc/associations.toml")
     # The editor's F1 help. Generated from the long half of sig/'s doc
     # comments, so it is not tracked either -- and staging only tracked files
     # meant the browser had never had any of it, while a device did (its
@@ -272,7 +277,7 @@ namespace :wasm do
     tracked = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
                 .map { |f| "/" + f }.to_set
     generated = ["/flash/etc/system_conf.toml", "/flash/etc/system_conf.factory.toml",
-                 "/flash/etc/services.toml",
+                 "/flash/etc/services.toml", "/flash/etc/associations.toml",
                  "/flash/data/bg_426x240.png"].to_set
     packed.each do |f|
       next if tracked.include?(f) || generated.include?(f)

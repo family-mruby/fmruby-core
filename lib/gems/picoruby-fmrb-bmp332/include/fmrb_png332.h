@@ -14,7 +14,12 @@
 // pictures an image editor saves (palette 1/2/4/8 bit, grey 1/2/4/8 bit,
 // RGB/RGBA/grey+alpha 8 bit, any filter; not interlaced, not 16 bit); a
 // colour becomes RGB332 by its top bits, as LovyanGFX does on the display
-// side. Transparency (tRNS, alpha) is ignored: the sprites key a colour.
+// side. The sprites key a colour rather than carry alpha, so a transparent
+// pixel -- alpha below 128 (RGBA, grey+alpha), a palette entry tRNS gives an
+// alpha below 128, the one grey or RGB value tRNS names -- becomes
+// FMRB_PNG332_TRANSPARENT. An opaque colour whose top bits are that value's
+// ((0,0,85) and its neighbours) reads as it too, as it always has: the
+// sprite editor writes its transparent pixels that way.
 //
 // No static or global state: every buffer comes from the allocator passed in
 // (the mruby binding hands it the app's VM pool), and the stack use is a few
@@ -42,8 +47,32 @@ enum {
     FMRB_PNG332_E_NOMEM = -5,
 };
 
+// The RGB332 value a transparent pixel reads as (the system's transparent
+// colour, 0x01).
+#define FMRB_PNG332_TRANSPARENT 0x01
+
 // The largest width and height read or written (FMRB_BMP332_MAX_DIM's value).
 #define FMRB_PNG332_MAX_DIM 2048
+
+// A pixel whose alpha is below this is transparent (also a palette entry
+// whose tRNS alpha is). Half-transparent edges go one way or the other,
+// since a key colour has no in-between.
+#define FMRB_PNG332_ALPHA_MIN 128
+
+// The rule every PNG reader of the system keeps: this file's decoder (the
+// app side's BMP332.load) and the two display sides' sprite loaders
+// (graphics-audio, and display_local through fmrb_png332_pngle.h). A colour
+// becomes RGB332 by its top 3/3/2 bits, as LovyanGFX does; a pixel below
+// FMRB_PNG332_ALPHA_MIN becomes FMRB_PNG332_TRANSPARENT.
+static inline uint8_t fmrb_png332_rgb(uint8_t r, uint8_t g, uint8_t b)
+{
+    return (uint8_t)((r & 0xE0) | ((g >> 3) & 0x1C) | (b >> 6));
+}
+
+static inline uint8_t fmrb_png332_from_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
+{
+    return a < FMRB_PNG332_ALPHA_MIN ? (uint8_t)FMRB_PNG332_TRANSPARENT : fmrb_png332_rgb(r, g, b);
+}
 
 int fmrb_png332_is_png(const uint8_t *buf, size_t len);
 

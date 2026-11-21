@@ -215,6 +215,27 @@ void fmrb_gfx_cmd_draw_tile(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
                             uint16_t w, uint16_t h, int16_t dst_x,
                             int16_t dst_y);
 
+/**
+ * @brief Stamp a sub-rect of a sprite image at a whole-number scale.
+ * @param scale 1..32 draws each source pixel scale x scale; -2..-32 draws
+ *              every |scale|-th pixel (1/|scale| of the size).
+ * @param clip_w,clip_h 0 for no clip rect of its own (the canvas still clips).
+ */
+void fmrb_gfx_cmd_draw_tile_scaled(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                                   uint16_t image_id, int16_t src_x, int16_t src_y,
+                                   uint16_t w, uint16_t h, int16_t dst_x,
+                                   int16_t dst_y, int8_t scale, int16_t clip_x,
+                                   int16_t clip_y, uint16_t clip_w, uint16_t clip_h);
+
+/**
+ * @brief Write RGB332 pixels into a rect of a sprite image.
+ * @param pixels w * h bytes, top row first.
+ * @return false (nothing built) when w * h exceeds FMRB_GFX_SPRITE_DATA_CHUNK.
+ */
+bool fmrb_gfx_cmd_sprite_image_data(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                                    uint16_t image_id, int16_t x, int16_t y,
+                                    uint16_t w, uint16_t h, const uint8_t *pixels);
+
 /** @brief Free an image. */
 void fmrb_gfx_cmd_delete_image(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
                                uint16_t image_id);

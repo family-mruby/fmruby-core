@@ -143,6 +143,9 @@ typedef enum {
     // Image/bitmap drawing
     FMRB_LINK_GFX_DRAW_IMAGE = 0x40,
     FMRB_LINK_GFX_DRAW_BITMAP = 0x41,
+    // RGB332 pixels written into a rect of a sprite image (async). The core
+    // splits a large rect so each message fits one entry of the host queue.
+    FMRB_LINK_GFX_SPRITE_IMAGE_DATA = 0x42,
 
     // Canvas management (LovyanGFX sprite-based)
     FMRB_LINK_GFX_CREATE_CANVAS = 0x50,
@@ -197,6 +200,9 @@ typedef enum {
     // (when use_transparent is set) are skipped. Designed for stateless BG
     // tile rendering.
     FMRB_LINK_GFX_DRAW_TILE = 0x8D,           // async
+    // DRAW_TILE drawn larger (each source pixel scale x scale) or smaller
+    // (every scale-th pixel), clipped to a rect of the canvas.
+    FMRB_LINK_GFX_DRAW_TILE_SCALED = 0x8E,    // async
     FMRB_LINK_GFX_DELETE_ALL_SPRITES = 0x8F,
 
     // GfxBlock VM (draw-batch programs)
@@ -610,6 +616,10 @@ typedef struct __attribute__((packed)) {
     uint16_t image_id;        // 0 = reset to canvas target
 } fmrb_link_graphics_set_sprite_image_target_t;
 
+// LOAD_SPRITE_IMAGE_BMP: an 8-bit RGB332 BMP or a PNG. A PNG's colours become
+// RGB332 by their top 3/3/2 bits and its transparent pixels (alpha below 128,
+// or what tRNS makes transparent) become 0x01, by the rule in fmrb_png332.h
+// (picoruby-fmrb-bmp332), which the app side's BMP332.load uses too.
 typedef struct __attribute__((packed)) {
     uint16_t image_id;        // Target sprite image (must already be created)
     uint16_t path_len;
@@ -678,6 +688,41 @@ typedef struct __attribute__((packed)) {
     uint16_t w, h;
     int16_t  dst_x, dst_y;
 } fmrb_link_graphics_draw_tile_t;
+
+// DRAW_TILE_SCALED: DRAW_TILE at a whole-number scale. scale 1..
+// FMRB_LINK_TILE_SCALE_MAX draws each source pixel as a scale x scale block;
+// scale -2..-FMRB_LINK_TILE_SCALE_MAX draws 1/|scale| of the size, taking the
+// top-left pixel of each |scale| x |scale| block (the destination is
+// ceil(w / |scale|) x ceil(h / |scale|)). 0 and -1 are 1. Pixels of the
+// image's transparent colour (when it has one) are skipped, as in DRAW_TILE.
+// The destination is clipped to (clip_x, clip_y, clip_w, clip_h) on the
+// canvas as well as to the canvas; clip_w or clip_h of 0 means no clip of its
+// own.
+#define FMRB_LINK_TILE_SCALE_MAX 32
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t image_id;   // SpriteImage ID (source)
+    int16_t  src_x, src_y;
+    uint16_t w, h;       // source rect, in the image's pixels
+    int16_t  dst_x, dst_y;
+    int8_t   scale;
+    uint8_t  flags;      // reserved, 0
+    int16_t  clip_x, clip_y;
+    uint16_t clip_w, clip_h;
+} fmrb_link_graphics_draw_tile_scaled_t;
+
+// SPRITE_IMAGE_DATA: RGB332 pixels written into the rect (x, y, w, h) of a
+// sprite image, w * h bytes after the header, top row first. What falls
+// outside the image is dropped. On the RGB565 display side each pixel is
+// converted as LOAD_SPRITE_IMAGE_BMP converts a BMP's, so transparent-colour
+// comparisons see the same values.
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;
+    int16_t  x, y;
+    uint16_t w, h;
+    // Followed by w * h bytes of RGB332 pixels.
+} fmrb_link_graphics_sprite_image_data_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;       // Parent window

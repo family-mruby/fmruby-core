@@ -705,6 +705,45 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_DRAW_TILE_SCALED: {
+            fmrb_link_graphics_draw_tile_scaled_t c = {
+                .canvas_id = cmd->canvas_id,
+                .image_id  = cmd->params.draw_tile_scaled.image_id,
+                .src_x     = cmd->params.draw_tile_scaled.src_x,
+                .src_y     = cmd->params.draw_tile_scaled.src_y,
+                .w         = cmd->params.draw_tile_scaled.w,
+                .h         = cmd->params.draw_tile_scaled.h,
+                .dst_x     = cmd->params.draw_tile_scaled.dst_x,
+                .dst_y     = cmd->params.draw_tile_scaled.dst_y,
+                .scale     = cmd->params.draw_tile_scaled.scale,
+                .flags     = 0,
+                .clip_x    = cmd->params.draw_tile_scaled.clip_x,
+                .clip_y    = cmd->params.draw_tile_scaled.clip_y,
+                .clip_w    = cmd->params.draw_tile_scaled.clip_w,
+                .clip_h    = cmd->params.draw_tile_scaled.clip_h,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_TILE_SCALED;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_SPRITE_IMAGE_DATA: {
+            size_t n = (size_t)cmd->params.sprite_image_data.w * cmd->params.sprite_image_data.h;
+            if (n > FMRB_GFX_SPRITE_DATA_CHUNK) {
+                FMRB_LOGE(TAG, "SPRITE_IMAGE_DATA: %zu pixels exceed a chunk", n);
+                return -1;
+            }
+            fmrb_link_graphics_sprite_image_data_t hdr = {
+                .image_id = cmd->params.sprite_image_data.image_id,
+                .x = cmd->params.sprite_image_data.x,
+                .y = cmd->params.sprite_image_data.y,
+                .w = cmd->params.sprite_image_data.w,
+                .h = cmd->params.sprite_image_data.h,
+            };
+            memcpy(payload_buf, &hdr, sizeof(hdr));
+            memcpy(payload_buf + sizeof(hdr), cmd->params.sprite_image_data.pixels, n);
+            *sub_cmd_out = FMRB_LINK_GFX_SPRITE_IMAGE_DATA;
+            return (int)(sizeof(hdr) + n);
+        }
         case GFX_CMD_CREATE_SPRITE_IMAGE: {
             fmrb_link_graphics_create_sprite_image_t c = {
                 .canvas_id = cmd->canvas_id,

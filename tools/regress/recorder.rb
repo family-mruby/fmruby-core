@@ -195,12 +195,26 @@ class FmrbGfx
     { id: id, width: w, height: h }
   end
 
+  # The head of a picture file (FmrbGfx's picture store asks before it
+  # reads one onto the display side).
+  def picture_info(path)
+    w, h = Regress::Env.image_size(path)
+    return nil unless w
+    host = Regress::FakeFS.read_path(path)
+    { width: w, height: h, format: 1, bytes: host ? File.__regress_size(host) : 0, mtime: 0 }
+  end
+
   def draw_image_raw(id, x, y, sx, sy) = (__rec(:draw_image, id, x + __dx, y + __dy, sx, sy); self)
   def delete_image(id) = (__rec(:delete_image, id); self)
   def create_mask(w, h, _data) = (id = __next_id; __rec(:create_mask, id, w, h); id)
   def delete_mask(id) = (__rec(:delete_mask, id); self)
   def draw_image_masked_raw(img, mask, x, y) = (__rec(:draw_image_masked, img, mask, x + __dx, y + __dy); self)
   def draw_tile_raw(id, sx, sy, w, h, dx, dy) = (__rec(:draw_tile, id, sx, sy, w, h, dx + __dx, dy + __dy); self)
+  def draw_tile_scaled_raw(id, sx, sy, w, h, dx, dy, k, cx, cy, cw, ch)
+    clip = cw > 0 && ch > 0 ? [cx + __dx, cy + __dy, cw, ch] : [0, 0, 0, 0]
+    __rec(:draw_tile_scaled, id, sx, sy, w, h, dx + __dx, dy + __dy, k, *clip)
+    self
+  end
   def video_open_raw(path, x, y, fps, lp) = (__rec(:video_open, path, x + __dx, y + __dy, fps, lp); Regress::Env.video_info)
   # One player for the whole app, so no FmrbGfx (the protocol's numbers in
   # the record, as before the boundary).
@@ -225,6 +239,8 @@ class FmrbGfx
   def create_sprite_image(w, h, tc, use) = (id = __next_id; __rec(:sprite_image, id, w, h, tc, use ? 1 : 0); id)
   def delete_sprite_image(id) = (__rec(:delete_sprite_image, id); self)
   def load_sprite_image(id, path) = (__rec(:load_bmp, id, path); self)
+  # The pixels as a short digest, so a record stays one line.
+  def write_sprite_image(id, x, y, w, h, px) = (__rec(:sprite_pixels, id, x, y, w, h, px.to_s.bytesize, px.to_s.sum); self)
   def set_sprite_image_target(id) = (@__image = id != 0; __rec(:sprite_target, id); self)
   def create_sprite_instance(imgs, x, y, z) = (id = __next_id; __rec(:sprite, id, imgs, x + @__ox, y + @__oy, z); id)
   def delete_sprite_instance(id) = (__rec(:delete_sprite, id); self)

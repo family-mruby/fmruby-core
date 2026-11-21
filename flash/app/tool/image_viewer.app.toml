@@ -1,0 +1,13 @@
+app_handle_name = "image_viewer"
+app_screen_name = "Image Viewer"
+app_screen_name_ja = "画像ビューワー"
+default_window_mode = "window"
+default_window_width = 316
+default_window_height = 222
+default_window_pos_x = 2
+default_window_pos_y = 14
+resizable = 1
+min_window_width = 240
+min_window_height = 120
+launcher_visible = true
+icon = "app/tool/image_viewer.icon"

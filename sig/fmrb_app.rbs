@@ -1095,18 +1095,23 @@ class FmrbApp
   # ファイルを選ぶ Window を出してもらう <<en>> Ask for a file chooser
   #
   # ファイル選択の Window を開くよう頼む。選ばれた道は `on_control` に届く。
-  # "open" か "save" を渡す。
+  # "open" か "save" を渡す。dir: で最初に開くフォルダを渡せる (無ければ
+  # 有る所まで親へ戻る。省くと今までどおり)。
   # ```ruby
   # request_file_select("open")
+  # request_file_select("save", dir: "/home/stamps")
   # ```
   # <<en>>
   # Asks for the file dialog; the chosen path arrives at `on_control`.
-  # Pass "open" or "save".
+  # Pass "open" or "save". dir: names the folder it opens in (one that does
+  # not exist gives way to its nearest parent that does; left out, the
+  # dialog opens where it always has).
   # ```ruby
   # request_file_select("open")
+  # request_file_select("save", dir: "/home/stamps")
   # ```
   %a{fmrb.internal}
-  def request_file_select: (String mode) -> void
+  def request_file_select: (String mode, ?dir: String) -> void
 
   # request_file_select の省略なしの形 <<en>> request_file_select with nothing left out
   #

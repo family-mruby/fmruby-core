@@ -102,6 +102,9 @@ parts = [
   const_rb,                                    # FmrbConst
   File.join(SPINEL_DIR, "msgpack_pure.rb"),    # MessagePack
   File.join(SPINEL_DIR, "fmrb_app_base_spinel.rb"), # Log/Machine/SpxBytes/FmrbGfx/GfxBlock/FmrbApp
+  # FmrbGfx's picture store, the same file as the mruby gem's (only what an
+  # app calls is generated)
+  File.join(MRBLIB_DIR, "fmrb-picture.rb"),
   *spec[:libs],
   *mixins,
   spec[:main],

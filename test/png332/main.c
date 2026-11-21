@@ -1,18 +1,28 @@
 // Host test of the sprite editor's PNG reader and writer
-// (lib/gems/picoruby-fmrb-bmp332/ports/esp32/png332.c).
+// (lib/gems/picoruby-fmrb-bmp332/ports/esp32/png332.c) and of BMP332.info /
+// BMP332.to_png's C (picture332.c).
 //
 // usage: png332_test <out_dir> <png> <ref.raw> [<png> <ref.raw> ...]
 //
 // Each <png> is decoded and compared with <ref.raw> (w*h RGB332 bytes from
 // tools/rgb332_png.rb, test/png332/run.rb writes them), then encoded again,
 // written to <out_dir>/<n>.png for run.rb to read back with the Ruby reader,
-// and decoded again to check the round trip. Synthetic cases cover the
-// 8-bit depth, the stored-block fallback and the malformed inputs.
+// and decoded again to check the round trip. A <ref.raw> of "-" is a BMP
+// with no reference: only the checks of picture332.c run on it. Synthetic
+// cases cover the 8-bit depth, the stored-block fallback and the malformed
+// inputs.
+//
+// picture332.c on every picture: the head gives the decoder's size and kind,
+// and to_png gives exactly the bytes of encode over the decoder's pixels
+// (BMP332.to_png must equal BMP332.encode_png(BMP332.parse(...)), so a
+// chat stamp keeps its sha256); its refusals come with the sizes.
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "fmrb_png332.h"
+#include "fmrb_picture332.h"
+#include "fmrb_bmp332.h"
 
 static size_t g_live;   // allocations not yet freed
 
@@ -74,6 +84,108 @@ static size_t round_trip(const char *name, const uint8_t *px, int w, int h, cons
     return png_len;
 }
 
+
+// picture332.c over one picture file's bytes (a PNG or an 8-bit BMP).
+static int g_pictures;
+
+static void check_picture(const char *name, const uint8_t *buf, size_t len)
+{
+    // What the decoders give (BMP332.parse).
+    uint16_t w = 0, h = 0;
+    uint8_t *px = NULL, *copy = NULL;
+    const uint8_t *pixels = NULL;
+    int is_png = fmrb_png332_is_png(buf, len);
+    if (is_png) {
+        if (fmrb_png332_decode(buf, len, &A, &w, &h, &px) != FMRB_PNG332_OK) return;
+        pixels = px;
+    } else {
+        copy = t_alloc(NULL, len);
+        memcpy(copy, buf, len);
+        fmrb_bmp332_t bmp;
+        if (fmrb_bmp332_parse(copy, len, &bmp) != 0) {
+            // A BMP that BMP332 does not read (1 or 4 bits): neither do these.
+            fmrb_picture332_head_t hd;
+            uint8_t *o = NULL;
+            size_t ol = 0;
+            uint16_t ww, hh;
+            CHECK(fmrb_picture332_head(buf, len, &hd) != 0, "%s: head of an unreadable BMP", name);
+            CHECK(fmrb_picture332_to_png(buf, len, 2048, 2048, 0, &A, &o, &ol, &ww, &hh) ==
+                      FMRB_PICTURE332_E_UNREADABLE, "%s: an unreadable BMP rewritten", name);
+            t_free(NULL, copy);
+            g_pictures++;
+            return;
+        }
+        w = bmp.width;
+        h = bmp.height;
+        pixels = bmp.pixels;
+    }
+    uint8_t *want = NULL;
+    size_t want_len = 0;
+    int r = fmrb_png332_encode(pixels, w, h, &A, &want, &want_len);
+    CHECK(r == FMRB_PNG332_OK, "%s: encode", name);
+    if (px) t_free(NULL, px);
+    if (copy) t_free(NULL, copy);
+    if (r != FMRB_PNG332_OK) return;
+
+    fmrb_picture332_head_t head;
+    CHECK(fmrb_picture332_head(buf, len, &head) == 0, "%s: head not read", name);
+    CHECK(head.width == w && head.height == h, "%s: head says %dx%d, decoded %dx%d", name,
+          head.width, head.height, w, h);
+    CHECK(head.format == (is_png ? FMRB_PICTURE332_PNG : FMRB_PICTURE332_BMP), "%s: head format %d", name,
+          head.format);
+
+    // to_png: the same bytes as encode over the decoded pixels.
+    uint8_t *png = NULL;
+    size_t png_len = 0;
+    uint16_t w2 = 0, h2 = 0;
+    r = fmrb_picture332_to_png(buf, len, 2048, 2048, 0, &A, &png, &png_len, &w2, &h2);
+    CHECK(r == FMRB_PICTURE332_OK, "%s: to_png %d", name, r);
+    if (r == FMRB_PICTURE332_OK) {
+        CHECK(w2 == w && h2 == h, "%s: to_png size %dx%d", name, w2, h2);
+        CHECK(png_len == want_len && memcmp(png, want, want_len) == 0,
+              "%s: to_png differs from encode_png(parse) (%zu B against %zu B)", name, png_len, want_len);
+        t_free(NULL, png);
+    }
+    // Exactly the limits pass; one less is refused, with the sizes.
+    r = fmrb_picture332_to_png(buf, len, w, h, want_len, &A, &png, &png_len, &w2, &h2);
+    CHECK(r == FMRB_PICTURE332_OK, "%s: to_png at its own limits %d", name, r);
+    if (r == FMRB_PICTURE332_OK) t_free(NULL, png);
+    r = fmrb_picture332_to_png(buf, len, w, (uint16_t)(h - 1), 0, &A, &png, &png_len, &w2, &h2);
+    CHECK(r == FMRB_PICTURE332_E_TOO_BIG && png == NULL && w2 == w && h2 == h, "%s: too_big %d %dx%d", name,
+          r, w2, h2);
+    r = fmrb_picture332_to_png(buf, len, 2048, 2048, want_len - 1, &A, &png, &png_len, &w2, &h2);
+    CHECK(r == FMRB_PICTURE332_E_TOO_HEAVY && png == NULL && png_len == want_len, "%s: too_heavy %d %zu", name,
+          r, png_len);
+    t_free(NULL, want);
+    g_pictures++;
+}
+
+// An 8-bit BMP of w x h (bottom-up, or top-down with a negative height).
+static uint8_t *make_bmp(int w, int h, int top_down, const uint8_t *px, size_t *len)
+{
+    int row = (w + 3) & ~3;
+    size_t off = 14 + 40 + 1024, n = off + (size_t)row * h;
+    uint8_t *b = calloc(1, n);
+    b[0] = 'B';
+    b[1] = 'M';
+    b[2] = (uint8_t)n;
+    b[3] = (uint8_t)(n >> 8);
+    b[10] = (uint8_t)off;
+    b[11] = (uint8_t)(off >> 8);
+    b[14] = 40;
+    b[18] = (uint8_t)w;
+    int32_t hh = top_down ? -h : h;
+    memcpy(b + 22, &hh, 4);
+    b[26] = 1;
+    b[28] = 8;
+    for (int y = 0; y < h; y++) {
+        int src = top_down ? y : h - 1 - y;
+        memcpy(b + off + (size_t)y * row, px + (size_t)src * w, (size_t)w);
+    }
+    *len = n;
+    return b;
+}
+
 static void synthetic(const char *out_dir)
 {
     char path[512];
@@ -114,6 +226,28 @@ static void synthetic(const char *out_dir)
     }
     free(px);
 
+    // BMPs: an odd width bottom-up and top-down, and a head that is not one.
+    uint8_t bpx[5 * 3];
+    for (int i = 0; i < 15; i++) bpx[i] = (uint8_t)(i * 17);
+    for (int td = 0; td < 2; td++) {
+        size_t blen;
+        uint8_t *b = make_bmp(5, 3, td, bpx, &blen);
+        check_picture(td ? "bmp top-down" : "bmp bottom-up", b, blen);
+        fmrb_picture332_head_t hd;
+        b[28] = 24;
+        CHECK(fmrb_picture332_head(b, blen, &hd) != 0, "24-bit BMP head accepted");
+        free(b);
+    }
+    {
+        fmrb_picture332_head_t hd;
+        uint8_t *o = NULL;
+        size_t ol = 0;
+        uint16_t ww, hh;
+        CHECK(fmrb_picture332_head((const uint8_t *)"GIF89a", 6, &hd) != 0, "GIF head accepted");
+        CHECK(fmrb_picture332_to_png((const uint8_t *)"GIF89a", 6, 2048, 2048, 0, &A, &o, &ol, &ww, &hh) ==
+                  FMRB_PICTURE332_E_UNREADABLE, "GIF rewritten");
+    }
+
     // Malformed input never reads past the buffer or leaks.
     static const uint8_t junk[16] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 0, 0, 13, 'I', 'H', 'D', 'R' };
     uint16_t w2, h2;
@@ -134,6 +268,12 @@ int main(int argc, char **argv)
     for (int i = 2; i < argc; i += 2) {
         size_t len = 0, ref_len = 0;
         uint8_t *buf = read_file(argv[i], &len);
+        if (strcmp(argv[i + 1], "-") == 0) {
+            CHECK(buf != NULL, "%s: cannot read", argv[i]);
+            if (buf) check_picture(argv[i], buf, len);
+            free(buf);
+            continue;
+        }
         uint8_t *ref = read_file(argv[i + 1], &ref_len);
         CHECK(buf && ref, "%s: cannot read", argv[i]);
         if (!buf || !ref) continue;
@@ -147,6 +287,7 @@ int main(int argc, char **argv)
             char path[512];
             snprintf(path, sizeof(path), "%s/%d.png", out_dir, files);
             size_t n = round_trip(argv[i], px, w, h, path);
+            check_picture(argv[i], buf, len);
             in_total += len;
             out_total += n;
             t_free(NULL, px);
@@ -159,6 +300,8 @@ int main(int argc, char **argv)
     CHECK(g_live == 0, "%zu allocations leaked", g_live);
     printf("png332: %d pictures read as tools/rgb332_png.rb reads them; written again %zu B (were %zu B)\n",
            files, out_total, in_total);
+    printf("png332: %d pictures: BMP332.info's head and BMP332.to_png's bytes as parse + encode_png\n",
+           g_pictures);
     if (g_fail) {
         printf("png332: %d failures\n", g_fail);
         return 1;

@@ -48,8 +48,8 @@ class AppStoreApp < FmrbApp
 
   # One picture, of whatever is selected, in a fixed place. Not one per row:
   # a 26 px row halves how many apps fit, every row costs a PNG decode on
-  # redraw (about 75 ms on a board), and the display side holds only eight
-  # images at once.
+  # redraw (about 75 ms on a board), and the display side's pictures are
+  # few for the whole machine.
   #
   # Retro has none at all. Its display is on the far side of a UART and every
   # picture has to cross it before it can be drawn, which is not worth it to
@@ -73,9 +73,6 @@ class AppStoreApp < FmrbApp
     @note = "fetching the list..."
     @job = nil                 # an install in progress
     @thumbs = {}               # app id -> local path, or :none once given up
-    @synced = {}               # paths already handed to the display side
-    @images = {}               # app id -> a decoded image on the display side
-    @image_order = []          # oldest first, for evicting
     @thumb_req = nil           # [id, request] -- one at a time
     @req = FmrbNet.request(base + "registry.tsv")
     @ui = FmrbUI.new(self)
@@ -241,9 +238,10 @@ class AppStoreApp < FmrbApp
   end
 
   # The picture of whatever is selected, drawn in the corner of the detail
-  # area. One at a time: the display side holds eight images at once
-  # (DISPLAY_LOCAL_MAX_IMAGES), and a decode is about 75 ms on a board, so
-  # create-draw-delete for one is affordable where one per row was not.
+  # area. One at a time, in a fixed place. FmrbGfx's picture store keeps the
+  # last few read on the display side (a read is about 75 ms on a board), so
+  # moving back to an app already looked at costs a draw and nothing else,
+  # and they go with the app.
   def draw_thumb(a)
     return unless pictures?
     x = @user_area_width - THUMB_W - 2
@@ -254,56 +252,10 @@ class AppStoreApp < FmrbApp
       @gfx.draw_rect(x, y, THUMB_W, THUMB_H, theme_border)
       return
     end
-    begin
-      img_id = image_for(a["id"].to_s, path)
-      if img_id
-        @gfx.draw_image(img_id, x: x, y: y)
-      else
-        @thumbs[a["id"].to_s] = :none
-      end
-    rescue => e
-      Log.warn("appstore: thumb #{a['id']}: #{e.message}")
+    unless @gfx.draw_picture(path, x, y)
+      Log.warn("appstore: thumb #{a['id']}: #{@gfx.picture_error}")
       @thumbs[a["id"].to_s] = :none
     end
-  end
-
-  # The display side keeps a decoded picture until it is told otherwise, and
-  # decoding one costs about 75 ms on a board. Keeping the last few means
-  # moving back to an app already looked at costs a draw and nothing else.
-  #
-  # Only a few: there are eight image slots for the whole machine
-  # (DISPLAY_LOCAL_MAX_IMAGES), and the other apps need some.
-  IMAGE_CACHE_MAX = 4
-
-  def image_for(id, path)
-    cached = @images[id]
-    return cached if cached
-
-    # sync_file does not send a file that already matches, but the comparison
-    # is itself a round trip to the display side. These files are written once
-    # and never change, so remember what has been sent.
-    unless @synced[path]
-      @gfx.sync_file(path)
-      @synced[path] = true
-    end
-    img = @gfx.create_image(path)
-    return nil unless img
-    # A slot that could not be had comes back as id 0, which is truthy in
-    # Ruby and would be cached and drawn forever after.
-    id_new = img[:id]
-    return nil if id_new.nil? || id_new == 0
-
-    while @image_order.size >= IMAGE_CACHE_MAX
-      old_id = @image_order.shift
-      old_img = @images[old_id]
-      if old_img
-        @gfx.delete_image(old_img)
-        @images[old_id] = nil
-      end
-    end
-    @images[id] = id_new
-    @image_order << id
-    id_new
   end
 
   # Ask for the selected app's picture, if it has one and we have not got it.
@@ -703,41 +655,6 @@ class AppStoreApp < FmrbApp
     File.delete(CACHE_PATH) if File.exist?(CACHE_PATH)
   rescue => e
     Log.warn("appstore: could not drop the launcher cache: #{e.message}")
-  end
-
-  # Give the display side its image slots back before this app goes.
-  #
-  # It has eight for the whole machine and frees one only when it is told to:
-  # deleting a canvas does not release the images drawn on it
-  # (display_local_task.cpp calls image_store_destroy from DELETE_IMAGE and
-  # nowhere else). An app that exits holding some leaks them until the board
-  # is rebooted -- after a few launches every create_image fails, draw_image
-  # is called with an id that is not there ("DRAW_IMAGE: image 0 not found"),
-  # and the desktop's own sprite rebuild does not survive what is left.
-  # That is what stopped the desktop after a launcher rescan on 2026-09-02.
-  #
-  # This has to happen in stop rather than on_destroy: destroy tears the gfx
-  # down and nils it before on_destroy runs, so by then there is nothing to
-  # ask (measured -- "undefined method 'delete_image' for NilClass").
-  def stop
-    release_images
-    super
-  end
-
-  def release_images
-    return unless @images
-    @image_order.each do |id|
-      img = @images[id]
-      next unless img
-      begin
-        @gfx.delete_image(img) if @gfx
-      rescue => e
-        Log.warn("appstore: could not release image #{id}: #{e.message}")
-      end
-    end
-    @images = {}
-    @image_order = []
-    nil
   end
 
   # ---- events -------------------------------------------------------------

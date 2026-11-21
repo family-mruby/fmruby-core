@@ -32,6 +32,10 @@ py  = "run"
 # Documents go to the app that knows them.
 md  = "/app/tool/picorabbit.app.rb"
 nsf = "/app/tool/nsf_player.app.rb"
+# Pictures open in the viewer; the File Manager's right click (and S) opens
+# them in the sprite editor instead.
+png = "/app/tool/image_viewer.app.rb"
+bmp = "/app/tool/image_viewer.app.rb"
 
 # Text is the editor's, and so is everything unlisted.
 txt = "edit"
