@@ -36,7 +36,8 @@ BASELINE = 14   # last row that may carry a foot; row 15 is always empty
 
 TRANSPARENT = 0x00
 
-# flash/app/tool/sprite_editor.app.rb SpriteEditorApp::PALETTE.
+# The 16 colours the sprite editor offered when these sprites were drawn (it
+# has all 256 RGB332 colours since C3a): the inks stay within them.
 EDITOR_PALETTE = [
   0x00, 0xE0, 0x1C, 0x03, 0xFC, 0x1F, 0xE3, 0xFF,
   0x6D, 0xF0, 0x88, 0x14, 0x5F, 0xF4, 0x02, 0x48,
