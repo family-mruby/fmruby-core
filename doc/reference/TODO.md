@@ -271,3 +271,8 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   書く形にし、設定が無ければこの機能は出ない (作者のサーバを既定に焼き込まない)。出す所はネットワークのダイアログに 1 行
   (開いたときに聞く)。対象はネットワークのある端末全部 (Modern・WiFi のある Retro・ブラウザ版・ネイティブ版。
   ブラウザ版のために、口は別のページからの問い合わせを許す応答ヘッダを付ける)。未着手 (チャットの段の合間に)。
+
+- 描画側の PNG の読み込みでも、透明 (α・tRNS) を透明色 `0x01` にする (2026-11-21 ユーザ決定。doc/asterism_chat/report/c3b.md の Q1)。
+  今は VM の中の読み手 (`png332.c`、`BMP332.parse`) だけが透明を `0x01` にし、絵を直接読む側 (`SpriteImage#load_bmp`・
+  `create_image`: sim・Retro は graphics-audio、P4・ブラウザ版・ネイティブ版は `display_local_task.cpp`) は透明を捨てて黒く出す。
+  **読み方を共通化して、アプリごとに避ける実装が増えないようにする** (ユーザ)。graphics-audio の直しを含む。未着手。
