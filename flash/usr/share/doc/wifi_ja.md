@@ -77,3 +77,31 @@ hidden = true                # 名前で試す (探しても見えないため)
   `wifi_auto_start` で決まります。NARYA (S3) は Bluetooth と Wi-Fi を
   同時には使えないので、Wi-Fi を使うときは `ble_auto_start = false` に
   してください。
+
+## 4. グローバル IP を見る
+
+Network の画面に、この端末がインターネットからどの IP アドレスに見えて
+いるか (グローバル IP) を出せます。端末は自分のグローバル IP を知らない
+ので、相手の IP を 1 行で返すだけの URL を自分で用意し、その URL を
+/etc/system_conf.toml に書きます。書かなければ、この行は出ません
+(既定では何も聞きに行きません)。
+
+```toml
+# 最初の [ で始まる行 ([theme] など) より上に書く
+global_ip_url = "https://router.example.org/fmrb/ip"
+```
+
+- Network の画面を開いたときに 1 回だけ聞きます (もう一度聞くには開き直す)。
+  聞いている間は「調べています...」、答えが IP アドレスの 1 行でない
+  ときやつながらないときは「調べられませんでした」と出ます。
+  つながっていない間は聞きません。
+- 聞く先は、GET に `text/plain` で相手の IP を 1 行 (IPv4 か IPv6) で
+  返すものにします。ブラウザ版から聞くには、応答に
+  `Access-Control-Allow-Origin: *` が要ります (https のページからは
+  https の URL だけ)。
+- 置き場: ESP32 の端末は /etc/system_conf.toml (ファームだけを焼き直す
+  間は残ります。storage ごと焼くと消えます)。ネイティブ版も
+  /etc/system_conf.toml (更新しても残ります)。ブラウザ版は、端末の中で
+  /etc/system_conf.toml の `global_ip_url = ""` の行を書き換えると、
+  再読み込みしても残ります (URL は 93 文字まで)。
+- 答えは画面に出すだけで、記録には残しません。

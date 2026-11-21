@@ -26,6 +26,21 @@
 # certificate, doc/asterism_file_transfer/report/t8.md): the page writes the
 # node ID to DOOR_FILE while that holds (web/main.js), the file the transfer
 # app reads too. Re-read with the rest every ~1s while the dialog is open.
+#
+# Global IP (doc/global_ip): where system_conf names a lookup URL
+# (`global_ip_url`, a top-level string), the dialog grows by two lines and
+# asks that URL once per opening which address the request came from. The
+# answer must look like one IPv4 or IPv6 address (net_gip_tick); anything
+# else (an HTML page, several lines, a long body, a non-2xx status) is shown
+# as a failure.
+# Without the key the lines are not drawn at all -- no lookup service is
+# built in. The request goes through FmrbNet.request and is collected from
+# the ~1s tick: in the browser it runs on the page while the desktop keeps
+# going; on a board, the simulation and the native program it is made inside
+# `request` and holds the desktop's own task until the server answers, so the
+# "asking" text is drawn one tick before it starts. Nothing is asked while
+# not connected. The answer lives only in the dialog's own variables and is
+# not logged.
 
 module NetworkDialogMixin
   NET_W       = 240
@@ -48,15 +63,28 @@ module NetworkDialogMixin
     @net_open = true
     @net_info = nil
     @net_door = ""
+    net_gip_reset
+    url = read_conf_string("global_ip_url")
+    url = url.strip if url
+    if url && !url.empty?
+      @net_gip_url = url
+      # Two more lines (label, then the address on its own so a full IPv6
+      # address, 39 chars, fits), and a little wider.
+      @net_gip = "-"
+      @net_w = NET_W + 16
+      @net_h = NET_H + 28
+    end
     show_network_widgets(true)
-    @net_x = (@window_width - NET_W) / 2
-    @net_y = (@window_height - NET_H) / 2
+    @net_x = (@window_width - @net_w) / 2
+    @net_y = (@window_height - @net_h) / 2
     menu_h = self.class::MENU_BAR_HEIGHT
     @net_y = menu_h + 2 if @net_y < menu_h + 2
     net_refresh
+    # Puts "asking" up now when connected; the lookup starts on the next tick.
+    net_gip_tick if @net_gip_url
     close_launcher
     close_dropdown
-    notify_overlay_state(true, @net_x, @net_y, NET_W, NET_H)
+    notify_overlay_state(true, @net_x, @net_y, @net_w, @net_h)
     update_composite_regions
     draw_foreground
   end
@@ -64,6 +92,7 @@ module NetworkDialogMixin
   def close_network_dialog
     return unless @net_open
     @net_open = false
+    net_gip_reset
     show_network_widgets(false)
     @ui.flush
     notify_overlay_after_dialog
@@ -73,8 +102,8 @@ module NetworkDialogMixin
 
   def hit_network_dialog?(x, y)
     @net_open &&
-      x >= @net_x && x < @net_x + NET_W &&
-      y >= @net_y && y < @net_y + NET_H
+      x >= @net_x && x < @net_x + @net_w &&
+      y >= @net_y && y < @net_y + @net_h
   end
 
   def net_refresh
@@ -83,6 +112,82 @@ module NetworkDialogMixin
   rescue => e
     Log.error("Network: wifi_info failed: #{e.message}")
     @net_info = nil
+  end
+
+  # ---- Global IP ----
+
+  # Forget the lookup: drop any request in flight and the answer with it, and
+  # give the dialog its plain size back.
+  def net_gip_reset
+    @net_gip_req.cancel if @net_gip_req
+    @net_gip_req = nil
+    @net_gip_url = nil
+    @net_gip = nil
+    @net_w = NET_W
+    @net_h = NET_H
+    nil
+  end
+
+  # From the ~1s tick. Collect an answer, or -- while connected (the browser
+  # has no state to show, so it always tries) -- put up "asking" for one
+  # tick and then start the one lookup.
+  #
+  # The answer is taken only as a single line of an address's characters
+  # (hex digits, ':' and '.', at most 45 bytes: IPv6 text in its longest,
+  # IPv4-mapped form) with either three dots or at least two colons. It is a
+  # shape check, not a full parse, and it is enough to turn away an HTML
+  # page, an error text or several lines.
+  def net_gip_tick
+    req = @net_gip_req
+    if req
+      return unless req.done?
+      @net_gip_req = nil
+      body = req.ok? ? req.body.to_s.strip : ""
+      n = body.bytesize
+      ok = n >= 2 && n <= 45
+      dots = 0
+      colons = 0
+      i = 0
+      while ok && i < n
+        b = body.getbyte(i)
+        if b == 0x2E
+          dots += 1
+        elsif b == 0x3A
+          colons += 1
+        else
+          ok = (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x46) || (b >= 0x61 && b <= 0x66)
+        end
+        i += 1
+      end
+      ok = ok && ((colons == 0 && dots == 3) || colons >= 2)
+      @net_gip = ok ? body : (FmrbI18n.lang == "ja" ? "調べられませんでした" : "Could not find out")
+      return
+    end
+    url = @net_gip_url
+    return unless url
+    info = @net_info
+    return unless self.class::ON_WEB || (info && info[:connected])
+    asking = FmrbI18n.lang == "ja" ? "調べています..." : "Asking..."
+    if @net_gip != asking
+      @net_gip = asking
+      return
+    end
+    @net_gip_url = nil
+    @net_gip_req = FmrbNet.request(url)
+    nil
+  end
+
+  # The label, then the answer on its own line.
+  #
+  # The three texts of these lines are written here rather than registered in
+  # i18n.rb: the desktop's table holds exactly 128 words per language, and the
+  # 129th makes both hashes grow to their next size, several KB of the
+  # desktop's VM pool for good (doc/global_ip/report/p1.md).
+  def net_draw_gip(x, y)
+    label = FmrbI18n.lang == "ja" ? "グローバル IP:" : "Global IP:"
+    @gfx.draw_text(x + 8, y, label, NET_TEXT, NET_BG, mixed: true)
+    value = FmrbI18n.truncate_to(@net_gip, @net_w - 22)
+    @gfx.draw_text(x + 14, y + 12, value, NET_TEXT, NET_BG, mixed: true)
   end
 
   # The node the router checks for this page, or "" (web/main.js writes it).
@@ -102,9 +207,10 @@ module NetworkDialogMixin
     return unless @net_open
     x = @net_x
     y = @net_y
-    @gfx.fill_rect(x, y, NET_W, NET_H, NET_BG)
-    @gfx.draw_rect(x, y, NET_W, NET_H, NET_BORDER)
-    @gfx.fill_rect(x + 1, y + 1, NET_W - 2, NET_TITLE_H - 1, NET_HEADER)
+    w = @net_w
+    @gfx.fill_rect(x, y, w, @net_h, NET_BG)
+    @gfx.draw_rect(x, y, w, @net_h, NET_BORDER)
+    @gfx.fill_rect(x + 1, y + 1, w - 2, NET_TITLE_H - 1, NET_HEADER)
     @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:network), FmrbConst::THEME_TEXT_LIGHT, NET_HEADER, mixed: true)
 
     body_y = y + NET_TITLE_H + 6
@@ -121,11 +227,12 @@ module NetworkDialogMixin
         sw = FmrbI18n.text_width(label) + 10
         @gfx.fill_rect(x + 8, body_y + 31, sw, 12, NET_OK)
         @gfx.draw_text(x + 13, body_y + 33, label, FmrbGfx::BLACK, NET_OK, mixed: true)
-        @gfx.draw_text(x + 8 + sw + 6, body_y + 33, FmrbI18n.truncate_to(door, NET_W - sw - 30), NET_TEXT, NET_BG,
+        @gfx.draw_text(x + 8 + sw + 6, body_y + 33, FmrbI18n.truncate_to(door, w - sw - 30), NET_TEXT, NET_BG,
                        mixed: true)
       else
         @gfx.draw_text(x + 8, body_y + 33, FmrbI18n.t(:net_door_none), NET_TEXT, NET_BG, mixed: true)
       end
+      net_draw_gip(x, body_y + 47) if @net_gip
     elsif @net_info.nil?
       @gfx.draw_text(x + 8, body_y, FmrbI18n.t(:wifi_unavailable), NET_TEXT, NET_BG, mixed: true)
     else
@@ -149,8 +256,13 @@ module NetworkDialogMixin
       row_y = body_y + 16
       net_draw_row(x, row_y,      FmrbI18n.t(:access_point), ssid)
       net_draw_row(x, row_y + 14, FmrbI18n.t(:ip_address),   ip)
+      host_y = row_y + 28
+      if @net_gip
+        net_draw_gip(x, host_y)
+        host_y += 28
+      end
       if host && !host.empty?
-        net_draw_row(x, row_y + 28, FmrbI18n.t(:hostname_label), "#{host}.local")
+        net_draw_row(x, host_y, FmrbI18n.t(:hostname_label), "#{host}.local")
       end
     end
 
@@ -159,7 +271,7 @@ module NetworkDialogMixin
 
   def net_draw_row(x, y, label, value)
     @gfx.draw_text(x + 8, y, "#{label}:", NET_TEXT, NET_BG, mixed: true)
-    value = FmrbI18n.truncate_to(value, NET_W - 70)
+    value = FmrbI18n.truncate_to(value, @net_w - 70)
     @gfx.draw_text(x + 62, y, value, NET_TEXT, NET_BG, mixed: true)
   end
 
@@ -187,11 +299,11 @@ module NetworkDialogMixin
   end
 
   def net_draw_buttons
-    btn_y = @net_y + NET_H - 22
+    btn_y = @net_y + @net_h - 22
     rw = @ui.find(:net_refresh).w
     cw = @ui.find(:net_close).w
     ww = @net_settings_ok ? @ui.find(:net_wifi).w + 8 : 0
-    bx = @net_x + (NET_W - (rw + 8 + ww + cw)) / 2
+    bx = @net_x + (@net_w - (rw + 8 + ww + cw)) / 2
     @ui.move(:net_refresh, bx, btn_y, rw, NET_BTN_H)
     @ui.move(:net_wifi, bx + rw + 8, btn_y, ww - 8, NET_BTN_H) if @net_settings_ok
     @ui.move(:net_close, bx + rw + 8 + ww, btn_y, cw, NET_BTN_H)
@@ -254,5 +366,6 @@ module NetworkDialogMixin
   def tick_network_dialog
     return unless @net_open
     net_refresh
+    net_gip_tick if @net_gip_req || @net_gip_url
   end
 end

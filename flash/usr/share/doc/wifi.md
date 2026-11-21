@@ -78,3 +78,32 @@ hidden = true                # tried by name (a scan does not show it)
 - Whether Wi-Fi is used at all is `wifi_auto_start` in
   /etc/system_conf.toml. A NARYA (S3) cannot use Bluetooth and Wi-Fi at
   the same time: set `ble_auto_start = false` to use Wi-Fi there.
+
+## 4. Seeing the global IP
+
+The Network window can show the address this machine has on the internet
+(its global IP). A machine cannot know that by itself, so you provide a URL
+that answers with the caller's address on one line, and write that URL in
+/etc/system_conf.toml. Without it the line is not shown (nothing is asked
+by default).
+
+```toml
+# above the first line that starts with [ ([theme] and the like)
+global_ip_url = "https://router.example.org/fmrb/ip"
+```
+
+- It is asked once each time the Network window opens (close and open it
+  to ask again). While asking it says "Asking..."; when the answer is not one
+  line holding an IP address, or the URL cannot be reached, it says
+  "Could not find out". Nothing is asked while not connected.
+- The URL should answer a GET with `text/plain`, the caller's address
+  (IPv4 or IPv6) on one line. The browser build also needs
+  `Access-Control-Allow-Origin: *` in the answer (and, from a page served
+  over https, an https URL).
+- Where: on an ESP32 machine, /etc/system_conf.toml (kept while only the
+  firmware is flashed again, lost when the storage is flashed). The native
+  program: /etc/system_conf.toml as well (kept across updates). The browser
+  build: change the `global_ip_url = ""` line in /etc/system_conf.toml
+  inside the machine and it is kept across a reload (URLs up to 93
+  characters).
+- The answer is only shown on the screen; it is not logged.

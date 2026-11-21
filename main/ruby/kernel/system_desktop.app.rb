@@ -1763,8 +1763,7 @@ class SystemDesktopApp < FmrbApp
                    w: StorageDialogMixin::STR_W, h: StorageDialogMixin::STR_H, transparent: false }
     end
     if @net_open
-      regions << { dst_x: @net_x, dst_y: @net_y,
-                   w: NetworkDialogMixin::NET_W, h: NetworkDialogMixin::NET_H, transparent: false }
+      regions << { dst_x: @net_x, dst_y: @net_y, w: @net_w, h: @net_h, transparent: false }
     end
     if @about_open
       regions << { dst_x: @about_x, dst_y: @about_y,
@@ -1860,9 +1859,7 @@ class SystemDesktopApp < FmrbApp
                                   StorageDialogMixin::STR_H, x, y, w, h)
     end
     if @net_open
-      return true if rect_covers?(@net_x, @net_y,
-                                  NetworkDialogMixin::NET_W,
-                                  NetworkDialogMixin::NET_H, x, y, w, h)
+      return true if rect_covers?(@net_x, @net_y, @net_w, @net_h, x, y, w, h)
     end
     false
   end

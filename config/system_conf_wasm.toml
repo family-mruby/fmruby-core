@@ -85,6 +85,12 @@ startup_app_retries = 3
 # it when /home/asterism/config.toml does not name a router.
 zenoh_router = "ws/localhost:7449"
 
+# Where the Network dialog asks for this machine's global IP (doc/global_ip):
+# a URL that answers a GET with the caller's address on one line, and allows
+# other pages (Access-Control-Allow-Origin: *). Empty: the dialog has no
+# such line. Kept across a reload like the settings above.
+global_ip_url = ""
+
 # This browser's Asterism node ID (doc/ruby_asterism, B2). Empty here: the page
 # makes one on its first visit (wasm-<6 hex digits>), keeps it in the browser
 # and hands it in at every boot. The test apps use it when

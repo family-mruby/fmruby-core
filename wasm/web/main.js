@@ -758,6 +758,9 @@ const CONF_KEYS = [
   // the Network panel below, or by editing the file inside the machine; like
   // startup_app, a value that came from the URL (?zenoh=) is not captured.
   'zenoh_router',
+  // The URL the Network dialog asks for this machine's global IP
+  // (doc/global_ip). Empty in the bundle; written by hand inside the machine.
+  'global_ip_url',
 ];
 const CONF_STORE = 'fmrb_web_conf';
 

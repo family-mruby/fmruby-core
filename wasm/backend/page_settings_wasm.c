@@ -42,7 +42,7 @@ static int s_res_w, s_res_h;
  * /etc is rebuilt from the bundle on every visit, so without this a Save is
  * forgotten the moment the tab is reloaded. Key and value arrive exactly as
  * they appear in the file, quotes and all. */
-/* Room for every key the page carries (CONF_KEYS in wasm/web/main.js, 20 as
+/* Room for every key the page carries (CONF_KEYS in wasm/web/main.js, 21 as
  * of this writing) plus the startup_app that ?app= adds, the zenoh_router
  * that ?zenoh= adds and the browser's asterism_node, with a few to spare. */
 #define CONF_OVERRIDE_MAX 28
