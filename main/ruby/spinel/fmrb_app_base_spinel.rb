@@ -841,6 +841,16 @@ class FmrbGfx
     { id: SpxBytes.u16(buf, 0), width: SpxBytes.u16(buf, 2), height: SpxBytes.u16(buf, 4) }
   end
 
+  # picture_info is width, height (uint16), format (1 byte), bytes, mtime
+  # (uint32).
+  def picture_info(path)
+    s = path.to_s
+    buf = FmrbBoundary.fmrb_spx_b_gfx_picture_info(@d, s, s.bytesize)
+    return nil if buf.bytesize < 13
+    { width: SpxBytes.u16(buf, 0), height: SpxBytes.u16(buf, 2), format: buf.getbyte(4),
+      bytes: SpxBytes.u32(buf, 5), mtime: SpxBytes.u32(buf, 9) }
+  end
+
   # Play a file of concatenated JPEG frames into this canvas (Modern and the
   # hosted builds). Returns FmrbVideo or nil; nil means this backend cannot
   # play it.

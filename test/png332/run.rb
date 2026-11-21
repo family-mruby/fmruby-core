@@ -65,7 +65,12 @@ alpha_cases.each do |name, (data, w, h, px)|
   expected << [path, w, h, px]
 end
 
-system(bin, outs, *args) or abort "png332: the C test failed"
+# The 8-bit BMPs: BMP332.info and BMP332.to_png only (no reference pixels;
+# after the PNGs, so the C writer's files keep their numbers).
+bmps = `git ls-files "flash/*.bmp"`.split("\n").sort
+bmp_args = bmps.flat_map { |path| [path, "-"] }
+
+system(bin, outs, *args, *bmp_args) or abort "png332: the C test failed"
 system(pngle_bin, *args) or abort "png332: the display sides' reader differs" if pngle_bin
 
 # The C writer's files, read by the Ruby reader.

@@ -40,6 +40,7 @@
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_kernel.h"
 #include "fmrb_theme.h"
+#include "fmrb_picture332.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
 #endif
@@ -953,6 +954,28 @@ int32_t fmrb_bnd_gfx_file_status(int32_t gfx, const char *path, int32_t path_len
         out->exists = 1;
         out->size = (uint32_t)result.data.status.file_size;
     }
+    return 1;
+}
+
+// The app's own file, its head only (the same C as BMP332.info). 0 (nil)
+// when it is not there or is not a picture BMP332 reads.
+int32_t fmrb_bnd_gfx_picture_info(int32_t gfx, const char *path, int32_t path_len,
+                                  fmrb_bnd_gfx_picture_info_t *out)
+{
+    (void)gfx;
+    char p[256];
+    if (!copy_path(p, sizeof(p), path, path_len)) {
+        return 0;
+    }
+    fmrb_picture332_file_info_t info;
+    if (fmrb_picture332_file_info(p, &info) != 0) {
+        return 0;
+    }
+    out->width = info.width;
+    out->height = info.height;
+    out->format = info.format;
+    out->bytes = info.bytes;
+    out->mtime = info.mtime;
     return 1;
 }
 

@@ -117,6 +117,9 @@ class FmrbGfx
   # 動画の再生のようす <<en>> The video player's state
   type video_status = { state: uint8, shown: uint32, dropped: uint32 }
 
+  # picture_info が返す絵の大きさと形 <<en>> A picture file's size and kind, from picture_info
+  type picture_info = { width: uint16, height: uint16, format: uint8, bytes: uint32, mtime: uint32 }
+
   # ---- 色 ----
   #
   # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
@@ -891,6 +894,30 @@ def draw_tile_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, I
 #   16, 16, 40, 20, 2, 0, 0, 0, 0)
 # ```
 def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h, Integer dst_x, Integer dst_y, Integer scale, Integer clip_x, Integer clip_y, Integer clip_w, Integer clip_h) -> FmrbGfx
+
+  # 絵のファイルの大きさを読む <<en>> Read a picture file's width and height
+  #
+  # PNG と 8 ビットの BMP の先頭だけを読み、解かない (BMP332.info と同じ
+  # C)。結果は {width:, height:, format:, bytes:, mtime:}。format は 1 が
+  # PNG、2 が BMP。bytes はファイルの大きさ、mtime は書いた時刻
+  # (時刻を持たないファイルシステムでは 0)。無い・読めなければ nil。
+  # ファイルは本体の側のもの (描画側に送る前でよい)。
+  # ```ruby
+  # info = gfx.picture_info("/home/a.png")
+  # w = info[:width] if info
+  # ```
+  # <<en>>
+  # Reads only the head of a PNG or an 8-bit BMP; nothing is decoded (the
+  # same C as BMP332.info). The result is {width:, height:, format:, bytes:,
+  # mtime:}: format is 1 for PNG, 2 for BMP; bytes is the file's size and
+  # mtime when it was written (0 on a file system that keeps no time). nil
+  # when it is not there or cannot be read. The file is the app's own (it
+  # need not have been sent to the display side).
+  # ```ruby
+  # info = gfx.picture_info("/home/a.png")
+  # w = info[:width] if info
+  # ```
+  def picture_info: (String path) -> picture_info?
 
   # 型ぬきの形を作る <<en>> Make a mask
   #

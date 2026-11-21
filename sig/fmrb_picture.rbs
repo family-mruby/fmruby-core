@@ -1,0 +1,166 @@
+# 絵のファイル (8 ビットの BMP とパレットの PNG) を RGB332 の画素として読み書きする。
+# 実装は lib/gems/picoruby-fmrb-bmp332 (C と mrblib)。
+
+# RGB332 の絵 (8 ビット BMP・パレット PNG) <<en>> RGB332 pictures (8-bit BMP and palette PNG)
+#
+# 画素は 1 点 1 バイトの RGB332 を上の行から並べた String (幅 x 高さ
+# バイト)。透明な点は 0x01。PNG は透明 (α が 128 未満・tRNS) を 0x01 に
+# して読む。幅と高さは 2048 まで。
+#
+# 画面に出すだけなら画素は要らない: FmrbGfx#draw_picture にパスを渡す。
+# <<en>>
+# Pixels are a String of one RGB332 byte per pixel, top row first (width x
+# height bytes); a transparent pixel is 0x01. A PNG's transparency (alpha
+# below 128, tRNS) reads as 0x01. Width and height up to 2048.
+#
+# To only show a picture no pixels are needed: hand its path to
+# FmrbGfx#draw_picture.
+module BMP332
+  # 絵のファイルを画素にする <<en>> Read a PNG or BMP file into RGB332 pixels
+  #
+  # 形は先頭のバイトで見分ける。読めなければ例外。画素は VM に載るので、
+  # 大きい絵 (256x256 で 64 KB) は VM プールを使う。
+  # ```ruby
+  # bmp = BMP332.load("/home/a.png")
+  # w = bmp[:width]
+  # px = bmp[:pixels]
+  # ```
+  # <<en>>
+  # The kind is told from the first bytes. Raises when it cannot be read.
+  # The pixels live in the VM, so a large picture (64 KB at 256x256) takes
+  # the VM pool.
+  # ```ruby
+  # bmp = BMP332.load("/home/a.png")
+  # w = bmp[:width]
+  # px = bmp[:pixels]
+  # ```
+  def self.load: (String path) -> Hash
+
+  # 絵のバイト列を画素にする <<en>> Turn PNG or BMP bytes into RGB332 pixels
+  #
+  # load のファイルの代わりにバイト列を受ける。結果は
+  # {width:, height:, pixels:}。
+  # ```ruby
+  # bmp = BMP332.parse(data)
+  # ```
+  # <<en>>
+  # load, from the bytes instead of a file. The result is
+  # {width:, height:, pixels:}.
+  # ```ruby
+  # bmp = BMP332.parse(data)
+  # ```
+  def self.parse: (String data) -> Hash
+
+  # 画素を PNG か BMP のファイルに書く <<en>> Write RGB332 pixels as a PNG or a BMP file
+  #
+  # パスが .png で終わればパレットの PNG (使った色だけ)、それ以外は
+  # 8 ビットの BMP。
+  # ```ruby
+  # BMP332.save("/home/a.png", 16, 16,
+  #             px)
+  # ```
+  # <<en>>
+  # A path ending in .png gets the palette PNG (only the colours used); any
+  # other an 8-bit BMP.
+  # ```ruby
+  # BMP332.save("/home/a.png", 16, 16,
+  #             px)
+  # ```
+  def self.save: (String path, Integer width, Integer height, String pixels) -> void
+
+  # 画素をパレットの PNG のバイト列に <<en>> Encode RGB332 pixels as palette PNG bytes
+  #
+  # ```ruby
+  # png = BMP332.encode_png(16, 16, px)
+  # ```
+  # <<en>>
+  # ```ruby
+  # png = BMP332.encode_png(16, 16, px)
+  # ```
+  def self.encode_png: (Integer width, Integer height, String pixels) -> String
+
+  # 解かずに絵の大きさと形を知る <<en>> A picture's size and kind, without decoding it
+  #
+  # 先頭 (PNG の IHDR、BMP の見出し) だけを読む。結果は
+  # {width:, height:, format: :png か :bmp, bytes: ファイルの大きさ}。
+  # 無い・読めない絵なら nil。大きすぎる絵もその大きさを答える。
+  # パスの代わりに data: でバイト列を渡せる。
+  # ```ruby
+  # info = BMP332.info("/home/a.png")
+  # if info && info[:width] <= 48
+  #   ok = true
+  # end
+  # BMP332.info(data: bytes)
+  # ```
+  # <<en>>
+  # Only the head is read (a PNG's IHDR, a BMP's headers). The result is
+  # {width:, height:, format: :png or :bmp, bytes: the file's size}; nil
+  # when it is not there or cannot be read. A picture too large to decode
+  # still gives its size. data: takes the bytes instead of a path.
+  # ```ruby
+  # info = BMP332.info("/home/a.png")
+  # if info && info[:width] <= 48
+  #   ok = true
+  # end
+  # BMP332.info(data: bytes)
+  # ```
+  def self.info: (String path) -> Hash?
+
+  # 絵を小さいパレットの PNG に書き直す <<en>> Rewrite a picture as a small palette PNG
+  #
+  # PNG か BMP を読み、使った色だけのパレットの PNG に書き直す。中は C
+  # で済み、画素は VM に載らない。バイト列は encode_png(parse の画素)
+  # と同じ。透明は 0x01 の色になる。
+  #
+  # 結果は {png: バイト列, width:, height:}。断るときは例外でなく
+  # {error: 理由, ...}:
+  #
+  # - :too_big (width:, height: つき): max_width か max_height を超える。
+  #   解く前に先頭で断る
+  # - :too_heavy (bytes:): 書いた PNG が max_bytes を超える
+  # - :file_too_large (bytes:): ファイルが max_file_bytes (既定 65536)
+  #   を超える。読まない
+  # - :unreadable: 無い・絵でない・壊れている
+  # - :no_memory: VM プールが足りない
+  #
+  # パスの代わりに data: でバイト列を渡せる。
+  # ```ruby
+  # r = BMP332.to_png("/home/a.png",
+  #   max_width: 48, max_height: 48,
+  #   max_bytes: 8192)
+  # if r[:error]
+  #   show(r[:error])
+  # else
+  #   FmrbFile.write(out, r[:png])
+  # end
+  # ```
+  # <<en>>
+  # Reads a PNG or a BMP and writes it again as the palette PNG of only the
+  # colours used. It is all done in C; the pixels never enter the VM. The
+  # bytes are those of encode_png over parse's pixels. Transparency becomes
+  # the colour 0x01.
+  #
+  # The result is {png: bytes, width:, height:}. A refusal is not an
+  # exception but {error: reason, ...}:
+  #
+  # - :too_big (with width:, height:): past max_width or max_height,
+  #   refused from the head before anything is decoded
+  # - :too_heavy (bytes:): the PNG written is past max_bytes
+  # - :file_too_large (bytes:): the file is past max_file_bytes (65536
+  #   unless given); it is not read
+  # - :unreadable: not there, not a picture, or broken
+  # - :no_memory: the VM pool ran short
+  #
+  # data: takes the bytes instead of a path.
+  # ```ruby
+  # r = BMP332.to_png("/home/a.png",
+  #   max_width: 48, max_height: 48,
+  #   max_bytes: 8192)
+  # if r[:error]
+  #   show(r[:error])
+  # else
+  #   FmrbFile.write(out, r[:png])
+  # end
+  # ```
+  def self.to_png: (String path) -> Hash
+end

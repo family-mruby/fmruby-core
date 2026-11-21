@@ -1,6 +1,8 @@
 # BMP332 module - the sprite pictures: RGB332 pixel bytes read from and written
 # to 8-bit BMPs and palette PNGs.
-# parse and encode_png are defined in C (ports/esp32/bmp332.c, png332.c).
+# parse, encode_png, info and to_png are defined in C (ports/esp32/bmp332.c,
+# png332.c, picture332.c): info reads only a file's head, to_png rewrites a
+# picture as the palette PNG without its pixels ever being a String here.
 
 module BMP332
   # Load and parse a BMP or PNG file (told apart by its first bytes).

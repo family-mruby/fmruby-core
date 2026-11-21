@@ -180,8 +180,9 @@ end
 
 namespace :png332 do
   # The sprite editor's PNG reader and writer (picoruby-fmrb-bmp332's
-  # ports/esp32/png332.c, BMP332.load / BMP332.save): pure C over buffers, so
-  # it builds with the host cc. Every PNG in flash/ must read as
+  # ports/esp32/png332.c, BMP332.load / BMP332.save) and BMP332.info /
+  # to_png's C (picture332.c): pure C over buffers, so it builds with the
+  # host cc. Every PNG in flash/ must read as
   # tools/rgb332_png.rb reads it, and what the C writer writes must read back
   # the same in Ruby with the same header and palette as Rgb332Png.encode.
   PNG332_TEST_DIR   = "test/png332"
@@ -200,7 +201,8 @@ namespace :png332 do
     abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
     mkdir_p PNG332_TEST_BUILD
     sh "#{cc} #{PNG332_CFLAGS} -I #{PNG332_GEM_DIR}/include " \
-       "#{PNG332_GEM_DIR}/ports/esp32/png332.c #{PNG332_TEST_DIR}/main.c -o #{PNG332_RUNNER_BIN}"
+       "#{PNG332_GEM_DIR}/ports/esp32/png332.c #{PNG332_GEM_DIR}/ports/esp32/picture332.c " \
+       "#{PNG332_GEM_DIR}/src/fmrb_bmp332.c #{PNG332_TEST_DIR}/main.c -o #{PNG332_RUNNER_BIN}"
     lgfx = "#{PNG332_LGFX_DIR}/lgfx/utility"
     %w[lgfx_pngle lgfx_miniz].each do |f|
       sh "#{cc} -std=c11 -O1 -g -w -c #{lgfx}/#{f}.c -o #{PNG332_TEST_BUILD}/#{f}.o"

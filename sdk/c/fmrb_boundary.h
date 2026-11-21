@@ -51,7 +51,7 @@ extern "C" {
  * refuses an app that imports a function it lacks, before the app starts.
  */
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0x294fcb83u
+#define FMRB_ABI_HASH 0x1439f5e7u
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -127,6 +127,15 @@ typedef struct __attribute__((packed)) {
     uint16_t width;
     uint16_t height;
 } fmrb_gfx_image_info_t;
+
+/** FmrbGfx::picture_info (13 bytes, packed, little-endian) */
+typedef struct __attribute__((packed)) {
+    uint16_t width;
+    uint16_t height;
+    uint8_t format;
+    uint32_t bytes;
+    uint32_t mtime;
+} fmrb_gfx_picture_info_t;
 
 /** FmrbGfx::composite_region (13 bytes, packed, little-endian) */
 typedef struct __attribute__((packed)) {
@@ -1237,6 +1246,17 @@ int32_t fmrb_gfx_draw_tile_raw(int32_t gfx, int32_t image_id, int32_t src_x, int
  */
 FMRB_IMPORT("gfx_draw_tile_scaled_raw")
 int32_t fmrb_gfx_draw_tile_scaled_raw(int32_t gfx, int32_t image_id, int32_t src_x, int32_t src_y, int32_t w, int32_t h, int32_t dst_x, int32_t dst_y, int32_t scale, int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h);
+
+/**
+ * 絵のファイルの大きさを読む
+ * Read a picture file's width and height
+ *
+ * Ruby: FmrbGfx#picture_info(path)
+ * @param gfx the FmrbGfx receiver number
+ * @return 1 when *out was filled, 0 when there is none (nil in Ruby)
+ */
+FMRB_IMPORT("gfx_picture_info")
+int32_t fmrb_gfx_picture_info(int32_t gfx, const char *path, int32_t path_len, fmrb_gfx_picture_info_t *out);
 
 /**
  * 型ぬきの形を作る
