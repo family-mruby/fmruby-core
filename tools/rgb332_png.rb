@@ -11,7 +11,10 @@
 #
 # The reader takes these PNGs, the 8-bit BMPs the sprites used to be (and that
 # the sprite editor still saves), and plain RGB/RGBA PNGs (folded to RGB332 the
-# same way the device does), so the generators can read either.
+# same way the device does), so the generators can read either. As on the
+# device (png332.c), a transparent pixel -- alpha below 128, a palette entry
+# tRNS makes transparent, the grey or RGB value tRNS names -- reads as
+# TRANSPARENT.
 #
 # Standard library only (zlib), so the generators run in a bare checkout.
 #
@@ -25,6 +28,9 @@ module Rgb332Png
   SIGNATURE = "\x89PNG\r\n\x1a\n".b
   # Pictures with at least this many pixels are written 8 bits per pixel.
   BIG = 16 * 1024
+  # The system's transparent colour, and the alpha a pixel needs to be opaque.
+  TRANSPARENT = 0x01
+  ALPHA_OPAQUE_MIN = 128
 
   module_function
 
@@ -114,6 +120,7 @@ module Rgb332Png
     pos = 8
     w = h = depth = ctype = nil
     plte = nil
+    trns = nil
     idat = +"".b
     while pos < data.bytesize
       len = data[pos, 4].unpack1("N")
@@ -124,6 +131,7 @@ module Rgb332Png
         w, h, depth, ctype, _c, _f, interlace = body.unpack("NNCCCCC")
         raise "#{path}: interlaced PNG" if interlace != 0
       when "PLTE" then plte = body.bytes.each_slice(3).to_a
+      when "tRNS" then trns = body.bytes
       when "IDAT" then idat << body
       when "IEND" then break
       end
@@ -134,6 +142,16 @@ module Rgb332Png
     bpp_bits = depth * channels
     stride = (w * bpp_bits + 7) / 8
     step = [(bpp_bits + 7) / 8, 1].max
+    # What tRNS makes transparent: palette indexes, or one sample value.
+    clear_index = []
+    key = nil
+    if trns
+      case ctype
+      when 3 then trns.each_with_index { |a, i| clear_index << i if a < ALPHA_OPAQUE_MIN }
+      when 0 then key = [trns[1]] if trns.size == 2 && trns[0] == 0
+      when 2 then key = [trns[1], trns[3], trns[5]] if trns.size == 6 && trns[0] == 0 && trns[2] == 0 && trns[4] == 0
+      end
+    end
     raw = Zlib::Inflate.inflate(idat).bytes
     prev = Array.new(stride, 0)
     px = Array.new(w * h)
@@ -161,14 +179,26 @@ module Rgb332Png
       prev = line
       w.times do |x|
         px[y * w + x] =
-          if ctype == 3
+          if ctype == 3 || ctype == 0
             v = depth == 8 ? line[x] : (line[x * depth / 8] >> (8 - depth - (x * depth % 8))) & ((1 << depth) - 1)
-            to_rgb332(*plte[v])
-          elsif ctype == 0 || ctype == 4
+            if ctype == 3
+              clear_index.include?(v) ? TRANSPARENT : to_rgb332(*plte[v])
+            elsif key && key[0] == v
+              TRANSPARENT
+            else
+              g = v * 255 / ((1 << depth) - 1)
+              to_rgb332(g, g, g)
+            end
+          elsif ctype == 4
             g = line[x * channels]
-            to_rgb332(g, g, g)
+            line[x * channels + 1] < ALPHA_OPAQUE_MIN ? TRANSPARENT : to_rgb332(g, g, g)
           else
-            to_rgb332(line[x * channels], line[x * channels + 1], line[x * channels + 2])
+            c = line[x * channels, 3]
+            if (ctype == 6 && line[x * channels + 3] < ALPHA_OPAQUE_MIN) || c == key
+              TRANSPARENT
+            else
+              to_rgb332(*c)
+            end
           end
       end
     end

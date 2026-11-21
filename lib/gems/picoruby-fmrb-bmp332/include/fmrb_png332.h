@@ -14,7 +14,12 @@
 // pictures an image editor saves (palette 1/2/4/8 bit, grey 1/2/4/8 bit,
 // RGB/RGBA/grey+alpha 8 bit, any filter; not interlaced, not 16 bit); a
 // colour becomes RGB332 by its top bits, as LovyanGFX does on the display
-// side. Transparency (tRNS, alpha) is ignored: the sprites key a colour.
+// side. The sprites key a colour rather than carry alpha, so a transparent
+// pixel -- alpha below 128 (RGBA, grey+alpha), a palette entry tRNS gives an
+// alpha below 128, the one grey or RGB value tRNS names -- becomes
+// FMRB_PNG332_TRANSPARENT. An opaque colour whose top bits are that value's
+// ((0,0,85) and its neighbours) reads as it too, as it always has: the
+// sprite editor writes its transparent pixels that way.
 //
 // No static or global state: every buffer comes from the allocator passed in
 // (the mruby binding hands it the app's VM pool), and the stack use is a few
@@ -41,6 +46,10 @@ enum {
     FMRB_PNG332_E_DATA = -4,        // the compressed data does not decode
     FMRB_PNG332_E_NOMEM = -5,
 };
+
+// The RGB332 value a transparent pixel reads as (the system's transparent
+// colour, 0x01).
+#define FMRB_PNG332_TRANSPARENT 0x01
 
 // The largest width and height read or written (FMRB_BMP332_MAX_DIM's value).
 #define FMRB_PNG332_MAX_DIM 2048

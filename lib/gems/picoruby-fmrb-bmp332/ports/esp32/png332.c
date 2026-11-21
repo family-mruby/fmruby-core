@@ -309,6 +309,11 @@ static uint8_t to332(uint8_t r, uint8_t g, uint8_t b)
     return (uint8_t)((r & 0xE0) | ((g >> 3) & 0x1C) | (b >> 6));
 }
 
+// A pixel at least this transparent becomes the transparent colour: alpha
+// below half, and the tRNS entries below half for a palette. Half-transparent
+// edges go one way or the other, since a key colour has no in-between.
+#define ALPHA_OPAQUE_MIN 128
+
 static int paeth(int a, int b, int c)
 {
     int p = a + b - c;
@@ -328,7 +333,8 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
     uint32_t w = 0, h = 0;
     int depth = 0, ctype = -1;
     const uint8_t *plte = NULL;
-    size_t plte_n = 0, idat_total = 0;
+    const uint8_t *trns = NULL;
+    size_t plte_n = 0, trns_n = 0, idat_total = 0;
     int have_ihdr = 0;
 
     // First walk: the header, the palette and how much image data there is.
@@ -351,6 +357,9 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
             if (clen % 3 != 0 || clen > 768) return FMRB_PNG332_E_FORMAT;
             plte = body;
             plte_n = clen / 3;
+        } else if (memcmp(type, "tRNS", 4) == 0) {
+            trns = body;
+            trns_n = clen;
         } else if (memcmp(type, "IDAT", 4) == 0) {
             idat_total += clen;
         } else if (memcmp(type, "IEND", 4) == 0) {
@@ -384,12 +393,19 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
     size_t step = bpp_bits < 8 ? 1 : bpp_bits / 8;
     size_t raw_len = (stride + 1) * h;
 
-    // The colour of each sample value (palette index or grey level).
+    // The colour of each sample value (palette index or grey level). A
+    // palette entry or grey level that tRNS makes transparent maps to the
+    // transparent colour. tRNS is one alpha per palette entry (the rest are
+    // opaque), one grey sample, or one RGB sample (16 bits each, of which an
+    // 8-bit picture uses the low byte); any other shape is ignored.
     uint8_t map[256];
+    int key_rgb = 0;
+    uint8_t key_r = 0, key_g = 0, key_b = 0;
     if (ctype == 3) {
         memset(map, 0, sizeof(map));
         for (size_t i = 0; i < plte_n; i++) {
             map[i] = to332(plte[i * 3], plte[i * 3 + 1], plte[i * 3 + 2]);
+            if (trns && i < trns_n && trns[i] < ALPHA_OPAQUE_MIN) map[i] = FMRB_PNG332_TRANSPARENT;
         }
     } else if (ctype == 0) {
         int maxv = (1 << depth) - 1;
@@ -397,6 +413,15 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
             uint8_t g = (uint8_t)(i * 255 / maxv);
             map[i] = to332(g, g, g);
         }
+        if (trns && trns_n == 2 && trns[0] == 0 && trns[1] <= maxv) {
+            map[trns[1]] = FMRB_PNG332_TRANSPARENT;
+        }
+    } else if (ctype == 2 && trns && trns_n == 6 &&
+               trns[0] == 0 && trns[2] == 0 && trns[4] == 0) {
+        key_rgb = 1;
+        key_r = trns[1];
+        key_g = trns[3];
+        key_b = trns[5];
     }
 
     uint8_t *idat = (uint8_t *)a->alloc(a->ud, idat_total);
@@ -473,10 +498,15 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
                 o[x] = map[v];
             } else if (ctype == 4) {
                 uint8_t g = cur[x * 2];
-                o[x] = to332(g, g, g);
+                o[x] = cur[x * 2 + 1] < ALPHA_OPAQUE_MIN ? FMRB_PNG332_TRANSPARENT : to332(g, g, g);
             } else {
                 const uint8_t *c = cur + (size_t)x * channels;
-                o[x] = to332(c[0], c[1], c[2]);
+                if ((ctype == 6 && c[3] < ALPHA_OPAQUE_MIN) ||
+                    (key_rgb && c[0] == key_r && c[1] == key_g && c[2] == key_b)) {
+                    o[x] = FMRB_PNG332_TRANSPARENT;
+                } else {
+                    o[x] = to332(c[0], c[1], c[2]);
+                }
             }
         }
     }
