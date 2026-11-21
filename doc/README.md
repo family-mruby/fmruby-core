@@ -40,7 +40,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [DSI (DPI) フレームバッファの置き場所と走査のアンダーラン](reference/dpi_frame_buffer_alignment.md)
 - [全画面の高解像度モード (使い方と仕組み)](reference/fullscreen_hires.md) — **完了** (2026-11-18) P4 系 (Tab5 / NARYAv4)、ブラウザ版と Modern の Linux sim で、属性を持つアプリの全画面だけ 640x360 になる。画面そのものが 640x360 のとき (P4-Nano の既定、ほかは Config で選ぶ) は逆に、426x240 向けの全画面のアプリ (属性なし) の間だけ 426x240 になる (どの大きさでも描けるアプリは `fullscreen_any_size` で外す)。アプリの書き方、エディタのフォント、遠隔の道具での見え方
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
-- [描画境界 (FmrbGfx ↔ 描画側) の課題と方針](reference/gfx_boundary_issues.md) — **随時更新** (2026-09-04) 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
+- [描画境界 (FmrbGfx ↔ 描画側) の課題と方針](reference/gfx_boundary_issues.md) — **随時更新** (2026-11-21) 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
 - [次期基板 HDMI 映像出力方式 検討資料](reference/hdmi_video_output_study.md) — **凍結** (2026-08-29) 次期基板 (NARYAv4) の HDMI 方式比較。LT8912B が最有力、基板が動くまで保留
 - [ESP-IDF v6.0 移行メモ（IDF6対応で判明した課題と回避策）](reference/idf6_migration_notes.md)
 - [内蔵 RAM 削減計画](reference/internal_ram_budget.md)
@@ -121,7 +121,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `p4_transfer_crash/` [P4 でファイル転送の直後に core 0 が落ちる件](p4_transfer_crash/plan.md) — **完了** (2026-10-07) 原因は P4 での CONFIG_SPI_FLASH_AUTO_SUSPEND の既定の方式 (中断の完了を固定の時間で待つ)。消去・書き込み中のキャッシュの取り込みがときどきバスのエラーになり、どちらのコアでも access fault になる。**CONFIG_SPI_FLASH_AUTO_CHECK_SUSPEND_STATUS=y を NARYAv4 の defaults に採用 (ユーザ承認、6fe8f050)**。計装なしで 64 KB の put 15 回・352 KB 3 回とも 0 回。保存のちらつきが戻っていないことをユーザが目視で確認 (2026-10-07) 〔3 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
-- `pictures/` [絵の扱いの汎用化 (読む・書き直す・拡大して描く・置き場の管理)](pictures/plan.md) — **進行中** (2026-11-21) P0 (調査と API の案) 済、選択待ち (report/p0.md 7.3)。アプリごとに書かれている絵の処理 (読み直して PNG に書き直す、読む前の足切り、整数倍の拡大、一時ファイル経由の表示、限られた絵の置き場の使い回し、透明の市松) を、描画側・絵の gem・FmrbGfx の 3 つの層の汎用の部品に移す。チャットのスタンプ (doc/asterism_chat C3) が通った後に着手 〔4 files〕
+- `pictures/` [絵の扱いの汎用化 (読む・書き直す・拡大して描く・置き場の管理)](pictures/plan.md) — **進行中** (2026-11-21) P0 (調査と API の案) 済、選択待ち (report/p0.md 7.3)。アプリごとに書かれている絵の処理 (読み直して PNG に書き直す、読む前の足切り、整数倍の拡大、一時ファイル経由の表示、限られた絵の置き場の使い回し、透明の市松) を、描画側・絵の gem・FmrbGfx の 3 つの層の汎用の部品に移す。チャットのスタンプ (doc/asterism_chat C3) が通った後に着手 〔5 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
 - `rbs_types/` [RBS で型情報を言語と端末の間で共有する 構想](rbs_types/plan.md) — **構想** (2026-11-14) RBS の型定義を、端末の中の言語の間 (境界のバイト列)、端末の間 (Asterism の型の宣言)、ROS 2 の型に共通の元にする。整数と小数の幅の別名は決定済み。最初の試作 (RBS の記録型から Asterism の宣言、C の解析器) が通った。次の段は未定 〔1 files〕
 - `regression/` [回帰の確認を、安く・コマンド 1 つで](regression/plan.md) — **完了** (2026-11-17) RG1-RG6 と RG5 の案内 (CLAUDE.md・fmrb-dev-flow) まで済、最終報告は report/final.md。RG7 (2026-11-17): 画面の回帰 (regress:screens) を画素の全面比較から「上がる・エディタの 1 打鍵・アプリが開いて閉じる・落ちていない」の確認に絞った (report/rg7.md)。使い方の正は usage.md (この企画は閉じたが、usage.md は使い続けるのでこの場所に残す)。全部の道具を使った段の実測は次のリファクタリングで同じ集計を取る。| リファクタリングや機能の直しのたびに、サブエージェントが sim・ブラウザ版を立ち上げて画面を撮り、ゲームホストを手で動かして前後を見比べている (app_refactor の R4〜R6 で 1 段 30〜45 万トークン、その多くが確認の往復)。確認を「コマンド 1 つ、結果は短い要約」にして、トークンと人の手間を減らす (2026-10-25 ユーザ) 〔26 files〕
