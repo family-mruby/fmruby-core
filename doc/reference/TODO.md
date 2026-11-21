@@ -263,3 +263,8 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - ブラウザ版の AI ヘルパーが、つながるまで約 20 秒「Wi-Fi につながるのを待っています」と出る
   (Asterism Link の wifi 待ちが原因の見立て。doc/ai_tutor_vps/report/v1.md。2026-11-19 ユーザ: 課題に残す)。
   **済 (2026-11-20、doc/ai_coding/report/a3e.md)**: ブラウザ版はネットワークを「つながっている」と報告する (アドレス・SSID なし)。
+
+- インターネットにつながっているとき、グローバル IP を表示する (2026-11-21 ユーザ: あとでよい)。
+  端末は自分のグローバル IP を知らないので、外の相手に「どこから来たか」を聞く形になる (HTTP の 1 回。
+  App Store と同じ `FmrbNet.request`)。聞く先の案: 自分の VPS に 1 行の応答を置く / 公開の確認用のサービス。
+  出す所の案: ネットワークのダイアログ (LAN の IP・SSID の下に 1 行)。開いたときだけ聞く。未着手。
