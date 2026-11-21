@@ -195,6 +195,15 @@ class FmrbGfx
     { id: id, width: w, height: h }
   end
 
+  # The head of a picture file (FmrbGfx's picture store asks before it
+  # reads one onto the display side).
+  def picture_info(path)
+    w, h = Regress::Env.image_size(path)
+    return nil unless w
+    host = Regress::FakeFS.read_path(path)
+    { width: w, height: h, format: 1, bytes: host ? File.__regress_size(host) : 0, mtime: 0 }
+  end
+
   def draw_image_raw(id, x, y, sx, sy) = (__rec(:draw_image, id, x + __dx, y + __dy, sx, sy); self)
   def delete_image(id) = (__rec(:delete_image, id); self)
   def create_mask(w, h, _data) = (id = __next_id; __rec(:create_mask, id, w, h); id)
