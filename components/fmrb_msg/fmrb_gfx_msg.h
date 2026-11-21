@@ -17,6 +17,10 @@ extern "C" {
  * sent via the fmrb_msg system to the Host Task.
  */
 
+// The most pixels one SPRITE_IMAGE_DATA command carries through the host
+// queue (fmrb_bnd_gfx_write_sprite_image splits a larger rect).
+#define FMRB_GFX_SPRITE_DATA_CHUNK 128
+
 // Graphics command types
 typedef enum {
     GFX_CMD_CLEAR = 0,
@@ -79,7 +83,13 @@ typedef enum {
     // this side (it rides the queue so it stays behind the PRESENT it belongs
     // to); the display side does the encode and the write before it takes the
     // next command.
-    GFX_CMD_EXPORT_FRAME         // Async
+    GFX_CMD_EXPORT_FRAME,        // Async
+    // DRAW_TILE at a whole-number scale (larger, or 1/k), clipped to a rect.
+    GFX_CMD_DRAW_TILE_SCALED,    // Async
+    // A piece of RGB332 pixels written into a sprite image. Rides the queue
+    // (not the transport) so it stays in order with the draw_tile calls
+    // before and after it that read the image.
+    GFX_CMD_SPRITE_IMAGE_DATA    // Async
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -291,6 +301,24 @@ typedef struct {
             uint16_t w, h;
             int16_t  dst_x, dst_y;
         } draw_tile;
+        struct {
+            uint16_t image_id;
+            int16_t  src_x, src_y;
+            uint16_t w, h;
+            int16_t  dst_x, dst_y;
+            int8_t   scale;   // 1..32 larger, -2..-32 for 1/2..1/32
+            int16_t  clip_x, clip_y;
+            uint16_t clip_w, clip_h;   // 0: no clip of its own
+        } draw_tile_scaled;
+        // w * h <= FMRB_GFX_SPRITE_DATA_CHUNK bytes of pixels, top row first.
+        // No bigger than the text command, so gfx_cmd_t does not grow
+        // (fmrb_gfx_cmd.c asserts it).
+        struct {
+            uint16_t image_id;
+            int16_t  x, y;
+            uint16_t w, h;
+            uint8_t  pixels[FMRB_GFX_SPRITE_DATA_CHUNK];
+        } sprite_image_data;
     } params;
 
     // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)

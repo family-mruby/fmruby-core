@@ -5,7 +5,9 @@
 // the version handshake and refuse to pair on a mismatch, so bump it when a
 // command or a struct changes in a way an older peer would misread.
 //
+//   7  pictures: DRAW_TILE_SCALED (0x8E), SPRITE_IMAGE_DATA (0x42), and a
+//      PNG's transparent pixels read into a sprite image as 0x01
 //   6  mute and volume at the last output stage (SET_MAIN_VOLUME and the
 //      per-APU mute/volume)
 //   5  SET_SPRITE_CLIP (0x58)
-#define FMRB_LINK_VERSION 6
+#define FMRB_LINK_VERSION 7

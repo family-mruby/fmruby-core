@@ -304,15 +304,8 @@ static int zlib_inflate(inflate_t *s)
 
 // ----------------------------------------------------------------- decode --
 
-static uint8_t to332(uint8_t r, uint8_t g, uint8_t b)
-{
-    return (uint8_t)((r & 0xE0) | ((g >> 3) & 0x1C) | (b >> 6));
-}
-
-// A pixel at least this transparent becomes the transparent colour: alpha
-// below half, and the tRNS entries below half for a palette. Half-transparent
-// edges go one way or the other, since a key colour has no in-between.
-#define ALPHA_OPAQUE_MIN 128
+// The colour rule (top bits, alpha below FMRB_PNG332_ALPHA_MIN is the
+// transparent colour) is fmrb_png332.h's, shared with the display sides.
 
 static int paeth(int a, int b, int c)
 {
@@ -404,14 +397,14 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
     if (ctype == 3) {
         memset(map, 0, sizeof(map));
         for (size_t i = 0; i < plte_n; i++) {
-            map[i] = to332(plte[i * 3], plte[i * 3 + 1], plte[i * 3 + 2]);
-            if (trns && i < trns_n && trns[i] < ALPHA_OPAQUE_MIN) map[i] = FMRB_PNG332_TRANSPARENT;
+            map[i] = fmrb_png332_from_argb(trns && i < trns_n ? trns[i] : 0xFF,
+                                           plte[i * 3], plte[i * 3 + 1], plte[i * 3 + 2]);
         }
     } else if (ctype == 0) {
         int maxv = (1 << depth) - 1;
         for (int i = 0; i <= maxv; i++) {
             uint8_t g = (uint8_t)(i * 255 / maxv);
-            map[i] = to332(g, g, g);
+            map[i] = fmrb_png332_rgb(g, g, g);
         }
         if (trns && trns_n == 2 && trns[0] == 0 && trns[1] <= maxv) {
             map[trns[1]] = FMRB_PNG332_TRANSPARENT;
@@ -498,15 +491,12 @@ int fmrb_png332_decode(const uint8_t *buf, size_t len,
                 o[x] = map[v];
             } else if (ctype == 4) {
                 uint8_t g = cur[x * 2];
-                o[x] = cur[x * 2 + 1] < ALPHA_OPAQUE_MIN ? FMRB_PNG332_TRANSPARENT : to332(g, g, g);
+                o[x] = fmrb_png332_from_argb(cur[x * 2 + 1], g, g, g);
             } else {
                 const uint8_t *c = cur + (size_t)x * channels;
-                if ((ctype == 6 && c[3] < ALPHA_OPAQUE_MIN) ||
-                    (key_rgb && c[0] == key_r && c[1] == key_g && c[2] == key_b)) {
-                    o[x] = FMRB_PNG332_TRANSPARENT;
-                } else {
-                    o[x] = to332(c[0], c[1], c[2]);
-                }
+                uint8_t alpha = ctype == 6 ? c[3] : 0xFF;
+                if (key_rgb && c[0] == key_r && c[1] == key_g && c[2] == key_b) alpha = 0;
+                o[x] = fmrb_png332_from_argb(alpha, c[0], c[1], c[2]);
             }
         }
     }

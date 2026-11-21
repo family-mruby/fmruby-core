@@ -46,6 +46,15 @@ class SpriteImage
     @gfx.load_sprite_image(@id, path)
   end
 
+  # Write RGB332 pixels (a String of width * height bytes, top row first)
+  # into this image, or into the part x:, y:, width:, height: names. No file
+  # is involved; the bytes travel with the drawing commands.
+  def write_pixels(pixels, x: 0, y: 0, width: nil, height: nil)
+    w = width || @width
+    h = height || @height
+    @gfx.write_sprite_image(@id, x, y, w, h, pixels)
+  end
+
   # Destroy this sprite image and free resources
   def destroy
     return unless @id

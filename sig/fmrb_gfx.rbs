@@ -817,10 +817,16 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
   # use_transparent: true で作った SpriteImage なら、その透明色は抜ける。
   # タイル 1 枚ずつを並べる高水準の側は TileMap にある。
   #
+  # scale: で大きさを変えて描ける。2〜32 は元の 1 点を scale x scale に
+  # (scale: 2 で 2 倍)、-2〜-32 は 1/|scale| に (scale: -4 で 1/4。
+  # 升ごとに左上の 1 点を取る)。中身は draw_tile_scaled_raw。
+  #
   # ```ruby
   # sheet.load_bmp("/cache/app/x/tiles.png")
   # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
   #               dst_x: 32, dst_y: 16)
+  # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
+  #   dst_x: 0, dst_y: 40, scale: 3)
   # ```
   # <<en>>
   # Stamps part of a SpriteImage straight onto the canvas. No SpriteInstance
@@ -831,10 +837,17 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
   # colour transparent here. TileMap is the higher-level way to lay a whole
   # map out.
   #
+  # scale: draws it at another size. 2 to 32 turns each pixel into a
+  # scale x scale block (scale: 2 is twice the size); -2 to -32 draws
+  # 1/|scale| of it (scale: -4 is a quarter, taking the top-left pixel of
+  # each block). It goes through draw_tile_scaled_raw.
+  #
   # ```ruby
   # sheet.load_bmp("/cache/app/x/tiles.png")
   # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
   #               dst_x: 32, dst_y: 16)
+  # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
+  #   dst_x: 0, dst_y: 40, scale: 3)
   # ```
   %a{fmrb.internal}
   def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
@@ -854,6 +867,30 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
 #                   16, 16, 32, 16)
 # ```
 def draw_tile_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h, Integer dst_x, Integer dst_y) -> FmrbGfx
+
+# draw_tile を拡大・縮小して描く <<en>> draw_tile drawn larger or smaller
+#
+# scale が 1〜32 なら元の 1 点を scale x scale に、-2〜-32 なら 1/|scale|
+# の大きさに (升ごとに左上の 1 点。0 と -1 は 1)。範囲の外は ERR_ARG。
+# 描く先は clip の矩形 (原点から。clip_w か clip_h が 0 なら無し) と
+# canvas で切る。透明色は draw_tile と同じに抜ける。包みは draw_tile の
+# scale:。
+# ```ruby
+# gfx.draw_tile_scaled_raw(id, 0, 0,
+#   16, 16, 40, 20, 2, 0, 0, 0, 0)
+# ```
+# <<en>>
+# A scale of 1 to 32 turns each pixel into a scale x scale block; -2 to -32
+# draws 1/|scale| of the size (the top-left pixel of each block; 0 and -1
+# are 1). Out of range is ERR_ARG. The destination is cut to the clip rect
+# (from the origin; none when clip_w or clip_h is 0) and to the canvas. The
+# transparent colour is skipped as in draw_tile. The wrapper is draw_tile's
+# scale:.
+# ```ruby
+# gfx.draw_tile_scaled_raw(id, 0, 0,
+#   16, 16, 40, 20, 2, 0, 0, 0, 0)
+# ```
+def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h, Integer dst_x, Integer dst_y, Integer scale, Integer clip_x, Integer clip_y, Integer clip_w, Integer clip_h) -> FmrbGfx
 
   # 型ぬきの形を作る <<en>> Make a mask
   #
@@ -1108,6 +1145,7 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   # 絵 (PNG か BMP) をスプライトの絵に読み込む <<en>> Read a PNG or BMP into a sprite image
   #
   # 描画側のパスを渡す (先に sync_file で送る)。展開は描画側でやる。
+  # PNG の透明な点 (α が 128 未満、tRNS) は透明色 0x01 になる。
   # 包みは SpriteImage#load_bmp。
   # ```ruby
   # gfx.load_sprite_image(id,
@@ -1115,12 +1153,35 @@ def set_composite_regions_raw: (Array[composite_region] regions) -> FmrbGfx
   # ```
   # <<en>>
   # Takes a path on the graphics side (send it there with sync_file first),
-  # which decodes it. The wrapper is SpriteImage#load_bmp.
+  # which decodes it. A PNG's transparent pixels (alpha below 128, tRNS)
+  # become the transparent colour 0x01. The wrapper is SpriteImage#load_bmp.
   # ```ruby
   # gfx.load_sprite_image(id,
   #   "/cache/app/x/bird.png")
   # ```
   def load_sprite_image: (Integer image_id, String path) -> FmrbGfx
+
+  # 画素 (RGB332) をスプライトの絵に書く <<en>> Write RGB332 pixels into a sprite image
+  #
+  # pixels は w * h バイト (上の行から)。絵の (x, y) から書き、絵の外は
+  # 捨てる。1 回 65,536 点まで (超えると ERR_ARG)。描く命令と同じ列で
+  # 送るので、前に頼んだ draw_tile は書く前の絵で描かれる。
+  # 包みは SpriteImage#write_pixels。
+  # ```ruby
+  # gfx.write_sprite_image(img.id, 0, 0,
+  #   16, 16, pixels)
+  # ```
+  # <<en>>
+  # pixels is w * h bytes, top row first, written from (x, y) of the image;
+  # what falls outside it is dropped. Up to 65,536 pixels a call (more is
+  # ERR_ARG). It travels with the drawing commands, so a draw_tile asked for
+  # earlier still draws the image as it was. The wrapper is
+  # SpriteImage#write_pixels.
+  # ```ruby
+  # gfx.write_sprite_image(img.id, 0, 0,
+  #   16, 16, pixels)
+  # ```
+  def write_sprite_image: (Integer image_id, Integer x, Integer y, Integer w, Integer h, bin pixels) -> FmrbGfx
 
   # 描く先をスプライトの絵にする <<en>> Draw into a sprite image
   #

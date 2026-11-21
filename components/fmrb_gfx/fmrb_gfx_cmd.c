@@ -106,6 +106,12 @@ static void cmd_begin(gfx_cmd_t *cmd, gfx_cmd_type_t type,
 _Static_assert(sizeof(gfx_cmd_t) <= FMRB_MAX_MSG_PAYLOAD_SIZE,
                "gfx_cmd_t must fit in an fmrb_msg_t payload "
                "(lower FMRB_GFX_MAX_TEXT_LEN or raise FMRB_MAX_MSG_PAYLOAD_SIZE)");
+/* The pixel chunk is sized to sit inside the union the text command already
+   sets, so carrying pixels costs no queue memory. */
+_Static_assert(sizeof(((gfx_cmd_t *)0)->params.sprite_image_data) <=
+                   sizeof(((gfx_cmd_t *)0)->params.text),
+               "a SPRITE_IMAGE_DATA chunk must not grow gfx_cmd_t "
+               "(lower FMRB_GFX_SPRITE_DATA_CHUNK)");
 
 // Copy src_len bytes into a fixed command buffer, truncating to fit.
 //
@@ -360,6 +366,43 @@ void fmrb_gfx_cmd_draw_tile(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
     cmd->params.draw_tile.h = h;
     cmd->params.draw_tile.dst_x = dst_x;
     cmd->params.draw_tile.dst_y = dst_y;
+}
+
+void fmrb_gfx_cmd_draw_tile_scaled(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                                   uint16_t image_id, int16_t src_x, int16_t src_y,
+                                   uint16_t w, uint16_t h, int16_t dst_x,
+                                   int16_t dst_y, int8_t scale, int16_t clip_x,
+                                   int16_t clip_y, uint16_t clip_w, uint16_t clip_h)
+{
+    cmd_begin(cmd, GFX_CMD_DRAW_TILE_SCALED, canvas_id);
+    cmd->params.draw_tile_scaled.image_id = image_id;
+    cmd->params.draw_tile_scaled.src_x = src_x;
+    cmd->params.draw_tile_scaled.src_y = src_y;
+    cmd->params.draw_tile_scaled.w = w;
+    cmd->params.draw_tile_scaled.h = h;
+    cmd->params.draw_tile_scaled.dst_x = dst_x;
+    cmd->params.draw_tile_scaled.dst_y = dst_y;
+    cmd->params.draw_tile_scaled.scale = scale;
+    cmd->params.draw_tile_scaled.clip_x = clip_x;
+    cmd->params.draw_tile_scaled.clip_y = clip_y;
+    cmd->params.draw_tile_scaled.clip_w = clip_w;
+    cmd->params.draw_tile_scaled.clip_h = clip_h;
+}
+
+bool fmrb_gfx_cmd_sprite_image_data(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                                    uint16_t image_id, int16_t x, int16_t y,
+                                    uint16_t w, uint16_t h, const uint8_t *pixels)
+{
+    size_t n = (size_t)w * h;
+    if (n > FMRB_GFX_SPRITE_DATA_CHUNK) return false;
+    cmd_begin(cmd, GFX_CMD_SPRITE_IMAGE_DATA, canvas_id);
+    cmd->params.sprite_image_data.image_id = image_id;
+    cmd->params.sprite_image_data.x = x;
+    cmd->params.sprite_image_data.y = y;
+    cmd->params.sprite_image_data.w = w;
+    cmd->params.sprite_image_data.h = h;
+    memcpy(cmd->params.sprite_image_data.pixels, pixels, n);
+    return true;
 }
 
 void fmrb_gfx_cmd_delete_image(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,

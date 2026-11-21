@@ -587,6 +587,29 @@ int32_t fmrb_bnd_gfx_draw_tile_raw(int32_t gfx, int32_t image_id, int32_t src_x,
     return submit(&t, &cmd);
 }
 
+// scale 1..32 draws each pixel scale x scale; -2..-32 draws 1/|scale| of the
+// size (0 and -1 are 1). The clip rect is from the origin like the rest; a
+// clip_w or clip_h of 0 leaves only the canvas to clip.
+int32_t fmrb_bnd_gfx_draw_tile_scaled_raw(int32_t gfx, int32_t image_id, int32_t src_x, int32_t src_y,
+                                          int32_t w, int32_t h, int32_t dst_x, int32_t dst_y, int32_t scale,
+                                          int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h)
+{
+    if (scale > FMRB_LINK_TILE_SCALE_MAX || scale < -FMRB_LINK_TILE_SCALE_MAX) {
+        return ERR_ARG;
+    }
+    if (scale == 0 || scale == -1) {
+        scale = 1;
+    }
+    TARGET(gfx, t);
+    bool clipped = clip_w > 0 && clip_h > 0;
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_draw_tile_scaled(&cmd, t.canvas, (uint16_t)image_id, (int16_t)src_x, (int16_t)src_y,
+                                  clamp_size(w), clamp_size(h), TX(t, dst_x), TY(t, dst_y), (int8_t)scale,
+                                  clipped ? TX(t, clip_x) : 0, clipped ? TY(t, clip_y) : 0,
+                                  clipped ? clamp_size(clip_w) : 0, clipped ? clamp_size(clip_h) : 0);
+    return submit(&t, &cmd);
+}
+
 /* Mask upload: a BEGIN that reserves the buffer on the display, then the bits
    in chunks well below a frame (each its own frame, kept in order by the
    transport's mutex). */
@@ -975,6 +998,52 @@ int32_t fmrb_bnd_gfx_load_sprite_image(int32_t gfx, int32_t image_id, const char
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_load_sprite_image_bmp_n(&cmd, t.canvas, (uint16_t)image_id, path, (size_t)path_len);
     return submit(&t, &cmd);
+}
+
+// The pixels go through the host queue in pieces of up to
+// FMRB_GFX_SPRITE_DATA_CHUNK bytes (whole rows when a row fits, else pieces
+// of one row), so they stay in order with the draw_tile calls around them:
+// rewriting an image that is still being drawn from cannot change a stamp
+// queued before. The rect is the image's own (no origin).
+#define SPRITE_DATA_MAX_PIXELS 65536
+
+int32_t fmrb_bnd_gfx_write_sprite_image(int32_t gfx, int32_t image_id, int32_t x, int32_t y, int32_t w,
+                                        int32_t h, const uint8_t *pixels, int32_t pixels_len)
+{
+    if (w <= 0 || h <= 0 || w > 0xFFFF || h > 0xFFFF || !pixels) {
+        return ERR_ARG;
+    }
+    int64_t n = (int64_t)w * h;
+    if (n > SPRITE_DATA_MAX_PIXELS || pixels_len < n) {
+        return ERR_ARG;
+    }
+    if (x < INT16_MIN || x > INT16_MAX || y < INT16_MIN || y + h - 1 > INT16_MAX) {
+        return ERR_ARG;
+    }
+    TARGET(gfx, t);
+    gfx_cmd_t cmd;
+    const int32_t chunk = FMRB_GFX_SPRITE_DATA_CHUNK;
+    if (w <= chunk) {
+        int32_t rows = chunk / w;
+        for (int32_t r = 0; r < h; r += rows) {
+            int32_t nr = (h - r < rows) ? h - r : rows;
+            fmrb_gfx_cmd_sprite_image_data(&cmd, t.canvas, (uint16_t)image_id, (int16_t)x, (int16_t)(y + r),
+                                           (uint16_t)w, (uint16_t)nr, pixels + (size_t)r * (size_t)w);
+            if (submit(&t, &cmd) != 0) return ERR_FAILED;
+        }
+        return 0;
+    }
+    for (int32_t r = 0; r < h; r++) {
+        for (int32_t c = 0; c < w; c += chunk) {
+            int32_t nc = (w - c < chunk) ? w - c : chunk;
+            if (x + c > INT16_MAX) break;
+            fmrb_gfx_cmd_sprite_image_data(&cmd, t.canvas, (uint16_t)image_id, (int16_t)(x + c),
+                                           (int16_t)(y + r), (uint16_t)nc, 1,
+                                           pixels + (size_t)r * (size_t)w + (size_t)c);
+            if (submit(&t, &cmd) != 0) return ERR_FAILED;
+        }
+    }
+    return 0;
 }
 
 // Through the host_task queue, so the switch stays in order with the drawing

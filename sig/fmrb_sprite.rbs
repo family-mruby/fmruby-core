@@ -80,8 +80,10 @@ class SpriteImage
 
   # 絵 (PNG か BMP) をこの絵に読み込む <<en>> Read a PNG or BMP into this image
   #
-  # PNG (色は上位の 3/3/2 ビットで RGB332 になる。アルファは透明色に
-  # ならない) か、画素の値が RGB332 の 8 bit BMP。先頭のバイトで見分ける。
+  # PNG (色は上位の 3/3/2 ビットで RGB332 になる。透明な点 (α が 128
+  # 未満、tRNS) は透明色 0x01 になるので、transparent_color: 0x01 で
+  # 作った絵なら抜ける) か、画素の値が RGB332 の 8 bit BMP。先頭のバイトで
+  # 見分ける。
   # 名前は BMP しか読めなかった頃のまま。展開は描画側でやる。一枚絵は
   # `FmrbGfx#create_image` の方。
   # ```ruby
@@ -89,8 +91,10 @@ class SpriteImage
   #   "/usr/share/sprites/flappy/bird_up.png")
   # ```
   # <<en>>
-  # A PNG (its colours become RGB332 by their top 3/3/2 bits; alpha is not
-  # transparency) or an 8-bit BMP whose pixel values are RGB332, told apart
+  # A PNG (its colours become RGB332 by their top 3/3/2 bits; a transparent
+  # pixel -- alpha below 128, tRNS -- becomes the transparent colour 0x01,
+  # so an image made with transparent_color: 0x01 leaves it out) or an 8-bit
+  # BMP whose pixel values are RGB332, told apart
   # by the first bytes. The name is from when it read BMP only. It is decoded
   # on the graphics side. A whole picture goes through `FmrbGfx#create_image`.
   # ```ruby
@@ -98,6 +102,26 @@ class SpriteImage
   #   "/usr/share/sprites/flappy/bird_up.png")
   # ```
   def load_bmp: (String path) -> void
+
+  # 画素 (RGB332) をこの絵に書く <<en>> Write RGB332 pixels into this image
+  #
+  # pixels は幅 x 高さ バイト (上の行から)。x:, y:, width:, height: で
+  # 一部だけ書ける (既定は絵の全体)。ファイルを経ずに絵を作れる。
+  # ```ruby
+  # img = SpriteImage.new(@gfx,
+  #   width: 2, height: 2)
+  # img.write_pixels("\xE0\x1C\x03\xFF")
+  # ```
+  # <<en>>
+  # pixels is width x height bytes, top row first. x:, y:, width:, height:
+  # write a part only (the whole image by default). A picture made without
+  # a file.
+  # ```ruby
+  # img = SpriteImage.new(@gfx,
+  #   width: 2, height: 2)
+  # img.write_pixels("\xE0\x1C\x03\xFF")
+  # ```
+  def write_pixels: (String pixels) -> void
 
   # この絵を片づける <<en>> Let go of this image
   #

@@ -754,12 +754,22 @@ class FmrbGfx
     self
   end
 
-  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
-    draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:, scale: 1)
+    if scale == 1
+      draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+    else
+      draw_tile_scaled_raw(image_id, src_x, src_y, w, h, dst_x, dst_y, scale, 0, 0, 0, 0)
+    end
   end
 
   def draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
     FmrbBoundary.fmrb_bnd_gfx_draw_tile_raw(@d, image_id, src_x, src_y, w, h, dst_x, dst_y)
+    self
+  end
+
+  def draw_tile_scaled_raw(image_id, src_x, src_y, w, h, dst_x, dst_y, scale, clip_x, clip_y, clip_w, clip_h)
+    FmrbBoundary.fmrb_bnd_gfx_draw_tile_scaled_raw(@d, image_id, src_x, src_y, w, h, dst_x, dst_y, scale,
+                                                   clip_x, clip_y, clip_w, clip_h)
     self
   end
 
@@ -1005,6 +1015,12 @@ class FmrbGfx
   def load_sprite_image(image_id, path)
     s = path.to_s
     FmrbBoundary.fmrb_bnd_gfx_load_sprite_image(@d, image_id, s, s.bytesize)
+    self
+  end
+
+  def write_sprite_image(image_id, x, y, w, h, pixels)
+    s = pixels.to_s
+    FmrbBoundary.fmrb_bnd_gfx_write_sprite_image(@d, image_id, x, y, w, h, s, s.bytesize)
     self
   end
 

@@ -43,6 +43,7 @@
 
 extern "C" {
 #include "fmrb_bmp332.h"
+#include "fmrb_png332_pngle.h"  // a PNG into a sprite image, the system's transparency rule
 #include "rd_encoder_jpeg.h"   // EXPORT_FRAME writes a JPEG with it
 #include "host_task.h"         // the input sources follow the screen size
 #include "fmrb_app.h"          // which app a canvas belongs to (the screen mode rules)
@@ -2053,8 +2054,77 @@ static bool export_frame_jpeg(const char *path)
     return ok;
 }
 
+// One pixel of a PNG (RGB332, by fmrb_png332_pngle.h) into an RGB565 sprite
+// image, converted as a BMP's pixels are.
+static void sprite_png_put(void *ud, uint32_t x, uint32_t y, uint8_t rgb332)
+{
+    ((LGFX_Sprite *)ud)->drawPixel((int32_t)x, (int32_t)y, rgb332);
+}
+
 static inline int imin(int a, int b) { return a < b ? a : b; }
 static inline int imax(int a, int b) { return a > b ? a : b; }
+
+// DRAW_TILE_SCALED (fmrb_link_protocol.h), as graphics-audio draws it: each
+// source pixel as a k x k block (scale k >= 1), or every d-th pixel of every
+// d-th row (scale -d). A row's run of one colour is one fillRect, transparent
+// runs are skipped, and every rect is cut to the target and to the command's
+// clip rect here, so the target's own clip state is never touched. Values are
+// compared and written raw, as DRAW_TILE does.
+static void draw_tile_scaled(LGFX_Sprite *src, LGFX_Sprite *dst,
+                             const fmrb_link_graphics_draw_tile_scaled_t *cmd,
+                             bool use_trans, uint16_t trans_raw, int *out_y0, int *out_y1)
+{
+    *out_y0 = *out_y1 = 0;
+    int k = cmd->scale;
+    if (k > FMRB_LINK_TILE_SCALE_MAX) k = FMRB_LINK_TILE_SCALE_MAX;
+    if (k < -FMRB_LINK_TILE_SCALE_MAX) k = -FMRB_LINK_TILE_SCALE_MAX;
+    const int step = k < -1 ? -k : 1;   // source pixels per destination pixel
+    const int cell = k > 1 ? k : 1;     // destination pixels per source pixel
+
+    int cx0 = 0, cy0 = 0, cx1 = dst->width(), cy1 = dst->height();
+    if (cmd->clip_w > 0 && cmd->clip_h > 0) {
+        cx0 = imax(cx0, cmd->clip_x);
+        cy0 = imax(cy0, cmd->clip_y);
+        cx1 = imin(cx1, cmd->clip_x + (int)cmd->clip_w);
+        cy1 = imin(cy1, cmd->clip_y + (int)cmd->clip_h);
+    }
+    if (cx0 >= cx1 || cy0 >= cy1) return;
+    *out_y0 = imax(cy0, (int)cmd->dst_y);
+    *out_y1 = imin(cy1, (int)cmd->dst_y + (((int)cmd->h + step - 1) / step) * cell);
+
+    const int sw = src->width();
+    const int sh = src->height();
+    const int out_w = ((int)cmd->w + step - 1) / step;
+    const int out_h = ((int)cmd->h + step - 1) / step;
+    for (int j = 0; j < out_h; j++) {
+        const int sy = cmd->src_y + j * step;
+        if (sy < 0 || sy >= sh) continue;
+        int y0 = cmd->dst_y + j * cell;
+        int y1 = y0 + cell;
+        if (y1 <= cy0) continue;
+        if (y0 >= cy1) break;
+        y0 = imax(y0, cy0);
+        y1 = imin(y1, cy1);
+        int i = 0;
+        while (i < out_w) {
+            const int sx = cmd->src_x + i * step;
+            if (sx < 0 || sx >= sw) { i++; continue; }
+            const uint16_t c = (uint16_t)src->readPixelValue(sx, sy);
+            int n = 1;
+            while (i + n < out_w) {
+                const int nx = cmd->src_x + (i + n) * step;
+                if (nx < 0 || nx >= sw || (uint16_t)src->readPixelValue(nx, sy) != c) break;
+                n++;
+            }
+            if (!(use_trans && c == trans_raw)) {
+                const int x0 = imax(cx0, cmd->dst_x + i * cell);
+                const int x1 = imin(cx1, cmd->dst_x + (i + n) * cell);
+                if (x0 < x1) dst->fillRect(x0, y0, x1 - x0, y1 - y0, (lgfx::rgb565_t){c});
+            }
+            i += n;
+        }
+    }
+}
 
 static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                                 const uint8_t *data, size_t size) {
@@ -2769,6 +2839,28 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         return export_frame_jpeg(full_path) ? 0 : -1;
     }
 
+    case FMRB_LINK_GFX_SPRITE_IMAGE_DATA: {
+        if (size < sizeof(fmrb_link_graphics_sprite_image_data_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_sprite_image_data_t *)data;
+        const size_t n = (size_t)cmd->w * cmd->h;
+        if (size < sizeof(*cmd) + n) break;
+        LGFX_Sprite *spr = display_local_sprite_image_get(cmd->image_id);
+        if (!spr) {
+            FMRB_LOGE(TAG, "SPRITE_IMAGE_DATA: image %u not found", cmd->image_id);
+            return -1;
+        }
+        // RGB332 into the RGB565 image the way LOAD_SPRITE_IMAGE_BMP puts a
+        // BMP's pixels (drawPixel converts), so transparent-colour compares
+        // see the same values. drawPixel drops what falls outside.
+        const uint8_t *px = data + sizeof(*cmd);
+        for (int r = 0; r < (int)cmd->h; r++) {
+            for (int c = 0; c < (int)cmd->w; c++) {
+                spr->drawPixel(cmd->x + c, cmd->y + r, px[(size_t)r * cmd->w + c]);
+            }
+        }
+        return 0;
+    }
+
     case FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP: {
         if (size < sizeof(fmrb_link_graphics_load_sprite_image_bmp_t)) break;
         const auto *cmd = (const fmrb_link_graphics_load_sprite_image_bmp_t *)data;
@@ -2822,16 +2914,14 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         }
 
         // The picture is an 8-bit BMP whose bytes are RGB332 colours, or a
-        // PNG; the first bytes tell. Either way it becomes a grid of RGB332
-        // bytes first and goes into the RGB565 sprite through the same
-        // drawPixel below, so a PNG gives exactly the pixel values the BMP
-        // did (transparent-colour comparisons such as mahjong's 0xE3 stay
-        // the same).
+        // PNG; the first bytes tell. Either way each pixel is an RGB332 byte
+        // that goes into the RGB565 sprite through the same drawPixel, so a
+        // PNG gives exactly the pixel values the BMP did (transparent-colour
+        // comparisons such as mahjong's 0xE3 stay the same). A PNG is decoded
+        // with the system's colour rule (fmrb_png332_pngle.h): the top 3/3/2
+        // bits, and a transparent pixel (alpha below 128, tRNS) as 0x01.
         static const uint8_t k_png_sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-        const uint8_t *pixels = nullptr;
         uint16_t src_w = 0, src_h = 0;
-        fmrb_bmp332_t bmp;
-        LGFX_Sprite png_spr;
         if (fsz >= 24 && memcmp(file_buf, k_png_sig, sizeof(k_png_sig)) == 0) {
             const uint32_t pw = ((uint32_t)file_buf[16] << 24) | ((uint32_t)file_buf[17] << 16) |
                                 ((uint32_t)file_buf[18] << 8) | file_buf[19];
@@ -2843,41 +2933,35 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 fmrb_sys_free(file_buf);
                 return -1;
             }
-            // Decoded into an 8-bit (RGB332) scratch sprite in PSRAM, no
-            // bigger than the target: the decoder's RGB888 keeps its top
-            // 3/3/2 bits there, which gives back the RGB332 value each
-            // palette colour was expanded from.
-            src_w = (uint16_t)(pw < (uint32_t)spr->width()  ? pw : (uint32_t)spr->width());
-            src_h = (uint16_t)(ph < (uint32_t)spr->height() ? ph : (uint32_t)spr->height());
-            png_spr.setColorDepth(lgfx::rgb332_1Byte);
-            png_spr.setPsram(true);
-            if (!png_spr.createSprite(src_w, src_h) ||
-                !png_spr.drawPng(file_buf, (size_t)fsz, 0, 0, src_w, src_h)) {
-                FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: PNG decode failed: %s", full_path);
-                png_spr.deleteSprite();
+            // drawPng's own decoder state (44 KB, kept by LovyanGFX) is let
+            // go first, so only one is held at a time.
+            spr->releasePngMemory();
+            int r = fmrb_png332_pngle_decode(file_buf, (size_t)fsz, (uint32_t)spr->width(),
+                                             (uint32_t)spr->height(), sprite_png_put, spr, nullptr, nullptr);
+            if (r != FMRB_PNG332_PNGLE_OK) {
+                FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: PNG decode failed (%d): %s", r, full_path);
                 fmrb_sys_free(file_buf);
                 return -1;
             }
-            pixels = (const uint8_t *)png_spr.getBuffer();
+            src_w = (uint16_t)pw;
+            src_h = (uint16_t)ph;
         } else {
+            fmrb_bmp332_t bmp;
             if (fmrb_bmp332_parse(file_buf, (size_t)fsz, &bmp) != 0) {
                 FMRB_LOGE(TAG, "LOAD_SPRITE_BMP: parse failed: %s", full_path);
                 fmrb_sys_free(file_buf);
                 return -1;
             }
-            pixels = bmp.pixels;
             src_w = bmp.width;
             src_h = bmp.height;
-        }
-
-        uint16_t copy_w = (uint16_t)((src_w < (uint16_t)spr->width())  ? src_w : spr->width());
-        uint16_t copy_h = (uint16_t)((src_h < (uint16_t)spr->height()) ? src_h : spr->height());
-        for (uint16_t y = 0; y < copy_h; y++) {
-            for (uint16_t x = 0; x < copy_w; x++) {
-                spr->drawPixel(x, y, pixels[(size_t)y * src_w + x]);
+            uint16_t copy_w = (uint16_t)((src_w < (uint16_t)spr->width())  ? src_w : spr->width());
+            uint16_t copy_h = (uint16_t)((src_h < (uint16_t)spr->height()) ? src_h : spr->height());
+            for (uint16_t y = 0; y < copy_h; y++) {
+                for (uint16_t x = 0; x < copy_w; x++) {
+                    spr->drawPixel(x, y, bmp.pixels[(size_t)y * src_w + x]);
+                }
             }
         }
-        png_spr.deleteSprite();
         fmrb_sys_free(file_buf);
         FMRB_LOGI(TAG, "LOAD_SPRITE_BMP: loaded %s -> image %u (%ux%u)",
                   full_path, cmd->image_id, src_w, src_h);
@@ -3237,6 +3321,23 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 dst->drawPixel(cmd->dst_x + xx, cmd->dst_y + yy, (lgfx::rgb565_t){pixel});
             }
         }
+        return 0;
+    }
+
+    case FMRB_LINK_GFX_DRAW_TILE_SCALED: {
+        if (size < sizeof(fmrb_link_graphics_draw_tile_scaled_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_draw_tile_scaled_t *)data;
+        LGFX_Sprite *src = display_local_sprite_image_get(cmd->image_id);
+        if (!src) return -1;
+        auto *dst = get_sprite(cmd->canvas_id);
+        if (!dst) return -1;
+        uint8_t trans_color_332 = 0;
+        bool use_trans = display_local_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
+        lgfx::rgb332_t tc332; tc332.raw = trans_color_332;
+        lgfx::rgb565_t tc565; tc565 = tc332;
+        int y0 = 0, y1 = 0;
+        draw_tile_scaled(src, dst, cmd, use_trans, tc565.raw, &y0, &y1);
+        if (y0 < y1) mark_sprite_rows(cmd->canvas_id, dst, y0, y1);
         return 0;
     }
 

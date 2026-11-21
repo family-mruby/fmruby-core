@@ -1,6 +1,6 @@
 # 描画境界 (FmrbGfx ↔ 描画側) の課題と方針
 
-> 状態: 随時更新 | 更新: 2026-09-04 | 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
+> 状態: 随時更新 | 更新: 2026-11-21 | 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
 
 Ruby の `FmrbGfx` は命令の列 (`fmrb_link_protocol.h`) を描画側へ送り、描画側が
 LovyanGFX で実装する。描画側は 4 通り (WROVER = graphics-audio、Tab5 =
@@ -76,6 +76,17 @@ create を送らない (PicoRabbit P7/P9)。これは NACK が入っても残し
 
 **状態**: 未着手。見本デッキの置き場と比較の手順は未定。C6 により仕様変更が
 落ち着いてから。
+
+**PNG の透明の扱い (2026-11-21、doc/pictures P1)**: スプライトの絵へ読む
+`LOAD_SPRITE_IMAGE_BMP` は、2 つの描画側とも同じ決まり
+(`lib/gems/picoruby-fmrb-bmp332/include/fmrb_png332.h`、α が 128 未満と tRNS を
+透明色 0x01 に) を `fmrb_png332_pngle.h` で使うようにした。ホストの試験
+(`rake png332:test`) が、アプリの側の `BMP332.load` と同じ画素になることを見る。
+**`create_image` の α は 2 つの描画側で食い違ったまま**: graphics-audio は
+PNG のバイト列のまま持ち、`DRAW_IMAGE` のたびに `drawPng` で canvas の上に α を
+混ぜて描く。display_local は作るときに白で埋めた RGB565 の絵へ解く (α は白と
+混ざり、描くときは不透明)。そろえるかは doc/pictures の P4 の後
+(`create_image` を使うアプリが残るか) で決める。
 
 ## 課題 3: 資源 (画像) の寿命が暗黙で、使い回しの表が Ruby 側にある
 

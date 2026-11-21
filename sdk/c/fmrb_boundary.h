@@ -51,7 +51,7 @@ extern "C" {
  * refuses an app that imports a function it lacks, before the app starts.
  */
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0x84e75e43u
+#define FMRB_ABI_HASH 0x294fcb83u
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -1229,6 +1229,16 @@ FMRB_IMPORT("gfx_draw_tile_raw")
 int32_t fmrb_gfx_draw_tile_raw(int32_t gfx, int32_t image_id, int32_t src_x, int32_t src_y, int32_t w, int32_t h, int32_t dst_x, int32_t dst_y);
 
 /**
+ * draw_tile を拡大・縮小して描く
+ * draw_tile drawn larger or smaller
+ *
+ * Ruby: FmrbGfx#draw_tile_scaled_raw(image_id, src_x, src_y, w, h, dst_x, dst_y, scale, clip_x, clip_y, clip_w, clip_h)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_draw_tile_scaled_raw")
+int32_t fmrb_gfx_draw_tile_scaled_raw(int32_t gfx, int32_t image_id, int32_t src_x, int32_t src_y, int32_t w, int32_t h, int32_t dst_x, int32_t dst_y, int32_t scale, int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h);
+
+/**
  * 型ぬきの形を作る
  * Make a mask
  *
@@ -1349,6 +1359,16 @@ int32_t fmrb_gfx_delete_sprite_image(int32_t gfx, int32_t image_id);
  */
 FMRB_IMPORT("gfx_load_sprite_image")
 int32_t fmrb_gfx_load_sprite_image(int32_t gfx, int32_t image_id, const char *path, int32_t path_len);
+
+/**
+ * 画素 (RGB332) をスプライトの絵に書く
+ * Write RGB332 pixels into a sprite image
+ *
+ * Ruby: FmrbGfx#write_sprite_image(image_id, x, y, w, h, pixels)
+ * @param gfx the FmrbGfx receiver number
+ */
+FMRB_IMPORT("gfx_write_sprite_image")
+int32_t fmrb_gfx_write_sprite_image(int32_t gfx, int32_t image_id, int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *pixels, int32_t pixels_len);
 
 /**
  * 描く先をスプライトの絵にする

@@ -299,8 +299,14 @@ class FmrbGfx
   # @param h [Integer] source rect height
   # @param dst_x [Integer] destination x on this canvas
   # @param dst_y [Integer] destination y on this canvas
-  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
-    draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+  # @param scale [Integer] 2..32 draws each pixel scale x scale, -2..-32
+  #   draws 1/|scale| of the size (draw_tile_scaled_raw); 1 is as is
+  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:, scale: 1)
+    if scale == 1
+      draw_tile_raw(image_id, src_x, src_y, w, h, dst_x, dst_y)
+    else
+      draw_tile_scaled_raw(image_id, src_x, src_y, w, h, dst_x, dst_y, scale, 0, 0, 0, 0)
+    end
   end
 
   # Draw a thick line by stacking parallel 1-pixel lines along the

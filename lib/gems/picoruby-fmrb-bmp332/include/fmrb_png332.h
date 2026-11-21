@@ -54,6 +54,26 @@ enum {
 // The largest width and height read or written (FMRB_BMP332_MAX_DIM's value).
 #define FMRB_PNG332_MAX_DIM 2048
 
+// A pixel whose alpha is below this is transparent (also a palette entry
+// whose tRNS alpha is). Half-transparent edges go one way or the other,
+// since a key colour has no in-between.
+#define FMRB_PNG332_ALPHA_MIN 128
+
+// The rule every PNG reader of the system keeps: this file's decoder (the
+// app side's BMP332.load) and the two display sides' sprite loaders
+// (graphics-audio, and display_local through fmrb_png332_pngle.h). A colour
+// becomes RGB332 by its top 3/3/2 bits, as LovyanGFX does; a pixel below
+// FMRB_PNG332_ALPHA_MIN becomes FMRB_PNG332_TRANSPARENT.
+static inline uint8_t fmrb_png332_rgb(uint8_t r, uint8_t g, uint8_t b)
+{
+    return (uint8_t)((r & 0xE0) | ((g >> 3) & 0x1C) | (b >> 6));
+}
+
+static inline uint8_t fmrb_png332_from_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
+{
+    return a < FMRB_PNG332_ALPHA_MIN ? (uint8_t)FMRB_PNG332_TRANSPARENT : fmrb_png332_rgb(r, g, b);
+}
+
 int fmrb_png332_is_png(const uint8_t *buf, size_t len);
 
 // On success *pixels is width * height bytes from the allocator; the caller
