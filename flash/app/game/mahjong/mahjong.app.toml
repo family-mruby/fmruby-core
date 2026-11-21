@@ -11,3 +11,9 @@ single_instance = true
 # (doc/reference/app_memory.md).
 large_memory = 1
 icon = "app/game/mahjong/mahjong.icon"
+# The table compiles some of its files only when they are first needed
+# (mahjong_640, mahjong_xl, mahjong_watch, ...: `require` from inside the
+# game's own calls). On the default 16 KB the compiler's recursion overflowed
+# the task stack when a game started on a Tab5 (Stack protection fault in
+# codegen, 2026-11-22). Internal RAM, one instance.
+task_stack_kb = 32
