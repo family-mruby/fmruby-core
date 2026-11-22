@@ -37,7 +37,7 @@ enum FMRB_MEM_POOL_ID{
     // named ones still fit inside it.
     POOL_ID_USER_APP_LARGE = POOL_ID_USER_APP0 + FMRB_USER_APP_COUNT,
     // The large pools (large_memory = 1), FMRB_USER_APP_LARGE_POOL_COUNT of
-    // them: one, or two on the S3. Matched as the range [POOL_ID_USER_APP_LARGE,
+    // them (two on every build). Matched as the range [POOL_ID_USER_APP_LARGE,
     // POOL_ID_USER_APP_LARGE_END).
     POOL_ID_USER_APP_LARGE1,
     // Editor document arena (picoruby-fmrb-editor-core). Deliberately its own
@@ -163,13 +163,17 @@ typedef int8_t fmrb_mem_handle_t;
 // ordinary pool per user app slot -- the first three static, the rest
 // allocated on first use and then kept (see fmrb_mempool_reserve): allocating
 // and freeing 500 KB blocks over a long session is how a PSRAM heap gets
-// fragmented -- and one large pool.
+// fragmented -- and two large pools as well, both static. One was not enough
+// here either: a machine that takes files in (or has Send to on) keeps the
+// transfer app up from boot, and with a single large pool every other
+// large_memory app (the mahjong table, the shooter) was then refused with
+// FMRB_ERR_FAILED. The second one costs its size in PSRAM whether or not it
+// is used (2 MB on Modern, 3 MB on the 64-bit builds).
 #if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_HW_FAMILY_MODERN)
 #define FMRB_USER_APP_POOL_COUNT 1
 #define FMRB_USER_APP_STATIC_POOL_COUNT 1
-#define FMRB_USER_APP_LARGE_POOL_COUNT 2
 #else
 #define FMRB_USER_APP_POOL_COUNT FMRB_USER_APP_COUNT
 #define FMRB_USER_APP_STATIC_POOL_COUNT 3
-#define FMRB_USER_APP_LARGE_POOL_COUNT 1
 #endif
+#define FMRB_USER_APP_LARGE_POOL_COUNT 2
