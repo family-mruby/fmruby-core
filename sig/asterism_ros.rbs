@@ -488,6 +488,11 @@ module Asterism
       # ```ruby
       # pub.close
       # ```
+      # <<en>>
+      # Returns nil.
+      # ```ruby
+      # pub.close
+      # ```
       def close: () -> nil
 
       # この口の GID <<en>> The publisher's GID (16 bytes)
@@ -605,6 +610,11 @@ module Asterism
       # ```ruby
       # sub.close
       # ```
+      # <<en>>
+      # Returns nil.
+      # ```ruby
+      # sub.close
+      # ```
       def close: () -> nil
 
       # やめたか <<en>> Whether it is closed
@@ -671,6 +681,11 @@ module Asterism
       # 閉じる <<en>> Withdraw the service
       #
       # nil を返す。
+      # ```ruby
+      # srv.close
+      # ```
+      # <<en>>
+      # Returns nil.
       # ```ruby
       # srv.close
       # ```
@@ -746,6 +761,11 @@ module Asterism
       # 閉じる <<en>> Withdraw the client
       #
       # nil を返す。
+      # ```ruby
+      # cli.close
+      # ```
+      # <<en>>
+      # Returns nil.
       # ```ruby
       # cli.close
       # ```
@@ -865,6 +885,11 @@ module Asterism
       # 止める <<en>> Stop the timer
       #
       # nil を返す。
+      # ```ruby
+      # t.cancel
+      # ```
+      # <<en>>
+      # Returns nil.
       # ```ruby
       # t.cancel
       # ```

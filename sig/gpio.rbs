@@ -248,11 +248,21 @@ class GPIO
   # ```ruby
   # GPIO.high_at?(7)
   # ```
+  # <<en>>
+  # True when the value read is not 0.
+  # ```ruby
+  # GPIO.high_at?(7)
+  # ```
   def self.high_at?: (Integer pin) -> bool
 
   # ピン番号で低いか <<en>> Whether a pin is low, by number
   #
   # 読んだ値が 0 なら true。
+  # ```ruby
+  # GPIO.low_at?(7)
+  # ```
+  # <<en>>
+  # True when the value read is 0.
   # ```ruby
   # GPIO.low_at?(7)
   # ```

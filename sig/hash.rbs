@@ -124,6 +124,11 @@ class Hash
   # ```ruby
   # @titles.key?(room)
   # ```
+  # <<en>>
+  # The same as `has_key?`.
+  # ```ruby
+  # @titles.key?(room)
+  # ```
   def key?: (untyped key) -> bool
 
   # その値があるかどうか <<en>> Check if specified value exists

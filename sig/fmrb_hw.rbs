@@ -139,6 +139,11 @@ module FmrbHw
   # ```ruby
   # FmrbHw.pin_status_all[5]
   # ```
+  # <<en>>
+  # The index is the pin number and the value is a `PIN_*`. The length is `pin_count`.
+  # ```ruby
+  # FmrbHw.pin_status_all[5]
+  # ```
   def self.pin_status_all: () -> Array[Integer]
 
   # 台帳のピンの数 <<en>> How many pins the table has

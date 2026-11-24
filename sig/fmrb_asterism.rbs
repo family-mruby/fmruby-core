@@ -128,6 +128,11 @@ module FmrbAsterism
   # ```ruby
   # n = FmrbAsterism.saved_name
   # ```
+  # <<en>>
+  # The name in config.toml. "" when there is none or it cannot be read.
+  # ```ruby
+  # n = FmrbAsterism.saved_name
+  # ```
   def self.saved_name: () -> String
 
   # 表示の名前を保存する <<en>> Save the display name and use it now
