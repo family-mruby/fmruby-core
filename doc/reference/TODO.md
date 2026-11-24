@@ -365,3 +365,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   定数のパスの全体 (`A::B::C`) をクラスの名前として引き、当たればそのクラス (静的) を返す。ユーザの判断待ち。
 - 通信のまわりで見つかった疑い (2026-11-25、report/s5b.md。読みだけ): `ROS::Subscription#handler=` は `node.subscribe` で
   作った物だけ `Node#poll` に拾われ、`node.subscription` に後から付けても呼ばれない。`TableClient#leave` の戻り値が false。
+- AI ホスト (asterism-tutor 0.3.1) の検査 `enumerator_next` が、`conn.each(pattern)` をブロックなしで書いた正しい形
+  (sig の例・見本どおり) を落とす (2026-11-25、doc/sig_coverage/report/s6_ai_host.md)。答え直しが 2 回起きた。直していない。
+- `FmrbGfx#draw_text_mixed` は同梱のアプリが 9 か所で使うが sig に無い (`draw_text(..., mixed: true)` の、Hash を作らない形)。
+  アプリを書く人に見せるかは未決定。
