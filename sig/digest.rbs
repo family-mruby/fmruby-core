@@ -1,0 +1,98 @@
+# SHA-256 (Digest::SHA256)。
+# 実装は lib/gems/picoruby-fmrb-sha256/src/sha256.c。**入るのはブラウザ版 (wasm) だけ**
+# (lib/upstream/family_mruby_wasm.rb)。実機・Linux sim・ネイティブ版では `Digest` が無く
+# (NameError)、代わりに mbedTLS の `MbedTLS::Digest` がある。CRuby の Digest とは違い
+# SHA256 以外 (MD5・SHA1 など)・`file`・`base64digest` は無い。
+
+# ハッシュの入れもの。
+module Digest
+  # SHA-256 を計算する <<en>> Compute SHA-256
+  #
+  # **ブラウザ版だけにある**。ほかのビルドでも動くコードは、先に
+  # `Object.const_defined?(:Digest)` で調べる (chat の stamps.rb が実例)。
+  # ```ruby
+  # d = Digest::SHA256.new
+  # d.update("abc")
+  # d.hexdigest.size   #=> 64
+  # ```
+  # <<en>>
+  # **Only in the browser build.** Code that must run on the other builds checks
+  # `Object.const_defined?(:Digest)` first (the chat app's stamps.rb does).
+  # ```ruby
+  # d = Digest::SHA256.new
+  # d.update("abc")
+  # d.hexdigest.size   #=> 64
+  # ```
+  class SHA256
+    # 新しい計算を始める <<en>> Start a new computation
+    #
+    # ```ruby
+    # d = Digest::SHA256.new
+    # ```
+    def self.new: () -> Digest::SHA256
+
+    # 1 回で 16 進の文字列にする <<en>> One-shot, as a hex string
+    #
+    # 渡すのは String (バイト列も可)。それ以外は TypeError。結果は小文字 16 進の 64 桁。
+    # ```ruby
+    # Digest::SHA256.hexdigest("abc")
+    # #=> "ba7816bf8f01cfea..." (64 桁)
+    # ```
+    # <<en>>
+    # Takes a String (bytes are fine); anything else is a TypeError. The result is 64
+    # lowercase hex digits.
+    # ```ruby
+    # Digest::SHA256.hexdigest("abc")
+    # #=> "ba7816bf8f01cfea..." (64 digits)
+    # ```
+    def self.hexdigest: (String data) -> String
+
+    # 続きのデータを足す <<en>> Add more data
+    #
+    # 自分を返すので `d.update(a).update(b)` と続けられる。`<<` も同じ。
+    # ```ruby
+    # d.update(chunk)
+    # ```
+    # <<en>>
+    # Returns itself, so `d.update(a).update(b)` chains. `<<` is the same.
+    # ```ruby
+    # d.update(chunk)
+    # ```
+    def update: (String data) -> Digest::SHA256
+
+    # update の別名 <<en>> Alias of update
+    #
+    # ```ruby
+    # d << chunk
+    # ```
+    def <<: (String data) -> Digest::SHA256
+
+    # ここまでの 16 進の結果 <<en>> The result so far, as hex
+    #
+    # **何度呼んでもよく、呼んだ後に `update` を続けてもよい** (内部の状態は変わらない)。
+    # ```ruby
+    # d.hexdigest   #=> 64 桁の小文字 16 進
+    # ```
+    # <<en>>
+    # **Safe to call any number of times, and `update` may go on afterwards** (the state is untouched).
+    # ```ruby
+    # d.hexdigest   #=> 64 lowercase hex digits
+    # ```
+    def hexdigest: () -> String
+
+    # ここまでの結果の 32 バイト <<en>> The result so far, as 32 bytes
+    #
+    # `hexdigest` と同じく状態を変えない。
+    # ```ruby
+    # raw = d.digest
+    # raw.bytesize   #=> 32
+    # ```
+    # <<en>>
+    # Does not change the state, like `hexdigest`.
+    # ```ruby
+    # raw = d.digest
+    # raw.bytesize   #=> 32
+    # ```
+    def digest: () -> String
+  end
+end

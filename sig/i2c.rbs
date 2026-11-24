@@ -1,0 +1,146 @@
+# I2C (I2C)。
+# 実装は picoruby の gem picoruby-i2c (mrblib/i2c.rb、src/mruby/i2c.c は lib/upstream/patch/picoruby-i2c/
+# src/mruby/i2c.c に差し替えたもの) と、端末側のつなぎ lib/upstream/picoruby-i2c-proxy/i2c.c ->
+# main/drivers/hw_proxy/hw_proxy_i2c.c。**入るのは ESP32 の実機 (S3・P4) だけ**
+# (lib/upstream/family_mruby_esp32.rb・family_mruby_esp32p4.rb)。Linux sim・ネイティブ版・
+# ブラウザ版には `I2C` が無く、使うと NameError になる。
+
+# I2C の機器と話す。
+#
+# `I2C.new` で線を開き、`write` と `read` でバイトを送り受ける。7 ビットのアドレスで話す。
+# **ユニットは `:ESP32_I2C0` と `:ESP32_I2C1` だけ**。ピンは `FmrbHw::PIN_I2C1_SDA`・`PIN_I2C1_SCL`
+# を使う。**失敗はすべて IOError**。
+# ```ruby
+# i2c = I2C.new(unit: :ESP32_I2C1,
+#   sda_pin: FmrbHw::PIN_I2C1_SDA,
+#   scl_pin: FmrbHw::PIN_I2C1_SCL)
+# ```
+# <<en>>
+# Talks to I2C devices. `I2C.new` opens the bus, and `write` and `read` send and receive bytes
+# with a 7-bit address. **The only units are `:ESP32_I2C0` and `:ESP32_I2C1`.** Use
+# `FmrbHw::PIN_I2C1_SDA` and `PIN_I2C1_SCL` for the pins. **Every failure is an IOError.**
+# ```ruby
+# i2c = I2C.new(unit: :ESP32_I2C1,
+#   sda_pin: FmrbHw::PIN_I2C1_SDA,
+#   scl_pin: FmrbHw::PIN_I2C1_SCL)
+# ```
+class I2C
+  # 周波数の既定 (Hz) <<en>> Default frequency (Hz)
+  DEFAULT_FREQUENCY: Integer
+  # 待ちの既定 (ms) <<en>> Default timeout (ms)
+  DEFAULT_TIMEOUT: Integer
+
+  # I2C の線を開く <<en>> Open an I2C bus
+  #
+  # `unit:` は必須 (`:ESP32_I2C0` か `:ESP32_I2C1`。文字列でもよい)。`frequency:` (省略すると 100000 Hz)、
+  # `sda_pin:`・`scl_pin:` (省略すると -1)、`timeout:` (省略すると 500。以後の `read`・`write` の
+  # 待ちの既定、ms)。
+  #
+  # **開けないときの IOError の文は "Invalid I2C unit" 1 種類**: 知らないユニット名だけでなく、
+  # **すでに別のアプリが持っている**、**画面を持つ機種で I2C1 に別のピンを渡した**、
+  # 画面の準備前、も同じ文になる。画面を持つ機種 (Tab5・NARYA v4・AtomS3R) の I2C1 は
+  # 本体の配線に固定で、`FmrbHw::PIN_I2C1_SDA`・`PIN_I2C1_SCL` 以外は断られる。
+  # ```ruby
+  # i2c = I2C.new(unit: :ESP32_I2C1,
+  #   sda_pin: FmrbHw::PIN_I2C1_SDA,
+  #   scl_pin: FmrbHw::PIN_I2C1_SCL)
+  # ```
+  # <<en>>
+  # `unit:` is required (`:ESP32_I2C0` or `:ESP32_I2C1`; a string also works). `frequency:`
+  # (100000 Hz when left out), `sda_pin:` and `scl_pin:` (-1 when left out), `timeout:` (500
+  # when left out; the default wait of later `read` and `write`, in ms).
+  #
+  # **A bus that cannot be opened raises IOError with one message, "Invalid I2C unit"**: not
+  # only an unknown unit name, but also **a bus another app already holds**, **a different pin**
+  # **for I2C1 on a board with a screen**, and a screen not ready yet. On those boards
+  # (Tab5, NARYA v4, AtomS3R) I2C1 is fixed to the board's wiring, and anything but
+  # `FmrbHw::PIN_I2C1_SDA` and `PIN_I2C1_SCL` is refused.
+  # ```ruby
+  # i2c = I2C.new(unit: :ESP32_I2C1,
+  #   sda_pin: FmrbHw::PIN_I2C1_SDA,
+  #   scl_pin: FmrbHw::PIN_I2C1_SCL)
+  # ```
+  def self.new: (unit: (Symbol | String) , ?frequency: Integer, ?sda_pin: Integer, ?scl_pin: Integer, ?timeout: Integer) -> I2C
+
+  # 機器へ書く <<en>> Write to a device
+  #
+  # `addr` は 7 ビットのアドレス。データは**幾つでも続けて渡せ**、Integer (1 バイト)・
+  # Integer の Array・String (バイト列) を混ぜてよい。全部まとめて 1 回で送る。
+  # 1 バイトは下 8 ビットに丸められる。`timeout:` は ms (省略すると `new` の `timeout:`)。
+  # 送ったバイト数を返す。
+  #
+  # 失敗は IOError ("I2C write failed")。型が合わないと TypeError ("argument must be Integer,
+  # Array or String"、Array の中が Integer でないときも)。
+  # ```ruby
+  # i2c.write(0x41, 0x20, [1, 2])
+  # ```
+  # <<en>>
+  # `addr` is the 7-bit address. Pass **any number of data arguments**: an Integer (one
+  # byte), an Array of Integers, a String (bytes), mixed freely. All of it goes out in one
+  # transaction. A byte is cut to its low 8 bits. `timeout:` is in ms (the `timeout:` of `new`
+  # when left out). Returns the number of bytes sent.
+  #
+  # A failure is IOError ("I2C write failed"). A wrong type is a TypeError ("argument must be
+  # Integer, Array or String", also for a non-Integer inside an Array).
+  # ```ruby
+  # i2c.write(0x41, 0x20, [1, 2])
+  # ```
+  def write: (Integer addr, *(Integer | Array[Integer] | String) data, ?timeout: Integer) -> Integer
+
+  # 機器から読む <<en>> Read from a device
+  #
+  # `addr` のアドレスから `len` バイトを読み、**バイト列の String** で返す。`len` の後ろに
+  # データを渡すと (レジスタ番号など)、**先にそれを送り、STOP を出さずに続けて読む**
+  # (`write` と同じ渡し方)。`timeout:` は ms (省略すると `new` の `timeout:`)。
+  #
+  # 失敗は IOError ("I2C read failed"、読む前の送りの失敗は "I2C write (for read) failed")。
+  # **`len` が 0 でも "I2C read failed"**。1 回の待ちは最短 10 ms に切り上げられる。
+  # ```ruby
+  # v = i2c.read(0x41, 1, 0xFE)
+  # v.getbyte(0)
+  # ```
+  # <<en>>
+  # Reads `len` bytes from `addr` and returns them as a **String of bytes**. Data after `len`
+  # (a register number, say) is **sent first, and the read follows without a STOP** (passed
+  # as in `write`). `timeout:` is in ms (the `timeout:` of `new` when left out).
+  #
+  # A failure is IOError ("I2C read failed"; a failed send before the read is "I2C write (for
+  # read) failed"). **A `len` of 0 also raises "I2C read failed".** One wait is rounded up to at least 10 ms.
+  # ```ruby
+  # v = i2c.read(0x41, 1, 0xFE)
+  # v.getbyte(0)
+  # ```
+  def read: (Integer addr, Integer len, *(Integer | Array[Integer] | String) write_data, ?timeout: Integer) -> String
+
+  # 7 ビットのアドレスを順に当てて見つける <<en>> Probe the 7-bit addresses for devices
+  #
+  # 0x08〜0x77 を 1 つずつ読み・書きして、答えたアドレスを **`puts` で出す**
+  # ("I2C device found at 7-bit address 0x41 ...")。**戻り値は nil** で、見つけた一覧は
+  # 返らない。出力が要るのでシェルや開発のためのもの。`timeout:` は省略すると `new` の値。
+  # ```ruby
+  # i2c.scan
+  # ```
+  # <<en>>
+  # Reads and writes each address from 0x08 to 0x77 and **prints** the ones that answer with
+  # `puts` ("I2C device found at 7-bit address 0x41 ..."). **It returns nil**, not the list.
+  # It is for the shell and for development. `timeout:` is the value of `new` when left out.
+  # ```ruby
+  # i2c.scan
+  # ```
+  def scan: (?timeout: Integer) -> nil
+
+  # 線を手放す <<en>> Release the bus
+  #
+  # 持っていたピンとユニットの所有を手放す (**バスそのものは閉じず残る**ので、同じアプリでも
+  # 別のアプリでも、続けて `I2C.new` で開き直せる)。nil を返し、失敗しても例外にしない。
+  # ```ruby
+  # i2c.close
+  # ```
+  # <<en>>
+  # Gives up the ownership of the unit and its pins (**the bus itself stays**, so the same app
+  # or another one can open it again with `I2C.new`). Returns nil and raises nothing on failure.
+  # ```ruby
+  # i2c.close
+  # ```
+  def close: () -> nil
+end

@@ -1,0 +1,176 @@
+# JSON (JSON・JSON::Digger)。
+# 実装は picoruby の gem picoruby-json (lib/upstream/patch/picoruby-json/mrblib/json.rb。
+# 上流の gem に、ブラウザ版で Regexp が無くても読めるようにする直しを足したもの)。
+# どのビルドも family_mruby.gembox に入れていて、全部 Ruby で書いてある (C の部分は無い)。
+# CRuby の json とは違う: `to_json`・`pretty_generate`・`load`・`dump`・オプション (`symbolize_names:` など) は無い。
+
+# JSON の読み書き。
+#
+# 読むのは `JSON.parse`、書くのは `JSON.generate`。大きな JSON から一部だけ取るなら
+# `JSON::Digger`。**どれも Ruby で書いた小さな実装**で、速さより小ささを優先している。
+# ```ruby
+# h = JSON.parse('{"a": [1, 2]}')
+# s = JSON.generate(h)   #=> "{\"a\":[1,2]}"
+# ```
+# <<en>>
+# Reading and writing JSON. `JSON.parse` reads, `JSON.generate` writes; to take a part out
+# of a big JSON use `JSON::Digger`. **All of it is a small implementation in Ruby**, built
+# for size rather than speed.
+# ```ruby
+# h = JSON.parse('{"a": [1, 2]}')
+# s = JSON.generate(h)   #=> "{\"a\":[1,2]}"
+# ```
+module JSON
+  # JSON の例外の親 <<en>> Parent of the JSON errors
+  #
+  # `JSON.parse` が `,` や `:` を期待して外したときは、`ParserError` ではなくこの `JSONError` そのもの。
+  # JSON まわりをまとめて受けるなら `rescue JSON::JSONError`。
+  # <<en>>
+  # When `JSON.parse` expects a `,` or `:` and does not find it, it raises this `JSONError`
+  # itself, not a `ParserError`. To catch everything from JSON, `rescue JSON::JSONError`.
+  class JSONError < StandardError
+  end
+
+  # JSON.parse が読めなかったときの例外 <<en>> Raised when JSON.parse cannot read
+  #
+  # 先頭が値の字でない、文字列が閉じていない、`\u` の後が足りない、など。
+  # <<en>>
+  # The text does not start with a value, a string is not closed, a `\u` is cut short, and so on.
+  class ParserError < JSONError
+  end
+
+  # JSON.generate の例外 (実装は出さない) <<en>> JSON.generate error (never raised)
+  #
+  # 名前だけあり、`JSON.generate` はこれを出さない。作れない値は文字列にして書く。
+  # <<en>>
+  # The name exists but `JSON.generate` never raises it: a value it cannot write is written as a string.
+  class GeneratorError < JSONError
+  end
+
+  # JSON::Digger の例外 <<en>> Raised by JSON::Digger
+  #
+  # 掘る先のキーが無いとき ("Key not found: name")。
+  # <<en>>
+  # The key to dig to is not there ("Key not found: name").
+  class DiggerError < JSONError
+  end
+
+  # JSON 文字列を Ruby の値にする <<en>> Parse a JSON string into Ruby values
+  #
+  # `{}` は Hash (**キーは必ず String**)、`[]` は Array、数は Integer か Float、
+  # `true`・`false`・`null` はそのまま (`null` は nil)。
+  #
+  # 失敗は例外。先頭が値でない・空文字列・閉じていない文字列は `JSON::ParserError`、
+  # `:` や `,` が無いなど構造の崩れは `JSON::JSONError` (親)。**後ろのごみは黙って捨てる**
+  # (JSON の後ろに付いた字) (`"[1,2] xyz"` は `[1, 2]`)。
+  #
+  # **`\uXXXX` の読みは当てにならない**。1 バイトに詰める実装で、日本語は正しく読めない。
+  # 日本語は `\u` にせず UTF-8 のまま書いた JSON を渡す。小数は自前の計算で組み立てるので、
+  # 末尾の桁が CRuby とずれることがある。全部 Ruby の実装で、大きな JSON を丸ごと読むのは重い。
+  # ```ruby
+  # h = JSON.parse('{"temp": 21.5}')
+  # h["temp"]   #=> 21.5
+  # ```
+  # <<en>>
+  # `{}` becomes a Hash (**keys are always Strings**), `[]` an Array, numbers Integer or Float,
+  # and `true`, `false`, `null` as themselves (`null` is nil).
+  #
+  # Failure raises. A text that does not start with a value, an empty string and an unclosed
+  # string raise `JSON::ParserError`; a broken structure (a missing `:` or `,`) raises
+  # `JSON::JSONError` (the parent). **Trailing junk after the JSON is dropped silently**
+  # (`"[1,2] xyz"` is `[1, 2]`).
+  #
+  # **Do not trust `\uXXXX`.** It is packed into one byte, so Japanese is not read right. Pass
+  # JSON with the text as UTF-8 instead. Floats are built by hand, so the last digits can
+  # differ from CRuby. It is all Ruby, so reading a big JSON whole is heavy.
+  # ```ruby
+  # h = JSON.parse('{"temp": 21.5}')
+  # h["temp"]   #=> 21.5
+  # ```
+  def self.parse: (String json) -> untyped
+
+  # Ruby の値を JSON 文字列にする <<en>> Turn a Ruby value into a JSON string
+  #
+  # Hash・Array・String・Integer・Float・true・false・nil を書く。**Symbol は文字列**になり、
+  # Hash のキーは `to_s` した文字列になる。**それ以外のオブジェクトも `to_s` した文字列**で
+  # 書く (エラーにならない)。
+  #
+  # 空白も改行も入れず 1 行で返す。日本語はそのまま (エスケープしない)。`NaN` や無限大も
+  # 例外にならず、JSON として正しくない `NaN` などの字がそのまま入る。
+  # ```ruby
+  # JSON.generate({ "a" => [1, nil] })
+  # #=> "{\"a\":[1,null]}"
+  # ```
+  # <<en>>
+  # Writes Hash, Array, String, Integer, Float, true, false and nil. **A Symbol becomes a string**, and a Hash key is written as its `to_s`. **Any other object is written as its `to_s`** (no error).
+  #
+  # The result is one line with no spaces. Japanese is left as it is (not escaped). `NaN` and
+  # infinity do not raise either: the text `NaN` and the like go in, which is not valid JSON.
+  # ```ruby
+  # JSON.generate({ "a" => [1, nil] })
+  # #=> "{\"a\":[1,null]}"
+  # ```
+  def self.generate: (untyped obj) -> String
+
+  # 大きな JSON から一部だけ取り出す <<en>> Take a part out of a big JSON
+  #
+  # JSON 全体を読まずに文字列を走査して、`dig` で指した部分だけを切り出す。
+  # 小さなメモリのためのもので、切り出した部分を `parse` で Ruby の値にする。
+  # ```ruby
+  # j = '[{"d": {"name": "Remo"}}]'
+  # JSON::Digger.new(j).dig(0, "d", "name").parse
+  # #=> "Remo"
+  # ```
+  # <<en>>
+  # Scans the string without reading the whole JSON and cuts out the part `dig` points at.
+  # It is for small memory: `parse` turns the cut part into a Ruby value.
+  # ```ruby
+  # j = '[{"d": {"name": "Remo"}}]'
+  # JSON::Digger.new(j).dig(0, "d", "name").parse
+  # #=> "Remo"
+  # ```
+  class Digger
+    # 掘る JSON を渡して作る <<en>> Make one on a JSON string
+    #
+    # ```ruby
+    # d = JSON::Digger.new(text)
+    # ```
+    def self.new: (String json) -> JSON::Digger
+
+    # キーと位置をたどって、その部分を指す <<en>> Follow keys and positions to a part
+    #
+    # String は Hash のキー、Integer は Array の位置 (0 から。**負の数は ArgumentError**)。
+    # 自分 (Digger) を返すので、続けて `dig` や `parse` ができる。
+    # **掘ると、この Digger は切り出した部分だけを持つ**。元には戻れず、続きはその中を掘る。
+    # 同じ元から別の所を取るなら、新しい Digger を作る。
+    #
+    # キーが無いと `JSON::DiggerError` ("Key not found: name")。Hash に位置、Array にキーを
+    # 使うなど形が合わないと `JSON::JSONError`。String と Integer 以外は ArgumentError。
+    # **範囲を超えた Array の位置は例外にならず**、後の `parse` が nil などを返す。
+    # ```ruby
+    # d = JSON::Digger.new('{"a": [10, 20]}')
+    # d.dig("a", 1).parse   #=> 20
+    # ```
+    # <<en>>
+    # A String is a Hash key, an Integer an Array position (from 0; **a negative number is an ArgumentError**). It returns itself, so `dig` and `parse` can follow.
+    # **After digging, this Digger holds only the cut part.** There is no way back: the next
+    # `dig` goes inside it. To take another place from the same source, make a new Digger.
+    #
+    # A missing key raises `JSON::DiggerError` ("Key not found: name"). A shape that does not
+    # fit (a position on a Hash, a key on an Array) raises `JSON::JSONError`. Anything but a
+    # String or an Integer is an ArgumentError. **A position past the end does not raise**: the later `parse` returns nil or the like.
+    # ```ruby
+    # d = JSON::Digger.new('{"a": [10, 20]}')
+    # d.dig("a", 1).parse   #=> 20
+    # ```
+    def dig: (*(String | Integer) keys) -> JSON::Digger
+
+    # 今指している部分を Ruby の値にする <<en>> Turn the part it points at into a Ruby value
+    #
+    # ```ruby
+    # JSON::Digger.new('[1, 2]').dig(1).parse
+    # #=> 2
+    # ```
+    def parse: () -> untyped
+  end
+end

@@ -1,0 +1,229 @@
+# ネットワークの状態と取得 (FmrbNet)。
+# 実装は lib/gems/picoruby-fmrb-kernel の ports/esp32/net.c (状態の問い合わせ) と
+# mrblib/fmrb-net.rb (`FmrbNet.request`)。全ビルドに入る。ただし `request` が板で使う
+# `Net::HTTP` は WiFi のあるビルド (ATOM を除く実機・Linux sim・ネイティブ版) にだけある。
+
+# ネットワークの状態を読み、待たずに取得する。
+#
+# WiFi の接続は端末が受け持つので、アプリは**状態を見るだけ** (`connected?`・`ip_address`・
+# `hostname`・`ssid`)。取得は `FmrbNet.request` で、**ブラウザ版でも同じ書き方**ができる。
+# **Linux sim・ネイティブ版・ブラウザ版は、いつも「つながっている」(`127.0.0.1`・`localhost`)** と答える。
+# ```ruby
+# up = FmrbNet.connected?
+# ```
+# <<en>>
+# Reads the network state, and fetches without waiting. The machine owns the WiFi connection,
+# so an app **only looks at the state** (`connected?`, `ip_address`, `hostname`, `ssid`).
+# Fetching is `FmrbNet.request`, written the same way **in the browser build too**.
+# **The Linux sim, the native build and the browser build always answer "connected"**
+# **(`127.0.0.1`, `localhost`).**
+# ```ruby
+# up = FmrbNet.connected?
+# ```
+module FmrbNet
+  # WiFi につながっているか <<en>> Whether WiFi is connected
+  #
+  # WiFi の無い端末 (ATOM) は false。Linux sim・ネイティブ版・ブラウザ版は true。
+  # ```ruby
+  # draw_offline unless FmrbNet.connected?
+  # ```
+  # <<en>>
+  # false on a machine without WiFi (ATOM). true on the Linux sim, native and browser builds.
+  # ```ruby
+  # draw_offline unless FmrbNet.connected?
+  # ```
+  def self.connected?: () -> bool
+
+  # 端末の IP アドレス <<en>> This machine's IP address
+  #
+  # つながっていないと `"0.0.0.0"`。Linux sim・ネイティブ版・ブラウザ版は `"127.0.0.1"`。
+  # ```ruby
+  # FmrbNet.ip_address   #=> "0.0.0.0" など
+  # ```
+  # <<en>>
+  # `"0.0.0.0"` when not connected. `"127.0.0.1"` on the Linux sim, native and browser builds.
+  # ```ruby
+  # FmrbNet.ip_address   #=> "0.0.0.0" and the like
+  # ```
+  def self.ip_address: () -> String
+
+  # 端末のホスト名 <<en>> This machine's host name
+  #
+  # WiFi の無い端末は空の文字列。Linux sim・ネイティブ版・ブラウザ版は `"localhost"`。
+  # ```ruby
+  # FmrbNet.hostname
+  # ```
+  # <<en>>
+  # An empty string on a machine without WiFi. `"localhost"` on the Linux sim, native and browser builds.
+  # ```ruby
+  # FmrbNet.hostname
+  # ```
+  def self.hostname: () -> String
+
+  # つないでいる WiFi の名前 <<en>> Name of the WiFi in use
+  #
+  # 設定が無い・WiFi の無い端末は空の文字列。**実機以外 (Linux sim・ネイティブ版・**
+  # **ブラウザ版) では WiFi を持たないので常に空**。
+  # ```ruby
+  # FmrbNet.ssid
+  # ```
+  # <<en>>
+  # An empty string when nothing is set or there is no WiFi. **Always empty off a real board**
+  # **(Linux sim, native, browser): they have no WiFi.**
+  # ```ruby
+  # FmrbNet.ssid
+  # ```
+  def self.ssid: () -> String
+
+  # IP アドレスが付くまで待つ <<en>> Wait until an IP address is assigned
+  #
+  # 呼んだアプリのタスクを最大 timeout_ms 止める (`timeout_ms` は省略すると 10000。負は 0)。
+  # 付けば true、時間切れは false。**画面を持つアプリでは短い値にする**。Linux sim・
+  # ネイティブ版・ブラウザ版はすぐ true、WiFi の無い端末はすぐ false。
+  # ```ruby
+  # ok = FmrbNet.wait_for_ip(2000)
+  # ```
+  # <<en>>
+  # Stops the calling app's task for up to timeout_ms (`timeout_ms` is 10000 when left out; a
+  # negative value is 0). true once an address is there, false on timeout. **Use a short value in an app**
+  # **with a screen.** true at once on the Linux sim, native and browser builds, false at once
+  # on a machine without WiFi.
+  # ```ruby
+  # ok = FmrbNet.wait_for_ip(2000)
+  # ```
+  def self.wait_for_ip: (?Integer timeout_ms) -> bool
+
+  # URL の取得を始める <<en>> Start fetching a URL
+  #
+  # **答えそのものではなく `Request` を返す** (名前が get でない理由)。結果は後で
+  # `done?` が true になってから読む。コールバックは無い。
+  #
+  # **待ち方が環境で違う**: ブラウザ版は裏で取るので `done?` はしばらく false で、画面は
+  # 動き続ける。**実機・Linux sim・ネイティブ版は `request` の中で取り終えるので、**
+  # **サーバが答えるまでアプリのタスクが止まる** (`done?` は最初から true)。Net::HTTP の GET だけで、
+  # 失敗は例外でなく `error` に入る。
+  # ```ruby
+  # @req = FmrbNet.request("https://example.org/a")
+  # ```
+  # <<en>>
+  # **Returns a `Request`, not the answer** (which is why it is not called get). Read the
+  # result later, once `done?` is true. There is no callback.
+  #
+  # **How it waits differs by build.** The browser build fetches in the background, so `done?`
+  # stays false for a while and the screen keeps moving. **A real board, the Linux sim and the**
+  # **native build finish inside `request`, so the app's task stops until the server answers**
+  # (`done?` is true from the start). It is a Net::HTTP GET only, and a failure goes
+  # into `error`, not an exception.
+  # ```ruby
+  # @req = FmrbNet.request("https://example.org/a")
+  # ```
+  def self.request: (String url) -> FmrbNet::Request
+
+  # 取得 1 件 (FmrbNet.request が返す) <<en>> One fetch (what FmrbNet.request returns)
+  #
+  # `on_update` で `done?` を見て、true になったら `ok?` と `body` を読む。
+  # ```ruby
+  # if @req && @req.done?
+  #   use(@req.body) if @req.ok?
+  #   @req = nil
+  # end
+  # ```
+  # <<en>>
+  # Check `done?` in `on_update`, and once it is true read `ok?` and `body`.
+  # ```ruby
+  # if @req && @req.done?
+  #   use(@req.body) if @req.ok?
+  #   @req = nil
+  # end
+  # ```
+  class Request
+    # 取得した URL <<en>> The URL asked for
+    #
+    # ```ruby
+    # @req.url
+    # ```
+    def url: () -> String
+
+    # 終わったか <<en>> Whether it has finished
+    #
+    # 失敗で終わっても true。**終わりを見た時に結果 (`status`・`body`・`error`) が確定する**ので、
+    # 結果は `done?` が true になってから読む。
+    # ```ruby
+    # return unless @req.done?
+    # ```
+    # <<en>>
+    # true after a failure too. **The result (`status`, `body`, `error`) is settled when `done?`**
+    # **first sees the end**, so read it only after `done?` is true.
+    # ```ruby
+    # return unless @req.done?
+    # ```
+    def done?: () -> bool
+
+    # うまくいった (HTTP の 2xx) か <<en>> Succeeded (HTTP 2xx)
+    #
+    # 終わっていないと false (中で `done?` を呼ぶ)。`error` があっても false。
+    # ```ruby
+    # @req.ok?
+    # ```
+    # <<en>>
+    # false when it has not finished (it calls `done?`) and when there is an `error`.
+    # ```ruby
+    # @req.ok?
+    # ```
+    def ok?: () -> bool
+
+    # HTTP の状態コード <<en>> The HTTP status code
+    #
+    # 終わるまで、また通信の失敗では nil。
+    # ```ruby
+    # @req.status   #=> 200
+    # ```
+    # <<en>>
+    # nil until it finishes, and after a failed connection.
+    # ```ruby
+    # @req.status   #=> 200
+    # ```
+    def status: () -> Integer?
+
+    # 取得した本文 <<en>> The body that came back
+    #
+    # 終わるまで、また失敗では nil。
+    # ```ruby
+    # text = @req.body
+    # ```
+    # <<en>>
+    # nil until it finishes, and after a failure.
+    # ```ruby
+    # text = @req.body
+    # ```
+    def body: () -> String?
+
+    # 失敗の理由 <<en>> Why it failed
+    #
+    # 成功なら nil。届かなかった・答えが無かった・`cancel` した ("cancelled") などの短い文。
+    # ```ruby
+    # Log.warn(@req.error) if @req.error
+    # ```
+    # <<en>>
+    # nil on success. A short text: could not reach, no answer, `cancel`led ("cancelled"), and so on.
+    # ```ruby
+    # Log.warn(@req.error) if @req.error
+    # ```
+    def error: () -> String?
+
+    # 答えを待つのをやめる <<en>> Stop caring about the answer
+    #
+    # 何度呼んでもよい。以後は `done?` が true で、`error` は "cancelled" (すでに別の理由が
+    # あればそのまま)。nil を返す。
+    # ```ruby
+    # @req.cancel
+    # ```
+    # <<en>>
+    # Safe to call more than once. From then on `done?` is true and `error` is "cancelled"
+    # (an earlier reason stays). Returns nil.
+    # ```ruby
+    # @req.cancel
+    # ```
+    def cancel: () -> nil
+  end
+end

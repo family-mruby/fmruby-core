@@ -353,3 +353,363 @@ class File
   # ```
   def close: () -> void
 end
+
+# TOML の読み書き (FmrbToml)。
+# 実装は lib/gems/picoruby-fmrb-app の mrblib/fmrb-toml.rb と ports/esp32/toml.c (読みは
+# ファームウェア自身の TOML リーダ `FmrbToml._parse`。system_conf.toml や .app.toml を読むものと同じ)。
+# 全ビルドに入る (family_mruby.gembox)。
+
+# TOML の設定ファイルを読む・行ごとに書き換える。
+#
+# `load` でファイル、`parse` で文字列を Hash にする。**読めなかったときは例外でなく nil** で、
+# 理由は `FmrbToml.error`。書くのは `update` だけで、**指したキーの行だけを書き換える**ので、
+# 人が手で書いたコメント・順序・知らないキーが残る。
+# ```ruby
+# conf = FmrbToml.load("/home/app.toml")
+# n = conf ? conf["name"] : nil
+# ```
+# <<en>>
+# Read a TOML settings file, or rewrite it line by line. `load` reads a file and `parse` a
+# string into a Hash. **A failure is nil, not an exception**; `FmrbToml.error` says why. The
+# only writer is `update`, which **changes only the lines of the keys you name**, so comments,
+# order and keys nobody here knows stay as a person wrote them.
+# ```ruby
+# conf = FmrbToml.load("/home/app.toml")
+# n = conf ? conf["name"] : nil
+# ```
+module FmrbToml
+  # 文字列の TOML を Hash にする <<en>> Parse a TOML string into a Hash
+  #
+  # 表 (`[a]`) は Hash、配列は Array、`[[name]]` は Hash の Array。文字列・整数 (`0x..` も)・
+  # 小数・true/false はそのまま。**日付と引用符の無い 1 語 (`bg = black`)** は、
+  # 書かれた文字列のまま返る。
+  #
+  # TOML でないと (1 行の誤りでも) nil。理由は `FmrbToml.error`。例外は出ない。
+  # ```ruby
+  # FmrbToml.parse("a = 1\n[s]\nb = \"x\"\n")
+  # #=> {"a"=>1, "s"=>{"b"=>"x"}}
+  # ```
+  # <<en>>
+  # A table (`[a]`) is a Hash, an array an Array, `[[name]]` an Array of Hash. Strings,
+  # integers (`0x..` too), floats and true/false come back as themselves. **A date and an unquoted word (`bg = black`)**
+  # come back as the text that was written.
+  #
+  # Text that is not TOML (even one bad line) gives nil; `FmrbToml.error` says why. No exception.
+  # ```ruby
+  # FmrbToml.parse("a = 1\n[s]\nb = \"x\"\n")
+  # #=> {"a"=>1, "s"=>{"b"=>"x"}}
+  # ```
+  def self.parse: (String text) -> Hash[String, untyped]?
+
+  # ファイルの TOML を Hash にする <<en>> Read a TOML file into a Hash
+  #
+  # ファイルが無いと nil (ログは出さない。設定を誰も変えていない普通の状態)。読めない・
+  # TOML でないと nil で、ログに 1 行 (`toml: パス: 理由`) が出る。どちらも理由は
+  # `FmrbToml.error`。
+  # ```ruby
+  # conf = FmrbToml.load("/home/app.toml")
+  # ```
+  # <<en>>
+  # A missing file gives nil with no log line (the ordinary state of a setting nobody has
+  # changed). An unreadable file or one that is not TOML gives nil and one log line
+  # (`toml: path: reason`). Either way `FmrbToml.error` has the reason.
+  # ```ruby
+  # conf = FmrbToml.load("/home/app.toml")
+  # ```
+  def self.load: (String path) -> Hash[String, untyped]?
+
+  # 直前の読み書きが nil になった理由 <<en>> Why the last parse, load or update gave nil
+  #
+  # 成功した後は nil。
+  # ```ruby
+  # Log.warn(FmrbToml.error) if conf.nil?
+  # ```
+  # <<en>>
+  # nil after a success.
+  # ```ruby
+  # Log.warn(FmrbToml.error) if conf.nil?
+  # ```
+  def self.error: () -> String?
+
+  # ファイルのキーだけ書き換える <<en>> Set keys in a file, leaving the other lines alone
+  #
+  # values は `名前 => 値` の Hash。名前は先頭のキー (`"rise_mg"`) か `"表.キー"`
+  # (`"editor.bg"`。最後の `.` で表とキーに分ける)。キーが無ければ足し (表が無ければ
+  # ファイルの終わりに足す)、**値が nil ならそのキーを消す**。値は文字列・Symbol (文字列で
+  # 書く)・整数・小数・true/false・Array・Hash、または `FmrbToml.raw` の「引用符なし」。
+  #
+  # 書いたあとに読み直して、値が入っていれば**書いた後の Hash**を返す。ファイルがあるのに
+  # TOML でないときは**触らずに** nil (人の文章だから)。書けない・読み戻して合わない
+  # ときも nil。いずれも理由は `FmrbToml.error`。ファイルが無ければ作る。
+  # ```ruby
+  # FmrbToml.update("/home/app.toml",
+  #                 { "editor.bg" => 36 })
+  # ```
+  # <<en>>
+  # values is a Hash of `name => value`. A name is a top-level key (`"rise_mg"`) or
+  # `"table.key"` (`"editor.bg"`; the last `.` splits table from key). A missing key is added
+  # (a missing table goes at the end of the file), and **a nil value removes the key**. A value
+  # is a String, a Symbol (written as a string), an Integer, a Float, true/false, an Array, a
+  # Hash, or an unquoted word from `FmrbToml.raw`.
+  #
+  # The file is read back afterwards, and the Hash it holds now is returned when it has the
+  # values. A file that exists but is not TOML is **left untouched** and gives nil (it is
+  # somebody's text). A failed write or a value that does not read back is nil too. All of
+  # them leave the reason in `FmrbToml.error`. A missing file is created.
+  # ```ruby
+  # FmrbToml.update("/home/app.toml",
+  #                 { "editor.bg" => 36 })
+  # ```
+  def self.update: (String path, Hash[String, untyped] values) -> Hash[String, untyped]?
+
+  # 引用符を付けずにそのまま書く値 <<en>> A value written as it is, unquoted
+  #
+  # `update` に渡すと、文字列でも引用符を付けずに書く (色の名前 `bg = black` など)。
+  # ```ruby
+  # FmrbToml.update(path,
+  #   { "shell.bg" => FmrbToml.raw("black") })
+  # ```
+  # <<en>>
+  # Passed to `update`, it is written without quotes even though it is text (a colour name,
+  # `bg = black`).
+  # ```ruby
+  # FmrbToml.update(path,
+  #   { "shell.bg" => FmrbToml.raw("black") })
+  # ```
+  def self.raw: (String text) -> FmrbToml::Raw
+
+  # 値 1 つの TOML の字 <<en>> The TOML text of one value
+  #
+  # 文字列は引用符で囲んでエスケープし、数と true/false はそのまま、Array と Hash は 1 行の
+  # インライン形。Symbol は文字列。**それ以外は ArgumentError** ("no TOML for クラス名")。
+  # ```ruby
+  # FmrbToml.dump_value("a\"b")  #=> "\"a\\\"b\""
+  # ```
+  # <<en>>
+  # A String is quoted and escaped, numbers and true/false as they are, an Array or a Hash in
+  # one-line inline form. A Symbol is a string. **Anything else is an ArgumentError**
+  # ("no TOML for ClassName").
+  # ```ruby
+  # FmrbToml.dump_value("a\"b")  #=> "\"a\\\"b\""
+  # ```
+  def self.dump_value: (untyped value) -> String
+
+  # キーの TOML の字 <<en>> The TOML text of a key
+  #
+  # 英数字と `_`・`-` だけならそのまま、ほかは引用符で囲む。
+  # ```ruby
+  # FmrbToml.dump_key("a b")  #=> "\"a b\""
+  # ```
+  # <<en>>
+  # Returned as it is when it holds only letters, digits, `_` and `-`; otherwise quoted.
+  # ```ruby
+  # FmrbToml.dump_key("a b")  #=> "\"a b\""
+  # ```
+  def self.dump_key: (String key) -> String
+
+  # 引用符なしで書く値の入れもの <<en>> Holds a value to write unquoted
+  #
+  # 普通は `FmrbToml.raw` で作る。
+  # ```ruby
+  # r = FmrbToml::Raw.new("black")
+  # r.text   #=> "black"
+  # ```
+  class Raw
+    # 字を入れて作る (to_s にして持つ) <<en>> Make one from text (kept as to_s)
+    #
+    # ```ruby
+    # r = FmrbToml::Raw.new("black")
+    # ```
+    def self.new: (untyped text) -> FmrbToml::Raw
+
+    # 持っている字 <<en>> The text it holds
+    #
+    # ```ruby
+    # r.text   #=> "black"
+    # ```
+    def text: () -> String
+  end
+end
+
+# 色の名前と、アプリごとの色の上書き (FmrbColors)。
+# 実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-colors.rb。全ビルドに入る。
+# Spinel でコンパイルした側 (main/ruby/spinel/fmrb_app_base_spinel.rb) には、行読みの別の写しがある。
+
+# 色の名前の表と、/home/colors.toml の読み書き。
+#
+# 色は **RGB332 の 0〜255 の整数**。名前は web の色名を 256 色に写したもの (101 個の
+# 一覧と、同じ色へ行く別名)。`/home/colors.toml` にはアプリごとの上書きだけを書き、
+# ファイルも節もキーも無ければ「テーマのまま」になる。
+# ```ruby
+# bg = FmrbColors.by_name("navy")   #=> 2
+# ```
+# <<en>>
+# A table of colour names, and the per-app overrides in /home/colors.toml.
+#
+# A colour is **an RGB332 integer, 0..255**. The names are the web's, mapped onto the 256
+# colours (a list of 101, plus aliases that land on the same colour). /home/colors.toml holds
+# only what an app overrides: a missing file, section or key means "use the theme".
+# ```ruby
+# bg = FmrbColors.by_name("navy")   #=> 2
+# ```
+module FmrbColors
+  # 上書きのファイル <<en>> The overrides file
+  PATH: String
+
+  # テーマの色より 1 段暗い色 <<en>> A step darker than a theme colour
+  #
+  # 赤と緑を 2 段、青を 1 段下げる。結果が 0x01 (デスクトップの透明色)・元の色・`avoid` に
+  # なるときは、下げずに上げる方へ振る。隣り合うバーが溶け合わないようにするためのもの。
+  # ```ruby
+  # bar = FmrbColors.shade(
+  #   FmrbConst::THEME_MENU_BG, bg)
+  # ```
+  # <<en>>
+  # Down two of the seven red/green steps and one of the three blue ones. When the result would
+  # be 0x01 (the desktop's transparent key), the colour itself or `avoid`, it goes the other way.
+  # For a bar that must not merge with its neighbour.
+  # ```ruby
+  # bar = FmrbColors.shade(
+  #   FmrbConst::THEME_MENU_BG, bg)
+  # ```
+  def self.shade: (Integer color, ?Integer? avoid) -> Integer
+
+  # 名前から色 (RGB332) を引く <<en>> Look a colour up by name
+  #
+  # 名前は**小文字**で、一覧か別名にあるもの。無ければ nil。
+  # ```ruby
+  # FmrbColors.by_name("black")   #=> 0
+  # ```
+  # <<en>>
+  # The name must be **lowercase** and in the list or the aliases. Otherwise nil.
+  # ```ruby
+  # FmrbColors.by_name("black")   #=> 0
+  # ```
+  def self.by_name: (String name) -> Integer?
+
+  # 色の名前 (選ぶときに見せるもの) <<en>> The name to show for a colour
+  #
+  # 名前の無い色は nil。別名は返らず、一覧の名前が返る。
+  # ```ruby
+  # FmrbColors.name_of(0)   #=> "black"
+  # ```
+  # <<en>>
+  # nil for a colour without a name. An alias is never returned, only the list's name.
+  # ```ruby
+  # FmrbColors.name_of(0)   #=> "black"
+  # ```
+  def self.name_of: (Integer value) -> String?
+
+  # 一覧の n 番目の名前 <<en>> The nth name in the list
+  #
+  # 0 から。範囲外は nil。
+  # ```ruby
+  # FmrbColors.name_at(0)   #=> "black"
+  # ```
+  # <<en>>
+  # From 0. nil out of range.
+  # ```ruby
+  # FmrbColors.name_at(0)   #=> "black"
+  # ```
+  def self.name_at: (Integer index) -> String?
+
+  # 一覧の個数 <<en>> How many names the list holds
+  #
+  # ```ruby
+  # FmrbColors.palette_size.times { |i| p FmrbColors.name_at(i) }
+  # ```
+  def self.palette_size: () -> Integer
+
+  # 一覧の n 番目の色 <<en>> The nth colour of the list
+  #
+  # 0 から。範囲外は nil。`name_at` と同じ並び。
+  # ```ruby
+  # FmrbColors.palette_value(0)   #=> 0
+  # ```
+  # <<en>>
+  # From 0. nil out of range. Same order as `name_at`.
+  # ```ruby
+  # FmrbColors.palette_value(0)   #=> 0
+  # ```
+  def self.palette_value: (Integer index) -> Integer?
+
+  # 文字を色にする <<en>> Turn text into a colour
+  #
+  # `"0x24"` (16 進)、`"36"` (10 進)、`"black"`・`"\"black\""` (名前) を 0〜255 にする。
+  # **それ以外は nil** なので、打ち間違いはテーマの色が残る (黒で塗られない)。16 進と 10 進は
+  # 256 を超えても下 8 ビットに丸める。
+  # ```ruby
+  # FmrbColors.to_color("0x1C")   #=> 28
+  # ```
+  # <<en>>
+  # `"0x24"` (hex), `"36"` (decimal), `"black"` or `"\"black\""` (a name) become 0..255.
+  # **Anything else is nil**, so a typo leaves the theme colour (it never paints black).
+  # A hex or decimal above 255 is cut to its low 8 bits.
+  # ```ruby
+  # FmrbColors.to_color("0x1C")   #=> 28
+  # ```
+  def self.to_color: (String text) -> Integer?
+
+  # 色を書き戻す字にする <<en>> The text to write back for a colour
+  #
+  # 名前があれば名前、無ければ `"0x1C"` の形。
+  # ```ruby
+  # FmrbColors.to_text(28)   #=> "0x1C" か名前
+  # ```
+  # <<en>>
+  # Its name when it has one, otherwise the `"0x1C"` form.
+  # ```ruby
+  # FmrbColors.to_text(28)   #=> "0x1C" or a name
+  # ```
+  def self.to_text: (Integer value) -> String
+
+  # 1 つの節の上書きを読む <<en>> Read one section's overrides
+  #
+  # `{ "bg" => 36, ... }` を返す。**ファイルや節が無い・TOML でない・色にならない値**は
+  # 空か飛ばしで、例外にならない。整数は下 8 ビット (負は飛ばす)、文字列は `to_color`。
+  # ```ruby
+  # c = FmrbColors.section("editor")
+  # bg = c["bg"] || FmrbConst::THEME_WINDOW_BG
+  # ```
+  # <<en>>
+  # Returns `{ "bg" => 36, ... }`. **A missing file or section, non-TOML text, a non-colour value**
+  # give an empty Hash or are skipped; nothing raises. An integer is
+  # cut to 8 bits (a negative one is skipped), a string goes through `to_color`.
+  # ```ruby
+  # c = FmrbColors.section("editor")
+  # bg = c["bg"] || FmrbConst::THEME_WINDOW_BG
+  # ```
+  def self.section: (String name) -> Hash[String, Integer]
+
+  # 1 つの色の上書きを書く <<en>> Write one override
+  #
+  # 節 `section` のキー `key` に色を書く。**value が nil ならそのキーを消す** (テーマに戻る)。
+  # 書き方は `FmrbToml.update` と同じ (他の行・コメントは残る)。ファイルに入れば true、
+  # 書けない・TOML でないファイルなら false。
+  # ```ruby
+  # FmrbColors.set("shell", "bg", 0x24)
+  # ```
+  # <<en>>
+  # Writes a colour to key `key` of section `section`. **A nil value removes the key** (back
+  # to the theme). It writes as `FmrbToml.update` does (other lines and comments stay). true
+  # when the file holds it now, false when it could not be written or the file is not TOML.
+  # ```ruby
+  # FmrbColors.set("shell", "bg", 0x24)
+  # ```
+  def self.set: (String section, String key, Integer? value) -> bool
+
+  # 1 つの節の上書きを全部消す <<en>> Remove a whole section
+  #
+  # 見出しからその節の終わりまでを消して、ファイルを書き直す。ファイルが無ければ true、
+  # 書けなければ false。**ほかの節は保つが全体を書き直す**。
+  # ```ruby
+  # FmrbColors.clear("shell")
+  # ```
+  # <<en>>
+  # Drops the heading and everything up to the next section, then rewrites the file. true when
+  # there is no file, false when the write fails. **Other sections are kept, but the file is rewritten whole.**
+  # ```ruby
+  # FmrbColors.clear("shell")
+  # ```
+  def self.clear: (String section) -> bool
+end
