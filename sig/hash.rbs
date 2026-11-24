@@ -75,6 +75,21 @@ class Hash
   # ```
   def each: () { (untyped key, untyped value) -> untyped } -> self
 
+  # キーを 1 つずつ渡す <<en>> Call the block with each key
+  #
+  # **ブロックが要る** (無いと NotImplementedError。この版は Enumerator を持たない)。
+  # 自分自身を返す。
+  # ```ruby
+  # h.each_key { |k| p k }
+  # ```
+  # <<en>>
+  # **A block is required** (without one it raises NotImplementedError; this build has
+  # no Enumerator). Returns the hash itself.
+  # ```ruby
+  # h.each_key { |k| p k }
+  # ```
+  def each_key: () { (untyped key) -> untyped } -> self
+
   # ハッシュが空かどうか <<en>> Check if hash is empty
   #
   # ```ruby
@@ -94,6 +109,14 @@ class Hash
   # if h.has_key?(:name)
   # ```
   def has_key?: (untyped key) -> bool
+
+  # そのキーがあるか <<en>> Whether the key is present
+  #
+  # `has_key?` と同じ。
+  # ```ruby
+  # @titles.key?(room)
+  # ```
+  def key?: (untyped key) -> bool
 
   # その値があるかどうか <<en>> Check if specified value exists
   #

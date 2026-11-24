@@ -129,6 +129,26 @@ class Float
   # ```
   def abs: () -> Float
 
+  # 四捨五入する <<en>> Round to the nearest
+  #
+  # **ndigits を省くか 0 以下なら Integer、1 以上なら Float** を返す。ndigits が負なら
+  # 10 の位から丸める (`1234.5.round(-2)` は 1200)。**半分は 0 から遠い方へ**
+  # (`2.5.round` は 3、`-2.5.round` は -3)。nan や無限大は FloatDomainError。
+  # ```ruby
+  # 3.14159.round(2)   #=> 3.14
+  # 2.5.round          #=> 3
+  # ```
+  # <<en>>
+  # **Without ndigits, or with 0 or less, it returns an Integer; with 1 or more, a
+  # Float.** A negative ndigits rounds at the tens, hundreds and so on (`1234.5.round(-2)`
+  # is 1200). **A half goes away from zero** (`2.5.round` is 3, `-2.5.round` is -3). nan
+  # and infinity raise FloatDomainError.
+  # ```ruby
+  # 3.14159.round(2)   #=> 3.14
+  # 2.5.round          #=> 3
+  # ```
+  def round: (?Integer ndigits) -> (Integer | Float)
+
   # 自分自身を小数として返す <<en>> Return self as floating point number
   #
   # そのまま返る。

@@ -46,6 +46,26 @@ module Kernel
   # ```
   def puts: (*untyped objects) -> nil
 
+  # 乱数を返す <<en>> Return a random integer
+  #
+  # **max を省くか 0 を渡すと、0 以上 4294967295 以下の整数** (CRuby のような 0 以上 1 未満の
+  # Float ではない)。max があれば、**0 以上 max 未満**の整数 (`RNG.random_int % max`)。
+  # 整数だけを受ける (Range・Float は使えない)。**種は与えられない** (`srand` は無い)。
+  # ```ruby
+  # x = rand(10)    #=> 0..9
+  # t = 2000 + rand(4000)
+  # ```
+  # <<en>>
+  # **With max left out or 0 it returns an integer from 0 to 4294967295** (not a Float in
+  # 0...1 as in CRuby). With max it returns an integer **from 0 up to, but not
+  # including, max** (`RNG.random_int % max`). Integers only (no Range or Float). **There
+  # is no way to seed it** (no `srand`).
+  # ```ruby
+  # x = rand(10)    #=> 0..9
+  # t = 2000 + rand(4000)
+  # ```
+  def rand: (?Integer max) -> Integer
+
   # 渡されたブロックを呼ぶ <<en>> Call the block that was given
   #
   # 渡されたブロックを呼ぶ。**無いのに呼ぶと落ちる**ので `block_given?` で

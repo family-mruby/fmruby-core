@@ -199,6 +199,22 @@ class Integer
   # ```
   def abs: () -> Integer
 
+  # 桁を丸める <<en>> Round at a digit
+  #
+  # **ndigits を省くか 0 以上なら自分自身**を返す。負なら 10 の位から丸めた Integer
+  # (`1234.round(-2)` は 1200)。丸めたい桁が大きすぎると 0。
+  # ```ruby
+  # 1234.round(-2)   #=> 1200
+  # ```
+  # <<en>>
+  # **Without ndigits, or with 0 or more, it returns the integer itself.** A negative
+  # ndigits rounds at the tens, hundreds and so on (`1234.round(-2)` is 1200). A digit
+  # too large gives 0.
+  # ```ruby
+  # 1234.round(-2)   #=> 1200
+  # ```
+  def round: (?Integer ndigits) -> Integer
+
   # 文字コードに対応する 1 文字を返す <<en>> Return the character for this code
   #
   # **0 から 255** の 1 バイト文字。
