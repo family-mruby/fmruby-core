@@ -1,5 +1,13 @@
 # Area512 built-in type declaration.
 
+# 印 (キー) で値を引く表 <<en>> A table that maps keys to values
+#
+# `Enumerable` を取り込む。無い印は nil で、例外にならず、既定値は渡せない。
+# String の印と Symbol の印は別物。`each_key` はブロックが要る (この版は Enumerator を持たない)。
+# <<en>>
+# Includes `Enumerable`. A missing key gives nil, not an exception, and a
+# default value cannot be given. A String key and a Symbol key are
+# different. `each_key` needs a block (this build has no Enumerator).
 class Hash
   include Enumerable
   # 等しいかどうか <<en>> Perform equality comparison

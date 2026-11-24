@@ -8,6 +8,19 @@
 # 境界のメソッドは受け手の番号を取らない (受け手は呼んだアプリ)。省略できる
 # 引数を持つメソッド (包み) は %a{fmrb.internal} で、隣に _raw の形がある。
 
+# 音を鳴らす。曲・効果音・WAV・マイク <<en>> Play sound: songs, effects, WAV, microphone
+#
+# アプリは `@audio = FmrbAudio.new(self)` で作る。NSF の曲は `play` (止めるのは `stop`、
+# 一時停止は `pause`・`resume`)、WAV は `play_wav`、音を 1 つずつなら `note_on`・`note_off`、
+# FMSQ のデータは `load_fmsq` で読んで `play_slot`。マイクは `mic_available?` で調べて
+# `mic_enable`・`mic_read` で読む。MIDI の音符を送るなら FmrbMidi。
+# <<en>>
+# An app makes one with `@audio = FmrbAudio.new(self)`. A song in NSF is
+# played with `play` (`stop` ends it; `pause` and `resume` hold it), a WAV
+# with `play_wav`, single notes with `note_on` and `note_off`, and FMSQ data is
+# loaded with `load_fmsq` and played with `play_slot`. For
+# the microphone, check `mic_available?` and read with `mic_enable` and
+# `mic_read`. To send MIDI notes, use FmrbMidi.
 %a{fmrb.boundary}
 class FmrbAudio
   # nsf_status が返す曲のようす <<en>> Where the song is, from nsf_status

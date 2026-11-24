@@ -1,5 +1,15 @@
 # Area512 built-in type declaration.
 
+# 要素を並べた配列 <<en>> An ordered list of elements
+#
+# `Enumerable` を取り込む。この端末で `a[i], a[j] = a[j], a[i]` は動かない (入れかえは
+# 一時変数で)。ブロックを取るメソッドは 1 回の呼び出しが約 0.4ms なので、毎フレーム回る所では
+# `while` に書く。ここに載せているのは `push`・`each`・`include?` など、アプリが使う分。
+# <<en>>
+# Includes `Enumerable`. Here `a[i], a[j] = a[j], a[i]` does not work (swap
+# through a temporary). A block call costs about 0.4ms, so in a per-frame
+# loop write `while` instead. The methods listed are the ones apps use,
+# such as `push`, `each` and `include?`.
 class Array
   include Enumerable
   # その位置に要素を入れる <<en>> Set element at specified position

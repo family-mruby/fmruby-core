@@ -98,6 +98,24 @@ module FmrbText
   def draw_text_lines: (Integer x, Integer y, String text, Integer width, Integer color, Integer line_h) -> Integer
 end
 
+# 絵を描く画面。図形・文字・画像・スプライト <<en>> A canvas: shapes, text, images, sprites
+#
+# アプリは自分で作らない。`FmrbApp` が用意する `gfx` (`@gfx`) を使う。原点 (0, 0) は
+# アプリが描いてよい区画の左上で、色は RGB332 の数 (`FmrbGfx::RED` など)。
+# 描くメソッドは自分自身を返すので続けて書ける。**描いただけでは出ない**。
+# フレームの終わりに `present` を 1 回呼ぶ。
+#
+# 最初に読むとよいメソッド: `clear`、`fill_rect`、`draw_text`、`draw_image`、
+# `present`。
+# <<en>>
+# An app does not make one; it uses the `gfx` (`@gfx`) that `FmrbApp`
+# prepares. The origin (0, 0) is the top-left of the area the app owns, and
+# colours are RGB332 numbers (`FmrbGfx::RED` and so on). The drawing
+# methods return the canvas itself, so calls chain. **Drawing alone shows nothing**:
+# call `present` once at the end of a frame.
+#
+# Methods to read first: `clear`, `fill_rect`, `draw_text`, `draw_image`,
+# `present`.
 %a{fmrb.boundary}
 class FmrbGfx
   include FmrbText

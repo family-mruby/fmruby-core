@@ -4,6 +4,17 @@
 # P5.new(gfx) で作り、fill や stroke で色を決めてから形を描く。
 # private のメソッドは書いていない。
 
+# p5.js 風の書き方で絵を描く <<en>> Draw in the style of p5.js
+#
+# `@p5 = P5.new(@gfx)` で作る。FmrbGfx を包むだけなので、同じ絵に両方から描いてよい。
+# `fill`・`stroke` で色を決めてから `rect`・`circle`・`line`・`text` などで形を描き、
+# 最後に `present` で出す。`background` で塗りつぶす。ふちだけにするなら `no_fill`。
+# <<en>>
+# Make it with `@p5 = P5.new(@gfx)`. It only wraps an FmrbGfx, so you can
+# draw on the same canvas with both. Pick colours with `fill` and `stroke`,
+# draw shapes with `rect`, `circle`, `line`, `text` and so on, then show
+# them with `present`. `background` fills the canvas; `no_fill` leaves
+# outlines only.
 class P5
   # p5 の書き方の道具を作る <<en>> Make the p5-style drawing tools
   #

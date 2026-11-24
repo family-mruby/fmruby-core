@@ -1,5 +1,13 @@
 # Area512 built-in type declaration.
 
+# クラス自身を表す。名前を読む <<en>> A class itself; read its name
+#
+# このファイルでは `name` だけを載せている (`obj.class.name`)。クラスを受け手にする
+# `const_defined?` と `remove_method` は `Module` に、`Object` 向けの写しは `Object` にある。
+# <<en>>
+# Only `name` is listed here (`obj.class.name`). `const_defined?` and
+# `remove_method`, which take a class as the receiver, are on `Module`;
+# the copy for `Object` is on `Object`.
 class Class
   # クラス名を文字列で返す <<en>> Return class name as string
   #

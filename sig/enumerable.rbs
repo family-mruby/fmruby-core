@@ -1,5 +1,13 @@
 # Minimal Enumerable for host_test (TI_CLASS_ENUMERABLE).
 
+# each を持つものに混ぜる繰り返しの道具 <<en>> Iteration helpers for anything with each
+#
+# `Array`・`Hash` が取り込み、`Range` が継承している。ここに載せているのは `each`・
+# `each_with_index`・`map`・`to_a`。`map` は新しい配列を作る (自分を書き換えるのは `collect!`)。
+# <<en>>
+# Included by `Array` and `Hash`, and the parent of `Range`. Listed here are `each`,
+# `each_with_index`, `map` and `to_a`. `map` builds a new array (`collect!`
+# changes the receiver).
 module Enumerable
   # 要素ごとにブロックを実行する <<en>> Run the block for each item
   #

@@ -1,5 +1,13 @@
 # Area512 built-in type declaration.
 
+# ブロックを値にしたもの <<en>> A block held as a value
+#
+# ふつうは `proc` か `->` で作り、`call` (または `.()`) で呼ぶ。Spinel では
+# **外のローカル変数を掴めない**ので、後で呼ぶ Proc に渡す値は引数で渡す。
+# <<en>>
+# Normally made with `proc` or `->` and run with `call` (or `.()`). Under
+# Spinel it **cannot capture an outer local**, so pass what a stored Proc
+# needs as arguments.
 class Proc
   # Proc を呼び出す <<en>> Call Proc
   #

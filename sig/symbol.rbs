@@ -1,5 +1,13 @@
 # Area512 built-in type declaration.
 
+# 名前を表す Symbol (:name) <<en>> A Symbol such as :name
+#
+# 同じ名前は同じ物なので、比べるのは速い。ここに載せているのは `<=>`・`==`・
+# `===`・`inspect`・`to_sym`。Hash の印には String と別物として扱われる。
+# <<en>>
+# The same name is the same object, so comparing is fast. Listed here are
+# `<=>`, `==`, `===`, `inspect` and `to_sym`. As a Hash key it is a
+# different key from a String.
 class Symbol
   # シンボルを比べる <<en>> Compare symbols
   #

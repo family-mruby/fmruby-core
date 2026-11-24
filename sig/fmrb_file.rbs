@@ -10,6 +10,16 @@
 # 結果が nil のことがあるもの (read・size・free_bytes) は、ほかの言語では
 # FMRB_BOUNDARY_NONE (C) や None・nil で「無い」を表す。
 
+# ファイルを丸ごと読み書きする <<en>> Read and write whole files by path
+#
+# パスで呼ぶ関数だけで、開いたままの状態は持たない。`read`・`write`・`append`・`exist?`・
+# `size`・`delete`・`mkdir`・`list` がある。1 回でファイル全体を読み書きするので、
+# 大きなファイルは丸ごとメモリに載る。読む位置を持って少しずつ読むなら `File`。
+# <<en>>
+# Functions called by path; nothing stays open. There are `read`, `write`,
+# `append`, `exist?`, `size`, `delete`, `mkdir` and `list`. A call reads or
+# writes the whole file, so a big file is held in memory entirely. To read
+# a little at a time from a position, use `File`.
 %a{fmrb.boundary}
 module FmrbFile
   # ファイル全体を読む <<en>> Read a whole file

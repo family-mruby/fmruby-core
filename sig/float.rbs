@@ -1,5 +1,13 @@
 # Area512 built-in type declaration.
 
+# 小数 (浮動小数点数) <<en>> A floating-point number
+#
+# `Integer` との四則・比較ができる。**小数どうしを `==` で比べない** (差の大きさで比べる)。
+# 0.0 で割っても落ちず Infinity になる。`to_i` は切り捨てで、`round` は四捨五入。
+# <<en>>
+# Arithmetic and comparison with `Integer` work. **Do not compare floats with `==`**;
+# compare the size of the difference. Dividing by 0.0 does not
+# raise; it gives Infinity. `to_i` truncates and `round` rounds.
 class Float
   # 割ったあまりを求める <<en>> Calculate modulo
   #

@@ -4,6 +4,19 @@
 # FmrbMidi.device(self) で音を出す口 (MIDI::Device) をもらい、
 # そこへ音符を送る。曲のファイルは SmfPlayer、MML は MmlPlayer が鳴らす。
 
+# MIDI の入り口。音を出す口・曲・MML <<en>> MIDI entry point: devices, songs, MML
+#
+# `FmrbMidi.device(self)` で内蔵音源 (APU) につながった口 (MIDI::Device) をもらい、
+# `note_on` などで音符を送る。標準 MIDI ファイルは `FmrbMidi::SmfPlayer`、MML は
+# `FmrbMidi::MmlPlayer` が鳴らす。外の音源へは `sam2695_device`・`serial_device` が
+# 口を作り、`register` で出し先を足す。曲の時間は `now_us` で測る。
+# <<en>>
+# `FmrbMidi.device(self)` gives a device (MIDI::Device) wired to the built-in
+# sound chip (the APU); send notes to it with `note_on` and the like. A
+# standard MIDI file is played by `FmrbMidi::SmfPlayer`, MML by
+# `FmrbMidi::MmlPlayer`. For an outside instrument, `sam2695_device` and
+# `serial_device` make the device and `register` adds a transport. Measure a
+# song's time with `now_us`.
 module FmrbMidi
   # このアプリ用の音を出す口を作る <<en>> Make this app's way of sounding notes
   #
@@ -1259,6 +1272,12 @@ module FmrbMidi
   end
 end
 
+# MIDI の名前空間。音を出す口は MIDI::Device <<en>> The MIDI namespace; the sender is MIDI::Device
+#
+# 中身は `MIDI::Device` だけ。アプリは直接作らず、`FmrbMidi.device(self)` から受け取る。
+# <<en>>
+# It holds `MIDI::Device` only. An app does not make one itself; it gets it
+# from `FmrbMidi.device(self)`.
 module MIDI
   # 音を出す口。音符や音色をここへ送る。
   class Device
