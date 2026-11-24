@@ -1,0 +1,32 @@
+# Nested-class fixture for the picoruby-ti host regression tests only (like
+# gpio.rbs, never in ../sig). The engine's tests reach these classes through
+# constant paths: two and three segments, a module function, a nested
+# constant, and the nested-class completion after "TiNest::". Add, do not
+# remove.
+
+module TiNest
+  # the default size
+  SIZE: Integer
+
+  def self.make: (Symbol name, ?Integer size) -> TiNest::Box
+
+  class Box
+    # the largest box
+    MAX: Integer
+
+    def self.new: (Integer size) -> TiNest::Box
+    def self.open: (Integer size) -> TiNest::Box
+    def size: () -> Integer
+    def resize: (Integer size) -> nil
+    def label: () -> String
+
+    class Lid
+      def self.new: () -> TiNest::Box::Lid
+      def close: () -> nil
+    end
+  end
+
+  class Bag
+    def self.new: () -> TiNest::Bag
+  end
+end
