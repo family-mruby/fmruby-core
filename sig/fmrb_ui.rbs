@@ -104,7 +104,7 @@ class FmrbUI
   # @ui.label(:l_size, 4, 148, 60, 10,
   #           "Size")
   # ```
-  def label: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Label
+  def label: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text, ?align: Symbol, ?text_size: Integer) -> FmrbUI::Label
 
   # 押しボタンを置く <<en>> Place a push button
   #
@@ -130,7 +130,7 @@ class FmrbUI
   # @ui.button(:start, 4, 20, 60, 16,
   #            "Start")
   # ```
-  def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Button
+  def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text, ?text_size: Integer, ?accent: Integer) -> FmrbUI::Button
 
   # 入切の切替を置く <<en>> Place an on/off toggle
   #
@@ -146,7 +146,7 @@ class FmrbUI
   # <<en>>
   # Toggles sharing a group: name behave as radio buttons - only one is on.
   # on: true starts it on; on_text: gives it a different label when on.
-  def toggle: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Toggle
+  def toggle: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text, ?group: Symbol, ?on: bool, ?on_text: String, ?text_size: Integer, ?accent: Integer) -> FmrbUI::Toggle
 
   # 数を増減する部品を置く <<en>> Place a value stepper
   #
@@ -162,7 +162,7 @@ class FmrbUI
   # A "< value >" control. handle returns the id for either side, the value
   # stops at min / max, and pressing at the end returns nothing. An optional
   # last argument sets the step (default 1).
-  def stepper: (Symbol id, Integer x, Integer y, Integer w, Integer h, Integer value, Integer min, Integer max) -> FmrbUI::Stepper
+  def stepper: (Symbol id, Integer x, Integer y, Integer w, Integer h, Integer value, Integer min, Integer max, ?Integer step, ?text_size: Integer) -> FmrbUI::Stepper
 
   # 選択肢を左右で選ぶ部品を置く <<en>> Place a choice picker
   #
@@ -212,7 +212,7 @@ class FmrbUI
   # handle report the id, Escape drops the focus. The caret does not blink
   # (blinking would mean drawing every frame) and there are no arrow keys:
   # characters go on the end and backspace takes from the end.
-  def text_field: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::TextField
+  def text_field: (Symbol id, Integer x, Integer y, Integer w, Integer h, ?String text, ?max: Integer, ?text_size: Integer) -> FmrbUI::TextField
 
   # 打たれている文字 <<en>> What has been typed
   #

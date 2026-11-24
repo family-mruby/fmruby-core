@@ -1203,7 +1203,7 @@ class FmrbApp
   # publish("my_topic", { "n" => 1 })
   # ```
   %a{fmrb.internal}
-  def publish: (String topic) -> void
+  def publish: (String topic, ?untyped data) -> void
 
   # 他のアプリに伝言を送る <<en>> Send a message to another app
   #
