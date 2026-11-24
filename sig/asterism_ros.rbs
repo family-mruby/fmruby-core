@@ -44,7 +44,11 @@ module Asterism
   # pub << { data: "hi" }
   # ```
   module ROS
-    # 何も指定しないときの QoS <<en>> The QoS chunk of the default profile (reliable, volatile, keep last 10)
+    # 何も指定しないときの QoS <<en>> The default QoS
+  #
+  # 既定のプロファイル (reliable・volatile・keep last 10) の QoS の部分。
+  # <<en>>
+  # The QoS chunk of the default profile (reliable, volatile, keep last 10).
     DEFAULT_QOS: String
     # 型のファイルを探す場所 <<en>> Where require_type looks for generated types
     TYPE_PATH: Array[String]

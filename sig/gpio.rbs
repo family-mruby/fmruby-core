@@ -27,7 +27,11 @@ class GPIO
   IN: Integer
   # 出力 <<en>> Output
   OUT: Integer
-  # ハイインピーダンス (この端末では入力と同じに設定される) <<en>> High impedance (set up as an input here)
+  # ハイインピーダンス <<en>> High impedance
+  #
+  # この端末では入力と同じに設定される。
+  # <<en>>
+  # It is set up as an input here.
   HIGH_Z: Integer
   # プルアップ <<en>> Pull-up
   PULL_UP: Integer

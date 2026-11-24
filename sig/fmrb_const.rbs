@@ -206,6 +206,7 @@ module FmrbConst
   KEY_RMETA: Integer
 
   # ---- 修飾キーのマスク (ev[:modifier] と & で比べる) ----
+
   # 左 Shift のマスク (0x01) <<en>> Modifier mask: Left Shift (0x01)
   MOD_LSHIFT: Integer
   # 右 Shift のマスク (0x02) <<en>> Modifier mask: Right Shift (0x02)
@@ -226,6 +227,7 @@ module FmrbConst
   MOD_ALT: Integer
 
   # ---- ゲームパッド (ボタンの番号と軸の番号) ----
+
   # ボタン番号 0: 四角 <<en>> Button index 0: Square
   GP_SQUARE: Integer
   # ボタン番号 1: バツ <<en>> Button index 1: Cross
@@ -268,6 +270,7 @@ module FmrbConst
   GP_AXIS_RY: Integer
 
   # ---- テーマの色 (RGB332) ----
+
   # デスクトップの背景 (RGB332。[theme] で設定) <<en>> Desktop background (RGB332; set in [theme])
   THEME_DESKTOP_BG: Integer
   # メニューの背景 (RGB332。[theme] で設定) <<en>> Menu background (RGB332; set in [theme])
@@ -290,6 +293,7 @@ module FmrbConst
   WHEEL_LINES: Integer
 
   # ---- 機種・ビルド ----
+
   # "esp32" か "linux" (sim 等は linux) <<en>> "esp32" or "linux" (sim etc. are linux)
   PLATFORM: String
   # 端末の名前 (機種ごとに違う) <<en>> Board name; differs per machine
@@ -330,6 +334,7 @@ module FmrbConst
   RESET_REASON: String
 
   # ---- アプリの番号・状態・メッセージの種類 ----
+
   # Kernel のプロセス番号 (0) <<en>> Process ID of the Kernel (0)
   PROC_ID_KERNEL: Integer
   # Host のプロセス番号 (1) <<en>> Process ID of the Host (1)

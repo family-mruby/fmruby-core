@@ -162,23 +162,23 @@ class FmrbGfx
   # 灰色 (RGB332) <<en>> gray (RGB332)
   GRAY: Integer
 
-  # 黒 (RGB332)
+  # 黒 (RGB332) <<en>> black (RGB332)
   COLOR_BLACK: Integer
-  # 白 (RGB332)
+  # 白 (RGB332) <<en>> white (RGB332)
   COLOR_WHITE: Integer
-  # 赤 (RGB332)
+  # 赤 (RGB332) <<en>> red (RGB332)
   COLOR_RED: Integer
-  # 緑 (RGB332)
+  # 緑 (RGB332) <<en>> green (RGB332)
   COLOR_GREEN: Integer
-  # 青 (RGB332)
+  # 青 (RGB332) <<en>> blue (RGB332)
   COLOR_BLUE: Integer
-  # 黄 (RGB332)
+  # 黄 (RGB332) <<en>> yellow (RGB332)
   COLOR_YELLOW: Integer
-  # 水色 (RGB332)
+  # 水色 (RGB332) <<en>> cyan (RGB332)
   COLOR_CYAN: Integer
-  # 紫 (RGB332)
+  # 紫 (RGB332) <<en>> magenta (RGB332)
   COLOR_MAGENTA: Integer
-  # 灰色 (RGB332)
+  # 灰色 (RGB332) <<en>> gray (RGB332)
   COLOR_GRAY: Integer
 
   # 色を加算で混ぜる (blend_rect 用) <<en>> additive blend (for blend_rect)

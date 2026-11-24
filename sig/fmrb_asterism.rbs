@@ -549,7 +549,11 @@ module Asterism
   DEFAULT_TIMEOUT: Float
   # 呼び出しの待ち時間の既定 (ミリ秒) <<en>> Default time limit of a call (milliseconds)
   DEFAULT_TIMEOUT_MS: Integer
-  # 同じ名前の相手を探す時間 (秒) <<en>> How long connect looks for another copy of the same node/app (seconds)
+  # 同じ名前の相手を探す時間 (秒) <<en>> How long connect looks for a same-name peer (s)
+  #
+  # connect が、同じ node/app の別のコピーを探す時間 (秒)。
+  # <<en>>
+  # How long connect looks for another copy of the same node/app (seconds).
   CHECK_TIMEOUT: Float
   # キーの根 <<en>> The first chunk of every key ("asterism")
   ROOT: String

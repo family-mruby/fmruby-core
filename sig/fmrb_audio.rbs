@@ -91,12 +91,19 @@ class FmrbAudio
   # ```
   def nsf_status: () -> nsf_status?
 
+  # state 0: 曲が無い・命令で止めた <<en>> state 0: no song, or stopped
   NSF_IDLE: Integer
+  # state 1: 鳴っている <<en>> state 1: playing
   NSF_PLAYING: Integer
+  # state 2: 終わりを見つけて小さくしている <<en>> state 2: end found, fading out
   NSF_FADING: Integer
+  # state 3: 曲が自分で終わった <<en>> state 3: over by itself
   NSF_ENDED: Integer
+  # reason 1: 無音で終わった <<en>> reason 1: ended on silence
   NSF_END_SILENCE: Integer
+  # reason 2: ループを聞き終えて終わった <<en>> reason 2: ended after the loop was heard
   NSF_END_LOOP: Integer
+  # reason 3: 時間の上限で終わった <<en>> reason 3: ended at the time limit
   NSF_END_LIMIT: Integer
 
   # 長い曲を置く APU (0) <<en>> The APU for long music (0)
