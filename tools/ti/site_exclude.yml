@@ -1,0 +1,7 @@
+# Classes the site's class reference leaves out (tools/ti/gen_site.rb,
+# rake ti:site). Each with the reason; "Outer::*" leaves out every class
+# inside Outer. A class left out gets no page, no index line and no links.
+# Where the line is drawn is decided by the user (doc/sig_coverage S7); change
+# this list and run rake ti:site again.
+classes:
+  Untyped: the type engine's name for a value of unknown type, not a class an app can name

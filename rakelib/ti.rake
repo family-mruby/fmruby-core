@@ -120,6 +120,16 @@ namespace :ti do
     branch = `git rev-parse --abbrev-ref HEAD`.strip
     only = ENV["ONLY"] && !ENV["ONLY"].empty? ? " --only #{ENV['ONLY']}" : ""
     sh "#{RbConfig.ruby} tools/ti/gen_site.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --site #{File.expand_path(site)}" \
-       " --version 'fmruby-core #{branch} #{rev}'#{only}"
+       " --exclude tools/ti/site_exclude.yml --version '#{branch}@#{rev}'#{only}"
+  end
+
+  namespace :site do
+    # The generator against a small sig/ and site of its own
+    # (tools/ti/test_site): page shapes, the exclude list, links, the guide
+    # lines, and that a second run changes nothing.
+    desc "Tests of the class reference generator (host Ruby, no docker)"
+    task :test do
+      sh "#{RbConfig.ruby} tools/ti/test_site/run.rb"
+    end
   end
 end

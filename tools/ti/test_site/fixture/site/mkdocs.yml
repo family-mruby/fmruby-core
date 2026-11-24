@@ -1,0 +1,16 @@
+site_name: test
+plugins:
+  - i18n:
+      languages:
+        - locale: ja
+          name: ja
+          nav_translations:
+            Home: ホーム
+            Drawing: 描画
+            Overview: 一覧
+nav:
+  - Home: index.md
+  - API Reference:
+      - Overview: api/index.md
+      - UI Widgets: api/ui.md
+  - Other page: other.md
