@@ -48,7 +48,7 @@
 - **flash/ は「git 追跡分 = 配布してよいもの」を不変条件とする**。ローカル
   専用の中身 (音楽、個人のデッキ、認証情報の生成物) は flash_local/
   (gitignore) に置く — 実機の storage は flash/ + flash_local/ の合成、
-  web (wasm) の bundle は追跡分 + config/system_conf_wasm.toml だけを束ねる。
+  web (wasm) の bundle は追跡分 + config/system_conf_wasm.toml だけをまとめる。
   **/home は空で出荷する** (2026-08-31)。/home はユーザの物だけを置く場所で、
   更新で入れ替わってよいもの (手本・サンプル・案内) は /usr/share/ 配下
   (samples/ services/ doc/) に置く。/home 自体は起動時に file HAL が作る。
