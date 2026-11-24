@@ -168,10 +168,18 @@ class FmrbAudio
   # モノラル・8000〜48000Hz・2MB まで。PCM 16bit か IMA-ADPCM 4bit。APU の音に重ねて鳴る。
   # 一度に鳴らせるのは 1 本で、鳴っている間にもう一度呼ぶと入れ替わる。
   # Retro では鳴らせないので false を返す (鳴ったときは true)。
+  # ```ruby
+  # ok = @audio.play_wav("/home/a.wav")
+  # # Retro では false
+  # ```
   # <<en>>
   # Mono, 8000 to 48000Hz, up to 2MB, 16-bit PCM or 4-bit IMA-ADPCM. It plays over the APU.
   # Only one at a time: calling again while one sounds replaces it.
   # Retro cannot play it and gets false back (true when it does play).
+  # ```ruby
+  # ok = @audio.play_wav("/home/a.wav")
+  # # false on Retro
+  # ```
   def play_wav: (String path) -> bool
 
   # 鳴っている WAV を止める <<en>> Stop the WAV that is playing

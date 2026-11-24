@@ -128,6 +128,22 @@ module FmrbSystem
   def self.set_remote_pairing: (bool on) -> void
 
   # 登録した PC の数 <<en>> How many PCs are paired
+  #
+  # リリースのビルドで、遠隔操作に登録済みの PC の数。遠隔操作の守りが無いビルドでは 0。
+  # `revoke_remote_access` で全部取り消すと 0 に戻る。
+  # ```ruby
+  # n = FmrbSystem.remote_access_paired
+  # FmrbSystem.revoke_remote_access
+  # FmrbSystem.remote_access_paired  #=> 0
+  # ```
+  # <<en>>
+  # How many PCs are paired with the release build's remote control; 0 in a build that has no such guard.
+  # 0 again once `revoke_remote_access` has forgotten them all.
+  # ```ruby
+  # n = FmrbSystem.remote_access_paired
+  # FmrbSystem.revoke_remote_access
+  # FmrbSystem.remote_access_paired  #=> 0
+  # ```
   def self.remote_access_paired: () -> Integer
 
   # 登録した PC を全部取り消す <<en>> Forget every paired PC
