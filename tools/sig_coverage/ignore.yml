@@ -760,6 +760,25 @@
   reason: >-
     Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
 
+# ---- not written for apps, by the user's decision (2026-11-25, doc/sig_coverage) --
+
+- name: Net::HTTP
+  reason: Upstream PicoRuby's HTTP client; apps are to use FmrbNet (decision 26).
+- name: URI
+  reason: Upstream PicoRuby's URI; apps are to use FmrbNet (decision 26).
+- name: MbedTLS
+  reason: Upstream PicoRuby's crypto; apps are to use Digest::SHA256 (decision 26).
+- name: MbedTLS::Digest
+  reason: Upstream PicoRuby's crypto; apps are to use Digest::SHA256 (decision 26).
+- name: BMI270
+  reason: The 6-axis sensor of a few boards; its branch is not merged yet (decision 26).
+- name: RMT
+  reason: The pulse output of ESP32 only, used by one demo (decision 26).
+- name: FmrbGfx#draw_text_mixed
+  reason: >-
+    draw_text(..., mixed: true) without building a keyword Hash, for the
+    system's own redraw paths; apps are shown draw_text (decision 26).
+
 # ---- left out until they are fixed ------------------------------------------
 
 - name: Kernel.send_message

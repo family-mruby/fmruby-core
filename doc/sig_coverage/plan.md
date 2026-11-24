@@ -314,6 +314,16 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
 25. **`Kernel.send_message`・`receive_message`・`broadcast_message` は、直すまで sig から外す** (決定 18 の一部を保留)。
     メッセージの構造体が本体と違い、呼ぶとメモリを壊す見込みのため (doc/reference/TODO.md)。
 
+### S6 の後の決定 (2026-11-25 ユーザ)
+
+26. **残りの API のうち sig に足すのは例外のクラスだけ** (`sig/exception.rbs`: `Exception` と主な 17 クラス)。
+    `Net::HTTP`・`URI`・`MbedTLS::Digest`・`BMI270`・`RMT`・`FmrbGfx#draw_text_mixed` は載せない一覧へ。
+27. **サイトのクラスリファレンスには sig のクラスを全部出す** (Asterism の細部・ROS 2 の橋・Ruby の基本クラスも)。
+    載せないのは型エンジンの都合の名前 (`Untyped`) だけ (`tools/ti/site_exclude.yml`)。
+28. **エディタの型エンジンが入れ子のクラス (`A::B`) を受け手に解けない件は、S7 の後に続けて直す**
+    (picoruby-ti の fork。doc/reference/TODO.md)。
+29. **S3 のファームの区画の空き (288 KB、5%) は記録だけ**。足りなくなったときに決める (doc/reference/TODO.md)。
+
 ## 8. 未確定事項
 
 - S2〜S5 の順番と切り方 (S0 の数が出てから見直す)。

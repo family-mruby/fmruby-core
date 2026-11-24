@@ -1,24 +1,24 @@
 {
   "counts": {
     "app_files": 73,
-    "sig_classes": 125,
-    "sig_methods": 1470,
-    "app_class": 10,
-    "app_class_uses": 12,
+    "sig_classes": 142,
+    "sig_methods": 1475,
+    "app_class": 1,
+    "app_class_uses": 1,
     "app_constant": 5,
-    "app_method": 8,
-    "app_method_uses": 16,
+    "app_method": 1,
+    "app_method_uses": 1,
     "app_name": 44,
     "app_name_uses": 91,
     "app_bare": 2,
     "app_bare_uses": 4,
     "impl_ruby": 1437,
-    "impl_ruby_missing": 6,
+    "impl_ruby_missing": 5,
     "impl_ruby_api_private": 152,
     "impl_c": 306,
     "impl_c_missing": 15,
     "impl_c_unresolved": 0,
-    "doc_methods": 1233,
+    "doc_methods": 1238,
     "doc_no_summary": 0,
     "doc_long_summary": 0,
     "doc_no_en": 0,
@@ -28,16 +28,7 @@
   },
   "items": {
     "app_class": [
-      "ArgumentError",
-      "BMI270",
-      "Exception",
-      "FmrbMidi::NoteScheduler",
-      "MbedTLS",
-      "MbedTLS::Digest",
-      "Net::HTTP",
-      "RMT",
-      "RuntimeError",
-      "URI"
+      "FmrbMidi::NoteScheduler"
     ],
     "app_constant": [
       "CLOSE_BTN_CX_OFFSET",
@@ -47,14 +38,7 @@
       "TRANSPARENT_COLOR"
     ],
     "app_method": [
-      "BMI270.new",
-      "FmrbApp._get_last_error",
-      "FmrbGfx#draw_text_mixed",
-      "MbedTLS.const_defined?",
-      "MbedTLS::Digest.new",
-      "Net::HTTP.get_response",
-      "RMT.new",
-      "URI.parse"
+      "FmrbApp._get_last_error"
     ],
     "app_name": [
       "_clear",
@@ -107,7 +91,6 @@
       "ニホンゴApp"
     ],
     "impl_ruby": [
-      "FmrbGfx#draw_text_mixed",
       "FmrbGfx.new",
       "FmrbGfx.resolve_font",
       "FmrbVideo.new",

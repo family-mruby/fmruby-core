@@ -1,0 +1,199 @@
+# 例外のもとになるクラス <<en>> The base class of every exception
+#
+# `rescue => e` で受けるのは `StandardError` とその下のクラス。`Exception` を名指しすると、
+# メモリ不足 (`NoMemoryError`) やスタックの使い切り (`SystemStackError`) まで受ける。
+# <<en>>
+# A bare `rescue => e` catches `StandardError` and its subclasses. Naming `Exception`
+# also catches running out of memory (`NoMemoryError`) and of stack (`SystemStackError`).
+class Exception
+  # 例外を作る <<en>> Make an exception
+  #
+  # ふつうは `raise ArgumentError, "bad size"` と書き、`new` は直接呼ばない。
+  # 文を省くと、`message` はクラスの名前になる。
+  #
+  # ```ruby
+  # e = RuntimeError.new("no map")
+  # e.message   #=> "no map"
+  # ```
+  # <<en>>
+  # Usually written `raise ArgumentError, "bad size"`; `new` is seldom called directly.
+  # Without a text, `message` is the name of the class.
+  #
+  # ```ruby
+  # e = RuntimeError.new("no map")
+  # e.message   #=> "no map"
+  # ```
+  def self.new: (?String message) -> Exception
+
+  # 例外の文 <<en>> The exception's text
+  #
+  # ```ruby
+  # begin
+  #   Integer("x")
+  # rescue => e
+  #   show(e.message)
+  # end
+  # ```
+  # <<en>>
+  # ```ruby
+  # begin
+  #   Integer("x")
+  # rescue => e
+  #   show(e.message)
+  # end
+  # ```
+  def message: () -> String
+
+  # 例外の文 (message と同じ) <<en>> The exception's text (same as message)
+  #
+  # ```ruby
+  # puts e.to_s
+  # ```
+  # <<en>>
+  # ```ruby
+  # puts e.to_s
+  # ```
+  def to_s: () -> String
+
+  # クラスの名前つきの文 <<en>> The text with the class name
+  #
+  # ログに出すときに向く。
+  #
+  # ```ruby
+  # Log.error(e.inspect)
+  # ```
+  # <<en>>
+  # Suited to a log line.
+  #
+  # ```ruby
+  # Log.error(e.inspect)
+  # ```
+  def inspect: () -> String
+
+  # 例外が起きた場所の一覧 <<en>> Where the exception was raised
+  #
+  # "ファイル:行" の文字列の Array。場所が取れないときは nil か空。
+  #
+  # ```ruby
+  # bt = e.backtrace
+  # Log.error(bt[0]) if bt && bt[0]
+  # ```
+  # <<en>>
+  # An Array of "file:line" strings; nil or empty when the place is not known.
+  #
+  # ```ruby
+  # bt = e.backtrace
+  # Log.error(bt[0]) if bt && bt[0]
+  # ```
+  def backtrace: () -> Array[String]?
+end
+
+# ふつうの例外のもと (rescue が既定で受ける) <<en>> Ordinary errors (what a bare rescue catches)
+#
+# 自分の例外を作るときは、これを継承する。
+#
+# ```ruby
+# class MapError < StandardError
+# end
+# ```
+# <<en>>
+# Inherit from this for an exception of your own.
+#
+# ```ruby
+# class MapError < StandardError
+# end
+# ```
+class StandardError < Exception
+end
+
+# 引数の数か値が合わない <<en>> Wrong number or value of arguments
+class ArgumentError < StandardError
+end
+
+# クラスを指定しない raise の例外 <<en>> What raise makes when no class is given
+#
+# `raise "msg"` は `RuntimeError`。
+# <<en>>
+# `raise "msg"` raises a `RuntimeError`.
+class RuntimeError < StandardError
+end
+
+# 型が合わない <<en>> A value of the wrong type
+#
+# `1 + "a"` や、nil を数として渡したとき。
+# <<en>>
+# `1 + "a"`, or nil handed where a number is expected.
+class TypeError < StandardError
+end
+
+# 無い名前の定数・変数 <<en>> An unknown constant or variable
+class NameError < StandardError
+end
+
+# 無いメソッドの呼び出し <<en>> A call of a method that does not exist
+#
+# nil に対する呼び出し (`nil.size`) が一番多い。
+# <<en>>
+# Most often a call on nil (`nil.size`).
+class NoMethodError < NameError
+end
+
+# 範囲の外の位置 <<en>> An index out of range
+class IndexError < StandardError
+end
+
+# 無いキー (Hash#fetch) <<en>> A missing key (Hash#fetch)
+class KeyError < IndexError
+end
+
+# 範囲の外の数 <<en>> A number out of range
+class RangeError < StandardError
+end
+
+# 整数の 0 での割り算 <<en>> Integer division by zero
+#
+# Float の割り算は例外にならず、Infinity か NaN になる。
+# <<en>>
+# Float division does not raise; it gives Infinity or NaN.
+class ZeroDivisionError < StandardError
+end
+
+# 凍結したオブジェクトの変更 <<en>> Changing a frozen object
+#
+# 文字列リテラルは凍結されていることがある。書き換えるなら `"".dup` から始める。
+# <<en>>
+# String literals may be frozen. Start from `"".dup` for a string you will change.
+class FrozenError < RuntimeError
+end
+
+# プログラムそのものの誤り (rescue の既定では受からない) <<en>> Errors of the program itself (not caught by a bare rescue)
+class ScriptError < Exception
+end
+
+# この端末・ビルドには無い機能 <<en>> Not available on this device or build
+#
+# `rescue => e` では受からない (StandardError の下ではない)。
+# <<en>>
+# Not caught by a bare `rescue => e` (it is not under StandardError).
+class NotImplementedError < ScriptError
+end
+
+# 繰り返しの終わり <<en>> The end of an iteration
+class StopIteration < IndexError
+end
+
+# メモリが足りない <<en>> Out of memory
+#
+# アプリの VM プールを使い切ったとき。`rescue => e` では受からない。
+# <<en>>
+# The app's VM pool is used up. Not caught by a bare `rescue => e`.
+class NoMemoryError < Exception
+end
+
+# 呼び出しが深すぎる <<en>> Calls nested too deep
+#
+# 終わらない再帰など。`rescue => e` では受からない。
+# <<en>>
+# A recursion that does not end, for instance. Not caught by a bare `rescue => e`.
+class SystemStackError < Exception
+end

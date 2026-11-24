@@ -62,7 +62,7 @@ module TiSite
     ["Machine and devices", "本体と機器", %w[machine gc rng math fmrb_hw i2c gpio]],
     ["Ruby core", "Ruby の基本クラス",
      %w[object kernel class enumerable string symbol integer float array hash range proc
-        nil_class true_class false_class untyped]],
+        nil_class true_class false_class exception untyped]],
   ].freeze
   OTHER = ["Other", "その他"].freeze
 

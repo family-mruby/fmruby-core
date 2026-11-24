@@ -369,3 +369,8 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   (sig の例・見本どおり) を落とす (2026-11-25、doc/sig_coverage/report/s6_ai_host.md)。答え直しが 2 回起きた。直していない。
 - `FmrbGfx#draw_text_mixed` は同梱のアプリが 9 か所で使うが sig に無い (`draw_text(..., mixed: true)` の、Hash を作らない形)。
   アプリを書く人に見せるかは未決定。
+- **S3 (NARYAv3) のファームの区画の空きが 288 KB (5%)** (2026-11-25、`rake regress:size`。区画 6 MB、像 6,003,680 バイト)。
+  P4 は 1.37 MB (16%)。今は収まっている。ユーザ決定: 記録だけ、足りなくなったときに決める。減らす案 (未調査):
+  S3 だけ型データベースの要約の領域 (約 112 KB) やシグネチャ (約 58 KB) を外す・S3 に要らないクラス
+  (Asterism の ROS 2 の橋など) を db から外す、区画表でファームを広げ storage を縮める (storage は F1 のヘルプが
+  約 0.8 MB)、ほかの大きな部品の見直し (`idf.py size-components`)。
