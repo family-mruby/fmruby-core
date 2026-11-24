@@ -11,4 +11,4 @@
 #   here, re-run `rake ti:setup`.
 repo: https://github.com/kishima/picoruby-ti.git
 branch: fmrb-dev
-commit: 55e90a7416ed4f741bb65707fb540c0aaa428b61
+commit: 75fdbc3a4b74d8145191b04600a34284a382502a
