@@ -1,0 +1,142 @@
+# ファイルの種類と開くアプリの関連付け。実装は
+# lib/gems/picoruby-fmrb-app/mrblib/fmrb-assoc.rb と fmrb-assoc-file.rb
+# (Spinel のデスクトップは main/ruby/spinel/fmrb_assoc_spinel.rb)。
+
+# 拡張子から、そのファイルを開く先を引く <<en>> Which app opens which file
+#
+# ファイルマネージャのダブルクリック、シェルの `open`、ファイルを渡したい
+# アプリが、同じ表を引くための入れ物。表は 2 層で、`/etc/associations.toml`
+# (ファームウェア付き) の上に `/home/associations.toml` (ユーザの) が
+# 拡張子ごとに重なる。1 行に `拡張子 = "答え"` だけを書く。
+#
+# 答えは次の 3 通り。パスは必ず `/` で始まるので、`FmrbAssoc::RUN`・
+# `FmrbAssoc::EDIT` と比べれば見分けられる。
+# - `"run"` そのファイル自身をアプリとして動かす
+# - `"edit"` エディタで開く
+# - `"/app/..."` そのアプリを起動して、ファイルを渡す
+#
+# 表は**起動した VM ごとに 1 回だけ読む**。表を書き換えたら、それを読む
+# アプリを開き直す (読み直しの仕組みは無い)。
+# <<en>>
+# The place everything that opens a file for the user asks: the file
+# manager's double click, the shell's `open`, and any app that hands a file
+# on. The table has two layers: `/etc/associations.toml` (ships with the
+# firmware) and, on top of it per extension, `/home/associations.toml` (the
+# user's). One line each, `extension = "answer"`.
+#
+# The answer is one of three. A path always starts with `/`, so compare it
+# with `FmrbAssoc::RUN` and `FmrbAssoc::EDIT` to tell them apart.
+# - `"run"` run the file itself as an app
+# - `"edit"` open it in the editor
+# - `"/app/..."` start that app and hand it the file
+#
+# The table is **read once per VM**. After editing a table, open the app
+# that reads it again (there is no reload).
+module FmrbAssoc
+  RUN: String
+  EDIT: String
+  DEFAULT: String
+  SYS_PATH: String
+  USR_PATH: String
+  MAX_EXT_LEN: Integer
+
+  # パスから開く先を決める <<en>> Decide how to open a path
+  #
+  # 戻り値は `"run"`・`"edit"`・`"/app/..."` のどれか。拡張子が無いか表に
+  # 無いときは **`"edit"`** (分からないときはエディタで見せる)。
+  # **例外は出ない**。
+  # ```ruby
+  # FmrbAssoc.resolve("/home/hello.rb")
+  # #=> "run"
+  # FmrbAssoc.resolve("/home/a.txt")
+  # #=> "edit"
+  # ```
+  # <<en>>
+  # Returns `"run"`, `"edit"` or `"/app/..."`. **With no extension, or one**
+  # **the table lacks, it is `"edit"`** (the editor is the answer to "I do not
+  # know"). **It raises nothing.**
+  # ```ruby
+  # FmrbAssoc.resolve("/home/hello.rb")
+  # #=> "run"
+  # FmrbAssoc.resolve("/home/a.txt")
+  # #=> "edit"
+  # ```
+  def self.resolve: (String path) -> String
+
+  # パスの拡張子を取る <<en>> The extension of a path
+  #
+  # **最後の `.` より後ろを小文字にして**、`.` を付けずに返す。**拡張子が**
+  # **無いときは `""`**: `.` が無い、`.` が末尾にある、`.` がディレクトリ名の
+  # 中にある、後ろが 8 文字より長い、のどれか。
+  # ```ruby
+  # FmrbAssoc.extension_of("/home/README.MD")
+  # #=> "md"
+  # ```
+  # <<en>>
+  # Returns what follows the last `.`, **in lower case** and without the dot.
+  # **It is `""` when there is no extension**: no `.`, a `.` at the end, a
+  # `.` inside a directory name, or more than 8 characters after it.
+  # ```ruby
+  # FmrbAssoc.extension_of("/home/README.MD")
+  # #=> "md"
+  # ```
+  def self.extension_of: (String path) -> String
+
+  # 関連付けの表 (拡張子 => 答え) <<en>> The association table
+  #
+  # 表を返す。**最初の呼び出しで 2 つのファイルを読み、その VM の間は**
+  # **同じ Hash を返す**。ユーザの表が同じ拡張子の分を上書きする。
+  # ```ruby
+  # FmrbAssoc.load_table["md"]
+  # #=> "/app/tool/picorabbit.app.rb"
+  # ```
+  # <<en>>
+  # Returns the table. **The first call reads the two files, and the same**
+  # **Hash comes back for the rest of the VM.** The user's table overrides the
+  # system one per extension.
+  # ```ruby
+  # FmrbAssoc.load_table["md"]
+  # #=> "/app/tool/picorabbit.app.rb"
+  # ```
+  def self.load_table: () -> Hash[String, String]
+
+  # 読んだ表を捨てる <<en>> Drop the table that was read
+  #
+  # 次の `resolve` が表を読み直す。**表を書いた直後に反映したいとき**と
+  # 試験のためで、どこにも自動では結びついていない (別の端末へ移された
+  # アプリだけ、土台が呼ぶ)。常に nil を返す。
+  # ```ruby
+  # FmrbAssoc.forget
+  # ```
+  # <<en>>
+  # The next `resolve` reads the files again. For **a caller that has just**
+  # **written a table** and for tests; nothing calls it automatically (except
+  # the base, for an app moved to another machine). It always returns nil.
+  # ```ruby
+  # FmrbAssoc.forget
+  # ```
+  def self.forget: () -> nil
+
+  # 表のファイル 1 つを Hash に重ねる <<en>> Merge one table file into a Hash
+  #
+  # `load_table` が呼ぶ読み込みの 1 段で、**table を書き換えて nil を返す**。
+  # ファイルが無ければ何もしない。キーは前後の空白を除いて小文字にし、
+  # 空でない文字列の答えだけを採る。**TOML の誤りがあるファイルは丸ごと**
+  # **読まない** (ログに 1 行)。Spinel のデスクトップでは TOML を使わず 1 行
+  # ずつ読む。
+  # ```ruby
+  # t = {}
+  # FmrbAssoc.merge_file(t, "/home/a.toml")
+  # ```
+  # <<en>>
+  # One step of `load_table`; **it writes into table and returns nil**. A
+  # missing file changes nothing. Keys are stripped and lower-cased, and only
+  # a non-empty String answer is taken. **A file with a TOML error is not**
+  # **read at all** (one log line). The Spinel desktop reads line by line
+  # instead of through TOML.
+  # ```ruby
+  # t = {}
+  # FmrbAssoc.merge_file(t, "/home/a.toml")
+  # ```
+  def self.merge_file: (Hash[String, String] table, String path) -> nil
+end

@@ -44,12 +44,12 @@ module FmrbI18n
   #
   # 印が表に無ければ印の名前がそのまま返る (落ちない)。
   # ```ruby
-  # btn.set_text(FmrbI18n.t(:save))
+  # @ui.set_text(:save, FmrbI18n.t(:save))
   # ```
   # <<en>>
   # An unknown key comes back as its own name instead of raising.
   # ```ruby
-  # btn.set_text(FmrbI18n.t(:save))
+  # @ui.set_text(:save, FmrbI18n.t(:save))
   # ```
   def self.t: (Symbol key) -> String
 
@@ -73,15 +73,76 @@ module FmrbI18n
   # 幅に入るところまで切りつめる <<en>> Cut it down to what fits the width
   #
   # 文字の途中で切らない。
+  # 切ったときは末尾に `ellipsis` (省略すると `".."`、12 ドット) を付け、
+  # 付けた分も max_px に入れる。`""` を渡すと何も付けない。入るときは
+  # そのまま返す。
   # ```ruby
   # s = FmrbI18n.truncate_to(name, 120)
   # ```
   # <<en>>
   # Never cuts a character in half.
+  # When it cuts it appends `ellipsis` (`".."` when left out, 12 pixels), and
+  # that counts inside max_px. `""` appends nothing. Text that fits comes
+  # back as it is.
   # ```ruby
   # s = FmrbI18n.truncate_to(name, 120)
   # ```
-  def self.truncate_to: (String str, Integer max_px) -> String
+  def self.truncate_to: (String str, Integer max_px, ?String ellipsis) -> String
+
+  # 言葉の表そのもの <<en>> The table of words itself
+  #
+  # 言語 => 印 => 文 の Hash。`add` はここに書き込む。最初に聞かれたときに
+  # `{ "en" => {}, "ja" => {} }` として作られる。
+  # ```ruby
+  # FmrbI18n.strings["ja"][:save]
+  # ```
+  # <<en>>
+  # The table of words as a Hash of language to key to text, `add` writes into
+  # it. It starts as `{ "en" => {}, "ja" => {} }`, made the first time it is
+  # asked for.
+  # ```ruby
+  # FmrbI18n.strings["ja"][:save]
+  # ```
+  def self.strings: () -> Hash[String, Hash[untyped, String]]
+
+  # 覚えた言葉を忘れる <<en>> Forget the language resolved so far
+  #
+  # 次の `lang` が端末の設定を読み直す。別の端末へ移されたアプリは
+  # **土台が自分で呼ぶ**ので、ふつうのアプリは呼ばない。常に nil を返す。
+  # ```ruby
+  # FmrbI18n.forget
+  # ```
+  # <<en>>
+  # The next `lang` reads the machine's setting again. For an app moved to
+  # another machine **the base calls it itself**, so an ordinary app does not.
+  # It always returns nil.
+  # ```ruby
+  # FmrbI18n.forget
+  # ```
+  def self.forget: () -> nil
+
+  # 半角カナか <<en>> Whether it is a half-width katakana
+  #
+  # `i` バイト目からの 3 バイトが半角カタカナ (U+FF61 から U+FF9F) なら true。
+  # **`i` は文字ではなくバイトの位置、`n` は文字列のバイト数**
+  # (`bytesize`)。3 バイト残っていなければ false。`text_width` が半角カナを
+  # 4 ドットで数えるのに使う。
+  # ```ruby
+  # s = "ｱ"
+  # FmrbI18n.half_kana?(s, 0, s.bytesize)
+  # #=> true
+  # ```
+  # <<en>>
+  # True when the 3 bytes from byte `i` are a half-width katakana (U+FF61 to
+  # U+FF9F). **`i` is a byte position, not a character one**, and
+  # **`n` is the string's byte size** (`bytesize`). False when fewer than 3 bytes are
+  # left. `text_width` uses it to count half-width kana as 4 pixels.
+  # ```ruby
+  # s = "ｱ"
+  # FmrbI18n.half_kana?(s, 0, s.bytesize)
+  # #=> true
+  # ```
+  def self.half_kana?: (String str, Integer i, Integer n) -> bool
 end
 
 
