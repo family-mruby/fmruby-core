@@ -15,5 +15,8 @@ icon = "app/game/mahjong/mahjong.icon"
 # (mahjong_640, mahjong_xl, mahjong_watch, ...: `require` from inside the
 # game's own calls). On the default 16 KB the compiler's recursion overflowed
 # the task stack when a game started on a Tab5 (Stack protection fault in
-# codegen, 2026-11-22). Internal RAM, one instance.
-task_stack_kb = 32
+# codegen, 2026-11-22). 32 KB was the first value that worked there; 24 KB is
+# the value to keep if it holds on the boards (not measured yet: open every
+# layout -- the table, 640, watching, replay, stats -- and read the task's
+# stack high-water mark). Internal RAM, one instance.
+task_stack_kb = 24
