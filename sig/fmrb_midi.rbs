@@ -304,11 +304,21 @@ module FmrbMidi
     # ```ruby
     # @smf.stop
     # ```
+    # <<en>>
+    # Drops what was queued and stops the notes that are sounding.
+    # ```ruby
+    # @smf.stop
+    # ```
     def stop: () -> void
 
     # 曲をいったん止める <<en>> Pause the song
     #
     # 鳴っていなければ (止まっている・もう止めた) false。
+    # ```ruby
+    # @smf.pause
+    # ```
+    # <<en>>
+    # false when it is not playing (stopped or already paused).
     # ```ruby
     # @smf.pause
     # ```
@@ -616,11 +626,21 @@ module FmrbMidi
     # ```ruby
     # n = @smf.track_count
     # ```
+    # <<en>>
+    # 0 before a song is loaded.
+    # ```ruby
+    # n = @smf.track_count
+    # ```
     def track_count: () -> Integer
 
     # 四分音符あたりの tick の数 <<en>> Ticks per quarter note
     #
     # 見出しの値。読み込む前は 0。
+    # ```ruby
+    # d = @smf.division
+    # ```
+    # <<en>>
+    # The value in the header. 0 before a song is loaded.
     # ```ruby
     # d = @smf.division
     # ```
@@ -632,6 +652,11 @@ module FmrbMidi
     # ```ruby
     # f = @smf.format
     # ```
+    # <<en>>
+    # 0 before a song is loaded. Format 2 cannot be read.
+    # ```ruby
+    # f = @smf.format
+    # ```
     def format: () -> Integer
 
     # 送った出来事の数 <<en>> How many events were sent
@@ -640,11 +665,21 @@ module FmrbMidi
     # ```ruby
     # n = @smf.late_count
     # ```
+    # <<en>>
+    # The events figure of `timing_stats`.
+    # ```ruby
+    # n = @smf.late_count
+    # ```
     def late_count: () -> Integer
 
     # 遅れの合計 (ms) <<en>> Total lateness, in ms
     #
     # 早く送った分は 0 と数える。
+    # ```ruby
+    # t = @smf.late_sum_ms
+    # ```
+    # <<en>>
+    # Events sent early count as 0.
     # ```ruby
     # t = @smf.late_sum_ms
     # ```
@@ -844,12 +879,22 @@ module FmrbMidi
     # ```ruby
     # @mml.pause
     # ```
+    # <<en>>
+    # false when it is not playing.
+    # ```ruby
+    # @mml.pause
+    # ```
     def pause: () -> bool
 
     # 続きを鳴らす <<en>> Carry on
     #
     # 止める前に待ち行列へ入れてあった分 (最大 0.3 秒) は捨てられる。
     # 止めていなければ false。
+    # ```ruby
+    # @mml.resume
+    # ```
+    # <<en>>
+    # What was already queued when you paused (up to 0.3 s) is dropped. false when not paused.
     # ```ruby
     # @mml.resume
     # ```
@@ -1024,11 +1069,21 @@ module FmrbMidi
     # ```ruby
     # n = @mml.stall_count
     # ```
+    # <<en>>
+    # When the app is 200 ms or more late the schedule is shifted.
+    # ```ruby
+    # n = @mml.stall_count
+    # ```
     def stall_count: () -> Integer
 
     # 音が途切れた回数 <<en>> How many times the music gapped
     #
     # 待ち行列が空なのに 5 ms 以上遅れた回数。
+    # ```ruby
+    # n = @mml.underrun_count
+    # ```
+    # <<en>>
+    # Counts events more than 5 ms late with nothing left in the queue.
     # ```ruby
     # n = @mml.underrun_count
     # ```
@@ -1141,6 +1196,11 @@ module FmrbMidi
     # ひとまとめを閉じて送る <<en>> Close the group and send it
     #
     # `defer_voices` で開けたものを閉じる。開けていなければ何もしない。
+    # ```ruby
+    # apu.flush_voices
+    # ```
+    # <<en>>
+    # Closes what `defer_voices` opened. Nothing happens if none is open.
     # ```ruby
     # apu.flush_voices
     # ```

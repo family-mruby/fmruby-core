@@ -63,6 +63,126 @@ class P5
   # ```
   def present: () -> void
 
+  # present の別名 <<en>> Another name for present
+  #
+  # ```ruby
+  # @p5.commit
+  # ```
+  def commit: () -> void
+
+  # ---- 定数 ----
+
+  # 黒 (RGB332) <<en>> black (RGB332)
+  #
+  # `FmrbGfx::BLACK` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::BLACK)
+  # ```
+  BLACK: Integer
+
+  # 白 (RGB332) <<en>> white (RGB332)
+  #
+  # `FmrbGfx::WHITE` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::WHITE)
+  # ```
+  WHITE: Integer
+
+  # 赤 (RGB332) <<en>> red (RGB332)
+  #
+  # `FmrbGfx::RED` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::RED)
+  # ```
+  RED: Integer
+
+  # 緑 (RGB332) <<en>> green (RGB332)
+  #
+  # `FmrbGfx::GREEN` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::GREEN)
+  # ```
+  GREEN: Integer
+
+  # 青 (RGB332) <<en>> blue (RGB332)
+  #
+  # `FmrbGfx::BLUE` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::BLUE)
+  # ```
+  BLUE: Integer
+
+  # 黄 (RGB332) <<en>> yellow (RGB332)
+  #
+  # `FmrbGfx::YELLOW` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::YELLOW)
+  # ```
+  YELLOW: Integer
+
+  # 水色 (RGB332) <<en>> cyan (RGB332)
+  #
+  # `FmrbGfx::CYAN` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::CYAN)
+  # ```
+  CYAN: Integer
+
+  # 紫 (RGB332) <<en>> magenta (RGB332)
+  #
+  # `FmrbGfx::MAGENTA` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::MAGENTA)
+  # ```
+  MAGENTA: Integer
+
+  # 灰色 (RGB332) <<en>> gray (RGB332)
+  #
+  # `FmrbGfx::GRAY` と同じ値。
+  # ```ruby
+  # @p5.fill(P5::GRAY)
+  # ```
+  GRAY: Integer
+
+  # ふつうに上書きする (0) <<en>> plain overwrite (0)
+  #
+  # `blend_mode` に渡す。
+  # ```ruby
+  # @p5.blend_mode(P5::REPLACE)
+  # ```
+  # <<en>>
+  # Pass it to `blend_mode`.
+  # ```ruby
+  # @p5.blend_mode(P5::REPLACE)
+  # ```
+  REPLACE: Integer
+
+  # 明るく重ねる (1) <<en>> brighten where shapes overlap (1)
+  #
+  # `blend_mode` に渡す。
+  # ```ruby
+  # @p5.blend_mode(P5::ADD)
+  # ```
+  # <<en>>
+  # Pass it to `blend_mode`.
+  # ```ruby
+  # @p5.blend_mode(P5::ADD)
+  # ```
+  ADD: Integer
+
+  # 反転して重ねる (2) <<en>> invert where shapes overlap (2)
+  #
+  # `blend_mode` に渡す。
+  # ```ruby
+  # @p5.blend_mode(P5::XOR)
+  # ```
+  # <<en>>
+  # Pass it to `blend_mode`.
+  # ```ruby
+  # @p5.blend_mode(P5::XOR)
+  # ```
+  XOR: Integer
+
   # ---- 色と線 ----
 
   # 中をぬる色を決める <<en>> Set the fill colour
