@@ -17,8 +17,8 @@ class TileSheet
   #   cols: 8, source: src)
   # ```
   # <<en>>
-  # Reads a grid of pictures from one PNG (or BMP). **Takes keyword
-  # arguments** (cols: is required; the signature is positional because the
+  # Reads a grid of pictures from one PNG (or BMP).
+  # **Takes keyword arguments** (cols: is required; the signature is positional because the
   # type engine has none). path is on the graphics side: send it with
   # sync_file first. Without rows:, give source: the picture on this side,
   # whose header has the height.

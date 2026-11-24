@@ -340,8 +340,8 @@ module Asterism
     # オブジェクトを公開する <<en>> Expose an object to other machines
     #
     # name はオブジェクトの名前で、ほかの端末からは
-    # "<この端末>/<アプリ>/<name>" で呼ばれる。**methods: は
-    # キーワードで渡す**: 呼んでよいメソッドの名前と引数の数の Hash
+    # "<この端末>/<アプリ>/<name>" で呼ばれる。
+    # **methods: はキーワードで渡す**: 呼んでよいメソッドの名前と引数の数の Hash
     # ({ post: 1 }。数は呼ばれる前に確かめる、-1 は何個でも) か、
     # 名前の Array。並べたメソッドだけが呼べる。obj にそのメソッドが
     # 無いと ArgumentError。公開したメソッドは update の中で呼ばれる。
@@ -359,8 +359,8 @@ module Asterism
     # end
     # ```
     # <<en>>
-    # Others call it as "<this node>/<app>/<name>". **Pass methods: as
-    # a keyword**: a Hash of method name => number of arguments
+    # Others call it as "<this node>/<app>/<name>".
+    # **Pass methods: as a keyword**: a Hash of method name => number of arguments
     # ({ post: 1 }, checked before the call; -1 for any) or an Array of
     # names. Only those can be called; a missing one raises
     # ArgumentError. Exposed methods run inside update; what they raise
@@ -408,7 +408,7 @@ module Asterism
 
     # 公開されているオブジェクトを探す <<en>> The exposed objects alive now matching a pattern
     #
-    # pattern の * は 1 区切り、** は何区切りでも。この端末の物も入る。
+    # pattern の * は 1 区切り、`*``*` は何区切りでも。この端末の物も入る。
     # 答えはオブジェクトの Array (受け取り方は conn[path] と同じ)。
     # ネットワークに問い合わせないので、毎回呼んでよい。
     # ```ruby
@@ -417,7 +417,7 @@ module Asterism
     # @board = list[0]
     # ```
     # <<en>>
-    # * is one chunk, ** any number; this machine's own are included.
+    # * is one chunk, `*``*` any number; this machine's own are included.
     # Returns an Array of proxies (like conn[path]). It does not ask the
     # network, so it is cheap to call every time.
     # ```ruby
@@ -476,7 +476,7 @@ module Asterism
 
     # トピックを受ける (ブロックで) <<en>> Receive the values of topics (in a block)
     #
-    # path は "<端末>/<アプリ>/<トピック>"。* は 1 区切り、** は何区切り
+    # path は "<端末>/<アプリ>/<トピック>"。* は 1 区切り、`*``*` は何区切り
     # でも。値が来るたびに、**update の中で**ブロックが |値, info| で
     # 呼ばれる (info は Asterism::SampleInfo)。自分で put した値は
     # 自分には届かない。**depth: で溜める数を変えられる**。
@@ -490,9 +490,9 @@ module Asterism
     # end
     # ```
     # <<en>>
-    # path is "<node>/<app>/<topic>" (* one chunk, ** any number). The
-    # block gets |value, info| (an Asterism::SampleInfo) **inside
-    # update**. Your own puts do not come back to you. **depth:** sets how
+    # path is "<node>/<app>/<topic>" (* one chunk, `*``*` any number). The
+    # block gets |value, info| (an Asterism::SampleInfo)
+    # **inside update**. Your own puts do not come back to you. **depth:** sets how
     # many wait between updates. close the returned Subscription to stop.
     # Call it in link_up.
     # ```ruby

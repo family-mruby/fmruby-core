@@ -656,8 +656,8 @@ class FmrbUI::HitAreas
   # tile = b[5] if b
   # ```
   # <<en>>
-  # Answers [id, x, y, w, h, data] or nil. Where targets overlap, **the one
-  # added first wins**.
+  # Answers [id, x, y, w, h, data] or nil. Where targets overlap,
+  # **the one added first wins**.
   #
   # ```ruby
   # b = @hits.at(ev[:x], ev[:y])

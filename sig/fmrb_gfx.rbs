@@ -356,8 +356,9 @@ class FmrbGfx
   # (x, y) is the top-left corner, w the width, h the height, and the inside
   # is filled. To wipe the whole canvas, `clear` is faster.
   #
-  # For something that moves, **paint over where it was in the background
-  # colour first**, then draw it at the new place, and it leaves no trail.
+  # For something that moves,
+  # **paint over where it was in the background colour first**,
+  # then draw it at the new place, and it leaves no trail.
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -425,8 +426,8 @@ class FmrbGfx
   # @hits.add(:ok, x, y, 60, 16)
   # ```
   # <<en>>
-  # Fills it with fill and centres label in fg with the current font. **Only
-  # the picture**: it has no click target. On a screen redrawn every time,
+  # Fills it with fill and centres label in fg with the current font.
+  # **Only the picture**: it has no click target. On a screen redrawn every time,
   # pair it with FmrbUI::HitAreas#add. An eighth argument sets the corner
   # radius (default 3).
   #

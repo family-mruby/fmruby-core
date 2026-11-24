@@ -50,8 +50,8 @@ class Dir
   # end
   # ```
   # <<en>>
-  # **With a block it closes the directory on the way out and returns the block's
-  # value.** RuntimeError when it is missing. Apps also use it to test existence (open
+  # **With a block it closes the directory on the way out and returns the block's value.**
+  # RuntimeError when it is missing. Apps also use it to test existence (open
   # and close for true; a RuntimeError for false); `Dir.exist?` is simpler for that.
   # ```ruby
   # Dir.open("/home") do |d|
@@ -97,8 +97,9 @@ class Dir
   # Dir.mkdir("/home/notes") unless Dir.exist?("/home/notes")
   # ```
   # <<en>>
-  # Returns 0 when made. **RuntimeError (the message is the path) when it exists
-  # already and when a parent is missing**: make them one level at a time, and check
+  # Returns 0 when made.
+  # **RuntimeError (the message is the path) when it exists already and when a parent is missing**:
+  # make them one level at a time, and check
   # with `Dir.exist?` first. `mode` (0777 when left out) means nothing on LittleFS.
   # /tmp is meant for files only; directories are not made in it on a device (whether
   # `Dir.mkdir` refuses in the simulation is not checked).
@@ -115,8 +116,9 @@ class Dir
   # Dir.delete("/home/old")
   # ```
   # <<en>>
-  # Returns 0 when deleted. **RuntimeError (the message is the path) when it is not
-  # empty or is missing.** "/" and "/mnt" cannot be deleted (on a device). `rmdir` and
+  # Returns 0 when deleted.
+  # **RuntimeError (the message is the path) when it is not empty or is missing.**
+  # "/" and "/mnt" cannot be deleted (on a device). `rmdir` and
   # `unlink` are the same method. For a file use `File.delete`.
   # ```ruby
   # Dir.delete("/home/old")
@@ -146,8 +148,9 @@ class Dir
   # names = (Dir.children(dir) rescue [])
   # ```
   # <<en>>
-  # RuntimeError (the message is the path) when it is missing. **The order is not
-  # fixed.** Directories and files are both just names (tell them apart with
+  # RuntimeError (the message is the path) when it is missing.
+  # **The order is not fixed.**
+  # Directories and files are both just names (tell them apart with
   # `File.directory?`).
   # ```ruby
   # names = Dir.children("/home")
@@ -195,15 +198,16 @@ class Dir
 
   # 作業ディレクトリ <<en>> The working directory
   #
-  # `pwd` は同じ働きの別名。**ファイルの操作 (File.open・Dir.open ...) の相対パスは
-  # これでなく、ルート (ESP32 は flash のルート) から解くので、パスは "/" から書く**。
+  # `pwd` は同じ働きの別名。
+  # **ファイルの操作 (File.open・Dir.open ...) の相対パスはこれでなく、ルート (ESP32 は flash のルート) から解くので、パスは "/" から書く**。
   # ```ruby
   # Dir.getwd
   # ```
   # <<en>>
-  # `pwd` is the same method. **Relative paths given to File.open, Dir.open and the like
-  # are resolved from the root (an ESP32's flash root), not from this, so write paths
-  # from "/".**
+  # `pwd` is the same method.
+  # **Relative paths given to File.open, Dir.open and the like are resolved
+  # from the root (an ESP32's flash root), not from this,**
+  # **so write paths from "/".**
   # ```ruby
   # Dir.getwd
   # ```
@@ -226,8 +230,9 @@ class Dir
   # ```
   # <<en>>
   # Returns 0. With a block it changes only for the block, restores, and returns the
-  # block's value. RuntimeError when it is missing. **It does not change what relative
-  # paths in file operations are based on** (see `Dir.getwd`); apps use absolute paths.
+  # block's value. RuntimeError when it is missing.
+  # **It does not change what relative paths in file operations are based on**
+  # (see `Dir.getwd`); apps use absolute paths.
   # ```ruby
   # Dir.chdir("/home")
   # ```

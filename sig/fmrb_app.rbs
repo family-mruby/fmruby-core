@@ -285,8 +285,8 @@ class FmrbApp
   # Called over and over while the app runs. Draw one frame's worth of graphics
   # here; movement comes from changing the position a little on each call.
   #
-  # Blocking in here blocks the other apps too, so **never wait long in this
-  # method**. Use `set_timer` when something has to happen later.
+  # Blocking in here blocks the other apps too, so
+  # **never wait long in this method**. Use `set_timer` when something has to happen later.
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -347,8 +347,8 @@ class FmrbApp
 
   # イメージに書かれた直後 <<en>> Called once the app is written to an image
   #
-  # アプリがイメージに書かれ、閉じる直前に呼ばれます。アプリは**終わったの
-  # ではなく移った**ので `on_destroy` は来ません。ここでしたことは
+  # アプリがイメージに書かれ、閉じる直前に呼ばれます。アプリは
+  # **終わったのではなく移った**ので `on_destroy` は来ません。ここでしたことは
   # イメージに入りません。運べるのは `.app.toml` に `movable = true` と
   # 書いた、mruby で動くアプリだけです (doc/checkpoint/movable_apps.md)。
   # <<en>>
@@ -669,8 +669,9 @@ class FmrbApp
   # ループを抜けて終わる。**これを通った終わりだけが「行儀のよい終わり」**
   # として記録され、例外で落ちたのと区別が付く。
   # <<en>>
-  # Leaves the loop and ends. **Only an ending that goes through here counts
-  # as an orderly one**, which is how the kernel tells it from a crash.
+  # Leaves the loop and ends.
+  # **Only an ending that goes through here counts as an orderly one**,
+  # which is how the kernel tells it from a crash.
   def stop: () -> void
 
   # 使った物を片づける <<en>> Let go of what it used
@@ -732,8 +733,8 @@ class FmrbApp
   # 呼ぶのは、区画の端に描いて枠の線を踏んだとき (clear_user_area を
   # 使わずに fill_rect で塗ったときなど) だけです。
   #
-  # タイトルバーは既定のフォントで描かれますが、**呼ぶ前のフォント設定は
-  # 戻されます**。`set_font(:ja)` を毎フレーム掛け直す必要はありません。
+  # タイトルバーは既定のフォントで描かれますが、
+  # **呼ぶ前のフォント設定は戻されます**。`set_font(:ja)` を毎フレーム掛け直す必要はありません。
   # <<en>>
   # Draws the title bar, the border and the close button. Does nothing in
   # full screen.
@@ -880,8 +881,8 @@ class FmrbApp
   #
   # 描き直しは `on_resize` に書きます。ここでは書きません。
   # <<en>>
-  # Asks to switch between full screen and a window. **Nothing changes
-  # immediately** -- the VM keeps running and the answer arrives as
+  # Asks to switch between full screen and a window.
+  # **Nothing changes immediately** -- the VM keeps running and the answer arrives as
   # `on_resize`, by which time `fullscreen` and the user area are the new
   # ones.
   #
@@ -893,8 +894,8 @@ class FmrbApp
   # 全画面と Window を切り替える。**答えは `on_resize` で返る** (`request_fullscreen`
   # と同じ)。
   # <<en>>
-  # Switches between full screen and a window. **The answer arrives as
-  # `on_resize`**, as with `request_fullscreen`.
+  # Switches between full screen and a window.
+  # **The answer arrives as `on_resize`**, as with `request_fullscreen`.
   def toggle_fullscreen: () -> void
 
   # 自分用の画面をもう一枚作る <<en>> Make a second canvas of its own
@@ -992,8 +993,8 @@ class FmrbApp
   # interval ミリ秒後に一度だけブロックを呼びます。**繰り返しません** —
   # 続けたいならブロックの中でもう一度 `set_timer` を呼びます。
   #
-  # 呼ばれる時刻はアプリのループの刻みに丸められるので、**ミリ秒どおりには
-  # 来ません**。戻り値は `clear_timer` に渡す番号です。
+  # 呼ばれる時刻はアプリのループの刻みに丸められるので、
+  # **ミリ秒どおりには来ません**。戻り値は `clear_timer` に渡す番号です。
   #
   # Spinel で動かすアプリでは、**ブロックの外側のローカル変数を掴めません**
   # (インスタンス変数と定数は使えます)。
@@ -1002,8 +1003,8 @@ class FmrbApp
   # @id = set_timer(500) { blink }
   # ```
   # <<en>>
-  # Calls the block once, interval milliseconds later. **It does not
-  # repeat** -- call `set_timer` again inside the block for that.
+  # Calls the block once, interval milliseconds later.
+  # **It does not repeat** -- call `set_timer` again inside the block for that.
   #
   # The moment it fires is rounded to the app loop's own tick, so it is not
   # accurate to the millisecond. The return value is the id `clear_timer`
@@ -1156,8 +1157,8 @@ class FmrbApp
   # 自分をイメージに書いて閉じる <<en>> Write this app to an image and close
   #
   # 自分を止めてイメージ (`/tmp/<名前>.ckpt`) に書き、閉じるよう頼みます。
-  # 書くのはメッセージ待ちの後の区切りなので、**`on_event` や `on_update`
-  # の中から頼んでよい**です。書けたら `on_checkpoint` の後に閉じ、
+  # 書くのはメッセージ待ちの後の区切りなので、
+  # **`on_event` や `on_update` の中から頼んでよい**です。書けたら `on_checkpoint` の後に閉じ、
   # `restart: true` を渡すとすぐにイメージから起動し直します (`on_restore`)。断られたら
   # `on_checkpoint_refused` が来ます。頼めたら nil、頼めないときは理由の
   # 文字列を返します。
@@ -1341,8 +1342,8 @@ class FmrbApp
   # 一覧が変わるたびに増える番号。**これが変わったときだけ `ps` を呼べば**、
   # 毎フレーム一覧を作らずに済む。
   # <<en>>
-  # A number that changes whenever the list does. **Call `ps` only when it
-  # moves** and the list is not rebuilt every frame.
+  # A number that changes whenever the list does.
+  # **Call `ps` only when it moves** and the list is not rebuilt every frame.
   def self.ps_gen: () -> Integer
 
   # 別のアプリをイメージに書いて閉じる <<en>> Write another app to an image

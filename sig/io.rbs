@@ -1,15 +1,16 @@
 # 入出力 (IO)。File の親クラス。
 # 実装は Family mruby の gem picoruby-fmrb-io (lib/gems/picoruby-fmrb-io/: mrblib/io.rb、
 # ports/esp32/fmrb_io.c。ファイル HAL の fmrb_hal_file_* を呼ぶ)。mruby 本体の mruby-io は
-# 入っていない (picoruby-fmrb-io と同居できない)。**CRuby の IO にあるメソッドの多く
-# (gets・each_line・seek・eof? ほか) は無い**。ここに書いたものだけがある。
+# 入っていない (picoruby-fmrb-io と同居できない)。
+# **CRuby の IO にあるメソッドの多く (gets・each_line・seek・eof? ほか) は無い**。ここに書いたものだけがある。
 # `IO.new`・`IO.open`・`IO.sysopen` は番号 (ファイルのハンドル) を直接扱う内側のもので、
 # アプリは `File.open` を使う (ここには書かない)。
 
 # 入出力のストリーム。
 #
-# 標準出力 (`$stdout`) もファイルも同じ IO。**ストリームが閉じた後の `read`・`write` は
-# IOError でなく RuntimeError** ("closed stream")。エラーはどれも RuntimeError で、
+# 標準出力 (`$stdout`) もファイルも同じ IO。
+# **ストリームが閉じた後の `read`・`write` は IOError でなく RuntimeError**
+# ("closed stream")。エラーはどれも RuntimeError で、
 # 理由 (errno) は区別できない。
 # ```ruby
 # $stdout.puts "hello"
@@ -113,8 +114,9 @@ class IO
   # ```
   # <<en>>
   # **Calling it again is not an error** (nothing happens once it is closed). Returns
-  # nil. Nothing happens for the standard streams. **A file left open is not closed
-  # by the garbage collector**; it is closed when the app ends. The number that can
+  # nil. Nothing happens for the standard streams.
+  # **A file left open is not closed by the garbage collector**;
+  # it is closed when the app ends. The number that can
   # stay open is limited (10 for all apps together on an ESP32; see File.new).
   # ```ruby
   # f.close

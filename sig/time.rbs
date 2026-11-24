@@ -39,8 +39,8 @@ class Time
 
   # 今の時刻 (new) <<en>> New Time (now, or from a date)
   #
-  # **引数なしは今**。引数は年・月・日・時・分・秒・マイクロ秒の順で、**年だけ必須の
-  # 整数** (文字列は TypeError)。**ローカル時刻**として解く。範囲外 (13 月など) は
+  # **引数なしは今**。引数は年・月・日・時・分・秒・マイクロ秒の順で、
+  # **年だけ必須の整数** (文字列は TypeError)。**ローカル時刻**として解く。範囲外 (13 月など) は
   # ArgumentError ("argument out of range"、解けない日付は "invalid time")。
   # ```ruby
   # Time.new

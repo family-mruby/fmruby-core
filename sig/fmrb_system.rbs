@@ -28,8 +28,8 @@ module FmrbSystem
   #                          12, 0, 0)
   # ```
   # <<en>>
-  # Takes **local time** and returns the same moment in UTC. **Only a device
-  # acts on it**; Linux and the browser do nothing.
+  # Takes **local time** and returns the same moment in UTC.
+  # **Only a device acts on it**; Linux and the browser do nothing.
   # ```ruby
   # FmrbSystem.set_wallclock(2026, 9, 1,
   #                          12, 0, 0)

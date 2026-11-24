@@ -14,8 +14,9 @@
 # <<en>>
 # Time, waiting, and telling the platforms apart. Time is `board_millis` (ms) and
 # `uptime_us` (microseconds), waiting is `delay_ms` and `busy_wait_ms`, and
-# `posix?` tells the platform. **Some methods behave differently on an ESP32 board
-# and on Linux or the browser build** (noted per method).
+# `posix?` tells the platform.
+# **Some methods behave differently on an ESP32 board and on Linux or the browser build**
+# (noted per method).
 # ```ruby
 # t0 = Machine.board_millis
 # ```
@@ -66,8 +67,8 @@ module Machine
   # <<en>>
   # For finer measurements than `board_millis`. It starts counting where
   # `board_millis` does (the board's boot on an ESP32, the host's boot on Linux and
-  # the native build, the start of the program in the browser). **The offset of an
-  # app carried by checkpoint is not added.** Integers are 64-bit.
+  # the native build, the start of the program in the browser).
+  # **The offset of an app carried by checkpoint is not added.** Integers are 64-bit.
   # ```ruby
   # t = Machine.uptime_us
   # work
@@ -141,8 +142,8 @@ module Machine
   # sec は秒で、**2 以上 86399 以下**。負や 86400 以上は ArgumentError。**2 未満は眠らず**、
   # 警告 ("Cannot sleep less than 2 sec") を出して戻る。眠る前にも警告を出す。戻り値は渡した sec。
   #
-  # ESP32 は chip ごとの light sleep (`esp_light_sleep_start`) に入る。**Linux・ネイティブ版は
-  # 何もせず、すぐ戻る**。アプリの待ちには使わず、`delay_ms` か `sleep_ms` を使う。
+  # ESP32 は chip ごとの light sleep (`esp_light_sleep_start`) に入る。
+  # **Linux・ネイティブ版は何もせず、すぐ戻る**。アプリの待ちには使わず、`delay_ms` か `sleep_ms` を使う。
   # ```ruby
   # Machine.sleep(5)
   # ```
@@ -170,15 +171,15 @@ module Machine
 
   # 端末の固有 ID を返す <<en>> Return the machine's unique ID
   #
-  # **ESP32 は MAC アドレスを 12 桁の 16 進 (大文字)** で返す。**Linux・ネイティブ版は
-  # `/etc/machine-id` の 32 桁** (ホストの ID)。読めないときは **nil** (ブラウザ版など
+  # **ESP32 は MAC アドレスを 12 桁の 16 進 (大文字)** で返す。
+  # **Linux・ネイティブ版は `/etc/machine-id` の 32 桁** (ホストの ID)。読めないときは **nil** (ブラウザ版など
   # ファイルが無い所)。
   # ```ruby
   # id = Machine.unique_id
   # ```
   # <<en>>
-  # **An ESP32 returns its MAC address as 12 hex digits (upper case).** **Linux and
-  # the native build return the 32 digits in `/etc/machine-id`** (the host's ID).
+  # **An ESP32 returns its MAC address as 12 hex digits (upper case).**
+  # **Linux and the native build return the 32 digits in `/etc/machine-id`** (the host's ID).
   # It is **nil** when it cannot be read (the browser build has no such file).
   # ```ruby
   # id = Machine.unique_id
@@ -193,8 +194,9 @@ module Machine
   # s = Machine.read_memory(addr, 16)
   # ```
   # <<en>>
-  # Returns size bytes from address as a new binary string. **The address is not
-  # checked**: an unreadable one crashes the whole firmware. For debugging.
+  # Returns size bytes from address as a new binary string.
+  # **The address is not checked**:
+  # an unreadable one crashes the whole firmware. For debugging.
   # ```ruby
   # s = Machine.read_memory(addr, 16)
   # ```
@@ -229,14 +231,14 @@ module Machine
 
   # システム時計を読む <<en>> Read the system clock
   #
-  # `[秒, ナノ秒]` の配列 (UNIX 時刻の UTC)。**ESP32 だけ**。**Linux・ネイティブ版・ブラウザ版は
-  # NotImplementedError** (`rescue => e` では受けられない)。
+  # `[秒, ナノ秒]` の配列 (UNIX 時刻の UTC)。**ESP32 だけ**。
+  # **Linux・ネイティブ版・ブラウザ版は NotImplementedError** (`rescue => e` では受けられない)。
   # ```ruby
   # sec, nsec = Machine.get_hwclock
   # ```
   # <<en>>
-  # An array of `[seconds, nanoseconds]` (UNIX time, UTC). **ESP32 only.** **Linux,
-  # the native build and the browser build raise NotImplementedError** (not caught
+  # An array of `[seconds, nanoseconds]` (UNIX time, UTC). **ESP32 only.**
+  # **Linux, the native build and the browser build raise NotImplementedError** (not caught
   # by `rescue => e`).
   # ```ruby
   # sec, nsec = Machine.get_hwclock
@@ -245,22 +247,24 @@ module Machine
 
   # プログラムを終える <<en>> Exit the program
   #
-  # **ESP32 では何もしない** (nil を返すだけ)。**Linux・ネイティブ版では本体のプロセスごと
-  # 終わる** ので、アプリから呼ばない。アプリを閉じるのは `FmrbApp#stop`。
+  # **ESP32 では何もしない** (nil を返すだけ)。
+  # **Linux・ネイティブ版では本体のプロセスごと終わる** ので、アプリから呼ばない。アプリを閉じるのは `FmrbApp#stop`。
   # <<en>>
-  # **Does nothing on an ESP32** (returns nil). **On Linux and the native build the
-  # whole firmware process exits**, so do not call it from an app. Close an app with
+  # **Does nothing on an ESP32** (returns nil).
+  # **On Linux and the native build the whole firmware process exits**,
+  # so do not call it from an app. Close an app with
   # `FmrbApp#stop`.
   def self.exit: (?Integer status) -> nil
 
   # 再起動する (このビルドでは使えない) <<en>> Reboot (not usable in this build)
   #
-  # wait_ms (省略すると 0) だけ待ってから再起動しようとする。**ESP32 では
-  # NotImplementedError** (ウォッチドッグの gem が入っていない)。Linux・ネイティブ版は
+  # wait_ms (省略すると 0) だけ待ってから再起動しようとする。
+  # **ESP32 では NotImplementedError** (ウォッチドッグの gem が入っていない)。Linux・ネイティブ版は
   # 終了コード 120 でプロセスを終える。端末を再起動するのは `FmrbSystem.reboot`。
   # <<en>>
-  # Tries to reboot after wait_ms (0 when left out). **It raises NotImplementedError
-  # on an ESP32** (the watchdog gem is not in the build). Linux and the native build
+  # Tries to reboot after wait_ms (0 when left out).
+  # **It raises NotImplementedError on an ESP32**
+  # (the watchdog gem is not in the build). Linux and the native build
   # end the process with exit code 120. To restart the machine use
   # `FmrbSystem.reboot`.
   def self.reboot: (?Integer wait_ms) -> nil
@@ -276,8 +280,8 @@ module Machine
   # end
   # ```
   # <<en>>
-  # **True on Linux, the native build and the browser build; false on an ESP32
-  # board** (true unless `RUBY_PLATFORM` is "ESP32"). Use it to separate calls that
+  # **True on Linux, the native build and the browser build; false on an ESP32 board**
+  # (true unless `RUBY_PLATFORM` is "ESP32"). Use it to separate calls that
   # only a board has (`set_hwclock` and so on).
   # ```ruby
   # if Machine.posix?
@@ -288,11 +292,12 @@ module Machine
 
   # Wi-Fi を使える版か <<en>> Whether Wi-Fi is available
   #
-  # `Network::WiFi` が定義されていれば true。**Family mruby にはこの定義が見つからず、
-  # 今は常に false** (Wi-Fi の状態は `FmrbApp` と `FmrbNet` で調べる)。
+  # `Network::WiFi` が定義されていれば true。
+  # **Family mruby にはこの定義が見つからず、今は常に false** (Wi-Fi の状態は `FmrbApp` と `FmrbNet` で調べる)。
   # <<en>>
-  # True when `Network::WiFi` is defined. **Family mruby has no such definition, so it is
-  # always false** (ask `FmrbApp` and `FmrbNet` about Wi-Fi instead).
+  # True when `Network::WiFi` is defined.
+  # **Family mruby has no such definition, so it is always false**
+  # (ask `FmrbApp` and `FmrbNet` about Wi-Fi instead).
   def self.wifi_available?: () -> bool
 
   # USB デバイスの処理を 1 回回す <<en>> Run one USB device task step
@@ -323,8 +328,9 @@ module Machine
   # 受け取るのは **Linux・ネイティブ版の標準入力だけ** (ESP32 には受け取る所が無く、いつも nil)。
   # <<en>>
   # Raises Interrupt ("SIGINT") when Ctrl-C was received, SignalException ("SIGTSTP")
-  # for Ctrl-Z, and returns nil when nothing is pending. Only **the standard input
-  # of Linux and the native build** receives them (nothing sets it on an ESP32, so
+  # for Ctrl-Z, and returns nil when nothing is pending. Only
+  # **the standard input of Linux and the native build**
+  # receives them (nothing sets it on an ESP32, so
   # it is always nil there).
   def self.check_signal: () -> nil
 
