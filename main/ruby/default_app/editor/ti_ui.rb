@@ -39,14 +39,21 @@ module EditorTiUi
 
   TI_LANG_MARK = "<<en>>"
 
+  # Counted in bytes on purpose (byteindex / byteslice, never index / []).
+  # The text comes from EditorCore as a byte string, and on the Spinel editor
+  # index counted the characters before the marker while [] cut by bytes: with
+  # Japanese in front, the English reader got the tail of the Japanese and
+  # the marker ("..く <<en>> draw a string"), and the Japanese reader a
+  # summary cut after two characters.
   def ti_pick_lang(text)
     s = text.to_s
-    i = s.index(TI_LANG_MARK)
+    i = s.byteindex(TI_LANG_MARK)
     return s if i.nil?
     if FmrbI18n.lang == "en"
-      s[i + TI_LANG_MARK.length, s.length].to_s.strip
+      from = i + TI_LANG_MARK.bytesize
+      s.byteslice(from, s.bytesize - from).to_s.strip
     else
-      s[0, i].to_s.strip
+      s.byteslice(0, i).to_s.strip
     end
   end
 
