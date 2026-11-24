@@ -182,12 +182,12 @@ module FmrbAsterism
 
     # 閉じる (on_destroy) <<en>> Close for good (on_destroy)
     #
-    # Link を閉じる。卓に入っていたら先に leave する。
+    # Link を閉じる。卓の leave はしないので、入っていれば先に自分で leave する。
     # ```ruby
     # @tc.close
     # ```
     # <<en>>
-    # Closes the Link. Leave a joined table first.
+    # Closes the Link. It does not leave the table: leave it yourself first when joined.
     # ```ruby
     # @tc.close
     # ```
