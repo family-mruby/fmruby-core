@@ -333,7 +333,9 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   `send_message` は足りない分を読み過ぎ、受け手の `size`・`data` が 4 バイトずれる。sim で `Kernel.respond_to?` は true
   (呼べる状態)。**同梱のアプリとカーネルは誰も呼んでいない** (アプリは `FmrbApp#send_message` を使う) ので今は潜在。
   動かして確かめてはいない (壊す操作なので)。直し方: 本体のヘッダを include する (自前の型をやめる) か、この 3 つを
-  公開の API から外す。sig には「アプリ間の伝言は `FmrbApp#send_message` を使う」と書いてある。ユーザの判断待ち。
+  公開の API から外す。**決定 (2026-11-25 ユーザ): 直すまでの間、sig から外す** (AI ホストが型を見て使わないように)。
+  `sig/kernel.rbs` から 3 つの宣言を外し、数える道具の載せない一覧に理由つきで入れた。`message_queue_exists?` は
+  構造体を使わないので残した。直したら sig に戻す。
 - S4a で見つかったほかの疑い (読みだけ。直していない): `FmrbUI#bg=` は既にある部品の色を変えない (部品が作るときに色を
   写して持つ)、`FmrbI18n.add` の長文「Existing keys are left alone」は実装 (上書きする) と合わない、Spinel の基底に
   `app_settings` 系 3 つが無い、`Kernel.*` の task_id の検査 (0〜15) と本体の上限 (9) が合わない。

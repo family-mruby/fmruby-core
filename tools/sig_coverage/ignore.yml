@@ -490,6 +490,22 @@
   reason: >-
     A step of the player's own tick (doc/sig_coverage S4b).
 
+# ---- left out until they are fixed ------------------------------------------
+
+- name: Kernel.send_message
+  reason: >-
+    Its message structure (72 bytes, defined inside picoruby-fmrb-kernel) is not
+    the system's (components/fmrb_msg/fmrb_msg.h); calling it reads past its
+    buffer and shifts the receiver's fields. Out of sig until fixed
+    (doc/reference/TODO.md, the user's decision 2026-11-25). Apps use
+    FmrbApp#send_message.
+- name: Kernel.receive_message
+  reason: >-
+    Receives a system-sized message into a 72-byte local: it would write past
+    its stack. Out of sig until fixed (doc/reference/TODO.md).
+- name: Kernel.broadcast_message
+  reason: Same structure mismatch as Kernel.send_message; out of sig until fixed.
+
 # ---- names that are errors on purpose -----------------------------------
 
 - name: "#no_such_method"
