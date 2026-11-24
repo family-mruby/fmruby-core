@@ -1,0 +1,250 @@
+# 高速フーリエ変換 (Fmrb::Fft)。
+# 実装は lib/gems/picoruby-fmrb-fft (mrblib/fmrb-fft.rb、fft_core.rb・fft_core_q15.rb、
+# ports/esp32/fft_binding.c、native/fmrb_fft_bench.c)。全ビルドの family_mruby.gembox に入るが、
+# **使える方式 (backend) はビルドで違う**ので `Fmrb::Fft.available?` で調べる。
+
+module Fmrb
+  # 音のスペクトルを計算する。
+  #
+  # **16 ビット整数のバイト列** (リトルエンディアン) を渡し、**同じ形のバイト列で大きさ (振幅)** が返る。
+  # 方式 (`backend:`) は `:ruby`・`:c`・`:dsp`・`:spinel`・`:c64` と、整数だけの `:ruby_q15`・`:c_q15`・
+  # `:spinel_q15`。**どれも同じ入出力**で、速さと入るビルドが違う。
+  # ```ruby
+  # fft = Fmrb::Fft.new(size: 512, backend: :c)
+  # mag = fft.forward(pcm)
+  # Fmrb::Fft.bin(mag, 8)
+  # ```
+  # <<en>>
+  # Computes the spectrum of a sound. Pass **a byte String of 16-bit integers** (little-endian)
+  # and get **a byte String of magnitudes in the same form**. The methods (`backend:`) are
+  # `:ruby`, `:c`, `:dsp`, `:spinel`, `:c64`, and the integer-only `:ruby_q15`, `:c_q15`,
+  # `:spinel_q15`. **They all take and give the same thing**; they differ in speed and in
+  # which builds have them.
+  # ```ruby
+  # fft = Fmrb::Fft.new(size: 512, backend: :c)
+  # mag = fft.forward(pcm)
+  # Fmrb::Fft.bin(mag, 8)
+  # ```
+  class Fft
+    # 方式の名前の一覧 <<en>> The names of the backends
+    BACKENDS: Array[Symbol]
+    # 整数だけで計算する方式 <<en>> The fixed-point backends
+    Q15_BACKENDS: Array[Symbol]
+
+    # 変換を用意する <<en>> Make a transform
+    #
+    # `size:` (省略すると 512) は **64〜1024 の 2 の冪**、`backend:` (省略すると `:ruby`)。
+    # 知らない方式や大きさは ArgumentError ("unknown FFT backend: x"・"FFT size must be a power of
+    # two in 64..1024: n")。**入っていない方式は先に `Fmrb::Fft.available?` で調べる**。
+    #
+    # `:spinel`・`:spinel_q15` は端末に 1 つだけの実体で、**最初に開いたアプリが持つ**。2 つ目のアプリは
+    # 黙って `:ruby`・`:ruby_q15` になる (`backend` で分かる)。ビルドに無いと RuntimeError。
+    # 使い終わったら `close`。
+    # ```ruby
+    # fft = Fmrb::Fft.new(size: 512, backend: :c)
+    # ```
+    # <<en>>
+    # `size:` (512 when left out) is **a power of two from 64 to 1024**, `backend:` (`:ruby` when
+    # left out). An unknown backend or size is an ArgumentError ("unknown FFT backend: x", "FFT
+    # size must be a power of two in 64..1024: n"). **Check a backend with `Fmrb::Fft.available?`**
+    # **first**: not every build has every one.
+    #
+    # `:spinel` and `:spinel_q15` are one instance for the machine, **held by the app that opened**
+    # **it first**. A second app silently gets `:ruby` or `:ruby_q15` (see `backend`). A build
+    # without it raises RuntimeError. Call `close` when done.
+    # ```ruby
+    # fft = Fmrb::Fft.new(size: 512, backend: :c)
+    # ```
+    def self.new: (?size: Integer, ?backend: Symbol) -> Fmrb::Fft
+
+    # 変換の大きさ <<en>> The transform size
+    #
+    # ```ruby
+    # fft.size   #=> 512
+    # ```
+    def size: () -> Integer
+
+    # 実際に動いている方式 <<en>> The backend actually running
+    #
+    # 頼んだ方式と違うことがある (Spinel を別のアプリが持っているとき)。
+    # ```ruby
+    # fft.backend   #=> :c
+    # ```
+    # <<en>>
+    # It can differ from the one asked for (when another app holds Spinel).
+    # ```ruby
+    # fft.backend   #=> :c
+    # ```
+    def backend: () -> Symbol
+
+    # 方式がこのビルドに入っているか <<en>> Whether this build has a backend
+    #
+    # `:ruby`・`:c`・`:c64` とその Q15 版はいつも true。**`:dsp` は esp-dsp のある実機のビルドだけ**、
+    # `:spinel` 系は Spinel の FFT を入れたビルドだけ。知らない名前は false。
+    # ```ruby
+    # Fmrb::Fft.available?(:dsp)
+    # ```
+    # <<en>>
+    # `:ruby`, `:c`, `:c64` and their Q15 forms are always true. **`:dsp` only in a real-board**
+    # **build with esp-dsp**, the `:spinel` ones only in a build that has the Spinel FFT. An
+    # unknown name is false.
+    # ```ruby
+    # Fmrb::Fft.available?(:dsp)
+    # ```
+    def self.available?: (Symbol backend) -> bool
+
+    # 整数だけの方式か <<en>> Whether a backend is fixed-point
+    #
+    # ```ruby
+    # Fmrb::Fft.q15?(:c_q15)   #=> true
+    # ```
+    def self.q15?: (Symbol backend) -> bool
+
+    # 全方式で共通の時計 (マイクロ秒) <<en>> The clock every backend is timed with (microseconds)
+    #
+    # 差を取って使う。
+    # ```ruby
+    # t = Fmrb::Fft.micros
+    # ```
+    # <<en>>
+    # Use differences.
+    # ```ruby
+    # t = Fmrb::Fft.micros
+    # ```
+    def self.micros: () -> Integer
+
+    # Spinel の呼び出しの全体にかかった時間 <<en>> Total cost of the last Spinel call
+    #
+    # 直前の `:spinel` 系の呼び出し全体 (サンプルを渡す・結果を戻す・最初の表作りまで) の
+    # マイクロ秒。`run` が返す変換だけの時間との差が、境界を越える費用。
+    # ```ruby
+    # Fmrb::Fft.spinel_total_us
+    # ```
+    # <<en>>
+    # Microseconds of the last whole `:spinel` call (passing samples in, results out, and the
+    # first table build). Its gap to the transform-only time `run` returned is the cost of
+    # crossing the boundary.
+    # ```ruby
+    # Fmrb::Fft.spinel_total_us
+    # ```
+    def self.spinel_total_us: () -> Integer
+
+    # 1 回変換して大きさのバイト列を返す <<en>> One transform, returning the magnitudes
+    #
+    # `samples` は **`size` 個の 16 ビット整数のリトルエンディアンのバイト列** (`size * 2` バイト)。
+    # 返りは size/2 個の 16 ビット整数 (リトルエンディアン) で、**ハン窓をかけ、2/size に**
+    # **正規化し、32767 で頭打ち**。0 番は直流分で最大になりやすい。読むには `Fmrb::Fft.bin`。
+    #
+    # `:c` 系は**短いと ArgumentError** ("need 512 int16 samples, got n bytes")。**`:ruby` 系は足りない**
+    # **所を 0 として黙って進める**。
+    # ```ruby
+    # mag = fft.forward(pcm)
+    # ```
+    # <<en>>
+    # `samples` is **`size` little-endian 16-bit integers as bytes** (`size * 2` bytes). The result
+    # is size/2 little-endian 16-bit integers: **Hann-windowed, scaled by 2/size and clamped at**
+    # **32767**. Bin 0 is the DC part and tends to be the loudest. Read it with `Fmrb::Fft.bin`.
+    #
+    # The `:c` family **raises ArgumentError when too short** ("need 512 int16 samples, got n
+    # bytes"). **The `:ruby` family treats the missing part as 0 and goes on silently.**
+    # ```ruby
+    # mag = fft.forward(pcm)
+    # ```
+    def forward: (String samples) -> String
+
+    # 同じ入力を iters 回変換して時間を測る <<en>> Transform the same input iters times, timed
+    #
+    # `[マイクロ秒, 大きさのバイト列]` を返す。時間は**エンジンの中で測った変換だけ**の合計
+    # (呼び出しの費用を含まない)。`iters` は 1 以上 (`:c` 系は 0 以下で ArgumentError)。
+    # **アプリが毎フレームの変換に使っている形**。
+    # ```ruby
+    # us, mag = fft.run(pcm, 1)
+    # ```
+    # <<en>>
+    # Returns `[microseconds, magnitude bytes]`. The time is **the transforms only, measured**
+    # **inside the engine** (not the call's cost). `iters` is 1 or more (the `:c` family raises
+    # ArgumentError below that). **This is the form an app uses for each frame.**
+    # ```ruby
+    # us, mag = fft.run(pcm, 1)
+    # ```
+    def run: (String samples, Integer iters) -> [Integer, String]
+
+    # 試験用の正弦波を作る <<en>> Make a test sine wave
+    #
+    # `cycles:` 周期 (省略すると 8) を `size:` 個 (省略すると 512) に入れた、振幅 `amp:` (省略すると 12000)
+    # の 16 ビット整数のバイト列。変換するとピークが `cycles` 番に立つ。
+    # ```ruby
+    # pcm = Fmrb::Fft.sine(size: 512, cycles: 8)
+    # ```
+    # <<en>>
+    # `size:` samples (512 when left out) holding `cycles:` periods (8 when left out) at
+    # amplitude `amp:` (12000 when left out), as 16-bit integer bytes. Its peak lands on bin `cycles`.
+    # ```ruby
+    # pcm = Fmrb::Fft.sine(size: 512, cycles: 8)
+    # ```
+    def self.sine: (?size: Integer, ?cycles: Integer, ?amp: Integer) -> String
+
+    # 大きさのバイト列から 1 つ読む <<en>> Read one magnitude
+    #
+    # `index` 番の値 (0〜32767)。**範囲外は 0** (例外にならない)。
+    # ```ruby
+    # h = Fmrb::Fft.bin(mag, 8)
+    # ```
+    # <<en>>
+    # The value at `index` (0..32767). **Out of range is 0** (no exception).
+    # ```ruby
+    # h = Fmrb::Fft.bin(mag, 8)
+    # ```
+    def self.bin: (String mag, Integer index) -> Integer
+
+    # いちばん大きい番号 <<en>> The index of the loudest bin
+    #
+    # 0 番 (直流分) も数える。同じ大きさなら小さい番号。
+    # ```ruby
+    # Fmrb::Fft.peak_bin(mag)   #=> 8
+    # ```
+    # <<en>>
+    # Bin 0 (the DC part) counts. On a tie the lower index wins.
+    # ```ruby
+    # Fmrb::Fft.peak_bin(mag)   #=> 8
+    # ```
+    def self.peak_bin: (String mag) -> Integer
+
+    # 1 つの方式を計る <<en>> Time one backend
+    #
+    # `size:` (512)・`iters:` (100)・`backend:` (`:c`)・`reps:` (5)・`samples:` (省略すると
+    # `sine`) の省略値で、`reps` 回 `iters` 回ずつ回す。結果は Hash:
+    # `:backend` (頼んだ方式)・`:ran_on` (動いた方式)・`:size`・`:iters`・`:reps`・`:us_avg`
+    # (1 回の平均、Float)・`:us_min` (最良の回の 1 回あたり)・`:mag`・`:peak_bin`。
+    # 方式が使えないと `new` と同じ例外。
+    # ```ruby
+    # r = Fmrb::Fft.bench(backend: :c)
+    # r[:us_avg]
+    # ```
+    # <<en>>
+    # Defaults: `size:` 512, `iters:` 100, `backend:` `:c`, `reps:` 5, `samples:` a `sine`. It runs
+    # `iters` transforms `reps` times. The result is a Hash: `:backend` (asked for), `:ran_on`
+    # (ran), `:size`, `:iters`, `:reps`, `:us_avg` (per transform on average, a Float), `:us_min`
+    # (per transform in the best rep), `:mag`, `:peak_bin`. An unusable backend raises as `new` does.
+    # ```ruby
+    # r = Fmrb::Fft.bench(backend: :c)
+    # r[:us_avg]
+    # ```
+    def self.bench: (?size: Integer, ?iters: Integer, ?backend: Symbol, ?reps: Integer, ?samples: String?) -> Hash[Symbol, untyped]
+
+    # 使い終わる <<en>> Be done with it
+    #
+    # `:spinel` 系の実体を手放す (ほかの方式では何もしない)。nil を返す。
+    # **`:spinel` 系を使ったら、アプリを終えるときに呼ぶ**。
+    # ```ruby
+    # fft.close
+    # ```
+    # <<en>>
+    # Gives up the Spinel instance (nothing for the other backends). Returns nil. **Call it**
+    # **when the app ends if you used a `:spinel` backend.**
+    # ```ruby
+    # fft.close
+    # ```
+    def close: () -> nil
+  end
+end

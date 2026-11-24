@@ -1,0 +1,73 @@
+# MessagePack (MessagePack.pack / unpack)。
+# 実装は lib/gems/picoruby-fmrb-msgpack (src/picoruby_fmrb_msgpack.c、ports/esp32/msgpack.c、
+# mrblib/msgpack.rb)。全ビルドの family_mruby.gembox に入る。CRuby の msgpack gem とは違い、
+# `to_msgpack`・Packer・Unpacker・拡張型 (ext) は無い。
+
+# MessagePack で値をバイト列にし、戻す。
+#
+# `pack` で Ruby の値を String (バイト列) にし、`unpack` で値に戻す。`dump`・`load` は同じものの別名。
+# ```ruby
+# bin = MessagePack.pack({ "a" => [1, 2] })
+# MessagePack.unpack(bin)   #=> {"a"=>[1, 2]}
+# ```
+# <<en>>
+# Turns values into bytes with MessagePack and back. `pack` makes a String of bytes from a
+# Ruby value, `unpack` returns the value. `dump` and `load` are aliases.
+# ```ruby
+# bin = MessagePack.pack({ "a" => [1, 2] })
+# MessagePack.unpack(bin)   #=> {"a"=>[1, 2]}
+# ```
+module MessagePack
+  # 値をバイト列にする <<en>> Pack a value into bytes
+  #
+  # 書けるのは nil・true・false・Integer (64 ビットまで)・Float (常に倍精度)・String・Symbol・
+  # Array・Hash。**Symbol は文字列として書く**ので、戻すと String になる (Hash のキーも同じ)。
+  # `String#b` などでバイナリ印の付いた String は bin 型、普通の String は str 型で書く。
+  #
+  # 書けない型 (Range・独自のクラスなど) は RuntimeError ("Failed to pack object to msgpack")。
+  # ```ruby
+  # bin = MessagePack.pack({ cmd: "go" })
+  # ```
+  # <<en>>
+  # Writes nil, true, false, Integer (up to 64 bits), Float (always double), String, Symbol,
+  # Array and Hash. **A Symbol is written as a string**, so it comes back as a String (Hash keys too).
+  # A String with the binary flag (`String#b` and the like) is written as bin, a plain String as str.
+  #
+  # A type that cannot be written (a Range, your own class) raises RuntimeError
+  # ("Failed to pack object to msgpack").
+  # ```ruby
+  # bin = MessagePack.pack({ cmd: "go" })
+  # ```
+  def self.pack: (untyped obj) -> String
+
+  # バイト列を値に戻す <<en>> Unpack bytes into a value
+  #
+  # 渡す String は**ちょうど 1 つの値**。余りのバイトがある・途中で切れている・空・
+  # ext 型や 2^63 以上の整数を含む、は RuntimeError ("Failed to unpack msgpack data")。
+  # bin 型はバイナリ印の付いた String で戻る。
+  # ```ruby
+  # v = MessagePack.unpack(bin)
+  # ```
+  # <<en>>
+  # The String must hold **exactly one value**. Extra bytes, a cut-off value, an empty string,
+  # an ext type or an integer of 2^63 and over raise RuntimeError ("Failed to unpack msgpack data").
+  # A bin value comes back as a String with the binary flag.
+  # ```ruby
+  # v = MessagePack.unpack(bin)
+  # ```
+  def self.unpack: (String binary) -> untyped
+
+  # pack の別名 <<en>> Alias of pack
+  #
+  # ```ruby
+  # bin = MessagePack.dump([1, 2])
+  # ```
+  def self.dump: (untyped obj) -> String
+
+  # unpack の別名 <<en>> Alias of unpack
+  #
+  # ```ruby
+  # v = MessagePack.load(bin)
+  # ```
+  def self.load: (String binary) -> untyped
+end

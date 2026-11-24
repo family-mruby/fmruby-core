@@ -345,3 +345,12 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   `MIDI::Device#pitch_bend` が `Integer#clamp` を使う (この mruby に無いというコメントが別の所にある。アプリは呼んでいない)。
   `MmlPlayer#load_text` で空のパートの後に鳴るパートが来ると `error` が残る。`SmfPlayer#drop_queued` は共有の待ち行列を
   空にするので、プレーヤーを 2 つ同時に鳴らすと互いの予約が消える。
+
+- データと機器のまわりで見つかった実装の不具合の疑い (2026-11-25、doc/sig_coverage/report/s5a.md。直していない):
+  - `JSON::Digger#dig` に配列の範囲の外の位置を渡しても例外が出ず、別の要素が返る (**sim で確認**:
+    `JSON::Digger.new('[1]').dig(5).parse` が 1)。冒頭のコメントは例外が出ると書いている。
+  - `JSON.parse` の `\uXXXX` は 1 バイトに丸められる読み (`[code].pack('C*')`)。ASCII の範囲 (`\u0041`) は sim で "A" に
+    なった。日本語の範囲は未確認。`Array#pack` の無いビルドでは NoMethodError になる可能性 (読みだけ)。
+  - `GPIO.new` はピンの台帳への取得の失敗を見ない (システム専用のピンにも書けてしまう読み)。`GPIO#read` の失敗は -1 で、
+    `high?` が true になる。`I2C.new` の失敗の文が 1 種類に畳まれる。`JSON.generate` は NaN をそのまま入れる。
+    `gpio_viewer.app.rb` の `PIN_COUNT = 49` は直書きで、P4 (55) と合わない。いずれも読みだけ (sim に GPIO・I2C は無い)。

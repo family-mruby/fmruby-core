@@ -490,6 +490,105 @@
   reason: >-
     A step of the player's own tick (doc/sig_coverage S4b).
 
+# ---- data, devices and the calculation cores, the inside (doc/sig_coverage S5a) --
+
+- name: "JSON::Digger#dig_array"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#dig_number"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#dig_object"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#dig_string"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#dig_value"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#pop_stack"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#push_stack"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#reset"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "JSON::Digger#skip_whitespace"
+  reason: >-
+    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+- name: "FmrbToml.dig"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.dump_float"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.header_name"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.line_key"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.quote"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.read"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.set_line"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbToml.split_name"
+  reason: >-
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+- name: "FmrbNet::Request.new"
+  reason: >-
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+- name: "FmrbNet::Request#fetch_now"
+  reason: >-
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+- name: "FmrbNet::Request#release"
+  reason: >-
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+- name: "FmrbNet::Request#start_in_page"
+  reason: >-
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+- name: "GPIO#open_drain"
+  reason: >-
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+- name: "GPIO#set_dir"
+  reason: >-
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+- name: "GPIO#set_function"
+  reason: >-
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+- name: "GPIO#set_pull"
+  reason: >-
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+- name: "FmrbColors.lookup"
+  reason: >-
+    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/sig_coverage S5a).
+- name: "FmrbColors.read"
+  reason: >-
+    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/sig_coverage S5a).
+- name: "FmrbColors.write"
+  reason: >-
+    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/sig_coverage S5a).
+- name: "Fmrb::Fft.spinel_close"
+  reason: >-
+    The Spinel back end's open and close, called by Fmrb::Fft.new (doc/sig_coverage S5a).
+- name: "Fmrb::Fft.spinel_open"
+  reason: >-
+    The Spinel back end's open and close, called by Fmrb::Fft.new (doc/sig_coverage S5a).
+- name: "Fmrb::Raycast.open"
+  reason: >-
+    The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/sig_coverage S5a).
+- name: "Fmrb::Raycast.pack_map"
+  reason: >-
+    The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/sig_coverage S5a).
+
 # ---- left out until they are fixed ------------------------------------------
 
 - name: Kernel.send_message

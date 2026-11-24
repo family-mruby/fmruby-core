@@ -1,0 +1,456 @@
+# storage にある Ruby のライブラリのクラス。`require` してから使う (決定 20)。
+# FmrbReceiveConf は flash/usr/share/transfer/receive_conf.rb、Unit8Encoder は flash/lib/unit8encoder.rb。
+# どちらも端末の storage に入っているファイルで、ファームウェアの gem ではない。
+
+# ファイルの受け取りの設定 (receive.toml)。
+# 実装は flash/usr/share/transfer/receive_conf.rb。使う前に
+# `require "/usr/share/transfer/receive_conf"`。Asterism を持つビルドで使う。
+
+# このマシンがファイルや app を受け取るか、だれから受け取るかを読み書きする。
+#
+# 設定は `/home/asterism/receive.toml` (無ければ出荷時の `/etc/asterism/receive.toml`)。
+# **受け取りは `enabled = true` の行があるときだけ**で、ファイルが無い・行が無いと「受け取らない」。
+# 手で書く部分と、console が書く「managed」の部分があり、`set_*`・`allow`・`deny` が書き換えるのは
+# **手で書く部分だけ**。
+# ```ruby
+# require "/usr/share/transfer/receive_conf"
+# FmrbReceiveConf.enabled?
+# ```
+# <<en>>
+# Reads and writes whether this machine receives files and apps, and from whom. The settings
+# are in `/home/asterism/receive.toml` (else the shipped `/etc/asterism/receive.toml`).
+# **Receiving is on only with an `enabled = true` line**; a missing file or line means "not
+# receiving". There is a part written by hand and a "managed" part the console writes; `set_*`,
+# `allow` and `deny` change **only the part by hand**.
+# ```ruby
+# require "/usr/share/transfer/receive_conf"
+# FmrbReceiveConf.enabled?
+# ```
+module FmrbReceiveConf
+  # 手で書く設定のファイル <<en>> The settings file you edit
+  PATH: String
+  # 出荷時の設定のファイル <<en>> The shipped settings file
+  SYS_PATH: String
+  # 「ネットワークの全員」の印 (`"*"`) <<en>> The mark for everyone on the network (`"*"`)
+  ANYONE: String
+  # 1 つの送り手の名前・型の長さの上限 (バイト) <<en>> Longest sender entry (bytes)
+  ENTRY_MAX: Integer
+
+  # 読んでいる設定のファイル <<en>> The settings file in use
+  #
+  # 利用者のファイルがあればそれ、無ければ出荷時のもの、どちらも無ければ nil。
+  # ```ruby
+  # FmrbReceiveConf.path
+  # ```
+  # <<en>>
+  # The user's file if there is one, else the shipped one, nil when neither exists.
+  # ```ruby
+  # FmrbReceiveConf.path
+  # ```
+  def self.path: () -> String?
+
+  # 受け取りが入っているか <<en>> Whether receiving is on
+  #
+  # 手で書く部分に `enabled = true` があれば true。行が無い・ほかの値・TOML でない・ファイルが無い、は false。
+  # ```ruby
+  # FmrbReceiveConf.enabled?
+  # ```
+  # <<en>>
+  # true when the part by hand has `enabled = true`. No line, another value, text that is not
+  # TOML and no file are all false.
+  # ```ruby
+  # FmrbReceiveConf.enabled?
+  # ```
+  def self.enabled?: () -> bool
+
+  # 送る先の一覧を持つ設定が入っているか <<en>> Whether the send list is on
+  #
+  # `send_enabled = true` があれば true。同じ規則。
+  # ```ruby
+  # FmrbReceiveConf.send_enabled?
+  # ```
+  # <<en>>
+  # true with `send_enabled = true`. The same rules.
+  # ```ruby
+  # FmrbReceiveConf.send_enabled?
+  # ```
+  def self.send_enabled?: () -> bool
+
+  # app の入れ方 ("ask" か "auto") <<en>> How apps are installed ("ask" or "auto")
+  #
+  # `[app]` の `install = "auto"` があれば "auto" (証明書で確かめた送り手のものは聞かずに入れる)、
+  # それ以外は "ask" (毎回持ち主に聞く)。
+  # ```ruby
+  # FmrbReceiveConf.install_mode   #=> "ask"
+  # ```
+  # <<en>>
+  # "auto" with `install = "auto"` under `[app]` (apps from a sender checked by its certificate
+  # are installed without asking), otherwise "ask" (the owner is asked each time).
+  # ```ruby
+  # FmrbReceiveConf.install_mode   #=> "ask"
+  # ```
+  def self.install_mode: () -> String
+
+  # 設定を 1 度に読んだ表 <<en>> The settings read in one go
+  #
+  # Receiving アプリが見せるものを Hash で返す: `"enabled"`・`"send_enabled"`・`"path"` (ファイルが
+  # 無ければ nil)・`"hand_ok"` (手で書く部分が TOML か空)・`"by"`・`"at"` (console の書いたもの)・
+  # `"install"`、種類 (`"file"`・`"checkpoint"`・`"app"`) ごとの `{ "hand" => 一覧か nil, "managed" => 一覧か nil }`。
+  # ```ruby
+  # v = FmrbReceiveConf.view
+  # v["file"]["hand"]
+  # ```
+  # <<en>>
+  # A Hash of what the Receiving app shows: `"enabled"`, `"send_enabled"`, `"path"` (nil without
+  # a file), `"hand_ok"` (the part by hand is TOML or empty), `"by"` and `"at"` (what the console
+  # wrote), `"install"`, and per kind (`"file"`, `"checkpoint"`, `"app"`) `{ "hand" => list or nil,
+  # "managed" => list or nil }`.
+  # ```ruby
+  # v = FmrbReceiveConf.view
+  # v["file"]["hand"]
+  # ```
+  def self.view: () -> Hash[String, untyped]
+
+  # 受け取りを入れる・切る <<en>> Turn receiving on or off
+  #
+  # 書いたら true、すでにその状態なら false (書かない)。**手で書く部分が TOML でないと**
+  # **ArgumentError** で何も書かない (人の文章は書き換えない)。書く前に読み戻して確かめる。
+  # 入れ切りの後は `tell_transfer` で転送アプリに知らせる。
+  # ```ruby
+  # FmrbReceiveConf.set_enabled(true)
+  # ```
+  # <<en>>
+  # true when it wrote, false when it was already so (nothing is written). **A part by hand**
+  # **that is not TOML raises ArgumentError** and nothing is written (somebody's text is not
+  # rewritten). The change is checked by reading it back before writing. After switching,
+  # tell the transfer app with `tell_transfer`.
+  # ```ruby
+  # FmrbReceiveConf.set_enabled(true)
+  # ```
+  def self.set_enabled: (bool on) -> bool
+
+  # 送る先の一覧を持つのを入れる・切る <<en>> Turn the send list on or off
+  #
+  # `set_enabled` と同じ答えと例外。
+  # ```ruby
+  # FmrbReceiveConf.set_send_enabled(true)
+  # ```
+  # <<en>>
+  # The same answers and exceptions as `set_enabled`.
+  # ```ruby
+  # FmrbReceiveConf.set_send_enabled(true)
+  # ```
+  def self.set_send_enabled: (bool on) -> bool
+
+  # app の入れ方を決める <<en>> Choose how apps are installed
+  #
+  # `"ask"` か `"auto"` (Symbol も可)。ほかは ArgumentError ("not a way to install")。
+  # 書いたら true、すでにそうなら false。ほかの例外は `set_enabled` と同じ。
+  # ```ruby
+  # FmrbReceiveConf.set_install_mode("ask")
+  # ```
+  # <<en>>
+  # `"ask"` or `"auto"` (a Symbol works too). Anything else is an ArgumentError ("not a way to
+  # install"). true when it wrote, false when it was already so. Other exceptions as `set_enabled`.
+  # ```ruby
+  # FmrbReceiveConf.set_install_mode("ask")
+  # ```
+  def self.set_install_mode: ((String | Symbol) mode) -> bool
+
+  # 送り手を許す <<en>> Let a sender in
+  #
+  # `kind` は `"file"`・`"checkpoint"`・`"app"` (Symbol も可。ほかは ArgumentError)。`node` は
+  # ノード名か型 (英数字と `.` `_` `-` `*` だけ、`ENTRY_MAX` バイトまで。`"*"` はネットワークの
+  # 全員、`"pc-*"` のような型も可)。そうでないと ArgumentError。1 つの一覧は 64 件まで
+  # (超えると ArgumentError)。書いたら true、すでに手で書く一覧にあれば false。
+  # ```ruby
+  # FmrbReceiveConf.allow("file", "pc-desk")
+  # ```
+  # <<en>>
+  # `kind` is `"file"`, `"checkpoint"` or `"app"` (a Symbol works; anything else is an
+  # ArgumentError). `node` is a node name or pattern (letters, digits and `.` `_` `-` `*` only, up
+  # to `ENTRY_MAX` bytes; `"*"` is everyone on the network, and a pattern like `"pc-*"` works), else
+  # an ArgumentError. One list holds at most 64 entries (more is an ArgumentError). true when it
+  # wrote, false when the list by hand already had it.
+  # ```ruby
+  # FmrbReceiveConf.allow("file", "pc-desk")
+  # ```
+  def self.allow: ((String | Symbol) kind, String node) -> bool
+
+  # 送り手を外す <<en>> Take a sender out
+  #
+  # 手で書く一覧から外して true。**一覧に無いと ArgumentError** で、console が書いた一覧にだけ
+  # あるときは「そちらで変える」という文になる (console の一覧はここでは変えない)。
+  # ```ruby
+  # FmrbReceiveConf.deny("file", "pc-desk")
+  # ```
+  # <<en>>
+  # Takes it out of the list by hand and returns true. **A node that is not in the list is an**
+  # **ArgumentError**; when it is only in the console's list the message says it is changed there
+  # (the console's list is not changed here).
+  # ```ruby
+  # FmrbReceiveConf.deny("file", "pc-desk")
+  # ```
+  def self.deny: ((String | Symbol) kind, String node) -> bool
+
+  # 転送アプリに設定の変更を知らせる <<en>> Tell the transfer app the settings changed
+  #
+  # `app` は呼ぶアプリ (self)、`on` は受け取り・送りのどちらかが入っているか。入っていて転送アプリが
+  # 動いていなければ起動して `:started`、動いていれば設定を読み直させて `:running`
+  # (`on` が false なら `:stopping`: 受け取り中の分が済んだら終わる)。動いておらず切る側なら `:none`。
+  # ```ruby
+  # FmrbReceiveConf.tell_transfer(self, on)
+  # ```
+  # <<en>>
+  # `app` is the calling app (self), `on` whether receiving or sending is on. When on and the
+  # transfer app is not running it is started (`:started`); when running it is asked to read the
+  # settings again (`:running`, or `:stopping` when `on` is false: it ends once what is coming in
+  # is in). `:none` when it is not running and `on` is false.
+  # ```ruby
+  # FmrbReceiveConf.tell_transfer(self, on)
+  # ```
+  def self.tell_transfer: (FmrbApp app, bool on) -> Symbol
+
+  # 一覧に載せてよい名前か <<en>> Whether a name may go in a list
+  #
+  # ノード名か型として正しければ true (`allow` の検査と同じ)。
+  # ```ruby
+  # FmrbReceiveConf.node_ok?("pc-*")   #=> true
+  # ```
+  # <<en>>
+  # true for a valid node name or pattern (the check `allow` makes).
+  # ```ruby
+  # FmrbReceiveConf.node_ok?("pc-*")   #=> true
+  # ```
+  def self.node_ok?: (untyped name) -> bool
+
+  # 一覧にネットワークの全員が入っているか <<en>> Whether a list lets everyone in
+  #
+  # 一覧に `"*"` があれば true。一覧が Array でなければ false。
+  # ```ruby
+  # FmrbReceiveConf.allows_anyone?(list)
+  # ```
+  # <<en>>
+  # true when the list has `"*"`. false when it is not an Array.
+  # ```ruby
+  # FmrbReceiveConf.allows_anyone?(list)
+  # ```
+  def self.allows_anyone?: (untyped list) -> bool
+
+  # 一覧がそのノードを入れるか <<en>> Whether a list lets a node in
+  #
+  # 一覧の項目が `node` と同じか、`"*"` を含む型に合えば true。`*` は文字の連なり (空も可)。
+  # 一覧が Array でなければ false。
+  # ```ruby
+  # FmrbReceiveConf.allows?(["pc-*"], "pc-desk")
+  # #=> true
+  # ```
+  # <<en>>
+  # true when an entry equals `node` or a pattern with `*` matches it. A `*` is any run of
+  # letters (also none). false when the list is not an Array.
+  # ```ruby
+  # FmrbReceiveConf.allows?(["pc-*"], "pc-desk")
+  # #=> true
+  # ```
+  def self.allows?: (untyped list, String node) -> bool
+
+  # 1 つの種類の送り手 <<en>> The senders of one kind
+  #
+  # 1 回の読みで Hash を返す: `"enabled"`、`"hand"` (手で書いた一覧、無ければ nil)、`"managed"`
+  # (console の一覧、無ければ nil)、`"by"`・`"at"` (console のもの)。
+  # ```ruby
+  # s = FmrbReceiveConf.senders("file")
+  # s["hand"]
+  # ```
+  # <<en>>
+  # One read, returning a Hash: `"enabled"`, `"hand"` (the list by hand, nil if none),
+  # `"managed"` (the console's list, nil if none), `"by"` and `"at"` (the console's).
+  # ```ruby
+  # s = FmrbReceiveConf.senders("file")
+  # s["hand"]
+  # ```
+  def self.senders: (String kind) -> Hash[String, untyped]
+
+  # 設定を見せる文の行 <<en>> Lines that describe the settings
+  #
+  # シェルの `areceive` と `asend -l` が出す文。入り切り・読んだファイル・種類ごとの送り手とその出所を
+  # 英語の行にして返す。
+  # ```ruby
+  # FmrbReceiveConf.lines.each { |l| puts l }
+  # ```
+  # <<en>>
+  # The text the shell's `areceive` and `asend -l` print: on or off, the file read, and the
+  # senders of each kind with where they come from, as English lines.
+  # ```ruby
+  # FmrbReceiveConf.lines.each { |l| puts l }
+  # ```
+  def self.lines: () -> Array[String]
+end
+
+# M5Stack の Unit 8Encoder (ロータリ 8 個の I2C 機器)。
+# 実装は flash/lib/unit8encoder.rb。使う前に `require "unit8encoder"`。**I2C を持つ実機の**
+# **ビルドだけ**で動く (`I2C` が無い Linux sim・ネイティブ版・ブラウザ版では NameError)。
+
+# ロータリエンコーダ 8 個・ボタン 8 個・スイッチ 1 個・RGB の LED 9 個の機器。
+#
+# `Unit8Encoder.new(i2c)` に開いた `I2C` を渡す。**通信の失敗は `I2C` の IOError がそのまま**出る
+# (機器が無いとアプリはここで失敗する)。番号 `index` は エンコーダとボタンが 0〜7、LED が 0〜8。
+# 範囲の検査はせず、範囲外はほかのレジスタを読み書きする。
+# ```ruby
+# require "unit8encoder"
+# enc = Unit8Encoder.new(i2c)
+# enc.get_increment(0)
+# ```
+# <<en>>
+# A device with 8 rotary encoders, 8 buttons, 1 switch and 9 RGB LEDs. Pass an open `I2C` to
+# `Unit8Encoder.new`. **A communication failure is the `I2C` IOError as it is** (without the
+# device the app fails here). `index` is 0..7 for encoders and buttons and 0..8 for LEDs.
+# **There is no range check**: an index out of range reads or writes another register.
+# ```ruby
+# require "unit8encoder"
+# enc = Unit8Encoder.new(i2c)
+# enc.get_increment(0)
+# ```
+class Unit8Encoder
+  # I2C のアドレスの既定 (0x41) <<en>> Default I2C address (0x41)
+  DEFAULT_ADDR: Integer
+  # エンコーダの数 <<en>> Number of encoders
+  NUM_ENCODERS: Integer
+  # LED の数 <<en>> Number of LEDs
+  NUM_LEDS: Integer
+
+  # 機器に繋ぐ <<en>> Attach to the device
+  #
+  # `i2c` は開いた `I2C`、`addr` は省略すると 0x41。**この時点では通信しない** (機器が無くても失敗しない)。
+  # ```ruby
+  # enc = Unit8Encoder.new(i2c)
+  # ```
+  # <<en>>
+  # `i2c` is an open `I2C`, `addr` is 0x41 when left out. **It does not communicate yet** (it does
+  # not fail without the device).
+  # ```ruby
+  # enc = Unit8Encoder.new(i2c)
+  # ```
+  def self.new: (I2C i2c, ?Integer addr) -> Unit8Encoder
+
+  # エンコーダの積算値 <<en>> Encoder counter
+  #
+  # 符号つきの 32 ビット整数。
+  # ```ruby
+  # enc.get_counter(0)
+  # ```
+  # <<en>>
+  # A signed 32-bit integer.
+  # ```ruby
+  # enc.get_counter(0)
+  # ```
+  def get_counter: (Integer index) -> Integer
+
+  # エンコーダの積算値を書く <<en>> Set an encoder counter
+  #
+  # 送ったバイト数を返す。
+  # ```ruby
+  # enc.set_counter(0, 100)
+  # ```
+  # <<en>>
+  # Returns the number of bytes sent.
+  # ```ruby
+  # enc.set_counter(0, 100)
+  # ```
+  def set_counter: (Integer index, Integer value) -> Integer
+
+  # 前に読んでからの増減 <<en>> Change since the last read
+  #
+  # 符号つきの 32 ビット整数。**読むと機器の側で 0 に戻る**。回転の検出にはこちらを使う。
+  # ```ruby
+  # d = enc.get_increment(0)
+  # ```
+  # <<en>>
+  # A signed 32-bit integer. **Reading resets it on the device.** Use this to detect turning.
+  # ```ruby
+  # d = enc.get_increment(0)
+  # ```
+  def get_increment: (Integer index) -> Integer
+
+  # エンコーダの積算値を 0 に戻す <<en>> Reset an encoder counter
+  #
+  # 送ったバイト数を返す。
+  # ```ruby
+  # enc.reset_counter(0)
+  # ```
+  # <<en>>
+  # Returns the number of bytes sent.
+  # ```ruby
+  # enc.reset_counter(0)
+  # ```
+  def reset_counter: (Integer index) -> Integer
+
+  # ボタンが押されているか <<en>> Whether a button is pressed
+  #
+  # ```ruby
+  # enc.get_button(3)
+  # ```
+  def get_button: (Integer index) -> bool
+
+  # スイッチが入っているか <<en>> Whether the switch is on
+  #
+  # ```ruby
+  # enc.get_switch
+  # ```
+  def get_switch: () -> bool
+
+  # LED 1 個の色を決める <<en>> Set one LED colour
+  #
+  # `color` は 0xRRGGBB。送ったバイト数を返す。
+  # ```ruby
+  # enc.set_led_color(0, 0xFF0000)
+  # ```
+  # <<en>>
+  # `color` is 0xRRGGBB. Returns the number of bytes sent.
+  # ```ruby
+  # enc.set_led_color(0, 0xFF0000)
+  # ```
+  def set_led_color: (Integer index, Integer color) -> Integer
+
+  # LED 全部を同じ色にする <<en>> Set all LEDs to one colour
+  #
+  # `color` は 0xRRGGBB (0 で全部消す)。送ったバイト数を返す。
+  # ```ruby
+  # enc.set_all_led_color(0)
+  # ```
+  # <<en>>
+  # `color` is 0xRRGGBB (0 turns them all off). Returns the number of bytes sent.
+  # ```ruby
+  # enc.set_all_led_color(0)
+  # ```
+  def set_all_led_color: (Integer color) -> Integer
+
+  # 機器のファームの版 <<en>> Firmware version of the device
+  #
+  # ```ruby
+  # enc.firmware_version
+  # ```
+  def firmware_version: () -> Integer
+
+  # 機器が持っている I2C アドレス <<en>> The I2C address the device holds
+  #
+  # ```ruby
+  # enc.get_i2c_address
+  # ```
+  def get_i2c_address: () -> Integer
+
+  # 機器の I2C アドレスを変える <<en>> Change the device's I2C address
+  #
+  # 1〜127。**機器に書いて、以後はこのオブジェクトも新しいアドレスで話す**。範囲の検査は無い。
+  # 送ったバイト数を返す。
+  # ```ruby
+  # enc.set_i2c_address(0x42)
+  # ```
+  # <<en>>
+  # 1..127. **It writes to the device, and from then on this object talks to the new address.**
+  # There is no range check. Returns the number of bytes sent.
+  # ```ruby
+  # enc.set_i2c_address(0x42)
+  # ```
+  def set_i2c_address: (Integer new_addr) -> Integer
+end

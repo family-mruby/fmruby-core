@@ -156,10 +156,11 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
     一緒に直す。
   - 上流の example/rbs の更新を取り込むときは、差分を手で合わせる (上流の
     ファイルで上書きしない。うちの説明と、足したメソッドが消える)。
-- `enumerable.rbs` はうちのもの。`gpio.rbs` は `sig/` には無く、エンジンの
-  試験だけが使う `tools/ti/test_sig/` にある (`rake ti:test` が sig/ に重ねて
-  db を作る。ファームの db には入らない)。どちらもエンジンの試験が前提に
-  しているので、宣言を減らさないこと。
+- `enumerable.rbs` はうちのもの。`gpio.rbs` は 2 つある: `sig/gpio.rbs` が端末の
+  `GPIO` の型 (ファームの db に入る)、`tools/ti/test_sig/gpio.rbs` はエンジンの
+  試験が前提にしている形で、`rake ti:test` のときだけ sig/ の同じ名前のファイルを
+  置き換えて db を作る (ファームの db には入らない)。`enumerable.rbs` と試験用の
+  `gpio.rbs` は、エンジンの試験が前提にしているので宣言を減らさないこと。
 
 ## つまずく API の型紙
 

@@ -36,12 +36,13 @@ module TiSite
   # A file not named here goes under "Ruby core" when it is one of the classes
   # of the language, else under its own name.
   AREAS = [
-    ["Application", "アプリ", %w[fmrb_app fmrb_system fmrb_const fmrb_misc fmrb_types]],
-    ["Drawing", "描画", %w[fmrb_gfx fmrb_sprite fmrb_tile fmrb_p5 fmrb_picture fmrb_ui]],
-    ["Sound", "音", %w[fmrb_audio fmrb_midi]],
+    ["Application", "アプリ", %w[fmrb_app fmrb_system fmrb_const fmrb_misc fmrb_types fmrb_assoc fmrb_lib]],
+    ["Drawing", "描画", %w[fmrb_gfx fmrb_sprite fmrb_tile fmrb_p5 fmrb_picture fmrb_ui fmrb_raycast]],
+    ["Sound", "音", %w[fmrb_audio fmrb_midi fmrb_fft]],
     ["Files and time", "ファイルと時刻", %w[fmrb_file dir io time]],
-    ["Network", "ネットワーク", %w[fmrb_asterism]],
-    ["Machine", "本体", %w[machine gc rng math]],
+    ["Data", "データ", %w[json message_pack digest]],
+    ["Network", "ネットワーク", %w[fmrb_asterism fmrb_net]],
+    ["Machine and devices", "本体と機器", %w[machine gc rng math fmrb_hw i2c gpio]],
     ["Ruby core", "Ruby の基本クラス",
      %w[object kernel class enumerable string symbol integer float array hash range proc
         nil_class true_class false_class untyped]],

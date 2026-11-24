@@ -1,0 +1,153 @@
+# ピンの使われ方 (FmrbHw)。
+# 実装は lib/gems/picoruby-fmrb-const/ports/esp32/const.c (モジュールと定数・4 つのメソッド) と、
+# ピンの台帳 components/fmrb_hal/platform/esp32/fmrb_hal_pin_manager_esp32.c (実機) /
+# platform/posix/fmrb_hal_pin_manager_posix.c (Linux sim・ネイティブ版・ブラウザ版)。
+# ピンの配線は components/fmrb_common/include/fmrb_pin_assign.h (機種ごと)。全ビルドに入る。
+
+# ピンの台帳を読む。
+#
+# どのピンが「システム専用」で、どれをアプリの `GPIO`・`I2C`・RMT が使っているかを調べる。
+# **台帳に実際の印が付くのは実機だけ**。Linux sim・ネイティブ版・ブラウザ版はピンを持たず、
+# 台帳は全部 `PIN_UNUSED` のまま (ピンの数は 49)。
+# ```ruby
+# if FmrbHw.pin_available?(5)
+#   io = GPIO.new(5, GPIO::OUT)
+# end
+# ```
+# <<en>>
+# Reads the table of how pins are used. Which pins are system-only, and which an app's `GPIO`,
+# `I2C` or RMT holds. **Only a real board marks the table.** The Linux sim, the native build
+# and the browser build have no pins, so every entry stays `PIN_UNUSED` (49 pins).
+# ```ruby
+# if FmrbHw.pin_available?(5)
+#   io = GPIO.new(5, GPIO::OUT)
+# end
+# ```
+module FmrbHw
+  # 使われていないピン <<en>> A pin nobody uses
+  PIN_UNUSED: Integer
+  # システム専用のピン (USB・PSRAM・SD・画面・ボタンなど。アプリは使えない) <<en>> System-only pin (USB, PSRAM, SD, display, buttons; apps cannot use it)
+  PIN_SYSTEM_EXCLUSIVE: Integer
+  # アプリが GPIO として取っているピン <<en>> Held by an app as GPIO
+  PIN_USER_GPIO: Integer
+  # I2C が取っているピン <<en>> Held by I2C
+  PIN_USER_I2C: Integer
+  # RMT が取っているピン <<en>> Held by RMT
+  PIN_USER_RMT: Integer
+  # SPI が取っているピン (予約の値) <<en>> Held by SPI (a reserved value)
+  PIN_USER_SPI: Integer
+  # PWM が取っているピン (予約の値) <<en>> Held by PWM (a reserved value)
+  PIN_USER_PWM: Integer
+  # UART が取っているピン (予約の値) <<en>> Held by UART (a reserved value)
+  PIN_USER_UART: Integer
+
+  # I2C1 の SDA のピン番号 <<en>> Pin number of I2C1 SDA
+  #
+  # **実機だけにある** (Linux sim・ネイティブ版・ブラウザ版では定数が無く NameError)。
+  # 値は機種で違う: Tab5 は 31、NARYA v4 は 7、AtomS3R は 45、StickS3 は 47、それ以外の S3 は 14。
+  # `I2C.new` の `sda_pin:` にそのまま渡す。画面を持つ機種は I2C1 の配線が固定で、
+  # 別のピンを渡すと `I2C.new` が失敗する。
+  # ```ruby
+  # I2C.new(unit: :ESP32_I2C1,
+  #   sda_pin: FmrbHw::PIN_I2C1_SDA,
+  #   scl_pin: FmrbHw::PIN_I2C1_SCL)
+  # ```
+  # <<en>>
+  # **Real boards only** (the Linux sim, the native build and the browser build have no such
+  # constant: NameError). The value depends on the board: 31 on Tab5, 7 on NARYA v4, 45 on
+  # AtomS3R, 47 on StickS3, 14 on the other S3 boards. Pass it straight to `sda_pin:` of
+  # `I2C.new`. A board with a screen has I2C1 wired fixed, and a different pin makes
+  # `I2C.new` fail.
+  # ```ruby
+  # I2C.new(unit: :ESP32_I2C1,
+  #   sda_pin: FmrbHw::PIN_I2C1_SDA,
+  #   scl_pin: FmrbHw::PIN_I2C1_SCL)
+  # ```
+  PIN_I2C1_SDA: Integer
+
+  # I2C1 の SCL のピン番号 <<en>> Pin number of I2C1 SCL
+  #
+  # **実機だけにある**。値は Tab5 が 32、NARYA v4 が 8、AtomS3R が 0、StickS3 が 48、
+  # それ以外の S3 が 21。使い方は `PIN_I2C1_SDA` と同じ。
+  # <<en>>
+  # **Real boards only.** 32 on Tab5, 8 on NARYA v4, 0 on AtomS3R, 48 on StickS3, 21 on the
+  # other S3 boards. Used like `PIN_I2C1_SDA`.
+  # ```ruby
+  # scl = FmrbHw::PIN_I2C1_SCL
+  # ```
+  PIN_I2C1_SCL: Integer
+
+  # I2C2 の SDA のピン番号 <<en>> Pin number of I2C2 SDA
+  #
+  # **実機だけにある**。Tab5 は 53、AtomS3R は 2、StickS3 は 9、それ以外の S3 は 47。
+  # **NARYA v4 は I2C2 を持たず -1**。MIDI の出力 (シリアル) もこのピンを使う (Tab5 の Grove)。
+  # <<en>>
+  # **Real boards only.** 53 on Tab5, 2 on AtomS3R, 9 on StickS3, 47 on the other S3 boards.
+  # **NARYA v4 has no I2C2 and gives -1.** Serial MIDI out uses this pin too (the Tab5 Grove port).
+  # ```ruby
+  # sda = FmrbHw::PIN_I2C2_SDA
+  # ```
+  PIN_I2C2_SDA: Integer
+
+  # I2C2 の SCL のピン番号 <<en>> Pin number of I2C2 SCL
+  #
+  # **実機だけにある**。Tab5 は 54、AtomS3R は 1、StickS3 は 10、それ以外の S3 は 48。
+  # NARYA v4 は -1。
+  # <<en>>
+  # **Real boards only.** 54 on Tab5, 1 on AtomS3R, 10 on StickS3, 48 on the other S3 boards.
+  # -1 on NARYA v4.
+  # ```ruby
+  # scl = FmrbHw::PIN_I2C2_SCL
+  # ```
+  PIN_I2C2_SCL: Integer
+
+  # ピンの使われ方 (PIN_* の値) <<en>> How a pin is used (a PIN_* value)
+  #
+  # 範囲外のピン番号は例外にならず `PIN_UNUSED` (0)。
+  # ```ruby
+  # FmrbHw.pin_status(25) == FmrbHw::PIN_SYSTEM_EXCLUSIVE
+  # ```
+  # <<en>>
+  # A pin number out of range does not raise: it is `PIN_UNUSED` (0).
+  # ```ruby
+  # FmrbHw.pin_status(25) == FmrbHw::PIN_SYSTEM_EXCLUSIVE
+  # ```
+  def self.pin_status: (Integer pin) -> Integer
+
+  # そのピンをアプリが取れるか <<en>> Whether an app can take the pin
+  #
+  # `PIN_UNUSED` のピンだけ true。**範囲外の番号は false**。システム専用のピンと、すでに
+  # 誰かが取っているピンは false。
+  # ```ruby
+  # FmrbHw.pin_available?(5)   #=> true か false
+  # ```
+  # <<en>>
+  # true only for a `PIN_UNUSED` pin. **A number out of range is false**, and so is a
+  # system-only pin or one somebody already holds.
+  # ```ruby
+  # FmrbHw.pin_available?(5)   #=> true or false
+  # ```
+  def self.pin_available?: (Integer pin) -> bool
+
+  # 全ピンの使われ方 <<en>> How every pin is used
+  #
+  # 添字がピン番号、値が `PIN_*`。長さは `pin_count`。
+  # ```ruby
+  # FmrbHw.pin_status_all[5]
+  # ```
+  def self.pin_status_all: () -> Array[Integer]
+
+  # 台帳のピンの数 <<en>> How many pins the table has
+  #
+  # **ESP32-P4 の機種は 55** (GPIO 0〜54)、それ以外 (S3・Linux sim・ネイティブ版・ブラウザ版) は 49
+  # (GPIO 0〜48)。
+  # ```ruby
+  # FmrbHw.pin_count   #=> 55 か 49
+  # ```
+  # <<en>>
+  # **55 on an ESP32-P4 board** (GPIO 0..54); 49 elsewhere (S3, Linux sim, native, browser) (GPIO 0..48).
+  # ```ruby
+  # FmrbHw.pin_count   #=> 55 or 49
+  # ```
+  def self.pin_count: () -> Integer
+end
