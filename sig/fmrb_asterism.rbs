@@ -342,6 +342,146 @@ end
 # Asterism の gem (vendor/asterism)。アプリは FmrbAsterism::Link の conn
 # から使う。
 module Asterism
+  # 通信の版 <<en>> The wire protocol version this implementation speaks
+  PROTOCOL: Integer
+  # 呼び出しの待ち時間の既定 (秒) <<en>> Default time limit of a call (seconds)
+  DEFAULT_TIMEOUT: Float
+  # 呼び出しの待ち時間の既定 (ミリ秒) <<en>> Default time limit of a call (milliseconds)
+  DEFAULT_TIMEOUT_MS: Integer
+  # 同じ名前の相手を探す時間 (秒) <<en>> How long connect looks for another copy of the same node/app (seconds)
+  CHECK_TIMEOUT: Float
+  # キーの根 <<en>> The first chunk of every key ("asterism")
+  ROOT: String
+
+  # ネットワークにつなぐ (Link を使わないとき) <<en>> Open a connection (what Link does for you)
+  #
+  # ルータ (locator) につないで、このアプリ (node の app) を Asterism の上に
+  # 出し、Asterism::Connection を返す。**端末のアプリは普通 Link を使う**
+  # (WiFi を待つ・つなぎ直す・設定を読むのは Link)。これは Link が呼ぶ入口。
+  # **つなぐ間アプリは止まる** (同じ名前の相手を探す `check_timeout:` の
+  # 1.5 秒ほどと、ルータが無いときの数秒)。
+  # `node:` (省略すると credentials の名前)、`app:` (必須)、`mode:` (省略すると
+  # ルータのクライアント。:peer ならルータ無し)、`listen:`、`config:` (TLS の
+  # キーなど。Hash か JSON5 の String)、`connect_timeout:` (PC の CRuby だけ。
+  # 端末は ArgumentError)、`check_timeout:` (秒)、`credentials:`
+  # (.tar のパスか Asterism::Credentials。locator と node の既定になる)。
+  # つなげないと Asterism::Disconnected、同じ node/app が既にあると
+  # Asterism::Error、名前が正しくないと ArgumentError。
+  # ```ruby
+  # conn = Asterism.connect(
+  #   "tcp/192.0.2.2:7447",
+  #   node: "fmruby-aaa001", app: "demo")
+  # ```
+  # <<en>>
+  # Connects to the router (locator), puts this app (app of node) on
+  # Asterism and returns an Asterism::Connection. **An app on a machine normally uses Link**
+  # (Link waits for WiFi, connects again and reads the settings); this is
+  # the entry Link calls. **The app waits while it connects** (about 1.5 s
+  # of `check_timeout:` looking for another copy of the same name, and a
+  # few seconds when there is no router). `node:`
+  # (the credentials' name when left out), `app:` (required), `mode:`
+  # (a client of a router when left out; :peer for no router), `listen:`,
+  # `config:` (TLS keys and the like; a Hash or a JSON5 String),
+  # `connect_timeout:` (CRuby on a PC only; ArgumentError on a machine),
+  # `check_timeout:` (seconds), `credentials:` (a .tar path or an
+  # Asterism::Credentials; it gives the default locator and node).
+  # Raises Asterism::Disconnected when it cannot connect, Asterism::Error
+  # when the same node/app is already there, ArgumentError for a bad name.
+  # ```ruby
+  # conn = Asterism.connect(
+  #   "tcp/192.0.2.2:7447",
+  #   node: "fmruby-aaa001", app: "demo")
+  # ```
+  def self.connect: (?String? locator, ?node: String?, app: String, ?mode: Symbol?, ?listen: String?, ?config: (Hash | String)?, ?connect_timeout: (Integer | Float)?, ?check_timeout: (Integer | Float)?, ?credentials: (String | Asterism::Credentials)?) -> Asterism::Connection
+
+  # 開いている接続の一覧 <<en>> The connections of this program that are open
+  #
+  # 開いた順。切れたあと on_leave をまだ知らせていないものも入る。
+  # ```ruby
+  # n = Asterism.connections.size
+  # ```
+  # <<en>>
+  # In the order they were opened; one that was lost but still has its
+  # on_leave blocks to tell is included.
+  # ```ruby
+  # n = Asterism.connections.size
+  # ```
+  def self.connections: () -> Array[Asterism::Connection]
+
+  # 全部の接続を poll する <<en>> Poll every connection of this program
+  #
+  # 1 つでもつながっていれば true。Link を使うなら Link#update が呼ぶ。
+  # ```ruby
+  # Asterism.poll_all
+  # ```
+  # <<en>>
+  # True while one of them is connected. With a Link, Link#update polls.
+  # ```ruby
+  # Asterism.poll_all
+  # ```
+  def self.poll_all: () -> bool
+
+  # このプログラムの端末の名乗りの既定 <<en>> The program's default profile for every node
+  #
+  # キーワードを渡すとその項目を変え (nil で外す。`icon: nil` は既定の
+  # アイコンも使わない)、できた名乗りを返す。渡さなければ今の既定を返す。
+  # 接続している端末には変更が流れる。端末ごとの上書きは Connection#profile。
+  # 項目は `kind:` (Symbol か String)、`name:`・`host:` (String)、
+  # `icon:` (PNG のバイト列)。受け付けないものは ArgumentError。
+  # ```ruby
+  # Asterism.profile_defaults(
+  #   kind: :family_mruby, host: "sim")
+  # ```
+  # <<en>>
+  # With keywords it changes those fields (nil removes one; `icon: nil`
+  # does not use the default icon either) and returns the profile they make;
+  # without, it returns the defaults. Connected nodes put the change on the
+  # network. A node's own override is Connection#profile. Fields:
+  # `kind:` (Symbol or String), `name:` and `host:` (Strings), `icon:`
+  # (PNG bytes). ArgumentError for what it does not accept.
+  # ```ruby
+  # Asterism.profile_defaults(
+  #   kind: :family_mruby, host: "sim")
+  # ```
+  def self.profile_defaults: (?kind: (Symbol | String)?, ?name: String?, ?host: String?, ?icon: String?) -> Hash
+
+  # 既定のアイコンのファイル <<en>> Where the default icon is read from
+  #
+  # 端末では "/usr/share/asterism/icon.png"。誰もアイコンを指定しなければ
+  # このファイルが使われる。
+  # ```ruby
+  # path = Asterism.default_icon_path
+  # ```
+  # <<en>>
+  # "/usr/share/asterism/icon.png" on a machine. It is used when nobody
+  # gave an icon.
+  # ```ruby
+  # path = Asterism.default_icon_path
+  # ```
+  def self.default_icon_path: () -> String?
+
+  # 値に付いた添え物を読む <<en>> Read the attachment of a value: [seq, run id, time, from]
+  #
+  # att は値と一緒に来た添え物のバイト列。`[番号, 接続の番号, 送り手の時刻,
+  # 送り手]` を返す。番号が無い (添え物が無い・形が違う) と nil。
+  # 送り手は place が :node か :global (共有の場所) のときだけ入る。
+  # 普通は subscribe が SampleInfo にしてくれる。
+  # ```ruby
+  # seq, run, ms, from =
+  #   Asterism.read_attachment(att)
+  # ```
+  # <<en>>
+  # att is the attachment bytes that came with a value. Returns `[seq,
+  # run id, sender's time, sender]`; nil without a sequence number (no
+  # attachment, or the wrong shape). The sender is filled only for a shared
+  # place (place :node or :global). subscribe turns it into a SampleInfo for
+  # you.
+  # ```ruby
+  # seq, run, ms, from =
+  #   Asterism.read_attachment(att)
+  # ```
+  def self.read_attachment: (String? att, ?Symbol? place, ?String? node) -> Array[untyped]?
+
   # ネットワークの上のアプリ 1 つ分のつながり (link.conn)
   class Connection
     # オブジェクトを公開する <<en>> Expose an object to other machines
@@ -603,6 +743,455 @@ module Asterism
     # end
     # ```
     def current_call: () -> Asterism::CurrentCall?
+
+    # このアプリの名前 <<en>> This app's name on the network
+    #
+    # ```ruby
+    # name = @link.conn.app
+    # ```
+    def app: () -> String
+
+    # この端末の名前 (ノード ID) <<en>> This machine's node ID
+    #
+    # ```ruby
+    # me = @link.conn.node_id
+    # ```
+    def node_id: () -> String
+
+    # 今の接続の番号 <<en>> The run id of this connection (16 random bits)
+    #
+    # 接続するたびに変わる。トピックの値に付いて、受ける側が
+    # 「送り手がつなぎ直した」と気づくのに使う (SampleInfo#restarted?)。
+    # ```ruby
+    # id = @link.conn.run_id
+    # ```
+    # <<en>>
+    # A new one for every connect. It goes with each value of the
+    # topics, so a reader notices that the sender connected again
+    # (SampleInfo#restarted?).
+    # ```ruby
+    # id = @link.conn.run_id
+    # ```
+    def run_id: () -> Integer
+
+    # つながっているか <<en>> Whether the connection is there
+    #
+    # つなぎ直しの途中 (reconnecting?) も true。セッションが閉じていると
+    # 気づいたときは、その場で「切れた」ことにして false を返す。
+    # ```ruby
+    # return unless conn.connected?
+    # ```
+    # <<en>>
+    # Also true while reconnecting. When it finds the session closed it
+    # marks the connection lost on the spot and returns false.
+    # ```ruby
+    # return unless conn.connected?
+    # ```
+    def connected?: () -> bool
+
+    # 切れたあと自動でつなぎ直している最中か <<en>> Whether the binding is reconnecting by itself
+    #
+    # true の間は connected? も true。ほかの端末は一度 leave し、戻ると
+    # join し直す。呼び出しは Disconnected か時間切れ、put は誰にも届かない。
+    # 戻ると、公開したオブジェクト・トピック・購読は元のまま使える。
+    # ```ruby
+    # show("reconnecting") if conn.reconnecting?
+    # ```
+    # <<en>>
+    # While true, connected? is true too. The other nodes leave (on_leave)
+    # and join again; calls raise Disconnected or time out and puts reach
+    # nobody. Once it is back, what was exposed, published and subscribed
+    # works as before.
+    # ```ruby
+    # show("reconnecting") if conn.reconnecting?
+    # ```
+    def reconnecting?: () -> bool
+
+    # つながっていない理由 <<en>> Why the connection went away (nil while connected)
+    #
+    # ```ruby
+    # why = @link.conn.lost_reason
+    # ```
+    def lost_reason: () -> String?
+
+    # つながりを閉じる <<en>> Close the connection
+    #
+    # 公開・トピック・購読もいっしょに終わり、on_join などのブロックも
+    # 忘れる。何度呼んでも構わない。閉じたものはもう開かない
+    # (Asterism.connect で作り直す)。Link を使うなら Link#close でよい。
+    # 戻り値は nil。
+    # ```ruby
+    # conn.close
+    # ```
+    # <<en>>
+    # Everything exposed, published and subscribed ends with it, and the
+    # on_join blocks are forgotten. Safe to call twice. A closed
+    # connection is not opened again (make a new one with
+    # Asterism.connect). With a Link, Link#close does this. Returns nil.
+    # ```ruby
+    # conn.close
+    # ```
+    def close: () -> nil
+
+    # 毎回呼ぶ (答える・受ける・知らせる) <<en>> Poll: answer, receive, tell joins
+    #
+    # 届いた呼び出しに答え、on_join / on_leave のブロックと subscribe の
+    # ブロックを呼ぶ。つなぎ直しの待ちの中からは呼ばれない。閉じたら false。
+    # **Link を使うなら Link#update が呼ぶので、自分では呼ばない**。
+    # Asterism.poll_all はプログラムの全部の接続を呼ぶ。
+    # ```ruby
+    # conn = Asterism.connect(r, app: "x")
+    # conn.poll
+    # ```
+    # <<en>>
+    # Answers the calls that came in and runs the on_join / on_leave and
+    # subscribe blocks (never from inside the polling of a waiting call).
+    # False once closed. **With a Link, Link#update calls it; do not call it yourself.**
+    # Asterism.poll_all polls every connection.
+    # ```ruby
+    # conn = Asterism.connect(r, app: "x")
+    # conn.poll
+    # ```
+    def poll: () -> bool
+
+    # Zenoh のセッション <<en>> The Zenoh session, for what Asterism does not do
+    #
+    # ROS 2 の Node (`Asterism::ROS::Node.new(conn.session, ...)`) や
+    # put・subscribe を直接使うとき用。セッションは接続のもので、
+    # そこから close しても何も起きない (1 回だけ警告)。閉じるのは
+    # Connection#close。つながっていないと Asterism::Disconnected。
+    # ```ruby
+    # s = @link.conn.session
+    # node = Asterism::ROS::Node.new(s, "n")
+    # ```
+    # <<en>>
+    # For a ROS 2 Node (`Asterism::ROS::Node.new(conn.session, ...)`) or
+    # put and subscribe by hand. The session belongs to the connection: its
+    # close does nothing (it warns once); Connection#close closes it.
+    # Raises Asterism::Disconnected when not connected.
+    # ```ruby
+    # s = @link.conn.session
+    # node = Asterism::ROS::Node.new(s, "n")
+    # ```
+    def session: () -> untyped
+
+    # 公開しているオブジェクトの名前 <<en>> Names of the objects exposed now
+    #
+    # ```ruby
+    # names = @link.conn.exposed
+    # ```
+    def exposed: () -> Array[String]
+
+    # 公開をやめる <<en>> Stop exposing an object
+    #
+    # 公開していたら true、無ければ false。
+    # ```ruby
+    # @link.conn.unexpose("board")
+    # ```
+    # <<en>>
+    # True when it was exposed, false when it was not.
+    # ```ruby
+    # @link.conn.unexpose("board")
+    # ```
+    def unexpose: ((String | Symbol) name) -> bool
+
+    # 出しているトピックの名前 <<en>> The topics published now (their entries)
+    #
+    # 自分のトピックは名前、共有のものは "<端末>/@shared/<名前>" か
+    # "@shared/<名前>"。
+    # ```ruby
+    # list = @link.conn.published
+    # ```
+    # <<en>>
+    # Own topics by name; shared ones as "<node>/@shared/<name>" or
+    # "@shared/<name>".
+    # ```ruby
+    # list = @link.conn.published
+    # ```
+    def published: () -> Array[String]
+
+    # トピックをやめる <<en>> Withdraw a topic
+    #
+    # Topic か、publish に渡した名前 (共有なら同じ `shared:` も) を渡す。
+    # 宣言が消える。やめたら true、無いものは false。
+    # 同じ名前でまた publish すると番号は続きから。
+    # ```ruby
+    # @link.conn.unpublish("said")
+    # ```
+    # <<en>>
+    # Pass the Topic, or its name with the `shared:` it was published with.
+    # Its declaration goes. True when there was one. Publishing the name
+    # again goes on from the same numbers.
+    # ```ruby
+    # @link.conn.unpublish("said")
+    # ```
+    def unpublish: ((Asterism::Topic | String | Symbol) topic, ?shared: (Symbol | String)?) -> bool
+
+    # 受けるのをやめる <<en>> End a subscription
+    #
+    # Subscription#close と同じ。受けていたら true。
+    # ```ruby
+    # @link.conn.unsubscribe(@sub)
+    # ```
+    # <<en>>
+    # The same as Subscription#close. True when it was open.
+    # ```ruby
+    # @link.conn.unsubscribe(@sub)
+    # ```
+    def unsubscribe: (Asterism::Subscription sub) -> bool
+
+    # on_join で渡したブロックを外す <<en>> Remove a block given to on_join
+    #
+    # 渡したときの Proc を取っておき、同じものを渡す。
+    # ```ruby
+    # h = proc { |n| joined(n) }
+    # conn.on_join(&h)
+    # conn.off_join(h)
+    # ```
+    # <<en>>
+    # Keep the Proc you gave and pass it again.
+    # ```ruby
+    # h = proc { |n| joined(n) }
+    # conn.on_join(&h)
+    # conn.off_join(h)
+    # ```
+    def off_join: (Proc blk) -> Asterism::Connection
+
+    # on_leave で渡したブロックを外す <<en>> Remove a block given to on_leave
+    #
+    # ```ruby
+    # conn.off_leave(h)
+    # ```
+    def off_leave: (Proc blk) -> Asterism::Connection
+
+    # アプリが来たときに呼ぶブロック <<en>> Run a block when another machine's app appears
+    #
+    # ブロックは |端末の名前, アプリの名前| で、update の中で呼ばれる。
+    # 1 つの端末が複数のアプリを動かしていても、アプリごとに来る・去る。
+    # 切れたときは、知っていたアプリが全部去る。link_up の中で渡す。
+    # ```ruby
+    # conn.on_app_join do |n, a|
+    #   seen(n, a)
+    # end
+    # ```
+    # <<en>>
+    # The block gets |node, app| and runs inside update. A node may run
+    # several apps; each comes and goes on its own. When the connection is
+    # lost, every app known until then leaves. Give it in link_up.
+    # ```ruby
+    # conn.on_app_join do |n, a|
+    #   seen(n, a)
+    # end
+    # ```
+    def on_app_join: () { (String node, String app) -> untyped } -> Asterism::Connection
+
+    # アプリが去ったときに呼ぶブロック <<en>> Run a block when another machine's app leaves
+    #
+    # ```ruby
+    # conn.on_app_leave do |n, a|
+    #   gone(n, a)
+    # end
+    # ```
+    def on_app_leave: () { (String node, String app) -> untyped } -> Asterism::Connection
+
+    # on_app_join のブロックを外す <<en>> Remove a block given to on_app_join
+    #
+    # ```ruby
+    # conn.off_app_join(h)
+    # ```
+    def off_app_join: (Proc blk) -> Asterism::Connection
+
+    # on_app_leave のブロックを外す <<en>> Remove a block given to on_app_leave
+    #
+    # ```ruby
+    # conn.off_app_leave(h)
+    # ```
+    def off_app_leave: (Proc blk) -> Asterism::Connection
+
+    # この端末の名乗り (種類・名前・アイコン) <<en>> This node's profile (kind, name, host, icon)
+    #
+    # キーワードを渡すとその項目を変えて、全体を返す。渡さなければ今のものを
+    # 返す。`kind:` (Symbol か String。nil で既定へ戻す)、`name:`・`host:`
+    # (String。nil で外す)、`icon:` (PNG のバイト列。nil でアイコン無し)。
+    # 受け付けないものは ArgumentError。名乗りは端末のもので、同じ端末の
+    # ほかの接続にも効く。変えると流れる。
+    # ```ruby
+    # conn.profile(name: "Rover")
+    # ```
+    # <<en>>
+    # With keywords it changes those fields and returns the profile;
+    # without, it returns the profile. `kind:` (Symbol or String; nil goes
+    # back to the default), `name:` and `host:` (Strings; nil leaves them
+    # out), `icon:` (PNG bytes; nil for no icon). ArgumentError for what it
+    # does not accept. The profile belongs to the node, so other
+    # connections of the same node share it. A change is put on the network.
+    # ```ruby
+    # conn.profile(name: "Rover")
+    # ```
+    def profile: (?kind: (Symbol | String)?, ?name: String?, ?host: String?, ?icon: String?) -> Hash
+
+    # ほかの端末の名乗りを読む <<en>> Another node's profile (nil when it does not answer)
+    #
+    # 答えを待つ (既定 2 秒。`timeout:` は秒、`timeout_ms:` はミリ秒)。
+    # `icon: false` でアイコンのバイト列を省く (icon_hash は付く)。
+    # つながっていないと Asterism::Disconnected。自分の端末は問い合わせない。
+    # ```ruby
+    # p = @link.conn.profile_of(node)
+    # name = p["name"] if p
+    # ```
+    # <<en>>
+    # Waits for the answer (2 s; `timeout:` in seconds, `timeout_ms:` in
+    # milliseconds). `icon: false` leaves out the icon bytes (icon_hash
+    # still says which one). Raises Asterism::Disconnected when not
+    # connected. Its own node is not asked over the network.
+    # ```ruby
+    # p = @link.conn.profile_of(node)
+    # name = p["name"] if p
+    # ```
+    def profile_of: (String node, ?icon: bool, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Hash?
+
+    # 端末やアプリが話す通信の版 <<en>> The protocol version a node or app speaks
+    #
+    # "端末/アプリ" を渡すとそのアプリの版 (まだ見えていなければ nil)。
+    # 端末だけなら、そのアプリの版の一番低いもの。アプリが見えない端末は名乗りに
+    # 聞く (答えなければ nil、版が書いてなければ 0)。自分の版は
+    # Asterism::PROTOCOL。
+    # ```ruby
+    # v = conn.protocol_of("n/app")
+    # ```
+    # <<en>>
+    # "node/app" gives that app's version (nil while it is not seen); a
+    # node alone gives the lowest of its apps', or asks its profile when
+    # no app is known (nil without an answer, 0 when it says none). This
+    # program speaks Asterism::PROTOCOL.
+    # ```ruby
+    # v = conn.protocol_of("n/app")
+    # ```
+    def protocol_of: (String node, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Integer?
+
+    # 自分の型を決める <<en>> Define an application type for topic values
+    #
+    # name は "mygame/board.strokes" のような名前。fields は
+    # `[[名前, 型], ...]` で、型は名前 (組み込みの "vector3"、基本の "int"
+    # "float" "str" "bin" "bool" "any"、別の自分の型。末尾に "[]" で配列)。
+    # 値は欄の名前をキーにした Hash で、名前は短いほど値が小さい。
+    # `desc:` (省略すると無し) は説明。同じ名前は置き換わる。つながりが
+    # 閉じても残る。送った定義 ({"f" => ..., "d" => ...}) を返す。
+    # 数を型にしたり不正な欄だと ArgumentError。publish の `type:` に名前を渡す。
+    # ```ruby
+    # conn.define_type("g/pt",
+    #   [["x", "int"], ["y", "int"]])
+    # ```
+    # <<en>>
+    # name is like "mygame/board.strokes". fields is `[[name, type], ...]`;
+    # a type is a name: built in ("vector3"), basic ("int", "float",
+    # "str", "bin", "bool", "any") or another of your types, "[]" at the
+    # end for an array. Values are Hashes keyed by the field names (short
+    # names keep them small). `desc:` (none when left out) is a text.
+    # Defining a name again replaces it; the types outlive close. Returns
+    # the definition as sent ({"f" => ..., "d" => ...}). ArgumentError for
+    # a number as a type or a bad field. Pass the name as publish's `type:`.
+    # ```ruby
+    # conn.define_type("g/pt",
+    #   [["x", "int"], ["y", "int"]])
+    # ```
+    def define_type: ((String | Symbol) name, Array[Array[untyped]] fields, ?desc: String?) -> Hash
+
+    # ほかのアプリのトピックを読む <<en>> Another app's topics (nil if no answer)
+    #
+    # `{トピック名 => {"t" => 型, "u" => 単位, ...}}`。何も出していなければ {}、
+    # 答えが無ければ nil。status_of と同じ待ち方 (既定 2 秒、`timeout:`
+    # は秒、`timeout_ms:` はミリ秒)。つながっていないと Asterism::Disconnected。
+    # ```ruby
+    # t = @link.conn.pubs_of("n", "app")
+    # ```
+    # <<en>>
+    # `{topic => {"t" => type, "u" => unit, ...}}`; {} when it has none, nil
+    # without an answer. Waits like status_of (2 s; `timeout:` in seconds,
+    # `timeout_ms:` in milliseconds). Raises Asterism::Disconnected when
+    # not connected.
+    # ```ruby
+    # t = @link.conn.pubs_of("n", "app")
+    # ```
+    def pubs_of: (String node, String app, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Hash?
+
+    # ほかのアプリの自分の型を読む <<en>> Another app's own types (nil when it does not answer)
+    #
+    # `{型の名前 => {"f" => [[欄, 型], ...], "d" => 説明}}`。無ければ {}、
+    # 答えが無ければ nil。待ち方は pubs_of と同じ。
+    # ```ruby
+    # t = @link.conn.types_of("n", "app")
+    # ```
+    # <<en>>
+    # `{type name => {"f" => [[field, type], ...], "d" => text}}`; {} when it
+    # has none, nil without an answer. Waits like pubs_of.
+    # ```ruby
+    # t = @link.conn.types_of("n", "app")
+    # ```
+    def types_of: (String node, String app, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Hash?
+
+    # 共有の場所に値を出しているアプリを探す <<en>> The apps that publish on a shared key
+    #
+    # path は "@shared/<名前>" か "<端末>/@shared/<名前>" (端末は * も可)。
+    # `{"端末/アプリ" => 宣言}` を返す (自分も入る)。誰もいなければ {}。
+    # 全アプリの名乗りに一度に問い合わせて `timeout:` (秒、既定 2 秒) まで
+    # 待つ (`timeout_ms:` はミリ秒)。共有の道でなければ ArgumentError、
+    # つながっていないと Asterism::Disconnected。
+    # ```ruby
+    # who = conn.publishers_of(
+    #   "@shared/lobby")
+    # ```
+    # <<en>>
+    # path is "@shared/<name>" or "<node>/@shared/<name>" (node may be *).
+    # Returns `{"node/app" => declaration}` (this app's own included), {}
+    # when nobody publishes it. Asks every app's profile at once and waits
+    # up to `timeout:` seconds (2 by default; `timeout_ms:` in
+    # milliseconds). ArgumentError for a path that is not a shared key;
+    # Asterism::Disconnected when not connected.
+    # ```ruby
+    # who = conn.publishers_of(
+    #   "@shared/lobby")
+    # ```
+    def publishers_of: (String path, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Hash
+
+    # 受けた値の送り手の宣言を読む <<en>> The sender's declaration of the topic a value came on
+    #
+    # info は subscribe のブロックの SampleInfo。送り手の @pubs の、その
+    # キーの項目 (`{"t", "e", "u", "d", "ts"}`) を返す。共有の場所では送り手ごとに
+    # 宣言が違うので、送り手 (info.from) に問い合わせる。送り手が分からない・
+    # 答えない・宣言していなければ nil。初回だけ待ち (既定 2 秒)、答えは覚える。
+    # ```ruby
+    # d = conn.declaration_of(info)
+    # ```
+    # <<en>>
+    # info is the SampleInfo a subscribe block gets. Returns the sender's
+    # entry for that key in its @pubs (`{"t", "e", "u", "d", "ts"}`). On a
+    # shared key every sender declares it its own way, so it asks the
+    # sender (info.from). nil when the sender is unknown, does not answer
+    # or does not declare the key. Waits the first time (2 s), then keeps
+    # the answer.
+    # ```ruby
+    # d = conn.declaration_of(info)
+    # ```
+    def declaration_of: (Asterism::SampleInfo info, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Hash?
+
+    # 受けた値の型を、送り手の宣言から読む <<en>> The type of a value, as its sender declared it
+    #
+    # 組み込みの型なら番号 (Integer)、自分の型なら `[名前, 定義]` (定義は送り手の
+    # 自分の型の表から。無ければ nil)。型が無い・送り手が答えない場合は nil。
+    # 待ち方と覚え方は declaration_of と同じ。
+    # ```ruby
+    # t = conn.type_of(info)
+    # ```
+    # <<en>>
+    # A built-in type's number (Integer), or `[name, definition]` for the
+    # sender's own type (the definition from its own types; nil when it
+    # does not tell). nil when there is no type or the sender does not
+    # answer. Waits and keeps the answer as declaration_of does.
+    # ```ruby
+    # t = conn.type_of(info)
+    # ```
+    def type_of: (Asterism::SampleInfo info, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> (Integer | Array[untyped])?
   end
 
   # ほかの端末のオブジェクトの代わり (conn[path] の答え)
@@ -669,6 +1258,44 @@ module Asterism
     # names = board.remote_methods
     # ```
     def remote_methods: () -> Array[Symbol]
+
+    # 呼び出しが出ていく接続 <<en>> The connection the calls go out on
+    #
+    # ```ruby
+    # c = board.asterism_connection
+    # ```
+    def asterism_connection: () -> Asterism::Connection
+
+    # 相手が答えるメソッドの表 <<en>> The meta of the object (asked once, then kept)
+    #
+    # `{"methods" => [{"name" => ..., "arity" => ...}, ...]}`。初回は相手に
+    # 問い合わせて待つ。答えが無ければ Asterism::TimeoutError か
+    # Asterism::RemoteError ("no_object")、切れていれば Asterism::Disconnected。
+    # ```ruby
+    # m = board.asterism_meta
+    # ```
+    # <<en>>
+    # `{"methods" => [{"name" => ..., "arity" => ...}, ...]}`. The first
+    # call asks the other machine and waits. Raises Asterism::TimeoutError
+    # or Asterism::RemoteError ("no_object") without an answer,
+    # Asterism::Disconnected when closed.
+    # ```ruby
+    # m = board.asterism_meta
+    # ```
+    def asterism_meta: () -> Hash
+
+    # 覚えている表を捨てる <<en>> Forget the kept meta (the object may be exposed again)
+    #
+    # 次に asterism_meta や remote_methods を呼ぶと問い合わせ直す。自分を返す。
+    # ```ruby
+    # board.asterism_refresh
+    # ```
+    # <<en>>
+    # The next asterism_meta or remote_methods asks again. Returns itself.
+    # ```ruby
+    # board.asterism_refresh
+    # ```
+    def asterism_refresh: () -> Asterism::Proxy
   end
 
   # 待たずに呼ぶ形 (Proxy#async の答え)。メソッドを呼ぶと Future が返る。
@@ -731,6 +1358,45 @@ module Asterism
     # ms = @call.took_ms
     # ```
     def took_ms: () -> Integer?
+
+    # 呼んだ道 <<en>> The object's path, "node/app/object"
+    #
+    # ```ruby
+    # p = @call.path
+    # ```
+    def path: () -> String
+
+    # 呼んだメソッドの名前 <<en>> The name of the method that was called
+    #
+    # ```ruby
+    # m = @call.method_name
+    # ```
+    def method_name: () -> String
+
+    # 答えまでの時間 (秒) <<en>> Seconds from the call to its answer (nil until done)
+    #
+    # ```ruby
+    # s = @call.took
+    # ```
+    def took: () -> Float?
+
+    # 答えをそのまま読む <<en>> The decoded answer as it is
+    #
+    # {"value" => ...} か {"error" => ...} の Hash のまま返す。value と同じに
+    # 待ち、時間切れは Asterism::TimeoutError、切れたら Asterism::Disconnected、
+    # 読めない答えは Asterism::Error。普通は value を使う。
+    # ```ruby
+    # raw = @call.raw_value
+    # ```
+    # <<en>>
+    # The answer as the Hash it came in ({"value" => ...} or
+    # {"error" => ...}). Waits like value; Asterism::TimeoutError on a time
+    # out, Asterism::Disconnected when closed, Asterism::Error for an
+    # unreadable answer. Normally use value.
+    # ```ruby
+    # raw = @call.raw_value
+    # ```
+    def raw_value: () -> untyped
   end
 
   # 出したトピック (conn.publish の答え)
@@ -768,6 +1434,110 @@ module Asterism
     # @said.close
     # ```
     def close: () -> bool
+
+    # トピックが閉じているか <<en>> Whether the topic is withdrawn
+    #
+    # ```ruby
+    # return if @said.closed?
+    # ```
+    def closed?: () -> bool
+
+    # このトピックを出した接続 <<en>> The connection that published it
+    #
+    # ```ruby
+    # c = @said.connection
+    # ```
+    def connection: () -> Asterism::Connection
+
+    # 流している道 <<en>> The whole key values go on ("asterism/<node>/<app>/<name>")
+    #
+    # ```ruby
+    # k = @said.key
+    # ```
+    def key: () -> String
+
+    # 宣言の項目名 <<en>> Its name in the declarations (the shared ones differ)
+    #
+    # 自分のトピックは name と同じ。共有なら "<端末>/@shared/<名前>" か
+    # "@shared/<名前>"。published が返すのはこれ。
+    # ```ruby
+    # e = @said.entry
+    # ```
+    # <<en>>
+    # Same as name for an own topic; "<node>/@shared/<name>" or
+    # "@shared/<name>" for a shared one. published returns these.
+    # ```ruby
+    # e = @said.entry
+    # ```
+    def entry: () -> String
+
+    # 共有の場所か <<en>> Which shared place it is on (nil: the app's own)
+    #
+    # nil は自分の道、:node は端末の @shared、:global はネットワークの @shared。
+    # ```ruby
+    # s = @said.shared
+    # ```
+    # <<en>>
+    # nil is the app's own key, :node the node's @shared, :global the
+    # network's @shared.
+    # ```ruby
+    # s = @said.shared
+    # ```
+    def shared: () -> (:node | :global)?
+
+    # 値と一緒に送った符号化 <<en>> The Zenoh encoding of the values (nil: MessagePack)
+    #
+    # publish の `encoding:` に渡したもの ("image/jpeg" など)。
+    # ```ruby
+    # e = @cam.encoding
+    # ```
+    # <<en>>
+    # What publish's `encoding:` was given ("image/jpeg", ...).
+    # ```ruby
+    # e = @cam.encoding
+    # ```
+    def encoding: () -> String?
+
+    # 次に送る値の番号 <<en>> The sequence number the next put sends
+    #
+    # 0 から始まり、2147483647 の次は 0 に戻る。
+    # ```ruby
+    # n = @said.seq
+    # ```
+    # <<en>>
+    # Starts at 0 and goes back to 0 after 2147483647.
+    # ```ruby
+    # n = @said.seq
+    # ```
+    def seq: () -> Integer
+
+    # 送り手の時刻も付けるか <<en>> Whether each value carries the sender's time
+    #
+    # publish の `ts: true` のとき true。
+    # ```ruby
+    # t = @said.ts?
+    # ```
+    # <<en>>
+    # True when publish got `ts: true`.
+    # ```ruby
+    # t = @said.ts?
+    # ```
+    def ts?: () -> bool
+
+    # 送った宣言 <<en>> The declaration as sent
+    #
+    # `{"t" => 型, "u" => 単位, "d" => 説明, "e" => 符号化の番号, "ts" => true}`
+    # のうち、指定した項目だけ。コピーを返す。
+    # ```ruby
+    # d = @said.declaration
+    # ```
+    # <<en>>
+    # The fields that were given out of `{"t" => type, "u" => unit,
+    # "d" => text, "e" => encoding number, "ts" => true}`. A copy.
+    # ```ruby
+    # d = @said.declaration
+    # ```
+    def declaration: () -> Hash
   end
 
   # 受けているトピック (conn.subscribe の答え)
@@ -792,6 +1562,45 @@ module Asterism
     # n = @sub.received
     # ```
     def received: () -> Integer
+
+    # 受けている道 <<en>> The path it receives ("<node>/<app>/<topic>")
+    #
+    # ```ruby
+    # p = @sub.path
+    # ```
+    def path: () -> String
+
+    # この購読の接続 <<en>> The connection it belongs to
+    #
+    # ```ruby
+    # c = @sub.connection
+    # ```
+    def connection: () -> Asterism::Connection
+
+    # 取りこぼした数 <<en>> Values the queue had no room for
+    #
+    # 次の update までに溜められる数 (`depth:`) を超えて、捨てた数。
+    # ```ruby
+    # warn_gap if @sub.dropped > 0
+    # ```
+    # <<en>>
+    # Values dropped because more than `depth:` came between two updates.
+    # ```ruby
+    # warn_gap if @sub.dropped > 0
+    # ```
+    def dropped: () -> Integer
+
+    # 読めなかった値の数 <<en>> Values left out because they were not MessagePack
+    #
+    # ```ruby
+    # bad = @sub.malformed
+    # ```
+    # <<en>>
+    # Values left out: no encoding, and not one MessagePack value.
+    # ```ruby
+    # bad = @sub.malformed
+    # ```
+    def malformed: () -> Integer
   end
 
   # 受けた値に付いてくる情報 (subscribe のブロックの 2 つ目)
@@ -839,6 +1648,105 @@ module Asterism
     # s = info.seq
     # ```
     def seq: () -> Integer?
+
+    # 値が届いた道 <<en>> The whole key it came on
+    #
+    # ```ruby
+    # k = info.key
+    # ```
+    def key: () -> String
+
+    # 値が届いた道 (asterism/ の下) <<en>> The key below asterism/ ("<node>/<app>/<name>")
+    #
+    # ```ruby
+    # p = info.path
+    # ```
+    def path: () -> String
+
+    # 共有の場所か <<en>> Which shared place (nil: an app's own topic)
+    #
+    # ```ruby
+    # sh = info.shared
+    # ```
+    def shared: () -> (:node | :global)?
+
+    # 送り手の接続の番号 <<en>> The sender's run id (nil when it came without one)
+    #
+    # 送り手がつなぎ直すと変わる。
+    # ```ruby
+    # r = info.run_id
+    # ```
+    # <<en>>
+    # It changes when the sender connects again.
+    # ```ruby
+    # r = info.run_id
+    # ```
+    def run_id: () -> Integer?
+
+    # 送り手の時刻 <<en>> The sender's time in ms since 1970 (nil unless ts: true)
+    #
+    # ```ruby
+    # t = info.time
+    # ```
+    def time: () -> Integer?
+
+    # ルータが付けた時刻 <<en>> The router's timestamp (nil when none)
+    #
+    # 型は Asterism::Zenoh::Timestamp。
+    # ```ruby
+    # ts = info.timestamp
+    # ```
+    # <<en>>
+    # An Asterism::Zenoh::Timestamp.
+    # ```ruby
+    # ts = info.timestamp
+    # ```
+    def timestamp: () -> untyped
+
+    # 値の符号化 <<en>> "msgpack", or the Zenoh encoding ("image/jpeg")
+    #
+    # "msgpack" なら値は復号した Ruby の値、それ以外はバイト列 (String)。
+    # ```ruby
+    # img = v if info.encoding == "image/jpeg"
+    # ```
+    # <<en>>
+    # With "msgpack" the value is the decoded Ruby value; otherwise it is the
+    # bytes (a String).
+    # ```ruby
+    # img = v if info.encoding == "image/jpeg"
+    # ```
+    def encoding: () -> String
+
+    # 送り手が新しく始めたか <<en>> Whether the sender started a new run
+    #
+    # 接続し直した (番号が変わった) か、同じ接続で番号が戻ったとき true。
+    # その場合 lost は数えない。「今の値」を問い合わせ直す合図に使う。
+    # ```ruby
+    # ask_again if info.restarted?
+    # ```
+    # <<en>>
+    # True when the sender connected again (its run id changed) or its
+    # numbers went back on the same run. Use it as the cue to ask for the
+    # current value again.
+    # ```ruby
+    # ask_again if info.restarted?
+    # ```
+    def restarted?: () -> bool
+
+    # 全部の項目の Hash <<en>> All the fields as a Hash
+    #
+    # `key`・`path`・`shared`・`from`・`node`・`app`・`name`・`seq`・`run_id`・
+    # `time`・`encoding`・`timestamp`・`lost`・`restarted` を Symbol のキーで返す。
+    # ```ruby
+    # puts info.to_h
+    # ```
+    # <<en>>
+    # The fields key, path, shared, from, node, app, name, seq, run_id,
+    # time, encoding, timestamp, lost and restarted, with Symbol keys.
+    # ```ruby
+    # puts info.to_h
+    # ```
+    def to_h: () -> Hash
   end
 
   # 今答えている呼び出し (conn.current_call の答え)
@@ -863,6 +1771,22 @@ module Asterism
     # m = call.method
     # ```
     def method: () -> String
+
+    # 呼んだ人を確かめた程度 <<en>> How far the caller's name is checked
+    #
+    # :claimed は呼んだ側が自分で名乗った名前 (名前を確かにするのは
+    # ルータのアクセス制御)。:local は同じアプリの中からの呼び出し。
+    # ```ruby
+    # trust = conn.current_call.verified
+    # ```
+    # <<en>>
+    # :claimed is the name the caller gave itself (the router's access
+    # control is what makes it binding). :local is a call from this same
+    # app.
+    # ```ruby
+    # trust = conn.current_call.verified
+    # ```
+    def verified: () -> (:claimed | :local)
   end
 
   # やり取りの失敗の元 (rescue ::Asterism::Error で全部受かる)
@@ -913,6 +1837,14 @@ module Asterism
     # end
     # ```
     def remote_kind: () -> String?
+
+    # 作る <<en>> Make one (the answers of the other machine are turned into these)
+    #
+    # ```ruby
+    # e = Asterism::RemoteError.new(
+    #   "NameError", "x", "no_object")
+    # ```
+    def self.new: (String remote_class, String remote_message, ?String? remote_kind) -> Asterism::RemoteError
   end
 
   # 時間内に答えが来なかった (相手がいない・遅い)
@@ -925,5 +1857,503 @@ module Asterism
 
   # 送れない値を送ろうとした (送る前に止まる)
   class EncodeError < Asterism::Error
+  end
+
+  # コンソールが渡す証明書一式 (.tar) <<en>> The credentials .tar a console hands out
+  #
+  # Asterism のコンソールが証明書を出すときに渡す .tar (秘密鍵・証明書・
+  # CA・asterism.json) を読んだもの。TLS のルータにつなぐときに
+  # `Asterism.connect(credentials: ...)` へ渡すと、証明書が Zenoh に渡り、
+  # ルータの場所と端末の名前の既定も入っている値から取られる。
+  # 端末では FmrbAsterism.credentials_for と FmrbAsterism.settings.credentials
+  # が読んだものを返すので、アプリが自分で読むことはあまり無い。
+  # 読めない・形が違うときは Asterism::Credentials::Error。
+  # <<en>>
+  # The .tar an Asterism console hands out with a certificate (private
+  # key, certificate, CA, asterism.json), read. Pass it to
+  # `Asterism.connect(credentials: ...)` for a TLS router: the certificates
+  # go to Zenoh and the router and node ID default to what it holds. On a
+  # machine FmrbAsterism.credentials_for and FmrbAsterism.settings.credentials
+  # return one already read, so an app rarely reads it itself. A file that
+  # cannot be read or has the wrong shape raises Asterism::Credentials::Error.
+  class Credentials
+    # 証明書の .tar を読めない・形が違う <<en>> The file is missing something or holds it wrong
+    class Error < Asterism::Error
+    end
+
+    # .tar を読む <<en>> Read a credentials .tar
+    #
+    # path の .tar を読む。1 MB を超えるものは読まない。`warn:` (省略すると true)
+    # は、CRuby で鍵のファイルを他人が読めるかの注意を出すかで、端末では
+    # 意味が無い。読めない・鍵や証明書が無い・鍵が 2 つある、のとき
+    # Asterism::Credentials::Error。
+    # ```ruby
+    # c = Asterism::Credentials.load(
+    #   "/home/asterism/n.tar")
+    # ```
+    # <<en>>
+    # Reads the .tar at path (nothing over 1 MB). `warn:` (true when left
+    # out) is the check of who may read the key file on CRuby; it does
+    # nothing on a machine. Raises Asterism::Credentials::Error when it
+    # cannot be read, has no key or certificate, or has two keys.
+    # ```ruby
+    # c = Asterism::Credentials.load(
+    #   "/home/asterism/n.tar")
+    # ```
+    def self.load: (String path, ?warn: bool) -> Asterism::Credentials
+
+    # .tar を読む (load と同じ) <<en>> Read a credentials .tar (same as load)
+    #
+    # ```ruby
+    # c = Asterism::Credentials.new(
+    #   "/home/asterism/n.tar")
+    # ```
+    def self.new: (String path, ?warn: bool) -> Asterism::Credentials
+
+    # .tar のパス <<en>> The path it was read from
+    #
+    # ```ruby
+    # p = creds.path
+    # ```
+    def path: () -> String
+
+    # 端末の名前 (証明書の名前) <<en>> The node name the certificate is for
+    #
+    # ルータのアクセス制御はこの名前で端末を知る。接続の node: の既定になる。
+    # ```ruby
+    # me = creds.name
+    # ```
+    # <<en>>
+    # The router's access control knows the machine by this name. It is the
+    # default node: of a connection.
+    # ```ruby
+    # me = creds.name
+    # ```
+    def name: () -> String
+
+    # 証明書の種類 <<en>> The kind asterism.json says (nil when it says none)
+    #
+    # ```ruby
+    # k = creds.kind
+    # ```
+    def kind: () -> String?
+
+    # ルータの場所 <<en>> The router's locator in asterism.json (nil when none)
+    #
+    # "tls/ホスト:ポート" の形。接続の locator の既定になる。
+    # ```ruby
+    # r = creds.router
+    # ```
+    # <<en>>
+    # Shaped "tls/host:port". It is the default locator of a connection.
+    # ```ruby
+    # r = creds.router
+    # ```
+    def router: () -> String?
+
+    # 証明書の期限 <<en>> The expiry asterism.json says (nil when none)
+    #
+    # asterism.json に書かれた文字列のまま。
+    # ```ruby
+    # s = creds.not_after
+    # ```
+    # <<en>>
+    # The string as asterism.json has it.
+    # ```ruby
+    # s = creds.not_after
+    # ```
+    def not_after: () -> String?
+
+    # 秘密鍵 (PEM) <<en>> The private key (PEM text)
+    #
+    # 人に見せたりログに出したりしない。
+    # ```ruby
+    # pem = creds.key_pem
+    # ```
+    # <<en>>
+    # Never show it or log it.
+    # ```ruby
+    # pem = creds.key_pem
+    # ```
+    def key_pem: () -> String
+
+    # 証明書 (PEM) <<en>> The certificate (PEM text)
+    #
+    # ```ruby
+    # pem = creds.cert_pem
+    # ```
+    def cert_pem: () -> String
+
+    # CA の証明書 (PEM) <<en>> The CA certificate (PEM text)
+    #
+    # ```ruby
+    # pem = creds.ca_pem
+    # ```
+    def ca_pem: () -> String
+
+    # asterism.json の内容 <<en>> What asterism.json says (a Hash; {} without it)
+    #
+    # name・kind・router・not_after などの文字列。
+    # ```ruby
+    # n = creds.info["name"]
+    # ```
+    # <<en>>
+    # Strings such as name, kind, router and not_after.
+    # ```ruby
+    # n = creds.info["name"]
+    # ```
+    def info: () -> Hash
+
+    # Zenoh に渡す TLS の設定 <<en>> The Zenoh configuration keys for mutual TLS
+    #
+    # CA・証明書・鍵を base64 にして、`transport/link/tls/...` のキーと
+    # enable_mtls を入れた Hash。Asterism.connect が `credentials:` から
+    # 自分で使うので、普通は呼ばない。
+    # ```ruby
+    # cfg = creds.zenoh_config
+    # ```
+    # <<en>>
+    # A Hash with the CA, certificate and key as base64 under
+    # `transport/link/tls/...` and enable_mtls. Asterism.connect uses it
+    # from `credentials:`, so you rarely call it.
+    # ```ruby
+    # cfg = creds.zenoh_config
+    # ```
+    def zenoh_config: () -> Hash
+  end
+
+  # トピックの値の型の名前と番号 <<en>> Names and numbers of the built-in value types
+  #
+  # publish の `type:` に渡す組み込みの型。番号か Symbol (:vector3) で書く。
+  # 自分の型は文字列で、Connection#define_type で決める。
+  module Types
+    # 数 (Float か Integer) <<en>> A number (Float or Integer)
+    NUMBER: Integer
+    # [x, y, z] <<en>> [x, y, z]
+    VECTOR3: Integer
+    # [x, y, z, qx, qy, qz, qw] (ROS 2 の Pose の順) <<en>> [x, y, z, qx, qy, qz, qw] (ROS 2's Pose order)
+    POSE: Integer
+    # 画像 (符号化に従ったバイト列) <<en>> An image (bytes in the topic's encoding)
+    IMAGE: Integer
+    # 状態 (String か Integer) <<en>> A state (a String or an Integer)
+    STATE: Integer
+    # ログの 1 件 (level・msg・time) <<en>> A log record (level, msg, time)
+    LOG: Integer
+    # 文字列 <<en>> A String
+    TEXT: Integer
+
+    # 組み込みの型の番号 <<en>> The number of a built-in type from its name (nil if none)
+    #
+    # ```ruby
+    # Asterism::Types.number(:vector3)  #=> 2
+    # ```
+    def self.number: ((Symbol | String) name) -> Integer?
+
+    # 受けた型の表を整える <<en>> Clean a received map of type definitions
+    #
+    # 名前が String で、"f" が `[[欄, 型], ...]` の定義だけを残す (壊れた
+    # ものは落とす)。Hash でなければ nil。types_of の答えはこれを通ってくる。
+    # ```ruby
+    # t = Asterism::Types.check(raw)
+    # ```
+    # <<en>>
+    # Keeps the definitions with a String name and an "f" that is an Array
+    # of `[field, type]` pairs, and drops the broken ones. nil when it is
+    # not a Hash. The answer of types_of went through it.
+    # ```ruby
+    # t = Asterism::Types.check(raw)
+    # ```
+    def self.check: (untyped h) -> Hash?
+  end
+
+  # トピックの宣言 (@pubs) の決まり <<en>> Rules for the topic declarations (@pubs)
+  #
+  # 出しているトピックの宣言を ({"名前" => {"t", "e", "u", "d", "ts"}}) 送る
+  # ときの決まりと、符号化の番号表。pubs_of や publishers_of の答えの形を知る
+  # ときに読む。
+  module Pubs
+    # 符号化の名前の番号 <<en>> The fixed number of a Zenoh encoding (nil when none)
+    #
+    # "image/jpeg" や "text/plain;charset=utf-8" (; から後は無視)。
+    # ```ruby
+    # Asterism::Pubs.encoding_id("image/jpeg")  #=> 17
+    # ```
+    # <<en>>
+    # "image/jpeg" or "text/plain;charset=utf-8" (what follows ";" is
+    # ignored).
+    # ```ruby
+    # Asterism::Pubs.encoding_id("image/jpeg")  #=> 17
+    # ```
+    def self.encoding_id: (String name) -> Integer?
+
+    # 番号から符号化の名前 <<en>> The encoding name of a number (nil when none)
+    #
+    # ```ruby
+    # Asterism::Pubs.encoding_name(17)  #=> "image/jpeg"
+    # ```
+    def self.encoding_name: (Integer id) -> String?
+
+    # 宣言の項目から出す先を分ける <<en>> Split a declaration entry into [shared, node, name]
+    #
+    # 自分のトピックは `[nil, nil, 名前]`、"<端末>/@shared/<名前>" は
+    # `[:node, 端末, 名前]`、"@shared/<名前>" は `[:global, nil, 名前]`。
+    # 名前として使えない形なら nil。
+    # ```ruby
+    # Asterism::Pubs.place("@shared/lobby")
+    # #=> [:global, nil, "lobby"]
+    # ```
+    # <<en>>
+    # An own topic gives `[nil, nil, name]`, "<node>/@shared/<name>" gives
+    # `[:node, node, name]`, "@shared/<name>" gives `[:global, nil, name]`.
+    # nil for a form that is not a name.
+    # ```ruby
+    # Asterism::Pubs.place("@shared/lobby")
+    # #=> [:global, nil, "lobby"]
+    # ```
+    def self.place: (String entry) -> Array[untyped]?
+
+    # 宣言の項目を作る <<en>> The declaration entry of a topic
+    #
+    # `shared` は nil・:node・:global。nil なら name のまま、:node なら
+    # "<node>/@shared/<name>"、:global なら "@shared/<name>"。
+    # ```ruby
+    # Asterism::Pubs.entry(:global, "n", "lobby")
+    # #=> "@shared/lobby"
+    # ```
+    # <<en>>
+    # `shared` is nil, :node or :global: name as it is, "<node>/@shared/<name>"
+    # or "@shared/<name>".
+    # ```ruby
+    # Asterism::Pubs.entry(:global, "n", "lobby")
+    # #=> "@shared/lobby"
+    # ```
+    def self.entry: (Symbol? shared, String node, String name) -> String
+
+    # 宣言の項目から道を作る <<en>> The key below asterism/ a declared entry puts values on
+    #
+    # `path("n", "app", "imu")` は "n/app/imu"、共有はその項目がそのまま
+    # (端末は項目の中)。項目が正しくなければ nil。
+    # ```ruby
+    # Asterism::Pubs.path("n", "app", "imu")
+    # #=> "n/app/imu"
+    # ```
+    # <<en>>
+    # `path("n", "app", "imu")` is "n/app/imu"; a shared entry is the key
+    # itself. nil when the entry is not valid.
+    # ```ruby
+    # Asterism::Pubs.path("n", "app", "imu")
+    # #=> "n/app/imu"
+    # ```
+    def self.path: (String node, String app, String entry) -> String?
+
+    # 受けた宣言の表を整える <<en>> Clean a received map of declarations
+    #
+    # 項目名として正しく、宣言が Hash のものを残し、"t"・"e"・"u"・"d"・"ts" の
+    # 正しいものだけを入れる。node (宣言を出した端末) を渡すと、ほかの
+    # 端末の共有の項目は落とす。Hash でなければ nil。pubs_of の答えはこれを
+    # 通ってくる。
+    # ```ruby
+    # d = Asterism::Pubs.check(raw, "n")
+    # ```
+    # <<en>>
+    # Keeps entries with a valid name and a Hash declaration, with only the
+    # valid "t", "e", "u", "d" and "ts". With node (the node that declared
+    # them), another node's shared entries are dropped. nil when it is not
+    # a Hash. The answer of pubs_of went through it.
+    # ```ruby
+    # d = Asterism::Pubs.check(raw, "n")
+    # ```
+    def self.check: (untyped h, ?String? node) -> Hash?
+
+    # @pubs への put を読む <<en>> Read a put on asterism/<node>/<app>/@pubs
+    #
+    # key と payload (購読した側が受けるまま) から `[端末, アプリ, 宣言]` を返す。
+    # そうでなければ nil。
+    # ```ruby
+    # n, a, d = Asterism::Pubs.parse(k, b)
+    # ```
+    # <<en>>
+    # Returns `[node, app, declarations]` from the key and payload as a
+    # subscriber gets them; nil when it is not one.
+    # ```ruby
+    # n, a, d = Asterism::Pubs.parse(k, b)
+    # ```
+    def self.parse: (String key, String payload) -> Array[untyped]?
+  end
+
+  # 受けた値の番号の記憶 <<en>> A reader's memory of the sequence numbers
+  #
+  # 送り手ごと・道ごとに、最後の接続の番号と値の番号を覚えて、取りこぼし
+  # (lost) と送り手のやり直し (restarted) を数える。Subscription が 1 つずつ
+  # 持っていて、SampleInfo の lost・restarted はこれが決める。自分で
+  # 値を受けるときに使う (普通のアプリは subscribe だけでよい)。
+  class Sequences
+    # 作る <<en>> Make one remembering up to max lanes
+    #
+    # `max` (省略すると端末は 64、PC は 4096) を超えると、一番古く見た道を
+    # 忘れる (その次の値は最初のものとして数える)。
+    # ```ruby
+    # seqs = Asterism::Sequences.new(16)
+    # ```
+    # <<en>>
+    # `max` (64 on a machine, 4096 on a PC when left out). Past it the lane
+    # seen longest ago is forgotten (its next value counts as a first one).
+    # ```ruby
+    # seqs = Asterism::Sequences.new(16)
+    # ```
+    def self.new: (?Integer? max) -> Asterism::Sequences
+
+    # 値を 1 つ見る <<en>> See one value: [lost, restarted]
+    #
+    # lane は道 (共有の道は送り手も含めた文字列)、run は送り手の接続の
+    # 番号 (nil なら番号なし)、seq は値の番号、app は送り手の
+    # "端末/アプリ" (分からなければ nil)。`[取りこぼした数, 送り手がやり直したか]` を
+    # 返す。道を初めて見るときは [0, false]。
+    # ```ruby
+    # lost, again = seqs.see("k", 7, 1, "n/a")
+    # ```
+    # <<en>>
+    # lane is the key (for a shared key, with the sender), run the sender's
+    # run id (nil: none), seq the value's number, app the sender's
+    # "node/app" (nil when unknown). Returns `[values missed, whether the
+    # sender restarted]`; the first sight of a lane is [0, false].
+    # ```ruby
+    # lost, again = seqs.see("k", 7, 1, "n/a")
+    # ```
+    def see: (String lane, Integer? run, Integer seq, ?String? app) -> Array[untyped]
+
+    # あるアプリの記憶を忘れる <<en>> Forget the lanes of an app that left
+    #
+    # 忘れた道の数を返す。
+    # ```ruby
+    # n = seqs.forget("n/app")
+    # ```
+    # <<en>>
+    # Returns how many lanes it forgot.
+    # ```ruby
+    # n = seqs.forget("n/app")
+    # ```
+    def forget: (String app) -> Integer
+
+    # 覚えている道の数 <<en>> How many lanes are remembered now
+    #
+    # ```ruby
+    # n = seqs.size
+    # ```
+    def size: () -> Integer
+
+    # 全部忘れる <<en>> Forget everything
+    #
+    # 自分を返す。
+    # ```ruby
+    # seqs.clear
+    # ```
+    # <<en>>
+    # Returns itself.
+    # ```ruby
+    # seqs.clear
+    # ```
+    def clear: () -> Asterism::Sequences
+  end
+
+  # アプリの状態の決まり <<en>> Rules for an app's status
+  #
+  # Connection#status が扱う状態 (小さな Hash) の大きさの上限と、受けた状態を
+  # 整える関数。status_of の答えの形を知るときに読む。
+  module Status
+    # 状態を詰めた大きさの上限 (バイト) <<en>> The most bytes the packed status may take
+    MAX_BYTES: Integer
+    # 入れ子の深さの上限 <<en>> The most levels of arrays and maps below the status
+    MAX_DEPTH: Integer
+
+    # 受けた状態を整える <<en>> Clean a received status
+    #
+    # 空でない String のキーだけを残す。Hash でない、または詰めると
+    # MAX_BYTES を超えるときは nil。status_of の答えはこれを通ってくる。
+    # ```ruby
+    # st = Asterism::Status.check(raw)
+    # ```
+    # <<en>>
+    # Keeps the entries with a non-empty String key. nil when it is not a
+    # Hash or packs into more than MAX_BYTES. The answer of status_of went
+    # through it.
+    # ```ruby
+    # st = Asterism::Status.check(raw)
+    # ```
+    def self.check: (untyped h) -> Hash?
+
+    # @status への put を読む <<en>> Read a put on asterism/<node>/<app>/@status
+    #
+    # key と payload (購読した側が受けるまま) から `[端末, アプリ, 状態]` を返す。
+    # そうでなければ nil。
+    # ```ruby
+    # n, a, st = Asterism::Status.parse(k, b)
+    # ```
+    # <<en>>
+    # Returns `[node, app, status]` from the key and payload as a
+    # subscriber gets them; nil when it is not one.
+    # ```ruby
+    # n, a, st = Asterism::Status.parse(k, b)
+    # ```
+    def self.parse: (String key, String payload) -> Array[untyped]?
+  end
+
+  # 端末の名乗り (Profile) <<en>> A node's profile: kind, name, host, icon
+  #
+  # 端末が自分で言う種類・名前・場所・アイコンの決まりと、PNG のアイコンを
+  # 調べる関数。名乗りを変えるのは Connection#profile と Asterism.profile_defaults。
+  module Profile
+    # PNG のアイコンを調べる <<en>> Check a PNG icon: [width, height, icon_hash] (nil if not acceptable)
+    #
+    # 名乗りに載せてよい PNG か見る: 8 バイトの印、8192 バイトまで、チャンクが
+    # IHDR から IEND まで続くこと、一辺 256 画素まで。よければ
+    # `[幅, 高さ, icon_hash]` (icon_hash は 8 桁の 16 進)、だめなら nil。
+    # ```ruby
+    # w, h, hash = Asterism::Profile.png_info(png)
+    # ```
+    # <<en>>
+    # Checks a PNG a profile may carry: the 8-byte signature, 8192 bytes at
+    # most, chunks running from IHDR to IEND, each side 256 pixels at most.
+    # Returns `[width, height, icon_hash]` (8 hex digits), or nil.
+    # ```ruby
+    # w, h, hash = Asterism::Profile.png_info(png)
+    # ```
+    def self.png_info: (untyped bytes) -> Array[untyped]?
+
+    # 受けた名乗りを整える <<en>> Clean a received profile
+    #
+    # 正しい項目 (kind・protocol・host・name・icon・icon_hash) だけを残す。
+    # kind が正しくなければ nil。壊れたアイコンは hash ごと落ちる。
+    # profile_of の答えはこれを通ってくる。
+    # ```ruby
+    # p = Asterism::Profile.check(raw)
+    # ```
+    # <<en>>
+    # Keeps the valid fields (kind, protocol, host, name, icon, icon_hash).
+    # nil when kind is not valid. A broken icon goes with its hash. The
+    # answer of profile_of went through it.
+    # ```ruby
+    # p = Asterism::Profile.check(raw)
+    # ```
+    def self.check: (untyped h) -> Hash?
+  end
+
+  # 接続のセッションに付くモジュール <<en>> Extended onto each connection's session
+  #
+  # connection.session に付いて、接続以外からの close を無視させる。
+  # アプリが直接使うことはない。
+  module SharedSession
+    # 接続以外からの close は何もしない <<en>> A close from anyone but the connection does nothing
+    #
+    # 1 回だけ警告を出して nil を返す。閉じるのは Connection#close。
+    # ```ruby
+    # conn.session.close  # does nothing
+    # ```
+    # <<en>>
+    # Warns once and returns nil. Connection#close is what closes it.
+    # ```ruby
+    # conn.session.close  # does nothing
+    # ```
+    def close: () -> nil
   end
 end
