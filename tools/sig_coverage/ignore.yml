@@ -1,0 +1,88 @@
+# What sig/ leaves out on purpose (doc/sig_coverage, decision 4): the tool
+# removes these from its counts and reports only how many it removed.
+#
+#   - name: Class               the class and its methods (not nested classes)
+#   - name: Class#method        one instance method (Class.method: a class method)
+#   - name: "#method"           a name on an unknown receiver or without one
+#   - file: flash/app/...       an app file left out of count 1
+#
+# Only what is internal by reading the implementation goes here. Anything
+# that may be meant for apps stays counted until the parent session and the
+# user decide (doc/sig_coverage/report/s0.md lists those).
+
+# ---- drawing, editor, kernel internals ----------------------------------
+
+- name: GfxBlock::Recorder
+  reason: >-
+    Captures the drawing calls of a gfx.block while it is evaluated and turns
+    them into the command list; apps call GfxBlock, never the recorder.
+- name: EditorCore
+  reason: >-
+    The editor's document model and type-engine bridge in C (picoruby-fmrb-editor-core);
+    used by the editor app only.
+- name: SyntaxHighlight
+  reason: The editor's (and PicoRabbit's) tokenizer for colouring code.
+- name: FMRB::Debug
+  reason: >-
+    The on-device debugger used by the editor's debug pane
+    (doc/editor_debug); not an app API.
+- name: FmrbKernel
+  reason: The kernel task's own class (main/ruby/kernel); apps run under it.
+
+# ---- native back ends behind a Ruby wrapper -----------------------------
+
+- name: FftNative
+  reason: C half of Fmrb::Fft; apps call Fmrb::Fft, which picks the backend.
+- name: FftCore
+  reason: The :ruby/:spinel FFT back end Fmrb::Fft runs; not called by apps.
+- name: FftCoreQ15
+  reason: The Q15 FFT back end Fmrb::Fft runs; not called by apps.
+- name: RaycastNative
+  reason: C half of Fmrb::Raycast; apps call Fmrb::Raycast.
+- name: RaycastCore
+  reason: The :ruby/:spinel raycast back end Fmrb::Raycast runs; not called by apps.
+- name: SpinelHelloNative
+  reason: C half of Fmrb::SpinelHello.
+- name: SpinelHelloCore
+  reason: The Ruby back end Fmrb::SpinelHello runs.
+
+# ---- encodings inside a gem ---------------------------------------------
+
+- name: Asterism::Codec
+  reason: Asterism's msgpack value codec, used by Connection; apps pass plain values.
+- name: Asterism::CDR
+  reason: The ROS 2 wire encoding (CDR) helpers used by Asterism::ROS messages.
+- name: Asterism::CDR::Reader
+  reason: CDR decoder used by Asterism::ROS::Message.decode.
+- name: Asterism::CDR::Writer
+  reason: CDR encoder used by Asterism::ROS::Message.encode.
+- name: JSON::Parser
+  reason: The parser behind JSON.parse.
+- name: JSON::Generator
+  reason: The generator behind JSON.generate.
+- name: JSON::Common
+  reason: Shared scanning helpers of JSON::Parser and JSON::Digger.
+
+# ---- app files that are not apps ----------------------------------------
+
+- file: flash/app/game/breakout/generate_bgm.rb
+  reason: A host CRuby script (#!/usr/bin/env ruby) that generates the app's data.
+- file: flash/app/game/breakout/generate_sprites.rb
+  reason: A host CRuby script that generates the app's sprites.
+- file: flash/app/game/rpg_demo/generate_bgm.rb
+  reason: A host CRuby script that generates the app's data.
+- file: flash/app/game/rpg_demo/generate_player_sheet.rb
+  reason: A host CRuby script that generates the app's sprites.
+- file: flash/app/game/rpg_demo/generate_tiles.rb
+  reason: A host CRuby script that generates the app's tiles.
+- file: flash/app/game/rpg_demo/generate_world.rb
+  reason: A host CRuby script that generates the app's map.
+- file: flash/app/debug/compile_err.app.rb
+  reason: Broken on purpose, to show a compile error.
+
+# ---- names that are errors on purpose -----------------------------------
+
+- name: "#no_such_method"
+  reason: The exception demo calls a method that does not exist on purpose.
+- name: "#undefined_variable"
+  reason: The exception sample reads an undefined name on purpose.
