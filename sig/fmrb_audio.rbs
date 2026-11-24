@@ -23,17 +23,19 @@ class FmrbAudio
 
   # 曲のファイルを鳴らす <<en>> Play a song file
   #
-  # NSF を鳴らす。曲は /usr/share/sounds/nsf にある。
+  # NSF を鳴らす。曲は /usr/share/sounds/nsf にある。`track:` (省略すると 0) は
+  # NSF の中の曲の番号。
   # ```ruby
   # @audio.play("/usr/share/sounds/nsf/test.nsf")
   # ```
   # <<en>>
-  # Plays an NSF. The tunes live in /usr/share/sounds/nsf.
+  # Plays an NSF. The tunes live in /usr/share/sounds/nsf. `track:` (0 when
+  # left out) is the song inside the NSF.
   # ```ruby
   # @audio.play("/usr/share/sounds/nsf/test.nsf")
   # ```
   %a{fmrb.internal}
-  def play: (String path) -> void
+  def play: (String path, ?track: Integer) -> void
 
   # play の省略なしの形 <<en>> play with nothing left out
   #
@@ -84,6 +86,139 @@ class FmrbAudio
   NSF_END_LOOP: Integer
   NSF_END_LIMIT: Integer
 
+  # 長い曲を置く APU (0) <<en>> The APU for long music (0)
+  #
+  # `play` と `play_slot` の既定。効果音に使う `SUB` と分けると、効果音が曲を切らない。
+  # ```ruby
+  # @audio.play_slot(0, instance: FmrbAudio::MAIN)
+  # ```
+  # <<en>>
+  # The default of `play` and `play_slot`. Keep effects on `SUB` so they do
+  # not cut the music.
+  # ```ruby
+  # @audio.play_slot(0, instance: FmrbAudio::MAIN)
+  # ```
+  MAIN: Integer
+
+  # 効果音の APU (1) <<en>> The APU for short effects (1)
+  #
+  # `note_on` もここで鳴る。
+  # ```ruby
+  # @audio.play_slot(1, instance: FmrbAudio::SUB)
+  # ```
+  # <<en>>
+  # `note_on` sounds here too.
+  # ```ruby
+  # @audio.play_slot(1, instance: FmrbAudio::SUB)
+  # ```
+  SUB: Integer
+
+  # 矩形波 1 の channel (0) <<en>> The first pulse channel (0)
+  #
+  # ```ruby
+  # @audio.note_on(FmrbAudio::CH_PULSE1, 440)
+  # ```
+  CH_PULSE1: Integer
+
+  # 矩形波 2 の channel (1) <<en>> The second pulse channel (1)
+  #
+  # ```ruby
+  # @audio.note_on(FmrbAudio::CH_PULSE2, 440)
+  # ```
+  CH_PULSE2: Integer
+
+  # 三角波の channel (2) <<en>> The triangle channel (2)
+  #
+  # ```ruby
+  # @audio.note_on(FmrbAudio::CH_TRIANGLE, 220)
+  # ```
+  CH_TRIANGLE: Integer
+
+  # ノイズの channel (3) <<en>> The noise channel (3)
+  #
+  # ```ruby
+  # @audio.note_on(FmrbAudio::CH_NOISE, 8)
+  # ```
+  CH_NOISE: Integer
+
+  # マイクがあるか <<en>> Whether this machine has a microphone
+  #
+  # ESP32-P4 の端末 (Tab5 など) だけ true。それ以外は false なので、
+  # 呼ぶ前に端末を調べなくてよい。
+  # ```ruby
+  # return unless @audio.mic_available?
+  # ```
+  # <<en>>
+  # true only on an ESP32-P4 machine (a Tab5 and the like); false elsewhere,
+  # so there is no need to check the machine first.
+  # ```ruby
+  # return unless @audio.mic_available?
+  # ```
+  %a{fmrb.internal}
+  def mic_available?: () -> bool
+
+  # マイクの標本化の速さ (Hz) <<en>> The microphone's sampling rate in Hz
+  #
+  # ESP32-P4 では 47160 (スピーカーと同じクロックで、選べない)。マイクの
+  # 無い端末では 0。スペクトルの 1 本の幅 (Hz) はこれを標本の数で割る。
+  # ```ruby
+  # hz = @audio.mic_rate
+  # ```
+  # <<en>>
+  # 47160 on an ESP32-P4 (it shares the speaker's clock and cannot be
+  # chosen); 0 on a machine without a microphone. A spectrum's bin width in
+  # Hz is this over the number of samples.
+  # ```ruby
+  # hz = @audio.mic_rate
+  # ```
+  %a{fmrb.internal}
+  def mic_rate: () -> Integer
+
+  # マイクを入れる・切る <<en>> Turn the microphone on or off
+  #
+  # `on` (省略すると true)。**読む前に入れ、使い終えたら `false` で切る**。
+  # 成功したら true。マイクの無い端末や、立ち上げに失敗したときは false
+  # (例外は出ない)。すでにその状態なら true。
+  # ```ruby
+  # @audio.mic_enable
+  # @audio.mic_enable(false)
+  # ```
+  # <<en>>
+  # `on` (true when left out). Turn it on before reading and off with
+  # `false` when done. true on success; false on a machine without one or
+  # when it fails to start (no exception). true if it is already so.
+  # ```ruby
+  # @audio.mic_enable
+  # @audio.mic_enable(false)
+  # ```
+  %a{fmrb.internal}
+  def mic_enable: (?bool on) -> bool
+
+  # マイクの音を標本で読む <<en>> Read microphone samples
+  #
+  # `count` 個 (1〜4096、外れると ArgumentError) の 16 ビット符号つき・
+  # リトルエンディアンの標本を、2 * count バイトの String で返す。そろう
+  # まで待つ (**止まる**)。`timeout_ms` (省略すると 200) は、ドライバが
+  # 256 個ほどずつ渡すその 1 回ごとの待ち。そろわなかったときと、
+  # マイクが入っていない・無いときは nil (半端な長さは返さない)。
+  # ```ruby
+  # bytes = @audio.mic_read(512, 300)
+  # return if bytes.nil?
+  # ```
+  # <<en>>
+  # Returns `count` (1 to 4096, else ArgumentError) signed 16-bit
+  # little-endian samples as a String of 2 * count bytes. It waits until they
+  # are there (**it blocks**); `timeout_ms` (200 when left out) is the wait of
+  # each hand-over from the driver, about 256 samples at a time. nil when
+  # they did not arrive, and when the microphone is off or absent (never a
+  # short String).
+  # ```ruby
+  # bytes = @audio.mic_read(512, 300)
+  # return if bytes.nil?
+  # ```
+  %a{fmrb.internal}
+  def mic_read: (Integer count, ?Integer timeout_ms) -> String?
+
   # 曲をいったん止める <<en>> Pause the song
   #
   # ```ruby
@@ -123,11 +258,18 @@ class FmrbAudio
 
   # 箱に入れた曲を鳴らす <<en>> Play the song in a slot
   #
+  # `instance:` (省略すると MAIN) は鳴らす APU で、`FmrbAudio::MAIN` か `FmrbAudio::SUB`。
+  # ```ruby
+  # @audio.play_slot(0)
+  # ```
+  # <<en>>
+  # `instance:` (MAIN when left out) is the APU that plays it,
+  # `FmrbAudio::MAIN` or `FmrbAudio::SUB`.
   # ```ruby
   # @audio.play_slot(0)
   # ```
   %a{fmrb.internal}
-  def play_slot: (Integer slot_id) -> void
+  def play_slot: (Integer slot_id, ?instance: Integer) -> void
 
   # play_slot の省略なしの形 <<en>> play_slot with nothing left out
   #
@@ -192,16 +334,20 @@ class FmrbAudio
   # 音を一つ鳴らす <<en>> Sound one note
   #
   # 周波数を Hz で渡す。曲を鳴らしている最中でも重なる。
+  # `volume` (省略すると 10) は 0〜15、`duty` (省略すると 2) は矩形波の幅 0〜3、
+  # `sweep` (省略すると 0)。
   # ```ruby
   # @audio.note_on(0, 440)
   # ```
   # <<en>>
   # The frequency is in Hz. It sounds over a tune that is already playing.
+  # `volume` (10 when left out) is 0 to 15, `duty` (2) the pulse width 0 to
+  # 3, `sweep` (0).
   # ```ruby
   # @audio.note_on(0, 440)
   # ```
   %a{fmrb.internal}
-  def note_on: (Integer channel, Integer freq) -> void
+  def note_on: (Integer channel, Integer freq, ?Integer volume, ?Integer duty, ?Integer sweep) -> void
 
   # note_on の省略なしの形 <<en>> note_on with nothing left out
   #
@@ -226,6 +372,27 @@ class FmrbAudio
   # @audio.note_off(0)
   # ```
   def note_off: (Integer channel) -> void
+end
+
+# マイクの C 側の窓口。アプリは ふつう FmrbAudio の mic_* を使う。
+module FmrbMic
+  # マイクがあるか <<en>> Whether this machine has a microphone
+  #
+  # `FmrbAudio` を作る前に調べるとき用で、`FmrbAudio#mic_available?` と同じ。
+  # ```ruby
+  # unless FmrbMic.available?
+  #   @error = "no microphone"
+  # end
+  # ```
+  # <<en>>
+  # For asking before an `FmrbAudio` exists; the same as
+  # `FmrbAudio#mic_available?`.
+  # ```ruby
+  # unless FmrbMic.available?
+  #   @error = "no microphone"
+  # end
+  # ```
+  def self.available?: () -> bool
 end
 
 # NSF (ファミコンの曲) のファイルの題名などを読む。
