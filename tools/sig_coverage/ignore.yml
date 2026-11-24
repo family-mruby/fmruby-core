@@ -589,6 +589,177 @@
   reason: >-
     The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/sig_coverage S5a).
 
+# ---- Asterism, the ROS 2 bridge and the table client, the inside (doc/sig_coverage S5b) --
+
+- name: "FmrbAsterism::TableClient#add_table"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#collect_join"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#collect_view"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#find_tables"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#host_of"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#link_down"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#link_up"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#node_joined"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#node_left"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#ours?"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#state_came"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#subscribe_states"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#view_due?"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::TableClient#watch_states"
+  reason: >-
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.const_missing"
+  reason: >-
+    Loads a part of the gem on first use; not something to call (doc/sig_coverage S5b).
+- name: "Asterism::ROS.fields_of"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.gid_for"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.load_type_file"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.mangle"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.now_ms"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.now_ns"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.pause"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.strip_slashes"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.type_constant"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS.type_of"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism.config_text"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism.first_line"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism.migrate"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism.read_file"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism.router_unset?"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism.strings_of"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism.warn_old_files"
+  reason: >-
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#close_session"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#connect"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#now_ms"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#poll"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#prepare"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#tell_down"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Link#wifi_ready?"
+  reason: >-
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Client.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Client#decode_response"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Timer#due?"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Timer#fire"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism.const_missing"
+  reason: >-
+    Loads a part of the gem on first use; not something to call (doc/sig_coverage S5b).
+- name: "Asterism::AsyncProxy.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::CurrentCall.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::Future.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::Proxy.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Attachment.le_int"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Call.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Message.plain"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Node#fire"
+  reason: >-
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Publisher.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Service.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "Asterism::ROS::Subscription.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+- name: "FmrbAsterism::Settings.new"
+  reason: >-
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+
 # ---- left out until they are fixed ------------------------------------------
 
 - name: Kernel.send_message

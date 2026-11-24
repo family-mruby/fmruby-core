@@ -354,3 +354,14 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   - `GPIO.new` はピンの台帳への取得の失敗を見ない (システム専用のピンにも書けてしまう読み)。`GPIO#read` の失敗は -1 で、
     `high?` が true になる。`I2C.new` の失敗の文が 1 種類に畳まれる。`JSON.generate` は NaN をそのまま入れる。
     `gpio_viewer.app.rb` の `PIN_COUNT = 49` は直書きで、P4 (55) と合わない。いずれも読みだけ (sim に GPIO・I2C は無い)。
+
+- **エディタの型支援が、入れ子のクラス (`A::B`) を受け手にした呼び出しを解けない** (2026-11-25、doc/sig_coverage の S5b の
+  検収で確認。sim のエディタ)。`m = FmrbMidi::MmlPlayer.new(d)` や `Asterism::Types.number(...)`、
+  `FmrbAsterism::Link.new(...)` の結果に型が付かず (Ctrl+T は "No type here")、その先の補完・Ctrl+E の検査が働かない。
+  最上位のクラス (`FmrbUI.new`・`TileSheet.new`)、モジュールの関数の戻り値 (`FmrbMidi.device(self)` → `MIDI::Device`)、
+  `Klass::CONST` の定数は解ける。原因: 型エンジン (picoruby-ti の `ti_handle_constant_path`) が「`Klass::CONST` の形だけ」を
+  扱い、`A::B` をクラスとして引かない。sig の誤りではない (AI ホストは文字で読むので影響なし)。sig に入れ子のクラスが
+  増えた (Asterism・ROS 2 の橋・MIDI のプレーヤー・`JSON::Digger`・`FmrbUI::*`) ので、直すと効く範囲が広い。直し方の案:
+  定数のパスの全体 (`A::B::C`) をクラスの名前として引き、当たればそのクラス (静的) を返す。ユーザの判断待ち。
+- 通信のまわりで見つかった疑い (2026-11-25、report/s5b.md。読みだけ): `ROS::Subscription#handler=` は `node.subscribe` で
+  作った物だけ `Node#poll` に拾われ、`node.subscription` に後から付けても呼ばれない。`TableClient#leave` の戻り値が false。
