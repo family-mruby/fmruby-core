@@ -108,6 +108,21 @@ class Object
   # ```
   def dup: () -> self
 
+  # 同じ物 (同一のオブジェクト) か <<en>> Whether it is the very same object
+  #
+  # **値でなく、同一のオブジェクトかを見る** (`==` とは違う)。文字列は中身が同じでも、
+  # 別に作ったものは false。
+  # ```ruby
+  # a.equal?(b)
+  # ```
+  # <<en>>
+  # **Asks for the same object, not the same value** (unlike `==`). Two strings with
+  # equal contents that were built separately give false.
+  # ```ruby
+  # a.equal?(b)
+  # ```
+  def equal?: (untyped other) -> bool
+
   # アプリを終える <<en>> End the app
   #
   # **アプリを終える**。Window の後始末は入れ物がやる。
@@ -152,6 +167,23 @@ class Object
   # obj.extend(Bar)
   # ```
   def extend: (*untyped modules) -> nil
+
+  # 変更できなくする <<en>> Make the object unmodifiable
+  #
+  # 自分自身を返す。そのあとで文字列・配列・ハッシュを変えようとすると**FrozenError**。
+  # Integer・Symbol・nil・true・false は何も起きない (もとから変えられない)。
+  # 定数の配列やハッシュを守るのに使う。
+  # ```ruby
+  # NAMES = ["a", "b"].freeze
+  # ```
+  # <<en>>
+  # Returns the object itself. Changing a frozen String, Array or Hash afterwards raises
+  # **FrozenError**. Integer, Symbol, nil, true and false are left as they are (they
+  # cannot change anyway). Use it to protect a constant Array or Hash.
+  # ```ruby
+  # NAMES = ["a", "b"].freeze
+  # ```
+  def freeze: () -> self
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
   #
@@ -258,6 +290,24 @@ class Object
   # end
   # ```
   def relinquish: () -> bool
+
+  # そのメソッドを持つか <<en>> Whether the object has the method
+  #
+  # name は Symbol か String。**private かどうかは見ない** (有れば true)。メソッドが無くても、
+  # `respond_to_missing?` が true を返せば true (`include_all` はその呼び出しに渡るだけ)。
+  # 機種やビルドで有る無しが分かれる API を確かめるのに使う。
+  # ```ruby
+  # GC.respond_to?(:reset_stat)
+  # ```
+  # <<en>>
+  # name is a Symbol or a String. **It does not look at private** (true when the method
+  # exists). Even without the method it is true when `respond_to_missing?` says so
+  # (`include_all` is only passed on to that call). Use it for an API that exists on
+  # some platforms or builds only.
+  # ```ruby
+  # GC.respond_to?(:reset_stat)
+  # ```
+  def respond_to?: ((Symbol | String) name, ?bool include_all) -> bool
 
   # 秒だけ待つ <<en>> Wait, in seconds
   #

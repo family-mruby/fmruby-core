@@ -447,6 +447,26 @@ class String
   # ```
   def index: ((String | Integer) substring_or_codepoint, ?Integer offset) -> (Integer | nil)
 
+  # 後ろから探した位置を返す <<en>> Return the last position of a substring
+  #
+  # **文字の位置**で返す (日本語は 1 文字が 1)。見つからなければ **nil**。
+  # `offset` (省略すると末尾から) は探し始める文字の位置で、それより後ろは見ない。
+  # **文字列だけを受ける** (Regexp も Integer も使えない)。
+  # ```ruby
+  # path.rindex("/")      #=> 8
+  # path.rindex(".", 5)
+  # ```
+  # <<en>>
+  # Returns the **character** position (a Japanese character counts as 1), or **nil**
+  # when it is not found. `offset` (the end of the string when left out) is where the
+  # search starts; nothing after it is looked at. **Strings only** (no Regexp, no
+  # Integer).
+  # ```ruby
+  # path.rindex("/")      #=> 8
+  # path.rindex(".", 5)
+  # ```
+  def rindex: (String substring, ?Integer offset) -> (Integer | nil)
+
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
   #
   # 引用符と escape が付く。ログに出すときに使う。

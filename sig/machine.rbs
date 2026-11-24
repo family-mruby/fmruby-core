@@ -1,0 +1,367 @@
+# 時刻・待ち・機種の判別 (Machine)。
+# 実装は picoruby の gem picoruby-machine (lib/upstream/replace/picoruby-machine/:
+# src/mruby/machine.c、mrblib/machine.rb、ports/esp32 と ports/posix)。
+# ESP32 (実機) と POSIX (Linux・ネイティブ版・ブラウザ版) で中身が違うものは長文に書いた。
+
+# 時刻と待ち、機種の判別。
+#
+# 時刻は `board_millis` (ms)・`uptime_us` (マイクロ秒)、待ちは `delay_ms`・`busy_wait_ms`、
+# 機種の判別は `posix?`。**ESP32 の実機と Linux・ブラウザ版で振る舞いが違うものがある**
+# (メソッドごとの長文に書いた)。
+# ```ruby
+# t0 = Machine.board_millis
+# ```
+# <<en>>
+# Time, waiting, and telling the platforms apart. Time is `board_millis` (ms) and
+# `uptime_us` (microseconds), waiting is `delay_ms` and `busy_wait_ms`, and
+# `posix?` tells the platform. **Some methods behave differently on an ESP32 board
+# and on Linux or the browser build** (noted per method).
+# ```ruby
+# t0 = Machine.board_millis
+# ```
+module Machine
+  # 起動からの時間 (ms) <<en>> Milliseconds since boot
+  #
+  # 経過時間を測るのに使う。2 回の値の**差**を取る。
+  #
+  # 単位はミリ秒で、整数は 64 ビット (どのビルドも `MRB_INT64`) なので一周は気にしなくてよい。
+  # **数え始めがビルドで違う**: ESP32 は端末の起動から、Linux・ネイティブ版は**ホストの起動から**
+  # (端末の起動からではない)、ブラウザ版はプログラムの開始から。値そのものに意味を持たせず、
+  # 差だけを使う。
+  #
+  # 別の VM から運ばれてきたアプリ (checkpoint) では、元の VM で見ていた値の続きになる
+  # (この端末の値に元の VM とのずれが足される)。`uptime_us` にはこのずれが足されない。
+  # ```ruby
+  # t0 = Machine.board_millis
+  # elapsed = Machine.board_millis - t0
+  # ```
+  # <<en>>
+  # Use it to measure elapsed time: take the **difference** of two readings.
+  #
+  # The unit is milliseconds. Integers are 64-bit in every build (`MRB_INT64`), so
+  # there is no wrap to worry about. **Where it starts counting differs**: an ESP32
+  # counts from the board's boot, Linux and the native build from the **host's boot**
+  # (not the app's or the simulator's), the browser build from the start of the
+  # program. Do not give the value itself a meaning; use differences.
+  #
+  # An app carried from another VM (checkpoint) goes on from the value it saw there
+  # (an offset between that VM and this one is added). `uptime_us` does not get the
+  # offset.
+  # ```ruby
+  # t0 = Machine.board_millis
+  # elapsed = Machine.board_millis - t0
+  # ```
+  def self.board_millis: () -> Integer
+
+  # 起動からの時間 (マイクロ秒) <<en>> Microseconds since boot
+  #
+  # `board_millis` より細かい測りに使う。数え始めは `board_millis` と同じ (ESP32 は端末の起動、
+  # Linux・ネイティブ版はホストの起動、ブラウザ版はプログラムの開始)。
+  # **checkpoint で運ばれたアプリでも、ずれは足されない**。整数は 64 ビット。
+  # ```ruby
+  # t = Machine.uptime_us
+  # work
+  # dt = Machine.uptime_us - t
+  # ```
+  # <<en>>
+  # For finer measurements than `board_millis`. It starts counting where
+  # `board_millis` does (the board's boot on an ESP32, the host's boot on Linux and
+  # the native build, the start of the program in the browser). **The offset of an
+  # app carried by checkpoint is not added.** Integers are 64-bit.
+  # ```ruby
+  # t = Machine.uptime_us
+  # work
+  # dt = Machine.uptime_us - t
+  # ```
+  def self.uptime_us: () -> Integer
+
+  # 起動からの時間を文字列で <<en>> Uptime as a string
+  #
+  # ```ruby
+  # Machine.uptime_formatted  #=> "0d 00:12:34.56"
+  # ```
+  def self.uptime_formatted: () -> String
+
+  # アプリごと止めて待つ (ms) <<en>> Block this app for ms milliseconds
+  #
+  # 指定した ms の間、**このアプリのタスクごと止める**。待つ間は `on_update` もイベントの
+  # 処理も進まず、同じ VM の Task にも切り替わらない。Task を切り替えて待つ `sleep_ms`
+  # とは違い、`_spin` の外 (起動の手順など) でも止まる。
+  #
+  # ms が負だと ArgumentError。戻り値は渡した ms。
+  #
+  # **待つ長さは機種で違う**。ESP32 の実装は FreeRTOS の `vTaskDelay(ms / 10)` で、tick を
+  # 10 ms と決め打ちしている (10 ms 未満は待たずに譲るだけ)。今のビルドの tick は 1 ms
+  # (`CONFIG_FREERTOS_HZ=1000`) なので、指定の約 1/10 しか待たない可能性がある。Linux・
+  # ネイティブ版は 10 ms 刻みで実時間を見て待つので、指定より最大で約 10 ms 長くなる。
+  # ```ruby
+  # Machine.delay_ms(100)
+  # ```
+  # <<en>>
+  # Blocks **the whole app task** for ms milliseconds. While it waits, `on_update`
+  # and events are not handled and no other Task in the same VM runs. Unlike
+  # `sleep_ms` (which switches Tasks), it also stops outside `_spin` (startup, for
+  # instance).
+  #
+  # A negative ms raises ArgumentError. It returns the ms you passed.
+  #
+  # **How long it waits differs by platform.** The ESP32 code is FreeRTOS
+  # `vTaskDelay(ms / 10)`, which assumes a 10 ms tick (under 10 ms it only yields).
+  # This build's tick is 1 ms (`CONFIG_FREERTOS_HZ=1000`), so it may wait only about
+  # a tenth of what you asked for. Linux and the native build watch the real clock
+  # in 10 ms steps, so they wait up to about 10 ms longer.
+  # ```ruby
+  # Machine.delay_ms(100)
+  # ```
+  def self.delay_ms: (Integer ms) -> Integer
+
+  # CPU を回して待つ (ms) <<en>> Busy-wait for ms milliseconds
+  #
+  # ms が負だと ArgumentError。戻り値は渡した ms。
+  #
+  # **ESP32 では他の仕事を止めて CPU を回す** (`ets_delay_us(1000 * ms)`)。長い待ちには
+  # 使わず、`delay_ms` か `sleep_ms` を使う。Linux・ネイティブ版は `nanosleep` を 1 回呼ぶだけで、
+  # CPU は回さず、シグナルで割り込まれると**短く切り上がる**ことがある。
+  # ```ruby
+  # Machine.busy_wait_ms(2)
+  # ```
+  # <<en>>
+  # A negative ms raises ArgumentError. It returns the ms you passed.
+  #
+  # **On an ESP32 it spins the CPU and nothing else runs** (`ets_delay_us(1000 * ms)`).
+  # Use `delay_ms` or `sleep_ms` for long waits. Linux and the native build call
+  # `nanosleep` once; they do not spin, and a signal can **cut the wait short**.
+  # ```ruby
+  # Machine.busy_wait_ms(2)
+  # ```
+  def self.busy_wait_ms: (Integer ms) -> Integer
+
+  # 秒単位で眠る (軽いスリープ) <<en>> Light-sleep for whole seconds
+  #
+  # sec は秒で、**2 以上 86399 以下**。負や 86400 以上は ArgumentError。**2 未満は眠らず**、
+  # 警告 ("Cannot sleep less than 2 sec") を出して戻る。眠る前にも警告を出す。戻り値は渡した sec。
+  #
+  # ESP32 は chip ごとの light sleep (`esp_light_sleep_start`) に入る。**Linux・ネイティブ版は
+  # 何もせず、すぐ戻る**。アプリの待ちには使わず、`delay_ms` か `sleep_ms` を使う。
+  # ```ruby
+  # Machine.sleep(5)
+  # ```
+  # <<en>>
+  # sec is in seconds, **2 to 86399**. A negative value or 86400 or more raises
+  # ArgumentError. **Under 2 it does not sleep**: it prints a warning ("Cannot sleep
+  # less than 2 sec") and returns. It also warns before sleeping. It returns the sec
+  # you passed.
+  #
+  # An ESP32 enters light sleep for the whole chip (`esp_light_sleep_start`).
+  # **Linux and the native build do nothing and return at once.** Do not use it to
+  # wait in an app; use `delay_ms` or `sleep_ms`.
+  # ```ruby
+  # Machine.sleep(5)
+  # ```
+  def self.sleep: (Integer sec) -> Integer
+
+  # ディープスリープ (未実装) <<en>> Deep sleep (not implemented)
+  #
+  # **このビルドでは呼ぶと必ず NotImplementedError** (引数は見ない)。
+  # <<en>>
+  # **Always raises NotImplementedError in this build** (it does not look at the
+  # arguments).
+  def self.deep_sleep: (Integer gpio_pin, bool edge, bool high) -> bot
+
+  # 端末の固有 ID を返す <<en>> Return the machine's unique ID
+  #
+  # **ESP32 は MAC アドレスを 12 桁の 16 進 (大文字)** で返す。**Linux・ネイティブ版は
+  # `/etc/machine-id` の 32 桁** (ホストの ID)。読めないときは **nil** (ブラウザ版など
+  # ファイルが無い所)。
+  # ```ruby
+  # id = Machine.unique_id
+  # ```
+  # <<en>>
+  # **An ESP32 returns its MAC address as 12 hex digits (upper case).** **Linux and
+  # the native build return the 32 digits in `/etc/machine-id`** (the host's ID).
+  # It is **nil** when it cannot be read (the browser build has no such file).
+  # ```ruby
+  # id = Machine.unique_id
+  # ```
+  def self.unique_id: () -> (String | nil)
+
+  # 生のアドレスからバイトを読む <<en>> Read raw bytes from an address
+  #
+  # address 番地から size バイトを新しい文字列 (バイナリ) にして返す。**番地は確かめない**ので、
+  # 読めない番地を渡すと本体ごと落ちる。デバッグ用。
+  # ```ruby
+  # s = Machine.read_memory(addr, 16)
+  # ```
+  # <<en>>
+  # Returns size bytes from address as a new binary string. **The address is not
+  # checked**: an unreadable one crashes the whole firmware. For debugging.
+  # ```ruby
+  # s = Machine.read_memory(addr, 16)
+  # ```
+  def self.read_memory: (Integer address, Integer size) -> String
+
+  # スタックの使用量 (未対応) <<en>> Stack usage (not supported)
+  #
+  # **今のビルドでは常に nil** (ESP32・Linux とも実装が 0 を返し、0 のときは nil にする)。
+  # <<en>>
+  # **Always nil in this build** (both the ESP32 and the Linux code return 0, and 0
+  # becomes nil).
+  def self.stack_usage: () -> (Integer | nil)
+
+  # システム時計を合わせる <<en>> Set the system clock
+  #
+  # tv_sec は UNIX 時刻 (1970 年からの秒、UTC)。**ESP32 だけ**。成功すると true。
+  # **Linux・ネイティブ版・ブラウザ版は NotImplementedError** を出す (これは
+  # StandardError ではなく ScriptError なので、`rescue => e` では受けられない。呼ぶ前に
+  # `Machine.posix?` で分ける)。RTC チップへは書かない。
+  # ```ruby
+  # Machine.set_hwclock(epoch) unless Machine.posix?
+  # ```
+  # <<en>>
+  # tv_sec is UNIX time (seconds since 1970, UTC). **ESP32 only.** It returns true.
+  # **Linux, the native build and the browser build raise NotImplementedError**
+  # (a ScriptError, not a StandardError, so `rescue => e` does not catch it; check
+  # `Machine.posix?` first). It does not write the RTC chip.
+  # ```ruby
+  # Machine.set_hwclock(epoch) unless Machine.posix?
+  # ```
+  def self.set_hwclock: (Integer tv_sec) -> true
+
+  # システム時計を読む <<en>> Read the system clock
+  #
+  # `[秒, ナノ秒]` の配列 (UNIX 時刻の UTC)。**ESP32 だけ**。**Linux・ネイティブ版・ブラウザ版は
+  # NotImplementedError** (`rescue => e` では受けられない)。
+  # ```ruby
+  # sec, nsec = Machine.get_hwclock
+  # ```
+  # <<en>>
+  # An array of `[seconds, nanoseconds]` (UNIX time, UTC). **ESP32 only.** **Linux,
+  # the native build and the browser build raise NotImplementedError** (not caught
+  # by `rescue => e`).
+  # ```ruby
+  # sec, nsec = Machine.get_hwclock
+  # ```
+  def self.get_hwclock: () -> Array[Integer]
+
+  # プログラムを終える <<en>> Exit the program
+  #
+  # **ESP32 では何もしない** (nil を返すだけ)。**Linux・ネイティブ版では本体のプロセスごと
+  # 終わる** ので、アプリから呼ばない。アプリを閉じるのは `FmrbApp#stop`。
+  # <<en>>
+  # **Does nothing on an ESP32** (returns nil). **On Linux and the native build the
+  # whole firmware process exits**, so do not call it from an app. Close an app with
+  # `FmrbApp#stop`.
+  def self.exit: (?Integer status) -> nil
+
+  # 再起動する (このビルドでは使えない) <<en>> Reboot (not usable in this build)
+  #
+  # wait_ms (省略すると 0) だけ待ってから再起動しようとする。**ESP32 では
+  # NotImplementedError** (ウォッチドッグの gem が入っていない)。Linux・ネイティブ版は
+  # 終了コード 120 でプロセスを終える。端末を再起動するのは `FmrbSystem.reboot`。
+  # <<en>>
+  # Tries to reboot after wait_ms (0 when left out). **It raises NotImplementedError
+  # on an ESP32** (the watchdog gem is not in the build). Linux and the native build
+  # end the process with exit code 120. To restart the machine use
+  # `FmrbSystem.reboot`.
+  def self.reboot: (?Integer wait_ms) -> nil
+
+  # Linux 系 (POSIX) の版か <<en>> Whether this is a POSIX build
+  #
+  # **Linux・ネイティブ版・ブラウザ版で true、ESP32 の実機で false**
+  # (`RUBY_PLATFORM` が "ESP32" でなければ true)。実機にしか無い呼び出し
+  # (`set_hwclock` など) を分けるのに使う。
+  # ```ruby
+  # if Machine.posix?
+  #   # simulator
+  # end
+  # ```
+  # <<en>>
+  # **True on Linux, the native build and the browser build; false on an ESP32
+  # board** (true unless `RUBY_PLATFORM` is "ESP32"). Use it to separate calls that
+  # only a board has (`set_hwclock` and so on).
+  # ```ruby
+  # if Machine.posix?
+  #   # simulator
+  # end
+  # ```
+  def self.posix?: () -> bool
+
+  # Wi-Fi を使える版か <<en>> Whether Wi-Fi is available
+  #
+  # `Network::WiFi` が定義されていれば true。**Family mruby にはこの定義が見つからず、
+  # 今は常に false** (Wi-Fi の状態は `FmrbApp` と `FmrbNet` で調べる)。
+  # <<en>>
+  # True when `Network::WiFi` is defined. **Family mruby has no such definition, so it is
+  # always false** (ask `FmrbApp` and `FmrbNet` about Wi-Fi instead).
+  def self.wifi_available?: () -> bool
+
+  # USB デバイスの処理を 1 回回す <<en>> Run one USB device task step
+  #
+  # **この版では中身が空** (ESP32・Linux とも何もせず nil)。
+  # <<en>>
+  # **Empty in this build** (an ESP32 and Linux both do nothing and return nil).
+  def self.tud_task: () -> nil
+
+  # USB がつながっているか <<en>> Whether USB is mounted
+  #
+  # **ESP32 は常に false、Linux・ネイティブ版は常に true** (実際の接続は見ない)。
+  # <<en>>
+  # **Always false on an ESP32, always true on Linux and the native build** (it does
+  # not look at a real connection).
+  def self.tud_mounted?: () -> bool
+
+  # BOOTSEL ボタンを押しているか (使えない) <<en>> Whether BOOTSEL is pressed (unavailable)
+  #
+  # RP2 系の機種の機能。**このビルドでは呼ぶと必ず NotImplementedError**。
+  # <<en>>
+  # A feature of RP2 boards. **Always raises NotImplementedError in this build.**
+  def self.bootsel_pressed?: () -> bool
+
+  # 受け取った Ctrl-C を例外にする <<en>> Raise a pending Ctrl-C as an exception
+  #
+  # 受けていれば Interrupt ("SIGINT")、Ctrl-Z なら SignalException ("SIGTSTP") を出す。何も無ければ nil。
+  # 受け取るのは **Linux・ネイティブ版の標準入力だけ** (ESP32 には受け取る所が無く、いつも nil)。
+  # <<en>>
+  # Raises Interrupt ("SIGINT") when Ctrl-C was received, SignalException ("SIGTSTP")
+  # for Ctrl-Z, and returns nil when nothing is pending. Only **the standard input
+  # of Linux and the native build** receives them (nothing sets it on an ESP32, so
+  # it is always nil there).
+  def self.check_signal: () -> nil
+
+  # 受け取った Ctrl-C を Symbol で返す <<en>> Return a pending Ctrl-C as a Symbol
+  #
+  # `check_signal` の例外を出さない版。Ctrl-C なら `:INT`、Ctrl-Z なら `:TSTP`、何も無ければ nil。
+  # <<en>>
+  # `check_signal` without the exception: `:INT` for Ctrl-C, `:TSTP` for Ctrl-Z, nil
+  # when nothing is pending.
+  def self.poll_signal: () -> (Symbol | nil)
+
+  # シグナルを自分で扱うと印を付ける <<en>> Mark that this program handles signals
+  #
+  # 印を立てるだけ (`pop_signal_self_manage` で読み出して下ろす)。
+  # <<en>>
+  # Only raises a flag, which `pop_signal_self_manage` reads and clears.
+  def self.signal_self_manage: () -> true
+
+  # シグナルの印を読んで下ろす <<en>> Read and clear the signal flag
+  #
+  # `signal_self_manage` の印が立っていれば true を返し、印を下ろす。
+  # <<en>>
+  # Returns true when `signal_self_manage` raised the flag, and clears it.
+  def self.pop_signal_self_manage: () -> bool
+
+  # 診断のメッセージを標準エラーへ出す <<en>> Write a diagnostic line to stderr
+  #
+  # 引数ごとに `to_s` して 1 行ずつ出す。**ESP32 だけ**で、Linux・ネイティブ・ブラウザ版には
+  # このメソッドが無い (呼ぶと NoMethodError)。
+  # ```ruby
+  # Machine.debug_puts("x=#{x}")
+  # ```
+  # <<en>>
+  # Writes each argument's `to_s` on its own line. **ESP32 only**: Linux, the native
+  # build and the browser build do not have this method (NoMethodError).
+  # ```ruby
+  # Machine.debug_puts("x=#{x}")
+  # ```
+  def self.debug_puts: (*untyped messages) -> nil
+end

@@ -335,6 +335,22 @@ class Array
   # ```
   def reject!: () { (untyped element) -> untyped } -> self
 
+  # 当てはまる要素だけを新しい配列で返す <<en>> Return the elements the block accepts
+  #
+  # ブロックが真を返した要素を集めた**新しい配列**を返す (もとの配列は変わらない)。
+  # **ブロックが要る** (無いと NotImplementedError。この版は Enumerator を持たない)。
+  # ```ruby
+  # ids = ids.select { |i| ok?(i) }
+  # ```
+  # <<en>>
+  # Returns a **new array** of the elements for which the block is true (the original is
+  # not changed). **A block is required** (without one it raises NotImplementedError;
+  # this build has no Enumerator).
+  # ```ruby
+  # ids = ids.select { |i| ok?(i) }
+  # ```
+  def select: () { (untyped element) -> untyped } -> Array[untyped]
+
   # 先頭の要素を取り出す <<en>> Remove and return first element
   #
   # **先頭から**取り出す。待ち行列に使う。

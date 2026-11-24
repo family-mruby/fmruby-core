@@ -1,0 +1,63 @@
+# 乱数 (RNG)。
+# 実装は picoruby の gem picoruby-rng (components/picoruby-esp32/picoruby/mrbgems/picoruby-rng/:
+# src/mruby/rng.c、mrblib/rng.rb、ports/esp32 と ports/posix)。`Kernel#rand` は kernel.rbs。
+# **種 (seed) を与える手段は無い** (`srand` も `Random` も入っていない) ので、並びは毎回違い、
+# 同じ並びを作り直すことはできない。
+
+# 乱数の元。
+#
+# ESP32 は `esp_random()` (ハードウェアの乱数)、Linux・ネイティブ版は `/dev/urandom` から読む
+# (1 バイトごとにファイルを開くので、数を大量に作るときは遅い)。
+# ```ruby
+# r = RNG.random_int % 10
+# ```
+# <<en>>
+# The source of random numbers. An ESP32 uses `esp_random()` (the hardware RNG);
+# Linux and the native build read `/dev/urandom` (opening the file once per byte, so
+# producing many numbers is slow).
+# ```ruby
+# r = RNG.random_int % 10
+# ```
+module RNG
+  # 32 ビットの乱数 (整数) <<en>> A random 32-bit integer
+  #
+  # **0 以上 4294967295 以下**の整数 (負にならない)。範囲を絞るときは `% n` で 0 から n-1 にする
+  # (`Kernel#rand(n)` と同じ)。**種は与えられない**。
+  # ```ruby
+  # RNG.random_int % 10   #=> 0..9
+  # ```
+  # <<en>>
+  # An integer from **0 to 4294967295** (never negative). Narrow it with `% n` to get 0
+  # to n-1 (what `Kernel#rand(n)` does). **There is no way to seed it.**
+  # ```ruby
+  # RNG.random_int % 10   #=> 0..9
+  # ```
+  def self.random_int: () -> Integer
+
+  # 乱数のバイト列を作る <<en>> A random binary string
+  #
+  # length バイトのバイナリ文字列 (文字ではなくバイト。`bytesize` で数える)。
+  # ```ruby
+  # key = RNG.random_string(16)
+  # ```
+  # <<en>>
+  # A binary string of length bytes (bytes, not characters; count it with `bytesize`).
+  # ```ruby
+  # key = RNG.random_string(16)
+  # ```
+  def self.random_string: (Integer length) -> String
+
+  # UUID (バージョン 4) の文字列を作る <<en>> A version 4 UUID string
+  #
+  # `8-4-4-4-12` 桁の 16 進 (小文字) を `-` でつないだ 36 文字。乱数を 32 回引くので軽くはない。
+  # ```ruby
+  # id = RNG.uuid
+  # ```
+  # <<en>>
+  # 36 characters: lower-case hex in groups of `8-4-4-4-12` joined by `-`. It draws 32
+  # random numbers, so it is not cheap.
+  # ```ruby
+  # id = RNG.uuid
+  # ```
+  def self.uuid: () -> String
+end
