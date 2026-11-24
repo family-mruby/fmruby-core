@@ -91,8 +91,8 @@ class Dir
   #
   # 成功すると 0。**もうあるときも、間のディレクトリが無いときも RuntimeError** (メッセージは
   # パス。1 段ずつ作る。先に `Dir.exist?` で確認する)。`mode` (省略すると 0777) は
-  # LittleFS では意味を持たない。/tmp には中身を入れるだけで、ディレクトリは作れない
-  # (実機。sim の /tmp も同じ)。
+  # LittleFS では意味を持たない。/tmp はファイルを入れるだけの場所で、
+  # ディレクトリは作れない設計 (実機の /tmp。`Dir.mkdir` が sim で断るかは確かめていない)。
   # ```ruby
   # Dir.mkdir("/home/notes") unless Dir.exist?("/home/notes")
   # ```
@@ -100,7 +100,8 @@ class Dir
   # Returns 0 when made. **RuntimeError (the message is the path) when it exists
   # already and when a parent is missing**: make them one level at a time, and check
   # with `Dir.exist?` first. `mode` (0777 when left out) means nothing on LittleFS.
-  # /tmp holds files only; directories cannot be made in it on a device.
+  # /tmp is meant for files only; directories are not made in it on a device (whether
+  # `Dir.mkdir` refuses in the simulation is not checked).
   # ```ruby
   # Dir.mkdir("/home/notes") unless Dir.exist?("/home/notes")
   # ```

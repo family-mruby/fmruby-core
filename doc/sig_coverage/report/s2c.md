@@ -181,7 +181,7 @@ Class・Module 3。
 | `File.delete("/tmp/s2c")` | `1` (2 回目は RuntimeError) |
 | `Dir.exist?("/nope")` / `Dir.exist?("/tmp")` | `false` / `true` |
 | `Dir.children("/nope")` | RuntimeError (メッセージ "/nope") |
-| `Dir.mkdir("/tmp/d")` | RuntimeError (/tmp にディレクトリは作れない) |
+| `Dir.mkdir("/tmp/d")` | 実機は失敗の設計。sim は未確認 (結果を教えてほしい) |
 | `Dir.open("/home"){\|d\| d.read}` | 名前か nil (sim は "." が出ることがある) |
 | `Time.at(0).utc.to_s` | `"1970-01-01 00:00:00 UTC"` |
 | `Time.local(2026,11,25,9,30).to_s` | `"2026-11-25 09:30:00 +0900"` (JST-9 のとき) |
