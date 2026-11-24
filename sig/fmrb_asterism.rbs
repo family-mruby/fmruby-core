@@ -169,20 +169,23 @@ module FmrbAsterism
   # key の値の前後の空白を除いて返す。ファイルが無い・キーが無い・文字列
   # でないと ""。
   # ```ruby
-  # r = FmrbAsterism.system_conf("zenoh_router")
+  # r = FmrbAsterism.system_conf(
+  #   "zenoh_router")
   # ```
   # <<en>>
   # The value of key, trimmed. "" when the file or the key is missing or
   # the value is not a String.
   # ```ruby
-  # r = FmrbAsterism.system_conf("zenoh_router")
+  # r = FmrbAsterism.system_conf(
+  #   "zenoh_router")
   # ```
   def self.system_conf: (String key) -> String
 
   # ルータが TLS を求めているか <<en>> Whether a locator asks for TLS (starts with "tls/")
   #
   # ```ruby
-  # FmrbAsterism.tls?("tls/router.example.org:7447")
+  # FmrbAsterism.tls?(
+  #   "tls/router.example.org:7447")
   # #=> true
   # ```
   def self.tls?: (String? locator) -> bool
@@ -273,7 +276,8 @@ module FmrbAsterism
     # Zenoh に渡す設定 <<en>> The Zenoh config for Session.open (TLS keys; nil without credentials)
     #
     # ```ruby
-    # cfg = FmrbAsterism.settings.zenoh_config
+    # cfg = FmrbAsterism.settings
+    #   .zenoh_config
     # ```
     def zenoh_config: () -> Hash?
   end
@@ -985,7 +989,9 @@ module Asterism
     # join し直す。呼び出しは Disconnected か時間切れ、put は誰にも届かない。
     # 戻ると、公開したオブジェクト・トピック・購読は元のまま使える。
     # ```ruby
-    # show("reconnecting") if conn.reconnecting?
+    # if conn.reconnecting?
+    #   show("reconnecting")
+    # end
     # ```
     # <<en>>
     # While true, connected? is true too. The other nodes leave (on_leave)
@@ -993,7 +999,9 @@ module Asterism
     # nobody. Once it is back, what was exposed, published and subscribed
     # works as before.
     # ```ruby
-    # show("reconnecting") if conn.reconnecting?
+    # if conn.reconnecting?
+    #   show("reconnecting")
+    # end
     # ```
     def reconnecting?: () -> bool
 
@@ -1897,26 +1905,30 @@ module Asterism
     #
     # "msgpack" なら値は復号した Ruby の値、それ以外はバイト列 (String)。
     # ```ruby
-    # img = v if info.encoding == "image/jpeg"
+    # if info.encoding == "image/jpeg"
+    #   img = v
+    # end
     # ```
     # <<en>>
     # With "msgpack" the value is the decoded Ruby value; otherwise it is the
     # bytes (a String).
     # ```ruby
-    # img = v if info.encoding == "image/jpeg"
+    # if info.encoding == "image/jpeg"
+    #   img = v
+    # end
     # ```
     def encoding: () -> String
 
     # 送り手が新しく始めたか <<en>> Whether the sender started a new run
     #
-    # 接続し直した (番号が変わった) か、同じ接続で番号が戻ったとき true。
-    # その場合 lost は数えない。「今の値」を問い合わせ直す合図に使う。
+    # 接続し直した (接続の番号が変わった) か、同じ接続で番号が戻ったとき true。
+    # 接続し直したときの lost は 0。「今の値」を問い合わせ直す合図に使う。
     # ```ruby
     # ask_again if info.restarted?
     # ```
     # <<en>>
-    # True when the sender connected again (its run id changed) or its
-    # numbers went back on the same run. Use it as the cue to ask for the
+    # True when the sender connected again (its run id changed; lost is 0
+    # then) or its numbers went back on the same run. Use it as the cue to ask for the
     # current value again.
     # ```ruby
     # ask_again if info.restarted?
@@ -2266,20 +2278,23 @@ module Asterism
     #
     # "image/jpeg" や "text/plain;charset=utf-8" (; から後は無視)。
     # ```ruby
-    # Asterism::Pubs.encoding_id("image/jpeg")  #=> 17
+    # Asterism::Pubs.encoding_id(
+    #   "image/jpeg")  #=> 17
     # ```
     # <<en>>
     # "image/jpeg" or "text/plain;charset=utf-8" (what follows ";" is
     # ignored).
     # ```ruby
-    # Asterism::Pubs.encoding_id("image/jpeg")  #=> 17
+    # Asterism::Pubs.encoding_id(
+    #   "image/jpeg")  #=> 17
     # ```
     def self.encoding_id: (String name) -> Integer?
 
     # 番号から符号化の名前 <<en>> The encoding name of a number (nil when none)
     #
     # ```ruby
-    # Asterism::Pubs.encoding_name(17)  #=> "image/jpeg"
+    # Asterism::Pubs.encoding_name(17)
+    # #=> "image/jpeg"
     # ```
     def self.encoding_name: (Integer id) -> String?
 
@@ -2307,14 +2322,16 @@ module Asterism
     # `shared` は nil・:node・:global。nil なら name のまま、:node なら
     # "<node>/@shared/<name>"、:global なら "@shared/<name>"。
     # ```ruby
-    # Asterism::Pubs.entry(:global, "n", "lobby")
+    # Asterism::Pubs.entry(
+    #   :global, "n", "lobby")
     # #=> "@shared/lobby"
     # ```
     # <<en>>
     # `shared` is nil, :node or :global: name as it is, "<node>/@shared/<name>"
     # or "@shared/<name>".
     # ```ruby
-    # Asterism::Pubs.entry(:global, "n", "lobby")
+    # Asterism::Pubs.entry(
+    #   :global, "n", "lobby")
     # #=> "@shared/lobby"
     # ```
     def self.entry: (Symbol? shared, String node, String name) -> String
@@ -2400,7 +2417,8 @@ module Asterism
     # "端末/アプリ" (分からなければ nil)。`[取りこぼした数, 送り手がやり直したか]` を
     # 返す。道を初めて見るときは [0, false]。
     # ```ruby
-    # lost, again = seqs.see("k", 7, 1, "n/a")
+    # lost, again =
+    #   seqs.see("k", 7, 1, "n/a")
     # ```
     # <<en>>
     # lane is the key (for a shared key, with the sender), run the sender's
@@ -2408,7 +2426,8 @@ module Asterism
     # "node/app" (nil when unknown). Returns `[values missed, whether the
     # sender restarted]`; the first sight of a lane is [0, false].
     # ```ruby
-    # lost, again = seqs.see("k", 7, 1, "n/a")
+    # lost, again =
+    #   seqs.see("k", 7, 1, "n/a")
     # ```
     def see: (String lane, Integer? run, Integer seq, ?String? app) -> Array[untyped]
 
@@ -2499,14 +2518,16 @@ module Asterism
     # IHDR から IEND まで続くこと、一辺 256 画素まで。よければ
     # `[幅, 高さ, icon_hash]` (icon_hash は 8 桁の 16 進)、だめなら nil。
     # ```ruby
-    # w, h, hash = Asterism::Profile.png_info(png)
+    # w, h, hash =
+    #   Asterism::Profile.png_info(png)
     # ```
     # <<en>>
     # Checks a PNG a profile may carry: the 8-byte signature, 8192 bytes at
     # most, chunks running from IHDR to IEND, each side 256 pixels at most.
     # Returns `[width, height, icon_hash]` (8 hex digits), or nil.
     # ```ruby
-    # w, h, hash = Asterism::Profile.png_info(png)
+    # w, h, hash =
+    #   Asterism::Profile.png_info(png)
     # ```
     def self.png_info: (untyped bytes) -> Array[untyped]?
 
