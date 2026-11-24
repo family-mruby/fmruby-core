@@ -1287,7 +1287,7 @@ class FmrbApp
   %a{fmrb.internal}
   def app_state: (?String who) -> Hash[String, untyped]
 
-  # 次に開くときまで覚える (再起動で消える) <<en>> Remember for the next opening (lost on restart)
+  # 次に開くときまで覚える (再起動で消える) <<en>> Remember for the next opening (lost on reboot)
   #
   # 読んだ Hash に values を重ねて書く。**値が変わらなければ書かない**。
   # 文字列・整数・true/false 以外の値は**黙って飛ばされる**。
