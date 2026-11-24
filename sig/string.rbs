@@ -208,8 +208,8 @@ class String
   # `.to_s` を挟む。文字の途中で切っても止まらず、欠けた文字のまま
   # 返る。
   #
-  # 引数 1 つ (その 1 バイト。末尾から先は nil) と範囲 (`2..4`) でも
-  # 呼べるが、Ctrl+E は 2 つの形だけを正しいとみなす。
+  # length を省くと、その 1 バイト (末尾から先は nil)。バイトの範囲
+  # (`2..4`) でも呼べる。
   # ```ruby
   # s = "あいう"
   # s.byteslice(3, 3)   #=> "い"
@@ -232,8 +232,8 @@ class String
   # `.to_s` before another string method. Cutting inside a character does
   # not stop it: you get the broken bytes.
   #
-  # One argument (that one byte; nil from the end on) and a range
-  # (`2..4`) work too, but Ctrl+E takes only the two-argument form.
+  # Without length you get that one byte (nil from the end on). A
+  # range of bytes (`2..4`) works too.
   # ```ruby
   # s = "あいう"
   # s.byteslice(3, 3)   #=> "い"
@@ -243,7 +243,8 @@ class String
   # rest = s.byteslice(3,
   #   s.bytesize - 3).to_s
   # ```
-  def byteslice: (Integer start, Integer length) -> (String | nil)
+  def byteslice: (Integer start, ?Integer length) -> (String | nil)
+               | (Range range) -> (String | nil)
 
   # 1 文字ずつの配列を返す <<en>> Return characters of string as array
   #

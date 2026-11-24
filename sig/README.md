@@ -53,11 +53,14 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
 
 - **実在するメソッドだけ**書く。実装 (mrblib の Ruby と C バインディング) を
   読んで書き、推測で書かない。`_` で始まる内部用は書かない。
-- **必須引数だけの形**で書く (doc/sig_coverage の決定 2)。省略できる引数や
-  キーワードを持つ API は、**アプリでいちばん多い呼び方**を必須引数の形で
-  シグネチャにし (例: `create_canvas_gfx(width, height)`)、残りの呼び方は
-  長文に書く (下の「キーワード引数・省略できる引数」)。
-  正確に書けなかったものは report に残す。
+- **引数は実装のとおりに書く** (doc/sig_coverage の決定 22)。省略できる引数は
+  `?Integer length`、キーワードは `name: Type` (省略できるなら `?name: Type`) の
+  形でシグネチャに書く。型エンジンはどちらも読み、エディタのまちがい探し
+  (Ctrl+E) が引数の数と名前をそのシグネチャで検査するので、必須引数だけの形に
+  丸めると、正しい呼び方に「引数が足りない」と出る。省略したときの値は長文に
+  書く (下の「キーワード引数・省略できる引数」)。
+  正確に書けなかったものは report に残す。前に必須引数の形で書いたもの
+  (`create_canvas_gfx(width, height)` など) は、その API を触る段で直す。
 - **doc コメントは 2 段構え**にする。
   - **1 行目 = 一文**。全角 20 字が目安。何をするかだけを書き、
     引数の説明はシグネチャに任せる。**db に入るのはこの行だけ**で、補完の
@@ -195,33 +198,33 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
 
 ### キーワード引数・省略できる引数
 
-シグネチャは**いちばん多い呼び方**を必須引数の形で書き、キーワードと
-省略したときの値は長文の 2 (引数の意味) に、**「キーワード: `name:`
-(省略すると…)」の形**で並べる。省略できる位置引数も同じ形で書く
-(「省略できる: 3 つめの `limit` (省略すると全部分ける)」)。例は、いちばん
+シグネチャに `?` とキーワードを**そのまま書き**、省略したときの値は長文の
+2 (引数の意味) に、**「`name:` (省略すると…)」の形**で並べる。省略できる
+位置引数も同じ形で書く (「`limit` (省略すると全部分ける)」)。例は、いちばん
 多い呼び方か、キーワードを 1 つ使った呼び方にする。
 
 ```ruby
 # 作る (つなぐのは後の update) <<en>> Make a link (update connects later)
 #
 # owner はアプリ (self)。app はネットワークでのアプリの名前。
-# キーワード: `tag:` (省略するとログの頭は app)、`retry_ms:`
-# (省略すると 3000。nil なら 1 回だけつなぐ)。
+# `tag:` (省略するとログの頭は app)、`retry_ms:` (省略すると 3000。
+# nil なら 1 回だけつなぐ)。
 # ```ruby
 # @link = FmrbAsterism::Link.new(
 #   self, "talk", retry_ms: 5000)
 # ```
 # <<en>>
 # owner is the app (self); app is the app's name on the network.
-# Keywords: `tag:` (log prefix; app when left out), `retry_ms:`
-# (3000 when left out; nil connects once).
+# `tag:` (log prefix; app when left out), `retry_ms:` (3000 when
+# left out; nil connects once).
 # ...
-def self.new: (FmrbApp owner, String app) -> FmrbAsterism::Link
+def self.new: (FmrbApp owner, String app, ?tag: String, ?retry_ms: Integer?) -> FmrbAsterism::Link
 ```
 
-シグネチャに無い呼び方 (キーワードを付けた・引数を省いた・別の型を渡した)
-は、エディタのまちがい探し (Ctrl+E) が引数の数か型の違いとして出すことがある。
-長文にその呼び方を書いておけば、読む人は迷わない。
+引数の型が呼び方で変わるもの (位置と長さでも、範囲でも呼べる、など) は、
+`|` で形を重ねて書く (いちばん多い形を先に。例は `string.rbs` の `byteslice`、
+`array.rbs` の `[]=`)。Ctrl+E はシグネチャに無い形を引数の数か型の違いとして
+出すので、実装が受ける形は漏らさず書く。
 
 ## 本体との境界の印 (doc/app_boundary)
 
