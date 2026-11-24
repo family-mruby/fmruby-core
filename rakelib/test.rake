@@ -20,7 +20,7 @@
 # live there with the code they test.
 desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the app package (W6) + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + the sig coverage tool + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "app_package:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "png332:test", "nsf:test", "tts:test", "native:test",
-               "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "ti:site:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :imu do
   # The BMI270 driver against a fake device, and the step sensor app's step

@@ -1,0 +1,5 @@
+# An app <<en>> An app
+class FmrbApp
+  # The box <<en>> The box
+  def ui: () -> FmrbUI
+end

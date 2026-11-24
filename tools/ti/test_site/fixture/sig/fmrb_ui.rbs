@@ -1,0 +1,51 @@
+# Widget box (test) <<en>> Widget box
+#
+# 日本語の
+# 長文。obj
+# に渡す。
+# ```ruby
+# # 日本語の
+# # コメント
+# ```
+# <<en>>
+# The English long form.
+class FmrbUI
+  # The default colour <<en>> default colour
+  DEFAULT: Integer
+
+  # A size <<en>> A size
+  type size = { w: Integer, h: Integer }
+
+  # Make a box <<en>> Make a box
+  #
+  # ```ruby
+  # FmrbUI.new(self)
+  # ```
+  def self.new: (FmrbApp app) -> FmrbUI
+
+  # Place a button <<en>> Place a button
+  def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text, ?text_size: Integer, ?accent: Integer) -> Button
+
+  # Find a widget <<en>> Find a widget
+  def find: (Symbol id) -> Button
+          | (Integer index) -> Hidden?
+
+  # A button <<en>> A button
+  class Button < Widget
+    # Press it <<en>> Press it
+    def press: () -> FmrbUI
+  end
+
+  # Every widget has a **box** and
+  # an id. More text here.
+  #
+  # Second paragraph.
+  class Widget
+  end
+end
+
+# Hidden thing <<en>> Hidden thing
+class Hidden
+  # Something <<en>> Something
+  def thing: () -> Integer
+end
