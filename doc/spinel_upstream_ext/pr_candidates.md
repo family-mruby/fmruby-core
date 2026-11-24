@@ -56,6 +56,7 @@
 | U-25 | 強制インライン (always_inline) に幅の上限が無く、多くの葉メソッドを呼ぶ関数の C フレームが葉の合計に近づく (fmrb の kernel で 4,192 → 12,448 バイト)。深い呼び出しや Fiber のスタックで溢れる | 未 (方針は report/p2b2.md 10 節) | fmrb-next | fmrb は `--no-inline-hot` で回避 | 中 | 候補 |
 | U-26 | `sp_poly_*` の比較経路の C フレームが大きい | 未 | fmrb-next | 無し | 低 | 候補 |
 | U-27 | 多重インスタンスで、遅れて確保する TU の領域 (ブロックからの break のスタック、`-"str"` の凍結文字列の表) がインスタンスの開始で戻らず、同じプログラムを開き直すと消えた領域を指す | フォークの `test/multi_ctx/lazy_slots.sh` | 対象外 (上流に複数インスタンスが無い。`303c0ab3` で確認) | fmrb-ext `0bba87dc` | 対象外 (U-9・U-23 と同じくフォークの多重インスタンス。F-1 を出すときに一緒に) | 記録 |
+| U-28 | バイナリの String (`.b`、FFI の `:binstr`) で、`index`・開始位置つきの `index`・`rindex`・位置つきの `rindex` が「一致より前の UTF-8 の文字数」を返す。同じ String を `[]` と `length` はバイトで数えるので、返った位置で切り出すとずれる (`"\xE6\x96\x87\xE5\xAD\x97 <<en>> draw".b` で `index("<<en>>")` が 3、CRuby は 7。`s[i + 6, s.length]` が `"en>> draw"`)。fmrb ではエディタの補完・型の表示の要約 (`日本語 <<en>> English`) が、英語設定で日本語の尻尾と印つきで出て、日本語設定で 2 文字で切れていた (doc/ai_coding の A6b の後の確認で発見、2026-11-24) | `repro/U-28.rb` (21 行、CRuby の出力が `.expected`) | 未 (フォーク `fmrb-ext` `6e7b9da4` で再現。上流の HEAD は確かめていない) | fmrb-ext `63da875b`: 受け手がバイナリのとき 4 つともバイトの位置を返す。回帰 `test/string_index_binary_bytes.rb`。UTF-8 の String は今までどおり文字で数える。SPINEL_PIN もこれ (2026-11-24)。fmrb のエディタ側も `byteindex`・`byteslice` に直した (`0c1b0bb0`) | 高 (ランタイムの 4 行の小さな修正、CRuby と食い違う結果が出る) | 再現済 (フォークに取り込み済、上流 PR は未提出。提出の前に上流の HEAD で再現を確かめる) |
 
 ## 移植・組み込み向け (P)
 
