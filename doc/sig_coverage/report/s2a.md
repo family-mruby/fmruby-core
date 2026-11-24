@@ -11,17 +11,16 @@
 
 内訳:
 
-- FmrbConst の定数 162: `KEY_*` 99 (A-Z 26、数字 10、記号 11、Enter ほか 5、F1-F12、システム 3、移動 6、矢印 4、NumLock、修飾 8)、
-  `MOD_*` 9、`GP_*` 20、`THEME_*` 9、`WHEEL_LINES`、機種・ビルド 17 (`PLATFORM`・`BOARD`・`NATIVE`・`HW_FAMILY`・`FONT_JA`・
+- FmrbConst の定数 162: `KEY_*` 87 (A-Z 26、数字 10、記号 11、Enter ほか 5、F1-F12、システム 3、移動 6、矢印 4、NumLock、修飾 8)、
+  `MOD_*` 9、`GP_*` 20、`THEME_*` 9、`WHEEL_LINES`、機種・ビルド 19 (`PLATFORM`・`BOARD`・`NATIVE`・`HW_FAMILY`・`FONT_JA`・
   `HAS_WIFI`・`LANGUAGE`・`OS_VERSION`・`GA_VERSION`・`LINK_VERSION`・`BUILD_DATE`・`IDF_VERSION`・`MAC_ADDRESS`・`CHIP_*` 3・
   `FLASH_SIZE_MB`・`PSRAM_SIZE_MB`・`RESET_REASON`)、`PROC_ID_*` 8、`PROC_STATE_*` 5、`MSG_TYPE_*` 4。
 - 素直 / つまずく: 定数は gen_help が長文を出さない (定数は要約 1 行だけが db に入る) ので、全部「素直」の形 (要約 1 行) で書いた。
   機種で値が変わるもの (`BOARD`・`PLATFORM`・`HW_FAMILY`・`CHIP_*`・`FLASH_SIZE_MB`・`PSRAM_SIZE_MB`・`MAC_ADDRESS`・`RESET_REASON` ほか)
   は、要約に「linux では ...」「機種ごとに違う」を書き、モジュールの長文に「機種やビルドで変わる」と書いた。
   メソッドは `bt_mac` が「つまずく」 (起動後に決まる・分からない間は "-")。
-- Math の関数 26: 素直 15 (`sin cos tan atan atan2 sinh cosh tanh asinh exp expm1 cbrt hypot erf erfc ldexp`)、
-  つまずく 10 (定義域の外で DomainError: `asin acos acosh atanh log1p log log2 log10 sqrt`)、`frexp` (戻りが配列) を加えると 11。
-  実際の数は素直 15 + つまずく 11 = 26。`log` は省略できる底を `?` で書いた。
+- Math の関数 26: 素直 16 (`sin cos tan atan atan2 sinh cosh tanh asinh exp expm1 cbrt hypot erf erfc ldexp`)、
+  つまずく 10 (定義域の外で DomainError の 9 つ: `asin acos acosh atanh log1p log log2 log10 sqrt`、と戻りが配列の `frexp`)。
 
 ## 2. 根拠の表 (読んだ場所)
 
