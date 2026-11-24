@@ -194,6 +194,58 @@ class String
   # ```
   def bytesize: () -> Integer
 
+  # バイトの位置と長さで切り出す <<en>> Cut out a part by byte offset and byte length
+  #
+  # start バイト目から length バイトを、新しい文字列にして返す。
+  # **位置も長さもバイトで数える**。日本語は 1 文字が 3 バイト (UTF-8)
+  # なので、文字で数える `[]`・`slice`・`length`・`index` の値を
+  # そのまま渡すと、日本語の入った文字列では位置がずれる。バイトで
+  # 数える `bytesize`・`getbyte` と組み合わせる。
+  #
+  # start が負なら末尾から数える。length が残りより長ければ末尾まで。
+  # start がちょうど末尾 (`bytesize`) なら ""。それより先か、length
+  # が負なら **nil** (例外は出ない)。続けて文字列のメソッドを呼ぶなら
+  # `.to_s` を挟む。文字の途中で切っても止まらず、欠けた文字のまま
+  # 返る。
+  #
+  # length を省くと、その 1 バイト (末尾から先は nil)。バイトの範囲
+  # (`2..4`) でも呼べる。
+  # ```ruby
+  # s = "あいう"
+  # s.byteslice(3, 3)   #=> "い"
+  # s[1]                #=> "い"
+  # s.byteslice(9, 1)   #=> ""
+  # s.byteslice(10, 1)  #=> nil
+  # rest = s.byteslice(3,
+  #   s.bytesize - 3).to_s
+  # ```
+  # <<en>>
+  # Returns length bytes from byte start as a new string.
+  # **Both count bytes.** A Japanese character is 3 bytes (UTF-8),
+  # so a position from `[]`, `slice`, `length` or `index` (which
+  # count characters) lands in the wrong place once the string holds
+  # Japanese. Pair it with `bytesize` and `getbyte`, which count bytes.
+  #
+  # A negative start counts from the end; a length past the end stops at
+  # the end. A start right at the end (`bytesize`) gives ""; a start past
+  # it, or a negative length, gives **nil** (no exception), so put
+  # `.to_s` before another string method. Cutting inside a character does
+  # not stop it: you get the broken bytes.
+  #
+  # Without length you get that one byte (nil from the end on). A
+  # range of bytes (`2..4`) works too.
+  # ```ruby
+  # s = "あいう"
+  # s.byteslice(3, 3)   #=> "い"
+  # s[1]                #=> "い"
+  # s.byteslice(9, 1)   #=> ""
+  # s.byteslice(10, 1)  #=> nil
+  # rest = s.byteslice(3,
+  #   s.bytesize - 3).to_s
+  # ```
+  def byteslice: (Integer start, ?Integer length) -> (String | nil)
+               | (Range range) -> (String | nil)
+
   # 1 文字ずつの配列を返す <<en>> Return characters of string as array
   #
   # 日本語も 1 文字ずつに分かれる。
