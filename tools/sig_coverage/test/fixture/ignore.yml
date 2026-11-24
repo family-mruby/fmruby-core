@@ -1,0 +1,8 @@
+- name: Foo#qux
+  reason: fixture, a method left out on purpose
+- name: "#roll"
+  reason: fixture, a name left out on purpose
+- file: flash/app/demo/skipped.app.rb
+  reason: fixture, a file left out on purpose
+- name: Nowhere
+  reason: fixture, an entry that matches nothing

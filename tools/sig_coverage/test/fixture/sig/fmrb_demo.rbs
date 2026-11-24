@@ -1,0 +1,54 @@
+# A test class <<en>> A test class
+class Foo
+  # 作る <<en>> make one
+  #
+  # ```ruby
+  # Foo.make
+  # ```
+  def self.make: () -> Foo
+
+  # 動かす <<en>> run it
+  #
+  # ```ruby
+  # foo.bar
+  # ```
+  def bar: () -> Integer
+
+  # 要約だけ
+  def summary_only: () -> Integer
+
+  # 長い説明だけがあって例が無いメソッドで、この行は百十二バイトを超えるように長く書いてある <<en>> a summary that runs well past the limit
+  #
+  # 散文だけで例は無い。
+  def long_summary: () -> Integer
+
+  def no_doc: () -> Integer
+
+  # 名前 <<en>> name
+  #
+  # ```ruby
+  # foo.label
+  # ```
+  alias label bar
+
+  private
+
+  # 内部 <<en>> internal
+  def hidden: () -> Integer
+end
+
+class FmrbApp
+  @gfx: FmrbGfx
+end
+
+class FmrbGfx
+  # 描く <<en>> draw
+  #
+  # ```ruby
+  # @gfx.draw
+  # ```
+  def draw: () -> FmrbGfx
+
+  # 白 <<en>> white
+  WHITE: Integer
+end

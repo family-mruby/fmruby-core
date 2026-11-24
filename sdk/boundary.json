@@ -1526,7 +1526,7 @@
       "class": "FmrbApp",
       "method": "set_text_cursor",
       "ruby": "FmrbApp.set_text_cursor(x, y, h)",
-      "doc": "Tell where the text cursor is (for a PC's IME)",
+      "doc": "Tell where the text cursor is (for a PC IME)",
       "receiver": null,
       "args": [
         {

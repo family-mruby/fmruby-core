@@ -1,0 +1,6 @@
+# Area512 built-in type declaration.
+
+class String
+  # 長さ <<en>> length
+  def size: () -> Integer
+end

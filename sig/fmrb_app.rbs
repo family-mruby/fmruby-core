@@ -1566,7 +1566,7 @@ class FmrbApp
   %a{fmrb.internal}
   def self.set_kana_mode: (Integer mode) -> void
 
-  # 文字カーソルの位置を知らせる (PC の IME 用) <<en>> Tell where the text cursor is (for a PC's IME)
+  # 文字カーソルの位置を知らせる (PC の IME 用) <<en>> Tell where the text cursor is (for a PC IME)
   #
   # 文字を打つアプリが、カーソルを描くたびに呼ぶ。x, y は canvas の座標
   # (行の左上)、h は行の高さ。h = 0 で「今は文字を打たない」。PC の IME

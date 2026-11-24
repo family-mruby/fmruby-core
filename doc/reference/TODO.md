@@ -280,3 +280,8 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - ホストの gem (asterism-chat・asterism-tutor) の `status` が、**自分の公開が外から見えているか**まで確かめる
   (2026-11-21。VPS で台帳の行に役割を付け忘れ、`up, joined` と出るのに console の図にもほかのノードからも見えなかった。
   今の `up, joined` は証明書で接続できたことまで)。案: 自分のオブジェクトの meta を自分で問い合わせて答えが返るかを見る。未着手。
+
+- アプリが内部用の印 (`_` で始まる) のメソッドを呼んでいる (2026-11-24、doc/sig_coverage/report/s0.md 4.2 の 10)。
+  AI ヘルパーの `FmrbApp._get_last_error`、midi_bench の `_clear`・`_stats`・`_audio_note_bytes`。`_` で始まるものは
+  sig に書かない決まりなので、補完にも AI ホストの知識にも出ない。アプリから使うものなら公開の名前を用意する
+  (API の変更になるのでユーザの判断)。sig には載せていない。未着手。
