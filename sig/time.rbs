@@ -39,8 +39,8 @@ class Time
 
   # 今の時刻 (new) <<en>> New Time (now, or from a date)
   #
-  # **引数なしは今**。引数は年・月・日・時・分・秒・マイクロ秒の順で、**年だけ必須の
-  # 整数** (文字列は TypeError)。**ローカル時刻**として解く。範囲外 (13 月など) は
+  # **引数なしは今**。引数は年・月・日・時・分・秒・マイクロ秒の順で、
+  # **年だけ必須の整数** (文字列は TypeError)。**ローカル時刻**として解く。範囲外 (13 月など) は
   # ArgumentError ("argument out of range"、解けない日付は "invalid time")。
   # ```ruby
   # Time.new
@@ -152,11 +152,21 @@ class Time
   # ```ruby
   # t1 <=> t2
   # ```
+  # <<en>>
+  # Returns -1, 0 or 1. nil for something that is not a Time.
+  # ```ruby
+  # t1 <=> t2
+  # ```
   def <=>: (untyped other) -> Integer?
 
   # 同じ時刻か <<en>> Whether it is the same instant
   #
   # 秒とナノ秒が同じなら true (ローカルか UTC かは見ない)。`eql?` は同じ働きの別名。
+  # ```ruby
+  # t1 == t2
+  # ```
+  # <<en>>
+  # True when the seconds and nanoseconds are the same (local or UTC is not looked at). `eql?` is the same method.
   # ```ruby
   # t1 == t2
   # ```
@@ -209,6 +219,11 @@ class Time
   # ```ruby
   # t.mon
   # ```
+  # <<en>>
+  # `month` is the same method.
+  # ```ruby
+  # t.mon
+  # ```
   def mon: () -> Integer
 
   # 月 (mon の別名) <<en>> Month (alias of mon)
@@ -221,6 +236,11 @@ class Time
   # 日 (1-31) <<en>> Day of the month (1-31)
   #
   # `mday` は同じ働きの別名。
+  # ```ruby
+  # t.day
+  # ```
+  # <<en>>
+  # `mday` is the same method.
   # ```ruby
   # t.day
   # ```
@@ -264,6 +284,11 @@ class Time
   # ナノ秒 (0-999999999) <<en>> Nanoseconds (0-999999999)
   #
   # `tv_nsec` は同じ働きの別名。
+  # ```ruby
+  # t.nsec
+  # ```
+  # <<en>>
+  # `tv_nsec` is the same method.
   # ```ruby
   # t.nsec
   # ```
@@ -393,6 +418,11 @@ class Time
   # ```ruby
   # t.utc?
   # ```
+  # <<en>>
+  # `gmt?` is the same method.
+  # ```ruby
+  # t.utc?
+  # ```
   def utc?: () -> bool
 
   # UTC の Time か (utc? の別名) <<en>> Whether it is a UTC Time (alias of utc?)
@@ -460,6 +490,11 @@ class Time
   # ローカル時刻の新しい Time <<en>> A new Time in local time
   #
   # 元は変えない。
+  # ```ruby
+  # l = t.getlocal
+  # ```
+  # <<en>>
+  # The receiver is left as it is.
   # ```ruby
   # l = t.getlocal
   # ```

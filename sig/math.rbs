@@ -11,8 +11,8 @@
 # ```
 # <<en>>
 # Takes an Integer or a Float and always returns a Float. A non-number (nil, a
-# String) raises TypeError. **A value outside the domain raises
-# `Math::DomainError`** (noted per function).
+# String) raises TypeError.
+# **A value outside the domain raises `Math::DomainError`** (noted per function).
 # ```ruby
 # Math.sqrt(2)   #=> 1.4142135623730951
 # ```
@@ -243,13 +243,13 @@ module Math
 
   # 仮数と指数に分ける <<en>> Split into fraction and exponent
   #
-  # [仮数 (Float), 指数 (Integer)] の配列を返す。x = 仮数 * 2 ** 指数。
+  # [仮数 (Float), 指数 (Integer)] の配列を返す。x = 仮数 * 2 の指数乗。
   # ```ruby
   # f, e = Math.frexp(1234)
   # #=> f = 0.6025390625, e = 11
   # ```
   # <<en>>
-  # Returns [fraction (Float), exponent (Integer)]. x = fraction * 2 ** exponent.
+  # Returns [fraction (Float), exponent (Integer)]. x = fraction * 2 to the power of exponent.
   # ```ruby
   # f, e = Math.frexp(1234)
   # #=> f = 0.6025390625, e = 11

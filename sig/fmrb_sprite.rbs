@@ -57,8 +57,18 @@ class SpriteImage
   # これから描く先をこの絵にする <<en>> Draw into this image from now on
   #
   # **戻すのを忘れない**。普通は `draw` を使えば前後の向け替えが要らない。
+  # ```ruby
+  # img.set_target
+  # @gfx.fill_rect(0, 0, 8, 8, 0xFF)
+  # img.reset_target
+  # ```
   # <<en>>
   # **Remember to send it back.** `draw` does both ends for you.
+  # ```ruby
+  # img.set_target
+  # @gfx.fill_rect(0, 0, 8, 8, 0xFF)
+  # img.reset_target
+  # ```
   def set_target: () -> void
 
   # 描く先を画面に戻す <<en>> Draw on the screen again

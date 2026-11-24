@@ -182,22 +182,46 @@ class FmrbGfx
   # canvas 全体の幅。Window のアプリが描いてよいのは、その内側の
   # 区画 (area_width、@user_area_width と同じ) で、canvas_width とは違う。
   # 全画面のアプリでは一致する。
+  # ```ruby
+  # w = @gfx.canvas_width
+  # ```
   # <<en>>
   # The width of the whole canvas. A windowed app may only draw inside its
   # area (area_width, the same as @user_area_width), which is not the same
   # thing; for a fullscreen app the two agree.
+  # ```ruby
+  # w = @gfx.canvas_width
+  # ```
   %a{fmrb.internal}
   def canvas_width: () -> Integer
 
   # 描く区画の横幅 (ドット) <<en>> Width of the area drawn in
   #
   # 原点 (0, 0) から描いてよい幅。アプリの gfx では @user_area_width と同じ。
+  # ```ruby
+  # w = @gfx.area_width
+  # ```
   # <<en>>
   # How far from the origin there is to draw in. For the app's gfx it is
   # @user_area_width.
+  # ```ruby
+  # w = @gfx.area_width
+  # ```
   def area_width: () -> Integer
 
   # 描く区画の高さ (ドット) <<en>> Height of the area drawn in
+  #
+  # 原点 (0, 0) から描いてよい高さ。`area_width` と対。アプリの gfx では @user_area_height と同じ。
+  # ```ruby
+  # @gfx.fill_rect(0, 0, @gfx.area_width,
+  #                 @gfx.area_height, 0)
+  # ```
+  # <<en>>
+  # How far from the origin there is to draw down. The pair of `area_width`; for the app's gfx it is @user_area_height.
+  # ```ruby
+  # @gfx.fill_rect(0, 0, @gfx.area_width,
+  #                 @gfx.area_height, 0)
+  # ```
   def area_height: () -> Integer
 
   # 原点の canvas 上の x <<en>> Where the origin is on the canvas (x)
@@ -206,14 +230,38 @@ class FmrbGfx
   # Window の gfx は 1、window_gfx などは 0。スプライトの画像へ描いている間は
   # 描く座標に足さないが、スプライトの座標 (set_sprite_clip・SpriteInstance)
   # には足す。
+  # ```ruby
+  # FmrbApp.set_text_cursor(
+  #   @gfx.origin_x + x,
+  #   @gfx.origin_y + y, 12)
+  # ```
   # <<en>>
   # Every coordinate drawn is added to it on its way to the canvas (the
   # firmware adds it): 1 for a framed window's gfx, 0 for window_gfx and the
   # rest. While drawing into a sprite image it is not added to what is drawn,
   # but it still is to sprite coordinates (set_sprite_clip, SpriteInstance).
+  # ```ruby
+  # FmrbApp.set_text_cursor(
+  #   @gfx.origin_x + x,
+  #   @gfx.origin_y + y, 12)
+  # ```
   def origin_x: () -> Integer
 
   # 原点の canvas 上の y <<en>> Where the origin is on the canvas (y)
+  #
+  # `origin_x` の縦の対。描く座標に足されて canvas に届く y 座標の原点で、枠のある Window の gfx は 1、window_gfx などは 0。
+  # ```ruby
+  # FmrbApp.set_text_cursor(
+  #   @gfx.origin_x + x,
+  #   @gfx.origin_y + y, 12)
+  # ```
+  # <<en>>
+  # The vertical pair of `origin_x`: the y of the origin that is added to every coordinate on its way to the canvas. 1 for a framed window's gfx, 0 for window_gfx and the rest.
+  # ```ruby
+  # FmrbApp.set_text_cursor(
+  #   @gfx.origin_x + x,
+  #   @gfx.origin_y + y, 12)
+  # ```
   def origin_y: () -> Integer
 
   # 画面の高さ (ドット) <<en>> Canvas height in pixels
@@ -251,6 +299,10 @@ class FmrbGfx
   # わくを描き直し、付いている FmrbUI の部品にも描き直しの印を付ける。
   #
   # 全画面のアプリなら clear でよく、fill_rect で同じ範囲を塗るより速い。
+  # ```ruby
+  # @gfx.clear(FmrbGfx::BLACK)
+  # @gfx.present
+  # ```
   # <<en>>
   # Fills the whole canvas. In a windowed app that erases the title bar and
   # frame the app drew itself; to clear only the inside of the window use
@@ -259,6 +311,10 @@ class FmrbGfx
   #
   # For a fullscreen app clear is the right call, and faster than a fill_rect
   # over the same area.
+  # ```ruby
+  # @gfx.clear(FmrbGfx::BLACK)
+  # @gfx.present
+  # ```
   def clear: (Integer color) -> FmrbGfx
 
   # 点を一つ打つ <<en>> Set one pixel
@@ -276,12 +332,20 @@ class FmrbGfx
   #
   # canvas の外を指すと 0 を返す。0 は黒でもあるので、範囲外と黒は
   # 戻り値では区別できない。
+  # ```ruby
+  # c = @gfx.get_pixel(60, 40)
+  # # canvas の外は 0
+  # ```
   # <<en>>
   # A synchronous round trip to the graphics side. Not something to do per
   # pixel in a loop scanning the screen.
   #
   # Outside the canvas it returns 0, which is also black -- the return value
   # does not tell the two apart.
+  # ```ruby
+  # c = @gfx.get_pixel(60, 40)
+  # # 0 outside the canvas
+  # ```
   def get_pixel: (Integer x, Integer y) -> Integer
 
   # まっすぐな線を引く <<en>> Draw a straight line
@@ -296,10 +360,18 @@ class FmrbGfx
   #
   # 描画側に太い線の命令が無いので、1 画素の線を thickness 本だけずらして
   # 重ねている。太さの分だけ命令が増えるので、太い線を毎フレーム引くと効く。
+  # ```ruby
+  # @gfx.draw_thick_line(10, 10, 60, 40,
+  #                     2, FmrbGfx::WHITE)
+  # ```
   # <<en>>
   # The graphics side has no thick-line primitive, so this stacks thickness
   # one-pixel lines side by side. The cost grows with the thickness, which
   # shows if thick lines are drawn every frame.
+  # ```ruby
+  # @gfx.draw_thick_line(10, 10, 60, 40,
+  #                     2, FmrbGfx::WHITE)
+  # ```
   %a{fmrb.internal}
   def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
 
@@ -356,8 +428,9 @@ class FmrbGfx
   # (x, y) is the top-left corner, w the width, h the height, and the inside
   # is filled. To wipe the whole canvas, `clear` is faster.
   #
-  # For something that moves, **paint over where it was in the background
-  # colour first**, then draw it at the new place, and it leaves no trail.
+  # For something that moves,
+  # **paint over where it was in the background colour first**,
+  # then draw it at the new place, and it leaves no trail.
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -425,8 +498,8 @@ class FmrbGfx
   # @hits.add(:ok, x, y, 60, 16)
   # ```
   # <<en>>
-  # Fills it with fill and centres label in fg with the current font. **Only
-  # the picture**: it has no click target. On a screen redrawn every time,
+  # Fills it with fill and centres label in fg with the current font.
+  # **Only the picture**: it has no click target. On a screen redrawn every time,
   # pair it with FmrbUI::HitAreas#add. An eighth argument sets the corner
   # radius (default 3).
   #
@@ -492,20 +565,36 @@ class FmrbGfx
   #
   # 角度は度の整数。r0 が内側の半径、r1 が外側の半径で、r0 に 0 でない値を
   # 入れると輪の一部になる。r0 を 0 にすると扇形の外周になる。
+  # ```ruby
+  # @gfx.draw_arc(80, 60, 35, 45, 0, 360,
+  #               FmrbGfx::WHITE)
+  # ```
   # <<en>>
   # Angles are integer degrees. r0 is the inner radius and r1 the outer one,
   # so a non-zero r0 gives part of a ring; r0 of 0 gives the outline of a
   # pie slice.
+  # ```ruby
+  # @gfx.draw_arc(80, 60, 35, 45, 0, 360,
+  #               FmrbGfx::WHITE)
+  # ```
   def draw_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
 
   # 円の一部をぬりつぶす <<en>> Fill a wedge of a circle
   #
   # 角度は度の整数。r0 が内側の半径、r1 が外側の半径。r0 を 0 にすると扇形、
   # 0 でない値にすると輪の一部になる。ゲージや円グラフはこの形で描ける。
+  # ```ruby
+  # @gfx.fill_arc(80, 60, 0, 50, 0, 120,
+  #              FmrbGfx::BLUE)
+  # ```
   # <<en>>
   # Angles are integer degrees. r0 is the inner radius and r1 the outer one:
   # r0 of 0 fills a pie slice, a non-zero r0 fills part of a ring -- which is
   # how a gauge or a pie chart is drawn.
+  # ```ruby
+  # @gfx.fill_arc(80, 60, 0, 50, 0, 120,
+  #              FmrbGfx::BLUE)
+  # ```
   def fill_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
 
   # ---- 字を描く ----
@@ -613,10 +702,20 @@ def set_font_raw: (:default | :ja | :ja_bold family, Integer size) -> FmrbGfx
   #
   # 選んでいる字を整数倍で拡大する。字が増えるわけではないので、大きくすると
   # 角が目立つ。倍率をかけた後の幅は text_width が返す。
+  # ```ruby
+  # @gfx.set_text_size(2)
+  # @gfx.draw_text(4, 4, "BIG", 0xFF)
+  # @gfx.set_text_size(1)
+  # ```
   # <<en>>
   # Scales the selected font by an integer factor. It is the same glyphs
   # enlarged, so the edges get blocky. text_width reports the width after the
   # multiplier.
+  # ```ruby
+  # @gfx.set_text_size(2)
+  # @gfx.draw_text(4, 4, "BIG", 0xFF)
+  # @gfx.set_text_size(1)
+  # ```
   %a{fmrb.internal}
   def set_text_size: (Integer size) -> FmrbGfx
 
@@ -663,9 +762,15 @@ def set_text_size_raw: (Integer size) -> FmrbGfx
   # 一行分の高さを調べる <<en>> The height of one line
   #
   # いま選んでいる字の高さ。行を積むときの間隔に使う。字を変えると変わる。
+  # ```ruby
+  # y += @gfx.font_height + 2
+  # ```
   # <<en>>
   # The height of the font currently selected -- the spacing to use when
   # stacking lines. It changes with the font.
+  # ```ruby
+  # y += @gfx.font_height + 2
+  # ```
   %a{fmrb.internal}
   def font_height: () -> Integer
 
@@ -805,10 +910,16 @@ def draw_image_raw: (Integer image_id, Integer x, Integer y, Float scale_x, Floa
   #
   # 画像は描画側の資源で、数に限りがある。使い終わったら消す。アプリが
   # 終わるときには系がまとめて片づけるので、終了処理で消し忘れても漏れはしない。
+  # ```ruby
+  # @gfx.delete_image(@image[:id])
+  # ```
   # <<en>>
   # An image is a resource on the graphics side, and there is a limited
   # number of them, so release one when it is done with. The system reclaims
   # them when the app exits, so a missing cleanup at exit does not leak.
+  # ```ruby
+  # @gfx.delete_image(@image[:id])
+  # ```
   def delete_image: (Integer image_id) -> FmrbGfx
 
   # 絵の一部を切り取って描く <<en>> Draw one piece cut out of an image
@@ -1103,11 +1214,19 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   # 上位ビットが左。ビットが 1 のところだけが描かれる。
   #
   # 戻り値は mask_id で、draw_image_masked に渡す。使い終わったら delete_mask。
+  # ```ruby
+  # mask = @gfx.create_mask(48, 48, bits)
+  # # bits: 6 バイト × 48 行
+  # ```
   # <<en>>
   # data is one bit per pixel: ceil(width / 8) bytes per row, most significant
   # bit leftmost. Only the pixels whose bit is set are drawn.
   #
   # Returns a mask_id for draw_image_masked; release it with delete_mask.
+  # ```ruby
+  # mask = @gfx.create_mask(48, 48, bits)
+  # # bits: 6 bytes x 48 rows
+  # ```
   def create_mask: (Integer width, Integer height, bin data) -> Integer
 
   # 型ぬきの形を片づける <<en>> Let go of a mask
@@ -1121,10 +1240,18 @@ def draw_tile_scaled_raw: (Integer image_id, Integer src_x, Integer src_y, Integ
   #
   # SpriteImage の絵を、マスクのビットが立っているところだけ canvas に写す。
   # 置き場所はキーワード (x:, y:)。絵の (xx, yy) が canvas の (x+xx, y+yy) に来る。
+  # ```ruby
+  # @gfx.draw_image_masked(sid, mask,
+  #                        x: 20, y: 30)
+  # ```
   # <<en>>
   # Copies a SpriteImage onto the canvas only where the mask's bits are set.
   # The position is passed by keyword (x:, y:): the image's (xx, yy) lands at
   # (x + xx, y + yy).
+  # ```ruby
+  # @gfx.draw_image_masked(sid, mask,
+  #                        x: 20, y: 30)
+  # ```
   %a{fmrb.internal}
   def draw_image_masked: (Integer image_id, Integer mask_id) -> FmrbGfx
 
@@ -1196,9 +1323,19 @@ def present_raw: (Integer x, Integer y, bool positioned) -> FmrbGfx
   #
   # 自分で作った canvas を片づける。アプリの終了時には自動で消えるので、
   # 途中で要らなくなったときだけ呼ぶ。
+  # ```ruby
+  # g = create_canvas_gfx(width: 64,
+  #                      height: 64)
+  # g.destroy
+  # ```
   # <<en>>
   # Throws away a canvas made by the app. They go on their own when the
   # app ends, so this is for one that is finished with early.
+  # ```ruby
+  # g = create_canvas_gfx(width: 64,
+  #                      height: 64)
+  # g.destroy
+  # ```
   %a{fmrb.internal}
   def destroy: () -> FmrbGfx
 
@@ -1210,6 +1347,10 @@ def present_raw: (Integer x, Integer y, bool positioned) -> FmrbGfx
   #
   # Modern (ESP32-P4) だけの機能で、Retro の描画側はこの命令を無視する。
   # FmrbConst::CHIP_MODEL == "ESP32-P4" で分ける。
+  # ```ruby
+  # @map_gfx.set_viewport(vx % bw, vy % bh,
+  #                       160, 120)
+  # ```
   # <<en>>
   # Moves a viewport smaller than the canvas across it. The canvas is treated
   # as a torus, so the source rectangle wraps at the edges: with a canvas a
@@ -1218,15 +1359,27 @@ def present_raw: (Integer x, Integer y, bool positioned) -> FmrbGfx
   #
   # Modern (ESP32-P4) only; the Retro backend ignores the command. Gate it on
   # FmrbConst::CHIP_MODEL == "ESP32-P4".
+  # ```ruby
+  # @map_gfx.set_viewport(vx % bw, vy % bh,
+  #                       160, 120)
+  # ```
   def set_viewport: (Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
 
   # ずらした場所を元に戻す <<en>> Put the shown part back
   #
   # set_viewport で決めた切り出しをやめ、canvas 全体を合成に戻す。
   # set_viewport と同じく Modern (ESP32-P4) だけで効く。
+  # ```ruby
+  # @map_gfx.set_viewport(8, 0, 160, 120)
+  # @map_gfx.clear_viewport
+  # ```
   # <<en>>
   # Undo set_viewport: the whole canvas is composited again. Modern
   # (ESP32-P4) only, as set_viewport is.
+  # ```ruby
+  # @map_gfx.set_viewport(8, 0, 160, 120)
+  # @map_gfx.clear_viewport
+  # ```
   def clear_viewport: () -> FmrbGfx
 
   # 重ねて見せる場所を決める <<en>> Set the regions that are composited
@@ -1237,6 +1390,12 @@ def present_raw: (Integer x, Integer y, bool positioned) -> FmrbGfx
   #
   # Window のアプリでは .app.toml の rounded_corners から系が設定するので、ふつうは
   # 自分で呼ぶ必要はない。
+  # ```ruby
+  # @gfx.set_composite_regions([
+  #   { dst_x: 0, dst_y: 0, w: 100,
+  #     h: 20, transparent: false }
+  # ])
+  # ```
   # <<en>>
   # Says which rectangles of the canvas are composited and how. It is the
   # optimisation for a rounded window, where only the corners need
@@ -1245,6 +1404,12 @@ def present_raw: (Integer x, Integer y, bool positioned) -> FmrbGfx
   #
   # For a windowed app the system sets this from rounded_corners in the
   # .app.toml, so calling it directly is rarely needed.
+  # ```ruby
+  # @gfx.set_composite_regions([
+  #   { dst_x: 0, dst_y: 0, w: 100,
+  #     h: 20, transparent: false }
+  # ])
+  # ```
   %a{fmrb.internal}
   def set_composite_regions: (Array[Hash] regions) -> FmrbGfx
 
@@ -1563,18 +1728,32 @@ def video_open_raw: (String path, Integer x, Integer y, Integer fps, bool loop) 
   #
   # Retro のコンポジット映像の明るさを決める。Modern には効かない。
   # CRT のつまみで合わせきれないときに使う。
+  # ```ruby
+  # @gfx.set_output_level(200)
+  # ```
   # <<en>>
   # Sets the brightness of Retro's composite video signal. It does nothing on
   # Modern. For when a CRT's own controls do not get there.
+  # ```ruby
+  # @gfx.set_output_level(200)
+  # ```
   def set_output_level: (Integer level) -> FmrbGfx
 
   # 映像の色の濃さを決める <<en>> Set the colour depth of the video
   #
   # Retro のコンポジット映像の色の濃さ (カラーバーストの振幅) を決める。
   # Modern には効かない。0 にすると白黒になる。
+  # ```ruby
+  # @gfx.set_chroma_level(128)
+  # @gfx.set_chroma_level(0)  # 白黒
+  # ```
   # <<en>>
   # Sets the saturation of Retro's composite video -- the colour burst
   # amplitude. It does nothing on Modern; 0 gives a black-and-white picture.
+  # ```ruby
+  # @gfx.set_chroma_level(128)
+  # @gfx.set_chroma_level(0)  # b/w
+  # ```
   def set_chroma_level: (Integer level) -> FmrbGfx
 
   # ---- ファイルの受けわたし ----
@@ -1624,10 +1803,16 @@ def sync_file_raw: (String path, String dest) -> bool
   #
   # 中身を見ずに必ず送り直す。ふつうは sync_file でよく、こちらは送り先を
   # 書き換えたことが分かっているときに使う。
+  # ```ruby
+  # @gfx.transfer_file("/data/a.bmp")
+  # ```
   # <<en>>
   # Transfers unconditionally, without looking at what is already there.
   # sync_file is the usual choice; this one is for when the destination is
   # known to need rewriting.
+  # ```ruby
+  # @gfx.transfer_file("/data/a.bmp")
+  # ```
   %a{fmrb.internal}
   def transfer_file: (String path) -> bool
 
@@ -1650,12 +1835,22 @@ def transfer_file_raw: (String path, String dest) -> bool
   #
   # 素材を送るかどうかの判断にはこれを使わない。中身が変わっても exists は
   # true のままなので、書き換えた素材が古いまま残る。判断は sync_file に任せる。
+  # ```ruby
+  # st = @gfx.file_status("/data/a.bmp")
+  # st[:exists]
+  # st[:size]
+  # ```
   # <<en>>
   # Whether the graphics side has the file, and how big it is: {exists:, size:}.
   #
   # Do not use it to decide whether to send an asset. exists stays true after
   # the contents change, so an edited asset would stay stale; leave that
   # decision to sync_file.
+  # ```ruby
+  # st = @gfx.file_status("/data/a.bmp")
+  # st[:exists]
+  # st[:size]
+  # ```
   def file_status: (String path) -> file_info
 
   # ---- クラスメソッド ----
@@ -1667,6 +1862,9 @@ def transfer_file_raw: (String path, String dest) -> bool
   #
   # 結果が 0x01 になる組み合わせは避ける。デスクトップは 0x01 を透明の目印に
   # 使っているので、Window が透けて見える。
+  # ```ruby
+  # FmrbGfx.rgb_to_332(255, 0, 0)  #=> 224
+  # ```
   # <<en>>
   # Packs three 0-255 values into one byte: three bits of red, three of green,
   # two of blue, so nearby colours collapse onto the same value and fine
@@ -1674,6 +1872,9 @@ def transfer_file_raw: (String path, String dest) -> bool
   #
   # Avoid combinations that come out as 0x01. The desktop uses 0x01 as its
   # transparency key, so a window painted with it shows through.
+  # ```ruby
+  # FmrbGfx.rgb_to_332(255, 0, 0)  #=> 224
+  # ```
   def self.rgb_to_332: (Integer r, Integer g, Integer b) -> Integer
 
   # 動画を流す・止める <<en>> Play, pause, stop or rewind the video
@@ -1765,8 +1966,14 @@ class FmrbVideo
   # 止めてファイルを閉じる <<en>> Stop and close the file
   #
   # canvas には最後の絵が残る。
+  # ```ruby
+  # @video.stop
+  # ```
   # <<en>>
   # The canvas keeps the last picture.
+  # ```ruby
+  # @video.stop
+  # ```
   def stop: () -> FmrbVideo
 
   # 頭に戻す <<en>> Back to the start
@@ -1779,8 +1986,18 @@ class FmrbVideo
   # 再生のようす <<en>> The player's state
   #
   # {state:, shown:, dropped:} か nil (FmrbGfx.video_status と同じ)。
+  # ```ruby
+  # st = @video.status
+  # st[:shown]
+  # st[:dropped]
+  # ```
   # <<en>>
   # {state:, shown:, dropped:} or nil, as FmrbGfx.video_status.
+  # ```ruby
+  # st = @video.status
+  # st[:shown]
+  # st[:dropped]
+  # ```
   def status: () -> FmrbGfx::video_status?
 
   # 流れているか <<en>> Whether it is playing

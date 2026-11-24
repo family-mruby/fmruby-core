@@ -68,6 +68,7 @@ check "summary over 112 bytes", items["doc_long_summary"], %w[Foo#long_summary]
 check "no <<en>>", items["doc_no_en"], %w[Foo#no_doc Foo#summary_only]
 check "no long form", items["doc_no_long"], %w[Foo#no_doc Foo#summary_only]
 check "no example", items["doc_no_example"], %w[Foo#long_summary Foo#no_doc Foo#summary_only]
+check "a ** not closed on its line, both ends", items["doc_bold_across"], %w[fmrb_demo.rbs:22 fmrb_demo.rbs:23]
 
 puts "ignore.yml and the baseline"
 check "ignored: one name in 1 (#roll), one method in 2 (Foo#qux)",

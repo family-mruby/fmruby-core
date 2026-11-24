@@ -123,6 +123,11 @@ module GC
   # ```ruby
   # r = GC.interval_ratio
   # ```
+  # <<en>>
+  # The source comment gives 200 as the initial value.
+  # ```ruby
+  # r = GC.interval_ratio
+  # ```
   def self.interval_ratio: () -> Integer
 
   # 回収の間隔の割合を決める <<en>> Set the interval ratio (percent)
@@ -141,6 +146,11 @@ module GC
   # 1 段の仕事の幅の割合 (%) <<en>> Step ratio of incremental collection (percent)
   #
   # ソースのコメントでは初期値 200。
+  # ```ruby
+  # r = GC.step_ratio
+  # ```
+  # <<en>>
+  # The source comment gives 200 as the initial value.
   # ```ruby
   # r = GC.step_ratio
   # ```
@@ -166,6 +176,11 @@ module GC
   # ```ruby
   # n = GC.step_limit
   # ```
+  # <<en>>
+  # 0 means no cap.
+  # ```ruby
+  # n = GC.step_limit
+  # ```
   def self.step_limit: () -> Integer
 
   # 1 段の仕事の上限を決める <<en>> Set the cap on the work of one step
@@ -178,8 +193,9 @@ module GC
   # ```
   # <<en>>
   # 0 means no cap. **A negative value raises ArgumentError** ("step_limit must be
-  # non-negative"). It returns the value you passed. It bounds **the length of one
-  # step, which cannot be interrupted**, so an app that keeps a rhythm lowers it
+  # non-negative"). It returns the value you passed. It bounds
+  # **the length of one step, which cannot be interrupted**,
+  # so an app that keeps a rhythm lowers it
   # (`FmrbApp#idle_gc=` sets 512).
   # ```ruby
   # GC.step_limit = 512
@@ -189,6 +205,11 @@ module GC
   # 回収を始めるバイト増加の線 <<en>> Malloc growth that triggers a collection
   #
   # 0 は使わない。
+  # ```ruby
+  # n = GC.malloc_threshold
+  # ```
+  # <<en>>
+  # 0 turns it off.
   # ```ruby
   # n = GC.malloc_threshold
   # ```
@@ -203,8 +224,8 @@ module GC
   # GC.malloc_threshold = 32 * 1024
   # ```
   # <<en>>
-  # Advances a collection once malloc'd bytes have grown this much. It catches **large
-  # allocations the object count does not show**, such as the body of a String or an
+  # Advances a collection once malloc'd bytes have grown this much. It catches
+  # **large allocations the object count does not show**, such as the body of a String or an
   # Array. 0 turns it off. **A negative value raises ArgumentError**
   # ("malloc_threshold must be non-negative"). It returns the value you passed.
   # ```ruby
@@ -222,15 +243,18 @@ module GC
   # 世代別の回収を切り替える <<en>> Switch generational mode
   #
   # 渡した true / false を返す。**`GC.disable` している間は RuntimeError**
-  # ("generational mode changed when GC disabled")、**`scheduler_driven` が true の間に true にしても
-  # RuntimeError**。`scheduler_driven = true` にすると世代別は切れ、false に戻しても自動では戻らない。
+  # ("generational mode changed when GC disabled")、
+  # **`scheduler_driven` が true の間に true にしても RuntimeError**。
+  # `scheduler_driven = true` にすると世代別は切れ、false に戻しても自動では戻らない。
   # ```ruby
   # GC.generational_mode = true
   # ```
   # <<en>>
-  # Returns the true / false you passed. **It raises RuntimeError while `GC.disable` is in
-  # effect** ("generational mode changed when GC disabled"), **and when you turn it on
-  # while `scheduler_driven` is true.** `scheduler_driven = true` turns it off, and
+  # Returns the true / false you passed.
+  # **It raises RuntimeError while `GC.disable` is in effect**
+  # ("generational mode changed when GC disabled"),
+  # **and when you turn it on while `scheduler_driven` is true.**
+  # `scheduler_driven = true` turns it off, and
   # setting `scheduler_driven` back to false does not turn it on again.
   # ```ruby
   # GC.generational_mode = true
@@ -268,6 +292,11 @@ module GC
   # 回収の遅れの上限 <<en>> Limit of how far collection may fall behind
   #
   # 0 は使わない。`scheduler_driven` の間だけ働く。
+  # ```ruby
+  # n = GC.debt_limit
+  # ```
+  # <<en>>
+  # 0 turns it off. It only works while `scheduler_driven` is true.
   # ```ruby
   # n = GC.debt_limit
   # ```

@@ -17,8 +17,8 @@ class TileSheet
   #   cols: 8, source: src)
   # ```
   # <<en>>
-  # Reads a grid of pictures from one PNG (or BMP). **Takes keyword
-  # arguments** (cols: is required; the signature is positional because the
+  # Reads a grid of pictures from one PNG (or BMP).
+  # **Takes keyword arguments** (cols: is required; the signature is positional because the
   # type engine has none). path is on the graphics side: send it with
   # sync_file first. Without rows:, give source: the picture on this side,
   # whose header has the height.
@@ -199,10 +199,20 @@ class TileMap
   # 地図ぜんぶを画面に描く <<en>> Draw the whole map
   #
   # 地図を丸ごと描く。大きい地図では**画面ぶんだけの `render_view`** を使う。
+  # **`origin_x:` と `origin_y:` は必須** (最初のタイルを canvas のどこに置くか。シグネチャは型推論の都合で sheet だけ)。`max_cols:`・`max_rows:` (省略すると地図の全部) で描く範囲を切れる。
+  # ```ruby
+  # @map.render(@sheet,
+  #             origin_x: 0, origin_y: 0)
+  # ```
   # <<en>>
   # Draws the whole map. For a large one use `render_view`, which draws only
   # what is on screen.
-  def render: (TileSheet sheet) -> void
+  # **`origin_x:` and `origin_y:` are required** (where the first tile lands on the canvas; the signature shows only sheet because of the type engine). `max_cols:` and `max_rows:` (the whole map when left out) clip the region.
+  # ```ruby
+  # @map.render(@sheet,
+  #             origin_x: 0, origin_y: 0)
+  # ```
+  def render: (TileSheet sheet, origin_x: Integer, origin_y: Integer, ?max_cols: Integer, ?max_rows: Integer) -> void
 
   # 見えている場所だけを描く <<en>> Draw only what is in sight
   #
@@ -228,10 +238,20 @@ class TileRing
   #
   # 画面より少し大きい canvas を輪のように使い、**新しく見えた列だけ**を
   # 描き足して広い世界をずらす。**Modern 専用**。
+  # **`tiles_w:` と `tiles_h:` は必須** (輪にする canvas の大きさ。タイルの数で、見える数 + 1 以上にする)。シグネチャは型推論の都合で map と sheet だけ。
+  # ```ruby
+  # ring = TileRing.new(map, sheet,
+  #   tiles_w: 12, tiles_h: 12)
+  # ```
   # <<en>>
   # Uses a canvas a little larger than the view as a ring, stamping only the
   # columns that have just come into sight. **Modern only.**
-  def self.new: (TileMap map, TileSheet sheet) -> TileRing
+  # **`tiles_w:` and `tiles_h:` are required** (the size of the ring canvas in tiles, at least the visible tiles + 1). The signature shows only map and sheet because of the type engine.
+  # ```ruby
+  # ring = TileRing.new(map, sheet,
+  #   tiles_w: 12, tiles_h: 12)
+  # ```
+  def self.new: (TileMap map, TileSheet sheet, tiles_w: Integer, tiles_h: Integer) -> TileRing
 
   # 入れ物の横幅 (ドット) <<en>> The buffer's width in pixels
   #
