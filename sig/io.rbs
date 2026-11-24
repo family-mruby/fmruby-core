@@ -86,6 +86,11 @@ class IO
   # ```ruby
   # f.print "a", 1
   # ```
+  # <<en>>
+  # Calls to_s on each argument and writes it. Always returns nil.
+  # ```ruby
+  # f.print "a", 1
+  # ```
   def print: (*untyped objects) -> nil
 
   # 書いた内容を記憶領域へ流す <<en>> Flush what was written to storage

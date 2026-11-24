@@ -1599,6 +1599,13 @@ class FmrbApp
   # ```ruby
   # FmrbApp.path_read_only?("/mnt/root/etc/hostname")
   # ```
+  # <<en>>
+  # True for the tree of the PC build's distribution and for /mnt/root. Always false on a
+  # device, the simulation and the browser build. Meant to be asked before deleting
+  # (File Manager).
+  # ```ruby
+  # FmrbApp.path_read_only?("/mnt/root/etc/hostname")
+  # ```
   %a{fmrb.internal}
   def self.path_read_only?: (String path) -> bool
 

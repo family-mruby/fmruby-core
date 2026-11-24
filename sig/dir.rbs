@@ -180,6 +180,11 @@ class Dir
   # ```ruby
   # Dir.empty?("/home/tmp")
   # ```
+  # <<en>>
+  # "." and ".." are not counted. RuntimeError when it is missing.
+  # ```ruby
+  # Dir.empty?("/home/tmp")
+  # ```
   def self.empty?: (String path) -> bool
 
   # 名前を 1 つずつ渡す <<en>> Yield each name
@@ -205,9 +210,8 @@ class Dir
   # ```
   # <<en>>
   # `pwd` is the same method.
-  # **Relative paths given to File.open, Dir.open and the like are resolved
-  # from the root (an ESP32's flash root), not from this,**
-  # **so write paths from "/".**
+  # **Relative paths given to File.open, Dir.open and the like are resolved from the root**
+  # **(an ESP32's flash root), not from this, so write paths from "/".**
   # ```ruby
   # Dir.getwd
   # ```
@@ -297,6 +301,11 @@ class Dir
   # "." と ".." 以外を 1 つずつ渡す <<en>> Yield every name except "." and ".."
   #
   # ブロックが要る (無いと NotImplementedError)。
+  # ```ruby
+  # d.each_child { |n| p n }
+  # ```
+  # <<en>>
+  # A block is required (NotImplementedError without one).
   # ```ruby
   # d.each_child { |n| p n }
   # ```
