@@ -19,7 +19,8 @@ class Foo
 
   # 長い説明だけがあって例が無いメソッドで、この行は百十二バイトを超えるように長く書いてある <<en>> a summary that runs well past the limit
   #
-  # 散文だけで例は無い。
+  # 散文だけで例は無い。**強調が次の行へ
+  # またいでいる**。この行は **閉じている**。
   def long_summary: () -> Integer
 
   def no_doc: () -> Integer

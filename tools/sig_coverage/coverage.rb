@@ -99,7 +99,13 @@ module SigCoverage
        [PICORUBY, "git submodule update --init"]].reject { |dir, _| Dir.exist?(path(dir)) }
     end
 
-    def ours?(sig_file) = File.basename(sig_file).match?(/\A(fmrb_.*|enumerable|gpio)\.rbs\z/)
+    # The fifteen files copied from picoruby-ti's example/rbs. Their own
+    # declarations carry English-only one-line summaries, so the doc checks
+    # (count 3) leave them out; every other file in sig/ is Family mruby's.
+    UPSTREAM_SIG = %w[array class false_class float hash integer kernel nil_class object proc
+                      range string symbol true_class untyped].freeze
+
+    def ours?(sig_file) = !UPSTREAM_SIG.include?(File.basename(sig_file, ".rbs"))
   end
 
   # tools/sig_coverage/ignore.yml: a list of { name:, reason: } or
@@ -205,6 +211,7 @@ module SigCoverage
         "doc_no_en" => @result[:doc][:no_en].sort,
         "doc_no_long" => @result[:doc][:no_long].sort,
         "doc_no_example" => @result[:doc][:no_example].sort,
+        "doc_bold_across" => @result[:doc][:bold_across].sort,
       }
     end
 
@@ -446,7 +453,7 @@ module SigCoverage
 
     def count_docs
       doc = { methods: 0, no_summary: [], long_summary: [], no_en: [], no_long: [],
-              no_example: [], no_long_en: [] }
+              no_example: [], no_long_en: [], bold_across: [] }
       @sig.classes.each_value do |klass|
         @sig.own_methods(klass.name).each do |m|
           next if m.alias_of || !@layout.ours?(m.file)
@@ -468,6 +475,20 @@ module SigCoverage
         end
       end
       doc[:files] = @sig.files.count { |f| @layout.ours?(f) }
+      # A ** opened on one comment line and closed on another: the F1 help
+      # colours by the line, so the emphasis bleeds (sig/README.md). Looked
+      # for in the files themselves, class comments included.
+      doc[:bold_across] = []
+      @sig.files.select { |f| @layout.ours?(f) }.sort.each do |f|
+        fence = false
+        File.readlines(f, chomp: true).each_with_index do |line, i|
+          text = line.strip
+          next unless text.start_with?("#")
+          fence = !fence if text.match?(/\A#\s*```/)
+          next if fence
+          doc[:bold_across] << "#{File.basename(f)}:#{i + 1}" if text.scan("**").size.odd?
+        end
+      end
       @result[:doc] = doc
     end
   end
@@ -509,6 +530,7 @@ module SigCoverage
         "doc_methods" => doc[:methods], "doc_no_summary" => doc[:no_summary].size,
         "doc_long_summary" => doc[:long_summary].size, "doc_no_en" => doc[:no_en].size,
         "doc_no_long" => doc[:no_long].size, "doc_no_example" => doc[:no_example].size,
+        "doc_bold_across" => doc[:bold_across].size,
       }
     end
 
@@ -534,7 +556,8 @@ module SigCoverage
       out << "   most: #{top_classes(r[:impl_ruby] + r[:impl_c], 6)}"
       out << "3. doc gaps in Family mruby's sig/ (#{doc[:files]} files, #{doc[:methods]} methods)"
       out << "   no summary #{c['doc_no_summary']}, summary > #{SUMMARY_MAX} bytes #{c['doc_long_summary']}, " \
-             "no <<en>> #{c['doc_no_en']}, no long form #{c['doc_no_long']}, no example #{c['doc_no_example']}"
+             "no <<en>> #{c['doc_no_en']}, no long form #{c['doc_no_long']}, no example #{c['doc_no_example']}, " \
+             "** across lines #{c['doc_bold_across']}"
       out << "ignored (ignore.yml, #{@a.ignore.entries.size} entries): 1: #{ig[1]} + #{@a.ignored_files} files, " \
              "2: #{ig[2]}, 3: #{ig[3]}"
       if (d = diff)
@@ -624,7 +647,7 @@ module SigCoverage
       doc = r[:doc]
       { no_summary: "No summary", long_summary: "Summary over #{SUMMARY_MAX} bytes",
         no_en: "No <<en>> in the summary", no_long: "No long form",
-        no_example: "No ```ruby example", no_long_en: "Long form with prose but no <<en>> line (not in the counts)" }
+        no_example: "No ```ruby example", bold_across: "A ** that is not closed on its line (file:line)", no_long_en: "Long form with prose but no <<en>> line (not in the counts)" }
         .each do |k, title|
           md << "### #{title} (#{doc[k].size})"
           md << ""
