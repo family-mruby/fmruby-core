@@ -1,0 +1,308 @@
+# ガベージコレクタ (GC)。
+# 実装は mruby 本体の src/gc.c と、mruby-task の src/gc.c (scheduler_driven・debt_limit・step。
+# Family mruby の patch は lib/upstream/patch/picoruby-mruby/lib/mruby/ 以下)。
+# **GC はアプリごとの VM が 1 つずつ持つ**ので、ここの値と操作は呼んだアプリの VM のもの。
+
+# ガベージコレクタの操作と統計。
+#
+# ふつうのアプリは触らなくてよい。拍を守るアプリ (演奏・アニメ) が、回収の止まる時間を
+# 避けるために使う。まとめて切り替えるなら `FmrbApp#idle_gc=` (中で `scheduler_driven`・
+# `debt_limit`・`step_limit`・`malloc_threshold` を合わせて設定する) を使う。
+# ```ruby
+# GC.start
+# n = GC.stat[:live]
+# ```
+# <<en>>
+# Control and statistics of the garbage collector. An ordinary app does not need
+# it; an app that must keep a rhythm (playing, animating) uses it to avoid the
+# pause of a collection. To switch it all at once use `FmrbApp#idle_gc=` (it sets
+# `scheduler_driven`, `debt_limit`, `step_limit` and `malloc_threshold` together).
+# ```ruby
+# GC.start
+# n = GC.stat[:live]
+# ```
+module GC
+  # 回収を最後まで 1 回やる <<en>> Run a full collection now
+  #
+  # 戻り値は nil。**一気に最後まで回すので、その間アプリが止まる** (生きているものが多いほど長い)。
+  # 計測の前に揃えたいとき (`GC.start` のあとに `GC.stat` を読む) に使う。
+  # ```ruby
+  # GC.start
+  # before = GC.stat[:live]
+  # ```
+  # <<en>>
+  # Returns nil. **It runs to the end in one go, so the app stops meanwhile** (longer
+  # with more live objects). Use it to level things before a measurement.
+  # ```ruby
+  # GC.start
+  # before = GC.stat[:live]
+  # ```
+  def self.start: () -> nil
+
+  # 回収を止める <<en>> Disable collection
+  #
+  # **それまでに止まっていたら true、動いていたら false** を返す。止めている間は
+  # 確保が増える一方なので、短い区間だけにして、すぐ `GC.enable` で戻す。
+  # **止めている間は `generational_mode=` も RuntimeError になる**。
+  # ```ruby
+  # was = GC.disable
+  # work
+  # GC.enable unless was
+  # ```
+  # <<en>>
+  # Returns **true if it was already disabled, false if it was running**. Memory only
+  # grows while it is off, so keep the span short and call `GC.enable` soon.
+  # **`generational_mode=` raises RuntimeError while it is off.**
+  # ```ruby
+  # was = GC.disable
+  # work
+  # GC.enable unless was
+  # ```
+  def self.disable: () -> bool
+
+  # 回収を戻す <<en>> Enable collection
+  #
+  # **それまで止まっていたら true、動いていたら false** を返す (`GC.disable` と対)。
+  # ```ruby
+  # GC.enable
+  # ```
+  # <<en>>
+  # Returns **true if it was disabled, false if it was running** (the pair of `GC.disable`).
+  # ```ruby
+  # GC.enable
+  # ```
+  def self.enable: () -> bool
+
+  # 回収の状態の数を返す <<en>> Return GC statistics as a hash
+  #
+  # キーは Symbol。**どのビルドにもあるキー**: `:live` (生きているオブジェクトの数)・
+  # `:debt` (回収が遅れている分のオブジェクト数)・`:state` (回収の段。0 = 待ち、1 = 印を付ける、
+  # 2 = 掃く)・`:generational` (世代別か)・`:full` (全体の回収か)・`:step_limit`・
+  # `:malloc_increase`・`:malloc_threshold` (どちらもバイト)・`:symbol_count`・
+  # `:dynamic_symbol_count`。
+  #
+  # **計測用のビルドにだけあるキー**: `:total`・`:minor`・`:major` (回収の回数。`MRB_GC_STATS`)、
+  # `:prof_` で始まる停止時間の統計 (`FMRB_GC_PROFILE=1` で作った版だけ)。ふつうのビルドでは
+  # 無いので、読むときは `GC.stat[:total] || 0` のように nil を考える。
+  # ```ruby
+  # live = GC.stat[:live] || 0
+  # ```
+  # <<en>>
+  # The keys are Symbols. **Keys in every build**: `:live` (live objects), `:debt`
+  # (objects the collector is behind by), `:state` (phase: 0 idle, 1 mark, 2 sweep),
+  # `:generational`, `:full`, `:step_limit`, `:malloc_increase` and `:malloc_threshold`
+  # (both in bytes), `:symbol_count`, `:dynamic_symbol_count`.
+  #
+  # **Keys only in a measurement build**: `:total`, `:minor`, `:major` (collection
+  # counts, `MRB_GC_STATS`) and the `:prof_` pause statistics (a build made with
+  # `FMRB_GC_PROFILE=1`). An ordinary build does not have them, so allow for nil:
+  # `GC.stat[:total] || 0`.
+  # ```ruby
+  # live = GC.stat[:live] || 0
+  # ```
+  def self.stat: () -> Hash[Symbol, untyped]
+
+  # 停止時間の統計を 0 に戻す <<en>> Zero the pause statistics
+  #
+  # **計測用のビルド (`FMRB_GC_PROFILE=1`) にだけある**。ふつうのビルドでは NoMethodError に
+  # なるので、`GC.respond_to?(:reset_stat)` で確かめてから呼ぶ。戻り値は nil。
+  # ```ruby
+  # GC.reset_stat if GC.respond_to?(:reset_stat)
+  # ```
+  # <<en>>
+  # **Only in a measurement build (`FMRB_GC_PROFILE=1`).** An ordinary build raises
+  # NoMethodError, so check `GC.respond_to?(:reset_stat)` first. Returns nil.
+  # ```ruby
+  # GC.reset_stat if GC.respond_to?(:reset_stat)
+  # ```
+  def self.reset_stat: () -> nil
+
+  # 回収の間隔の割合 (%) <<en>> Interval ratio of the collector (percent)
+  #
+  # ソースのコメントでは初期値 200。
+  # ```ruby
+  # r = GC.interval_ratio
+  # ```
+  def self.interval_ratio: () -> Integer
+
+  # 回収の間隔の割合を決める <<en>> Set the interval ratio (percent)
+  #
+  # 戻り値は nil。100 にすると、1 回の回収が終わったらすぐ次を始める (ソースのコメント)。
+  # ```ruby
+  # GC.interval_ratio = 150
+  # ```
+  # <<en>>
+  # Returns nil. At 100 the next collection starts as soon as one ends (source comment).
+  # ```ruby
+  # GC.interval_ratio = 150
+  # ```
+  def self.interval_ratio=: (Integer ratio) -> nil
+
+  # 1 段の仕事の幅の割合 (%) <<en>> Step ratio of incremental collection (percent)
+  #
+  # ソースのコメントでは初期値 200。
+  # ```ruby
+  # r = GC.step_ratio
+  # ```
+  def self.step_ratio: () -> Integer
+
+  # 1 段の仕事の幅の割合を決める <<en>> Set the step ratio (percent)
+  #
+  # **0 以下は ArgumentError** ("step_ratio must be positive")。戻り値は nil。大きいほど 1 段が長い。
+  # ```ruby
+  # GC.step_ratio = 200
+  # ```
+  # <<en>>
+  # **Zero or less raises ArgumentError** ("step_ratio must be positive"). Returns nil.
+  # A larger value makes one step longer.
+  # ```ruby
+  # GC.step_ratio = 200
+  # ```
+  def self.step_ratio=: (Integer ratio) -> nil
+
+  # 1 段の仕事の上限 <<en>> Cap on the work of one step
+  #
+  # 0 は上限なし。
+  # ```ruby
+  # n = GC.step_limit
+  # ```
+  def self.step_limit: () -> Integer
+
+  # 1 段の仕事の上限を決める <<en>> Set the cap on the work of one step
+  #
+  # 0 は上限なし。**負は ArgumentError** ("step_limit must be non-negative")。渡した値を返す。
+  # **途中で止められない 1 段の長さの上限**になるので、拍を守りたいアプリが小さくする
+  # (`FmrbApp#idle_gc=` は 512 にする)。
+  # ```ruby
+  # GC.step_limit = 512
+  # ```
+  # <<en>>
+  # 0 means no cap. **A negative value raises ArgumentError** ("step_limit must be
+  # non-negative"). It returns the value you passed. It bounds **the length of one
+  # step, which cannot be interrupted**, so an app that keeps a rhythm lowers it
+  # (`FmrbApp#idle_gc=` sets 512).
+  # ```ruby
+  # GC.step_limit = 512
+  # ```
+  def self.step_limit=: (Integer limit) -> Integer
+
+  # 回収を始めるバイト増加の線 <<en>> Malloc growth that triggers a collection
+  #
+  # 0 は使わない。
+  # ```ruby
+  # n = GC.malloc_threshold
+  # ```
+  def self.malloc_threshold: () -> Integer
+
+  # 回収を始めるバイト増加の線を決める <<en>> Set the malloc growth threshold
+  #
+  # 確保したバイトがこれだけ増えたら 1 回分の回収を進める。文字列や配列の中身のように、
+  # **オブジェクトの数に出ない大きな確保**を拾う。0 で使わない。**負は ArgumentError**
+  # ("malloc_threshold must be non-negative")。渡した値を返す。
+  # ```ruby
+  # GC.malloc_threshold = 32 * 1024
+  # ```
+  # <<en>>
+  # Advances a collection once malloc'd bytes have grown this much. It catches **large
+  # allocations the object count does not show**, such as the body of a String or an
+  # Array. 0 turns it off. **A negative value raises ArgumentError**
+  # ("malloc_threshold must be non-negative"). It returns the value you passed.
+  # ```ruby
+  # GC.malloc_threshold = 32 * 1024
+  # ```
+  def self.malloc_threshold=: (Integer bytes) -> Integer
+
+  # 世代別の回収か <<en>> Whether generational mode is on
+  #
+  # ```ruby
+  # g = GC.generational_mode
+  # ```
+  def self.generational_mode: () -> bool
+
+  # 世代別の回収を切り替える <<en>> Switch generational mode
+  #
+  # 渡した true / false を返す。**`GC.disable` している間は RuntimeError**
+  # ("generational mode changed when GC disabled")、**`scheduler_driven` が true の間に true にしても
+  # RuntimeError**。`scheduler_driven = true` にすると世代別は切れ、false に戻しても自動では戻らない。
+  # ```ruby
+  # GC.generational_mode = true
+  # ```
+  # <<en>>
+  # Returns the true / false you passed. **It raises RuntimeError while `GC.disable` is in
+  # effect** ("generational mode changed when GC disabled"), **and when you turn it on
+  # while `scheduler_driven` is true.** `scheduler_driven = true` turns it off, and
+  # setting `scheduler_driven` back to false does not turn it on again.
+  # ```ruby
+  # GC.generational_mode = true
+  # ```
+  def self.generational_mode=: (bool enable) -> bool
+
+  # 回収をスケジューラに任せているか <<en>> Whether the scheduler drives the collector
+  #
+  # ```ruby
+  # d = GC.scheduler_driven
+  # ```
+  def self.scheduler_driven: () -> bool
+
+  # 回収をスケジューラの空き時間に任せる <<en>> Hand collection to the scheduler's idle time
+  #
+  # true にすると、確保のたびに回収を進めるのをやめ、アプリが待っている間 (`_spin`) に少しずつ
+  # 進める。**世代別は切れ**、`GC.disable` している間は RuntimeError。false で元に戻る
+  # (世代別は戻らない)。**ずっと忙しいアプリは空きが無く進まない**ので、`debt_limit` を超えると
+  # 確保の側が回収を強制する。ふつうは `FmrbApp#idle_gc=` を使う。渡した値を返す。
+  # ```ruby
+  # GC.scheduler_driven = true
+  # ```
+  # <<en>>
+  # When true, allocation no longer drives collection; it advances in small steps while
+  # the app waits (`_spin`). **Generational mode goes off**, and it raises RuntimeError
+  # while `GC.disable` is in effect. false puts it back (generational mode does not
+  # return). **An always-busy app never has idle time**, so past `debt_limit` the
+  # allocation path forces a step. Usually use `FmrbApp#idle_gc=`. Returns the value you
+  # passed.
+  # ```ruby
+  # GC.scheduler_driven = true
+  # ```
+  def self.scheduler_driven=: (bool enable) -> bool
+
+  # 回収の遅れの上限 <<en>> Limit of how far collection may fall behind
+  #
+  # 0 は使わない。`scheduler_driven` の間だけ働く。
+  # ```ruby
+  # n = GC.debt_limit
+  # ```
+  def self.debt_limit: () -> Integer
+
+  # 回収の遅れの上限を決める <<en>> Set the limit of collection debt
+  #
+  # `scheduler_driven` が true で空きが無いとき、遅れ (`GC.stat[:debt]`) がこれを超えると、確保の側が
+  # 1 段だけ回収を強制する (そこで 1 段ぶん止まる)。**`scheduler_driven` が false の間は効かない**。
+  # 0 で使わない。**負は ArgumentError**。渡した値を返す。
+  # ```ruby
+  # GC.debt_limit = 4096
+  # ```
+  # <<en>>
+  # While `scheduler_driven` is true and there is no idle time, once the debt
+  # (`GC.stat[:debt]`) passes this the allocation path forces one step (a pause of one
+  # step). **It does nothing while `scheduler_driven` is false.** 0 turns it off.
+  # **A negative value raises ArgumentError.** Returns the value you passed.
+  # ```ruby
+  # GC.debt_limit = 4096
+  # ```
+  def self.debt_limit=: (Integer limit) -> Integer
+
+  # 回収を 1 段だけ進める <<en>> Run one bounded collection step
+  #
+  # 戻り値は nil。`scheduler_driven` の間に、忙しいアプリが 1 フレームに数回呼んで、回収を
+  # 小さく分けて済ませる (1 段の長さは `step_limit` が決める)。
+  # ```ruby
+  # GC.step
+  # ```
+  # <<en>>
+  # Returns nil. While `scheduler_driven`, a busy app calls it a few times per frame to
+  # spread collection into small slices (`step_limit` sets the length of one).
+  # ```ruby
+  # GC.step
+  # ```
+  def self.step: () -> nil
+end
