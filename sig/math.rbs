@@ -1,0 +1,286 @@
+# 数学関数 (Math)。
+# 実装は mruby の gem mruby-math (mrbgems/mruby-math/src/math.c)。
+
+# 三角関数・指数・対数などの数学関数。
+#
+# 引数は Integer でも Float でもよく、結果は必ず Float。数でないもの (nil や
+# 文字列) を渡すと TypeError。**定義域の外の値は `Math::DomainError`** が出る
+# (関数ごとに長文に書いた)。
+# ```ruby
+# Math.sqrt(2)   #=> 1.4142135623730951
+# ```
+# <<en>>
+# Takes an Integer or a Float and always returns a Float. A non-number (nil, a
+# String) raises TypeError. **A value outside the domain raises
+# `Math::DomainError`** (noted per function).
+# ```ruby
+# Math.sqrt(2)   #=> 1.4142135623730951
+# ```
+module Math
+  # 円周率 <<en>> The constant pi
+  PI: Float
+  # 自然対数の底 <<en>> The base of natural logarithms, e
+  E: Float
+
+  # 定義域の外の値を渡したときの例外 <<en>> Raised for an argument outside the domain
+  #
+  # StandardError の仲間。メッセージは "Numerical argument is out of domain - sqrt" の形。
+  # <<en>>
+  # A StandardError. The message looks like "Numerical argument is out of domain - sqrt".
+  class DomainError < StandardError
+  end
+
+  # 正弦 (ラジアン) <<en>> Sine of x in radians
+  #
+  # ```ruby
+  # y = Math.sin(t) * 20
+  # ```
+  def self.sin: ((Integer | Float) x) -> Float
+
+  # 余弦 (ラジアン) <<en>> Cosine of x in radians
+  #
+  # ```ruby
+  # x = Math.cos(t) * 20
+  # ```
+  def self.cos: ((Integer | Float) x) -> Float
+
+  # 正接 (ラジアン) <<en>> Tangent of x in radians
+  #
+  # ```ruby
+  # Math.tan(Math::PI / 4)
+  # ```
+  def self.tan: ((Integer | Float) x) -> Float
+
+  # 逆正弦 <<en>> Arc sine
+  #
+  # 結果は -PI/2 から PI/2。**x が -1 から 1 の外だと DomainError**。
+  # ```ruby
+  # Math.asin(0.5)   #=> 0.5235987755982989
+  # ```
+  # <<en>>
+  # Returns -PI/2 to PI/2. **Raises DomainError when x is outside -1..1.**
+  # ```ruby
+  # Math.asin(0.5)   #=> 0.5235987755982989
+  # ```
+  def self.asin: ((Integer | Float) x) -> Float
+
+  # 逆余弦 <<en>> Arc cosine
+  #
+  # 結果は 0 から PI。**x が -1 から 1 の外だと DomainError**。
+  # ```ruby
+  # Math.acos(0.5)   #=> 1.0471975511965979
+  # ```
+  # <<en>>
+  # Returns 0 to PI. **Raises DomainError when x is outside -1..1.**
+  # ```ruby
+  # Math.acos(0.5)   #=> 1.0471975511965979
+  # ```
+  def self.acos: ((Integer | Float) x) -> Float
+
+  # 逆正接 <<en>> Arc tangent
+  #
+  # ```ruby
+  # Math.atan(1)   #=> 0.7853981633974483
+  # ```
+  def self.atan: ((Integer | Float) x) -> Float
+
+  # y と x から角度を求める <<en>> Angle from y and x
+  #
+  # **引数は y が先、x が後**。結果は -PI から PI。
+  # ```ruby
+  # a = Math.atan2(dy, dx)
+  # ```
+  # <<en>>
+  # **y comes first, then x.** Returns -PI to PI.
+  # ```ruby
+  # a = Math.atan2(dy, dx)
+  # ```
+  def self.atan2: ((Integer | Float) y, (Integer | Float) x) -> Float
+
+  # 双曲線正弦 <<en>> Hyperbolic sine
+  #
+  # ```ruby
+  # Math.sinh(1)
+  # ```
+  def self.sinh: ((Integer | Float) x) -> Float
+
+  # 双曲線余弦 <<en>> Hyperbolic cosine
+  #
+  # ```ruby
+  # Math.cosh(1)
+  # ```
+  def self.cosh: ((Integer | Float) x) -> Float
+
+  # 双曲線正接 <<en>> Hyperbolic tangent
+  #
+  # ```ruby
+  # Math.tanh(1)
+  # ```
+  def self.tanh: ((Integer | Float) x) -> Float
+
+  # 逆双曲線正弦 <<en>> Inverse hyperbolic sine
+  #
+  # ```ruby
+  # Math.asinh(1)
+  # ```
+  def self.asinh: ((Integer | Float) x) -> Float
+
+  # 逆双曲線余弦 <<en>> Inverse hyperbolic cosine
+  #
+  # **x が 1 より小さいと DomainError**。
+  # ```ruby
+  # Math.acosh(2)
+  # ```
+  # <<en>>
+  # **Raises DomainError when x is less than 1.**
+  # ```ruby
+  # Math.acosh(2)
+  # ```
+  def self.acosh: ((Integer | Float) x) -> Float
+
+  # 逆双曲線正接 <<en>> Inverse hyperbolic tangent
+  #
+  # **x が -1 から 1 の外だと DomainError**。
+  # ```ruby
+  # Math.atanh(0.5)
+  # ```
+  # <<en>>
+  # **Raises DomainError when x is outside -1..1.**
+  # ```ruby
+  # Math.atanh(0.5)
+  # ```
+  def self.atanh: ((Integer | Float) x) -> Float
+
+  # e の x 乗 <<en>> e raised to the power x
+  #
+  # ```ruby
+  # Math.exp(1)   #=> 2.718281828459045
+  # ```
+  def self.exp: ((Integer | Float) x) -> Float
+
+  # exp(x) - 1 <<en>> exp(x) minus 1
+  #
+  # ```ruby
+  # Math.expm1(0.001)
+  # ```
+  def self.expm1: ((Integer | Float) x) -> Float
+
+  # log(1 + x) <<en>> Natural log of 1 plus x
+  #
+  # **x が -1 より小さいと DomainError**。
+  # ```ruby
+  # Math.log1p(0.001)
+  # ```
+  # <<en>>
+  # **Raises DomainError when x is less than -1.**
+  # ```ruby
+  # Math.log1p(0.001)
+  # ```
+  def self.log1p: ((Integer | Float) x) -> Float
+
+  # 自然対数。底を渡せば対数の底になる <<en>> Natural log, or log to a given base
+  #
+  # 底を省くと自然対数 (底 e)。渡すと log(x) / log(base) を返す。
+  # `base` (省略すると e)。
+  # **x が負、または base が負だと DomainError** (0 と 1 は C の log にそのまま渡る)。
+  # ```ruby
+  # Math.log(8, 2)   #=> 3.0
+  # ```
+  # <<en>>
+  # Without a base it is the natural log (base e); with one it returns
+  # log(x) / log(base). `base` (e when left out).
+  # **Raises DomainError when x or base is negative** (0 and 1 go straight to C's log).
+  # ```ruby
+  # Math.log(8, 2)   #=> 3.0
+  # ```
+  def self.log: ((Integer | Float) x, ?(Integer | Float) base) -> Float
+
+  # 2 を底とする対数 <<en>> Base-2 logarithm
+  #
+  # **x が負だと DomainError**。
+  # ```ruby
+  # Math.log2(8)   #=> 3.0
+  # ```
+  # <<en>>
+  # **Raises DomainError when x is negative.**
+  # ```ruby
+  # Math.log2(8)   #=> 3.0
+  # ```
+  def self.log2: ((Integer | Float) x) -> Float
+
+  # 10 を底とする対数 <<en>> Base-10 logarithm
+  #
+  # **x が負だと DomainError**。
+  # ```ruby
+  # Math.log10(1000)   #=> 3.0
+  # ```
+  # <<en>>
+  # **Raises DomainError when x is negative.**
+  # ```ruby
+  # Math.log10(1000)   #=> 3.0
+  # ```
+  def self.log10: ((Integer | Float) x) -> Float
+
+  # 平方根 <<en>> Square root
+  #
+  # **x が負だと DomainError** (複素数は返さない)。
+  # ```ruby
+  # Math.sqrt(dx * dx + dy * dy)
+  # ```
+  # <<en>>
+  # **Raises DomainError when x is negative** (no complex result).
+  # ```ruby
+  # Math.sqrt(dx * dx + dy * dy)
+  # ```
+  def self.sqrt: ((Integer | Float) x) -> Float
+
+  # 立方根 <<en>> Cube root
+  #
+  # ```ruby
+  # Math.cbrt(27)   #=> 3.0
+  # ```
+  def self.cbrt: ((Integer | Float) x) -> Float
+
+  # 仮数と指数に分ける <<en>> Split into fraction and exponent
+  #
+  # [仮数 (Float), 指数 (Integer)] の配列を返す。x = 仮数 * 2 ** 指数。
+  # ```ruby
+  # f, e = Math.frexp(1234)
+  # #=> f = 0.6025390625, e = 11
+  # ```
+  # <<en>>
+  # Returns [fraction (Float), exponent (Integer)]. x = fraction * 2 ** exponent.
+  # ```ruby
+  # f, e = Math.frexp(1234)
+  # #=> f = 0.6025390625, e = 11
+  # ```
+  def self.frexp: ((Integer | Float) x) -> Array[Float | Integer]
+
+  # 仮数 * 2 ** 指数を求める <<en>> Compute fraction * 2 ** exponent
+  #
+  # ```ruby
+  # Math.ldexp(0.5, 3)   #=> 4.0
+  # ```
+  def self.ldexp: ((Integer | Float) fraction, Integer exponent) -> Float
+
+  # 直角三角形の斜辺の長さ <<en>> Length of the hypotenuse
+  #
+  # ```ruby
+  # Math.hypot(3, 4)   #=> 5.0
+  # ```
+  def self.hypot: ((Integer | Float) x, (Integer | Float) y) -> Float
+
+  # 誤差関数 <<en>> Error function
+  #
+  # ```ruby
+  # Math.erf(1)
+  # ```
+  def self.erf: ((Integer | Float) x) -> Float
+
+  # 相補誤差関数 <<en>> Complementary error function
+  #
+  # ```ruby
+  # Math.erfc(1)
+  # ```
+  def self.erfc: ((Integer | Float) x) -> Float
+end
