@@ -87,7 +87,7 @@ class FmrbUI
   # unless given). A single widget can override it with its own text_size:.
   # The size is fixed when the widget is made and never follows the size the
   # app happens to be in, and flush hands the app's size back afterwards.
-  def self.new: (FmrbApp app) -> FmrbUI
+  def self.new: (FmrbApp app, ?bg: Integer, ?text_size: Integer, ?bg_painter: untyped) -> FmrbUI
 
   # 文字を置く <<en>> Place a text label
   #
@@ -169,6 +169,8 @@ class FmrbUI
   # 「< 選択肢 >」の形で、options の中身を左右で送ります。value は選ばれた
   # 添字、option_text はその文字列です。端では止まり、巡回しません。
   # 文字を作り直さないので Stepper より軽い部品です。
+  # `index:` (省略すると 0) は最初に選ばれている添字、`text_size:` は
+  # この部品だけの文字の大きさです。options は読むだけで書き換えません。
   #
   # ```ruby
   # THEMES = ["light", "dark", "classic"]
@@ -180,7 +182,54 @@ class FmrbUI
   # A "< choice >" control over options. value is the chosen index and
   # option_text the string. It stops at the ends rather than wrapping, and
   # builds no string when moved, which makes it lighter than a Stepper.
-  def enum: (Symbol id, Integer x, Integer y, Integer w, Integer h, Array[String] options) -> FmrbUI::Enum
+  # `index:` (0 when left out) is the choice shown first, `text_size:` the
+  # text scale of this widget alone. options is read, never written.
+  def enum: (Symbol id, Integer x, Integer y, Integer w, Integer h, Array[String] options, ?index: Integer, ?text_size: Integer) -> FmrbUI::Enum
+
+  # 縦のスクロールバーを置く <<en>> Place a vertical scrollbar
+  #
+  # x, y, w, h は**バーそのもの**の矩形で、動かす一覧のものではありません
+  # (幅は 10 が標準)。total (全部の数)・visible (見える数)・scroll (今の位置、
+  # 省略すると 0) の 3 つだけでつまみの大きさと位置が決まります。
+  # **位置を持つのはアプリ**です。キーなどで動かしたら `set_value`、件数が
+  # 変わったら `set_range` で入れ、バーを押されたら `value` で読み戻します。
+  # ホイールには応えません (`wheel_rows` で自分で受ける)。
+  #
+  # **押した瞬間に** handle が id を返し (離したときではない)、押し続けても
+  # 返るのは最初の 1 回だけです。1 回で 1 つ動き、端で押したときは返りません。
+  # 押している間の向きは `direction` で読み、繰り返しはアプリがします。
+  # 全部が見えている (total が visible 以下の) 間は何も描かず、
+  # **クリックも後ろの一覧へ通ります**。作れるのは on_create の中です。
+  # ```ruby
+  # @ui.scrollbar(:sb, w - 10, y, 10, h,
+  #               0, rows, 0)
+  # # ...
+  # @ui.set_range(:sb, @files.size, rows)
+  # @ui.set_value(:sb, @scroll)
+  # ```
+  # <<en>>
+  # x, y, w, h are the bar itself, not the list it scrolls (10 wide is the
+  # usual). total (how many there are), visible (how many fit) and scroll
+  # (the position; 0 when left out) are all it needs.
+  # **The app owns the position.** Push it in with `set_value` when keys move
+  # it, call `set_range` when the count changes, and read it back with
+  # `value` after the bar is pressed. The wheel is not answered here (use
+  # `wheel_rows`).
+  #
+  # **handle returns the id on the press** (not the release), once for a
+  # held press. One press moves one step, and a press at an end returns
+  # nothing. `direction` says which way a held bar goes; the app does the
+  # repeating. While everything fits (total at most visible) it draws
+  # nothing and **clicks pass through to the list behind**. Make it in
+  # on_create.
+  # ```ruby
+  # @ui.scrollbar(:sb, w - 10, y, 10, h,
+  #               0, rows, 0)
+  # # ...
+  # @ui.set_range(:sb, @files.size, rows)
+  # @ui.set_value(:sb, @scroll)
+  # ```
+  def scrollbar: (Symbol id, Integer x, Integer y, Integer w, Integer h, Integer total, Integer visible, ?Integer scroll) -> FmrbUI::Scrollbar
 
   # 選ばれている文字 <<en>> The chosen string
   #
@@ -416,6 +465,78 @@ class FmrbUI
   def set_visible: (Symbol id, bool flag) -> void
 
 
+  # 範囲を入れ直す <<en>> Change a widget's range
+  #
+  # **部品によって 2 つの数の意味が違います**。Stepper (と Enum) は
+  # `(min, max)`、Scrollbar は `(total, visible)`。値は新しい範囲の中へ
+  # 引き戻されます。同じ範囲なら何もせず、id が無いときも何も起きません
+  # (常に nil)。ほかの部品では何もしません。
+  # ```ruby
+  # @ui.set_range(:track, 1, total)    # Stepper
+  # @ui.set_range(:sb, @files.size, 8) # Scrollbar
+  # ```
+  # <<en>>
+  # **The two numbers mean different things.** A Stepper (and Enum) takes
+  # `(min, max)`, a Scrollbar `(total, visible)`. The value is pulled inside
+  # the new range. The same range does nothing, an unknown id does nothing
+  # (it always returns nil), and other widgets ignore it.
+  # ```ruby
+  # @ui.set_range(:track, 1, total)    # Stepper
+  # @ui.set_range(:sb, @files.size, 8) # Scrollbar
+  # ```
+  def set_range: (Symbol id, Integer min, Integer max) -> void
+
+  # つまみを押している向き <<en>> Which way a scrollbar is held
+  #
+  # 上へ押している間は -1、下へは 1、押していなければ 0 (id が無いときも 0)。
+  # handle が id を返したあとに読み、押している間の繰り返しに使います。
+  # ```ruby
+  # if @ui.handle(ev) == :sb
+  #   d = @ui.direction(:sb)
+  #   @scroll_hold = d
+  # end
+  # ```
+  # <<en>>
+  # -1 while held up, 1 held down, 0 when not held (and for an unknown id).
+  # Read it after handle returns the id to drive the repeat.
+  # ```ruby
+  # if @ui.handle(ev) == :sb
+  #   d = @ui.direction(:sb)
+  #   @scroll_hold = d
+  # end
+  # ```
+  def direction: (Symbol id) -> Integer
+
+  # 部品の地の色 <<en>> The colour behind the widgets
+  #
+  # ```ruby
+  # c = @ui.bg
+  # ```
+  def bg: () -> Integer
+
+  # 部品の地の色を変える <<en>> Change the colour behind the widgets
+  #
+  # **あとから作る部品と、隠した部品の跡を塗る色**が変わります。
+  # **すでにある部品の中の色は変わりません**。部品は作るときに色を写して
+  # 持つので、変えるなら部品の `bg=` です。渡した色は自前の色として扱われ、
+  # アプリを別の端末へ移してもテーマの色には戻りません。描き直しは
+  # `invalidate_all` のあとの flush で。
+  # ```ruby
+  # @ui.bg = @bg_col
+  # @ui.invalidate_all
+  # ```
+  # <<en>>
+  # Changes what **widgets made afterwards, and the hole left by a hidden one**,
+  # are painted with. **Widgets that already exist keep their own colour**:
+  # each copies it when made, so use the widget's `bg=`. The colour
+  # counts as the app's own and does not turn back into the theme's after a
+  # move to another machine. Repaint with `invalidate_all` and a flush.
+  # ```ruby
+  # @ui.bg = @bg_col
+  # @ui.invalidate_all
+  # ```
+  def bg=: (Integer c) -> void
+
   # 置いてある部品の一覧 <<en>> The widgets placed so far
   #
   # ```ruby
@@ -514,6 +635,42 @@ class FmrbUI::Widget
   # @ui.flush
   # ```
   def place: (Integer x, Integer y, Integer w, Integer h) -> void
+
+  # 部品が自分の中を塗る色 <<en>> The colour a widget paints inside itself
+  #
+  # Label の箱・Stepper の値の欄・Scrollbar の溝の色。Button・Toggle・
+  # TextField は使いません。**背後の色ではありません**。
+  # ```ruby
+  # c = w.bg
+  # ```
+  # <<en>>
+  # The box of a Label, the value field of a Stepper, the track of a
+  # Scrollbar. A Button, Toggle and TextField do not use it. It is not the
+  # colour of what is behind the widget.
+  # ```ruby
+  # c = w.bg
+  # ```
+  def bg: () -> Integer
+
+  # 部品の中の色を変える <<en>> Change the colour a widget paints inside
+  #
+  # **自前の色として扱われ**、アプリを別の端末へ移してもテーマの色には戻り
+  # ません。**描き直しの印は付かない**ので、`@ui.invalidate_all` か、その部品が
+  # 変わるときに描かれます。
+  # ```ruby
+  # @ui.find(:title).bg = FmrbGfx::BLACK
+  # @ui.invalidate_all
+  # ```
+  # <<en>>
+  # The colour counts as the app's own and does not turn back into the
+  # theme's after a move to another machine.
+  # **It does not mark the widget for redraw**: call `@ui.invalidate_all`,
+  # or wait until the widget changes.
+  # ```ruby
+  # @ui.find(:title).bg = FmrbGfx::BLACK
+  # @ui.invalidate_all
+  # ```
+  def bg=: (Integer c) -> void
 end
 
 # 文字だけの部品 <<en>> A text-only widget
@@ -603,6 +760,23 @@ class FmrbUI::TextField < FmrbUI::Widget
   # draw_caret if field.focused?
   # ```
   def focused?: () -> bool
+
+  # 文字を入れ直す <<en>> Replace what is in the field
+  #
+  # nil は空の文字列になります。渡した文字列は写して持つので、あとで
+  # 渡した側を書き換えても欄は変わりません。
+  # ```ruby
+  # field.set_field_text("untitled")
+  # @ui.flush
+  # ```
+  # <<en>>
+  # nil becomes an empty string. The field keeps a copy, so changing the
+  # string you passed later does not change the field.
+  # ```ruby
+  # field.set_field_text("untitled")
+  # @ui.flush
+  # ```
+  def set_field_text: (String? t) -> void
 end
 
 # 選択肢を選ぶ部品 <<en>> A choice picker
@@ -675,6 +849,22 @@ class FmrbUI::Stepper < FmrbUI::Widget
   # ```
   def set_value: (Integer v) -> bool
 
+  # 下限と上限を入れ直す <<en>> Change the lowest and highest values
+  #
+  # **今の数は新しい範囲の中へ引き戻されます**。同じ範囲なら何もしません。
+  # 読み込んだファイルの曲数のように、範囲がデータで決まるときに使います。
+  # ```ruby
+  # @track_st.set_range(1, total)
+  # ```
+  # <<en>>
+  # **The current value is pulled inside the new range.** The same range
+  # does nothing. For a range the data decides, like the tracks in a loaded
+  # file.
+  # ```ruby
+  # @track_st.set_range(1, total)
+  # ```
+  def set_range: (Integer min, Integer max) -> void
+
   # 数のうしろに付ける単位 <<en>> Unit appended after the number
   #
   # 作ったあとに 1 回だけ渡します ("%" など)。
@@ -687,6 +877,97 @@ class FmrbUI::Stepper < FmrbUI::Widget
   # st.suffix = "%"
   # ```
   def suffix=: (String s) -> void
+end
+
+# 縦のスクロールバー <<en>> A vertical scrollbar
+#
+# 一覧のことは何も知らず、全部の数・見える数・今の位置の 3 つの整数だけで
+# 動きます。位置を持つのはアプリで、バーは写しです。`FmrbUI#scrollbar` で
+# 作り、値の出し入れは `FmrbUI#set_value` / `set_range` でもできます。
+# <<en>>
+# It knows nothing about the list: three integers (how many there are, how
+# many fit, where we are) are all it needs. The app owns the position and the
+# bar is a view of it. Made with `FmrbUI#scrollbar`; the value can also be
+# pushed in with `FmrbUI#set_value` / `set_range`.
+class FmrbUI::Scrollbar < FmrbUI::Widget
+  # 今の位置 <<en>> The current position
+  #
+  # ```ruby
+  # @scroll = bar.value
+  # ```
+  def value: () -> Integer
+
+  # 全部の数 <<en>> How many there are
+  #
+  # ```ruby
+  # n = bar.total
+  # ```
+  def total: () -> Integer
+
+  # 一度に見える数 <<en>> How many fit
+  #
+  # ```ruby
+  # rows = bar.visible_count
+  # ```
+  def visible_count: () -> Integer
+
+  # バーが出ているか <<en>> Whether the bar is in use
+  #
+  # 全部が見えている間は偽で、何も描かず、クリックも通します。
+  # ```ruby
+  # draw_hint unless bar.active?
+  # ```
+  # <<en>>
+  # False while everything fits: nothing is drawn and clicks pass through.
+  # ```ruby
+  # draw_hint unless bar.active?
+  # ```
+  def active?: () -> bool
+
+  # 位置を入れる <<en>> Set the position
+  #
+  # 0 から (total - visible) の間へ収めます。**位置が変わったときだけ true**
+  # を返します (同じ位置なら false)。
+  # ```ruby
+  # bar.set_value(@scroll)
+  # ```
+  # <<en>>
+  # Clamped to 0 .. (total - visible). Returns true only when the position
+  # actually changed (false when it was already there).
+  # ```ruby
+  # bar.set_value(@scroll)
+  # ```
+  def set_value: (Integer v) -> bool
+
+  # 全部の数と見える数を入れ直す <<en>> Change how many there are and fit
+  #
+  # **Stepper の set_range とは違い、引数は (total, visible)** です。位置は
+  # 新しい範囲の中へ引き戻されます。
+  # ```ruby
+  # bar.set_range(@files.size, 8)
+  # ```
+  # <<en>>
+  # **Unlike a Stepper's set_range the arguments are (total, visible).** The
+  # position is pulled inside the new range.
+  # ```ruby
+  # bar.set_range(@files.size, 8)
+  # ```
+  def set_range: (Integer total, Integer visible) -> void
+
+  # その点がバーの上か <<en>> Whether the point is on the bar
+  #
+  # **バーが出ていないとき (全部が見えている間) は偽**です。点が重なって
+  # いても同じで、一覧へクリックを通すための振る舞いです。
+  # ```ruby
+  # on_bar = @ui.find(:sb).hit?(x, y)
+  # ```
+  # <<en>>
+  # **False while the bar is not in use (everything fits)**, even over its
+  # rectangle, so the click goes to the list behind.
+  # ```ruby
+  # on_bar = @ui.find(:sb).hit?(x, y)
+  # ```
+  def hit?: (Integer px, Integer py) -> bool
 end
 
 # 毎回描く画面の押せる範囲 <<en>> Click targets of a screen redrawn every time
@@ -754,7 +1035,7 @@ class FmrbUI::HitAreas
   # @hits.add(:ok, x, y, 60, 16)
   # @hits.add(:tile, x, y, 16, 24, t)
   # ```
-  def add: (untyped id, Integer x, Integer y, Integer w, Integer h) -> FmrbUI::HitAreas
+  def add: (untyped id, Integer x, Integer y, Integer w, Integer h, ?untyped data) -> FmrbUI::HitAreas
 
   # 点にある範囲を引く <<en>> The target at a point
   #
