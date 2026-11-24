@@ -1,0 +1,384 @@
+# FmrbConst の定数。実装は lib/gems/picoruby-fmrb-const/ports/esp32/const.c。
+
+# 端末・ビルド・キー・テーマの値をまとめた定数の入れもの。
+#
+# 値は VM を起こすときに決まり、アプリが走っている間は変わらない。**機種や
+# ビルドで値が変わるもの** (`BOARD`・`PLATFORM`・`HW_FAMILY`・`CHIP_*`・
+# `FLASH_SIZE_MB` ほか) は、各定数の説明に書いた。
+#
+# キーの番号 (`KEY_*`) は USB HID の Usage ID。イベントの `ev[:scancode]` と
+# 比べると、機種によらず同じ値で判定できる。`ev[:keycode]` は文字キーだと
+# 機種で値が違う (SDL では ASCII)。
+# ```ruby
+# if ev[:scancode] == FmrbConst::KEY_ESC
+#   stop
+# end
+# ```
+# <<en>>
+# Constants for the machine, the build, keys and the theme.
+#
+# Values are fixed when the VM starts and do not change while an app runs.
+# **Constants that differ by machine or build** (`BOARD`, `PLATFORM`,
+# `HW_FAMILY`, `CHIP_*`, `FLASH_SIZE_MB` and others) say so in their notes.
+#
+# `KEY_*` are USB HID Usage IDs. Compare them with `ev[:scancode]` to get the
+# same answer on every machine. `ev[:keycode]` differs by machine for
+# character keys (ASCII on SDL).
+# ```ruby
+# if ev[:scancode] == FmrbConst::KEY_ESC
+#   stop
+# end
+# ```
+module FmrbConst
+  # ---- キー (USB HID Usage ID) ----
+
+  # A キー (HID 0x04) <<en>> A key (HID 0x04)
+  KEY_A: Integer
+  # B キー (HID 0x05) <<en>> B key (HID 0x05)
+  KEY_B: Integer
+  # C キー (HID 0x06) <<en>> C key (HID 0x06)
+  KEY_C: Integer
+  # D キー (HID 0x07) <<en>> D key (HID 0x07)
+  KEY_D: Integer
+  # E キー (HID 0x08) <<en>> E key (HID 0x08)
+  KEY_E: Integer
+  # F キー (HID 0x09) <<en>> F key (HID 0x09)
+  KEY_F: Integer
+  # G キー (HID 0x0A) <<en>> G key (HID 0x0A)
+  KEY_G: Integer
+  # H キー (HID 0x0B) <<en>> H key (HID 0x0B)
+  KEY_H: Integer
+  # I キー (HID 0x0C) <<en>> I key (HID 0x0C)
+  KEY_I: Integer
+  # J キー (HID 0x0D) <<en>> J key (HID 0x0D)
+  KEY_J: Integer
+  # K キー (HID 0x0E) <<en>> K key (HID 0x0E)
+  KEY_K: Integer
+  # L キー (HID 0x0F) <<en>> L key (HID 0x0F)
+  KEY_L: Integer
+  # M キー (HID 0x10) <<en>> M key (HID 0x10)
+  KEY_M: Integer
+  # N キー (HID 0x11) <<en>> N key (HID 0x11)
+  KEY_N: Integer
+  # O キー (HID 0x12) <<en>> O key (HID 0x12)
+  KEY_O: Integer
+  # P キー (HID 0x13) <<en>> P key (HID 0x13)
+  KEY_P: Integer
+  # Q キー (HID 0x14) <<en>> Q key (HID 0x14)
+  KEY_Q: Integer
+  # R キー (HID 0x15) <<en>> R key (HID 0x15)
+  KEY_R: Integer
+  # S キー (HID 0x16) <<en>> S key (HID 0x16)
+  KEY_S: Integer
+  # T キー (HID 0x17) <<en>> T key (HID 0x17)
+  KEY_T: Integer
+  # U キー (HID 0x18) <<en>> U key (HID 0x18)
+  KEY_U: Integer
+  # V キー (HID 0x19) <<en>> V key (HID 0x19)
+  KEY_V: Integer
+  # W キー (HID 0x1A) <<en>> W key (HID 0x1A)
+  KEY_W: Integer
+  # X キー (HID 0x1B) <<en>> X key (HID 0x1B)
+  KEY_X: Integer
+  # Y キー (HID 0x1C) <<en>> Y key (HID 0x1C)
+  KEY_Y: Integer
+  # Z キー (HID 0x1D) <<en>> Z key (HID 0x1D)
+  KEY_Z: Integer
+  # 1 キー (上の数字の列) (HID 0x1E) <<en>> 1 key (number row) (HID 0x1E)
+  KEY_1: Integer
+  # 2 キー (上の数字の列) (HID 0x1F) <<en>> 2 key (number row) (HID 0x1F)
+  KEY_2: Integer
+  # 3 キー (上の数字の列) (HID 0x20) <<en>> 3 key (number row) (HID 0x20)
+  KEY_3: Integer
+  # 4 キー (上の数字の列) (HID 0x21) <<en>> 4 key (number row) (HID 0x21)
+  KEY_4: Integer
+  # 5 キー (上の数字の列) (HID 0x22) <<en>> 5 key (number row) (HID 0x22)
+  KEY_5: Integer
+  # 6 キー (上の数字の列) (HID 0x23) <<en>> 6 key (number row) (HID 0x23)
+  KEY_6: Integer
+  # 7 キー (上の数字の列) (HID 0x24) <<en>> 7 key (number row) (HID 0x24)
+  KEY_7: Integer
+  # 8 キー (上の数字の列) (HID 0x25) <<en>> 8 key (number row) (HID 0x25)
+  KEY_8: Integer
+  # 9 キー (上の数字の列) (HID 0x26) <<en>> 9 key (number row) (HID 0x26)
+  KEY_9: Integer
+  # 0 キー (上の数字の列) (HID 0x27) <<en>> 0 key (number row) (HID 0x27)
+  KEY_0: Integer
+  # Enter (HID 0x28) <<en>> Enter (HID 0x28)
+  KEY_ENTER: Integer
+  # Esc (HID 0x29) <<en>> Escape (HID 0x29)
+  KEY_ESC: Integer
+  # BackSpace (HID 0x2A) <<en>> Backspace (HID 0x2A)
+  KEY_BACKSPACE: Integer
+  # Tab (HID 0x2B) <<en>> Tab (HID 0x2B)
+  KEY_TAB: Integer
+  # スペース (HID 0x2C) <<en>> Space (HID 0x2C)
+  KEY_SPACE: Integer
+  # - キー (HID 0x2D) <<en>> - (minus) key (HID 0x2D)
+  KEY_MINUS: Integer
+  # = キー (US 配列の名前) (HID 0x2E) <<en>> = key (US layout name) (HID 0x2E)
+  KEY_EQUAL: Integer
+  # [ キー (US 配列の名前) (HID 0x2F) <<en>> [ key (US layout name) (HID 0x2F)
+  KEY_LBRACKET: Integer
+  # ] キー (US 配列の名前) (HID 0x30) <<en>> ] key (US layout name) (HID 0x30)
+  KEY_RBRACKET: Integer
+  # \ キー (US 配列の名前) (HID 0x31) <<en>> \ key (US layout name) (HID 0x31)
+  KEY_BACKSLASH: Integer
+  # ; キー (US 配列の名前) (HID 0x33) <<en>> ; key (US layout name) (HID 0x33)
+  KEY_SEMICOLON: Integer
+  # ' キー (US 配列の名前) (HID 0x34) <<en>> ' key (US layout name) (HID 0x34)
+  KEY_QUOTE: Integer
+  # ` キー (US 配列の名前) (HID 0x35) <<en>> ` key (US layout name) (HID 0x35)
+  KEY_GRAVE: Integer
+  # , キー (HID 0x36) <<en>> comma key (HID 0x36)
+  KEY_COMMA: Integer
+  # . キー (HID 0x37) <<en>> period key (HID 0x37)
+  KEY_PERIOD: Integer
+  # / キー (HID 0x38) <<en>> / key (HID 0x38)
+  KEY_SLASH: Integer
+  # CapsLock (HID 0x39) <<en>> Caps Lock (HID 0x39)
+  KEY_CAPSLOCK: Integer
+  # F1 キー (HID 0x3A) <<en>> F1 key (HID 0x3A)
+  KEY_F1: Integer
+  # F2 キー (HID 0x3B) <<en>> F2 key (HID 0x3B)
+  KEY_F2: Integer
+  # F3 キー (HID 0x3C) <<en>> F3 key (HID 0x3C)
+  KEY_F3: Integer
+  # F4 キー (HID 0x3D) <<en>> F4 key (HID 0x3D)
+  KEY_F4: Integer
+  # F5 キー (HID 0x3E) <<en>> F5 key (HID 0x3E)
+  KEY_F5: Integer
+  # F6 キー (HID 0x3F) <<en>> F6 key (HID 0x3F)
+  KEY_F6: Integer
+  # F7 キー (HID 0x40) <<en>> F7 key (HID 0x40)
+  KEY_F7: Integer
+  # F8 キー (HID 0x41) <<en>> F8 key (HID 0x41)
+  KEY_F8: Integer
+  # F9 キー (HID 0x42) <<en>> F9 key (HID 0x42)
+  KEY_F9: Integer
+  # F10 キー (HID 0x43) <<en>> F10 key (HID 0x43)
+  KEY_F10: Integer
+  # F11 キー (HID 0x44) <<en>> F11 key (HID 0x44)
+  KEY_F11: Integer
+  # F12 キー (HID 0x45) <<en>> F12 key (HID 0x45)
+  KEY_F12: Integer
+  # PrintScreen (HID 0x46) <<en>> Print Screen (HID 0x46)
+  KEY_PRINTSCREEN: Integer
+  # ScrollLock (HID 0x47) <<en>> Scroll Lock (HID 0x47)
+  KEY_SCROLLLOCK: Integer
+  # Pause (HID 0x48) <<en>> Pause (HID 0x48)
+  KEY_PAUSE: Integer
+  # Insert (HID 0x49) <<en>> Insert (HID 0x49)
+  KEY_INSERT: Integer
+  # Home (HID 0x4A) <<en>> Home (HID 0x4A)
+  KEY_HOME: Integer
+  # PageUp (HID 0x4B) <<en>> Page Up (HID 0x4B)
+  KEY_PGUP: Integer
+  # Delete (HID 0x4C) <<en>> Delete (HID 0x4C)
+  KEY_DELETE: Integer
+  # End (HID 0x4D) <<en>> End (HID 0x4D)
+  KEY_END: Integer
+  # PageDown (HID 0x4E) <<en>> Page Down (HID 0x4E)
+  KEY_PGDN: Integer
+  # 右矢印 (HID 0x4F) <<en>> Right arrow (HID 0x4F)
+  KEY_RIGHT: Integer
+  # 左矢印 (HID 0x50) <<en>> Left arrow (HID 0x50)
+  KEY_LEFT: Integer
+  # 下矢印 (HID 0x51) <<en>> Down arrow (HID 0x51)
+  KEY_DOWN: Integer
+  # 上矢印 (HID 0x52) <<en>> Up arrow (HID 0x52)
+  KEY_UP: Integer
+  # NumLock (HID 0x53) <<en>> Num Lock (HID 0x53)
+  KEY_NUMLOCK: Integer
+  # 左 Ctrl (HID 0xE0) <<en>> Left Ctrl (HID 0xE0)
+  KEY_LCTRL: Integer
+  # 左 Shift (HID 0xE1) <<en>> Left Shift (HID 0xE1)
+  KEY_LSHIFT: Integer
+  # 左 Alt (HID 0xE2) <<en>> Left Alt (HID 0xE2)
+  KEY_LALT: Integer
+  # 左 Meta (HID 0xE3) <<en>> Left Meta (HID 0xE3)
+  KEY_LMETA: Integer
+  # 右 Ctrl (HID 0xE4) <<en>> Right Ctrl (HID 0xE4)
+  KEY_RCTRL: Integer
+  # 右 Shift (HID 0xE5) <<en>> Right Shift (HID 0xE5)
+  KEY_RSHIFT: Integer
+  # 右 Alt (HID 0xE6) <<en>> Right Alt (HID 0xE6)
+  KEY_RALT: Integer
+  # 右 Meta (HID 0xE7) <<en>> Right Meta (HID 0xE7)
+  KEY_RMETA: Integer
+
+  # ---- 修飾キーのマスク (ev[:modifier] と & で比べる) ----
+  # 左 Shift のマスク (0x01) <<en>> Modifier mask: Left Shift (0x01)
+  MOD_LSHIFT: Integer
+  # 右 Shift のマスク (0x02) <<en>> Modifier mask: Right Shift (0x02)
+  MOD_RSHIFT: Integer
+  # 左 Ctrl のマスク (0x04) <<en>> Modifier mask: Left Ctrl (0x04)
+  MOD_LCTRL: Integer
+  # 右 Ctrl のマスク (0x08) <<en>> Modifier mask: Right Ctrl (0x08)
+  MOD_RCTRL: Integer
+  # 左 Alt のマスク (0x10) <<en>> Modifier mask: Left Alt (0x10)
+  MOD_LALT: Integer
+  # 右 Alt のマスク (0x20) <<en>> Modifier mask: Right Alt (0x20)
+  MOD_RALT: Integer
+  # 左右どちらかの Shift のマスク (0x03) <<en>> Modifier mask: either Shift (0x03)
+  MOD_SHIFT: Integer
+  # 左右どちらかの Ctrl のマスク (0x0C) <<en>> Modifier mask: either Ctrl (0x0C)
+  MOD_CTRL: Integer
+  # 左右どちらかの Alt のマスク (0x30) <<en>> Modifier mask: either Alt (0x30)
+  MOD_ALT: Integer
+
+  # ---- ゲームパッド (ボタンの番号と軸の番号) ----
+  # ボタン番号 0: 四角 <<en>> Button index 0: Square
+  GP_SQUARE: Integer
+  # ボタン番号 1: バツ <<en>> Button index 1: Cross
+  GP_CROSS: Integer
+  # ボタン番号 2: 丸 <<en>> Button index 2: Circle
+  GP_CIRCLE: Integer
+  # ボタン番号 3: 三角 <<en>> Button index 3: Triangle
+  GP_TRIANGLE: Integer
+  # ボタン番号 4: L1 <<en>> Button index 4: L1
+  GP_L1: Integer
+  # ボタン番号 5: R1 <<en>> Button index 5: R1
+  GP_R1: Integer
+  # ボタン番号 6: L2 <<en>> Button index 6: L2
+  GP_L2: Integer
+  # ボタン番号 7: R2 <<en>> Button index 7: R2
+  GP_R2: Integer
+  # ボタン番号 8: Select <<en>> Button index 8: Select
+  GP_SELECT: Integer
+  # ボタン番号 9: Start <<en>> Button index 9: Start
+  GP_START: Integer
+  # ボタン番号 10: 左スティックの押し込み <<en>> Button index 10: Left stick click
+  GP_L3: Integer
+  # ボタン番号 11: 右スティックの押し込み <<en>> Button index 11: Right stick click
+  GP_R3: Integer
+  # ボタン番号 12: 十字キーの上 <<en>> Button index 12: D-pad up
+  GP_UP: Integer
+  # ボタン番号 13: 十字キーの下 <<en>> Button index 13: D-pad down
+  GP_DOWN: Integer
+  # ボタン番号 14: 十字キーの左 <<en>> Button index 14: D-pad left
+  GP_LEFT: Integer
+  # ボタン番号 15: 十字キーの右 <<en>> Button index 15: D-pad right
+  GP_RIGHT: Integer
+  # 軸番号 0: 左スティックの横 (ev[:axis]) <<en>> Axis index 0: Left stick X (ev[:axis])
+  GP_AXIS_LX: Integer
+  # 軸番号 1: 左スティックの縦 (ev[:axis]) <<en>> Axis index 1: Left stick Y (ev[:axis])
+  GP_AXIS_LY: Integer
+  # 軸番号 2: 右スティックの横 (ev[:axis]) <<en>> Axis index 2: Right stick X (ev[:axis])
+  GP_AXIS_RX: Integer
+  # 軸番号 3: 右スティックの縦 (ev[:axis]) <<en>> Axis index 3: Right stick Y (ev[:axis])
+  GP_AXIS_RY: Integer
+
+  # ---- テーマの色 (RGB332) ----
+  # デスクトップの背景 (RGB332。[theme] で設定) <<en>> Desktop background (RGB332; set in [theme])
+  THEME_DESKTOP_BG: Integer
+  # メニューの背景 (RGB332。[theme] で設定) <<en>> Menu background (RGB332; set in [theme])
+  THEME_MENU_BG: Integer
+  # Window の背景 (RGB332。[theme] で設定) <<en>> Window background (RGB332; set in [theme])
+  THEME_WINDOW_BG: Integer
+  # 文字の色 (RGB332。[theme] で設定) <<en>> Text colour (RGB332; set in [theme])
+  THEME_TEXT: Integer
+  # 淡い文字の色 (RGB332。[theme] で設定) <<en>> Light text colour (RGB332; set in [theme])
+  THEME_TEXT_LIGHT: Integer
+  # 選択の強調色 (RGB332。[theme] で設定) <<en>> Highlight colour (RGB332; set in [theme])
+  THEME_HIGHLIGHT: Integer
+  # 枠の色 (RGB332。[theme] で設定) <<en>> Border colour (RGB332; set in [theme])
+  THEME_BORDER: Integer
+  # ボタンの色 (RGB332。[theme] で設定) <<en>> Button colour (RGB332; set in [theme])
+  THEME_BUTTON: Integer
+  # 一覧のディレクトリ色 (RGB332。[theme] で設定) <<en>> Directory colour (RGB332; set in [theme])
+  THEME_DIR_COLOR: Integer
+  # ホイール 1 目盛りで進む行数 (既定 3) <<en>> Rows one wheel notch scrolls (3 by default)
+  WHEEL_LINES: Integer
+
+  # ---- 機種・ビルド ----
+  # "esp32" か "linux" (sim 等は linux) <<en>> "esp32" or "linux" (sim etc. are linux)
+  PLATFORM: String
+  # 端末の名前 (機種ごとに違う) <<en>> Board name; differs per machine
+  BOARD: String
+  # ネイティブ版 (Linux の 1 プロセス) なら true <<en>> true on the native Linux program
+  NATIVE: bool
+  # "modern"・"mini"・"retro" (sim は模した機種) <<en>> "modern"/"mini"/"retro" (sim: the one imitated)
+  HW_FAMILY: String
+  # 日本語フォントを積んだビルドなら true <<en>> true when the build has the Japanese fonts
+  FONT_JA: bool
+  # WiFi を使える端末なら true (sim も true) <<en>> true on a WiFi-capable machine (the sim too)
+  HAS_WIFI: bool
+  # 表示の言語 ("ja" か "en") <<en>> UI language, "ja" or "en"
+  LANGUAGE: String
+  # OS (core) の版の文字列 <<en>> The OS (core) version string
+  OS_VERSION: String
+  # graphics-audio の版の文字列 <<en>> The graphics-audio version string
+  GA_VERSION: String
+  # core と graphics-audio をつなぐ線の版 <<en>> Version of the link between core and graphics-audio
+  LINK_VERSION: Integer
+  # ファームを作った日時 <<en>> When the firmware was built
+  BUILD_DATE: String
+  # ESP-IDF の版 (linux では "-") <<en>> ESP-IDF version ("-" on linux)
+  IDF_VERSION: String
+  # 起動時の BLE の MAC (linux では "-") <<en>> BLE MAC read at start-up ("-" on linux)
+  MAC_ADDRESS: String
+  # チップの名前 (linux では "linux") <<en>> Chip name ("linux" on linux)
+  CHIP_MODEL: String
+  # チップのリビジョン ("v0.2" の形。linux では "-") <<en>> Chip revision like "v0.2" ("-" on linux)
+  CHIP_REVISION: String
+  # チップのコア数 (linux では 0) <<en>> Number of chip cores (0 on linux)
+  CHIP_CORES: Integer
+  # フラッシュの大きさ MB (linux では 0) <<en>> Flash size in MB (0 on linux)
+  FLASH_SIZE_MB: Integer
+  # PSRAM の大きさ MB (無ければ 0。linux では 0) <<en>> PSRAM size in MB (0 when none, and on linux)
+  PSRAM_SIZE_MB: Integer
+  # 直前のリセットの理由 (linux では "-") <<en>> Last reset reason ("-" on linux)
+  RESET_REASON: String
+
+  # ---- アプリの番号・状態・メッセージの種類 ----
+  # Kernel のプロセス番号 (0) <<en>> Process ID of the Kernel (0)
+  PROC_ID_KERNEL: Integer
+  # Host のプロセス番号 (1) <<en>> Process ID of the Host (1)
+  PROC_ID_HOST: Integer
+  # システムアプリのプロセス番号 (2) <<en>> Process ID of the system app (2)
+  PROC_ID_SYSTEM_APP: Integer
+  # ユーザアプリの枠 0 のプロセス番号 (4) <<en>> Process ID of user app slot 0 (4)
+  PROC_ID_USER_APP0: Integer
+  # ユーザアプリの枠 1 のプロセス番号 (5) <<en>> Process ID of user app slot 1 (5)
+  PROC_ID_USER_APP1: Integer
+  # ユーザアプリの枠 2 のプロセス番号 (6) <<en>> Process ID of user app slot 2 (6)
+  PROC_ID_USER_APP2: Integer
+  # ユーザアプリの枠 3 のプロセス番号 (7) <<en>> Process ID of user app slot 3 (7)
+  PROC_ID_USER_APP3: Integer
+  # ユーザアプリの枠 4 のプロセス番号 (8) <<en>> Process ID of user app slot 4 (8)
+  PROC_ID_USER_APP4: Integer
+  # アプリの状態: 空き (0) <<en>> App state: free (0)
+  PROC_STATE_FREE: Integer
+  # アプリの状態: 起動の準備中 (1) <<en>> App state: initialising (1)
+  PROC_STATE_INIT: Integer
+  # アプリの状態: 実行中 (2) <<en>> App state: running (2)
+  PROC_STATE_RUNNING: Integer
+  # アプリの状態: 一時停止 (3) <<en>> App state: suspended (3)
+  PROC_STATE_SUSPENDED: Integer
+  # アプリの状態: 終了中 (4) <<en>> App state: stopping (4)
+  PROC_STATE_STOPPING: Integer
+  # メッセージの種類: アプリの制御 (0) <<en>> Message type: app control (0)
+  MSG_TYPE_APP_CONTROL: Integer
+  # メッセージの種類: 描画の命令 (1) <<en>> Message type: drawing commands (1)
+  MSG_TYPE_APP_GFX: Integer
+  # メッセージの種類: 音の命令 (2) <<en>> Message type: audio commands (2)
+  MSG_TYPE_APP_AUDIO: Integer
+  # メッセージの種類: 入力イベント (3) <<en>> Message type: input events (3)
+  MSG_TYPE_HID_EVENT: Integer
+
+  # 実行中の端末の BLE アドレスを返す <<en>> The BLE address of this machine
+  #
+  # **起動後に値が決まる端末がある** (無線が別チップの機種は、BLE がつながるまで分からない)。
+  # 分からない間と linux では "-" を返す。起動時の値で足りるなら `MAC_ADDRESS`。
+  # ```ruby
+  # FmrbConst.bt_mac   #=> "AA:BB:CC:DD:EE:FF"
+  # ```
+  # <<en>>
+  # **Some machines only know it after start-up** (when the radio is a separate chip it is unknown until BLE syncs).
+  # Returns "-" while unknown and on linux. `MAC_ADDRESS` is the start-up value.
+  # ```ruby
+  # FmrbConst.bt_mac   #=> "AA:BB:CC:DD:EE:FF"
+  # ```
+  def self.bt_mac: () -> String
+end
