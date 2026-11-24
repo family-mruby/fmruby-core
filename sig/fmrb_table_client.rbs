@@ -1,0 +1,597 @@
+# 卓のゲームの端末側の部品 (FmrbAsterism::TableClient)。実装は
+# lib/gems/picoruby-fmrb-asterism/mrblib/table_client.rb。使うのは麻雀・オセロ・
+# お絵かき (flash/app/game/) で、ゲームの中身 (席・手・画面) はアプリが持つ。
+
+module FmrbAsterism
+  # ゲームホストの卓につなぐ部品 <<en>> The device side of a game host's table
+  #
+  # ゲームホスト (アプリ名 "games") が持つ卓の一覧を探し、卓に入り (join)、
+  # 見え (view) を取り、卓を出る (leave)。つなぎ直しは中の Link が行い、ホストが
+  # ネットワークから消えて戻る場合も扱う。
+  #
+  # **使い方**: on_create で作り、on_update で毎回 `update` が true の間に
+  # ゲーム自分の呼び出し (`proxy`) の答えを集め、その後 `update_view` を呼ぶ。
+  # on_destroy で `close`。
+  #
+  # **アプリが持つ (呼ばれる) メソッド** — 部品がアプリを名前で呼ぶ (ブロックは
+  # 渡さない)。**必須**:
+  # - `table_state(path, state)` 卓の状態 (Hash) の put が来た。一覧が覚える値を返す (tables[path])
+  # - `table_joined(reply)` join に token が返った (token は設定済み。続けて view を取りに行く)
+  # - `table_refused(why)` join が断られた (why はホストの言葉)・答えが無い (why が nil)。table は nil に戻る
+  # - `table_view(view)` 見え (Hash) が届いた
+  # 無くてよい (持っていれば呼ぶ):
+  # - `table_link_up(link)` つながるたび (購読と on_join / on_leave は設定済み)
+  # - `table_link_down(link)` つなぎそこなった・切れた
+  # - `table_watch` つながっている間の update ごと (状態を読む前)
+  # - `tables_changed(added)` 卓が一覧に増えた (true)・ホストの卓が消えた (false)
+  # - `table_host_gone` 入っている卓のホストが去った
+  # - `table_host_back` そのホストが戻った (見えはまた取る)
+  # - `table_view_failed` 見えに答えが無かった
+  # - `table_dropped` ホストが自分を知らなくなった。無いと leave する
+  # - `table_ask_view(px, token)` 見えの問い合わせを自分で出す (px は卓の async プロキシ)。Future を返す
+  # **卓から出る・忘れるとき、入る答えを待っていると、その答えは捨てられる**
+  # (次の join はすぐ出る)。見えの答えは、エラーでも「ホストはいる」の印になる。
+  #
+  # ```ruby
+  # def on_create
+  #   @tc = FmrbAsterism::TableClient.new(
+  #     self, "othello", tag: "othello")
+  # end
+  # def on_update
+  #   if @tc.update
+  #     @tc.update_view
+  #   end
+  #   100
+  # end
+  # def on_destroy
+  #   @tc.close
+  # end
+  # ```
+  # <<en>>
+  # Finds the tables a game host (app "games") has, joins one, asks the
+  # member's view and leaves. The Link inside connects again; a host that
+  # leaves the network and comes back is handled too.
+  #
+  # **Use**: make it in on_create; in every on_update, while `update` is
+  # true, collect the answers of the game's own calls (`proxy`), then call
+  # `update_view`. `close` in on_destroy.
+  #
+  # **Methods the app owns (called by the part)**: it calls the app by name
+  # (no blocks are given). **Required**:
+  # - `table_state(path, state)` a put of a table's state (a Hash); return what the list keeps (tables[path])
+  # - `table_joined(reply)` join answered with a token (token is set; the view is asked next)
+  # - `table_refused(why)` join refused (the host's word) or not answered (why nil); table is nil again
+  # - `table_view(view)` the member's view (a Hash)
+  # Optional (called when the app has them):
+  # - `table_link_up(link)` after every connect (the subscription and on_join / on_leave are set)
+  # - `table_link_down(link)` a connect failed or the connection went away
+  # - `table_watch` every update while connected, before the states are read
+  # - `tables_changed(added)` a table joined the list (true) or a host's tables left it (false)
+  # - `table_host_gone` the joined table's host left the network
+  # - `table_host_back` that host came back (the view is asked again)
+  # - `table_view_failed` a view got no answer
+  # - `table_dropped` the host does not know this member; without it the part leaves
+  # - `table_ask_view(px, token)` ask the view yourself (px is the table's async proxy); return the Future
+  # **Leaving or forgetting a table while its join is not answered drops that answer**
+  # (the next join goes out at once). Any answer of the view,
+  # an error too, says the host is there.
+  # ```ruby
+  # def on_create
+  #   @tc = FmrbAsterism::TableClient.new(
+  #     self, "othello", tag: "othello")
+  # end
+  # def on_update
+  #   if @tc.update
+  #     @tc.update_view
+  #   end
+  #   100
+  # end
+  # def on_destroy
+  #   @tc.close
+  # end
+  # ```
+  class TableClient
+    # ゲームホストのアプリ名の既定 <<en>> Default app name of the game host ("games")
+    HOST_APP: String
+    # 呼び出しの待ち時間の既定 (秒) <<en>> Default call_timeout (3.0)
+    CALL_TIMEOUT: Float
+    # 見えを取り直す間隔の既定 (ms) <<en>> Default view_every_ms (3000)
+    VIEW_EVERY_MS: Integer
+    # 卓の一覧を取り直す間隔の既定 (ms) <<en>> Default list_every_ms (30000)
+    LIST_EVERY_MS: Integer
+    # 端末が来たあと卓を探し続ける時間の既定 (ms) <<en>> Default rescan_ms (3000)
+    RESCAN_MS: Integer
+    # その間の探す間隔の既定 (ms) <<en>> Default rescan_step_ms (300)
+    RESCAN_STEP_MS: Integer
+    # ホストが去っている間の見えの間隔の既定 (ms) <<en>> Default host_gone_view_ms (30000)
+    HOST_GONE_VIEW_MS: Integer
+
+    # 作る (つなぐのは update) <<en>> Make a table client (update connects)
+    #
+    # owner はアプリ (self)。kind は卓の名前の始まり ("othello" なら
+    # "<ホスト>/games/othello1" などを探す)。`tag:` (省略すると kind。ログの頭)、
+    # `app:` (省略すると "game"。ネットワークでのこのアプリの名前)、
+    # `host_app:` (省略すると "games"。探すホストのアプリ名)、
+    # `retry_ms:` (省略すると 3000。nil なら 1 回だけつなぐ)、
+    # `wifi_wait_ms:` (省略すると ESP32 だけ WiFi を待つ。sim・ブラウザ版は待たない)、
+    # `settings:` (省略すると FmrbAsterism.settings)、
+    # `blank:` (省略すると nil。まだ状態が来ていない卓について一覧が持つ値の
+    # 見本。コピーを入れる。麻雀は {})。
+    # アプリが持つメソッド (table_state ほか) はクラスの説明を見る。
+    # ```ruby
+    # @tc = FmrbAsterism::TableClient.new(
+    #   self, "mahjong", blank: {})
+    # ```
+    # <<en>>
+    # owner is the app (self). kind is the start of the table names
+    # ("othello" finds "<host>/games/othello1" and so on). `tag:` (kind when
+    # left out; the log prefix), `app:` ("game"; this app's name on the
+    # network), `host_app:` ("games"; the host app to look for), `retry_ms:`
+    # (3000; nil connects once), `wifi_wait_ms:` (when left out only the
+    # ESP32 waits for WiFi; the sim and the browser do not), `settings:`
+    # (FmrbAsterism.settings), `blank:` (nil; a sample of what the list
+    # keeps for a table whose state has not come yet; a copy is stored;
+    # mahjong uses {}). For the methods the app owns (table_state and the
+    # rest) see the class description.
+    # ```ruby
+    # @tc = FmrbAsterism::TableClient.new(
+    #   self, "mahjong", blank: {})
+    # ```
+    def self.new: (untyped owner, String kind, ?tag: String?, ?app: String, ?host_app: String, ?retry_ms: Integer?, ?wifi_wait_ms: Integer?, ?settings: FmrbAsterism::Settings?, ?blank: untyped) -> FmrbAsterism::TableClient
+
+    # 毎回呼ぶ (つなぐ・状態・一覧・入る答え) <<en>> Every update: connect, states, list, join
+    #
+    # つながっている間に、届いた卓の状態を `table_state` に渡し、卓の一覧を
+    # 探し、入ろうとした答えを集める。つながっていなければつなぐ (ルータが
+    # 無いと数秒アプリが止まる。Link#update と同じ)。つながっている間 true。
+    # ```ruby
+    # if @tc.update
+    #   draw_table
+    # end
+    # ```
+    # <<en>>
+    # While connected it hands the states that came to `table_state`,
+    # looks for tables and collects the answer to a join. Otherwise it
+    # connects (the app waits a few seconds when there is no router, as
+    # with Link#update). True while connected.
+    # ```ruby
+    # if @tc.update
+    #   draw_table
+    # end
+    # ```
+    def update: () -> bool
+
+    # 見えを集めて、時が来たら取りに行く <<en>> Collect the view and ask it when due
+    #
+    # ゲーム自分の答えを集めたあとに呼ぶ。届いた見えを `table_view` に渡し、
+    # 入っていて前の問い合わせが無く時が来ていれば、新しく問い合わせる。
+    # 卓に入っていなければ何もしない。`now` (省略すると今の ms) は
+    # テスト用。
+    # ```ruby
+    # @tc.update_view
+    # ```
+    # <<en>>
+    # Call it after collecting the game's own answers. Hands an arrived
+    # view to `table_view`, and asks a new one when the member is in a
+    # table, none is on its way and it is due. Nothing without a table.
+    # `now` (the current ms when left out) is for tests.
+    # ```ruby
+    # @tc.update_view
+    # ```
+    def update_view: (?Integer now) -> void
+
+    # 閉じる (on_destroy) <<en>> Close for good (on_destroy)
+    #
+    # Link を閉じる。卓に入っていたら先に leave する。
+    # ```ruby
+    # @tc.close
+    # ```
+    # <<en>>
+    # Closes the Link. Leave a joined table first.
+    # ```ruby
+    # @tc.close
+    # ```
+    def close: () -> nil
+
+    # つなぎの状態 <<en>> The network state: :connecting, :up or :down
+    #
+    # :connecting は最初のつなぎの前、:up はつながっている、:down は
+    # 失敗か切れ (つなぎ直し中)。
+    # ```ruby
+    # show("net: #{@tc.net}")
+    # ```
+    # <<en>>
+    # :connecting before the first try, :up while connected, :down after a
+    # failure or a loss (connecting again).
+    # ```ruby
+    # show("net: #{@tc.net}")
+    # ```
+    def net: () -> (:connecting | :up | :down)
+
+    # つなぎ直しの最中か <<en>> Whether the session is lost and being reopened
+    #
+    # ```ruby
+    # dim if @tc.reconnecting?
+    # ```
+    def reconnecting?: () -> bool
+
+    # 卓に入る答えを待っているか <<en>> Whether a join is on its way
+    #
+    # ```ruby
+    # return if @tc.joining?
+    # ```
+    def joining?: () -> bool
+
+    # 入っている卓のホストが去っているか <<en>> Whether the joined table's host has left the network
+    #
+    # ```ruby
+    # show("host gone") if @tc.host_gone?
+    # ```
+    def host_gone?: () -> bool
+
+    # つながり <<en>> The connection (nil unless connected)
+    #
+    # Link の conn。つなぎ直すと別の物になる。
+    # ```ruby
+    # c = @tc.conn
+    # ```
+    # <<en>>
+    # The Link's conn. A new one after every connect.
+    # ```ruby
+    # c = @tc.conn
+    # ```
+    def conn: () -> Asterism::Connection?
+
+    # 中の Link <<en>> The Link inside (state, reason, ...)
+    #
+    # 状態や理由を画面に出すのに使う。close は TableClient#close に任せる。
+    # ```ruby
+    # why = @tc.link.reason
+    # ```
+    # <<en>>
+    # Use it to show the state and the reason. Leave close to
+    # TableClient#close.
+    # ```ruby
+    # why = @tc.link.reason
+    # ```
+    def link: () -> FmrbAsterism::Link
+
+    # 卓の名前の始まり <<en>> The kind given to new
+    #
+    # ```ruby
+    # k = @tc.kind
+    # ```
+    def kind: () -> String
+
+    # 卓の一覧 (道 => 持っている値) <<en>> The tables: path => what table_state returned
+    #
+    # table_state が返した値 (まだ来ていなければ blank のコピー)。道は
+    # "<ホスト>/games/<卓>"。
+    # ```ruby
+    # st = @tc.tables[@tc.table]
+    # ```
+    # <<en>>
+    # What table_state returned (a copy of blank until one came). A path
+    # is "<host>/games/<table>".
+    # ```ruby
+    # st = @tc.tables[@tc.table]
+    # ```
+    def tables: () -> Hash
+
+    # 卓の道の一覧 (並べ替え済み) <<en>> The table paths, sorted
+    #
+    # ホストが去ると、その卓は消える。
+    # ```ruby
+    # @tc.table_list.each { |p| add(p) }
+    # ```
+    # <<en>>
+    # When a host leaves, its tables go off the list.
+    # ```ruby
+    # @tc.table_list.each { |p| add(p) }
+    # ```
+    def table_list: () -> Array[String]
+
+    # 入っている (入ろうとしている) 卓の道 <<en>> The joined table's path (nil when none)
+    #
+    # join した時点から決まり、leave・forget・断られた・答えが無いと nil に戻る。
+    # ```ruby
+    # return unless @tc.table
+    # ```
+    # <<en>>
+    # Set from the moment of join; nil again after leave, forget, a refusal
+    # or no answer.
+    # ```ruby
+    # return unless @tc.table
+    # ```
+    def table: () -> String?
+
+    # 卓での自分の印 <<en>> The member's token on the table (nil until the join answered)
+    #
+    # ホストが join の答えで渡す。見えや手のたびにこれを渡す。
+    # ```ruby
+    # px.play(@tc.token, 3)
+    # ```
+    # <<en>>
+    # The host hands it back in the answer to join; pass it with every view
+    # and move.
+    # ```ruby
+    # px.play(@tc.token, 3)
+    # ```
+    def token: () -> String?
+
+    # 知らされた卓の版 <<en>> The newest version a state put told of
+    #
+    # これが view_v より大きいと、見えを取り直す時になる。
+    # ```ruby
+    # stale = @tc.want_v > @tc.view_v
+    # ```
+    # <<en>>
+    # When it is above view_v, a newer view is due.
+    def want_v: () -> Integer
+
+    # 取れた見えの版 <<en>> The version of the view last taken
+    #
+    # ```ruby
+    # v = @tc.view_v
+    # ```
+    def view_v: () -> Integer
+
+    # 卓の相手に呼び出す入口 <<en>> A proxy for the table (or another path) for the game's own calls
+    #
+    # `proxy` は入っている卓、`proxy(path)` は別の道。呼び出しの待ち時間は
+    # call_timeout。待たずに呼ぶなら `proxy.async`。つながっていないと
+    # Asterism::Disconnected、道が無い (卓に入っていない) と ArgumentError。
+    # ```ruby
+    # f = @tc.proxy.async.play(@tc.token, 3)
+    # ```
+    # <<en>>
+    # `proxy` is the joined table, `proxy(path)` another path. Calls wait
+    # call_timeout. For a call that does not wait use `proxy.async`. Raises
+    # Asterism::Disconnected when not connected, ArgumentError without a
+    # path (no table joined).
+    # ```ruby
+    # f = @tc.proxy.async.play(@tc.token, 3)
+    # ```
+    def proxy: (?String path) -> Asterism::Proxy
+
+    # 卓に入る <<en>> Join the table at path as name
+    #
+    # 呼び出しを出して戻る (答えは update が集め、table_joined か table_refused に
+    # なる)。すでに入る答えを待っている・path が nil なら何もせず nil。送れ
+    # なかったら、その失敗の文 (String) を返し、table は nil に戻る。
+    # つながっているときに呼ぶ。
+    # ```ruby
+    # err = @tc.join(path, "Aki")
+    # show(err) if err
+    # ```
+    # <<en>>
+    # Sends the call and returns; update collects the answer and calls
+    # table_joined or table_refused. Returns nil and does nothing when a
+    # join is already on its way or path is nil. When the call could not be
+    # sent it returns the error's text (a String) and table is nil again.
+    # Call it while connected.
+    # ```ruby
+    # err = @tc.join(path, "Aki")
+    # show(err) if err
+    # ```
+    def join: (String? path, String name) -> String?
+
+    # 卓を出る <<en>> Leave the table (the host is told, not waited for)
+    #
+    # 入っていれば卓の leave を待たずに呼び、table・token などを忘れる。
+    # 呼べなくても例外は出ない。
+    # ```ruby
+    # @tc.leave
+    # ```
+    # <<en>>
+    # Calls the table's leave without waiting when joined, then forgets the
+    # table and token. No exception when it cannot be sent.
+    # ```ruby
+    # @tc.leave
+    # ```
+    def leave: () -> void
+
+    # 卓のことを忘れる (ホストには知らせない) <<en>> Forget the table without telling the host
+    #
+    # 入る答えを待っていれば、その答えは捨てる (次の join はすぐ出る)。
+    # ```ruby
+    # @tc.forget
+    # ```
+    # <<en>>
+    # A join on its way is dropped: its answer is not read and the next join
+    # goes out at once.
+    # ```ruby
+    # @tc.forget
+    # ```
+    def forget: () -> void
+
+    # 見えを今取りに行く <<en>> Ask the member's view now
+    #
+    # 前の問い合わせが済んでいない・卓に入っていない (token が nil) と何も
+    # しない。問い合わせが出せなければ黙ってやめる。アプリに
+    # `table_ask_view` があればそれが問い合わせを出す。
+    # ```ruby
+    # @tc.ask_view
+    # ```
+    # <<en>>
+    # Does nothing while a view is on its way or without a token. Quietly
+    # gives up when the call cannot be sent. When the app has
+    # `table_ask_view`, that sends the question.
+    # ```ruby
+    # @tc.ask_view
+    # ```
+    def ask_view: () -> void
+
+    # 見えを取り直す <<en>> Drop the view in flight and ask again
+    #
+    # ゲーム自分の呼び出し (手を打つなど) の答えが届いたあとに呼ぶ。
+    # ```ruby
+    # @tc.refresh_view
+    # ```
+    # <<en>>
+    # Call it after the answer to the game's own call (a move, say) came.
+    # ```ruby
+    # @tc.refresh_view
+    # ```
+    def refresh_view: () -> void
+
+    # 呼び出しの待ち時間 (秒) <<en>> The time limit of the game's own calls (3.0)
+    #
+    # ```ruby
+    # @tc.call_timeout = 5.0
+    # ```
+    def call_timeout: () -> (Integer | Float)
+
+    # 呼び出しの待ち時間を決める (秒) <<en>> Set the time limit of the game's own calls (seconds)
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.call_timeout = 5.0
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.call_timeout = 5.0
+    # ```
+    def call_timeout=: ((Integer | Float) seconds) -> (Integer | Float)
+
+    # 見えを取り直す間隔 (ms) <<en>> Ask the view at least this often (3000)
+    #
+    # 取り直しはホストに「まだいる」と知らせることにもなる。
+    # ```ruby
+    # @tc.view_every_ms = 5000
+    # ```
+    # <<en>>
+    # Asking also tells the host this member is still there.
+    # ```ruby
+    # @tc.view_every_ms = 5000
+    # ```
+    def view_every_ms: () -> Integer
+
+    # 見えを取り直す間隔を決める (ms) <<en>> Set how often the view is asked (ms)
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.view_every_ms = 5000
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.view_every_ms = 5000
+    # ```
+    def view_every_ms=: (Integer ms) -> Integer
+
+    # 見えを取る最短の間隔 (ms) <<en>> The shortest gap between views (0)
+    #
+    # 版が上がっても、前に取ってからこの時間が経つまでは待つ。
+    # ```ruby
+    # @tc.view_min_ms = 1000
+    # ```
+    # <<en>>
+    # A newer version waits until this much time has passed since the last
+    # view.
+    # ```ruby
+    # @tc.view_min_ms = 1000
+    # ```
+    def view_min_ms: () -> Integer
+
+    # 見えの最短の間隔を決める (ms) <<en>> Set the shortest gap between views (ms)
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.view_min_ms = 1000
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.view_min_ms = 1000
+    # ```
+    def view_min_ms=: (Integer ms) -> Integer
+
+    # 卓の一覧を探し直す間隔 (ms) <<en>> How often the table list is looked for again (30000)
+    #
+    # ```ruby
+    # @tc.list_every_ms = 10000
+    # ```
+    def list_every_ms: () -> Integer
+
+    # 卓の一覧を探し直す間隔を決める (ms) <<en>> Set how often the table list is looked for (ms)
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.list_every_ms = 10000
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.list_every_ms = 10000
+    # ```
+    def list_every_ms=: (Integer ms) -> Integer
+
+    # 一覧を探し続ける時間 (ms) <<en>> How long to keep looking after a join (3000)
+    #
+    # ```ruby
+    # @tc.rescan_ms = 5000
+    # ```
+    def rescan_ms: () -> Integer
+
+    # 一覧を探し続ける時間を決める (ms) <<en>> Set how long to keep looking for tables (ms)
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.rescan_ms = 5000
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.rescan_ms = 5000
+    # ```
+    def rescan_ms=: (Integer ms) -> Integer
+
+    # その間に探す間隔 (ms) <<en>> The gap between looks during that time (300)
+    #
+    # ```ruby
+    # @tc.rescan_step_ms = 500
+    # ```
+    def rescan_step_ms: () -> Integer
+
+    # その間の探す間隔を決める (ms) <<en>> Set the gap between those looks (ms)
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.rescan_step_ms = 500
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.rescan_step_ms = 500
+    # ```
+    def rescan_step_ms=: (Integer ms) -> Integer
+
+    # ホストが去っている間の見えの間隔 (ms) <<en>> Gap between views while the host is gone (30000)
+    #
+    # ホストが戻ったと知らせが来なくても、この間隔で見えを取りに行って確かめる。
+    # ```ruby
+    # @tc.host_gone_view_ms = 10000
+    # ```
+    # <<en>>
+    # The view is asked this often even if no notice of its return came.
+    # ```ruby
+    # @tc.host_gone_view_ms = 10000
+    # ```
+    def host_gone_view_ms: () -> Integer
+
+    # 去ったホストへの見えの間隔を決める (ms) <<en>> Set the view gap while the host is gone
+    #
+    # 値は読み書きのどちらでも同じ単位。
+    # ```ruby
+    # @tc.host_gone_view_ms = 10000
+    # ```
+    # <<en>>
+    # The same unit as the reader.
+    # ```ruby
+    # @tc.host_gone_view_ms = 10000
+    # ```
+    def host_gone_view_ms=: (Integer ms) -> Integer
+  end
+end
