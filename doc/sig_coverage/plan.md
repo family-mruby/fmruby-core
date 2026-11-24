@@ -148,8 +148,11 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
   `File.size`・`File.open` が RuntimeError (メッセージも記述どおり)、`write` の戻り値 2、終わりでの `read` が ""、
   `Dir.children` の失敗、`Time.at(0).utc.to_s`・`Time.local(...).to_s`・`Time + Time` の TypeError、
   `Object.const_defined?`、`Dir` の `exists?`・`rmdir`・`unlink`・`pwd`・`pos`・`tell` があること。sim では
-  `Dir.mkdir("/tmp/d1")` は 0 を返して通る。**残った判断**: 前からある `sig/fmrb_misc.rbs` の `File` が実装と
-  食い違う (`File#gets` は実装に無い、`File.open` の mode は省略できる、`File#read` は長さを取る)。
+  `Dir.mkdir("/tmp/d1")` は 0 を返して通る。前からある `sig/fmrb_misc.rbs` の `File` が実装と食い違っていたので、sim で確かめて直した (`File#gets` は
+  NoMethodError になるので消し、`read` の長文で代わりの書き方を示した。`File.open` の mode は省略でき、ブロックの形も
+  書いた。`File#read` は長さを取る。エディタの Ctrl+E が正しい `File.open(path)` を「引数が足りない」と出していた)。
+  追加で確かめたこと: `a+` は追記にならず先頭から上書き、読み取りで開いて書くと RuntimeError "write failed"、
+  `"w"` で開いて読むと ""、エディタで `f.rea`・`Time.no`・`Dir.chil` の補完。
   **見つかった実装の不具合の疑い** (直していない): `File.path("x")` が nil を返す (sim で確認)、`File.expand_path` の
   基準が `ENV["PWD"]`、ESP32 のファイル HAL の経路が 128 バイトで黙って切れる読み、`Dir.chdir` の後の相対パスが
   ESP32 と sim で違うかもしれない。

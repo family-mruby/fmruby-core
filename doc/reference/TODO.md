@@ -314,3 +314,14 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   実機で測ること (つないだとき): (1) `t = Machine.board_millis; Machine.delay_ms(300); Machine.board_millis - t` と
   `delay_ms(5)` を直す前後で (シェルの irb)、(2) 直した後の起動ログ (BMI270 の初期化が通る・起動の時間)、
   (3) Asterism の同期の呼び出しの間の CPU (10 秒周期のタスクの表) と応答の時間、(4) ランチャーを開く時間。
+
+- ファイルまわりで見つかった実装の不具合の疑い (2026-11-25、doc/sig_coverage/report/s2c.md。sig を書くために実装を
+  読んで見つけたもの。どれも直していない):
+  - `File.path("x")` (クラスメソッド) が nil を返す (**sim で確認**)。`file.rb` の `self.instance_of?(self.class)` の判定。
+  - mode `"a+"` が追記にならず、先頭から上書きする (**sim で確認**: "abc" に `a+` で "Z" を書くと "Zbc")。`"rb+"` は
+    読み取り専用になる (`+` を 2 文字目でしか見ない。読みだけ)。sig には今の動きを書いてある。
+  - `File.expand_path` の相対パスの基準が `ENV["PWD"]` で、`Dir.getwd` でない (読みだけ)。
+  - ESP32 のファイル HAL の経路の表が 128 バイトで、長い経路が黙って切れる見込み (読みだけ)。
+  - `Dir.chdir` の後の相対パスの意味が、ESP32 (今いる場所を見ない) と sim で食い違うかもしれない (読みだけ)。
+  - `IO#puts` が配列を展開しない (**sim で確認**: `$stdout.puts([1,2])` は `[1, 2]` の 1 行。仕様かもしれない)。
+  直すかどうかはユーザの判断。直したら sig の該当の長文も直す。

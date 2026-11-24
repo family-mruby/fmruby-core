@@ -178,7 +178,7 @@ class File < IO
   # mode は `"r"` (省略時・読む)・`"w"` (空にして書く。無ければ作る)・`"a"` (末尾に足す。無ければ作る)
   # と、`"r+"` (読み書き。無いと失敗)・`"w+"` (空にして読み書き)。**`+` は 2 文字目に置く**
   # (`"rb"` の `b` は 2 文字目なので `"rb+"` は読み取り専用になる)。**ほかの文字で始まる mode は
-  # 読み取り専用として開く** (エラーにならない)。`a+` は 追記にならず `r+` と同じ動きになる、と読んだ。
+  # 読み取り専用として開く** (エラーにならない)。**`a+` は追記にならない** (`r+` と同じで、先頭から上書きする)。
   # `perm` は受け取るだけで使わない。
   #
   # **開けないと RuntimeError ("failed to open file: パス")**。理由 (無い・場所が無い・
@@ -194,8 +194,8 @@ class File < IO
   # (append; created when missing), `"r+"` (read and write; fails when missing),
   # `"w+"` (truncate, read and write). **The `+` must be the second character** (the
   # `b` of `"rb"` is the second one, so `"rb+"` opens read-only). **A mode starting
-  # with any other letter opens read-only** (no error). `a+` is read as behaving like
-  # `r+`, not appending. `perm` is accepted and ignored.
+  # with any other letter opens read-only** (no error). **`a+` does not append**: like
+  # `r+` it overwrites from the start. `perm` is accepted and ignored.
   #
   # **RuntimeError ("failed to open file: path") when it cannot open**; the reason
   # (missing, no room, too many open) is not told apart. Only 10 files can be open on

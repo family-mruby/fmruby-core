@@ -206,22 +206,27 @@ end
 class File
   # ファイルを開く <<en>> Open a file
   #
-  # **ブロックを渡した形が安全** (抜けるときに閉じる)。mode は
-  # `"r"` `"w"` `"a"`。**File.binread は無い**ので、読むのは `read`。
+  # **ブロックを渡した形が安全** (抜けるときに閉じ、ブロックの値を返す)。
+  # mode は `"r"` `"w"` `"a"` (省略すると `"r"`。細かい形は `File.new`)。
+  # 無いファイルを読もうとすると RuntimeError。**File.binread は無い**
+  # ので、読むのは `read`。
   # ```ruby
   # File.open("/home/a.txt", "r") do |f|
   #   body = f.read
   # end
   # ```
   # <<en>>
-  # **Pass a block** and it closes on the way out. The mode is `"r"`, `"w"`
-  # or `"a"`. There is no `File.binread`; use `read`.
+  # **Pass a block**: it closes on the way out and returns the block's
+  # value. The mode is `"r"`, `"w"` or `"a"` (`"r"` when left out; see
+  # `File.new` for the rest). Reading a missing file raises RuntimeError.
+  # There is no `File.binread`; use `read`.
   # ```ruby
   # File.open("/home/a.txt", "r") do |f|
   #   body = f.read
   # end
   # ```
-  def self.open: (String path, String mode) -> File
+  def self.open: (String path, ?String mode) -> File
+               | (String path, ?String mode) { (File file) -> untyped } -> untyped
 
   # ファイルがあるかどうか <<en>> Whether the file is there
   #
@@ -230,36 +235,36 @@ class File
   # ```
   def self.exist?: (String path) -> bool
 
-  # 中身をぜんぶ読む <<en>> Read the whole thing
+  # 中身を読む (長さを渡せばその分だけ) <<en>> Read the file, or that many bytes of it
   #
-  # 全部が文字列で返る。**大きいファイルは丸ごとメモリに載る**ので、
-  # 行で処理するなら `gets` を回す。
+  # 引数なしなら残り全部が文字列で返る。**大きいファイルは丸ごとメモリに
+  # 載る**ので、少しずつ処理するなら長さ (バイト) を渡して回す。終わりまで
+  # 読んだ後は **nil でなく ""** が返る。
+  #
+  # **`gets` (1 行読む) は無い** (呼ぶと NoMethodError)。行で分けるなら、
+  # 読んだ文字列を `split("\n")` する。
   # ```ruby
   # body = f.read
-  # ```
-  # <<en>>
-  # The whole file lands in memory at once. For a big one, loop on `gets`.
-  # ```ruby
-  # body = f.read
-  # ```
-  def read: () -> String
-
-  # 一行だけ読む <<en>> Read one line
-  #
-  # 終わりまで来たら nil。改行は付いたまま。
-  # ```ruby
-  # while (line = f.gets)
-  #   handle(line.chomp)
+  # head = f.read(16)
+  # body.split("\n").each do |line|
+  #   handle(line)
   # end
   # ```
   # <<en>>
-  # nil at the end of the file. The newline is still on the string.
+  # Without an argument it returns all that is left, in memory at once; for
+  # a big file pass a length (bytes) and loop. At the end it returns
+  # **"" and not nil**.
+  #
+  # **There is no `gets`** (calling it raises NoMethodError). To work line
+  # by line, `split("\n")` what you read.
   # ```ruby
-  # while (line = f.gets)
-  #   handle(line.chomp)
+  # body = f.read
+  # head = f.read(16)
+  # body.split("\n").each do |line|
+  #   handle(line)
   # end
   # ```
-  def gets: () -> String?
+  def read: (?Integer length) -> String
 
   # 書き込む <<en>> Write to the file
   #

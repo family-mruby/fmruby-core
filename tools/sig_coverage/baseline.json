@@ -2,7 +2,7 @@
   "counts": {
     "app_files": 73,
     "sig_classes": 77,
-    "sig_methods": 1015,
+    "sig_methods": 1014,
     "app_class": 24,
     "app_class_uses": 71,
     "app_constant": 18,
@@ -18,7 +18,7 @@
     "impl_c": 306,
     "impl_c_missing": 53,
     "impl_c_unresolved": 0,
-    "doc_methods": 625,
+    "doc_methods": 624,
     "doc_no_summary": 0,
     "doc_long_summary": 0,
     "doc_no_en": 0,
