@@ -1,6 +1,6 @@
 # sig (API の型定義) を充実させる
 
-> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0・S1・S2a 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst と Math、report/s0.md〜s2a.md)。次は S2b (Machine・乱数・GC・文字列ほか・ファイル)
+> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0・S1・S2a・S2b 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数ほか、report/s0.md〜s2b.md)。次は S2c (File・Dir・Time・IO・Class の残り)
 
 ## 1. 目的
 
@@ -136,6 +136,13 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
   `Math.sq` の補完と要約、`byteslice` の Ctrl+E (1 引数と範囲は通り、3 引数だけ指摘) を確認。型データベースは
   要約 65,104 バイト・シグネチャ 33,679・名前 9,129、定数 191。定数の長文は F1 に出ない (ヘルプの生成が定数を
   扱わない) ので、定数は要約だけ。書かなかった内部用の定数: `APP_CTRL_*`・`MAX_PATH_LEN`・`LED_ERR_*`。
+- **S2b 済 (2026-11-24、report/s2b.md)**: `Machine` 24 (`sig/machine.rbs`)、`GC` 20 (`sig/gc.rbs`)、`RNG` 3
+  (`sig/rng.rbs`)、`Kernel#rand`、上流由来のクラスに 9 (`Object#equal?`・`freeze`・`respond_to?`、`Float#round`、
+  `Integer#round`、`String#rindex`、`Array#select`、`Hash#key?`・`each_key`)。sig は 73 クラス・914 メソッド。
+  親の検収: 名前は実装と全部一致、sim のシェルで `round` の 5 例・`rand` の戻り値の型・`GC.stat` のキー 10 個・
+  `key?`・`rindex`・`delay_ms(300)` (sim で 335 ms) が sig の記述どおり、エディタで `Machine.board_m` の補完。
+  残り: `Object.const_defined?`・`remove_method` (`sig/class.rbs` の領分。S2c で足す)。**見つかった実装の不具合の疑い**:
+  ESP32 の `Machine.delay_ms` が指定の約 1/10 しか待たない (doc/reference/TODO.md に記録、ユーザの判断待ち)。
 - **定型の作業は Sonnet のサブに任せる** (2026-11-24 ユーザ)。S2a が試しで、質に問題は無かった。指示書に
   「読んだ実装のファイルと行を報告に書く」「確かめていないことを分けて書く」を入れ、親は名前と値を実装と機械的に
   突き合わせる。道具の変更と、型紙で足りない判断が要る所は Opus。

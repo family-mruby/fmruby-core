@@ -285,3 +285,13 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   AI ヘルパーの `FmrbApp._get_last_error`、midi_bench の `_clear`・`_stats`・`_audio_note_bytes`。`_` で始まるものは
   sig に書かない決まりなので、補完にも AI ホストの知識にも出ない。アプリから使うものなら公開の名前を用意する
   (API の変更になるのでユーザの判断)。sig には載せていない。未着手。
+
+- **ESP32 の `Machine.delay_ms` が、指定の約 1/10 しか待たない見込み** (2026-11-24、doc/sig_coverage/report/s2b.md。
+  コードの読みだけで、実機では未計測)。`lib/upstream/replace/picoruby-machine/ports/esp32/machine.c` の
+  `Machine_delay_ms` は `vTaskDelay(ms / ESP32_MSEC_PER_TICK)` で、`ESP32_MSEC_PER_TICK` は 10 (tick が 10 ms の前提)。
+  ビルドの `CONFIG_FREERTOS_HZ` は 1000 (tick = 1 ms) なので、`delay_ms(300)` は 30 tick = 30 ms、`delay_ms(5)` は
+  0 tick (待たずに譲るだけ) になる。sim (posix の実装) では指定どおり待つ (300 → 335 ms を確認)。使っている所:
+  BMI270 の初期化の待ち (`delay_ms(1)`〜`(5)`)、カーネル、ランチャー、試験のアプリ。直すなら
+  `vTaskDelay(pdMS_TO_TICKS(ms))`。待ちが 10 倍に伸びる (本来の長さになる) ので、実機で前後を測ってから。
+  ユーザの判断待ち。sig の `Machine.delay_ms` の長文には「約 1/10 しか待たない可能性がある」と書いてある
+  (直したら sig も直す)。
