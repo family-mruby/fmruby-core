@@ -18,7 +18,7 @@ FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool
 // Each row of these is one pool; the sizes are multiples of 8, so every row
 // keeps the alignment of the first.
 FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app[FMRB_USER_APP_STATIC_POOL_COUNT][FMRB_MEM_POOL_SIZE_USER_APP];
-FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app_large[FMRB_USER_APP_LARGE_POOL_COUNT][FMRB_MEM_POOL_SIZE_USER_APP_LARGE];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app_large[FMRB_USER_APP_LARGE_STATIC_POOL_COUNT][FMRB_MEM_POOL_SIZE_USER_APP_LARGE];
 FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_editor_doc[FMRB_MEM_POOL_SIZE_EDITOR_DOC];
 FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_tmpfs[FMRB_MEM_POOL_SIZE_TMPFS];
 FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_log_buffer[FMRB_MEM_POOL_SIZE_LOG_BUFFER];
@@ -30,7 +30,10 @@ _Static_assert(FMRB_USER_APP_POOL_COUNT >= FMRB_USER_APP_STATIC_POOL_COUNT,
                "there must be at least as many app pools as statically reserved ones");
 _Static_assert(FMRB_USER_APP_POOL_COUNT <= FMRB_USER_APP_COUNT,
                "the ordinary pools must fit in their id run");
-_Static_assert(FMRB_USER_APP_LARGE_POOL_COUNT >= 1 &&
+_Static_assert(FMRB_USER_APP_LARGE_STATIC_POOL_COUNT >= 1 &&
+               FMRB_USER_APP_LARGE_POOL_COUNT >= FMRB_USER_APP_LARGE_STATIC_POOL_COUNT,
+               "there must be a static large pool, and no more of them than large pools");
+_Static_assert(
                POOL_ID_USER_APP_LARGE + FMRB_USER_APP_LARGE_POOL_COUNT <= POOL_ID_USER_APP_LARGE_END,
                "the large pools must fit in their id run");
 _Static_assert(POOL_ID_USER_APP4 < POOL_ID_USER_APP_LARGE,
@@ -44,6 +47,12 @@ _Static_assert(POOL_ID_USER_APP4 < POOL_ID_USER_APP_LARGE,
 #define DYN_POOL_COUNT (FMRB_USER_APP_POOL_COUNT - FMRB_USER_APP_STATIC_POOL_COUNT)
 #if DYN_POOL_COUNT > 0
 static unsigned char* g_mempool_dyn[DYN_POOL_COUNT];
+#endif
+// The large pools past FMRB_USER_APP_LARGE_STATIC_POOL_COUNT, taken the same
+// way.
+#define DYN_LARGE_POOL_COUNT (FMRB_USER_APP_LARGE_POOL_COUNT - FMRB_USER_APP_LARGE_STATIC_POOL_COUNT)
+#if DYN_LARGE_POOL_COUNT > 0
+static unsigned char* g_mempool_large_dyn[DYN_LARGE_POOL_COUNT];
 #endif
 
 void* fmrb_get_mempool_ptr(int32_t id){
@@ -59,7 +68,15 @@ void* fmrb_get_mempool_ptr(int32_t id){
 #endif
     }
     if (id >= POOL_ID_USER_APP_LARGE && id < POOL_ID_USER_APP_LARGE + FMRB_USER_APP_LARGE_POOL_COUNT) {
-        return g_mempool_user_app_large[id - POOL_ID_USER_APP_LARGE];
+        const int32_t n = id - POOL_ID_USER_APP_LARGE;
+        if (n < FMRB_USER_APP_LARGE_STATIC_POOL_COUNT) {
+            return g_mempool_user_app_large[n];
+        }
+#if DYN_LARGE_POOL_COUNT > 0
+        return g_mempool_large_dyn[n - FMRB_USER_APP_LARGE_STATIC_POOL_COUNT];
+#else
+        return NULL;
+#endif
     }
     switch (id) {
         case POOL_ID_SYSTEM:         return g_mempool_system;
@@ -91,10 +108,23 @@ bool fmrb_mempool_reserve(int32_t id)
     if (size == 0) {
         return false;
     }
+#if DYN_POOL_COUNT > 0 || DYN_LARGE_POOL_COUNT > 0
+    // Only an on-demand pool, ordinary or large, gets here: every other pool
+    // with a size is static and was answered above.
+    unsigned char **slot = NULL;
+#if DYN_LARGE_POOL_COUNT > 0
+    if (fmrb_mempool_is_user_large(id)) {
+        slot = &g_mempool_large_dyn[id - POOL_ID_USER_APP_LARGE - FMRB_USER_APP_LARGE_STATIC_POOL_COUNT];
+    }
+#endif
 #if DYN_POOL_COUNT > 0
-    // Only an on-demand ordinary pool gets here: every other pool with a size
-    // is static and was answered above.
-    unsigned char **slot = &g_mempool_dyn[id - POOL_ID_USER_APP0 - FMRB_USER_APP_STATIC_POOL_COUNT];
+    if (!slot) {
+        slot = &g_mempool_dyn[id - POOL_ID_USER_APP0 - FMRB_USER_APP_STATIC_POOL_COUNT];
+    }
+#endif
+    if (!slot) {
+        return false;
+    }
 
 #ifdef CONFIG_IDF_TARGET_LINUX
     unsigned char *p = (unsigned char *)malloc(size);
