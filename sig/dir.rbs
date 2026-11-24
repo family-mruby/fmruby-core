@@ -1,0 +1,343 @@
+# ディレクトリ (Dir)。
+# 実装は mruby 本体の gem mruby-dir (src/dir.c、mrblib/dir.rb) と、機種ごとの HAL:
+# ESP32 とネイティブ版は lib/upstream/hal-esp32-dir/dir_hal.c (ファイル HAL の経路解決を使う)、
+# Linux sim とブラウザ版は lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-dir/ports/posix/dir_hal.c
+# (全部の経路を flash/ の下に置く)。
+# **失敗は RuntimeError** (メッセージは対象のパス。SystemCallError・Errno は入っていない)。
+# 閉じた Dir を使うと IOError ("closed directory")。
+
+# ディレクトリの一覧と操作。
+#
+# 一覧は `Dir.children` が手軽 (名前の配列)。1 件ずつなら `Dir.open` して `read` を回す。
+# ```ruby
+# Dir.children("/home").each { |n| p n }
+# ```
+# <<en>>
+# Directory listing and operations. `Dir.children` is the easy way to list (an array of
+# names); to go one by one, `Dir.open` and loop on `read`.
+# ```ruby
+# Dir.children("/home").each { |n| p n }
+# ```
+class Dir
+  include Enumerable
+
+  # ディレクトリを開く <<en>> Open a directory
+  #
+  # 無い・ディレクトリでないと RuntimeError (メッセージはパス)。開けるのは ESP32 では全アプリで
+  # 10 個まで。閉じ忘れたものはアプリが終わるときに閉じられる。`Dir.open` と同じ。
+  # ```ruby
+  # d = Dir.new("/home")
+  # ```
+  # <<en>>
+  # RuntimeError (the message is the path) when it is missing or not a directory.
+  # An ESP32 can have 10 open at once, for all apps together. What was left open is
+  # closed when the app ends. Same as `Dir.open`.
+  # ```ruby
+  # d = Dir.new("/home")
+  # ```
+  def self.new: (String path) -> Dir
+
+  # ディレクトリを開く (ブロック付きは閉じる) <<en>> Open a directory (a block closes it)
+  #
+  # **ブロックを渡すと、抜けるときに閉じ、ブロックの値を返す**。無いと RuntimeError。
+  # アプリでは、あるかの確認にも使われる (開けたら閉じて true、RuntimeError なら false。
+  # 確認だけなら `Dir.exist?` が手軽)。
+  # ```ruby
+  # Dir.open("/home") do |d|
+  #   while (n = d.read)
+  #     p n
+  #   end
+  # end
+  # ```
+  # <<en>>
+  # **With a block it closes the directory on the way out and returns the block's
+  # value.** RuntimeError when it is missing. Apps also use it to test existence (open
+  # and close for true; a RuntimeError for false); `Dir.exist?` is simpler for that.
+  # ```ruby
+  # Dir.open("/home") do |d|
+  #   while (n = d.read)
+  #     p n
+  #   end
+  # end
+  # ```
+  def self.open: (String path) { (Dir dir) -> untyped } -> untyped
+               | (String path) -> Dir
+
+  # ディレクトリか <<en>> Whether it is a directory
+  #
+  # ディレクトリだけ true (普通のファイルは false。`File.exist?` はどちらも true)。
+  # 無い・調べられないときは false で、例外は出ない。ESP32 では "/" と "/mnt" も true。
+  # `exists?` は同じ働きの別名。
+  # ```ruby
+  # Dir.mkdir("/home/d") unless Dir.exist?("/home/d")
+  # ```
+  # <<en>>
+  # true only for a directory (a regular file gives false; `File.exist?` is true for
+  # both). false when it is missing or cannot be checked, never an exception. On an
+  # ESP32 "/" and "/mnt" count too. `exists?` is the same method.
+  # ```ruby
+  # Dir.mkdir("/home/d") unless Dir.exist?("/home/d")
+  # ```
+  def self.exist?: (String path) -> bool
+
+  # ディレクトリか (exist? の別名) <<en>> Whether it is a directory (alias of exist?)
+  #
+  # ```ruby
+  # Dir.exists?("/home")
+  # ```
+  def self.exists?: (String path) -> bool
+
+  # ディレクトリを作る <<en>> Make a directory
+  #
+  # 成功すると 0。**もうあるときも、間のディレクトリが無いときも RuntimeError** (メッセージは
+  # パス。1 段ずつ作る。先に `Dir.exist?` で確認する)。`mode` (省略すると 0777) は
+  # LittleFS では意味を持たない。/tmp はファイルを入れるだけの場所で、
+  # ディレクトリは作れない設計 (実機の /tmp。`Dir.mkdir` が sim で断るかは確かめていない)。
+  # ```ruby
+  # Dir.mkdir("/home/notes") unless Dir.exist?("/home/notes")
+  # ```
+  # <<en>>
+  # Returns 0 when made. **RuntimeError (the message is the path) when it exists
+  # already and when a parent is missing**: make them one level at a time, and check
+  # with `Dir.exist?` first. `mode` (0777 when left out) means nothing on LittleFS.
+  # /tmp is meant for files only; directories are not made in it on a device (whether
+  # `Dir.mkdir` refuses in the simulation is not checked).
+  # ```ruby
+  # Dir.mkdir("/home/notes") unless Dir.exist?("/home/notes")
+  # ```
+  def self.mkdir: (String path, ?Integer mode) -> Integer
+
+  # 空のディレクトリを消す <<en>> Delete an empty directory
+  #
+  # 成功すると 0。**空でない・無いと RuntimeError** (メッセージはパス)。"/" や "/mnt" は消せない
+  # (実機)。`rmdir`・`unlink` は同じ働きの別名。ファイルは `File.delete`。
+  # ```ruby
+  # Dir.delete("/home/old")
+  # ```
+  # <<en>>
+  # Returns 0 when deleted. **RuntimeError (the message is the path) when it is not
+  # empty or is missing.** "/" and "/mnt" cannot be deleted (on a device). `rmdir` and
+  # `unlink` are the same method. For a file use `File.delete`.
+  # ```ruby
+  # Dir.delete("/home/old")
+  # ```
+  def self.delete: (String path) -> Integer
+
+  # 空のディレクトリを消す (delete の別名) <<en>> Delete an empty directory (alias of delete)
+  #
+  # ```ruby
+  # Dir.rmdir("/home/old")
+  # ```
+  def self.rmdir: (String path) -> Integer
+
+  # 空のディレクトリを消す (delete の別名) <<en>> Delete an empty directory (alias of delete)
+  #
+  # ```ruby
+  # Dir.unlink("/home/old")
+  # ```
+  def self.unlink: (String path) -> Integer
+
+  # 中の名前の配列 ("." と ".." を除く) <<en>> Names inside, without "." and ".."
+  #
+  # 無いと RuntimeError (メッセージはパス)。**並び順は決まっていない**。ディレクトリも
+  # ファイルも名前だけが入る (区別は `File.directory?`)。
+  # ```ruby
+  # names = Dir.children("/home")
+  # names = (Dir.children(dir) rescue [])
+  # ```
+  # <<en>>
+  # RuntimeError (the message is the path) when it is missing. **The order is not
+  # fixed.** Directories and files are both just names (tell them apart with
+  # `File.directory?`).
+  # ```ruby
+  # names = Dir.children("/home")
+  # names = (Dir.children(dir) rescue [])
+  # ```
+  def self.children: (String path) -> Array[String]
+
+  # 中の名前の配列 ("." と ".." を含みうる) <<en>> Names inside, "." and ".." may be in
+  #
+  # **"." と ".." が入るかは機種で違う**: sim・ブラウザ版は入り、ESP32 の LittleFS は入らない
+  # (読んだ限り)。要らないなら `Dir.children`。
+  # ```ruby
+  # Dir.entries("/home")
+  # ```
+  # <<en>>
+  # **Whether "." and ".." appear depends on the machine**: they do in the simulation and
+  # the browser build, and they do not on an ESP32's LittleFS (as far as I read it).
+  # Use `Dir.children` to be rid of them.
+  # ```ruby
+  # Dir.entries("/home")
+  # ```
+  def self.entries: (String path) -> Array[String]
+
+  # 空かどうか <<en>> Whether a directory is empty
+  #
+  # "." と ".." は数えない。無いと RuntimeError。
+  # ```ruby
+  # Dir.empty?("/home/tmp")
+  # ```
+  def self.empty?: (String path) -> bool
+
+  # 名前を 1 つずつ渡す <<en>> Yield each name
+  #
+  # **ブロックが要る** (無いと NotImplementedError。Enumerator は入っていない)。
+  # ```ruby
+  # Dir.foreach("/home") { |n| p n }
+  # ```
+  # <<en>>
+  # **A block is required** (NotImplementedError without one; Enumerator is not built
+  # in).
+  # ```ruby
+  # Dir.foreach("/home") { |n| p n }
+  # ```
+  def self.foreach: (String path) { (String name) -> untyped } -> untyped
+
+  # 作業ディレクトリ <<en>> The working directory
+  #
+  # `pwd` は同じ働きの別名。**ファイルの操作 (File.open・Dir.open ...) の相対パスは
+  # これでなく、ルート (ESP32 は flash のルート) から解くので、パスは "/" から書く**。
+  # ```ruby
+  # Dir.getwd
+  # ```
+  # <<en>>
+  # `pwd` is the same method. **Relative paths given to File.open, Dir.open and the like
+  # are resolved from the root (an ESP32's flash root), not from this, so write paths
+  # from "/".**
+  # ```ruby
+  # Dir.getwd
+  # ```
+  def self.getwd: () -> String
+
+  # 作業ディレクトリ (getwd の別名) <<en>> The working directory (alias of getwd)
+  #
+  # ```ruby
+  # Dir.pwd
+  # ```
+  def self.pwd: () -> String
+
+  # 作業ディレクトリを変える <<en>> Change the working directory
+  #
+  # 成功すると 0。ブロックを渡すと、その間だけ変えて元に戻し、ブロックの値を返す。無いと
+  # RuntimeError。**変えても、ファイル操作の相対パスの基準は変わらない** (`Dir.getwd` 参照)。
+  # アプリは絶対パスを使う。
+  # ```ruby
+  # Dir.chdir("/home")
+  # ```
+  # <<en>>
+  # Returns 0. With a block it changes only for the block, restores, and returns the
+  # block's value. RuntimeError when it is missing. **It does not change what relative
+  # paths in file operations are based on** (see `Dir.getwd`); apps use absolute paths.
+  # ```ruby
+  # Dir.chdir("/home")
+  # ```
+  def self.chdir: (String path) -> Integer
+                | (String path) { (String path) -> untyped } -> untyped
+
+  # 開いたディレクトリから 1 つ読む <<en>> Read the next name
+  #
+  # 次の名前を返す。**終わりで nil**。並び順は決まっていない。`"."`・`".."` が出るかは
+  # 機種で違う (`Dir.entries` 参照)。閉じていると IOError。
+  # ```ruby
+  # while (n = d.read)
+  #   p n
+  # end
+  # ```
+  # <<en>>
+  # Returns the next name; **nil at the end**. The order is not fixed. Whether "." and
+  # ".." come out depends on the machine (see `Dir.entries`). IOError when closed.
+  # ```ruby
+  # while (n = d.read)
+  #   p n
+  # end
+  # ```
+  def read: () -> String?
+
+  # 開いたディレクトリを閉じる <<en>> Close an open directory
+  #
+  # nil を返す。**2 回目は IOError ("closed directory")** (File#close と違う)。
+  # ```ruby
+  # d.close
+  # ```
+  # <<en>>
+  # Returns nil. **A second close raises IOError ("closed directory")**, unlike
+  # File#close.
+  # ```ruby
+  # d.close
+  # ```
+  def close: () -> nil
+
+  # 読む位置を先頭に戻す <<en>> Go back to the first name
+  #
+  # ```ruby
+  # d.rewind
+  # ```
+  def rewind: () -> self
+
+  # 全部の名前を 1 つずつ渡す <<en>> Yield every name
+  #
+  # `read` を終わりまで回す (先頭に戻さないので、途中まで読んだ後はそこから)。ブロックが要る
+  # (無いと NotImplementedError)。
+  # ```ruby
+  # d.each { |n| p n }
+  # ```
+  # <<en>>
+  # Loops `read` to the end (it does not rewind first, so after reading part of it, it
+  # goes on from there). A block is required (NotImplementedError without one).
+  # ```ruby
+  # d.each { |n| p n }
+  # ```
+  def each: () { (String name) -> untyped } -> self
+
+  # "." と ".." 以外を 1 つずつ渡す <<en>> Yield every name except "." and ".."
+  #
+  # ブロックが要る (無いと NotImplementedError)。
+  # ```ruby
+  # d.each_child { |n| p n }
+  # ```
+  def each_child: () { (String name) -> untyped } -> self
+
+  # 読む位置 <<en>> The read position
+  #
+  # `pos` は同じ働きの別名。**ESP32 では NotImplementedError** (ディレクトリの位置を取る手段が
+  # 無い)。sim・ブラウザ版では位置の値。使わず、`rewind` で先頭に戻す。
+  # ```ruby
+  # d.tell
+  # ```
+  # <<en>>
+  # `pos` is the same method. **NotImplementedError on an ESP32** (no way to read a
+  # directory position). A position value on the simulation and the browser build. Do
+  # not use it; go back with `rewind`.
+  # ```ruby
+  # d.tell
+  # ```
+  def tell: () -> Integer
+
+  # 読む位置を決める <<en>> Set the read position
+  #
+  # `pos=` は同じ働きの別名。**ESP32 では NotImplementedError**。`tell` が返した値だけを渡す。
+  # ```ruby
+  # d.seek(pos)
+  # ```
+  # <<en>>
+  # `pos=` is the same method. **NotImplementedError on an ESP32.** Only pass a value
+  # `tell` returned.
+  # ```ruby
+  # d.seek(pos)
+  # ```
+  def seek: (Integer pos) -> self
+
+  # 読む位置 (tell の別名) <<en>> The read position (alias of tell)
+  #
+  # ```ruby
+  # d.pos
+  # ```
+  def pos: () -> Integer
+
+  # 読む位置を決める (seek の別名) <<en>> Set the read position (alias of seek)
+  #
+  # ```ruby
+  # d.pos = saved
+  # ```
+  def pos=: (Integer pos) -> Integer
+end

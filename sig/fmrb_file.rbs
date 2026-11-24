@@ -161,3 +161,236 @@ module FmrbFile
   # ```
   def self.free_bytes: (String path) -> int64?
 end
+
+# ファイルの読み書き (File)。IO の子クラスで、write・puts・print・flush・close・closed? は IO のもの。
+# 実装は Family mruby の gem picoruby-fmrb-filesystem (lib/gems/picoruby-fmrb-filesystem/:
+# mrblib/file.rb、ports/esp32/fmrb_filesystem.c) と picoruby-fmrb-io。**CRuby の File にあって
+# 無いもの**: gets・each_line・readlines・seek・eof?・File.read・File.write・File.binread・
+# File.foreach・File.stat・File.mtime ほか。読むのは `read`、全体を一度に書く・読むなら FmrbFile。
+# **失敗は RuntimeError** (Errno::ENOENT などは無く、ファイルが無い・書けない・数が多すぎる、は
+# メッセージだけで区別する)。書いてよい場所は /home と /tmp (/tmp は RAM の上の小さな一時置き場)。
+class File < IO
+  # パスの区切り <<en>> The path separator
+  SEPARATOR: String
+
+  # ファイルを開く (new) <<en>> Open a file (new)
+  #
+  # mode は `"r"` (省略時・読む)・`"w"` (空にして書く。無ければ作る)・`"a"` (末尾に足す。無ければ作る)
+  # と、`"r+"` (読み書き。無いと失敗)・`"w+"` (空にして読み書き)。**`+` は 2 文字目に置く**
+  # (`"rb"` の `b` は 2 文字目なので `"rb+"` は読み取り専用になる)。**ほかの文字で始まる mode は
+  # 読み取り専用として開く** (エラーにならない)。`a+` は 追記にならず `r+` と同じ動きになる、と読んだ。
+  # `perm` は受け取るだけで使わない。
+  #
+  # **開けないと RuntimeError ("failed to open file: パス")**。理由 (無い・場所が無い・
+  # 開いている数が上限) は区別できない。開いたままにできるのは、ESP32 では全アプリで 10 個。
+  # 開いた File は使い終えたら close する (File.open のブロックなら自動)。
+  # ```ruby
+  # f = File.new("/home/a.txt", "w")
+  # f.write("hi")
+  # f.close
+  # ```
+  # <<en>>
+  # mode: `"r"` (default; read), `"w"` (truncate and write; created when missing), `"a"`
+  # (append; created when missing), `"r+"` (read and write; fails when missing),
+  # `"w+"` (truncate, read and write). **The `+` must be the second character** (the
+  # `b` of `"rb"` is the second one, so `"rb+"` opens read-only). **A mode starting
+  # with any other letter opens read-only** (no error). `a+` is read as behaving like
+  # `r+`, not appending. `perm` is accepted and ignored.
+  #
+  # **RuntimeError ("failed to open file: path") when it cannot open**; the reason
+  # (missing, no room, too many open) is not told apart. Only 10 files can be open on
+  # an ESP32, for all apps together. Close a File when done (File.open with a block
+  # does it).
+  # ```ruby
+  # f = File.new("/home/a.txt", "w")
+  # f.write("hi")
+  # f.close
+  # ```
+  def self.new: (String path, ?String mode, ?Integer perm) -> File
+
+  # パスを組み立てる <<en>> Join path parts
+  #
+  # 部品の間に "/" を 1 つだけ入れてつなぐ (重なった "/" は 1 つに)。部品は String か、
+  # String の配列 (入れ子も可)。ほかは TypeError。引数が無いと ""。
+  # ```ruby
+  # File.join("/home", "a.txt")   #=> "/home/a.txt"
+  # ```
+  # <<en>>
+  # Joins the parts with exactly one "/" between them. Parts are Strings or arrays of
+  # Strings (nesting allowed); anything else is a TypeError. "" with no arguments.
+  # ```ruby
+  # File.join("/home", "a.txt")   #=> "/home/a.txt"
+  # ```
+  def self.join: (*(String | Array[untyped]) names) -> String
+
+  # パスの最後の名前 <<en>> The last name of a path
+  #
+  # 末尾の "/" は無視する。`suffix` (省略すると何も取らない) が名前の終わりに一致すれば
+  # 取り除く (**文字列そのままの一致だけ**。CRuby の ".*" は使えない)。"/" は "/"。
+  # ```ruby
+  # File.basename("/home/a.txt")          #=> "a.txt"
+  # File.basename("/home/a.txt", ".txt")  #=> "a"
+  # ```
+  # <<en>>
+  # Ignores trailing "/". `suffix` (nothing is removed when left out) is cut off the
+  # end when it matches (**literal text only**; CRuby's ".*" does not work). "/" gives
+  # "/".
+  # ```ruby
+  # File.basename("/home/a.txt")          #=> "a.txt"
+  # File.basename("/home/a.txt", ".txt")  #=> "a"
+  # ```
+  def self.basename: (String path, ?String suffix) -> String
+
+  # パスの親のディレクトリ <<en>> The directory part of a path
+  #
+  # ```ruby
+  # File.dirname("/home/a.txt")   #=> "/home"
+  # ```
+  # <<en>>
+  # `level` (1 when left out) is how many names to cut off; a negative level is an
+  # ArgumentError. A path with no "/" gives ".".
+  # ```ruby
+  # File.dirname("/home/a.txt")   #=> "/home"
+  # ```
+  def self.dirname: (String path, ?Integer level) -> String
+
+  # 拡張子 (ドットを含む) <<en>> The extension, with its dot
+  #
+  # ```ruby
+  # File.extname("a.txt")   #=> ".txt"
+  # ```
+  def self.extname: (String filename) -> String
+
+  # 絶対パスにする <<en>> Make a path absolute
+  #
+  # "." と ".." をたどり、重なった "/" をまとめる。**相対パスの基準は `default_dir`
+  # (省略すると ".") を環境変数 `PWD` (無ければ "/") に付けたもの**で、`Dir.getwd` ではない。
+  # "~" で始まるパスは環境変数 `HOME` に置き換わり、HOME が無いと ArgumentError。
+  # "~名前" の形は ArgumentError。ファイルがあるかは見ない。
+  # ```ruby
+  # File.expand_path("/home/../tmp/a")   #=> "/tmp/a"
+  # ```
+  # <<en>>
+  # Resolves "." and ".." and merges repeated "/". **A relative path is based on
+  # `default_dir` (".") put on the environment variable `PWD` ("/" when it is not set)**,
+  # not on `Dir.getwd`. A leading "~" becomes `HOME` (ArgumentError when HOME is not
+  # set); the "~name" form is an ArgumentError. It does not check the file exists.
+  # ```ruby
+  # File.expand_path("/home/../tmp/a")   #=> "/tmp/a"
+  # ```
+  def self.expand_path: (String path, ?String default_dir) -> String
+
+  # ファイルかディレクトリがあるか (exists? も同じ) <<en>> Whether a file or a directory is there
+  #
+  # ディレクトリでも true。無い・調べられないときは false (例外は出ない)。
+  # `exists?` は同じ働きの別名。
+  # <<en>>
+  # true for a directory too; false when it is missing or cannot be checked (no
+  # exception). `exists?` is the same method under another name.
+  # ```ruby
+  # File.exist?("/home/a.txt")
+  # ```
+  def self.exists?: (String path) -> bool
+
+  # 普通のファイルか <<en>> Whether it is a regular file
+  #
+  # ディレクトリや、無いパスは false。
+  # ```ruby
+  # File.file?("/home/a.txt")
+  # ```
+  # <<en>>
+  # false for a directory or a missing path.
+  # ```ruby
+  # File.file?("/home/a.txt")
+  # ```
+  def self.file?: (String path) -> bool
+
+  # ディレクトリか <<en>> Whether it is a directory
+  #
+  # 無いパスは false。"/"・"/mnt" は true。
+  # ```ruby
+  # File.directory?("/tmp")
+  # ```
+  # <<en>>
+  # false for a missing path. "/" and "/mnt" are true.
+  # ```ruby
+  # File.directory?("/tmp")
+  # ```
+  def self.directory?: (String path) -> bool
+
+  # ファイルの大きさ (バイト) <<en>> A file's size in bytes
+  #
+  # **無いと nil でなく RuntimeError ("stat failed for パス")**。先に `File.exist?` で調べる。
+  # (nil を返す `FmrbFile.size` もある。)
+  # ```ruby
+  # n = File.size("/home/a.txt")
+  # ```
+  # <<en>>
+  # **RuntimeError ("stat failed for path") when it is missing**, not nil; check with
+  # `File.exist?` first. (`FmrbFile.size` returns nil instead.)
+  # ```ruby
+  # n = File.size("/home/a.txt")
+  # ```
+  def self.size: (String path) -> Integer
+
+  # ファイルを消す <<en>> Delete a file
+  #
+  # **パスは 1 つだけ** (CRuby のように複数は渡せない)。消せたら 1 を返し、
+  # **消せないと RuntimeError ("cannot delete パス")**。無い・ディレクトリ・
+  # 開いたままのファイルは消せない (ディレクトリは `Dir.delete`)。`unlink` は同じ働きの別名。
+  # ```ruby
+  # File.delete("/home/old.txt") if File.exist?("/home/old.txt")
+  # ```
+  # <<en>>
+  # **One path only** (several cannot be given as in CRuby). Returns 1 when deleted and
+  # **raises RuntimeError ("cannot delete path") when it cannot**: a missing file, a
+  # directory (use `Dir.delete`) or a file still open. `unlink` is the same method.
+  # ```ruby
+  # File.delete("/home/old.txt") if File.exist?("/home/old.txt")
+  # ```
+  def self.delete: (String path) -> Integer
+
+  # ファイルを消す (delete の別名) <<en>> Delete a file (same as delete)
+  #
+  # ```ruby
+  # File.unlink("/home/old.txt")
+  # ```
+  def self.unlink: (String path) -> Integer
+
+  # 名前を変える・移す <<en>> Rename or move a file
+  #
+  # 成功すると 0。**失敗すると RuntimeError ("cannot rename 元 to 先")**。先に同じ名前の
+  # ファイルがあるときの動きは、実装の rename(3) まかせ (確かめていない。先に `File.delete`
+  # すると確実)。
+  # ```ruby
+  # File.rename("/home/a.tmp", "/home/a.txt")
+  # ```
+  # <<en>>
+  # Returns 0 when it worked and **raises RuntimeError ("cannot rename old to new")
+  # when it fails**. What happens when the target exists is left to the underlying
+  # rename(3) (not checked; delete the target first to be sure).
+  # ```ruby
+  # File.rename("/home/a.tmp", "/home/a.txt")
+  # ```
+  def self.rename: (String old_path, String new_path) -> Integer
+
+  # 開いたファイルのパス <<en>> The path the file was opened with
+  #
+  # ```ruby
+  # f.path
+  # ```
+  def path: () -> String
+
+  # パスを置き換える (記録だけ) <<en>> Set the recorded path
+  #
+  # `path` が返す値を変えるだけで、ファイルは動かない。
+  # ```ruby
+  # f.path = "/home/b.txt"
+  # ```
+  # <<en>>
+  # Only changes what `path` returns; the file does not move.
+  # ```ruby
+  # f.path = "/home/b.txt"
+  # ```
+  def path=: (String value) -> String
+end

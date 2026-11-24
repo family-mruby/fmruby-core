@@ -1,0 +1,507 @@
+# 時刻 (Time)。
+# 実装は mruby 本体の gem mruby-time (src/time.c)。全ビルドに入っている。`strftime`・
+# `Time.parse`・`Time#round` などは**無い** (書式にするなら `"%02d:%02d" % [t.hour, t.min]`)。
+# 時刻の元は端末のシステム時計。実機は起動時に RTC (時計の部品) から合わせ、RTC の無い機種は
+# ネットワークから合わせる (合うまでは 1970 年付近の値になりうる。実機では確かめていない)。
+# Linux sim はホストの時計。**ローカル時刻の時差は system_conf.toml の `timezone`** (POSIX 形式。
+# 出荷の設定は "JST-9")。書かれていないと UTC。
+
+# 日付と時刻。
+#
+# 作るのは `Time.now` (今)、`Time.at` (UNIX 秒から)、`Time.local` / `Time.gm` (年月日から)。
+# 引き算 (`t2 - t1`) は秒の Float。
+# ```ruby
+# t = Time.now
+# label = "%02d:%02d" % [t.hour, t.min]
+# ```
+# <<en>>
+# Date and time. Make one with `Time.now`, `Time.at` (from UNIX seconds), or
+# `Time.local` / `Time.gm` (from a date). `t2 - t1` is a Float of seconds.
+# ```ruby
+# t = Time.now
+# label = "%02d:%02d" % [t.hour, t.min]
+# ```
+class Time
+  # 今の時刻 <<en>> The current time
+  #
+  # システム時計の今を、ローカル時刻で返す。時計が合っていない端末では、その値のまま
+  # (エラーにならない)。
+  # ```ruby
+  # t = Time.now
+  # ```
+  # <<en>>
+  # The system clock's now, as local time. On a machine whose clock was never set it
+  # gives whatever the clock says (no error).
+  # ```ruby
+  # t = Time.now
+  # ```
+  def self.now: () -> Time
+
+  # 今の時刻 (new) <<en>> New Time (now, or from a date)
+  #
+  # **引数なしは今**。引数は年・月・日・時・分・秒・マイクロ秒の順で、**年だけ必須の
+  # 整数** (文字列は TypeError)。**ローカル時刻**として解く。範囲外 (13 月など) は
+  # ArgumentError ("argument out of range"、解けない日付は "invalid time")。
+  # ```ruby
+  # Time.new
+  # Time.new(2026, 11, 25, 9, 30)
+  # ```
+  # <<en>>
+  # **No arguments gives now.** Arguments are year, month, day, hour, minute, second and
+  # microsecond, **only the year is required**, all Integers (a String is a TypeError),
+  # read as **local time**. ArgumentError when out of range ("argument out of range";
+  # "invalid time" for a date that cannot be made).
+  # ```ruby
+  # Time.new
+  # Time.new(2026, 11, 25, 9, 30)
+  # ```
+  def self.new: (?Integer year, ?Integer month, ?Integer day, ?Integer hour, ?Integer min, ?Integer sec, ?Integer usec) -> Time
+
+  # UNIX 秒から作る <<en>> Make a Time from UNIX seconds
+  #
+  # 1970-01-01 00:00:00 UTC からの秒 (Integer か Float。小数は小数秒になる)。
+  # 第 2 引数は追加のマイクロ秒 (省略すると 0)。ローカル時刻で返る。Integer・Float 以外は
+  # TypeError。
+  # ```ruby
+  # Time.at(0).to_i   #=> 0
+  # ```
+  # <<en>>
+  # Seconds since 1970-01-01 00:00:00 UTC (an Integer or a Float; the fraction becomes
+  # fractional seconds). The second argument adds microseconds (0 when left out).
+  # Returns local time. TypeError for anything but an Integer or a Float.
+  # ```ruby
+  # Time.at(0).to_i   #=> 0
+  # ```
+  def self.at: ((Integer | Float) seconds, ?(Integer | Float) usec) -> Time
+
+  # 年月日から作る (ローカル時刻) <<en>> Make a Time from a date (local time)
+  #
+  # 引数は `Time.new` と同じ。`mktime` は同じ働きの別名。
+  # ```ruby
+  # Time.local(2026, 11, 25)
+  # ```
+  # <<en>>
+  # Arguments as for `Time.new`. `mktime` is the same method.
+  # ```ruby
+  # Time.local(2026, 11, 25)
+  # ```
+  def self.local: (Integer year, ?Integer month, ?Integer day, ?Integer hour, ?Integer min, ?Integer sec, ?Integer usec) -> Time
+
+  # 年月日から作る (local の別名) <<en>> Make a Time from a date (alias of local)
+  #
+  # ```ruby
+  # Time.mktime(2026, 11, 25)
+  # ```
+  def self.mktime: (Integer year, ?Integer month, ?Integer day, ?Integer hour, ?Integer min, ?Integer sec, ?Integer usec) -> Time
+
+  # 年月日から作る (UTC) <<en>> Make a Time from a date (UTC)
+  #
+  # 引数は `Time.local` と同じだが、**UTC として解く**。`utc` は同じ働きの別名。
+  # ```ruby
+  # Time.gm(2026, 11, 25, 0, 0)
+  # ```
+  # <<en>>
+  # Arguments as for `Time.local`, but **read as UTC**. `utc` is the same method.
+  # ```ruby
+  # Time.gm(2026, 11, 25, 0, 0)
+  # ```
+  def self.gm: (Integer year, ?Integer month, ?Integer day, ?Integer hour, ?Integer min, ?Integer sec, ?Integer usec) -> Time
+
+  # 年月日から作る (gm の別名) <<en>> Make a Time from a date (alias of gm)
+  #
+  # ```ruby
+  # Time.utc(2026, 11, 25)
+  # ```
+  def self.utc: (Integer year, ?Integer month, ?Integer day, ?Integer hour, ?Integer min, ?Integer sec, ?Integer usec) -> Time
+
+  # 秒を足す・引く <<en>> Add seconds
+  #
+  # 秒 (Integer か Float) を足した新しい Time。Time を足すと TypeError
+  # ("cannot convert Time to time")。
+  # ```ruby
+  # tomorrow = Time.now + 86400
+  # ```
+  # <<en>>
+  # A new Time with the seconds (an Integer or a Float) added. Adding a Time is a
+  # TypeError ("cannot convert Time to time").
+  # ```ruby
+  # tomorrow = Time.now + 86400
+  # ```
+  def +: ((Integer | Float) seconds) -> Time
+
+  # 差・秒を引く <<en>> Difference, or subtract seconds
+  #
+  # **Time を引くと、差の秒数 (Float)**。数 (Integer か Float) を引くと、その秒だけ前の新しい
+  # Time。経過時間を測るなら `Machine.board_millis` が軽い。
+  # ```ruby
+  # sec = t2 - t1
+  # ```
+  # <<en>>
+  # **Subtracting a Time gives the difference in seconds (a Float).** Subtracting a
+  # number (an Integer or a Float) gives a new Time that many seconds earlier. To time
+  # something, `Machine.board_millis` is lighter.
+  # ```ruby
+  # sec = t2 - t1
+  # ```
+  def -: (Time other) -> Float
+       | ((Integer | Float) seconds) -> Time
+
+  # 比べる <<en>> Compare
+  #
+  # -1・0・1 を返す。Time でないものとは nil。
+  # ```ruby
+  # t1 <=> t2
+  # ```
+  def <=>: (untyped other) -> Integer?
+
+  # 同じ時刻か <<en>> Whether it is the same instant
+  #
+  # 秒とナノ秒が同じなら true (ローカルか UTC かは見ない)。`eql?` は同じ働きの別名。
+  # ```ruby
+  # t1 == t2
+  # ```
+  def ==: (untyped other) -> bool
+
+  # 同じ時刻か (== の別名) <<en>> Whether it is the same instant (alias of ==)
+  #
+  # ```ruby
+  # t1.eql?(t2)
+  # ```
+  def eql?: (untyped other) -> bool
+
+  # ハッシュ値 <<en>> Hash value
+  #
+  # ```ruby
+  # t.hash
+  # ```
+  def hash: () -> Integer
+
+  # UNIX 秒 (整数) <<en>> UNIX seconds as an Integer
+  #
+  # ```ruby
+  # t.to_i
+  # ```
+  def to_i: () -> Integer
+
+  # UNIX 秒 (小数つき) <<en>> UNIX seconds as a Float
+  #
+  # ミリ秒にするなら `(Time.now.to_f * 1000).to_i`。
+  # ```ruby
+  # ms = (Time.now.to_f * 1000).to_i
+  # ```
+  # <<en>>
+  # For milliseconds: `(Time.now.to_f * 1000).to_i`.
+  # ```ruby
+  # ms = (Time.now.to_f * 1000).to_i
+  # ```
+  def to_f: () -> Float
+
+  # 年 <<en>> Year
+  #
+  # ```ruby
+  # t.year
+  # ```
+  def year: () -> Integer
+
+  # 月 (1-12) <<en>> Month (1-12)
+  #
+  # `month` は同じ働きの別名。
+  # ```ruby
+  # t.mon
+  # ```
+  def mon: () -> Integer
+
+  # 月 (mon の別名) <<en>> Month (alias of mon)
+  #
+  # ```ruby
+  # t.month
+  # ```
+  def month: () -> Integer
+
+  # 日 (1-31) <<en>> Day of the month (1-31)
+  #
+  # `mday` は同じ働きの別名。
+  # ```ruby
+  # t.day
+  # ```
+  def day: () -> Integer
+
+  # 日 (day の別名) <<en>> Day of the month (alias of day)
+  #
+  # ```ruby
+  # t.mday
+  # ```
+  def mday: () -> Integer
+
+  # 時 (0-23) <<en>> Hour (0-23)
+  #
+  # ```ruby
+  # t.hour
+  # ```
+  def hour: () -> Integer
+
+  # 分 (0-59) <<en>> Minute (0-59)
+  #
+  # ```ruby
+  # t.min
+  # ```
+  def min: () -> Integer
+
+  # 秒 (0-59) <<en>> Second (0-59)
+  #
+  # ```ruby
+  # t.sec
+  # ```
+  def sec: () -> Integer
+
+  # マイクロ秒 (0-999999) <<en>> Microseconds (0-999999)
+  #
+  # ```ruby
+  # t.usec
+  # ```
+  def usec: () -> Integer
+
+  # ナノ秒 (0-999999999) <<en>> Nanoseconds (0-999999999)
+  #
+  # `tv_nsec` は同じ働きの別名。
+  # ```ruby
+  # t.nsec
+  # ```
+  def nsec: () -> Integer
+
+  # ナノ秒 (nsec の別名) <<en>> Nanoseconds (alias of nsec)
+  #
+  # ```ruby
+  # t.tv_nsec
+  # ```
+  def tv_nsec: () -> Integer
+
+  # 曜日 (日曜が 0) <<en>> Day of the week (Sunday is 0)
+  #
+  # ```ruby
+  # t.wday
+  # ```
+  def wday: () -> Integer
+
+  # 年の何日目 (1-366) <<en>> Day of the year (1-366)
+  #
+  # ```ruby
+  # t.yday
+  # ```
+  def yday: () -> Integer
+
+  # 夏時間か <<en>> Whether daylight saving applies
+  #
+  # ```ruby
+  # t.dst?
+  # ```
+  def dst?: () -> bool
+
+  # 日曜か <<en>> Whether it is Sunday
+  #
+  # ```ruby
+  # t.sunday?
+  # ```
+  def sunday?: () -> bool
+
+  # 月曜か <<en>> Whether it is Monday
+  #
+  # ```ruby
+  # t.monday?
+  # ```
+  def monday?: () -> bool
+
+  # 火曜か <<en>> Whether it is Tuesday
+  #
+  # ```ruby
+  # t.tuesday?
+  # ```
+  def tuesday?: () -> bool
+
+  # 水曜か <<en>> Whether it is Wednesday
+  #
+  # ```ruby
+  # t.wednesday?
+  # ```
+  def wednesday?: () -> bool
+
+  # 木曜か <<en>> Whether it is Thursday
+  #
+  # ```ruby
+  # t.thursday?
+  # ```
+  def thursday?: () -> bool
+
+  # 金曜か <<en>> Whether it is Friday
+  #
+  # ```ruby
+  # t.friday?
+  # ```
+  def friday?: () -> bool
+
+  # 土曜か <<en>> Whether it is Saturday
+  #
+  # ```ruby
+  # t.saturday?
+  # ```
+  def saturday?: () -> bool
+
+  # 時差の名前 <<en>> The zone as text
+  #
+  # UTC の Time は "UTC"、ローカルの Time は "+0900" のような**時差の文字列** (地名の "JST" ではない)。
+  # ```ruby
+  # t.zone   #=> "+0900"
+  # ```
+  # <<en>>
+  # "UTC" for a UTC Time; for a local Time the **offset text** such as "+0900" (not a
+  # name such as "JST").
+  # ```ruby
+  # t.zone   #=> "+0900"
+  # ```
+  def zone: () -> String
+
+  # UTC との差 (秒) <<en>> Offset from UTC in seconds
+  #
+  # UTC の Time は 0。`gmt_offset`・`gmtoff` は同じ働きの別名。
+  # ```ruby
+  # t.utc_offset   #=> 32400
+  # ```
+  # <<en>>
+  # 0 for a UTC Time. `gmt_offset` and `gmtoff` are the same method.
+  # ```ruby
+  # t.utc_offset   #=> 32400
+  # ```
+  def utc_offset: () -> Integer
+
+  # UTC との差 (utc_offset の別名) <<en>> Offset from UTC (alias of utc_offset)
+  #
+  # ```ruby
+  # t.gmt_offset
+  # ```
+  def gmt_offset: () -> Integer
+
+  # UTC との差 (utc_offset の別名) <<en>> Offset from UTC (alias of utc_offset)
+  #
+  # ```ruby
+  # t.gmtoff
+  # ```
+  def gmtoff: () -> Integer
+
+  # UTC の Time か <<en>> Whether it is a UTC Time
+  #
+  # `gmt?` は同じ働きの別名。
+  # ```ruby
+  # t.utc?
+  # ```
+  def utc?: () -> bool
+
+  # UTC の Time か (utc? の別名) <<en>> Whether it is a UTC Time (alias of utc?)
+  #
+  # ```ruby
+  # t.gmt?
+  # ```
+  def gmt?: () -> bool
+
+  # UTC に変える (自分を書き換える) <<en>> Turn into UTC (changes the receiver)
+  #
+  # **受け手そのものを UTC に変え**、自分を返す。元を残すなら `getutc`。`gmtime` は同じ働きの別名。
+  # ```ruby
+  # t.utc
+  # ```
+  # <<en>>
+  # **Changes the receiver itself** to UTC and returns it. Use `getutc` to keep the
+  # original. `gmtime` is the same method.
+  # ```ruby
+  # t.utc
+  # ```
+  def utc: () -> Time
+
+  # UTC に変える (utc の別名) <<en>> Turn into UTC (alias of utc)
+  #
+  # ```ruby
+  # t.gmtime
+  # ```
+  def gmtime: () -> Time
+
+  # UTC の新しい Time <<en>> A new Time in UTC
+  #
+  # 元は変えない。`getgm` は同じ働きの別名。
+  # ```ruby
+  # u = t.getutc
+  # ```
+  # <<en>>
+  # The original is not changed. `getgm` is the same method.
+  # ```ruby
+  # u = t.getutc
+  # ```
+  def getutc: () -> Time
+
+  # UTC の新しい Time (getutc の別名) <<en>> A new Time in UTC (alias of getutc)
+  #
+  # ```ruby
+  # t.getgm
+  # ```
+  def getgm: () -> Time
+
+  # ローカル時刻に変える (自分を書き換える) <<en>> Turn into local time (changes the receiver)
+  #
+  # **受け手そのものを**ローカル時刻にし、自分を返す。元を残すなら `getlocal`。
+  # ```ruby
+  # t.localtime
+  # ```
+  # <<en>>
+  # **Changes the receiver itself** to local time and returns it. Use `getlocal` to
+  # keep the original.
+  # ```ruby
+  # t.localtime
+  # ```
+  def localtime: () -> Time
+
+  # ローカル時刻の新しい Time <<en>> A new Time in local time
+  #
+  # 元は変えない。
+  # ```ruby
+  # l = t.getlocal
+  # ```
+  def getlocal: () -> Time
+
+  # "2026-11-25 09:30:00 +0900" の形の文字列 <<en>> Text like "2026-11-25 09:30:00 +0900"
+  #
+  # UTC の Time は末尾が "UTC"。`inspect` は同じ働きの別名。
+  # ```ruby
+  # t.to_s
+  # ```
+  # <<en>>
+  # A UTC Time ends with "UTC". `inspect` is the same method.
+  # ```ruby
+  # t.to_s
+  # ```
+  def to_s: () -> String
+
+  # 文字列にする (to_s の別名) <<en>> Text form (alias of to_s)
+  #
+  # ```ruby
+  # t.inspect
+  # ```
+  def inspect: () -> String
+
+  # "Wed Nov 25 09:30:00 2026" の形の文字列 <<en>> Text like "Wed Nov 25 09:30:00 2026"
+  #
+  # `ctime` は同じ働きの別名。
+  # ```ruby
+  # t.asctime
+  # ```
+  # <<en>>
+  # `ctime` is the same method.
+  # ```ruby
+  # t.asctime
+  # ```
+  def asctime: () -> String
+
+  # asctime の別名 <<en>> Alias of asctime
+  #
+  # ```ruby
+  # t.ctime
+  # ```
+  def ctime: () -> String
+end
