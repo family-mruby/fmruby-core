@@ -9,3 +9,67 @@ class Class
   def name: () -> String
 
 end
+
+# クラスとモジュール (Module) の操作。`Object.const_defined?(:X)` のようにクラスが受け手になる。
+# 実装は mruby 本体の src/class.c (const_defined?) と mruby-metaprog (remove_method)。
+class Module
+  # 定数があるか調べる <<en>> Whether a constant is defined
+  #
+  # name の定数があれば true。**未定義でも例外は出さず false** (gem が入っているかの確認に使う)。
+  # name が定数の名前の形でない (小文字で始まるなど) ときは NameError。
+  #
+  # `inherit` (省略すると true) が true なら、親のクラスや Object の定数も数える。
+  # false なら、その受け手に直接ある定数だけ。
+  # ```ruby
+  # if Object.const_defined?(:Digest)
+  #   # Digest が使える
+  # end
+  # ```
+  # <<en>>
+  # true when name is a constant. **It returns false, not an exception, when the
+  # constant is not there** (use it to see whether a gem is built in). NameError
+  # when name is not shaped like a constant name (it starts with a lowercase letter, ...).
+  #
+  # `inherit` (true when left out): true also counts the constants of the parent
+  # classes and of Object; false counts only the ones the receiver holds itself.
+  # ```ruby
+  # if Object.const_defined?(:Digest)
+  #   # Digest is there
+  # end
+  # ```
+  def const_defined?: (Symbol | String name, ?bool inherit) -> bool
+
+  # メソッドの定義を取り除く <<en>> Remove methods defined in this class
+  #
+  # **この受け手に直接定義したメソッドだけ**取り除ける。親から継承しているものは
+  # 取り除けず、NameError ("method 'x' not defined in ...")。
+  # 取り除くと、同じ名前のメソッドが親にあればそちらが呼ばれる。
+  #
+  # 名前は Symbol か String (ほかは TypeError)。複数を一度に渡せる。受け手 (self) を返す。
+  # 凍結したクラスには FrozenError。
+  # ```ruby
+  # self.class.remove_method(:draw_title)
+  # ```
+  # <<en>>
+  # Removes **only methods defined directly in this receiver**. One inherited from the
+  # parent cannot be removed: NameError ("method 'x' not defined in ...").
+  # Once it is removed, a method of the same name in the parent is called instead.
+  #
+  # Names are Symbols or Strings (anything else is a TypeError); several can be
+  # given at once. Returns the receiver (self). FrozenError on a frozen class.
+  # ```ruby
+  # self.class.remove_method(:draw_title)
+  # ```
+  def remove_method: (*(Symbol | String) names) -> self
+end
+
+# Object 自身が受け手になる呼び方 (`Object.const_defined?(:X)`) のための写し。
+# 中身は Module#const_defined? と同じ (Object は Module の一種)。
+class Object
+  # 定数があるか調べる <<en>> Whether a constant is defined
+  #
+  # ```ruby
+  # Object.const_defined?(:Digest)
+  # ```
+  def self.const_defined?: (Symbol | String name, ?bool inherit) -> bool
+end

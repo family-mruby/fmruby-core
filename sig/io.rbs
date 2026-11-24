@@ -1,0 +1,130 @@
+# 入出力 (IO)。File の親クラス。
+# 実装は Family mruby の gem picoruby-fmrb-io (lib/gems/picoruby-fmrb-io/: mrblib/io.rb、
+# ports/esp32/fmrb_io.c。ファイル HAL の fmrb_hal_file_* を呼ぶ)。mruby 本体の mruby-io は
+# 入っていない (picoruby-fmrb-io と同居できない)。**CRuby の IO にあるメソッドの多く
+# (gets・each_line・seek・eof? ほか) は無い**。ここに書いたものだけがある。
+# `IO.new`・`IO.open`・`IO.sysopen` は番号 (ファイルのハンドル) を直接扱う内側のもので、
+# アプリは `File.open` を使う (ここには書かない)。
+
+# 入出力のストリーム。
+#
+# 標準出力 (`$stdout`) もファイルも同じ IO。**ストリームが閉じた後の `read`・`write` は
+# IOError でなく RuntimeError** ("closed stream")。エラーはどれも RuntimeError で、
+# 理由 (errno) は区別できない。
+# ```ruby
+# $stdout.puts "hello"
+# ```
+# <<en>>
+# An input/output stream, the parent of File. `$stdout` and a file are the same kind
+# of IO. **`read` and `write` on a closed stream raise RuntimeError** ("closed
+# stream"), not IOError. Every failure is a RuntimeError; the reason (errno) is not
+# told apart.
+# ```ruby
+# $stdout.puts "hello"
+# ```
+class IO
+  # 読む (File では File#read) <<en>> Read bytes (File overrides it as File#read)
+  #
+  # length バイトまでを読んで文字列で返す。**length を省くと 1024 バイト**
+  # (標準入力などのストリーム用。ファイルは File#read で、省くと全部読む)。
+  # length が 0 以下なら "" を返す。読めなかったときは RuntimeError
+  # ("failed to read from stream")、閉じたストリームなら RuntimeError ("closed stream")。
+  # ```ruby
+  # s = $stdin.read(16)
+  # ```
+  # <<en>>
+  # Reads up to length bytes and returns them. **length defaults to 1024** (for
+  # streams such as stdin; a file goes through File#read, which reads everything
+  # when it is left out). length of 0 or less returns "". RuntimeError when the
+  # read fails ("failed to read from stream") or the stream is closed
+  # ("closed stream").
+  # ```ruby
+  # s = $stdin.read(16)
+  # ```
+  def read: (?Integer length) -> String
+
+  # 書き込む <<en>> Write a string
+  #
+  # str を書き、**書いたバイト数**を返す。str は String だけ (数値などは TypeError。
+  # `puts`・`print` は to_s してから渡す)。書けなかったときは RuntimeError ("write failed")、
+  # 閉じたストリームなら RuntimeError ("closed stream")。
+  # ```ruby
+  # n = f.write("hello\n")   #=> 6
+  # ```
+  # <<en>>
+  # Writes str and returns **the number of bytes written**. Only a String is
+  # accepted (a number raises TypeError; `puts` and `print` call to_s first).
+  # RuntimeError when the write fails ("write failed") or the stream is closed
+  # ("closed stream").
+  # ```ruby
+  # n = f.write("hello\n")   #=> 6
+  # ```
+  def write: (String str) -> Integer
+
+  # 改行つきで書く <<en>> Write with a newline
+  #
+  # 引数を 1 つずつ to_s して書き、末尾が "\n" でなければ "\n" を足す。引数が無いときは
+  # "\n" だけ。**配列は展開しない** (`puts [1, 2]` は "[1, 2]" の 1 行。CRuby は 1 要素 1 行)。
+  # nil は空行。いつも nil を返す。
+  # ```ruby
+  # f.puts "line"
+  # ```
+  # <<en>>
+  # Writes each argument after to_s and adds "\n" unless it already ends with one;
+  # with no arguments it writes just "\n". **Arrays are not flattened** (`puts [1, 2]`
+  # writes the one line "[1, 2]"; CRuby writes one line per element). nil is an empty
+  # line. Always returns nil.
+  # ```ruby
+  # f.puts "line"
+  # ```
+  def puts: (*untyped objects) -> nil
+
+  # 改行なしで書く <<en>> Write without a newline
+  #
+  # 引数を 1 つずつ to_s して書く。いつも nil を返す。
+  # ```ruby
+  # f.print "a", 1
+  # ```
+  def print: (*untyped objects) -> nil
+
+  # 書いた内容を記憶領域へ流す <<en>> Flush what was written to storage
+  #
+  # ファイルの書き込みを確定させる。自分 (self) を返す。標準出力・標準エラー・閉じたものでは
+  # 何もしない。流せなかったときは RuntimeError ("flush failed")。
+  # ```ruby
+  # f.flush
+  # ```
+  # <<en>>
+  # Pushes a file's writes out to storage and returns self. Does nothing for
+  # stdout, stderr and a closed stream. RuntimeError when it cannot flush
+  # ("flush failed").
+  # ```ruby
+  # f.flush
+  # ```
+  def flush: () -> self
+
+  # 閉じる <<en>> Close the stream
+  #
+  # **何度呼んでも例外にならない** (閉じていれば何もしない)。nil を返す。標準入出力では何もしない。
+  # **開いたまま忘れたファイルは、ガベージコレクタでは閉じない**。アプリが終わるとき
+  # まとめて閉じられる。開いたままにできる数は有限 (ESP32 では全アプリで 10 個。File#new 参照)。
+  # ```ruby
+  # f.close
+  # ```
+  # <<en>>
+  # **Calling it again is not an error** (nothing happens once it is closed). Returns
+  # nil. Nothing happens for the standard streams. **A file left open is not closed
+  # by the garbage collector**; it is closed when the app ends. The number that can
+  # stay open is limited (10 for all apps together on an ESP32; see File.new).
+  # ```ruby
+  # f.close
+  # ```
+  def close: () -> nil
+
+  # 閉じているか <<en>> Whether it is closed
+  #
+  # ```ruby
+  # f.closed?
+  # ```
+  def closed?: () -> bool
+end
