@@ -1,6 +1,6 @@
 # sig (API の型定義) を充実させる
 
-> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。S4a 済。次は S4b (音・タイル・P5)
+> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。S4 済。次はシグネチャの領域の手当てと S5 (データ・機器・通信の残り)
 
 ## 1. 目的
 
@@ -126,7 +126,7 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
 | S1 (済 2026-11-24) | **型紙と上流由来のファイル**: `sig/README.md` に、つまずく API の書き方の型紙 (引数の意味・戻り値と失敗・使う順番・短い例) と、キーワード引数の書き方を足し、「上流由来の 15 ファイルは変更禁止」を「直接足してよい (試験の期待値も直す)」に改める。1 つ (`String#byteslice`) で通す | 型紙どおりに書いた 1 件が、エディタの補完・F1・AI ホストの検索の 3 つで読める |
 | S2 (済 2026-11-25) | **最初に使う範囲**: `FmrbConst` (キーの番号・テーマの色・`BOARD`)、`Machine` (時刻・待ち)、`Math`、乱数、`GC`、`String`・`Array`・`Float` の足りない分、`File`・`Dir`・`Time` | S0 の (1) で、この範囲の「無い」が 0。AI ホストへの決まった頼み (時間で動くアニメーション、ファイルの読み書き) が調べ物なしか 1 回で正しく返る |
 | S3 (済 2026-11-25) | **例の無い 92 件と長文の無い 3 件を埋め、行をまたぐ強調 42 行を直す** (道具に「強調が行をまたぐ」を足す): `fmrb_app`・`fmrb_gfx`・`fmrb_system`・`fmrb_ui` ほか (英語の無い要約は、数え直すと 0 件だった) | S0 の (3) の「例なし」「長文なし」が 0 (わざと載せない分を除く) |
-| S4 | **部品と音**: `FmrbUI` の部品 (label・button・toggle・stepper・text_field・スクロールバー。アプリが呼ぶ分)、`FmrbApp` の残り、Kernel のメッセージ 4 件、`MmlPlayer`・`SmfPlayer`・`FmrbMidi` (送り先はアプリが呼ぶ分)・`FmrbAudio` (マイク)、`TileMap`・`P5` の残り、`FmrbI18n`・`FmrbAssoc` | S0 の (2) で、この範囲の「無い」が、わざと載せない分だけになる。決まった頼み (ボタンと入力欄のある画面、MML を鳴らす) |
+| S4 (済 2026-11-25) | **部品と音**: `FmrbUI` の部品 (label・button・toggle・stepper・text_field・スクロールバー。アプリが呼ぶ分)、`FmrbApp` の残り、Kernel のメッセージ 4 件、`MmlPlayer`・`SmfPlayer`・`FmrbMidi` (送り先はアプリが呼ぶ分)・`FmrbAudio` (マイク)、`TileMap`・`P5` の残り、`FmrbI18n`・`FmrbAssoc` | S0 の (2) で、この範囲の「無い」が、わざと載せない分だけになる。決まった頼み (ボタンと入力欄のある画面、MML を鳴らす) |
 | S5 | **データ・機器・通信の残り**: `JSON` (`Digger` も)・`MessagePack`・`FmrbToml`・`FmrbColors`・`Digest::SHA256`・`Fmrb::Fft`・`Fmrb::Raycast`・`I2C`・`FmrbNet`・`FmrbHw`・卓のゲームの部品 (`TableClient`)・Asterism の残り全部 (`Connection`・`Credentials` ほか、ROS 2 の橋、`FmrbAsterism` のモジュール関数)・storage のライブラリ (`FmrbReceiveConf`・`Unit8Encoder`) | 同上。機器の無い端末でどうなるか (失敗のしかた) が書いてある |
 | S6 | **まとめの確認**: 全体を通して、エディタ (補完・F1)、ファームと storage の大きさ、AI ホストの通し (決まった頼み 10 個ほどを、足す前の版と比べる)。`doc/reference/` に「sig の書き方と数え方」を残す | 大きさの増分が記録されている。頼みの結果の比較が報告にある |
 
@@ -173,6 +173,16 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
   sig は 79 クラス・1,058 メソッド、実装にあって sig に無い Ruby は 612 → 499。親の検収: 名前を実装と照合、sim の
   エディタで正しい呼び方 11 個が指摘されず、引数の足りない 2 個だけ指摘、シェルで `FmrbAssoc.resolve`・`truncate_to`。
   **見つかった不具合の疑い**: `Kernel.send_message` などの構造体が本体と違う (doc/reference/TODO.md、ユーザの判断待ち)。
+- **S4b 済 (2026-11-25、report/s4b.md)**: 55 メソッド・定数 20・クラス 2 を足した (`FmrbMidi` の関数 5、`SmfPlayer` 22、
+  `MmlPlayer` 14、`ApuTransport` 8、`MIDI::Device` 2、`FmrbAudio` のマイク 4、`FmrbMic.available?`、タイル・P5・絵の残り)。
+  既にあるシグネチャ 38 個を実装に合わせた (`MIDI::Device` の `channel:` と省略できる velocity、プレーヤーの戻り値、
+  `TileSheet.new`・`stamp`・`render_view` のキーワード、`FmrbAudio` の省略できる引数ほか。要約は 1 つも変えていない)。
+  送り先の下回りとプレーヤーの内側 49 個は載せない一覧へ (決定 12)。sig は 81 クラス・1,117 メソッド、実装にあって
+  sig に無い Ruby は 499 → 395。親の検収: 変えたシグネチャを実装と照合、sim のシェルで `gm_name`・MML と SMF の
+  プレーヤー (読み込み・エラーの文・`start`・`tick`・`lookahead_us`)・マイク (sim では false・0・nil)・`png_path?` が
+  記述どおり、エディタで正しい呼び方 7 個が指摘されず、引数や必須キーワードの足りない 2 個だけ指摘。
+  **S4 完了**。型データベースのシグネチャの領域は 44,108 バイト (上限 65,535 の 67%)。S5 (約 300 メソッド) を足すと
+  約 79% の見込みなので、**S5 の前にシグネチャの位置も 24 ビットにする** (要約と同じ手当て。8 章)。
 - **定型の作業は Sonnet のサブに任せる** (2026-11-24 ユーザ)。S2a が試しで、質に問題は無かった。指示書に
   「読んだ実装のファイルと行を報告に書く」「確かめていないことを分けて書く」を入れ、親は名前と値を実装と機械的に
   突き合わせる。道具の変更と、型紙で足りない判断が要る所は Opus。
