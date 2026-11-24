@@ -3,7 +3,11 @@
 # TileSheet がタイルの絵の一式、TileMap が地図のデータ、
 # TileRing は広い地図をなめらかに動かすための仕組み。
 
-# タイルの絵をならべた一枚の絵。番号でタイルを取り出して描く。
+# タイルの絵をならべた一枚の絵 <<en>> One picture with tiles laid side by side
+#
+# 番号でタイルを取り出して描く。
+# <<en>>
+# Tiles are taken out by number and drawn.
 class TileSheet
   # タイルの絵を読み込む <<en>> Load a sheet of tiles
   #
@@ -100,7 +104,11 @@ class TileSheet
   def destroy: () -> void
 end
 
-# 地図そのもの。web の地図エディタが書き出した JSON を読む。
+# 地図そのもの <<en>> The map itself
+#
+# web の地図エディタが書き出した JSON を読む。
+# <<en>>
+# Reads the JSON that the web map editor writes out.
 class TileMap
   # 地図のファイルを読み込む <<en>> Load a map file
   #
@@ -282,7 +290,11 @@ class TileMap
   def render_view: (TileSheet sheet, origin_x: Integer, origin_y: Integer, view_x: Integer, view_y: Integer, view_w: Integer, view_h: Integer) -> void
 end
 
-# 見えている周りだけを描き直して、広い地図を軽く動かす仕組み。
+# 見えている周りだけを描き直す仕組み <<en>> Redraws only what is in view
+#
+# 広い地図を軽く動かすための仕組み。
+# <<en>>
+# A mechanism for moving a wide map lightly.
 class TileRing
   # 動かすための入れ物を作る <<en>> Make the ring buffer that scrolls
   #

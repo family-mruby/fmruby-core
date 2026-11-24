@@ -1,4 +1,9 @@
 # Area512 built-in type declaration.
 
+# 真を表す true の型 <<en>> The type of true
+#
+# このファイルにはメソッドを載せていない。
+# <<en>>
+# No methods are listed in this file.
 class TrueClass < Bool
 end

@@ -5,7 +5,11 @@
 # 一枚の絵を何個も置ける。どちらも FmrbGfx の境界の関数
 # (create_sprite_image・move_sprite など) を呼ぶ Ruby の包み。
 
-# うごく絵の中身。ここに描いた絵を SpriteInstance で画面に置く。
+# うごく絵の中身 <<en>> The picture data of a sprite
+#
+# ここに描いた絵を SpriteInstance で画面に置く。
+# <<en>>
+# What is drawn here is put on the screen with a SpriteInstance.
 class SpriteImage
   # この絵の番号 <<en>> This image's number
   #
@@ -141,7 +145,11 @@ class SpriteImage
   def destroy: () -> void
 end
 
-# 画面に置いた一つのうごく絵。位置と、何枚目を見せるかを持つ。
+# 画面に置いた一つのうごく絵 <<en>> One sprite placed on the screen
+#
+# 位置と、何枚目を見せるかを持つ。
+# <<en>>
+# It holds a position and which frame to show.
 class SpriteInstance
   # この置いた絵の番号 <<en>> This placed sprite's number
   #
@@ -252,7 +260,11 @@ class SpriteInstance
   def height: () -> Integer
 end
 
-# 枠なしの Window の当たりの形 (画素単位)。FmrbApp#hit_mask_from_art で作る。
+# 枠なし Window の当たりの形 (画素単位) <<en>> The hit shape of a frameless window, per pixel
+#
+# FmrbApp#hit_mask_from_art で作る。
+# <<en>>
+# Made with FmrbApp#hit_mask_from_art.
 class FmrbHitMask
   # マスクを作る (行ごとのビット列) <<en>> Make a mask (bits row by row)
   #
@@ -315,7 +327,11 @@ class FmrbHitMask
   def bits: () -> String
 end
 
-# 同じ形をくり返し描くときの下書き。数だけ差しかえて何度も描ける。
+# 同じ形をくり返し描くときの下書き <<en>> A draft for drawing the same shape over and over
+#
+# 数だけ差しかえて何度も描ける。
+# <<en>>
+# Swap only the numbers and draw it as many times as you like.
 class GfxBlock
   # 下書きを作る (ブロックに描き方を書く) <<en>> Make a drawing to replay (the block says how)
   #

@@ -1,5 +1,13 @@
 # Area512 built-in type declaration.
 
+# クラス自身を表す。名前を読む <<en>> A class itself; read its name
+#
+# このファイルでは `name` だけを載せている (`obj.class.name`)。クラスを受け手にする
+# `const_defined?` と `remove_method` は `Module` に、`Object` 向けの写しは `Object` にある。
+# <<en>>
+# Only `name` is listed here (`obj.class.name`). `const_defined?` and
+# `remove_method`, which take a class as the receiver, are on `Module`;
+# the copy for `Object` is on `Object`.
 class Class
   # クラス名を文字列で返す <<en>> Return class name as string
   #
@@ -10,8 +18,14 @@ class Class
 
 end
 
+# クラスとモジュールの操作 <<en>> Operations on classes and modules
+#
 # クラスとモジュール (Module) の操作。`Object.const_defined?(:X)` のようにクラスが受け手になる。
 # 実装は mruby 本体の src/class.c (const_defined?) と mruby-metaprog (remove_method)。
+# <<en>>
+# Operations on classes and modules (Module), with a class as the receiver, as in
+# `Object.const_defined?(:X)`. Implemented in mruby's own src/class.c
+# (const_defined?) and mruby-metaprog (remove_method).
 class Module
   # 定数があるか調べる <<en>> Whether a constant is defined
   #
@@ -63,8 +77,14 @@ class Module
   def remove_method: (*(Symbol | String) names) -> self
 end
 
-# Object 自身が受け手になる呼び方 (`Object.const_defined?(:X)`) のための写し。
+# Object を受け手にする呼び方の写し <<en>> A copy for calls with Object as the receiver
+#
+# `Object.const_defined?(:X)` のように Object 自身が受け手になる呼び方のための写し。
 # 中身は Module#const_defined? と同じ (Object は Module の一種)。
+# <<en>>
+# A copy for calls with Object itself as the receiver, as in
+# `Object.const_defined?(:X)`. It does the same as Module#const_defined?
+# (Object is a kind of Module).
 class Object
   # 定数があるか調べる <<en>> Whether a constant is defined
   #

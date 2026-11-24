@@ -4,7 +4,13 @@
 # (NameError)、代わりに mbedTLS の `MbedTLS::Digest` がある。CRuby の Digest とは違い
 # SHA256 以外 (MD5・SHA1 など)・`file`・`base64digest` は無い。
 
-# ハッシュの入れもの。
+# ハッシュの入れもの (SHA-256) <<en>> Container for hashes (SHA-256)
+#
+# 入るのはブラウザ版 (wasm) だけ。実機・Linux sim・ネイティブ版では `Digest` が無く、
+# 先に `Object.const_defined?(:Digest)` で調べる。
+# <<en>>
+# Only the browser build (wasm) has it. On a device, the Linux sim and the
+# native build there is no `Digest`; check `Object.const_defined?(:Digest)` first.
 module Digest
   # SHA-256 を計算する <<en>> Compute SHA-256
   #

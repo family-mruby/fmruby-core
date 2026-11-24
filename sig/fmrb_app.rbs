@@ -13,6 +13,30 @@
 # Window の大きさや状態を読むメソッドは、Ruby (mruby・Spinel) では基底クラスが
 # 自分の値で答え、ほかの言語では境界の関数が C の殻の値で答える。
 
+# アプリの土台。これを継承して書く <<en>> The base of every app; inherit from it
+#
+# アプリは `class MyApp < FmrbApp` と書き、`on_create`・`on_update`・`on_event` など
+# 呼ばれるところを書きかえる。ファイルにはクラスを書くだけでよく、読み終えると
+# そのクラスが作られて `start` される。
+#
+# 絵は `gfx` (`@gfx`) に描く。`@gfx` は FmrbApp が用意する FmrbGfx で、原点は
+# アプリが描いてよい区画の左上。描いたら `gfx.present` で出す。
+# Window の大きさは `window_width`・`window_height`、色は `theme_fg` などで読む。
+#
+# 最初に読むとよいメソッド: `on_create`、`on_update`、`on_event`、`gfx`、
+# `set_timer`、`publish`。
+# <<en>>
+# An app is written as `class MyApp < FmrbApp`, overriding the methods that
+# get called (`on_create`, `on_update`, `on_event` and so on). The file only
+# defines the class; once it has been read, the class is made and `start`ed.
+#
+# Draw on `gfx` (`@gfx`). `@gfx` is an FmrbGfx that FmrbApp prepares, with
+# its origin at the top-left of the area the app owns; call `gfx.present`
+# to show what was drawn. The window's size is read with `window_width`
+# and `window_height`, colours with `theme_fg` and the like.
+#
+# Methods to read first: `on_create`, `on_update`, `on_event`, `gfx`,
+# `set_timer`, `publish`.
 %a{fmrb.boundary}
 class FmrbApp
   # wallclock が返す日付と時刻 <<en>> The date and time, from wallclock

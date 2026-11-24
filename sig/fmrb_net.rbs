@@ -3,7 +3,7 @@
 # mrblib/fmrb-net.rb (`FmrbNet.request`)。全ビルドに入る。ただし `request` が板で使う
 # `Net::HTTP` は WiFi のあるビルド (ATOM を除く実機・Linux sim・ネイティブ版) にだけある。
 
-# ネットワークの状態を読み、待たずに取得する。
+# ネットワークの状態を読み、待たずに取得する <<en>> Read the network state; fetch
 #
 # WiFi の接続は端末が受け持つので、アプリは**状態を見るだけ** (`connected?`・`ip_address`・
 # `hostname`・`ssid`)。取得は `FmrbNet.request` で、**ブラウザ版でも同じ書き方**ができる。
@@ -12,7 +12,7 @@
 # up = FmrbNet.connected?
 # ```
 # <<en>>
-# Reads the network state, and fetches without waiting. The machine owns the WiFi connection,
+# The machine owns the WiFi connection,
 # so an app **only looks at the state** (`connected?`, `ip_address`, `hostname`, `ssid`).
 # Fetching is `FmrbNet.request`, written the same way **in the browser build too**.
 # **The Linux sim, the native build and the browser build always answer "connected"**

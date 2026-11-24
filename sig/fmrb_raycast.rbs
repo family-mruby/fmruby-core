@@ -3,7 +3,7 @@
 # 全ビルドの family_mruby.gembox に入る。`:spinel` が使えるかはビルドで違う (`available?`)。
 
 module Fmrb
-  # 格子の地図を、壁までの距離で見る (Wolfenstein 3D 風)。
+  # 格子の地図を壁までの距離で見る <<en>> Ray casting over a grid map
   #
   # **値は全部整数** (小数は使わない)。1 マス = 256 の固定小数、**角度は度 (整数)**、1 回で **40 本**の
   # 光線を、視野 60 度に並べて撃つ。結果は光線ごとの距離・壁の種類・面。方式は `:ruby` と
@@ -15,7 +15,7 @@ module Fmrb
   # d = rc.dist(20)
   # ```
   # <<en>>
-  # Looks at a grid map by the distance to walls (Wolfenstein 3D style). **Every value is an**
+  # (Wolfenstein 3D style.) **Every value is an**
   # **integer**: one cell is 256 in fixed point, **angles are whole degrees**, and one cast fires
   # **40 rays** across a 60-degree field of view. The result is a distance, a wall value and a
   # face per ray. The backends are `:ruby` and `:spinel` (the same calculation as native code).

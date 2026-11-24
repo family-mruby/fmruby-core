@@ -6,7 +6,7 @@
 # 実装は flash/usr/share/transfer/receive_conf.rb。使う前に
 # `require "/usr/share/transfer/receive_conf"`。Asterism を持つビルドで使う。
 
-# このマシンがファイルや app を受け取るか、だれから受け取るかを読み書きする。
+# ファイルや app の受け取りの設定を読み書きする <<en>> Read and write the receive settings
 #
 # 設定は `/home/asterism/receive.toml` (無ければ出荷時の `/etc/asterism/receive.toml`)。
 # **受け取りは `enabled = true` の行があるときだけ**で、ファイルが無い・行が無いと「受け取らない」。
@@ -17,7 +17,7 @@
 # FmrbReceiveConf.enabled?
 # ```
 # <<en>>
-# Reads and writes whether this machine receives files and apps, and from whom. The settings
+# The settings
 # are in `/home/asterism/receive.toml` (else the shipped `/etc/asterism/receive.toml`).
 # **Receiving is on only with an `enabled = true` line**; a missing file or line means "not
 # receiving". There is a part written by hand and a "managed" part the console writes; `set_*`,
@@ -291,7 +291,7 @@ end
 # 実装は flash/lib/unit8encoder.rb。使う前に `require "unit8encoder"`。**I2C を持つ実機の**
 # **ビルドだけ**で動く (`I2C` が無い Linux sim・ネイティブ版・ブラウザ版では NameError)。
 
-# ロータリエンコーダ 8 個・ボタン 8 個・スイッチ 1 個・RGB の LED 9 個の機器。
+# エンコーダ 8・ボタン 8・スイッチ 1・LED 9 の機器 <<en>> 8 encoders, 8 buttons, 9 LEDs
 #
 # `Unit8Encoder.new(i2c)` に開いた `I2C` を渡す。**通信の失敗は `I2C` の IOError がそのまま**出る
 # (機器が無いとアプリはここで失敗する)。番号 `index` は エンコーダとボタンが 0〜7、LED が 0〜8。
@@ -302,7 +302,7 @@ end
 # enc.get_increment(0)
 # ```
 # <<en>>
-# A device with 8 rotary encoders, 8 buttons, 1 switch and 9 RGB LEDs. Pass an open `I2C` to
+# Pass an open `I2C` to
 # `Unit8Encoder.new`. **A communication failure is the `I2C` IOError as it is** (without the
 # device the app fails here). `index` is 0..7 for encoders and buttons and 0..8 for LEDs.
 # **There is no range check**: an index out of range reads or writes another register.

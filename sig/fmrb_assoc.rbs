@@ -33,11 +33,17 @@
 # The table is **read once per VM**. After editing a table, open the app
 # that reads it again (there is no reload).
 module FmrbAssoc
+  # 答え: そのファイル自身をアプリとして動かす <<en>> Answer: run the file itself as an app
   RUN: String
+  # 答え: エディタで開く <<en>> Answer: open it in the editor
   EDIT: String
+  # 表に無い拡張子の答え (EDIT と同じ) <<en>> Answer for an extension with no entry (same as EDIT)
   DEFAULT: String
+  # ファームウェア付きの表のパス <<en>> Path of the table that ships with the firmware
   SYS_PATH: String
+  # ユーザの表のパス <<en>> Path of the user's table
   USR_PATH: String
+  # 調べる拡張子の最大の長さ (8) <<en>> Longest extension looked at (8)
   MAX_EXT_LEN: Integer
 
   # パスから開く先を決める <<en>> Decide how to open a path

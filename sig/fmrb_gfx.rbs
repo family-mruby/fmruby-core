@@ -98,6 +98,24 @@ module FmrbText
   def draw_text_lines: (Integer x, Integer y, String text, Integer width, Integer color, Integer line_h) -> Integer
 end
 
+# 絵を描く画面。図形・文字・画像・スプライト <<en>> A canvas: shapes, text, images, sprites
+#
+# アプリは自分で作らない。`FmrbApp` が用意する `gfx` (`@gfx`) を使う。原点 (0, 0) は
+# アプリが描いてよい区画の左上で、色は RGB332 の数 (`FmrbGfx::RED` など)。
+# 描くメソッドは自分自身を返すので続けて書ける。**描いただけでは出ない**。
+# フレームの終わりに `present` を 1 回呼ぶ。
+#
+# 最初に読むとよいメソッド: `clear`、`fill_rect`、`draw_text`、`draw_image`、
+# `present`。
+# <<en>>
+# An app does not make one; it uses the `gfx` (`@gfx`) that `FmrbApp`
+# prepares. The origin (0, 0) is the top-left of the area the app owns, and
+# colours are RGB332 numbers (`FmrbGfx::RED` and so on). The drawing
+# methods return the canvas itself, so calls chain. **Drawing alone shows nothing**:
+# call `present` once at the end of a frame.
+#
+# Methods to read first: `clear`, `fill_rect`, `draw_text`, `draw_image`,
+# `present`.
 %a{fmrb.boundary}
 class FmrbGfx
   include FmrbText
@@ -144,23 +162,23 @@ class FmrbGfx
   # 灰色 (RGB332) <<en>> gray (RGB332)
   GRAY: Integer
 
-  # 黒 (RGB332)
+  # 黒 (RGB332) <<en>> black (RGB332)
   COLOR_BLACK: Integer
-  # 白 (RGB332)
+  # 白 (RGB332) <<en>> white (RGB332)
   COLOR_WHITE: Integer
-  # 赤 (RGB332)
+  # 赤 (RGB332) <<en>> red (RGB332)
   COLOR_RED: Integer
-  # 緑 (RGB332)
+  # 緑 (RGB332) <<en>> green (RGB332)
   COLOR_GREEN: Integer
-  # 青 (RGB332)
+  # 青 (RGB332) <<en>> blue (RGB332)
   COLOR_BLUE: Integer
-  # 黄 (RGB332)
+  # 黄 (RGB332) <<en>> yellow (RGB332)
   COLOR_YELLOW: Integer
-  # 水色 (RGB332)
+  # 水色 (RGB332) <<en>> cyan (RGB332)
   COLOR_CYAN: Integer
-  # 紫 (RGB332)
+  # 紫 (RGB332) <<en>> magenta (RGB332)
   COLOR_MAGENTA: Integer
-  # 灰色 (RGB332)
+  # 灰色 (RGB332) <<en>> gray (RGB332)
   COLOR_GRAY: Integer
 
   # 色を加算で混ぜる (blend_rect 用) <<en>> additive blend (for blend_rect)
@@ -1938,8 +1956,13 @@ def transfer_file_raw: (String path, String dest) -> bool
   def self.hsv_to_rgb: (Integer h, Integer s, Integer v) -> Array
 end
 
-# FmrbGfx#video_open が返す、流している動画の取っ手。流せる動画は 1 つなので、
-# どの取っ手も同じ再生機を操作する。中身は FmrbGfx.video_control を呼ぶ Ruby。
+# 流している動画の取っ手 <<en>> A handle on the video being played
+#
+# FmrbGfx#video_open が返す。流せる動画は 1 つなので、どの取っ手も同じ再生機を操作する。
+# 中身は FmrbGfx.video_control を呼ぶ Ruby。
+# <<en>>
+# Returned by FmrbGfx#video_open. Only one video can play at a time, so every
+# handle operates the same player. It is Ruby that calls FmrbGfx.video_control.
 class FmrbVideo
   # 動画の横幅 (ドット) <<en>> The video's width in pixels
   #

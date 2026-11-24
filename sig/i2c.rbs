@@ -5,7 +5,7 @@
 # (lib/upstream/family_mruby_esp32.rb・family_mruby_esp32p4.rb)。Linux sim・ネイティブ版・
 # ブラウザ版には `I2C` が無く、使うと NameError になる。
 
-# I2C の機器と話す。
+# I2C の機器と話す <<en>> Talk to I2C devices
 #
 # `I2C.new` で線を開き、`write` と `read` でバイトを送り受ける。7 ビットのアドレスで話す。
 # **ユニットは `:ESP32_I2C0` と `:ESP32_I2C1` だけ**。ピンは `FmrbHw::PIN_I2C1_SDA`・`PIN_I2C1_SCL`
@@ -16,7 +16,7 @@
 #   scl_pin: FmrbHw::PIN_I2C1_SCL)
 # ```
 # <<en>>
-# Talks to I2C devices. `I2C.new` opens the bus, and `write` and `read` send and receive bytes
+# `I2C.new` opens the bus, and `write` and `read` send and receive bytes
 # with a 7-bit address. **The only units are `:ESP32_I2C0` and `:ESP32_I2C1`.** Use
 # `FmrbHw::PIN_I2C1_SDA` and `PIN_I2C1_SCL` for the pins. **Every failure is an IOError.**
 # ```ruby

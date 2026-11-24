@@ -10,6 +10,16 @@
 # 結果が nil のことがあるもの (read・size・free_bytes) は、ほかの言語では
 # FMRB_BOUNDARY_NONE (C) や None・nil で「無い」を表す。
 
+# ファイルを丸ごと読み書きする <<en>> Read and write whole files by path
+#
+# パスで呼ぶ関数だけで、開いたままの状態は持たない。`read`・`write`・`append`・`exist?`・
+# `size`・`delete`・`mkdir`・`list` がある。1 回でファイル全体を読み書きするので、
+# 大きなファイルは丸ごとメモリに載る。読む位置を持って少しずつ読むなら `File`。
+# <<en>>
+# Functions called by path; nothing stays open. There are `read`, `write`,
+# `append`, `exist?`, `size`, `delete`, `mkdir` and `list`. A call reads or
+# writes the whole file, so a big file is held in memory entirely. To read
+# a little at a time from a position, use `File`.
 %a{fmrb.boundary}
 module FmrbFile
   # ファイル全体を読む <<en>> Read a whole file
@@ -162,7 +172,9 @@ module FmrbFile
   def self.free_bytes: (String path) -> int64?
 end
 
-# ファイルの読み書き (File)。IO の子クラスで、write・puts・print・flush・close・closed? は IO のもの。
+# ファイルの読み書き (File) <<en>> Reading and writing files (File)
+#
+# IO の子クラスで、write・puts・print・flush・close・closed? は IO のもの。
 # 実装は Family mruby の gem picoruby-fmrb-filesystem (lib/gems/picoruby-fmrb-filesystem/:
 # mrblib/file.rb、ports/esp32/fmrb_filesystem.c) と picoruby-fmrb-io。
 # **CRuby の File にあって無いもの**:
@@ -170,6 +182,19 @@ end
 # File.foreach・File.stat・File.mtime ほか。読むのは `read`、全体を一度に書く・読むなら FmrbFile。
 # **失敗は RuntimeError** (Errno::ENOENT などは無く、ファイルが無い・書けない・数が多すぎる、は
 # メッセージだけで区別する)。書いてよい場所は /home と /tmp (/tmp は RAM の上の小さな一時置き場)。
+# <<en>>
+# A subclass of IO; write, puts, print, flush, close and closed? are IO's.
+# Implemented in the Family mruby gems picoruby-fmrb-filesystem
+# (lib/gems/picoruby-fmrb-filesystem/: mrblib/file.rb,
+# ports/esp32/fmrb_filesystem.c) and picoruby-fmrb-io.
+# **What CRuby's File has and this one lacks**: gets, each_line, readlines,
+# seek, eof?, File.read, File.write, File.binread, File.foreach, File.stat,
+# File.mtime and more. Read with `read`; to write or read a whole file at
+# once use FmrbFile.
+# **A failure is a RuntimeError** (no Errno::ENOENT and the like; a missing
+# file, a file that cannot be written and too many open files are told apart
+# by the message only). Writable places are /home and /tmp (/tmp is a small
+# temporary space in RAM).
 class File < IO
   # パスの区切り <<en>> The path separator
   SEPARATOR: String

@@ -4,7 +4,7 @@
 # **種 (seed) を与える手段は無い** (`srand` も `Random` も入っていない) ので、並びは毎回違い、
 # 同じ並びを作り直すことはできない。
 
-# 乱数の元。
+# 乱数の元 <<en>> The source of random numbers
 #
 # ESP32 は `esp_random()` (ハードウェアの乱数)、Linux・ネイティブ版は `/dev/urandom` から読む
 # (1 バイトごとにファイルを開くので、数を大量に作るときは遅い)。
@@ -12,7 +12,7 @@
 # r = RNG.random_int % 10
 # ```
 # <<en>>
-# The source of random numbers. An ESP32 uses `esp_random()` (the hardware RNG);
+# An ESP32 uses `esp_random()` (the hardware RNG);
 # Linux and the native build read `/dev/urandom` (opening the file once per byte, so
 # producing many numbers is slow).
 # ```ruby

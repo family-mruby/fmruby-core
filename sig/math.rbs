@@ -1,7 +1,7 @@
 # 数学関数 (Math)。
 # 実装は mruby の gem mruby-math (mrbgems/mruby-math/src/math.c)。
 
-# 三角関数・指数・対数などの数学関数。
+# 三角関数・指数・対数などの数学関数 <<en>> Trigonometric, exponential and logarithmic functions
 #
 # 引数は Integer でも Float でもよく、結果は必ず Float。数でないもの (nil や
 # 文字列) を渡すと TypeError。**定義域の外の値は `Math::DomainError`** が出る

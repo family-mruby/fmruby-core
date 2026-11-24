@@ -2,7 +2,7 @@
 # 実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-i18n.rb、
 # lib/gems/picoruby-fmrb-log と picoruby の File。
 
-# 日本語と英語で表示を切りかえる。
+# 日本語と英語で表示を切りかえる <<en>> Switch the display between Japanese and English
 module FmrbI18n
   # 言葉の表を足す <<en>> Add a table of words
   #
@@ -146,11 +146,16 @@ module FmrbI18n
 end
 
 
-# ログ (シリアルと sim の端末に出る)。
+# ログ (シリアルと sim の端末に出る) <<en>> The log (goes to the serial port and the sim's terminal)
 #
 # Log はクラスごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
 # info などは包みで、隣に省略なしの _raw の形がある (mruby の包みは C で、
 # 前に書いたタグを 1 つめに受ける形 `Log.info("TAG", msg)` も読む)。
+# <<en>>
+# Log as a whole class is on the boundary to the system (%a{fmrb.boundary},
+# doc/app_boundary). info and the like are wrappers, each with a _raw form
+# next to it that leaves nothing out (the mruby wrapper is in C and also
+# reads the older form that takes the tag first, `Log.info("TAG", msg)`).
 %a{fmrb.boundary}
 module Log
   # 細かい様子をログに書く <<en>> Write a debug line to the log
@@ -263,7 +268,11 @@ module Log
 
 end
 
-# ファイルの読み書き。最小限だけ (picoruby の File)。
+# ファイルの読み書き。最小限だけ <<en>> Reading and writing files, the minimum only
+#
+# picoruby の File。
+# <<en>>
+# Picoruby's File.
 class File
   # ファイルを開く <<en>> Open a file
   #
@@ -359,7 +368,7 @@ end
 # ファームウェア自身の TOML リーダ `FmrbToml._parse`。system_conf.toml や .app.toml を読むものと同じ)。
 # 全ビルドに入る (family_mruby.gembox)。
 
-# TOML の設定ファイルを読む・行ごとに書き換える。
+# TOML の設定を読む・行ごとに書き換える <<en>> Read TOML; rewrite it by line
 #
 # `load` でファイル、`parse` で文字列を Hash にする。**読めなかったときは例外でなく nil** で、
 # 理由は `FmrbToml.error`。書くのは `update` だけで、**指したキーの行だけを書き換える**ので、
@@ -369,7 +378,7 @@ end
 # n = conf ? conf["name"] : nil
 # ```
 # <<en>>
-# Read a TOML settings file, or rewrite it line by line. `load` reads a file and `parse` a
+# `load` reads a file and `parse` a
 # string into a Hash. **A failure is nil, not an exception**; `FmrbToml.error` says why. The
 # only writer is `update`, which **changes only the lines of the keys you name**, so comments,
 # order and keys nobody here knows stay as a person wrote them.
@@ -535,7 +544,7 @@ end
 # 実装は lib/gems/picoruby-fmrb-app/mrblib/fmrb-colors.rb。全ビルドに入る。
 # Spinel でコンパイルした側 (main/ruby/spinel/fmrb_app_base_spinel.rb) には、行読みの別の写しがある。
 
-# 色の名前の表と、/home/colors.toml の読み書き。
+# 色の名前の表と、/home/colors.toml の読み書き <<en>> The colour-name table, and /home/colors.toml
 #
 # 色は **RGB332 の 0〜255 の整数**。名前は web の色名を 256 色に写したもの (101 個の
 # 一覧と、同じ色へ行く別名)。`/home/colors.toml` にはアプリごとの上書きだけを書き、
@@ -544,8 +553,6 @@ end
 # bg = FmrbColors.by_name("navy")   #=> 2
 # ```
 # <<en>>
-# A table of colour names, and the per-app overrides in /home/colors.toml.
-#
 # A colour is **an RGB332 integer, 0..255**. The names are the web's, mapped onto the 256
 # colours (a list of 101, plus aliases that land on the same colour). /home/colors.toml holds
 # only what an app overrides: a missing file, section or key means "use the theme".

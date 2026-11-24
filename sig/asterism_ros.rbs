@@ -1,7 +1,7 @@
 # ROS 2 との橋 (Asterism::ROS)。実装は vendor/asterism/mrblib/ros.rb。
 
 module Asterism
-  # ROS 2 のノードのふりをして、トピックとサービスをやり取りする <<en>> Be a ROS 2 node: topics and services
+  # ROS 2 のノードのふりをする <<en>> Act as a ROS 2 node
   #
   # ROS 2 (Jazzy・rmw_zenoh) のノードのふりをして、トピックを出す・受ける、サービスを
   # 呼ぶ・答える。Zenoh のルータ (zenohd) を ROS 2 側と共有するのが前提で、
@@ -26,8 +26,9 @@ module Asterism
   # A bridge to ROS 2 (Jazzy, rmw_zenoh): make a node that publishes and
   # subscribes to topics and calls and serves services. It assumes the ROS 2
   # side shares the Zenoh router (zenohd) and uses rmw_zenoh.
-  # **Build it on a Link's conn.session** (`Asterism::ROS::Node.new(conn.session, "name")`). Like Asterism::Connection **nothing runs behind your back**:
-  # call Node#poll in every update.
+  # **Build it on a Link's conn.session**
+  # (`Asterism::ROS::Node.new(conn.session, "name")`). Like Asterism::Connection,
+  # **nothing runs behind your back**: call Node#poll in every update.
   #
   # Message types are files made from ROS 2 .msg / .srv files (the output
   # of tools/asterism_msggen.rb); /usr/share/asterism/msgs on the machine
@@ -43,7 +44,11 @@ module Asterism
   # pub << { data: "hi" }
   # ```
   module ROS
-    # 何も指定しないときの QoS <<en>> The QoS chunk of the default profile (reliable, volatile, keep last 10)
+    # 何も指定しないときの QoS <<en>> The default QoS
+  #
+  # 既定のプロファイル (reliable・volatile・keep last 10) の QoS の部分。
+  # <<en>>
+  # The QoS chunk of the default profile (reliable, volatile, keep last 10).
     DEFAULT_QOS: String
     # 型のファイルを探す場所 <<en>> Where require_type looks for generated types
     TYPE_PATH: Array[String]
@@ -483,6 +488,11 @@ module Asterism
       # ```ruby
       # pub.close
       # ```
+      # <<en>>
+      # Returns nil.
+      # ```ruby
+      # pub.close
+      # ```
       def close: () -> nil
 
       # この口の GID <<en>> The publisher's GID (16 bytes)
@@ -600,6 +610,11 @@ module Asterism
       # ```ruby
       # sub.close
       # ```
+      # <<en>>
+      # Returns nil.
+      # ```ruby
+      # sub.close
+      # ```
       def close: () -> nil
 
       # やめたか <<en>> Whether it is closed
@@ -666,6 +681,11 @@ module Asterism
       # 閉じる <<en>> Withdraw the service
       #
       # nil を返す。
+      # ```ruby
+      # srv.close
+      # ```
+      # <<en>>
+      # Returns nil.
       # ```ruby
       # srv.close
       # ```
@@ -741,6 +761,11 @@ module Asterism
       # 閉じる <<en>> Withdraw the client
       #
       # nil を返す。
+      # ```ruby
+      # cli.close
+      # ```
+      # <<en>>
+      # Returns nil.
       # ```ruby
       # cli.close
       # ```
@@ -860,6 +885,11 @@ module Asterism
       # 止める <<en>> Stop the timer
       #
       # nil を返す。
+      # ```ruby
+      # t.cancel
+      # ```
+      # <<en>>
+      # Returns nil.
       # ```ruby
       # t.cancel
       # ```

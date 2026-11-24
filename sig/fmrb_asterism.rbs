@@ -128,6 +128,11 @@ module FmrbAsterism
   # ```ruby
   # n = FmrbAsterism.saved_name
   # ```
+  # <<en>>
+  # The name in config.toml. "" when there is none or it cannot be read.
+  # ```ruby
+  # n = FmrbAsterism.saved_name
+  # ```
   def self.saved_name: () -> String
 
   # 表示の名前を保存する <<en>> Save the display name and use it now
@@ -224,7 +229,11 @@ module FmrbAsterism
   # ```
   def self.credentials_for: (String locator) -> Asterism::Credentials?
 
-  # つなぎ方の設定 (FmrbAsterism.settings の答え)
+  # つなぎ方の設定 <<en>> Connection settings
+#
+# FmrbAsterism.settings の答え。
+# <<en>>
+# What FmrbAsterism.settings answers.
   class Settings
     # ルータの場所 <<en>> The router's locator ("tcp/host:7447")
     #
@@ -533,8 +542,11 @@ module FmrbAsterism
   end
 end
 
-# Asterism の gem (vendor/asterism)。アプリは FmrbAsterism::Link の conn
-# から使う。
+# Asterism の gem。アプリは conn から使う <<en>> The Asterism gem; apps use it through conn
+#
+# vendor/asterism にある gem。アプリは FmrbAsterism::Link の conn から使う。
+# <<en>>
+# The gem in vendor/asterism. An app uses it through the conn of an FmrbAsterism::Link.
 module Asterism
   # 通信の版 <<en>> The wire protocol version this implementation speaks
   PROTOCOL: Integer
@@ -542,7 +554,11 @@ module Asterism
   DEFAULT_TIMEOUT: Float
   # 呼び出しの待ち時間の既定 (ミリ秒) <<en>> Default time limit of a call (milliseconds)
   DEFAULT_TIMEOUT_MS: Integer
-  # 同じ名前の相手を探す時間 (秒) <<en>> How long connect looks for another copy of the same node/app (seconds)
+  # 同じ名前の相手を探す時間 (秒) <<en>> How long connect looks for a same-name peer (s)
+  #
+  # connect が、同じ node/app の別のコピーを探す時間 (秒)。
+  # <<en>>
+  # How long connect looks for another copy of the same node/app (seconds).
   CHECK_TIMEOUT: Float
   # キーの根 <<en>> The first chunk of every key ("asterism")
   ROOT: String
@@ -676,7 +692,11 @@ module Asterism
   # ```
   def self.read_attachment: (String? att, ?Symbol? place, ?String? node) -> Array[untyped]?
 
-  # ネットワークの上のアプリ 1 つ分のつながり (link.conn)
+  # ネットワーク上のアプリ 1 つ分のつながり <<en>> One app's connection to the network
+#
+# link.conn で得る。
+# <<en>>
+# Got with link.conn.
   class Connection
     # オブジェクトを公開する <<en>> Expose an object to other machines
     #
@@ -1392,10 +1412,13 @@ module Asterism
     def type_of: (Asterism::SampleInfo info, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> (Integer | Array[untyped])?
   end
 
-  # ほかの端末のオブジェクトの代わり (conn[path] の答え)
+  # ほかの端末のオブジェクトの代わり <<en>> Stand-in for an object on another machine
   #
-  # 公開されたメソッドを、そのまま普通のメソッドのように呼ぶ
+  # conn[path] の答え。公開されたメソッドを、そのまま普通のメソッドのように呼ぶ
   # (`board.post("hi")`)。呼ぶと答えを待つ。
+  # <<en>>
+  # What conn[path] answers. Call the published methods like ordinary
+  # methods (`board.post("hi")`). A call waits for the answer.
   class Proxy
     # 待たずに呼ぶ形にする <<en>> The same object, with calls that do not wait
     #
@@ -1496,7 +1519,11 @@ module Asterism
     def asterism_refresh: () -> Asterism::Proxy
   end
 
-  # 待たずに呼ぶ形 (Proxy#async の答え)。メソッドを呼ぶと Future が返る。
+  # 待たずに呼ぶ形 <<en>> The no-wait form of a proxy
+#
+# Proxy#async の答え。メソッドを呼ぶと Future が返る。
+# <<en>>
+# What Proxy#async answers. Calling a method gives back a Future.
   class AsyncProxy
     # 名前で呼んで、すぐ Future を受け取る <<en>> Call a remote method by name, a Future at once
     #
@@ -1507,7 +1534,11 @@ module Asterism
     def asterism_call: ((String | Symbol) name, *untyped args, **untyped kw) -> Asterism::Future
   end
 
-  # 待たずに呼んだ呼び出しの答え (これから届く)
+  # 待たずに呼んだ呼び出しの答え <<en>> The answer of a no-wait call
+#
+# これから届く。
+# <<en>>
+# It arrives later.
   class Future
     # 答えが来たか (待たない) <<en>> Whether the answer came, or the time ran out (never waits)
     #
@@ -1597,7 +1628,11 @@ module Asterism
     def raw_value: () -> untyped
   end
 
-  # 出したトピック (conn.publish の答え)
+  # 出したトピック <<en>> A topic being published
+#
+# conn.publish の答え。
+# <<en>>
+# What conn.publish answers.
   class Topic
     # 値を流す <<en>> Send a value to the subscribers
     #
@@ -1738,7 +1773,11 @@ module Asterism
     def declaration: () -> Hash
   end
 
-  # 受けているトピック (conn.subscribe の答え)
+  # 受けているトピック <<en>> A topic being subscribed to
+#
+# conn.subscribe の答え。
+# <<en>>
+# What conn.subscribe answers.
   class Subscription
     # 受けるのをやめる <<en>> Stop receiving
     #
@@ -1801,7 +1840,11 @@ module Asterism
     def malformed: () -> Integer
   end
 
-  # 受けた値に付いてくる情報 (subscribe のブロックの 2 つ目)
+  # 受けた値に付いてくる情報 <<en>> Information that comes with a received value
+#
+# subscribe のブロックの 2 つ目。
+# <<en>>
+# The second argument of the subscribe block.
   class SampleInfo
     # 送った端末/アプリ <<en>> The sender, "node/app"
     #
@@ -1951,7 +1994,11 @@ module Asterism
     def to_h: () -> Hash
   end
 
-  # 今答えている呼び出し (conn.current_call の答え)
+  # 今答えている呼び出し <<en>> The call being answered now
+#
+# conn.current_call の答え。
+# <<en>>
+# What conn.current_call answers.
   class CurrentCall
     # 呼んだ端末の名前 <<en>> The calling machine's node ID
     #
@@ -1991,7 +2038,11 @@ module Asterism
     def verified: () -> (:claimed | :local)
   end
 
-  # やり取りの失敗の元 (rescue ::Asterism::Error で全部受かる)
+  # やり取りの失敗の元 <<en>> Parent of every Asterism failure
+#
+# rescue ::Asterism::Error で全部受かる。
+# <<en>>
+# `rescue ::Asterism::Error` catches them all.
   class Error
     # 失敗の説明 <<en>> What went wrong
     #
@@ -2002,7 +2053,7 @@ module Asterism
     def message: () -> String
   end
 
-  # 相手のメソッドが例外を出した・呼べなかった
+  # 相手のメソッドが例外を出した・呼べなかった <<en>> Remote method failed or raised
   class RemoteError < Asterism::Error
     # 相手の例外のクラスの名前 <<en>> The class name of the error over there
     #
@@ -2049,15 +2100,23 @@ module Asterism
     def self.new: (String remote_class, String remote_message, ?String? remote_kind) -> Asterism::RemoteError
   end
 
-  # 時間内に答えが来なかった (相手がいない・遅い)
+  # 時間内に答えが来なかった <<en>> No answer came in time
+#
+# 相手がいない・遅い。
+# <<en>>
+# The other side is absent or slow.
   class TimeoutError < Asterism::Error
   end
 
-  # つながっていない・切れた
+  # つながっていない・切れた <<en>> Not connected, or the link dropped
   class Disconnected < Asterism::Error
   end
 
-  # 送れない値を送ろうとした (送る前に止まる)
+  # 送れない値を送ろうとした <<en>> A value that cannot be sent was sent
+#
+# 送る前に止まる。
+# <<en>>
+# It stops before anything is sent.
   class EncodeError < Asterism::Error
   end
 

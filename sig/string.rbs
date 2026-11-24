@@ -1,5 +1,15 @@
 # Area512 built-in type declaration.
 
+# 文字列 (UTF-8) <<en>> A string (UTF-8)
+#
+# `length` と `[]` の位置は**文字数**で、バイトではない。バイナリは `bytesize`・`getbyte`・
+# `byteslice` で扱う。足すたびに新しい文字列ができるので、ループで組み立てるなら `<<`。
+# **Regexp が無い**。
+# <<en>>
+# Positions in `length` and `[]` count **characters**, not bytes; use
+# `bytesize`, `getbyte` and `byteslice` for binary data. `+` makes a new
+# string each time, so build in a loop with `<<`.
+# **There is no Regexp** here.
 class String
   # 真偽を反転する <<en>> Return logical NOT
   #

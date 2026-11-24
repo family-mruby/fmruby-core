@@ -1,5 +1,15 @@
 # Area512 built-in type declaration.
 
+# 整数 <<en>> An integer
+#
+# 整数どうしの割り算は切り捨て (小数がほしければどちらかを `Float` に)。`times`・`downto` は
+# ブロック呼び出しが 1 回約 0.4ms なので、回数の多い所では `while` に書く。
+# `chr` は 0 から 255 の 1 バイト文字を返す。
+# <<en>>
+# Integer division truncates (make one side a `Float` for a fraction).
+# `times` and `downto` call a block, about 0.4ms each, so in a loop that
+# runs many times write `while`. `chr` returns a one-byte string for 0
+# to 255.
 class Integer
   # 割ったあまりを求める <<en>> Calculate modulo
   #

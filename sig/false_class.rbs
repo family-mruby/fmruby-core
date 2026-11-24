@@ -1,4 +1,11 @@
 # Area512 built-in type declaration.
 
+# 偽を表す false の型 <<en>> The type of false
+#
+# `nil` と `false` だけが偽で、ほかの値 (0 や空文字列も) は真。このファイルには
+# メソッドを載せていない。
+# <<en>>
+# Only `nil` and `false` are false; every other value, 0 and the empty
+# string included, is true. No methods are listed in this file.
 class FalseClass < Bool
 end
