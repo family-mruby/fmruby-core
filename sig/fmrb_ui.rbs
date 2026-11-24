@@ -199,7 +199,8 @@ class FmrbUI
   # 返るのは最初の 1 回だけです。1 回で 1 つ動き、端で押したときは返りません。
   # 押している間の向きは `direction` で読み、繰り返しはアプリがします。
   # 全部が見えている (total が visible 以下の) 間は何も描かず、
-  # **クリックも後ろの一覧へ通ります**。作れるのは on_create の中です。
+  # **クリックも後ろの一覧へ通ります**。作るのは on_create が前提です (作る
+  # 呼び出しは確保が起きる。大きさが変わるアプリは on_resize で作り直す)。
   # ```ruby
   # @ui.scrollbar(:sb, w - 10, y, 10, h,
   #               0, rows, 0)
@@ -220,8 +221,9 @@ class FmrbUI
   # held press. One press moves one step, and a press at an end returns
   # nothing. `direction` says which way a held bar goes; the app does the
   # repeating. While everything fits (total at most visible) it draws
-  # nothing and **clicks pass through to the list behind**. Make it in
-  # on_create.
+  # nothing and **clicks pass through to the list behind**. It is meant to
+  # be made in on_create (making allocates; an app whose window resizes
+  # builds it again in on_resize).
   # ```ruby
   # @ui.scrollbar(:sb, w - 10, y, 10, h,
   #               0, rows, 0)
