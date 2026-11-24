@@ -3,7 +3,7 @@
 # mrblib/msgpack.rb)。全ビルドの family_mruby.gembox に入る。CRuby の msgpack gem とは違い、
 # `to_msgpack`・Packer・Unpacker・拡張型 (ext) は無い。
 
-# MessagePack で値をバイト列にし、戻す。
+# MessagePack で値をバイト列にし、戻す <<en>> Turn values into bytes with MessagePack, and back
 #
 # `pack` で Ruby の値を String (バイト列) にし、`unpack` で値に戻す。`dump`・`load` は同じものの別名。
 # ```ruby
@@ -11,7 +11,7 @@
 # MessagePack.unpack(bin)   #=> {"a"=>[1, 2]}
 # ```
 # <<en>>
-# Turns values into bytes with MessagePack and back. `pack` makes a String of bytes from a
+# `pack` makes a String of bytes from a
 # Ruby value, `unpack` returns the value. `dump` and `load` are aliases.
 # ```ruby
 # bin = MessagePack.pack({ "a" => [1, 2] })

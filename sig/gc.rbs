@@ -3,7 +3,7 @@
 # Family mruby の patch は lib/upstream/patch/picoruby-mruby/lib/mruby/ 以下)。
 # **GC はアプリごとの VM が 1 つずつ持つ**ので、ここの値と操作は呼んだアプリの VM のもの。
 
-# ガベージコレクタの操作と統計。
+# ガベージコレクタの操作と統計 <<en>> Control and statistics of the garbage collector
 #
 # ふつうのアプリは触らなくてよい。拍を守るアプリ (演奏・アニメ) が、回収の止まる時間を
 # 避けるために使う。まとめて切り替えるなら `FmrbApp#idle_gc=` (中で `scheduler_driven`・
@@ -13,7 +13,7 @@
 # n = GC.stat[:live]
 # ```
 # <<en>>
-# Control and statistics of the garbage collector. An ordinary app does not need
+# An ordinary app does not need
 # it; an app that must keep a rhythm (playing, animating) uses it to avoid the
 # pause of a collection. To switch it all at once use `FmrbApp#idle_gc=` (it sets
 # `scheduler_driven`, `debt_limit`, `step_limit` and `malloc_threshold` together).

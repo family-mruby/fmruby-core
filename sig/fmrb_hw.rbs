@@ -4,7 +4,7 @@
 # platform/posix/fmrb_hal_pin_manager_posix.c (Linux sim・ネイティブ版・ブラウザ版)。
 # ピンの配線は components/fmrb_common/include/fmrb_pin_assign.h (機種ごと)。全ビルドに入る。
 
-# ピンの台帳を読む。
+# ピンの台帳を読む <<en>> Read the table of how pins are used
 #
 # どのピンが「システム専用」で、どれをアプリの `GPIO`・`I2C`・RMT が使っているかを調べる。
 # **台帳に実際の印が付くのは実機だけ**。Linux sim・ネイティブ版・ブラウザ版はピンを持たず、
@@ -15,7 +15,7 @@
 # end
 # ```
 # <<en>>
-# Reads the table of how pins are used. Which pins are system-only, and which an app's `GPIO`,
+# Which pins are system-only, and which an app's `GPIO`,
 # `I2C` or RMT holds. **Only a real board marks the table.** The Linux sim, the native build
 # and the browser build have no pins, so every entry stays `PIN_UNUSED` (49 pins).
 # ```ruby

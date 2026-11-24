@@ -6,7 +6,7 @@
 # 注: tools/ti/test_sig/gpio.rbs は型エンジンの試験用の見本で、ファイル名が同じなので試験のときは
 # そちらが優先される。
 
-# 1 本のピンを入れ出力に使う。
+# 1 本のピンを入れ出力に使う <<en>> Use one pin as input or output
 #
 # `GPIO.new(ピン, フラグ)` で作り、`read` と `write` を使う。フラグは `GPIO::IN | GPIO::PULL_UP`
 # のように `|` でつなぐ。**ピンは整数だけ**。使ってよいピンは `FmrbHw.pin_available?` で調べる。
@@ -15,7 +15,7 @@
 # led.write(1)
 # ```
 # <<en>>
-# Uses one pin as input or output. `GPIO.new(pin, flags)` makes it, then `read` and `write`.
+# `GPIO.new(pin, flags)` makes it, then `read` and `write`.
 # Join flags with `|`, as in `GPIO::IN | GPIO::PULL_UP`. **A pin is an integer only.** Check
 # with `FmrbHw.pin_available?` which pins you may use.
 # ```ruby

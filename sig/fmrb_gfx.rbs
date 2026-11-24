@@ -1956,8 +1956,13 @@ def transfer_file_raw: (String path, String dest) -> bool
   def self.hsv_to_rgb: (Integer h, Integer s, Integer v) -> Array
 end
 
-# FmrbGfx#video_open が返す、流している動画の取っ手。流せる動画は 1 つなので、
-# どの取っ手も同じ再生機を操作する。中身は FmrbGfx.video_control を呼ぶ Ruby。
+# 流している動画の取っ手 <<en>> A handle on the video being played
+#
+# FmrbGfx#video_open が返す。流せる動画は 1 つなので、どの取っ手も同じ再生機を操作する。
+# 中身は FmrbGfx.video_control を呼ぶ Ruby。
+# <<en>>
+# Returned by FmrbGfx#video_open. Only one video can play at a time, so every
+# handle operates the same player. It is Ruby that calls FmrbGfx.video_control.
 class FmrbVideo
   # 動画の横幅 (ドット) <<en>> The video's width in pixels
   #

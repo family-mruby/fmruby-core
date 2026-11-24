@@ -1,6 +1,6 @@
 # FmrbConst の定数。実装は lib/gems/picoruby-fmrb-const/ports/esp32/const.c。
 
-# 端末・ビルド・キー・テーマの値をまとめた定数の入れもの。
+# 端末・ビルド・キー・テーマの定数の入れもの <<en>> Constants: machine, build, keys, theme
 #
 # 値は VM を起こすときに決まり、アプリが走っている間は変わらない。
 # **機種やビルドで値が変わるもの** (`BOARD`・`PLATFORM`・`HW_FAMILY`・`CHIP_*`・
@@ -15,8 +15,6 @@
 # end
 # ```
 # <<en>>
-# Constants for the machine, the build, keys and the theme.
-#
 # Values are fixed when the VM starts and do not change while an app runs.
 # **Constants that differ by machine or build** (`BOARD`, `PLATFORM`,
 # `HW_FAMILY`, `CHIP_*`, `FLASH_SIZE_MB` and others) say so in their notes.

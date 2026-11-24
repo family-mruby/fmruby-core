@@ -6,7 +6,7 @@
 # `IO.new`・`IO.open`・`IO.sysopen` は番号 (ファイルのハンドル) を直接扱う内側のもので、
 # アプリは `File.open` を使う (ここには書かない)。
 
-# 入出力のストリーム。
+# 入出力のストリーム <<en>> An input/output stream
 #
 # 標準出力 (`$stdout`) もファイルも同じ IO。
 # **ストリームが閉じた後の `read`・`write` は IOError でなく RuntimeError**
@@ -16,7 +16,7 @@
 # $stdout.puts "hello"
 # ```
 # <<en>>
-# An input/output stream, the parent of File. `$stdout` and a file are the same kind
+# The parent of File. `$stdout` and a file are the same kind
 # of IO. **`read` and `write` on a closed stream raise RuntimeError** ("closed
 # stream"), not IOError. Every failure is a RuntimeError; the reason (errno) is not
 # told apart.

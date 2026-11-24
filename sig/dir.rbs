@@ -6,14 +6,14 @@
 # **失敗は RuntimeError** (メッセージは対象のパス。SystemCallError・Errno は入っていない)。
 # 閉じた Dir を使うと IOError ("closed directory")。
 
-# ディレクトリの一覧と操作。
+# ディレクトリの一覧と操作 <<en>> List and operate on directories
 #
 # 一覧は `Dir.children` が手軽 (名前の配列)。1 件ずつなら `Dir.open` して `read` を回す。
 # ```ruby
 # Dir.children("/home").each { |n| p n }
 # ```
 # <<en>>
-# Directory listing and operations. `Dir.children` is the easy way to list (an array of
+# `Dir.children` is the easy way to list (an array of
 # names); to go one by one, `Dir.open` and loop on `read`.
 # ```ruby
 # Dir.children("/home").each { |n| p n }

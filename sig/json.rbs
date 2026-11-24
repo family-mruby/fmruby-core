@@ -4,7 +4,7 @@
 # どのビルドも family_mruby.gembox に入れていて、全部 Ruby で書いてある (C の部分は無い)。
 # CRuby の json とは違う: `to_json`・`pretty_generate`・`load`・`dump`・オプション (`symbolize_names:` など) は無い。
 
-# JSON の読み書き。
+# JSON の読み書き <<en>> Reading and writing JSON
 #
 # 読むのは `JSON.parse`、書くのは `JSON.generate`。大きな JSON から一部だけ取るなら
 # `JSON::Digger`。**どれも Ruby で書いた小さな実装**で、速さより小ささを優先している。
@@ -13,7 +13,7 @@
 # s = JSON.generate(h)   #=> "{\"a\":[1,2]}"
 # ```
 # <<en>>
-# Reading and writing JSON. `JSON.parse` reads, `JSON.generate` writes; to take a part out
+# `JSON.parse` reads, `JSON.generate` writes; to take a part out
 # of a big JSON use `JSON::Digger`. **All of it is a small implementation in Ruby**, built
 # for size rather than speed.
 # ```ruby

@@ -3,7 +3,7 @@
 # src/mruby/machine.c、mrblib/machine.rb、ports/esp32 と ports/posix)。
 # ESP32 (実機) と POSIX (Linux・ネイティブ版・ブラウザ版) で中身が違うものは長文に書いた。
 
-# 時刻と待ち、機種の判別。
+# 時刻と待ち、機種の判別 <<en>> Time, waiting, and telling platforms apart
 #
 # 時刻は `board_millis` (ms)・`uptime_us` (マイクロ秒)、待ちは `delay_ms`・`busy_wait_ms`、
 # 機種の判別は `posix?`。**ESP32 の実機と Linux・ブラウザ版で振る舞いが違うものがある**
@@ -12,7 +12,7 @@
 # t0 = Machine.board_millis
 # ```
 # <<en>>
-# Time, waiting, and telling the platforms apart. Time is `board_millis` (ms) and
+# Time is `board_millis` (ms) and
 # `uptime_us` (microseconds), waiting is `delay_ms` and `busy_wait_ms`, and
 # `posix?` tells the platform.
 # **Some methods behave differently on an ESP32 board and on Linux or the browser build**

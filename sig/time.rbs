@@ -6,7 +6,7 @@
 # Linux sim はホストの時計。**ローカル時刻の時差は system_conf.toml の `timezone`** (POSIX 形式。
 # 出荷の設定は "JST-9")。書かれていないと UTC。
 
-# 日付と時刻。
+# 日付と時刻 <<en>> Date and time
 #
 # 作るのは `Time.now` (今)、`Time.at` (UNIX 秒から)、`Time.local` / `Time.gm` (年月日から)。
 # 引き算 (`t2 - t1`) は秒の Float。
@@ -15,7 +15,7 @@
 # label = "%02d:%02d" % [t.hour, t.min]
 # ```
 # <<en>>
-# Date and time. Make one with `Time.now`, `Time.at` (from UNIX seconds), or
+# Make one with `Time.now`, `Time.at` (from UNIX seconds), or
 # `Time.local` / `Time.gm` (from a date). `t2 - t1` is a Float of seconds.
 # ```ruby
 # t = Time.now

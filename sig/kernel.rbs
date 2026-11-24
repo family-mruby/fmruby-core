@@ -1,6 +1,6 @@
 # Area512 built-in type declaration.
 
-# どこからでも呼べる出力・乱数・Proc の道具 <<en>> Output, random numbers and Proc helpers, callable anywhere
+# どこからでも呼べる出力・乱数・Proc の道具 <<en>> Output, random numbers, Proc helpers
 #
 # `puts` の行は**ログに出る** (画面ではない)。`print` は改行しない。`rand` は max を省くか 0 で
 # 0 以上 4294967295 以下の整数を返す (CRuby のような小数ではない)。`proc`・`lambda`・

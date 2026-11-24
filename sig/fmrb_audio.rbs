@@ -387,7 +387,11 @@ class FmrbAudio
   def note_off: (Integer channel) -> void
 end
 
-# マイクの C 側の窓口。アプリは ふつう FmrbAudio の mic_* を使う。
+# マイクの C 側の窓口 <<en>> The C-side entry to the microphone
+#
+# アプリは ふつう FmrbAudio の mic_* を使う。
+# <<en>>
+# Apps normally use the mic_* methods of FmrbAudio.
 module FmrbMic
   # マイクがあるか <<en>> Whether this machine has a microphone
   #
@@ -408,7 +412,7 @@ module FmrbMic
   def self.available?: () -> bool
 end
 
-# NSF (ファミコンの曲) のファイルの題名などを読む。
+# NSF (ファミコンの曲) のファイルの題名などを読む <<en>> Read the title of an NSF song file
 class NsfHeader
   # 曲のファイルから題名などを読む <<en>> Read the title and the rest from a song file
   #

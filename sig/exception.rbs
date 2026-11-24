@@ -166,7 +166,7 @@ end
 class FrozenError < RuntimeError
 end
 
-# プログラムそのものの誤り (rescue の既定では受からない) <<en>> Errors of the program itself (not caught by a bare rescue)
+# プログラムそのものの誤り (rescue の既定では受からない) <<en>> Program errors
 class ScriptError < Exception
 end
 

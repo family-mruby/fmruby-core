@@ -18,8 +18,14 @@ class Class
 
 end
 
+# クラスとモジュールの操作 <<en>> Operations on classes and modules
+#
 # クラスとモジュール (Module) の操作。`Object.const_defined?(:X)` のようにクラスが受け手になる。
 # 実装は mruby 本体の src/class.c (const_defined?) と mruby-metaprog (remove_method)。
+# <<en>>
+# Operations on classes and modules (Module), with a class as the receiver, as in
+# `Object.const_defined?(:X)`. Implemented in mruby's own src/class.c
+# (const_defined?) and mruby-metaprog (remove_method).
 class Module
   # 定数があるか調べる <<en>> Whether a constant is defined
   #
@@ -71,8 +77,14 @@ class Module
   def remove_method: (*(Symbol | String) names) -> self
 end
 
-# Object 自身が受け手になる呼び方 (`Object.const_defined?(:X)`) のための写し。
+# Object を受け手にする呼び方の写し <<en>> A copy for calls with Object as the receiver
+#
+# `Object.const_defined?(:X)` のように Object 自身が受け手になる呼び方のための写し。
 # 中身は Module#const_defined? と同じ (Object は Module の一種)。
+# <<en>>
+# A copy for calls with Object itself as the receiver, as in
+# `Object.const_defined?(:X)`. It does the same as Module#const_defined?
+# (Object is a kind of Module).
 class Object
   # 定数があるか調べる <<en>> Whether a constant is defined
   #

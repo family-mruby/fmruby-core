@@ -10,7 +10,7 @@
 # It holds `Fmrb::Fft` (fast Fourier transform) and `Fmrb::Raycast` (ray
 # casting over a grid map).
 module Fmrb
-  # 音のスペクトルを計算する。
+  # 音のスペクトルを計算する <<en>> Compute the spectrum of a sound
   #
   # **16 ビット整数のバイト列** (リトルエンディアン) を渡し、**同じ形のバイト列で大きさ (振幅)** が返る。
   # 方式 (`backend:`) は `:ruby`・`:c`・`:dsp`・`:spinel`・`:c64` と、整数だけの `:ruby_q15`・`:c_q15`・
@@ -21,7 +21,7 @@ module Fmrb
   # Fmrb::Fft.bin(mag, 8)
   # ```
   # <<en>>
-  # Computes the spectrum of a sound. Pass **a byte String of 16-bit integers** (little-endian)
+  # Pass **a byte String of 16-bit integers** (little-endian)
   # and get **a byte String of magnitudes in the same form**. The methods (`backend:`) are
   # `:ruby`, `:c`, `:dsp`, `:spinel`, `:c64`, and the integer-only `:ruby_q15`, `:c_q15`,
   # `:spinel_q15`. **They all take and give the same thing**; they differ in speed and in
